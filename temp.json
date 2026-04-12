@@ -1,74 +1,78 @@
 {
-    "part_no": {
-        "value": "sdfd",
-        "is_overwrite": true,
-        "sources": {
-            "advanced_log_parser": {
-                "value": "PN-ADV-003",
-                "timestamp": "2026-04-12T21:18:49.066520"
-            },
-            "user": {
-                "value": "sdfd",
-                "timestamp": "2026-04-12T22:20:26.571025"
-            }
-        },
-        "updated_by": "user",
-        "priority_source": "user"
-    },
-    "stock_qty": {
-        "value": "fsdf",
-        "is_overwrite": true,
-        "sources": {
-            "advanced_log_parser": {
-                "value": 880,
-                "timestamp": "2026-04-12T21:18:49.066520"
-            },
-            "user": {
-                "value": "fsdf",
-                "timestamp": "2026-04-12T22:20:42.656486"
-            }
-        },
-        "updated_by": "user",
-        "priority_source": "user"
-    },
-    "unit_price": {
-        "value": 5.99,
+    "sensor_id": {
+        "value": "SENSOR-022",
         "is_overwrite": false,
         "sources": {
-            "advanced_log_parser": {
-                "value": 5.99,
-                "timestamp": "2026-04-12T21:18:49.066520"
+            "sensor_edge_parser": {
+                "value": "SENSOR-022",
+                "timestamp": "2026-04-12T23:00:13.323428"
             }
         },
         "updated_by": "agent_i_v3",
-        "priority_source": "advanced_log_parser"
+        "priority_source": "sensor_edge_parser"
     },
-    "equipment_id": {
-        "value": "EQ-ASSY-99",
+    "temperature": {
+        "value": 28.1,
         "is_overwrite": false,
         "sources": {
-            "advanced_log_parser": {
-                "value": "EQ-ASSY-99",
-                "timestamp": "2026-04-12T21:18:49.066520"
+            "sensor_edge_parser": {
+                "value": 28.1,
+                "timestamp": "2026-04-12T23:00:13.323428"
             }
         },
         "updated_by": "agent_i_v3",
-        "priority_source": "advanced_log_parser"
+        "priority_source": "sensor_edge_parser"
     },
-    "category": {
-        "value": "1232",
+    "humidity": {
+        "value": "231",
         "is_overwrite": true,
         "sources": {
-            "advanced_log_parser": {
-                "value": "Electronics",
-                "timestamp": "2026-04-12T21:18:49.066520"
+            "sensor_edge_parser": {
+                "value": 39.5,
+                "timestamp": "2026-04-12T23:00:13.323428"
             },
             "user": {
-                "value": "1232",
-                "timestamp": "2026-04-12T22:40:04.478772"
+                "value": "231",
+                "timestamp": "2026-04-12T23:01:48.270904"
             }
         },
         "updated_by": "Manual Fix (kk980)",
         "priority_source": "user"
+    },
+    "vibration": {
+        "value": 0.45,
+        "is_overwrite": false,
+        "sources": {
+            "sensor_edge_parser": {
+                "value": 0.45,
+                "timestamp": "2026-04-12T23:00:13.323428"
+            }
+        },
+        "updated_by": "agent_i_v3",
+        "priority_source": "sensor_edge_parser"
+    },
+    "site_name": {
+        "value": "Seoul Factory HQ",
+        "is_overwrite": false,
+        "sources": {
+            "sensor_edge_parser": {
+                "value": "Seoul Factory HQ",
+                "timestamp": "2026-04-12T23:00:13.323428"
+            }
+        },
+        "updated_by": "agent_i_v3",
+        "priority_source": "sensor_edge_parser"
+    },
+    "sensor_group": {
+        "value": "LINE-B",
+        "is_overwrite": false,
+        "sources": {
+            "sensor_edge_parser": {
+                "value": "LINE-B",
+                "timestamp": "2026-04-12T23:00:13.323428"
+            }
+        },
+        "updated_by": "agent_i_v3",
+        "priority_source": "sensor_edge_parser"
     }
 }

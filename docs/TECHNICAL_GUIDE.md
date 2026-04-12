@@ -10,7 +10,7 @@ FastAPI 기반의 백엔드와 PySide6 기반의 프론트엔드가 실시간 We
 ### 💾 백엔드 (FastAPI + SQLAlchemy)
 - **Schema-less JSON Storage**: `DataRow` 테이블의 `data` 컬럼에 JSON 형태로 모든 실시간 데이터를 저장하여 유연한 데이터 구조를 지원합니다.
 - **Business Key Support**: `part_no`, `plan_id` 등 도메인 식별자를 기반으로 한 Upsert 로직을 통해 데이터 중복을 방지합니다.
-- **우선순위 엔진**: `User(0) > Parser_A(1) > Parser_B(2)` 순의 가중치로 최종 데이터를 결정합니다.
+- **우선순위 엔진**: `User(0) > Parser_A(1) > Parser_B(2)` 순의 가중치로 최종 데이터를 결정합니다. 상세 설계는 [ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md)를 참조하십시오.
 - **Global Search & Sorting**: 서버 레벨에서 JSON 데이터를 검색(`q` parameter)하고 최신 데이터부터 정렬하여 반환하는 고성능 쿼리 엔진을 포함합니다.
 - **Advanced Ingestion**: 헤더-본문 결합 파싱 및 디렉토리 감시 기반의 자동화 파이프라인. 상세 설정은 [INGESTION_GUIDE.md](./INGESTION_GUIDE.md)를 참조하십시오.
 
@@ -57,16 +57,38 @@ FastAPI 기반의 백엔드와 PySide6 기반의 프론트엔드가 실시간 We
 
 ---
 
-## 🔍 4. 전역 검색 및 정렬 시스템
-물리적으로 분리된 Lazy Loading 구조에서도 `q` 파라미터를 통해 DB 레벨의 전역 검색을 수행합니다.
-- **Global Search**: `models.DataRow.data.cast(String).ilike(f"%{q}%")` (SQLite 대응).
-- **Recency Sorting**: `updated_at.desc(), created_at.desc()` 순으로 최신 데이터 우선 노출.
+## 🔍 4. 실시간 가시성 및 데이터 무결성 (Advanced Features)
+
+### 🚀 4.1 Universal Real-Time Visibility (Float-to-top)
+대규모 데이터 환경(Lazy Loading)에서 현재 화면에 보이지 않는(Off-screen) 행이 수정될 경우, 이를 즉시 인지하고 최상단으로 부상시키는 메커니즘을 제공합니다.
+- **ApiSingleRowFetchWorker**: 브로드캐스트 수신 시 로컬 데이터가 없는 경우 서버에서 단건 데이터를 즉시 페칭합니다.
+- **Prepend Strategy**: 수정된 데이터를 모델의 최상단(Index 0)으로 삽입하여 사용자가 즉시 수정 사항을 인지할 수 있도록 합니다.
+
+### 🌍 4.2 타임존 현지화 (Timezone Hardening)
+시스템의 모든 시간 정보를 사용자의 현지 시간(KST, UTC+9)으로 자동 변환합니다.
+- **Safe Coordinate Logic**: SQLite의 나이브(Naive) UTC 객체에 대해 `[Force UTC -> Convert Local]` 2단계 보정을 수행하여 1초의 오차 없는 현지 시간을 보장합니다.
+- **Unified Logic**: 서버 데코레이터(`main.py`)와 피단틱 스키마(`schemas.py`) 전 구간에 동일한 로직이 적용되어 있습니다.
+
+### 🔒 4.3 시스템 컬럼 보안 (Integrity Guard)
+`created_at`, `updated_at`, `row_id` 등 시스템이 관리하는 핵심 필드의 편집을 원천 차단합니다.
+- **UI Guard**: 모델의 `flags()` 메서드에서 `ItemIsEditable` 속성을 제거하여 수동 수정을 방지합니다.
+- **Server Guard**: CRUD 레이어에서 외부로부터의 시스템 컬럼 업데이트 요청을 자동 필터링하여 무결성을 유지합니다.
 
 ---
 
-## 🛠️ 5. 유지보수 및 운영
+## 📊 5. 데이터 분석 및 외부 연동 (Export)
+
+### 📥 5.1 CSV 스트리밍 익스포트
+Spotfire, Excel 등 외부 도구에서 데이터를 즉시 활용할 수 있도록 CSV 추출 기능을 제공합니다.
+- **Streaming Response**: 대용량 데이터 전송 시 서버 메모리 부하를 방지하기 위해 데이터를 실시간으로 생성하여 스트리밍합니다.
+- **Excel Compatibility**: UTF-8 BOM 처리를 통해 엑셀에서 열람 시 한글 깨짐을 방지합니다.
+- **Flattened Schema**: JSON 데이터 구조를 표 형식으로 평면화하여 제공하며, KST 현지 시간이 반영된 시스템 컬럼을 포함합니다.
+
+---
+
+## 🛠️ 6. 유지보수 및 운영
 - **환경**: `conda activate assy_manager` (Python 3.12)
 - **설정 파일**: `server/config/table_config.json` (테이블 구조 핵심 설정)
-- **에이전틱 환경**: 본 프로젝트는 멀티 에이전트 협업 체계로 운영됩니다. 상세 규약은 [agentic_environment.md](./agentic_environment.md)를 참조하십시오.
-- **히스토리 기록**: 모든 주요 로직 변경은 `docs/history/`에 영구 기록되어야 합니다.
-- **주의**: Windows 환경에서 PySide6 DLL 이슈 해결을 위해 `client/main.py` 상단의 DLL 경로 워크어라운드 코드를 반드시 유지하십시오.
+- **에이전틱 환경**: [agentic_environment.md](./agentic_environment.md) 참조.
+- **히스토리 기록**: 모든 변경 사항은 `docs/history/`에 영구 기록됩니다.
+- **주의**: Windows 환경의 PySide6 DLL 워크어라운드를 유지하십시오.

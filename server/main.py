@@ -42,6 +42,44 @@ manager = ConnectionManager()
 def read_root():
     return {"status": "AssyManager Data Server is running"}
 
+from datetime import timezone
+
+def to_local_str(dt):
+    """UTC 데이트타임을 현지 시간(Local) 문자열로 변환합니다."""
+    if not dt: return ""
+    ts_fmt = "%Y-%m-%d %H:%M:%S"
+    # SQLite naive datetime assumes UTC. Force UTC if naive before conversion.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime(ts_fmt)
+
+def inject_system_columns(row):
+    """
+    UI에서 created_at, updated_at을 즉시 볼 수 있도록 data JSON에 가상으로 주입합니다.
+    (Single row, Batch, Upsert 등 모든 경로에서 공통 사용)
+    """
+    if not row: return
+    
+    # created_at 주입
+    if "created_at" not in row.data:
+        row.data["created_at"] = {
+            "value": to_local_str(row.created_at), 
+            "is_overwrite": False, 
+            "updated_by": "system"
+        }
+    
+    # updated_at 주입 (없을 경우 created_at 사용)
+    effective_update = row.updated_at if row.updated_at else row.created_at
+    if "updated_at" not in row.data:
+        row.data["updated_at"] = {
+            "value": to_local_str(effective_update), 
+            "is_overwrite": False, 
+            "updated_by": "system"
+        }
+    else:
+        # 데이터가 이미 있더라도 DB의 실제 값이 더 최신이므로 동기화
+        row.data["updated_at"]["value"] = to_local_str(effective_update)
+
 @app.get("/tables")
 def list_tables():
     """
@@ -65,15 +103,15 @@ def get_table_data(table_name: str, skip: int = 0, limit: int = 50, q: str = Non
 
     total_count = query.count()
     
-    rows = query.order_by(models.DataRow.updated_at.desc(), models.DataRow.created_at.desc())\
-                .offset(skip).limit(limit).all()
+    from sqlalchemy.sql import func
+    # 정렬 기준: updated_at(최고 우선순위), 없으면 created_at으로 보완 (COALESCE)
+    sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at).desc()
     
-    # UI에서 바로 볼 수 있도록 created_at, updated_at을 data JSON에 가상으로 주입
+    rows = query.order_by(sort_expr).offset(skip).limit(limit).all()
+    
+    # 공통 데코레이터 적용
     for row in rows:
-        if "created_at" not in row.data:
-            row.data["created_at"] = {"value": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "", "is_overwrite": False, "updated_by": "system"}
-        if "updated_at" not in row.data:
-            row.data["updated_at"] = {"value": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
+        inject_system_columns(row)
 
     return schemas.PaginatedDataResponse(
         table_name=table_name,
@@ -103,7 +141,8 @@ async def update_cell(table_name: str, cell_update: schemas.CellUpdate, db: Sess
         "column_name": cell_update.column_name,
         "value": cell_update.value,
         "is_overwrite": True,
-        "updated_by": cell_update.updated_by or "unknown"
+        "updated_by": cell_update.updated_by or "unknown",
+        "updated_at": to_local_str(row.updated_at or row.created_at)
     }
     await manager.broadcast(json.dumps(msg))
     
@@ -115,8 +154,9 @@ async def update_cells_batch(table_name: str, batch: schemas.CellUpdateBatch, db
     다중 셀 데이터 일괄 업데이트 엔드포인트
     """
     rows = crud.update_cells_batch(db, table_name, batch)
+    row_map = {r.row_id: r for r in rows}
     
-    # Broadcast batch update to connected clients
+    # Broadcast batch update
     msg = {
         "event": "batch_cell_update",
         "table_name": table_name,
@@ -126,9 +166,10 @@ async def update_cells_batch(table_name: str, batch: schemas.CellUpdateBatch, db
                 "column_name": u.column_name,
                 "value": u.value,
                 "is_overwrite": True,
-                "updated_by": u.updated_by or "unknown"
-            } for u in batch.updates
-        ]
+                "updated_at": to_local_str(row_map[u.row_id].updated_at or row_map[u.row_id].created_at)
+            } for u in batch.updates if u.row_id in row_map
+        ],
+        "updated_by": batch.updates[0].updated_by if batch.updates else "unknown"
     }
     await manager.broadcast(json.dumps(msg))
     
@@ -152,6 +193,65 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
     
     return {"status": "success", "row_id": row_id}
 
+
+from fastapi.responses import StreamingResponse
+import csv
+import io
+from datetime import datetime
+
+@app.get("/tables/{table_name}/export")
+def export_table_csv(table_name: str, db: Session = Depends(get_db)):
+    """
+    테이블의 모든 데이터를 CSV 형식으로 추출하여 스트리밍 반환합니다.
+    (Spotfire 등 외부 분석 도구 연동용)
+    """
+    rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
+    
+    if not rows:
+        raise HTTPException(status_code=404, detail="No data found for this table")
+
+    # 1. 컬럼 헤더 구성 (모든 행의 키 집합 추출)
+    all_keys = set()
+    for row in rows:
+        all_keys.update(row.data.keys())
+    
+    # 정렬: 일반 컬럼 -> 시스템 컬럼 순
+    system_cols = ["created_at", "updated_at"]
+    business_cols = [k for k in sorted(all_keys) if k not in system_cols]
+    header = business_cols + system_cols
+
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Excel 한글 깨짐 방지용 BOM 추가
+        output.write('\ufeff')
+        writer.writerow(header)
+        yield output.getvalue()
+        output.seek(0); output.truncate(0)
+
+        for row in rows:
+            # 시스템 컬럼 및 KST 시간 정보를 data 에 주입
+            inject_system_columns(row)
+            
+            row_vals = []
+            for col in header:
+                cell = row.data.get(col, {})
+                # CellData 구조일 경우 value 추출 (이중 래핑 방지: value 자체가 dict인 경우 재귀 추출)
+                val = cell.get("value") if isinstance(cell, dict) else cell
+                # 마이그레이션 오류 등으로 인한 이중 래핑 방어
+                if isinstance(val, dict) and "value" in val:
+                    val = val.get("value")
+                row_vals.append(val)
+            
+            writer.writerow(row_vals)
+            yield output.getvalue()
+            output.seek(0); output.truncate(0)
+
+    filename = f"{table_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = StreamingResponse(generate(), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
 
 @app.get("/tables/{table_name}/schema")
 def get_table_schema(table_name: str, db: Session = Depends(get_db)):
@@ -196,6 +296,9 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
         models.DataRow.row_id == row_id
     ).first()
     
+    if row:
+        inject_system_columns(row)
+        
     if not row:
         raise HTTPException(status_code=404, detail="Row not found")
     return row
@@ -231,10 +334,9 @@ async def create_row(table_name: str, db: Session = Depends(get_db)):
     """
     new_row = crud.create_empty_row(db, table_name)
     
-    # Virtual inject system columns for real-time UI
+    # 공통 데코레이터 적용 (created_at, updated_at 주입)
+    inject_system_columns(new_row)
     broadcast_data = new_row.data.copy()
-    broadcast_data["created_at"] = {"value": new_row.created_at.strftime("%Y-%m-%d %H:%M:%S") if new_row.created_at else "", "is_overwrite": False, "updated_by": "system"}
-    broadcast_data["updated_at"] = {"value": new_row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if new_row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
 
     # WebSocket 브로드캐스트
     msg = {
@@ -265,9 +367,8 @@ async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = 
     # WebSocket 브로드캐스트
     if is_new:
         # Virtual inject system columns
+        inject_system_columns(row)
         broadcast_data = row.data.copy()
-        broadcast_data["created_at"] = {"value": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "", "is_overwrite": False, "updated_by": "system"}
-        broadcast_data["updated_at"] = {"value": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
 
         msg = {
             "event": "row_create",
@@ -276,13 +377,16 @@ async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = 
                 "row_id": row.row_id,
                 "table_name": row.table_name,
                 "data": broadcast_data,
-                "created_at": row.created_at.isoformat() if row.created_at else None
+                "created_at": to_local_str(row.created_at)
             }
         }
     else:
         # Include updated timestamps in the updates list for real-time UI refresh
+        # 공통 데코레이터 적용
+        inject_system_columns(row)
+        
         updates_list = []
-        for col, val in upsert.updates.items():
+        for col, val in row.data.items():
             cell_state = row.data.get(col, {})
             updates_list.append({
                 "row_id": row.row_id,
@@ -291,21 +395,6 @@ async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = 
                 "is_overwrite": cell_state.get("is_overwrite", False)
             })
         
-        # Add system columns as virtual updates
-        ts_fmt = "%Y-%m-%d %H:%M:%S"
-        updates_list.append({
-            "row_id": row.row_id,
-            "column_name": "created_at",
-            "value": row.created_at.strftime(ts_fmt) if row.created_at else "",
-            "is_overwrite": False
-        })
-        updates_list.append({
-            "row_id": row.row_id,
-            "column_name": "updated_at",
-            "value": row.updated_at.strftime(ts_fmt) if row.updated_at else "",
-            "is_overwrite": False
-        })
-
         msg = {
             "event": "batch_cell_update",
             "table_name": table_name,

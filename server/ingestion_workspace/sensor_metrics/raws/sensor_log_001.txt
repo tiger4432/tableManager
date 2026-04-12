@@ -6,7 +6,7 @@ Operator: Admin
 --- START METRICS ---
 ID: SENSOR-001 Temp: 224.5 Humi: 45.1 Vibr: 0.15
 ID: SENSOR-002 Temp: 28.1 Humi: 39.5 Vibr: 0.45
-ID: SENSOR-003 Temp: 22.8 Humi: 50.1 Vibr: 0.08
+ID: SENSOR-222 Temp: 22.8 Humi: 50.1 Vibr: 0.08
 --- END METRICS ---
 Checksum: OK
 EOF

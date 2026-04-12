@@ -6,7 +6,8 @@
       "category",
       "stock_qty",
       "unit_price",
-      "created_at"
+      "created_at",
+      "updated_at"
     ]
   },
   "production_plan": {
@@ -14,9 +15,11 @@
     "display_columns": [
       "plan_id",
       "prod_line",
+      "model_name",
       "target_qty",
       "due_date",
-      "created_at"
+      "created_at",
+      "updated_at"
     ]
   },
   "sensor_metrics": {
@@ -26,7 +29,8 @@
       "temperature",
       "humidity",
       "vibration",
-      "created_at"
+      "created_at",
+      "updated_at"
     ]
   },
   "raw_table_1": {
@@ -35,7 +39,8 @@
       "id",
       "name",
       "status",
-      "created_at"
+      "created_at",
+      "updated_at"
     ]
   }
 }

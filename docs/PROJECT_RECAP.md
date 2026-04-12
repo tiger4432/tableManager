@@ -25,21 +25,17 @@
 - **Phase 6-10**: 실시간 WebSocket 연동 및 Batch Copy-Paste 기능 고도화.
 - **Phase 11-13**: 데이터 계보(AuditLog) 및 히스토리 도킹 패널 시각화 완료.
 - **Phase 14-15**: 비즈니스 키 기반 Upsert 시스템 및 범용 인제스터(Regex) 구축.
-- **Phase 16-17**: 전역 서버 사이드 검색 및 데이터 최신순(Recency) 정렬 고도화.
-- **Phase 18-19**: 고급 인제션 워크스페이스 구축 및 WebSocket 신뢰성(GC 관리, 종료 지연) 해결.
-- **Phase 20**: 실시간 워처(Directory Watcher) 안정화 및 유연한 설정 연동, 수동 수정 시각화 완료.
+- **Phase 21-27**: `updated_at` 기반 정렬, 실시간 부상(Float-to-top), 나이브 시간 보정 및 KST 현지화 완결.
+- **Phase 28-29**: 시스템 컬럼 읽기 전용 보안 정책 수립 및 행 삭제(Row Delete) 실시간 히스토리 연동.
+- **Phase 30-31**: 심층 아키텍처 분석(Architecture Analysis) 완료 및 외부 분석 툴 연동을 위한 CSV 익스포트 기능 상용화.
 - **Agentic Env**: 멀티 에이전트 협업 체계(Lead/Excel/Sync/Ingester) 및 지식 자산화 표준 정립.
 
 ---
 
-## 📂 3. 소스 코드 상세 분석 (Deep Dive Analysis)
-
-시스템의 유지보수 및 확장을 위해 각 컴포넌트별 전문 분석 리포트를 제공합니다.
-
-- **[Agent C: 엑셀 인터커넥트 및 코어 로직](file:///c:/Users/kk980/Developments/assyManager/docs/analysis/Analysis_Report_Agent_C.md)**
-- **[Agent D: UI/UX 및 실시간 통신 최적화](file:///c:/Users/kk980/Developments/assyManager/docs/analysis/Analysis_Report_Agent_D.md)**
-- **[Agent I: 데이터 인제션 및 DB 아키텍처](file:///c:/Users/kk980/Developments/assyManager/docs/analysis/Analysis_Report_Agent_I.md)**
-- **[Agent Q: 시스템 무결성 및 통합 QA](file:///c:/Users/kk980/Developments/assyManager/docs/analysis/Analysis_Report_Agent_Q.md)**
+## 📂 3. 핵심 기술 자산 (Core Tech Assets)
+본 프로젝트의 핵심 아키텍처와 주요 구현 방식은 다음 문서를 통해 상세히 관리됩니다.
+- **[TECHNICAL_GUIDE.md](./TECHNICAL_GUIDE.md)**: 시스템 전반의 아키텍처 및 API 상세 가이드.
+- **[INGESTION_GUIDE.md](./INGESTION_GUIDE.md)**: 데이터 인제션 및 워크스페이스 확장 가이드.
 
 ---
 

@@ -85,6 +85,10 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
     db.add(log)
 
 def update_cell(db: Session, table_name: str, cell_update: schemas.CellUpdate):
+    # Agent D v12: 시스템 컬럼 수정 차단
+    if cell_update.column_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+        return None  # 또는 에러 발생 가능. 여기서는 None으로 무시 처리.
+        
     row = db.query(models.DataRow).filter(
         models.DataRow.table_name == table_name,
         models.DataRow.row_id == cell_update.row_id
@@ -210,10 +214,14 @@ def create_empty_row(db: Session, table_name: str):
     db.refresh(new_row)
     return new_row
 
-def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dict, source: str, user: str):
+def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dict, source_name: str = "user", updated_by: str = "system"):
     """
-    비즈니스 키를 기반으로 행을 업데이트하거나, 없으면 신규 생성합니다.
+    비즈니스 키를 기반으로 행을 찾아 업데이트하거나, 없으면 생성합니다.
     """
+    # Agent D v12: 시스템 컬럼은 외부(Parser, API)에서 업데이트하지 못하도록 필터링
+    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
+    updates = {k: v for k, v in updates.items() if k not in system_cols}
+    
     row = get_row_by_business_key(db, table_name, business_key_val)
     is_new = False
     
@@ -234,7 +242,7 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
         # 1. 소스 데이터 저장
         if "sources" not in cell: cell["sources"] = {}
         from datetime import datetime
-        cell["sources"][source] = {
+        cell["sources"][source_name] = {
             "value": val,
             "timestamp": datetime.now().isoformat()
         }
@@ -244,12 +252,12 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
         
         # 3. 값의 변화가 있거나 신규 행인 경우에만 감사 로그 기록 (무결성 규칙 준수)
         if is_new or (str(old_val) != str(new_final_val)):
-            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, source, user)
+            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, source_name, updated_by)
         
         cell["value"] = new_final_val
         cell["priority_source"] = top_src
         cell["is_overwrite"] = ("user" in cell["sources"])
-        cell["updated_by"] = user
+        cell["updated_by"] = updated_by
         
     flag_modified(row, "data")
     db.commit()

@@ -10,6 +10,9 @@ ENV/
 # 데이터베이스
 *.db
 server/assy_manager.db
+**/archives/*
+**/raws/*
+**/*.csv
 
 # IDE 설정
 .vscode/

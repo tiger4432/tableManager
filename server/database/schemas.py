@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class CellData(BaseModel):
     value: Any                          # 현재 표출되고 있는 최종 값
@@ -27,6 +27,15 @@ class AuditLogResponse(BaseModel):
     updated_by: str
     timestamp: datetime
 
+    @field_validator("timestamp", mode="after")
+    @classmethod
+    def convert_to_local(cls, v: datetime) -> datetime:
+        if v:
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=timezone.utc)
+            return v.astimezone()
+        return v
+
     class Config:
         from_attributes = True
 
@@ -50,6 +59,15 @@ class DataRowCreate(DataRowBase):
 class DataRowResponse(DataRowBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @field_validator("created_at", "updated_at", mode="after")
+    @classmethod
+    def convert_to_local(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v:
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=timezone.utc)
+            return v.astimezone()
+        return v
 
     class Config:
         from_attributes = True

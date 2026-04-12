@@ -20,12 +20,14 @@ class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
     """
-    def __init__(self, workspace_path: str, config_path: str, archives_path: str):
+    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None):
         self.workspace_path = workspace_path
         self.config_path = config_path
         self.archives_path = archives_path
+        self.default_table_name = default_table_name # Agent D v13: 폴더 머신 명칭 기반 Fallback
+        self.scripts_path = os.path.join(workspace_path, "scripts")
         self.supported_extensions = ('.log', '.txt', '.csv')
-        self.processing_files = set() # Agent D v7: Track in-progress files
+        self.processing_files = set() 
         
     def on_created(self, event):
         if not event.is_directory:
@@ -60,18 +62,27 @@ class IngestionHandler(FileSystemEventHandler):
         # Initial debounce to allow file copy to finish
         time.sleep(delay)
         
-        if not os.path.exists(file_path):
-            logger.debug(f"File vanished during debounce: {file_path}")
+        abs_path = os.path.abspath(file_path)
+        if not os.path.exists(abs_path):
+            logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
             return
 
         for attempt in range(retries):
             try:
-                # 1. Initialize AdvancedIngester for this workspace
-                ingester = AdvancedIngester(self.config_path)
-                
-                # 2. Process the file
-                logger.info(f"Starting ingestion for {file_path} (Attempt {attempt+1})")
-                ingester.process_file(file_path)
+                # Agent D v13: 커스텀 스크립트 존재 여부 확인
+                custom_script = os.path.join(self.scripts_path, "custom_parser.py")
+                if os.path.exists(custom_script):
+                    logger.info(f"Custom script found: {custom_script}. Using plug-in parser.")
+                    rows = self._execute_custom_script(file_path, custom_script)
+                    if rows:
+                        self._send_to_upsert(rows)
+                else:
+                    # 1. Initialize AdvancedIngester for this workspace
+                    ingester = AdvancedIngester(self.config_path)
+                    
+                    # 2. Process the file
+                    logger.info(f"Starting ingestion for {file_path} (Attempt {attempt+1})")
+                    ingester.process_file(file_path)
                 
                 # 3. Archive the file
                 self._archive_file(file_path)
@@ -87,6 +98,10 @@ class IngestionHandler(FileSystemEventHandler):
         logger.error(f"Failed to process file after {retries} attempts: {file_path}")
 
     def _archive_file(self, file_path: str):
+        if not os.path.exists(file_path):
+            logger.debug(f"File already gone, skipping archive: {file_path}")
+            return
+
         if not os.path.exists(self.archives_path):
             os.makedirs(self.archives_path)
             
@@ -98,8 +113,110 @@ class IngestionHandler(FileSystemEventHandler):
             base, ext = os.path.splitext(filename)
             dest_path = os.path.join(self.archives_path, f"{base}_{int(time.time())}{ext}")
             
-        shutil.move(file_path, dest_path)
-        logger.info(f"Moved {file_path} to {dest_path}")
+        try:
+            shutil.move(file_path, dest_path)
+            logger.info(f"Moved {file_path} to {dest_path}")
+        except FileNotFoundError:
+            logger.debug(f"File vanished during move: {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to move file to archive: {e}")
+
+    def _execute_custom_script(self, file_path: str, script_path: str) -> list[dict]:
+        """커스텀 Python 스크립트를 동적으로 로드하여 실행합니다."""
+        import importlib.util
+        try:
+            spec = importlib.util.spec_from_file_location("custom_parser", script_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            if hasattr(module, 'parse_file'):
+                logger.info(f"Executing custom parse_file for {file_path}")
+                return module.parse_file(file_path)
+            else:
+                logger.error(f"Script {script_path} does not have 'parse_file(file_path)' function.")
+                return []
+        except Exception as e:
+            logger.error(f"Failed to execute custom script {script_path}: {e}")
+            return []
+
+    def _send_to_upsert(self, rows: list[dict]):
+        """파싱된 행 리스트를 서버 업서트 API 전송 규격에 맞춰 개별 전송합니다."""
+        import json
+        import urllib.request
+        
+        # 1. 대상 테이블 설정 로드
+        table_config = {}
+        try:
+            # directory_watcher.py 의 위치 (server/parsers/) 를 기준으로 상대 경로 설정
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
+            if os.path.exists(global_config_path):
+                with open(global_config_path, "r", encoding="utf-8") as f:
+                    table_config = json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load global table_config: {e}")
+
+        # 2. 현재 워크스페이스의 table_name 결정
+        table_name = self.default_table_name
+        if self.config_path and os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                table_name = config.get("table_name", table_name)
+            except: pass
+
+        if not table_name:
+            logger.error("No table_name identified for upsert.")
+            return
+
+        # 3. 비즈니스 키 및 컬럼 매핑 정보 획득
+        table_info = table_config.get(table_name, {})
+        bk_col = table_info.get("business_key", "id")
+        defined_cols = table_info.get("display_columns", [])
+        
+        # 4. 각 행별로 정규화 및 CellUpsert 규격에 맞춰 전송
+        url = f"http://127.0.0.1:8000/tables/{table_name}/upsert"
+        
+        for row in rows:
+            # Agent D v13: 필드명 정규화 (사용자가 PLAN_ID 로 줘도 plan_id 로 교정)
+            normalized_row = {}
+            bk_val = None
+            
+            for key, val in row.items():
+                target_key = key
+                # 정의된 컬럼 목록에서 대소문자 무시하고 매칭되는 것이 있는지 확인
+                found_match = False
+                for d_col in defined_cols:
+                    if key.lower() == d_col.lower():
+                        target_key = d_col
+                        found_match = True
+                        break
+                
+                normalized_row[target_key] = val
+                
+                # 비즈니스 키 값 추출
+                if target_key.lower() == bk_col.lower():
+                    bk_val = val
+
+            if bk_val is None:
+                logger.warning(f"Skipping row: Business key '{bk_col}' not found in data {row.keys()}")
+                continue
+
+            payload_dict = {
+                "business_key_val": bk_val,
+                "updates": normalized_row, # 정규화된 데이터 전송
+                "source_name": "custom_script",
+                "updated_by": "system"
+            }
+            
+            try:
+                payload = json.dumps(payload_dict).encode("utf-8")
+                req = urllib.request.Request(url, data=payload, method="PUT")
+                req.add_header("Content-Type", "application/json")
+                with urllib.request.urlopen(req) as response:
+                    logger.info(f"Row {bk_val} upserted. Status: {response.status}")
+            except Exception as e:
+                logger.error(f"Failed to upsert row {bk_val}: {e}")
 
 class WorkspaceWatcher:
     """
@@ -136,7 +253,16 @@ class WorkspaceWatcher:
                     self.watch_count += 1
                     logger.info(f"Watching: {root} (using config: {os.path.basename(config_path)})")
                 else:
-                    logger.warning(f"Skipping {root}: No JSON config found in {config_dir}")
+                    # Agent D v13: config 가 없더라도 custom_parser.py 가 있으면 감지 대상으로 포함
+                    scripts_path = os.path.join(workspace_root, "scripts", "custom_parser.py")
+                    if os.path.exists(scripts_path):
+                        table_name = os.path.basename(workspace_root)
+                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name)
+                        self.observer.schedule(handler, root, recursive=False)
+                        self.watch_count += 1
+                        logger.info(f"Watching: {root} (Script-only workspace, Table: {table_name})")
+                    else:
+                        logger.warning(f"Skipping {root}: No JSON config or custom_parser found.")
 
     def start(self):
         if self.watch_count == 0:
