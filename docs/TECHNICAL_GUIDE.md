@@ -18,6 +18,7 @@ FastAPI 기반의 백엔드와 PySide6 기반의 프론트엔드가 실시간 We
 - **Virtual Scrolling**: `ApiLazyTableModel`을 통해 수만 건의 데이터도 지연 없이 가상 스크롤링합니다.
 - **Shared WebSocket**: 단일 WebSocket 연결로 모든 탭의 데이터를 실시간 업데이트하며, **비동기 워커 생명주기 관리(GC 방지)** 및 **순차적 탭 로딩**을 통해 시스템 안정성을 극대화하였습니다.
 - **Manual Fix UI**: 사용자 수동 수정 시 노란색 하이라이트와 `🛠️` 아이콘 및 수정자 정보가 실시간 대조 표시됩니다.
+- **UX Hardening**: 셀 편집 시 기존 값 유지(`EditRole`) 및 실제 값 변경이 없을 경우 서버 통신을 차단(`setData` 가드)하여 네트워크 효율을 극대화했습니다.
 
 ---
 
@@ -86,7 +87,21 @@ Spotfire, Excel 등 외부 도구에서 데이터를 즉시 활용할 수 있도
 
 ---
 
-## 🛠️ 6. 유지보수 및 운영
+## 🛠️ 6. 클라이언트 빌드 및 배포 (Perfect Isolation)
+
+Windows 환경의 고질적인 DLL 충돌 문제를 해결하기 위해 **원천 격리(Source Isolation)** 빌드 및 런타임 로직이 적용되어 있습니다.
+
+### 6.1 DLL 격리 아키텍처
+- **보안**: `sys.frozen` 상태에서 실행 시 시스템 `PATH`를 `System32`로 초기화하여 외부(Anaconda 등) Qt DLL의 간섭을 원천 차단합니다.
+- **연결**: `os.add_dll_directory()`를 통해 번들 내부(`_MEIPASS`)의 PySide6 전용 경로만 명시적으로 검색하도록 강제합니다.
+
+### 6.2 배포 명령
+- `conda run -n assy_manager pyinstaller --noconsole --onefile --clean -y --noupx main.py`
+  - `--noupx`: Qt DLL의 비가역적 손상을 방지하기 위해 압축을 해제하고 원본 바이너리를 보존합니다.
+
+---
+
+## 📋 7. 유지보수 및 운영
 - **환경**: `conda activate assy_manager` (Python 3.12)
 - **설정 파일**: `server/config/table_config.json` (테이블 구조 핵심 설정)
 - **에이전틱 환경**: [agentic_environment.md](./agentic_environment.md) 참조.

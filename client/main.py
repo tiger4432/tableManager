@@ -1,18 +1,39 @@
 import sys
 import os
 
-# Windows DLL load failed workaround for PySide6 in Conda environments
+# ── Windows DLL 로드 워크어라운드 (환경 원천 격리) ──
 if os.name == 'nt':
-    path_envs = os.environ.get("PATH", "").split(os.pathsep)
-    # Remove Anaconda/conda paths that might contain conflicting Qt dlls
-    cleaned_path = [p for p in path_envs if "conda" not in p.lower() and "anaconda" not in p.lower()]
-    os.environ["PATH"] = os.pathsep.join(cleaned_path)
+    is_frozen = getattr(sys, 'frozen', False)
     
-    # Also explicitly add PySide6 directory to DLL search path
-    pyside_dir = os.path.join(sys.prefix, "Lib", "site-packages", "PySide6")
-    if os.path.exists(pyside_dir):
-        # os.add_dll_directory is highly effective for PySide6 load errors on Python 3.8+
-        os.add_dll_directory(pyside_dir)
+    if is_frozen:
+        # [빌드 환경] 시스템 PATH를 완전히 세척하여 외부(특히 base 콘다) DLL 혼입 원천 차단
+        # 오직 번들 폴더와 Windows 기본 시스템 경로(System32)만 허용
+        bundle_dir = sys._MEIPASS
+        os.environ["PATH"] = bundle_dir + os.pathsep + os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32")
+        
+        # 번들 내부의 모든 가능성 있는 DLL 경로 등록
+        pyside_internal_dirs = [
+            bundle_dir,
+            os.path.join(bundle_dir, "PySide6"),
+            os.path.join(bundle_dir, "PySide6", "Qt", "bin"),
+            os.path.join(bundle_dir, "shiboken6")
+        ]
+        for d in pyside_internal_dirs:
+            if os.path.exists(d):
+                os.add_dll_directory(d)
+    else:
+        # [개발 환경] Conda 경로 필터링 및 DLL 디렉토리 등록
+        path_envs = os.environ.get("PATH", "").split(os.pathsep)
+        cleaned_path = [p for p in path_envs if "conda" not in p.lower() and "anaconda" not in p.lower()]
+        os.environ["PATH"] = os.pathsep.join(cleaned_path)
+        
+        pyside_dir = os.path.join(sys.prefix, "Lib", "site-packages", "PySide6")
+        if os.path.exists(pyside_dir):
+            os.add_dll_directory(pyside_dir)
+            bin_dir = os.path.join(pyside_dir, "Qt", "bin")
+            if os.path.exists(bin_dir):
+                os.add_dll_directory(bin_dir)
+# ──────────────────────────────────────────────────────────
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox, QFileDialog
 from PySide6.QtCore import Qt, QThreadPool

@@ -30,3 +30,8 @@ agent_workspace/tasks/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# PyInstaller 빌드 결과물
+client/build/
+client/dist/
+client/*.spec

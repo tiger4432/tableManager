@@ -271,6 +271,12 @@ class ApiLazyTableModel(QAbstractTableModel):
             if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
                 return False
                 
+            # Agent D v15: 값이 동일할 경우 업데이트 무시
+            current_item = cell_data.get(col_name, {})
+            current_value = current_item.get("value", "")
+            if str(current_value) == str(value):
+                return True # 변경 사항 없으므로 성공으로 간주하되 API는 미호출
+                
             row_id = self._data[row].get("row_id")
             
             if row_id is None:
@@ -574,8 +580,8 @@ class ApiLazyTableModel(QAbstractTableModel):
         cell_data = self._data[row].get("data", {})
         col_name = self._columns[col]
         
-        # Display the actual value
-        if role == Qt.ItemDataRole.DisplayRole:
+        # Display the actual value or provide for Editor
+        if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
             item = cell_data.get(col_name, {})
             return item.get("value", "")
             

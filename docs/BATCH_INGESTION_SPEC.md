@@ -23,9 +23,11 @@
 사용자가 UI에서 셀을 직접 수정하거나 대량으로 붙여넣는 시나리오입니다.
 
 #### 시나리오 A: 단일 셀 수정
-- **API**: `PUT /tables/{t}/upsert` (단건)
+- **API**: `PUT /cells` (단건)
 - **WebSocket**: `cell_update`
-- **UI 반응**: 해당 셀에 주황색(Amber) 하이라이트 적용 (`is_overwrite=True`).
+- **UI 반응**: 
+  - 해당 셀에 주황색(Amber) 하이라이트 적용 (`is_overwrite=True`).
+  - **UX**: 더블 클릭 시 기존 값 유지, 변경 없을 경우 전송 중단.
 
 #### 시나리오 B: 다중 셀 붙여넣기 (Paste)
 - **API**: `PUT /tables/{t}/cells/batch` (배치)

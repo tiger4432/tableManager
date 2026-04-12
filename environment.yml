@@ -11,6 +11,8 @@ dependencies:
   - websockets
   - python-dotenv
   - pyside6
+  - watchdog
   - pytest
   - httpx
+  - pyinstaller
   - pip
