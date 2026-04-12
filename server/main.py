@@ -353,6 +353,40 @@ async def create_row(table_name: str, db: Session = Depends(get_db)):
     
     return new_row
 
+@app.put("/tables/{table_name}/upsert/batch")
+async def upsert_rows_batch_endpoint(table_name: str, batch: schemas.CellUpsertBatch, db: Session = Depends(get_db)):
+    """
+    다중 행 비즈니스 키 기반 배치 업서트 엔드포인트
+    """
+    if not batch.items:
+        return {"status": "success", "count": 0}
+        
+    results = crud.upsert_rows_batch(db, table_name, batch.items)
+    
+    # WebSocket 브로드캐스트: 모든 변경사항을 하나의 'batch_row_upsert'로 압축
+    # 클라이언트는 이를 받고 모델을 효율적으로 갱신
+    upsert_events = []
+    for row, is_new in results:
+        inject_system_columns(row)
+        upsert_events.append({
+            "row_id": row.row_id,
+            "is_new": is_new,
+            "data": row.data # 전체 데이터 포함
+        })
+        
+    msg = {
+        "event": "batch_row_upsert",
+        "table_name": table_name,
+        "items": upsert_events
+    }
+    await manager.broadcast(json.dumps(msg))
+    
+    return {
+        "status": "success",
+        "count": len(results)
+    }
+
+
 
 @app.put("/tables/{table_name}/upsert")
 async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = Depends(get_db)):
@@ -408,6 +442,7 @@ async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = 
         "row_id": row.row_id, 
         "is_new": is_new
     }
+
 
 
 @app.websocket("/ws")

@@ -190,6 +190,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     """
     # Agent D v2: WS 브로드캐스트 전용 Signal (source='remote' 컨텍스트 포함)
     ws_data_changed = Signal(dict)  # {"row_id": ..., "column_name": ..., "value": ..., "source": "remote"}
+    batch_ws_data_changed = Signal(list) # List of cell-level update dicts
     row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
     row_deleted_ws = Signal(dict)   # Agent D v13: 행 삭제 시그널 추가
     def __init__(self, table_name: str, base_api_url: str = "http://127.0.0.1:8000"):
@@ -373,164 +374,163 @@ class ApiLazyTableModel(QAbstractTableModel):
     def _on_websocket_broadcast(self, data: dict):
         """
         서버 WebSocket 브로드캐스트 수신 Slot.
-        - cell_update / batch_cell_update 이벤트를 처리합니다.
-        - row_id 기반으로 self._data 버퍼를 검색하여 값과 is_overwrite 플래그를 갱신합니다.
-        - 변경된 범위에 dataChanged.emit()을 호출하여 노란색 배경을 즉시 렌더링합니다.
         """
         event = data.get("event")
         table_name = data.get("table_name", "")
 
-        # 자신이 발행한 이벤트가 자신에게 돌아온 경우도 처리 (타 클라이언트 포함)
         if table_name and table_name != self.table_name:
             return
 
-        if event == "cell_update":
-            updates = [data] # Agent D v7: Pass entire data to include updated_at
-        elif event == "batch_cell_update":
-            updates = data.get("updates", [])
-        elif event == "row_delete":
-            row_id = data.get("row_id")
-            if not row_id:
-                return
-            row_id_map = self._build_row_id_map()
-            row_idx = row_id_map.get(row_id)
-            if row_idx is not None:
-                self.beginRemoveRows(QModelIndex(), row_idx, row_idx)
-                del self._data[row_idx]
-                self._total_count -= 1
-                self.endRemoveRows()
-            
-            # Agent D v13: 삭제 성공 여부와 관계없이 브로드캐스트 시그널 전파 (히스토리 기록용)
-            self.row_deleted_ws.emit(data)
-            return  # 삭제 처리는 여기서 종료
-        elif event == "row_create":
-            row_data = data.get("data")
-            if not row_data:
-                return
-            
-            # 리스트 맨 앞에 삽입 (Agent E v4 지침)
-            self.beginInsertRows(QModelIndex(), 0, 0)
-            self._data.insert(0, row_data)
-            self._total_count += 1
-            self.endInsertRows()
-            
-            # Agent D v4: 히스토리 패널 연동을 위해 Signal 방출
-            self.row_created_ws.emit(data)
-            return
-        else:
-            return  # 알 수 없는 이벤트 무시
-
-        if not updates:
-            return
-
-        # row_id → 버퍼 인덱스 맵 (lazy build)
-        row_id_map = self._build_row_id_map()
-
-        affected_rows = set() # Track for potential move to top
-        changed_indices = []  # (row_idx, col_idx) 목록
-
-        for u in updates:
-            row_id = u.get("row_id")
-            col_name = u.get("column_name")
-            value = u.get("value")
-
-            row_idx = row_id_map.get(row_id)
-            if row_idx is None:
-                # Agent D v8: 로딩되지 않은 행이 수정됨 -> 서버에서 전체 행을 가져와 최상단에 투입
-                if row_id not in self._fetching_row_ids:
-                    self._fetching_row_ids.add(row_id)
-                    fetch_url = f"{self.base_api_url}/tables/{self.table_name}/{row_id}"
-                    worker = ApiSingleRowFetchWorker(fetch_url)
-                    worker.signals.finished.connect(self._on_remote_row_fetched)
-                    worker.signals.error.connect(lambda e, rid=row_id: self._fetching_row_ids.discard(rid))
-                    # Note: Need pool access
-                    from PySide6.QtCore import QThreadPool
-                    QThreadPool.globalInstance().start(worker)
-                continue  # 페칭 시작했으므로 이번 루프는 패스 (나중에 _on_remote_row_fetched에서 처리)
-            
-            affected_rows.add(row_id)
-            
-            try:
-                col_idx = self._columns.index(col_name)
-            except ValueError:
-                continue  # 알 수 없는 컬럼 무시
-
-            cell_data = self._data[row_idx].get("data", {})
-            if col_name not in cell_data:
-                cell_data[col_name] = {}
-            cell_data[col_name]["value"] = value
-            cell_data[col_name]["is_overwrite"] = u.get("is_overwrite", False)
-
-            # Agent D v6: Update updated_at column if present in the message
-            if "updated_at" in u and "updated_at" in self._columns:
-                u_at = u.get("updated_at")
-                if "updated_at" not in cell_data:
-                    cell_data["updated_at"] = {"is_overwrite": False, "updated_by": "system"}
-                cell_data["updated_at"]["value"] = u_at
-                
-                u_at_idx = self._columns.index("updated_at")
-                changed_indices.append((row_idx, u_at_idx))
-
-        # Agent D v2: 각 업데이트에 대해 ws_data_changed Signal 방출 (히스토리 패널용)
-        # 중요: changed_indices가 비어있더라도(로딩 안 된 행이어도) 로그는 남겨야 함.
-        for u in updates:
-            if "updated_by" not in u:
-                u["updated_by"] = data.get("updated_by", "system")
-            self.ws_data_changed.emit({**u, "source": "remote"})
-
-        if not changed_indices:
-            return
-
-        # Agent D v7: Move affected rows to the top (Live Sort by Update)
-        for row_id in affected_rows:
-            current_map = self._build_row_id_map()
-            idx = current_map.get(row_id)
-            if idx is not None and idx > 0:
-                self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
-                row_to_move = self._data.pop(idx)
-                self._data.insert(0, row_to_move)
-                self.endMoveRows()
-
-        # Agent D v7: 전체 가용 범위를 갱신하여 인덱스 꼬임을 방지함 (최신순 정렬 특화)
-        max_row = max([r for r, _ in changed_indices]) if changed_indices else 0
-        top_left = self.index(0, 0)
-        bottom_right = self.index(max_row, len(self._columns) - 1)
-        
+        # [핵심 최적화] 원격 데이터 처리 중임을 표시하여 히스토리 패널의 개별 셀 로그 생성을 차단
         self._is_processing_remote = True
         try:
-            self.dataChanged.emit(
-                top_left, bottom_right,
-                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
-            )
+            if event == "cell_update":
+                updates = [data]
+            elif event == "batch_cell_update":
+                updates = data.get("updates", [])
+            elif event == "row_delete":
+                row_id = data.get("row_id")
+                if not row_id: return
+                row_id_map = self._build_row_id_map()
+                row_idx = row_id_map.get(row_id)
+                if row_idx is not None:
+                    self.beginRemoveRows(QModelIndex(), row_idx, row_idx)
+                    del self._data[row_idx]
+                    self._total_count -= 1
+                    self.endRemoveRows()
+                self.row_deleted_ws.emit(data)
+                return
+            elif event == "row_create":
+                row_data = data.get("data")
+                if not row_data: return
+                self.beginInsertRows(QModelIndex(), 0, 0)
+                self._data.insert(0, row_data)
+                self._total_count += 1
+                self.endInsertRows()
+                self.row_created_ws.emit(data)
+                return
+            elif event == "batch_row_upsert":
+                items = data.get("items", [])
+                if not items: return
+                
+                row_id_map = self._build_row_id_map()
+                all_cell_updates = []
+                
+                for item in items:
+                    row_id = item.get("row_id")
+                    is_new = item.get("is_new", False)
+                    new_row_data = item.get("data", {})
+                    
+                    for col, cell_val in new_row_data.items():
+                        if isinstance(cell_val, dict) and "value" in cell_val:
+                            all_cell_updates.append({
+                                "row_id": row_id,
+                                "column_name": col,
+                                "value": cell_val["value"],
+                                "is_overwrite": cell_val.get("is_overwrite", False),
+                                "updated_by": cell_val.get("updated_by", "system"),
+                                "source": "remote"
+                            })
+
+                    idx = row_id_map.get(row_id)
+                    if idx is not None:
+                        self._data[idx] = {"row_id": row_id, "table_name": self.table_name, "data": new_row_data}
+                        row_obj = self._data.pop(idx)
+                        self._data.insert(0, row_obj)
+                        row_id_map = self._build_row_id_map()
+                    else:
+                        self._data.insert(0, {"row_id": row_id, "table_name": self.table_name, "data": new_row_data})
+                        if is_new: self._total_count += 1
+                        row_id_map = self._build_row_id_map()
+
+                self.beginResetModel()
+                self.endResetModel()
+
+                if all_cell_updates:
+                    self.batch_ws_data_changed.emit(all_cell_updates)
+                return
+            else:
+                return
+
+            if not updates: return
+            row_id_map = self._build_row_id_map()
+            affected_rows = set()
+            changed_indices = []
+            log_updates = []
+
+            for u in updates:
+                row_id = u.get("row_id")
+                col_name = u.get("column_name")
+                value = u.get("value")
+
+                row_idx = row_id_map.get(row_id)
+                if row_idx is None:
+                    if row_id not in self._fetching_row_ids:
+                        self._fetching_row_ids.add(row_id)
+                        fetch_url = f"{self.base_api_url}/tables/{self.table_name}/{row_id}"
+                        worker = ApiSingleRowFetchWorker(fetch_url)
+                        worker.signals.finished.connect(self._on_remote_row_fetched)
+                        worker.signals.error.connect(lambda e, rid=row_id: self._fetching_row_ids.discard(rid))
+                        QThreadPool.globalInstance().start(worker)
+                    continue
+                
+                affected_rows.add(row_id)
+                try:
+                    col_idx = self._columns.index(col_name)
+                    cell_data = self._data[row_idx].get("data", {})
+                    if col_name not in cell_data: cell_data[col_name] = {}
+                    cell_data[col_name]["value"] = value
+                    cell_data[col_name]["is_overwrite"] = u.get("is_overwrite", False)
+
+                    if "updated_at" in u and "updated_at" in self._columns:
+                        u_at = u.get("updated_at")
+                        if "updated_at" not in cell_data:
+                            cell_data["updated_at"] = {"is_overwrite": False, "updated_by": "system"}
+                        cell_data["updated_at"]["value"] = u_at
+                        changed_indices.append((row_idx, self._columns.index("updated_at")))
+                    
+                    if "updated_by" not in u: u["updated_by"] = data.get("updated_by", "system")
+                    log_updates.append({**u, "source": "remote"})
+                except: continue
+
+            if log_updates:
+                self.batch_ws_data_changed.emit(log_updates)
+
+            if not changed_indices: return
+
+            for row_id in affected_rows:
+                current_map = self._build_row_id_map()
+                idx = current_map.get(row_id)
+                if idx is not None and idx > 0:
+                    self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
+                    self._data.insert(0, self._data.pop(idx))
+                    self.endMoveRows()
+
+            max_row = max([r for r, _ in changed_indices]) if changed_indices else 0
+            self.dataChanged.emit(self.index(0, 0), self.index(max_row, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
         finally:
             self._is_processing_remote = False
 
     def _build_row_id_map(self) -> dict:
-        """현재 로드된 self._data의 row_id → 버퍼 인덱스 맵을 반환합니다."""
         return {row.get("row_id"): idx for idx, row in enumerate(self._data)}
 
     def _on_remote_row_fetched(self, row_data: dict):
-        """서버에서 단건 조회된 행을 모델 최상단에 삽입합니다."""
         row_id = row_data.get("row_id")
         if row_id in self._fetching_row_ids:
             self._fetching_row_ids.remove(row_id)
             
-        # 중복 체크 (그 사이 로드되었을 수 있음)
         row_id_map = self._build_row_id_map()
-        if row_id in row_id_map:
-            # 이미 있으면 해당 위치에서 업데이트 및 이동 (기존 로직 활용)
-            # 여기선 간단히 종료하거나 재처리 유도 가능. 일단 종료.
-            return
+        if row_id in row_id_map: return
 
-        # 최상단 삽입
-        print(f"[Model] Floating unsynced row {row_id} to top of {self.table_name}")
-        self.beginInsertRows(QModelIndex(), 0, 0)
-        self._data.insert(0, row_data)
-        self._total_count += 1
-        self.endInsertRows()
-        
-        # 0번 행 갱신 알림
-        self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1))
+        self._is_processing_remote = True
+        try:
+            self.beginInsertRows(QModelIndex(), 0, 0)
+            self._data.insert(0, row_data)
+            self._total_count += 1
+            self.endInsertRows()
+            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1))
+        finally:
+            self._is_processing_remote = False
 
     def _on_update_finished(self, result: dict):
         p_index = result["index"]

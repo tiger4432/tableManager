@@ -56,7 +56,6 @@ class HistoryDockPanel(QDockWidget):
         self.setWidget(container)
 
         # {id(QListWidgetItem): (table_view, row_index)} 매핑
-        # PySide6의 QListWidgetItem은 unhashable이므로 id()를 키로 사용
         self._item_meta: dict[int, tuple] = {}
 
     # ------------------------------------------------------------------
@@ -96,9 +95,62 @@ class HistoryDockPanel(QDockWidget):
                 lambda data: self._log_row_deleted(data, table_name, table_view)
             )
 
+        # [최적화] 배치 업데이트 이벤트 연결
+        if hasattr(model, 'batch_ws_data_changed'):
+            model.batch_ws_data_changed.connect(
+                lambda updates: self._log_batch_ws_event(updates, table_name, table_view)
+            )
+
     # ------------------------------------------------------------------
     # Private slots / helpers
     # ------------------------------------------------------------------
+
+    def _log_batch_ws_event(self, updates: list[dict], table_name: str, table_view):
+        """대량의 업데이트 이벤트를 즉시 요약 처리합니다."""
+        if not updates: return
+        
+        now = datetime.now().strftime("%H:%M:%S")
+        
+        # 1. 특정 임계치(예: 10개)를 넘으면 요약 메시지로 표시
+        if len(updates) > 10:
+            summary_text = f"⚡ [일괄 업데이트] [{now}] {table_name} / {len(updates)}건의 데이터가 갱신되었습니다."
+            list_item = QListWidgetItem(summary_text)
+            list_item.setForeground(QColor("#89dceb")) # 하늘색
+            
+            # 툴팁에 상세 정보 일부 노출
+            tooltip = "\n".join([f"• {u.get('column_name', '?')}: {u.get('value', '')}" for u in updates[:15]])
+            if len(updates) > 15: tooltip += "\n..."
+            list_item.setToolTip(tooltip)
+            
+            self._list.insertItem(0, list_item)
+            return
+
+        # 2. 소량(10개 이하)인 경우 일괄 삽입
+        self._list.setUpdatesEnabled(False)
+        try:
+            for data in updates:
+                row_id = data.get("row_id", "unknown")
+                col_name = data.get("column_name", "?")
+                value = data.get("value", "")
+                is_overwrite = data.get("is_overwrite", False)
+                
+                prefix = "🛠️ [교정]" if is_overwrite else "🌐 [원격]"
+                text = f"{prefix} [{now}] {table_name} / {col_name} / {value}"
+                
+                list_item = QListWidgetItem(text)
+                list_item.setForeground(QColor("#f9e2af") if is_overwrite else QColor("#89dceb"))
+                
+                # scrollTo 메타 저장
+                m = table_view.model()
+                if m and hasattr(m, '_build_row_id_map'):
+                    actual_m = getattr(m, 'sourceModel', lambda: m)()
+                    row_idx = actual_m._build_row_id_map().get(row_id)
+                    if row_idx is not None:
+                        self._item_meta[id(list_item)] = (table_view, actual_m.index(row_idx, 0))
+                
+                self._list.insertItem(0, list_item)
+        finally:
+            self._list.setUpdatesEnabled(True)
 
     def _handle_data_changed(
         self,

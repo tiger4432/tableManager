@@ -263,3 +263,61 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
     db.commit()
     db.refresh(row)
     return row, is_new
+
+def upsert_rows_batch(db: Session, table_name: str, batch_items: list[schemas.CellUpsert]):
+    """
+    여러 개의 업서트 요청을 단일 트랜잭션으로 처리합니다.
+    """
+    from datetime import datetime
+    results = []
+    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
+    
+    for item in batch_items:
+        updates = {k: v for k, v in item.updates.items() if k not in system_cols}
+        row = get_row_by_business_key(db, table_name, item.business_key_val)
+        is_new = False
+        
+        if not row:
+            new_row_id = str(uuid.uuid4())
+            row = models.DataRow(
+                row_id=new_row_id,
+                table_name=table_name,
+                data={}
+            )
+            db.add(row)
+            is_new = True
+            
+        for col_name, val in updates.items():
+            if col_name not in row.data:
+                row.data[col_name] = {
+                    "value": None, "is_overwrite": False, "sources": {},
+                    "updated_by": "system", "priority_source": None
+                }
+            
+            cell = row.data[col_name]
+            old_val = cell.get("value")
+            
+            if "sources" not in cell: cell["sources"] = {}
+            cell["sources"][item.source_name] = {
+                "value": val,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            new_final_val, top_src = compute_priority_value(cell["sources"])
+            
+            # 변화가 있을 때만 감사 로그 기록
+            if is_new or (str(old_val) != str(new_final_val)):
+                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, item.source_name, (item.updated_by or "system"))
+            
+            cell["value"] = new_final_val
+            cell["priority_source"] = top_src
+            cell["is_overwrite"] = ("user" in cell["sources"])
+            cell["updated_by"] = (item.updated_by or "system")
+            
+        flag_modified(row, "data")
+        results.append((row, is_new))
+        
+    db.commit()
+    for row, _ in results:
+        db.refresh(row)
+    return results

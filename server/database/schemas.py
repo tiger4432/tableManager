@@ -48,6 +48,9 @@ class CellUpsert(BaseModel):
     source_name: str = "user"
     updated_by: Optional[str] = "user"
 
+class CellUpsertBatch(BaseModel):
+    items: list[CellUpsert]
+
 class DataRowBase(BaseModel):
     row_id: str
     table_name: str

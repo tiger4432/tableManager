@@ -80,9 +80,11 @@ class IngestionHandler(FileSystemEventHandler):
                     # 1. Initialize AdvancedIngester for this workspace
                     ingester = AdvancedIngester(self.config_path)
                     
-                    # 2. Process the file
+                    # 2. Process the file and get rows for batching
                     logger.info(f"Starting ingestion for {file_path} (Attempt {attempt+1})")
-                    ingester.process_file(file_path)
+                    rows = ingester.process_file(file_path)
+                    if rows:
+                        self._send_to_upsert(rows)
                 
                 # 3. Archive the file
                 self._archive_file(file_path)
@@ -174,49 +176,49 @@ class IngestionHandler(FileSystemEventHandler):
         bk_col = table_info.get("business_key", "id")
         defined_cols = table_info.get("display_columns", [])
         
-        # 4. 각 행별로 정규화 및 CellUpsert 규격에 맞춰 전송
-        url = f"http://127.0.0.1:8000/tables/{table_name}/upsert"
+        # 4. 배치 단위로 정규화 및 전역 전송 (Agent Optimization)
+        print('배치 전송')
+        base_url = f"http://127.0.0.1:8000/tables/{table_name}/upsert/batch"
+        batch_size = 50
         
-        for row in rows:
-            # Agent D v13: 필드명 정규화 (사용자가 PLAN_ID 로 줘도 plan_id 로 교정)
-            normalized_row = {}
-            bk_val = None
+        for i in range(0, len(rows), batch_size):
+            chunk = rows[i:i + batch_size]
+            items = []
             
-            for key, val in row.items():
-                target_key = key
-                # 정의된 컬럼 목록에서 대소문자 무시하고 매칭되는 것이 있는지 확인
-                found_match = False
-                for d_col in defined_cols:
-                    if key.lower() == d_col.lower():
-                        target_key = d_col
-                        found_match = True
-                        break
+            for row in chunk:
+                normalized_row = {}
+                bk_val = None
                 
-                normalized_row[target_key] = val
-                
-                # 비즈니스 키 값 추출
-                if target_key.lower() == bk_col.lower():
-                    bk_val = val
+                for key, val in row.items():
+                    target_key = key
+                    for d_col in defined_cols:
+                        if key.lower() == d_col.lower():
+                            target_key = d_col
+                            break
+                    normalized_row[target_key] = val
+                    if target_key.lower() == bk_col.lower():
+                        bk_val = val
 
-            if bk_val is None:
-                logger.warning(f"Skipping row: Business key '{bk_col}' not found in data {row.keys()}")
+                if bk_val is not None:
+                    items.append({
+                        "business_key_val": bk_val,
+                        "updates": normalized_row,
+                        "source_name": "custom_script",
+                        "updated_by": "system"
+                    })
+            
+            if not items:
                 continue
 
-            payload_dict = {
-                "business_key_val": bk_val,
-                "updates": normalized_row, # 정규화된 데이터 전송
-                "source_name": "custom_script",
-                "updated_by": "system"
-            }
-            
             try:
-                payload = json.dumps(payload_dict).encode("utf-8")
-                req = urllib.request.Request(url, data=payload, method="PUT")
+                payload = json.dumps({"items": items}).encode("utf-8")
+                print(base_url)
+                req = urllib.request.Request(base_url, data=payload, method="PUT")
                 req.add_header("Content-Type", "application/json")
                 with urllib.request.urlopen(req) as response:
-                    logger.info(f"Row {bk_val} upserted. Status: {response.status}")
+                    logger.info(f"Batch upsert success ({len(items)} rows). Status: {response.status}")
             except Exception as e:
-                logger.error(f"Failed to upsert row {bk_val}: {e}")
+                logger.error(f"Failed to send batch upsert: {e}")
 
 class WorkspaceWatcher:
     """
