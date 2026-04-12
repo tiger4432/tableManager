@@ -1,0 +1,31 @@
+{
+  "table_name": "inventory_master",
+  "source_name": "generic_log_parser",
+  "updated_by": "agent_i_v3",
+  "business_key_column": "part_no",
+  "rules": [
+    {
+      "column": "part_no",
+      "regex": "PartNo: ([A-Z0-9-]+)",
+      "type": "str",
+      "required": true
+    },
+    {
+      "column": "stock_qty",
+      "regex": "Qty: (\\d+)",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "column": "category",
+      "regex": "Type: (\\w+)",
+      "type": "str",
+      "default": "Unknown"
+    },
+    {
+      "column": "unit_price",
+      "regex": "Price: (\\d+\\.?\\d*)",
+      "type": "float"
+    }
+  ]
+}

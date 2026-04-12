@@ -22,6 +22,24 @@ class ApiFetchWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
 
+class ApiSchemaWorker(QRunnable):
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import urllib.request
+        import json
+        try:
+            req = urllib.request.Request(self.url)
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                result = json.loads(response.read().decode())
+                self.signals.finished.emit(result)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 class ApiUpdateWorker(QRunnable):
     def __init__(self, url, payload, index, col_name):
         super().__init__()
@@ -142,27 +160,16 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetching = False
         self._first_fetch = True
 
-        # WebSocket 리스너 스레드 (외부에서 start_ws_listener() 호출)
-        self._ws_thread: WsListenerThread | None = None
+        self._chunk_size = 50
+        self._fetching = False
+        self._first_fetch = True
 
-    def start_ws_listener(self, ws_url: str = None):
-        """WebSocket 브로드캐스트 수신 스레드를 시작합니다."""
-        if self._ws_thread and self._ws_thread.isRunning():
-            return
-        url = ws_url or self.base_api_url.replace("http", "ws") + "/ws"
-        self._ws_thread = WsListenerThread(url)
-        self._ws_thread.message_received.connect(self._on_websocket_broadcast)
-        self._ws_thread.connection_error.connect(
-            lambda err: print(f"[WsListenerThread] Error: {err}")
-        )
-        self._ws_thread.start()
-        print(f"[WsListenerThread] Listener started for {url}")
-
-    def stop_ws_listener(self):
-        """WebSocket 리스너 스레드를 안전하게 종료합니다."""
-        if self._ws_thread:
-            self._ws_thread.stop()
-            self._ws_thread = None
+    def update_columns(self, columns: list[str]):
+        """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
+        print(f"[Model] Updating columns for {self.table_name}: {columns}")
+        self.beginResetModel()
+        self._columns = columns
+        self.endResetModel()
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return self._total_count

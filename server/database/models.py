@@ -23,3 +23,19 @@ class DataRow(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    table_name = Column(String, index=True)
+    row_id = Column(String, index=True)
+    column_name = Column(String)
+    
+    old_value = Column(JSON, nullable=True) # Previous value
+    new_value = Column(JSON)                # New value
+    
+    source_name = Column(String)            # user, parser_a, etc.
+    updated_by = Column(String)             # user_id or agent_name
+    
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())

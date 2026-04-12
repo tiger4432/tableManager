@@ -11,7 +11,7 @@ panel_history.py
 from __future__ import annotations
 from datetime import datetime
 
-from PySide6.QtWidgets import QDockWidget, QListWidget, QListWidgetItem, QWidget
+from PySide6.QtWidgets import QDockWidget, QListWidget, QListWidgetItem, QWidget, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt, QModelIndex, Signal, Slot
 from PySide6.QtGui import QColor
 
@@ -37,7 +37,23 @@ class HistoryDockPanel(QDockWidget):
             "QListWidget::item:selected { background: #45475a; }"
         )
         self._list.itemClicked.connect(self._on_item_clicked)
-        self.setWidget(self._list)
+        
+        # ── Lineage 세션 추가 ──
+        self._lineage_list = QListWidget()
+        self._lineage_list.setStyleSheet(
+            "QListWidget { background: #181825; border-top: 2px solid #45475a; color: #a6adc8; font-size: 10px; }"
+        )
+        self._lineage_list.hide()
+        
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._list, 3)
+        layout.addWidget(self._lineage_list, 1)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setWidget(container)
 
         # {id(QListWidgetItem): (table_view, row_index)} 매핑
         # PySide6의 QListWidgetItem은 unhashable이므로 id()를 키로 사용
@@ -152,3 +168,44 @@ class HistoryDockPanel(QDockWidget):
             table_view.setFocus()
             table_view.scrollTo(model_index, table_view.ScrollHint.PositionAtCenter)
             table_view.setCurrentIndex(model_index)
+            
+            # 항목 클릭 시 해당 셀의 상세 계보 자동 조회
+            self._fetch_cell_lineage(table_view, model_index)
+
+    def _fetch_cell_lineage(self, table_view, index):
+        """특정 셀의 전체 변경 이력을 API에서 가져와 하단에 표시합니다."""
+        model = table_view.model()
+        source_model = getattr(model, 'sourceModel', lambda: model)()
+        row = index.row()
+        col = index.column()
+        
+        if row >= len(source_model._data): return
+        
+        row_id = source_model._data[row].get("row_id")
+        col_name = source_model._columns[col]
+        table_name = source_model.table_name
+        
+        import urllib.request
+        import json
+        url = f"{source_model.base_api_url}/tables/{table_name}/rows/{row_id}/cells/{col_name}/history"
+        
+        try:
+            with urllib.request.urlopen(url) as response:
+                logs = json.loads(response.read().decode())
+                self._display_lineage(logs, col_name)
+        except Exception as e:
+            print(f"Failed to fetch lineage: {e}")
+
+    def _display_lineage(self, logs, col_name):
+        self._lineage_list.clear()
+        if not logs:
+            self._lineage_list.hide()
+            return
+            
+        self._lineage_list.show()
+        self._lineage_list.addItem(f"── [{col_name}] Lineage ──")
+        for log in logs:
+            ts = log["timestamp"][:19].replace("T", " ")
+            text = f"[{ts}] {log['old_value']} → {log['new_value']} ({log['source_name']} by {log['updated_by']})"
+            item = QListWidgetItem(text)
+            self._lineage_list.addItem(item)

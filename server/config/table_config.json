@@ -1,0 +1,18 @@
+{
+  "inventory_master": {
+    "business_key": "part_no",
+    "display_columns": ["part_no", "category", "stock_qty", "unit_price"]
+  },
+  "production_plan": {
+    "business_key": "plan_id",
+    "display_columns": ["plan_id", "prod_line", "target_qty", "due_date"]
+  },
+  "sensor_metrics": {
+    "business_key": "sensor_id",
+    "display_columns": ["sensor_id", "temperature", "humidity", "vibration"]
+  },
+  "raw_table_1": {
+    "business_key": "id",
+    "display_columns": ["id", "name", "status"]
+  }
+}

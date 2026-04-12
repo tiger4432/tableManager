@@ -15,19 +15,40 @@ if os.name == 'nt':
         os.add_dll_directory(pyside_dir)
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QKeySequence, QGuiApplication
-from models.table_model import ApiLazyTableModel
+from models.table_model import ApiLazyTableModel, ApiSchemaWorker
 from ui.panel_history import HistoryDockPanel
 from ui.panel_filter import FilterToolBar
 
 class ExcelTableView(QTableView):
     def contextMenuEvent(self, event):
-        """우클릭 컨텍스트 메뉴 — 행 삭제 기능 제공."""
+        """우클릭 컨텍스트 메뉴 — 행 삭제 및 계보 조회 기능 제공."""
         menu = QMenu(self)
+        lineage_action = menu.addAction("🔍 데이터 계보(Lineage) 조회")
+        menu.addSeparator()
         delete_action = menu.addAction("🗑️ 선택된 행 삭제")
-        delete_action.triggered.connect(self.delete_selected_rows)
-        menu.exec(event.globalPos())
+        
+        selection = self.selectionModel()
+        if not selection.hasSelection():
+            lineage_action.setEnabled(False)
+            delete_action.setEnabled(False)
+
+        action = menu.exec(event.globalPos())
+        if action == delete_action:
+            self.delete_selected_rows()
+        elif action == lineage_action:
+            self._request_lineage()
+            
+    def _request_lineage(self):
+        """현재 선택된 셀의 계보를 부모(MainWindow 등)에게 요청."""
+        index = self.currentIndex()
+        if index.isValid():
+            # MainWindow의 history_panel에 직접 비공식적으로 접근하거나 시그널 사용
+            # 여기선 편의상 부모 윈도우 메서드 직접 호출 (구조에 따라 시그널 권장)
+            main_win = self.window()
+            if hasattr(main_win, "history_panel"):
+                main_win.history_panel._fetch_cell_lineage(self, index)
 
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.StandardKey.Copy):
@@ -156,8 +177,67 @@ class MainWindow(QMainWindow):
         # ── + 행 추가 버튼 (FilterToolBar 시그널 연결) ────────────────
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
 
-        # Initialize first tab
-        self._init_table_tab("raw_table_1")
+        # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
+        self._ws_thread: WsListenerThread | None = None
+        self._active_models: list[ApiLazyTableModel] = []
+
+        # ── 서버로부터 모든 테이블 목록 조회 및 탭 초기화 ──────────────
+        self._load_all_tables()
+        
+    def _load_all_tables(self):
+        """서버에서 가용한 모든 테이블 목록을 가져와 각각 탭으로 생성합니다."""
+        url = "http://127.0.0.1:8000/tables"
+        # 초기화 시점이므로 간단히 ApiSchemaWorker (JSON 패치용) 재사용
+        from models.table_model import ApiSchemaWorker
+        worker = ApiSchemaWorker(url)
+        
+        def _on_tables_loaded(result):
+            print(f"[Debug] Tables loaded from server: {result}")
+            tables = result.get("tables", [])
+            if not tables:
+                print("[Debug] No tables found, initializing default")
+                self._init_table_tab("inventory_master")
+            else:
+                for table in tables:
+                    try:
+                        print(f"[Debug] Initializing tab for: {table}")
+                        self._init_table_tab(table)
+                    except Exception as e:
+                        print(f"[Debug] Error initializing tab {table}: {e}")
+            
+            # 모든 탭 생성 후 첫 번째 탭 선택 및 가시성 강제 갱신
+            if self.tabs.count() > 0:
+                print(f"[Debug] Selecting first tab among {self.tabs.count()} tabs")
+                self.tabs.setCurrentIndex(0)
+            
+            # ── Shared WS 시작 ──
+            self._start_shared_ws()
+        
+        worker.signals.finished.connect(_on_tables_loaded)
+        worker.signals.error.connect(lambda err: self._init_table_tab("inventory_master")) # 에러 시 기본값
+        QThreadPool.globalInstance().start(worker)
+
+    def _start_shared_ws(self):
+        """단일 공유 WebSocket 리스너를 시작합니다."""
+        if self._ws_thread and self._ws_thread.isRunning():
+            return
+            
+        from models.table_model import WsListenerThread
+        ws_url = "ws://127.0.0.1:8000/ws"
+        self._ws_thread = WsListenerThread(ws_url)
+        self._ws_thread.message_received.connect(self._dispatch_ws_message)
+        self._ws_thread.connection_error.connect(lambda err: print(f"[SharedWS] Error: {err}"))
+        self._ws_thread.start()
+        print(f"[SharedWS] Listener started for {ws_url}")
+        
+        # 앱 종료 시 정리 연결
+        QApplication.instance().aboutToQuit.connect(self._ws_thread.stop)
+
+    def _dispatch_ws_message(self, data: dict):
+        """수신된 WS 메시지를 모든 활성 모델에 전달합니다."""
+        for model in self._active_models:
+            # table_model.py 의 _on_websocket_broadcast 호출
+            model._on_websocket_broadcast(data)
         
     def _on_add_row_requested(self):
         """현재 활성화된 탭의 테이블에 새 행을 추가 요청합니다."""
@@ -191,16 +271,11 @@ class MainWindow(QMainWindow):
             self._init_table_tab(name.strip())
 
     def _close_tab(self, index: int):
-        """탭 닫기 — WS 리스너 정리 후 탭 제거."""
+        """탭 닫기 — 리스트에서 모델 제거 후 탭 제거."""
         tab_widget = self.tabs.widget(index)
-        # 모델 참조를 tab에 저장해 둔 경우 WS 종료
         model = getattr(tab_widget, "_source_model", None)
-        if model is not None:
-            model.stop_ws_listener()
-            try:
-                QApplication.instance().aboutToQuit.disconnect(model.stop_ws_listener)
-            except RuntimeError:
-                pass  # 이미 해제된 경우 무시
+        if model in self._active_models:
+            self._active_models.remove(model)
         self.tabs.removeTab(index)
 
     def _init_table_tab(self, table_name: str):
@@ -210,49 +285,63 @@ class MainWindow(QMainWindow):
         table_view = ExcelTableView()
         table_view.setAlternatingRowColors(True)
 
-        # Connect to REST API data model (source model, NOT modified)
+        # Connect to REST API data model
         model = ApiLazyTableModel(table_name=table_name)
-        # 탭 위젯에 모델 참조를 보관 → _close_tab에서 WS 정리에 활용
         tab._source_model = model
+        # ── 활성 모델 리스트에 추가 (Shared WS Dispatch 용) ──
+        self._active_models.append(model)
 
-        # ── 필터 프록시: 원본 모델을 감싸 실시간 필터링 (스킬 규칙 2번) ──
+        # ── 필터 프록시 ──
         proxy = self._filter_bar.create_proxy(model)
         table_view.setModel(proxy)
 
-        # Trigger first fetch; 빈 테이블 감지를 위해 콜백 연결
+        # Trigger first fetch
         if model.canFetchMore():
-            # 첫 fetch 완료 후 total=0이면 탭 레이블을 갱신
-            tab_index_holder = [None]
-
-            def _on_first_fetch_done():
-                if model._total_count == 0:
-                    idx = tab_index_holder[0]
-                    if idx is not None:
-                        self.tabs.setTabText(idx, f"{table_name} (빈 테이블)")
-                # 일회성 연결 해제
-                try:
-                    model.rowsInserted.disconnect(_on_first_fetch_done)
-                    model.modelReset.disconnect(_on_first_fetch_done)
-                except RuntimeError:
-                    pass
-
-            model.rowsInserted.connect(_on_first_fetch_done)
-            model.modelReset.connect(_on_first_fetch_done)
             model.fetchMore()
 
-        # WebSocket 실시간 수신 리스너 시작 (Agent D 구현분 활성화)
-        model.start_ws_listener()
-        # 앱 종료 시 스레드 안전하게 정리
-        QApplication.instance().aboutToQuit.connect(model.stop_ws_listener)
-
-        # ── 히스토리 패널 연결: dataChanged → 로그 prepend (스킬 규칙 3번) ──
+        # ── 히스토리 패널 연결 ──
         self._history_panel.connect_model(model, table_name, table_view)
 
         layout.addWidget(table_view)
 
         tab_idx = self.tabs.addTab(tab, table_name)
-        tab_index_holder[0] = tab_idx
-        self.tabs.setCurrentIndex(tab_idx)
+        print(f"[Debug] Tab {tab_idx} added for {table_name}")
+
+        # ── Agent D v3: 서버에서 스키마(컬럼 리스트) 동적 수신 ──
+        self._load_table_schema(model)
+
+    def _load_table_schema(self, model: ApiLazyTableModel):
+        """특정 테이블 모델의 스키마를 비동기로 로드합니다."""
+        table_name = model.table_name
+        schema_url = f"{model.base_api_url}/tables/{table_name}/schema"
+        worker = ApiSchemaWorker(schema_url)
+        
+        def _on_schema_loaded(result):
+            cols = result.get("columns", [])
+            if cols:
+                model.update_columns(cols)
+                print(f"[Schema] Successfully updated columns for {table_name}: {cols}")
+            else:
+                print(f"[Schema] No columns returned for {table_name}")
+            
+            # 워커 참조 제거 (GC 허용)
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+        
+        def _on_schema_error(err):
+            print(f"[Schema] Network error loading schema for {table_name}: {err}")
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+
+        worker.signals.finished.connect(_on_schema_loaded)
+        worker.signals.error.connect(_on_schema_error)
+        
+        # 워커가 GC되지 않도록 멤버 변수에 보관
+        if not hasattr(self, "_active_workers"):
+            self._active_workers = set()
+        self._active_workers.add(worker)
+        
+        QThreadPool.globalInstance().start(worker)
 
 
 
