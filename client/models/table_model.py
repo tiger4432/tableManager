@@ -43,6 +43,26 @@ class ApiSchemaWorker(QRunnable):
             print('ApiSchemaWorker Error:',e)
             self.signals.error.emit(str(e))
 
+class ApiSingleRowFetchWorker(QRunnable):
+    """특정 row_id의 전체 데이터를 서버에서 단건 조회합니다."""
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import urllib.request
+        import json
+        try:
+            req = urllib.request.Request(self.url)
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                result = json.loads(response.read().decode())
+                # result는 row 객체 (row_id, data 등 포함)
+                self.signals.finished.emit(result)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 class ApiUpdateWorker(QRunnable):
     def __init__(self, url, payload, index, col_name):
         super().__init__()
@@ -171,6 +191,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     # Agent D v2: WS 브로드캐스트 전용 Signal (source='remote' 컨텍스트 포함)
     ws_data_changed = Signal(dict)  # {"row_id": ..., "column_name": ..., "value": ..., "source": "remote"}
     row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
+    row_deleted_ws = Signal(dict)   # Agent D v13: 행 삭제 시그널 추가
     def __init__(self, table_name: str, base_api_url: str = "http://127.0.0.1:8000"):
         super().__init__()
         self.table_name = table_name
@@ -188,6 +209,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetching = False
         self._first_fetch = True
         self._is_processing_remote = False # Agent D v5: Prevent duplicate history logging
+        self._fetching_row_ids = set() # Agent D v8: Track rows being fetched to prevent duplicates
 
     def update_columns(self, columns: list[str]):
         """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
@@ -221,7 +243,13 @@ class ApiLazyTableModel(QAbstractTableModel):
     def flags(self, index):
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
-        # allow editable
+        
+        # Agent D v12: 시스템 컬럼(created_at, updated_at 등)은 수정 불가 처리
+        col_name = self._columns[index.column()]
+        if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+            return Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
+            
+        # allow editable for business columns
         return super().flags(index) | Qt.ItemFlag.ItemIsEditable
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
@@ -237,6 +265,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                 
             cell_data = self._data[row].get("data", {})
             col_name = self._columns[col]
+            
+            # Agent D v12: 시스템 컬럼 수정 방어 (setData 호출 수준에서 차단)
+            if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+                return False
+                
             row_id = self._data[row].get("row_id")
             
             if row_id is None:
@@ -282,6 +315,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if model_col >= len(self._columns): break
                 col_name = self._columns[model_col]
                 
+                # Agent D v12: 시스템 컬럼은 페이스트(Bulk Update) 대상에서 제외
+                if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+                    continue
+                    
                 payloads.append({
                     "row_id": row_id,
                     "column_name": col_name,
@@ -348,12 +385,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             return
 
         if event == "cell_update":
-            updates = [{
-                "row_id": data.get("row_id"),
-                "column_name": data.get("column_name"),
-                "value": data.get("value"),
-                "is_overwrite": data.get("is_overwrite", True)
-            }]
+            updates = [data] # Agent D v7: Pass entire data to include updated_at
         elif event == "batch_cell_update":
             updates = data.get("updates", [])
         elif event == "row_delete":
@@ -367,6 +399,9 @@ class ApiLazyTableModel(QAbstractTableModel):
                 del self._data[row_idx]
                 self._total_count -= 1
                 self.endRemoveRows()
+            
+            # Agent D v13: 삭제 성공 여부와 관계없이 브로드캐스트 시그널 전파 (히스토리 기록용)
+            self.row_deleted_ws.emit(data)
             return  # 삭제 처리는 여기서 종료
         elif event == "row_create":
             row_data = data.get("data")
@@ -391,6 +426,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         # row_id → 버퍼 인덱스 맵 (lazy build)
         row_id_map = self._build_row_id_map()
 
+        affected_rows = set() # Track for potential move to top
         changed_indices = []  # (row_idx, col_idx) 목록
 
         for u in updates:
@@ -400,8 +436,20 @@ class ApiLazyTableModel(QAbstractTableModel):
 
             row_idx = row_id_map.get(row_id)
             if row_idx is None:
-                continue  # 아직 로드되지 않은 행 → 추후 fetchMore 시 반영됨
-
+                # Agent D v8: 로딩되지 않은 행이 수정됨 -> 서버에서 전체 행을 가져와 최상단에 투입
+                if row_id not in self._fetching_row_ids:
+                    self._fetching_row_ids.add(row_id)
+                    fetch_url = f"{self.base_api_url}/tables/{self.table_name}/{row_id}"
+                    worker = ApiSingleRowFetchWorker(fetch_url)
+                    worker.signals.finished.connect(self._on_remote_row_fetched)
+                    worker.signals.error.connect(lambda e, rid=row_id: self._fetching_row_ids.discard(rid))
+                    # Note: Need pool access
+                    from PySide6.QtCore import QThreadPool
+                    QThreadPool.globalInstance().start(worker)
+                continue  # 페칭 시작했으므로 이번 루프는 패스 (나중에 _on_remote_row_fetched에서 처리)
+            
+            affected_rows.add(row_id)
+            
             try:
                 col_idx = self._columns.index(col_name)
             except ValueError:
@@ -413,18 +461,41 @@ class ApiLazyTableModel(QAbstractTableModel):
             cell_data[col_name]["value"] = value
             cell_data[col_name]["is_overwrite"] = u.get("is_overwrite", False)
 
-            changed_indices.append((row_idx, col_idx))
+            # Agent D v6: Update updated_at column if present in the message
+            if "updated_at" in u and "updated_at" in self._columns:
+                u_at = u.get("updated_at")
+                if "updated_at" not in cell_data:
+                    cell_data["updated_at"] = {"is_overwrite": False, "updated_by": "system"}
+                cell_data["updated_at"]["value"] = u_at
+                
+                u_at_idx = self._columns.index("updated_at")
+                changed_indices.append((row_idx, u_at_idx))
+
+        # Agent D v2: 각 업데이트에 대해 ws_data_changed Signal 방출 (히스토리 패널용)
+        # 중요: changed_indices가 비어있더라도(로딩 안 된 행이어도) 로그는 남겨야 함.
+        for u in updates:
+            if "updated_by" not in u:
+                u["updated_by"] = data.get("updated_by", "system")
+            self.ws_data_changed.emit({**u, "source": "remote"})
 
         if not changed_indices:
             return
 
-        # 변경 범위 계산 후 dataChanged 일괄 emit
-        rows = [r for r, _ in changed_indices]
-        cols = [c for _, c in changed_indices]
-        top_left = self.index(min(rows), min(cols))
-        bottom_right = self.index(max(rows), max(cols))
+        # Agent D v7: Move affected rows to the top (Live Sort by Update)
+        for row_id in affected_rows:
+            current_map = self._build_row_id_map()
+            idx = current_map.get(row_id)
+            if idx is not None and idx > 0:
+                self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
+                row_to_move = self._data.pop(idx)
+                self._data.insert(0, row_to_move)
+                self.endMoveRows()
+
+        # Agent D v7: 전체 가용 범위를 갱신하여 인덱스 꼬임을 방지함 (최신순 정렬 특화)
+        max_row = max([r for r, _ in changed_indices]) if changed_indices else 0
+        top_left = self.index(0, 0)
+        bottom_right = self.index(max_row, len(self._columns) - 1)
         
-        # Agent D v5: Flag remote processing to suppress duplicate logging in HistoryPanel
         self._is_processing_remote = True
         try:
             self.dataChanged.emit(
@@ -434,16 +505,32 @@ class ApiLazyTableModel(QAbstractTableModel):
         finally:
             self._is_processing_remote = False
 
-        # Agent D v2: 각 업데이트에 대해 ws_data_changed Signal 방출 (히스토리 패널용)
-        for u in updates:
-            # Inject updated_by from the main message if not present in individual update
-            if "updated_by" not in u:
-                u["updated_by"] = data.get("updated_by", "system")
-            self.ws_data_changed.emit({**u, "source": "remote"})
-
     def _build_row_id_map(self) -> dict:
         """현재 로드된 self._data의 row_id → 버퍼 인덱스 맵을 반환합니다."""
         return {row.get("row_id"): idx for idx, row in enumerate(self._data)}
+
+    def _on_remote_row_fetched(self, row_data: dict):
+        """서버에서 단건 조회된 행을 모델 최상단에 삽입합니다."""
+        row_id = row_data.get("row_id")
+        if row_id in self._fetching_row_ids:
+            self._fetching_row_ids.remove(row_id)
+            
+        # 중복 체크 (그 사이 로드되었을 수 있음)
+        row_id_map = self._build_row_id_map()
+        if row_id in row_id_map:
+            # 이미 있으면 해당 위치에서 업데이트 및 이동 (기존 로직 활용)
+            # 여기선 간단히 종료하거나 재처리 유도 가능. 일단 종료.
+            return
+
+        # 최상단 삽입
+        print(f"[Model] Floating unsynced row {row_id} to top of {self.table_name}")
+        self.beginInsertRows(QModelIndex(), 0, 0)
+        self._data.insert(0, row_data)
+        self._total_count += 1
+        self.endInsertRows()
+        
+        # 0번 행 갱신 알림
+        self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1))
 
     def _on_update_finished(self, result: dict):
         p_index = result["index"]

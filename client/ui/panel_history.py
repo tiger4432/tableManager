@@ -89,6 +89,12 @@ class HistoryDockPanel(QDockWidget):
             model.row_created_ws.connect(
                 lambda data: self._log_row_created(data, table_name, table_view)
             )
+            
+        # Agent D v13: 행 삭제 이벤트 연결
+        if hasattr(model, 'row_deleted_ws'):
+            model.row_deleted_ws.connect(
+                lambda data: self._log_row_deleted(data, table_name, table_view)
+            )
 
     # ------------------------------------------------------------------
     # Private slots / helpers
@@ -140,6 +146,18 @@ class HistoryDockPanel(QDockWidget):
                 self._item_meta[id(list_item)] = (table_view, model.index(row, 0))
 
                 self._list.insertItem(0, list_item)  # prepend
+
+    def _log_row_deleted(self, data: dict, table_name: str, table_view):
+        """행 삭제(row_delete) 이벤트 로그 추가."""
+        now = datetime.now().strftime("%H:%M:%S")
+        row_id = data.get("row_id", "unknown")
+        
+        text = f"🗑️ [삭제] [{now}] {table_name} / 행이 삭제됨 (row_id:{row_id})"
+        
+        list_item = QListWidgetItem(text)
+        list_item.setForeground(QColor("#f38ba8"))  # 빨간색(초콜릿): 삭제 구분
+        
+        self._list.insertItem(0, list_item)
 
     def _log_ws_event(self, data: dict, table_name: str, table_view):
         """WS 브로드캐스트 이벤트 전용 로그 항목 추가. 🌐 [원격] 접두어로 구분."""
@@ -211,9 +229,31 @@ class HistoryDockPanel(QDockWidget):
     def _on_item_clicked(self, item: QListWidgetItem):
         """항목 클릭 → 해당 테이블뷰로 포커스 + 스크롤."""
         meta = self._item_meta.get(id(item))
-        if meta is None:
-            return
-        table_view, model_index = meta
+        table_view = None
+        model_index = QModelIndex()
+        row_id = None
+
+        if meta:
+            table_view, model_index = meta
+        
+        # Agent D v11: 만약 로그 생성 시점에 행이 없었거나 위치가 바뀌었다면, row_id 기반으로 동적 재조회
+        # 로그 텍스트에서 row_id 파싱 (f"row_id:{row_id}")
+        import re
+        match = re.search(r"row_id:(\S+)", item.text())
+        if match:
+            row_id = match.group(1)
+
+        if table_view and row_id:
+            model = table_view.model()
+            source_model = getattr(model, 'sourceModel', lambda: model)()
+            if hasattr(source_model, '_build_row_id_map'):
+                idx_map = source_model._build_row_id_map()
+                new_row_idx = idx_map.get(row_id)
+                if new_row_idx is not None:
+                    model_index = source_model.index(new_row_idx, 0)
+                    # 메타 정보 갱신 (추후 클릭 대비)
+                    self._item_meta[id(item)] = (table_view, model_index)
+
         if table_view and model_index.isValid():
             table_view.setFocus()
             table_view.scrollTo(model_index, table_view.ScrollHint.PositionAtCenter)

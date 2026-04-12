@@ -14,7 +14,7 @@ if os.name == 'nt':
         # os.add_dll_directory is highly effective for PySide6 load errors on Python 3.8+
         os.add_dll_directory(pyside_dir)
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox, QFileDialog
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QKeySequence, QGuiApplication
 from models.table_model import ApiLazyTableModel, ApiSchemaWorker
@@ -106,17 +106,36 @@ class ExcelTableView(QTableView):
         
         indexes = sorted(indexes, key=lambda idx: (idx.row(), idx.column()))
         
-        text = ""
+        # 선택된 고유 컬럼 목록을 순서대로 추출
+        cols_in_order = []
+        seen_cols = set()
+        for idx in indexes:
+            if idx.column() not in seen_cols:
+                cols_in_order.append(idx.column())
+                seen_cols.add(idx.column())
+        
+        model = self.model()
+        
+        # 1행: 컬럼 헤더
+        header_cells = []
+        for col in cols_in_order:
+            header = model.headerData(col, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+            header_cells.append(str(header) if header is not None else "")
+        text = "\t".join(header_cells) + "\n"
+        
+        # 2행~: 데이터
         prev_row = indexes[0].row()
+        row_cells = []
         for i, idx in enumerate(indexes):
             if idx.row() != prev_row:
-                text += "\n"
+                text += "\t".join(row_cells) + "\n"
+                row_cells = []
                 prev_row = idx.row()
-            elif i > 0:
-                text += "\t"
-            
-            value = self.model().data(idx, Qt.ItemDataRole.DisplayRole)
-            text += str(value) if value is not None else ""
+            value = model.data(idx, Qt.ItemDataRole.DisplayRole)
+            row_cells.append(str(value) if value is not None else "")
+        
+        if row_cells:
+            text += "\t".join(row_cells)
             
         QGuiApplication.clipboard().setText(text)
 
@@ -170,12 +189,15 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self._close_tab)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self.tabs)
 
         # ── + 탭 추가 버튼 (FilterToolBar 시그널 연결) ────────────────
         self._filter_bar.addTabRequested.connect(self._add_new_tab)
         # ── + 행 추가 버튼 (FilterToolBar 시그널 연결) ────────────────
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
+        # ── 📥 CSV 추출 버튼 (FilterToolBar 시그널 연결) ──────────────
+        self._filter_bar.exportRequested.connect(self._on_export_requested)
 
         # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
         print('WEB SOCKET 초기화')
@@ -186,6 +208,10 @@ class MainWindow(QMainWindow):
         print('TABLE 초기화')
         self._load_all_tables()
         
+
+    def _on_tab_changed(self, index):
+        self._filter_bar.set_active_proxy(self._filter_bar._proxies[index])    
+
     def _load_all_tables(self):
         """서버에서 가용한 모든 테이블 목록을 가져와 각각 탭으로 생성합니다."""
         url = "http://127.0.0.1:8000/tables"
@@ -270,6 +296,8 @@ class MainWindow(QMainWindow):
         if current_index == -1:
             return
             
+
+
         tab_widget = self.tabs.widget(current_index)
         model = getattr(tab_widget, "_source_model", None)
         if not model:
@@ -374,7 +402,35 @@ class MainWindow(QMainWindow):
         
         QThreadPool.globalInstance().start(worker)
 
-
+    def _on_export_requested(self):
+        """현재 활성화된 테이블의 데이터를 CSV로 익스포트합니다."""
+        idx = self.tabs.currentIndex()
+        if idx < 0: return
+        
+        table_name = self.tabs.tabText(idx)
+        
+        # 파일 저장 다이얼로그 (Default: 테이블명_추출_시각.csv)
+        from datetime import datetime
+        default_name = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "CSV 저장", default_name, "CSV Files (*.csv)"
+        )
+        
+        if not file_path:
+            return
+            
+        # 서버에서 CSV 다운로드
+        import urllib.request
+        url = f"http://127.0.0.1:8000/tables/{table_name}/export"
+        
+        try:
+            with urllib.request.urlopen(url) as response:
+                content = response.read()
+                with open(file_path, "wb") as f:
+                    f.write(content)
+            QMessageBox.information(self, "추출 완료", f"데이터가 성공적으로 저장되었습니다:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "추출 실패", f"데이터 추출 중 오류 발생: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

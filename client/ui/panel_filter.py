@@ -22,6 +22,8 @@ class FilterToolBar(QToolBar):
     addTabRequested = Signal()
     # ── Agent E v4: 새 행 추가 요청 시그널 ──
     addRowRequested = Signal()
+    # ── CSV 익스포트 요청 시그널 ──
+    exportRequested = Signal()
     # ── 글로벌 서버 사이드 검색 요청 시그널 ──
     searchRequested = Signal(str)
 
@@ -85,8 +87,22 @@ class FilterToolBar(QToolBar):
         self._add_row_btn.clicked.connect(self.addRowRequested.emit)
         self.addWidget(self._add_row_btn)
 
+        # ── CSV 익스포트 버튼 ──
+        self._export_btn = QPushButton("📥 CSV 추출")
+        self._export_btn.setToolTip("현재 테이블 전체 데이터를 CSV로 다운로드")
+        self._export_btn.setStyleSheet(
+            "QPushButton {"
+            "  background: #fab387; color: #1e1e2e; font-weight: bold;"
+            "  border-radius: 4px; padding: 4px 12px; font-size: 12px; margin-left: 4px;"
+            "}"
+            "QPushButton:hover { background: #f9e2af; }"
+        )
+        self._export_btn.clicked.connect(self.exportRequested.emit)
+        self.addWidget(self._export_btn)
+
         # 내부 프록시 모델 저장소
         self._proxies: list[QSortFilterProxyModel] = []
+        self._active_proxy: QSortFilterProxyModel | None = None  # 현재 활성 탭의 프록시
 
         # 검색 타이머 (서버 부하 방지를 위한 Debounce: 500ms)
         self._search_timer = QTimer(self)
@@ -116,7 +132,16 @@ class FilterToolBar(QToolBar):
         proxy.rowsRemoved.connect(self._update_count_label)
         proxy.modelReset.connect(self._update_count_label)
 
+        # 첫 번째로 생성된 프록시를 기본 활성으로 설정
+        if self._active_proxy is None:
+            self._active_proxy = proxy
+
         return proxy
+
+    def set_active_proxy(self, proxy: QSortFilterProxyModel):
+        """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 행 수 갱신 기준을 전환합니다."""
+        self._active_proxy = proxy
+        self._update_count_label()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -135,11 +160,10 @@ class FilterToolBar(QToolBar):
         self.searchRequested.emit(query)
 
     def _update_count_label(self):
-        if not self._proxies:
+        proxy = self._active_proxy
+        if not proxy:
             self._count_label.setText("")
             return
-        # 현재 활성 프록시의 visible row 수 표시 (첫 번째 프록시 기준)
-        proxy = self._proxies[0]
         visible = proxy.rowCount()
         total = proxy.sourceModel().rowCount() if proxy.sourceModel() else 0
         if self._search_box.text():
