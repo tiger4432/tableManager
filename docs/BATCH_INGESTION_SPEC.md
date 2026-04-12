@@ -1,66 +1,88 @@
-# AssyManager: 고성능 배치 인제션 기술 명세서 (Batch Ingestion Spec)
+# AssyManager: 고성능 데이터 핸들링 및 인제션 기술 명세서
 
-본 문서는 `assyManager` 프로젝트의 핵심 데이터 적재 및 동기화 메커니즘을 설명합니다.
+본 문서는 `assyManager` 프로젝트의 모든 데이터 변경 이벤트(인제션, 수동 수정, 삭제 등)에 대한 아키텍처와 API 호출 흐름을 설명합니다.
 
 ---
 
 ## 🏗️ 1. 아키텍처 개요
-데이터 주입은 **Batch-First** 원칙을 따르며, `DirectoryWatcher`와 `AdvancedIngester`가 협업하여 고성능 전송을 수행합니다.
+데이터 주입 및 수정은 **Batch-First** 및 **Real-time Sync** 원칙을 따릅니다.
 
-### 1) 통합 파싱 엔진 (`AdvancedIngester`)
-- **수행**: CSV/Excel 데이터를 정규화된 List-Dict 구조로 변환.
-- **특징**: Regex 기반 및 헤더 매핑 기반 파싱 통합 지원.
-
-### 2) 디렉토리 와처 (`DirectoryWatcher`)
-- **동작**: 파일 감지 시 파서를 구동하고 결과를 **50행 단위**로 묶어 송신.
-- **엔드포인트**: `PUT /tables/{table_name}/upsert/batch`
+1. **자동화 로직**: `DirectoryWatcher`가 파일을 감지하여 배치 호출.
+2. **수동 편집**: UI에서 사용자가 직접 데이터를 수정하거나 붙여넣기 시 API 호출.
+3. **실시간 전파**: 모든 DB 변경은 WebSocket을 통해 접속된 모든 클라이언트에게 즉시 브로드캐스트됩니다.
 
 ---
 
-## 📡 2. API 명세
+## 📡 2. 이벤트별 API 및 통신 명세
 
-### 2.1 배치 업서트 (PUT)
-**URL**: `/tables/{table_name}/upsert/batch`
+### 2.1 자동 인제션 (Automated Ingestion)
+- **트리거**: `raws/` 폴더에 CSV 파일 투입.
+- **흐름**: Watcher → `/upsert/batch` API → `batch_row_upsert` 이벤트.
 
-**Payload:**
-```json
-{
-  "items": [
-    {
-      "business_key_val": "UNIQUE_KEY",
-      "updates": { "field1": "value1", ... },
-      "source_name": "worker",
-      "updated_by": "system"
-    }
-  ]
-}
-```
+### 2.2 수동 데이터 교정 (Manual Correction)
+사용자가 UI에서 셀을 직접 수정하거나 대량으로 붙여넣는 시나리오입니다.
+
+#### 시나리오 A: 단일 셀 수정
+- **API**: `PUT /tables/{t}/upsert` (단건)
+- **WebSocket**: `cell_update`
+- **UI 반응**: 해당 셀에 주황색(Amber) 하이라이트 적용 (`is_overwrite=True`).
+
+#### 시나리오 B: 다중 셀 붙여넣기 (Paste)
+- **API**: `PUT /tables/{t}/cells/batch` (배치)
+- **WebSocket**: `batch_cell_update`
+- **UI 반응**: 변경된 모든 셀 동기화 및 10건 이상 시 로그 요약.
+
+### 2.3 데이터 생성 및 삭제 (Lifecycle)
+
+#### 행 추가 (Row Creation)
+- **API**: `POST /tables/{t}/rows`
+- **WebSocket**: `row_create`
+- **UI 반응**: 최상단에 새 행 삽입 및 자동 스크롤.
+
+#### 행 삭제 (Row Deletion)
+- **API**: `DELETE /tables/{t}/rows/{id}`
+- **WebSocket**: `row_delete`
+- **UI 반응**: 즉각적인 행 제거 및 히스토리 기록.
 
 ---
 
-## 🌊 3. 시스템 흐름도 (System Flow)
+## 🌊 3. 시스템 흐름 시각화 (User Interaction Flow)
 
 ```mermaid
 sequenceDiagram
-    participant Source as 원천 데이터 (CSV)
-    participant Watcher as DirectoryWatcher
-    participant Server as FastAPI Server
+    participant User as User (UI)
     participant Client as UI Client (PySide6)
+    participant Server as API Server (FastAPI)
+    participant DB as SQLite/DB
 
-    Source->>Watcher: 신규 파일 투입
-    Watcher->>Server: PUT /upsert/batch (Batch Size: 50)
-    Server-->>Client: WS: batch_row_upsert (Broadcasting)
-    Client->>Client: 히스토리 요약 & 모델 갱신 (10건 이상 요약)
+    Note over User, Client: 1. 수동 데이터 수정 및 삭제
+    User->>Client: 셀 수정 / 붙여넣기 / 삭제 클릭
+    alt Single Edit
+        Client->>Server: PUT /upsert
+        Server-->>Client: WS: cell_update
+    else Bulk Paste
+        Client->>Server: PUT /cells/batch
+        Server-->>Client: WS: batch_cell_update
+    else Delete Row
+        Client->>Server: DELETE /rows/{id}
+        Server-->>Client: WS: row_delete
+    end
+    Server-->>DB: 데이터 영구 저장
+    Client->>Client: UI 반영 & 히스토리 로그 생성
 ```
 
-| 구분 | 서버 API | WebSocket 이벤트 | 비고 |
+## 📊 상세 매핑 테이블
+
+| 이벤트 | API 엔드포인트 | WebSocket 이벤트 | 비고 |
 | :--- | :--- | :--- | :--- |
-| **인제션** | `PUT /upsert/batch` | `batch_row_upsert` | 50행 단위 배치 |
-| **붙여넣기** | `PUT /cells/batch` | `batch_cell_update` | 다중 셀 배치 |
-| **삭제** | `DELETE /rows/{id}` | `row_delete` | 즉시 동기화 |
+| **벌크 인제션** | `PUT /upsert/batch` | `batch_row_upsert` | 파일 감시 기반 (50단위) |
+| **다중 셀 수정** | `PUT /cells/batch` | `batch_cell_update` | UI 붙여넣기 기반 |
+| **단건 수정** | `PUT /upsert` | `cell_update` | 개별 셀 편집기 사용 |
+| **새 행 추가** | `POST /rows` | `row_create` | 신규 데이터 생성 |
+| **행 삭제** | `DELETE /rows/{id}` | `row_delete` | 데이터 영구 제거 |
 
 ---
 
-## 💡 성능 가이드
-- **요약 로깅**: 대량 업데이트(10건 초과) 시 UI 프리징 방지를 위해 요약 메시지만 표시합니다.
-- **좀비 방지**: 업데이트 시 반드시 기존 `python.exe` 프로세스가 점유 중인지 확인하십시오.
+## 🏁 4. 성능 및 안정성 최적화 (Summary)
+- **로그 스로틀링**: 10건 초과 데이터 변경 시 요약 로그로 전환하여 UI 가독성 확보.
+- **동기화 가드**: `_is_processing_remote` 플래그를 통해 원격 동기화와 로컬 수정 간의 시그널 충돌 및 무한 루프 방지.
