@@ -1,0 +1,29 @@
+# Python 캐시 및 가상환경
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+venv/
+ENV/
+
+# 데이터베이스
+*.db
+server/assy_manager.db
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 프로젝트 작업 공간 및 로그
+.gemini/
+.bevel/
+agent_workspace/tasks/
+!agent_workspace/reports/
+
+# OS 생성 파일
+Thumbs.db
+Desktop.ini
+.DS_Store

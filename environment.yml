@@ -1,0 +1,16 @@
+name: assy_manager
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - fastapi
+  - uvicorn
+  - sqlalchemy
+  - pydantic
+  - websockets
+  - python-dotenv
+  - pyside6
+  - pytest
+  - httpx
+  - pip
