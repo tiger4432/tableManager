@@ -36,5 +36,34 @@ description: PM 에이전트와 하위 개발 에이전트 간의 표준 작업 
 3. **결과 보고**: 작업이 완료되면 `agent_workspace/reports/` 디렉토리에 작업 내용, 수정한 파일 리스트, 미해결 이슈(있을 경우)를 명시한 `[자신의이름]_report.md` 파일을 `write_to_file`로 생성하십시오.
 4. **종료 알림**: 사용자에게 "작업 보고서 작성을 완료했습니다." 라고 대답하고 턴을 종료하십시오.
 
-> 주의: 다른 에이전트의 구역을 침범하지 마시고, 명시된 지시서 내의 스코프(요구사항)만 정확히 수행하는 것을 최우선으로 합니다.
+## 4. 📝 영구 기술 이력 기록 (`docs/history/`)
+
+보고서 제출과 별개로, 모든 주요 로직 변경이나 버그 수정 사항은 프로젝트의 영구 기술 자산으로 남겨야 합니다.
+
+* **저장 위치**: `docs/history/`
+* **파일명 규칙**: `YYYYMMDD_HHMMSS_summary.md` (예: `20260412_221000_fix_ws_deadlock.md`)
+* **내용**: 
+  - 문제 현상 (Phenomenon)
+  - 기술적 원인 분석 (Root Cause)
+  - 해결 방안 및 코드 변경 핵심 요약 (Solution & Code Changes)
+  - 검증 결과 (Validation)
+
+## 5. 🤖 프로젝트 전문 에이전트 구성 (R&R)
+
+본 프로젝트는 각 분야의 전문성을 가진 에이전트들이 협업하여 구축되었습니다. 작업 시 자신의 역할에 맞는 전문 스킬을 소환하여 사용하십시오.
+
+| 에이전트 명칭 | 전문 분야 | 주요 담당 컴포넌트 |
+|---|---|---|
+| **Lead Agent (PM)** | 아키텍처 설계 & 작업 조율 | `task.md`, `technical_manual.md`, `docs/history/` |
+| **Agent Excel (UI)** | 고성능 테이블 & 클립보드 | `table_model.py` (Edit/Batch), `ExcelTableView` |
+| **Agent D (Sync)** | 실시간 동기화 & WebSocket | `SharedWS`, `WsListenerThread`, `broadcast_engine` |
+| **Agent I (Pipeline)** | 인제션 & 아카이빙 | `advanced_ingester.py`, `directory_watcher.py` |
+| **Agent Stability** | 무결성 & 예외 처리 | GC 관리, Race Condition 해결, 로깅 표준화 |
+
+---
+
+## 6. 🤝 협업 규약 (Collaboration Convention)
+1. **영역 보존**: 각 에이전트는 자신의 담당 컴포넌트를 수정할 때 다른 에이전트가 구축한 인터페이스를 파괴하지 않도록 주의해야 합니다.
+2. **이력 연동**: 모든 에이전트의 결과물은 `docs/history/`에 남겨져 Lead Agent가 전체 프로젝트의 진행 상태를 파악할 수 있게 해야 합니다.
+3. **환경 공유**: 반드시 동일한 Conda 환경(`assy_manager`)에서 검증을 마친 후 보고서를 작성해야 합니다.
 

@@ -9,7 +9,8 @@ class GenericIngester:
         self.config = self._load_json(config_path)
         self.server_url = server_url
         self.rules = self.config.get("rules", [])
-        self.filename_rules = self.config.get("filename_rules", []) # New: Extract data from filename
+        self.filename_rules = self.config.get("filename_rules", [])
+        self.header_rules = self.config.get("header_rules", []) # New: Extract data from header lines
         self.table_name = self.config.get("table_name")
         self.source_name = self.config.get("source_name", "generic_ingester")
         self.updated_by = self.config.get("updated_by", "agent_i")
@@ -17,7 +18,15 @@ class GenericIngester:
 
     def _load_json(self, path: str) -> Dict:
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Config file not found: {path}")
+            # Try relative to the script if absolute path doesn't work
+            if not os.path.isabs(path):
+                alt_path = os.path.join(os.path.dirname(__file__), path)
+                if os.path.exists(alt_path):
+                    path = alt_path
+                else:
+                    raise FileNotFoundError(f"Config file not found: {path} (checked {alt_path})")
+            else:
+                raise FileNotFoundError(f"Config file not found: {path}")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
@@ -75,7 +84,7 @@ class GenericIngester:
         filename = os.path.basename(file_path)
         print(f"Processing file: {file_path}")
         
-        # New: Extract data from filename first
+        # 1. Extract data from filename
         filename_data = {}
         for rule in self.filename_rules:
             match = re.search(rule["regex"], filename)
@@ -83,19 +92,41 @@ class GenericIngester:
                 val = match.group(1)
                 filename_data[rule["column"]] = self._cast_type(val, rule.get("type", "str"))
 
+        # 2. Extract data from lines (Header and Data)
+        persistent_header_data = {}
+        
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
-                data = self.parse_line(line.strip())
+                line = line.strip()
+                if not line: continue
+                
+                # Check for header rules
+                header_found = False
+                for h_rule in self.header_rules:
+                    h_match = re.search(h_rule["regex"], line)
+                    if h_match:
+                        val = h_match.group(1)
+                        persistent_header_data[h_rule["column"]] = self._cast_type(val, h_rule.get("type", "str"))
+                        print(f"  [Header] Extracted {h_rule['column']} = {persistent_header_data[h_rule['column']]}")
+                        header_found = True
+                
+                if header_found: continue
+                
+                # Try parsing data line
+                data = self.parse_line(line)
                 if data:
-                    # Merge filename metadata into row data
-                    data.update(filename_data)
+                    # Merge all metadata
+                    full_data = {}
+                    full_data.update(filename_data)
+                    full_data.update(persistent_header_data)
+                    full_data.update(data)
                     
                     # Identify business key value
-                    bk_val = data.get(self.business_key_col)
+                    bk_val = full_data.get(self.business_key_col)
                     if bk_val:
-                        self.push_to_server(bk_val, data)
+                        self.push_to_server(bk_val, full_data)
                     else:
-                        print(f"Skipping line (No business key found): {line.strip()}")
+                        print(f"Skipping line (No business key found): {line}")
 
     def push_to_server(self, business_key_val: Any, updates: Dict[str, Any]):
         url = f"{self.server_url}/tables/{self.table_name}/upsert"

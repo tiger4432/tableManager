@@ -178,10 +178,12 @@ class MainWindow(QMainWindow):
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
 
         # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
+        print('WEB SOCKET 초기화')
         self._ws_thread: WsListenerThread | None = None
         self._active_models: list[ApiLazyTableModel] = []
 
         # ── 서버로부터 모든 테이블 목록 조회 및 탭 초기화 ──────────────
+        print('TABLE 초기화')
         self._load_all_tables()
         
     def _load_all_tables(self):
@@ -198,47 +200,70 @@ class MainWindow(QMainWindow):
                 print("[Debug] No tables found, initializing default")
                 self._init_table_tab("inventory_master")
             else:
-                for table in tables:
-                    try:
-                        print(f"[Debug] Initializing tab for: {table}")
-                        self._init_table_tab(table)
-                    except Exception as e:
-                        print(f"[Debug] Error initializing tab {table}: {e}")
+                from PySide6.QtCore import QTimer
+                # Stagger tab initialization to prevent network burst and race conditions
+                for i, table in enumerate(tables):
+                    self._init_table_tab(table)
             
-            # 모든 탭 생성 후 첫 번째 탭 선택 및 가시성 강제 갱신
-            if self.tabs.count() > 0:
-                print(f"[Debug] Selecting first tab among {self.tabs.count()} tabs")
-                self.tabs.setCurrentIndex(0)
-            
-            # ── Shared WS 시작 ──
+            # Agent D v6: Start Shared WS immediately to listen for updates as tabs load
             self._start_shared_ws()
+            
+            # 워커 참조 제거 (GC 허용)
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
         
+        def _on_tables_error(err):
+            print(f"[Debug] Tables loading error: {err}. Fallback to default tab.")
+            self._init_table_tab("inventory_master")
+            # Ensure WS starts even if tables listing fails
+            self._start_shared_ws()
+            
+            # 워커 참조 제거
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+
         worker.signals.finished.connect(_on_tables_loaded)
-        worker.signals.error.connect(lambda err: self._init_table_tab("inventory_master")) # 에러 시 기본값
+        worker.signals.error.connect(_on_tables_error)
+        
+        # Agent D v6: Ensure worker is not GC'd before finished
+        if not hasattr(self, "_active_workers"):
+            self._active_workers = set()
+        self._active_workers.add(worker)
+        
         QThreadPool.globalInstance().start(worker)
 
     def _start_shared_ws(self):
         """단일 공유 WebSocket 리스너를 시작합니다."""
         if self._ws_thread and self._ws_thread.isRunning():
+            print('skip socket')
             return
             
         from models.table_model import WsListenerThread
         ws_url = "ws://127.0.0.1:8000/ws"
         self._ws_thread = WsListenerThread(ws_url)
         self._ws_thread.message_received.connect(self._dispatch_ws_message)
-        self._ws_thread.connection_error.connect(lambda err: print(f"[SharedWS] Error: {err}"))
+        self._ws_thread.connection_error.connect(lambda err: print(f"[MainWS] CRITICAL: {err}"))
         self._ws_thread.start()
-        print(f"[SharedWS] Listener started for {ws_url}")
+        print(f"[MainWS] Shared Listener Thread started for {ws_url}")
         
         # 앱 종료 시 정리 연결
         QApplication.instance().aboutToQuit.connect(self._ws_thread.stop)
 
     def _dispatch_ws_message(self, data: dict):
         """수신된 WS 메시지를 모든 활성 모델에 전달합니다."""
+        print(f"[MainWS] Dispatching message to {len(self._active_models)} active models: {data.get('event')}")
         for model in self._active_models:
             # table_model.py 의 _on_websocket_broadcast 호출
             model._on_websocket_broadcast(data)
         
+    def _on_global_search(self, text: str):
+        """
+        필터 툴바의 검색어가 변경되었을 때 전체 활성 모델에 서버 사이드 검색을 요청합니다.
+        """
+        print(f"[MainWindow] Global search requested: '{text}'")
+        for model in self._active_models:
+            model.set_search_query(text)
+
     def _on_add_row_requested(self):
         """현재 활성화된 탭의 테이블에 새 행을 추가 요청합니다."""
         current_index = self.tabs.currentIndex()
@@ -295,10 +320,6 @@ class MainWindow(QMainWindow):
         proxy = self._filter_bar.create_proxy(model)
         table_view.setModel(proxy)
 
-        # Trigger first fetch
-        if model.canFetchMore():
-            model.fetchMore()
-
         # ── 히스토리 패널 연결 ──
         self._history_panel.connect_model(model, table_name, table_view)
 
@@ -306,8 +327,12 @@ class MainWindow(QMainWindow):
 
         tab_idx = self.tabs.addTab(tab, table_name)
         print(f"[Debug] Tab {tab_idx} added for {table_name}")
+        
+        # Select first tab when it arrives if none selected
+        if self.tabs.currentIndex() == -1:
+            self.tabs.setCurrentIndex(0)
 
-        # ── Agent D v3: 서버에서 스키마(컬럼 리스트) 동적 수신 ──
+        # ── Agent D v4: 서버에서 스키마 로드 후 데이터 페칭 시작 (Sequential) ──
         self._load_table_schema(model)
 
     def _load_table_schema(self, model: ApiLazyTableModel):
@@ -321,6 +346,9 @@ class MainWindow(QMainWindow):
             if cols:
                 model.update_columns(cols)
                 print(f"[Schema] Successfully updated columns for {table_name}: {cols}")
+                # ── 스키마가 확보된 직후 첫 데이터 페칭 시작 (안정성 보장) ──
+                if model.canFetchMore():
+                    model.fetchMore()
             else:
                 print(f"[Schema] No columns returned for {table_name}")
             
@@ -330,6 +358,9 @@ class MainWindow(QMainWindow):
         
         def _on_schema_error(err):
             print(f"[Schema] Network error loading schema for {table_name}: {err}")
+            # Agent D v6: Even if schema fails, try to fetch data with default columns
+            if model.canFetchMore():
+                model.fetchMore()
             if worker in self._active_workers:
                 self._active_workers.remove(worker)
 

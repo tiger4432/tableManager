@@ -23,8 +23,17 @@ class ConnectionManager:
         print(f"Client disconnected. Total clients: {len(self.active_connections)}")
 
     async def broadcast(self, message: str):
+        print(f"[ServerWS] Broadcasting to {len(self.active_connections)} clients: {message[:100]}...")
+        failed_connections = []
         for connection in self.active_connections:
-            await connection.send_text(message)
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                print(f"[ServerWS] Error sending to a client: {e}")
+                failed_connections.append(connection)
+        
+        for conn in failed_connections:
+            self.disconnect(conn)
 
 manager = ConnectionManager()
 
@@ -41,15 +50,31 @@ def list_tables():
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
 @app.get("/tables/{table_name}/data", response_model=schemas.PaginatedDataResponse)
-def get_table_data(table_name: str, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def get_table_data(table_name: str, skip: int = 0, limit: int = 50, q: str = None, db: Session = Depends(get_db)):
     """
     Lazy Loading을 위한 페이징 엔드포인트
-    클라이언트 Viewport에서 필요한 영역만 (skip ~ skip+limit) 가져옵니다.
+    q 파라미터가 있으면 전체 데이터 중 해당 검색어가 포함된 행만 필터링합니다.
     """
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
-    total_count = query.count()
-    rows = query.offset(skip).limit(limit).all()
     
+    if q:
+        from sqlalchemy import cast, String
+        # JSON 데이터를 문자열로 캐스팅하여 부분 일치(LIKE) 검색 수행 (SQLite 대응)
+        search_filter = cast(models.DataRow.data, String).ilike(f"%{q}%")
+        query = query.filter(search_filter)
+
+    total_count = query.count()
+    
+    rows = query.order_by(models.DataRow.updated_at.desc(), models.DataRow.created_at.desc())\
+                .offset(skip).limit(limit).all()
+    
+    # UI에서 바로 볼 수 있도록 created_at, updated_at을 data JSON에 가상으로 주입
+    for row in rows:
+        if "created_at" not in row.data:
+            row.data["created_at"] = {"value": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "", "is_overwrite": False, "updated_by": "system"}
+        if "updated_at" not in row.data:
+            row.data["updated_at"] = {"value": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
+
     return schemas.PaginatedDataResponse(
         table_name=table_name,
         total=total_count,
@@ -77,7 +102,8 @@ async def update_cell(table_name: str, cell_update: schemas.CellUpdate, db: Sess
         "row_id": cell_update.row_id,
         "column_name": cell_update.column_name,
         "value": cell_update.value,
-        "is_overwrite": True
+        "is_overwrite": True,
+        "updated_by": cell_update.updated_by or "unknown"
     }
     await manager.broadcast(json.dumps(msg))
     
@@ -99,7 +125,8 @@ async def update_cells_batch(table_name: str, batch: schemas.CellUpdateBatch, db
                 "row_id": u.row_id,
                 "column_name": u.column_name,
                 "value": u.value,
-                "is_overwrite": True
+                "is_overwrite": True,
+                "updated_by": u.updated_by or "unknown"
             } for u in batch.updates
         ]
     }
@@ -150,6 +177,12 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     else:
         columns = []
         
+    # Always suggest system columns at the end
+    system_cols = ["created_at", "updated_at"]
+    for sc in system_cols:
+        if sc not in columns:
+            columns.append(sc)
+            
     return {"table_name": table_name, "columns": columns}
 
 
@@ -198,6 +231,11 @@ async def create_row(table_name: str, db: Session = Depends(get_db)):
     """
     new_row = crud.create_empty_row(db, table_name)
     
+    # Virtual inject system columns for real-time UI
+    broadcast_data = new_row.data.copy()
+    broadcast_data["created_at"] = {"value": new_row.created_at.strftime("%Y-%m-%d %H:%M:%S") if new_row.created_at else "", "is_overwrite": False, "updated_by": "system"}
+    broadcast_data["updated_at"] = {"value": new_row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if new_row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
+
     # WebSocket 브로드캐스트
     msg = {
         "event": "row_create",
@@ -205,7 +243,7 @@ async def create_row(table_name: str, db: Session = Depends(get_db)):
         "data": {
             "row_id": new_row.row_id,
             "table_name": new_row.table_name,
-            "data": new_row.data,
+            "data": broadcast_data,
             "created_at": new_row.created_at.isoformat() if new_row.created_at else None
         }
     }
@@ -226,28 +264,52 @@ async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = 
     
     # WebSocket 브로드캐스트
     if is_new:
+        # Virtual inject system columns
+        broadcast_data = row.data.copy()
+        broadcast_data["created_at"] = {"value": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "", "is_overwrite": False, "updated_by": "system"}
+        broadcast_data["updated_at"] = {"value": row.updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.updated_at else "", "is_overwrite": False, "updated_by": "system"}
+
         msg = {
             "event": "row_create",
             "table_name": table_name,
             "data": {
                 "row_id": row.row_id,
                 "table_name": row.table_name,
-                "data": row.data,
+                "data": broadcast_data,
                 "created_at": row.created_at.isoformat() if row.created_at else None
             }
         }
     else:
+        # Include updated timestamps in the updates list for real-time UI refresh
+        updates_list = []
+        for col, val in upsert.updates.items():
+            cell_state = row.data.get(col, {})
+            updates_list.append({
+                "row_id": row.row_id,
+                "column_name": col,
+                "value": cell_state.get("value", val),
+                "is_overwrite": cell_state.get("is_overwrite", False)
+            })
+        
+        # Add system columns as virtual updates
+        ts_fmt = "%Y-%m-%d %H:%M:%S"
+        updates_list.append({
+            "row_id": row.row_id,
+            "column_name": "created_at",
+            "value": row.created_at.strftime(ts_fmt) if row.created_at else "",
+            "is_overwrite": False
+        })
+        updates_list.append({
+            "row_id": row.row_id,
+            "column_name": "updated_at",
+            "value": row.updated_at.strftime(ts_fmt) if row.updated_at else "",
+            "is_overwrite": False
+        })
+
         msg = {
             "event": "batch_cell_update",
             "table_name": table_name,
-            "updates": [
-                {
-                    "row_id": row.row_id,
-                    "column_name": col,
-                    "value": val,
-                    "is_overwrite": (upsert.source_name == "user")
-                } for col, val in upsert.updates.items()
-            ]
+            "updates": updates_list
         }
         
     await manager.broadcast(json.dumps(msg))

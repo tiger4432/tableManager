@@ -1,0 +1,12 @@
+SENSOR_LOG_REPORT
+Timestamp: 2024-04-12 21:30:00
+Site: Seoul Factory HQ
+Group: LINE-A-SENSORS
+Operator: Admin
+--- START METRICS ---
+ID: SENSOR-011 Temp: 24.5 Humi: 45.2 Vibr: 0.15
+ID: SENSOR-002 Temp: 28.1 Humi: 39.5 Vibr: 0.45
+ID: SENSOR-003 Temp: 22.8 Humi: 50.1 Vibr: 0.08
+--- END METRICS ---
+Checksum: OK
+EOF

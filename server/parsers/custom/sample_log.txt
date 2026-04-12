@@ -1,4 +1,0 @@
-LOG: PartNo: PN-55555 Qty: 120 Type: Passive Price: 12.5
-LOG: PartNo: PN-66666 Qty: 300 Type: IC Price: 155.0
-ERROR: Check line 45 (No data)
-LOG: PartNo: PN-55555 Qty: 150 Type: Passive Price: 13.0 (Update)

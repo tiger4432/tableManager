@@ -11,7 +11,7 @@ panel_filter.py
 from __future__ import annotations
 
 from PySide6.QtWidgets import QToolBar, QLineEdit, QLabel, QWidget, QSizePolicy, QPushButton
-from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal
+from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal, QTimer
 from PySide6.QtGui import QAction
 
 
@@ -22,6 +22,8 @@ class FilterToolBar(QToolBar):
     addTabRequested = Signal()
     # ── Agent E v4: 새 행 추가 요청 시그널 ──
     addRowRequested = Signal()
+    # ── 글로벌 서버 사이드 검색 요청 시그널 ──
+    searchRequested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__("필터", parent)
@@ -86,6 +88,11 @@ class FilterToolBar(QToolBar):
         # 내부 프록시 모델 저장소
         self._proxies: list[QSortFilterProxyModel] = []
 
+        # 검색 타이머 (서버 부하 방지를 위한 Debounce: 500ms)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._emit_search_requested)
+
         # 검색창 텍스트 변경 시 모든 프록시에 반영
         self._search_box.textChanged.connect(self._on_text_changed)
 
@@ -119,6 +126,13 @@ class FilterToolBar(QToolBar):
         for proxy in self._proxies:
             proxy.setFilterRegularExpression(text)
         self._update_count_label()
+        
+        # 타이머 재시작 (마지막 입력 후 500ms 뒤에 서버 검색 요청)
+        self._search_timer.start(500)
+
+    def _emit_search_requested(self):
+        query = self._search_box.text()
+        self.searchRequested.emit(query)
 
     def _update_count_label(self):
         if not self._proxies:

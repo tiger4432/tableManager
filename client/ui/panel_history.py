@@ -83,6 +83,12 @@ class HistoryDockPanel(QDockWidget):
             model.ws_data_changed.connect(
                 lambda data: self._log_ws_event(data, table_name, table_view)
             )
+            
+        # Agent D v4: 행 생성 이벤트 연결
+        if hasattr(model, 'row_created_ws'):
+            model.row_created_ws.connect(
+                lambda data: self._log_row_created(data, table_name, table_view)
+            )
 
     # ------------------------------------------------------------------
     # Private slots / helpers
@@ -99,6 +105,10 @@ class HistoryDockPanel(QDockWidget):
     ):
         """dataChanged 수신 → 로그 항목을 목록 최상단에 추가."""
         if Qt.ItemDataRole.DisplayRole not in roles:
+            return
+            
+        # Agent D v5: 원격 업데이트 메시지 처리 중에는 ws_data_changed로 따로 로그가 남으므로 무시
+        if getattr(model, '_is_processing_remote', False):
             return
 
         now = datetime.now().strftime("%H:%M:%S")
@@ -133,19 +143,24 @@ class HistoryDockPanel(QDockWidget):
 
     def _log_ws_event(self, data: dict, table_name: str, table_view):
         """WS 브로드캐스트 이벤트 전용 로그 항목 추가. 🌐 [원격] 접두어로 구분."""
+        from datetime import datetime
         now = datetime.now().strftime("%H:%M:%S")
         row_id = data.get("row_id", "unknown")
         col_name = data.get("column_name", "?")
         value = data.get("value", "")
         updated_by = data.get("updated_by", "unknown")
-
+        
+        is_overwrite = data.get("is_overwrite", False)
+        prefix = "🛠️ [원격 수동수정]" if is_overwrite else "🌐 [원격]"
+        
         text = (
-            f"🌐 [원격] [{now}] {table_name} / {col_name} / "
+            f"{prefix} [{now}] {table_name} / {col_name} / "
             f"row_id:{row_id} → {value}  |  by:{updated_by}"
         )
 
         list_item = QListWidgetItem(text)
-        list_item.setForeground(QColor("#89dceb"))  # 하늘색: 원격 이벤트 구분
+        # 노란색(수동수정) / 하늘색(자동업데이트)
+        list_item.setForeground(QColor("#f9e2af") if is_overwrite else QColor("#89dceb"))
 
         # scrollTo 는 row_id 기반 조회가 필요하므로 best-effort로 meta 저장
         m = table_view.model()
@@ -156,6 +171,41 @@ class HistoryDockPanel(QDockWidget):
                 self._item_meta[id(list_item)] = (table_view, m.index(row_idx, 0))
 
         self._list.insertItem(0, list_item)
+
+    def _log_row_created(self, data: dict, table_name: str, table_view):
+        """행 생성(row_create) 이벤트 로그 추가 및 자동 갱신 트리거."""
+        now = datetime.now().strftime("%H:%M:%S")
+        row_id = data.get("data", {}).get("row_id", "unknown")
+        
+        text = f"🆕 [신규] [{now}] {table_name} / 새 행 생성 (row_id:{row_id})"
+        
+        list_item = QListWidgetItem(text)
+        list_item.setForeground(QColor("#a6e3a1"))  # 녹색: 신규 생성 구분
+        
+        # 메타 저장 (최상단 행)
+        self._item_meta[id(list_item)] = (table_view, table_view.model().index(0, 0))
+        
+        self._list.insertItem(0, list_item)
+        
+        # Agent D v4: 현재 테이블뷰의 선택 정보를 확인하여 히스토리 자동 갱신
+        # 만약 신규 행이 이미 선택되어 있다면 (ExcelTableView 자동 선택 기능), 즉시 계보 조회
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(100, lambda: self._refresh_if_selected(table_view, row_id))
+
+    def _refresh_if_selected(self, table_view, row_id):
+        """선택된 행이 특정 row_id인 경우 계보 패널 갱신."""
+        index = table_view.currentIndex()
+        if not index.isValid():
+            return
+            
+        model = table_view.model()
+        source_model = getattr(model, 'sourceModel', lambda: model)()
+        row_idx = index.row()
+        
+        if row_idx < len(source_model._data):
+            current_row_id = source_model._data[row_idx].get("row_id")
+            if current_row_id == row_id:
+                self._fetch_cell_lineage(table_view, index)
 
     @Slot(QListWidgetItem)
     def _on_item_clicked(self, item: QListWidgetItem):

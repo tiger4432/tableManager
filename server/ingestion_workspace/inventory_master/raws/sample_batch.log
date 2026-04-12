@@ -1,0 +1,9 @@
+# LOG_START: 2026-04-12
+# DEPT: LOGISTICS_A
+# BATCH_ID: B-20260412-X
+ITEM: PartNo: PN-TEST-001 Qty: 500 Type: Critical Price: 45.0
+ITEM: PartNo: PN-TEST-002 Qty: 1500 Type: Bulk Price: 2.5
+# DEPT: ASSEMBLY_B
+# BATCH_ID: B-20260412-Y
+ITEM: PartNo: PN-TEST-003 Qty: 80 Type: Precision Price: 1200.0
+# LOG_END

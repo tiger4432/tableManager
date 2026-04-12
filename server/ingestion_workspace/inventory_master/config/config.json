@@ -1,8 +1,20 @@
 {
   "table_name": "inventory_master",
-  "source_name": "generic_log_parser",
-  "updated_by": "agent_i_v3",
+  "source_name": "advanced_ingester",
+  "updated_by": "agent_q_v2",
   "business_key_column": "part_no",
+  "header_rules": [
+    {
+      "column": "dept_code",
+      "regex": "DEPT: (\\w+)",
+      "type": "str"
+    },
+    {
+      "column": "batch_id",
+      "regex": "BATCH_ID: ([A-Z0-9-]+)",
+      "type": "str"
+    }
+  ],
   "rules": [
     {
       "column": "part_no",

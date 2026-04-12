@@ -30,6 +30,7 @@ class ApiSchemaWorker(QRunnable):
 
     @Slot()
     def run(self):
+        print('ApiSchemaWorker 실행')
         import urllib.request
         import json
         try:
@@ -37,7 +38,9 @@ class ApiSchemaWorker(QRunnable):
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
                 self.signals.finished.emit(result)
+                print(result)
         except Exception as e:
+            print('ApiSchemaWorker Error:',e)
             self.signals.error.emit(str(e))
 
 class ApiUpdateWorker(QRunnable):
@@ -108,6 +111,7 @@ class WsListenerThread(QThread):
         super().__init__(parent)
         self.ws_url = ws_url
         self._running = True
+        self._ws = None # Agent D v6: Store current ws object
 
     def run(self):
         import json
@@ -119,24 +123,42 @@ class WsListenerThread(QThread):
 
         while self._running:
             try:
-                with connect(self.ws_url) as ws:
-                    print(f"[WsListenerThread] Connected to {self.ws_url}")
+                print(f"[WsListenerThread] Attempting to connect to {self.ws_url}...")
+                with connect(self.ws_url, open_timeout=5.0) as ws:
+                    self._ws = ws
+                    print(f"[WsListenerThread] SUCCESS: Connected to {self.ws_url}")
                     while self._running:
                         try:
-                            raw = ws.recv(timeout=5.0)
+                            # Reduced timeout for better responsiveness to stop signal
+                            raw = ws.recv(timeout=1.0)
                             data = json.loads(raw)
                             self.message_received.emit(data)
                         except TimeoutError:
-                            # 주기적으로 _running 플래그를 확인하기 위한 타임아웃
                             continue
+                        except Exception as inner_e:
+                            if self._running:
+                                print(f"[WsListenerThread] Receive error: {inner_e}")
+                            break
             except Exception as e:
                 if self._running:
-                    self.connection_error.emit(str(e))
-                    # 재연결 대기 (3초)
+                    error_msg = f"Connection failed: {str(e)}"
+                    print(f"[WsListenerThread] {error_msg}")
+                    self.connection_error.emit(error_msg)
+                    print("[WsListenerThread] Retrying in 3 seconds...")
                     self.msleep(3000)
+            finally:
+                self._ws = None
+                if self._running:
+                    print(f"[WsListenerThread] Session finished for {self.ws_url}")
 
     def stop(self):
         self._running = False
+        # Agent D v6: Explicitly close the ws to unblock recv() immediately
+        if self._ws:
+            try:
+                self._ws.close()
+            except:
+                pass
         self.quit()
         self.wait()
 
@@ -148,6 +170,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     """
     # Agent D v2: WS 브로드캐스트 전용 Signal (source='remote' 컨텍스트 포함)
     ws_data_changed = Signal(dict)  # {"row_id": ..., "column_name": ..., "value": ..., "source": "remote"}
+    row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
     def __init__(self, table_name: str, base_api_url: str = "http://127.0.0.1:8000"):
         super().__init__()
         self.table_name = table_name
@@ -159,10 +182,12 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._chunk_size = 50
         self._fetching = False
         self._first_fetch = True
+        self._search_query = "" # 서버 사이드 검색어
 
         self._chunk_size = 50
         self._fetching = False
         self._first_fetch = True
+        self._is_processing_remote = False # Agent D v5: Prevent duplicate history logging
 
     def update_columns(self, columns: list[str]):
         """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
@@ -170,6 +195,22 @@ class ApiLazyTableModel(QAbstractTableModel):
         self.beginResetModel()
         self._columns = columns
         self.endResetModel()
+
+    def set_search_query(self, query: str):
+        """서버 사이드 검색어를 설정하고 모델을 리셋하여 다시 페칭합니다."""
+        if self._search_query == query:
+            return
+            
+        print(f"[Model] Setting search query for {self.table_name}: {query}")
+        self.beginResetModel()
+        self._search_query = query
+        self._data = []
+        self._total_count = 0
+        self._first_fetch = True
+        self.endResetModel()
+        
+        # 즉시 첫 페이지 요청
+        self.fetchMore()
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return self._total_count
@@ -201,12 +242,19 @@ class ApiLazyTableModel(QAbstractTableModel):
             if row_id is None:
                 return False
                 
+            import os
+            try:
+                username = os.getlogin()
+            except:
+                username = "User"
+                
             persistent_index = QPersistentModelIndex(index)
             url = f"{self.endpoint_url.replace('/data', '/cells')}"
             payload = {
                 "row_id": row_id,
                 "column_name": col_name,
-                "value": value
+                "value": value,
+                "updated_by": f"Manual Fix ({username})"
             }
             
             # 비동기 요청을 위해 QRunnable 기반 Worker 사용
@@ -330,6 +378,9 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._data.insert(0, row_data)
             self._total_count += 1
             self.endInsertRows()
+            
+            # Agent D v4: 히스토리 패널 연동을 위해 Signal 방출
+            self.row_created_ws.emit(data)
             return
         else:
             return  # 알 수 없는 이벤트 무시
@@ -360,7 +411,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             if col_name not in cell_data:
                 cell_data[col_name] = {}
             cell_data[col_name]["value"] = value
-            cell_data[col_name]["is_overwrite"] = True
+            cell_data[col_name]["is_overwrite"] = u.get("is_overwrite", False)
 
             changed_indices.append((row_idx, col_idx))
 
@@ -372,13 +423,22 @@ class ApiLazyTableModel(QAbstractTableModel):
         cols = [c for _, c in changed_indices]
         top_left = self.index(min(rows), min(cols))
         bottom_right = self.index(max(rows), max(cols))
-        self.dataChanged.emit(
-            top_left, bottom_right,
-            [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
-        )
+        
+        # Agent D v5: Flag remote processing to suppress duplicate logging in HistoryPanel
+        self._is_processing_remote = True
+        try:
+            self.dataChanged.emit(
+                top_left, bottom_right,
+                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
+            )
+        finally:
+            self._is_processing_remote = False
 
         # Agent D v2: 각 업데이트에 대해 ws_data_changed Signal 방출 (히스토리 패널용)
         for u in updates:
+            # Inject updated_by from the main message if not present in individual update
+            if "updated_by" not in u:
+                u["updated_by"] = data.get("updated_by", "system")
             self.ws_data_changed.emit({**u, "source": "remote"})
 
     def _build_row_id_map(self) -> dict:
@@ -416,6 +476,11 @@ class ApiLazyTableModel(QAbstractTableModel):
         # If data is not yet loaded for this row, display placeholder
         if row >= len(self._data):
             if role == Qt.ItemDataRole.DisplayRole:
+                # Trigger fetch if not already fetching
+                if not self._fetching:
+                    from PySide6.QtCore import QTimer
+                    # Use a timer to avoid calling fetchMore directly inside data() which can cause issues
+                    QTimer.singleShot(0, self.fetchMore)
                 return "Loading..."
             return None
 
@@ -452,6 +517,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         limit = self._chunk_size
         
         url = f"{self.endpoint_url}?skip={skip}&limit={limit}"
+        if self._search_query:
+            import urllib.parse
+            url += f"&q={urllib.parse.quote(self._search_query)}"
         
         worker = ApiFetchWorker(url)
         worker.signals.finished.connect(self._on_fetch_finished)
@@ -460,14 +528,25 @@ class ApiLazyTableModel(QAbstractTableModel):
         QThreadPool.globalInstance().start(worker)
 
     def _on_fetch_finished(self, result: dict):
-        self._first_fetch = False
         new_data = result.get("data", [])
-        self._total_count = result.get("total", len(self._data) + len(new_data))
+        total = result.get("total", 0)
         
-        if new_data:
-            self.beginInsertRows(QModelIndex(), len(self._data), len(self._data) + len(new_data) - 1)
-            self._data.extend(new_data)
-            self.endInsertRows()
+        if self._first_fetch:
+            self.beginResetModel()
+            self._total_count = total
+            self._data = new_data
+            self._first_fetch = False
+            self.endResetModel()
+        else:
+            if new_data:
+                start_row = len(self._data)
+                self._data.extend(new_data)
+                # Notify the view that these rows now have data
+                # Since rowCount already returned the total, we use dataChanged
+                self.dataChanged.emit(
+                    self.index(start_row, 0),
+                    self.index(start_row + len(new_data) - 1, len(self._columns) - 1)
+                )
             
         self._fetching = False
 

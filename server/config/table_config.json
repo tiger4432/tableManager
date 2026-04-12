@@ -1,18 +1,41 @@
 {
   "inventory_master": {
     "business_key": "part_no",
-    "display_columns": ["part_no", "category", "stock_qty", "unit_price"]
+    "display_columns": [
+      "part_no",
+      "category",
+      "stock_qty",
+      "unit_price",
+      "created_at"
+    ]
   },
   "production_plan": {
     "business_key": "plan_id",
-    "display_columns": ["plan_id", "prod_line", "target_qty", "due_date"]
+    "display_columns": [
+      "plan_id",
+      "prod_line",
+      "target_qty",
+      "due_date",
+      "created_at"
+    ]
   },
   "sensor_metrics": {
     "business_key": "sensor_id",
-    "display_columns": ["sensor_id", "temperature", "humidity", "vibration"]
+    "display_columns": [
+      "sensor_id",
+      "temperature",
+      "humidity",
+      "vibration",
+      "created_at"
+    ]
   },
   "raw_table_1": {
     "business_key": "id",
-    "display_columns": ["id", "name", "status"]
+    "display_columns": [
+      "id",
+      "name",
+      "status",
+      "created_at"
+    ]
   }
 }

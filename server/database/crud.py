@@ -32,23 +32,23 @@ TABLE_CONFIG = load_table_config()
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """
     테이블별 비즈니스 키(예: part_no)를 기반으로 행을 조회합니다.
+    데이터 수동 입력 시 발생하는 공백이나 타입 차이(int vs str)를 고려하여 정밀 비교합니다.
     """
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     if not key_col:
         return None
         
-    # JSON 내부의 value 값을 비교하여 조회
-    # SQLite/PostgreSQL 등에서 JSON 내부 필드 조회를 위한 SQLAlchemy 표현
-    # data -> key_col -> value == key_value
     rows = db.query(models.DataRow).filter(
         models.DataRow.table_name == table_name
     ).all()
     
-    # 데이터 양이 많지 않으므로 Python 레벨에서 필터링 (복잡한 JSON 구조 대응 용이)
+    target_val = str(key_value).strip() if key_value is not None else ""
+    
     for row in rows:
         cell = row.data.get(key_col, {})
-        if cell.get("value") == key_value:
+        stored_val = cell.get("value")
+        if stored_val is not None and str(stored_val).strip() == target_val:
             return row
     return None
 
@@ -213,7 +213,6 @@ def create_empty_row(db: Session, table_name: str):
 def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dict, source: str, user: str):
     """
     비즈니스 키를 기반으로 행을 업데이트하거나, 없으면 신규 생성합니다.
-    updates: { "col_name": "new_value", ... }
     """
     row = get_row_by_business_key(db, table_name, business_key_val)
     is_new = False
@@ -222,7 +221,6 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
         row = create_empty_row(db, table_name)
         is_new = True
         
-    # 각 컬럼 업데이트 (기존 update_cell 로직 재사용)
     for col_name, val in updates.items():
         if col_name not in row.data:
             row.data[col_name] = {
@@ -233,6 +231,7 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
         cell = row.data[col_name]
         old_val = cell.get("value")
         
+        # 1. 소스 데이터 저장
         if "sources" not in cell: cell["sources"] = {}
         from datetime import datetime
         cell["sources"][source] = {
@@ -240,13 +239,17 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
             "timestamp": datetime.now().isoformat()
         }
         
-        final_val, top_src = compute_priority_value(cell["sources"])
-        cell["value"] = final_val
+        # 2. 우선순위 기반 최종 값 결정
+        new_final_val, top_src = compute_priority_value(cell["sources"])
+        
+        # 3. 값의 변화가 있거나 신규 행인 경우에만 감사 로그 기록 (무결성 규칙 준수)
+        if is_new or (str(old_val) != str(new_final_val)):
+            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, source, user)
+        
+        cell["value"] = new_final_val
         cell["priority_source"] = top_src
         cell["is_overwrite"] = ("user" in cell["sources"])
         cell["updated_by"] = user
-        
-        create_audit_log(db, table_name, row.row_id, col_name, old_val, val, source, user)
         
     flag_modified(row, "data")
     db.commit()
