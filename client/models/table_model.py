@@ -345,33 +345,14 @@ class ApiLazyTableModel(QAbstractTableModel):
         QThreadPool.globalInstance().start(worker)
 
     def _on_batch_update_finished(self, result: dict):
-        updates = result.get("updates", [])
-        if not updates: return
-        
-        min_row, max_row = float('inf'), -1
-        min_col, max_col = float('inf'), -1
-        
-        for u in updates:
-            r = u["row_index"]
-            c = u["col_index"]
-            val = u["value"]
-            col_name = u["column_name"]
-            
-            cell_data = self._data[r].get("data", {})
-            if col_name not in cell_data:
-                cell_data[col_name] = {}
-            cell_data[col_name]["value"] = val
-            cell_data[col_name]["is_overwrite"] = True
-            
-            min_row = min(min_row, r)
-            max_row = max(max_row, r)
-            min_col = min(min_col, c)
-            max_col = max(max_col, c)
-            
-        if min_row <= max_row and min_col <= max_col:
-            top_left = self.index(min_row, min_col)
-            bottom_right = self.index(max_row, max_col)
-            self.dataChanged.emit(top_left, bottom_right, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+        """
+        [고스트 밸류(Ghost Values) 해결]
+        문제: 부상(Floating) 로직으로 인해 WebSocket 수신 시 행의 인덱스가 즉시 변경됨.
+        원인: 배치 업데이트 완료 응답은 지연될 수 있으며, 응답 시점의 row_index는 이미 낡은(Stale) 정보일 수 있음.
+        해결: 인덱스 기반의 로컬 수동 갱신을 중단하고, 모든 데이터/위치 동기화를 WebSocket 브로드캐스트로 일원화함.
+        """
+        # (Optional) 로컬 작업 UI 피드백(예: 프로그레스바 종료) 필요 시 여기에 작성
+        pass
 
     # -------------------------------------------------------------------------
     # WebSocket 브로드캐스트 수신 슬롯 (WebSocketExpert 스킬 규칙 B)
@@ -419,15 +400,21 @@ class ApiLazyTableModel(QAbstractTableModel):
                 items = data.get("items", [])
                 if not items: return
                 
-                row_id_map = self._build_row_id_map()
                 all_cell_updates = []
                 
                 for item in items:
                     row_id = item.get("row_id")
                     is_new = item.get("is_new", False)
-                    new_row_data = item.get("data", {})
+                    new_row_data_blob = item.get("data", {}) # This is the 'data' field containing cells
                     
-                    for col, cell_val in new_row_data.items():
+                    # Normalize: WebSocket data should match Fetch data structure
+                    normalized_row = self._normalize_row_data({
+                        "row_id": row_id,
+                        "table_name": self.table_name,
+                        "data": new_row_data_blob
+                    })
+
+                    for col, cell_val in new_row_data_blob.items():
                         if isinstance(cell_val, dict) and "value" in cell_val:
                             all_cell_updates.append({
                                 "row_id": row_id,
@@ -438,16 +425,16 @@ class ApiLazyTableModel(QAbstractTableModel):
                                 "source": "remote"
                             })
 
+                    # Strict Deduplication: Remove any existing row with this ID before floating
+                    row_id_map = self._build_row_id_map()
                     idx = row_id_map.get(row_id)
                     if idx is not None:
-                        self._data[idx] = {"row_id": row_id, "table_name": self.table_name, "data": new_row_data}
-                        row_obj = self._data.pop(idx)
-                        self._data.insert(0, row_obj)
-                        row_id_map = self._build_row_id_map()
-                    else:
-                        self._data.insert(0, {"row_id": row_id, "table_name": self.table_name, "data": new_row_data})
-                        if is_new: self._total_count += 1
-                        row_id_map = self._build_row_id_map()
+                        self._data.pop(idx)
+                    
+                    # Insert at top (Floating)
+                    self._data.insert(0, normalized_row)
+                    if idx is None and is_new:
+                        self._total_count += 1
 
                 self.beginResetModel()
                 self.endResetModel()
@@ -505,6 +492,9 @@ class ApiLazyTableModel(QAbstractTableModel):
             if not changed_indices: return
 
             for row_id in affected_rows:
+                # REBUILD map every time because indices shift on pop/insert
+                self.beginMoveRows(QModelIndex(), 0, 0, QModelIndex(), 0) # Dummy to notify view of potential shift if needed? No.
+                # Just use beginMoveRows for the actual move
                 current_map = self._build_row_id_map()
                 idx = current_map.get(row_id)
                 if idx is not None and idx > 0:
@@ -517,24 +507,54 @@ class ApiLazyTableModel(QAbstractTableModel):
         finally:
             self._is_processing_remote = False
 
+    def _normalize_row_data(self, row: dict) -> dict:
+        """
+        [데이터 구조 비대칭 해결]
+        Fetch 데이터(DataRowResponse)는 created_at 등이 최상위에 위치하나, 
+        WebSocket 데이터는 data 맵 내부에만 있는 경우가 있음.
+        이를 최상위로 끌어올려 모델 인덱싱 및 필터링 시 구조적 일관성을 확보함.
+        """
+        data_blob = row.get("data", {})
+        
+        # 1. 최상위에 created_at, updated_at이 없고 data 내부에 있다면 추출하여 주입
+        if "created_at" not in row and "created_at" in data_blob:
+            row["created_at"] = data_blob["created_at"].get("value")
+        if "updated_at" not in row and "updated_at" in data_blob:
+            row["updated_at"] = data_blob["updated_at"].get("value")
+            
+        return row
+
     def _build_row_id_map(self) -> dict:
-        return {row.get("row_id"): idx for idx, row in enumerate(self._data)}
+        """현재 로컬 캐시된 데이터의 row_id와 인덱스 매핑을 생성합니다."""
+        return {str(row.get("row_id")): idx for idx, row in enumerate(self._data)}
 
     def _on_remote_row_fetched(self, row_data: dict):
-        row_id = row_data.get("row_id")
+        row_id = str(row_data.get("row_id"))
         if row_id in self._fetching_row_ids:
             self._fetching_row_ids.remove(row_id)
             
+        # Normalize and Deduplicate
+        normalized_row = self._normalize_row_data(row_data)
         row_id_map = self._build_row_id_map()
-        if row_id in row_id_map: return
+        
+        if row_id in row_id_map:
+            # Already exists, just update and move to top
+            idx = row_id_map[row_id]
+            self._data[idx] = normalized_row
+            if idx > 0:
+                self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
+                self._data.insert(0, self._data.pop(idx))
+                self.endMoveRows()
+            return
 
+        # Truly new to cache
         self._is_processing_remote = True
         try:
             self.beginInsertRows(QModelIndex(), 0, 0)
-            self._data.insert(0, row_data)
-            self._total_count += 1
+            self._data.insert(0, normalized_row)
+            # Do NOT increment _total_count here because single fetch is typically for an existing row
             self.endInsertRows()
-            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1))
+            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
         finally:
             self._is_processing_remote = False
 
@@ -632,14 +652,26 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.endResetModel()
         else:
             if new_data:
-                start_row = len(self._data)
-                self._data.extend(new_data)
-                # Notify the view that these rows now have data
-                # Since rowCount already returned the total, we use dataChanged
-                self.dataChanged.emit(
-                    self.index(start_row, 0),
-                    self.index(start_row + len(new_data) - 1, len(self._columns) - 1)
-                )
+                # [고스트 행(Ghost Rows) 해결 - 기법 A: Deduplication on Fetch]
+                # 문제: Floating으로 최상단에 자리잡은 행이 스크롤 페칭 시 하단에서 또 발견되는 현상.
+                # 해결: 서버 청크를 추가하기 전, 이미 로컬 캐시에 부상해 있는 행은 전수 제외 처리.
+                current_row_ids = {str(r.get("row_id")) for r in self._data}
+                unique_new_data = [
+                    r for r in new_data 
+                    if str(r.get("row_id")) not in current_row_ids
+                ]
+                
+                if unique_new_data:
+                    start_row = len(self._data)
+                    self._data.extend(unique_new_data)
+                    
+                    # 뷰에 신규 데이터 영역 갱신 알림
+                    # Note: rowCount()는 이미 placeholder를 포함하므로 dataChanged만으로 충분
+                    self.dataChanged.emit(
+                        self.index(start_row, 0),
+                        self.index(start_row + len(unique_new_data) - 1, len(self._columns) - 1),
+                        [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
+                    )
             
         self._fetching = False
 
