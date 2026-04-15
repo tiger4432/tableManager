@@ -284,6 +284,7 @@ class MainWindow(QMainWindow):
         print('WEB SOCKET 초기화')
         self._ws_thread: WsListenerThread | None = None
         self._active_models: list[ApiLazyTableModel] = []
+        self._active_workers = set()
 
         # ── 서버로부터 모든 테이블 목록 조회 및 탭 초기화 ──────────────
         print('TABLE 초기화')
@@ -399,10 +400,45 @@ class MainWindow(QMainWindow):
 
         
     def _add_new_tab(self):
-        """+ 버튼 클릭 시 테이블 이름을 입력받아 새 탭을 생성합니다."""
-        name, ok = QInputDialog.getText(self, "테이블 추가", "테이블 이름:")
-        if ok and name.strip():
-            self._init_table_tab(name.strip())
+        """+ 버튼 클릭 시 실시간으로 서버의 테이블 목록을 가져와 드롭다운으로 제시합니다."""
+        url = config.get_tables_list_url()
+        from models.table_model import ApiSchemaWorker
+        
+        # 중복 요청 방지 (워커가 이미 돌아가고 있는지 확인 - 옵션)
+        worker = ApiSchemaWorker(url)
+        self._active_workers.add(worker)
+        
+        def _on_tables_fetched(result):
+            # 워커 정리
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+                
+            tables = result.get("tables", [])
+            if not tables:
+                QMessageBox.information(self, "정보", "서버에 사용 가능한 테이블이 없습니다.")
+                return
+                
+            # 드롭다운 다이얼로그 (실시간 목록 기반 + 직접 입력 가능)
+            name, ok = QInputDialog.getItem(
+                self, "새 탭 추가", "연결할 테이블 선택 또는 입력:", 
+                sorted(tables), 0, True # editable = True
+            )
+            if ok and name:
+                # 이미 열려있는 탭인지 확인
+                for i in range(self.tabs.count()):
+                    if self.tabs.tabText(i) == name:
+                        self.tabs.setCurrentIndex(i)
+                        return
+                self._init_table_tab(name)
+        
+        def _on_error(err):
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+            QMessageBox.critical(self, "오류", f"테이블 목록 조회 실패: {err}")
+
+        worker.signals.finished.connect(_on_tables_fetched)
+        worker.signals.error.connect(_on_error)
+        QThreadPool.globalInstance().start(worker)
 
     def _close_tab(self, index: int):
         """탭 닫기 — 리스트에서 모델 제거 후 탭 제거."""
@@ -442,9 +478,8 @@ class MainWindow(QMainWindow):
         tab_idx = self.tabs.addTab(tab, table_name)
         print(f"[Debug] Tab {tab_idx} added for {table_name}")
         
-        # Select first tab when it arrives if none selected
-        if self.tabs.currentIndex() == -1:
-            self.tabs.setCurrentIndex(0)
+        # 새 탭으로 즉시 이동
+        self.tabs.setCurrentIndex(tab_idx)
 
         # ── Agent D v4: 서버에서 스키마 로드 후 데이터 페칭 시작 (Sequential) ──
         self._load_table_schema(model)
