@@ -35,14 +35,22 @@ if os.name == 'nt':
                 os.add_dll_directory(bin_dir)
 # ──────────────────────────────────────────────────────────
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox, QFileDialog
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QTableView, QStackedWidget, 
+    QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QInputDialog, 
+    QMenu, QMessageBox, QFileDialog, QStatusBar, QLabel
+)
 from PySide6.QtCore import Qt, QThreadPool, Signal
 from PySide6.QtGui import QKeySequence, QGuiApplication
+
 import config
 from models.table_model import ApiLazyTableModel, ApiSchemaWorker, ApiUploadWorker
 from ui.panel_history import HistoryDockPanel
 from ui.panel_filter import FilterToolBar
 from ui.dialog_source_manage import CellSourceManageDialog
+from ui.navigation_rail import NavigationRail
+from ui.panel_dashboard import DashboardPanel
+from ui.panel_settings import SettingsPanel
 
 class ExcelTableView(QTableView):
     fileDropped = Signal(str)
@@ -51,6 +59,8 @@ class ExcelTableView(QTableView):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setAlternatingRowColors(True)
+        self.verticalHeader().setFixedWidth(50)
+        self.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -253,32 +263,65 @@ class ExcelTableView(QTableView):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AssyManager - Data Editor")
-        self.resize(1200, 750)
+        self.setWindowTitle("AssyManager - Enterprise Edition")
+        self.resize(1300, 850)
 
-        # ── 필터 툴바 (상단) ──────────────────────────────────────────
+        # ── 메인 컨테이너 및 레이아웃 ────────────────────────────────
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        self.main_h_layout = QHBoxLayout(central_widget)
+        self.main_h_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_h_layout.setSpacing(0)
+
+        # ── 1. 좌측 내비게이션 바 (Sidebar) ──────────────────────────
+        self._nav_rail = NavigationRail(self)
+        self._nav_rail.navigateRequested.connect(self._on_navigation_requested)
+        self._nav_rail.closeRequested.connect(self._on_table_close_requested)
+        self.main_h_layout.addWidget(self._nav_rail)
+
+        # ── 2. 우측 콘텐츠 영역 ──────────────────────────────────────
+        self.content_v_layout = QVBoxLayout()
+        self.content_v_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_v_layout.setSpacing(0)
+        self.main_h_layout.addLayout(self.content_v_layout)
+
+        # ── 필터 툴바 (상단 고정) ──
         self._filter_bar = FilterToolBar(self)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._filter_bar)
+        self.content_v_layout.addWidget(self._filter_bar)
+
+        # ── 중앙 스택 위젯 (Dashboard + Tables) ──
+        self.stacked = QStackedWidget()
+        self.content_v_layout.addWidget(self.stacked)
+
+        # ── 대시보드 추가 (Index 0) ──
+        self._dashboard = DashboardPanel()
+        self.stacked.addWidget(self._dashboard)
+
+        # ── 설정 패널 추가 (Index 1) ──
+        self._settings_page = SettingsPanel()
+        self.stacked.addWidget(self._settings_page)
 
         # ── 히스토리 패널 (우측 도킹) ─────────────────────────────────
         self._history_panel = HistoryDockPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._history_panel)
+        
+        # ── 하당 상태바 ──
+        self.setStatusBar(QStatusBar())
+        self.statusBar().setStyleSheet("background-color: #11111b; color: #9399b2; border-top: 1px solid #313244;")
+        self._ws_status_label = QLabel("  ● WebSocket: Disconnected  ")
+        self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
+        self.statusBar().addPermanentWidget(self._ws_status_label)
 
-        # Central Tabs
-        self.tabs = QTabWidget()
-        self.tabs.setTabsClosable(True)
-        self.tabs.tabCloseRequested.connect(self._close_tab)
-        self.tabs.currentChanged.connect(self._on_tab_changed)
-        self.setCentralWidget(self.tabs)
-
-        # ── + 탭 추가 버튼 (FilterToolBar 시그널 연결) ────────────────
+        # ── 시그널 연결 ─────────────────────────────────────────────
         self._filter_bar.addTabRequested.connect(self._add_new_tab)
-        # ── + 행 추가 버튼 (FilterToolBar 시그널 연결) ────────────────
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
-        # ── 📥 CSV 추출 버튼 (FilterToolBar 시그널 연결) ──────────────
         self._filter_bar.exportRequested.connect(self._on_export_requested)
-        # ── 📤 파일 업로드 버튼 (FilterToolBar 시그널 연결) ──────────────
         self._filter_bar.uploadRequested.connect(self._on_upload_requested)
+        self._filter_bar.searchRequested.connect(self._on_global_search)
+
+        # ── 데이터 모델 매핑 (사이드바 메뉴 ID -> Widget Index) ──
+        self._nav_to_index = {"home": 0, "settings": 1}
+        self._index_to_table = {}
 
         # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
         print('WEB SOCKET 초기화')
@@ -286,13 +329,74 @@ class MainWindow(QMainWindow):
         self._active_models: list[ApiLazyTableModel] = []
         self._active_workers = set()
 
-        # ── 서버로부터 모든 테이블 목록 조회 및 탭 초기화 ──────────────
+        # ── 서버로부터 모든 테이블 목록 조회 및 초기화 ──────────────
         print('TABLE 초기화')
         self._load_all_tables()
-        
 
-    def _on_tab_changed(self, index):
-        self._filter_bar.set_active_proxy(self._filter_bar._proxies[index])    
+    def _on_navigation_requested(self, nav_id: str):
+        """사이드바 클릭 시 해당 화면으로 전환."""
+        if nav_id in self._nav_to_index:
+            idx = self._nav_to_index[nav_id]
+            self.stacked.setCurrentIndex(idx)
+            
+            # 필터 툴바 활성 프록시 갱신
+            if idx > 1: # 0: Dashboard, 1: Settings
+                proxy_idx = idx - 2
+                if proxy_idx < len(self._filter_bar._proxies):
+                    self._filter_bar.set_active_proxy(self._filter_bar._proxies[proxy_idx])
+            
+            # 윈도우 타이틀 및 툴바 표시 업데이트
+            if nav_id == "home":
+                self.setWindowTitle("AssyManager - Dashboard")
+                self._filter_bar.hide()
+            elif nav_id == "settings":
+                self.setWindowTitle("AssyManager - Settings")
+                self._filter_bar.hide()
+            else:
+                table_name = nav_id.replace("table:", "")
+                self.setWindowTitle(f"AssyManager - {table_name}")
+                self._filter_bar.show()
+
+    def _on_table_close_requested(self, nav_id: str):
+        """테이블 종료 요청 처리 — 리소스 해제 및 UI 제거."""
+        if nav_id not in self._nav_to_index:
+            return
+            
+        idx = self._nav_to_index.pop(nav_id)
+        table_name = nav_id.replace("table:", "")
+        
+        # 1. Stacked Widget에서 제거
+        widget = self.stacked.widget(idx)
+        self.stacked.removeWidget(widget)
+        widget.deleteLater()
+        
+        # 2. 모델 관리 리스트에서 제거
+        model = getattr(widget, "_source_model", None)
+        if model and model in self._active_models:
+            self._active_models.remove(model)
+            
+        # 3. 사이드바 아이템 제거
+        self._nav_rail.remove_nav_item(nav_id)
+        
+        # 4. 인덱스 매핑 갱신 (제거된 인덱스 보다 큰 인덱스들은 -1씩 당겨짐)
+        new_nav_to_index = {"home": 0}
+        new_index_to_table = {}
+        for nid, old_idx in self._nav_to_index.items():
+            if old_idx > idx:
+                new_idx = old_idx - 1
+            else:
+                new_idx = old_idx
+            new_nav_to_index[nid] = new_idx
+            if nid.startswith("table:"):
+                new_index_to_table[new_idx] = nid.replace("table:", "")
+        
+        self._nav_to_index = new_nav_to_index
+        self._index_to_table = new_index_to_table
+        
+        # 5. 현재 화면이 닫혔다면 홈으로 이동
+        if self.stacked.count() == 0 or idx == self.stacked.currentIndex():
+            self._on_navigation_requested("home")
+            self._nav_rail.set_active("home")
 
     def _load_all_tables(self):
         """서버에서 가용한 모든 테이블 목록을 가져와 각각 탭으로 생성합니다."""
@@ -348,14 +452,25 @@ class MainWindow(QMainWindow):
             
         from models.table_model import WsListenerThread
         ws_url = config.WS_BASE_URL
+        # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
         self._ws_thread = WsListenerThread(ws_url)
         self._ws_thread.message_received.connect(self._dispatch_ws_message)
-        self._ws_thread.connection_error.connect(lambda err: print(f"[MainWS] CRITICAL: {err}"))
+        self._ws_thread.connection_error.connect(self._on_ws_error)
         self._ws_thread.start()
+        
+        # 상태바 갱신
+        self._ws_status_label.setText("  ● WebSocket: Connected  ")
+        self._ws_status_label.setStyleSheet("color: #a6e3a1;") # Green
+        
         print(f"[MainWS] Shared Listener Thread started for {ws_url}")
         
         # 앱 종료 시 정리 연결
         QApplication.instance().aboutToQuit.connect(self._ws_thread.stop)
+
+    def _on_ws_error(self, err):
+        print(f"[MainWS] CRITICAL: {err}")
+        self._ws_status_label.setText("  ● WebSocket: Error  ")
+        self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
 
     def _dispatch_ws_message(self, data: dict):
         """수신된 WS 메시지를 모든 활성 모델에 전달합니다."""
@@ -373,15 +488,16 @@ class MainWindow(QMainWindow):
             model.set_search_query(text)
 
     def _on_add_row_requested(self):
-        """현재 활성화된 탭의 테이블에 새 행을 추가 요청합니다."""
-        current_index = self.tabs.currentIndex()
-        if current_index == -1:
-            return
-            
-
-
-        tab_widget = self.tabs.widget(current_index)
-        model = getattr(tab_widget, "_source_model", None)
+        """현재 활성화된 화면의 테이블에 새 행을 추가 요청합니다."""
+        curr_idx = self.stacked.currentIndex()
+        if curr_idx <= 0: return # Dashboard
+        
+        table_name = self._index_to_table.get(curr_idx)
+        if not table_name: return
+        
+        # stacked widget에서 widget을 찾아 model 추출
+        page_widget = self.stacked.widget(curr_idx)
+        model = getattr(page_widget, "_source_model", None)
         if not model:
             return
             
@@ -424,11 +540,12 @@ class MainWindow(QMainWindow):
                 sorted(tables), 0, True # editable = True
             )
             if ok and name:
-                # 이미 열려있는 탭인지 확인
-                for i in range(self.tabs.count()):
-                    if self.tabs.tabText(i) == name:
-                        self.tabs.setCurrentIndex(i)
-                        return
+                # 이미 열려있는 테이블인지 확인 (사이드바 매핑 사용)
+                nav_id = f"table:{name}"
+                if nav_id in self._nav_to_index:
+                    self._on_navigation_requested(nav_id)
+                    self._nav_rail.set_active(nav_id)
+                    return
                 self._init_table_tab(name)
         
         def _on_error(err):
@@ -441,12 +558,9 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _close_tab(self, index: int):
-        """탭 닫기 — 리스트에서 모델 제거 후 탭 제거."""
-        tab_widget = self.tabs.widget(index)
-        model = getattr(tab_widget, "_source_model", None)
-        if model in self._active_models:
-            self._active_models.remove(model)
-        self.tabs.removeTab(index)
+        """(사이드바 체제에서는 '닫기' 대신 '제거' 버튼이 필요할 때 사용 가능)"""
+        # (구현 생략 - 필요 시 사이드바에서 특정 테이블 우클릭 메뉴 등으로 구현 가능)
+        pass
 
     def _init_table_tab(self, table_name: str):
         tab = QWidget()
@@ -475,11 +589,45 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(table_view)
 
-        tab_idx = self.tabs.addTab(tab, table_name)
-        print(f"[Debug] Tab {tab_idx} added for {table_name}")
+        tab_idx = self.stacked.addWidget(tab)
+        nav_id = f"table:{table_name}"
         
-        # 새 탭으로 즉시 이동
-        self.tabs.setCurrentIndex(tab_idx)
+        # ── 스마트 아이콘 매핑 로직 (반도체/패키징 공정 도메인 강화) ──
+        icon_map = {
+            "chat": "💬",
+            # 생산 및 물류
+            "inventory": "📦", "stock": "📦", "wip": "🔄", "lot": "🏷️",
+            "production": "🏭", "plan": "📅", "schedule": "⏰", "ship": "🚚",
+            # 반도체 공정 (Wafer & Fab)
+            "wafer": "📀", "fab": "🏫", "foundry": "💠", "clean": "🧤",
+            # 패키징 및 조립 (Assy & Pkg)
+            "assy": "🔧", "package": "🧩", "pkg": "📦", "bonding": "🔗", "substrate": "🔲", "bump": "🟢",
+            # 테스트 및 품질 (Test & QA)
+            "test": "🧪", "yield": "📈", "bin": "🗑️", "defect": "🔍", "inspection": "🧐", "ng": "❌", "qa": "🛡️",
+            # 설비 및 센서
+            "equipment": "⚙️", "tool": "🛠️", "mc": "🏗️", "sensor": "🌡️", "temp": "🌡️", "metric": "⚡",
+            # 시스템류
+            "log": "📜", "master": "👤", "user": "👥", "config": "⚙️"
+        }
+        
+        icon_str = "📄" # 기본 아이콘
+        for keyword, emoji in icon_map.items():
+            if keyword in table_name.lower():
+                icon_str = emoji
+                break
+                
+        self._nav_rail.add_nav_item(nav_id, icon_str, table_name, is_table=True)
+        
+        # 매핑 저장 (기존 Dashboard(0), Settings(1) 이후에 위치)
+        self._nav_to_index[nav_id] = tab_idx
+        self._index_to_table[tab_idx] = table_name
+        
+        print(f"[Debug] Page {tab_idx} added for {table_name}")
+        
+        # 새 화면으로 즉시 이동
+        self.stacked.setCurrentIndex(tab_idx)
+        self._nav_rail.set_active(nav_id)
+        self._filter_bar.show()
 
         # ── Agent D v4: 서버에서 스키마 로드 후 데이터 페칭 시작 (Sequential) ──
         self._load_table_schema(model)
@@ -525,10 +673,11 @@ class MainWindow(QMainWindow):
 
     def _on_export_requested(self):
         """현재 활성화된 테이블의 데이터를 CSV로 익스포트합니다."""
-        idx = self.tabs.currentIndex()
-        if idx < 0: return
+        idx = self.stacked.currentIndex()
+        if idx <= 0: return
         
-        table_name = self.tabs.tabText(idx)
+        table_name = self._index_to_table.get(idx)
+        if not table_name: return
         
         # 파일 저장 다이얼로그 (Default: 테이블명_추출_시각.csv)
         from datetime import datetime
@@ -555,12 +704,12 @@ class MainWindow(QMainWindow):
 
 
     def _on_upload_requested(self):
-        """현재 탭의 테이블 인제션 워크스페이스로 파일 업로드를 수행합니다."""
-        idx = self.tabs.currentIndex()
-        if idx < 0: return
+        """현재 화면의 테이블 인제션 워크스페이스로 파일 업로드를 수행합니다."""
+        idx = self.stacked.currentIndex()
+        if idx <= 0: return
         
-        tab = self.tabs.widget(idx)
-        source_model = getattr(tab, "_source_model", None)
+        page = self.stacked.widget(idx)
+        source_model = getattr(page, "_source_model", None)
         if not source_model:
             return
         

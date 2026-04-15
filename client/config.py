@@ -1,18 +1,65 @@
 import os
 import sys
 import getpass
+import json
 
 # ── 네트워크 환경 설정 ──
 # 루프백 주소(127.0.0.1) 통신 시 프록시 간섭을 원천 차단하여 통신 안정성 확보
 os.environ["NO_PROXY"] = "127.0.0.1,localhost"
 
-# ── 서버 접속 설정 ──
+# ── 서버 접속 설정 (기본값) ──
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 8000
 
-# 베이스 주소 정의
-API_BASE_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
-WS_BASE_URL = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
+# ── 사용자 정보 (추적용 기본값) ──
+try:
+    CURRENT_USER = getpass.getuser()
+except Exception:
+    CURRENT_USER = "unknown_user"
+
+# ── 설정 파일 경로 ──
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "client_settings.json")
+
+def load_settings():
+    """로컬 JSON 파일에서 설정을 로드하여 전역 변수에 반영합니다."""
+    global SERVER_HOST, SERVER_PORT, CURRENT_USER, API_BASE_URL, WS_BASE_URL
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                SERVER_HOST = data.get("server_host", SERVER_HOST)
+                SERVER_PORT = data.get("server_port", SERVER_PORT)
+                CURRENT_USER = data.get("current_user", CURRENT_USER)
+                print(f"[Config] Settings loaded from {SETTINGS_FILE}")
+        except Exception as e:
+            print(f"[Config] Failed to load settings: {e}")
+    
+    # 베이스 주소 재계산
+    API_BASE_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
+    WS_BASE_URL = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
+
+def save_settings(host, port, user):
+    """설정을 JSON 파일에 저장하고 현재 세션에 반영합니다."""
+    global SERVER_HOST, SERVER_PORT, CURRENT_USER
+    SERVER_HOST = host
+    SERVER_PORT = int(port)
+    CURRENT_USER = user
+    
+    data = {
+        "server_host": SERVER_HOST,
+        "server_port": SERVER_PORT,
+        "current_user": CURRENT_USER
+    }
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        print(f"[Config] Settings saved to {SETTINGS_FILE}")
+        load_settings() # URL 재계산 호출
+    except Exception as e:
+        print(f"[Config] Failed to save settings: {e}")
+
+# 초기 로드 실행
+load_settings()
 
 # ── 엔드포인트 빌더 (유지보수 포인트 일원화) ──
 
@@ -60,9 +107,4 @@ def get_single_row_url(table_name: str, row_id: str) -> str:
     """특정 행 단건 조회 엔드포인트 (WS 부상 시 사용)"""
     return f"{API_BASE_URL}/tables/{table_name}/{row_id}"
 
-# ── 사용자 정보 (추적용) ──
-# 모든 수동 수정(Cell, Batch, Priority) 시 해당 사용자명이 서버로 전달됩니다.
-try:
-    CURRENT_USER = getpass.getuser()
-except Exception:
-    CURRENT_USER = "unknown_user"
+# (이전 CURRENT_USER 설정 로직은 load_settings 내부로 통합됨)

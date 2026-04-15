@@ -33,19 +33,35 @@ class FilterToolBar(QToolBar):
         super().__init__("필터", parent)
         self.setMovable(False)
         self.setFloatable(False)
-        self.setStyleSheet(
-            "QToolBar { background: #1e1e2e; border-bottom: 1px solid #313244; spacing: 6px; padding: 4px 8px; }"
-            "QLabel { color: #89b4fa; font-weight: bold; font-size: 12px; }"
-            "QLineEdit {"
-            "  background: #313244; color: #cdd6f4; border: 1px solid #45475a;"
-            "  border-radius: 4px; padding: 3px 8px; font-size: 12px; min-width: 220px;"
-            "}"
-            "QLineEdit:focus { border-color: #89b4fa; }"
-        )
+        self.setStyleSheet("""
+            QToolBar { 
+                background: #11111b; 
+                border-bottom: 1px solid #313244; 
+                spacing: 12px; 
+                padding: 12px 20px; 
+                min-height: 60px;
+            }
+            QLabel { color: #bac2de; font-weight: 500; font-size: 13px; }
+            QLineEdit {
+                background: #1e1e2e; 
+                color: #cdd6f4; 
+                border: 1px solid #45475a;
+                border-radius: 6px; 
+                padding: 6px 12px; 
+                font-size: 13px; 
+                min-width: 300px;
+            }
+            QLineEdit:focus { border-color: #89b4fa; background: #313244; }
+            
+            QPushButton {
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-size: 12px;
+            }
+        """)
 
-        # 라벨
-        lbl = QLabel("🔍 검색:")
-        self.addWidget(lbl)
+        # 검색창 (라벨 대신 Placeholder 사용)
 
         # 검색창
         self._search_box = QLineEdit()
@@ -103,15 +119,12 @@ class FilterToolBar(QToolBar):
         self.addWidget(self._export_btn)
 
         # ── 📤 파일 업로드 버튼 ──
-        self._upload_btn = QPushButton("📤 파일 업로드")
+        self._upload_btn = QPushButton("📤 Upload")
         self._upload_btn.setToolTip("서버 인제션 워크스페이스에 로그 파일 업로드")
-        self._upload_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: #cba6f7; color: #1e1e2e; font-weight: bold;"
-            "  border-radius: 4px; padding: 4px 12px; font-size: 12px; margin-left: 4px;"
-            "}"
-            "QPushButton:hover { background: #f5c2e7; }"
-        )
+        self._upload_btn.setStyleSheet("""
+            QPushButton { background: #cba6f7; color: #111111; }
+            QPushButton:hover { background: #f5c2e7; }
+        """)
         self._upload_btn.clicked.connect(self.uploadRequested.emit)
         self.addWidget(self._upload_btn)
 
