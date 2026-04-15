@@ -31,6 +31,10 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+# 로그 파일
+*.log
+server/*.log
+
 # PyInstaller 빌드 결과물
 client/build/
 client/dist/

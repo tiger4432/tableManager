@@ -12,6 +12,43 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AssyManager Table Server")
 
+# --- Directory Watcher Integration ---
+import sys
+import os
+# parsers 디렉토리를 sys.path에 추가하여 내부 임포트(advanced_ingester 등) 정합성 확보
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(script_dir, "parsers"))
+from directory_watcher import WorkspaceWatcher
+
+# 전역 워처 인스턴스 (종료 시 접근 위함)
+global_watcher: WorkspaceWatcher = None
+
+@app.on_event("startup")
+async def startup_event():
+    global global_watcher
+    try:
+        print("[Startup] Initializing Directory Watcher...")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_base = os.path.join(script_dir, "ingestion_workspace")
+        
+        global_watcher = WorkspaceWatcher(workspace_base)
+        global_watcher.discover_and_watch()
+        # 비차단 모드(blocking=False)로 기동
+        global_watcher.start(blocking=False)
+        print(f"[Startup] Directory Watcher started with {global_watcher.watch_count} watches.")
+    except Exception as e:
+        print(f"[Startup] Failed to start Directory Watcher: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global global_watcher
+    if global_watcher and global_watcher.observer:
+        print("[Shutdown] Stopping Directory Watcher...")
+        global_watcher.observer.stop()
+        global_watcher.observer.join()
+        print("[Shutdown] Directory Watcher stopped.")
+# --------------------------------------
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []

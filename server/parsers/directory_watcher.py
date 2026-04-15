@@ -6,15 +6,24 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from advanced_ingester import AdvancedIngester
 
+endpoint = '127.0.0.1:8000'
+
 # Configure logging
+# Configure logging
+script_dir = os.path.dirname(os.path.abspath(__file__))
+server_dir = os.path.abspath(os.path.join(script_dir, ".."))
+log_path = os.path.join(server_dir, "watcher.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler()
+        logging.StreamHandler(),
+        logging.FileHandler(log_path, encoding='utf-8')
     ]
 )
 logger = logging.getLogger("DirectoryWatcher")
+logger.info(f"DirectoryWatcher logging initialized. Log file: {log_path}")
 
 class IngestionHandler(FileSystemEventHandler):
     """
@@ -150,7 +159,7 @@ class IngestionHandler(FileSystemEventHandler):
         table_config = {}
         try:
             # directory_watcher.py 의 위치 (server/parsers/) 를 기준으로 상대 경로 설정
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # directory_watcher.py 의 위치 (server/parsers/) 를 기준으로 상대 경로 설정
             global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
             if os.path.exists(global_config_path):
                 with open(global_config_path, "r", encoding="utf-8") as f:
@@ -178,7 +187,7 @@ class IngestionHandler(FileSystemEventHandler):
         
         # 4. 배치 단위로 정규화 및 전역 전송 (Agent Optimization)
         print('배치 전송')
-        base_url = f"http://127.0.0.1:8000/tables/{table_name}/upsert/batch"
+        base_url = f"http://{endpoint}/tables/{table_name}/upsert/batch"
         batch_size = 50
         
         for i in range(0, len(rows), batch_size):
@@ -266,19 +275,21 @@ class WorkspaceWatcher:
                     else:
                         logger.warning(f"Skipping {root}: No JSON config or custom_parser found.")
 
-    def start(self):
+    def start(self, blocking: bool = True):
         if self.watch_count == 0:
             logger.error("No valid 'raws' folders found to watch.")
             return
 
         self.observer.start()
         logger.info(f"Started observer with {self.watch_count} watches.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.observer.stop()
-        self.observer.join()
+        
+        if blocking:
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.observer.stop()
+            self.observer.join()
 
 if __name__ == "__main__":
     # Assuming the script is run from server/parsers/
