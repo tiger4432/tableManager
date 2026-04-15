@@ -17,11 +17,10 @@ FastAPI 기반의 백엔드와 PySide6 기반의 프론트엔드가 실시간 We
 - **Advanced Ingestion**: 헤더-본문 결합 파싱 및 디렉토리 감시 기반의 자동화 파이프라인. 상세 설정은 [INGESTION_GUIDE.md](./INGESTION_GUIDE.md)를 참조하십시오.
 
 ### 🎨 프론트엔드 (PySide6 + Shared WS)
-
+- **Enterprise Navigation**: `NavigationRail` (Sidebar) + `QStackedWidget` 구조를 통해 멀티 테이블 환경에서도 광활한 작업 공간을 유지합니다.
 - **Virtual Scrolling**: `ApiLazyTableModel`을 통해 수만 건의 데이터도 지연 없이 가상 스크롤링합니다.
 - **Shared WebSocket**: 단일 WebSocket 연결로 모든 탭의 데이터를 실시간 업데이트하며, **비동기 워커 생명주기 관리(GC 방지)** 및 **순차적 탭 로딩**을 통해 시스템 안정성을 극대화하였습니다.
-- **Manual Fix UI**: 사용자 수동 수정 시 노란색 하이라이트와 `🛠️` 아이콘 및 수정자 정보가 실시간 대조 표시됩니다.
-- **UX Hardening**: 셀 편집 시 기존 값 유지(`EditRole`) 및 실제 값 변경이 없을 경우 서버 통신을 차단(`setData` 가드)하여 네트워크 효율을 극대화했습니다.
+- **Settings Persistence**: `client_settings.json`을 통해 서버 접속 정보와 사용자 아이덴티티를 영구 관리합니다.
 - **Lazy Model Hardening**: 비동기 환경에서의 고스트 행(중복) 및 가상 잔상(Ghost Values)을 방지하기 위해 **전수 중복 제거(Strict Deduplication)** 및 **WebSocket 기반 동기화 일원화** 전략을 적용하였습니다.
 
 ---
@@ -150,12 +149,51 @@ Windows 환경의 고질적인 DLL 충돌 문제를 해결하기 위해 **원천
 
 ---
 
-## 📋 9. 유지보수 및 운영
+## 🔄 10. 데이터 흐름 및 CRUD 로직 상세
+
+앱의 각 기능별 데이터 흐름과 주요 처리 함수를 정리한 매트릭스입니다.
+
+### 10.1 CRUD 데이터 플로우 매트릭스
+
+| 주요 기능          | 클라이언트 주요 함수 (Client)          | API 엔드포인트                       | 서버 주요 함수 (Server-side)      | WS 이벤트 명         |
+| :----------------- | :------------------------------------- | :----------------------------------- | :-------------------------------- | :------------------- |
+| **테이블 목록 로드** | `_load_all_tables()`                   | `GET /tables`                        | `main.get_all_tables()`           | -                    |
+| **데이터 페이징 조회** | `ApiLazyTableModel.fetch_data()`     | `GET /tables/{t}/data`               | `crud.get_table_data()`           | -                    |
+| **단일 셀 수정**     | `ApiLazyTableModel.setData()`          | `POST /tables/{t}/cells`              | `crud.update_cell()`              | `cell_update`        |
+| **신규 행 생성**     | `MainWindow._on_add_row_requested`     | `POST /tables/{t}/rows`               | `crud.create_empty_row()`         | `row_create`         |
+| **행 삭제**          | `ExcelTableView.delete_selected`      | `DELETE /tables/{t}/rows/{id}`       | `crud.delete_row()`               | `row_delete`         |
+| **실시간 동기화**    | `ApiLazyTableModel.update_data_from_ws`| (WebSocket 수신)                     | `ConnectionManager.broadcast()`   | `batch_cell_update`  |
+| **배치 인제션** | `PUT /upsert/batch` | `batch_row_upsert` | 파일 감시 기반 (50단위 청킹) |
+| **다중 셀 수정** | `PUT /cells/batch` | `batch_cell_update` | UI 붙여넣기 기반 |
+| **레이어 원천 관리** | `CellSourceManageDialog` | `PUT /tables/.../priority` | `crud.set_priority_source()` | `layer_update` |
+
+### 10.2 배치 처리 엔진 (Batch Processing Engine)
+대량의 데이터가 유입되거나 수정될 때 시스템의 성능과 일관성을 유지하기 위한 핵심 엔진입니다. 상세 명세는 [BATCH_PROCESSING_SPEC.md](./BATCH_PROCESSING_SPEC.md)을 참조하십시오.
+
+- **성능 최적화**: 인제션 시 데이터를 50건 단위로 묶어(`Chunking`) 서버에 전송함으로써 네트워크 오버헤드를 최소화하고 DB 트랜잭션 효율을 높입니다.
+- **실시간 부상(Floating)**: 배치로 업데이트된 행은 WebSocket(`batch_row_upsert`)을 통해 클라이언트에 전달되며, 사용자가 즉시 인지할 수 있도록 리스트의 최상단(Index 0)으로 자동 부상합니다.
+- **철저한 중복 제거(Strict Deduplication)**: 클라이언트 모델은 배치 수신 시 로컬 캐시와의 중복 여부를 전수 조사하여 '고스트 행(중복 잔상)' 발생을 원천 차단합니다.
+
+### 10.2 아키텍처 레이어별 핵심 역할
+
+| 레이어             | 주요 컴포넌트              | 핵심 역할 및 책임                                                                 |
+| :----------------- | :------------------------- | :-------------------------------------------------------------------------------- |
+| **Client UI**      | `MainWindow`, `NavRail`    | 사이드바 기반 화면 전환, 사용자 입력 수신, 탭/위젯 생명주기 관리                  |
+| **Client Data**    | `ApiLazyTableModel`        | 가상 스크롤링 데이터 관리, 비동기 서버 통신, WebSocket 이벤트 데이터 실시간 머지  |
+| **Client Comm**    | `WsListenerThread`         | 모든 탭을 위한 공유 WebSocket 리스너 운영, 데이터 수신 시 각 모델에 시그널 전파   |
+| **Server API**     | `main.py` (FastAPI)        | HTTP 엔드포인트 제공, 요청 유효성 검사, 업로드 파일 저장, WS 연결 관리            |
+| **Server Logic**   | `crud.py`                  | SQLAlchemy 기반 DB 연산, 우선순위 엔진(Layering) 처리, 감사 로그(Audit) 생성     |
+| **Server Ingest**  | `DirectoryWatcher`         | 파일 시스템 이벤트를 감지하여 데이터 적합성 검사 후 백그라운드 파싱 트리거        |
+
+---
+
+## 📋 11. 유지보수 및 운영
 
 - **환경**: `conda activate assy_manager` (Python 3.12)
 - **설정 파일**: 
   - `server/config/table_config.json`: 서버 테이블 구조 핵심 설정
   - `client/config.py`: 클라이언트 API/WS 엔드포인트 및 네트워크(Proxy) 설정
+  - `client/client_settings.json`: 로컬 사용자 및 서버 접속 정보 영속화
 - **에이전틱 환경**: [agentic_environment.md](./agentic_environment.md) 참조.
 - **히스토리 기록**: 모든 변경 사항은 `docs/history/`에 영구 기록됩니다.
 - **주의**: Windows 환경의 PySide6 DLL 워크어라운드 및 `NO_PROXY` 환경 설정을 유지하십시오.
