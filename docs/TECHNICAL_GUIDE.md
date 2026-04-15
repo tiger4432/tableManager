@@ -34,7 +34,10 @@ FastAPI 기반의 백엔드와 PySide6 기반의 프론트엔드가 실시간 We
 | `/tables/{name}/data`   | GET    | 페이징 기반 데이터 조회 (skip, limit, q-검색어) |
 | `/tables/{name}/schema` | GET    | 비즈니스 키 및 표시 컬럼 정보 조회              |
 | `/tables/{name}/upsert` | PUT    | 비즈니스 키 기반 지능형 업데이트/생성           |
-| `/ws`                   | WS     | 실시간 이벤트(생성/수정/삭제) 브로드캐스트      |
+| `/tables/{name}/upload` | POST   | 파일 업로드 및 자동 인제션 트리거               |
+| `/tables/.../sources`   | GET    | 특정 셀의 중첩된 데이터 원천(Sources) 조회      |
+| `/tables/.../priority`  | PUT    | 특정 소스 데이터를 표시 우선순위로 강제 지정    |
+| `/ws`                   | WS     | 실시간 이벤트(생성/수정/삭제/레이어) 브로드캐스트 |
 
 ---
 
@@ -117,7 +120,37 @@ Windows 환경의 고질적인 DLL 충돌 문제를 해결하기 위해 **원천
 
 ---
 
-## 📋 7. 유지보수 및 운영
+## 🏗️ 7. 셀 데이터 레이어링 및 원천 관리 (Cell Layering)
+
+각 데이터 셀은 단일 값이 아닌, 여러 원천(Source)에서 유입된 데이터의 중첩된 레이어로 관리됩니다.
+
+### 7.1 데이터 구조
+각 셀은 다음과 같은 속성을 가집니다:
+- **sources**: `{ source_name: { value, timestamp, updated_by } }` 형태의 모든 데이터 레이어.
+- **manual_priority_source**: 사용자가 특정 레이어를 최우선으로 지정(Pin)한 소스명.
+- **priority_source**: 현재 우선순위 엔진에 의해 채택된 소스.
+
+### 7.2 우선순위 결정 엔진 (Priority Engine)
+최종 표시 값(`value`)은 다음 순서로 결정됩니다:
+1. **Manual Pin**: `manual_priority_source`가 지정되어 있다면 해당 값을 최우선 채택.
+2. **Implicit Weight**: 사전 정의된 소스별 가중치(`User(0) > Parser_A(1) > ...`)에 따라 채택.
+
+---
+
+## 📤 8. 실시간 파일 업로드 및 자동 인제션
+
+클라이언트에서 드래그 앤 드롭으로 던진 파일이 서버에 적재되고 즉시 DB에 반영되는 파이프라인입니다.
+
+### 8.1 전체 시퀀스
+1. **Client**: `ExcelTableView`에 파일 드롭 -> `POST /upload` 호출.
+2. **Server**: 파일 수신 후 해당 테이블의 `ingestion_workspace/raws/` 폴더에 저장.
+3. **Watcher**: `DirectoryWatcher`가 신규 파일을 감지하여 비동기 인제션 큐에 등록.
+4. **Ingester**: `CustomParser`가 실행되어 데이터를 추출하고 `upsert_row` 수행.
+5. **Broadcast**: 데이터가 갱신되면 `batch_cell_update`를 통해 모든 접속자에게 실시간 반영.
+
+---
+
+## 📋 9. 유지보수 및 운영
 
 - **환경**: `conda activate assy_manager` (Python 3.12)
 - **설정 파일**: 

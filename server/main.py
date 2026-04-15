@@ -1,8 +1,11 @@
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from database.database import SessionLocal, engine, get_db
 from database import models, schemas, crud
 import uuid 
+import os
+from fastapi import UploadFile, File, Body, HTTPException
 
 # Create tables if not exists
 models.Base.metadata.create_all(bind=engine)
@@ -456,3 +459,106 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.broadcast(f"Broadcast: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+@app.post("/tables/{table_name}/upload")
+async def upload_file(table_name: str, file: UploadFile = File(...)):
+    """
+    클라이언트에서 보낸 로그 파일을 수신하여 해당 테이블의 인제션 워크스페이스(raws/)에 저장합니다.
+    저장 시 directory_watcher.py가 이를 감지하여 자동으로 파싱을 시작합니다.
+    """
+    # 1. 대상 디렉토리 결정 (server/ingestion_workspace/{table_name}/raws)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    target_dir = os.path.join(base_dir, "ingestion_workspace", table_name, "raws")
+    
+    # 2. 디렉토리가 없으면 생성 (setup_workspace.py가 미리 생성해두지만 안전을 위해)
+    os.makedirs(target_dir, exist_ok=True)
+    
+    file_path = os.path.join(target_dir, file.filename)
+    
+    # 3. 파일 저장
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        return {"status": "success", "filename": file.filename, "path": file_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+@app.get("/tables/{table_name}/{row_id}/{col_name}/sources")
+async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+    """특정 셀에 중첩된 모든 데이터 원천(Sources) 정보를 반환합니다."""
+    row = crud.get_row_cell(db, table_name, row_id, col_name)
+    if not row or col_name not in row.data:
+        raise HTTPException(status_code=404, detail="Cell not found")
+    
+    cell = row.data[col_name]
+    return {
+        "sources": cell.get("sources", {}),
+        "manual_priority_source": cell.get("manual_priority_source"),
+        "priority_source": cell.get("priority_source"),
+        "value": cell.get("value")
+    }
+
+@app.delete("/tables/{table_name}/{row_id}/{col_name}/sources/{source_name}")
+async def delete_cell_source(table_name: str, row_id: str, col_name: str, source_name: str, db: Session = Depends(get_db)):
+    """특정 셀의 특정 원천 데이터를 삭제합니다."""
+    updated_row = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
+    if not updated_row:
+        raise HTTPException(status_code=404, detail="Source or Cell not found")
+    
+    # WebSocket 브로드캐스트 (실시간 갱신용)
+    import json
+    cell_state = updated_row.data[col_name]
+    await manager.broadcast(json.dumps({
+        "event": "batch_cell_update", # 'type' 대신 'event' 사용 (클라이언트 파서 규격 준수)
+        "table_name": table_name,
+        "updates": [
+            {
+                "row_id": row_id, "column_name": col_name, 
+                "value": cell_state["value"],
+                "is_overwrite": cell_state.get("is_overwrite", False),
+                "updated_by": cell_state.get("updated_by", "system")
+            }
+        ]
+    }))
+    return {"status": "success", "row_id": row_id}
+
+@app.put("/tables/{table_name}/{row_id}/{col_name}/priority")
+async def set_cell_priority(
+    table_name: str, row_id: str, col_name: str, 
+    source_name: str = Body(..., embed=True), 
+    updated_by: str = Body("user", embed=True),
+    db: Session = Depends(get_db)
+):
+    """특정 셀의 표시 우선순위 소스를 수동으로 지정합니다 (Pin). source_name이 null이면 수동 지정 해제."""
+    updated_row = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
+    if not updated_row:
+        raise HTTPException(status_code=404, detail="Cell not found or source invalid")
+    
+    # WebSocket 브로드캐스트
+    import json
+    cell_state = updated_row.data[col_name]
+    await manager.broadcast(json.dumps({
+        "event": "batch_cell_update",
+        "table_name": table_name,
+        "updates": [
+            {
+                "row_id": row_id, "column_name": col_name, 
+                "value": cell_state["value"],
+                "is_overwrite": cell_state.get("is_overwrite", False),
+                "updated_by": cell_state.get("updated_by", "system")
+            }
+        ]
+    }))
+    return {"status": "success", "row_id": row_id}
+
+@app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history")
+async def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+    """특정 셀의 변경 이력(AuditLog)을 조회합니다."""
+    logs = db.query(models.AuditLog).filter(
+        models.AuditLog.table_name == table_name,
+        models.AuditLog.row_id == row_id,
+        models.AuditLog.column_name == col_name
+    ).order_by(desc(models.AuditLog.timestamp)).all()
+    
+    return logs

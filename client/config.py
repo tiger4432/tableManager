@@ -1,5 +1,6 @@
 import os
 import sys
+import getpass
 
 # ── 네트워크 환경 설정 ──
 # 루프백 주소(127.0.0.1) 통신 시 프록시 간섭을 원천 차단하여 통신 안정성 확보
@@ -51,6 +52,17 @@ def get_table_export_url(table_name: str) -> str:
     """CSV 익스포트 스트리밍 엔드포인트"""
     return f"{API_BASE_URL}/tables/{table_name}/export"
 
+def get_table_upload_url(table_name: str) -> str:
+    """파일 업로드 엔드포인트 (인제션 트리거용)"""
+    return f"{API_BASE_URL}/tables/{table_name}/upload"
+
 def get_single_row_url(table_name: str, row_id: str) -> str:
     """특정 행 단건 조회 엔드포인트 (WS 부상 시 사용)"""
     return f"{API_BASE_URL}/tables/{table_name}/{row_id}"
+
+# ── 사용자 정보 (추적용) ──
+# 모든 수동 수정(Cell, Batch, Priority) 시 해당 사용자명이 서버로 전달됩니다.
+try:
+    CURRENT_USER = getpass.getuser()
+except Exception:
+    CURRENT_USER = "unknown_user"

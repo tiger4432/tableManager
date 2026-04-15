@@ -36,24 +36,56 @@ if os.name == 'nt':
 # ──────────────────────────────────────────────────────────
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox, QFileDialog
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import Qt, QThreadPool, Signal
 from PySide6.QtGui import QKeySequence, QGuiApplication
 import config
-from models.table_model import ApiLazyTableModel, ApiSchemaWorker
+from models.table_model import ApiLazyTableModel, ApiSchemaWorker, ApiUploadWorker
 from ui.panel_history import HistoryDockPanel
 from ui.panel_filter import FilterToolBar
+from ui.dialog_source_manage import CellSourceManageDialog
 
 class ExcelTableView(QTableView):
+    fileDropped = Signal(str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setAlternatingRowColors(True)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            for url in urls:
+                file_path = url.toLocalFile()
+                if file_path:
+                    self.fileDropped.emit(file_path)
+            event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
     def contextMenuEvent(self, event):
         """우클릭 컨텍스트 메뉴 — 행 삭제 및 계보 조회 기능 제공."""
         menu = QMenu(self)
         lineage_action = menu.addAction("🔍 데이터 계보(Lineage) 조회")
+        sources_action = menu.addAction("📚 데이터 원천(Sources) 관리")
         menu.addSeparator()
         delete_action = menu.addAction("🗑️ 선택된 행 삭제")
         
         selection = self.selectionModel()
         if not selection.hasSelection():
             lineage_action.setEnabled(False)
+            sources_action.setEnabled(False)
             delete_action.setEnabled(False)
 
         action = menu.exec(event.globalPos())
@@ -61,7 +93,32 @@ class ExcelTableView(QTableView):
             self.delete_selected_rows()
         elif action == lineage_action:
             self._request_lineage()
+        elif action == sources_action:
+            self._open_source_manager()
             
+    def _open_source_manager(self):
+        """현재 선택된 셀의 원천 데이터 관리 다이얼로그 개시."""
+        index = self.currentIndex()
+        if not index.isValid(): return
+        
+        # 모델에서 테이블 정보 추출
+        model = self.model()
+        source_model = getattr(model, 'sourceModel', lambda: model)()
+        table_name = source_model.table_name
+        
+        # row_id 추출 (id 컬럼이 0번째라고 가정하거나 col_name으로 검색 가능)
+        row = index.row()
+        if row >= len(source_model._data): return
+        row_id = source_model._data[row].get("row_id")
+        
+        # col_name 추출
+        col_name = source_model._columns[index.column()]
+        
+        if not row_id: return
+        
+        dialog = CellSourceManageDialog(table_name, row_id, col_name, self.window())
+        dialog.exec()
+
     def _request_lineage(self):
         """현재 선택된 셀의 계보를 부모(MainWindow 등)에게 요청."""
         index = self.currentIndex()
@@ -69,8 +126,8 @@ class ExcelTableView(QTableView):
             # MainWindow의 history_panel에 직접 비공식적으로 접근하거나 시그널 사용
             # 여기선 편의상 부모 윈도우 메서드 직접 호출 (구조에 따라 시그널 권장)
             main_win = self.window()
-            if hasattr(main_win, "history_panel"):
-                main_win.history_panel._fetch_cell_lineage(self, index)
+            if hasattr(main_win, "_history_panel"):
+                main_win._history_panel._fetch_cell_lineage(self, index)
 
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.StandardKey.Copy):
@@ -220,6 +277,8 @@ class MainWindow(QMainWindow):
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
         # ── 📥 CSV 추출 버튼 (FilterToolBar 시그널 연결) ──────────────
         self._filter_bar.exportRequested.connect(self._on_export_requested)
+        # ── 📤 파일 업로드 버튼 (FilterToolBar 시그널 연결) ──────────────
+        self._filter_bar.uploadRequested.connect(self._on_upload_requested)
 
         # ── WebSocket 공유 리스너 (Shared WebSocket) ──────────────────
         print('WEB SOCKET 초기화')
@@ -370,6 +429,11 @@ class MainWindow(QMainWindow):
         proxy = self._filter_bar.create_proxy(model)
         table_view.setModel(proxy)
 
+        # ── 드래그 앤 드롭 업로드 연결 ──
+        table_view.fileDropped.connect(
+            lambda path: self._execute_file_upload(table_name, path)
+        )
+
         # ── 히스토리 패널 연결 ──
         self._history_panel.connect_model(model, table_name, table_view)
 
@@ -453,6 +517,41 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "추출 완료", f"데이터가 성공적으로 저장되었습니다:\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self, "추출 실패", f"데이터 추출 중 오류 발생: {e}")
+
+
+    def _on_upload_requested(self):
+        """현재 탭의 테이블 인제션 워크스페이스로 파일 업로드를 수행합니다."""
+        idx = self.tabs.currentIndex()
+        if idx < 0: return
+        
+        tab = self.tabs.widget(idx)
+        source_model = getattr(tab, "_source_model", None)
+        if not source_model:
+            return
+        
+        # 1. 파일 선택 Dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "업로드할 로그 파일 선택", "", "Log Files (*.log *.csv *.txt);;All Files (*)"
+        )
+        if file_path:
+            self._execute_file_upload(source_model.table_name, file_path)
+
+    def _execute_file_upload(self, table_name, file_path):
+        """실제 파일 업로드를 수행합니다 (버튼/드롭 공통 로직)."""
+        # 2. 업로드 워커 생성
+        upload_url = config.get_table_upload_url(table_name)
+        worker = ApiUploadWorker(upload_url, file_path)
+        
+        def _on_finished(result):
+            QMessageBox.information(self, "성공", f"파일 업로드 완료: {result.get('filename')}\n서버에서 곧 파싱을 시작합니다.")
+            
+        def _on_error(err):
+            QMessageBox.critical(self, "실패", f"파일 업로드 중 오류 발생:\n{err}")
+
+        worker.signals.finished.connect(_on_finished)
+        worker.signals.error.connect(_on_error)
+        
+        QThreadPool.globalInstance().start(worker)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

@@ -189,8 +189,7 @@ class HistoryDockPanel(QDockWidget):
                 is_overwrite = item_info.get("is_overwrite", False)
                 value = item_info.get("value", "")
 
-                suffix = "MANUAL_FIX (수동교정)" if is_overwrite else "AUTO_UPDATE (자동업데이트)"
-                text = f"[{now}] {table_name} / {col_name} / row_id:{row_id} → {value}  |  {suffix}"
+                text = f"[{now}] {table_name} / {col_name} / row_id:{row_id} → {value}"
 
                 list_item = QListWidgetItem(text)
                 if is_overwrite:
@@ -229,7 +228,7 @@ class HistoryDockPanel(QDockWidget):
         
         text = (
             f"{prefix} [{now}] {table_name} / {col_name} / "
-            f"row_id:{row_id} → {value}  |  by:{updated_by}"
+            f"row_id:{row_id} → {value}  [{updated_by}]"
         )
 
         list_item = QListWidgetItem(text)

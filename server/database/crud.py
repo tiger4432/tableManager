@@ -52,21 +52,28 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
             return row
     return None
 
-def compute_priority_value(sources: dict):
+def compute_priority_value(sources: dict, manual_priority_source: str = None):
     """
     저장된 여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
+    manual_priority_source가 지정된 경우 해당 소스를 최우선으로 채택합니다.
     """
     if not sources:
         return None, None
         
-    # 우선순위 순서대로 정렬 (지정되지 않은 소스는 기본값 99)
+    # 1. 수동 지정된 소스가 있는 경우 최우선 적용
+    if manual_priority_source and manual_priority_source in sources:
+        val_data = sources[manual_priority_source]
+        if isinstance(val_data, dict) and "value" in val_data:
+            return val_data["value"], manual_priority_source
+        return val_data, manual_priority_source
+
+    # 2. 기본 우선순위 순서대로 정렬 (지정되지 않은 소스는 기본값 99)
     sorted_sources = sorted(
         sources.keys(),
         key=lambda k: SOURCE_PRIORITY.get(k, 99)
     )
     
     top_source = sorted_sources[0]
-    # sources 에 저장된 형태가 {"value": val, "timestamp": ...} 인 경우 대응
     val_data = sources[top_source]
     if isinstance(val_data, dict) and "value" in val_data:
         return val_data["value"], top_source
@@ -115,11 +122,12 @@ def update_cell(db: Session, table_name: str, cell_update: schemas.CellUpdate):
     from datetime import datetime
     cell["sources"][cell_update.source_name] = {
         "value": cell_update.value,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "updated_by": cell_update.updated_by
     }
     
     # 2. 우선순위 계산 및 최종 값(value) 결정
-    final_val, top_src = compute_priority_value(cell["sources"])
+    final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
     
     cell["value"] = final_val
     cell["priority_source"] = top_src
@@ -161,7 +169,7 @@ def update_cells_batch(db: Session, table_name: str, batch: schemas.CellUpdateBa
                 "timestamp": datetime.now().isoformat()
             }
             
-            final_val, top_src = compute_priority_value(cell["sources"])
+            final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
             cell["value"] = final_val
             cell["priority_source"] = top_src
             cell["is_overwrite"] = ("user" in cell["sources"])
@@ -244,11 +252,12 @@ def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dic
         from datetime import datetime
         cell["sources"][source_name] = {
             "value": val,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "updated_by": updated_by
         }
         
         # 2. 우선순위 기반 최종 값 결정
-        new_final_val, top_src = compute_priority_value(cell["sources"])
+        new_final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
         
         # 3. 값의 변화가 있거나 신규 행인 경우에만 감사 로그 기록 (무결성 규칙 준수)
         if is_new or (str(old_val) != str(new_final_val)):
@@ -303,7 +312,7 @@ def upsert_rows_batch(db: Session, table_name: str, batch_items: list[schemas.Ce
                 "timestamp": datetime.now().isoformat()
             }
             
-            new_final_val, top_src = compute_priority_value(cell["sources"])
+            new_final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
             
             # 변화가 있을 때만 감사 로그 기록
             if is_new or (str(old_val) != str(new_final_val)):
@@ -321,3 +330,66 @@ def upsert_rows_batch(db: Session, table_name: str, batch_items: list[schemas.Ce
     for row, _ in results:
         db.refresh(row)
     return results
+
+def get_row_cell(db: Session, table_name: str, row_id: str, col_name: str):
+    return db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id == row_id
+    ).first()
+
+def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str):
+    row = get_row_cell(db, table_name, row_id, col_name)
+    if not row or col_name not in row.data:
+        return None
+        
+    cell = row.data[col_name]
+    if "sources" in cell and source_name in cell["sources"]:
+        del cell["sources"][source_name]
+        
+        # manual_priority_source가 삭제된 소스면 해제
+        if cell.get("manual_priority_source") == source_name:
+            cell["manual_priority_source"] = None
+            
+        # 값 재계산
+        old_val = cell.get("value")
+        final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+        cell["value"] = final_val
+        cell["priority_source"] = top_src
+        cell["is_overwrite"] = ("user" in cell["sources"])
+        
+        # 감사 로그 기록
+        create_audit_log(db, table_name, row_id, col_name, old_val, final_val, f"delete_source:{source_name}", "system")
+
+        flag_modified(row, "data")
+        db.commit()
+        db.refresh(row)
+        return row
+    return None
+
+def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: str | None, updated_by: str = "user"):
+    row = get_row_cell(db, table_name, row_id, col_name)
+    if not row or col_name not in row.data:
+        return None
+        
+    cell = row.data[col_name]
+    # source_name 이 None 이면 수동 우선순위 해제
+    # source_name 이 존재하면 sources 에 있는지 확인
+    if source_name and (source_name not in cell.get("sources", {})):
+        return None
+        
+    cell["manual_priority_source"] = source_name
+    
+    # 값 재계산
+    old_val = cell.get("value")
+    final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+    cell["value"] = final_val
+    cell["priority_source"] = top_src
+    cell["is_overwrite"] = (source_name == "user") or ("user" in cell.get("sources", {}))
+    
+    # 감사 로그 기록
+    create_audit_log(db, table_name, row_id, col_name, old_val, final_val, f"set_priority:{source_name}", updated_by)
+
+    flag_modified(row, "data")
+    db.commit()
+    db.refresh(row)
+    return row

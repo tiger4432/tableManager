@@ -26,6 +26,8 @@ class FilterToolBar(QToolBar):
     exportRequested = Signal()
     # ── 글로벌 서버 사이드 검색 요청 시그널 ──
     searchRequested = Signal(str)
+    # ── 파일 업로드 요청 시그널 ──
+    uploadRequested = Signal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__("필터", parent)
@@ -99,6 +101,19 @@ class FilterToolBar(QToolBar):
         )
         self._export_btn.clicked.connect(self.exportRequested.emit)
         self.addWidget(self._export_btn)
+
+        # ── 📤 파일 업로드 버튼 ──
+        self._upload_btn = QPushButton("📤 파일 업로드")
+        self._upload_btn.setToolTip("서버 인제션 워크스페이스에 로그 파일 업로드")
+        self._upload_btn.setStyleSheet(
+            "QPushButton {"
+            "  background: #cba6f7; color: #1e1e2e; font-weight: bold;"
+            "  border-radius: 4px; padding: 4px 12px; font-size: 12px; margin-left: 4px;"
+            "}"
+            "QPushButton:hover { background: #f5c2e7; }"
+        )
+        self._upload_btn.clicked.connect(self.uploadRequested.emit)
+        self.addWidget(self._upload_btn)
 
         # 내부 프록시 모델 저장소
         self._proxies: list[QSortFilterProxyModel] = []

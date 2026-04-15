@@ -119,6 +119,32 @@ class BatchApiUpdateWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
 
+class ApiUploadWorker(QRunnable):
+    """서버로 파일을 업로드하는 워커 (httpx 사용)"""
+    def __init__(self, url, file_path):
+        super().__init__()
+        self.url = url
+        self.file_path = file_path
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import httpx
+        import os
+        try:
+            filename = os.path.basename(self.file_path)
+            with open(self.file_path, "rb") as f:
+                files = {"file": (filename, f)}
+                # httpx.post로 multipart/form-data 전송
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.post(self.url, files=files)
+                    if response.status_code == 200:
+                        self.signals.finished.emit(response.json())
+                    else:
+                        self.signals.error.emit(f"Server error: {response.status_code} - {response.text}")
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 class WsListenerThread(QThread):
     """
     WebSocketExpert 스킬 규칙 준수:
@@ -283,19 +309,13 @@ class ApiLazyTableModel(QAbstractTableModel):
             if row_id is None:
                 return False
                 
-            import os
-            try:
-                username = os.getlogin()
-            except:
-                username = "User"
-                
             persistent_index = QPersistentModelIndex(index)
             url = config.get_cell_update_url(self.table_name)
             payload = {
                 "row_id": row_id,
                 "column_name": col_name,
                 "value": value,
-                "updated_by": f"Manual Fix ({username})"
+                "updated_by": config.CURRENT_USER
             }
             
             # 비동기 요청을 위해 QRunnable 기반 Worker 사용
@@ -332,7 +352,8 @@ class ApiLazyTableModel(QAbstractTableModel):
                     "column_name": col_name,
                     "value": value,
                     "row_index": model_row,
-                    "col_index": model_col
+                    "col_index": model_col,
+                    "updated_by": config.CURRENT_USER
                 })
         
         if not payloads:
