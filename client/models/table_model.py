@@ -511,7 +511,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             if log_updates:
                 self.batch_ws_data_changed.emit(log_updates)
 
-            if not changed_indices: return
+            #if not changed_indices: return
 
             for row_id in affected_rows:
                 # REBUILD map every time because indices shift on pop/insert

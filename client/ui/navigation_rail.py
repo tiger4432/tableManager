@@ -98,7 +98,7 @@ class NavigationRail(QFrame):
         self.layout.addWidget(logo)
         
         # 홈 버튼 (대시보드)
-        self.add_nav_item("home", "🏠", "Home")
+        #self.add_nav_item("home", "🏠", "Home")
         
         # 구분선
         line = QFrame()

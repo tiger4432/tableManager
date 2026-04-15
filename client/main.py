@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
     QMenu, QMessageBox, QFileDialog, QStatusBar, QLabel
 )
 from PySide6.QtCore import Qt, QThreadPool, Signal
-from PySide6.QtGui import QKeySequence, QGuiApplication
+from PySide6.QtGui import QKeySequence, QGuiApplication, QIcon
 
 import config
 from models.table_model import ApiLazyTableModel, ApiSchemaWorker, ApiUploadWorker
@@ -265,6 +265,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("AssyManager - Enterprise Edition")
         self.resize(1300, 850)
+        
+        # ── 프로그램 아이콘 설정 ──
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "app_icon.png")
+        print(f'[ICON] {icon_path}')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path.replace('\\', '/')))
 
         # ── 메인 컨테이너 및 레이아웃 ────────────────────────────────
         central_widget = QWidget()
@@ -743,6 +749,18 @@ if __name__ == "__main__":
     # Modern style
     app.setStyle("Fusion")
     
+    # ── Windows 작업 표시줄 아이콘 활성화 (AppUserModelID 설정) ──
+    if os.name == 'nt':
+        import ctypes
+        myappid = 'tiger.assymanager.enterprise.v2'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    
+    # ── 프로그램 아이콘 설정 ──
+    icon_path = os.path.join(os.path.dirname(__file__), "assets", "app_icon.png")
+    print(f'[ICON] {icon_path}')
+    app.setWindowIcon(QIcon(icon_path.replace('\\', '/')))
+
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
