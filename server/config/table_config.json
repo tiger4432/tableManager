@@ -42,5 +42,14 @@
       "created_at",
       "updated_at"
     ]
+  },
+  "chat": {
+    "business_key": "created_at",
+    "display_columns": [
+      "request",
+      "response",
+      "created_at",
+      "updated_at"
+    ]
   }
 }

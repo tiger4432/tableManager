@@ -38,6 +38,7 @@ if os.name == 'nt':
 from PySide6.QtWidgets import QApplication, QMainWindow, QTableView, QTabWidget, QVBoxLayout, QWidget, QPushButton, QInputDialog, QMenu, QMessageBox, QFileDialog
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QKeySequence, QGuiApplication
+import config
 from models.table_model import ApiLazyTableModel, ApiSchemaWorker
 from ui.panel_history import HistoryDockPanel
 from ui.panel_filter import FilterToolBar
@@ -110,7 +111,7 @@ class ExcelTableView(QTableView):
                 if row < len(source_model._data):
                     row_id = source_model._data[row].get("row_id")
                     if row_id:
-                        url = f"{source_model.base_api_url}/tables/{table_name}/rows/{row_id}"
+                        url = config.get_row_delete_url(table_name, row_id)
                         try:
                             req = urllib.request.Request(url, method="DELETE")
                             with urllib.request.urlopen(req) as response:
@@ -235,7 +236,7 @@ class MainWindow(QMainWindow):
 
     def _load_all_tables(self):
         """서버에서 가용한 모든 테이블 목록을 가져와 각각 탭으로 생성합니다."""
-        url = "http://127.0.0.1:8000/tables"
+        url = config.get_tables_list_url()
         # 초기화 시점이므로 간단히 ApiSchemaWorker (JSON 패치용) 재사용
         from models.table_model import ApiSchemaWorker
         worker = ApiSchemaWorker(url)
@@ -286,7 +287,7 @@ class MainWindow(QMainWindow):
             return
             
         from models.table_model import WsListenerThread
-        ws_url = "ws://127.0.0.1:8000/ws"
+        ws_url = config.WS_BASE_URL
         self._ws_thread = WsListenerThread(ws_url)
         self._ws_thread.message_received.connect(self._dispatch_ws_message)
         self._ws_thread.connection_error.connect(lambda err: print(f"[MainWS] CRITICAL: {err}"))
@@ -325,7 +326,7 @@ class MainWindow(QMainWindow):
             return
             
         table_name = model.table_name
-        url = f"{model.base_api_url}/tables/{table_name}/rows"
+        url = config.get_row_create_url(table_name)
         
         import urllib.request
         try:
@@ -387,7 +388,7 @@ class MainWindow(QMainWindow):
     def _load_table_schema(self, model: ApiLazyTableModel):
         """특정 테이블 모델의 스키마를 비동기로 로드합니다."""
         table_name = model.table_name
-        schema_url = f"{model.base_api_url}/tables/{table_name}/schema"
+        schema_url = config.get_table_schema_url(table_name)
         worker = ApiSchemaWorker(schema_url)
         
         def _on_schema_loaded(result):
@@ -442,7 +443,7 @@ class MainWindow(QMainWindow):
             
         # 서버에서 CSV 다운로드
         import urllib.request
-        url = f"http://127.0.0.1:8000/tables/{table_name}/export"
+        url = config.get_table_export_url(table_name)
         
         try:
             with urllib.request.urlopen(url) as response:

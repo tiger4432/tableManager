@@ -168,6 +168,10 @@ class HistoryDockPanel(QDockWidget):
         # Agent D v5: 원격 업데이트 메시지 처리 중에는 ws_data_changed로 따로 로그가 남으므로 무시
         if getattr(model, '_is_processing_remote', False):
             return
+            
+        # Agent D v6: 단순 데이터 조회(Fetch) 시 발생하는 시그널 무시 (노이즈 제거)
+        if getattr(model, '_fetching', False):
+            return
 
         now = datetime.now().strftime("%H:%M:%S")
         columns = model._columns

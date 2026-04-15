@@ -120,7 +120,9 @@ Windows 환경의 고질적인 DLL 충돌 문제를 해결하기 위해 **원천
 ## 📋 7. 유지보수 및 운영
 
 - **환경**: `conda activate assy_manager` (Python 3.12)
-- **설정 파일**: `server/config/table_config.json` (테이블 구조 핵심 설정)
+- **설정 파일**: 
+  - `server/config/table_config.json`: 서버 테이블 구조 핵심 설정
+  - `client/config.py`: 클라이언트 API/WS 엔드포인트 및 네트워크(Proxy) 설정
 - **에이전틱 환경**: [agentic_environment.md](./agentic_environment.md) 참조.
 - **히스토리 기록**: 모든 변경 사항은 `docs/history/`에 영구 기록됩니다.
-- **주의**: Windows 환경의 PySide6 DLL 워크어라운드를 유지하십시오.
+- **주의**: Windows 환경의 PySide6 DLL 워크어라운드 및 `NO_PROXY` 환경 설정을 유지하십시오.

@@ -1,4 +1,5 @@
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread
+import config
 
 class WorkerSignals(QObject):
     finished = Signal(dict)
@@ -127,7 +128,7 @@ class WsListenerThread(QThread):
     message_received = Signal(dict)
     connection_error = Signal(str)
 
-    def __init__(self, ws_url: str, parent=None):
+    def __init__(self, ws_url: str = config.WS_BASE_URL, parent=None):
         super().__init__(parent)
         self.ws_url = ws_url
         self._running = True
@@ -193,11 +194,11 @@ class ApiLazyTableModel(QAbstractTableModel):
     batch_ws_data_changed = Signal(list) # List of cell-level update dicts
     row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
     row_deleted_ws = Signal(dict)   # Agent D v13: 행 삭제 시그널 추가
-    def __init__(self, table_name: str, base_api_url: str = "http://127.0.0.1:8000"):
+    def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
         super().__init__()
         self.table_name = table_name
         self.base_api_url = base_api_url
-        self.endpoint_url = f"{base_api_url}/tables/{table_name}/data"
+        self.endpoint_url = config.get_table_data_url(table_name)
         self._data = []
         self._total_count = 0 # 서버 첫 응답 시 실제 값으로 갱신됨
         self._columns = ["id", "name", "status"]
@@ -289,7 +290,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 username = "User"
                 
             persistent_index = QPersistentModelIndex(index)
-            url = f"{self.endpoint_url.replace('/data', '/cells')}"
+            url = config.get_cell_update_url(self.table_name)
             payload = {
                 "row_id": row_id,
                 "column_name": col_name,
@@ -337,7 +338,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         if not payloads:
             return
             
-        url = f"{self.endpoint_url.replace('/data', '/cells/batch')}"
+        url = config.get_batch_cell_update_url(self.table_name)
         worker = BatchApiUpdateWorker(url, payloads)
         worker.signals.finished.connect(self._on_batch_update_finished)
         worker.signals.error.connect(lambda err: print(f"Failed to batch update: {err}"))
@@ -460,7 +461,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if row_idx is None:
                     if row_id not in self._fetching_row_ids:
                         self._fetching_row_ids.add(row_id)
-                        fetch_url = f"{self.base_api_url}/tables/{self.table_name}/{row_id}"
+                        fetch_url = config.get_single_row_url(self.table_name, row_id)
                         worker = ApiSingleRowFetchWorker(fetch_url)
                         worker.signals.finished.connect(self._on_remote_row_fetched)
                         worker.signals.error.connect(lambda e, rid=row_id: self._fetching_row_ids.discard(rid))
