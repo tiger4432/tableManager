@@ -158,9 +158,12 @@ def get_table_data(
         sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
     elif order_by == "id":
         # 사용자가 "자연 정렬"을 원할 경우: BK가 있으면 BK순, 없으면 ID순으로 고성능 정렬
-        sort_expr = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        # Null 값(BK 미설정) 대응을 위해 row_id를 보조 정렬로 사용
-        final_sort = [sort_expr, models.DataRow.row_id.asc()]
+        # [기능 개선] BK가 비어있는(NULL) 행은 항상 맨 마지막으로 보냄
+        # (business_key_val == None) 은 IS NULL 로 번역되며, False(0) < True(1) 이므로 오름차순 시 NULL(True)이 뒤로 감
+        bk_null_last = (models.DataRow.business_key_val == None).asc()
+        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
+        
+        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
     else:
         sort_expr = models.DataRow.row_id.asc()
         final_sort = [sort_expr]
