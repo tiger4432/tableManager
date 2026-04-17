@@ -323,13 +323,16 @@ class HistoryDockPanel(QDockWidget):
         """특정 셀의 전체 변경 이력을 API에서 가져와 하단에 표시합니다."""
         model = table_view.model()
         source_model = getattr(model, 'sourceModel', lambda: model)()
-        row = index.row()
-        col = index.column()
         
-        if row >= len(source_model._data): return
+        # [핵심] 전달받은 인덱스가 프록시인 경우 소스로 변환 (정렬 대응)
+        src_index = model.mapToSource(index) if hasattr(model, "mapToSource") else index
+        src_row = src_index.row()
+        src_col = src_index.column()
         
-        row_id = source_model._data[row].get("row_id")
-        col_name = source_model._columns[col]
+        if src_row >= len(source_model._data): return
+        
+        row_id = source_model._data[src_row].get("row_id")
+        col_name = source_model._columns[src_col]
         table_name = source_model.table_name
         
         import urllib.request

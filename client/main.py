@@ -116,13 +116,16 @@ class ExcelTableView(QTableView):
         source_model = getattr(model, 'sourceModel', lambda: model)()
         table_name = source_model.table_name
         
-        # row_id 추출 (id 컬럼이 0번째라고 가정하거나 col_name으로 검색 가능)
-        row = index.row()
-        if row >= len(source_model._data): return
-        row_id = source_model._data[row].get("row_id")
+        # row_id 추출 (Index Drift 방지를 위해 Proxy -> Source 매핑)
+        src_index = model.mapToSource(index)
+        src_row = src_index.row()
+        src_col = src_index.column()
+        
+        if src_row >= len(source_model._data): return
+        row_id = source_model._data[src_row].get("row_id")
         
         # col_name 추출
-        col_name = source_model._columns[index.column()]
+        col_name = source_model._columns[src_col]
         
         if not row_id: return
         
