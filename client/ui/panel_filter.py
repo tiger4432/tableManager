@@ -28,6 +28,8 @@ class FilterToolBar(QToolBar):
     searchRequested = Signal(str)
     # ── 파일 업로드 요청 시그널 ──
     uploadRequested = Signal()
+    # ── 최신순 정렬 토글 시그널 ──
+    sortLatestChanged = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__("필터", parent)
@@ -122,11 +124,21 @@ class FilterToolBar(QToolBar):
         self._upload_btn = QPushButton("📤 Upload")
         self._upload_btn.setToolTip("서버 인제션 워크스페이스에 로그 파일 업로드")
         self._upload_btn.setStyleSheet("""
-            QPushButton { background: #cba6f7; color: #111111; }
+            QPushButton { background: #cba6f7; color: #111111; font-weight: bold; border-radius: 4px; padding: 4px 12px; font-size: 12px; }
             QPushButton:hover { background: #f5c2e7; }
         """)
         self._upload_btn.clicked.connect(self.uploadRequested.emit)
         self.addWidget(self._upload_btn)
+
+        # ── ⚡ 최신순 정렬 토글 버튼 ──
+        self._sort_latest = True
+        self._sort_btn = QPushButton("⚡ 최신순 ON")
+        self._sort_btn.setCheckable(True)
+        self._sort_btn.setChecked(True)
+        self._sort_btn.setToolTip("데이터 수정 시 최상단으로 자동 정렬 (Toggle)")
+        self._update_sort_btn_style()
+        self._sort_btn.clicked.connect(self._on_sort_toggled)
+        self.addWidget(self._sort_btn)
 
         # 내부 프록시 모델 저장소
         self._proxies: list[QSortFilterProxyModel] = []
@@ -198,3 +210,22 @@ class FilterToolBar(QToolBar):
             self._count_label.setText(f"{visible} / {total} 행")
         else:
             self._count_label.setText(f"총 {total} 행")
+
+    def _on_sort_toggled(self, checked: bool):
+        self._sort_latest = checked
+        self._update_sort_btn_style()
+        self.sortLatestChanged.emit(checked)
+
+    def _update_sort_btn_style(self):
+        if self._sort_latest:
+            self._sort_btn.setText("⚡ 최신순 ON")
+            self._sort_btn.setStyleSheet("""
+                QPushButton { background: #f9e2af; color: #1e1e2e; font-weight: bold; border-radius: 4px; padding: 4px 12px; }
+                QPushButton:hover { background: #f2cdcd; }
+            """)
+        else:
+            self._sort_btn.setText("⏸ 정렬 OFF")
+            self._sort_btn.setStyleSheet("""
+                QPushButton { background: #45475a; color: #cdd6f4; font-weight: bold; border-radius: 4px; padding: 4px 12px; }
+                QPushButton:hover { background: #585b70; }
+            """)

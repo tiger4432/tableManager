@@ -150,92 +150,90 @@ class ExcelTableView(QTableView):
             super().keyPressEvent(event)
 
     def delete_selected_rows(self):
-        """선택된 행들을 서버에서 삭제 요청."""
+        """선택된 행들을 서버에서 삭제 요청. 정렬/필터링 및 가상 로딩 대응 완료."""
         selection = self.selectionModel()
         if not selection.hasSelection():
             return
             
-        rows = sorted(list(set(index.row() for index in selection.selectedIndexes())), reverse=True)
-        if not rows:
+        proxy_model = self.model()
+        source_model = getattr(proxy_model, 'sourceModel', lambda: proxy_model)()
+        table_name = source_model.table_name
+
+        # 1. 선택된 인덱스들로부터 고유한 소스 행 인덱스 추출
+        source_rows = set()
+        uncached_selected = False
+        for index in selection.selectedIndexes():
+            # [필수] 프록시 인덱스를 소스 인덱스로 변환 (정렬/필터링 무관하게 정확한 데이터 타겟팅)
+            src_index = proxy_model.mapToSource(index)
+            src_row = src_index.row()
+            
+            # 가상 로딩(Placeholder) 행인지 체크
+            if src_row < len(source_model._data):
+                source_rows.add(src_row)
+            else:
+                uncached_selected = True
+
+        if not source_rows:
+            if uncached_selected:
+                QMessageBox.warning(self, "삭제 불가", "아직 로드되지 않은 행(Loading...)은 삭제할 수 없습니다.\n데이터가 로드된 후 다시 시도하십시오.")
             return
             
+        # 2. 삭제 확인 다이얼로그
         reply = QMessageBox.question(
             self, "행 삭제 확인",
-            f"선택한 {len(rows)}개의 행을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+            f"선택한 {len(source_rows)}개의 행을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            model = self.model()
-            source_model = getattr(model, 'sourceModel', lambda: model)()
-            table_name = source_model.table_name
-            
+            # 3. row_ids 추출
             row_ids = []
-            for row in rows:
-                if row < len(source_model._data):
-                    rid = source_model._data[row].get("row_id")
-                    if rid:
-                        row_ids.append(rid)
+            for row in source_rows:
+                rid = source_model._data[row].get("row_id")
+                if rid: row_ids.append(rid)
             
             if not row_ids: return
             
-            import urllib.request
-            import json
+            # 4. 비동기 워커를 통한 삭제 요청 (UI 프리징 방지)
+            from models.table_model import ApiDeleteWorker
             url = config.get_batch_delete_url(table_name)
-            try:
-                payload = {
-                    "row_ids": row_ids,
-                    "user_name": config.CURRENT_USER
-                }
-                data = json.dumps(payload).encode("utf-8")
-                req = urllib.request.Request(url, data=data, method="POST")
-                req.add_header("Content-Type", "application/json")
-                with urllib.request.urlopen(req) as response:
-                    pass # WebSocket으로 삭제 이벤트 수신 예정
-            except Exception as e:
-                print(f"Failed to delete rows: {e}")
-                QMessageBox.critical(self, "삭제 오류", f"행 일괄 삭제 중 오류 발생: {e}")
+            worker = ApiDeleteWorker(url, row_ids, config.CURRENT_USER)
+            
+            def _on_error(err):
+                QMessageBox.critical(self, "삭제 오류", f"행 일괄 삭제 중 오류 발생: {err}")
+            
+            worker.signals.error.connect(_on_error)
+            QThreadPool.globalInstance().start(worker)
+            # 결과는 WebSocket 브로드캐스트를 통해 모든 클라이언트에 자동 반영됨
     
     def copy_selection(self):
+        """선택된 영역을 클립보드에 복사 (헤더 제외, 데이터만)."""
         selection = self.selectionModel()
         if not selection.hasSelection(): return
         indexes = selection.selectedIndexes()
         if not indexes: return
         
+        # 행/열 순서대로 정렬
         indexes = sorted(indexes, key=lambda idx: (idx.row(), idx.column()))
         
-        # 선택된 고유 컬럼 목록을 순서대로 추출
-        cols_in_order = []
-        seen_cols = set()
-        for idx in indexes:
-            if idx.column() not in seen_cols:
-                cols_in_order.append(idx.column())
-                seen_cols.add(idx.column())
-        
         model = self.model()
-        
-        # 1행: 컬럼 헤더
-        header_cells = []
-        for col in cols_in_order:
-            header = model.headerData(col, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
-            header_cells.append(str(header) if header is not None else "")
-        text = "\t".join(header_cells) + "\n"
-        
-        # 2행~: 데이터
         prev_row = indexes[0].row()
         row_cells = []
-        for i, idx in enumerate(indexes):
+        lines = []
+        
+        for idx in indexes:
             if idx.row() != prev_row:
-                text += "\t".join(row_cells) + "\n"
+                lines.append("\t".join(row_cells))
                 row_cells = []
                 prev_row = idx.row()
+            
             value = model.data(idx, Qt.ItemDataRole.DisplayRole)
             row_cells.append(str(value) if value is not None else "")
         
         if row_cells:
-            text += "\t".join(row_cells)
+            lines.append("\t".join(row_cells))
             
-        QGuiApplication.clipboard().setText(text)
+        QGuiApplication.clipboard().setText("\n".join(lines))
 
     def setModel(self, model):
         super().setModel(model)
@@ -249,25 +247,62 @@ class ExcelTableView(QTableView):
             self.selectRow(0)
 
     def paste_selection(self):
+        """클립보드 데이터를 현재 선택 영역에 붙여넣음 (정렬/필터링 및 유령 문자 대응)."""
         clipboard = QGuiApplication.clipboard().text()
         if not clipboard: return
         
-        rows = [r.split('\t') for r in clipboard.split('\n') if r]
-        if not rows: return
+        # 1. 클립보드 데이터 정형화 (strip을 통한 \r 제거)
+        raw_rows = [r for r in clipboard.replace('\r\n', '\n').split('\n') if r]
+        parsed_matrix = [[cell.strip() for cell in r.split('\t')] for r in raw_rows]
+        if not parsed_matrix: return
         
         selection = self.selectionModel()
         indexes = selection.selectedIndexes()
         if not indexes: return
         
-        start_index = indexes[0]
-        start_row = start_index.row()
-        start_col = start_index.column()
+        # 2. 실제 왼쪽 상단 시작점(Anchor) 찾기
+        min_row = min(idx.row() for idx in indexes)
+        min_col = min(idx.column() for idx in indexes)
         
-        # proxy 모델인 경우 소스 모델로 bulkUpdateData 호출
-        model = self.model()
-        source_model = getattr(model, 'sourceModel', lambda: model)()
-        if hasattr(source_model, 'bulkUpdateData'):
-            source_model.bulkUpdateData(start_row, start_col, rows)
+        # 3. Proxy-to-Source 맵핑을 통한 정밀 업데이트 리스트 생성
+        proxy_model = self.model()
+        source_model = getattr(proxy_model, 'sourceModel', lambda: proxy_model)()
+        
+        # {row_id: {col_name: value}} 형태로 데이터 재구성
+        mapped_updates = {}
+        
+        for r_offset, row_values in enumerate(parsed_matrix):
+            visual_row = min_row + r_offset
+            if visual_row >= proxy_model.rowCount(): break
+            
+            # [핵심] 인덱스가 아닌 Row ID를 직접 호출 (절대 좌표 타겟팅)
+            row_id = proxy_model.data(proxy_model.index(visual_row, 0), Qt.ItemDataRole.UserRole + 2)
+            if not row_id: continue
+            
+            if row_id not in mapped_updates:
+                mapped_updates[row_id] = {}
+                
+            for c_offset, value in enumerate(row_values):
+                visual_col = min_col + c_offset
+                if visual_col >= proxy_model.columnCount(): break
+                
+                # [개선] 컬럼명도 UserRole을 통해 내부 Key 매핑 정합성 확보
+                col_name = proxy_model.headerData(visual_col, Qt.Orientation.Horizontal, Qt.ItemDataRole.UserRole)
+                if not col_name: continue
+                
+                # 시스템 컬럼 제외
+                if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+                    continue
+                    
+                mapped_updates[row_id][col_name] = value
+
+        # 4. 소스 모델에 식별자 기반 데이터 전달
+        if hasattr(source_model, 'applyMappedUpdates'):
+            source_model.applyMappedUpdates(mapped_updates)
+        elif hasattr(source_model, 'bulkUpdateData'):
+            # 하위 호환성을 위해 기존 함수 재호출 가능하나, 
+            # 인덱스가 매핑된 상태이므로 table_model의 bulkUpdateData 로직 수정 필요
+            source_model.bulkUpdateData(min_row, min_col, parsed_matrix, is_already_mapped=True)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -332,6 +367,8 @@ class MainWindow(QMainWindow):
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
         self._filter_bar.exportRequested.connect(self._on_export_requested)
         self._filter_bar.uploadRequested.connect(self._on_upload_requested)
+        self._filter_bar.sortLatestChanged.connect(self._on_sort_mode_changed) # [신규] 정렬 토글 연결
+        self.addToolBar(self._filter_bar)
         self._filter_bar.searchRequested.connect(self._on_global_search)
 
         # ── 데이터 모델 매핑 (사이드바 메뉴 ID -> Widget Index) ──
@@ -501,6 +538,14 @@ class MainWindow(QMainWindow):
         print(f"[MainWindow] Global search requested: '{text}'")
         for model in self._active_models:
             model.set_search_query(text)
+
+    def _on_sort_mode_changed(self, enabled: bool):
+        """
+        필터 툴바에서 정렬 토글이 변경되었을 때 모든 활성 모델의 정렬 설정을 동기화합니다.
+        """
+        print(f"[MainWindow] Sort mode changed: LatestFirst={enabled}")
+        for model in self._active_models:
+            model.set_sort_latest(enabled)
 
     def _on_add_row_requested(self):
         """현재 활성화된 화면의 테이블에 새 행(들)을 일괄 추가 요청합니다."""

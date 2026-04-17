@@ -30,21 +30,15 @@ def load_table_config():
 TABLE_CONFIG = load_table_config()
 
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
-    """테이블별 비즈니스 키를 기반으로 행을 조회합니다."""
-    config = TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    if not key_col:
+    """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""
+    target_val = str(key_value).strip() if key_value is not None else ""
+    if not target_val:
         return None
         
-    rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
-    target_val = str(key_value).strip() if key_value is not None else ""
-    
-    for row in rows:
-        cell = row.data.get(key_col, {})
-        stored_val = cell.get("value")
-        if stored_val is not None and str(stored_val).strip() == target_val:
-            return row
-    return None
+    return db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.business_key_val == target_val
+    ).first()
 
 def compute_priority_value(sources: dict, manual_priority_source: str = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
@@ -130,6 +124,14 @@ def apply_row_update_internal(
         cell["is_overwrite"] = ("user" in cell["sources"])
         cell["updated_by"] = (update_item.updated_by or "system")
         
+    # [고성능 정렬] 비즈니스 키 상단 필드 동기화
+    config = TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    if key_col and key_col in row.data:
+        new_bk_val = row.data[key_col].get("value")
+        if new_bk_val is not None:
+            row.business_key_val = str(new_bk_val).strip()
+            
     flag_modified(row, "data")
     return row, is_new, changed_cols
 

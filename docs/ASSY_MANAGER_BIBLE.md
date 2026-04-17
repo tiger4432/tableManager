@@ -70,7 +70,8 @@ graph TD
 ### 2.3 데이터 무결성 가이드
 - **Strict Deduplication**: `_build_row_id_map()`을 통해 캐시된 데이터와 수신된 데이터 간의 ID 중복을 전수 조사하여 행이 중복 보이는 현상을 차단합니다.
 - **Merge Architecture (v1.1)**: 실시간 업데이트 시 기존 행을 삭제하지 않고, 수신된 데이터를 기존 행 객체에 병합(`update`)합니다. 이를 통해 서버에서 일부 메타데이터가 누락되더라도 클라이언트 메모리의 `created_at` 정보 등 시스템 메타데이터 유실을 원천 방지합니다.
-- **Floating**: 변경된 데이터는 인덱스에 관계없이 리스트 최상단으로 자동 부상(Prepend)하여 실시간 가시성을 확보합니다.
+- **Floating (v1.1 Toggle)**: 변경된 데이터는 인덱스에 관계없이 리스트 최상단으로 자동 부상(Prepend)하여 실시간 가시성을 확보합니다. 이는 사용자의 선택에 따라 토글(On/Off) 가능합니다.
+- **Row ID Direct Targeting (v1.2)**: 붙여넣기 및 일괄 업데이트 시 Index가 아닌 **Row ID를 절대 좌표로 사용하여 타겟팅**합니다. 이를 통해 실시간으로 행 순서가 변하는 환경(Sorting ON)에서도 데이터가 엉뚱한 행에 입력되는 'Index Drift' 현상을 원천 차단합니다.
 - **Order Preservation**: 배치 업데이트 시 데이터를 역순(`reversed`)으로 처리하여, 다수의 행이 동시에 부상하더라도 사용자가 선택했던 원래의 상하 순서가 유지되도록 보장합니다.
 
 ---
@@ -129,6 +130,7 @@ graph TD
 ### 데이터베이스 스키마 (`models.DataRow`)
 - `row_id`: PK (String)
 - `table_name`: Index (String)
+- `business_key_val`: **[High-perf Sorting]** 비즈니스 키 값 보관용 인덱스 컬럼 (String, Indexed)
 - `data`: JSON Blob (Cell Data + Meta)
 - `updated_at`: Server-side Timestamp
 

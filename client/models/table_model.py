@@ -189,6 +189,33 @@ class WsListenerThread(QThread):
         self.wait()
 
 
+class ApiDeleteWorker(QRunnable):
+    """지정한 행들을 서버에서 삭제 요청하는 비동기 워커."""
+    def __init__(self, url, row_ids, user_name="system"):
+        super().__init__()
+        self.url = url
+        self.row_ids = row_ids
+        self.user_name = user_name
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        try:
+            payload = {
+                "row_ids": self.row_ids,
+                "user_name": self.user_name
+            }
+            import urllib.request
+            import json
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(self.url, data=data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                self.signals.finished.emit(result)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 class ApiLazyTableModel(QAbstractTableModel):
     """
     QAbstractTableModel with lazy loading from a REST API endpoint.
@@ -217,6 +244,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._first_fetch = True
         self._is_processing_remote = False # Agent D v5: Prevent duplicate history logging
         self._fetching_row_ids = set() # Agent D v8: Track rows being fetched to prevent duplicates
+        self._sort_latest = True       # [신규] 최신순 정렬(updated_at DESC) 여부
 
     def update_columns(self, columns: list[str]):
         """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
@@ -239,6 +267,21 @@ class ApiLazyTableModel(QAbstractTableModel):
         self.endResetModel()
         
         # 즉시 첫 페이지 요청
+        self.fetchMore()
+
+    def set_sort_latest(self, enabled: bool):
+        """최신순 정렬 여부를 설정하고 모델을 리셋합니다."""
+        if self._sort_latest == enabled:
+            return
+            
+        print(f"[Model] Setting sort_latest for {self.table_name}: {enabled}")
+        self.beginResetModel()
+        self._sort_latest = enabled
+        self._data = []
+        self._total_count = 0
+        self._first_fetch = True
+        self.endResetModel()
+        
         self.fetchMore()
 
     def rowCount(self, parent=QModelIndex()) -> int:
@@ -313,6 +356,30 @@ class ApiLazyTableModel(QAbstractTableModel):
             return True
                 
         return False
+
+    def applyMappedUpdates(self, mapped_updates: dict):
+        """
+        [Row ID 직접 타겟팅] 프록시 모델에서 이미 식별된 Row ID와 컬럼명 쌍을 받아 서버로 전송합니다.
+        mapped_updates: {row_id: {col_name: value}}
+        """
+        grouped_payloads = []
+        for row_id, updates in mapped_updates.items():
+            if not row_id: continue
+            
+            grouped_payloads.append({
+                "row_id": row_id,
+                "updates": updates,
+                "source_name": "user",
+                "updated_by": config.CURRENT_USER
+            })
+            
+        if not grouped_payloads:
+            return
+            
+        url = config.get_unified_update_url(self.table_name)
+        worker = ApiGeneralUpdateWorker(url, grouped_payloads)
+        # 결과는 WebSocket 브로드캐스트를 통해 자동 반영됨
+        QThreadPool.globalInstance().start(worker)
 
     def bulkUpdateData(self, start_row, start_col, parsed_data_matrix):
         """
@@ -399,12 +466,28 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if not target_ids: return
                 
                 row_id_map = self._build_row_id_map()
-                indices_to_remove = sorted([row_id_map[rid] for rid in target_ids if rid in row_id_map], reverse=True)
+                # [버그 수정] 중복 인덱스 제거 (IndexError 방지)
+                unique_cached_indices = sorted(list(set([row_id_map[rid] for rid in target_ids if rid in row_id_map])), reverse=True)
                 
-                for idx in indices_to_remove:
+                # 1. 로컬 캐시에 존재하는 행 제거
+                for idx in unique_cached_indices:
                     self.beginRemoveRows(QModelIndex(), idx, idx)
                     del self._data[idx]
                     self._total_count -= 1
+                    self.endRemoveRows()
+                
+                # 2. [기능 보완] 캐시에 없던 행(Placeholder 영역)에 대한 카운트 동기화
+                # 서버에서 삭제된 총 개수와 로컬에서 제거한 개수 차이만큼 하단에서 제거
+                total_deleted_on_server = len(set(target_ids)) # 중복 ID가 올 경우 대비
+                removed_from_cache = len(unique_cached_indices)
+                remaining_to_remove = total_deleted_on_server - removed_from_cache
+                
+                if remaining_to_remove > 0 and self._total_count >= remaining_to_remove:
+                    # 가상 영역(목록 하단)에서 개수 차감 및 뷰 갱신
+                    first_v_idx = self._total_count - remaining_to_remove
+                    last_v_idx = self._total_count - 1
+                    self.beginRemoveRows(QModelIndex(), first_v_idx, last_v_idx)
+                    self._total_count -= remaining_to_remove
                     self.endRemoveRows()
                 
                 self.row_deleted_ws.emit(data)
@@ -418,10 +501,17 @@ class ApiLazyTableModel(QAbstractTableModel):
                 for item in items:
                     new_rows.append(self._normalize_row_data(item))
                 
-                # 최상단에 일괄 삽입
-                self.beginInsertRows(QModelIndex(), 0, len(new_rows) - 1)
-                for r in reversed(new_rows): # 역순으로 넣어 제일 첫 번째 행이 인덱스 0이 되도록 함
-                    self._data.insert(0, r)
+                # 정렬 설정에 따라 삽입 위치 결정 (최신순 ON 이면 최상단, OFF 이면 최하단)
+                if self._sort_latest:
+                    self.beginInsertRows(QModelIndex(), 0, len(new_rows) - 1)
+                    for r in reversed(new_rows):
+                        self._data.insert(0, r)
+                else:
+                    start_idx = len(self._data)
+                    self.beginInsertRows(QModelIndex(), start_idx, start_idx + len(new_rows) - 1)
+                    for r in new_rows:
+                        self._data.append(r)
+                
                 self._total_count += len(new_rows)
                 self.endInsertRows()
                 
@@ -462,8 +552,16 @@ class ApiLazyTableModel(QAbstractTableModel):
                         # 맵 갱신 (Optional but robust)
                         row_id_map = self._build_row_id_map()
                     
-                    # 단일 삽입: 최상단에 부상(Floating)
-                    self._data.insert(0, normalized_row)
+                    # 데이터 삽입: 정렬 설정에 따라 위치 결정
+                    if self._sort_latest:
+                        # 최상단에 부상(Floating)
+                        self._data.insert(0, normalized_row)
+                    else:
+                        # 원래 있던 위치(idx)에 다시 넣거나, 없던 행(is_new)이면 하단에 추가
+                        if idx is not None:
+                            self._data.insert(idx, normalized_row)
+                        else:
+                            self._data.append(normalized_row)
                     
                     # 히스토리 패널용 업데이트 리스트 구성
                     for col, cell_val in new_data_blob.items():
@@ -537,16 +635,15 @@ class ApiLazyTableModel(QAbstractTableModel):
 
             #if not changed_indices: return
 
-            for row_id in affected_rows:
-                # REBUILD map every time because indices shift on pop/insert
-                self.beginMoveRows(QModelIndex(), 0, 0, QModelIndex(), 0) # Dummy to notify view of potential shift if needed? No.
-                # Just use beginMoveRows for the actual move
-                current_map = self._build_row_id_map()
-                idx = current_map.get(row_id)
-                if idx is not None and idx > 0:
-                    self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
-                    self._data.insert(0, self._data.pop(idx))
-                    self.endMoveRows()
+            if self._sort_latest:
+                for row_id in affected_rows:
+                    # REBUILD map every time because indices shift on pop/insert
+                    current_map = self._build_row_id_map()
+                    idx = current_map.get(row_id)
+                    if idx is not None and idx > 0:
+                        self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
+                        self._data.insert(0, self._data.pop(idx))
+                        self.endMoveRows()
 
             max_row = max([r for r, _ in changed_indices]) if changed_indices else 0
             self.dataChanged.emit(self.index(0, 0), self.index(max_row, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
@@ -588,10 +685,12 @@ class ApiLazyTableModel(QAbstractTableModel):
         row_id_map = self._build_row_id_map()
         
         if row_id in row_id_map:
-            # Already exists, just update and move to top
+            # Already exists, just update
             idx = row_id_map[row_id]
             self._data[idx] = normalized_row
-            if idx > 0:
+            
+            # 최신순 정렬 시에만 최상단으로 이동
+            if self._sort_latest and idx > 0:
                 self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
                 self._data.insert(0, self._data.pop(idx))
                 self.endMoveRows()
@@ -600,9 +699,14 @@ class ApiLazyTableModel(QAbstractTableModel):
         # Truly new to cache
         self._is_processing_remote = True
         try:
-            self.beginInsertRows(QModelIndex(), 0, 0)
-            self._data.insert(0, normalized_row)
-            # Do NOT increment _total_count here because single fetch is typically for an existing row
+            if self._sort_latest:
+                self.beginInsertRows(QModelIndex(), 0, 0)
+                self._data.insert(0, normalized_row)
+            else:
+                idx = len(self._data)
+                self.beginInsertRows(QModelIndex(), idx, idx)
+                self._data.append(normalized_row)
+            
             self.endInsertRows()
             self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
         finally:
@@ -664,8 +768,16 @@ class ApiLazyTableModel(QAbstractTableModel):
         # 2. 비즈니스 데이터 처리
         if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
             item = cell_data.get(col_name, {})
-            return item.get("value", "")
+            val = item.get("value", "")
+            # [기능 개선] 편집 모드(EditRole)일 때는 무조건 문자열로 반환하여 숫자 전용 입력기(SpinBox)를 방지함
+            if role == Qt.ItemDataRole.EditRole and val is not None:
+                return str(val)
+            return val
             
+        # [핵심] 식별자 다이렉트 접근 (Index Drift 방지용 절대 좌표)
+        if role == Qt.ItemDataRole.UserRole + 2:
+            return self._data[row].get("row_id")
+
         # Highlight logic if is_overwrite is True
         if role == Qt.ItemDataRole.BackgroundRole:
             item = cell_data.get(col_name, {})
@@ -690,7 +802,10 @@ class ApiLazyTableModel(QAbstractTableModel):
         skip = len(self._data)
         limit = self._chunk_size
         
-        url = f"{self.endpoint_url}?skip={skip}&limit={limit}"
+        order_by = "updated_at" if self._sort_latest else "id"
+        order_desc = "true" if self._sort_latest else "false"
+        
+        url = f"{self.endpoint_url}?skip={skip}&limit={limit}&order_by={order_by}&order_desc={order_desc}"
         if self._search_query:
             import urllib.parse
             url += f"&q={urllib.parse.quote(self._search_query)}"
@@ -741,6 +856,10 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetching = False
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            return self._columns[section].upper()
+        if orientation == Qt.Orientation.Horizontal:
+            if role == Qt.ItemDataRole.DisplayRole:
+                return self._columns[section].upper()
+            if role == Qt.ItemDataRole.UserRole:
+                # [핵심] 번역/가공 전의 원본 컬럼명(Key)을 반환하여 뷰-모델 간 정확한 매핑 지원
+                return self._columns[section]
         return super().headerData(section, orientation, role)

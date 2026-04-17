@@ -128,7 +128,15 @@ def list_tables():
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
 @app.get("/tables/{table_name}/data", response_model=schemas.PaginatedDataResponse)
-def get_table_data(table_name: str, skip: int = 0, limit: int = 50, q: str = None, db: Session = Depends(get_db)):
+def get_table_data(
+    table_name: str, 
+    skip: int = 0, 
+    limit: int = 50, 
+    q: str = None, 
+    order_by: str = "row_id", 
+    order_desc: bool = False,
+    db: Session = Depends(get_db)
+):
     """
     Lazy Loading을 위한 페이징 엔드포인트
     q 파라미터가 있으면 전체 데이터 중 해당 검색어가 포함된 행만 필터링합니다.
@@ -144,10 +152,23 @@ def get_table_data(table_name: str, skip: int = 0, limit: int = 50, q: str = Non
     total_count = query.count()
     
     from sqlalchemy.sql import func
-    # 정렬 기준: updated_at(최고 우선순위), 없으면 created_at으로 보완 (COALESCE)
-    sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at).desc()
+    # 정렬 기준 구성 (고성능 Shadow Column 활용)
+    if order_by == "updated_at":
+        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+        sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
+    elif order_by == "id":
+        # 사용자가 "자연 정렬"을 원할 경우: BK가 있으면 BK순, 없으면 ID순으로 고성능 정렬
+        sort_expr = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
+        # Null 값(BK 미설정) 대응을 위해 row_id를 보조 정렬로 사용
+        final_sort = [sort_expr, models.DataRow.row_id.asc()]
+    else:
+        sort_expr = models.DataRow.row_id.asc()
+        final_sort = [sort_expr]
     
-    rows = query.order_by(sort_expr).offset(skip).limit(limit).all()
+    if order_by == "updated_at":
+        rows = query.order_by(sort_expr).offset(skip).limit(limit).all()
+    else:
+        rows = query.order_by(*final_sort).offset(skip).limit(limit).all()
     
     # 공통 데코레이터 적용
     for row in rows:

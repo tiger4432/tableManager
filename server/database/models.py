@@ -13,6 +13,7 @@ class DataRow(Base):
     # but for a "lazy load row chunks", fetching JSON rows is very efficient and dynamic.
     # For now, let's stick to a dynamic JSON approach to easily extend for Any Table.
     table_name = Column(String, index=True)
+    business_key_val = Column(String, index=True) # [고성능 정렬용] BK 값 추출 보관용 가상 컬럼
     data = Column(JSON, default=dict)
     
     # In data JSON:

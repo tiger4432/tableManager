@@ -28,6 +28,7 @@
 - **Phase 21-27**: `updated_at` 기반 정렬, 실시간 부상(Float-to-top), 나이브 시간 보정 및 KST 현지화 완결.
 - **Phase 28-29**: 시스템 컬럼 읽기 전용 보안 정책 수립 및 행 삭제(Row Delete) 실시간 히스토리 연동.
 - **Phase 30-31**: 심층 아키텍처 분석(Architecture Analysis) 완료 및 외부 분석 툴 연동을 위한 CSV 익스포트 기능 상용화.
+- **Phase 46-48**: **[Data Integrity Revision]** 행 삭제 및 붙여넣기 무결성(Row ID 타겟팅) 이슈 해결, 고성능 BK 인덱스 정렬 및 토글 시스템 도입, 범용 텍스트 입력 제약 해제.
 - **Agentic Env**: 멀티 에이전트 협업 체계(Lead/Excel/Sync/Ingester) 및 지식 자산화 표준 정립.
 
 ---
