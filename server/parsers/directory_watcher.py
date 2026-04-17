@@ -212,7 +212,7 @@ class IngestionHandler(FileSystemEventHandler):
                     items.append({
                         "business_key_val": bk_val,
                         "updates": normalized_row,
-                        "source_name": "custom_script",
+                        "source_name": "custom_script" if os.path.exists(os.path.join(self.scripts_path, "custom_parser.py")) else "batch_ingester",
                         "updated_by": "system"
                     })
             
@@ -220,14 +220,16 @@ class IngestionHandler(FileSystemEventHandler):
                 continue
 
             try:
-                payload = json.dumps({"items": items}).encode("utf-8")
-                print(base_url)
-                req = urllib.request.Request(base_url, data=payload, method="PUT")
+                # [통합 업데이트 API 적용]
+                unified_url = f"http://{endpoint}/tables/{table_name}/data/updates"
+                payload = json.dumps({"updates": items}).encode("utf-8")
+                
+                req = urllib.request.Request(unified_url, data=payload, method="PUT")
                 req.add_header("Content-Type", "application/json")
                 with urllib.request.urlopen(req) as response:
-                    logger.info(f"Batch upsert success ({len(items)} rows). Status: {response.status}")
+                    logger.info(f"Unified batch update success ({len(items)} rows). Status: {response.status}")
             except Exception as e:
-                logger.error(f"Failed to send batch upsert: {e}")
+                logger.error(f"Failed to send unified batch update: {e}")
 
 class WorkspaceWatcher:
     """

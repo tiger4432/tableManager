@@ -105,52 +105,35 @@ class HistoryDockPanel(QDockWidget):
     # Private slots / helpers
     # ------------------------------------------------------------------
 
-    def _log_batch_ws_event(self, updates: list[dict], table_name: str, table_view):
-        """대량의 업데이트 이벤트를 즉시 요약 처리합니다."""
-        if not updates: return
+    def _log_batch_ws_event(self, batch_data: dict, table_name: str, table_view):
+        """대량의 업데이트 이벤트를 요약 표시합니다."""
+        updates = batch_data.get("updates", [])
+        change_count = batch_data.get("change_count", len(updates))
+        user_name = batch_data.get("updated_by", "system")
+        if not updates and change_count == 0: return
         
         now = datetime.now().strftime("%H:%M:%S")
         
-        # 1. 특정 임계치(예: 10개)를 넘으면 요약 메시지로 표시
-        if len(updates) > 10:
-            summary_text = f"⚡ [일괄 업데이트] [{now}] {table_name} / {len(updates)}건의 데이터가 갱신되었습니다."
-            list_item = QListWidgetItem(summary_text)
-            list_item.setForeground(QColor("#89dceb")) # 하늘색
-            
-            # 툴팁에 상세 정보 일부 노출
-            tooltip = "\n".join([f"• {u.get('column_name', '?')}: {u.get('value', '')}" for u in updates[:15]])
-            if len(updates) > 15: tooltip += "\n..."
-            list_item.setToolTip(tooltip)
-            
-            self._list.insertItem(0, list_item)
-            return
-
-        # 2. 소량(10개 이하)인 경우 일괄 삽입
-        self._list.setUpdatesEnabled(False)
-        try:
-            for data in updates:
-                row_id = data.get("row_id", "unknown")
-                col_name = data.get("column_name", "?")
-                value = data.get("value", "")
-                is_overwrite = data.get("is_overwrite", False)
-                
-                prefix = "🛠️ [교정]" if is_overwrite else "🌐 [원격]"
-                text = f"{prefix} [{now}] {table_name} / {col_name} / {value}"
-                
-                list_item = QListWidgetItem(text)
-                list_item.setForeground(QColor("#f9e2af") if is_overwrite else QColor("#89dceb"))
-                
-                # scrollTo 메타 저장
-                m = table_view.model()
-                if m and hasattr(m, '_build_row_id_map'):
-                    actual_m = getattr(m, 'sourceModel', lambda: m)()
-                    row_idx = actual_m._build_row_id_map().get(row_id)
-                    if row_idx is not None:
-                        self._item_meta[id(list_item)] = (table_view, actual_m.index(row_idx, 0))
-                
-                self._list.insertItem(0, list_item)
-        finally:
-            self._list.setUpdatesEnabled(True)
+        # 사용자의 요청에 따라 "n개의 데이터 업데이트" 형식으로 심플하게 표현
+        summary_text = f"🔄 [업데이트] [{now}] {table_name} / {change_count}개의 데이터 업데이트됨 [{user_name}]"
+        
+        list_item = QListWidgetItem(summary_text)
+        list_item.setForeground(QColor("#89dceb")) # 하늘색
+        
+        # 툴팁에 상세 정보 일부 노출 (ID 위주)
+        tool_ids = []
+        seen = set()
+        for u in updates:
+            rid = u.get("row_id")
+            if rid and rid not in seen:
+                tool_ids.append(rid)
+                seen.add(rid)
+        
+        tooltip = f"영향받은 행: {', '.join(map(str, tool_ids[:10]))}"
+        if len(tool_ids) > 10: tooltip += " ..."
+        list_item.setToolTip(tooltip)
+        
+        self._list.insertItem(0, list_item)
 
     def _handle_data_changed(
         self,
@@ -188,8 +171,9 @@ class HistoryDockPanel(QDockWidget):
                 item_info = cell_data.get(col_name, {})
                 is_overwrite = item_info.get("is_overwrite", False)
                 value = item_info.get("value", "")
+                updated_by = item_info.get("updated_by", "system")
 
-                text = f"[{now}] {table_name} / {col_name} / row_id:{row_id} → {value}"
+                text = f"[{now}] {table_name} / {col_name} / row_id:{row_id} → {value} [{updated_by}]"
 
                 list_item = QListWidgetItem(text)
                 if is_overwrite:
@@ -203,15 +187,23 @@ class HistoryDockPanel(QDockWidget):
                 self._list.insertItem(0, list_item)  # prepend
 
     def _log_row_deleted(self, data: dict, table_name: str, table_view):
-        """행 삭제(row_delete) 이벤트 로그 추가."""
+        """행 삭제 이벤트 로그 추가."""
         now = datetime.now().strftime("%H:%M:%S")
-        row_id = data.get("row_id", "unknown")
+        row_ids = data.get("row_ids", [])
+        row_id = data.get("row_id")
+        user_name = data.get("updated_by", "system")
         
-        text = f"🗑️ [삭제] [{now}] {table_name} / 행이 삭제됨 (row_id:{row_id})"
+        if row_ids:
+            msg = f"{len(row_ids)}개의 행이 삭제됨"
+        elif row_id:
+            msg = f"행이 삭제됨 (ID: {row_id})"
+        else:
+            msg = "행이 삭제됨"
+            
+        text = f"🗑️ [삭제] [{now}] {table_name} / {msg} [{user_name}]"
         
         list_item = QListWidgetItem(text)
-        list_item.setForeground(QColor("#f38ba8"))  # 빨간색(초콜릿): 삭제 구분
-        
+        list_item.setForeground(QColor("#f38ba8"))  # 빨간색
         self._list.insertItem(0, list_item)
 
     def _log_ws_event(self, data: dict, table_name: str, table_view):
@@ -246,16 +238,26 @@ class HistoryDockPanel(QDockWidget):
         self._list.insertItem(0, list_item)
 
     def _log_row_created(self, data: dict, table_name: str, table_view):
-        """행 생성(row_create) 이벤트 로그 추가 및 자동 갱신 트리거."""
+        """행 생성(row_create/batch_row_create) 이벤트 로그 추가 및 자동 갱신 트리거."""
         now = datetime.now().strftime("%H:%M:%S")
-        row_id = data.get("data", {}).get("row_id", "unknown")
+        event = data.get("event")
+        user_name = data.get("updated_by", "system")
         
-        text = f"🆕 [신규] [{now}] {table_name} / 새 행 생성 (row_id:{row_id})"
+        if event == "batch_row_create":
+            items = data.get("items", [])
+            msg = f"{len(items)}개의 새 행 생성됨"
+            row_id = items[0].get("row_id", "unknown") if items else "unknown"
+        else:
+            # 기존 단건 row_create 지원 하위 호환성
+            row_id = data.get("data", {}).get("row_id", "unknown")
+            msg = f"새 행 생성 (row_id:{row_id})"
+        
+        text = f"🆕 [신규] [{now}] {table_name} / {msg} [{user_name}]"
         
         list_item = QListWidgetItem(text)
         list_item.setForeground(QColor("#a6e3a1"))  # 녹색: 신규 생성 구분
         
-        # 메타 저장 (최상단 행)
+        # 메타 저장 (최상단 행으로 이동 가능하도록)
         self._item_meta[id(list_item)] = (table_view, table_view.model().index(0, 0))
         
         self._list.insertItem(0, list_item)

@@ -1,48 +1,42 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from typing import Any
+from typing import Any, Optional
 from . import models, schemas
 import uuid
+import json
+import os
+from datetime import datetime
 
 # 소스별 우선순위 정의 (숫자가 낮을수록 높음)
 SOURCE_PRIORITY = {
     "user": 0,
     "parser_a": 1,
-    "parser_b": 2
+    "parser_b": 2,
+    "batch_ingester": 3,
+    "custom_script": 4
 }
-
-import json
-import os
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
 
 def load_table_config():
     if not os.path.exists(CONFIG_PATH):
-        print(f"Config file not found: {CONFIG_PATH}")
         return {}
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
-        print(f"Error loading table config: {e}")
+    except Exception:
         return {}
 
 TABLE_CONFIG = load_table_config()
 
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
-    """
-    테이블별 비즈니스 키(예: part_no)를 기반으로 행을 조회합니다.
-    데이터 수동 입력 시 발생하는 공백이나 타입 차이(int vs str)를 고려하여 정밀 비교합니다.
-    """
+    """테이블별 비즈니스 키를 기반으로 행을 조회합니다."""
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     if not key_col:
         return None
         
-    rows = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name
-    ).all()
-    
+    rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
     target_val = str(key_value).strip() if key_value is not None else ""
     
     for row in rows:
@@ -53,21 +47,15 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     return None
 
 def compute_priority_value(sources: dict, manual_priority_source: str = None):
-    """
-    저장된 여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
-    manual_priority_source가 지정된 경우 해당 소스를 최우선으로 채택합니다.
-    """
+    """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
     if not sources:
         return None, None
         
-    # 1. 수동 지정된 소스가 있는 경우 최우선 적용
     if manual_priority_source and manual_priority_source in sources:
         val_data = sources[manual_priority_source]
-        if isinstance(val_data, dict) and "value" in val_data:
-            return val_data["value"], manual_priority_source
-        return val_data, manual_priority_source
+        val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
+        return val, manual_priority_source
 
-    # 2. 기본 우선순위 순서대로 정렬 (지정되지 않은 소스는 기본값 99)
     sorted_sources = sorted(
         sources.keys(),
         key=lambda k: SOURCE_PRIORITY.get(k, 99)
@@ -75,11 +63,11 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
     
     top_source = sorted_sources[0]
     val_data = sources[top_source]
-    if isinstance(val_data, dict) and "value" in val_data:
-        return val_data["value"], top_source
-    return val_data, top_source
+    val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
+    return val, top_source
 
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str):
+    """감사 로그를 기록합니다."""
     log = models.AuditLog(
         table_name=table_name,
         row_id=row_id,
@@ -91,305 +79,185 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
     )
     db.add(log)
 
-def update_cell(db: Session, table_name: str, cell_update: schemas.CellUpdate):
-    # Agent D v12: 시스템 컬럼 수정 차단
-    if cell_update.column_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
-        return None  # 또는 에러 발생 가능. 여기서는 None으로 무시 처리.
-        
-    row = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == cell_update.row_id
-    ).first()
+def apply_row_update_internal(
+    db: Session, 
+    table_name: str, 
+    update_item: schemas.GeneralUpdateItem
+) -> tuple[models.DataRow, bool]:
+    """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트합니다."""
+    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
     
-    if not row:
-        return None
-        
-    data = row.data
-    if cell_update.column_name not in data:
-        data[cell_update.column_name] = {
-            "value": None,
-            "is_overwrite": False,
-            "sources": {},
-            "updated_by": "system",
-            "priority_source": None
-        }
-        
-    cell = data[cell_update.column_name]
-    old_full_value = cell.get("value")
-    
-    # 1. 해당 소스의 데이터를 저장 (타임스탬프와 함께)
-    if "sources" not in cell: cell["sources"] = {}
-    from datetime import datetime
-    cell["sources"][cell_update.source_name] = {
-        "value": cell_update.value,
-        "timestamp": datetime.now().isoformat(),
-        "updated_by": cell_update.updated_by
-    }
-    
-    # 2. 우선순위 계산 및 최종 값(value) 결정
-    final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
-    
-    cell["value"] = final_val
-    cell["priority_source"] = top_src
-    cell["is_overwrite"] = ("user" in cell["sources"])
-    cell["updated_by"] = cell_update.updated_by
-    
-    # 3. 감사 로그 생성
-    create_audit_log(db, table_name, cell_update.row_id, cell_update.column_name, old_full_value, cell_update.value, cell_update.source_name, cell_update.updated_by)
-    
-    # Notify SQLAlchemy that the JSON column was mutated
-    flag_modified(row, "data")
-    db.commit()
-    db.refresh(row)
-    return row
-
-def update_cells_batch(db: Session, table_name: str, batch: schemas.CellUpdateBatch):
-    updated_rows = []
-    # For now, do iterative updates. Can be aggregated by row_id for better perf.
-    for update in batch.updates:
+    row = None
+    if update_item.row_id:
         row = db.query(models.DataRow).filter(
             models.DataRow.table_name == table_name,
-            models.DataRow.row_id == update.row_id
+            models.DataRow.row_id == update_item.row_id
         ).first()
+    
+    if not row and update_item.business_key_val:
+        row = get_row_by_business_key(db, table_name, update_item.business_key_val)
         
-        if row:
-            if update.column_name not in row.data:
-                row.data[update.column_name] = {
-                    "value": None, "is_overwrite": False, "sources": {},
-                    "updated_by": "system", "priority_source": None
-                }
-            
-            cell = row.data[update.column_name]
-            old_full_value = cell.get("value")
-            
-            if "sources" not in cell: cell["sources"] = {}
-            from datetime import datetime
-            cell["sources"][update.source_name] = {
-                "value": update.value,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
-            cell["value"] = final_val
-            cell["priority_source"] = top_src
-            cell["is_overwrite"] = ("user" in cell["sources"])
-            cell["updated_by"] = update.updated_by
-
-            # 감사 로그 (배치 내 개별 로그 생성)
-            create_audit_log(db, table_name, update.row_id, update.column_name, old_full_value, update.value, update.source_name, update.updated_by)
-            flag_modified(row, "data")
-            if row not in updated_rows:
-                updated_rows.append(row)
-                
-    if updated_rows:
-        db.commit()
-        for r in updated_rows:
-            db.refresh(r)
-            
-    return updated_rows
-
-def delete_row(db: Session, table_name: str, row_id: str):
-    row = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == row_id
-    ).first()
-    
-    if row:
-        db.delete(row)
-        db.commit()
-        return True
-    return False
-    
-    if row:
-        db.delete(row)
-        db.commit()
-        return True
-    return False
-
-def create_empty_row(db: Session, table_name: str):
-    new_row_id = str(uuid.uuid4())
-    # Create basic data structure for the row
-    # In this app, columns are dynamic in JSON. 
-    # We can initialize with an empty dict or pre-fill known columns.
-    # For now, let's keep it empty as per instructions.
-    new_row = models.DataRow(
-        row_id=new_row_id,
-        table_name=table_name,
-        data={}
-    )
-    db.add(new_row)
-    db.commit()
-    db.refresh(new_row)
-    return new_row
-
-def upsert_row(db: Session, table_name: str, business_key_val: Any, updates: dict, source_name: str = "user", updated_by: str = "system"):
-    """
-    비즈니스 키를 기반으로 행을 찾아 업데이트하거나, 없으면 생성합니다.
-    """
-    # Agent D v12: 시스템 컬럼은 외부(Parser, API)에서 업데이트하지 못하도록 필터링
-    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
-    updates = {k: v for k, v in updates.items() if k not in system_cols}
-    
-    row = get_row_by_business_key(db, table_name, business_key_val)
     is_new = False
-    
     if not row:
         row = create_empty_row(db, table_name)
         is_new = True
         
-    for col_name, val in updates.items():
+    changed_cols = []
+    for col_name, val in update_item.updates.items():
+        if col_name in system_cols: continue
+            
         if col_name not in row.data:
-            row.data[col_name] = {
-                "value": None, "is_overwrite": False, "sources": {},
-                "updated_by": "system", "priority_source": None
-            }
-        
+            row.data[col_name] = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system", "priority_source": None}
+            
         cell = row.data[col_name]
         old_val = cell.get("value")
         
-        # 1. 소스 데이터 저장
         if "sources" not in cell: cell["sources"] = {}
-        from datetime import datetime
-        cell["sources"][source_name] = {
+        cell["sources"][update_item.source_name] = {
             "value": val,
             "timestamp": datetime.now().isoformat(),
-            "updated_by": updated_by
+            "updated_by": update_item.updated_by
         }
         
-        # 2. 우선순위 기반 최종 값 결정
-        new_final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+        new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
         
-        # 3. 값의 변화가 있거나 신규 행인 경우에만 감사 로그 기록 (무결성 규칙 준수)
-        if is_new or (str(old_val) != str(new_final_val)):
-            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, source_name, updated_by)
-        
-        cell["value"] = new_final_val
+        if is_new or (str(old_val) != str(new_val)):
+            changed_cols.append(col_name)
+            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "system"))
+            
+        cell["value"] = new_val
         cell["priority_source"] = top_src
         cell["is_overwrite"] = ("user" in cell["sources"])
-        cell["updated_by"] = updated_by
+        cell["updated_by"] = (update_item.updated_by or "system")
         
     flag_modified(row, "data")
-    db.commit()
-    db.refresh(row)
-    return row, is_new
+    return row, is_new, changed_cols
 
-def upsert_rows_batch(db: Session, table_name: str, batch_items: list[schemas.CellUpsert]):
-    """
-    여러 개의 업서트 요청을 단일 트랜잭션으로 처리합니다.
-    """
-    from datetime import datetime
-    results = []
-    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
+def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
+    """통합 업데이트를 배치로 처리합니다."""
+    # [무결성 강화] 동일한 row_id에 대한 결과가 여러 번 발생하지 않도록 중복 제거 (dict 사용)
+    unique_results = {} # row_id -> (row, is_new)
+    total_changed_cells = [] # list of (row_id, col_name)
     
-    for item in batch_items:
-        updates = {k: v for k, v in item.updates.items() if k not in system_cols}
-        row = get_row_by_business_key(db, table_name, item.business_key_val)
-        is_new = False
+    for item in batch.updates:
+        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item)
+        # 마지막 상태를 유지 (is_new는 최초 값을 유지하거나, 새로 생성된 경우 True)
+        prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
+        unique_results[row.row_id] = (row, is_new or prev_is_new)
         
-        if not row:
-            new_row_id = str(uuid.uuid4())
-            row = models.DataRow(
-                row_id=new_row_id,
-                table_name=table_name,
-                data={}
-            )
-            db.add(row)
-            is_new = True
+        for col in changed_cols:
+            total_changed_cells.append((row.row_id, col))
             
-        for col_name, val in updates.items():
-            if col_name not in row.data:
-                row.data[col_name] = {
-                    "value": None, "is_overwrite": False, "sources": {},
-                    "updated_by": "system", "priority_source": None
-                }
-            
-            cell = row.data[col_name]
-            old_val = cell.get("value")
-            
-            if "sources" not in cell: cell["sources"] = {}
-            cell["sources"][item.source_name] = {
-                "value": val,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            new_final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
-            
-            # 변화가 있을 때만 감사 로그 기록
-            if is_new or (str(old_val) != str(new_final_val)):
-                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_final_val, item.source_name, (item.updated_by or "system"))
-            
-            cell["value"] = new_final_val
-            cell["priority_source"] = top_src
-            cell["is_overwrite"] = ("user" in cell["sources"])
-            cell["updated_by"] = (item.updated_by or "system")
-            
-        flag_modified(row, "data")
-        results.append((row, is_new))
-        
     db.commit()
-    for row, _ in results:
-        db.refresh(row)
-    return results
+    results = list(unique_results.values())
+    for row, _ in results: db.refresh(row)
+    return results, total_changed_cells
 
-def get_row_cell(db: Session, table_name: str, row_id: str, col_name: str):
-    return db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == row_id
-    ).first()
+def create_empty_row(db: Session, table_name: str):
+    """신규 빈 행을 하나 생성합니다."""
+    new_rows = create_empty_rows_batch(db, table_name, 1)
+    return new_rows[0] if new_rows else None
+
+def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
+    """신규 빈 행들을 일괄 생성하고 요약 히스토리를 남깁니다."""
+    new_rows = []
+    for _ in range(count):
+        row = models.DataRow(
+            row_id=str(uuid.uuid4()),
+            table_name=table_name,
+            data={}
+        )
+        new_rows.append(row)
+    
+    db.add_all(new_rows)
+    
+    # 요약 히스토리 남기기
+    if count > 0:
+        summary_msg = f"{table_name} / {count}개의 새 행이 생성됨"
+        create_audit_log(
+            db, table_name, "_BATCH_", "CREATE",
+            None, summary_msg, "system", user_name
+        )
+    
+    db.commit()
+    for row in new_rows: db.refresh(row)
+    return new_rows
+
+    return False
+
+def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
+    """단일 행을 삭제합니다 (배치 로직으로 통합)."""
+    return delete_rows_batch(db, table_name, [row_id], user_name) > 0
+
+def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str = "system"):
+    """여러 행을 일괄 삭제하고 요약 히스토리를 남깁니다."""
+    deleted_count = 0
+    for rid in row_ids:
+        row = db.query(models.DataRow).filter(
+            models.DataRow.table_name == table_name, 
+            models.DataRow.row_id == rid
+        ).first()
+        if row:
+            db.delete(row)
+            deleted_count += 1
+            
+    if deleted_count > 0:
+        # 요약 히스토리 남기기
+        summary_msg = f"{table_name} / {deleted_count}개의 행이 삭제됨"
+        create_audit_log(
+            db, table_name, "_BATCH_", "DELETE", 
+            None, summary_msg, "system", user_name
+        )
+        db.commit()
+    return deleted_count
+
+def get_row_cell(db: Session, table_name: str, row_id: str):
+    return db.query(models.DataRow).filter(models.DataRow.table_name == table_name, models.DataRow.row_id == row_id).first()
 
 def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str):
-    row = get_row_cell(db, table_name, row_id, col_name)
-    if not row or col_name not in row.data:
-        return None
-        
+    """특정 소스의 데이터를 삭제하고 값을 재계산합니다."""
+    row = get_row_cell(db, table_name, row_id)
+    if not row or col_name not in row.data: return None, []
     cell = row.data[col_name]
     if "sources" in cell and source_name in cell["sources"]:
         del cell["sources"][source_name]
-        
-        # manual_priority_source가 삭제된 소스면 해제
-        if cell.get("manual_priority_source") == source_name:
-            cell["manual_priority_source"] = None
-            
-        # 값 재계산
+        if cell.get("manual_priority_source") == source_name: cell["manual_priority_source"] = None
         old_val = cell.get("value")
-        final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
-        cell["value"] = final_val
+        new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+        cell["value"] = new_val
         cell["priority_source"] = top_src
         cell["is_overwrite"] = ("user" in cell["sources"])
         
-        # 감사 로그 기록
-        create_audit_log(db, table_name, row_id, col_name, old_val, final_val, f"delete_source:{source_name}", "system")
-
+        changed_cols = []
+        if str(old_val) != str(new_val):
+            changed_cols = [col_name]
+            create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"delete_source:{source_name}", "system")
+        
         flag_modified(row, "data")
         db.commit()
         db.refresh(row)
-        return row
-    return None
+        return row, changed_cols
+    return None, []
 
-def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: str | None, updated_by: str = "user"):
-    row = get_row_cell(db, table_name, row_id, col_name)
-    if not row or col_name not in row.data:
-        return None
-        
+def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user"):
+    """수동 소스 우선순위(Pin)를 설정합니다."""
+    row = get_row_cell(db, table_name, row_id)
+    if not row or col_name not in row.data: return None, []
     cell = row.data[col_name]
-    # source_name 이 None 이면 수동 우선순위 해제
-    # source_name 이 존재하면 sources 에 있는지 확인
-    if source_name and (source_name not in cell.get("sources", {})):
-        return None
-        
+    if source_name and (source_name not in cell.get("sources", {})): return None, []
     cell["manual_priority_source"] = source_name
-    
-    # 값 재계산
     old_val = cell.get("value")
-    final_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
-    cell["value"] = final_val
+    new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+    cell["value"] = new_val
     cell["priority_source"] = top_src
     cell["is_overwrite"] = (source_name == "user") or ("user" in cell.get("sources", {}))
     
-    # 감사 로그 기록
-    create_audit_log(db, table_name, row_id, col_name, old_val, final_val, f"set_priority:{source_name}", updated_by)
-
+    changed_cols = []
+    if str(old_val) != str(new_val):
+        changed_cols = [col_name]
+        create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"set_priority:{source_name}", updated_by)
+    
     flag_modified(row, "data")
     db.commit()
     db.refresh(row)
-    return row
+    return row, changed_cols

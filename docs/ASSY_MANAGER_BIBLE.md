@@ -67,9 +67,11 @@ graph TD
 ### 2.2 가상 로딩 (Lazy Loading)
 - **청킹 전략**: 데이터 로딩 부하를 줄이기 위해 `_chunk_size = 50` 단위로 데이터를 요청하며, 스크롤이 하단에 도달할 때만 추가 데이터를 페칭합니다.
 
-### 2.3 데이터 무결성 가드
-- **Strict Deduplication**: `_build_row_id_map()`을 통해 캐시된 데이터와 수신된 데이터 간의 ID 중복을 전수 조사하여 행이 중복 보이는 현상을 원천 차단합니다.
+### 2.3 데이터 무결성 가이드
+- **Strict Deduplication**: `_build_row_id_map()`을 통해 캐시된 데이터와 수신된 데이터 간의 ID 중복을 전수 조사하여 행이 중복 보이는 현상을 차단합니다.
+- **Merge Architecture (v1.1)**: 실시간 업데이트 시 기존 행을 삭제하지 않고, 수신된 데이터를 기존 행 객체에 병합(`update`)합니다. 이를 통해 서버에서 일부 메타데이터가 누락되더라도 클라이언트 메모리의 `created_at` 정보 등 시스템 메타데이터 유실을 원천 방지합니다.
 - **Floating**: 변경된 데이터는 인덱스에 관계없이 리스트 최상단으로 자동 부상(Prepend)하여 실시간 가시성을 확보합니다.
+- **Order Preservation**: 배치 업데이트 시 데이터를 역순(`reversed`)으로 처리하여, 다수의 행이 동시에 부상하더라도 사용자가 선택했던 원래의 상하 순서가 유지되도록 보장합니다.
 
 ---
 
@@ -91,11 +93,15 @@ graph TD
 대량의 자동화 로그를 지연 없이 처리하기 위한 배치 처리 엔진을 기술합니다.
 
 ### 4.1 인제션 파이프라인
-- **DirectoryWatcher**: `raws/` 폴더의 신규 파일을 감시하고, 인제스터를 통해 50개 단위 청크로 나누어 서버에 업서트 요청을 보냅니다.
+- **DirectoryWatcher**: `raws/` 폴더의 신규 파일을 감시하고, 인제스터를 통해 데이터를 파싱하여 통합 API(`PUT /data/updates`)에 50개 단위 청크로 전송합니다.
 - **AdvancedIngester**: 정규표현식 기반의 고속 행 추출 및 파일 헤더 메타데이터 결합 기능을 수행합니다.
 
-### 4.2 배치 통신 규격
-- `batch_row_upsert` 이벤트를 통해 다량의 결과를 하나의 JSON으로 압축 브로드캐스트하여 네트워크 효율을 극대화합니다.
+### 4.2 통합 통신 및 동기화 규격
+- **Unified Update API**: 데이터 변경(인제션, 수동 수정, 원천 관리)은 `/tables/{t}/data/updates` 하나로 처리되며, 개별 컬럼의 실제 변경 여부를 자동 감지합니다.
+- **Unified Delete API**: 다수의 행을 안전하게 일괄 삭제하기 위해 `POST /tables/{t}/rows/batch_delete`를 사용합니다.
+- **Efficient Sync (Delta Only)**: 
+  - `batch_row_upsert` 이벤트는 실제 값이 변한 셀의 개수(`change_count`)를 포함합니다. 
+  - 클라이언트는 이를 활용해 수만 건의 업데이트 중 실제 유의미한 변경사항만 히스토리에 요약(Summary) 표시하여 노이즈를 획기적으로 줄입니다.
 
 ---
 
@@ -115,8 +121,10 @@ graph TD
 ### 주요 API 엔드포인트
 - `GET /tables`: 사용 가능한 테이블 목록 조회
 - `GET /tables/{t}/data`: 페이징 기반 데이터 조회
-- `PUT /tables/{t}/upsert/batch`: 비즈니스 키 기반 배치 수정
+- `PUT /tables/{t}/data/updates`: **[통합 업서트]** PK/BK 기반 단건 및 배치 업데이트
+- `POST /tables/{t}/rows/batch_delete`: **[통합 삭제]** 여러 행의 일괄 물리 삭제
 - `GET /tables/{t}/rows/{id}/history`: 특정 행의 변경 이력 조회
+- `GET /tables/{t}/rows/{id}/cells/{col}/history`: 특정 셀의 상세 계보 조회
 
 ### 데이터베이스 스키마 (`models.DataRow`)
 - `row_id`: PK (String)
@@ -125,4 +133,4 @@ graph TD
 - `updated_at`: Server-side Timestamp
 
 ---
-*AssyManager Ultimate Technical Bible v1.0 | 2026.04.15*
+*AssyManager Ultimate Technical Bible v1.1 | 2026.04.17 (Data Integrity Revision)*

@@ -51,6 +51,20 @@ class CellUpsert(BaseModel):
 class CellUpsertBatch(BaseModel):
     items: list[CellUpsert]
 
+class GeneralUpdateItem(BaseModel):
+    row_id: Optional[str] = None           # PK 기반 업데이트 시 사용
+    business_key_val: Optional[Any] = None # 비즈니스 키 기반 업서트 시 사용
+    updates: Dict[str, Any]                # { "column_name": value }
+    source_name: str = "user"
+    updated_by: Optional[str] = "system"
+
+class GeneralUpdateBatch(BaseModel):
+    updates: list[GeneralUpdateItem]
+
+class RowDeleteBatch(BaseModel):
+    row_ids: list[str]
+    user_name: str = "system"
+
 class DataRowBase(BaseModel):
     row_id: str
     table_name: str

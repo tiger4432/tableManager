@@ -164,56 +164,6 @@ def get_table_data(table_name: str, skip: int = 0, limit: int = 50, q: str = Non
 import json
 from fastapi import HTTPException
 
-@app.put("/tables/{table_name}/cells")
-async def update_cell(table_name: str, cell_update: schemas.CellUpdate, db: Session = Depends(get_db)):
-    """
-    단일 셀 데이터 업데이트 엔드포인트
-    """
-    row = crud.update_cell(db, table_name, cell_update)
-    if not row:
-        raise HTTPException(status_code=404, detail="Row not found")
-        
-    # Broadcast cell update to connected clients via WebSocket
-    msg = {
-        "event": "cell_update",
-        "table_name": table_name,
-        "row_id": cell_update.row_id,
-        "column_name": cell_update.column_name,
-        "value": cell_update.value,
-        "is_overwrite": True,
-        "updated_by": cell_update.updated_by or "unknown",
-        "updated_at": to_local_str(row.updated_at or row.created_at)
-    }
-    await manager.broadcast(json.dumps(msg))
-    
-    return {"status": "success", "row_id": row.row_id}
-
-@app.put("/tables/{table_name}/cells/batch")
-async def update_cells_batch(table_name: str, batch: schemas.CellUpdateBatch, db: Session = Depends(get_db)):
-    """
-    다중 셀 데이터 일괄 업데이트 엔드포인트
-    """
-    rows = crud.update_cells_batch(db, table_name, batch)
-    row_map = {r.row_id: r for r in rows}
-    
-    # Broadcast batch update
-    msg = {
-        "event": "batch_cell_update",
-        "table_name": table_name,
-        "updates": [
-            {
-                "row_id": u.row_id,
-                "column_name": u.column_name,
-                "value": u.value,
-                "is_overwrite": True,
-                "updated_at": to_local_str(row_map[u.row_id].updated_at or row_map[u.row_id].created_at)
-            } for u in batch.updates if u.row_id in row_map
-        ],
-        "updated_by": batch.updates[0].updated_by if batch.updates else "unknown"
-    }
-    await manager.broadcast(json.dumps(msg))
-    
-    return {"status": "success", "updated_count": len(rows)}
 @app.delete("/tables/{table_name}/rows/{row_id}")
 async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)):
     """
@@ -223,15 +173,31 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
         
-    # Broadcast row deletion to connected clients
+    # Broadcast (Unified to batch_row_delete)
     msg = {
-        "event": "row_delete",
+        "event": "batch_row_delete",
         "table_name": table_name,
-        "row_id": row_id
+        "row_ids": [row_id]
     }
     await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "row_id": row_id}
+
+@app.post("/tables/{table_name}/rows/batch_delete")
+async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, db: Session = Depends(get_db)):
+    """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
+    deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
+    
+    if deleted_count > 0:
+        msg = {
+            "event": "batch_row_delete",
+            "table_name": table_name,
+            "row_ids": batch.row_ids,
+            "updated_by": batch.user_name
+        }
+        await manager.broadcast(json.dumps(msg))
+        
+    return {"status": "success", "deleted_count": deleted_count}
 
 
 from fastapi.responses import StreamingResponse
@@ -297,27 +263,22 @@ def export_table_csv(table_name: str, db: Session = Depends(get_db)):
 def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     """
     테이블의 컬럼 스키마 정보를 반환합니다.
-    설정 파일에 정의된 display_columns 를 우선적으로 반환하며, 
-    정의되지 않은 경우 데이터에서 키를 추출합니다.
     """
     config = crud.TABLE_CONFIG.get(table_name, {})
     columns = config.get("display_columns")
     
-    if columns:
-        return {"table_name": table_name, "columns": columns}
+    if not columns:
+        # 데이터에서 동적 추출 (Fallback)
+        first_row = db.query(models.DataRow).filter(
+            models.DataRow.table_name == table_name
+        ).first()
         
-    # 데이터에서 동적 추출 (Fallback)
-    first_row = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name
-    ).first()
-    
-    if first_row and first_row.data:
-        # key 리스트 추출 (정적 정렬 등 추가 고려 가능)
-        columns = list(first_row.data.keys())
-    else:
-        columns = []
-        
-    # Always suggest system columns at the end
+        if first_row and first_row.data:
+            columns = list(first_row.data.keys())
+        else:
+            columns = []
+            
+    # [버그 수정] display_columns 정의 여부와 관계없이 시스템 컬럼은 항상 마지막에 보장
     system_cols = ["created_at", "updated_at"]
     for sc in system_cols:
         if sc not in columns:
@@ -367,123 +328,60 @@ def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = 
     ).order_by(models.AuditLog.timestamp.desc()).all()
     return logs
 
-@app.post("/tables/{table_name}/rows", response_model=schemas.DataRowResponse)
-async def create_row(table_name: str, db: Session = Depends(get_db)):
+@app.post("/tables/{table_name}/rows")
+async def create_row(table_name: str, count: int = 1, user_name: str = "system", db: Session = Depends(get_db)):
     """
-    신규 행 추가 엔드포인트
+    신규 행 추가 엔드포인트 (단건 및 다건 지원)
     """
-    new_row = crud.create_empty_row(db, table_name)
+    new_rows = crud.create_empty_rows_batch(db, table_name, count, user_name)
     
-    # 공통 데코레이터 적용 (created_at, updated_at 주입)
-    inject_system_columns(new_row)
-    broadcast_data = new_row.data.copy()
-
-    # WebSocket 브로드캐스트
+    msg_items = []
+    for row in new_rows:
+        inject_system_columns(row)
+        msg_items.append({
+            "row_id": row.row_id,
+            "table_name": row.table_name,
+            "data": row.data
+        })
+    
+    # WebSocket 브로드캐스트 (배치 규격)
     msg = {
-        "event": "row_create",
+        "event": "batch_row_create",
         "table_name": table_name,
-        "data": {
-            "row_id": new_row.row_id,
-            "table_name": new_row.table_name,
-            "data": broadcast_data,
-            "created_at": new_row.created_at.isoformat() if new_row.created_at else None
-        }
+        "items": msg_items,
+        "updated_by": user_name
     }
     await manager.broadcast(json.dumps(msg))
     
-    return new_row
+    return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows]}
 
-@app.put("/tables/{table_name}/upsert/batch")
-async def upsert_rows_batch_endpoint(table_name: str, batch: schemas.CellUpsertBatch, db: Session = Depends(get_db)):
-    """
-    다중 행 비즈니스 키 기반 배치 업서트 엔드포인트
-    """
-    if not batch.items:
-        return {"status": "success", "count": 0}
-        
-    results = crud.upsert_rows_batch(db, table_name, batch.items)
+@app.put("/tables/{table_name}/data/updates")
+async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
+    """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
+    results, changed_cells = crud.apply_batch_updates(db, table_name, batch)
     
-    # WebSocket 브로드캐스트: 모든 변경사항을 하나의 'batch_row_upsert'로 압축
-    # 클라이언트는 이를 받고 모델을 효율적으로 갱신
-    upsert_events = []
+    msg_items = []
     for row, is_new in results:
+        # Agent D v16: 브로드캐스트 페이로드에 시간 메타데이터(created_at, updated_at)를 강제 주입
         inject_system_columns(row)
-        upsert_events.append({
+        msg_items.append({
             "row_id": row.row_id,
             "is_new": is_new,
-            "data": row.data # 전체 데이터 포함
+            "data": row.data
         })
-        
+    
+    # WebSocket 브로드캐스트 (실제 변경된 개수 및 작업자 포함)
+    user_name = batch.updates[0].updated_by if batch.updates else "system"
     msg = {
         "event": "batch_row_upsert",
         "table_name": table_name,
-        "items": upsert_events
+        "items": msg_items,
+        "change_count": len(changed_cells),
+        "updated_by": user_name
     }
     await manager.broadcast(json.dumps(msg))
     
-    return {
-        "status": "success",
-        "count": len(results)
-    }
-
-
-
-@app.put("/tables/{table_name}/upsert")
-async def upsert_row(table_name: str, upsert: schemas.CellUpsert, db: Session = Depends(get_db)):
-    """
-    비즈니스 키 기반 Upsert 엔드포인트
-    """
-    row, is_new = crud.upsert_row(
-        db, table_name, upsert.business_key_val, 
-        upsert.updates, upsert.source_name, upsert.updated_by
-    )
-    
-    # WebSocket 브로드캐스트
-    if is_new:
-        # Virtual inject system columns
-        inject_system_columns(row)
-        broadcast_data = row.data.copy()
-
-        msg = {
-            "event": "row_create",
-            "table_name": table_name,
-            "data": {
-                "row_id": row.row_id,
-                "table_name": row.table_name,
-                "data": broadcast_data,
-                "created_at": to_local_str(row.created_at)
-            }
-        }
-    else:
-        # Include updated timestamps in the updates list for real-time UI refresh
-        # 공통 데코레이터 적용
-        inject_system_columns(row)
-        
-        updates_list = []
-        for col, val in row.data.items():
-            cell_state = row.data.get(col, {})
-            updates_list.append({
-                "row_id": row.row_id,
-                "column_name": col,
-                "value": cell_state.get("value", val),
-                "is_overwrite": cell_state.get("is_overwrite", False)
-            })
-        
-        msg = {
-            "event": "batch_cell_update",
-            "table_name": table_name,
-            "updates": updates_list
-        }
-        
-    await manager.broadcast(json.dumps(msg))
-    
-    return {
-        "status": "success", 
-        "row_id": row.row_id, 
-        "is_new": is_new
-    }
-
-
+    return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -524,7 +422,7 @@ async def upload_file(table_name: str, file: UploadFile = File(...)):
 @app.get("/tables/{table_name}/{row_id}/{col_name}/sources")
 async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
     """특정 셀에 중첩된 모든 데이터 원천(Sources) 정보를 반환합니다."""
-    row = crud.get_row_cell(db, table_name, row_id, col_name)
+    row = crud.get_row_cell(db, table_name, row_id)
     if not row or col_name not in row.data:
         raise HTTPException(status_code=404, detail="Cell not found")
     
@@ -539,24 +437,16 @@ async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Sess
 @app.delete("/tables/{table_name}/{row_id}/{col_name}/sources/{source_name}")
 async def delete_cell_source(table_name: str, row_id: str, col_name: str, source_name: str, db: Session = Depends(get_db)):
     """특정 셀의 특정 원천 데이터를 삭제합니다."""
-    updated_row = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
+    updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
     if not updated_row:
         raise HTTPException(status_code=404, detail="Source or Cell not found")
     
-    # WebSocket 브로드캐스트 (실시간 갱신용)
-    import json
-    cell_state = updated_row.data[col_name]
+    # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
-        "event": "batch_cell_update", # 'type' 대신 'event' 사용 (클라이언트 파서 규격 준수)
+        "event": "batch_row_upsert",
         "table_name": table_name,
-        "updates": [
-            {
-                "row_id": row_id, "column_name": col_name, 
-                "value": cell_state["value"],
-                "is_overwrite": cell_state.get("is_overwrite", False),
-                "updated_by": cell_state.get("updated_by", "system")
-            }
-        ]
+        "items": [{"row_id": row_id, "is_new": False, "data": updated_row.data}],
+        "change_count": len(changed_cols)
     }))
     return {"status": "success", "row_id": row_id}
 
@@ -568,24 +458,16 @@ async def set_cell_priority(
     db: Session = Depends(get_db)
 ):
     """특정 셀의 표시 우선순위 소스를 수동으로 지정합니다 (Pin). source_name이 null이면 수동 지정 해제."""
-    updated_row = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
+    updated_row, changed_cols = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
     if not updated_row:
         raise HTTPException(status_code=404, detail="Cell not found or source invalid")
     
-    # WebSocket 브로드캐스트
-    import json
-    cell_state = updated_row.data[col_name]
+    # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
-        "event": "batch_cell_update",
+        "event": "batch_row_upsert",
         "table_name": table_name,
-        "updates": [
-            {
-                "row_id": row_id, "column_name": col_name, 
-                "value": cell_state["value"],
-                "is_overwrite": cell_state.get("is_overwrite", False),
-                "updated_by": cell_state.get("updated_by", "system")
-            }
-        ]
+        "items": [{"row_id": row_id, "is_new": False, "data": updated_row.data}],
+        "change_count": len(changed_cols)
     }))
     return {"status": "success", "row_id": row_id}
 

@@ -167,25 +167,34 @@ class ExcelTableView(QTableView):
         
         if reply == QMessageBox.StandardButton.Yes:
             model = self.model()
-            # proxy 모델인 경우 소스 모델 추출
             source_model = getattr(model, 'sourceModel', lambda: model)()
             table_name = source_model.table_name
             
-            import urllib.request
+            row_ids = []
             for row in rows:
-                # row_id 추출 (id 컬럼 기준 - id 컬럼은 0번째라고 가정하거나 col_name으로 검색 가능)
-                # 데이터 버퍼에서 직접 가져오는 것이 안전
                 if row < len(source_model._data):
-                    row_id = source_model._data[row].get("row_id")
-                    if row_id:
-                        url = config.get_row_delete_url(table_name, row_id)
-                        try:
-                            req = urllib.request.Request(url, method="DELETE")
-                            with urllib.request.urlopen(req) as response:
-                                pass # WebSocket으로 삭제 이벤트 수신하여 로컬 반영 예정
-                        except Exception as e:
-                            print(f"Failed to delete row {row_id}: {e}")
-                            QMessageBox.critical(self, "삭제 오류", f"행 삭제 중 오류 발생: {e}")
+                    rid = source_model._data[row].get("row_id")
+                    if rid:
+                        row_ids.append(rid)
+            
+            if not row_ids: return
+            
+            import urllib.request
+            import json
+            url = config.get_batch_delete_url(table_name)
+            try:
+                payload = {
+                    "row_ids": row_ids,
+                    "user_name": config.CURRENT_USER
+                }
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(url, data=data, method="POST")
+                req.add_header("Content-Type", "application/json")
+                with urllib.request.urlopen(req) as response:
+                    pass # WebSocket으로 삭제 이벤트 수신 예정
+            except Exception as e:
+                print(f"Failed to delete rows: {e}")
+                QMessageBox.critical(self, "삭제 오류", f"행 일괄 삭제 중 오류 발생: {e}")
     
     def copy_selection(self):
         selection = self.selectionModel()
@@ -494,31 +503,41 @@ class MainWindow(QMainWindow):
             model.set_search_query(text)
 
     def _on_add_row_requested(self):
-        """현재 활성화된 화면의 테이블에 새 행을 추가 요청합니다."""
+        """현재 활성화된 화면의 테이블에 새 행(들)을 일괄 추가 요청합니다."""
         curr_idx = self.stacked.currentIndex()
         if curr_idx <= 0: return # Dashboard
         
+        # 1. 생성할 행 개수 입력 받기 (1~10000)
+        count, ok = QInputDialog.getInt(
+            self, "행 일괄 추가", "생성할 행의 개수를 입력하세요 (1~10,000):",
+            value=1, minValue=1, maxValue=10000
+        )
+        if not ok: return
+
         table_name = self._index_to_table.get(curr_idx)
         if not table_name: return
         
-        # stacked widget에서 widget을 찾아 model 추출
         page_widget = self.stacked.widget(curr_idx)
         model = getattr(page_widget, "_source_model", None)
-        if not model:
-            return
+        if not model: return
             
         table_name = model.table_name
-        url = config.get_row_create_url(table_name)
+        # API 호출 (count 및 user_name 파라미터 포함)
+        import urllib.parse
+        params = urllib.parse.urlencode({
+            "count": count,
+            "user_name": config.CURRENT_USER
+        })
+        url = f"{config.get_row_create_url(table_name)}?{params}"
         
         import urllib.request
         try:
             req = urllib.request.Request(url, method="POST")
             with urllib.request.urlopen(req) as response:
-                # server returns the new row, but we wait for WebSocket to sync it.
-                pass
+                pass # WebSocket(batch_row_create)을 통해 UI에 반영됨
         except Exception as e:
-            print(f"Failed to add row: {e}")
-            QMessageBox.critical(self, "추가 오류", f"행 추가 중 오류 발생: {e}")
+            print(f"Failed to add rows: {e}")
+            QMessageBox.critical(self, "추가 오류", f"행 일괄 추가 중 오류 발생: {e}")
 
         
     def _add_new_tab(self):

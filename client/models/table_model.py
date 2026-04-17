@@ -64,56 +64,35 @@ class ApiSingleRowFetchWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
 
-class ApiUpdateWorker(QRunnable):
-    def __init__(self, url, payload, index, col_name):
+class ApiGeneralUpdateWorker(QRunnable):
+    """
+    [통합 업데이트 워커]
+    GeneralUpdateBatch 스키마를 사용하여 단건 및 배치 수정을 서버로 전송합니다.
+    """
+    def __init__(self, url: str, updates: list[dict]):
         super().__init__()
         self.url = url
-        self.payload = payload
-        self.index = index
-        self.col_name = col_name
+        self.updates = updates
         self.signals = WorkerSignals()
 
     @Slot()
     def run(self):
         import urllib.request
         import json
-        data = json.dumps(self.payload).encode('utf-8')
-        req = urllib.request.Request(self.url, data=data, method="PUT", headers={'Content-Type': 'application/json'})
-        
         try:
+            payload = {"updates": self.updates}
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                self.url, 
+                data=data, 
+                method="PUT", 
+                headers={'Content-Type': 'application/json'}
+            )
+            
             with urllib.request.urlopen(req) as response:
                 res = json.loads(response.read().decode())
                 if res.get("status") == "success":
-                    self.signals.finished.emit({
-                        "status": "success",
-                        "index": self.index,
-                        "col_name": self.col_name,
-                        "value": self.payload["value"]
-                    })
-                else:
-                    self.signals.error.emit(res.get("status", "unknown error"))
-        except Exception as e:
-            self.signals.error.emit(str(e))
-
-class BatchApiUpdateWorker(QRunnable):
-    def __init__(self, url, payloads):
-        super().__init__()
-        self.url = url
-        self.payloads = payloads
-        self.signals = WorkerSignals()
-
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        data = json.dumps({"updates": self.payloads}).encode('utf-8')
-        req = urllib.request.Request(self.url, data=data, method="PUT", headers={'Content-Type': 'application/json'})
-        
-        try:
-            with urllib.request.urlopen(req) as response:
-                res = json.loads(response.read().decode())
-                if res.get("status") == "success":
-                    self.signals.finished.emit({"status": "success", "updates": self.payloads})
+                    self.signals.finished.emit(res)
                 else:
                     self.signals.error.emit(res.get("status", "unknown error"))
         except Exception as e:
@@ -217,7 +196,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     """
     # Agent D v2: WS 브로드캐스트 전용 Signal (source='remote' 컨텍스트 포함)
     ws_data_changed = Signal(dict)  # {"row_id": ..., "column_name": ..., "value": ..., "source": "remote"}
-    batch_ws_data_changed = Signal(list) # List of cell-level update dicts
+    batch_ws_data_changed = Signal(dict) # {"updates": list, "change_count": int}
     row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
     row_deleted_ws = Signal(dict)   # Agent D v13: 행 삭제 시그널 추가
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
@@ -310,17 +289,22 @@ class ApiLazyTableModel(QAbstractTableModel):
                 return False
                 
             persistent_index = QPersistentModelIndex(index)
-            url = config.get_cell_update_url(self.table_name)
-            payload = {
+            url = config.get_unified_update_url(self.table_name)
+            
+            # 통합 API 규격으로 페이로드 구성
+            update_item = {
                 "row_id": row_id,
-                "column_name": col_name,
-                "value": value,
+                "column_name": col_name, # Server-side might need this inside 'updates' dict
+                "updates": {col_name: value},
+                "source_name": "user",
                 "updated_by": config.CURRENT_USER
             }
             
-            # 비동기 요청을 위해 QRunnable 기반 Worker 사용
-            worker = ApiUpdateWorker(url, payload, persistent_index, col_name)
-            worker.signals.finished.connect(self._on_update_finished)
+            worker = ApiGeneralUpdateWorker(url, [update_item])
+            # 람다를 사용하여 index 정보를 결과와 함께 전달
+            worker.signals.finished.connect(lambda res: self._on_update_finished({
+                **res, "index": persistent_index, "col_name": col_name, "value": value
+            }))
             worker.signals.error.connect(lambda err: print(f"Failed to update cell via API: {err}"))
             
             QThreadPool.globalInstance().start(worker)
@@ -331,7 +315,13 @@ class ApiLazyTableModel(QAbstractTableModel):
         return False
 
     def bulkUpdateData(self, start_row, start_col, parsed_data_matrix):
-        payloads = []
+        """
+        [행 단위 최적화] 
+        복제 현상 방지: 동일 행에 대한 여러 셀 수정을 하나의 RowUpdate 항목으로 묶어 전송합니다.
+        """
+        # {row_id: {col_name: value, ...}}
+        grouped_updates = {}
+        
         for r_idx, row_values in enumerate(parsed_data_matrix):
             model_row = start_row + r_idx
             if model_row >= len(self._data): break
@@ -343,24 +333,31 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if model_col >= len(self._columns): break
                 col_name = self._columns[model_col]
                 
-                # Agent D v12: 시스템 컬럼은 페이스트(Bulk Update) 대상에서 제외
+                # 시스템 컬럼 제외
                 if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
                     continue
-                    
-                payloads.append({
-                    "row_id": row_id,
-                    "column_name": col_name,
-                    "value": value,
-                    "row_index": model_row,
-                    "col_index": model_col,
-                    "updated_by": config.CURRENT_USER
-                })
+                
+                if row_id not in grouped_updates:
+                    grouped_updates[row_id] = {}
+                
+                grouped_updates[row_id][col_name] = value
         
-        if not payloads:
+        if not grouped_updates:
             return
             
-        url = config.get_batch_cell_update_url(self.table_name)
-        worker = BatchApiUpdateWorker(url, payloads)
+        url = config.get_unified_update_url(self.table_name)
+        
+        # 통합 API 규격(GeneralUpdateBatch)으로 변환
+        unified_updates = []
+        for row_id, updates in grouped_updates.items():
+            unified_updates.append({
+                "row_id": row_id,
+                "updates": updates,
+                "source_name": "user",
+                "updated_by": config.CURRENT_USER
+            })
+            
+        worker = ApiGeneralUpdateWorker(url, unified_updates)
         worker.signals.finished.connect(self._on_batch_update_finished)
         worker.signals.error.connect(lambda err: print(f"Failed to batch update: {err}"))
         
@@ -397,46 +394,79 @@ class ApiLazyTableModel(QAbstractTableModel):
                 updates = [data]
             elif event == "batch_cell_update":
                 updates = data.get("updates", [])
-            elif event == "row_delete":
-                row_id = data.get("row_id")
-                if not row_id: return
+            elif event == "batch_row_delete":
+                target_ids = data.get("row_ids", [])
+                if not target_ids: return
+                
                 row_id_map = self._build_row_id_map()
-                row_idx = row_id_map.get(row_id)
-                if row_idx is not None:
-                    self.beginRemoveRows(QModelIndex(), row_idx, row_idx)
-                    del self._data[row_idx]
+                indices_to_remove = sorted([row_id_map[rid] for rid in target_ids if rid in row_id_map], reverse=True)
+                
+                for idx in indices_to_remove:
+                    self.beginRemoveRows(QModelIndex(), idx, idx)
+                    del self._data[idx]
                     self._total_count -= 1
                     self.endRemoveRows()
+                
                 self.row_deleted_ws.emit(data)
                 return
-            elif event == "row_create":
-                row_data = data.get("data")
-                if not row_data: return
-                self.beginInsertRows(QModelIndex(), 0, 0)
-                self._data.insert(0, row_data)
-                self._total_count += 1
+            elif event == "batch_row_create":
+                items = data.get("items", [])
+                if not items: return
+                
+                # 1~10000건 대량 생성 대응을 위한 데이터 준비
+                new_rows = []
+                for item in items:
+                    new_rows.append(self._normalize_row_data(item))
+                
+                # 최상단에 일괄 삽입
+                self.beginInsertRows(QModelIndex(), 0, len(new_rows) - 1)
+                for r in reversed(new_rows): # 역순으로 넣어 제일 첫 번째 행이 인덱스 0이 되도록 함
+                    self._data.insert(0, r)
+                self._total_count += len(new_rows)
                 self.endInsertRows()
-                self.row_created_ws.emit(data)
+                
+                self.row_created_ws.emit(data) # 기존 시그널 활용하여 히스토리 패널 등 알림
                 return
             elif event == "batch_row_upsert":
                 items = data.get("items", [])
                 if not items: return
                 
                 all_cell_updates = []
+                row_id_map = self._build_row_id_map()
                 
-                for item in items:
+                # [순서 보존] 맨 아래 행부터 처리하여 최상단 부상 시 기존 상하 관계 유지
+                for item in reversed(items):
                     row_id = item.get("row_id")
                     is_new = item.get("is_new", False)
-                    new_row_data_blob = item.get("data", {}) # This is the 'data' field containing cells
+                    new_data_blob = item.get("data", {})
                     
-                    # Normalize: WebSocket data should match Fetch data structure
-                    normalized_row = self._normalize_row_data({
-                        "row_id": row_id,
-                        "table_name": self.table_name,
-                        "data": new_row_data_blob
-                    })
-
-                    for col, cell_val in new_row_data_blob.items():
+                    # [무결성 강화] 기존 행이 있다면 데이터를 병합(Merge)하여 메타데이터 보존
+                    idx = row_id_map.get(row_id)
+                    if idx is not None:
+                        # 기존 행 객체 추출 (참조가 아닌 복사본으로 작업 후 재삽입)
+                        existing_row = self._data.pop(idx)
+                        # data 블롭 병합
+                        existing_row.setdefault("data", {}).update(new_data_blob)
+                        # 정규화 다시 실행 (Top-level 시간 정보 등 갱신)
+                        normalized_row = self._normalize_row_data(existing_row)
+                        # 팝(pop) 했으므로 맵을 갱신해주어야 함 (연달아 같은 ID가 올 경우 대비)
+                        row_id_map = self._build_row_id_map()
+                    else:
+                        # 완전히 새로운 행
+                        normalized_row = self._normalize_row_data({
+                            "row_id": row_id,
+                            "table_name": self.table_name,
+                            "data": new_data_blob
+                        })
+                        if is_new: self._total_count += 1
+                        # 맵 갱신 (Optional but robust)
+                        row_id_map = self._build_row_id_map()
+                    
+                    # 단일 삽입: 최상단에 부상(Floating)
+                    self._data.insert(0, normalized_row)
+                    
+                    # 히스토리 패널용 업데이트 리스트 구성
+                    for col, cell_val in new_data_blob.items():
                         if isinstance(cell_val, dict) and "value" in cell_val:
                             all_cell_updates.append({
                                 "row_id": row_id,
@@ -447,22 +477,16 @@ class ApiLazyTableModel(QAbstractTableModel):
                                 "source": "remote"
                             })
 
-                    # Strict Deduplication: Remove any existing row with this ID before floating
-                    row_id_map = self._build_row_id_map()
-                    idx = row_id_map.get(row_id)
-                    if idx is not None:
-                        self._data.pop(idx)
-                    
-                    # Insert at top (Floating)
-                    self._data.insert(0, normalized_row)
-                    if idx is None and is_new:
-                        self._total_count += 1
-
+                # 데이터 구조가 대규모로 변경(순서 변경 등)되었으므로 일괄 리셋
                 self.beginResetModel()
                 self.endResetModel()
 
                 if all_cell_updates:
-                    self.batch_ws_data_changed.emit(all_cell_updates)
+                    self.batch_ws_data_changed.emit({
+                        "updates": all_cell_updates,
+                        "change_count": data.get("change_count", len(all_cell_updates)),
+                        "updated_by": data.get("updated_by", "system")
+                    })
                 return
             else:
                 return
@@ -538,11 +562,15 @@ class ApiLazyTableModel(QAbstractTableModel):
         """
         data_blob = row.get("data", {})
         
-        # 1. 최상위에 created_at, updated_at이 없고 data 내부에 있다면 추출하여 주입
-        if "created_at" not in row and "created_at" in data_blob:
-            row["created_at"] = data_blob["created_at"].get("value")
-        if "updated_at" not in row and "updated_at" in data_blob:
-            row["updated_at"] = data_blob["updated_at"].get("value")
+        # 1. data 내부(inject_system_columns에 의해 생성됨)에서 created_at, updated_at 추출하여 주입
+        # top-level에 이미 있더라도 data_blob 내부의 'value'(로컬 시간 문자열)를 우선 사용하도록 수정
+        if "created_at" in data_blob:
+            cv = data_blob["created_at"].get("value")
+            if cv: row["created_at"] = cv
+            
+        if "updated_at" in data_blob:
+            uv = data_blob["updated_at"].get("value")
+            if uv: row["updated_at"] = uv
             
         return row
 
@@ -621,8 +649,19 @@ class ApiLazyTableModel(QAbstractTableModel):
 
         cell_data = self._data[row].get("data", {})
         col_name = self._columns[col]
-        
-        # Display the actual value or provide for Editor
+
+        # 1. 시스템 컬럼 (created_at, updated_at) 우선 처리
+        if col_name in ["created_at", "updated_at"]:
+            if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
+                # 최상위(Flattened) 데이터 먼저 확인
+                val = self._data[row].get(col_name)
+                if val: return val
+                # 중첩된 데이터 확인 (Fallback)
+                item = cell_data.get(col_name, {})
+                return item.get("value", "")
+            return None
+
+        # 2. 비즈니스 데이터 처리
         if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
             item = cell_data.get(col_name, {})
             return item.get("value", "")

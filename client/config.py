@@ -107,4 +107,12 @@ def get_single_row_url(table_name: str, row_id: str) -> str:
     """특정 행 단건 조회 엔드포인트 (WS 부상 시 사용)"""
     return f"{API_BASE_URL}/tables/{table_name}/{row_id}"
 
+def get_unified_update_url(table_name: str) -> str:
+    """[통합] PK/BK 기반 단건 및 배치 업데이트 엔드포인트"""
+    return f"{API_BASE_URL}/tables/{table_name}/data/updates"
+
+def get_batch_delete_url(table_name: str) -> str:
+    """[통합] 다중 행 일괄 삭제 엔드포인트"""
+    return f"{API_BASE_URL}/tables/{table_name}/rows/batch_delete"
+
 # (이전 CURRENT_USER 설정 로직은 load_settings 내부로 통합됨)
