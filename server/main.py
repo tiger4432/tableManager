@@ -169,7 +169,9 @@ def get_table_data(
         final_sort = [sort_expr]
     
     if order_by == "updated_at":
-        rows = query.order_by(sort_expr).offset(skip).limit(limit).all()
+        # [핵심] Tie-breaker 추가: 시간이 완전히 동일한 행들의 임의 섞임을 방지하기 위해 row_id를 2차 정렬 조건으로 사용
+        tie_breaker = models.DataRow.row_id.asc()
+        rows = query.order_by(sort_expr, tie_breaker).offset(skip).limit(limit).all()
     else:
         rows = query.order_by(*final_sort).offset(skip).limit(limit).all()
     

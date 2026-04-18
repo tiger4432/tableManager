@@ -241,10 +241,12 @@ class ApiLazyTableModel(QAbstractTableModel):
 
         self._chunk_size = 50
         self._fetching = False
+        self._fetch_scheduled = False # [신규] 타이머 예약용 중복 방지 락
         self._first_fetch = True
         self._is_processing_remote = False # Agent D v5: Prevent duplicate history logging
         self._fetching_row_ids = set() # Agent D v8: Track rows being fetched to prevent duplicates
         self._sort_latest = True       # [신규] 최신순 정렬(updated_at DESC) 여부
+        self._server_fetched_count = 0 # [신규] 서버 페이징 기준 위치 (로컬 프리펜드 무시)
 
     def update_columns(self, columns: list[str]):
         """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
@@ -264,6 +266,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._data = []
         self._total_count = 0
         self._first_fetch = True
+        self._server_fetched_count = 0
         self.endResetModel()
         
         # 즉시 첫 페이지 요청
@@ -280,6 +283,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._data = []
         self._total_count = 0
         self._first_fetch = True
+        self._server_fetched_count = 0
         self.endResetModel()
         
         self.fetchMore()
@@ -743,8 +747,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         # If data is not yet loaded for this row, display placeholder
         if row >= len(self._data):
             if role == Qt.ItemDataRole.DisplayRole:
-                # Trigger fetch if not already fetching
-                if not self._fetching:
+                # Trigger fetch if not already fetching or scheduled
+                if not self._fetching and not getattr(self, '_fetch_scheduled', False):
+                    self._fetch_scheduled = True # [고속 스크롤 픽스] 예약 락 설정
                     from PySide6.QtCore import QTimer
                     # Use a timer to avoid calling fetchMore directly inside data() which can cause issues
                     QTimer.singleShot(0, self.fetchMore)
@@ -795,11 +800,12 @@ class ApiLazyTableModel(QAbstractTableModel):
         return len(self._data) < self._total_count
 
     def fetchMore(self, parent=QModelIndex()):
+        self._fetch_scheduled = False # 예약 락 해제
         if self._fetching:
             return
             
         self._fetching = True
-        skip = len(self._data)
+        skip = self._server_fetched_count # [Paging Skip 픽스] len(self._data) 대신 서버 순차 누적 횟수 사용
         limit = self._chunk_size
         
         order_by = "updated_at" if self._sort_latest else "id"
@@ -825,6 +831,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._total_count = total
             self._data = new_data
             self._first_fetch = False
+            self._server_fetched_count = len(new_data)
             self.endResetModel()
         else:
             if new_data:
@@ -848,6 +855,16 @@ class ApiLazyTableModel(QAbstractTableModel):
                         self.index(start_row + len(unique_new_data) - 1, len(self._columns) - 1),
                         [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
                     )
+                
+                # [Paging Skip 픽스] 캐시 중복 여부와 무관하게 서버에서 가져온 원본 개수만큼 페이징 포인터 전진
+                self._server_fetched_count += len(new_data)
+                
+                # [Offset Drift 해결] 만약 가져온 데이터가 모두 중복(Ghost)이어서 뷰가 채워지지 않았다면,
+                # 뷰가 "Loading..."에 영원히 멈춰있게 되므로 다음 페이지를 자동으로 연쇄 스캔합니다.
+                if not unique_new_data and self._server_fetched_count < self._total_count:
+                    self._fetching = False
+                    self.fetchMore()
+                    return
             
         self._fetching = False
 
