@@ -18,6 +18,21 @@ SOURCE_PRIORITY = {
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
 
+def sanitize_to_utf8(data: Any) -> Any:
+    """
+    데이터 객체(Dict, List, Str 등) 내부의 모든 문자열을 재귀적으로 탐색하여 
+    비유효한 UTF-8 바이트 시퀀스를 제거/정정합니다.
+    """
+    if isinstance(data, dict):
+        return {k: sanitize_to_utf8(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_to_utf8(v) for v in data]
+    elif isinstance(data, str):
+        # 비유효한 UTF-8 바이트를 무시(ignore)하고 다시 디코딩하여 깨끗한 문자열 생성
+        return data.encode("utf-8", "ignore").decode("utf-8")
+    else:
+        return data
+
 def load_table_config():
     if not os.path.exists(CONFIG_PATH):
         return {}
@@ -61,13 +76,13 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
     return val, top_source
 
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str):
-    """감사 로그를 기록합니다."""
+    """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
     log = models.AuditLog(
         table_name=table_name,
         row_id=row_id,
         column_name=col_name,
-        old_value=old_val,
-        new_value=new_val,
+        old_value=sanitize_to_utf8(old_val),
+        new_value=sanitize_to_utf8(new_val),
         source_name=source,
         updated_by=user
     )
@@ -106,9 +121,12 @@ def apply_row_update_internal(
         cell = row.data[col_name]
         old_val = cell.get("value")
         
+        # [핵심] 입력 데이터 정제
+        clean_val = sanitize_to_utf8(val)
+        
         if "sources" not in cell: cell["sources"] = {}
         cell["sources"][update_item.source_name] = {
-            "value": val,
+            "value": clean_val,
             "timestamp": datetime.now().isoformat(),
             "updated_by": update_item.updated_by
         }

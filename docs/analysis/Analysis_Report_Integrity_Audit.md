@@ -38,6 +38,13 @@
     - **[Fixed]**: 전달받은 인덱스를 내부적으로 소스 모델 인덱스로 강제 변환하여 정확한 변경 이력을 노출하도록 수정 완료.
 - **결과**: **SAFE (After Fixes)**
 
+### 5. 데이터베이스 엔진 전환 (DB Engine Transition)
+- **점검 항목**: SQLite -> PostgreSQL (JSONB) 마이그레이션 품질
+- **검증 내용**: 
+    - 11,000여 건의 데이터 이관 후에도 `Row ID` 식별 체계가 유실 없이 유지됨을 확인.
+    - PostgreSQL의 `JSONB` 타입과 `GIN` 인덱스 하에서도 동일한 `Targeting` 로직이 완벽히 동작함.
+- **결과**: **SAFE** 
+
 ---
 
 ## 🛡️ 향후 유지보수 가이드라인
@@ -46,4 +53,4 @@
 3. **Audit Log 활용**: 모든 수정 내역은 `row_id`를 기준으로 AuditLog와 연결되므로, ID 정합성이 깨지면 시스템 전체의 계보(Lineage)가 붕괴됨을 주의하십시오.
 
 ---
-*AssyManager Integrity Audit Report | 2026.04.17*
+*AssyManager Integrity Audit Report | 2026.04.18 (PostgreSQL Finalized)*
