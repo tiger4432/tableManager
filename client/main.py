@@ -243,11 +243,25 @@ class ExcelTableView(QTableView):
         # ── Agent E v4: 행 추가 시 최상단으로 자동 스크롤 ──
         if hasattr(model, "rowsInserted"):
             model.rowsInserted.connect(self._on_rows_inserted)
+        
+        # ── 실시간 부상(Floating) 데이터 추적 스크롤 ──
+        if hasattr(model, "rowsMoved"):
+            model.rowsMoved.connect(self._on_rows_moved)
 
     def _on_rows_inserted(self, parent, first, last):
         if first == 0:
             self.scrollToTop()
             self.selectRow(0)
+
+    def _on_rows_moved(self, parent, start, end, destination, row):
+        # 행이 부상하여 이동했을 때, 이동된 도착지(row)로 스크롤 및 선택 포커스 추적
+        if row == 0:
+             self.scrollToTop()
+             self.selectRow(0)
+        else:
+             index = self.model().index(row, 0)
+             self.scrollTo(index)
+             self.selectRow(row)
 
     def paste_selection(self):
         """클립보드 데이터를 현재 선택 영역에 붙여넣음 (정렬/필터링 및 유령 문자 대응)."""

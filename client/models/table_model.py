@@ -534,54 +534,57 @@ class ApiLazyTableModel(QAbstractTableModel):
                     is_new = item.get("is_new", False)
                     new_data_blob = item.get("data", {})
                     
-                    # [무결성 강화] 기존 행이 있다면 데이터를 병합(Merge)하여 메타데이터 보존
                     idx = row_id_map.get(row_id)
                     if idx is not None:
-                        # 기존 행 객체 추출 (참조가 아닌 복사본으로 작업 후 재삽입)
-                        existing_row = self._data.pop(idx)
-                        # data 블롭 병합
+                        # [무결성 강화] 데이터 병합 및 정규화
+                        existing_row = self._data[idx]
                         existing_row.setdefault("data", {}).update(new_data_blob)
-                        # 정규화 다시 실행 (Top-level 시간 정보 등 갱신)
                         normalized_row = self._normalize_row_data(existing_row)
+                        
+                        if self._sort_latest and idx > 0:
+                            # 1. 행 부상 (Model Reset 없이 이동 및 추적 보장)
+                            self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
+                            self._data.insert(0, self._data.pop(idx))
+                            self.endMoveRows()
+                            # 이동된 목표 위치(0)에 대해 갱신 시그널 발생
+                            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns) - 1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+                        else:
+                            # 2. 제자리 업데이트 (부상 옵션 꺼짐 또는 이미 최상단)
+                            self._data[idx] = normalized_row
+                            self.dataChanged.emit(self.index(idx, 0), self.index(idx, len(self._columns) - 1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
                     else:
-                        # 완전히 새로운 행
+                        # 3. 새로운 행 추가
                         normalized_row = self._normalize_row_data({
                             "row_id": row_id,
                             "table_name": self.table_name,
                             "data": new_data_blob
                         })
-                        if is_new: self._total_count += 1
-                    
-                    # 데이터 삽입: 정렬 설정에 따라 위치 결정
-                    if self._sort_latest:
-                        # 최상단에 부상(Floating)
-                        self._data.insert(0, normalized_row)
-                    else:
-                        # 원래 있던 위치(idx)에 다시 넣거나, 없던 행(is_new)이면 하단에 추가
-                        if idx is not None:
-                            self._data.insert(idx, normalized_row)
+                        if self._sort_latest:
+                            self.beginInsertRows(QModelIndex(), 0, 0)
+                            self._data.insert(0, normalized_row)
+                            if is_new: self._total_count += 1
+                            self.endInsertRows()
                         else:
+                            start_idx = len(self._data)
+                            self.beginInsertRows(QModelIndex(), start_idx, start_idx)
                             self._data.append(normalized_row)
+                            if is_new: self._total_count += 1
+                            self.endInsertRows()
                     
-                    # 맵 갱신 (반드시 행이 다시 _data에 삽입된 후에 실행해야 인덱스 밀림 현상이 발생하지 않음)
+                    # 다중 업데이트를 위해 맵 최신화 보장
                     row_id_map = self._build_row_id_map()
-
                     
                     # 히스토리 패널용 업데이트 리스트 구성
                     for col, cell_val in new_data_blob.items():
-                        if isinstance(cell_val, dict) and "value" in cell_val:
-                            all_cell_updates.append({
-                                "row_id": row_id,
-                                "column_name": col,
-                                "value": cell_val["value"],
-                                "is_overwrite": cell_val.get("is_overwrite", False),
-                                "updated_by": cell_val.get("updated_by", "system"),
-                                "source": "remote"
-                            })
-
-                # 데이터 구조가 대규모로 변경(순서 변경 등)되었으므로 일괄 리셋
-                self.beginResetModel()
-                self.endResetModel()
+                         if isinstance(cell_val, dict) and "value" in cell_val:
+                              all_cell_updates.append({
+                                  "row_id": row_id,
+                                  "column_name": col,
+                                  "value": cell_val["value"],
+                                  "is_overwrite": cell_val.get("is_overwrite", False),
+                                  "updated_by": cell_val.get("updated_by", "system"),
+                                  "source": "remote"
+                              })
 
                 if all_cell_updates:
                     self.batch_ws_data_changed.emit({
