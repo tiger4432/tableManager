@@ -1,14 +1,18 @@
-from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread
 import config
+import time
+import uuid
+from datetime import datetime
+from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread, QTimer
 
 class WorkerSignals(QObject):
     finished = Signal(dict)
     error = Signal(str)
 
 class ApiFetchWorker(QRunnable):
-    def __init__(self, url):
+    def __init__(self, url, session_id: str = ""):
         super().__init__()
         self.url = url
+        self.session_id = session_id
         self.signals = WorkerSignals()
 
     @Slot()
@@ -19,6 +23,9 @@ class ApiFetchWorker(QRunnable):
             req = urllib.request.Request(self.url)
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
+                # 세션 ID를 결과와 함께 반환
+                if isinstance(result, dict):
+                    result["_session_id"] = self.session_id
                 self.signals.finished.emit(result)
         except Exception as e:
             self.signals.error.emit(str(e))
@@ -31,7 +38,6 @@ class ApiSchemaWorker(QRunnable):
 
     @Slot()
     def run(self):
-        print('ApiSchemaWorker 실행')
         import urllib.request
         import json
         try:
@@ -39,13 +45,10 @@ class ApiSchemaWorker(QRunnable):
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
                 self.signals.finished.emit(result)
-                print(result)
         except Exception as e:
-            print('ApiSchemaWorker Error:',e)
             self.signals.error.emit(str(e))
 
 class ApiSingleRowFetchWorker(QRunnable):
-    """특정 row_id의 전체 데이터를 서버에서 단건 조회합니다."""
     def __init__(self, url):
         super().__init__()
         self.url = url
@@ -59,16 +62,11 @@ class ApiSingleRowFetchWorker(QRunnable):
             req = urllib.request.Request(self.url)
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
-                # result는 row 객체 (row_id, data 등 포함)
                 self.signals.finished.emit(result)
         except Exception as e:
             self.signals.error.emit(str(e))
 
 class ApiGeneralUpdateWorker(QRunnable):
-    """
-    [통합 업데이트 워커]
-    GeneralUpdateBatch 스키마를 사용하여 단건 및 배치 수정을 서버로 전송합니다.
-    """
     def __init__(self, url: str, updates: list[dict]):
         super().__init__()
         self.url = url
@@ -88,7 +86,6 @@ class ApiGeneralUpdateWorker(QRunnable):
                 method="PUT", 
                 headers={'Content-Type': 'application/json'}
             )
-            
             with urllib.request.urlopen(req) as response:
                 res = json.loads(response.read().decode())
                 if res.get("status") == "success":
@@ -99,7 +96,6 @@ class ApiGeneralUpdateWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 class ApiUploadWorker(QRunnable):
-    """서버로 파일을 업로드하는 워커 (httpx 사용)"""
     def __init__(self, url, file_path):
         super().__init__()
         self.url = url
@@ -114,7 +110,6 @@ class ApiUploadWorker(QRunnable):
             filename = os.path.basename(self.file_path)
             with open(self.file_path, "rb") as f:
                 files = {"file": (filename, f)}
-                # httpx.post로 multipart/form-data 전송
                 with httpx.Client(timeout=30.0) as client:
                     response = client.post(self.url, files=files)
                     if response.status_code == 200:
@@ -124,12 +119,47 @@ class ApiUploadWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
 
+class ApiTargetedRowIdWorker(QRunnable):
+    def __init__(self, url: str, offsets: list[int], search_query: str = "", order_by: str = "updated_at", order_desc: bool = True, session_id: str = "", cols: str = ""):
+        super().__init__()
+        self.url = url
+        self.offsets = offsets
+        self.search_query = search_query
+        self.order_by = order_by
+        self.order_desc = order_desc
+        self.session_id = session_id
+        self.cols = cols # [Phase 73.6]
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import urllib.request
+        import json
+        try:
+            payload = {
+                "offsets": self.offsets,
+                "q": self.search_query,
+                "cols": self.cols, # [Phase 73.6]
+                "order_by": self.order_by,
+                "order_desc": self.order_desc
+            }
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                self.url, 
+                data=data, 
+                method="POST", 
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=10.0) as response:
+                raw = response.read().decode("utf-8")
+                result = json.loads(raw)
+                if isinstance(result, dict):
+                    result["_session_id"] = self.session_id
+                self.signals.finished.emit(result)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
 class WsListenerThread(QThread):
-    """
-    WebSocketExpert 스킬 규칙 준수:
-    - QThread 상속: recv() 블로킹 호출을 안전하게 백그라운드 격리
-    - Signal(dict): 파싱된 JSON 페이로드를 메인 스레드 Slot으로 전달
-    """
     message_received = Signal(dict)
     connection_error = Signal(str)
 
@@ -137,60 +167,45 @@ class WsListenerThread(QThread):
         super().__init__(parent)
         self.ws_url = ws_url
         self._running = True
-        self._ws = None # Agent D v6: Store current ws object
+        self._ws = None
 
     def run(self):
         import json
         try:
             from websockets.sync.client import connect
         except ImportError:
-            self.connection_error.emit("websockets 패키지가 설치되지 않았습니다. `pip install websockets`를 실행하세요.")
+            self.connection_error.emit("websockets 패키지가 설치되지 않았습니다.")
             return
 
         while self._running:
             try:
-                print(f"[WsListenerThread] Attempting to connect to {self.ws_url}...")
-                with connect(self.ws_url, open_timeout=5.0) as ws:
+                with connect(self.ws_url, open_timeout=5.0, max_size=100 * 1024 * 1024) as ws:
                     self._ws = ws
-                    print(f"[WsListenerThread] SUCCESS: Connected to {self.ws_url}")
                     while self._running:
                         try:
-                            # Reduced timeout for better responsiveness to stop signal
                             raw = ws.recv(timeout=1.0)
                             data = json.loads(raw)
                             self.message_received.emit(data)
                         except TimeoutError:
                             continue
-                        except Exception as inner_e:
-                            if self._running:
-                                print(f"[WsListenerThread] Receive error: {inner_e}")
+                        except Exception:
                             break
             except Exception as e:
                 if self._running:
-                    error_msg = f"Connection failed: {str(e)}"
-                    print(f"[WsListenerThread] {error_msg}")
-                    self.connection_error.emit(error_msg)
-                    print("[WsListenerThread] Retrying in 3 seconds...")
+                    self.connection_error.emit(str(e))
                     self.msleep(3000)
             finally:
                 self._ws = None
-                if self._running:
-                    print(f"[WsListenerThread] Session finished for {self.ws_url}")
 
     def stop(self):
         self._running = False
-        # Agent D v6: Explicitly close the ws to unblock recv() immediately
         if self._ws:
-            try:
-                self._ws.close()
-            except:
-                pass
+            try: self._ws.close()
+            except: pass
         self.quit()
         self.wait()
 
-
 class ApiDeleteWorker(QRunnable):
-    """지정한 행들을 서버에서 삭제 요청하는 비동기 워커."""
     def __init__(self, url, row_ids, user_name="system"):
         super().__init__()
         self.url = url
@@ -201,12 +216,9 @@ class ApiDeleteWorker(QRunnable):
     @Slot()
     def run(self):
         try:
-            payload = {
-                "row_ids": self.row_ids,
-                "user_name": self.user_name
-            }
             import urllib.request
             import json
+            payload = {"row_ids": self.row_ids, "user_name": self.user_name}
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(self.url, data=data, method="POST")
             req.add_header("Content-Type", "application/json")
@@ -217,374 +229,291 @@ class ApiDeleteWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 class ApiLazyTableModel(QAbstractTableModel):
-    """
-    QAbstractTableModel with lazy loading from a REST API endpoint.
-    Retrieves data in chunks when the user scrolls near the bottom.
-    """
-    # Agent D v2: WS 브로드캐스트 전용 Signal (source='remote' 컨텍스트 포함)
-    ws_data_changed = Signal(dict)  # {"row_id": ..., "column_name": ..., "value": ..., "source": "remote"}
-    batch_ws_data_changed = Signal(dict) # {"updates": list, "change_count": int}
-    row_created_ws = Signal(dict)   # {"row_id": ..., "table_name": ..., "data": ...}
-    row_deleted_ws = Signal(dict)   # Agent D v13: 행 삭제 시그널 추가
+    ws_data_changed = Signal(dict)
+    batch_ws_data_changed = Signal(dict)
+    row_created_ws = Signal(dict)
+    row_deleted_ws = Signal(dict)
+    total_count_changed = Signal(int, int) # (exposed_rows, total_count)
+
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
         super().__init__()
         self.table_name = table_name
         self.base_api_url = base_api_url
         self.endpoint_url = config.get_table_data_url(table_name)
         self._data = []
-        self._total_count = 0 # 서버 첫 응답 시 실제 값으로 갱신됨
-        self._columns = ["id", "name", "status"]
+        self._total_count = 0
+        self._columns = ["id"]
         self._chunk_size = 50
         self._fetching = False
+        self._fetch_scheduled = False
         self._first_fetch = True
-        self._search_query = "" # 서버 사이드 검색어
+        self._is_processing_remote = False
+        self._fetching_row_ids = set()
+        self._sort_latest = True
+        self._server_fetched_count = 0
+        self._search_query = ""
+        self._search_cols = "" # [Phase 73.7] 명시적 검색 대상 컬럼 리스트
+        self._exposed_rows = 0  # [신규] 실제로 UI에 노출된 행 수
+        
+        self._row_id_map = {}
+        self._pending_target_skip = None # [신규] 특정 오프셋 점프 예약용
+        self._stale_fetch_tracker = {}
+        
+        # [Phase 73.5] 검색 세션 ID 도입 - 고속 타이핑 시 이전 검색 결과 오염 방지
+        self._search_session_id = str(uuid.uuid4())
+        
+        self._recovery_timer = QTimer(self)
+        self._recovery_timer.setInterval(500)
+        self._recovery_timer.timeout.connect(self._check_for_stale_placeholders)
+        self._recovery_timer.start()
 
-        self._chunk_size = 50
-        self._fetching = False
-        self._fetch_scheduled = False # [신규] 타이머 예약용 중복 방지 락
-        self._first_fetch = True
-        self._is_processing_remote = False # Agent D v5: Prevent duplicate history logging
-        self._fetching_row_ids = set() # Agent D v8: Track rows being fetched to prevent duplicates
-        self._sort_latest = True       # [신규] 최신순 정렬(updated_at DESC) 여부
-        self._server_fetched_count = 0 # [신규] 서버 페이징 기준 위치 (로컬 프리펜드 무시)
+        # [신규] Viewport Jump용 타이머 (Debounce)
+        self._jump_timer = QTimer(self)
+        self._jump_timer.setSingleShot(True)
+        self._jump_timer.timeout.connect(self.fetchMore)
+
+    def _check_for_stale_placeholders(self):
+        if self._fetching: return
+        now = time.time()
+        to_retry = None
+        for skip in sorted(list(self._stale_fetch_tracker.keys())):
+            if now - self._stale_fetch_tracker[skip] >= 0.5:
+                to_retry = skip
+                break
+        if to_retry is not None:
+            if to_retry < len(self._data) and self._data[to_retry] is None:
+                self._pending_target_skip = to_retry
+                self._stale_fetch_tracker[to_retry] = now
+                self.fetchMore()
+            else:
+                if to_retry in self._stale_fetch_tracker:
+                    del self._stale_fetch_tracker[to_retry]
 
     def update_columns(self, columns: list[str]):
-        """컬럼 정보를 동적으로 업데이트하고 모델을 리셋합니다."""
-        print(f"[Model] Updating columns for {self.table_name}: {columns}")
         self.beginResetModel()
         self._columns = columns
         self.endResetModel()
 
-    def set_search_query(self, query: str):
-        """서버 사이드 검색어를 설정하고 모델을 리셋하여 다시 페칭합니다."""
-        if self._search_query == query:
-            return
-            
-        print(f"[Model] Setting search query for {self.table_name}: {query}")
+    def set_search_query(self, query: str, search_cols: str = ""):
+        if self._search_query == query and self._search_cols == search_cols: return
         self.beginResetModel()
         self._search_query = query
+        self._search_cols = search_cols
         self._data = []
         self._total_count = 0
+        self._exposed_rows = 0
         self._first_fetch = True
+        self._row_id_map = {}
         self._server_fetched_count = 0
+        
+        # [Phase 73.5] 세션 ID 갱신 무효화 (기존 요청 무시 효과)
+        self._search_session_id = str(uuid.uuid4())
+        
+        self.total_count_changed.emit(0, 0)
         self.endResetModel()
         
-        # 즉시 첫 페이지 요청
+        self._refresh_total_count()
         self.fetchMore()
 
     def set_sort_latest(self, enabled: bool):
-        """최신순 정렬 여부를 설정하고 모델을 리셋합니다."""
-        if self._sort_latest == enabled:
-            return
-            
-        print(f"[Model] Setting sort_latest for {self.table_name}: {enabled}")
+        if self._sort_latest == enabled: return
         self.beginResetModel()
         self._sort_latest = enabled
         self._data = []
         self._total_count = 0
+        self._exposed_rows = 0
         self._first_fetch = True
+        self._row_id_map = {}
         self._server_fetched_count = 0
-        self.endResetModel()
         
+        # [Phase 73.5] 세션 ID 갱신
+        self._search_session_id = str(uuid.uuid4())
+        
+        self.total_count_changed.emit(0, 0)
+        self.endResetModel()
+        self._refresh_total_count()
         self.fetchMore()
 
+    def _refresh_total_count(self):
+        """[Phase 73.6] 현재 검색 조건에 맞는 전체 개수를 서버에 재요청하여 UI 정합성을 맞춤."""
+        order = "updated_at" if self._sort_latest else "id"
+        desc = "true" if self._sort_latest else "false"
+        import urllib.parse
+        cols_str = self._search_cols if self._search_cols else ",".join(self._columns)
+        url = f"{self.endpoint_url}?skip=0&limit=1&order_by={order}&order_desc={desc}&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(cols_str)}"
+        worker = ApiFetchWorker(url, session_id=self._search_session_id)
+        worker.signals.finished.connect(self._on_total_refresh_finished)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_total_refresh_finished(self, result):
+        resp_session = result.get("_session_id")
+        if resp_session and resp_session != self._search_session_id:
+            return
+        self._total_count = result.get("total", 0)
+        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+
     def rowCount(self, parent=QModelIndex()) -> int:
-        return self._total_count
+        return self._exposed_rows
 
     def columnCount(self, parent=QModelIndex()) -> int:
         return len(self._columns)
 
     def flags(self, index):
-        if not index.isValid():
-            return Qt.ItemFlag.NoItemFlags
-        
-        # Agent D v12: 시스템 컬럼(created_at, updated_at 등)은 수정 불가 처리
+        if not index.isValid(): return Qt.ItemFlag.NoItemFlags
         col_name = self._columns[index.column()]
         if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
             return Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
-            
-        # allow editable for business columns
         return super().flags(index) | Qt.ItemFlag.ItemIsEditable
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
-        if not index.isValid():
-            return False
-            
-        if role == Qt.ItemDataRole.EditRole:
-            row = index.row()
-            col = index.column()
-            
-            if row >= len(self._data):
-                return False
-                
-            cell_data = self._data[row].get("data", {})
-            col_name = self._columns[col]
-            
-            # Agent D v12: 시스템 컬럼 수정 방어 (setData 호출 수준에서 차단)
-            if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
-                return False
-                
-            # Agent D v15: 값이 동일할 경우 업데이트 무시
-            current_item = cell_data.get(col_name, {})
-            current_value = current_item.get("value", "")
-            if str(current_value) == str(value):
-                return True # 변경 사항 없으므로 성공으로 간주하되 API는 미호출
-                
-            row_id = self._data[row].get("row_id")
-            
-            if row_id is None:
-                return False
-                
-            persistent_index = QPersistentModelIndex(index)
-            url = config.get_unified_update_url(self.table_name)
-            
-            # 통합 API 규격으로 페이로드 구성
-            update_item = {
-                "row_id": row_id,
-                "column_name": col_name, # Server-side might need this inside 'updates' dict
-                "updates": {col_name: value},
-                "source_name": "user",
-                "updated_by": config.CURRENT_USER
-            }
-            
-            worker = ApiGeneralUpdateWorker(url, [update_item])
-            # 람다를 사용하여 index 정보를 결과와 함께 전달
-            worker.signals.finished.connect(lambda res: self._on_update_finished({
-                **res, "index": persistent_index, "col_name": col_name, "value": value
-            }))
-            worker.signals.error.connect(lambda err: print(f"Failed to update cell via API: {err}"))
-            
-            QThreadPool.globalInstance().start(worker)
-            
-            # 서버 업데이트 시작 전, 즉시 입력 이벤트를 허용
-            return True
-                
-        return False
+        if not index.isValid() or role != Qt.ItemDataRole.EditRole: return False
+        row = index.row()
+        if row >= len(self._data) or self._data[row] is None: return False
+        
+        col_name = self._columns[index.column()]
+        if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]: return False
+        
+        cell_data = self._data[row].get("data", {})
+        if str(cell_data.get(col_name, {}).get("value", "")) == str(value): return True
+        
+        row_id = self._data[row].get("row_id")
+        p_index = QPersistentModelIndex(index)
+        url = config.get_unified_update_url(self.table_name)
+        update_item = {"row_id": row_id, "updates": {col_name: value}, "source_name": "user", "updated_by": config.CURRENT_USER}
+        worker = ApiGeneralUpdateWorker(url, [update_item])
+        worker.signals.finished.connect(lambda res: self._on_update_finished({**res, "index": p_index, "col_name": col_name, "value": value}))
+        QThreadPool.globalInstance().start(worker)
+        return True
 
     def applyMappedUpdates(self, mapped_updates: dict):
-        """
-        [Row ID 직접 타겟팅] 프록시 모델에서 이미 식별된 Row ID와 컬럼명 쌍을 받아 서버로 전송합니다.
-        mapped_updates: {row_id: {col_name: value}}
-        """
-        grouped_payloads = []
-        for row_id, updates in mapped_updates.items():
-            if not row_id: continue
-            
-            grouped_payloads.append({
-                "row_id": row_id,
-                "updates": updates,
-                "source_name": "user",
-                "updated_by": config.CURRENT_USER
-            })
-            
-        if not grouped_payloads:
-            return
-            
+        payloads = []
+        for rid, updates in mapped_updates.items():
+            if rid: payloads.append({"row_id": rid, "updates": updates, "source_name": "user", "updated_by": config.CURRENT_USER})
+        if not payloads: return
         url = config.get_unified_update_url(self.table_name)
-        worker = ApiGeneralUpdateWorker(url, grouped_payloads)
-        # 결과는 WebSocket 브로드캐스트를 통해 자동 반영됨
+        worker = ApiGeneralUpdateWorker(url, payloads)
         QThreadPool.globalInstance().start(worker)
 
-    def bulkUpdateData(self, start_row, start_col, parsed_data_matrix):
-        """
-        [행 단위 최적화] 
-        복제 현상 방지: 동일 행에 대한 여러 셀 수정을 하나의 RowUpdate 항목으로 묶어 전송합니다.
-        """
-        # {row_id: {col_name: value, ...}}
-        grouped_updates = {}
-        
-        for r_idx, row_values in enumerate(parsed_data_matrix):
+    def bulkUpdateData(self, start_row, start_col, matrix):
+        grouped = {}
+        for r_idx, row_vals in enumerate(matrix):
             model_row = start_row + r_idx
-            if model_row >= len(self._data): break
-            row_id = self._data[model_row].get("row_id")
-            if row_id is None: continue
-            
-            for c_idx, value in enumerate(row_values):
+            if model_row >= len(self._data) or self._data[model_row] is None: break
+            rid = self._data[model_row].get("row_id")
+            if not rid: continue
+            for c_idx, val in enumerate(row_vals):
                 model_col = start_col + c_idx
                 if model_col >= len(self._columns): break
-                col_name = self._columns[model_col]
-                
-                # 시스템 컬럼 제외
-                if col_name in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
-                    continue
-                
-                if row_id not in grouped_updates:
-                    grouped_updates[row_id] = {}
-                
-                grouped_updates[row_id][col_name] = value
-        
-        if not grouped_updates:
-            return
-            
+                col = self._columns[model_col]
+                if col not in ["created_at", "updated_at", "row_id", "id", "updated_by"]:
+                    grouped.setdefault(rid, {})[col] = val
+        if not grouped: return
         url = config.get_unified_update_url(self.table_name)
-        
-        # 통합 API 규격(GeneralUpdateBatch)으로 변환
-        unified_updates = []
-        for row_id, updates in grouped_updates.items():
-            unified_updates.append({
-                "row_id": row_id,
-                "updates": updates,
-                "source_name": "user",
-                "updated_by": config.CURRENT_USER
-            })
-            
-        worker = ApiGeneralUpdateWorker(url, unified_updates)
-        worker.signals.finished.connect(self._on_batch_update_finished)
-        worker.signals.error.connect(lambda err: print(f"Failed to batch update: {err}"))
-        
+        unified = [{"row_id": k, "updates": v, "source_name": "user", "updated_by": config.CURRENT_USER} for k, v in grouped.items()]
+        worker = ApiGeneralUpdateWorker(url, unified)
         QThreadPool.globalInstance().start(worker)
 
-    def _on_batch_update_finished(self, result: dict):
-        """
-        [고스트 밸류(Ghost Values) 해결]
-        문제: 부상(Floating) 로직으로 인해 WebSocket 수신 시 행의 인덱스가 즉시 변경됨.
-        원인: 배치 업데이트 완료 응답은 지연될 수 있으며, 응답 시점의 row_index는 이미 낡은(Stale) 정보일 수 있음.
-        해결: 인덱스 기반의 로컬 수동 갱신을 중단하고, 모든 데이터/위치 동기화를 WebSocket 브로드캐스트로 일원화함.
-        """
-        # (Optional) 로컬 작업 UI 피드백(예: 프로그레스바 종료) 필요 시 여기에 작성
-        pass
+    def _on_batch_update_finished(self, result): pass
 
-    # -------------------------------------------------------------------------
-    # WebSocket 브로드캐스트 수신 슬롯 (WebSocketExpert 스킬 규칙 B)
-    # -------------------------------------------------------------------------
     @Slot(dict)
     def _on_websocket_broadcast(self, data: dict):
-        """
-        서버 WebSocket 브로드캐스트 수신 Slot.
-        """
         event = data.get("event")
-        table_name = data.get("table_name", "")
-
-        if table_name and table_name != self.table_name:
-            return
-
-        # [핵심 최적화] 원격 데이터 처리 중임을 표시하여 히스토리 패널의 개별 셀 로그 생성을 차단
+        if data.get("table_name") != self.table_name: return
         self._is_processing_remote = True
         try:
-            if event == "cell_update":
-                updates = [data]
-            elif event == "batch_cell_update":
-                updates = data.get("updates", [])
-            elif event == "batch_row_delete":
-                target_ids = data.get("row_ids", [])
+            if event == "batch_row_delete":
+                target_ids = list(set(data.get("row_ids", [])))
                 if not target_ids: return
-                
-                row_id_map = self._build_row_id_map()
-                # [버그 수정] 중복 인덱스 제거 (IndexError 방지)
-                unique_cached_indices = sorted(list(set([row_id_map[rid] for rid in target_ids if rid in row_id_map])), reverse=True)
-                
-                # 1. 로컬 캐시에 존재하는 행 제거
-                for idx in unique_cached_indices:
-                    self.beginRemoveRows(QModelIndex(), idx, idx)
-                    del self._data[idx]
-                    self._total_count -= 1
-                    self.endRemoveRows()
-                
-                # 2. [기능 보완] 캐시에 없던 행(Placeholder 영역)에 대한 카운트 동기화
-                # 서버에서 삭제된 총 개수와 로컬에서 제거한 개수 차이만큼 하단에서 제거
-                total_deleted_on_server = len(set(target_ids)) # 중복 ID가 올 경우 대비
-                removed_from_cache = len(unique_cached_indices)
-                remaining_to_remove = total_deleted_on_server - removed_from_cache
-                
-                if remaining_to_remove > 0 and self._total_count >= remaining_to_remove:
-                    # 가상 영역(목록 하단)에서 개수 차감 및 뷰 갱신
-                    first_v_idx = self._total_count - remaining_to_remove
-                    last_v_idx = self._total_count - 1
-                    self.beginRemoveRows(QModelIndex(), first_v_idx, last_v_idx)
-                    self._total_count -= remaining_to_remove
-                    self.endRemoveRows()
-                
+                cached_indices = sorted([self._row_id_map[rid] for rid in target_ids if rid in self._row_id_map])
+                if len(target_ids) > 500 or len(cached_indices) < len(target_ids):
+                    self.beginResetModel()
+                    # self._total_count = max(0, self._total_count - len(target_ids)) # 수동 계산 제거
+                    self._data = [None] * self._total_count
+                    self._exposed_rows = min(self._exposed_rows, self._total_count)
+                    self._row_id_map = {}; self._server_fetched_count = 0
+                    self._refresh_total_count()
+                    self.endResetModel()
+                else:
+                    ranges = []
+                    if cached_indices:
+                        s = cached_indices[0]; p = s
+                        for i in range(1, len(cached_indices)):
+                            if cached_indices[i] == p + 1: p = cached_indices[i]
+                            else: ranges.append((s, p)); s = cached_indices[i]; p = s
+                        ranges.append((s, p))
+                    for s, e in reversed(ranges):
+                        self.beginRemoveRows(QModelIndex(), s, e)
+                        num = (e - s + 1)
+                        del self._data[s : e + 1]
+                        # self._total_count -= num # 수동 계산 제거
+                        self._exposed_rows -= num # 노출 개수 감소
+                        self.endRemoveRows()
+                    self._update_row_id_map()
+                    self._refresh_total_count()
                 self.row_deleted_ws.emit(data)
-                return
             elif event == "batch_row_create":
                 items = data.get("items", [])
                 if not items: return
-                
-                # 1~10000건 대량 생성 대응을 위한 데이터 준비
-                new_rows = []
-                for item in items:
-                    new_rows.append(self._normalize_row_data(item))
-                
-                # 정렬 설정에 따라 삽입 위치 결정 (최신순 ON 이면 최상단, OFF 이면 최하단)
+                new_rows = [self._normalize_row_data(item) for item in items]
                 if self._sort_latest:
-                    self.beginInsertRows(QModelIndex(), 0, len(new_rows) - 1)
-                    for r in reversed(new_rows):
-                        self._data.insert(0, r)
+                    self.beginInsertRows(QModelIndex(), 0, len(new_rows)-1)
+                    self._data = new_rows + self._data
+                    # self._total_count += len(new_rows) # 수동 제거
+                    self._exposed_rows += len(new_rows) # 최상단 삽입 시 노출 범위 확장
+                    self.endInsertRows()
                 else:
-                    start_idx = len(self._data)
-                    self.beginInsertRows(QModelIndex(), start_idx, start_idx + len(new_rows) - 1)
-                    for r in new_rows:
-                        self._data.append(r)
+                    # 최하단 추가 시에는 total_count만 늘리고, 사용자가 스크롤할 때 fetchMore가 확장하도록 유도
+                    # self._total_count += len(new_rows) # 수동 제거
+                    pass
                 
-                self._total_count += len(new_rows)
-                self.endInsertRows()
-                
-                self.row_created_ws.emit(data) # 기존 시그널 활용하여 히스토리 패널 등 알림
-                return
+                self._update_row_id_map()
+                # self.total_count_changed.emit(self._exposed_rows, self._total_count) # 수동 계산 제거
+                self._refresh_total_count() # [Phase 73.6] 서버에 재요청
+                self.row_created_ws.emit(data)
             elif event == "batch_row_upsert":
                 items = data.get("items", [])
                 if not items: return
-                
+                moved = []; min_c = float('inf'); max_c = -1
                 all_cell_updates = []
-                row_id_map = self._build_row_id_map()
                 
-                # [순서 보존] 맨 아래 행부터 처리하여 최상단 부상 시 기존 상하 관계 유지
                 for item in reversed(items):
-                    row_id = item.get("row_id")
-                    is_new = item.get("is_new", False)
-                    new_data_blob = item.get("data", {})
+                    rid = item.get("row_id")
+                    idx = self._row_id_map.get(rid)
+                    new_data = item.get("data", {})
                     
-                    idx = row_id_map.get(row_id)
                     if idx is not None:
-                        # [무결성 강화] 데이터 병합 및 정규화
-                        existing_row = self._data[idx]
-                        existing_row.setdefault("data", {}).update(new_data_blob)
-                        normalized_row = self._normalize_row_data(existing_row)
-                        
+                        row = self._data[idx]
+                        row.setdefault("data", {}).update(new_data)
+                        norm = self._normalize_row_data(row)
                         if self._sort_latest and idx > 0:
-                            # 1. 행 부상 (Model Reset 없이 이동 및 추적 보장)
-                            self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
-                            self._data.insert(0, self._data.pop(idx))
-                            self.endMoveRows()
-                            # 이동된 목표 위치(0)에 대해 갱신 시그널 발생
-                            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns) - 1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+                            moved.append((rid, norm))
+                            self.beginRemoveRows(QModelIndex(), idx, idx); self._data.pop(idx); self.endRemoveRows()
+                            self._update_row_id_map()
                         else:
-                            # 2. 제자리 업데이트 (부상 옵션 꺼짐 또는 이미 최상단)
-                            self._data[idx] = normalized_row
-                            self.dataChanged.emit(self.index(idx, 0), self.index(idx, len(self._columns) - 1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+                            self._data[idx] = norm
+                            min_c = min(min_c, idx); max_c = max(max_c, idx)
                     else:
-                        # 3. 새로운 행 추가
-                        normalized_row = self._normalize_row_data({
-                            "row_id": row_id,
-                            "table_name": self.table_name,
-                            "data": new_data_blob
-                        })
-                        if self._sort_latest:
-                            self.beginInsertRows(QModelIndex(), 0, 0)
-                            self._data.insert(0, normalized_row)
-                            if is_new: self._total_count += 1
-                            self.endInsertRows()
-                        else:
-                            start_idx = len(self._data)
-                            self.beginInsertRows(QModelIndex(), start_idx, start_idx)
-                            self._data.append(normalized_row)
-                            if is_new: self._total_count += 1
-                            self.endInsertRows()
+                        norm = self._normalize_row_data({"row_id": rid, "data": new_data})
+                        moved.append((rid, norm))
                     
-                    # 다중 업데이트를 위해 맵 최신화 보장
-                    row_id_map = self._build_row_id_map()
-                    
-                    # 히스토리 패널용 업데이트 리스트 구성
-                    for col, cell_val in new_data_blob.items():
-                         if isinstance(cell_val, dict) and "value" in cell_val:
-                              all_cell_updates.append({
-                                  "row_id": row_id,
-                                  "column_name": col,
-                                  "value": cell_val["value"],
-                                  "is_overwrite": cell_val.get("is_overwrite", False),
-                                  "updated_by": cell_val.get("updated_by", "system"),
-                                  "source": "remote"
-                              })
+                    # 히스토리 추적용 플래닝 (Flattening)
+                    for col, cell_val in new_data.items():
+                        if isinstance(cell_val, dict) and "value" in cell_val:
+                            all_cell_updates.append({
+                                "row_id": rid,
+                                "column_name": col,
+                                "value": cell_val["value"],
+                                "is_overwrite": cell_val.get("is_overwrite", False),
+                                "updated_by": cell_val.get("updated_by", "system"),
+                                "source": "remote"
+                            })
+
+                if moved:
+                    self.beginInsertRows(QModelIndex(), 0, len(moved)-1)
+                    self._data = [r for rid, r in reversed(moved)] + self._data
+                    self._exposed_rows += len(moved)
+                    self.endInsertRows(); self._update_row_id_map()
+                    min_c = 0; max_c = max(max_c, len(moved)-1)
 
                 if all_cell_updates:
                     self.batch_ws_data_changed.emit({
@@ -592,294 +521,244 @@ class ApiLazyTableModel(QAbstractTableModel):
                         "change_count": data.get("change_count", len(all_cell_updates)),
                         "updated_by": data.get("updated_by", "system")
                     })
-                return
-            else:
-                return
 
-            if not updates: return
-            row_id_map = self._build_row_id_map()
-            affected_rows = set()
-            changed_indices = []
-            log_updates = []
-
-            for u in updates:
-                row_id = u.get("row_id")
-                col_name = u.get("column_name")
-                value = u.get("value")
-
-                row_idx = row_id_map.get(row_id)
-                if row_idx is None:
-                    if row_id not in self._fetching_row_ids:
-                        self._fetching_row_ids.add(row_id)
-                        fetch_url = config.get_single_row_url(self.table_name, row_id)
-                        worker = ApiSingleRowFetchWorker(fetch_url)
-                        worker.signals.finished.connect(self._on_remote_row_fetched)
-                        worker.signals.error.connect(lambda e, rid=row_id: self._fetching_row_ids.discard(rid))
-                        QThreadPool.globalInstance().start(worker)
-                    continue
-                
-                affected_rows.add(row_id)
-                try:
-                    col_idx = self._columns.index(col_name)
-                    cell_data = self._data[row_idx].get("data", {})
-                    if col_name not in cell_data: cell_data[col_name] = {}
-                    cell_data[col_name]["value"] = value
-                    cell_data[col_name]["is_overwrite"] = u.get("is_overwrite", False)
-
-                    if "updated_at" in u and "updated_at" in self._columns:
-                        u_at = u.get("updated_at")
-                        if "updated_at" not in cell_data:
-                            cell_data["updated_at"] = {"is_overwrite": False, "updated_by": "system"}
-                        cell_data["updated_at"]["value"] = u_at
-                        changed_indices.append((row_idx, self._columns.index("updated_at")))
-                    
-                    if "updated_by" not in u: u["updated_by"] = data.get("updated_by", "system")
-                    log_updates.append({**u, "source": "remote"})
-                except: continue
-
-            if log_updates:
-                self.batch_ws_data_changed.emit(log_updates)
-
-            #if not changed_indices: return
-
-            if self._sort_latest:
-                for row_id in affected_rows:
-                    # REBUILD map every time because indices shift on pop/insert
-                    current_map = self._build_row_id_map()
-                    idx = current_map.get(row_id)
-                    if idx is not None and idx > 0:
-                        self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
-                        self._data.insert(0, self._data.pop(idx))
-                        self.endMoveRows()
-
-            max_row = max([r for r, _ in changed_indices]) if changed_indices else 0
-            self.dataChanged.emit(self.index(0, 0), self.index(max_row, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+                if max_c != -1:
+                    self.dataChanged.emit(self.index(min_c, 0), self.index(max_c, len(self._columns)-1))
+            elif event in ["cell_update", "batch_cell_update"]:
+                updates = [data] if event == "cell_update" else data.get("updates", [])
+                min_r = float('inf'); max_r = -1; logs = []
+                for u in updates:
+                    idx = self._row_id_map.get(u.get("row_id"))
+                    if idx is not None and self._data[idx]:
+                        cell = self._data[idx].setdefault("data", {}).setdefault(u.get("column_name"), {})
+                        cell.update({"value": u.get("value"), "is_overwrite": u.get("is_overwrite", False), "updated_by": u.get("updated_by", "system")})
+                        min_r = min(min_r, idx); max_r = max(max_r, idx); logs.append({**u, "source": "remote"})
+                if logs: self.batch_ws_data_changed.emit({"updates": logs, "change_count": len(logs), "updated_by": data.get("updated_by", "system")})
+                if max_r != -1: self.dataChanged.emit(self.index(min_r, 0), self.index(max_r, len(self._columns)-1))
         finally:
             self._is_processing_remote = False
 
     def _normalize_row_data(self, row: dict) -> dict:
-        """
-        [데이터 구조 비대칭 해결]
-        Fetch 데이터(DataRowResponse)는 created_at 등이 최상위에 위치하나, 
-        WebSocket 데이터는 data 맵 내부에만 있는 경우가 있음.
-        이를 최상위로 끌어올려 모델 인덱싱 및 필터링 시 구조적 일관성을 확보함.
-        """
-        data_blob = row.get("data", {})
-        
-        # 1. data 내부(inject_system_columns에 의해 생성됨)에서 created_at, updated_at 추출하여 주입
-        # top-level에 이미 있더라도 data_blob 내부의 'value'(로컬 시간 문자열)를 우선 사용하도록 수정
-        if "created_at" in data_blob:
-            cv = data_blob["created_at"].get("value")
-            if cv: row["created_at"] = cv
-            
-        if "updated_at" in data_blob:
-            uv = data_blob["updated_at"].get("value")
-            if uv: row["updated_at"] = uv
-            
+        blob = row.get("data", {})
+        if "created_at" in blob: row["created_at"] = blob["created_at"].get("value")
+        if "updated_at" in blob: row["updated_at"] = blob["updated_at"].get("value")
         return row
 
-    def _build_row_id_map(self) -> dict:
-        """현재 로컬 캐시된 데이터의 row_id와 인덱스 매핑을 생성합니다."""
-        return {str(row.get("row_id")): idx for idx, row in enumerate(self._data)}
+    def _update_row_id_map(self):
+        self._row_id_map = {str(r.get("row_id")): i for i, r in enumerate(self._data) if r}
 
-    def _on_remote_row_fetched(self, row_data: dict):
-        row_id = str(row_data.get("row_id"))
-        if row_id in self._fetching_row_ids:
-            self._fetching_row_ids.remove(row_id)
-            
-        # Normalize and Deduplicate
-        normalized_row = self._normalize_row_data(row_data)
-        row_id_map = self._build_row_id_map()
-        
-        if row_id in row_id_map:
-            # Already exists, just update
-            idx = row_id_map[row_id]
-            self._data[idx] = normalized_row
-            
-            # 최신순 정렬 시에만 최상단으로 이동
+    def _build_row_id_map(self):
+        if not self._row_id_map: self._update_row_id_map()
+        return self._row_id_map
+
+    def _on_remote_row_fetched(self, row):
+        rid = str(row.get("row_id"))
+        if rid in self._fetching_row_ids: self._fetching_row_ids.remove(rid)
+        norm = self._normalize_row_data(row)
+        mapping = self._build_row_id_map()
+        if rid in mapping:
+            idx = mapping[rid]; self._data[idx] = norm
             if self._sort_latest and idx > 0:
                 self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
-                self._data.insert(0, self._data.pop(idx))
-                self.endMoveRows()
-            return
+                self._data.insert(0, self._data.pop(idx)); self.endMoveRows()
+        else:
+            self.beginInsertRows(QModelIndex(), 0, 0)
+            self._data.insert(0, norm); self.endInsertRows()
+        self._update_row_id_map()
 
-        # Truly new to cache
-        self._is_processing_remote = True
-        try:
-            if self._sort_latest:
-                self.beginInsertRows(QModelIndex(), 0, 0)
-                self._data.insert(0, normalized_row)
-            else:
-                idx = len(self._data)
-                self.beginInsertRows(QModelIndex(), idx, idx)
-                self._data.append(normalized_row)
-            
-            self.endInsertRows()
-            self.dataChanged.emit(self.index(0, 0), self.index(0, len(self._columns)-1), [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
-        finally:
-            self._is_processing_remote = False
-
-    def _on_update_finished(self, result: dict):
-        p_index = result["index"]
-        if not p_index.isValid():
-            return
-            
-        row = p_index.row()
-        col = p_index.column()
-        col_name = result["col_name"]
-        value = result["value"]
-        
-        if row < len(self._data):
-            cell_data = self._data[row].get("data", {})
-            if col_name not in cell_data:
-                cell_data[col_name] = {}
-            cell_data[col_name]["value"] = value
-            cell_data[col_name]["is_overwrite"] = True
-            
-            # BackgroundRole 과 DisplayRole 을 갱신하여 UI 반영
-            m_index = self.index(row, col)
-            self.dataChanged.emit(m_index, m_index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole])
+    def _on_update_finished(self, res):
+        idx = res["index"]
+        if idx.isValid() and idx.row() < len(self._data):
+            cell = self._data[idx.row()].setdefault("data", {}).setdefault(res["col_name"], {})
+            cell.update({"value": res["value"], "is_overwrite": True})
+            self.dataChanged.emit(idx, idx)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-            
-        row = index.row()
-        col = index.column()
-
-        # If data is not yet loaded for this row, display placeholder
-        if row >= len(self._data):
+        if not index.isValid(): return None
+        row, col = index.row(), index.column()
+        if row >= len(self._data) or self._data[row] is None:
             if role == Qt.ItemDataRole.DisplayRole:
-                # Trigger fetch if not already fetching or scheduled
-                if not self._fetching and not getattr(self, '_fetch_scheduled', False):
-                    self._fetch_scheduled = True # [고속 스크롤 픽스] 예약 락 설정
-                    from PySide6.QtCore import QTimer
-                    # Use a timer to avoid calling fetchMore directly inside data() which can cause issues
-                    QTimer.singleShot(0, self.fetchMore)
+                # Viewport에 빈 데이터가 포착되면 해당 위치 최우선 로딩 예약
+                skip = (row // self._chunk_size) * self._chunk_size
+                if not self._fetching:
+                    self._pending_target_skip = skip
+                    if not self._jump_timer.isActive():
+                        self._jump_timer.start(50) # 50ms Debounce
+                
+                if skip not in self._stale_fetch_tracker: 
+                    self._stale_fetch_tracker[skip] = time.time()
                 return "Loading..."
             return None
-
-        cell_data = self._data[row].get("data", {})
         col_name = self._columns[col]
-
-        # 1. 시스템 컬럼 (created_at, updated_at) 우선 처리
         if col_name in ["created_at", "updated_at"]:
             if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
-                # 최상위(Flattened) 데이터 먼저 확인
-                val = self._data[row].get(col_name)
-                if val: return val
-                # 중첩된 데이터 확인 (Fallback)
-                item = cell_data.get(col_name, {})
-                return item.get("value", "")
+                return self._data[row].get(col_name) or self._data[row].get("data", {}).get(col_name, {}).get("value", "")
             return None
-
-        # 2. 비즈니스 데이터 처리
         if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
-            item = cell_data.get(col_name, {})
-            val = item.get("value", "")
-            # [기능 개선] 편집 모드(EditRole)일 때는 무조건 문자열로 반환하여 숫자 전용 입력기(SpinBox)를 방지함
-            if role == Qt.ItemDataRole.EditRole and val is not None:
-                return str(val)
-            return val
-            
-        # [핵심] 식별자 다이렉트 접근 (Index Drift 방지용 절대 좌표)
-        if role == Qt.ItemDataRole.UserRole + 2:
-            return self._data[row].get("row_id")
-
-        # Highlight logic if is_overwrite is True
+            val = self._data[row].get("data", {}).get(col_name, {}).get("value", "")
+            return str(val) if role == Qt.ItemDataRole.EditRole else val
+        if role == Qt.ItemDataRole.UserRole + 2: return self._data[row].get("row_id")
         if role == Qt.ItemDataRole.BackgroundRole:
-            item = cell_data.get(col_name, {})
-            if item.get("is_overwrite"):
+            if self._data[row].get("data", {}).get(col_name, {}).get("is_overwrite"):
                 from PySide6.QtGui import QColor
-                return QColor("#FF8C00") # Amber background for manually overwritten items
-
+                return QColor("#FF8C00")
         return None
 
     def canFetchMore(self, parent=QModelIndex()) -> bool:
-        if self._fetching:
-            return False
-        if self._first_fetch:
-            return True
-        return len(self._data) < self._total_count
+        # 노출된 행이 전체 행보다 적으면 더 가져올 수 있음
+        return not self._fetching and (self._first_fetch or self._exposed_rows < self._total_count)
 
     def fetchMore(self, parent=QModelIndex()):
-        self._fetch_scheduled = False # 예약 락 해제
-        if self._fetching:
+        # 1. 스냅샷: 현재 로딩 중인지 확인
+        is_jump_request = self._pending_target_skip is not None
+        
+        # 2. 노출 범위 확장 (Adaptive Expansion - Shell Only)
+        # Qt가 스크롤바 바닥을 쳐서 호출했거나, 명시적으로 봇물을 터트려야 할 때
+        # 단, 첫 페칭(Metadata 수신용)은 반드시 진행해야 함
+        if not is_jump_request and not self._first_fetch:
+            remaining = self._total_count - self._exposed_rows
+            increment = min(self._chunk_size, remaining)
+            if increment > 0:
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
+                self._exposed_rows += increment
+                if len(self._data) < self._exposed_rows:
+                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
+                # [Phase 73.8] 즉시 카운트 업데이트 시그널 송출 (Loaded 수치 선점)
+                self.total_count_changed.emit(self._exposed_rows, self._total_count)
+            # 순차 확장이 목적이라면 여기서 종료 (네트워크 요청 안 함)
             return
-            
-        self._fetching = True
-        skip = self._server_fetched_count # [Paging Skip 픽스] len(self._data) 대신 서버 순차 누적 횟수 사용
-        limit = self._chunk_size
+
+        # 3. 데이터 로딩 (Viewport Request Only)
+        if self._fetching: return
         
-        order_by = "updated_at" if self._sort_latest else "id"
-        order_desc = "true" if self._sort_latest else "false"
+        # 타이머 중지 (명시적 호출 시)
+        if self._jump_timer.isActive(): self._jump_timer.stop()
         
-        url = f"{self.endpoint_url}?skip={skip}&limit={limit}&order_by={order_by}&order_desc={order_desc}"
+        self._fetching = True 
+        self._fetch_scheduled = False
+        
+        skip = self._pending_target_skip if self._pending_target_skip is not None else 0
+        self._pending_target_skip = None
+        self._active_target_skip = skip
+        
+        order = "updated_at" if self._sort_latest else "id"
+        desc = "true" if self._sort_latest else "false"
+        url = f"{self.endpoint_url}?skip={skip}&limit={self._chunk_size}&order_by={order}&order_desc={desc}"
         if self._search_query:
             import urllib.parse
-            url += f"&q={urllib.parse.quote(self._search_query)}"
-        
-        worker = ApiFetchWorker(url)
+            target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
+            url += f"&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(target_cols)}"
+            
+        worker = ApiFetchWorker(url, session_id=self._search_session_id)
         worker.signals.finished.connect(self._on_fetch_finished)
         worker.signals.error.connect(self._on_fetch_error)
-        
         QThreadPool.globalInstance().start(worker)
 
-    def _on_fetch_finished(self, result: dict):
-        new_data = result.get("data", [])
+    def fetch_batch(self, count: int = 1000):
+        """특정 개수(기본 1000개)만큼의 데이터를 한꺼번에 가져오고 노출 범위를 확장합니다."""
+        if self._fetching: return
+        
+        remaining = self._total_count - self._exposed_rows
+        increment = min(count, remaining)
+        if increment <= 0: return
+
+        self._fetching = True
+        
+        # 1. 노출 범위 확장 알림 및 데이터 버퍼 패딩
+        self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
+        self._exposed_rows += increment
+        if len(self._data) < self._exposed_rows:
+            self._data.extend([None] * (self._exposed_rows - len(self._data)))
+        self.endInsertRows()
+        # [Phase 73.8] 일괄 로드 시에도 즉시 로드 수치 반영
+        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+
+        # 2. 서버 요청
+        skip = self._server_fetched_count
+        self._active_target_skip = skip
+        
+        order = "updated_at" if self._sort_latest else "id"
+        desc = "true" if self._sort_latest else "false"
+        url = f"{self.endpoint_url}?skip={skip}&limit={increment}&order_by={order}&order_desc={desc}"
+        if self._search_query:
+            import urllib.parse
+            target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
+            url += f"&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(target_cols)}"
+            
+        worker = ApiFetchWorker(url, session_id=self._search_session_id)
+        worker.signals.finished.connect(self._on_fetch_finished)
+        worker.signals.error.connect(self._on_fetch_error)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_fetch_finished(self, result):
+        # [Phase 73.5] 세션 검증: 응답에 포함된 세션 ID가 현재 모델의 세션 ID와 다르면 폐기
+        resp_session = result.get("_session_id")
+        if resp_session and resp_session != self._search_session_id:
+            print(f"[Model] Discarding stale session result: {resp_session} != {self._search_session_id}")
+            self._fetching = False
+            return
+
+        # [Phase 73.8] 네트워크 응답 도착 직후 메타데이터(Total)부터 즉시 업데이트하여 UI 반응성 확보
         total = result.get("total", 0)
+        self._total_count = total
+        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+
+        new = result.get("data", []); total = result.get("total", 0)
+        skip = getattr(self, '_active_target_skip', 0)
+        if skip in self._stale_fetch_tracker: del self._stale_fetch_tracker[skip]
         
         if self._first_fetch:
             self.beginResetModel()
             self._total_count = total
-            self._data = new_data
+            self._data = new
+            # 첫 페칭 시점에 노출 개수 동기화
+            self._exposed_rows = len(new)
             self._first_fetch = False
-            self._server_fetched_count = len(new_data)
+            self._server_fetched_count = len(new)
+            self.total_count_changed.emit(self._exposed_rows, self._total_count)
             self.endResetModel()
-        else:
-            if new_data:
-                # [고스트 행(Ghost Rows) 해결 - 기법 A: Deduplication on Fetch]
-                # 문제: Floating으로 최상단에 자리잡은 행이 스크롤 페칭 시 하단에서 또 발견되는 현상.
-                # 해결: 서버 청크를 추가하기 전, 이미 로컬 캐시에 부상해 있는 행은 전수 제외 처리.
-                current_row_ids = {str(r.get("row_id")) for r in self._data}
-                unique_new_data = [
-                    r for r in new_data 
-                    if str(r.get("row_id")) not in current_row_ids
-                ]
-                
-                if unique_new_data:
-                    start_row = len(self._data)
-                    self._data.extend(unique_new_data)
-                    
-                    # 뷰에 신규 데이터 영역 갱신 알림
-                    # Note: rowCount()는 이미 placeholder를 포함하므로 dataChanged만으로 충분
-                    self.dataChanged.emit(
-                        self.index(start_row, 0),
-                        self.index(start_row + len(unique_new_data) - 1, len(self._columns) - 1),
-                        [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.BackgroundRole]
-                    )
-                
-                # [Paging Skip 픽스] 캐시 중복 여부와 무관하게 서버에서 가져온 원본 개수만큼 페이징 포인터 전진
-                self._server_fetched_count += len(new_data)
-                
-                # [Offset Drift 해결] 만약 가져온 데이터가 모두 중복(Ghost)이어서 뷰가 채워지지 않았다면,
-                # 뷰가 "Loading..."에 영원히 멈춰있게 되므로 다음 페이지를 자동으로 연쇄 스캔합니다.
-                if not unique_new_data and self._server_fetched_count < self._total_count:
-                    self._fetching = False
-                    self.fetchMore()
-                    return
+            self._fetching = False
+            return
+        
+        # 만약 모델이 리셋된 상태(_first_fetch=True)인데 이전 세션의 응답이 온 것이라면 무시
+        if self._first_fetch:
+            self._fetching = False
+            return
+
+        if new:
+            # 신규 데이터가 기존 버퍼 범위를 넘어서면 확장
+            if skip + len(new) > len(self._data):
+                needed = (skip + len(new)) - len(self._data)
+                self._data.extend([None] * needed)
             
-        self._fetching = False
+            for i, r in enumerate(new):
+                self._data[skip + i] = r
+            
+            # 노출 범위 최종 동기화 (이미 fetchMore에서 늘어났다면 diff <= 0)
+            target_exposed = skip + len(new)
+            if target_exposed > self._exposed_rows:
+                diff = target_exposed - self._exposed_rows
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, target_exposed - 1)
+                self._exposed_rows = target_exposed
+                if len(self._data) < self._exposed_rows:
+                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
 
-    def _on_fetch_error(self, err: str):
-        print(f"Fetch error: {err}")
-        self._fetching = False
+            self.total_count_changed.emit(self._exposed_rows, self._total_count)
+            self.dataChanged.emit(self.index(skip, 0), self.index(skip + len(new) - 1, len(self._columns) - 1))
+            if skip == self._server_fetched_count: self._server_fetched_count += len(new)
+        
+        # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
+        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+        self._update_row_id_map(); self._fetching = False
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole):
+    def _on_fetch_error(self, err): self._fetching = False
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal:
-            if role == Qt.ItemDataRole.DisplayRole:
-                return self._columns[section].upper()
-            if role == Qt.ItemDataRole.UserRole:
-                # [핵심] 번역/가공 전의 원본 컬럼명(Key)을 반환하여 뷰-모델 간 정확한 매핑 지원
-                return self._columns[section]
-        return super().headerData(section, orientation, role)
+            if role == Qt.ItemDataRole.DisplayRole: return self._columns[section].upper()
+            if role == Qt.ItemDataRole.UserRole: return self._columns[section]
+        if orientation == Qt.Orientation.Vertical:
+            if role == Qt.ItemDataRole.DisplayRole: return str(section + 1)
+        return None

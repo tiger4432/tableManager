@@ -15,7 +15,7 @@
 
 ### 1.2 타임존(Timezone) 불일치
 - **증상**: 데이터 수정 시간(`updated_at`)이 9시간 차이나게 표시됨.
-- **원인**: 서버(SQLite)는 UTC로 저장하고, 클라이언트는 이를 Local로 변환하지 않음.
+- **원인**: 서버(PostgreSQL)는 UTC로 저장하고, 클라이언트는 이를 Local로 변환하지 않음.
 - **해결**: `main.py`의 `to_local_str()` 함수와 `inject_system_columns()`가 명시적으로 `.astimezone()` 변환을 수행하는지 확인.
 
 ---
@@ -56,4 +56,4 @@
   ```
 
 ---
-*AssyManager Debugging Guide v1.0*
+*AssyManager Debugging Guide v1.1 (PostgreSQL Revision)*

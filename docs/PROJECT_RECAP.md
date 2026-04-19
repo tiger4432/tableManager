@@ -29,14 +29,16 @@
 - **Phase 28-29**: 시스템 컬럼 읽기 전용 보안 정책 수립 및 행 삭제(Row Delete) 실시간 히스토리 연동.
 - **Phase 30-31**: 심층 아키텍처 분석(Architecture Analysis) 완료 및 외부 분석 툴 연동을 위한 CSV 익스포트 기능 상용화.
 - **Phase 46-48**: **[Data Integrity Revision]** 행 삭제 및 붙여넣기 무결성(Row ID 타겟팅) 이슈 해결, 고성능 BK 인덱스 정렬 및 토글 시스템 도입, 범용 텍스트 입력 제약 해제.
+- **Phase 73.5**: **[Search & History Optimization]** UUID 기반 검색 세션 가드(Search Session Guard) 도입으로 고속 타이핑 시 데이터 오염 차단, 히스토리 패널 노이즈 실시간 필터링 및 카운터 동기화 정합성 확보.
+- **Phase 73.6**: **[Total Sync Revision]** 외부 데이터 변경(Delete/Create) 시 서버 사이드 Total Count 재계산 엔진 도입으로 필터 활성화 중 카운트 불일치 원천 해결.
 - **Agentic Env**: 멀티 에이전트 협업 체계(Lead/Excel/Sync/Ingester) 및 지식 자산화 표준 정립.
 
 ---
 
 ## 📂 3. 핵심 기술 자산 (Core Tech Assets)
 본 프로젝트의 핵심 아키텍처와 주요 구현 방식은 다음 문서를 통해 상세히 관리됩니다.
-- **[TECHNICAL_GUIDE.md](./TECHNICAL_GUIDE.md)**: 시스템 전반의 아키텍처 및 API 상세 가이드.
-- **[INGESTION_GUIDE.md](./INGESTION_GUIDE.md)**: 데이터 인제션 및 워크스페이스 확장 가이드.
+- **[TECHNICAL_GUIDE.md](./guide/TECHNICAL_GUIDE.md)**: 시스템 전반의 아키텍처 및 API 상세 가이드.
+- **[INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md)**: 데이터 인제션 및 워크스페이스 확장 가이드.
 
 ---
 
@@ -44,7 +46,7 @@
 
 1. **서버 구동**: `uvicorn main:app --reload` 실행 시 `TABLE_CONFIG`를 읽어 4개 이상의 테이블 서비스 시작.
 2. **클라이언트 실행**: 시작과 동시에 모든 가용한 테이블이 탭으로 로드되며, WebSocket 리스너가 안정적으로 기동됨.
-3. **데이터 동기화**: 인제스터나 타 클라이언트에서 수정 시 활성화된 모든 탭에 즉각 반영되며, 수동 수정 시 노란색으로 강조되어 실시간 가시성 확보.
+3. **데이터 동기화**: 인제스터나 타 클라이언트에서 수정 시 활성화된 모든 탭에 즉각 반영되며, 수동 수정 시 노란색으로 강조되어 실시간 가시성 확보. (Phase 73.5 최적화를 통해 고속 검색 시에도 뒤섞임 없는 무결성 유지)
 4. **자동화 파이프라인**: 로그 파일 추가 시 워처가 이를 즉시 감지하여 인제션 후 자동으로 아카이브 이동.
 
 ---

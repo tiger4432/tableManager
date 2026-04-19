@@ -115,4 +115,6 @@ def get_batch_delete_url(table_name: str) -> str:
     """[통합] 다중 행 일괄 삭제 엔드포인트"""
     return f"{API_BASE_URL}/tables/{table_name}/rows/batch_delete"
 
-# (이전 CURRENT_USER 설정 로직은 load_settings 내부로 통합됨)
+def get_target_row_ids_url(table_name: str) -> str:
+    """Targeted RowID Scanner (오프셋 기반 타겟팅 UUID 고속 추출)"""
+    return f"{API_BASE_URL}/tables/{table_name}/row_ids/target"

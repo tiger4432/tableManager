@@ -28,7 +28,7 @@ def seed():
     print("Seeding inventory_master (500 rows)...")
     categories = ["IC", "Passive", "Connector", "Mechanical", "PCB"]
     locations = ["Warehouse-A", "Warehouse-B", "Line-1-Shelf", "Line-2-Shelf"]
-    for i in range(1, 501):
+    for i in range(1, 100000):
         row = create_row("inventory_master", {
             "part_no": f"PN-{10000+i}",
             "category": random.choice(categories),

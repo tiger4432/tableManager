@@ -148,12 +148,12 @@ class HistoryDockPanel(QDockWidget):
         if Qt.ItemDataRole.DisplayRole not in roles:
             return
             
-        # Agent D v5: 원격 업데이트 메시지 처리 중에는 ws_data_changed로 따로 로그가 남으므로 무시
-        if getattr(model, '_is_processing_remote', False):
+        # [Phase 73.5] 엄격한 노이즈 차단: 원격 처리 중이거나 페칭 중에는 로컬 로그 생성을 전면 금지
+        if getattr(model, '_is_processing_remote', False) or getattr(model, '_fetching', False):
             return
             
-        # Agent D v6: 단순 데이터 조회(Fetch) 시 발생하는 시그널 무시 (노이즈 제거)
-        if getattr(model, '_fetching', False):
+        # 초기 로딩 시그널도 차단
+        if getattr(model, '_first_fetch', True):
             return
 
         now = datetime.now().strftime("%H:%M:%S")

@@ -133,6 +133,7 @@ def get_table_data(
     skip: int = 0, 
     limit: int = 50, 
     q: str = None, 
+    cols: str = None, # [Phase 73.6] 검색 대상 컬럼 제한 (comma separated)
     order_by: str = "row_id", 
     order_desc: bool = False,
     db: Session = Depends(get_db)
@@ -144,10 +145,29 @@ def get_table_data(
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
     
     if q:
-        from sqlalchemy import cast, String
-        # JSON 데이터를 문자열로 캐스팅하여 부분 일치(LIKE) 검색 수행 (SQLite 대응)
-        search_filter = cast(models.DataRow.data, String).ilike(f"%{q}%")
-        query = query.filter(search_filter)
+        from sqlalchemy import cast, String, or_
+        if cols:
+            # [Phase 73.6] 특정 컬럼 내에서만 검색 (전용 DB 최적화 및 시스템 컬럼 지원)
+            col_list = [c.strip() for c in cols.split(",") if c.strip()]
+            conditions = []
+            for col in col_list:
+                if col in ["created_at", "updated_at"]:
+                    # 시스템 날짜 컬럼 검색 지원
+                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
+                    conditions.append(cast(target_col, String).ilike(f"%{q}%"))
+                elif col in ["row_id", "id"]:
+                    # ID 컬럼 검색 지원
+                    conditions.append(models.DataRow.row_id.ilike(f"%{q}%"))
+                else:
+                    # 일반 데이터 컬럼: DB 호환성(SQLite/PG)을 위해 cast 사용 (astext 대신)
+                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{q}%"))
+            
+            if conditions:
+                query = query.filter(or_(*conditions))
+        else:
+            # Fallback: 전체 JSON 데이터를 문자열로 캐스팅하여 검색 (기존 방식)
+            search_filter = cast(models.DataRow.data, String).ilike(f"%{q}%")
+            query = query.filter(search_filter)
 
     total_count = query.count()
     
@@ -215,15 +235,86 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
     
     if deleted_count > 0:
-        msg = {
-            "event": "batch_row_delete",
-            "table_name": table_name,
-            "row_ids": batch.row_ids,
-            "updated_by": batch.user_name
-        }
-        await manager.broadcast(json.dumps(msg))
+        CHUNK_SIZE = 500
+        for i in range(0, len(batch.row_ids), CHUNK_SIZE):
+            chunk = batch.row_ids[i:i + CHUNK_SIZE]
+            msg = {
+                "event": "batch_row_delete",
+                "table_name": table_name,
+                "row_ids": chunk,
+                "updated_by": batch.user_name
+            }
+            await manager.broadcast(json.dumps(msg))
         
     return {"status": "success", "deleted_count": deleted_count}
+
+@app.post("/tables/{table_name}/row_ids/target")
+def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: Session = Depends(get_db)):
+    """Targeted RowID Scanner: 오프셋 리스트 기반 초고속 UUID 추출"""
+    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    if req.q:
+        from sqlalchemy import cast, String, or_
+        if req.cols:
+            col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
+            conditions = []
+            for col in col_list:
+                if col in ["created_at", "updated_at"]:
+                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
+                    conditions.append(cast(target_col, String).ilike(f"%{req.q}%"))
+                elif col in ["row_id", "id"]:
+                    conditions.append(models.DataRow.row_id.ilike(f"%{req.q}%"))
+                else:
+                    # DB 호환성 보장
+                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{req.q}%"))
+            
+            if conditions:
+                query = query.filter(or_(*conditions))
+        else:
+            search_filter = cast(models.DataRow.data, String).ilike(f"%{req.q}%")
+            query = query.filter(search_filter)
+
+    from sqlalchemy.sql import func
+    if req.order_by == "updated_at":
+        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+        sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
+        tie_breaker = models.DataRow.row_id.asc()
+        query = query.order_by(sort_expr, tie_breaker)
+    elif req.order_by == "id":
+        bk_null_last = (models.DataRow.business_key_val == None).asc()
+        bk_sort = models.DataRow.business_key_val.desc() if req.order_desc else models.DataRow.business_key_val.asc()
+        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+        query = query.order_by(*final_sort)
+    else:
+        sort_expr = models.DataRow.row_id.asc()
+        query = query.order_by(sort_expr)
+
+    offsets = sorted(req.offsets)
+    if not offsets:
+        return {"row_ids": []}
+        
+    min_offset = offsets[0]
+    max_offset = offsets[-1]
+    limit = max_offset - min_offset + 1
+    
+    print(f"[Server] Scan Range: {min_offset} to {max_offset} (Total range count: {limit})")
+    
+    if limit > 50000:
+        # 너무 큰 범위는 서버 보호를 위해 거절 (추후 Window Function 기반 정밀 쿼리로 고도화 필요)
+        print(f"[Server] Scan rejected: Range {limit} exceeds safety limit of 50,000")
+        return {"row_ids": [], "error": "Scan range too large"}
+
+    # 튜플 단위 최적화 (딕셔너리 빌드 생략)
+    results = query.with_entities(models.DataRow.row_id).offset(min_offset).limit(limit).all()
+    print(f"[Server] DB Query finished. Fetched {len(results)} row_id entities.")
+    
+    matched_ids = []
+    for offset in req.offsets:
+        local_idx = offset - min_offset
+        if 0 <= local_idx < len(results):
+            matched_ids.append(results[local_idx][0])
+            
+    return {"row_ids": matched_ids}
 
 
 from fastapi.responses import StreamingResponse
@@ -370,14 +461,17 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
             "data": row.data
         })
     
-    # WebSocket 브로드캐스트 (배치 규격)
-    msg = {
-        "event": "batch_row_create",
-        "table_name": table_name,
-        "items": msg_items,
-        "updated_by": user_name
-    }
-    await manager.broadcast(json.dumps(msg))
+    # WebSocket 브로드캐스트 (대량 작업 시 500개씩 청크 분할 전송하여 메모리/통신 안정성 확보)
+    CHUNK_SIZE = 500
+    for i in range(0, len(msg_items), CHUNK_SIZE):
+        chunk = msg_items[i:i + CHUNK_SIZE]
+        msg = {
+            "event": "batch_row_create",
+            "table_name": table_name,
+            "items": chunk,
+            "updated_by": user_name
+        }
+        await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows]}
 
@@ -396,16 +490,19 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
             "data": row.data
         })
     
-    # WebSocket 브로드캐스트 (실제 변경된 개수 및 작업자 포함)
+    # WebSocket 브로드캐스트 (대량 작업 시 500개씩 청크 분할 전송)
     user_name = batch.updates[0].updated_by if batch.updates else "system"
-    msg = {
-        "event": "batch_row_upsert",
-        "table_name": table_name,
-        "items": msg_items,
-        "change_count": len(changed_cells),
-        "updated_by": user_name
-    }
-    await manager.broadcast(json.dumps(msg))
+    CHUNK_SIZE = 500
+    for i in range(0, len(msg_items), CHUNK_SIZE):
+        chunk = msg_items[i:i + CHUNK_SIZE]
+        msg = {
+            "event": "batch_row_upsert",
+            "table_name": table_name,
+            "items": chunk,
+            "change_count": len(chunk), # 해당 청크의 개수만 전달
+            "updated_by": user_name
+        }
+        await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells)}
 

@@ -55,7 +55,7 @@ sequenceDiagram
     participant User as User (UI)
     participant Client as UI Client (PySide6)
     participant Server as API Server (FastAPI)
-    participant DB as SQLite/DB
+    participant DB as PostgreSQL/DB
 
     Note over User, Client: 1. 수동 데이터 수정 및 삭제
     User->>Client: 셀 수정 / 붙여넣기 / 삭제 클릭
@@ -87,4 +87,4 @@ sequenceDiagram
 
 ## 🏁 4. 성능 및 안정성 최적화 (Summary)
 - **로그 스로틀링**: 10건 초과 데이터 변경 시 요약 로그로 전환하여 UI 가독성 확보.
-- **동기화 가드**: `_is_processing_remote` 플래그를 통해 원격 동기화와 로컬 수정 간의 시그널 충돌 및 무한 루프 방지.
+- **동기화 가드 (v1.4)**: `_is_processing_remote`뿐만 아니라 `_fetching`, `_first_fetch` 플래그를 통해 배경 데이터 로딩 및 원격 동기화 시 발생하는 무의미한 히스토리 로그(Noise) 생성을 엄격히 차단합니다.

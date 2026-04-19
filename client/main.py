@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QInputDialog, 
     QMenu, QMessageBox, QFileDialog, QStatusBar, QLabel
 )
-from PySide6.QtCore import Qt, QThreadPool, Signal
+from PySide6.QtCore import Qt, QThreadPool, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QGuiApplication, QIcon
 
 import config
@@ -61,6 +61,7 @@ class ExcelTableView(QTableView):
         self.setAlternatingRowColors(True)
         self.verticalHeader().setFixedWidth(50)
         self.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._active_workers = set() # [GC 방지] 비동기 워커 생존 보장용 참조 저장소
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -163,50 +164,128 @@ class ExcelTableView(QTableView):
         table_name = source_model.table_name
 
         # 1. 선택된 인덱스들로부터 고유한 소스 행 인덱스 추출
-        source_rows = set()
-        uncached_selected = False
+        loaded_source_rows = set()
+        uncached_offsets = set()
         for index in selection.selectedIndexes():
             # [필수] 프록시 인덱스를 소스 인덱스로 변환 (정렬/필터링 무관하게 정확한 데이터 타겟팅)
             src_index = proxy_model.mapToSource(index)
             src_row = src_index.row()
             
-            # 가상 로딩(Placeholder) 행인지 체크
-            if src_row < len(source_model._data):
-                source_rows.add(src_row)
+            # 가상 로딩(None 패딩 포함) 행인지 체크
+            if src_row < len(source_model._data) and source_model._data[src_row] is not None:
+                loaded_source_rows.add(src_row)
             else:
-                uncached_selected = True
+                uncached_offsets.add(src_row)
 
-        if not source_rows:
-            if uncached_selected:
-                QMessageBox.warning(self, "삭제 불가", "아직 로드되지 않은 행(Loading...)은 삭제할 수 없습니다.\n데이터가 로드된 후 다시 시도하십시오.")
+        total_nodes = len(loaded_source_rows) + len(uncached_offsets)
+        if total_nodes == 0:
             return
             
-        # 2. 삭제 확인 다이얼로그
+        # 2. 삭제 확인 다이얼로그 (언캐시드 포함일 경우 스캐너 동작 안내 추가)
+        msg_text = f"선택한 {total_nodes}개의 행을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."
+        if uncached_offsets:
+            msg_text += f"\n\n(아직 로드되지 않은 {len(uncached_offsets)}개의 행은 백그라운드 식별자 스캔 후 삭제됩니다.)"
+            
         reply = QMessageBox.question(
             self, "행 삭제 확인",
-            f"선택한 {len(source_rows)}개의 행을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+            msg_text,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
-            # 3. row_ids 추출
-            row_ids = []
-            for row in source_rows:
-                rid = source_model._data[row].get("row_id")
-                if rid: row_ids.append(rid)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
             
-            if not row_ids: return
+        # 3. 이미 로컬에 로드되어 있는 행들의 row_ids 추출
+        loaded_row_ids = []
+        for row in loaded_source_rows:
+            row_data = source_model._data[row]
+            if row_data is not None:
+                rid = row_data.get("row_id")
+                if rid: loaded_row_ids.append(rid)
+        
+        # 4. 삭제 워커 실행기 (내부 함수 형태로 스캔 완료시 콜백 연계 가능하도록 구조화)
+        def _execute_deletion(final_row_ids):
+            if not final_row_ids: 
+                print("[Delete] No row IDs to delete. Aborting.")
+                return
             
-            # 4. 비동기 워커를 통한 삭제 요청 (UI 프리징 방지)
+            if hasattr(self.window(), 'statusBar'):
+                self.window().statusBar().showMessage(f"서버에 {len(final_row_ids)}개의 행 삭제를 요청 중입니다...", 5000)
+            
             from models.table_model import ApiDeleteWorker
             url = config.get_batch_delete_url(table_name)
-            worker = ApiDeleteWorker(url, row_ids, config.CURRENT_USER)
+            worker = ApiDeleteWorker(url, final_row_ids, config.CURRENT_USER)
+            
+            def _on_finished(res):
+                if hasattr(self.window(), 'statusBar'):
+                    self.window().statusBar().showMessage(f"삭제 완료: {res.get('deleted_count', 0)}개 행이 제거됨", 3000)
+                print(f"[Delete] Successfully deleted: {res}")
             
             def _on_error(err):
+                if hasattr(self.window(), 'statusBar'):
+                    self.window().statusBar().showMessage("행 삭제 실패", 3000)
+                print(f"[Delete] Error: {err}")
                 QMessageBox.critical(self, "삭제 오류", f"행 일괄 삭제 중 오류 발생: {err}")
             
+            worker.signals.finished.connect(_on_finished)
             worker.signals.error.connect(_on_error)
+            
+            # GC 방지 및 실행
+            self._active_workers.add(worker)
+            def _cleanup():
+                if worker in self._active_workers: self._active_workers.remove(worker)
+            worker.signals.finished.connect(_cleanup)
+            worker.signals.error.connect(_cleanup)
+            
+            print(f"[Delete] Starting ApiDeleteWorker for {len(final_row_ids)} IDs")
             QThreadPool.globalInstance().start(worker)
+            
+        # 5. Targeted RowID Scanner 구동 (언캐시드 항목이 있을 경우)
+        if uncached_offsets:
+            from models.table_model import ApiTargetedRowIdWorker
+            scan_url = config.get_target_row_ids_url(table_name)
+            
+            search_query = getattr(source_model, '_search_query', "")
+            order_by = getattr(source_model, '_sort_latest', True)
+            order_by_str = "updated_at" if order_by else "id"
+            order_desc = order_by
+            
+            if hasattr(self.window(), 'statusBar'):
+                self.window().statusBar().showMessage(f"로딩되지 않은 {len(uncached_offsets)}행의 식별자를 스캔 중입니다...", 0)
+            
+            search_cols = getattr(source_model, "_search_cols", "")
+            cols_str = search_cols if search_cols else ",".join(getattr(source_model, "_columns", []))
+            worker = ApiTargetedRowIdWorker(scan_url, list(uncached_offsets), search_query, order_by_str, order_desc, cols=cols_str)
+            
+            def _on_scan_finished(result: dict):
+                scanned_ids = result.get("row_ids", [])
+                print(f"[Scanner] Scan finished. Found {len(scanned_ids)} IDs.")
+                if hasattr(self.window(), 'statusBar'):
+                    self.window().statusBar().showMessage(f"식별자 스캔 완료 ({len(scanned_ids)}개). 삭제를 진행합니다.", 3000)
+                # 병합 및 중복 제거
+                total_ids = list(set(loaded_row_ids + scanned_ids))
+                _execute_deletion(total_ids)
+                
+            def _on_scan_error(err: str):
+                if hasattr(self.window(), 'statusBar'):
+                    self.window().statusBar().showMessage("식별자 스캔 실패", 3000)
+                print(f"[Scanner] Error: {err}")
+                QMessageBox.critical(self, "스캔 오류", f"로딩되지 않은 행 위치 스캔 중 서버 오류 발생:\n{err}")
+                
+            worker.signals.finished.connect(_on_scan_finished)
+            worker.signals.error.connect(_on_scan_error)
+            
+            # GC 방지 및 실행
+            self._active_workers.add(worker)
+            def _cleanup_scan():
+                if worker in self._active_workers: self._active_workers.remove(worker)
+            worker.signals.finished.connect(_cleanup_scan)
+            worker.signals.error.connect(_cleanup_scan)
+            
+            QThreadPool.globalInstance().start(worker)
+        else:
+            # 캐시된 것밖에 없으면 바로 삭제 시작
+            _execute_deletion(loaded_row_ids)
             # 결과는 WebSocket 브로드캐스트를 통해 모든 클라이언트에 자동 반영됨
     
     def copy_selection(self):
@@ -377,6 +456,9 @@ class MainWindow(QMainWindow):
         self.statusBar().setStyleSheet("background-color: #11111b; color: #9399b2; border-top: 1px solid #313244;")
         self._ws_status_label = QLabel("  ● WebSocket: Disconnected  ")
         self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
+        self._row_count_label = QLabel("Ready")
+        self._row_count_label.setStyleSheet("color: #fab387; font-weight: bold; margin-right: 15px;") # Peach
+        self.statusBar().addPermanentWidget(self._row_count_label)
         self.statusBar().addPermanentWidget(self._ws_status_label)
 
         # ── 시그널 연결 ─────────────────────────────────────────────
@@ -385,6 +467,7 @@ class MainWindow(QMainWindow):
         self._filter_bar.exportRequested.connect(self._on_export_requested)
         self._filter_bar.uploadRequested.connect(self._on_upload_requested)
         self._filter_bar.sortLatestChanged.connect(self._on_sort_mode_changed) # [신규] 정렬 토글 연결
+        self._filter_bar.batchLoadRequested.connect(self._on_batch_load_requested) # [신규] 일괄 로드 연결
         self.addToolBar(self._filter_bar)
         self._filter_bar.searchRequested.connect(self._on_global_search)
 
@@ -423,8 +506,14 @@ class MainWindow(QMainWindow):
                 self._filter_bar.hide()
             else:
                 table_name = nav_id.replace("table:", "")
-                self.setWindowTitle(f"AssyManager - {table_name}")
+                page_widget = self.stacked.widget(idx)
+                model = getattr(page_widget, "_source_model", None)
+                total_text = f" [{model._total_count:,} rows]" if model else ""
+                self.setWindowTitle(f"AssyManager - {table_name}{total_text}")
                 self._filter_bar.show()
+                if model:
+                    # [Phase 73.8] 탭 변경 즉시 전체 카운트 표시 업데이트
+                    self._update_row_count_display(model._exposed_rows, model._total_count)
 
     def _on_table_close_requested(self, nav_id: str):
         """테이블 종료 요청 처리 — 리소스 해제 및 UI 제거."""
@@ -548,13 +637,14 @@ class MainWindow(QMainWindow):
             # table_model.py 의 _on_websocket_broadcast 호출
             model._on_websocket_broadcast(data)
         
-    def _on_global_search(self, text: str):
+    def _on_global_search(self, text: str, cols_str: str = ""):
         """
         필터 툴바의 검색어가 변경되었을 때 전체 활성 모델에 서버 사이드 검색을 요청합니다.
         """
-        print(f"[MainWindow] Global search requested: '{text}'")
+        print(f"[MainWindow] Global search requested: '{text}' (cols: {cols_str})")
         for model in self._active_models:
-            model.set_search_query(text)
+            # col_str가 비어있으면 모델 내부의 기본 컬럼을 사용하도록 위임
+            model.set_search_query(text, search_cols=cols_str)
 
     def _on_sort_mode_changed(self, enabled: bool):
         """
@@ -665,6 +755,9 @@ class MainWindow(QMainWindow):
         # ── 필터 프록시 ──
         proxy = self._filter_bar.create_proxy(model)
         table_view.setModel(proxy)
+
+        # ── 행 개수 실시간 업데이트 연결 ──
+        model.total_count_changed.connect(self._update_row_count_display)
 
         # ── 드래그 앤 드롭 업로드 연결 ──
         table_view.fileDropped.connect(
@@ -823,6 +916,39 @@ class MainWindow(QMainWindow):
         worker.signals.error.connect(_on_error)
         
         QThreadPool.globalInstance().start(worker)
+
+    def _update_row_count_display(self, exposed: int, total: int):
+        """[Phase 73.8] 타이머 지연 제거: 실시간으로 화면 표시 갱신."""
+        self._execute_row_count_display(exposed, total)
+
+    def _execute_row_count_display(self, exposed: int, total: int):
+        """하단 상태 표시줄 및 타이틀 바에 실제로 행 개수 정보를 갱신합니다."""
+        curr_idx = self.stacked.currentIndex()
+        table_name = self._index_to_table.get(curr_idx)
+        if not table_name:
+            if hasattr(self, "_row_count_label"):
+                self._row_count_label.setText("Ready")
+            return
+            
+        if hasattr(self, "_row_count_label"):
+            idx = self.stacked.currentIndex()
+            page = self.stacked.widget(idx)
+            # [Phase 73.8] 용어 표준화: Matches(전체 검색 결과) / Loaded(현재 화면에 로드됨)
+            self._row_count_label.setText(f"  Matches: {total:,} / Loaded: {exposed:,}  ")
+        
+        # 타이틀 바 업데이트 (현재 테이블인 경우에만)
+        if self.windowTitle().startswith(f"AssyManager - {table_name}"):
+            self.setWindowTitle(f"AssyManager - {table_name} [Total: {total:,}]")
+
+    def _on_batch_load_requested(self, count: int):
+        """현재 활성화된 테이블 모델에 일괄 로드를 요청합니다."""
+        idx = self.stacked.currentIndex()
+        if idx <= 0: return # Home or Dashboard
+        
+        page = self.stacked.widget(idx)
+        source_model = getattr(page, "_source_model", None)
+        if source_model and hasattr(source_model, "fetch_batch"):
+            source_model.fetch_batch(count)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

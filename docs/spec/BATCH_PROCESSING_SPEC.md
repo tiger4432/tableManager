@@ -14,7 +14,7 @@ sequenceDiagram
     participant DW as DirectoryWatcher
     participant AD as AdvancedIngester
     participant API as FastAPI Server
-    participant DB as SQLite (DataRow)
+    participant DB as PostgreSQL (DataRow)
     participant UI as PySide6 Client
 
     OS->>DW: 1. 신규 파일 감지 (Watchdog)
@@ -76,7 +76,7 @@ sequenceDiagram
 ```
 
 > [!TIP]
-> 배치 크기(`batch_size=50`)는 서버의 SQLite 동시성 제어 성능과 클라이언트 UI 렌더링 응답성 사이의 최적 지점으로 설정되었습니다.
+> 배치 크기(`batch_size=50`)는 서버의 PostgreSQL 동시성 제어 성능과 클라이언트 UI 렌더링 응답성 사이의 최적 지점으로 설정되었습니다.
 
 ---
 *AssyManager Enterprise Edition 문서 표준 준수.*
