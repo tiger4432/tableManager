@@ -816,6 +816,24 @@ if __name__ == "__main__":
     # Modern style
     app.setStyle("Fusion")
     
+    # ── 강제 다크 테마 설정 (Catppuccin Mocha 기반) ──
+    from PySide6.QtGui import QPalette, QColor
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#1e1e2e"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#cdd6f4"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#11111b"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#181825"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#313244"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#cdd6f4"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#cdd6f4"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#313244"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#cdd6f4"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#f38ba8"))
+    palette.setColor(QPalette.ColorRole.Link, QColor("#89b4fa"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#89b4fa"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#1e1e2e"))
+    app.setPalette(palette)
+    
     # ── Windows 작업 표시줄 아이콘 활성화 (AppUserModelID 설정) ──
     if os.name == 'nt':
         import ctypes

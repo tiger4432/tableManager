@@ -8,6 +8,14 @@ from advanced_ingester import AdvancedIngester
 
 endpoint = '127.0.0.1:8000'
 
+# [사내망 Proxy 인증 우회 설정]
+# 이 스크립트는 로컬(127.0.0.1) API로만 요청을 보냅니다.
+# 사내망의 파이어월/프록시가 개입하여 403 Forbidden 에러가 나는 것을 원천 차단합니다.
+import urllib.request
+os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1"
+proxy_support = urllib.request.ProxyHandler({})
+opener = urllib.request.build_opener(proxy_support)
+urllib.request.install_opener(opener)
 # Configure logging
 # Configure logging
 script_dir = os.path.dirname(os.path.abspath(__file__))

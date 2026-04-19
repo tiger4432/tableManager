@@ -543,8 +543,6 @@ class ApiLazyTableModel(QAbstractTableModel):
                         existing_row.setdefault("data", {}).update(new_data_blob)
                         # 정규화 다시 실행 (Top-level 시간 정보 등 갱신)
                         normalized_row = self._normalize_row_data(existing_row)
-                        # 팝(pop) 했으므로 맵을 갱신해주어야 함 (연달아 같은 ID가 올 경우 대비)
-                        row_id_map = self._build_row_id_map()
                     else:
                         # 완전히 새로운 행
                         normalized_row = self._normalize_row_data({
@@ -553,8 +551,6 @@ class ApiLazyTableModel(QAbstractTableModel):
                             "data": new_data_blob
                         })
                         if is_new: self._total_count += 1
-                        # 맵 갱신 (Optional but robust)
-                        row_id_map = self._build_row_id_map()
                     
                     # 데이터 삽입: 정렬 설정에 따라 위치 결정
                     if self._sort_latest:
@@ -566,6 +562,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                             self._data.insert(idx, normalized_row)
                         else:
                             self._data.append(normalized_row)
+                    
+                    # 맵 갱신 (반드시 행이 다시 _data에 삽입된 후에 실행해야 인덱스 밀림 현상이 발생하지 않음)
+                    row_id_map = self._build_row_id_map()
+
                     
                     # 히스토리 패널용 업데이트 리스트 구성
                     for col, cell_val in new_data_blob.items():
