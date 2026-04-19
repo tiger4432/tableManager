@@ -468,7 +468,6 @@ class MainWindow(QMainWindow):
         self._filter_bar.uploadRequested.connect(self._on_upload_requested)
         self._filter_bar.sortLatestChanged.connect(self._on_sort_mode_changed) # [신규] 정렬 토글 연결
         self._filter_bar.batchLoadRequested.connect(self._on_batch_load_requested) # [신규] 일괄 로드 연결
-        self.addToolBar(self._filter_bar)
         self._filter_bar.searchRequested.connect(self._on_global_search)
 
         # ── 데이터 모델 매핑 (사이드바 메뉴 ID -> Widget Index) ──
@@ -500,10 +499,14 @@ class MainWindow(QMainWindow):
             # 윈도우 타이틀 및 툴바 표시 업데이트
             if nav_id == "home":
                 self.setWindowTitle("AssyManager - Dashboard")
-                self._filter_bar.hide()
+                self._filter_bar.show()
+                self._filter_bar.set_active_proxy(None)
+                self._update_row_count_display(0, 0)
             elif nav_id == "settings":
                 self.setWindowTitle("AssyManager - Settings")
-                self._filter_bar.hide()
+                self._filter_bar.show()
+                self._filter_bar.set_active_proxy(None)
+                self._update_row_count_display(0, 0)
             else:
                 table_name = nav_id.replace("table:", "")
                 page_widget = self.stacked.widget(idx)
@@ -758,6 +761,8 @@ class MainWindow(QMainWindow):
 
         # ── 행 개수 실시간 업데이트 연결 ──
         model.total_count_changed.connect(self._update_row_count_display)
+        # [Phase 73.10] 일괄 로딩 완료 시 툴바 버튼 즉시 복구 연결
+        model.batch_fetch_finished.connect(self._filter_bar.reset_batch_btn)
 
         # ── 드래그 앤 드롭 업로드 연결 ──
         table_view.fileDropped.connect(
@@ -813,8 +818,16 @@ class MainWindow(QMainWindow):
         self._load_table_schema(model)
 
     def _load_table_schema(self, model: ApiLazyTableModel):
-        """특정 테이블 모델의 스키마를 비동기로 로드합니다."""
+        """[Phase 73.8] 특정 테이블 모델의 스키마를 비동기로 로드합니다. (캐싱 적용)"""
         table_name = model.table_name
+        
+        # ── Agent Stability: 이미 스키마 정보가 있다면 네트워크 요청 스킵 ──
+        if hasattr(model, "_columns") and model._columns:
+            print(f"[Schema] Local cache hit for {table_name}. Skipping network fetch.")
+            if model.canFetchMore():
+                model.fetchMore()
+            return
+
         schema_url = config.get_table_schema_url(table_name)
         worker = ApiSchemaWorker(schema_url)
         
@@ -908,12 +921,21 @@ class MainWindow(QMainWindow):
         
         def _on_finished(result):
             QMessageBox.information(self, "성공", f"파일 업로드 완료: {result.get('filename')}\n서버에서 곧 파싱을 시작합니다.")
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
             
         def _on_error(err):
             QMessageBox.critical(self, "실패", f"파일 업로드 중 오류 발생:\n{err}")
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
 
         worker.signals.finished.connect(_on_finished)
         worker.signals.error.connect(_on_error)
+        
+        # ── Agent Stability: 워커 GC 방지 및 추적 활성화 ──
+        if not hasattr(self, "_active_workers"):
+            self._active_workers = set()
+        self._active_workers.add(worker)
         
         QThreadPool.globalInstance().start(worker)
 

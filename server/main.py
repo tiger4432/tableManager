@@ -146,6 +146,9 @@ def get_table_data(
     
     if q:
         from sqlalchemy import cast, String, or_
+        # [Phase 73.8] 검색어 특수문자(%, _) 이스케이프 (Wildcard 성격 방지)
+        safe_q = q.replace("%", "\\%").replace("_", "\\_")
+        
         if cols:
             # [Phase 73.6] 특정 컬럼 내에서만 검색 (전용 DB 최적화 및 시스템 컬럼 지원)
             col_list = [c.strip() for c in cols.split(",") if c.strip()]
@@ -154,19 +157,19 @@ def get_table_data(
                 if col in ["created_at", "updated_at"]:
                     # 시스템 날짜 컬럼 검색 지원
                     target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{q}%"))
+                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
                 elif col in ["row_id", "id"]:
                     # ID 컬럼 검색 지원
-                    conditions.append(models.DataRow.row_id.ilike(f"%{q}%"))
+                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
                 else:
                     # 일반 데이터 컬럼: DB 호환성(SQLite/PG)을 위해 cast 사용 (astext 대신)
-                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{q}%"))
+                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
             
             if conditions:
                 query = query.filter(or_(*conditions))
         else:
             # Fallback: 전체 JSON 데이터를 문자열로 캐스팅하여 검색 (기존 방식)
-            search_filter = cast(models.DataRow.data, String).ilike(f"%{q}%")
+            search_filter = cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\")
             query = query.filter(search_filter)
 
     total_count = query.count()
@@ -511,10 +514,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
+            # [Phase 73.8] 클라이언트로부터의 메시지 수신 대기 (필요 시 로직 확장 가능)
             data = await websocket.receive_text()
-            print(f"Received msg: {data}")
-            # Echo back for test
-            await manager.broadcast(f"Broadcast: {data}")
+            # 에코(Echo) 브로드캐스트 제거 (프로덕션 노이즈 방지)
+            print(f"[WS] Received client msg: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 

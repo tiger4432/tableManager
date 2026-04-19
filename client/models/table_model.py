@@ -234,6 +234,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     row_created_ws = Signal(dict)
     row_deleted_ws = Signal(dict)
     total_count_changed = Signal(int, int) # (exposed_rows, total_count)
+    batch_fetch_finished = Signal()
 
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
         super().__init__()
@@ -242,9 +243,10 @@ class ApiLazyTableModel(QAbstractTableModel):
         self.endpoint_url = config.get_table_data_url(table_name)
         self._data = []
         self._total_count = 0
-        self._columns = ["id"]
+        self._columns = []
         self._chunk_size = 50
         self._fetching = False
+        self._batch_fetching = False # [Phase 73.10] 일괄 로딩 추적 플래그
         self._fetch_scheduled = False
         self._first_fetch = True
         self._is_processing_remote = False
@@ -252,8 +254,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._sort_latest = True
         self._server_fetched_count = 0
         self._search_query = ""
-        self._search_cols = "" # [Phase 73.7] 명시적 검색 대상 컬럼 리스트
-        self._exposed_rows = 0  # [신규] 실제로 UI에 노출된 행 수
+        self._search_cols = ""        # [Phase 73.7] 서버 전송용 컬럼 문자열
+        self._search_cols_state = []  # [Phase 73.8] UI 체크박스 상태 보존용 리스트
+        self._exposed_rows = 0        # [신규] 실제로 UI에 노출된 행 수
         
         self._row_id_map = {}
         self._pending_target_skip = None # [신규] 특정 오프셋 점프 예약용
@@ -349,7 +352,16 @@ class ApiLazyTableModel(QAbstractTableModel):
         resp_session = result.get("_session_id")
         if resp_session and resp_session != self._search_session_id:
             return
-        self._total_count = result.get("total", 0)
+            
+        new_total = result.get("total", 0)
+        
+        # [Phase 73.9] 동적 노출 범위 동기화: 전체 개수가 줄어들면 노출 범위도 강제 축소
+        if new_total < self._exposed_rows:
+            self.beginRemoveRows(QModelIndex(), new_total, self._exposed_rows - 1)
+            self._exposed_rows = new_total
+            self.endRemoveRows()
+            
+        self._total_count = new_total
         self.total_count_changed.emit(self._exposed_rows, self._total_count)
 
     def rowCount(self, parent=QModelIndex()) -> int:
@@ -441,14 +453,31 @@ class ApiLazyTableModel(QAbstractTableModel):
                             if cached_indices[i] == p + 1: p = cached_indices[i]
                             else: ranges.append((s, p)); s = cached_indices[i]; p = s
                         ranges.append((s, p))
+                        
+                    # [Phase 73.9] 전체 개수 즉시 차감 (Optimistic)
+                    num_deleted = len(target_ids)
+                    orig_total = self._total_count
+                    self._total_count = max(0, self._total_count - num_deleted)
+
                     for s, e in reversed(ranges):
                         self.beginRemoveRows(QModelIndex(), s, e)
                         num = (e - s + 1)
-                        del self._data[s : e + 1]
-                        # self._total_count -= num # 수동 계산 제거
+                        if s < len(self._data):
+                            del self._data[s : e + 1]
                         self._exposed_rows -= num # 노출 개수 감소
                         self.endRemoveRows()
+                    
+                    # [Phase 73.9] 만약 삭제된 행들 중 일부가 Placeholder(하단 gap)였다면, 
+                    # 줄어든 total_count에 맞춰 exposed_rows도 강제 축소하여 Loading 발생 방지
+                    if self._exposed_rows > self._total_count:
+                        diff = self._exposed_rows - self._total_count
+                        self.beginRemoveRows(QModelIndex(), self._total_count, self._exposed_rows - 1)
+                        self._exposed_rows = self._total_count
+                        self.endRemoveRows()
+
                     self._update_row_id_map()
+                    # 즉시 UI 카운터 갱신 신호 발생
+                    self.total_count_changed.emit(self._exposed_rows, self._total_count)
                     self._refresh_total_count()
                 self.row_deleted_ws.emit(data)
             elif event == "batch_row_create":
@@ -664,6 +693,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         if increment <= 0: return
 
         self._fetching = True
+        self._batch_fetching = True # 플래그 설정
         
         # 1. 노출 범위 확장 알림 및 데이터 버퍼 패딩
         self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
@@ -701,6 +731,13 @@ class ApiLazyTableModel(QAbstractTableModel):
 
         # [Phase 73.8] 네트워크 응답 도착 직후 메타데이터(Total)부터 즉시 업데이트하여 UI 반응성 확보
         total = result.get("total", 0)
+        
+        # [Phase 73.9] 동적 노출 범위 동기화: 전체 개수가 줄어들면 노출 범위도 강제 축소
+        if total < self._exposed_rows:
+            self.beginRemoveRows(QModelIndex(), total, self._exposed_rows - 1)
+            self._exposed_rows = total
+            self.endRemoveRows()
+            
         self._total_count = total
         self.total_count_changed.emit(self._exposed_rows, self._total_count)
 
@@ -752,6 +789,10 @@ class ApiLazyTableModel(QAbstractTableModel):
         # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
         self.total_count_changed.emit(self._exposed_rows, self._total_count)
         self._update_row_id_map(); self._fetching = False
+        
+        if self._batch_fetching:
+            self._batch_fetching = False
+            self.batch_fetch_finished.emit()
 
     def _on_fetch_error(self, err): self._fetching = False
 

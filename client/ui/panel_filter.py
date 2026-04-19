@@ -1,197 +1,158 @@
 """
 panel_filter.py
-컬럼 필터 툴바 (PanelUIExpert 스킬 규칙 2번 준수)
+컬럼 필터 및 도구 모음 패널 (v1.5)
 
-- QToolBar 기반의 FilterToolBar
-- QSortFilterProxyModel 을 통해 원본 모델을 수정하지 않고 실시간 필터링
-- QLineEdit 입력 → filterRegularExpression() 갱신
-- 필터 적용된 프록시 모델을 반환(TableView.setModel 에 사용)
+- QVBoxLayout 기반의 2행(Two-Row) 레이아웃
+- Row 1: 검색 필드, 검색 범위 설정, 결과 카운터
+- Row 2: 액션 버튼 그룹 (Add/Export/Upload/Sort/Load)
 """
-
 from __future__ import annotations
-
-from PySide6.QtWidgets import QToolBar, QLineEdit, QLabel, QWidget, QSizePolicy, QPushButton
+from PySide6.QtWidgets import (
+    QWidget, QLineEdit, QLabel, QVBoxLayout, QHBoxLayout, 
+    QSizePolicy, QPushButton, QToolButton, QMenu
+)
 from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 
 
-class FilterToolBar(QToolBar):
-    """상단 툴바 — 텍스트 검색으로 테이블 행을 실시간 필터링."""
+class FilterToolBar(QWidget):
+    """상단 2행 레이아웃 패널 — 검색 및 도구 모음."""
     
-    # ── Agent E v3: 새 탭 추가 요청 시그널 ──
     addTabRequested = Signal()
-    # ── Agent E v4: 새 행 추가 요청 시그널 ──
     addRowRequested = Signal()
-    # ── CSV 익스포트 요청 시그널 ──
     exportRequested = Signal()
-    # ── 글로벌 서버 사이드 검색 요청 시그널 ──
-    # [Phase 73.7] 검색어와 명시적 컬럼 리스트(comma separated)를 함께 전달
     searchRequested = Signal(str, str)
-    # ── 파일 업로드 요청 시그널 ──
     uploadRequested = Signal()
-    # ── 최신순 정렬 토글 시그널 ──
     sortLatestChanged = Signal(bool)
-    # ── 일괄 로드 요청 시그널 ──
     batchLoadRequested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None):
-        super().__init__("필터", parent)
-        self.setMovable(False)
-        self.setFloatable(False)
+        super().__init__(parent)
+        
+        # ── 메인 레이아웃 (2행 구성) ──
+        self._main_layout = QVBoxLayout(self)
+        self._main_layout.setContentsMargins(25, 18, 25, 18) # 좌우 여백 확대
+        self._main_layout.setSpacing(12) # 행 간격 확대
+        
         self.setStyleSheet("""
-            QToolBar { 
-                background: #11111b; 
-                border-bottom: 1px solid #313244; 
-                spacing: 12px; 
-                padding: 12px 20px; 
-                min-height: 60px;
-            }
+            QWidget { background: #11111b; }
             QLabel { color: #bac2de; font-weight: 500; font-size: 13px; }
             QLineEdit {
-                background: #1e1e2e; 
-                color: #cdd6f4; 
-                border: 1px solid #45475a;
-                border-radius: 6px; 
-                padding: 6px 12px; 
-                font-size: 13px; 
-                min-width: 300px;
+                background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a;
+                border-radius: 6px; padding: 6px 12px; font-size: 13px; min-width: 400px;
             }
             QLineEdit:focus { border-color: #89b4fa; background: #313244; }
-            
-            QPushButton {
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 6px 16px;
-                font-size: 12px;
+            QPushButton { font-weight: bold; border-radius: 6px; padding: 6px 14px; font-size: 12px; }
+            QToolButton {
+                background: #313244; color: #cdd6f4; font-weight: bold;
+                border-radius: 6px; padding: 6px 14px; font-size: 12px;
             }
+            QToolButton:hover { background: #45475a; }
         """)
 
-        # 검색창 (라벨 대신 Placeholder 사용)
-
+        # ── [1행] 검색 및 상태 표시줄 ────────────────────────────────
+        self._row1_layout = QHBoxLayout()
+        self._row1_layout.setSpacing(10)
+        
         # 검색창
         self._search_box = QLineEdit()
-        self._search_box.setPlaceholderText("검색어 입력 (정규식 지원)...")
+        self._search_box.setPlaceholderText("검색어 입력 (정규식 지원 / 전체 실시간 필터링)...")
         self._search_box.setClearButtonEnabled(True)
-        self.addWidget(self._search_box)
-
-        # [Phase 73.7] 검색 대상 컬럼 선택 버튼 (Dropdown)
-        from PySide6.QtWidgets import QToolButton, QMenu
-        from PySide6.QtGui import QAction
+        self._row1_layout.addWidget(self._search_box)
         
+        # 검색 범위 버튼
         self._scope_btn = QToolButton()
         self._scope_btn.setText("🔍 검색 범위")
         self._scope_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self._scope_btn.setStyleSheet("""
-            QToolButton {
-                background: #313244; color: #cdd6f4; font-weight: bold;
-                border-radius: 4px; padding: 6px 12px; font-size: 12px; margin-left: 4px;
-            }
-            QToolButton::menu-indicator { image: none; }
-            QToolButton:hover { background: #45475a; }
-        """)
-        
         self._scope_menu = QMenu(self)
         self._scope_menu.setStyleSheet("""
             QMenu { background: #1e1e2e; color: #cdd6f4; border: 1px solid #313244; }
-            QMenu::item { padding: 4px 24px; }
+            QMenu::item { padding: 6px 24px; }
             QMenu::item:selected { background: #313244; }
             QMenu::item:checked { color: #a6e3a1; }
         """)
         self._scope_btn.setMenu(self._scope_menu)
-        self.addWidget(self._scope_btn)
+        self._row1_layout.addWidget(self._scope_btn)
         
-        self._selected_cols = set() # 현재 선택된 검색 대상 컬럼
-
-        # 오른쪽 여백
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.addWidget(spacer)
-
-        # 결과 카운터 레이블
-        self._count_label = QLabel("")
-        self._count_label.setStyleSheet("color: #a6e3a1; font-size: 11px; margin-right: 10px;")
-        self.addWidget(self._count_label)
-
-        # ── Agent E v3: 새 탭 추가 버튼 ──
-        self._add_btn = QPushButton("+ 새 탭")
-        self._add_btn.setToolTip("새 테이블 탭 추가")
-        self._add_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: #a6e3a1; color: #1e1e2e; font-weight: bold;"
-            "  border-radius: 4px; padding: 4px 12px; font-size: 12px;"
-            "}"
-            "QPushButton:hover { background: #94e2d5; }"
-        )
-        self._add_btn.clicked.connect(self.addTabRequested.emit)
-        self.addWidget(self._add_btn)
-
-        # ── Agent E v4: 새 행 추가 버튼 ──
-        self._add_row_btn = QPushButton("➕ 행 추가")
-        self._add_row_btn.setToolTip("활성 테이블에 새 행 추가")
-        self._add_row_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: #89b4fa; color: #1e1e2e; font-weight: bold;"
-            "  border-radius: 4px; padding: 4px 12px; font-size: 12px;"
-            "}"
-            "QPushButton:hover { background: #b4befe; }"
-        )
-        self._add_row_btn.clicked.connect(self.addRowRequested.emit)
-        self.addWidget(self._add_row_btn)
-
-        # ── CSV 익스포트 버튼 ──
-        self._export_btn = QPushButton("📥 CSV 추출")
-        self._export_btn.setToolTip("현재 테이블 전체 데이터를 CSV로 다운로드")
-        self._export_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: #fab387; color: #1e1e2e; font-weight: bold;"
-            "  border-radius: 4px; padding: 4px 12px; font-size: 12px; margin-left: 4px;"
-            "}"
-            "QPushButton:hover { background: #f9e2af; }"
-        )
-        self._export_btn.clicked.connect(self.exportRequested.emit)
-        self.addWidget(self._export_btn)
-
-        # ── 📤 파일 업로드 버튼 ──
-        self._upload_btn = QPushButton("📤 Upload")
-        self._upload_btn.setToolTip("서버 인제션 워크스페이스에 로그 파일 업로드")
-        self._upload_btn.setStyleSheet("""
-            QPushButton { background: #cba6f7; color: #111111; font-weight: bold; border-radius: 4px; padding: 4px 12px; font-size: 12px; }
-            QPushButton:hover { background: #f5c2e7; }
+        self._row1_layout.addStretch()
+        
+        # 결과 카운터 (고급스러운 태그 스타일)
+        self._count_label = QLabel("  Loaded: 0 / Totals: 0  ")
+        self._count_label.setStyleSheet("""
+            QLabel {
+                background: #1e1e2e;
+                color: #a6e3a1;
+                border: 1px solid #313244;
+                border-radius: 12px;
+                padding: 4px 16px;
+                font-family: 'JetBrains Mono', 'Consolas';
+                font-size: 12px;
+                font-weight: bold;
+            }
         """)
-        self._upload_btn.clicked.connect(self.uploadRequested.emit)
-        self.addWidget(self._upload_btn)
+        self._row1_layout.addWidget(self._count_label)
+        
+        self._main_layout.addLayout(self._row1_layout)
 
-        # ── ⚡ 최신순 정렬 토글 버튼 ──
-        self._sort_latest = True
+        # ── [2행] 액션 버튼 그룹 ────────────────────────────────────
+        self._row2_container = QWidget()
+        self._row2_layout = QHBoxLayout(self._row2_container)
+        self._row2_layout.setContentsMargins(0, 0, 0, 0)
+        self._row2_layout.setSpacing(10) # 모든 버튼 간격 일정하게
+        
+        # 1. 관리 그룹
+        self._add_btn = QPushButton("+ 새 탭")
+        self._add_btn.setStyleSheet("background: #a6e3a1; color: #1e1e2e;")
+        self._add_btn.clicked.connect(self.addTabRequested.emit)
+        self._row2_layout.addWidget(self._add_btn)
+
+        self._add_row_btn = QPushButton("➕ 행 추가")
+        self._add_row_btn.setStyleSheet("background: #89b4fa; color: #1e1e2e;")
+        self._add_row_btn.clicked.connect(self.addRowRequested.emit)
+        self._row2_layout.addWidget(self._add_row_btn)
+        
+        # 2. 데이터 그룹
+        self._export_btn = QPushButton("📥 CSV 추출")
+        self._export_btn.setStyleSheet("background: #fab387; color: #1e1e2e;")
+        self._export_btn.clicked.connect(self.exportRequested.emit)
+        self._row2_layout.addWidget(self._export_btn)
+
+        self._upload_btn = QPushButton("📤 Upload")
+        self._upload_btn.setStyleSheet("background: #cba6f7; color: #1e1e2e;")
+        self._upload_btn.clicked.connect(self.uploadRequested.emit)
+        self._row2_layout.addWidget(self._upload_btn)
+        
+        # 3. 최적화 그룹
         self._sort_btn = QPushButton("⚡ 최신순 ON")
         self._sort_btn.setCheckable(True)
         self._sort_btn.setChecked(True)
-        self._sort_btn.setToolTip("데이터 수정 시 최상단으로 자동 정렬 (Toggle)")
-        self._update_sort_btn_style()
         self._sort_btn.clicked.connect(self._on_sort_toggled)
-        self.addWidget(self._sort_btn)
+        self._row2_layout.addWidget(self._sort_btn)
 
-        # ── ⚡ 1k 일괄 로드 버튼 ──
         self._batch_btn = QPushButton("⚡ 1k 로드")
-        self._batch_btn.setToolTip("다음 1,000개의 행을 한 번에 가져옵니다.")
-        self._batch_btn.setStyleSheet("""
-            QPushButton { background: #94e2d5; color: #111111; font-weight: bold; border-radius: 4px; padding: 4px 12px; font-size: 12px; margin-left: 4px; }
-            QPushButton:hover { background: #89dceb; }
-        """)
-        self._batch_btn.clicked.connect(lambda: self.batchLoadRequested.emit(1000))
-        self.addWidget(self._batch_btn)
+        self._batch_btn_style = """
+            QPushButton { background: #94e2d5; color: #111111; }
+            QPushButton:disabled { background: #45475a; color: #7f849c; }
+        """
+        self._batch_btn.setStyleSheet(self._batch_btn_style)
+        self._batch_btn.clicked.connect(self._on_batch_btn_clicked)
+        self._row2_layout.addWidget(self._batch_btn)
+        
+        self._row2_layout.addStretch()
+        
+        self._main_layout.addWidget(self._row2_container)
 
-        # 내부 프록시 모델 저장소
+        # ── 내부 상태 및 로직 ───────────────────────────────────────
+        self._selected_cols = set()
         self._proxies: list[QSortFilterProxyModel] = []
-        self._active_proxy: QSortFilterProxyModel | None = None  # 현재 활성 탭의 프록시
-
-        # 검색 타이머 (서버 부하 방지를 위한 Debounce: 500ms)
+        self._active_proxy: QSortFilterProxyModel | None = None
+        self._sort_latest = True
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._emit_search_requested)
-
-        # 검색창 텍스트 변경 시 모든 프록시에 반영
         self._search_box.textChanged.connect(self._on_text_changed)
+        
+        self._update_sort_btn_style()
 
     # ------------------------------------------------------------------
     # Public API
@@ -228,13 +189,47 @@ class FilterToolBar(QToolBar):
         """10ms 뒤에 카운트 레이블을 갱신합니다. (Debounce)"""
         QTimer.singleShot(10, self._update_count_label)
 
-    def set_active_proxy(self, proxy: QSortFilterProxyModel):
+    def set_active_proxy(self, proxy: QSortFilterProxyModel | None):
         """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 행 수 갱신 기준을 전환합니다."""
         self._active_proxy = proxy
-        # [Phase 73.7] 탭 전환 시 검색 범위 메뉴와 선택 상태 초기화
-        self._refresh_scope_menu()
+        
+        # ── [Phase 73.8] 테이블 모드 전환 (컨트롤 가시성 제어) ──
+        is_table = proxy is not None
+        self._set_table_controls_visible(is_table)
+
+        if is_table:
+            # 탭 전환 시 해당 모델의 검색 범위(체크박스 상태) 복구
+            source = proxy.sourceModel()
+            if source and hasattr(source, "_search_cols_state"):
+                self._selected_cols = set(source._search_cols_state)
+            else:
+                self._selected_cols = set()
+            
+            # [Phase 73.7] 탭 전환 시 검색 범위 메뉴 갱신
+            self._refresh_scope_menu()
+        else:
+            self._selected_cols = set()
+            
         # [Phase 73.8] 탭 전환 즉시 카운트 레이블 업데이트
         self._update_count_label()
+
+    def _set_table_controls_visible(self, visible: bool):
+        """테이블 전용 버튼 및 검색 필드의 가시성을 설정합니다."""
+        self._search_box.setVisible(visible)
+        self._scope_btn.setVisible(visible)
+        
+        # 테이블 전용 액션 버튼들 가시성 제어
+        self._add_row_btn.setVisible(visible)
+        self._export_btn.setVisible(visible)
+        self._upload_btn.setVisible(visible)
+        self._sort_btn.setVisible(visible)
+        self._batch_btn.setVisible(visible)
+        
+        # '+ 새 탭' 버튼은 전역 액션이므로 항상 표시
+        self._add_btn.setVisible(True)
+        
+        # 2행 컨테이너는 항상 표시하되 내부 버튼들로 공간 조절
+        self._row2_container.setVisible(True)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -252,6 +247,13 @@ class FilterToolBar(QToolBar):
     def _emit_search_requested(self):
         query = self._search_box.text()
         cols_str = ",".join(sorted(list(self._selected_cols))) if self._selected_cols else ""
+        
+        # [Phase 73.8] 검색 수행 시점의 컬럼 선택 상태를 소스 모델에 보관 (영구 보존 원칙)
+        if self._active_proxy:
+            source = self._active_proxy.sourceModel()
+            if source and hasattr(source, "_search_cols_state"):
+                source._search_cols_state = list(self._selected_cols)
+                
         self.searchRequested.emit(query, cols_str)
 
     def _refresh_scope_menu(self):
@@ -268,12 +270,27 @@ class FilterToolBar(QToolBar):
         for col in cols:
             action = QAction(col.upper(), self._scope_menu)
             action.setCheckable(True)
-            # 기존에 선택되어 있었거나, 선택된 적이 없으면(초기 상태) 체크
+            
+            # [Phase 73.8] 복구된 _selected_cols 상태를 기반으로 체크박스 렌더링
             action.setChecked(col in self._selected_cols)
             
             # 클로저 이슈 방지를 위한 default argument 사용
             action.triggered.connect(lambda checked, c=col: self._on_scope_toggled(c, checked))
             self._scope_menu.addAction(action)
+
+    def _on_batch_btn_clicked(self):
+        """1K 로드 클릭 시 시각적 피드백 제공 및 시그널 발생."""
+        self._batch_btn.setEnabled(False)
+        self._batch_btn.setText("⏳ Loading...")
+        self.batchLoadRequested.emit(1000)
+        
+        # 안전장치: 5초 뒤 강제 복구 (네트워크 오류 대비)
+        QTimer.singleShot(5000, self.reset_batch_btn)
+
+    def reset_batch_btn(self):
+        """버튼을 원래 상태로 복구합니다."""
+        self._batch_btn.setEnabled(True)
+        self._batch_btn.setText("⚡ 1k 로드")
 
     def _on_scope_toggled(self, col: str, checked: bool):
         if checked:
