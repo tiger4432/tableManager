@@ -1,8 +1,16 @@
-from database.database import SessionLocal, engine
-from database.models import Base, DataRow
+import sys
+import os
 import uuid
 import random
 from datetime import datetime, timedelta
+
+# [경로 보정] scripts 폴더로 이동됨에 따라 상위 폴더(server/)를 path에 추가
+current_dir = os.path.dirname(os.path.abspath(__file__))
+server_root = os.path.abspath(os.path.join(current_dir, ".."))
+sys.path.append(server_root)
+
+from database.database import SessionLocal, engine
+from database.models import Base, DataRow
 
 # Ensure tables are created
 Base.metadata.create_all(bind=engine)
@@ -87,4 +95,3 @@ if __name__ == "__main__":
     # Clear existing data first
     clear_db()
     seed()
-

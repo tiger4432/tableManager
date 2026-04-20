@@ -8,15 +8,16 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# 현재 경로를 프로젝트 루트로 추가하여 모듈 임포트 가능하게 함
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# [경로 보정] scripts 폴더로 이동됨에 따라 상위 폴더(server/)를 path에 추가
+current_dir = os.path.dirname(os.path.abspath(__file__))
+server_root = os.path.abspath(os.path.join(current_dir, ".."))
+sys.path.append(server_root)
 
 from database import models
 from database.database import Base, DEFAULT_PG_URL
 
 # 1. 원본 (SQLite) 설정
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SQLITE_PATH = os.path.join(BASE_DIR, "assy_manager.db")
+SQLITE_PATH = os.path.join(server_root, "assy_manager.db")
 SQLITE_URL = f"sqlite:///{SQLITE_PATH}"
 
 print(f"[*] Starting migration...")
@@ -68,7 +69,7 @@ def migrate():
                 updated_at=row.updated_at
             )
             pg_db.add(new_row)
-            if (i + 1) % 50 == 0:
+            if (i + 1) % 500 == 0: # 이전 수정 반영: 500단위
                 print(f"    - ... {i + 1} rows processed.")
         
         # 4. audit_logs 이관
@@ -90,7 +91,7 @@ def migrate():
                 timestamp=log.timestamp
             )
             pg_db.add(new_log)
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 500 == 0: # 이전 수정 반영: 500단위
                 print(f"    - ... {i + 1} logs processed.")
         
         print("[*] Committing changes to PostgreSQL...")
