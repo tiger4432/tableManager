@@ -490,7 +490,6 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if not items: return
                 moved = []; min_c = float('inf'); max_c = -1
                 all_cell_updates = []
-                
                 for item in reversed(items):
                     rid = item.get("row_id")
                     idx = self._row_id_map.get(rid)
@@ -505,10 +504,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                             self.beginRemoveRows(QModelIndex(), idx, idx); self._data.pop(idx); self.endRemoveRows()
                             self._update_row_id_map()
                         else:
+                            print('stuck')
                             self._data[idx] = norm
                             min_c = min(min_c, idx); max_c = max(max_c, idx)
-                    elif self._sort_latest:
-                        # [Phase 73.12] 캐시에 없는 행은 '최신순' 모드일 때만 최상단 부상 허용
+                    else:
+                        print('no idx')
                         norm = self._normalize_row_data({"row_id": rid, "data": new_data})
                         moved.append((rid, norm))
                     
@@ -564,6 +564,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         return row
 
     def _update_row_id_map(self):
+        print('[DEBUG] update row id map')
         self._row_id_map = {str(r.get("row_id")): i for i, r in enumerate(self._data) if r}
 
     def _build_row_id_map(self):
@@ -580,8 +581,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             if self._sort_latest and idx > 0:
                 self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
                 self._data.insert(0, self._data.pop(idx)); self.endMoveRows()
-        elif self._sort_latest:
-            # [Phase 73.12] 캐시에 없는 행은 '최신순' 모드일 때만 최상단 삽입 허용
+        else:
             self.beginInsertRows(QModelIndex(), 0, 0)
             self._data.insert(0, norm); self.endInsertRows()
         self._update_row_id_map()
@@ -738,6 +738,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._server_fetched_count = len(new)
             self.endResetModel()
             self._fetching = False
+            self._update_row_id_map()
             return
         
         # 만약 모델이 리셋된 상태(_first_fetch=True)인데 이전 세션의 응답이 온 것이라면 무시
@@ -769,6 +770,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             if skip == self._server_fetched_count: self._server_fetched_count += len(new)
         
         # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
+        print('[DEBUG] fetch 완료')
         self._update_row_id_map(); self._fetching = False
         
         if self._batch_fetching:
