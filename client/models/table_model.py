@@ -244,7 +244,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._data = []
         self._total_count = 0
         self._columns = []
-        self._chunk_size = 500
+        self._chunk_size = 50
         self._fetching = False
         self._batch_fetching = False # [Phase 73.10] 일괄 로딩 추적 플래그
         self._fetch_scheduled = False
