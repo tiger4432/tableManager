@@ -131,7 +131,7 @@ def list_tables():
 def get_table_data(
     table_name: str, 
     skip: int = 0, 
-    limit: int = 50, 
+    limit: int = 500, 
     q: str = None, 
     cols: str = None, # [Phase 73.6] 검색 대상 컬럼 제한 (comma separated)
     order_by: str = "row_id", 

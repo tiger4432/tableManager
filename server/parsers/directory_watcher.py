@@ -196,7 +196,7 @@ class IngestionHandler(FileSystemEventHandler):
         # 4. 배치 단위로 정규화 및 전역 전송 (Agent Optimization)
         print('배치 전송')
         base_url = f"http://{endpoint}/tables/{table_name}/upsert/batch"
-        batch_size = 50
+        batch_size = 500
         
         for i in range(0, len(rows), batch_size):
             chunk = rows[i:i + batch_size]
