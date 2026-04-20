@@ -492,9 +492,10 @@ class MainWindow(QMainWindow):
             
             # 필터 툴바 활성 프록시 갱신
             if idx > 1: # 0: Dashboard, 1: Settings
-                proxy_idx = idx - 2
-                if proxy_idx < len(self._filter_bar._proxies):
-                    self._filter_bar.set_active_proxy(self._filter_bar._proxies[proxy_idx])
+                # [Refactor] nav_id에서 'table:' 접두어를 제거하여 순수 테이블 명으로 프록시 조회
+                table_name = nav_id.replace("table:", "")
+                proxy = self._filter_bar._proxies.get(table_name)
+                self._filter_bar.set_active_proxy(proxy)
             
             # 윈도우 타이틀 및 툴바 표시 업데이트
             if nav_id == "home":
@@ -756,7 +757,7 @@ class MainWindow(QMainWindow):
         self._active_models.append(model)
 
         # ── 필터 프록시 ──
-        proxy = self._filter_bar.create_proxy(model)
+        proxy = self._filter_bar.create_proxy(table_name, model)
         table_view.setModel(proxy)
 
         # ── 행 개수 실시간 업데이트 연결 ──

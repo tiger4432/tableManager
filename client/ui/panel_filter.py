@@ -144,7 +144,7 @@ class FilterToolBar(QWidget):
 
         # ── 내부 상태 및 로직 ───────────────────────────────────────
         self._selected_cols = set()
-        self._proxies: list[QSortFilterProxyModel] = []
+        self._proxies: dict[str, QSortFilterProxyModel] = {} # [Refactor] list -> dict
         self._active_proxy: QSortFilterProxyModel | None = None
         self._sort_latest = True
         self._search_timer = QTimer(self)
@@ -158,16 +158,15 @@ class FilterToolBar(QWidget):
     # Public API
     # ------------------------------------------------------------------
 
-    def create_proxy(self, source_model) -> QSortFilterProxyModel:
+    def create_proxy(self, table_name: str, source_model) -> QSortFilterProxyModel:
         """
-        원본 모델(ApiLazyTableModel)을 QSortFilterProxyModel 로 래핑하여 반환합니다.
-        반환된 프록시를 QTableView.setModel() 에 넘겨야 필터가 동작합니다.
+        원본 모델(ApiLazyTableModel)을 QSortFilterProxyModel 로 래핑하여 딕셔너리에 저장하고 반환합니다.
         """
         proxy = QSortFilterProxyModel(self)
         proxy.setSourceModel(source_model)
         proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         proxy.setFilterKeyColumn(-1)          # 모든 컬럼 검색
-        self._proxies.append(proxy)
+        self._proxies[table_name] = proxy     # [Refactor] 테이블 명을 키로 하여 저장
 
         # 결과 수 갱신을 위해 rowsInserted / rowsRemoved 연결
         # [Phase 73.8] 10ms 지연 제거: 실시간 반응성 확보
@@ -179,9 +178,8 @@ class FilterToolBar(QWidget):
         if hasattr(source_model, "total_count_changed"):
             source_model.total_count_changed.connect(self._update_count_label)
 
-        # 첫 번째로 생성된 프록시를 기본 활성으로 설정
-        if self._active_proxy is None:
-            self._active_proxy = proxy
+
+        self._active_proxy = proxy
 
         return proxy
 
