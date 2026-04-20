@@ -196,8 +196,12 @@ class FilterToolBar(QWidget):
         self._set_table_controls_visible(is_table)
 
         if is_table:
-            # 탭 전환 시 해당 모델의 검색 범위(체크박스 상태) 복구
             source = proxy.sourceModel()
+            # [Phase 73.12] 글로벌 정렬 상태 즉시 주입 (첫 턴 부상 방지)
+            if source and hasattr(source, "set_sort_latest"):
+                source.set_sort_latest(self._sort_latest)
+
+            # 탭 전환 시 해당 모델의 검색 범위(체크박스 상태) 복구
             if source and hasattr(source, "_search_cols_state"):
                 self._selected_cols = set(source._search_cols_state)
             else:

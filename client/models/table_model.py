@@ -465,11 +465,12 @@ class ApiLazyTableModel(QAbstractTableModel):
                             del self._data[s : e + 1]
                         self._exposed_rows -= num # 노출 개수 감소
                         self.endRemoveRows()
-                    
-                    # [Phase 73.11] 낙관적 카운트 차감 제거 -> 서버 값 수신 후 _set_total_count에서 동기화
+
                     self._update_row_id_map()
                     self._refresh_total_count() 
+
                 self.row_deleted_ws.emit(data)
+
             elif event == "batch_row_create":
                 items = data.get("items", [])
                 if not items: return
@@ -477,18 +478,13 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if self._sort_latest:
                     self.beginInsertRows(QModelIndex(), 0, len(new_rows)-1)
                     self._data = new_rows + self._data
-                    # self._total_count += len(new_rows) # 수동 제거
-                    self._exposed_rows += len(new_rows) # 최상단 삽입 시 노출 범위 확장
+                    self._exposed_rows += len(new_rows) 
                     self.endInsertRows()
-                else:
-                    # 최하단 추가 시에는 total_count만 늘리고, 사용자가 스크롤할 때 fetchMore가 확장하도록 유도
-                    # self._total_count += len(new_rows) # 수동 제거
-                    pass
                 
                 self._update_row_id_map()
-                # self.total_count_changed.emit(self._exposed_rows, self._total_count) # 수동 계산 제거
                 self._refresh_total_count() # [Phase 73.6] 서버에 재요청
                 self.row_created_ws.emit(data)
+
             elif event == "batch_row_upsert":
                 items = data.get("items", [])
                 if not items: return
@@ -511,7 +507,8 @@ class ApiLazyTableModel(QAbstractTableModel):
                         else:
                             self._data[idx] = norm
                             min_c = min(min_c, idx); max_c = max(max_c, idx)
-                    else:
+                    elif self._sort_latest:
+                        # [Phase 73.12] 캐시에 없는 행은 '최신순' 모드일 때만 최상단 부상 허용
                         norm = self._normalize_row_data({"row_id": rid, "data": new_data})
                         moved.append((rid, norm))
                     
@@ -583,7 +580,8 @@ class ApiLazyTableModel(QAbstractTableModel):
             if self._sort_latest and idx > 0:
                 self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
                 self._data.insert(0, self._data.pop(idx)); self.endMoveRows()
-        else:
+        elif self._sort_latest:
+            # [Phase 73.12] 캐시에 없는 행은 '최신순' 모드일 때만 최상단 삽입 허용
             self.beginInsertRows(QModelIndex(), 0, 0)
             self._data.insert(0, norm); self.endInsertRows()
         self._update_row_id_map()
@@ -623,7 +621,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.BackgroundRole:
             if self._data[row].get("data", {}).get(col_name, {}).get("is_overwrite"):
                 from PySide6.QtGui import QColor
-                return QColor("#92ABD6")
+                return QColor("#BD6031")
         return None
 
     def canFetchMore(self, parent=QModelIndex()) -> bool:
