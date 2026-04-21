@@ -289,7 +289,7 @@ class ExcelTableView(QTableView):
             # 결과는 WebSocket 브로드캐스트를 통해 모든 클라이언트에 자동 반영됨
     
     def copy_selection(self):
-        """선택된 영역을 클립보드에 복사 (헤더 제외, 데이터만)."""
+        """선택된 영역을 클립보드에 복사 (옵션에 따라 헤더 포함 가능)."""
         selection = self.selectionModel()
         if not selection.hasSelection(): return
         indexes = selection.selectedIndexes()
@@ -303,6 +303,19 @@ class ExcelTableView(QTableView):
         row_cells = []
         lines = []
         
+        # ── [Phase 2] 헤더 포함 옵션 처리 ──
+        main_win = self.window()
+        include_header = getattr(main_win, "_include_copy_header", False)
+        
+        if include_header:
+            # 선택된 영역의 고유 컬럼 인덱스 추출 (정렬 순서 유지)
+            col_indices = sorted(list(set(idx.column() for idx in indexes)))
+            header_cells = []
+            for col in col_indices:
+                header_text = model.headerData(col, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+                header_cells.append(str(header_text) if header_text is not None else "")
+            lines.append("\t".join(header_cells))
+
         for idx in indexes:
             if idx.row() != prev_row:
                 lines.append("\t".join(row_cells))
@@ -469,6 +482,7 @@ class MainWindow(QMainWindow):
         self._filter_bar.sortLatestChanged.connect(self._on_sort_mode_changed) # [신규] 정렬 토글 연결
         self._filter_bar.batchLoadRequested.connect(self._on_batch_load_requested) # [신규] 일괄 로드 연결
         self._filter_bar.searchRequested.connect(self._on_global_search)
+        self._filter_bar.copyHeaderChanged.connect(self._on_copy_header_mode_changed) # [신규] 헤더 복사 토글 연결
 
         # ── 데이터 모델 매핑 (사이드바 메뉴 ID -> Widget Index) ──
         self._nav_to_index = {"home": 0, "settings": 1}
@@ -479,6 +493,7 @@ class MainWindow(QMainWindow):
         self._ws_thread: WsListenerThread | None = None
         self._active_models: list[ApiLazyTableModel] = []
         self._active_workers = set()
+        self._include_copy_header = False # [신규] 복사 시 헤더 포함 여부 상태
 
         # ── 서버로부터 모든 테이블 목록 조회 및 초기화 ──────────────
         print('TABLE 초기화')
@@ -658,6 +673,11 @@ class MainWindow(QMainWindow):
         for model in self._active_models:
             model.set_sort_latest(enabled)
 
+    def _on_copy_header_mode_changed(self, enabled: bool):
+        """툴바에서 헤더 포함 복사 옵션이 변경될 때 상태를 업데이트합니다."""
+        print(f"[MainWindow] Copy with Header mode: {enabled}")
+        self._include_copy_header = enabled
+
     def _on_add_row_requested(self):
         """현재 활성화된 화면의 테이블에 새 행(들)을 일괄 추가 요청합니다."""
         curr_idx = self.stacked.currentIndex()
@@ -762,8 +782,8 @@ class MainWindow(QMainWindow):
 
         # ── 행 개수 실시간 업데이트 연결 ──
         model.total_count_changed.connect(self._update_row_count_display)
-        # [Phase 73.10] 일괄 로딩 완료 시 툴바 버튼 즉시 복구 연결
         model.batch_fetch_finished.connect(self._filter_bar.reset_batch_btn)
+        model.status_message_requested.connect(lambda msg: self.statusBar().showMessage(msg, 3000))
 
         # ── 드래그 앤 드롭 업로드 연결 ──
         table_view.fileDropped.connect(

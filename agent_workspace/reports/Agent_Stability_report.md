@@ -1,18 +1,21 @@
-# Report: [Agent Stability] Resource & Schema Optimization (v1.5)
+# 🤖 작업 완료 보고서 (Agent Stability)
 
-## 📋 Task Summary
-Optimized the client-side resource handling by implementing schema caching and hardening worker lifecycle management.
+## 1. 개요
+가상 로딩 모델의 행 확장 중 발생하는 `QSortFilterProxyModel` 정합성 에러 및 크래시 문제를 해결하였습니다.
 
-## ✅ Accomplishments
-- **Schema Caching**: Added a check in `MainWindow._load_table_schema` that skips network requests if the model already has column data. This improves tab-switching speed and reduces server load.
-- **Worker Management**: Enhanced `_execute_file_upload` to correctly track and clean up `ApiUploadWorker` instances in the `_active_workers` set.
-- **Improved Logging**: Added debug logs to track cache hits for schema loading.
+## 2. 작업 내용
+- **`table_model.py` 수정**: 
+    - `data()` 메서드 내부의 위험한 `beginInsertRows` 호출을 제거하였습니다.
+    - 대신 `QTimer.singleShot(0, self.fetchMore)`을 도입하여, 안정적인 시점(다음 이벤트 루프)에 선제적 확장이 일어나도록 개선하였습니다.
+- **로직 단일화**: 모든 행 확장 로직을 `fetchMore`로 모아 관리 효율성을 높였습니다.
 
-## 🛠️ Modified Files
-- `client/main.py`: Updated `_load_table_schema` and `_execute_file_upload`.
+## 3. 검증 결과
+- `jurigged`를 통한 실시간 테스트 결과, 하단 스크롤 시 인덱스 에러 없이 선제적 확장이 정상 작동함을 확인하였습니다.
+- 크래시 현상이 해결되었습니다.
 
-## ⚠️ Issues & Observations
-- The `_active_workers` set is now more consistent, but we should eventually implement a central worker manager class if the number of async operations grows.
+## 4. 관련 기술 이력
+- `docs/history/20260422_074500_fix_model_insertion_crash.md`
 
 ---
-*Submitted by Agent Stability | 2026.04.20*
+**보고자: Agent Stability**
+**완료일: 2026-04-22**

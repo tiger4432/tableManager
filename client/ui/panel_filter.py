@@ -25,6 +25,7 @@ class FilterToolBar(QWidget):
     uploadRequested = Signal()
     sortLatestChanged = Signal(bool)
     batchLoadRequested = Signal(int)
+    copyHeaderChanged = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -138,6 +139,12 @@ class FilterToolBar(QWidget):
         self._batch_btn.clicked.connect(self._on_batch_btn_clicked)
         self._row2_layout.addWidget(self._batch_btn)
         
+        self._copy_header_btn = QPushButton("📋 헤더 포함")
+        self._copy_header_btn.setCheckable(True)
+        self._copy_header_btn.setChecked(False)
+        self._copy_header_btn.clicked.connect(self._on_copy_header_toggled)
+        self._row2_layout.addWidget(self._copy_header_btn)
+        
         self._row2_layout.addStretch()
         
         self._main_layout.addWidget(self._row2_container)
@@ -226,6 +233,7 @@ class FilterToolBar(QWidget):
         self._upload_btn.setVisible(visible)
         self._sort_btn.setVisible(visible)
         self._batch_btn.setVisible(visible)
+        self._copy_header_btn.setVisible(visible)
         
         # '+ 새 탭' 버튼은 전역 액션이므로 항상 표시
         self._add_btn.setVisible(True)
@@ -334,6 +342,24 @@ class FilterToolBar(QWidget):
         else:
             self._sort_btn.setText("⏸ 정렬 OFF")
             self._sort_btn.setStyleSheet("""
+                QPushButton { background: #45475a; color: #cdd6f4; font-weight: bold; border-radius: 4px; padding: 4px 12px; }
+                QPushButton:hover { background: #585b70; }
+            """)
+
+    def _on_copy_header_toggled(self, checked: bool):
+        self._update_copy_header_btn_style()
+        self.copyHeaderChanged.emit(checked)
+
+    def _update_copy_header_btn_style(self):
+        if self._copy_header_btn.isChecked():
+            self._copy_header_btn.setText("📋 헤더 포함 ON")
+            self._copy_header_btn.setStyleSheet("""
+                QPushButton { background: #89dceb; color: #1e1e2e; font-weight: bold; border-radius: 4px; padding: 4px 12px; }
+                QPushButton:hover { background: #94e2d5; }
+            """)
+        else:
+            self._copy_header_btn.setText("📋 헤더 포함 OFF")
+            self._copy_header_btn.setStyleSheet("""
                 QPushButton { background: #45475a; color: #cdd6f4; font-weight: bold; border-radius: 4px; padding: 4px 12px; }
                 QPushButton:hover { background: #585b70; }
             """)

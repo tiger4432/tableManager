@@ -235,6 +235,7 @@ class ApiLazyTableModel(QAbstractTableModel):
     row_deleted_ws = Signal(dict)
     total_count_changed = Signal(int, int) # (exposed_rows, total_count)
     batch_fetch_finished = Signal()
+    status_message_requested = Signal(str) # [신규] 상태바 메시지 요청 시그널
 
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
         super().__init__()
@@ -244,7 +245,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._data = []
         self._total_count = 0
         self._columns = []
-        self._chunk_size = 50
+        self._chunk_size = 1000
         self._fetching = False
         self._batch_fetching = False # [Phase 73.10] 일괄 로딩 추적 플래그
         self._fetch_scheduled = False
@@ -597,16 +598,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         if not index.isValid(): return None
         row, col = index.row(), index.column()
 
-        if row >= self._exposed_rows-10 and self._data[row] is not None:
-            print('마지막 행 데이터 확장....')
-            remaining = self._total_count - self._exposed_rows
-            increment = min(self._chunk_size, remaining)
-            if increment > 0:
-                self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
-                self._exposed_rows += increment
-                if len(self._data) < self._exposed_rows:
-                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
-                self.endInsertRows()
+        if row >= self._exposed_rows - 10 and self.canFetchMore():
+            # [안정성] 직접 호출 시 ProxyModel 매핑 파괴 위험이 있으므로 다음 이벤트 루프로 지연 실행 (Proactive Expansion)
+            self._jump_timer.start(1)
 
         if row >= len(self._data) or self._data[row] is None:
             if role == Qt.ItemDataRole.DisplayRole:
@@ -621,8 +615,6 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self._stale_fetch_tracker[skip] = time.time()
                 return "Loading..."
             return None
-
-
 
         col_name = self._columns[col]
         if col_name in ["created_at", "updated_at"]:
@@ -696,7 +688,11 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         remaining = self._total_count - self._exposed_rows
         increment = min(count, remaining)
-        if increment <= 0: return
+        print(increment)
+        if increment <= 0: 
+            self.status_message_requested.emit("마지막 행입니다.")
+            self.batch_fetch_finished.emit()
+            return
 
         self._fetching = True
         self._batch_fetching = True # 플래그 설정
@@ -786,6 +782,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
         print('[DEBUG] fetch 완료')
+        self.status_message_requested.emit(f"{self._chunk_size} 행 추가 로드 완료.")
         self._update_row_id_map(); self._fetching = False
         
         if self._batch_fetching:
