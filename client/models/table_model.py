@@ -596,6 +596,18 @@ class ApiLazyTableModel(QAbstractTableModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid(): return None
         row, col = index.row(), index.column()
+
+        if row >= self._exposed_rows-10 and self._data[row] is not None:
+            print('마지막 행 데이터 확장....')
+            remaining = self._total_count - self._exposed_rows
+            increment = min(self._chunk_size, remaining)
+            if increment > 0:
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
+                self._exposed_rows += increment
+                if len(self._data) < self._exposed_rows:
+                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
+
         if row >= len(self._data) or self._data[row] is None:
             if role == Qt.ItemDataRole.DisplayRole:
                 # Viewport에 빈 데이터가 포착되면 해당 위치 최우선 로딩 예약
@@ -603,12 +615,15 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if not self._fetching:
                     self._pending_target_skip = skip
                     if not self._jump_timer.isActive():
-                        self._jump_timer.start(50) # 50ms Debounce
+                        self._jump_timer.start(1) # 10ms Debounce
                 
                 if skip not in self._stale_fetch_tracker: 
                     self._stale_fetch_tracker[skip] = time.time()
                 return "Loading..."
             return None
+
+
+
         col_name = self._columns[col]
         if col_name in ["created_at", "updated_at"]:
             if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
