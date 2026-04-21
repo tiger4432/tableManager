@@ -78,7 +78,7 @@ class FilterToolBar(QWidget):
         self._row1_layout.addStretch()
         
         # 결과 카운터 (고급스러운 태그 스타일)
-        self._count_label = QLabel("  Loaded: 0 / Totals: 0  ")
+        self._count_label = QLabel("  Loaded: 0 / Total: 0  ")
         self._count_label.setStyleSheet("""
             QLabel {
                 background: #1e1e2e;
@@ -325,7 +325,7 @@ class FilterToolBar(QWidget):
         exposed = getattr(source, "_exposed_rows", proxy.rowCount())
         total = getattr(source, "_total_count", exposed)
         
-        self._count_label.setText(f" Loaded: {exposed:,} /  Totals: {total:,}")
+        self._count_label.setText(f" Loaded: {exposed:,} /  Total: {total:,}")
 
     def _on_sort_toggled(self, checked: bool):
         self._sort_latest = checked

@@ -977,7 +977,7 @@ class MainWindow(QMainWindow):
             idx = self.stacked.currentIndex()
             page = self.stacked.widget(idx)
             # [Phase 73.8] 용어 표준화: Matches(전체 검색 결과) / Loaded(현재 화면에 로드됨)
-            self._row_count_label.setText(f"  Matches: {total:,} / Loaded: {exposed:,}  ")
+            self._row_count_label.setText(f"Loaded: {exposed:,} / Total: {total:,}")
         
         # 타이틀 바 업데이트 (현재 테이블인 경우에만)
         if self.windowTitle().startswith(f"AssyManager - {table_name}"):
