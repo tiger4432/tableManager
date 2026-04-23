@@ -5,7 +5,7 @@ navigation_rail.py
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, 
-    QSpacerItem, QSizePolicy, QFrame, QMenu
+    QSpacerItem, QSizePolicy, QFrame, QMenu, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon, QColor
@@ -77,7 +77,7 @@ class NavigationRail(QFrame):
         self.setObjectName("navRail")
         self.setStyleSheet("""
             #navRail {
-                background-color: #11111b;
+                background-color: #1e1e2e;
                 border-right: 1px solid #313244;
             }
         """)
@@ -98,7 +98,7 @@ class NavigationRail(QFrame):
         self.layout.addWidget(logo)
         
         # 홈 버튼 (대시보드)
-        #self.add_nav_item("home", "🏠", "Home")
+        self.add_nav_item("home", "🏠", "Home")
         
         # 구분선
         line = QFrame()
@@ -106,13 +106,38 @@ class NavigationRail(QFrame):
         line.setStyleSheet("background-color: #313244; max-height: 1px; margin: 5px 10px;")
         self.layout.addWidget(line)
         
-        # 테이블 목록 버튼들은 동적으로 추가될 예정
-        self.tab_container_layout = QVBoxLayout()
+        # 테이블 목록 영역 (스크롤 가능하도록 QScrollArea 적용)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 4px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #45475a;
+                min-height: 20px;
+                border-radius: 2px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none; background: none;
+            }
+        """)
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        self.tab_container_layout = QVBoxLayout(scroll_content)
         self.tab_container_layout.setSpacing(10)
         self.tab_container_layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.addLayout(self.tab_container_layout)
+        self.tab_container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
-        self.layout.addStretch()
+        self.scroll_area.setWidget(scroll_content)
+        self.layout.addWidget(self.scroll_area)
         
         # 설정 버튼
         self.add_nav_item("settings", "⚙️", "Settings")
@@ -126,7 +151,7 @@ class NavigationRail(QFrame):
         if is_table:
             self.tab_container_layout.addWidget(btn)
         else:
-            self.layout.insertWidget(self.layout.count() - 2 if id_str == "settings" else self.layout.count(), btn)
+            self.layout.addWidget(btn)
         
         self._buttons[id_str] = btn
         

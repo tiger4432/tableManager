@@ -229,10 +229,6 @@ class ApiDeleteWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 class ApiLazyTableModel(QAbstractTableModel):
-    ws_data_changed = Signal(dict)
-    batch_ws_data_changed = Signal(dict)
-    row_created_ws = Signal(dict)
-    row_deleted_ws = Signal(dict)
     total_count_changed = Signal(int, int) # (exposed_rows, total_count)
     batch_fetch_finished = Signal()
     status_message_requested = Signal(str) # [신규] 상태바 메시지 요청 시그널
@@ -271,6 +267,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._recovery_timer.timeout.connect(self._check_for_stale_placeholders)
         self._recovery_timer.start()
 
+        # [신규] 가변 청크 성능 측정용
+        self._fetch_start_time = 0.0
+        
         # [신규] Viewport Jump용 타이머 (Debounce)
         self._jump_timer = QTimer(self)
         self._jump_timer.setSingleShot(True)
@@ -470,21 +469,38 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self._update_row_id_map()
                     self._refresh_total_count() 
 
-                self.row_deleted_ws.emit(data)
+                self.status_message_requested.emit(f"데이터 {len(target_ids)}건 삭제됨")
 
             elif event == "batch_row_create":
                 items = data.get("items", [])
                 if not items: return
                 new_rows = [self._normalize_row_data(item) for item in items]
+                
+                # ── [Phase 1] 정렬 모드와 관계없이 사용자에게 즉시 피드백 제공 ──
+                # 이미 데이터 끝에 도달했거나 최신순 정렬인 경우 상단/하단에 삽입
                 if self._sort_latest:
                     self.beginInsertRows(QModelIndex(), 0, len(new_rows)-1)
                     self._data = new_rows + self._data
                     self._exposed_rows += len(new_rows) 
                     self.endInsertRows()
+                else:
+                    # 최신순이 아닐 때는 목록 가장 아래(현재 노출 범위 끝)에 추가하여 섞임 방지
+                    self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + len(new_rows) - 1)
+                    self._data.extend(new_rows)
+                    self._exposed_rows += len(new_rows)
+                    self.endInsertRows()
+
+                if self._sort_latest:
+                    self.beginInsertRows(QModelIndex(), 0, len(new_rows)-1)
+                    self._data = new_rows + self._data
+                    self._exposed_rows += len(new_rows)
+                    self.endInsertRows(); self._update_row_id_map()
+                    self.status_message_requested.emit(f"신규 데이터 {len(new_rows)}건 상단 추가됨")
+                else:
+                    # ID 정렬 모드에서는 새 행이 맨 아래에 위치하므로, 즉시 삽입하지 않고 카운트만 갱신
+                    self.status_message_requested.emit(f"신규 데이터 {len(new_rows)}건 유입됨 (하단)")
                 
-                self._update_row_id_map()
-                self._refresh_total_count() # [Phase 73.6] 서버에 재요청
-                self.row_created_ws.emit(data)
+                self._refresh_total_count()
 
             elif event == "batch_row_upsert":
                 items = data.get("items", [])
@@ -492,7 +508,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 moved = []; min_c = float('inf'); max_c = -1
                 all_cell_updates = []
                 for item in reversed(items):
-                    rid = item.get("row_id")
+                    rid = str(item.get("row_id"))
                     idx = self._row_id_map.get(rid)
                     new_data = item.get("data", {})
                     
@@ -500,18 +516,25 @@ class ApiLazyTableModel(QAbstractTableModel):
                         row = self._data[idx]
                         row.setdefault("data", {}).update(new_data)
                         norm = self._normalize_row_data(row)
+                        
+                        # [Fix] 최신순 정렬일 때만 최상단으로 이동. 아니면 제자리 유지.
                         if self._sort_latest and idx > 0:
                             moved.append((rid, norm))
                             self.beginRemoveRows(QModelIndex(), idx, idx); self._data.pop(idx); self.endRemoveRows()
                             self._update_row_id_map()
                         else:
-                            print('stuck')
                             self._data[idx] = norm
                             min_c = min(min_c, idx); max_c = max(max_c, idx)
                     else:
-                        print('no idx')
                         norm = self._normalize_row_data({"row_id": rid, "data": new_data})
-                        moved.append((rid, norm))
+                        # [Fix] 최신순 정렬일 때만 최상단에 즉시 삽입. 
+                        # ID 정렬일 때는 버퍼에 넣지 않고 total_count 갱신만 하여 lazy-loading 유도.
+                        if self._sort_latest:
+                            moved.append((rid, norm))
+                        else:
+                            # ID 정렬 모드에서는 신규 데이터가 버퍼에 즉시 들어오면 정렬이 깨지므로 
+                            # 단순히 카운트만 늘리고 나중에 페칭되게 함
+                            pass
                     
                     # 히스토리 추적용 플래닝 (Flattening)
                     for col, cell_val in new_data.items():
@@ -526,34 +549,32 @@ class ApiLazyTableModel(QAbstractTableModel):
                             })
 
                 if moved:
-                    self.beginInsertRows(QModelIndex(), 0, len(moved)-1)
-                    self._data = [r for rid, r in reversed(moved)] + self._data
-                    self._exposed_rows += len(moved)
-                    self.endInsertRows(); self._update_row_id_map()
-                    min_c = 0; max_c = max(max_c, len(moved)-1)
-
-                if all_cell_updates:
-                    self.batch_ws_data_changed.emit({
-                        "updates": all_cell_updates,
-                        "change_count": data.get("change_count", len(all_cell_updates)),
-                        "updated_by": data.get("updated_by", "system")
-                    })
+                    if self._sort_latest:
+                        self.beginInsertRows(QModelIndex(), 0, len(moved)-1)
+                        self._data = [r for rid, r in reversed(moved)] + self._data
+                        self._exposed_rows += len(moved)
+                        self.endInsertRows(); self._update_row_id_map()
+                        min_c = 0; max_c = max(max_c, len(moved)-1)
+                    else:
+                        # ID 정렬 모드에서는 신규 행(moved)은 삽입 생략 (Total Count 로 처리)
+                        pass
 
                 if max_c != -1:
                     self.dataChanged.emit(self.index(min_c, 0), self.index(max_c, len(self._columns)-1))
                 
                 self._refresh_total_count()
+                self.status_message_requested.emit(f"데이터 {len(items)}건 실시간 업데이트됨")
 
             elif event in ["cell_update", "batch_cell_update"]:
                 updates = [data] if event == "cell_update" else data.get("updates", [])
-                min_r = float('inf'); max_r = -1; logs = []
+                min_r = float('inf'); max_r = -1
                 for u in updates:
-                    idx = self._row_id_map.get(u.get("row_id"))
-                    if idx is not None and self._data[idx]:
+                    rid = str(u.get("row_id"))
+                    idx = self._row_id_map.get(rid)
+                    if idx is not None and idx < len(self._data):
                         cell = self._data[idx].setdefault("data", {}).setdefault(u.get("column_name"), {})
                         cell.update({"value": u.get("value"), "is_overwrite": u.get("is_overwrite", False), "updated_by": u.get("updated_by", "system")})
-                        min_r = min(min_r, idx); max_r = max(max_r, idx); logs.append({**u, "source": "remote"})
-                if logs: self.batch_ws_data_changed.emit({"updates": logs, "change_count": len(logs), "updated_by": data.get("updated_by", "system")})
+                        min_r = min(min_r, idx); max_r = max(max_r, idx)
                 if max_r != -1: self.dataChanged.emit(self.index(min_r, 0), self.index(max_r, len(self._columns)-1))
         finally:
             self._is_processing_remote = False
@@ -579,12 +600,18 @@ class ApiLazyTableModel(QAbstractTableModel):
         mapping = self._build_row_id_map()
         if rid in mapping:
             idx = mapping[rid]; self._data[idx] = norm
+            # [Fix] 최신순 정렬일 때만 최상단으로 이동
             if self._sort_latest and idx > 0:
                 self.beginMoveRows(QModelIndex(), idx, idx, QModelIndex(), 0)
                 self._data.insert(0, self._data.pop(idx)); self.endMoveRows()
         else:
-            self.beginInsertRows(QModelIndex(), 0, 0)
-            self._data.insert(0, norm); self.endInsertRows()
+            # [Fix] 최신순 정렬일 때만 최상단 삽입
+            if self._sort_latest:
+                self.beginInsertRows(QModelIndex(), 0, 0)
+                self._data.insert(0, norm); self.endInsertRows()
+            else:
+                # ID 정렬 시에는 카운트만 갱신 (이미 _refresh_total_count가 호출될 것임)
+                pass
         self._update_row_id_map()
 
     def _on_update_finished(self, res):
@@ -664,6 +691,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         self._fetching = True 
         self._fetch_scheduled = False
+        self._fetch_start_time = time.time() # [신규] 페칭 시작 시간 기록
         
         skip = self._pending_target_skip if self._pending_target_skip is not None else 0
         self._pending_target_skip = None
@@ -696,6 +724,7 @@ class ApiLazyTableModel(QAbstractTableModel):
 
         self._fetching = True
         self._batch_fetching = True # 플래그 설정
+        self._fetch_start_time = time.time() # [신규] 페칭 시작 시간 기록
         
         # 1. 노출 범위 확장 알림 및 데이터 버퍼 패딩
         self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
@@ -706,13 +735,16 @@ class ApiLazyTableModel(QAbstractTableModel):
         # [Phase 73.8] 일괄 로드 시에도 즉시 로드 수치 반영
         self.total_count_changed.emit(self._exposed_rows, self._total_count)
 
-        # 2. 서버 요청
+        # 2. 서버 요청 (이미 확장된 내역까지 포함하여 Gap 없이 채우도록 limit 계산)
         skip = self._server_fetched_count
         self._active_target_skip = skip
         
+        # [Fix] 단순 increment가 아니라, 현재 노출된 전체 범위(_exposed_rows)까지 부족한 데이터를 모두 채움
+        fetch_limit = self._exposed_rows - skip
+        
         order = "updated_at" if self._sort_latest else "id"
         desc = "true" if self._sort_latest else "false"
-        url = f"{self.endpoint_url}?skip={skip}&limit={increment}&order_by={order}&order_desc={desc}"
+        url = f"{self.endpoint_url}?skip={skip}&limit={fetch_limit}&order_by={order}&order_desc={desc}"
         if self._search_query:
             import urllib.parse
             target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
@@ -758,13 +790,27 @@ class ApiLazyTableModel(QAbstractTableModel):
             return
 
         if new:
-            # 신규 데이터가 기존 버퍼 범위를 넘어서면 확장
-            if skip + len(new) > len(self._data):
-                needed = (skip + len(new)) - len(self._data)
-                self._data.extend([None] * needed)
-            
+            # [Fix] ID 기반 중복 필터링 로직: 이미 버퍼 내 다른 위치에 존재하는 ID가 오면 기존 데이터만 갱신하고 중복 삽입 차단
             for i, r in enumerate(new):
-                self._data[skip + i] = r
+                rid = str(r.get("row_id"))
+                existing_idx = self._row_id_map.get(rid)
+                
+                # 만약 현재 채우려는 skip 위치가 아닌 다른 곳에 이미 해당 ID가 있다면 (중복)
+                target_idx = skip + i
+                if existing_idx is not None and existing_idx != target_idx:
+                    # 기존 위치의 데이터만 최신화 (Stability 고수)
+                    if existing_idx < len(self._data):
+                        self._data[existing_idx] = r
+                    # 현재(뒤쪽) 위치에는 중복 마커 삽입 (프록시에서 필터링용)
+                    if target_idx >= len(self._data):
+                        self._data.extend([None] * (target_idx - len(self._data) + 1))
+                    self._data[target_idx] = {"_is_duplicate": True, "row_id": rid}
+                    continue
+                
+                # 정상 삽입 (데이터가 버퍼 범위를 넘어서면 확장)
+                if target_idx >= len(self._data):
+                    self._data.extend([None] * (target_idx - len(self._data) + 1))
+                self._data[target_idx] = r
             
             # 노출 범위 최종 동기화 (이미 fetchMore에서 늘어났다면 diff <= 0)
             target_exposed = skip + len(new)
@@ -780,9 +826,25 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.dataChanged.emit(self.index(skip, 0), self.index(skip + len(new) - 1, len(self._columns) - 1))
             if skip == self._server_fetched_count: self._server_fetched_count += len(new)
         
+        # ── [Phase 2] 가변 청크 사이즈 (Adaptive Chunk Size) 조절 ──
+        duration = time.time() - self._fetch_start_time
+        old_size = self._chunk_size
+        
+        if duration < 0.5: # Fast -> 사이즈 상향 (최대 3000)
+            self._chunk_size = min(3000, int(self._chunk_size * 1.1))
+        elif duration > 0.55: # Slow -> 사이즈 하향 (최소 50)
+            self._chunk_size = max(50, int(self._chunk_size * 0.9))
+            
+        # 디버그 및 알림 (사이즈가 변경되었을 때만)
+        if old_size != self._chunk_size:
+            print(f"[Adaptive] Duration: {duration:.3f}s | Chunk Size: {old_size} -> {self._chunk_size}")
+            # 사용자가 인지할 수 있도록 상태바 요청 (너무 잦은 알림 방지를 위해 소량 변화량은 생략하거나 주기 조절 가능)
+            if abs(old_size - self._chunk_size) > 10:
+                self.status_message_requested.emit(f"성능 최적화: 청크 사이즈 {self._chunk_size}행으로 조절 (응답: {duration:.3f}s)")
+
         # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
         print('[DEBUG] fetch 완료')
-        self.status_message_requested.emit(f"{self._chunk_size} 행 추가 로드 완료.")
+        self.status_message_requested.emit(f"{len(new)} 행 추가 로드 완료 (약 {duration:.2f}초)")
         self._update_row_id_map(); self._fetching = False
         
         if self._batch_fetching:

@@ -483,6 +483,8 @@ class MainWindow(QMainWindow):
         self._filter_bar.batchLoadRequested.connect(self._on_batch_load_requested) # [신규] 일괄 로드 연결
         self._filter_bar.searchRequested.connect(self._on_global_search)
         self._filter_bar.copyHeaderChanged.connect(self._on_copy_header_mode_changed) # [신규] 헤더 복사 토글 연결
+        self._dashboard.tableFileDropped.connect(self._execute_file_upload)
+        self._dashboard.tableDoubleClicked.connect(self._handle_dashboard_table_open)
 
         # ── 데이터 모델 매핑 (사이드바 메뉴 ID -> Widget Index) ──
         self._nav_to_index = {"home": 0, "settings": 1}
@@ -498,6 +500,10 @@ class MainWindow(QMainWindow):
         # ── 서버로부터 모든 테이블 목록 조회 및 초기화 ──────────────
         print('TABLE 초기화')
         self._load_all_tables()
+        
+        # [Fix] 시작 시 홈(대시보드) 상태를 명시적으로 활성화하여 데이터 페칭 트리거
+        self._on_navigation_requested("home")
+        self._nav_rail.set_active("home")
 
     def _on_navigation_requested(self, nav_id: str):
         """사이드바 클릭 시 해당 화면으로 전환."""
@@ -517,6 +523,7 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle("AssyManager - Dashboard")
                 self._filter_bar.show()
                 self._filter_bar.set_active_proxy(None)
+                self._refresh_dashboard() # [신규] 대시보드 통계 갱신
                 self._update_row_count_display(0, 0)
             elif nav_id == "settings":
                 self.setWindowTitle("AssyManager - Settings")
@@ -589,10 +596,11 @@ class MainWindow(QMainWindow):
                 print("[Debug] No tables found, initializing default")
                 self._init_table_tab("inventory_master")
             else:
-                from PySide6.QtCore import QTimer
-                # Stagger tab initialization to prevent network burst and race conditions
-                for i, table in enumerate(tables):
-                    self._init_table_tab(table)
+                # [Phase 1] 자동 로딩 제거: 이제 사용자가 대시보드에서 선택해서 엽니다.
+                print(f"[Main] {len(tables)} tables identified. Waiting for user interaction.")
+            
+            # [Fix] 테이블 목록이 로드된 후 대시보드 카드를 즉시 갱신
+            self._refresh_dashboard()
             
             # Agent D v6: Start Shared WS immediately to listen for updates as tabs load
             self._start_shared_ws()
@@ -644,17 +652,69 @@ class MainWindow(QMainWindow):
         # 앱 종료 시 정리 연결
         QApplication.instance().aboutToQuit.connect(self._ws_thread.stop)
 
+    def _refresh_dashboard(self):
+        """서버로부터 최신 대시보드 요약 정보를 가져와 반영합니다."""
+        url = f"{config.API_BASE_URL}/dashboard/summary"
+        from models.table_model import ApiSchemaWorker
+        worker = ApiSchemaWorker(url)
+        
+        def _on_dashboard_loaded(result):
+            self._dashboard.update_dashboard(result)
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+                
+        def _on_error(err):
+            print(f"[Dashboard] Refresh failed: {err}")
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+
+        worker.signals.finished.connect(_on_dashboard_loaded)
+        worker.signals.error.connect(_on_error)
+        self._active_workers.add(worker)
+        QThreadPool.globalInstance().start(worker)
+
     def _on_ws_error(self, err):
         print(f"[MainWS] CRITICAL: {err}")
         self._ws_status_label.setText("  ● WebSocket: Error  ")
         self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
 
     def _dispatch_ws_message(self, data: dict):
-        """수신된 WS 메시지를 모든 활성 모델에 전달합니다."""
-        print(f"[MainWS] Dispatching message to {len(self._active_models)} active models: {data.get('event')}")
+        """수신된 WS 메시지를 활성 모델들에 전파하고, 단일 진입점에서 히스토리 로그를 기록합니다."""
+        event = data.get("event")
+        table_name = data.get("table_name")
+        
+        # 1. 모든 활성 모델에 데이터 전파 (테이블 뷰 갱신)
         for model in self._active_models:
-            # table_model.py 의 _on_websocket_broadcast 호출
             model._on_websocket_broadcast(data)
+            
+        # 2. [통합] 히스토리 패널에 단일 로그 생성 요청
+        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert", "cell_update", "batch_cell_update"]:
+            # 테이블이 열려 있다면 table_view를 찾아 전달 (이동 기능용)
+            table_view = None
+            nav_id = f"table:{table_name}"
+            if nav_id in self._nav_to_index:
+                idx = self._nav_to_index[nav_id]
+                page = self.stacked.widget(idx)
+                # 메인 모듈 내부에 이미 정의된 ExcelTableView 클래스 직접 사용 (임포트 제거)
+                table_view = page.findChild(ExcelTableView)
+            
+            self._history_panel.log_event(data, table_view, nav_id)
+
+        # 3. 대시보드 통계 갱신 (행 개수 변화 관련 이벤트인 경우)
+        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert"]:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(500, self._refresh_dashboard)
+
+    def _handle_dashboard_table_open(self, table_name: str):
+        """대시보드 카드 더블 클릭 시 테이블을 열거나 전환합니다."""
+        nav_id = f"table:{table_name}"
+        if nav_id in self._nav_to_index:
+            # 이미 열려있는 경우 전환
+            self._on_navigation_requested(nav_id)
+            self._nav_rail.set_active(nav_id)
+        else:
+            # 새로운 탭으로 초기화
+            self._init_table_tab(table_name)
         
     def _on_global_search(self, text: str, cols_str: str = ""):
         """
@@ -830,10 +890,9 @@ class MainWindow(QMainWindow):
         
         print(f"[Debug] Page {tab_idx} added for {table_name}")
         
-        # 새 화면으로 즉시 이동
-        self.stacked.setCurrentIndex(tab_idx)
+        # [Fix] 수동 조작 대신 중앙 내비게이션 메서드를 통해 상단 바/상태 바까지 한 번에 동기화
+        self._on_navigation_requested(nav_id)
         self._nav_rail.set_active(nav_id)
-        self._filter_bar.show()
 
         # ── Agent D v4: 서버에서 스키마 로드 후 데이터 페칭 시작 (Sequential) ──
         self._load_table_schema(model)

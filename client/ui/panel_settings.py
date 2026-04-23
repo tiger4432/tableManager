@@ -88,7 +88,7 @@ class SettingsPanel(QWidget):
         self.btn_save.setStyleSheet("""
             QPushButton {
                 background-color: #89b4fa;
-                color: #11111b;
+                color: #1e1e2e;
                 font-weight: bold;
                 border-radius: 8px;
             }

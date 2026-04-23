@@ -64,212 +64,96 @@ class HistoryDockPanel(QDockWidget):
 
     def connect_model(self, model, table_name: str, table_view):
         """
-        ApiLazyTableModel 의 dataChanged 시그널을 이 패널 슬롯에 연결합니다.
-        model      : ApiLazyTableModel 인스턴스
-        table_name : 탭 레이블 문자열 (로그 표시용)
-        table_view : 해당 탭의 QTableView (scrollTo 대상)
+        ApiLazyTableModel 의 dataChanged(로컬 수정) 시그널만 직접 연결합니다.
+        WS 이벤트는 MainWindow 에서 통합 관리합니다.
         """
-        # 클로저로 context 를 바인딩하여 dataChanged 에 연결
-        def _on_data_changed(top_left: QModelIndex, bottom_right: QModelIndex, roles: list):
-            self._handle_data_changed(
-                top_left, bottom_right, roles, model, table_name, table_view
-            )
+        def _on_data_changed(top_left, bottom_right, roles):
+            self._handle_local_data_changed(top_left, bottom_right, roles, model, table_name, table_view)
 
         model.dataChanged.connect(_on_data_changed)
 
-        # Agent D v2: WS 원격 이벤트 전용 Signal 연결
-        if hasattr(model, 'ws_data_changed'):
-            model.ws_data_changed.connect(
-                lambda data: self._log_ws_event(data, table_name, table_view)
-            )
-            
-        # Agent D v4: 행 생성 이벤트 연결
-        if hasattr(model, 'row_created_ws'):
-            model.row_created_ws.connect(
-                lambda data: self._log_row_created(data, table_name, table_view)
-            )
-            
-        # Agent D v13: 행 삭제 이벤트 연결
-        if hasattr(model, 'row_deleted_ws'):
-            model.row_deleted_ws.connect(
-                lambda data: self._log_row_deleted(data, table_name, table_view)
-            )
-
-        # [최적화] 배치 업데이트 이벤트 연결
-        if hasattr(model, 'batch_ws_data_changed'):
-            model.batch_ws_data_changed.connect(
-                lambda updates: self._log_batch_ws_event(updates, table_name, table_view)
-            )
-
-    # ------------------------------------------------------------------
-    # Private slots / helpers
-    # ------------------------------------------------------------------
-
-    def _log_batch_ws_event(self, batch_data: dict, table_name: str, table_view):
-        """대량의 업데이트 이벤트를 요약 표시합니다."""
-        updates = batch_data.get("updates", [])
-        change_count = batch_data.get("change_count", len(updates))
-        user_name = batch_data.get("updated_by", "system")
-        if not updates and change_count == 0: return
-        
-        now = datetime.now().strftime("%H:%M:%S")
-        
-        # 사용자의 요청에 따라 "n개의 데이터 업데이트" 형식으로 심플하게 표현
-        summary_text = f"🔄 [업데이트] [{now}] {table_name} / {change_count}개의 데이터 업데이트됨 [{user_name}]"
-        
-        list_item = QListWidgetItem(summary_text)
-        list_item.setForeground(QColor("#89dceb")) # 하늘색
-        
-        # 툴팁에 상세 정보 일부 노출 (ID 위주)
-        tool_ids = []
-        seen = set()
-        for u in updates:
-            rid = u.get("row_id")
-            if rid and rid not in seen:
-                tool_ids.append(rid)
-                seen.add(rid)
-        
-        tooltip = f"영향받은 행: {', '.join(map(str, tool_ids[:10]))}"
-        if len(tool_ids) > 10: tooltip += " ..."
-        list_item.setToolTip(tooltip)
-        
-        self._list.insertItem(0, list_item)
-
-    def _handle_data_changed(
-        self,
-        top_left: QModelIndex,
-        bottom_right: QModelIndex,
-        roles: list,
-        model,
-        table_name: str,
-        table_view,
-    ):
-        """dataChanged 수신 → 로그 항목을 목록 최상단에 추가."""
-        if Qt.ItemDataRole.DisplayRole not in roles:
-            return
-            
-        # [Phase 73.5] 엄격한 노이즈 차단: 원격 처리 중이거나 페칭 중에는 로컬 로그 생성을 전면 금지
-        if getattr(model, '_is_processing_remote', False) or getattr(model, '_fetching', False):
-            return
-            
-        # 초기 로딩 시그널도 차단
-        if getattr(model, '_first_fetch', True):
-            return
-
-        now = datetime.now().strftime("%H:%M:%S")
-        columns = model._columns
-
-        for row in range(top_left.row(), bottom_right.row() + 1):
-            for col in range(top_left.column(), bottom_right.column() + 1):
-                if row >= len(model._data):
-                    continue
-
-                row_data = model._data[row]
-                row_id = row_data.get("row_id", "unknown")
-                cell_data = row_data.get("data", {})
-                col_name = columns[col] if col < len(columns) else str(col)
-                item_info = cell_data.get(col_name, {})
-                is_overwrite = item_info.get("is_overwrite", False)
-                value = item_info.get("value", "")
-                updated_by = item_info.get("updated_by", "system")
-
-                text = f"[{now}] {table_name} / {col_name} / row_id:{row_id} → {value} [{updated_by}]"
-
-                list_item = QListWidgetItem(text)
-                if is_overwrite:
-                    list_item.setForeground(QColor("#f9e2af"))   # 노란색
-                else:
-                    list_item.setForeground(QColor("#6c7086"))   # 회색
-
-                # 메타 저장: id(item)을 키로 사용 (QListWidgetItem은 unhashable)
-                self._item_meta[id(list_item)] = (table_view, model.index(row, 0))
-
-                self._list.insertItem(0, list_item)  # prepend
-
-    def _log_row_deleted(self, data: dict, table_name: str, table_view):
-        """행 삭제 이벤트 로그 추가."""
-        now = datetime.now().strftime("%H:%M:%S")
-        row_ids = data.get("row_ids", [])
-        row_id = data.get("row_id")
-        user_name = data.get("updated_by", "system")
-        
-        if row_ids:
-            msg = f"{len(row_ids)}개의 행이 삭제됨"
-        elif row_id:
-            msg = f"행이 삭제됨 (ID: {row_id})"
-        else:
-            msg = "행이 삭제됨"
-            
-        text = f"🗑️ [삭제] [{now}] {table_name} / {msg} [{user_name}]"
-        
-        list_item = QListWidgetItem(text)
-        list_item.setForeground(QColor("#f38ba8"))  # 빨간색
-        self._list.insertItem(0, list_item)
-
-    def _log_ws_event(self, data: dict, table_name: str, table_view):
-        """WS 브로드캐스트 이벤트 전용 로그 항목 추가. 🌐 [원격] 접두어로 구분."""
-        from datetime import datetime
-        now = datetime.now().strftime("%H:%M:%S")
-        row_id = data.get("row_id", "unknown")
-        col_name = data.get("column_name", "?")
-        value = data.get("value", "")
-        updated_by = data.get("updated_by", "unknown")
-        
-        is_overwrite = data.get("is_overwrite", False)
-        prefix = "🛠️ [원격 수동수정]" if is_overwrite else "🌐 [원격]"
-        
-        text = (
-            f"{prefix} [{now}] {table_name} / {col_name} / "
-            f"row_id:{row_id} → {value}  [{updated_by}]"
-        )
-
-        list_item = QListWidgetItem(text)
-        # 노란색(수동수정) / 하늘색(자동업데이트)
-        list_item.setForeground(QColor("#f9e2af") if is_overwrite else QColor("#89dceb"))
-
-        # scrollTo 는 row_id 기반 조회가 필요하므로 best-effort로 meta 저장
-        m = table_view.model()
-        if m is not None and hasattr(m, '_build_row_id_map'):
-            row_id_map = m._build_row_id_map()
-            row_idx = row_id_map.get(row_id)
-            if row_idx is not None:
-                self._item_meta[id(list_item)] = (table_view, m.index(row_idx, 0))
-
-        self._list.insertItem(0, list_item)
-
-    def _log_row_created(self, data: dict, table_name: str, table_view):
-        """행 생성(row_create/batch_row_create) 이벤트 로그 추가 및 자동 갱신 트리거."""
+    def log_event(self, data: dict, table_view=None, nav_id=None):
+        """
+        모든 실시간 이벤트를 통합 처리하는 단일 진입점입니다.
+        MainWindow 에서 호출하며, table_view 와 nav_id 가 제공될 경우 '클릭 시 이동 및 탭 전환'을 지원합니다.
+        """
         now = datetime.now().strftime("%H:%M:%S")
         event = data.get("event")
+        table_name = data.get("table_name", "Unknown")
         user_name = data.get("updated_by", "system")
         
-        if event == "batch_row_create":
-            items = data.get("items", [])
-            msg = f"{len(items)}개의 새 행 생성됨"
-            row_id = items[0].get("row_id", "unknown") if items else "unknown"
-        else:
-            # 기존 단건 row_create 지원 하위 호환성
-            row_id = data.get("data", {}).get("row_id", "unknown")
-            msg = f"새 행 생성 (row_id:{row_id})"
-        
-        text = f"🆕 [신규] [{now}] {table_name} / {msg} [{user_name}]"
-        
-        list_item = QListWidgetItem(text)
-        list_item.setForeground(QColor("#a6e3a1"))  # 녹색: 신규 생성 구분
-        
-        # 메타 저장 (최상단 행으로 이동 가능하도록)
-        self._item_meta[id(list_item)] = (table_view, table_view.model().index(0, 0))
-        
-        self._list.insertItem(0, list_item)
-        
-        # Agent D v4: 현재 테이블뷰의 선택 정보를 확인하여 히스토리 자동 갱신
-        # 만약 신규 행이 이미 선택되어 있다면 (ExcelTableView 자동 선택 기능), 즉시 계보 조회
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(100, lambda: self._refresh_if_selected(table_view, row_id))
+        msg = ""
+        color = "#89dceb" # 기본 하늘색
+        meta_row_id = None
 
-    def _refresh_if_selected(self, table_view, row_id):
-        """선택된 행이 특정 row_id인 경우 계보 패널 갱신."""
-        index = table_view.currentIndex()
+        # ── 1. 이벤트 타입별 메시지 구성 ──
+        if event == "batch_row_upsert":
+            items = data.get("items", [])
+            msg = f"🔄 [업데이트] {table_name} / {len(items)}건 일괄 적재"
+            color = "#cba6f7" # 보라색
+            if items: meta_row_id = items[0].get("row_id")
+            
+        elif event in ["row_create", "batch_row_create"]: # 단건/다건 통합 대응
+            items = data.get("items", []) if event == "batch_row_create" else [data.get("data", {})]
+            msg = f"🆕 [신규 행] {table_name} / {len(items)}건 생성"
+            color = "#a6e3a1"
+            if items: meta_row_id = items[0].get("row_id")
+
+        elif event == "batch_row_delete":
+            row_ids = data.get("row_ids", [])
+            msg = f"🗑️ [행 삭제] {table_name} / {len(row_ids)}건 삭제됨"
+            color = "#f38ba8" # 빨간색
+            
+        elif event in ["cell_update", "batch_cell_update"]:
+            updates = [data] if event == "cell_update" else data.get("updates", [])
+            change_count = len(updates)
+            if change_count > 1:
+                msg = f"🔄 [업데이트] {table_name} / {change_count}건의 셀 변경"
+            elif updates:
+                u = updates[0]
+                msg = f"🔄 [업데이트] {table_name} / {u.get('column_name', '?')} 변경 (ID:{u.get('row_id')})"
+                meta_row_id = u.get("row_id")
+            color = "#89dceb"
+        else:
+            return # 알 수 없는 이벤트 무시
+
+        # ── 2. 로그 항목 생성 ──
+        text = f"{msg} [{now}] [{user_name}]"
+        list_item = QListWidgetItem(text)
+        list_item.setForeground(QColor(color))
+        
+        # ── 3. 클릭 이동 및 탭 전환 메타데이터 바인딩 ──
+        if table_view and meta_row_id:
+            list_item.setToolTip(f"ID:{meta_row_id} 위치로 이동 및 테이블 전환을 위해 클릭하세요.")
+            # (table_view, row_id, nav_id) 형태로 저장
+            self._item_meta[id(list_item)] = (table_view, meta_row_id, nav_id)
+        else:
+            list_item.setToolTip(f"실시간 업데이트 요약 로그입니다. (테이블: {table_name})")
+
+        self._list.insertItem(0, list_item)
+
+    def _handle_local_data_changed(self, top_left, bottom_right, roles, model, table_name, table_view):
+        """dataChanged(로컬 수정) 수신 → 로그 항목 추가."""
+        if Qt.ItemDataRole.DisplayRole not in roles: return
+        if getattr(model, '_is_processing_remote', False) or getattr(model, '_fetching', False): return
+        if getattr(model, '_first_fetch', True): return
+
+        now = datetime.now().strftime("%H:%M:%S")
+        for row in range(top_left.row(), bottom_right.row() + 1):
+            for col in range(top_left.column(), bottom_right.column() + 1):
+                if row >= len(model._data): continue
+                row_data = model._data[row]
+                row_id = row_data.get("row_id", "unknown")
+                col_name = model._columns[col] if col < len(model._columns) else str(col)
+                item_info = row_data.get("data", {}).get(col_name, {})
+                value = item_info.get("value", "")
+                
+                text = f"🔄 [업데이트] {table_name} / {col_name} / ID:{row_id} → {value} [local]"
+                list_item = QListWidgetItem(text)
+                list_item.setForeground(QColor("#fab387")) # Peach (로컬 수정 구분)
+                
+                self._item_meta[id(list_item)] = (table_view, row_id)
+                self._list.insertItem(0, list_item)
         if not index.isValid():
             return
             
@@ -284,40 +168,37 @@ class HistoryDockPanel(QDockWidget):
 
     @Slot(QListWidgetItem)
     def _on_item_clicked(self, item: QListWidgetItem):
-        """항목 클릭 → 해당 테이블뷰로 포커스 + 스크롤."""
+        """항목 클릭 → 해당 테이블 탭 전환 + 테이블뷰 포커스 + 스크롤."""
         meta = self._item_meta.get(id(item))
-        table_view = None
-        model_index = QModelIndex()
-        row_id = None
-
-        if meta:
-            table_view, model_index = meta
+        if not meta: return
         
-        # Agent D v11: 만약 로그 생성 시점에 행이 없었거나 위치가 바뀌었다면, row_id 기반으로 동적 재조회
-        # 로그 텍스트에서 row_id 파싱 (f"row_id:{row_id}")
-        import re
-        match = re.search(r"row_id:(\S+)", item.text())
-        if match:
-            row_id = match.group(1)
-
-        if table_view and row_id:
-            model = table_view.model()
-            source_model = getattr(model, 'sourceModel', lambda: model)()
-            if hasattr(source_model, '_build_row_id_map'):
-                idx_map = source_model._build_row_id_map()
-                new_row_idx = idx_map.get(row_id)
-                if new_row_idx is not None:
-                    model_index = source_model.index(new_row_idx, 0)
-                    # 메타 정보 갱신 (추후 클릭 대비)
-                    self._item_meta[id(item)] = (table_view, model_index)
-
-        if table_view and model_index.isValid():
-            table_view.setFocus()
-            table_view.scrollTo(model_index, table_view.ScrollHint.PositionAtCenter)
-            table_view.setCurrentIndex(model_index)
-            
-            # 항목 클릭 시 해당 셀의 상세 계보 자동 조회
-            self._fetch_cell_lineage(table_view, model_index)
+        # meta 구조: (table_view, row_id, nav_id)
+        table_view, row_id, nav_id = meta
+        
+        # 1. 메인 윈도우 탭 전환 (nav_id가 있을 경우)
+        main_win = self.parent()
+        if nav_id and hasattr(main_win, "_on_navigation_requested"):
+            main_win._on_navigation_requested(nav_id)
+            if hasattr(main_win, "_nav_rail"):
+                main_win._nav_rail.set_active(nav_id)
+        
+        # 2. 행 이동 및 스크롤
+        model = table_view.model()
+        source_model = getattr(model, 'sourceModel', lambda: model)()
+        
+        # row_id 기반으로 실시간 인덱스 재조회
+        if hasattr(source_model, '_build_row_id_map'):
+            idx_map = source_model._build_row_id_map()
+            row_idx = idx_map.get(row_id)
+            if row_idx is not None:
+                model_index = model.mapFromSource(source_model.index(row_idx, 0)) if hasattr(model, "mapFromSource") else source_model.index(row_idx, 0)
+                
+                table_view.setFocus()
+                # [Fix] ScrollHint 를 EnsureVisible 로 변경하여 행이 화면 중앙으로 '끌려오지' 않고 
+                # 화면에 보이지 않을 때만 최소한으로 스크롤되도록 함
+                table_view.scrollTo(model_index, table_view.ScrollHint.EnsureVisible)
+                table_view.setCurrentIndex(model_index)
+                self._fetch_cell_lineage(table_view, model_index)
 
     def _fetch_cell_lineage(self, table_view, index):
         """특정 셀의 전체 변경 이력을 API에서 가져와 하단에 표시합니다."""

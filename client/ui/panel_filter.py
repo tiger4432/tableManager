@@ -15,6 +15,25 @@ from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal, QTimer
 from PySide6.QtGui import QAction, QIcon
 
 
+class DuplicateFilterProxyModel(QSortFilterProxyModel):
+    """
+    원본 모델(ApiLazyTableModel)에서 중복으로 판명되어 
+    {'_is_duplicate': True} 마커가 박힌 행들을 시각적으로 숨기는 프록시 모델입니다.
+    """
+    def filterAcceptsRow(self, source_row: int, source_parent) -> bool:
+        model = self.sourceModel()
+        if not hasattr(model, "_data") or source_row >= len(model._data):
+            return True
+        
+        row_data = model._data[source_row]
+        # 중복 마커가 있으면 필터링 (숨김)
+        if isinstance(row_data, dict) and row_data.get("_is_duplicate"):
+            return False
+            
+        # 기본 필터링 (부모 클래스 로직 수행 - 필요 시 검색어 필터링 등)
+        return super().filterAcceptsRow(source_row, source_parent)
+
+
 class FilterToolBar(QWidget):
     """상단 2행 레이아웃 패널 — 검색 및 도구 모음."""
     
@@ -36,7 +55,7 @@ class FilterToolBar(QWidget):
         self._main_layout.setSpacing(12) # 행 간격 확대
         
         self.setStyleSheet("""
-            QWidget { background: #11111b; }
+            QWidget { background: #1e1e2e; }
             QLabel { color: #bac2de; font-weight: 500; font-size: 13px; }
             QLineEdit {
                 background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a;
@@ -167,21 +186,19 @@ class FilterToolBar(QWidget):
 
     def create_proxy(self, table_name: str, source_model) -> QSortFilterProxyModel:
         """
-        원본 모델(ApiLazyTableModel)을 QSortFilterProxyModel 로 래핑하여 딕셔너리에 저장하고 반환합니다.
+        원본 모델을 DuplicateFilterProxyModel 로 래핑하여 중복 처리를 지원합니다.
         """
-        proxy = QSortFilterProxyModel(self)
+        proxy = DuplicateFilterProxyModel(self)
         proxy.setSourceModel(source_model)
         proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         proxy.setFilterKeyColumn(-1)          # 모든 컬럼 검색
         self._proxies[table_name] = proxy     # [Refactor] 테이블 명을 키로 하여 저장
 
-        # 결과 수 갱신을 위해 rowsInserted / rowsRemoved 연결
-        # [Phase 73.8] 10ms 지연 제거: 실시간 반응성 확보
-        proxy.rowsInserted.connect(self._update_count_label)
-        proxy.rowsRemoved.connect(self._update_count_label)
-        proxy.modelReset.connect(self._update_count_label)
+        # [Req] Loaded 수치는 실시간 데이터 삽입/삭제가 아닌, 서버 페칭 완료 시점에만 갱신
+        if hasattr(source_model, "batch_fetch_finished"):
+            source_model.batch_fetch_finished.connect(self._update_count_label)
         
-        # [신규] 원본 모델의 실시간 전체 카운트 시그널 연결
+        # [신규] 원본 모델의 실시간 전체(Total) 카운트 시그널 연결
         if hasattr(source_model, "total_count_changed"):
             source_model.total_count_changed.connect(self._update_count_label)
 
@@ -195,51 +212,52 @@ class FilterToolBar(QWidget):
         QTimer.singleShot(10, self._update_count_label)
 
     def set_active_proxy(self, proxy: QSortFilterProxyModel | None):
-        """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 행 수 갱신 기준을 전환합니다."""
+        """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 모드 및 데이터를 전환합니다."""
         self._active_proxy = proxy
         
-        # ── [Phase 73.8] 테이블 모드 전환 (컨트롤 가시성 제어) ──
+        # ── [Phase 73.8] 모드 전환 (시스템 vs 테이블) ──
         is_table = proxy is not None
-        self._set_table_controls_visible(is_table)
+        self._update_ui_mode(is_table)
 
         if is_table:
             source = proxy.sourceModel()
-            # [Phase 73.12] 글로벌 정렬 상태 즉시 주입 (첫 턴 부상 방지)
+            # 글로벌 정렬 상태 주입
             if source and hasattr(source, "set_sort_latest"):
                 source.set_sort_latest(self._sort_latest)
 
-            # 탭 전환 시 해당 모델의 검색 범위(체크박스 상태) 복구
+            # 탭 전환 시 해당 모델의 검색 범위 복구
             if source and hasattr(source, "_search_cols_state"):
                 self._selected_cols = set(source._search_cols_state)
             else:
                 self._selected_cols = set()
             
-            # [Phase 73.7] 탭 전환 시 검색 범위 메뉴 갱신
             self._refresh_scope_menu()
+            self._update_count_label()
         else:
             self._selected_cols = set()
-            
-        # [Phase 73.8] 탭 전환 즉시 카운트 레이블 업데이트
-        self._update_count_label()
 
-    def _set_table_controls_visible(self, visible: bool):
-        """테이블 전용 버튼 및 검색 필드의 가시성을 설정합니다."""
-        self._search_box.setVisible(visible)
-        self._scope_btn.setVisible(visible)
+    def _update_ui_mode(self, is_table: bool):
+        """테이블 모드와 시스템 모드(대시보드 등)에 따라 UI 구성 요소를 가립니다."""
+        # 1행 제어: 검색창, 범위 버튼, 카운트 레이블
+        self._search_box.setVisible(is_table)
+        self._scope_btn.setVisible(is_table)
+        self._count_label.setVisible(is_table)
         
-        # 테이블 전용 액션 버튼들 가시성 제어
-        self._add_row_btn.setVisible(visible)
-        self._export_btn.setVisible(visible)
-        self._upload_btn.setVisible(visible)
-        self._sort_btn.setVisible(visible)
-        self._batch_btn.setVisible(visible)
-        self._copy_header_btn.setVisible(visible)
+        # 2행 제어: 테이블 관련 액션 버튼들
+        self._add_row_btn.setVisible(is_table)
+        self._export_btn.setVisible(is_table)
+        self._upload_btn.setVisible(is_table)
+        self._sort_btn.setVisible(is_table)
+        self._batch_btn.setVisible(is_table)
+        self._copy_header_btn.setVisible(is_table)
         
-        # '+ 새 탭' 버튼은 전역 액션이므로 항상 표시
+        # '+ 새 탭'은 시스템/테이블 공용
         self._add_btn.setVisible(True)
-        
-        # 2행 컨테이너는 항상 표시하되 내부 버튼들로 공간 조절
-        self._row2_container.setVisible(True)
+
+        # 시스템 모드일 때 레이아웃 간격 조정
+        self._main_layout.setSpacing(12 if is_table else 0)
+        if not is_table:
+            self._search_box.clear()
 
     # ------------------------------------------------------------------
     # Private helpers

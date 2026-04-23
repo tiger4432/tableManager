@@ -51,5 +51,115 @@
       "created_at",
       "updated_at"
     ]
+  },
+  "wafer_lot_status": {
+    "business_key": "lot_id",
+    "display_columns": [
+      "lot_id",
+      "wafer_qty",
+      "process_step",
+      "yield_rate",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "equipment_maintenance": {
+    "business_key": "eq_id",
+    "display_columns": [
+      "eq_id",
+      "last_pm_date",
+      "next_pm_date",
+      "status",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "qa_inspection_results": {
+    "business_key": "sample_id",
+    "display_columns": [
+      "sample_id",
+      "defect_type",
+      "severity",
+      "inspector",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "shipping_log": {
+    "business_key": "invoice_no",
+    "display_columns": [
+      "invoice_no",
+      "destination",
+      "ship_date",
+      "carrier",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "employee_roster": {
+    "business_key": "emp_id",
+    "display_columns": [
+      "emp_id",
+      "name",
+      "department",
+      "shift",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "material_bom": {
+    "business_key": "parent_part",
+    "display_columns": [
+      "parent_part",
+      "child_part",
+      "qty_required",
+      "unit",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "yield_analysis_summary": {
+    "business_key": "period",
+    "display_columns": [
+      "period",
+      "target_yield",
+      "actual_yield",
+      "gap",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "energy_consumption_logs": {
+    "business_key": "site_id",
+    "display_columns": [
+      "site_id",
+      "kw_usage",
+      "peak_voltage",
+      "timestamp",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "sub_assembly_vitals": {
+    "business_key": "serial_no",
+    "display_columns": [
+      "serial_no",
+      "torque_value",
+      "glue_pressure",
+      "test_result",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "packaging_dispatch_queue": {
+    "business_key": "order_id",
+    "display_columns": [
+      "order_id",
+      "box_type",
+      "priority",
+      "status",
+      "created_at",
+      "updated_at"
+    ]
   }
 }

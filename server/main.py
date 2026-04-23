@@ -127,6 +127,48 @@ def list_tables():
     """
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
+@app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
+def get_dashboard_summary(db: Session = Depends(get_db)):
+    """
+    대시보드에 표시할 전역 통계 및 테이블별 현황을 반환합니다.
+    """
+    from datetime import datetime, date, timezone
+    import sqlalchemy as sa
+    
+    table_names = list(crud.TABLE_CONFIG.keys())
+    table_stats = []
+    total_global_rows = 0
+    
+    for name in table_names:
+        # [최적화] 각 테이블의 행 개수 및 최신 업데이트 시간 조회
+        count = db.query(sa.func.count(models.DataRow.row_id)).filter(models.DataRow.table_name == name).scalar()
+        
+        last_item = db.query(sa.func.max(sa.func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)))\
+                      .filter(models.DataRow.table_name == name).scalar()
+        
+        table_stats.append(schemas.TableStat(
+            table_name=name,
+            row_count=count,
+            last_updated=to_local_str(last_item) if last_item else "No Activity",
+            status="Active" if (last_item and (datetime.now(timezone.utc) - (last_item.replace(tzinfo=timezone.utc) if last_item.tzinfo is None else last_item)).total_seconds() < 3600) else "Idle"
+        ))
+        total_global_rows += count
+
+    # [신규] 테이블 정렬: 상태순(Active 우선) -> 이름순(A-Z)
+    table_stats.sort(key=lambda x: (x.status != "Active", x.table_name))
+
+    # 오늘의 업데이트 건수 (AuditLog 기준 - 각 항목이 셀 단위 수정임)
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_updates_count = db.query(models.AuditLog).filter(models.AuditLog.timestamp >= today_start).count()
+
+    return schemas.DashboardSummaryResponse(
+        total_tables=len(table_names),
+        total_rows=total_global_rows,
+        today_updates=today_updates_count,
+        table_stats=table_stats,
+        system_health="Excellent"
+    )
+
 @app.get("/tables/{table_name}/data", response_model=schemas.PaginatedDataResponse)
 def get_table_data(
     table_name: str, 
@@ -180,12 +222,9 @@ def get_table_data(
         sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
         sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
     elif order_by == "id":
-        # 사용자가 "자연 정렬"을 원할 경우: BK가 있으면 BK순, 없으면 ID순으로 고성능 정렬
-        # [기능 개선] BK가 비어있는(NULL) 행은 항상 맨 마지막으로 보냄
-        # (business_key_val == None) 은 IS NULL 로 번역되며, False(0) < True(1) 이므로 오름차순 시 NULL(True)이 뒤로 감
+        # 최신순이 꺼졌을 때: 비즈니스 키(BK) 순 정렬을 수행 (BK가 없으면 뒤로 보냄)
         bk_null_last = (models.DataRow.business_key_val == None).asc()
         bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        
         final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
     else:
         sort_expr = models.DataRow.row_id.asc()

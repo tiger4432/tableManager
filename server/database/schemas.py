@@ -102,3 +102,17 @@ class TargetedRowIdRequest(BaseModel):
     cols: Optional[str] = None  # [Phase 73.6] 검색 대상 컬럼 제한 (comma separated)
     order_by: str = "row_id"
     order_desc: bool = False
+
+# --- Dashboard Schemas ---
+class TableStat(BaseModel):
+    table_name: str
+    row_count: int
+    last_updated: Optional[str] = None
+    status: str = "Active" # Active / Idle
+
+class DashboardSummaryResponse(BaseModel):
+    total_tables: int
+    total_rows: int
+    today_updates: int
+    table_stats: list[TableStat]
+    system_health: str = "Excellent"
