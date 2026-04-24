@@ -97,22 +97,6 @@ class FilterToolBar(QWidget):
         
         self._row1_layout.addStretch()
         
-        # 결과 카운터 (고급스러운 태그 스타일)
-        self._count_label = QLabel("  Loaded: 0 / Total: 0  ")
-        self._count_label.setStyleSheet("""
-            QLabel {
-                background: #1e1e2e;
-                color: #a6e3a1;
-                border: 1px solid #313244;
-                border-radius: 12px;
-                padding: 4px 16px;
-                font-family: 'JetBrains Mono', 'Consolas';
-                font-size: 12px;
-                font-weight: bold;
-            }
-        """)
-        self._row1_layout.addWidget(self._count_label)
-        
         self._main_layout.addLayout(self._row1_layout)
 
         # ── [2행] 액션 버튼 그룹 ────────────────────────────────────
@@ -199,24 +183,9 @@ class FilterToolBar(QWidget):
         proxy.setSourceModel(source_model)
         proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         proxy.setFilterKeyColumn(-1)          # 모든 컬럼 검색
-        self._proxies[table_name] = proxy     # [Refactor] 테이블 명을 키로 하여 저장
-
-        # [Req] Loaded 수치는 실시간 데이터 삽입/삭제가 아닌, 서버 페칭 완료 시점에만 갱신
-        if hasattr(source_model, "batch_fetch_finished"):
-            source_model.batch_fetch_finished.connect(self._update_count_label)
-        
-        # [신규] 원본 모델의 실시간 전체(Total) 카운트 시그널 연결
-        if hasattr(source_model, "total_count_changed"):
-            source_model.total_count_changed.connect(self._update_count_label)
-
-
         self._active_proxy = proxy
-
         return proxy
 
-    def _request_count_update(self, *args):
-        """10ms 뒤에 카운트 레이블을 갱신합니다. (Debounce)"""
-        QTimer.singleShot(10, self._update_count_label)
 
     def set_active_proxy(self, proxy: QSortFilterProxyModel | None):
         """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 모드 및 데이터를 전환합니다."""
@@ -239,7 +208,6 @@ class FilterToolBar(QWidget):
                 self._selected_cols = set()
             
             self._refresh_scope_menu()
-            self._update_count_label()
         else:
             self._selected_cols = set()
 
@@ -248,7 +216,6 @@ class FilterToolBar(QWidget):
         # 1행 제어: 검색창, 범위 버튼, 카운트 레이블
         self._search_box.setVisible(is_table)
         self._scope_btn.setVisible(is_table)
-        self._count_label.setVisible(is_table)
         
         # 2행 제어: 테이블 관련 액션 버튼들
         self._add_row_btn.setVisible(is_table)
@@ -271,8 +238,7 @@ class FilterToolBar(QWidget):
     # ------------------------------------------------------------------
 
     def _on_text_changed(self, text: str):
-        # [Phase 73.8] 검색어 입력 즉시 카운트 레이블을 '검색 중...' 상태로 변경하여 반응성 확보
-        self._count_label.setText("  Searching...  ")
+        pass
         
         # [Phase 73.5] 기존 로컬 필터링 비활성화 유지
         
@@ -346,20 +312,6 @@ class FilterToolBar(QWidget):
         # 필터링 즉시 재실행 (Debounce 적용)
         self._search_timer.start(500)
 
-    def _update_count_label(self):
-        proxy = self._active_proxy
-        if not proxy:
-            self._count_label.setText("")
-            return
-            
-        source = proxy.sourceModel()
-        if not source: return
-        
-        # [Phase 73.8] 용어 표준화: Matches(전체 검색 결과) / Loaded(현재 화면에 로드됨)
-        exposed = getattr(source, "_exposed_rows", proxy.rowCount())
-        total = getattr(source, "_total_count", exposed)
-        
-        self._count_label.setText(f" Loaded: {exposed:,} /  Total: {total:,}")
 
     def _on_sort_toggled(self, checked: bool):
         self._sort_latest = checked

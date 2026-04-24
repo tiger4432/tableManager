@@ -536,13 +536,13 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle("AssyManager - Dashboard")
                 self._filter_bar.show()
                 self._filter_bar.set_active_proxy(None)
-                self._refresh_dashboard() # [신규] 대시보드 통계 갱신
-                self._update_row_count_display(0, 0)
+                self._refresh_dashboard()
+                self._update_row_count_display(0, 0, 0)
             elif nav_id == "settings":
                 self.setWindowTitle("AssyManager - Settings")
                 self._filter_bar.show()
                 self._filter_bar.set_active_proxy(None)
-                self._update_row_count_display(0, 0)
+                self._update_row_count_display(0, 0, 0)
             else:
                 table_name = nav_id.replace("table:", "")
                 page_widget = self.stacked.widget(idx)
@@ -551,8 +551,14 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle(f"AssyManager - {table_name}{total_text}")
                 self._filter_bar.show()
                 if model:
-                    # [Phase 73.8] 탭 변경 즉시 전체 카운트 표시 업데이트
-                    self._update_row_count_display(model._exposed_rows, model._total_count)
+                    # [Phase 73.8] 탭 변경 즉시 전체 카운트 표시 업데이트 및 서버 동기화 트리거
+                    self._update_row_count_display(model._exposed_rows, model.loaded_count, model._total_count)
+                    
+                    # 최초 접속이거나 데이터가 없는 상태라면 즉시 갱신 시작
+                    if model._total_count == 0:
+                        model._refresh_total_count()
+                        if model.canFetchMore():
+                            model.fetchMore()
 
     def _on_table_close_requested(self, nav_id: str):
         """테이블 종료 요청 처리 — 리소스 해제 및 UI 제거."""
@@ -853,7 +859,7 @@ class MainWindow(QMainWindow):
         table_view.setModel(proxy)
 
         # ── 행 개수 실시간 업데이트 연결 ──
-        model.total_count_changed.connect(self._update_row_count_display)
+        model.count_changed.connect(self._update_row_count_display)
         model.batch_fetch_finished.connect(self._filter_bar.reset_batch_btn)
         model.status_message_requested.connect(lambda msg: self.statusBar().showMessage(msg, 3000))
 
@@ -1055,11 +1061,11 @@ class MainWindow(QMainWindow):
         
         QThreadPool.globalInstance().start(worker)
 
-    def _update_row_count_display(self, exposed: int, total: int):
+    def _update_row_count_display(self, exposed: int, loaded: int, total: int):
         """[Phase 73.8] 타이머 지연 제거: 실시간으로 화면 표시 갱신."""
-        self._execute_row_count_display(exposed, total)
+        self._execute_row_count_display(exposed, loaded, total)
 
-    def _execute_row_count_display(self, exposed: int, total: int):
+    def _execute_row_count_display(self, exposed: int, loaded: int, total: int):
         """하단 상태 표시줄 및 타이틀 바에 실제로 행 개수 정보를 갱신합니다."""
         curr_idx = self.stacked.currentIndex()
         table_name = self._index_to_table.get(curr_idx)
@@ -1071,8 +1077,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_row_count_label"):
             idx = self.stacked.currentIndex()
             page = self.stacked.widget(idx)
-            # [Phase 73.8] 용어 표준화: Matches(전체 검색 결과) / Loaded(현재 화면에 로드됨)
-            self._row_count_label.setText(f"Loaded: {exposed:,} / Total: {total:,}")
+            # [Phase 73.8] 용어 표준화: Loaded(데이터 적재) / Exposed(영역 확보) / Total(전체)
+            self._row_count_label.setText(f"Loaded: {loaded:,} | Exposed: {exposed:,} | Total: {total:,}")
         
         # 타이틀 바 업데이트 (현재 테이블인 경우에만)
         if self.windowTitle().startswith(f"AssyManager - {table_name}"):

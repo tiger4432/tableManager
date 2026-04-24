@@ -105,7 +105,21 @@ elif duration > 0.55: # 저속 구간
 
 ---
 
-## 4. 실시간 동기화 및 전파 (WS Dispatch)
+## 4. 행 개수 관리 아키텍처 (Row Count Architecture)
+
+메모리 효율성과 사용자 경험을 위해 행 개수를 세 가지 상태로 분리하여 관리합니다.
+
+| 구분 | 변수 명칭 | 정의 | UI 노출 |
+| :--- | :--- | :--- | :--- |
+| **Exposed** | `_exposed_rows` | 사용자가 스크롤 가능한 현재 가상 테이블의 크기 (Placeholder 포함) | `rowCount()` |
+| **Loaded** | `loaded_count` | 서버로부터 실제로 데이터를 수신하여 메모리에 적재된 행 수 | 상태바 `Loaded` |
+| **Total** | `_total_count` | 현재 검색 조건에서 서버에 존재하는 총 데이터 건수 | 상태바 `Total` |
+
+- **시그널 표준**: `count_changed(exposed, loaded, total)` 시그널을 통해 하단 상태바에 실시간 로딩 현황을 전파합니다.
+
+---
+
+## 5. 실시간 동기화 및 전파 (WS Dispatch)
 
 서버의 상태 변화를 모든 활성 탭에 전파하고 히스토리 패널과의 트랜잭션 동기화를 수행합니다.
 

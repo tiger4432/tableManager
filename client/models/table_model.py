@@ -156,34 +156,12 @@ class WsListenerThread(QThread):
         self.quit()
         self.wait()
 
-class ApiDeleteWorker(QRunnable):
-    def __init__(self, url, row_ids, user_name="system"):
-        super().__init__()
-        self.url = url
-        self.row_ids = row_ids
-        self.user_name = user_name
-        self.signals = WorkerSignals()
-
-    @Slot()
-    def run(self):
-        try:
-            import urllib.request
-            import json
-            payload = {"row_ids": self.row_ids, "user_name": self.user_name}
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(self.url, data=data, method="POST")
-            req.add_header("Content-Type", "application/json")
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                self.signals.finished.emit(result)
-        except Exception as e:
-            self.signals.error.emit(str(e))
 
 class ApiLazyTableModel(QAbstractTableModel):
-    total_count_changed = Signal(int, int) # (exposed_rows, total_count)
+    count_changed = Signal(int, int, int) # (exposed_rows, loaded_rows, total_count)
     batch_fetch_finished = Signal()
-    fetch_finished = Signal() # [신규] 모든 종류의 fetchMore 완료 시 알림
-    status_message_requested = Signal(str) # [신규] 상태바 메시지 요청 시그널
+    fetch_finished = Signal()
+    status_message_requested = Signal(str)
 
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
         super().__init__()
@@ -230,6 +208,11 @@ class ApiLazyTableModel(QAbstractTableModel):
         # [GC Stabilization] 실행 중인 업데이트 컨텍스트 추적
         self._pending_update_ctx = {}
 
+    @property
+    def loaded_count(self) -> int:
+        """실제로 데이터가 로드된(None이 아닌) 행 수를 반환합니다."""
+        return sum(1 for r in self._data if r is not None)
+
 
     def _check_for_stale_placeholders(self):
         if self._fetching: return
@@ -268,7 +251,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         # [Phase 73.5] 세션 ID 갱신 무효화 (기존 요청 무시 효과)
         self._search_session_id = str(uuid.uuid4())
         
-        self.total_count_changed.emit(0, 0)
+        self.count_changed.emit(0, 0, 0)
         self.endResetModel()
         
         self._refresh_total_count()
@@ -288,7 +271,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         # [Phase 73.5] 세션 ID 갱신
         self._search_session_id = str(uuid.uuid4())
         
-        self.total_count_changed.emit(0, 0)
+        self.count_changed.emit(0, 0, 0)
         self.endResetModel()
         self._refresh_total_count()
         self.fetchMore()
@@ -315,7 +298,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.endRemoveRows()
             
         self._total_count = new_total
-        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+        self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
 
     def _on_total_refresh_finished(self, result):
         resp_session = result.get("_session_id")
@@ -653,7 +636,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
-                self.total_count_changed.emit(self._exposed_rows, self._total_count)
+                self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
         elif not self._first_fetch:
             # 일반 스크롤 확장 (기존 로직 유지)
             remaining = self._total_count - self._exposed_rows
@@ -664,7 +647,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
-                self.total_count_changed.emit(self._exposed_rows, self._total_count)
+                self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
             return
 
         # 3. 데이터 로딩 (Viewport Request Only)
@@ -720,7 +703,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._data.extend([None] * (self._exposed_rows - len(self._data)))
         self.endInsertRows()
         # [Phase 73.8] 일괄 로드 시에도 즉시 로드 수치 반영
-        self.total_count_changed.emit(self._exposed_rows, self._total_count)
+        self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
 
         # 2. 서버 요청 (이미 확장된 내역까지 포함하여 Gap 없이 채우도록 limit 계산)
         skip = self._server_fetched_count
@@ -760,16 +743,17 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         if self._first_fetch:
             self.beginResetModel()
-            self._set_total_count(total)
             self._data = new
-            # 첫 페칭 시점에 노출 개수 동기화
             self._exposed_rows = len(new)
-            self._first_fetch = False
             self._server_fetched_count = len(new)
+            self._first_fetch = False
             self.endResetModel()
+            
+            # [Fix] 모든 내부 상태가 확정된 후 Ground Truth 동기화 및 시그널 방출
+            self._set_total_count(total)
             self._fetching = False
             self._update_row_id_map()
-            self.fetch_finished.emit() # [신규]
+            self.fetch_finished.emit()
             return
         
         # 만약 모델이 리셋된 상태(_first_fetch=True)인데 이전 세션의 응답이 온 것이라면 무시
@@ -808,9 +792,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 self._exposed_rows = target_exposed
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
-                self.endInsertRows()
-
-            self.total_count_changed.emit(self._exposed_rows, self._total_count)
+            self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
             self.dataChanged.emit(self.index(skip, 0), self.index(skip + len(new) - 1, len(self._columns) - 1))
             if skip == self._server_fetched_count: self._server_fetched_count += len(new)
         
