@@ -195,7 +195,8 @@ class CellSourceManageDialog(QDialog):
             del_btn = QPushButton("🗑️")
             del_btn.setObjectName("deleteBtn")
             del_btn.setFixedSize(30, 30)
-            del_btn.clicked.connect(lambda _, sn=src_name: self._on_delete_source(sn))
+            del_btn.setProperty("source_name", src_name)
+            del_btn.clicked.connect(self._on_delete_btn_clicked)
             
             del_container = QWidget()
             del_layout = QHBoxLayout(del_container)
@@ -206,6 +207,15 @@ class CellSourceManageDialog(QDialog):
 
         # 버튼 그룹 시그널 한 번에 연결
         self.button_group.idClicked.connect(self._on_radio_group_clicked)
+
+    def _on_delete_btn_clicked(self):
+        """삭제 버튼 클릭 시 호출되는 슬롯입니다."""
+        btn = self.sender()
+        if not btn: return
+        source_name = btn.property("source_name")
+        if source_name:
+            self._on_delete_source(source_name)
+
 
     def _on_cell_clicked(self, row, col):
         """행을 클릭하면 해당 행의 라디오 버튼도 체크되도록 함."""

@@ -146,7 +146,9 @@ class NavigationRail(QFrame):
         # 테이블 이름의 언더바(_)를 공백으로 치환하여 가독성 높이고 자동 줄바꿈 유도
         display_text = text.replace("_", " ") if is_table else text
         btn = NavButton(icon_str, display_text)
-        btn.clicked.connect(lambda: self._on_btn_clicked(id_str))
+        btn.setProperty("nav_id", id_str)
+        btn.clicked.connect(self._on_nav_btn_clicked)
+
         
         if is_table:
             self.tab_container_layout.addWidget(btn)
@@ -184,8 +186,14 @@ class NavigationRail(QFrame):
         if action == close_action:
             self.closeRequested.emit(id_str)
 
-    def _on_btn_clicked(self, id_str):
+    def _on_nav_btn_clicked(self):
+        btn = self.sender()
+        if not btn: return
+        id_str = btn.property("nav_id")
+        if not id_str: return
+        
         # 다른 버튼들 체크 해제 (Exclusive behavior)
+
         for bid, btn in self._buttons.items():
             btn.setChecked(bid == id_str)
         

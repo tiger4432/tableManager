@@ -486,6 +486,7 @@ class MainWindow(QMainWindow):
         self._filter_bar.addTabRequested.connect(self._add_new_tab)
         self._filter_bar.addRowRequested.connect(self._on_add_row_requested)
         self._filter_bar.exportRequested.connect(self._on_export_requested)
+        self._filter_bar.downloadsRequested.connect(self._on_show_download_manager)
         self._filter_bar.uploadRequested.connect(self._on_upload_requested)
         self._filter_bar.sortLatestChanged.connect(self._on_sort_mode_changed) # [신규] 정렬 토글 연결
         self._filter_bar.batchLoadRequested.connect(self._on_batch_load_requested) # [신규] 일괄 로드 연결
@@ -503,7 +504,11 @@ class MainWindow(QMainWindow):
         self._ws_thread: WsListenerThread | None = None
         self._active_models: list[ApiLazyTableModel] = []
         self._active_workers = set()
-        self._include_copy_header = False # [신규] 복사 시 헤더 포함 여부 상태
+        self._include_copy_header = False 
+        
+        # ── 다운로드 매니저 초기화 ──
+        from ui.dialog_downloads import DownloadManagerDialog
+        self._download_manager = DownloadManagerDialog(self)
 
         # ── 서버로부터 모든 테이블 목록 조회 및 초기화 ──────────────
         print('TABLE 초기화')
@@ -949,35 +954,62 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _on_export_requested(self):
-        """현재 활성화된 테이블의 데이터를 CSV로 익스포트합니다."""
+        """현재 활성화된 테이블의 검색 조건에 맞는 데이터를 CSV로 추출합니다."""
         idx = self.stacked.currentIndex()
         if idx <= 0: return
         
         table_name = self._index_to_table.get(idx)
         if not table_name: return
         
-        # 파일 저장 다이얼로그 (Default: 테이블명_추출_시각.csv)
+        page = self.stacked.widget(idx)
+        model = getattr(page, "_source_model", None)
+        if not model: return
+
+        # 1. 파일 저장 경로 결정
         from datetime import datetime
         default_name = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "CSV 저장", default_name, "CSV Files (*.csv)"
+            self, "CSV 저장 (최대 100만 행)", default_name, "CSV Files (*.csv)"
         )
+        if not file_path: return
+
+        # 2. 검색 및 정렬 파라미터 추출
+        import urllib.parse
+        params = {
+            "q": model._search_query or "",
+            "cols": model._search_cols or "",
+            "order_by": "updated_at" if model._sort_latest else "id",
+            "order_desc": "true" if model._sort_latest else "false"
+        }
         
-        if not file_path:
-            return
-            
-        # 서버에서 CSV 다운로드
-        import urllib.request
-        url = config.get_table_export_url(table_name)
+        # 3. 서버에서 백그라운드 스트리밍 다운로드 시작
+        from models.table_model import ApiExportWorker
+        import uuid
+        task_id = str(uuid.uuid4())[:8]
         
-        try:
-            with urllib.request.urlopen(url) as response:
-                content = response.read()
-                with open(file_path, "wb") as f:
-                    f.write(content)
-            QMessageBox.information(self, "추출 완료", f"데이터가 성공적으로 저장되었습니다:\n{file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "추출 실패", f"데이터 추출 중 오류 발생: {e}")
+        base_url = config.get_table_export_url(table_name)
+        url = f"{base_url}?{urllib.parse.urlencode(params)}"
+        
+        worker = ApiExportWorker(task_id, url, file_path)
+        
+        # 다운로드 매니저에 등록 및 표시
+        self._download_manager.add_download(task_id, os.path.basename(file_path), worker)
+        self._download_manager.show()
+        self._download_manager.raise_()
+        
+        # 메인 윈도우에서는 간략한 상태만 표시
+        self.statusBar().showMessage(f"🚀 {table_name} 다운로드 시작 (ID: {task_id})", 3000)
+        
+        self._active_workers.add(worker)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_show_download_manager(self):
+        """다운로드 매니저 창을 소생 시키거나 표시합니다."""
+        self._download_manager.show()
+        self._download_manager.raise_()
+        self._download_manager.activateWindow()
+
+
 
 
     def _on_upload_requested(self):

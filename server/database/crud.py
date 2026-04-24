@@ -152,13 +152,25 @@ def apply_row_update_internal(
         
         if is_new or (str(old_val) != str(new_val)):
             changed_cols.append(col_name)
-            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "system"), transaction_id=transaction_id)
+            # [최적화] 사용자(human) 직접 수정인 경우만 상세 셀 단위 로그 기록
+            if update_item.source_name == "user":
+                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "user"), transaction_id=transaction_id)
             
         cell["value"] = new_val
         cell["priority_source"] = top_src
         cell["is_overwrite"] = ("user" in cell["sources"])
         cell["updated_by"] = (update_item.updated_by or "system")
         
+    # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
+    if changed_cols and update_item.source_name != "user":
+        summary_msg = f"{len(changed_cols)}개 필드 업데이트" if not is_new else "신규 데이터 생성"
+        create_audit_log(
+            db, table_name, row.row_id, "ROW_UPDATE",
+            None, summary_msg, update_item.source_name,
+            (update_item.updated_by or "system"),
+            transaction_id=transaction_id
+        )
+
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     if key_col and key_col in row.data:
@@ -171,7 +183,8 @@ def apply_row_update_internal(
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
     """통합 업데이트를 배치로 처리합니다."""
-    tx_id = str(uuid6.uuid7())
+    # 외부 주입 ID가 있으면 사용, 없으면 신규 생성
+    tx_id = batch.transaction_id or str(uuid6.uuid7())
     # 1. [O(1) 최적화] 대상 행들을 한 번에 조회하여 캐시 구축 (Pre-fetch)
     target_ids = [u.row_id for u in batch.updates if u.row_id]
     target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]

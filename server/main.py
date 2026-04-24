@@ -128,19 +128,40 @@ def list_tables():
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogResponse])
-def get_recent_audit_logs(limit: int = 50, db: Session = Depends(get_db)):
+def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
     """
-    시스템 전체 또는 테이블별 최신 변경 이력을 가져옵니다.
-    [필터링] 현재 테이블에 실존하는 row_id에 대한 로그만 반환합니다.
+    최신 로그 100 '그룹(Transaction)'을 가져옵니다.
+    한 그룹에 수천 건의 변경이 있을 경우를 대비해 전체 행은 5,000건으로 제한합니다.
     """
-    from sqlalchemy import exists
-    # DataRow 테이블에 row_id가 존재하는지 확인하는 서브쿼리
-    stmt = exists().where(models.DataRow.row_id == models.AuditLog.row_id)
+    from sqlalchemy import desc, func
     
-    logs = db.query(models.AuditLog).filter(
-        (models.AuditLog.row_id == "_BATCH_") | stmt
-    ).order_by(models.AuditLog.timestamp.desc()).limit(limit).all()
-    return logs
+    # 1. 최근 로그 5000건을 먼저 조회 (성능 및 안전 장치)
+    raw_logs = db.query(models.AuditLog)\
+                 .order_by(desc(models.AuditLog.timestamp))\
+                 .limit(5000).all()
+                 
+    if not raw_logs: return []
+
+    # 2. 클라이언트와 동일한 그룹화 로직 적용하여 상위 100그룹만 선별
+    groups = []
+    seen_tids = set()
+    final_logs = []
+
+    for log in raw_logs:
+        tid = log.transaction_id
+        if tid:
+            if tid not in seen_tids:
+                if len(seen_tids) >= limit_groups: continue
+                seen_tids.add(tid)
+            final_logs.append(log)
+        else:
+            # transaction_id가 없는 단건 기록
+            if len(seen_tids) < limit_groups:
+                final_logs.append(log)
+                # 단건도 그룹 하나로 간주할지 여부는 정책에 따라 (여기서는 그룹 수에 포함하지 않음)
+
+    return final_logs
+
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_db)):
@@ -437,46 +458,97 @@ import io
 from datetime import datetime
 
 @app.get("/tables/{table_name}/export")
-def export_table_csv(table_name: str, db: Session = Depends(get_db)):
+def export_table_csv(
+    table_name: str, 
+    q: str = None, 
+    cols: str = None,
+    order_by: str = "row_id",
+    order_desc: bool = False,
+    db: Session = Depends(get_db)
+):
     """
-    테이블의 모든 데이터를 CSV 형식으로 추출하여 스트리밍 반환합니다.
-    (Spotfire 등 외부 분석 도구 연동용)
+    현재 검색/정렬 조건에 맞는 데이터를 최대 100만 행까지 CSV로 스트리밍 추출합니다.
     """
-    rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
+    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
     
-    if not rows:
-        raise HTTPException(status_code=404, detail="No data found for this table")
+    # [Filter] get_table_data와 검색 로직 동기화
+    if q:
+        from sqlalchemy import cast, String, or_
+        safe_q = q.replace("%", "\\%").replace("_", "\\_")
+        if cols:
+            col_list = [c.strip() for c in cols.split(",") if c.strip()]
+            conditions = []
+            for col in col_list:
+                if col in ["created_at", "updated_at"]:
+                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
+                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+                elif col in ["row_id", "id"]:
+                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
+                else:
+                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
+            if conditions:
+                query = query.filter(or_(*conditions))
+        else:
+            query = query.filter(cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\"))
 
-    # 1. 컬럼 헤더 구성 (모든 행의 키 집합 추출)
-    all_keys = set()
-    for row in rows:
-        all_keys.update(row.data.keys())
+    # [Sort] 정렬 조건 동기화
+    from sqlalchemy.sql import func
+    if order_by == "updated_at":
+        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+        sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
+        final_sort = [sort_expr, models.DataRow.row_id.asc()]
+    elif order_by == "id":
+        bk_null_last = (models.DataRow.business_key_val == None).asc()
+        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
+        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+    else:
+        final_sort = [models.DataRow.row_id.asc()]
+
+    # [Safety Limit] 최대 100만 행으로 제한하며 정렬 적용
+    total_count = min(query.count(), 1000000)
+    query = query.order_by(*final_sort).limit(total_count)
     
-    # 정렬: 일반 컬럼 -> 시스템 컬럼 순
+    # 1. 헤더 구성을 위한 샘플링 (첫 행 기준)
+    first_row = query.first()
+    if not first_row:
+        raise HTTPException(status_code=404, detail="No data matches the current filter")
+
     system_cols = ["created_at", "updated_at"]
-    business_cols = [k for k in sorted(all_keys) if k not in system_cols]
+    business_cols = [k for k in sorted(first_row.data.keys()) if k not in system_cols]
     header = business_cols + system_cols
+
+    # 2. 크기 샘플링 예측 (1행당 평균 바이트 계산)
+    sample_rows = query.limit(5).all()
+    sample_io = io.StringIO()
+    sample_writer = csv.writer(sample_io)
+    sample_writer.writerow(header) # 헤더 포함
+    header_size = len(sample_io.getvalue())
+    sample_io.seek(0); sample_io.truncate(0)
+    
+    for row in sample_rows:
+        inject_system_columns(row)
+        sample_writer.writerow([row.data.get(col, {}).get("value") if isinstance(row.data.get(col, {}), dict) else row.data.get(col) for col in header])
+    
+    avg_row_size = len(sample_io.getvalue()) / len(sample_rows) if sample_rows else 100
+    estimated_total_size = int(header_size + (avg_row_size * total_count))
 
     def generate():
         output = io.StringIO()
         writer = csv.writer(output)
-        
-        # Excel 한글 깨짐 방지용 BOM 추가
-        output.write('\ufeff')
+        output.write('\ufeff') # BOM for Excel
         writer.writerow(header)
         yield output.getvalue()
         output.seek(0); output.truncate(0)
 
-        for row in rows:
-            # 시스템 컬럼 및 KST 시간 정보를 data 에 주입
+
+        # yield_per를 사용하여 DB 서버에서 한 번에 1000개씩만 페치 (메모리 보호)
+        # SQLite는 yield_per를 지원하지 않을 수 있지만, 대용량 스케일(PG/MySQL) 대응용
+        for row in query.yield_per(1000):
             inject_system_columns(row)
-            
             row_vals = []
             for col in header:
                 cell = row.data.get(col, {})
-                # CellData 구조일 경우 value 추출 (이중 래핑 방지: value 자체가 dict인 경우 재귀 추출)
                 val = cell.get("value") if isinstance(cell, dict) else cell
-                # 마이그레이션 오류 등으로 인한 이중 래핑 방어
                 if isinstance(val, dict) and "value" in val:
                     val = val.get("value")
                 row_vals.append(val)
@@ -485,10 +557,15 @@ def export_table_csv(table_name: str, db: Session = Depends(get_db)):
             yield output.getvalue()
             output.seek(0); output.truncate(0)
 
-    filename = f"{table_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    response = StreamingResponse(generate(), media_type="text/csv")
-    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    return response
+    filename = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    headers = {
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Content-Length": str(estimated_total_size),
+        "X-Total-Rows": str(total_count)
+    }
+    return StreamingResponse(generate(), media_type="text/csv", headers=headers)
+
+
 
 @app.get("/tables/{table_name}/schema")
 def get_table_schema(table_name: str, db: Session = Depends(get_db)):
@@ -604,19 +681,20 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
             "data": row.data
         })
     
-    # WebSocket 브로드캐스트 (대량 작업 시 500개씩 청크 분할 전송)
-    user_name = batch.updates[0].updated_by if batch.updates else "system"
-    CHUNK_SIZE = 500
-    for i in range(0, len(msg_items), CHUNK_SIZE):
-        chunk = msg_items[i:i + CHUNK_SIZE]
-        msg = {
-            "event": "batch_row_upsert",
-            "table_name": table_name,
-            "items": chunk,
-            "change_count": len(chunk), # 해당 청크의 개수만 전달
-            "updated_by": user_name
-        }
-        await manager.broadcast(json.dumps(msg))
+    # WebSocket 브로드캐스트 (batch.silent가 False인 경우에만 수행)
+    if not batch.silent:
+        user_name = batch.updates[0].updated_by if batch.updates else "system"
+        CHUNK_SIZE = 500
+        for i in range(0, len(msg_items), CHUNK_SIZE):
+            chunk = msg_items[i:i + CHUNK_SIZE]
+            msg = {
+                "event": "batch_row_upsert",
+                "table_name": table_name,
+                "items": chunk,
+                "change_count": len(chunk), 
+                "updated_by": user_name
+            }
+            await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells)}
 
@@ -643,9 +721,10 @@ async def upload_file(table_name: str, file: UploadFile = File(...)):
     target_dir = os.path.join(base_dir, "ingestion_workspace", table_name, "raws")
     
     # 2. 디렉토리가 없으면 생성 (setup_workspace.py가 미리 생성해두지만 안전을 위해)
-    os.makedirs(target_dir, exist_ok=True)
-    
-    file_path = os.path.join(target_dir, file.filename)
+    # 2. 파일명 중복 방지 (기존명_UUID.ext)
+    orig_name, ext = os.path.splitext(file.filename)
+    unique_name = f"{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = os.path.join(target_dir, unique_name)
     
     # 3. 파일 저장
     try:

@@ -40,6 +40,7 @@ class FilterToolBar(QWidget):
     addTabRequested = Signal()
     addRowRequested = Signal()
     exportRequested = Signal()
+    downloadsRequested = Signal() # [신규] 매니저 호출용
     searchRequested = Signal(str, str)
     uploadRequested = Signal()
     sortLatestChanged = Signal(bool)
@@ -136,6 +137,12 @@ class FilterToolBar(QWidget):
         self._export_btn.setStyleSheet("background: #fab387; color: #1e1e2e;")
         self._export_btn.clicked.connect(self.exportRequested.emit)
         self._row2_layout.addWidget(self._export_btn)
+
+        self._dl_manager_btn = QPushButton("📋 작업")
+        self._dl_manager_btn.setToolTip("다운로드 매니저 열기")
+        self._dl_manager_btn.setStyleSheet("background: #45475a; color: #cdd6f4; width: 40px;")
+        self._dl_manager_btn.clicked.connect(self.downloadsRequested.emit)
+        self._row2_layout.addWidget(self._dl_manager_btn)
 
         self._upload_btn = QPushButton("📤 Upload")
         self._upload_btn.setStyleSheet("background: #cba6f7; color: #1e1e2e;")
@@ -302,9 +309,18 @@ class FilterToolBar(QWidget):
             # [Phase 73.8] 복구된 _selected_cols 상태를 기반으로 체크박스 렌더링
             action.setChecked(col in self._selected_cols)
             
-            # 클로저 이슈 방지를 위한 default argument 사용
-            action.triggered.connect(lambda checked, c=col: self._on_scope_toggled(c, checked))
+            action.setData(col)
+            action.triggered.connect(self._on_action_scope_triggered)
             self._scope_menu.addAction(action)
+
+    def _on_action_scope_triggered(self, checked: bool):
+        """검색 범위 액션 클릭 시 호출되는 슬롯입니다."""
+        action = self.sender()
+        if not action: return
+        col = action.data()
+        if col:
+            self._on_scope_toggled(col, checked)
+
 
     def _on_batch_btn_clicked(self):
         """1K 로드 클릭 시 시각적 피드백 제공 및 시그널 발생."""

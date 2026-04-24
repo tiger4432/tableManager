@@ -61,6 +61,8 @@ class GeneralUpdateItem(BaseModel):
 
 class GeneralUpdateBatch(BaseModel):
     updates: list[GeneralUpdateItem]
+    transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
+    silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략
 
 class RowDeleteBatch(BaseModel):
     row_ids: list[str]

@@ -195,6 +195,9 @@ class IngestionHandler(FileSystemEventHandler):
         
         # 4. 배치 단위로 정규화 및 전역 전송 (Agent Optimization)
         print('배치 전송')
+        import uuid
+        file_tx_id = str(uuid.uuid4()) # [핵심] 파일 단위 글로벌 트랜잭션 ID 생성
+        
         base_url = f"http://{endpoint}/tables/{table_name}/upsert/batch"
         batch_size = 500
         
@@ -228,14 +231,20 @@ class IngestionHandler(FileSystemEventHandler):
                 continue
 
             try:
-                # [통합 업데이트 API 적용]
+                # [적기 통보 최적화] 마지막 청크인 경우에만 UI 새로고침 신호(silent=False)를 보냄
+                is_last_chunk = (i + batch_size >= len(rows))
+                
                 unified_url = f"http://{endpoint}/tables/{table_name}/data/updates"
-                payload = json.dumps({"updates": items}).encode("utf-8")
+                payload = json.dumps({
+                    "updates": items,
+                    "transaction_id": file_tx_id,
+                    "silent": not is_last_chunk  # 마지막이 아니면 조용히(Silent) 전송
+                }).encode("utf-8")
                 
                 req = urllib.request.Request(unified_url, data=payload, method="PUT")
                 req.add_header("Content-Type", "application/json")
                 with urllib.request.urlopen(req) as response:
-                    logger.info(f"Unified batch update success ({len(items)} rows). Status: {response.status}")
+                    logger.info(f"Unified batch update success ({len(items)} rows, silent={not is_last_chunk}). Status: {response.status}")
             except Exception as e:
                 logger.error(f"Failed to send unified batch update: {e}")
 
