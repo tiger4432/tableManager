@@ -5,7 +5,7 @@ from datetime import datetime
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread, QTimer
 
 class WorkerSignals(QObject):
-    finished = Signal(dict)
+    finished = Signal(object)
     error = Signal(str)
 
 class ApiFetchWorker(QRunnable):
@@ -26,9 +26,16 @@ class ApiFetchWorker(QRunnable):
                 # 세션 ID를 결과와 함께 반환
                 if isinstance(result, dict):
                     result["_session_id"] = self.session_id
-                self.signals.finished.emit(result)
+                
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
         except Exception as e:
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
 
 class ApiSchemaWorker(QRunnable):
     def __init__(self, url):
@@ -44,9 +51,15 @@ class ApiSchemaWorker(QRunnable):
             req = urllib.request.Request(self.url)
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
-                self.signals.finished.emit(result)
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
         except Exception as e:
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
 
 class ApiSingleRowFetchWorker(QRunnable):
     def __init__(self, url):
@@ -62,9 +75,15 @@ class ApiSingleRowFetchWorker(QRunnable):
             req = urllib.request.Request(self.url)
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 result = json.loads(response.read().decode())
-                self.signals.finished.emit(result)
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
         except Exception as e:
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
 
 class ApiGeneralUpdateWorker(QRunnable):
     def __init__(self, url: str, updates: list[dict]):
@@ -89,11 +108,20 @@ class ApiGeneralUpdateWorker(QRunnable):
             with urllib.request.urlopen(req) as response:
                 res = json.loads(response.read().decode())
                 if res.get("status") == "success":
-                    self.signals.finished.emit(res)
+                    try:
+                        self.signals.finished.emit(res)
+                    except RuntimeError:
+                        pass
                 else:
-                    self.signals.error.emit(res.get("status", "unknown error"))
+                    try:
+                        self.signals.error.emit(res.get("status", "unknown error"))
+                    except RuntimeError:
+                        pass
         except Exception as e:
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
 
 class ApiUploadWorker(QRunnable):
     def __init__(self, url, file_path):
@@ -155,9 +183,87 @@ class ApiTargetedRowIdWorker(QRunnable):
                 result = json.loads(raw)
                 if isinstance(result, dict):
                     result["_session_id"] = self.session_id
-                self.signals.finished.emit(result)
+                
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
         except Exception as e:
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
+
+class ApiRowIndexDiscoveryWorker(QRunnable):
+    def __init__(self, url: str, q: str = "", order_by: str = "row_id", order_desc: bool = False, cols: str = ""):
+        super().__init__()
+        self.url = url
+        self.q = q
+        self.order_by = order_by
+        self.order_desc = order_desc
+        self.cols = cols
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import urllib.request
+        import json
+        try:
+            payload = {
+                "q": self.q,
+                "cols": self.cols,
+                "order_by": self.order_by,
+                "order_desc": self.order_desc
+            }
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                self.url, 
+                data=data, 
+                method="POST", 
+                headers={'Content-Type': 'application/json'}
+            )
+            print(f"[DEBUG-Worker] Discovery request started: {self.url}")
+            with urllib.request.urlopen(req, timeout=10.0) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                print(f"[DEBUG-Worker] Discovery SUCCESS. Result: {result}")
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
+        except Exception as e:
+            print(f"[DEBUG-Worker] Discovery FAILED: {e}")
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
+
+class ApiAuditLogWorker(QRunnable):
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        import urllib.request
+        import json
+        print(f"[DEBUG-Worker] ApiAuditLogWorker started: {self.url}")
+        try:
+            req = urllib.request.Request(self.url, method="GET")
+            with urllib.request.urlopen(req, timeout=10.0) as response:
+                raw_data = response.read().decode("utf-8")
+                result = json.loads(raw_data)
+                print(f"[DEBUG-Worker] ApiAuditLogWorker SUCCESS. Received {len(result) if isinstance(result, list) else 'non-list'} items.")
+                try:
+                    self.signals.finished.emit(result)
+                except RuntimeError:
+                    pass
+        except Exception as e:
+            print(f"[DEBUG-Worker] ApiAuditLogWorker FAILED: {e}")
+            try:
+                self.signals.error.emit(str(e))
+            except RuntimeError:
+                pass
 
 class WsListenerThread(QThread):
     message_received = Signal(dict)
@@ -666,10 +772,24 @@ class ApiLazyTableModel(QAbstractTableModel):
         # 1. 스냅샷: 현재 로딩 중인지 확인
         is_jump_request = self._pending_target_skip is not None
         
-        # 2. 노출 범위 확장 (Adaptive Expansion - Shell Only)
-        # Qt가 스크롤바 바닥을 쳐서 호출했거나, 명시적으로 봇물을 터트려야 할 때
-        # 단, 첫 페칭(Metadata 수신용)은 반드시 진행해야 함
-        if not is_jump_request and not self._first_fetch:
+        # [Fix] 점프 요청 시에는 일반 fetching 가드를 무시하거나 중단하고 최우선 처리
+        if self._fetching and not is_jump_request:
+            return
+            
+        # 2. 노출 범위 확장 (Adaptive Expansion)
+        # 점프 요청이거나, Qt가 스크롤바 바닥을 쳤을 때
+        if is_jump_request:
+            # 점프 대상이 현재 노출 범위를 넘어선다면 미리 공간 확보 (Shell Extension)
+            if self._pending_target_skip + self._chunk_size > self._exposed_rows:
+                new_limit = self._pending_target_skip + self._chunk_size
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, new_limit - 1)
+                self._exposed_rows = new_limit
+                if len(self._data) < self._exposed_rows:
+                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
+                self.total_count_changed.emit(self._exposed_rows, self._total_count)
+        elif not self._first_fetch:
+            # 일반 스크롤 확장 (기존 로직 유지)
             remaining = self._total_count - self._exposed_rows
             increment = min(self._chunk_size, remaining)
             if increment > 0:
@@ -678,13 +798,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
-                # [Phase 73.8] 즉시 카운트 업데이트 시그널 송출 (Loaded 수치 선점)
                 self.total_count_changed.emit(self._exposed_rows, self._total_count)
-            # 순차 확장이 목적이라면 여기서 종료 (네트워크 요청 안 함)
             return
 
         # 3. 데이터 로딩 (Viewport Request Only)
-        if self._fetching: return
+        if self._fetching and not is_jump_request: return
         
         # 타이머 중지 (명시적 호출 시)
         if self._jump_timer.isActive(): self._jump_timer.stop()
@@ -694,6 +812,8 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetch_start_time = time.time() # [신규] 페칭 시작 시간 기록
         
         skip = self._pending_target_skip if self._pending_target_skip is not None else 0
+        print(f"[DEBUG-Model] fetchMore starting. skip={skip}, chunk={self._chunk_size}, is_jump={is_jump_request}")
+        
         self._pending_target_skip = None
         self._active_target_skip = skip
         
@@ -705,6 +825,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
             url += f"&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(target_cols)}"
             
+        print(f"[DEBUG-Model] Request URL: {url}")
         worker = ApiFetchWorker(url, session_id=self._search_session_id)
         worker.signals.finished.connect(self._on_fetch_finished)
         worker.signals.error.connect(self._on_fetch_error)

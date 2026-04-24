@@ -129,7 +129,7 @@ graph TD
 - **DLL 로드 실패**: `sys.path` 조작 로직 및 Conda 라이브러리 경로를 확인하십시오.
 - **WebSocket 지연**: 서버의 `active_connections` 리스트 유실 여부를 서버 로그에서 확인하십시오.
 - **고스트 행 현상**: `row_id` 데이터 타입(str) 정규화 여부 및 `_normalize_row_data` 동작을 확인하십시오.
-- **타임존 에러**: 서버 UTC 저장 및 클라이언트 Local 변환 로직(`astimezone()`)을 점검하십시오.
+- **타임존 에러**: 서버 UTC 저장 및 클라이언트 Local 변환 로직(`astimezone()`)을 점검하십시오. 특히 DB 쿼리(filter) 시에는 반드시 타임존이 지정된(Aware) `datetime` 객체를 사용해야 500 오류를 방지할 수 있습니다.
 
 ---
 

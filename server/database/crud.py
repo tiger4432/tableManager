@@ -3,6 +3,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from typing import Any, Optional
 from . import models, schemas
 import uuid
+import uuid6
 import json
 import os
 from datetime import datetime
@@ -75,7 +76,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
 
-def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str):
+def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
     log = models.AuditLog(
         table_name=table_name,
@@ -84,7 +85,8 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         old_value=sanitize_to_utf8(old_val),
         new_value=sanitize_to_utf8(new_val),
         source_name=source,
-        updated_by=user
+        updated_by=user,
+        transaction_id=transaction_id
     )
     db.add(log)
 
@@ -92,7 +94,8 @@ def apply_row_update_internal(
     db: Session, 
     table_name: str, 
     update_item: schemas.GeneralUpdateItem,
-    row_cache: dict = None
+    row_cache: dict = None,
+    transaction_id: str = None
 ) -> tuple[models.DataRow, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
@@ -119,7 +122,7 @@ def apply_row_update_internal(
     is_new = False
     if not row:
         row = models.DataRow(
-            row_id=update_item.row_id or str(uuid.uuid4()),
+            row_id=update_item.row_id or str(uuid6.uuid7()),
             table_name=table_name,
             data={}
         )
@@ -149,7 +152,7 @@ def apply_row_update_internal(
         
         if is_new or (str(old_val) != str(new_val)):
             changed_cols.append(col_name)
-            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "system"))
+            create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "system"), transaction_id=transaction_id)
             
         cell["value"] = new_val
         cell["priority_source"] = top_src
@@ -168,6 +171,7 @@ def apply_row_update_internal(
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
     """통합 업데이트를 배치로 처리합니다."""
+    tx_id = str(uuid6.uuid7())
     # 1. [O(1) 최적화] 대상 행들을 한 번에 조회하여 캐시 구축 (Pre-fetch)
     target_ids = [u.row_id for u in batch.updates if u.row_id]
     target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
@@ -191,7 +195,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     total_changed_cells = [] # list of (row_id, col_name)
     
     for item in batch.updates:
-        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache)
+        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id)
         prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
         unique_results[row.row_id] = (row, is_new or prev_is_new)
         
@@ -213,7 +217,7 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     new_rows = []
     for _ in range(count):
         row = models.DataRow(
-            row_id=str(uuid.uuid4()),
+            row_id=str(uuid6.uuid7()),
             table_name=table_name,
             data={}
         )
@@ -223,9 +227,11 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     
     if count > 0:
         summary_msg = f"{table_name} / {count}개의 새 행이 생성됨"
+        tx_id = str(uuid6.uuid7())
         create_audit_log(
             db, table_name, "_BATCH_", "CREATE",
-            None, summary_msg, "system", user_name
+            None, summary_msg, "system", user_name,
+            transaction_id=tx_id
         )
     
     db.commit()
@@ -252,9 +258,11 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     if deleted_count > 0:
         # 요약 히스토리 남기기
         summary_msg = f"{table_name} / {deleted_count}개의 행이 삭제됨"
+        tx_id = str(uuid6.uuid7())
         create_audit_log(
             db, table_name, "_BATCH_", "DELETE", 
-            None, summary_msg, "system", user_name
+            None, summary_msg, "system", user_name,
+            transaction_id=tx_id
         )
         db.commit()
     return deleted_count

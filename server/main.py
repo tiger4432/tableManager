@@ -127,6 +127,21 @@ def list_tables():
     """
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
+@app.get("/audit_logs/recent", response_model=list[schemas.AuditLogResponse])
+def get_recent_audit_logs(limit: int = 50, db: Session = Depends(get_db)):
+    """
+    시스템 전체 또는 테이블별 최신 변경 이력을 가져옵니다.
+    [필터링] 현재 테이블에 실존하는 row_id에 대한 로그만 반환합니다.
+    """
+    from sqlalchemy import exists
+    # DataRow 테이블에 row_id가 존재하는지 확인하는 서브쿼리
+    stmt = exists().where(models.DataRow.row_id == models.AuditLog.row_id)
+    
+    logs = db.query(models.AuditLog).filter(
+        (models.AuditLog.row_id == "_BATCH_") | stmt
+    ).order_by(models.AuditLog.timestamp.desc()).limit(limit).all()
+    return logs
+
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_db)):
     """
@@ -158,7 +173,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     table_stats.sort(key=lambda x: (x.status != "Active", x.table_name))
 
     # 오늘의 업데이트 건수 (AuditLog 기준 - 각 항목이 셀 단위 수정임)
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
     today_updates_count = db.query(models.AuditLog).filter(models.AuditLog.timestamp >= today_start).count()
 
     return schemas.DashboardSummaryResponse(
@@ -357,6 +372,63 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: S
             matched_ids.append(results[local_idx][0])
             
     return {"row_ids": matched_ids}
+
+@app.post("/tables/{table_name}/row_index/{row_id}")
+def get_row_index(table_name: str, row_id: str, req: schemas.RowIndexDiscoveryRequest, db: Session = Depends(get_db)):
+    """
+    특정 row_id가 현재 정렬/필터링 조건 하에서 몇 번째(Offset)에 위치하는지 계산하여 반환합니다.
+    밀리언 로우 환경에서도 고속 점프를 지원하기 위해 Window Function을 활용합니다.
+    """
+    from sqlalchemy import func, over, literal_column
+    
+    # 1. 기본 쿼리 및 필터링 (get_table_data와 동일 로직)
+    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    if req.q:
+        from sqlalchemy import cast, String, or_
+        safe_q = req.q.replace("%", "\\%").replace("_", "\\_")
+        if req.cols:
+            col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
+            conditions = []
+            for col in col_list:
+                if col in ["created_at", "updated_at"]:
+                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
+                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+                elif col in ["row_id", "id"]:
+                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
+                else:
+                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
+            if conditions:
+                query = query.filter(or_(*conditions))
+        else:
+            query = query.filter(cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\"))
+
+    # 2. 정렬 순서 결정 (get_table_data와 동일 로직)
+    if req.order_by == "updated_at":
+        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+        sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
+        final_orders = [sort_expr, models.DataRow.row_id.asc()]
+    elif req.order_by == "id":
+        bk_null_last = (models.DataRow.business_key_val == None).asc()
+        bk_sort = models.DataRow.business_key_val.desc() if req.order_desc else models.DataRow.business_key_val.asc()
+        final_orders = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+    else:
+        final_orders = [models.DataRow.row_id.asc()]
+
+    # 3. Window Function을 사용하여 전체 데이터 셋에서의 순번(Offset) 계산
+    # SELECT pos FROM (SELECT row_id, (ROW_NUMBER() OVER (...)) - 1 as pos FROM data_rows ...) WHERE row_id = :id
+    subquery = query.with_entities(
+        models.DataRow.row_id,
+        (func.row_number().over(order_by=final_orders) - 1).label("pos")
+    ).subquery()
+    
+    result = db.query(subquery.c.pos).filter(subquery.c.row_id == row_id).first()
+    
+    if result is None:
+        return {"row_id": row_id, "index": -1, "status": "not_found"}
+        
+    print(f"[Discovery] Row {row_id} found at offset {result[0]}")
+    return {"row_id": row_id, "index": result[0], "status": "success"}
 
 
 from fastapi.responses import StreamingResponse

@@ -43,5 +43,6 @@ class AuditLog(Base):
     
     source_name = Column(String)            # user, parser_a, etc.
     updated_by = Column(String)             # user_id or agent_name
+    transaction_id = Column(String, index=True, nullable=True) # [Phase 2] 배치 작업 그룹화용 ID
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now())

@@ -118,3 +118,19 @@ def get_batch_delete_url(table_name: str) -> str:
 def get_target_row_ids_url(table_name: str) -> str:
     """Targeted RowID Scanner (오프셋 기반 타겟팅 UUID 고속 추출)"""
     return f"{API_BASE_URL}/tables/{table_name}/row_ids/target"
+
+def get_audit_log_recent_url(limit: int = 50) -> str:
+    """전역 최신 감사 로그 목록 조회 엔드포인트"""
+    return f"{API_BASE_URL}/audit_logs/recent?limit={limit}"
+
+def get_row_index_discovery_url(table_name: str, row_id: str) -> str:
+    """특정 행의 현재 오프셋 위치 검색 엔드포인트"""
+    return f"{API_BASE_URL}/tables/{table_name}/row_index/{row_id}"
+
+def get_cell_history_url(table_name: str, row_id: str, col_name: str) -> str:
+    """특정 셀의 전체 변경 이력(Lineage) 조회 엔드포인트"""
+    return f"{API_BASE_URL}/tables/{table_name}/rows/{row_id}/cells/{col_name}/history"
+
+def get_dashboard_summary_url() -> str:
+    """대시보드 통계 요약 조회 엔드포인트"""
+    return f"{API_BASE_URL}/dashboard/summary"

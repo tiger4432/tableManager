@@ -25,6 +25,7 @@ class AuditLogResponse(BaseModel):
     new_value: Any
     source_name: str
     updated_by: str
+    transaction_id: Optional[str] = None
     timestamp: datetime
 
     @field_validator("timestamp", mode="after")
@@ -100,6 +101,12 @@ class TargetedRowIdRequest(BaseModel):
     offsets: list[int]
     q: Optional[str] = None
     cols: Optional[str] = None  # [Phase 73.6] 검색 대상 컬럼 제한 (comma separated)
+    order_by: str = "row_id"
+    order_desc: bool = False
+
+class RowIndexDiscoveryRequest(BaseModel):
+    q: Optional[str] = None
+    cols: Optional[str] = None
     order_by: str = "row_id"
     order_desc: bool = False
 

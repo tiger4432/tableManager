@@ -1,5 +1,6 @@
 import sys
 import os
+from datetime import datetime
 
 # ── Windows DLL 로드 워크어라운드 (환경 원천 격리) ──
 if os.name == 'nt':
@@ -217,15 +218,22 @@ class ExcelTableView(QTableView):
             worker = ApiDeleteWorker(url, final_row_ids, config.CURRENT_USER)
             
             def _on_finished(res):
-                if hasattr(self.window(), 'statusBar'):
-                    self.window().statusBar().showMessage(f"삭제 완료: {res.get('deleted_count', 0)}개 행이 제거됨", 3000)
+                main_win = self.window()
+                if hasattr(main_win, 'statusBar'):
+                    main_win.statusBar().showMessage(f"삭제 완료: {res.get('deleted_count', 0)}개 행이 제거됨", 3000)
                 print(f"[Delete] Successfully deleted: {res}")
+                
+                # [Fix] 삭제 성공 시 히스토리 패널 즉시 갱신
+                if hasattr(main_win, "_history_panel"):
+                    main_win._history_panel.refresh_history()
             
             def _on_error(err):
-                if hasattr(self.window(), 'statusBar'):
-                    self.window().statusBar().showMessage("행 삭제 실패", 3000)
+                main_win = self.window()
+                if hasattr(main_win, 'statusBar'):
+                    main_win.statusBar().showMessage("행 삭제 실패", 3000)
                 print(f"[Delete] Error: {err}")
-                QMessageBox.critical(self, "삭제 오류", f"행 일괄 삭제 중 오류 발생: {err}")
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(self.window(), "삭제 오류", f"행 일괄 삭제 중 오류 발생: {err}")
             
             worker.signals.finished.connect(_on_finished)
             worker.signals.error.connect(_on_error)
@@ -590,10 +598,8 @@ class MainWindow(QMainWindow):
         worker = ApiSchemaWorker(url)
         
         def _on_tables_loaded(result):
-            print(f"[Debug] Tables loaded from server: {result}")
             tables = result.get("tables", [])
             if not tables:
-                print("[Debug] No tables found, initializing default")
                 self._init_table_tab("inventory_master")
             else:
                 # [Phase 1] 자동 로딩 제거: 이제 사용자가 대시보드에서 선택해서 엽니다.
@@ -654,7 +660,14 @@ class MainWindow(QMainWindow):
 
     def _refresh_dashboard(self):
         """서버로부터 최신 대시보드 요약 정보를 가져와 반영합니다."""
-        url = f"{config.API_BASE_URL}/dashboard/summary"
+        # [Resilience] 잦은 리프레시 방지 (최소 2초 간격)
+        now = datetime.now()
+        if hasattr(self, "_last_dashboard_refresh"):
+            if (now - self._last_dashboard_refresh).total_seconds() < 2:
+                return
+        self._last_dashboard_refresh = now
+
+        url = config.get_dashboard_summary_url()
         from models.table_model import ApiSchemaWorker
         worker = ApiSchemaWorker(url)
         
@@ -665,6 +678,7 @@ class MainWindow(QMainWindow):
                 
         def _on_error(err):
             print(f"[Dashboard] Refresh failed: {err}")
+            self.statusBar().showMessage(f"대시보드 동기화 실패: {err}", 3000)
             if worker in self._active_workers:
                 self._active_workers.remove(worker)
 
@@ -674,9 +688,10 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _on_ws_error(self, err):
-        print(f"[MainWS] CRITICAL: {err}")
-        self._ws_status_label.setText("  ● WebSocket: Error  ")
-        self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
+        print(f"[MainWS] Connection lost or error: {err}")
+        self._ws_status_label.setText("  ● WebSocket: Reconnecting...  ")
+        self._ws_status_label.setStyleSheet("color: #fab387;") # Peach/Orange (Reconnecting)
+        self.statusBar().showMessage(f"WebSocket 연결 유실: {err}", 5000)
 
     def _dispatch_ws_message(self, data: dict):
         """수신된 WS 메시지를 활성 모델들에 전파하고, 단일 진입점에서 히스토리 로그를 기록합니다."""
@@ -689,16 +704,7 @@ class MainWindow(QMainWindow):
             
         # 2. [통합] 히스토리 패널에 단일 로그 생성 요청
         if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert", "cell_update", "batch_cell_update"]:
-            # 테이블이 열려 있다면 table_view를 찾아 전달 (이동 기능용)
-            table_view = None
-            nav_id = f"table:{table_name}"
-            if nav_id in self._nav_to_index:
-                idx = self._nav_to_index[nav_id]
-                page = self.stacked.widget(idx)
-                # 메인 모듈 내부에 이미 정의된 ExcelTableView 클래스 직접 사용 (임포트 제거)
-                table_view = page.findChild(ExcelTableView)
-            
-            self._history_panel.log_event(data, table_view, nav_id)
+            self._history_panel.log_event(data)
 
         # 3. 대시보드 통계 갱신 (행 개수 변화 관련 이벤트인 경우)
         if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert"]:
@@ -827,7 +833,8 @@ class MainWindow(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        table_view = ExcelTableView()
+        table_view = ExcelTableView(self)
+        table_view.setObjectName(f"table_view")
         table_view.setAlternatingRowColors(True)
 
         # Connect to REST API data model
@@ -849,9 +856,6 @@ class MainWindow(QMainWindow):
         table_view.fileDropped.connect(
             lambda path: self._execute_file_upload(table_name, path)
         )
-
-        # ── 히스토리 패널 연결 ──
-        self._history_panel.connect_model(model, table_name, table_view)
 
         layout.addWidget(table_view)
 
