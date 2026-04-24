@@ -1,42 +1,35 @@
-# AssyManager 에이전트 Starting Prompt (Master Guideline)
+# AssyManager 에이전트 표준 작업 헌장 (Standard Operating Procedures)
 
-이 문서는 `AssyManager` 프로젝트의 에이전트가 준수해야 할 핵심 지침과 기술 표준을 정의합니다. 모든 에이전트는 작업을 시작하기 전 이 가이드를 숙지해야 합니다.
+이 문서는 에이전트가 모든 작업을 수행할 때 반드시 준수해야 하는 **협업 및 품질 관리 절차**를 정의합니다.
 
-## ⚖️ 1. 핵심 철학 (Core Philosophy)
-- **무결성 우선 (Integrity First)**: 데이터 정합성과 앱의 안정성은 모든 기능 구현의 최우선 가치다.
-- **예외 없는 방어 (Defensive Programming)**: 네트워크 지연, 리소스 소멸, 연타 클릭 등 모든 예외 상황을 설계 단계에서 차단한다.
-- **기록으로의 자산화 (Documentation as Asset)**: 단순 코딩이 아닌, 시스템의 설계 의도와 변화 과정을 정교하게 기록한다.
+## 1. 선 계획 후 실행 (Analysis & Planning First)
+에이전트는 어떠한 코드 수정도 계획 승인 전에는 수행할 수 없습니다.
 
-## 🛠️ 2. 기술 개발 표준 (Technical Standards)
+### A. 분석 및 연구 단계
+- 요청된 기능을 구현하기 위해 영향을 받는 기존 파일과 메서드를 정밀 분석한다.
+- 잠재적인 부작용(Side-effects)과 아키텍처적 충돌 가능성을 파악한다.
 
-### A. 비동기 처리 및 안전성
-- **Thread Safety**: 모든 백그라운드 작업은 `QRunnable`을 사용하며, 워커의 시그널 발생부는 반드시 `RuntimeError` 방어 래퍼를 씌운다.
-- **GC 보호 (Callback Persistence)**: 비동기 응답 핸들러(Slot)는 지역 클로저가 아닌 클래스 멤버 메서드에 연결하고, 필요한 컨텍스트는 멤버 변수에 저장하여 가비지 컬렉션에 의한 신호 유실을 원천 차단한다.
-- **Status Feedback**: 모든 비동기 구간은 좌하단 상태바(`set_status`)를 통해 사용자에게 소요 시간과 성공 여부를 즉시 보고한다.
+### B. 구현 계획서 작성 (Implementation Plan)
+- **대상 명시**: 수정이 필요한 파일 경로와 해당 파일 내의 메서드/클래스를 정확히 나열한다.
+- **수정 내용의 구체화**: "로직 수정"과 같은 모호한 표현 대신, **"A 메서드의 X 라인에서 Y 조건문을 Z 방식으로 변경"**과 같이 상세히 작성한다.
+- **사용자 검토 및 승인**: 작성된 계획서를 사용자에게 제시하고, 명시적인 **'승인'**을 받은 후에만 실행 단계로 진입한다.
 
-### B. 내비게이션 및 데이터 엔지니어링
-- **Data Jump Logic**: 서버 측에서의 인덱스 탐색(`Discovery`) -> 모델 점프 우선순위 반영 -> 가상 테이블 확장 순으로 진행한다.
-- **Server-side Integrity**: 히스토리 추적 시 서버에서 대상 행의 실제 존재 여부(`EXISTS`)를 검증하여 유효하지 않은 이동 시도를 사전에 차단한다.
-- **Sync Debouncing**: WebSocket 이벤트는 300ms 디바운싱을 거쳐 화면을 갱신함으로써 UI 스래싱을 방지한다.
+## 2. 정교한 이력 기록 (Documentation Discipline)
+작업이 완료된 후, 시스템의 영구 자산으로서 이력을 남긴다.
 
-## 📝 3. 형상 관리 및 기록 표준 (Documentation)
+### A. 히스토리 파일 작성 (docs/history/)
+- 모든 주요 변경 사항은 `docs/history/YYYYMMDD_HHMMSS_설명이름.md`에 기록한다.
+- **코드 스니펫 필수 포함**: 변경된 핵심 로직의 전/후 또는 최종 형태의 **코드 조각(Snippet)**을 반드시 포함하여, 문서만 보고도 기술적 변화를 완벽히 이해할 수 있게 한다.
+- **아키텍처 영향 보고**: 해당 수정이 다른 모듈이나 데이터 흐름에 미친 영향을 기술한다.
 
-### A. 히스토리 기록 (docs/history/) - [전 필수 단계]
-- **명칭**: `docs/history/YYYYMMDD_HHMMSS_설명이름.md`
-- **필수 포함 사항**:
-    - **Context**: 작업의 기술적 배경과 해결하고자 한 문제.
-    - **Architecture**: 데이터 흐름 및 클래스 관계의 변화.
-    - **Code Snippets**: 핵심 로직의 원형을 포함하여 향후 유지보수를 돕는다.
-    - **Impact**: 해당 변경이 시스템 전체에 미치는 영향 및 검증 결과.
+## 3. 기술적 안전판 (Technical Resilience)
+- **비동기 안전성**: 모든 백그라운드 작업은 시그널 안전장치(`RuntimeError` 래퍼)를 갖추어야 한다.
+- **자원 유실 방지**: 콜백 핸들러는 가비지 컬렉션(GC)으로부터 보호받을 수 있도록 클래스 멤버 구조로 설계한다.
+- **상태 동기화**: WebSocket 및 API 응답 시 디바운싱과 가드 플래그를 통해 레이스 컨디션을 방지한다.
 
-### B. 작업 워크플로우
-- **Planning Phase**: 복잡한 작업은 연구 -> 계획서 작성 -> 사용자 승인 단계를 거친다.
-- **Execution Tracking**: `task.md`를 통해 실행 과정을 실시간 추적한다.
-- **Final Report**: `walkthrough.md`를 통해 시각적 피드백과 최종 요약을 제공한다.
-
-## 🎨 4. 디자인 및 미학 (Aesthetics)
-- **Premium Design**: 브라우저 기본 색상을 지양하고 최적화된 HSL 배색, 구글 폰트 적용, 부드러운 애니메이션(Micro-interaction)을 적용하여 고품질의 UX를 제공한다.
-- **Glassmorphism**: 현대적인 레이아웃과 블러 효과를 적재적소에 활용한다.
+## 4. 품질 및 미학 (Quality & Aesthetics)
+- 모든 UI 작업은 프리미엄 디자인 표준(Google Fonts, curated color, micro-animations)을 준수한다.
+- 작업 완료 후 반드시 시각적/기능적 검증 결과를 `walkthrough.md`로 보고한다.
 
 ---
-*AssyManager Enterprise - System Governance v2.1*
+**주의**: 이 지침을 어기고 독단적으로 코드를 수정하거나, 코드 스니펫이 없는 부실한 이력을 작성하는 행위는 에이전트의 중대한 직무 유기로 간주한다.
