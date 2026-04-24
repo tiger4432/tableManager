@@ -31,5 +31,16 @@
 - 모든 UI 작업은 프리미엄 디자인 표준(Google Fonts, curated color, micro-animations)을 준수한다.
 - 작업 완료 후 반드시 시각적/기능적 검증 결과를 `walkthrough.md`로 보고한다.
 
+## 5. 가용 스킬 및 참조 리소스 (Available Skills)
+에이전트는 특정 도메인 작업 시 아래 전문 스킬을 우선적으로 참조하여 전문성을 유지한다.
+
+- **DataIngester**: 다양한 원천 데이터(Raw Data) 파싱 및 서버 적재 로직 관리
+- **ExcelInteractionExpert**: 데스크톱 QTableView의 다중 셀 조작 및 클립보드 인터랙션 최적화
+- **GitManagement**: 프로젝트 형상 관리 정책 및 커밋 컨벤션 준수 여부 관리
+- **IntegrityAndQAExpert**: 시스템 무결성 수호 및 아키텍처 보호, 정밀 에러 분석
+- **PanelUIExpert**: 사이드 패널, 시각화 필터링, 이력 관리 UI 고도화
+- **WebSocketExpert**: 실시간 WebSocket 통신 및 데이터 동기화 안정성 확보
+- **SubAgentExecution**: 하위 에이전트 간의 작업 명령 및 결과 보고 표준 매뉴얼
+
 ---
 **주의**: 이 지침을 어기고 독단적으로 코드를 수정하거나, 코드 스니펫이 없는 부실한 이력을 작성하는 행위는 에이전트의 중대한 직무 유기로 간주한다.
