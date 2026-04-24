@@ -708,7 +708,7 @@ class MainWindow(QMainWindow):
             model._on_websocket_broadcast(data)
             
         # 2. [통합] 히스토리 패널에 단일 로그 생성 요청
-        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert", "cell_update", "batch_cell_update"]:
+        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert"]:
             self._history_panel.log_event(data)
 
         # 3. 대시보드 통계 갱신 (행 개수 변화 관련 이벤트인 경우)

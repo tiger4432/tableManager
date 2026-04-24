@@ -1,6 +1,10 @@
 from pydantic import BaseModel, field_validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+import datetime as dt_pkg
+
+# [성능 최적화] 타임존 객체 캐싱
+LOCAL_TIMEZONE = dt_pkg.datetime.now(dt_pkg.timezone.utc).astimezone().tzinfo
 
 class CellData(BaseModel):
     value: Any                          # 현재 표출되고 있는 최종 값
@@ -34,7 +38,7 @@ class AuditLogResponse(BaseModel):
         if v:
             if v.tzinfo is None:
                 v = v.replace(tzinfo=timezone.utc)
-            return v.astimezone()
+            return v.astimezone(LOCAL_TIMEZONE)
         return v
 
     class Config:
@@ -86,7 +90,7 @@ class DataRowResponse(DataRowBase):
         if v:
             if v.tzinfo is None:
                 v = v.replace(tzinfo=timezone.utc)
-            return v.astimezone()
+            return v.astimezone(LOCAL_TIMEZONE)
         return v
 
     class Config:

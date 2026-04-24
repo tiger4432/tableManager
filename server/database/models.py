@@ -20,11 +20,11 @@ class DataRow(Base):
 
     # [핵심] 1,000만 건 규모의 데이터 최적화 색인 일람
     __table_args__ = (
-        # [A] 테이블별 품번 정렬용 복합 색인
-        Index("idx_table_bk", "table_name", "business_key_val"),
+        # [A] 테이블별 품번 정렬용 복합 색인 (Covering Index 전환: row_id 추가)
+        Index("idx_table_bk", "table_name", "business_key_val", "row_id"),
         
-        # [B] 테이블별 최신순 정렬용 복합 색인
-        Index("idx_table_updated", "table_name", "updated_at"),
+        # [B] 테이블별 최신순 정렬용 복합 색인 (Covering Index 전환: row_id 추가)
+        Index("idx_table_updated", "table_name", "updated_at", "row_id"),
         
         # [C] JSONB 전용 GIN 색인: 데이터 내부 키/밸류 초고속 검색 지원 (PostgreSQL 전용)
         Index("idx_data_gin", "data", postgresql_using="gin"),

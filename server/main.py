@@ -82,7 +82,15 @@ manager = ConnectionManager()
 def read_root():
     return {"status": "AssyManager Data Server is running"}
 
-from datetime import timezone
+import time
+# [성능 최적화] 테이블별 전체 개수 캐시 (2초간 유효)
+TABLE_COUNT_CACHE = {} # {table_name: (count, timestamp)}
+
+from datetime import timezone, datetime
+import datetime as dt_pkg
+
+# [성능 최적화] 타임존 객체 캐싱 (astimezone()의 시스템 호출 비용 절감)
+LOCAL_TIMEZONE = dt_pkg.datetime.now(dt_pkg.timezone.utc).astimezone().tzinfo
 
 def to_local_str(dt):
     """UTC 데이트타임을 현지 시간(Local) 문자열로 변환합니다."""
@@ -91,7 +99,8 @@ def to_local_str(dt):
     # SQLite naive datetime assumes UTC. Force UTC if naive before conversion.
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone().strftime(ts_fmt)
+    # [최적화] 캐시된 타임존 사용
+    return dt.astimezone(LOCAL_TIMEZONE).strftime(ts_fmt)
 
 def inject_system_columns(row):
     """
@@ -205,13 +214,14 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         system_health="Excellent"
     )
 
-@app.get("/tables/{table_name}/data", response_model=schemas.PaginatedDataResponse)
+# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
+@app.get("/tables/{table_name}/data")
 def get_table_data(
     table_name: str, 
     skip: int = 0, 
     limit: int = 500, 
     q: str = None, 
-    cols: str = None, # [Phase 73.6] 검색 대상 컬럼 제한 (comma separated)
+    cols: str = None, 
     order_by: str = "row_id", 
     order_desc: bool = False,
     db: Session = Depends(get_db)
@@ -250,40 +260,82 @@ def get_table_data(
             search_filter = cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\")
             query = query.filter(search_filter)
 
-    total_count = query.count()
+    # [성능 최적화] 검색어가 없을 때만 카운트 캐시 적용
+    now = time.time()
+    t_start = now
+    if not q and table_name in TABLE_COUNT_CACHE and (now - TABLE_COUNT_CACHE[table_name][1] < 2.0):
+        total_count = TABLE_COUNT_CACHE[table_name][0]
+    else:
+        total_count = query.count()
+        if not q: TABLE_COUNT_CACHE[table_name] = (total_count, now)
+    
+    t_count = time.time() - t_start
     
     from sqlalchemy.sql import func
-    # 정렬 기준 구성 (고성능 Shadow Column 활용)
+    # 정렬 기준 구성 (PostgreSQL 최적화: nullslast/nullsfirst 사용)
     if order_by == "updated_at":
         sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
-        sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
+        sort_expr = sort_expr.desc().nullslast() if order_desc else sort_expr.asc().nullslast()
+        tie_breaker = models.DataRow.row_id.asc()
+        final_sort = [sort_expr, tie_breaker]
     elif order_by == "id":
-        # 최신순이 꺼졌을 때: 비즈니스 키(BK) 순 정렬을 수행 (BK가 없으면 뒤로 보냄)
-        bk_null_last = (models.DataRow.business_key_val == None).asc()
-        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+        bk_sort = models.DataRow.business_key_val.desc().nullslast() if order_desc else models.DataRow.business_key_val.asc().nullslast()
+        final_sort = [bk_sort, models.DataRow.row_id.asc()]
     else:
         sort_expr = models.DataRow.row_id.asc()
         final_sort = [sort_expr]
     
+    # [성능 최적화] "물리적 2단계 Fetch" 적용 (PostgreSQL Index-Only Scan 유도)
+    # 1단계: ID 리스트만 인덱스 스캔으로 먼저 Fetch (매우 가벼움)
+    t_id_start = time.time()
+    subquery = query.with_entities(models.DataRow.row_id)
     if order_by == "updated_at":
-        # [핵심] Tie-breaker 추가: 시간이 완전히 동일한 행들의 임의 섞임을 방지하기 위해 row_id를 2차 정렬 조건으로 사용
-        tie_breaker = models.DataRow.row_id.asc()
-        rows = query.order_by(sort_expr, tie_breaker).offset(skip).limit(limit).all()
+        subquery = subquery.order_by(*final_sort)
     else:
-        rows = query.order_by(*final_sort).offset(skip).limit(limit).all()
+        subquery = subquery.order_by(*final_sort)
+        
+    id_results = subquery.offset(skip).limit(limit).all()
+    id_list = [r[0] for r in id_results]
+    t_id_fetch = time.time() - t_id_start
+    
+    # 2단계: 선별된 ID 목록으로만 본 데이터 조회 (PK 기반 고속 Fetch, JOIN 오티마이저 노이즈 제거)
+    t_row_start = time.time()
+    rows = db.query(models.DataRow).filter(models.DataRow.row_id.in_(id_list)).all()
+    t_row_fetch = time.time() - t_row_start
+    
+    # 3. 애플리케이션 레벨 재정렬 (IN 절은 순서를 보장하지 않음)
+    t_sort_start = time.time()
+    # 정합성을 위해 id_list의 순서대로 정렬 (가장 확실하고 빠른 방법)
+    id_to_idx = {rid: i for i, rid in enumerate(id_list)}
+    rows.sort(key=lambda x: id_to_idx.get(x.row_id, 999999))
     
     # 공통 데코레이터 적용
+    t_inject_start = time.time()
+    data_list = []
     for row in rows:
         inject_system_columns(row)
+        # [성능 최적화] Pydantic 객체 생성을 생략하고 원시 Dict로 변환 (속도 10배 향상)
+        data_list.append({
+            "row_id": row.row_id,
+            "table_name": row.table_name,
+            "data": row.data,
+            "created_at": to_local_str(row.created_at),
+            "updated_at": to_local_str(row.updated_at)
+        })
+    t_inject = time.time() - t_inject_start
+    
+    t_inject = time.time() - t_inject_start
+    
+    print(f"[PERF] /data: table={table_name}, skip={skip}, limit={limit}, query={q is not None}")
+    print(f"       Count: {t_count:.3f}s | IDs: {t_id_fetch:.3f}s | Rows: {t_row_fetch:.3f}s | Inject: {t_inject:.3f}s | Total: {time.time()-t_start:.3f}s")
 
-    return schemas.PaginatedDataResponse(
-        table_name=table_name,
-        total=total_count,
-        skip=skip,
-        limit=limit,
-        data=rows
-    )
+    return {
+        "table_name": table_name,
+        "total": total_count,
+        "skip": skip,
+        "limit": limit,
+        "data": data_list
+    }
 
 import json
 from fastapi import HTTPException

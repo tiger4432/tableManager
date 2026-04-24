@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from PySide6.QtCore import QObject, Signal, Slot, QTimer, QThreadPool
+from PySide6.QtCore import QObject, Signal, Slot, QTimer, QThreadPool, Qt
 from PySide6.QtGui import QColor
 
 class HistoryItemData:
@@ -240,10 +240,10 @@ class HistoryNavigator(QObject):
             skip = (target_offset // chunk_size) * chunk_size
             
             source_model._pending_target_skip = skip
-            source_model.fetchMore()
             
-            # 4. 최종 점프
-            QTimer.singleShot(700, self._step4_final_hop)
+            # 4. 최종 점프: 타이머 대신 fetch_finished 시그널에 즉시 응답 (SingleShot)
+            source_model.fetch_finished.connect(self._step4_final_hop, Qt.ConnectionType.SingleShotConnection)
+            source_model.fetchMore()
         else:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self._ctx["parent_widget"], "이동 실패", "행을 찾을 수 없습니다.")

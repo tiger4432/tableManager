@@ -9,262 +9,106 @@ class WorkerSignals(QObject):
     finished = Signal(object)
     error = Signal(str)
 
-class ApiFetchWorker(QRunnable):
+class BaseApiWorker(QRunnable):
+    """중복되는 API 요청 로직을 처리하는 베이스 워커 클래스."""
+    def __init__(self, url: str, method: str = "GET", payload: dict = None, headers: dict = None):
+        super().__init__()
+        self.url = url
+        self.method = method
+        self.payload = payload
+        self.headers = headers or {}
+        self.signals = WorkerSignals()
+
+    def run(self):
+        import urllib.request
+        import json
+        try:
+            data = None
+            if self.payload:
+                data = json.dumps(self.payload).encode("utf-8")
+                if "Content-Type" not in self.headers:
+                    self.headers["Content-Type"] = "application/json"
+            
+            req = urllib.request.Request(self.url, data=data, method=self.method, headers=self.headers)
+            with urllib.request.urlopen(req, timeout=10.0) as response:
+                raw = response.read().decode("utf-8")
+                result = json.loads(raw)
+                self.handle_result(result)
+        except Exception as e:
+            try: self.signals.error.emit(str(e))
+            except RuntimeError: pass
+
+    def handle_result(self, result):
+        try: self.signals.finished.emit(result)
+        except RuntimeError: pass
+
+class ApiFetchWorker(BaseApiWorker):
+    """세션 관리가 포함된 데이터 페칭 워커."""
     def __init__(self, url, session_id: str = ""):
-        super().__init__()
-        self.url = url
+        super().__init__(url)
         self.session_id = session_id
-        self.signals = WorkerSignals()
 
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            req = urllib.request.Request(self.url)
-            with urllib.request.urlopen(req, timeout=5.0) as response:
-                result = json.loads(response.read().decode())
-                # 세션 ID를 결과와 함께 반환
-                if isinstance(result, dict):
-                    result["_session_id"] = self.session_id
-                
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
+    def handle_result(self, result):
+        if isinstance(result, dict):
+            result["_session_id"] = self.session_id
+        super().handle_result(result)
 
-class ApiSchemaWorker(QRunnable):
-    def __init__(self, url):
-        super().__init__()
-        self.url = url
-        self.signals = WorkerSignals()
+class ApiSchemaWorker(BaseApiWorker):
+    """테이블 스키마 전용 워커."""
+    pass
 
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            req = urllib.request.Request(self.url)
-            with urllib.request.urlopen(req, timeout=5.0) as response:
-                result = json.loads(response.read().decode())
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
-
-class ApiSingleRowFetchWorker(QRunnable):
-    def __init__(self, url):
-        super().__init__()
-        self.url = url
-        self.signals = WorkerSignals()
-
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            req = urllib.request.Request(self.url)
-            with urllib.request.urlopen(req, timeout=5.0) as response:
-                result = json.loads(response.read().decode())
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
-
-class ApiGeneralUpdateWorker(QRunnable):
+class ApiGeneralUpdateWorker(BaseApiWorker):
+    """데이터 업데이트(PUT) 전용 워커."""
     def __init__(self, url: str, updates: list[dict]):
-        super().__init__()
-        self.url = url
-        self.updates = updates
-        self.signals = WorkerSignals()
-
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            payload = {"updates": self.updates}
-            data = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(
-                self.url, 
-                data=data, 
-                method="PUT", 
-                headers={'Content-Type': 'application/json'}
-            )
-            with urllib.request.urlopen(req) as response:
-                res = json.loads(response.read().decode())
-                if res.get("status") == "success":
-                    try:
-                        self.signals.finished.emit(res)
-                    except RuntimeError:
-                        pass
-                else:
-                    try:
-                        self.signals.error.emit(res.get("status", "unknown error"))
-                    except RuntimeError:
-                        pass
-        except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
+        super().__init__(url, method="PUT", payload={"updates": updates})
 
 class ApiUploadWorker(QRunnable):
+    """외부 라이브러리(httpx)를 사용하므로 베이스 클래스에서 예외 적용."""
     def __init__(self, url, file_path):
         super().__init__()
         self.url = url
         self.file_path = file_path
         self.signals = WorkerSignals()
 
-    @Slot()
     def run(self):
         import httpx
         import os
         try:
             filename = os.path.basename(self.file_path)
             with open(self.file_path, "rb") as f:
-                files = {"file": (filename, f)}
                 with httpx.Client(timeout=30.0) as client:
-                    response = client.post(self.url, files=files)
+                    response = client.post(self.url, files={"file": (filename, f)})
                     if response.status_code == 200:
                         self.signals.finished.emit(response.json())
                     else:
-                        self.signals.error.emit(f"Server error: {response.status_code} - {response.text}")
+                        self.signals.error.emit(f"Server error: {response.status_code}")
         except Exception as e:
             self.signals.error.emit(str(e))
 
-class ApiTargetedRowIdWorker(QRunnable):
+class ApiTargetedRowIdWorker(BaseApiWorker):
+    """특정 오프셋의 UUID 추출 워커."""
     def __init__(self, url: str, offsets: list[int], search_query: str = "", order_by: str = "updated_at", order_desc: bool = True, session_id: str = "", cols: str = ""):
-        super().__init__()
-        self.url = url
-        self.offsets = offsets
-        self.search_query = search_query
-        self.order_by = order_by
-        self.order_desc = order_desc
+        payload = {
+            "offsets": offsets, "q": search_query, "cols": cols,
+            "order_by": order_by, "order_desc": order_desc
+        }
+        super().__init__(url, method="POST", payload=payload)
         self.session_id = session_id
-        self.cols = cols # [Phase 73.6]
-        self.signals = WorkerSignals()
 
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            payload = {
-                "offsets": self.offsets,
-                "q": self.search_query,
-                "cols": self.cols, # [Phase 73.6]
-                "order_by": self.order_by,
-                "order_desc": self.order_desc
-            }
-            data = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(
-                self.url, 
-                data=data, 
-                method="POST", 
-                headers={'Content-Type': 'application/json'}
-            )
-            with urllib.request.urlopen(req, timeout=10.0) as response:
-                raw = response.read().decode("utf-8")
-                result = json.loads(raw)
-                if isinstance(result, dict):
-                    result["_session_id"] = self.session_id
-                
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
+    def handle_result(self, result):
+        if isinstance(result, dict):
+            result["_session_id"] = self.session_id
+        super().handle_result(result)
 
-class ApiRowIndexDiscoveryWorker(QRunnable):
+class ApiRowIndexDiscoveryWorker(BaseApiWorker):
+    """로그 위치 역조회 디스커버리 워커."""
     def __init__(self, url: str, q: str = "", order_by: str = "row_id", order_desc: bool = False, cols: str = ""):
-        super().__init__()
-        self.url = url
-        self.q = q
-        self.order_by = order_by
-        self.order_desc = order_desc
-        self.cols = cols
-        self.signals = WorkerSignals()
+        payload = {"q": q, "cols": cols, "order_by": order_by, "order_desc": order_desc}
+        super().__init__(url, method="POST", payload=payload)
 
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        try:
-            payload = {
-                "q": self.q,
-                "cols": self.cols,
-                "order_by": self.order_by,
-                "order_desc": self.order_desc
-            }
-            data = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(
-                self.url, 
-                data=data, 
-                method="POST", 
-                headers={'Content-Type': 'application/json'}
-            )
-            print(f"[DEBUG-Worker] Discovery request started: {self.url}")
-            with urllib.request.urlopen(req, timeout=10.0) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                print(f"[DEBUG-Worker] Discovery SUCCESS. Result: {result}")
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            print(f"[DEBUG-Worker] Discovery FAILED: {e}")
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
-
-class ApiAuditLogWorker(QRunnable):
-    def __init__(self, url: str):
-        super().__init__()
-        self.url = url
-        self.signals = WorkerSignals()
-
-    @Slot()
-    def run(self):
-        import urllib.request
-        import json
-        print(f"[DEBUG-Worker] ApiAuditLogWorker started: {self.url}")
-        try:
-            req = urllib.request.Request(self.url, method="GET")
-            with urllib.request.urlopen(req, timeout=10.0) as response:
-                raw_data = response.read().decode("utf-8")
-                result = json.loads(raw_data)
-                print(f"[DEBUG-Worker] ApiAuditLogWorker SUCCESS. Received {len(result) if isinstance(result, list) else 'non-list'} items.")
-                try:
-                    self.signals.finished.emit(result)
-                except RuntimeError:
-                    pass
-        except Exception as e:
-            print(f"[DEBUG-Worker] ApiAuditLogWorker FAILED: {e}")
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
+class ApiAuditLogWorker(BaseApiWorker):
+    """히스토리 로그 전용 워커."""
+    pass
 
 class WsListenerThread(QThread):
     message_received = Signal(dict)
@@ -338,6 +182,7 @@ class ApiDeleteWorker(QRunnable):
 class ApiLazyTableModel(QAbstractTableModel):
     total_count_changed = Signal(int, int) # (exposed_rows, total_count)
     batch_fetch_finished = Signal()
+    fetch_finished = Signal() # [신규] 모든 종류의 fetchMore 완료 시 알림
     status_message_requested = Signal(str) # [신규] 상태바 메시지 요청 시그널
 
     def __init__(self, table_name: str, base_api_url: str = config.API_BASE_URL):
@@ -703,17 +548,6 @@ class ApiLazyTableModel(QAbstractTableModel):
 
 
 
-            elif event in ["cell_update", "batch_cell_update"]:
-                updates = [data] if event == "cell_update" else data.get("updates", [])
-                min_r = float('inf'); max_r = -1
-                for u in updates:
-                    rid = str(u.get("row_id"))
-                    idx = self._row_id_map.get(rid)
-                    if idx is not None and idx < len(self._data):
-                        cell = self._data[idx].setdefault("data", {}).setdefault(u.get("column_name"), {})
-                        cell.update({"value": u.get("value"), "is_overwrite": u.get("is_overwrite", False), "updated_by": u.get("updated_by", "system")})
-                        min_r = min(min_r, idx); max_r = max(max_r, idx)
-                if max_r != -1: self.dataChanged.emit(self.index(min_r, 0), self.index(max_r, len(self._columns)-1))
         finally:
             self._is_processing_remote = False
 
@@ -935,6 +769,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.endResetModel()
             self._fetching = False
             self._update_row_id_map()
+            self.fetch_finished.emit() # [신규]
             return
         
         # 만약 모델이 리셋된 상태(_first_fetch=True)인데 이전 세션의 응답이 온 것이라면 무시
@@ -999,12 +834,15 @@ class ApiLazyTableModel(QAbstractTableModel):
         print('[DEBUG] fetch 완료')
         self.status_message_requested.emit(f"{len(new)} 행 추가 로드 완료 (약 {duration:.2f}초)")
         self._update_row_id_map(); self._fetching = False
+        self.fetch_finished.emit() # [신규]
         
         if self._batch_fetching:
             self._batch_fetching = False
             self.batch_fetch_finished.emit()
 
-    def _on_fetch_error(self, err): self._fetching = False
+    def _on_fetch_error(self, err): 
+        self._fetching = False
+        self.fetch_finished.emit() # [신규]
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal:
