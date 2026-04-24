@@ -658,6 +658,7 @@ class MainWindow(QMainWindow):
         self._ws_thread = WsListenerThread(ws_url)
         self._ws_thread.message_received.connect(self._dispatch_ws_message)
         self._ws_thread.connection_error.connect(self._on_ws_error)
+        self._ws_thread.connected.connect(self._on_ws_connected) # [신규] 재연결 동기화
         self._ws_thread.start()
         
         # 상태바 갱신
@@ -703,6 +704,14 @@ class MainWindow(QMainWindow):
         self._ws_status_label.setText("  ● WebSocket: Reconnecting...  ")
         self._ws_status_label.setStyleSheet("color: #fab387;") # Peach/Orange (Reconnecting)
         self.statusBar().showMessage(f"WebSocket 연결 유실: {err}", 5000)
+
+    def _on_ws_connected(self):
+        """[Phase 73.12] 웹소켓 재연결 시 모든 활성 모델의 카운트를 즉시 재동기화 (Self-Healing)."""
+        print("[WS] Reconnected. Synchronizing all active models...")
+        self.statusBar().showMessage("🌐 웹소켓 연결됨 - 실시간 동기화 복구 중...", 3000)
+        for model in self._active_models:
+            if hasattr(model, "_refresh_total_count"):
+                model._refresh_total_count()
 
     def _dispatch_ws_message(self, data: dict):
         """수신된 WS 메시지를 활성 모델들에 전파하고, 단일 진입점에서 히스토리 로그를 기록합니다."""

@@ -183,7 +183,9 @@ class FilterToolBar(QWidget):
         proxy.setSourceModel(source_model)
         proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         proxy.setFilterKeyColumn(-1)          # 모든 컬럼 검색
+        self._proxies[table_name] = proxy     # [Refactor] 테이블 명을 키로 하여 저장
         self._active_proxy = proxy
+
         return proxy
 
 

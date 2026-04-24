@@ -113,6 +113,7 @@ class ApiAuditLogWorker(BaseApiWorker):
 class WsListenerThread(QThread):
     message_received = Signal(dict)
     connection_error = Signal(str)
+    connected = Signal() # [신규] 재연결 성공 알림
 
     def __init__(self, ws_url: str = config.WS_BASE_URL, parent=None):
         super().__init__(parent)
@@ -132,6 +133,7 @@ class WsListenerThread(QThread):
             try:
                 with connect(self.ws_url, open_timeout=5.0, max_size=100 * 1024 * 1024) as ws:
                     self._ws = ws
+                    self.connected.emit() # [신규] 연결 성공 시그널 발생
                     while self._running:
                         try:
                             raw = ws.recv(timeout=1.0)
@@ -184,6 +186,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._search_cols = ""        # [Phase 73.7] 서버 전송용 컬럼 문자열
         self._search_cols_state = []  # [Phase 73.8] UI 체크박스 상태 보존용 리스트
         self._exposed_rows = 0        # [신규] 실제로 UI에 노출된 행 수
+        self._loaded_count = 0         # [Optimization] O(1) 추적을 위한 가용 데이터 카운트
         
         self._row_id_map = {}
         self._pending_target_skip = None # [신규] 특정 오프셋 점프 예약용
@@ -210,8 +213,8 @@ class ApiLazyTableModel(QAbstractTableModel):
 
     @property
     def loaded_count(self) -> int:
-        """실제로 데이터가 로드된(None이 아닌) 행 수를 반환합니다."""
-        return sum(1 for r in self._data if r is not None)
+        """실제로 데이터가 로드된(None이 아닌) 행 수를 반환합니다 (O(1))."""
+        return self._loaded_count
 
 
     def _check_for_stale_placeholders(self):
@@ -247,6 +250,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._first_fetch = True
         self._row_id_map = {}
         self._server_fetched_count = 0
+        self._loaded_count = 0
         
         # [Phase 73.5] 세션 ID 갱신 무효화 (기존 요청 무시 효과)
         self._search_session_id = str(uuid.uuid4())
@@ -267,6 +271,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._first_fetch = True
         self._row_id_map = {}
         self._server_fetched_count = 0
+        self._loaded_count = 0
         
         # [Phase 73.5] 세션 ID 갱신
         self._search_session_id = str(uuid.uuid4())
@@ -427,6 +432,9 @@ class ApiLazyTableModel(QAbstractTableModel):
                         self.beginRemoveRows(QModelIndex(), s, e)
                         num = (e - s + 1)
                         if s < len(self._data):
+                            # [Optimization] 삭제되는 구간 내 실제 데이터(None이 아닌) 개수 차감
+                            deleted_data_count = sum(1 for r in self._data[s : e + 1] if r is not None)
+                            self._loaded_count -= deleted_data_count
                             del self._data[s : e + 1]
                         self._exposed_rows -= num # 노출 개수 감소
                         self.endRemoveRows()
@@ -450,6 +458,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self.beginInsertRows(QModelIndex(), 0, num - 1)
                     self._data = new_rows + self._data
                     self._exposed_rows += num
+                    self._loaded_count += num
                     self.endInsertRows()
                     self._update_row_id_map()
                     self.status_message_requested.emit(f"신규 데이터 {num}건 상단 추가됨")
@@ -457,6 +466,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + num - 1)
                     self._data.extend(new_rows)
                     self._exposed_rows += num
+                    self._loaded_count += num
                     self.endInsertRows()
                     self._update_row_id_map()
                     self.status_message_requested.emit(f"신규 데이터 {num}건 하단 추가됨")
@@ -499,7 +509,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                     else:
                         norm = self._normalize_row_data({"row_id": rid, "data": new_data})
                         if self._sort_latest:
-                            moved_norms.append(norm)
+                                moved_norms.append(norm)
+                        
+                        # [Optimization] 신규 유입(idx is None) 시에만 카운트 증가
+                        if idx is None:
+                            self._loaded_count += 1
 
                 # 2단계: 최신순 정렬일 경우 기존 위치 제거 및 상단 삽입
                 if indices_to_remove:
@@ -745,6 +759,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.beginResetModel()
             self._data = new
             self._exposed_rows = len(new)
+            self._loaded_count = len(new)
             self._server_fetched_count = len(new)
             self._first_fetch = False
             self.endResetModel()
@@ -782,6 +797,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                 # 정상 삽입 (데이터가 버퍼 범위를 넘어서면 확장)
                 if target_idx >= len(self._data):
                     self._data.extend([None] * (target_idx - len(self._data) + 1))
+                
+                # [Optimization] 이전에 None이었던 자리가 채워지는 경우에만 카운트 증가
+                if self._data[target_idx] is None:
+                    self._loaded_count += 1
                 self._data[target_idx] = r
             
             # 노출 범위 최종 동기화 (이미 fetchMore에서 늘어났다면 diff <= 0)
