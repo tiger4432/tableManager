@@ -144,8 +144,12 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
     """
     from sqlalchemy import desc, func
     
-    # 1. 최근 로그 5000건을 먼저 조회 (성능 및 안전 장치)
+    # 1. 최근 로그 5000건을 먼저 조회하되, 현재 존재하는 데이터(DataRow)의 로그만 선별 (성능 및 안전 장치)
     raw_logs = db.query(models.AuditLog)\
+                 .filter(db.query(models.DataRow).filter(
+                     models.DataRow.table_name == models.AuditLog.table_name,
+                     models.DataRow.row_id == models.AuditLog.row_id
+                 ).exists())\
                  .order_by(desc(models.AuditLog.timestamp))\
                  .limit(5000).all()
                  
