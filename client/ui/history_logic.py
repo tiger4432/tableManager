@@ -295,6 +295,9 @@ class HistoryNavigator(QObject):
                         return
                 else:
                     self.statusRequested.emit("❌ 데이터를 찾을 수 없습니다. (삭제 등)", 3000)
+                    main_win = self._ctx["main_win"]
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(main_win, "데이터 이동 불가", "해당 데이터를 찾을 수 없습니다.\n이미 삭제된 데이터일 수 있습니다.")
                 self._release_guard()
             else:
                 print(f"[Nav] target not found, but _fetching is True. Waiting for next fetch.")
@@ -336,6 +339,8 @@ class HistoryNavigator(QObject):
                 if not current_text:
                     print("[Nav] Search box is already empty! Aborting to prevent infinite loop.")
                     self.statusRequested.emit("❌ 데이터를 표시할 수 없습니다 (삭제되거나 유효하지 않음).", 3000)
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(main_win, "데이터 이동 불가", "해당 데이터를 표시할 수 없습니다.\n이미 삭제되었거나 필터링 조건에 의해 숨겨진 데이터입니다.")
                     self._release_guard()
                     return False
                     
