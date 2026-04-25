@@ -8,7 +8,7 @@ import pandas as pd
 categories = ["IC", "Passive", "Connector", "Mechanical", "PCB"]
 locations = ["Warehouse-A", "Warehouse-B", "Line-1-Shelf", "Line-2-Shelf"]
 db=  []
-for i in range(1, 10000):
+for i in range(1, 1000):
     row =  {
         "part_no": uuid.uuid4(),
         "category": random.choice(categories),

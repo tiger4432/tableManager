@@ -93,6 +93,9 @@ class FilterToolBar(QWidget):
             QMenu::item:checked { color: #a6e3a1; }
         """)
         self._scope_btn.setMenu(self._scope_menu)
+        # [Fix] 메뉴가 화면에 표시되기 직전에 항상 최신 컬럼 목록으로 갱신하도록 연결
+        self._scope_menu.aboutToShow.connect(self._refresh_scope_menu)
+        
         self._row1_layout.addWidget(self._scope_btn)
         
         self._row1_layout.addStretch()
