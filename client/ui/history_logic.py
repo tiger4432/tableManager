@@ -233,7 +233,9 @@ class HistoryNavigator(QObject):
         idx_map = source_model._build_row_id_map()
         row_idx = idx_map.get(self._ctx["row_id"])
         
-        if row_idx is not None:
+        # [Fix] row_idx가 존재하더라도 현재 UI 노출 범위(_exposed_rows) 밖이면 서버 점프(fetch)를 통해 뷰포트 확장 필요
+        exposed_limit = getattr(source_model, '_exposed_rows', float('inf'))
+        if row_idx is not None and row_idx < exposed_limit:
             if self._final_scroll(row_idx):
                 self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
                 self._release_guard()
@@ -329,6 +331,14 @@ class HistoryNavigator(QObject):
             self.statusRequested.emit("⚠️ 숨겨진 데이터입니다. 필터 해제 후 재탐색...", 2000)
             main_win = ctx["main_win"]
             if hasattr(main_win, "_filter_bar"):
+                # [Fix] 무한 루프 방지: 검색어가 이미 비어있다면, 필터 때문이 아니라 삭제/중복 상태이므로 즉시 중단
+                current_text = main_win._filter_bar._search_box.text()
+                if not current_text:
+                    print("[Nav] Search box is already empty! Aborting to prevent infinite loop.")
+                    self.statusRequested.emit("❌ 데이터를 표시할 수 없습니다 (삭제되거나 유효하지 않음).", 3000)
+                    self._release_guard()
+                    return False
+                    
                 main_win._filter_bar._search_box.clear()
                 
                 data_obj = ctx["data_obj"]
