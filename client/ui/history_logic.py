@@ -151,6 +151,7 @@ class HistoryNavigator(QObject):
         # 컨텍스트 초기화
         main_win = parent_widget.window()
         self._ctx = {
+            "data_obj": data,
             "row_id": data.row_id,
             "table_name": data.table_name,
             "column_name": data.column_name,
@@ -183,8 +184,8 @@ class HistoryNavigator(QObject):
             if hasattr(main_win, "_nav_rail"):
                 main_win._nav_rail.set_active(nav_id)
 
-        # 2. 레이아웃 안정화 대기
-        QTimer.singleShot(10, self._step2_deferred_execute)
+        # 2. 레이아웃 안정화 대기 (Task 2: Qt 이벤트 큐 기반 대기)
+        QTimer.singleShot(0, self._step2_deferred_execute)
 
     @Slot()
     def _release_guard(self):
@@ -228,13 +229,15 @@ class HistoryNavigator(QObject):
         row_idx = idx_map.get(self._ctx["row_id"])
         
         if row_idx is not None:
-            self._final_scroll(row_idx)
-            self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
-            self._release_guard()
+            if self._final_scroll(row_idx):
+                self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
+                self._release_guard()
         else:
-            # [Fix] Qt의 자동 fetchMore와 충돌을 막기 위해 SingleShot 대신 일반 연결 사용
-            # 타겟을 찾을 때까지 계속 이벤트를 수신합니다.
-            source_model.fetch_finished.connect(self._step4_final_hop)
+            # [Task 3] Qt의 자동 fetchMore와 충돌을 막기 위해 SingleShot 대신 일반 연결 사용
+            # 중복 연결 방지를 위해 UniqueConnection 사용
+            from PySide6.QtCore import Qt
+            try: source_model.fetch_finished.connect(self._step4_final_hop, Qt.ConnectionType.UniqueConnection)
+            except RuntimeError: pass # 이미 연결되어 있는 경우
             source_model.jump_to_id(self._ctx["row_id"])
 
     @Slot()
@@ -260,16 +263,31 @@ class HistoryNavigator(QObject):
             try: source_model.fetch_finished.disconnect(self._step4_final_hop)
             except Exception: pass
             
-            self._final_scroll(final_idx)
-            self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
-            self._release_guard()
+            if self._final_scroll(final_idx):
+                self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
+                self._release_guard()
         else:
             if not getattr(source_model, '_fetching', True):
-                # 모든 페칭이 끝났는데도 타겟이 없다면 (삭제되었거나 인덱스 오류)
+                # 모든 페칭이 끝났는데도 타겟이 없다면 (삭제되었거나 필터링됨)
                 print(f"[Nav] Fetching finished but target not found! Aborting.")
                 try: source_model.fetch_finished.disconnect(self._step4_final_hop)
                 except Exception: pass
-                self.statusRequested.emit("❌ 데이터를 찾을 수 없습니다. (삭제 등)", 3000)
+                
+                # [Task 1] 서버 검색 필터에 의해 대상이 누락되었을 가능성이 있다면 필터 해제 후 재시도
+                if getattr(source_model, "_search_query", ""):
+                    print("[Nav] Target not found, but search filter is active. Clearing filter and retrying.")
+                    self.statusRequested.emit("⚠️ 검색 필터 해제 후 재탐색...", 2000)
+                    main_win = self._ctx["main_win"]
+                    if hasattr(main_win, "_filter_bar"):
+                        main_win._filter_bar._search_box.clear()
+                        # 락 해제 후 지연 재호출
+                        data_obj = self._ctx["data_obj"]
+                        parent_widget = self._ctx["parent_widget"]
+                        self._release_guard()
+                        QTimer.singleShot(600, lambda d=data_obj, p=parent_widget: self.navigate_to_log(d, p))
+                        return
+                else:
+                    self.statusRequested.emit("❌ 데이터를 찾을 수 없습니다. (삭제 등)", 3000)
                 self._release_guard()
             else:
                 print(f"[Nav] target not found, but _fetching is True. Waiting for next fetch.")
@@ -299,3 +317,17 @@ class HistoryNavigator(QObject):
             # Lineage 조회는 UI에서 처리하도록 시그널이나 콜백 필요할 수 있음
             if hasattr(ctx["parent_widget"], "_fetch_cell_lineage"):
                 ctx["parent_widget"]._fetch_cell_lineage(table_view, m_idx)
+            return True
+        else:
+            # [Task 1] 로컬 ProxyModel 필터 등에 의해 숨겨진 경우 필터 해제 후 재시도
+            print("[Nav] Target found in source, but m_idx is invalid. Clearing filter and retrying.")
+            self.statusRequested.emit("⚠️ 숨겨진 데이터입니다. 필터 해제 후 재탐색...", 2000)
+            main_win = ctx["main_win"]
+            if hasattr(main_win, "_filter_bar"):
+                main_win._filter_bar._search_box.clear()
+                
+                data_obj = ctx["data_obj"]
+                parent_widget = ctx["parent_widget"]
+                self._release_guard()
+                QTimer.singleShot(600, lambda d=data_obj, p=parent_widget: self.navigate_to_log(d, p))
+            return False

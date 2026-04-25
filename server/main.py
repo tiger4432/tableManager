@@ -374,6 +374,8 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
         
+    TABLE_COUNT_CACHE.pop(table_name, None)
+
     # Broadcast (Unified to batch_row_delete)
     msg = {
         "event": "batch_row_delete",
@@ -390,6 +392,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
     
     if deleted_count > 0:
+        TABLE_COUNT_CACHE.pop(table_name, None)
         CHUNK_SIZE = 500
         for i in range(0, len(batch.row_ids), CHUNK_SIZE):
             chunk = batch.row_ids[i:i + CHUNK_SIZE]
@@ -590,7 +593,7 @@ def export_table_csv(
     filename = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     headers = {
         "Content-Disposition": f"attachment; filename={filename}",
-        "Content-Length": str(estimated_total_size),
+        "X-Estimated-Content-Length": str(estimated_total_size),
         "X-Total-Rows": str(total_count)
     }
     return StreamingResponse(generate(), media_type="text/csv", headers=headers)
@@ -673,6 +676,9 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     """
     new_rows = crud.create_empty_rows_batch(db, table_name, count, user_name)
     
+    if new_rows:
+        TABLE_COUNT_CACHE.pop(table_name, None)
+    
     msg_items = []
     for row in new_rows:
         inject_system_columns(row)
@@ -700,6 +706,9 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
 async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     results, changed_cells = crud.apply_batch_updates(db, table_name, batch)
+    
+    if results:
+        TABLE_COUNT_CACHE.pop(table_name, None)
     
     msg_items = []
     for row, is_new in results:

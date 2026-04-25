@@ -154,6 +154,7 @@ class ExcelTableView(QTableView):
         else:
             super().keyPressEvent(event)
 
+
     def delete_selected_rows(self):
         """선택된 행들을 서버에서 삭제 요청. 정렬/필터링 및 가상 로딩 대응 완료."""
         selection = self.selectionModel()

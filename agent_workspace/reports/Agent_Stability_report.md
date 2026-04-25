@@ -1,17 +1,23 @@
-# Agent Stability 임무 보고서
+# 📝 하위 에이전트 작업 보고서 (Agent Stability)
 
-## [Phase 1 & 2] 시스템 무결성 수호 및 Race Condition 해결 (FetchContext 도입)
+* **작업 대상**: `client/ui/history_logic.py`
+* **작업 내용**: HistoryNavigator의 3가지 핵심 취약점 보완
 
-### 1. `client/models/table_model.py` 수정 완료
-- **FetchContext 도입:** `dataclass`를 사용하여 `FetchContext(source, session_id, params)` 정의를 상단에 추가했습니다.
-- **상태 변수 초기화:** `ApiLazyTableModel` 초기화 메서드(`__init__`)에서 `self._active_fetch_ctx`와 `self._pending_fetch_ctx`를 `None`으로 설정했습니다.
-- **중앙 통제 로직 구현 (`request_fetch`):** 모든 페칭 요청을 통제하는 `request_fetch` 메서드를 구현했습니다. 로딩 중(`self._fetching == True` 또는 `not self._columns`)인 경우 요청을 `_pending_fetch_ctx`로 대기시키고, 완료 시 순차적으로 실행되도록 처리하여 동시성 문제를 방지했습니다.
-- **Stale Session 파기:** `_on_fetch_finished` 콜백에서 반환된 `_session_id`가 현재 활성화된 `_active_fetch_ctx.session_id`와 다를 경우 조용히 무시(Discard)하도록 하여 응답 지연으로 인한 상태 오염을 원천 차단했습니다.
+## 1. 🔍 필터(검색) 충돌 시 자동 해제 및 재추적 (Task 1)
+* **현상**: 서버 검색에 의해 필터링되거나, 클라이언트 ProxyModel에 의해 데이터가 숨겨져 있을 때 점프가 침묵하는 현상
+* **조치**: 
+  - `_step4_final_hop` (서버 필터) 및 `_final_scroll` (로컬 필터) 양쪽 모두에 방어 로직 추가.
+  - 타겟을 찾지 못했을 때 검색 쿼리가 켜져 있다면, 상태바에 `⚠️ 검색 필터 해제 후 재탐색...` 메시지를 띄움.
+  - `_filter_bar._search_box.clear()`를 호출하여 강제로 필터를 초기화함.
+  - 600ms 뒤(API 페치 대기시간 고려), 기존 컨텍스트 정보(`self._ctx["data_obj"]`)를 이용해 `navigate_to_log`를 재귀적으로 재호출하여 완벽하게 타겟을 추적해 내도록 고도화 완료.
 
-### 2. `client/main.py` 수정 완료
-- **무조건적 페치 제거:** `_on_navigation_requested` 내부에서 최초 접속(`model._total_count == 0`) 시 무조건 발생하던 `model.fetchMore()` 호출을 제거하고 카운트 갱신(`_refresh_total_count()`)만 남겨두었습니다.
-- **스키마 로딩 중 페치 통제:** `_load_table_schema` 메서드 및 관련 콜백 내부에서 `first_fetch=True` 조건 하에만 페칭을 트리거하도록 수정했습니다.
-- **FetchContext 트리거 변경:** `first_fetch=True`에 해당하는 로직을 기존의 `model.fetchMore()` 혹은 `model.canFetchMore()` 기반 로직에서 `model.request_fetch(FetchContext(source="schema_load"))`를 명시적으로 호출하는 방식으로 교체하여 통제 가능한 안전한 파이프라인을 구축했습니다.
+## 2. ⚡ 레이아웃 안정화 타이머 개선 (Task 2)
+* **조치**: `QTimer.singleShot(10, ...)` 을 `QTimer.singleShot(0, ...)` 으로 교체하여, 시스템 성능과 무관하게 항상 안전하게 Qt 이벤트 큐(Paint 이벤트 등) 처리를 보장.
 
-### 결론
-안정성 확보(Agent Stability)를 위한 모든 요청 통제 파이프라인(Phase 1 & 2)이 정상적으로 구축되었으며, Stale Request로 인해 발생할 수 있는 Race Condition의 근본 원인을 제거했습니다.
+## 3. 🛡️ 좀비 콜백 방지 (Task 3)
+* **조치**: `source_model.fetch_finished.connect` 사용 시 `Qt.ConnectionType.UniqueConnection` 속성을 명시하여 다중 연결로 인한 중복 호출(메모리 누수 및 오작동)을 원천 차단.
+
+---
+
+> **미해결 이슈 및 다음 단계**:
+> 클라이언트 측 1, 2, 3번 태스크 완료. 서버 쪽 트랜잭션 그룹화(Task 4)는 PM 판단에 따라 진행 가능합니다.

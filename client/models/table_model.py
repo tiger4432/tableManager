@@ -6,6 +6,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread, QTimer
 
+
 @dataclass
 class FetchContext:
     source: str
@@ -333,6 +334,8 @@ class ApiLazyTableModel(QAbstractTableModel):
             return Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
         return super().flags(index) | Qt.ItemFlag.ItemIsEditable
 
+
+    #[중요] cell 변경 함수
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
         if not index.isValid() or role != Qt.ItemDataRole.EditRole: return False
         row = index.row()
@@ -615,33 +618,65 @@ class ApiLazyTableModel(QAbstractTableModel):
                 self._pending_fetch_ctx = FetchContext(source="scroll")
                 self._jump_timer.start(1)
 
-        if row >= len(self._data) or self._data[row] is None:
+        if row >= len(self._data) or self._data[row] is None: #row가 데이터의 끝이거나 데이터가 None일 경우
             if role == Qt.ItemDataRole.DisplayRole:
                 # Viewport에 빈 데이터가 포착되면 해당 위치 최우선 로딩 예약
-                skip = (row // self._chunk_size) * self._chunk_size
+                skip = (row // self._chunk_size) * self._chunk_size #chuck 단위로 fetching, 양자화
                 
                 # [Fix] 현재 fetching 중이더라도 가장 최근에 노출된 뷰포트의 데이터를 우선적으로 큐잉
                 self._pending_fetch_ctx = FetchContext(source="scroll", params={"skip": skip})
                 
-                if not self._fetching and not self._jump_timer.isActive():
+                if not self._fetching and not self._jump_timer.isActive(): #fetching과 jump 중이 아닐때
                     self._jump_timer.start(1) # 1ms Debounce
-                
-                return "Loading..."
+                    #_jump_timer가 하는일
+                    # 현재 pending 중인 fetchcontext를 timeout시 요청, 만약 timeout 시에도 fetch 중이라면? 
+                    # _on_jump_timer_timeout -> 그냥 pending 계속 대기. 싱글턴으로 다시 jump_timer 시작해야함.
+
+                return "Loading..." #페치 예약만 걸고 일단 loading으로 빠져나옴
             return None
 
         col_name = self._columns[col]
+        """
+        2. 생성일/수정일 특수 처리
+        이유: 시스템 컬럼인 created_at이나 updated_at은 서버 응답 포맷에 따라 최상위(Root)에 있을 수도 있고, data라는 딕셔너리 내부에 있을 수도 있습니다.
+        역할: 화면에 보여주거나(DisplayRole), 사용자가 더블클릭해서 편집할 때(EditRole) 둘 중 어느 위치에 있든 안전하게 값을 꺼내서 텍스트로 보여주기 위한 예외 처리입니다.
+        """
         if col_name in ["created_at", "updated_at"]:
             if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
                 return self._data[row].get(col_name) or self._data[row].get("data", {}).get(col_name, {}).get("value", "")
             return None
+        
+        """
+        3. 일반 데이터 표시 및 편집 모드
+        DisplayRole: 화면에 평상시 텍스트를 그릴 때 요청됩니다.
+        EditRole: 사용자가 셀을 더블클릭해서 커서가 생기는 편집 모드일 때 요청됩니다.
+        역할: self._data[row]["data"]["컬럼명"]["value"] 구조에서 실제 텍스트를 꺼내옵니다. 편집 모드(EditRole)일 때는 PyQt가 에러를 내지 않도록 무조건 문자열(str)로 변환해서 반환합니다.
+        """
         if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
             val = self._data[row].get("data", {}).get(col_name, {}).get("value", "")
             return str(val) if role == Qt.ItemDataRole.EditRole else val
+
+        """
+        4. 고유 Row ID 추출 (Custom Role)
+        이유: 화면에 텍스트로 보여주진 않지만, 프로그램 내부적으로 "이 셀이 속한 행의 DB Primary Key(row_id)가 뭐야?"라고 물어볼 때 사용합니다. (예: 우클릭해서 행 삭제, 복사/붙여넣기 시 행 타겟팅)
+        UserRole은 개발자가 임의로 지정해 쓸 수 있는 커스텀 역할이며, 여기서 + 2는 고유 ID를 가져오기로 한 개발자 간의 약속입니다.
+        """
         if role == Qt.ItemDataRole.UserRole + 2: return self._data[row].get("row_id")
+        
+        """
+        5. 배경색 칠하기 (BackgroundRole)
+        BackgroundRole: 셀의 배경색을 그릴 때 요청됩니다.
+역할: 셀 데이터 안에 is_overwrite 플래그가 True로 켜져 있는지 확인합니다. 사용자가 이 셀을 직접 수정했거나 엑셀에서 붙여넣기를 해서 "변경사항이 발생한 셀" 이라면, 배경을 주황색("#BD6031")으로 칠해서 사용자에게 시각적으로 알려주는 역할을 합니다.
+        """
         if role == Qt.ItemDataRole.BackgroundRole:
             if self._data[row].get("data", {}).get(col_name, {}).get("is_overwrite"):
                 from PySide6.QtGui import QColor
                 return QColor("#BD6031")
+
+        """
+        요약하자면: 이 코드는 화면에 그릴 때 이 셀이 생성일자면 날짜를 주고, 일반 텍스트면 텍스트를 주고, 내부적으로 ID를 물어보면 ID를 주고,
+        수정된 셀이면 배경을 주황색으로 칠해줘 라고 뷰(View)에게 응답하는 핵심 분기점입니다.
+        """
         return None
 
     def jump_to_id(self, row_id: str):
@@ -683,14 +718,15 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._active_fetch_ctx = None
             return
             
-        # 2. 노출 범위 확장 (Adaptive Expansion)
-        # 점프 요청이거나, Qt가 스크롤바 바닥을 쳤을 때
         if is_jump_request and skip is not None:
             # 점프 대상이 현재 노출 범위를 넘어선다면 미리 공간 확보 (Shell Extension)
-            if skip + self._chunk_size > self._exposed_rows:
-                new_limit = skip + self._chunk_size
-                self.beginInsertRows(QModelIndex(), self._exposed_rows, new_limit - 1)
-                self._exposed_rows = new_limit
+            safe_limit = skip + self._chunk_size
+            if self._total_count > 0:
+                safe_limit = min(safe_limit, self._total_count)
+                
+            if safe_limit > self._exposed_rows:
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, safe_limit - 1)
+                self._exposed_rows = safe_limit
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
@@ -801,18 +837,28 @@ class ApiLazyTableModel(QAbstractTableModel):
         resp_session = result.get("_session_id")
         if resp_session and self._active_fetch_ctx and resp_session != self._active_fetch_ctx.session_id:
             print(f"[Model] Discarding stale session result: {resp_session} != {self._active_fetch_ctx.session_id}")
+            # 세션 다르면 그냥 아웃. 현재 페치한건 버려짐
             return
 
         # 2. 메타데이터 업데이트
         total = result.get("total", 0)
-        self._set_total_count(total)
+        self._set_total_count(total) #서버단 total 잘되어 있어야함. 디버깅 시 체크
+        new = result.get("data", []) #신규 데이터 확인
+        
+        # [Fix] 서버 캐싱 등으로 인해 total_count가 실제 행 개수보다 크게 산정되어 있을 때,
+        # 없는 데이터를 계속 요청하는 무한 스크롤 페치 루프를 방지합니다.
+        req_skip = result.get("skip", getattr(self, '_active_target_skip', 0))
+        if not new and req_skip < self._total_count: #skip부터 새 데이터가 없음. total은 적어도 skip 이하.
+            print(f"[Fetch-Correction] Received empty data at skip {req_skip}. Shrinking total_count from {self._total_count} to {req_skip}.")
+            self._set_total_count(req_skip) #일단 skip으로 total 설정. 진정한 동기화는 아닌듯?
+            self._finalize_fetch()
+            return
 
         # 3. 데이터 주입 (Jump Mode vs Normal Mode)
         calc_skip = result.get("calculated_skip")
         t_offset = result.get("target_offset")
-        new = result.get("data", [])
-        
-        if calc_skip is not None:
+
+        if calc_skip is not None: #점프 모드, 서버에서 타겟 skip 계산해서 보내줌.
             # [Validation] 서버에서 타겟 행을 찾지 못한 경우 (삭제 등)
             if t_offset == -1:
                 print("[Model] Target row not found in database (likely deleted).")
@@ -823,15 +869,15 @@ class ApiLazyTableModel(QAbstractTableModel):
                 target_limit = calc_skip + len(new)
                 
                 # [DEBUG] Check if the target row is actually in 'new'
-                target_rid = self._pending_target_row_id or getattr(self, '_last_jump_target', None)
+                target_rid = self._pending_target_row_id or getattr(self, '_last_jump_target', None) #점프 위해 보낸 row_id
                 if target_rid:
                     found_in_new = False
-                    for idx_in_new, r_obj in enumerate(new):
+                    for idx_in_new, r_obj in enumerate(new): # 서버에서 계산 후 보내온 데이터에 row_id가 있는지 확인
                         if str(r_obj.get("row_id")) == target_rid:
                             print(f"[DEBUG-State] Found target {target_rid} in 'new' at local index {idx_in_new} (absolute {calc_skip + idx_in_new})")
                             found_in_new = True
                             break
-                    if not found_in_new:
+                    if not found_in_new: #없으면?
                         print(f"[DEBUG-State] CRITICAL: Target {target_rid} NOT FOUND in 'new'! (Fetched 100 rows around offset {calc_skip})")
                         # Dump first and last item for context
                         if new:
@@ -843,17 +889,17 @@ class ApiLazyTableModel(QAbstractTableModel):
                     if len(self._data) < target_limit:
                         self._data.extend([None] * (target_limit - len(self._data)))
                     self._exposed_rows = target_limit
-                    self.endInsertRows()
+                    self.endInsertRows() #점프 할 곳 까지 일단 표 늘림.
                 else:
                     if len(self._data) < target_limit:
                         self._data.extend([None] * (target_limit - len(self._data)))
                 
                 for i, r in enumerate(new):
-                    self._data[calc_skip + i] = r
+                    self._data[calc_skip + i] = r # 가져온 데이터 채워넣기
                 
                 self._server_fetched_count = max(self._server_fetched_count, target_limit)
-                self.dataChanged.emit(self.index(calc_skip, 0), self.index(target_limit - 1, len(self._columns) - 1))
-                self._update_row_id_map(new, calc_skip)
+                self.dataChanged.emit(self.index(calc_skip, 0), self.index(target_limit - 1, len(self._columns) - 1)) #qt 객체 업데이트
+                self._update_row_id_map(new, calc_skip) # id 매핑 업데이트
                 
             except Exception as e:
                 import traceback
@@ -882,6 +928,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._finalize_fetch()
             return
 
+        #[TASK] 커서 기반 페칭으로 로직 변경 필요
         if new:
             # ID 기반 중복 보정 및 삽입
             for i, r in enumerate(new):
@@ -911,6 +958,14 @@ class ApiLazyTableModel(QAbstractTableModel):
                 self._exposed_rows = target_exposed
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
+            elif target_exposed < self._exposed_rows and (skip + len(new) >= self._total_count or len(new) < result.get("limit", self._chunk_size)):
+                # [Fix] 가짜 None 공간 제거 (Shrink)
+                diff = self._exposed_rows - target_exposed
+                self.beginRemoveRows(QModelIndex(), target_exposed, self._exposed_rows - 1)
+                self._exposed_rows = target_exposed
+                self.endRemoveRows()
+                
             self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
             self.dataChanged.emit(self.index(skip, 0), self.index(skip + len(new) - 1, len(self._columns) - 1))
             if skip == self._server_fetched_count: self._server_fetched_count += len(new)
@@ -942,10 +997,6 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._update_row_id_map()
         self._finalize_fetch()
         
-        if self._batch_fetching:
-            self._batch_fetching = False
-            self.batch_fetch_finished.emit()
-
     def _on_fetch_error(self, err): 
         print(f"[Model] Fetch error: {err}")
         self._finalize_fetch()
@@ -955,10 +1006,13 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetching = False
         self.fetch_finished.emit()
         self._active_fetch_ctx = None
+        if self._batch_fetching:
+            self._batch_fetching = False
+            self.batch_fetch_finished.emit() #그냥 1k 로드 버튼 초기화용
         if self._pending_fetch_ctx:
             next_ctx = self._pending_fetch_ctx
             self._pending_fetch_ctx = None
-            self.request_fetch(next_ctx)
+            self.request_fetch(next_ctx) #펜딩 있으면 바로 이어서 실행
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal:
@@ -993,7 +1047,7 @@ class ApiExportWorker(QRunnable):
             # 타임아웃 및 정적 헤더 설정
             req = urllib.request.Request(self.url)
             with urllib.request.urlopen(req, timeout=30) as response:
-                total_size = int(response.headers.get('Content-Length', -1))
+                total_size = int(response.headers.get('Content-Length') or response.headers.get('X-Estimated-Content-Length') or -1)
                 curr_size = 0
                 
                 with open(self.export_path, "wb") as f:
