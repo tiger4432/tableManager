@@ -224,110 +224,135 @@ def get_table_data(
     cols: str = None, 
     order_by: str = "row_id", 
     order_desc: bool = False,
+    target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
     db: Session = Depends(get_db)
 ):
     """
     Lazy Loading을 위한 페이징 엔드포인트
-    q 파라미터가 있으면 전체 데이터 중 해당 검색어가 포함된 행만 필터링합니다.
+    target_row_id가 있으면 해당 행이 포함된 페이지의 skip을 자동으로 계산합니다.
     """
+    t_start = time.time()
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
     
+    # ── [Step 0] 검색 필터 구성 (Trigram Index + 컬럼 한정) ──
     if q:
-        from sqlalchemy import cast, String, or_
-        # [Phase 73.8] 검색어 특수문자(%, _) 이스케이프 (Wildcard 성격 방지)
+        from sqlalchemy import cast, String, or_, and_, func
         safe_q = q.replace("%", "\\%").replace("_", "\\_")
         
+        # [Pre-Filter] GIN Trigram 인덱스(idx_data_trgm)를 활용하여 후보군을 1차 선별 (Very Fast)
+        # 이 조건이 인덱스 스캔을 유도하여 1,000만 건 중 수천 건 이하로 범위를 좁힙니다.
+        from sqlalchemy import Text
+        # [Optimization] GIN Trigram 인덱스(idx_data_trgm)는 CAST(data AS text) 기준임.
+        # SQLAlchemy String은 VARCHAR를 생성하므로, 명시적으로 Text 타입을 사용하여 인덱스 매칭 보장.
+        global_filter = models.DataRow.data.cast(Text).ilike(f"%{safe_q}%", escape="\\")
+        
         if cols:
-            # [Phase 73.6] 특정 컬럼 내에서만 검색 (전용 DB 최적화 및 시스템 컬럼 지원)
             col_list = [c.strip() for c in cols.split(",") if c.strip()]
             conditions = []
             for col in col_list:
                 if col in ["created_at", "updated_at"]:
-                    # 시스템 날짜 컬럼 검색 지원
                     target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
                     conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
                 elif col in ["row_id", "id"]:
-                    # ID 컬럼 검색 지원
                     conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
                 else:
-                    # 일반 데이터 컬럼: DB 호환성(SQLite/PG)을 위해 cast 사용 (astext 대신)
-                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
+                    # [Refinement] 특정 컬럼으로 결과를 제한 (PostgreSQL JSONB 캐스팅 명시)
+                    from sqlalchemy.dialects.postgresql import JSONB
+                    conditions.append(func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col, "value").ilike(f"%{safe_q}%", escape="\\"))
             
+            # 글로벌 필터(속도)와 컬럼 필터(정합성)를 AND로 결합
             if conditions:
-                query = query.filter(or_(*conditions))
+                query = query.filter(and_(global_filter, or_(*conditions)))
+            else:
+                query = query.filter(global_filter)
         else:
-            # Fallback: 전체 JSON 데이터를 문자열로 캐스팅하여 검색 (기존 방식)
-            search_filter = cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\")
-            query = query.filter(search_filter)
+            query = query.filter(global_filter)
 
-    # [성능 최적화] 검색어가 없을 때만 카운트 캐시 적용
-    now = time.time()
-    t_start = now
-    if not q and table_name in TABLE_COUNT_CACHE and (now - TABLE_COUNT_CACHE[table_name][1] < 2.0):
+    # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
+    actual_target_offset = -1
+    if target_row_id:
+        target_row = db.query(models.DataRow).filter_by(row_id=target_row_id, table_name=table_name).first()
+        if target_row:
+            from sqlalchemy import func, or_, and_
+            count_query = query
+            
+            if order_by == "updated_at":
+                t_val = target_row.updated_at if target_row.updated_at else target_row.created_at
+                sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+                if order_desc: # DESC
+                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, models.DataRow.row_id < target_row_id)))
+                else: # ASC
+                    count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, models.DataRow.row_id < target_row_id)))
+            elif order_by == "id":
+                t_bk = target_row.business_key_val
+                if t_bk is None:
+                    # NULLS LAST: NULL 행들은 값이 있는 행들 뒤에 위치함
+                    count_query = count_query.filter(or_(
+                        models.DataRow.business_key_val.isnot(None),
+                        and_(models.DataRow.business_key_val.is_(None), models.DataRow.row_id < target_row_id)
+                    ))
+                else:
+                    if order_desc:
+                        count_query = count_query.filter(or_(models.DataRow.business_key_val > t_bk, and_(models.DataRow.business_key_val == t_bk, models.DataRow.row_id < target_row_id)))
+                    else:
+                        count_query = count_query.filter(or_(models.DataRow.business_key_val < t_bk, and_(models.DataRow.business_key_val == t_bk, models.DataRow.row_id < target_row_id)))
+            else:
+                count_query = count_query.filter(models.DataRow.row_id < target_row_id)
+            
+            actual_target_offset = count_query.count()
+            # [Optimization] 점프 시 타겟 행이 화면 중앙에 오도록 +- 50행 범위를 맞춤
+            skip = max(0, actual_target_offset - (limit // 2))
+    
+    # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
+    # [Optimization] 검색 조건이 없는 경우 캐시 활용 시간을 늘림 (2s -> 5s)
+    cache_ttl = 5.0 if not q else 2.0 
+    if table_name in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[table_name][1] < cache_ttl):
         total_count = TABLE_COUNT_CACHE[table_name][0]
     else:
+        # [Wait] 대규모 테이블에서 count(*)는 매우 느림. 
+        # 검색어가 없을 때는 approximate count를 쓰거나, 검색어가 있을 때만 정확한 count 수행
         total_count = query.count()
-        if not q: TABLE_COUNT_CACHE[table_name] = (total_count, now)
-    
-    t_count = time.time() - t_start
+        TABLE_COUNT_CACHE[table_name] = (total_count, time.time())
     
     from sqlalchemy.sql import func
-    # 정렬 기준 구성 (PostgreSQL 최적화: nullslast/nullsfirst 사용)
     if order_by == "updated_at":
         sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
         sort_expr = sort_expr.desc().nullslast() if order_desc else sort_expr.asc().nullslast()
-        tie_breaker = models.DataRow.row_id.asc()
-        final_sort = [sort_expr, tie_breaker]
+        final_sort = [sort_expr, models.DataRow.row_id.asc()]
     elif order_by == "id":
         bk_sort = models.DataRow.business_key_val.desc().nullslast() if order_desc else models.DataRow.business_key_val.asc().nullslast()
         final_sort = [bk_sort, models.DataRow.row_id.asc()]
     else:
-        sort_expr = models.DataRow.row_id.asc()
-        final_sort = [sort_expr]
+        final_sort = [models.DataRow.row_id.asc()]
     
-    # [성능 최적화] "물리적 2단계 Fetch" 적용 (PostgreSQL Index-Only Scan 유도)
-    # 1단계: ID 리스트만 인덱스 스캔으로 먼저 Fetch (매우 가벼움)
+    # ── [Step 2] 데이터 페칭 (2단계 인덱스 기반 페칭으로 원복) ──
     t_id_start = time.time()
-    subquery = query.with_entities(models.DataRow.row_id)
-    if order_by == "updated_at":
-        subquery = subquery.order_by(*final_sort)
-    else:
-        subquery = subquery.order_by(*final_sort)
-        
-    id_results = subquery.offset(skip).limit(limit).all()
+    # 1. ID만 먼저 인덱스로 스캔 (Very Fast)
+    id_results = query.with_entities(models.DataRow.row_id).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [r[0] for r in id_results]
-    t_id_fetch = time.time() - t_id_start
+    t_id_done = time.time() - t_id_start
     
-    # 2단계: 선별된 ID 목록으로만 본 데이터 조회 (PK 기반 고속 Fetch, JOIN 오티마이저 노이즈 제거)
     t_row_start = time.time()
+    # 2. 본 데이터는 해당 ID들만 PK로 조회
     rows = db.query(models.DataRow).filter(models.DataRow.row_id.in_(id_list)).all()
-    t_row_fetch = time.time() - t_row_start
     
-    # 3. 애플리케이션 레벨 재정렬 (IN 절은 순서를 보장하지 않음)
-    t_sort_start = time.time()
-    # 정합성을 위해 id_list의 순서대로 정렬 (가장 확실하고 빠른 방법)
+    # ID 순서대로 정렬
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
     rows.sort(key=lambda x: id_to_idx.get(x.row_id, 999999))
+    t_row_done = time.time() - t_row_start
     
-    # 공통 데코레이터 적용
-    t_inject_start = time.time()
     data_list = []
     for row in rows:
         inject_system_columns(row)
-        # [성능 최적화] Pydantic 객체 생성을 생략하고 원시 Dict로 변환 (속도 10배 향상)
         data_list.append({
-            "row_id": row.row_id,
-            "table_name": row.table_name,
-            "data": row.data,
-            "created_at": to_local_str(row.created_at),
-            "updated_at": to_local_str(row.updated_at)
+            "row_id": row.row_id, "table_name": row.table_name, "data": row.data,
+            "created_at": to_local_str(row.created_at), "updated_at": to_local_str(row.updated_at)
         })
-    t_inject = time.time() - t_inject_start
     
-    t_inject = time.time() - t_inject_start
-    
-    print(f"[PERF] /data: table={table_name}, skip={skip}, limit={limit}, query={q is not None}")
-    print(f"       Count: {t_count:.3f}s | IDs: {t_id_fetch:.3f}s | Rows: {t_row_fetch:.3f}s | Inject: {t_inject:.3f}s | Total: {time.time()-t_start:.3f}s")
+    return {
+        "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
+        "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
+    }
 
     return {
         "table_name": table_name,
@@ -384,25 +409,35 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: S
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
     
     if req.q:
-        from sqlalchemy import cast, String, or_
+        from sqlalchemy import cast, String, or_, and_, func
+        safe_q = req.q.replace("%", "\\%").replace("_", "\\_")
+        
+        from sqlalchemy import Text
+        global_filter = or_(
+            models.DataRow.business_key_val.ilike(f"%{safe_q}%", escape="\\"),
+            models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"),
+            models.DataRow.data.cast(Text).ilike(f"%{safe_q}%", escape="\\")
+        )
+
         if req.cols:
             col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
             conditions = []
             for col in col_list:
                 if col in ["created_at", "updated_at"]:
                     target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{req.q}%"))
+                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
                 elif col in ["row_id", "id"]:
-                    conditions.append(models.DataRow.row_id.ilike(f"%{req.q}%"))
+                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
                 else:
-                    # DB 호환성 보장
-                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{req.q}%"))
+                    from sqlalchemy.dialects.postgresql import JSONB
+                    conditions.append(func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col, "value").ilike(f"%{safe_q}%", escape="\\"))
             
             if conditions:
-                query = query.filter(or_(*conditions))
+                query = query.filter(and_(global_filter, or_(*conditions)))
+            else:
+                query = query.filter(global_filter)
         else:
-            search_filter = cast(models.DataRow.data, String).ilike(f"%{req.q}%")
-            query = query.filter(search_filter)
+            query = query.filter(global_filter)
 
     from sqlalchemy.sql import func
     if req.order_by == "updated_at":
@@ -445,63 +480,6 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: S
             matched_ids.append(results[local_idx][0])
             
     return {"row_ids": matched_ids}
-
-@app.post("/tables/{table_name}/row_index/{row_id}")
-def get_row_index(table_name: str, row_id: str, req: schemas.RowIndexDiscoveryRequest, db: Session = Depends(get_db)):
-    """
-    특정 row_id가 현재 정렬/필터링 조건 하에서 몇 번째(Offset)에 위치하는지 계산하여 반환합니다.
-    밀리언 로우 환경에서도 고속 점프를 지원하기 위해 Window Function을 활용합니다.
-    """
-    from sqlalchemy import func, over, literal_column
-    
-    # 1. 기본 쿼리 및 필터링 (get_table_data와 동일 로직)
-    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
-    
-    if req.q:
-        from sqlalchemy import cast, String, or_
-        safe_q = req.q.replace("%", "\\%").replace("_", "\\_")
-        if req.cols:
-            col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
-            conditions = []
-            for col in col_list:
-                if col in ["created_at", "updated_at"]:
-                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-                elif col in ["row_id", "id"]:
-                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
-                else:
-                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
-            if conditions:
-                query = query.filter(or_(*conditions))
-        else:
-            query = query.filter(cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\"))
-
-    # 2. 정렬 순서 결정 (get_table_data와 동일 로직)
-    if req.order_by == "updated_at":
-        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
-        sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
-        final_orders = [sort_expr, models.DataRow.row_id.asc()]
-    elif req.order_by == "id":
-        bk_null_last = (models.DataRow.business_key_val == None).asc()
-        bk_sort = models.DataRow.business_key_val.desc() if req.order_desc else models.DataRow.business_key_val.asc()
-        final_orders = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
-    else:
-        final_orders = [models.DataRow.row_id.asc()]
-
-    # 3. Window Function을 사용하여 전체 데이터 셋에서의 순번(Offset) 계산
-    # SELECT pos FROM (SELECT row_id, (ROW_NUMBER() OVER (...)) - 1 as pos FROM data_rows ...) WHERE row_id = :id
-    subquery = query.with_entities(
-        models.DataRow.row_id,
-        (func.row_number().over(order_by=final_orders) - 1).label("pos")
-    ).subquery()
-    
-    result = db.query(subquery.c.pos).filter(subquery.c.row_id == row_id).first()
-    
-    if result is None:
-        return {"row_id": row_id, "index": -1, "status": "not_found"}
-        
-    print(f"[Discovery] Row {row_id} found at offset {result[0]}")
-    return {"row_id": row_id, "index": result[0], "status": "success"}
 
 
 from fastapi.responses import StreamingResponse
