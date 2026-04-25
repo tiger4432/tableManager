@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
+import time
 from PySide6.QtCore import QObject, Signal, Slot, QTimer, QThreadPool, Qt
 from PySide6.QtGui import QColor
 
@@ -139,8 +140,13 @@ class HistoryNavigator(QObject):
         self._is_navigating = True
         self.statusRequested.emit("🔍 데이터 위치를 탐색 중...", 0)
         
-        # 3초 뒤 강제 해제 (안전장치)
-        QTimer.singleShot(3000, self._release_guard)
+        # [Fix] 여러 번 클릭 시 누적된 singleShot 타이머가 새로운 탐색을 방해하지 않도록 전용 타이머 사용
+        if not hasattr(self, '_guard_timer'):
+            self._guard_timer = QTimer(self)
+            self._guard_timer.setSingleShot(True)
+            self._guard_timer.timeout.connect(self._release_guard)
+        
+        self._guard_timer.start(10000) # 10초 타임아웃
         
         # 컨텍스트 초기화
         main_win = parent_widget.window()
@@ -150,7 +156,8 @@ class HistoryNavigator(QObject):
             "column_name": data.column_name,
             "nav_id": f"table:{data.table_name}",
             "main_win": main_win,
-            "parent_widget": parent_widget
+            "parent_widget": parent_widget,
+            "start_time": time.time() # [Perf] 시퀀스 시작점 기록
         }
 
         # 1. 탭 자동 오픈 및 전환
@@ -163,10 +170,13 @@ class HistoryNavigator(QObject):
 
         if nav_id not in main_win._nav_to_index:
             if hasattr(main_win, "_init_table_tab"):
-                main_win._init_table_tab(table_name)
+                main_win._init_table_tab(table_name, first_fetch = False)
+                print(f"[Nav] Step 1 (Tab Create) took {(time.time() - self._ctx['start_time'])*1000:.2f}ms")
             else:
                 self._release_guard()
                 return
+        else:
+            print(f"[Nav] Step 1 (Tab Switch) took {(time.time() - self._ctx['start_time'])*1000:.2f}ms")
 
         if hasattr(main_win, "_on_navigation_requested"):
             main_win._on_navigation_requested(nav_id)
@@ -174,11 +184,20 @@ class HistoryNavigator(QObject):
                 main_win._nav_rail.set_active(nav_id)
 
         # 2. 레이아웃 안정화 대기
-        QTimer.singleShot(100, self._step2_deferred_execute)
+        QTimer.singleShot(10, self._step2_deferred_execute)
 
     @Slot()
     def _release_guard(self):
+        print(f"[Nav] _release_guard called. (is_navigating={self._is_navigating})")
+        if hasattr(self, '_guard_timer') and self._guard_timer.isActive():
+            self._guard_timer.stop()
+            
         self._is_navigating = False
+        try:
+            if "source_model" in self._ctx:
+                self._ctx["source_model"].fetch_finished.disconnect(self._step4_final_hop)
+        except Exception:
+            pass
 
     @Slot()
     def _step2_deferred_execute(self):
@@ -196,6 +215,8 @@ class HistoryNavigator(QObject):
             self.statusRequested.emit("⚠️ 테이블 뷰를 찾을 수 없습니다.", 3000)
             self._release_guard()
             return
+        
+        print(f"[Nav] Step 2 (Layout & Viewport Ready) took {(time.time() - self._ctx['start_time'])*1000:.2f}ms")
 
         model = table_view.model()
         source_model = getattr(model, 'sourceModel', lambda: model)()
@@ -211,58 +232,47 @@ class HistoryNavigator(QObject):
             self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
             self._release_guard()
         else:
-            # 3. 서버 역조회
-            self._step3_request_discovery()
-
-    def _step3_request_discovery(self):
-        from models.table_model import ApiRowIndexDiscoveryWorker
-        import config
-        source_model = self._ctx["source_model"]
-        url = config.get_row_index_discovery_url(self._ctx["table_name"], self._ctx["row_id"])
-        
-        worker = ApiRowIndexDiscoveryWorker(
-            url, 
-            q=source_model._search_query,
-            order_by="updated_at" if source_model._sort_latest else "id",
-            order_desc=source_model._sort_latest,
-            cols=source_model._search_cols
-        )
-        worker.signals.finished.connect(self._on_discovery_finished)
-        worker.signals.error.connect(lambda e: self._release_guard()) # 간단한 로깅
-        QThreadPool.globalInstance().start(worker)
-
-    @Slot(dict)
-    def _on_discovery_finished(self, result):
-        target_offset = result.get("index", -1)
-        if target_offset >= 0:
-            source_model = self._ctx["source_model"]
-            chunk_size = source_model._chunk_size
-            skip = (target_offset // chunk_size) * chunk_size
-            
-            source_model._pending_target_skip = skip
-            
-            # 4. 최종 점프: 타이머 대신 fetch_finished 시그널에 즉시 응답 (SingleShot)
-            source_model.fetch_finished.connect(self._step4_final_hop, Qt.ConnectionType.SingleShotConnection)
-            source_model.fetchMore()
-        else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self._ctx["parent_widget"], "이동 실패", "행을 찾을 수 없습니다.")
-            self._release_guard()
+            # [Fix] Qt의 자동 fetchMore와 충돌을 막기 위해 SingleShot 대신 일반 연결 사용
+            # 타겟을 찾을 때까지 계속 이벤트를 수신합니다.
+            source_model.fetch_finished.connect(self._step4_final_hop)
+            source_model.jump_to_id(self._ctx["row_id"])
 
     @Slot()
     def _step4_final_hop(self):
+        print(f"[Nav] _step4_final_hop called. _is_navigating={self._is_navigating}")
+        if not self._is_navigating: return
+        
         source_model = self._ctx["source_model"]
+        
+        # [Fix] 탭이 처음 열리면서 호출된 '일반 페칭'이 먼저 끝나버리면, 
+        # 점프 데이터가 없는데도 이 콜백이 실행되어 Abort 되는 문제를 막기 위함
+        active_ctx = getattr(source_model, '_active_fetch_ctx', None)
+        if active_ctx is None or active_ctx.source != "jump":
+            print(f"[Nav] Ignoring fetch_finished because it was a NORMAL fetch. Waiting for JUMP fetch.")
+            return
         new_map = source_model._build_row_id_map()
         row_id = self._ctx["row_id"]
         final_idx = new_map.get(row_id)
         
+        print(f"[Nav] final_idx for {row_id} is {final_idx}. _fetching={getattr(source_model, '_fetching', True)}")
+        
         if final_idx is not None:
+            try: source_model.fetch_finished.disconnect(self._step4_final_hop)
+            except Exception: pass
+            
             self._final_scroll(final_idx)
             self.statusRequested.emit(f"🎯 {self._ctx['table_name']} 이동 완료", 2000)
+            self._release_guard()
         else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self._ctx["parent_widget"], "알림", "데이터 로딩 대기 중...")
-        self._release_guard()
+            if not getattr(source_model, '_fetching', True):
+                # 모든 페칭이 끝났는데도 타겟이 없다면 (삭제되었거나 인덱스 오류)
+                print(f"[Nav] Fetching finished but target not found! Aborting.")
+                try: source_model.fetch_finished.disconnect(self._step4_final_hop)
+                except Exception: pass
+                self.statusRequested.emit("❌ 데이터를 찾을 수 없습니다. (삭제 등)", 3000)
+                self._release_guard()
+            else:
+                print(f"[Nav] target not found, but _fetching is True. Waiting for next fetch.")
 
     def _final_scroll(self, row_idx):
         ctx = self._ctx
@@ -281,6 +291,11 @@ class HistoryNavigator(QObject):
             table_view.setFocus()
             table_view.scrollTo(m_idx, table_view.ScrollHint.EnsureVisible)
             table_view.setCurrentIndex(m_idx)
+            
+            total_duration = (time.time() - self._ctx.get("start_time", time.time())) * 1000
+            print(f"[Nav] Step 4 (Data Load & Scroll) took {(time.time() - self._ctx.get('fetch_start', time.time()))*1000:.2f}ms")
+            print(f">>> [Nav] SUCCESS: Total Navigation took {total_duration:.2f}ms")
+
             # Lineage 조회는 UI에서 처리하도록 시그널이나 콜백 필요할 수 있음
             if hasattr(ctx["parent_widget"], "_fetch_cell_lineage"):
                 ctx["parent_widget"]._fetch_cell_lineage(table_view, m_idx)

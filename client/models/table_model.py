@@ -3,7 +3,14 @@ import os
 import time
 import uuid
 from datetime import datetime
+from dataclasses import dataclass, field
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, QRunnable, QThreadPool, Signal, Slot, QObject, QPersistentModelIndex, QThread, QTimer
+
+@dataclass
+class FetchContext:
+    source: str
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    params: dict = field(default_factory=dict)
 
 class WorkerSignals(QObject):
     finished = Signal(object)
@@ -158,6 +165,28 @@ class WsListenerThread(QThread):
         self.quit()
         self.wait()
 
+class ApiDeleteWorker(QRunnable):
+    def __init__(self, url, row_ids, user_name="system"):
+        super().__init__()
+        self.url = url
+        self.row_ids = row_ids
+        self.user_name = user_name
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        try:
+            import urllib.request
+            import json
+            payload = {"row_ids": self.row_ids, "user_name": self.user_name}
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(self.url, data=data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                self.signals.finished.emit(result)
+        except Exception as e:
+            self.signals.error.emit(str(e))
 
 class ApiLazyTableModel(QAbstractTableModel):
     count_changed = Signal(int, int, int) # (exposed_rows, loaded_rows, total_count)
@@ -178,6 +207,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._batch_fetching = False # [Phase 73.10] 일괄 로딩 추적 플래그
         self._fetch_scheduled = False
         self._first_fetch = True
+        self._pending_target_row_id = None # [Phase 1] 점프 대상 ID 보관용
         self._is_processing_remote = False
         self._fetching_row_ids = set()
         self._sort_latest = True
@@ -190,15 +220,8 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         self._row_id_map = {}
         self._pending_target_skip = None # [신규] 특정 오프셋 점프 예약용
-        self._stale_fetch_tracker = {}
-        
         # [Phase 73.5] 검색 세션 ID 도입 - 고속 타이핑 시 이전 검색 결과 오염 방지
         self._search_session_id = str(uuid.uuid4())
-        
-        self._recovery_timer = QTimer(self)
-        self._recovery_timer.setInterval(500)
-        self._recovery_timer.timeout.connect(self._check_for_stale_placeholders)
-        self._recovery_timer.start()
 
         # [신규] 가변 청크 성능 측정용
         self._fetch_start_time = 0.0
@@ -206,33 +229,23 @@ class ApiLazyTableModel(QAbstractTableModel):
         # [신규] Viewport Jump용 타이머 (Debounce)
         self._jump_timer = QTimer(self)
         self._jump_timer.setSingleShot(True)
-        self._jump_timer.timeout.connect(self.fetchMore)
+        self._jump_timer.timeout.connect(self._on_jump_timer_timeout)
         
         # [GC Stabilization] 실행 중인 업데이트 컨텍스트 추적
         self._pending_update_ctx = {}
+        
+        self._active_fetch_ctx = None
+        self._pending_fetch_ctx = None
 
     @property
     def loaded_count(self) -> int:
         """실제로 데이터가 로드된(None이 아닌) 행 수를 반환합니다 (O(1))."""
         return self._loaded_count
 
+    def _on_jump_timer_timeout(self):
+        ctx = self._pending_fetch_ctx if self._pending_fetch_ctx else FetchContext(source="scroll")
+        self.request_fetch(ctx)
 
-    def _check_for_stale_placeholders(self):
-        if self._fetching: return
-        now = time.time()
-        to_retry = None
-        for skip in sorted(list(self._stale_fetch_tracker.keys())):
-            if now - self._stale_fetch_tracker[skip] >= 0.5:
-                to_retry = skip
-                break
-        if to_retry is not None:
-            if to_retry < len(self._data) and self._data[to_retry] is None:
-                self._pending_target_skip = to_retry
-                self._stale_fetch_tracker[to_retry] = now
-                self.fetchMore()
-            else:
-                if to_retry in self._stale_fetch_tracker:
-                    del self._stale_fetch_tracker[to_retry]
 
     def update_columns(self, columns: list[str]):
         self.beginResetModel()
@@ -259,7 +272,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self.endResetModel()
         
         self._refresh_total_count()
-        self.fetchMore()
+        self.request_fetch(FetchContext(source="scroll", params={"skip": 0}))
 
     def set_sort_latest(self, enabled: bool):
         if self._sort_latest == enabled: return
@@ -279,18 +292,11 @@ class ApiLazyTableModel(QAbstractTableModel):
         self.count_changed.emit(0, 0, 0)
         self.endResetModel()
         self._refresh_total_count()
-        self.fetchMore()
+        self.request_fetch(FetchContext(source="scroll", params={"skip": 0}))
 
     def _refresh_total_count(self):
         """[Phase 73.6] 현재 검색 조건에 맞는 전체 개수를 서버에 재요청하여 UI 정합성을 맞춤."""
-        order = "updated_at" if self._sort_latest else "id"
-        desc = "true" if self._sort_latest else "false"
-        import urllib.parse
-        cols_str = self._search_cols if self._search_cols else ",".join(self._columns)
-        url = f"{self.endpoint_url}?skip=0&limit=1&order_by={order}&order_desc={desc}&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(cols_str)}"
-        worker = ApiFetchWorker(url, session_id=self._search_session_id)
-        worker.signals.finished.connect(self._on_total_refresh_finished)
-        QThreadPool.globalInstance().start(worker)
+        self.request_fetch(FetchContext(source="total_count"))
 
     def _set_total_count(self, new_total: int):
         """[Phase 73.11] 전체 개수 업데이트를 중앙 집중화하여 UI 정합성을 보장합니다.
@@ -307,11 +313,12 @@ class ApiLazyTableModel(QAbstractTableModel):
 
     def _on_total_refresh_finished(self, result):
         resp_session = result.get("_session_id")
-        if resp_session and resp_session != self._search_session_id:
+        if resp_session and self._active_fetch_ctx and resp_session != self._active_fetch_ctx.session_id:
             return
             
         new_total = result.get("total", 0)
         self._set_total_count(new_total)
+        self._finalize_fetch()
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return self._exposed_rows
@@ -554,9 +561,17 @@ class ApiLazyTableModel(QAbstractTableModel):
         if "updated_at" in blob: row["updated_at"] = blob["updated_at"].get("value")
         return row
 
-    def _update_row_id_map(self):
-        print('[DEBUG] update row id map')
-        self._row_id_map = {str(r.get("row_id")): i for i, r in enumerate(self._data) if r}
+    def _update_row_id_map(self, specific_rows: list = None, start_idx: int = 0):
+        """row_id -> index 매핑을 효율적으로 갱신합니다."""
+        if specific_rows is not None:
+            # [Optimization] 신규 유입된 부분만 업데이트 (O(Chunk))
+            for i, r in enumerate(specific_rows):
+                if r and not r.get("_is_duplicate"):
+                    rid = str(r.get("row_id"))
+                    self._row_id_map[rid] = start_idx + i
+        else:
+            # 전수 업데이트 (O(N)) - 모델 리셋 시에만 호출
+            self._row_id_map = {str(r.get("row_id")): i for i, r in enumerate(self._data) if r}
 
     def _build_row_id_map(self):
         if not self._row_id_map: self._update_row_id_map()
@@ -596,19 +611,21 @@ class ApiLazyTableModel(QAbstractTableModel):
 
         if row >= self._exposed_rows - 10 and self.canFetchMore():
             # [안정성] 직접 호출 시 ProxyModel 매핑 파괴 위험이 있으므로 다음 이벤트 루프로 지연 실행 (Proactive Expansion)
-            self._jump_timer.start(1)
+            if not self._jump_timer.isActive():
+                self._pending_fetch_ctx = FetchContext(source="scroll")
+                self._jump_timer.start(1)
 
         if row >= len(self._data) or self._data[row] is None:
             if role == Qt.ItemDataRole.DisplayRole:
                 # Viewport에 빈 데이터가 포착되면 해당 위치 최우선 로딩 예약
                 skip = (row // self._chunk_size) * self._chunk_size
-                if not self._fetching:
-                    self._pending_target_skip = skip
-                    if not self._jump_timer.isActive():
-                        self._jump_timer.start(1) # 10ms Debounce
                 
-                if skip not in self._stale_fetch_tracker: 
-                    self._stale_fetch_tracker[skip] = time.time()
+                # [Fix] 현재 fetching 중이더라도 가장 최근에 노출된 뷰포트의 데이터를 우선적으로 큐잉
+                self._pending_fetch_ctx = FetchContext(source="scroll", params={"skip": skip})
+                
+                if not self._fetching and not self._jump_timer.isActive():
+                    self._jump_timer.start(1) # 1ms Debounce
+                
                 return "Loading..."
             return None
 
@@ -627,31 +644,84 @@ class ApiLazyTableModel(QAbstractTableModel):
                 return QColor("#BD6031")
         return None
 
+    def jump_to_id(self, row_id: str):
+        """지정된 ID 위치로 최우선 점프 로딩을 수행합니다."""
+        ctx = FetchContext(source="jump", params={"target_row_id": row_id})
+        self.request_fetch(ctx)
+
     def canFetchMore(self, parent=QModelIndex()) -> bool:
         # 노출된 행이 전체 행보다 적으면 더 가져올 수 있음
         return not self._fetching and (self._first_fetch or self._exposed_rows < self._total_count)
 
+    def request_fetch(self, ctx: FetchContext):
+        """[Phase 1] 중앙 집중화된 페칭 요청 통제 메서드"""
+        if self._fetching or not self._columns:
+            self._pending_fetch_ctx = ctx
+            return
+        self._active_fetch_ctx = ctx
+        self.fetchMore()
+
     def fetchMore(self, parent=QModelIndex()):
         # 1. 스냅샷: 현재 로딩 중인지 확인
-        is_jump_request = self._pending_target_skip is not None
+        if not self._active_fetch_ctx:
+            self._active_fetch_ctx = FetchContext(source="scroll")
+            
+        ctx = self._active_fetch_ctx
+        is_jump_request = (ctx.source == "jump") or ("skip" in ctx.params)
+        is_batch = (ctx.source == "batch")
+        is_total = (ctx.source == "total_count")
         
-        # [Fix] 점프 요청 시에는 일반 fetching 가드를 무시하거나 중단하고 최우선 처리
-        if self._fetching and not is_jump_request:
+        target_rid = ctx.params.get("target_row_id") if ctx.source == "jump" else None
+        skip = ctx.params.get("skip")
+        
+        # [Fix] 점프/배치/카운트 요청 시에는 일반 fetching 가드를 무시하거나 중단하고 최우선 처리
+        if self._fetching and not (is_jump_request or is_batch or is_total):
+            return
+
+        # [Safety] 검색 결과가 0건인 것이 확정된 경우(첫 페치 이후) 추가 진행 차단
+        if not self._first_fetch and self._total_count == 0 and not is_total:
+            self._active_fetch_ctx = None
             return
             
         # 2. 노출 범위 확장 (Adaptive Expansion)
         # 점프 요청이거나, Qt가 스크롤바 바닥을 쳤을 때
-        if is_jump_request:
+        if is_jump_request and skip is not None:
             # 점프 대상이 현재 노출 범위를 넘어선다면 미리 공간 확보 (Shell Extension)
-            if self._pending_target_skip + self._chunk_size > self._exposed_rows:
-                new_limit = self._pending_target_skip + self._chunk_size
+            if skip + self._chunk_size > self._exposed_rows:
+                new_limit = skip + self._chunk_size
                 self.beginInsertRows(QModelIndex(), self._exposed_rows, new_limit - 1)
                 self._exposed_rows = new_limit
                 if len(self._data) < self._exposed_rows:
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
                 self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
-        elif not self._first_fetch:
+
+        elif is_batch:
+            # [Phase 73.10] 일괄 로딩 전용 확장 로직
+            self._batch_fetching = True
+            count = ctx.params.get("count", 1000)
+            remaining = self._total_count - self._exposed_rows
+            increment = min(count, remaining)
+            if increment > 0:
+                self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
+                self._exposed_rows += increment
+                if len(self._data) < self._exposed_rows:
+                    self._data.extend([None] * (self._exposed_rows - len(self._data)))
+                self.endInsertRows()
+                self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
+                # 배치 모드에서는 skip을 현재 서버 fetch 카운트로 고정
+                skip = self._server_fetched_count
+            else:
+                self.status_message_requested.emit("마지막 행입니다.")
+                self.batch_fetch_finished.emit()
+                self._finalize_fetch()
+                return
+
+        elif is_total:
+            # 카운트 갱신 모드에서는 확장 로직 스킵
+            pass
+
+        elif not is_jump_request and not self._first_fetch:
             # 일반 스크롤 확장 (기존 로직 유지)
             remaining = self._total_count - self._exposed_rows
             increment = min(self._chunk_size, remaining)
@@ -662,10 +732,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self._data.extend([None] * (self._exposed_rows - len(self._data)))
                 self.endInsertRows()
                 self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
+            self._active_fetch_ctx = None # [Fix] 디버거 UI 잔상 제거
             return
 
         # 3. 데이터 로딩 (Viewport Request Only)
-        if self._fetching and not is_jump_request: return
+        if self._fetching and not (is_jump_request or is_batch or is_total): return
         
         # 타이머 중지 (명시적 호출 시)
         if self._jump_timer.isActive(): self._jump_timer.stop()
@@ -674,86 +745,126 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._fetch_scheduled = False
         self._fetch_start_time = time.time() # [신규] 페칭 시작 시간 기록
         
-        skip = self._pending_target_skip if self._pending_target_skip is not None else 0
-        print(f"[DEBUG-Model] fetchMore starting. skip={skip}, chunk={self._chunk_size}, is_jump={is_jump_request}")
+        req_skip = skip if skip is not None else 0
+        if target_rid: self._last_jump_target = target_rid # [DEBUG] 보존
         
-        self._pending_target_skip = None
-        self._active_target_skip = skip
+        print(f"[DEBUG-Model] fetchMore starting. skip={req_skip}, chunk={self._chunk_size}, is_jump={is_jump_request}, is_batch={is_batch}, is_total={is_total}, target={target_rid}")
+        
+        self._active_target_skip = req_skip
         
         order = "updated_at" if self._sort_latest else "id"
         desc = "true" if self._sort_latest else "false"
-        url = f"{self.endpoint_url}?skip={skip}&limit={self._chunk_size}&order_by={order}&order_desc={desc}"
+        
+        # [Fix] 요청 타입에 따른 URL 및 파라미터 분기
+        import urllib.parse
+        cols_str = self._search_cols if self._search_cols else ",".join(self._columns)
+        
+        if is_total:
+            url = f"{self.endpoint_url}?skip=0&limit=1&order_by={order}&order_desc={desc}&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(cols_str)}"
+            worker = ApiFetchWorker(url, session_id=self._active_fetch_ctx.session_id)
+            worker.signals.finished.connect(self._on_total_refresh_finished)
+            worker.signals.error.connect(self._on_fetch_error)
+            QThreadPool.globalInstance().start(worker)
+            return
+
+        # [Fix] 배치 모드일 경우 노출 범위까지 채우도록 limit 계산
+        if is_batch:
+            limit = self._exposed_rows - req_skip
+        else:
+            limit = self._chunk_size
+            
+        if target_rid:
+            limit = 100 # [Ultimate Optimization] 점프 시에는 뷰포트만 채우면 되므로 100개만 초고속 인출
+        
+        url = f"{self.endpoint_url}?skip={req_skip}&limit={limit}&order_by={order}&order_desc={desc}"
         if self._search_query:
             import urllib.parse
             target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
             url += f"&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(target_cols)}"
+        
+        if target_rid:
+            url += f"&target_row_id={target_rid}"
             
         print(f"[DEBUG-Model] Request URL: {url}")
-        worker = ApiFetchWorker(url, session_id=self._search_session_id)
+        session_id_to_use = self._active_fetch_ctx.session_id if self._active_fetch_ctx else self._search_session_id
+        worker = ApiFetchWorker(url, session_id=session_id_to_use)
         worker.signals.finished.connect(self._on_fetch_finished)
         worker.signals.error.connect(self._on_fetch_error)
         QThreadPool.globalInstance().start(worker)
 
     def fetch_batch(self, count: int = 1000):
         """특정 개수(기본 1000개)만큼의 데이터를 한꺼번에 가져오고 노출 범위를 확장합니다."""
-        if self._fetching: return
-        
-        remaining = self._total_count - self._exposed_rows
-        increment = min(count, remaining)
-        print(increment)
-        if increment <= 0: 
-            self.status_message_requested.emit("마지막 행입니다.")
-            self.batch_fetch_finished.emit()
-            return
-
-        self._fetching = True
-        self._batch_fetching = True # 플래그 설정
-        self._fetch_start_time = time.time() # [신규] 페칭 시작 시간 기록
-        
-        # 1. 노출 범위 확장 알림 및 데이터 버퍼 패딩
-        self.beginInsertRows(QModelIndex(), self._exposed_rows, self._exposed_rows + increment - 1)
-        self._exposed_rows += increment
-        if len(self._data) < self._exposed_rows:
-            self._data.extend([None] * (self._exposed_rows - len(self._data)))
-        self.endInsertRows()
-        # [Phase 73.8] 일괄 로드 시에도 즉시 로드 수치 반영
-        self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
-
-        # 2. 서버 요청 (이미 확장된 내역까지 포함하여 Gap 없이 채우도록 limit 계산)
-        skip = self._server_fetched_count
-        self._active_target_skip = skip
-        
-        # [Fix] 단순 increment가 아니라, 현재 노출된 전체 범위(_exposed_rows)까지 부족한 데이터를 모두 채움
-        fetch_limit = self._exposed_rows - skip
-        
-        order = "updated_at" if self._sort_latest else "id"
-        desc = "true" if self._sort_latest else "false"
-        url = f"{self.endpoint_url}?skip={skip}&limit={fetch_limit}&order_by={order}&order_desc={desc}"
-        if self._search_query:
-            import urllib.parse
-            target_cols = self._search_cols if self._search_cols else ",".join(self._columns)
-            url += f"&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(target_cols)}"
-            
-        worker = ApiFetchWorker(url, session_id=self._search_session_id)
-        worker.signals.finished.connect(self._on_fetch_finished)
-        worker.signals.error.connect(self._on_fetch_error)
-        QThreadPool.globalInstance().start(worker)
+        self.request_fetch(FetchContext(source="batch", params={"count": count}))
 
     def _on_fetch_finished(self, result):
-        # [Phase 73.5] 세션 검증: 응답에 포함된 세션 ID가 현재 모델의 세션 ID와 다르면 폐기
+        # 1. 세션 검증
         resp_session = result.get("_session_id")
-        if resp_session and resp_session != self._search_session_id:
-            print(f"[Model] Discarding stale session result: {resp_session} != {self._search_session_id}")
-            self._fetching = False
+        if resp_session and self._active_fetch_ctx and resp_session != self._active_fetch_ctx.session_id:
+            print(f"[Model] Discarding stale session result: {resp_session} != {self._active_fetch_ctx.session_id}")
             return
 
-        # [Phase 73.8] 네트워크 응답 도착 직후 메타데이터(Total)부터 즉시 업데이트하여 UI 반응성 확보
+        # 2. 메타데이터 업데이트
         total = result.get("total", 0)
         self._set_total_count(total)
 
-        new = result.get("data", []); total = result.get("total", 0)
+        # 3. 데이터 주입 (Jump Mode vs Normal Mode)
+        calc_skip = result.get("calculated_skip")
+        t_offset = result.get("target_offset")
+        new = result.get("data", [])
+        
+        if calc_skip is not None:
+            # [Validation] 서버에서 타겟 행을 찾지 못한 경우 (삭제 등)
+            if t_offset == -1:
+                print("[Model] Target row not found in database (likely deleted).")
+                self._finalize_fetch()
+                return
+
+            try:
+                target_limit = calc_skip + len(new)
+                
+                # [DEBUG] Check if the target row is actually in 'new'
+                target_rid = self._pending_target_row_id or getattr(self, '_last_jump_target', None)
+                if target_rid:
+                    found_in_new = False
+                    for idx_in_new, r_obj in enumerate(new):
+                        if str(r_obj.get("row_id")) == target_rid:
+                            print(f"[DEBUG-State] Found target {target_rid} in 'new' at local index {idx_in_new} (absolute {calc_skip + idx_in_new})")
+                            found_in_new = True
+                            break
+                    if not found_in_new:
+                        print(f"[DEBUG-State] CRITICAL: Target {target_rid} NOT FOUND in 'new'! (Fetched 100 rows around offset {calc_skip})")
+                        # Dump first and last item for context
+                        if new:
+                            print(f"  - First item: {new[0].get('row_id')}")
+                            print(f"  - Last item: {new[-1].get('row_id')}")
+                
+                if target_limit > self._exposed_rows:
+                    self.beginInsertRows(QModelIndex(), self._exposed_rows, target_limit - 1)
+                    if len(self._data) < target_limit:
+                        self._data.extend([None] * (target_limit - len(self._data)))
+                    self._exposed_rows = target_limit
+                    self.endInsertRows()
+                else:
+                    if len(self._data) < target_limit:
+                        self._data.extend([None] * (target_limit - len(self._data)))
+                
+                for i, r in enumerate(new):
+                    self._data[calc_skip + i] = r
+                
+                self._server_fetched_count = max(self._server_fetched_count, target_limit)
+                self.dataChanged.emit(self.index(calc_skip, 0), self.index(target_limit - 1, len(self._columns) - 1))
+                self._update_row_id_map(new, calc_skip)
+                
+            except Exception as e:
+                import traceback
+                print(f"[DEBUG-State] Exception in jump injection: {e}")
+                traceback.print_exc()
+            finally:
+                self._finalize_fetch()
+            return
+
+        # [Normal Mode Logic]
         skip = getattr(self, '_active_target_skip', 0)
-        if skip in self._stale_fetch_tracker: del self._stale_fetch_tracker[skip]
         
         if self._first_fetch:
             self.beginResetModel()
@@ -764,33 +875,22 @@ class ApiLazyTableModel(QAbstractTableModel):
             self._first_fetch = False
             self.endResetModel()
             
-            # [Fix] 모든 내부 상태가 확정된 후 Ground Truth 동기화 및 시그널 방출
-            self._set_total_count(total)
-            self._fetching = False
-            self._update_row_id_map()
-            self.fetch_finished.emit()
-            return
-        
-        # 만약 모델이 리셋된 상태(_first_fetch=True)인데 이전 세션의 응답이 온 것이라면 무시
-        if self._first_fetch:
-            self._fetching = False
+            # [Fix] 첫 페치 응답에 포함된 전체 개수로 모델 상태 동기화
+            resp_total = result.get("total", 0)
+            self._set_total_count(resp_total)
+            
+            self._finalize_fetch()
             return
 
         if new:
-            # [Fix] ID 기반 중복 필터링 로직: 이미 버퍼 내 다른 위치에 존재하는 ID가 오면 기존 데이터만 갱신하고 중복 삽입 차단
+            # ID 기반 중복 보정 및 삽입
             for i, r in enumerate(new):
                 rid = str(r.get("row_id"))
                 existing_idx = self._row_id_map.get(rid)
-                
-                # 만약 현재 채우려는 skip 위치가 아닌 다른 곳에 이미 해당 ID가 있다면 (중복)
                 target_idx = skip + i
                 if existing_idx is not None and existing_idx != target_idx:
-                    # 기존 위치의 데이터만 최신화 (Stability 고수)
-                    if existing_idx < len(self._data):
-                        self._data[existing_idx] = r
-                    # 현재(뒤쪽) 위치에는 중복 마커 삽입 (프록시에서 필터링용)
-                    if target_idx >= len(self._data):
-                        self._data.extend([None] * (target_idx - len(self._data) + 1))
+                    if existing_idx < len(self._data): self._data[existing_idx] = r
+                    if target_idx >= len(self._data): self._data.extend([None]*(target_idx - len(self._data) + 1))
                     self._data[target_idx] = {"_is_duplicate": True, "row_id": rid}
                     continue
                 
@@ -814,6 +914,11 @@ class ApiLazyTableModel(QAbstractTableModel):
             self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
             self.dataChanged.emit(self.index(skip, 0), self.index(skip + len(new) - 1, len(self._columns) - 1))
             if skip == self._server_fetched_count: self._server_fetched_count += len(new)
+            
+        # [Fix] 매 응답마다 전체 개수 동기화하여 UI 정합성 유지
+        resp_total = result.get("total")
+        if resp_total is not None:
+            self._set_total_count(resp_total)
         
         # ── [Phase 2] 가변 청크 사이즈 (Adaptive Chunk Size) 조절 ──
         duration = time.time() - self._fetch_start_time
@@ -834,16 +939,26 @@ class ApiLazyTableModel(QAbstractTableModel):
         # 마지막으로 한 번 더 시그널을 보내어 UI 동기화 보장
         print('[DEBUG] fetch 완료')
         self.status_message_requested.emit(f"{len(new)} 행 추가 로드 완료 (약 {duration:.2f}초)")
-        self._update_row_id_map(); self._fetching = False
-        self.fetch_finished.emit() # [신규]
+        self._update_row_id_map()
+        self._finalize_fetch()
         
         if self._batch_fetching:
             self._batch_fetching = False
             self.batch_fetch_finished.emit()
 
     def _on_fetch_error(self, err): 
+        print(f"[Model] Fetch error: {err}")
+        self._finalize_fetch()
+
+    def _finalize_fetch(self):
+        """[Phase 2] 페칭 종료 시 상태 초기화 및 대기 중인 컨텍스트 실행을 관리합니다."""
         self._fetching = False
-        self.fetch_finished.emit() # [신규]
+        self.fetch_finished.emit()
+        self._active_fetch_ctx = None
+        if self._pending_fetch_ctx:
+            next_ctx = self._pending_fetch_ctx
+            self._pending_fetch_ctx = None
+            self.request_fetch(next_ctx)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal:

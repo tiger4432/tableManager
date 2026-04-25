@@ -478,6 +478,12 @@ class MainWindow(QMainWindow):
         self._ws_status_label = QLabel("  ● WebSocket: Disconnected  ")
         self._ws_status_label.setStyleSheet("color: #f38ba8;") # Red
         self._row_count_label = QLabel("Ready")
+        
+        # ── 디버거 단축키 (Ctrl+Shift+D) ──
+        from PySide6.QtGui import QShortcut, QKeySequence
+        self._debugger_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        self._debugger_shortcut.activated.connect(self._toggle_fetch_debugger)
+        self._fetch_debugger = None
         self._row_count_label.setStyleSheet("color: #fab387; font-weight: bold; margin-right: 15px;") # Peach
         self.statusBar().addPermanentWidget(self._row_count_label)
         self.statusBar().addPermanentWidget(self._ws_status_label)
@@ -518,6 +524,19 @@ class MainWindow(QMainWindow):
         self._on_navigation_requested("home")
         self._nav_rail.set_active("home")
 
+    def _toggle_fetch_debugger(self):
+        """Fetch 디버깅 윈도우를 토글합니다 (Ctrl+Shift+D)."""
+        if self._fetch_debugger is None:
+            from ui.fetch_debugger import FetchDebugger
+            self._fetch_debugger = FetchDebugger(self)
+            
+        if self._fetch_debugger.isVisible():
+            self._fetch_debugger.hide()
+        else:
+            self._fetch_debugger.show()
+            self._fetch_debugger.raise_()
+            self._fetch_debugger.activateWindow()
+
     def _on_navigation_requested(self, nav_id: str):
         """사이드바 클릭 시 해당 화면으로 전환."""
         if nav_id in self._nav_to_index:
@@ -557,8 +576,6 @@ class MainWindow(QMainWindow):
                     # 최초 접속이거나 데이터가 없는 상태라면 즉시 갱신 시작
                     if model._total_count == 0:
                         model._refresh_total_count()
-                        if model.canFetchMore():
-                            model.fetchMore()
 
     def _on_table_close_requested(self, nav_id: str):
         """테이블 종료 요청 처리 — 리소스 해제 및 UI 제거."""
@@ -849,7 +866,7 @@ class MainWindow(QMainWindow):
         # (구현 생략 - 필요 시 사이드바에서 특정 테이블 우클릭 메뉴 등으로 구현 가능)
         pass
 
-    def _init_table_tab(self, table_name: str):
+    def _init_table_tab(self, table_name: str, first_fetch = True):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
@@ -919,17 +936,18 @@ class MainWindow(QMainWindow):
         self._nav_rail.set_active(nav_id)
 
         # ── Agent D v4: 서버에서 스키마 로드 후 데이터 페칭 시작 (Sequential) ──
-        self._load_table_schema(model)
+        self._load_table_schema(model, first_fetch = first_fetch  )
 
-    def _load_table_schema(self, model: ApiLazyTableModel):
+    def _load_table_schema(self, model: ApiLazyTableModel, first_fetch = True):
         """[Phase 73.8] 특정 테이블 모델의 스키마를 비동기로 로드합니다. (캐싱 적용)"""
         table_name = model.table_name
         
         # ── Agent Stability: 이미 스키마 정보가 있다면 네트워크 요청 스킵 ──
         if hasattr(model, "_columns") and model._columns:
             print(f"[Schema] Local cache hit for {table_name}. Skipping network fetch.")
-            if model.canFetchMore():
-                model.fetchMore()
+            if first_fetch:
+                from models.table_model import FetchContext
+                model.request_fetch(FetchContext(source="schema_load"))
             return
 
         schema_url = config.get_table_schema_url(table_name)
@@ -941,8 +959,9 @@ class MainWindow(QMainWindow):
                 model.update_columns(cols)
                 print(f"[Schema] Successfully updated columns for {table_name}: {cols}")
                 # ── 스키마가 확보된 직후 첫 데이터 페칭 시작 (안정성 보장) ──
-                if model.canFetchMore():
-                    model.fetchMore()
+                if first_fetch:
+                    from models.table_model import FetchContext
+                    model.request_fetch(FetchContext(source="schema_load"))
             else:
                 print(f"[Schema] No columns returned for {table_name}")
             
@@ -953,8 +972,9 @@ class MainWindow(QMainWindow):
         def _on_schema_error(err):
             print(f"[Schema] Network error loading schema for {table_name}: {err}")
             # Agent D v6: Even if schema fails, try to fetch data with default columns
-            if model.canFetchMore():
-                model.fetchMore()
+            if first_fetch:
+                from models.table_model import FetchContext
+                model.request_fetch(FetchContext(source="schema_load"))
             if worker in self._active_workers:
                 self._active_workers.remove(worker)
 
