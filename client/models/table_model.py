@@ -714,7 +714,8 @@ class ApiLazyTableModel(QAbstractTableModel):
             return
 
         # [Safety] 검색 결과가 0건인 것이 확정된 경우(첫 페치 이후) 추가 진행 차단
-        if not self._first_fetch and self._total_count == 0 and not is_total:
+        # 단, 점프 요청(is_jump_request)은 대상 행이 필터링에 걸렸는지 서버에서 확인해야 하므로 통과시킵니다.
+        if not self._first_fetch and self._total_count == 0 and not is_total and not is_jump_request:
             self._active_fetch_ctx = None
             return
             
