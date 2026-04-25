@@ -272,8 +272,21 @@ def get_table_data(
     actual_target_offset = -1
     if target_row_id:
         # [Optimization] 타겟 행이 현재 검색 조건(query)에 부합하는지 PK를 활용해 초고속(1ms 이내) 검증
-        # 만약 부합하지 않는다면(필터에 가려진 경우) 무거운 오프셋 계산(count)을 즉시 스킵하여 6~10초 지연 방지
         target_row = query.filter(models.DataRow.row_id == target_row_id).first()
+        if not target_row:
+            # [Task 4] DB에는 존재하지만 현재 검색 조건(query)에 맞지 않는 경우,
+            # 무거운 count() 연산과 무의미한 데이터 페칭을 즉시 스킵하고 Fast-fail 응답을 반환합니다.
+            # 이로 인해 클라이언트가 10초간 Nav Lock에 걸리는 현상을 방지합니다.
+            print(f"[Server] Target {target_row_id} not found in query. Fast returning.")
+            return {
+                "total": 0,
+                "data": [],
+                "skip": skip,
+                "limit": limit,
+                "calculated_skip": skip,
+                "target_offset": -1
+            }
+        
         if target_row:
             from sqlalchemy import func, or_, and_
             count_query = query
