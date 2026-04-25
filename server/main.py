@@ -271,7 +271,9 @@ def get_table_data(
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
     if target_row_id:
-        target_row = db.query(models.DataRow).filter_by(row_id=target_row_id, table_name=table_name).first()
+        # [Optimization] 타겟 행이 현재 검색 조건(query)에 부합하는지 PK를 활용해 초고속(1ms 이내) 검증
+        # 만약 부합하지 않는다면(필터에 가려진 경우) 무거운 오프셋 계산(count)을 즉시 스킵하여 6~10초 지연 방지
+        target_row = query.filter(models.DataRow.row_id == target_row_id).first()
         if target_row:
             from sqlalchemy import func, or_, and_
             count_query = query
