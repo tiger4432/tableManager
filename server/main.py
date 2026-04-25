@@ -142,13 +142,17 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
     최신 로그 100 '그룹(Transaction)'을 가져옵니다.
     한 그룹에 수천 건의 변경이 있을 경우를 대비해 전체 행은 5,000건으로 제한합니다.
     """
-    from sqlalchemy import desc, func
+    from sqlalchemy import desc, func, or_
     
     # 1. 최근 로그 5000건을 먼저 조회하되, 현재 존재하는 데이터(DataRow)의 로그만 선별 (성능 및 안전 장치)
+    # 단, "_BATCH_" (대량 추가/삭제 등) 로그는 대상에서 예외로 통과시킵니다.
     raw_logs = db.query(models.AuditLog)\
-                 .filter(db.query(models.DataRow).filter(
-                     models.DataRow.row_id == models.AuditLog.row_id
-                 ).exists())\
+                 .filter(or_(
+                     models.AuditLog.row_id == "_BATCH_",
+                     db.query(models.DataRow).filter(
+                         models.DataRow.row_id == models.AuditLog.row_id
+                     ).exists()
+                 ))\
                  .order_by(desc(models.AuditLog.timestamp))\
                  .limit(5000).all()
                  
