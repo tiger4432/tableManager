@@ -137,6 +137,11 @@ class HistoryNavigator(QObject):
     def navigate_to_log(self, data: HistoryItemData, parent_widget):
         if self._is_navigating or data.is_summary: return
         
+        # [Task] 배치 작업(_BATCH_)은 개별 탐색이 불가능하므로 즉시 차단
+        if data.row_id == "_BATCH_":
+            self.statusRequested.emit("⚠️ 배치 작업 이력은 개별 이동을 지원하지 않습니다.", 3000)
+            return
+            
         self._is_navigating = True
         self.statusRequested.emit("🔍 데이터 위치를 탐색 중...", 0)
         
