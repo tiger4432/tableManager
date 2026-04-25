@@ -457,6 +457,13 @@ class ApiLazyTableModel(QAbstractTableModel):
             elif event == "batch_row_create":
                 items = data.get("items", [])
                 if not items: return
+                
+                # [Fix] 검색(필터링) 중이면 강제 삽입을 차단하고 카운트만 갱신
+                if self._search_query:
+                    self._refresh_total_count()
+                    self.status_message_requested.emit(f"백그라운드에서 신규 데이터 {len(items)}건이 생성되었습니다.")
+                    return
+                
                 import time
                 start_t = time.time()
                 new_rows = [self._normalize_row_data(item) for item in items]
@@ -506,10 +513,19 @@ class ApiLazyTableModel(QAbstractTableModel):
                     
                     if idx is not None:
                         row = self._data[idx]
+                        
+                        # [Fix] 하이라이팅: 업데이트된 필드에 is_overwrite=True 부여
+                        for col_k, col_v in new_data.items():
+                            if isinstance(col_v, dict):
+                                col_v["is_overwrite"] = True
+                            else:
+                                new_data[col_k] = {"value": col_v, "is_overwrite": True}
+                                
                         row.setdefault("data", {}).update(new_data)
                         norm = self._normalize_row_data(row)
                         
-                        if self._sort_latest and idx > 0:
+                        # [Fix] 검색 중이면 최신순 정렬이어도 위치 이동(상단 끌어올림) 생략, 제자리 업데이트
+                        if self._sort_latest and idx > 0 and not self._search_query:
                             indices_to_remove.append(idx)
                             moved_norms.append(norm)
                         else:
@@ -517,6 +533,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                             min_c = min(min_c, idx)
                             max_c = max(max_c, idx)
                     else:
+                        # 화면에 없는 새로운 데이터
+                        if self._search_query:
+                            continue # 검색 중이면 새 데이터 삽입 차단
+                            
                         norm = self._normalize_row_data({"row_id": rid, "data": new_data})
                         if self._sort_latest:
                                 moved_norms.append(norm)
