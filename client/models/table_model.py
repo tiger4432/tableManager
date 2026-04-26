@@ -549,9 +549,11 @@ class ApiLazyTableModel(QAbstractTableModel):
                     
                     if idx is not None:
                         row = self._data[idx]
+                        if row is None:
+                            row = item
+                        else:
+                            row.update(item)
                         
-                        # 서버에서 전달한 new_data(전체 행 상태)로 그대로 교체
-                        row["data"] = new_data
                         norm = self._normalize_row_data(row)
                         
                         # [Fix] 검색 중이면 최신순 정렬이어도 위치 이동(상단 끌어올림) 생략, 제자리 업데이트
@@ -567,7 +569,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                         if self._search_query:
                             continue # 검색 중이면 새 데이터 삽입 차단
                             
-                        norm = self._normalize_row_data({"row_id": rid, "data": new_data})
+                        norm = self._normalize_row_data(item) # 서버에서 온 전체 정보를 그대로 정규화에 사용
                         if self._sort_latest:
                                 moved_norms.append(norm)
                         
@@ -602,8 +604,6 @@ class ApiLazyTableModel(QAbstractTableModel):
                 elapsed = (time.time() - start_t) * 1000
                 print(f"[PERF] batch_row_upsert processed {len(items)} items in {elapsed:.2f}ms")
                 self.status_message_requested.emit(f"데이터 {len(items)}건 실시간 업데이트됨")
-
-
 
         finally:
             self._is_processing_remote = False

@@ -898,7 +898,9 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
         msg_items.append({
             "row_id": row.row_id,
             "is_new": is_new,
-            "data": row.data
+            "data": row.data,
+            "created_at": to_local_str(row.created_at),
+            "updated_at": to_local_str(row.updated_at)
         })
     
     # WebSocket 브로드캐스트 (batch.silent가 False인 경우에만 수행)
@@ -992,7 +994,13 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
         "table_name": table_name,
-        "items": [{"row_id": row_id, "is_new": False, "data": updated_row.data}],
+        "items": [{
+            "row_id": row_id, 
+            "is_new": False, 
+            "data": updated_row.data,
+            "created_at": to_local_str(updated_row.created_at),
+            "updated_at": to_local_str(updated_row.updated_at)
+        }],
         "change_count": len(changed_cols)
     }))
     return {"status": "success", "row_id": row_id}
@@ -1013,7 +1021,13 @@ async def set_cell_priority(
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
         "table_name": table_name,
-        "items": [{"row_id": row_id, "is_new": False, "data": updated_row.data}],
+        "items": [{
+            "row_id": row_id, 
+            "is_new": False, 
+            "data": updated_row.data,
+            "created_at": to_local_str(updated_row.created_at),
+            "updated_at": to_local_str(updated_row.updated_at)
+        }],
         "change_count": len(changed_cols)
     }))
     return {"status": "success", "row_id": row_id}
