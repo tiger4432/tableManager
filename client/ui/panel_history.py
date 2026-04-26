@@ -96,10 +96,13 @@ class HistoryDockPanel(QDockWidget):
     def _render_history(self, data_list: list[HistoryItemData]):
         """HistoryItemData 객체 리스트를 UI에 렌더링합니다."""
         self._model.set_data(data_list)
+        # [NEW] 동기화 성공 시 메시지 갱신
+        self.set_status("✅ 히스토리 동기화 완료", 3000)
 
     @Slot(str)
     def _on_sync_error(self, err_msg):
-        self.set_status(f"⚠️ 히스토리 동기화 실패: {err_msg}", 3000)
+        # [Fix] 에러 발생 시에도 무한히 떠 있지 않도록 타임아웃 부여 (재시도 중임을 알림)
+        self.set_status(f"⚠️ 히스토리 동기화 실패 (재시도 중...): {err_msg}", 3000)
 
     @Slot(QModelIndex)
     def _on_item_clicked(self, index: QModelIndex):

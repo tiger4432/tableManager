@@ -38,8 +38,7 @@ async def startup_event():
             import json
             
             # 캐시 무효화
-            if table_name in TABLE_COUNT_CACHE:
-                TABLE_COUNT_CACHE.pop(table_name, None)
+            invalidate_table_cache(table_name)
                 
             msg = {
                 "event": "batch_refresh_required",
@@ -106,6 +105,24 @@ def read_root():
 import time
 # [성능 최적화] 테이블별 전체 개수 캐시 (2초간 유효)
 TABLE_COUNT_CACHE = {} # {table_name: (count, timestamp)}
+
+def invalidate_table_cache(table_name: str):
+    """
+    해당 테이블과 관련된 모든 카운트 캐시(전체 개수, 검색 결과 개수 등)를 무효화합니다.
+    """
+    if not table_name: return
+    
+    # dictionary size changed error 방지를 위해 list로 변환하여 순회
+    all_keys = list(TABLE_COUNT_CACHE.keys())
+    # 1. 테이블명과 정확히 일치하거나, 2. 테이블명_ 으로 시작하는 모든 키 제거
+    targets = [k for k in all_keys if k == table_name or k.startswith(f"{table_name}_")]
+    
+    for k in targets:
+        TABLE_COUNT_CACHE.pop(k, None)
+        
+    if targets:
+        print(f"[Cache] Invalidated {len(targets)} keys for table: {table_name}")
+
 
 from datetime import timezone, datetime
 import datetime as dt_pkg
@@ -385,9 +402,9 @@ def get_table_data(
             skip = max(0, actual_target_offset - (limit // 2))
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
-    # [Optimization] 검색어 유무와 관계없이 일관된 캐시 키와 60초 TTL을 사용하여 스크롤 성능을 보장합니다.
-    cache_key = f"{table_name}_count_q_{q}_cols_{cols}" if q else f"{table_name}_total_count"
-    cache_ttl = 5
+    # [Optimization] 검색어 유무와 관계없이 일관된 캐시 키와 5초 TTL을 사용하여 스크롤 성능을 보장합니다.
+    cache_key = f"{table_name}_total_count_{q}_{cols}" if q else f"{table_name}_total_count"
+    cache_ttl = 5.0
     
     if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < cache_ttl):
         total_count = TABLE_COUNT_CACHE[cache_key][0]
@@ -484,7 +501,7 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
         
-    TABLE_COUNT_CACHE.pop(table_name, None)
+    invalidate_table_cache(table_name)
 
     # Broadcast (Unified to batch_row_delete)
     msg = {
@@ -502,7 +519,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
     
     if deleted_count > 0:
-        TABLE_COUNT_CACHE.pop(table_name, None)
+        invalidate_table_cache(table_name)
         CHUNK_SIZE = 500
         for i in range(0, len(batch.row_ids), CHUNK_SIZE):
             chunk = batch.row_ids[i:i + CHUNK_SIZE]
@@ -648,15 +665,8 @@ def export_table_csv(
         final_sort = [models.DataRow.row_id.asc()]
 
     # [Safety Limit] 최대 100만 행으로 제한
-    # [Optimization] 캐시된 전체 개수 활용 (Progress Bar 예측용)
-    cache_ttl = 5.0 if not q else 2.0
-    if not q and table_name in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[table_name][1] < cache_ttl):
-        total_count = TABLE_COUNT_CACHE[table_name][0]
-    else:
-        # 검색어가 있거나 캐시가 없으면 count 수행 (최대 100만 제한)
-        total_count = query.count()
-        if not q: TABLE_COUNT_CACHE[table_name] = (total_count, time.time())
-    
+    # [Accuracy] 내보내기 시에는 캐시를 사용하지 않고 실시간 DB 카운트를 수행합니다.
+    total_count = query.count()
     total_count = min(total_count, 1000000)
     
     # ── [Optimization] ORM 객체 생성을 피하기 위해 필요한 필드만 추출 ──
@@ -847,7 +857,7 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     new_rows = crud.create_empty_rows_batch(db, table_name, count, user_name)
     
     if new_rows:
-        TABLE_COUNT_CACHE.pop(table_name, None)
+        invalidate_table_cache(table_name)
     
     msg_items = []
     for row in new_rows:
@@ -879,7 +889,7 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     results, changed_cells = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
     
     if results:
-        TABLE_COUNT_CACHE.pop(table_name, None)
+        invalidate_table_cache(table_name)
     
     msg_items = []
     for row, is_new in results:

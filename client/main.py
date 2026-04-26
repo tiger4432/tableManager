@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AssyManager - Enterprise Edition")
-        self.resize(1300, 850)
+        self.resize(1400, 850)
         
         # ── 프로그램 아이콘 설정 ──
         icon_path = os.path.join(os.path.dirname(__file__), "assets", "app_icon.png")
@@ -528,6 +528,9 @@ class MainWindow(QMainWindow):
         # [Fix] 시작 시 홈(대시보드) 상태를 명시적으로 활성화하여 데이터 페칭 트리거
         self._on_navigation_requested("home")
         self._nav_rail.set_active("home")
+
+        # [NEW] 히스토리 패널 초기 너비 설정 (350px 정도로 넓게)
+        self.resizeDocks([self._history_panel], [350], Qt.Horizontal)
 
     def _toggle_fetch_debugger(self):
         """Fetch 디버깅 윈도우를 토글합니다 (Ctrl+Shift+D)."""
@@ -760,6 +763,11 @@ class MainWindow(QMainWindow):
         """[Phase 73.12] 웹소켓 재연결 시 모든 활성 모델의 카운트를 즉시 재동기화 (Self-Healing)."""
         print("[WS] Reconnected. Synchronizing all active models...")
         self.statusBar().showMessage("🌐 웹소켓 연결됨 - 실시간 동기화 복구 중...", 3000)
+        
+        # [NEW] 연결 성공 즉시 히스토리 패널 새로고침
+        if hasattr(self, "_history_panel"):
+            self._history_panel.refresh_history()
+
         for model in self._active_models:
             if hasattr(model, "_refresh_total_count"):
                 model._refresh_total_count()
@@ -771,6 +779,7 @@ class MainWindow(QMainWindow):
         event = data.get("event")
         table_name = data.get("table_name")
         
+        print('[WS 수신] ', event)
         # 1. 모든 활성 모델에 데이터 전파 (테이블 뷰 갱신)
         for model in self._active_models:
             model._on_websocket_broadcast(data)

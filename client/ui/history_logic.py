@@ -70,9 +70,17 @@ class HistoryDataManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._is_refreshing = False
+        self._retry_count = 0 # 초기 로딩 재시도 횟수
+        self._max_retries = 3
+        
         self._refresh_debounce_timer = QTimer(self)
         self._refresh_debounce_timer.setSingleShot(True)
         self._refresh_debounce_timer.timeout.connect(self.refresh_history)
+        
+        # [NEW] 자동 재시도 타이머
+        self._retry_timer = QTimer(self)
+        self._retry_timer.setSingleShot(True)
+        self._retry_timer.timeout.connect(self.refresh_history)
 
     def refresh_history(self):
         if self._is_refreshing: return
@@ -94,6 +102,7 @@ class HistoryDataManager(QObject):
     @Slot(object)
     def _on_fetch_finished(self, grouped_logs):
         self._is_refreshing = False
+        self._retry_count = 0 # 성공 시 재시도 횟수 초기화
         if not isinstance(grouped_logs, list):
             self.syncError.emit("Invalid log format")
             return
@@ -114,6 +123,13 @@ class HistoryDataManager(QObject):
     def _on_fetch_error(self, err_msg):
         self._is_refreshing = False
         self.syncError.emit(err_msg)
+        
+        # [NEW] 초기 로딩 실패 시 자동 재시도 (최대 3번)
+        if self._retry_count < self._max_retries:
+            self._retry_count += 1
+            delay = self._retry_count * 3000 # 3초, 6초, 9초 간격으로 시도
+            print(f"[History] Sync failed, retrying in {delay/1000}s (Attempt {self._retry_count}/{self._max_retries})")
+            self._retry_timer.start(delay)
 
 class HistoryNavigator(QObject):
     """4단계 위치 탐색 시퀀스를 관리하는 클래스."""

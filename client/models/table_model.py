@@ -344,8 +344,9 @@ class ApiLazyTableModel(QAbstractTableModel):
         resp_session = result.get("_session_id")
         if resp_session and self._active_fetch_ctx and resp_session != self._active_fetch_ctx.session_id:
             return
-            
+        
         new_total = result.get("total", 0)
+        print('[DEBUG] Recieved total count : ', new_total)
         self._set_total_count(new_total)
         self._finalize_fetch()
 
@@ -499,6 +500,7 @@ class ApiLazyTableModel(QAbstractTableModel):
                 import time
                 start_t = time.time()
                 new_rows = [self._normalize_row_data(item) for item in items]
+                
 
                 
                 # [Optimization] 일괄 삽입 시그널 1회 발생
@@ -520,8 +522,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                     self._update_row_id_map()
                     self.status_message_requested.emit(f"신규 데이터 {num}건 하단 추가됨")
                 
+
                 self._refresh_total_count()
                 elapsed = (time.time() - start_t) * 1000
+
                 print(f"[PERF] batch_row_create processed {num} rows in {elapsed:.2f}ms")
 
 
