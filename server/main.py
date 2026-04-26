@@ -30,6 +30,15 @@ async def startup_event():
     main_loop = asyncio.get_running_loop()
     
     try:
+        # [Migration] NULL updated_at 보정 (coalesce 제거 및 성능 최적화 대비)
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            print("[Migration] Checking for NULL updated_at...")
+            res = conn.execute(text("UPDATE data_rows SET updated_at = created_at WHERE updated_at IS NULL"))
+            conn.commit()
+            if res.rowcount > 0:
+                print(f"[Migration] Successfully updated {res.rowcount} rows.")
+
         print("[Startup] Initializing Directory Watcher...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
@@ -196,7 +205,7 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
                 
         result.append({
             "transaction_id": g.get("transaction_id"),
-            "total_count": len(logs),
+            "total_count": g.get("total_count", len(logs)),
             "summary_columns": cols,
             "logs": [logs[0]] # 대표 로그 1건만 포함
         })
@@ -216,7 +225,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     if c and c not in cols: cols.append(c)
                 return {
                     "transaction_id": tx_id,
-                    "total_count": len(logs),
+                    "total_count": g.get("total_count", len(logs)),
                     "summary_columns": cols,
                     "logs": logs[:limit]
                 }
@@ -374,10 +383,12 @@ def get_table_data(
             count_query = query
             
             if order_by == "updated_at":
-                t_val = target_row.updated_at if target_row.updated_at else target_row.created_at
-                sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
-                if order_desc: # DESC
-                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, models.DataRow.row_id < target_row_id)))
+                t_val = target_row.updated_at
+                sort_expr = models.DataRow.updated_at
+                if order_desc: # DESC (최신순)
+                    # 1. 시간이 더 최근이거나(sort_expr > t_val)
+                    # 2. 시간이 같으면 row_id가 더 큰 행(DESC)이 앞에 오므로 row_id > target_row_id인 행을 카운트
+                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, models.DataRow.row_id > target_row_id)))
                 else: # ASC
                     count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, models.DataRow.row_id < target_row_id)))
             elif order_by == "id":
@@ -571,9 +582,10 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: S
 
     from sqlalchemy.sql import func
     if req.order_by == "updated_at":
-        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
+        sort_expr = models.DataRow.updated_at
         sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
-        tie_breaker = models.DataRow.row_id.asc()
+        # [Fix] 메인 테이블과 동일한 Tie-breaker 방향 적용 (Index 성능 및 정합성)
+        tie_breaker = models.DataRow.row_id.desc() if req.order_desc else models.DataRow.row_id.asc()
         query = query.order_by(sort_expr, tie_breaker)
     elif req.order_by == "id":
         bk_null_last = (models.DataRow.business_key_val == None).asc()

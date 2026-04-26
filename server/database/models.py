@@ -16,7 +16,7 @@ class DataRow(Base):
     data = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # [핵심] 1,000만 건 규모의 데이터 최적화 색인 일람
     __table_args__ = (

@@ -23,15 +23,13 @@ class AuditLogCache:
             if self.is_loaded: 
                 return
             
-            groups = []
-            current_group_logs = []
-            last_tid = None
-            group_count = 0
+            groups_dict = {}
+            groups_order = [] # To maintain chronological order of transactions
             
             chunk_size = 5000
             offset = 0
             
-            while group_count < limit_groups:
+            while len(groups_order) < limit_groups:
                 chunk = db.query(models.AuditLog, models.DataRow.business_key_val)\
                           .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
                           .filter(or_(
@@ -45,33 +43,27 @@ class AuditLogCache:
                     break
                     
                 for log_obj, bk in chunk:
-                    tid = log_obj.transaction_id
+                    tid = log_obj.transaction_id or "no_tid"
                     
                     log_dict = log_obj.__dict__.copy()
                     log_dict["business_key"] = bk
                     log_model = schemas.AuditLogResponse.model_validate(log_dict)
                     
-                    if not tid or tid != last_tid:
-                        if current_group_logs:
-                            groups.append({"transaction_id": last_tid, "logs": current_group_logs})
-                            group_count += 1
-                            if group_count >= limit_groups:
-                                break
-                                
-                        current_group_logs = [log_model]
-                        last_tid = tid
-                    else:
-                        current_group_logs.append(log_model)
-                        
-                if group_count >= limit_groups:
-                    break
+                    if tid not in groups_dict:
+                        if len(groups_order) >= limit_groups:
+                            continue
+                        new_group = {"transaction_id": tid, "logs": [], "total_count": 0}
+                        groups_dict[tid] = new_group
+                        groups_order.append(new_group)
                     
+                    groups_dict[tid]["total_count"] += 1
+                    # [성능 최적화] 인메모리 캐시에는 트랜잭션당 최대 500건만 유지 (나머지는 DB 조회)
+                    if len(groups_dict[tid]["logs"]) < 500:
+                        groups_dict[tid]["logs"].append(log_model)
+                         
                 offset += chunk_size
                 
-            if current_group_logs and group_count < limit_groups:
-                groups.append({"transaction_id": last_tid, "logs": current_group_logs})
-
-            self.groups = groups
+            self.groups = groups_order
                 
             self.is_loaded = True
 
@@ -83,12 +75,10 @@ class AuditLogCache:
             
             if any(g.get("transaction_id") == tx_id for g in self.groups):
                 return
-                
-            self.groups.insert(0, {"transaction_id": tx_id, "logs": logs})
             
-            recent_subset = self.groups[:5]
-            recent_subset.sort(key=lambda g: g["logs"][0].timestamp if g["logs"] else 0, reverse=True)
-            self.groups[:5] = recent_subset
+            # [최적화] 캡핑 적용
+            actual_count = len(logs)
+            self.groups.insert(0, {"transaction_id": tx_id, "logs": logs[:500], "total_count": actual_count})
             
             if len(self.groups) > 100:
                 self.groups.pop()
@@ -99,24 +89,25 @@ class AuditLogCache:
             if not self.is_loaded: 
                 return
             
-            tid = log_dict.get("transaction_id")
+            tid = log_dict.get("transaction_id") or "no_tid"
             log_model = schemas.AuditLogResponse.model_validate(log_dict)
             
-            # 기존 그룹 중에 같은 transaction_id가 있는지 확인 (주로 맨 앞)
-            for group in self.groups[:5]:
+            # [Fix] 기존 그룹 중에 같은 transaction_id가 있는지 전체 검색
+            for group in self.groups:
                 if group["transaction_id"] == tid:
-                    group["logs"].insert(0, log_model)
+                    group["total_count"] += 1
+                    # [최적화] 인메모리 캡핑 (500건)
+                    if len(group["logs"]) < 500:
+                        group["logs"].insert(0, log_model)
+                        
+                    # 해당 그룹을 최상단으로 이동 (최신 활동 트랜잭션 순서 유지)
+                    if self.groups.index(group) > 0:
+                        self.groups.remove(group)
+                        self.groups.insert(0, group)
                     return
             
             # 없으면 새 그룹 생성
-            self.groups.insert(0, {"transaction_id": tid, "logs": [log_model]})
-            
-            recent_subset = self.groups[:5]
-            recent_subset.sort(key=lambda g: g["logs"][0].timestamp if g["logs"] else 0, reverse=True)
-            self.groups[:5] = recent_subset
-            
-            if len(self.groups) > 100:
-                self.groups.pop()
+            self.groups.insert(0, {"transaction_id": tid, "logs": [log_model], "total_count": 1})
 
     def remove_deleted_rows(self, row_ids: List[str]):
         """삭제된 행의 과거 로그를 캐시에서 제거합니다."""
