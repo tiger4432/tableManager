@@ -265,12 +265,14 @@ def create_empty_row(db: Session, table_name: str):
 
 def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
     """신규 빈 행들을 일괄 생성하고 요약 히스토리를 남깁니다."""
+    from sqlalchemy.sql import func
     new_rows = []
     for _ in range(count):
         row = models.DataRow(
             row_id=str(uuid6.uuid7()),
             table_name=table_name,
-            data={}
+            data={},
+            updated_at=func.now()
         )
         new_rows.append(row)
     

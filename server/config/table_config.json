@@ -44,7 +44,7 @@
     ]
   },
   "chat": {
-    "business_key": "created_at",
+    "business_key": "request",
     "display_columns": [
       "request",
       "response",
