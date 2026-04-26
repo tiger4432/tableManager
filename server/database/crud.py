@@ -157,6 +157,20 @@ def apply_row_update_internal(
         is_new = True
         
     changed_cols = []
+    
+    # 1. Update business key from the updates FIRST if it's there
+    config = TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    if key_col and key_col in update_item.updates:
+        new_bk_val = update_item.updates[key_col]
+        if new_bk_val is not None:
+            row.business_key_val = str(new_bk_val).strip()
+    # Or from existing data if it's there but not in updates
+    elif key_col and key_col in row.data:
+        new_bk_val = row.data[key_col].get("value")
+        if new_bk_val is not None:
+            row.business_key_val = str(new_bk_val).strip()
+
     for col_name, val in update_item.updates.items():
         if col_name in system_cols: continue
             
@@ -199,15 +213,9 @@ def apply_row_update_internal(
             business_key=row.business_key_val
         )
 
-    config = TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    if key_col and key_col in row.data:
-        new_bk_val = row.data[key_col].get("value")
-        if new_bk_val is not None:
-            row.business_key_val = str(new_bk_val).strip()
-            
     flag_modified(row, "data")
     return row, is_new, changed_cols
+
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
     """통합 업데이트를 배치로 처리합니다."""

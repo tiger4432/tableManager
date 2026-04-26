@@ -394,7 +394,11 @@ class HistoryListModel(QAbstractListModel):
                     target_id = bk[:10] + "..." if len(bk) > 10 else bk
                 else:
                     target_id = row_id[:8] if row_id else ""
-                return f"      └ [{col}] {val}  (ID: {target_id})"
+                
+                if col == "ROW_UPDATE":
+                    return f"      └ [자동업데이트] {val}  (ID: {target_id})"
+                else:
+                    return f"      └ [{col}] {val}  (ID: {target_id})"
                 
         elif role == Qt.ItemDataRole.ForegroundRole:
             from PySide6.QtGui import QColor
