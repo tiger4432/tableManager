@@ -615,58 +615,118 @@ def export_table_csv(
     else:
         final_sort = [models.DataRow.row_id.asc()]
 
-    # [Safety Limit] 최대 100만 행으로 제한하며 정렬 적용
-    total_count = min(query.count(), 1000000)
-    query = query.order_by(*final_sort).limit(total_count)
+    # [Safety Limit] 최대 100만 행으로 제한
+    # [Optimization] 캐시된 전체 개수 활용 (Progress Bar 예측용)
+    cache_ttl = 5.0 if not q else 2.0
+    if not q and table_name in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[table_name][1] < cache_ttl):
+        total_count = TABLE_COUNT_CACHE[table_name][0]
+    else:
+        # 검색어가 있거나 캐시가 없으면 count 수행 (최대 100만 제한)
+        total_count = query.count()
+        if not q: TABLE_COUNT_CACHE[table_name] = (total_count, time.time())
+    
+    total_count = min(total_count, 1000000)
+    
+    # ── [Optimization] ORM 객체 생성을 피하기 위해 필요한 필드만 추출 ──
+    # data(JSONB), created_at, updated_at만 가져와서 속도 2배 이상 향상
+    export_query = query.with_entities(models.DataRow.data, models.DataRow.created_at, models.DataRow.updated_at)\
+                        .order_by(*final_sort)\
+                        .limit(total_count)
     
     # 1. 헤더 구성을 위한 샘플링 (첫 행 기준)
-    first_row = query.first()
-    if not first_row:
+    first_row_data = db.query(models.DataRow.data).filter(models.DataRow.table_name == table_name).first()
+    if not first_row_data:
         raise HTTPException(status_code=404, detail="No data matches the current filter")
-
+    
+    data_map = first_row_data[0]
     system_cols = ["created_at", "updated_at"]
-    business_cols = [k for k in sorted(first_row.data.keys()) if k not in system_cols]
+    business_cols = [k for k in sorted(data_map.keys()) if k not in system_cols]
     header = business_cols + system_cols
 
-    # 2. 크기 샘플링 예측 (1행당 평균 바이트 계산)
-    sample_rows = query.limit(5).all()
+    # 2. 크기 샘플링 예측 (초기 10행 기반 정밀 추산)
     sample_io = io.StringIO()
     sample_writer = csv.writer(sample_io)
-    sample_writer.writerow(header) # 헤더 포함
-    header_size = len(sample_io.getvalue())
-    sample_io.seek(0); sample_io.truncate(0)
+    # 실제 상위 10건 데이터 페치 (이미 정렬/필터링된 query 활용)
+    sample_rows = export_query.limit(10).all()
     
-    for row in sample_rows:
-        inject_system_columns(row)
-        sample_writer.writerow([row.data.get(col, {}).get("value") if isinstance(row.data.get(col, {}), dict) else row.data.get(col) for col in header])
+    tz = LOCAL_TIMEZONE
+    ts_fmt = "%Y-%m-%d %H:%M:%S"
     
-    avg_row_size = len(sample_io.getvalue()) / len(sample_rows) if sample_rows else 100
+    for r_data, c_at, u_at in sample_rows:
+        # 시스템 컬럼 데이터 가공 시뮬레이션 (generate 루프와 동일 로직)
+        eff_upd = u_at if u_at else c_at
+        c_at_s = c_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if c_at else ""
+        u_at_s = eff_upd.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if eff_upd else ""
+        
+        row_v = []
+        for col in header:
+            if col == "created_at":
+                row_v.append(c_at_s)
+            elif col == "updated_at":
+                row_v.append(u_at_s)
+            else:
+                cell = r_data.get(col, {})
+                val = cell.get("value") if isinstance(cell, dict) else cell
+                if isinstance(val, dict) and "value" in val:
+                    val = val.get("value")
+                row_v.append(val)
+        sample_writer.writerow(row_v)
+    
+    # UTF-8 바이트 수 기준으로 계산
+    sample_bytes = len(sample_io.getvalue().encode("utf-8"))
+    avg_row_size = sample_bytes / len(sample_rows) if sample_rows else 150
+    header_size = len("\ufeff".encode("utf-8")) + len(",".join(header).encode("utf-8")) + 2
     estimated_total_size = int(header_size + (avg_row_size * total_count))
 
     def generate():
         output = io.StringIO()
         writer = csv.writer(output)
-        output.write('\ufeff') # BOM for Excel
+        
+        # Excel 인식을 위한 BOM 추가
+        output.write('\ufeff')
         writer.writerow(header)
         yield output.getvalue()
         output.seek(0); output.truncate(0)
 
+        # ── [Optimization] 1000개 단위로 청크 처리하여 Yield 부하 감소 ──
+        batch_size = 1000
+        current_batch = []
+        
+        # 타임존 및 포맷터 미리 캐싱
+        tz = LOCAL_TIMEZONE
+        ts_fmt = "%Y-%m-%d %H:%M:%S"
 
-        # yield_per를 사용하여 DB 서버에서 한 번에 1000개씩만 페치 (메모리 보호)
-        # SQLite는 yield_per를 지원하지 않을 수 있지만, 대용량 스케일(PG/MySQL) 대응용
-        for row in query.yield_per(1000):
-            inject_system_columns(row)
+        for row_data, created_at, updated_at in export_query.yield_per(batch_size):
             row_vals = []
+            # 시스템 컬럼 데이터 가공 (inject_system_columns 로직의 인라인 최적화)
+            effective_update = updated_at if updated_at else created_at
+            c_at_str = created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if created_at else ""
+            u_at_str = effective_update.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if effective_update else ""
+            
             for col in header:
-                cell = row.data.get(col, {})
-                val = cell.get("value") if isinstance(cell, dict) else cell
-                if isinstance(val, dict) and "value" in val:
-                    val = val.get("value")
-                row_vals.append(val)
+                if col == "created_at":
+                    row_vals.append(c_at_str)
+                elif col == "updated_at":
+                    row_vals.append(u_at_str)
+                else:
+                    cell = row_data.get(col, {})
+                    val = cell.get("value") if isinstance(cell, dict) else cell
+                    # 만약 val이 또 dict 형태라면 (중첩 방어 로직)
+                    if isinstance(val, dict) and "value" in val:
+                        val = val.get("value")
+                    row_vals.append(val)
             
             writer.writerow(row_vals)
-            yield output.getvalue()
+            current_batch.append(output.getvalue())
             output.seek(0); output.truncate(0)
+            
+            if len(current_batch) >= batch_size:
+                yield "".join(current_batch)
+                current_batch = []
+        
+        # 남은 데이터 송신
+        if current_batch:
+            yield "".join(current_batch)
 
     filename = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     headers = {

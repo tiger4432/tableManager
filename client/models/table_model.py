@@ -1020,10 +1020,11 @@ class ApiLazyTableModel(QAbstractTableModel):
         duration = time.time() - self._fetch_start_time
         old_size = self._chunk_size
         
-        if duration < 0.5: # Fast -> 사이즈 상향 (최대 3000)
-            self._chunk_size = min(3000, int(self._chunk_size * 1.1))
-        elif duration > 0.55: # Slow -> 사이즈 하향 (최소 50)
-            self._chunk_size = max(50, int(self._chunk_size * 0.9))
+        if not self._batch_fetching: 
+            if duration < 0.5: # Fast -> 사이즈 상향 (최대 3000)
+                self._chunk_size = min(3000, int(self._chunk_size * 1.1))
+            elif duration > 0.55: # Slow -> 사이즈 하향 (최소 50)
+                self._chunk_size = max(50, int(self._chunk_size * 0.9))
             
         # 디버그 및 알림 (사이즈가 변경되었을 때만)
         if old_size != self._chunk_size:
