@@ -6,9 +6,11 @@ from PySide6.QtGui import QColor
 
 class HistoryItemData:
     """감사 로그 항목 하나 또는 그룹을 나타내는 데이터 객체."""
-    def __init__(self, logs: list[dict]):
+    def __init__(self, logs: list[dict], total_count: int = 1, summary_columns: list[str] = None):
         self.logs = logs
-        self.is_summary = len(logs) > 1
+        self.total_count = total_count
+        self.summary_columns = summary_columns or []
+        self.is_summary = self.total_count > 1
         self.is_expanded = False
         
         # 대표 데이터 (첫 번째 로그)
@@ -27,7 +29,7 @@ class HistoryItemData:
         user = self.updated_by or "system"
         if self.is_summary:
             # 요약행: 작업자, 테이블, 건수를 강조
-            return f"📦 [{user}] 님 | {self.table_name} | {len(self.logs)}건 변경 [{ts_str}]"
+            return f"📦 [{user}] 님 | {self.table_name} | {self.total_count}건 변경 [{ts_str}]"
         
         if self.business_key:
             target_id = self.business_key[:10] + "..." if len(self.business_key) > 10 else self.business_key
@@ -100,8 +102,10 @@ class HistoryDataManager(QObject):
         grouped_results = []
         for group in grouped_logs:
             logs = group.get("logs", [])
+            total_count = group.get("total_count", len(logs))
+            summary_columns = group.get("summary_columns", [])
             if logs:
-                grouped_results.append(HistoryItemData(logs))
+                grouped_results.append(HistoryItemData(logs, total_count, summary_columns))
 
         self.logsReady.emit(grouped_results)
 
@@ -337,3 +341,197 @@ class HistoryNavigator(QObject):
                 self._release_guard()
                 QTimer.singleShot(600, lambda d=data_obj, p=parent_widget: self.navigate_to_log(d, p))
             return False
+
+from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex
+
+class DisplayItem:
+    """가상화 리스트 모델에 렌더링 될 단일 항목 래퍼"""
+    def __init__(self, is_summary_item: bool, data_obj: HistoryItemData, detail_log: dict = None):
+        self.is_summary_item = is_summary_item
+        self.data_obj = data_obj # 원본 부모 객체
+        self.detail_log = detail_log # 상세 항목인 경우 하위 로그 데이터
+
+class HistoryListModel(QAbstractListModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._items: list[DisplayItem] = []
+
+    def set_data(self, data_list: list[HistoryItemData]):
+        self.beginResetModel()
+        self._items = [DisplayItem(True, d) for d in data_list]
+        self.endResetModel()
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._items)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid(): return None
+        item = self._items[index.row()]
+        
+        if role == Qt.ItemDataRole.DisplayRole:
+            if item.is_summary_item:
+                if item.data_obj.is_summary:
+                    # 다중 건(트랜잭션) 텍스트를 한 줄로 통일
+                    cols = item.data_obj.summary_columns
+                    col_count = len(cols)
+                    summary = ", ".join(cols[:5]) + f" 외 {col_count - 5}건" if col_count > 5 else ", ".join(cols)
+                    return f"{item.data_obj.get_display_text()}  → Fields: {summary}"
+                else:
+                    # 단일 건 텍스트 (기존 그대로)
+                    return item.data_obj.get_display_text()
+            else:
+                # 상세 텍스트
+                col = item.detail_log.get("column_name", "?")
+                
+                # 생략 처리
+                if col == "OMITTED":
+                    return f"      └ {item.detail_log.get('new_value', '')}"
+                    
+                val = item.detail_log.get("new_value", "null")
+                bk = item.detail_log.get("business_key")
+                row_id = item.detail_log.get("row_id", "")
+                if bk:
+                    target_id = bk[:10] + "..." if len(bk) > 10 else bk
+                else:
+                    target_id = row_id[:8] if row_id else ""
+                return f"      └ [{col}] {val}  (ID: {target_id})"
+                
+        elif role == Qt.ItemDataRole.ForegroundRole:
+            from PySide6.QtGui import QColor
+            if item.is_summary_item:
+                return QColor(item.data_obj.get_color())
+            if not item.is_summary_item and item.detail_log.get("column_name") == "OMITTED":
+                return QColor("#a6adc8") # 약간 덜 강조된 텍스트 색상
+            return QColor("#bac2de") # 상세 항목 색상
+
+        elif role == Qt.ItemDataRole.ToolTipRole:
+            if item.is_summary_item:
+                details = [f"[{log.get('column_name')}] {str(log.get('old_value'))[:20]} -> {str(log.get('new_value'))[:20]}" for log in item.data_obj.logs[:20]]
+                if len(item.data_obj.logs) > 20:
+                    details.append(f"... (총 {len(item.data_obj.logs)}건 중 {len(item.data_obj.logs)-20}건 생략됨)")
+                return "\n".join(details)
+            return None
+
+        elif role == Qt.ItemDataRole.UserRole:
+            return item
+
+    def toggle_expand(self, row: int):
+        """특정 행을 펼치거나 접습니다. (Lazy Fetching 지원)"""
+        print(f"[DEBUG-Expand] toggle_expand called for row: {row}")
+        item = self._items[row]
+        if not item.is_summary_item or not item.data_obj.is_summary:
+            print(f"[DEBUG-Expand] Ignoring because is_summary_item={item.is_summary_item}, data_obj.is_summary={item.data_obj.is_summary}")
+            return
+        
+        data_obj = item.data_obj
+        if getattr(data_obj, "is_fetching", False):
+            print(f"[DEBUG-Expand] Ignoring because is_fetching is True")
+            return # 중복 클릭 방지
+            
+        print(f"[DEBUG-Expand] is_expanded={data_obj.is_expanded}, len(logs)={len(data_obj.logs)}, total_count={data_obj.total_count}")
+        if not data_obj.is_expanded:
+            # logs의 개수가 서버가 내려주는 최대 limit 개수 미만이면서 전체 개수보다 작을 때만 Fetch
+            # (이미 500개 꽉 채워서 가져왔다면 다시 요청하지 않고 바로 펼침)
+            if len(data_obj.logs) < data_obj.total_count and len(data_obj.logs) <= 1:
+                print(f"[DEBUG-Expand] Requesting full transaction for tx_id={data_obj.tx_id}")
+                # API 호출하여 전체 데이터 로드
+                data_obj.is_fetching = True
+                self.request_full_transaction(row, data_obj)
+                return
+            
+            print(f"[DEBUG-Expand] Expanding internally...")
+            self._expand_internal(row, data_obj)
+        else:
+            print(f"[DEBUG-Expand] Collapsing internally...")
+            self._collapse_internal(row, data_obj)
+
+    def _expand_internal(self, row: int, data_obj: HistoryItemData):
+        print('[DEBUG] expand : ', row)
+        details = [DisplayItem(False, data_obj, log) for log in data_obj.logs]
+        
+        # 하드 리미트 처리: 렌더링되지 않은 나머지 갯수 표시
+        if data_obj.total_count > len(data_obj.logs):
+            omitted_count = data_obj.total_count - len(data_obj.logs)
+            omitted_log = {
+                "column_name": "OMITTED",
+                "new_value": f"... 외 {omitted_count:,}건 생략됨 (CSV 익스포트 참조)"
+            }
+            details.append(DisplayItem(False, data_obj, omitted_log))
+            
+        self.beginInsertRows(QModelIndex(), row + 1, row + len(details))
+        self._items[row + 1 : row + 1] = details
+        self.endInsertRows()
+        data_obj.is_expanded = True
+
+    def _collapse_internal(self, row: int, data_obj: HistoryItemData):
+        child_count = len(data_obj.logs)
+        if data_obj.total_count > child_count:
+            child_count += 1
+            
+        self.beginRemoveRows(QModelIndex(), row + 1, row + child_count)
+        del self._items[row + 1 : row + 1 + child_count]
+        self.endRemoveRows()
+        data_obj.is_expanded = False
+        
+    def request_full_transaction(self, row, data_obj):
+        import config
+        from models.table_model import BaseApiWorker
+        url = config.get_audit_log_transaction_url(data_obj.tx_id)
+        
+        class ApiTransactionLogsWorker(BaseApiWorker):
+            def __init__(self, url, row, data_obj):
+                super().__init__(url)
+                self.row = row
+                self.data_obj = data_obj
+                
+            def run(self):
+                import urllib.request, json
+                try:
+                    req = urllib.request.Request(self.url, method="GET")
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        res_data = json.loads(response.read().decode("utf-8"))
+                        # 패킹해서 emit
+                        self.signals.finished.emit((self.row, self.data_obj, res_data))
+                except Exception as e:
+                    # 백그라운드 스레드에서 직접 락 해제
+                    self.data_obj.is_fetching = False
+                    self.signals.error.emit(str(e))
+                    
+        worker = ApiTransactionLogsWorker(url, row, data_obj)
+        # bound method 연결 (가비지 컬렉션 방지)
+        worker.signals.finished.connect(self._on_full_transaction_fetched)
+        worker.signals.error.connect(self._on_full_transaction_error)
+        QThreadPool.globalInstance().start(worker)
+
+    @Slot(str)
+    def _on_full_transaction_error(self, err):
+        print(f"[DEBUG-Expand] Failed to fetch full transaction: {err}")
+
+    @Slot(object)
+    def _on_full_transaction_fetched(self, result_tuple):
+        row, data_obj, res = result_tuple
+        print(f"[DEBUG-Expand] _on_full_transaction_fetched for row: {row}")
+        # 응답이 왔으므로 원래 참조된 객체의 플래그 해제
+        data_obj.is_fetching = False
+        
+        logs = res.get("logs", [])
+        if not logs:
+            print("[DEBUG-Expand] No logs returned from server")
+            return
+            
+        # 비동기 응답 대기 중 실시간 업데이트(set_data)로 인해 data_obj 인스턴스가 새로 생성되었을 수 있으므로 tx_id로 최신 인덱스와 객체를 탐색
+        try:
+            current_row, target_item = next(
+                (i, item) for i, item in enumerate(self._items) 
+                if item.is_summary_item and item.data_obj.tx_id == data_obj.tx_id
+            )
+            print(f'[DEBUG-Expand] fetch 완료, 기존 row: {row}, 현재 row: {current_row}')
+            
+            # 최신 객체에도 플래그 해제 (안전 장치)
+            target_item.data_obj.is_fetching = False
+            
+            # 찾은 최신 data_obj 객체에 로그를 바인딩하고 펼침
+            target_item.data_obj.logs = logs
+            self._expand_internal(current_row, target_item.data_obj)
+        except StopIteration:
+            print('[DEBUG-Expand] fetch 완료되었으나 항목을 찾을 수 없음 (화면에서 사라짐)')

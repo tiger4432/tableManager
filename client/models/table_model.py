@@ -275,6 +275,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._refresh_total_count()
         self.request_fetch(FetchContext(source="scroll", params={"skip": 0}))
 
+    @Slot()
     def refresh_data(self):
         """현재 검색어 및 필터 상태를 유지한 채로 서버에서 데이터를 처음부터 다시 불러옵니다."""
         self.beginResetModel()
@@ -438,6 +439,10 @@ class ApiLazyTableModel(QAbstractTableModel):
         if data.get("table_name") != self.table_name: return
         self._is_processing_remote = True
         try:
+            if event == "batch_refresh_required":
+                self._refresh_total_count()
+                return
+
             if event == "batch_row_delete":
                 target_ids = list(set(data.get("row_ids", [])))
                 if not target_ids: return
@@ -534,14 +539,8 @@ class ApiLazyTableModel(QAbstractTableModel):
                     if idx is not None:
                         row = self._data[idx]
                         
-                        # [Fix] 하이라이팅: 업데이트된 필드에 is_overwrite=True 부여
-                        for col_k, col_v in new_data.items():
-                            if isinstance(col_v, dict):
-                                col_v["is_overwrite"] = True
-                            else:
-                                new_data[col_k] = {"value": col_v, "is_overwrite": True}
-                                
-                        row.setdefault("data", {}).update(new_data)
+                        # 서버에서 전달한 new_data(전체 행 상태)로 그대로 교체
+                        row["data"] = new_data
                         norm = self._normalize_row_data(row)
                         
                         # [Fix] 검색 중이면 최신순 정렬이어도 위치 이동(상단 끌어올림) 생략, 제자리 업데이트

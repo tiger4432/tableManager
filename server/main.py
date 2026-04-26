@@ -26,12 +26,33 @@ global_watcher: WorkspaceWatcher = None
 @app.on_event("startup")
 async def startup_event():
     global global_watcher
+    import asyncio
+    main_loop = asyncio.get_running_loop()
+    
     try:
         print("[Startup] Initializing Directory Watcher...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
         
-        global_watcher = WorkspaceWatcher(workspace_base)
+        def trigger_ws_refresh(table_name: str, count: int):
+            import json
+            
+            # 캐시 무효화
+            if table_name in TABLE_COUNT_CACHE:
+                TABLE_COUNT_CACHE.pop(table_name, None)
+                
+            msg = {
+                "event": "batch_refresh_required",
+                "table_name": table_name,
+                "change_count": count
+            }
+            # 스레드 안전하게 메인 이벤트 루프에 브로드캐스트 예약
+            try:
+                asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
+            except Exception as e:
+                print(f"[WS] Failed to broadcast refresh signal: {e}")
+                
+        global_watcher = WorkspaceWatcher(workspace_base, on_refresh_callback=trigger_ws_refresh)
         global_watcher.discover_and_watch()
         # 비차단 모드(blocking=False)로 기동
         global_watcher.start(blocking=False)
@@ -143,8 +164,75 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
     
-    # 2. 캐시된 그룹 반환
-    return audit_cache.groups
+    # 2. 캐시된 그룹을 경량화하여 반환
+    result = []
+    for g in audit_cache.groups:
+        logs = g.get("logs", [])
+        if not logs: continue
+        
+        # summary_columns 추출 (중복 제거)
+        cols = []
+        for l in logs:
+            c = l.column_name
+            if c and c not in cols:
+                cols.append(c)
+                
+        result.append({
+            "transaction_id": g.get("transaction_id"),
+            "total_count": len(logs),
+            "summary_columns": cols,
+            "logs": [logs[0]] # 대표 로그 1건만 포함
+        })
+    return result
+
+@app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
+def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 500):
+    """특정 트랜잭션의 상세 로그를 반환합니다. (인메모리 캐시 우선 조회, 최대 limit 건 반환)"""
+    # 1. 캐시에서 조회 시도
+    if audit_cache.is_loaded:
+        for g in audit_cache.groups:
+            if g.get("transaction_id") == tx_id:
+                logs = g.get("logs", [])
+                cols = []
+                for l in logs:
+                    c = l.column_name
+                    if c and c not in cols: cols.append(c)
+                return {
+                    "transaction_id": tx_id,
+                    "total_count": len(logs),
+                    "summary_columns": cols,
+                    "logs": logs[:limit]
+                }
+                
+    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
+    # total_count 계산을 위해 별도 쿼리 (가벼운 쿼리)
+    total_count = db.query(models.AuditLog).filter(models.AuditLog.transaction_id == tx_id).count()
+    if total_count == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    db_logs = db.query(models.AuditLog, models.DataRow.business_key_val)\
+                .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
+                .filter(models.AuditLog.transaction_id == tx_id)\
+                .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc())\
+                .limit(limit)\
+                .all()
+                
+    logs = []
+    cols = []
+    for log_obj, bk in db_logs:
+        log_dict = log_obj.__dict__.copy()
+        log_dict["business_key"] = bk
+        log_model = schemas.AuditLogResponse.model_validate(log_dict)
+        logs.append(log_model)
+        c = log_model.column_name
+        if c and c not in cols: cols.append(c)
+        
+    return {
+        "transaction_id": tx_id,
+        "total_count": total_count,
+        "summary_columns": cols,
+        "logs": logs
+    }
 
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
@@ -695,7 +783,8 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
 @app.put("/tables/{table_name}/data/updates")
 async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
-    results, changed_cells = crud.apply_batch_updates(db, table_name, batch)
+    from fastapi.concurrency import run_in_threadpool
+    results, changed_cells = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
     
     if results:
         TABLE_COUNT_CACHE.pop(table_name, None)
@@ -713,17 +802,28 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     # WebSocket 브로드캐스트 (batch.silent가 False인 경우에만 수행)
     if not batch.silent:
         user_name = batch.updates[0].updated_by if batch.updates else "system"
-        CHUNK_SIZE = 500
-        for i in range(0, len(msg_items), CHUNK_SIZE):
-            chunk = msg_items[i:i + CHUNK_SIZE]
+        
+        if len(msg_items) > 100:
+            # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = {
-                "event": "batch_row_upsert",
+                "event": "batch_refresh_required",
                 "table_name": table_name,
-                "items": chunk,
-                "change_count": len(chunk), 
-                "updated_by": user_name
+                "change_count": len(msg_items)
             }
             await manager.broadcast(json.dumps(msg))
+        else:
+            # 소량 업데이트: 전체 데이터 전송
+            CHUNK_SIZE = 500
+            for i in range(0, len(msg_items), CHUNK_SIZE):
+                chunk = msg_items[i:i + CHUNK_SIZE]
+                msg = {
+                    "event": "batch_row_upsert",
+                    "table_name": table_name,
+                    "items": chunk,
+                    "change_count": len(chunk), 
+                    "updated_by": user_name
+                }
+                await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells)}
 

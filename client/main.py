@@ -763,6 +763,8 @@ class MainWindow(QMainWindow):
         for model in self._active_models:
             if hasattr(model, "_refresh_total_count"):
                 model._refresh_total_count()
+        self._ws_status_label.setText("  ● WebSocket: Connected  ")
+        self._ws_status_label.setStyleSheet("color: #a6e3a1;") # Green
 
     def _dispatch_ws_message(self, data: dict):
         """수신된 WS 메시지를 활성 모델들에 전파하고, 단일 진입점에서 히스토리 로그를 기록합니다."""
@@ -776,9 +778,12 @@ class MainWindow(QMainWindow):
         # 2. [통합] 히스토리 패널에 단일 로그 생성 요청
         if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert"]:
             self._history_panel.log_event(data)
+        elif event == "batch_refresh_required":
+            print("[MainWindow] Batch refresh required: refreshing history panel.")
+            self._history_panel.refresh_history()
 
         # 3. 대시보드 통계 갱신 (행 개수 변화 관련 이벤트인 경우)
-        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert"]:
+        if event in ["batch_row_create", "batch_row_delete", "batch_row_upsert", "batch_refresh_required"]:
             from PySide6.QtCore import QTimer
             QTimer.singleShot(500, self._refresh_dashboard)
 

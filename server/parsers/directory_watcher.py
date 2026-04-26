@@ -6,20 +6,15 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from advanced_ingester import AdvancedIngester
 
-endpoint = '127.0.0.1:8000'
-
-# [사내망 Proxy 인증 우회 설정]
-# 이 스크립트는 로컬(127.0.0.1) API로만 요청을 보냅니다.
-# 사내망의 파이어월/프록시가 개입하여 403 Forbidden 에러가 나는 것을 원천 차단합니다.
-import urllib.request
-os.environ["NO_PROXY"] = "127.0.0.1,localhost,::1"
-proxy_support = urllib.request.ProxyHandler({})
-opener = urllib.request.build_opener(proxy_support)
-urllib.request.install_opener(opener)
-# Configure logging
-# Configure logging
+import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.abspath(os.path.join(script_dir, ".."))
+if server_dir not in sys.path:
+    sys.path.insert(0, server_dir)
+
+from database.database import SessionLocal
+from database import crud, schemas
+
 log_path = os.path.join(server_dir, "watcher.log")
 
 logging.basicConfig(
@@ -37,7 +32,7 @@ class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
     """
-    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None):
+    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None):
         self.workspace_path = workspace_path
         self.config_path = config_path
         self.archives_path = archives_path
@@ -45,6 +40,7 @@ class IngestionHandler(FileSystemEventHandler):
         self.scripts_path = os.path.join(workspace_path, "scripts")
         self.supported_extensions = ('.log', '.txt', '.csv')
         self.processing_files = set() 
+        self.on_refresh_callback = on_refresh_callback
         
     def on_created(self, event):
         if not event.is_directory:
@@ -159,15 +155,12 @@ class IngestionHandler(FileSystemEventHandler):
             return []
 
     def _send_to_upsert(self, rows: list[dict]):
-        """파싱된 행 리스트를 서버 업서트 API 전송 규격에 맞춰 개별 전송합니다."""
+        """파싱된 행 리스트를 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다."""
         import json
-        import urllib.request
         
         # 1. 대상 테이블 설정 로드
         table_config = {}
         try:
-            # directory_watcher.py 의 위치 (server/parsers/) 를 기준으로 상대 경로 설정
-            # directory_watcher.py 의 위치 (server/parsers/) 를 기준으로 상대 경로 설정
             global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
             if os.path.exists(global_config_path):
                 with open(global_config_path, "r", encoding="utf-8") as f:
@@ -193,69 +186,71 @@ class IngestionHandler(FileSystemEventHandler):
         bk_col = table_info.get("business_key", "id")
         defined_cols = table_info.get("display_columns", [])
         
-        # 4. 배치 단위로 정규화 및 전역 전송 (Agent Optimization)
-        print('배치 전송')
+        # 4. 배치 단위로 정규화 및 로컬 DB 전송
         import uuid
-        file_tx_id = str(uuid.uuid4()) # [핵심] 파일 단위 글로벌 트랜잭션 ID 생성
+        file_tx_id = str(uuid.uuid4())
         
-        base_url = f"http://{endpoint}/tables/{table_name}/upsert/batch"
-        batch_size = 500
+        batch_size = 5000
+        total_changed = 0
         
-        for i in range(0, len(rows), batch_size):
-            chunk = rows[i:i + batch_size]
-            items = []
-            
-            for row in chunk:
-                normalized_row = {}
-                bk_val = None
+        db = SessionLocal()
+        try:
+            for i in range(0, len(rows), batch_size):
+                chunk = rows[i:i + batch_size]
+                items = []
                 
-                for key, val in row.items():
-                    target_key = key
-                    for d_col in defined_cols:
-                        if key.lower() == d_col.lower():
-                            target_key = d_col
-                            break
-                    normalized_row[target_key] = val
-                    if target_key.lower() == bk_col.lower():
-                        bk_val = val
+                for row in chunk:
+                    normalized_row = {}
+                    bk_val = None
+                    
+                    for key, val in row.items():
+                        target_key = key
+                        for d_col in defined_cols:
+                            if key.lower() == d_col.lower():
+                                target_key = d_col
+                                break
+                        normalized_row[target_key] = val
+                        if target_key.lower() == bk_col.lower():
+                            bk_val = val
 
-                if bk_val is not None:
-                    items.append({
-                        "business_key_val": bk_val,
-                        "updates": normalized_row,
-                        "source_name": "custom_script" if os.path.exists(os.path.join(self.scripts_path, "custom_parser.py")) else "batch_ingester",
-                        "updated_by": "system"
-                    })
-            
-            if not items:
-                continue
+                    if bk_val is not None:
+                        items.append(schemas.GeneralUpdateItem(
+                            business_key_val=str(bk_val),
+                            updates=normalized_row,
+                            source_name="custom_script" if os.path.exists(os.path.join(self.scripts_path, "custom_parser.py")) else "batch_ingester",
+                            updated_by="system"
+                        ))
+                
+                if not items:
+                    continue
 
-            try:
-                # [적기 통보 최적화] 마지막 청크인 경우에만 UI 새로고침 신호(silent=False)를 보냄
-                is_last_chunk = (i + batch_size >= len(rows))
+                try:
+                    batch_obj = schemas.GeneralUpdateBatch(
+                        updates=items,
+                        transaction_id=file_tx_id,
+                        silent=True
+                    )
+                    results, changed_cells = crud.apply_batch_updates(db, table_name, batch_obj)
+                    total_changed += len(changed_cells)
+                    logger.info(f"Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
+                except Exception as e:
+                    logger.error(f"Failed to apply local batch update: {e}")
+                    
+            if self.on_refresh_callback and total_changed > 0:
+                self.on_refresh_callback(table_name, total_changed)
                 
-                unified_url = f"http://{endpoint}/tables/{table_name}/data/updates"
-                payload = json.dumps({
-                    "updates": items,
-                    "transaction_id": file_tx_id,
-                    "silent": not is_last_chunk  # 마지막이 아니면 조용히(Silent) 전송
-                }).encode("utf-8")
-                
-                req = urllib.request.Request(unified_url, data=payload, method="PUT")
-                req.add_header("Content-Type", "application/json")
-                with urllib.request.urlopen(req) as response:
-                    logger.info(f"Unified batch update success ({len(items)} rows, silent={not is_last_chunk}). Status: {response.status}")
-            except Exception as e:
-                logger.error(f"Failed to send unified batch update: {e}")
+        finally:
+            db.close()
 
 class WorkspaceWatcher:
     """
     Monitors all ingestion workspaces for new files.
     """
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, on_refresh_callback=None):
         self.base_dir = base_dir
         self.observer = Observer()
         self.watch_count = 0
+        self.on_refresh_callback = on_refresh_callback
 
     def discover_and_watch(self):
         """
@@ -278,7 +273,7 @@ class WorkspaceWatcher:
                         logger.info(f"Using alternative config: {config_path}")
 
                 if os.path.exists(config_path):
-                    handler = IngestionHandler(workspace_root, config_path, archives_path)
+                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback)
                     self.observer.schedule(handler, root, recursive=False)
                     self.watch_count += 1
                     logger.info(f"Watching: {root} (using config: {os.path.basename(config_path)})")
@@ -287,12 +282,16 @@ class WorkspaceWatcher:
                     scripts_path = os.path.join(workspace_root, "scripts", "custom_parser.py")
                     if os.path.exists(scripts_path):
                         table_name = os.path.basename(workspace_root)
-                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name)
+                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback)
                         self.observer.schedule(handler, root, recursive=False)
                         self.watch_count += 1
                         logger.info(f"Watching: {root} (Script-only workspace, Table: {table_name})")
                     else:
                         logger.warning(f"Skipping {root}: No JSON config or custom_parser found.")
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
 
     def start(self, blocking: bool = True):
         if self.watch_count == 0:

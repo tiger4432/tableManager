@@ -134,3 +134,7 @@ def get_cell_history_url(table_name: str, row_id: str, col_name: str) -> str:
 def get_dashboard_summary_url() -> str:
     """대시보드 통계 요약 조회 엔드포인트"""
     return f"{API_BASE_URL}/dashboard/summary"
+
+def get_audit_log_transaction_url(tx_id: str, limit: int = 500) -> str:
+    """특정 트랜잭션의 상세 로그 조회 엔드포인트"""
+    return f"{API_BASE_URL}/audit_logs/transaction/{tx_id}?limit={limit}"

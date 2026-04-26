@@ -47,6 +47,8 @@ class AuditLogResponse(BaseModel):
 
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
+    total_count: int = 0
+    summary_columns: list[str] = []
     logs: list[AuditLogResponse]
 
 class CellUpdateBatch(BaseModel):

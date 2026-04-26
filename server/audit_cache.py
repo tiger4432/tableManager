@@ -36,7 +36,7 @@ class AuditLogCache:
                           .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
                           .filter(or_(
                               models.AuditLog.row_id == "_BATCH_",
-                              models.DataRow.row_id != None
+                              models.DataRow.row_id.isnot(None)
                           ))\
                           .order_by(desc(models.AuditLog.timestamp), desc(models.AuditLog.id))\
                           .offset(offset).limit(chunk_size).all()

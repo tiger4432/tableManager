@@ -8,11 +8,11 @@ panel_history.py
 """
 
 from __future__ import annotations
-from PySide6.QtWidgets import QDockWidget, QListWidget, QListWidgetItem, QWidget, QVBoxLayout
-from PySide6.QtCore import Qt, Slot, QTimer
+from PySide6.QtWidgets import QDockWidget, QListWidget, QListWidgetItem, QWidget, QVBoxLayout, QListView
+from PySide6.QtCore import Qt, Slot, QTimer, QModelIndex
 from PySide6.QtGui import QColor
 
-from ui.history_logic import HistoryDataManager, HistoryNavigator, HistoryItemData
+from ui.history_logic import HistoryDataManager, HistoryNavigator, HistoryItemData, HistoryListModel
 
 
 class HistoryDockPanel(QDockWidget):
@@ -32,14 +32,20 @@ class HistoryDockPanel(QDockWidget):
         self._navigator = HistoryNavigator(self)
         
         # ── UI 구성 ──
-        self._list = QListWidget()
+        self._list = QListView()
+        self._model = HistoryListModel(self)
+        self._list.setModel(self._model)
+        self._list.setSpacing(0)
+        self._list.setUniformItemSizes(True)
+        
         self._list.setStyleSheet(
-            "QListWidget { background: #1e1e2e; color: #cdd6f4; font-family: 'Consolas', monospace; font-size: 11px; }"
-            "QListWidget::item:hover { background: #313244; }"
-            "QListWidget::item:selected { background: #45475a; }"
+            "QListView { background: #1e1e2e; color: #cdd6f4; font-family: 'Consolas', monospace; font-size: 11px; }"
+            "QListView::item { padding: 4px;}"
+            "QListView::item:hover { background: #313244; }"
+            "QListView::item:selected { background: #45475a; }"
         )
-        self._list.itemClicked.connect(self._on_item_clicked)
-        self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._list.clicked.connect(self._on_item_clicked)
+        self._list.doubleClicked.connect(self._on_item_double_clicked)
         
         self._lineage_list = QListWidget()
         self._lineage_list.setStyleSheet(
@@ -89,103 +95,28 @@ class HistoryDockPanel(QDockWidget):
     @Slot(list)
     def _render_history(self, data_list: list[HistoryItemData]):
         """HistoryItemData 객체 리스트를 UI에 렌더링합니다."""
-        self._list.clear()
-        
-        if not data_list:
-            self._list.addItem("이력이 없거나 데이터를 불러올 수 없습니다.")
-            return
-
-        for data in data_list:
-            # 1. 중복 컬럼 요약 추출
-            cols = []
-            for log in data.logs:
-                c = log.get("column_name")
-                if c and c not in cols: cols.append(c)
-            
-            col_count = len(cols)
-            if col_count > 5:
-                summary = ", ".join(cols[:5]) + f" 외 {col_count - 5}건"
-            else:
-                summary = ", ".join(cols)
-
-            # 2. 메인 텍스트 구성 (객체 메서드 사용 및 색상 적용)
-            item = QListWidgetItem(self._list)
-            item.setText(f"{data.get_display_text()}\n   → Fields: {summary}")
-            item.setForeground(QColor(data.get_color()))
-            
-            # 3. 툴팁 상세 (최대 20개까지만 상세 표시)
-            details = []
-            for i, log in enumerate(data.logs):
-                if i >= 20:
-                    details.append(f"... (총 {len(data.logs)}건 중 {len(data.logs)-20}건 생략됨)")
-                    break
-                details.append(f"[{log.get('column_name')}] {str(log.get('old_value'))[:20]} -> {str(log.get('new_value'))[:20]}")
-            
-            item.setToolTip("\n".join(details))
-            
-            # [중요] 내비게이션 기능을 위한 데이터 객체 보존
-            item.setData(Qt.UserRole, data)
-            self._list.addItem(item)
+        self._model.set_data(data_list)
 
     @Slot(str)
     def _on_sync_error(self, err_msg):
-        self.set_status("⚠️ 히스토리 동기화 실패", 3000)
-        if self._list.count() == 0:
-            item = QListWidgetItem(f"⚠️ 로딩 실패 ({err_msg})")
-            item.setForeground(QColor("#f38ba8"))
-            self._list.addItem(item)
+        self.set_status(f"⚠️ 히스토리 동기화 실패: {err_msg}", 3000)
 
-    @Slot(QListWidgetItem)
-    def _on_item_clicked(self, item: QListWidgetItem):
-        """항목 클릭 시 Navigator에게 내비게이션을 위임합니다."""
-        data = item.data(Qt.UserRole)
-        if not data or data.is_summary: return
-        self._navigator.navigate_to_log(data, self)
-
-    @Slot(QListWidgetItem)
-    def _on_item_double_clicked(self, item: QListWidgetItem):
-        """요약 항목 더블 클릭 시 상세 내역을 펼칩니다."""
-        data = item.data(Qt.UserRole)
-        if not data or not data.is_summary: return
+    @Slot(QModelIndex)
+    def _on_item_clicked(self, index: QModelIndex):
+        item = self._model.data(index, Qt.ItemDataRole.UserRole)
+        if not item: return
         
-        is_expanded = data.is_expanded
-        current_row = self._list.row(item)
-        tx_id = data.tx_id
-
-        if not is_expanded:
-            # 펼치기
-            for i, log in enumerate(data.logs):
-                col = log.get("column_name", "?")
-                val = log.get("new_value", "null")
-                row_id = log.get("row_id", "")
-                bk = log.get("business_key")
-                if bk:
-                    target_id = bk[:10] + "..." if len(bk) > 10 else bk
-                else:
-                    target_id = row_id[:8] + "..." if len(row_id) > 8 else row_id
-                
-                detail_text = f"  └─ {col}: {val} ({target_id})"
-                sub_item = QListWidgetItem(detail_text)
-                sub_item.setForeground(QColor("#9399b2"))
-                # 상세 항목 데이터 설정 (개별 내비게이션 가능하게)
-                sub_data = HistoryItemData([log])
-                sub_item.setData(Qt.UserRole, sub_data)
-                self._list.insertItem(current_row + 1 + i, sub_item)
+        if item.is_summary_item and item.data_obj.is_summary:
+            return # 다중 건 요약 클릭 시 무시
             
-            data.is_expanded = True
-            item.setText(item.text().replace("📦", "📂"))
-        else:
-            # 접기
-            next_row = current_row + 1
-            while next_row < self._list.count():
-                next_item = self._list.item(next_row)
-                n_data = next_item.data(Qt.UserRole)
-                if n_data and not n_data.is_summary and n_data.tx_id == tx_id:
-                    self._list.takeItem(next_row)
-                else:
-                    break
-            data.is_expanded = False
-            item.setText(item.text().replace("📂", "📦"))
+        # 단일 건 또는 자식 상세 항목 클릭 시 뷰포트 이동
+        from ui.history_logic import HistoryItemData
+        target_data = item.data_obj if item.is_summary_item else HistoryItemData([item.detail_log])
+        self._navigator.navigate_to_log(target_data, self)
+
+    @Slot(QModelIndex)
+    def _on_item_double_clicked(self, index: QModelIndex):
+        self._model.toggle_expand(index.row())
 
     # ------------------------------------------------------------------
     # Lineage Logic (Remains in UI for now as it directly affects lists)
