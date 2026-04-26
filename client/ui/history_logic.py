@@ -375,7 +375,7 @@ class HistoryListModel(QAbstractListModel):
                     cols = item.data_obj.summary_columns
                     col_count = len(cols)
                     summary = ", ".join(cols[:5]) + f" 외 {col_count - 5}건" if col_count > 5 else ", ".join(cols)
-                    return f"{item.data_obj.get_display_text()}  → Fields: {summary}"
+                    return f"{item.data_obj.get_display_text()} → {summary}"
                 else:
                     # 단일 건 텍스트 (기존 그대로)
                     return item.data_obj.get_display_text()
@@ -396,7 +396,7 @@ class HistoryListModel(QAbstractListModel):
                     target_id = row_id[:8] if row_id else ""
                 
                 if col == "ROW_UPDATE":
-                    return f"      └ [자동업데이트] {val}  (ID: {target_id})"
+                    return f"      └ [ROW_UPDATE] {val}  (ID: {target_id})"
                 else:
                     return f"      └ [{col}] {val}  (ID: {target_id})"
                 
