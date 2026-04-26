@@ -44,6 +44,10 @@ class AuditLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class AuditLogGroupResponse(BaseModel):
+    transaction_id: Optional[str] = None
+    logs: list[AuditLogResponse]
+
 class CellUpdateBatch(BaseModel):
     updates: list[CellUpdate]
 

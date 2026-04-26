@@ -73,8 +73,8 @@ class HistoryDataManager(QObject):
         
         import config
         from models.table_model import ApiAuditLogWorker
-        # 100개 그룹을 충분히 확보하기 위해 원본 로그는 5,000건까지 조회합니다.
-        url = config.get_audit_log_recent_url(limit=5000)
+        # 100 그룹 서버에서 지정
+        url = config.get_audit_log_recent_url()
         worker = ApiAuditLogWorker(url)
         worker.signals.finished.connect(self._on_fetch_finished)
         worker.signals.error.connect(self._on_fetch_error)
@@ -85,37 +85,18 @@ class HistoryDataManager(QObject):
         self._refresh_debounce_timer.start(300)
 
     @Slot(object)
-    def _on_fetch_finished(self, logs):
+    def _on_fetch_finished(self, grouped_logs):
         self._is_refreshing = False
-        if not isinstance(logs, list):
+        if not isinstance(grouped_logs, list):
             self.syncError.emit("Invalid log format")
             return
 
-        # ── 하이테크 그룹화 로직 (Transaction ID 기반) ──
+        # 서버(AuditLogCache)에서 이미 transaction_id 단위로 그룹화되어 내려옴
         grouped_results = []
-        current_group = []
-        last_tx_id = None
-        group_count = 0
-
-        for log in logs:
-            tx_id = log.get("transaction_id")
-            
-            # 새 그룹 시작 조건: tx_id 가 달라지거나, tx_id 가 없는 단건일 때
-            if not tx_id or tx_id != last_tx_id:
-                if current_group:
-                    grouped_results.append(HistoryItemData(current_group))
-                    group_count += 1
-                    if group_count >= 100: break # 최대 100그룹 도달 시 조기 종료
-                
-                current_group = [log]
-                last_tx_id = tx_id
-            else:
-                # 동일 트랜잭션 내 데이터는 계속 누적
-                current_group.append(log)
-        
-        # 마지막 잔여 그룹 처리 (100개 미만일 경우)
-        if current_group and group_count < 100:
-            grouped_results.append(HistoryItemData(current_group))
+        for group in grouped_logs:
+            logs = group.get("logs", [])
+            if logs:
+                grouped_results.append(HistoryItemData(logs))
 
         self.logsReady.emit(grouped_results)
 

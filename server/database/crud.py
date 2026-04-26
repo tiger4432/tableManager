@@ -76,8 +76,17 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
 
+import uuid6
+from datetime import datetime, timezone
+
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
+    if not transaction_id:
+        transaction_id = str(uuid6.uuid7())
+
+    # ID와 Timestamp는 DB 커밋 시점에 생성되지만, 캐싱을 위해 파이썬 레벨에서 타임스탬프를 명시적으로 주입합니다.
+    ts = datetime.now(timezone.utc)
+    
     log = models.AuditLog(
         table_name=table_name,
         row_id=row_id,
@@ -86,9 +95,26 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         new_value=sanitize_to_utf8(new_val),
         source_name=source,
         updated_by=user,
-        transaction_id=transaction_id
+        transaction_id=transaction_id,
+        timestamp=ts
     )
     db.add(log)
+
+    # 인메모리 캐시에 즉시 반영 (ID는 클라이언트 뷰에서 사용되지 않으므로 0으로 임시 매핑)
+    from audit_cache import audit_cache
+    log_dict = {
+        "id": 0,
+        "table_name": table_name,
+        "row_id": row_id,
+        "column_name": col_name,
+        "old_value": log.old_value,
+        "new_value": log.new_value,
+        "source_name": source,
+        "updated_by": user,
+        "transaction_id": transaction_id,
+        "timestamp": ts
+    }
+    audit_cache.add_log(log_dict)
 
 def apply_row_update_internal(
     db: Session, 
@@ -278,6 +304,11 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             transaction_id=tx_id
         )
         db.commit()
+        
+        # 삭제된 행의 이전 로그 캐시에서 즉시 정리 (방금 남긴 DELETE 배치는 남음)
+        from audit_cache import audit_cache
+        audit_cache.remove_deleted_rows(row_ids)
+        
     return deleted_count
 
 def get_row_cell(db: Session, table_name: str, row_id: str):

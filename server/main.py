@@ -136,47 +136,15 @@ def list_tables():
     """
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
-@app.get("/audit_logs/recent", response_model=list[schemas.AuditLogResponse])
+from audit_cache import audit_cache
+
+@app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
 def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
-    """
-    최신 로그 100 '그룹(Transaction)'을 가져옵니다.
-    한 그룹에 수천 건의 변경이 있을 경우를 대비해 전체 행은 5,000건으로 제한합니다.
-    """
-    from sqlalchemy import desc, func, or_
+    # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
+    audit_cache.load_initial(db, limit_groups)
     
-    # 1. 최근 로그 5000건을 먼저 조회하되, 현재 존재하는 데이터(DataRow)의 로그만 선별 (성능 및 안전 장치)
-    # 단, "_BATCH_" (대량 추가/삭제 등) 로그는 대상에서 예외로 통과시킵니다.
-    raw_logs = db.query(models.AuditLog)\
-                 .filter(or_(
-                     models.AuditLog.row_id == "_BATCH_",
-                     db.query(models.DataRow).filter(
-                         models.DataRow.row_id == models.AuditLog.row_id
-                     ).exists()
-                 ))\
-                 .order_by(desc(models.AuditLog.timestamp))\
-                 .limit(5000).all()
-                 
-    if not raw_logs: return []
-
-    # 2. 클라이언트와 동일한 그룹화 로직 적용하여 상위 100그룹만 선별
-    groups = []
-    seen_tids = set()
-    final_logs = []
-
-    for log in raw_logs:
-        tid = log.transaction_id
-        if tid:
-            if tid not in seen_tids:
-                if len(seen_tids) >= limit_groups: continue
-                seen_tids.add(tid)
-            final_logs.append(log)
-        else:
-            # transaction_id가 없는 단건 기록
-            if len(seen_tids) < limit_groups:
-                final_logs.append(log)
-                # 단건도 그룹 하나로 간주할지 여부는 정책에 따라 (여기서는 그룹 수에 포함하지 않음)
-
-    return final_logs
+    # 2. 캐시된 그룹 반환
+    return audit_cache.groups
 
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
