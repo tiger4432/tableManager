@@ -19,6 +19,7 @@ class HistoryItemData:
         self.updated_by = base.get("updated_by", "system")
         self.timestamp = base.get("timestamp", "")
         self.tx_id = base.get("transaction_id")
+        self.business_key = base.get("business_key")
         self.source = base.get("source_name", "system")
 
     def get_display_text(self) -> str:
@@ -28,15 +29,19 @@ class HistoryItemData:
             # 요약행: 작업자, 테이블, 건수를 강조
             return f"📦 [{user}] 님 | {self.table_name} | {len(self.logs)}건 변경 [{ts_str}]"
         
+        if self.business_key:
+            target_id = self.business_key[:10] + "..." if len(self.business_key) > 10 else self.business_key
+        else:
+            target_id = self.row_id[:8]
         col = self.column_name
         if col == "CREATE":
-            return f"🆕 [{user}] 님이 {self.table_name} (ID:{self.row_id[:8]}) 생성 [{ts_str}]"
+            return f"🆕 [{user}] 님이 {self.table_name} ({target_id}) 생성 [{ts_str}]"
         elif col == "DELETE":
-            return f"🗑️ [{user}] 님이 {self.table_name} (ID:{self.row_id[:8]}) 삭제 [{ts_str}]"
+            return f"🗑️ [{user}] 님이 {self.table_name} ({target_id}) 삭제 [{ts_str}]"
         elif col == "ROW_UPDATE":
-            return f"🤖 [{user}] 님 | {self.table_name} 데이터 자동 업데이트 [{ts_str}]"
+            return f"🤖 [{user}] 님이 {self.table_name} ({target_id}) 자동 업데이트 [{ts_str}]"
         else:
-            return f"🔄 [{user}] 님 | {self.table_name}.{col} 수정 [{ts_str}]"
+            return f"🔄 [{user}] 님이 {self.table_name} ({target_id}) 의 {col} 수정 [{ts_str}]"
 
     def get_color(self) -> str:
         if self.is_summary: return "#cba6f7" # 보라색 (일괄/트랜잭션)

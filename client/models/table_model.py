@@ -275,6 +275,26 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._refresh_total_count()
         self.request_fetch(FetchContext(source="scroll", params={"skip": 0}))
 
+    def refresh_data(self):
+        """현재 검색어 및 필터 상태를 유지한 채로 서버에서 데이터를 처음부터 다시 불러옵니다."""
+        self.beginResetModel()
+        self._data = []
+        self._total_count = 0
+        self._exposed_rows = 0
+        self._first_fetch = True
+        self._row_id_map = {}
+        self._server_fetched_count = 0
+        self._loaded_count = 0
+        
+        # 세션 ID 갱신 (기존 요청 무시)
+        self._search_session_id = str(uuid.uuid4())
+        
+        self.count_changed.emit(0, 0, 0)
+        self.endResetModel()
+        
+        self._refresh_total_count()
+        self.request_fetch(FetchContext(source="refresh", params={"skip": 0}))
+
     def set_sort_latest(self, enabled: bool):
         if self._sort_latest == enabled: return
         self.beginResetModel()

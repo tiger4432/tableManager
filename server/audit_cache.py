@@ -32,10 +32,11 @@ class AuditLogCache:
             offset = 0
             
             while group_count < limit_groups:
-                chunk = db.query(models.AuditLog)\
+                chunk = db.query(models.AuditLog, models.DataRow.business_key_val)\
+                          .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
                           .filter(or_(
                               models.AuditLog.row_id == "_BATCH_",
-                              db.query(models.DataRow).filter(models.DataRow.row_id == models.AuditLog.row_id).exists()
+                              models.DataRow.row_id != None
                           ))\
                           .order_by(desc(models.AuditLog.timestamp), desc(models.AuditLog.id))\
                           .offset(offset).limit(chunk_size).all()
@@ -43,8 +44,12 @@ class AuditLogCache:
                 if not chunk:
                     break
                     
-                for log in chunk:
-                    tid = log.transaction_id
+                for log_obj, bk in chunk:
+                    tid = log_obj.transaction_id
+                    
+                    log_dict = log_obj.__dict__.copy()
+                    log_dict["business_key"] = bk
+                    log_model = schemas.AuditLogResponse.model_validate(log_dict)
                     
                     if not tid or tid != last_tid:
                         if current_group_logs:
@@ -53,10 +58,10 @@ class AuditLogCache:
                             if group_count >= limit_groups:
                                 break
                                 
-                        current_group_logs = [log]
+                        current_group_logs = [log_model]
                         last_tid = tid
                     else:
-                        current_group_logs.append(log)
+                        current_group_logs.append(log_model)
                         
                 if group_count >= limit_groups:
                     break
@@ -66,13 +71,7 @@ class AuditLogCache:
             if current_group_logs and group_count < limit_groups:
                 groups.append({"transaction_id": last_tid, "logs": current_group_logs})
 
-            # schemas.AuditLogResponse 형태로 변환하여 저장
-            self.groups = []
-            for g in groups:
-                self.groups.append({
-                    "transaction_id": g["transaction_id"],
-                    "logs": [schemas.AuditLogResponse.model_validate(l) for l in g["logs"]]
-                })
+            self.groups = groups
                 
             self.is_loaded = True
 

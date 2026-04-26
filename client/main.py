@@ -485,6 +485,10 @@ class MainWindow(QMainWindow):
         self._debugger_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
         self._debugger_shortcut.activated.connect(self._toggle_fetch_debugger)
         self._fetch_debugger = None
+        
+        # ── 전역 새로고침 단축키 (F5) ──
+        self._refresh_shortcut = QShortcut(QKeySequence("F5"), self)
+        self._refresh_shortcut.activated.connect(self._on_global_refresh_requested)
         self._row_count_label.setStyleSheet("color: #fab387; font-weight: bold; margin-right: 15px;") # Peach
         self.statusBar().addPermanentWidget(self._row_count_label)
         self.statusBar().addPermanentWidget(self._ws_status_label)
@@ -537,6 +541,35 @@ class MainWindow(QMainWindow):
             self._fetch_debugger.show()
             self._fetch_debugger.raise_()
             self._fetch_debugger.activateWindow()
+
+    def _on_global_refresh_requested(self):
+        """F5 입력 시 호출. 히스토리 패널 및 현재 활성화된 화면의 데이터를 서버에서 재동기화합니다."""
+        # 1. 히스토리 패널 새로고침
+        self._history_panel.refresh_history()
+        
+        # 2. 현재 화면 새로고침
+        idx = self.stacked.currentIndex()
+        if idx == 0:
+            self._refresh_dashboard()
+            self.statusBar().showMessage("🔄 대시보드를 새로고침했습니다.", 3000)
+        elif idx == 1:
+            pass # 설정 화면은 새로고침할 데이터가 없음
+        else:
+            page_widget = self.stacked.widget(idx)
+            model = getattr(page_widget, "_source_model", None)
+            if model and hasattr(model, "refresh_data"):
+                # 필터 유지하며 데이터 새로고침
+                model.refresh_data()
+                
+                # QTableView 스크롤 최상단으로 초기화
+                from PySide6.QtWidgets import QTableView
+                table_view = page_widget.findChild(QTableView)
+                if table_view:
+                    table_view.verticalScrollBar().setValue(0)
+                    table_view.horizontalScrollBar().setValue(0)
+                    table_view.clearSelection()
+                
+                self.statusBar().showMessage("🔄 테이블 데이터를 새로고침했습니다.", 3000)
 
     def _on_navigation_requested(self, nav_id: str):
         """사이드바 클릭 시 해당 화면으로 전환."""

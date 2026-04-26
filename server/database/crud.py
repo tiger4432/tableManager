@@ -79,7 +79,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
 import uuid6
 from datetime import datetime, timezone
 
-def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None):
+def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
@@ -112,6 +112,7 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         "source_name": source,
         "updated_by": user,
         "transaction_id": transaction_id,
+        "business_key": business_key,
         "timestamp": ts
     }
     audit_cache.add_log(log_dict)
@@ -180,7 +181,7 @@ def apply_row_update_internal(
             changed_cols.append(col_name)
             # [최적화] 사용자(human) 직접 수정인 경우만 상세 셀 단위 로그 기록
             if update_item.source_name == "user":
-                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "user"), transaction_id=transaction_id)
+                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "user"), transaction_id=transaction_id, business_key=row.business_key_val)
             
         cell["value"] = new_val
         cell["priority_source"] = top_src
@@ -194,7 +195,8 @@ def apply_row_update_internal(
             db, table_name, row.row_id, "ROW_UPDATE",
             None, summary_msg, update_item.source_name,
             (update_item.updated_by or "system"),
-            transaction_id=transaction_id
+            transaction_id=transaction_id,
+            business_key=row.business_key_val
         )
 
     config = TABLE_CONFIG.get(table_name, {})
@@ -277,8 +279,6 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     # [O(N) 제거] refresh() 루프를 제거하여 대량 생성 시 지연 방지
     return new_rows
 
-    return False
-
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
     """단일 행을 삭제합니다 (배치 로직으로 통합)."""
     return delete_rows_batch(db, table_name, [row_id], user_name) > 0
@@ -331,7 +331,7 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
         changed_cols = []
         if str(old_val) != str(new_val):
             changed_cols = [col_name]
-            create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"delete_source:{source_name}", "system")
+            create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"delete_source:{source_name}", "system", business_key=row.business_key_val)
         
         flag_modified(row, "data")
         db.commit()
@@ -355,7 +355,7 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
     changed_cols = []
     if str(old_val) != str(new_val):
         changed_cols = [col_name]
-        create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"set_priority:{source_name}", updated_by)
+        create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"set_priority:{source_name}", updated_by, business_key=row.business_key_val)
     
     flag_modified(row, "data")
     db.commit()

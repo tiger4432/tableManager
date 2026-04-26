@@ -30,6 +30,7 @@ class AuditLogResponse(BaseModel):
     source_name: str
     updated_by: str
     transaction_id: Optional[str] = None
+    business_key: Optional[str] = None
     timestamp: datetime
 
     @field_validator("timestamp", mode="after")

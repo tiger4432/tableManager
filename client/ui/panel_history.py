@@ -158,8 +158,13 @@ class HistoryDockPanel(QDockWidget):
                 col = log.get("column_name", "?")
                 val = log.get("new_value", "null")
                 row_id = log.get("row_id", "")
+                bk = log.get("business_key")
+                if bk:
+                    target_id = bk[:10] + "..." if len(bk) > 10 else bk
+                else:
+                    target_id = row_id[:8] + "..." if len(row_id) > 8 else row_id
                 
-                detail_text = f"  └─ {col}: {val} (ID:{row_id[:8]}...)"
+                detail_text = f"  └─ {col}: {val} ({target_id})"
                 sub_item = QListWidgetItem(detail_text)
                 sub_item.setForeground(QColor("#9399b2"))
                 # 상세 항목 데이터 설정 (개별 내비게이션 가능하게)
