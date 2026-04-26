@@ -141,7 +141,15 @@ class HistoryNavigator(QObject):
         self._ctx = {}
 
     def navigate_to_log(self, data: HistoryItemData, parent_widget):
-        if self._is_navigating or data.is_summary: return
+        if self._is_navigating: return
+        
+        # [NEW] 요약 행인 경우 첫 번째 로그를 타겟으로 자동 전환하여 탐색 허용
+        if data.is_summary:
+            if not data.logs: return
+            first_log = data.logs[0]
+            # 개별 항목 탐색을 위해 단일 로그를 담은 가상 객체 생성
+            from ui.history_logic import HistoryItemData as HID
+            data = HID([first_log])
         
         # [Task] 배치 작업(_BATCH_)은 개별 탐색이 불가능하므로 즉시 차단
         if data.row_id == "_BATCH_":

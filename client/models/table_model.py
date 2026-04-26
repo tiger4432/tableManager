@@ -221,8 +221,8 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         self._row_id_map = {}
         self._pending_target_skip = None # [신규] 특정 오프셋 점프 예약용
-        # [Phase 73.5] 검색 세션 ID 도입 - 고속 타이핑 시 이전 검색 결과 오염 방지
         self._search_session_id = str(uuid.uuid4())
+        self._tx_filter = None # [Phase 75] 트랜잭션 필터
 
         # [신규] 가변 청크 성능 측정용
         self._fetch_start_time = 0.0
@@ -246,6 +246,25 @@ class ApiLazyTableModel(QAbstractTableModel):
     def _on_jump_timer_timeout(self):
         ctx = self._pending_fetch_ctx if self._pending_fetch_ctx else FetchContext(source="scroll")
         self.request_fetch(ctx)
+
+    def set_transaction_filter(self, tx_id: str):
+        """특정 트랜잭션 결과로 뷰를 한정하고 리로드합니다."""
+        if self._tx_filter == tx_id: return
+        
+        self.beginResetModel()
+        self._tx_filter = tx_id
+        self._exposed_rows = 0
+        self._row_ids = []
+        self._data = []
+        self._row_id_map = {}
+        self._loaded_count = 0
+        self._server_fetched_count = 0
+        self._total_count = 0
+        self.endResetModel()
+        
+        # [Trigger] 첫 번째 청크 로딩 시작
+        self._first_fetch = True
+        self.request_fetch(FetchContext(source="filter_tx"))
 
 
     def update_columns(self, columns: list[str]):
@@ -849,6 +868,8 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         if is_total:
             url = f"{self.endpoint_url}?skip=0&limit=1&order_by={order}&order_desc={desc}&q={urllib.parse.quote(self._search_query)}&cols={urllib.parse.quote(cols_str)}"
+            if self._tx_filter:
+                url += f"&transaction_id={self._tx_filter}"
             worker = ApiFetchWorker(url, session_id=self._active_fetch_ctx.session_id)
             worker.signals.finished.connect(self._on_total_refresh_finished)
             worker.signals.error.connect(self._on_fetch_error)
@@ -865,6 +886,9 @@ class ApiLazyTableModel(QAbstractTableModel):
             limit = 100 # [Ultimate Optimization] 점프 시에는 뷰포트만 채우면 되므로 100개만 초고속 인출
         
         url = f"{self.endpoint_url}?skip={req_skip}&limit={limit}&order_by={order}&order_desc={desc}"
+        if self._tx_filter:
+            url += f"&transaction_id={self._tx_filter}"
+            
         if self._search_query:
             import urllib.parse
             target_cols = self._search_cols if self._search_cols else ",".join(self._columns)

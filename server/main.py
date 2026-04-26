@@ -314,6 +314,7 @@ def get_table_data(
     order_by: str = "row_id", 
     order_desc: bool = False,
     target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
+    transaction_id: str = None, # [NEW] 특정 트랜잭션 결과만 필터링
     db: Session = Depends(get_db)
 ):
     """
@@ -324,6 +325,11 @@ def get_table_data(
     t_target = 0.0
     t_count = 0.0
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    # [NEW] 트랜잭션 필터링
+    if transaction_id:
+        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
+        query = query.filter(models.DataRow.row_id.in_(subquery))
     
     # ── [Step 0] 검색 필터 구성 (Trigram Index + 컬럼 한정) ──
     if q:
@@ -545,9 +551,13 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     return {"status": "success", "deleted_count": deleted_count}
 
 @app.post("/tables/{table_name}/row_ids/target")
-def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, db: Session = Depends(get_db)):
+def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, db: Session = Depends(get_db)):
     """Targeted RowID Scanner: 오프셋 리스트 기반 초고속 UUID 추출"""
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    if transaction_id:
+        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
+        query = query.filter(models.DataRow.row_id.in_(subquery))
     
     if req.q:
         from sqlalchemy import cast, String, or_, and_, func
@@ -636,12 +646,18 @@ def export_table_csv(
     cols: str = None,
     order_by: str = "row_id",
     order_desc: bool = False,
+    transaction_id: str = None, # [NEW] 트랜잭션 필터
     db: Session = Depends(get_db)
 ):
     """
     현재 검색/정렬 조건에 맞는 데이터를 최대 100만 행까지 CSV로 스트리밍 추출합니다.
     """
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    # [NEW] 트랜잭션 필터링
+    if transaction_id:
+        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
+        query = query.filter(models.DataRow.row_id.in_(subquery))
     
     # [Filter] get_table_data와 검색 로직 동기화
     if q:

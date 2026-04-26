@@ -110,7 +110,27 @@ class HistoryDockPanel(QDockWidget):
         if not item: return
         
         if item.is_summary_item and item.data_obj.is_summary:
-            return # 다중 건 요약 클릭 시 무시
+            # [NEW] 다중 건 요약 클릭 시 필터링 여부 확인 컨텍스트 메뉴
+            from PySide6.QtWidgets import QMenu
+            menu = QMenu(self)
+            action_filter = menu.addAction(f"🔍 이 결과만 테이블에서 보기")
+            action_jump = menu.addAction("🎯 첫 번째 행으로 점프")
+            
+            from PySide6.QtGui import QCursor
+            selected = menu.exec(QCursor.pos())
+            
+            if selected == action_filter:
+                main_win = self.window()
+                model = main_win.get_active_table_model()
+                if model:
+                    model.set_transaction_filter(item.data_obj.tx_id)
+                    # [NEW] 필터 바 UI 갱신
+                    if hasattr(main_win, "_filter_bar"):
+                        main_win._filter_bar.show_filter_status(item.data_obj.tx_id)
+                    self.set_status(f"✅ 필터 적용: {item.data_obj.tx_id[:8]}...", 3000)
+            elif selected == action_jump:
+                self._navigator.navigate_to_log(item.data_obj, self)
+            return 
             
         # 단일 건 또는 자식 상세 항목 클릭 시 뷰포트 이동
         from ui.history_logic import HistoryItemData

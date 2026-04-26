@@ -100,6 +100,13 @@ class FilterToolBar(QWidget):
         
         self._row1_layout.addStretch()
         
+        # [NEW] 필터 해제 버튼 (평소엔 숨김)
+        self._clear_filter_btn = QPushButton("❌ 트랜잭션 필터 해제")
+        self._clear_filter_btn.setStyleSheet("background: #f38ba8; color: #1e1e2e; font-weight: bold; margin-right: 10px;")
+        self._clear_filter_btn.clicked.connect(self._on_clear_filter_clicked)
+        self._clear_filter_btn.hide()
+        self._row1_layout.addWidget(self._clear_filter_btn)
+        
         self._main_layout.addLayout(self._row1_layout)
 
         # ── [2행] 액션 버튼 그룹 ────────────────────────────────────
@@ -196,6 +203,9 @@ class FilterToolBar(QWidget):
         """현재 활성 탭이 바뀔 때 MainWindow에서 호출하여 모드 및 데이터를 전환합니다."""
         self._active_proxy = proxy
         
+        # 필터 해제 버튼 상태 초기화
+        self._clear_filter_btn.hide()
+        
         # ── [Phase 73.8] 모드 전환 (시스템 vs 테이블) ──
         is_table = proxy is not None
         self._update_ui_mode(is_table)
@@ -205,6 +215,10 @@ class FilterToolBar(QWidget):
             # 글로벌 정렬 상태 주입
             if source and hasattr(source, "set_sort_latest"):
                 source.set_sort_latest(self._sort_latest)
+
+            # 트랜잭션 필터 상태에 따른 버튼 노출
+            if source and hasattr(source, "_tx_filter") and source._tx_filter:
+                self.show_filter_status(source._tx_filter)
 
             # 탭 전환 시 해당 모델의 검색 범위 복구
             if source and hasattr(source, "_search_cols_state"):
@@ -237,6 +251,23 @@ class FilterToolBar(QWidget):
         self._main_layout.setSpacing(12 if is_table else 0)
         if not is_table:
             self._search_box.clear()
+            self._clear_filter_btn.hide()
+
+    def show_filter_status(self, tx_id: str | None):
+        """필터 버튼을 노출하거나 숨깁니다."""
+        if tx_id:
+            self._clear_filter_btn.setText(f"❌ {tx_id[:8]} 필터 해제")
+            self._clear_filter_btn.show()
+        else:
+            self._clear_filter_btn.hide()
+
+    def _on_clear_filter_clicked(self):
+        """현재 필터를 해제합니다."""
+        if self._active_proxy:
+            source = self._active_proxy.sourceModel()
+            if source and hasattr(source, "set_transaction_filter"):
+                source.set_transaction_filter(None)
+                self.show_filter_status(None)
 
     # ------------------------------------------------------------------
     # Private helpers

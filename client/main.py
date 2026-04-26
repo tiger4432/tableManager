@@ -796,6 +796,19 @@ class MainWindow(QMainWindow):
             from PySide6.QtCore import QTimer
             QTimer.singleShot(500, self._refresh_dashboard)
 
+    def get_active_table_model(self):
+        """현재 활성화된 테이블의 모델을 반환합니다."""
+        curr_idx = self.stacked.currentIndex()
+        if curr_idx <= 1: return None # Dashboard or Settings
+        page_widget = self.stacked.widget(curr_idx)
+        return getattr(page_widget, "_source_model", None)
+
+    def get_current_table_page(self):
+        """현재 활성화된 테이블 위젯(페이지)을 반환합니다."""
+        curr_idx = self.stacked.currentIndex()
+        if curr_idx <= 1: return None
+        return self.stacked.widget(curr_idx)
+
     def _handle_dashboard_table_open(self, table_name: str):
         """대시보드 카드 더블 클릭 시 테이블을 열거나 전환합니다."""
         nav_id = f"table:{table_name}"
@@ -1062,7 +1075,8 @@ class MainWindow(QMainWindow):
             "q": model._search_query or "",
             "cols": model._search_cols or "",
             "order_by": "updated_at" if model._sort_latest else "id",
-            "order_desc": "true" if model._sort_latest else "false"
+            "order_desc": "true" if model._sort_latest else "false",
+            "transaction_id": model._tx_filter or ""
         }
         
         # 3. 서버에서 백그라운드 스트리밍 다운로드 시작
