@@ -215,6 +215,10 @@ def apply_row_update_internal(
             business_key=row.business_key_val
         )
 
+    if changed_cols or is_new:
+        from sqlalchemy.sql import func
+        row.updated_at = func.now()
+
     flag_modified(row, "data")
     return row, is_new, changed_cols
 
@@ -345,6 +349,10 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
             changed_cols = [col_name]
             create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"delete_source:{source_name}", "system", business_key=row.business_key_val)
         
+        if changed_cols:
+            from sqlalchemy.sql import func
+            row.updated_at = func.now()
+            
         flag_modified(row, "data")
         db.commit()
         db.refresh(row)
@@ -369,6 +377,10 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
         changed_cols = [col_name]
         create_audit_log(db, table_name, row_id, col_name, old_val, new_val, f"set_priority:{source_name}", updated_by, business_key=row.business_key_val)
     
+    if changed_cols:
+        from sqlalchemy.sql import func
+        row.updated_at = func.now()
+
     flag_modified(row, "data")
     db.commit()
     db.refresh(row)
