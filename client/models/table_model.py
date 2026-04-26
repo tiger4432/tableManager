@@ -869,7 +869,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         worker.signals.error.connect(self._on_fetch_error)
         QThreadPool.globalInstance().start(worker)
 
-    def fetch_batch(self, count: int = 1000):
+    def fetch_batch(self, count: int = 10000):
         """특정 개수(기본 1000개)만큼의 데이터를 한꺼번에 가져오고 노출 범위를 확장합니다."""
         self.request_fetch(FetchContext(source="batch", params={"count": count}))
 
@@ -1049,7 +1049,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         self._active_fetch_ctx = None
         if self._batch_fetching:
             self._batch_fetching = False
-            self.batch_fetch_finished.emit() #그냥 1k 로드 버튼 초기화용
+            self.batch_fetch_finished.emit() #그냥 10k 로드 버튼 초기화용
         if self._pending_fetch_ctx:
             next_ctx = self._pending_fetch_ctx
             self._pending_fetch_ctx = None

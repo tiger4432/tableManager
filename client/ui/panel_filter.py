@@ -143,7 +143,7 @@ class FilterToolBar(QWidget):
         self._sort_btn.clicked.connect(self._on_sort_toggled)
         self._row2_layout.addWidget(self._sort_btn)
 
-        self._batch_btn = QPushButton("⚡ 1k 로드")
+        self._batch_btn = QPushButton("⚡ 10k 로드")
         self._batch_btn_style = """
             QPushButton { background: #94e2d5; color: #111111; }
             QPushButton:disabled { background: #45475a; color: #7f849c; }
@@ -294,10 +294,10 @@ class FilterToolBar(QWidget):
 
 
     def _on_batch_btn_clicked(self):
-        """1K 로드 클릭 시 시각적 피드백 제공 및 시그널 발생."""
+        """10K 로드 클릭 시 시각적 피드백 제공 및 시그널 발생."""
         self._batch_btn.setEnabled(False)
         self._batch_btn.setText("⏳ Loading...")
-        self.batchLoadRequested.emit(1000)
+        self.batchLoadRequested.emit(10000)
         
         # 안전장치: 5초 뒤 강제 복구 (네트워크 오류 대비)
         QTimer.singleShot(5000, self.reset_batch_btn)
@@ -305,7 +305,7 @@ class FilterToolBar(QWidget):
     def reset_batch_btn(self):
         """버튼을 원래 상태로 복구합니다."""
         self._batch_btn.setEnabled(True)
-        self._batch_btn.setText("⚡ 1k 로드")
+        self._batch_btn.setText("⚡ 10k 로드")
 
     def _on_scope_toggled(self, col: str, checked: bool):
         if checked:
