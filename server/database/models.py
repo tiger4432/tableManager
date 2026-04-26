@@ -26,12 +26,15 @@ class DataRow(Base):
         # [B] 테이블별 최신순 정렬용 복합 색인 (Covering Index 전환: row_id 추가)
         Index("idx_table_updated", "table_name", "updated_at", "row_id"),
         
+        # [B-2] 테이블별 기본 정렬(정렬 OFF)용 복합 색인
+        Index("idx_table_rowid", "table_name", "row_id"),
+        
         # [C] JSONB 전용 GIN 색인: 데이터 내부 키/밸류 구조적 검색 지원 (@> 등)
         Index("idx_data_gin", "data", postgresql_using="gin"),
 
-        # [D] GIN Trigram 색인: JSONB 데이터 전체 텍스트 부분 일치 검색 가속 (ILIKE용)
-        # 1,000만 건 환경에서 'q=' 검색 시 Full Table Scan을 방지하는 핵심 인덱스입니다.
-        Index("idx_data_trgm", text("CAST(data AS text) gin_trgm_ops"), postgresql_using="gin"),
+        # [D] 고성능 복합 GIN Trigram 색인: 테이블 범위 한정 + 데이터 전체 텍스트 검색 (ILIKE 가속)
+        # 1,000만 건 환경에서 특정 테이블 내의 'q=' 검색 성능을 극대화합니다.
+        Index("idx_table_data_trgm", "table_name", text("(CAST(data AS text)) gin_trgm_ops"), postgresql_using="gin"),
     )
 
 class AuditLog(Base):

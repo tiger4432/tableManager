@@ -327,6 +327,13 @@ class ApiLazyTableModel(QAbstractTableModel):
         # 동적 노출 범위 동기화: 전체 개수가 줄어들면 노출 범위도 강제 축소
         if new_total < self._exposed_rows:
             self.beginRemoveRows(QModelIndex(), new_total, self._exposed_rows - 1)
+            
+            # [Fix] 실제 데이터 배열과 loaded_count도 함께 정리하여 불일치 방지
+            removed_slice = self._data[new_total:self._exposed_rows]
+            removed_count = sum(1 for item in removed_slice if item is not None)
+            self._loaded_count = max(0, self._loaded_count - removed_count)
+            del self._data[new_total:self._exposed_rows]
+            
             self._exposed_rows = new_total
             self.endRemoveRows()
             
@@ -1022,7 +1029,7 @@ class ApiLazyTableModel(QAbstractTableModel):
         
         if not self._batch_fetching: 
             if duration < 0.5: # Fast -> 사이즈 상향 (최대 3000)
-                self._chunk_size = min(3000, int(self._chunk_size * 1.1))
+                self._chunk_size = min(1000, int(self._chunk_size * 1.1))
             elif duration > 0.55: # Slow -> 사이즈 하향 (최소 50)
                 self._chunk_size = max(50, int(self._chunk_size * 0.9))
             

@@ -77,7 +77,7 @@ class FilterToolBar(QWidget):
         
         # 검색창
         self._search_box = QLineEdit()
-        self._search_box.setPlaceholderText("검색어 입력 (정규식 지원 / 전체 실시간 필터링)...")
+        self._search_box.setPlaceholderText("검색어 입력 (3글자 이상)...")
         self._search_box.setClearButtonEnabled(True)
         self._row1_layout.addWidget(self._search_box)
         
@@ -143,7 +143,7 @@ class FilterToolBar(QWidget):
         self._sort_btn.clicked.connect(self._on_sort_toggled)
         self._row2_layout.addWidget(self._sort_btn)
 
-        self._batch_btn = QPushButton("⚡ 10k 로드")
+        self._batch_btn = QPushButton("⚡ 1k 로드")
         self._batch_btn_style = """
             QPushButton { background: #94e2d5; color: #111111; }
             QPushButton:disabled { background: #45475a; color: #7f849c; }
@@ -243,12 +243,12 @@ class FilterToolBar(QWidget):
     # ------------------------------------------------------------------
 
     def _on_text_changed(self, text: str):
-        pass
-        
-        # [Phase 73.5] 기존 로컬 필터링 비활성화 유지
-        
-        # 타이머 재시작 (마지막 입력 후 500ms 뒤에 서버 검색 요청)
-        self._search_timer.start(500)
+        # [Optimization] 1~2글자 검색은 Trigram 인덱스 효율이 낮아 서버 부하가 큽니다.
+        # 0글자(검색 취소)이거나 3글자 이상일 때만 타이머를 작동시킵니다.
+        if len(text) == 0 or len(text) >= 3:
+            self._search_timer.start(500)
+        else:
+            self._search_timer.stop()
 
     def _emit_search_requested(self):
         query = self._search_box.text()
@@ -297,7 +297,7 @@ class FilterToolBar(QWidget):
         """10K 로드 클릭 시 시각적 피드백 제공 및 시그널 발생."""
         self._batch_btn.setEnabled(False)
         self._batch_btn.setText("⏳ Loading...")
-        self.batchLoadRequested.emit(10000)
+        self.batchLoadRequested.emit(1000)
         
         # 안전장치: 5초 뒤 강제 복구 (네트워크 오류 대비)
         QTimer.singleShot(5000, self.reset_batch_btn)
@@ -305,7 +305,7 @@ class FilterToolBar(QWidget):
     def reset_batch_btn(self):
         """버튼을 원래 상태로 복구합니다."""
         self._batch_btn.setEnabled(True)
-        self._batch_btn.setText("⚡ 10k 로드")
+        self._batch_btn.setText("⚡ 1k 로드")
 
     def _on_scope_toggled(self, col: str, checked: bool):
         if checked:

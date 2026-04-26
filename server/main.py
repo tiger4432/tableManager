@@ -294,7 +294,9 @@ def get_table_data(
     Lazy Loading을 위한 페이징 엔드포인트
     target_row_id가 있으면 해당 행이 포함된 페이지의 skip을 자동으로 계산합니다.
     """
-    t_start = time.time()
+    t_total_start = time.time()
+    t_target = 0.0
+    t_count = 0.0
     query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
     
     # ── [Step 0] 검색 필터 구성 (Trigram Index + 컬럼 한정) ──
@@ -376,68 +378,98 @@ def get_table_data(
                         count_query = count_query.filter(or_(models.DataRow.business_key_val < t_bk, and_(models.DataRow.business_key_val == t_bk, models.DataRow.row_id < target_row_id)))
             else:
                 count_query = count_query.filter(models.DataRow.row_id < target_row_id)
-            
+            t_tmp = time.time()
             actual_target_offset = count_query.count()
+            t_target = time.time() - t_tmp
             # [Optimization] 점프 시 타겟 행이 화면 중앙에 오도록 +- 50행 범위를 맞춤
             skip = max(0, actual_target_offset - (limit // 2))
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
-    # [Optimization] 검색 조건이 없는 경우 캐시 활용 시간을 늘림 (2s -> 5s)
-    cache_ttl = 5.0 if not q else 2.0 
-    if table_name in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[table_name][1] < cache_ttl):
-        total_count = TABLE_COUNT_CACHE[table_name][0]
+    # [Optimization] 검색어 유무와 관계없이 일관된 캐시 키와 60초 TTL을 사용하여 스크롤 성능을 보장합니다.
+    cache_key = f"{table_name}_count_q_{q}_cols_{cols}" if q else f"{table_name}_total_count"
+    cache_ttl = 5
+    
+    if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < cache_ttl):
+        total_count = TABLE_COUNT_CACHE[cache_key][0]
     else:
-        # [Wait] 대규모 테이블에서 count(*)는 매우 느림. 
-        # 검색어가 없을 때는 approximate count를 쓰거나, 검색어가 있을 때만 정확한 count 수행
+        t_tmp = time.time()
         total_count = query.count()
-        TABLE_COUNT_CACHE[table_name] = (total_count, time.time())
+        t_count = time.time() - t_tmp
+        TABLE_COUNT_CACHE[cache_key] = (total_count, time.time())
     
     from sqlalchemy.sql import func
     if order_by == "updated_at":
-        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
-        sort_expr = sort_expr.desc().nullslast() if order_desc else sort_expr.asc().nullslast()
-        final_sort = [sort_expr, models.DataRow.row_id.asc()]
+        sort_expr = models.DataRow.updated_at.desc() if order_desc else models.DataRow.updated_at.asc()
+        # [Fix] 인덱스(ASC, ASC)를 거꾸로 타려면(DESC, DESC) 두 컬럼의 정렬 방향이 일치해야 합니다!
+        tie_breaker = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        final_sort = [sort_expr, tie_breaker]
     elif order_by == "id":
-        bk_sort = models.DataRow.business_key_val.desc().nullslast() if order_desc else models.DataRow.business_key_val.asc().nullslast()
-        final_sort = [bk_sort, models.DataRow.row_id.asc()]
+        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
+        tie_breaker_bk = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        final_sort = [bk_sort, tie_breaker_bk]
     else:
         final_sort = [models.DataRow.row_id.asc()]
     
-    # ── [Step 2] 데이터 페칭 (2단계 인덱스 기반 페칭으로 원복) ──
+    # ── [Step 2.5] Session Memory Optimization (Search Only) ──
+    if q:
+        # [Optimization] 검색 결과 정렬 시 External Merge Sort(디스크)를 방지하기 위해 
+        # 현재 트랜잭션의 정렬 메모리(work_mem)를 일시적으로 크게 할당합니다.
+        from sqlalchemy import text
+        db.execute(text("SET LOCAL work_mem = '64MB'"))
+    
+    # ── [Step 3] 데이터 페칭 (2단계 인덱스 기반 페칭으로 원복) ──
     t_id_start = time.time()
     # 1. ID만 먼저 인덱스로 스캔 (Very Fast)
     id_results = query.with_entities(models.DataRow.row_id).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [r[0] for r in id_results]
-    t_id_done = time.time() - t_id_start
+    t_id_scan = time.time() - t_id_start
     
     t_row_start = time.time()
-    # 2. 본 데이터는 해당 ID들만 PK로 조회
-    rows = db.query(models.DataRow).filter(models.DataRow.row_id.in_(id_list)).all()
+    # 2. 본 데이터는 해당 ID들만 PK로 조회 (Tuple 반환으로 ORM 오버헤드 완벽 제거)
+    raw_rows = db.query(
+        models.DataRow.row_id, 
+        models.DataRow.table_name, 
+        models.DataRow.data, 
+        models.DataRow.created_at, 
+        models.DataRow.updated_at
+    ).filter(models.DataRow.row_id.in_(id_list)).all()
     
-    # ID 순서대로 정렬
+    # ID 순서대로 정렬 (인덱스 스캔 순서 복원)
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
-    rows.sort(key=lambda x: id_to_idx.get(x.row_id, 999999))
-    t_row_done = time.time() - t_row_start
+    raw_rows.sort(key=lambda x: id_to_idx.get(x[0], 999999))
+    t_row_scan = time.time() - t_row_start
     
+    t_dict_start = time.time()
     data_list = []
-    for row in rows:
-        inject_system_columns(row)
+    for r_id, t_name, r_data, c_at, u_at in raw_rows:
+        # 시스템 컬럼 데이터 가공 (inject_system_columns 로직의 인라인 최적화)
+        c_at_str = to_local_str(c_at)
+        u_at_str = to_local_str(u_at if u_at else c_at)
+        
+        # 딕셔너리 직접 수정으로 메모리 할당 최소화
+        if "created_at" not in r_data:
+            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
+        if "updated_at" not in r_data:
+            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
+        else:
+            r_data["updated_at"]["value"] = u_at_str
+            
         data_list.append({
-            "row_id": row.row_id, "table_name": row.table_name, "data": row.data,
-            "created_at": to_local_str(row.created_at), "updated_at": to_local_str(row.updated_at)
+            "row_id": r_id, 
+            "table_name": t_name, 
+            "data": r_data,
+            "created_at": c_at_str, 
+            "updated_at": u_at_str
         })
+    
+    t_dict = time.time() - t_dict_start
+    t_total = time.time() - t_total_start
+    
+    print(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
     
     return {
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
-    }
-
-    return {
-        "table_name": table_name,
-        "total": total_count,
-        "skip": skip,
-        "limit": limit,
-        "data": data_list
     }
 
 import json
@@ -605,13 +637,13 @@ def export_table_csv(
     # [Sort] 정렬 조건 동기화
     from sqlalchemy.sql import func
     if order_by == "updated_at":
-        sort_expr = func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)
-        sort_expr = sort_expr.desc() if order_desc else sort_expr.asc()
-        final_sort = [sort_expr, models.DataRow.row_id.asc()]
+        sort_expr = models.DataRow.updated_at.desc() if order_desc else models.DataRow.updated_at.asc()
+        tie_breaker = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        final_sort = [sort_expr, tie_breaker]
     elif order_by == "id":
-        bk_null_last = (models.DataRow.business_key_val == None).asc()
         bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+        tie_breaker_bk = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        final_sort = [bk_sort, tie_breaker_bk]
     else:
         final_sort = [models.DataRow.row_id.asc()]
 

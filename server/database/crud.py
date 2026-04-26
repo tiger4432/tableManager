@@ -148,10 +148,12 @@ def apply_row_update_internal(
         
     is_new = False
     if not row:
+        from sqlalchemy.sql import func
         row = models.DataRow(
             row_id=update_item.row_id or str(uuid6.uuid7()),
             table_name=table_name,
-            data={}
+            data={},
+            updated_at=func.now()
         )
         db.add(row)
         is_new = True
