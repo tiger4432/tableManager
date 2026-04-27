@@ -35,7 +35,11 @@ Desktop.ini
 *.log
 server/*.log
 
-# PyInstaller 빌드 결과물
+# 빌드 결과물
 client/build/
 client/dist/
 client/*.spec
+
+# 운영 환경 고유 설정 및 인제션 워크스페이스
+server/config/
+server/ingestion_workspace/
