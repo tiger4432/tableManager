@@ -93,6 +93,9 @@ class ExcelTableView(QTableView):
         sources_action = menu.addAction("📚 데이터 원천(Sources) 관리")
         menu.addSeparator()
         delete_action = menu.addAction("🗑️ 선택된 행 삭제")
+        menu.addSeparator()
+        smart_paste_action = menu.addAction("📋 파서로 붙여넣기 (Smart Paste)")
+        smart_paste_action.setToolTip("클립보드 데이터를 서버 파서로 분석하여 일괄 반영합니다.")
         
         selection = self.selectionModel()
         if not selection.hasSelection():
@@ -107,6 +110,8 @@ class ExcelTableView(QTableView):
             self._request_lineage()
         elif action == sources_action:
             self._open_source_manager()
+        elif action == smart_paste_action:
+            self.paste_via_ingestion()
             
     def _open_source_manager(self):
         """현재 선택된 셀의 원천 데이터 관리 다이얼로그 개시."""
@@ -421,6 +426,37 @@ class ExcelTableView(QTableView):
             # 하위 호환성을 위해 기존 함수 재호출 가능하나, 
             # 인덱스가 매핑된 상태이므로 table_model의 bulkUpdateData 로직 수정 필요
             source_model.bulkUpdateData(min_row, min_col, parsed_matrix, is_already_mapped=True)
+
+    def paste_via_ingestion(self):
+        """클립보드 데이터를 임시 파일로 만들어 서버 인제션 파이프라인으로 전송합니다."""
+        clipboard_text = QGuiApplication.clipboard().text()
+        if not clipboard_text: 
+            QMessageBox.warning(self, "알림", "클립보드가 비어 있습니다.")
+            return
+        
+        # 1. 임시 파일 생성
+        import tempfile
+        import os
+        try:
+            # 파서가 인식하기 쉽도록 .log 확장자 사용 및 인코딩 명시
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".log", mode='w', encoding='utf-8') as f:
+                f.write(clipboard_text)
+                temp_path = f.name
+            
+            # 2. 업로드 수행 (MainWindow의 로직 활용)
+            main_win = self.window()
+            model = self.model()
+            source_model = getattr(model, 'sourceModel', lambda: model)()
+            table_name = source_model.table_name
+            
+            if hasattr(main_win, "_execute_file_upload"):
+                main_win._execute_file_upload(table_name, temp_path, silent=True)
+                main_win.statusBar().showMessage("📋 클립보드 데이터를 파서로 전송했습니다. 분석 완료 후 자동 갱신됩니다.", 5000)
+            else:
+                QMessageBox.critical(self, "오류", "업로드 기능을 찾을 수 없습니다.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"스마트 붙여넣기 준비 중 오류 발생: {e}")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -1126,14 +1162,17 @@ class MainWindow(QMainWindow):
         if file_path:
             self._execute_file_upload(source_model.table_name, file_path)
 
-    def _execute_file_upload(self, table_name, file_path):
+    def _execute_file_upload(self, table_name, file_path, silent=False):
         """실제 파일 업로드를 수행합니다 (버튼/드롭 공통 로직)."""
         # 2. 업로드 워커 생성
         upload_url = config.get_table_upload_url(table_name)
-        worker = ApiUploadWorker(upload_url, file_path)
+        worker = ApiUploadWorker(upload_url, file_path, user=config.CURRENT_USER)
         
         def _on_finished(result):
-            QMessageBox.information(self, "성공", f"파일 업로드 완료: {result.get('filename')}\n서버에서 곧 파싱을 시작합니다.")
+            if not silent:
+                QMessageBox.information(self, "성공", f"파일 업로드 완료: {result.get('filename')}\n서버에서 곧 파싱을 시작합니다.")
+            else:
+                self.statusBar().showMessage(f"✅ 스마트 붙여넣기 완료: {result.get('filename')} 파싱 중...", 5000)
             if worker in self._active_workers:
                 self._active_workers.remove(worker)
             

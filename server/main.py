@@ -976,7 +976,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @app.post("/tables/{table_name}/upload")
-async def upload_file(table_name: str, file: UploadFile = File(...)):
+async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile = File(...)):
     """
     클라이언트에서 보낸 로그 파일을 수신하여 해당 테이블의 인제션 워크스페이스(raws/)에 저장합니다.
     저장 시 directory_watcher.py가 이를 감지하여 자동으로 파싱을 시작합니다.
@@ -986,9 +986,11 @@ async def upload_file(table_name: str, file: UploadFile = File(...)):
     target_dir = os.path.join(base_dir, "ingestion_workspace", table_name, "raws")
     
     # 2. 디렉토리가 없으면 생성 (setup_workspace.py가 미리 생성해두지만 안전을 위해)
-    # 2. 파일명 중복 방지 (기존명_UUID.ext)
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # 2. 파일명 중복 방지 (기존명_UUID.ext) + 업로더 정보(user) 인코딩
     orig_name, ext = os.path.splitext(file.filename)
-    unique_name = f"{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
+    unique_name = f"user({user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
     file_path = os.path.join(target_dir, unique_name)
     
     # 3. 파일 저장

@@ -72,10 +72,11 @@ class ApiGeneralUpdateWorker(BaseApiWorker):
 
 class ApiUploadWorker(QRunnable):
     """외부 라이브러리(httpx)를 사용하므로 베이스 클래스에서 예외 적용."""
-    def __init__(self, url, file_path):
+    def __init__(self, url, file_path, user:str=None):
         super().__init__()
         self.url = url
         self.file_path = file_path
+        self.user = user
         self.signals = WorkerSignals()
 
     def run(self):
@@ -85,7 +86,8 @@ class ApiUploadWorker(QRunnable):
             filename = os.path.basename(self.file_path)
             with open(self.file_path, "rb") as f:
                 with httpx.Client(timeout=30.0) as client:
-                    response = client.post(self.url, files={"file": (filename, f)})
+                    # [Fix] user 파라미터 추가
+                    response = client.post(self.url, files={"file": (filename, f)}, params={"user": self.user})
                     if response.status_code == 200:
                         self.signals.finished.emit(response.json())
                     else:
@@ -510,8 +512,8 @@ class ApiLazyTableModel(QAbstractTableModel):
                 items = data.get("items", [])
                 if not items: return
                 
-                # [Fix] 검색(필터링) 중이면 강제 삽입을 차단하고 카운트만 갱신
-                if self._search_query:
+                # [Fix] 트랜잭션 필터링 중에는 신규 데이터 유입 차단
+                if self._search_query or self._tx_filter:
                     self._refresh_total_count()
                     self.status_message_requested.emit(f"백그라운드에서 신규 데이터 {len(items)}건이 생성되었습니다.")
                     return
@@ -551,6 +553,7 @@ class ApiLazyTableModel(QAbstractTableModel):
             elif event == "batch_row_upsert":
                 items = data.get("items", [])
                 if not items: return
+                
                 import time
                 start_t = time.time()
 
@@ -585,10 +588,10 @@ class ApiLazyTableModel(QAbstractTableModel):
                             max_c = max(max_c, idx)
                     else:
                         # 화면에 없는 새로운 데이터
-                        if self._search_query:
-                            continue # 검색 중이면 새 데이터 삽입 차단
+                        if self._search_query or self._tx_filter:
+                            continue # 검색 또는 트랜잭션 필터링 중이면 새 데이터 삽입 차단
                             
-                        norm = self._normalize_row_data(item) # 서버에서 온 전체 정보를 그대로 정규화에 사용
+                        norm = self._normalize_row_data(item) 
                         if self._sort_latest:
                                 moved_norms.append(norm)
                         

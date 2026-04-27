@@ -54,7 +54,7 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _handle_event(self, file_path: str):
         abs_path = os.path.abspath(file_path)
-        if abs_path.endswith(self.supported_extensions):
+        if True:
             if abs_path in self.processing_files:
                 return
             if not os.path.exists(abs_path):
@@ -62,13 +62,17 @@ class IngestionHandler(FileSystemEventHandler):
                 
             logger.info(f"New file detected: {abs_path}")
             self.processing_files.add(abs_path)
+            
+            # [Fix] 파일명에서 업로더 정보 추출
+            uploader = self._extract_user_from_filename(os.path.basename(abs_path))
+            
             try:
-                self.process_with_retry(abs_path)
+                self.process_with_retry(abs_path, uploader=uploader)
             finally:
                 if abs_path in self.processing_files:
                     self.processing_files.remove(abs_path)
 
-    def process_with_retry(self, file_path: str, retries: int = 3, delay: float = 1.0):
+    def process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         """
         Processes a file with debouncing and retries to handle locked files.
         """
@@ -88,7 +92,7 @@ class IngestionHandler(FileSystemEventHandler):
                     logger.info(f"Custom script found: {custom_script}. Using plug-in parser.")
                     rows = self._execute_custom_script(file_path, custom_script)
                     if rows:
-                        self._send_to_upsert(rows)
+                        self._send_to_upsert(rows, uploader=uploader)
                 else:
                     # 1. Initialize AdvancedIngester for this workspace
                     ingester = AdvancedIngester(self.config_path)
@@ -97,7 +101,7 @@ class IngestionHandler(FileSystemEventHandler):
                     logger.info(f"Starting ingestion for {file_path} (Attempt {attempt+1})")
                     rows = ingester.process_file(file_path)
                     if rows:
-                        self._send_to_upsert(rows)
+                        self._send_to_upsert(rows, uploader=uploader)
                 
                 # 3. Archive the file
                 self._archive_file(file_path)
@@ -153,8 +157,19 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as e:
             logger.error(f"Failed to execute custom script {script_path}: {e}")
             return []
+            
+    def _extract_user_from_filename(self, filename: str) -> str:
+        """파일명에 인코딩된 user(name) 정보를 추출합니다."""
+        if filename.startswith("user("):
+            try:
+                end_idx = filename.find(")")
+                if end_idx != -1:
+                    return filename[5:end_idx]
+            except:
+                pass
+        return "system"
 
-    def _send_to_upsert(self, rows: list[dict]):
+    def _send_to_upsert(self, rows: list[dict], uploader: str = "system"):
         """파싱된 행 리스트를 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다."""
         import json
         
@@ -218,7 +233,7 @@ class IngestionHandler(FileSystemEventHandler):
                             business_key_val=str(bk_val),
                             updates=normalized_row,
                             source_name="custom_script" if os.path.exists(os.path.join(self.scripts_path, "custom_parser.py")) else "batch_ingester",
-                            updated_by="system"
+                            updated_by=uploader
                         ))
                 
                 if not items:
