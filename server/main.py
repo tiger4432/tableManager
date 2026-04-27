@@ -419,8 +419,12 @@ def get_table_data(
             skip = max(0, actual_target_offset - (limit // 2))
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
-    # [Optimization] 검색어 유무와 관계없이 일관된 캐시 키와 5초 TTL을 사용하여 스크롤 성능을 보장합니다.
-    cache_key = f"{table_name}_total_count_{q}_{cols}" if q else f"{table_name}_total_count"
+    # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
+    cache_key_parts = [table_name, "total_count"]
+    if q: cache_key_parts.append(f"q:{q}")
+    if cols: cache_key_parts.append(f"cols:{cols}")
+    if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
+    cache_key = "|".join(cache_key_parts)
     cache_ttl = 5.0
     
     if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < cache_ttl):
