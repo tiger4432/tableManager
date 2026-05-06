@@ -11,10 +11,8 @@ from datetime import datetime
 # 소스별 우선순위 정의 (숫자가 낮을수록 높음)
 SOURCE_PRIORITY = {
     "user": 0,
-    "parser_a": 1,
-    "parser_b": 2,
-    "batch_ingester": 3,
-    "custom_script": 4
+    "pipeline_parser": 1,
+    "custom_script": 2
 }
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
