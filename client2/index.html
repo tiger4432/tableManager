@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AssyManager Enterprise - AG-Grid Client</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  </head>
+  <body class="dark-theme">
+    <div id="app">
+      <!-- 헤더 툴바 -->
+      <header class="app-header">
+        <div class="logo-area">
+          <span class="pulse-indicator status-ws"></span>
+          <h1>AssyManager <span class="badge">AG-Grid Engine</span></h1>
+        </div>
+        <div class="controls-area">
+          <div class="control-group">
+            <label for="table-select">Table</label>
+            <select id="table-select" class="glass-input">
+              <option value="">Loading Tables...</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <button id="refresh-grid-btn" class="glass-btn">🔄 Refresh</button>
+            <button id="add-row-btn" class="glass-btn">➕ Row</button>
+            <button id="delete-row-btn" class="glass-btn hover-danger">🗑️ Row</button>
+          </div>
+          <div class="control-group">
+            <input type="file" id="toolbar-file-input" multiple style="display: none;" />
+          </div>
+          <div class="control-group">
+            <input type="checkbox" id="copy-header-toggle" class="glass-checkbox" />
+            <label for="copy-header-toggle" class="checkbox-label">Copy Header</label>
+          </div>
+          <div class="control-group">
+            <input type="checkbox" id="sort-latest-toggle" class="glass-checkbox" checked />
+            <label for="sort-latest-toggle" class="checkbox-label">Sort Latest</label>
+          </div>
+          <div class="status-indicators">
+            <span class="status-badge" id="server-status">API: Loading</span>
+            <span class="status-badge" id="ws-status">WS: Connecting</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
+      <main class="main-layout">
+        <section class="grid-section">
+          <!-- Active Transaction Filter Banner -->
+          <div id="tx-filter-banner" class="tx-filter-banner" style="display: none;">
+            <span class="banner-icon">⚡</span>
+            <span class="banner-text">Showing rows modified in Transaction:<code id="banner-tx-id">tx_id</code></span>
+            <button id="clear-tx-filter-btn" class="clear-banner-btn">&times;</button>
+          </div>
+          <div id="myGrid" class="ag-theme-quartz-dark" style="height: 100%; width: 100%;"></div>
+          <!-- 상태 바 (PyQt의 Zero-Lag Sync 디자인 반영) -->
+          <footer class="grid-footer">
+            <div class="status-left">
+              <span id="exposed-rows">Loaded: 0</span>
+              <span class="divider">/</span>
+              <span id="total-rows">Matches: 0</span>
+            </div>
+            <div class="status-center pagination-controls">
+              <button id="prev-page-btn" class="glass-page-btn" disabled>&lsaquo; Prev</button>
+              <span id="page-info">
+                Page <input type="number" id="page-input" class="page-input" min="1" value="1"> of <span id="total-pages">1</span>
+              </span>
+              <button id="next-page-btn" class="glass-page-btn" disabled>Next &rsaquo;</button>
+            </div>
+            <div class="status-right">
+              <span id="performance-log">Ready</span>
+            </div>
+          </footer>
+        </section>
+
+        <!-- 히스토리 사이드바 -->
+        <aside class="history-sidebar glass-panel">
+          <div class="sidebar-header">
+            <h2>Audit History</h2>
+            <div class="history-tabs">
+              <button id="tab-global" class="tab-btn active">Global History</button>
+              <button id="tab-cell" class="tab-btn">Cell History</button>
+              <button id="tab-row" class="tab-btn">Row History</button>
+            </div>
+          </div>
+          <div class="sidebar-content">
+            <div id="selected-cell-info" class="meta-info">
+              Select a cell to view history
+            </div>
+            <div class="timeline-container">
+              <ul id="timeline" class="timeline">
+                <li class="timeline-empty">No history loaded.</li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </main>
+      
+      <!-- 커스텀 우클릭 컨텍스트 메뉴 -->
+      <div id="custom-context-menu" class="context-menu glass-panel" style="display: none; position: absolute; z-index: 1000;">
+        <ul>
+          <li id="menu-sources">📚 데이터 원천(Sources) 관리</li>
+          <li id="menu-delete">🗑️ 선택된 행 삭제</li>
+          <li id="menu-smart-paste">📋 파서로 붙여넣기 (Smart Paste)</li>
+        </ul>
+      </div>
+
+      <!-- 데이터 원천(Sources) 관리 모달 -->
+      <div id="sources-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+          <div class="modal-header">
+            <h3>📚 데이터 원천(Sources) 관리</h3>
+            <button id="modal-close-btn" class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div id="modal-meta-info" class="meta-info" style="margin-bottom: 15px;"></div>
+            <div class="table-container">
+              <table class="sources-table">
+                <thead>
+                  <tr>
+                    <th>Source Name</th>
+                    <th>Value</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sources-list">
+                  <!-- Dynamic content -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag and Drop Overlay -->
+      <div id="drop-overlay" class="drop-overlay" style="display: none;">
+        <div class="drop-zone glass-panel">
+          <div class="drop-icon">📤</div>
+          <h2>Drop Log Files Here</h2>
+          <p>Files will be automatically ingested into <span id="drop-table-name">current table</span></p>
+        </div>
+      </div>
+
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

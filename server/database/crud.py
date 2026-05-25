@@ -281,13 +281,14 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     db.add_all(new_rows)
     
     if count > 0:
-        summary_msg = f"{table_name} / {count}개의 새 행이 생성됨"
         tx_id = str(uuid6.uuid7())
-        create_audit_log(
-            db, table_name, "_BATCH_", "CREATE",
-            None, summary_msg, "system", user_name,
-            transaction_id=tx_id
-        )
+        for row in new_rows:
+            create_audit_log(
+                db, table_name, row.row_id, "CREATE",
+                None, "새 행 생성됨", "system", user_name,
+                transaction_id=tx_id,
+                business_key=row.business_key_val
+            )
     
     db.commit()
     # [O(N) 제거] refresh() 루프를 제거하여 대량 생성 시 지연 방지
@@ -298,9 +299,15 @@ def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "syst
     return delete_rows_batch(db, table_name, [row_id], user_name) > 0
 
 def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str = "system"):
-    """여러 행을 일괄 삭제하고 요약 히스토리를 남깁니다."""
+    """여러 행을 일괄 삭제하고 개별 히스토리를 남깁니다."""
     if not row_ids:
         return 0
+        
+    # 삭제하기 전 row_id와 business_key_val을 먼저 조회
+    rows_to_delete = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id.in_(row_ids)
+    ).all()
         
     # [O(1) 최적화] 매 건마다 쿼리하는 대신 IN 연산자로 단숨에 삭제
     deleted_count = db.query(models.DataRow).filter(
@@ -309,14 +316,14 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     ).delete(synchronize_session=False)
             
     if deleted_count > 0:
-        # 요약 히스토리 남기기
-        summary_msg = f"{table_name} / {deleted_count}개의 행이 삭제됨"
         tx_id = str(uuid6.uuid7())
-        create_audit_log(
-            db, table_name, "_BATCH_", "DELETE", 
-            None, summary_msg, "system", user_name,
-            transaction_id=tx_id
-        )
+        for row in rows_to_delete:
+            create_audit_log(
+                db, table_name, row.row_id, "DELETE", 
+                None, "행 삭제됨", "system", user_name,
+                transaction_id=tx_id,
+                business_key=row.business_key_val
+            )
         db.commit()
         
         # 삭제된 행의 이전 로그 캐시에서 즉시 정리 (방금 남긴 DELETE 배치는 남음)

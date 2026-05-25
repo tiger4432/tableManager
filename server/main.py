@@ -1,6 +1,7 @@
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db
 from database import models, schemas, crud
 import uuid 
@@ -11,6 +12,18 @@ from fastapi import UploadFile, File, Body, HTTPException
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AssyManager Table Server")
+
+# --- CORS Middleware Config ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Directory Watcher Integration ---
 import sys
@@ -303,6 +316,55 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         system_health="Excellent"
     )
 
+def get_column_filter_condition(col_name: str, f_info: dict):
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy import cast, String, func, or_, and_
+    
+    # 1. Handle compound filter conditions (AND / OR)
+    if "operator" in f_info:
+        operator = f_info.get("operator")
+        conditions = f_info.get("conditions", [])
+        sqlalchemy_conds = []
+        for cond_info in conditions:
+            sub_cond = get_column_filter_condition(col_name, cond_info)
+            if sub_cond is not None:
+                sqlalchemy_conds.append(sub_cond)
+        if not sqlalchemy_conds:
+            return None
+        return and_(*sqlalchemy_conds) if operator == "AND" else or_(*sqlalchemy_conds)
+        
+    # 2. Handle simple filter condition
+    f_val = f_info.get("filter")
+    f_type = f_info.get("type", "contains")
+    if f_val is None:
+        return None
+        
+    # Column path resolution
+    if col_name in ["created_at", "updated_at"]:
+        target_col = models.DataRow.created_at if col_name == "created_at" else models.DataRow.updated_at
+        col_expr = cast(target_col, String)
+    elif col_name in ["row_id", "id"]:
+        col_expr = models.DataRow.row_id
+    else:
+        col_expr = func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col_name, "value")
+        
+    # Condition mapping based on type
+    if f_type == "contains":
+        return col_expr.ilike(f"%{f_val}%")
+    elif f_type == "notContains":
+        return ~col_expr.ilike(f"%{f_val}%")
+    elif f_type == "equals":
+        return col_expr == f_val
+    elif f_type == "notEqual":
+        return col_expr != f_val
+    elif f_type == "startsWith":
+        return col_expr.ilike(f"{f_val}%")
+    elif f_type == "endsWith":
+        return col_expr.ilike(f"%{f_val}")
+    else:
+        # Default fallback
+        return col_expr.ilike(f"%{f_val}%")
+
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
 def get_table_data(
@@ -315,6 +377,7 @@ def get_table_data(
     order_desc: bool = False,
     target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
     transaction_id: str = None, # [NEW] 특정 트랜잭션 결과만 필터링
+    filters: str = None, # [NEW] AG-Grid 컬럼 필터링 조건
     db: Session = Depends(get_db)
 ):
     """
@@ -330,6 +393,18 @@ def get_table_data(
     if transaction_id:
         subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
         query = query.filter(models.DataRow.row_id.in_(subquery))
+
+    # [NEW] AG-Grid 컬럼 필터링
+    if filters:
+        try:
+            import json
+            filter_dict = json.loads(filters)
+            for col_name, f_info in filter_dict.items():
+                cond = get_column_filter_condition(col_name, f_info)
+                if cond is not None:
+                    query = query.filter(cond)
+        except Exception as e:
+            print(f"[Server] Failed to apply column filters: {e}")
     
     # ── [Step 0] 검색 필터 구성 (Trigram Index + 컬럼 한정) ──
     if q:
@@ -424,6 +499,7 @@ def get_table_data(
     if q: cache_key_parts.append(f"q:{q}")
     if cols: cache_key_parts.append(f"cols:{cols}")
     if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
+    if filters: cache_key_parts.append(f"filters:{filters}")
     cache_key = "|".join(cache_key_parts)
     cache_ttl = 5.0
     
