@@ -7,8 +7,9 @@ import './style.css';
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 // Configuration
-const API_BASE = 'http://127.0.0.1:8080';
-const WS_URL = 'ws://127.0.0.1:8080/ws';
+const isDevServer = window.location.port === '5173';
+const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
+const WS_URL = isDevServer ? 'ws://127.0.0.1:8080/ws' : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
 // State
 const CURRENT_USER = import.meta.env.VITE_USER || 'web_client';

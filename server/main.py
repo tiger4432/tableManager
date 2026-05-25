@@ -7,6 +7,8 @@ from database import models, schemas, crud
 import uuid 
 import os
 from fastapi import UploadFile, File, Body, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # Create tables if not exists
 models.Base.metadata.create_all(bind=engine)
@@ -122,6 +124,14 @@ manager = ConnectionManager()
 
 @app.get("/")
 def read_root():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))
+    if not os.path.exists(client2_dist_path):
+        client2_dist_path = os.path.join(script_dir, "dist")
+        
+    index_file = os.path.join(client2_dist_path, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
     return {"status": "AssyManager Data Server is running"}
 
 import time
@@ -1152,3 +1162,33 @@ async def get_cell_history(table_name: str, row_id: str, col_name: str, db: Sess
     ).order_by(desc(models.AuditLog.timestamp)).all()
     
     return logs
+
+# --- Static File Serving & SPA Fallback for client2 ---
+script_dir = os.path.dirname(os.path.abspath(__file__))
+client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))
+if not os.path.exists(client2_dist_path):
+    client2_dist_path = os.path.join(script_dir, "dist")
+
+if os.path.exists(client2_dist_path):
+    assets_dir = os.path.join(client2_dist_path, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{file_name:path}")
+    async def serve_static_or_index(file_name: str):
+        # Prevent catching API endpoints or WebSocket
+        if (file_name.startswith("tables") or 
+            file_name.startswith("ws") or 
+            file_name.startswith("audit_logs") or 
+            file_name.startswith("dashboard")):
+            raise HTTPException(status_code=404)
+
+        target_path = os.path.join(client2_dist_path, file_name)
+        if file_name and os.path.exists(target_path) and os.path.isfile(target_path):
+            return FileResponse(target_path)
+
+        index_file = os.path.join(client2_dist_path, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Index file not found")
+

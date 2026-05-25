@@ -185,7 +185,22 @@ if __name__ == "__main__":
     # Qt 전역 프록시 해제 (루프백 통신 강제)
     #QNetworkProxy.setApplicationProxy(QNetworkProxy(QNetworkProxy.NoProxy))
     
-    # Vite 개발 서버가 작동 중인 http://127.0.0.1:5173 주소를 기본값으로 호출합니다.
-    window = HybridDesktopClient("http://localhost:5173/")
+    # Vite 개발 서버가 작동 중인지 감지 (5173 포트가 열려있으면 Dev 모드로 간주)
+    import socket
+    def is_port_open(host, port):
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+            
+    if is_port_open("127.0.0.1", 5173):
+        url = "http://localhost:5173/"
+        print("[Desktop Wrapper] Vite dev server detected on port 5173. Loading development URL.")
+    else:
+        url = "http://localhost:8080/"
+        print("[Desktop Wrapper] Vite dev server not detected. Loading integrated FastAPI URL on port 8080.")
+        
+    window = HybridDesktopClient(url)
     window.show()
     sys.exit(app.exec())
