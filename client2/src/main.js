@@ -129,6 +129,7 @@ function setupEventListeners() {
     prevPageBtn.addEventListener('click', () => {
       if (currentSkip >= pageLimit) {
         currentSkip -= pageLimit;
+        allDataLoaded = false;
         fetchData(false);
       }
     });
@@ -136,6 +137,7 @@ function setupEventListeners() {
   if (nextPageBtn) {
     nextPageBtn.addEventListener('click', () => {
       currentSkip += pageLimit;
+      allDataLoaded = false;
       fetchData(false);
     });
   }
@@ -155,8 +157,9 @@ function setupEventListeners() {
       }
       
       const newSkip = (targetPage - 1) * pageLimit;
-      if (newSkip !== currentSkip) {
+      if (newSkip !== currentSkip || allDataLoaded) {
         currentSkip = newSkip;
+        allDataLoaded = false;
         fetchData(false);
       } else {
         pageInput.value = targetPage;
@@ -458,11 +461,7 @@ function setupEventListeners() {
         updateLoadedCount(result.data.length);
         totalRowsCount.textContent = `Matches: ${result.total}`;
         
-        // Hide pagination controls since everything is loaded
-        const paginationControls = document.querySelector('.pagination-controls');
-        if (paginationControls) {
-          paginationControls.style.display = 'none';
-        }
+        updateViewModeUI();
         
         performanceLog.textContent = `Loaded all ${result.data.length} rows in ${fetchTime}ms`;
         showToast(`📥 전체 ${result.data.length}개 행 로드 완료!`, 'success');
@@ -797,7 +796,7 @@ function updateLoadedCount(forcedCount = null) {
 function updateViewModeUI() {
   const paginationControls = document.querySelector('.pagination-controls');
   if (paginationControls) {
-    paginationControls.style.display = (viewMode === 'pagination' && !allDataLoaded) ? 'flex' : 'none';
+    paginationControls.style.display = (viewMode === 'pagination') ? 'flex' : 'none';
   }
 }
 
@@ -829,6 +828,7 @@ async function fetchData(resetSkip = true) {
     pageCache.clear();
     currentSkip = 0;
     hasMoreData = true;
+    allDataLoaded = false;
   } else {
     if (viewMode !== 'infinite' && pageCache.has(currentSkip)) {
       const cached = pageCache.get(currentSkip);
@@ -981,9 +981,9 @@ function renderGrid(initialRows) {
   columnDefs.unshift({
     headerName: '#',
     valueGetter: (params) => params.node.rowIndex + 1,
-    width: 60,
-    minWidth: 50,
-    maxWidth: 90,
+    width: 100,
+    minWidth: 90,
+    maxWidth: 150,
     pinned: 'left',
     suppressMovable: true,
     sortable: false,
