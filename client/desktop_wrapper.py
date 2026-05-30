@@ -10,8 +10,8 @@ os.environ["QTWEBENGINE_REMOTE_DEBUGGING"] = "9222"
 import httpx
 import getpass
 from PySide6.QtCore import QUrl, Qt, QObject, QEvent
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QWidget
-from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QWidget, QFileDialog
+from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage, QWebEngineDownloadRequest
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtNetwork import QNetworkProxy
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -66,6 +66,9 @@ class HybridDesktopClient(QMainWindow):
         
         # 권한 자동 승인 (클립보드 읽기 권한 등)
         self.web_view.page().permissionRequested.connect(lambda request: request.grant())
+        
+        # 다운로드 요청 처리 핸들러 연결
+        self.web_view.page().profile().downloadRequested.connect(self.handle_download_request)
         
         # 보안 설정 및 로컬 파일 접근 허용 등
         settings = self.web_view.settings()
@@ -167,6 +170,26 @@ class HybridDesktopClient(QMainWindow):
             print(f"[Desktop Wrapper] Exception during upload: {e}")
             self.web_view.page().runJavaScript(f"if (typeof showToast === 'function') {{ showToast('❌ 파일 업로드 중 오류 발생', 'error'); }}")
 
+    def handle_download_request(self, download):
+        suggested_name = download.suggestedFileName()
+        
+        # OS 네이티브 파일 저장 다이얼로그 팝업
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save CSV File", 
+            suggested_name, 
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if filepath:
+            # 다운로드 경로 및 파일명 지정 후 승인
+            download.setDownloadDirectory(os.path.dirname(filepath))
+            download.setDownloadFileName(os.path.basename(filepath))
+            download.accept()
+        else:
+            # 다이얼로그에서 취소 시 다운로드 취소 처리
+            download.cancel()
+
     def toggle_devtools(self):
         if self.devtools_window and self.devtools_window.isVisible():
             self.devtools_window.hide()
@@ -179,7 +202,40 @@ class HybridDesktopClient(QMainWindow):
             
         self.devtools_window.show()
 
+def register_uri_scheme():
+    import platform
+    if platform.system() != "Windows":
+        return
+    try:
+        import winreg
+        import sys
+        import os
+        
+        python_exe = sys.executable
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        wrapper_path = os.path.abspath(os.path.join(script_dir, "desktop_wrapper.py"))
+        
+        # 브라우저에서 assymanager:// 호출 시 실행할 커맨드 라인
+        cmd_str = f'"{python_exe}" "{wrapper_path}" "%1"'
+        
+        # HKCU\\Software\\Classes\\assymanager 에 등록 (관리자 권한 불필요)
+        key_path = r"Software\Classes\assymanager"
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:AssyManager Protocol")
+            winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+            
+        cmd_key_path = r"Software\Classes\assymanager\shell\open\command"
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, cmd_key_path) as cmd_key:
+            winreg.SetValueEx(cmd_key, "", 0, winreg.REG_SZ, cmd_str)
+            
+        print(f"[Desktop Wrapper] Registered custom protocol 'assymanager://' to HKCU: {cmd_str}")
+    except Exception as e:
+        print(f"[Desktop Wrapper] Failed to register custom protocol: {e}")
+
 if __name__ == "__main__":
+    # URL Scheme 프로토콜 자동 등록
+    register_uri_scheme()
+    
     app = QApplication(sys.argv)
     
     # Qt 전역 프록시 해제 (루프백 통신 강제)
@@ -195,10 +251,10 @@ if __name__ == "__main__":
             return False
             
     if is_port_open("127.0.0.1", 5173):
-        url = "http://localhost:5173/"
+        url = "http://localhost:5173/?client=desktop"
         print("[Desktop Wrapper] Vite dev server detected on port 5173. Loading development URL.")
     else:
-        url = "http://localhost:8080/"
+        url = "http://localhost:8080/?client=desktop"
         print("[Desktop Wrapper] Vite dev server not detected. Loading integrated FastAPI URL on port 8080.")
         
     window = HybridDesktopClient(url)

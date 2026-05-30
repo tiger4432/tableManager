@@ -17,6 +17,9 @@
           <span class="pulse-indicator status-ws"></span>
           <h1>AssyManager <span class="badge">AG-Grid Engine</span></h1>
         </div>
+        <div class="log-indicator-area">
+          <span id="performance-log" class="glass-log-badge">Ready</span>
+        </div>
         <div class="controls-area">
           <div class="control-group">
             <label for="table-select">Table</label>
@@ -72,7 +75,15 @@
               <button id="next-page-btn" class="glass-page-btn" disabled>Next &rsaquo;</button>
             </div>
             <div class="status-right">
-              <span id="performance-log">Ready</span>
+              <div class="footer-control-group">
+                <label for="view-mode-select" class="footer-label">View</label>
+                <select id="view-mode-select" class="footer-select">
+                  <option value="pagination">📄 Paging</option>
+                  <option value="infinite">♾️ Scroll</option>
+                </select>
+                <button id="load-all-btn" class="glass-page-btn">📥 Load All</button>
+                <button id="load-csv-btn" class="glass-page-btn">📄 Load CSV</button>
+              </div>
             </div>
           </footer>
         </section>

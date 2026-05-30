@@ -96,6 +96,31 @@ body {
   z-index: 10;
 }
 
+.log-indicator-area {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+  max-width: 500px;
+}
+
+.glass-log-badge {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  padding: 6px 16px;
+  border-radius: 20px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 240, 255, 0.05);
+  transition: var(--transition-smooth);
+}
+
 .logo-area {
   display: flex;
   align-items: center;
@@ -252,8 +277,51 @@ body {
 
 .status-right {
   flex: 1;
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
   font-size: 0.75rem;
+}
+
+.footer-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.footer-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-main);
+  padding: 2px 6px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  outline: none;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.footer-select:focus {
+  border-color: var(--color-primary);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.2);
+}
+
+.footer-select option {
+  background-color: #0b0f19;
+  color: var(--text-main);
 }
 
 /* History Sidebar Panel */

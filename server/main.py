@@ -1,13 +1,13 @@
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db
 from database import models, schemas, crud
 import uuid 
 import os
 from fastapi import UploadFile, File, Body, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # Create tables if not exists
@@ -25,6 +25,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Estimated-Content-Length", "X-Total-Rows"]
 )
 
 # --- Directory Watcher Integration ---
@@ -33,6 +34,7 @@ import os
 # parsers 디렉토리를 sys.path에 추가하여 내부 임포트(advanced_ingester 등) 정합성 확보
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(script_dir, "parsers"))
+# pyrefly: ignore [missing-import]
 from directory_watcher import WorkspaceWatcher
 
 # 전역 워처 인스턴스 (종료 시 접근 위함)
@@ -123,7 +125,7 @@ manager = ConnectionManager()
 
 
 @app.get("/")
-def read_root():
+def read_root(request: Request):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))
     if not os.path.exists(client2_dist_path):
@@ -737,6 +739,7 @@ def export_table_csv(
     order_by: str = "row_id",
     order_desc: bool = False,
     transaction_id: str = None, # [NEW] 트랜잭션 필터
+    filters: str = None, # [NEW] 필터 지원
     db: Session = Depends(get_db)
 ):
     """
@@ -748,6 +751,18 @@ def export_table_csv(
     if transaction_id:
         subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
         query = query.filter(models.DataRow.row_id.in_(subquery))
+
+    # [NEW] AG-Grid 컬럼 필터링
+    if filters:
+        try:
+            import json
+            filter_dict = json.loads(filters)
+            for col_name, f_info in filter_dict.items():
+                cond = get_column_filter_condition(col_name, f_info)
+                if cond is not None:
+                    query = query.filter(cond)
+        except Exception as e:
+            print(f"[Server] Failed to apply column filters in export: {e}")
     
     # [Filter] get_table_data와 검색 로직 동기화
     if q:
@@ -782,17 +797,6 @@ def export_table_csv(
     else:
         final_sort = [models.DataRow.row_id.asc()]
 
-    # [Safety Limit] 최대 100만 행으로 제한
-    # [Accuracy] 내보내기 시에는 캐시를 사용하지 않고 실시간 DB 카운트를 수행합니다.
-    total_count = query.count()
-    total_count = min(total_count, 1000000)
-    
-    # ── [Optimization] ORM 객체 생성을 피하기 위해 필요한 필드만 추출 ──
-    # data(JSONB), created_at, updated_at만 가져와서 속도 2배 이상 향상
-    export_query = query.with_entities(models.DataRow.data, models.DataRow.created_at, models.DataRow.updated_at)\
-                        .order_by(*final_sort)\
-                        .limit(total_count)
-    
     # 1. 헤더 구성을 위한 샘플링 (첫 행 기준)
     first_row_data = db.query(models.DataRow.data).filter(models.DataRow.table_name == table_name).first()
     if not first_row_data:
@@ -804,16 +808,18 @@ def export_table_csv(
     header = business_cols + system_cols
 
     # 2. 크기 샘플링 예측 (초기 10행 기반 정밀 추산)
+    # [Performance Optimization] 전체 테이블을 읽지 않고 limit(10)만 지정하여 메모리 로드 비용 격감
+    sample_query = query.with_entities(models.DataRow.data, models.DataRow.created_at, models.DataRow.updated_at).limit(10)
+    sample_rows = db.execute(sample_query.statement).fetchall()
+    
     sample_io = io.StringIO()
     sample_writer = csv.writer(sample_io)
-    # 실제 상위 10건 데이터 페치 (이미 정렬/필터링된 query 활용)
-    sample_rows = export_query.limit(10).all()
     
     tz = LOCAL_TIMEZONE
     ts_fmt = "%Y-%m-%d %H:%M:%S"
     
     for r_data, c_at, u_at in sample_rows:
-        # 시스템 컬럼 데이터 가공 시뮬레이션 (generate 루프와 동일 로직)
+        # 시스템 컬럼 데이터 가공 시뮬레이션
         eff_upd = u_at if u_at else c_at
         c_at_s = c_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if c_at else ""
         u_at_s = eff_upd.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if eff_upd else ""
@@ -831,12 +837,26 @@ def export_table_csv(
                     val = val.get("value")
                 row_v.append(val)
         sample_writer.writerow(row_v)
-    
-    # UTF-8 바이트 수 기준으로 계산
+        
     sample_bytes = len(sample_io.getvalue().encode("utf-8"))
     avg_row_size = sample_bytes / len(sample_rows) if sample_rows else 150
     header_size = len("\ufeff".encode("utf-8")) + len(",".join(header).encode("utf-8")) + 2
+    
+    # [Performance Optimization] 빠른 카운트(SELECT COUNT(*))만 실행하여 헤더 준비 속도 극대화
+    total_count = query.count()
+    total_count = min(total_count, 1000000)
     estimated_total_size = int(header_size + (avg_row_size * total_count))
+
+    # [Performance Optimization] SQL 레벨에서 필요한 가상의 비즈니스 컬럼 값만 골라 추출하여 파이썬 JSON 파싱 부하 제거
+    from sqlalchemy import literal_column
+    select_entities = []
+    for col in business_cols:
+        safe_col = col.replace("'", "''")
+        expr = literal_column(f"CASE WHEN jsonb_typeof(data -> '{safe_col}') = 'object' THEN data -> '{safe_col}' ->> 'value' ELSE data ->> '{safe_col}' END")
+        select_entities.append(expr.label(col))
+    
+    select_entities.append(models.DataRow.created_at)
+    select_entities.append(models.DataRow.updated_at)
 
     def generate():
         output = io.StringIO()
@@ -848,45 +868,56 @@ def export_table_csv(
         yield output.getvalue()
         output.seek(0); output.truncate(0)
 
-        # ── [Optimization] 1000개 단위로 청크 처리하여 Yield 부하 감소 ──
-        batch_size = 1000
-        current_batch = []
+        # ── [Optimization] 서버사이드 커서(yield_per)를 활용하여 Offset 없이 선형 속도(Constant Speed) 스트리밍 ──
+        batch_size = 5000
         
         # 타임존 및 포맷터 미리 캐싱
         tz = LOCAL_TIMEZONE
         ts_fmt = "%Y-%m-%d %H:%M:%S"
+        
+        # Datetime formatting cache to eliminate redundant tz conversions and formatting (bounded to 10k items)
+        date_cache = {}
+        def format_date(dt):
+            if dt is None:
+                return ""
+            if dt in date_cache:
+                return date_cache[dt]
+            formatted = dt.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt)
+            if len(date_cache) < 10000:
+                date_cache[dt] = formatted
+            return formatted
 
-        for row_data, created_at, updated_at in export_query.yield_per(batch_size):
-            row_vals = []
-            # 시스템 컬럼 데이터 가공 (inject_system_columns 로직의 인라인 최적화)
-            effective_update = updated_at if updated_at else created_at
-            c_at_str = created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if created_at else ""
-            u_at_str = effective_update.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if effective_update else ""
+        # SQL 레벨 가상 컬럼 분해 쿼리 생성 (stream_results=True 옵션으로 PostgreSQL 서버사이드 커서 강제화)
+        export_query = query.with_entities(*select_entities)\
+                            .order_by(*final_sort)\
+                            .execution_options(stream_results=True)
+
+        # yield_per(batch_size)는 내부적으로 단 하나의 서버사이드 커서를 사용하여 offset 오버헤드 없이 순차적으로 스트리밍합니다.
+        batch_counter = 0
+        for row in export_query.yield_per(batch_size):
+            created_at = row[-2]
+            updated_at = row[-1]
             
-            for col in header:
-                if col == "created_at":
-                    row_vals.append(c_at_str)
-                elif col == "updated_at":
-                    row_vals.append(u_at_str)
-                else:
-                    cell = row_data.get(col, {})
-                    val = cell.get("value") if isinstance(cell, dict) else cell
-                    # 만약 val이 또 dict 형태라면 (중첩 방어 로직)
-                    if isinstance(val, dict) and "value" in val:
-                        val = val.get("value")
-                    row_vals.append(val)
+            # 비즈니스 컬럼 값은 그대로 로드 (이미 SQL 레벨에서 분해됨)
+            row_vals = list(row[:-2])
+            
+            # 시스템 컬럼 날짜 포맷 캐시 활용
+            effective_update = updated_at if updated_at else created_at
+            row_vals.append(format_date(created_at))
+            row_vals.append(format_date(effective_update))
             
             writer.writerow(row_vals)
-            current_batch.append(output.getvalue())
-            output.seek(0); output.truncate(0)
+            batch_counter += 1
             
-            if len(current_batch) >= batch_size:
-                yield "".join(current_batch)
-                current_batch = []
+            # 5,000행 단위로만 StringIO 문자열을 빌드하여 yield하므로 row-by-row string compilation 부하 5,000배 격감
+            if batch_counter >= batch_size:
+                yield output.getvalue()
+                output.seek(0); output.truncate(0)
+                batch_counter = 0
         
         # 남은 데이터 송신
-        if current_batch:
-            yield "".join(current_batch)
+        if batch_counter > 0:
+            yield output.getvalue()
 
     filename = f"{table_name}_extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     headers = {

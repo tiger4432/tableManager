@@ -77,9 +77,28 @@ const smartPasteBtn = document.getElementById('smart-paste-btn');
 const toolbarFileInput = document.getElementById('toolbar-file-input');
 const copyHeaderToggle = document.getElementById('copy-header-toggle');
 const sortLatestToggle = document.getElementById('sort-latest-toggle');
+const viewModeSelect = document.getElementById('view-mode-select');
+const loadAllBtn = document.getElementById('load-all-btn');
+const loadCsvBtn = document.getElementById('load-csv-btn');
+
+// View Mode State
+let viewMode = 'pagination'; // 'pagination' | 'infinite'
+let allDataLoaded = false;
+const isDesktop = new URLSearchParams(window.location.search).get('client') === 'desktop';
 
 // Initialize Application
 async function init() {
+  // 웹 브라우저에서 접근 시, 백그라운드에서 로컬 데스크톱 앱(assymanager://) 호출
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('client') !== 'desktop') {
+    console.log('[Launcher] Triggering local desktop client launch via URI scheme...');
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = 'assymanager://open';
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 1000);
+  }
+
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
   if (cachedCopyHeader !== null) {
@@ -211,7 +230,13 @@ function setupEventListeners() {
       if (!currentTable) return;
       performanceLog.textContent = 'Refreshing current page...';
       pageCache.clear();
-      fetchData(false);
+      if (viewMode === 'infinite' || allDataLoaded) {
+        allDataLoaded = false;
+        hasMoreData = true;
+        fetchData(true);
+      } else {
+        fetchData(false);
+      }
       showToast('🔄 화면이 최신 데이터로 새로고침되었습니다.', 'success');
     });
   }
@@ -374,6 +399,240 @@ function setupEventListeners() {
       sourcesModal.style.display = 'none';
     }
   });
+
+  // View Mode Change Handler
+  if (viewModeSelect) {
+    viewModeSelect.addEventListener('change', (e) => {
+      viewMode = e.target.value;
+      allDataLoaded = false;
+      hasMoreData = true;
+      updateViewModeUI();
+      pageCache.clear();
+      fetchData(true);
+    });
+  }
+
+  // Load All Button Handler
+  if (loadAllBtn) {
+    loadAllBtn.addEventListener('click', async () => {
+      if (!currentTable || isLoadingMore) return;
+      
+      isLoadingMore = true;
+      performanceLog.textContent = 'Loading all rows from database...';
+      const startTime = performance.now();
+      
+      const q = globalSearch ? globalSearch.value.trim() : '';
+      const cols = searchCols ? searchCols.value : '';
+      const sortLatest = sortLatestToggle.checked;
+      const filterModel = gridApi ? gridApi.getFilterModel() : {};
+      const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+      
+      // Query with a large limit to fetch everything (e.g. limit=100000)
+      let url = `${API_BASE}/tables/${currentTable}/data?skip=0&limit=100000`;
+      url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
+      if (currentTransactionId) {
+        url += `&transaction_id=${currentTransactionId}`;
+      }
+      if (q) {
+        url += `&q=${encodeURIComponent(q)}`;
+        if (cols) {
+          url += `&cols=${encodeURIComponent(cols)}`;
+        }
+      }
+      if (filterStr) {
+        url += `&filters=${encodeURIComponent(filterStr)}`;
+      }
+      
+      try {
+        const res = await fetch(url);
+        const result = await res.json();
+        
+        const fetchTime = (performance.now() - startTime).toFixed(1);
+        
+        allDataLoaded = true;
+        hasMoreData = false;
+        
+        gridApi.setGridOption('rowData', result.data);
+        updateGridSortState();
+        
+        updateLoadedCount(result.data.length);
+        totalRowsCount.textContent = `Matches: ${result.total}`;
+        
+        // Hide pagination controls since everything is loaded
+        const paginationControls = document.querySelector('.pagination-controls');
+        if (paginationControls) {
+          paginationControls.style.display = 'none';
+        }
+        
+        performanceLog.textContent = `Loaded all ${result.data.length} rows in ${fetchTime}ms`;
+        showToast(`📥 전체 ${result.data.length}개 행 로드 완료!`, 'success');
+        isLoadingMore = false;
+      } catch (err) {
+        console.error('Failed to load all rows', err);
+        performanceLog.textContent = '❌ Failed to load all rows';
+        showToast('❌ 전체 데이터 로드 중 오류 발생', 'error');
+        isLoadingMore = false;
+      }
+    });
+  }
+
+  // Load CSV Button Handler (Direct Download with Progress & Custom Filename / Native FileDialog)
+  if (loadCsvBtn) {
+    loadCsvBtn.addEventListener('click', async () => {
+      if (!currentTable) return;
+      
+      // Determine default filename
+      const now = new Date();
+      const timestamp = now.getFullYear() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') + '_' +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0');
+      const defaultFilename = `${currentTable}_extract_${timestamp}.csv`;
+      
+      let fileHandle = null;
+      let writableStream = null;
+      let useFileSystemAccess = !isDesktop && (typeof window.showSaveFilePicker === 'function');
+      
+      if (useFileSystemAccess) {
+        try {
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: defaultFilename,
+            types: [{
+              description: 'CSV Files (*.csv)',
+              accept: {
+                'text/csv': ['.csv']
+              }
+            }]
+          });
+        } catch (err) {
+          // If user cancels the picker, abort the download completely
+          if (err.name === 'AbortError') {
+            console.log('[CSV Export] User cancelled file dialog picker.');
+            return;
+          }
+          // For security or other errors in wrapping environment, fallback to standard prompt
+          console.warn('[CSV Export] File System Access API failed, falling back to prompt:', err);
+          useFileSystemAccess = false;
+        }
+      }
+      
+      let finalFilename = defaultFilename;
+      if (!isDesktop && !useFileSystemAccess) {
+        const filenameInput = prompt('저장할 CSV 파일명을 입력해주세요:', defaultFilename);
+        if (filenameInput === null) return; // Cancelled by user
+        
+        finalFilename = filenameInput.trim();
+        if (!finalFilename) {
+          finalFilename = defaultFilename;
+        }
+        if (!finalFilename.toLowerCase().endsWith('.csv')) {
+          finalFilename += '.csv';
+        }
+      }
+      
+      const q = globalSearch ? globalSearch.value.trim() : '';
+      const cols = searchCols ? searchCols.value : '';
+      const sortLatest = sortLatestToggle.checked;
+      const filterModel = gridApi ? gridApi.getFilterModel() : {};
+      const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+      
+      let url = `${API_BASE}/tables/${currentTable}/export?`;
+      url += `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
+      if (currentTransactionId) {
+        url += `&transaction_id=${currentTransactionId}`;
+      }
+      if (q) {
+        url += `&q=${encodeURIComponent(q)}`;
+        if (cols) {
+          url += `&cols=${encodeURIComponent(cols)}`;
+        }
+      }
+      if (filterStr) {
+        url += `&filters=${encodeURIComponent(filterStr)}`;
+      }
+      
+      performanceLog.textContent = 'Connecting...';
+      showToast('📄 CSV 다운로드를 시작합니다.', 'success');
+      
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const totalBytesHeader = response.headers.get('X-Estimated-Content-Length') || response.headers.get('Content-Length');
+        const totalBytes = totalBytesHeader ? parseInt(totalBytesHeader, 10) : 0;
+        
+        const reader = response.body.getReader();
+        let receivedBytes = 0;
+        
+        if (useFileSystemAccess && fileHandle) {
+          writableStream = await fileHandle.createWritable();
+        }
+        
+        const chunks = [];
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          
+          if (useFileSystemAccess && writableStream) {
+            await writableStream.write(value);
+          } else {
+            chunks.push(value);
+          }
+          receivedBytes += value.length;
+          
+          if (totalBytes > 0) {
+            let percent = Math.floor((receivedBytes / totalBytes) * 100);
+            if (percent > 99) percent = 99;
+            if (percent < 0) percent = 0;
+            const kbReceived = (receivedBytes / 1024).toFixed(0);
+            const kbTotal = (totalBytes / 1024).toFixed(0);
+            performanceLog.textContent = `Downloading: ${percent}% (${kbReceived}K / ${kbTotal}K)`;
+          } else {
+            const kbReceived = (receivedBytes / 1024).toFixed(0);
+            performanceLog.textContent = `Downloading: ${kbReceived}KB`;
+          }
+        }
+        
+        performanceLog.textContent = 'Processing...';
+        
+        if (useFileSystemAccess && writableStream) {
+          await writableStream.close();
+          const savedName = fileHandle.name;
+          performanceLog.textContent = `CSV Saved: ${savedName}`;
+          showToast(`📄 CSV 파일 저장 완료! (${savedName})`, 'success');
+        } else {
+          // Assemble chunks into a Blob
+          const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+          const blobUrl = URL.createObjectURL(blob);
+          
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = finalFilename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+          
+          performanceLog.textContent = `CSV Downloaded: ${finalFilename}`;
+          showToast(`📄 CSV 파일 다운로드 완료! (${finalFilename})`, 'success');
+        }
+      } catch (err) {
+        console.error('Failed to download CSV', err);
+        if (writableStream) {
+          try { await writableStream.abort(); } catch (e) {}
+        }
+        performanceLog.textContent = '❌ CSV Download Failed';
+        showToast('❌ CSV 다운로드 중 오류 발생', 'error');
+      }
+    });
+  }
 }
 
 // Check backend server status
@@ -513,18 +772,32 @@ function updateGridSortState() {
 // Update Loaded count slice text
 function updateLoadedCount(forcedCount = null) {
   if (!gridApi) return;
-  const displayedCount = forcedCount !== null ? forcedCount : gridApi.getDisplayedRowCount();
-  const startRow = displayedCount === 0 ? 0 : currentSkip + 1;
-  const endRow = currentSkip + displayedCount;
+  const displayedCount = gridApi.getDisplayedRowCount();
   
-  if (startRow === endRow) {
-    if (startRow === 0) {
-      exposedRowsCount.textContent = `Loaded: 0`;
-    } else {
-      exposedRowsCount.textContent = `Loaded: ${startRow}`;
-    }
+  if (viewMode === 'infinite') {
+    exposedRowsCount.textContent = `Loaded: 1 - ${displayedCount}`;
   } else {
-    exposedRowsCount.textContent = `Loaded: ${startRow} - ${endRow}`;
+    const forced = forcedCount !== null ? forcedCount : displayedCount;
+    const startRow = forced === 0 ? 0 : currentSkip + 1;
+    const endRow = currentSkip + forced;
+    
+    if (startRow === endRow) {
+      if (startRow === 0) {
+        exposedRowsCount.textContent = `Loaded: 0`;
+      } else {
+        exposedRowsCount.textContent = `Loaded: ${startRow}`;
+      }
+    } else {
+      exposedRowsCount.textContent = `Loaded: ${startRow} - ${endRow}`;
+    }
+  }
+}
+
+// Update View Mode UI controls visibility
+function updateViewModeUI() {
+  const paginationControls = document.querySelector('.pagination-controls');
+  if (paginationControls) {
+    paginationControls.style.display = (viewMode === 'pagination' && !allDataLoaded) ? 'flex' : 'none';
   }
 }
 
@@ -557,7 +830,7 @@ async function fetchData(resetSkip = true) {
     currentSkip = 0;
     hasMoreData = true;
   } else {
-    if (pageCache.has(currentSkip)) {
+    if (viewMode !== 'infinite' && pageCache.has(currentSkip)) {
       const cached = pageCache.get(currentSkip);
       gridApi.setGridOption('rowData', cached.data);
       updateGridSortState();
@@ -605,12 +878,20 @@ async function fetchData(resetSkip = true) {
       hasMoreData = false;
     }
     
-    // Always replace rowData for pagination
-    gridApi.setGridOption('rowData', result.data);
+    // Render rowData depending on View Mode
+    if (viewMode === 'infinite') {
+      if (resetSkip || currentSkip === 0) {
+        gridApi.setGridOption('rowData', result.data);
+      } else {
+        gridApi.applyTransaction({ add: result.data });
+      }
+    } else {
+      gridApi.setGridOption('rowData', result.data);
+    }
     updateGridSortState();
     
     // Update Counts (Zero-lag counter concept)
-    updateLoadedCount(result.data.length);
+    updateLoadedCount();
     totalRowsCount.textContent = `Matches: ${result.total}`;
     
     // Update Pagination UI
@@ -619,7 +900,9 @@ async function fetchData(resetSkip = true) {
     performanceLog.textContent = `Loaded ${result.data.length} rows in ${fetchTime}ms`;
     
     // Save to Cache
-    pageCache.set(currentSkip, { data: result.data, total: result.total });
+    if (viewMode !== 'infinite') {
+      pageCache.set(currentSkip, { data: result.data, total: result.total });
+    }
       
     isLoadingMore = false;
   } catch (err) {
@@ -692,6 +975,22 @@ function renderGrid(initialRows) {
     }
     
     return colDef;
+  });
+  
+  // Prepend Row Number Column (Sequential 1,2,3,4...)
+  columnDefs.unshift({
+    headerName: '#',
+    valueGetter: (params) => params.node.rowIndex + 1,
+    width: 60,
+    minWidth: 50,
+    maxWidth: 90,
+    pinned: 'left',
+    suppressMovable: true,
+    sortable: false,
+    filter: false,
+    resizable: false,
+    editable: false,
+    cellClass: 'cell-system-readonly'
   });
   
   // Grid Configurations
@@ -767,6 +1066,21 @@ function renderGrid(initialRows) {
       contextMenu.style.left = `${event.event.clientX}px`;
       contextMenu.style.top = `${event.event.clientY}px`;
       contextMenu.style.display = 'block';
+    },
+    // infinite scroll body scroll listener
+    onBodyScroll: (event) => {
+      if (viewMode !== 'infinite') return;
+      if (isLoadingMore || !hasMoreData || allDataLoaded) return;
+      
+      const viewport = document.querySelector('.ag-body-viewport');
+      if (viewport) {
+        const threshold = 150; // px
+        const nearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold;
+        if (nearBottom) {
+          currentSkip += pageLimit;
+          fetchData(false);
+        }
+      }
     }
   };
   
