@@ -1951,7 +1951,11 @@ function appendHistoryLocally(log, skipRender = false) {
   if (activeHistoryTab === 'global') {
     const existingGroup = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
     if (existingGroup) {
-      if (!existingGroup.logs.some(l => l.id === log.id || (l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id))) {
+      const isDuplicate = existingGroup.logs.some(l => {
+        if (log.id && l.id && log.id === l.id) return true;
+        return l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id;
+      });
+      if (!isDuplicate) {
         existingGroup.logs.unshift(log);
         existingGroup.total_count += 1;
       }
@@ -1978,7 +1982,11 @@ function appendHistoryLocally(log, skipRender = false) {
   }
 
   // Store in cache if not duplicate
-  if (!cellRowHistoryData.some(l => l.id === log.id || (l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id))) {
+  const isDuplicate = cellRowHistoryData.some(l => {
+    if (log.id && l.id && log.id === l.id) return true;
+    return l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id;
+  });
+  if (!isDuplicate) {
     cellRowHistoryData.unshift(log);
   }
 
