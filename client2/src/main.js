@@ -1092,9 +1092,23 @@ function renderGrid(initialRows) {
       if (event.event.button !== 0) return;
       if (event.column.getColId() === '#') return;
 
-      isDraggingRange = true;
-      dragStartCell = { rowIndex: event.rowIndex, colId: event.column.getColId() };
-      dragEndCell = { rowIndex: event.rowIndex, colId: event.column.getColId() };
+      const isShift = event.event.shiftKey;
+      const currRow = event.rowIndex;
+      const currCol = event.column.getColId();
+
+      if (isShift) {
+        if (dragStartCell) {
+          dragEndCell = { rowIndex: currRow, colId: currCol };
+        } else {
+          dragStartCell = { rowIndex: currRow, colId: currCol };
+          dragEndCell = { rowIndex: currRow, colId: currCol };
+        }
+        isDraggingRange = false;
+      } else {
+        isDraggingRange = true;
+        dragStartCell = { rowIndex: currRow, colId: currCol };
+        dragEndCell = { rowIndex: currRow, colId: currCol };
+      }
       
       event.api.refreshCells({ force: true });
     },
