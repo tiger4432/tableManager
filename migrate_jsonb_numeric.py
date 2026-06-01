@@ -26,7 +26,6 @@ def cast_value(val):
         else:
             return int(val_str)
     except ValueError:
-        # 변환 불가 시 원래 문자열 그대로 유지
         return val
 
 def run_migration():
@@ -41,9 +40,10 @@ def run_migration():
 
     db = SessionLocal()
     total_migrated_rows = 0
+    CHUNK_SIZE = 5000  # DB 락 방지 및 WAL 과부하 방지를 위한 청크 단위 지정
 
     try:
-        print("Starting DB migration for numeric columns in JSONB...")
+        print("Starting DB migration for numeric columns in JSONB with Chunked Commits...")
         for table_name, config in table_config.items():
             col_types = config.get("column_types", {})
             number_cols = [col for col, c_type in col_types.items() if c_type == "number"]
@@ -53,8 +53,8 @@ def run_migration():
 
             print(f"\nScanning table '{table_name}' for columns: {number_cols}")
             
-            # Fetch all rows belonging to the current table
-            rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
+            # yield_per를 활용하여 메모리 점유 및 쿼리 부하 최소화
+            rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).yield_per(CHUNK_SIZE)
             table_migrated_count = 0
 
             for row in rows:
@@ -88,20 +88,27 @@ def run_migration():
                                         modified = True
 
                 if modified:
-                    # JSONB 수정 감지를 위해 flag_modified 설정 필수
                     flag_modified(row, "data")
                     table_migrated_count += 1
                     total_migrated_rows += 1
 
+                    # 5000건 단위 중간 커밋을 통한 락 분산 처리
+                    if total_migrated_rows % CHUNK_SIZE == 0:
+                        db.commit()
+                        print(f"  -> Intermediate commit: {total_migrated_rows} rows successfully saved...")
+
             if table_migrated_count > 0:
-                print(f"  -> Migrated {table_migrated_count} rows in '{table_name}'")
+                print(f"  -> Processed table '{table_name}': {table_migrated_count} rows changed.")
             else:
-                print(f"  -> No migration needed for '{table_name}'")
+                print(f"  -> No changes needed for '{table_name}'")
+
+        # 마지막 남은 자투리 데이터 최종 커밋
+        if total_migrated_rows % CHUNK_SIZE != 0:
+            db.commit()
+            print(f"  -> Final commit: {total_migrated_rows} total rows saved.")
 
         if total_migrated_rows > 0:
-            print(f"\nCommitting changes. Total rows migrated: {total_migrated_rows}")
-            db.commit()
-            print("Migration completed successfully.")
+            print(f"\nMigration completed successfully. Total migrated: {total_migrated_rows} rows.")
         else:
             print("\nNo database changes detected. Already up-to-date.")
 
