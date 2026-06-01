@@ -283,15 +283,32 @@ function setupEventListeners() {
     deleteSelectedRows();
   });
 
-  // Keyboard shortcut: Delete key inside the grid to delete rows
+  // Keyboard shortcuts inside the grid
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Delete') {
-      const activeEl = document.activeElement;
-      if (activeEl && activeEl.closest('#myGrid')) {
-        const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
-        if (!isEditing) {
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.closest('#myGrid')) {
+      const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
+      
+      if (!isEditing) {
+        // Delete key inside the grid to delete rows
+        if (e.key === 'Delete') {
           e.preventDefault();
           deleteSelectedRows();
+        }
+        // Ctrl+A / Cmd+A inside the grid to select all cells
+        else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+          e.preventDefault();
+          if (gridApi) {
+            const allCols = gridApi.getColumns().map(c => c.getColId()).filter(c => c !== '#');
+            const totalRows = gridApi.getDisplayedRowCount();
+            if (allCols.length > 0 && totalRows > 0) {
+              dragStartCell = { rowIndex: 0, colId: allCols[0] };
+              dragEndCell = { rowIndex: totalRows - 1, colId: allCols[allCols.length - 1] };
+              
+              gridApi.refreshCells({ force: true });
+              performanceLog.textContent = '📋 All cells selected';
+            }
+          }
         }
       }
     }
