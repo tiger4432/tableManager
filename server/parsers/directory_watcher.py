@@ -302,7 +302,7 @@ class IngestionHandler(FileSystemEventHandler):
                         transaction_id=file_tx_id,
                         silent=True
                     )
-                    results, changed_cells = crud.apply_batch_updates(db, t_name, batch_obj)
+                    results, changed_cells, _ = crud.apply_batch_updates(db, t_name, batch_obj)
                     total_changed += len(changed_cells)
                     logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
