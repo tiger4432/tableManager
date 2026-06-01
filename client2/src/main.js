@@ -1137,6 +1137,10 @@ async function handleCellEdit(event) {
 
   if (newValue === oldValue) return;
 
+  // 이전 상태 복구를 위해 저장
+  const oldCell = data.data?.[colId];
+  const oldIsOverwrite = oldCell ? oldCell.is_overwrite : false;
+
   // --- 타입 검사 및 변환 추가 ---
   let finalValue = newValue;
   const colTypes = currentColumnTypes || {};
@@ -1148,8 +1152,11 @@ async function handleCellEdit(event) {
       const parsedVal = Number(newValue);
       if (isNaN(parsedVal)) {
         alert(`컬럼 '${colId}'의 값 '${newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
-        // Rollback grid value
+        // Rollback grid value & overwrite status
+        if (!data.data) data.data = {};
+        if (!data.data[colId]) data.data[colId] = {};
         data.data[colId].value = oldValue;
+        data.data[colId].is_overwrite = oldIsOverwrite;
         gridApi.applyTransaction({ update: [data] });
         performanceLog.textContent = '❌ Invalid number format';
         return;
@@ -1220,8 +1227,11 @@ async function handleCellEdit(event) {
     alert(`수정 사항 저장 실패: ${err.message}`);
     performanceLog.textContent = '❌ Edit failed to save';
 
-    // Rollback grid value
+    // Rollback grid value & overwrite status
+    if (!data.data) data.data = {};
+    if (!data.data[colId]) data.data[colId] = {};
     data.data[colId].value = oldValue;
+    data.data[colId].is_overwrite = oldIsOverwrite;
     gridApi.applyTransaction({ update: [data] });
   }
 }
