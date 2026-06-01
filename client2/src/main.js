@@ -1843,8 +1843,11 @@ function getRangeSelectedTSV() {
   const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
   const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
 
-  // Exclude system columns like sequential row number # from copy values
-  const colsToCopy = allCols.slice(minColIdx, maxColIdx + 1).filter(c => c !== '#');
+  // Exclude non-business/non-system UI helper columns (like '#' or ag-grid selection '0' column)
+  const colsToCopy = allCols.slice(minColIdx, maxColIdx + 1).filter(c => {
+    if (c === '#' || /^\d+$/.test(c)) return false;
+    return currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
+  });
   if (colsToCopy.length === 0) return '';
 
   let tsvRows = [];
@@ -2022,7 +2025,10 @@ function setupClipboardHandlers() {
     if (selectedNodes.length === 0) return;
 
     e.preventDefault();
-    const columns = gridApi.getColumns().map(c => c.getColId()).filter(c => c !== '#');
+    const columns = gridApi.getColumns().map(c => c.getColId()).filter(c => {
+      if (c === '#' || /^\d+$/.test(c)) return false;
+      return currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
+    });
     
     // Headers copy setting check
     const includeHeaders = copyHeaderToggle.checked;
