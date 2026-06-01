@@ -946,10 +946,20 @@ function renderGrid(initialRows) {
         if (col === 'updated_at') return params.data.updated_at;
         
         const cell = params.data.data?.[col];
+        let val = '';
         if (cell && typeof cell === 'object') {
-          return cell.value !== undefined ? cell.value : '';
+          val = cell.value !== undefined ? cell.value : '';
+        } else {
+          val = cell !== undefined ? cell : '';
         }
-        return cell !== undefined ? cell : '';
+        
+        if (colType === 'number' && val !== '' && val !== null && val !== undefined) {
+          const parsed = Number(val);
+          if (!isNaN(parsed)) {
+            return parsed;
+          }
+        }
+        return val;
       },
       // Essential for writing back to nested objects
       valueSetter: (params) => {
