@@ -2022,7 +2022,7 @@ function setupClipboardHandlers() {
     if (selectedNodes.length === 0) return;
 
     e.preventDefault();
-    const columns = gridApi.getColumns().map(c => c.getColId());
+    const columns = gridApi.getColumns().map(c => c.getColId()).filter(c => c !== '#');
     
     // Headers copy setting check
     const includeHeaders = copyHeaderToggle.checked;
