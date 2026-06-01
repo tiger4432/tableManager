@@ -40,10 +40,10 @@ def run_migration():
 
     db = SessionLocal()
     total_migrated_rows = 0
-    CHUNK_SIZE = 5000  # DB 락 방지 및 WAL 과부하 방지를 위한 청크 단위 지정
+    CHUNK_SIZE = 5000  # 중간 커밋 청크 단위
 
     try:
-        print("Starting DB migration for numeric columns in JSONB with Chunked Commits...")
+        print("Starting DB migration for numeric columns in JSONB...")
         for table_name, config in table_config.items():
             col_types = config.get("column_types", {})
             number_cols = [col for col, c_type in col_types.items() if c_type == "number"]
@@ -53,8 +53,11 @@ def run_migration():
 
             print(f"\nScanning table '{table_name}' for columns: {number_cols}")
             
-            # yield_per를 활용하여 메모리 점유 및 쿼리 부하 최소화
-            rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).yield_per(CHUNK_SIZE)
+            # [수정] yield_per(Named Cursor) 루프 도중 db.commit()이 실행되면 Named Cursor가 파괴되어 
+            # "named cursor isn't valid anymore" 에러가 발생합니다.
+            # 22만 행 정도의 메모리 점유는 수십 MB 수준으로 무리가 없으므로, .all()을 통해
+            # 전체 데이터를 메모리에 즉시 올려 안전한 청크 단위 중간 커밋을 보장합니다.
+            rows = db.query(models.DataRow).filter(models.DataRow.table_name == table_name).all()
             table_migrated_count = 0
 
             for row in rows:
