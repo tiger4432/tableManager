@@ -71,7 +71,7 @@ async def startup_event():
                 "table_name": table_name,
                 "change_count": count
             }
-            if created_logs and len(created_logs) <= 100:
+            if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
                 
             # 스레드 안전하게 메인 이벤트 루프에 브로드캐스트 예약
@@ -1196,6 +1196,8 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
                 "table_name": table_name,
                 "change_count": len(msg_items)
             }
+            if created_logs and len(created_logs) <= 5000:
+                msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
         else:
             # 소량 업데이트: 전체 데이터 전송
@@ -1338,7 +1340,7 @@ async def set_cell_priority_batch_endpoint(
     db: Session = Depends(get_db)
 ):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
-    changed_rows = crud.set_cell_manual_priority_batch(
+    changed_rows, created_logs = crud.set_cell_manual_priority_batch(
         db, table_name, req.updates, req.source_name, req.updated_by
     )
     
@@ -1360,17 +1362,22 @@ async def set_cell_priority_batch_endpoint(
                 "table_name": table_name,
                 "change_count": len(msg_items)
             }
+            if created_logs and len(created_logs) <= 5000:
+                msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
             CHUNK_SIZE = 500
             for i in range(0, len(msg_items), CHUNK_SIZE):
                 chunk = msg_items[i:i + CHUNK_SIZE]
+                chunk_row_ids = {item["row_id"] for item in chunk}
+                chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
                 await manager.broadcast(json.dumps({
                     "event": "batch_row_upsert",
                     "table_name": table_name,
                     "items": chunk,
-                    "change_count": len(chunk)
+                    "change_count": len(chunk),
+                    "created_logs": chunk_logs
                 }))
             
     return {"status": "success", "count": len(changed_rows)}
@@ -1382,7 +1389,7 @@ async def delete_cell_source_batch_endpoint(
     db: Session = Depends(get_db)
 ):
     """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
-    changed_rows = crud.delete_cell_source_batch(
+    changed_rows, created_logs = crud.delete_cell_source_batch(
         db, table_name, req.cells, req.source_name
     )
     
@@ -1404,17 +1411,22 @@ async def delete_cell_source_batch_endpoint(
                 "table_name": table_name,
                 "change_count": len(msg_items)
             }
+            if created_logs and len(created_logs) <= 5000:
+                msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
             CHUNK_SIZE = 500
             for i in range(0, len(msg_items), CHUNK_SIZE):
                 chunk = msg_items[i:i + CHUNK_SIZE]
+                chunk_row_ids = {item["row_id"] for item in chunk}
+                chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
                 await manager.broadcast(json.dumps({
                     "event": "batch_row_upsert",
                     "table_name": table_name,
                     "items": chunk,
-                    "change_count": len(chunk)
+                    "change_count": len(chunk),
+                    "created_logs": chunk_logs
                 }))
             
     return {"status": "success", "count": len(changed_rows)}

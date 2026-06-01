@@ -24,6 +24,7 @@ let dragStartCell = null; // { rowIndex, colId }
 let dragEndCell = null;   // { rowIndex, colId }
 let isDraggingRange = false;
 let globalHistoryData = [];
+let cellRowHistoryData = [];
 const expandedTransactions = new Set();
 const fetchingTransactions = new Set();
 let currentTransactionId = null;
@@ -1529,8 +1530,15 @@ function handleWebSocketMessage(msg) {
           selectedCell.value = log.new_value;
           updateSelectedCellUI();
         }
-        appendHistoryLocally(log);
+        appendHistoryLocally(log, true);
       });
+      if (createdLogs.length > 0) {
+        if (activeHistoryTab === 'global') {
+          renderGlobalTimeline();
+        } else {
+          renderTimeline(cellRowHistoryData);
+        }
+      }
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
@@ -1549,16 +1557,27 @@ function handleWebSocketMessage(msg) {
 
     // Stream logs to timeline if provided
     const createdLogs = msg.created_logs || [];
-    createdLogs.forEach(log => appendHistoryLocally(log));
+    createdLogs.forEach(log => appendHistoryLocally(log, true));
+    if (createdLogs.length > 0) {
+      if (activeHistoryTab === 'global') {
+        renderGlobalTimeline();
+      } else {
+        renderTimeline(cellRowHistoryData);
+      }
+    }
   } else if (event === 'batch_refresh_required') {
     pageCache.clear();
-    // Large bulk updates -> trigger full grid refresh
-    fetchData();
+    // Large bulk updates -> do not refresh grid to prevent UI disruption, only update cache and history
     
     // Stream logs to timeline if provided, otherwise reload history
     const createdLogs = msg.created_logs || [];
     if (createdLogs.length > 0) {
-      createdLogs.forEach(log => appendHistoryLocally(log));
+      createdLogs.forEach(log => appendHistoryLocally(log, true));
+      if (activeHistoryTab === 'global') {
+        renderGlobalTimeline();
+      } else {
+        renderTimeline(cellRowHistoryData);
+      }
     } else {
       triggerHistoryReloadDebounced();
     }
@@ -1598,8 +1617,8 @@ async function loadHistory() {
   try {
     const res = await fetch(url);
     const logs = await res.json();
-
-    renderTimeline(logs);
+    cellRowHistoryData = logs || [];
+    renderTimeline(cellRowHistoryData);
   } catch (err) {
     console.error('Failed to load history', err);
     timeline.innerHTML = '<li class="timeline-empty" style="color:var(--color-danger)">Failed to load history log</li>';
@@ -1926,14 +1945,16 @@ function triggerHistoryReloadDebounced() {
 }
 
 // Feature 3: Append single history log locally to prevent full API refresh on cell change
-function appendHistoryLocally(log) {
+function appendHistoryLocally(log, skipRender = false) {
   if (!log) return;
   
   if (activeHistoryTab === 'global') {
     const existingGroup = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
     if (existingGroup) {
-      existingGroup.logs.unshift(log);
-      existingGroup.total_count += 1;
+      if (!existingGroup.logs.some(l => l.id === log.id || (l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id))) {
+        existingGroup.logs.unshift(log);
+        existingGroup.total_count += 1;
+      }
     } else {
       globalHistoryData.unshift({
         transaction_id: log.transaction_id,
@@ -1941,10 +1962,13 @@ function appendHistoryLocally(log) {
         logs: [log]
       });
     }
-    renderGlobalTimeline();
+    if (!skipRender) {
+      renderGlobalTimeline();
+    }
     return;
   }
 
+  // Non-global tabs ('cell' or 'row')
   if (!selectedCell) return;
   
   if (activeHistoryTab === 'cell') {
@@ -1953,55 +1977,14 @@ function appendHistoryLocally(log) {
     if (selectedCell.rowId !== log.row_id) return;
   }
 
-  const emptyItem = timeline.querySelector('.timeline-empty');
-  if (emptyItem) {
-    timeline.removeChild(emptyItem);
+  // Store in cache if not duplicate
+  if (!cellRowHistoryData.some(l => l.id === log.id || (l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id))) {
+    cellRowHistoryData.unshift(log);
   }
 
-  const li = document.createElement('li');
-  li.className = 'timeline-item';
-  li.style.cursor = 'pointer';
-  
-  const isUser = log.updated_by !== 'system';
-  li.classList.add(isUser ? 'user-change' : 'system-change');
-  if (log.is_row_deleted) {
-    li.classList.add('deleted-row-log');
+  if (!skipRender) {
+    renderTimeline(cellRowHistoryData);
   }
-  
-  const dateStr = new Date(log.timestamp).toLocaleString();
-  
-  li.innerHTML = `
-    <div class="timeline-time">${dateStr}</div>
-    <div class="timeline-card">
-      <div class="timeline-user">
-        <span class="user-tag">${log.updated_by}</span>
-        <span class="source-tag">${log.source_name}</span>
-      </div>
-      <div class="timeline-changes">
-        <div class="change-detail">
-          <span class="change-field">${log.column_name.toUpperCase()}</span>
-          <div class="change-values">
-            <span class="val-old">${formatVal(log.old_value, true)}</span>
-            <span class="val-arrow">→</span>
-            <span class="val-new">${formatVal(log.new_value, false)}</span>
-          </div>
-        </div>
-      </div>
-      ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
-    </div>
-  `;
-  
-  li.addEventListener('click', (e) => {
-    if (e.target.closest('.filter-tx-btn')) {
-      e.stopPropagation();
-      const txId = e.target.closest('.filter-tx-btn').dataset.txId;
-      setTransactionFilter(txId);
-    } else {
-      navigateToLog(log);
-    }
-  });
-  
-  timeline.insertBefore(li, timeline.firstChild);
 }
 
 // Range selection helper functions

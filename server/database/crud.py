@@ -521,7 +521,15 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         from audit_cache import audit_cache
         audit_cache.add_logs_batch(logs_to_cache)
         
-    return changed_rows
+    # Serialize logs after commit
+    serialized_logs = []
+    for log in logs_to_cache:
+        log_copy = log.copy()
+        if isinstance(log_copy.get("timestamp"), datetime):
+            log_copy["timestamp"] = log_copy["timestamp"].isoformat()
+        serialized_logs.append(log_copy)
+        
+    return changed_rows, serialized_logs
 
 def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str):
     """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
@@ -580,4 +588,12 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         from audit_cache import audit_cache
         audit_cache.add_logs_batch(logs_to_cache)
         
-    return changed_rows
+    # Serialize logs after commit
+    serialized_logs = []
+    for log in logs_to_cache:
+        log_copy = log.copy()
+        if isinstance(log_copy.get("timestamp"), datetime):
+            log_copy["timestamp"] = log_copy["timestamp"].isoformat()
+        serialized_logs.append(log_copy)
+        
+    return changed_rows, serialized_logs
