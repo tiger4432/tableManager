@@ -1358,7 +1358,7 @@ async function handleCellEdit(event) {
       data.data[colId].is_overwrite = true;
       
       // Update updated_at timestamp locally to trigger sort update
-      data.updated_at = new Date().toISOString();
+      data.updated_at = getLocalTimeString();
 
       // Re-apply row transaction locally to trigger cellClassRules refresh
       gridApi.applyTransaction({ update: [data] });
@@ -1436,7 +1436,7 @@ function handleWebSocketMessage(msg) {
   if (event === 'batch_row_create') {
     const items = msg.items || [];
     if (items.length > 0) {
-      const nowStr = new Date().toISOString();
+      const nowStr = getLocalTimeString();
       const normalizedItems = items.map(item => ({
         ...item,
         created_at: item.created_at || nowStr,
@@ -1482,7 +1482,7 @@ function handleWebSocketMessage(msg) {
         }
       } else {
         // Row doesn't exist -> Insert it
-        const nowStr = new Date().toISOString();
+        const nowStr = getLocalTimeString();
         const newItem = {
           ...item,
           created_at: item.created_at || nowStr,
@@ -1888,6 +1888,18 @@ function renderSubDetails(container, logs) {
   container.appendChild(ul);
 }
 
+// Helper to get local time string in YYYY-MM-DD HH:MM:SS format
+function getLocalTimeString(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  const MM = pad(date.getMonth() + 1);
+  const dd = pad(date.getDate());
+  const hh = date.getHours();
+  const mm = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
+  return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
+}
+
 // Helper to format values
 function formatVal(v, isOld = false) {
   if (v === null || v === undefined || v === '') {
@@ -2146,7 +2158,7 @@ function setupClipboardHandlers() {
           const newRowData = {
             ...oldRowData,
             data: { ...oldRowData.data },
-            updated_at: new Date().toISOString()
+            updated_at: getLocalTimeString()
           };
           Object.keys(rowUpdates).forEach(col => {
             if (!newRowData.data[col]) newRowData.data[col] = {};
@@ -2975,7 +2987,7 @@ async function clearSelectedCells() {
         data.data[colId].is_overwrite = true;
       });
 
-      data.updated_at = new Date().toISOString();
+      data.updated_at = getLocalTimeString();
       rowsToUpdate.push(data);
     }
   });
