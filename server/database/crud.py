@@ -43,6 +43,23 @@ def load_table_config():
 
 TABLE_CONFIG = load_table_config()
 
+def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
+    """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다."""
+    if value is None or str(value).strip() == "":
+        return None
+        
+    if col_type == "number":
+        val_str = str(value).strip()
+        try:
+            if "." in val_str:
+                return float(val_str)
+            else:
+                return int(val_str)
+        except ValueError:
+            raise ValueError(f"컬럼 '{col_name}'의 값 '{value}'은(는) 올바른 숫자 형식이 아닙니다.")
+            
+    return sanitize_to_utf8(value)
+
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""
     target_val = str(key_value).strip() if key_value is not None else ""
@@ -180,7 +197,9 @@ def apply_row_update_internal(
         cell = row.data[col_name]
         old_val = cell.get("value")
         
-        clean_val = sanitize_to_utf8(val)
+        col_types = config.get("column_types", {})
+        col_type = col_types.get(col_name, "string")
+        clean_val = cast_value_by_type(val, col_type, col_name)
         
         if "sources" not in cell: cell["sources"] = {}
         cell["sources"][update_item.source_name] = {

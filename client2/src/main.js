@@ -16,6 +16,7 @@ const CURRENT_USER = import.meta.env.VITE_USER || 'web_client';
 let gridApi = null;
 let currentTable = '';
 let currentColumns = [];
+let currentColumnTypes = {};
 let ws = null;
 let selectedCell = null; // { rowId, colId, value, rowIndex }
 let activeHistoryTab = 'global'; // 'global' | 'cell' | 'row'
@@ -736,6 +737,7 @@ async function loadSchema(tableName) {
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
     const data = await res.json();
     currentColumns = data.columns || [];
+    currentColumnTypes = data.column_types || {};
     
     // Fill search columns dropdown
     if (searchCols) {
@@ -925,6 +927,8 @@ function renderGrid(initialRows) {
   // Build Column Definitions dynamically based on schema
   const columnDefs = currentColumns.map((col, index) => {
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
+    const colTypes = currentColumnTypes || {};
+    const colType = colTypes[col] || 'string';
     
     const colDef = {
       headerName: col.toUpperCase(),
@@ -953,7 +957,21 @@ function renderGrid(initialRows) {
         if (!params.data.data) params.data.data = {};
         if (!params.data.data[col]) params.data.data[col] = {};
         
-        params.data.data[col].value = params.newValue;
+        let finalVal = params.newValue;
+        if (colType === 'number') {
+          if (params.newValue === '' || params.newValue === null || params.newValue === undefined) {
+            finalVal = null;
+          } else {
+            const parsed = Number(params.newValue);
+            if (isNaN(parsed)) {
+              alert(`컬럼 '${col}'의 값 '${params.newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
+              return false;
+            }
+            finalVal = parsed;
+          }
+        }
+        
+        params.data.data[col].value = finalVal;
         params.data.data[col].is_overwrite = true; // Mark as modified
         return true;
       },
@@ -968,6 +986,10 @@ function renderGrid(initialRows) {
         }
       }
     };
+    
+    if (colType === 'number') {
+      colDef.cellEditor = 'agNumberCellEditor';
+    }
     
     // Style system columns slightly differently
     if (isSystem) {
@@ -1115,6 +1137,27 @@ async function handleCellEdit(event) {
 
   if (newValue === oldValue) return;
 
+  // --- 타입 검사 및 변환 추가 ---
+  let finalValue = newValue;
+  const colTypes = currentColumnTypes || {};
+  const colType = colTypes[colId] || 'string';
+  if (colType === 'number') {
+    if (newValue === '' || newValue === null || newValue === undefined) {
+      finalValue = null;
+    } else {
+      const parsedVal = Number(newValue);
+      if (isNaN(parsedVal)) {
+        alert(`컬럼 '${colId}'의 값 '${newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
+        // Rollback grid value
+        data.data[colId].value = oldValue;
+        gridApi.applyTransaction({ update: [data] });
+        performanceLog.textContent = '❌ Invalid number format';
+        return;
+      }
+      finalValue = parsedVal;
+    }
+  }
+
   performanceLog.textContent = 'Saving edit...';
   const editStartTime = performance.now();
 
@@ -1124,7 +1167,7 @@ async function handleCellEdit(event) {
       {
         row_id: rowId,
         updates: {
-          [colId]: newValue
+          [colId]: finalValue
         },
         source_name: 'user',
         updated_by: CURRENT_USER
@@ -1152,7 +1195,7 @@ async function handleCellEdit(event) {
       if (!data.data) data.data = {};
       if (!data.data[colId]) data.data[colId] = {};
 
-      data.data[colId].value = newValue;
+      data.data[colId].value = finalValue;
       data.data[colId].is_overwrite = true;
       
       // Update updated_at timestamp locally to trigger sort update
@@ -1163,15 +1206,18 @@ async function handleCellEdit(event) {
 
       // Refresh current focused cell UI if active
       if (selectedCell && selectedCell.rowId === rowId && selectedCell.colId === colId) {
-        selectedCell.value = newValue;
+        selectedCell.value = finalValue;
         updateSelectedCellUI();
       }
       triggerHistoryReloadDebounced();
     } else {
-      throw new Error('Save failed');
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Save failed';
+      throw new Error(errMsg);
     }
   } catch (err) {
     console.error('Cell update failed', err);
+    alert(`수정 사항 저장 실패: ${err.message}`);
     performanceLog.textContent = '❌ Edit failed to save';
 
     // Rollback grid value
@@ -1701,52 +1747,68 @@ function setupClipboardHandlers() {
     const batchUpdates = [];
     const localUpdates = [];
 
-    parsedMatrix.forEach((rowValues, rOffset) => {
-      const targetRowIndex = startRowIndex + rOffset;
-      const rowNode = gridApi.getDisplayedRowAtIndex(targetRowIndex);
-      if (!rowNode || !rowNode.data) return;
+    try {
+      parsedMatrix.forEach((rowValues, rOffset) => {
+        const targetRowIndex = startRowIndex + rOffset;
+        const rowNode = gridApi.getDisplayedRowAtIndex(targetRowIndex);
+        if (!rowNode || !rowNode.data) return;
 
-      const rowId = rowNode.data.row_id;
-      const rowUpdates = {};
-      let hasUpdate = false;
+        const rowId = rowNode.data.row_id;
+        const rowUpdates = {};
+        let hasUpdate = false;
 
-      rowValues.forEach((val, cOffset) => {
-        const targetColIndex = startColIndex + cOffset;
-        if (targetColIndex >= allCols.length) return;
+        rowValues.forEach((val, cOffset) => {
+          const targetColIndex = startColIndex + cOffset;
+          if (targetColIndex >= allCols.length) return;
 
-        const colId = allCols[targetColIndex];
-        const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(colId);
-        if (isSystem) return;
+          const colId = allCols[targetColIndex];
+          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(colId);
+          if (isSystem) return;
 
-        rowUpdates[colId] = val;
-        hasUpdate = true;
+          // --- 타입 검사 및 변환 추가 ---
+          const colTypes = currentColumnTypes || {};
+          const colType = colTypes[colId] || 'string';
+          if (colType === 'number') {
+            if (val === '' || val === null || val === undefined) {
+              rowUpdates[colId] = null;
+            } else {
+              const parsedVal = Number(val);
+              if (isNaN(parsedVal)) {
+                alert(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+                throw new Error(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+              }
+              rowUpdates[colId] = parsedVal;
+            }
+          } else {
+            rowUpdates[colId] = val;
+          }
+          hasUpdate = true;
+        });
+
+        if (hasUpdate) {
+          batchUpdates.push({
+            row_id: rowId,
+            updates: rowUpdates,
+            source_name: 'user',
+            updated_by: CURRENT_USER
+          });
+
+          // Prepare local cache structure updates for zero-lag feedback
+          const oldRowData = rowNode.data;
+          const newRowData = {
+            ...oldRowData,
+            data: { ...oldRowData.data }
+          };
+          Object.keys(rowUpdates).forEach(col => {
+            if (!newRowData.data[col]) newRowData.data[col] = {};
+            newRowData.data[col].value = rowUpdates[col];
+            newRowData.data[col].is_overwrite = true;
+          });
+          localUpdates.push(newRowData);
+        }
       });
 
-      if (hasUpdate) {
-        batchUpdates.push({
-          row_id: rowId,
-          updates: rowUpdates,
-          source_name: 'user',
-          updated_by: CURRENT_USER
-        });
-
-        // Prepare local cache structure updates for zero-lag feedback
-        const oldRowData = rowNode.data;
-        const newRowData = {
-          ...oldRowData,
-          data: { ...oldRowData.data }
-        };
-        Object.keys(rowUpdates).forEach(col => {
-          if (!newRowData.data[col]) newRowData.data[col] = {};
-          newRowData.data[col].value = rowUpdates[col];
-          newRowData.data[col].is_overwrite = true;
-        });
-        localUpdates.push(newRowData);
-      }
-    });
-
-    if (batchUpdates.length > 0) {
-      try {
+      if (batchUpdates.length > 0) {
         const res = await fetch(`${API_BASE}/tables/${currentTable}/data/updates`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1761,12 +1823,15 @@ function setupClipboardHandlers() {
           // Fast-apply local data values
           gridApi.applyTransaction({ update: localUpdates });
         } else {
-          throw new Error('Paste batch update failed');
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.detail || 'Paste batch update failed';
+          throw new Error(errMsg);
         }
-      } catch (err) {
-        console.error('Failed to paste updates', err);
-        performanceLog.textContent = '❌ Smart paste failed to save';
       }
+    } catch (err) {
+      console.error('Failed to paste updates', err);
+      alert(`붙여넣기 저장 실패: ${err.message}`);
+      performanceLog.textContent = '❌ Smart paste failed to save';
     }
   });
 

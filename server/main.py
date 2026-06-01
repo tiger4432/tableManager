@@ -954,7 +954,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         if sc not in columns:
             columns.append(sc)
             
-    return {"table_name": table_name, "columns": columns}
+    return {"table_name": table_name, "columns": columns, "column_types": config.get("column_types", {})}
 
 
 @app.get("/tables/{table_name}/{row_id}", response_model=schemas.DataRowResponse)
@@ -1035,7 +1035,10 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
 async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
-    results, changed_cells = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
+    try:
+        results, changed_cells = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     if results:
         invalidate_table_cache(table_name)
