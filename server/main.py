@@ -1398,6 +1398,51 @@ async def delete_cell_source_batch_endpoint(
             
     return {"status": "success", "count": len(changed_rows)}
 
+@app.post("/tables/{table_name}/cells/sources/query")
+def query_cells_sources(
+    table_name: str,
+    req: schemas.BatchCellPriorityRequest,
+    db: Session = Depends(get_db)
+):
+    """여러 셀의 데이터 원천(Sources) 정보를 일괄 조회합니다."""
+    row_ids = list(set(item.get("row_id") for item in req.updates if item.get("row_id")))
+    rows = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id.in_(row_ids)
+    ).all()
+    row_map = {r.row_id: r for r in rows}
+    
+    result = []
+    for item in req.updates:
+        row_id = item.get("row_id")
+        col_name = item.get("column_name")
+        if not row_id or not col_name:
+            continue
+            
+        row = row_map.get(row_id)
+        if not row or col_name not in row.data:
+            result.append({
+                "row_id": row_id,
+                "column_name": col_name,
+                "sources": {},
+                "manual_priority_source": None,
+                "priority_source": None,
+                "value": None
+            })
+            continue
+            
+        cell = row.data[col_name]
+        result.append({
+            "row_id": row_id,
+            "column_name": col_name,
+            "sources": cell.get("sources", {}),
+            "manual_priority_source": cell.get("manual_priority_source"),
+            "priority_source": cell.get("priority_source"),
+            "value": cell.get("value")
+        })
+        
+    return result
+
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))

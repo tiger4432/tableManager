@@ -2742,128 +2742,141 @@ async function refreshSourcesList() {
     }
   } else {
     // Batch Mode
-    const uniqueSources = new Set();
-    const sourceValuesMap = {};
-    const sourcePinnedCount = {};
-
-    cells.forEach(cell => {
-      const rowNode = gridApi.getDisplayedRowAtIndex(cell.rowIndex);
-      if (!rowNode || !rowNode.data) return;
-      const cellData = rowNode.data.data?.[cell.colId];
-      if (!cellData || !cellData.sources) return;
-      
-      const manualPriority = cellData.manual_priority_source;
-      Object.keys(cellData.sources).forEach(srcName => {
-        uniqueSources.add(srcName);
-        if (!sourceValuesMap[srcName]) {
-          sourceValuesMap[srcName] = [];
-        }
-        let srcVal = cellData.sources[srcName];
-        let valStr = srcVal;
-        if (srcVal && typeof srcVal === 'object') {
-          valStr = srcVal.value !== undefined ? srcVal.value : '';
-        }
-        sourceValuesMap[srcName].push(valStr);
-        
-        if (manualPriority === srcName) {
-          sourcePinnedCount[srcName] = (sourcePinnedCount[srcName] || 0) + 1;
-        }
+    try {
+      const res = await fetch(`${API_BASE}/tables/${currentTable}/cells/sources/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: cells.map(c => ({ row_id: c.rowId, column_name: c.colId }))
+        })
       });
-    });
+      if (!res.ok) throw new Error('Failed to query batch sources');
 
-    sourcesList.innerHTML = '';
-    const sourceNames = Array.from(uniqueSources);
+      const cellSourcesList = await res.json();
+      
+      const uniqueSources = new Set();
+      const sourceValuesMap = {};
+      const sourcePinnedCount = {};
 
-    if (sourceNames.length === 0) {
-      sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No source data available in selected cells.</td></tr>';
-      return;
-    }
+      cellSourcesList.forEach(cellData => {
+        const sources = cellData.sources || {};
+        const manualPriority = cellData.manual_priority_source;
+        
+        Object.keys(sources).forEach(srcName => {
+          uniqueSources.add(srcName);
+          if (!sourceValuesMap[srcName]) {
+            sourceValuesMap[srcName] = [];
+          }
+          let srcVal = sources[srcName];
+          let valStr = srcVal;
+          if (srcVal && typeof srcVal === 'object') {
+            valStr = srcVal.value !== undefined ? srcVal.value : '';
+          }
+          sourceValuesMap[srcName].push(valStr);
+          
+          if (manualPriority === srcName) {
+            sourcePinnedCount[srcName] = (sourcePinnedCount[srcName] || 0) + 1;
+          }
+        });
+      });
 
-    sourceNames.forEach(sourceName => {
-      const values = sourceValuesMap[sourceName] || [];
-      const pinnedCount = sourcePinnedCount[sourceName] || 0;
-      const isPinnedAll = pinnedCount === cells.length;
+      sourcesList.innerHTML = '';
+      const sourceNames = Array.from(uniqueSources);
 
-      const uniqueVals = Array.from(new Set(values));
-      let valText = '';
-      if (uniqueVals.length === 0) {
-        valText = 'N/A';
-      } else if (uniqueVals.length === 1) {
-        valText = String(uniqueVals[0]);
-      } else {
-        valText = `Multiple Values (${uniqueVals.length} types)`;
+      if (sourceNames.length === 0) {
+        sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No source data available in selected cells.</td></tr>';
+        return;
       }
 
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${sourceName}</td>
-        <td><code>${valText}</code></td>
-        <td>
-          <button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
-          <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>
-        </td>
-      `;
+      sourceNames.forEach(sourceName => {
+        const values = sourceValuesMap[sourceName] || [];
+        const pinnedCount = sourcePinnedCount[sourceName] || 0;
+        const isPinnedAll = pinnedCount === cells.length;
 
-      // Bind batch Pin Action
-      tr.querySelector('.pin-btn').addEventListener('click', async () => {
-        const nextPriority = isPinnedAll ? null : sourceName;
-        performanceLog.textContent = `Batch updating cell priority to [${sourceName}]...`;
-        try {
-          const pinRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/priority/batch`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              updates: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
-              source_name: nextPriority,
-              updated_by: CURRENT_USER
-            })
-          });
-
-          if (pinRes.ok) {
-            performanceLog.textContent = 'Batch cell priority updated successfully';
-            pageCache.clear();
-            await fetchData(false);
-            await refreshSourcesList();
-          } else {
-            throw new Error('Batch priority update failed');
-          }
-        } catch (err) {
-          console.error(err);
-          performanceLog.textContent = '❌ Failed to batch pin source';
+        const uniqueVals = Array.from(new Set(values));
+        let valText = '';
+        if (uniqueVals.length === 0) {
+          valText = 'N/A';
+        } else if (uniqueVals.length === 1) {
+          valText = String(uniqueVals[0]);
+        } else {
+          valText = `Multiple Values (${uniqueVals.length} types)`;
         }
-      });
 
-      // Bind batch Delete Action
-      tr.querySelector('.del-btn').addEventListener('click', async () => {
-        if (!confirm(`Are you sure you want to delete source [${sourceName}] from all ${cells.length} selected cells?`)) return;
-        
-        performanceLog.textContent = `Batch deleting source [${sourceName}]...`;
-        try {
-          const delRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/sources/delete/batch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cells: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
-              source_name: sourceName
-            })
-          });
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${sourceName}</td>
+          <td><code>${valText}</code></td>
+          <td>
+            <button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
+            <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>
+          </td>
+        `;
 
-          if (delRes.ok) {
-            performanceLog.textContent = 'Batch cell sources deleted successfully';
-            pageCache.clear();
-            await fetchData(false);
-            await refreshSourcesList();
-          } else {
-            throw new Error('Batch source deletion failed');
+        // Bind batch Pin Action
+        tr.querySelector('.pin-btn').addEventListener('click', async () => {
+          const nextPriority = isPinnedAll ? null : sourceName;
+          performanceLog.textContent = `Batch updating cell priority to [${sourceName}]...`;
+          try {
+            const pinRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/priority/batch`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                updates: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
+                source_name: nextPriority,
+                updated_by: CURRENT_USER
+              })
+            });
+
+            if (pinRes.ok) {
+              performanceLog.textContent = 'Batch cell priority updated successfully';
+              pageCache.clear();
+              await fetchData(false);
+              await refreshSourcesList();
+            } else {
+              throw new Error('Batch priority update failed');
+            }
+          } catch (err) {
+            console.error(err);
+            performanceLog.textContent = '❌ Failed to batch pin source';
           }
-        } catch (err) {
-          console.error(err);
-          performanceLog.textContent = '❌ Failed to batch delete source';
-        }
-      });
+        });
 
-      sourcesList.appendChild(tr);
-    });
+        // Bind batch Delete Action
+        tr.querySelector('.del-btn').addEventListener('click', async () => {
+          if (!confirm(`Are you sure you want to delete source [${sourceName}] from all ${cells.length} selected cells?`)) return;
+          
+          performanceLog.textContent = `Batch deleting source [${sourceName}]...`;
+          try {
+            const delRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/sources/delete/batch`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cells: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
+                source_name: sourceName
+              })
+            });
+
+            if (delRes.ok) {
+              performanceLog.textContent = 'Batch cell sources deleted successfully';
+              pageCache.clear();
+              await fetchData(false);
+              await refreshSourcesList();
+            } else {
+              throw new Error('Batch source deletion failed');
+            }
+          } catch (err) {
+            console.error(err);
+            performanceLog.textContent = '❌ Failed to batch delete source';
+          }
+        });
+
+        sourcesList.appendChild(tr);
+      });
+    } catch (err) {
+      console.error(err);
+      sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--color-danger)">Failed to query sources for selected cells.</td></tr>';
+    }
   }
 }
 
