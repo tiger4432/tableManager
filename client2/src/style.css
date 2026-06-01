@@ -927,6 +927,28 @@ body {
   background: rgba(239, 68, 68, 0.1);
 }
 
+.timeline-card.color-deleted-row {
+  border-left: 3px solid var(--color-danger) !important;
+  background: rgba(239, 68, 68, 0.04) !important;
+  opacity: 0.75;
+}
+
+.timeline-card.color-deleted-row:hover {
+  background: rgba(239, 68, 68, 0.08) !important;
+  opacity: 0.9;
+}
+
+.deleted-row-log .timeline-card {
+  border-left: 3px solid var(--color-danger) !important;
+  background: rgba(239, 68, 68, 0.04) !important;
+  opacity: 0.75;
+}
+
+.deleted-row-log .timeline-card:hover {
+  background: rgba(239, 68, 68, 0.08) !important;
+  opacity: 0.9;
+}
+
 .timeline-card.color-auto {
   border-left: 3px solid #06b6d4 !important;
   /* Cyan-teal */

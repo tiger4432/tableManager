@@ -208,12 +208,38 @@ def list_tables():
     """
     return {"tables": list(crud.TABLE_CONFIG.keys())}
 
+def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
+    # Try querying the business_key column directly from any AuditLog entry for this row
+    log = db.query(models.AuditLog.business_key).filter(
+        models.AuditLog.table_name == table_name,
+        models.AuditLog.row_id == row_id,
+        models.AuditLog.business_key.isnot(None)
+    ).order_by(models.AuditLog.timestamp.desc()).first()
+    if log and log[0]:
+        return str(log[0])
+
+    # Fallback: Query the AuditLog to find the value from past cell-level edits on key_col
+    config = crud.TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    if key_col:
+        fallback_log = db.query(models.AuditLog.new_value).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.row_id == row_id,
+            models.AuditLog.column_name == key_col
+        ).order_by(models.AuditLog.timestamp.desc()).first()
+        if fallback_log and fallback_log[0]:
+            return str(fallback_log[0])
+    return None
+
 from audit_cache import audit_cache
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
 def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
+    
+    # Query all active row IDs in the database
+    active_row_ids = set(r[0] for r in db.query(models.DataRow.row_id).all())
     
     # 2. 캐시된 그룹을 경량화하여 반환
     result = []
@@ -228,31 +254,48 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
             if c and c not in cols:
                 cols.append(c)
                 
+        # Populate is_row_deleted flag for representing log
+        repr_log = logs[0].model_copy()
+        is_deleted = repr_log.row_id != "_BATCH_" and repr_log.row_id not in active_row_ids
+        repr_log.is_row_deleted = is_deleted
+        
+        if is_deleted and not repr_log.business_key:
+            repr_log.business_key = get_deleted_row_business_key(db, repr_log.table_name, repr_log.row_id)
+                
         result.append({
             "transaction_id": g.get("transaction_id"),
             "total_count": g.get("total_count", len(logs)),
             "summary_columns": cols,
-            "logs": [logs[0]] # 대표 로그 1건만 포함
+            "logs": [repr_log] # 대표 로그 1건만 포함
         })
     return result
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
 def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 500):
     """특정 트랜잭션의 상세 로그를 반환합니다. (인메모리 캐시 우선 조회, 최대 limit 건 반환)"""
+    active_row_ids = set(r[0] for r in db.query(models.DataRow.row_id).all())
+
     # 1. 캐시에서 조회 시도
     if audit_cache.is_loaded:
         for g in audit_cache.groups:
             if g.get("transaction_id") == tx_id:
                 logs = g.get("logs", [])
                 cols = []
+                cloned_logs = []
                 for l in logs:
                     c = l.column_name
                     if c and c not in cols: cols.append(c)
+                    cloned_log = l.model_copy()
+                    is_deleted = cloned_log.row_id != "_BATCH_" and cloned_log.row_id not in active_row_ids
+                    cloned_log.is_row_deleted = is_deleted
+                    if is_deleted and not cloned_log.business_key:
+                        cloned_log.business_key = get_deleted_row_business_key(db, cloned_log.table_name, cloned_log.row_id)
+                    cloned_logs.append(cloned_log)
                 return {
                     "transaction_id": tx_id,
                     "total_count": g.get("total_count", len(logs)),
                     "summary_columns": cols,
-                    "logs": logs[:limit]
+                    "logs": cloned_logs[:limit]
                 }
                 
     # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
@@ -272,8 +315,12 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
     cols = []
     for log_obj, bk in db_logs:
         log_dict = log_obj.__dict__.copy()
-        log_dict["business_key"] = bk
+        log_dict["business_key"] = bk or log_obj.business_key
         log_model = schemas.AuditLogResponse.model_validate(log_dict)
+        is_deleted = log_model.row_id != "_BATCH_" and log_model.row_id not in active_row_ids
+        log_model.is_row_deleted = is_deleted
+        if is_deleted and not log_model.business_key:
+            log_model.business_key = get_deleted_row_business_key(db, log_model.table_name, log_model.row_id)
         logs.append(log_model)
         c = log_model.column_name
         if c and c not in cols: cols.append(c)
@@ -627,20 +674,46 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
     deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
     
+    created_logs = []
     if deleted_count > 0:
+        log_objs = db.query(models.AuditLog).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.row_id.in_(batch.row_ids),
+            models.AuditLog.column_name == "DELETE"
+        ).all()
+        for log in log_objs:
+            bk = get_deleted_row_business_key(db, log.table_name, log.row_id)
+            created_logs.append({
+                "id": log.id,
+                "table_name": log.table_name,
+                "row_id": log.row_id,
+                "column_name": log.column_name,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "source_name": log.source_name,
+                "updated_by": log.updated_by,
+                "transaction_id": log.transaction_id,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "business_key": bk,
+                "is_row_deleted": True
+            })
+            
         invalidate_table_cache(table_name)
         CHUNK_SIZE = 500
         for i in range(0, len(batch.row_ids), CHUNK_SIZE):
             chunk = batch.row_ids[i:i + CHUNK_SIZE]
+            chunk_row_ids = set(chunk)
+            chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
             msg = {
                 "event": "batch_row_delete",
                 "table_name": table_name,
                 "row_ids": chunk,
-                "updated_by": batch.user_name
+                "updated_by": batch.user_name,
+                "created_logs": chunk_logs
             }
             await manager.broadcast(json.dumps(msg))
         
-    return {"status": "success", "deleted_count": deleted_count}
+    return {"status": "success", "deleted_count": deleted_count, "created_logs": created_logs}
 
 @app.post("/tables/{table_name}/row_ids/target")
 def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, db: Session = Depends(get_db)):
@@ -984,7 +1057,22 @@ def get_row_history(table_name: str, row_id: str, db: Session = Depends(get_db))
         models.AuditLog.table_name == table_name,
         models.AuditLog.row_id == row_id
     ).order_by(models.AuditLog.timestamp.desc()).all()
-    return logs
+    
+    row_obj = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id == row_id
+    ).first()
+    row_exists = row_obj is not None
+    
+    bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
+    
+    result = []
+    for log in logs:
+        log_res = schemas.AuditLogResponse.model_validate(log)
+        log_res.is_row_deleted = not row_exists
+        log_res.business_key = log.business_key or bk_val
+        result.append(log_res)
+    return result
 
 @app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history", response_model=list[schemas.AuditLogResponse])
 def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
@@ -996,7 +1084,22 @@ def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = 
         models.AuditLog.row_id == row_id,
         models.AuditLog.column_name == col_name
     ).order_by(models.AuditLog.timestamp.desc()).all()
-    return logs
+    
+    row_obj = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id == row_id
+    ).first()
+    row_exists = row_obj is not None
+    
+    bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
+    
+    result = []
+    for log in logs:
+        log_res = schemas.AuditLogResponse.model_validate(log)
+        log_res.is_row_deleted = not row_exists
+        log_res.business_key = log.business_key or bk_val
+        result.append(log_res)
+    return result
 
 @app.post("/tables/{table_name}/rows")
 async def create_row(table_name: str, count: int = 1, user_name: str = "system", db: Session = Depends(get_db)):
@@ -1005,8 +1108,28 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     """
     new_rows = crud.create_empty_rows_batch(db, table_name, count, user_name)
     
+    created_logs = []
     if new_rows:
         invalidate_table_cache(table_name)
+        log_objs = db.query(models.AuditLog).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.row_id.in_([r.row_id for r in new_rows]),
+            models.AuditLog.column_name == "CREATE"
+        ).all()
+        for log in log_objs:
+            created_logs.append({
+                "id": log.id,
+                "table_name": log.table_name,
+                "row_id": log.row_id,
+                "column_name": log.column_name,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "source_name": log.source_name,
+                "updated_by": log.updated_by,
+                "transaction_id": log.transaction_id,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "business_key": log.business_key
+            })
     
     msg_items = []
     for row in new_rows:
@@ -1021,15 +1144,18 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     CHUNK_SIZE = 500
     for i in range(0, len(msg_items), CHUNK_SIZE):
         chunk = msg_items[i:i + CHUNK_SIZE]
+        chunk_row_ids = {item["row_id"] for item in chunk}
+        chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
         msg = {
             "event": "batch_row_create",
             "table_name": table_name,
             "items": chunk,
-            "updated_by": user_name
+            "updated_by": user_name,
+            "created_logs": chunk_logs
         }
         await manager.broadcast(json.dumps(msg))
     
-    return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows]}
+    return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows], "created_logs": created_logs}
 
 @app.put("/tables/{table_name}/data/updates")
 async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
@@ -1058,6 +1184,7 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     # WebSocket 브로드캐스트 (batch.silent가 False인 경우에만 수행)
     if not batch.silent:
         user_name = batch.updates[0].updated_by if batch.updates else "system"
+        tx_id = created_logs[0]["transaction_id"] if created_logs else (batch.transaction_id or str(uuid.uuid4()))
         
         if len(msg_items) > 100:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
@@ -1072,12 +1199,16 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
             CHUNK_SIZE = 500
             for i in range(0, len(msg_items), CHUNK_SIZE):
                 chunk = msg_items[i:i + CHUNK_SIZE]
+                chunk_row_ids = {item["row_id"] for item in chunk}
+                chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
                 msg = {
                     "event": "batch_row_upsert",
                     "table_name": table_name,
                     "items": chunk,
                     "change_count": len(chunk), 
-                    "updated_by": user_name
+                    "updated_by": user_name,
+                    "transaction_id": tx_id,
+                    "created_logs": chunk_logs
                 }
                 await manager.broadcast(json.dumps(msg))
     

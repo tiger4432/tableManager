@@ -53,3 +53,5 @@ class AuditLog(Base):
     transaction_id = Column(String, index=True, nullable=True) # [Phase 2] 배치 작업 그룹화용 ID
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    business_key = Column(String, nullable=True, index=True)
+

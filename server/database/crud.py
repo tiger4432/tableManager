@@ -111,7 +111,8 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         source_name=source,
         updated_by=user,
         transaction_id=transaction_id,
-        timestamp=ts
+        timestamp=ts,
+        business_key=business_key
     )
     db.add(log)
 
@@ -292,7 +293,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             "source_name": log.source_name,
             "updated_by": log.updated_by,
             "transaction_id": log.transaction_id,
-            "timestamp": log.timestamp.isoformat() if log.timestamp else None
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "business_key": log.business_key
         })
         
     results = list(unique_results.values())

@@ -277,6 +277,7 @@ function setupEventListeners() {
       if (res.ok) {
         const result = await res.json();
         performanceLog.textContent = `${count} empty row(s) created successfully`;
+        // History updates will be handled by the WebSocket stream
       } else {
         throw new Error('Create failed');
       }
@@ -1360,10 +1361,7 @@ async function handleCellEdit(event) {
         updateSelectedCellUI();
       }
       
-      // Append database generated history logs locally
-      if (result.created_logs && result.created_logs.length > 0) {
-        result.created_logs.forEach(log => appendHistoryLocally(log));
-      }
+      // History updates will be handled by the WebSocket stream
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Save failed';
@@ -1441,19 +1439,22 @@ function handleWebSocketMessage(msg) {
       updateGridSortState();
       updateLoadedCount();
       performanceLog.textContent = `⚡ Real-time created: ${items.length} rows added`;
+
+      // Stream logs to timeline if provided
+      const createdLogs = msg.created_logs || [];
+      createdLogs.forEach(log => appendHistoryLocally(log));
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
     const updatedRows = [];
     const addedRows = [];
     const flashCols = new Set();
-
     items.forEach(item => {
       const rowId = item.row_id;
       const rowNode = gridApi.getRowNode(rowId);
 
       if (rowNode) {
-        // Row exists in client cache -> MERGE logic (matches PyQt Client's Merge Architecture v1.1)
+        // Row exists in client cache -> MERGE logic
         const oldRowData = rowNode.data;
         const newRowData = {
           ...oldRowData,
@@ -1513,40 +1514,15 @@ function handleWebSocketMessage(msg) {
 
       performanceLog.textContent = `⚡ Real-time synchronized: ${updatedRows.length} rows updated`;
 
-      // If currently selected cell/row is updated, refresh panel & append history locally
-      if (selectedCell) {
-        const matchingUpdated = items.find(i => i.row_id === selectedCell.rowId);
-        if (matchingUpdated) {
-          Object.keys(matchingUpdated.data || {}).forEach(colId => {
-            const rowNode = gridApi.getRowNode(selectedCell.rowId);
-            const oldVal = rowNode ? rowNode.data?.data?.[colId]?.value : '';
-            const cellUpdate = matchingUpdated.data[colId];
-            const newVal = cellUpdate && typeof cellUpdate === 'object' ? cellUpdate.value : cellUpdate;
-
-            if (colId === selectedCell.colId) {
-              selectedCell.value = newVal;
-              updateSelectedCellUI();
-            }
-
-            const updater = cellUpdate?.updated_by || msg.updated_by || 'system';
-            const sourceName = cellUpdate?.source_name || 'user';
-            
-            // Create a mock log format matching the DB AuditLog structure for real-time ws updates
-            const mockLog = {
-              timestamp: new Date().toISOString(),
-              updated_by: updater,
-              source_name: sourceName,
-              column_name: colId,
-              old_value: oldVal,
-              new_value: newVal,
-              row_id: selectedCell.rowId,
-              table_name: currentTable,
-              transaction_id: msg.transaction_id || null
-            };
-            appendHistoryLocally(mockLog);
-          });
+      // Apply updates to history timeline and update selected UI if matched
+      const createdLogs = msg.created_logs || [];
+      createdLogs.forEach(log => {
+        if (selectedCell && log.row_id === selectedCell.rowId && log.column_name === selectedCell.colId) {
+          selectedCell.value = log.new_value;
+          updateSelectedCellUI();
         }
-      }
+        appendHistoryLocally(log);
+      });
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
@@ -1562,6 +1538,10 @@ function handleWebSocketMessage(msg) {
       updateSelectedCellUI();
       timeline.innerHTML = '<li class="timeline-empty">Selected row deleted.</li>';
     }
+
+    // Stream logs to timeline if provided
+    const createdLogs = msg.created_logs || [];
+    createdLogs.forEach(log => appendHistoryLocally(log));
   } else if (event === 'batch_refresh_required') {
     pageCache.clear();
     // Large bulk updates -> trigger full grid refresh
@@ -1628,6 +1608,9 @@ function renderTimeline(logs) {
     // Add type tag (e.g., user vs system)
     const isUser = log.updated_by !== 'system';
     li.classList.add(isUser ? 'user-change' : 'system-change');
+    if (log.is_row_deleted) {
+      li.classList.add('deleted-row-log');
+    }
     
     // Highlight if active transaction context
     const isCurrentTx = log.transaction_id && log.transaction_id === currentTransactionId;
@@ -1649,9 +1632,9 @@ function renderTimeline(logs) {
           <div class="change-detail">
             <span class="change-field">${log.column_name}</span>
             <div class="change-values">
-              <span class="val-old">${formatVal(log.old_value)}</span>
+              <span class="val-old">${formatVal(log.old_value, true)}</span>
               <span class="val-arrow">→</span>
-              <span class="val-new">${formatVal(log.new_value)}</span>
+              <span class="val-new">${formatVal(log.new_value, false)}</span>
             </div>
           </div>
         </div>
@@ -1714,8 +1697,19 @@ function renderGlobalTimeline() {
     let colorClass = '';
     
     if (isSummary) {
-      displayTitle = `📦 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}건 변경`;
-      colorClass = 'color-summary';
+      const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
+      const allCreates = group.logs.every(log => log.column_name === 'CREATE');
+      
+      if (allDeletes) {
+        displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
+        colorClass = 'color-delete';
+      } else if (allCreates) {
+        displayTitle = `🆕 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 생성`;
+        colorClass = 'color-create';
+      } else {
+        displayTitle = `📦 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}건 변경`;
+        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
+      }
     } else {
       const targetId = baseLog.business_key ? (baseLog.business_key.length > 10 ? baseLog.business_key.slice(0, 10) + '...' : baseLog.business_key) : baseLog.row_id.slice(0, 8);
       const col = baseLog.column_name;
@@ -1727,11 +1721,15 @@ function renderGlobalTimeline() {
         colorClass = 'color-delete';
       } else if (col === 'ROW_UPDATE') {
         displayTitle = `🤖 [${user}] 님이 ${baseLog.table_name} (${targetId}) 자동 업데이트`;
-        colorClass = 'color-auto';
+        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-auto';
       } else {
         displayTitle = `🔄 [${user}] 님이 ${baseLog.table_name} (${targetId}) 의 ${col} 수정`;
-        colorClass = baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit';
+        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
       }
+    }
+
+    if (baseLog.is_row_deleted) {
+      displayTitle = `❌ [삭제됨] ` + displayTitle;
     }
     
     const summaryColsText = group.summary_columns && group.summary_columns.length > 0
@@ -1752,9 +1750,9 @@ function renderGlobalTimeline() {
             ${summaryColsText ? `<div class="summary-columns-list">${summaryColsText}</div>` : ''}
             ${!isSummary ? `
             <div class="change-values">
-              <span class="val-old">${formatVal(baseLog.old_value)}</span>
+              <span class="val-old">${formatVal(baseLog.old_value, true)}</span>
               <span class="val-arrow">→</span>
-              <span class="val-new">${formatVal(baseLog.new_value)}</span>
+              <span class="val-new">${formatVal(baseLog.new_value, false)}</span>
             </div>` : ''}
           </div>
         </div>
@@ -1883,8 +1881,10 @@ function renderSubDetails(container, logs) {
 }
 
 // Helper to format values
-function formatVal(v) {
-  if (v === null || v === undefined) return '<null>';
+function formatVal(v, isOld = false) {
+  if (v === null || v === undefined || v === '') {
+    return isOld ? '비어있음' : '삭제됨';
+  }
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }
@@ -1900,13 +1900,9 @@ function triggerHistoryReloadDebounced() {
 
 // Feature 3: Append single history log locally to prevent full API refresh on cell change
 function appendHistoryLocally(log) {
-  if (!selectedCell || !log) return;
+  if (!log) return;
   
-  if (activeHistoryTab === 'cell') {
-    if (selectedCell.rowId !== log.row_id || selectedCell.colId !== log.column_name) return;
-  } else if (activeHistoryTab === 'row') {
-    if (selectedCell.rowId !== log.row_id) return;
-  } else if (activeHistoryTab === 'global') {
+  if (activeHistoryTab === 'global') {
     const existingGroup = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
     if (existingGroup) {
       existingGroup.logs.unshift(log);
@@ -1922,6 +1918,14 @@ function appendHistoryLocally(log) {
     return;
   }
 
+  if (!selectedCell) return;
+  
+  if (activeHistoryTab === 'cell') {
+    if (selectedCell.rowId !== log.row_id || selectedCell.colId !== log.column_name) return;
+  } else if (activeHistoryTab === 'row') {
+    if (selectedCell.rowId !== log.row_id) return;
+  }
+
   const emptyItem = timeline.querySelector('.timeline-empty');
   if (emptyItem) {
     timeline.removeChild(emptyItem);
@@ -1933,6 +1937,9 @@ function appendHistoryLocally(log) {
   
   const isUser = log.updated_by !== 'system';
   li.classList.add(isUser ? 'user-change' : 'system-change');
+  if (log.is_row_deleted) {
+    li.classList.add('deleted-row-log');
+  }
   
   const dateStr = new Date(log.timestamp).toLocaleString();
   
@@ -1947,9 +1954,9 @@ function appendHistoryLocally(log) {
         <div class="change-detail">
           <span class="change-field">${log.column_name.toUpperCase()}</span>
           <div class="change-values">
-            <span class="val-old">${formatVal(log.old_value)}</span>
+            <span class="val-old">${formatVal(log.old_value, true)}</span>
             <span class="val-arrow">→</span>
-            <span class="val-new">${formatVal(log.new_value)}</span>
+            <span class="val-new">${formatVal(log.new_value, false)}</span>
           </div>
         </div>
       </div>
@@ -2159,6 +2166,17 @@ function setupClipboardHandlers() {
           
           // Force sort update to push modified rows to the top
           updateGridSortState();
+
+          // Sync selected cell UI if inside pasted range
+          if (selectedCell) {
+            const matchedUpdate = batchUpdates.find(u => u.row_id === selectedCell.rowId);
+            if (matchedUpdate && matchedUpdate.updates[selectedCell.colId] !== undefined) {
+              selectedCell.value = matchedUpdate.updates[selectedCell.colId];
+              updateSelectedCellUI();
+            }
+          }
+
+          // History updates will be handled by the WebSocket stream
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.detail || 'Paste batch update failed';
@@ -2673,6 +2691,7 @@ async function deleteSelectedRows() {
       pageCache.clear();
       const result = await res.json();
       performanceLog.textContent = `Deleted ${result.deleted_count} rows successfully`;
+      // History updates will be handled by the WebSocket stream
       // WebSocket event batch_row_delete will handle removing from grid cache
     } else {
       throw new Error('Batch delete request failed');
@@ -2800,9 +2819,7 @@ async function clearSelectedCells() {
       }
 
       // Append database generated history logs locally
-      if (result.created_logs && result.created_logs.length > 0) {
-        result.created_logs.forEach(log => appendHistoryLocally(log));
-      }
+      // History updates will be handled by the WebSocket stream
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Cell clearing failed';

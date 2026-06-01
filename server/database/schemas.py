@@ -32,6 +32,7 @@ class AuditLogResponse(BaseModel):
     transaction_id: Optional[str] = None
     business_key: Optional[str] = None
     timestamp: datetime
+    is_row_deleted: Optional[bool] = False
 
     @field_validator("timestamp", mode="after")
     @classmethod

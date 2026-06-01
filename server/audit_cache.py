@@ -32,10 +32,6 @@ class AuditLogCache:
             while len(groups_order) < limit_groups:
                 chunk = db.query(models.AuditLog, models.DataRow.business_key_val)\
                           .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
-                          .filter(or_(
-                              models.AuditLog.row_id == "_BATCH_",
-                              models.DataRow.row_id.isnot(None)
-                          ))\
                           .order_by(desc(models.AuditLog.timestamp), desc(models.AuditLog.id))\
                           .offset(offset).limit(chunk_size).all()
                           
@@ -46,7 +42,7 @@ class AuditLogCache:
                     tid = log_obj.transaction_id or "no_tid"
                     
                     log_dict = log_obj.__dict__.copy()
-                    log_dict["business_key"] = bk
+                    log_dict["business_key"] = bk or log_obj.business_key
                     log_model = schemas.AuditLogResponse.model_validate(log_dict)
                     
                     if tid not in groups_dict:
@@ -110,14 +106,7 @@ class AuditLogCache:
             self.groups.insert(0, {"transaction_id": tid, "logs": [log_model], "total_count": 1})
 
     def remove_deleted_rows(self, row_ids: List[str]):
-        """삭제된 행의 과거 로그를 캐시에서 제거합니다."""
-        with self._lock:
-            if not self.is_loaded: 
-                return
-                
-            for group in self.groups:
-                group["logs"] = [l for l in group["logs"] if l.row_id not in row_ids or l.row_id == "_BATCH_"]
-            
-            self.groups = [g for g in self.groups if g["logs"]]
+        """삭제된 행의 과거 로그를 캐시에서 제거하지 않고 보존합니다."""
+        pass
 
 audit_cache = AuditLogCache()
