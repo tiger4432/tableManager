@@ -98,7 +98,10 @@
       <!-- 히스토리 사이드바 -->
       <aside class="history-sidebar glass-panel">
         <div class="sidebar-header">
-          <h2>Audit History</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2 style="margin: 0;">Audit History</h2>
+            <button id="refresh-history-btn" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.8rem; margin: 0;" title="Refresh history from server">🔄 Sync</button>
+          </div>
           <div class="history-tabs">
             <button id="tab-global" class="tab-btn active">Global History</button>
             <button id="tab-cell" class="tab-btn">Cell History</button>

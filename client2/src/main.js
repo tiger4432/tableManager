@@ -67,6 +67,7 @@ const tabCellBtn = document.getElementById('tab-cell');
 const tabRowBtn = document.getElementById('tab-row');
 const selectedCellInfo = document.getElementById('selected-cell-info');
 const timeline = document.getElementById('timeline');
+const refreshHistoryBtn = document.getElementById('refresh-history-btn');
 
 const contextMenu = document.getElementById('custom-context-menu');
 const sourcesModal = document.getElementById('sources-modal');
@@ -124,6 +125,12 @@ async function init() {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  if (refreshHistoryBtn) {
+    refreshHistoryBtn.addEventListener('click', () => {
+      loadHistory();
+    });
+  }
+
   if (clearTxFilterBtn) {
     clearTxFilterBtn.addEventListener('click', () => {
       setTransactionFilter(null);
@@ -1352,7 +1359,9 @@ async function handleCellEdit(event) {
         selectedCell.value = finalValue;
         updateSelectedCellUI();
       }
-      triggerHistoryReloadDebounced();
+      
+      // Append history locally without calling full API reload
+      appendHistoryLocally(rowId, colId, oldValue, finalValue, CURRENT_USER, 'user');
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Save failed';
@@ -1430,7 +1439,6 @@ function handleWebSocketMessage(msg) {
       updateGridSortState();
       updateLoadedCount();
       performanceLog.textContent = `⚡ Real-time created: ${items.length} rows added`;
-      triggerHistoryReloadDebounced();
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
@@ -1503,15 +1511,27 @@ function handleWebSocketMessage(msg) {
 
       performanceLog.textContent = `⚡ Real-time synchronized: ${updatedRows.length} rows updated`;
 
-      // If currently selected cell is updated, refresh panel
+      // If currently selected cell/row is updated, refresh panel & append history locally
       if (selectedCell) {
         const matchingUpdated = items.find(i => i.row_id === selectedCell.rowId);
-        if (matchingUpdated && matchingUpdated.data?.[selectedCell.colId]) {
-          selectedCell.value = matchingUpdated.data[selectedCell.colId].value;
-          updateSelectedCellUI();
+        if (matchingUpdated) {
+          Object.keys(matchingUpdated.data || {}).forEach(colId => {
+            const rowNode = gridApi.getRowNode(selectedCell.rowId);
+            const oldVal = rowNode ? rowNode.data?.data?.[colId]?.value : '';
+            const cellUpdate = matchingUpdated.data[colId];
+            const newVal = cellUpdate && typeof cellUpdate === 'object' ? cellUpdate.value : cellUpdate;
+
+            if (colId === selectedCell.colId) {
+              selectedCell.value = newVal;
+              updateSelectedCellUI();
+            }
+
+            const updater = cellUpdate?.updated_by || msg.updated_by || 'system';
+            const sourceName = cellUpdate?.source_name || 'user';
+            appendHistoryLocally(selectedCell.rowId, colId, oldVal, newVal, updater, sourceName);
+          });
         }
       }
-      triggerHistoryReloadDebounced();
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
@@ -1527,7 +1547,6 @@ function handleWebSocketMessage(msg) {
       updateSelectedCellUI();
       timeline.innerHTML = '<li class="timeline-empty">Selected row deleted.</li>';
     }
-    triggerHistoryReloadDebounced();
   } else if (event === 'batch_refresh_required') {
     pageCache.clear();
     // Large bulk updates -> trigger full grid refresh
@@ -1862,6 +1881,89 @@ function triggerHistoryReloadDebounced() {
   historyDebounceTimeout = setTimeout(() => {
     loadHistory();
   }, 300);
+}
+
+// Feature 3: Append single history log locally to prevent full API refresh on cell change
+function appendHistoryLocally(rowId, colId, oldValue, newValue, user = CURRENT_USER, source = 'user') {
+  if (!selectedCell) return;
+  
+  if (activeHistoryTab === 'cell') {
+    if (selectedCell.rowId !== rowId || selectedCell.colId !== colId) return;
+  } else if (activeHistoryTab === 'row') {
+    if (selectedCell.rowId !== rowId) return;
+  } else if (activeHistoryTab === 'global') {
+    const newLog = {
+      timestamp: new Date().toISOString(),
+      updated_by: user,
+      source_name: source,
+      column_name: colId,
+      old_value: oldValue,
+      new_value: newValue,
+      row_id: rowId,
+      table_name: currentTable
+    };
+    
+    const mockGroup = {
+      transaction_id: 'local_tx_' + Date.now(),
+      total_count: 1,
+      logs: [newLog]
+    };
+    globalHistoryData.unshift(mockGroup);
+    renderGlobalTimeline();
+    return;
+  }
+
+  const log = {
+    timestamp: new Date().toISOString(),
+    updated_by: user,
+    source_name: source,
+    column_name: colId,
+    old_value: oldValue,
+    new_value: newValue,
+    row_id: rowId,
+    table_name: currentTable,
+    transaction_id: null
+  };
+
+  const emptyItem = timeline.querySelector('.timeline-empty');
+  if (emptyItem) {
+    timeline.removeChild(emptyItem);
+  }
+
+  const li = document.createElement('li');
+  li.className = 'timeline-item';
+  li.style.cursor = 'pointer';
+  
+  const isUser = log.updated_by !== 'system';
+  li.classList.add(isUser ? 'user-change' : 'system-change');
+  
+  const dateStr = new Date(log.timestamp).toLocaleString();
+  
+  li.innerHTML = `
+    <div class="timeline-time">${dateStr}</div>
+    <div class="timeline-card">
+      <div class="timeline-user">
+        <span class="user-tag">${log.updated_by}</span>
+        <span class="source-tag">${log.source_name}</span>
+      </div>
+      <div class="timeline-changes">
+        <div class="change-detail">
+          <span class="change-field">${log.column_name.toUpperCase()}</span>
+          <div class="change-values">
+            <span class="val-old">${formatVal(log.old_value)}</span>
+            <span class="val-arrow">→</span>
+            <span class="val-new">${formatVal(log.new_value)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  li.addEventListener('click', () => {
+    navigateToLog(log);
+  });
+  
+  timeline.insertBefore(li, timeline.firstChild);
 }
 
 // Range selection helper functions
@@ -2637,6 +2739,7 @@ async function clearSelectedCells() {
 
   const updatesArray = [];
   const rowsToUpdate = [];
+  const oldValuesBackup = []; // Store before values for local history update
 
   Object.keys(updateMapByRow).forEach(rowId => {
     const item = updateMapByRow[rowId];
@@ -2652,6 +2755,14 @@ async function clearSelectedCells() {
       if (!data.data) data.data = {};
       
       Object.keys(item.updates).forEach(colId => {
+        const oldValue = data.data[colId] ? data.data[colId].value : '';
+        oldValuesBackup.push({
+          rowId,
+          colId,
+          oldValue,
+          newValue: item.updates[colId]
+        });
+
         if (!data.data[colId]) data.data[colId] = {};
         data.data[colId].value = item.updates[colId];
         data.data[colId].is_overwrite = true;
@@ -2693,7 +2804,10 @@ async function clearSelectedCells() {
         updateSelectedCellUI();
       }
 
-      triggerHistoryReloadDebounced();
+      // Append history locally for each cleared cell
+      oldValuesBackup.forEach(backup => {
+        appendHistoryLocally(backup.rowId, backup.colId, backup.oldValue, backup.newValue, CURRENT_USER, 'user');
+      });
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Cell clearing failed';
