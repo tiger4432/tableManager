@@ -27,6 +27,7 @@ let globalHistoryData = [];
 const expandedTransactions = new Set();
 const fetchingTransactions = new Set();
 let currentTransactionId = null;
+let colIdToIndexMap = {}; // Fast lookup cache for column indexes to avoid O(C) getColumns() in isCellInRange
 
 // Lazy Loading state variables
 let currentSkip = 0;
@@ -1183,6 +1184,13 @@ function renderGrid(initialRows) {
   };
   
   gridApi = createGrid(gridDiv, gridOptions);
+
+  // Cache column ID to index map to avoid getColumns().map() during cell rendering (O(1) lookup)
+  colIdToIndexMap = {};
+  gridApi.getColumns().forEach((c, idx) => {
+    colIdToIndexMap[c.getColId()] = idx;
+  });
+
   updateGridSortState();
 }
 
@@ -1806,19 +1814,16 @@ function isCellInRange(rowIndex, colId) {
   if (!dragStartCell || !dragEndCell) return false;
   if (!gridApi) return false;
 
-  const allCols = gridApi.getColumns().map(c => c.getColId());
-  const startColIdx = allCols.indexOf(dragStartCell.colId);
-  const endColIdx = allCols.indexOf(dragEndCell.colId);
+  const startColIdx = colIdToIndexMap[dragStartCell.colId];
+  const endColIdx = colIdToIndexMap[dragEndCell.colId];
+  const colIdx = colIdToIndexMap[colId];
 
-  if (startColIdx === -1 || endColIdx === -1) return false;
+  if (startColIdx === undefined || endColIdx === undefined || colIdx === undefined) return false;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
   const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
   const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
-
-  const colIdx = allCols.indexOf(colId);
-  if (colIdx === -1) return false;
 
   return rowIndex >= minRowIdx && rowIndex <= maxRowIdx && colIdx >= minColIdx && colIdx <= maxColIdx;
 }
