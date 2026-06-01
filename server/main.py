@@ -1036,7 +1036,7 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
     try:
-        results, changed_cells = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
+        results, changed_cells, created_logs = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -1081,7 +1081,7 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
                 }
                 await manager.broadcast(json.dumps(msg))
     
-    return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells)}
+    return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells), "created_logs": created_logs}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

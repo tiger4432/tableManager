@@ -1360,8 +1360,10 @@ async function handleCellEdit(event) {
         updateSelectedCellUI();
       }
       
-      // Append history locally without calling full API reload
-      appendHistoryLocally(rowId, colId, oldValue, finalValue, CURRENT_USER, 'user');
+      // Append database generated history logs locally
+      if (result.created_logs && result.created_logs.length > 0) {
+        result.created_logs.forEach(log => appendHistoryLocally(log));
+      }
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Save failed';
@@ -1528,7 +1530,20 @@ function handleWebSocketMessage(msg) {
 
             const updater = cellUpdate?.updated_by || msg.updated_by || 'system';
             const sourceName = cellUpdate?.source_name || 'user';
-            appendHistoryLocally(selectedCell.rowId, colId, oldVal, newVal, updater, sourceName);
+            
+            // Create a mock log format matching the DB AuditLog structure for real-time ws updates
+            const mockLog = {
+              timestamp: new Date().toISOString(),
+              updated_by: updater,
+              source_name: sourceName,
+              column_name: colId,
+              old_value: oldVal,
+              new_value: newVal,
+              row_id: selectedCell.rowId,
+              table_name: currentTable,
+              transaction_id: msg.transaction_id || null
+            };
+            appendHistoryLocally(mockLog);
           });
         }
       }
@@ -1884,46 +1899,28 @@ function triggerHistoryReloadDebounced() {
 }
 
 // Feature 3: Append single history log locally to prevent full API refresh on cell change
-function appendHistoryLocally(rowId, colId, oldValue, newValue, user = CURRENT_USER, source = 'user') {
-  if (!selectedCell) return;
+function appendHistoryLocally(log) {
+  if (!selectedCell || !log) return;
   
   if (activeHistoryTab === 'cell') {
-    if (selectedCell.rowId !== rowId || selectedCell.colId !== colId) return;
+    if (selectedCell.rowId !== log.row_id || selectedCell.colId !== log.column_name) return;
   } else if (activeHistoryTab === 'row') {
-    if (selectedCell.rowId !== rowId) return;
+    if (selectedCell.rowId !== log.row_id) return;
   } else if (activeHistoryTab === 'global') {
-    const newLog = {
-      timestamp: new Date().toISOString(),
-      updated_by: user,
-      source_name: source,
-      column_name: colId,
-      old_value: oldValue,
-      new_value: newValue,
-      row_id: rowId,
-      table_name: currentTable
-    };
-    
-    const mockGroup = {
-      transaction_id: 'local_tx_' + Date.now(),
-      total_count: 1,
-      logs: [newLog]
-    };
-    globalHistoryData.unshift(mockGroup);
+    const existingGroup = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
+    if (existingGroup) {
+      existingGroup.logs.unshift(log);
+      existingGroup.total_count += 1;
+    } else {
+      globalHistoryData.unshift({
+        transaction_id: log.transaction_id,
+        total_count: 1,
+        logs: [log]
+      });
+    }
     renderGlobalTimeline();
     return;
   }
-
-  const log = {
-    timestamp: new Date().toISOString(),
-    updated_by: user,
-    source_name: source,
-    column_name: colId,
-    old_value: oldValue,
-    new_value: newValue,
-    row_id: rowId,
-    table_name: currentTable,
-    transaction_id: null
-  };
 
   const emptyItem = timeline.querySelector('.timeline-empty');
   if (emptyItem) {
@@ -1956,11 +1953,18 @@ function appendHistoryLocally(rowId, colId, oldValue, newValue, user = CURRENT_U
           </div>
         </div>
       </div>
+      ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
     </div>
   `;
   
-  li.addEventListener('click', () => {
-    navigateToLog(log);
+  li.addEventListener('click', (e) => {
+    if (e.target.closest('.filter-tx-btn')) {
+      e.stopPropagation();
+      const txId = e.target.closest('.filter-tx-btn').dataset.txId;
+      setTransactionFilter(txId);
+    } else {
+      navigateToLog(log);
+    }
   });
   
   timeline.insertBefore(li, timeline.firstChild);
@@ -2739,7 +2743,6 @@ async function clearSelectedCells() {
 
   const updatesArray = [];
   const rowsToUpdate = [];
-  const oldValuesBackup = []; // Store before values for local history update
 
   Object.keys(updateMapByRow).forEach(rowId => {
     const item = updateMapByRow[rowId];
@@ -2755,14 +2758,6 @@ async function clearSelectedCells() {
       if (!data.data) data.data = {};
       
       Object.keys(item.updates).forEach(colId => {
-        const oldValue = data.data[colId] ? data.data[colId].value : '';
-        oldValuesBackup.push({
-          rowId,
-          colId,
-          oldValue,
-          newValue: item.updates[colId]
-        });
-
         if (!data.data[colId]) data.data[colId] = {};
         data.data[colId].value = item.updates[colId];
         data.data[colId].is_overwrite = true;
@@ -2804,10 +2799,10 @@ async function clearSelectedCells() {
         updateSelectedCellUI();
       }
 
-      // Append history locally for each cleared cell
-      oldValuesBackup.forEach(backup => {
-        appendHistoryLocally(backup.rowId, backup.colId, backup.oldValue, backup.newValue, CURRENT_USER, 'user');
-      });
+      // Append database generated history logs locally
+      if (result.created_logs && result.created_logs.length > 0) {
+        result.created_logs.forEach(log => appendHistoryLocally(log));
+      }
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Cell clearing failed';

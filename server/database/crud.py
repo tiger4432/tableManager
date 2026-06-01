@@ -274,10 +274,29 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         for col in changed_cols:
             total_changed_cells.append((row.row_id, col))
             
+    # Capture newly created AuditLog objects before commit
+    created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
+    
     db.commit()
-    # [O(N) 제거] 개별 refresh()를 호출하지 않고 세션 상태를 활용하여 리턴
+    
+    # Serialize logs after commit to ensure IDs are assigned
+    serialized_logs = []
+    for log in created_log_objs:
+        serialized_logs.append({
+            "id": log.id,
+            "table_name": log.table_name,
+            "row_id": log.row_id,
+            "column_name": log.column_name,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "source_name": log.source_name,
+            "updated_by": log.updated_by,
+            "transaction_id": log.transaction_id,
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None
+        })
+        
     results = list(unique_results.values())
-    return results, total_changed_cells
+    return results, total_changed_cells, serialized_logs
 
 def create_empty_row(db: Session, table_name: str):
     """신규 빈 행을 하나 생성합니다."""
