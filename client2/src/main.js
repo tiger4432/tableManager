@@ -443,7 +443,7 @@ function setupEventListeners() {
       if (!currentTable || isLoadingMore) return;
       
       isLoadingMore = true;
-      performanceLog.textContent = '⚡ 1/4. Preparing request...';
+      performanceLog.textContent = '⚡ 1/3. Initializing bulk request...';
       const startTime = performance.now();
       
       const q = globalSearch ? globalSearch.value.trim() : '';
@@ -452,108 +452,105 @@ function setupEventListeners() {
       const filterModel = gridApi ? gridApi.getFilterModel() : {};
       const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
       
-      // Query with a large limit to fetch everything (e.g. limit=100000)
-      let url = `${API_BASE}/tables/${currentTable}/data?skip=0&limit=100000`;
-      url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
+      const baseApiUrl = `${API_BASE}/tables/${currentTable}/data`;
+      let queryParams = `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
       if (currentTransactionId) {
-        url += `&transaction_id=${currentTransactionId}`;
+        queryParams += `&transaction_id=${currentTransactionId}`;
       }
       if (q) {
-        url += `&q=${encodeURIComponent(q)}`;
+        queryParams += `&q=${encodeURIComponent(q)}`;
         if (cols) {
-          url += `&cols=${encodeURIComponent(cols)}`;
+          queryParams += `&cols=${encodeURIComponent(cols)}`;
         }
       }
       if (filterStr) {
-        url += `&filters=${encodeURIComponent(filterStr)}`;
+        queryParams += `&filters=${encodeURIComponent(filterStr)}`;
       }
       
       try {
-        performanceLog.textContent = '⚡ 1/4. Sending network request to database...';
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`Server returned HTTP ${res.status}`);
+        const chunkLimit = 3000; // 청크 단위로 분할 로드
+        let accumulatedData = [];
+        let totalRows = 0;
+        let currentSkipOffset = 0;
+        
+        performanceLog.textContent = '⚡ 1/3. Fetching initial row chunk...';
+        
+        // 1. 첫 번째 청크 요청하여 전체 개수(total)와 첫 데이터를 받아옴
+        const firstUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
+        const firstRes = await fetch(firstUrl);
+        if (!firstRes.ok) throw new Error(`HTTP error! status: ${firstRes.status}`);
+        const firstResult = await firstRes.json();
+        
+        accumulatedData = firstResult.data || [];
+        totalRows = firstResult.total || 0;
+        currentSkipOffset += accumulatedData.length;
+        
+        // 실시간 진행률 업데이트
+        if (totalRows > 0) {
+          const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
+          performanceLog.textContent = `⏳ 2/3. Fetching rows: ${percent}% (${accumulatedData.length} / ${totalRows})`;
+        } else {
+          performanceLog.textContent = `⏳ 2/3. Fetching rows: 100% (0 / 0)`;
         }
-
-        const contentLength = +res.headers.get('Content-Length') || 0;
-        const reader = res.body.getReader();
         
-        let receivedBytes = 0;
-        const chunks = [];
-        
-        performanceLog.textContent = '⏳ 2/4. Starting data download...';
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        // 2. 전체 데이터 개수가 첫 번째 수집량보다 많다면 루프를 돌며 추가 청크 수집
+        while (accumulatedData.length < totalRows && currentSkipOffset < totalRows) {
+          // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
+          await new Promise(resolve => setTimeout(resolve, 5));
           
-          chunks.push(value);
-          receivedBytes += value.length;
+          const nextUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
+          const nextRes = await fetch(nextUrl);
+          if (!nextRes.ok) throw new Error(`HTTP error! status: ${nextRes.status}`);
+          const nextResult = await nextRes.json();
           
-          if (contentLength > 0) {
-            const percent = Math.floor((receivedBytes / contentLength) * 100);
-            const receivedMB = (receivedBytes / (1024 * 1024)).toFixed(2);
-            const totalMB = (contentLength / (1024 * 1024)).toFixed(2);
-            performanceLog.textContent = `⏳ 2/4. Downloading: ${percent}% (${receivedMB}MB / ${totalMB}MB)`;
-          } else {
-            const receivedMB = (receivedBytes / (1024 * 1024)).toFixed(2);
-            performanceLog.textContent = `⏳ 2/4. Downloading: ${receivedMB}MB (unknown total size)`;
+          const nextChunk = nextResult.data || [];
+          if (nextChunk.length === 0) {
+            // 더 이상 가져올 데이터가 없음 (서버 데이터 변동 가능성 대비 탈출)
+            break;
           }
+          
+          accumulatedData = accumulatedData.concat(nextChunk);
+          currentSkipOffset += nextChunk.length;
+          
+          const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
+          performanceLog.textContent = `⏳ 2/3. Fetching rows: ${percent}% (${accumulatedData.length} / ${totalRows})`;
         }
         
-        const downloadEndTime = performance.now();
-        const downloadTime = (downloadEndTime - startTime).toFixed(0);
+        const fetchEndTime = performance.now();
+        const totalFetchTime = (fetchEndTime - startTime).toFixed(0);
         
-        performanceLog.textContent = '⚙️ 3/4. Parsing JSON database payload...';
-        // Yield execution to the browser to ensure UI text updates
-        await new Promise(resolve => setTimeout(resolve, 10));
-        
-        // Combine all chunk Uint8Arrays into one
-        const combined = new Uint8Array(receivedBytes);
-        let position = 0;
-        for (const chunk of chunks) {
-          combined.set(chunk, position);
-          position += chunk.length;
-        }
-        
-        const jsonText = new TextDecoder("utf-8").decode(combined);
-        const result = JSON.parse(jsonText);
-        
-        const parseEndTime = performance.now();
-        const parseTime = (parseEndTime - downloadEndTime).toFixed(0);
-        
-        performanceLog.textContent = '🎨 4/4. Initializing cells & drawing grid...';
-        // Yield execution again to draw the rendering log status
-        await new Promise(resolve => setTimeout(resolve, 20));
+        performanceLog.textContent = '🎨 3/3. Initializing cells & drawing grid...';
+        await new Promise(resolve => setTimeout(resolve, 20)); // UI 반영을 위해 양보
         
         const renderStartTime = performance.now();
         
         allDataLoaded = true;
         hasMoreData = false;
         
-        gridApi.setGridOption('rowData', result.data);
+        // 그리드 데이터 로드
+        gridApi.setGridOption('rowData', accumulatedData);
         updateGridSortState();
         
-        updateLoadedCount(result.data.length);
-        totalRowsCount.textContent = `Matches: ${result.total}`;
-        
+        updateLoadedCount(accumulatedData.length);
+        totalRowsCount.textContent = `Matches: ${totalRows}`;
         updateViewModeUI();
         
         const renderEndTime = performance.now();
         const renderTime = (renderEndTime - renderStartTime).toFixed(0);
         const totalTime = (renderEndTime - startTime).toFixed(0);
         
-        performanceLog.textContent = `✅ Loaded ${result.data.length} rows (Down: ${downloadTime}ms, Parse: ${parseTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
-        showToast(`📥 전체 ${result.data.length}개 행 로드 완료!`, 'success');
+        performanceLog.textContent = `✅ Loaded ${accumulatedData.length} rows (Fetch Chunks: ${totalFetchTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
+        showToast(`📥 전체 ${accumulatedData.length}개 행 로드 완료!`, 'success');
         isLoadingMore = false;
       } catch (err) {
-        console.error('Failed to load all rows', err);
+        console.error('Failed to load all rows sequentially', err);
         performanceLog.textContent = '❌ Failed to load all rows';
         showToast('❌ 전체 데이터 로드 중 오류 발생', 'error');
         isLoadingMore = false;
       }
     });
   }
+
 
   // Load CSV Button Handler (Direct Download with Progress & Custom Filename / Native FileDialog)
   if (loadCsvBtn) {
