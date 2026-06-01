@@ -60,7 +60,7 @@ async def startup_event():
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
         
-        def trigger_ws_refresh(table_name: str, count: int):
+        def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
             import json
             
             # 캐시 무효화
@@ -71,6 +71,9 @@ async def startup_event():
                 "table_name": table_name,
                 "change_count": count
             }
+            if created_logs and len(created_logs) <= 100:
+                msg["created_logs"] = created_logs
+                
             # 스레드 안전하게 메인 이벤트 루프에 브로드캐스트 예약
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)

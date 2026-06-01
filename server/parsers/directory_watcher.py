@@ -264,6 +264,7 @@ class IngestionHandler(FileSystemEventHandler):
         
         batch_size = 5000
         total_changed = 0
+        all_created_logs = []
         
         db = SessionLocal()
         try:
@@ -302,14 +303,16 @@ class IngestionHandler(FileSystemEventHandler):
                         transaction_id=file_tx_id,
                         silent=True
                     )
-                    results, changed_cells, _ = crud.apply_batch_updates(db, t_name, batch_obj)
+                    results, changed_cells, created_logs = crud.apply_batch_updates(db, t_name, batch_obj)
                     total_changed += len(changed_cells)
+                    if created_logs:
+                        all_created_logs.extend(created_logs)
                     logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
                     logger.error(f"[{self.table_name}] ❌ Failed to apply local batch update: {e}")
                     
             if self.on_refresh_callback and total_changed > 0:
-                self.on_refresh_callback(t_name, total_changed)
+                self.on_refresh_callback(t_name, total_changed, all_created_logs)
                 
         finally:
             db.close()

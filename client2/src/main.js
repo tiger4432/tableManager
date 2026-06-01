@@ -1554,7 +1554,14 @@ function handleWebSocketMessage(msg) {
     pageCache.clear();
     // Large bulk updates -> trigger full grid refresh
     fetchData();
-    triggerHistoryReloadDebounced();
+    
+    // Stream logs to timeline if provided, otherwise reload history
+    const createdLogs = msg.created_logs || [];
+    if (createdLogs.length > 0) {
+      createdLogs.forEach(log => appendHistoryLocally(log));
+    } else {
+      triggerHistoryReloadDebounced();
+    }
   }
 }
 
