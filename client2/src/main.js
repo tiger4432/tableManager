@@ -443,7 +443,7 @@ function setupEventListeners() {
       if (!currentTable || isLoadingMore) return;
       
       isLoadingMore = true;
-      performanceLog.textContent = 'Loading all rows from database...';
+      performanceLog.textContent = '⚡ 1/4. Preparing request...';
       const startTime = performance.now();
       
       const q = globalSearch ? globalSearch.value.trim() : '';
@@ -469,10 +469,64 @@ function setupEventListeners() {
       }
       
       try {
+        performanceLog.textContent = '⚡ 1/4. Sending network request to database...';
         const res = await fetch(url);
-        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(`Server returned HTTP ${res.status}`);
+        }
+
+        const contentLength = +res.headers.get('Content-Length') || 0;
+        const reader = res.body.getReader();
         
-        const fetchTime = (performance.now() - startTime).toFixed(1);
+        let receivedBytes = 0;
+        const chunks = [];
+        
+        performanceLog.textContent = '⏳ 2/4. Starting data download...';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          chunks.push(value);
+          receivedBytes += value.length;
+          
+          if (contentLength > 0) {
+            const percent = Math.floor((receivedBytes / contentLength) * 100);
+            const receivedMB = (receivedBytes / (1024 * 1024)).toFixed(2);
+            const totalMB = (contentLength / (1024 * 1024)).toFixed(2);
+            performanceLog.textContent = `⏳ 2/4. Downloading: ${percent}% (${receivedMB}MB / ${totalMB}MB)`;
+          } else {
+            const receivedMB = (receivedBytes / (1024 * 1024)).toFixed(2);
+            performanceLog.textContent = `⏳ 2/4. Downloading: ${receivedMB}MB (unknown total size)`;
+          }
+        }
+        
+        const downloadEndTime = performance.now();
+        const downloadTime = (downloadEndTime - startTime).toFixed(0);
+        
+        performanceLog.textContent = '⚙️ 3/4. Parsing JSON database payload...';
+        // Yield execution to the browser to ensure UI text updates
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        // Combine all chunk Uint8Arrays into one
+        const combined = new Uint8Array(receivedBytes);
+        let position = 0;
+        for (const chunk of chunks) {
+          combined.set(chunk, position);
+          position += chunk.length;
+        }
+        
+        const jsonText = new TextDecoder("utf-8").decode(combined);
+        const result = JSON.parse(jsonText);
+        
+        const parseEndTime = performance.now();
+        const parseTime = (parseEndTime - downloadEndTime).toFixed(0);
+        
+        performanceLog.textContent = '🎨 4/4. Initializing cells & drawing grid...';
+        // Yield execution again to draw the rendering log status
+        await new Promise(resolve => setTimeout(resolve, 20));
+        
+        const renderStartTime = performance.now();
         
         allDataLoaded = true;
         hasMoreData = false;
@@ -485,7 +539,11 @@ function setupEventListeners() {
         
         updateViewModeUI();
         
-        performanceLog.textContent = `Loaded all ${result.data.length} rows in ${fetchTime}ms`;
+        const renderEndTime = performance.now();
+        const renderTime = (renderEndTime - renderStartTime).toFixed(0);
+        const totalTime = (renderEndTime - startTime).toFixed(0);
+        
+        performanceLog.textContent = `✅ Loaded ${result.data.length} rows (Down: ${downloadTime}ms, Parse: ${parseTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
         showToast(`📥 전체 ${result.data.length}개 행 로드 완료!`, 'success');
         isLoadingMore = false;
       } catch (err) {
