@@ -55,6 +55,15 @@ class AuditLogGroupResponse(BaseModel):
 class CellUpdateBatch(BaseModel):
     updates: list[CellUpdate]
 
+class BatchCellPriorityRequest(BaseModel):
+    updates: list[Dict[str, Any]]
+    source_name: Optional[str] = None
+    updated_by: Optional[str] = "user"
+
+class BatchCellSourceDeleteRequest(BaseModel):
+    cells: list[Dict[str, Any]]
+    source_name: str
+
 class CellUpsert(BaseModel):
     business_key_val: Any
     updates: Dict[str, Any]

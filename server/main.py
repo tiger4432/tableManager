@@ -1328,6 +1328,76 @@ async def get_cell_history(table_name: str, row_id: str, col_name: str, db: Sess
     
     return logs
 
+@app.put("/tables/{table_name}/cells/priority/batch")
+async def set_cell_priority_batch_endpoint(
+    table_name: str,
+    req: schemas.BatchCellPriorityRequest,
+    db: Session = Depends(get_db)
+):
+    """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
+    changed_rows = crud.set_cell_manual_priority_batch(
+        db, table_name, req.updates, req.source_name, req.updated_by
+    )
+    
+    if changed_rows:
+        invalidate_table_cache(table_name)
+        # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
+        msg_items = [{
+            "row_id": r.row_id,
+            "is_new": False,
+            "data": r.data,
+            "created_at": to_local_str(r.created_at),
+            "updated_at": to_local_str(r.updated_at)
+        } for r in changed_rows]
+        
+        # Split into chunks of 500
+        CHUNK_SIZE = 500
+        for i in range(0, len(msg_items), CHUNK_SIZE):
+            chunk = msg_items[i:i + CHUNK_SIZE]
+            await manager.broadcast(json.dumps({
+                "event": "batch_row_upsert",
+                "table_name": table_name,
+                "items": chunk,
+                "change_count": len(chunk)
+            }))
+            
+    return {"status": "success", "count": len(changed_rows)}
+
+@app.post("/tables/{table_name}/cells/sources/delete/batch")
+async def delete_cell_source_batch_endpoint(
+    table_name: str,
+    req: schemas.BatchCellSourceDeleteRequest,
+    db: Session = Depends(get_db)
+):
+    """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
+    changed_rows = crud.delete_cell_source_batch(
+        db, table_name, req.cells, req.source_name
+    )
+    
+    if changed_rows:
+        invalidate_table_cache(table_name)
+        # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
+        msg_items = [{
+            "row_id": r.row_id,
+            "is_new": False,
+            "data": r.data,
+            "created_at": to_local_str(r.created_at),
+            "updated_at": to_local_str(r.updated_at)
+        } for r in changed_rows]
+        
+        # Split into chunks of 500
+        CHUNK_SIZE = 500
+        for i in range(0, len(msg_items), CHUNK_SIZE):
+            chunk = msg_items[i:i + CHUNK_SIZE]
+            await manager.broadcast(json.dumps({
+                "event": "batch_row_upsert",
+                "table_name": table_name,
+                "items": chunk,
+                "change_count": len(chunk)
+            }))
+            
+    return {"status": "success", "count": len(changed_rows)}
+
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))

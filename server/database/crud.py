@@ -430,3 +430,104 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
     db.commit()
     db.refresh(row)
     return row, changed_cols
+
+def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user"):
+    """여러 셀의 표시 우선순위 소스를 수동으로 지정합니다 (Pin)."""
+    if not updates:
+        return []
+
+    row_ids = list(set(u["row_id"] for u in updates))
+    rows = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id.in_(row_ids)
+    ).all()
+    row_map = {r.row_id: r for r in rows}
+
+    changed_rows = []
+    tx_id = str(uuid6.uuid7())
+    
+    for item in updates:
+        r_id = item["row_id"]
+        col_name = item["column_name"]
+        
+        row = row_map.get(r_id)
+        if not row or col_name not in row.data:
+            continue
+            
+        cell = row.data[col_name]
+        if source_name and (source_name not in cell.get("sources", {})):
+            continue
+            
+        cell["manual_priority_source"] = source_name
+        old_val = cell.get("value")
+        new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+        cell["value"] = new_val
+        cell["priority_source"] = top_src
+        cell["is_overwrite"] = (source_name == "user") or ("user" in cell.get("sources", {}))
+        
+        if str(old_val) != str(new_val):
+            create_audit_log(
+                db, table_name, r_id, col_name, old_val, new_val,
+                f"set_priority:{source_name}", updated_by,
+                transaction_id=tx_id, business_key=row.business_key_val
+            )
+            
+        from sqlalchemy.sql import func
+        row.updated_at = func.now()
+        flag_modified(row, "data")
+        if row not in changed_rows:
+            changed_rows.append(row)
+            
+    db.commit()
+    return changed_rows
+
+def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str):
+    """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
+    if not cells:
+        return []
+
+    row_ids = list(set(c["row_id"] for c in cells))
+    rows = db.query(models.DataRow).filter(
+        models.DataRow.table_name == table_name,
+        models.DataRow.row_id.in_(row_ids)
+    ).all()
+    row_map = {r.row_id: r for r in rows}
+
+    changed_rows = []
+    tx_id = str(uuid6.uuid7())
+    
+    for item in cells:
+        r_id = item["row_id"]
+        col_name = item["column_name"]
+        
+        row = row_map.get(r_id)
+        if not row or col_name not in row.data:
+            continue
+            
+        cell = row.data[col_name]
+        if "sources" in cell and source_name in cell["sources"]:
+            del cell["sources"][source_name]
+            if cell.get("manual_priority_source") == source_name:
+                cell["manual_priority_source"] = None
+                
+            old_val = cell.get("value")
+            new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
+            cell["value"] = new_val
+            cell["priority_source"] = top_src
+            cell["is_overwrite"] = ("user" in cell["sources"])
+            
+            if str(old_val) != str(new_val):
+                create_audit_log(
+                    db, table_name, r_id, col_name, old_val, new_val,
+                    f"delete_source:{source_name}", "system",
+                    transaction_id=tx_id, business_key=row.business_key_val
+                )
+                
+            from sqlalchemy.sql import func
+            row.updated_at = func.now()
+            flag_modified(row, "data")
+            if row not in changed_rows:
+                changed_rows.append(row)
+                
+    db.commit()
+    return changed_rows

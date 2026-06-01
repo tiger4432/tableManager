@@ -1217,12 +1217,20 @@ function renderGrid(initialRows) {
       const colId = event.column.getId();
       const rowId = event.node.data.row_id;
       const val = event.value;
+      const rowIndex = event.node.rowIndex;
 
-      selectedCell = { rowId, colId, value: val, rowIndex: event.node.rowIndex };
+      // If right-clicked cell is outside current drag selection range, clear it
+      if (dragStartCell && dragEndCell && !isCellInRange(rowIndex, colId)) {
+        clearRangeSelection();
+      }
+
+      selectedCell = { rowId, colId, value: val, rowIndex };
       updateSelectedCellUI();
 
-      // Select right-clicked row
-      event.node.setSelected(true, true);
+      // Only change node selection if range selection is not active
+      if (!dragStartCell || !dragEndCell) {
+        event.node.setSelected(true, true);
+      }
 
       // Position and show custom menu
       contextMenu.style.left = `${event.event.clientX}px`;
@@ -2542,14 +2550,72 @@ function releaseNavigationGuard(errorMessage = '') {
 }
 
 // Feature 2: Open Cell Sources Dialog Modal
-async function openSourcesModal() {
-  if (!selectedCell) return;
-  const { rowId, colId } = selectedCell;
+// Helper: get selected cells range or single focused cell
+function getSelectedCells() {
+  if (!gridApi) return [];
+  const cells = [];
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
-  modalMetaInfo.innerHTML = `
-    <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${rowId}</span></div>
-    <div><strong>Column:</strong> <span style="color:var(--color-primary)">${colId.toUpperCase()}</span></div>
-  `;
+  if (dragStartCell && dragEndCell) {
+    const startColIdx = allCols.indexOf(dragStartCell.colId);
+    const endColIdx = allCols.indexOf(dragEndCell.colId);
+    if (startColIdx !== -1 && endColIdx !== -1) {
+      const minColIdx = Math.min(startColIdx, endColIdx);
+      const maxColIdx = Math.max(startColIdx, endColIdx);
+      const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+      const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+      for (let r = minRowIdx; r <= maxRowIdx; r++) {
+        for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
+          const colId = allCols[cIdx];
+          if (systemCols.includes(colId) || /^\d+$/.test(colId)) continue;
+          
+          const rowNode = gridApi.getDisplayedRowAtIndex(r);
+          if (rowNode && rowNode.data) {
+            const rowId = rowNode.data.row_id;
+            cells.push({ rowId, colId, rowIndex: r });
+          }
+        }
+      }
+    }
+  } else {
+    // Focused cell fallback
+    const focusedCell = gridApi.getFocusedCell();
+    if (focusedCell) {
+      const colId = focusedCell.column.getId();
+      if (!systemCols.includes(colId) && !/^\d+$/.test(colId)) {
+        const rowNode = gridApi.getDisplayedRowAtIndex(focusedCell.rowIndex);
+        if (rowNode && rowNode.data) {
+          cells.push({ rowId: rowNode.data.row_id, colId, rowIndex: focusedCell.rowIndex });
+        }
+      }
+    } else if (selectedCell) {
+      cells.push({ rowId: selectedCell.rowId, colId: selectedCell.colId, rowIndex: selectedCell.rowIndex });
+    }
+  }
+  return cells;
+}
+
+// Feature 2: Open Cell Sources Dialog Modal
+async function openSourcesModal() {
+  const cells = getSelectedCells();
+  if (cells.length === 0) return;
+
+  if (cells.length > 1) {
+    const cols = Array.from(new Set(cells.map(c => c.colId)));
+    const rows = Array.from(new Set(cells.map(c => c.rowIndex)));
+    modalMetaInfo.innerHTML = `
+      <div><strong>Selected Range:</strong> <span style="color:var(--color-secondary)">${cells.length} cells (${rows.length} rows × ${cols.length} cols)</span></div>
+      <div><strong>Columns:</strong> <span style="color:var(--color-primary)">${cols.map(c => c.toUpperCase()).join(', ')}</span></div>
+    `;
+  } else {
+    const { rowId, colId } = cells[0];
+    modalMetaInfo.innerHTML = `
+      <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${rowId}</span></div>
+      <div><strong>Column:</strong> <span style="color:var(--color-primary)">${colId.toUpperCase()}</span></div>
+    `;
+  }
   sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center">Loading sources...</td></tr>';
   sourcesModal.style.display = 'flex';
 
@@ -2558,107 +2624,234 @@ async function openSourcesModal() {
 
 // Fetch and render source details inside table
 async function refreshSourcesList() {
-  if (!selectedCell) return;
-  const { rowId, colId } = selectedCell;
+  const cells = getSelectedCells();
+  if (cells.length === 0) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources`);
-    if (!res.ok) throw new Error('Failed to fetch sources');
-    
-    const data = await res.json();
-    const sources = data.sources || {};
-    const manualPriority = data.manual_priority_source;
-    
+  if (cells.length === 1) {
+    const { rowId, colId } = cells[0];
+    try {
+      const res = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources`);
+      if (!res.ok) throw new Error('Failed to fetch sources');
+      
+      const data = await res.json();
+      const sources = data.sources || {};
+      const manualPriority = data.manual_priority_source;
+      
+      sourcesList.innerHTML = '';
+      const sourceNames = Object.keys(sources);
+
+      if (sourceNames.length === 0) {
+        sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No source data available.</td></tr>';
+        return;
+      }
+
+      sourceNames.forEach(sourceName => {
+        const sourceVal = sources[sourceName];
+        const isPinned = manualPriority === sourceName;
+        
+        let displayVal = sourceVal;
+        let titleAttr = '';
+        if (sourceVal && typeof sourceVal === 'object') {
+          displayVal = sourceVal.value !== undefined ? sourceVal.value : '';
+          if (sourceVal.timestamp || sourceVal.updated_by) {
+            const timeStr = sourceVal.timestamp ? new Date(sourceVal.timestamp).toLocaleString() : 'N/A';
+            const userStr = sourceVal.updated_by || 'system';
+            titleAttr = `title="Updated by ${userStr} at ${timeStr}"`;
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${sourceName}</td>
+          <td><code ${titleAttr}>${displayVal !== null ? displayVal : 'NULL'}</code></td>
+          <td>
+            <button class="action-btn pin-btn ${isPinned ? 'active' : ''}" title="Pin this value">${isPinned ? '📌 Pinned' : '📍 Pin'}</button>
+            <button class="action-btn del-btn" title="Delete this source">🗑️ Delete</button>
+          </td>
+        `;
+
+        // Bind Pin Action
+        tr.querySelector('.pin-btn').addEventListener('click', async () => {
+          const nextPriority = isPinned ? null : sourceName; // Toggle pin
+          performanceLog.textContent = 'Updating cell priority...';
+          try {
+            const pinRes = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/priority`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                source_name: nextPriority,
+                updated_by: CURRENT_USER
+              })
+            });
+
+            if (pinRes.ok) {
+              performanceLog.textContent = 'Cell priority updated successfully';
+              pageCache.clear();
+              await fetchData(false);
+              await refreshSourcesList();
+            } else {
+              throw new Error('Priority update failed');
+            }
+          } catch (err) {
+            console.error(err);
+            performanceLog.textContent = '❌ Failed to pin source';
+          }
+        });
+
+        // Bind Delete Action
+        tr.querySelector('.del-btn').addEventListener('click', async () => {
+          if (!confirm(`Are you sure you want to delete source [${sourceName}] data for this cell?`)) return;
+          
+          performanceLog.textContent = 'Deleting cell source...';
+          try {
+            const delRes = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources/${sourceName}`, {
+              method: 'DELETE'
+            });
+
+            if (delRes.ok) {
+              performanceLog.textContent = 'Cell source deleted successfully';
+              pageCache.clear();
+              await fetchData(false);
+              await refreshSourcesList();
+            } else {
+              throw new Error('Source deletion failed');
+            }
+          } catch (err) {
+            console.error(err);
+            performanceLog.textContent = '❌ Failed to delete cell source';
+          }
+        });
+
+        sourcesList.appendChild(tr);
+      });
+    } catch (err) {
+      console.error(err);
+      sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--color-danger)">Failed to load sources.</td></tr>';
+    }
+  } else {
+    // Batch Mode
+    const uniqueSources = new Set();
+    const sourceValuesMap = {};
+    const sourcePinnedCount = {};
+
+    cells.forEach(cell => {
+      const rowNode = gridApi.getDisplayedRowAtIndex(cell.rowIndex);
+      if (!rowNode || !rowNode.data) return;
+      const cellData = rowNode.data.data?.[cell.colId];
+      if (!cellData || !cellData.sources) return;
+      
+      const manualPriority = cellData.manual_priority_source;
+      Object.keys(cellData.sources).forEach(srcName => {
+        uniqueSources.add(srcName);
+        if (!sourceValuesMap[srcName]) {
+          sourceValuesMap[srcName] = [];
+        }
+        let srcVal = cellData.sources[srcName];
+        let valStr = srcVal;
+        if (srcVal && typeof srcVal === 'object') {
+          valStr = srcVal.value !== undefined ? srcVal.value : '';
+        }
+        sourceValuesMap[srcName].push(valStr);
+        
+        if (manualPriority === srcName) {
+          sourcePinnedCount[srcName] = (sourcePinnedCount[srcName] || 0) + 1;
+        }
+      });
+    });
+
     sourcesList.innerHTML = '';
-    const sourceNames = Object.keys(sources);
+    const sourceNames = Array.from(uniqueSources);
 
     if (sourceNames.length === 0) {
-      sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No source data available.</td></tr>';
+      sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No source data available in selected cells.</td></tr>';
       return;
     }
 
     sourceNames.forEach(sourceName => {
-      const sourceVal = sources[sourceName];
-      const isPinned = manualPriority === sourceName;
-      
-      let displayVal = sourceVal;
-      let titleAttr = '';
-      if (sourceVal && typeof sourceVal === 'object') {
-        displayVal = sourceVal.value !== undefined ? sourceVal.value : '';
-        if (sourceVal.timestamp || sourceVal.updated_by) {
-          const timeStr = sourceVal.timestamp ? new Date(sourceVal.timestamp).toLocaleString() : 'N/A';
-          const userStr = sourceVal.updated_by || 'system';
-          titleAttr = `title="Updated by ${userStr} at ${timeStr}"`;
-        }
+      const values = sourceValuesMap[sourceName] || [];
+      const pinnedCount = sourcePinnedCount[sourceName] || 0;
+      const isPinnedAll = pinnedCount === cells.length;
+
+      const uniqueVals = Array.from(new Set(values));
+      let valText = '';
+      if (uniqueVals.length === 0) {
+        valText = 'N/A';
+      } else if (uniqueVals.length === 1) {
+        valText = String(uniqueVals[0]);
+      } else {
+        valText = `Multiple Values (${uniqueVals.length} types)`;
       }
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${sourceName}</td>
-        <td><code ${titleAttr}>${displayVal !== null ? displayVal : 'NULL'}</code></td>
+        <td><code>${valText}</code></td>
         <td>
-          <button class="action-btn pin-btn ${isPinned ? 'active' : ''}" title="Pin this value">${isPinned ? '📌 Pinned' : '📍 Pin'}</button>
-          <button class="action-btn del-btn" title="Delete this source">🗑️ Delete</button>
+          <button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
+          <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>
         </td>
       `;
 
-      // Bind Pin Action
+      // Bind batch Pin Action
       tr.querySelector('.pin-btn').addEventListener('click', async () => {
-        const nextPriority = isPinned ? null : sourceName; // Toggle pin
-        performanceLog.textContent = 'Updating cell priority...';
+        const nextPriority = isPinnedAll ? null : sourceName;
+        performanceLog.textContent = `Batch updating cell priority to [${sourceName}]...`;
         try {
-          const pinRes = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/priority`, {
+          const pinRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/priority/batch`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              updates: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
               source_name: nextPriority,
               updated_by: CURRENT_USER
             })
           });
 
           if (pinRes.ok) {
-            performanceLog.textContent = 'Cell priority updated successfully';
+            performanceLog.textContent = 'Batch cell priority updated successfully';
             pageCache.clear();
             await fetchData(false);
             await refreshSourcesList();
           } else {
-            throw new Error('Priority update failed');
+            throw new Error('Batch priority update failed');
           }
         } catch (err) {
           console.error(err);
-          performanceLog.textContent = '❌ Failed to pin source';
+          performanceLog.textContent = '❌ Failed to batch pin source';
         }
       });
 
-      // Bind Delete Action
+      // Bind batch Delete Action
       tr.querySelector('.del-btn').addEventListener('click', async () => {
-        if (!confirm(`Are you sure you want to delete source [${sourceName}] data for this cell?`)) return;
+        if (!confirm(`Are you sure you want to delete source [${sourceName}] from all ${cells.length} selected cells?`)) return;
         
-        performanceLog.textContent = 'Deleting cell source...';
+        performanceLog.textContent = `Batch deleting source [${sourceName}]...`;
         try {
-          const delRes = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources/${sourceName}`, {
-            method: 'DELETE'
+          const delRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/sources/delete/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cells: cells.map(c => ({ row_id: c.rowId, column_name: c.colId })),
+              source_name: sourceName
+            })
           });
 
           if (delRes.ok) {
-            performanceLog.textContent = 'Cell source deleted successfully';
+            performanceLog.textContent = 'Batch cell sources deleted successfully';
             pageCache.clear();
             await fetchData(false);
             await refreshSourcesList();
           } else {
-            throw new Error('Source deletion failed');
+            throw new Error('Batch source deletion failed');
           }
         } catch (err) {
           console.error(err);
-          performanceLog.textContent = '❌ Failed to delete cell source';
+          performanceLog.textContent = '❌ Failed to batch delete source';
         }
       });
 
       sourcesList.appendChild(tr);
     });
-  } catch (err) {
-    console.error(err);
-    sourcesList.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--color-danger)">Failed to load sources.</td></tr>';
   }
 }
 
