@@ -290,10 +290,10 @@ function setupEventListeners() {
       const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
       
       if (!isEditing) {
-        // Delete key inside the grid to delete rows
+        // Delete key inside the grid to clear selected cells
         if (e.key === 'Delete') {
           e.preventDefault();
-          deleteSelectedRows();
+          clearSelectedCells();
         }
         // Ctrl+A / Cmd+A inside the grid to select all cells
         else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
@@ -2514,6 +2514,135 @@ async function deleteSelectedRows() {
   } catch (err) {
     console.error(err);
     performanceLog.textContent = '❌ Failed to delete selected rows';
+  }
+}
+
+// Feature: Clear selected cells in range or single focused cell
+async function clearSelectedCells() {
+  if (!gridApi || !currentTable) return;
+
+  let cellsToClear = []; // Array of { rowIndex, colId }
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+
+  // 1. Check if range selection exists
+  if (dragStartCell && dragEndCell) {
+    const startColIdx = allCols.indexOf(dragStartCell.colId);
+    const endColIdx = allCols.indexOf(dragEndCell.colId);
+    if (startColIdx !== -1 && endColIdx !== -1) {
+      const minColIdx = Math.min(startColIdx, endColIdx);
+      const maxColIdx = Math.max(startColIdx, endColIdx);
+      const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+      const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+      for (let r = minRowIdx; r <= maxRowIdx; r++) {
+        for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
+          cellsToClear.push({ rowIndex: r, colId: allCols[cIdx] });
+        }
+      }
+    }
+  } else {
+    // Single focused cell
+    const focusedCell = gridApi.getFocusedCell();
+    if (focusedCell) {
+      cellsToClear.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
+    }
+  }
+
+  if (cellsToClear.length === 0) return;
+
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
+  const updateMapByRow = {};
+
+  cellsToClear.forEach(cell => {
+    // Skip system columns
+    if (systemCols.includes(cell.colId) || /^\d+$/.test(cell.colId)) return;
+
+    const rowNode = gridApi.getDisplayedRowAtIndex(cell.rowIndex);
+    if (!rowNode || !rowNode.data) return;
+    const rowId = rowNode.data.row_id;
+    if (!rowId) return;
+
+    if (!updateMapByRow[rowId]) {
+      updateMapByRow[rowId] = {
+        row_id: rowId,
+        updates: {},
+        rowNode: rowNode
+      };
+    }
+
+    const colType = (currentColumnTypes || {})[cell.colId] || 'string';
+    const clearValue = colType === 'number' ? null : '';
+    updateMapByRow[rowId].updates[cell.colId] = clearValue;
+  });
+
+  const updatesArray = [];
+  const rowsToUpdate = [];
+
+  Object.keys(updateMapByRow).forEach(rowId => {
+    const item = updateMapByRow[rowId];
+    if (Object.keys(item.updates).length > 0) {
+      updatesArray.push({
+        row_id: rowId,
+        updates: item.updates,
+        source_name: 'user',
+        updated_by: CURRENT_USER
+      });
+
+      const data = item.rowNode.data;
+      if (!data.data) data.data = {};
+      
+      Object.keys(item.updates).forEach(colId => {
+        if (!data.data[colId]) data.data[colId] = {};
+        data.data[colId].value = item.updates[colId];
+        data.data[colId].is_overwrite = true;
+      });
+
+      data.updated_at = new Date().toISOString();
+      rowsToUpdate.push(data);
+    }
+  });
+
+  if (updatesArray.length === 0) return;
+
+  performanceLog.textContent = `Clearing ${updatesArray.reduce((acc, cur) => acc + Object.keys(cur.updates).length, 0)} cells...`;
+  const startTime = performance.now();
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${currentTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        updates: updatesArray,
+        silent: false
+      })
+    });
+
+    if (res.ok) {
+      pageCache.clear();
+      const result = await res.json();
+      const saveTime = (performance.now() - startTime).toFixed(1);
+      performanceLog.textContent = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
+
+      // Apply grid local updates
+      gridApi.applyTransaction({ update: rowsToUpdate });
+      
+      if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
+        selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
+        updateSelectedCellUI();
+      }
+
+      triggerHistoryReloadDebounced();
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Cell clearing failed';
+      throw new Error(errMsg);
+    }
+  } catch (err) {
+    console.error('Failed to clear cells', err);
+    alert(`셀 내용 비우기 실패: ${err.message}`);
+    performanceLog.textContent = '❌ Cell clearing failed';
   }
 }
 
