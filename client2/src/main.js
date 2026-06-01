@@ -1849,6 +1849,12 @@ function getRangeSelectedTSV() {
 
   let tsvRows = [];
 
+  // Copy Header 토글 상태 확인 및 헤더 한 행 삽입
+  const includeHeaders = copyHeaderToggle && copyHeaderToggle.checked;
+  if (includeHeaders) {
+    tsvRows.push(colsToCopy.map(c => c.toUpperCase()).join('\t'));
+  }
+
   for (let r = minRowIdx; r <= maxRowIdx; r++) {
     const rowNode = gridApi.getDisplayedRowAtIndex(r);
     if (!rowNode || !rowNode.data) continue;
