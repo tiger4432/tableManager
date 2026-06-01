@@ -250,12 +250,9 @@ if __name__ == "__main__":
         except OSError:
             return False
             
-    if is_port_open("127.0.0.1", 5173):
-        url = "http://localhost:5173/?client=desktop"
-        print("[Desktop Wrapper] Vite dev server detected on port 5173. Loading development URL.")
-    else:
-        url = "http://localhost:8080/?client=desktop"
-        print("[Desktop Wrapper] Vite dev server not detected. Loading integrated FastAPI URL on port 8080.")
+
+    url = "http://localhost:8080/?client=desktop"
+    print("[Desktop Wrapper] Vite dev server not detected. Loading integrated FastAPI URL on port 8080.")
         
     window = HybridDesktopClient(url)
     window.show()

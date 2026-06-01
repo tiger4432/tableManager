@@ -980,7 +980,10 @@ function renderGrid(initialRows) {
   // Prepend Row Number Column (Sequential 1,2,3,4...)
   columnDefs.unshift({
     headerName: '#',
-    valueGetter: (params) => params.node.rowIndex + 1,
+    valueGetter: (params) => {
+      const skip = (viewMode === 'pagination' && !allDataLoaded) ? currentSkip : 0;
+      return skip + params.node.rowIndex + 1;
+    },
     width: 100,
     minWidth: 90,
     maxWidth: 150,
