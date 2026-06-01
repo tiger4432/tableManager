@@ -1817,7 +1817,8 @@ function setupClipboardHandlers() {
           const oldRowData = rowNode.data;
           const newRowData = {
             ...oldRowData,
-            data: { ...oldRowData.data }
+            data: { ...oldRowData.data },
+            updated_at: new Date().toISOString()
           };
           Object.keys(rowUpdates).forEach(col => {
             if (!newRowData.data[col]) newRowData.data[col] = {};
@@ -1842,6 +1843,9 @@ function setupClipboardHandlers() {
           
           // Fast-apply local data values
           gridApi.applyTransaction({ update: localUpdates });
+          
+          // Force sort update to push modified rows to the top
+          updateGridSortState();
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.detail || 'Paste batch update failed';
