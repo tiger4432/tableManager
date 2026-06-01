@@ -20,6 +20,9 @@ let currentColumnTypes = {};
 let ws = null;
 let selectedCell = null; // { rowId, colId, value, rowIndex }
 let activeHistoryTab = 'global'; // 'global' | 'cell' | 'row'
+let dragStartCell = null; // { rowIndex, colId }
+let dragEndCell = null;   // { rowIndex, colId }
+let isDraggingRange = false;
 let globalHistoryData = [];
 const expandedTransactions = new Set();
 const fetchingTransactions = new Set();
@@ -714,6 +717,7 @@ async function switchTable(tableName) {
   
   // Clean selected cell info
   selectedCell = null;
+  clearRangeSelection();
   updateSelectedCellUI();
   
   // Reset transaction filter
@@ -828,6 +832,7 @@ async function fetchData(resetSkip = true) {
   
   if (resetSkip) {
     pageCache.clear();
+    clearRangeSelection();
     currentSkip = 0;
     hasMoreData = true;
     allDataLoaded = false;
@@ -993,6 +998,10 @@ function renderGrid(initialRows) {
           if (isSystem) return false;
           const cell = params.data.data?.[col];
           return cell?.is_overwrite === true;
+        },
+        // Highlight selected range cell-by-cell dynamically
+        'custom-range-selected': (params) => {
+          return isCellInRange(params.node.rowIndex, col);
         }
       }
     };
@@ -1076,6 +1085,29 @@ function renderGrid(initialRows) {
       updateSelectedCellUI();
       if (activeHistoryTab !== 'global') {
         loadHistory();
+      }
+    },
+    // Range selection mouse drag event handling
+    onCellMouseDown: (event) => {
+      if (event.event.button !== 0) return;
+      if (event.column.getColId() === '#') return;
+
+      isDraggingRange = true;
+      dragStartCell = { rowIndex: event.rowIndex, colId: event.column.getColId() };
+      dragEndCell = { rowIndex: event.rowIndex, colId: event.column.getColId() };
+      
+      event.api.refreshCells({ force: true });
+    },
+    onCellMouseOver: (event) => {
+      if (!isDraggingRange || !dragStartCell) return;
+      if (event.column.getColId() === '#') return;
+
+      const currRow = event.rowIndex;
+      const currCol = event.column.getColId();
+
+      if (dragEndCell.rowIndex !== currRow || dragEndCell.colId !== currCol) {
+        dragEndCell = { rowIndex: currRow, colId: currCol };
+        event.api.refreshCells({ force: true });
       }
     },
     // Feature 1: Cell Editing
@@ -1738,6 +1770,81 @@ function triggerHistoryReloadDebounced() {
   }, 300);
 }
 
+// Range selection helper functions
+function isCellInRange(rowIndex, colId) {
+  if (!dragStartCell || !dragEndCell) return false;
+  if (!gridApi) return false;
+
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+  const startColIdx = allCols.indexOf(dragStartCell.colId);
+  const endColIdx = allCols.indexOf(dragEndCell.colId);
+
+  if (startColIdx === -1 || endColIdx === -1) return false;
+
+  const minColIdx = Math.min(startColIdx, endColIdx);
+  const maxColIdx = Math.max(startColIdx, endColIdx);
+  const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+  const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+  const colIdx = allCols.indexOf(colId);
+  if (colIdx === -1) return false;
+
+  return rowIndex >= minRowIdx && rowIndex <= maxRowIdx && colIdx >= minColIdx && colIdx <= maxColIdx;
+}
+
+function clearRangeSelection() {
+  dragStartCell = null;
+  dragEndCell = null;
+  isDraggingRange = false;
+}
+
+function getRangeSelectedTSV() {
+  if (!dragStartCell || !dragEndCell || !gridApi) return '';
+
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+  const startColIdx = allCols.indexOf(dragStartCell.colId);
+  const endColIdx = allCols.indexOf(dragEndCell.colId);
+
+  if (startColIdx === -1 || endColIdx === -1) return '';
+
+  const minColIdx = Math.min(startColIdx, endColIdx);
+  const maxColIdx = Math.max(startColIdx, endColIdx);
+  const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+  const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+  // Exclude system columns like sequential row number # from copy values
+  const colsToCopy = allCols.slice(minColIdx, maxColIdx + 1).filter(c => c !== '#');
+  if (colsToCopy.length === 0) return '';
+
+  let tsvRows = [];
+
+  for (let r = minRowIdx; r <= maxRowIdx; r++) {
+    const rowNode = gridApi.getDisplayedRowAtIndex(r);
+    if (!rowNode || !rowNode.data) continue;
+
+    let rowVals = [];
+    colsToCopy.forEach(col => {
+      let val = '';
+      if (col === 'row_id') val = rowNode.data.row_id;
+      else if (col === 'created_at') val = rowNode.data.created_at;
+      else if (col === 'updated_at') val = rowNode.data.updated_at;
+      else {
+        const cell = rowNode.data.data?.[col];
+        if (cell && typeof cell === 'object') {
+          val = cell.value !== undefined ? cell.value : '';
+        } else {
+          val = cell !== undefined ? cell : '';
+        }
+      }
+      // Sanitize tab and newline characters in string
+      rowVals.push(String(val).replace(/\t/g, ' ').replace(/\n/g, ' '));
+    });
+    tsvRows.push(rowVals.join('\t'));
+  }
+
+  return tsvRows.join('\n');
+}
+
 // Clipboard Operations (Feature: Smart Copy & Paste)
 function setupClipboardHandlers() {
   // 1. Paste handler
@@ -1864,6 +1971,16 @@ function setupClipboardHandlers() {
     const activeEl = document.activeElement;
     if (!gridApi || !activeEl || !activeEl.closest('#myGrid')) return;
 
+    // 1순위: 커스텀 드래그 선택 범위가 존재할 경우 범위 복사 실행
+    const rangeTsv = getRangeSelectedTSV();
+    if (rangeTsv) {
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', rangeTsv);
+      performanceLog.textContent = '📋 Range copied to clipboard';
+      return;
+    }
+
+    // 2순위 (Fallback): 선택된 행 단위 복사 실행
     const selectedNodes = gridApi.getSelectedNodes();
     if (selectedNodes.length === 0) return;
 
@@ -1895,7 +2012,7 @@ function setupClipboardHandlers() {
     });
 
     e.clipboardData.setData('text/plain', lines.join('\n'));
-    performanceLog.textContent = `Copied ${selectedNodes.length} rows to clipboard`;
+    performanceLog.textContent = `📋 Copied ${selectedNodes.length} rows to clipboard`;
   });
 }
 
@@ -2433,6 +2550,16 @@ function showToast(message, type = 'info') {
   }, 5000);
 }
 window.showToast = showToast; // Expose globally for Desktop Wrapper
+
+// Global mouseup handling for drag range selection completion
+document.addEventListener('mouseup', () => {
+  if (isDraggingRange) {
+    isDraggingRange = false;
+    if (gridApi) {
+      gridApi.refreshCells({ force: true });
+    }
+  }
+});
 
 // Start Application
 init();

@@ -1252,3 +1252,18 @@ body {
     opacity: 1;
   }
 }
+
+/* 그리드 내 셀 드래그 시 텍스트 선택 방지 */
+.ag-cell {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* 커스텀 셀 범위 선택 스타일 (연한 파란색 테두리와 반투명 파란색 배경 - 엑셀 느낌) */
+.ag-cell.custom-range-selected {
+  background-color: rgba(33, 150, 243, 0.18) !important;
+  border: 1px dashed #2196f3 !important;
+  box-sizing: border-box;
+}
