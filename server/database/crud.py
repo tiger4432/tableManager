@@ -213,6 +213,10 @@ def apply_row_update_internal(
             "updated_by": update_item.updated_by
         }
         
+        # User manual value updates remove any existing manual priority constraint
+        if update_item.source_name == "user":
+            cell["manual_priority_source"] = None
+            
         new_val, top_src = compute_priority_value(cell["sources"], cell.get("manual_priority_source"))
         
         if is_new or (str(old_val) != str(new_val)):
