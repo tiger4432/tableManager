@@ -94,7 +94,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
 import uuid6
 from datetime import datetime, timezone
 
-def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None):
+def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None, add_to_cache: bool = True):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
@@ -116,8 +116,6 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
     )
     db.add(log)
 
-    # 인메모리 캐시에 즉시 반영 (ID는 클라이언트 뷰에서 사용되지 않으므로 0으로 임시 매핑)
-    from audit_cache import audit_cache
     log_dict = {
         "id": 0,
         "table_name": table_name,
@@ -131,14 +129,20 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         "business_key": business_key,
         "timestamp": ts
     }
-    audit_cache.add_log(log_dict)
+    if add_to_cache:
+        # 인메모리 캐시에 즉시 반영 (ID는 클라이언트 뷰에서 사용되지 않으므로 0으로 임시 매핑)
+        from audit_cache import audit_cache
+        audit_cache.add_log(log_dict)
+        
+    return log_dict
 
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
     update_item: schemas.GeneralUpdateItem,
     row_cache: dict = None,
-    transaction_id: str = None
+    transaction_id: str = None,
+    logs_to_cache: list = None
 ) -> tuple[models.DataRow, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
@@ -215,7 +219,14 @@ def apply_row_update_internal(
             changed_cols.append(col_name)
             # [최적화] 사용자(human) 직접 수정인 경우만 상세 셀 단위 로그 기록
             if update_item.source_name == "user":
-                create_audit_log(db, table_name, row.row_id, col_name, old_val, new_val, update_item.source_name, (update_item.updated_by or "user"), transaction_id=transaction_id, business_key=row.business_key_val)
+                log_dict = create_audit_log(
+                    db, table_name, row.row_id, col_name, old_val, new_val, 
+                    update_item.source_name, (update_item.updated_by or "user"), 
+                    transaction_id=transaction_id, business_key=row.business_key_val,
+                    add_to_cache=(logs_to_cache is None)
+                )
+                if logs_to_cache is not None:
+                    logs_to_cache.append(log_dict)
             
         cell["value"] = new_val
         cell["priority_source"] = top_src
@@ -225,13 +236,16 @@ def apply_row_update_internal(
     # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
     if changed_cols and update_item.source_name != "user":
         summary_msg = f"{len(changed_cols)}개 필드 업데이트" if not is_new else "신규 데이터 생성"
-        create_audit_log(
+        log_dict = create_audit_log(
             db, table_name, row.row_id, "ROW_UPDATE",
             None, summary_msg, update_item.source_name,
             (update_item.updated_by or "system"),
             transaction_id=transaction_id,
-            business_key=row.business_key_val
+            business_key=row.business_key_val,
+            add_to_cache=(logs_to_cache is None)
         )
+        if logs_to_cache is not None:
+            logs_to_cache.append(log_dict)
 
     if changed_cols or is_new:
         from sqlalchemy.sql import func
@@ -266,9 +280,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
 
     unique_results = {} # row_id -> (row, is_new)
     total_changed_cells = [] # list of (row_id, col_name)
+    logs_to_cache = []
     
     for item in batch.updates:
-        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id)
+        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id, logs_to_cache=logs_to_cache)
         prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
         unique_results[row.row_id] = (row, is_new or prev_is_new)
         
@@ -279,6 +294,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
     
     db.commit()
+    
+    if logs_to_cache:
+        from audit_cache import audit_cache
+        audit_cache.add_logs_batch(logs_to_cache)
     
     # Serialize logs after commit to ensure IDs are assigned
     serialized_logs = []
@@ -320,17 +339,25 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     
     db.add_all(new_rows)
     
+    logs_to_cache = []
     if count > 0:
         tx_id = str(uuid6.uuid7())
         for row in new_rows:
-            create_audit_log(
+            log_dict = create_audit_log(
                 db, table_name, row.row_id, "CREATE",
                 None, "새 행 생성됨", "system", user_name,
                 transaction_id=tx_id,
-                business_key=row.business_key_val
+                business_key=row.business_key_val,
+                add_to_cache=False
             )
+            logs_to_cache.append(log_dict)
     
     db.commit()
+    
+    if logs_to_cache:
+        from audit_cache import audit_cache
+        audit_cache.add_logs_batch(logs_to_cache)
+        
     # [O(N) 제거] refresh() 루프를 제거하여 대량 생성 시 지연 방지
     return new_rows
 
@@ -357,15 +384,22 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             
     if deleted_count > 0:
         tx_id = str(uuid6.uuid7())
+        logs_to_cache = []
         for row in rows_to_delete:
-            create_audit_log(
+            log_dict = create_audit_log(
                 db, table_name, row.row_id, "DELETE", 
                 None, "행 삭제됨", "system", user_name,
                 transaction_id=tx_id,
-                business_key=row.business_key_val
+                business_key=row.business_key_val,
+                add_to_cache=False
             )
+            logs_to_cache.append(log_dict)
         db.commit()
         
+        if logs_to_cache:
+            from audit_cache import audit_cache
+            audit_cache.add_logs_batch(logs_to_cache)
+            
         # 삭제된 행의 이전 로그 캐시에서 즉시 정리 (방금 남긴 DELETE 배치는 남음)
         from audit_cache import audit_cache
         audit_cache.remove_deleted_rows(row_ids)
@@ -445,6 +479,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
 
     changed_rows = []
     tx_id = str(uuid6.uuid7())
+    logs_to_cache = []
     
     for item in updates:
         r_id = item["row_id"]
@@ -466,11 +501,13 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         cell["is_overwrite"] = (source_name == "user") or ("user" in cell.get("sources", {}))
         
         if str(old_val) != str(new_val):
-            create_audit_log(
+            log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"set_priority:{source_name}", updated_by,
-                transaction_id=tx_id, business_key=row.business_key_val
+                transaction_id=tx_id, business_key=row.business_key_val,
+                add_to_cache=False
             )
+            logs_to_cache.append(log_dict)
             
         from sqlalchemy.sql import func
         row.updated_at = func.now()
@@ -479,6 +516,11 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             changed_rows.append(row)
             
     db.commit()
+    
+    if logs_to_cache:
+        from audit_cache import audit_cache
+        audit_cache.add_logs_batch(logs_to_cache)
+        
     return changed_rows
 
 def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str):
@@ -495,6 +537,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
 
     changed_rows = []
     tx_id = str(uuid6.uuid7())
+    logs_to_cache = []
     
     for item in cells:
         r_id = item["row_id"]
@@ -517,11 +560,13 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
             cell["is_overwrite"] = ("user" in cell["sources"])
             
             if str(old_val) != str(new_val):
-                create_audit_log(
+                log_dict = create_audit_log(
                     db, table_name, r_id, col_name, old_val, new_val,
                     f"delete_source:{source_name}", "system",
-                    transaction_id=tx_id, business_key=row.business_key_val
+                    transaction_id=tx_id, business_key=row.business_key_val,
+                    add_to_cache=False
                 )
+                logs_to_cache.append(log_dict)
                 
             from sqlalchemy.sql import func
             row.updated_at = func.now()
@@ -530,4 +575,9 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 changed_rows.append(row)
                 
     db.commit()
+    
+    if logs_to_cache:
+        from audit_cache import audit_cache
+        audit_cache.add_logs_batch(logs_to_cache)
+        
     return changed_rows

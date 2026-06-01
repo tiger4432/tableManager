@@ -1350,16 +1350,25 @@ async def set_cell_priority_batch_endpoint(
             "updated_at": to_local_str(r.updated_at)
         } for r in changed_rows]
         
-        # Split into chunks of 500
-        CHUNK_SIZE = 500
-        for i in range(0, len(msg_items), CHUNK_SIZE):
-            chunk = msg_items[i:i + CHUNK_SIZE]
-            await manager.broadcast(json.dumps({
-                "event": "batch_row_upsert",
+        if len(msg_items) > 100:
+            # 대량 업데이트: 경량화된 새로고침 신호만 전송
+            msg = {
+                "event": "batch_refresh_required",
                 "table_name": table_name,
-                "items": chunk,
-                "change_count": len(chunk)
-            }))
+                "change_count": len(msg_items)
+            }
+            await manager.broadcast(json.dumps(msg))
+        else:
+            # Split into chunks of 500
+            CHUNK_SIZE = 500
+            for i in range(0, len(msg_items), CHUNK_SIZE):
+                chunk = msg_items[i:i + CHUNK_SIZE]
+                await manager.broadcast(json.dumps({
+                    "event": "batch_row_upsert",
+                    "table_name": table_name,
+                    "items": chunk,
+                    "change_count": len(chunk)
+                }))
             
     return {"status": "success", "count": len(changed_rows)}
 
@@ -1385,16 +1394,25 @@ async def delete_cell_source_batch_endpoint(
             "updated_at": to_local_str(r.updated_at)
         } for r in changed_rows]
         
-        # Split into chunks of 500
-        CHUNK_SIZE = 500
-        for i in range(0, len(msg_items), CHUNK_SIZE):
-            chunk = msg_items[i:i + CHUNK_SIZE]
-            await manager.broadcast(json.dumps({
-                "event": "batch_row_upsert",
+        if len(msg_items) > 100:
+            # 대량 업데이트: 경량화된 새로고침 신호만 전송
+            msg = {
+                "event": "batch_refresh_required",
                 "table_name": table_name,
-                "items": chunk,
-                "change_count": len(chunk)
-            }))
+                "change_count": len(msg_items)
+            }
+            await manager.broadcast(json.dumps(msg))
+        else:
+            # Split into chunks of 500
+            CHUNK_SIZE = 500
+            for i in range(0, len(msg_items), CHUNK_SIZE):
+                chunk = msg_items[i:i + CHUNK_SIZE]
+                await manager.broadcast(json.dumps({
+                    "event": "batch_row_upsert",
+                    "table_name": table_name,
+                    "items": chunk,
+                    "change_count": len(chunk)
+                }))
             
     return {"status": "success", "count": len(changed_rows)}
 

@@ -105,6 +105,50 @@ class AuditLogCache:
             # 없으면 새 그룹 생성
             self.groups.insert(0, {"transaction_id": tid, "logs": [log_model], "total_count": 1})
 
+    def add_logs_batch(self, logs_list: List[dict]):
+        """대량의 로그를 단일 락(Lock) 획득으로 캐시에 일괄 편입합니다."""
+        if not logs_list:
+            return
+        with self._lock:
+            if not self.is_loaded: 
+                return
+            
+            from collections import defaultdict
+            logs_by_tx = defaultdict(list)
+            for log_dict in logs_list:
+                tid = log_dict.get("transaction_id") or "no_tid"
+                try:
+                    log_model = schemas.AuditLogResponse.model_validate(log_dict)
+                    logs_by_tx[tid].append(log_model)
+                except Exception:
+                    continue
+            
+            for tid, logs in logs_by_tx.items():
+                found = False
+                for group in self.groups:
+                    if group["transaction_id"] == tid:
+                        group["total_count"] += len(logs)
+                        for log_model in reversed(logs):
+                            if len(group["logs"]) < 500:
+                                group["logs"].insert(0, log_model)
+                        
+                        idx = self.groups.index(group)
+                        if idx > 0:
+                            self.groups.pop(idx)
+                            self.groups.insert(0, group)
+                        found = True
+                        break
+                
+                if not found:
+                    self.groups.insert(0, {
+                        "transaction_id": tid,
+                        "logs": logs[:500],
+                        "total_count": len(logs)
+                    })
+            
+            while len(self.groups) > 100:
+                self.groups.pop()
+
     def remove_deleted_rows(self, row_ids: List[str]):
         """삭제된 행의 과거 로그를 캐시에서 제거하지 않고 보존합니다."""
         pass
