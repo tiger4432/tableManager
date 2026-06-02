@@ -326,3 +326,84 @@ DETACH DELETE r
   1. Poll `database_outbox`.
   2. Execute Cypher queries using official python driver.
   3. Safe-ACK processing state and clean up the SQL Outbox log.
+
+---
+
+## 9. Alternative Architecture: Database-Level WAL CDC (Debezium/Logical Replication)
+
+As an alternative to the application-level Transactional Outbox Pattern, we can implement **Database-Level Change Data Capture (CDC)** using PostgreSQL Write-Ahead Logs (WAL) and **Debezium** streaming into Kafka.
+
+### 9.1 Debezium WAL CDC Architecture
+
+Instead of writing to an outbox table inside the application layer, Debezium directly taps into the PostgreSQL Transaction Log (WAL) via Logical Replication.
+
+```mermaid
+graph TD
+    Client[Web UI / Watcher] -->|HTTP / Ingest| FastAPI[FastAPI Server]
+    FastAPI -->|1. Write Data| PostgreSQL[(PostgreSQL DB)]
+    PostgreSQL -->|2. WAL Log logical replication| Debezium[Debezium Connector]
+    Debezium -->|3. Publish Raw Change Events| Kafka[Apache Kafka]
+    Kafka -->|4. Consumer / Neo4j Sink| Syncer[Graph DB Syncer Worker / Connector]
+    Syncer -->|5. Cypher Updates| Neo4j[(Neo4j Graph DB)]
+```
+
+### 9.2 Comparison: Application Outbox vs. DB-Level CDC
+
+| Criteria | Application-Level Outbox (Stage & Poll) | DB-Level WAL CDC (Debezium + Kafka) |
+| :--- | :--- | :--- |
+| **Intrusiveness** | Medium (Requires code modifications in `crud.py` to write events). | **None** (No code modifications; Debezium reads WAL directly). |
+| **Infrastructure Overhead**| **Low** (Uses existing PostgreSQL/Redis). | High (Requires Apache Kafka, Kafka Connect, Debezium, Zookeeper). |
+| **Context Preservation** | **High** (Easily logs `updated_by`, `transaction_id`, or API origin). | Low (Taps raw table states. Requires storing metadata inside table columns). |
+| **DB Admin Edits Capture** | No (Fails to capture edits made directly via pgAdmin/SQL client). | **Yes** (Captures any DDL/DML update regardless of the client). |
+| **Transaction Boundaries** | Easy to group (batch logs are grouped by application transaction). | Harder to reconstruct (individual row WAL updates must be grouped by Tx ID). |
+
+### 9.3 PostgreSQL Configuration for Logical Replication
+To enable Debezium logical replication, the PostgreSQL instance must be configured as follows:
+
+```ini
+# postgresql.conf
+wal_level = logical
+max_replication_slots = 10
+max_wal_senders = 10
+```
+Create a replication user and grant replication privileges:
+```sql
+CREATE ROLE replication_user WITH REPLICATION LOGIN PASSWORD 'your_password';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO replication_user;
+```
+
+### 9.4 Debezium Connector Configuration Example
+Kafka Connect JSON config to capture changes from `data_rows`:
+```json
+{
+  "name": "pg-assymanager-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "localhost",
+    "database.port": "5432",
+    "database.user": "replication_user",
+    "database.password": "your_password",
+    "database.dbname": "assymanager",
+    "database.server.name": "dbserver1",
+    "table.include.list": "public.data_rows",
+    "plugin.name": "pgoutput"
+  }
+}
+```
+
+### 9.5 Neo4j Kafka Sink Connector Configuration
+Using the official **Neo4j Connector for Apache Kafka (Neo4j Sink)**, you can map Kafka topics directly to Cypher updates without writing custom Python worker code:
+
+```json
+{
+  "name": "neo4j-sink-connector",
+  "config": {
+    "connector.class": "neo4j.kafka.connect.Neo4jSinkConnector",
+    "topics": "dbserver1.public.data_rows",
+    "neo4j.uri": "bolt://localhost:7687",
+    "neo4j.authentication.basic.username": "neo4j",
+    "neo4j.authentication.basic.password": "your_password",
+    "neo4j.topic.cypher.dbserver1.public.data_rows": "MERGE (r:Row {row_id: event.after.row_id}) ON CREATE SET r.created_at = datetime(event.after.created_at) SET r.updated_at = datetime(event.after.updated_at), r.business_key = event.after.business_key_val, r.stock_qty = event.after.data.stock_qty.value"
+  }
+}
+```
