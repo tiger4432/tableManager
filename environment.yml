@@ -16,3 +16,5 @@ dependencies:
   - httpx
   - pyinstaller
   - pip
+  - pip:
+    - neo4j

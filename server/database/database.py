@@ -1,6 +1,8 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 import os
+import uuid
+from datetime import datetime
 
 # 데이터베이스 연결 URL (환경 변수가 있으면 사용, 없으면 PostgreSQL 기본값, 최종적으로 SQLite)
 # 형식: postgresql://[사용자]:[비밀번호]@[호스트]:[포트]/[DB명]
@@ -33,3 +35,46 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@event.listens_for(Session, "before_flush")
+def auto_stage_database_outbox(session, flush_context, instances):
+    from .models import DataRow
+    
+    for obj in session.new:
+        if isinstance(obj, DataRow):
+            stage_event(session, "CREATE", obj.table_name, obj)
+            
+    for obj in session.dirty:
+        if isinstance(obj, DataRow):
+            stage_event(session, "EDIT", obj.table_name, obj)
+            
+    for obj in session.deleted:
+        if isinstance(obj, DataRow):
+            stage_event(session, "DELETE", obj.table_name, obj)
+
+
+def stage_event(session, event_type, table_name, data_row):
+    from .models import DatabaseOutbox
+    from .context import request_user, request_transaction_id, request_source
+    
+    tx_id = request_transaction_id.get() or str(uuid.uuid4())
+    user = request_user.get()
+    source = request_source.get()
+    
+    event_obj = DatabaseOutbox(
+        event_uuid=str(uuid.uuid4()),
+        event_type=event_type,
+        table_name=table_name or "unknown",
+        payload={
+            "row_id": data_row.row_id,
+            "business_key": data_row.business_key_val,
+            "data": data_row.data,
+            "transaction_id": tx_id,
+            "updated_by": user,
+            "source_name": source,
+            "timestamp": datetime.now().isoformat()
+        },
+        status="PENDING"
+    )
+    session.add(event_obj)

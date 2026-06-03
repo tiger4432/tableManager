@@ -15,6 +15,27 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AssyManager Table Server")
 
+# --- ContextVars Middleware config ---
+from database.context import request_user, request_transaction_id, request_source
+
+@app.middleware("http")
+async def db_context_middleware(request: Request, call_next):
+    user = request.headers.get("X-User") or request.query_params.get("user") or "user"
+    tx_id = request.headers.get("X-Transaction-ID") or request.query_params.get("transaction_id") or str(uuid.uuid4())
+    source = request.headers.get("X-Source") or request.query_params.get("source") or "user"
+    
+    token_user = request_user.set(user)
+    token_tx = request_transaction_id.set(tx_id)
+    token_src = request_source.set(source)
+    
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
+
 # --- CORS Middleware Config ---
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +106,11 @@ async def startup_event():
         # 비차단 모드(blocking=False)로 기동
         global_watcher.start(blocking=False)
         print(f"[Startup] Directory Watcher started with {global_watcher.watch_count} watches.")
+        
+        # Start Graph DB Sync Worker
+        from graph_sync_worker import start_graph_sync_worker
+        main_loop.create_task(start_graph_sync_worker(SessionLocal))
+        print("[Startup] Graph DB Sync Worker background task spawned.")
     except Exception as e:
         print(f"[Startup] Failed to start Directory Watcher: {e}")
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -54,4 +54,22 @@ class AuditLog(Base):
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     business_key = Column(String, nullable=True, index=True)
+
+
+class DatabaseOutbox(Base):
+    __tablename__ = "database_outbox"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_uuid = Column(String, unique=True, index=True, nullable=False)
+    event_type = Column(String(50), nullable=False)
+    table_name = Column(String(100), nullable=False)
+    payload = Column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
+    status = Column(String(20), default="PENDING", index=True)
+    retry_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'")),
+    )
 

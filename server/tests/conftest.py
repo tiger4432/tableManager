@@ -26,6 +26,12 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
+    # SQLite 호환성을 위해 PostgreSQL 전용 GIN / Trigram 인덱스를 임시 제거
+    if "sqlite" in str(engine.url):
+        table = Base.metadata.tables.get("data_rows")
+        if table is not None:
+            table.indexes = {idx for idx in table.indexes if "trgm" not in idx.name and "gin" not in idx.name}
+
     # Create the database and tables
     Base.metadata.create_all(bind=engine)
     

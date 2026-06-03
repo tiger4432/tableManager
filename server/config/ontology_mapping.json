@@ -1,0 +1,36 @@
+{
+  "default": {
+    "node_label": "Row",
+    "identity_property": "row_id",
+    "property_mappings": {},
+    "relationships": {}
+  },
+  "tables": {
+    "assemblies": {
+      "node_label": "Assembly",
+      "identity_property": "assembly_id",
+      "property_mappings": {
+        "desc": "description",
+        "qty": "quantity"
+      },
+      "relationships": {
+        "supplier_id": {
+          "type": "SUPPLIED_BY",
+          "target_label": "Supplier",
+          "target_identity": "supplier_id"
+        }
+      }
+    },
+    "parts": {
+      "node_label": "Part",
+      "identity_property": "part_id",
+      "relationships": {
+        "assembly_id": {
+          "type": "PART_OF",
+          "target_label": "Assembly",
+          "target_identity": "assembly_id"
+        }
+      }
+    }
+  }
+}

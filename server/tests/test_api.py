@@ -24,14 +24,17 @@ def test_put_batch_update(client):
         "updates": [
             {
                 "row_id": row_id,
-                "column_name": "EQP_ID",
-                "value": "TEST_EQP_999"
+                "updates": {
+                    "EQP_ID": "TEST_EQP_999"
+                },
+                "source_name": "user",
+                "updated_by": "user"
             }
         ]
     }
 
     # Call PUT
-    put_res = client.put("/tables/raw_table_1/cells/batch", json=payload)
+    put_res = client.put("/tables/raw_table_1/data/updates", json=payload)
     assert put_res.status_code == 200
     assert put_res.json()["status"] == "success"
 
