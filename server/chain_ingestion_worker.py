@@ -76,18 +76,19 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
         from database import schemas, crud
         from database.context import request_user, request_transaction_id, request_source
         
+        chain_tx_id = f"chain_{tx_id}"
         token_user = request_user.set("chain_worker")
-        token_tx = request_transaction_id.set(tx_id)
+        token_tx = request_transaction_id.set(chain_tx_id)
         token_src = request_source.set("chain_ingestion")
         
         try:
             for target_table, updates_list in table_updates.items():
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
-                    transaction_id=tx_id,
+                    transaction_id=chain_tx_id,
                     silent=False
                 )
-                logger.info(f"Executing chained batch updates to '{target_table}' under tx '{tx_id}' (size: {len(updates_list)})")
+                logger.info(f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' (size: {len(updates_list)})")
                 
                 # Apply updates
                 results, changed_cells, created_logs = crud.apply_batch_updates(db, target_table, batch_data)
@@ -114,7 +115,7 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "event": "batch_refresh_required",
                             "table_name": target_table,
                             "change_count": len(msg_items),
-                            "transaction_id": tx_id,
+                            "transaction_id": chain_tx_id,
                             "created_logs": created_logs
                         }
                     else:
@@ -123,12 +124,12 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "table_name": target_table,
                             "items": msg_items,
                             "updated_by": user_name,
-                            "transaction_id": tx_id,
+                            "transaction_id": chain_tx_id,
                             "created_logs": created_logs
                         }
                     
                     await manager.broadcast(json.dumps(msg))
-                    logger.info(f"Successfully broadcasted chained update message for '{target_table}' under tx '{tx_id}'.")
+                    logger.info(f"Successfully broadcasted chained update message for '{target_table}' under tx '{chain_tx_id}'.")
                 except Exception as ws_err:
                     logger.error(f"Failed to broadcast chained update WebSocket message: {ws_err}")
                     
