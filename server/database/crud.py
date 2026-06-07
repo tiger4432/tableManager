@@ -263,69 +263,84 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     """통합 업데이트를 배치로 처리합니다."""
     # 외부 주입 ID가 있으면 사용, 없으면 신규 생성
     tx_id = batch.transaction_id or str(uuid6.uuid7())
-    # 1. [O(1) 최적화] 대상 행들을 한 번에 조회하여 캐시 구축 (Pre-fetch)
-    target_ids = [u.row_id for u in batch.updates if u.row_id]
-    target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
     
-    from sqlalchemy import or_
-    existing_rows_list = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        or_(
-            models.DataRow.row_id.in_(target_ids) if target_ids else False,
-            models.DataRow.business_key_val.in_(target_bks) if target_bks else False
-        )
-    ).all()
+    from database.context import request_user, request_transaction_id, request_source
     
-    row_cache = {}
-    for r in existing_rows_list:
-        row_cache[r.row_id] = r
-        if r.business_key_val:
-            row_cache[r.business_key_val] = r
-
-    unique_results = {} # row_id -> (row, is_new)
-    total_changed_cells = [] # list of (row_id, col_name)
-    logs_to_cache = []
+    user_val = batch.updates[0].updated_by if batch.updates else "system"
+    source_val = batch.updates[0].source_name if batch.updates else "batch"
     
-    with db.no_autoflush:
-        for item in batch.updates:
-            row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id, logs_to_cache=logs_to_cache)
-            prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
-            unique_results[row.row_id] = (row, is_new or prev_is_new)
-            
-            for col in changed_cols:
-                total_changed_cells.append((row.row_id, col))
+    token_user = request_user.set(user_val)
+    token_tx = request_transaction_id.set(tx_id)
+    token_src = request_source.set(source_val)
+    
+    try:
+        # 1. [O(1) 최적화] 대상 행들을 한 번에 조회하여 캐시 구축 (Pre-fetch)
+        target_ids = [u.row_id for u in batch.updates if u.row_id]
+        target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
+        
+        from sqlalchemy import or_
+        existing_rows_list = db.query(models.DataRow).filter(
+            models.DataRow.table_name == table_name,
+            or_(
+                models.DataRow.row_id.in_(target_ids) if target_ids else False,
+                models.DataRow.business_key_val.in_(target_bks) if target_bks else False
+            )
+        ).all()
+        
+        row_cache = {}
+        for r in existing_rows_list:
+            row_cache[r.row_id] = r
+            if r.business_key_val:
+                row_cache[r.business_key_val] = r
+    
+        unique_results = {} # row_id -> (row, is_new)
+        total_changed_cells = [] # list of (row_id, col_name)
+        logs_to_cache = []
+        
+        with db.no_autoflush:
+            for item in batch.updates:
+                row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id, logs_to_cache=logs_to_cache)
+                prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
+                unique_results[row.row_id] = (row, is_new or prev_is_new)
                 
-    # Capture newly created AuditLog objects before commit/flush
-    created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
-    
-    # Flush to database so database-assigned IDs are populated on created_log_objs
-    db.flush()
-    
-    # Serialize logs before commit to ensure IDs are assigned and accessible without N+1 queries
-    serialized_logs = []
-    for log in created_log_objs:
-        serialized_logs.append({
-            "id": log.id,
-            "table_name": log.table_name,
-            "row_id": log.row_id,
-            "column_name": log.column_name,
-            "old_value": log.old_value,
-            "new_value": log.new_value,
-            "source_name": log.source_name,
-            "updated_by": log.updated_by,
-            "transaction_id": log.transaction_id,
-            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-            "business_key": log.business_key
-        })
+                for col in changed_cols:
+                    total_changed_cells.append((row.row_id, col))
+                    
+        # Capture newly created AuditLog objects before commit/flush
+        created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
         
-    db.commit()
-    
-    if logs_to_cache:
-        from audit_cache import audit_cache
-        audit_cache.add_logs_batch(logs_to_cache)
+        # Flush to database so database-assigned IDs are populated on created_log_objs
+        db.flush()
         
-    results = list(unique_results.values())
-    return results, total_changed_cells, serialized_logs
+        # Serialize logs before commit to ensure IDs are assigned and accessible without N+1 queries
+        serialized_logs = []
+        for log in created_log_objs:
+            serialized_logs.append({
+                "id": log.id,
+                "table_name": log.table_name,
+                "row_id": log.row_id,
+                "column_name": log.column_name,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "source_name": log.source_name,
+                "updated_by": log.updated_by,
+                "transaction_id": log.transaction_id,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "business_key": log.business_key
+            })
+            
+        db.commit()
+        
+        if logs_to_cache:
+            from audit_cache import audit_cache
+            audit_cache.add_logs_batch(logs_to_cache)
+            
+        results = list(unique_results.values())
+        return results, total_changed_cells, serialized_logs
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
 
 def create_empty_row(db: Session, table_name: str):
     """신규 빈 행을 하나 생성합니다."""
@@ -333,41 +348,53 @@ def create_empty_row(db: Session, table_name: str):
     return new_rows[0] if new_rows else None
 
 def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
-    """신규 빈 행들을 일괄 생성하고 요약 히스토리를 남깁니다."""
+    """신규 빈 행을 일괄 생성하고 요약 히스토리를 남깁니다."""
     from sqlalchemy.sql import func
-    new_rows = []
-    for _ in range(count):
-        row = models.DataRow(
-            row_id=str(uuid6.uuid7()),
-            table_name=table_name,
-            data={},
-            updated_at=func.now()
-        )
-        new_rows.append(row)
+    from database.context import request_user, request_transaction_id, request_source
     
-    db.add_all(new_rows)
+    tx_id = str(uuid6.uuid7())
     
-    logs_to_cache = []
-    if count > 0:
-        tx_id = str(uuid6.uuid7())
-        for row in new_rows:
-            log_dict = create_audit_log(
-                db, table_name, row.row_id, "CREATE",
-                None, "새 행 생성됨", "system", user_name,
-                transaction_id=tx_id,
-                business_key=row.business_key_val,
-                add_to_cache=False
+    token_user = request_user.set(user_name)
+    token_tx = request_transaction_id.set(tx_id)
+    token_src = request_source.set("batch_create")
+    
+    try:
+        new_rows = []
+        for _ in range(count):
+            row = models.DataRow(
+                row_id=str(uuid6.uuid7()),
+                table_name=table_name,
+                data={},
+                updated_at=func.now()
             )
-            logs_to_cache.append(log_dict)
-    
-    db.commit()
-    
-    if logs_to_cache:
-        from audit_cache import audit_cache
-        audit_cache.add_logs_batch(logs_to_cache)
+            new_rows.append(row)
         
-    # [O(N) 제거] refresh() 루프를 제거하여 대량 생성 시 지연 방지
-    return new_rows
+        db.add_all(new_rows)
+        
+        logs_to_cache = []
+        if count > 0:
+            for row in new_rows:
+                log_dict = create_audit_log(
+                    db, table_name, row.row_id, "CREATE",
+                    None, "새 행 생성됨", "system", user_name,
+                    transaction_id=tx_id,
+                    business_key=row.business_key_val,
+                    add_to_cache=False
+                )
+                logs_to_cache.append(log_dict)
+        
+        db.commit()
+        
+        if logs_to_cache:
+            from audit_cache import audit_cache
+            audit_cache.add_logs_batch(logs_to_cache)
+            
+        # [O(N) 제거] refresh() 루프를 제거하여 대량 생성 시 지연 방지
+        return new_rows
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
 
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
     """단일 행을 삭제합니다 (배치 로직으로 통합)."""
@@ -378,41 +405,52 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     if not row_ids:
         return 0
         
-    # 삭제하기 전 row_id와 business_key_val을 먼저 조회
-    rows_to_delete = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id.in_(row_ids)
-    ).all()
-        
-    # [O(1) 최적화] 매 건마다 쿼리하는 대신 IN 연산자로 단숨에 삭제
-    deleted_count = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
+    from database.context import request_user, request_transaction_id, request_source
+    tx_id = str(uuid6.uuid7())
+    
+    token_user = request_user.set(user_name)
+    token_tx = request_transaction_id.set(tx_id)
+    token_src = request_source.set("batch_delete")
+    
+    try:
+        # 삭제하기 전 row_id와 business_key_val을 먼저 조회
+        rows_to_delete = db.query(models.DataRow).filter(
+            models.DataRow.table_name == table_name,
+            models.DataRow.row_id.in_(row_ids)
+        ).all()
             
-    if deleted_count > 0:
-        tx_id = str(uuid6.uuid7())
-        logs_to_cache = []
-        for row in rows_to_delete:
-            log_dict = create_audit_log(
-                db, table_name, row.row_id, "DELETE", 
-                None, "행 삭제됨", "system", user_name,
-                transaction_id=tx_id,
-                business_key=row.business_key_val,
-                add_to_cache=False
-            )
-            logs_to_cache.append(log_dict)
-        db.commit()
-        
-        if logs_to_cache:
+        # [O(1) 최적화] 매 건마다 쿼리하는 대신 IN 연산자로 단숨에 삭제
+        deleted_count = db.query(models.DataRow).filter(
+            models.DataRow.table_name == table_name,
+            models.DataRow.row_id.in_(row_ids)
+        ).delete(synchronize_session=False)
+                
+        if deleted_count > 0:
+            logs_to_cache = []
+            for row in rows_to_delete:
+                log_dict = create_audit_log(
+                    db, table_name, row.row_id, "DELETE", 
+                    None, "행 삭제됨", "system", user_name,
+                    transaction_id=tx_id,
+                    business_key=row.business_key_val,
+                    add_to_cache=False
+                )
+                logs_to_cache.append(log_dict)
+            db.commit()
+            
+            if logs_to_cache:
+                from audit_cache import audit_cache
+                audit_cache.add_logs_batch(logs_to_cache)
+                
+            # 삭제된 행의 이전 로그 캐시에서 즉시 정리 (방금 남긴 DELETE 배치는 남음)
             from audit_cache import audit_cache
-            audit_cache.add_logs_batch(logs_to_cache)
+            audit_cache.remove_deleted_rows(row_ids)
             
-        # 삭제된 행의 이전 로그 캐시에서 즉시 정리 (방금 남긴 DELETE 배치는 남음)
-        from audit_cache import audit_cache
-        audit_cache.remove_deleted_rows(row_ids)
-        
-    return deleted_count
+        return deleted_count
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
     return db.query(models.DataRow).filter(models.DataRow.table_name == table_name, models.DataRow.row_id == row_id).first()
