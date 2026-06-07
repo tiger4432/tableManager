@@ -3139,26 +3139,76 @@ async function clearSelectedCells() {
   Object.keys(updateMapByRow).forEach(rowId => {
     const item = updateMapByRow[rowId];
     if (Object.keys(item.updates).length > 0) {
-      updatesArray.push({
-        row_id: rowId,
-        updates: item.updates,
-        source_name: 'user',
-        updated_by: CURRENT_USER
-      });
+      if (txModeActive) {
+        // Stage edits in pendingTxEdits
+        Object.keys(item.updates).forEach(colId => {
+          const key = `${rowId}_${colId}`;
+          if (!pendingTxEdits[key]) {
+            const oldValue = item.rowNode.data.data?.[colId]?.value !== undefined ? item.rowNode.data.data[colId].value : '';
+            const oldIsOverwrite = item.rowNode.data.data?.[colId]?.is_overwrite === true;
+            pendingTxEdits[key] = {
+              rowId,
+              colId,
+              newValue: item.updates[colId],
+              oldValue: oldValue,
+              oldIsOverwrite: oldIsOverwrite,
+              data: item.rowNode.data
+            };
+          } else {
+            pendingTxEdits[key].newValue = item.updates[colId];
+          }
+        });
 
-      const data = item.rowNode.data;
-      if (!data.data) data.data = {};
-      
-      Object.keys(item.updates).forEach(colId => {
-        if (!data.data[colId]) data.data[colId] = {};
-        data.data[colId].value = item.updates[colId];
-        data.data[colId].is_overwrite = true;
-      });
+        // Local updates without changing updated_at
+        const data = {
+          ...item.rowNode.data,
+          data: { ...item.rowNode.data.data }
+        };
+        Object.keys(item.updates).forEach(colId => {
+          if (!data.data[colId]) data.data[colId] = {};
+          data.data[colId].value = item.updates[colId];
+        });
+        rowsToUpdate.push(data);
+      } else {
+        updatesArray.push({
+          row_id: rowId,
+          updates: item.updates,
+          source_name: 'user',
+          updated_by: CURRENT_USER
+        });
 
-      data.updated_at = getLocalTimeString();
-      rowsToUpdate.push(data);
+        const data = {
+          ...item.rowNode.data,
+          data: { ...item.rowNode.data.data }
+        };
+        Object.keys(item.updates).forEach(colId => {
+          if (!data.data[colId]) data.data[colId] = {};
+          data.data[colId].value = item.updates[colId];
+          data.data[colId].is_overwrite = true;
+        });
+
+        data.updated_at = getLocalTimeString();
+        rowsToUpdate.push(data);
+      }
     }
   });
+
+  if (txModeActive) {
+    if (rowsToUpdate.length > 0) {
+      gridApi.applyTransaction({ update: rowsToUpdate });
+      
+      if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
+        selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
+        updateSelectedCellUI();
+      }
+      
+      updateTxModeUI();
+      gridApi.refreshCells({ force: true });
+      setupBeforeUnloadWarning();
+      performanceLog.textContent = `Staged cell clear: ${Object.keys(pendingTxEdits).length} total pending edits`;
+    }
+    return;
+  }
 
   if (updatesArray.length === 0) return;
 
