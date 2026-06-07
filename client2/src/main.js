@@ -73,6 +73,13 @@ const refreshHistoryBtn = document.getElementById('refresh-history-btn');
 const contextMenu = document.getElementById('custom-context-menu');
 const sourcesModal = document.getElementById('sources-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
+
+const txModeToggle = document.getElementById('tx-mode-toggle');
+const txApplyBtn = document.getElementById('tx-apply-btn');
+const txDiscardBtn = document.getElementById('tx-discard-btn');
+
+let txModeActive = false;
+let pendingTxEdits = {}; // key: row_id + "_" + col_name -> { rowId, colId, newValue, oldValue, oldIsOverwrite, data }
 const sourcesList = document.getElementById('sources-list');
 const modalMetaInfo = document.getElementById('modal-meta-info');
 
@@ -238,6 +245,51 @@ function setupEventListeners() {
     tabCellBtn.classList.remove('active');
     activeHistoryTab = 'row';
     loadHistory();
+  });
+
+  // Transaction Mode listeners
+  if (txModeToggle) {
+    txModeToggle.addEventListener('change', () => {
+      txModeActive = txModeToggle.checked;
+      if (!txModeActive) {
+        const pendingCount = Object.keys(pendingTxEdits).length;
+        if (pendingCount > 0) {
+          const confirmApply = confirm(`대기 중인 수정사항이 ${pendingCount}건 있습니다. 적용하시겠습니까?\n\n'확인'을 누르면 수정 사항을 일괄 적용하고,\n'취소'를 누르면 수정 사항을 모두 취소(Discard)합니다.`);
+          if (confirmApply) {
+            applyPendingTxEdits();
+          } else {
+            discardPendingTxEdits();
+          }
+        } else {
+          updateTxModeUI();
+          gridApi.refreshCells({ force: true });
+        }
+      } else {
+        updateTxModeUI();
+        gridApi.refreshCells({ force: true });
+      }
+    });
+  }
+
+  if (txApplyBtn) {
+    txApplyBtn.addEventListener('click', () => {
+      applyPendingTxEdits();
+    });
+  }
+
+  if (txDiscardBtn) {
+    txDiscardBtn.addEventListener('click', () => {
+      discardPendingTxEdits();
+    });
+  }
+
+  // Prevent accidental page leave with unsaved edits
+  window.addEventListener('beforeunload', (e) => {
+    if (Object.keys(pendingTxEdits).length > 0) {
+      e.preventDefault();
+      e.returnValue = '저장되지 않은 수정사항이 있습니다. 페이지를 벗어나시겠습니까?';
+      return e.returnValue;
+    }
   });
 
   // Refresh Grid
@@ -801,6 +853,12 @@ async function switchTable(tableName) {
   selectedCell = null;
   clearRangeSelection();
   updateSelectedCellUI();
+
+  // Discard pending edits on table switch
+  pendingTxEdits = {};
+  txModeActive = false;
+  if (txModeToggle) txModeToggle.checked = false;
+  updateTxModeUI();
   
   // Reset transaction filter
   currentTransactionId = null;
@@ -851,6 +909,18 @@ async function loadSchema(tableName) {
 // Apply AG-Grid client-side sorting configuration based on Sort Latest toggle
 function updateGridSortState() {
   if (!gridApi) return;
+  
+  // Do not re-sort if Tx Mode is active to prevent staged rows from jumping
+  if (txModeActive) {
+    return;
+  }
+
+  // Do not re-sort if user is actively editing a cell to prevent the row from jumping away
+  const editingCells = gridApi.getEditingCells();
+  if (editingCells && editingCells.length > 0) {
+    return;
+  }
+
   const sortLatest = sortLatestToggle.checked;
   gridApi.applyColumnState({
     state: [
@@ -1074,15 +1144,27 @@ function renderGrid(initialRows) {
         }
         
         params.data.data[col].value = finalVal;
-        params.data.data[col].is_overwrite = true; // Mark as modified
+        if (!txModeActive) {
+          params.data.data[col].is_overwrite = true; // Mark as modified
+        }
         return true;
       },
       // Styling rules
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
+        // Highlight dirty staged edits in dashed border
+        'cell-dirty-tx': (params) => {
+          if (isSystem) return false;
+          if (!params.data) return false;
+          const key = `${params.data.row_id}_${col}`;
+          return pendingTxEdits.hasOwnProperty(key);
+        },
         // Highlight cells modified by users in orange (matches PyQt Client styling)
         'cell-overwrite': (params) => {
           if (isSystem) return false;
+          if (!params.data) return false;
+          const key = `${params.data.row_id}_${col}`;
+          if (pendingTxEdits.hasOwnProperty(key)) return false;
           const cell = params.data.data?.[col];
           return cell?.is_overwrite === true;
         },
@@ -1129,6 +1211,7 @@ function renderGrid(initialRows) {
     theme: 'legacy',
     columnDefs: columnDefs,
     rowData: initialRows,
+    suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id, // Robust fallback
     defaultColDef: {
       flex: 1,
@@ -1321,6 +1404,34 @@ async function handleCellEdit(event) {
       }
       finalValue = parsedVal;
     }
+  }
+
+  // Intercept and stage if Tx Mode is active
+  if (txModeActive) {
+    const key = `${rowId}_${colId}`;
+    if (!pendingTxEdits[key]) {
+      pendingTxEdits[key] = {
+        rowId,
+        colId,
+        newValue: finalValue,
+        oldValue: oldValue,
+        oldIsOverwrite: oldIsOverwrite,
+        data: data
+      };
+    } else {
+      pendingTxEdits[key].newValue = finalValue;
+    }
+
+    if (!data.data) data.data = {};
+    if (!data.data[colId]) data.data[colId] = {};
+    data.data[colId].value = finalValue;
+    
+    // Trigger local update and refresh (do not update updated_at to prevent sort key changes)
+    gridApi.applyTransaction({ update: [data] });
+    
+    updateTxModeUI();
+    gridApi.refreshCells({ force: true });
+    return;
   }
 
   performanceLog.textContent = 'Saving edit...';
@@ -3139,6 +3250,121 @@ document.addEventListener('mouseup', () => {
     }
   }
 });
+
+// Transaction Mode Helpers
+function updateTxModeUI() {
+  const pendingCount = Object.keys(pendingTxEdits).length;
+  if (txModeActive) {
+    txModeToggle.checked = true;
+    if (pendingCount > 0) {
+      txApplyBtn.style.display = 'inline-block';
+      txApplyBtn.textContent = `Apply (${pendingCount})`;
+      txDiscardBtn.style.display = 'inline-block';
+      performanceLog.textContent = `Tx Mode active: ${pendingCount} edits pending`;
+    } else {
+      txApplyBtn.style.display = 'none';
+      txDiscardBtn.style.display = 'none';
+      performanceLog.textContent = 'Tx Mode active (No pending edits)';
+    }
+  } else {
+    txModeToggle.checked = false;
+    txApplyBtn.style.display = 'none';
+    txDiscardBtn.style.display = 'none';
+    performanceLog.textContent = 'Ready';
+  }
+}
+
+async function applyPendingTxEdits() {
+  const pendingCount = Object.keys(pendingTxEdits).length;
+  if (pendingCount === 0) return;
+
+  performanceLog.textContent = 'Applying batch transaction updates...';
+  const applyStartTime = performance.now();
+
+  const grouped = {};
+  Object.values(pendingTxEdits).forEach(edit => {
+    if (!grouped[edit.rowId]) {
+      grouped[edit.rowId] = {};
+    }
+    grouped[edit.rowId][edit.colId] = edit.newValue;
+  });
+
+  const updates = Object.keys(grouped).map(rowId => ({
+    row_id: rowId,
+    updates: grouped[rowId],
+    source_name: 'user',
+    updated_by: CURRENT_USER
+  }));
+
+  const payload = {
+    updates: updates,
+    silent: false
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${currentTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      pageCache.clear();
+      const result = await res.json();
+      const saveTime = (performance.now() - applyStartTime).toFixed(1);
+      
+      // Update cell is_overwrite status locally
+      Object.values(pendingTxEdits).forEach(edit => {
+        const { data, colId, newValue } = edit;
+        if (!data.data) data.data = {};
+        if (!data.data[colId]) data.data[colId] = {};
+        data.data[colId].value = newValue;
+        data.data[colId].is_overwrite = true;
+        data.updated_at = getLocalTimeString();
+        gridApi.applyTransaction({ update: [data] });
+      });
+
+      pendingTxEdits = {};
+      txModeActive = txModeToggle.checked;
+      updateTxModeUI();
+      updateGridSortState();
+      gridApi.refreshCells({ force: true });
+      
+      performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)`;
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Save failed';
+      throw new Error(errMsg);
+    }
+  } catch (err) {
+    console.error('Batch apply failed', err);
+    alert(`일괄 적용 실패: ${err.message}`);
+    performanceLog.textContent = '❌ Batch apply failed';
+  }
+}
+
+function discardPendingTxEdits() {
+  const pendingCount = Object.keys(pendingTxEdits).length;
+  if (pendingCount === 0) return;
+
+  Object.values(pendingTxEdits).forEach(edit => {
+    const { data, colId, oldValue, oldIsOverwrite } = edit;
+    if (!data.data) data.data = {};
+    if (!data.data[colId]) data.data[colId] = {};
+    data.data[colId].value = oldValue;
+    data.data[colId].is_overwrite = oldIsOverwrite;
+    gridApi.applyTransaction({ update: [data] });
+  });
+
+  pendingTxEdits = {};
+  txModeActive = txModeToggle.checked;
+  updateTxModeUI();
+  updateGridSortState();
+  gridApi.refreshCells({ force: true });
+  performanceLog.textContent = 'Pending updates discarded';
+}
 
 // Start Application
 init();
