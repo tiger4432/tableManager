@@ -91,15 +91,16 @@ def test_chained_ingestion(client, db_session):
     ).all()
     assert len(events) > 0
     
-    # 3. 체인 워커 수동 트리거링
-    from chain_ingestion_worker import process_chain_event, load_chain_rules
+    # 3. 체인 워커 수동 트리거링 (트랜잭션 그룹 단위 호출)
+    from chain_ingestion_worker import process_chain_transaction_group, load_chain_rules
     rules = load_chain_rules()
     
     import anyio
     
     async def run_chain():
+        tx_id = events[0].payload.get("transaction_id") or "test_tx"
+        await process_chain_transaction_group(tx_id, events, db_session, rules)
         for event in events:
-            await process_chain_event(event, db_session, rules)
             event.processed_chain = True
         db_session.commit()
         

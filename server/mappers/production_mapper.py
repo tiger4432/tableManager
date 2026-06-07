@@ -7,24 +7,23 @@ def reserve_materials_from_plan(db: Session, payload: Dict[str, Any]) -> Dict[st
     Assumes product consumptions: PRODUCT -> MAT_STEEL_01 (Qty * 5).
     """
     row_data = payload.get("data", {})
+    print(row_data)
+    planned_qty = int(row_data.get("target_qty", {}).get("value") or 0)
     
-    product_code = row_data.get("PRODUCT_CODE", {}).get("value")
-    planned_qty = int(row_data.get("PLANNED_QTY", {}).get("value") or 0)
-    
-    if not product_code:
-        return {}
+
         
     # Target raw material details
-    target_material = "MAT_STEEL_01"
+    target_material = row_data.get("model_name", {}).get("value")
     required_qty = planned_qty * 5
     
     # Return formatted payload according to GeneralUpdateBatch schema
     target_payload = {
         "updates": [
             {
-                "row_id": f"INV_{target_material}",
+                "business_key_val": f"INV_{target_material}",
                 "updates": {
-                    "RESERVED_QTY": required_qty
+                    "stock_qty": required_qty,
+                    'part_no' : f"INV_{target_material}"
                 },
                 "source_name": "chain_ingestion",
                 "updated_by": "chain_worker"
