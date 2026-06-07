@@ -7,7 +7,6 @@ def reserve_materials_from_plan(db: Session, payload: Dict[str, Any]) -> Dict[st
     Assumes product consumptions: PRODUCT -> MAT_STEEL_01 (Qty * 5).
     """
     row_data = payload.get("data", {})
-    print(row_data)
     planned_qty = int(row_data.get("target_qty", {}).get("value") or 0)
     
 

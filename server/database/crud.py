@@ -286,24 +286,22 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     total_changed_cells = [] # list of (row_id, col_name)
     logs_to_cache = []
     
-    for item in batch.updates:
-        row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id, logs_to_cache=logs_to_cache)
-        prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
-        unique_results[row.row_id] = (row, is_new or prev_is_new)
-        
-        for col in changed_cols:
-            total_changed_cells.append((row.row_id, col))
+    with db.no_autoflush:
+        for item in batch.updates:
+            row, is_new, changed_cols = apply_row_update_internal(db, table_name, item, row_cache=row_cache, transaction_id=tx_id, logs_to_cache=logs_to_cache)
+            prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
+            unique_results[row.row_id] = (row, is_new or prev_is_new)
             
-    # Capture newly created AuditLog objects before commit
+            for col in changed_cols:
+                total_changed_cells.append((row.row_id, col))
+                
+    # Capture newly created AuditLog objects before commit/flush
     created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
     
-    db.commit()
+    # Flush to database so database-assigned IDs are populated on created_log_objs
+    db.flush()
     
-    if logs_to_cache:
-        from audit_cache import audit_cache
-        audit_cache.add_logs_batch(logs_to_cache)
-    
-    # Serialize logs after commit to ensure IDs are assigned
+    # Serialize logs before commit to ensure IDs are assigned and accessible without N+1 queries
     serialized_logs = []
     for log in created_log_objs:
         serialized_logs.append({
@@ -319,6 +317,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             "timestamp": log.timestamp.isoformat() if log.timestamp else None,
             "business_key": log.business_key
         })
+        
+    db.commit()
+    
+    if logs_to_cache:
+        from audit_cache import audit_cache
+        audit_cache.add_logs_batch(logs_to_cache)
         
     results = list(unique_results.values())
     return results, total_changed_cells, serialized_logs

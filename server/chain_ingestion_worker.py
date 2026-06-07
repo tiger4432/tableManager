@@ -114,6 +114,7 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "event": "batch_refresh_required",
                             "table_name": target_table,
                             "change_count": len(msg_items),
+                            "transaction_id": tx_id,
                             "created_logs": created_logs
                         }
                     else:
@@ -122,6 +123,7 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "table_name": target_table,
                             "items": msg_items,
                             "updated_by": user_name,
+                            "transaction_id": tx_id,
                             "created_logs": created_logs
                         }
                     

@@ -1429,6 +1429,36 @@ function initWebSocket() {
 
 // Feature 2: WebSocket message processing for Real-time delta sync
 function handleWebSocketMessage(msg) {
+  // 1. Process and append audit logs to local history cache first (independent of currentTable check, especially for global history)
+  const createdLogs = msg.created_logs || [];
+  if (createdLogs.length > 0) {
+    let updatedHistory = false;
+    createdLogs.forEach(log => {
+      // For non-global tabs ('cell' or 'row'), only process if the log belongs to the current table
+      if (activeHistoryTab !== 'global' && log.table_name !== currentTable) {
+        return;
+      }
+      
+      // Update currently focused cell UI if it matches the log
+      if (selectedCell && log.row_id === selectedCell.rowId && log.column_name === selectedCell.colId) {
+        selectedCell.value = log.new_value;
+        updateSelectedCellUI();
+      }
+      
+      appendHistoryLocally(log, true);
+      updatedHistory = true;
+    });
+    
+    if (updatedHistory) {
+      if (activeHistoryTab === 'global') {
+        renderGlobalTimeline();
+      } else if (selectedCell) {
+        renderTimeline(cellRowHistoryData);
+      }
+    }
+  }
+
+  // 2. Perform table-specific data/grid updates
   if (msg.table_name !== currentTable) return;
   if (!gridApi) return;
 
@@ -1448,10 +1478,6 @@ function handleWebSocketMessage(msg) {
       updateGridSortState();
       updateLoadedCount();
       performanceLog.textContent = `⚡ Real-time created: ${items.length} rows added`;
-
-      // Stream logs to timeline if provided
-      const createdLogs = msg.created_logs || [];
-      createdLogs.forEach(log => appendHistoryLocally(log));
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
@@ -1522,23 +1548,6 @@ function handleWebSocketMessage(msg) {
       updateLoadedCount();
 
       performanceLog.textContent = `⚡ Real-time synchronized: ${updatedRows.length} rows updated`;
-
-      // Apply updates to history timeline and update selected UI if matched
-      const createdLogs = msg.created_logs || [];
-      createdLogs.forEach(log => {
-        if (selectedCell && log.row_id === selectedCell.rowId && log.column_name === selectedCell.colId) {
-          selectedCell.value = log.new_value;
-          updateSelectedCellUI();
-        }
-        appendHistoryLocally(log, true);
-      });
-      if (createdLogs.length > 0) {
-        if (activeHistoryTab === 'global') {
-          renderGlobalTimeline();
-        } else {
-          renderTimeline(cellRowHistoryData);
-        }
-      }
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
@@ -1554,35 +1563,15 @@ function handleWebSocketMessage(msg) {
       updateSelectedCellUI();
       timeline.innerHTML = '<li class="timeline-empty">Selected row deleted.</li>';
     }
-
-    // Stream logs to timeline if provided
-    const createdLogs = msg.created_logs || [];
-    createdLogs.forEach(log => appendHistoryLocally(log, true));
-    if (createdLogs.length > 0) {
-      if (activeHistoryTab === 'global') {
-        renderGlobalTimeline();
-      } else {
-        renderTimeline(cellRowHistoryData);
-      }
-    }
   } else if (event === 'batch_refresh_required') {
     pageCache.clear();
     // Large bulk updates -> do not refresh grid to prevent UI disruption, only update cache and history
-    
-    // Stream logs to timeline if provided, otherwise reload history
-    const createdLogs = msg.created_logs || [];
-    if (createdLogs.length > 0) {
-      createdLogs.forEach(log => appendHistoryLocally(log, true));
-      if (activeHistoryTab === 'global') {
-        renderGlobalTimeline();
-      } else {
-        renderTimeline(cellRowHistoryData);
-      }
-    } else {
+    if (createdLogs.length === 0) {
       triggerHistoryReloadDebounced();
     }
   }
 }
+
 
 // Feature 3: Load audit log history from API
 async function loadHistory() {
