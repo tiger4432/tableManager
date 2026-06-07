@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "name": "production_to_inventory_reservation",
+      "trigger_table": "production_plan",
+      "target_table": "inventory_master",
+      "mapper_module": "mappers.production_mapper",
+      "mapper_function": "reserve_materials_from_plan",
+      "enabled": true
+    }
+  ]
+}

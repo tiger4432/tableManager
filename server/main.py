@@ -76,6 +76,14 @@ async def startup_event():
             conn.commit()
             if res.rowcount > 0:
                 print(f"[Migration] Successfully updated {res.rowcount} rows.")
+                
+            # [Migration] database_outbox 테이블에 processed_chain 컬럼 보정
+            try:
+                conn.execute(text("ALTER TABLE database_outbox ADD COLUMN processed_chain BOOLEAN DEFAULT FALSE"))
+                conn.commit()
+                print("[Migration] Added processed_chain column to database_outbox.")
+            except Exception:
+                pass
 
         print("[Startup] Initializing Directory Watcher...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -111,6 +119,11 @@ async def startup_event():
         from graph_sync_worker import start_graph_sync_worker
         main_loop.create_task(start_graph_sync_worker(SessionLocal))
         print("[Startup] Graph DB Sync Worker background task spawned.")
+        
+        # Start Chained Ingestion Worker
+        from chain_ingestion_worker import start_chain_ingestion_worker
+        main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+        print("[Startup] Chained Ingestion Worker background task spawned.")
     except Exception as e:
         print(f"[Startup] Failed to start Directory Watcher: {e}")
 

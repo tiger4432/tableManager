@@ -44,4 +44,5 @@ client/*.spec
 server/config/*
 !server/config/*.sample
 !server/config/ontology_mapping.json
+!server/config/chain_rules.json
 server/ingestion_workspace/

@@ -46,4 +46,72 @@ def test_put_batch_update(client):
     mutated_row = next(r for r in rows if r["row_id"] == row_id)
     assert mutated_row["data"]["EQP_ID"]["value"] == "TEST_EQP_999"
     assert mutated_row["data"]["EQP_ID"]["is_overwrite"] is True
+
+
+def test_chained_ingestion(client, db_session):
+    # 1. Trigger Table에 데이터 인제션 시뮬레이션
+    from database.models import DataRow
+    import uuid
+    from database import schemas, crud
+    
+    prod_row_id = str(uuid.uuid4())
+    
+    # ContextVars 바인딩 모사
+    from database.context import request_user, request_transaction_id, request_source
+    token_user = request_user.set("user")
+    token_tx = request_transaction_id.set(str(uuid.uuid4()))
+    token_src = request_source.set("user")
+    
+    try:
+        # 생산 계획 등록
+        batch = schemas.GeneralUpdateBatch(
+            updates=[
+                schemas.GeneralUpdateItem(
+                    row_id=prod_row_id,
+                    updates={
+                        "PRODUCT_CODE": "PROD_CAR_01",
+                        "PLANNED_QTY": 10
+                    },
+                    source_name="user",
+                    updated_by="tester"
+                )
+            ]
+        )
+        crud.apply_batch_updates(db_session, "production_plan", batch)
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
+
+    # 2. Outbox에 PENDING 이벤트가 적재되었는지 검증
+    from database.models import DatabaseOutbox
+    events = db_session.query(DatabaseOutbox).filter(
+        DatabaseOutbox.table_name == "production_plan",
+        DatabaseOutbox.processed_chain == False
+    ).all()
+    assert len(events) > 0
+    
+    # 3. 체인 워커 수동 트리거링
+    from chain_ingestion_worker import process_chain_event, load_chain_rules
+    rules = load_chain_rules()
+    
+    import anyio
+    
+    async def run_chain():
+        for event in events:
+            await process_chain_event(event, db_session, rules)
+            event.processed_chain = True
+        db_session.commit()
+        
+    anyio.run(run_chain)
+    
+    # 4. Target Table인 inventory_master가 연쇄 업데이트 되었는지 검증
+    target_row = db_session.query(DataRow).filter(
+        DataRow.table_name == "inventory_master",
+        DataRow.row_id == "INV_MAT_STEEL_01"
+    ).first()
+    
+    assert target_row is not None
+    assert target_row.data["RESERVED_QTY"]["value"] == 50
+    assert target_row.data["RESERVED_QTY"]["updated_by"] == "chain_worker"
     

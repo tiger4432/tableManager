@@ -66,6 +66,7 @@ class DatabaseOutbox(Base):
     payload = Column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
     status = Column(String(20), default="PENDING", index=True)
     retry_count = Column(Integer, default=0)
+    processed_chain = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
