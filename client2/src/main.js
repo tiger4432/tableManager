@@ -78,7 +78,7 @@ const txModeToggle = document.getElementById('tx-mode-toggle');
 const txApplyBtn = document.getElementById('tx-apply-btn');
 const txDiscardBtn = document.getElementById('tx-discard-btn');
 
-let txModeActive = false;
+let txModeActive = true;
 let pendingTxEdits = {}; // key: row_id + "_" + col_name -> { rowId, colId, newValue, oldValue, oldIsOverwrite, data }
 const sourcesList = document.getElementById('sources-list');
 const modalMetaInfo = document.getElementById('modal-meta-info');
@@ -856,8 +856,8 @@ async function switchTable(tableName) {
 
   // Discard pending edits on table switch
   pendingTxEdits = {};
-  txModeActive = false;
-  if (txModeToggle) txModeToggle.checked = false;
+  txModeActive = true;
+  if (txModeToggle) txModeToggle.checked = true;
   updateTxModeUI();
   
   // Reset transaction filter
