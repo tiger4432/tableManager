@@ -111,7 +111,57 @@ graph TD
       }
   ```
 
-### 3.3 순환 루프 방지 장치
+### 3.3 매퍼 반환 페이로드 스펙 (GeneralUpdateBatch)
+매퍼 함수는 최종적으로 FastAPI 백엔드의 데이터 업데이트 규격인 `GeneralUpdateBatch` 형태의 딕셔너리를 반환해야 합니다.
+
+#### 필드 상세 스펙
+1. **`updates`** (List[Dict], 필수): 업데이트를 수행할 대상 행들의 목록입니다.
+   * `row_id` (String, 선택): 수정할 대상 행의 고유 ID (`row_id`)입니다.
+   * `business_key_val` (Any, 선택): 대상 행의 ID를 모를 때, 테이블 설정에 정의된 비즈니스 키 값을 기준으로 대상을 매칭하여 업서트할 때 사용합니다. (`row_id`와 `business_key_val` 중 최소 하나는 명시해야 합니다.)
+   * `updates` (Dict[String, Any], 필수): 업데이트할 컬럼명과 값의 쌍입니다. (예: `{"STOCK_QTY": 150}`)
+   * `source_name` (String, 필수): **반드시 `"chain_ingestion"`으로 고정**해야 합니다. (순환 체인 무한 루프 감지 밸브의 핵심 차단 키입니다.)
+   * `updated_by` (String, 선택): 데이터 변경 이력(Audit Log)에 남을 수정 주체명입니다. `"chain_worker"` 지정을 권장합니다.
+2. **`transaction_id`** (String, 선택): 연쇄 수정 트랜잭션의 ID입니다. 생략 시 기본적으로 원천 트랜잭션 ID를 고스란히 물려받아 추적합니다.
+3. **`silent`** (Boolean, 선택): `True`로 지정 시, 웹 프론트엔드로 실시간 변경사항 알림(WebSocket)을 전송하지 않고 조용히 DB만 업데이트합니다.
+
+#### 구성 양식 예제
+
+##### 패턴 A: row_id 기반 특정 데이터 수정
+```json
+{
+  "updates": [
+    {
+      "row_id": "INV_MAT_STEEL_01",
+      "updates": {
+        "RESERVED_QTY": 50,
+        "STATUS": "RESERVED"
+      },
+      "source_name": "chain_ingestion",
+      "updated_by": "chain_worker"
+    }
+  ],
+  "silent": false
+}
+```
+
+##### 패턴 B: 비즈니스 키 기반 업서트 (Row ID를 모를 때)
+```json
+{
+  "updates": [
+    {
+      "business_key_val": "PART-999-XYZ",
+      "updates": {
+        "STOCK_QTY": 120,
+        "UNIT_PRICE": 5400
+      },
+      "source_name": "chain_ingestion",
+      "updated_by": "chain_worker"
+    }
+  ]
+}
+```
+
+### 3.4 순환 루프 방지 장치
 체인 워커는 무한 재트리거(A 테이블 ➡️ B 테이블 ➡️ A 테이블...)를 막기 위해, 이벤트 페이로드 내 `source_name`이 `"chain_ingestion"`으로 설정된 건에 대해서는 **체인 규칙을 발동시키지 않고 즉시 패스**하도록 설계되어 있습니다.
 
 ---

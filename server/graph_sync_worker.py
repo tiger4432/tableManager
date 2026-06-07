@@ -186,6 +186,7 @@ def build_queries_for_event(event, ontology):
 async def execute_batch_queries(queries, tx_id):
     if not queries:
         return True
+
         
     if neo4j_enabled and neo4j_driver:
         try:
@@ -202,7 +203,8 @@ async def execute_batch_queries(queries, tx_id):
         # Mock Logging Mode
         logger.info(f"[MOCK GRAPH SYNC] Syncing transaction '{tx_id}' ({len(queries)} queries)")
         for idx, (cypher, params) in enumerate(queries):
-            logger.info(f"Query #{idx+1} in Tx:\n{cypher}\nParameters: {json.dumps(params, default=str)}\n")
+            pass
+            #logger.info(f"Query #{idx+1} in Tx:\n{cypher}\nParameters: {json.dumps(params, default=str)}\n")
             
     return True
 
