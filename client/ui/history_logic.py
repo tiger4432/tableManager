@@ -70,6 +70,7 @@ class HistoryDataManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._is_refreshing = False
+        self._pending_refresh = False
         self._retry_count = 0 # 초기 로딩 재시도 횟수
         self._max_retries = 3
         
@@ -83,8 +84,11 @@ class HistoryDataManager(QObject):
         self._retry_timer.timeout.connect(self.refresh_history)
 
     def refresh_history(self):
-        if self._is_refreshing: return
+        if self._is_refreshing:
+            self._pending_refresh = True
+            return
         self._is_refreshing = True
+        self._pending_refresh = False
         
         import config
         from models.table_model import ApiAuditLogWorker
@@ -117,6 +121,9 @@ class HistoryDataManager(QObject):
                 grouped_results.append(HistoryItemData(logs, total_count, summary_columns))
 
         self.logsReady.emit(grouped_results)
+        
+        if self._pending_refresh:
+            QTimer.singleShot(100, self.refresh_history)
 
 
     @Slot(str)
@@ -130,6 +137,9 @@ class HistoryDataManager(QObject):
             delay = self._retry_count * 3000 # 3초, 6초, 9초 간격으로 시도
             print(f"[History] Sync failed, retrying in {delay/1000}s (Attempt {self._retry_count}/{self._max_retries})")
             self._retry_timer.start(delay)
+            
+        if self._pending_refresh:
+            QTimer.singleShot(100, self.refresh_history)
 
 class HistoryNavigator(QObject):
     """4단계 위치 탐색 시퀀스를 관리하는 클래스."""

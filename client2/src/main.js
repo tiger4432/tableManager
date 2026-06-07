@@ -813,7 +813,12 @@ async function switchTable(tableName) {
   renderGrid([]);
   // Fetch initial chunk of data (reset skip to 0)
   await fetchData(true);
-  // Fetch global history log
+  
+  // Reset active history tab to global when switching tables to avoid empty screen
+  activeHistoryTab = 'global';
+  tabGlobalBtn.classList.add('active');
+  tabCellBtn.classList.remove('active');
+  tabRowBtn.classList.remove('active');
   await loadHistory();
 }
 
@@ -1942,16 +1947,25 @@ function appendHistoryLocally(log, skipRender = false) {
     if (existingGroup) {
       const isDuplicate = existingGroup.logs.some(l => {
         if (log.id && l.id && log.id === l.id) return true;
-        return l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id;
+        const lTime = l.timestamp ? new Date(l.timestamp).getTime() : 0;
+        const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+        return lTime === logTime && l.column_name === log.column_name && l.row_id === log.row_id;
       });
       if (!isDuplicate) {
         existingGroup.logs.unshift(log);
         existingGroup.total_count += 1;
+        if (!existingGroup.summary_columns) {
+          existingGroup.summary_columns = [];
+        }
+        if (log.column_name && !existingGroup.summary_columns.includes(log.column_name)) {
+          existingGroup.summary_columns.push(log.column_name);
+        }
       }
     } else {
       globalHistoryData.unshift({
         transaction_id: log.transaction_id,
         total_count: 1,
+        summary_columns: log.column_name ? [log.column_name] : [],
         logs: [log]
       });
     }
@@ -1973,7 +1987,9 @@ function appendHistoryLocally(log, skipRender = false) {
   // Store in cache if not duplicate
   const isDuplicate = cellRowHistoryData.some(l => {
     if (log.id && l.id && log.id === l.id) return true;
-    return l.timestamp === log.timestamp && l.column_name === log.column_name && l.row_id === log.row_id;
+    const lTime = l.timestamp ? new Date(l.timestamp).getTime() : 0;
+    const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+    return lTime === logTime && l.column_name === log.column_name && l.row_id === log.row_id;
   });
   if (!isDuplicate) {
     cellRowHistoryData.unshift(log);
