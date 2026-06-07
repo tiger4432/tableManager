@@ -162,13 +162,12 @@ def build_cypher_delete(table_name, payload, ontology):
     return cypher, params
 
 
-async def process_outbox_event(event, db_session, ontology):
+def build_queries_for_event(event, ontology):
     event_type = event.event_type
     table_name = event.table_name
     payload = event.payload
     
     queries = []
-    
     if event_type == "CREATE":
         cypher, params = build_cypher_create(table_name, payload, ontology)
         queries.append((cypher, params))
@@ -180,8 +179,14 @@ async def process_outbox_event(event, db_session, ontology):
         queries.append((cypher, params))
     else:
         logger.warning(f"Unsupported event type: {event_type} on event: {event.event_uuid}")
-        return True
+        
+    return queries
 
+
+async def execute_batch_queries(queries, tx_id):
+    if not queries:
+        return True
+        
     if neo4j_enabled and neo4j_driver:
         try:
             with neo4j_driver.session() as session:
@@ -189,15 +194,15 @@ async def process_outbox_event(event, db_session, ontology):
                     for cypher, params in queries:
                         tx.run(cypher, **params)
                 session.execute_write(execute_tx)
-            logger.info(f"Successfully synced event {event.event_uuid} ({event_type}) to Neo4j.")
+            logger.info(f"Successfully synced transaction '{tx_id}' ({len(queries)} queries) to Neo4j.")
         except Exception as e:
-            logger.error(f"Neo4j sync fail for event {event.event_uuid}: {e}")
+            logger.error(f"Neo4j sync fail for transaction '{tx_id}': {e}")
             return False
     else:
         # Mock Logging Mode
-        logger.info(f"[MOCK GRAPH SYNC] Event UUID: {event.event_uuid} | Type: {event_type} | Table: {table_name}")
+        logger.info(f"[MOCK GRAPH SYNC] Syncing transaction '{tx_id}' ({len(queries)} queries)")
         for idx, (cypher, params) in enumerate(queries):
-            logger.info(f"Query #{idx+1}:\n{cypher}\nParameters: {json.dumps(params, default=str)}\n")
+            logger.info(f"Query #{idx+1} in Tx:\n{cypher}\nParameters: {json.dumps(params, default=str)}\n")
             
     return True
 
@@ -205,6 +210,7 @@ async def process_outbox_event(event, db_session, ontology):
 async def start_graph_sync_worker(db_session_factory):
     logger.info("Initializing Graph Database Sync Worker Daemon...")
     ontology = load_ontology_mapping()
+    from collections import defaultdict
     
     while True:
         try:
@@ -213,30 +219,60 @@ async def start_graph_sync_worker(db_session_factory):
                 from database.models import DatabaseOutbox
                 pending_events = db.query(DatabaseOutbox).filter(
                     DatabaseOutbox.status == "PENDING"
-                ).order_by(DatabaseOutbox.id.asc()).limit(50).all()
+                ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
                 
                 if not pending_events:
                     await asyncio.sleep(1)
                     continue
-                    
+                
+                # Group pending events by transaction_id to process them atomically
+                groups = defaultdict(list)
+                group_order = []
+                
                 for event in pending_events:
-                    success = await process_outbox_event(event, db, ontology)
+                    tx_id = event.payload.get("transaction_id")
+                    if not tx_id:
+                        tx_id = f"single_{event.event_uuid}"
+                    if tx_id not in groups:
+                        group_order.append(tx_id)
+                    groups[tx_id].append(event)
+                
+                failed_any = False
+                for tx_id in group_order:
+                    events_in_tx = groups[tx_id]
                     
+                    # 1. Consolidate queries for all events under this transaction
+                    all_queries = []
+                    for event in events_in_tx:
+                        queries_for_event = build_queries_for_event(event, ontology)
+                        all_queries.extend(queries_for_event)
+                    
+                    # 2. Execute unified Neo4j transaction write
+                    success = await execute_batch_queries(all_queries, tx_id)
+                    
+                    # 3. Update outbox statuses
                     if success:
-                        event.status = "DISPATCHED"
-                        event.processed_at = datetime.now()
+                        for event in events_in_tx:
+                            event.status = "DISPATCHED"
+                            event.processed_at = datetime.now()
                     else:
-                        event.retry_count += 1
-                        if event.retry_count >= 3:
-                            event.status = "FAILED"
-                            logger.error(f"Event {event.event_uuid} failed permanently.")
-                        else:
-                            db.rollback()
-                            logger.warning(f"Retrying event {event.event_uuid} on next iteration...")
-                            await asyncio.sleep(2)
-                            break
-                            
+                        for event in events_in_tx:
+                            event.retry_count += 1
+                            if event.retry_count >= 3:
+                                event.status = "FAILED"
+                                logger.error(f"Event {event.event_uuid} in Tx {tx_id} failed permanently.")
+                        
+                        db.rollback()
+                        logger.warning(f"Transaction group commit failed for {tx_id}. Retrying next loop...")
+                        failed_any = True
+                        await asyncio.sleep(2)
+                        break
+                        
                     db.commit()
+                
+                if failed_any:
+                    await asyncio.sleep(1)
+                    
             except Exception as e:
                 db.rollback()
                 logger.error(f"Error in Sync Worker execution loop: {e}")
