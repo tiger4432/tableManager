@@ -127,7 +127,7 @@ class IngestionHandler(FileSystemEventHandler):
                 if rows is not None:
                     # 파이프라인 매칭 및 실행 성공 (빈 리스트일 수도 있음)
                     if rows:
-                        self._send_to_upsert(rows, uploader=uploader)
+                        self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
                 else:
                     # 매칭되는 파이프라인이 없으면 기본 AdvancedIngester 수행
                     logger.info(f"[{self.table_name}] ⚡ No pipeline matched. Falling back to AdvancedIngester for {os.path.basename(file_path)}")
@@ -138,7 +138,7 @@ class IngestionHandler(FileSystemEventHandler):
                     logger.info(f"[{self.table_name}] 🔄 Starting default ingestion for {os.path.basename(file_path)} (Attempt {attempt+1})")
                     rows = ingester.process_file(file_path)
                     if rows:
-                        self._send_to_upsert(rows, uploader=uploader)
+                        self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
                 
                 # 3. Archive the file
                 self._archive_file(file_path)
@@ -232,7 +232,7 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
-    def _send_to_upsert(self, rows: list[dict], uploader: str = "system"):
+    def _send_to_upsert(self, rows: list[dict], uploader: str = "system", filename: str = None):
         """파싱된 행 리스트를 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다."""
         import json
         
@@ -258,6 +258,18 @@ class IngestionHandler(FileSystemEventHandler):
         bk_col = table_info.get("business_key", "id")
         defined_cols = table_info.get("display_columns", [])
         
+        # Determine source_name based on real original filename
+        real_source = "batch_ingester"
+        if filename:
+            try:
+                from pipeline_base import BasePipelineParser
+                real_source = BasePipelineParser.get_basename(filename)
+            except Exception as e:
+                logger.warning(f"Failed to get clean original filename: {e}")
+                real_source = filename
+        else:
+            real_source = "pipeline_parser" if os.path.exists(self.scripts_path) else "batch_ingester"
+
         # 4. 배치 단위로 정규화 및 로컬 DB 전송
         import uuid
         file_tx_id = str(uuid.uuid4())
@@ -290,7 +302,7 @@ class IngestionHandler(FileSystemEventHandler):
                         items.append(schemas.GeneralUpdateItem(
                             business_key_val=str(bk_val),
                             updates=normalized_row,
-                            source_name="pipeline_parser" if os.path.exists(self.scripts_path) else "batch_ingester",
+                            source_name=real_source,
                             updated_by=uploader
                         ))
                 

@@ -72,6 +72,22 @@ class BasePipelineParser:
             
         return cleaned_records
 
+    @staticmethod
+    def get_basename(file_path: str) -> str:
+        """
+        추출된 원천 파일의 실제 파일명(유저명 접두사 및 UUID 접미사 제외)을 반환합니다.
+        예: user(username)_orig_name_abcdef12.xlsx -> orig_name.xlsx
+        """
+        import os
+        import re
+        filename = os.path.basename(file_path)
+        # 1. Strip user prefix: user(username)_
+        filename = re.sub(r"^user\([^)]+\)_", "", filename)
+        # 2. Strip hex suffix before extension: _[0-9a-fA-F]{8}
+        name, ext = os.path.splitext(filename)
+        name = re.sub(r"_[0-9a-fA-F]{8}$", "", name)
+        return name + ext
+
     def parse(self, file_path: str) -> list[dict]:
         """
         파이프라인의 메인 실행 메서드입니다.
@@ -90,3 +106,4 @@ class BasePipelineParser:
         # 3. Clean & Return
         result = self.clean_for_postgres(processed_df)
         return result
+
