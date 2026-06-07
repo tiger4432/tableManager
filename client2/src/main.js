@@ -2267,21 +2267,62 @@ function setupClipboardHandlers() {
             updated_by: CURRENT_USER
           });
 
-          // Prepare local cache structure updates for zero-lag feedback
+          // Prepare local cache structure updates
           const oldRowData = rowNode.data;
-          const newRowData = {
-            ...oldRowData,
-            data: { ...oldRowData.data },
-            updated_at: getLocalTimeString()
-          };
-          Object.keys(rowUpdates).forEach(col => {
-            if (!newRowData.data[col]) newRowData.data[col] = {};
-            newRowData.data[col].value = rowUpdates[col];
-            newRowData.data[col].is_overwrite = true;
-          });
-          localUpdates.push(newRowData);
+          if (txModeActive) {
+            // Stage edits in pendingTxEdits
+            Object.keys(rowUpdates).forEach(col => {
+              const key = `${rowId}_${col}`;
+              if (!pendingTxEdits[key]) {
+                const oldValue = oldRowData.data?.[col]?.value !== undefined ? oldRowData.data[col].value : '';
+                const oldIsOverwrite = oldRowData.data?.[col]?.is_overwrite === true;
+                pendingTxEdits[key] = {
+                  rowId,
+                  colId: col,
+                  newValue: rowUpdates[col],
+                  oldValue: oldValue,
+                  oldIsOverwrite: oldIsOverwrite,
+                  data: oldRowData
+                };
+              } else {
+                pendingTxEdits[key].newValue = rowUpdates[col];
+              }
+            });
+
+            const newRowData = {
+              ...oldRowData,
+              data: { ...oldRowData.data }
+            };
+            Object.keys(rowUpdates).forEach(col => {
+              if (!newRowData.data[col]) newRowData.data[col] = {};
+              newRowData.data[col].value = rowUpdates[col];
+            });
+            localUpdates.push(newRowData);
+          } else {
+            const newRowData = {
+              ...oldRowData,
+              data: { ...oldRowData.data },
+              updated_at: getLocalTimeString()
+            };
+            Object.keys(rowUpdates).forEach(col => {
+              if (!newRowData.data[col]) newRowData.data[col] = {};
+              newRowData.data[col].value = rowUpdates[col];
+              newRowData.data[col].is_overwrite = true;
+            });
+            localUpdates.push(newRowData);
+          }
         }
       });
+
+      if (txModeActive) {
+        if (localUpdates.length > 0) {
+          gridApi.applyTransaction({ update: localUpdates });
+          updateTxModeUI();
+          gridApi.refreshCells({ force: true });
+          performanceLog.textContent = `Staged clipboard paste: ${Object.keys(pendingTxEdits).length} total pending edits`;
+        }
+        return;
+      }
 
       if (batchUpdates.length > 0) {
         const res = await fetch(`${API_BASE}/tables/${currentTable}/data/updates`, {
