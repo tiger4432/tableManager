@@ -75,6 +75,10 @@ class IngestionHandler(FileSystemEventHandler):
         self._cached_table_name = t_name
         return t_name
 
+    @property
+    def errors_path(self):
+        return os.path.join(self.workspace_path, "err")
+
     def on_created(self, event):
         if not event.is_directory:
             self._handle_event(event.src_path)
@@ -148,15 +152,104 @@ class IngestionHandler(FileSystemEventHandler):
                 logger.warning(f"[{self.table_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
                 time.sleep(delay)
             except Exception as e:
-                logger.error(f"[{self.table_name}] ❌ Error processing file {os.path.basename(file_path)}: {e}")
+                import traceback
+                error_msg = traceback.format_exc()
+                logger.error(f"[{self.table_name}] ❌ Error processing file {os.path.basename(file_path)}: {error_msg}")
+                dest_path = self._move_to_err_folder(file_path)
+                if not dest_path:
+                    dest_path = file_path
+                self._log_ingestion_failure(file_path, dest_path, error_msg)
                 return
         
-        logger.error(f"[{self.table_name}] ❌ Failed to process file after {retries} attempts: {os.path.basename(file_path)}")
+        error_msg = f"Failed to process file after {retries} attempts: PermissionError (file locked)"
+        logger.error(f"[{self.table_name}] ❌ {error_msg}: {os.path.basename(file_path)}")
+        dest_path = self._move_to_err_folder(file_path)
+        if not dest_path:
+            dest_path = file_path
+        self._log_ingestion_failure(file_path, dest_path, error_msg)
 
-    def _archive_file(self, file_path: str):
+    def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str):
+        db = SessionLocal()
+        try:
+            from database.models import FileIngestionLog
+            log_obj = FileIngestionLog(
+                filename=os.path.basename(original_path),
+                filepath=os.path.abspath(archived_path),
+                table_name=self.table_name or "unknown",
+                status="FAILED",
+                error_message=error_msg,
+                retry_count=0
+            )
+            db.add(log_obj)
+            db.commit()
+            logger.info(f"[{self.table_name}] 📝 Logged file ingestion failure to database.")
+        except Exception as e:
+            logger.error(f"Failed to write file ingestion error log to DB: {e}")
+        finally:
+            db.close()
+
+    def process_archived_file_sync(self, log_entry, db, uploader: str = "system"):
+        """
+        Processes a file that is already in err/archives folders (e.g. for retrying).
+        Does not move it again.
+        """
+        filepath = log_entry.filepath
+        try:
+            rows = self._discover_and_execute_pipeline(filepath)
+            if rows is None:
+                logger.info(f"[{self.table_name}] ⚡ No pipeline matched for retry. Falling back to AdvancedIngester for {os.path.basename(filepath)}")
+                ingester = AdvancedIngester(self.config_path)
+                rows = ingester.process_file(filepath)
+            if rows:
+                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath))
+            
+            # If successful, update the log entry to SUCCESS
+            log_entry.status = "SUCCESS"
+            log_entry.error_message = None
+            db.commit()
+            return True
+        except Exception as e:
+            import traceback
+            error_msg = traceback.format_exc()
+            logger.error(f"[{self.table_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
+            log_entry.status = "FAILED"
+            log_entry.error_message = error_msg
+            log_entry.retry_count += 1
+            db.commit()
+            return False
+
+    def _move_to_err_folder(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            logger.debug(f"File already gone, skipping error moving: {file_path}")
+            return None
+
+        err_dir = self.errors_path
+        if not os.path.exists(err_dir):
+            os.makedirs(err_dir)
+            
+        filename = os.path.basename(file_path)
+        dest_path = os.path.join(err_dir, filename)
+        
+        # Handle filename collisions in error directory
+        if os.path.exists(dest_path):
+            base, ext = os.path.splitext(filename)
+            dest_path = os.path.join(err_dir, f"{base}_{int(time.time())}{ext}")
+            
+        try:
+            shutil.move(file_path, dest_path)
+            logger.info(f"Moved failed file {file_path} to error folder {dest_path}")
+            return dest_path
+        except FileNotFoundError:
+            logger.debug(f"File vanished during move to err: {file_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to move file to err: {e}")
+            return None
+
+    def _archive_file(self, file_path: str) -> str:
         if not os.path.exists(file_path):
             logger.debug(f"File already gone, skipping archive: {file_path}")
-            return
+            return None
 
         if not os.path.exists(self.archives_path):
             os.makedirs(self.archives_path)
@@ -172,10 +265,13 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             shutil.move(file_path, dest_path)
             logger.info(f"Moved {file_path} to {dest_path}")
+            return dest_path
         except FileNotFoundError:
             logger.debug(f"File vanished during move: {file_path}")
+            return None
         except Exception as e:
             logger.error(f"Failed to move file to archive: {e}")
+            return None
 
     def _discover_and_execute_pipeline(self, file_path: str) -> list[dict] | None:
         """

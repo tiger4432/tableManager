@@ -1516,7 +1516,7 @@ def query_cells_sources(
     return result
 
 @app.post("/admin/outbox/retry-failed")
-def retry_failed_outbox_events(event_id: int = None, db: Session = Depends(get_db)):
+def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None, db: Session = Depends(get_db)):
     """
     실패(FAILED) 상태인 Outbox 체인 이벤트를 
     다시 대기열(PENDING)로 원복하여 재시도하도록 리셋합니다.
@@ -1525,13 +1525,19 @@ def retry_failed_outbox_events(event_id: int = None, db: Session = Depends(get_d
     query = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.status == "FAILED"
     )
-    if event_id is not None:
-        query = query.filter(models.DatabaseOutbox.id == event_id)
-        
     failed_events = query.all()
     
+    if event_id is not None:
+        failed_events = [e for e in failed_events if e.id == event_id]
+    elif transaction_id is not None:
+        failed_events = [
+            e for e in failed_events 
+            if (e.payload.get("transaction_id") == transaction_id if e.payload else False) or
+               (f"single_{e.event_uuid}" == transaction_id)
+        ]
+        
     if not failed_events:
-        return {"status": "success", "message": "No failed outbox events found."}
+        return {"status": "success", "message": "No matching failed outbox events found."}
         
     for event in failed_events:
         event.status = "PENDING"
@@ -1545,30 +1551,174 @@ def retry_failed_outbox_events(event_id: int = None, db: Session = Depends(get_d
     return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}
 
 @app.get("/admin/outbox/failed")
-def get_failed_outbox_events(limit: int = 100, skip: int = 0, db: Session = Depends(get_db)):
-    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 반환합니다."""
+def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
     query = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.status == "FAILED"
     ).order_by(models.DatabaseOutbox.id.desc())
     
-    total = query.count()
-    events = query.offset(skip).limit(limit).all()
+    all_failed = query.all()
+    
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for e in all_failed:
+        tx_id = e.payload.get("transaction_id") if e.payload else None
+        if not tx_id:
+            tx_id = f"single_{e.event_uuid}"
+        groups[tx_id].append(e)
+        
+    # Sort transaction groups by the newest event's ID inside each group descending
+    sorted_groups = sorted(
+        groups.items(),
+        key=lambda item: max(e.id for e in item[1]),
+        reverse=True
+    )
+    
+    total = len(sorted_groups)
+    start = (page - 1) * limit
+    end = start + limit
+    paginated_groups = sorted_groups[start:end]
     
     result_list = []
-    for e in events:
+    for tx_id, events in paginated_groups:
+        table_names = list(set(e.table_name for e in events))
+        event_types = list(set(e.event_type for e in events))
+        max_retry = max(e.retry_count for e in events)
+        
+        # Max created_at or failed_at
+        created_at_list = [e.created_at for e in events if e.created_at]
+        failed_at = max(created_at_list).isoformat() if created_at_list else None
+        
+        event_details = []
+        for e in events:
+            event_details.append({
+                "id": e.id,
+                "event_uuid": e.event_uuid,
+                "event_type": e.event_type,
+                "table_name": e.table_name,
+                "payload": e.payload,
+                "status": e.status,
+                "retry_count": e.retry_count,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "processed_at": e.processed_at.isoformat() if e.processed_at else None
+            })
+            
         result_list.append({
-            "id": e.id,
-            "event_uuid": e.event_uuid,
-            "event_type": e.event_type,
-            "table_name": e.table_name,
-            "payload": e.payload,
-            "status": e.status,
-            "retry_count": e.retry_count,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-            "processed_at": e.processed_at.isoformat() if e.processed_at else None
+            "transaction_id": tx_id,
+            "table_names": table_names,
+            "event_types": event_types,
+            "retry_count": max_retry,
+            "failed_at": failed_at,
+            "events": event_details
         })
         
-    return {"status": "success", "total": total, "data": result_list}
+    return {
+        "status": "success",
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "data": result_list
+    }
+
+@app.get("/admin/file-ingestion/failed")
+def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
+    query = db.query(models.FileIngestionLog).filter(
+        models.FileIngestionLog.status == "FAILED"
+    ).order_by(models.FileIngestionLog.id.desc())
+    
+    total = query.count()
+    start = (page - 1) * limit
+    logs = query.offset(start).limit(limit).all()
+    
+    result_list = []
+    for log in logs:
+        result_list.append({
+            "id": log.id,
+            "filename": log.filename,
+            "filepath": log.filepath,
+            "table_name": log.table_name,
+            "status": log.status,
+            "error_message": log.error_message,
+            "retry_count": log.retry_count,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "updated_at": log.updated_at.isoformat() if log.updated_at else None
+        })
+        
+    return {
+        "status": "success",
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "data": result_list
+    }
+
+@app.post("/admin/file-ingestion/retry-failed")
+async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""
+    from directory_watcher import IngestionHandler
+    import os
+    import asyncio
+    import json
+    
+    query = db.query(models.FileIngestionLog).filter(
+        models.FileIngestionLog.status == "FAILED"
+    )
+    if log_id is not None:
+        query = query.filter(models.FileIngestionLog.id == log_id)
+        
+    failed_logs = query.all()
+    if not failed_logs:
+        return {"status": "success", "message": "No failed file ingestion logs found."}
+        
+    success_count = 0
+    fail_count = 0
+    
+    loop = asyncio.get_running_loop()
+    
+    def sync_refresh_callback(t_name: str, count: int, created_logs: list = None):
+        msg = {
+            "event": "batch_refresh_required",
+            "table_name": t_name,
+            "change_count": count
+        }
+        if created_logs and len(created_logs) <= 5000:
+            msg["created_logs"] = created_logs
+        
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
+        )
+
+    for log in failed_logs:
+        table_name = log.table_name or "unknown"
+        server_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_root = os.path.join(server_dir, "ingestion_workspace", table_name)
+        config_path = os.path.join(workspace_root, "config", "config.json")
+        if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
+            json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]
+            if json_files:
+                config_path = os.path.join(workspace_root, "config", json_files[0])
+        
+        archives_path = os.path.join(workspace_root, "archives")
+        
+        handler = IngestionHandler(
+            workspace_path=workspace_root,
+            config_path=config_path if os.path.exists(config_path) else None,
+            archives_path=archives_path,
+            default_table_name=table_name,
+            on_refresh_callback=sync_refresh_callback
+        )
+        
+        res = await asyncio.to_thread(handler.process_archived_file_sync, log, db)
+        if res:
+            success_count += 1
+        else:
+            fail_count += 1
+            
+    return {
+        "status": "success",
+        "message": f"Successfully retried. Success: {success_count}, Failed: {fail_count}."
+    }
 
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))

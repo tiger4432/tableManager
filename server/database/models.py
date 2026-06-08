@@ -74,3 +74,18 @@ class DatabaseOutbox(Base):
         Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'")),
     )
 
+
+class FileIngestionLog(Base):
+    __tablename__ = "file_ingestion_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, index=True)
+    filepath = Column(String)
+    table_name = Column(String, index=True)
+    status = Column(String(20), default="FAILED", index=True) # "FAILED", "SUCCESS", "PENDING"
+    error_message = Column(String, nullable=True)
+    retry_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
