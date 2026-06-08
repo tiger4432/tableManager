@@ -591,8 +591,13 @@ def get_table_data(
             t_tmp = time.time()
             actual_target_offset = count_query.count()
             t_target = time.time() - t_tmp
-            # [Optimization] 점프 시 타겟 행이 화면 중앙에 오도록 +- 50행 범위를 맞춤
-            skip = max(0, actual_target_offset - (limit // 2))
+            # [Optimization] 웹 UI의 viewMode에 맞게 skip을 계산합니다.
+            # pagination 모드(limit=500 등 대용량)인 경우 페이지 경계에 정렬(Align)하고,
+            # infinite 모드(limit=100 등)인 경우 타겟이 중앙 부근에 오도록 배치합니다.
+            if limit >= 500:
+                skip = (actual_target_offset // limit) * limit
+            else:
+                skip = max(0, actual_target_offset - (limit // 2))
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
     # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
