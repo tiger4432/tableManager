@@ -111,7 +111,7 @@ graph TD
 
 ### 4.1 인제션 파이프라인
 - **DirectoryWatcher**: `raws/` 폴더의 신규 파일을 감시하고, 인제스터를 통해 데이터를 파싱하여 통합 API(`PUT /data/updates`)에 50개 단위 청크로 전송합니다.
-- **AdvancedIngester**: 정규표현식 기반의 고속 행 추출 및 파일 헤더 메타데이터 결합 기능을 수행합니다.
+- **PipelineParser**: 각 워크스페이스의 `scripts/`에 정의되며, 확장자나 내용을 기준으로 파일 포맷을 매칭하고 정제하여 DB 업서트를 준비하는 Pandas 기반 파이프라인 파서.
 
 ### 4.2 통합 통신 및 동기화 규격
 - **Unified Update API**: 데이터 변경(인제션, 수동 수정, 원천 관리)은 `/tables/{t}/data/updates` 하나로 처리되며, 개별 컬럼의 실제 변경 여부를 자동 감지합니다.

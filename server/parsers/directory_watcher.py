@@ -4,7 +4,6 @@ import shutil
 import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from advanced_ingester import AdvancedIngester
 
 import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -128,21 +127,12 @@ class IngestionHandler(FileSystemEventHandler):
                 # Pipeline Discovery: scripts 폴더 내의 파이프라인 파서 탐색
                 rows = self._discover_and_execute_pipeline(file_path)
                 
-                if rows is not None:
-                    # 파이프라인 매칭 및 실행 성공 (빈 리스트일 수도 있음)
-                    if rows:
-                        self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
-                else:
-                    # 매칭되는 파이프라인이 없으면 기본 AdvancedIngester 수행
-                    logger.info(f"[{self.table_name}] ⚡ No pipeline matched. Falling back to AdvancedIngester for {os.path.basename(file_path)}")
-                    # 1. Initialize AdvancedIngester for this workspace
-                    ingester = AdvancedIngester(self.config_path)
-                    
-                    # 2. Process the file and get rows for batching
-                    logger.info(f"[{self.table_name}] 🔄 Starting default ingestion for {os.path.basename(file_path)} (Attempt {attempt+1})")
-                    rows = ingester.process_file(file_path)
-                    if rows:
-                        self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
+                if rows is None:
+                    raise ValueError(f"No custom pipeline parser matched the file '{os.path.basename(file_path)}' format.")
+                
+                # 파이프라인 매칭 및 실행 성공 (빈 리스트일 수도 있음)
+                if rows:
+                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
                 
                 # 3. Archive the file
                 self._archive_file(file_path)
@@ -197,9 +187,7 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             rows = self._discover_and_execute_pipeline(filepath)
             if rows is None:
-                logger.info(f"[{self.table_name}] ⚡ No pipeline matched for retry. Falling back to AdvancedIngester for {os.path.basename(filepath)}")
-                ingester = AdvancedIngester(self.config_path)
-                rows = ingester.process_file(filepath)
+                raise ValueError(f"No custom pipeline parser matched the file '{os.path.basename(filepath)}' format.")
             if rows:
                 self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath))
             

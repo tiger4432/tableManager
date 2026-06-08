@@ -79,7 +79,7 @@ AssyManager는 수만 건의 자동화 로그를 지연 없이 처리하기 위�
 3. 클라이언트 실행 시 `NavigationRail`에 자동 아이콘 매핑.
 
 ### 6.2 커스텀 파서(Parser) 구현 시
-- 각 워크스페이스의 `scripts/custom_parser.py`를 작성하여 `AdvancedIngester`에 플러그인 형태로 연결 가능합니다.
+- 각 워크스페이스의 `scripts/` 폴더에 `BasePipelineParser`를 상속한 커스텀 파이프라인 파서 스크립트를 정의하여 신규 파일 형식을 자동으로 매칭하고 정제할 수 있습니다. (적합한 파서가 없는 경우 기본 폴백 없이 격리 처리됩니다.)
 
 ---
 *AssyManager Enterprise Master Documentation v2.2 | 2026.04.20 (Precise Search & Zero-Lag Sync Revision)*

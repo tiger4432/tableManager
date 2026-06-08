@@ -12,14 +12,14 @@
 sequenceDiagram
     participant OS as File System (raws/)
     participant DW as DirectoryWatcher
-    participant AD as AdvancedIngester
+    participant PP as PipelineParser
     participant API as FastAPI Server
     participant DB as PostgreSQL (DataRow)
     participant UI as PySide6 Client
 
     OS->>DW: 1. 신규 파일 감지 (Watchdog)
-    DW->>AD: 2. 파싱 및 메타데이터 추출 요청
-    AD-->>DW: 3. 행 리스트(Row List) 반환
+    DW->>PP: 2. 커스텀 파이프라인 매칭 및 파싱
+    PP-->>DW: 3. 변환된 데이터(Row List) 반환
     DW->>API: 4. 50단위 청킹(Chunking) 후 PUT /upsert/batch 호출
     API->>DB: 5. upsert_rows_batch 수행 (단일 트랜잭션)
     DB-->>API: 6. 변경/생성 결과 반환
@@ -34,7 +34,7 @@ sequenceDiagram
 | 레이어 | 파일명 | 핵심 프로세스 및 함수 |
 | :--- | :--- | :--- |
 | **Ingestion** | `server/parsers/directory_watcher.py` | `_send_to_upsert()`: 파싱된 데이터를 **50개 단위 청크(Chunk)**로 나누어 서버에 전송하여 네트워크 부하 최적화. |
-| **Ingestion** | `server/parsers/advanced_ingester.py`| `process_file()`: 정규표현식 기반의 고속 행 추출 및 파일 헤더 메타데이터 결합. |
+| **Ingestion** | `server/parsers/pipeline_base.py`| `BasePipelineParser`: 커스텀 파서의 기본 클래스로, `match()`와 `process_dataframe()`을 오버라이드하여 포맷 검증 및 데이터 전처리. |
 | **Server API** | `server/main.py` | `/tables/{t}/upsert/batch`: 다량의 업서트 결과를 취합하여 하나의 **JSON WebSocket 이벤트**로 압축 브로드캐스트. |
 | **Server DB** | `server/database/crud.py` | `upsert_rows_batch()`: 비즈니스 키 기반 행 매핑, `flag_modified`를 통한 JSON 내부 동시 수정 보장, 단일 Commit 전술 사용. |
 | **Client UI** | `client/models/table_model.py` | `_on_websocket_broadcast()`: 수신된 대량의 데이터를 로컬 캐시와 비교하여 **Strict Deduplication** 수행 후 상단 Prepend 처리. |
