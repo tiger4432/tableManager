@@ -139,7 +139,6 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "transaction_id": chain_tx_id,
                             "created_logs": created_logs
                         }
-                    print(msg)
                     await manager.broadcast(json.dumps(msg))
                     logger.info(f"Successfully broadcasted chained update message for '{target_table}' under tx '{chain_tx_id}'.")
                 except Exception as ws_err:

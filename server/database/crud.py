@@ -193,6 +193,14 @@ def apply_row_update_internal(
         if new_bk_val is not None:
             row.business_key_val = str(new_bk_val).strip()
 
+    old_values_snapshot = {}
+    for col_name in update_item.updates.keys():
+        if col_name in system_cols: continue
+        if col_name in row.data:
+            old_values_snapshot[col_name] = row.data[col_name].get("value")
+        else:
+            old_values_snapshot[col_name] = None
+
     for col_name, val in update_item.updates.items():
         if col_name in system_cols: continue
             
@@ -239,10 +247,21 @@ def apply_row_update_internal(
         
     # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
     if changed_cols and update_item.source_name != "user":
-        summary_msg = f"{len(changed_cols)}개 필드 업데이트" if not is_new else "신규 데이터 생성"
+        if is_new:
+            old_summary = None
+            summary_msg = "신규 데이터 생성"
+        else:
+            old_summary_parts = []
+            for col in changed_cols:
+                old_val = old_values_snapshot.get(col)
+                old_val_str = "비어있음" if old_val is None else str(old_val)
+                old_summary_parts.append(f"{col}: {old_val_str}")
+            old_summary = ", ".join(old_summary_parts)
+            summary_msg = f"{len(changed_cols)}개 필드 업데이트"
+            
         log_dict = create_audit_log(
             db, table_name, row.row_id, "ROW_UPDATE",
-            None, summary_msg, update_item.source_name,
+            old_summary, summary_msg, update_item.source_name,
             (update_item.updated_by or "system"),
             transaction_id=transaction_id,
             business_key=row.business_key_val,

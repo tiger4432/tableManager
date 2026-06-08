@@ -44,11 +44,15 @@ def reserve_materials_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> D
         
     # 1. Convert to DataFrame using BaseMapper helper
     df = BaseMapper.payloads_to_df(payloads)
+
+    if 'model_name' not in df.columns or 'target_qty' not in df.columns:
+        return {"updates": []}
+        
     df = df.dropna(subset=['model_name', 'target_qty'])
     
     # 4. Construct general updates payload
     updates = []
-    for _, row in df.iloc[0:2].iterrows():
+    for _, row in df.iterrows():
         updates.append({
             "business_key_val": f"INV_{row.get('model_name')}",
             "updates": {
