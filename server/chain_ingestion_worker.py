@@ -182,11 +182,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                 last_tx_id = last_event.payload.get("transaction_id")
                 if last_tx_id:
                     current_ids = {e.id for e in pending_events}
-                    extra_events = db.query(DatabaseOutbox).filter(
+                    # Fetch other pending candidates to filter in-memory (bypass DB json dialect compatibility issues)
+                    candidates = db.query(DatabaseOutbox).filter(
                         DatabaseOutbox.processed_chain == False,
-                        DatabaseOutbox.payload["transaction_id"].astext == last_tx_id,
                         ~DatabaseOutbox.id.in_(current_ids)
-                    ).order_by(DatabaseOutbox.id.asc()).all()
+                    ).limit(10000).all()
+                    
+                    extra_events = [e for e in candidates if e.payload.get("transaction_id") == last_tx_id]
                     if extra_events:
                         pending_events.extend(extra_events)
                         logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(pending_events)})")
@@ -204,6 +206,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     groups[tx_id].append(event)
                 
                 failed_any = False
+                from datetime import datetime
                 for tx_id in group_order:
                     events_in_tx = groups[tx_id]
                     
@@ -213,14 +216,31 @@ async def start_chain_ingestion_worker(db_session_factory):
                     if success:
                         for event in events_in_tx:
                             event.processed_chain = True
+                            event.status = "SUCCESS"
+                        db.commit()
                     else:
                         db.rollback()
-                        logger.warning(f"Chain execution transaction group failed for {tx_id}. Retrying next loop...")
-                        failed_any = True
-                        await asyncio.sleep(2)
-                        break
                         
-                    db.commit()
+                        # Increment retry count for all events in the failed transaction group
+                        for event in events_in_tx:
+                            event.retry_count += 1
+                            if event.retry_count >= 3:
+                                event.status = "FAILED"
+                                event.processed_chain = True  # Quarantine from worker queries
+                                if not event.payload:
+                                    event.payload = {}
+                                event.payload["error_log"] = {
+                                    "failed_at": datetime.now().isoformat(),
+                                    "reason": f"Mapper execution failed in tx group {tx_id} after 3 retries."
+                                }
+                                logger.error(f"Event {event.id} permanently failed and moved to FAILED status.")
+                            else:
+                                event.status = "RETRYING"
+                                logger.warning(f"Event {event.id} marked for retry ({event.retry_count}/3).")
+                                
+                        db.commit()
+                        failed_any = True
+                        break
                 
                 if failed_any:
                     await asyncio.sleep(1)

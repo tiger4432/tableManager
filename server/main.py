@@ -1515,6 +1515,31 @@ def query_cells_sources(
         
     return result
 
+@app.post("/admin/outbox/retry-failed")
+def retry_failed_outbox_events(db: Session = Depends(get_db)):
+    """
+    실패(FAILED) 상태인 Outbox 체인 이벤트를 
+    다시 대기열(PENDING)로 원복하여 재시도하도록 리셋합니다.
+    """
+    from datetime import datetime
+    failed_events = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.status == "FAILED"
+    ).all()
+    
+    if not failed_events:
+        return {"status": "success", "message": "No failed outbox events found."}
+        
+    for event in failed_events:
+        event.status = "PENDING"
+        event.retry_count = 0
+        event.processed_chain = False
+        if event.payload and "error_log" in event.payload:
+            # Mark log as resolved
+            event.payload["error_log"]["resolved_at"] = datetime.now().isoformat()
+            
+    db.commit()
+    return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}
+
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))
