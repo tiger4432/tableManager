@@ -1544,8 +1544,10 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
         event.retry_count = 0
         event.processed_chain = False
         if event.payload and "error_log" in event.payload:
-            # Mark log as resolved
-            event.payload["error_log"]["resolved_at"] = datetime.now().isoformat()
+            payload_copy = dict(event.payload)
+            payload_copy["error_log"] = dict(payload_copy["error_log"])
+            payload_copy["error_log"]["resolved_at"] = datetime.now().isoformat()
+            event.payload = payload_copy
             
     db.commit()
     return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}

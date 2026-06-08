@@ -231,12 +231,12 @@ async def start_chain_ingestion_worker(db_session_factory):
                             if event.retry_count >= 3:
                                 event.status = "FAILED"
                                 event.processed_chain = True  # Quarantine from worker queries
-                                if not event.payload:
-                                    event.payload = {}
-                                event.payload["error_log"] = {
+                                payload_copy = dict(event.payload) if event.payload else {}
+                                payload_copy["error_log"] = {
                                     "failed_at": datetime.now().isoformat(),
                                     "reason": error_reason or f"Mapper execution failed in tx group {tx_id} after 3 retries."
                                 }
+                                event.payload = payload_copy
                                 logger.error(f"Event {event.id} permanently failed and moved to FAILED status.")
                             else:
                                 event.status = "RETRYING"
