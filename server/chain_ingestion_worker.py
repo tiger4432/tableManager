@@ -78,8 +78,10 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             if target_payload and target_payload.get("updates"):
                                 table_updates[target_table].extend(target_payload.get("updates"))
             except Exception as e:
-                logger.error(f"Failed to execute mapper in tx {tx_id} for rule '{rule.get('name')}': {e}")
-                return False
+                import traceback
+                error_msg = traceback.format_exc()
+                logger.error(f"Failed to execute mapper in tx {tx_id} for rule '{rule.get('name')}': {error_msg}")
+                return False, error_msg
 
     # 4. Perform chained batch updates by target table
     if table_updates:
@@ -144,14 +146,16 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     logger.error(f"Failed to broadcast chained update WebSocket message: {ws_err}")
                     
         except Exception as e:
-            logger.error(f"Failed executing chained batch update for tx {tx_id}: {e}")
-            return False
+            import traceback
+            error_msg = traceback.format_exc()
+            logger.error(f"Failed executing chained batch update for tx {tx_id}: {error_msg}")
+            return False, error_msg
         finally:
             request_user.reset(token_user)
             request_transaction_id.reset(token_tx)
             request_source.reset(token_src)
             
-    return True
+    return True, None
 
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
@@ -211,7 +215,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     events_in_tx = groups[tx_id]
                     
                     # Process transaction group atomically
-                    success = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
+                    success, error_reason = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
                     
                     if success:
                         for event in events_in_tx:
@@ -231,7 +235,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                                     event.payload = {}
                                 event.payload["error_log"] = {
                                     "failed_at": datetime.now().isoformat(),
-                                    "reason": f"Mapper execution failed in tx group {tx_id} after 3 retries."
+                                    "reason": error_reason or f"Mapper execution failed in tx group {tx_id} after 3 retries."
                                 }
                                 logger.error(f"Event {event.id} permanently failed and moved to FAILED status.")
                             else:
