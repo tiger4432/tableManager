@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
 import os from 'os';
 
 export default defineConfig({
@@ -9,5 +10,13 @@ export default defineConfig({
       (os.userInfo && os.userInfo().username) || 
       'web_client'
     )
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        admin: resolve(__dirname, 'admin.html')
+      }
+    }
   }
 });

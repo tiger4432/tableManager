@@ -1516,15 +1516,19 @@ def query_cells_sources(
     return result
 
 @app.post("/admin/outbox/retry-failed")
-def retry_failed_outbox_events(db: Session = Depends(get_db)):
+def retry_failed_outbox_events(event_id: int = None, db: Session = Depends(get_db)):
     """
     실패(FAILED) 상태인 Outbox 체인 이벤트를 
     다시 대기열(PENDING)로 원복하여 재시도하도록 리셋합니다.
     """
     from datetime import datetime
-    failed_events = db.query(models.DatabaseOutbox).filter(
+    query = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.status == "FAILED"
-    ).all()
+    )
+    if event_id is not None:
+        query = query.filter(models.DatabaseOutbox.id == event_id)
+        
+    failed_events = query.all()
     
     if not failed_events:
         return {"status": "success", "message": "No failed outbox events found."}
@@ -1540,6 +1544,32 @@ def retry_failed_outbox_events(db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}
 
+@app.get("/admin/outbox/failed")
+def get_failed_outbox_events(limit: int = 100, skip: int = 0, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 반환합니다."""
+    query = db.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.status == "FAILED"
+    ).order_by(models.DatabaseOutbox.id.desc())
+    
+    total = query.count()
+    events = query.offset(skip).limit(limit).all()
+    
+    result_list = []
+    for e in events:
+        result_list.append({
+            "id": e.id,
+            "event_uuid": e.event_uuid,
+            "event_type": e.event_type,
+            "table_name": e.table_name,
+            "payload": e.payload,
+            "status": e.status,
+            "retry_count": e.retry_count,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "processed_at": e.processed_at.isoformat() if e.processed_at else None
+        })
+        
+    return {"status": "success", "total": total, "data": result_list}
+
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))
@@ -1551,13 +1581,26 @@ if os.path.exists(client2_dist_path):
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+    @app.get("/admin")
+    @app.get("/admin.html")
+    def serve_admin_page():
+        """어드민 페이지(admin.html)를 반환합니다."""
+        admin_file = os.path.join(client2_dist_path, "admin.html")
+        if os.path.exists(admin_file):
+            return FileResponse(admin_file)
+        dev_admin_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "admin.html"))
+        if os.path.exists(dev_admin_file):
+            return FileResponse(dev_admin_file)
+        raise HTTPException(status_code=404, detail="Admin page not found. Please build frontend first.")
+
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):
-        # Prevent catching API endpoints or WebSocket
+        # Prevent catching API endpoints or WebSocket or Admin page
         if (file_name.startswith("tables") or 
             file_name.startswith("ws") or 
             file_name.startswith("audit_logs") or 
-            file_name.startswith("dashboard")):
+            file_name.startswith("dashboard") or
+            file_name.startswith("admin")):
             raise HTTPException(status_code=404)
 
         target_path = os.path.join(client2_dist_path, file_name)
