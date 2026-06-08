@@ -46,27 +46,37 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     # target_table -> list of GeneralUpdateItem dicts
     table_updates = defaultdict(list)
     
-    # 3. Evaluate rules for all events under this transaction
-    for event in valid_events:
-        event_type = event.event_type
-        table_name = event.table_name
-        payload = event.payload
-        
-        if event_type not in ["CREATE", "EDIT"]:
-            continue
-
+    # 3. Evaluate rules for this transaction
+    # To support batch rules, we group rules by trigger table to execute them efficiently.
+    # First, gather trigger tables present in valid_events
+    trigger_tables = set(e.table_name for e in valid_events if e.event_type in ["CREATE", "EDIT"])
+    
+    for table_name in trigger_tables:
         matched_rules = [r for r in rules if r.get("trigger_table") == table_name and r.get("enabled", True)]
+        if not matched_rules:
+            continue
+            
         for rule in matched_rules:
             target_table = rule.get("target_table")
             module_name = rule.get("mapper_module")
             func_name = rule.get("mapper_function")
+            is_batch = rule.get("is_batch", False)
             
             try:
-                # Execute dynamic mapper function
-                target_payload = execute_custom_mapper(module_name, func_name, db, payload)
-                if target_payload and target_payload.get("updates"):
-                    # Consolidate updates list
-                    table_updates[target_table].extend(target_payload.get("updates"))
+                if is_batch:
+                    # Collect all payloads for this trigger table in the current transaction group
+                    payloads = [e.payload for e in valid_events if e.table_name == table_name and e.event_type in ["CREATE", "EDIT"]]
+                    # Pass the whole list to custom mapper
+                    target_payload = execute_custom_mapper(module_name, func_name, db, payloads)
+                    if target_payload and target_payload.get("updates"):
+                        table_updates[target_table].extend(target_payload.get("updates"))
+                else:
+                    # Single event execution
+                    for event in valid_events:
+                        if event.table_name == table_name and event.event_type in ["CREATE", "EDIT"]:
+                            target_payload = execute_custom_mapper(module_name, func_name, db, event.payload)
+                            if target_payload and target_payload.get("updates"):
+                                table_updates[target_table].extend(target_payload.get("updates"))
             except Exception as e:
                 logger.error(f"Failed to execute mapper in tx {tx_id} for rule '{rule.get('name')}': {e}")
                 return False
@@ -166,6 +176,20 @@ async def start_chain_ingestion_worker(db_session_factory):
                 if not pending_events:
                     await asyncio.sleep(1)
                     continue
+                
+                # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
+                last_event = pending_events[-1]
+                last_tx_id = last_event.payload.get("transaction_id")
+                if last_tx_id:
+                    current_ids = {e.id for e in pending_events}
+                    extra_events = db.query(DatabaseOutbox).filter(
+                        DatabaseOutbox.processed_chain == False,
+                        DatabaseOutbox.payload["transaction_id"].astext == last_tx_id,
+                        ~DatabaseOutbox.id.in_(current_ids)
+                    ).order_by(DatabaseOutbox.id.asc()).all()
+                    if extra_events:
+                        pending_events.extend(extra_events)
+                        logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(pending_events)})")
                 
                 # Group events by transaction_id
                 groups = defaultdict(list)
