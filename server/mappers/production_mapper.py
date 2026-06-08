@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 import pandas as pd
+from mappers.base import BaseMapper
 
 def reserve_materials_from_plan(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -33,36 +34,16 @@ def reserve_materials_from_plan(db: Session, payload: Dict[str, Any]) -> Dict[st
     return target_payload
 
 
-def _payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
-    """
-    Helper to convert nested payload dictionary list into a 1D Pandas DataFrame.
-    """
-    flat_rows = []
-    for p in payloads:
-        row_id = p.get("row_id")
-        raw_data = p.get("data", {})
-        
-        flat_row = {"row_id": row_id}
-        for col_name, cell_detail in raw_data.items():
-            if isinstance(cell_detail, dict) and "value" in cell_detail:
-                flat_row[col_name] = cell_detail["value"]
-            else:
-                flat_row[col_name] = cell_detail
-                
-        flat_rows.append(flat_row)
-        
-    return pd.DataFrame(flat_rows)
-
-
 def reserve_materials_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Batch mapping utilizing pandas DataFrames to aggregate quantities by unique model_name.
+    Inherits data-flattening logic via BaseMapper.
     """
     if not payloads:
         return {"updates": []}
         
-    # 1. Convert to DataFrame
-    df = _payloads_to_df(payloads)
+    # 1. Convert to DataFrame using BaseMapper helper
+    df = BaseMapper.payloads_to_df(payloads)
     
     # 2. Basic cleanup
     if "model_name" not in df.columns:
