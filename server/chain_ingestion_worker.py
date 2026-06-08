@@ -226,8 +226,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                         db.rollback()
                         
                         # Increment retry count for all events in the failed transaction group
+                        failed_permanently_count = 0
+                        retrying_count = 0
+                        max_retry_num = 0
+                        
                         for event in events_in_tx:
                             event.retry_count += 1
+                            max_retry_num = max(max_retry_num, event.retry_count)
                             if event.retry_count >= 3:
                                 event.status = "FAILED"
                                 event.processed_chain = True  # Quarantine from worker queries
@@ -237,12 +242,18 @@ async def start_chain_ingestion_worker(db_session_factory):
                                     "reason": error_reason or f"Mapper execution failed in tx group {tx_id} after 3 retries."
                                 }
                                 event.payload = payload_copy
-                                logger.error(f"Event {event.id} permanently failed and moved to FAILED status.")
+                                failed_permanently_count += 1
                             else:
                                 event.status = "RETRYING"
-                                logger.warning(f"Event {event.id} marked for retry ({event.retry_count}/3).")
+                                retrying_count += 1
                                 
                         db.commit()
+                        
+                        if failed_permanently_count > 0:
+                            logger.error(f"Transaction {tx_id} permanently failed: {failed_permanently_count} events moved to FAILED status.")
+                        if retrying_count > 0:
+                            logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/3).")
+                            
                         failed_any = True
                         break
                 
