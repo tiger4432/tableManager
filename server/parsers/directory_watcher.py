@@ -306,12 +306,15 @@ class IngestionHandler(FileSystemEventHandler):
                     for name, obj in inspect.getmembers(module, inspect.isclass):
                         if issubclass(obj, BasePipelineParser) and obj is not BasePipelineParser:
                             try:
-                                if obj.match(file_path):
-                                    logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
-                                    parser_instance = obj()
-                                    return parser_instance.parse(file_path)
+                                is_match = obj.match(file_path)
                             except Exception as e:
-                                logger.error(f"[{self.table_name}] ❌ Error evaluating match() or parse() in {obj.__name__}: {e}")
+                                logger.error(f"[{self.table_name}] ❌ Error evaluating match() in {obj.__name__}: {e}")
+                                continue
+                                
+                            if is_match:
+                                logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
+                                parser_instance = obj()
+                                return parser_instance.parse(file_path)
                 except Exception as e:
                     logger.error(f"Failed to load plugin script {script_path}: {e}")
 
