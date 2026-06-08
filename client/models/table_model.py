@@ -974,11 +974,15 @@ class ApiLazyTableModel(QAbstractTableModel):
                         self._data.extend([None] * (target_limit - len(self._data)))
                 
                 for i, r in enumerate(new):
-                    self._data[calc_skip + i] = r # 가져온 데이터 채워넣기
+                    target_idx = calc_skip + i
+                    if self._data[target_idx] is None:
+                        self._loaded_count += 1
+                    self._data[target_idx] = r # 가져온 데이터 채워넣기
                 
                 self._server_fetched_count = max(self._server_fetched_count, target_limit)
                 self.dataChanged.emit(self.index(calc_skip, 0), self.index(target_limit - 1, len(self._columns) - 1)) #qt 객체 업데이트
                 self._update_row_id_map(new, calc_skip) # id 매핑 업데이트
+                self.count_changed.emit(self._exposed_rows, self.loaded_count, self._total_count)
                 
             except Exception as e:
                 import traceback

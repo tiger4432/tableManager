@@ -152,7 +152,10 @@ class HistoryDockPanel(QDockWidget):
         
         if src_index.row() >= len(source_model._data): return
         
-        row_id = source_model._data[src_index.row()].get("row_id")
+        row_data = source_model._data[src_index.row()]
+        if not row_data: return
+        
+        row_id = row_data.get("row_id")
         col_name = source_model._columns[src_index.column()]
         table_name = source_model.table_name
         
