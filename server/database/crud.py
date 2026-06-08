@@ -247,9 +247,15 @@ def apply_row_update_internal(
         
     # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
     if changed_cols and update_item.source_name != "user":
+        new_summary_parts = []
+        for col in changed_cols:
+            new_val = row.data[col].get("value")
+            new_val_str = "비어있음" if new_val is None else str(new_val)
+            new_summary_parts.append(f"{col}: {new_val_str}")
+            
         if is_new:
             old_summary = None
-            summary_msg = "신규 데이터 생성"
+            summary_msg = "신규 데이터 생성: " + ", ".join(new_summary_parts)
         else:
             old_summary_parts = []
             for col in changed_cols:
@@ -257,7 +263,7 @@ def apply_row_update_internal(
                 old_val_str = "비어있음" if old_val is None else str(old_val)
                 old_summary_parts.append(f"{col}: {old_val_str}")
             old_summary = ", ".join(old_summary_parts)
-            summary_msg = f"{len(changed_cols)}개 필드 업데이트"
+            summary_msg = ", ".join(new_summary_parts)
             
         log_dict = create_audit_log(
             db, table_name, row.row_id, "ROW_UPDATE",
