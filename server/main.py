@@ -1,5 +1,6 @@
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
+from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db
@@ -255,9 +256,8 @@ def inject_system_columns(row):
         r_data = {}
         for col in user_cols:
             val = getattr(row, col, None)
-            if val is None:
-                val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-            r_data[col] = val
+            # [정규화 스키마] native 값을 레거시 API 포맷으로 래핑
+            r_data[col] = {"value": val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         row.data = r_data
         
     # 3. created_at 주입
@@ -279,6 +279,97 @@ def inject_system_columns(row):
     else:
         # 데이터가 이미 있더라도 DB의 실제 값이 더 최신이므로 동기화
         row.data["updated_at"]["value"] = to_local_str(effective_update)
+
+def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
+    """
+    기본 데이터 테이블의 row 객체들에 cell_overwrites 및 cell_sources 정보를 병합하여 
+    API 응답 포맷인 { value, is_overwrite, sources, updated_by } 딕셔너리로 합성합니다.
+    include_sources=False이면 cell_sources 조회를 생략하여 대량 조회 성능을 최적화합니다.
+    """
+    if not rows:
+        return []
+        
+    row_ids = [r.row_id for r in rows]
+    
+    # 1. cell_overwrites 일괄 로딩 (Tuple 쿼리로 ORM 인스턴스화 오버헤드 제거)
+    overwrites = db.query(
+        models.CellOverwrite.row_id,
+        models.CellOverwrite.column_name,
+        models.CellOverwrite.is_overwrite,
+        models.CellOverwrite.updated_by,
+        models.CellOverwrite.manual_priority_source
+    ).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids)
+    ).all()
+    
+    overwrites_map = {}
+    for row_id, column_name, is_ow, updated_by, manual_priority_source in overwrites:
+        overwrites_map[(row_id, column_name)] = (is_ow, updated_by, manual_priority_source)
+        
+    # 2. cell_sources 일괄 로딩 (include_sources가 True일 때만 실행)
+    sources_map = {}
+    if include_sources:
+        sources = db.query(
+            models.CellSource.row_id,
+            models.CellSource.column_name,
+            models.CellSource.source_name,
+            models.CellSource.value
+        ).filter(
+            models.CellSource.table_name == table_name,
+            models.CellSource.row_id.in_(row_ids)
+        ).all()
+        
+        for row_id, column_name, source_name, value in sources:
+            key = (row_id, column_name)
+            if key not in sources_map:
+                sources_map[key] = {}
+            sources_map[key][source_name] = value
+
+    data_list = []
+    for row in rows:
+        r_dict = row.__dict__
+        r_id = r_dict.get("row_id") or row.row_id
+        r_data = {}
+        c_at_str = to_local_str(r_dict.get("created_at") or row.created_at)
+        u_at_str = to_local_str(r_dict.get("updated_at") or row.updated_at)
+        
+        for col in user_cols:
+            val_raw = r_dict.get(col) if col in r_dict else getattr(row, col, None)
+            key = (r_id, col)
+            
+            ow_info = overwrites_map.get(key)
+            col_srcs = sources_map.get(key, {})
+            
+            is_ow = ow_info[0] if ow_info else False
+            updated_by = ow_info[1] if ow_info else "system"
+            manual_pin = ow_info[2] if ow_info else None
+            
+            has_overwrite = is_ow or ("user" in col_srcs) or (manual_pin is not None)
+            
+            r_data[col] = {
+                "value": val_raw,
+                "is_overwrite": has_overwrite,
+                "sources": col_srcs,
+                "updated_by": updated_by
+            }
+            r_data[col]["manual_priority_source"] = manual_pin
+                
+        r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        
+        # dynamic data attribute 바인딩
+        row.data = r_data
+        
+        data_list.append({
+            "row_id": r_id,
+            "table_name": table_name,
+            "data": r_data,
+            "created_at": c_at_str,
+            "updated_at": u_at_str
+        })
+        
+    return data_list
 
 @app.get("/tables")
 def list_tables():
@@ -615,7 +706,7 @@ def get_table_data(
                 conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
             else:
                 if hasattr(table_model, col):
-                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
         
         if conditions:
             query = query.filter(or_(*conditions))
@@ -727,107 +818,19 @@ def get_table_data(
     cfg = crud.TABLE_CONFIG.get(table_name, {})
     col_types = cfg.get("column_types", {})
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-    is_sqlite = db.bind.dialect.name == "sqlite"
     
-    if is_sqlite:
-        entities = [
-            table_model.row_id,
-            table_model.created_at,
-            table_model.updated_at
-        ]
-        for col in user_cols:
-            entities.append(getattr(table_model, col))
-            
-        raw_rows = db.query(*entities).filter(table_model.row_id.in_(id_list)).all()
-        id_to_idx = {rid: i for i, rid in enumerate(id_list)}
-        raw_rows.sort(key=lambda x: id_to_idx.get(x[0], 999999))
-        t_row_scan = time.time() - t_row_start
-        
-        t_dict_start = time.time()
-        data_list = []
-        from datetime import datetime
-        for row in raw_rows:
-            r_id = row[0]
-            c_at_val = row[1]
-            u_at_val = row[2]
-            
-            c_at_str = to_local_str(c_at_val) if isinstance(c_at_val, datetime) else (c_at_val or "")
-            u_at_str = to_local_str(u_at_val) if isinstance(u_at_val, datetime) else (u_at_val or "")
-            
-            r_data = {}
-            for idx, col in enumerate(user_cols):
-                val = row[3 + idx]
-                if val is None:
-                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                else:
-                    # 세부 jsonb 내 sources 등의 히스토리 데이터를 제거하고 경량 딕셔너리로 축소 반환
-                    val = {
-                        "value": val.get("value"),
-                        "is_overwrite": val.get("is_overwrite", False),
-                        "updated_by": val.get("updated_by", "system")
-                    }
-                r_data[col] = val
-                
-            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
-            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
-                
-            data_list.append({
-                "row_id": r_id, 
-                "table_name": table_name, 
-                "data": r_data,
-                "created_at": c_at_str, 
-                "updated_at": u_at_str
-            })
-        t_dict = time.time() - t_dict_start
-    else:
-        # PostgreSQL 최적화: col - 'sources' 연산자로 DB 단에서 불필요한 이력 데이터를 걷어낸 뒤,
-        # row_to_json으로 단일 JSON 문자열로 빌드하여 전송받음으로써 DB I/O, 네트워크 전송량, 파이썬 드라이버 오버헤드를 동시에 극대화하여 해결.
-        from sqlalchemy import text
-        cols_sub = ", ".join([f"\"{col}\" - 'sources' AS \"{col}\"" for col in user_cols])
-        sql = text(f"""
-            SELECT row_to_json(sub) 
-            FROM (
-                SELECT row_id, created_at, updated_at, {cols_sub}
-                FROM "{table_name}"
-                WHERE row_id = ANY(:ids)
-            ) sub
-        """)
-        res = db.execute(sql, {"ids": id_list}).all()
-        raw_rows = [r[0] for r in res]
-        
-        id_to_idx = {rid: i for i, rid in enumerate(id_list)}
-        raw_rows.sort(key=lambda x: id_to_idx.get(x.get("row_id"), 999999))
-        t_row_scan = time.time() - t_row_start
-        
-        t_dict_start = time.time()
-        data_list = []
-        for row_dict in raw_rows:
-            r_id = row_dict["row_id"]
-            # row_to_json은 datetime을 ISO string 문자열(예: 2026-06-13T19:00:00+09:00)로 자동 변환함
-            c_at_raw = row_dict.get("created_at") or ""
-            u_at_raw = row_dict.get("updated_at") or ""
-            
-            c_at_str = c_at_raw.replace("T", " ").split("+")[0][:19]
-            u_at_str = u_at_raw.replace("T", " ").split("+")[0][:19]
-            
-            r_data = {}
-            for col in user_cols:
-                val = row_dict.get(col)
-                if val is None:
-                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                r_data[col] = val
-                
-            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
-            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
-            
-            data_list.append({
-                "row_id": r_id,
-                "table_name": table_name,
-                "data": r_data,
-                "created_at": c_at_str,
-                "updated_at": u_at_str
-            })
-        t_dict = time.time() - t_dict_start
+    # [정규화 스키마] 통합 ORM 쿼리 (SQLite/PostgreSQL 공용)
+    raw_rows = db.query(table_model).filter(table_model.row_id.in_(id_list)).all()
+    id_to_idx = {rid: i for i, rid in enumerate(id_list)}
+    raw_rows.sort(key=lambda x: id_to_idx.get(x.row_id, 999999))
+    t_row_scan = time.time() - t_row_start
+    
+    t_dict_start = time.time()
+    # [성능 최적화] 그리드 목록 조회에서는 cell_sources 로딩을 생략(include_sources=False)하여
+    # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
+    # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
+    data_list = fetch_and_merge_metadata(db, table_name, raw_rows, user_cols, include_sources=False)
+    t_dict = time.time() - t_dict_start
         
     t_total = time.time() - t_total_start
     
@@ -1060,7 +1063,7 @@ def export_table_csv(
                 conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
             else:
                 if hasattr(table_model, col):
-                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
         
         if conditions:
             query = query.filter(or_(*conditions))
@@ -1084,11 +1087,10 @@ def export_table_csv(
     business_cols = [c for c in sorted(col_types.keys()) if c not in ["created_at", "updated_at"]]
     header = business_cols + ["created_at", "updated_at"]
 
-    # [Performance Optimization] SQL 레벨에서 필요한 가상의 비즈니스 컬럼 값만 골라 추출하여 파이썬 JSON 파싱 부하 제거
+    # [정규화 스키마] native 컬럼을 직접 SELECT하여 JSONB 파싱 부하 완전 제거
     select_entities = []
     for col in business_cols:
-        expr = func.jsonb_extract_path_text(getattr(table_model, col), "value")
-        select_entities.append(expr.label(col))
+        select_entities.append(getattr(table_model, col).label(col))
     
     select_entities.append(table_model.created_at)
     select_entities.append(table_model.updated_at)
@@ -1238,20 +1240,15 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
     col_types = cfg.get("column_types", {})
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
     
-    r_data = {}
-    for col in user_cols:
-        val = getattr(row, col)
-        if val is None:
-            val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data[col] = val
-        
-    r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-    r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+    # [정규화 스키마] 단일 행은 cell_sources 포함하여 완전한 메타데이터를 반환
+    data_list = fetch_and_merge_metadata(db, table_name, [row], user_cols, include_sources=True)
+    if data_list:
+        return data_list[0]
     
     return {
         "row_id": row.row_id,
         "table_name": table_name,
-        "data": r_data,
+        "data": {},
         "created_at": row.created_at,
         "updated_at": row.updated_at
     }
@@ -1467,16 +1464,44 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
 @app.get("/tables/{table_name}/{row_id}/{col_name}/sources")
 async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
     """특정 셀에 중첩된 모든 데이터 원천(Sources) 정보를 반환합니다."""
-    row = crud.get_row_cell(db, table_name, row_id)
-    cell = getattr(row, col_name, None) if row else None
-    if not row or not isinstance(cell, dict):
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+    row = db.query(table_model).filter(table_model.row_id == row_id).first()
+    if not row or not hasattr(table_model, col_name):
         raise HTTPException(status_code=404, detail="Cell not found")
+        
+    cell_sources = db.query(models.CellSource).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id == row_id,
+        models.CellSource.column_name == col_name
+    ).all()
+    
+    ow = db.query(models.CellOverwrite).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id == row_id,
+        models.CellOverwrite.column_name == col_name
+    ).first()
+    
+    sources_dict = {
+        s.source_name: {
+            "value": s.value,
+            "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
+            "updated_by": s.updated_by
+        }
+        for s in cell_sources
+    }
+    
+    manual_priority_source = ow.manual_priority_source if ow else None
+    
+    _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source)
     
     return {
-        "sources": cell.get("sources", {}),
-        "manual_priority_source": cell.get("manual_priority_source"),
-        "priority_source": cell.get("priority_source"),
-        "value": cell.get("value")
+        "sources": sources_dict,
+        "manual_priority_source": manual_priority_source,
+        "priority_source": priority_source,
+        "value": getattr(row, col_name)
     }
 
 @app.delete("/tables/{table_name}/{row_id}/{col_name}/sources/{source_name}")
@@ -1505,7 +1530,7 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
 @app.put("/tables/{table_name}/{row_id}/{col_name}/priority")
 async def set_cell_priority(
     table_name: str, row_id: str, col_name: str, 
-    source_name: str = Body(..., embed=True), 
+    source_name: Optional[str] = Body(None, embed=True), 
     updated_by: str = Body("user", embed=True),
     db: Session = Depends(get_db)
 ):
@@ -1514,7 +1539,16 @@ async def set_cell_priority(
     if not updated_row:
         raise HTTPException(status_code=404, detail="Cell not found or source invalid")
     
-    inject_system_columns(updated_row)
+    cfg = crud.TABLE_CONFIG.get(table_name, {})
+    col_types = cfg.get("column_types", {})
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+    
+    merged_rows = fetch_and_merge_metadata(db, table_name, [updated_row], user_cols, include_sources=True)
+    if not merged_rows:
+        raise HTTPException(status_code=500, detail="Failed to serialize updated row")
+        
+    merged_item = merged_rows[0]
+    
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
@@ -1522,9 +1556,9 @@ async def set_cell_priority(
         "items": [{
             "row_id": row_id, 
             "is_new": False, 
-            "data": updated_row.data,
-            "created_at": to_local_str(updated_row.created_at),
-            "updated_at": to_local_str(updated_row.updated_at)
+            "data": merged_item["data"],
+            "created_at": merged_item["created_at"],
+            "updated_at": merged_item["updated_at"]
         }],
         "change_count": len(changed_cols)
     }))
@@ -1554,14 +1588,21 @@ async def set_cell_priority_batch_endpoint(
     
     if changed_rows:
         invalidate_table_cache(table_name)
+        
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
+        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+        
+        merged_items = fetch_and_merge_metadata(db, table_name, changed_rows, user_cols, include_sources=True)
+        
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [{
-            "row_id": r.row_id,
+            "row_id": item["row_id"],
             "is_new": False,
-            "data": r.data,
-            "created_at": to_local_str(r.created_at),
-            "updated_at": to_local_str(r.updated_at)
-        } for r in changed_rows]
+            "data": item["data"],
+            "created_at": item["created_at"],
+            "updated_at": item["updated_at"]
+        } for item in merged_items]
         
         if len(msg_items) > 100:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
@@ -1603,14 +1644,21 @@ async def delete_cell_source_batch_endpoint(
     
     if changed_rows:
         invalidate_table_cache(table_name)
+        
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
+        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+        
+        merged_items = fetch_and_merge_metadata(db, table_name, changed_rows, user_cols, include_sources=True)
+        
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [{
-            "row_id": r.row_id,
+            "row_id": item["row_id"],
             "is_new": False,
-            "data": r.data,
-            "created_at": to_local_str(r.created_at),
-            "updated_at": to_local_str(r.updated_at)
-        } for r in changed_rows]
+            "data": item["data"],
+            "created_at": item["created_at"],
+            "updated_at": item["updated_at"]
+        } for item in merged_items]
         
         if len(msg_items) > 100:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
@@ -1647,6 +1695,8 @@ def query_cells_sources(
 ):
     """여러 셀의 데이터 원천(Sources) 정보를 일괄 조회합니다."""
     row_ids = list(set(item.get("row_id") for item in req.updates if item.get("row_id")))
+    col_names = list(set(item.get("column_name") for item in req.updates if item.get("column_name")))
+    
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -1656,6 +1706,35 @@ def query_cells_sources(
     ).all()
     row_map = {r.row_id: r for r in rows}
     
+    # [정규화 스키마] N+1 문제를 방지하기 위해 단 2개의 배치 쿼리로 원천 데이터와 오버라이트 정보 일괄 로드
+    cell_sources = db.query(models.CellSource).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id.in_(row_ids),
+        models.CellSource.column_name.in_(col_names)
+    ).all()
+    
+    sources_map = {}
+    for s in cell_sources:
+        key = (s.row_id, s.column_name)
+        if key not in sources_map:
+            sources_map[key] = {}
+        sources_map[key][s.source_name] = {
+            "value": s.value,
+            "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
+            "updated_by": s.updated_by
+        }
+        
+    overwrites = db.query(models.CellOverwrite).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids),
+        models.CellOverwrite.column_name.in_(col_names)
+    ).all()
+    
+    overwrites_map = {}
+    for ow in overwrites:
+        key = (ow.row_id, ow.column_name)
+        overwrites_map[key] = ow.manual_priority_source
+        
     result = []
     for item in req.updates:
         row_id = item.get("row_id")
@@ -1664,8 +1743,7 @@ def query_cells_sources(
             continue
             
         row = row_map.get(row_id)
-        cell = getattr(row, col_name, None) if row else None
-        if not row or not isinstance(cell, dict):
+        if not row or not hasattr(table_model, col_name):
             result.append({
                 "row_id": row_id,
                 "column_name": col_name,
@@ -1676,13 +1754,19 @@ def query_cells_sources(
             })
             continue
             
+        key = (row_id, col_name)
+        sources_dict = sources_map.get(key, {})
+        manual_priority_source = overwrites_map.get(key)
+        
+        _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source)
+        
         result.append({
             "row_id": row_id,
             "column_name": col_name,
-            "sources": cell.get("sources", {}),
-            "manual_priority_source": cell.get("manual_priority_source"),
-            "priority_source": cell.get("priority_source"),
-            "value": cell.get("value")
+            "sources": sources_dict,
+            "manual_priority_source": manual_priority_source,
+            "priority_source": priority_source,
+            "value": getattr(row, col_name)
         })
         
     return result

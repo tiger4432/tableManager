@@ -73,9 +73,23 @@ def stage_event(session, event_type, table_name, data_row):
     if hasattr(data_row, "__table__"):
         for col in data_row.__table__.columns:
             if col.name not in ["row_id", "business_key_val", "created_at", "updated_at"]:
-                data_dict[col.name] = getattr(data_row, col.name, None)
+                val = getattr(data_row, col.name, None)
+                data_dict[col.name] = {
+                    "value": val,
+                    "is_overwrite": False,
+                    "updated_by": "system"
+                }
     else:
-        data_dict = getattr(data_row, "data", {})
+        raw_data = getattr(data_row, "data", {})
+        for col, cell in raw_data.items():
+            if isinstance(cell, dict) and "value" in cell:
+                data_dict[col] = cell
+            else:
+                data_dict[col] = {
+                    "value": cell,
+                    "is_overwrite": False,
+                    "updated_by": "system"
+                }
         
     event_obj = DatabaseOutbox(
         event_uuid=str(uuid.uuid4()),

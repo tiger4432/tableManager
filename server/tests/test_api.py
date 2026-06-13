@@ -113,6 +113,92 @@ def test_chained_ingestion(client, db_session):
     ).first()
     
     assert target_row is not None
-    assert target_row.stock_qty["value"] == 100
-    assert target_row.stock_qty["updated_by"] == "chain_worker"
+    assert target_row.stock_qty == 100
+    
+    src = db_session.query(models.CellSource).filter(
+        models.CellSource.table_name == "inventory_master",
+        models.CellSource.row_id == target_row.row_id,
+        models.CellSource.column_name == "stock_qty"
+    ).first()
+    assert src is not None
+    assert src.updated_by == "chain_worker"
+    
+
+def test_cell_sources_api(client):
+    # 1. Fetch a valid row_id from raw_table_1
+    res = client.get("/tables/raw_table_1/data?skip=0&limit=1")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) > 0
+    row_id = rows[0]["row_id"]
+
+    # 2. Get cell sources for a column (e.g. EQP_ID)
+    sources_res = client.get(f"/tables/raw_table_1/{row_id}/EQP_ID/sources")
+    assert sources_res.status_code == 200
+    sources_data = sources_res.json()
+    assert "sources" in sources_data
+    assert "manual_priority_source" in sources_data
+    assert "priority_source" in sources_data
+    assert "value" in sources_data
+
+    # 3. Query cell sources in batch via POST
+    query_payload = {
+        "updates": [
+            {
+                "row_id": row_id,
+                "column_name": "EQP_ID"
+            }
+        ]
+    }
+    batch_res = client.post("/tables/raw_table_1/cells/sources/query", json=query_payload)
+    assert batch_res.status_code == 200
+    batch_data = batch_res.json()
+    assert batch_data[0]["row_id"] == row_id
+    assert batch_data[0]["column_name"] == "EQP_ID"
+    assert "sources" in batch_data[0]
+    assert "value" in batch_data[0]
+
+
+def test_priority_toggle_api(client, db_session):
+    from database import models
+    from datetime import datetime
+
+    # 1. Fetch a row to modify from raw_table_1
+    res = client.get("/tables/raw_table_1/data?skip=0&limit=1")
+    row = res.json()["data"][0]
+    row_id = row["row_id"]
+    
+    # Add a cell source to satisfy the validation
+    db_session.add(models.CellSource(
+        table_name="raw_table_1",
+        row_id=row_id,
+        column_name="EQP_ID",
+        source_name="pipeline_parser",
+        value="TEST_VAL",
+        ingested_at=datetime.now(),
+        updated_by="system"
+    ))
+    db_session.commit()
+    
+    # 2. Put manual priority source as 'pipeline_parser'
+    payload = {
+        "source_name": "pipeline_parser",
+        "updated_by": "tester"
+    }
+    put_res = client.put(f"/tables/raw_table_1/{row_id}/EQP_ID/priority", json=payload)
+    assert put_res.status_code == 200
+    
+    # Verify it was pinned
+    sources_res = client.get(f"/tables/raw_table_1/{row_id}/EQP_ID/sources")
+    assert sources_res.json()["manual_priority_source"] == "pipeline_parser"
+    
+    # 3. Pin to 'pipeline_parser' AGAIN (re-click) -> should toggle pin OFF (become None)
+    put_res2 = client.put(f"/tables/raw_table_1/{row_id}/EQP_ID/priority", json=payload)
+    assert put_res2.status_code == 200
+    
+    # Verify it was unpinned (None)
+    sources_res2 = client.get(f"/tables/raw_table_1/{row_id}/EQP_ID/sources")
+    assert sources_res2.json()["manual_priority_source"] is None
+
+
     

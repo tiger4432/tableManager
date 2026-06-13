@@ -91,6 +91,41 @@ class FileIngestionLog(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CellOverwrite(Base):
+    __tablename__ = "cell_overwrites"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    table_name = Column(String, nullable=False, index=True)
+    row_id = Column(String, nullable=False, index=True)
+    column_name = Column(String, nullable=False, index=True)
+    is_overwrite = Column(Boolean, default=True)
+    updated_by = Column(String, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    manual_priority_source = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_overwrites_lookup", "table_name", "row_id"),
+        Index("idx_overwrites_lookup_col", "table_name", "row_id", "column_name", unique=True),
+    )
+
+class CellSource(Base):
+    __tablename__ = "cell_sources"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    table_name = Column(String, nullable=False, index=True)
+    row_id = Column(String, nullable=False, index=True)
+    column_name = Column(String, nullable=False, index=True)
+    source_name = Column(String, nullable=False)
+    value = Column(JSON, nullable=True)
+    ingested_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_by = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_sources_lookup", "table_name", "row_id", "column_name"),
+        Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True),
+    )
+
+
 DYNAMIC_TABLES = {}
 
 from sqlalchemy.orm import registry
@@ -101,8 +136,7 @@ def init_dynamic_models(config_dict: dict):
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
     Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
     """
-    from sqlalchemy import Table, Column, String, DateTime, JSON, Index
-    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy import Table, Column, String, DateTime, Float, Index
     from sqlalchemy.sql import func
     
     for table_name, table_cfg in config_dict.items():
@@ -114,16 +148,21 @@ def init_dynamic_models(config_dict: dict):
             Column("row_id", String, primary_key=True, index=True),
             Column("business_key_val", String, index=True, nullable=True),
             Column("created_at", DateTime(timezone=True), server_default=func.now(), index=True),
-            Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True),
+            Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),
         ]
         
-        # 2. table_config에 정의된 사용자 컬럼들을 개별 JSONB 컬럼으로 바인딩
-        # (각 셀별 소스 정보, 수정 여부, 실제 값을 온전히 보존하기 위해 dict 구조 유지)
+        # 2. table_config에 정의된 사용자 컬럼들을 native 타입으로 바인딩
         col_types = table_cfg.get("column_types", {})
-        for col_name in col_types.keys():
+        for col_name, type_str in col_types.items():
             if col_name in ["created_at", "updated_at"]:
                 continue
-            columns.append(Column(col_name, JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=True))
+            if type_str == "number":
+                sql_type = Float
+            elif type_str == "datetime":
+                sql_type = DateTime(timezone=True)
+            else:
+                sql_type = String
+            columns.append(Column(col_name, sql_type, nullable=True))
             
         # 3. 1,000만 행 스케일에 최적화된 복합 색인(Covering Index) 정의
         idx_bk_name = f"idx_{table_name}_bk"

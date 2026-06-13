@@ -76,12 +76,23 @@ def db_session():
     raw_table_model = models.DYNAMIC_TABLES["raw_table_1"]
     import uuid
     for i in range(1, 11):
+        r_id = str(uuid.uuid4())
         row = raw_table_model(
-            row_id=str(uuid.uuid4()),
+            row_id=r_id,
             business_key_val=f"EQP_{i}",
-            EQP_ID={"value": f"EQP_{i}", "is_overwrite": False, "sources": {}, "updated_by": "system"}
+            EQP_ID=f"EQP_{i}"
         )
         db.add(row)
+        
+        src = models.CellSource(
+            table_name="raw_table_1",
+            row_id=r_id,
+            column_name="EQP_ID",
+            source_name="system",
+            value=f"EQP_{i}",
+            updated_by="system"
+        )
+        db.add(src)
     db.commit()
     
     yield db
