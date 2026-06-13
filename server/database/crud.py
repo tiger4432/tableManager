@@ -147,6 +147,65 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         
     return log_dict
 
+def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
+    if not mappings:
+        return
+    
+    is_sqlite = db.bind.dialect.name == "sqlite"
+    if is_sqlite:
+        from sqlalchemy.dialects.sqlite import insert as upsert_insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert as upsert_insert
+        
+    stmt = upsert_insert(models.CellSource).values(mappings)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
+        set_={
+            'value': stmt.excluded.value,
+            'updated_by': stmt.excluded.updated_by,
+            'ingested_at': stmt.excluded.ingested_at
+        }
+    )
+    db.execute(stmt)
+
+def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict]):
+    if not mappings:
+        return
+    
+    is_sqlite = db.bind.dialect.name == "sqlite"
+    if is_sqlite:
+        from sqlalchemy.dialects.sqlite import insert as upsert_insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert as upsert_insert
+        
+    stmt = upsert_insert(models.CellOverwrite).values(mappings)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['table_name', 'row_id', 'column_name'],
+        set_={
+            'is_overwrite': stmt.excluded.is_overwrite,
+            'updated_by': stmt.excluded.updated_by,
+            'updated_at': stmt.excluded.updated_at,
+            'manual_priority_source': stmt.excluded.manual_priority_source
+        }
+    )
+    db.execute(stmt)
+
+def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, str]]):
+    if not delete_keys:
+        return
+        
+    from sqlalchemy import and_, or_
+    conds = []
+    for t_name, r_id, col_name in delete_keys:
+        conds.append(
+            and_(
+                models.CellOverwrite.table_name == t_name,
+                models.CellOverwrite.row_id == r_id,
+                models.CellOverwrite.column_name == col_name
+            )
+        )
+    db.query(models.CellOverwrite).filter(or_(*conds)).delete(synchronize_session=False)
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
@@ -155,7 +214,10 @@ def apply_row_update_internal(
     sources_cache: dict = None,
     overwrites_cache: dict = None,
     transaction_id: str = None,
-    logs_to_cache: list = None
+    logs_to_cache: list = None,
+    cell_sources_to_upsert: list = None,
+    cell_overwrites_to_upsert: list = None,
+    cell_overwrites_to_delete: list = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
@@ -232,6 +294,9 @@ def apply_row_update_internal(
                 models.CellSource.row_id == row.row_id,
                 models.CellSource.column_name == col_name
             ).all()
+            if cell_sources_to_upsert is not None:
+                for s in col_srcs:
+                    db.expunge(s)
             if sources_cache is not None:
                 sources_cache[key] = col_srcs
                 
@@ -244,6 +309,8 @@ def apply_row_update_internal(
                 models.CellOverwrite.row_id == row.row_id,
                 models.CellOverwrite.column_name == col_name
             ).first()
+            if ow and cell_overwrites_to_upsert is not None:
+                db.expunge(ow)
             if overwrites_cache is not None:
                 overwrites_cache[key] = ow
 
@@ -259,12 +326,24 @@ def apply_row_update_internal(
                 column_name=col_name,
                 source_name=update_item.source_name
             )
-            db.add(src_obj)
+            if cell_sources_to_upsert is None:
+                db.add(src_obj)
             col_srcs.append(src_obj)
             
         src_obj.value = clean_val
         src_obj.updated_by = update_item.updated_by
         src_obj.ingested_at = datetime.now()
+
+        if cell_sources_to_upsert is not None:
+            cell_sources_to_upsert.append({
+                "table_name": table_name,
+                "row_id": row.row_id,
+                "column_name": col_name,
+                "source_name": update_item.source_name,
+                "value": clean_val,
+                "updated_by": update_item.updated_by,
+                "ingested_at": src_obj.ingested_at
+            })
 
         # 4. 우선순위 결정
         sources_dict = {}
@@ -294,16 +373,31 @@ def apply_row_update_internal(
                     row_id=row.row_id,
                     column_name=col_name
                 )
-                db.add(ow)
+                if cell_overwrites_to_upsert is None:
+                    db.add(ow)
                 if overwrites_cache is not None:
                     overwrites_cache[key] = ow
             ow.is_overwrite = True
             ow.updated_by = update_item.updated_by or "system"
             ow.updated_at = datetime.now()
             ow.manual_priority_source = manual_pin
+            
+            if cell_overwrites_to_upsert is not None:
+                cell_overwrites_to_upsert.append({
+                    "table_name": table_name,
+                    "row_id": row.row_id,
+                    "column_name": col_name,
+                    "is_overwrite": True,
+                    "updated_by": ow.updated_by,
+                    "updated_at": ow.updated_at,
+                    "manual_priority_source": ow.manual_priority_source
+                })
         else:
             if ow:
-                db.delete(ow)
+                if cell_overwrites_to_delete is not None:
+                    cell_overwrites_to_delete.append((table_name, row.row_id, col_name))
+                else:
+                    db.delete(ow)
                 if overwrites_cache is not None:
                     overwrites_cache[key] = None
 
@@ -404,6 +498,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 models.CellSource.row_id.in_(all_row_ids)
             ).all()
             for src in all_sources:
+                db.expunge(src) # Detach from session to prevent individual auto-updates
                 key = (src.row_id, src.column_name)
                 if key not in sources_cache:
                     sources_cache[key] = []
@@ -414,11 +509,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 models.CellOverwrite.row_id.in_(all_row_ids)
             ).all()
             for ow in all_overwrites:
+                db.expunge(ow) # Detach from session to prevent individual auto-updates
                 overwrites_cache[(ow.row_id, ow.column_name)] = ow
     
         unique_results = {}
         total_changed_cells = []
         logs_to_cache = []
+        
+        # Batch lists for bulk operations
+        cell_sources_to_upsert = []
+        cell_overwrites_to_upsert = []
+        cell_overwrites_to_delete = []
         
         with db.no_autoflush:
             for item in batch.updates:
@@ -428,7 +529,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     sources_cache=sources_cache,
                     overwrites_cache=overwrites_cache,
                     transaction_id=tx_id, 
-                    logs_to_cache=logs_to_cache
+                    logs_to_cache=logs_to_cache,
+                    cell_sources_to_upsert=cell_sources_to_upsert,
+                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                    cell_overwrites_to_delete=cell_overwrites_to_delete
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
@@ -438,6 +542,11 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     
         # Capture newly created AuditLog objects before commit/flush
         created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
+        
+        # Execute Bulk Upserts and Deletes
+        bulk_upsert_cell_sources(db, cell_sources_to_upsert)
+        bulk_upsert_cell_overwrites(db, cell_overwrites_to_upsert)
+        bulk_delete_cell_overwrites(db, cell_overwrites_to_delete)
         
         db.flush()
         
