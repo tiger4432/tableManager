@@ -1,10 +1,12 @@
+import os
+os.environ["TESTING"] = "True"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import sys
-import os
 
 # Ensure server path is available
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -26,6 +28,39 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
+    # Initialize dynamic models with test configuration (SQLite compatible)
+    test_table_config = {
+        "raw_table_1": {
+            "business_key": "EQP_ID",
+            "column_types": {
+                "EQP_ID": "string"
+            }
+        },
+        "inventory_master": {
+            "business_key": "part_no",
+            "column_types": {
+                "part_no": "string",
+                "category": "string",
+                "stock_qty": "number",
+                "unit_price": "number"
+            }
+        },
+        "production_plan": {
+            "business_key": "plan_id",
+            "column_types": {
+                "plan_id": "string",
+                "prod_line": "string",
+                "model_name": "string",
+                "target_qty": "number",
+                "due_date": "string"
+            }
+        }
+    }
+    from database import models, crud
+    models.init_dynamic_models(test_table_config)
+    crud.TABLE_CONFIG.clear()
+    crud.TABLE_CONFIG.update(test_table_config)
+
     # SQLite 호환성을 위해 PostgreSQL 전용 GIN / Trigram 인덱스를 임시 제거
     if "sqlite" in str(engine.url):
         table = Base.metadata.tables.get("data_rows")
@@ -38,15 +73,13 @@ def db_session():
     db = TestingSessionLocal()
     
     # We must seed some data to test fetching
-    from database.models import DataRow
+    raw_table_model = models.DYNAMIC_TABLES["raw_table_1"]
     import uuid
     for i in range(1, 11):
-        row = DataRow(
+        row = raw_table_model(
             row_id=str(uuid.uuid4()),
-            table_name="raw_table_1",
-            data={
-                "EQP_ID": {"value": f"EQP_{i}", "is_overwrite": False}
-            }
+            business_key_val=f"EQP_{i}",
+            EQP_ID={"value": f"EQP_{i}", "is_overwrite": False, "sources": {}, "updated_by": "system"}
         )
         db.add(row)
     db.commit()

@@ -376,14 +376,15 @@ class IngestionHandler(FileSystemEventHandler):
                     bk_val = None
                     
                     for key, val in row.items():
-                        target_key = key
+                        target_key = None
                         for d_col in defined_cols:
                             if key.lower() == d_col.lower():
                                 target_key = d_col
                                 break
-                        normalized_row[target_key] = val
-                        if target_key.lower() == bk_col.lower():
-                            bk_val = val
+                        if target_key is not None:
+                            normalized_row[target_key] = val
+                            if target_key.lower() == bk_col.lower():
+                                bk_val = val
 
                     if bk_val is not None:
                         items.append(schemas.GeneralUpdateItem(

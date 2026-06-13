@@ -39,19 +39,26 @@ def get_db():
 
 @event.listens_for(Session, "before_flush")
 def auto_stage_database_outbox(session, flush_context, instances):
-    from .models import DataRow
+    from .models import DataRow, DYNAMIC_TABLES
+    dynamic_classes = tuple(DYNAMIC_TABLES.values())
     
     for obj in session.new:
         if isinstance(obj, DataRow):
             stage_event(session, "CREATE", obj.table_name, obj)
+        elif dynamic_classes and isinstance(obj, dynamic_classes):
+            stage_event(session, "CREATE", obj.__table__.name, obj)
             
     for obj in session.dirty:
         if isinstance(obj, DataRow):
             stage_event(session, "EDIT", obj.table_name, obj)
+        elif dynamic_classes and isinstance(obj, dynamic_classes):
+            stage_event(session, "EDIT", obj.__table__.name, obj)
             
     for obj in session.deleted:
         if isinstance(obj, DataRow):
             stage_event(session, "DELETE", obj.table_name, obj)
+        elif dynamic_classes and isinstance(obj, dynamic_classes):
+            stage_event(session, "DELETE", obj.__table__.name, obj)
 
 
 def stage_event(session, event_type, table_name, data_row):
@@ -62,6 +69,14 @@ def stage_event(session, event_type, table_name, data_row):
     user = request_user.get()
     source = request_source.get()
     
+    data_dict = {}
+    if hasattr(data_row, "__table__"):
+        for col in data_row.__table__.columns:
+            if col.name not in ["row_id", "business_key_val", "created_at", "updated_at"]:
+                data_dict[col.name] = getattr(data_row, col.name, None)
+    else:
+        data_dict = getattr(data_row, "data", {})
+        
     event_obj = DatabaseOutbox(
         event_uuid=str(uuid.uuid4()),
         event_type=event_type,
@@ -69,7 +84,7 @@ def stage_event(session, event_type, table_name, data_row):
         payload={
             "row_id": data_row.row_id,
             "business_key": data_row.business_key_val,
-            "data": data_row.data,
+            "data": data_dict,
             "transaction_id": tx_id,
             "updated_by": user,
             "source_name": source,

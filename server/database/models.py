@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger
 from sqlalchemy.sql import func
-from .database import Base
+from .database import Base, is_sqlite
 
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -19,7 +19,7 @@ class DataRow(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # [핵심] 1,000만 건 규모의 데이터 최적화 색인 일람
-    __table_args__ = (
+    _table_args_list = [
         # [A] 테이블별 품번 정렬용 복합 색인 (Covering Index 전환: row_id 추가)
         Index("idx_table_bk", "table_name", "business_key_val", "row_id"),
         
@@ -28,14 +28,16 @@ class DataRow(Base):
         
         # [B-2] 테이블별 기본 정렬(정렬 OFF)용 복합 색인
         Index("idx_table_rowid", "table_name", "row_id"),
-        
-        # [C] JSONB 전용 GIN 색인: 데이터 내부 키/밸류 구조적 검색 지원 (@> 등)
-        Index("idx_data_gin", "data", postgresql_using="gin"),
+    ]
+    if not is_sqlite:
+        _table_args_list.extend([
+            # [C] JSONB 전용 GIN 색인: 데이터 내부 키/밸류 구조적 검색 지원 (@> 등)
+            Index("idx_data_gin", "data", postgresql_using="gin"),
 
-        # [D] 고성능 복합 GIN Trigram 색인: 테이블 범위 한정 + 데이터 전체 텍스트 검색 (ILIKE 가속)
-        # 1,000만 건 환경에서 특정 테이블 내의 'q=' 검색 성능을 극대화합니다.
-        Index("idx_table_data_trgm", "table_name", text("(CAST(data AS text)) gin_trgm_ops"), postgresql_using="gin"),
-    )
+            # [D] 고성능 복합 GIN Trigram 색인: 테이블 범위 한정 + 데이터 전체 텍스트 검색 (ILIKE 가속)
+            Index("idx_table_data_trgm", "table_name", text("(CAST(data AS text)) gin_trgm_ops"), postgresql_using="gin"),
+        ])
+    __table_args__ = tuple(_table_args_list)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -89,3 +91,63 @@ class FileIngestionLog(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+DYNAMIC_TABLES = {}
+
+from sqlalchemy.orm import registry
+mapper_registry = registry()
+
+def init_dynamic_models(config_dict: dict):
+    """
+    table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
+    Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
+    """
+    from sqlalchemy import Table, Column, String, DateTime, JSON, Index
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy.sql import func
+    
+    for table_name, table_cfg in config_dict.items():
+        if table_name in DYNAMIC_TABLES:
+            continue
+            
+        # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들
+        columns = [
+            Column("row_id", String, primary_key=True, index=True),
+            Column("business_key_val", String, index=True, nullable=True),
+            Column("created_at", DateTime(timezone=True), server_default=func.now(), index=True),
+            Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True),
+        ]
+        
+        # 2. table_config에 정의된 사용자 컬럼들을 개별 JSONB 컬럼으로 바인딩
+        # (각 셀별 소스 정보, 수정 여부, 실제 값을 온전히 보존하기 위해 dict 구조 유지)
+        col_types = table_cfg.get("column_types", {})
+        for col_name in col_types.keys():
+            if col_name in ["created_at", "updated_at"]:
+                continue
+            columns.append(Column(col_name, JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=True))
+            
+        # 3. 1,000만 행 스케일에 최적화된 복합 색인(Covering Index) 정의
+        idx_bk_name = f"idx_{table_name}_bk"
+        idx_updated_name = f"idx_{table_name}_updated"
+        
+        table_args = (
+            Index(idx_bk_name, "business_key_val", "row_id"),
+            Index(idx_updated_name, "updated_at", "row_id"),
+        )
+        
+        # 4. Table 객체 동적 생성 및 metadata 등록
+        table_obj = Table(
+            table_name,
+            Base.metadata,
+            *columns,
+            *table_args,
+            extend_existing=True
+        )
+        
+        # 5. 동적 PascalCase 클래스 생성 및 Imperative Mapping 바인딩
+        class_name = "".join(part.capitalize() for part in table_name.split("_"))
+        dynamic_class = type(class_name, (object,), {
+            "__table__": table_obj
+        })
+        
+        mapper_registry.map_imperatively(dynamic_class, table_obj)
+        DYNAMIC_TABLES[table_name] = dynamic_class

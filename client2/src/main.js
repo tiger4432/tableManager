@@ -472,6 +472,14 @@ function setupEventListeners() {
     gridContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
     });
+    gridContainer.addEventListener('mouseleave', () => {
+      if (isDraggingRange) {
+        isDraggingRange = false;
+        if (gridApi && dragStartCell && dragEndCell) {
+          refreshRange(gridApi, dragStartCell, dragEndCell);
+        }
+      }
+    });
   }
 
   // Sources Modal Close Button
@@ -1214,8 +1222,8 @@ function renderGrid(initialRows) {
     suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id, // Robust fallback
     defaultColDef: {
-      flex: 1,
-      minWidth: 120,
+      width: 150,
+      minWidth: 100,
       floatingFilter: true, // Display inline search box under each column header
       suppressKeyboardEvent: (params) => {
         const event = params.event;
@@ -1265,6 +1273,9 @@ function renderGrid(initialRows) {
       const isShift = event.event.shiftKey;
       const currRow = event.rowIndex;
       const currCol = event.column.getColId();
+      
+      const oldStart = dragStartCell;
+      const oldEnd = dragEndCell;
 
       if (isShift) {
         if (dragStartCell) {
@@ -1274,15 +1285,28 @@ function renderGrid(initialRows) {
           dragEndCell = { rowIndex: currRow, colId: currCol };
         }
         isDraggingRange = false;
+        refreshSelectedRangeDiff(event.api, dragStartCell, oldEnd, dragEndCell);
       } else {
         isDraggingRange = true;
         dragStartCell = { rowIndex: currRow, colId: currCol };
         dragEndCell = { rowIndex: currRow, colId: currCol };
+        
+        if (oldStart && oldEnd) {
+          refreshRange(event.api, oldStart, oldEnd);
+        }
+        refreshRange(event.api, dragStartCell, dragEndCell);
       }
-      
-      event.api.refreshCells({ force: true });
     },
     onCellMouseOver: (event) => {
+      // 마우스 왼쪽 버튼이 눌려있지 않으면 드래그 해제
+      if (event.event && event.event.buttons !== undefined && event.event.buttons !== 1) {
+        if (isDraggingRange) {
+          isDraggingRange = false;
+          refreshRange(event.api, dragStartCell, dragEndCell);
+        }
+        return;
+      }
+
       if (!isDraggingRange || !dragStartCell) return;
       if (event.column.getColId() === '#') return;
 
@@ -1290,8 +1314,29 @@ function renderGrid(initialRows) {
       const currCol = event.column.getColId();
 
       if (dragEndCell.rowIndex !== currRow || dragEndCell.colId !== currCol) {
+        const prevEnd = dragEndCell;
         dragEndCell = { rowIndex: currRow, colId: currCol };
-        event.api.refreshCells({ force: true });
+        
+        // requestAnimationFrame 쓰로틀링과 차분 셀 리프레시 결합
+        if (!window._dragRefreshPending) {
+          window._dragRefreshPending = true;
+          const api = event.api;
+          requestAnimationFrame(() => {
+            try {
+              refreshSelectedRangeDiff(api, dragStartCell, prevEnd, dragEndCell);
+            } catch (err) {
+              api.refreshCells({ force: true });
+            } finally {
+              window._dragRefreshPending = false;
+            }
+          });
+        }
+      }
+    },
+    onCellMouseUp: (event) => {
+      if (isDraggingRange) {
+        isDraggingRange = false;
+        refreshRange(event.api, dragStartCell, dragEndCell);
       }
     },
     // Feature 1: Cell Editing
@@ -2130,10 +2175,74 @@ function isCellInRange(rowIndex, colId) {
   return rowIndex >= minRowIdx && rowIndex <= maxRowIdx && colIdx >= minColIdx && colIdx <= maxColIdx;
 }
 
+function refreshRange(api, startCell, endCell) {
+  if (!startCell || !endCell || !api) return;
+  const startRow = startCell.rowIndex;
+  const endRow = endCell.rowIndex;
+  const minRow = Math.min(startRow, endRow);
+  const maxRow = Math.max(startRow, endRow);
+  
+  const rowNodes = [];
+  for (let r = minRow; r <= maxRow; r++) {
+    const node = api.getDisplayedRowAtIndex(r);
+    if (node) rowNodes.push(node);
+  }
+  
+  const startColIdx = colIdToIndexMap[startCell.colId];
+  const endColIdx = colIdToIndexMap[endCell.colId];
+  if (startColIdx === undefined || endColIdx === undefined) return;
+  
+  const minColIdx = Math.min(startColIdx, endColIdx);
+  const maxColIdx = Math.max(startColIdx, endColIdx);
+  const allColumns = api.getColumns();
+  const columns = allColumns.slice(minColIdx, maxColIdx + 1);
+  
+  api.refreshCells({ rowNodes, columns, force: true });
+}
+
+function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell) {
+  if (!startCell || !newEndCell || !api) return;
+  
+  const startRow = startCell.rowIndex;
+  const newEndRow = newEndCell.rowIndex;
+  const prevEndRow = prevEndCell ? prevEndCell.rowIndex : newEndRow;
+  
+  const minRow = Math.min(startRow, prevEndRow, newEndRow);
+  const maxRow = Math.max(startRow, prevEndRow, newEndRow);
+  
+  const rowNodes = [];
+  for (let r = minRow; r <= maxRow; r++) {
+    const node = api.getDisplayedRowAtIndex(r);
+    if (node) rowNodes.push(node);
+  }
+  
+  const startColIdx = colIdToIndexMap[startCell.colId];
+  const newEndColIdx = colIdToIndexMap[newEndCell.colId];
+  const prevEndColIdx = prevEndCell ? colIdToIndexMap[prevEndCell.colId] : newEndColIdx;
+  
+  if (startColIdx === undefined || newEndColIdx === undefined) {
+    api.refreshCells({ force: true });
+    return;
+  }
+  
+  const minColIdx = Math.min(startColIdx, prevEndColIdx, newEndColIdx);
+  const maxColIdx = Math.max(startColIdx, prevEndColIdx, newEndColIdx);
+  
+  const allColumns = api.getColumns();
+  const columns = allColumns.slice(minColIdx, maxColIdx + 1);
+  
+  api.refreshCells({ rowNodes, columns, force: true });
+}
+
 function clearRangeSelection() {
+  const oldStart = dragStartCell;
+  const oldEnd = dragEndCell;
   dragStartCell = null;
   dragEndCell = null;
   isDraggingRange = false;
+  if (gridApi && oldStart && oldEnd) {
+    refreshRange(gridApi, oldStart, oldEnd);
+  }
 }
 
 function getRangeSelectedTSV() {
@@ -3336,8 +3445,8 @@ window.showToast = showToast; // Expose globally for Desktop Wrapper
 document.addEventListener('mouseup', () => {
   if (isDraggingRange) {
     isDraggingRange = false;
-    if (gridApi) {
-      gridApi.refreshCells({ force: true });
+    if (gridApi && dragStartCell && dragEndCell) {
+      refreshRange(gridApi, dragStartCell, dragEndCell);
     }
   }
 });

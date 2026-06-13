@@ -30,19 +30,18 @@ class AuditLogCache:
             offset = 0
             
             while len(groups_order) < limit_groups:
-                chunk = db.query(models.AuditLog, models.DataRow.business_key_val)\
-                          .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
+                chunk = db.query(models.AuditLog)\
                           .order_by(desc(models.AuditLog.timestamp), desc(models.AuditLog.id))\
                           .offset(offset).limit(chunk_size).all()
                           
                 if not chunk:
                     break
                     
-                for log_obj, bk in chunk:
+                for log_obj in chunk:
                     tid = log_obj.transaction_id or "no_tid"
                     
                     log_dict = log_obj.__dict__.copy()
-                    log_dict["business_key"] = bk or log_obj.business_key
+                    log_dict["business_key"] = log_obj.business_key
                     log_model = schemas.AuditLogResponse.model_validate(log_dict)
                     
                     if tid not in groups_dict:

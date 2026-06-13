@@ -107,17 +107,32 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 
                 # 5. Broadcast real-time WebSocket events containing created_logs (Audit History)
                 try:
-                    from main import manager, inject_system_columns, to_local_str
+                    from main import manager, to_local_str
                     
+                    cfg = crud.TABLE_CONFIG.get(target_table, {})
+                    col_types = cfg.get("column_types", {})
+                    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+
                     msg_items = []
                     for row, is_new in results:
-                        inject_system_columns(row)
+                        c_at_str = to_local_str(row.created_at)
+                        u_at_str = to_local_str(row.updated_at)
+                        
+                        r_data = {}
+                        for col in user_cols:
+                            val = getattr(row, col)
+                            if val is None:
+                                val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                            r_data[col] = val
+                        r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                        r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                        
                         msg_items.append({
                             "row_id": row.row_id,
                             "is_new": is_new,
-                            "data": row.data,
-                            "created_at": to_local_str(row.created_at),
-                            "updated_at": to_local_str(row.updated_at)
+                            "data": r_data,
+                            "created_at": c_at_str,
+                            "updated_at": u_at_str
                         })
                         
                     user_name = "chain_worker"

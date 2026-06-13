@@ -66,9 +66,12 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     if not target_val:
         return None
         
-    return db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.business_key_val == target_val
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        return None
+        
+    return db.query(table_model).filter(
+        table_model.business_key_val == target_val
     ).first()
 
 def compute_priority_value(sources: dict, manual_priority_source: str = None):
@@ -147,6 +150,10 @@ def apply_row_update_internal(
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
     
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise ValueError(f"Table model for '{table_name}' is not initialized.")
+
     row = None
     # 1. 캐시 소스에서 먼저 검색 (O(1))
     if row_cache:
@@ -158,9 +165,8 @@ def apply_row_update_internal(
     # 2. 캐시에 없으면 DB 검색 (Fallback)
     if not row:
         if update_item.row_id:
-            row = db.query(models.DataRow).filter(
-                models.DataRow.table_name == table_name,
-                models.DataRow.row_id == update_item.row_id
+            row = db.query(table_model).filter(
+                table_model.row_id == update_item.row_id
             ).first()
         
         if not row and update_item.business_key_val:
@@ -169,10 +175,8 @@ def apply_row_update_internal(
     is_new = False
     if not row:
         from sqlalchemy.sql import func
-        row = models.DataRow(
+        row = table_model(
             row_id=update_item.row_id or str(uuid6.uuid7()),
-            table_name=table_name,
-            data={},
             updated_at=func.now()
         )
         db.add(row)
@@ -188,29 +192,35 @@ def apply_row_update_internal(
         if new_bk_val is not None:
             row.business_key_val = str(new_bk_val).strip()
     # Or from existing data if it's there but not in updates
-    elif key_col and key_col in row.data:
-        new_bk_val = row.data[key_col].get("value")
+    elif key_col and hasattr(row, key_col):
+        existing_val = getattr(row, key_col)
+        new_bk_val = existing_val.get("value") if isinstance(existing_val, dict) else None
         if new_bk_val is not None:
             row.business_key_val = str(new_bk_val).strip()
 
     old_values_snapshot = {}
     for col_name in update_item.updates.keys():
         if col_name in system_cols: continue
-        if col_name in row.data:
-            old_values_snapshot[col_name] = row.data[col_name].get("value")
+        val_obj = getattr(row, col_name, None)
+        if val_obj and isinstance(val_obj, dict):
+            old_values_snapshot[col_name] = val_obj.get("value")
         else:
             old_values_snapshot[col_name] = None
 
     for col_name, val in update_item.updates.items():
         if col_name in system_cols: continue
             
-        if col_name not in row.data:
-            row.data[col_name] = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system", "priority_source": None}
+        col_types = config.get("column_types", {})
+        if col_name not in col_types:
+            continue
             
-        cell = row.data[col_name]
+        cell = getattr(row, col_name, None)
+        if cell is None or not isinstance(cell, dict):
+            cell = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system", "priority_source": None}
+            setattr(row, col_name, cell)
+            
         old_val = cell.get("value")
         
-        col_types = config.get("column_types", {})
         col_type = col_types.get(col_name, "string")
         clean_val = cast_value_by_type(val, col_type, col_name)
         
@@ -245,11 +255,15 @@ def apply_row_update_internal(
         cell["is_overwrite"] = ("user" in cell["sources"])
         cell["updated_by"] = (update_item.updated_by or "system")
         
+        # [Fix] 개별 JSON 컬럼 변경 감지를 알림
+        flag_modified(row, col_name)
+        
     # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
     if changed_cols and update_item.source_name != "user":
         new_summary_parts = []
         for col in changed_cols:
-            new_val = row.data[col].get("value")
+            col_val_obj = getattr(row, col, {})
+            new_val = col_val_obj.get("value") if isinstance(col_val_obj, dict) else None
             new_val_str = "비어있음" if new_val is None else str(new_val)
             new_summary_parts.append(f"{col}: {new_val_str}")
             
@@ -280,7 +294,6 @@ def apply_row_update_internal(
         from sqlalchemy.sql import func
         row.updated_at = func.now()
 
-    flag_modified(row, "data")
     return row, is_new, changed_cols
 
 
@@ -299,16 +312,18 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     token_src = request_source.set(source_val)
     
     try:
-        # 1. [O(1) 최적화] 대상 행들을 한 번에 조회하여 캐시 구축 (Pre-fetch)
+        table_model = models.DYNAMIC_TABLES.get(table_name)
+        if not table_model:
+            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            
         target_ids = [u.row_id for u in batch.updates if u.row_id]
         target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
-        
+
         from sqlalchemy import or_
-        existing_rows_list = db.query(models.DataRow).filter(
-            models.DataRow.table_name == table_name,
+        existing_rows_list = db.query(table_model).filter(
             or_(
-                models.DataRow.row_id.in_(target_ids) if target_ids else False,
-                models.DataRow.business_key_val.in_(target_bks) if target_bks else False
+                table_model.row_id.in_(target_ids) if target_ids else False,
+                table_model.business_key_val.in_(target_bks) if target_bks else False
             )
         ).all()
         
@@ -384,12 +399,14 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     token_src = request_source.set("batch_create")
     
     try:
+        table_model = models.DYNAMIC_TABLES.get(table_name)
+        if not table_model:
+            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            
         new_rows = []
         for _ in range(count):
-            row = models.DataRow(
+            row = table_model(
                 row_id=str(uuid6.uuid7()),
-                table_name=table_name,
-                data={},
                 updated_at=func.now()
             )
             new_rows.append(row)
@@ -438,16 +455,18 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     token_src = request_source.set("batch_delete")
     
     try:
+        table_model = models.DYNAMIC_TABLES.get(table_name)
+        if not table_model:
+            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            
         # 삭제하기 전 row_id와 business_key_val을 먼저 조회
-        rows_to_delete = db.query(models.DataRow).filter(
-            models.DataRow.table_name == table_name,
-            models.DataRow.row_id.in_(row_ids)
+        rows_to_delete = db.query(table_model).filter(
+            table_model.row_id.in_(row_ids)
         ).all()
             
         # [O(1) 최적화] 매 건마다 쿼리하는 대신 IN 연산자로 단숨에 삭제
-        deleted_count = db.query(models.DataRow).filter(
-            models.DataRow.table_name == table_name,
-            models.DataRow.row_id.in_(row_ids)
+        deleted_count = db.query(table_model).filter(
+            table_model.row_id.in_(row_ids)
         ).delete(synchronize_session=False)
                 
         if deleted_count > 0:
@@ -478,13 +497,16 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
         request_source.reset(token_src)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
-    return db.query(models.DataRow).filter(models.DataRow.table_name == table_name, models.DataRow.row_id == row_id).first()
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        return None
+    return db.query(table_model).filter(table_model.row_id == row_id).first()
 
 def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str):
     """특정 소스의 데이터를 삭제하고 값을 재계산합니다."""
     row = get_row_cell(db, table_name, row_id)
-    if not row or col_name not in row.data: return None, []
-    cell = row.data[col_name]
+    cell = getattr(row, col_name, None) if row else None
+    if not row or not isinstance(cell, dict): return None, []
     if "sources" in cell and source_name in cell["sources"]:
         del cell["sources"][source_name]
         if cell.get("manual_priority_source") == source_name: cell["manual_priority_source"] = None
@@ -503,7 +525,7 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
             from sqlalchemy.sql import func
             row.updated_at = func.now()
             
-        flag_modified(row, "data")
+        flag_modified(row, col_name)
         db.commit()
         db.refresh(row)
         return row, changed_cols
@@ -512,8 +534,8 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
 def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user"):
     """수동 소스 우선순위(Pin)를 설정합니다."""
     row = get_row_cell(db, table_name, row_id)
-    if not row or col_name not in row.data: return None, []
-    cell = row.data[col_name]
+    cell = getattr(row, col_name, None) if row else None
+    if not row or not isinstance(cell, dict): return None, []
     if source_name and (source_name not in cell.get("sources", {})): return None, []
     cell["manual_priority_source"] = source_name
     old_val = cell.get("value")
@@ -531,7 +553,7 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
         from sqlalchemy.sql import func
         row.updated_at = func.now()
 
-    flag_modified(row, "data")
+    flag_modified(row, col_name)
     db.commit()
     db.refresh(row)
     return row, changed_cols
@@ -542,9 +564,12 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         return []
 
     row_ids = list(set(u["row_id"] for u in updates))
-    rows = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id.in_(row_ids)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        return []
+        
+    rows = db.query(table_model).filter(
+        table_model.row_id.in_(row_ids)
     ).all()
     row_map = {r.row_id: r for r in rows}
 
@@ -557,10 +582,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         col_name = item["column_name"]
         
         row = row_map.get(r_id)
-        if not row or col_name not in row.data:
+        cell = getattr(row, col_name, None) if row else None
+        if not row or not isinstance(cell, dict):
             continue
             
-        cell = row.data[col_name]
         if source_name and (source_name not in cell.get("sources", {})):
             continue
             
@@ -582,7 +607,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             
         from sqlalchemy.sql import func
         row.updated_at = func.now()
-        flag_modified(row, "data")
+        flag_modified(row, col_name)
         if row not in changed_rows:
             changed_rows.append(row)
             
@@ -608,9 +633,12 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         return []
 
     row_ids = list(set(c["row_id"] for c in cells))
-    rows = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id.in_(row_ids)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        return []
+        
+    rows = db.query(table_model).filter(
+        table_model.row_id.in_(row_ids)
     ).all()
     row_map = {r.row_id: r for r in rows}
 
@@ -623,10 +651,10 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         col_name = item["column_name"]
         
         row = row_map.get(r_id)
-        if not row or col_name not in row.data:
+        cell = getattr(row, col_name, None) if row else None
+        if not row or not isinstance(cell, dict):
             continue
             
-        cell = row.data[col_name]
         if "sources" in cell and source_name in cell["sources"]:
             del cell["sources"][source_name]
             if cell.get("manual_priority_source") == source_name:
@@ -649,7 +677,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 
             from sqlalchemy.sql import func
             row.updated_at = func.now()
-            flag_modified(row, "data")
+            flag_modified(row, col_name)
             if row not in changed_rows:
                 changed_rows.append(row)
                 

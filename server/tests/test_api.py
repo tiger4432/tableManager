@@ -50,7 +50,7 @@ def test_put_batch_update(client):
 
 def test_chained_ingestion(client, db_session):
     # 1. Trigger Table에 데이터 인제션 시뮬레이션
-    from database.models import DataRow
+    from database import models
     import uuid
     from database import schemas, crud
     
@@ -69,8 +69,8 @@ def test_chained_ingestion(client, db_session):
                 schemas.GeneralUpdateItem(
                     row_id=prod_row_id,
                     updates={
-                        "PRODUCT_CODE": "PROD_CAR_01",
-                        "PLANNED_QTY": 10
+                        "model_name": "STEEL_01",
+                        "target_qty": 10
                     },
                     source_name="user",
                     updated_by="tester"
@@ -107,12 +107,12 @@ def test_chained_ingestion(client, db_session):
     anyio.run(run_chain)
     
     # 4. Target Table인 inventory_master가 연쇄 업데이트 되었는지 검증
-    target_row = db_session.query(DataRow).filter(
-        DataRow.table_name == "inventory_master",
-        DataRow.row_id == "INV_MAT_STEEL_01"
+    inv_model = models.DYNAMIC_TABLES["inventory_master"]
+    target_row = db_session.query(inv_model).filter(
+        inv_model.business_key_val == "INV_STEEL_01"
     ).first()
     
     assert target_row is not None
-    assert target_row.data["RESERVED_QTY"]["value"] == 50
-    assert target_row.data["RESERVED_QTY"]["updated_by"] == "chain_worker"
+    assert target_row.stock_qty["value"] == 100
+    assert target_row.stock_qty["updated_by"] == "chain_worker"
     

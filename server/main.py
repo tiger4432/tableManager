@@ -10,6 +10,17 @@ from fastapi import UploadFile, File, Body, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+# Load table config and initialize dynamic database models
+import json
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(script_dir, "config", "table_config.json")
+try:
+    with open(config_path, "r", encoding="utf-8") as f:
+        table_config = json.load(f)
+    models.init_dynamic_models(table_config)
+except Exception as e:
+    print(f"[Server] Failed to load table_config or init dynamic models: {e}")
+
 # Create tables if not exists
 models.Base.metadata.create_all(bind=engine)
 
@@ -67,15 +78,22 @@ async def startup_event():
     import asyncio
     main_loop = asyncio.get_running_loop()
     
+    if os.getenv("TESTING") == "True":
+        print("[Startup] Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
+        return
+        
     try:
         # [Migration] NULL updated_at 보정 (coalesce 제거 및 성능 최적화 대비)
         from sqlalchemy import text
         with engine.connect() as conn:
-            print("[Migration] Checking for NULL updated_at...")
-            res = conn.execute(text("UPDATE data_rows SET updated_at = created_at WHERE updated_at IS NULL"))
-            conn.commit()
-            if res.rowcount > 0:
-                print(f"[Migration] Successfully updated {res.rowcount} rows.")
+            try:
+                print("[Migration] Checking for NULL updated_at...")
+                res = conn.execute(text("UPDATE data_rows SET updated_at = created_at WHERE updated_at IS NULL"))
+                conn.commit()
+                if res.rowcount > 0:
+                    print(f"[Migration] Successfully updated {res.rowcount} rows.")
+            except Exception as e:
+                print(f"[Migration] Skip data_rows migration (table may not exist): {e}")
                 
             # [Migration] database_outbox 테이블에 processed_chain 컬럼 보정
             try:
@@ -223,7 +241,26 @@ def inject_system_columns(row):
     """
     if not row: return
     
-    # created_at 주입
+    # 1. table_name 식별
+    table_name = getattr(row, "table_name", None)
+    if not table_name and hasattr(row, "__table__"):
+        table_name = row.__table__.name
+        
+    # 2. data 속성 동적 바인딩 (물리 테이블 지원용)
+    if not hasattr(row, "data") or row.data is None:
+        cfg = crud.TABLE_CONFIG.get(table_name, {}) if table_name else {}
+        col_types = cfg.get("column_types", {})
+        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+        
+        r_data = {}
+        for col in user_cols:
+            val = getattr(row, col, None)
+            if val is None:
+                val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+            r_data[col] = val
+        row.data = r_data
+        
+    # 3. created_at 주입
     if "created_at" not in row.data:
         row.data["created_at"] = {
             "value": to_local_str(row.created_at), 
@@ -231,7 +268,7 @@ def inject_system_columns(row):
             "updated_by": "system"
         }
     
-    # updated_at 주입 (없을 경우 created_at 사용)
+    # 4. updated_at 주입 (없을 경우 created_at 사용)
     effective_update = row.updated_at if row.updated_at else row.created_at
     if "updated_at" not in row.data:
         row.data["updated_at"] = {
@@ -273,6 +310,22 @@ def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
             return str(fallback_log[0])
     return None
 
+def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[str, str]]:
+    from collections import defaultdict
+    by_table = defaultdict(list)
+    for t_name, r_id in row_keys:
+        if t_name and r_id and r_id != "_BATCH_":
+            by_table[t_name].append(r_id)
+            
+    existing_keys = set()
+    for t_name, r_ids in by_table.items():
+        table_model = models.DYNAMIC_TABLES.get(t_name)
+        if table_model and r_ids:
+            found = db.query(table_model.row_id).filter(table_model.row_id.in_(r_ids)).all()
+            for (f_id,) in found:
+                existing_keys.add((t_name, f_id))
+    return existing_keys
+
 from audit_cache import audit_cache
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
@@ -280,11 +333,19 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
     # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
     audit_cache.load_initial(db, limit_groups)
     
-    # Query all active row IDs in the database
-    active_row_ids = set(r[0] for r in db.query(models.DataRow.row_id).all())
-    
     # 2. 캐시된 그룹을 경량화하여 반환
     result = []
+    # Collect keys to check existence
+    keys_to_check = []
+    for g in audit_cache.groups:
+        logs = g.get("logs", [])
+        if not logs: continue
+        repr_log = logs[0]
+        if repr_log.row_id != "_BATCH_":
+            keys_to_check.append((repr_log.table_name, repr_log.row_id))
+            
+    existing_keys = check_rows_exist(db, keys_to_check)
+    
     for g in audit_cache.groups:
         logs = g.get("logs", [])
         if not logs: continue
@@ -298,7 +359,7 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
                 
         # Populate is_row_deleted flag for representing log
         repr_log = logs[0].model_copy()
-        is_deleted = repr_log.row_id != "_BATCH_" and repr_log.row_id not in active_row_ids
+        is_deleted = repr_log.row_id != "_BATCH_" and (repr_log.table_name, repr_log.row_id) not in existing_keys
         repr_log.is_row_deleted = is_deleted
         
         if is_deleted and not repr_log.business_key:
@@ -315,7 +376,6 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
 def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 500):
     """특정 트랜잭션의 상세 로그를 반환합니다. (인메모리 캐시 우선 조회, 최대 limit 건 반환)"""
-    active_row_ids = set(r[0] for r in db.query(models.DataRow.row_id).all())
 
     # 1. 캐시에서 조회 시도
     if audit_cache.is_loaded:
@@ -323,12 +383,20 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
             if g.get("transaction_id") == tx_id:
                 logs = g.get("logs", [])
                 cols = []
+                
+                # Check existences
+                keys_to_check = []
+                for l in logs[:limit]:
+                    if l.row_id != "_BATCH_":
+                        keys_to_check.append((l.table_name, l.row_id))
+                existing_keys = check_rows_exist(db, keys_to_check)
+                
                 cloned_logs = []
-                for l in logs:
+                for l in logs[:limit]:
                     c = l.column_name
                     if c and c not in cols: cols.append(c)
                     cloned_log = l.model_copy()
-                    is_deleted = cloned_log.row_id != "_BATCH_" and cloned_log.row_id not in active_row_ids
+                    is_deleted = cloned_log.row_id != "_BATCH_" and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
                     cloned_log.is_row_deleted = is_deleted
                     if is_deleted and not cloned_log.business_key:
                         cloned_log.business_key = get_deleted_row_business_key(db, cloned_log.table_name, cloned_log.row_id)
@@ -337,29 +405,33 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     "transaction_id": tx_id,
                     "total_count": g.get("total_count", len(logs)),
                     "summary_columns": cols,
-                    "logs": cloned_logs[:limit]
+                    "logs": cloned_logs
                 }
                 
     # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
-    # total_count 계산을 위해 별도 쿼리 (가벼운 쿼리)
     total_count = db.query(models.AuditLog).filter(models.AuditLog.transaction_id == tx_id).count()
     if total_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
         
-    db_logs = db.query(models.AuditLog, models.DataRow.business_key_val)\
-                .outerjoin(models.DataRow, models.AuditLog.row_id == models.DataRow.row_id)\
+    db_logs = db.query(models.AuditLog)\
                 .filter(models.AuditLog.transaction_id == tx_id)\
                 .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc())\
                 .limit(limit)\
                 .all()
                 
+    # Check existences
+    keys_to_check = []
+    for log_obj in db_logs:
+        if log_obj.row_id != "_BATCH_":
+            keys_to_check.append((log_obj.table_name, log_obj.row_id))
+    existing_keys = check_rows_exist(db, keys_to_check)
+    
     logs = []
     cols = []
-    for log_obj, bk in db_logs:
+    for log_obj in db_logs:
         log_dict = log_obj.__dict__.copy()
-        log_dict["business_key"] = bk or log_obj.business_key
         log_model = schemas.AuditLogResponse.model_validate(log_dict)
-        is_deleted = log_model.row_id != "_BATCH_" and log_model.row_id not in active_row_ids
+        is_deleted = log_model.row_id != "_BATCH_" and (log_model.table_name, log_model.row_id) not in existing_keys
         log_model.is_row_deleted = is_deleted
         if is_deleted and not log_model.business_key:
             log_model.business_key = get_deleted_row_business_key(db, log_model.table_name, log_model.row_id)
@@ -388,11 +460,13 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     total_global_rows = 0
     
     for name in table_names:
+        table_model = models.DYNAMIC_TABLES.get(name)
+        if not table_model:
+            continue
         # [최적화] 각 테이블의 행 개수 및 최신 업데이트 시간 조회
-        count = db.query(sa.func.count(models.DataRow.row_id)).filter(models.DataRow.table_name == name).scalar()
+        count = db.query(sa.func.count(table_model.row_id)).scalar() or 0
         
-        last_item = db.query(sa.func.max(sa.func.coalesce(models.DataRow.updated_at, models.DataRow.created_at)))\
-                      .filter(models.DataRow.table_name == name).scalar()
+        last_item = db.query(sa.func.max(sa.func.coalesce(table_model.updated_at, table_model.created_at))).scalar()
         
         table_stats.append(schemas.TableStat(
             table_name=name,
@@ -417,7 +491,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         system_health="Excellent"
     )
 
-def get_column_filter_condition(col_name: str, f_info: dict):
+def get_column_filter_condition(table_model, col_name: str, f_info: dict):
     from sqlalchemy.dialects.postgresql import JSONB
     from sqlalchemy import cast, String, func, or_, and_
     
@@ -427,7 +501,7 @@ def get_column_filter_condition(col_name: str, f_info: dict):
         conditions = f_info.get("conditions", [])
         sqlalchemy_conds = []
         for cond_info in conditions:
-            sub_cond = get_column_filter_condition(col_name, cond_info)
+            sub_cond = get_column_filter_condition(table_model, col_name, cond_info)
             if sub_cond is not None:
                 sqlalchemy_conds.append(sub_cond)
         if not sqlalchemy_conds:
@@ -442,12 +516,14 @@ def get_column_filter_condition(col_name: str, f_info: dict):
         
     # Column path resolution
     if col_name in ["created_at", "updated_at"]:
-        target_col = models.DataRow.created_at if col_name == "created_at" else models.DataRow.updated_at
+        target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
         col_expr = cast(target_col, String)
     elif col_name in ["row_id", "id"]:
-        col_expr = models.DataRow.row_id
+        col_expr = table_model.row_id
     else:
-        col_expr = func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col_name, "value")
+        if not hasattr(table_model, col_name):
+            return None
+        col_expr = func.jsonb_extract_path_text(getattr(table_model, col_name), "value")
         
     # Condition mapping based on type
     if f_type == "contains":
@@ -488,12 +564,20 @@ def get_table_data(
     t_total_start = time.time()
     t_target = 0.0
     t_count = 0.0
-    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+    query = db.query(table_model)
     
     # [NEW] 트랜잭션 필터링
     if transaction_id:
-        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
-        query = query.filter(models.DataRow.row_id.in_(subquery))
+        subquery = db.query(models.AuditLog.row_id).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.transaction_id == transaction_id
+        )
+        query = query.filter(table_model.row_id.in_(subquery))
 
     # [NEW] AG-Grid 컬럼 필터링
     if filters:
@@ -501,51 +585,46 @@ def get_table_data(
             import json
             filter_dict = json.loads(filters)
             for col_name, f_info in filter_dict.items():
-                cond = get_column_filter_condition(col_name, f_info)
+                cond = get_column_filter_condition(table_model, col_name, f_info)
                 if cond is not None:
                     query = query.filter(cond)
         except Exception as e:
             print(f"[Server] Failed to apply column filters: {e}")
     
-    # ── [Step 0] 검색 필터 구성 (Trigram Index + 컬럼 한정) ──
+    # ── [Step 0] 검색 필터 구성 (실제 컬럼 기준 ilike 다중 OR 검색) ──
     if q:
         from sqlalchemy import cast, String, or_, and_, func
         safe_q = q.replace("%", "\\%").replace("_", "\\_")
         
-        # [Pre-Filter] GIN Trigram 인덱스(idx_data_trgm)를 활용하여 후보군을 1차 선별 (Very Fast)
-        # 이 조건이 인덱스 스캔을 유도하여 1,000만 건 중 수천 건 이하로 범위를 좁힙니다.
-        from sqlalchemy import Text
-        # [Optimization] GIN Trigram 인덱스(idx_data_trgm)는 CAST(data AS text) 기준임.
-        # SQLAlchemy String은 VARCHAR를 생성하므로, 명시적으로 Text 타입을 사용하여 인덱스 매칭 보장.
-        global_filter = models.DataRow.data.cast(Text).ilike(f"%{safe_q}%", escape="\\")
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
         
         if cols:
             col_list = [c.strip() for c in cols.split(",") if c.strip()]
-            conditions = []
-            for col in col_list:
-                if col in ["created_at", "updated_at"]:
-                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-                elif col in ["row_id", "id"]:
-                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
-                else:
-                    # [Refinement] 특정 컬럼으로 결과를 제한 (PostgreSQL JSONB 캐스팅 명시)
-                    from sqlalchemy.dialects.postgresql import JSONB
-                    conditions.append(func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col, "value").ilike(f"%{safe_q}%", escape="\\"))
-            
-            # 글로벌 필터(속도)와 컬럼 필터(정합성)를 AND로 결합
-            if conditions:
-                query = query.filter(and_(global_filter, or_(*conditions)))
-            else:
-                query = query.filter(global_filter)
         else:
-            query = query.filter(global_filter)
+            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+            
+        conditions = []
+        for col in col_list:
+            if col in ["created_at", "updated_at"]:
+                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
+                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+            elif col in ["row_id", "id"]:
+                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
+            elif col == "business_key_val":
+                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
+            else:
+                if hasattr(table_model, col):
+                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+        
+        if conditions:
+            query = query.filter(or_(*conditions))
 
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
     if target_row_id:
         # [Optimization] 타겟 행이 현재 검색 조건(query)에 부합하는지 PK를 활용해 초고속(1ms 이내) 검증
-        target_row = query.filter(models.DataRow.row_id == target_row_id).first()
+        target_row = query.filter(table_model.row_id == target_row_id).first()
         if not target_row:
             # [Task 4] DB에는 존재하지만 현재 검색 조건(query)에 맞지 않는 경우,
             # 무거운 count() 연산과 무의미한 데이터 페칭을 즉시 스킵하고 Fast-fail 응답을 반환합니다.
@@ -566,28 +645,28 @@ def get_table_data(
             
             if order_by == "updated_at":
                 t_val = target_row.updated_at
-                sort_expr = models.DataRow.updated_at
+                sort_expr = table_model.updated_at
                 if order_desc: # DESC (최신순)
                     # 1. 시간이 더 최근이거나(sort_expr > t_val)
                     # 2. 시간이 같으면 row_id가 더 큰 행(DESC)이 앞에 오므로 row_id > target_row_id인 행을 카운트
-                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, models.DataRow.row_id > target_row_id)))
+                    count_query = count_query.filter(or_(sort_expr > t_val, and_(sort_expr == t_val, table_model.row_id > target_row_id)))
                 else: # ASC
-                    count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, models.DataRow.row_id < target_row_id)))
+                    count_query = count_query.filter(or_(sort_expr < t_val, and_(sort_expr == t_val, table_model.row_id < target_row_id)))
             elif order_by == "id":
                 t_bk = target_row.business_key_val
                 if t_bk is None:
                     # NULLS LAST: NULL 행들은 값이 있는 행들 뒤에 위치함
                     count_query = count_query.filter(or_(
-                        models.DataRow.business_key_val.isnot(None),
-                        and_(models.DataRow.business_key_val.is_(None), models.DataRow.row_id < target_row_id)
+                        table_model.business_key_val.isnot(None),
+                        and_(table_model.business_key_val.is_(None), table_model.row_id < target_row_id)
                     ))
                 else:
                     if order_desc:
-                        count_query = count_query.filter(or_(models.DataRow.business_key_val > t_bk, and_(models.DataRow.business_key_val == t_bk, models.DataRow.row_id < target_row_id)))
+                        count_query = count_query.filter(or_(table_model.business_key_val > t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
                     else:
-                        count_query = count_query.filter(or_(models.DataRow.business_key_val < t_bk, and_(models.DataRow.business_key_val == t_bk, models.DataRow.row_id < target_row_id)))
+                        count_query = count_query.filter(or_(table_model.business_key_val < t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
             else:
-                count_query = count_query.filter(models.DataRow.row_id < target_row_id)
+                count_query = count_query.filter(table_model.row_id < target_row_id)
             t_tmp = time.time()
             actual_target_offset = count_query.count()
             t_target = time.time() - t_tmp
@@ -619,16 +698,15 @@ def get_table_data(
     
     from sqlalchemy.sql import func
     if order_by == "updated_at":
-        sort_expr = models.DataRow.updated_at.desc() if order_desc else models.DataRow.updated_at.asc()
-        # [Fix] 인덱스(ASC, ASC)를 거꾸로 타려면(DESC, DESC) 두 컬럼의 정렬 방향이 일치해야 합니다!
-        tie_breaker = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        sort_expr = table_model.updated_at.desc() if order_desc else table_model.updated_at.asc()
+        tie_breaker = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
         final_sort = [sort_expr, tie_breaker]
     elif order_by == "id":
-        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        tie_breaker_bk = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        bk_sort = table_model.business_key_val.desc() if order_desc else table_model.business_key_val.asc()
+        tie_breaker_bk = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
         final_sort = [bk_sort, tie_breaker_bk]
     else:
-        final_sort = [models.DataRow.row_id.asc()]
+        final_sort = [table_model.row_id.asc()]
     
     # ── [Step 2.5] Session Memory Optimization (Search Only) ──
     if q:
@@ -640,49 +718,117 @@ def get_table_data(
     # ── [Step 3] 데이터 페칭 (2단계 인덱스 기반 페칭으로 원복) ──
     t_id_start = time.time()
     # 1. ID만 먼저 인덱스로 스캔 (Very Fast)
-    id_results = query.with_entities(models.DataRow.row_id).order_by(*final_sort).offset(skip).limit(limit).all()
+    id_results = query.with_entities(table_model.row_id).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [r[0] for r in id_results]
     t_id_scan = time.time() - t_id_start
     
     t_row_start = time.time()
-    # 2. 본 데이터는 해당 ID들만 PK로 조회 (Tuple 반환으로 ORM 오버헤드 완벽 제거)
-    raw_rows = db.query(
-        models.DataRow.row_id, 
-        models.DataRow.table_name, 
-        models.DataRow.data, 
-        models.DataRow.created_at, 
-        models.DataRow.updated_at
-    ).filter(models.DataRow.row_id.in_(id_list)).all()
     
-    # ID 순서대로 정렬 (인덱스 스캔 순서 복원)
-    id_to_idx = {rid: i for i, rid in enumerate(id_list)}
-    raw_rows.sort(key=lambda x: id_to_idx.get(x[0], 999999))
-    t_row_scan = time.time() - t_row_start
+    cfg = crud.TABLE_CONFIG.get(table_name, {})
+    col_types = cfg.get("column_types", {})
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+    is_sqlite = db.bind.dialect.name == "sqlite"
     
-    t_dict_start = time.time()
-    data_list = []
-    for r_id, t_name, r_data, c_at, u_at in raw_rows:
-        # 시스템 컬럼 데이터 가공 (inject_system_columns 로직의 인라인 최적화)
-        c_at_str = to_local_str(c_at)
-        u_at_str = to_local_str(u_at if u_at else c_at)
-        
-        # 딕셔너리 직접 수정으로 메모리 할당 최소화
-        if "created_at" not in r_data:
-            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
-        if "updated_at" not in r_data:
-            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
-        else:
-            r_data["updated_at"]["value"] = u_at_str
+    if is_sqlite:
+        entities = [
+            table_model.row_id,
+            table_model.created_at,
+            table_model.updated_at
+        ]
+        for col in user_cols:
+            entities.append(getattr(table_model, col))
             
-        data_list.append({
-            "row_id": r_id, 
-            "table_name": t_name, 
-            "data": r_data,
-            "created_at": c_at_str, 
-            "updated_at": u_at_str
-        })
-    
-    t_dict = time.time() - t_dict_start
+        raw_rows = db.query(*entities).filter(table_model.row_id.in_(id_list)).all()
+        id_to_idx = {rid: i for i, rid in enumerate(id_list)}
+        raw_rows.sort(key=lambda x: id_to_idx.get(x[0], 999999))
+        t_row_scan = time.time() - t_row_start
+        
+        t_dict_start = time.time()
+        data_list = []
+        from datetime import datetime
+        for row in raw_rows:
+            r_id = row[0]
+            c_at_val = row[1]
+            u_at_val = row[2]
+            
+            c_at_str = to_local_str(c_at_val) if isinstance(c_at_val, datetime) else (c_at_val or "")
+            u_at_str = to_local_str(u_at_val) if isinstance(u_at_val, datetime) else (u_at_val or "")
+            
+            r_data = {}
+            for idx, col in enumerate(user_cols):
+                val = row[3 + idx]
+                if val is None:
+                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                else:
+                    # 세부 jsonb 내 sources 등의 히스토리 데이터를 제거하고 경량 딕셔너리로 축소 반환
+                    val = {
+                        "value": val.get("value"),
+                        "is_overwrite": val.get("is_overwrite", False),
+                        "updated_by": val.get("updated_by", "system")
+                    }
+                r_data[col] = val
+                
+            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
+            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
+                
+            data_list.append({
+                "row_id": r_id, 
+                "table_name": table_name, 
+                "data": r_data,
+                "created_at": c_at_str, 
+                "updated_at": u_at_str
+            })
+        t_dict = time.time() - t_dict_start
+    else:
+        # PostgreSQL 최적화: col - 'sources' 연산자로 DB 단에서 불필요한 이력 데이터를 걷어낸 뒤,
+        # row_to_json으로 단일 JSON 문자열로 빌드하여 전송받음으로써 DB I/O, 네트워크 전송량, 파이썬 드라이버 오버헤드를 동시에 극대화하여 해결.
+        from sqlalchemy import text
+        cols_sub = ", ".join([f"\"{col}\" - 'sources' AS \"{col}\"" for col in user_cols])
+        sql = text(f"""
+            SELECT row_to_json(sub) 
+            FROM (
+                SELECT row_id, created_at, updated_at, {cols_sub}
+                FROM "{table_name}"
+                WHERE row_id = ANY(:ids)
+            ) sub
+        """)
+        res = db.execute(sql, {"ids": id_list}).all()
+        raw_rows = [r[0] for r in res]
+        
+        id_to_idx = {rid: i for i, rid in enumerate(id_list)}
+        raw_rows.sort(key=lambda x: id_to_idx.get(x.get("row_id"), 999999))
+        t_row_scan = time.time() - t_row_start
+        
+        t_dict_start = time.time()
+        data_list = []
+        for row_dict in raw_rows:
+            r_id = row_dict["row_id"]
+            # row_to_json은 datetime을 ISO string 문자열(예: 2026-06-13T19:00:00+09:00)로 자동 변환함
+            c_at_raw = row_dict.get("created_at") or ""
+            u_at_raw = row_dict.get("updated_at") or ""
+            
+            c_at_str = c_at_raw.replace("T", " ").split("+")[0][:19]
+            u_at_str = u_at_raw.replace("T", " ").split("+")[0][:19]
+            
+            r_data = {}
+            for col in user_cols:
+                val = row_dict.get(col)
+                if val is None:
+                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+                r_data[col] = val
+                
+            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "updated_by": "system"}
+            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "updated_by": "system"}
+            
+            data_list.append({
+                "row_id": r_id,
+                "table_name": table_name,
+                "data": r_data,
+                "created_at": c_at_str,
+                "updated_at": u_at_str
+            })
+        t_dict = time.time() - t_dict_start
+        
     t_total = time.time() - t_total_start
     
     print(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
@@ -765,57 +911,61 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
 @app.post("/tables/{table_name}/row_ids/target")
 def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, db: Session = Depends(get_db)):
     """Targeted RowID Scanner: 오프셋 리스트 기반 초고속 UUID 추출"""
-    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+    query = db.query(table_model)
     
     if transaction_id:
-        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
-        query = query.filter(models.DataRow.row_id.in_(subquery))
+        subquery = db.query(models.AuditLog.row_id).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.transaction_id == transaction_id
+        )
+        query = query.filter(table_model.row_id.in_(subquery))
     
     if req.q:
         from sqlalchemy import cast, String, or_, and_, func
         safe_q = req.q.replace("%", "\\%").replace("_", "\\_")
         
-        from sqlalchemy import Text
-        global_filter = or_(
-            models.DataRow.business_key_val.ilike(f"%{safe_q}%", escape="\\"),
-            models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"),
-            models.DataRow.data.cast(Text).ilike(f"%{safe_q}%", escape="\\")
-        )
-
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
+        
         if req.cols:
             col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
-            conditions = []
-            for col in col_list:
-                if col in ["created_at", "updated_at"]:
-                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-                elif col in ["row_id", "id"]:
-                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
-                else:
-                    from sqlalchemy.dialects.postgresql import JSONB
-                    conditions.append(func.jsonb_extract_path_text(cast(models.DataRow.data, JSONB), col, "value").ilike(f"%{safe_q}%", escape="\\"))
-            
-            if conditions:
-                query = query.filter(and_(global_filter, or_(*conditions)))
-            else:
-                query = query.filter(global_filter)
         else:
-            query = query.filter(global_filter)
+            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+            
+        conditions = []
+        for col in col_list:
+            if col in ["created_at", "updated_at"]:
+                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
+                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+            elif col in ["row_id", "id"]:
+                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
+            elif col == "business_key_val":
+                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
+            else:
+                if hasattr(table_model, col):
+                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+        
+        if conditions:
+            query = query.filter(or_(*conditions))
 
     from sqlalchemy.sql import func
     if req.order_by == "updated_at":
-        sort_expr = models.DataRow.updated_at
+        sort_expr = table_model.updated_at
         sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
         # [Fix] 메인 테이블과 동일한 Tie-breaker 방향 적용 (Index 성능 및 정합성)
-        tie_breaker = models.DataRow.row_id.desc() if req.order_desc else models.DataRow.row_id.asc()
+        tie_breaker = table_model.row_id.desc() if req.order_desc else table_model.row_id.asc()
         query = query.order_by(sort_expr, tie_breaker)
     elif req.order_by == "id":
-        bk_null_last = (models.DataRow.business_key_val == None).asc()
-        bk_sort = models.DataRow.business_key_val.desc() if req.order_desc else models.DataRow.business_key_val.asc()
-        final_sort = [bk_null_last, bk_sort, models.DataRow.row_id.asc()]
+        bk_null_last = (table_model.business_key_val == None).asc()
+        bk_sort = table_model.business_key_val.desc() if req.order_desc else table_model.business_key_val.asc()
+        final_sort = [bk_null_last, bk_sort, table_model.row_id.asc()]
         query = query.order_by(*final_sort)
     else:
-        sort_expr = models.DataRow.row_id.asc()
+        sort_expr = table_model.row_id.asc()
         query = query.order_by(sort_expr)
 
     offsets = sorted(req.offsets)
@@ -834,7 +984,7 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, trans
         return {"row_ids": [], "error": "Scan range too large"}
 
     # 튜플 단위 최적화 (딕셔너리 빌드 생략)
-    results = query.with_entities(models.DataRow.row_id).offset(min_offset).limit(limit).all()
+    results = query.with_entities(table_model.row_id).offset(min_offset).limit(limit).all()
     print(f"[Server] DB Query finished. Fetched {len(results)} row_id entities.")
     
     matched_ids = []
@@ -845,11 +995,6 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, trans
             
     return {"row_ids": matched_ids}
 
-
-from fastapi.responses import StreamingResponse
-import csv
-import io
-from datetime import datetime
 
 @app.get("/tables/{table_name}/export")
 def export_table_csv(
@@ -865,12 +1010,19 @@ def export_table_csv(
     """
     현재 검색/정렬 조건에 맞는 데이터를 최대 100만 행까지 CSV로 스트리밍 추출합니다.
     """
-    query = db.query(models.DataRow).filter(models.DataRow.table_name == table_name)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+    query = db.query(table_model)
     
     # [NEW] 트랜잭션 필터링
     if transaction_id:
-        subquery = db.query(models.AuditLog.row_id).filter(models.AuditLog.transaction_id == transaction_id)
-        query = query.filter(models.DataRow.row_id.in_(subquery))
+        subquery = db.query(models.AuditLog.row_id).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.transaction_id == transaction_id
+        )
+        query = query.filter(table_model.row_id.in_(subquery))
 
     # [NEW] AG-Grid 컬럼 필터링
     if filters:
@@ -878,7 +1030,7 @@ def export_table_csv(
             import json
             filter_dict = json.loads(filters)
             for col_name, f_info in filter_dict.items():
-                cond = get_column_filter_condition(col_name, f_info)
+                cond = get_column_filter_condition(table_model, col_name, f_info)
                 if cond is not None:
                     query = query.filter(cond)
         except Exception as e:
@@ -886,50 +1038,64 @@ def export_table_csv(
     
     # [Filter] get_table_data와 검색 로직 동기화
     if q:
-        from sqlalchemy import cast, String, or_
+        from sqlalchemy import cast, String, or_, and_, func
         safe_q = q.replace("%", "\\%").replace("_", "\\_")
+        
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
+        
         if cols:
             col_list = [c.strip() for c in cols.split(",") if c.strip()]
-            conditions = []
-            for col in col_list:
-                if col in ["created_at", "updated_at"]:
-                    target_col = models.DataRow.created_at if col == "created_at" else models.DataRow.updated_at
-                    conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-                elif col in ["row_id", "id"]:
-                    conditions.append(models.DataRow.row_id.ilike(f"%{safe_q}%", escape="\\"))
-                else:
-                    conditions.append(cast(models.DataRow.data[col]["value"], String).ilike(f"%{safe_q}%", escape="\\"))
-            if conditions:
-                query = query.filter(or_(*conditions))
         else:
-            query = query.filter(cast(models.DataRow.data, String).ilike(f"%{safe_q}%", escape="\\"))
+            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+            
+        conditions = []
+        for col in col_list:
+            if col in ["created_at", "updated_at"]:
+                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
+                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+            elif col in ["row_id", "id"]:
+                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
+            elif col == "business_key_val":
+                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
+            else:
+                if hasattr(table_model, col):
+                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+        
+        if conditions:
+            query = query.filter(or_(*conditions))
 
     # [Sort] 정렬 조건 동기화
     from sqlalchemy.sql import func
     if order_by == "updated_at":
-        sort_expr = models.DataRow.updated_at.desc() if order_desc else models.DataRow.updated_at.asc()
-        tie_breaker = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        sort_expr = table_model.updated_at.desc() if order_desc else table_model.updated_at.asc()
+        tie_breaker = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
         final_sort = [sort_expr, tie_breaker]
     elif order_by == "id":
-        bk_sort = models.DataRow.business_key_val.desc() if order_desc else models.DataRow.business_key_val.asc()
-        tie_breaker_bk = models.DataRow.row_id.desc() if order_desc else models.DataRow.row_id.asc()
+        bk_sort = table_model.business_key_val.desc() if order_desc else table_model.business_key_val.asc()
+        tie_breaker_bk = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
         final_sort = [bk_sort, tie_breaker_bk]
     else:
-        final_sort = [models.DataRow.row_id.asc()]
+        final_sort = [table_model.row_id.asc()]
 
-    # 1. 헤더 구성을 위한 샘플링 (첫 행 기준)
-    first_row_data = db.query(models.DataRow.data).filter(models.DataRow.table_name == table_name).first()
-    if not first_row_data:
-        raise HTTPException(status_code=404, detail="No data matches the current filter")
+    # 1. 헤더 구성
+    cfg = crud.TABLE_CONFIG.get(table_name, {})
+    col_types = cfg.get("column_types", {})
+    business_cols = [c for c in sorted(col_types.keys()) if c not in ["created_at", "updated_at"]]
+    header = business_cols + ["created_at", "updated_at"]
+
+    # [Performance Optimization] SQL 레벨에서 필요한 가상의 비즈니스 컬럼 값만 골라 추출하여 파이썬 JSON 파싱 부하 제거
+    select_entities = []
+    for col in business_cols:
+        expr = func.jsonb_extract_path_text(getattr(table_model, col), "value")
+        select_entities.append(expr.label(col))
     
-    data_map = first_row_data[0]
-    system_cols = ["created_at", "updated_at"]
-    business_cols = [k for k in sorted(data_map.keys()) if k not in system_cols]
-    header = business_cols + system_cols
+    select_entities.append(table_model.created_at)
+    select_entities.append(table_model.updated_at)
 
     # 2. 크기 샘플링 예측 (초기 10행 기반 정밀 추산)
     # [Performance Optimization] 전체 테이블을 읽지 않고 limit(10)만 지정하여 메모리 로드 비용 격감
-    sample_query = query.with_entities(models.DataRow.data, models.DataRow.created_at, models.DataRow.updated_at).limit(10)
+    sample_query = query.with_entities(*select_entities).limit(10)
     sample_rows = db.execute(sample_query.statement).fetchall()
     
     sample_io = io.StringIO()
@@ -938,24 +1104,16 @@ def export_table_csv(
     tz = LOCAL_TIMEZONE
     ts_fmt = "%Y-%m-%d %H:%M:%S"
     
-    for r_data, c_at, u_at in sample_rows:
-        # 시스템 컬럼 데이터 가공 시뮬레이션
-        eff_upd = u_at if u_at else c_at
-        c_at_s = c_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if c_at else ""
+    for row in sample_rows:
+        created_at = row[-2]
+        updated_at = row[-1]
+        eff_upd = updated_at if updated_at else created_at
+        c_at_s = created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if created_at else ""
         u_at_s = eff_upd.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if eff_upd else ""
         
-        row_v = []
-        for col in header:
-            if col == "created_at":
-                row_v.append(c_at_s)
-            elif col == "updated_at":
-                row_v.append(u_at_s)
-            else:
-                cell = r_data.get(col, {})
-                val = cell.get("value") if isinstance(cell, dict) else cell
-                if isinstance(val, dict) and "value" in val:
-                    val = val.get("value")
-                row_v.append(val)
+        row_v = [r or "" for r in row[:-2]]
+        row_v.append(c_at_s)
+        row_v.append(u_at_s)
         sample_writer.writerow(row_v)
         
     sample_bytes = len(sample_io.getvalue().encode("utf-8"))
@@ -966,17 +1124,6 @@ def export_table_csv(
     total_count = query.count()
     total_count = min(total_count, 1000000)
     estimated_total_size = int(header_size + (avg_row_size * total_count))
-
-    # [Performance Optimization] SQL 레벨에서 필요한 가상의 비즈니스 컬럼 값만 골라 추출하여 파이썬 JSON 파싱 부하 제거
-    from sqlalchemy import literal_column
-    select_entities = []
-    for col in business_cols:
-        safe_col = col.replace("'", "''")
-        expr = literal_column(f"CASE WHEN jsonb_typeof(data -> '{safe_col}') = 'object' THEN data -> '{safe_col}' ->> 'value' ELSE data ->> '{safe_col}' END")
-        select_entities.append(expr.label(col))
-    
-    select_entities.append(models.DataRow.created_at)
-    select_entities.append(models.DataRow.updated_at)
 
     def generate():
         output = io.StringIO()
@@ -990,10 +1137,6 @@ def export_table_csv(
 
         # ── [Optimization] 서버사이드 커서(yield_per)를 활용하여 Offset 없이 선형 속도(Constant Speed) 스트리밍 ──
         batch_size = 5000
-        
-        # 타임존 및 포맷터 미리 캐싱
-        tz = LOCAL_TIMEZONE
-        ts_fmt = "%Y-%m-%d %H:%M:%S"
         
         # Datetime formatting cache to eliminate redundant tz conversions and formatting (bounded to 10k items)
         date_cache = {}
@@ -1019,7 +1162,7 @@ def export_table_csv(
             updated_at = row[-1]
             
             # 비즈니스 컬럼 값은 그대로 로드 (이미 SQL 레벨에서 분해됨)
-            row_vals = list(row[:-2])
+            row_vals = [r or "" for r in row[:-2]]
             
             # 시스템 컬럼 날짜 포맷 캐시 활용
             effective_update = updated_at if updated_at else created_at
@@ -1059,12 +1202,9 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     
     if not columns:
         # 데이터에서 동적 추출 (Fallback)
-        first_row = db.query(models.DataRow).filter(
-            models.DataRow.table_name == table_name
-        ).first()
-        
-        if first_row and first_row.data:
-            columns = list(first_row.data.keys())
+        table_model = models.DYNAMIC_TABLES.get(table_name)
+        if table_model:
+            columns = [c.name for c in table_model.__table__.columns if c.name not in ["row_id", "business_key_val", "created_at", "updated_at"]]
         else:
             columns = []
             
@@ -1082,17 +1222,39 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
     """
     특정 행의 데이터를 가져옵니다.
     """
-    row = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == row_id
-    ).first()
-    
-    if row:
-        inject_system_columns(row)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail="Table not found")
         
+    row = db.query(table_model).filter(table_model.row_id == row_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Row not found")
-    return row
+        
+    # Format dates and build data dict (matching get_table_data formatting)
+    c_at_str = to_local_str(row.created_at)
+    u_at_str = to_local_str(row.updated_at)
+    
+    cfg = crud.TABLE_CONFIG.get(table_name, {})
+    col_types = cfg.get("column_types", {})
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+    
+    r_data = {}
+    for col in user_cols:
+        val = getattr(row, col)
+        if val is None:
+            val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        r_data[col] = val
+        
+    r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+    r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+    
+    return {
+        "row_id": row.row_id,
+        "table_name": table_name,
+        "data": r_data,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at
+    }
 
 
 @app.get("/tables/{table_name}/rows/{row_id}/history", response_model=list[schemas.AuditLogResponse])
@@ -1105,12 +1267,12 @@ def get_row_history(table_name: str, row_id: str, db: Session = Depends(get_db))
         models.AuditLog.row_id == row_id
     ).order_by(models.AuditLog.timestamp.desc()).all()
     
-    row_obj = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == row_id
-    ).first()
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    row_obj = None
+    if table_model:
+        row_obj = db.query(table_model).filter(table_model.row_id == row_id).first()
+        
     row_exists = row_obj is not None
-    
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
     
     result = []
@@ -1132,12 +1294,12 @@ def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = 
         models.AuditLog.column_name == col_name
     ).order_by(models.AuditLog.timestamp.desc()).all()
     
-    row_obj = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id == row_id
-    ).first()
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    row_obj = None
+    if table_model:
+        row_obj = db.query(table_model).filter(table_model.row_id == row_id).first()
+        
     row_exists = row_obj is not None
-    
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
     
     result = []
@@ -1183,7 +1345,7 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
         inject_system_columns(row)
         msg_items.append({
             "row_id": row.row_id,
-            "table_name": row.table_name,
+            "table_name": table_name,
             "data": row.data
         })
     
@@ -1306,10 +1468,10 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
 async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
     """특정 셀에 중첩된 모든 데이터 원천(Sources) 정보를 반환합니다."""
     row = crud.get_row_cell(db, table_name, row_id)
-    if not row or col_name not in row.data:
+    cell = getattr(row, col_name, None) if row else None
+    if not row or not isinstance(cell, dict):
         raise HTTPException(status_code=404, detail="Cell not found")
     
-    cell = row.data[col_name]
     return {
         "sources": cell.get("sources", {}),
         "manual_priority_source": cell.get("manual_priority_source"),
@@ -1324,6 +1486,7 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
     if not updated_row:
         raise HTTPException(status_code=404, detail="Source or Cell not found")
     
+    inject_system_columns(updated_row)
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
@@ -1351,6 +1514,7 @@ async def set_cell_priority(
     if not updated_row:
         raise HTTPException(status_code=404, detail="Cell not found or source invalid")
     
+    inject_system_columns(updated_row)
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
@@ -1483,9 +1647,12 @@ def query_cells_sources(
 ):
     """여러 셀의 데이터 원천(Sources) 정보를 일괄 조회합니다."""
     row_ids = list(set(item.get("row_id") for item in req.updates if item.get("row_id")))
-    rows = db.query(models.DataRow).filter(
-        models.DataRow.table_name == table_name,
-        models.DataRow.row_id.in_(row_ids)
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail="Table not found")
+        
+    rows = db.query(table_model).filter(
+        table_model.row_id.in_(row_ids)
     ).all()
     row_map = {r.row_id: r for r in rows}
     
@@ -1497,7 +1664,8 @@ def query_cells_sources(
             continue
             
         row = row_map.get(row_id)
-        if not row or col_name not in row.data:
+        cell = getattr(row, col_name, None) if row else None
+        if not row or not isinstance(cell, dict):
             result.append({
                 "row_id": row_id,
                 "column_name": col_name,
@@ -1508,7 +1676,6 @@ def query_cells_sources(
             })
             continue
             
-        cell = row.data[col_name]
         result.append({
             "row_id": row_id,
             "column_name": col_name,
