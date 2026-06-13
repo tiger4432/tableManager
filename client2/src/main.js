@@ -1105,7 +1105,7 @@ function renderGrid(initialRows) {
       field: col,
       editable: !isSystem,
       sortable: true,
-      filter: true,
+      filter: colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter',
       resizable: true,
       checkboxSelection: index === 0,
       headerCheckboxSelection: index === 0,
