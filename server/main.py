@@ -616,7 +616,8 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict):
     else:
         if not hasattr(table_model, col_name):
             return None
-        col_expr = func.jsonb_extract_path_text(getattr(table_model, col_name), "value")
+        from sqlalchemy import cast, String
+        col_expr = cast(getattr(table_model, col_name), String)
         
     # Condition mapping based on type
     if f_type == "contains":
@@ -952,7 +953,7 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, trans
                 conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
             else:
                 if hasattr(table_model, col):
-                    conditions.append(func.jsonb_extract_path_text(getattr(table_model, col), "value").ilike(f"%{safe_q}%", escape="\\"))
+                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
         
         if conditions:
             query = query.filter(or_(*conditions))
