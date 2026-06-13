@@ -90,7 +90,18 @@ function setupEventListeners() {
   // Actions
   refreshBtn.addEventListener('click', () => {
     fetchData();
-    showToast('♻️ 실패 목록을 새로고침했습니다.', 'success');
+    let message = '♻️ 실패 목록을 새로고침했습니다.';
+    if (currentTab === 'file') {
+      const statusVal = statusFilterSelect.value || 'ALL';
+      if (statusVal === 'ALL') {
+        message = '♻️ 모든 파일 인제션 목록을 새로고침했습니다.';
+      } else if (statusVal === 'SUCCESS') {
+        message = '♻️ 성공 파일 인제션 목록을 새로고침했습니다.';
+      } else {
+        message = '♻️ 실패 파일 인제션 목록을 새로고침했습니다.';
+      }
+    }
+    showToast(message, 'success');
   });
 
   retryAllBtn.addEventListener('click', async () => {
@@ -175,8 +186,19 @@ async function fetchData() {
       renderFileTable();
     }
   } catch (err) {
-    console.error('Failed to fetch failed items', err);
-    showToast('❌ 실패 목록 로드 실패', 'error');
+    console.error('Failed to fetch items', err);
+    let errorMsg = '❌ 실패 목록 로드 실패';
+    if (currentTab === 'file') {
+      const statusVal = statusFilterSelect.value || 'ALL';
+      if (statusVal === 'ALL') {
+        errorMsg = '❌ 모든 파일 인제션 목록 로드 실패';
+      } else if (statusVal === 'SUCCESS') {
+        errorMsg = '❌ 성공 파일 인제션 목록 로드 실패';
+      } else {
+        errorMsg = '❌ 실패 파일 인제션 목록 로드 실패';
+      }
+    }
+    showToast(errorMsg, 'error');
   }
 }
 
@@ -184,6 +206,7 @@ async function fetchData() {
 function renderOutboxTable() {
   outboxListBody.innerHTML = '';
   totalCountSpan.textContent = outboxTotal;
+  totalCountSpan.style.color = 'var(--color-danger)';
 
   if (outboxData.length === 0) {
     outboxEmptyState.style.display = 'flex';
@@ -256,6 +279,15 @@ function renderOutboxTable() {
 function renderFileTable() {
   fileListBody.innerHTML = '';
   totalCountSpan.textContent = fileTotal;
+  
+  const statusFilterVal = statusFilterSelect.value;
+  if (statusFilterVal === 'SUCCESS') {
+    totalCountSpan.style.color = 'var(--color-success)';
+  } else if (statusFilterVal === 'FAILED') {
+    totalCountSpan.style.color = 'var(--color-danger)';
+  } else {
+    totalCountSpan.style.color = 'var(--text-main)';
+  }
 
   if (fileData.length === 0) {
     fileEmptyState.style.display = 'flex';
