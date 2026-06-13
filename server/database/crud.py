@@ -151,13 +151,21 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
     if not mappings:
         return
     
+    # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
+    # Keep the last (most recent) dictionary for each unique constraint key.
+    deduped = {}
+    for item in mappings:
+        key = (item['table_name'], item['row_id'], item['column_name'], item['source_name'])
+        deduped[key] = item
+    deduped_mappings = list(deduped.values())
+    
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
         from sqlalchemy.dialects.sqlite import insert as upsert_insert
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
         
-    stmt = upsert_insert(models.CellSource).values(mappings)
+    stmt = upsert_insert(models.CellSource).values(deduped_mappings)
     stmt = stmt.on_conflict_do_update(
         index_elements=['table_name', 'row_id', 'column_name', 'source_name'],
         set_={
@@ -172,13 +180,21 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict]):
     if not mappings:
         return
     
+    # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
+    # Keep the last (most recent) dictionary for each unique constraint key.
+    deduped = {}
+    for item in mappings:
+        key = (item['table_name'], item['row_id'], item['column_name'])
+        deduped[key] = item
+    deduped_mappings = list(deduped.values())
+    
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
         from sqlalchemy.dialects.sqlite import insert as upsert_insert
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
         
-    stmt = upsert_insert(models.CellOverwrite).values(mappings)
+    stmt = upsert_insert(models.CellOverwrite).values(deduped_mappings)
     stmt = stmt.on_conflict_do_update(
         index_elements=['table_name', 'row_id', 'column_name'],
         set_={
