@@ -48,7 +48,7 @@ class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
     """
-    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None):
+    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None, on_file_processed_callback=None):
         self.workspace_path = workspace_path
         self.config_path = config_path
         self.archives_path = archives_path
@@ -57,6 +57,7 @@ class IngestionHandler(FileSystemEventHandler):
         self.supported_extensions = ('.log', '.txt', '.csv')
         self.processing_files = set() 
         self.on_refresh_callback = on_refresh_callback
+        self.on_file_processed_callback = on_file_processed_callback
         
     @property
     def table_name(self):
@@ -137,6 +138,8 @@ class IngestionHandler(FileSystemEventHandler):
                 # 3. Archive the file
                 self._archive_file(file_path)
                 logger.info(f"[{self.table_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}")
+                if self.on_file_processed_callback:
+                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "SUCCESS", None)
                 return
             except PermissionError:
                 logger.warning(f"[{self.table_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
@@ -149,6 +152,8 @@ class IngestionHandler(FileSystemEventHandler):
                 if not dest_path:
                     dest_path = file_path
                 self._log_ingestion_failure(file_path, dest_path, error_msg)
+                if self.on_file_processed_callback:
+                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "FAILED", str(e))
                 return
         
         error_msg = f"Failed to process file after {retries} attempts: PermissionError (file locked)"
@@ -157,6 +162,8 @@ class IngestionHandler(FileSystemEventHandler):
         if not dest_path:
             dest_path = file_path
         self._log_ingestion_failure(file_path, dest_path, error_msg)
+        if self.on_file_processed_callback:
+            self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "FAILED", error_msg)
 
     def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str):
         db = SessionLocal()
@@ -195,6 +202,8 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.status = "SUCCESS"
             log_entry.error_message = None
             db.commit()
+            if self.on_file_processed_callback:
+                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "SUCCESS", None)
             return True
         except Exception as e:
             import traceback
@@ -204,6 +213,8 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.error_message = error_msg
             log_entry.retry_count += 1
             db.commit()
+            if self.on_file_processed_callback:
+                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "FAILED", str(e))
             return False
 
     def _move_to_err_folder(self, file_path: str) -> str:
@@ -421,11 +432,12 @@ class WorkspaceWatcher:
     """
     Monitors all ingestion workspaces for new files.
     """
-    def __init__(self, base_dir: str, on_refresh_callback=None):
+    def __init__(self, base_dir: str, on_refresh_callback=None, on_file_processed_callback=None):
         self.base_dir = base_dir
         self.observer = Observer()
         self.watch_count = 0
         self.on_refresh_callback = on_refresh_callback
+        self.on_file_processed_callback = on_file_processed_callback
 
     def discover_and_watch(self):
         """
@@ -448,7 +460,7 @@ class WorkspaceWatcher:
                         logger.info(f"Using alternative config: {config_path}")
 
                 if os.path.exists(config_path):
-                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback)
+                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback)
                     self.observer.schedule(handler, root, recursive=False)
                     self.watch_count += 1
                     logger.info(f"Watching: {root} (using config: {os.path.basename(config_path)})")
@@ -464,7 +476,7 @@ class WorkspaceWatcher:
                                 
                     if has_scripts:
                         table_name = os.path.basename(workspace_root)
-                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback)
+                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback)
                         self.observer.schedule(handler, root, recursive=False)
                         self.watch_count += 1
                         logger.info(f"Watching: {root} (Pipeline-only workspace, Table: {table_name})")

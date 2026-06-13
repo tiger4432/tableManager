@@ -129,8 +129,39 @@ async def startup_event():
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
                 print(f"[WS] Failed to broadcast refresh signal: {e}")
+
+        def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):
+            import json
+            try:
+                from pipeline_base import BasePipelineParser
+                clean_filename = BasePipelineParser.get_basename(filename)
+            except Exception:
+                clean_filename = filename
+
+            if status == "SUCCESS":
+                message = f"{clean_filename} 파일이 처리되었습니다."
+            else:
+                message = f"{clean_filename} 파일 처리에 실패했습니다."
+                if error_msg:
+                    message += f" ({error_msg[:100]})"
+            
+            msg = {
+                "event": "file_ingestion_completed",
+                "table_name": table_name,
+                "filename": clean_filename,
+                "status": status,
+                "message": message
+            }
+            try:
+                asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
+            except Exception as e:
+                print(f"[WS] Failed to broadcast file ingestion completion: {e}")
                 
-        global_watcher = WorkspaceWatcher(workspace_base, on_refresh_callback=trigger_ws_refresh)
+        global_watcher = WorkspaceWatcher(
+            workspace_base, 
+            on_refresh_callback=trigger_ws_refresh,
+            on_file_processed_callback=trigger_ws_file_processed
+        )
         global_watcher.discover_and_watch()
         # 비차단 모드(blocking=False)로 기동
         global_watcher.start(blocking=False)
@@ -2000,6 +2031,31 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
             lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
         )
 
+    def sync_file_processed_callback(t_name: str, filename: str, status: str, error_msg: str = None):
+        try:
+            from pipeline_base import BasePipelineParser
+            clean_filename = BasePipelineParser.get_basename(filename)
+        except Exception:
+            clean_filename = filename
+
+        if status == "SUCCESS":
+            message = f"{clean_filename} 파일이 처리되었습니다."
+        else:
+            message = f"{clean_filename} 파일 처리에 실패했습니다."
+            if error_msg:
+                message += f" ({error_msg[:100]})"
+
+        msg = {
+            "event": "file_ingestion_completed",
+            "table_name": t_name,
+            "filename": clean_filename,
+            "status": status,
+            "message": message
+        }
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
+        )
+
     for log in failed_logs:
         table_name = log.table_name or "unknown"
         server_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2017,7 +2073,8 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
             config_path=config_path if os.path.exists(config_path) else None,
             archives_path=archives_path,
             default_table_name=table_name,
-            on_refresh_callback=sync_refresh_callback
+            on_refresh_callback=sync_refresh_callback,
+            on_file_processed_callback=sync_file_processed_callback
         )
         
         res = await asyncio.to_thread(handler.process_archived_file_sync, log, db)

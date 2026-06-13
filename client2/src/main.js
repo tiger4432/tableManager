@@ -1590,6 +1590,18 @@ function initWebSocket() {
 
 // Feature 2: WebSocket message processing for Real-time delta sync
 function handleWebSocketMessage(msg) {
+  if (msg.event === 'file_ingestion_completed') {
+    const status = msg.status || 'SUCCESS';
+    const message = msg.message || '파일 처리가 완료되었습니다.';
+    showToast(message, status === 'SUCCESS' ? 'success' : 'error');
+
+    if (msg.table_name === currentTable) {
+      pageCache.clear();
+      triggerHistoryReloadDebounced();
+    }
+    return;
+  }
+
   // 1. Process and append audit logs to local history cache first (independent of currentTable check, especially for global history)
   const createdLogs = msg.created_logs || [];
   if (createdLogs.length > 0) {

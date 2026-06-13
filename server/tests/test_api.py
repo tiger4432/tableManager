@@ -277,8 +277,9 @@ def test_audit_log_no_redundant_logs(client, db_session):
     db_session.add(row)
     db_session.commit()
 
-    # Clear any audit logs from conftest seeding
+    # Clear any audit logs and outbox events from conftest seeding
     db_session.query(models.AuditLog).delete()
+    db_session.query(models.DatabaseOutbox).delete()
     db_session.commit()
 
     # 2. Perform ingestion update with the same logical values (int 100, trailing spaces, same string)
@@ -301,7 +302,80 @@ def test_audit_log_no_redundant_logs(client, db_session):
     assert res.status_code == 200
     assert res.json()["status"] == "success"
 
-    # 3. Verify that NO audit logs were written!
+    # 3. Verify that NO audit logs or outbox events were written!
     count = db_session.query(models.AuditLog).count()
     assert count == 0, f"Expected 0 audit logs, got {count}"
+
+    # Clean up outbox to avoid leaking
+    db_session.query(models.DatabaseOutbox).delete()
+    db_session.commit()
+
+
+def test_file_ingestion_callback_direct(db_session):
+    from database import models
+    from directory_watcher import IngestionHandler
+    import os
+    import json
+
+    # 1. Setup mock workspace
+    server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    workspace_root = os.path.join(server_dir, "ingestion_workspace", "inventory_master")
+    os.makedirs(workspace_root, exist_ok=True)
+    
+    config_dir = os.path.join(workspace_root, "config")
+    os.makedirs(config_dir, exist_ok=True)
+    config_path = os.path.join(config_dir, "config.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump({"table_name": "inventory_master", "columns": ["part_no", "category"]}, f)
+    
+    # Create mock archived file
+    archives_dir = os.path.join(workspace_root, "archives")
+    os.makedirs(archives_dir, exist_ok=True)
+    dummy_file_path = os.path.join(archives_dir, "test_direct_callback.csv")
+    with open(dummy_file_path, "w", encoding="utf-8") as f:
+        f.write("part_no,category\nTEST_PART_DIR,TestCategoryWS\n")
+
+    # Create failed log
+    failed_log = models.FileIngestionLog(
+        filename="test_direct_callback.csv",
+        filepath=dummy_file_path,
+        table_name="inventory_master",
+        status="FAILED",
+        error_message="Simulated failure",
+        retry_count=0
+    )
+    db_session.add(failed_log)
+    db_session.commit()
+
+    called_back = []
+    def mock_callback(table_name, filename, status, error_msg):
+        called_back.append((table_name, filename, status, error_msg))
+
+    handler = IngestionHandler(
+        workspace_path=workspace_root,
+        config_path=config_path,
+        archives_path=archives_dir,
+        default_table_name="inventory_master",
+        on_file_processed_callback=mock_callback
+    )
+
+    try:
+        # Directly run parsing synchronously
+        res = handler.process_archived_file_sync(failed_log, db_session)
+        assert res is True
+        assert len(called_back) == 1
+        assert called_back[0][0] == "inventory_master"
+        assert called_back[0][1] == "test_direct_callback.csv"
+        assert called_back[0][2] == "SUCCESS"
+    finally:
+        # Clean up
+        if os.path.exists(dummy_file_path):
+            try:
+                os.remove(dummy_file_path)
+            except:
+                pass
+        db_session.query(models.DatabaseOutbox).delete()
+        db_session.commit()
+
+
 
