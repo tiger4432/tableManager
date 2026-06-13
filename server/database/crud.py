@@ -262,13 +262,17 @@ def apply_row_update_internal(
     if key_col and key_col in update_item.updates:
         new_bk_val = update_item.updates[key_col]
         if new_bk_val is not None:
-            row.business_key_val = str(new_bk_val).strip()
+            str_val = str(new_bk_val).strip()
+            if row.business_key_val != str_val:
+                row.business_key_val = str_val
     # Or from existing data if it's there but not in updates
     elif key_col and hasattr(row, key_col):
         existing_val = getattr(row, key_col)
         new_bk_val = existing_val.get("value") if isinstance(existing_val, dict) else existing_val
         if new_bk_val is not None:
-            row.business_key_val = str(new_bk_val).strip()
+            str_val = str(new_bk_val).strip()
+            if row.business_key_val != str_val:
+                row.business_key_val = str_val
 
     # Old values snapshot for auditing
     old_values_snapshot = {}
@@ -360,9 +364,8 @@ def apply_row_update_internal(
             
         new_val, top_src = compute_priority_value(sources_dict, manual_pin)
         
-        # 5. 기본 테이블에 최종 값 갱신
+        # 5. 기본 테이블에 최종 값 갱신을 위한 준비
         old_val = old_values_snapshot.get(col_name)
-        setattr(row, col_name, new_val)
         
         # 6. cell_overwrites 마킹
         is_overwrite = ("user" in sources_dict) or (manual_pin is not None)
@@ -418,6 +421,7 @@ def apply_row_update_internal(
                 has_changed = str(old_val).strip() != str(new_val).strip()
 
         if has_changed:
+            setattr(row, col_name, new_val)
             changed_cols.append(col_name)
             # [최적화] 사용자 직접 수정 시 상세 오디트 로그 기록
             if update_item.source_name == "user":
