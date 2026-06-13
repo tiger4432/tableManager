@@ -257,3 +257,51 @@ def test_numeric_filtering_and_blank_checks(client, db_session):
     assert res.status_code == 200
     rows = res.json()["data"]
     assert len(rows) == 3
+
+
+def test_audit_log_no_redundant_logs(client, db_session):
+    from database import models, schemas, crud
+    import uuid
+
+    inv_model = models.DYNAMIC_TABLES["inventory_master"]
+    row_id = str(uuid.uuid4())
+    
+    # 1. Create a row with stock_qty = 100.0 (float)
+    row = inv_model(
+        row_id=row_id,
+        business_key_val="PART_99",
+        part_no="PART_99",
+        category="Connector",
+        stock_qty=100.0
+    )
+    db_session.add(row)
+    db_session.commit()
+
+    # Clear any audit logs from conftest seeding
+    db_session.query(models.AuditLog).delete()
+    db_session.commit()
+
+    # 2. Perform ingestion update with the same logical values (int 100, trailing spaces, same string)
+    payload = {
+        "updates": [
+            {
+                "row_id": row_id,
+                "updates": {
+                    "stock_qty": 100,            # Same numeric value (100 vs 100.0)
+                    "category": "Connector   ", # Same string with trailing whitespace
+                    "part_no": "PART_99"        # Exactly the same
+                },
+                "source_name": "pipeline_parser",
+                "updated_by": "system"
+            }
+        ]
+    }
+
+    res = client.put("/tables/inventory_master/data/updates", json=payload)
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+
+    # 3. Verify that NO audit logs were written!
+    count = db_session.query(models.AuditLog).count()
+    assert count == 0, f"Expected 0 audit logs, got {count}"
+

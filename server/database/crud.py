@@ -401,7 +401,23 @@ def apply_row_update_internal(
                 if overwrites_cache is not None:
                     overwrites_cache[key] = None
 
-        if is_new or (str(old_val) != str(new_val)):
+        has_changed = False
+        if is_new:
+            has_changed = True
+        else:
+            if old_val is None and new_val is None:
+                has_changed = False
+            elif (old_val is None) != (new_val is None):
+                has_changed = True
+            elif col_type == "number":
+                try:
+                    has_changed = float(old_val) != float(new_val)
+                except (ValueError, TypeError):
+                    has_changed = str(old_val).strip() != str(new_val).strip()
+            else:
+                has_changed = str(old_val).strip() != str(new_val).strip()
+
+        if has_changed:
             changed_cols.append(col_name)
             # [최적화] 사용자 직접 수정 시 상세 오디트 로그 기록
             if update_item.source_name == "user":
