@@ -250,6 +250,32 @@
       border: 1px solid rgba(249, 226, 175, 0.3);
     }
 
+    .badge-success {
+      background: rgba(166, 227, 161, 0.15);
+      color: var(--color-success);
+      border: 1px solid rgba(166, 227, 161, 0.3);
+    }
+
+    .glass-select {
+      background: rgba(30, 30, 46, 0.6) !important;
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .glass-select:focus {
+      border-color: var(--color-primary);
+    }
+    .glass-select option {
+      background: #1e1e2e;
+      color: var(--text-main);
+    }
+
     /* JSON & Traceback styling */
     .detail-section {
       display: flex;
@@ -439,9 +465,14 @@
       <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
         <div style="display: flex; gap: 10px;">
           <button id="tab-outbox-btn" class="tab-btn active">Outbox Failures</button>
-          <button id="tab-file-btn" class="tab-btn">File Ingestion Failures</button>
+          <button id="tab-file-btn" class="tab-btn">File Ingestions</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
+          <select id="status-filter" class="glass-select" style="display: none; height: 32px; padding: 0 10px; font-size: 0.8rem;">
+            <option value="ALL">All Status</option>
+            <option value="FAILED" selected>Failed</option>
+            <option value="SUCCESS">Success</option>
+          </select>
           <span style="font-size: 0.85rem; color: var(--text-muted);">Total: <span id="total-count" style="font-weight: bold; color: var(--color-danger);">0</span></span>
           <button id="refresh-btn" class="glass-btn" style="padding: 6px 12px; font-size: 0.85rem;">🔄 Refresh</button>
         </div>
@@ -478,9 +509,10 @@
               <tr>
                 <th style="width: 80px;">Log ID</th>
                 <th>Filename</th>
-                <th style="width: 150px;">Target Table</th>
-                <th style="width: 80px; text-align: center;">Retries</th>
-                <th style="width: 160px;">Failed At</th>
+                <th style="width: 130px;">Target Table</th>
+                <th style="width: 100px; text-align: center;">Status</th>
+                <th style="width: 70px; text-align: center;">Retries</th>
+                <th style="width: 160px;">Processed At</th>
                 <th style="width: 100px; text-align: center;">Actions</th>
               </tr>
             </thead>
@@ -490,7 +522,7 @@
           </table>
           <div id="file-empty" class="empty-state" style="display: none;">
             <div class="empty-icon">🎉</div>
-            <div class="empty-text">No failed file ingestions! All files parsed successfully.</div>
+            <div class="empty-text">No file ingestion logs found for the selected filter.</div>
           </div>
         </div>
       </div>

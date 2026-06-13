@@ -136,8 +136,9 @@ class IngestionHandler(FileSystemEventHandler):
                     self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
                 
                 # 3. Archive the file
-                self._archive_file(file_path)
+                dest_path = self._archive_file(file_path)
                 logger.info(f"[{self.table_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}")
+                self._log_ingestion_success(file_path, dest_path)
                 if self.on_file_processed_callback:
                     self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "SUCCESS", None)
                 return
@@ -182,6 +183,26 @@ class IngestionHandler(FileSystemEventHandler):
             logger.info(f"[{self.table_name}] 📝 Logged file ingestion failure to database.")
         except Exception as e:
             logger.error(f"Failed to write file ingestion error log to DB: {e}")
+        finally:
+            db.close()
+
+    def _log_ingestion_success(self, original_path: str, archived_path: str):
+        db = SessionLocal()
+        try:
+            from database.models import FileIngestionLog
+            log_obj = FileIngestionLog(
+                filename=os.path.basename(original_path),
+                filepath=os.path.abspath(archived_path),
+                table_name=self.table_name or "unknown",
+                status="SUCCESS",
+                error_message=None,
+                retry_count=0
+            )
+            db.add(log_obj)
+            db.commit()
+            logger.info(f"[{self.table_name}] 📝 Logged file ingestion success to database.")
+        except Exception as e:
+            logger.error(f"Failed to write file ingestion success log to DB: {e}")
         finally:
             db.close()
 

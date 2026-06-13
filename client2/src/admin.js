@@ -23,6 +23,7 @@ const tabOutboxBtn = document.getElementById('tab-outbox-btn');
 const tabFileBtn = document.getElementById('tab-file-btn');
 const outboxTableWrapper = document.getElementById('outbox-table-wrapper');
 const fileTableWrapper = document.getElementById('file-table-wrapper');
+const statusFilterSelect = document.getElementById('status-filter');
 
 const outboxListBody = document.getElementById('outbox-list-body');
 const fileListBody = document.getElementById('file-list-body');
@@ -63,6 +64,7 @@ function setupEventListeners() {
     tabFileBtn.classList.remove('active');
     outboxTableWrapper.style.display = 'block';
     fileTableWrapper.style.display = 'none';
+    statusFilterSelect.style.display = 'none';
     clearDiagnostics();
     fetchData();
   });
@@ -74,7 +76,14 @@ function setupEventListeners() {
     tabOutboxBtn.classList.remove('active');
     fileTableWrapper.style.display = 'block';
     outboxTableWrapper.style.display = 'none';
+    statusFilterSelect.style.display = 'block';
     clearDiagnostics();
+    fetchData();
+  });
+
+  // Status filter change
+  statusFilterSelect.addEventListener('change', () => {
+    filePage = 1;
     fetchData();
   });
 
@@ -156,7 +165,8 @@ async function fetchData() {
       outboxTotal = result.total || 0;
       renderOutboxTable();
     } else {
-      const res = await fetch(`${API_BASE}/admin/file-ingestion/failed?page=${filePage}&limit=${fileLimit}`);
+      const statusVal = statusFilterSelect.value || 'FAILED';
+      const res = await fetch(`${API_BASE}/admin/file-ingestion/logs?status=${statusVal}&page=${filePage}&limit=${fileLimit}`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
       
@@ -268,14 +278,20 @@ function renderFileTable() {
       timeStr = dt.toLocaleString();
     }
 
+    const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${log.status || 'FAILED'}</span>`;
+    const retryBtnHtml = log.status === 'SUCCESS'
+      ? `<button class="glass-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
+      : `<button class="glass-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
+
     row.innerHTML = `
       <td>${log.id}</td>
       <td style="font-weight: 500; color: #a6e3a1; word-break: break-all;">${log.filename}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${log.table_name}</td>
+      <td style="text-align: center;">${statusBadge}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${log.retry_count}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem;">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
+        ${retryBtnHtml}
       </td>
     `;
 
@@ -286,11 +302,13 @@ function renderFileTable() {
 
     // Individual retry click listener
     const retryBtn = row.querySelector('.btn-retry-file');
-    retryBtn.addEventListener('click', async () => {
-      if (confirm(`로그 ID #${log.id} 파일 인제션을 다시 재시도하시겠습니까?`)) {
-        await retryFileIngestion(log.id);
-      }
-    });
+    if (retryBtn) {
+      retryBtn.addEventListener('click', async () => {
+        if (confirm(`로그 ID #${log.id} 파일 인제션을 다시 재시도하시겠습니까?`)) {
+          await retryFileIngestion(log.id);
+        }
+      });
+    }
 
     fileListBody.appendChild(row);
   });

@@ -1962,12 +1962,14 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
         "data": result_list
     }
 
-@app.get("/admin/file-ingestion/failed")
-def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
-    """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
-    query = db.query(models.FileIngestionLog).filter(
-        models.FileIngestionLog.status == "FAILED"
-    ).order_by(models.FileIngestionLog.id.desc())
+@app.get("/admin/file-ingestion/logs")
+def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+    """File Ingestion 로그 목록을 페이지네이션하여 반환합니다. status 필터(ALL, SUCCESS, FAILED)를 지원합니다."""
+    query = db.query(models.FileIngestionLog)
+    if status != "ALL":
+        query = query.filter(models.FileIngestionLog.status == status)
+    
+    query = query.order_by(models.FileIngestionLog.id.desc())
     
     total = query.count()
     start = (page - 1) * limit
@@ -1994,6 +1996,11 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
         "limit": limit,
         "data": result_list
     }
+
+@app.get("/admin/file-ingestion/failed")
+def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
+    return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
 @app.post("/admin/file-ingestion/retry-failed")
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
