@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from sqlalchemy import text
 
-# [경로 보정] scripts 폴더로 이동됨에 따라 상위 폴더(server/)를 path에 추가
+# [경로 보정] 상위 폴더(server/)를 path에 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
 server_root = os.path.abspath(os.path.join(current_dir, ".."))
 sys.path.append(server_root)
@@ -70,13 +70,11 @@ def seed_row(db, table_name, row_id, business_key_val, data_dict, source_name="s
         db.add(cell_src)
 
 def seed():
-    # Load table config and init dynamic models
     config_path = os.path.join(server_root, "config", "table_config.json")
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
     
-    # Clear DB first
     clear_db(table_config)
     
     db = SessionLocal()
@@ -121,7 +119,6 @@ def seed():
             data = {
                 "item_id": item_id
             }
-            # Fill 10-20 random cols for large table
             for col_idx in range(1, 100):
                 col_name = f"col_{col_idx}"
                 if random.random() > 0.5:
@@ -134,7 +131,6 @@ def seed():
         db.commit()
         print("Seed complete.")
         
-        # Verify row counts
         for table_name in table_config.keys():
             table_model = models.DYNAMIC_TABLES.get(table_name)
             if table_model:

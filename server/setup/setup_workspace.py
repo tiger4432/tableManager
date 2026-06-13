@@ -2,7 +2,7 @@ import os
 import json
 
 def setup_workspace():
-    # [경로 보정] scripts 폴더로 이동됨에 따라 상위 폴더(server/)를 기준으로 base_dir 설정
+    # [경로 보정] 상위 폴더(server/)를 기준으로 base_dir 설정
     current_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.abspath(os.path.join(current_dir, ".."))
     

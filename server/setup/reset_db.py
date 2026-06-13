@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from database.database import engine, Base, is_sqlite
 from database import models
-from scripts.init_db import setup_database
+from setup.init_db import setup_database
 
 def reset_database():
     print("[WARNING] AssyManager Database RESET Starting...")
@@ -29,9 +29,7 @@ def reset_database():
     if not is_sqlite:
         print("  - Step 2: Disconnecting other active database sessions to avoid DDL locks...")
         try:
-            # autocommit 모드로 연결하여 트랜잭션 락 방지
             with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-                # current_database() 내의 다른 모든 백엔드 프로세스 종료
                 conn.execute(text("""
                     SELECT pg_terminate_backend(pid)
                     FROM pg_stat_activity
@@ -46,7 +44,6 @@ def reset_database():
     with engine.connect() as conn:
         print("  - Step 3: Dropping all existing tables...")
         try:
-            # metadata에 등록된 모든 테이블 삭제 (동적 테이블 포함)
             Base.metadata.drop_all(bind=engine)
             conn.commit()
             print("    [OK] All tables dropped.")
