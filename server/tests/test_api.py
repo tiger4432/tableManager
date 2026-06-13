@@ -201,4 +201,59 @@ def test_priority_toggle_api(client, db_session):
     assert sources_res2.json()["manual_priority_source"] is None
 
 
+def test_numeric_filtering_and_blank_checks(client, db_session):
+    from database import models
+    import json
+
+    inv_model = models.DYNAMIC_TABLES["inventory_master"]
     
+    # Seed test rows for inventory_master
+    qtys = [10, 20, 30, None]
+    for i, qty in enumerate(qtys):
+        r_id = f"test_row_{i}"
+        row = inv_model(
+            row_id=r_id,
+            business_key_val=f"PART_{i}",
+            part_no=f"PART_{i}",
+            stock_qty=qty
+        )
+        db_session.add(row)
+    db_session.commit()
+
+    # Case 1: greaterThan 15
+    f_greater = {"stock_qty": {"type": "greaterThan", "filter": "15"}}
+    res = client.get(f"/tables/inventory_master/data?filters={json.dumps(f_greater)}")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) == 2
+    assert all(r["data"]["stock_qty"]["value"] in [20, 30] for r in rows)
+
+    # Case 2: lessThan 25
+    f_less = {"stock_qty": {"type": "lessThan", "filter": "25"}}
+    res = client.get(f"/tables/inventory_master/data?filters={json.dumps(f_less)}")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) == 2
+    assert all(r["data"]["stock_qty"]["value"] in [10, 20] for r in rows)
+
+    # Case 3: inRange 15 to 35
+    f_range = {"stock_qty": {"type": "inRange", "filter": "15", "filterTo": "35"}}
+    res = client.get(f"/tables/inventory_master/data?filters={json.dumps(f_range)}")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) == 2
+
+    # Case 4: blank
+    f_blank = {"stock_qty": {"type": "blank"}}
+    res = client.get(f"/tables/inventory_master/data?filters={json.dumps(f_blank)}")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["data"]["stock_qty"]["value"] is None
+
+    # Case 5: notBlank
+    f_not_blank = {"stock_qty": {"type": "notBlank"}}
+    res = client.get(f"/tables/inventory_master/data?filters={json.dumps(f_not_blank)}")
+    assert res.status_code == 200
+    rows = res.json()["data"]
+    assert len(rows) == 3

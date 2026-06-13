@@ -604,10 +604,13 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict):
     # 2. Handle simple filter condition
     f_val = f_info.get("filter")
     f_type = f_info.get("type", "contains")
-    if f_val is None:
+    
+    # Allow blank/notBlank even if f_val is not present
+    if f_type not in ["blank", "notBlank"] and f_val is None:
         return None
         
-    # Column path resolution
+    # Column path resolution and numeric check
+    is_numeric = False
     if col_name in ["created_at", "updated_at"]:
         target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
         col_expr = cast(target_col, String)
@@ -616,25 +619,72 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict):
     else:
         if not hasattr(table_model, col_name):
             return None
-        from sqlalchemy import cast, String
-        col_expr = cast(getattr(table_model, col_name), String)
+        raw_col = getattr(table_model, col_name)
+        from sqlalchemy.sql.sqltypes import Numeric, Float, Integer
+        is_numeric = isinstance(raw_col.type, (Numeric, Float, Integer))
         
+        # Check if we should treat it as numeric filter
+        numeric_operators = ["equals", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"]
+        if is_numeric and f_type in numeric_operators:
+            col_expr = raw_col
+        else:
+            from sqlalchemy import cast, String
+            col_expr = cast(raw_col, String)
+            
     # Condition mapping based on type
-    if f_type == "contains":
-        return col_expr.ilike(f"%{f_val}%")
-    elif f_type == "notContains":
-        return ~col_expr.ilike(f"%{f_val}%")
-    elif f_type == "equals":
-        return col_expr == f_val
-    elif f_type == "notEqual":
-        return col_expr != f_val
-    elif f_type == "startsWith":
-        return col_expr.ilike(f"{f_val}%")
-    elif f_type == "endsWith":
-        return col_expr.ilike(f"%{f_val}")
+    if f_type == "blank":
+        if is_numeric:
+            return col_expr.is_(None)
+        else:
+            return or_(col_expr.is_(None), col_expr == "")
+    elif f_type == "notBlank":
+        if is_numeric:
+            return col_expr.isnot(None)
+        else:
+            return and_(col_expr.isnot(None), col_expr != "")
+            
+    if is_numeric and f_type in ["equals", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"]:
+        if f_type == "inRange":
+            try:
+                val_from = float(f_info.get("filter"))
+                val_to = float(f_info.get("filterTo"))
+                return and_(col_expr >= val_from, col_expr <= val_to)
+            except (ValueError, TypeError):
+                return None
+        else:
+            try:
+                val = float(f_val)
+            except (ValueError, TypeError):
+                return None
+            
+            if f_type == "equals":
+                return col_expr == val
+            elif f_type == "notEqual":
+                return col_expr != val
+            elif f_type == "lessThan":
+                return col_expr < val
+            elif f_type == "lessThanOrEqual":
+                return col_expr <= val
+            elif f_type == "greaterThan":
+                return col_expr > val
+            elif f_type == "greaterThanOrEqual":
+                return col_expr >= val
     else:
-        # Default fallback
-        return col_expr.ilike(f"%{f_val}%")
+        # String comparison
+        if f_type == "contains":
+            return col_expr.ilike(f"%{f_val}%")
+        elif f_type == "notContains":
+            return ~col_expr.ilike(f"%{f_val}%")
+        elif f_type == "equals":
+            return col_expr == f_val
+        elif f_type == "notEqual":
+            return col_expr != f_val
+        elif f_type == "startsWith":
+            return col_expr.ilike(f"{f_val}%")
+        elif f_type == "endsWith":
+            return col_expr.ilike(f"%{f_val}")
+        else:
+            return col_expr.ilike(f"%{f_val}%")
 
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
