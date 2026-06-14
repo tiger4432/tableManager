@@ -43,6 +43,6 @@ client/*.spec
 # 운영 환경 고유 설정 및 인제션 워크스페이스
 server/config/*
 !server/config/*.sample
-!server/config/ontology_mapping.json
-!server/config/chain_rules.json
+server/mappers/*
+!server/mappers/*.sample
 server/ingestion_workspace/

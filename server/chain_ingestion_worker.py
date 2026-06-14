@@ -12,6 +12,20 @@ logger = logging.getLogger("ChainIngestionWorker")
 
 RULES_PATH = os.path.join(os.path.dirname(__file__), "config", "chain_rules.json")
 
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+
+async def post_event_async(endpoint: str, payload: dict):
+    import requests
+    url = f"{API_BASE_URL}{endpoint}"
+    def do_post():
+        try:
+            res = requests.post(url, json=payload, timeout=5)
+            if not res.ok:
+                logger.error(f"[Chain Worker] API notification failed: {url} -> {res.status_code}")
+        except Exception as e:
+            logger.error(f"[Chain Worker] Failed to send API notification: {e}")
+    await asyncio.to_thread(do_post)
+
 def load_chain_rules():
     if not os.path.exists(RULES_PATH):
         logger.warning(f"Chain rules configuration file not found at {RULES_PATH}. Using empty rules.")
@@ -105,9 +119,9 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # Apply updates
                 results, changed_cells, created_logs = crud.apply_batch_updates(db, target_table, batch_data)
                 
-                # 5. Broadcast real-time WebSocket events containing created_logs (Audit History)
+                # 5. Route WebSocket events and Audit History to the web server
                 try:
-                    from main import manager, to_local_str
+                    from main import to_local_str
                     
                     cfg = crud.TABLE_CONFIG.get(target_table, {})
                     col_types = cfg.get("column_types", {})
@@ -137,13 +151,24 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                         
                     user_name = "chain_worker"
                     
+                    # Ensure created_logs has clean string timestamps
+                    serialized_logs = []
+                    if created_logs:
+                        from datetime import datetime
+                        for log in created_logs:
+                            log_copy = dict(log)
+                            ts = log_copy.get("timestamp")
+                            if ts is not None and isinstance(ts, datetime):
+                                log_copy["timestamp"] = ts.isoformat()
+                            serialized_logs.append(log_copy)
+
                     if len(msg_items) > 100:
                         msg = {
                             "event": "batch_refresh_required",
                             "table_name": target_table,
                             "change_count": len(msg_items),
                             "transaction_id": chain_tx_id,
-                            "created_logs": created_logs
+                            "created_logs": serialized_logs
                         }
                     else:
                         msg = {
@@ -152,12 +177,12 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "items": msg_items,
                             "updated_by": user_name,
                             "transaction_id": chain_tx_id,
-                            "created_logs": created_logs
+                            "created_logs": serialized_logs
                         }
-                    await manager.broadcast(json.dumps(msg))
-                    logger.info(f"Successfully broadcasted chained update message for '{target_table}' under tx '{chain_tx_id}'.")
+                    await post_event_async("/internal/events/broadcast", msg)
+                    logger.info(f"Successfully sent chained update event to web server for '{target_table}' under tx '{chain_tx_id}'.")
                 except Exception as ws_err:
-                    logger.error(f"Failed to broadcast chained update WebSocket message: {ws_err}")
+                    logger.error(f"Failed to post chained update notification: {ws_err}")
                     
         except Exception as e:
             import traceback

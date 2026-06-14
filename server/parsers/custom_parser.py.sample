@@ -1,0 +1,26 @@
+import pandas as pd
+import random
+from pipeline_base import BasePipelineParser
+
+class InventoryMasterCSVParser(BasePipelineParser):
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        """Determines if this parser matches the given file name/path."""
+        return file_path.lower().endswith('.csv')
+        
+    def process_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Processes the parsed pandas DataFrame before batch DB upsert."""
+        df['PROD_LINE'] = 1
+        return df
+
+class InventoryMasterLogParser(BasePipelineParser):
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        return file_path.lower().endswith('.log')
+        
+    def _read_file_to_dataframe(self, file_path: str) -> pd.DataFrame:
+        return pd.read_table(file_path, sep='\t')
+        
+    def process_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        df['unit_price'] = df.get('part_no', pd.Series(dtype=object)).apply(lambda x: random.randint(1, 100))
+        return df

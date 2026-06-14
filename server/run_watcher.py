@@ -43,7 +43,15 @@ def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
         "change_count": count
     }
     if created_logs:
-        payload["created_logs"] = created_logs
+        from datetime import datetime
+        serialized_logs = []
+        for log in created_logs:
+            log_copy = dict(log)
+            ts = log_copy.get("timestamp")
+            if ts is not None and isinstance(ts, datetime):
+                log_copy["timestamp"] = ts.isoformat()
+            serialized_logs.append(log_copy)
+        payload["created_logs"] = serialized_logs
     post_event("/internal/events/batch-refresh", payload)
 
 def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):

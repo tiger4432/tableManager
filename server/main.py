@@ -2125,7 +2125,31 @@ async def internal_event_batch_refresh(
     }
     if created_logs and len(created_logs) <= 5000:
         msg["created_logs"] = created_logs
+        # Update the web server's in-memory audit cache
+        try:
+            audit_cache.add_logs_batch(created_logs)
+        except Exception as e:
+            print(f"[Main Server] Failed to update audit_cache from batch-refresh: {e}")
     await manager.broadcast(json.dumps(msg))
+    return {"status": "ok"}
+
+@app.post("/internal/events/broadcast")
+async def internal_event_broadcast(payload: dict = Body(...)):
+    """외부 데몬 프로세스로부터 임의의 WebSocket 메시지를 받아 중계하는 엔드포인트입니다."""
+    import json
+    # If the payload is a table refresh/update, handle caching/invalidation
+    table_name = payload.get("table_name")
+    if table_name:
+        invalidate_table_cache(table_name)
+        
+    created_logs = payload.get("created_logs")
+    if created_logs and len(created_logs) <= 5000:
+        try:
+            audit_cache.add_logs_batch(created_logs)
+        except Exception as e:
+            print(f"[Main Server] Failed to update audit_cache from broadcast: {e}")
+            
+    await manager.broadcast(json.dumps(payload))
     return {"status": "ok"}
 
 @app.post("/internal/events/file-processed")

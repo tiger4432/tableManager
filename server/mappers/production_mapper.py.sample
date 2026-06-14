@@ -1,0 +1,36 @@
+import pandas as pd
+from sqlalchemy.orm import Session
+from typing import List, Dict, Any
+from mappers.base import BaseMapper
+
+def reserve_materials_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Batch mapping utilizing pandas DataFrames to aggregate quantities by unique model_name.
+    Inherits data-flattening logic via BaseMapper.
+    """
+    if not payloads:
+        return {"updates": []}
+        
+    df = BaseMapper.payloads_to_df(payloads)
+
+    if 'model_name' not in df.columns or 'target_qty' not in df.columns:
+        return {"updates": []}
+        
+    df = df.dropna(subset=['model_name', 'target_qty'])
+    
+    updates = []
+    for _, row in df.iterrows():
+        updates.append({
+            "business_key_val": f"INV_{row.get('model_name')}",
+            "updates": {
+                "stock_qty": row.get('target_qty') * 10,
+                "part_no": f"INV_{row.get('model_name')}"
+            },
+            "source_name": "chain_ingestion",
+            "updated_by": "chain_worker"
+        })
+        
+    return {
+        "updates": updates,
+        "silent": False
+    }
