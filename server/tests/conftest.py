@@ -69,6 +69,7 @@ def db_session():
 
     # Create the database and tables
     Base.metadata.create_all(bind=engine)
+    models.sync_dynamic_tables_schema(engine)
     
     db = TestingSessionLocal()
     

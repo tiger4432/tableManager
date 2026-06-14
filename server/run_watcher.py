@@ -10,7 +10,7 @@ sys.path.append(script_dir)
 sys.path.append(os.path.join(script_dir, "parsers"))
 
 # Now we can import database, models, and directory_watcher
-from database.database import SessionLocal
+from database.database import SessionLocal, engine
 from database import models
 from directory_watcher import WorkspaceWatcher, IngestionHandler
 
@@ -21,7 +21,11 @@ try:
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
-    print("[Watcher Worker] Dynamic database models initialized successfully.")
+    try:
+        models.sync_dynamic_tables_schema(engine)
+        print("[Watcher Worker] Dynamic database models and schema sync completed.")
+    except Exception as e:
+        print(f"[Watcher Worker] Failed to sync dynamic tables schema: {e}")
 except Exception as e:
     print(f"[Watcher Worker] Failed to load table_config or init dynamic models: {e}")
 

@@ -190,3 +190,36 @@ def init_dynamic_models(config_dict: dict):
         
         mapper_registry.map_imperatively(dynamic_class, table_obj)
         DYNAMIC_TABLES[table_name] = dynamic_class
+
+
+def sync_dynamic_tables_schema(engine):
+    """
+    DYNAMIC_TABLES의 정의와 실제 DB 물리 테이블의 스키마를 비교하여,
+    설정에는 존재하지만 DB에는 없는 컬럼들을 ALTER TABLE DDL을 통해 자동으로 추가합니다.
+    """
+    from sqlalchemy import inspect
+    from sqlalchemy.schema import CreateColumn
+    
+    inspector = inspect(engine)
+    dialect = engine.dialect
+    
+    with engine.begin() as conn:
+        for table_name, model_class in DYNAMIC_TABLES.items():
+            if not inspector.has_table(table_name):
+                continue
+                
+            db_cols = {c["name"].lower() for c in inspector.get_columns(table_name)}
+            table_obj = model_class.__table__
+            
+            for column in table_obj.columns:
+                col_name = column.name
+                if col_name.lower() not in db_cols:
+                    col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
+                    alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_ddl}"
+                    print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
+                    try:
+                        from sqlalchemy import text
+                        conn.execute(text(alter_query))
+                        print(f"[Schema Sync] Successfully added column '{col_name}' to table '{table_name}'.")
+                    except Exception as err:
+                        print(f"[Schema Sync] Failed to add column '{col_name}' to table '{table_name}': {err}")

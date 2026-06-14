@@ -26,6 +26,10 @@ except Exception as e:
 
 # Create tables if not exists
 models.Base.metadata.create_all(bind=engine)
+try:
+    models.sync_dynamic_tables_schema(engine)
+except Exception as e:
+    print(f"[Server] Failed to sync dynamic tables schema: {e}")
 
 app = FastAPI(title="AssyManager Table Server")
 

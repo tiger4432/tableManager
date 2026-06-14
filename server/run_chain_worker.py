@@ -6,7 +6,7 @@ import asyncio
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_dir)
 
-from database.database import SessionLocal
+from database.database import SessionLocal, engine
 from database import models
 from chain_ingestion_worker import start_chain_ingestion_worker
 
@@ -17,7 +17,11 @@ try:
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
-    print("[Chain Ingestion Worker] Dynamic database models initialized successfully.")
+    try:
+        models.sync_dynamic_tables_schema(engine)
+        print("[Chain Ingestion Worker] Dynamic database models and schema sync completed.")
+    except Exception as e:
+        print(f"[Chain Ingestion Worker] Failed to sync dynamic tables schema: {e}")
 except Exception as e:
     print(f"[Chain Ingestion Worker] Failed to load table_config or init dynamic models: {e}")
 

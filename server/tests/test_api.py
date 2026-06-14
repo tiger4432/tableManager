@@ -535,5 +535,35 @@ def test_internal_events_updates_cache_and_broadcasts(client):
     assert audit_cache.groups[0]["logs"][0].row_id == "test_row_456"
 
 
+def test_automatic_schema_alteration(db_session):
+    from database import models
+    from sqlalchemy import inspect, Column, String
+
+    test_engine = db_session.get_bind()
+    table_name = "raw_table_1"
+    inspector = inspect(test_engine)
+    assert inspector.has_table(table_name)
+
+    # 1. Check current columns in database
+    db_cols = {c["name"] for c in inspector.get_columns(table_name)}
+    assert "new_test_alter_col" not in db_cols
+
+    # 2. Add column to SQLAlchemy Table object programmatically
+    model_class = models.DYNAMIC_TABLES[table_name]
+    table_obj = model_class.__table__
+    
+    if "new_test_alter_col" not in table_obj.columns:
+        new_col = Column("new_test_alter_col", String, nullable=True)
+        table_obj.append_column(new_col)
+
+    # 3. Execute sync_dynamic_tables_schema
+    models.sync_dynamic_tables_schema(test_engine)
+
+    # 4. Verify columns in DB again
+    new_inspector = inspect(test_engine)
+    new_db_cols = {c["name"] for c in new_inspector.get_columns(table_name)}
+    assert "new_test_alter_col" in new_db_cols
+
+
 
 
