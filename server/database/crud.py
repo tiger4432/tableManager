@@ -244,14 +244,13 @@ def apply_row_update_internal(
 
     row = None
     # 1. 캐시 소스에서 먼저 검색 (O(1))
-    if row_cache:
+    if row_cache is not None:
         if update_item.row_id and update_item.row_id in row_cache:
             row = row_cache[update_item.row_id]
         elif update_item.business_key_val and update_item.business_key_val in row_cache:
             row = row_cache[update_item.business_key_val]
-
-    # 2. 캐시에 없으면 DB 검색 (Fallback)
-    if not row:
+    else:
+        # 2. 캐시에 없으면 DB 검색 (Fallback) - Only for single row updates
         if update_item.row_id:
             row = db.query(table_model).filter(
                 table_model.row_id == update_item.row_id
@@ -269,6 +268,8 @@ def apply_row_update_internal(
         )
         db.add(row)
         is_new = True
+        if row_cache is not None:
+            row_cache[row.row_id] = row
         
     changed_cols = []
     config = TABLE_CONFIG.get(table_name, {})
@@ -281,6 +282,8 @@ def apply_row_update_internal(
             str_val = str(new_bk_val).strip()
             if row.business_key_val != str_val:
                 row.business_key_val = str_val
+                if row_cache is not None:
+                    row_cache[str_val] = row
     # Or from existing data if it's there but not in updates
     elif key_col and hasattr(row, key_col):
         existing_val = getattr(row, key_col)
@@ -289,6 +292,8 @@ def apply_row_update_internal(
             str_val = str(new_bk_val).strip()
             if row.business_key_val != str_val:
                 row.business_key_val = str_val
+                if row_cache is not None:
+                    row_cache[str_val] = row
 
     # Old values snapshot for auditing
     old_values_snapshot = {}
@@ -306,33 +311,43 @@ def apply_row_update_internal(
         key = (row.row_id, col_name)
         
         # 1. cell_sources 로딩
-        if sources_cache is not None and key in sources_cache:
-            col_srcs = sources_cache[key]
-        else:
-            col_srcs = db.query(models.CellSource).filter(
-                models.CellSource.table_name == table_name,
-                models.CellSource.row_id == row.row_id,
-                models.CellSource.column_name == col_name
-            ).all()
-            if cell_sources_to_upsert is not None:
-                for s in col_srcs:
-                    db.expunge(s)
-            if sources_cache is not None:
+        if sources_cache is not None:
+            if key in sources_cache:
+                col_srcs = sources_cache[key]
+            else:
+                col_srcs = []
                 sources_cache[key] = col_srcs
+        else:
+            if is_new:
+                col_srcs = []
+            else:
+                col_srcs = db.query(models.CellSource).filter(
+                    models.CellSource.table_name == table_name,
+                    models.CellSource.row_id == row.row_id,
+                    models.CellSource.column_name == col_name
+                ).all()
+                if cell_sources_to_upsert is not None:
+                    for s in col_srcs:
+                        db.expunge(s)
                 
         # 2. cell_overwrites 로딩
-        if overwrites_cache is not None and key in overwrites_cache:
-            ow = overwrites_cache[key]
-        else:
-            ow = db.query(models.CellOverwrite).filter(
-                models.CellOverwrite.table_name == table_name,
-                models.CellOverwrite.row_id == row.row_id,
-                models.CellOverwrite.column_name == col_name
-            ).first()
-            if ow and cell_overwrites_to_upsert is not None:
-                db.expunge(ow)
-            if overwrites_cache is not None:
+        if overwrites_cache is not None:
+            if key in overwrites_cache:
+                ow = overwrites_cache[key]
+            else:
+                ow = None
                 overwrites_cache[key] = ow
+        else:
+            if is_new:
+                ow = None
+            else:
+                ow = db.query(models.CellOverwrite).filter(
+                    models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id == row.row_id,
+                    models.CellOverwrite.column_name == col_name
+                ).first()
+                if ow and cell_overwrites_to_upsert is not None:
+                    db.expunge(ow)
 
         # 3. 소스 데이터 upsert
         col_type = col_types.get(col_name, "string")
