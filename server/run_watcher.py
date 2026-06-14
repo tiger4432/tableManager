@@ -14,6 +14,17 @@ from database.database import SessionLocal
 from database import models
 from directory_watcher import WorkspaceWatcher, IngestionHandler
 
+# Initialize dynamic database models
+try:
+    import json
+    config_path = os.path.join(script_dir, "config", "table_config.json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        table_config = json.load(f)
+    models.init_dynamic_models(table_config)
+    print("[Watcher Worker] Dynamic database models initialized successfully.")
+except Exception as e:
+    print(f"[Watcher Worker] Failed to load table_config or init dynamic models: {e}")
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 
 def post_event(endpoint: str, payload: dict):
