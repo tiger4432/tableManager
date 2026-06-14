@@ -443,5 +443,26 @@ def test_bulk_upsert_deduplication(db_session):
     assert ows[0].manual_priority_source == "src2"
 
 
+def test_internal_events_endpoints(client):
+    # Test POST /internal/events/batch-refresh
+    payload_refresh = {
+        "table_name": "inventory_master",
+        "change_count": 5
+    }
+    response = client.post("/internal/events/batch-refresh", json=payload_refresh)
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+    # Test POST /internal/events/file-processed
+    payload_processed = {
+        "table_name": "inventory_master",
+        "filename": "test_file.csv",
+        "status": "SUCCESS"
+    }
+    response = client.post("/internal/events/file-processed", json=payload_processed)
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 
 

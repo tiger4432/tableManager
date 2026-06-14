@@ -106,6 +106,10 @@ async def startup_event():
             except Exception:
                 pass
 
+        if os.getenv("DECOUPLED") == "True":
+            print("[Startup] Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
+            return
+
         print("[Startup] Initializing Directory Watcher...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
@@ -2005,7 +2009,6 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
 @app.post("/admin/file-ingestion/retry-failed")
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""
-    from directory_watcher import IngestionHandler
     import os
     import asyncio
     import json
@@ -2020,6 +2023,17 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     if not failed_logs:
         return {"status": "success", "message": "No failed file ingestion logs found."}
         
+    # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
+    if os.getenv("DECOUPLED") == "True":
+        for log in failed_logs:
+            log.status = "PENDING_RETRY"
+        db.commit()
+        return {
+            "status": "success",
+            "message": f"Decoupled mode: Marked {len(failed_logs)} logs as PENDING_RETRY. Standalone watcher will process them."
+        }
+        
+    from directory_watcher import IngestionHandler
     success_count = 0
     fail_count = 0
     
@@ -2094,6 +2108,57 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
         "status": "success",
         "message": f"Successfully retried. Success: {success_count}, Failed: {fail_count}."
     }
+
+@app.post("/internal/events/batch-refresh")
+async def internal_event_batch_refresh(
+    table_name: str = Body(..., embed=True),
+    change_count: int = Body(..., embed=True),
+    created_logs: list = Body(None, embed=True)
+):
+    """Ingestion Worker가 파일 적재 완료 시 웹 서버에 갱신 및 캐시 무효화를 알리는 내부 이벤트 엔드포인트입니다."""
+    import json
+    invalidate_table_cache(table_name)
+    msg = {
+        "event": "batch_refresh_required",
+        "table_name": table_name,
+        "change_count": change_count
+    }
+    if created_logs and len(created_logs) <= 5000:
+        msg["created_logs"] = created_logs
+    await manager.broadcast(json.dumps(msg))
+    return {"status": "ok"}
+
+@app.post("/internal/events/file-processed")
+async def internal_event_file_processed(
+    table_name: str = Body(..., embed=True),
+    filename: str = Body(..., embed=True),
+    status: str = Body(..., embed=True),
+    error_msg: str = Body(None, embed=True)
+):
+    """Ingestion Worker가 단일 파일 인제션 완료 시 웹 서버에 브로드캐스트를 요청하는 내부 이벤트 엔드포인트입니다."""
+    import json
+    try:
+        from pipeline_base import BasePipelineParser
+        clean_filename = BasePipelineParser.get_basename(filename)
+    except Exception:
+        clean_filename = filename
+
+    if status == "SUCCESS":
+        message = f"{clean_filename} 파일이 처리되었습니다."
+    else:
+        message = f"{clean_filename} 파일 처리에 실패했습니다."
+        if error_msg:
+            message += f" ({error_msg[:100]})"
+
+    msg = {
+        "event": "file_ingestion_completed",
+        "table_name": table_name,
+        "filename": clean_filename,
+        "status": status,
+        "message": message
+    }
+    await manager.broadcast(json.dumps(msg))
+    return {"status": "ok"}
 
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))

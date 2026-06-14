@@ -1,0 +1,95 @@
+import sys
+import os
+import subprocess
+import time
+import signal
+
+def main():
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    server_dir = os.path.join(root_dir, "server")
+    
+    # Use the current python executable (guarantees the active conda environment is used)
+    python_exe = sys.executable
+    
+    print("=" * 60)
+    print(" Starting AssyManager Enterprise in Decoupled Process Mode...")
+    print(f" Python Executable: {python_exe}")
+    print("=" * 60)
+    
+    processes = []
+    
+    # Helper to spawn subprocess
+    def spawn_process(name, cmd, cwd, env=None):
+        print(f"[Launcher] Starting {name}: {' '.join(cmd)}")
+        merged_env = os.environ.copy()
+        if env:
+            merged_env.update(env)
+        proc = subprocess.Popen(cmd, cwd=cwd, env=merged_env)
+        processes.append((name, proc))
+        return proc
+
+    # 1. Start FastAPI server with DECOUPLED=True env var
+    server_env = {"DECOUPLED": "True"}
+    server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", "8080"]
+    spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
+    
+    # Wait for web server to initialize
+    print("[Launcher] Waiting for server to initialize...")
+    time.sleep(2.0)
+    
+    # 2. Start File Ingestion Watcher
+    watcher_cmd = [python_exe, "run_watcher.py"]
+    spawn_process("File Ingestion Watcher", watcher_cmd, server_dir)
+    
+    # 3. Start Graph DB Sync Worker
+    graph_cmd = [python_exe, "run_graph_sync.py"]
+    spawn_process("Graph DB Sync Worker", graph_cmd, server_dir)
+    
+    # 4. Start Chained Ingestion Worker
+    chain_cmd = [python_exe, "run_chain_worker.py"]
+    spawn_process("Chained Ingestion Worker", chain_cmd, server_dir)
+    
+    # 5. Start PySide6 Desktop wrapper
+    client_cmd = [python_exe, os.path.join(root_dir, "client", "desktop_wrapper.py")]
+    desktop_process = spawn_process("Desktop Client UI", client_cmd, root_dir)
+    
+    # Graceful shutdown handler
+    def shutdown_all(signum=None, frame=None):
+        if signum:
+            print(f"\n[Launcher] Signal {signum} received. Cleaning up all background processes...")
+        else:
+            print("\n[Launcher] Desktop Client window closed. Cleaning up all background processes...")
+            
+        # Terminate all processes in reverse order
+        for name, proc in reversed(processes):
+            if proc.poll() is None:  # Still running
+                print(f"[Launcher] Stopping {name}...")
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3.0)
+                    print(f"[Launcher] {name} stopped successfully.")
+                except Exception as e:
+                    print(f"[Launcher] Error stopping {name}: {e}. Killing process...")
+                    try:
+                        proc.kill()
+                    except:
+                        pass
+        print("=" * 60)
+        print(" AssyManager has stopped cleanly.")
+        print("=" * 60)
+        sys.exit(0)
+
+    # Register signal handler for Ctrl+C (SIGINT) and SIGTERM
+    signal.signal(signal.SIGINT, shutdown_all)
+    signal.signal(signal.SIGTERM, shutdown_all)
+    
+    try:
+        # Wait for the desktop wrapper window to close
+        desktop_process.wait()
+        print("[Launcher] Desktop client closed.")
+        shutdown_all()
+    except KeyboardInterrupt:
+        shutdown_all()
+
+if __name__ == "__main__":
+    main()
