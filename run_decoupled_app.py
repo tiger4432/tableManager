@@ -49,14 +49,21 @@ def main():
     chain_cmd = [python_exe, "run_chain_worker.py"]
     spawn_process("Chained Ingestion Worker", chain_cmd, server_dir)
     
-    # 5. Start PySide6 Desktop wrapper
-    client_cmd = [python_exe, os.path.join(root_dir, "client", "desktop_wrapper.py")]
-    desktop_process = spawn_process("Desktop Client UI", client_cmd, root_dir)
+    # Check command-line arguments for server-only mode
+    server_only = "--no-client" in sys.argv or "--server-only" in sys.argv
+    
+    # 5. Start PySide6 Desktop wrapper (if not server-only)
+    desktop_process = None
+    if not server_only:
+        client_cmd = [python_exe, os.path.join(root_dir, "client", "desktop_wrapper.py")]
+        desktop_process = spawn_process("Desktop Client UI", client_cmd, root_dir)
     
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
         if signum:
             print(f"\n[Launcher] Signal {signum} received. Cleaning up all background processes...")
+        elif server_only:
+            print("\n[Launcher] Stopping all backend server processes...")
         else:
             print("\n[Launcher] Desktop Client window closed. Cleaning up all background processes...")
             
@@ -84,10 +91,15 @@ def main():
     signal.signal(signal.SIGTERM, shutdown_all)
     
     try:
-        # Wait for the desktop wrapper window to close
-        desktop_process.wait()
-        print("[Launcher] Desktop client closed.")
-        shutdown_all()
+        if server_only:
+            print("[Launcher] Running in Server-only mode. Press Ctrl+C to stop.")
+            while True:
+                time.sleep(1)
+        else:
+            # Wait for the desktop wrapper window to close
+            desktop_process.wait()
+            print("[Launcher] Desktop client closed.")
+            shutdown_all()
     except KeyboardInterrupt:
         shutdown_all()
 
