@@ -1597,6 +1597,7 @@ function handleWebSocketMessage(msg) {
 
     if (msg.table_name === currentTable) {
       pageCache.clear();
+      fetchData(true);
       triggerHistoryReloadDebounced();
     }
     return;
@@ -1738,10 +1739,8 @@ function handleWebSocketMessage(msg) {
     }
   } else if (event === 'batch_refresh_required') {
     pageCache.clear();
-    // Large bulk updates -> do not refresh grid to prevent UI disruption, only update cache and history
-    if (createdLogs.length === 0) {
-      triggerHistoryReloadDebounced();
-    }
+    fetchData(true);
+    triggerHistoryReloadDebounced();
   }
 }
 

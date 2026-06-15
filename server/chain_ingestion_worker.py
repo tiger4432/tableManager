@@ -4,11 +4,49 @@ import os
 import logging
 import importlib
 import uuid
+import select
+import time
 from collections import defaultdict
 
 # Logger setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ChainIngestionWorker")
+
+def blocking_wait(db_session_factory, channel, timeout):
+    db = db_session_factory()
+    try:
+        engine = db.bind or db.get_bind()
+        if engine and engine.dialect.name == "postgresql":
+            connection = engine.raw_connection()
+            # autocommit 모드로 변경하여 LISTEN 명령이 즉시 반영되게 함
+            connection.set_isolation_level(0)
+            cursor = connection.cursor()
+            cursor.execute(f"LISTEN {channel};")
+            
+            # select를 활용하여 소켓에 데이터가 들어올 때까지 대기 (CPU 부하 0%)
+            r, w, x = select.select([connection], [], [], timeout)
+            if r:
+                connection.poll()
+                while connection.notifies:
+                    connection.notifies.pop()
+                cursor.close()
+                connection.close()
+                return True
+            cursor.close()
+            connection.close()
+            return False
+    except Exception:
+        # DB 연결 실패, SQLite 사용 시 등 예외가 발생하면 Fallback 처리
+        pass
+    finally:
+        db.close()
+        
+    time.sleep(timeout)
+    return False
+
+async def wait_for_notification(db_session_factory, channel="outbox_event", timeout=1.0):
+    """PostgreSQL LISTEN/NOTIFY 기반으로 대기하며, SQLite 환경 등에서는 단순 sleep으로 폴백합니다."""
+    return await asyncio.to_thread(blocking_wait, db_session_factory, channel, timeout)
 
 RULES_PATH = os.path.join(os.path.dirname(__file__), "config", "chain_rules.json")
 
@@ -217,7 +255,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                 ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
                 
                 if not pending_events:
-                    await asyncio.sleep(1)
+                    await wait_for_notification(db_session_factory, "outbox_event", 1.0)
                     continue
                 
                 # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx

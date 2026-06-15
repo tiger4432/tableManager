@@ -107,3 +107,13 @@ def stage_event(session, event_type, table_name, data_row):
         status="PENDING"
     )
     session.add(event_obj)
+    
+    # [최적화] PostgreSQL 데이터베이스 환경인 경우, 트랜잭션이 commit될 때 실시간 이벤트를 전파하도록 NOTIFY 실행
+    try:
+        bind = session.bind or session.get_bind()
+        if bind and bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            session.execute(text("NOTIFY outbox_event;"))
+    except Exception:
+        # Fallback: DB 연결 상태 등으로 실패하더라도 메인 트랜잭션에 영향을 주지 않도록 무시
+        pass
