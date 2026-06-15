@@ -12,6 +12,7 @@
 - **`server/run_watcher.py`**:
   - 실시간 수집 진행 콜백을 받아 중계하는 `trigger_ws_progress` 함수를 신설했습니다.
   - 이 함수는 내부 webhook API인 `/internal/events/broadcast`에 HTTP POST 요청을 전송하여, 현재 처리 중인 테이블명, 파일명, 진행률(%), 누적 행 수 및 전체 행 수 정보(`file_ingestion_progress` 이벤트)를 전체 웹소켓 세션으로 브로드캐스팅합니다.
+  - 완료 이벤트와의 파일명 정합성을 보장하기 위해 progress 이벤트 전송 시에도 원본 대신 정제된 파일명(`clean_filename`)으로 정규화하여 쏘도록 개선했습니다. 이로써 프론트엔드가 카드를 매칭하여 완료 후 정상 소거(dismiss)할 수 있게 됩니다.
   - `poll_pending_retries` 및 `main` 감시 루프 내의 IngestionHandler/WorkspaceWatcher 생성자 호출 시에 해당 콜백을 올바르게 연동했습니다.
 
 ### 2. 프론트엔드 실시간 플로팅 진행 상태 위젯 (Floating Progress Card UI)

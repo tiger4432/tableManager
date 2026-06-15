@@ -70,11 +70,17 @@ def trigger_ws_file_processed(table_name: str, filename: str, status: str, error
     post_event("/internal/events/file-processed", payload)
 
 def trigger_ws_progress(table_name: str, filename: str, progress: int, processed_rows: int, total_rows: int):
-    print(f"[Watcher Worker] Ingestion progress for {filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
+    try:
+        from pipeline_base import BasePipelineParser
+        clean_filename = BasePipelineParser.get_basename(filename)
+    except Exception:
+        clean_filename = filename
+
+    print(f"[Watcher Worker] Ingestion progress for {clean_filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
     payload = {
         "event": "file_ingestion_progress",
         "table_name": table_name,
-        "filename": filename,
+        "filename": clean_filename,
         "progress": progress,
         "processed_rows": processed_rows,
         "total_rows": total_rows,
