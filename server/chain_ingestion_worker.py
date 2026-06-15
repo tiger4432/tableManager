@@ -234,10 +234,28 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
             
     return True, None
 
+def reload_worker_process_cache():
+    """체인 워커 프로세스의 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
+    import sys
+    
+    # Remove custom mappers from sys.modules cache
+    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
+    for k in mapper_keys:
+        sys.modules.pop(k, None)
+        
+    # Remove pipeline plugin parsers from sys.modules cache
+    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
+    for k in plugin_keys:
+        sys.modules.pop(k, None)
+        
+    logger.info("[Reload] Chain worker modules cache cleared.")
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
     rules = load_chain_rules()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
+    
+    last_reload_event_id = 0
     
     import sys
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -249,6 +267,29 @@ async def start_chain_ingestion_worker(db_session_factory):
             db = db_session_factory()
             try:
                 from database.models import DatabaseOutbox
+                
+                # Check for SYSTEM_RELOAD outbox event to reload configs and code on-demand
+                latest_reload = db.query(DatabaseOutbox).filter(
+                    DatabaseOutbox.event_type == "SYSTEM_RELOAD"
+                ).order_by(DatabaseOutbox.id.desc()).first()
+                
+                if latest_reload and latest_reload.id > last_reload_event_id:
+                    # Sync tracker id
+                    last_reload_event_id = latest_reload.id
+                    logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
+                    # 1. Reload dynamic modules cache
+                    reload_worker_process_cache()
+                    # 2. Reload chain rules configurations from disk
+                    rules = load_chain_rules()
+                    logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
+                    
+                    # Mark the trigger event as SUCCESS in this tx if it is not processed yet
+                    # (This event only serves as IPC notify signal, does not execute mappers)
+                    if latest_reload.processed_chain == False:
+                        latest_reload.processed_chain = True
+                        latest_reload.status = "SUCCESS"
+                        db.commit()
+
                 # Fetch pending outbox records
                 pending_events = db.query(DatabaseOutbox).filter(
                     DatabaseOutbox.processed_chain == False

@@ -2025,6 +2025,65 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
     """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
     return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
+def reload_local_process_cache():
+    """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
+    import sys
+    from database.crud import load_table_config
+    
+    try:
+        load_table_config()
+    except Exception as e:
+        print(f"[Reload] Failed to reload table_config.json: {e}")
+        
+    # Remove custom mappers from sys.modules cache
+    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
+    for k in mapper_keys:
+        sys.modules.pop(k, None)
+        
+    # Remove pipeline plugin parsers from sys.modules cache
+    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
+    for k in plugin_keys:
+        sys.modules.pop(k, None)
+        
+    print("[Reload] Local web server process cache successfully cleared.")
+
+@app.post("/admin/reload-configs")
+def reload_system_configs(db: Session = Depends(get_db)):
+    """시스템 전역의 설정 및 파이썬 모듈 캐시를 리로드하는 이벤트를 Outbox에 적재하여 모든 워커에 전파합니다."""
+    import uuid
+    from datetime import datetime
+    from sqlalchemy import text
+    
+    # 1. 웹 서버 자체 메모리 캐시 갱신
+    reload_local_process_cache()
+    
+    # 2. SYSTEM_RELOAD Outbox 이벤트 적재 (데몬 프로세스들로 전파)
+    from database.models import DatabaseOutbox
+    from database.context import request_transaction_id
+    
+    tx_id = request_transaction_id.get() or f"reload_{str(uuid.uuid4())[:8]}"
+    
+    reload_event = DatabaseOutbox(
+        event_uuid=str(uuid.uuid4()),
+        event_type="SYSTEM_RELOAD",
+        table_name="system",
+        payload={
+            "transaction_id": tx_id,
+            "timestamp": datetime.now().isoformat(),
+            "msg": "Reload configs and custom scripts modules"
+        },
+        status="PENDING"
+    )
+    db.add(reload_event)
+    db.commit()
+    
+    try:
+        db.execute(text("NOTIFY outbox_event;"))
+    except:
+        pass
+        
+    return {"status": "success", "message": "System configurations and custom scripts modules successfully reloaded."}
+
 @app.get("/admin/file-ingestion/workspaces")
 def get_ingestion_workspaces():
     """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""

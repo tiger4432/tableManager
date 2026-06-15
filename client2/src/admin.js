@@ -55,6 +55,7 @@ const mapperEmptyState = document.getElementById('mapper-empty');
 const totalCountSpan = document.getElementById('total-count');
 const retryAllBtn = document.getElementById('retry-all-btn');
 const refreshBtn = document.getElementById('refresh-btn');
+const reloadConfigsBtn = document.getElementById('reload-configs-btn');
 
 const diagnosticsContent = document.getElementById('diagnostics-content');
 const diagnosticsEmpty = document.getElementById('diagnostics-empty');
@@ -202,6 +203,12 @@ function setupEventListeners() {
         filePage++;
         fetchData();
       }
+    }
+  });
+
+  reloadConfigsBtn.addEventListener('click', async () => {
+    if (confirm('모든 인제션 파서 스크립트, 체인 룰 및 맵퍼 모듈 캐시를 디스크에서 새로고침하시겠습니까?')) {
+      await reloadSystemConfigs();
     }
   });
 }
@@ -873,4 +880,19 @@ function showToast(message, type = 'success') {
       toast.remove();
     }, 300);
   }, 3000);
+}
+
+// API Call: Reload system configurations and python modules cache
+async function reloadSystemConfigs() {
+  try {
+    const res = await fetch(`${API_BASE}/admin/reload-configs`, {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error('Reload configs API returned error status');
+    showToast('🚀 시스템 설정 및 파이썬 코드가 성공적으로 핫-리로드되었습니다.', 'success');
+    fetchData();
+  } catch (err) {
+    console.error('Failed to reload configs', err);
+    showToast('❌ 시스템 핫-리로드 요청 실패', 'error');
+  }
 }

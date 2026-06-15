@@ -88,12 +88,41 @@ def trigger_ws_progress(table_name: str, filename: str, progress: int, processed
     }
     post_event("/internal/events/broadcast", payload)
 
+def reload_watcher_cache():
+    """와처 프로세스의 동적 모듈 캐시(pipeline plugins, mappers)를 명시적으로 무효화합니다."""
+    import sys
+    
+    # Remove pipeline plugin parsers from sys.modules cache
+    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
+    for k in plugin_keys:
+        sys.modules.pop(k, None)
+        
+    # Remove custom mappers from sys.modules cache
+    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
+    for k in mapper_keys:
+        sys.modules.pop(k, None)
+        
+    print("[Reload] Watcher worker modules cache cleared.")
+
 # Database polling for PENDING_RETRY logs
 def poll_pending_retries():
     print("[Watcher Worker] Background retry poller thread started.")
+    last_reload_event_id = 0
+    
     while True:
         db = SessionLocal()
         try:
+            # Check for SYSTEM_RELOAD outbox event to reload modules
+            from database.models import DatabaseOutbox
+            latest_reload = db.query(DatabaseOutbox).filter(
+                DatabaseOutbox.event_type == "SYSTEM_RELOAD"
+            ).order_by(DatabaseOutbox.id.desc()).first()
+            
+            if latest_reload and latest_reload.id > last_reload_event_id:
+                last_reload_event_id = latest_reload.id
+                print(f"[Reload] Watcher detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Reloading scripts...")
+                reload_watcher_cache()
+                
             # Query for logs in PENDING_RETRY status
             pending_logs = db.query(models.FileIngestionLog).filter(
                 models.FileIngestionLog.status == "PENDING_RETRY"
