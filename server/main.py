@@ -2025,6 +2025,144 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
     """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
     return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
+@app.get("/admin/file-ingestion/workspaces")
+def get_ingestion_workspaces():
+    """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""
+    import os
+    import json
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    workspace_base = os.path.abspath(os.path.join(script_dir, "ingestion_workspace"))
+    
+    if not os.path.exists(workspace_base):
+        return {"status": "success", "data": []}
+        
+    workspaces = []
+    for name in os.listdir(workspace_base):
+        path = os.path.join(workspace_base, name)
+        if os.path.isdir(path):
+            config_dir = os.path.join(path, "config")
+            config_path = os.path.join(config_dir, "config.json")
+            raws_dir = os.path.join(path, "raws")
+            scripts_dir = os.path.join(path, "scripts")
+            archives_dir = os.path.join(path, "archives")
+            errors_dir = os.path.join(path, "err")
+            
+            # Alternative config file search
+            alternative_config = None
+            if not os.path.exists(config_path) and os.path.exists(config_dir):
+                json_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
+                if json_files:
+                    config_path = os.path.join(config_dir, json_files[0])
+                    alternative_config = json_files[0]
+            
+            # Read config details
+            table_name = name
+            config_data = {}
+            has_config = False
+            if os.path.exists(config_path):
+                has_config = True
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config_data = json.load(f)
+                    table_name = config_data.get("table_name", table_name)
+                except Exception as e:
+                    print(f"Error reading workspace config {config_path}: {e}")
+            
+            # Check for custom scripts
+            custom_scripts = []
+            if os.path.exists(scripts_dir):
+                for f in os.listdir(scripts_dir):
+                    if f.endswith('.py'):
+                        custom_scripts.append(f)
+                        
+            # Count files in raws
+            raw_files_count = 0
+            if os.path.exists(raws_dir):
+                raw_files_count = len([f for f in os.listdir(raws_dir) if os.path.isfile(os.path.join(raws_dir, f))])
+                
+            workspaces.append({
+                "name": name,
+                "table_name": table_name,
+                "has_config": has_config,
+                "config_file": os.path.basename(config_path) if has_config else None,
+                "config_details": config_data,
+                "custom_scripts": custom_scripts,
+                "raw_files_count": raw_files_count,
+                "raws_dir": raws_dir if os.path.exists(raws_dir) else None,
+                "archives_dir": archives_dir if os.path.exists(archives_dir) else None,
+                "errors_dir": errors_dir if os.path.exists(errors_dir) else None
+            })
+            
+    return {"status": "success", "data": workspaces}
+
+@app.get("/admin/chain/rules")
+def get_chain_rules():
+    """등록된 모든 체인 인제션 룰 목록을 반환합니다."""
+    import os
+    import json
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    rules_path = os.path.join(script_dir, "config", "chain_rules.json")
+    
+    if not os.path.exists(rules_path):
+        return {"status": "success", "data": []}
+        
+    try:
+        with open(rules_path, "r", encoding="utf-8") as f:
+            rules = json.load(f)
+        if isinstance(rules, dict):
+            rules = rules.get("rules", [])
+        return {"status": "success", "data": rules}
+    except Exception as e:
+        print(f"Error reading chain rules: {e}")
+        return {"status": "error", "message": str(e), "data": []}
+
+@app.get("/admin/mappers/list")
+def get_mappers():
+    """등록된 맵퍼 파일들과 내부 매핑 함수 목록을 반환합니다."""
+    import os
+    import ast
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mappers_dir = os.path.join(script_dir, "mappers")
+    
+    if not os.path.exists(mappers_dir):
+        return {"status": "success", "data": []}
+        
+    mappers = []
+    for name in os.listdir(mappers_dir):
+        if name.endswith(".py") and name != "__init__.py" and name != "base.py" and name != "utils.py":
+            filepath = os.path.join(mappers_dir, name)
+            
+            # AST parsing to find functions inside the file safely
+            functions = []
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    node = ast.parse(f.read(), filename=name)
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef):
+                        docstring = ast.get_docstring(item) or ""
+                        first_line = docstring.split("\n")[0] if docstring else ""
+                        
+                        args = [arg.arg for arg in item.args.args]
+                        
+                        functions.append({
+                            "name": item.name,
+                            "arguments": args,
+                            "summary": first_line
+                        })
+            except Exception as e:
+                print(f"AST parsing error in mapper {name}: {e}")
+                
+            mappers.append({
+                "filename": name,
+                "module_name": f"mappers.{name[:-3]}",
+                "functions": functions
+            })
+            
+    return {"status": "success", "data": mappers}
+
 @app.post("/admin/file-ingestion/retry-failed")
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""

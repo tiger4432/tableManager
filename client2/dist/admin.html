@@ -443,7 +443,7 @@
       color: var(--color-primary);
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-D5UvCDN7.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BYJ5_NS1.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
 </head>
 <body>
@@ -465,9 +465,12 @@
     <!-- Left panel: List of FAILED outbox events & File ingestion logs -->
     <section class="panel left-panel">
       <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
           <button id="tab-outbox-btn" class="tab-btn active">Outbox Failures</button>
           <button id="tab-file-btn" class="tab-btn">File Ingestions</button>
+          <button id="tab-workspace-btn" class="tab-btn">Workspaces</button>
+          <button id="tab-chain-btn" class="tab-btn">Chain Rules</button>
+          <button id="tab-mapper-btn" class="tab-btn">Mappers</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <select id="status-filter" class="glass-select" style="display: none; height: 32px; padding: 0 10px; font-size: 0.8rem;">
@@ -527,6 +530,69 @@
             <div class="empty-text">No file ingestion logs found for the selected filter.</div>
           </div>
         </div>
+
+        <!-- Workspace Table Wrapper -->
+        <div id="workspace-table-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <table class="table-container">
+            <thead class="table-header">
+              <tr>
+                <th>Workspace Name</th>
+                <th style="width: 180px;">Target Table</th>
+                <th style="width: 120px; text-align: center;">Config File</th>
+                <th style="width: 140px; text-align: center;">Custom Scripts</th>
+                <th style="width: 110px; text-align: center;">Raw Files</th>
+              </tr>
+            </thead>
+            <tbody id="workspace-list-body">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+          <div id="workspace-empty" class="empty-state" style="display: none;">
+            <div class="empty-icon">📁</div>
+            <div class="empty-text">No active ingestion workspaces found.</div>
+          </div>
+        </div>
+
+        <!-- Chain Table Wrapper -->
+        <div id="chain-table-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <table class="table-container">
+            <thead class="table-header">
+              <tr>
+                <th>Rule Name</th>
+                <th style="width: 180px;">Source Table</th>
+                <th style="width: 180px;">Target Table</th>
+                <th style="width: 110px; text-align: center;">Active</th>
+              </tr>
+            </thead>
+            <tbody id="chain-list-body">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+          <div id="chain-empty" class="empty-state" style="display: none;">
+            <div class="empty-icon">🔗</div>
+            <div class="empty-text">No active chained ingestion rules found.</div>
+          </div>
+        </div>
+
+        <!-- Mapper Table Wrapper -->
+        <div id="mapper-table-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <table class="table-container">
+            <thead class="table-header">
+              <tr>
+                <th>Filename</th>
+                <th>Module Path</th>
+                <th style="width: 150px; text-align: center;">Functions Count</th>
+              </tr>
+            </thead>
+            <tbody id="mapper-list-body">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+          <div id="mapper-empty" class="empty-state" style="display: none;">
+            <div class="empty-icon">⚙️</div>
+            <div class="empty-text">No custom mapper modules found.</div>
+          </div>
+        </div>
       </div>
 
       <!-- Left Panel Footer: Pagination Controls -->
@@ -543,7 +609,7 @@
     <!-- Right panel: Selected event JSON & Stacktrace -->
     <section class="panel right-panel">
       <div class="panel-header">
-        <div class="panel-title">🔍 Error & Event Diagnostics</div>
+        <div class="panel-title" id="diagnostics-title">🔍 Error & Event Diagnostics</div>
       </div>
       <div class="panel-body">
         <div id="diagnostics-content" class="detail-section" style="display: none;">
@@ -561,8 +627,8 @@
           <!-- Error Stacktrace Block -->
           <div class="detail-block">
             <div class="detail-block-header">
-              <span>Stack Trace / Error Reason</span>
-              <span style="color: var(--color-danger); font-size: 0.75rem; font-weight: bold;">CRITICAL</span>
+              <span id="traceback-title">Stack Trace / Error Reason</span>
+              <span id="traceback-severity" style="color: var(--color-danger); font-size: 0.75rem; font-weight: bold;">CRITICAL</span>
             </div>
             <div class="detail-block-body">
               <pre id="traceback-viewer" class="traceback-text"></pre>
@@ -572,7 +638,7 @@
           <!-- Event Raw Payload Block -->
           <div class="detail-block">
             <div class="detail-block-header">
-              <span>Raw Event Payload / Details</span>
+              <span id="payload-title">Raw Event Payload / Details</span>
               <button id="copy-payload-btn" class="glass-btn" style="padding: 2px 6px; font-size: 0.7rem;">📋 Copy</button>
             </div>
             <div class="detail-block-body">
@@ -583,7 +649,7 @@
         
         <div id="diagnostics-empty" class="empty-state">
           <div class="empty-icon">🔍</div>
-          <div class="empty-text">Select a failed transaction or file from the left list to view detailed error diagnostics.</div>
+          <div class="empty-text" id="diagnostics-empty-text">Select a failed transaction or file from the left list to view detailed error diagnostics.</div>
         </div>
       </div>
     </section>
