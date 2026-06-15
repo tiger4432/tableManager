@@ -18,6 +18,7 @@ let currentTable = '';
 let currentColumns = [];
 let currentColumnTypes = {};
 let ws = null;
+let wsReconnectDelay = 1000; // Exponential Backoff initial delay
 let selectedCell = null; // { rowId, colId, value, rowIndex }
 let activeHistoryTab = 'global'; // 'global' | 'cell' | 'row'
 let dragStartCell = null; // { rowIndex, colId }
@@ -1085,15 +1086,8 @@ async function fetchData(resetSkip = true) {
 }
 
 // Render grid layout using AG-Grid Core
-function renderGrid(initialRows) {
-  const gridDiv = document.querySelector('#myGrid');
-  
-  // Destroy existing grid if exists
-  if (gridApi) {
-    gridApi.destroy();
-    gridApi = null;
-  }
-  
+// Helper to build column definitions dynamically based on schema
+function buildColumnDefs() {
   // Build Column Definitions dynamically based on schema
   const columnDefs = currentColumns.map((col, index) => {
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
@@ -1213,6 +1207,30 @@ function renderGrid(initialRows) {
     editable: false,
     cellClass: 'cell-system-readonly'
   });
+  
+  return columnDefs;
+}
+
+// Render grid layout using AG-Grid Core (Updates columnDefs & rowData dynamically if instance exists)
+function renderGrid(initialRows) {
+  const columnDefs = buildColumnDefs();
+
+  if (gridApi) {
+    console.log('[Grid] Swapping grid options dynamically (columnDefs & rowData)...');
+    gridApi.setGridOption('columnDefs', columnDefs);
+    gridApi.setGridOption('rowData', initialRows);
+    
+    // Re-cache column ID to index map
+    colIdToIndexMap = {};
+    gridApi.getColumns().forEach((c, idx) => {
+      colIdToIndexMap[c.getColId()] = idx;
+    });
+
+    updateGridSortState();
+    return;
+  }
+
+  const gridDiv = document.querySelector('#myGrid');
   
   // Grid Configurations
   const gridOptions = {
@@ -1554,15 +1572,36 @@ async function handleCellEdit(event) {
 // Initialize Real-time synchronization via WebSocket
 function initWebSocket() {
   if (ws) {
-    ws.close();
+    try {
+      ws.onopen = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      ws.close();
+    } catch (e) {}
+    ws = null;
   }
 
   ws = new WebSocket(WS_URL);
 
-  ws.onopen = () => {
+  ws.onopen = async () => {
     wsStatus.textContent = 'WS: CONNECTED';
     wsStatus.className = 'status-badge online';
     document.querySelector('.status-ws').classList.add('active');
+    wsReconnectDelay = 1000; // Reset backoff delay on successful connection
+    console.log('[WebSocket] Connected successfully. Syncing API health status...');
+    
+    // API 복구 감지 및 동기화 수행
+    await checkServerHealth();
+    
+    // API가 살아있고 테이블 목록이 비어있다면 로드
+    const tableSelectedVal = tableSelect?.value;
+    if (!tableSelectedVal) {
+      await loadTables();
+    } else if (currentTable) {
+      // 오프라인 동안 유실된 데이터 동기화를 위해 현재 테이블 데이터 리로드
+      fetchData(true);
+    }
   };
 
   ws.onclose = () => {
@@ -1570,8 +1609,11 @@ function initWebSocket() {
     wsStatus.className = 'status-badge offline';
     document.querySelector('.status-ws').classList.remove('active');
 
-    // Reconnect in 3s (matches PySide6 retry interval)
-    setTimeout(initWebSocket, 3000);
+    console.log(`[WebSocket] Connection closed. Reconnecting in ${wsReconnectDelay}ms...`);
+    setTimeout(initWebSocket, wsReconnectDelay);
+    
+    // Exponential backoff: double the delay up to 30 seconds
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
   };
 
   ws.onerror = (err) => {
