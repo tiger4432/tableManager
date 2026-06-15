@@ -48,7 +48,7 @@ class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
     """
-    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None, on_file_processed_callback=None):
+    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None):
         self.workspace_path = workspace_path
         self.config_path = config_path
         self.archives_path = archives_path
@@ -58,6 +58,7 @@ class IngestionHandler(FileSystemEventHandler):
         self.processing_files = set() 
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
+        self.on_progress_callback = on_progress_callback
         
     @property
     def table_name(self):
@@ -399,7 +400,9 @@ class IngestionHandler(FileSystemEventHandler):
         
         db = SessionLocal()
         try:
-            for i in range(0, len(rows), batch_size):
+            total_rows = len(rows)
+            processed_rows = 0
+            for i in range(0, total_rows, batch_size):
                 chunk = rows[i:i + batch_size]
                 items = []
                 
@@ -427,6 +430,7 @@ class IngestionHandler(FileSystemEventHandler):
                         ))
                 
                 if not items:
+                    processed_rows += len(chunk)
                     continue
 
                 try:
@@ -442,6 +446,14 @@ class IngestionHandler(FileSystemEventHandler):
                     logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
                     logger.error(f"[{self.table_name}] ❌ Failed to apply local batch update: {e}")
+                
+                processed_rows += len(chunk)
+                if self.on_progress_callback:
+                    progress_pct = int((processed_rows / total_rows) * 100)
+                    try:
+                        self.on_progress_callback(t_name, filename or "unknown", progress_pct, processed_rows, total_rows)
+                    except Exception as pe:
+                        logger.warning(f"Progress callback failed: {pe}")
                     
             if self.on_refresh_callback and total_changed > 0:
                 self.on_refresh_callback(t_name, total_changed, all_created_logs)
@@ -453,12 +465,13 @@ class WorkspaceWatcher:
     """
     Monitors all ingestion workspaces for new files.
     """
-    def __init__(self, base_dir: str, on_refresh_callback=None, on_file_processed_callback=None):
+    def __init__(self, base_dir: str, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None):
         self.base_dir = base_dir
         self.observer = Observer()
         self.watch_count = 0
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
+        self.on_progress_callback = on_progress_callback
 
     def discover_and_watch(self):
         """
@@ -481,7 +494,7 @@ class WorkspaceWatcher:
                         logger.info(f"Using alternative config: {config_path}")
 
                 if os.path.exists(config_path):
-                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback)
+                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
                     self.observer.schedule(handler, root, recursive=False)
                     self.watch_count += 1
                     logger.info(f"Watching: {root} (using config: {os.path.basename(config_path)})")
@@ -497,7 +510,7 @@ class WorkspaceWatcher:
                                 
                     if has_scripts:
                         table_name = os.path.basename(workspace_root)
-                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback)
+                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
                         self.observer.schedule(handler, root, recursive=False)
                         self.watch_count += 1
                         logger.info(f"Watching: {root} (Pipeline-only workspace, Table: {table_name})")

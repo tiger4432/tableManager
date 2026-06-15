@@ -1590,10 +1590,24 @@ function initWebSocket() {
 
 // Feature 2: WebSocket message processing for Real-time delta sync
 function handleWebSocketMessage(msg) {
+  if (msg.event === 'file_ingestion_progress') {
+    showIngestionProgress(
+      msg.table_name,
+      msg.filename,
+      msg.progress,
+      msg.processed_rows,
+      msg.total_rows
+    );
+    return;
+  }
+
   if (msg.event === 'file_ingestion_completed') {
     const status = msg.status || 'SUCCESS';
     const message = msg.message || '파일 처리가 완료되었습니다.';
     showToast(message, status === 'SUCCESS' ? 'success' : 'error');
+
+    // Finish floating progress bar
+    finishIngestionProgress(msg.table_name, msg.filename, status, msg.error_msg);
 
     if (msg.table_name === currentTable) {
       pageCache.clear();
@@ -3579,6 +3593,83 @@ function showToast(message, type = 'info') {
   }, 5000);
 }
 window.showToast = showToast; // Expose globally for Desktop Wrapper
+
+// Floating Ingestion Progress Widget Helper
+function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
+  let container = document.getElementById('ingestion-progress-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'ingestion-progress-container';
+    document.body.appendChild(container);
+  }
+
+  const safeFilename = filename.replace(/[^a-zA-Z0-9]/g, '_');
+  const cardId = `progress-${tableName}-${safeFilename}`;
+  let card = document.getElementById(cardId);
+
+  if (!card) {
+    card = document.createElement('div');
+    card.id = cardId;
+    card.className = 'progress-card';
+    container.appendChild(card);
+  }
+
+  // If already marked as success or error, do not overwrite back to processing
+  if (card.classList.contains('status-success') || card.classList.contains('status-error')) {
+    return;
+  }
+
+  card.innerHTML = `
+    <div class="progress-header">
+      <span class="progress-title">📤 파일 파싱 및 적재 중</span>
+      <span class="progress-percent">${progress}%</span>
+    </div>
+    <div class="progress-filename" title="${filename}">${filename}</div>
+    <div class="progress-bar-container">
+      <div class="progress-bar" style="width: ${progress}%;"></div>
+    </div>
+    <div class="progress-stats">${processedRows.toLocaleString()} / ${totalRows.toLocaleString()} 행 처리됨</div>
+  `;
+}
+
+function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
+  const safeFilename = filename.replace(/[^a-zA-Z0-9]/g, '_');
+  const cardId = `progress-${tableName}-${safeFilename}`;
+  const card = document.getElementById(cardId);
+  if (!card) return;
+
+  if (status === 'SUCCESS') {
+    card.classList.add('status-success');
+    const title = card.querySelector('.progress-title');
+    if (title) title.textContent = '✅ 파일 적재 완료';
+    const percent = card.querySelector('.progress-percent');
+    if (percent) percent.textContent = '100%';
+    const bar = card.querySelector('.progress-bar');
+    if (bar) bar.style.width = '100%';
+    const stats = card.querySelector('.progress-stats');
+    if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
+  } else {
+    card.classList.add('status-error');
+    const title = card.querySelector('.progress-title');
+    if (title) title.textContent = '❌ 파일 적재 실패';
+    const bar = card.querySelector('.progress-bar');
+    if (bar) bar.style.width = '100%';
+    const stats = card.querySelector('.progress-stats');
+    if (stats) stats.textContent = errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생';
+  }
+
+  // Auto remove after 2.5s
+  setTimeout(() => {
+    card.classList.add('hide');
+    setTimeout(() => {
+      card.remove();
+      const container = document.getElementById('ingestion-progress-container');
+      if (container && container.children.length === 0) {
+        container.remove();
+      }
+    }, 350);
+  }, 2500);
+}
 
 // Global mouseup handling for drag range selection completion
 document.addEventListener('mouseup', () => {

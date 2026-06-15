@@ -69,6 +69,19 @@ def trigger_ws_file_processed(table_name: str, filename: str, status: str, error
         payload["error_msg"] = error_msg
     post_event("/internal/events/file-processed", payload)
 
+def trigger_ws_progress(table_name: str, filename: str, progress: int, processed_rows: int, total_rows: int):
+    print(f"[Watcher Worker] Ingestion progress for {filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
+    payload = {
+        "event": "file_ingestion_progress",
+        "table_name": table_name,
+        "filename": filename,
+        "progress": progress,
+        "processed_rows": processed_rows,
+        "total_rows": total_rows,
+        "status": "PROCESSING"
+    }
+    post_event("/internal/events/broadcast", payload)
+
 # Database polling for PENDING_RETRY logs
 def poll_pending_retries():
     print("[Watcher Worker] Background retry poller thread started.")
@@ -105,7 +118,8 @@ def poll_pending_retries():
                     archives_path=archives_path,
                     default_table_name=table_name,
                     on_refresh_callback=trigger_ws_refresh,
-                    on_file_processed_callback=trigger_ws_file_processed
+                    on_file_processed_callback=trigger_ws_file_processed,
+                    on_progress_callback=trigger_ws_progress
                 )
                 
                 # Process the file
@@ -153,7 +167,8 @@ def main():
     watcher = WorkspaceWatcher(
         workspace_base,
         on_refresh_callback=trigger_ws_refresh,
-        on_file_processed_callback=trigger_ws_file_processed
+        on_file_processed_callback=trigger_ws_file_processed,
+        on_progress_callback=trigger_ws_progress
     )
     watcher.discover_and_watch()
     
