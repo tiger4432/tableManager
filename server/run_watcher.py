@@ -142,6 +142,14 @@ def main():
     poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
     poller_thread.start()
     
+    # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작 (데몬이므로 engine=None 전달)
+    config_watcher = None
+    try:
+        from database.config_watcher import start_config_watcher
+        config_watcher = start_config_watcher(None)
+    except Exception as e:
+        print(f"[Watcher Worker] Failed to start config watcher: {e}")
+    
     watcher = WorkspaceWatcher(
         workspace_base,
         on_refresh_callback=trigger_ws_refresh,
@@ -157,6 +165,9 @@ def main():
         if watcher.observer:
             watcher.observer.stop()
             watcher.observer.join()
+        if config_watcher:
+            config_watcher.stop()
+            config_watcher.join()
         print("[Watcher Worker] Stopped successfully.")
 
 if __name__ == "__main__":

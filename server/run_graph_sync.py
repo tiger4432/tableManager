@@ -30,6 +30,14 @@ async def main():
     print(" Starting Standalone Graph DB Sync Worker Process...")
     print("=" * 60)
     
+    # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작 (데몬이므로 engine=None 전달)
+    config_watcher = None
+    try:
+        from database.config_watcher import start_config_watcher
+        config_watcher = start_config_watcher(None)
+    except Exception as e:
+        print(f"[Graph Sync Worker] Failed to start config watcher: {e}")
+    
     try:
         await start_graph_sync_worker(SessionLocal)
     except KeyboardInterrupt:
@@ -37,6 +45,9 @@ async def main():
     except Exception as e:
         print(f"[Graph Sync Worker] Exception occurred: {e}")
     finally:
+        if config_watcher:
+            config_watcher.stop()
+            config_watcher.join()
         print("[Graph Sync Worker] Process stopped.")
 
 if __name__ == "__main__":

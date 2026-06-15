@@ -135,12 +135,35 @@ def init_dynamic_models(config_dict: dict):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
     Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
+    이미 로드된 테이블에 새 컬럼이 추가된 경우, 런타임에 동적으로 매핑에 결합(Hot-swap)합니다.
     """
     from sqlalchemy import Table, Column, String, DateTime, Float, Index
     from sqlalchemy.sql import func
+    from sqlalchemy.orm import class_mapper
     
     for table_name, table_cfg in config_dict.items():
+        col_types = table_cfg.get("column_types", {})
+        
+        # 이미 로드된 동적 테이블 모델 클래스가 존재하는 경우 -> 새 컬럼 핫스왑 처리
         if table_name in DYNAMIC_TABLES:
+            dynamic_class = DYNAMIC_TABLES[table_name]
+            table_obj = dynamic_class.__table__
+            mapper = class_mapper(dynamic_class)
+            
+            for col_name, type_str in col_types.items():
+                if col_name in ["created_at", "updated_at"]:
+                    continue
+                if col_name not in table_obj.columns:
+                    if type_str == "number":
+                        sql_type = Float
+                    elif type_str == "datetime":
+                        sql_type = DateTime(timezone=True)
+                    else:
+                        sql_type = String
+                        
+                    col_obj = Column(col_name, sql_type, nullable=True)
+                    table_obj.append_column(col_obj)
+                    mapper.add_property(col_name, col_obj)
             continue
             
         # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들

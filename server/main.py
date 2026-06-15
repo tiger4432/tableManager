@@ -78,12 +78,21 @@ from directory_watcher import WorkspaceWatcher
 
 # 전역 워처 인스턴스 (종료 시 접근 위함)
 global_watcher: WorkspaceWatcher = None
+global_config_watcher = None
 
 @app.on_event("startup")
 async def startup_event():
-    global global_watcher
+    global global_watcher, global_config_watcher
     import asyncio
     main_loop = asyncio.get_running_loop()
+    
+    # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작
+    try:
+        from database.config_watcher import start_config_watcher
+        global_config_watcher = start_config_watcher(engine)
+        print("[Startup] Dynamic table config watcher started.")
+    except Exception as e:
+        print(f"[Startup] Failed to start config watcher: {e}")
     
     if os.getenv("TESTING") == "True":
         print("[Startup] Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
@@ -189,7 +198,13 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global global_watcher
+    global global_watcher, global_config_watcher
+    if global_config_watcher:
+        print("[Shutdown] Stopping Config Watcher...")
+        global_config_watcher.stop()
+        global_config_watcher.join()
+        print("[Shutdown] Config Watcher stopped.")
+        
     if global_watcher and global_watcher.observer:
         print("[Shutdown] Stopping Directory Watcher...")
         global_watcher.observer.stop()

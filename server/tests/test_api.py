@@ -565,5 +565,46 @@ def test_automatic_schema_alteration(db_session):
     assert "new_test_alter_col" in new_db_cols
 
 
+def test_dynamic_schema_hot_reloading(db_session):
+    from database import models
+    from sqlalchemy import inspect
+    
+    test_engine = db_session.get_bind()
+    table_name = "raw_table_1"
+    
+    # 1. Check DYNAMIC_TABLES exists and get class
+    assert table_name in models.DYNAMIC_TABLES
+    model_class = models.DYNAMIC_TABLES[table_name]
+    
+    # Verify the test column doesn't exist yet
+    assert "hot_reloaded_col" not in model_class.__table__.columns
+    
+    # 2. Simulate new config dictionary with a new column
+    from database import crud
+    config_copy = dict(crud.TABLE_CONFIG)
+    if table_name not in config_copy:
+        config_copy[table_name] = {"business_key": "part_no", "column_types": {}}
+    else:
+        config_copy[table_name] = dict(config_copy[table_name])
+        config_copy[table_name]["column_types"] = dict(config_copy[table_name].get("column_types", {}))
+    
+    # Add new column definition
+    config_copy[table_name]["column_types"]["hot_reloaded_col"] = "string"
+    
+    # 3. Call init_dynamic_models with the updated config
+    models.init_dynamic_models(config_copy)
+    
+    # Verify model class table was dynamically updated
+    assert "hot_reloaded_col" in model_class.__table__.columns
+    
+    # 4. Synchronize schema to physical SQLite DB
+    models.sync_dynamic_tables_schema(test_engine)
+    
+    # 5. Verify columns in DB using inspect
+    inspector = inspect(test_engine)
+    db_cols = {c["name"] for c in inspector.get_columns(table_name)}
+    assert "hot_reloaded_col" in db_cols
+
+
 
 
