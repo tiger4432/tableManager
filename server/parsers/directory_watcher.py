@@ -394,7 +394,7 @@ class IngestionHandler(FileSystemEventHandler):
         import uuid
         file_tx_id = str(uuid.uuid4())
         
-        batch_size = 5000
+        batch_size = 1000
         total_changed = 0
         all_created_logs = []
         

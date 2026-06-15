@@ -7,7 +7,7 @@
 ### 1. 백엔드 배치(Batch)별 진행률 계산 및 WebSocket 브로드캐스트 전파
 - **`server/parsers/directory_watcher.py`**:
   - `IngestionHandler`와 `WorkspaceWatcher`에 `on_progress_callback` 파라미터를 추가했습니다.
-  - `_send_to_upsert` 메서드 내에서 전체 파싱된 행의 수(`total_rows = len(rows)`)를 파악하고, 5000개 단위의 배치 루프를 실행할 때마다 누적 처리된 행 수(`processed_rows`)와 진행률(`progress_pct`)을 계산합니다.
+  - `_send_to_upsert` 메서드 내에서 전체 파싱된 행의 수(`total_rows = len(rows)`)를 파악하고, 1000개 단위의 배치 루프를 실행할 때마다 누적 처리된 행 수(`processed_rows`)와 진행률(`progress_pct`)을 계산합니다.
   - 각 배치의 DB bulk upsert 처리가 완료되는 즉시 `self.on_progress_callback`을 안전하게 호출하도록 설계했습니다.
 - **`server/run_watcher.py`**:
   - 실시간 수집 진행 콜백을 받아 중계하는 `trigger_ws_progress` 함수를 신설했습니다.
