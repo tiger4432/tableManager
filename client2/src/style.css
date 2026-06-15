@@ -1268,8 +1268,9 @@ body {
 }
 
 .toast.hide {
-  transform: translateY(-20px) scale(0.9);
-  opacity: 0;
+  animation: none !important;
+  transform: translateY(-20px) scale(0.9) !important;
+  opacity: 0 !important;
 }
 
 @keyframes toastFadeIn {
