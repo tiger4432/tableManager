@@ -3599,6 +3599,24 @@ function showToast(message, type = 'info') {
 }
 window.showToast = showToast; // Expose globally for Desktop Wrapper
 
+// Helper to strip user prefix and unique UUID suffixes from filename in client
+function getCleanFilename(filename) {
+  if (!filename) return '';
+  // 1. Strip user prefix: user(username)_
+  let clean = filename.replace(/^user\([^)]+\)_/, '');
+  // 2. Strip hex suffix before extension: _[0-9a-fA-F]{8}
+  const lastDotIdx = clean.lastIndexOf('.');
+  if (lastDotIdx !== -1) {
+    let name = clean.slice(0, lastDotIdx);
+    const ext = clean.slice(lastDotIdx);
+    name = name.replace(/_[0-9a-fA-F]{8}$/, '');
+    clean = name + ext;
+  } else {
+    clean = clean.replace(/_[0-9a-fA-F]{8}$/, '');
+  }
+  return clean;
+}
+
 // Floating Ingestion Progress Widget Helper
 function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
   let container = document.getElementById('ingestion-progress-container');
@@ -3608,7 +3626,9 @@ function showIngestionProgress(tableName, filename, progress, processedRows, tot
     document.body.appendChild(container);
   }
 
-  const safeFilename = filename.replace(/[^a-zA-Z0-9]/g, '_');
+  // Normalize filename on client side for robust matching and cleaner display
+  const cleanFilename = getCleanFilename(filename);
+  const safeFilename = cleanFilename.replace(/[^a-zA-Z0-9]/g, '_');
   const cardId = `progress-${tableName}-${safeFilename}`;
   let card = document.getElementById(cardId);
 
@@ -3619,29 +3639,77 @@ function showIngestionProgress(tableName, filename, progress, processedRows, tot
     container.appendChild(card);
   }
 
-  // If already marked as success or error, do not overwrite back to processing
-  if (card.classList.contains('status-success') || card.classList.contains('status-error')) {
+  // If already marked as success, error, or in auto-dismiss status, do not overwrite back to processing
+  if (card.classList.contains('status-success') || 
+      card.classList.contains('status-error') || 
+      card.classList.contains('status-auto-dismiss')) {
     return;
   }
+
+  const p = parseInt(progress, 10) || 0;
+  const pr = parseInt(processedRows, 10) || 0;
+  const tr = parseInt(totalRows, 10) || 0;
 
   card.innerHTML = `
     <div class="progress-header">
       <span class="progress-title">📤 파일 파싱 및 적재 중</span>
-      <span class="progress-percent">${progress}%</span>
+      <span class="progress-percent">${p}%</span>
     </div>
-    <div class="progress-filename" title="${filename}">${filename}</div>
+    <div class="progress-filename" title="${cleanFilename}">${cleanFilename}</div>
     <div class="progress-bar-container">
-      <div class="progress-bar" style="width: ${progress}%;"></div>
+      <div class="progress-bar" style="width: ${p}%;"></div>
     </div>
-    <div class="progress-stats">${processedRows.toLocaleString()} / ${totalRows.toLocaleString()} 행 처리됨</div>
+    <div class="progress-stats">${pr.toLocaleString()} / ${tr.toLocaleString()} 행 처리됨</div>
   `;
+
+  // Defensive Double Guard: Autocomplete and dismiss if reached 100% or processedRows >= totalRows
+  const isComplete = p >= 100 || (tr > 0 && pr >= tr);
+  if (isComplete) {
+    card.classList.add('status-auto-dismiss');
+    card.classList.add('status-success');
+    
+    const title = card.querySelector('.progress-title');
+    if (title) title.textContent = '✅ 파일 적재 완료';
+    const percent = card.querySelector('.progress-percent');
+    if (percent) percent.textContent = '100%';
+    const bar = card.querySelector('.progress-bar');
+    if (bar) bar.style.width = '100%';
+    const stats = card.querySelector('.progress-stats');
+    if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
+    
+    // Auto remove after 2.5 seconds
+    setTimeout(() => {
+      card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+      card.style.animation = 'none';
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(20px) scale(0.9)';
+      
+      setTimeout(() => {
+        card.remove();
+        const container = document.getElementById('ingestion-progress-container');
+        if (container && container.children.length === 0) {
+          container.remove();
+        }
+      }, 400);
+    }, 2500);
+  }
 }
 
 function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
-  const safeFilename = filename.replace(/[^a-zA-Z0-9]/g, '_');
+  const cleanFilename = getCleanFilename(filename);
+  const safeFilename = cleanFilename.replace(/[^a-zA-Z0-9]/g, '_');
   const cardId = `progress-${tableName}-${safeFilename}`;
   const card = document.getElementById(cardId);
   if (!card) return;
+
+  // Prevent double trigger if already in dismissal transition
+  if (card.classList.contains('status-success') || 
+      card.classList.contains('status-error') || 
+      card.classList.contains('status-auto-dismiss')) {
+    return;
+  }
+
+  card.classList.add('status-auto-dismiss'); // Mark to avoid duplicate timers
 
   if (status === 'SUCCESS') {
     card.classList.add('status-success');
