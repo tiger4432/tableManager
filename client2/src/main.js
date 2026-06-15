@@ -1606,7 +1606,6 @@ function handleWebSocketMessage(msg) {
   // 1. Process and append audit logs to local history cache first (independent of currentTable check, especially for global history)
   const createdLogs = msg.created_logs || [];
   if (createdLogs.length > 0) {
-    let updatedHistory = false;
     createdLogs.forEach(log => {
       // For non-global tabs ('cell' or 'row'), only process if the log belongs to the current table
       if (activeHistoryTab !== 'global' && log.table_name !== currentTable) {
@@ -1619,17 +1618,8 @@ function handleWebSocketMessage(msg) {
         updateSelectedCellUI();
       }
       
-      appendHistoryLocally(log, true);
-      updatedHistory = true;
+      appendHistoryLocally(log, false);
     });
-    
-    if (updatedHistory) {
-      if (activeHistoryTab === 'global') {
-        renderGlobalTimeline();
-      } else if (selectedCell) {
-        renderTimeline(cellRowHistoryData);
-      }
-    }
   }
 
   // 2. Perform table-specific data/grid updates
@@ -1641,6 +1631,7 @@ function handleWebSocketMessage(msg) {
   if (event === 'batch_row_create') {
     const items = msg.items || [];
     if (items.length > 0) {
+      updatePageCacheOnUpsert(items);
       const nowStr = getLocalTimeString();
       const normalizedItems = items.map(item => ({
         ...item,
@@ -1655,6 +1646,7 @@ function handleWebSocketMessage(msg) {
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
+    updatePageCacheOnUpsert(items);
     const updatedRows = [];
     const addedRows = [];
     const flashCols = new Set();
@@ -1725,6 +1717,7 @@ function handleWebSocketMessage(msg) {
     }
   } else if (event === 'batch_row_delete') {
     const rowIds = msg.row_ids || [];
+    updatePageCacheOnDelete(rowIds);
     const deleteTx = rowIds.map(rid => ({ row_id: rid }));
 
     gridApi.applyTransaction({ remove: deleteTx });
@@ -1786,6 +1779,359 @@ async function loadHistory() {
   }
 }
 
+// Helper to update client page cache in-place on real-time upsert/create events
+function updatePageCacheOnUpsert(items) {
+  if (!items || items.length === 0) return;
+  const isSortLatest = sortLatestToggle && sortLatestToggle.checked;
+
+  items.forEach(item => {
+    let foundAnywhere = false;
+
+    // 1. Find and merge inside cached pages
+    for (const [skip, cached] of pageCache.entries()) {
+      const idx = cached.data.findIndex(r => r.row_id === item.row_id);
+      if (idx !== -1) {
+        foundAnywhere = true;
+        const oldRowData = cached.data[idx];
+        cached.data[idx] = {
+          ...oldRowData,
+          created_at: item.created_at || oldRowData.created_at,
+          updated_at: item.updated_at || oldRowData.updated_at,
+          data: {
+            ...oldRowData.data,
+            ...item.data
+          }
+        };
+      }
+    }
+
+    // 2. If not found in any page (new row)
+    if (!foundAnywhere) {
+      for (const [skip, cached] of pageCache.entries()) {
+        cached.total += 1;
+
+        // Prepend to skip=0 if sorted by updated_at descending
+        if (skip === 0 && isSortLatest) {
+          const nowStr = getLocalTimeString();
+          const newItem = {
+            ...item,
+            created_at: item.created_at || nowStr,
+            updated_at: item.updated_at || nowStr
+          };
+          
+          if (!cached.data.some(r => r.row_id === newItem.row_id)) {
+            cached.data.unshift(newItem);
+            if (cached.data.length > pageLimit) {
+              cached.data.pop();
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// Helper to remove items from client page cache in-place on delete events
+function updatePageCacheOnDelete(rowIds) {
+  if (!rowIds || rowIds.length === 0) return;
+
+  rowIds.forEach(rowId => {
+    for (const [skip, cached] of pageCache.entries()) {
+      const originalLength = cached.data.length;
+      cached.data = cached.data.filter(r => r.row_id !== rowId);
+      
+      const removedCount = originalLength - cached.data.length;
+      if (removedCount > 0) {
+        cached.total -= removedCount;
+      } else {
+        cached.total -= 1;
+      }
+      if (cached.total < 0) cached.total = 0;
+    }
+  });
+}
+
+// Create single timeline list item DOM element
+function createTimelineItemDom(log) {
+  const li = document.createElement('li');
+  li.className = 'timeline-item';
+  li.style.cursor = 'pointer';
+  
+  const isUser = log.updated_by !== 'system';
+  li.classList.add(isUser ? 'user-change' : 'system-change');
+  if (log.is_row_deleted) {
+    li.classList.add('deleted-row-log');
+  }
+  
+  const isCurrentTx = log.transaction_id && log.transaction_id === currentTransactionId;
+  if (isCurrentTx) {
+    li.classList.add('active-tx-log');
+  }
+  
+  const dateStr = new Date(log.timestamp).toLocaleString();
+  
+  li.innerHTML = `
+    <div class="timeline-time">${dateStr}</div>
+    <div class="timeline-card">
+      <div class="timeline-user">
+        <span class="user-tag">${log.updated_by}</span>
+        <span class="source-tag">${log.source_name}</span>
+      </div>
+      <div class="timeline-changes">
+        <div class="change-detail">
+          <span class="change-field">${log.column_name}</span>
+          <div class="change-values">
+            <span class="val-old">${formatVal(log.old_value, true)}</span>
+            <span class="val-arrow">→</span>
+            <span class="val-new">${formatVal(log.new_value, false)}</span>
+          </div>
+        </div>
+      </div>
+      ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
+    </div>
+  `;
+  
+  li.addEventListener('click', (e) => {
+    if (e.target.closest('.filter-tx-btn')) {
+      e.stopPropagation();
+      const txId = e.target.closest('.filter-tx-btn').dataset.txId;
+      setTransactionFilter(txId);
+    } else {
+      navigateToLog(log);
+    }
+  });
+  
+  return li;
+}
+
+// Create global timeline group list item DOM element
+function createGlobalTimelineItemDom(group) {
+  const txId = group.transaction_id;
+  const isSummary = group.total_count > 1;
+  const baseLog = group.logs[0];
+  if (!baseLog) return null;
+  
+  const li = document.createElement('li');
+  li.className = 'timeline-item';
+  if (txId) {
+    li.dataset.txId = txId;
+  }
+  
+  const isCurrentTx = txId && txId === currentTransactionId;
+  if (isCurrentTx) {
+    li.classList.add('active-tx-log');
+  }
+  
+  const user = baseLog.updated_by || 'system';
+  const isUser = user !== 'system';
+  li.classList.add(isUser ? 'user-change' : 'system-change');
+  
+  const dateStr = new Date(baseLog.timestamp).toLocaleString();
+  
+  let displayTitle = '';
+  let colorClass = '';
+  
+  if (isSummary) {
+    const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
+    const allCreates = group.logs.every(log => log.column_name === 'CREATE');
+    
+    if (allDeletes) {
+      displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
+      colorClass = 'color-delete';
+    } else if (allCreates) {
+      displayTitle = `🆕 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 생성`;
+      colorClass = 'color-create';
+    } else {
+      displayTitle = `📦 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}건 변경`;
+      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
+    }
+  } else {
+    const targetId = baseLog.business_key ? (baseLog.business_key.length > 10 ? baseLog.business_key.slice(0, 10) + '...' : baseLog.business_key) : baseLog.row_id.slice(0, 8);
+    const col = baseLog.column_name;
+    if (col === 'CREATE') {
+      displayTitle = `🆕 [${user}] 님이 ${baseLog.table_name} (${targetId}) 생성`;
+      colorClass = 'color-create';
+    } else if (col === 'DELETE') {
+      displayTitle = `🗑️ [${user}] 님이 ${baseLog.table_name} (${targetId}) 삭제`;
+      colorClass = 'color-delete';
+    } else if (col === 'ROW_UPDATE') {
+      displayTitle = `🤖 [${user}] 님이 ${baseLog.table_name} (${targetId}) 자동 업데이트`;
+      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-auto';
+    } else {
+      displayTitle = `🔄 [${user}] 님이 ${baseLog.table_name} (${targetId}) 의 ${col} 수정`;
+      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
+    }
+  }
+
+  if (baseLog.is_row_deleted) {
+    displayTitle = `❌ [삭제됨] ` + displayTitle;
+  }
+  
+  const summaryColsText = group.summary_columns && group.summary_columns.length > 0
+    ? (group.summary_columns.length > 5 ? group.summary_columns.slice(0, 5).join(', ') + ` 외 ${group.summary_columns.length - 5}건` : group.summary_columns.join(', '))
+    : '';
+    
+  li.innerHTML = `
+    <div class="timeline-time">${dateStr}</div>
+    <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}">
+      <div class="timeline-user">
+        <span class="user-tag">${user}</span>
+        <span class="source-tag">${baseLog.source_name || 'system'}</span>
+      </div>
+      <div class="timeline-changes">
+        <div class="change-detail">
+          <span class="change-title-text">${displayTitle}</span>
+          ${summaryColsText ? `<div class="summary-columns-list">${summaryColsText}</div>` : ''}
+          ${!isSummary ? `
+          <div class="change-values">
+            <span class="val-old">${formatVal(baseLog.old_value, true)}</span>
+            <span class="val-arrow">→</span>
+            <span class="val-new">${formatVal(baseLog.new_value, false)}</span>
+          </div>` : ''}
+        </div>
+      </div>
+      ${txId ? `<div class="tx-tag" data-tx-id="${txId}">Tx: ${txId.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${txId}" title="Filter table by this transaction">🔍</span> ${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : ''}
+    </div>
+    ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
+  `;
+  
+  if (isSummary) {
+    const card = li.querySelector('.timeline-card');
+    const detailsContainer = li.querySelector('.tx-details-container');
+    const indicator = li.querySelector('.expand-indicator');
+    
+    const toggleExpand = async () => {
+      const isExpanded = expandedTransactions.has(txId);
+      if (isExpanded) {
+        expandedTransactions.delete(txId);
+        detailsContainer.style.display = 'none';
+        indicator.style.transform = 'rotate(0deg)';
+        indicator.textContent = '▶';
+      } else {
+        expandedTransactions.add(txId);
+        detailsContainer.style.display = 'block';
+        indicator.style.transform = 'rotate(90deg)';
+        indicator.textContent = '▼';
+        
+        if (group.logs.length <= 1 && group.total_count > 1) {
+          if (fetchingTransactions.has(txId)) return;
+          fetchingTransactions.add(txId);
+          detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
+          
+          try {
+            const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
+            const txDetail = await res.json();
+            group.logs = txDetail.logs;
+            fetchingTransactions.delete(txId);
+            renderSubDetails(detailsContainer, group.logs);
+          } catch (err) {
+            console.error('Failed to load transaction details', err);
+            detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
+            fetchingTransactions.delete(txId);
+          }
+        } else {
+          renderSubDetails(detailsContainer, group.logs);
+        }
+      }
+    };
+    
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.filter-tx-btn')) {
+        e.stopPropagation();
+        const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
+        setTransactionFilter(targetTxId);
+      } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator')) {
+        toggleExpand();
+      } else {
+        if (group.logs && group.logs.length > 0 && group.logs[0].row_id !== '_BATCH_') {
+          navigateToLog(group.logs[0]);
+        }
+      }
+    });
+    
+    card.addEventListener('dblclick', () => {
+      toggleExpand();
+    });
+  } else {
+    const card = li.querySelector('.timeline-card');
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.filter-tx-btn')) {
+        e.stopPropagation();
+        const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
+        setTransactionFilter(targetTxId);
+      } else {
+        if (baseLog.row_id !== '_BATCH_') {
+          navigateToLog(baseLog);
+        } else {
+          performanceLog.textContent = '⚠️ Batch operations do not support cell positioning';
+        }
+      }
+    });
+  }
+  
+  return li;
+}
+
+// Prepend single item incrementally to cell/row history tab
+function renderTimelineIncremental(log) {
+  if (activeHistoryTab === 'cell') {
+    if (!selectedCell || selectedCell.rowId !== log.row_id || selectedCell.colId !== log.column_name) return;
+  } else if (activeHistoryTab === 'row') {
+    if (!selectedCell || selectedCell.rowId !== log.row_id) return;
+  } else {
+    return;
+  }
+
+  const emptyLi = timeline.querySelector('.timeline-empty');
+  if (emptyLi) {
+    emptyLi.remove();
+  }
+
+  const li = createTimelineItemDom(log);
+  timeline.insertBefore(li, timeline.firstChild);
+}
+
+// Prepend or update item incrementally to global history tab
+function renderGlobalTimelineIncremental(log) {
+  if (activeHistoryTab !== 'global') return;
+
+  const emptyLi = timeline.querySelector('.timeline-empty');
+  if (emptyLi) {
+    emptyLi.remove();
+  }
+
+  const group = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
+  if (!group) return;
+
+  let oldLi = null;
+  if (log.transaction_id) {
+    oldLi = timeline.querySelector(`li[data-tx-id="${log.transaction_id}"]`);
+  }
+
+  const newLi = createGlobalTimelineItemDom(group);
+  if (!newLi) return;
+
+  if (oldLi) {
+    const isExpanded = expandedTransactions.has(log.transaction_id);
+    if (isExpanded) {
+      const detailsContainer = newLi.querySelector('.tx-details-container');
+      const indicator = newLi.querySelector('.expand-indicator');
+      if (detailsContainer) {
+        detailsContainer.style.display = 'block';
+        renderSubDetails(detailsContainer, group.logs);
+      }
+      if (indicator) {
+        indicator.style.transform = 'rotate(90deg)';
+        indicator.textContent = '▼';
+      }
+    }
+    
+    timeline.replaceChild(newLi, oldLi);
+  } else {
+    timeline.insertBefore(newLi, timeline.firstChild);
+  }
+}
+
 // Render history logs in a vertical timeline UI card structure
 function renderTimeline(logs) {
   timeline.innerHTML = '';
@@ -1796,58 +2142,7 @@ function renderTimeline(logs) {
   }
   
   logs.forEach(log => {
-    const li = document.createElement('li');
-    li.className = 'timeline-item';
-    li.style.cursor = 'pointer'; // Make timeline cards clickable
-    
-    // Add type tag (e.g., user vs system)
-    const isUser = log.updated_by !== 'system';
-    li.classList.add(isUser ? 'user-change' : 'system-change');
-    if (log.is_row_deleted) {
-      li.classList.add('deleted-row-log');
-    }
-    
-    // Highlight if active transaction context
-    const isCurrentTx = log.transaction_id && log.transaction_id === currentTransactionId;
-    if (isCurrentTx) {
-      li.classList.add('active-tx-log');
-    }
-    
-    // Format timestamp
-    const dateStr = new Date(log.timestamp).toLocaleString();
-    
-    li.innerHTML = `
-      <div class="timeline-time">${dateStr}</div>
-      <div class="timeline-card">
-        <div class="timeline-user">
-          <span class="user-tag">${log.updated_by}</span>
-          <span class="source-tag">${log.source_name}</span>
-        </div>
-        <div class="timeline-changes">
-          <div class="change-detail">
-            <span class="change-field">${log.column_name}</span>
-            <div class="change-values">
-              <span class="val-old">${formatVal(log.old_value, true)}</span>
-              <span class="val-arrow">→</span>
-              <span class="val-new">${formatVal(log.new_value, false)}</span>
-            </div>
-          </div>
-        </div>
-        ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
-      </div>
-    `;
-    
-    // Feature 1.5: Bind click to jump navigator sequence
-    li.addEventListener('click', (e) => {
-      if (e.target.closest('.filter-tx-btn')) {
-        e.stopPropagation();
-        const txId = e.target.closest('.filter-tx-btn').dataset.txId;
-        setTransactionFilter(txId);
-      } else {
-        navigateToLog(log);
-      }
-    });
-    
+    const li = createTimelineItemDom(log);
     timeline.appendChild(li);
   });
 }
@@ -1861,178 +2156,11 @@ function renderGlobalTimeline() {
     return;
   }
   
-  globalHistoryData.forEach((group, index) => {
-    const txId = group.transaction_id;
-    const isSummary = group.total_count > 1;
-    const baseLog = group.logs[0];
-    if (!baseLog) return;
-    
-    const li = document.createElement('li');
-    li.className = 'timeline-item';
-    if (txId) {
-      li.dataset.txId = txId;
+  globalHistoryData.forEach((group) => {
+    const li = createGlobalTimelineItemDom(group);
+    if (li) {
+      timeline.appendChild(li);
     }
-    
-    // Highlight if active transaction context
-    const isCurrentTx = txId && txId === currentTransactionId;
-    if (isCurrentTx) {
-      li.classList.add('active-tx-log');
-    }
-    
-    // Add tag styling based on creator/type
-    const user = baseLog.updated_by || 'system';
-    const isUser = user !== 'system';
-    li.classList.add(isUser ? 'user-change' : 'system-change');
-    
-    // Format timestamp
-    const dateStr = new Date(baseLog.timestamp).toLocaleString();
-    
-    // Determine title text and color styling
-    let displayTitle = '';
-    let colorClass = '';
-    
-    if (isSummary) {
-      const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
-      const allCreates = group.logs.every(log => log.column_name === 'CREATE');
-      
-      if (allDeletes) {
-        displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
-        colorClass = 'color-delete';
-      } else if (allCreates) {
-        displayTitle = `🆕 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 생성`;
-        colorClass = 'color-create';
-      } else {
-        displayTitle = `📦 [${user}] 님 | ${baseLog.table_name} | ${group.total_count}건 변경`;
-        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
-      }
-    } else {
-      const targetId = baseLog.business_key ? (baseLog.business_key.length > 10 ? baseLog.business_key.slice(0, 10) + '...' : baseLog.business_key) : baseLog.row_id.slice(0, 8);
-      const col = baseLog.column_name;
-      if (col === 'CREATE') {
-        displayTitle = `🆕 [${user}] 님이 ${baseLog.table_name} (${targetId}) 생성`;
-        colorClass = 'color-create';
-      } else if (col === 'DELETE') {
-        displayTitle = `🗑️ [${user}] 님이 ${baseLog.table_name} (${targetId}) 삭제`;
-        colorClass = 'color-delete';
-      } else if (col === 'ROW_UPDATE') {
-        displayTitle = `🤖 [${user}] 님이 ${baseLog.table_name} (${targetId}) 자동 업데이트`;
-        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-auto';
-      } else {
-        displayTitle = `🔄 [${user}] 님이 ${baseLog.table_name} (${targetId}) 의 ${col} 수정`;
-        colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
-      }
-    }
-
-    if (baseLog.is_row_deleted) {
-      displayTitle = `❌ [삭제됨] ` + displayTitle;
-    }
-    
-    const summaryColsText = group.summary_columns && group.summary_columns.length > 0
-      ? (group.summary_columns.length > 5 ? group.summary_columns.slice(0, 5).join(', ') + ` 외 ${group.summary_columns.length - 5}건` : group.summary_columns.join(', '))
-      : '';
-      
-    // HTML structure for card
-    li.innerHTML = `
-      <div class="timeline-time">${dateStr}</div>
-      <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}">
-        <div class="timeline-user">
-          <span class="user-tag">${user}</span>
-          <span class="source-tag">${baseLog.source_name || 'system'}</span>
-        </div>
-        <div class="timeline-changes">
-          <div class="change-detail">
-            <span class="change-title-text">${displayTitle}</span>
-            ${summaryColsText ? `<div class="summary-columns-list">${summaryColsText}</div>` : ''}
-            ${!isSummary ? `
-            <div class="change-values">
-              <span class="val-old">${formatVal(baseLog.old_value, true)}</span>
-              <span class="val-arrow">→</span>
-              <span class="val-new">${formatVal(baseLog.new_value, false)}</span>
-            </div>` : ''}
-          </div>
-        </div>
-        ${txId ? `<div class="tx-tag" data-tx-id="${txId}">Tx: ${txId.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${txId}" title="Filter table by this transaction">🔍</span> ${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : ''}
-      </div>
-      ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
-    `;
-    
-    // Interactions
-    if (isSummary) {
-      const card = li.querySelector('.timeline-card');
-      const detailsContainer = li.querySelector('.tx-details-container');
-      const indicator = li.querySelector('.expand-indicator');
-      
-      const toggleExpand = async () => {
-        const isExpanded = expandedTransactions.has(txId);
-        if (isExpanded) {
-          expandedTransactions.delete(txId);
-          detailsContainer.style.display = 'none';
-          indicator.style.transform = 'rotate(0deg)';
-          indicator.textContent = '▶';
-        } else {
-          expandedTransactions.add(txId);
-          detailsContainer.style.display = 'block';
-          indicator.style.transform = 'rotate(90deg)';
-          indicator.textContent = '▼';
-          
-          // Check if we need to load detailed logs
-          if (group.logs.length <= 1 && group.total_count > 1) {
-            if (fetchingTransactions.has(txId)) return;
-            fetchingTransactions.add(txId);
-            detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
-            
-            try {
-              const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
-              const txDetail = await res.json();
-              group.logs = txDetail.logs;
-              fetchingTransactions.delete(txId);
-              renderSubDetails(detailsContainer, group.logs);
-            } catch (err) {
-              console.error('Failed to load transaction details', err);
-              detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
-              fetchingTransactions.delete(txId);
-            }
-          } else {
-            renderSubDetails(detailsContainer, group.logs);
-          }
-        }
-      };
-      
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.filter-tx-btn')) {
-          e.stopPropagation();
-          const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
-          setTransactionFilter(targetTxId);
-        } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator')) {
-          toggleExpand();
-        } else {
-          if (group.logs && group.logs.length > 0 && group.logs[0].row_id !== '_BATCH_') {
-            navigateToLog(group.logs[0]);
-          }
-        }
-      });
-      
-      card.addEventListener('dblclick', () => {
-        toggleExpand();
-      });
-    } else {
-      const card = li.querySelector('.timeline-card');
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.filter-tx-btn')) {
-          e.stopPropagation();
-          const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
-          setTransactionFilter(targetTxId);
-        } else {
-          if (baseLog.row_id !== '_BATCH_') {
-            navigateToLog(baseLog);
-          } else {
-            performanceLog.textContent = '⚠️ Batch operations do not support cell positioning';
-          }
-        }
-      });
-    }
-    
-    timeline.appendChild(li);
   });
 }
 
@@ -2137,7 +2265,7 @@ function appendHistoryLocally(log, skipRender = false) {
       });
     }
     if (!skipRender) {
-      renderGlobalTimeline();
+      renderGlobalTimelineIncremental(log);
     }
     return;
   }
@@ -2163,7 +2291,7 @@ function appendHistoryLocally(log, skipRender = false) {
   }
 
   if (!skipRender) {
-    renderTimeline(cellRowHistoryData);
+    renderTimelineIncremental(log);
   }
 }
 
