@@ -8,6 +8,28 @@ import json
 import os
 from datetime import datetime
 
+class LightCellSource:
+    __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
+    def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at):
+        self.table_name = table_name
+        self.row_id = row_id
+        self.column_name = column_name
+        self.source_name = source_name
+        self.value = value
+        self.updated_by = updated_by
+        self.ingested_at = ingested_at
+
+class LightCellOverwrite:
+    __slots__ = ('table_name', 'row_id', 'column_name', 'is_overwrite', 'updated_by', 'updated_at', 'manual_priority_source')
+    def __init__(self, table_name, row_id, column_name, is_overwrite, updated_by, updated_at, manual_priority_source):
+        self.table_name = table_name
+        self.row_id = row_id
+        self.column_name = column_name
+        self.is_overwrite = is_overwrite
+        self.updated_by = updated_by
+        self.updated_at = updated_at
+        self.manual_priority_source = manual_priority_source
+
 # 소스별 우선순위 정의 (숫자가 낮을수록 높음)
 SOURCE_PRIORITY = {
     "user": 0,
@@ -157,7 +179,10 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'], item['source_name'])
         deduped[key] = item
-    deduped_mappings = list(deduped.values())
+    
+    # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
+    sorted_keys = sorted(deduped.keys())
+    deduped_mappings = [deduped[k] for k in sorted_keys]
     
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
@@ -186,7 +211,10 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict]):
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'])
         deduped[key] = item
-    deduped_mappings = list(deduped.values())
+    
+    # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
+    sorted_keys = sorted(deduped.keys())
+    deduped_mappings = [deduped[k] for k in sorted_keys]
     
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
@@ -231,9 +259,9 @@ def apply_row_update_internal(
     overwrites_cache: dict = None,
     transaction_id: str = None,
     logs_to_cache: list = None,
-    cell_sources_to_upsert: list = None,
-    cell_overwrites_to_upsert: list = None,
-    cell_overwrites_to_delete: list = None
+    cell_sources_to_upsert: dict = None,
+    cell_overwrites_to_upsert: dict = None,
+    cell_overwrites_to_delete: set = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
@@ -370,7 +398,8 @@ def apply_row_update_internal(
         src_obj.ingested_at = datetime.now()
 
         if cell_sources_to_upsert is not None:
-            cell_sources_to_upsert.append({
+            upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
+            cell_sources_to_upsert[upsert_key] = {
                 "table_name": table_name,
                 "row_id": row.row_id,
                 "column_name": col_name,
@@ -378,7 +407,7 @@ def apply_row_update_internal(
                 "value": clean_val,
                 "updated_by": update_item.updated_by,
                 "ingested_at": src_obj.ingested_at
-            })
+            }
 
         # 4. 우선순위 결정
         sources_dict = {}
@@ -417,7 +446,8 @@ def apply_row_update_internal(
             ow.manual_priority_source = manual_pin
             
             if cell_overwrites_to_upsert is not None:
-                cell_overwrites_to_upsert.append({
+                ow_key = (table_name, row.row_id, col_name)
+                cell_overwrites_to_upsert[ow_key] = {
                     "table_name": table_name,
                     "row_id": row.row_id,
                     "column_name": col_name,
@@ -425,11 +455,16 @@ def apply_row_update_internal(
                     "updated_by": ow.updated_by,
                     "updated_at": ow.updated_at,
                     "manual_priority_source": ow.manual_priority_source
-                })
+                }
+                if cell_overwrites_to_delete is not None:
+                    cell_overwrites_to_delete.discard(ow_key)
         else:
             if ow:
+                ow_key = (table_name, row.row_id, col_name)
                 if cell_overwrites_to_delete is not None:
-                    cell_overwrites_to_delete.append((table_name, row.row_id, col_name))
+                    cell_overwrites_to_delete.add(ow_key)
+                    if cell_overwrites_to_upsert is not None:
+                        cell_overwrites_to_upsert.pop(ow_key, None)
                 else:
                     db.delete(ow)
                 if overwrites_cache is not None:
@@ -544,33 +579,47 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         overwrites_cache = {}
         
         if all_row_ids:
-            all_sources = db.query(models.CellSource).filter(
+            all_sources = db.query(
+                models.CellSource.table_name,
+                models.CellSource.row_id,
+                models.CellSource.column_name,
+                models.CellSource.source_name,
+                models.CellSource.value,
+                models.CellSource.updated_by,
+                models.CellSource.ingested_at
+            ).filter(
                 models.CellSource.table_name == table_name,
                 models.CellSource.row_id.in_(all_row_ids)
             ).all()
-            for src in all_sources:
-                db.expunge(src) # Detach from session to prevent individual auto-updates
-                key = (src.row_id, src.column_name)
+            for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+                key = (r_id, col_name)
                 if key not in sources_cache:
                     sources_cache[key] = []
-                sources_cache[key].append(src)
+                sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
                 
-            all_overwrites = db.query(models.CellOverwrite).filter(
+            all_overwrites = db.query(
+                models.CellOverwrite.table_name,
+                models.CellOverwrite.row_id,
+                models.CellOverwrite.column_name,
+                models.CellOverwrite.is_overwrite,
+                models.CellOverwrite.updated_by,
+                models.CellOverwrite.updated_at,
+                models.CellOverwrite.manual_priority_source
+            ).filter(
                 models.CellOverwrite.table_name == table_name,
                 models.CellOverwrite.row_id.in_(all_row_ids)
             ).all()
-            for ow in all_overwrites:
-                db.expunge(ow) # Detach from session to prevent individual auto-updates
-                overwrites_cache[(ow.row_id, ow.column_name)] = ow
+            for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
+                overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
     
         unique_results = {}
         total_changed_cells = []
         logs_to_cache = []
         
-        # Batch lists for bulk operations
-        cell_sources_to_upsert = []
-        cell_overwrites_to_upsert = []
-        cell_overwrites_to_delete = []
+        # Batch containers for bulk operations (deduplicated early via dict/set)
+        cell_sources_to_upsert = {}
+        cell_overwrites_to_upsert = {}
+        cell_overwrites_to_delete = set()
         
         with db.no_autoflush:
             for item in batch.updates:
@@ -595,9 +644,9 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
         
         # Execute Bulk Upserts and Deletes
-        bulk_upsert_cell_sources(db, cell_sources_to_upsert)
-        bulk_upsert_cell_overwrites(db, cell_overwrites_to_upsert)
-        bulk_delete_cell_overwrites(db, cell_overwrites_to_delete)
+        bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
+        bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
+        bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
         
         db.flush()
         
