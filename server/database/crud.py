@@ -2,6 +2,20 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Any, Optional
 from . import models, schemas
+from contextlib import contextmanager
+
+@contextmanager
+def transaction_context(user: str, tx_id: str, source: str):
+    from database.context import request_user, request_transaction_id, request_source
+    token_user = request_user.set(user)
+    token_tx = request_transaction_id.set(tx_id)
+    token_src = request_source.set(source)
+    try:
+        yield
+    finally:
+        request_user.reset(token_user)
+        request_transaction_id.reset(token_tx)
+        request_source.reset(token_src)
 import uuid
 import uuid6
 import json
@@ -106,7 +120,7 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
         table_model.business_key_val == target_val
     ).first()
 
-def compute_priority_value(sources: dict, manual_priority_source: str = None):
+def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
     if not sources:
         return None, None
@@ -116,9 +130,16 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None):
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
         return val, manual_priority_source
 
+    priority_map = SOURCE_PRIORITY
+    if table_name:
+        table_info = TABLE_CONFIG.get(table_name, {})
+        custom_priority = table_info.get("source_priority")
+        if custom_priority and isinstance(custom_priority, dict):
+            priority_map = custom_priority
+
     sorted_sources = sorted(
         sources.keys(),
-        key=lambda k: SOURCE_PRIORITY.get(k, 99)
+        key=lambda k: priority_map.get(k, 99)
     )
     
     top_source = sorted_sources[0]
@@ -250,6 +271,95 @@ def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, s
         )
     db.query(models.CellOverwrite).filter(or_(*conds)).delete(synchronize_session=False)
 
+def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str) -> tuple[Any, bool]:
+    """대상 행 객체를 캐시 또는 DB에서 획득하고, 존재하지 않으면 신규 생성합니다."""
+    row = None
+    if row_cache is not None:
+        if update_item.row_id and update_item.row_id in row_cache:
+            row = row_cache[update_item.row_id]
+        elif update_item.business_key_val and update_item.business_key_val in row_cache:
+            row = row_cache[update_item.business_key_val]
+    else:
+        if update_item.row_id:
+            row = db.query(table_model).filter(table_model.row_id == update_item.row_id).first()
+        if not row and update_item.business_key_val:
+            row = get_row_by_business_key(db, table_name, update_item.business_key_val)
+    
+    is_new = False
+    if not row:
+        from sqlalchemy.sql import func
+        row = table_model(
+            row_id=update_item.row_id or str(uuid6.uuid7()),
+            updated_at=func.now()
+        )
+        db.add(row)
+        is_new = True
+        if row_cache is not None:
+            row_cache[row.row_id] = row
+            
+    return row, is_new
+
+def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict):
+    """비즈니스 키가 업데이트 항목에 있거나 기존 행에 존재하면 DYNAMIC 테이블의 business_key_val 필드를 최신화합니다."""
+    if key_col and key_col in update_item.updates:
+        new_bk_val = update_item.updates[key_col]
+        if new_bk_val is not None:
+            str_val = str(new_bk_val).strip()
+            if row.business_key_val != str_val:
+                row.business_key_val = str_val
+                if row_cache is not None:
+                    row_cache[str_val] = row
+    elif key_col and hasattr(row, key_col):
+        existing_val = getattr(row, key_col)
+        new_bk_val = existing_val.get("value") if isinstance(existing_val, dict) else existing_val
+        if new_bk_val is not None:
+            str_val = str(new_bk_val).strip()
+            if row.business_key_val != str_val:
+                row.business_key_val = str_val
+                if row_cache is not None:
+                    row_cache[str_val] = row
+
+def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict) -> tuple[list, Any]:
+    """해당 셀의 CellSource 리스트와 CellOverwrite 객체를 캐시 혹은 DB로부터 획득합니다."""
+    key = (row_id, col_name)
+    
+    # CellSource 로드
+    if sources_cache is not None:
+        col_srcs = sources_cache.get(key, [])
+        if key not in sources_cache:
+            sources_cache[key] = col_srcs
+    else:
+        if is_new:
+            col_srcs = []
+        else:
+            col_srcs = db.query(models.CellSource).filter(
+                models.CellSource.table_name == table_name,
+                models.CellSource.row_id == row_id,
+                models.CellSource.column_name == col_name
+            ).all()
+            if cell_sources_to_upsert is not None:
+                for s in col_srcs:
+                    db.expunge(s)
+            
+    # CellOverwrite 로드
+    if overwrites_cache is not None:
+        ow = overwrites_cache.get(key)
+        if key not in overwrites_cache:
+            overwrites_cache[key] = ow
+    else:
+        if is_new:
+            ow = None
+        else:
+            ow = db.query(models.CellOverwrite).filter(
+                models.CellOverwrite.table_name == table_name,
+                models.CellOverwrite.row_id == row_id,
+                models.CellOverwrite.column_name == col_name
+            ).first()
+            if ow and cell_overwrites_to_upsert is not None:
+                db.expunge(ow)
+            
+    return col_srcs, ow
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
@@ -270,58 +380,13 @@ def apply_row_update_internal(
     if not table_model:
         raise ValueError(f"Table model for '{table_name}' is not initialized.")
 
-    row = None
-    # 1. 캐시 소스에서 먼저 검색 (O(1))
-    if row_cache is not None:
-        if update_item.row_id and update_item.row_id in row_cache:
-            row = row_cache[update_item.row_id]
-        elif update_item.business_key_val and update_item.business_key_val in row_cache:
-            row = row_cache[update_item.business_key_val]
-    else:
-        # 2. 캐시에 없으면 DB 검색 (Fallback) - Only for single row updates
-        if update_item.row_id:
-            row = db.query(table_model).filter(
-                table_model.row_id == update_item.row_id
-            ).first()
-        
-        if not row and update_item.business_key_val:
-            row = get_row_by_business_key(db, table_name, update_item.business_key_val)
-        
-    is_new = False
-    if not row:
-        from sqlalchemy.sql import func
-        row = table_model(
-            row_id=update_item.row_id or str(uuid6.uuid7()),
-            updated_at=func.now()
-        )
-        db.add(row)
-        is_new = True
-        if row_cache is not None:
-            row_cache[row.row_id] = row
-        
+    row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name)
     changed_cols = []
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     
-    # 1. Update business key from the updates FIRST if it's there
-    if key_col and key_col in update_item.updates:
-        new_bk_val = update_item.updates[key_col]
-        if new_bk_val is not None:
-            str_val = str(new_bk_val).strip()
-            if row.business_key_val != str_val:
-                row.business_key_val = str_val
-                if row_cache is not None:
-                    row_cache[str_val] = row
-    # Or from existing data if it's there but not in updates
-    elif key_col and hasattr(row, key_col):
-        existing_val = getattr(row, key_col)
-        new_bk_val = existing_val.get("value") if isinstance(existing_val, dict) else existing_val
-        if new_bk_val is not None:
-            str_val = str(new_bk_val).strip()
-            if row.business_key_val != str_val:
-                row.business_key_val = str_val
-                if row_cache is not None:
-                    row_cache[str_val] = row
+    # Update business key first
+    _update_row_business_key(row, key_col, update_item, row_cache)
 
     # Old values snapshot for auditing
     old_values_snapshot = {}
@@ -337,45 +402,7 @@ def apply_row_update_internal(
             continue
             
         key = (row.row_id, col_name)
-        
-        # 1. cell_sources 로딩
-        if sources_cache is not None:
-            if key in sources_cache:
-                col_srcs = sources_cache[key]
-            else:
-                col_srcs = []
-                sources_cache[key] = col_srcs
-        else:
-            if is_new:
-                col_srcs = []
-            else:
-                col_srcs = db.query(models.CellSource).filter(
-                    models.CellSource.table_name == table_name,
-                    models.CellSource.row_id == row.row_id,
-                    models.CellSource.column_name == col_name
-                ).all()
-                if cell_sources_to_upsert is not None:
-                    for s in col_srcs:
-                        db.expunge(s)
-                
-        # 2. cell_overwrites 로딩
-        if overwrites_cache is not None:
-            if key in overwrites_cache:
-                ow = overwrites_cache[key]
-            else:
-                ow = None
-                overwrites_cache[key] = ow
-        else:
-            if is_new:
-                ow = None
-            else:
-                ow = db.query(models.CellOverwrite).filter(
-                    models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id == row.row_id,
-                    models.CellOverwrite.column_name == col_name
-                ).first()
-                if ow and cell_overwrites_to_upsert is not None:
-                    db.expunge(ow)
+        col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert)
 
         # 3. 소스 데이터 upsert
         col_type = col_types.get(col_name, "string")
@@ -422,9 +449,7 @@ def apply_row_update_internal(
         if update_item.source_name == "user":
             manual_pin = None # 수동 값 입력 시 핀 초기화
             
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin)
-        
-        # 5. 기본 테이블에 최종 값 갱신을 위한 준비
+        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
         old_val = old_values_snapshot.get(col_name)
         
         # 6. cell_overwrites 마킹
@@ -489,7 +514,6 @@ def apply_row_update_internal(
         if has_changed:
             setattr(row, col_name, new_val)
             changed_cols.append(col_name)
-            # [최적화] 사용자 직접 수정 시 상세 오디트 로그 기록
             if update_item.source_name == "user":
                 log_dict = create_audit_log(
                     db, table_name, row.row_id, col_name, old_val, new_val, 
@@ -500,7 +524,6 @@ def apply_row_update_internal(
                 if logs_to_cache is not None:
                     logs_to_cache.append(log_dict)
 
-    # [최적화] 자동 스크립트(custom_script 등)의 경우 행 단위 요약 로그 단 1건만 기록
     if changed_cols and update_item.source_name != "user":
         new_summary_parts = []
         for col in changed_cols:
@@ -542,16 +565,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     """통합 업데이트를 배치로 처리합니다."""
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     
-    from database.context import request_user, request_transaction_id, request_source
-    
     user_val = batch.updates[0].updated_by if batch.updates else "system"
     source_val = batch.updates[0].source_name if batch.updates else "batch"
     
-    token_user = request_user.set(user_val)
-    token_tx = request_transaction_id.set(tx_id)
-    token_src = request_source.set(source_val)
-    
-    try:
+    with transaction_context(user_val, tx_id, source_val):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized.")
@@ -674,10 +691,6 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             
         results = list(unique_results.values())
         return results, total_changed_cells, serialized_logs
-    finally:
-        request_user.reset(token_user)
-        request_transaction_id.reset(token_tx)
-        request_source.reset(token_src)
 
 def create_empty_row(db: Session, table_name: str):
     """신규 빈 행을 하나 생성합니다."""
@@ -687,15 +700,10 @@ def create_empty_row(db: Session, table_name: str):
 def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
     """신규 빈 행을 일괄 생성하고 요약 히스토리를 남깁니다."""
     from sqlalchemy.sql import func
-    from database.context import request_user, request_transaction_id, request_source
     
     tx_id = str(uuid6.uuid7())
     
-    token_user = request_user.set(user_name)
-    token_tx = request_transaction_id.set(tx_id)
-    token_src = request_source.set("batch_create")
-    
-    try:
+    with transaction_context(user_name, tx_id, "batch_create"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized.")
@@ -729,10 +737,6 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
             audit_cache.add_logs_batch(logs_to_cache)
             
         return new_rows
-    finally:
-        request_user.reset(token_user)
-        request_transaction_id.reset(token_tx)
-        request_source.reset(token_src)
 
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
     """단일 행을 삭제합니다 (배치 로직으로 통합)."""
@@ -743,14 +747,9 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     if not row_ids:
         return 0
         
-    from database.context import request_user, request_transaction_id, request_source
     tx_id = str(uuid6.uuid7())
     
-    token_user = request_user.set(user_name)
-    token_tx = request_transaction_id.set(tx_id)
-    token_src = request_source.set("batch_delete")
-    
-    try:
+    with transaction_context(user_name, tx_id, "batch_delete"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized.")
@@ -797,10 +796,6 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             audit_cache.remove_deleted_rows(row_ids)
             
         return deleted_count
-    finally:
-        request_user.reset(token_user)
-        request_transaction_id.reset(token_tx)
-        request_source.reset(token_src)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
     table_model = models.DYNAMIC_TABLES.get(table_name)
@@ -822,19 +817,65 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
     row_map = {r.row_id: r for r in rows}
 
+    # 1. 특정 소스 일괄 삭제 실행 (동일 트랜잭션 내)
+    from sqlalchemy import and_, or_
+    delete_conds = []
     for item in cells:
-        r_id = item["row_id"]
-        col_name = item["column_name"]
-        db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id == r_id,
-            models.CellSource.column_name == col_name,
-            models.CellSource.source_name == source_name
-        ).delete(synchronize_session=False)
+        delete_conds.append(
+            and_(
+                models.CellSource.table_name == table_name,
+                models.CellSource.row_id == item["row_id"],
+                models.CellSource.column_name == item["column_name"],
+                models.CellSource.source_name == source_name
+            )
+        )
+    db.query(models.CellSource).filter(or_(*delete_conds)).delete(synchronize_session=False)
 
+    # 2. 캐시 일괄 생성 (N+1 SELECT 차단)
+    all_sources = db.query(
+        models.CellSource.table_name,
+        models.CellSource.row_id,
+        models.CellSource.column_name,
+        models.CellSource.source_name,
+        models.CellSource.value,
+        models.CellSource.updated_by,
+        models.CellSource.ingested_at
+    ).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id.in_(row_ids)
+    ).all()
+    
+    sources_cache = {}
+    for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+        key = (r_id, col_name)
+        if key not in sources_cache:
+            sources_cache[key] = []
+        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+
+    all_overwrites = db.query(
+        models.CellOverwrite.table_name,
+        models.CellOverwrite.row_id,
+        models.CellOverwrite.column_name,
+        models.CellOverwrite.is_overwrite,
+        models.CellOverwrite.updated_by,
+        models.CellOverwrite.updated_at,
+        models.CellOverwrite.manual_priority_source
+    ).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids)
+    ).all()
+    
+    overwrites_cache = {}
+    for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
+        overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
+
+    # 3. 인메모리 비교 루프 실행
     changed_rows = []
     tx_id = str(uuid6.uuid7())
     logs_to_cache = []
+    
+    cell_overwrites_to_upsert = {}
+    cell_overwrites_to_delete = set()
 
     for item in cells:
         r_id = item["row_id"]
@@ -843,17 +884,9 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         if not row:
             continue
 
-        col_srcs = db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id == r_id,
-            models.CellSource.column_name == col_name
-        ).all()
-
-        ow = db.query(models.CellOverwrite).filter(
-            models.CellOverwrite.table_name == table_name,
-            models.CellOverwrite.row_id == r_id,
-            models.CellOverwrite.column_name == col_name
-        ).first()
+        key = (r_id, col_name)
+        col_srcs = sources_cache.get(key, [])
+        ow = overwrites_cache.get(key)
 
         manual_pin = ow.manual_priority_source if ow else None
         if manual_pin == source_name:
@@ -871,25 +904,28 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         }
 
         old_val = getattr(row, col_name, None)
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin)
+        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
         setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (manual_pin is not None)
+        ow_key = (table_name, r_id, col_name)
         if is_overwrite:
-            if not ow:
-                ow = models.CellOverwrite(
-                    table_name=table_name,
-                    row_id=r_id,
-                    column_name=col_name
-                )
-                db.add(ow)
-            ow.is_overwrite = True
-            ow.updated_by = "system"
-            ow.updated_at = datetime.now()
-            ow.manual_priority_source = manual_pin
+            ow_updated_by = ow.updated_by if ow else "system"
+            ow_updated_at = ow.updated_at if ow else datetime.now()
+            cell_overwrites_to_upsert[ow_key] = {
+                "table_name": table_name,
+                "row_id": r_id,
+                "column_name": col_name,
+                "is_overwrite": True,
+                "updated_by": ow_updated_by,
+                "updated_at": ow_updated_at,
+                "manual_priority_source": manual_pin
+            }
+            cell_overwrites_to_delete.discard(ow_key)
         else:
             if ow:
-                db.delete(ow)
+                cell_overwrites_to_delete.add(ow_key)
+                cell_overwrites_to_upsert.pop(ow_key, None)
 
         if str(old_val) != str(new_val):
             log_dict = create_audit_log(
@@ -902,6 +938,10 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
 
         if row not in changed_rows:
             changed_rows.append(row)
+
+    # 4. 벌크 갱신 및 삭제
+    bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
+    bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
     db.commit()
     
@@ -936,9 +976,51 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
     row_map = {r.row_id: r for r in rows}
 
+    # 1. 인메모리 캐시 일괄 조회 및 적재
+    all_sources = db.query(
+        models.CellSource.table_name,
+        models.CellSource.row_id,
+        models.CellSource.column_name,
+        models.CellSource.source_name,
+        models.CellSource.value,
+        models.CellSource.updated_by,
+        models.CellSource.ingested_at
+    ).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id.in_(row_ids)
+    ).all()
+    
+    sources_cache = {}
+    for t_name, r_id, col_name, src_name, val, upd_by, ing_at in all_sources:
+        key = (r_id, col_name)
+        if key not in sources_cache:
+            sources_cache[key] = []
+        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at))
+
+    all_overwrites = db.query(
+        models.CellOverwrite.table_name,
+        models.CellOverwrite.row_id,
+        models.CellOverwrite.column_name,
+        models.CellOverwrite.is_overwrite,
+        models.CellOverwrite.updated_by,
+        models.CellOverwrite.updated_at,
+        models.CellOverwrite.manual_priority_source
+    ).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids)
+    ).all()
+    
+    overwrites_cache = {}
+    for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
+        overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
+
+    # 2. 인메모리 연산 루프
     changed_rows = []
     tx_id = str(uuid6.uuid7())
     logs_to_cache = []
+    
+    cell_overwrites_to_upsert = {}
+    cell_overwrites_to_delete = set()
     
     for item in updates:
         r_id = item["row_id"]
@@ -947,21 +1029,12 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         if not row:
             continue
 
-        ow = db.query(models.CellOverwrite).filter(
-            models.CellOverwrite.table_name == table_name,
-            models.CellOverwrite.row_id == r_id,
-            models.CellOverwrite.column_name == col_name
-        ).first()
+        key = (r_id, col_name)
+        col_srcs = sources_cache.get(key, [])
+        ow = overwrites_cache.get(key)
 
         current_pin = ow.manual_priority_source if ow else None
-        # [Toggle PIN] 이미 해당 소스로 핀(Pin) 되어 있는 상태에서 다시 동일한 소스를 지정(재클릭)하면 핀 해제(None) 처리합니다.
         effective_source = None if (current_pin == source_name) else source_name
-
-        col_srcs = db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id == r_id,
-            models.CellSource.column_name == col_name
-        ).all()
 
         if effective_source and not any(s.source_name == effective_source for s in col_srcs):
             continue
@@ -976,25 +1049,28 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         }
 
         old_val = getattr(row, col_name, None)
-        new_val, top_src = compute_priority_value(sources_dict, effective_source)
+        new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name)
         setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (effective_source is not None)
+        ow_key = (table_name, r_id, col_name)
         if is_overwrite:
-            if not ow:
-                ow = models.CellOverwrite(
-                    table_name=table_name,
-                    row_id=r_id,
-                    column_name=col_name
-                )
-                db.add(ow)
-            ow.is_overwrite = True
-            ow.updated_by = updated_by or "system"
-            ow.updated_at = datetime.now()
-            ow.manual_priority_source = effective_source
+            ow_updated_by = ow.updated_by if ow else "system"
+            ow_updated_at = ow.updated_at if ow else datetime.now()
+            cell_overwrites_to_upsert[ow_key] = {
+                "table_name": table_name,
+                "row_id": r_id,
+                "column_name": col_name,
+                "is_overwrite": True,
+                "updated_by": updated_by or ow_updated_by,
+                "updated_at": datetime.now(),
+                "manual_priority_source": effective_source
+            }
+            cell_overwrites_to_delete.discard(ow_key)
         else:
             if ow:
-                db.delete(ow)
+                cell_overwrites_to_delete.add(ow_key)
+                cell_overwrites_to_upsert.pop(ow_key, None)
 
         if str(old_val) != str(new_val):
             log_dict = create_audit_log(
@@ -1008,6 +1084,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         if row not in changed_rows:
             changed_rows.append(row)
             
+    # 3. 벌크 갱신 및 삭제 수행
+    bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
+    bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
+
     db.commit()
     
     if logs_to_cache:
