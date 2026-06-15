@@ -23,6 +23,7 @@
   - 웹소켓 수신부(`handleWebSocketMessage`)에 `file_ingestion_progress` 수신 필터를 연동하여 `showIngestionProgress(...)` 헬퍼 함수를 트리거합니다.
   - 동적으로 진행률 카드를 생성하며, 동일 파일에 대해 반복 수신 시 UI 내의 % 텍스트, 진행 바 너비 및 stats 정보를 고속 업데이트합니다.
   - `file_ingestion_completed` 수신 시에는 `finishIngestionProgress(...)` 헬퍼를 통해 진행률을 100%로 갱신하며 연두색(성공) 또는 빨간색(실패) 상태로 카드를 전환한 뒤, 2.5초 후 부드러운 페이드아웃 애니메이션과 함께 카드가 사라지도록 제어했습니다.
+  - **CSS 캐시 및 애니메이션 락 우회 방어 코드(showToast, finishIngestionProgress)**: 브라우저 캐시로 인해 수정된 CSS가 적용되지 않았거나 등장 애니메이션(`forwards`)의 상태 유지로 인해 토스트나 진행 카드가 사라지지 않는 오작동을 근본 차단하기 위해, 자바스크립트 타이머 핸들러 내에서 직접 인라인 스타일(`opacity: 0`, `transform: translateY...`)을 강제 제입하여 100% 부드럽게 스르륵 사라지도록 구현을 견고화했습니다.
 
 ## 빌드 및 검증
 - `client2` 디렉토리 내에서 `npm run build`를 구동하여 Vite 프로덕션 빌드가 에러 없이 깔끔하게 완료됨을 확인하였습니다.

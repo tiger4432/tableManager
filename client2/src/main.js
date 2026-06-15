@@ -3583,13 +3583,18 @@ function showToast(message, type = 'info') {
 
   // Auto remove toast after 5 seconds
   setTimeout(() => {
-    toast.classList.add('hide');
+    // Force inline styles to bypass any browser CSS cache or animation forwards lock
+    toast.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+    toast.style.animation = 'none';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-20px) scale(0.9)';
+    
     setTimeout(() => {
       toast.remove();
       if (container.children.length === 0) {
         container.remove();
       }
-    }, 300);
+    }, 400);
   }, 5000);
 }
 window.showToast = showToast; // Expose globally for Desktop Wrapper
@@ -3660,14 +3665,19 @@ function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
 
   // Auto remove after 2.5s
   setTimeout(() => {
-    card.classList.add('hide');
+    // Force inline styles to bypass any browser CSS cache or animation forwards lock
+    card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+    card.style.animation = 'none';
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px) scale(0.9)';
+    
     setTimeout(() => {
       card.remove();
       const container = document.getElementById('ingestion-progress-container');
       if (container && container.children.length === 0) {
         container.remove();
       }
-    }, 350);
+    }, 400);
   }, 2500);
 }
 
