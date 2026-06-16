@@ -108,6 +108,26 @@ if matrix[idx_src][idx_tgt] == 1:
 
 ---
 
+### 3.4 가능한 모든 경로 탐색 (`find_all_paths`)
+특정 출발 셀(노드 ID 또는 텍스트 값)로부터 유향 그래프의 정방향 엣지를 따라 도달할 수 있는 **모든 가능한 경로(Paths)**들의 리스트를 획득합니다. 루프(Cycle) 감지가 내장되어 무한 탐색을 안전하게 방지합니다.
+
+```python
+# 1. '20' 값 셀에서 시작하는 역추적 경로 탐색 (left_up 유향 그래프 대상)
+paths_20 = parser.find_all_paths("20", nodes, directed_edges, by_value=True)
+print(paths_20)
+# [출력 결과 예시] -> 20에서 도달 가능한 모든 리프 헤더 경로들
+# [['20', 'B', 'A'], ['20', '10', 'A']]
+
+# 2. 'A' 최상위 헤더에서 시작하는 순방향 데이터 탐색 (right_down 유향 그래프 대상)
+nodes, edges_rd = parser.parse_to_directed_graph(html_data, direction_type="right_down")
+paths_A = parser.find_all_paths("A", nodes, edges_rd, by_value=True)
+print(paths_A)
+# [출력 결과 예시] -> A에서 도달 가능한 모든 리프 데이터 셀 경로들
+# [['A', 'B', '20'], ['A', '10', '20']]
+```
+
+---
+
 ## 4. AssyManager Ingestion Pipeline 실전 연동 예시
 
 클라이언트가 붙여넣기(Smart Paste)를 통해 전송한 `.html` 파일을 실시간 감지하여, 파이프라인에서 계층 구조를 플래튼(Flatten)한 후 데이터베이스 동적 테이블 스키마에 맞추어 적재하는 커스텀 파서 플러그인(`server/ingestion_workspace/{table_name}/scripts/`) 구현 샘플입니다.

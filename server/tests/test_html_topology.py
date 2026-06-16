@@ -235,4 +235,46 @@ def test_directed_graph_and_adjacency_matrix():
     # 역방향은 0이어야 함
     assert matrix_rd[idx_B][idx_A] == 0
 
+def test_all_paths_extraction():
+    html = """
+    <table>
+        <tr>
+            <th>A</th>
+            <th>B</th>
+        </tr>
+        <tr>
+            <td>10</td>
+            <td>20</td>
+        </tr>
+    </table>
+    """
+    parser = HTMLTableGraphParser()
+    
+    # 1. left_up (역추적) 방향 엣지 셋
+    nodes, edges_lu = parser.parse_to_directed_graph(html, direction_type="left_up")
+    
+    # '20' 셀에서 시작하는 역추적 경로들
+    # 20 -> B (UP), 20 -> 10 (LEFT)
+    # B -> A (LEFT), 10 -> A (UP)
+    # 20 -> B -> A
+    # 20 -> 10 -> A
+    paths_20 = parser.find_all_paths("20", nodes, edges_lu, by_value=True)
+    
+    assert ["20", "B", "A"] in paths_20
+    assert ["20", "10", "A"] in paths_20
+    assert len(paths_20) == 2
+
+    # 2. right_down (순방향) 엣지 셋
+    nodes, edges_rd = parser.parse_to_directed_graph(html, direction_type="right_down")
+    
+    # 'A' 셀에서 시작하는 순방향 경로들
+    # A -> B -> 20
+    # A -> 10 -> 20
+    paths_A = parser.find_all_paths("A", nodes, edges_rd, by_value=True)
+    
+    assert ["A", "B", "20"] in paths_A
+    assert ["A", "10", "20"] in paths_A
+    assert len(paths_A) == 2
+
+
 

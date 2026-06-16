@@ -401,3 +401,54 @@ class HTMLTableGraphParser:
             "matrix": matrix
         }
 
+    def find_all_paths(self, start_node_id_or_value: str, nodes: List[TableNode], edges: List[TableEdge], by_value: bool = True) -> List[List[str]]:
+        """
+        특정 노드에서 시작하여 정방향 엣지를 따라 도달할 수 있는 모든 유효한 경로들의 리스트를 반환합니다.
+        :param start_node_id_or_value: 출발 노드의 ID 또는 셀 텍스트 값
+        :param by_value: True이면 셀 텍스트 값의 경로 리스트를, False이면 노드 ID의 경로 리스트를 반환
+        """
+        node_map = {n.id: n for n in nodes}
+        
+        # 출발 노드 후보 탐색 (ID 매치 우선, 없으면 텍스트 값 매치)
+        start_nodes = []
+        if start_node_id_or_value in node_map:
+            start_nodes.append(node_map[start_node_id_or_value])
+        else:
+            start_nodes = [n for n in nodes if n.value == start_node_id_or_value]
+            
+        if not start_nodes:
+            return []
+
+        # outgoing adjacency list 구축
+        adj = {n.id: [] for n in nodes}
+        for edge in edges:
+            adj[edge.source].append(edge.target)
+
+        all_paths = []
+
+        def dfs(curr_id, current_path):
+            current_path.append(curr_id)
+            neighbors = adj.get(curr_id, [])
+            
+            # 순환(cycle)을 방지하기 위해 방문하지 않은 이웃만 탐색
+            unvisited_neighbors = [nb for nb in neighbors if nb not in current_path]
+            
+            if not unvisited_neighbors:
+                # 더 이상 나갈 엣지가 없는 리프에 도달 -> 경로 저장
+                if by_value:
+                    all_paths.append([node_map[node_id].value for node_id in current_path])
+                else:
+                    all_paths.append(list(current_path))
+            else:
+                for neighbor in unvisited_neighbors:
+                    dfs(neighbor, current_path)
+            
+            # Backtrack
+            current_path.pop()
+
+        for start_node in start_nodes:
+            dfs(start_node.id, [])
+
+        return all_paths
+
+
