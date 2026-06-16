@@ -3562,17 +3562,70 @@ async function clearSelectedCells() {
 // Feature 2: Smart Paste Parser via Form Upload
 async function smartPasteViaIngestion() {
   try {
-    const clipboardText = await navigator.clipboard.readText();
-    if (!clipboardText.trim()) {
+    let selectedText = '';
+    let selectedType = 'text/plain';
+    let fileExt = 'txt';
+
+    // Check if navigator.clipboard.read is supported (for rich types like HTML)
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read().catch(err => {
+        console.warn('Clipboard read error, falling back to readText()', err);
+        return null;
+      });
+
+      if (items && items.length > 0) {
+        const item = items[0];
+        // Filter readable text-based formats
+        const textTypes = item.types.filter(t => t.startsWith('text/') || t.includes('json') || t.includes('csv'));
+
+        if (textTypes.length === 0) {
+          alert('Clipboard does not contain any readable text format.');
+          return;
+        }
+
+        if (textTypes.length === 1) {
+          selectedType = textTypes[0];
+          const blob = await item.getType(selectedType);
+          selectedText = await blob.text();
+        } else {
+          // Show rich glassmorphic selection modal for multiple formats
+          const chosen = await showClipboardTypeModal(textTypes);
+          if (!chosen) {
+            performanceLog.textContent = 'Smart paste cancelled';
+            return; // Cancelled by user
+          }
+          selectedType = chosen;
+          const blob = await item.getType(selectedType);
+          selectedText = await blob.text();
+        }
+      } else {
+        // Fallback to plain text if read() failed or returned nothing
+        selectedText = await navigator.clipboard.readText();
+        selectedType = 'text/plain';
+      }
+    } else {
+      // Fallback to plain text if navigator.clipboard.read is not supported
+      selectedText = await navigator.clipboard.readText();
+      selectedType = 'text/plain';
+    }
+
+    if (!selectedText.trim()) {
       alert('Clipboard is empty or does not contain text.');
       return;
     }
 
-    performanceLog.textContent = 'Uploading clipboard text for parsing...';
+    // Map mime types to extensions
+    if (selectedType === 'text/html') fileExt = 'html';
+    else if (selectedType === 'text/rtf') fileExt = 'rtf';
+    else if (selectedType === 'application/json' || selectedType === 'text/json') fileExt = 'json';
+    else if (selectedType === 'text/csv') fileExt = 'csv';
+    else fileExt = 'txt';
+
+    performanceLog.textContent = `Uploading ${selectedType} clipboard data for parsing...`;
 
     // Build log file representation via Blob
-    const blob = new Blob([clipboardText], { type: 'text/plain' });
-    const file = new File([blob], `web_smart_paste_${Date.now()}.log`, { type: 'text/plain' });
+    const blob = new Blob([selectedText], { type: selectedType });
+    const file = new File([blob], `web_smart_paste_${Date.now()}.${fileExt}`, { type: selectedType });
 
     const formData = new FormData();
     formData.append('file', file);
@@ -3587,7 +3640,7 @@ async function smartPasteViaIngestion() {
       const savedPath = resData.path || '';
       const savedFilename = savedPath.split(/[/\\]/).pop() || file.name;
       performanceLog.textContent = '📋 Clipboard uploaded to parser. Automatic reload will trigger soon.';
-      showToast(`📋 스마트 붙여넣기 완료! (RAW 파일: ${savedFilename})`, 'success');
+      showToast(`📋 스마트 붙여넣기 완료! (포맷: ${selectedType.split('/')[1].toUpperCase()}, 파일: ${savedFilename})`, 'success');
     } else {
       showToast('❌ 스마트 붙여넣기 전송에 실패했습니다.', 'error');
       throw new Error('Smart paste upload failed');
@@ -3597,6 +3650,172 @@ async function smartPasteViaIngestion() {
     performanceLog.textContent = '❌ Failed to upload smart paste data';
     showToast('❌ 스마트 붙여넣기 중 오류가 발생했습니다.', 'error');
   }
+}
+
+// Glassmorphism selection modal for clipboard data types
+function showClipboardTypeModal(types) {
+  return new Promise((resolve) => {
+    // 1. Create overlay container
+    const overlay = document.createElement('div');
+    overlay.id = 'clipboard-type-modal-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100vw',
+      height: '100vh',
+      backgroundColor: 'rgba(11, 14, 20, 0.7)',
+      backdropFilter: 'blur(12px)',
+      webkitBackdropFilter: 'blur(12px)',
+      zIndex: '9999',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      opacity: '0',
+      transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+    });
+
+    // 2. Map mime-types to user friendly labels & icons
+    const typeConfigs = {
+      'text/plain': { label: 'Plain Text (일반 텍스트)', icon: '📋', color: '#89b4fa' },
+      'text/html': { label: 'HTML Table (엑셀 표 서식 포함)', icon: '🌐', color: '#a6e3a1' },
+      'text/rtf': { label: 'Rich Text Format (RTF 서식)', icon: '📝', color: '#f9e2af' },
+      'text/csv': { label: 'Comma Separated (CSV)', icon: '📊', color: '#f5c2e7' },
+      'application/json': { label: 'JSON Data Object', icon: '⚙️', color: '#cba6f7' }
+    };
+
+    // 3. Create modal container card
+    const card = document.createElement('div');
+    Object.assign(card.style, {
+      background: 'rgba(20, 26, 38, 0.88)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: '16px',
+      padding: '28px',
+      width: '420px',
+      boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '20px',
+      transform: 'scale(0.92)',
+      transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
+    });
+
+    // 4. Modal Header
+    const header = document.createElement('div');
+    header.innerHTML = `
+      <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 600; color: #cdd6f4; margin-bottom: 6px;">📋 Paste Clipboard Type</h3>
+      <p style="font-family: 'Outfit', sans-serif; font-size: 0.85rem; color: #7f849c; line-height: 1.45;">클립보드에 여러 포맷의 데이터가 감지되었습니다.<br>파싱을 위해 전송할 데이터 타입을 선택하세요.</p>
+    `;
+    card.appendChild(header);
+
+    // 5. Buttons Container
+    const btnContainer = document.createElement('div');
+    Object.assign(btnContainer.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px'
+    });
+
+    types.forEach(type => {
+      const cfg = typeConfigs[type] || { label: type, icon: '📄', color: '#cdd6f4' };
+      const btn = document.createElement('button');
+      
+      Object.assign(btn.style, {
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        borderRadius: '10px',
+        padding: '12px 16px',
+        color: '#cdd6f4',
+        fontFamily: "'Outfit', sans-serif",
+        fontSize: '0.92rem',
+        fontWeight: '500',
+        textAlign: 'left',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        transition: 'all 0.15s ease',
+        outline: 'none'
+      });
+
+      btn.innerHTML = `
+        <span style="font-size: 1.25rem; background: rgba(255,255,255,0.02); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">${cfg.icon}</span>
+        <div style="display: flex; flex-direction: column;">
+          <span style="color: ${cfg.color}; font-weight: 600;">${cfg.label.split(' (')[0]}</span>
+          <span style="font-size: 0.72rem; color: #7f849c; margin-top: 1px;">${type}</span>
+        </div>
+      `;
+
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'rgba(255, 255, 255, 0.08)';
+        btn.style.borderColor = cfg.color;
+        btn.style.transform = 'translateX(4px)';
+        btn.style.boxShadow = `0 4px 15px ${cfg.color}15`;
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'rgba(255, 255, 255, 0.03)';
+        btn.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+        btn.style.transform = 'none';
+        btn.style.boxShadow = 'none';
+      });
+
+      btn.addEventListener('click', () => {
+        closeModal(type);
+      });
+
+      btnContainer.appendChild(btn);
+    });
+
+    card.appendChild(btnContainer);
+
+    // 6. Cancel Button
+    const cancelBtn = document.createElement('button');
+    Object.assign(cancelBtn.style, {
+      background: 'transparent',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: '10px',
+      padding: '10px',
+      color: '#7f849c',
+      fontFamily: "'Outfit', sans-serif",
+      fontSize: '0.88rem',
+      fontWeight: '500',
+      cursor: 'pointer',
+      transition: 'all 0.15s ease',
+      outline: 'none'
+    });
+    cancelBtn.textContent = 'Cancel (취소)';
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.background = 'rgba(243, 139, 168, 0.1)';
+      cancelBtn.style.color = '#f38ba8';
+      cancelBtn.style.borderColor = 'rgba(243, 139, 168, 0.2)';
+    });
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.background = 'transparent';
+      cancelBtn.style.color = '#7f849c';
+      cancelBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+    });
+    cancelBtn.addEventListener('click', () => {
+      closeModal(null);
+    });
+    card.appendChild(cancelBtn);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+      overlay.style.opacity = '1';
+      card.style.transform = 'scale(1)';
+    });
+
+    function closeModal(val) {
+      overlay.style.opacity = '0';
+      card.style.transform = 'scale(0.92)';
+      setTimeout(() => {
+        overlay.remove();
+        resolve(val);
+      }, 200);
+    }
+  });
 }
 
 // Premium Toast Notification Helper
