@@ -176,23 +176,25 @@ def test_directed_graph_and_adjacency_matrix():
     </table>
     """
     parser = HTMLTableGraphParser()
-    nodes, edges = parser.parse_to_directed_graph(html)
+
+    # ----------------------------------------------------
+    # 1. 디폴트: left_up 모드 (헤더 역추적용: LEFT & UP)
+    # ----------------------------------------------------
+    nodes, edges_lu = parser.parse_to_directed_graph(html, direction_type="left_up")
     
-    # 엣지 방향이 오직 RIGHT, DOWN만 있어야 함 (LEFT, UP 배제)
-    directions = {e.direction for e in edges}
-    assert "LEFT" not in directions
-    assert "UP" not in directions
-    assert "RIGHT" in directions
-    assert "DOWN" in directions
+    # 엣지 방향이 오직 LEFT, UP만 있어야 함 (RIGHT, DOWN 배제)
+    directions_lu = {e.direction for e in edges_lu}
+    assert "RIGHT" not in directions_lu
+    assert "DOWN" not in directions_lu
+    assert "LEFT" in directions_lu
+    assert "UP" in directions_lu
     
     # 연결 행렬 생성
-    adj_data = parser.generate_adjacency_matrix(nodes, edges)
-    matrix = adj_data["matrix"]
-    node_values = adj_data["node_values"]
+    adj_data_lu = parser.generate_adjacency_matrix(nodes, edges_lu)
+    matrix_lu = adj_data_lu["matrix"]
+    node_values = adj_data_lu["node_values"]
     
-    # 노드 순서: 'A', 'B', '10', '20'
     assert node_values == ["A", "B", "10", "20"]
-    
     node_to_idx = {val: idx for idx, val in enumerate(node_values)}
     
     idx_A = node_to_idx["A"]
@@ -200,15 +202,37 @@ def test_directed_graph_and_adjacency_matrix():
     idx_10 = node_to_idx["10"]
     idx_20 = node_to_idx["20"]
     
-    # 정방향 연결 검증 (A -> B, A -> 10, B -> 20, 10 -> 20)
-    assert matrix[idx_A][idx_B] == 1
-    assert matrix[idx_A][idx_10] == 1
-    assert matrix[idx_B][idx_20] == 1
-    assert matrix[idx_10][idx_20] == 1
+    # 정방향 연결 검증 (B -> A (LEFT), 10 -> A (UP), 20 -> B (UP), 20 -> 10 (LEFT))
+    assert matrix_lu[idx_B][idx_A] == 1   # B -> A
+    assert matrix_lu[idx_10][idx_A] == 1  # 10 -> A
+    assert matrix_lu[idx_20][idx_B] == 1  # 20 -> B
+    assert matrix_lu[idx_20][idx_10] == 1 # 20 -> 10
     
-    # 역방향 연결은 0이어야 함 (B -> A 등)
-    assert matrix[idx_B][idx_A] == 0
-    assert matrix[idx_10][idx_A] == 0
-    assert matrix[idx_20][idx_B] == 0
-    assert matrix[idx_20][idx_10] == 0
+    # 역방향(RIGHT, DOWN 방향)은 0이어야 함
+    assert matrix_lu[idx_A][idx_B] == 0
+    assert matrix_lu[idx_A][idx_10] == 0
+    
+    # ----------------------------------------------------
+    # 2. 선택: right_down 모드 (데이터 탐색용: RIGHT & DOWN)
+    # ----------------------------------------------------
+    _, edges_rd = parser.parse_to_directed_graph(html, direction_type="right_down")
+    
+    directions_rd = {e.direction for e in edges_rd}
+    assert "LEFT" not in directions_rd
+    assert "UP" not in directions_rd
+    assert "RIGHT" in directions_rd
+    assert "DOWN" in directions_rd
+    
+    adj_data_rd = parser.generate_adjacency_matrix(nodes, edges_rd)
+    matrix_rd = adj_data_rd["matrix"]
+    
+    # 정방향 연결 검증 (A -> B (RIGHT), A -> 10 (DOWN), B -> 20 (DOWN), 10 -> 20 (RIGHT))
+    assert matrix_rd[idx_A][idx_B] == 1
+    assert matrix_rd[idx_A][idx_10] == 1
+    assert matrix_rd[idx_B][idx_20] == 1
+    assert matrix_rd[idx_10][idx_20] == 1
+    
+    # 역방향은 0이어야 함
+    assert matrix_rd[idx_B][idx_A] == 0
+
 

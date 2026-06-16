@@ -349,14 +349,24 @@ class HTMLTableGraphParser:
                 unique_ancestors.append(a)
         return unique_ancestors
 
-    def parse_to_directed_graph(self, html_content: str) -> Tuple[List[TableNode], List[TableEdge]]:
+    def parse_to_directed_graph(self, html_content: str, direction_type: str = "left_up") -> Tuple[List[TableNode], List[TableEdge]]:
         """
-        HTML 콘텐츠에서 첫 번째 테이블을 찾아 RIGHT 와 DOWN 을 정방향으로 하는 유향 그래프(노드 및 엣지)를 반환합니다.
+        HTML 콘텐츠에서 첫 번째 테이블을 찾아 유향 그래프(노드 및 엣지)를 반환합니다.
+        :param direction_type: "left_up" (헤더 역추적용, LEFT & UP 엣지를 정방향으로 설정, 디폴트)
+                               "right_down" (데이터 순방향 탐색용, RIGHT & DOWN 엣지를 정방향으로 설정)
         """
         nodes, all_edges = self.parse_to_graph(html_content)
-        # RIGHT 와 DOWN 방향의 엣지만 필터링
-        directed_edges = [e for e in all_edges if e.direction in ("RIGHT", "DOWN")]
+        
+        if direction_type == "left_up":
+            target_directions = ("LEFT", "UP")
+        elif direction_type == "right_down":
+            target_directions = ("RIGHT", "DOWN")
+        else:
+            raise ValueError(f"Invalid direction_type: {direction_type}. Choose 'left_up' or 'right_down'.")
+            
+        directed_edges = [e for e in all_edges if e.direction in target_directions]
         return nodes, directed_edges
+
 
     def generate_adjacency_matrix(self, nodes: List[TableNode], edges: List[TableEdge]) -> Dict[str, Any]:
         """
