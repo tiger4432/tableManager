@@ -113,7 +113,7 @@ if matrix[idx_src][idx_tgt] == 1:
 ---
 
 ### 3.4 가능한 모든 경로 탐색 (`find_all_paths`)
-특정 출발 셀(노드 ID 또는 텍스트 값)로부터 유향 그래프의 정방향 엣지를 따라 도달할 수 있는 **모든 가능한 경로(Paths)**들의 리스트를 획득합니다. 루프(Cycle) 감지가 내장되어 무한 탐색을 안전하게 방지합니다.
+특정 출발 셀(노드 ID 또는 텍스트 값)로부터 유향 그래프의 정방향 엣지를 따라 도달할 수 있는 **모든 가능한 경로(Paths)**들의 리스트를 획득합니다. 루프(Cycle) 감지가 내장되어 무한 탐색을 방지하며, `max_depth` 인자를 통해 탐색할 최대 깊이(경로의 최대 노드 개수)를 제한할 수 있습니다.
 
 ```python
 # 1. '20' 값 셀에서 시작하는 역추적 경로 탐색 (left_up 유향 그래프 대상)
@@ -122,7 +122,13 @@ print(paths_20)
 # [출력 결과 예시] -> 20에서 도달 가능한 모든 리프 헤더 경로들
 # [['20', 'B', 'A'], ['20', '10', 'A']]
 
-# 2. 'A' 최상위 헤더에서 시작하는 순방향 데이터 탐색 (right_down 유향 그래프 대상)
+# 2. max_depth=2를 사용하여 경로의 길이를 제한
+paths_20_limited = parser.find_all_paths("20", nodes, directed_edges, by_value=True, max_depth=2)
+print(paths_20_limited)
+# [출력 결과 예시] -> 최대 2개 노드까지만 포함한 경로
+# [['20', 'B'], ['20', '10']]
+
+# 3. 'A' 최상위 헤더에서 시작하는 순방향 데이터 탐색 (right_down 유향 그래프 대상)
 nodes, edges_rd = parser.parse_to_directed_graph(html_data, direction_type="right_down")
 paths_A = parser.find_all_paths("A", nodes, edges_rd, by_value=True)
 print(paths_A)

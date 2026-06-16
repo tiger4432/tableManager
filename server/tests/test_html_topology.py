@@ -305,6 +305,18 @@ def test_all_paths_extraction():
     assert ["20", "10", "A"] in paths_20
     assert len(paths_20) == 2
 
+    # max_depth = 2 제한인 경우
+    # 20 -> B, 20 -> 10 까지만 탐색되어야 함
+    paths_20_depth_2 = parser.find_all_paths("20", nodes, edges_lu, by_value=True, max_depth=2)
+    assert ["20", "B"] in paths_20_depth_2
+    assert ["20", "10"] in paths_20_depth_2
+    assert len(paths_20_depth_2) == 2
+
+    # max_depth = 1 제한인 경우
+    # 20 자체까지만 탐색되어야 함
+    paths_20_depth_1 = parser.find_all_paths("20", nodes, edges_lu, by_value=True, max_depth=1)
+    assert [["20"]] == paths_20_depth_1
+
     # 2. right_down (순방향) 엣지 셋
     nodes, edges_rd = parser.parse_to_directed_graph(html, direction_type="right_down")
     
@@ -316,6 +328,13 @@ def test_all_paths_extraction():
     assert ["A", "B", "20"] in paths_A
     assert ["A", "10", "20"] in paths_A
     assert len(paths_A) == 2
+
+    # max_depth = 2 제한인 경우
+    # A -> B, A -> 10 까지만 탐색되어야 함
+    paths_A_depth_2 = parser.find_all_paths("A", nodes, edges_rd, by_value=True, max_depth=2)
+    assert ["A", "B"] in paths_A_depth_2
+    assert ["A", "10"] in paths_A_depth_2
+    assert len(paths_A_depth_2) == 2
 
 
 
