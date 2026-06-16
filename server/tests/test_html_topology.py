@@ -337,4 +337,45 @@ def test_all_paths_extraction():
     assert len(paths_A_depth_2) == 2
 
 
+def test_find_all_paths_for_all_nodes():
+    html = """
+    <table>
+        <tr>
+            <th>A</th>
+            <th>B</th>
+        </tr>
+        <tr>
+            <td>10</td>
+            <td>20</td>
+        </tr>
+    </table>
+    """
+    parser = HTMLTableGraphParser()
+    
+    # 1. left_up (역추적) 방향 엣지 셋
+    nodes, edges_lu = parser.parse_to_directed_graph(html, direction_type="left_up")
+    
+    # 모든 셀들에 대해 일괄 경로 탐색 수행 (by_value=True, max_depth=None)
+    all_paths_val = parser.find_all_paths_for_all_nodes(nodes, edges_lu, by_value=True)
+    
+    # A는 최상위 헤더이므로 A에서 시작하는 LEFT/UP 경로는 자기 자신 [['A']]
+    assert [["A"]] == all_paths_val.get("A")
+    # B -> A (LEFT)
+    assert ["B", "A"] in all_paths_val.get("B")
+    # 10 -> A (UP)
+    assert ["10", "A"] in all_paths_val.get("10")
+    # 20 -> B -> A, 20 -> 10 -> A
+    assert ["20", "B", "A"] in all_paths_val.get("20")
+    assert ["20", "10", "A"] in all_paths_val.get("20")
+    
+    # 2. right_down (순방향) 엣지 셋 + max_depth 제한
+    nodes, edges_rd = parser.parse_to_directed_graph(html, direction_type="right_down")
+    all_paths_rd_limited = parser.find_all_paths_for_all_nodes(nodes, edges_rd, by_value=True, max_depth=2)
+    
+    # A에서 시작하는 순방향 경로 (max_depth=2 제한): A -> B, A -> 10
+    assert ["A", "B"] in all_paths_rd_limited.get("A")
+    assert ["A", "10"] in all_paths_rd_limited.get("A")
+    assert len(all_paths_rd_limited.get("A")) == 2
+
+
 

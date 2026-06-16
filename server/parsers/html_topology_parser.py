@@ -487,4 +487,29 @@ class HTMLTableGraphParser:
 
         return all_paths
 
+    def find_all_paths_for_all_nodes(self, nodes: List[TableNode], edges: List[TableEdge], by_value: bool = True, max_depth: Optional[int] = None) -> Dict[str, List[List[str]]]:
+        """
+        테이블 내의 모든 노드 각각에 대해 find_all_paths를 일괄 수행하여 딕셔너리 형태로 반환합니다.
+        :param nodes: 노드 리스트
+        :param edges: 유향 엣지 리스트
+        :param by_value: True이면 셀 텍스트 값을 키 및 경로 요소로 사용, False이면 노드 ID를 사용
+        :param max_depth: 경로 탐색 시 허용되는 최대 노드 깊이 (길이 제한)
+        """
+        results = {}
+        for node in nodes:
+            key = node.value if by_value else node.id
+            
+            # 개별 노드 ID를 시작점으로 지정해 경로 수집
+            paths = self.find_all_paths(node.id, nodes, edges, by_value=by_value, max_depth=max_depth)
+            
+            if key in results:
+                # 동일한 키(by_value=True 시 동일 값 셀 대응)가 있다면 경로 중복 방지하여 누적
+                for p in paths:
+                    if p not in results[key]:
+                        results[key].append(p)
+            else:
+                results[key] = paths
+                
+        return results
+
 

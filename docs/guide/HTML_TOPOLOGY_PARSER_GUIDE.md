@@ -138,6 +138,19 @@ print(paths_A)
 
 ---
 
+### 3.5 테이블 내 모든 셀의 경로 일괄 탐색 (`find_all_paths_for_all_nodes`)
+테이블 상의 모든 셀들 각각에 대해 `find_all_paths`를 수행한 결과를 사전(Dictionary) 구조로 일괄 취득합니다. `find_all_paths`의 모든 인자(`by_value`, `max_depth` 등)를 그대로 상속합니다.
+
+```python
+# 모든 노드 각각에서 출발하는 역추적 경로를 일괄 획득 (left_up 유향 그래프 대상)
+all_paths = parser.find_all_paths_for_all_nodes(nodes, directed_edges, by_value=True, max_depth=None)
+
+for node_val, paths in all_paths.items():
+    print(f"셀 '{node_val}' 출발 경로들: {paths}")
+```
+
+---
+
 ## 4. AssyManager Ingestion Pipeline 실전 연동 예시
 
 클라이언트가 붙여넣기(Smart Paste)를 통해 전송한 `.html` 파일을 실시간 감지하여, 파이프라인에서 계층 구조를 플래튼(Flatten)한 후 데이터베이스 동적 테이블 스키마에 맞추어 적재하는 커스텀 파서 플러그인(`server/ingestion_workspace/{table_name}/scripts/`) 구현 샘플입니다.
