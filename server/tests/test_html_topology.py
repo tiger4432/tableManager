@@ -161,3 +161,54 @@ def test_section_headers_colspan():
     
     assert mappings.get(("[공통지표]", "KPI")) == "85%"
     assert mappings.get(("[공통지표]", "[영업지표]", "매출액")) == "500억"
+
+def test_directed_graph_and_adjacency_matrix():
+    html = """
+    <table>
+        <tr>
+            <th>A</th>
+            <th>B</th>
+        </tr>
+        <tr>
+            <td>10</td>
+            <td>20</td>
+        </tr>
+    </table>
+    """
+    parser = HTMLTableGraphParser()
+    nodes, edges = parser.parse_to_directed_graph(html)
+    
+    # 엣지 방향이 오직 RIGHT, DOWN만 있어야 함 (LEFT, UP 배제)
+    directions = {e.direction for e in edges}
+    assert "LEFT" not in directions
+    assert "UP" not in directions
+    assert "RIGHT" in directions
+    assert "DOWN" in directions
+    
+    # 연결 행렬 생성
+    adj_data = parser.generate_adjacency_matrix(nodes, edges)
+    matrix = adj_data["matrix"]
+    node_values = adj_data["node_values"]
+    
+    # 노드 순서: 'A', 'B', '10', '20'
+    assert node_values == ["A", "B", "10", "20"]
+    
+    node_to_idx = {val: idx for idx, val in enumerate(node_values)}
+    
+    idx_A = node_to_idx["A"]
+    idx_B = node_to_idx["B"]
+    idx_10 = node_to_idx["10"]
+    idx_20 = node_to_idx["20"]
+    
+    # 정방향 연결 검증 (A -> B, A -> 10, B -> 20, 10 -> 20)
+    assert matrix[idx_A][idx_B] == 1
+    assert matrix[idx_A][idx_10] == 1
+    assert matrix[idx_B][idx_20] == 1
+    assert matrix[idx_10][idx_20] == 1
+    
+    # 역방향 연결은 0이어야 함 (B -> A 등)
+    assert matrix[idx_B][idx_A] == 0
+    assert matrix[idx_10][idx_A] == 0
+    assert matrix[idx_20][idx_B] == 0
+    assert matrix[idx_20][idx_10] == 0
+

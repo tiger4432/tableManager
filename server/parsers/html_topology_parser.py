@@ -348,3 +348,46 @@ class HTMLTableGraphParser:
                 seen.add(a.id)
                 unique_ancestors.append(a)
         return unique_ancestors
+
+    def parse_to_directed_graph(self, html_content: str) -> Tuple[List[TableNode], List[TableEdge]]:
+        """
+        HTML 콘텐츠에서 첫 번째 테이블을 찾아 RIGHT 와 DOWN 을 정방향으로 하는 유향 그래프(노드 및 엣지)를 반환합니다.
+        """
+        nodes, all_edges = self.parse_to_graph(html_content)
+        # RIGHT 와 DOWN 방향의 엣지만 필터링
+        directed_edges = [e for e in all_edges if e.direction in ("RIGHT", "DOWN")]
+        return nodes, directed_edges
+
+    def generate_adjacency_matrix(self, nodes: List[TableNode], edges: List[TableEdge]) -> Dict[str, Any]:
+        """
+        노드 리스트와 유향 엣지 리스트를 기반으로 연결 행렬(Adjacency Matrix)을 생성합니다.
+        출력 형식:
+        {
+            "node_ids": [node_id_1, node_id_2, ...],
+            "node_values": [val_1, val_2, ...],
+            "matrix": [[0, 1, ...], ...]
+        }
+        """
+        # 노드 ID 순서로 정렬하여 인덱스 일관성 확보 (row_range[0], col_range[0] 순)
+        sorted_nodes = sorted(nodes, key=lambda n: (n.row_range[0], n.col_range[0]))
+        node_ids = [n.id for n in sorted_nodes]
+        node_values = [n.value for n in sorted_nodes]
+        
+        node_to_idx = {node_id: idx for idx, node_id in enumerate(node_ids)}
+        n = len(sorted_nodes)
+        
+        # Matrix 초기화 (0으로 채워진 N x N)
+        matrix = [[0] * n for _ in range(n)]
+        
+        for edge in edges:
+            if edge.source in node_to_idx and edge.target in node_to_idx:
+                src_idx = node_to_idx[edge.source]
+                tgt_idx = node_to_idx[edge.target]
+                matrix[src_idx][tgt_idx] = 1 # 연결됨 표시
+                
+        return {
+            "node_ids": node_ids,
+            "node_values": node_values,
+            "matrix": matrix
+        }
+
