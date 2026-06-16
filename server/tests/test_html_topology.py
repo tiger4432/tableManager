@@ -32,15 +32,12 @@ def test_standard_table_parsing():
     assert len(edges) > 0
     
     # 의미적 튜플 매핑 검증
-    # A와 100은 인접하며, 100의 UP 엣지를 타고 올라가면 '값' 헤더, LEFT 엣지를 타고 가면 'A'는 td라 헤더가 아님. 
-    # 기본적으로 top_down + left_right 이나, H가 아닌 것들은 매핑되지 않음.
-    # 이 경우 '100' 셀에서 위로 가면 '값'(th, 헤더), 왼쪽으로 가면 'A'(td, 비헤더).
-    # 따라서 100의 키는 ('값',) 이고 값은 '100'이 되며,
-    # '200' 셀에서 위로 가면 '값'(th), 왼쪽으로 가면 'B'(td). 키는 ('값',) 이고 값은 '200'이 됨.
-    # (헤더 판정 함수가 td인 'A', 'B'를 비헤더로 판단하기 때문)
+    # 첫 번째 열(c == 0)인 'A'와 'B'는 숫자가 아닌 문자열이므로 디폴트 Row Header 규칙에 의해 헤더(is_header = True)로 판정됩니다.
+    # 따라서 '100' 셀의 키는 ('A', '값')이 되고, '200' 셀의 키는 ('B', '값')이 됩니다.
     mappings = parser.extract_semantic_tuples(nodes, edges)
     
-    assert mappings.get(("값",)) == "100" or mappings.get(("값",)) == "200"
+    assert mappings.get(("A", "값")) == "100"
+    assert mappings.get(("B", "값")) == "200"
 
 def test_column_spanned_headers():
     # 상단 헤더 병합 케이스
@@ -234,6 +231,50 @@ def test_directed_graph_and_adjacency_matrix():
     
     # 역방향은 0이어야 함
     assert matrix_rd[idx_B][idx_A] == 0
+    assert matrix_rd[idx_20][idx_10] == 0
+
+def test_connector_value_spanned_edge():
+    # 사용자가 제공한 실제 병합 엑셀-HTML 변환 데이터 형태
+    html = """
+    <table border="0" cellpadding="0" cellspacing="0" width="360" style="border-collapse: collapse;width:270pt">
+     <colgroup><col width="72" span="5" style="width:54pt"></colgroup>
+     <tbody>
+      <tr height="22" style="height:16.5pt">
+       <td colspan="5" rowspan="2" height="44" class="xl65" width="360" style="height:33.0pt; width:270pt">afsdfsfds</td>
+      </tr>
+      <tr height="22" style="height:16.5pt"></tr>
+      <tr height="22" style="height:16.5pt">
+       <td colspan="2" rowspan="2" height="44" class="xl65" style="height:33.0pt">Connector</td>
+       <td>lot</td>
+       <td align="right">13</td>
+       <td rowspan="2" class="xl66">359.05</td>
+      </tr>
+      <tr height="22" style="height:16.5pt">
+       <td height="22" style="height:16.5pt">value</td>
+       <td align="right">31</td>
+      </tr>
+     </tbody>
+    </table>
+    """
+    parser = HTMLTableGraphParser()
+    nodes, edges = parser.parse_to_graph(html)
+    
+    # Connector와 value 사이의 엣지 존재 여부 체크
+    val_node = [n for n in nodes if n.value == "value"][0]
+    conn_node = [n for n in nodes if n.value == "Connector"][0]
+    
+    left_edges = [e for e in edges if e.source == val_node.id and e.target == conn_node.id and e.direction == "LEFT"]
+    right_edges = [e for e in edges if e.source == conn_node.id and e.target == val_node.id and e.direction == "RIGHT"]
+    
+    assert len(left_edges) == 1
+    assert len(right_edges) == 1
+
+    # 의미론적 튜플 매핑 결과 검증
+    mappings = parser.extract_semantic_tuples(nodes, edges)
+    
+    assert mappings.get(("afsdfsfds", "Connector", "lot")) == "13"
+    assert mappings.get(("afsdfsfds", "Connector", "value")) == "31"
+
 
 def test_all_paths_extraction():
     html = """

@@ -77,12 +77,12 @@ class HTMLTableGraphParser:
     """
     def __init__(self, is_header_fn=None):
         """
-        :param is_header_fn: BeautifulSoup Tag 객체를 인자로 받아 
+        :param is_header_fn: BeautifulSoup Tag 객체, row_idx, col_idx 를 인자로 받아 
                               해당 셀이 헤더인지 여부(bool)를 리턴하는 커스텀 판정 함수.
         """
         self.is_header_fn = is_header_fn or self._default_is_header
 
-    def _default_is_header(self, tag) -> bool:
+    def _default_is_header(self, tag, r: int = 0, c: int = 0) -> bool:
         """기본 헤더 판별 규칙"""
         if not tag:
             return False
@@ -100,6 +100,32 @@ class HTMLTableGraphParser:
         bold_child = tag.find(["b", "strong"])
         if bold_child and bold_child.text.strip() == tag.text.strip():
             return True
+        
+        # 4. Row Header 자동 지원: 숫자가 아닌 유의미한 텍스트 문자열이면서 마지막 열이 아닌 경우
+        text_val = tag.text.strip()
+        if text_val:
+            try:
+                float(text_val)
+                is_numeric = True
+            except ValueError:
+                is_numeric = False
+            
+            if not is_numeric:
+                table = tag.find_parent("table")
+                if table:
+                    max_cols = 0
+                    for tr in table.find_all("tr", recursive=True):
+                        cols_in_row = 0
+                        for cell in tr.find_all(["td", "th"], recursive=False):
+                            cols_in_row += int(cell.get("colspan", 1))
+                        max_cols = max(max_cols, cols_in_row)
+                    
+                    if max_cols > 1 and c < max_cols - 1:
+                        return True
+                else:
+                    if c == 0:
+                        return True
+                
         return False
 
     def parse_to_graph(self, html_content: str) -> Tuple[List[TableNode], List[TableEdge]]:
@@ -214,6 +240,7 @@ class HTMLTableGraphParser:
         for tr in rows:
             cells = tr.find_all(["td", "th"], recursive=False)
             if not cells:
+                row_idx += 1
                 continue
 
             col_idx = 0
@@ -226,7 +253,7 @@ class HTMLTableGraphParser:
 
                 node_id = f"cell_{row_idx}_{col_idx}_{node_counter}"
                 node_counter += 1
-                is_header = self.is_header_fn(cell)
+                is_header = self.is_header_fn(cell, row_idx, col_idx)
                 
                 node = TableNode(
                     node_id=node_id,
