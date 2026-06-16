@@ -18,3 +18,5 @@ dependencies:
   - pip
   - pip:
     - neo4j
+    - beautifulsoup4
+
