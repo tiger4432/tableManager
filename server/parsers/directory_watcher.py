@@ -416,6 +416,8 @@ class IngestionHandler(FileSystemEventHandler):
         table_info = table_config.get(t_name, {})
         bk_col = table_info.get("business_key", "id")
         defined_cols = table_info.get("display_columns", [])
+        composite_src = table_info.get("composite_key_source")
+        composite_sep = table_info.get("composite_key_separator", "_")
         
         # Determine source_name based on real original filename
         real_source = "batch_ingester"
@@ -446,6 +448,11 @@ class IngestionHandler(FileSystemEventHandler):
                 items = []
                 
                 for row in chunk:
+                    if composite_src and bk_col not in row:
+                        vals = [str(row.get(col)).strip() for col in composite_src if row.get(col) is not None]
+                        if vals:
+                            row[bk_col] = composite_sep.join(vals)
+                            
                     normalized_row = {}
                     bk_val = None
                     

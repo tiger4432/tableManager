@@ -87,7 +87,11 @@ def update_table_config(new_config: dict):
     except Exception as e:
         print(f"[crud] Failed to save table config: {e}")
 
-TABLE_CONFIG = load_table_config()
+import sys
+if not hasattr(sys, "_table_config_singleton"):
+    sys._table_config_singleton = load_table_config()
+TABLE_CONFIG = sys._table_config_singleton
+
 
 def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다."""
