@@ -17,6 +17,7 @@ let gridApi = null;
 let currentTable = '';
 let currentColumns = [];
 let currentColumnTypes = {};
+let currentBusinessKey = null;
 let ws = null;
 let wsReconnectDelay = 1000; // Exponential Backoff initial delay
 let selectedCell = null; // { rowId, colId, value, rowIndex }
@@ -896,6 +897,7 @@ async function loadSchema(tableName) {
     const data = await res.json();
     currentColumns = data.columns || [];
     currentColumnTypes = data.column_types || {};
+    currentBusinessKey = data.business_key || null;
     
     // Fill search columns dropdown
     if (searchCols) {
@@ -1090,7 +1092,7 @@ async function fetchData(resetSkip = true) {
 function buildColumnDefs() {
   // Build Column Definitions dynamically based on schema
   const columnDefs = currentColumns.map((col, index) => {
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col) || col === currentBusinessKey;
     const colTypes = currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
     

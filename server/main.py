@@ -1335,7 +1335,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         if sc not in columns:
             columns.append(sc)
             
-    return {"table_name": table_name, "columns": columns, "column_types": config.get("column_types", {})}
+    return {"table_name": table_name, "columns": columns, "column_types": config.get("column_types", {}), "business_key": config.get("business_key")}
 
 
 @app.get("/tables/{table_name}/{row_id}", response_model=schemas.DataRowResponse)
