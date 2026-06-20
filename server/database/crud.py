@@ -110,6 +110,16 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
             
     return sanitize_to_utf8(value)
 
+def clean_str_value(val: Any) -> str:
+    """값을 깔끔하게 문자열로 변환합니다. float인 경우 소수점 이하가 .0이면 정수로 처리합니다."""
+    if val is None:
+        return ""
+    if isinstance(val, float):
+        if val.is_integer():
+            return str(int(val))
+        return str(val)
+    return str(val).strip()
+
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""
     target_val = str(key_value).strip() if key_value is not None else ""
@@ -283,11 +293,17 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
             row = row_cache[update_item.row_id]
         elif update_item.business_key_val and update_item.business_key_val in row_cache:
             row = row_cache[update_item.business_key_val]
-    else:
+            
+    if not row:
         if update_item.row_id:
             row = db.query(table_model).filter(table_model.row_id == update_item.row_id).first()
         if not row and update_item.business_key_val:
             row = get_row_by_business_key(db, table_name, update_item.business_key_val)
+            
+        if row and row_cache is not None:
+            row_cache[row.row_id] = row
+            if row.business_key_val:
+                row_cache[row.business_key_val] = row
     
     is_new = False
     if not row:
@@ -300,6 +316,8 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
         is_new = True
         if row_cache is not None:
             row_cache[row.row_id] = row
+            if row.business_key_val:
+                row_cache[row.business_key_val] = row
             
     return row, is_new
 
@@ -383,6 +401,21 @@ def apply_row_update_internal(
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
+    config = TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    composite_src = config.get("composite_key_source")
+    composite_sep = config.get("composite_key_separator", "_")
+
+    # 인제션 매칭을 위해 updates 기반 선제 키 조립
+    if not update_item.row_id and not update_item.business_key_val and composite_src and key_col:
+        has_all_srcs = all(col in update_item.updates for col in composite_src)
+        if has_all_srcs:
+            vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
+            if all(v != "" for v in vals):
+                computed_key = composite_sep.join(vals)
+                update_item.business_key_val = computed_key
+                if key_col not in update_item.updates:
+                    update_item.updates[key_col] = computed_key
 
     row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name)
     changed_cols = []
@@ -557,6 +590,48 @@ def apply_row_update_internal(
         )
         if logs_to_cache is not None:
             logs_to_cache.append(log_dict)
+    # 2. 복합 비즈니스 키 실시간 재계산 및 동기화, 유일성 검사
+    if composite_src and key_col:
+        is_src_changed = any(col in changed_cols for col in composite_src)
+        if is_src_changed or is_new:
+            vals = [clean_str_value(getattr(row, col, None)) for col in composite_src]
+            if all(v != "" for v in vals):
+                new_bk_val = composite_sep.join(vals)
+            else:
+                new_bk_val = None
+
+            current_bk = getattr(row, "business_key_val", None)
+            if current_bk != new_bk_val:
+                if new_bk_val is not None:
+                    conflict_row = db.query(table_model).filter(
+                        table_model.business_key_val == new_bk_val,
+                        table_model.row_id != row.row_id
+                    ).first()
+                    if conflict_row:
+                        raise ValueError(f"키 충돌: 수정된 값의 조합으로 생성되는 비즈니스 키 '{new_bk_val}'가 이미 다른 행(ID: {conflict_row.row_id})에 존재합니다.")
+
+                old_bk_col_val = getattr(row, key_col, None)
+                
+                row.business_key_val = new_bk_val
+                if row_cache is not None:
+                    if current_bk in row_cache and row_cache[current_bk] == row:
+                        del row_cache[current_bk]
+                    if new_bk_val is not None:
+                        row_cache[new_bk_val] = row
+
+                setattr(row, key_col, new_bk_val)
+                
+                if old_bk_col_val != new_bk_val:
+                    changed_cols.append(key_col)
+                    if update_item.source_name == "user":
+                        log_dict = create_audit_log(
+                            db, table_name, row.row_id, key_col, old_bk_col_val, new_bk_val, 
+                            update_item.source_name, (update_item.updated_by or "user"), 
+                            transaction_id=transaction_id, business_key=row.business_key_val,
+                            add_to_cache=(logs_to_cache is None)
+                        )
+                        if logs_to_cache is not None:
+                            logs_to_cache.append(log_dict)
 
     if changed_cols or is_new:
         from sqlalchemy.sql import func

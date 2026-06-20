@@ -12,7 +12,7 @@ if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
 from database.database import Base
-from database import models
+from database import models, crud, schemas
 from directory_watcher import IngestionHandler
 
 @pytest.fixture(name="sqlite_db")
@@ -20,7 +20,6 @@ def fixture_sqlite_db():
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
-    # 1. Setup composite key config
     test_table_config = {
         "bonding_map_test": {
             "business_key": "pkg_id",
@@ -37,7 +36,7 @@ def fixture_sqlite_db():
         }
     }
     
-    from database import models, crud
+    # Initialize model registry and table config singleton
     models.init_dynamic_models(test_table_config)
     crud.TABLE_CONFIG.update(test_table_config)
     
@@ -56,18 +55,19 @@ def fixture_sqlite_db():
     db.close()
     Base.metadata.drop_all(bind=engine)
 
-def test_composite_business_key_generation(tmp_path, sqlite_db, monkeypatch):
+def test_composite_business_key_ingestion(tmp_path, sqlite_db, monkeypatch):
+    """
+    테스트 케이스 1: 파일 인제션 시, 파서가 비즈니스 키(pkg_id)를 누락하고 
+    base, x, y만 전달하더라도 CRUD 단에서 선제적으로 조립 및 매칭/업서트를 지원하는지 검증합니다.
+    """
     db, test_table_config = sqlite_db
     
-    # 1. Setup mock workspace
     workspace_root = tmp_path / "workspace_composite"
     workspace_root.mkdir()
-    
     config_dir = workspace_root / "config"
     config_dir.mkdir()
     config_path = config_dir / "config.json"
     
-    # Write same configuration to config.json
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(test_table_config["bonding_map_test"], f)
         
@@ -81,15 +81,17 @@ def test_composite_business_key_generation(tmp_path, sqlite_db, monkeypatch):
         default_table_name="bonding_map_test"
     )
     
-    # 2. Mock parsed rows LACKING the 'pkg_id' business key
-    mock_rows = [
+    # 1차 업서트: pkg_id가 없는 원천 행 전달
+    mock_rows_1 = [
         {"base": "CHIPA", "x": 1, "y": 2, "leg": "LEFT"},
-        {"base": "CHIPB", "x": 5, "y": 10, "leg": "RIGHT"}
+        {"base": "CHIPB", "x": 5.0, "y": 10.0, "leg": "RIGHT"}
     ]
     
-    # Mock table_config.json loading to include bonding_map_test
-    original_json_load = json.load
+    import directory_watcher
+    original_session_local = directory_watcher.SessionLocal
+    directory_watcher.SessionLocal = lambda: db
     
+    original_json_load = json.load
     def mock_json_load(fp, *args, **kwargs):
         if hasattr(fp, 'name') and 'table_config.json' in fp.name:
             fp.seek(0)
@@ -97,38 +99,154 @@ def test_composite_business_key_generation(tmp_path, sqlite_db, monkeypatch):
             data["bonding_map_test"] = test_table_config["bonding_map_test"]
             return data
         return original_json_load(fp, *args, **kwargs)
-        
     monkeypatch.setattr(json, "load", mock_json_load)
     
-    # Run _send_to_upsert under the mock database session
-    # Since _send_to_upsert usually instantiates SessionLocal(), we will monkeypatch it
-    import directory_watcher
-    original_session_local = directory_watcher.SessionLocal
-    directory_watcher.SessionLocal = lambda: db
-    
     try:
-        # Run upsert
-        handler._send_to_upsert(mock_rows, uploader="test_user", filename="test_file.csv")
+        # 1차 적재
+        handler._send_to_upsert(mock_rows_1, uploader="test_user", filename="test_file.csv")
         
-        # 3. Query the dynamic DB table to verify
         dynamic_model = models.DYNAMIC_TABLES["bonding_map_test"]
         records = db.query(dynamic_model).all()
-        
         assert len(records) == 2
         
-        # Verify first row composite key
         row1 = next(r for r in records if r.base == "CHIPA")
+        # pkg_id가 CRUD에서 base_x_y (CHIPA_1_2)로 포맷 및 자동 완성되었는지 확인
         assert row1.pkg_id == "CHIPA_1_2"
-        assert row1.x == 1
-        assert row1.y == 2
-        assert row1.leg == "LEFT"
+        assert row1.business_key_val == "CHIPA_1_2"
         
-        # Verify second row composite key
         row2 = next(r for r in records if r.base == "CHIPB")
+        # Float 형(5.0, 10.0) 소수점 이하 .0이 정수 5, 10으로 깔끔하게 정리되었는지 확인
         assert row2.pkg_id == "CHIPB_5_10"
-        assert row2.x == 5
-        assert row2.y == 10
-        assert row2.leg == "RIGHT"
+        assert row2.business_key_val == "CHIPB_5_10"
+        
+        # 2차 업서트: CHIPA_1_2에 해당하는 값을 일부 수정 (동일 비즈니스 키로 덮어쓰기/업서팅 발생 확인)
+        mock_rows_2 = [
+            {"base": "CHIPA", "x": 1, "y": 2, "leg": "MODIFIED_LEFT"}
+        ]
+        handler._send_to_upsert(mock_rows_2, uploader="test_user2", filename="test_file.csv")
+        
+        db.expire_all()
+        records_after = db.query(dynamic_model).all()
+        assert len(records_after) == 2
+        row1_updated = next(r for r in records_after if r.base == "CHIPA")
+        assert row1_updated.leg == "MODIFIED_LEFT"
         
     finally:
         directory_watcher.SessionLocal = original_session_local
+
+def test_composite_business_key_draft_state(sqlite_db):
+    """
+    테스트 케이스 2: 컬럼의 일부가 비어 있는 '드래프트 행'들은 비즈니스 키 조립이 보류(None)되며,
+    여러 개의 빈 행들이 동시에 존재하더라도 유일성 충돌 없이 자유롭게 생성되는지 검증합니다.
+    """
+    db, test_table_config = sqlite_db
+    
+    # 1. 빈 행 2개 배치 추가 요청 ( updates에 base, x, y 모두 None 또는 비어있음 )
+    batch_updates = schemas.GeneralUpdateBatch(
+        updates=[
+            schemas.GeneralUpdateItem(
+                business_key_val=None,
+                updates={"base": None, "x": None, "y": None, "leg": "DRAFT_1"},
+                source_name="user",
+                updated_by="tester"
+            ),
+            schemas.GeneralUpdateItem(
+                business_key_val=None,
+                updates={"base": None, "x": None, "y": None, "leg": "DRAFT_2"},
+                source_name="user",
+                updated_by="tester"
+            )
+        ]
+    )
+    
+    # execute batch updates (에러 없이 2개 행이 등록되어야 함)
+    results, changed_cells, logs = crud.apply_batch_updates(db, "bonding_map_test", batch_updates)
+    
+    dynamic_model = models.DYNAMIC_TABLES["bonding_map_test"]
+    records = db.query(dynamic_model).all()
+    assert len(records) == 2
+    
+    # 둘 다 business_key_val 및 pkg_id가 None 상태인지 확인
+    for r in records:
+        assert r.business_key_val is None
+        assert r.pkg_id is None
+
+def test_composite_business_key_collision_prevention(sqlite_db):
+    """
+    테스트 케이스 3: 편집을 통해 원천 구성 컬럼(base, x, y)이 완비되는 순간 비즈니스 키가 
+    자동으로 재조립되고, 만약 타 행과 겹칠 경우 예외를 내며 수정을 차단(롤백)하는지 검증합니다.
+    """
+    db, test_table_config = sqlite_db
+    dynamic_model = models.DYNAMIC_TABLES["bonding_map_test"]
+    
+    # 1. 기존에 완성된 키를 가진 행 하나 생성 (CHIPA_1_2)
+    row_exist = dynamic_model(
+        row_id="exist-row-uuid",
+        business_key_val="CHIPA_1_2",
+        pkg_id="CHIPA_1_2",
+        base="CHIPA",
+        x=1,
+        y=2,
+        leg="LEFT"
+    )
+    db.add(row_exist)
+    
+    # 2. 미완성 드래프트 상태의 행 생성
+    row_draft = dynamic_model(
+        row_id="draft-row-uuid",
+        business_key_val=None,
+        pkg_id=None,
+        base="CHIPA",
+        x=None,
+        y=None,
+        leg="DRAFT"
+    )
+    db.add(row_draft)
+    db.commit()
+    
+    # 3. 드래프트 행의 x, y 값을 기입해 'CHIPA_1_2' 키를 완성하려고 시도 (충돌 발생 시나리오)
+    batch_conflict = schemas.GeneralUpdateBatch(
+        updates=[
+            schemas.GeneralUpdateItem(
+                row_id="draft-row-uuid",
+                updates={"x": 1, "y": 2},
+                source_name="user",
+                updated_by="tester"
+            )
+        ]
+    )
+    
+    # 유일성 충돌 예외 발생 확인
+    with pytest.raises(ValueError) as excinfo:
+        crud.apply_batch_updates(db, "bonding_map_test", batch_conflict)
+        
+    assert "키 충돌" in str(excinfo.value)
+    
+    # 롤백 후 draft-row-uuid의 x, y가 실제로 업데이트되지 않고 그대로 None 인지 확인
+    db.rollback()
+    row_draft_check = db.query(dynamic_model).filter(dynamic_model.row_id == "draft-row-uuid").first()
+    assert row_draft_check.x is None
+    assert row_draft_check.y is None
+    assert row_draft_check.business_key_val is None
+    
+    # 4. 다른 안 겹치는 조합(CHIPA_5_5)으로 수정 시도 시 성공적으로 완성 및 동기화되는지 검증
+    batch_success = schemas.GeneralUpdateBatch(
+        updates=[
+            schemas.GeneralUpdateItem(
+                row_id="draft-row-uuid",
+                updates={"x": 5, "y": 5},
+                source_name="user",
+                updated_by="tester"
+            )
+        ]
+    )
+    
+    crud.apply_batch_updates(db, "bonding_map_test", batch_success)
+    
+    db.expire_all()
+    row_draft_updated = db.query(dynamic_model).filter(dynamic_model.row_id == "draft-row-uuid").first()
+    assert row_draft_updated.x == 5
+    assert row_draft_updated.y == 5
+    # 비즈니스 키 컬럼(pkg_id)과 business_key_val 필드가 CHIPA_5_5로 동기화 완료되었는지 확인
+    assert row_draft_updated.pkg_id == "CHIPA_5_5"
+    assert row_draft_updated.business_key_val == "CHIPA_5_5"
