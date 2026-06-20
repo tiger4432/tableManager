@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: assy_manager
+Version: 0.1.0
+Summary: Assembly and Table Manager Ingestion Suite
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: beautifulsoup4
+Requires-Dist: watchdog

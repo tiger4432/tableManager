@@ -303,18 +303,29 @@ def inject_system_columns(row):
     if not table_name and hasattr(row, "__table__"):
         table_name = row.__table__.name
         
-    # 2. data 속성 동적 바인딩 (물리 테이블 지원용)
+    cfg = crud.TABLE_CONFIG.get(table_name, {}) if table_name else {}
+    col_types = cfg.get("column_types", {})
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+
+    # 2. data 속성 동적 바인딩 및 기존 바인딩 시 정합성 동기화
     if not hasattr(row, "data") or row.data is None:
-        cfg = crud.TABLE_CONFIG.get(table_name, {}) if table_name else {}
-        col_types = cfg.get("column_types", {})
-        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-        
         r_data = {}
         for col in user_cols:
             val = getattr(row, col, None)
             # [정규화 스키마] native 값을 레거시 API 포맷으로 래핑
             r_data[col] = {"value": val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         row.data = r_data
+    else:
+        # [정합성 보장] row.data가 이미 있어도 DB 객체의 최신 속성값과 동기화 (비즈니스키 변경 등 반영)
+        for col in user_cols:
+            val = getattr(row, col, None)
+            if col in row.data:
+                if isinstance(row.data[col], dict):
+                    row.data[col]["value"] = val
+                else:
+                    row.data[col] = {"value": val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+            else:
+                row.data[col] = {"value": val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         
     # 3. created_at 주입
     if "created_at" not in row.data:
@@ -335,6 +346,7 @@ def inject_system_columns(row):
     else:
         # 데이터가 이미 있더라도 DB의 실제 값이 더 최신이므로 동기화
         row.data["updated_at"]["value"] = to_local_str(effective_update)
+
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
     """

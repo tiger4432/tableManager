@@ -1408,6 +1408,14 @@ function renderGrid(initialRows) {
   
   gridApi = createGrid(gridDiv, gridOptions);
 
+  // Monkey patch applyTransaction for deep callstack tracing to catch race conditions and rollbacks
+  const originalApplyTx = gridApi.applyTransaction.bind(gridApi);
+  gridApi.applyTransaction = (tx) => {
+    console.log('[Debug applyTransaction] Called with tx:', tx);
+    console.trace('[Debug applyTransaction] Call stack trace:');
+    return originalApplyTx(tx);
+  };
+
   // Cache column ID to index map to avoid getColumns().map() during cell rendering (O(1) lookup)
   colIdToIndexMap = {};
   gridApi.getColumns().forEach((c, idx) => {
@@ -1457,11 +1465,15 @@ async function handleCellEdit(event) {
       if (isNaN(parsedVal)) {
         alert(`컬럼 '${colId}'의 값 '${newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
         // Rollback grid value & overwrite status
-        if (!data.data) data.data = {};
-        if (!data.data[colId]) data.data[colId] = {};
-        data.data[colId].value = oldValue;
-        data.data[colId].is_overwrite = oldIsOverwrite;
-        gridApi.applyTransaction({ update: [data] });
+        const latestNode = gridApi.getRowNode(rowId);
+        const latestData = latestNode ? latestNode.data : data;
+        if (latestData) {
+          if (!latestData.data) latestData.data = {};
+          if (!latestData.data[colId]) latestData.data[colId] = {};
+          latestData.data[colId].value = oldValue;
+          latestData.data[colId].is_overwrite = oldIsOverwrite;
+        }
+        gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
         performanceLog.textContent = '❌ Invalid number format';
         return;
       }
@@ -1485,15 +1497,16 @@ async function handleCellEdit(event) {
       pendingTxEdits[key].newValue = finalValue;
     }
 
-    if (!data.data) data.data = {};
-    if (!data.data[colId]) data.data[colId] = {};
-    data.data[colId].value = finalValue;
-    
-    // Trigger local update and refresh (do not update updated_at to prevent sort key changes)
-    gridApi.applyTransaction({ update: [data] });
+    const latestNode = gridApi.getRowNode(rowId);
+    const latestData = latestNode ? latestNode.data : data;
+    if (latestData) {
+      if (!latestData.data) latestData.data = {};
+      if (!latestData.data[colId]) latestData.data[colId] = {};
+      latestData.data[colId].value = finalValue;
+    }
     
     updateTxModeUI();
-    gridApi.refreshCells({ force: true });
+    gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
     return;
   }
 
@@ -1530,18 +1543,26 @@ async function handleCellEdit(event) {
       const saveTime = (performance.now() - editStartTime).toFixed(1);
       performanceLog.textContent = `Saved in ${saveTime}ms (${result.change_count} cell updated)`;
 
-      // Update cell is_overwrite status in local row data structure to trigger CSS highlight
-      if (!data.data) data.data = {};
-      if (!data.data[colId]) data.data[colId] = {};
+      // Safeguard against race conditions: Instead of applyTransaction (which resets all columns of the row to the passed reference),
+      // we only modify the edited cell's properties in the latest data object and trigger refreshCells for that specific column.
+      const latestNode = gridApi.getRowNode(rowId);
+      const latestData = latestNode ? latestNode.data : data;
 
-      data.data[colId].value = finalValue;
-      data.data[colId].is_overwrite = true;
+      if (!latestData.data) latestData.data = {};
+      if (!latestData.data[colId]) latestData.data[colId] = {};
+
+      latestData.data[colId].value = finalValue;
+      latestData.data[colId].is_overwrite = true;
       
       // Update updated_at timestamp locally to trigger sort update
-      data.updated_at = getLocalTimeString();
+      latestData.updated_at = getLocalTimeString();
 
-      // Re-apply row transaction locally to trigger cellClassRules refresh
-      gridApi.applyTransaction({ update: [data] });
+      // Only refresh the edited cell and updated_at to prevent overwriting other cells (like business keys) before/after WebSocket sync.
+      gridApi.refreshCells({
+        rowNodes: [latestNode].filter(Boolean),
+        columns: [colId, 'updated_at'],
+        force: true
+      });
 
       // Refresh current focused cell UI if active
       if (selectedCell && selectedCell.rowId === rowId && selectedCell.colId === colId) {
@@ -1561,11 +1582,15 @@ async function handleCellEdit(event) {
     performanceLog.textContent = '❌ Edit failed to save';
 
     // Rollback grid value & overwrite status
-    if (!data.data) data.data = {};
-    if (!data.data[colId]) data.data[colId] = {};
-    data.data[colId].value = oldValue;
-    data.data[colId].is_overwrite = oldIsOverwrite;
-    gridApi.applyTransaction({ update: [data] });
+    const latestNode = gridApi.getRowNode(rowId);
+    const latestData = latestNode ? latestNode.data : data;
+    if (latestData) {
+      if (!latestData.data) latestData.data = {};
+      if (!latestData.data[colId]) latestData.data[colId] = {};
+      latestData.data[colId].value = oldValue;
+      latestData.data[colId].is_overwrite = oldIsOverwrite;
+    }
+    gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
   }
 }
 
@@ -1702,6 +1727,7 @@ function handleWebSocketMessage(msg) {
     }
   } else if (event === 'batch_row_upsert') {
     const items = msg.items || [];
+    console.log('[WebSocket Sync] batch_row_upsert items received:', items);
     updatePageCacheOnUpsert(items);
     const updatedRows = [];
     const addedRows = [];
@@ -1711,6 +1737,7 @@ function handleWebSocketMessage(msg) {
       const rowNode = gridApi.getRowNode(rowId);
 
       if (rowNode) {
+        console.log(`[WebSocket Sync] Merging row ${rowId}. Old data pkg_id:`, rowNode.data?.data?.pkg_id?.value, 'New item data pkg_id:', item.data?.pkg_id?.value);
         // Row exists in client cache -> MERGE logic
         const oldRowData = rowNode.data;
         const newRowData = {
@@ -1750,6 +1777,11 @@ function handleWebSocketMessage(msg) {
         update: updatedRows,
         add: addedRows
       });
+      console.log('[WebSocket Sync] applyTransaction output result:', {
+        updatedCount: res.update?.length || 0,
+        addedCount: res.add?.length || 0,
+        failedCount: res.remove?.length || 0
+      });
 
       // Trigger AG-Grid visual cell flashing micro-animation
       const allTargetRows = [...updatedRows, ...addedRows];
@@ -1764,7 +1796,11 @@ function handleWebSocketMessage(msg) {
         });
       }
 
-      // Update totals and force cell re-render
+      // [강력한 화면 동기화] refreshCells 뿐만 아니라 redrawRows를 추가로 호출하여
+      // AG-Grid가 강제 캐시 우회하고 완전히 해당 행들을 처음부터 다시 그리도록 지시
+      if (flashNodes.length > 0) {
+        gridApi.redrawRows({ rowNodes: flashNodes });
+      }
       gridApi.refreshCells({ force: true });
       updateGridSortState();
       updateLoadedCount();
@@ -2571,10 +2607,9 @@ function setupClipboardHandlers() {
             updated_by: CURRENT_USER
           });
 
-          // Prepare local cache structure updates
+          // Stage edits in pendingTxEdits if Tx Mode is active, and update local grid row node data in-place
           const oldRowData = rowNode.data;
           if (txModeActive) {
-            // Stage edits in pendingTxEdits
             Object.keys(rowUpdates).forEach(col => {
               const key = `${rowId}_${col}`;
               if (!pendingTxEdits[key]) {
@@ -2591,36 +2626,22 @@ function setupClipboardHandlers() {
               } else {
                 pendingTxEdits[key].newValue = rowUpdates[col];
               }
-            });
 
-            const newRowData = {
-              ...oldRowData,
-              data: { ...oldRowData.data }
-            };
-            Object.keys(rowUpdates).forEach(col => {
-              if (!newRowData.data[col]) newRowData.data[col] = {};
-              newRowData.data[col].value = rowUpdates[col];
+              // Update in-place on latest row data
+              const latestNode = gridApi.getRowNode(rowId);
+              const latestData = latestNode ? latestNode.data : oldRowData;
+              if (latestData) {
+                if (!latestData.data) latestData.data = {};
+                if (!latestData.data[col]) latestData.data[col] = {};
+                latestData.data[col].value = rowUpdates[col];
+              }
             });
-            localUpdates.push(newRowData);
-          } else {
-            const newRowData = {
-              ...oldRowData,
-              data: { ...oldRowData.data },
-              updated_at: getLocalTimeString()
-            };
-            Object.keys(rowUpdates).forEach(col => {
-              if (!newRowData.data[col]) newRowData.data[col] = {};
-              newRowData.data[col].value = rowUpdates[col];
-              newRowData.data[col].is_overwrite = true;
-            });
-            localUpdates.push(newRowData);
           }
         }
       });
 
       if (txModeActive) {
-        if (localUpdates.length > 0) {
-          gridApi.applyTransaction({ update: localUpdates });
+        if (batchUpdates.length > 0) {
           updateTxModeUI();
           gridApi.refreshCells({ force: true });
           performanceLog.textContent = `Staged clipboard paste: ${Object.keys(pendingTxEdits).length} total pending edits`;
@@ -2640,11 +2661,26 @@ function setupClipboardHandlers() {
           const result = await res.json();
           performanceLog.textContent = `Pasted successfully: ${batchUpdates.length} rows updated`;
           
-          // Fast-apply local data values
-          gridApi.applyTransaction({ update: localUpdates });
+          // Fast-apply local data values by updating latest node data in-place
+          batchUpdates.forEach(update => {
+            const rowNode = gridApi.getRowNode(update.row_id);
+            if (rowNode) {
+              const latestData = rowNode.data;
+              if (latestData) {
+                if (!latestData.data) latestData.data = {};
+                Object.keys(update.updates).forEach(col => {
+                  if (!latestData.data[col]) latestData.data[col] = {};
+                  latestData.data[col].value = update.updates[col];
+                  latestData.data[col].is_overwrite = true;
+                });
+                latestData.updated_at = getLocalTimeString();
+              }
+            }
+          });
           
           // Force sort update to push modified rows to the top
           updateGridSortState();
+          gridApi.refreshCells({ force: true });
 
           // Sync selected cell UI if inside pasted range
           if (selectedCell) {
@@ -3438,7 +3474,6 @@ async function clearSelectedCells() {
   });
 
   const updatesArray = [];
-  const rowsToUpdate = [];
 
   Object.keys(updateMapByRow).forEach(rowId => {
     const item = updateMapByRow[rowId];
@@ -3461,18 +3496,16 @@ async function clearSelectedCells() {
           } else {
             pendingTxEdits[key].newValue = item.updates[colId];
           }
-        });
 
-        // Local updates without changing updated_at
-        const data = {
-          ...item.rowNode.data,
-          data: { ...item.rowNode.data.data }
-        };
-        Object.keys(item.updates).forEach(colId => {
-          if (!data.data[colId]) data.data[colId] = {};
-          data.data[colId].value = item.updates[colId];
+          // Update in-place on latest row data
+          const latestNode = gridApi.getRowNode(rowId);
+          const latestData = latestNode ? latestNode.data : item.rowNode.data;
+          if (latestData) {
+            if (!latestData.data) latestData.data = {};
+            if (!latestData.data[colId]) latestData.data[colId] = {};
+            latestData.data[colId].value = item.updates[colId];
+          }
         });
-        rowsToUpdate.push(data);
       } else {
         updatesArray.push({
           row_id: rowId,
@@ -3480,27 +3513,12 @@ async function clearSelectedCells() {
           source_name: 'user',
           updated_by: CURRENT_USER
         });
-
-        const data = {
-          ...item.rowNode.data,
-          data: { ...item.rowNode.data.data }
-        };
-        Object.keys(item.updates).forEach(colId => {
-          if (!data.data[colId]) data.data[colId] = {};
-          data.data[colId].value = item.updates[colId];
-          data.data[colId].is_overwrite = true;
-        });
-
-        data.updated_at = getLocalTimeString();
-        rowsToUpdate.push(data);
       }
     }
   });
 
   if (txModeActive) {
-    if (rowsToUpdate.length > 0) {
-      gridApi.applyTransaction({ update: rowsToUpdate });
-      
+    if (Object.keys(updateMapByRow).length > 0) {
       if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
         selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
         updateSelectedCellUI();
@@ -3537,8 +3555,22 @@ async function clearSelectedCells() {
       const saveTime = (performance.now() - startTime).toFixed(1);
       performanceLog.textContent = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
 
-      // Apply grid local updates
-      gridApi.applyTransaction({ update: rowsToUpdate });
+      // Apply grid local updates on the latest nodes directly
+      updatesArray.forEach(item => {
+        const rowNode = gridApi.getRowNode(item.row_id);
+        if (rowNode) {
+          const latestData = rowNode.data;
+          if (latestData) {
+            if (!latestData.data) latestData.data = {};
+            Object.keys(item.updates).forEach(colId => {
+              if (!latestData.data[colId]) latestData.data[colId] = {};
+              latestData.data[colId].value = item.updates[colId];
+              latestData.data[colId].is_overwrite = true;
+            });
+            latestData.updated_at = getLocalTimeString();
+          }
+        }
+      });
       
       if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
         selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
@@ -4084,15 +4116,18 @@ async function applyPendingTxEdits() {
       const result = await res.json();
       const saveTime = (performance.now() - applyStartTime).toFixed(1);
       
-      // Update cell is_overwrite status locally
+      // Update cell is_overwrite status locally on the latest nodes directly
       Object.values(pendingTxEdits).forEach(edit => {
-        const { data, colId, newValue } = edit;
-        if (!data.data) data.data = {};
-        if (!data.data[colId]) data.data[colId] = {};
-        data.data[colId].value = newValue;
-        data.data[colId].is_overwrite = true;
-        data.updated_at = getLocalTimeString();
-        gridApi.applyTransaction({ update: [data] });
+        const { rowId, colId, newValue, data } = edit;
+        const latestNode = gridApi.getRowNode(rowId);
+        const latestData = latestNode ? latestNode.data : data;
+        if (latestData) {
+          if (!latestData.data) latestData.data = {};
+          if (!latestData.data[colId]) latestData.data[colId] = {};
+          latestData.data[colId].value = newValue;
+          latestData.data[colId].is_overwrite = true;
+          latestData.updated_at = getLocalTimeString();
+        }
       });
 
       pendingTxEdits = {};
@@ -4119,12 +4154,15 @@ function discardPendingTxEdits() {
   if (pendingCount === 0) return;
 
   Object.values(pendingTxEdits).forEach(edit => {
-    const { data, colId, oldValue, oldIsOverwrite } = edit;
-    if (!data.data) data.data = {};
-    if (!data.data[colId]) data.data[colId] = {};
-    data.data[colId].value = oldValue;
-    data.data[colId].is_overwrite = oldIsOverwrite;
-    gridApi.applyTransaction({ update: [data] });
+    const { rowId, colId, oldValue, oldIsOverwrite, data } = edit;
+    const latestNode = gridApi.getRowNode(rowId);
+    const latestData = latestNode ? latestNode.data : data;
+    if (latestData) {
+      if (!latestData.data) latestData.data = {};
+      if (!latestData.data[colId]) latestData.data[colId] = {};
+      latestData.data[colId].value = oldValue;
+      latestData.data[colId].is_overwrite = oldIsOverwrite;
+    }
   });
 
   pendingTxEdits = {};
@@ -4137,3 +4175,5 @@ function discardPendingTxEdits() {
 
 // Start Application
 init();
+console.log('AssyManager Client Bundle Loaded. Version Hash Buster: 019ee29f-b2fb-727e');
+
