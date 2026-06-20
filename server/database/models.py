@@ -126,7 +126,10 @@ class CellSource(Base):
     )
 
 
-DYNAMIC_TABLES = {}
+import sys
+if not hasattr(sys, "_dynamic_tables_singleton"):
+    sys._dynamic_tables_singleton = {}
+DYNAMIC_TABLES = sys._dynamic_tables_singleton
 
 from sqlalchemy.orm import registry
 mapper_registry = registry()
