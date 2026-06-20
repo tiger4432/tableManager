@@ -378,7 +378,7 @@ def apply_row_update_internal(
     
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
-        raise ValueError(f"Table model for '{table_name}' is not initialized.")
+        raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
 
     row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name)
     changed_cols = []
@@ -571,7 +571,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     with transaction_context(user_val, tx_id, source_val):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
-            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
             
         target_ids = [u.row_id for u in batch.updates if u.row_id]
         target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
@@ -706,7 +706,7 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
     with transaction_context(user_name, tx_id, "batch_create"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
-            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
             
         new_rows = []
         for _ in range(count):
@@ -752,7 +752,7 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
     with transaction_context(user_name, tx_id, "batch_delete"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
-            raise ValueError(f"Table model for '{table_name}' is not initialized.")
+            raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
             
         # 삭제하기 전 row_id와 business_key_val을 먼저 조회
         rows_to_delete = db.query(table_model).filter(
