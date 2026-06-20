@@ -17,7 +17,8 @@ let gridApi = null;
 let currentTable = '';
 let currentColumns = [];
 let currentColumnTypes = {};
-let currentBusinessKey = null;
+let currentBusinessKey = '';          // 비즈니스 키 컬럼명 (예: 'pkg_id')
+let currentCompositeKeySources = [];  // 조합 소스 컬럼 목록 (예: ['base', 'x', 'y'])
 let ws = null;
 let wsReconnectDelay = 1000; // Exponential Backoff initial delay
 let selectedCell = null; // { rowId, colId, value, rowIndex }
@@ -897,7 +898,8 @@ async function loadSchema(tableName) {
     const data = await res.json();
     currentColumns = data.columns || [];
     currentColumnTypes = data.column_types || {};
-    currentBusinessKey = data.business_key || null;
+    currentBusinessKey = data.business_key || '';
+    currentCompositeKeySources = data.composite_key_source || [];
     
     // Fill search columns dropdown
     if (searchCols) {
@@ -1092,12 +1094,20 @@ async function fetchData(resetSkip = true) {
 function buildColumnDefs() {
   // Build Column Definitions dynamically based on schema
   const columnDefs = currentColumns.map((col, index) => {
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col) || col === currentBusinessKey;
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
     const colTypes = currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
     
+    // 헤더명에 비즈니스 키 / 조합 소스 컬럼 아이콘 표시
+    let headerLabel = col.toUpperCase();
+    if (col === currentBusinessKey) {
+      headerLabel = `🔑 ${headerLabel}`;
+    } else if (currentCompositeKeySources.includes(col)) {
+      headerLabel = `✦ ${headerLabel}`;
+    }
+
     const colDef = {
-      headerName: col.toUpperCase(),
+      headerName: headerLabel,
       field: col,
       editable: !isSystem,
       sortable: true,
