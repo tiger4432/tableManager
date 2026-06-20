@@ -513,3 +513,126 @@ class HTMLTableGraphParser:
         return results
 
 
+class HTMLMatrixTableParser:
+    """
+    HTML 2D 매트릭스 테이블(X축/Y축 인덱스가 있고 상단에 계층 메타데이터가 있는 격자형 표)을
+    평탄화된 관계형 데이터 레코드 목록으로 파싱하는 클래스입니다.
+    """
+    def __init__(self, is_header_fn=None):
+        self.graph_parser = HTMLTableGraphParser(is_header_fn=is_header_fn)
+
+    def parse_matrix_to_records(self, html_content: str) -> List[Dict[str, Any]]:
+        soup = BeautifulSoup(html_content, "html.parser")
+        table_tag = soup.find("table")
+        if not table_tag:
+            return []
+
+        # 1. 2D 가상 그리드 구성
+        grid, row_count, col_count = self.graph_parser._reconstruct_2d_grid(table_tag)
+        if not grid:
+            return []
+
+        # 2. 인접 그래프 구성 및 매핑 사전 획득
+        nodes, edges = self.graph_parser._build_adjacency_graph(grid, row_count, col_count)
+        
+        node_map = {n.id: n for n in nodes}
+        in_edges = {n.id: [] for n in nodes}
+        out_edges = {n.id: [] for n in nodes}
+        for edge in edges:
+            out_edges[edge.source].append(edge)
+            in_edges[edge.target].append(edge)
+
+        # 3. 최상단 섹션 헤더(TITLE) 추출 (colspan이 가로폭의 70% 이상인 최상위 헤더)
+        title = "Default"
+        section_headers = []
+        for other in nodes:
+            is_wide = other.col_span >= int(col_count * 0.7)
+            if other.is_header and other.col_span > 1 and is_wide:
+                section_headers.append(other)
+        if section_headers:
+            section_headers.sort(key=lambda n: n.row_range[0])
+            title = section_headers[0].value
+
+        # 4. Y축 눈금 및 X축 눈금 노드 검출 (정수형 라벨)
+        y_axis_nodes = []
+        for node in nodes:
+            if node.col_range[0] == 0 and node.value:
+                try:
+                    int(node.value)
+                    y_axis_nodes.append(node)
+                except ValueError:
+                    pass
+        
+        x_axis_nodes = []
+        if y_axis_nodes:
+            min_y_row = min(n.row_range[0] for n in y_axis_nodes)
+            x_row_idx = min_y_row - 1
+            for node in nodes:
+                if node.row_range[0] <= x_row_idx <= node.row_range[1] and node.col_range[0] >= 1 and node.value:
+                    try:
+                        int(node.value)
+                        x_axis_nodes.append(node)
+                    except ValueError:
+                        pass
+
+        # 5. 공통 메타데이터(BDIE_LOT, BDIE_WF 등) 추출
+        # LEFT 방향 조상을 찾되, 열 정렬 순서대로 순회하며 이미 값으로 결정된 노드들은 장벽(sec_ids)으로 작용시킵니다.
+        # 또한, 반환된 조상 목록에서도 기 수집된 값 노드들은 제거(필터링)하여 우회 누수를 차단합니다.
+        meta_nodes = [n for n in nodes if n.is_header and n.value]
+        meta_nodes = [
+            n for n in meta_nodes 
+            if (not section_headers or n.id != section_headers[0].id) and
+               n.id not in [x.id for x in y_axis_nodes] and
+               n.id not in [x.id for x in x_axis_nodes]
+        ]
+        meta_nodes.sort(key=lambda n: n.col_range[0])
+
+        meta = {}
+        detected_value_ids = set()
+        for node in meta_nodes:
+            ancestors = self.graph_parser._find_ancestors(node.id, "LEFT", node_map, in_edges, out_edges, detected_value_ids)
+            ancestors = [a for a in ancestors if a.id not in detected_value_ids]
+            
+            # 메타데이터 계층구조 [Key, Group] 탐지 (길이가 정확히 2인 조상 체인)
+            if len(ancestors) == 2:
+                ancestors.sort(key=lambda n: n.col_range[0])
+                ancestors_vals = [a.value for a in ancestors if a.value]
+                if ancestors_vals:
+                    meta_key = "_".join(ancestors_vals)
+                    meta[meta_key] = node.value
+                    detected_value_ids.add(node.id)
+
+        # 6. X, Y축 눈금 좌표를 순회하며 2D 데이터 셀 값 추출 및 평탄화 레코드 생성
+        y_axis_nodes.sort(key=lambda n: n.row_range[0])
+        x_axis_nodes.sort(key=lambda n: n.col_range[0])
+
+        records = []
+        for y_node in y_axis_nodes:
+            r_y = y_node.row_range[0]
+            y_val = int(y_node.value)
+            
+            for x_node in x_axis_nodes:
+                c_x = x_node.col_range[0]
+                x_val = int(x_node.value)
+                
+                data_node = grid.get((r_y, c_x))
+                if data_node:
+                    if data_node.id == y_node.id or data_node.id == x_node.id:
+                        continue
+                    
+                    val = data_node.value
+                    
+                    record = {
+                        "TITLE": title,
+                    }
+                    record.update(meta)
+                    record.update({
+                        "X": x_val,
+                        "Y": y_val,
+                        "VALUE": val
+                    })
+                    records.append(record)
+                    
+        return records
+
+

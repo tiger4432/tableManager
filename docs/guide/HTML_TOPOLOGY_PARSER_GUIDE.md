@@ -151,6 +151,23 @@ for node_val, paths in all_paths.items():
 
 ---
 
+### 3.6 2D 매트릭스 테이블 평탄화 파싱 (`HTMLMatrixTableParser`)
+X축과 Y축 정수형 인덱스 눈금으로 구성된 2D 매트릭스(격자 데이터)와 상단의 공통 계층형 메타데이터(예: `BDIE_LOT`, `BDIE_WF` 등)를 하나의 평탄화된 관계형 레코드 목록(`List[Dict[str, Any]]`)으로 변환합니다.
+누적 장벽 알고리즘(Accumulative Barrier Algorithm)과 조상 필터링을 사용하여 메타데이터의 값 셀과 키 셀 간의 역추적 매핑을 정밀하게 추출합니다.
+
+```python
+from parsers.html_topology_parser import HTMLMatrixTableParser
+
+# 1. 매트릭스 파서 초기화
+matrix_parser = HTMLMatrixTableParser()
+
+# 2. 평탄화 레코드 목록 추출
+# 반환 형식: [ { "TITLE": "AAA", "BDIE_LOT": "A", "BDIE_WF": "B", "X": 2, "Y": 2, "VALUE": "F" }, ... ]
+records = matrix_parser.parse_matrix_to_records(html_content)
+```
+
+---
+
 ## 4. AssyManager Ingestion Pipeline 실전 연동 예시
 
 클라이언트가 붙여넣기(Smart Paste)를 통해 전송한 `.html` 파일을 실시간 감지하여, 파이프라인에서 계층 구조를 플래튼(Flatten)한 후 데이터베이스 동적 테이블 스키마에 맞추어 적재하는 커스텀 파서 플러그인(`server/ingestion_workspace/{table_name}/scripts/`) 구현 샘플입니다.
