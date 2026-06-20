@@ -11,8 +11,8 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-from database.database import SessionLocal
-from database import crud, schemas
+from server.database.database import SessionLocal
+from server.database import crud, schemas
 
 log_path = os.path.join(server_dir, "watcher.log")
 
@@ -170,7 +170,7 @@ class IngestionHandler(FileSystemEventHandler):
     def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str):
         db = SessionLocal()
         try:
-            from database.models import FileIngestionLog
+            from server.database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
@@ -190,7 +190,7 @@ class IngestionHandler(FileSystemEventHandler):
     def _log_ingestion_success(self, original_path: str, archived_path: str):
         db = SessionLocal()
         try:
-            from database.models import FileIngestionLog
+            from server.database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
@@ -304,16 +304,20 @@ class IngestionHandler(FileSystemEventHandler):
 
         import importlib.util
         import inspect
+        import traceback
         
         # Add server/parsers to sys.path if not there so plugins can import BasePipelineParser
         if script_dir not in sys.path:
             sys.path.insert(0, script_dir)
             
         try:
-            from pipeline_base import BasePipelineParser
+            from server.parsers.pipeline_base import BasePipelineParser
         except ImportError:
             logger.error("Failed to import BasePipelineParser. Check sys.path.")
             return None
+
+        load_errors = {}
+        match_errors = {}
 
         for filename in os.listdir(self.scripts_path):
             if filename.endswith(".py") and filename != "__init__.py":
@@ -325,11 +329,26 @@ class IngestionHandler(FileSystemEventHandler):
                     spec.loader.exec_module(module)
                     
                     for name, obj in inspect.getmembers(module, inspect.isclass):
-                        if issubclass(obj, BasePipelineParser) and obj is not BasePipelineParser:
+                        is_sub = False
+                        try:
+                            if issubclass(obj, BasePipelineParser):
+                                is_sub = True
+                        except TypeError:
+                            pass
+                        
+                        if not is_sub:
+                            for parent in getattr(obj, "__mro__", []):
+                                if parent.__name__ == "BasePipelineParser":
+                                    is_sub = True
+                                    break
+                                    
+                        if is_sub and obj.__name__ != "BasePipelineParser":
                             try:
                                 is_match = obj.match(file_path)
                             except Exception as e:
+                                match_error_detail = traceback.format_exc()
                                 logger.error(f"[{self.table_name}] ❌ Error evaluating match() in {obj.__name__}: {e}")
+                                match_errors[f"{filename}::{obj.__name__}"] = match_error_detail
                                 continue
                                 
                             if is_match:
@@ -337,7 +356,27 @@ class IngestionHandler(FileSystemEventHandler):
                                 parser_instance = obj()
                                 return parser_instance.parse(file_path)
                 except Exception as e:
+                    load_error_detail = traceback.format_exc()
                     logger.error(f"Failed to load plugin script {script_path}: {e}")
+                    load_errors[filename] = load_error_detail
+
+        if load_errors or match_errors:
+            error_details = []
+            if load_errors:
+                error_details.append("--- Script Load Errors ---")
+                for fn, err in load_errors.items():
+                    error_details.append(f"[{fn}]:\n{err}")
+            if match_errors:
+                error_details.append("--- match() Execution Errors ---")
+                for path_or_class, err in match_errors.items():
+                    error_details.append(f"[{path_or_class}]:\n{err}")
+            
+            detailed_msg = (
+                f"No custom pipeline parser matched the file '{os.path.basename(file_path)}' format.\n"
+                f"However, some errors occurred while loading/matching scripts:\n"
+                + "\n".join(error_details)
+            )
+            raise ValueError(detailed_msg)
 
         return None # 매칭된 파서가 없음
             
@@ -382,7 +421,7 @@ class IngestionHandler(FileSystemEventHandler):
         real_source = "batch_ingester"
         if filename:
             try:
-                from pipeline_base import BasePipelineParser
+                from server.parsers.pipeline_base import BasePipelineParser
                 real_source = BasePipelineParser.get_basename(filename)
             except Exception as e:
                 logger.warning(f"Failed to get clean original filename: {e}")
