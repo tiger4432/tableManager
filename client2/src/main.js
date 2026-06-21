@@ -169,16 +169,16 @@ function setupEventListeners() {
     const handlePageJump = () => {
       let targetPage = parseInt(pageInput.value, 10);
       const totalPages = parseInt(totalPagesSpan?.textContent || '1', 10);
-      
+
       if (isNaN(targetPage) || targetPage < 1) {
         pageInput.value = Math.floor(currentSkip / pageLimit) + 1;
         return;
       }
-      
+
       if (targetPage > totalPages) {
         targetPage = totalPages;
       }
-      
+
       const newSkip = (targetPage - 1) * pageLimit;
       if (newSkip !== currentSkip || allDataLoaded) {
         currentSkip = newSkip;
@@ -315,16 +315,16 @@ function setupEventListeners() {
   // Add Empty Row
   addRowBtn.addEventListener('click', async () => {
     if (!currentTable) return;
-    
+
     const countStr = prompt('Enter the number of empty rows to add:', '1');
     if (countStr === null) return; // Cancelled
-    
+
     const count = parseInt(countStr.trim(), 10);
     if (isNaN(count) || count < 1) {
       alert('Please enter a valid number greater than or equal to 1.');
       return;
     }
-    
+
     performanceLog.textContent = `Creating ${count} empty row(s)...`;
     try {
       const res = await fetch(`${API_BASE}/tables/${currentTable}/rows?count=${count}&user_name=${encodeURIComponent(CURRENT_USER)}`, {
@@ -353,7 +353,7 @@ function setupEventListeners() {
     const activeEl = document.activeElement;
     if (activeEl && activeEl.closest('#myGrid')) {
       const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
-      
+
       if (!isEditing) {
         // Delete key inside the grid to clear selected cells
         if (e.key === 'Delete') {
@@ -369,7 +369,7 @@ function setupEventListeners() {
             if (allCols.length > 0 && totalRows > 0) {
               dragStartCell = { rowIndex: 0, colId: allCols[0] };
               dragEndCell = { rowIndex: totalRows - 1, colId: allCols[allCols.length - 1] };
-              
+
               gridApi.refreshCells({ force: true });
               performanceLog.textContent = '📋 All cells selected';
             }
@@ -397,7 +397,7 @@ function setupEventListeners() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       performanceLog.textContent = `Uploading file [${file.name}] (${(file.size / 1024).toFixed(1)} KB)...`;
-      
+
       const formData = new FormData();
       formData.append('file', file);
 
@@ -513,17 +513,17 @@ function setupEventListeners() {
   if (loadAllBtn) {
     loadAllBtn.addEventListener('click', async () => {
       if (!currentTable || isLoadingMore) return;
-      
+
       isLoadingMore = true;
       performanceLog.textContent = '⚡ 1/3. Initializing bulk request...';
       const startTime = performance.now();
-      
+
       const q = globalSearch ? globalSearch.value.trim() : '';
       const cols = searchCols ? searchCols.value : '';
       const sortLatest = sortLatestToggle.checked;
       const filterModel = gridApi ? gridApi.getFilterModel() : {};
       const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
-      
+
       const baseApiUrl = `${API_BASE}/tables/${currentTable}/data`;
       let queryParams = `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
       if (currentTransactionId) {
@@ -538,25 +538,25 @@ function setupEventListeners() {
       if (filterStr) {
         queryParams += `&filters=${encodeURIComponent(filterStr)}`;
       }
-      
+
       try {
         const chunkLimit = 3000; // 청크 단위로 분할 로드
         let accumulatedData = [];
         let totalRows = 0;
         let currentSkipOffset = 0;
-        
+
         performanceLog.textContent = '⚡ 1/3. Fetching initial row chunk...';
-        
+
         // 1. 첫 번째 청크 요청하여 전체 개수(total)와 첫 데이터를 받아옴
         const firstUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
         const firstRes = await fetch(firstUrl);
         if (!firstRes.ok) throw new Error(`HTTP error! status: ${firstRes.status}`);
         const firstResult = await firstRes.json();
-        
+
         accumulatedData = firstResult.data || [];
         totalRows = firstResult.total || 0;
         currentSkipOffset += accumulatedData.length;
-        
+
         // 실시간 진행률 업데이트
         if (totalRows > 0) {
           const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
@@ -564,53 +564,53 @@ function setupEventListeners() {
         } else {
           performanceLog.textContent = `⏳ 2/3. Fetching rows: 100% (0 / 0)`;
         }
-        
+
         // 2. 전체 데이터 개수가 첫 번째 수집량보다 많다면 루프를 돌며 추가 청크 수집
         while (accumulatedData.length < totalRows && currentSkipOffset < totalRows) {
           // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
           await new Promise(resolve => setTimeout(resolve, 5));
-          
+
           const nextUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
           const nextRes = await fetch(nextUrl);
           if (!nextRes.ok) throw new Error(`HTTP error! status: ${nextRes.status}`);
           const nextResult = await nextRes.json();
-          
+
           const nextChunk = nextResult.data || [];
           if (nextChunk.length === 0) {
             // 더 이상 가져올 데이터가 없음 (서버 데이터 변동 가능성 대비 탈출)
             break;
           }
-          
+
           accumulatedData = accumulatedData.concat(nextChunk);
           currentSkipOffset += nextChunk.length;
-          
+
           const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
           performanceLog.textContent = `⏳ 2/3. Fetching rows: ${percent}% (${accumulatedData.length} / ${totalRows})`;
         }
-        
+
         const fetchEndTime = performance.now();
         const totalFetchTime = (fetchEndTime - startTime).toFixed(0);
-        
+
         performanceLog.textContent = '🎨 3/3. Initializing cells & drawing grid...';
         await new Promise(resolve => setTimeout(resolve, 20)); // UI 반영을 위해 양보
-        
+
         const renderStartTime = performance.now();
-        
+
         allDataLoaded = true;
         hasMoreData = false;
-        
+
         // 그리드 데이터 로드
         gridApi.setGridOption('rowData', accumulatedData);
         updateGridSortState();
-        
+
         updateLoadedCount(accumulatedData.length);
         totalRowsCount.textContent = `Matches: ${totalRows}`;
         updateViewModeUI();
-        
+
         const renderEndTime = performance.now();
         const renderTime = (renderEndTime - renderStartTime).toFixed(0);
         const totalTime = (renderEndTime - startTime).toFixed(0);
-        
+
         performanceLog.textContent = `✅ Loaded ${accumulatedData.length} rows (Fetch Chunks: ${totalFetchTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
         showToast(`📥 전체 ${accumulatedData.length}개 행 로드 완료!`, 'success');
         isLoadingMore = false;
@@ -628,7 +628,7 @@ function setupEventListeners() {
   if (loadCsvBtn) {
     loadCsvBtn.addEventListener('click', async () => {
       if (!currentTable) return;
-      
+
       // Determine default filename
       const now = new Date();
       const timestamp = now.getFullYear() +
@@ -638,11 +638,11 @@ function setupEventListeners() {
         String(now.getMinutes()).padStart(2, '0') +
         String(now.getSeconds()).padStart(2, '0');
       const defaultFilename = `${currentTable}_extract_${timestamp}.csv`;
-      
+
       let fileHandle = null;
       let writableStream = null;
       let useFileSystemAccess = !isDesktop && (typeof window.showSaveFilePicker === 'function');
-      
+
       if (useFileSystemAccess) {
         try {
           fileHandle = await window.showSaveFilePicker({
@@ -665,12 +665,12 @@ function setupEventListeners() {
           useFileSystemAccess = false;
         }
       }
-      
+
       let finalFilename = defaultFilename;
       if (!isDesktop && !useFileSystemAccess) {
         const filenameInput = prompt('저장할 CSV 파일명을 입력해주세요:', defaultFilename);
         if (filenameInput === null) return; // Cancelled by user
-        
+
         finalFilename = filenameInput.trim();
         if (!finalFilename) {
           finalFilename = defaultFilename;
@@ -679,13 +679,13 @@ function setupEventListeners() {
           finalFilename += '.csv';
         }
       }
-      
+
       const q = globalSearch ? globalSearch.value.trim() : '';
       const cols = searchCols ? searchCols.value : '';
       const sortLatest = sortLatestToggle.checked;
       const filterModel = gridApi ? gridApi.getFilterModel() : {};
       const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
-      
+
       let url = `${API_BASE}/tables/${currentTable}/export?`;
       url += `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
       if (currentTransactionId) {
@@ -700,41 +700,41 @@ function setupEventListeners() {
       if (filterStr) {
         url += `&filters=${encodeURIComponent(filterStr)}`;
       }
-      
+
       performanceLog.textContent = 'Connecting...';
       showToast('📄 CSV 다운로드를 시작합니다.', 'success');
-      
+
       try {
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const totalBytesHeader = response.headers.get('X-Estimated-Content-Length') || response.headers.get('Content-Length');
         const totalBytes = totalBytesHeader ? parseInt(totalBytesHeader, 10) : 0;
-        
+
         const reader = response.body.getReader();
         let receivedBytes = 0;
-        
+
         if (useFileSystemAccess && fileHandle) {
           writableStream = await fileHandle.createWritable();
         }
-        
+
         const chunks = [];
-        
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
             break;
           }
-          
+
           if (useFileSystemAccess && writableStream) {
             await writableStream.write(value);
           } else {
             chunks.push(value);
           }
           receivedBytes += value.length;
-          
+
           if (totalBytes > 0) {
             let percent = Math.floor((receivedBytes / totalBytes) * 100);
             if (percent > 99) percent = 99;
@@ -747,9 +747,9 @@ function setupEventListeners() {
             performanceLog.textContent = `Downloading: ${kbReceived}KB`;
           }
         }
-        
+
         performanceLog.textContent = 'Processing...';
-        
+
         if (useFileSystemAccess && writableStream) {
           await writableStream.close();
           const savedName = fileHandle.name;
@@ -759,7 +759,7 @@ function setupEventListeners() {
           // Assemble chunks into a Blob
           const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
           const blobUrl = URL.createObjectURL(blob);
-          
+
           const link = document.createElement('a');
           link.href = blobUrl;
           link.download = finalFilename;
@@ -767,14 +767,14 @@ function setupEventListeners() {
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(blobUrl);
-          
+
           performanceLog.textContent = `CSV Downloaded: ${finalFilename}`;
           showToast(`📄 CSV 파일 다운로드 완료! (${finalFilename})`, 'success');
         }
       } catch (err) {
         console.error('Failed to download CSV', err);
         if (writableStream) {
-          try { await writableStream.abort(); } catch (e) {}
+          try { await writableStream.abort(); } catch (e) { }
         }
         performanceLog.textContent = '❌ CSV Download Failed';
         showToast('❌ CSV 다운로드 중 오류 발생', 'error');
@@ -806,7 +806,7 @@ async function loadTables() {
     const res = await fetch(`${API_BASE}/tables`);
     const data = await res.json();
     tableSelect.innerHTML = '';
-    
+
     if (data.tables && data.tables.length > 0) {
       data.tables.forEach(table => {
         const option = document.createElement('option');
@@ -814,7 +814,7 @@ async function loadTables() {
         option.textContent = table;
         tableSelect.appendChild(option);
       });
-      
+
       // Auto select first table
       const firstTable = data.tables[0];
       tableSelect.value = firstTable;
@@ -838,7 +838,7 @@ function setTransactionFilter(txId) {
     if (bannerTxId) bannerTxId.textContent = '';
     if (txFilterBanner) txFilterBanner.style.display = 'none';
   }
-  
+
   // Refresh history timeline highlights to match the new filter context
   const timelineItems = timeline.querySelectorAll('.timeline-item');
   timelineItems.forEach(li => {
@@ -849,7 +849,7 @@ function setTransactionFilter(txId) {
       li.classList.remove('active-tx-log');
     }
   });
-  
+
   // Reload data from skip = 0
   fetchData(true);
 }
@@ -859,7 +859,7 @@ async function switchTable(tableName) {
   currentTable = tableName;
   window.currentTable = tableName; // Expose globally for Desktop Wrapper
   performanceLog.textContent = `Switching to ${tableName}...`;
-  
+
   // Clean selected cell info
   selectedCell = null;
   clearRangeSelection();
@@ -870,19 +870,19 @@ async function switchTable(tableName) {
   txModeActive = true;
   if (txModeToggle) txModeToggle.checked = true;
   updateTxModeUI();
-  
+
   // Reset transaction filter
   currentTransactionId = null;
   if (txFilterBanner) txFilterBanner.style.display = 'none';
   if (bannerTxId) bannerTxId.textContent = '';
-  
+
   // Load Schema
   await loadSchema(tableName);
   // Re-create empty grid to bind new columns
   renderGrid([]);
   // Fetch initial chunk of data (reset skip to 0)
   await fetchData(true);
-  
+
   // Reset active history tab to global when switching tables to avoid empty screen
   activeHistoryTab = 'global';
   tabGlobalBtn.classList.add('active');
@@ -900,7 +900,7 @@ async function loadSchema(tableName) {
     currentColumnTypes = data.column_types || {};
     currentBusinessKey = data.business_key || '';
     currentCompositeKeySources = data.composite_key_source || [];
-    
+
     // Fill search columns dropdown
     if (searchCols) {
       searchCols.innerHTML = '<option value="">All Columns</option>';
@@ -922,7 +922,7 @@ async function loadSchema(tableName) {
 // Apply AG-Grid client-side sorting configuration based on Sort Latest toggle
 function updateGridSortState() {
   if (!gridApi) return;
-  
+
   // Do not re-sort if Tx Mode is active to prevent staged rows from jumping
   if (txModeActive) {
     return;
@@ -948,14 +948,14 @@ function updateGridSortState() {
 function updateLoadedCount(forcedCount = null) {
   if (!gridApi) return;
   const displayedCount = gridApi.getDisplayedRowCount();
-  
+
   if (viewMode === 'infinite') {
     exposedRowsCount.textContent = `Loaded: 1 - ${displayedCount}`;
   } else {
     const forced = forcedCount !== null ? forcedCount : displayedCount;
     const startRow = forced === 0 ? 0 : currentSkip + 1;
     const endRow = currentSkip + forced;
-    
+
     if (startRow === endRow) {
       if (startRow === 0) {
         exposedRowsCount.textContent = `Loaded: 0`;
@@ -980,7 +980,7 @@ function updateViewModeUI() {
 function updatePaginationUI(total) {
   const currentPage = Math.floor(currentSkip / pageLimit) + 1;
   const totalPages = Math.ceil(total / pageLimit) || 1;
-  
+
   if (pageInput) {
     pageInput.value = currentPage;
     pageInput.max = totalPages;
@@ -999,7 +999,7 @@ function updatePaginationUI(total) {
 // Fetch row data and render inside AG-Grid (Handles Pagination)
 async function fetchData(resetSkip = true) {
   if (!currentTable || isLoadingMore) return;
-  
+
   if (resetSkip) {
     pageCache.clear();
     clearRangeSelection();
@@ -1018,18 +1018,18 @@ async function fetchData(resetSkip = true) {
       return;
     }
   }
-  
+
   isLoadingMore = true;
   performanceLog.textContent = 'Fetching data...';
-  
+
   const startTime = performance.now();
-  
+
   const q = globalSearch ? globalSearch.value.trim() : '';
   const cols = searchCols ? searchCols.value : '';
   const sortLatest = sortLatestToggle.checked;
   const filterModel = gridApi ? gridApi.getFilterModel() : {};
   const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
-  
+
   let url = `${API_BASE}/tables/${currentTable}/data?skip=${currentSkip}&limit=${pageLimit}`;
   url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
   if (currentTransactionId) {
@@ -1044,17 +1044,17 @@ async function fetchData(resetSkip = true) {
   if (filterStr) {
     url += `&filters=${encodeURIComponent(filterStr)}`;
   }
-  
+
   try {
     const res = await fetch(url);
     const result = await res.json();
-    
+
     const fetchTime = (performance.now() - startTime).toFixed(1);
-    
+
     if (result.data.length < pageLimit) {
       hasMoreData = false;
     }
-    
+
     // Render rowData depending on View Mode
     if (viewMode === 'infinite') {
       if (resetSkip || currentSkip === 0) {
@@ -1066,21 +1066,21 @@ async function fetchData(resetSkip = true) {
       gridApi.setGridOption('rowData', result.data);
     }
     updateGridSortState();
-    
+
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount();
     totalRowsCount.textContent = `Matches: ${result.total}`;
-    
+
     // Update Pagination UI
     updatePaginationUI(result.total);
-    
+
     performanceLog.textContent = `Loaded ${result.data.length} rows in ${fetchTime}ms`;
-    
+
     // Save to Cache
     if (viewMode !== 'infinite') {
       pageCache.set(currentSkip, { data: result.data, total: result.total });
     }
-      
+
     isLoadingMore = false;
   } catch (err) {
     console.error('Failed to fetch data', err);
@@ -1097,13 +1097,13 @@ function buildColumnDefs() {
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
     const colTypes = currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
-    
+
     // 헤더명에 비즈니스 키 / 조합 소스 컬럼 아이콘 표시
     let headerLabel = col.toUpperCase();
     if (col === currentBusinessKey) {
-      headerLabel = `🔑 ${headerLabel}`;
+      headerLabel = `${headerLabel}🗝️`;
     } else if (currentCompositeKeySources.includes(col)) {
-      headerLabel = `✦ ${headerLabel}`;
+      headerLabel = `${headerLabel}*`;
     }
 
     const colDef = {
@@ -1120,7 +1120,7 @@ function buildColumnDefs() {
         if (col === 'row_id') return params.data.row_id;
         if (col === 'created_at') return params.data.created_at;
         if (col === 'updated_at') return params.data.updated_at;
-        
+
         const cell = params.data.data?.[col];
         let val = '';
         if (cell && typeof cell === 'object') {
@@ -1128,7 +1128,7 @@ function buildColumnDefs() {
         } else {
           val = cell !== undefined ? cell : '';
         }
-        
+
         if (colType === 'number' && val !== '' && val !== null && val !== undefined) {
           const parsed = Number(val);
           if (!isNaN(parsed)) {
@@ -1142,7 +1142,7 @@ function buildColumnDefs() {
         if (isSystem) return false;
         if (!params.data.data) params.data.data = {};
         if (!params.data.data[col]) params.data.data[col] = {};
-        
+
         let finalVal = params.newValue;
         if (colType === 'number') {
           if (params.newValue === '' || params.newValue === null || params.newValue === undefined) {
@@ -1156,7 +1156,7 @@ function buildColumnDefs() {
             finalVal = parsed;
           }
         }
-        
+
         params.data.data[col].value = finalVal;
         if (!txModeActive) {
           params.data.data[col].is_overwrite = true; // Mark as modified
@@ -1188,19 +1188,19 @@ function buildColumnDefs() {
         }
       }
     };
-    
+
     if (colType === 'number') {
       colDef.cellEditor = 'agNumberCellEditor';
     }
-    
+
     // Style system columns slightly differently
     if (isSystem) {
       colDef.cellClass = 'cell-system-readonly';
     }
-    
+
     return colDef;
   });
-  
+
   // Prepend Row Number Column (Sequential 1,2,3,4...)
   columnDefs.unshift({
     headerName: '#',
@@ -1219,7 +1219,7 @@ function buildColumnDefs() {
     editable: false,
     cellClass: 'cell-system-readonly'
   });
-  
+
   return columnDefs;
 }
 
@@ -1231,7 +1231,7 @@ function renderGrid(initialRows) {
     console.log('[Grid] Swapping grid options dynamically (columnDefs & rowData)...');
     gridApi.setGridOption('columnDefs', columnDefs);
     gridApi.setGridOption('rowData', initialRows);
-    
+
     // Re-cache column ID to index map
     colIdToIndexMap = {};
     gridApi.getColumns().forEach((c, idx) => {
@@ -1243,7 +1243,7 @@ function renderGrid(initialRows) {
   }
 
   const gridDiv = document.querySelector('#myGrid');
-  
+
   // Grid Configurations
   const gridOptions = {
     theme: 'legacy',
@@ -1276,10 +1276,10 @@ function renderGrid(initialRows) {
       if (!event.column || event.rowIndex === null || event.rowIndex === undefined) return;
       const rowNode = event.api.getDisplayedRowAtIndex(event.rowIndex);
       if (!rowNode || !rowNode.data) return;
-      
+
       const colId = event.column.getId();
       const rowId = rowNode.data.row_id;
-      
+
       let val = '';
       if (colId === 'row_id') val = rowNode.data.row_id;
       else if (colId === 'created_at') val = rowNode.data.created_at;
@@ -1288,7 +1288,7 @@ function renderGrid(initialRows) {
         const cell = rowNode.data.data?.[colId];
         val = cell && typeof cell === 'object' ? (cell.value !== undefined ? cell.value : '') : (cell !== undefined ? cell : '');
       }
-      
+
       selectedCell = { rowId, colId, value: val, rowIndex: event.rowIndex };
       updateSelectedCellUI();
       if (activeHistoryTab !== 'global') {
@@ -1303,7 +1303,7 @@ function renderGrid(initialRows) {
       const isShift = event.event.shiftKey;
       const currRow = event.rowIndex;
       const currCol = event.column.getColId();
-      
+
       const oldStart = dragStartCell;
       const oldEnd = dragEndCell;
 
@@ -1320,7 +1320,7 @@ function renderGrid(initialRows) {
         isDraggingRange = true;
         dragStartCell = { rowIndex: currRow, colId: currCol };
         dragEndCell = { rowIndex: currRow, colId: currCol };
-        
+
         if (oldStart && oldEnd) {
           refreshRange(event.api, oldStart, oldEnd);
         }
@@ -1346,7 +1346,7 @@ function renderGrid(initialRows) {
       if (dragEndCell.rowIndex !== currRow || dragEndCell.colId !== currCol) {
         const prevEnd = dragEndCell;
         dragEndCell = { rowIndex: currRow, colId: currCol };
-        
+
         // requestAnimationFrame 쓰로틀링과 차분 셀 리프레시 결합
         if (!window._dragRefreshPending) {
           window._dragRefreshPending = true;
@@ -1405,7 +1405,7 @@ function renderGrid(initialRows) {
     onBodyScroll: (event) => {
       if (viewMode !== 'infinite') return;
       if (isLoadingMore || !hasMoreData || allDataLoaded) return;
-      
+
       const viewport = document.querySelector('.ag-body-viewport');
       if (viewport) {
         const threshold = 150; // px
@@ -1417,7 +1417,7 @@ function renderGrid(initialRows) {
       }
     }
   };
-  
+
   gridApi = createGrid(gridDiv, gridOptions);
 
   // Monkey patch applyTransaction for deep callstack tracing to catch race conditions and rollbacks
@@ -1516,7 +1516,7 @@ async function handleCellEdit(event) {
       if (!latestData.data[colId]) latestData.data[colId] = {};
       latestData.data[colId].value = finalValue;
     }
-    
+
     updateTxModeUI();
     gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
     return;
@@ -1565,7 +1565,7 @@ async function handleCellEdit(event) {
 
       latestData.data[colId].value = finalValue;
       latestData.data[colId].is_overwrite = true;
-      
+
       // Update updated_at timestamp locally to trigger sort update
       latestData.updated_at = getLocalTimeString();
 
@@ -1581,7 +1581,7 @@ async function handleCellEdit(event) {
         selectedCell.value = finalValue;
         updateSelectedCellUI();
       }
-      
+
       // History updates will be handled by the WebSocket stream
     } else {
       const errData = await res.json().catch(() => ({}));
@@ -1615,7 +1615,7 @@ function initWebSocket() {
       ws.onerror = null;
       ws.onmessage = null;
       ws.close();
-    } catch (e) {}
+    } catch (e) { }
     ws = null;
   }
 
@@ -1627,10 +1627,10 @@ function initWebSocket() {
     document.querySelector('.status-ws').classList.add('active');
     wsReconnectDelay = 1000; // Reset backoff delay on successful connection
     console.log('[WebSocket] Connected successfully. Syncing API health status...');
-    
+
     // API 복구 감지 및 동기화 수행
     await checkServerHealth();
-    
+
     // API가 살아있고 테이블 목록이 비어있다면 로드
     const tableSelectedVal = tableSelect?.value;
     if (!tableSelectedVal) {
@@ -1648,7 +1648,7 @@ function initWebSocket() {
 
     console.log(`[WebSocket] Connection closed. Reconnecting in ${wsReconnectDelay}ms...`);
     setTimeout(initWebSocket, wsReconnectDelay);
-    
+
     // Exponential backoff: double the delay up to 30 seconds
     wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
   };
@@ -1704,13 +1704,13 @@ function handleWebSocketMessage(msg) {
       if (activeHistoryTab !== 'global' && log.table_name !== currentTable) {
         return;
       }
-      
+
       // Update currently focused cell UI if it matches the log
       if (selectedCell && log.row_id === selectedCell.rowId && log.column_name === selectedCell.colId) {
         selectedCell.value = log.new_value;
         updateSelectedCellUI();
       }
-      
+
       appendHistoryLocally(log, false);
     });
   }
@@ -1785,7 +1785,7 @@ function handleWebSocketMessage(msg) {
 
     if (updatedRows.length > 0 || addedRows.length > 0) {
       // High-performance batch transaction update in AG-Grid
-      const res = gridApi.applyTransaction({ 
+      const res = gridApi.applyTransaction({
         update: updatedRows,
         add: addedRows
       });
@@ -1922,7 +1922,7 @@ function updatePageCacheOnUpsert(items) {
             created_at: item.created_at || nowStr,
             updated_at: item.updated_at || nowStr
           };
-          
+
           if (!cached.data.some(r => r.row_id === newItem.row_id)) {
             cached.data.unshift(newItem);
             if (cached.data.length > pageLimit) {
@@ -1943,7 +1943,7 @@ function updatePageCacheOnDelete(rowIds) {
     for (const [skip, cached] of pageCache.entries()) {
       const originalLength = cached.data.length;
       cached.data = cached.data.filter(r => r.row_id !== rowId);
-      
+
       const removedCount = originalLength - cached.data.length;
       if (removedCount > 0) {
         cached.total -= removedCount;
@@ -1960,20 +1960,20 @@ function createTimelineItemDom(log) {
   const li = document.createElement('li');
   li.className = 'timeline-item';
   li.style.cursor = 'pointer';
-  
+
   const isUser = log.updated_by !== 'system';
   li.classList.add(isUser ? 'user-change' : 'system-change');
   if (log.is_row_deleted) {
     li.classList.add('deleted-row-log');
   }
-  
+
   const isCurrentTx = log.transaction_id && log.transaction_id === currentTransactionId;
   if (isCurrentTx) {
     li.classList.add('active-tx-log');
   }
-  
+
   const dateStr = new Date(log.timestamp).toLocaleString();
-  
+
   li.innerHTML = `
     <div class="timeline-time">${dateStr}</div>
     <div class="timeline-card">
@@ -1994,7 +1994,7 @@ function createTimelineItemDom(log) {
       ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
     </div>
   `;
-  
+
   li.addEventListener('click', (e) => {
     if (e.target.closest('.filter-tx-btn')) {
       e.stopPropagation();
@@ -2004,7 +2004,7 @@ function createTimelineItemDom(log) {
       navigateToLog(log);
     }
   });
-  
+
   return li;
 }
 
@@ -2014,31 +2014,31 @@ function createGlobalTimelineItemDom(group) {
   const isSummary = group.total_count > 1;
   const baseLog = group.logs[0];
   if (!baseLog) return null;
-  
+
   const li = document.createElement('li');
   li.className = 'timeline-item';
   if (txId) {
     li.dataset.txId = txId;
   }
-  
+
   const isCurrentTx = txId && txId === currentTransactionId;
   if (isCurrentTx) {
     li.classList.add('active-tx-log');
   }
-  
+
   const user = baseLog.updated_by || 'system';
   const isUser = user !== 'system';
   li.classList.add(isUser ? 'user-change' : 'system-change');
-  
+
   const dateStr = new Date(baseLog.timestamp).toLocaleString();
-  
+
   let displayTitle = '';
   let colorClass = '';
-  
+
   if (isSummary) {
     const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
     const allCreates = group.logs.every(log => log.column_name === 'CREATE');
-    
+
     if (allDeletes) {
       displayTitle = `🗑️ [${user}] 님 | ${baseLog.table_name} | ${group.total_count}행 삭제`;
       colorClass = 'color-delete';
@@ -2070,11 +2070,11 @@ function createGlobalTimelineItemDom(group) {
   if (baseLog.is_row_deleted) {
     displayTitle = `❌ [삭제됨] ` + displayTitle;
   }
-  
+
   const summaryColsText = group.summary_columns && group.summary_columns.length > 0
     ? (group.summary_columns.length > 5 ? group.summary_columns.slice(0, 5).join(', ') + ` 외 ${group.summary_columns.length - 5}건` : group.summary_columns.join(', '))
     : '';
-    
+
   li.innerHTML = `
     <div class="timeline-time">${dateStr}</div>
     <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}">
@@ -2098,12 +2098,12 @@ function createGlobalTimelineItemDom(group) {
     </div>
     ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
   `;
-  
+
   if (isSummary) {
     const card = li.querySelector('.timeline-card');
     const detailsContainer = li.querySelector('.tx-details-container');
     const indicator = li.querySelector('.expand-indicator');
-    
+
     const toggleExpand = async () => {
       const isExpanded = expandedTransactions.has(txId);
       if (isExpanded) {
@@ -2116,12 +2116,12 @@ function createGlobalTimelineItemDom(group) {
         detailsContainer.style.display = 'block';
         indicator.style.transform = 'rotate(90deg)';
         indicator.textContent = '▼';
-        
+
         if (group.logs.length <= 1 && group.total_count > 1) {
           if (fetchingTransactions.has(txId)) return;
           fetchingTransactions.add(txId);
           detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
-          
+
           try {
             const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
             const txDetail = await res.json();
@@ -2138,7 +2138,7 @@ function createGlobalTimelineItemDom(group) {
         }
       }
     };
-    
+
     card.addEventListener('click', (e) => {
       if (e.target.closest('.filter-tx-btn')) {
         e.stopPropagation();
@@ -2152,7 +2152,7 @@ function createGlobalTimelineItemDom(group) {
         }
       }
     });
-    
+
     card.addEventListener('dblclick', () => {
       toggleExpand();
     });
@@ -2172,7 +2172,7 @@ function createGlobalTimelineItemDom(group) {
       }
     });
   }
-  
+
   return li;
 }
 
@@ -2229,7 +2229,7 @@ function renderGlobalTimelineIncremental(log) {
         indicator.textContent = '▼';
       }
     }
-    
+
     timeline.replaceChild(newLi, oldLi);
   } else {
     timeline.insertBefore(newLi, timeline.firstChild);
@@ -2239,12 +2239,12 @@ function renderGlobalTimelineIncremental(log) {
 // Render history logs in a vertical timeline UI card structure
 function renderTimeline(logs) {
   timeline.innerHTML = '';
-  
+
   if (!logs || logs.length === 0) {
     timeline.innerHTML = '<li class="timeline-empty">No change history recorded.</li>';
     return;
   }
-  
+
   logs.forEach(log => {
     const li = createTimelineItemDom(log);
     timeline.appendChild(li);
@@ -2254,12 +2254,12 @@ function renderTimeline(logs) {
 // Render overall table audit history logs (recent transactions)
 function renderGlobalTimeline() {
   timeline.innerHTML = '';
-  
+
   if (!globalHistoryData || globalHistoryData.length === 0) {
     timeline.innerHTML = '<li class="timeline-empty">No database history recorded.</li>';
     return;
   }
-  
+
   globalHistoryData.forEach((group) => {
     const li = createGlobalTimelineItemDom(group);
     if (li) {
@@ -2272,38 +2272,38 @@ function renderSubDetails(container, logs) {
   container.innerHTML = '';
   const ul = document.createElement('ul');
   ul.className = 'sub-timeline-list';
-  
+
   logs.forEach(log => {
     const li = document.createElement('li');
     li.className = 'sub-timeline-item';
-    
+
     const col = log.column_name;
     const val = formatVal(log.new_value);
     const bk = log.business_key;
     const targetId = bk ? (bk.length > 10 ? bk.slice(0, 10) + '...' : bk) : (log.row_id ? log.row_id.slice(0, 8) : '');
-    
+
     let labelText = '';
     if (col === 'ROW_UPDATE') {
       labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
     } else {
       labelText = `[${col}] ${val} (ID: ${targetId})`;
     }
-    
+
     li.innerHTML = `
       <span class="sub-bullet">└</span>
       <span class="sub-log-text">${labelText}</span>
     `;
-    
+
     li.addEventListener('click', (e) => {
       e.stopPropagation();
       if (log.row_id !== '_BATCH_') {
         navigateToLog(log);
       }
     });
-    
+
     ul.appendChild(li);
   });
-  
+
   container.appendChild(ul);
 }
 
@@ -2340,7 +2340,7 @@ function triggerHistoryReloadDebounced() {
 // Feature 3: Append single history log locally to prevent full API refresh on cell change
 function appendHistoryLocally(log, skipRender = false) {
   if (!log) return;
-  
+
   if (activeHistoryTab === 'global') {
     const existingGroup = globalHistoryData.find(g => g.transaction_id === log.transaction_id);
     if (existingGroup) {
@@ -2376,7 +2376,7 @@ function appendHistoryLocally(log, skipRender = false) {
 
   // Non-global tabs ('cell' or 'row')
   if (!selectedCell) return;
-  
+
   if (activeHistoryTab === 'cell') {
     if (selectedCell.rowId !== log.row_id || selectedCell.colId !== log.column_name) return;
   } else if (activeHistoryTab === 'row') {
@@ -2424,56 +2424,56 @@ function refreshRange(api, startCell, endCell) {
   const endRow = endCell.rowIndex;
   const minRow = Math.min(startRow, endRow);
   const maxRow = Math.max(startRow, endRow);
-  
+
   const rowNodes = [];
   for (let r = minRow; r <= maxRow; r++) {
     const node = api.getDisplayedRowAtIndex(r);
     if (node) rowNodes.push(node);
   }
-  
+
   const startColIdx = colIdToIndexMap[startCell.colId];
   const endColIdx = colIdToIndexMap[endCell.colId];
   if (startColIdx === undefined || endColIdx === undefined) return;
-  
+
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
   const allColumns = api.getColumns();
   const columns = allColumns.slice(minColIdx, maxColIdx + 1);
-  
+
   api.refreshCells({ rowNodes, columns, force: true });
 }
 
 function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell) {
   if (!startCell || !newEndCell || !api) return;
-  
+
   const startRow = startCell.rowIndex;
   const newEndRow = newEndCell.rowIndex;
   const prevEndRow = prevEndCell ? prevEndCell.rowIndex : newEndRow;
-  
+
   const minRow = Math.min(startRow, prevEndRow, newEndRow);
   const maxRow = Math.max(startRow, prevEndRow, newEndRow);
-  
+
   const rowNodes = [];
   for (let r = minRow; r <= maxRow; r++) {
     const node = api.getDisplayedRowAtIndex(r);
     if (node) rowNodes.push(node);
   }
-  
+
   const startColIdx = colIdToIndexMap[startCell.colId];
   const newEndColIdx = colIdToIndexMap[newEndCell.colId];
   const prevEndColIdx = prevEndCell ? colIdToIndexMap[prevEndCell.colId] : newEndColIdx;
-  
+
   if (startColIdx === undefined || newEndColIdx === undefined) {
     api.refreshCells({ force: true });
     return;
   }
-  
+
   const minColIdx = Math.min(startColIdx, prevEndColIdx, newEndColIdx);
   const maxColIdx = Math.max(startColIdx, prevEndColIdx, newEndColIdx);
-  
+
   const allColumns = api.getColumns();
   const columns = allColumns.slice(minColIdx, maxColIdx + 1);
-  
+
   api.refreshCells({ rowNodes, columns, force: true });
 }
 
@@ -2564,7 +2564,7 @@ function setupClipboardHandlers() {
     if (parsedMatrix.length === 0) return;
 
     performanceLog.textContent = 'Processing paste updates...';
-    
+
     // Target columns configuration
     const allCols = gridApi.getColumns().map(c => c.getColId());
     const startColIndex = allCols.indexOf(focusedCell.column.getColId());
@@ -2672,7 +2672,7 @@ function setupClipboardHandlers() {
           pageCache.clear();
           const result = await res.json();
           performanceLog.textContent = `Pasted successfully: ${batchUpdates.length} rows updated`;
-          
+
           // Fast-apply local data values by updating latest node data in-place
           batchUpdates.forEach(update => {
             const rowNode = gridApi.getRowNode(update.row_id);
@@ -2689,7 +2689,7 @@ function setupClipboardHandlers() {
               }
             }
           });
-          
+
           // Force sort update to push modified rows to the top
           updateGridSortState();
           gridApi.refreshCells({ force: true });
@@ -2740,7 +2740,7 @@ function setupClipboardHandlers() {
       if (c === '#' || /^\d+$/.test(c)) return false;
       return currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
     });
-    
+
     // Headers copy setting check
     const includeHeaders = copyHeaderToggle.checked;
     const lines = [];
@@ -2755,7 +2755,7 @@ function setupClipboardHandlers() {
         if (col === 'row_id') return node.data.row_id;
         if (col === 'created_at') return node.data.created_at;
         if (col === 'updated_at') return node.data.updated_at;
-        
+
         const cell = node.data.data?.[col];
         if (cell && typeof cell === 'object') {
           return cell.value !== undefined ? cell.value : '';
@@ -2782,7 +2782,7 @@ function setupDragAndDrop() {
   window.addEventListener('dragenter', (e) => {
     e.preventDefault();
     if (!currentTable) return;
-    
+
     // Only trigger for files
     if (e.dataTransfer.types.includes('Files')) {
       dragCounter++;
@@ -2801,7 +2801,7 @@ function setupDragAndDrop() {
   window.addEventListener('dragleave', (e) => {
     e.preventDefault();
     if (!currentTable) return;
-    
+
     if (e.dataTransfer.types.includes('Files')) {
       dragCounter--;
       if (dragCounter === 0) {
@@ -2831,7 +2831,7 @@ function setupDragAndDrop() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       performanceLog.textContent = `Uploading file [${file.name}] (${(file.size / 1024).toFixed(1)} KB)...`;
-      
+
       const formData = new FormData();
       formData.append('file', file);
 
@@ -2863,7 +2863,7 @@ async function navigateToLog(log) {
 
   isNavigating = true;
   performanceLog.textContent = `🔍 Navigating to ${log.table_name}:${log.row_id} in Transaction ${log.transaction_id}...`;
-  
+
   // Set 5s watchdog safety net (mimics PyQt 10s guard timer)
   if (navigationWatchdog) clearTimeout(navigationWatchdog);
   navigationWatchdog = setTimeout(() => {
@@ -2872,7 +2872,7 @@ async function navigateToLog(log) {
 
   const targetTable = log.table_name;
   const targetTx = log.transaction_id;
-  
+
   // Step 1: Switch table/tab if different
   if (currentTable !== targetTable) {
     tableSelect.value = targetTable;
@@ -2884,7 +2884,7 @@ async function navigateToLog(log) {
     currentTransactionId = targetTx;
     if (bannerTxId) bannerTxId.textContent = targetTx;
     if (txFilterBanner) txFilterBanner.style.display = 'flex';
-    
+
     // Highlight timeline items
     const timelineItems = timeline.querySelectorAll('.timeline-item');
     timelineItems.forEach(li => {
@@ -2899,14 +2899,14 @@ async function navigateToLog(log) {
     currentTransactionId = null;
     if (bannerTxId) bannerTxId.textContent = '';
     if (txFilterBanner) txFilterBanner.style.display = 'none';
-    
+
     // Clear highlights
     const timelineItems = timeline.querySelectorAll('.timeline-item');
     timelineItems.forEach(li => {
       li.classList.remove('active-tx-log');
     });
   }
-  
+
   // Give browser event loop 50ms to stabilize layout
   setTimeout(() => {
     navigatorStep3(log);
@@ -2935,7 +2935,7 @@ function navigatorStep2(log) {
         updateLoadedCount(cached.data.length);
         totalRowsCount.textContent = `Matches: ${cached.total}`;
         updatePaginationUI(cached.total);
-        
+
         setTimeout(() => {
           const node = gridApi.getRowNode(log.row_id);
           if (node) {
@@ -2956,13 +2956,13 @@ function navigatorStep2(log) {
 // Step 3: Fetch target row via API parameter
 async function navigatorStep3(log) {
   performanceLog.textContent = '🌐 Requesting target position from server...';
-  
+
   const q = globalSearch ? globalSearch.value.trim() : '';
   const cols = searchCols ? searchCols.value : '';
   const sortLatest = sortLatestToggle.checked;
   const filterModel = gridApi ? gridApi.getFilterModel() : {};
   const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
-  
+
   let url = `${API_BASE}/tables/${currentTable}/data?target_row_id=${log.row_id}&limit=${pageLimit}`;
   url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
   if (currentTransactionId) {
@@ -2979,7 +2979,7 @@ async function navigatorStep3(log) {
   try {
     const res = await fetch(url);
     const result = await res.json();
-    
+
     if (result.target_offset === -1 || result.data.length === 0) {
       releaseNavigationGuard('❌ Target row does not match active search/transaction filters');
       return;
@@ -2988,20 +2988,20 @@ async function navigatorStep3(log) {
     // Load returned chunk page to local grid
     gridApi.setGridOption('rowData', result.data);
     updateGridSortState();
-    
+
     // Update skip counter
     currentSkip = result.calculated_skip !== null ? result.calculated_skip : 0;
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount(result.data.length);
     totalRowsCount.textContent = `Matches: ${result.total}`;
-    
+
     // Update Pagination UI
     updatePaginationUI(result.total);
-    
+
     // Save to Cache
     pageCache.set(currentSkip, { data: result.data, total: result.total });
-    
+
     // Check if target node loaded successfully
     setTimeout(() => {
       const rowNode = gridApi.getRowNode(log.row_id);
@@ -3011,7 +3011,7 @@ async function navigatorStep3(log) {
         releaseNavigationGuard('❌ Failed to locate row after server fetch');
       }
     }, 20); // 20ms layout sync delay
-    
+
   } catch (err) {
     console.error('Jump fetch error', err);
     releaseNavigationGuard('❌ Server fetch error');
@@ -3023,20 +3023,20 @@ function navigatorFinalScroll(rowNode, columnName) {
   try {
     // 1. Ensure visible
     gridApi.ensureNodeVisible(rowNode, 'middle');
-    
+
     // 2. Select row
     rowNode.setSelected(true, true);
-    
+
     // 3. Focus Cell
     gridApi.setFocusedCell(rowNode.rowIndex, columnName);
-    
+
     // 4. Trigger flash micro-animation
     gridApi.flashCells({
       rowNodes: [rowNode],
       columns: [columnName],
       flashDelay: 1000
     });
-    
+
     // 5. Sync details panel manually
     selectedCell = {
       rowId: rowNode.data.row_id,
@@ -3047,7 +3047,7 @@ function navigatorFinalScroll(rowNode, columnName) {
     updateSelectedCellUI();
 
     performanceLog.textContent = `🎯 Jumped to ${columnName} at Row ${rowNode.data.row_id}`;
-    
+
     // Finalize
     releaseNavigationGuard();
   } catch (err) {
@@ -3089,7 +3089,7 @@ function getSelectedCells() {
         for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
           const colId = allCols[cIdx];
           if (systemCols.includes(colId) || /^\d+$/.test(colId)) continue;
-          
+
           const rowNode = gridApi.getDisplayedRowAtIndex(r);
           if (rowNode && rowNode.data) {
             const rowId = rowNode.data.row_id;
@@ -3151,11 +3151,11 @@ async function refreshSourcesList() {
     try {
       const res = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources`);
       if (!res.ok) throw new Error('Failed to fetch sources');
-      
+
       const data = await res.json();
       const sources = data.sources || {};
       const manualPriority = data.manual_priority_source;
-      
+
       sourcesList.innerHTML = '';
       const sourceNames = Object.keys(sources);
 
@@ -3167,7 +3167,7 @@ async function refreshSourcesList() {
       sourceNames.forEach(sourceName => {
         const sourceVal = sources[sourceName];
         const isPinned = manualPriority === sourceName;
-        
+
         let displayVal = sourceVal;
         let titleAttr = '';
         if (sourceVal && typeof sourceVal === 'object') {
@@ -3220,7 +3220,7 @@ async function refreshSourcesList() {
         // Bind Delete Action
         tr.querySelector('.del-btn').addEventListener('click', async () => {
           if (!confirm(`Are you sure you want to delete source [${sourceName}] data for this cell?`)) return;
-          
+
           performanceLog.textContent = 'Deleting cell source...';
           try {
             const delRes = await fetch(`${API_BASE}/tables/${currentTable}/${rowId}/${colId}/sources/${sourceName}`, {
@@ -3260,7 +3260,7 @@ async function refreshSourcesList() {
       if (!res.ok) throw new Error('Failed to query batch sources');
 
       const cellSourcesList = await res.json();
-      
+
       const uniqueSources = new Set();
       const sourceValuesMap = {};
       const sourcePinnedCount = {};
@@ -3268,7 +3268,7 @@ async function refreshSourcesList() {
       cellSourcesList.forEach(cellData => {
         const sources = cellData.sources || {};
         const manualPriority = cellData.manual_priority_source;
-        
+
         Object.keys(sources).forEach(srcName => {
           uniqueSources.add(srcName);
           if (!sourceValuesMap[srcName]) {
@@ -3280,7 +3280,7 @@ async function refreshSourcesList() {
             valStr = srcVal.value !== undefined ? srcVal.value : '';
           }
           sourceValuesMap[srcName].push(valStr);
-          
+
           if (manualPriority === srcName) {
             sourcePinnedCount[srcName] = (sourcePinnedCount[srcName] || 0) + 1;
           }
@@ -3352,7 +3352,7 @@ async function refreshSourcesList() {
         // Bind batch Delete Action
         tr.querySelector('.del-btn').addEventListener('click', async () => {
           if (!confirm(`Are you sure you want to delete source [${sourceName}] from all ${cells.length} selected cells?`)) return;
-          
+
           performanceLog.textContent = `Batch deleting source [${sourceName}]...`;
           try {
             const delRes = await fetch(`${API_BASE}/tables/${currentTable}/cells/sources/delete/batch`, {
@@ -3535,7 +3535,7 @@ async function clearSelectedCells() {
         selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
         updateSelectedCellUI();
       }
-      
+
       updateTxModeUI();
       gridApi.refreshCells({ force: true });
       setupBeforeUnloadWarning();
@@ -3583,7 +3583,7 @@ async function clearSelectedCells() {
           }
         }
       });
-      
+
       if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
         selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
         updateSelectedCellUI();
@@ -3763,7 +3763,7 @@ function showClipboardTypeModal(types) {
     types.forEach(type => {
       const cfg = typeConfigs[type] || { label: type, icon: '📄', color: '#cdd6f4' };
       const btn = document.createElement('button');
-      
+
       Object.assign(btn.style, {
         background: 'rgba(255, 255, 255, 0.03)',
         border: '1px solid rgba(255, 255, 255, 0.06)',
@@ -3873,7 +3873,7 @@ function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  
+
   let icon = 'ℹ️';
   if (type === 'success') icon = '✅';
   else if (type === 'error') icon = '❌';
@@ -3893,7 +3893,7 @@ function showToast(message, type = 'info') {
     toast.style.animation = 'none';
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(-20px) scale(0.9)';
-    
+
     setTimeout(() => {
       toast.remove();
       if (container.children.length === 0) {
@@ -3945,9 +3945,9 @@ function showIngestionProgress(tableName, filename, progress, processedRows, tot
   }
 
   // If already marked as success, error, or in auto-dismiss status, do not overwrite back to processing
-  if (card.classList.contains('status-success') || 
-      card.classList.contains('status-error') || 
-      card.classList.contains('status-auto-dismiss')) {
+  if (card.classList.contains('status-success') ||
+    card.classList.contains('status-error') ||
+    card.classList.contains('status-auto-dismiss')) {
     return;
   }
 
@@ -3972,7 +3972,7 @@ function showIngestionProgress(tableName, filename, progress, processedRows, tot
   if (isComplete) {
     card.classList.add('status-auto-dismiss');
     card.classList.add('status-success');
-    
+
     const title = card.querySelector('.progress-title');
     if (title) title.textContent = '✅ 파일 적재 완료';
     const percent = card.querySelector('.progress-percent');
@@ -3981,14 +3981,14 @@ function showIngestionProgress(tableName, filename, progress, processedRows, tot
     if (bar) bar.style.width = '100%';
     const stats = card.querySelector('.progress-stats');
     if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
-    
+
     // Auto remove after 2.5 seconds
     setTimeout(() => {
       card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
       card.style.animation = 'none';
       card.style.opacity = '0';
       card.style.transform = 'translateY(20px) scale(0.9)';
-      
+
       setTimeout(() => {
         card.remove();
         const container = document.getElementById('ingestion-progress-container');
@@ -4008,9 +4008,9 @@ function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
   if (!card) return;
 
   // Prevent double trigger if already in dismissal transition
-  if (card.classList.contains('status-success') || 
-      card.classList.contains('status-error') || 
-      card.classList.contains('status-auto-dismiss')) {
+  if (card.classList.contains('status-success') ||
+    card.classList.contains('status-error') ||
+    card.classList.contains('status-auto-dismiss')) {
     return;
   }
 
@@ -4043,7 +4043,7 @@ function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
     card.style.animation = 'none';
     card.style.opacity = '0';
     card.style.transform = 'translateY(20px) scale(0.9)';
-    
+
     setTimeout(() => {
       card.remove();
       const container = document.getElementById('ingestion-progress-container');
@@ -4127,7 +4127,7 @@ async function applyPendingTxEdits() {
       pageCache.clear();
       const result = await res.json();
       const saveTime = (performance.now() - applyStartTime).toFixed(1);
-      
+
       // Update cell is_overwrite status locally on the latest nodes directly
       Object.values(pendingTxEdits).forEach(edit => {
         const { rowId, colId, newValue, data } = edit;
@@ -4147,7 +4147,7 @@ async function applyPendingTxEdits() {
       updateTxModeUI();
       updateGridSortState();
       gridApi.refreshCells({ force: true });
-      
+
       performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)`;
     } else {
       const errData = await res.json().catch(() => ({}));
