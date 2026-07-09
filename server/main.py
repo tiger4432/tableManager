@@ -1232,7 +1232,7 @@ def export_table_csv(
         c_at_s = created_at.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if created_at else ""
         u_at_s = eff_upd.replace(tzinfo=timezone.utc).astimezone(tz).strftime(ts_fmt) if eff_upd else ""
         
-        row_v = [r or "" for r in row[:-2]]
+        row_v = [r if r is not None else "" for r in row[:-2]]
         row_v.append(c_at_s)
         row_v.append(u_at_s)
         sample_writer.writerow(row_v)
@@ -1283,7 +1283,7 @@ def export_table_csv(
             updated_at = row[-1]
             
             # 비즈니스 컬럼 값은 그대로 로드 (이미 SQL 레벨에서 분해됨)
-            row_vals = [r or "" for r in row[:-2]]
+            row_vals = [r if r is not None else "" for r in row[:-2]]
             
             # 시스템 컬럼 날짜 포맷 캐시 활용
             effective_update = updated_at if updated_at else created_at
