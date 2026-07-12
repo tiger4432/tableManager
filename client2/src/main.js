@@ -2757,8 +2757,35 @@ function setupClipboardHandlers() {
     const activeEl = document.activeElement;
     if (!gridApi || !activeEl || !activeEl.closest('#myGrid')) return;
 
+    // Determine target cells from selection map or drag bounds
+    let targetCells = Object.values(selectedCellsMap);
     const focusedCell = gridApi.getFocusedCell();
-    if (!focusedCell) return;
+
+    if (targetCells.length === 0) {
+      if (dragStartCell && dragEndCell) {
+        // Fallback to drag bounds
+        const allCols = gridApi.getColumns().map(c => c.getColId());
+        const startColIdx = colIdToIndexMap[dragStartCell.colId];
+        const endColIdx = colIdToIndexMap[dragEndCell.colId];
+        if (startColIdx !== undefined && endColIdx !== undefined) {
+          const minCol = Math.min(startColIdx, endColIdx);
+          const maxCol = Math.max(startColIdx, endColIdx);
+          const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+          const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+          
+          const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+          for (let r = minRow; r <= maxRow; r++) {
+            targetCols.forEach(colId => {
+              targetCells.push({ rowIndex: r, colId });
+            });
+          }
+        }
+      } else if (focusedCell) {
+        targetCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
+      }
+    }
+
+    if (targetCells.length === 0) return;
 
     e.preventDefault();
     const clipboardText = e.clipboardData.getData('text/plain');
@@ -2771,64 +2798,127 @@ function setupClipboardHandlers() {
 
     performanceLog.textContent = 'Processing paste updates...';
 
-    // Target columns configuration
-    const allCols = gridApi.getColumns().map(c => c.getColId());
-    const startColIndex = allCols.indexOf(focusedCell.column.getColId());
-    const startRowIndex = focusedCell.rowIndex;
-
     const batchUpdates = [];
-    const localUpdates = [];
+    const updateMapByRow = {};
+    const allCols = gridApi.getColumns().map(c => c.getColId());
 
     try {
-      parsedMatrix.forEach((rowValues, rOffset) => {
-        const targetRowIndex = startRowIndex + rOffset;
-        const rowNode = gridApi.getDisplayedRowAtIndex(targetRowIndex);
-        if (!rowNode || !rowNode.data) return;
+      const isSingleVal = (parsedMatrix.length === 1 && parsedMatrix[0].length === 1);
 
-        const rowId = rowNode.data.row_id;
-        const rowUpdates = {};
-        let hasUpdate = false;
+      if (isSingleVal) {
+        // 1x1 Single value clipboard ➡️ Fill all target cells
+        const val = parsedMatrix[0][0];
 
-        rowValues.forEach((val, cOffset) => {
-          const targetColIndex = startColIndex + cOffset;
-          if (targetColIndex >= allCols.length) return;
-
-          const colId = allCols[targetColIndex];
-          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(colId);
+        targetCells.forEach(cell => {
+          const { rowIndex, colId } = cell;
+          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
           if (isSystem) return;
 
-          // --- 타입 검사 및 변환 추가 ---
+          const rowNode = gridApi.getDisplayedRowAtIndex(rowIndex);
+          if (!rowNode || !rowNode.data) return;
+          const rowId = rowNode.data.row_id;
+          if (!rowId) return;
+
+          if (!updateMapByRow[rowId]) {
+            updateMapByRow[rowId] = { rowNode, updates: {} };
+          }
+
           const colTypes = currentColumnTypes || {};
           const colType = colTypes[colId] || 'string';
+          let castedVal = val;
           if (colType === 'number') {
             if (val === '' || val === null || val === undefined) {
-              rowUpdates[colId] = null;
+              castedVal = null;
             } else {
               const parsedVal = Number(val);
               if (isNaN(parsedVal)) {
                 alert(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
-                throw new Error(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+                throw new Error(`Invalid number format`);
               }
-              rowUpdates[colId] = parsedVal;
+              castedVal = parsedVal;
             }
-          } else {
-            rowUpdates[colId] = val;
           }
-          hasUpdate = true;
+          updateMapByRow[rowId].updates[colId] = castedVal;
         });
+      } else {
+        // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
+        // Find anchor (top-left) cell
+        let anchorRow = Infinity;
+        let anchorColIdx = Infinity;
+        let anchorColId = '';
 
-        if (hasUpdate) {
+        if (focusedCell) {
+          anchorRow = focusedCell.rowIndex;
+          anchorColId = focusedCell.column.getColId();
+          anchorColIdx = allCols.indexOf(anchorColId);
+        } else {
+          targetCells.forEach(cell => {
+            const idx = colIdToIndexMap[cell.colId];
+            if (cell.rowIndex < anchorRow) {
+              anchorRow = cell.rowIndex;
+            }
+            if (idx !== undefined && idx < anchorColIdx) {
+              anchorColIdx = idx;
+              anchorColId = cell.colId;
+            }
+          });
+        }
+
+        if (anchorRow === Infinity || anchorColIdx === Infinity) return;
+
+        parsedMatrix.forEach((rowValues, rOffset) => {
+          const targetRowIndex = anchorRow + rOffset;
+          const rowNode = gridApi.getDisplayedRowAtIndex(targetRowIndex);
+          if (!rowNode || !rowNode.data) return;
+          const rowId = rowNode.data.row_id;
+
+          rowValues.forEach((val, cOffset) => {
+            const targetColIndex = anchorColIdx + cOffset;
+            if (targetColIndex >= allCols.length) return;
+
+            const colId = allCols[targetColIndex];
+            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+            if (isSystem) return;
+
+            if (!updateMapByRow[rowId]) {
+              updateMapByRow[rowId] = { rowNode, updates: {} };
+            }
+
+            const colTypes = currentColumnTypes || {};
+            const colType = colTypes[colId] || 'string';
+            let castedVal = val;
+            if (colType === 'number') {
+              if (val === '' || val === null || val === undefined) {
+                castedVal = null;
+              } else {
+                const parsedVal = Number(val);
+                if (isNaN(parsedVal)) {
+                  alert(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+                  throw new Error(`Invalid number format`);
+                }
+                castedVal = parsedVal;
+              }
+            }
+            updateMapByRow[rowId].updates[colId] = castedVal;
+          });
+        });
+      }
+
+      // Populate batchUpdates array
+      Object.keys(updateMapByRow).forEach(rowId => {
+        const item = updateMapByRow[rowId];
+        if (Object.keys(item.updates).length > 0) {
           batchUpdates.push({
             row_id: rowId,
-            updates: rowUpdates,
+            updates: item.updates,
             source_name: 'user',
             updated_by: CURRENT_USER
           });
 
           // Stage edits in pendingTxEdits if Tx Mode is active, and update local grid row node data in-place
-          const oldRowData = rowNode.data;
+          const oldRowData = item.rowNode.data;
           if (txModeActive) {
-            Object.keys(rowUpdates).forEach(col => {
+            Object.keys(item.updates).forEach(col => {
               const key = `${rowId}_${col}`;
               if (!pendingTxEdits[key]) {
                 const oldValue = oldRowData.data?.[col]?.value !== undefined ? oldRowData.data[col].value : '';
@@ -2836,13 +2926,13 @@ function setupClipboardHandlers() {
                 pendingTxEdits[key] = {
                   rowId,
                   colId: col,
-                  newValue: rowUpdates[col],
+                  newValue: item.updates[col],
                   oldValue: oldValue,
                   oldIsOverwrite: oldIsOverwrite,
                   data: oldRowData
                 };
               } else {
-                pendingTxEdits[key].newValue = rowUpdates[col];
+                pendingTxEdits[key].newValue = item.updates[col];
               }
 
               // Update in-place on latest row data
@@ -2850,7 +2940,7 @@ function setupClipboardHandlers() {
               const latestData = latestNode ? latestNode.data : oldRowData;
               if (latestData) {
                 ensureCellObject(latestData, col);
-                latestData.data[col].value = rowUpdates[col];
+                latestData.data[col].value = item.updates[col];
               }
             });
           }
@@ -2906,8 +2996,6 @@ function setupClipboardHandlers() {
               updateSelectedCellUI();
             }
           }
-
-          // History updates will be handled by the WebSocket stream
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.detail || 'Paste batch update failed';
