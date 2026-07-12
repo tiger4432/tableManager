@@ -357,34 +357,26 @@ function setupEventListeners() {
   // Keyboard shortcuts inside the grid
   document.addEventListener('keydown', (e) => {
     const activeEl = document.activeElement;
-    console.log('[Debug Keydown] Key:', e.key, 'Ctrl:', e.ctrlKey, 'Meta:', e.metaKey, 'ActiveElement:', activeEl?.tagName, 'InGrid:', !!activeEl?.closest('#myGrid'));
 
     if (activeEl && activeEl.closest('#myGrid')) {
       const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
-      console.log('[Debug Keydown] isEditing:', isEditing);
 
       if (!isEditing) {
         // Delete key inside the grid to clear selected cells
         if (e.key === 'Delete') {
-          console.log('[Debug Keydown] Delete key triggered clearSelectedCells');
           e.preventDefault();
           clearSelectedCells();
         }
         // Ctrl+C / Cmd+C inside the grid to copy selected cells
         else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-          console.log('[Debug Keydown] Ctrl+C triggered range copy');
           const rangeTsv = getRangeSelectedTSV();
-          console.log('[Debug Keydown] rangeTsv length:', rangeTsv ? rangeTsv.length : 0);
           if (rangeTsv) {
             e.preventDefault();
             navigator.clipboard.writeText(rangeTsv).then(() => {
-              console.log('[Debug Keydown] Successfully wrote TSV to clipboard. Content preview:', rangeTsv.substring(0, 100));
               performanceLog.textContent = '📋 Range copied to clipboard';
             }).catch(err => {
-              console.error('[Debug Keydown] Failed to write to clipboard via navigator.clipboard:', err);
+              console.error('Failed to copy via Clipboard API', err);
             });
-          } else {
-            console.warn('[Debug Keydown] rangeTsv is empty, skipping custom clipboard write.');
           }
         }
         // Ctrl+A / Cmd+A inside the grid to select all cells
@@ -1512,14 +1504,6 @@ function renderGrid(initialRows) {
 
   gridApi = createGrid(gridDiv, gridOptions);
 
-  // Monkey patch applyTransaction for deep callstack tracing to catch race conditions and rollbacks
-  const originalApplyTx = gridApi.applyTransaction.bind(gridApi);
-  gridApi.applyTransaction = (tx) => {
-    console.log('[Debug applyTransaction] Called with tx:', tx);
-    console.trace('[Debug applyTransaction] Call stack trace:');
-    return originalApplyTx(tx);
-  };
-
   // Cache column ID to index map to avoid getColumns().map() during cell rendering (O(1) lookup)
   colIdToIndexMap = {};
   gridApi.getColumns().forEach((c, idx) => {
@@ -2580,14 +2564,12 @@ function clearRangeSelection() {
 // Helper to commit current drag selection to selectedCellsMap
 function commitDragSelection(api) {
   if (!dragStartCell || !dragEndCell || !api) {
-    console.warn('[Debug Commit] Missing parameters:', !dragStartCell, !dragEndCell, !api);
     return;
   }
 
   const allCols = api.getColumns().map(c => c.getColId());
   const startColIdx = allCols.indexOf(dragStartCell.colId);
   const endColIdx = allCols.indexOf(dragEndCell.colId);
-  console.log('[Debug Commit] Range Start Col:', dragStartCell.colId, 'Idx:', startColIdx, 'End Col:', dragEndCell.colId, 'Idx:', endColIdx);
 
   if (startColIdx !== -1 && endColIdx !== -1) {
     const minCol = Math.min(startColIdx, endColIdx);
@@ -2597,7 +2579,6 @@ function commitDragSelection(api) {
 
     // Exclude helper columns (like '#' or checkbox selection columns)
     const targetCols = allCols.filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#' && !/^\d+$/.test(colId));
-    console.log('[Debug Commit] targetCols calculated:', targetCols, 'Rows:', minRow, 'to', maxRow);
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);
@@ -2609,9 +2590,6 @@ function commitDragSelection(api) {
         selectedCellsMap[key] = { rowIndex: r, colId, rowId };
       });
     }
-    console.log('[Debug Commit] Committed range. selectedCellsMap size now:', Object.keys(selectedCellsMap).length);
-  } else {
-    console.error('[Debug Commit] Column index matching failed');
   }
 }
 
@@ -2634,12 +2612,7 @@ function getCellCoordsFromElement(el) {
 
 function setupNativeGridMouseHandlers() {
   const gridContainer = document.getElementById('myGrid');
-  if (!gridContainer) {
-    console.error('[Debug NativeMouse] #myGrid element not found');
-    return;
-  }
-
-  console.log('[Debug NativeMouse] Setting up native mouse handlers on #myGrid');
+  if (!gridContainer) return;
 
   gridContainer.addEventListener('mousedown', (e) => {
     // Only capture left click
@@ -2651,8 +2624,6 @@ function setupNativeGridMouseHandlers() {
 
     const isCtrl = e.ctrlKey || e.metaKey;
     const isShift = e.shiftKey;
-    
-    console.log('[Debug Native MouseDown] Coords:', coords, 'Ctrl:', isCtrl, 'Shift:', isShift);
 
     isDraggingRange = true;
     dragStartCell = { rowIndex: coords.rowIndex, colId: coords.colId };
@@ -2662,7 +2633,6 @@ function setupNativeGridMouseHandlers() {
     e.preventDefault();
 
     if (!isCtrl && !isShift) {
-      console.log('[Debug Native MouseDown] Clearing selectedCellsMap');
       selectedCellsMap = {};
       if (gridApi) {
         gridApi.refreshCells({ force: true });
@@ -2679,7 +2649,6 @@ function setupNativeGridMouseHandlers() {
 
     // Safety check: if buttons state is not left-clicked, release dragging range
     if (e.buttons !== 1) {
-      console.log('[Debug Native MouseMove] Mouse released outside. Committing drag.');
       isDraggingRange = false;
       if (gridApi) {
         commitDragSelection(gridApi);
@@ -2693,7 +2662,6 @@ function setupNativeGridMouseHandlers() {
     if (coords.colId === '#') return;
 
     if (dragEndCell.rowIndex !== coords.rowIndex || dragEndCell.colId !== coords.colId) {
-      console.log('[Debug Native MouseMove] Dragging to:', coords);
       const prevEnd = dragEndCell;
       dragEndCell = { rowIndex: coords.rowIndex, colId: coords.colId };
 
@@ -2710,7 +2678,6 @@ function setupNativeGridMouseHandlers() {
   // Attach global mouseup listener to document to guarantee it's committed
   document.addEventListener('mouseup', (e) => {
     if (isDraggingRange) {
-      console.log('[Debug Native MouseUp] Triggered globally');
       isDraggingRange = false;
 
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -2721,24 +2688,19 @@ function setupNativeGridMouseHandlers() {
         isSingleClick = (dragStartCell.rowIndex === dragEndCell.rowIndex && dragStartCell.colId === dragEndCell.colId);
       }
 
-      console.log('[Debug Native MouseUp] isSingleClick:', isSingleClick, 'isCtrl:', isCtrl);
-
       if (isSingleClick && isCtrl && dragStartCell) {
         const key = `${dragStartCell.rowIndex}_${dragStartCell.colId}`;
         if (selectedCellsMap[key]) {
-          console.log('[Debug Native MouseUp] Toggling off cell:', key);
           delete selectedCellsMap[key];
         } else {
           const rowNode = gridApi?.getDisplayedRowAtIndex(dragStartCell.rowIndex);
           const rowId = rowNode?.data?.row_id;
-          console.log('[Debug Native MouseUp] Toggling on cell:', key, 'rowId:', rowId);
           selectedCellsMap[key] = { rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId, rowId };
         }
         dragStartCell = null;
         dragEndCell = null;
       } else {
         if (gridApi) {
-          console.log('[Debug Native MouseUp] Committing drag selection');
           commitDragSelection(gridApi);
         }
       }
@@ -2759,20 +2721,14 @@ function setupNativeGridMouseHandlers() {
 }
 
 function getRangeSelectedTSV() {
-  if (!gridApi) {
-    console.error('[Debug TSV] gridApi is null');
-    return '';
-  }
+  if (!gridApi) return '';
 
-  // 1. Get initial cells from selectedCellsMap
-  let selectedCells = Object.values(selectedCellsMap);
-  console.log('[Debug TSV] selectedCellsMap size:', selectedCells.length);
+  let selectedCells = [];
 
   const allCols = gridApi.getColumns().map(c => c.getColId());
 
-  // 2. Merge currently active dragging range (the last uncommitted chunk)
+  // 1. Prioritize active drag bounds if present
   if (dragStartCell && dragEndCell) {
-    console.log('[Debug TSV] Merging active drag bounds:', dragStartCell, dragEndCell);
     const startColIdx = allCols.indexOf(dragStartCell.colId);
     const endColIdx = allCols.indexOf(dragEndCell.colId);
     if (startColIdx !== -1 && endColIdx !== -1) {
@@ -2781,32 +2737,25 @@ function getRangeSelectedTSV() {
       const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
       const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
       
-      const tempMergedMap = {};
-      selectedCells.forEach(cell => {
-        tempMergedMap[`${cell.rowIndex}_${cell.colId}`] = true;
-      });
-
       for (let r = minRow; r <= maxRow; r++) {
         for (let c = minCol; c <= maxCol; c++) {
-          const colId = allCols[c];
-          const key = `${r}_${colId}`;
-          if (!tempMergedMap[key]) {
-            selectedCells.push({ rowIndex: r, colId });
-            tempMergedMap[key] = true;
-          }
+          selectedCells.push({ rowIndex: r, colId: allCols[c] });
         }
       }
     }
+  } 
+  
+  // 2. Fallback: If no active drag bounds, look into selectedCellsMap
+  if (selectedCells.length === 0) {
+    selectedCells = Object.values(selectedCellsMap);
   }
 
-  // 3. Fallback to focused cell if selection is empty
+  // 3. Fallback: If still empty, use current focused cell
   if (selectedCells.length === 0) {
     const focusedCell = gridApi.getFocusedCell();
-    console.log('[Debug TSV] Fallback check: focusedCell:', focusedCell ? `${focusedCell.rowIndex}_${focusedCell.column.getId()}` : 'null');
     if (focusedCell) {
       selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
     } else {
-      console.warn('[Debug TSV] No cells found to copy.');
       return '';
     }
   }
@@ -2826,12 +2775,7 @@ function getRangeSelectedTSV() {
     }
   });
 
-  console.log('[Debug TSV] Bounding Box - Row:', minRow, 'to', maxRow, 'ColIdx:', minColIdx, 'to', maxColIdx);
-
-  if (minRow === Infinity || minColIdx === Infinity) {
-    console.error('[Debug TSV] Bounding Box calculate failed - minRow or minColIdx is Infinity');
-    return '';
-  }
+  if (minRow === Infinity || minColIdx === Infinity) return '';
 
   // Exclude helper columns (like '#' or checkbox selection columns) to ensure clean grid output structure
   const colsToCopy = allCols.filter((colId, idx) => {
@@ -2839,11 +2783,7 @@ function getRangeSelectedTSV() {
     if (colId === '#' || /^\d+$/.test(colId)) return false;
     return currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
   });
-  console.log('[Debug TSV] colsToCopy:', colsToCopy);
-  if (colsToCopy.length === 0) {
-    console.warn('[Debug TSV] colsToCopy is empty after filtering');
-    return '';
-  }
+  if (colsToCopy.length === 0) return '';
 
   let tsvRows = [];
 
