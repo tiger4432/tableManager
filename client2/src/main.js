@@ -1232,6 +1232,7 @@ function buildColumnDefs() {
 
     const colDef = {
       headerName: headerLabel,
+      headerTooltip: headerLabel,
       field: col,
       editable: !isSystem,
       sortable: true,
@@ -1327,6 +1328,7 @@ function buildColumnDefs() {
   // Prepend Row Number Column (Sequential 1,2,3,4...)
   columnDefs.unshift({
     headerName: '#',
+    headerTooltip: 'Row Number',
     valueGetter: (params) => {
       const skip = (viewMode === 'pagination' && !allDataLoaded) ? currentSkip : 0;
       return skip + params.node.rowIndex + 1;
@@ -1372,6 +1374,7 @@ function renderGrid(initialRows) {
     theme: 'legacy',
     columnDefs: columnDefs,
     rowData: initialRows,
+    enableBrowserTooltips: true,
     suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id, // Robust fallback
     defaultColDef: {
