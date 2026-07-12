@@ -93,6 +93,19 @@ async function init() {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  // Global mouseup guard to release range drag selection state securely
+  document.addEventListener('mouseup', () => {
+    if (state.isDraggingRange) {
+      state.isDraggingRange = false;
+      if (state.gridApi) {
+        commitDragSelection(state.gridApi);
+        state.gridApi.refreshCells({ force: true });
+      }
+      state.dragStartCell = null;
+      state.dragEndCell = null;
+    }
+  });
+
   if (elements.refreshHistoryBtn) {
     elements.refreshHistoryBtn.addEventListener('click', () => {
       loadHistory();

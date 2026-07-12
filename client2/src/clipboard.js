@@ -81,8 +81,7 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
   const newEndColIdx = visibleCols.indexOf(newEndCell.colId);
   const prevEndColIdx = prevEndCell ? visibleCols.indexOf(prevEndCell.colId) : newEndColIdx;
 
-  if (startColIdx === -1 || newEndColIdx === -1) {
-    api.refreshCells({ force: true });
+  if (startColIdx === -1 || newEndColIdx === -1 || prevEndColIdx === -1) {
     return;
   }
 
