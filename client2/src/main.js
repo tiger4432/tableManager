@@ -1196,6 +1196,23 @@ async function fetchData(resetSkip = true) {
   }
 }
 
+// Ensure that the cell data structure exists as an object: { value, is_overwrite, sources, updated_by }
+function ensureCellObject(dataObj, colId) {
+  if (!dataObj) return;
+  if (!dataObj.data) dataObj.data = {};
+  
+  const cell = dataObj.data[colId];
+  if (typeof cell !== 'object' || cell === null) {
+    // If it's a primitive (like string or number), wrap it in the expected CellData object format
+    dataObj.data[colId] = {
+      value: cell !== undefined ? cell : '',
+      is_overwrite: false,
+      sources: {},
+      updated_by: 'system'
+    };
+  }
+}
+
 // Render grid layout using AG-Grid Core
 // Helper to build column definitions dynamically based on schema
 function buildColumnDefs() {
@@ -1247,8 +1264,7 @@ function buildColumnDefs() {
       // Essential for writing back to nested objects
       valueSetter: (params) => {
         if (isSystem) return false;
-        if (!params.data.data) params.data.data = {};
-        if (!params.data.data[col]) params.data.data[col] = {};
+        ensureCellObject(params.data, col);
 
         let finalVal = params.newValue;
         if (colType === 'number') {
@@ -1587,8 +1603,7 @@ async function handleCellEdit(event) {
         const latestNode = gridApi.getRowNode(rowId);
         const latestData = latestNode ? latestNode.data : data;
         if (latestData) {
-          if (!latestData.data) latestData.data = {};
-          if (!latestData.data[colId]) latestData.data[colId] = {};
+          ensureCellObject(latestData, colId);
           latestData.data[colId].value = oldValue;
           latestData.data[colId].is_overwrite = oldIsOverwrite;
         }
@@ -1619,8 +1634,7 @@ async function handleCellEdit(event) {
     const latestNode = gridApi.getRowNode(rowId);
     const latestData = latestNode ? latestNode.data : data;
     if (latestData) {
-      if (!latestData.data) latestData.data = {};
-      if (!latestData.data[colId]) latestData.data[colId] = {};
+      ensureCellObject(latestData, colId);
       latestData.data[colId].value = finalValue;
     }
 
@@ -1667,9 +1681,7 @@ async function handleCellEdit(event) {
       const latestNode = gridApi.getRowNode(rowId);
       const latestData = latestNode ? latestNode.data : data;
 
-      if (!latestData.data) latestData.data = {};
-      if (!latestData.data[colId]) latestData.data[colId] = {};
-
+      ensureCellObject(latestData, colId);
       latestData.data[colId].value = finalValue;
       latestData.data[colId].is_overwrite = true;
 
@@ -1704,8 +1716,7 @@ async function handleCellEdit(event) {
     const latestNode = gridApi.getRowNode(rowId);
     const latestData = latestNode ? latestNode.data : data;
     if (latestData) {
-      if (!latestData.data) latestData.data = {};
-      if (!latestData.data[colId]) latestData.data[colId] = {};
+      ensureCellObject(latestData, colId);
       latestData.data[colId].value = oldValue;
       latestData.data[colId].is_overwrite = oldIsOverwrite;
     }
@@ -2750,8 +2761,7 @@ function setupClipboardHandlers() {
               const latestNode = gridApi.getRowNode(rowId);
               const latestData = latestNode ? latestNode.data : oldRowData;
               if (latestData) {
-                if (!latestData.data) latestData.data = {};
-                if (!latestData.data[col]) latestData.data[col] = {};
+                ensureCellObject(latestData, col);
                 latestData.data[col].value = rowUpdates[col];
               }
             });
@@ -2786,9 +2796,8 @@ function setupClipboardHandlers() {
             if (rowNode) {
               const latestData = rowNode.data;
               if (latestData) {
-                if (!latestData.data) latestData.data = {};
                 Object.keys(update.updates).forEach(col => {
-                  if (!latestData.data[col]) latestData.data[col] = {};
+                  ensureCellObject(latestData, col);
                   latestData.data[col].value = update.updates[col];
                   latestData.data[col].is_overwrite = true;
                 });
@@ -3620,8 +3629,7 @@ async function clearSelectedCells() {
           const latestNode = gridApi.getRowNode(rowId);
           const latestData = latestNode ? latestNode.data : item.rowNode.data;
           if (latestData) {
-            if (!latestData.data) latestData.data = {};
-            if (!latestData.data[colId]) latestData.data[colId] = {};
+            ensureCellObject(latestData, colId);
             latestData.data[colId].value = item.updates[colId];
           }
         });
@@ -4241,8 +4249,7 @@ async function applyPendingTxEdits() {
         const latestNode = gridApi.getRowNode(rowId);
         const latestData = latestNode ? latestNode.data : data;
         if (latestData) {
-          if (!latestData.data) latestData.data = {};
-          if (!latestData.data[colId]) latestData.data[colId] = {};
+          ensureCellObject(latestData, colId);
           latestData.data[colId].value = newValue;
           latestData.data[colId].is_overwrite = true;
           latestData.updated_at = getLocalTimeString();
@@ -4277,8 +4284,7 @@ function discardPendingTxEdits() {
     const latestNode = gridApi.getRowNode(rowId);
     const latestData = latestNode ? latestNode.data : data;
     if (latestData) {
-      if (!latestData.data) latestData.data = {};
-      if (!latestData.data[colId]) latestData.data[colId] = {};
+      ensureCellObject(latestData, colId);
       latestData.data[colId].value = oldValue;
       latestData.data[colId].is_overwrite = oldIsOverwrite;
     }
