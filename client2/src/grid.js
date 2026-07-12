@@ -256,7 +256,9 @@ export function renderGrid(initialRows) {
     theme: 'legacy',
     columnDefs: columnDefs,
     rowData: initialRows,
-    enableBrowserTooltips: true,
+    enableBrowserTooltips: false,
+    suppressColumnVirtualization: false,
+    suppressRowHoverHighlight: true,
     suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id,
     defaultColDef: {
