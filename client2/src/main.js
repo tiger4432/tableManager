@@ -2687,17 +2687,18 @@ function clearRangeSelection() {
 function commitDragSelection(api) {
   if (!dragStartCell || !dragEndCell || !api) return;
 
-  const startColIdx = colIdToIndexMap[dragStartCell.colId];
-  const endColIdx = colIdToIndexMap[dragEndCell.colId];
+  const allCols = api.getColumns().map(c => c.getColId());
+  const startColIdx = allCols.indexOf(dragStartCell.colId);
+  const endColIdx = allCols.indexOf(dragEndCell.colId);
 
-  if (startColIdx !== undefined && endColIdx !== undefined) {
-    const allCols = api.getColumns().map(c => c.getColId());
+  if (startColIdx !== -1 && endColIdx !== -1) {
     const minCol = Math.min(startColIdx, endColIdx);
     const maxCol = Math.max(startColIdx, endColIdx);
     const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
     const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
 
-    const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+    // Exclude helper columns (like '#' or checkbox selection columns)
+    const targetCols = allCols.filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#' && !/^\d+$/.test(colId));
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);
@@ -2718,43 +2719,53 @@ function getRangeSelectedTSV() {
     return '';
   }
 
+  // 1. Get initial cells from selectedCellsMap
   let selectedCells = Object.values(selectedCellsMap);
   console.log('[Debug TSV] selectedCellsMap size:', selectedCells.length);
-  
-  if (selectedCells.length === 0) {
-    if (!dragStartCell || !dragEndCell) {
-      // Fallback: If no custom selection map, get current focused cell
-      const focusedCell = gridApi.getFocusedCell();
-      console.log('[Debug TSV] Fallback check: drag bounds empty. focusedCell:', focusedCell ? `${focusedCell.rowIndex}_${focusedCell.column.getId()}` : 'null');
-      if (focusedCell) {
-        selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
-      } else {
-        console.warn('[Debug TSV] No cells in selectedCellsMap, drag bounds, or focusedCell.');
-        return '';
-      }
-    } else {
-      console.log('[Debug TSV] Fallback check: using drag bounds:', dragStartCell, dragEndCell);
-      const allCols = gridApi.getColumns().map(c => c.getColId());
-      const startColIdx = allCols.indexOf(dragStartCell.colId);
-      const endColIdx = allCols.indexOf(dragEndCell.colId);
-      if (startColIdx !== -1 && endColIdx !== -1) {
-        const minCol = Math.min(startColIdx, endColIdx);
-        const maxCol = Math.max(startColIdx, endColIdx);
-        const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
-        const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
-        for (let r = minRow; r <= maxRow; r++) {
-          for (let c = minCol; c <= maxCol; c++) {
-            selectedCells.push({ rowIndex: r, colId: allCols[c] });
+
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+
+  // 2. Merge currently active dragging range (the last uncommitted chunk)
+  if (dragStartCell && dragEndCell) {
+    console.log('[Debug TSV] Merging active drag bounds:', dragStartCell, dragEndCell);
+    const startColIdx = allCols.indexOf(dragStartCell.colId);
+    const endColIdx = allCols.indexOf(dragEndCell.colId);
+    if (startColIdx !== -1 && endColIdx !== -1) {
+      const minCol = Math.min(startColIdx, endColIdx);
+      const maxCol = Math.max(startColIdx, endColIdx);
+      const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+      const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+      
+      const tempMergedMap = {};
+      selectedCells.forEach(cell => {
+        tempMergedMap[`${cell.rowIndex}_${cell.colId}`] = true;
+      });
+
+      for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+          const colId = allCols[c];
+          const key = `${r}_${colId}`;
+          if (!tempMergedMap[key]) {
+            selectedCells.push({ rowIndex: r, colId });
+            tempMergedMap[key] = true;
           }
         }
-      } else {
-        selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
       }
     }
   }
 
-  const allCols = gridApi.getColumns().map(c => c.getColId());
-  
+  // 3. Fallback to focused cell if selection is empty
+  if (selectedCells.length === 0) {
+    const focusedCell = gridApi.getFocusedCell();
+    console.log('[Debug TSV] Fallback check: focusedCell:', focusedCell ? `${focusedCell.rowIndex}_${focusedCell.column.getId()}` : 'null');
+    if (focusedCell) {
+      selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
+    } else {
+      console.warn('[Debug TSV] No cells found to copy.');
+      return '';
+    }
+  }
+
   let minRow = Infinity;
   let maxRow = -Infinity;
   let minColIdx = Infinity;
