@@ -25,6 +25,7 @@ let selectedCell = null; // { rowId, colId, value, rowIndex }
 let activeHistoryTab = 'global'; // 'global' | 'cell' | 'row'
 let dragStartCell = null; // { rowIndex, colId }
 let dragEndCell = null;   // { rowIndex, colId }
+let selectedCellsMap = {}; // key: "rowIndex_colId" -> { rowIndex, colId, rowId }
 let isDraggingRange = false;
 let globalHistoryData = [];
 let cellRowHistoryData = [];
@@ -1440,6 +1441,7 @@ function renderGrid(initialRows) {
       if (event.column.getColId() === '#') return;
 
       const isShift = event.event.shiftKey;
+      const isCtrl = event.event.ctrlKey || event.event.metaKey;
       const currRow = event.rowIndex;
       const currCol = event.column.getColId();
 
@@ -1460,9 +1462,14 @@ function renderGrid(initialRows) {
         dragStartCell = { rowIndex: currRow, colId: currCol };
         dragEndCell = { rowIndex: currRow, colId: currCol };
 
-        if (oldStart && oldEnd) {
-          refreshRange(event.api, oldStart, oldEnd);
+        if (!isCtrl) {
+          // Ctrl 안 누르고 그냥 클릭하면 기존 다중 선택 전부 해제
+          selectedCellsMap = {};
+          if (gridApi) {
+            gridApi.refreshCells({ force: true });
+          }
         }
+
         refreshRange(event.api, dragStartCell, dragEndCell);
       }
     },
@@ -1505,7 +1512,56 @@ function renderGrid(initialRows) {
     onCellMouseUp: (event) => {
       if (isDraggingRange) {
         isDraggingRange = false;
-        refreshRange(event.api, dragStartCell, dragEndCell);
+        
+        const isCtrl = event.event.ctrlKey || event.event.metaKey;
+        const isSingleClick = (dragStartCell.rowIndex === dragEndCell.rowIndex && dragStartCell.colId === dragEndCell.colId);
+        
+        if (isSingleClick && isCtrl) {
+          // Ctrl 누르고 단일 셀 클릭 시 토글
+          const key = `${dragStartCell.rowIndex}_${dragStartCell.colId}`;
+          if (selectedCellsMap[key]) {
+            delete selectedCellsMap[key];
+          } else {
+            const rowNode = event.api.getDisplayedRowAtIndex(dragStartCell.rowIndex);
+            const rowId = rowNode?.data?.row_id;
+            selectedCellsMap[key] = { rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId, rowId };
+          }
+        } else {
+          // 드래그 선택 또는 일반 단일 드래그 시 -> 범위 내 셀들 selectedCellsMap 에 추가
+          const startColIdx = colIdToIndexMap[dragStartCell.colId];
+          const endColIdx = colIdToIndexMap[dragEndCell.colId];
+          
+          if (dragStartCell && dragEndCell && startColIdx !== undefined && endColIdx !== undefined) {
+            const allCols = event.api.getColumns().map(c => c.getColId());
+            const minCol = Math.min(startColIdx, endColIdx);
+            const maxCol = Math.max(startColIdx, endColIdx);
+            const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+            const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+            
+            const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+            
+            for (let r = minRow; r <= maxRow; r++) {
+              const node = event.api.getDisplayedRowAtIndex(r);
+              if (!node || !node.data) continue;
+              const rowId = node.data.row_id;
+              
+              targetCols.forEach(colId => {
+                const key = `${r}_${colId}`;
+                selectedCellsMap[key] = { rowIndex: r, colId, rowId };
+              });
+            }
+          }
+        }
+
+        const oldStart = dragStartCell;
+        const oldEnd = dragEndCell;
+        dragStartCell = null;
+        dragEndCell = null;
+        
+        refreshRange(event.api, oldStart, oldEnd);
+        if (isCtrl) {
+          event.api.refreshCells({ force: true });
+        }
       }
     },
     // Feature 1: Cell Editing
@@ -2535,6 +2591,9 @@ function appendHistoryLocally(log, skipRender = false) {
 
 // Range selection helper functions
 function isCellInRange(rowIndex, colId) {
+  const key = `${rowIndex}_${colId}`;
+  if (selectedCellsMap[key]) return true;
+
   if (!dragStartCell || !dragEndCell) return false;
   if (!gridApi) return false;
 
@@ -2612,51 +2671,65 @@ function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell) {
 }
 
 function clearRangeSelection() {
-  const oldStart = dragStartCell;
-  const oldEnd = dragEndCell;
   dragStartCell = null;
   dragEndCell = null;
   isDraggingRange = false;
-  if (gridApi && oldStart && oldEnd) {
-    refreshRange(gridApi, oldStart, oldEnd);
+  selectedCellsMap = {};
+  if (gridApi) {
+    gridApi.refreshCells({ force: true });
   }
 }
 
 function getRangeSelectedTSV() {
-  if (!dragStartCell || !dragEndCell || !gridApi) return '';
+  if (!gridApi) return '';
+
+  const selectedCells = Object.values(selectedCellsMap);
+  if (selectedCells.length === 0) {
+    if (!dragStartCell || !dragEndCell) return '';
+    selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
+  }
 
   const allCols = gridApi.getColumns().map(c => c.getColId());
-  const startColIdx = allCols.indexOf(dragStartCell.colId);
-  const endColIdx = allCols.indexOf(dragEndCell.colId);
+  
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  let minColIdx = Infinity;
+  let maxColIdx = -Infinity;
 
-  if (startColIdx === -1 || endColIdx === -1) return '';
-
-  const minColIdx = Math.min(startColIdx, endColIdx);
-  const maxColIdx = Math.max(startColIdx, endColIdx);
-  const minRowIdx = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
-  const maxRowIdx = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
-
-  // Exclude non-business/non-system UI helper columns (like '#' or ag-grid selection '0' column)
-  const colsToCopy = allCols.slice(minColIdx, maxColIdx + 1).filter(c => {
-    if (c === '#' || /^\d+$/.test(c)) return false;
-    return currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
+  selectedCells.forEach(cell => {
+    const cIdx = colIdToIndexMap[cell.colId];
+    if (cIdx !== undefined) {
+      if (cell.rowIndex < minRow) minRow = cell.rowIndex;
+      if (cell.rowIndex > maxRow) maxRow = cell.rowIndex;
+      if (cIdx < minColIdx) minColIdx = cIdx;
+      if (cIdx > maxColIdx) maxColIdx = cIdx;
+    }
   });
+
+  if (minRow === Infinity || minColIdx === Infinity) return '';
+
+  const colsToCopy = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
   if (colsToCopy.length === 0) return '';
 
   let tsvRows = [];
 
-  // Copy Header 토글 상태 확인 및 헤더 한 행 삽입
   const includeHeaders = copyHeaderToggle && copyHeaderToggle.checked;
   if (includeHeaders) {
     tsvRows.push(colsToCopy.map(c => c.toUpperCase()).join('\t'));
   }
 
-  for (let r = minRowIdx; r <= maxRowIdx; r++) {
+  for (let r = minRow; r <= maxRow; r++) {
     const rowNode = gridApi.getDisplayedRowAtIndex(r);
     if (!rowNode || !rowNode.data) continue;
 
     let rowVals = [];
     colsToCopy.forEach(col => {
+      const key = `${r}_${col}`;
+      if (!selectedCellsMap[key] && (!dragStartCell || !dragEndCell || !isCellInRange(r, col))) {
+        rowVals.push('');
+        return;
+      }
+
       let val = '';
       if (col === 'row_id') val = rowNode.data.row_id;
       else if (col === 'created_at') val = rowNode.data.created_at;
@@ -2669,7 +2742,6 @@ function getRangeSelectedTSV() {
           val = cell !== undefined ? cell : '';
         }
       }
-      // Sanitize tab and newline characters in string
       rowVals.push(String(val).replace(/\t/g, ' ').replace(/\n/g, ' '));
     });
     tsvRows.push(rowVals.join('\t'));
@@ -3564,10 +3636,12 @@ async function clearSelectedCells() {
   if (!gridApi || !currentTable) return;
 
   let cellsToClear = []; // Array of { rowIndex, colId }
-  const allCols = gridApi.getColumns().map(c => c.getColId());
+  const selectedCells = Object.values(selectedCellsMap);
 
-  // 1. Check if range selection exists
-  if (dragStartCell && dragEndCell) {
+  if (selectedCells.length > 0) {
+    cellsToClear = selectedCells;
+  } else if (dragStartCell && dragEndCell) {
+    const allCols = gridApi.getColumns().map(c => c.getColId());
     const startColIdx = allCols.indexOf(dragStartCell.colId);
     const endColIdx = allCols.indexOf(dragEndCell.colId);
     if (startColIdx !== -1 && endColIdx !== -1) {
@@ -3736,47 +3810,51 @@ async function clearSelectedCells() {
 
 // Bulk update all selected range cells to a new value (Ctrl + Enter feature)
 async function applyValueToSelectedRange(newValue) {
-  if (!gridApi || !dragStartCell || !dragEndCell) {
-    return;
+  if (!gridApi) return;
+
+  let cellsToUpdate = Object.values(selectedCellsMap);
+  if (cellsToUpdate.length === 0) {
+    if (!dragStartCell || !dragEndCell) return;
+
+    const allCols = gridApi.getColumns().map(c => c.getColId());
+    const startIdx = colIdToIndexMap[dragStartCell.colId];
+    const endIdx = colIdToIndexMap[dragEndCell.colId];
+    if (startIdx === undefined || endIdx === undefined) return;
+
+    const minColIdx = Math.min(startIdx, endIdx);
+    const maxColIdx = Math.max(startIdx, endIdx);
+    const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+    const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+    const targetCols = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+    for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
+      targetCols.forEach(colId => {
+        cellsToUpdate.push({ rowIndex: rIdx, colId });
+      });
+    }
   }
 
-  const allCols = gridApi.getColumns().map(c => c.getColId());
-  const startIdx = colIdToIndexMap[dragStartCell.colId];
-  const endIdx = colIdToIndexMap[dragEndCell.colId];
-  
-  if (startIdx === undefined || endIdx === undefined) return;
+  if (cellsToUpdate.length === 0) return;
 
-  const minColIdx = Math.min(startIdx, endIdx);
-  const maxColIdx = Math.max(startIdx, endIdx);
-
-  const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
-  const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
-
-  const targetCols = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
   const updatesArray = [];
   const updateMapByRow = {};
 
   // Gather row nodes in range
-  for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
-    const rowNode = gridApi.getDisplayedRowAtIndex(rIdx);
-    if (!rowNode || !rowNode.data) continue;
+  cellsToUpdate.forEach(cell => {
+    const { rowIndex, colId } = cell;
+    // System columns cannot be modified
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+    if (isSystem) return;
+
+    const rowNode = gridApi.getDisplayedRowAtIndex(rowIndex);
+    if (!rowNode || !rowNode.data) return;
     const rowId = rowNode.data.row_id;
 
-    const rowUpdates = {};
-    targetCols.forEach(colId => {
-      // System columns cannot be modified
-      const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(colId);
-      if (isSystem) return;
-      rowUpdates[colId] = newValue;
-    });
-
-    if (Object.keys(rowUpdates).length > 0) {
-      if (!updateMapByRow[rowId]) {
-        updateMapByRow[rowId] = { rowNode, updates: {} };
-      }
-      Object.assign(updateMapByRow[rowId].updates, rowUpdates);
+    if (!updateMapByRow[rowId]) {
+      updateMapByRow[rowId] = { rowNode, updates: {} };
     }
-  }
+    updateMapByRow[rowId].updates[colId] = newValue;
+  });
 
   // Apply updates
   Object.keys(updateMapByRow).forEach(rowId => {
