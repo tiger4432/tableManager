@@ -1466,6 +1466,7 @@ function renderGrid(initialRows) {
       const isCtrl = event.event.ctrlKey || event.event.metaKey;
       const currRow = event.rowIndex;
       const currCol = event.column.getColId();
+      console.log('[Debug MouseDown] Row:', currRow, 'Col:', currCol, 'Ctrl:', isCtrl, 'Shift:', isShift);
 
       const oldStart = dragStartCell;
       const oldEnd = dragEndCell;
@@ -1485,7 +1486,7 @@ function renderGrid(initialRows) {
         dragEndCell = { rowIndex: currRow, colId: currCol };
 
         if (!isCtrl) {
-          // Ctrl 안 누르고 그냥 클릭하면 기존 다중 선택 전부 해제
+          console.log('[Debug MouseDown] Ctrl not pressed. Clearing selectedCellsMap');
           selectedCellsMap = {};
           if (gridApi) {
             gridApi.refreshCells({ force: true });
@@ -1499,6 +1500,7 @@ function renderGrid(initialRows) {
       // 마우스 왼쪽 버튼이 눌려있지 않으면 드래그 해제
       if (event.event && event.event.buttons !== undefined && event.event.buttons !== 1) {
         if (isDraggingRange) {
+          console.log('[Debug MouseOver] Drag release detected via buttons !== 1');
           isDraggingRange = false;
           commitDragSelection(event.api);
           event.api.refreshCells({ force: true });
@@ -1513,6 +1515,7 @@ function renderGrid(initialRows) {
       const currCol = event.column.getColId();
 
       if (dragEndCell.rowIndex !== currRow || dragEndCell.colId !== currCol) {
+        console.log('[Debug MouseOver] Dragging to Row:', currRow, 'Col:', currCol);
         const prevEnd = dragEndCell;
         dragEndCell = { rowIndex: currRow, colId: currCol };
 
@@ -1533,26 +1536,30 @@ function renderGrid(initialRows) {
       }
     },
     onCellMouseUp: (event) => {
+      console.log('[Debug MouseUp] Row:', event.rowIndex, 'Col:', event.column.getColId(), 'isDraggingRange:', isDraggingRange);
       if (isDraggingRange) {
         isDraggingRange = false;
         
         const isCtrl = event.event.ctrlKey || event.event.metaKey;
         const isSingleClick = (dragStartCell.rowIndex === dragEndCell.rowIndex && dragStartCell.colId === dragEndCell.colId);
+        console.log('[Debug MouseUp] isSingleClick:', isSingleClick, 'isCtrl:', isCtrl);
         
         if (isSingleClick && isCtrl) {
           // Ctrl 누르고 단일 셀 클릭 시 토글
           const key = `${dragStartCell.rowIndex}_${dragStartCell.colId}`;
           if (selectedCellsMap[key]) {
+            console.log('[Debug MouseUp] Toggling off cell:', key);
             delete selectedCellsMap[key];
           } else {
             const rowNode = event.api.getDisplayedRowAtIndex(dragStartCell.rowIndex);
             const rowId = rowNode?.data?.row_id;
+            console.log('[Debug MouseUp] Toggling on cell:', key, 'rowId:', rowId);
             selectedCellsMap[key] = { rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId, rowId };
           }
           dragStartCell = null;
           dragEndCell = null;
         } else {
-          // 드래그 선택 또는 일반 단일 드래그 시 -> 범위 내 셀들 selectedCellsMap 에 추가
+          console.log('[Debug MouseUp] Committing drag range selection');
           commitDragSelection(event.api);
         }
 
@@ -2685,11 +2692,15 @@ function clearRangeSelection() {
 
 // Helper to commit current drag selection to selectedCellsMap
 function commitDragSelection(api) {
-  if (!dragStartCell || !dragEndCell || !api) return;
+  if (!dragStartCell || !dragEndCell || !api) {
+    console.warn('[Debug Commit] Missing parameters:', !dragStartCell, !dragEndCell, !api);
+    return;
+  }
 
   const allCols = api.getColumns().map(c => c.getColId());
   const startColIdx = allCols.indexOf(dragStartCell.colId);
   const endColIdx = allCols.indexOf(dragEndCell.colId);
+  console.log('[Debug Commit] Range Start Col:', dragStartCell.colId, 'Idx:', startColIdx, 'End Col:', dragEndCell.colId, 'Idx:', endColIdx);
 
   if (startColIdx !== -1 && endColIdx !== -1) {
     const minCol = Math.min(startColIdx, endColIdx);
@@ -2699,6 +2710,7 @@ function commitDragSelection(api) {
 
     // Exclude helper columns (like '#' or checkbox selection columns)
     const targetCols = allCols.filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#' && !/^\d+$/.test(colId));
+    console.log('[Debug Commit] targetCols calculated:', targetCols, 'Rows:', minRow, 'to', maxRow);
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);
@@ -2710,6 +2722,9 @@ function commitDragSelection(api) {
         selectedCellsMap[key] = { rowIndex: r, colId, rowId };
       });
     }
+    console.log('[Debug Commit] Committed range. selectedCellsMap size now:', Object.keys(selectedCellsMap).length);
+  } else {
+    console.error('[Debug Commit] Column index matching failed');
   }
 }
 
