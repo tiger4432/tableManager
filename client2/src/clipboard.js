@@ -12,11 +12,14 @@ export function isCellInRange(rowIndex, colId) {
   if (!state.dragStartCell || !state.dragEndCell) return false;
   if (!state.gridApi) return false;
 
-  const startColIdx = state.colIdToIndexMap[state.dragStartCell.colId];
-  const endColIdx = state.colIdToIndexMap[state.dragEndCell.colId];
-  const colIdx = state.colIdToIndexMap[colId];
+  const visibleCols = (state.gridApi.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
+  const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
+  const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
+  const colIdx = visibleCols.indexOf(colId);
 
-  if (startColIdx === undefined || endColIdx === undefined || colIdx === undefined) return false;
+  if (startColIdx === -1 || endColIdx === -1 || colIdx === -1) return false;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
@@ -39,14 +42,17 @@ export function refreshRange(api, startCell, endCell) {
     if (node) rowNodes.push(node);
   }
 
-  const startColIdx = state.colIdToIndexMap[startCell.colId];
-  const endColIdx = state.colIdToIndexMap[endCell.colId];
-  if (startColIdx === undefined || endColIdx === undefined) return;
+  const visibleCols = (api.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
+  const startColIdx = visibleCols.indexOf(startCell.colId);
+  const endColIdx = visibleCols.indexOf(endCell.colId);
+  if (startColIdx === -1 || endColIdx === -1) return;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
-  const allColumns = api.getColumns();
-  const columns = allColumns.slice(minColIdx, maxColIdx + 1);
+  const visibleColumns = (api.getColumns() || []).filter(c => c.isVisible());
+  const columns = visibleColumns.slice(minColIdx, maxColIdx + 1);
 
   api.refreshCells({ rowNodes, columns, force: true });
 }
@@ -67,11 +73,14 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
     if (node) rowNodes.push(node);
   }
 
-  const startColIdx = state.colIdToIndexMap[startCell.colId];
-  const newEndColIdx = state.colIdToIndexMap[newEndCell.colId];
-  const prevEndColIdx = prevEndCell ? state.colIdToIndexMap[prevEndCell.colId] : newEndColIdx;
+  const visibleCols = (api.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
+  const startColIdx = visibleCols.indexOf(startCell.colId);
+  const newEndColIdx = visibleCols.indexOf(newEndCell.colId);
+  const prevEndColIdx = prevEndCell ? visibleCols.indexOf(prevEndCell.colId) : newEndColIdx;
 
-  if (startColIdx === undefined || newEndColIdx === undefined) {
+  if (startColIdx === -1 || newEndColIdx === -1) {
     api.refreshCells({ force: true });
     return;
   }
@@ -79,8 +88,8 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
   const minColIdx = Math.min(startColIdx, prevEndColIdx, newEndColIdx);
   const maxColIdx = Math.max(startColIdx, prevEndColIdx, newEndColIdx);
 
-  const allColumns = api.getColumns();
-  const columns = allColumns.slice(minColIdx, maxColIdx + 1);
+  const visibleColumns = (api.getColumns() || []).filter(c => c.isVisible());
+  const columns = visibleColumns.slice(minColIdx, maxColIdx + 1);
 
   api.refreshCells({ rowNodes, columns, force: true });
 }
@@ -98,17 +107,19 @@ export function clearRangeSelection() {
 export function commitDragSelection(api) {
   if (!state.dragStartCell || !state.dragEndCell || !api) return;
 
-  const startColIdx = state.colIdToIndexMap[state.dragStartCell.colId];
-  const endColIdx = state.colIdToIndexMap[state.dragEndCell.colId];
+  const visibleCols = (api.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
+  const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
+  const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
 
-  if (startColIdx !== undefined && endColIdx !== undefined) {
-    const allCols = api.getColumns().map(c => c.getColId());
+  if (startColIdx !== -1 && endColIdx !== -1) {
     const minCol = Math.min(startColIdx, endColIdx);
     const maxCol = Math.max(startColIdx, endColIdx);
     const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
-    const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+    const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);

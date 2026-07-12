@@ -103,17 +103,19 @@ export async function applyValueToSelectedRange(newValue) {
   if (cellsToUpdate.length === 0) {
     if (!state.dragStartCell || !state.dragEndCell) return;
 
-    const allCols = state.gridApi.getColumns().map(c => c.getColId());
-    const startIdx = state.colIdToIndexMap[state.dragStartCell.colId];
-    const endIdx = state.colIdToIndexMap[state.dragEndCell.colId];
-    if (startIdx === undefined || endIdx === undefined) return;
+    const visibleCols = (state.gridApi.getColumns() || [])
+      .filter(c => c.isVisible())
+      .map(c => c.getColId());
+    const startIdx = visibleCols.indexOf(state.dragStartCell.colId);
+    const endIdx = visibleCols.indexOf(state.dragEndCell.colId);
+    if (startIdx === -1 || endIdx === -1) return;
 
     const minColIdx = Math.min(startIdx, endIdx);
     const maxColIdx = Math.max(startIdx, endIdx);
     const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
-    const targetCols = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+    const targetCols = visibleCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
     for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
       targetCols.forEach(colId => {
         cellsToUpdate.push({ rowIndex: rIdx, colId });

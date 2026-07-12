@@ -932,12 +932,14 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const allCols = state.gridApi.getColumns().map(c => c.getColId());
+  const visibleCols = (state.gridApi.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
   const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
   if (state.dragStartCell && state.dragEndCell) {
-    const startColIdx = allCols.indexOf(state.dragStartCell.colId);
-    const endColIdx = allCols.indexOf(state.dragEndCell.colId);
+    const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
+    const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
     if (startColIdx !== -1 && endColIdx !== -1) {
       const minColIdx = Math.min(startColIdx, endColIdx);
       const maxColIdx = Math.max(startColIdx, endColIdx);
@@ -946,7 +948,7 @@ function getSelectedCells() {
 
       for (let r = minRowIdx; r <= maxRowIdx; r++) {
         for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
-          const colId = allCols[cIdx];
+          const colId = visibleCols[cIdx];
           if (systemCols.includes(colId) || /^\d+$/.test(colId)) continue;
 
           const rowNode = state.gridApi.getDisplayedRowAtIndex(r);
