@@ -177,9 +177,14 @@ export function getRangeSelectedTSV() {
   if (minRow === Infinity || minColIdx === Infinity) return '';
 
   // Exclude helper columns (like '#' or checkbox selection columns) to ensure clean grid output structure
+  const visibleColIds = (state.gridApi.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
+
   const colsToCopy = allCols.filter((colId, idx) => {
     if (idx < minColIdx || idx > maxColIdx) return false;
     if (colId === '#' || /^\d+$/.test(colId)) return false;
+    if (!visibleColIds.includes(colId)) return false;
     return state.currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
   });
   if (colsToCopy.length === 0) return '';
@@ -526,7 +531,7 @@ export function setupClipboardHandlers() {
     if (selectedNodes.length === 0) return;
 
     e.preventDefault();
-    const columns = state.gridApi.getColumns().map(c => c.getColId()).filter(c => {
+    const columns = state.gridApi.getColumns().filter(c => c.isVisible()).map(c => c.getColId()).filter(c => {
       if (c === '#' || /^\d+$/.test(c)) return false;
       return state.currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
     });
