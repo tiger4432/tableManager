@@ -2787,9 +2787,18 @@ function getRangeSelectedTSV() {
 
   let tsvRows = [];
 
-  const includeHeaders = copyHeaderToggle && copyHeaderToggle.checked;
+  const toggleEl = document.getElementById('copy-header-toggle');
+  const includeHeaders = toggleEl && toggleEl.checked;
   if (includeHeaders) {
-    tsvRows.push(colsToCopy.map(c => c.toUpperCase()).join('\t'));
+    const headerRow = colsToCopy.map(colId => {
+      const col = gridApi.getColumn(colId);
+      if (col) {
+        const colDef = col.getColDef();
+        return colDef.headerName || colId;
+      }
+      return colId;
+    });
+    tsvRows.push(headerRow.join('\t'));
   }
 
   for (let r = minRow; r <= maxRow; r++) {
