@@ -2471,7 +2471,8 @@ if os.path.exists(client2_dist_path):
             file_name.startswith("ws") or 
             file_name.startswith("audit_logs") or 
             file_name.startswith("dashboard") or
-            file_name.startswith("admin")):
+            file_name.startswith("admin") or
+            file_name.startswith("api")):
             raise HTTPException(status_code=404)
 
         target_path = os.path.join(client2_dist_path, file_name)
