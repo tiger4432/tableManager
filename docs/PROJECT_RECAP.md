@@ -31,6 +31,7 @@
 - **Phase 46-48**: **[Data Integrity Revision]** 행 삭제 및 붙여넣기 무결성(Row ID 타겟팅) 이슈 해결, 고성능 BK 인덱스 정렬 및 토글 시스템 도입, 범용 텍스트 입력 제약 해제.
 - **Phase 73.5**: **[Search & History Optimization]** UUID 기반 검색 세션 가드(Search Session Guard) 도입으로 고속 타이핑 시 데이터 오염 차단, 히스토리 패널 노이즈 실시간 필터링 및 카운터 동기화 정합성 확보.
 - **Phase 73.6**: **[Total Sync Revision]** 외부 데이터 변경(Delete/Create) 시 서버 사이드 Total Count 재계산 엔진 도입으로 필터 활성화 중 카운트 불일치 원천 해결.
+- **Phase 80**: **[Client2 Refactoring & Modularization]** 단일 스파게티 구조의 `client2` 프론트엔드(`main.js` 약 2,200라인)를 ESM 모듈 아키텍처로 전면 리팩토링(8대 기능 모듈 분리). 전역 `window` 객체 오염을 100% 제거하고 Reactive State Store(`state.js`) 및 중앙 DOM 참조(`dom.js`) 격리 완료. 트랜잭션(Tx) 일괄 수정 모드 복구, 빈값(null) 클립보드 복사 결함 패치 및 런타임 ReferenceError(pageLimit, sourcesModal 등) 예방 패치를 반영하여 Vite 컴파일 완결.
 - **Agentic Env**: 멀티 에이전트 협업 체계(Lead/Excel/Sync/Ingester) 및 지식 자산화 표준 정립.
 
 ---

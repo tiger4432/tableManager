@@ -1,0 +1,318 @@
+import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
+import { state } from './state.js';
+import { elements } from './dom.js';
+import { getLocalTimeString } from './utils.js';
+import { updateGridSortState } from './grid.js';
+import { ensureCellObject } from './grid.js';
+
+export function setupBeforeUnloadWarning() {
+  window.onbeforeunload = (e) => {
+    if (state.txModeActive && Object.keys(state.pendingTxEdits).length > 0) {
+      e.preventDefault();
+      e.returnValue = '저장되지 않은 변경 사항이 있습니다. 정말 페이지를 벗어나시겠습니까?';
+      return e.returnValue;
+    }
+  };
+}
+
+export function updateSelectedCellUI() {
+  if (!state.selectedCell) {
+    elements.selectedCellInfo.innerHTML = 'Select a cell to view history';
+    return;
+  }
+
+  const isSystem = ['created_at', 'updated_at', 'row_id'].includes(state.selectedCell.colId);
+  elements.selectedCellInfo.innerHTML = `
+    <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${state.selectedCell.rowId}</span></div>
+    <div><strong>Column:</strong> <span style="color:var(--color-primary)">${state.selectedCell.colId.toUpperCase()}</span></div>
+    <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? state.selectedCell.value : 'NULL'}</code></div>
+    ${isSystem ? '<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only System Column</div>' : ''}
+  `;
+}
+
+export function updateTxModeUI() {
+  const count = Object.keys(state.pendingTxEdits).length;
+  if (state.txModeActive) {
+    if (elements.txModeToggle) {
+      elements.txModeToggle.checked = true;
+    }
+    if (elements.txApplyBtn) {
+      elements.txApplyBtn.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.txApplyBtn.textContent = `Apply (${count})`;
+    }
+    if (elements.txDiscardBtn) {
+      elements.txDiscardBtn.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+    if (elements.performanceLog) {
+      elements.performanceLog.textContent = count > 0 
+        ? `Tx Mode active: ${count} edits pending` 
+        : 'Tx Mode active (No pending edits)';
+    }
+  } else {
+    if (elements.txModeToggle) {
+      elements.txModeToggle.checked = false;
+    }
+    if (elements.txApplyBtn) {
+      elements.txApplyBtn.style.display = 'none';
+    }
+    if (elements.txDiscardBtn) {
+      elements.txDiscardBtn.style.display = 'none';
+    }
+    if (elements.performanceLog) {
+      elements.performanceLog.textContent = 'Ready';
+    }
+  }
+
+  // Toggle ag-grid cell class rules (dirty dashed border)
+  if (state.gridApi) {
+    state.gridApi.refreshCells({ force: true });
+  }
+}
+
+export function setTransactionFilter(txId) {
+  state.currentTransactionId = txId;
+  if (txId) {
+    if (elements.bannerTxId) elements.bannerTxId.textContent = txId;
+    if (elements.txFilterBanner) elements.txFilterBanner.style.display = 'flex';
+  } else {
+    if (elements.bannerTxId) elements.bannerTxId.textContent = '';
+    if (elements.txFilterBanner) elements.txFilterBanner.style.display = 'none';
+  }
+
+  // Refresh history timeline highlights to match the new filter context
+  const timelineItems = elements.timeline.querySelectorAll('.timeline-item');
+  timelineItems.forEach(li => {
+    const itemTxId = li.dataset.txId || (li.querySelector('.filter-tx-btn')?.dataset.txId);
+    if (itemTxId && itemTxId === state.currentTransactionId) {
+      li.classList.add('active-tx-log');
+    } else {
+      li.classList.remove('active-tx-log');
+    }
+  });
+
+  // Reload data from skip = 0
+  import('./api.js').then(({ fetchData }) => {
+    fetchData(true);
+  });
+}
+
+export async function applyValueToSelectedRange(newValue) {
+  if (!state.gridApi) return;
+
+  let cellsToUpdate = Object.values(state.selectedCellsMap);
+  if (cellsToUpdate.length === 0) {
+    if (!state.dragStartCell || !state.dragEndCell) return;
+
+    const allCols = state.gridApi.getColumns().map(c => c.getColId());
+    const startIdx = state.colIdToIndexMap[state.dragStartCell.colId];
+    const endIdx = state.colIdToIndexMap[state.dragEndCell.colId];
+    if (startIdx === undefined || endIdx === undefined) return;
+
+    const minColIdx = Math.min(startIdx, endIdx);
+    const maxColIdx = Math.max(startIdx, endIdx);
+    const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+    const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+
+    const targetCols = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+    for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
+      targetCols.forEach(colId => {
+        cellsToUpdate.push({ rowIndex: rIdx, colId });
+      });
+    }
+  }
+
+  if (cellsToUpdate.length === 0) return;
+
+  const updatesArray = [];
+  const updateMapByRow = {};
+
+  cellsToUpdate.forEach(cell => {
+    const { rowIndex, colId } = cell;
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+    if (isSystem) return;
+
+    const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
+    if (!rowNode || !rowNode.data) return;
+    const rowId = rowNode.data.row_id;
+
+    if (!updateMapByRow[rowId]) {
+      updateMapByRow[rowId] = { rowNode, updates: {} };
+    }
+    updateMapByRow[rowId].updates[colId] = newValue;
+  });
+
+  Object.keys(updateMapByRow).forEach(rowId => {
+    const item = updateMapByRow[rowId];
+    if (state.txModeActive) {
+      Object.keys(item.updates).forEach(colId => {
+        const key = `${rowId}_${colId}`;
+        if (!state.pendingTxEdits[key]) {
+          const oldValue = item.rowNode.data.data?.[colId]?.value !== undefined ? item.rowNode.data.data[colId].value : '';
+          const oldIsOverwrite = item.rowNode.data.data?.[colId]?.is_overwrite === true;
+          state.pendingTxEdits[key] = {
+            rowId,
+            colId,
+            newValue: item.updates[colId],
+            oldValue: oldValue,
+            oldIsOverwrite: oldIsOverwrite,
+            data: item.rowNode.data
+          };
+        } else {
+          state.pendingTxEdits[key].newValue = item.updates[colId];
+        }
+
+        const latestNode = state.gridApi.getRowNode(rowId);
+        const latestData = latestNode ? latestNode.data : item.rowNode.data;
+        if (latestData) {
+          ensureCellObject(latestData, colId);
+          latestData.data[colId].value = item.updates[colId];
+        }
+      });
+    } else {
+      updatesArray.push({
+        row_id: rowId,
+        updates: item.updates,
+        source_name: 'user',
+        updated_by: CURRENT_USER
+      });
+    }
+  });
+
+  if (state.txModeActive) {
+    if (Object.keys(updateMapByRow).length > 0) {
+      if (state.selectedCell && updateMapByRow[state.selectedCell.rowId] && updateMapByRow[state.selectedCell.rowId].updates[state.selectedCell.colId] !== undefined) {
+        state.selectedCell.value = updateMapByRow[state.selectedCell.rowId].updates[state.selectedCell.colId];
+        updateSelectedCellUI();
+      }
+
+      updateTxModeUI();
+      state.gridApi.refreshCells({ force: true });
+      setupBeforeUnloadWarning();
+      elements.performanceLog.textContent = `Staged range value edit: ${Object.keys(state.pendingTxEdits).length} total pending edits`;
+    }
+    return;
+  }
+
+  if (updatesArray.length === 0) return;
+
+  elements.performanceLog.textContent = `Updating ${updatesArray.reduce((acc, cur) => acc + Object.keys(cur.updates).length, 0)} cells...`;
+  const startTime = performance.now();
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        updates: updatesArray,
+        silent: false
+      })
+    });
+
+    if (res.ok) {
+      state.pageCache.clear();
+      const result = await res.json();
+      const saveTime = (performance.now() - startTime).toFixed(1);
+      elements.performanceLog.textContent = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
+
+      updatesArray.forEach(item => {
+        const rowNode = state.gridApi.getRowNode(item.row_id);
+        if (rowNode) {
+          const latestData = rowNode.data;
+          if (latestData) {
+            Object.keys(item.updates).forEach(colId => {
+              ensureCellObject(latestData, colId);
+              latestData.data[colId].value = item.updates[colId];
+              latestData.data[colId].is_overwrite = true;
+            });
+            latestData.updated_at = getLocalTimeString();
+          }
+        }
+      });
+
+      if (state.selectedCell && updateMapByRow[state.selectedCell.rowId] && updateMapByRow[state.selectedCell.rowId].updates[state.selectedCell.colId] !== undefined) {
+        state.selectedCell.value = updateMapByRow[state.selectedCell.rowId].updates[state.selectedCell.colId];
+        updateSelectedCellUI();
+      }
+
+      updateGridSortState();
+      state.gridApi.refreshCells({ force: true });
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Save failed';
+      throw new Error(errMsg);
+    }
+  } catch (err) {
+    console.error('Bulk cell update failed', err);
+    alert(`범위 수정 사항 저장 실패: ${err.message}`);
+    elements.performanceLog.textContent = '❌ Range edit failed to save';
+  }
+}
+
+export function updatePageCacheOnUpsert(items) {
+  if (!items || items.length === 0) return;
+  const isSortLatest = elements.sortLatestToggle && elements.sortLatestToggle.checked;
+
+  items.forEach(item => {
+    let foundAnywhere = false;
+
+    for (const [skip, cached] of state.pageCache.entries()) {
+      const idx = cached.data.findIndex(r => r.row_id === item.row_id);
+      if (idx !== -1) {
+        foundAnywhere = true;
+        const oldRowData = cached.data[idx];
+        cached.data[idx] = {
+          ...oldRowData,
+          created_at: item.created_at || oldRowData.created_at,
+          updated_at: item.updated_at || oldRowData.updated_at,
+          data: {
+            ...oldRowData.data,
+            ...item.data
+          }
+        };
+      }
+    }
+
+    if (!foundAnywhere) {
+      for (const [skip, cached] of state.pageCache.entries()) {
+        cached.total += 1;
+
+        if (skip === 0 && isSortLatest) {
+          const nowStr = getLocalTimeString();
+          const newItem = {
+            ...item,
+            created_at: item.created_at || nowStr,
+            updated_at: item.updated_at || nowStr
+          };
+
+          if (!cached.data.some(r => r.row_id === newItem.row_id)) {
+            cached.data.unshift(newItem);
+            if (cached.data.length > pageLimit) {
+              cached.data.pop();
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+export function updatePageCacheOnDelete(rowIds) {
+  if (!rowIds || rowIds.length === 0) return;
+
+  rowIds.forEach(rowId => {
+    for (const [skip, cached] of state.pageCache.entries()) {
+      const originalLength = cached.data.length;
+      cached.data = cached.data.filter(r => r.row_id !== rowId);
+
+      const removedCount = originalLength - cached.data.length;
+      if (removedCount > 0) {
+        cached.total -= removedCount;
+      } else {
+        cached.total -= 1;
+      }
+      if (cached.total < 0) cached.total = 0;
+    }
+  });
+}
