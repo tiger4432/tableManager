@@ -2717,8 +2717,8 @@ function getRangeSelectedTSV() {
   let maxColIdx = -Infinity;
 
   selectedCells.forEach(cell => {
-    const cIdx = colIdToIndexMap[cell.colId];
-    if (cIdx !== undefined) {
+    const cIdx = allCols.indexOf(cell.colId);
+    if (cIdx !== -1) {
       if (cell.rowIndex < minRow) minRow = cell.rowIndex;
       if (cell.rowIndex > maxRow) maxRow = cell.rowIndex;
       if (cIdx < minColIdx) minColIdx = cIdx;
@@ -2728,7 +2728,12 @@ function getRangeSelectedTSV() {
 
   if (minRow === Infinity || minColIdx === Infinity) return '';
 
-  const colsToCopy = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+  // Exclude helper columns (like '#' or checkbox selection columns) to ensure clean grid output structure
+  const colsToCopy = allCols.filter((colId, idx) => {
+    if (idx < minColIdx || idx > maxColIdx) return false;
+    if (colId === '#' || /^\d+$/.test(colId)) return false;
+    return currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
+  });
   if (colsToCopy.length === 0) return '';
 
   let tsvRows = [];
