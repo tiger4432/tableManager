@@ -513,6 +513,27 @@ function setupEventListeners() {
     });
   }
 
+  // Global mouseup handler to ensure drag range is always committed even if mouseup happens outside cells
+  document.addEventListener('mouseup', () => {
+    if (isDraggingRange) {
+      console.log('[Debug Global MouseUp] Committing drag range globally');
+      isDraggingRange = false;
+      if (gridApi) {
+        commitDragSelection(gridApi);
+        gridApi.refreshCells({ force: true });
+      }
+      
+      const oldStart = dragStartCell;
+      const oldEnd = dragEndCell;
+      dragStartCell = null;
+      dragEndCell = null;
+      
+      if (oldStart && oldEnd && gridApi) {
+        refreshRange(gridApi, oldStart, oldEnd);
+      }
+    }
+  });
+
   // Sources Modal Close Button
   modalCloseBtn.addEventListener('click', () => {
     sourcesModal.style.display = 'none';
@@ -1484,6 +1505,11 @@ function renderGrid(initialRows) {
         isDraggingRange = true;
         dragStartCell = { rowIndex: currRow, colId: currCol };
         dragEndCell = { rowIndex: currRow, colId: currCol };
+
+        // Prevent browser native drag-and-drop / text selection behavior to ensure mouseup is never swallowed
+        if (event.event && typeof event.event.preventDefault === 'function') {
+          event.event.preventDefault();
+        }
 
         if (!isCtrl) {
           console.log('[Debug MouseDown] Ctrl not pressed. Clearing selectedCellsMap');
