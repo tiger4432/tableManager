@@ -1384,6 +1384,19 @@ function renderGrid(initialRows) {
       suppressKeyboardEvent: (params) => {
         const event = params.event;
         const key = event.key;
+
+        // Ctrl + Enter during cell editing triggers bulk update for selected range
+        if (params.editing && event.ctrlKey && key === 'Enter') {
+          event.preventDefault();
+          const editors = params.api.getCellEditorInstances();
+          if (editors && editors.length > 0) {
+            const editingValue = editors[0].getValue();
+            params.api.stopEditing(true); // stopEditing(true) will cancel editor UI and save the value locally
+            applyValueToSelectedRange(editingValue);
+          }
+          return true;
+        }
+
         // Prevent Delete and Backspace from clearing cell content unless editing
         if (!params.editing && (key === 'Delete' || key === 'Backspace')) {
           return true;
@@ -3718,6 +3731,163 @@ async function clearSelectedCells() {
     console.error('Failed to clear cells', err);
     alert(`셀 내용 비우기 실패: ${err.message}`);
     performanceLog.textContent = '❌ Cell clearing failed';
+  }
+}
+
+// Bulk update all selected range cells to a new value (Ctrl + Enter feature)
+async function applyValueToSelectedRange(newValue) {
+  if (!gridApi || !dragStartCell || !dragEndCell) {
+    return;
+  }
+
+  const allCols = gridApi.getColumns().map(c => c.getColId());
+  const startIdx = colIdToIndexMap[dragStartCell.colId];
+  const endIdx = colIdToIndexMap[dragEndCell.colId];
+  
+  if (startIdx === undefined || endIdx === undefined) return;
+
+  const minColIdx = Math.min(startIdx, endIdx);
+  const maxColIdx = Math.max(startIdx, endIdx);
+
+  const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+  const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+
+  const targetCols = allCols.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+  const updatesArray = [];
+  const updateMapByRow = {};
+
+  // Gather row nodes in range
+  for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
+    const rowNode = gridApi.getDisplayedRowAtIndex(rIdx);
+    if (!rowNode || !rowNode.data) continue;
+    const rowId = rowNode.data.row_id;
+
+    const rowUpdates = {};
+    targetCols.forEach(colId => {
+      // System columns cannot be modified
+      const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(colId);
+      if (isSystem) return;
+      rowUpdates[colId] = newValue;
+    });
+
+    if (Object.keys(rowUpdates).length > 0) {
+      if (!updateMapByRow[rowId]) {
+        updateMapByRow[rowId] = { rowNode, updates: {} };
+      }
+      Object.assign(updateMapByRow[rowId].updates, rowUpdates);
+    }
+  }
+
+  // Apply updates
+  Object.keys(updateMapByRow).forEach(rowId => {
+    const item = updateMapByRow[rowId];
+    if (txModeActive) {
+      // Stage edits in pendingTxEdits
+      Object.keys(item.updates).forEach(colId => {
+        const key = `${rowId}_${colId}`;
+        if (!pendingTxEdits[key]) {
+          const oldValue = item.rowNode.data.data?.[colId]?.value !== undefined ? item.rowNode.data.data[colId].value : '';
+          const oldIsOverwrite = item.rowNode.data.data?.[colId]?.is_overwrite === true;
+          pendingTxEdits[key] = {
+            rowId,
+            colId,
+            newValue: item.updates[colId],
+            oldValue: oldValue,
+            oldIsOverwrite: oldIsOverwrite,
+            data: item.rowNode.data
+          };
+        } else {
+          pendingTxEdits[key].newValue = item.updates[colId];
+        }
+
+        // Update in-place on latest row data
+        const latestNode = gridApi.getRowNode(rowId);
+        const latestData = latestNode ? latestNode.data : item.rowNode.data;
+        if (latestData) {
+          ensureCellObject(latestData, colId);
+          latestData.data[colId].value = item.updates[colId];
+        }
+      });
+    } else {
+      updatesArray.push({
+        row_id: rowId,
+        updates: item.updates,
+        source_name: 'user',
+        updated_by: CURRENT_USER
+      });
+    }
+  });
+
+  if (txModeActive) {
+    if (Object.keys(updateMapByRow).length > 0) {
+      if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
+        selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
+        updateSelectedCellUI();
+      }
+
+      updateTxModeUI();
+      gridApi.refreshCells({ force: true });
+      setupBeforeUnloadWarning();
+      performanceLog.textContent = `Staged range value edit: ${Object.keys(pendingTxEdits).length} total pending edits`;
+    }
+    return;
+  }
+
+  if (updatesArray.length === 0) return;
+
+  performanceLog.textContent = `Updating ${updatesArray.reduce((acc, cur) => acc + Object.keys(cur.updates).length, 0)} cells...`;
+  const startTime = performance.now();
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${currentTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        updates: updatesArray,
+        silent: false
+      })
+    });
+
+    if (res.ok) {
+      pageCache.clear();
+      const result = await res.json();
+      const saveTime = (performance.now() - startTime).toFixed(1);
+      performanceLog.textContent = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
+
+      // Apply grid local updates on the latest nodes directly
+      updatesArray.forEach(item => {
+        const rowNode = gridApi.getRowNode(item.row_id);
+        if (rowNode) {
+          const latestData = rowNode.data;
+          if (latestData) {
+            Object.keys(item.updates).forEach(colId => {
+              ensureCellObject(latestData, colId);
+              latestData.data[colId].value = item.updates[colId];
+              latestData.data[colId].is_overwrite = true;
+            });
+            latestData.updated_at = getLocalTimeString();
+          }
+        }
+      });
+
+      if (selectedCell && updateMapByRow[selectedCell.rowId] && updateMapByRow[selectedCell.rowId].updates[selectedCell.colId] !== undefined) {
+        selectedCell.value = updateMapByRow[selectedCell.rowId].updates[selectedCell.colId];
+        updateSelectedCellUI();
+      }
+
+      updateGridSortState();
+      gridApi.refreshCells({ force: true });
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Save failed';
+      throw new Error(errMsg);
+    }
+  } catch (err) {
+    console.error('Bulk cell update failed', err);
+    alert(`범위 수정 사항 저장 실패: ${err.message}`);
+    performanceLog.textContent = '❌ Range edit failed to save';
   }
 }
 
