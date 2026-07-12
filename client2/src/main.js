@@ -93,7 +93,7 @@ const deleteRowBtn = document.getElementById('delete-row-btn');
 const ingestFileBtn = document.getElementById('ingest-file-btn');
 const smartPasteBtn = document.getElementById('smart-paste-btn');
 const toolbarFileInput = document.getElementById('toolbar-file-input');
-const copyHeaderToggle = document.getElementById('copy-header-toggle');
+const copyHeaderToggle = document.getElementById('copy-header-toggle') || { checked: false };
 const sortLatestToggle = document.getElementById('sort-latest-toggle');
 const viewModeSelect = document.getElementById('view-mode-select');
 const loadAllBtn = document.getElementById('load-all-btn');
@@ -124,7 +124,7 @@ async function init() {
 
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
-  if (cachedCopyHeader !== null) {
+  if (cachedCopyHeader !== null && copyHeaderToggle && 'checked' in copyHeaderToggle) {
     copyHeaderToggle.checked = cachedCopyHeader === 'true';
   }
   const cachedSortLatest = localStorage.getItem('sortLatest');
@@ -459,9 +459,11 @@ function setupEventListeners() {
   });
 
   // Copy Header Toggle
-  copyHeaderToggle.addEventListener('change', () => {
-    localStorage.setItem('copyHeader', copyHeaderToggle.checked);
-  });
+  if (copyHeaderToggle && typeof copyHeaderToggle.addEventListener === 'function') {
+    copyHeaderToggle.addEventListener('change', () => {
+      localStorage.setItem('copyHeader', copyHeaderToggle.checked);
+    });
+  }
 
   // Context Menu Item: Sources Management
   document.getElementById('menu-sources').addEventListener('click', () => {
