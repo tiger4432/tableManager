@@ -932,9 +932,9 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const visibleCols = (state.gridApi.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (state.gridApi.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
   if (state.dragStartCell && state.dragEndCell) {

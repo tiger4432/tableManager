@@ -12,9 +12,9 @@ export function isCellInRange(rowIndex, colId) {
   if (!state.dragStartCell || !state.dragEndCell) return false;
   if (!state.gridApi) return false;
 
-  const visibleCols = (state.gridApi.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (state.gridApi.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
   const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
   const colIdx = visibleCols.indexOf(colId);
@@ -42,17 +42,18 @@ export function refreshRange(api, startCell, endCell) {
     if (node) rowNodes.push(node);
   }
 
-  const visibleCols = (api.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (api.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   const startColIdx = visibleCols.indexOf(startCell.colId);
   const endColIdx = visibleCols.indexOf(endCell.colId);
   if (startColIdx === -1 || endColIdx === -1) return;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
-  const visibleColumns = (api.getColumns() || []).filter(c => c.isVisible());
-  const columns = visibleColumns.slice(minColIdx, maxColIdx + 1);
+  const columns = visibleCols.slice(minColIdx, maxColIdx + 1)
+    .map(colId => api.getColumn(colId))
+    .filter(c => c !== null && c !== undefined);
 
   api.refreshCells({ rowNodes, columns, force: true });
 }
@@ -73,9 +74,9 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
     if (node) rowNodes.push(node);
   }
 
-  const visibleCols = (api.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (api.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   const startColIdx = visibleCols.indexOf(startCell.colId);
   const newEndColIdx = visibleCols.indexOf(newEndCell.colId);
   const prevEndColIdx = prevEndCell ? visibleCols.indexOf(prevEndCell.colId) : newEndColIdx;
@@ -88,8 +89,9 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
   const minColIdx = Math.min(startColIdx, prevEndColIdx, newEndColIdx);
   const maxColIdx = Math.max(startColIdx, prevEndColIdx, newEndColIdx);
 
-  const visibleColumns = (api.getColumns() || []).filter(c => c.isVisible());
-  const columns = visibleColumns.slice(minColIdx, maxColIdx + 1);
+  const columns = visibleCols.slice(minColIdx, maxColIdx + 1)
+    .map(colId => api.getColumn(colId))
+    .filter(c => c !== null && c !== undefined);
 
   api.refreshCells({ rowNodes, columns, force: true });
 }
@@ -107,9 +109,9 @@ export function clearRangeSelection() {
 export function commitDragSelection(api) {
   if (!state.dragStartCell || !state.dragEndCell || !api) return;
 
-  const visibleCols = (api.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (api.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
   const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
 
@@ -150,9 +152,9 @@ export function getRangeSelectedTSV() {
       }
     } else if (selectedCells.length === 0) {
       if (state.dragStartCell && state.dragEndCell) {
-        const visibleCols = (state.gridApi.getColumns() || [])
-          .filter(c => c.isVisible())
-          .map(c => c.getColId());
+        const visibleCols = (state.gridApi.getColumnState() || [])
+          .filter(c => !c.hide)
+          .map(c => c.colId);
         const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
         const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
         if (startColIdx !== -1 && endColIdx !== -1) {
@@ -172,9 +174,9 @@ export function getRangeSelectedTSV() {
     }
   }
 
-  const visibleCols = (state.gridApi.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
+  const visibleCols = (state.gridApi.getColumnState() || [])
+    .filter(c => !c.hide)
+    .map(c => c.colId);
   
   let minRow = Infinity;
   let maxRow = -Infinity;
@@ -260,9 +262,9 @@ export function setupClipboardHandlers() {
     if (targetCells.length === 0) {
       if (state.dragStartCell && state.dragEndCell) {
         // Fallback to drag bounds
-        const visibleCols = (state.gridApi.getColumns() || [])
-          .filter(c => c.isVisible())
-          .map(c => c.getColId());
+        const visibleCols = (state.gridApi.getColumnState() || [])
+          .filter(c => !c.hide)
+          .map(c => c.colId);
         const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
         const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
         if (startColIdx !== -1 && endColIdx !== -1) {
@@ -341,9 +343,9 @@ export function setupClipboardHandlers() {
       } else {
         // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
         // Find visible columns in grid
-        const visibleCols = (state.gridApi.getColumns() || [])
-          .filter(c => c.isVisible())
-          .map(c => c.getColId());
+        const visibleCols = (state.gridApi.getColumnState() || [])
+          .filter(c => !c.hide)
+          .map(c => c.colId);
 
         // Find anchor (top-left) cell
         let anchorRow = Infinity;
