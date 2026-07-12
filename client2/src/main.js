@@ -2774,8 +2774,12 @@ function getRangeSelectedTSV() {
 function setupClipboardHandlers() {
   // 1. Paste handler
   document.addEventListener('paste', async (e) => {
+    if (!gridApi) return;
+
     const activeEl = document.activeElement;
-    if (!gridApi || !activeEl || !activeEl.closest('#myGrid')) return;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input'))) {
+      return;
+    }
 
     // Determine target cells from selection map or drag bounds
     let targetCells = Object.values(selectedCellsMap);
@@ -3031,8 +3035,12 @@ function setupClipboardHandlers() {
 
   // 2. Copy handler
   document.addEventListener('copy', (e) => {
+    if (!gridApi) return;
+
     const activeEl = document.activeElement;
-    if (!gridApi || !activeEl || !activeEl.closest('#myGrid')) return;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input'))) {
+      return;
+    }
 
     // 1순위: 커스텀 드래그 선택 범위가 존재할 경우 범위 복사 실행
     const rangeTsv = getRangeSelectedTSV();
