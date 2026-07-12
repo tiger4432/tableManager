@@ -945,23 +945,21 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const visibleCols = (state.gridApi.getColumnState() || [])
-    .filter(c => !c.hide)
-    .map(c => c.colId);
   const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
   if (state.dragStartCell && state.dragEndCell) {
-    const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
-    const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
-    if (startColIdx !== -1 && endColIdx !== -1) {
+    const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
+    const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
+    if (startColIdx !== undefined && endColIdx !== undefined) {
       const minColIdx = Math.min(startColIdx, endColIdx);
       const maxColIdx = Math.max(startColIdx, endColIdx);
       const minRowIdx = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
       const maxRowIdx = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
+      const visibleColIds = Object.keys(state.visibleColIndexMap);
       for (let r = minRowIdx; r <= maxRowIdx; r++) {
         for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
-          const colId = visibleCols[cIdx];
+          const colId = visibleColIds[cIdx];
           if (systemCols.includes(colId) || /^\d+$/.test(colId)) continue;
 
           const rowNode = state.gridApi.getDisplayedRowAtIndex(r);

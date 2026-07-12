@@ -1,6 +1,6 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
-import { state } from './state.js';
+import { state, updateVisibleColIndexMap } from './state.js';
 import { elements } from './dom.js';
 import { handleCellEdit, fetchData } from './api.js';
 import { loadHistory } from './timeline.js';
@@ -245,6 +245,7 @@ export function renderGrid(initialRows) {
       state.colIdToIndexMap[c.getColId()] = idx;
     });
 
+    updateVisibleColIndexMap();
     updateGridSortState();
     return;
   }
@@ -284,6 +285,22 @@ export function renderGrid(initialRows) {
       }
     },
     rowSelection: 'multiple',
+    onGridReady: (event) => {
+      state.gridApi = event.api;
+      updateVisibleColIndexMap();
+    },
+    onColumnMoved: () => {
+      updateVisibleColIndexMap();
+    },
+    onColumnVisible: () => {
+      updateVisibleColIndexMap();
+    },
+    onColumnPinned: () => {
+      updateVisibleColIndexMap();
+    },
+    onColumnEverythingChanged: () => {
+      updateVisibleColIndexMap();
+    },
     onFilterChanged: () => {
       fetchData(true);
     },

@@ -12,14 +12,11 @@ export function isCellInRange(rowIndex, colId) {
   if (!state.dragStartCell || !state.dragEndCell) return false;
   if (!state.gridApi) return false;
 
-  const visibleCols = (state.gridApi.getColumnState() || [])
-    .filter(c => !c.hide)
-    .map(c => c.colId);
-  const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
-  const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
-  const colIdx = visibleCols.indexOf(colId);
+  const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
+  const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
+  const colIdx = state.visibleColIndexMap[colId];
 
-  if (startColIdx === -1 || endColIdx === -1 || colIdx === -1) return false;
+  if (startColIdx === undefined || endColIdx === undefined || colIdx === undefined) return false;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
@@ -42,16 +39,15 @@ export function refreshRange(api, startCell, endCell) {
     if (node) rowNodes.push(node);
   }
 
-  const visibleCols = (api.getColumnState() || [])
-    .filter(c => !c.hide)
-    .map(c => c.colId);
-  const startColIdx = visibleCols.indexOf(startCell.colId);
-  const endColIdx = visibleCols.indexOf(endCell.colId);
-  if (startColIdx === -1 || endColIdx === -1) return;
+  const startColIdx = state.visibleColIndexMap[startCell.colId];
+  const endColIdx = state.visibleColIndexMap[endCell.colId];
+  if (startColIdx === undefined || endColIdx === undefined) return;
 
   const minColIdx = Math.min(startColIdx, endColIdx);
   const maxColIdx = Math.max(startColIdx, endColIdx);
-  const columns = visibleCols.slice(minColIdx, maxColIdx + 1)
+  
+  const visibleColIds = Object.keys(state.visibleColIndexMap);
+  const columns = visibleColIds.slice(minColIdx, maxColIdx + 1)
     .map(colId => api.getColumn(colId))
     .filter(c => c !== null && c !== undefined);
 
@@ -74,21 +70,19 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
     if (node) rowNodes.push(node);
   }
 
-  const visibleCols = (api.getColumnState() || [])
-    .filter(c => !c.hide)
-    .map(c => c.colId);
-  const startColIdx = visibleCols.indexOf(startCell.colId);
-  const newEndColIdx = visibleCols.indexOf(newEndCell.colId);
-  const prevEndColIdx = prevEndCell ? visibleCols.indexOf(prevEndCell.colId) : newEndColIdx;
+  const startColIdx = state.visibleColIndexMap[startCell.colId];
+  const newEndColIdx = state.visibleColIndexMap[newEndCell.colId];
+  const prevEndColIdx = prevEndCell ? state.visibleColIndexMap[prevEndCell.colId] : newEndColIdx;
 
-  if (startColIdx === -1 || newEndColIdx === -1 || prevEndColIdx === -1) {
+  if (startColIdx === undefined || newEndColIdx === undefined || prevEndColIdx === undefined) {
     return;
   }
 
   const minColIdx = Math.min(startColIdx, prevEndColIdx, newEndColIdx);
   const maxColIdx = Math.max(startColIdx, prevEndColIdx, newEndColIdx);
 
-  const columns = visibleCols.slice(minColIdx, maxColIdx + 1)
+  const visibleColIds = Object.keys(state.visibleColIndexMap);
+  const columns = visibleColIds.slice(minColIdx, maxColIdx + 1)
     .map(colId => api.getColumn(colId))
     .filter(c => c !== null && c !== undefined);
 
@@ -108,19 +102,17 @@ export function clearRangeSelection() {
 export function commitDragSelection(api) {
   if (!state.dragStartCell || !state.dragEndCell || !api) return;
 
-  const visibleCols = (api.getColumnState() || [])
-    .filter(c => !c.hide)
-    .map(c => c.colId);
-  const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
-  const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
+  const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
+  const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
 
-  if (startColIdx !== -1 && endColIdx !== -1) {
+  if (startColIdx !== undefined && endColIdx !== undefined) {
     const minCol = Math.min(startColIdx, endColIdx);
     const maxCol = Math.max(startColIdx, endColIdx);
     const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
-    const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+    const visibleColIds = Object.keys(state.visibleColIndexMap);
+    const targetCols = visibleColIds.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);

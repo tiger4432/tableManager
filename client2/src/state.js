@@ -30,5 +30,20 @@ export const state = {
   viewMode: 'pagination', // 'pagination' | 'infinite'
   allDataLoaded: false,
   isDesktop: new URLSearchParams(window.location.search).get('client') === 'desktop',
-  dragRefreshPending: false
+  dragRefreshPending: false,
+  visibleColIndexMap: {} // key: colId -> visibleIndex
 };
+
+export function updateVisibleColIndexMap() {
+  if (!state.gridApi) return;
+  const colState = state.gridApi.getColumnState() || [];
+  const indexMap = {};
+  let visibleIdx = 0;
+  colState.forEach(c => {
+    if (!c.hide) {
+      indexMap[c.colId] = visibleIdx;
+      visibleIdx++;
+    }
+  });
+  state.visibleColIndexMap = indexMap;
+}
