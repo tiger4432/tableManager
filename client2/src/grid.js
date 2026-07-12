@@ -350,13 +350,13 @@ export function renderGrid(initialRows) {
         state.isDraggingRange = false;
         refreshSelectedRangeDiff(event.api, state.dragStartCell, oldEnd, state.dragEndCell);
       } else {
-        state.isDraggingRange = true;
-        state.dragStartCell = { rowIndex: currRow, colId: currCol };
-        state.dragEndCell = { rowIndex: currRow, colId: currCol };
-
         if (!isCtrl) {
           clearRangeSelection();
         }
+
+        state.isDraggingRange = true;
+        state.dragStartCell = { rowIndex: currRow, colId: currCol };
+        state.dragEndCell = { rowIndex: currRow, colId: currCol };
 
         refreshRange(event.api, state.dragStartCell, state.dragEndCell);
       }

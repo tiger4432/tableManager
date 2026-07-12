@@ -100,12 +100,21 @@ export function clearRangeSelection() {
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
     for (let r = minRow; r <= maxRow; r++) rowIndexes.add(r);
 
-    const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
-    const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
-    if (startColIdx !== undefined && endColIdx !== undefined) {
+    const visibleColIds = Object.keys(state.visibleColIndexMap).length > 0
+      ? Object.keys(state.visibleColIndexMap)
+      : (state.gridApi.getColumnState() || []).filter(c => !c.hide).map(c => c.colId);
+
+    const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId] !== undefined
+      ? state.visibleColIndexMap[state.dragStartCell.colId]
+      : visibleColIds.indexOf(state.dragStartCell.colId);
+
+    const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId] !== undefined
+      ? state.visibleColIndexMap[state.dragEndCell.colId]
+      : visibleColIds.indexOf(state.dragEndCell.colId);
+
+    if (startColIdx !== -1 && startColIdx !== undefined && endColIdx !== -1 && endColIdx !== undefined) {
       const minCol = Math.min(startColIdx, endColIdx);
       const maxCol = Math.max(startColIdx, endColIdx);
-      const visibleColIds = Object.keys(state.visibleColIndexMap);
       for (let c = minCol; c <= maxCol; c++) colIds.add(visibleColIds[c]);
     }
   }
