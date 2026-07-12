@@ -253,6 +253,28 @@ def read_root(request: Request):
         return FileResponse(index_file)
     return {"status": "AssyManager Data Server is running"}
 
+
+@app.get("/api/download/client")
+def download_desktop_client():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # client/dist/AssyManagerClient.exe (onefile mode output)
+    client_exe_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient.exe"))
+    
+    if not os.path.exists(client_exe_path):
+        # Fallback to directory mode path if onefile isn't generated
+        fallback_path = os.path.abspath(os.path.join(script_dir, "..", "client", "dist", "AssyManagerClient", "AssyManagerClient.exe"))
+        if os.path.exists(fallback_path):
+            client_exe_path = fallback_path
+            
+    if not os.path.exists(client_exe_path):
+        raise HTTPException(status_code=404, detail="Desktop client executable not found on server. Please build it first.")
+        
+    return FileResponse(
+        client_exe_path, 
+        media_type="application/octet-stream", 
+        filename="AssyManagerClient.exe"
+    )
+
 import time
 # [성능 최적화] 테이블별 전체 개수 캐시 (2초간 유효)
 TABLE_COUNT_CACHE = {} # {table_name: (count, timestamp)}
