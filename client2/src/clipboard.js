@@ -137,27 +137,33 @@ export function getRangeSelectedTSV() {
       } else {
         return '';
       }
-    } else {
-      const allCols = state.gridApi.getColumns().map(c => c.getColId());
-      const startColIdx = allCols.indexOf(state.dragStartCell.colId);
-      const endColIdx = allCols.indexOf(state.dragEndCell.colId);
-      if (startColIdx !== -1 && endColIdx !== -1) {
-        const minCol = Math.min(startColIdx, endColIdx);
-        const maxCol = Math.max(startColIdx, endColIdx);
-        const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-        const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-        for (let r = minRow; r <= maxRow; r++) {
-          for (let c = minCol; c <= maxCol; c++) {
-            selectedCells.push({ rowIndex: r, colId: allCols[c] });
+    } else if (selectedCells.length === 0) {
+      if (state.dragStartCell && state.dragEndCell) {
+        const visibleCols = (state.gridApi.getColumns() || [])
+          .filter(c => c.isVisible())
+          .map(c => c.getColId());
+        const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
+        const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
+        if (startColIdx !== -1 && endColIdx !== -1) {
+          const minCol = Math.min(startColIdx, endColIdx);
+          const maxCol = Math.max(startColIdx, endColIdx);
+          const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+          const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+          for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+              selectedCells.push({ rowIndex: r, colId: visibleCols[c] });
+            }
           }
+        } else {
+          selectedCells.push({ rowIndex: state.dragStartCell.rowIndex, colId: state.dragStartCell.colId });
         }
-      } else {
-        selectedCells.push({ rowIndex: state.dragStartCell.rowIndex, colId: state.dragStartCell.colId });
       }
     }
   }
 
-  const allCols = state.gridApi.getColumns().map(c => c.getColId());
+  const visibleCols = (state.gridApi.getColumns() || [])
+    .filter(c => c.isVisible())
+    .map(c => c.getColId());
   
   let minRow = Infinity;
   let maxRow = -Infinity;
@@ -165,7 +171,7 @@ export function getRangeSelectedTSV() {
   let maxColIdx = -Infinity;
 
   selectedCells.forEach(cell => {
-    const cIdx = allCols.indexOf(cell.colId);
+    const cIdx = visibleCols.indexOf(cell.colId);
     if (cIdx !== -1) {
       if (cell.rowIndex < minRow) minRow = cell.rowIndex;
       if (cell.rowIndex > maxRow) maxRow = cell.rowIndex;
@@ -176,15 +182,9 @@ export function getRangeSelectedTSV() {
 
   if (minRow === Infinity || minColIdx === Infinity) return '';
 
-  // Exclude helper columns (like '#' or checkbox selection columns) to ensure clean grid output structure
-  const visibleColIds = (state.gridApi.getColumns() || [])
-    .filter(c => c.isVisible())
-    .map(c => c.getColId());
-
-  const colsToCopy = allCols.filter((colId, idx) => {
+  const colsToCopy = visibleCols.filter((colId, idx) => {
     if (idx < minColIdx || idx > maxColIdx) return false;
     if (colId === '#' || /^\d+$/.test(colId)) return false;
-    if (!visibleColIds.includes(colId)) return false;
     return state.currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
   });
   if (colsToCopy.length === 0) return '';
@@ -249,16 +249,18 @@ export function setupClipboardHandlers() {
     if (targetCells.length === 0) {
       if (state.dragStartCell && state.dragEndCell) {
         // Fallback to drag bounds
-        const allCols = state.gridApi.getColumns().map(c => c.getColId());
-        const startColIdx = state.colIdToIndexMap[state.dragStartCell.colId];
-        const endColIdx = state.colIdToIndexMap[state.dragEndCell.colId];
-        if (startColIdx !== undefined && endColIdx !== undefined) {
+        const visibleCols = (state.gridApi.getColumns() || [])
+          .filter(c => c.isVisible())
+          .map(c => c.getColId());
+        const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
+        const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
+        if (startColIdx !== -1 && endColIdx !== -1) {
           const minCol = Math.min(startColIdx, endColIdx);
           const maxCol = Math.max(startColIdx, endColIdx);
           const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
           const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
           
-          const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+          const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
           for (let r = minRow; r <= maxRow; r++) {
             targetCols.forEach(colId => {
               targetCells.push({ rowIndex: r, colId });
