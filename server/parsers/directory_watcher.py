@@ -7,7 +7,7 @@ from watchdog.events import FileSystemEventHandler
 
 import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
-server_dir = os.path.abspath(os.path.join(script_dir, ".."))
+server_dir = os.path.abspath(os.path.join(script_dir, "../.."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 

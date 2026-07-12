@@ -1413,3 +1413,42 @@ body {
 .progress-card.status-error .progress-bar {
   background: linear-gradient(90deg, #ef4444, #f87171);
 }
+
+/* Column Selector Dropdown Styling */
+#column-selector-dropdown {
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.98) !important;
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.col-selector-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.col-selector-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.col-selector-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  width: 14px;
+  height: 14px;
+}
+
+.col-selector-label {
+  font-size: 0.8rem;
+  color: var(--text-main);
+  cursor: pointer;
+  flex: 1;
+}

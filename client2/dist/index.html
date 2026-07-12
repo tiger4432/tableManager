@@ -11,9 +11,9 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <script type="module" crossorigin src="/assets/main-BpxMNGu-.js"></script>
+  <script type="module" crossorigin src="/assets/main-DrifQwPh.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
-  <link rel="stylesheet" crossorigin href="/assets/main-DGbVflgj.css">
+  <link rel="stylesheet" crossorigin href="/assets/main-8OqWUg8n.css">
 </head>
 
 <body class="dark-theme">
@@ -39,6 +39,9 @@
           <button id="refresh-grid-btn" class="glass-btn">🔄 Refresh</button>
           <button id="add-row-btn" class="glass-btn">➕ Row</button>
           <button id="delete-row-btn" class="glass-btn hover-danger">🗑️ Row</button>
+        </div>
+        <div class="control-group">
+          <button id="column-selector-btn" class="glass-btn">👁️ Columns</button>
         </div>
         <div class="control-group">
           <input type="file" id="toolbar-file-input" multiple style="display: none;" />
@@ -132,6 +135,20 @@
         </div>
       </aside>
     </main>
+
+    <!-- 컬럼 선택 드롭다운 -->
+    <div id="column-selector-dropdown" class="context-menu glass-panel" style="display: none; position: absolute; z-index: 1000; max-height: 400px; overflow-y: auto; padding: 12px; min-width: 200px;">
+      <div style="font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-main);">
+        <span>Show/Hide Columns</span>
+        <div style="display: flex; gap: 8px;">
+          <button id="col-select-all-btn" style="background:none; border:none; color:var(--color-primary); cursor:pointer; font-size:0.75rem; padding:0; font-weight: bold;">All</button>
+          <button id="col-select-none-btn" style="background:none; border:none; color:var(--color-danger); cursor:pointer; font-size:0.75rem; padding:0; font-weight: bold;">Clear</button>
+        </div>
+      </div>
+      <ul id="column-list-container" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
+        <!-- Dynamic Checkboxes -->
+      </ul>
+    </div>
 
     <!-- 커스텀 우클릭 컨텍스트 메뉴 -->
     <div id="custom-context-menu" class="context-menu glass-panel"

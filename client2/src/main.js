@@ -97,6 +97,11 @@ const sortLatestToggle = document.getElementById('sort-latest-toggle');
 const viewModeSelect = document.getElementById('view-mode-select');
 const loadAllBtn = document.getElementById('load-all-btn');
 const loadCsvBtn = document.getElementById('load-csv-btn');
+const columnSelectorBtn = document.getElementById('column-selector-btn');
+const columnSelectorDropdown = document.getElementById('column-selector-dropdown');
+const columnListContainer = document.getElementById('column-list-container');
+const colSelectAllBtn = document.getElementById('col-select-all-btn');
+const colSelectNoneBtn = document.getElementById('col-select-none-btn');
 
 // View Mode State
 let viewMode = 'pagination'; // 'pagination' | 'infinite'
@@ -496,6 +501,108 @@ function setupEventListeners() {
       sourcesModal.style.display = 'none';
     }
   });
+
+  // ── 컬럼 토글 드롭다운 구현 ──
+  if (columnSelectorBtn) {
+    columnSelectorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = columnSelectorDropdown.style.display === 'block';
+      if (isVisible) {
+        columnSelectorDropdown.style.display = 'none';
+      } else {
+        // 드롭다운 위치 조정 (버튼 하단에 배치)
+        const rect = columnSelectorBtn.getBoundingClientRect();
+        columnSelectorDropdown.style.top = `${rect.bottom + window.scrollY + 6}px`;
+        columnSelectorDropdown.style.left = `${rect.left + window.scrollX}px`;
+        columnSelectorDropdown.style.display = 'block';
+
+        // 현재 컬럼 가시성 상태에 맞춰 리스트 렌더링
+        renderColumnSelectorList();
+      }
+    });
+  }
+
+  // 드롭다운 및 버튼 영역 외부 클릭 시 드롭다운 닫기
+  document.addEventListener('click', (e) => {
+    if (columnSelectorDropdown && columnSelectorDropdown.style.display === 'block') {
+      if (!e.target.closest('#column-selector-dropdown') && !e.target.closest('#column-selector-btn')) {
+        columnSelectorDropdown.style.display = 'none';
+      }
+    }
+  });
+
+  // 컬럼 선택 드롭다운 내 체크박스 리스트 동적 렌더링 함수
+  function renderColumnSelectorList() {
+    if (!gridApi || !columnListContainer) return;
+    columnListContainer.innerHTML = '';
+
+    // AG-Grid의 모든 컬럼을 조회
+    const columns = gridApi.getColumns() || [];
+    
+    columns.forEach(col => {
+      const colId = col.getColId();
+      // 번호 열('#')은 가시성 토글에서 제외
+      if (colId === '#') return;
+
+      const isVisible = col.isVisible();
+      const headerName = col.getColDef().headerName || colId;
+
+      const li = document.createElement('li');
+      li.className = 'col-selector-item';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'col-selector-checkbox';
+      checkbox.checked = isVisible;
+      checkbox.id = `col-toggle-${colId}`;
+
+      const label = document.createElement('label');
+      label.className = 'col-selector-label';
+      label.htmlFor = `col-toggle-${colId}`;
+      label.textContent = headerName;
+
+      // 항목 클릭 시 체크박스 토글 연동
+      li.addEventListener('click', (evt) => {
+        if (evt.target !== checkbox && evt.target !== label) {
+          evt.stopPropagation();
+          checkbox.checked = !checkbox.checked;
+          gridApi.setColumnsVisible([colId], checkbox.checked);
+        }
+      });
+
+      checkbox.addEventListener('change', () => {
+        gridApi.setColumnsVisible([colId], checkbox.checked);
+      });
+
+      li.appendChild(checkbox);
+      li.appendChild(label);
+      columnListContainer.appendChild(li);
+    });
+  }
+
+  // 전체 선택 버튼
+  if (colSelectAllBtn) {
+    colSelectAllBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!gridApi) return;
+      const columns = gridApi.getColumns() || [];
+      const colIds = columns.map(c => c.getColId()).filter(id => id !== '#');
+      gridApi.setColumnsVisible(colIds, true);
+      renderColumnSelectorList();
+    });
+  }
+
+  // 전체 해제 버튼
+  if (colSelectNoneBtn) {
+    colSelectNoneBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!gridApi) return;
+      const columns = gridApi.getColumns() || [];
+      const colIds = columns.map(c => c.getColId()).filter(id => id !== '#');
+      gridApi.setColumnsVisible(colIds, false);
+      renderColumnSelectorList();
+    });
+  }
 
   // View Mode Change Handler
   if (viewModeSelect) {
