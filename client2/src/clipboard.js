@@ -90,12 +90,45 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
 }
 
 export function clearRangeSelection() {
+  if (!state.gridApi) return;
+
+  const rowIndexes = new Set();
+  const colIds = new Set();
+
+  if (state.dragStartCell && state.dragEndCell) {
+    const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+    const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
+    for (let r = minRow; r <= maxRow; r++) rowIndexes.add(r);
+
+    const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
+    const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
+    if (startColIdx !== undefined && endColIdx !== undefined) {
+      const minCol = Math.min(startColIdx, endColIdx);
+      const maxCol = Math.max(startColIdx, endColIdx);
+      const visibleColIds = Object.keys(state.visibleColIndexMap);
+      for (let c = minCol; c <= maxCol; c++) colIds.add(visibleColIds[c]);
+    }
+  }
+
+  Object.values(state.selectedCellsMap).forEach(cell => {
+    rowIndexes.add(cell.rowIndex);
+    colIds.add(cell.colId);
+  });
+
   state.dragStartCell = null;
   state.dragEndCell = null;
   state.isDraggingRange = false;
   state.selectedCellsMap = {};
-  if (state.gridApi) {
-    state.gridApi.refreshCells({ force: true });
+
+  if (rowIndexes.size > 0 && colIds.size > 0) {
+    const rowNodes = Array.from(rowIndexes)
+      .map(r => state.gridApi.getDisplayedRowAtIndex(r))
+      .filter(n => n !== null && n !== undefined);
+    const columns = Array.from(colIds)
+      .map(colId => state.gridApi.getColumn(colId))
+      .filter(c => c !== null && c !== undefined);
+
+    state.gridApi.refreshCells({ rowNodes, columns, force: true });
   }
 }
 

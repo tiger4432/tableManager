@@ -355,10 +355,7 @@ export function renderGrid(initialRows) {
         state.dragEndCell = { rowIndex: currRow, colId: currCol };
 
         if (!isCtrl) {
-          state.selectedCellsMap = {};
-          if (state.gridApi) {
-            state.gridApi.refreshCells({ force: true });
-          }
+          clearRangeSelection();
         }
 
         refreshRange(event.api, state.dragStartCell, state.dragEndCell);
