@@ -93,7 +93,7 @@ const deleteRowBtn = document.getElementById('delete-row-btn');
 const ingestFileBtn = document.getElementById('ingest-file-btn');
 const smartPasteBtn = document.getElementById('smart-paste-btn');
 const toolbarFileInput = document.getElementById('toolbar-file-input');
-const copyHeaderToggle = document.getElementById('copy-header-toggle') || { checked: false };
+const copyHeaderToggle = document.getElementById('copy-header-toggle');
 const sortLatestToggle = document.getElementById('sort-latest-toggle');
 const viewModeSelect = document.getElementById('view-mode-select');
 const loadAllBtn = document.getElementById('load-all-btn');
@@ -124,7 +124,7 @@ async function init() {
 
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
-  if (cachedCopyHeader !== null && copyHeaderToggle && 'checked' in copyHeaderToggle) {
+  if (cachedCopyHeader !== null) {
     copyHeaderToggle.checked = cachedCopyHeader === 'true';
   }
   const cachedSortLatest = localStorage.getItem('sortLatest');
@@ -459,11 +459,9 @@ function setupEventListeners() {
   });
 
   // Copy Header Toggle
-  if (copyHeaderToggle && typeof copyHeaderToggle.addEventListener === 'function') {
-    copyHeaderToggle.addEventListener('change', () => {
-      localStorage.setItem('copyHeader', copyHeaderToggle.checked);
-    });
-  }
+  copyHeaderToggle.addEventListener('change', () => {
+    localStorage.setItem('copyHeader', copyHeaderToggle.checked);
+  });
 
   // Context Menu Item: Sources Management
   document.getElementById('menu-sources').addEventListener('click', () => {
@@ -506,9 +504,6 @@ function setupEventListeners() {
       }
     });
   }
-
-  // Initialize native DOM mouse selection handlers for the grid
-  setupNativeGridMouseHandlers();
 
   // Sources Modal Close Button
   modalCloseBtn.addEventListener('click', () => {
@@ -1454,7 +1449,116 @@ function renderGrid(initialRows) {
         loadHistory();
       }
     },
+    // Range selection mouse drag event handling
+    onCellMouseDown: (event) => {
+      if (event.event.button !== 0) return;
+      if (event.column.getColId() === '#') return;
 
+      const isShift = event.event.shiftKey;
+      const isCtrl = event.event.ctrlKey || event.event.metaKey;
+      const currRow = event.rowIndex;
+      const currCol = event.column.getColId();
+
+      const oldStart = dragStartCell;
+      const oldEnd = dragEndCell;
+
+      if (isShift) {
+        if (dragStartCell) {
+          dragEndCell = { rowIndex: currRow, colId: currCol };
+        } else {
+          dragStartCell = { rowIndex: currRow, colId: currCol };
+          dragEndCell = { rowIndex: currRow, colId: currCol };
+        }
+        isDraggingRange = false;
+        refreshSelectedRangeDiff(event.api, dragStartCell, oldEnd, dragEndCell);
+      } else {
+        isDraggingRange = true;
+        dragStartCell = { rowIndex: currRow, colId: currCol };
+        dragEndCell = { rowIndex: currRow, colId: currCol };
+
+        if (!isCtrl) {
+          // Ctrl 안 누르고 그냥 클릭하면 기존 다중 선택 전부 해제
+          selectedCellsMap = {};
+          if (gridApi) {
+            gridApi.refreshCells({ force: true });
+          }
+        }
+
+        refreshRange(event.api, dragStartCell, dragEndCell);
+      }
+    },
+    onCellMouseOver: (event) => {
+      // 마우스 왼쪽 버튼이 눌려있지 않으면 드래그 해제
+      if (event.event && event.event.buttons !== undefined && event.event.buttons !== 1) {
+        if (isDraggingRange) {
+          isDraggingRange = false;
+          commitDragSelection(event.api);
+          event.api.refreshCells({ force: true });
+        }
+        return;
+      }
+
+      if (!isDraggingRange || !dragStartCell) return;
+      if (event.column.getColId() === '#') return;
+
+      const currRow = event.rowIndex;
+      const currCol = event.column.getColId();
+
+      if (dragEndCell.rowIndex !== currRow || dragEndCell.colId !== currCol) {
+        const prevEnd = dragEndCell;
+        dragEndCell = { rowIndex: currRow, colId: currCol };
+
+        // requestAnimationFrame 쓰로틀링과 차분 셀 리프레시 결합
+        if (!window._dragRefreshPending) {
+          window._dragRefreshPending = true;
+          const api = event.api;
+          requestAnimationFrame(() => {
+            try {
+              refreshSelectedRangeDiff(api, dragStartCell, prevEnd, dragEndCell);
+            } catch (err) {
+              api.refreshCells({ force: true });
+            } finally {
+              window._dragRefreshPending = false;
+            }
+          });
+        }
+      }
+    },
+    onCellMouseUp: (event) => {
+      if (isDraggingRange) {
+        isDraggingRange = false;
+        
+        const isCtrl = event.event.ctrlKey || event.event.metaKey;
+        const isSingleClick = (dragStartCell.rowIndex === dragEndCell.rowIndex && dragStartCell.colId === dragEndCell.colId);
+        
+        if (isSingleClick && isCtrl) {
+          // Ctrl 누르고 단일 셀 클릭 시 토글
+          const key = `${dragStartCell.rowIndex}_${dragStartCell.colId}`;
+          if (selectedCellsMap[key]) {
+            delete selectedCellsMap[key];
+          } else {
+            const rowNode = event.api.getDisplayedRowAtIndex(dragStartCell.rowIndex);
+            const rowId = rowNode?.data?.row_id;
+            selectedCellsMap[key] = { rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId, rowId };
+          }
+          dragStartCell = null;
+          dragEndCell = null;
+        } else {
+          // 드래그 선택 또는 일반 단일 드래그 시 -> 범위 내 셀들 selectedCellsMap 에 추가
+          commitDragSelection(event.api);
+        }
+
+        const oldStart = dragStartCell;
+        const oldEnd = dragEndCell;
+        dragStartCell = null;
+        dragEndCell = null;
+        
+        if (oldStart && oldEnd) {
+          refreshRange(event.api, oldStart, oldEnd);
+        }
+        event.api.refreshCells({ force: true });
+      }
+    },
     // Feature 1: Cell Editing
     onCellValueChanged: async (event) => {
       await handleCellEdit(event);
@@ -1505,6 +1609,14 @@ function renderGrid(initialRows) {
   };
 
   gridApi = createGrid(gridDiv, gridOptions);
+
+  // Monkey patch applyTransaction for deep callstack tracing to catch race conditions and rollbacks
+  const originalApplyTx = gridApi.applyTransaction.bind(gridApi);
+  gridApi.applyTransaction = (tx) => {
+    console.log('[Debug applyTransaction] Called with tx:', tx);
+    console.trace('[Debug applyTransaction] Call stack trace:');
+    return originalApplyTx(tx);
+  };
 
   // Cache column ID to index map to avoid getColumns().map() during cell rendering (O(1) lookup)
   colIdToIndexMap = {};
@@ -2565,22 +2677,19 @@ function clearRangeSelection() {
 
 // Helper to commit current drag selection to selectedCellsMap
 function commitDragSelection(api) {
-  if (!dragStartCell || !dragEndCell || !api) {
-    return;
-  }
+  if (!dragStartCell || !dragEndCell || !api) return;
 
-  const allCols = api.getColumns().map(c => c.getColId());
-  const startColIdx = allCols.indexOf(dragStartCell.colId);
-  const endColIdx = allCols.indexOf(dragEndCell.colId);
+  const startColIdx = colIdToIndexMap[dragStartCell.colId];
+  const endColIdx = colIdToIndexMap[dragEndCell.colId];
 
-  if (startColIdx !== -1 && endColIdx !== -1) {
+  if (startColIdx !== undefined && endColIdx !== undefined) {
+    const allCols = api.getColumns().map(c => c.getColId());
     const minCol = Math.min(startColIdx, endColIdx);
     const maxCol = Math.max(startColIdx, endColIdx);
     const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
     const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
 
-    // Exclude helper columns (like '#' or checkbox selection columns)
-    const targetCols = allCols.filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#' && !/^\d+$/.test(colId));
+    const targetCols = allCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);
@@ -2595,173 +2704,42 @@ function commitDragSelection(api) {
   }
 }
 
-// Parse coords from native element inside AG-Grid
-function getCellCoordsFromElement(el) {
-  if (!el) return null;
-  const cellEl = el.closest('.ag-cell');
-  if (!cellEl) return null;
-  const colId = cellEl.getAttribute('col-id');
-  if (!colId) return null;
-  
-  const rowEl = el.closest('.ag-row');
-  if (!rowEl) return null;
-  const rowIndexStr = rowEl.getAttribute('row-index');
-  if (rowIndexStr === null) return null;
-  const rowIndex = parseInt(rowIndexStr, 10);
-  
-  return { rowIndex, colId };
-}
-
-function setupNativeGridMouseHandlers() {
-  const gridContainer = document.getElementById('myGrid');
-  if (!gridContainer) return;
-
-  gridContainer.addEventListener('mousedown', (e) => {
-    // Only capture left click
-    if (e.button !== 0) return;
-
-    const coords = getCellCoordsFromElement(e.target);
-    if (!coords) return;
-    if (coords.colId === '#') return;
-
-    const isCtrl = e.ctrlKey || e.metaKey;
-    const isShift = e.shiftKey;
-
-    isDraggingRange = true;
-    dragStartCell = { rowIndex: coords.rowIndex, colId: coords.colId };
-    dragEndCell = { rowIndex: coords.rowIndex, colId: coords.colId };
-
-    // Prevent default browser drag selection behavior to avoid swallowing mouseup
-    e.preventDefault();
-
-    if (!isCtrl && !isShift) {
-      selectedCellsMap = {};
-      if (gridApi) {
-        gridApi.refreshCells({ force: true });
-      }
-    }
-
-    if (gridApi) {
-      refreshRange(gridApi, dragStartCell, dragEndCell);
-    }
-  });
-
-  gridContainer.addEventListener('mousemove', (e) => {
-    if (!isDraggingRange || !dragStartCell) return;
-
-    // Safety check: if buttons state is not left-clicked, release dragging range
-    if (e.buttons !== 1) {
-      isDraggingRange = false;
-      if (gridApi) {
-        commitDragSelection(gridApi);
-        gridApi.refreshCells({ force: true });
-      }
-      return;
-    }
-
-    const coords = getCellCoordsFromElement(e.target);
-    if (!coords) return;
-    if (coords.colId === '#') return;
-
-    if (dragEndCell.rowIndex !== coords.rowIndex || dragEndCell.colId !== coords.colId) {
-      const prevEnd = dragEndCell;
-      dragEndCell = { rowIndex: coords.rowIndex, colId: coords.colId };
-
-      if (gridApi) {
-        try {
-          refreshSelectedRangeDiff(gridApi, dragStartCell, prevEnd, dragEndCell);
-        } catch (err) {
-          gridApi.refreshCells({ force: true });
-        }
-      }
-    }
-  });
-
-  // Attach global mouseup listener to document to guarantee it's committed
-  document.addEventListener('mouseup', (e) => {
-    if (isDraggingRange) {
-      isDraggingRange = false;
-
-      const isCtrl = e.ctrlKey || e.metaKey;
-      const coords = getCellCoordsFromElement(e.target);
-      
-      let isSingleClick = false;
-      if (dragStartCell && dragEndCell) {
-        isSingleClick = (dragStartCell.rowIndex === dragEndCell.rowIndex && dragStartCell.colId === dragEndCell.colId);
-      }
-
-      if (isSingleClick && isCtrl && dragStartCell) {
-        const key = `${dragStartCell.rowIndex}_${dragStartCell.colId}`;
-        if (selectedCellsMap[key]) {
-          delete selectedCellsMap[key];
-        } else {
-          const rowNode = gridApi?.getDisplayedRowAtIndex(dragStartCell.rowIndex);
-          const rowId = rowNode?.data?.row_id;
-          selectedCellsMap[key] = { rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId, rowId };
-        }
-        dragStartCell = null;
-        dragEndCell = null;
-      } else {
-        if (gridApi) {
-          commitDragSelection(gridApi);
-        }
-      }
-
-      const oldStart = dragStartCell;
-      const oldEnd = dragEndCell;
-      dragStartCell = null;
-      dragEndCell = null;
-
-      if (gridApi) {
-        if (oldStart && oldEnd) {
-          refreshRange(gridApi, oldStart, oldEnd);
-        }
-        gridApi.refreshCells({ force: true });
-      }
-    }
-  });
-}
-
 function getRangeSelectedTSV() {
   if (!gridApi) return '';
 
-  let selectedCells = [];
-
-  const allCols = gridApi.getColumns().map(c => c.getColId());
-
-  // 1. Prioritize active drag bounds if present
-  if (dragStartCell && dragEndCell) {
-    const startColIdx = allCols.indexOf(dragStartCell.colId);
-    const endColIdx = allCols.indexOf(dragEndCell.colId);
-    if (startColIdx !== -1 && endColIdx !== -1) {
-      const minCol = Math.min(startColIdx, endColIdx);
-      const maxCol = Math.max(startColIdx, endColIdx);
-      const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
-      const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
-      
-      for (let r = minRow; r <= maxRow; r++) {
-        for (let c = minCol; c <= maxCol; c++) {
-          selectedCells.push({ rowIndex: r, colId: allCols[c] });
+  let selectedCells = Object.values(selectedCellsMap);
+  
+  if (selectedCells.length === 0) {
+    if (!dragStartCell || !dragEndCell) {
+      // Fallback: If no custom selection map, get current focused cell
+      const focusedCell = gridApi.getFocusedCell();
+      if (focusedCell) {
+        selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
+      } else {
+        return '';
+      }
+    } else {
+      const allCols = gridApi.getColumns().map(c => c.getColId());
+      const startColIdx = allCols.indexOf(dragStartCell.colId);
+      const endColIdx = allCols.indexOf(dragEndCell.colId);
+      if (startColIdx !== -1 && endColIdx !== -1) {
+        const minCol = Math.min(startColIdx, endColIdx);
+        const maxCol = Math.max(startColIdx, endColIdx);
+        const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+        const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+        for (let r = minRow; r <= maxRow; r++) {
+          for (let c = minCol; c <= maxCol; c++) {
+            selectedCells.push({ rowIndex: r, colId: allCols[c] });
+          }
         }
+      } else {
+        selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
       }
     }
-  } 
+  }
+
+  const allCols = gridApi.getColumns().map(c => c.getColId());
   
-  // 2. Fallback: If no active drag bounds, look into selectedCellsMap
-  if (selectedCells.length === 0) {
-    selectedCells = Object.values(selectedCellsMap);
-  }
-
-  // 3. Fallback: If still empty, use current focused cell
-  if (selectedCells.length === 0) {
-    const focusedCell = gridApi.getFocusedCell();
-    if (focusedCell) {
-      selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
-    } else {
-      return '';
-    }
-  }
-
   let minRow = Infinity;
   let maxRow = -Infinity;
   let minColIdx = Infinity;
@@ -2789,18 +2767,9 @@ function getRangeSelectedTSV() {
 
   let tsvRows = [];
 
-  const toggleEl = document.getElementById('copy-header-toggle');
-  const includeHeaders = toggleEl && toggleEl.checked;
+  const includeHeaders = copyHeaderToggle && copyHeaderToggle.checked;
   if (includeHeaders) {
-    const headerRow = colsToCopy.map(colId => {
-      const col = gridApi.getColumn(colId);
-      if (col) {
-        const colDef = col.getColDef();
-        return colDef.headerName || colId;
-      }
-      return colId;
-    });
-    tsvRows.push(headerRow.join('\t'));
+    tsvRows.push(colsToCopy.map(c => c.toUpperCase()).join('\t'));
   }
 
   for (let r = minRow; r <= maxRow; r++) {
