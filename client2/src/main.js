@@ -2734,7 +2734,22 @@ function getRangeSelectedTSV() {
       }
     } else {
       console.log('[Debug TSV] Fallback check: using drag bounds:', dragStartCell, dragEndCell);
-      selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
+      const allCols = gridApi.getColumns().map(c => c.getColId());
+      const startColIdx = allCols.indexOf(dragStartCell.colId);
+      const endColIdx = allCols.indexOf(dragEndCell.colId);
+      if (startColIdx !== -1 && endColIdx !== -1) {
+        const minCol = Math.min(startColIdx, endColIdx);
+        const maxCol = Math.max(startColIdx, endColIdx);
+        const minRow = Math.min(dragStartCell.rowIndex, dragEndCell.rowIndex);
+        const maxRow = Math.max(dragStartCell.rowIndex, dragEndCell.rowIndex);
+        for (let r = minRow; r <= maxRow; r++) {
+          for (let c = minCol; c <= maxCol; c++) {
+            selectedCells.push({ rowIndex: r, colId: allCols[c] });
+          }
+        }
+      } else {
+        selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
+      }
     }
   }
 
