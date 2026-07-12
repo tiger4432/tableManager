@@ -357,25 +357,34 @@ function setupEventListeners() {
   // Keyboard shortcuts inside the grid
   document.addEventListener('keydown', (e) => {
     const activeEl = document.activeElement;
+    console.log('[Debug Keydown] Key:', e.key, 'Ctrl:', e.ctrlKey, 'Meta:', e.metaKey, 'ActiveElement:', activeEl?.tagName, 'InGrid:', !!activeEl?.closest('#myGrid'));
+
     if (activeEl && activeEl.closest('#myGrid')) {
       const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
+      console.log('[Debug Keydown] isEditing:', isEditing);
 
       if (!isEditing) {
         // Delete key inside the grid to clear selected cells
         if (e.key === 'Delete') {
+          console.log('[Debug Keydown] Delete key triggered clearSelectedCells');
           e.preventDefault();
           clearSelectedCells();
         }
         // Ctrl+C / Cmd+C inside the grid to copy selected cells
         else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+          console.log('[Debug Keydown] Ctrl+C triggered range copy');
           const rangeTsv = getRangeSelectedTSV();
+          console.log('[Debug Keydown] rangeTsv length:', rangeTsv ? rangeTsv.length : 0);
           if (rangeTsv) {
             e.preventDefault();
             navigator.clipboard.writeText(rangeTsv).then(() => {
+              console.log('[Debug Keydown] Successfully wrote TSV to clipboard. Content preview:', rangeTsv.substring(0, 100));
               performanceLog.textContent = '📋 Range copied to clipboard';
             }).catch(err => {
-              console.error('Failed to copy via Clipboard API', err);
+              console.error('[Debug Keydown] Failed to write to clipboard via navigator.clipboard:', err);
             });
+          } else {
+            console.warn('[Debug Keydown] rangeTsv is empty, skipping custom clipboard write.');
           }
         }
         // Ctrl+A / Cmd+A inside the grid to select all cells
@@ -2704,19 +2713,27 @@ function commitDragSelection(api) {
 }
 
 function getRangeSelectedTSV() {
-  if (!gridApi) return '';
+  if (!gridApi) {
+    console.error('[Debug TSV] gridApi is null');
+    return '';
+  }
 
   let selectedCells = Object.values(selectedCellsMap);
+  console.log('[Debug TSV] selectedCellsMap size:', selectedCells.length);
+  
   if (selectedCells.length === 0) {
     if (!dragStartCell || !dragEndCell) {
       // Fallback: If no custom selection map, get current focused cell
       const focusedCell = gridApi.getFocusedCell();
+      console.log('[Debug TSV] Fallback check: drag bounds empty. focusedCell:', focusedCell ? `${focusedCell.rowIndex}_${focusedCell.column.getId()}` : 'null');
       if (focusedCell) {
         selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
       } else {
+        console.warn('[Debug TSV] No cells in selectedCellsMap, drag bounds, or focusedCell.');
         return '';
       }
     } else {
+      console.log('[Debug TSV] Fallback check: using drag bounds:', dragStartCell, dragEndCell);
       selectedCells.push({ rowIndex: dragStartCell.rowIndex, colId: dragStartCell.colId });
     }
   }
@@ -2738,7 +2755,12 @@ function getRangeSelectedTSV() {
     }
   });
 
-  if (minRow === Infinity || minColIdx === Infinity) return '';
+  console.log('[Debug TSV] Bounding Box - Row:', minRow, 'to', maxRow, 'ColIdx:', minColIdx, 'to', maxColIdx);
+
+  if (minRow === Infinity || minColIdx === Infinity) {
+    console.error('[Debug TSV] Bounding Box calculate failed - minRow or minColIdx is Infinity');
+    return '';
+  }
 
   // Exclude helper columns (like '#' or checkbox selection columns) to ensure clean grid output structure
   const colsToCopy = allCols.filter((colId, idx) => {
@@ -2746,7 +2768,11 @@ function getRangeSelectedTSV() {
     if (colId === '#' || /^\d+$/.test(colId)) return false;
     return currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
   });
-  if (colsToCopy.length === 0) return '';
+  console.log('[Debug TSV] colsToCopy:', colsToCopy);
+  if (colsToCopy.length === 0) {
+    console.warn('[Debug TSV] colsToCopy is empty after filtering');
+    return '';
+  }
 
   let tsvRows = [];
 
