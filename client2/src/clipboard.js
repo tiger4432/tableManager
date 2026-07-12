@@ -322,29 +322,43 @@ export function setupClipboardHandlers() {
         });
       } else {
         // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
+        // Find visible columns in grid
+        const visibleCols = (state.gridApi.getColumns() || [])
+          .filter(c => c.isVisible())
+          .map(c => c.getColId());
+
         // Find anchor (top-left) cell
         let anchorRow = Infinity;
-        let anchorColIdx = Infinity;
+        let anchorColVisibleIdx = -1;
         let anchorColId = '';
 
         if (focusedCell) {
           anchorRow = focusedCell.rowIndex;
           anchorColId = focusedCell.column.getColId();
-          anchorColIdx = allCols.indexOf(anchorColId);
+          anchorColVisibleIdx = visibleCols.indexOf(anchorColId);
         } else {
           targetCells.forEach(cell => {
-            const idx = state.colIdToIndexMap[cell.colId];
+            const idx = visibleCols.indexOf(cell.colId);
             if (cell.rowIndex < anchorRow) {
               anchorRow = cell.rowIndex;
             }
-            if (idx !== undefined && idx < anchorColIdx) {
-              anchorColIdx = idx;
+            if (idx !== -1 && (anchorColVisibleIdx === -1 || idx < anchorColVisibleIdx)) {
+              anchorColVisibleIdx = idx;
               anchorColId = cell.colId;
             }
           });
         }
 
-        if (anchorRow === Infinity || anchorColIdx === Infinity) return;
+        // If anchor col not in visible list, fallback to first visible column (excluding index column '#')
+        if (anchorColVisibleIdx === -1 && visibleCols.length > 0) {
+          const firstNonHash = visibleCols.find(c => c !== '#');
+          if (firstNonHash) {
+            anchorColId = firstNonHash;
+            anchorColVisibleIdx = visibleCols.indexOf(firstNonHash);
+          }
+        }
+
+        if (anchorRow === Infinity || anchorColVisibleIdx === -1) return;
 
         parsedMatrix.forEach((rowValues, rOffset) => {
           const targetRowIndex = anchorRow + rOffset;
@@ -353,10 +367,10 @@ export function setupClipboardHandlers() {
           const rowId = rowNode.data.row_id;
 
           rowValues.forEach((val, cOffset) => {
-            const targetColIndex = anchorColIdx + cOffset;
-            if (targetColIndex >= allCols.length) return;
+            const targetColIndex = anchorColVisibleIdx + cOffset;
+            if (targetColIndex >= visibleCols.length) return;
 
-            const colId = allCols[targetColIndex];
+            const colId = visibleCols[targetColIndex];
             const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
             if (isSystem) return;
 
