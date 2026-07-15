@@ -300,27 +300,59 @@ async def start_chain_ingestion_worker(db_session_factory):
                     continue
                 
                 # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
-                last_event = pending_events[-1]
-                last_tx_id = last_event.payload.get("transaction_id")
+                # 1. First unpack/normalize all payloads in pending_events and mark/filter SCHEDULER_RUN_NOW control events
+                normalized_events = []
+                import json
+                for event in pending_events:
+                    payload_data = event.payload
+                    if isinstance(payload_data, str):
+                        try:
+                            payload_data = json.loads(payload_data)
+                        except Exception:
+                            payload_data = {}
+                    
+                    if event.event_type == "SCHEDULER_RUN_NOW":
+                        event.processed_chain = True
+                        db.commit()
+                        continue
+                        
+                    event._parsed_payload = payload_data
+                    normalized_events.append(event)
+
+                if not normalized_events:
+                    continue
+
+                last_event = normalized_events[-1]
+                last_tx_id = last_event._parsed_payload.get("transaction_id") if isinstance(last_event._parsed_payload, dict) else None
                 if last_tx_id:
-                    current_ids = {e.id for e in pending_events}
-                    # Fetch other pending candidates to filter in-memory (bypass DB json dialect compatibility issues)
+                    current_ids = {e.id for e in normalized_events}
                     candidates = db.query(DatabaseOutbox).filter(
                         DatabaseOutbox.processed_chain == False,
                         ~DatabaseOutbox.id.in_(current_ids)
                     ).limit(10000).all()
                     
-                    extra_events = [e for e in candidates if e.payload.get("transaction_id") == last_tx_id]
+                    extra_events = []
+                    for e in candidates:
+                        e_pay = e.payload
+                        if isinstance(e_pay, str):
+                            try:
+                                e_pay = json.loads(e_pay)
+                            except Exception:
+                                e_pay = {}
+                        if e_pay.get("transaction_id") == last_tx_id:
+                            e._parsed_payload = e_pay
+                            extra_events.append(e)
+                            
                     if extra_events:
-                        pending_events.extend(extra_events)
-                        logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(pending_events)})")
+                        normalized_events.extend(extra_events)
+                        logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(normalized_events)})")
                 
                 # Group events by transaction_id
                 groups = defaultdict(list)
                 group_order = []
                 
-                for event in pending_events:
-                    tx_id = event.payload.get("transaction_id")
+                for event in normalized_events:
+                    tx_id = event._parsed_payload.get("transaction_id") if isinstance(event._parsed_payload, dict) else None
                     if not tx_id:
                         tx_id = f"single_{event.event_uuid}"
                     if tx_id not in groups:

@@ -270,7 +270,20 @@ async def start_graph_sync_worker(db_session_factory):
                 group_order = []
                 
                 for event in pending_events:
-                    tx_id = event.payload.get("transaction_id")
+                    payload_data = event.payload
+                    if isinstance(payload_data, str):
+                        try:
+                            payload_data = json.loads(payload_data)
+                        except Exception:
+                            payload_data = {}
+
+                    # 제어용 이벤트(SCHEDULER_RUN_NOW)는 그래프 싱크 대상이 아니므로 즉시 DISPATCHED 마크하고 스킵
+                    if event.event_type == "SCHEDULER_RUN_NOW":
+                        event.status = "DISPATCHED"
+                        event.processed_at = datetime.now()
+                        continue
+
+                    tx_id = payload_data.get("transaction_id") if isinstance(payload_data, dict) else None
                     if not tx_id:
                         tx_id = f"single_{event.event_uuid}"
                     if tx_id not in groups:
