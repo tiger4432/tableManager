@@ -618,19 +618,26 @@ def apply_row_update_internal(
                         row = conflict_row
                         is_new = False
                         
-                        # 3. 신규 입력값을 충돌 행(row)에 덮어쓰기 병합
-                        for col_name, new_val in update_item.updates.items():
+                        # 3. 임시 행(row_to_delete)에 채워진 모든 실제 값을 충돌 행(row)에 덮어쓰기 병합
+                        columns_to_merge = [c.name for c in table_model.__table__.columns]
+                        for col_name in columns_to_merge:
                             if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
                                 continue
                             
+                            new_val = getattr(row_to_delete, col_name, None)
+                            
+                            # update_item.updates에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
+                            if col_name in update_item.updates:
+                                new_val = update_item.updates[col_name]
+                                
                             old_val = getattr(row, col_name, None)
+                            
                             has_cell_changed = False
-                            if old_val is None and new_val is None:
-                                has_cell_changed = False
-                            elif (old_val is None) != (new_val is None):
-                                has_cell_changed = True
-                            else:
-                                has_cell_changed = str(old_val).strip() != str(new_val).strip()
+                            if new_val is not None:
+                                if old_val is None:
+                                    has_cell_changed = True
+                                else:
+                                    has_cell_changed = str(old_val).strip() != str(new_val).strip()
                                 
                             if has_cell_changed:
                                 setattr(row, col_name, new_val)
