@@ -51,6 +51,10 @@
      - `database/config_watcher.py` 내부의 밋밋하던 단순 `print`들을 모두 `logging.getLogger("Watcher.ConfigWatcher")` 로 바꾸어 청록색 컬러가 일관되게 입혀진 형태로 출력되도록 마감했습니다.
   - **로깅 주체 선두 배치 (Log Prefix Optimization)**:
      - 프로세스간 콘솔 출력의 직관적 구분을 위해 로깅 규격을 `[로깅 주체(이름)] [%(asctime)s] %(levelname)s - %(message)s` 형태로 변경하여, 로그 한 줄의 맨 처음부터 어떤 데몬이 출력한 로그인지 바로 파악할 수 있도록 편의성을 극대화했습니다.
+  - **비영속성 엔티티 삭제 결함 해결 (Unpersisted db.delete Guard)**:
+     - 충돌 해결(대안 B) 시 가비지가 된 임시 행(`row_to_delete`)을 DB 세션에서 날릴 때, 해당 객체가 아직 DB 세션에 등록(Pending)되거나 저장(Persistent)되지 않은 상태(Transient)일 경우 SQLAlchemy가 `Instance is not persisted` 예외를 내며 전체 인제션을 중단시키는 결함을 발견했습니다.
+     - `sqlalchemy.orm.inspect`를 사용해 객체 상태가 `persistent` 또는 `pending` 상태일 때만 `db.delete()`를 시도하고 추가로 예외 처리 가드로 둘러싸는 안전장치를 `server/database/crud.py` 에 정교하게 장착했습니다.
+
 
 
 

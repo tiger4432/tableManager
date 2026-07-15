@@ -714,7 +714,13 @@ def apply_row_update_internal(
                                 obj.row_id = row.row_id
 
                         # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
-                        db.delete(row_to_delete)
+                        try:
+                            from sqlalchemy.orm import inspect
+                            state = inspect(row_to_delete)
+                            if state.persistent or state.pending:
+                                db.delete(row_to_delete)
+                        except Exception:
+                            pass
                         if row_cache is not None:
                             row_cache.pop(row_to_delete.row_id, None)
                             if row_to_delete.business_key_val:
