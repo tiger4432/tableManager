@@ -55,9 +55,19 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     공통 로깅 규격을 따르며, 프로세스별 고유 컬러(ANSI) 스트림 핸들러와
     깨끗한 Plain-Text 파일 핸들러가 결합된 전용 Logger 인스턴스를 반환합니다.
     """
+    # 루트 로거에 등록된 기본 핸들러 소거 (타 모듈의 basicConfig 오염 차단)
+    root_logger = logging.getLogger()
+    for h in list(root_logger.handlers):
+        root_logger.removeHandler(h)
+
     logger = logging.getLogger(process_name)
     logger.setLevel(logging.INFO)
-    logger.propagate = True # 자식 모듈 로깅 전파 허용
+    
+    # Scheduler 외의 프로세스들은 루트 로거로의 전파를 차단하여 중복 로그 차단
+    if process_name.upper() == "SCHEDULER":
+        logger.propagate = True
+    else:
+        logger.propagate = False
     
     # 기존에 등록된 핸들러가 있으면 클리어하여 오작동 방지
     for handler in list(logger.handlers):

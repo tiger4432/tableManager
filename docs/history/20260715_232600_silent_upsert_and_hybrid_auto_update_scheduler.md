@@ -45,6 +45,8 @@
      - **에러 레벨 동적 컬러 가드**: 정상 정보(INFO, DEBUG)는 고유 색상을 따르되, 경고(WARNING)는 주황색, 에러(ERROR, CRITICAL) 상황 발생 시에는 모든 프로세스 색상을 무시하고 강렬한 빨간색(Bold Red)으로 덮어써 노출시켜 시인성을 고도화했습니다.
      - **이중 스트림 핸들러 분리**: 콘솔 스트림 출력에만 컬러 ANSI 제어 부호를 삽입하고, 파일 로깅 시에는 깨끗한 Plain Text 형태로 저장되도록 보강했습니다.
      - **전 영역 이식 리팩토링**: `main.py` (Uvicorn 내부 로거들까지 훅하여 이식), `run_watcher.py`, `chain_ingestion_worker.py`, `run_auto_update.py` 에 이 표준 로거를 전격 적용시켰습니다.
+     - **중복 로깅 버그 해결 (Clean Root Handlers & Propagate Guard)**: 외부 타사 모듈의 `basicConfig` 오염으로 인해 콘솔에 동일 로그가 기본 포맷과 통합 포맷으로 이중 출력되던 문제를 해결하기 위해, 로거 이식 시점에 루트 로거의 핸들러들을 일괄 소거하고 `propagate = False` 로 제어하여 완벽하고 깨끗한 단일 로그 흐름으로 정정했습니다.
+
 
 
 
