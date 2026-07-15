@@ -420,8 +420,9 @@ class MultiDiscoveryScheduler:
             collector.execute()
             collector.last_status = "SUCCESS"
         except Exception as err:
+            import traceback
             collector.last_status = "FAIL"
-            collector.last_error = str(err)
+            collector.last_error = traceback.format_exc()
             logger.error(f"Collector Execution Failed for table '{collector.table_name}': {err}")
         finally:
             self._write_status_file()
