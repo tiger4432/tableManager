@@ -10,22 +10,7 @@ import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-# -----------------------------------------------------------------
-# [자가 의존성 설치 가드]
-# croniter 라이브러리가 미설치 상태일 경우, 기동 시 백그라운드에서 자동 설치합니다.
-# -----------------------------------------------------------------
-try:
-    from croniter import croniter
-except ImportError:
-    import subprocess
-    print("[Scheduler] Installing 'croniter' dependency automatically via pip...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "croniter"])
-        from croniter import croniter
-        print("[Scheduler] 'croniter' successfully installed.")
-    except Exception as e:
-        print(f"[Scheduler] Fatal: Failed to auto-install 'croniter': {e}")
-        sys.exit(1)
+from croniter import croniter
 
 # Setup Logging
 from utils.logger import get_process_logger
@@ -123,8 +108,7 @@ class GenericScriptRunnerCollector:
         import csv
         import subprocess
         
-        # Update next run time before executing
-        self.next_run = croniter(self.cron_expression, datetime.now()).get_next(datetime)
+        
         
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.filename_prefix}_{timestamp_str}.csv"
@@ -423,6 +407,13 @@ class MultiDiscoveryScheduler:
         collector.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         collector.last_status = "RUNNING"
         collector.last_error = None
+        
+        if getattr(collector, "cron_expression", None):
+            try:
+                collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
+            except Exception as e:
+                logger.error(f"Failed to calculate next_run: {e}")
+                
         self._write_status_file()
         
         try:
@@ -535,8 +526,6 @@ class MultiDiscoveryScheduler:
                         if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                             if now >= collector.next_run:
                                 self.execute_collector(collector)
-                        else:
-                            self.execute_collector(collector)
                 except Exception as e:
                     logger.error(f"Scheduler runtime error: {e}")
                     

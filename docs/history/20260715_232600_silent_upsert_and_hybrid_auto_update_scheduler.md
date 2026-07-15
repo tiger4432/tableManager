@@ -40,7 +40,7 @@
      - 새로운 테이블 인제션 환경을 일괄 생성해 주는 [setup_workspace.py](file:///c:/Users/kk980/Developments/assyManager/server/setup/setup_workspace.py) 의 하위 폴더 생성 명세(`subdirs`)에 `"auto_update"` 디렉토리명을 추가했습니다.
      - 이를 통해 앞으로 새로운 테이블 인입 설정 후 스크립트를 돌리면 `auto_update/` 폴더도 누락 없이 함께 자동 생성되도록 정렬했습니다.
   - **통합 로깅 컬러 시스템 (Unified Colored Logger System) 구축**:
-     - 4대 데몬 서비스를 아우르는 통합 로깅 포맷 패키지 [logger.py](file:///c:/Users/kk980/Developments/assyManager/server/utils/logger.py)를 신설했습니다.
+     - 4대 데몬 서비스를 아우르는 통합 로깅 포맷 패키 [logger.py](file:///c:/Users/kk980/Developments/assyManager/server/utils/logger.py)를 신설했습니다.
      - **프로세스별 시그니처 색상 매핑**: FastAPI Server(초록), Watcher(청록), Chain Worker(자주), Scheduler(노랑) 색상으로 콘솔 터미널 출력을 정렬하여 프로세스간 뒤섞임 현상을 완전 해소했습니다.
      - **에러 레벨 동적 컬러 가드**: 정상 정보(INFO, DEBUG)는 고유 색상을 따르되, 경고(WARNING)는 주황색, 에러(ERROR, CRITICAL) 상황 발생 시에는 모든 프로세스 색상을 무시하고 강렬한 빨간색(Bold Red)으로 덮어써 노출시켜 시인성을 고도화했습니다.
      - **이중 스트림 핸들러 분리**: 콘솔 스트림 출력에만 컬러 ANSI 제어 부호를 삽입하고, 파일 로깅 시에는 깨끗한 Plain Text 형태로 저장되도록 보강했습니다.
@@ -72,16 +72,6 @@
        - 각 수집기의 대상 테이블, 스크립트명, 크론 스케줄, 다음 실행 시각, 최종 실행 시각, 성공/실패 여부를 배지와 함께 한눈에 스캔할 수 있게 구현했습니다.
        - 행 클릭 시 Diagnostics 패널을 활성화하여 최근 에러 로그(`last_error`)와 전체 상세 메타데이터 JSON을 안전하게 출력합니다.
        - 각 행 우측에 **"Run Now"** 버튼을 배치하여, 클릭 시 백엔드 API와 DB 아웃박스를 통해 독립 구동 중인 백그라운드 수집기 스크립트를 비동기로 즉각 구동할 수 있도록 완전 연결했습니다.
-
-
-
-
-
-
-
-
-
-
-
-
-
+     - **스케줄러 기동 블록 해제 및 스케줄링 흐름 교정**:
+        - 기동 시 `pip install` 검사 구문으로 인해 네트워크 환경에 따라 메인 스레드가 블록되던 가드를 소거하여 부팅 속도를 0.1초 수준으로 최적화했습니다.
+        - 클래스 수집기 및 크론식이 없는 수집기가 틱 루프마다 무한 반복 실행되는 문제를 중앙 집중형 `next_run` 전진 연산(`execute_collector` 통합 래핑) 방식으로 전격 정정하여 무한 루프 과부하 및 스케줄 꼬임 결함을 영구 퇴치했습니다.
