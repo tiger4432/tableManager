@@ -49,6 +49,10 @@ def main():
     chain_cmd = [python_exe, "run_chain_worker.py"]
     spawn_process("Chained Ingestion Worker", chain_cmd, server_dir)
     
+    # 5. Start Auto Update Scheduler
+    schedule_cmd = [python_exe, "run_auto_update.py"]
+    spawn_process("Auto Update Scheduler", schedule_cmd, server_dir)
+    
     # Check command-line arguments for server-only mode
     server_only = "--no-client" in sys.argv or "--server-only" in sys.argv
     
