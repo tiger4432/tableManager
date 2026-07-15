@@ -4,6 +4,15 @@ import subprocess
 import time
 import signal
 
+def log_launcher(msg, level="INFO"):
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    WHITE = "\033[97m"
+    
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    prefix = f"{WHITE}{BOLD}[Launcher]{RESET}"
+    print(f"{prefix} [{timestamp}] {level} - {msg}")
+
 def main():
     root_dir = os.path.dirname(os.path.abspath(__file__))
     server_dir = os.path.join(root_dir, "server")
@@ -20,7 +29,7 @@ def main():
     
     # Helper to spawn subprocess
     def spawn_process(name, cmd, cwd, env=None):
-        print(f"[Launcher] Starting {name}: {' '.join(cmd)}")
+        log_launcher(f"Starting {name}: {' '.join(cmd)}")
         merged_env = os.environ.copy()
         if env:
             merged_env.update(env)
@@ -34,7 +43,7 @@ def main():
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
     # Wait for web server to initialize
-    print("[Launcher] Waiting for server to initialize...")
+    log_launcher("Waiting for server to initialize...")
     time.sleep(2.0)
     
     # 2. Start File Ingestion Watcher
@@ -65,22 +74,22 @@ def main():
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
         if signum:
-            print(f"\n[Launcher] Signal {signum} received. Cleaning up all background processes...")
+            log_launcher(f"Signal {signum} received. Cleaning up all background processes...", level="WARNING")
         elif server_only:
-            print("\n[Launcher] Stopping all backend server processes...")
+            log_launcher("Stopping all backend server processes...")
         else:
-            print("\n[Launcher] Desktop Client window closed. Cleaning up all background processes...")
+            log_launcher("Desktop Client window closed. Cleaning up all background processes...")
             
         # Terminate all processes in reverse order
         for name, proc in reversed(processes):
             if proc.poll() is None:  # Still running
-                print(f"[Launcher] Stopping {name}...")
+                log_launcher(f"Stopping {name}...")
                 try:
                     proc.terminate()
                     proc.wait(timeout=3.0)
-                    print(f"[Launcher] {name} stopped successfully.")
+                    log_launcher(f"{name} stopped successfully.")
                 except Exception as e:
-                    print(f"[Launcher] Error stopping {name}: {e}. Killing process...")
+                    log_launcher(f"Error stopping {name}: {e}. Killing process...", level="ERROR")
                     try:
                         proc.kill()
                     except:
@@ -96,13 +105,13 @@ def main():
     
     try:
         if server_only:
-            print("[Launcher] Running in Server-only mode. Press Ctrl+C to stop.")
+            log_launcher("Running in Server-only mode. Press Ctrl+C to stop.")
             while True:
                 time.sleep(1)
         else:
             # Wait for the desktop wrapper window to close
             desktop_process.wait()
-            print("[Launcher] Desktop client closed.")
+            log_launcher("Desktop client closed.")
             shutdown_all()
     except KeyboardInterrupt:
         shutdown_all()

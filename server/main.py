@@ -104,12 +104,12 @@ async def startup_event():
     try:
         from database.config_watcher import start_config_watcher
         global_config_watcher = start_config_watcher(engine)
-        print("[Startup] Dynamic table config watcher started.")
+        logger.info("Dynamic table config watcher started.")
     except Exception as e:
-        print(f"[Startup] Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {e}")
     
     if os.getenv("TESTING") == "True":
-        print("[Startup] Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
+        logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
         return
         
     try:
@@ -117,27 +117,27 @@ async def startup_event():
         from sqlalchemy import text
         with engine.connect() as conn:
             try:
-                print("[Migration] Checking for NULL updated_at...")
+                logger.info("Checking for NULL updated_at...")
                 res = conn.execute(text("UPDATE data_rows SET updated_at = created_at WHERE updated_at IS NULL"))
                 conn.commit()
                 if res.rowcount > 0:
-                    print(f"[Migration] Successfully updated {res.rowcount} rows.")
+                    logger.info(f"Successfully updated {res.rowcount} rows.")
             except Exception as e:
-                print(f"[Migration] Skip data_rows migration (table may not exist): {e}")
+                logger.error(f"Skip data_rows migration (table may not exist): {e}")
                 
             # [Migration] database_outbox 테이블에 processed_chain 컬럼 보정
             try:
                 conn.execute(text("ALTER TABLE database_outbox ADD COLUMN processed_chain BOOLEAN DEFAULT FALSE"))
                 conn.commit()
-                print("[Migration] Added processed_chain column to database_outbox.")
+                logger.info("Added processed_chain column to database_outbox.")
             except Exception:
                 pass
 
         if os.getenv("DECOUPLED") == "True":
-            print("[Startup] Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
+            logger.info("Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
             return
 
-        print("[Startup] Initializing Directory Watcher...")
+        logger.info("Initializing Directory Watcher...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
         
@@ -159,7 +159,7 @@ async def startup_event():
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
-                print(f"[WS] Failed to broadcast refresh signal: {e}")
+                logger.error(f"Failed to broadcast refresh signal: {e}")
 
         def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):
             import json
@@ -186,7 +186,7 @@ async def startup_event():
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
-                print(f"[WS] Failed to broadcast file ingestion completion: {e}")
+                logger.error(f"Failed to broadcast file ingestion completion: {e}")
                 
         global_watcher = WorkspaceWatcher(
             workspace_base, 
@@ -196,34 +196,34 @@ async def startup_event():
         global_watcher.discover_and_watch()
         # 비차단 모드(blocking=False)로 기동
         global_watcher.start(blocking=False)
-        print(f"[Startup] Directory Watcher started with {global_watcher.watch_count} watches.")
+        logger.info(f"Directory Watcher started with {global_watcher.watch_count} watches.")
         
         # Start Graph DB Sync Worker
         from graph_sync_worker import start_graph_sync_worker
         main_loop.create_task(start_graph_sync_worker(SessionLocal))
-        print("[Startup] Graph DB Sync Worker background task spawned.")
+        logger.info("Graph DB Sync Worker background task spawned.")
         
         # Start Chained Ingestion Worker
         from chain_ingestion_worker import start_chain_ingestion_worker
         main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
-        print("[Startup] Chained Ingestion Worker background task spawned.")
+        logger.info("Chained Ingestion Worker background task spawned.")
     except Exception as e:
-        print(f"[Startup] Failed to start Directory Watcher: {e}")
+        logger.error(f"Failed to start Directory Watcher: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     global global_watcher, global_config_watcher
     if global_config_watcher:
-        print("[Shutdown] Stopping Config Watcher...")
+        logger.info("Stopping Config Watcher...")
         global_config_watcher.stop()
         global_config_watcher.join()
-        print("[Shutdown] Config Watcher stopped.")
+        logger.info("Config Watcher stopped.")
         
     if global_watcher and global_watcher.observer:
-        print("[Shutdown] Stopping Directory Watcher...")
+        logger.info("Stopping Directory Watcher...")
         global_watcher.observer.stop()
         global_watcher.observer.join()
-        print("[Shutdown] Directory Watcher stopped.")
+        logger.info("Directory Watcher stopped.")
 # --------------------------------------
 
 class ConnectionManager:

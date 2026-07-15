@@ -22,7 +22,8 @@ class ColoredProcessFormatter(logging.Formatter):
         "SERVER": GREEN,
         "WATCHER": CYAN,
         "CHAIN": MAGENTA,
-        "SCHEDULER": YELLOW
+        "SCHEDULER": YELLOW,
+        "GRAPHSYNC": CYAN
     }
 
     def __init__(self, fmt=None, datefmt=None, process_name="SYSTEM"):
