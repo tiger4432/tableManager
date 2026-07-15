@@ -6,9 +6,9 @@ import select
 import time
 from datetime import datetime
 
-# Logger setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("GraphSyncWorker")
+# Setup Unified Logger
+from utils.logger import get_process_logger
+logger = get_process_logger("GraphSync", "graph_sync.log")
 
 def blocking_wait(db_session_factory, channel, timeout):
     db = db_session_factory()

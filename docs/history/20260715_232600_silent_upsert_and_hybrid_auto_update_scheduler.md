@@ -58,6 +58,10 @@
      - **런처 전용 볼드 백색 헬퍼 (`run_decoupled_app.py`)**: `[Launcher]` 메인 런처의 로깅에 BOLD WHITE 색상을 입혀, 기동 및 종료(terminate) 상황을 더 시각적으로 정형화했습니다.
      - **서버 기동 및 마이그레이션 print 소거 ([main.py](file:///c:/Users/kk980/Developments/assyManager/server/main.py))**: `[Startup]`, `[Migration]`, `[Shutdown]` 등 기동 극초기에 찍히던 지저분한 하얀 print 구문들을 싹 걷어내고 `logger.info` 또는 `logger.error` 로 치환하여 완벽한 초록색 `[Server]` 로그로 융합시켰습니다.
      - **서브 데몬 기동 print 소거**: `run_chain_worker.py` 및 `run_graph_sync.py` 의 기동 안내 print 들도 공통 로거로 치환하여, 하얀색의 콘솔 텍스트 튀김 현상을 차단하고 일관된 테마 컬러(자주, 청록)를 입혔습니다.
+     - **로깅 상속 복구 및 노이즈 소거 (Propagation & Noise Suppression)**:
+        - `Watcher.ConfigWatcher` 등 자식 로거들이 최상위 부모 핸들러를 타지 못하고 기본 포맷(`INFO:Watcher...`)으로 복원되던 문제를 해결하고자 `logger.propagate = True` 상태를 전원 켜 두었습니다. (루트 핸들러가 일괄 지워진 상태이므로 중복 로깅은 여전히 발생하지 않습니다.)
+        - `main.py` 내부의 웹소켓 연결 로그(`Client connected`)와 무겁던 테이블 데이터 프로파일링 print문(`[get_table_data]`)을 각각 `logger.info` 및 `logger.debug` 로 깔끔히 마이그레이션하여 백엔드 콘솔의 가독성을 최고 등급으로 마감했습니다.
+
 
 
 

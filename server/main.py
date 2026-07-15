@@ -233,20 +233,20 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"Client connected. Total clients: {len(self.active_connections)}")
+        logger.info(f"Client connected. Total clients: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
-        print(f"Client disconnected. Total clients: {len(self.active_connections)}")
+        logger.info(f"Client disconnected. Total clients: {len(self.active_connections)}")
 
     async def broadcast(self, message: str):
-        print(f"[ServerWS] Broadcasting to {len(self.active_connections)} clients: {message[:100]}...")
+        logger.info(f"Broadcasting to {len(self.active_connections)} clients: {message[:100]}...")
         failed_connections = []
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)
             except Exception as e:
-                print(f"[ServerWS] Error sending to a client: {e}")
+                logger.error(f"Error sending to a client: {e}")
                 failed_connections.append(connection)
         
         for conn in failed_connections:
@@ -989,7 +989,7 @@ def get_table_data(
         
     t_total = time.time() - t_total_start
     
-    print(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
+    logger.debug(f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | Entity Fetch: {t_row_scan:.3f}s | Dict Conv: {t_dict:.3f}s | skip={skip}, limit={limit}, order={order_by}, q={q}")
     
     return {
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,

@@ -64,11 +64,7 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     logger = logging.getLogger(process_name)
     logger.setLevel(logging.INFO)
     
-    # Scheduler 외의 프로세스들은 루트 로거로의 전파를 차단하여 중복 로그 차단
-    if process_name.upper() == "SCHEDULER":
-        logger.propagate = True
-    else:
-        logger.propagate = False
+    logger.propagate = True # 자식 모듈들의 로깅 전파를 부모 로거로 허용
     
     # 기존에 등록된 핸들러가 있으면 클리어하여 오작동 방지
     for handler in list(logger.handlers):
