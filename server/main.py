@@ -2380,6 +2380,62 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
         "message": f"Successfully retried. Success: {success_count}, Failed: {fail_count}."
     }
 
+@app.get("/admin/auto-update/status")
+async def get_auto_update_status():
+    """실시간 auto_update 스케줄러의 기동 현황(JSON)을 조회합니다."""
+    import os
+    import json
+    
+    server_dir = os.path.dirname(os.path.abspath(__file__))
+    status_path = os.path.join(server_dir, "config", "scheduler_status.json")
+    
+    if not os.path.exists(status_path):
+        return {"status": "success", "data": [], "last_updated": None}
+        
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {
+            "status": "success",
+            "data": data.get("collectors", []),
+            "last_updated": data.get("last_updated")
+        }
+    except Exception as e:
+        logger.error(f"Failed to read scheduler status file: {e}")
+        return {"status": "error", "message": str(e), "data": []}
+
+@app.post("/admin/auto-update/run-now")
+async def trigger_auto_update_run_now(
+    table_name: str = Body(..., embed=True),
+    script_name: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """지정된 수집기를 즉각 비동기로 강제 실행하도록 아웃박스 트리거 이벤트를 발행합니다."""
+    import json
+    import time
+    try:
+        trigger_payload = {
+            "table_name": table_name,
+            "script_name": script_name
+        }
+        
+        new_event = models.DatabaseOutbox(
+            transaction_id=f"ON_DEMAND_{int(time.time())}",
+            table_name=table_name,
+            event_type="SCHEDULER_RUN_NOW",
+            payload=json.dumps(trigger_payload),
+            processed_chain=False
+        )
+        db.add(new_event)
+        db.commit()
+        
+        logger.info(f"[On-Demand] Published SCHEDULER_RUN_NOW outbox event for table='{table_name}', script='{script_name}'")
+        return {"status": "success", "message": f"Successfully published trigger to run '{script_name}' for table '{table_name}'."}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to publish on-demand run trigger: {e}")
+        return {"status": "error", "message": str(e)}
+
 @app.post("/internal/events/batch-refresh")
 async def internal_event_batch_refresh(
     table_name: str = Body(..., embed=True),

@@ -5,6 +5,8 @@ import shutil
 import logging
 import importlib.util
 import re
+import json
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -38,6 +40,10 @@ class BaseCollector(ABC):
         self.logger = logging.getLogger(f"Scheduler.Collector.{table_name}")
         self.cron_expression = None
         self.next_run = None
+        self.last_run = None
+        self.last_status = "PENDING"
+        self.last_error = None
+        self.script_path = None
         
         server_dir = os.path.dirname(os.path.abspath(__file__))
         self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
@@ -79,6 +85,7 @@ class BaseCollector(ABC):
                         self.logger.warning(f"Could not clean up temporary source file '{file_path}': {e}")
         except Exception as e:
             self.logger.error(f"Failed to execute collection lifecycle for table '{self.table_name}': {e}")
+            raise e
 
 class GenericScriptRunnerCollector:
     """
@@ -91,6 +98,9 @@ class GenericScriptRunnerCollector:
         self.cron_expression = cron_expression
         self.filename_prefix = filename_prefix
         self.logger = logging.getLogger(f"Scheduler.ScriptRunner.{table_name}.{os.path.basename(script_path)}")
+        self.last_run = None
+        self.last_status = "PENDING"
+        self.last_error = None
         self.last_mtime = 0
         try:
             self.last_mtime = os.path.getmtime(script_path)
@@ -198,8 +208,9 @@ class GenericScriptRunnerCollector:
             )
             
             if result.returncode != 0:
-                self.logger.error(f"Script process exited with error code {result.returncode}. stderr: {result.stderr.strip()}")
-                return
+                err_msg = f"Script process exited with error code {result.returncode}. stderr: {result.stderr.strip()}"
+                self.logger.error(err_msg)
+                raise RuntimeError(err_msg)
                 
             stdout_content = result.stdout
             if not stdout_content.strip():
@@ -214,6 +225,7 @@ class GenericScriptRunnerCollector:
             
         except Exception as e:
             self.logger.error(f"Fatal: Failed to execute script runner via subprocess: {e}")
+            raise e
 
 def parse_script_comments(script_path: str) -> dict:
     """
@@ -241,55 +253,77 @@ def parse_script_comments(script_path: str) -> dict:
                         elif key == "filename_prefix":
                             config["filename_prefix"] = val
     except Exception as e:
-        logger.warning(f"Failed to parse comments from {script_path}: {e}")
+        logger.warning(f"Failed to parse script comments for {script_path}: {e}")
     return config
 
 class MultiDiscoveryScheduler:
     """
-    각 테이블별 auto_update 폴더 내의 스크립트들을 크론탭 시점에 감지하여 구동해주는 하이브리드 엔진입니다.
+    ingestion_workspace/*/auto_update/*.py 디렉토리를 통합 모니터링하며,
+    주석 기반의 Cron 설정 또는 클래스 상속 수집기들을 스케줄러 스레드로 자동 구동하는 디스커버리 스케줄러입니다.
     """
     def __init__(self, check_interval: int = 5):
         self.check_interval = check_interval
         self.server_dir = os.path.dirname(os.path.abspath(__file__))
         self.workspace_dir = os.path.join(self.server_dir, "ingestion_workspace")
+        self.status_file_path = os.path.join(self.server_dir, "config", "scheduler_status.json")
         self.collectors = []
+        self._lock = threading.Lock()
 
     def discover_and_load_collectors(self):
         """
         ingestion_workspace/{table_name}/auto_update/*.py 목록을 스캔하여 동적으로 로드합니다.
         """
-        self.collectors = []
-        if not os.path.exists(self.workspace_dir):
-            logger.warning(f"Ingestion workspace directory not found at: {self.workspace_dir}")
-            return
+        with self._lock:
+            # 기존 상태 매핑 캐시
+            status_map = {}
+            for col in self.collectors:
+                key = (col.table_name, os.path.basename(col.script_path) if col.script_path else col.__class__.__name__)
+                status_map[key] = {
+                    "last_run": col.last_run,
+                    "last_status": col.last_status,
+                    "last_error": col.last_error
+                }
 
-        for table_name in os.listdir(self.workspace_dir):
-            table_path = os.path.join(self.workspace_dir, table_name)
-            if not os.path.isdir(table_path):
-                continue
+            self.collectors = []
+            if not os.path.exists(self.workspace_dir):
+                logger.warning(f"Ingestion workspace directory not found at: {self.workspace_dir}")
+                return
 
-            auto_update_path = os.path.join(table_path, "auto_update")
-            if not os.path.exists(auto_update_path) or not os.path.isdir(auto_update_path):
-                continue
+            for table_name in os.listdir(self.workspace_dir):
+                table_path = os.path.join(self.workspace_dir, table_name)
+                if not os.path.isdir(table_path):
+                    continue
 
-            for filename in os.listdir(auto_update_path):
-                if filename.endswith(".py"):
-                    script_path = os.path.join(auto_update_path, filename)
-                    self._load_collector_from_script(table_name, script_path)
+                auto_update_path = os.path.join(table_path, "auto_update")
+                if not os.path.exists(auto_update_path) or not os.path.isdir(auto_update_path):
+                    continue
+
+                for filename in os.listdir(auto_update_path):
+                    if filename.endswith(".py"):
+                        script_path = os.path.join(auto_update_path, filename)
+                        self._load_collector_from_script(table_name, script_path)
+
+            # 복원
+            for col in self.collectors:
+                key = (col.table_name, os.path.basename(col.script_path) if col.script_path else col.__class__.__name__)
+                if key in status_map:
+                    col.last_run = status_map[key]["last_run"]
+                    col.last_status = status_map[key]["last_status"]
+                    col.last_error = status_map[key]["last_error"]
+
+            self._write_status_file()
 
     def _load_collector_from_script(self, table_name: str, script_path: str):
         """
         주석을 분석하여 # schedule: 이 있으면 GenericScriptRunnerCollector로 로드하고,
         없으면 리플렉션을 통해 BaseCollector 클래스를 로드합니다.
         """
-        # 1. 스크립트 주석에서 크론탭 스케줄 감지 시도
         comment_config = parse_script_comments(script_path)
         
         if comment_config["schedule"]:
             try:
-                # 크론 표현식 검증 및 러너 로드
                 cron_expr = comment_config["schedule"]
-                croniter(cron_expr) # 문법 검증용
+                croniter(cron_expr)
                 
                 collector_inst = GenericScriptRunnerCollector(
                     table_name=table_name,
@@ -303,7 +337,6 @@ class MultiDiscoveryScheduler:
             except Exception as e:
                 logger.error(f"Invalid cron expression '{comment_config['schedule']}' in {script_path}: {e}")
 
-        # 2. 크론 주석이 없거나 무효한 경우, 기존 BaseCollector 클래스 탐색 로드
         module_name = f"dynamic_collector_{table_name}_{os.path.basename(script_path)[:-3]}"
         try:
             script_dir = os.path.dirname(script_path)
@@ -324,8 +357,8 @@ class MultiDiscoveryScheduler:
                 if isinstance(attr, type) and issubclass(attr, BaseCollector) and attr is not BaseCollector:
                     try:
                         collector_inst = attr()
+                        collector_inst.script_path = script_path
                         
-                        # 크론 설정이 클래스 상에 있을 경우 계산 기입
                         if getattr(collector_inst, "cron_expression", None):
                             collector_inst.next_run = croniter(collector_inst.cron_expression, datetime.now()).get_next(datetime)
                         
@@ -340,9 +373,71 @@ class MultiDiscoveryScheduler:
         except Exception as e:
             logger.error(f"Failed to load script module '{script_path}': {e}")
 
+    def _write_status_file(self):
+        """
+        현재 메모리상 활성 수집기 목록 상태를 JSON 파일로 직렬화하여 영속화합니다.
+        """
+        try:
+            status_data = {
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "collectors": []
+            }
+            with self._lock:
+                for col in self.collectors:
+                    script_name = os.path.basename(col.script_path) if col.script_path else col.__class__.__name__
+                    status_data["collectors"].append({
+                        "table_name": col.table_name,
+                        "script_name": script_name,
+                        "script_path": col.script_path,
+                        "cron_expression": getattr(col, "cron_expression", None) or "Manual-only",
+                        "next_run": col.next_run.strftime("%Y-%m-%d %H:%M:%S") if getattr(col, "next_run", None) else None,
+                        "last_run": col.last_run,
+                        "last_status": col.last_status,
+                        "last_error": col.last_error
+                    })
+            
+            config_dir = os.path.dirname(self.status_file_path)
+            os.makedirs(config_dir, exist_ok=True)
+            with open(self.status_file_path, "w", encoding="utf-8") as f:
+                json.dump(status_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to write scheduler status file: {e}")
+
+    def run_collector_on_demand(self, table_name: str, script_name: str):
+        """
+        On-Demand 강제 구동 지시를 받아 비동기로 대상 수집기를 실행합니다.
+        """
+        for collector in self.collectors:
+            col_script_name = os.path.basename(getattr(collector, "script_path", "")) if getattr(collector, "script_path", None) else collector.__class__.__name__
+            if collector.table_name == table_name and col_script_name == script_name:
+                logger.info(f"[Trigger] On-Demand trigger received. Executing collector '{script_name}' for table '{table_name}' immediately...")
+                threading.Thread(target=self.execute_collector, args=(collector,), daemon=True).start()
+                return True
+        logger.warning(f"[Trigger] Trigger requested but no matching collector found for table='{table_name}', script='{script_name}'")
+        return False
+
+    def execute_collector(self, collector):
+        """
+        수집기를 래핑 실행하고 상태를 기록합니다.
+        """
+        collector.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        collector.last_status = "RUNNING"
+        collector.last_error = None
+        self._write_status_file()
+        
+        try:
+            collector.execute()
+            collector.last_status = "SUCCESS"
+        except Exception as err:
+            collector.last_status = "FAIL"
+            collector.last_error = str(err)
+            logger.error(f"Collector Execution Failed for table '{collector.table_name}': {err}")
+        finally:
+            self._write_status_file()
+
     def run(self):
         """
-        주기적으로 DB의 SYSTEM_RELOAD 아웃박스 신호를 모니터링하며,
+        주기적으로 DB의 SYSTEM_RELOAD 및 SCHEDULER_RUN_NOW 아웃박스 신호를 모니터링하며,
         동시에 크론 스케줄 타이밍을 검사해 수집기들을 가동합니다.
         """
         logger.info("Initializing Ingestion Auto Discovery engine...")
@@ -369,11 +464,13 @@ class MultiDiscoveryScheduler:
 
         try:
             while True:
-                # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 감시
+                # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 및 강제 실행(SCHEDULER_RUN_NOW) 감시
                 try:
                     from database.database import SessionLocal
                     from database.models import DatabaseOutbox
                     db = SessionLocal()
+                    
+                    # 1-1. SYSTEM_RELOAD 감시
                     latest_reload = db.query(DatabaseOutbox).filter(
                         DatabaseOutbox.event_type == "SYSTEM_RELOAD"
                     ).order_by(DatabaseOutbox.id.desc()).first()
@@ -390,6 +487,26 @@ class MultiDiscoveryScheduler:
                         # 수집기 리스트 재구성
                         self.discover_and_load_collectors()
                         logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
+                    
+                    # 1-2. SCHEDULER_RUN_NOW 감시
+                    latest_trigger = db.query(DatabaseOutbox).filter(
+                        DatabaseOutbox.event_type == "SCHEDULER_RUN_NOW",
+                        DatabaseOutbox.processed_chain == False
+                    ).first()
+                    
+                    if latest_trigger:
+                        try:
+                            payload_data = json.loads(latest_trigger.payload) if isinstance(latest_trigger.payload, str) else latest_trigger.payload
+                            table_name = payload_data.get("table_name")
+                            script_name = payload_data.get("script_name")
+                            
+                            self.run_collector_on_demand(table_name, script_name)
+                            
+                            latest_trigger.processed_chain = True
+                            db.commit()
+                        except Exception as trig_err:
+                            logger.error(f"Failed to handle SCHEDULER_RUN_NOW trigger: {trig_err}")
+                    
                     db.close()
                 except Exception as e:
                     logger.warning(f"Database outbox polling failed inside scheduler: {e}")
@@ -417,9 +534,9 @@ class MultiDiscoveryScheduler:
 
                         if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                             if now >= collector.next_run:
-                                collector.execute()
+                                self.execute_collector(collector)
                         else:
-                            collector.execute()
+                            self.execute_collector(collector)
                 except Exception as e:
                     logger.error(f"Scheduler runtime error: {e}")
                     

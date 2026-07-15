@@ -61,6 +61,18 @@
      - **로깅 상속 복구 및 노이즈 소거 (Propagation & Noise Suppression)**:
         - `Watcher.ConfigWatcher` 등 자식 로거들이 최상위 부모 핸들러를 타지 못하고 기본 포맷(`INFO:Watcher...`)으로 복원되던 문제를 해결하고자 `logger.propagate = True` 상태를 전원 켜 두었습니다. (루트 핸들러가 일괄 지워진 상태이므로 중복 로깅은 여전히 발생하지 않습니다.)
         - `main.py` 내부의 웹소켓 연결 로그(`Client connected`)와 무겁던 테이블 데이터 프로파일링 print문(`[get_table_data]`)을 각각 `logger.info` 및 `logger.debug` 로 깔끔히 마이그레이션하여 백엔드 콘솔의 가독성을 최고 등급으로 마감했습니다.
+  - **어드민 대시보드 Auto Updates 상태판 및 강제 기동 연동 (Auto-Update Admin Panel & Run Now Trigger)**:
+     - **스케줄러 상태 영속화 (`run_auto_update.py`)**: `MultiDiscoveryScheduler`에 `_write_status_file()`을 추가하여, 실시간 스캔 완료 시점 및 개별 수집기 실행 완료 전후 시점에 수집기 메타데이터와 실행 상태(`last_run`, `last_status`, `last_error`)를 `server/config/scheduler_status.json` 파일에 자가 보고(Self-Reporting) 형태로 직렬화 기록하도록 구현했습니다.
+     - **비동기 강제 트리거 가드 (`run_auto_update.py`)**: 스케줄러가 독립 프로세스 모드에서도 온디맨드 구동 신호를 즉시 캐치할 수 있도록, `database_outbox` 테이블의 `SCHEDULER_RUN_NOW` 미처리 이벤트를 폴링 루프에서 실시간으로 감시하고, 비동기 스레드로 대상 스크립트를 즉각 강제 실행하는 수신부를 구축했습니다.
+     - **백엔드 API 라우터 탑재 (`main.py`)**:
+       - `GET /admin/auto-update/status`: 영속화된 JSON 파일 데이터를 파싱해 실시간 현황을 클라이언트에 내려줍니다.
+       - `POST /admin/auto-update/run-now`: 웹 대시보드에서 들어온 수집기 강제 기동 요청을 아웃박스 이벤트(`SCHEDULER_RUN_NOW`)로 영속화하여 스케줄러에 비동기 전달합니다.
+     - **어드민 웹 대시보드 UI 연동 (`admin.html` 및 `admin.js`)**:
+       - 어드민 탭 바에 `Auto Updates` 버튼을 장착하고 스케줄 테이블 그리드 레이아웃을 전격 탑재했습니다.
+       - 각 수집기의 대상 테이블, 스크립트명, 크론 스케줄, 다음 실행 시각, 최종 실행 시각, 성공/실패 여부를 배지와 함께 한눈에 스캔할 수 있게 구현했습니다.
+       - 행 클릭 시 Diagnostics 패널을 활성화하여 최근 에러 로그(`last_error`)와 전체 상세 메타데이터 JSON을 안전하게 출력합니다.
+       - 각 행 우측에 **"Run Now"** 버튼을 배치하여, 클릭 시 백엔드 API와 DB 아웃박스를 통해 독립 구동 중인 백그라운드 수집기 스크립트를 비동기로 즉각 구동할 수 있도록 완전 연결했습니다.
+
 
 
 

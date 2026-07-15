@@ -3,7 +3,7 @@ const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
 
 // State Cache
-let currentTab = 'outbox'; // 'outbox', 'file', 'workspace', 'chain', 'mapper'
+let currentTab = 'outbox'; // 'outbox', 'file', 'workspace', 'chain', 'mapper', 'autoupdate'
 let outboxPage = 1;
 let outboxLimit = 10;
 let outboxData = [];
@@ -17,12 +17,14 @@ let fileTotal = 0;
 let workspaceData = [];
 let chainData = [];
 let mapperData = [];
+let autoUpdateData = [];
 
 let selectedTxId = null;
 let selectedFileId = null;
 let selectedWorkspaceName = null;
 let selectedChainName = null;
 let selectedMapperFile = null;
+let selectedAutoUpdateScript = null;
 let activeEventInTx = null;
 
 // DOM Elements
@@ -31,12 +33,14 @@ const tabFileBtn = document.getElementById('tab-file-btn');
 const tabWorkspaceBtn = document.getElementById('tab-workspace-btn');
 const tabChainBtn = document.getElementById('tab-chain-btn');
 const tabMapperBtn = document.getElementById('tab-mapper-btn');
+const tabAutoUpdateBtn = document.getElementById('tab-autoupdate-btn');
 
 const outboxTableWrapper = document.getElementById('outbox-table-wrapper');
 const fileTableWrapper = document.getElementById('file-table-wrapper');
 const workspaceTableWrapper = document.getElementById('workspace-table-wrapper');
 const chainTableWrapper = document.getElementById('chain-table-wrapper');
 const mapperTableWrapper = document.getElementById('mapper-table-wrapper');
+const autoUpdateTableWrapper = document.getElementById('autoupdate-table-wrapper');
 
 const statusFilterSelect = document.getElementById('status-filter');
 
@@ -45,12 +49,14 @@ const fileListBody = document.getElementById('file-list-body');
 const workspaceListBody = document.getElementById('workspace-list-body');
 const chainListBody = document.getElementById('chain-list-body');
 const mapperListBody = document.getElementById('mapper-list-body');
+const autoUpdateListBody = document.getElementById('autoupdate-list-body');
 
 const outboxEmptyState = document.getElementById('outbox-empty');
 const fileEmptyState = document.getElementById('file-empty');
 const workspaceEmptyState = document.getElementById('workspace-empty');
 const chainEmptyState = document.getElementById('chain-empty');
 const mapperEmptyState = document.getElementById('mapper-empty');
+const autoUpdateEmptyState = document.getElementById('autoupdate-empty');
 
 const totalCountSpan = document.getElementById('total-count');
 const retryAllBtn = document.getElementById('retry-all-btn');
@@ -90,7 +96,8 @@ function setupEventListeners() {
     { btn: tabFileBtn, tab: 'file', wrapper: fileTableWrapper },
     { btn: tabWorkspaceBtn, tab: 'workspace', wrapper: workspaceTableWrapper },
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTableWrapper },
-    { btn: tabMapperBtn, tab: 'mapper', wrapper: mapperTableWrapper }
+    { btn: tabMapperBtn, tab: 'mapper', wrapper: mapperTableWrapper },
+    { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTableWrapper }
   ];
 
   tabs.forEach(t => {
@@ -249,6 +256,12 @@ async function fetchData() {
       const result = await res.json();
       mapperData = result.data || [];
       renderMapperTable();
+    } else if (currentTab === 'autoupdate') {
+      const res = await fetch(`${API_BASE}/admin/auto-update/status`);
+      if (!res.ok) throw new Error('API fetch failed');
+      const result = await res.json();
+      autoUpdateData = result.data || [];
+      renderAutoUpdateTable();
     }
   } catch (err) {
     console.error('Failed to fetch items', err);
@@ -258,6 +271,7 @@ async function fetchData() {
     else if (currentTab === 'workspace') errorMsg = '❌ 인제션 워크스페이스 목록 로드 실패';
     else if (currentTab === 'chain') errorMsg = '❌ 체인 룰 목록 로드 실패';
     else if (currentTab === 'mapper') errorMsg = '❌ 맵퍼 모듈 목록 로드 실패';
+    else if (currentTab === 'autoupdate') errorMsg = '❌ Auto-Update 스케줄러 현황 로드 실패';
     showToast(errorMsg, 'error');
   }
 }
@@ -549,14 +563,123 @@ function renderMapperTable() {
 
     mapperListBody.appendChild(row);
   });
+}
 
-  if (selectedMapperFile) {
-    const exists = mapperData.find(m => m.filename === selectedMapperFile);
+// Render Auto Update table rows
+function renderAutoUpdateTable() {
+  autoUpdateListBody.innerHTML = '';
+  totalCountSpan.textContent = autoUpdateData.length;
+  totalCountSpan.style.color = 'var(--color-primary)';
+
+  if (autoUpdateData.length === 0) {
+    autoUpdateEmptyState.style.display = 'flex';
+    clearDiagnostics();
+    return;
+  }
+
+  autoUpdateEmptyState.style.display = 'none';
+
+  autoUpdateData.forEach(col => {
+    const row = document.createElement('tr');
+    row.className = `table-row ${selectedAutoUpdateScript === col.script_name ? 'active' : ''}`;
+    row.dataset.script = col.script_name;
+    row.dataset.table = col.table_name;
+
+    const statusBadge = `<span class="badge ${
+      col.last_status === 'SUCCESS' ? 'badge-success' : 
+      col.last_status === 'FAIL' ? 'badge-danger' : 
+      col.last_status === 'RUNNING' ? 'badge-warning' : 'badge-warning'
+    }">${col.last_status || 'PENDING'}</span>`;
+
+    row.innerHTML = `
+      <td style="font-weight: bold; color: var(--color-primary);">${col.table_name}</td>
+      <td style="font-weight: 500; color: #a6e3a1; word-break: break-all;">${col.script_name}</td>
+      <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${col.cron_expression}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem;">${col.next_run || '-'}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem;">${col.last_run || '-'}</td>
+      <td style="text-align: center;">${statusBadge}</td>
+      <td style="text-align: center;" onclick="event.stopPropagation()">
+        <button class="glass-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}" style="padding: 4px 10px; font-size: 0.75rem;">Run Now</button>
+      </td>
+    `;
+
+    row.addEventListener('click', () => {
+      selectAutoUpdateRow(col);
+    });
+
+    const runBtn = row.querySelector('.btn-run-now');
+    runBtn.addEventListener('click', async () => {
+      if (confirm(`수집기 스크립트 '${col.script_name}'을 즉시 실행하시겠습니까?`)) {
+        await runAutoUpdateNow(col.table_name, col.script_name);
+      }
+    });
+
+    autoUpdateListBody.appendChild(row);
+  });
+
+  if (selectedAutoUpdateScript) {
+    const exists = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
     if (exists) {
-      selectMapperRow(exists);
+      selectAutoUpdateRow(exists);
     } else {
       clearDiagnostics();
     }
+  }
+}
+
+// Select Auto Update Row
+function selectAutoUpdateRow(col) {
+  selectedAutoUpdateScript = col.script_name;
+  selectedFileId = null;
+  selectedTxId = null;
+  selectedWorkspaceName = null;
+  selectedChainName = null;
+  selectedMapperFile = null;
+  activeEventInTx = null;
+
+  autoUpdateListBody.querySelectorAll('.table-row').forEach(r => {
+    r.classList.toggle('active', r.dataset.script === col.script_name);
+  });
+
+  diagnosticsEmpty.style.display = 'none';
+  diagnosticsContent.style.display = 'flex';
+  txEventsSelectorBlock.style.display = 'none';
+
+  diagnosticsTitle.textContent = '🔍 Auto-Update Collector Diagnostics';
+  tracebackTitle.textContent = 'Last Collector Execution Error';
+  tracebackSeverity.textContent = col.last_status || 'PENDING';
+  tracebackSeverity.className = 
+    col.last_status === 'SUCCESS' ? 'badge badge-success' : 
+    col.last_status === 'FAIL' ? 'badge badge-danger' : 'badge badge-warning';
+  tracebackSeverity.style.display = 'inline';
+  payloadTitle.textContent = 'Collector Config & Execution Metadata';
+
+  tracebackViewer.textContent = col.last_error || 'No error traceback log captured (Last execution was successful).';
+  payloadViewer.textContent = JSON.stringify(col, null, 2);
+}
+
+// API Call: Trigger Auto Update Run Now
+async function runAutoUpdateNow(tableName, scriptName) {
+  try {
+    const res = await fetch(`${API_BASE}/admin/auto-update/run-now`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        table_name: tableName,
+        script_name: scriptName
+      })
+    });
+    if (!res.ok) throw new Error('Run Now API returned error status');
+    showToast(`🔄 [${tableName}] 강제 수집 지시가 정상적으로 발행되었습니다.`, 'success');
+    
+    setTimeout(() => {
+      fetchData();
+    }, 1500);
+  } catch (err) {
+    console.error('Failed to trigger run-now', tableName, scriptName, err);
+    showToast('❌ 강제 수집 구동 요청 실패', 'error');
   }
 }
 

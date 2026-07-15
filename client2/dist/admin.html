@@ -443,7 +443,7 @@
       color: var(--color-primary);
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-Bem1FmUq.js"></script>
+  <script type="module" crossorigin src="/assets/admin-Cx59BoHq.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
 </head>
 <body>
@@ -472,6 +472,7 @@
           <button id="tab-workspace-btn" class="tab-btn">Workspaces</button>
           <button id="tab-chain-btn" class="tab-btn">Chain Rules</button>
           <button id="tab-mapper-btn" class="tab-btn">Mappers</button>
+          <button id="tab-autoupdate-btn" class="tab-btn">Auto Updates</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <select id="status-filter" class="glass-select" style="display: none; height: 32px; padding: 0 10px; font-size: 0.8rem;">
@@ -592,6 +593,30 @@
           <div id="mapper-empty" class="empty-state" style="display: none;">
             <div class="empty-icon">⚙️</div>
             <div class="empty-text">No custom mapper modules found.</div>
+          </div>
+        </div>
+
+        <!-- Auto Update Table Wrapper -->
+        <div id="autoupdate-table-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <table class="table-container">
+            <thead class="table-header">
+              <tr>
+                <th style="width: 160px;">Target Table</th>
+                <th>Script / Collector</th>
+                <th style="width: 130px;">Cron Schedule</th>
+                <th style="width: 170px;">Next Run</th>
+                <th style="width: 170px;">Last Run</th>
+                <th style="width: 100px; text-align: center;">Status</th>
+                <th style="width: 120px; text-align: center;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="autoupdate-list-body">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+          <div id="autoupdate-empty" class="empty-state" style="display: none;">
+            <div class="empty-icon">⏰</div>
+            <div class="empty-text">No active auto-update configurations found.</div>
           </div>
         </div>
       </div>
