@@ -46,6 +46,10 @@
      - **이중 스트림 핸들러 분리**: 콘솔 스트림 출력에만 컬러 ANSI 제어 부호를 삽입하고, 파일 로깅 시에는 깨끗한 Plain Text 형태로 저장되도록 보강했습니다.
      - **전 영역 이식 리팩토링**: `main.py` (Uvicorn 내부 로거들까지 훅하여 이식), `run_watcher.py`, `chain_ingestion_worker.py`, `run_auto_update.py` 에 이 표준 로거를 전격 적용시켰습니다.
      - **중복 로깅 버그 해결 (Clean Root Handlers & Propagate Guard)**: 외부 타사 모듈의 `basicConfig` 오염으로 인해 콘솔에 동일 로그가 기본 포맷과 통합 포맷으로 이중 출력되던 문제를 해결하기 위해, 로거 이식 시점에 루트 로거의 핸들러들을 일괄 소거하고 `propagate = False` 로 제어하여 완벽하고 깨끗한 단일 로그 흐름으로 정정했습니다.
+  - **서브 모듈 로깅 정렬 (Watcher Submodules Unification)**:
+     - `parsers/directory_watcher.py` 내부의 독자적인 `ColorFormatter` 및 `basicConfig` 설정을 완전히 소거하여 루트 로거 오염의 근원을 차단하고, 로거명을 `Watcher.DirectoryWatcher` 로 통일하여 청록색 포맷이 자연스럽게 적용되도록 정렬했습니다.
+     - `database/config_watcher.py` 내부의 밋밋하던 단순 `print`들을 모두 `logging.getLogger("Watcher.ConfigWatcher")` 로 바꾸어 청록색 컬러가 일관되게 입혀진 형태로 출력되도록 마감했습니다.
+
 
 
 

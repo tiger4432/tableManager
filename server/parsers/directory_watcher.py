@@ -16,33 +16,8 @@ from server.database import crud, schemas
 
 log_path = os.path.join(server_dir, "watcher.log")
 
-class ColorFormatter(logging.Formatter):
-    COLORS = {
-        logging.DEBUG: '\033[94m', # Blue
-        logging.INFO: '\033[92m', # Green
-        logging.WARNING: '\033[93m', # Yellow
-        logging.ERROR: '\033[91m', # Red
-        logging.CRITICAL: '\033[1;91m', # Bold Red
-    }
-    RESET = '\033[0m'
-
-    def format(self, record):
-        log_fmt = f"{self.COLORS.get(record.levelno, self.RESET)}%(asctime)s - %(name)s - %(levelname)s - %(message)s{self.RESET}"
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(ColorFormatter())
-
-file_handler = logging.FileHandler(log_path, encoding='utf-8')
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[console_handler, file_handler]
-)
-logger = logging.getLogger("DirectoryWatcher")
-logger.info(f"DirectoryWatcher logging initialized. Log file: {log_path}")
+# Inherit from unified Watcher logger parent to prevent double formatting and log separation
+logger = logging.getLogger("Watcher.DirectoryWatcher")
 
 class IngestionHandler(FileSystemEventHandler):
     """

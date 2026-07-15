@@ -1,7 +1,10 @@
 import os
 import time
+import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+logger = logging.getLogger("Watcher.ConfigWatcher")
 
 class ConfigChangeHandler(FileSystemEventHandler):
     def __init__(self, engine=None):
@@ -23,7 +26,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
             # 파일 쓰기가 완료될 때까지 미세 대기 (Windows OS 파일 쓰기 버퍼 보정)
             time.sleep(0.1)
             
-            print(f"[Config Watcher] Configuration change detected on {event.src_path}. Reloading dynamic models...")
+            logger.info(f"Configuration change detected on {event.src_path}. Reloading dynamic models...")
             try:
                 from database import crud, models
                 # 1. crud.TABLE_CONFIG 재구성
@@ -38,11 +41,11 @@ class ConfigChangeHandler(FileSystemEventHandler):
                     # 3. 데이터베이스 엔진이 인입된 경우(웹 서버 전용) 실제 DB 물리 컬럼 동기화 가동
                     if self.engine:
                         models.sync_dynamic_tables_schema(self.engine)
-                        print("[Config Watcher] Physical database schema synced successfully.")
+                        logger.info("Physical database schema synced successfully.")
                         
-                    print("[Config Watcher] Dynamic models reloaded and hot-swapped successfully.")
+                    logger.info("Dynamic models reloaded and hot-swapped successfully.")
             except Exception as e:
-                print(f"[Config Watcher] Failed to hot-swap configuration changes: {e}")
+                logger.error(f"Failed to hot-swap configuration changes: {e}")
 
 def start_config_watcher(engine=None):
     """
@@ -55,5 +58,5 @@ def start_config_watcher(engine=None):
     observer = Observer()
     observer.schedule(event_handler, path=config_dir, recursive=False)
     observer.start()
-    print(f"[Config Watcher] Started config folder watchdog on '{config_dir}'")
+    logger.info(f"Started config folder watchdog on '{config_dir}'")
     return observer
