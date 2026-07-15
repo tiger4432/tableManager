@@ -26,6 +26,7 @@ except ImportError:
         sys.exit(1)
 
 # Setup Logging
+from utils.logger import get_process_logger
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 class BaseCollector(ABC):
