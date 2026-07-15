@@ -312,8 +312,6 @@ async def start_chain_ingestion_worker(db_session_factory):
                             payload_data = {}
                     
                     if event.event_type == "SCHEDULER_RUN_NOW":
-                        event.processed_chain = True
-                        db.commit()
                         continue
                         
                     event._parsed_payload = payload_data
