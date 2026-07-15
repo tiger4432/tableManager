@@ -34,6 +34,9 @@
   - **Pandas DataFrame 참/거짓 모호성 버그(Truth Value Ambiguity) 해결**:
      - `exec()` 구동 후 `local_ns` 와 `global_ns` 딕셔너리에서 `out` 변수를 찾을 때 논리 연산자 `or`를 사용해 객체 자체의 논리 판별이 중첩 유발되어, 판다스 데이터프레임(`DataFrame`)에서 `ValueError: The truth value of a DataFrame is ambiguous` 에러가 터지고 캡처가 누락(폴백 처리)되던 결함을 해결했습니다.
      - 2대 네임스페이스 딕셔너리에서 `None` 여부를 직접 체크(`is None`)하여 DataFrame 객체를 에러 없이 온전하게 낚아채 정규 CSV로 안전 덤프하도록 로직을 철저히 튜닝 보강했습니다.
+  - **셋업 워크플로우 가이드 개정**:
+     - 인제션 테이블 신설 가이드인 [setup-ingestion.md](file:///c:/Users/kk980/Developments/assyManager/.agents/workflows/setup-ingestion.md) 워크플로우 파일에 `auto_update` 디렉토리 자동 생성 구조와 `# schedule` 크론 주석 작성법, `out` 변수 바인딩 사용법, 그리고 `run_app.bat` 데몬 통합 실행 방법을 전격 반영하여 기입을 업데이트했습니다.
+
 
 
 
