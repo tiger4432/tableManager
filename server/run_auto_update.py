@@ -251,7 +251,7 @@ class MultiDiscoveryScheduler:
         self.workspace_dir = os.path.join(self.server_dir, "ingestion_workspace")
         self.status_file_path = os.path.join(self.server_dir, "config", "scheduler_status.json")
         self.collectors = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def discover_and_load_collectors(self):
         """
