@@ -216,20 +216,34 @@ def test_composite_business_key_collision_prevention(sqlite_db):
         ]
     )
     
-    # 유일성 충돌 예외 발생 확인
-    with pytest.raises(ValueError) as excinfo:
-        crud.apply_batch_updates(db, "bonding_map_test", batch_conflict)
-        
-    assert "키 충돌" in str(excinfo.value)
+    # 대안 B 적용으로 충돌 예외 대신 기존 행으로 병합 및 드래프트 빈 껍데기 행 삭제 수행
+    crud.apply_batch_updates(db, "bonding_map_test", batch_conflict)
     
-    # 롤백 후 draft-row-uuid의 x, y가 실제로 업데이트되지 않고 그대로 None 인지 확인
-    db.rollback()
+    # 롤백 방지용 커밋 수행 후 검증
+    db.commit()
+    
+    # 임시 드래프트 행(draft-row-uuid)이 병합 후 삭제되었는지 검증
     row_draft_check = db.query(dynamic_model).filter(dynamic_model.row_id == "draft-row-uuid").first()
-    assert row_draft_check.x is None
-    assert row_draft_check.y is None
-    assert row_draft_check.business_key_val is None
+    assert row_draft_check is None
+    
+    # 기존에 선점하고 있던 행(exist-row-uuid)은 온전히 유지되는지 검증
+    row_exist_check = db.query(dynamic_model).filter(dynamic_model.row_id == "exist-row-uuid").first()
+    assert row_exist_check is not None
+    assert row_exist_check.business_key_val == "CHIPA_1_2"
     
     # 4. 다른 안 겹치는 조합(CHIPA_5_5)으로 수정 시도 시 성공적으로 완성 및 동기화되는지 검증
+    row_draft_retry = dynamic_model(
+        row_id="draft-row-uuid",
+        business_key_val=None,
+        pkg_id=None,
+        base="CHIPA",
+        x=None,
+        y=None,
+        leg="DRAFT"
+    )
+    db.add(row_draft_retry)
+    db.commit()
+
     batch_success = schemas.GeneralUpdateBatch(
         updates=[
             schemas.GeneralUpdateItem(

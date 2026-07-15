@@ -608,7 +608,110 @@ def apply_row_update_internal(
                         table_model.row_id != row.row_id
                     ).first()
                     if conflict_row:
-                        raise ValueError(f"키 충돌: 수정된 값의 조합으로 생성되는 비즈니스 키 '{new_bk_val}'가 이미 다른 행(ID: {conflict_row.row_id})에 존재합니다.")
+                        # -------------------------------------------------------------
+                        # [대안 B: Silent Merge & Overwrite]
+                        # -------------------------------------------------------------
+                        # 1. 중복되어 버려질 임시 껍데기 행 기록
+                        row_to_delete = row
+                        
+                        # 2. 가공 대상 행을 기존 존재하던 충돌 행으로 스위칭
+                        row = conflict_row
+                        is_new = False
+                        
+                        # 3. 신규 입력값을 충돌 행(row)에 덮어쓰기 병합
+                        for col_name, new_val in update_item.updates.items():
+                            if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
+                                continue
+                            
+                            old_val = getattr(row, col_name, None)
+                            has_cell_changed = False
+                            if old_val is None and new_val is None:
+                                has_cell_changed = False
+                            elif (old_val is None) != (new_val is None):
+                                has_cell_changed = True
+                            else:
+                                has_cell_changed = str(old_val).strip() != str(new_val).strip()
+                                
+                            if has_cell_changed:
+                                setattr(row, col_name, new_val)
+                                if col_name not in changed_cols:
+                                    changed_cols.append(col_name)
+                                    
+                                # AuditLog 및 upsert 캐시 컨테이너에 갱신 주입
+                                if update_item.source_name == "user":
+                                    create_audit_log(
+                                        db, table_name, row.row_id, col_name, old_val, new_val,
+                                        update_item.source_name, (update_item.updated_by or "user"),
+                                        transaction_id=transaction_id, business_key=row.business_key_val,
+                                        add_to_cache=(logs_to_cache is None)
+                                    )
+                                    
+                                if cell_sources_to_upsert is not None:
+                                    from sqlalchemy.sql import func
+                                    src_key = (table_name, row.row_id, col_name, update_item.source_name)
+                                    cell_sources_to_upsert[src_key] = {
+                                        "table_name": table_name,
+                                        "row_id": row.row_id,
+                                        "column_name": col_name,
+                                        "source_name": update_item.source_name,
+                                        "value": clean_str_value(new_val),
+                                        "updated_by": update_item.updated_by or "user",
+                                        "ingested_at": func.now()
+                                    }
+                                
+                                if update_item.source_name == "user" and cell_overwrites_to_upsert is not None:
+                                    from sqlalchemy.sql import func
+                                    ow_key = (table_name, row.row_id, col_name)
+                                    cell_overwrites_to_upsert[ow_key] = {
+                                        "table_name": table_name,
+                                        "row_id": row.row_id,
+                                        "column_name": col_name,
+                                        "is_overwrite": True,
+                                        "updated_by": update_item.updated_by or "user",
+                                        "updated_at": func.now(),
+                                        "manual_priority_source": None
+                                    }
+                                    if cell_overwrites_to_delete is not None:
+                                        cell_overwrites_to_delete.discard(ow_key)
+
+                        # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
+                        if cell_sources_to_upsert is not None:
+                            keys_to_migrate = [k for k in cell_sources_to_upsert.keys() if k[1] == row_to_delete.row_id]
+                            for k in keys_to_migrate:
+                                src_data = cell_sources_to_upsert.pop(k)
+                                new_k = (k[0], row.row_id, k[2], k[3])
+                                src_data["row_id"] = row.row_id
+                                cell_sources_to_upsert[new_k] = src_data
+                                
+                        if cell_overwrites_to_upsert is not None:
+                            keys_to_migrate = [k for k in cell_overwrites_to_upsert.keys() if k[1] == row_to_delete.row_id]
+                            for k in keys_to_migrate:
+                                ow_data = cell_overwrites_to_upsert.pop(k)
+                                new_k = (k[0], row.row_id, k[2])
+                                ow_data["row_id"] = row.row_id
+                                cell_overwrites_to_upsert[new_k] = ow_data
+                                
+                        if cell_overwrites_to_delete is not None:
+                            keys_to_migrate = [k for k in cell_overwrites_to_delete if k[1] == row_to_delete.row_id]
+                            for k in keys_to_migrate:
+                                cell_overwrites_to_delete.discard(k)
+                                cell_overwrites_to_delete.add((k[0], row.row_id, k[2]))
+                                
+                        if logs_to_cache is not None:
+                            for log in logs_to_cache:
+                                if log.get("row_id") == row_to_delete.row_id:
+                                    log["row_id"] = row.row_id
+                                    
+                        for obj in db.new:
+                            if isinstance(obj, models.AuditLog) and obj.row_id == row_to_delete.row_id:
+                                obj.row_id = row.row_id
+
+                        # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
+                        db.delete(row_to_delete)
+                        if row_cache is not None:
+                            row_cache.pop(row_to_delete.row_id, None)
+                            if row_to_delete.business_key_val:
+                                row_cache.pop(row_to_delete.business_key_val, None)
 
                 old_bk_col_val = getattr(row, key_col, None)
                 
