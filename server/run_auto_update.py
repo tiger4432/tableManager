@@ -166,8 +166,10 @@ class GenericScriptRunnerCollector:
             # exec 실행
             exec(code_content, global_ns, local_ns)
             
-            # out 변수 검출
-            out_data = local_ns.get("out") or global_ns.get("out")
+            # out 변수 검출 (None 여부 명시적 체크를 통해 DataFrame Truth Value Ambiguity 버그 차단)
+            out_data = local_ns.get("out")
+            if out_data is None:
+                out_data = global_ns.get("out")
             
             if out_data is not None:
                 self.logger.info(f"Captured 'out' variable ({type(out_data).__name__}). Formatting to CSV...")
