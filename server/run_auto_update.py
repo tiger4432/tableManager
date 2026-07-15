@@ -116,6 +116,11 @@ class GenericScriptRunnerCollector:
         self.cron_expression = cron_expression
         self.filename_prefix = filename_prefix
         self.logger = logging.getLogger(f"ScriptRunner.{table_name}.{os.path.basename(script_path)}")
+        self.last_mtime = 0
+        try:
+            self.last_mtime = os.path.getmtime(script_path)
+        except:
+            pass
         
         server_dir = os.path.dirname(os.path.abspath(__file__))
         self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
@@ -411,10 +416,27 @@ class MultiDiscoveryScheduler:
             except Exception as e:
                 logger.warning(f"Database outbox polling failed inside scheduler: {e}")
 
-            # 2. 크론 스케줄링 가동
+            # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지
             try:
                 now = datetime.now()
                 for collector in self.collectors:
+                    # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
+                    if isinstance(collector, GenericScriptRunnerCollector):
+                        try:
+                            current_mtime = os.path.getmtime(collector.script_path)
+                            if current_mtime > collector.last_mtime:
+                                collector.last_mtime = current_mtime
+                                comment_config = parse_script_comments(collector.script_path)
+                                if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
+                                    old_cron = collector.cron_expression
+                                    collector.cron_expression = comment_config["schedule"]
+                                    collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
+                                    logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
+                                if comment_config["filename_prefix"] != collector.filename_prefix:
+                                    collector.filename_prefix = comment_config["filename_prefix"]
+                        except Exception as file_err:
+                            logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
+
                     if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                         if now >= collector.next_run:
                             collector.execute()
