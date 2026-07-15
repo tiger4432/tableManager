@@ -23,7 +23,7 @@ for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     for handler in uv_logger.handlers:
         if isinstance(handler, logging.StreamHandler):
             handler.setFormatter(ColoredProcessFormatter(
-                '[%(asctime)s] %(levelname)s [%(name)s] %(message)s',
+                '[%(name)s] [%(asctime)s] %(levelname)s - %(message)s',
                 process_name="Server"
             ))
 

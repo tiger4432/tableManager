@@ -73,7 +73,7 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         
-    log_format = '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'
+    log_format = '[%(name)s] [%(asctime)s] %(levelname)s - %(message)s'
     
     # 1. 콘솔 핸들러 (동적 컬러 Formatter 장착)
     console_handler = logging.StreamHandler(sys.stdout)

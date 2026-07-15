@@ -49,6 +49,9 @@
   - **서브 모듈 로깅 정렬 (Watcher Submodules Unification)**:
      - `parsers/directory_watcher.py` 내부의 독자적인 `ColorFormatter` 및 `basicConfig` 설정을 완전히 소거하여 루트 로거 오염의 근원을 차단하고, 로거명을 `Watcher.DirectoryWatcher` 로 통일하여 청록색 포맷이 자연스럽게 적용되도록 정렬했습니다.
      - `database/config_watcher.py` 내부의 밋밋하던 단순 `print`들을 모두 `logging.getLogger("Watcher.ConfigWatcher")` 로 바꾸어 청록색 컬러가 일관되게 입혀진 형태로 출력되도록 마감했습니다.
+  - **로깅 주체 선두 배치 (Log Prefix Optimization)**:
+     - 프로세스간 콘솔 출력의 직관적 구분을 위해 로깅 규격을 `[로깅 주체(이름)] [%(asctime)s] %(levelname)s - %(message)s` 형태로 변경하여, 로그 한 줄의 맨 처음부터 어떤 데몬이 출력한 로그인지 바로 파악할 수 있도록 편의성을 극대화했습니다.
+
 
 
 
