@@ -360,7 +360,8 @@ class MultiDiscoveryScheduler:
 
     def run(self):
         """
-        1초마다 정밀 검사하여 크론 스케줄 시각이 도래한 수집기들을 트리거합니다.
+        주기적으로 DB의 SYSTEM_RELOAD 아웃박스 신호를 모니터링하며,
+        동시에 크론 스케줄 타이밍을 검사해 수집기들을 가동합니다.
         """
         logger.info("Initializing Ingestion Auto Discovery engine...")
         self.discover_and_load_collectors()
@@ -368,17 +369,56 @@ class MultiDiscoveryScheduler:
         logger.info(f"Initialization complete. Active collectors: {len(self.collectors)}")
         logger.info(f"Scheduler daemon started. Tick interval: {self.check_interval}s. Press Ctrl+C to terminate.")
         
+        last_reload_event_id = 0
+        
+        # 기동 시점 최신 reload 이벤트 ID 스캔해서 싱크 맞춤
+        try:
+            from database.database import SessionLocal
+            from database.models import DatabaseOutbox
+            db = SessionLocal()
+            latest_reload = db.query(DatabaseOutbox).filter(
+                DatabaseOutbox.event_type == "SYSTEM_RELOAD"
+            ).order_by(DatabaseOutbox.id.desc()).first()
+            if latest_reload:
+                last_reload_event_id = latest_reload.id
+            db.close()
+        except Exception as e:
+            logger.warning(f"Failed to query initial SYSTEM_RELOAD outbox id: {e}")
+
         while True:
+            # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 감시
+            try:
+                from database.database import SessionLocal
+                from database.models import DatabaseOutbox
+                db = SessionLocal()
+                latest_reload = db.query(DatabaseOutbox).filter(
+                    DatabaseOutbox.event_type == "SYSTEM_RELOAD"
+                ).order_by(DatabaseOutbox.id.desc()).first()
+                
+                if latest_reload and latest_reload.id > last_reload_event_id:
+                    last_reload_event_id = latest_reload.id
+                    logger.info(f"[Reload] Auto Update Scheduler detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Re-scanning workspace...")
+                    
+                    # 모듈 캐시 초기화
+                    keys_to_remove = [k for k in sys.modules.keys() if k.startswith("dynamic_collector_")]
+                    for k in keys_to_remove:
+                        sys.modules.pop(k, None)
+                        
+                    # 수집기 리스트 재구성
+                    self.discover_and_load_collectors()
+                    logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
+                db.close()
+            except Exception as e:
+                logger.warning(f"Database outbox polling failed inside scheduler: {e}")
+
+            # 2. 크론 스케줄링 가동
             try:
                 now = datetime.now()
                 for collector in self.collectors:
-                    # 크론 스케줄이 정의되어 있고, 실행 예정 시각이 되었는지 판별
                     if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                         if now >= collector.next_run:
-                            # 트리거 실행
                             collector.execute()
                     else:
-                        # 크론이 없는 클래스형 수집기인 경우, 매 루프마다 가동 (체크 로직 내부 관리)
                         collector.execute()
             except KeyboardInterrupt:
                 logger.info("Auto Update Scheduler daemon terminated gracefully.")
