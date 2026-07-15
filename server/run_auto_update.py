@@ -367,65 +367,65 @@ class MultiDiscoveryScheduler:
         except Exception as e:
             logger.warning(f"Failed to query initial SYSTEM_RELOAD outbox id: {e}")
 
-        while True:
-            # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 감시
-            try:
-                from database.database import SessionLocal
-                from database.models import DatabaseOutbox
-                db = SessionLocal()
-                latest_reload = db.query(DatabaseOutbox).filter(
-                    DatabaseOutbox.event_type == "SYSTEM_RELOAD"
-                ).order_by(DatabaseOutbox.id.desc()).first()
-                
-                if latest_reload and latest_reload.id > last_reload_event_id:
-                    last_reload_event_id = latest_reload.id
-                    logger.info(f"[Reload] Auto Update Scheduler detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Re-scanning workspace...")
+        try:
+            while True:
+                # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 감시
+                try:
+                    from database.database import SessionLocal
+                    from database.models import DatabaseOutbox
+                    db = SessionLocal()
+                    latest_reload = db.query(DatabaseOutbox).filter(
+                        DatabaseOutbox.event_type == "SYSTEM_RELOAD"
+                    ).order_by(DatabaseOutbox.id.desc()).first()
                     
-                    # 모듈 캐시 초기화
-                    keys_to_remove = [k for k in sys.modules.keys() if k.startswith("dynamic_collector_")]
-                    for k in keys_to_remove:
-                        sys.modules.pop(k, None)
+                    if latest_reload and latest_reload.id > last_reload_event_id:
+                        last_reload_event_id = latest_reload.id
+                        logger.info(f"[Reload] Auto Update Scheduler detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Re-scanning workspace...")
                         
-                    # 수집기 리스트 재구성
-                    self.discover_and_load_collectors()
-                    logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
-                db.close()
-            except Exception as e:
-                logger.warning(f"Database outbox polling failed inside scheduler: {e}")
+                        # 모듈 캐시 초기화
+                        keys_to_remove = [k for k in sys.modules.keys() if k.startswith("dynamic_collector_")]
+                        for k in keys_to_remove:
+                            sys.modules.pop(k, None)
+                            
+                        # 수집기 리스트 재구성
+                        self.discover_and_load_collectors()
+                        logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
+                    db.close()
+                except Exception as e:
+                    logger.warning(f"Database outbox polling failed inside scheduler: {e}")
 
-            # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지
-            try:
-                now = datetime.now()
-                for collector in self.collectors:
-                    # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
-                    if isinstance(collector, GenericScriptRunnerCollector):
-                        try:
-                            current_mtime = os.path.getmtime(collector.script_path)
-                            if current_mtime > collector.last_mtime:
-                                collector.last_mtime = current_mtime
-                                comment_config = parse_script_comments(collector.script_path)
-                                if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
-                                    old_cron = collector.cron_expression
-                                    collector.cron_expression = comment_config["schedule"]
-                                    collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
-                                    logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
-                                if comment_config["filename_prefix"] != collector.filename_prefix:
-                                    collector.filename_prefix = comment_config["filename_prefix"]
-                        except Exception as file_err:
-                            logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
+                # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지
+                try:
+                    now = datetime.now()
+                    for collector in self.collectors:
+                        # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
+                        if isinstance(collector, GenericScriptRunnerCollector):
+                            try:
+                                current_mtime = os.path.getmtime(collector.script_path)
+                                if current_mtime > collector.last_mtime:
+                                    collector.last_mtime = current_mtime
+                                    comment_config = parse_script_comments(collector.script_path)
+                                    if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
+                                        old_cron = collector.cron_expression
+                                        collector.cron_expression = comment_config["schedule"]
+                                        collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
+                                        logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
+                                    if comment_config["filename_prefix"] != collector.filename_prefix:
+                                        collector.filename_prefix = comment_config["filename_prefix"]
+                            except Exception as file_err:
+                                logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
 
-                    if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
-                        if now >= collector.next_run:
+                        if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
+                            if now >= collector.next_run:
+                                collector.execute()
+                        else:
                             collector.execute()
-                    else:
-                        collector.execute()
-            except KeyboardInterrupt:
-                logger.info("Auto Update Scheduler daemon terminated gracefully.")
-                break
-            except Exception as e:
-                logger.error(f"Scheduler runtime error: {e}")
-                
-            time.sleep(self.check_interval)
+                except Exception as e:
+                    logger.error(f"Scheduler runtime error: {e}")
+                    
+                time.sleep(self.check_interval)
+        except KeyboardInterrupt:
+            logger.info("Auto Update Scheduler daemon terminated gracefully.")
 
 if __name__ == "__main__":
     # 5초 주기로 스케줄 타이밍 검사
