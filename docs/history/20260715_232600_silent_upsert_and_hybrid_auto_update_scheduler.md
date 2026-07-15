@@ -66,7 +66,7 @@
      - **비동기 강제 트리거 가드 (`run_auto_update.py`)**: 스케줄러가 독립 프로세스 모드에서도 온디맨드 구동 신호를 즉시 캐치할 수 있도록, `database_outbox` 테이블의 `SCHEDULER_RUN_NOW` 미처리 이벤트를 폴링 루프에서 실시간으로 감시하고, 비동기 스레드로 대상 스크립트를 즉각 강제 실행하는 수신부를 구축했습니다.
      - **백엔드 API 라우터 탑재 (`main.py`)**:
        - `GET /admin/auto-update/status`: 영속화된 JSON 파일 데이터를 파싱해 실시간 현황을 클라이언트에 내려줍니다.
-       - `POST /admin/auto-update/run-now`: 웹 대시보드에서 들어온 수집기 강제 기동 요청을 아웃박스 이벤트(`SCHEDULER_RUN_NOW`)로 영속화하여 스케줄러에 비동기 전달합니다.
+       - `POST /admin/auto-update/run-now`: 웹 대시보드에서 들어온 수집기 강제 기동 요청을 아웃박스 이벤트(`SCHEDULER_RUN_NOW`)로 영속화하여 스케줄러에 비동기 전달합니다. (`DatabaseOutbox` 생성 시 모델 속성에 맞춰 `transaction_id` 대신 고유 `event_uuid`를 대입하도록 정정 완료)
      - **어드민 웹 대시보드 UI 연동 (`admin.html` 및 `admin.js`)**:
        - 어드민 탭 바에 `Auto Updates` 버튼을 장착하고 스케줄 테이블 그리드 레이아웃을 전격 탑재했습니다.
        - 각 수집기의 대상 테이블, 스크립트명, 크론 스케줄, 다음 실행 시각, 최종 실행 시각, 성공/실패 여부를 배지와 함께 한눈에 스캔할 수 있게 구현했습니다.

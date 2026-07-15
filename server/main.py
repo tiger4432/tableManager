@@ -2412,7 +2412,7 @@ async def trigger_auto_update_run_now(
 ):
     """지정된 수집기를 즉각 비동기로 강제 실행하도록 아웃박스 트리거 이벤트를 발행합니다."""
     import json
-    import time
+    import uuid
     try:
         trigger_payload = {
             "table_name": table_name,
@@ -2420,7 +2420,7 @@ async def trigger_auto_update_run_now(
         }
         
         new_event = models.DatabaseOutbox(
-            transaction_id=f"ON_DEMAND_{int(time.time())}",
+            event_uuid=str(uuid.uuid4()),
             table_name=table_name,
             event_type="SCHEDULER_RUN_NOW",
             payload=json.dumps(trigger_payload),
