@@ -36,6 +36,10 @@
      - 2대 네임스페이스 딕셔너리에서 `None` 여부를 직접 체크(`is None`)하여 DataFrame 객체를 에러 없이 온전하게 낚아채 정규 CSV로 안전 덤프하도록 로직을 철저히 튜닝 보강했습니다.
   - **셋업 워크플로우 가이드 개정**:
      - 인제션 테이블 신설 가이드인 [setup-ingestion.md](file:///c:/Users/kk980/Developments/assyManager/.agents/workflows/setup-ingestion.md) 워크플로우 파일에 `auto_update` 디렉토리 자동 생성 구조와 `# schedule` 크론 주석 작성법, `out` 변수 바인딩 사용법, 그리고 `run_app.bat` 데몬 통합 실행 방법을 전격 반영하여 기입을 업데이트했습니다.
+  - **자동 워크스페이스 구축 스크립트 개정 (`setup_workspace.py`)**:
+     - 새로운 테이블 인제션 환경을 일괄 생성해 주는 [setup_workspace.py](file:///c:/Users/kk980/Developments/assyManager/server/setup/setup_workspace.py) 의 하위 폴더 생성 명세(`subdirs`)에 `"auto_update"` 디렉토리명을 추가했습니다.
+     - 이를 통해 앞으로 새로운 테이블 인입 설정 후 스크립트를 돌리면 `auto_update/` 폴더도 누락 없이 함께 자동 생성되도록 정렬했습니다.
+
 
 
 

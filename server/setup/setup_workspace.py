@@ -18,7 +18,7 @@ def setup_workspace():
 
     print(f"Initializing ingestion workspace at {workspace_root}...")
 
-    subdirs = ["config", "scripts", "raws", "archives"]
+    subdirs = ["config", "scripts", "raws", "archives", "auto_update"]
 
     for table_name in table_config.keys():
         table_dir = os.path.join(workspace_root, table_name)
