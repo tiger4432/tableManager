@@ -8,9 +8,9 @@ import select
 import time
 from collections import defaultdict
 
-# Logger setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ChainIngestionWorker")
+# Setup Unified Logger
+from utils.logger import get_process_logger
+logger = get_process_logger("Chain", "chain_worker.log")
 
 def blocking_wait(db_session_factory, channel, timeout):
     db = db_session_factory()

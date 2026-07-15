@@ -13,6 +13,20 @@ from fastapi import UploadFile, File, Body, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+# Setup Unified Logger & Hook Uvicorn Loggers
+import logging
+from utils.logger import get_process_logger, ColoredProcessFormatter
+logger = get_process_logger("Server", "server.log")
+
+for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+    uv_logger = logging.getLogger(uv_name)
+    for handler in uv_logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setFormatter(ColoredProcessFormatter(
+                '[%(asctime)s] %(levelname)s [%(name)s] %(message)s',
+                process_name="Server"
+            ))
+
 # Load table config and initialize dynamic database models
 import json
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,14 +36,14 @@ try:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
 except Exception as e:
-    print(f"[Server] Failed to load table_config or init dynamic models: {e}")
+    logger.error(f"Failed to load table_config or init dynamic models: {e}")
 
 # Create tables if not exists
 models.Base.metadata.create_all(bind=engine)
 try:
     models.sync_dynamic_tables_schema(engine)
 except Exception as e:
-    print(f"[Server] Failed to sync dynamic tables schema: {e}")
+    logger.error(f"Failed to sync dynamic tables schema: {e}")
 
 app = FastAPI(title="AssyManager Table Server")
 

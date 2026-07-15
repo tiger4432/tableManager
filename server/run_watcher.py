@@ -9,6 +9,10 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_dir)
 sys.path.append(os.path.join(script_dir, "parsers"))
 
+# Setup Unified Logger
+from utils.logger import get_process_logger
+logger = get_process_logger("Watcher", "watcher.log")
+
 # Now we can import database, models, and directory_watcher
 from database.database import SessionLocal, engine
 from database import models
@@ -23,11 +27,11 @@ try:
     models.init_dynamic_models(table_config)
     try:
         models.sync_dynamic_tables_schema(engine)
-        print("[Watcher Worker] Dynamic database models and schema sync completed.")
+        logger.info("Dynamic database models and schema sync completed.")
     except Exception as e:
-        print(f"[Watcher Worker] Failed to sync dynamic tables schema: {e}")
+        logger.error(f"Failed to sync dynamic tables schema: {e}")
 except Exception as e:
-    print(f"[Watcher Worker] Failed to load table_config or init dynamic models: {e}")
+    logger.error(f"Failed to load table_config or init dynamic models: {e}")
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 
@@ -36,12 +40,12 @@ def post_event(endpoint: str, payload: dict):
     try:
         res = requests.post(url, json=payload, timeout=5)
         if not res.ok:
-            print(f"[Watcher Worker] API notification failed: {url} -> {res.status_code}")
+            logger.warning(f"API notification failed: {url} -> {res.status_code}")
     except Exception as e:
-        print(f"[Watcher Worker] Failed to send API notification: {e}")
+        logger.error(f"Failed to send API notification: {e}")
 
 def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
-    print(f"[Watcher Worker] Refresh required for {table_name}: {count} rows updated.")
+    logger.info(f"Refresh required for {table_name}: {count} rows updated.")
     payload = {
         "table_name": table_name,
         "change_count": count
@@ -59,7 +63,7 @@ def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
     post_event("/internal/events/batch-refresh", payload)
 
 def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):
-    print(f"[Watcher Worker] File processed: {filename} ({status}) for {table_name}.")
+    logger.info(f"File processed: {filename} ({status}) for {table_name}.")
     payload = {
         "table_name": table_name,
         "filename": filename,
@@ -76,7 +80,7 @@ def trigger_ws_progress(table_name: str, filename: str, progress: int, processed
     except Exception:
         clean_filename = filename
 
-    print(f"[Watcher Worker] Ingestion progress for {clean_filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
+    logger.info(f"Ingestion progress for {clean_filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
     payload = {
         "event": "file_ingestion_progress",
         "table_name": table_name,
@@ -102,11 +106,11 @@ def reload_watcher_cache():
     for k in mapper_keys:
         sys.modules.pop(k, None)
         
-    print("[Reload] Watcher worker modules cache cleared.")
+    logger.info("Watcher worker modules cache cleared.")
 
 # Database polling for PENDING_RETRY logs
 def poll_pending_retries():
-    print("[Watcher Worker] Background retry poller thread started.")
+    logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
     
     while True:
@@ -120,7 +124,7 @@ def poll_pending_retries():
             
             if latest_reload and latest_reload.id > last_reload_event_id:
                 last_reload_event_id = latest_reload.id
-                print(f"[Reload] Watcher detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Reloading scripts...")
+                logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading scripts...")
                 reload_watcher_cache()
                 
             # Query for logs in PENDING_RETRY status
@@ -129,7 +133,7 @@ def poll_pending_retries():
             ).order_by(models.FileIngestionLog.id.asc()).all()
             
             for log in pending_logs:
-                print(f"[Watcher Worker] Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")
+                logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")
                 
                 # Update status to processing (PENDING) to prevent concurrent runs
                 log.status = "PENDING"
@@ -161,29 +165,29 @@ def poll_pending_retries():
                 try:
                     res = handler.process_archived_file_sync(log, db)
                     if res:
-                        print(f"[Watcher Worker] Retry succeeded for log ID #{log.id}.")
+                        logger.info(f"Retry succeeded for log ID #{log.id}.")
                     else:
-                        print(f"[Watcher Worker] Retry failed for log ID #{log.id}.")
+                        logger.warning(f"Retry failed for log ID #{log.id}.")
                 except Exception as e:
                     import traceback
-                    print(f"[Watcher Worker] Exception during retry: {e}")
+                    logger.error(f"Exception during retry: {e}\n{traceback.format_exc()}")
                     log.status = "FAILED"
                     log.error_message = traceback.format_exc()
                     db.commit()
                     trigger_ws_file_processed(table_name, log.filename, "FAILED", str(e))
                     
         except Exception as e:
-            print(f"[Watcher Worker] Error in retry poller loop: {e}")
+            logger.error(f"Error in retry poller loop: {e}")
         finally:
             db.close()
             
         time.sleep(3)
 
 def main():
-    print("=" * 60)
-    print(" Starting Standalone File Ingestion Watcher Process...")
-    print(f" API Base URL: {API_BASE_URL}")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info(" Starting Standalone File Ingestion Watcher Process...")
+    logger.info(f" API Base URL: {API_BASE_URL}")
+    logger.info("=" * 60)
     
     workspace_base = os.path.join(script_dir, "ingestion_workspace")
     
@@ -197,7 +201,7 @@ def main():
         from database.config_watcher import start_config_watcher
         config_watcher = start_config_watcher(None)
     except Exception as e:
-        print(f"[Watcher Worker] Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {e}")
     
     watcher = WorkspaceWatcher(
         workspace_base,
@@ -207,18 +211,18 @@ def main():
     )
     watcher.discover_and_watch()
     
-    print(f"[Watcher Worker] Watching {watcher.watch_count} directory configurations...")
+    logger.info(f"Watching {watcher.watch_count} directory configurations...")
     try:
         watcher.start(blocking=True)
     except KeyboardInterrupt:
-        print("[Watcher Worker] Keyboard interrupt received. Stopping watcher observer...")
+        logger.info("Keyboard interrupt received. Stopping watcher observer...")
         if watcher.observer:
             watcher.observer.stop()
             watcher.observer.join()
         if config_watcher:
             config_watcher.stop()
             config_watcher.join()
-        print("[Watcher Worker] Stopped successfully.")
+        logger.info("Stopped successfully.")
 
 if __name__ == "__main__":
     main()

@@ -26,33 +26,7 @@ except ImportError:
         sys.exit(1)
 
 # Setup Logging
-class YellowConsoleFormatter(logging.Formatter):
-    YELLOW = "\033[93m"
-    RESET = "\033[0m"
-    
-    def format(self, record):
-        orig_msg = super().format(record)
-        return f"{self.YELLOW}{orig_msg}{self.RESET}"
-
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-
-# Clear default handlers to prevent duplicate formatting
-for handler in list(root_logger.handlers):
-    root_logger.removeHandler(handler)
-
-# Console Handler (Yellow ANSI)
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setFormatter(YellowConsoleFormatter('[%(asctime)s] %(levelname)s [%(name)s] %(message)s'))
-root_logger.addHandler(console_handler)
-
-# File Handler (Normal Plain Text)
-file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auto_update.log")
-file_handler = logging.FileHandler(file_path, encoding='utf-8')
-file_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s [%(name)s] %(message)s'))
-root_logger.addHandler(file_handler)
-
-logger = logging.getLogger("Scheduler")
+logger = get_process_logger("Scheduler", "auto_update.log")
 
 class BaseCollector(ABC):
     """
@@ -60,7 +34,7 @@ class BaseCollector(ABC):
     """
     def __init__(self, table_name: str):
         self.table_name = table_name
-        self.logger = logging.getLogger(f"Collector.{table_name}")
+        self.logger = logging.getLogger(f"Scheduler.Collector.{table_name}")
         self.cron_expression = None
         self.next_run = None
         
@@ -115,7 +89,7 @@ class GenericScriptRunnerCollector:
         self.script_path = script_path
         self.cron_expression = cron_expression
         self.filename_prefix = filename_prefix
-        self.logger = logging.getLogger(f"ScriptRunner.{table_name}.{os.path.basename(script_path)}")
+        self.logger = logging.getLogger(f"Scheduler.ScriptRunner.{table_name}.{os.path.basename(script_path)}")
         self.last_mtime = 0
         try:
             self.last_mtime = os.path.getmtime(script_path)
