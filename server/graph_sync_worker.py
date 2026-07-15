@@ -10,40 +10,37 @@ from datetime import datetime
 from utils.logger import get_process_logger
 logger = get_process_logger("GraphSync", "graph_sync.log")
 
-def blocking_wait(db_session_factory, channel, timeout):
+def blocking_wait(db_session_factory, channel, timeout=30.0):
     db = db_session_factory()
     try:
         engine = db.bind or db.get_bind()
-        if engine and engine.dialect.name == "postgresql":
-            connection = engine.raw_connection()
-            # autocommit 모드로 변경하여 LISTEN 명령이 즉시 반영되게 함
-            connection.set_isolation_level(0)
-            cursor = connection.cursor()
-            cursor.execute(f"LISTEN {channel};")
-            
-            # select를 활용하여 소켓에 데이터가 들어올 때까지 대기 (CPU 부하 0%)
-            r, w, x = select.select([connection], [], [], timeout)
-            if r:
-                connection.poll()
-                while connection.notifies:
-                    connection.notifies.pop()
-                cursor.close()
-                connection.close()
-                return True
+        connection = engine.raw_connection()
+        # autocommit 모드로 변경하여 LISTEN 명령이 즉시 반영되게 함
+        connection.set_isolation_level(0)
+        cursor = connection.cursor()
+        cursor.execute(f"LISTEN {channel};")
+        
+        # select를 활용하여 소켓에 데이터가 들어올 때까지 대기 (CPU 부하 0%)
+        r, w, x = select.select([connection], [], [], timeout)
+        if r:
+            connection.poll()
+            while connection.notifies:
+                connection.notifies.pop()
             cursor.close()
             connection.close()
-            return False
-    except Exception:
-        # DB 연결 실패, SQLite 사용 시 등 예외가 발생하면 Fallback 처리
-        pass
+            return True
+        cursor.close()
+        connection.close()
+    except Exception as e:
+        logger.error(f"PostgreSQL LISTEN/NOTIFY socket wait failed: {e}")
+        time.sleep(1.0)
     finally:
         db.close()
         
-    time.sleep(timeout)
     return False
 
-async def wait_for_notification(db_session_factory, channel="outbox_event", timeout=1.0):
-    """PostgreSQL LISTEN/NOTIFY 기반으로 대기하며, SQLite 환경 등에서는 단순 sleep으로 폴백합니다."""
+async def wait_for_notification(db_session_factory, channel="outbox_event", timeout=30.0):
+    """PostgreSQL LISTEN/NOTIFY 기반으로 대기합니다 (타임아웃 기본 30초)."""
     return await asyncio.to_thread(blocking_wait, db_session_factory, channel, timeout)
 
 ONTOLOGY_PATH = os.path.join(os.path.dirname(__file__), "config", "ontology_mapping.json")
@@ -262,7 +259,7 @@ async def start_graph_sync_worker(db_session_factory):
                 ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
                 
                 if not pending_events:
-                    await wait_for_notification(db_session_factory, "outbox_event", 1.0)
+                    await wait_for_notification(db_session_factory, "outbox_event", 30.0)
                     continue
                 
                 # Group pending events by transaction_id to process them atomically

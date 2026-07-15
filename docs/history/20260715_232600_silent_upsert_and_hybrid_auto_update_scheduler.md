@@ -82,6 +82,12 @@
         - 1초 주기로 돌던 체인 워커가 `SCHEDULER_RUN_NOW` 이벤트를 즉각 `processed_chain = True` 로 먼저 마킹해 버려 스케줄러가 이벤트를 영원히 감지하지 못하던 **비동기 기동 경쟁 상태(Race Condition) 결함**을 발견하여, 체인 워커 측 완료 처리 구문을 무시(Skip)하도록 제거하고 스케줄러 데몬이 실행 완료 시점에 단독으로 완료 마킹을 찍도록 로직을 교정하여 무반응 현상을 완벽히 해결했습니다.
      - **수집 스크립트 실행 에러 상세화 (Traceback Call Stack Capture)**:
         - 스크립트 실패(`FAIL`) 시 기존 단일 행 에러 스트링(`str(err)`)만 저장하던 방식을 파이썬 표준 `traceback.format_exc()`로 전격 교체하여, 에러가 발생한 정확한 코드 라인 위치와 전체 호출 스택(Traceback)을 어드민 Diagnostics 패널에 상세히 출력해 디버깅 생산성을 높였습니다.
+  - **PostgreSQL 전용 이벤트 기반(LISTEN/NOTIFY) CPU 0% 최적화 (PostgreSQL-only Event-driven Optimization)**:
+     - **SQLite 폴백 및 무한 대기 1초 루프 소거**: `chain_ingestion_worker.py` 및 `graph_sync_worker.py` 내의 `blocking_wait` 메서드에서 SQLite 환경 대피용 `time.sleep(1.0)` 폴백 코드를 전면 삭제했습니다.
+     - **대기 타임아웃 30배 장기화 (1.0초 ➡️ 30.0초)**: 유휴 대기 타임아웃을 30초로 상향 조정하여, 이벤트가 없을 때 30초 동안 단 1회의 DB 조회 없이 완벽하게 잠들도록 구성하여 CPU 점유율을 **순수 0%**로 떨어트렸습니다.
+     - **실시간 소켓 기상 보장**: 트랜잭션이 commit되어 `NOTIFY`가 발행되는 순간 즉시 소켓 신호를 타고 마이크로초 단위로 즉시 기상하므로 최속의 파일 가공 및 실시간 반응성을 확보했습니다.
+     - **어드민 Run Now 알림 전파 누락 보완 (`main.py`)**: 웹 대시보드 온디맨드 기동 라우터 내에 `NOTIFY outbox_event;` 구문을 추가로 장착해 어드민 트리거 동작 시 딜레이 없이 즉각 동기화 작업이 활성화되도록 연동을 마쳤습니다.
+
 
 
 

@@ -2429,6 +2429,13 @@ async def trigger_auto_update_run_now(
         db.add(new_event)
         db.commit()
         
+        try:
+            from sqlalchemy import text
+            db.execute(text("NOTIFY outbox_event;"))
+            db.commit()
+        except Exception as notify_err:
+            logger.debug(f"PostgreSQL NOTIFY skip or failed: {notify_err}")
+            
         logger.info(f"[On-Demand] Published SCHEDULER_RUN_NOW outbox event for table='{table_name}', script='{script_name}'")
         return {"status": "success", "message": f"Successfully published trigger to run '{script_name}' for table '{table_name}'."}
     except Exception as e:
