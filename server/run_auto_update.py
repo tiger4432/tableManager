@@ -126,8 +126,11 @@ class GenericScriptRunnerCollector:
 
     def execute(self):
         """
-        자식 프로세스로 스크립트를 기동하고 stdout을 가로채 CSV 파일로 안전하게 기록합니다.
+        스크립트를 동적으로 로드 및 exec() 실행하여 메모리상에서 'out' 변수를 낚아채며,
+        만약 'out' 변수가 감지되지 않을 경우 기존 subprocess stdout 캡처 방식으로 폴백합니다.
         """
+        import io
+        import csv
         import subprocess
         
         # Update next run time before executing
@@ -140,6 +143,68 @@ class GenericScriptRunnerCollector:
         
         self.logger.info(f"Triggering execution of script '{os.path.basename(self.script_path)}'...")
         
+        # 1. exec()를 통한 인스턴스 전역 변수 'out' 가로채기 감지 시도
+        try:
+            script_dir = os.path.dirname(self.script_path)
+            if script_dir not in sys.path:
+                sys.path.insert(0, script_dir)
+                
+            with open(self.script_path, "r", encoding="utf-8") as f:
+                code_content = f.read()
+                
+            global_ns = {
+                "__file__": self.script_path,
+                "__name__": "__main__"
+            }
+            local_ns = {}
+            
+            # exec 실행
+            exec(code_content, global_ns, local_ns)
+            
+            # out 변수 검출
+            out_data = local_ns.get("out") or global_ns.get("out")
+            
+            if out_data is not None:
+                self.logger.info(f"Captured 'out' variable ({type(out_data).__name__}). Formatting to CSV...")
+                csv_content = ""
+                
+                # 타입 감지 및 CSV 인코딩
+                if isinstance(out_data, str):
+                    csv_content = out_data
+                elif isinstance(out_data, list):
+                    output = io.StringIO()
+                    writer = csv.writer(output, lineterminator='\n')
+                    
+                    if out_data and isinstance(out_data[0], dict):
+                        # 딕셔너리 리스트 -> 키명을 헤더로 매핑
+                        headers = list(out_data[0].keys())
+                        dict_writer = csv.DictWriter(output, fieldnames=headers, lineterminator='\n')
+                        dict_writer.writeheader()
+                        dict_writer.writerows(out_data)
+                    else:
+                        # 2차원 리스트
+                        writer.writerows(out_data)
+                    csv_content = output.getvalue()
+                elif hasattr(out_data, "to_csv"):
+                    # Pandas DataFrame 등
+                    csv_content = out_data.to_csv(index=False)
+                else:
+                    csv_content = str(out_data)
+                    
+                if not csv_content.strip():
+                    self.logger.warning("Captured 'out' variable resulted in empty CSV content. Skipping.")
+                    return
+                    
+                with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
+                    f.write(csv_content)
+                os.replace(tmp_dest, final_dest)
+                self.logger.info(f"Successfully wrote captured 'out' data to raw file '{filename}'.")
+                return
+                
+        except Exception as e:
+            self.logger.warning(f"In-memory exec() failed or 'out' variable not found: {e}. Falling back to stdout capture...")
+
+        # 2. [폴백 모드] subprocess 표준 출력(stdout, print) 캡처 기동
         try:
             python_exe = sys.executable
             result = subprocess.run(
@@ -151,12 +216,12 @@ class GenericScriptRunnerCollector:
             )
             
             if result.returncode != 0:
-                self.logger.error(f"Script exited with error code {result.returncode}. stderr: {result.stderr.strip()}")
+                self.logger.error(f"Script process exited with error code {result.returncode}. stderr: {result.stderr.strip()}")
                 return
                 
             stdout_content = result.stdout
             if not stdout_content.strip():
-                self.logger.warning(f"Script execution yielded empty output. Skipping file generation.")
+                self.logger.warning(f"Script stdout was empty. Skipping file generation.")
                 return
                 
             with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
@@ -166,7 +231,7 @@ class GenericScriptRunnerCollector:
             self.logger.info(f"Successfully collected stdout and generated raw file '{filename}'.")
             
         except Exception as e:
-            self.logger.error(f"Failed to run script runner for '{os.path.basename(self.script_path)}': {e}")
+            self.logger.error(f"Fatal: Failed to execute script runner via subprocess: {e}")
 
 def parse_script_comments(script_path: str) -> dict:
     """
