@@ -152,7 +152,7 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 logger.info(f"Executing chained batch updates to '{target_table}' under tx '{chain_tx_id}' (size: {len(updates_list)})")
                 
                 # Apply updates
-                results, changed_cells, created_logs = crud.apply_batch_updates(db, target_table, batch_data)
+                results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, target_table, batch_data)
                 
                 # 5. Route WebSocket events and Audit History to the web server
                 try:
@@ -214,6 +214,20 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "transaction_id": chain_tx_id,
                             "created_logs": serialized_logs
                         }
+                    # 껍데기 행 실시간 제거 브로드캐스트 전송
+                    if deleted_row_ids:
+                        try:
+                            delete_msg = {
+                                "event": "batch_row_delete",
+                                "table_name": target_table,
+                                "row_ids": deleted_row_ids,
+                                "transaction_id": chain_tx_id
+                            }
+                            await post_event_async("/internal/events/broadcast", delete_msg)
+                            logger.info(f"Successfully sent chained delete event to web server for '{target_table}' (size: {len(deleted_row_ids)}).")
+                        except Exception as del_err:
+                            logger.error(f"Failed to post chained delete notification: {del_err}")
+
                     await post_event_async("/internal/events/broadcast", msg)
                     logger.info(f"Successfully sent chained update event to web server for '{target_table}' under tx '{chain_tx_id}'.")
                 except Exception as ws_err:
