@@ -1328,22 +1328,50 @@ function openInlineEditor(path) {
     showToast('⚠️ Monaco Editor가 아직 로딩 중입니다.', 'warning');
     return;
   }
+  
+  // Diagnostics 뷰 가리기
   diagnosticsContent.style.display = 'none';
   diagnosticsEmpty.style.display = 'none';
-  editorContentWrapper.style.display = 'flex';
   
+  // 에디터 뷰 활성화 및 인라인 에디팅 시 즉각 전체화면 확장 (Auto Fullscreen)
+  editorContentWrapper.style.display = 'flex';
+  editorContentWrapper.classList.add('fullscreen-mode');
+  
+  // 제어 단추 상태 강제 매칭 보장
   if (editorBackBtn) {
     editorBackBtn.style.display = 'inline-flex';
+  }
+  if (editorFullscreenBtn) {
+    editorFullscreenBtn.style.display = 'inline-flex';
+    editorFullscreenBtn.textContent = '☀️ Exit Fullscreen';
+  }
+  if (saveCodeBtn) {
+    saveCodeBtn.style.display = 'inline-flex';
   }
   
   document.querySelectorAll('.tree-file-item').forEach(item => {
     item.classList.remove('active');
   });
 
+  // 코드 로드 및 레이아웃 리사이즈 갱신
   selectEditorFile(path);
+  
+  if (window.monacoEditor) {
+    setTimeout(() => {
+      window.monacoEditor.layout();
+    }, 100);
+  }
 }
 
 function closeInlineEditor() {
+  // 전체화면 활성화 상태 복원 해제
+  if (editorContentWrapper.classList.contains('fullscreen-mode')) {
+    editorContentWrapper.classList.remove('fullscreen-mode');
+  }
+  if (editorFullscreenBtn) {
+    editorFullscreenBtn.textContent = '🖥️ Fullscreen';
+  }
+
   editorContentWrapper.style.display = 'none';
   diagnosticsContent.style.display = 'flex';
   
