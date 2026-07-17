@@ -43,4 +43,9 @@
 * `apply_batch_updates` 의 반환 파라미터 4분할 구조 조정에 따라, 백그라운드 연쇄 업데이트 데몬인 `chain_ingestion_worker.py` 및 로컬 파일 인제션을 담당하는 와처인 `directory_watcher.py` 내부의 언패킹 결함(`too many values to unpack (expected 3)`)을 전수 수정했습니다.
 * 연쇄 인제션 도중 충돌 병합에 의해 삭제된 행 목록(`deleted_row_ids`)이 발생할 경우, 자체적으로 `/internal/events/broadcast` 엔드포인트를 통해 웹 서버로 `batch_row_delete` 이벤트를 포스트하여 실시간 웹소켓 삭제 전파를 수행하도록 연계 조치했습니다.
 
+### I. 다단계 연쇄 병합 시 collision_merge 오버라이트 제외 처리
+* 1차 병합 충돌로 인해 마킹된 `"collision_merge"` 메타데이터가 2차 병합 시 순수 사용자 오버라이트로 오인되어 후속 병합 유입 값(예: `'z'`)을 불필요하게 튕겨내던 결함을 수정했습니다.
+* `CellOverwrite.updated_by == "collision_merge"` 또는 `manual_priority_source == "collision_merge"` 인 메타데이터는 보호 가드 대상(`is_old_user_overwritten`)에서 명시적으로 제외함으로써, 연쇄적인 충돌 병합 상황에서도 최종 덮어쓰기 데이터가 누락 없이 완벽하게 유입 및 갱신되도록 보장했습니다.
+
+
 

@@ -640,7 +640,9 @@ def apply_row_update_internal(
                                 
                             is_old_user_overwritten = False
                             if old_ow:
-                                is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
+                                # collision_merge인 경우는 단순 병합 충돌 메타이므로 보호 가드 대상에서 제외
+                                if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
+                                    is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
                             if is_old_user_overwritten and not is_explicitly_edited:
                                 continue
@@ -1361,7 +1363,9 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 
                             is_old_user_overwritten = False
                             if old_ow:
-                                is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
+                                # collision_merge인 경우는 단순 병합 충돌 메타이므로 보호 가드 대상에서 제외
+                                if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
+                                    is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
                             if is_old_user_overwritten and not is_explicitly_edited:
                                 continue
