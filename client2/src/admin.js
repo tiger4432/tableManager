@@ -96,6 +96,7 @@ const editorContentWrapper = document.getElementById('editor-content-wrapper');
 const editorFilePath = document.getElementById('editor-file-path');
 const saveCodeBtn = document.getElementById('save-code-btn');
 const editorBackBtn = document.getElementById('editor-back-btn');
+const editorFullscreenBtn = document.getElementById('editor-fullscreen-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -258,7 +259,24 @@ function setupEventListeners() {
 
   if (editorBackBtn) {
     editorBackBtn.addEventListener('click', () => {
+      // 만약 전체화면 상태였다면 전체화면도 함께 복구 해제합니다.
+      if (editorContentWrapper.classList.contains('fullscreen-mode')) {
+        editorContentWrapper.classList.remove('fullscreen-mode');
+        if (editorFullscreenBtn) editorFullscreenBtn.textContent = '🖥️ Fullscreen';
+      }
       closeInlineEditor();
+    });
+  }
+
+  if (editorFullscreenBtn) {
+    editorFullscreenBtn.addEventListener('click', () => {
+      const isFullscreen = editorContentWrapper.classList.toggle('fullscreen-mode');
+      editorFullscreenBtn.textContent = isFullscreen ? '☀️ Exit Fullscreen' : '🖥️ Fullscreen';
+      if (window.monacoEditor) {
+        setTimeout(() => {
+          window.monacoEditor.layout();
+        }, 80);
+      }
     });
   }
 }
@@ -1128,7 +1146,7 @@ function initMonacoEditor() {
       language: 'python',
       theme: 'vs-dark',
       automaticLayout: true,
-      fontSize: 13,
+      fontSize: 15,
       minimap: { enabled: true }
     });
     isMonacoLoaded = true;
