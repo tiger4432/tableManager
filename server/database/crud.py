@@ -644,8 +644,7 @@ def apply_row_update_internal(
                                 if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
                                     is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
-                            if is_old_user_overwritten and not is_explicitly_edited:
-                                continue
+                            is_value_protected = is_old_user_overwritten and not is_explicitly_edited
 
                             new_val = getattr(row_to_delete, col_name, None)
                             
@@ -662,63 +661,11 @@ def apply_row_update_internal(
                                 else:
                                     has_cell_changed = str(old_val).strip() != str(new_val).strip()
                                 
-                            if has_cell_changed:
+                            if has_cell_changed and not is_value_protected:
                                 setattr(row, col_name, new_val)
                                 if col_name not in changed_cols:
                                     changed_cols.append(col_name)
-                                    
-                                # 중복키 충돌 병합을 어드민 원천 관리 패널에서 추적 가능하도록 원래의 진짜 소스명 보존하여 적재 (Append 방식)
-                                if cell_sources_to_upsert is not None:
-                                    from sqlalchemy.sql import func
-                                    # 껍데기 행이 원래 가졌던 소스 명칭 추적 계승
-                                    old_srcs, _ = _load_metadata_row_cell(
-                                        db, table_name, row_to_delete.row_id, col_name,
-                                        is_new=False,
-                                        sources_cache=sources_cache,
-                                        overwrites_cache=overwrites_cache,
-                                        cell_sources_to_upsert=cell_sources_to_upsert,
-                                        cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                                    )
-                                    
-                                    # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
-                                    target_srcs, _ = _load_metadata_row_cell(
-                                        db, table_name, row.row_id, col_name,
-                                        is_new=False,
-                                        sources_cache=sources_cache,
-                                        overwrites_cache=overwrites_cache,
-                                        cell_sources_to_upsert=cell_sources_to_upsert,
-                                        cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                                    )
-                                    existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
-                                    for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
-                                        if t == table_name and r == row.row_id and c == col_name:
-                                            existing_names.add(s_name)
 
-                                    src_list = []
-                                    if old_srcs:
-                                        for s in old_srcs:
-                                            src_list.append((s.source_name, s.value, s.updated_by))
-                                    else:
-                                        # 폴백 소스
-                                        src_list.append((update_item.source_name or "user", new_val, update_item.updated_by or "system"))
-
-                                    for s_name, s_val, s_by in src_list:
-                                        effective_src_name = s_name
-                                        r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                        suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                        effective_src_name = f"{effective_src_name}{suffix}"
-                                            
-                                        src_key = (table_name, row.row_id, col_name, effective_src_name)
-                                        cell_sources_to_upsert[src_key] = {
-                                            "table_name": table_name,
-                                            "row_id": row.row_id,
-                                            "column_name": col_name,
-                                            "source_name": effective_src_name,
-                                            "value": clean_str_value(s_val),
-                                            "updated_by": s_by or "system",
-                                            "ingested_at": func.now()
-                                        }
-                                    
                                 # 중복키 충돌 병합이 발생했음을 가벼운 Overwrite 테이블에도 기록하여 그리드 성능 최적화 지원
                                 if cell_overwrites_to_upsert is not None:
                                     from sqlalchemy.sql import func
@@ -742,6 +689,58 @@ def apply_row_update_internal(
                                     transaction_id=transaction_id, business_key=row.business_key_val,
                                     add_to_cache=(logs_to_cache is None)
                                 )
+
+                            # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
+                            if cell_sources_to_upsert is not None:
+                                from sqlalchemy.sql import func
+                                # 껍데기 행이 원래 가졌던 소스 명칭 추적 계승
+                                old_srcs, _ = _load_metadata_row_cell(
+                                    db, table_name, row_to_delete.row_id, col_name,
+                                    is_new=False,
+                                    sources_cache=sources_cache,
+                                    overwrites_cache=overwrites_cache,
+                                    cell_sources_to_upsert=cell_sources_to_upsert,
+                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                                )
+                                
+                                # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
+                                target_srcs, _ = _load_metadata_row_cell(
+                                    db, table_name, row.row_id, col_name,
+                                    is_new=False,
+                                    sources_cache=sources_cache,
+                                    overwrites_cache=overwrites_cache,
+                                    cell_sources_to_upsert=cell_sources_to_upsert,
+                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                                )
+                                existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
+                                for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
+                                    if t == table_name and r == row.row_id and c == col_name:
+                                        existing_names.add(s_name)
+
+                                src_list = []
+                                if old_srcs:
+                                    for s in old_srcs:
+                                        src_list.append((s.source_name, s.value, s.updated_by))
+                                else:
+                                    # 폴백 소스
+                                    src_list.append((update_item.source_name or "user", new_val, update_item.updated_by or "system"))
+
+                                for s_name, s_val, s_by in src_list:
+                                    effective_src_name = s_name
+                                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                    suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
+                                    effective_src_name = f"{effective_src_name}{suffix}"
+                                        
+                                    src_key = (table_name, row.row_id, col_name, effective_src_name)
+                                    cell_sources_to_upsert[src_key] = {
+                                        "table_name": table_name,
+                                        "row_id": row.row_id,
+                                        "column_name": col_name,
+                                        "source_name": effective_src_name,
+                                        "value": clean_str_value(s_val),
+                                        "updated_by": s_by or "system",
+                                        "ingested_at": func.now()
+                                    }
 
                         # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
                         if cell_sources_to_upsert is not None:
@@ -1390,8 +1389,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
                                     is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
-                            if is_old_user_overwritten and not is_explicitly_edited:
-                                continue
+                            is_value_protected = is_old_user_overwritten and not is_explicitly_edited
 
                             new_v = getattr(row_to_delete, c_name, None)
                             
@@ -1403,7 +1401,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 else:
                                     has_changed = str(old_v).strip() != str(new_v).strip()
                                     
-                            if has_changed:
+                            if has_changed and not is_value_protected:
                                 setattr(row, c_name, new_v)
                                 
                                 # cell_overwrites_to_upsert 에 충돌 병합 기록
@@ -1419,59 +1417,6 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 }
                                 cell_overwrites_to_delete.discard(ow_key)
                                 
-                                # 원천 관리 DB에 진짜 지정했던 소스 혹은 껍데기 행의 진짜 소스로 계승하여 영속 기록 (Append 방식)
-                                from database.models import CellSource
-                                # 껍데기 행이 원래 가졌던 진짜 소스 추적
-                                old_srcs, _ = _load_metadata_row_cell(
-                                    db, table_name, row_to_delete.row_id, c_name,
-                                    is_new=False,
-                                    sources_cache=None,
-                                    overwrites_cache=overwrites_cache,
-                                    cell_sources_to_upsert=None,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                                )
-                                
-                                # 대상 행에 이미 등록되어 있는 소스명 목록 추출
-                                target_srcs, _ = _load_metadata_row_cell(
-                                    db, table_name, row.row_id, c_name,
-                                    is_new=False,
-                                    sources_cache=None,
-                                    overwrites_cache=overwrites_cache,
-                                    cell_sources_to_upsert=None,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                                )
-                                existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
-
-                                src_list = []
-                                if old_srcs:
-                                    for s in old_srcs:
-                                        src_list.append((s.source_name, s.value, s.updated_by))
-                                else:
-                                    src_list.append((source_name or "user", new_v, updated_by or "user"))
-
-                                for s_name, s_val, s_by in src_list:
-                                    effective_src_name = s_name
-                                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                    suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                    effective_src_name = f"{effective_src_name}{suffix}"
-
-                                    db.query(CellSource).filter(
-                                        CellSource.table_name == table_name,
-                                        CellSource.row_id == row.row_id,
-                                        CellSource.column_name == c_name,
-                                        CellSource.source_name == effective_src_name
-                                    ).delete()
-                                    
-                                    new_src = CellSource(
-                                        table_name=table_name,
-                                        row_id=row.row_id,
-                                        column_name=c_name,
-                                        source_name=effective_src_name,
-                                        value=clean_str_value(s_val),
-                                        updated_by=s_by or "user"
-                                    )
-                                    db.add(new_src)
-                                
                                 # Audit Log 기록
                                 log_dict = create_audit_log(
                                     db, table_name, row.row_id, c_name, old_v, new_v,
@@ -1483,6 +1428,59 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 
                                 if c_name not in changed_cols:
                                     changed_cols.append(c_name)
+
+                            # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
+                            from database.models import CellSource
+                            # 껍데기 행이 원래 가졌던 진짜 소스 추적
+                            old_srcs, _ = _load_metadata_row_cell(
+                                db, table_name, row_to_delete.row_id, c_name,
+                                is_new=False,
+                                sources_cache=None,
+                                overwrites_cache=overwrites_cache,
+                                cell_sources_to_upsert=None,
+                                cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                            )
+                            
+                            # 대상 행에 이미 등록되어 있는 소스명 목록 추출
+                            target_srcs, _ = _load_metadata_row_cell(
+                                db, table_name, row.row_id, c_name,
+                                is_new=False,
+                                sources_cache=None,
+                                overwrites_cache=overwrites_cache,
+                                cell_sources_to_upsert=None,
+                                cell_overwrites_to_upsert=cell_overwrites_to_upsert
+                            )
+                            existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
+
+                            src_list = []
+                            if old_srcs:
+                                for s in old_srcs:
+                                    src_list.append((s.source_name, s.value, s.updated_by))
+                            else:
+                                src_list.append((source_name or "user", new_v, updated_by or "user"))
+
+                            for s_name, s_val, s_by in src_list:
+                                effective_src_name = s_name
+                                r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
+                                effective_src_name = f"{effective_src_name}{suffix}"
+
+                                db.query(CellSource).filter(
+                                    CellSource.table_name == table_name,
+                                    CellSource.row_id == row.row_id,
+                                    CellSource.column_name == c_name,
+                                    CellSource.source_name == effective_src_name
+                                ).delete()
+                                
+                                new_src = CellSource(
+                                    table_name=table_name,
+                                    row_id=row.row_id,
+                                    column_name=c_name,
+                                    source_name=effective_src_name,
+                                    value=clean_str_value(s_val),
+                                    updated_by=s_by or "user"
+                                )
+                                db.add(new_src)
                                     
                         # 2. 임시 껍데기 행 삭제
                         try:
