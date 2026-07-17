@@ -924,9 +924,9 @@ function selectChainRow(rule) {
   if (inlineEditBtn) {
     let modulePath = rule.mapper_module || '';
     if (modulePath.startsWith('mappers.')) {
-      modulePath = modulePath.replace('mappers.', 'server/mappers/') + '.py';
+      modulePath = modulePath.replace('mappers.', 'mappers/') + '.py';
     } else {
-      modulePath = `server/${modulePath.replace(/\./g, '/')}.py`;
+      modulePath = `${modulePath.replace(/\./g, '/')}.py`;
     }
     inlineEditBtn.addEventListener('click', () => {
       openInlineEditor(modulePath);
