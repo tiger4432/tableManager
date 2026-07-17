@@ -33,6 +33,8 @@
 
 - **비동기 안전성**: 모든 백그라운드 작업은 시그널 안전장치(`RuntimeError` 래퍼)를 갖추어야 한다.
 - **[CRITICAL] 가비지 컬렉션(GC) 방지 원칙**: PyQt/PySide6에서 비동기 스레드의 콜백(시그널) 연결 시 `lambda`와 같은 로컬 익명 함수나 로컬 클로저(Local Closure)를 **절대 사용하지 마십시오**. 백그라운드 작업이 완료되기 전에 GC에 의해 소거되어 신호가 유실되는 영구적인 행(Hang) 버그를 유발합니다. 반드시 클래스에 귀속된 **바운드 메서드(Bound Method)**에 연결하고 필요한 데이터는 워커 내부 속성으로 패킹하여 전달하십시오.
+- **[CRITICAL] 함수 시그니처 변경 영향 전수 분석**: CRUD 코어 및 공용 모듈 함수 시그니처 변경 시, 프로젝트 전체를 검색(Grep)하여 웹 라우터, 백그라운드 워커(`chain_ingestion_worker.py`), 단위 테스트 코드 전체의 언패킹 구조를 반드시 연쇄 갱신하십시오. ([지침서](file:///c:/Users/kk980/Developments/assyManager/docs/guide/data_preservation_and_signature_change.md) 필독)
+- **[CRITICAL] 병합 시 데이터 보존 및 이중 추적**: Silent Merge 시 충돌 대상 행에 존재하던 수동 수정값(오버라이트)이 덮어써져 날아가지 않도록 보호 정책을 준수하고, 원천 소스명 계승 및 `CellOverwrite.updated_by = 'collision_merge'` 마킹을 통한 이중 추적 정합성을 갖추십시오. ([지침서](file:///c:/Users/kk980/Developments/assyManager/docs/guide/data_preservation_and_signature_change.md) 필독)
 - **상태 동기화**: WebSocket 및 API 응답 시 디바운싱과 가드 플래그를 통해 레이스 컨디션을 방지한다.
 
 ## 4. 품질 및 미학 (Quality & Aesthetics)
