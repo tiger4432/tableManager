@@ -364,7 +364,11 @@ export function renderSubDetails(container, logs) {
   const ul = document.createElement('ul');
   ul.className = 'sub-timeline-list';
 
-  logs.forEach(log => {
+  const renderLimit = 500;
+  const initialLogs = logs.slice(0, renderLimit);
+  const remainingLogs = logs.slice(renderLimit);
+
+  function appendLogItem(log) {
     const li = document.createElement('li');
     li.className = 'sub-timeline-item';
 
@@ -393,9 +397,30 @@ export function renderSubDetails(container, logs) {
     });
 
     ul.appendChild(li);
-  });
+  }
 
+  initialLogs.forEach(appendLogItem);
   container.appendChild(ul);
+
+  if (remainingLogs.length > 0) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'glass-btn';
+    moreBtn.style.margin = '10px 0 10px 24px';
+    moreBtn.style.padding = '6px 16px';
+    moreBtn.style.fontSize = '0.8rem';
+    moreBtn.style.color = 'var(--color-primary)';
+    moreBtn.style.borderColor = 'rgba(137, 180, 250, 0.3)';
+    moreBtn.style.background = 'rgba(137, 180, 250, 0.05)';
+    moreBtn.textContent = `➕ Show remaining ${remainingLogs.length} logs`;
+    
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      remainingLogs.forEach(appendLogItem);
+      moreBtn.remove();
+    });
+    
+    container.appendChild(moreBtn);
+  }
 }
 
 // Helper to format values

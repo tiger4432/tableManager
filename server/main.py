@@ -449,15 +449,29 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             updated_by = ow_info[1] if ow_info else "system"
             manual_pin = ow_info[2] if ow_info else None
             
-            has_overwrite = is_ow or ("user" in col_srcs) or (manual_pin is not None)
+            # [성능 최적화] include_sources=False 일 때는 소스 쿼리를 건너뛰었으므로 Overwrite 테이블 정보로 즉시 유도
+            if not include_sources:
+                if manual_pin == "collision_merge" or updated_by == "collision_merge":
+                    priority_source = "collision_merge"
+                elif is_ow or updated_by == "user" or manual_pin == "user":
+                    priority_source = "user"
+                else:
+                    priority_source = None
+            else:
+                _, priority_source = crud.compute_priority_value(col_srcs, manual_pin, table_name)
+
+            is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
+            has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
             
             r_data[col] = {
                 "value": val_raw,
                 "is_overwrite": has_overwrite,
+                "is_collision_merge": is_collision,
                 "sources": col_srcs,
-                "updated_by": updated_by
+                "updated_by": updated_by,
+                "manual_priority_source": manual_pin,
+                "priority_source": priority_source
             }
-            r_data[col]["manual_priority_source"] = manual_pin
                 
         r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
@@ -569,7 +583,7 @@ def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)
     return result
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
-def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 500):
+def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 20000):
     """특정 트랜잭션의 상세 로그를 반환합니다. (인메모리 캐시 우선 조회, 최대 limit 건 반환)"""
 
     # 1. 캐시에서 조회 시도
@@ -577,31 +591,36 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
         for g in audit_cache.groups:
             if g.get("transaction_id") == tx_id:
                 logs = g.get("logs", [])
-                cols = []
+                total_count = g.get("total_count", len(logs))
                 
-                # Check existences
-                keys_to_check = []
-                for l in logs[:limit]:
-                    if l.row_id != "_BATCH_":
-                        keys_to_check.append((l.table_name, l.row_id))
-                existing_keys = check_rows_exist(db, keys_to_check)
-                
-                cloned_logs = []
-                for l in logs[:limit]:
-                    c = l.column_name
-                    if c and c not in cols: cols.append(c)
-                    cloned_log = l.model_copy()
-                    is_deleted = cloned_log.row_id != "_BATCH_" and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
-                    cloned_log.is_row_deleted = is_deleted
-                    if is_deleted and not cloned_log.business_key:
-                        cloned_log.business_key = get_deleted_row_business_key(db, cloned_log.table_name, cloned_log.row_id)
-                    cloned_logs.append(cloned_log)
-                return {
-                    "transaction_id": tx_id,
-                    "total_count": g.get("total_count", len(logs)),
-                    "summary_columns": cols,
-                    "logs": cloned_logs
-                }
+                # 캐시 캡핑(500개)이 걸렸고 limit이 그보다 많은 양을 요구한다면 캐시 조회를 건너뛰고 DB 조회로 폴백합니다.
+                if len(logs) >= total_count or len(logs) >= limit:
+                    cols = []
+                    
+                    # Check existences
+                    keys_to_check = []
+                    for l in logs[:limit]:
+                        if l.row_id != "_BATCH_":
+                            keys_to_check.append((l.table_name, l.row_id))
+                    existing_keys = check_rows_exist(db, keys_to_check)
+                    
+                    cloned_logs = []
+                    for l in logs[:limit]:
+                        c = l.column_name
+                        if c and c not in cols: cols.append(c)
+                        cloned_log = l.model_copy()
+                        is_deleted = cloned_log.row_id != "_BATCH_" and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
+                        cloned_log.is_row_deleted = is_deleted
+                        if is_deleted and not cloned_log.business_key:
+                            cloned_log.business_key = get_deleted_row_business_key(db, cloned_log.table_name, cloned_log.row_id)
+                        cloned_logs.append(cloned_log)
+                    return {
+                        "transaction_id": tx_id,
+                        "total_count": total_count,
+                        "summary_columns": cols,
+                        "logs": cloned_logs
+                    }
+                break
                 
     # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
     total_count = db.query(models.AuditLog).filter(models.AuditLog.transaction_id == tx_id).count()
@@ -1530,16 +1549,24 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
     try:
-        results, changed_cells, created_logs = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
+        results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
     if results:
         invalidate_table_cache(table_name)
     
+    # [정합성 보장] results 내 모든 row 객체에 최신 채색 정보(is_overwrite, priority_source)를 일괄 병합!
+    # (이를 통해 WebSocket 병합 시 다른 컬럼들의 주황색 스타일이 풀리던 문제를 완벽 차단합니다.)
+    cfg = crud.TABLE_CONFIG.get(table_name, {})
+    col_types = cfg.get("column_types", {})
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+    row_objects = [r for r, _ in results]
+    if row_objects:
+        fetch_and_merge_metadata(db, table_name, row_objects, user_cols, include_sources=False)
+
     msg_items = []
     for row, is_new in results:
-        # Agent D v16: 브로드캐스트 페이로드에 시간 메타데이터(created_at, updated_at)를 강제 주입
         inject_system_columns(row)
         msg_items.append({
             "row_id": row.row_id,
@@ -1554,8 +1581,16 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
         user_name = batch.updates[0].updated_by if batch.updates else "system"
         tx_id = created_logs[0]["transaction_id"] if created_logs else (batch.transaction_id or str(uuid.uuid4()))
         
+        # 껍데기 행 실시간 제거 브로드캐스트 전송
+        if deleted_row_ids:
+            delete_msg = {
+                "event": "batch_row_delete",
+                "table_name": table_name,
+                "row_ids": deleted_row_ids
+            }
+            await manager.broadcast(json.dumps(delete_msg))
+
         if len(msg_items) > 100:
-            # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = {
                 "event": "batch_refresh_required",
                 "table_name": table_name,
@@ -1565,7 +1600,6 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
                 msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
         else:
-            # 소량 업데이트: 전체 데이터 전송
             CHUNK_SIZE = 500
             for i in range(0, len(msg_items), CHUNK_SIZE):
                 chunk = msg_items[i:i + CHUNK_SIZE]
@@ -1582,7 +1616,13 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
                 }
                 await manager.broadcast(json.dumps(msg))
     
-    return {"status": "success", "updated_count": len(results), "change_count": len(changed_cells), "created_logs": created_logs}
+    return {
+        "status": "success", 
+        "updated_count": len(results), 
+        "change_count": len(changed_cells), 
+        "deleted_row_ids": deleted_row_ids,
+        "created_logs": created_logs
+    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -1697,7 +1737,7 @@ async def set_cell_priority(
     db: Session = Depends(get_db)
 ):
     """특정 셀의 표시 우선순위 소스를 수동으로 지정합니다 (Pin). source_name이 null이면 수동 지정 해제."""
-    updated_row, changed_cols = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
+    updated_row, changed_cols, deleted_row_ids = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
     if not updated_row:
         raise HTTPException(status_code=404, detail="Cell not found or source invalid")
     
@@ -1711,6 +1751,14 @@ async def set_cell_priority(
         
     merged_item = merged_rows[0]
     
+    # 껍데기 행 실시간 제거 브로드캐스트 전송
+    if deleted_row_ids:
+        await manager.broadcast(json.dumps({
+            "event": "batch_row_delete",
+            "table_name": table_name,
+            "row_ids": deleted_row_ids
+        }))
+
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
@@ -1724,7 +1772,7 @@ async def set_cell_priority(
         }],
         "change_count": len(changed_cols)
     }))
-    return {"status": "success", "row_id": row_id}
+    return {"status": "success", "row_id": row_id, "deleted_row_ids": deleted_row_ids}
 
 @app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history")
 async def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
@@ -1744,7 +1792,7 @@ async def set_cell_priority_batch_endpoint(
     db: Session = Depends(get_db)
 ):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
-    changed_rows, created_logs = crud.set_cell_manual_priority_batch(
+    changed_rows, created_logs, deleted_row_ids = crud.set_cell_manual_priority_batch(
         db, table_name, req.updates, req.source_name, req.updated_by
     )
     
@@ -1757,6 +1805,14 @@ async def set_cell_priority_batch_endpoint(
         
         merged_items = fetch_and_merge_metadata(db, table_name, changed_rows, user_cols, include_sources=True)
         
+        # 껍데기 행 실시간 제거 브로드캐스트 전송
+        if deleted_row_ids:
+            await manager.broadcast(json.dumps({
+                "event": "batch_row_delete",
+                "table_name": table_name,
+                "row_ids": deleted_row_ids
+            }))
+
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [{
             "row_id": item["row_id"],
@@ -1791,7 +1847,7 @@ async def set_cell_priority_batch_endpoint(
                     "created_logs": chunk_logs
                 }))
             
-    return {"status": "success", "count": len(changed_rows)}
+    return {"status": "success", "count": len(changed_rows), "deleted_row_ids": deleted_row_ids}
 
 @app.post("/tables/{table_name}/cells/sources/delete/batch")
 async def delete_cell_source_batch_endpoint(
@@ -2457,11 +2513,13 @@ async def internal_event_batch_refresh(
         "table_name": table_name,
         "change_count": change_count
     }
-    if created_logs and len(created_logs) <= 5000:
-        msg["created_logs"] = created_logs
+    if created_logs:
+        actual_count = len(created_logs)
+        sliced_logs = created_logs[:500] if actual_count > 500 else created_logs
+        msg["created_logs"] = sliced_logs
         # Update the web server's in-memory audit cache
         try:
-            audit_cache.add_logs_batch(created_logs)
+            audit_cache.add_logs_batch(sliced_logs, override_total_count=actual_count)
         except Exception as e:
             print(f"[Main Server] Failed to update audit_cache from batch-refresh: {e}")
     await manager.broadcast(json.dumps(msg))
@@ -2477,9 +2535,12 @@ async def internal_event_broadcast(payload: dict = Body(...)):
         invalidate_table_cache(table_name)
         
     created_logs = payload.get("created_logs")
-    if created_logs and len(created_logs) <= 5000:
+    if created_logs:
         try:
-            audit_cache.add_logs_batch(created_logs)
+            actual_count = len(created_logs)
+            sliced_logs = created_logs[:500] if actual_count > 500 else created_logs
+            payload["created_logs"] = sliced_logs
+            audit_cache.add_logs_batch(sliced_logs, override_total_count=actual_count)
         except Exception as e:
             print(f"[Main Server] Failed to update audit_cache from broadcast: {e}")
             

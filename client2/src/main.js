@@ -62,7 +62,8 @@ let allDataLoaded = false;
 
 // Initialize Application
 async function init() {
-  // 웹 브라우저에서 접근 시, 백그라운드에서 로컬 데스크톱 앱(assymanager://) 호출
+  // 웹 브라우저에서 접근 시, 백그라운드에서 로컬 데스크톱 앱 자동 실행을 시도하던 로직을 사용자 요청에 따라 주석 처리합니다.
+  /*
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('client') !== 'desktop') {
     console.log('[Launcher] Triggering local desktop client launch via URI scheme...');
@@ -72,6 +73,7 @@ async function init() {
     document.body.appendChild(iframe);
     setTimeout(() => iframe.remove(), 1000);
   }
+  */
 
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');

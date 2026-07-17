@@ -100,8 +100,10 @@ export function ensureCellObject(dataObj, colId) {
     dataObj.data[colId] = {
       value: cell !== undefined ? cell : '',
       is_overwrite: false,
+      is_collision_merge: false,
       sources: {},
-      updated_by: 'system'
+      updated_by: 'system',
+      priority_source: null
     };
   }
 }
@@ -173,6 +175,7 @@ export function buildColumnDefs() {
         params.data.data[col].value = finalVal;
         if (!state.txModeActive) {
           params.data.data[col].is_overwrite = true;
+          params.data.data[col].priority_source = 'user';
         }
         return true;
       },
@@ -184,13 +187,21 @@ export function buildColumnDefs() {
           const key = `${params.data.row_id}_${col}`;
           return state.pendingTxEdits.hasOwnProperty(key);
         },
+        'cell-collision-merge': (params) => {
+          if (isSystem) return false;
+          if (!params.data) return false;
+          const key = `${params.data.row_id}_${col}`;
+          if (state.pendingTxEdits.hasOwnProperty(key)) return false;
+          const cell = params.data.data?.[col];
+          return cell?.priority_source === 'collision_merge';
+        },
         'cell-overwrite': (params) => {
           if (isSystem) return false;
           if (!params.data) return false;
           const key = `${params.data.row_id}_${col}`;
           if (state.pendingTxEdits.hasOwnProperty(key)) return false;
           const cell = params.data.data?.[col];
-          return cell?.is_overwrite === true;
+          return cell?.priority_source === 'user';
         },
         'custom-range-selected': (params) => {
           return isCellInRange(params.node.rowIndex, col);
@@ -310,6 +321,20 @@ export function renderGrid(initialRows) {
       if (!event.column || event.rowIndex === null || event.rowIndex === undefined) return;
       const rowNode = event.api.getDisplayedRowAtIndex(event.rowIndex);
       if (!rowNode || !rowNode.data) return;
+
+      const debugColId = event.column.getId();
+      const debugRowId = rowNode.data.row_id;
+      if (!['row_id', 'created_at', 'updated_at', '#'].includes(debugColId)) {
+        const cellObj = rowNode.data.data?.[debugColId];
+        console.log(`%c[Grid Debug] Clicked Cell Info`, 'color: #00f0ff; font-weight: bold; font-size: 1.1rem;');
+        console.log(`- Row ID: ${debugRowId}`);
+        console.log(`- Col ID: ${debugColId}`);
+        console.log(`- Priority Source:`, cellObj?.priority_source);
+        console.log(`- Is Overwrite:`, cellObj?.is_overwrite);
+        console.log(`- Raw Value:`, cellObj?.value);
+        console.log(`- Sources:`, cellObj?.sources);
+        console.log(`- Full Cell Object:`, cellObj);
+      }
 
       const colId = event.column.getId();
       const rowId = rowNode.data.row_id;

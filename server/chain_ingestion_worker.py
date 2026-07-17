@@ -323,8 +323,9 @@ async def start_chain_ingestion_worker(db_session_factory):
                     current_ids = {e.id for e in normalized_events}
                     candidates = db.query(DatabaseOutbox).filter(
                         DatabaseOutbox.processed_chain == False,
-                        ~DatabaseOutbox.id.in_(current_ids)
-                    ).limit(10000).all()
+                        ~DatabaseOutbox.id.in_(current_ids),
+                        DatabaseOutbox.payload['transaction_id'].as_string() == last_tx_id
+                    ).limit(20000).all()
                     
                     extra_events = []
                     for e in candidates:
@@ -334,9 +335,8 @@ async def start_chain_ingestion_worker(db_session_factory):
                                 e_pay = json.loads(e_pay)
                             except Exception:
                                 e_pay = {}
-                        if e_pay.get("transaction_id") == last_tx_id:
-                            e._parsed_payload = e_pay
-                            extra_events.append(e)
+                        e._parsed_payload = e_pay
+                        extra_events.append(e)
                             
                     if extra_events:
                         normalized_events.extend(extra_events)

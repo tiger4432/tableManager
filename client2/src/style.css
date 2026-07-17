@@ -596,6 +596,12 @@ body {
   border-left: 2px solid var(--color-overwrite) !important;
 }
 
+.cell-collision-merge {
+  background-color: rgba(243, 139, 130, 0.12) !important;
+  color: #f38ba8 !important;
+  border-left: 2px solid #f38ba8 !important;
+}
+
 .cell-dirty-tx {
   background-color: rgba(137, 220, 235, 0.12) !important;
   color: #89dceb !important;

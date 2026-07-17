@@ -104,7 +104,7 @@ class AuditLogCache:
             # 없으면 새 그룹 생성
             self.groups.insert(0, {"transaction_id": tid, "logs": [log_model], "total_count": 1})
 
-    def add_logs_batch(self, logs_list: List[dict]):
+    def add_logs_batch(self, logs_list: List[dict], override_total_count: int = None):
         """대량의 로그를 단일 락(Lock) 획득으로 캐시에 일괄 편입합니다."""
         if not logs_list:
             return
@@ -123,10 +123,16 @@ class AuditLogCache:
                     continue
             
             for tid, logs in logs_by_tx.items():
+                tx_total_count = override_total_count if (override_total_count is not None) else len(logs)
+                
                 found = False
                 for group in self.groups:
                     if group["transaction_id"] == tid:
-                        group["total_count"] += len(logs)
+                        if override_total_count is not None:
+                            group["total_count"] = override_total_count
+                        else:
+                            group["total_count"] += len(logs)
+                            
                         for log_model in reversed(logs):
                             if len(group["logs"]) < 500:
                                 group["logs"].insert(0, log_model)
@@ -142,7 +148,7 @@ class AuditLogCache:
                     self.groups.insert(0, {
                         "transaction_id": tid,
                         "logs": logs[:500],
-                        "total_count": len(logs)
+                        "total_count": tx_total_count
                     })
             
             while len(self.groups) > 100:

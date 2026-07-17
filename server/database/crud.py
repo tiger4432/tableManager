@@ -47,8 +47,9 @@ class LightCellOverwrite:
 # 소스별 우선순위 정의 (숫자가 낮을수록 높음)
 SOURCE_PRIORITY = {
     "user": 0,
-    "pipeline_parser": 1,
-    "custom_script": 2
+    "collision_merge": 1,
+    "pipeline_parser": 2,
+    "custom_script": 3
 }
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
@@ -393,7 +394,8 @@ def apply_row_update_internal(
     logs_to_cache: list = None,
     cell_sources_to_upsert: dict = None,
     cell_overwrites_to_upsert: dict = None,
-    cell_overwrites_to_delete: set = None
+    cell_overwrites_to_delete: set = None,
+    deleted_row_ids: list = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
@@ -598,7 +600,8 @@ def apply_row_update_internal(
             if all(v != "" for v in vals):
                 new_bk_val = composite_sep.join(vals)
             else:
-                new_bk_val = None
+                # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
+                new_bk_val = update_item.business_key_val if (is_new and update_item.business_key_val) else None
 
             current_bk = getattr(row, "business_key_val", None)
             if current_bk != new_bk_val:
@@ -644,29 +647,22 @@ def apply_row_update_internal(
                                 if col_name not in changed_cols:
                                     changed_cols.append(col_name)
                                     
-                                # AuditLog 및 upsert 캐시 컨테이너에 갱신 주입
-                                if update_item.source_name == "user":
-                                    create_audit_log(
-                                        db, table_name, row.row_id, col_name, old_val, new_val,
-                                        update_item.source_name, (update_item.updated_by or "user"),
-                                        transaction_id=transaction_id, business_key=row.business_key_val,
-                                        add_to_cache=(logs_to_cache is None)
-                                    )
-                                    
+                                # 중복키 충돌 병합을 어드민 원천 관리 패널에서 추적 가능하도록 collision_merge 소스로 강제 적재
                                 if cell_sources_to_upsert is not None:
                                     from sqlalchemy.sql import func
-                                    src_key = (table_name, row.row_id, col_name, update_item.source_name)
+                                    src_key = (table_name, row.row_id, col_name, "collision_merge")
                                     cell_sources_to_upsert[src_key] = {
                                         "table_name": table_name,
                                         "row_id": row.row_id,
                                         "column_name": col_name,
-                                        "source_name": update_item.source_name,
+                                        "source_name": "collision_merge",
                                         "value": clean_str_value(new_val),
-                                        "updated_by": update_item.updated_by or "user",
+                                        "updated_by": update_item.updated_by or "system",
                                         "ingested_at": func.now()
                                     }
-                                
-                                if update_item.source_name == "user" and cell_overwrites_to_upsert is not None:
+                                    
+                                # 중복키 충돌 병합이 발생했음을 가벼운 Overwrite 테이블에도 기록하여 그리드 성능 최적화 지원
+                                if cell_overwrites_to_upsert is not None:
                                     from sqlalchemy.sql import func
                                     ow_key = (table_name, row.row_id, col_name)
                                     cell_overwrites_to_upsert[ow_key] = {
@@ -674,12 +670,20 @@ def apply_row_update_internal(
                                         "row_id": row.row_id,
                                         "column_name": col_name,
                                         "is_overwrite": True,
-                                        "updated_by": update_item.updated_by or "user",
+                                        "updated_by": "collision_merge",
                                         "updated_at": func.now(),
-                                        "manual_priority_source": None
+                                        "manual_priority_source": "collision_merge"
                                     }
                                     if cell_overwrites_to_delete is not None:
                                         cell_overwrites_to_delete.discard(ow_key)
+                                    
+                                # AuditLog 기록
+                                create_audit_log(
+                                    db, table_name, row.row_id, col_name, old_val, new_val,
+                                    "collision_merge", (update_item.updated_by or "system"),
+                                    transaction_id=transaction_id, business_key=row.business_key_val,
+                                    add_to_cache=(logs_to_cache is None)
+                                )
 
                         # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
                         if cell_sources_to_upsert is not None:
@@ -715,10 +719,9 @@ def apply_row_update_internal(
 
                         # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
                         try:
-                            from sqlalchemy.orm import inspect
-                            state = inspect(row_to_delete)
-                            if state.persistent or state.pending:
-                                db.delete(row_to_delete)
+                            db.delete(row_to_delete)
+                            if deleted_row_ids is not None:
+                                deleted_row_ids.append(row_to_delete.row_id)
                         except Exception:
                             pass
                         if row_cache is not None:
@@ -832,6 +835,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         cell_sources_to_upsert = {}
         cell_overwrites_to_upsert = {}
         cell_overwrites_to_delete = set()
+        deleted_row_ids = []
         
         with db.no_autoflush:
             for item in batch.updates:
@@ -844,7 +848,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     logs_to_cache=logs_to_cache,
                     cell_sources_to_upsert=cell_sources_to_upsert,
                     cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                    cell_overwrites_to_delete=cell_overwrites_to_delete
+                    cell_overwrites_to_delete=cell_overwrites_to_delete,
+                    deleted_row_ids=deleted_row_ids
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
@@ -885,7 +890,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             audit_cache.add_logs_batch(logs_to_cache)
             
         results = list(unique_results.values())
-        return results, total_changed_cells, serialized_logs
+        return results, total_changed_cells, serialized_logs, deleted_row_ids
 
 def create_empty_row(db: Session, table_name: str):
     """신규 빈 행을 하나 생성합니다."""
@@ -1213,6 +1218,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     changed_rows = []
     tx_id = str(uuid6.uuid7())
     logs_to_cache = []
+    deleted_row_ids = []
     
     cell_overwrites_to_upsert = {}
     cell_overwrites_to_delete = set()
@@ -1275,6 +1281,118 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                 add_to_cache=False
             )
             logs_to_cache.append(log_dict)
+
+        # 복합 비즈니스 키 실시간 재계산 및 갱신 가드
+        table_info = TABLE_CONFIG.get(table_name, {})
+        composite_src = table_info.get("composite_key_source")
+        key_col = table_info.get("business_key")
+        composite_sep = table_info.get("composite_key_separator", "_")
+
+        if composite_src and key_col and col_name in composite_src:
+            vals = [clean_str_value(getattr(row, col, None)) for col in composite_src]
+            if all(v != "" for v in vals):
+                new_bk_val = composite_sep.join(vals)
+            else:
+                new_bk_val = None
+
+            current_bk = getattr(row, "business_key_val", None)
+            if current_bk != new_bk_val:
+                if new_bk_val is not None:
+                    # 중복 충돌 검사
+                    conflict_row = db.query(table_model).filter(
+                        table_model.business_key_val == new_bk_val,
+                        table_model.row_id != row.row_id
+                    ).first()
+                    
+                    if conflict_row:
+                        # [Silent Merge & Overwrite] 그냥 덮어씌우고 기존 껍데기 행은 삭제
+                        row_to_delete = row
+                        row = conflict_row
+                        
+                        # 1. 임시 행의 모든 실제 값을 충돌 행에 덮어쓰기 병합
+                        columns_to_merge = [c.name for c in table_model.__table__.columns]
+                        for c_name in columns_to_merge:
+                            if c_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
+                                continue
+                            new_v = getattr(row_to_delete, c_name, None)
+                            
+                            old_v = getattr(row, c_name, None)
+                            has_changed = False
+                            if new_v is not None:
+                                if old_v is None:
+                                    has_changed = True
+                                else:
+                                    has_changed = str(old_v).strip() != str(new_v).strip()
+                                    
+                            if has_changed:
+                                setattr(row, c_name, new_v)
+                                
+                                # cell_overwrites_to_upsert 에 충돌 병합 기록
+                                ow_key = (table_name, row.row_id, c_name)
+                                cell_overwrites_to_upsert[ow_key] = {
+                                    "table_name": table_name,
+                                    "row_id": row.row_id,
+                                    "column_name": c_name,
+                                    "is_overwrite": True,
+                                    "updated_by": "collision_merge",
+                                    "updated_at": datetime.now(),
+                                    "manual_priority_source": "collision_merge"
+                                }
+                                cell_overwrites_to_delete.discard(ow_key)
+                                
+                                # 원천 관리 DB에 "collision_merge" 소스로 영속 기록
+                                from database.models import CellSource
+                                db.query(CellSource).filter(
+                                    CellSource.table_name == table_name,
+                                    CellSource.row_id == row.row_id,
+                                    CellSource.column_name == c_name,
+                                    CellSource.source_name == "collision_merge"
+                                ).delete()
+                                
+                                new_src = CellSource(
+                                    table_name=table_name,
+                                    row_id=row.row_id,
+                                    column_name=c_name,
+                                    source_name="collision_merge",
+                                    value=clean_str_value(new_v),
+                                    updated_by=updated_by or "user"
+                                )
+                                db.add(new_src)
+                                
+                                # Audit Log 기록
+                                log_dict = create_audit_log(
+                                    db, table_name, row.row_id, c_name, old_v, new_v,
+                                    "collision_merge", updated_by,
+                                    transaction_id=tx_id, business_key=row.business_key_val,
+                                    add_to_cache=False
+                                )
+                                logs_to_cache.append(log_dict)
+                                
+                                if c_name not in changed_cols:
+                                    changed_cols.append(c_name)
+                                    
+                        # 2. 임시 껍데기 행 삭제
+                        try:
+                            db.delete(row_to_delete)
+                            deleted_row_ids.append(row_to_delete.row_id)
+                        except Exception:
+                            pass
+                            
+                        # 3. 변경 대상 변경사항 캐시 스위칭
+                        if row not in changed_rows:
+                            changed_rows.append(row)
+
+                row.business_key_val = new_bk_val
+                setattr(row, key_col, new_bk_val)
+                
+                # 감사 로그 생성
+                log_dict = create_audit_log(
+                    db, table_name, r_id, key_col, current_bk, new_bk_val,
+                    "set_priority_sync", updated_by,
+                    transaction_id=tx_id, business_key=new_bk_val,
+                    add_to_cache=False
+                )
+                logs_to_cache.append(log_dict)
             
         if row not in changed_rows:
             changed_rows.append(row)
@@ -1296,9 +1414,9 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             log_copy["timestamp"] = log_copy["timestamp"].isoformat()
         serialized_logs.append(log_copy)
         
-    return changed_rows, serialized_logs
+    return changed_rows, serialized_logs, deleted_row_ids
 
 def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user"):
     """수동 소스 우선순위(Pin)를 설정합니다."""
-    changed_rows, logs = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by)
-    return changed_rows[0] if changed_rows else None, [col_name] if logs else []
+    changed_rows, logs, deleted_row_ids = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by)
+    return changed_rows[0] if changed_rows else None, [col_name] if logs else [], deleted_row_ids

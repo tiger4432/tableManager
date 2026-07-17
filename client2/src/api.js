@@ -221,6 +221,7 @@ export async function handleCellEdit(event) {
   // 이전 상태 복구를 위해 저장
   const oldCell = data.data?.[colId];
   const oldIsOverwrite = oldCell ? oldCell.is_overwrite : false;
+  const oldPrioritySource = oldCell ? oldCell.priority_source : null;
 
   // --- 타입 검사 및 변환 추가 ---
   let finalValue = newValue;
@@ -240,6 +241,7 @@ export async function handleCellEdit(event) {
           ensureCellObject(latestData, colId);
           latestData.data[colId].value = oldValue;
           latestData.data[colId].is_overwrite = oldIsOverwrite;
+          latestData.data[colId].priority_source = oldPrioritySource;
         }
         state.gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
         elements.performanceLog.textContent = '❌ Invalid number format';
@@ -316,6 +318,7 @@ export async function handleCellEdit(event) {
       ensureCellObject(latestData, colId);
       latestData.data[colId].value = finalValue;
       latestData.data[colId].is_overwrite = true;
+      latestData.data[colId].priority_source = 'user';
 
       // Update updated_at timestamp locally to trigger sort update
       latestData.updated_at = getLocalTimeString();
@@ -348,6 +351,7 @@ export async function handleCellEdit(event) {
       ensureCellObject(latestData, colId);
       latestData.data[colId].value = oldValue;
       latestData.data[colId].is_overwrite = oldIsOverwrite;
+      latestData.data[colId].priority_source = oldPrioritySource;
     }
     state.gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
   }

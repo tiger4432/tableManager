@@ -160,7 +160,7 @@ def test_composite_business_key_draft_state(sqlite_db):
     )
     
     # execute batch updates (에러 없이 2개 행이 등록되어야 함)
-    results, changed_cells, logs = crud.apply_batch_updates(db, "bonding_map_test", batch_updates)
+    results, changed_cells, logs, _ = crud.apply_batch_updates(db, "bonding_map_test", batch_updates)
     
     dynamic_model = models.DYNAMIC_TABLES["bonding_map_test"]
     records = db.query(dynamic_model).all()
