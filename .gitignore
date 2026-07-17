@@ -46,3 +46,4 @@ server/config/*
 server/mappers/*
 !server/mappers/*.sample
 server/ingestion_workspace/
+server/database/virtual_graph.json
