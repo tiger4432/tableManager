@@ -650,12 +650,13 @@ def apply_row_update_internal(
                                 # 중복키 충돌 병합을 어드민 원천 관리 패널에서 추적 가능하도록 collision_merge 소스로 강제 적재
                                 if cell_sources_to_upsert is not None:
                                     from sqlalchemy.sql import func
-                                    src_key = (table_name, row.row_id, col_name, "collision_merge")
+                                    effective_src_name = update_item.source_name or "user"
+                                    src_key = (table_name, row.row_id, col_name, effective_src_name)
                                     cell_sources_to_upsert[src_key] = {
                                         "table_name": table_name,
                                         "row_id": row.row_id,
                                         "column_name": col_name,
-                                        "source_name": "collision_merge",
+                                        "source_name": effective_src_name,
                                         "value": clean_str_value(new_val),
                                         "updated_by": update_item.updated_by or "system",
                                         "ingested_at": func.now()
@@ -1341,19 +1342,21 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 cell_overwrites_to_delete.discard(ow_key)
                                 
                                 # 원천 관리 DB에 "collision_merge" 소스로 영속 기록
+                                # 원천 관리 DB에 진짜 지정했던 소스로 영속 기록
                                 from database.models import CellSource
+                                effective_src_name = source_name or "user"
                                 db.query(CellSource).filter(
                                     CellSource.table_name == table_name,
                                     CellSource.row_id == row.row_id,
                                     CellSource.column_name == c_name,
-                                    CellSource.source_name == "collision_merge"
+                                    CellSource.source_name == effective_src_name
                                 ).delete()
                                 
                                 new_src = CellSource(
                                     table_name=table_name,
                                     row_id=row.row_id,
                                     column_name=c_name,
-                                    source_name="collision_merge",
+                                    source_name=effective_src_name,
                                     value=clean_str_value(new_v),
                                     updated_by=updated_by or "user"
                                 )
