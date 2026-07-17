@@ -21,7 +21,7 @@ export function updateSelectedCellUI() {
     return;
   }
 
-  const isSystem = ['created_at', 'updated_at', 'row_id'].includes(state.selectedCell.colId);
+  const isSystem = ['created_at', 'updated_at', 'row_id', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(state.selectedCell.colId);
   elements.selectedCellInfo.innerHTML = `
     <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${state.selectedCell.rowId}</span></div>
     <div><strong>Column:</strong> <span style="color:var(--color-primary)">${state.selectedCell.colId.toUpperCase()}</span></div>
@@ -128,7 +128,7 @@ export async function applyValueToSelectedRange(newValue) {
 
   cellsToUpdate.forEach(cell => {
     const { rowIndex, colId } = cell;
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
     if (isSystem) return;
 
     const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);

@@ -398,7 +398,7 @@ def apply_row_update_internal(
     deleted_row_ids: list = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
-    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
+    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
     
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
@@ -812,6 +812,11 @@ def apply_row_update_internal(
     if changed_cols or is_new:
         from sqlalchemy.sql import func
         row.updated_at = func.now()
+        row.is_graph_synced = False
+        if is_new:
+            row.needs_graph_rollback = False
+        else:
+            row.needs_graph_rollback = row.needs_graph_rollback or check_needs_rollback(table_name, changed_cols)
 
     return row, is_new, changed_cols
 
@@ -1508,6 +1513,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         if row not in changed_rows:
             changed_rows.append(row)
             
+    for r in changed_rows:
+        r.is_graph_synced = False
+        r.needs_graph_rollback = True
+            
     # 3. 벌크 갱신 및 삭제 수행
     bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
     bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
@@ -1531,3 +1540,39 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
     """수동 소스 우선순위(Pin)를 설정합니다."""
     changed_rows, logs, deleted_row_ids = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by)
     return changed_rows[0] if changed_rows else None, [col_name] if logs else [], deleted_row_ids
+
+
+# ----------------- 그래프 싱크 메타 관리 헬퍼 -----------------
+_ontology_cache = None
+
+def get_ontology_mapping():
+    global _ontology_cache
+    if _ontology_cache is not None:
+        return _ontology_cache
+        
+    import os, json
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    ont_path = os.path.join(curr_dir, "..", "config", "ontology_mapping.json")
+    if os.path.exists(ont_path):
+        try:
+            with open(ont_path, "r", encoding="utf-8") as f:
+                _ontology_cache = json.load(f)
+                return _ontology_cache
+        except Exception:
+            pass
+    _ontology_cache = {}
+    return _ontology_cache
+
+def check_needs_rollback(table_name: str, modified_cols: list) -> bool:
+    """변경된 컬럼 중 그래프 DB 관계(Relationship) 형성에 영향을 주는 컬럼이 있는지 판별합니다."""
+    if not modified_cols:
+        return False
+    ontology = get_ontology_mapping()
+    table_cfg = ontology.get("tables", {}).get(table_name, ontology.get("default", {}))
+    rel_cfgs = table_cfg.get("relationships", {})
+    
+    for col in modified_cols:
+        if col in rel_cfgs:
+            return True
+    return False
+

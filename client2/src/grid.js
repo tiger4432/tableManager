@@ -111,7 +111,7 @@ export function ensureCellObject(dataObj, colId) {
 // Helper to build column definitions dynamically based on schema
 export function buildColumnDefs() {
   const columnDefs = state.currentColumns.map((col, index) => {
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(col);
     const colTypes = state.currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
 
@@ -144,6 +144,14 @@ export function buildColumnDefs() {
           val = cell.value !== undefined ? cell.value : '';
         } else {
           val = cell !== undefined ? cell : '';
+        }
+
+        // 그래프 동기화 컬럼 가시성 향상 이모지 매핑
+        if (col === 'is_graph_synced') {
+          return (val === true || String(val).toLowerCase() === 'true') ? '🟢 Synced' : '🔴 Pending';
+        }
+        if (col === 'needs_graph_rollback') {
+          return (val === true || String(val).toLowerCase() === 'true') ? '⚠️ Rollback' : '➖';
         }
 
         if (colType === 'number' && val !== '' && val !== null && val !== undefined) {

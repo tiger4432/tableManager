@@ -198,10 +198,10 @@ async def startup_event():
         global_watcher.start(blocking=False)
         logger.info(f"Directory Watcher started with {global_watcher.watch_count} watches.")
         
-        # Start Graph DB Sync Worker
-        from graph_sync_worker import start_graph_sync_worker
-        main_loop.create_task(start_graph_sync_worker(SessionLocal))
-        logger.info("Graph DB Sync Worker background task spawned.")
+        # Start Graph DB Sync Worker (Disabled for manual sync mode)
+        # from graph_sync_worker import start_graph_sync_worker
+        # main_loop.create_task(start_graph_sync_worker(SessionLocal))
+        # logger.info("Graph DB Sync Worker background task spawned.")
         
         # Start Chained Ingestion Worker
         from chain_ingestion_worker import start_chain_ingestion_worker
@@ -341,7 +341,7 @@ def inject_system_columns(row):
         
     cfg = crud.TABLE_CONFIG.get(table_name, {}) if table_name else {}
     col_types = cfg.get("column_types", {})
-    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]]
 
     # 2. data 속성 동적 바인딩 및 기존 바인딩 시 정합성 동기화
     if not hasattr(row, "data") or row.data is None:
@@ -382,6 +382,34 @@ def inject_system_columns(row):
     else:
         # 데이터가 이미 있더라도 DB의 실제 값이 더 최신이므로 동기화
         row.data["updated_at"]["value"] = to_local_str(effective_update)
+        
+    # 5. is_graph_synced 주입
+    is_sync_val = getattr(row, "is_graph_synced", False)
+    if is_sync_val is None:
+        is_sync_val = False
+    row.data["is_graph_synced"] = {
+        "value": is_sync_val,
+        "is_overwrite": False,
+        "updated_by": "system"
+    }
+
+    # 6. needs_graph_rollback 주입
+    needs_roll_val = getattr(row, "needs_graph_rollback", False)
+    if needs_roll_val is None:
+        needs_roll_val = False
+    row.data["needs_graph_rollback"] = {
+        "value": needs_roll_val,
+        "is_overwrite": False,
+        "updated_by": "system"
+    }
+
+    # 7. graph_synced_at 주입
+    synced_at_val = getattr(row, "graph_synced_at", None)
+    row.data["graph_synced_at"] = {
+        "value": to_local_str(synced_at_val) if synced_at_val else "미동기화",
+        "is_overwrite": False,
+        "updated_by": "system"
+    }
 
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
@@ -475,6 +503,22 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
                 
         r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        
+        # 그래프 동기화 컬럼 3종 주입
+        is_sync_val = getattr(row, "is_graph_synced", False)
+        if is_sync_val is None:
+            is_sync_val = False
+            
+        needs_roll_val = getattr(row, "needs_graph_rollback", False)
+        if needs_roll_val is None:
+            needs_roll_val = False
+            
+        synced_at_val = getattr(row, "graph_synced_at", None)
+        synced_at_str = to_local_str(synced_at_val) if synced_at_val else "미동기화"
+        
+        r_data["is_graph_synced"] = {"value": is_sync_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        r_data["needs_graph_rollback"] = {"value": needs_roll_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
+        r_data["graph_synced_at"] = {"value": synced_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         
         # dynamic data attribute 바인딩
         row.data = r_data
@@ -1380,20 +1424,25 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         # 데이터에서 동적 추출 (Fallback)
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if table_model:
-            columns = [c.name for c in table_model.__table__.columns if c.name not in ["row_id", "business_key_val", "created_at", "updated_at"]]
+            columns = [c.name for c in table_model.__table__.columns if c.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]]
         else:
             columns = []
             
     # [버그 수정] display_columns 정의 여부와 관계없이 시스템 컬럼은 항상 마지막에 보장
-    system_cols = ["created_at", "updated_at"]
+    system_cols = ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)
             
+    col_types = dict(config.get("column_types", {}))
+    col_types["is_graph_synced"] = "boolean"
+    col_types["needs_graph_rollback"] = "boolean"
+    col_types["graph_synced_at"] = "datetime"
+            
     return {
         "table_name": table_name,
         "columns": columns,
-        "column_types": config.get("column_types", {}),
+        "column_types": col_types,
         "business_key": config.get("business_key", ""),
         "composite_key_source": config.get("composite_key_source", [])
     }
@@ -1623,6 +1672,63 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
         "deleted_row_ids": deleted_row_ids,
         "created_logs": created_logs
     }
+
+
+
+
+from pydantic import BaseModel
+
+class GraphSyncRequest(BaseModel):
+    table_name: str
+    row_ids: Optional[list[str]] = None
+
+@app.post("/api/graph/sync")
+async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session = Depends(get_db)):
+    """관리자 수동 트리거 그래프 DB 동기화 API (상시 가동 GraphSync 서버 호출 위임)"""
+    import httpx
+    
+    table_name = req.table_name if req else "all"
+    row_ids = req.row_ids if req and req.row_ids else []
+    
+    port = int(os.getenv("GRAPH_SYNC_PORT", "8090"))
+    url = f"http://127.0.0.1:{port}/sync"
+    
+    logger.info(f"[GraphSync Routing] Forwarding sync request to worker service at {url}")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                url,
+                json={"table_name": table_name, "row_ids": row_ids},
+                timeout=120.0
+            )
+            if res.status_code == 200:
+                resp_data = res.json()
+                if resp_data.get("status") == "accepted":
+                    return {
+                        "status": "success",
+                        "mode": "accepted",
+                        "synced_count": len(row_ids) if row_ids else 0,
+                        "deleted_count": 0,
+                        "message": resp_data.get("message", "")
+                    }
+                return resp_data
+            else:
+                try:
+                    err_detail = res.json().get("detail", "알 수 없는 오류")
+                except Exception:
+                    err_detail = res.text
+                logger.error(f"[GraphSync Routing] Sync worker failed: {res.status_code} - {err_detail}")
+                raise HTTPException(status_code=res.status_code, detail=f"그래프 동기화 서버 에러: {err_detail}")
+        except httpx.RequestError as e:
+            logger.error(f"[GraphSync Routing] Failed to connect to sync worker service: {e}")
+            raise HTTPException(
+                status_code=503, 
+                detail="그래프 동기화 서비스가 가동 중이 아닙니다. graph_sync_worker.py 가 실행되어 있는지 확인하세요."
+            )
+
+
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

@@ -15,6 +15,7 @@ class ColoredProcessFormatter(logging.Formatter):
     YELLOW = "\033[93m"
     CYAN = "\033[96m"
     MAGENTA = "\033[95m"
+    BLUE = "\033[94m" # GraphSync 전용 파란색 추가
     ORANGE = "\033[33m" # Bold Yellow/Orange
 
     # 프로세스별 기본 시그니처 색상 테이블
@@ -23,7 +24,7 @@ class ColoredProcessFormatter(logging.Formatter):
         "WATCHER": CYAN,
         "CHAIN": MAGENTA,
         "SCHEDULER": YELLOW,
-        "GRAPHSYNC": CYAN
+        "GRAPHSYNC": BLUE
     }
 
     def __init__(self, fmt=None, datefmt=None, process_name="SYSTEM"):

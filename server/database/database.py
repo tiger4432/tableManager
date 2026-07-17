@@ -40,6 +40,7 @@ def get_db():
 @event.listens_for(Session, "before_flush")
 def auto_stage_database_outbox(session, flush_context, instances):
     from .models import DataRow, DYNAMIC_TABLES
+    from sqlalchemy import inspect
     dynamic_classes = tuple(DYNAMIC_TABLES.values())
     
     for obj in session.new:
@@ -49,10 +50,24 @@ def auto_stage_database_outbox(session, flush_context, instances):
             stage_event(session, "CREATE", obj.__table__.name, obj)
             
     for obj in session.dirty:
-        if isinstance(obj, DataRow):
-            stage_event(session, "EDIT", obj.table_name, obj)
-        elif dynamic_classes and isinstance(obj, dynamic_classes):
-            stage_event(session, "EDIT", obj.__table__.name, obj)
+        is_row = isinstance(obj, DataRow)
+        is_dyn = dynamic_classes and isinstance(obj, dynamic_classes)
+        if is_row or is_dyn:
+            # 변경된 속성 컬럼 목록 검출
+            try:
+                insp = inspect(obj)
+                dirty_cols = [attr.key for attr in insp.attrs if attr.history.has_changes()]
+            except Exception:
+                dirty_cols = []
+                
+            # 변경 항목이 오직 그래프 동기화 메타 컬럼(is_graph_synced 등)뿐이면 Outbox 발행 생략
+            if dirty_cols:
+                graph_meta_cols = {"is_graph_synced", "needs_graph_rollback", "graph_synced_at"}
+                if all(col in graph_meta_cols for col in dirty_cols):
+                    continue
+            
+            t_name = obj.table_name if is_row else obj.__table__.name
+            stage_event(session, "EDIT", t_name, obj)
             
     for obj in session.deleted:
         if isinstance(obj, DataRow):
@@ -72,7 +87,7 @@ def stage_event(session, event_type, table_name, data_row):
     data_dict = {}
     if hasattr(data_row, "__table__"):
         for col in data_row.__table__.columns:
-            if col.name not in ["row_id", "business_key_val", "created_at", "updated_at"]:
+            if col.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
                 val = getattr(data_row, col.name, None)
                 data_dict[col.name] = {
                     "value": val,

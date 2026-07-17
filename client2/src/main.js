@@ -95,6 +95,50 @@ async function init() {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  // admin 계정 접속 시 그래프 동기화 버튼 활성화 및 클릭 연동
+  const urlParams = new URLSearchParams(window.location.search);
+  const isAdmin = CURRENT_USER.toLowerCase() === 'admin' || 
+                  window.location.pathname.includes('admin') || 
+                  urlParams.get('user') === 'admin' ||
+                  localStorage.getItem('isAdmin') === 'true';
+  if (isAdmin && elements.graphSyncBtn) {
+    elements.graphSyncBtn.style.display = 'inline-block';
+    elements.graphSyncBtn.addEventListener('click', async () => {
+      if (!state.gridApi) return;
+      const selectedRows = state.gridApi.getSelectedRows();
+      if (selectedRows.length === 0) {
+        showToast("동기화할 행을 선택해주세요.", 'warning');
+        return;
+      }
+      
+      const rowIds = selectedRows.map(r => r.row_id);
+      const confirmSync = confirm(`선택한 ${rowIds.length}개 행을 그래프 DB와 동기화하시겠습니까?`);
+      if (!confirmSync) return;
+      
+      showToast("그래프 DB 동기화 요청 중...", 'info');
+      try {
+        const res = await fetch(`${API_BASE}/api/graph/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_name: state.currentTable,
+            row_ids: rowIds
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showToast(`동기화 완료! (모드: ${data.mode}, 성공: ${data.synced_count}건, 삭제: ${data.deleted_count || 0}건)`, 'success');
+          await fetchData(false);
+        } else {
+          showToast(`동기화 실패: ${data.detail || '알 수 없는 오류'}`, 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("네트워크 오류로 그래프 동기화에 실패했습니다.", 'error');
+      }
+    });
+  }
+
   // Global mouseup guard to release range drag selection state securely
   document.addEventListener('mouseup', () => {
     if (state.isDraggingRange) {
@@ -947,7 +991,7 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
 
   if (state.dragStartCell && state.dragEndCell) {
     const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];

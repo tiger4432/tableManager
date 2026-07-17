@@ -12,7 +12,6 @@ logger = get_process_logger("GraphSync", "graph_sync.log")
 
 from database.database import SessionLocal, engine
 from database import models
-from graph_sync_worker import start_graph_sync_worker
 
 # Initialize dynamic database models
 try:
@@ -30,29 +29,18 @@ except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {e}")
 
 async def main():
-    logger.info("=" * 60)
-    logger.info(" Starting Standalone Graph DB Sync Worker Process...")
-    logger.info("=" * 60)
+    import uvicorn
+    import os
+    port = int(os.getenv("GRAPH_SYNC_PORT", "8090"))
+    logger.info(f"Starting decoupled GraphSync HTTP service on port {port}...")
     
-    # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작 (데몬이므로 engine=None 전달)
-    config_watcher = None
+    def start_server():
+        uvicorn.run("graph_sync_worker:app", host="127.0.0.1", port=port, log_level="info")
+        
     try:
-        from database.config_watcher import start_config_watcher
-        config_watcher = start_config_watcher(None)
+        await asyncio.to_thread(start_server)
     except Exception as e:
-        logger.error(f"Failed to start config watcher: {e}")
-    
-    try:
-        await start_graph_sync_worker(SessionLocal)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received.")
-    except Exception as e:
-        logger.error(f"Exception occurred: {e}")
-    finally:
-        if config_watcher:
-            config_watcher.stop()
-            config_watcher.join()
-        logger.info("Process stopped.")
+        logger.error(f"GraphSync worker HTTP service execution failed: {e}")
 
 if __name__ == "__main__":
     try:

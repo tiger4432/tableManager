@@ -344,7 +344,7 @@ export function setupClipboardHandlers() {
 
         targetCells.forEach(cell => {
           const { rowIndex, colId } = cell;
-          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
           if (isSystem) return;
 
           const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
@@ -424,7 +424,7 @@ export function setupClipboardHandlers() {
             if (targetColIndex >= visibleCols.length) return;
 
             const colId = visibleCols[targetColIndex];
-            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
             if (isSystem) return;
 
             if (!updateMapByRow[rowId]) {
@@ -648,7 +648,7 @@ export async function clearSelectedCells() {
 
   if (cellsToClear.length === 0) return;
 
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
   const updateMapByRow = {};
 
   cellsToClear.forEach(cell => {

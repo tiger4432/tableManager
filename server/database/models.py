@@ -140,7 +140,7 @@ def init_dynamic_models(config_dict: dict):
     Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
     이미 로드된 테이블에 새 컬럼이 추가된 경우, 런타임에 동적으로 매핑에 결합(Hot-swap)합니다.
     """
-    from sqlalchemy import Table, Column, String, DateTime, Float, Index
+    from sqlalchemy import Table, Column, String, DateTime, Float, Index, Boolean
     from sqlalchemy.sql import func
     from sqlalchemy.orm import class_mapper
     
@@ -154,7 +154,7 @@ def init_dynamic_models(config_dict: dict):
             mapper = class_mapper(dynamic_class)
             
             for col_name, type_str in col_types.items():
-                if col_name in ["created_at", "updated_at"]:
+                if col_name in ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
                     continue
                 if col_name not in table_obj.columns:
                     if type_str == "number":
@@ -175,12 +175,15 @@ def init_dynamic_models(config_dict: dict):
             Column("business_key_val", String, index=True, nullable=True),
             Column("created_at", DateTime(timezone=True), server_default=func.now(), index=True),
             Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),
+            Column("is_graph_synced", Boolean, default=False, nullable=True, index=True),
+            Column("needs_graph_rollback", Boolean, default=False, nullable=True, index=True),
+            Column("graph_synced_at", DateTime(timezone=True), nullable=True),
         ]
         
         # 2. table_config에 정의된 사용자 컬럼들을 native 타입으로 바인딩
         col_types = table_cfg.get("column_types", {})
         for col_name, type_str in col_types.items():
-            if col_name in ["created_at", "updated_at"]:
+            if col_name in ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
                 continue
             if type_str == "number":
                 sql_type = Float
@@ -223,29 +226,30 @@ def sync_dynamic_tables_schema(engine):
     DYNAMIC_TABLES의 정의와 실제 DB 물리 테이블의 스키마를 비교하여,
     설정에는 존재하지만 DB에는 없는 컬럼들을 ALTER TABLE DDL을 통해 자동으로 추가합니다.
     """
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
     from sqlalchemy.schema import CreateColumn
     
     inspector = inspect(engine)
     dialect = engine.dialect
     
-    with engine.begin() as conn:
-        for table_name, model_class in DYNAMIC_TABLES.items():
-            if not inspector.has_table(table_name):
-                continue
-                
-            db_cols = {c["name"].lower() for c in inspector.get_columns(table_name)}
-            table_obj = model_class.__table__
+    for table_name, model_class in DYNAMIC_TABLES.items():
+        if not inspector.has_table(table_name):
+            continue
             
-            for column in table_obj.columns:
-                col_name = column.name
-                if col_name.lower() not in db_cols:
-                    col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
-                    alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_ddl}"
-                    print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
-                    try:
-                        from sqlalchemy import text
+        db_cols = {c["name"].lower() for c in inspector.get_columns(table_name)}
+        table_obj = model_class.__table__
+        
+        for column in table_obj.columns:
+            col_name = column.name
+            if col_name.lower() not in db_cols:
+                col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
+                alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_ddl}"
+                print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
+                
+                # 각 컬럼 추가 DDL을 개별 독립 트랜잭션으로 격리하여, 한 곳의 실패가 전체 세션을 오염시키는 문제를 영구 방지
+                try:
+                    with engine.begin() as conn:
                         conn.execute(text(alter_query))
-                        print(f"[Schema Sync] Successfully added column '{col_name}' to table '{table_name}'.")
-                    except Exception as err:
-                        print(f"[Schema Sync] Failed to add column '{col_name}' to table '{table_name}': {err}")
+                    print(f"[Schema Sync] Successfully added column '{col_name}' to table '{table_name}'.")
+                except Exception as err:
+                    print(f"[Schema Sync] Failed to add column '{col_name}' to table '{table_name}': {err}")

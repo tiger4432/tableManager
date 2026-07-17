@@ -54,7 +54,7 @@ async def post_event_async(endpoint: str, payload: dict):
     url = f"{API_BASE_URL}{endpoint}"
     def do_post():
         try:
-            res = requests.post(url, json=payload, timeout=5)
+            res = requests.post(url, json=payload, timeout=20)
             if not res.ok:
                 logger.error(f"[Chain Worker] API notification failed: {url} -> {res.status_code}")
         except Exception as e:
