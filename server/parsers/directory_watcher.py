@@ -452,7 +452,7 @@ class IngestionHandler(FileSystemEventHandler):
                         transaction_id=file_tx_id,
                         silent=True
                     )
-                    results, changed_cells, created_logs = crud.apply_batch_updates(db, t_name, batch_obj)
+                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
                     total_changed += len(changed_cells)
                     if created_logs:
                         all_created_logs.extend(created_logs)
