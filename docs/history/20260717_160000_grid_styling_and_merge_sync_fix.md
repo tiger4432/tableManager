@@ -30,6 +30,8 @@
 ### E. 테스트 코드 언패킹 불일치 해결
 * `apply_batch_updates` 리턴 시 `deleted_row_ids`를 추가 4분할 반환함에 따라, `test_composite_business_key.py` 내의 언패킹 구조를 갱신하고 `pytest` 29건이 모두 정상 작동하도록 조치했습니다.
 
-### F. 충돌 병합 시 진짜 데이터 원천 소스명 보존
-* 기존 병합 시점에 `CellSource` 의 `source_name` 을 일괄 `"collision_merge"` 로 하드코딩 교체하던 방식을 탈피하여, 원래 껍데기 행이 가지고 있던 진짜 유입 원천 소스 명칭(예: `pipeline_parser`)을 그대로 보존해 적재하도록 개선했습니다.
-* 충돌 및 덮어쓰기 이력 자체는 `CellOverwrite.updated_by = "collision_merge"` 를 통해 정밀 보존 및 이중 추적(빨간색 스타일 렌더링 포함)을 지원합니다.
+### F. 충돌 병합 시 진짜 데이터 원천 소스명 보존 및 껍데기 소스 계승
+* 기존 병합 시점에 `CellSource` 의 `source_name` 을 일괄 `"collision_merge"` 로 하드코딩 교체하던 방식을 완전히 탈피했습니다.
+* 이제 복합 비즈니스 키 중복 충돌로 병합(Silent Merge)이 일어날 때, **`_load_metadata_row_cell` 헬퍼 함수를 통해 삭제되는 껍데기 행이 해당 셀에 원래 가지고 있던 오리지널 데이터 원천 소스명(예: `file.txt`)을 추적하여 그대로 물려받아(계승)** `CellSource` 에 이식 적재하도록 고도화했습니다.
+* 충돌 및 덮어쓰기 이력 자체는 `CellOverwrite.updated_by = "collision_merge"` 와 `manual_priority_source = "collision_merge"` 를 통해 `CellOverwrite` 에 정밀 보존하여, 화면의 붉은색 스타일 및 이중 추적 정합성을 완벽하게 만족시킵니다.
+
