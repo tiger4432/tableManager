@@ -627,6 +627,24 @@ def apply_row_update_internal(
                             if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
                                 continue
                             
+                            is_explicitly_edited = (col_name in update_item.updates)
+                            
+                            # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 수정하는 셀이 아니면 기존 값 보존
+                            old_ow = overwrites_cache.get((row.row_id, col_name)) if overwrites_cache else None
+                            if not old_ow:
+                                old_ow = db.query(models.CellOverwrite).filter(
+                                    models.CellOverwrite.table_name == table_name,
+                                    models.CellOverwrite.row_id == row.row_id,
+                                    models.CellOverwrite.column_name == col_name
+                                ).first()
+                                
+                            is_old_user_overwritten = False
+                            if old_ow:
+                                is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
+                                
+                            if is_old_user_overwritten and not is_explicitly_edited:
+                                continue
+
                             new_val = getattr(row_to_delete, col_name, None)
                             
                             # update_item.updates에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
@@ -1329,6 +1347,25 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                         for c_name in columns_to_merge:
                             if c_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
                                 continue
+                            
+                            is_explicitly_edited = any(u["column_name"] == c_name for u in updates)
+                            
+                            # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 핀 고정 수정하는 셀이 아니면 기존 값 보존
+                            old_ow = overwrites_cache.get((row.row_id, c_name)) if overwrites_cache else None
+                            if not old_ow:
+                                old_ow = db.query(models.CellOverwrite).filter(
+                                    models.CellOverwrite.table_name == table_name,
+                                    models.CellOverwrite.row_id == row.row_id,
+                                    models.CellOverwrite.column_name == c_name
+                                ).first()
+                                
+                            is_old_user_overwritten = False
+                            if old_ow:
+                                is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
+                                
+                            if is_old_user_overwritten and not is_explicitly_edited:
+                                continue
+
                             new_v = getattr(row_to_delete, c_name, None)
                             
                             old_v = getattr(row, c_name, None)
