@@ -705,7 +705,8 @@ def apply_row_update_internal(
                                     for s_name, s_val, s_by in src_list:
                                         effective_src_name = s_name
                                         if effective_src_name in existing_names:
-                                            suffix = f" ({row_to_delete.business_key_val})" if getattr(row_to_delete, "business_key_val", None) else " (merged)"
+                                            r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                            suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
                                             effective_src_name = f"{effective_src_name}{suffix}"
                                             
                                         src_key = (table_name, row.row_id, col_name, effective_src_name)
@@ -1452,7 +1453,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 for s_name, s_val, s_by in src_list:
                                     effective_src_name = s_name
                                     if effective_src_name in existing_names:
-                                        suffix = f" ({row_to_delete.business_key_val})" if getattr(row_to_delete, "business_key_val", None) else " (merged)"
+                                        r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                        suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
                                         effective_src_name = f"{effective_src_name}{suffix}"
 
                                     db.query(CellSource).filter(
