@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.min.js"></script>
   <style>
     /* Admin Specific Overrides built on top of outfit/fira fonts */
     :root {
@@ -442,6 +443,69 @@
       border-color: var(--color-primary);
       color: var(--color-primary);
     }
+
+    /* Code Editor Tree styles */
+    .tree-folder {
+      margin-bottom: 8px;
+    }
+    .tree-folder-title {
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-primary);
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .tree-subfolder {
+      margin-left: 12px;
+      margin-top: 4px;
+      border-left: 1px dashed rgba(255, 255, 255, 0.1);
+      padding-left: 8px;
+    }
+    .tree-subfolder-title {
+      font-weight: 500;
+      font-size: 0.8rem;
+      color: var(--text-color);
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tree-file-list {
+      margin-left: 12px;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 4px;
+    }
+    .tree-file-item {
+      font-size: 0.85rem;
+      font-family: var(--font-primary);
+      color: var(--text-muted);
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .tree-file-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-color);
+    }
+    .tree-file-item.active {
+      background: rgba(137, 180, 250, 0.12);
+      color: var(--color-primary);
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -471,6 +535,7 @@
           <button id="tab-chain-btn" class="tab-btn">Chain Rules</button>
           <button id="tab-mapper-btn" class="tab-btn">Mappers</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Updates</button>
+          <button id="tab-editor-btn" class="tab-btn">📝 Code Editor</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <select id="status-filter" class="glass-select" style="display: none; height: 32px; padding: 0 10px; font-size: 0.8rem;">
@@ -617,6 +682,13 @@
             <div class="empty-text">No active auto-update configurations found.</div>
           </div>
         </div>
+        
+        <!-- Editor File Tree Wrapper -->
+        <div id="editor-tree-wrapper" style="flex: 1; overflow: auto; display: none; padding: 15px 20px;">
+          <div id="editor-tree-container">
+            <!-- 트리 구조가 여기에 동적으로 들어감 -->
+          </div>
+        </div>
       </div>
 
       <!-- Left Panel Footer: Pagination Controls -->
@@ -667,6 +739,19 @@
             </div>
             <div class="detail-block-body">
               <pre id="payload-viewer" style="color: #a6e3a1;"></pre>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Code Editor Content Wrapper -->
+        <div id="editor-content-wrapper" class="detail-section" style="display: none; height: 100%;">
+          <div class="detail-block" style="flex: 1; max-height: none;">
+            <div class="detail-block-header">
+              <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: 0.85rem;">Select a script file</span>
+              <button id="save-code-btn" class="glass-btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem; display: none;">💾 Save Code</button>
+            </div>
+            <div class="detail-block-body" style="padding: 0; overflow: hidden; position: relative; height: 100%;">
+              <div id="monaco-editor-container" style="width: 100%; height: 100%; min-height: 450px;"></div>
             </div>
           </div>
         </div>

@@ -2518,6 +2518,177 @@ async def internal_event_file_processed(
     await manager.broadcast(json.dumps(msg))
     return {"status": "ok"}
 
+# --- Admin Code Editor APIs ---
+@app.get("/admin/scripts/list")
+def list_admin_scripts():
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    mappers_dir = os.path.join(script_dir, "mappers")
+    workspace_dir = os.path.join(script_dir, "ingestion_workspace")
+    
+    mappers = []
+    if os.path.exists(mappers_dir):
+        for name in os.listdir(mappers_dir):
+            if name.endswith(".py") and name not in ["base.py", "utils.py", "__init__.py"]:
+                mappers.append({
+                    "filename": name,
+                    "path": f"mappers/{name}",
+                    "type": "mapper"
+                })
+                
+    ingestions = []
+    auto_updates = []
+    
+    if os.path.exists(workspace_dir):
+        for table in os.listdir(workspace_dir):
+            table_path = os.path.join(workspace_dir, table)
+            if not os.path.isdir(table_path):
+                continue
+                
+            # Ingestion scripts
+            scripts_dir = os.path.join(table_path, "scripts")
+            if os.path.exists(scripts_dir):
+                for name in os.listdir(scripts_dir):
+                    if name.endswith(".py"):
+                        ingestions.append({
+                            "table_name": table,
+                            "filename": name,
+                            "path": f"ingestion_workspace/{table}/scripts/{name}",
+                            "type": "ingestion"
+                        })
+                        
+            # Auto-update scripts
+            auto_update_dir = os.path.join(table_path, "auto_update")
+            if os.path.exists(auto_update_dir):
+                for name in os.listdir(auto_update_dir):
+                    if name.endswith(".py"):
+                        auto_updates.append({
+                            "table_name": table,
+                            "filename": name,
+                            "path": f"ingestion_workspace/{table}/auto_update/{name}",
+                            "type": "auto_update"
+                        })
+                        
+    return {
+        "status": "success",
+        "data": {
+            "mappers": mappers,
+            "ingestions": ingestions,
+            "auto_updates": auto_updates
+        }
+    }
+
+@app.get("/admin/scripts/code")
+def get_admin_script_code(path: str):
+    import os
+    
+    # Path Traversal & Prefix whitelist check
+    clean_path = os.path.normpath(path).replace("\\", "/")
+    if clean_path.startswith("../") or "/../" in clean_path or clean_path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid directory traversal detected")
+        
+    allowed = False
+    for prefix in ["mappers/", "ingestion_workspace/"]:
+        if clean_path.startswith(prefix):
+            allowed = True
+            break
+            
+    if not allowed:
+        raise HTTPException(status_code=400, detail="Access denied to this path prefix")
+        
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.abspath(os.path.join(script_dir, clean_path))
+    
+    if not full_path.startswith(script_dir):
+        raise HTTPException(status_code=400, detail="Invalid path traversal outside project")
+        
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            code = f.read()
+        return {
+            "status": "success",
+            "path": clean_path,
+            "code": code
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+
+@app.post("/admin/scripts/code")
+async def save_admin_script_code(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    import os
+    import json
+    import uuid
+    from datetime import datetime
+    from sqlalchemy import text
+    
+    path = payload.get("path")
+    code = payload.get("code")
+    
+    if not path or code is None:
+        raise HTTPException(status_code=400, detail="Path and code are required")
+        
+    clean_path = os.path.normpath(path).replace("\\", "/")
+    if clean_path.startswith("../") or "/../" in clean_path or clean_path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid directory traversal detected")
+        
+    allowed = False
+    for prefix in ["mappers/", "ingestion_workspace/"]:
+        if clean_path.startswith(prefix):
+            allowed = True
+            break
+            
+    if not allowed:
+        raise HTTPException(status_code=400, detail="Access denied to this path prefix")
+        
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.abspath(os.path.join(script_dir, clean_path))
+    
+    if not full_path.startswith(script_dir):
+        raise HTTPException(status_code=400, detail="Invalid path traversal outside project")
+        
+    # Auto-create directories if missing
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    
+    try:
+        with open(full_path, "w", encoding="utf-8", newline="") as f:
+            f.write(code)
+            
+        # Trigger System Reload
+        reload_payload = {
+            "trigger": "code_editor",
+            "modified_file": clean_path,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        reload_event = models.DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            table_name="system",
+            event_type="SYSTEM_RELOAD",
+            payload=json.dumps(reload_payload),
+            status="PENDING"
+        )
+        db.add(reload_event)
+        db.commit()
+        
+        try:
+            db.execute(text("NOTIFY outbox_event;"))
+        except:
+            pass
+            
+        return {
+            "status": "success",
+            "message": f"Successfully saved file: {clean_path} and triggered system reload."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
 # --- Static File Serving & SPA Fallback for client2 ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "dist"))

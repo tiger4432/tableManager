@@ -20,6 +20,7 @@
 새로운 파일 포맷을 처리하려면 `scripts/` 폴더에 파이썬 파일을 생성하고 `BasePipelineParser`를 상속받는 클래스를 정의하면 됩니다. (파일명은 자유로우며 하나의 파일에 여러 파서 클래스를 두어도 무방합니다.)
 
 ### 2.1 폴더 구조 예시
+
 ```text
 server/ingestion_workspace/my_table/
 ├── archives/       # 처리 완료된 원본 파일 보관소
@@ -29,6 +30,7 @@ server/ingestion_workspace/my_table/
 ```
 
 ### 2.2 파이프라인 클래스 작성 템플릿
+
 다음은 `my_custom_parser.py`의 기본 작성 예시입니다. `match`와 `process_dataframe` 두 개의 메서드만 오버라이딩하면 됩니다.
 
 ```python
@@ -36,7 +38,7 @@ import pandas as pd
 from pipeline_base import BasePipelineParser
 
 class MyEquipmentLogParser(BasePipelineParser):
-    
+  
     @classmethod
     def match(cls, file_path: str) -> bool:
         """
@@ -52,18 +54,19 @@ class MyEquipmentLogParser(BasePipelineParser):
         """
         # 1. 컬럼명 정규화 (DB의 컬럼명과 일치해야 함)
         df.rename(columns={'P/N': 'part_no', 'QTY': 'stock_qty'}, inplace=True)
-        
+      
         # 2. 파생 컬럼 생성 또는 연산
         df['PROD_LINE'] = 1
-        
+      
         # 3. 데이터 타입 강제 지정 (안전성 확보)
         df['stock_qty'] = df['stock_qty'].fillna(0).astype(int)
         df['part_no'] = df['part_no'].astype(str)
-        
+      
         return df
 ```
 
 ### 2.3 고급 기능 (커스텀 리더 구현)
+
 기본적으로 `.csv`는 `pd.read_csv()`, `.xlsx`는 `pd.read_excel()`로 읽힙니다. 만약 구분자가 탭(`\t`)이거나 인코딩이 다를 경우 `_read_file_to_dataframe` 메서드를 직접 오버라이딩하십시오.
 
 ```python
@@ -84,10 +87,11 @@ class MyEquipmentLogParser(BasePipelineParser):
 [my_table] 💾 Local batch update success (100 rows). Changed cells: 300
 [my_table] ✅ Successfully processed and archived: equipment_A_2026.csv
 ```
+
 파이프라인이 정상적으로 매칭되었는지, 성공적으로 적재(Changed cells) 되었는지 위 로그들을 통해 즉각적인 파악이 가능합니다.
 
 ---
 
 > [!TIP]
-> **PostgreSQL NaN 에러 걱정 NO!** 
+> **PostgreSQL NaN 에러 걱정 NO!**
 > 파이프라인은 Pandas 연산 중 생길 수 있는 골치 아픈 `NaN`, `Infinity` 값들을 내부 시스템(부모 클래스의 `clean_for_postgres`)에서 안전한 JSON `null`로 자동 변환하여 DB에 넣습니다.

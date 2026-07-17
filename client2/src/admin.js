@@ -3,7 +3,7 @@ const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
 
 // State Cache
-let currentTab = 'outbox'; // 'outbox', 'file', 'workspace', 'chain', 'mapper', 'autoupdate'
+let currentTab = 'outbox'; // 'outbox', 'file', 'workspace', 'chain', 'mapper', 'autoupdate', 'editor'
 let outboxPage = 1;
 let outboxLimit = 10;
 let outboxData = [];
@@ -27,6 +27,10 @@ let selectedMapperFile = null;
 let selectedAutoUpdateScript = null;
 let activeEventInTx = null;
 
+// Code Editor State
+let isMonacoLoaded = false;
+let activeEditorFilePath = null;
+
 // DOM Elements
 const tabOutboxBtn = document.getElementById('tab-outbox-btn');
 const tabFileBtn = document.getElementById('tab-file-btn');
@@ -34,6 +38,7 @@ const tabWorkspaceBtn = document.getElementById('tab-workspace-btn');
 const tabChainBtn = document.getElementById('tab-chain-btn');
 const tabMapperBtn = document.getElementById('tab-mapper-btn');
 const tabAutoUpdateBtn = document.getElementById('tab-autoupdate-btn');
+const tabEditorBtn = document.getElementById('tab-editor-btn');
 
 const outboxTableWrapper = document.getElementById('outbox-table-wrapper');
 const fileTableWrapper = document.getElementById('file-table-wrapper');
@@ -41,6 +46,7 @@ const workspaceTableWrapper = document.getElementById('workspace-table-wrapper')
 const chainTableWrapper = document.getElementById('chain-table-wrapper');
 const mapperTableWrapper = document.getElementById('mapper-table-wrapper');
 const autoUpdateTableWrapper = document.getElementById('autoupdate-table-wrapper');
+const editorTreeWrapper = document.getElementById('editor-tree-wrapper');
 
 const statusFilterSelect = document.getElementById('status-filter');
 
@@ -84,10 +90,17 @@ const prevPageBtn = document.getElementById('prev-page-btn');
 const nextPageBtn = document.getElementById('next-page-btn');
 const pageIndicator = document.getElementById('page-indicator');
 
+// Editor Specific DOM Elements
+const editorTreeContainer = document.getElementById('editor-tree-container');
+const editorContentWrapper = document.getElementById('editor-content-wrapper');
+const editorFilePath = document.getElementById('editor-file-path');
+const saveCodeBtn = document.getElementById('save-code-btn');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   fetchData();
   setupEventListeners();
+  initMonacoEditor();
 });
 
 function setupEventListeners() {
@@ -97,7 +110,8 @@ function setupEventListeners() {
     { btn: tabWorkspaceBtn, tab: 'workspace', wrapper: workspaceTableWrapper },
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTableWrapper },
     { btn: tabMapperBtn, tab: 'mapper', wrapper: mapperTableWrapper },
-    { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTableWrapper }
+    { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTableWrapper },
+    { btn: tabEditorBtn, tab: 'editor', wrapper: editorTreeWrapper }
   ];
 
   tabs.forEach(t => {
@@ -118,7 +132,20 @@ function setupEventListeners() {
       retryAllBtn.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'block' : 'none';
       panelFooter.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'flex' : 'none';
       
-      clearDiagnostics();
+      if (t.tab === 'editor') {
+        diagnosticsContent.style.display = 'none';
+        diagnosticsEmpty.style.display = 'none';
+        editorContentWrapper.style.display = 'flex';
+        if (window.monacoEditor) {
+          setTimeout(() => {
+            window.monacoEditor.layout();
+          }, 50);
+        }
+      } else {
+        editorContentWrapper.style.display = 'none';
+        clearDiagnostics();
+      }
+      
       fetchData();
     });
   });
@@ -218,6 +245,15 @@ function setupEventListeners() {
       await reloadSystemConfigs();
     }
   });
+
+  saveCodeBtn.addEventListener('click', async () => {
+    if (!activeEditorFilePath) return;
+    if (!window.monacoEditor) return;
+    
+    if (confirm(`'${activeEditorFilePath}' 스크립트의 코드 변경 사항을 저장하시겠습니까?\n저장 후 핫-리로드가 자동으로 전파됩니다.`)) {
+      await saveScriptCode(activeEditorFilePath, window.monacoEditor.getValue());
+    }
+  });
 }
 
 // Fetch lists depending on active tab
@@ -262,6 +298,11 @@ async function fetchData() {
       const result = await res.json();
       autoUpdateData = result.data || [];
       renderAutoUpdateTable();
+    } else if (currentTab === 'editor') {
+      const res = await fetch(`${API_BASE}/admin/scripts/list`);
+      if (!res.ok) throw new Error('API fetch failed');
+      const result = await res.json();
+      renderEditorTree(result.data);
     }
   } catch (err) {
     console.error('Failed to fetch items', err);
@@ -272,6 +313,7 @@ async function fetchData() {
     else if (currentTab === 'chain') errorMsg = '❌ 체인 룰 목록 로드 실패';
     else if (currentTab === 'mapper') errorMsg = '❌ 맵퍼 모듈 목록 로드 실패';
     else if (currentTab === 'autoupdate') errorMsg = '❌ Auto-Update 스케줄러 현황 로드 실패';
+    else if (currentTab === 'editor') errorMsg = '❌ 스크립트 목록 로드 실패';
     showToast(errorMsg, 'error');
   }
 }
@@ -1017,5 +1059,197 @@ async function reloadSystemConfigs() {
   } catch (err) {
     console.error('Failed to reload configs', err);
     showToast('❌ 시스템 핫-리로드 요청 실패', 'error');
+  }
+}
+
+// --- Code Editor Core Logic ---
+
+// Monaco Editor initialization
+function initMonacoEditor() {
+  if (typeof require === 'undefined') {
+    console.warn('Monaco loader (require) is not defined yet. Retrying...');
+    setTimeout(initMonacoEditor, 200);
+    return;
+  }
+  require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' } });
+  require(['vs/editor/editor.main'], function () {
+    window.monacoEditor = monaco.editor.create(document.getElementById('monaco-editor-container'), {
+      value: '# Select a script file from the left explorer tree to start editing\n',
+      language: 'python',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      fontSize: 13,
+      minimap: { enabled: true }
+    });
+    isMonacoLoaded = true;
+    console.log('Monaco Editor loaded successfully');
+  });
+}
+
+// Render the editor left-side file tree
+function renderEditorTree(data) {
+  editorTreeContainer.innerHTML = '';
+  
+  if (!data) {
+    editorTreeContainer.innerHTML = '<div class="empty-text">No scripts found.</div>';
+    return;
+  }
+
+  // 1. Mappers Category
+  const mappersFolder = createTreeFolder('Mappers', '📁');
+  const mappersSub = mappersFolder.querySelector('.tree-file-list');
+  if (data.mappers && data.mappers.length > 0) {
+    data.mappers.forEach(file => {
+      mappersSub.appendChild(createTreeFileItem(file));
+    });
+  } else {
+    mappersSub.innerHTML = '<li style="padding: 4px 8px; font-size: 0.8rem; color: var(--text-muted);">No mappers</li>';
+  }
+  editorTreeContainer.appendChild(mappersFolder);
+
+  // 2. Ingestions Category (Grouped by Table Name)
+  const ingestionsFolder = createTreeFolder('Ingestion Parsers', '📥');
+  const ingestionsSub = ingestionsFolder.querySelector('.tree-file-list');
+  if (data.ingestions && data.ingestions.length > 0) {
+    // Group by table
+    const tableGroups = {};
+    data.ingestions.forEach(file => {
+      if (!tableGroups[file.table_name]) tableGroups[file.table_name] = [];
+      tableGroups[file.table_name].push(file);
+    });
+
+    Object.keys(tableGroups).forEach(table => {
+      const tableSubFolder = createTreeSubFolder(table);
+      const listContainer = tableSubFolder.querySelector('.tree-file-list');
+      tableGroups[table].forEach(file => {
+        listContainer.appendChild(createTreeFileItem(file));
+      });
+      ingestionsSub.appendChild(tableSubFolder);
+    });
+  } else {
+    ingestionsSub.innerHTML = '<li style="padding: 4px 8px; font-size: 0.8rem; color: var(--text-muted);">No parsers</li>';
+  }
+  editorTreeContainer.appendChild(ingestionsFolder);
+
+  // 3. Auto Updates Category (Grouped by Table Name)
+  const autoUpdatesFolder = createTreeFolder('Auto Update Collectors', '⏰');
+  const autoUpdatesSub = autoUpdatesFolder.querySelector('.tree-file-list');
+  if (data.auto_updates && data.auto_updates.length > 0) {
+    const tableGroups = {};
+    data.auto_updates.forEach(file => {
+      if (!tableGroups[file.table_name]) tableGroups[file.table_name] = [];
+      tableGroups[file.table_name].push(file);
+    });
+
+    Object.keys(tableGroups).forEach(table => {
+      const tableSubFolder = createTreeSubFolder(table);
+      const listContainer = tableSubFolder.querySelector('.tree-file-list');
+      tableGroups[table].forEach(file => {
+        listContainer.appendChild(createTreeFileItem(file));
+      });
+      autoUpdatesSub.appendChild(tableSubFolder);
+    });
+  } else {
+    autoUpdatesSub.innerHTML = '<li style="padding: 4px 8px; font-size: 0.8rem; color: var(--text-muted);">No collectors</li>';
+  }
+  editorTreeContainer.appendChild(autoUpdatesFolder);
+}
+
+function createTreeFolder(title, emoji) {
+  const folder = document.createElement('div');
+  folder.className = 'tree-folder';
+  folder.innerHTML = `
+    <div class="tree-folder-title">
+      <span>${emoji}</span>
+      <span>${title}</span>
+    </div>
+    <ul class="tree-file-list"></ul>
+  `;
+  return folder;
+}
+
+function createTreeSubFolder(title) {
+  const sub = document.createElement('div');
+  sub.className = 'tree-subfolder';
+  sub.innerHTML = `
+    <div class="tree-subfolder-title">
+      <span>📁</span>
+      <span style="font-weight: 500;">${title}</span>
+    </div>
+    <ul class="tree-file-list"></ul>
+  `;
+  return sub;
+}
+
+function createTreeFileItem(file) {
+  const item = document.createElement('li');
+  item.className = `tree-file-item ${activeEditorFilePath === file.path ? 'active' : ''}`;
+  item.dataset.path = file.path;
+  item.innerHTML = `
+    <span>📄</span>
+    <span style="word-break: break-all;">${file.filename}</span>
+  `;
+  
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectEditorFile(file.path);
+  });
+  
+  return item;
+}
+
+// Select a file and load its contents into Monaco Editor
+async function selectEditorFile(path) {
+  activeEditorFilePath = path;
+  
+  // Highlight active item in tree
+  document.querySelectorAll('.tree-file-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.path === path);
+  });
+
+  try {
+    editorFilePath.textContent = '🔄 Loading file...';
+    saveCodeBtn.style.display = 'none';
+
+    const res = await fetch(`${API_BASE}/admin/scripts/code?path=${encodeURIComponent(path)}`);
+    if (!res.ok) throw new Error('Failed to load file contents');
+    const result = await res.json();
+
+    if (window.monacoEditor) {
+      window.monacoEditor.setValue(result.code || '');
+      const model = window.monacoEditor.getModel();
+      if (model) {
+        monaco.editor.setModelLanguage(model, 'python');
+      }
+    }
+    
+    editorFilePath.textContent = `📝 ${path}`;
+    saveCodeBtn.style.display = 'inline-flex';
+  } catch (err) {
+    console.error('Failed to load code for file', path, err);
+    editorFilePath.textContent = '❌ Failed to load file';
+    showToast('❌ 파일 코드를 불러오지 못했습니다.', 'error');
+  }
+}
+
+// Save modified code to server
+async function saveScriptCode(path, code) {
+  try {
+    const res = await fetch(`${API_BASE}/admin/scripts/code`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        path: path,
+        code: code
+      })
+    });
+    if (!res.ok) throw new Error('Save API returned error status');
+    
+    showToast('💾 코드가 정상 저장 및 핫 리로드되었습니다.', 'success');
+  } catch (err) {
+    console.error('Failed to save code for file', path, err);
+    showToast('❌ 코드 저장 중 오류 발생', 'error');
   }
 }
