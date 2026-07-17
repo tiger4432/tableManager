@@ -279,6 +279,59 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Initialize Split Panel Resizer Drag Logic
+  const resizer = document.getElementById('split-resizer');
+  const leftPanel = document.querySelector('.left-panel');
+  const rightPanel = document.querySelector('.right-panel');
+
+  if (resizer && leftPanel && rightPanel) {
+    let isDragging = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      document.body.classList.add('resizing-active');
+      resizer.classList.add('dragging');
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+
+      const mainContainer = document.querySelector('main');
+      if (mainContainer) {
+        const containerRect = mainContainer.getBoundingClientRect();
+        const offsetX = e.clientX - containerRect.left;
+
+        // 최소 350px, 최대 컨테이너 전체너비 - 350px 범위 제한
+        const minWidth = 350;
+        const maxWidth = containerRect.width - 350;
+
+        let leftWidth = offsetX;
+        if (leftWidth < minWidth) leftWidth = minWidth;
+        if (leftWidth > maxWidth) leftWidth = maxWidth;
+
+        leftPanel.style.width = `${leftWidth}px`;
+        leftPanel.style.flex = 'none'; // flex-grow 간섭 차단
+
+        if (window.monacoEditor) {
+          window.monacoEditor.layout();
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.classList.remove('resizing-active');
+        resizer.classList.remove('dragging');
+
+        if (window.monacoEditor) {
+          window.monacoEditor.layout();
+        }
+      }
+    });
+  }
 }
 
 // Fetch lists depending on active tab

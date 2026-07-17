@@ -517,6 +517,55 @@
       background: #0b0e14 !important;
       padding: 30px !important;
       gap: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    #editor-content-wrapper.fullscreen-mode .detail-block {
+      flex: 1 !important;
+      height: 100% !important;
+      max-height: none !important;
+      display: flex !important;
+      flex-direction: column !important;
+      margin: 0 !important;
+      border: none !important;
+      background: transparent !important;
+    }
+    #editor-content-wrapper.fullscreen-mode .detail-block-body {
+      flex: 1 !important;
+      height: calc(100% - 60px) !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    #editor-content-wrapper.fullscreen-mode #monaco-editor-container {
+      height: 100% !important;
+      width: 100% !important;
+    }
+
+    /* Split Panel Resizer Styles */
+    .split-resizer {
+      width: 8px;
+      cursor: col-resize;
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      align-self: stretch;
+      z-index: 100;
+      position: relative;
+      transition: background 0.15s ease, border 0.15s ease;
+    }
+    .split-resizer:hover, .split-resizer.dragging {
+      background: var(--color-primary) !important;
+      border-left: 1px solid var(--color-primary);
+      border-right: 1px solid var(--color-primary);
+    }
+    body.resizing-active {
+      user-select: none !important;
+      cursor: col-resize !important;
+    }
+    body.resizing-active iframe, 
+    body.resizing-active #monaco-editor-container,
+    body.resizing-active .detail-block-body {
+      pointer-events: none !important;
     }
   </style>
 </head>
@@ -713,6 +762,9 @@
         </div>
       </div>
     </section>
+
+    <!-- Resizer Drag Bar -->
+    <div id="split-resizer" class="split-resizer"></div>
 
     <!-- Right panel: Selected event JSON & Stacktrace -->
     <section class="panel right-panel">

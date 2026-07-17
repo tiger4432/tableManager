@@ -2871,12 +2871,17 @@ if os.path.exists(client2_dist_path):
     @app.get("/admin.html")
     def serve_admin_page():
         """어드민 페이지(admin.html)를 반환합니다."""
+        no_cache_headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
         admin_file = os.path.join(client2_dist_path, "admin.html")
         if os.path.exists(admin_file):
-            return FileResponse(admin_file)
+            return FileResponse(admin_file, headers=no_cache_headers)
         dev_admin_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "admin.html"))
         if os.path.exists(dev_admin_file):
-            return FileResponse(dev_admin_file)
+            return FileResponse(dev_admin_file, headers=no_cache_headers)
         raise HTTPException(status_code=404, detail="Admin page not found. Please build frontend first.")
 
     @app.get("/{file_name:path}")
