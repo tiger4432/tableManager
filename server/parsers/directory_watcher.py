@@ -412,10 +412,9 @@ class IngestionHandler(FileSystemEventHandler):
         total_changed = 0
         all_created_logs = []
         
-        db = SessionLocal()
+        total_rows = len(rows)
+        processed_rows = 0
         try:
-            total_rows = len(rows)
-            processed_rows = 0
             for i in range(0, total_rows, batch_size):
                 chunk = rows[i:i + batch_size]
                 items = []
@@ -446,6 +445,8 @@ class IngestionHandler(FileSystemEventHandler):
                     processed_rows += len(chunk)
                     continue
 
+                # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
+                db = SessionLocal()
                 try:
                     batch_obj = schemas.GeneralUpdateBatch(
                         updates=items,
@@ -453,12 +454,18 @@ class IngestionHandler(FileSystemEventHandler):
                         silent=True
                     )
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
+                    
+                    db.commit()
+                    
                     total_changed += len(changed_cells)
                     if created_logs:
                         all_created_logs.extend(created_logs)
                     logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
+                    db.rollback()
                     logger.error(f"[{self.table_name}] ❌ Failed to apply local batch update: {e}")
+                finally:
+                    db.close()
                 
                 processed_rows += len(chunk)
                 if self.on_progress_callback:
@@ -471,8 +478,8 @@ class IngestionHandler(FileSystemEventHandler):
             if self.on_refresh_callback and total_changed > 0:
                 self.on_refresh_callback(t_name, total_changed, all_created_logs)
                 
-        finally:
-            db.close()
+        except Exception as outer_e:
+            logger.error(f"[{self.table_name}] Outer error during batch injection loop: {outer_e}")
 
 class WorkspaceWatcher:
     """
