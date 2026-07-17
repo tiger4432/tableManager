@@ -550,7 +550,7 @@ function renderChainTable() {
 
     row.innerHTML = `
       <td style="font-weight: bold; color: var(--color-primary);">${rule.name}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${rule.source_table}</td>
+      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${rule.trigger_table}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${rule.target_table}</td>
       <td style="text-align: center;">${activeBadge}</td>
     `;

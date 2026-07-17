@@ -25,7 +25,7 @@ import"./modulepreload-polyfill-Dezn_h7o.js";var e=Object.defineProperty,t=(t,n)
       <td style="text-align: center;">${a}</td>
     `,t.addEventListener(`click`,()=>{He(e)}),O.appendChild(t)}),y){let e=p.find(e=>e.name===y);e?He(e):Y()}}function Fe(){if(k.innerHTML=``,N.textContent=m.length,N.style.color=`var(--color-primary)`,m.length===0){ge.style.display=`flex`,Y();return}if(ge.style.display=`none`,m.forEach(e=>{let t=document.createElement(`tr`);t.className=`table-row ${b===e.name?`active`:``}`,t.dataset.name=e.name;let n=e.active===!1?`<span class="badge badge-danger">DISABLED</span>`:`<span class="badge badge-success">ACTIVE</span>`;t.innerHTML=`
       <td style="font-weight: bold; color: var(--color-primary);">${e.name}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${e.source_table}</td>
+      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${e.trigger_table}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${e.target_table}</td>
       <td style="text-align: center;">${n}</td>
     `,t.addEventListener(`click`,()=>{Ue(e)}),k.appendChild(t)}),b){let e=m.find(e=>e.name===b);e?Ue(e):Y()}}function Ie(){if(A.innerHTML=``,N.textContent=h.length,N.style.color=`var(--color-primary)`,h.length===0){_e.style.display=`flex`,Y();return}_e.style.display=`none`,h.forEach(e=>{let t=document.createElement(`tr`);t.className=`table-row ${x===e.filename?`active`:``}`,t.dataset.file=e.filename;let n=e.functions.length;t.innerHTML=`
