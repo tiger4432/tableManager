@@ -95,6 +95,7 @@ const editorTreeContainer = document.getElementById('editor-tree-container');
 const editorContentWrapper = document.getElementById('editor-content-wrapper');
 const editorFilePath = document.getElementById('editor-file-path');
 const saveCodeBtn = document.getElementById('save-code-btn');
+const editorBackBtn = document.getElementById('editor-back-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -254,6 +255,12 @@ function setupEventListeners() {
       await saveScriptCode(activeEditorFilePath, window.monacoEditor.getValue());
     }
   });
+
+  if (editorBackBtn) {
+    editorBackBtn.addEventListener('click', () => {
+      closeInlineEditor();
+    });
+  }
 }
 
 // Fetch lists depending on active tab
@@ -694,10 +701,19 @@ function selectAutoUpdateRow(col) {
     col.last_status === 'SUCCESS' ? 'badge badge-success' : 
     col.last_status === 'FAIL' ? 'badge badge-danger' : 'badge badge-warning';
   tracebackSeverity.style.display = 'inline';
-  payloadTitle.textContent = 'Collector Config & Execution Metadata';
+  payloadTitle.innerHTML = `Collector Config & Execution Metadata 
+    <button id="inline-edit-collector-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Collector Script</button>`;
 
   tracebackViewer.textContent = col.last_error || 'No error traceback log captured (Last execution was successful).';
   payloadViewer.textContent = JSON.stringify(col, null, 2);
+
+  const inlineEditBtn = document.getElementById('inline-edit-collector-btn');
+  if (inlineEditBtn) {
+    const scriptPath = `ingestion_workspace/${col.table_name}/auto_update/${col.script_name}`;
+    inlineEditBtn.addEventListener('click', () => {
+      openInlineEditor(scriptPath);
+    });
+  }
 }
 
 // API Call: Trigger Auto Update Run Now
@@ -848,9 +864,29 @@ function selectWorkspaceRow(ws) {
   payloadTitle.textContent = 'config.json Configurations';
 
   if (ws.custom_scripts && ws.custom_scripts.length > 0) {
-    tracebackViewer.textContent = ws.custom_scripts.map(s => `📄 ${s} (Active Custom Parser)`).join('\n');
+    tracebackViewer.innerHTML = '';
+    ws.custom_scripts.forEach(s => {
+      const div = document.createElement('div');
+      div.style.marginBottom = '10px';
+      div.style.display = 'flex';
+      div.style.alignItems = 'center';
+      div.style.justifyContent = 'space-between';
+      div.style.borderBottom = '1px solid var(--border-color)';
+      div.style.paddingBottom = '8px';
+      div.innerHTML = `
+        <span>📄 <strong style="color: #a6e3a1;">${s}</strong> (Active Custom Parser)</span>
+        <button class="glass-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
+      `;
+      
+      const btn = div.querySelector('.btn-inline-edit-script');
+      btn.addEventListener('click', () => {
+        const scriptPath = `ingestion_workspace/${ws.name}/scripts/${s}`;
+        openInlineEditor(scriptPath);
+      });
+      tracebackViewer.appendChild(div);
+    });
   } else {
-    tracebackViewer.textContent = 'No custom parser scripts found.\nUsing default schema-based ingestion pipeline parser.';
+    tracebackViewer.innerHTML = '<div style="color: var(--text-muted); line-height: 1.6;">No custom parser scripts found.<br>Using default schema-based ingestion pipeline parser.</div>';
   }
 
   payloadViewer.textContent = JSON.stringify(ws, null, 2);
@@ -878,10 +914,24 @@ function selectChainRow(rule) {
   tracebackSeverity.textContent = rule.active !== false ? 'ACTIVE' : 'DISABLED';
   tracebackSeverity.className = rule.active !== false ? 'badge badge-success' : 'badge badge-danger';
   tracebackSeverity.style.display = 'inline';
-  payloadTitle.textContent = 'Raw Chain Ingestion Rule Configuration';
+  payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration 
+    <button id="inline-edit-mapper-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
 
   tracebackViewer.textContent = rule.description || 'No description provided for this chain rule.';
   payloadViewer.textContent = JSON.stringify(rule, null, 2);
+
+  const inlineEditBtn = document.getElementById('inline-edit-mapper-btn');
+  if (inlineEditBtn) {
+    let modulePath = rule.mapper_module || '';
+    if (modulePath.startsWith('mappers.')) {
+      modulePath = modulePath.replace('mappers.', 'server/mappers/') + '.py';
+    } else {
+      modulePath = `server/${modulePath.replace(/\./g, '/')}.py`;
+    }
+    inlineEditBtn.addEventListener('click', () => {
+      openInlineEditor(modulePath);
+    });
+  }
 }
 
 // Select Mapper Row
@@ -1251,5 +1301,52 @@ async function saveScriptCode(path, code) {
   } catch (err) {
     console.error('Failed to save code for file', path, err);
     showToast('❌ 코드 저장 중 오류 발생', 'error');
+  }
+}
+
+// Inline Code Editor Navigation Helpers
+function openInlineEditor(path) {
+  if (!isMonacoLoaded) {
+    showToast('⚠️ Monaco Editor가 아직 로딩 중입니다.', 'warning');
+    return;
+  }
+  diagnosticsContent.style.display = 'none';
+  diagnosticsEmpty.style.display = 'none';
+  editorContentWrapper.style.display = 'flex';
+  
+  if (editorBackBtn) {
+    editorBackBtn.style.display = 'inline-flex';
+  }
+  
+  document.querySelectorAll('.tree-file-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  selectEditorFile(path);
+}
+
+function closeInlineEditor() {
+  editorContentWrapper.style.display = 'none';
+  diagnosticsContent.style.display = 'flex';
+  
+  if (editorBackBtn) {
+    editorBackBtn.style.display = 'none';
+  }
+  
+  if (currentTab === 'outbox' && selectedTxId) {
+    const tx = outboxData.find(t => t.transaction_id === selectedTxId);
+    if (tx) selectTxRow(tx, activeEventInTx ? activeEventInTx.id : null);
+  } else if (currentTab === 'file' && selectedFileId) {
+    const log = fileData.find(f => f.id === selectedFileId);
+    if (log) selectFileRow(log);
+  } else if (currentTab === 'workspace' && selectedWorkspaceName) {
+    const ws = workspaceData.find(w => w.name === selectedWorkspaceName);
+    if (ws) selectWorkspaceRow(ws);
+  } else if (currentTab === 'chain' && selectedChainName) {
+    const rule = chainData.find(c => c.name === selectedChainName);
+    if (rule) selectChainRow(rule);
+  } else if (currentTab === 'autoupdate' && selectedAutoUpdateScript) {
+    const col = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
+    if (col) selectAutoUpdateRow(col);
   }
 }
