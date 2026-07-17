@@ -510,40 +510,6 @@
       font-weight: 500;
     }
 
-    #editor-content-wrapper.fullscreen-mode {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      z-index: 10000 !important;
-      background: #0b0e14 !important;
-      padding: 30px !important;
-      gap: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    #editor-content-wrapper.fullscreen-mode .detail-block {
-      flex: 1 !important;
-      height: 100% !important;
-      max-height: none !important;
-      display: flex !important;
-      flex-direction: column !important;
-      margin: 0 !important;
-      border: none !important;
-      background: transparent !important;
-    }
-    #editor-content-wrapper.fullscreen-mode .detail-block-body {
-      flex: 1 !important;
-      height: calc(100% - 60px) !important;
-      padding: 0 !important;
-      margin: 0 !important;
-    }
-    #editor-content-wrapper.fullscreen-mode #monaco-editor-container {
-      height: 100% !important;
-      width: 100% !important;
-    }
-
     /* Split Panel Resizer Styles */
     .split-resizer {
       width: 8px;
@@ -817,7 +783,6 @@
               <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: 0.85rem;">Select a script file</span>
               <div style="display: flex; gap: 8px;">
                 <button id="editor-back-btn" class="glass-btn" style="padding: 4px 12px; font-size: 0.8rem; display: none;">🔙 Back to Details</button>
-                <button id="editor-fullscreen-btn" class="glass-btn" style="padding: 4px 12px; font-size: 0.8rem;">🖥️ Fullscreen</button>
                 <button id="save-code-btn" class="glass-btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem; display: none;">💾 Save Code</button>
               </div>
             </div>

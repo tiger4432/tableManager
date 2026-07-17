@@ -96,7 +96,6 @@ const editorContentWrapper = document.getElementById('editor-content-wrapper');
 const editorFilePath = document.getElementById('editor-file-path');
 const saveCodeBtn = document.getElementById('save-code-btn');
 const editorBackBtn = document.getElementById('editor-back-btn');
-const editorFullscreenBtn = document.getElementById('editor-fullscreen-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -259,24 +258,7 @@ function setupEventListeners() {
 
   if (editorBackBtn) {
     editorBackBtn.addEventListener('click', () => {
-      // 만약 전체화면 상태였다면 전체화면도 함께 복구 해제합니다.
-      if (editorContentWrapper.classList.contains('fullscreen-mode')) {
-        editorContentWrapper.classList.remove('fullscreen-mode');
-        if (editorFullscreenBtn) editorFullscreenBtn.textContent = '🖥️ Fullscreen';
-      }
       closeInlineEditor();
-    });
-  }
-
-  if (editorFullscreenBtn) {
-    editorFullscreenBtn.addEventListener('click', () => {
-      const isFullscreen = editorContentWrapper.classList.toggle('fullscreen-mode');
-      editorFullscreenBtn.textContent = isFullscreen ? '☀️ Exit Fullscreen' : '🖥️ Fullscreen';
-      if (window.monacoEditor) {
-        setTimeout(() => {
-          window.monacoEditor.layout();
-        }, 80);
-      }
     });
   }
 
@@ -1386,17 +1368,12 @@ function openInlineEditor(path) {
   diagnosticsContent.style.display = 'none';
   diagnosticsEmpty.style.display = 'none';
   
-  // 에디터 뷰 활성화 및 인라인 에디팅 시 즉각 전체화면 확장 (Auto Fullscreen)
+  // 에디터 뷰 활성화
   editorContentWrapper.style.display = 'flex';
-  editorContentWrapper.classList.add('fullscreen-mode');
   
   // 제어 단추 상태 강제 매칭 보장
   if (editorBackBtn) {
     editorBackBtn.style.display = 'inline-flex';
-  }
-  if (editorFullscreenBtn) {
-    editorFullscreenBtn.style.display = 'inline-flex';
-    editorFullscreenBtn.textContent = '☀️ Exit Fullscreen';
   }
   if (saveCodeBtn) {
     saveCodeBtn.style.display = 'inline-flex';
@@ -1417,14 +1394,6 @@ function openInlineEditor(path) {
 }
 
 function closeInlineEditor() {
-  // 전체화면 활성화 상태 복원 해제
-  if (editorContentWrapper.classList.contains('fullscreen-mode')) {
-    editorContentWrapper.classList.remove('fullscreen-mode');
-  }
-  if (editorFullscreenBtn) {
-    editorFullscreenBtn.textContent = '🖥️ Fullscreen';
-  }
-
   editorContentWrapper.style.display = 'none';
   diagnosticsContent.style.display = 'flex';
   
