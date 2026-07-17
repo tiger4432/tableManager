@@ -464,6 +464,7 @@ class IngestionHandler(FileSystemEventHandler):
                 except Exception as e:
                     db.rollback()
                     logger.error(f"[{self.table_name}] ❌ Failed to apply local batch update: {e}")
+                    raise e
                 finally:
                     db.close()
                 
@@ -480,6 +481,7 @@ class IngestionHandler(FileSystemEventHandler):
                 
         except Exception as outer_e:
             logger.error(f"[{self.table_name}] Outer error during batch injection loop: {outer_e}")
+            raise outer_e
 
 class WorkspaceWatcher:
     """
