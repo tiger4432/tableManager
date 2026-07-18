@@ -262,7 +262,33 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-right: 1px solid var(--border-color);
+}
+
+/* Split Panel Resizer Styles */
+.split-resizer {
+  width: 8px;
+  cursor: col-resize;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  align-self: stretch;
+  z-index: 100;
+  position: relative;
+  transition: background 0.15s ease, border 0.15s ease;
+}
+.split-resizer:hover, .split-resizer.dragging {
+  background: var(--color-primary) !important;
+  border-left: 1px solid var(--color-primary);
+  border-right: 1px solid var(--color-primary);
+}
+body.resizing-active {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+body.resizing-active iframe, 
+body.resizing-active #myGrid,
+body.resizing-active .history-sidebar {
+  pointer-events: none !important;
 }
 
 /* Grid Footer StatusBar */

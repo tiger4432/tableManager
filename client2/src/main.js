@@ -898,6 +898,61 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Initialize Main Layout Split Panel Resizer Drag Logic
+  const mainResizer = document.getElementById('main-split-resizer');
+  const gridSection = document.querySelector('.grid-section');
+  const historySidebar = document.querySelector('.history-sidebar');
+
+  if (mainResizer && gridSection && historySidebar) {
+    let isDragging = false;
+
+    mainResizer.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      document.body.classList.add('resizing-active');
+      mainResizer.classList.add('dragging');
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+
+      const mainLayout = document.querySelector('.main-layout');
+      if (mainLayout) {
+        const containerRect = mainLayout.getBoundingClientRect();
+        
+        // 오른쪽 패널 너비 = 컨테이너 우측 X 좌표 - 마우스 X 좌표
+        let sidebarWidth = containerRect.right - e.clientX;
+
+        // 최소 300px, 최대 컨테이너 전체너비 - 350px 범위 제한
+        const minWidth = 300;
+        const maxWidth = containerRect.width - 350;
+
+        if (sidebarWidth < minWidth) sidebarWidth = minWidth;
+        if (sidebarWidth > maxWidth) sidebarWidth = maxWidth;
+
+        historySidebar.style.width = `${sidebarWidth}px`;
+        historySidebar.style.flex = 'none'; // flex-grow 간섭 방지
+
+        // AG-Grid 컬럼 가로 크기 반응형 자동 피팅
+        if (state.gridApi) {
+          state.gridApi.sizeColumnsToFit();
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.classList.remove('resizing-active');
+        mainResizer.classList.remove('dragging');
+
+        if (state.gridApi) {
+          state.gridApi.sizeColumnsToFit();
+        }
+      }
+    });
+  }
 }
 
 
