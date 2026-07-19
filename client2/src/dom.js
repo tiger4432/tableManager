@@ -45,6 +45,5 @@ export const elements = {
   get columnSelectorDropdown() { return document.getElementById('column-selector-dropdown'); },
   get columnListContainer() { return document.getElementById('column-list-container'); },
   get colSelectAllBtn() { return document.getElementById('col-select-all-btn'); },
-  get colSelectNoneBtn() { return document.getElementById('col-select-none-btn'); },
-  get selectE1E2Btn() { return document.getElementById('select-e1e2-btn'); }
+  get colSelectNoneBtn() { return document.getElementById('col-select-none-btn'); }
 };

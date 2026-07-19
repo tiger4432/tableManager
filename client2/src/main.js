@@ -349,30 +349,6 @@ function setupEventListeners() {
     deleteSelectedRows();
   });
 
-  // Select E1/E2 Rows Button
-  if (elements.selectE1E2Btn) {
-    elements.selectE1E2Btn.addEventListener('click', () => {
-      if (!state.gridApi) return;
-      let count = 0;
-      state.gridApi.forEachNode(node => {
-        if (node.data) {
-          let hasE1E2 = false;
-          for (const col of state.currentColumns) {
-            const cell = node.data.data?.[col];
-            const val = (cell && typeof cell === 'object') ? cell.value : (cell !== undefined ? cell : '');
-            const valStr = String(val).trim();
-            if (valStr === 'E1' || valStr === 'E2') {
-              hasE1E2 = true;
-              break;
-            }
-          }
-          node.setSelected(hasE1E2);
-          if (hasE1E2) count++;
-        }
-      });
-      elements.performanceLog.textContent = `✔️ Selected ${count} rows containing E1/E2`;
-    });
-  }
 
   // Keyboard shortcuts inside the grid
   document.addEventListener('keydown', (e) => {
