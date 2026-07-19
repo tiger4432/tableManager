@@ -70,12 +70,52 @@ function initDOMElements() {
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
   
+  el.btnSelectMenu = document.getElementById('btn-select-menu');
+  el.selectMenuDropdown = document.getElementById('select-menu-dropdown');
+  el.btnOpsMenu = document.getElementById('btn-ops-menu');
+  el.opsMenuDropdown = document.getElementById('ops-menu-dropdown');
+  el.selectionActionsContainer = document.getElementById('selection-actions-container');
+
   el.gridCanvas = document.getElementById('grid-canvas');
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
 
   // Bind Events
   el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
+
+  if (el.btnSelectMenu && el.selectMenuDropdown) {
+    el.btnSelectMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = el.selectMenuDropdown.style.display === 'flex';
+      el.selectMenuDropdown.style.display = isVisible ? 'none' : 'flex';
+      if (el.opsMenuDropdown) el.opsMenuDropdown.style.display = 'none';
+    });
+  }
+
+  if (el.btnOpsMenu && el.opsMenuDropdown) {
+    el.btnOpsMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = el.opsMenuDropdown.style.display === 'flex';
+      el.opsMenuDropdown.style.display = isVisible ? 'none' : 'flex';
+      if (el.selectMenuDropdown) el.selectMenuDropdown.style.display = 'none';
+    });
+  }
+
+  document.addEventListener('click', () => {
+    if (el.selectMenuDropdown) el.selectMenuDropdown.style.display = 'none';
+    if (el.opsMenuDropdown) el.opsMenuDropdown.style.display = 'none';
+  });
+
+  if (el.selectMenuDropdown) {
+    el.selectMenuDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+  if (el.opsMenuDropdown) {
+    el.opsMenuDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
   
   if (el.presetSelect) {
     el.presetSelect.addEventListener('change', loadSelectedPreset);
@@ -183,8 +223,7 @@ function initMouseDragEvents() {
       if (!cell) return;
 
       // Hide batch actions when starting a new interaction
-      if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-      if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+      if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
 
       if (isOriginMode) {
         handleCellClick(cell, e);
@@ -328,9 +367,7 @@ function initMouseDragEvents() {
         el.gridCanvas.classList.remove('drag-active');
       }
 
-      // Hide batch action buttons
-      if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-      if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+      if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
 
       isBoxDragging = false;
       boxStartCell = null;
@@ -1632,12 +1669,10 @@ function selectEdgeCells(target) {
   });
 
   if (count > 0) {
-    if (el.btnFillSelected) el.btnFillSelected.style.display = 'inline-block';
-    if (el.btnClearSelected) el.btnClearSelected.style.display = 'inline-block';
+    if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'flex';
     el.gridStatusCoords.textContent = `Selected ${count} E${target} cells`;
   } else {
-    if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-    if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+    if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
     alert(`격자 상에 E${target} 조건에 부합하는 셀이 존재하지 않습니다.`);
   }
 }
@@ -1705,8 +1740,7 @@ function fillSelectedCells() {
     cell.classList.remove('cell-in-selection');
   });
 
-  if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-  if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+  if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
 }
 
 function clearSelectedCells() {
@@ -1727,6 +1761,5 @@ function clearSelectedCells() {
     cell.classList.remove('cell-in-selection');
   });
 
-  if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-  if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+  if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
 }

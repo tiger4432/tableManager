@@ -147,16 +147,35 @@
           <div style="display: flex; gap: 15px; align-items: center;">
             <span class="glass-log-badge">Active Brush: <strong id="active-brush-val" style="color: var(--color-primary);">None</strong></span>
             <span class="glass-log-badge" id="grid-status-coords">Cursor: -</span>
+            
+            <!-- Contextual Selection Actions -->
+            <div id="selection-actions-container" style="display: none; align-items: center; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 15px;">
+              <button id="btn-fill-selected" class="glass-btn success-glow" style="padding: 4px 12px; font-size: 0.8rem;">🎨 Fill Selected</button>
+              <button id="btn-clear-selected" class="glass-btn hover-danger" style="padding: 4px 12px; font-size: 0.8rem;">🧹 Clear Selected</button>
+            </div>
           </div>
           <div style="display: flex; gap: 10px;">
-            <button id="btn-set-origin" class="glass-btn">📍 Set Origin (0,0)</button>
-            <button id="btn-select-e1" class="glass-btn" style="color: #a78bfa; border-color: #a78bfa;">✔️ Select E1</button>
-            <button id="btn-select-e2" class="glass-btn" style="color: #f472b6; border-color: #f472b6;">✔️ Select E2</button>
-            <button id="btn-autopaint-e1e2" class="glass-btn" style="color: var(--color-success); border-color: var(--color-success);">⚡ Auto-Paint E1/E2</button>
-            <button id="btn-fill-selected" class="glass-btn" style="display: none; background: rgba(59, 130, 246, 0.1); border-color: var(--color-primary);">🎨 Fill Selected</button>
-            <button id="btn-clear-selected" class="glass-btn hover-danger" style="display: none;">🧹 Clear Selected</button>
-            <button id="btn-clear-grid" class="glass-btn">🧹 Clear Grid</button>
-            <button id="btn-fill-grid" class="glass-btn">🎨 Fill All</button>
+            <!-- Selection & Edge Tools Dropdown -->
+            <div class="control-group relative-menu">
+              <button id="btn-select-menu" class="glass-btn">🔍 Select Tools</button>
+              <div id="select-menu-dropdown" class="glass-dropdown-panel" style="display: none; right: 0; min-width: 180px;">
+                <button id="btn-set-origin" class="dropdown-item">📍 Set Origin (0,0)</button>
+                <button id="btn-select-e1" class="dropdown-item" style="color: #a78bfa;">✔️ Select E1</button>
+                <button id="btn-select-e2" class="dropdown-item" style="color: #f472b6;">✔️ Select E2</button>
+                <button id="btn-autopaint-e1e2" class="dropdown-item" style="color: var(--color-success); border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px;">⚡ Auto-Paint E1/E2</button>
+              </div>
+            </div>
+
+            <!-- Operations Dropdown -->
+            <div class="control-group relative-menu">
+              <button id="btn-ops-menu" class="glass-btn">🛠️ Edit Grid</button>
+              <div id="ops-menu-dropdown" class="glass-dropdown-panel" style="display: none; right: 0; min-width: 150px;">
+                <button id="btn-fill-grid" class="dropdown-item">🎨 Fill All</button>
+                <button id="btn-clear-grid" class="dropdown-item hover-danger" style="color: var(--color-danger);">🧹 Clear Grid</button>
+              </div>
+            </div>
+
+            <!-- Primary Save Action -->
             <button id="btn-push-map" class="glass-btn" style="background: rgba(16,185,129,0.2); border-color: var(--color-success); color: var(--color-success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
           </div>
         </div>
