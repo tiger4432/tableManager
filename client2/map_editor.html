@@ -33,6 +33,21 @@
             <label for="map-table-select">Target Table</label>
             <select id="map-table-select" class="glass-input w-full"></select>
           </div>
+
+          <!-- Product Presets -->
+          <div class="control-group-vertical" style="border: 1px dashed rgba(168, 85, 247, 0.3); border-radius: 8px; padding: 10px; background: rgba(168, 85, 247, 0.03);">
+            <label for="preset-select" style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+              Product Presets
+              <button id="btn-save-preset" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);" title="Save current settings as a new custom preset for this table">💾 Save Current</button>
+            </label>
+            <select id="preset-select" class="glass-input w-full" style="margin-top: 4px;">
+              <option value="">-- Select Preset --</option>
+              <option value="std_10">Std 10x10 (0°, Front)</option>
+              <option value="prod_a">Product A (30x30, 90°, Back)</option>
+              <option value="prod_b">Product B (50x50, 180°, Front)</option>
+              <option value="prod_c">Product C (60x60, 270°, Back)</option>
+            </select>
+          </div>
           
           <!-- 동적 메타데이터 입력 영역 -->
           <div id="metadata-fields-container" style="display: flex; flex-direction: column; gap: 10px;">
@@ -168,7 +183,8 @@
                 <tr>
                   <th style="width: 75px; text-align: left; padding: 8px;">Value</th>
                   <th style="text-align: left; padding: 8px;">Description</th>
-                  <th style="width: 80px; text-align: center; padding: 8px;">Color</th>
+                  <th style="width: 70px; text-align: center; padding: 8px;">Count</th>
+                  <th style="width: 70px; text-align: center; padding: 8px;">Color</th>
                   <th style="width: 40px; text-align: center; padding: 8px;">Del</th>
                 </tr>
               </thead>

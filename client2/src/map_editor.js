@@ -64,12 +64,23 @@ function initDOMElements() {
   el.btnFillGrid = document.getElementById('btn-fill-grid');
   el.btnPushMap = document.getElementById('btn-push-map');
   
+  el.presetSelect = document.getElementById('preset-select');
+  el.btnSavePreset = document.getElementById('btn-save-preset');
+  
   el.gridCanvas = document.getElementById('grid-canvas');
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
 
   // Bind Events
   el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
+  
+  if (el.presetSelect) {
+    el.presetSelect.addEventListener('change', loadSelectedPreset);
+  }
+  if (el.btnSavePreset) {
+    el.btnSavePreset.addEventListener('click', saveCustomPreset);
+  }
+  renderPresetDropdown();
   
   const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert];
   inputsToRedraw.forEach(input => {
@@ -211,6 +222,8 @@ function initMouseDragEvents() {
       isBoxDragging = false;
       boxStartCell = null;
       dragCellsCache = []; // Reset cache
+      
+      updateLegendCounts();
     }
   });
 }
@@ -409,6 +422,135 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
 }
 
 // ----------------------------------------------------
+// Value Counts & Preset Functions
+// ----------------------------------------------------
+const BUILTIN_PRESETS = {
+  std_10: { name: "Std 10x10 (0°, Front)", cols: 10, rows: 10, startX: 0, startY: 0, rot: 0, side: "front", invertY: false },
+  prod_a: { name: "Product A (30x30, 90°, Back)", cols: 30, rows: 30, startX: 0, startY: 0, rot: 90, side: "back", invertY: false },
+  prod_b: { name: "Product B (50x50, 180°, Front)", cols: 50, rows: 50, startX: 0, startY: 0, rot: 180, side: "front", invertY: false },
+  prod_c: { name: "Product C (60x60, 270°, Back)", cols: 60, rows: 60, startX: 0, startY: 0, rot: 270, side: "back", invertY: false }
+};
+
+function updateOrientationUI() {
+  document.querySelectorAll('.btn-rot').forEach(btn => {
+    const rotVal = parseInt(btn.dataset.rot, 10);
+    if (rotVal === currentRotation) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
+    if (radio.value === currentSide) {
+      radio.checked = true;
+    } else {
+      radio.checked = false;
+    }
+  });
+}
+
+function renderPresetDropdown() {
+  if (!el.presetSelect) return;
+  el.presetSelect.innerHTML = '<option value="">-- Select Preset --</option>';
+
+  const optGroupBuiltin = document.createElement('optgroup');
+  optGroupBuiltin.label = 'Built-in Presets';
+  Object.entries(BUILTIN_PRESETS).forEach(([k, p]) => {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = p.name;
+    optGroupBuiltin.appendChild(opt);
+  });
+  el.presetSelect.appendChild(optGroupBuiltin);
+
+  const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
+  if (Object.keys(customPresets).length > 0) {
+    const optGroupCustom = document.createElement('optgroup');
+    optGroupCustom.label = 'Custom Presets';
+    Object.entries(customPresets).forEach(([k, p]) => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = p.name;
+      optGroupCustom.appendChild(opt);
+    });
+    el.presetSelect.appendChild(optGroupCustom);
+  }
+}
+
+function loadSelectedPreset() {
+  if (!el.presetSelect) return;
+  const val = el.presetSelect.value;
+  if (!val) return;
+
+  let preset = BUILTIN_PRESETS[val];
+  if (!preset) {
+    const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
+    preset = customPresets[val];
+  }
+
+  if (preset) {
+    el.gridCols.value = preset.cols;
+    el.gridRows.value = preset.rows;
+    el.gridStartX.value = preset.startX;
+    el.gridStartY.value = preset.startY;
+    el.gridYInvert.checked = preset.invertY;
+    currentRotation = preset.rot;
+    currentSide = preset.side;
+
+    updateOrientationUI();
+    renderGridCanvas();
+    updateLegendCounts();
+  }
+}
+
+function saveCustomPreset() {
+  const presetName = prompt('Enter custom preset name:', `Product Preset ${new Date().toLocaleDateString()}`);
+  if (!presetName) return;
+
+  const key = `custom_${Date.now()}`;
+  const newPreset = {
+    name: presetName,
+    cols: parseInt(el.gridCols.value, 10) || 10,
+    rows: parseInt(el.gridRows.value, 10) || 10,
+    startX: parseInt(el.gridStartX.value, 10) || 0,
+    startY: parseInt(el.gridStartY.value, 10) || 0,
+    rot: currentRotation,
+    side: currentSide,
+    invertY: el.gridYInvert.checked
+  };
+
+  const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
+  customPresets[key] = newPreset;
+  localStorage.setItem('map_editor_custom_presets', JSON.stringify(customPresets));
+
+  renderPresetDropdown();
+  el.presetSelect.value = key;
+}
+
+function updateLegendCounts() {
+  const counts = {};
+  legend.forEach(item => {
+    counts[item.value] = 0;
+  });
+
+  Object.values(gridData).forEach(val => {
+    if (val !== undefined && val !== '') {
+      counts[val] = (counts[val] || 0) + 1;
+    }
+  });
+
+  legend.forEach(item => {
+    const badge = document.getElementById(`legend-count-${item.value}`);
+    if (badge) {
+      const qty = counts[item.value] || 0;
+      badge.textContent = qty;
+      badge.style.color = qty > 0 ? 'var(--color-primary)' : 'var(--text-dim)';
+    }
+  });
+}
+
+// ----------------------------------------------------
 // Rendering Functions
 // ----------------------------------------------------
 function renderGridCanvas() {
@@ -593,6 +735,7 @@ function renderGridCanvas() {
   }
 
   updateNotchPosition();
+  updateLegendCounts();
 }
 
 function handleCellClick(cell, event) {
@@ -881,13 +1024,23 @@ function renderLegendTable() {
     });
     tdDel.appendChild(btnDel);
 
+    // Count column
+    const tdCount = document.createElement('td');
+    tdCount.style.textAlign = 'center';
+    tdCount.style.fontWeight = 'bold';
+    tdCount.id = `legend-count-${item.value}`;
+    tdCount.textContent = '0';
+    tdCount.style.color = 'var(--text-muted)';
+
     row.appendChild(tdVal);
     row.appendChild(tdDesc);
+    row.appendChild(tdCount);
     row.appendChild(tdColor);
     row.appendChild(tdDel);
 
     el.legendList.appendChild(row);
   });
+  updateLegendCounts();
 }
 
 function selectBrush(val) {
