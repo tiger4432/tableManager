@@ -338,23 +338,57 @@ function fillColumnDropdowns() {
 // ----------------------------------------------------
 // Coordinates Mapping Calculation
 // ----------------------------------------------------
-function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
+function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const xp = colVisual;
-  let yp = rowVisual;
+  let c_m = colVisual;
+  let r_m = rowVisual;
 
-  // Handle Y inversion (using visualRows as the height of the screen grid)
-  if (invertY) {
-    yp = (visualRows - 1) - yp;
+  // Mirror if back side (horizontal flip at 0/180, vertical flip at 90/270)
+  if (side === 'back') {
+    if (rotation === 90 || rotation === 270) {
+      r_m = (visualRows - 1) - r_m;
+    } else {
+      c_m = (visualCols - 1) - c_m;
+    }
   }
 
-  const x = xp + startX;
-  const y = yp + startY;
+  let xp = c_m;
+  let yp = r_m;
 
-  return { x, y };
+  // Apply rotation to map c_m, r_m back to physical coordinate xp, yp
+  if (rotation === 0) {
+    xp = c_m;
+    yp = r_m;
+  } else if (rotation === 90) {
+    xp = r_m;
+    yp = (visualCols - 1) - c_m;
+  } else if (rotation === 180) {
+    xp = (visualCols - 1) - c_m;
+    yp = (visualRows - 1) - r_m;
+  } else if (rotation === 270) {
+    xp = (visualRows - 1) - r_m;
+    yp = c_m;
+  }
+
+  return { x: xp, y: yp };
+}
+
+function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  const xv = colVisual + startX;
+  let yv = rowVisual;
+
+  if (invertY) {
+    yv = (visualRows - 1) - yv;
+  }
+  yv = yv + startY;
+
+  return { x: xv, y: yv };
 }
 
 // ----------------------------------------------------
@@ -398,14 +432,15 @@ function renderGridCanvas() {
   // Render Visual Grid
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const coords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-      const coordKey = `${coords.x}_${coords.y}`;
+      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
 
       const cell = document.createElement('div');
       cell.className = 'grid-cell';
-      cell.dataset.x = coords.x;
-      cell.dataset.y = coords.y;
+      cell.dataset.x = visual.x;
+      cell.dataset.y = visual.y;
       cell.dataset.c = c;
       cell.dataset.r = r;
       cell.dataset.key = coordKey;
@@ -416,8 +451,8 @@ function renderGridCanvas() {
 
       // Check if this cell is the origin point (falls back to start cell if (0,0) is outside the grid bounds)
       const isOriginCell = hasZeroZero 
-        ? (coords.x === 0 && coords.y === 0) 
-        : (coords.x === startX && coords.y === startY);
+        ? (visual.x === 0 && visual.y === 0) 
+        : (visual.x === startX && visual.y === startY);
 
       if (isOriginCell) {
         cell.classList.add('cell-is-origin');
@@ -443,7 +478,7 @@ function renderGridCanvas() {
 
       updateCellStyles(cell, val);
 
-      cell.textContent = val !== '' ? val : `${coords.x},${coords.y}`;
+      cell.textContent = val !== '' ? val : `${visual.x},${visual.y}`;
       if (val === '') {
         cell.style.fontSize = '0.65rem';
         cell.style.color = 'var(--text-dim)';
@@ -452,7 +487,7 @@ function renderGridCanvas() {
         cell.style.color = '#fff';
       }
 
-      cell.title = `좌표: (${coords.x}, ${coords.y})\n값: ${val !== '' ? val : 'Empty'}`;
+      cell.title = `좌표: (${visual.x}, ${visual.y})\n값: ${val !== '' ? val : 'Empty'}`;
 
       // Mouse drag-draw triggers
       cell.addEventListener('mousedown', (e) => {
@@ -546,12 +581,12 @@ function handleCellClick(cell, event) {
     const rows = parseInt(el.gridRows.value, 10) || 10;
     const invertY = el.gridYInvert.checked;
 
-    // Calculate 0-indexed physical coordinate (with startX=0, startY=0)
-    const rawCoords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
+    // Calculate 0-indexed visual coordinate (with startX=0, startY=0)
+    const visualCoords = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
 
-    // Adjust start offsets so this cell becomes (0,0)
-    const newStartX = -rawCoords.x;
-    const newStartY = -rawCoords.y;
+    // Adjust start offsets so this cell becomes (0,0) visually
+    const newStartX = -visualCoords.x;
+    const newStartY = -visualCoords.y;
 
     el.gridStartX.value = newStartX;
     el.gridStartY.value = newStartY;
@@ -939,27 +974,27 @@ async function loadExistingMap() {
     let loadedGridMeta = null;
 
     if (result && result.data) {
+      // Find and pre-parse grid_metadata first so we know how to convert coordinates
+      const firstWithMeta = result.data.find(row => row.data && row.data['grid_metadata'] && row.data['grid_metadata'].value);
+      if (firstWithMeta) {
+        try {
+          loadedGridMeta = JSON.parse(firstWithMeta.data['grid_metadata'].value);
+        } catch (e) {
+          console.error('Failed to parse grid_metadata:', e);
+        }
+      }
+
       result.data.forEach(row => {
         const rowData = row.data || {};
         const xVal = rowData[xCol]?.value;
         const yVal = rowData[yCol]?.value;
         const val = rowData[valCol]?.value;
-        const gridMetaVal = rowData['grid_metadata']?.value;
-
-        if (gridMetaVal && !loadedGridMeta) {
-          try {
-            loadedGridMeta = JSON.parse(gridMetaVal);
-          } catch (e) {
-            console.error('Failed to parse grid_metadata:', e);
-          }
-        }
         
         if (xVal !== undefined && yVal !== undefined) {
           const xNum = parseInt(xVal, 10);
           const yNum = parseInt(yVal, 10);
           if (!isNaN(xNum) && !isNaN(yNum)) {
             const strVal = val !== null ? String(val).trim() : '';
-            gridData[`${xNum}_${yNum}`] = strVal;
             count++;
 
             if (strVal !== '') {
@@ -970,6 +1005,27 @@ async function loadExistingMap() {
             if (yNum > maxY) maxY = yNum;
             if (xNum < minX) minX = xNum;
             if (yNum < minY) minY = yNum;
+
+            // Map visual database coordinates back to physical gridData coordinates
+            const cols = loadedGridMeta ? loadedGridMeta.grid_cols : 10;
+            const rows = loadedGridMeta ? loadedGridMeta.grid_rows : 10;
+            const startX = loadedGridMeta ? loadedGridMeta.grid_start_x : 0;
+            const startY = loadedGridMeta ? loadedGridMeta.grid_start_y : 0;
+            const invertY = loadedGridMeta ? loadedGridMeta.grid_y_invert : false;
+            const rotation = loadedGridMeta ? (loadedGridMeta.rotation || 0) : 0;
+            const side = loadedGridMeta ? (loadedGridMeta.side || 'front') : 'front';
+
+            const c = xNum - startX;
+            const isRotated90or270 = (rotation === 90 || rotation === 270);
+            const visualRows = isRotated90or270 ? cols : rows;
+
+            let r = yNum - startY;
+            if (invertY) {
+              r = (visualRows - 1) - r;
+            }
+
+            const physical = getPhysicalCoords(c, r, cols, rows, rotation, side);
+            gridData[`${physical.x}_${physical.y}`] = strVal;
           }
         }
       });
@@ -1094,15 +1150,15 @@ function fillGrid() {
 
   const cols = parseInt(el.gridCols.value, 10) || 10;
   const rows = parseInt(el.gridRows.value, 10) || 10;
-  const startX = parseInt(el.gridStartX.value, 10) || 0;
-  const startY = parseInt(el.gridStartY.value, 10) || 0;
 
-  const maxXVal = startX + cols - 1;
-  const maxYVal = startY + rows - 1;
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
 
-  for (let x = startX; x <= maxXVal; x++) {
-    for (let y = startY; y <= maxYVal; y++) {
-      gridData[`${x}_${y}`] = activeBrush;
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      gridData[`${physical.x}_${physical.y}`] = activeBrush;
     }
   }
 
@@ -1182,8 +1238,9 @@ async function pushMapData() {
       const completelyInside = (dMax2 <= 1.0);
       if (!completelyInside) continue; // Skip blocked outside-wafer cells
 
-      const coords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-      const key = `${coords.x}_${coords.y}`;
+      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const key = `${physical.x}_${physical.y}`;
       const val = gridData[key] || '';
 
       let valParsed = null;
@@ -1191,8 +1248,8 @@ async function pushMapData() {
         valParsed = valType === 'number' ? Number(val) : val;
       }
 
-      let xParsed = xType === 'number' ? parseInt(coords.x, 10) : String(coords.x);
-      let yParsed = yType === 'number' ? parseInt(coords.y, 10) : String(coords.y);
+      let xParsed = xType === 'number' ? parseInt(visual.x, 10) : String(visual.x);
+      let yParsed = yType === 'number' ? parseInt(visual.y, 10) : String(visual.y);
 
       const rowUpdates = {
         [xCol]: xParsed,
