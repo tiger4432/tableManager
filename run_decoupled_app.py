@@ -40,6 +40,8 @@ def main():
     # 1. Start FastAPI server with DECOUPLED=True env var
     server_env = {"DECOUPLED": "True"}
     server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", "8080"]
+    if "--reload" in sys.argv:
+        server_cmd.append("--reload")
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
     # Wait for web server to initialize

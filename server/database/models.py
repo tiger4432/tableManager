@@ -243,7 +243,7 @@ def sync_dynamic_tables_schema(engine):
             col_name = column.name
             if col_name.lower() not in db_cols:
                 col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
-                alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_ddl}"
+                alter_query = f'ALTER TABLE "{table_name}" ADD COLUMN {col_ddl}'
                 print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
                 
                 # 각 컬럼 추가 DDL을 개별 독립 트랜잭션으로 격리하여, 한 곳의 실패가 전체 세션을 오염시키는 문제를 영구 방지

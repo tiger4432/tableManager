@@ -1484,3 +1484,257 @@ body.resizing-active .history-sidebar {
   cursor: pointer;
   flex: 1;
 }
+
+/* Map Grid Editor Layout Utilities */
+.w-full { width: 100%; }
+.control-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.glass-details {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-top: 5px;
+}
+.glass-details summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  outline: none;
+  user-select: none;
+}
+
+/* 2D Interactive Grid & Notch Wrapper */
+.map-grid-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(780px, 82vh, 82vw);
+  height: min(780px, 82vh, 82vw);
+  padding: 0;
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 50%; /* 웨이퍼 원형 외관 */
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-sizing: border-box;
+}
+
+/* 웨이퍼 원형 테두리 라인을 최상위에 오버레이로 얹어 셀들과 정확히 내접 정렬 */
+.map-grid-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3.5px solid rgba(255, 255, 255, 0.45); /* 선명한 솔리드 흰색 반투명 테두리 */
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 255, 255, 0.15); /* 은은한 백색 광원 효과 */
+  pointer-events: none; /* 클릭 이벤트가 하단 셀로 전달되도록 방어 */
+  z-index: 12;
+}
+
+.map-grid-canvas {
+  display: grid;
+  gap: 2px;
+  background: var(--border-color);
+  padding: 0; /* 패딩을 소거하여 셀들이 사각형 가장자리까지 꽉 차도록 설정 */
+  border-radius: 0; /* 원형 오버레이에 맞추기 위해 외각 둥글기 제거 */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  user-select: none;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 뒷면(Back) 좌우 대칭 반전 스타일 (0도, 180도) */
+.map-grid-canvas.flipped {
+  transform: scaleX(-1);
+}
+/* 대칭 반전 시 텍스트 읽을 수 있도록 셀 내부 재반전 */
+.map-grid-canvas.flipped .grid-cell {
+  transform: scaleX(-1);
+}
+.map-grid-canvas.flipped .grid-cell:hover {
+  transform: scaleX(-1) scale(1.05);
+}
+
+/* 뒷면(Back) 상하 대칭 반전 스타일 (90도, 270도) */
+.map-grid-canvas.flipped-vertical {
+  transform: scaleY(-1);
+}
+/* 대칭 반전 시 텍스트 읽을 수 있도록 셀 내부 재반전 */
+.map-grid-canvas.flipped-vertical .grid-cell {
+  transform: scaleY(-1);
+}
+.map-grid-canvas.flipped-vertical .grid-cell:hover {
+  transform: scaleY(-1) scale(1.05);
+}
+
+.grid-cell {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #fff;
+  cursor: crosshair;
+  transition: transform 0.1s ease, background 0.15s ease;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.grid-cell:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px var(--color-primary);
+  z-index: 10;
+}
+
+.map-grid-canvas.drag-active .grid-cell {
+  transition: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* 웨이퍼 V-Notch 데코레이션 */
+.wafer-notch {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  z-index: 15;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* 노치 상/하/좌/우 위치 매핑 */
+.wafer-notch.notch-bottom {
+  bottom: 5px;
+  border-width: 15px 12px 0 12px;
+  border-color: var(--color-secondary) transparent transparent transparent;
+}
+.wafer-notch.notch-top {
+  top: 5px;
+  border-width: 0 12px 15px 12px;
+  border-color: transparent transparent var(--color-secondary) transparent;
+}
+.wafer-notch.notch-left {
+  left: 5px;
+  border-width: 12px 15px 12px 0;
+  border-color: transparent var(--color-secondary) transparent transparent;
+}
+.wafer-notch.notch-right {
+  right: 5px;
+  border-width: 12px 0 12px 15px;
+  border-color: transparent transparent transparent var(--color-secondary);
+}
+
+.legend-row {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.legend-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.legend-row-active {
+  background: rgba(134, 59, 255, 0.15) !important;
+  border-left: 3px solid var(--color-secondary) !important;
+}
+.legend-color-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid rgba(255,255,255,0.25);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: transform 0.1s ease;
+}
+.legend-color-indicator:hover {
+  transform: scale(1.15);
+}
+.legend-color-input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.btn-rot {
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.btn-rot.active {
+  background: rgba(0, 240, 255, 0.15) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  font-weight: bold;
+}
+.w-full {
+  width: 100%;
+}
+.glass-details summary {
+  user-select: none;
+}
+
+/* 웨이퍼 원안에 완전히 들어오는 격자 셀 하이라이트 */
+.grid-cell.cell-inside-wafer {
+  outline: 1.5px solid #22c55e !important; /* bright neon green outline */
+  outline-offset: -1.5px;
+  box-shadow: inset 0 0 6px rgba(34, 197, 94, 0.4);
+}
+.grid-cell.cell-inside-wafer:not(.has-value) {
+  background: rgba(34, 197, 94, 0.08) !important;
+}
+
+/* 웨이퍼 원판 영역 밖의 셀 표기 차단 (그리드 선은 표시) */
+.grid-cell.cell-outside-wafer {
+  background: rgba(10, 15, 26, 0.3) !important; /* 매우 어두운 투명 배경 */
+  color: transparent !important; /* 글자 숨김 */
+  pointer-events: none !important; /* 클릭 방지 */
+  box-shadow: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important; /* 미세한 그리드 선 표출 */
+}
+
+/* 원점 설정 모드 작동 시, 원 밖의 셀도 일시적으로 조작/클릭이 가능해지도록 스타일 우회 */
+.map-grid-canvas.origin-mode-active .grid-cell.cell-outside-wafer {
+  pointer-events: auto !important;
+  cursor: cell !important;
+}
+
+/* 지정된 원점 (0,0) 셀 빨간색으로 시각화 */
+.grid-cell.cell-is-origin {
+  outline: 2px solid #ef4444 !important; /* 강렬한 레드 아웃라인 */
+  outline-offset: -2px;
+  box-shadow: inset 0 0 10px rgba(239, 68, 68, 0.8) !important; /* 레드 글로우 */
+  z-index: 10; /* 테두리가 선명하게 드러나도록 z-index 부여 */
+}
+.grid-cell.cell-is-origin:not(.has-value) {
+  background: rgba(239, 68, 68, 0.18) !important; /* 은은한 레드 배경 */
+}
+
+/* 드래그 사각 영역 지정 시 하이라이트 */
+.grid-cell.cell-in-selection {
+  outline: 2px solid #3b82f6 !important; /* neon blue border */
+  outline-offset: -2px;
+  background: rgba(59, 130, 246, 0.25) !important; /* translucent blue fill */
+  z-index: 9;
+}
+
+/* 드래그 사각 영역 지우기 하이라이트 */
+.grid-cell.cell-in-selection-erase {
+  outline: 2px solid #ef4444 !important; /* neon red border */
+  outline-offset: -2px;
+  background: rgba(239, 68, 68, 0.25) !important; /* translucent red fill */
+  z-index: 9;
+}

@@ -58,6 +58,7 @@ def sanitize_to_utf8(data: Any) -> Any:
     """
     데이터 객체(Dict, List, Str 등) 내부의 모든 문자열을 재귀적으로 탐색하여 
     비유효한 UTF-8 바이트 시퀀스를 제거/정정합니다.
+    JSON 직렬화가 불가능한 datetime/UUID 등도 문자열로 변환합니다.
     """
     if isinstance(data, dict):
         return {k: sanitize_to_utf8(v) for k, v in data.items()}
@@ -66,6 +67,12 @@ def sanitize_to_utf8(data: Any) -> Any:
     elif isinstance(data, str):
         # 비유효한 UTF-8 바이트를 무시(ignore)하고 다시 디코딩하여 깨끗한 문자열 생성
         return data.encode("utf-8", "ignore").decode("utf-8")
+    elif isinstance(data, datetime):
+        return data.isoformat()
+    elif isinstance(data, uuid.UUID):
+        return str(data)
+    elif hasattr(data, "isoformat"):
+        return data.isoformat()
     else:
         return data
 
@@ -348,9 +355,21 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
     
     # CellSource 로드
     if sources_cache is not None:
-        col_srcs = sources_cache.get(key, [])
         if key not in sources_cache:
+            if is_new:
+                col_srcs = []
+            else:
+                col_srcs = db.query(models.CellSource).filter(
+                    models.CellSource.table_name == table_name,
+                    models.CellSource.row_id == row_id,
+                    models.CellSource.column_name == col_name
+                ).all()
+                if cell_sources_to_upsert is not None:
+                    for s in col_srcs:
+                        db.expunge(s)
             sources_cache[key] = col_srcs
+        else:
+            col_srcs = sources_cache[key]
     else:
         if is_new:
             col_srcs = []
@@ -366,9 +385,20 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
             
     # CellOverwrite 로드
     if overwrites_cache is not None:
-        ow = overwrites_cache.get(key)
         if key not in overwrites_cache:
+            if is_new:
+                ow = None
+            else:
+                ow = db.query(models.CellOverwrite).filter(
+                    models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id == row_id,
+                    models.CellOverwrite.column_name == col_name
+                ).first()
+                if ow and cell_overwrites_to_upsert is not None:
+                    db.expunge(ow)
             overwrites_cache[key] = ow
+        else:
+            ow = overwrites_cache[key]
     else:
         if is_new:
             ow = None
@@ -644,7 +674,24 @@ def apply_row_update_internal(
                                 if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
                                     is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
-                            is_value_protected = is_old_user_overwritten and not is_explicitly_edited
+                            # 새 값이 사용자 입력값인지 판단
+                            is_new_user_overwritten = (update_item.source_name == "user" or (update_item.updated_by and update_item.updated_by != "system" and "parser" not in str(update_item.updated_by).lower()))
+                            new_ow = overwrites_cache.get((row_to_delete.row_id, col_name)) if overwrites_cache else None
+                            if not new_ow:
+                                new_ow = db.query(models.CellOverwrite).filter(
+                                    models.CellOverwrite.table_name == table_name,
+                                    models.CellOverwrite.row_id == row_to_delete.row_id,
+                                    models.CellOverwrite.column_name == col_name
+                                ).first()
+                            if new_ow:
+                                if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
+                                    is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
+
+                            if is_old_user_overwritten and is_new_user_overwritten:
+                                # User vs User collision: apply the newly overwritten value
+                                is_value_protected = False
+                            else:
+                                is_value_protected = is_old_user_overwritten and not is_explicitly_edited
 
                             new_val = getattr(row_to_delete, col_name, None)
                             
@@ -717,6 +764,28 @@ def apply_row_update_internal(
                                     if t == table_name and r == row.row_id and c == col_name:
                                         existing_names.add(s_name)
 
+                                # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
+                                if is_old_user_overwritten and is_new_user_overwritten:
+                                    old_user_src = next((s for s in target_srcs if s.source_name == "user"), None) if target_srcs else None
+                                    pending_user_key = (table_name, row.row_id, col_name, "user")
+                                    pending_user_data = cell_sources_to_upsert.get(pending_user_key) if cell_sources_to_upsert else None
+                                    
+                                    old_val_to_backup = pending_user_data["value"] if pending_user_data else (old_user_src.value if old_user_src else None)
+                                    old_by_to_backup = pending_user_data["updated_by"] if pending_user_data else (old_user_src.updated_by if old_user_src else "system")
+                                    
+                                    if old_val_to_backup is not None:
+                                        backup_src_name = f"user (old_exist_{row.row_id[:6]})"
+                                        backup_key = (table_name, row.row_id, col_name, backup_src_name)
+                                        cell_sources_to_upsert[backup_key] = {
+                                            "table_name": table_name,
+                                            "row_id": row.row_id,
+                                            "column_name": col_name,
+                                            "source_name": backup_src_name,
+                                            "value": clean_str_value(old_val_to_backup),
+                                            "updated_by": old_by_to_backup,
+                                            "ingested_at": func.now()
+                                        }
+
                                 src_list = []
                                 if old_srcs:
                                     for s in old_srcs:
@@ -727,9 +796,12 @@ def apply_row_update_internal(
 
                                 for s_name, s_val, s_by in src_list:
                                     effective_src_name = s_name
-                                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                    suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                    effective_src_name = f"{effective_src_name}{suffix}"
+                                    if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
+                                        effective_src_name = "user"
+                                    else:
+                                        r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                        suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
+                                        effective_src_name = f"{effective_src_name}{suffix}"
                                         
                                     src_key = (table_name, row.row_id, col_name, effective_src_name)
                                     cell_sources_to_upsert[src_key] = {
@@ -1394,7 +1466,24 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
                                     is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
                                 
-                            is_value_protected = is_old_user_overwritten and not is_explicitly_edited
+                            # 새 값이 사용자 입력값인지 판단
+                            is_new_user_overwritten = (source_name == "user" or (updated_by and updated_by != "system" and "parser" not in str(updated_by).lower()))
+                            new_ow = overwrites_cache.get((row_to_delete.row_id, c_name)) if overwrites_cache else None
+                            if not new_ow:
+                                new_ow = db.query(models.CellOverwrite).filter(
+                                    models.CellOverwrite.table_name == table_name,
+                                    models.CellOverwrite.row_id == row_to_delete.row_id,
+                                    models.CellOverwrite.column_name == c_name
+                                ).first()
+                            if new_ow:
+                                if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
+                                    is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
+
+                            if is_old_user_overwritten and is_new_user_overwritten:
+                                # User vs User collision: apply the newly overwritten value
+                                is_value_protected = False
+                            else:
+                                is_value_protected = is_old_user_overwritten and not is_explicitly_edited
 
                             new_v = getattr(row_to_delete, c_name, None)
                             
@@ -1457,6 +1546,32 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                             )
                             existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
 
+                            # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
+                            if is_old_user_overwritten and is_new_user_overwritten:
+                                old_user_src = next((s for s in target_srcs if s.source_name == "user"), None) if target_srcs else None
+                                old_val_to_backup = old_user_src.value if old_user_src else None
+                                old_by_to_backup = old_user_src.updated_by if old_user_src else "system"
+                                
+                                if old_val_to_backup is not None:
+                                    backup_src_name = f"user (old_exist_{row.row_id[:6]})"
+                                    # 중복 삽입 방지를 위한 선제 삭제
+                                    db.query(CellSource).filter(
+                                        CellSource.table_name == table_name,
+                                        CellSource.row_id == row.row_id,
+                                        CellSource.column_name == c_name,
+                                        CellSource.source_name == backup_src_name
+                                    ).delete()
+                                    
+                                    backup_src = CellSource(
+                                        table_name=table_name,
+                                        row_id=row.row_id,
+                                        column_name=c_name,
+                                        source_name=backup_src_name,
+                                        value=clean_str_value(old_val_to_backup),
+                                        updated_by=old_by_to_backup
+                                    )
+                                    db.add(backup_src)
+
                             src_list = []
                             if old_srcs:
                                 for s in old_srcs:
@@ -1466,9 +1581,12 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
 
                             for s_name, s_val, s_by in src_list:
                                 effective_src_name = s_name
-                                r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                effective_src_name = f"{effective_src_name}{suffix}"
+                                if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
+                                    effective_src_name = "user"
+                                else:
+                                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                                    suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
+                                    effective_src_name = f"{effective_src_name}{suffix}"
 
                                 db.query(CellSource).filter(
                                     CellSource.table_name == table_name,

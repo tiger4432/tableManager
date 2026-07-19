@@ -1,0 +1,1257 @@
+import './style.css';
+import { API_BASE, CURRENT_USER } from './config.js';
+
+let tables = [];
+let selectedTable = '';
+let tableSchema = null;
+let gridData = {}; // key: "x_y" -> value (physical coordinates)
+let legend = [];
+let activeBrush = '';
+let isMouseDown = false;
+let isRightDrag = false;
+
+// Rotation & Side Mirroring States
+let currentRotation = 0; // 0, 90, 180, 270
+let currentSide = 'front'; // 'front', 'back'
+let isOriginMode = false; // Origin designation mode state
+let isBoxDragging = false; // Bounding box drag selection state
+let boxStartCell = null; // Start cell reference for bounding box
+let dragCellsCache = []; // Capped cache of cells to optimize mouse drag operations
+
+// Default Legend
+const DEFAULT_LEGEND = [
+  { value: '1', desc: 'GOOD', color: '#10b981' },
+  { value: '0', desc: 'FAIL', color: '#ef4444' },
+  { value: '2', desc: 'EMPTY', color: '#4b5563' },
+  { value: '3', desc: 'REWORK', color: '#f59e0b' }
+];
+
+// Initialize DOM elements when loaded
+document.addEventListener('DOMContentLoaded', async () => {
+  initDOMElements();
+  initMouseDragEvents();
+  await loadTablesList();
+});
+
+// Cache DOM Elements
+const el = {};
+function initDOMElements() {
+  el.tableSelect = document.getElementById('map-table-select');
+  el.metadataContainer = document.getElementById('metadata-fields-container');
+  el.gridCols = document.getElementById('grid-cols');
+  el.gridRows = document.getElementById('grid-rows');
+  el.gridStartX = document.getElementById('grid-start-x');
+  el.gridStartY = document.getElementById('grid-start-y');
+  el.gridYInvert = document.getElementById('grid-y-invert');
+  
+  el.colMapX = document.getElementById('col-map-x');
+  el.colMapY = document.getElementById('col-map-y');
+  el.colMapVal = document.getElementById('col-map-val');
+  
+  el.btnLoadMap = document.getElementById('btn-load-map');
+  el.btnAddLegend = document.getElementById('btn-add-legend');
+  el.legendList = document.getElementById('legend-list');
+  
+  el.activeBrushVal = document.getElementById('active-brush-val');
+  el.gridStatusCoords = document.getElementById('grid-status-coords');
+  el.btnSetOrigin = document.getElementById('btn-set-origin');
+  el.btnClearGrid = document.getElementById('btn-clear-grid');
+  el.btnFillGrid = document.getElementById('btn-fill-grid');
+  el.btnPushMap = document.getElementById('btn-push-map');
+  
+  el.gridCanvas = document.getElementById('grid-canvas');
+  el.gridWrapper = document.getElementById('grid-wrapper');
+  el.gridNotch = document.getElementById('grid-notch');
+
+  // Bind Events
+  el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
+  
+  const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert];
+  inputsToRedraw.forEach(input => {
+    input.addEventListener('change', () => {
+      // Validate bounds
+      if (input === el.gridCols || input === el.gridRows) {
+        let v = parseInt(input.value, 10);
+        if (isNaN(v) || v < 1) input.value = 1;
+        if (v > 100) input.value = 100;
+      } else if (input === el.gridStartX || input === el.gridStartY) {
+        let v = parseInt(input.value, 10);
+        if (isNaN(v)) input.value = 0;
+      }
+      renderGridCanvas();
+    });
+  });
+
+  el.btnLoadMap.addEventListener('click', loadExistingMap);
+  el.btnAddLegend.addEventListener('click', addNewLegendRow);
+  el.btnSetOrigin.addEventListener('click', () => {
+    isOriginMode = !isOriginMode;
+    if (isOriginMode) {
+      el.btnSetOrigin.classList.add('active');
+      el.btnSetOrigin.style.borderColor = 'var(--color-secondary)';
+      el.btnSetOrigin.style.color = 'var(--color-secondary)';
+      el.gridCanvas.classList.add('origin-mode-active');
+    } else {
+      el.btnSetOrigin.classList.remove('active');
+      el.btnSetOrigin.style.borderColor = '';
+      el.btnSetOrigin.style.color = '';
+      el.gridCanvas.classList.remove('origin-mode-active');
+    }
+  });
+  el.btnClearGrid.addEventListener('click', clearGrid);
+  el.btnFillGrid.addEventListener('click', fillGrid);
+  el.btnPushMap.addEventListener('click', pushMapData);
+
+  // Dynamic Metadata Inputs change triggers
+  el.colMapX.addEventListener('change', () => {
+    renderMetadataInputs();
+    renderGridCanvas();
+  });
+  el.colMapY.addEventListener('change', () => {
+    renderMetadataInputs();
+    renderGridCanvas();
+  });
+  el.colMapVal.addEventListener('change', () => {
+    renderMetadataInputs();
+    renderGridCanvas();
+  });
+
+  // Rotation Buttons
+  document.querySelectorAll('.btn-rot').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.btn-rot').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentRotation = parseInt(btn.dataset.rot, 10);
+      renderGridCanvas();
+    });
+  });
+
+  // Wafer Side Radios
+  document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      currentSide = e.target.value;
+      renderGridCanvas();
+    });
+  });
+
+  // Prevent right-click context menu on canvas
+  el.gridCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+function initMouseDragEvents() {
+  window.addEventListener('mousedown', (e) => {
+    isMouseDown = true;
+    isRightDrag = (e.button === 2);
+  });
+  window.addEventListener('mouseup', () => {
+    isMouseDown = false;
+    isRightDrag = false;
+
+    if (isBoxDragging && boxStartCell) {
+      // Check if it was an erase selection
+      const selectedEraseCells = dragCellsCache.filter(child => child.el.classList.contains('cell-in-selection-erase')).map(child => child.el);
+      if (selectedEraseCells.length > 0) {
+        // Finalize box selection erase
+        selectedEraseCells.forEach(cell => {
+          const key = cell.dataset.key;
+          gridData[key] = '';
+          cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+          cell.style.fontSize = '0.65rem';
+          cell.style.color = 'var(--text-dim)';
+          updateCellStyles(cell, '');
+          cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
+          cell.classList.remove('has-value');
+        });
+      } else {
+        // Finalize box selection fill
+        const selectedCells = dragCellsCache.filter(child => child.el.classList.contains('cell-in-selection')).map(child => child.el);
+        const isSingleClick = (selectedCells.length <= 1);
+
+        selectedCells.forEach(cell => {
+          const key = cell.dataset.key;
+          if (cell.classList.contains('cell-outside-wafer')) return;
+
+          const existingVal = gridData[key] || '';
+          if (!isSingleClick && existingVal !== '') {
+            return;
+          }
+
+          if (activeBrush !== undefined && activeBrush !== null) {
+            gridData[key] = activeBrush;
+            cell.textContent = activeBrush;
+            cell.style.fontSize = '0.8rem';
+            cell.style.color = '#fff';
+            updateCellStyles(cell, activeBrush);
+            cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
+            cell.classList.add('has-value');
+          }
+        });
+      }
+
+      // Clear selection classes using cached array instead of DOM query
+      dragCellsCache.forEach(c => {
+        c.el.classList.remove('cell-in-selection');
+        c.el.classList.remove('cell-in-selection-erase');
+      });
+
+      // Remove drag-active class to restore standard cell styles and transitions
+      el.gridCanvas.classList.remove('drag-active');
+
+      isBoxDragging = false;
+      boxStartCell = null;
+      dragCellsCache = []; // Reset cache
+    }
+  });
+}
+
+// Fetch tables list
+async function loadTablesList() {
+  try {
+    const res = await fetch(`${API_BASE}/tables`);
+    const data = await res.json();
+    el.tableSelect.innerHTML = '';
+    
+    if (data.tables && data.tables.length > 0) {
+      data.tables.forEach(table => {
+        const option = document.createElement('option');
+        option.value = table;
+        option.textContent = table;
+        el.tableSelect.appendChild(option);
+      });
+      // Auto select bonding_map if exists, otherwise first table
+      const hasBondingMap = data.tables.includes('bonding_map');
+      const startTable = hasBondingMap ? 'bonding_map' : data.tables[0];
+      el.tableSelect.value = startTable;
+      await switchTable(startTable);
+    } else {
+      el.tableSelect.innerHTML = '<option value="">No tables available</option>';
+    }
+  } catch (err) {
+    console.error('Failed to load tables', err);
+    el.tableSelect.innerHTML = '<option value="">Connection Error</option>';
+  }
+}
+
+// Switch current working table & load schema
+async function switchTable(tableName) {
+  selectedTable = tableName;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+    tableSchema = await res.json();
+    
+    // Fill advanced column selectors
+    fillColumnDropdowns();
+
+    // Render Dynamic Metadata Inputs
+    renderMetadataInputs();
+    
+    // Load Legend from localStorage or defaults
+    loadLegendFromStorage();
+    renderLegendTable();
+    
+    // Reset Grid data and Draw
+    gridData = {};
+    renderGridCanvas();
+  } catch (err) {
+    console.error('Schema fetch failed', err);
+  }
+}
+
+function renderMetadataInputs() {
+  const container = el.metadataContainer;
+  if (!container || !tableSchema) return;
+  container.innerHTML = '';
+
+  const cols = tableSchema.columns || [];
+  const xCol = el.colMapX.value;
+  const yCol = el.colMapY.value;
+  const valCol = el.colMapVal.value;
+
+  // Filter out system columns and coordinate/value columns
+  const systemCols = [
+    'created_at', 'updated_at', 'row_id', 'business_key_val',
+    'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'
+  ];
+
+  const metaCols = cols.filter(col => {
+    return !systemCols.includes(col) &&
+           col !== xCol &&
+           col !== yCol &&
+           col !== valCol;
+  });
+
+  metaCols.forEach(col => {
+    const colType = tableSchema.column_types[col] || 'string';
+    const formGroup = document.createElement('div');
+    formGroup.className = 'control-group-vertical';
+
+    const label = document.createElement('label');
+    label.htmlFor = `meta-input-${col}`;
+    label.textContent = `${col} (${colType})`;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `meta-input-${col}`;
+    input.className = 'glass-input w-full';
+    input.placeholder = `${col} 값 입력`;
+    
+    formGroup.appendChild(label);
+    formGroup.appendChild(input);
+    container.appendChild(formGroup);
+  });
+}
+
+function getBaseColumnName() {
+  if (!tableSchema) return 'base';
+  const compositeSources = tableSchema.composite_key_source || [];
+  // Base is usually the first non-coordinate key source
+  const baseCol = compositeSources.find(c => c !== 'x' && c !== 'y');
+  return baseCol || 'base';
+}
+
+function fillColumnDropdowns() {
+  if (!tableSchema) return;
+  const cols = tableSchema.columns || [];
+  
+  const populate = (dropdown, defaultPattern) => {
+    dropdown.innerHTML = '';
+    cols.forEach(col => {
+      if (col === 'created_at' || col === 'updated_at') return;
+      const option = document.createElement('option');
+      option.value = col;
+      option.textContent = col;
+      dropdown.appendChild(option);
+    });
+    // Auto select based on name matching
+    const matched = cols.find(c => c.toLowerCase() === defaultPattern.toLowerCase());
+    if (matched) dropdown.value = matched;
+  };
+
+  populate(el.colMapX, 'x');
+  populate(el.colMapY, 'y');
+  // bonding_map has 'leg' as value column. Fallback to common value column names
+  const valMatches = ['leg', 'status', 'value', 'val', 'bin'];
+  const matchedVal = cols.find(c => valMatches.includes(c.toLowerCase()));
+  populate(el.colMapVal, matchedVal || cols[0]);
+}
+
+// ----------------------------------------------------
+// Coordinates Mapping Calculation
+// ----------------------------------------------------
+function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  const xp = colVisual;
+  let yp = rowVisual;
+
+  // Handle Y inversion (using visualRows as the height of the screen grid)
+  if (invertY) {
+    yp = (visualRows - 1) - yp;
+  }
+
+  const x = xp + startX;
+  const y = yp + startY;
+
+  return { x, y };
+}
+
+// ----------------------------------------------------
+// Rendering Functions
+// ----------------------------------------------------
+function renderGridCanvas() {
+  if (!el.gridCanvas) return;
+
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert.checked;
+
+  // Check if coordinate grid contains (0,0) based on start coordinates and dimensions
+  const hasZeroZero = (startX <= 0 && (startX + cols - 1) >= 0) && (startY <= 0 && (startY + rows - 1) >= 0);
+
+  el.gridCanvas.innerHTML = '';
+
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  el.gridCanvas.style.gridTemplateColumns = `repeat(${visualCols}, 1fr)`;
+  el.gridCanvas.style.gridTemplateRows = `repeat(${visualRows}, 1fr)`;
+
+  // Mirror effect animation class based on rotation
+  if (currentSide === 'back') {
+    if (currentRotation === 90 || currentRotation === 270) {
+      el.gridCanvas.classList.add('flipped-vertical');
+      el.gridCanvas.classList.remove('flipped');
+    } else {
+      el.gridCanvas.classList.add('flipped');
+      el.gridCanvas.classList.remove('flipped-vertical');
+    }
+  } else {
+    el.gridCanvas.classList.remove('flipped');
+    el.gridCanvas.classList.remove('flipped-vertical');
+  }
+
+  // Render Visual Grid
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const coords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const coordKey = `${coords.x}_${coords.y}`;
+      const val = gridData[coordKey] || '';
+
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      cell.dataset.x = coords.x;
+      cell.dataset.y = coords.y;
+      cell.dataset.c = c;
+      cell.dataset.r = r;
+      cell.dataset.key = coordKey;
+
+      if (val !== '') {
+        cell.classList.add('has-value');
+      }
+
+      // Check if this cell is the origin point (falls back to start cell if (0,0) is outside the grid bounds)
+      const isOriginCell = hasZeroZero 
+        ? (coords.x === 0 && coords.y === 0) 
+        : (coords.x === startX && coords.y === startY);
+
+      if (isOriginCell) {
+        cell.classList.add('cell-is-origin');
+      }
+
+      // Check if visual cell (c, r) is completely inside the wafer boundary circle
+      const u1 = (2 * c - visualCols) / visualCols;
+      const u2 = (2 * (c + 1) - visualCols) / visualCols;
+      const v1 = (2 * r - visualRows) / visualRows;
+      const v2 = (2 * (r + 1) - visualRows) / visualRows;
+
+      const maxU2 = Math.max(u1 * u1, u2 * u2);
+      const maxV2 = Math.max(v1 * v1, v2 * v2);
+      const dMax2 = maxU2 + maxV2;
+
+      const completelyInside = (dMax2 <= 1.0);
+
+      if (completelyInside) {
+        cell.classList.add('cell-inside-wafer');
+      } else {
+        cell.classList.add('cell-outside-wafer');
+      }
+
+      updateCellStyles(cell, val);
+
+      cell.textContent = val !== '' ? val : `${coords.x},${coords.y}`;
+      if (val === '') {
+        cell.style.fontSize = '0.65rem';
+        cell.style.color = 'var(--text-dim)';
+      } else {
+        cell.style.fontSize = '0.8rem';
+        cell.style.color = '#fff';
+      }
+
+      cell.title = `좌표: (${coords.x}, ${coords.y})\n값: ${val !== '' ? val : 'Empty'}`;
+
+      // Mouse drag-draw triggers
+      cell.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (isOriginMode) {
+          handleCellClick(cell, e);
+          return;
+        }
+        const isRight = (e.button === 2 || e.buttons === 2);
+        isBoxDragging = true;
+        boxStartCell = cell;
+        
+        // Add class to canvas to deactivate cell hover transitions/transforms during drag (massive repaint speedup)
+        el.gridCanvas.classList.add('drag-active');
+        
+        // Cache all cell DOM elements once on mousedown to avoid querySelectorAll on every mouseenter (extremely high speed improvement)
+        // We also track the current selectedState to avoid redundant DOM classList manipulation (O(N) DOM writes -> O(delta) DOM writes)
+        dragCellsCache = Array.from(el.gridCanvas.querySelectorAll('.grid-cell')).map(child => {
+          let state = 0;
+          if (child.classList.contains('cell-in-selection')) state = 1;
+          else if (child.classList.contains('cell-in-selection-erase')) state = 2;
+          return {
+            el: child,
+            c: parseInt(child.dataset.c, 10),
+            r: parseInt(child.dataset.r, 10),
+            selectedState: state // 0: none, 1: fill selected, 2: erase selected
+          };
+        });
+
+        if (isRight) {
+          cell.classList.add('cell-in-selection-erase');
+        } else {
+          cell.classList.add('cell-in-selection');
+        }
+      });
+      cell.addEventListener('mouseenter', (e) => {
+        // Skip updating badge text while dragging to prevent layout recalculation reflows
+        if (!isBoxDragging) {
+          el.gridStatusCoords.textContent = `Cursor: (${coords.x}, ${coords.y}) = ${val !== '' ? val : 'Empty'}`;
+        }
+        
+        if (isBoxDragging && boxStartCell) {
+          const c1 = parseInt(boxStartCell.dataset.c, 10);
+          const r1 = parseInt(boxStartCell.dataset.r, 10);
+          const c2 = parseInt(cell.dataset.c, 10);
+          const r2 = parseInt(cell.dataset.r, 10);
+          
+          const minC = Math.min(c1, c2);
+          const maxC = Math.max(c1, c2);
+          const minR = Math.min(r1, r2);
+          const maxR = Math.max(r1, r2);
+
+          const activeClass = isRightDrag ? 'cell-in-selection-erase' : 'cell-in-selection';
+          const inactiveClass = isRightDrag ? 'cell-in-selection' : 'cell-in-selection-erase';
+          const targetState = isRightDrag ? 2 : 1;
+
+          dragCellsCache.forEach(child => {
+            const inBox = (child.c >= minC && child.c <= maxC && child.r >= minR && child.r <= maxR);
+            const nextState = inBox ? targetState : 0;
+            
+            if (child.selectedState !== nextState) {
+              // Only perform DOM write operations if the selection state changed
+              if (nextState === 1) {
+                child.el.classList.add('cell-in-selection');
+                child.el.classList.remove('cell-in-selection-erase');
+              } else if (nextState === 2) {
+                child.el.classList.add('cell-in-selection-erase');
+                child.el.classList.remove('cell-in-selection');
+              } else {
+                child.el.classList.remove('cell-in-selection');
+                child.el.classList.remove('cell-in-selection-erase');
+              }
+              child.selectedState = nextState;
+            }
+          });
+        }
+      });
+
+      el.gridCanvas.appendChild(cell);
+    }
+  }
+
+  updateNotchPosition();
+}
+
+function handleCellClick(cell, event) {
+  if (isOriginMode) {
+    const c = parseInt(cell.dataset.c, 10);
+    const r = parseInt(cell.dataset.r, 10);
+    const cols = parseInt(el.gridCols.value, 10) || 10;
+    const rows = parseInt(el.gridRows.value, 10) || 10;
+    const invertY = el.gridYInvert.checked;
+
+    // Calculate 0-indexed physical coordinate (with startX=0, startY=0)
+    const rawCoords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
+
+    // Adjust start offsets so this cell becomes (0,0)
+    const newStartX = -rawCoords.x;
+    const newStartY = -rawCoords.y;
+
+    el.gridStartX.value = newStartX;
+    el.gridStartY.value = newStartY;
+
+    // Turn off origin mode
+    isOriginMode = false;
+    el.btnSetOrigin.classList.remove('active');
+    el.btnSetOrigin.style.borderColor = '';
+    el.btnSetOrigin.style.color = '';
+    el.gridCanvas.classList.remove('origin-mode-active');
+
+    // Redraw grid
+    renderGridCanvas();
+    return;
+  }
+
+  let isRight = isRightDrag;
+  if (event) {
+    isRight = (event.button === 2 || event.buttons === 2);
+  }
+
+  const key = cell.dataset.key;
+  if (isRight) {
+    // Clear cell
+    gridData[key] = '';
+    cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+    cell.style.fontSize = '0.65rem';
+    cell.style.color = 'var(--text-dim)';
+    updateCellStyles(cell, '');
+    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
+    cell.classList.remove('has-value');
+  } else {
+    // Draw cell
+    if (activeBrush !== undefined && activeBrush !== null) {
+      // 드래그 드로잉 중(event가 없는 경우)이고 이미 값이 채워져 있다면 기존 값 보존
+      const existingVal = gridData[key] || '';
+      if (!event && existingVal !== '') {
+        return;
+      }
+      gridData[key] = activeBrush;
+      cell.textContent = activeBrush;
+      cell.style.fontSize = '0.8rem';
+      cell.style.color = '#fff';
+      updateCellStyles(cell, activeBrush);
+      cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
+      cell.classList.add('has-value');
+    }
+  }
+}
+
+function updateCellStyles(cell, val) {
+  const match = legend.find(item => item.value === val);
+  if (match && val !== '') {
+    cell.style.backgroundColor = match.color;
+    cell.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+  } else {
+    cell.style.backgroundColor = 'rgba(30, 41, 59, 0.8)';
+    cell.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+  }
+}
+
+// ----------------------------------------------------
+// V-Notch Orientation & Offsets
+// ----------------------------------------------------
+function updateNotchPosition() {
+  if (!el.gridNotch) return;
+
+  el.gridNotch.className = 'wafer-notch';
+
+  let positionClass = '';
+  if (currentRotation === 0) positionClass = 'notch-bottom';
+  else if (currentRotation === 90) positionClass = 'notch-left';
+  else if (currentRotation === 180) positionClass = 'notch-top';
+  else if (currentRotation === 270) positionClass = 'notch-right';
+  el.gridNotch.classList.add(positionClass);
+
+  const offset = 20; // px shift
+  el.gridNotch.style.left = '';
+  el.gridNotch.style.right = '';
+  el.gridNotch.style.top = '';
+  el.gridNotch.style.bottom = '';
+  el.gridNotch.style.transform = '';
+
+  if (currentRotation === 0) { // Bottom
+    el.gridNotch.style.bottom = '5px';
+    if (currentSide === 'front') {
+      el.gridNotch.style.left = `calc(50% + ${offset}px)`;
+    } else {
+      el.gridNotch.style.left = `calc(50% - ${offset}px)`;
+    }
+    el.gridNotch.style.transform = 'translateX(-50%)';
+  } else if (currentRotation === 180) { // Top
+    el.gridNotch.style.top = '5px';
+    if (currentSide === 'front') {
+      el.gridNotch.style.left = `calc(50% + ${offset}px)`;
+    } else {
+      el.gridNotch.style.left = `calc(50% - ${offset}px)`;
+    }
+    el.gridNotch.style.transform = 'translateX(-50%)';
+  } else if (currentRotation === 90) { // Left
+    el.gridNotch.style.left = '5px';
+    if (currentSide === 'front') {
+      el.gridNotch.style.top = `calc(50% - ${offset}px)`;
+    } else {
+      el.gridNotch.style.top = `calc(50% + ${offset}px)`;
+    }
+    el.gridNotch.style.transform = 'translateY(-50%)';
+  } else if (currentRotation === 270) { // Right
+    el.gridNotch.style.right = '5px';
+    if (currentSide === 'front') {
+      el.gridNotch.style.top = `calc(50% + ${offset}px)`;
+    } else {
+      el.gridNotch.style.top = `calc(50% - ${offset}px)`;
+    }
+    el.gridNotch.style.transform = 'translateY(-50%)';
+  }
+}
+
+// ----------------------------------------------------
+// Legend / Palette Management
+// ----------------------------------------------------
+function loadLegendFromStorage() {
+  const stored = localStorage.getItem(`map_legend_${selectedTable}`);
+  if (stored) {
+    try {
+      legend = JSON.parse(stored);
+    } catch (e) {
+      legend = [...DEFAULT_LEGEND];
+    }
+  } else {
+    legend = [...DEFAULT_LEGEND];
+  }
+  if (legend.length > 0) {
+    activeBrush = legend[0].value;
+  } else {
+    activeBrush = '';
+  }
+}
+
+function saveLegendToStorage() {
+  localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(legend));
+}
+
+function renderLegendTable() {
+  el.legendList.innerHTML = '';
+  legend.forEach((item, index) => {
+    const row = document.createElement('tr');
+    row.className = 'legend-row';
+    row.dataset.value = item.value;
+    if (activeBrush === item.value) {
+      row.classList.add('legend-row-active');
+      el.activeBrushVal.textContent = `${item.value} (${item.desc})`;
+      el.activeBrushVal.style.color = item.color;
+    }
+
+    row.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.classList.contains('btn-delete')) return;
+      selectBrush(item.value);
+    });
+
+    // Value column
+    const tdVal = document.createElement('td');
+    const inputVal = document.createElement('input');
+    inputVal.type = 'text';
+    inputVal.className = 'glass-input';
+    inputVal.style.padding = '6px 10px';
+    inputVal.style.fontSize = '0.9rem';
+    inputVal.style.width = '100%';
+    inputVal.value = item.value;
+    inputVal.addEventListener('change', (e) => {
+      const oldVal = item.value;
+      const newVal = e.target.value.trim();
+      if (!newVal) {
+        inputVal.value = oldVal;
+        return;
+      }
+      // Check duplicate values
+      const exists = legend.some((l, idx) => idx !== index && l.value === newVal);
+      if (exists) {
+        alert('중복된 범례 값이 존재합니다.');
+        inputVal.value = oldVal;
+        return;
+      }
+      item.value = newVal;
+      // Remap grid values from oldVal to newVal
+      remapGridValues(oldVal, newVal);
+      if (activeBrush === oldVal) {
+        activeBrush = newVal;
+        row.dataset.value = newVal;
+        el.activeBrushVal.textContent = `${newVal} (${item.desc})`;
+      } else {
+        row.dataset.value = newVal;
+      }
+      saveLegendToStorage();
+      renderGridCanvas();
+    });
+    tdVal.appendChild(inputVal);
+
+    // Description column
+    const tdDesc = document.createElement('td');
+    const inputDesc = document.createElement('input');
+    inputDesc.type = 'text';
+    inputDesc.className = 'glass-input';
+    inputDesc.style.padding = '6px 10px';
+    inputDesc.style.fontSize = '0.9rem';
+    inputDesc.style.width = '100%';
+    inputDesc.value = item.desc;
+    inputDesc.addEventListener('change', (e) => {
+      item.desc = e.target.value.trim();
+      saveLegendToStorage();
+      if (activeBrush === item.value) {
+        el.activeBrushVal.textContent = `${item.value} (${item.desc})`;
+      }
+    });
+    tdDesc.appendChild(inputDesc);
+
+    // Color indicator and Picker column
+    const tdColor = document.createElement('td');
+    tdColor.style.textAlign = 'center';
+    
+    const colorIndicator = document.createElement('span');
+    colorIndicator.className = 'legend-color-indicator';
+    colorIndicator.style.backgroundColor = item.color;
+    
+    // Hidden color picker
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'legend-color-input';
+    colorInput.style.display = 'none';
+    colorInput.value = item.color;
+    
+    colorIndicator.addEventListener('click', () => colorInput.click());
+    colorInput.addEventListener('input', (e) => {
+      const col = e.target.value;
+      item.color = col;
+      colorIndicator.style.backgroundColor = col;
+      if (activeBrush === item.value) {
+        el.activeBrushVal.style.color = col;
+      }
+      saveLegendToStorage();
+      renderGridCanvas();
+    });
+
+    tdColor.appendChild(colorIndicator);
+    tdColor.appendChild(colorInput);
+
+    // Delete column
+    const tdDel = document.createElement('td');
+    const btnDel = document.createElement('button');
+    btnDel.className = 'glass-page-btn btn-delete hover-danger';
+    btnDel.style.padding = '2px 6px';
+    btnDel.innerHTML = '&times;';
+    btnDel.addEventListener('click', () => {
+      if (legend.length <= 1) {
+        alert('최소 하나의 범례 정의가 필요합니다.');
+        return;
+      }
+      const deletedVal = item.value;
+      legend.splice(index, 1);
+      saveLegendToStorage();
+      // Remove all elements in gridData matching deleted value
+      Object.keys(gridData).forEach(k => {
+        if (gridData[k] === deletedVal) gridData[k] = '';
+      });
+      if (activeBrush === deletedVal) {
+        activeBrush = legend[0].value;
+      }
+      renderLegendTable();
+      renderGridCanvas();
+    });
+    tdDel.appendChild(btnDel);
+
+    row.appendChild(tdVal);
+    row.appendChild(tdDesc);
+    row.appendChild(tdColor);
+    row.appendChild(tdDel);
+
+    el.legendList.appendChild(row);
+  });
+}
+
+function selectBrush(val) {
+  activeBrush = val;
+  
+  // Find matching legend item
+  const item = legend.find(l => l.value === val);
+  if (item) {
+    el.activeBrushVal.textContent = `${item.value} (${item.desc})`;
+    el.activeBrushVal.style.color = item.color;
+  } else {
+    el.activeBrushVal.textContent = 'None';
+    el.activeBrushVal.style.color = 'var(--text-dim)';
+  }
+
+  // Toggle active styling on existing row elements without tearing down DOM
+  const rows = el.legendList.querySelectorAll('.legend-row');
+  rows.forEach(row => {
+    if (row.dataset.value === val) {
+      row.classList.add('legend-row-active');
+    } else {
+      row.classList.remove('legend-row-active');
+    }
+  });
+}
+
+function addNewLegendRow() {
+  // Find a unique value name
+  let nextVal = 1;
+  while (legend.some(item => item.value === String(nextVal))) {
+    nextVal++;
+  }
+  
+  const colors = ['#3b82f6', '#ec4899', '#14b8a6', '#f43f5e', '#8b5cf6', '#06b6d4'];
+  const nextColor = colors[legend.length % colors.length];
+
+  legend.push({
+    value: String(nextVal),
+    desc: `VALUE ${nextVal}`,
+    color: nextColor
+  });
+  
+  saveLegendToStorage();
+  renderLegendTable();
+}
+
+function remapGridValues(oldVal, newVal) {
+  Object.keys(gridData).forEach(k => {
+    if (gridData[k] === oldVal) {
+      gridData[k] = newVal;
+    }
+  });
+}
+
+// ----------------------------------------------------
+// Load Map & Grid Actions
+// ----------------------------------------------------
+async function loadExistingMap() {
+  const filterModel = {};
+  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
+  let hasFilter = false;
+
+  metaInputs.forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val) {
+      hasFilter = true;
+      filterModel[col] = {
+        filterType: 'text',
+        type: 'equals',
+        filter: val
+      };
+    }
+  });
+
+  if (!hasFilter) {
+    alert('기존 맵 데이터를 로드하기 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
+    return;
+  }
+
+  const xCol = el.colMapX.value;
+  const yCol = el.colMapY.value;
+  const valCol = el.colMapVal.value;
+
+  el.btnLoadMap.textContent = '📂 Loading...';
+  el.btnLoadMap.disabled = true;
+
+  const url = `${API_BASE}/tables/${selectedTable}/data?limit=2000&filters=${encodeURIComponent(JSON.stringify(filterModel))}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API fetch failed');
+    const result = await res.json();
+
+    // Reset local cache
+    gridData = {};
+    let count = 0;
+    
+    // Guess dimensions and collect unique leg values from loaded coordinates
+    let maxX = 0;
+    let maxY = 0;
+    let minX = 9999;
+    let minY = 9999;
+    const uniqueVals = new Set();
+
+    let loadedGridMeta = null;
+
+    if (result && result.data) {
+      result.data.forEach(row => {
+        const rowData = row.data || {};
+        const xVal = rowData[xCol]?.value;
+        const yVal = rowData[yCol]?.value;
+        const val = rowData[valCol]?.value;
+        const gridMetaVal = rowData['grid_metadata']?.value;
+
+        if (gridMetaVal && !loadedGridMeta) {
+          try {
+            loadedGridMeta = JSON.parse(gridMetaVal);
+          } catch (e) {
+            console.error('Failed to parse grid_metadata:', e);
+          }
+        }
+        
+        if (xVal !== undefined && yVal !== undefined) {
+          const xNum = parseInt(xVal, 10);
+          const yNum = parseInt(yVal, 10);
+          if (!isNaN(xNum) && !isNaN(yNum)) {
+            const strVal = val !== null ? String(val).trim() : '';
+            gridData[`${xNum}_${yNum}`] = strVal;
+            count++;
+
+            if (strVal !== '') {
+              uniqueVals.add(strVal);
+            }
+            
+            if (xNum > maxX) maxX = xNum;
+            if (yNum > maxY) maxY = yNum;
+            if (xNum < minX) minX = xNum;
+            if (yNum < minY) minY = yNum;
+          }
+        }
+      });
+    }
+
+    // Auto adjust grid sizing and index settings if coords were found
+    if (loadedGridMeta) {
+      el.gridCols.value = loadedGridMeta.grid_cols;
+      el.gridRows.value = loadedGridMeta.grid_rows;
+      el.gridStartX.value = loadedGridMeta.grid_start_x;
+      el.gridStartY.value = loadedGridMeta.grid_start_y;
+      el.gridYInvert.checked = loadedGridMeta.grid_y_invert;
+      currentRotation = loadedGridMeta.rotation || 0;
+      currentSide = loadedGridMeta.side || 'front';
+
+      // Update Side Radio UI
+      document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
+        if (radio.value === currentSide) {
+          radio.checked = true;
+        }
+      });
+
+      // Update Rotation Buttons UI
+      document.querySelectorAll('.btn-rot').forEach(btn => {
+        const rotVal = parseInt(btn.dataset.rot, 10);
+        if (rotVal === currentRotation) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    } else if (count > 0) {
+      el.gridStartX.value = minX;
+      el.gridStartY.value = minY;
+      
+      const widthVal = maxX - minX + 1;
+      const heightVal = maxY - minY + 1;
+      
+      el.gridCols.value = Math.max(widthVal, 10);
+      el.gridRows.value = Math.max(heightVal, 10);
+    }
+
+    // Auto detect legend from unique values
+    if (uniqueVals.size > 0) {
+      const predefinedColors = ['#10b981', '#ef4444', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#14b8a6', '#f43f5e', '#06b6d4', '#84cc16', '#a855f7', '#6b7280'];
+      const newLegend = [];
+      const usedColors = new Set();
+
+      // First, try to match and preserve existing legend items
+      uniqueVals.forEach(v => {
+        const existingItem = legend.find(item => item.value === v);
+        if (existingItem) {
+          newLegend.push(existingItem);
+          usedColors.add(existingItem.color);
+        }
+      });
+
+      // For new unique values, assign description and unique color
+      let colorIdx = 0;
+      uniqueVals.forEach(v => {
+        const exists = newLegend.some(item => item.value === v);
+        if (!exists) {
+          // Find next unused color from predefined colors list
+          let chosenColor = '';
+          while (colorIdx < predefinedColors.length) {
+            const candidate = predefinedColors[colorIdx++];
+            if (!usedColors.has(candidate)) {
+              chosenColor = candidate;
+              break;
+            }
+          }
+          if (!chosenColor) {
+            // Fallback to random color if all predefined are used
+            chosenColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+          }
+          
+          usedColors.add(chosenColor);
+          newLegend.push({
+            value: v,
+            desc: v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`),
+            color: chosenColor
+          });
+        }
+      });
+
+      // Update legend array, save to localStorage and rebuild legend table
+      legend = newLegend;
+      saveLegendToStorage();
+      
+      // Auto select the first legend item as the active brush
+      if (legend.length > 0) {
+        activeBrush = legend[0].value;
+      } else {
+        activeBrush = '';
+      }
+      renderLegendTable();
+    }
+
+    renderGridCanvas();
+    alert(`기존 데이터 로드 완료: ${count}개 좌표 데이터 매핑.`);
+  } catch (err) {
+    console.error(err);
+    alert('맵 로드 실패: 해당 테이블 또는 메타데이터 값을 다시 확인하십시오.');
+  } finally {
+    el.btnLoadMap.textContent = '📂 Load Existing Map';
+    el.btnLoadMap.disabled = false;
+  }
+}
+
+function clearGrid() {
+  if (!confirm('격자 내의 모든 입력 값을 삭제하시겠습니까?')) return;
+  gridData = {};
+  renderGridCanvas();
+}
+
+function fillGrid() {
+  if (!activeBrush) {
+    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    return;
+  }
+  if (!confirm(`격자 전체를 현재 선택한 값 '${activeBrush}'(으)로 채우시겠습니까?`)) return;
+
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+
+  const maxXVal = startX + cols - 1;
+  const maxYVal = startY + rows - 1;
+
+  for (let x = startX; x <= maxXVal; x++) {
+    for (let y = startY; y <= maxYVal; y++) {
+      gridData[`${x}_${y}`] = activeBrush;
+    }
+  }
+
+  renderGridCanvas();
+}
+
+// ----------------------------------------------------
+// PUSH Map Data to Backend
+// ----------------------------------------------------
+async function pushMapData() {
+  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
+  const metaValues = {};
+  let hasMeta = false;
+
+  metaInputs.forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val !== '') {
+      hasMeta = true;
+      const colType = tableSchema.column_types[col] || 'string';
+      metaValues[col] = colType === 'number' ? Number(val) : val;
+    }
+  });
+
+  if (!hasMeta && metaInputs.length > 0) {
+    alert('데이터 적재를 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
+    return;
+  }
+
+  const xCol = el.colMapX.value;
+  const yCol = el.colMapY.value;
+  const valCol = el.colMapVal.value;
+
+  const xType = tableSchema.column_types[xCol] || 'number';
+  const yType = tableSchema.column_types[yCol] || 'number';
+  const valType = tableSchema.column_types[valCol] || 'string';
+
+  const updates = [];
+  
+  // Serialize current grid metadata config if the table supports it
+  let gridMetaStr = null;
+  if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
+    const gridMeta = {
+      grid_cols: parseInt(el.gridCols.value, 10) || 10,
+      grid_rows: parseInt(el.gridRows.value, 10) || 10,
+      grid_start_x: parseInt(el.gridStartX.value, 10) || 0,
+      grid_start_y: parseInt(el.gridStartY.value, 10) || 0,
+      grid_y_invert: el.gridYInvert.checked,
+      rotation: currentRotation,
+      side: currentSide
+    };
+    gridMetaStr = JSON.stringify(gridMeta);
+  }
+
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert.checked;
+
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      // Determine if visual cell (c, r) is inside the wafer boundary
+      const u1 = (2 * c - visualCols) / visualCols;
+      const u2 = (2 * (c + 1) - visualCols) / visualCols;
+      const v1 = (2 * r - visualRows) / visualRows;
+      const v2 = (2 * (r + 1) - visualRows) / visualRows;
+
+      const maxU2 = Math.max(u1 * u1, u2 * u2);
+      const maxV2 = Math.max(v1 * v1, v2 * v2);
+      const dMax2 = maxU2 + maxV2;
+
+      const completelyInside = (dMax2 <= 1.0);
+      if (!completelyInside) continue; // Skip blocked outside-wafer cells
+
+      const coords = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const key = `${coords.x}_${coords.y}`;
+      const val = gridData[key] || '';
+
+      let valParsed = null;
+      if (val !== '') {
+        valParsed = valType === 'number' ? Number(val) : val;
+      }
+
+      let xParsed = xType === 'number' ? parseInt(coords.x, 10) : String(coords.x);
+      let yParsed = yType === 'number' ? parseInt(coords.y, 10) : String(coords.y);
+
+      const rowUpdates = {
+        [xCol]: xParsed,
+        [yCol]: yParsed,
+        [valCol]: valParsed,
+        ...metaValues
+      };
+
+      if (gridMetaStr) {
+        rowUpdates['grid_metadata'] = gridMetaStr;
+      }
+
+      const updateItem = {
+        updates: rowUpdates,
+        source_name: 'user',
+        updated_by: CURRENT_USER
+      };
+      updates.push(updateItem);
+    }
+  }
+
+  if (updates.length === 0) {
+    alert('적재할 데이터가 격자에 존재하지 않습니다. 먼저 셀들을 칠해 주십시오.');
+    return;
+  }
+
+  if (!confirm(`총 ${updates.length}건의 좌표 맵 데이터를 '${selectedTable}' 테이블에 바로 적재(Upsert/Push)하시겠습니까?`)) {
+    return;
+  }
+
+  el.btnPushMap.textContent = '⚡ Pushing...';
+  el.btnPushMap.disabled = true;
+
+  const payload = {
+    updates: updates,
+    silent: false
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${selectedTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      const result = await res.json();
+      alert(`성공적으로 적재 완료!\n- 적재 처리 건수: ${result.updated_count || result.count || updates.length}개\n- 비즈니스 키 중복 발생 시 자동 병합(Silent Merge) 처리가 완결되었습니다.`);
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Push failed');
+    }
+  } catch (err) {
+    console.error(err);
+    alert(`데이터 적재 실패: ${err.message}`);
+  } finally {
+    el.btnPushMap.textContent = '⚡ Push Map Data';
+    el.btnPushMap.disabled = false;
+  }
+}

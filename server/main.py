@@ -2884,6 +2884,23 @@ if os.path.exists(client2_dist_path):
             return FileResponse(dev_admin_file, headers=no_cache_headers)
         raise HTTPException(status_code=404, detail="Admin page not found. Please build frontend first.")
 
+    @app.get("/map-editor")
+    @app.get("/map_editor.html")
+    def serve_map_editor_page():
+        """맵 에디터 페이지(map_editor.html)를 반환합니다."""
+        no_cache_headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        map_file = os.path.join(client2_dist_path, "map_editor.html")
+        if os.path.exists(map_file):
+            return FileResponse(map_file, headers=no_cache_headers)
+        dev_map_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "map_editor.html"))
+        if os.path.exists(dev_map_file):
+            return FileResponse(dev_map_file, headers=no_cache_headers)
+        raise HTTPException(status_code=404, detail="Map Editor page not found. Please build frontend first.")
+
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):
         # Prevent catching API endpoints or WebSocket or Admin page
@@ -2892,6 +2909,8 @@ if os.path.exists(client2_dist_path):
             file_name.startswith("audit_logs") or 
             file_name.startswith("dashboard") or
             file_name.startswith("admin") or
+            file_name.startswith("map-editor") or
+            file_name.startswith("map_editor") or
             file_name.startswith("api")):
             raise HTTPException(status_code=404)
 

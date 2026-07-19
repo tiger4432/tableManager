@@ -13,5 +13,5 @@ if errorlevel 1 (
 )
 
 echo [Launcher] Invoking run_decoupled_app.py ...
-python run_decoupled_app.py
+python run_decoupled_app.py %*
 pause
