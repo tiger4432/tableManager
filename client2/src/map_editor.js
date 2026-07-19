@@ -276,54 +276,61 @@ function initMouseDragEvents() {
     isMouseDown = false;
     isRightDrag = false;
 
-    if (isBoxDragging && boxStartCell && lastSelectionBox) {
-      const { minC, maxC, minR, maxR } = lastSelectionBox;
-      const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+    if (isBoxDragging) {
+      if (boxStartCell && lastSelectionBox) {
+        const { minC, maxC, minR, maxR } = lastSelectionBox;
+        const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
 
-      // Apply values to final box selection cells in O(Box_Area) instead of O(Grid_Size)
-      for (let r = minR; r <= maxR; r++) {
-        for (let c = minC; c <= maxC; c++) {
-          const cell = gridCells2D[r]?.[c];
-          if (!cell) continue;
+        // Apply values to final box selection cells in O(Box_Area) instead of O(Grid_Size)
+        for (let r = minR; r <= maxR; r++) {
+          for (let c = minC; c <= maxC; c++) {
+            const cell = gridCells2D[r]?.[c];
+            if (!cell) continue;
 
-          const key = cell.dataset.key;
-          if (dragType === 'erase') {
-            gridData[key] = '';
-            cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
-            cell.style.fontSize = '0.65rem';
-            cell.style.color = 'var(--text-dim)';
-            updateCellStyles(cell, '');
-            cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
-            cell.classList.remove('has-value');
-          } else if (dragType === 'paint') {
-            if (cell.classList.contains('cell-outside-wafer')) continue;
+            const key = cell.dataset.key;
+            if (dragType === 'erase') {
+              gridData[key] = '';
+              cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
+              cell.style.fontSize = '0.65rem';
+              cell.style.color = 'var(--text-dim)';
+              updateCellStyles(cell, '');
+              cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
+              cell.classList.remove('has-value');
+            } else if (dragType === 'paint') {
+              if (cell.classList.contains('cell-outside-wafer')) continue;
 
-            const existingVal = gridData[key] || '';
-            const isSingleClick = (minC === maxC && minR === maxR);
-            if (!isSingleClick && existingVal !== '') {
-              continue;
-            }
+              const existingVal = gridData[key] || '';
+              const isSingleClick = (minC === maxC && minR === maxR);
+              if (!isSingleClick && existingVal !== '') {
+                continue;
+              }
 
-            if (activeBrush !== undefined && activeBrush !== null) {
-              gridData[key] = activeBrush;
-              cell.textContent = activeBrush;
-              cell.style.fontSize = '0.8rem';
-              cell.style.color = '#fff';
-              updateCellStyles(cell, activeBrush);
-              cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
-              cell.classList.add('has-value');
+              if (activeBrush !== undefined && activeBrush !== null) {
+                gridData[key] = activeBrush;
+                cell.textContent = activeBrush;
+                cell.style.fontSize = '0.8rem';
+                cell.style.color = '#fff';
+                updateCellStyles(cell, activeBrush);
+                cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
+                cell.classList.add('has-value');
+              }
             }
           }
+        }
+      }
+
+      // Safeguard: Clear any orphaned selection classes across the entire canvas
+      if (el.gridCanvas) {
+        el.gridCanvas.querySelectorAll('.cell-in-selection, .cell-in-selection-erase').forEach(cell => {
           cell.classList.remove('cell-in-selection');
           cell.classList.remove('cell-in-selection-erase');
-        }
+        });
+        el.gridCanvas.classList.remove('drag-active');
       }
 
       // Hide batch action buttons
       if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
       if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
-
-      el.gridCanvas.classList.remove('drag-active');
 
       isBoxDragging = false;
       boxStartCell = null;
