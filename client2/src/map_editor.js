@@ -357,15 +357,6 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   let c_m = colVisual;
   let r_m = rowVisual;
 
-  // Mirror if back side (horizontal flip at 0/180, vertical flip at 90/270)
-  if (side === 'back') {
-    if (rotation === 90 || rotation === 270) {
-      r_m = (visualRows - 1) - r_m;
-    } else {
-      c_m = (visualCols - 1) - c_m;
-    }
-  }
-
   let xp = c_m;
   let yp = r_m;
 
@@ -1046,13 +1037,24 @@ async function loadExistingMap() {
             const rotation = loadedGridMeta ? (loadedGridMeta.rotation || 0) : 0;
             const side = loadedGridMeta ? (loadedGridMeta.side || 'front') : 'front';
 
-            const c = xNum - startX;
+            const c_screen = xNum - startX;
             const isRotated90or270 = (rotation === 90 || rotation === 270);
+            const visualCols = isRotated90or270 ? rows : cols;
             const visualRows = isRotated90or270 ? cols : rows;
 
-            let r = yNum - startY;
+            let r_screen = yNum - startY;
             if (invertY) {
-              r = (visualRows - 1) - r;
+              r_screen = (visualRows - 1) - r_screen;
+            }
+
+            let c = c_screen;
+            let r = r_screen;
+            if (side === 'back') {
+              if (rotation === 90 || rotation === 270) {
+                r = (visualRows - 1) - r_screen;
+              } else {
+                c = (visualCols - 1) - c_screen;
+              }
             }
 
             const physical = getPhysicalCoords(c, r, cols, rows, rotation, side);
