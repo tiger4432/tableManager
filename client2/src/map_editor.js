@@ -1029,13 +1029,13 @@ async function loadExistingMap() {
             if (yNum < minY) minY = yNum;
 
             // Map visual database coordinates back to physical gridData coordinates
-            const cols = loadedGridMeta ? loadedGridMeta.grid_cols : 10;
-            const rows = loadedGridMeta ? loadedGridMeta.grid_rows : 10;
-            const startX = loadedGridMeta ? loadedGridMeta.grid_start_x : 0;
-            const startY = loadedGridMeta ? loadedGridMeta.grid_start_y : 0;
-            const invertY = loadedGridMeta ? loadedGridMeta.grid_y_invert : false;
-            const rotation = loadedGridMeta ? (loadedGridMeta.rotation || 0) : 0;
-            const side = loadedGridMeta ? (loadedGridMeta.side || 'front') : 'front';
+            const cols = loadedGridMeta ? loadedGridMeta.grid_cols : (parseInt(el.gridCols.value, 10) || 10);
+            const rows = loadedGridMeta ? loadedGridMeta.grid_rows : (parseInt(el.gridRows.value, 10) || 10);
+            const startX = loadedGridMeta ? loadedGridMeta.grid_start_x : (parseInt(el.gridStartX.value, 10) || 0);
+            const startY = loadedGridMeta ? loadedGridMeta.grid_start_y : (parseInt(el.gridStartY.value, 10) || 0);
+            const invertY = loadedGridMeta ? loadedGridMeta.grid_y_invert : el.gridYInvert.checked;
+            const rotation = loadedGridMeta ? (loadedGridMeta.rotation || 0) : currentRotation;
+            const side = loadedGridMeta ? (loadedGridMeta.side || 'front') : currentSide;
 
             const c_screen = xNum - startX;
             const isRotated90or270 = (rotation === 90 || rotation === 270);
@@ -1090,15 +1090,6 @@ async function loadExistingMap() {
           btn.classList.remove('active');
         }
       });
-    } else if (count > 0) {
-      el.gridStartX.value = minX;
-      el.gridStartY.value = minY;
-      
-      const widthVal = maxX - minX + 1;
-      const heightVal = maxY - minY + 1;
-      
-      el.gridCols.value = Math.max(widthVal, 10);
-      el.gridRows.value = Math.max(heightVal, 10);
     }
 
     // Auto detect legend from unique values
