@@ -450,7 +450,8 @@ function renderMetadataInputs() {
   // Filter out system columns and coordinate/value columns
   const systemCols = [
     'created_at', 'updated_at', 'row_id', 'business_key_val',
-    'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'
+    'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
+    'grid_metadata'
   ];
 
   const metaCols = cols.filter(col => {
