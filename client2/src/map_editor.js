@@ -75,6 +75,7 @@ function initDOMElements() {
   el.btnOpsMenu = document.getElementById('btn-ops-menu');
   el.opsMenuDropdown = document.getElementById('ops-menu-dropdown');
   el.selectionActionsContainer = document.getElementById('selection-actions-container');
+  el.btnCopyExcel = document.getElementById('btn-copy-excel');
 
   el.choiceModal = document.getElementById('choice-modal');
   el.btnChoiceStandard = document.getElementById('btn-choice-standard');
@@ -172,6 +173,7 @@ function initDOMElements() {
   el.btnClearGrid.addEventListener('click', clearGrid);
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
+  if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
   
   if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
   if (el.btnSelectE2) el.btnSelectE2.addEventListener('click', () => selectEdgeCells(2));
@@ -1850,4 +1852,45 @@ function clearSelectedCells() {
   });
 
   if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
+}
+
+function copyGridToExcel() {
+  if (!gridCells2D || gridCells2D.length === 0) {
+    alert('격자가 생성되어 있지 않습니다.');
+    return;
+  }
+
+  const rows = gridCells2D.length;
+  const cols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const matrix = [];
+
+  for (let r = 0; r < rows; r++) {
+    const rowCells = [];
+    for (let c = 0; c < cols; c++) {
+      const cell = gridCells2D[r][c];
+      if (cell) {
+        const key = cell.dataset.key;
+        const val = gridData[key] || '';
+        rowCells.push(val);
+      } else {
+        rowCells.push('');
+      }
+    }
+    matrix.push(rowCells.join('\t'));
+  }
+
+  const tsv = matrix.join('\n');
+
+  navigator.clipboard.writeText(tsv).then(() => {
+    if (el.btnCopyExcel) {
+      const originalText = el.btnCopyExcel.textContent;
+      el.btnCopyExcel.textContent = '✅ Copied!';
+      setTimeout(() => {
+        el.btnCopyExcel.textContent = originalText;
+      }, 1500);
+    }
+  }).catch(err => {
+    console.error('Failed to copy to clipboard', err);
+    alert('클립보드 복사에 실패했습니다.');
+  });
 }
