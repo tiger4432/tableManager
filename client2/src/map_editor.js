@@ -1228,11 +1228,11 @@ async function pushMapData() {
     const gridMeta = {
       grid_cols: parseInt(el.gridCols.value, 10) || 10,
       grid_rows: parseInt(el.gridRows.value, 10) || 10,
-      grid_start_x: parseInt(el.gridStartX.value, 10) || 0,
-      grid_start_y: parseInt(el.gridStartY.value, 10) || 0,
-      grid_y_invert: el.gridYInvert.checked,
-      rotation: currentRotation,
-      side: currentSide
+      grid_start_x: 0,
+      grid_start_y: 0,
+      grid_y_invert: false,
+      rotation: 0,
+      side: 'front'
     };
     gridMetaStr = JSON.stringify(gridMeta);
   }
@@ -1272,8 +1272,8 @@ async function pushMapData() {
         valParsed = valType === 'number' ? Number(val) : val;
       }
 
-      let xParsed = xType === 'number' ? parseInt(visual.x, 10) : String(visual.x);
-      let yParsed = yType === 'number' ? parseInt(visual.y, 10) : String(visual.y);
+      let xParsed = xType === 'number' ? parseInt(physical.x, 10) : String(physical.x);
+      let yParsed = yType === 'number' ? parseInt(physical.y, 10) : String(physical.y);
 
       const rowUpdates = {
         [xCol]: xParsed,
