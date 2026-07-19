@@ -1741,3 +1741,88 @@ body.resizing-active .history-sidebar {
   background: rgba(239, 68, 68, 0.25) !important; /* translucent red fill */
   z-index: 9;
 }
+
+/* --------------------------------------------------
+   Button Groups & Menu Dropdowns (Consolidation UI/UX)
+   -------------------------------------------------- */
+.glass-btn-group {
+  display: inline-flex;
+  gap: 0 !important;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  padding: 0;
+}
+.glass-btn-group .glass-btn {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border-color);
+}
+.glass-btn-group .glass-btn:last-child {
+  border-right: none;
+}
+.glass-btn-group .glass-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.relative-menu {
+  position: relative;
+}
+.glass-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  z-index: 1000;
+}
+.glass-dropdown-panel .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+}
+.glass-dropdown-panel .dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.glass-dropdown-panel .checkbox-item {
+  user-select: none;
+}
+.glass-dropdown-panel .checkbox-item label {
+  cursor: pointer;
+  flex: 1;
+}
+.glass-dropdown-panel .nav-link {
+  text-decoration: none;
+}
+
+.success-glow {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: var(--color-success) !important;
+  color: var(--color-success) !important;
+}
+.success-glow:hover {
+  background: rgba(16, 185, 129, 0.25) !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4) !important;
+}

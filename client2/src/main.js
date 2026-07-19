@@ -241,6 +241,47 @@ function setupEventListeners() {
     });
   }
 
+  // Dropdown Menus toggling logic (UI/UX Consolidation)
+  if (elements.settingsMenuBtn && elements.settingsDropdown) {
+    elements.settingsMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = elements.settingsDropdown.style.display === 'flex';
+      elements.settingsDropdown.style.display = isVisible ? 'none' : 'flex';
+      // Close other dropdowns
+      if (elements.navDropdown) elements.navDropdown.style.display = 'none';
+      if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';
+    });
+  }
+
+  if (elements.navMenuBtn && elements.navDropdown) {
+    elements.navMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = elements.navDropdown.style.display === 'flex';
+      elements.navDropdown.style.display = isVisible ? 'none' : 'flex';
+      // Close other dropdowns
+      if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
+      if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';
+    });
+  }
+
+  // Click outside to close dropdowns
+  document.addEventListener('click', () => {
+    if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
+    if (elements.navDropdown) elements.navDropdown.style.display = 'none';
+  });
+
+  // Stop propagation inside dropdown panels so clicking inputs doesn't close them
+  if (elements.settingsDropdown) {
+    elements.settingsDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+  if (elements.navDropdown) {
+    elements.navDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
   // History Tabs
   elements.tabGlobalBtn.addEventListener('click', () => {
     elements.tabGlobalBtn.classList.add('active');
@@ -517,12 +558,16 @@ function setupEventListeners() {
   if (elements.columnSelectorBtn) {
     elements.columnSelectorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      // Hide settings dropdown when launching column selector dropdown
+      if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
+
       const isVisible = elements.columnSelectorDropdown.style.display === 'block';
       if (isVisible) {
         elements.columnSelectorDropdown.style.display = 'none';
       } else {
-        // 드롭다운 위치 조정 (버튼 하단에 배치)
-        const rect = elements.columnSelectorBtn.getBoundingClientRect();
+        // 드롭다운 위치 조정 (Options 버튼 하단에 배치)
+        const targetBtn = elements.settingsMenuBtn || elements.columnSelectorBtn;
+        const rect = targetBtn.getBoundingClientRect();
         elements.columnSelectorDropdown.style.top = `${rect.bottom + window.scrollY + 6}px`;
         elements.columnSelectorDropdown.style.left = `${rect.left + window.scrollX}px`;
         elements.columnSelectorDropdown.style.display = 'block';

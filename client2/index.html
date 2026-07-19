@@ -23,8 +23,12 @@
       </div>
 
       <div class="controls-area">
-        <div class="log-indicator-area">
+        <div class="log-indicator-area" style="display: flex; align-items: center; gap: 8px;">
           <span id="performance-log" class="glass-log-badge">Ready</span>
+          <!-- Dynamic Unsaved Tx State Indicator -->
+          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: rgba(245, 158, 11, 0.15); border-color: var(--color-warning); color: var(--color-warning); font-weight: bold;">⚡ Unsaved: 0</span>
+          <button id="tx-apply-btn" class="glass-btn success-glow" style="display: none; padding: 4px 12px; font-size: 0.8rem; font-weight: bold; border-radius: 6px;">Apply</button>
+          <button id="tx-discard-btn" class="glass-btn hover-danger" style="display: none; padding: 4px 12px; font-size: 0.8rem; border-radius: 6px;">Discard</button>
         </div>
         <div class="control-group">
           <label for="table-select">Table</label>
@@ -32,36 +36,44 @@
             <option value="">Loading Tables...</option>
           </select>
         </div>
-        <div class="control-group">
-          <button id="refresh-grid-btn" class="glass-btn">🔄 Refresh</button>
-          <button id="add-row-btn" class="glass-btn">➕ Row</button>
-          <button id="delete-row-btn" class="glass-btn hover-danger">🗑️ Row</button>
+        <div class="control-group glass-btn-group">
+          <button id="refresh-grid-btn" class="glass-btn" title="Refresh Grid Data">🔄 Refresh</button>
+          <button id="add-row-btn" class="glass-btn" title="Add Row">➕ Row</button>
+          <button id="delete-row-btn" class="glass-btn hover-danger" title="Delete Selected Rows">🗑️ Row</button>
           <button id="graph-sync-btn" class="glass-btn" style="display: none; background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold;">⚡ Graph Sync</button>
-        </div>
-        <div class="control-group">
-          <button id="column-selector-btn" class="glass-btn">👁️ Columns</button>
         </div>
         <div class="control-group">
           <input type="file" id="toolbar-file-input" multiple style="display: none;" />
         </div>
-        <div class="control-group">
-          <input type="checkbox" id="copy-header-toggle" class="glass-checkbox" />
-          <label for="copy-header-toggle" class="checkbox-label">Copy Header</label>
+        
+        <!-- Settings Dropdown -->
+        <div class="control-group relative-menu">
+          <button id="settings-menu-btn" class="glass-btn">⚙️ Options</button>
+          <div id="settings-dropdown" class="glass-dropdown-panel" style="display: none;">
+            <button id="column-selector-btn" class="dropdown-item">👁️ Toggle Columns</button>
+            <div class="dropdown-item checkbox-item">
+              <input type="checkbox" id="sort-latest-toggle" class="glass-checkbox" checked />
+              <label for="sort-latest-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;">Sort Latest</label>
+            </div>
+            <div class="dropdown-item checkbox-item">
+              <input type="checkbox" id="copy-header-toggle" class="glass-checkbox" />
+              <label for="copy-header-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;">Copy Header</label>
+            </div>
+            <div class="dropdown-item checkbox-item" style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px;">
+              <input type="checkbox" id="tx-mode-toggle" class="glass-checkbox" checked />
+              <label for="tx-mode-toggle" class="checkbox-label" style="color: var(--color-warning); font-weight: bold; text-transform: none; letter-spacing: normal;">Tx Mode</label>
+            </div>
+          </div>
         </div>
-        <div class="control-group">
-          <input type="checkbox" id="sort-latest-toggle" class="glass-checkbox" checked />
-          <label for="sort-latest-toggle" class="checkbox-label">Sort Latest</label>
-        </div>
-        <div class="control-group" style="border-left: 1px solid var(--border-color); padding-left: 15px; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="tx-mode-toggle" class="glass-checkbox" checked />
-          <label for="tx-mode-toggle" class="checkbox-label" style="color: var(--color-warning); font-weight: bold; cursor: pointer;">Tx Mode</label>
-          <button id="tx-apply-btn" class="glass-btn" style="display: none; padding: 2px 10px; background: rgba(16, 185, 129, 0.2); border-color: var(--color-success); color: var(--color-success); font-size: 0.8rem; font-weight: bold;">Apply (0)</button>
-          <button id="tx-discard-btn" class="glass-btn hover-danger" style="display: none; padding: 2px 10px; font-size: 0.8rem;">Discard</button>
-        </div>
-        <div class="control-group" style="border-left: 1px solid var(--border-color); padding-left: 15px; display: flex; align-items: center; gap: 8px;">
-          <a href="/map_editor.html" class="glass-btn" style="text-decoration: none; font-size: 0.85rem; padding: 4px 12px; color: var(--color-secondary); border-color: var(--color-secondary);">🗺️ Map Editor</a>
-          <a href="/admin.html" class="glass-btn" style="text-decoration: none; font-size: 0.85rem; padding: 4px 12px; color: var(--color-primary); border-color: var(--color-primary);">⚙️ Admin</a>
-          <a href="/api/download/client" class="glass-btn" download style="text-decoration: none; font-size: 0.85rem; padding: 4px 12px; color: var(--color-success); border-color: var(--color-success);">📥 Desktop</a>
+
+        <!-- Navigation Menu Dropdown -->
+        <div class="control-group relative-menu" style="border-left: 1px solid var(--border-color); padding-left: 15px;">
+          <button id="nav-menu-btn" class="glass-btn" style="color: var(--color-secondary); border-color: var(--color-secondary);">🧭 Menu</button>
+          <div id="nav-dropdown" class="glass-dropdown-panel" style="display: none;">
+            <a href="/map_editor.html" class="dropdown-item nav-link">🗺️ Wafer Map Editor</a>
+            <a href="/admin.html" class="dropdown-item nav-link">⚙️ Admin Dashboard</a>
+            <a href="/api/download/client" class="dropdown-item nav-link" download style="color: var(--color-success);">📥 Download Desktop</a>
+          </div>
         </div>
         <div class="status-indicators">
           <span class="status-badge" id="server-status">API: Loading</span>

@@ -43,6 +43,10 @@ export function updateTxModeUI() {
     if (elements.txDiscardBtn) {
       elements.txDiscardBtn.style.display = count > 0 ? 'inline-block' : 'none';
     }
+    if (elements.txPendingBadge) {
+      elements.txPendingBadge.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.txPendingBadge.textContent = `⚡ Unsaved: ${count}`;
+    }
     if (elements.performanceLog) {
       elements.performanceLog.textContent = count > 0 
         ? `Tx Mode active: ${count} edits pending` 
@@ -57,6 +61,9 @@ export function updateTxModeUI() {
     }
     if (elements.txDiscardBtn) {
       elements.txDiscardBtn.style.display = 'none';
+    }
+    if (elements.txPendingBadge) {
+      elements.txPendingBadge.style.display = 'none';
     }
     if (elements.performanceLog) {
       elements.performanceLog.textContent = 'Ready';

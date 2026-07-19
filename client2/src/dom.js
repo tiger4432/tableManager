@@ -45,5 +45,10 @@ export const elements = {
   get columnSelectorDropdown() { return document.getElementById('column-selector-dropdown'); },
   get columnListContainer() { return document.getElementById('column-list-container'); },
   get colSelectAllBtn() { return document.getElementById('col-select-all-btn'); },
-  get colSelectNoneBtn() { return document.getElementById('col-select-none-btn'); }
+  get colSelectNoneBtn() { return document.getElementById('col-select-none-btn'); },
+  get settingsMenuBtn() { return document.getElementById('settings-menu-btn'); },
+  get settingsDropdown() { return document.getElementById('settings-dropdown'); },
+  get navMenuBtn() { return document.getElementById('nav-menu-btn'); },
+  get navDropdown() { return document.getElementById('nav-dropdown'); },
+  get txPendingBadge() { return document.getElementById('tx-pending-badge'); }
 };
