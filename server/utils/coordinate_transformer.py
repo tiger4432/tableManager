@@ -144,6 +144,20 @@ class WaferMapCoordinateTransformer:
         c, r = self.visual_to_cell(xv, yv)
         return self.cell_to_physical(c, r)
 
+    def to_standard_coords(self, xv: int, yv: int) -> Tuple[int, int]:
+        """
+        현재 구성 인프라 하의 시각 좌표 (xv, yv)를 표준 좌표계(Front, start_x=0, start_y=0, rot=0, invert_y=False) 좌표로 변환합니다.
+        표준 좌표계의 시각 좌표는 기하학적 정렬 상 물리 좌표 (xp, yp)와 완벽히 1대1 일치합니다.
+        """
+        return self.visual_to_physical(xv, yv)
+
+    def from_standard_coords(self, x_std: int, y_std: int) -> Tuple[int, int]:
+        """
+        표준 좌표계(Front, start_x=0, start_y=0, rot=0, invert_y=False)의 좌표 (x_std, y_std)를
+        현재 인스턴스가 가진 커스텀 기하 구조의 시각 화면 좌표 (xv, yv)로 변환합니다.
+        """
+        return self.physical_to_visual(x_std, y_std)
+
     def is_inside_wafer(self, c: int, r: int) -> bool:
         """
         DOM 셀 인덱스 (c, r)가 웨이퍼 유효 원 영역 경계 내부에 완벽히 포함되는지 판별합니다.

@@ -40,6 +40,13 @@ def test_coordinate_transformer_roundtrip():
                 xp_cell, yp_cell = transformer.cell_to_physical(c, r)
                 assert (xp, yp) == (xp_cell, yp_cell), f"Cell roundtrip failed for config {conf}"
 
+                # 표준 좌표계(Standard Coordinates) 변환 왕복 검증
+                x_std, y_std = transformer.to_standard_coords(xv, yv)
+                assert (xp, yp) == (x_std, y_std), f"Standard conversion failed for config {conf}"
+
+                xv_rec, yv_rec = transformer.from_standard_coords(x_std, y_std)
+                assert (xv, yv) == (xv_rec, yv_rec), f"Standard reverse conversion failed for config {conf}"
+
 def test_edge_classification():
     # 10x10 격자에서의 최외곽 에지 자동 분류 기능 검증
     transformer = WaferMapCoordinateTransformer(
