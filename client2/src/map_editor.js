@@ -1860,14 +1860,28 @@ function copyGridToExcel() {
     return;
   }
 
-  const rows = gridCells2D.length;
-  const cols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const visualRows = gridCells2D.length;
+  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  
+  const isFlippedHoriz = el.gridCanvas ? el.gridCanvas.classList.contains('flipped') : false;
+  const isFlippedVert = el.gridCanvas ? el.gridCanvas.classList.contains('flipped-vertical') : false;
+
   const matrix = [];
 
-  for (let r = 0; r < rows; r++) {
+  // Determine row processing order based on vertical mirroring (flipped-vertical scaleY(-1))
+  const rowStart = isFlippedVert ? visualRows - 1 : 0;
+  const rowEnd = isFlippedVert ? -1 : visualRows;
+  const rowStep = isFlippedVert ? -1 : 1;
+
+  // Determine col processing order based on horizontal mirroring (flipped scaleX(-1))
+  const colStart = isFlippedHoriz ? visualCols - 1 : 0;
+  const colEnd = isFlippedHoriz ? -1 : visualCols;
+  const colStep = isFlippedHoriz ? -1 : 1;
+
+  for (let r = rowStart; r !== rowEnd; r += rowStep) {
     const rowCells = [];
-    for (let c = 0; c < cols; c++) {
-      const cell = gridCells2D[r][c];
+    for (let c = colStart; c !== colEnd; c += colStep) {
+      const cell = gridCells2D[r]?.[c];
       if (cell) {
         const key = cell.dataset.key;
         const val = gridData[key] || '';
