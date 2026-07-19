@@ -378,10 +378,25 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
 
 function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
   const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const xv = colVisual + startX;
-  let yv = rowVisual;
+  let c_screen = colVisual;
+  let r_screen = rowVisual;
+
+  // Compensate for CSS transforms (flipped/flipped-vertical) on BACK side so that visual coordinates don't flip
+  if (side === 'back') {
+    if (rotation === 90 || rotation === 270) {
+      // Flipped vertically by CSS (flipped-vertical), so map DOM row index back to visual screen row
+      r_screen = (visualRows - 1) - rowVisual;
+    } else {
+      // Flipped horizontally by CSS (flipped), so map DOM col index back to visual screen col
+      c_screen = (visualCols - 1) - colVisual;
+    }
+  }
+
+  const xv = c_screen + startX;
+  let yv = r_screen;
 
   if (invertY) {
     yv = (visualRows - 1) - yv;
