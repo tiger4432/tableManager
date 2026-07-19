@@ -55,6 +55,11 @@ function initDOMElements() {
   el.activeBrushVal = document.getElementById('active-brush-val');
   el.gridStatusCoords = document.getElementById('grid-status-coords');
   el.btnSetOrigin = document.getElementById('btn-set-origin');
+  el.btnSelectE1 = document.getElementById('btn-select-e1');
+  el.btnSelectE2 = document.getElementById('btn-select-e2');
+  el.btnAutoPaintE1E2 = document.getElementById('btn-autopaint-e1e2');
+  el.btnFillSelected = document.getElementById('btn-fill-selected');
+  el.btnClearSelected = document.getElementById('btn-clear-selected');
   el.btnClearGrid = document.getElementById('btn-clear-grid');
   el.btnFillGrid = document.getElementById('btn-fill-grid');
   el.btnPushMap = document.getElementById('btn-push-map');
@@ -101,6 +106,12 @@ function initDOMElements() {
   el.btnClearGrid.addEventListener('click', clearGrid);
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
+  
+  if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
+  if (el.btnSelectE2) el.btnSelectE2.addEventListener('click', () => selectEdgeCells(2));
+  if (el.btnAutoPaintE1E2) el.btnAutoPaintE1E2.addEventListener('click', autoPaintE1E2);
+  if (el.btnFillSelected) el.btnFillSelected.addEventListener('click', fillSelectedCells);
+  if (el.btnClearSelected) el.btnClearSelected.addEventListener('click', clearSelectedCells);
 
   // Dynamic Metadata Inputs change triggers
   el.colMapX.addEventListener('change', () => {
@@ -507,6 +518,11 @@ function renderGridCanvas() {
       // Mouse drag-draw triggers
       cell.addEventListener('mousedown', (e) => {
         e.preventDefault();
+        
+        // Hide batch action buttons when user starts a new interaction
+        if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+        if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+
         if (isOriginMode) {
           handleCellClick(cell, e);
           return;
@@ -1326,4 +1342,207 @@ async function pushMapData() {
     el.btnPushMap.textContent = '⚡ Push Map Data';
     el.btnPushMap.disabled = false;
   }
+}
+
+// ----------------------------------------------------
+// E1/E2 Batch Actions
+// ----------------------------------------------------
+function getEdgeClassification() {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  // 1. Build inside wafer map
+  const isInside = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const u1 = (2 * c - visualCols) / visualCols;
+      const u2 = (2 * (c + 1) - visualCols) / visualCols;
+      const v1 = (2 * r - visualRows) / visualRows;
+      const v2 = (2 * (r + 1) - visualRows) / visualRows;
+      const maxU2 = Math.max(u1 * u1, u2 * u2);
+      const maxV2 = Math.max(v1 * v1, v2 * v2);
+      if (maxU2 + maxV2 <= 1.0) {
+        isInside[r][c] = true;
+      }
+    }
+  }
+
+  // 2. Classify E1 (Edge 1): Outermost active layer adjacent to outside or grid bounds
+  const isE1 = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      if (!isInside[r][c]) continue;
+      
+      // Check 8 neighbors
+      let touchesOutside = false;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= visualRows || nc < 0 || nc >= visualCols || !isInside[nr][nc]) {
+            touchesOutside = true;
+            break;
+          }
+        }
+        if (touchesOutside) break;
+      }
+      if (touchesOutside) {
+        isE1[r][c] = true;
+      }
+    }
+  }
+
+  // 3. Classify E2 (Edge 2): Second layer, not E1 but adjacent to E1
+  const isE2 = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      if (!isInside[r][c] || isE1[r][c]) continue;
+
+      // Check if adjacent to E1
+      let touchesE1 = false;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < visualRows && nc >= 0 && nc < visualCols && isE1[nr][nc]) {
+            touchesE1 = true;
+            break;
+          }
+        }
+        if (touchesE1) break;
+      }
+      if (touchesE1) {
+        isE2[r][c] = true;
+      }
+    }
+  }
+
+  return { isE1, isE2 };
+}
+
+function selectEdgeCells(target) {
+  if (!el.gridCanvas) return;
+  const cells = el.gridCanvas.querySelectorAll('.grid-cell');
+  
+  // Clear any existing selection highlight
+  cells.forEach(cell => {
+    cell.classList.remove('cell-in-selection');
+    cell.classList.remove('cell-in-selection-erase');
+  });
+
+  const { isE1, isE2 } = getEdgeClassification();
+  const targetMap = target === 1 ? isE1 : isE2;
+
+  let count = 0;
+  cells.forEach(cell => {
+    const c = parseInt(cell.dataset.c, 10);
+    const r = parseInt(cell.dataset.r, 10);
+    if (targetMap[r] && targetMap[r][c]) {
+      cell.classList.add('cell-in-selection');
+      count++;
+    }
+  });
+
+  if (count > 0) {
+    if (el.btnFillSelected) el.btnFillSelected.style.display = 'inline-block';
+    if (el.btnClearSelected) el.btnClearSelected.style.display = 'inline-block';
+    el.gridStatusCoords.textContent = `Selected ${count} E${target} cells`;
+  } else {
+    if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+    if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+    alert(`격자 상에 E${target} 조건에 부합하는 셀이 존재하지 않습니다.`);
+  }
+}
+
+function autoPaintE1E2() {
+  if (!el.gridCanvas) return;
+  
+  // Ensure E1 and E2 exist in legend
+  let legendUpdated = false;
+  if (!legend.some(item => item.value === 'E1')) {
+    legend.push({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' }); // Purple
+    legendUpdated = true;
+  }
+  if (!legend.some(item => item.value === 'E2')) {
+    legend.push({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' }); // Pink
+    legendUpdated = true;
+  }
+  if (legendUpdated) {
+    saveLegendToStorage();
+    renderLegendTable();
+  }
+
+  const { isE1, isE2 } = getEdgeClassification();
+  const cells = el.gridCanvas.querySelectorAll('.grid-cell');
+  
+  let e1Count = 0;
+  let e2Count = 0;
+
+  cells.forEach(cell => {
+    const c = parseInt(cell.dataset.c, 10);
+    const r = parseInt(cell.dataset.r, 10);
+    const key = cell.dataset.key;
+
+    if (isE1[r] && isE1[r][c]) {
+      gridData[key] = 'E1';
+      e1Count++;
+    } else if (isE2[r] && isE2[r][c]) {
+      gridData[key] = 'E2';
+      e2Count++;
+    }
+  });
+
+  renderGridCanvas();
+  alert(`E1/E2 자동 페인팅 완료!\n- E1 (가장 외곽 1칸): ${e1Count}개 셀\n- E2 (외곽에서 2칸): ${e2Count}개 셀`);
+}
+
+function fillSelectedCells() {
+  if (!activeBrush) {
+    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    return;
+  }
+  if (!el.gridCanvas) return;
+  const selectedCells = el.gridCanvas.querySelectorAll('.grid-cell.cell-in-selection');
+  if (selectedCells.length === 0) return;
+
+  selectedCells.forEach(cell => {
+    const key = cell.dataset.key;
+    gridData[key] = activeBrush;
+    cell.textContent = activeBrush;
+    cell.style.fontSize = '0.8rem';
+    cell.style.color = '#fff';
+    updateCellStyles(cell, activeBrush);
+    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
+    cell.classList.add('has-value');
+    cell.classList.remove('cell-in-selection');
+  });
+
+  if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+  if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+}
+
+function clearSelectedCells() {
+  if (!el.gridCanvas) return;
+  const selectedCells = el.gridCanvas.querySelectorAll('.grid-cell.cell-in-selection');
+  if (selectedCells.length === 0) return;
+
+  selectedCells.forEach(cell => {
+    const key = cell.dataset.key;
+    gridData[key] = '';
+    cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+    cell.style.fontSize = '0.65rem';
+    cell.style.color = 'var(--text-dim)';
+    updateCellStyles(cell, '');
+    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
+    cell.classList.remove('has-value');
+    cell.classList.remove('cell-in-selection');
+  });
+
+  if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+  if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
 }

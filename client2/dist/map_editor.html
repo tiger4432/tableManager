@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-Bjn55E8o.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-74oO9dR1.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="/assets/config-FUI7YiQj.js">
   <link rel="stylesheet" crossorigin href="/assets/config-BxcVAoLj.css">
@@ -135,6 +135,11 @@
           </div>
           <div style="display: flex; gap: 10px;">
             <button id="btn-set-origin" class="glass-btn">📍 Set Origin (0,0)</button>
+            <button id="btn-select-e1" class="glass-btn" style="color: #a78bfa; border-color: #a78bfa;">✔️ Select E1</button>
+            <button id="btn-select-e2" class="glass-btn" style="color: #f472b6; border-color: #f472b6;">✔️ Select E2</button>
+            <button id="btn-autopaint-e1e2" class="glass-btn" style="color: var(--color-success); border-color: var(--color-success);">⚡ Auto-Paint E1/E2</button>
+            <button id="btn-fill-selected" class="glass-btn" style="display: none; background: rgba(59, 130, 246, 0.1); border-color: var(--color-primary);">🎨 Fill Selected</button>
+            <button id="btn-clear-selected" class="glass-btn hover-danger" style="display: none;">🧹 Clear Selected</button>
             <button id="btn-clear-grid" class="glass-btn">🧹 Clear Grid</button>
             <button id="btn-fill-grid" class="glass-btn">🎨 Fill All</button>
             <button id="btn-push-map" class="glass-btn" style="background: rgba(16,185,129,0.2); border-color: var(--color-success); color: var(--color-success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
