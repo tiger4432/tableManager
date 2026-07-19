@@ -307,7 +307,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                 ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
                 
                 if not pending_events:
-                    await wait_for_notification(db_session_factory, "outbox_event", 30.0)
+                    await wait_for_notification(db_session_factory, "outbox_event", 2.0)
                     continue
                 
                 # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
