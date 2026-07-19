@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-CsgeJdmh.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-CfhjSK6Y.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-bIuxiUZW.js">
-  <link rel="stylesheet" crossorigin href="/assets/config-CtF7vYYp.css">
+  <link rel="modulepreload" crossorigin href="/assets/config-Bj7CmIL9.js">
+  <link rel="stylesheet" crossorigin href="/assets/config-BSfYrKpV.css">
 </head>
 <body class="dark-theme">
   <div id="app">
@@ -224,5 +224,24 @@
       </aside>
     </main>
   </div>
+
+  <!-- Modal for Coordinate System Import Choice -->
+  <div id="choice-modal" class="glass-modal-overlay" style="display: none;">
+    <div class="glass-modal-panel">
+      <div class="glass-modal-header">
+        <h3>🌐 No Grid Metadata Detected</h3>
+      </div>
+      <div class="glass-modal-body">
+        <p>This table does not contain grid metadata layout records.</p>
+        <p>Choose how you would like to load and map the coordinates:</p>
+      </div>
+      <div class="glass-modal-footer">
+        <button id="btn-choice-standard" class="glass-btn success-glow">📐 Standard (Front, Start 0,0, Rot 0°)</button>
+        <button id="btn-choice-current" class="glass-btn">⚙️ Use Current Left Panel Settings</button>
+        <button id="btn-choice-cancel" class="glass-btn hover-danger">❌ Cancel Loading</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

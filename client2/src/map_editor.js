@@ -76,6 +76,11 @@ function initDOMElements() {
   el.opsMenuDropdown = document.getElementById('ops-menu-dropdown');
   el.selectionActionsContainer = document.getElementById('selection-actions-container');
 
+  el.choiceModal = document.getElementById('choice-modal');
+  el.btnChoiceStandard = document.getElementById('btn-choice-standard');
+  el.btnChoiceCurrent = document.getElementById('btn-choice-current');
+  el.btnChoiceCancel = document.getElementById('btn-choice-cancel');
+
   el.gridCanvas = document.getElementById('grid-canvas');
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
@@ -1213,17 +1218,32 @@ async function loadExistingMap() {
     gridData = {};
     let count = 0;
     
-    // Guess dimensions and collect unique leg values from loaded coordinates
-    let maxX = 0;
-    let maxY = 0;
+    // Pre-calculate coordinate bounds first
+    let maxX = -9999;
+    let maxY = -9999;
     let minX = 9999;
     let minY = 9999;
-    const uniqueVals = new Set();
-
-    let loadedGridMeta = null;
 
     if (result && result.data) {
-      // Find and pre-parse grid_metadata first so we know how to convert coordinates
+      result.data.forEach(row => {
+        const rowData = row.data || {};
+        const xVal = rowData[xCol]?.value;
+        const yVal = rowData[yCol]?.value;
+        if (xVal !== undefined && yVal !== undefined) {
+          const xNum = parseInt(xVal, 10);
+          const yNum = parseInt(yVal, 10);
+          if (!isNaN(xNum) && !isNaN(yNum)) {
+            if (xNum > maxX) maxX = xNum;
+            if (yNum > maxY) maxY = yNum;
+            if (xNum < minX) minX = xNum;
+            if (yNum < minY) minY = yNum;
+          }
+        }
+      });
+    }
+
+    let loadedGridMeta = null;
+    if (result && result.data) {
       const firstWithMeta = result.data.find(row => row.data && row.data['grid_metadata'] && row.data['grid_metadata'].value);
       if (firstWithMeta) {
         try {
@@ -1232,16 +1252,93 @@ async function loadExistingMap() {
           console.error('Failed to parse grid_metadata:', e);
         }
       }
+    }
 
+    let userChoice = null; // 'standard' | 'current' | 'meta'
+
+    if (!loadedGridMeta && minX !== 9999) {
+      // Choice modal triggers for maps with no grid metadata records
+      userChoice = await new Promise((resolve) => {
+        el.choiceModal.style.display = 'flex';
+        
+        const onStandard = () => {
+          cleanup();
+          resolve('standard');
+        };
+        const onCurrent = () => {
+          cleanup();
+          resolve('current');
+        };
+        const onCancel = () => {
+          cleanup();
+          resolve('cancel');
+        };
+
+        const cleanup = () => {
+          el.choiceModal.style.display = 'none';
+          el.btnChoiceStandard.removeEventListener('click', onStandard);
+          el.btnChoiceCurrent.removeEventListener('click', onCurrent);
+          el.btnChoiceCancel.removeEventListener('click', onCancel);
+        };
+
+        el.btnChoiceStandard.addEventListener('click', onStandard);
+        el.btnChoiceCurrent.addEventListener('click', onCurrent);
+        el.btnChoiceCancel.addEventListener('click', onCancel);
+      });
+
+      if (userChoice === 'cancel') {
+        el.btnLoadMap.textContent = '📂 Load Existing Map';
+        el.btnLoadMap.disabled = false;
+        return;
+      }
+    } else if (loadedGridMeta) {
+      userChoice = 'meta';
+    } else {
+      userChoice = 'current';
+    }
+
+    // Determine grid properties based on choice
+    let cols, rows, startX, startY, invertY, rotation, side;
+
+    if (userChoice === 'standard') {
+      cols = (maxX >= minX) ? (maxX - minX + 1) : 10;
+      rows = (maxY >= minY) ? (maxY - minY + 1) : 10;
+      startX = 0;
+      startY = 0;
+      invertY = false;
+      rotation = 0;
+      side = 'front';
+    } else if (userChoice === 'meta') {
+      cols = loadedGridMeta.grid_cols;
+      rows = loadedGridMeta.grid_rows;
+      startX = loadedGridMeta.grid_start_x;
+      startY = loadedGridMeta.grid_start_y;
+      invertY = loadedGridMeta.grid_y_invert;
+      rotation = loadedGridMeta.rotation || 0;
+      side = loadedGridMeta.side || 'front';
+    } else {
+      // Use current UI settings
+      cols = parseInt(el.gridCols.value, 10) || 10;
+      rows = parseInt(el.gridRows.value, 10) || 10;
+      startX = parseInt(el.gridStartX.value, 10) || 0;
+      startY = parseInt(el.gridStartY.value, 10) || 0;
+      invertY = el.gridYInvert.checked;
+      rotation = currentRotation;
+      side = currentSide;
+    }
+
+    const uniqueVals = new Set();
+
+    if (result && result.data) {
       result.data.forEach(row => {
         const rowData = row.data || {};
         const xVal = rowData[xCol]?.value;
         const yVal = rowData[yCol]?.value;
         const val = rowData[valCol]?.value;
-        
+
         if (xVal !== undefined && yVal !== undefined) {
-          const xNum = parseInt(xVal, 10);
-          const yNum = parseInt(yVal, 10);
+          let xNum = parseInt(xVal, 10);
+          let yNum = parseInt(yVal, 10);
           if (!isNaN(xNum) && !isNaN(yNum)) {
             const strVal = val !== null ? String(val).trim() : '';
             count++;
@@ -1249,20 +1346,12 @@ async function loadExistingMap() {
             if (strVal !== '') {
               uniqueVals.add(strVal);
             }
-            
-            if (xNum > maxX) maxX = xNum;
-            if (yNum > maxY) maxY = yNum;
-            if (xNum < minX) minX = xNum;
-            if (yNum < minY) minY = yNum;
 
-            // Map visual database coordinates back to physical gridData coordinates
-            const cols = loadedGridMeta ? loadedGridMeta.grid_cols : (parseInt(el.gridCols.value, 10) || 10);
-            const rows = loadedGridMeta ? loadedGridMeta.grid_rows : (parseInt(el.gridRows.value, 10) || 10);
-            const startX = loadedGridMeta ? loadedGridMeta.grid_start_x : (parseInt(el.gridStartX.value, 10) || 0);
-            const startY = loadedGridMeta ? loadedGridMeta.grid_start_y : (parseInt(el.gridStartY.value, 10) || 0);
-            const invertY = loadedGridMeta ? loadedGridMeta.grid_y_invert : el.gridYInvert.checked;
-            const rotation = loadedGridMeta ? (loadedGridMeta.rotation || 0) : currentRotation;
-            const side = loadedGridMeta ? (loadedGridMeta.side || 'front') : currentSide;
+            // If standard system was selected, shift coordinates so minX, minY maps to 0,0
+            if (userChoice === 'standard') {
+              xNum = xNum - minX;
+              yNum = yNum - minY;
+            }
 
             const c_screen = xNum - startX;
             const isRotated90or270 = (rotation === 90 || rotation === 270);
@@ -1291,33 +1380,31 @@ async function loadExistingMap() {
       });
     }
 
-    // Auto adjust grid sizing and index settings if coords were found
-    if (loadedGridMeta) {
-      el.gridCols.value = loadedGridMeta.grid_cols;
-      el.gridRows.value = loadedGridMeta.grid_rows;
-      el.gridStartX.value = loadedGridMeta.grid_start_x;
-      el.gridStartY.value = loadedGridMeta.grid_start_y;
-      el.gridYInvert.checked = loadedGridMeta.grid_y_invert;
-      currentRotation = loadedGridMeta.rotation || 0;
-      currentSide = loadedGridMeta.side || 'front';
+    // Sync state variables and input values back to left panel
+    el.gridCols.value = cols;
+    el.gridRows.value = rows;
+    el.gridStartX.value = startX;
+    el.gridStartY.value = startY;
+    el.gridYInvert.checked = invertY;
+    currentRotation = rotation;
+    currentSide = side;
 
-      // Update Side Radio UI
-      document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
-        if (radio.value === currentSide) {
-          radio.checked = true;
-        }
-      });
+    // Update Side Radio UI
+    document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
+      if (radio.value === currentSide) {
+        radio.checked = true;
+      }
+    });
 
-      // Update Rotation Buttons UI
-      document.querySelectorAll('.btn-rot').forEach(btn => {
-        const rotVal = parseInt(btn.dataset.rot, 10);
-        if (rotVal === currentRotation) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
-      });
-    }
+    // Update Rotation Buttons UI
+    document.querySelectorAll('.btn-rot').forEach(btn => {
+      const rotVal = parseInt(btn.dataset.rot, 10);
+      if (rotVal === currentRotation) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
 
     // Auto detect legend from unique values
     if (uniqueVals.size > 0) {
