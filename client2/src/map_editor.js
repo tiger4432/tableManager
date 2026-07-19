@@ -16,7 +16,9 @@ let currentSide = 'front'; // 'front', 'back'
 let isOriginMode = false; // Origin designation mode state
 let isBoxDragging = false; // Bounding box drag selection state
 let boxStartCell = null; // Start cell reference for bounding box
-let dragCellsCache = []; // Capped cache of cells to optimize mouse drag operations
+let lastSelectionBox = null; // Track coordinates of current selection bounding box
+let gridCells2D = []; // 2D reference array of cell DOM elements [row][col]
+let dragType = null; // 'paint' | 'erase'
 
 // Default Legend
 const DEFAULT_LEGEND = [
@@ -173,64 +175,160 @@ function initMouseDragEvents() {
     isMouseDown = true;
     isRightDrag = (e.button === 2);
   });
+
+  if (el.gridCanvas) {
+    el.gridCanvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const cell = e.target.closest('.grid-cell');
+      if (!cell) return;
+
+      // Hide batch actions when starting a new interaction
+      if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+      if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
+
+      if (isOriginMode) {
+        handleCellClick(cell, e);
+        return;
+      }
+
+      const isRight = (e.button === 2 || e.buttons === 2);
+      isBoxDragging = true;
+      boxStartCell = cell;
+      dragType = isRight ? 'erase' : 'paint';
+      el.gridCanvas.classList.add('drag-active');
+
+      const c = parseInt(cell.dataset.c, 10);
+      const r = parseInt(cell.dataset.r, 10);
+      lastSelectionBox = { minC: c, maxC: c, minR: r, maxR: r };
+
+      cell.classList.add(isRight ? 'cell-in-selection-erase' : 'cell-in-selection');
+    });
+
+    el.gridCanvas.addEventListener('mousemove', (e) => {
+      const cell = e.target.closest('.grid-cell');
+      if (!cell) return;
+
+      const c = parseInt(cell.dataset.c, 10);
+      const r = parseInt(cell.dataset.r, 10);
+
+      if (!isBoxDragging) {
+        const val = gridData[cell.dataset.key] || '';
+        el.gridStatusCoords.textContent = `Cursor: (${cell.dataset.x}, ${cell.dataset.y}) = ${val !== '' ? val : 'Empty'}`;
+        return;
+      }
+
+      if (boxStartCell) {
+        const c1 = parseInt(boxStartCell.dataset.c, 10);
+        const r1 = parseInt(boxStartCell.dataset.r, 10);
+        const c2 = c;
+        const r2 = r;
+
+        const minC = Math.min(c1, c2);
+        const maxC = Math.max(c1, c2);
+        const minR = Math.min(r1, r2);
+        const maxR = Math.max(r1, r2);
+
+        // If selection box bounds haven't changed, skip DOM writes to prevent lag
+        if (lastSelectionBox && 
+            lastSelectionBox.minC === minC && lastSelectionBox.maxC === maxC &&
+            lastSelectionBox.minR === minR && lastSelectionBox.maxR === maxR) {
+          return;
+        }
+
+        const activeClass = (dragType === 'erase') ? 'cell-in-selection-erase' : 'cell-in-selection';
+
+        // 1. Remove selection class from old box cells that are no longer inside the new box bounds
+        if (lastSelectionBox) {
+          for (let row = lastSelectionBox.minR; row <= lastSelectionBox.maxR; row++) {
+            for (let col = lastSelectionBox.minC; col <= lastSelectionBox.maxC; col++) {
+              const outsideNewBox = (col < minC || col > maxC || row < minR || row > maxR);
+              if (outsideNewBox) {
+                const oldCell = gridCells2D[row]?.[col];
+                if (oldCell) {
+                  oldCell.classList.remove('cell-in-selection');
+                  oldCell.classList.remove('cell-in-selection-erase');
+                }
+              }
+            }
+          }
+        }
+
+        // 2. Add selection class to cells in the new box bounds
+        for (let row = minR; row <= maxR; row++) {
+          for (let col = minC; col <= maxC; col++) {
+            const insideOldBox = lastSelectionBox && (col >= lastSelectionBox.minC && col <= lastSelectionBox.maxC && row >= lastSelectionBox.minR && row <= lastSelectionBox.maxR);
+            if (!insideOldBox) {
+              const newCell = gridCells2D[row]?.[col];
+              if (newCell) {
+                newCell.classList.add(activeClass);
+              }
+            }
+          }
+        }
+
+        // 3. Update cached box bounds
+        lastSelectionBox = { minC, maxC, minR, maxR };
+      }
+    });
+  }
+
   window.addEventListener('mouseup', () => {
     isMouseDown = false;
     isRightDrag = false;
 
-    if (isBoxDragging && boxStartCell) {
-      // Check if it was an erase selection
-      const selectedEraseCells = dragCellsCache.filter(child => child.el.classList.contains('cell-in-selection-erase')).map(child => child.el);
-      if (selectedEraseCells.length > 0) {
-        // Finalize box selection erase
-        selectedEraseCells.forEach(cell => {
+    if (isBoxDragging && boxStartCell && lastSelectionBox) {
+      const { minC, maxC, minR, maxR } = lastSelectionBox;
+      const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+
+      // Apply values to final box selection cells in O(Box_Area) instead of O(Grid_Size)
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          const cell = gridCells2D[r]?.[c];
+          if (!cell) continue;
+
           const key = cell.dataset.key;
-          gridData[key] = '';
-          const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
-          cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
-          cell.style.fontSize = '0.65rem';
-          cell.style.color = 'var(--text-dim)';
-          updateCellStyles(cell, '');
-          cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
-          cell.classList.remove('has-value');
-        });
-      } else {
-        // Finalize box selection fill
-        const selectedCells = dragCellsCache.filter(child => child.el.classList.contains('cell-in-selection')).map(child => child.el);
-        const isSingleClick = (selectedCells.length <= 1);
+          if (dragType === 'erase') {
+            gridData[key] = '';
+            cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
+            cell.style.fontSize = '0.65rem';
+            cell.style.color = 'var(--text-dim)';
+            updateCellStyles(cell, '');
+            cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
+            cell.classList.remove('has-value');
+          } else if (dragType === 'paint') {
+            if (cell.classList.contains('cell-outside-wafer')) continue;
 
-        selectedCells.forEach(cell => {
-          const key = cell.dataset.key;
-          if (cell.classList.contains('cell-outside-wafer')) return;
+            const existingVal = gridData[key] || '';
+            const isSingleClick = (minC === maxC && minR === maxR);
+            if (!isSingleClick && existingVal !== '') {
+              continue;
+            }
 
-          const existingVal = gridData[key] || '';
-          if (!isSingleClick && existingVal !== '') {
-            return;
+            if (activeBrush !== undefined && activeBrush !== null) {
+              gridData[key] = activeBrush;
+              cell.textContent = activeBrush;
+              cell.style.fontSize = '0.8rem';
+              cell.style.color = '#fff';
+              updateCellStyles(cell, activeBrush);
+              cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
+              cell.classList.add('has-value');
+            }
           }
-
-          if (activeBrush !== undefined && activeBrush !== null) {
-            gridData[key] = activeBrush;
-            cell.textContent = activeBrush;
-            cell.style.fontSize = '0.8rem';
-            cell.style.color = '#fff';
-            updateCellStyles(cell, activeBrush);
-            cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
-            cell.classList.add('has-value');
-          }
-        });
+          cell.classList.remove('cell-in-selection');
+          cell.classList.remove('cell-in-selection-erase');
+        }
       }
 
-      // Clear selection classes using cached array instead of DOM query
-      dragCellsCache.forEach(c => {
-        c.el.classList.remove('cell-in-selection');
-        c.el.classList.remove('cell-in-selection-erase');
-      });
+      // Hide batch action buttons
+      if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
+      if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
 
-      // Remove drag-active class to restore standard cell styles and transitions
       el.gridCanvas.classList.remove('drag-active');
 
       isBoxDragging = false;
       boxStartCell = null;
-      dragCellsCache = []; // Reset cache
+      lastSelectionBox = null;
+      dragType = null;
       
       updateLegendCounts();
     }
@@ -580,6 +678,8 @@ function renderGridCanvas() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
+  gridCells2D = Array.from({ length: visualRows }, () => []);
+
   el.gridCanvas.style.gridTemplateColumns = `repeat(${visualCols}, 1fr)`;
   el.gridCanvas.style.gridTemplateRows = `repeat(${visualRows}, 1fr)`;
 
@@ -658,88 +758,7 @@ function renderGridCanvas() {
 
       cell.title = `좌표: (${visual.x}, ${visual.y})\n값: ${val !== '' ? val : 'Empty'}`;
 
-      // Mouse drag-draw triggers
-      cell.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        
-        // Hide batch action buttons when user starts a new interaction
-        if (el.btnFillSelected) el.btnFillSelected.style.display = 'none';
-        if (el.btnClearSelected) el.btnClearSelected.style.display = 'none';
-
-        if (isOriginMode) {
-          handleCellClick(cell, e);
-          return;
-        }
-        const isRight = (e.button === 2 || e.buttons === 2);
-        isBoxDragging = true;
-        boxStartCell = cell;
-        
-        // Add class to canvas to deactivate cell hover transitions/transforms during drag (massive repaint speedup)
-        el.gridCanvas.classList.add('drag-active');
-        
-        // Cache all cell DOM elements once on mousedown to avoid querySelectorAll on every mouseenter (extremely high speed improvement)
-        // We also track the current selectedState to avoid redundant DOM classList manipulation (O(N) DOM writes -> O(delta) DOM writes)
-        dragCellsCache = Array.from(el.gridCanvas.querySelectorAll('.grid-cell')).map(child => {
-          let state = 0;
-          if (child.classList.contains('cell-in-selection')) state = 1;
-          else if (child.classList.contains('cell-in-selection-erase')) state = 2;
-          return {
-            el: child,
-            c: parseInt(child.dataset.c, 10),
-            r: parseInt(child.dataset.r, 10),
-            selectedState: state // 0: none, 1: fill selected, 2: erase selected
-          };
-        });
-
-        if (isRight) {
-          cell.classList.add('cell-in-selection-erase');
-        } else {
-          cell.classList.add('cell-in-selection');
-        }
-      });
-      cell.addEventListener('mouseenter', (e) => {
-        // Skip updating badge text while dragging to prevent layout recalculation reflows
-        if (!isBoxDragging) {
-          el.gridStatusCoords.textContent = `Cursor: (${visual.x}, ${visual.y}) = ${val !== '' ? val : 'Empty'}`;
-        }
-        
-        if (isBoxDragging && boxStartCell) {
-          const c1 = parseInt(boxStartCell.dataset.c, 10);
-          const r1 = parseInt(boxStartCell.dataset.r, 10);
-          const c2 = parseInt(cell.dataset.c, 10);
-          const r2 = parseInt(cell.dataset.r, 10);
-          
-          const minC = Math.min(c1, c2);
-          const maxC = Math.max(c1, c2);
-          const minR = Math.min(r1, r2);
-          const maxR = Math.max(r1, r2);
-
-          const activeClass = isRightDrag ? 'cell-in-selection-erase' : 'cell-in-selection';
-          const inactiveClass = isRightDrag ? 'cell-in-selection' : 'cell-in-selection-erase';
-          const targetState = isRightDrag ? 2 : 1;
-
-          dragCellsCache.forEach(child => {
-            const inBox = (child.c >= minC && child.c <= maxC && child.r >= minR && child.r <= maxR);
-            const nextState = inBox ? targetState : 0;
-            
-            if (child.selectedState !== nextState) {
-              // Only perform DOM write operations if the selection state changed
-              if (nextState === 1) {
-                child.el.classList.add('cell-in-selection');
-                child.el.classList.remove('cell-in-selection-erase');
-              } else if (nextState === 2) {
-                child.el.classList.add('cell-in-selection-erase');
-                child.el.classList.remove('cell-in-selection');
-              } else {
-                child.el.classList.remove('cell-in-selection');
-                child.el.classList.remove('cell-in-selection-erase');
-              }
-              child.selectedState = nextState;
-            }
-          });
-        }
-      });
-
+      gridCells2D[r][c] = cell;
       el.gridCanvas.appendChild(cell);
     }
   }
