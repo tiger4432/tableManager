@@ -1601,7 +1601,10 @@ body.resizing-active .history-sidebar {
 
 .map-grid-canvas.drag-active .grid-cell {
   transition: none !important;
-  transform: none !important;
+  box-shadow: none !important;
+}
+.map-grid-canvas.drag-active .grid-cell:hover {
+  transform: inherit !important;
   box-shadow: none !important;
 }
 
