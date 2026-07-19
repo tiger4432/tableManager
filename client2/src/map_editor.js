@@ -43,6 +43,7 @@ function initDOMElements() {
   el.gridStartX = document.getElementById('grid-start-x');
   el.gridStartY = document.getElementById('grid-start-y');
   el.gridYInvert = document.getElementById('grid-y-invert');
+  el.showAnnotations = document.getElementById('show-annotations');
   
   el.colMapX = document.getElementById('col-map-x');
   el.colMapY = document.getElementById('col-map-y');
@@ -82,7 +83,7 @@ function initDOMElements() {
   }
   renderPresetDropdown();
   
-  const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert];
+  const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert, el.showAnnotations];
   inputsToRedraw.forEach(input => {
     input.addEventListener('change', () => {
       // Validate bounds
@@ -90,6 +91,13 @@ function initDOMElements() {
         let v = parseInt(input.value, 10);
         if (isNaN(v) || v < 1) input.value = 1;
         if (v > 100) input.value = 100;
+        
+        // Auto-disable annotation display on large grids (>400 cells) to prevent rendering bottleneck
+        const currentCols = parseInt(el.gridCols.value, 10) || 10;
+        const currentRows = parseInt(el.gridRows.value, 10) || 10;
+        if (currentCols * currentRows > 400 && el.showAnnotations) {
+          el.showAnnotations.checked = false;
+        }
       } else if (input === el.gridStartX || input === el.gridStartY) {
         let v = parseInt(input.value, 10);
         if (isNaN(v)) input.value = 0;
@@ -177,7 +185,8 @@ function initMouseDragEvents() {
         selectedEraseCells.forEach(cell => {
           const key = cell.dataset.key;
           gridData[key] = '';
-          cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+          const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+          cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
           cell.style.fontSize = '0.65rem';
           cell.style.color = 'var(--text-dim)';
           updateCellStyles(cell, '');
@@ -637,7 +646,8 @@ function renderGridCanvas() {
 
       updateCellStyles(cell, val);
 
-      cell.textContent = val !== '' ? val : `${visual.x},${visual.y}`;
+      const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+      cell.textContent = val !== '' ? val : (showAnno ? `${visual.x},${visual.y}` : '');
       if (val === '') {
         cell.style.fontSize = '0.65rem';
         cell.style.color = 'var(--text-dim)';
@@ -777,7 +787,8 @@ function handleCellClick(cell, event) {
   if (isRight) {
     // Clear cell
     gridData[key] = '';
-    cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+    const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+    cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
     cell.style.fontSize = '0.65rem';
     cell.style.color = 'var(--text-dim)';
     updateCellStyles(cell, '');
@@ -1680,7 +1691,8 @@ function clearSelectedCells() {
   selectedCells.forEach(cell => {
     const key = cell.dataset.key;
     gridData[key] = '';
-    cell.textContent = `${cell.dataset.x},${cell.dataset.y}`;
+    const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+    cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
     cell.style.fontSize = '0.65rem';
     cell.style.color = 'var(--text-dim)';
     updateCellStyles(cell, '');
