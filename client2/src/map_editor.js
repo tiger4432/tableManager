@@ -557,7 +557,7 @@ function renderGridCanvas() {
       cell.addEventListener('mouseenter', (e) => {
         // Skip updating badge text while dragging to prevent layout recalculation reflows
         if (!isBoxDragging) {
-          el.gridStatusCoords.textContent = `Cursor: (${coords.x}, ${coords.y}) = ${val !== '' ? val : 'Empty'}`;
+          el.gridStatusCoords.textContent = `Cursor: (${visual.x}, ${visual.y}) = ${val !== '' ? val : 'Empty'}`;
         }
         
         if (isBoxDragging && boxStartCell) {
