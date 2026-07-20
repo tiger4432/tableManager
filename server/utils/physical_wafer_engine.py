@@ -50,8 +50,8 @@ class PhysicalWaferEngine:
         center_c = (cols - 1) / 2.0
         center_r = (rows - 1) / 2.0
         
-        x_mm = (c - center_c) * self.chip_size_x_mm - self.offset_x_mm
-        y_mm = (center_r - r) * self.chip_size_y_mm - self.offset_y_mm
+        x_mm = (c - center_c) * self.chip_size_x_mm + self.offset_x_mm
+        y_mm = (center_r - r) * self.chip_size_y_mm + self.offset_y_mm
         return x_mm, y_mm
 
     def is_cell_inside_wafer(self, c: int, r: int, cols: int, rows: int) -> bool:

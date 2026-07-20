@@ -263,8 +263,14 @@ function getGridCellFromMouseEvent(e) {
 
   if (xRel < 0 || xRel > rect.width || yRel < 0 || yRel > rect.height) return null;
 
-  const c = Math.max(0, Math.min(visualCols - 1, Math.floor((xRel / rect.width) * visualCols)));
-  const r = Math.max(0, Math.min(visualRows - 1, Math.floor((yRel / rect.height) * visualRows)));
+  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const cellW = rect.width / visualCols;
+  const cellH = rect.height / visualRows;
+  const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
+  const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
+
+  const c = Math.max(0, Math.min(visualCols - 1, Math.floor(((xRel - shiftX) / rect.width) * visualCols)));
+  const r = Math.max(0, Math.min(visualRows - 1, Math.floor(((yRel - shiftY) / rect.height) * visualRows)));
 
   return gridCells2D[r]?.[c] || null;
 }
@@ -898,6 +904,9 @@ function renderGridCanvas() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
+  const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
+  const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
+
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
@@ -917,8 +926,8 @@ function renderGridCanvas() {
       };
       gridCells2D[r][c] = cellObj;
 
-      const x0 = c * cellW;
-      const y0 = r * cellH;
+      const x0 = c * cellW + shiftX;
+      const y0 = r * cellH + shiftY;
 
       // 1. Fill cell background
       if (!completelyInside) {
@@ -960,9 +969,9 @@ function renderGridCanvas() {
     }
   }
 
-  // 6. Physical Wafer Circles (Centered at Physical Wafer Center on Screen)
-  const waferCenterX = (width / 2.0) + (physConfig.offsetX / physConfig.chipX) * cellW;
-  const waferCenterY = (height / 2.0) - (physConfig.offsetY / physConfig.chipY) * cellH;
+  // 6. Physical Wafer Circles (FIXED at Wafer Center 0,0 at Canvas Center)
+  const waferCenterX = width / 2.0;
+  const waferCenterY = height / 2.0;
 
   // A. White Outer Silicon Wafer Edge Circle (Full Diameter, e.g. 300mm)
   const outerRadX = ((physConfig.waferDia / 2.0) / physConfig.chipX) * cellW;
@@ -994,10 +1003,12 @@ function renderGridCanvas() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // C. Wafer Center / Offset Marker Point
+  // C. Centering Offset Marker Point (Drawn at center of shifted chip grid array)
+  const gridCenterX = waferCenterX + shiftX;
+  const gridCenterY = waferCenterY + shiftY;
   if (physConfig.offsetX !== 0 || physConfig.offsetY !== 0) {
     ctx.beginPath();
-    ctx.arc(waferCenterX, waferCenterY, 4, 0, 2 * Math.PI);
+    ctx.arc(gridCenterX, gridCenterY, 4, 0, 2 * Math.PI);
     ctx.fillStyle = '#f59e0b';
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
@@ -1005,10 +1016,10 @@ function renderGridCanvas() {
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(waferCenterX - 8, waferCenterY);
-    ctx.lineTo(waferCenterX + 8, waferCenterY);
-    ctx.moveTo(waferCenterX, waferCenterY - 8);
-    ctx.lineTo(waferCenterX, waferCenterY + 8);
+    ctx.moveTo(gridCenterX - 8, gridCenterY);
+    ctx.lineTo(gridCenterX + 8, gridCenterY);
+    ctx.moveTo(gridCenterX, gridCenterY - 8);
+    ctx.lineTo(gridCenterX, gridCenterY + 8);
     ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
     ctx.lineWidth = 1.2;
     ctx.stroke();
@@ -1017,8 +1028,8 @@ function renderGridCanvas() {
   // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
     const { minC, maxC, minR, maxR } = lastSelectionBox;
-    const boxX = minC * cellW;
-    const boxY = minR * cellH;
+    const boxX = minC * cellW + shiftX;
+    const boxY = minR * cellH + shiftY;
     const boxW = (maxC - minC + 1) * cellW;
     const boxH = (maxR - minR + 1) * cellH;
 
