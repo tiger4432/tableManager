@@ -531,6 +531,10 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   let c_m = colVisual;
   let r_m = rowVisual;
 
+  if (side === 'back') {
+    c_m = (visualCols - 1) - colVisual;
+  }
+
   let xp = c_m;
   let yp = r_m;
 
@@ -560,17 +564,6 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
   let c_screen = colVisual;
   let r_screen = rowVisual;
 
-  // Compensate for CSS transforms (flipped/flipped-vertical) on BACK side so that visual coordinates don't flip
-  if (side === 'back') {
-    if (rotation === 90 || rotation === 270) {
-      // Flipped vertically by CSS (flipped-vertical), so map DOM row index back to visual screen row
-      r_screen = (visualRows - 1) - rowVisual;
-    } else {
-      // Flipped horizontally by CSS (flipped), so map DOM col index back to visual screen col
-      c_screen = (visualCols - 1) - colVisual;
-    }
-  }
-
   const xv = c_screen + startX;
   let yv = r_screen;
 
@@ -580,6 +573,52 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
   yv = yv + startY;
 
   return { x: xv, y: yv };
+}
+
+function getTransformedPhysicalConfig(currentRotation, currentSide) {
+  const waferDia = el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300;
+  const edgeMargin = el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0;
+  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
+  const origChipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
+  const origChipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
+  const origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
+  const origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
+
+  let chipX = origChipX;
+  let chipY = origChipY;
+  let offsetX = origOffsetX;
+  let offsetY = origOffsetY;
+
+  if (currentSide === 'back') {
+    offsetX = -offsetX;
+  }
+
+  if (currentRotation === 90) {
+    const tmpX = offsetX;
+    offsetX = -offsetY;
+    offsetY = tmpX;
+    chipX = origChipY;
+    chipY = origChipX;
+  } else if (currentRotation === 180) {
+    offsetX = -offsetX;
+    offsetY = -offsetY;
+  } else if (currentRotation === 270) {
+    const tmpX = offsetX;
+    offsetX = offsetY;
+    offsetY = -tmpX;
+    chipX = origChipY;
+    chipY = origChipX;
+  }
+
+  return {
+    waferDia,
+    effectiveRadius,
+    radiusSq: effectiveRadius * effectiveRadius,
+    chipX,
+    chipY,
+    offsetX,
+    offsetY
+  };
 }
 
 function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig) {
@@ -825,18 +864,8 @@ function renderGridCanvas() {
 
   const tStart = performance.now();
 
-  const waferDia = el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300;
-  const edgeMargin = el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0;
-  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-  const chipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
-  const chipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
-  const offsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
-  const offsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
+  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
   const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
-
-  const physConfig = {
-    chipX, chipY, offsetX, offsetY, effectiveRadius, radiusSq: effectiveRadius * effectiveRadius
-  };
 
   const colorMap = {};
   legend.forEach(item => {
@@ -913,9 +942,15 @@ function renderGridCanvas() {
   // 6. Physical Wafer Boundary Dashed Circle Line
   const centerX = width / 2.0;
   const centerY = height / 2.0;
-  const radiusPx = (effectiveRadius / (waferDia / 2.0)) * (Math.min(width, height) / 2.0);
+  const radiusPx = (physConfig.effectiveRadius / (physConfig.waferDia / 2.0)) * (Math.min(width, height) / 2.0);
   ctx.beginPath();
-  ctx.arc(centerX + (offsetX * (width / waferDia)), centerY - (offsetY * (height / waferDia)), radiusPx, 0, 2 * Math.PI);
+  ctx.arc(
+    centerX + (physConfig.offsetX * (width / physConfig.waferDia)),
+    centerY - (physConfig.offsetY * (height / physConfig.waferDia)),
+    radiusPx,
+    0,
+    2 * Math.PI
+  );
   ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 4]);
