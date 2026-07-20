@@ -291,8 +291,7 @@ function getGridCellFromMouseEvent(e) {
   const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
   const cellW = rect.width / visualCols;
   const cellH = rect.height / visualRows;
-  const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
-  const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
+  const { shiftX, shiftY } = getScreenShift(physConfig, cellW, cellH);
 
   const c = Math.floor((xRel - shiftX) / cellW);
   const r = Math.floor((yRel - shiftY) / cellH);
@@ -620,35 +619,20 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
   const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
   const origChipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
   const origChipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
-  const origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
-  const origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
-
-  let chipX = origChipX;
-  let chipY = origChipY;
-  let offsetX = origOffsetX;
-  let offsetY = origOffsetY;
+  let origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
+  let origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
 
   if (currentSide === 'back') {
     if (currentRotation === 90 || currentRotation === 270) {
-      offsetY = -offsetY;
+      origOffsetY = -origOffsetY;
     } else {
-      offsetX = -offsetX;
+      origOffsetX = -origOffsetX;
     }
   }
 
-  if (currentRotation === 90) {
-    const tmpX = offsetX;
-    offsetX = -offsetY;
-    offsetY = tmpX;
-    chipX = origChipY;
-    chipY = origChipX;
-  } else if (currentRotation === 180) {
-    offsetX = -offsetX;
-    offsetY = -offsetY;
-  } else if (currentRotation === 270) {
-    const tmpX = offsetX;
-    offsetX = offsetY;
-    offsetY = -tmpX;
+  let chipX = origChipX;
+  let chipY = origChipY;
+  if (currentRotation === 90 || currentRotation === 270) {
     chipX = origChipY;
     chipY = origChipX;
   }
@@ -659,9 +643,39 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
     radiusSq: effectiveRadius * effectiveRadius,
     chipX,
     chipY,
-    offsetX,
-    offsetY
+    origChipX,
+    origChipY,
+    origOffsetX,
+    origOffsetY,
+    rotation: currentRotation,
+    side: currentSide
   };
+}
+
+function getScreenShift(physConfig, cellW, cellH) {
+  if (!physConfig) return { shiftX: 0, shiftY: 0 };
+  const { origOffsetX, origOffsetY, origChipX, origChipY, rotation } = physConfig;
+  const chipX = origChipX || 2.5;
+  const chipY = origChipY || 2.5;
+
+  let shiftX = 0;
+  let shiftY = 0;
+
+  if (rotation === 0) {
+    shiftX = (origOffsetX / chipX) * cellW;
+    shiftY = -(origOffsetY / chipY) * cellH;
+  } else if (rotation === 90) {
+    shiftX = -(origOffsetY / chipY) * cellW;
+    shiftY = (origOffsetX / chipX) * cellH;
+  } else if (rotation === 180) {
+    shiftX = -(origOffsetX / chipX) * cellW;
+    shiftY = (origOffsetY / chipY) * cellH;
+  } else if (rotation === 270) {
+    shiftX = (origOffsetY / chipY) * cellW;
+    shiftY = -(origOffsetX / chipX) * cellH;
+  }
+
+  return { shiftX, shiftY };
 }
 
 function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height) {
@@ -669,8 +683,7 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, 
     const cellW = width / visualCols;
     const cellH = height / visualRows;
 
-    const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
-    const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
+    const { shiftX, shiftY } = getScreenShift(physConfig, cellW, cellH);
 
     const x0 = c * cellW + shiftX;
     const y0 = r * cellH + shiftY;
@@ -944,8 +957,7 @@ function renderGridCanvas() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
-  const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
+  const { shiftX, shiftY } = getScreenShift(physConfig, cellW, cellH);
 
   const startC = Math.min(-visualCols, Math.floor(-shiftX / cellW) - 2);
   const endC = Math.max(2 * visualCols, Math.ceil((width - shiftX) / cellW) + 2);
