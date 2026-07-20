@@ -47,6 +47,14 @@ function initDOMElements() {
   el.gridYInvert = document.getElementById('grid-y-invert');
   el.showAnnotations = document.getElementById('show-annotations');
   
+  el.physWaferDia = document.getElementById('phys-wafer-dia');
+  el.physChipX = document.getElementById('phys-chip-x');
+  el.physChipY = document.getElementById('phys-chip-y');
+  el.physOffsetX = document.getElementById('phys-offset-x');
+  el.physOffsetY = document.getElementById('phys-offset-y');
+  el.physEdgeMargin = document.getElementById('phys-edge-margin');
+  el.btnApplyPhysGeom = document.getElementById('btn-apply-phys-geom');
+  
   el.colMapX = document.getElementById('col-map-x');
   el.colMapY = document.getElementById('col-map-y');
   el.colMapVal = document.getElementById('col-map-val');
@@ -174,6 +182,10 @@ function initDOMElements() {
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
+  if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
+  [el.physWaferDia, el.physChipX, el.physChipY, el.physOffsetX, el.physOffsetY, el.physEdgeMargin].forEach(input => {
+    if (input) input.addEventListener('input', () => renderGridCanvas());
+  });
   
   if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
   if (el.btnSelectE2) el.btnSelectE2.addEventListener('click', () => selectEdgeCells(2));
@@ -580,6 +592,64 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
   return { x: xv, y: yv };
 }
 
+function isCellInsideWafer(c, r, visualCols, visualRows) {
+  const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
+  const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
+  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
+
+  const chipX = el.physChipX ? parseFloat(el.physChipX.value) : 2.5;
+  const chipY = el.physChipY ? parseFloat(el.physChipY.value) : 2.5;
+  const offsetX = el.physOffsetX ? parseFloat(el.physOffsetX.value) : 0.0;
+  const offsetY = el.physOffsetY ? parseFloat(el.physOffsetY.value) : 0.0;
+
+  if (chipX > 0 && chipY > 0 && effectiveRadius > 0) {
+    const centerC = (visualCols - 1) / 2.0;
+    const centerR = (visualRows - 1) / 2.0;
+
+    const x_mm = (c - centerC) * chipX - offsetX;
+    const y_mm = (centerR - r) * chipY - offsetY;
+
+    const distSq = x_mm * x_mm + y_mm * y_mm;
+    const radiusSq = effectiveRadius * effectiveRadius;
+
+    return distSq <= radiusSq;
+  }
+
+  const u1 = (2 * c - visualCols) / visualCols;
+  const u2 = (2 * (c + 1) - visualCols) / visualCols;
+  const v1 = (2 * r - visualRows) / visualRows;
+  const v2 = (2 * (r + 1) - visualRows) / visualRows;
+
+  const maxU2 = Math.max(u1 * u1, u2 * u2);
+  const maxV2 = Math.max(v1 * v1, v2 * v2);
+  return (maxU2 + maxV2) <= 1.0;
+}
+
+function applyPhysicalGeometry() {
+  const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
+  const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
+  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
+
+  const chipX = el.physChipX ? parseFloat(el.physChipX.value) : 2.5;
+  const chipY = el.physChipY ? parseFloat(el.physChipY.value) : 2.5;
+
+  if (chipX <= 0 || chipY <= 0 || effectiveRadius <= 0) return;
+
+  let cols = Math.ceil((2.0 * effectiveRadius) / chipX) + 2;
+  let rows = Math.ceil((2.0 * effectiveRadius) / chipY) + 2;
+
+  if (cols % 2 === 0) cols += 1;
+  if (rows % 2 === 0) rows += 1;
+
+  cols = Math.max(5, Math.min(100, cols));
+  rows = Math.max(5, Math.min(100, rows));
+
+  if (el.gridCols) el.gridCols.value = cols;
+  if (el.gridRows) el.gridRows.value = rows;
+
+  renderGridCanvas();
+}
+
 // ----------------------------------------------------
 // Value Counts & Preset Functions
 // ----------------------------------------------------
@@ -778,17 +848,8 @@ function renderGridCanvas() {
         cell.classList.add('cell-is-origin');
       }
 
-      // Check if visual cell (c, r) is completely inside the wafer boundary circle
-      const u1 = (2 * c - visualCols) / visualCols;
-      const u2 = (2 * (c + 1) - visualCols) / visualCols;
-      const v1 = (2 * r - visualRows) / visualRows;
-      const v2 = (2 * (r + 1) - visualRows) / visualRows;
-
-      const maxU2 = Math.max(u1 * u1, u2 * u2);
-      const maxV2 = Math.max(v1 * v1, v2 * v2);
-      const dMax2 = maxU2 + maxV2;
-
-      const completelyInside = (dMax2 <= 1.0);
+      // Check if visual cell (c, r) is inside the wafer boundary circle / physical dimensions
+      const completelyInside = isCellInsideWafer(c, r, visualCols, visualRows);
 
       if (completelyInside) {
         cell.classList.add('cell-inside-wafer');
@@ -1567,16 +1628,7 @@ async function pushMapData() {
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       // Determine if visual cell (c, r) is inside the wafer boundary
-      const u1 = (2 * c - visualCols) / visualCols;
-      const u2 = (2 * (c + 1) - visualCols) / visualCols;
-      const v1 = (2 * r - visualRows) / visualRows;
-      const v2 = (2 * (r + 1) - visualRows) / visualRows;
-
-      const maxU2 = Math.max(u1 * u1, u2 * u2);
-      const maxV2 = Math.max(v1 * v1, v2 * v2);
-      const dMax2 = maxU2 + maxV2;
-
-      const completelyInside = (dMax2 <= 1.0);
+      const completelyInside = isCellInsideWafer(c, r, visualCols, visualRows);
       if (!completelyInside) continue; // Skip blocked outside-wafer cells
 
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);

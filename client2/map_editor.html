@@ -89,6 +89,49 @@
             </div>
           </div>
 
+          <!-- 물리적 웨이퍼 기하학 및 센터링 설정 -->
+          <hr style="border-color: var(--border-color); margin: 5px 0;">
+          <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary);">📏 Physical Wafer Geometry</h3>
+          
+          <div class="control-group-vertical">
+            <label for="phys-wafer-dia">Wafer Diameter (mm)</label>
+            <select id="phys-wafer-dia" class="glass-input w-full">
+              <option value="300" selected>300 mm (12")</option>
+              <option value="200">200 mm (8")</option>
+              <option value="150">150 mm (6")</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <div class="control-group-vertical" style="flex: 1;">
+              <label for="phys-chip-x">Chip X (mm)</label>
+              <input type="number" id="phys-chip-x" class="glass-input w-full" step="0.1" value="2.5" />
+            </div>
+            <div class="control-group-vertical" style="flex: 1;">
+              <label for="phys-chip-y">Chip Y (mm)</label>
+              <input type="number" id="phys-chip-y" class="glass-input w-full" step="0.1" value="2.5" />
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <div class="control-group-vertical" style="flex: 1;">
+              <label for="phys-offset-x">Offset X (mm)</label>
+              <input type="number" id="phys-offset-x" class="glass-input w-full" step="0.1" value="0.0" />
+            </div>
+            <div class="control-group-vertical" style="flex: 1;">
+              <label for="phys-offset-y">Offset Y (mm)</label>
+              <input type="number" id="phys-offset-y" class="glass-input w-full" step="0.1" value="0.0" />
+            </div>
+          </div>
+
+          <div class="control-group-vertical">
+            <label for="phys-edge-margin">Edge Exclusion (mm)</label>
+            <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
+          </div>
+
+          <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); padding: 5px; font-weight: bold; width: 100%; justify-content: center; margin-top: 4px;">⚡ Apply Physical Geometry</button>
+
           <!-- 웨이퍼 노치/회전 설정 -->
           <hr style="border-color: var(--border-color); margin: 5px 0;">
           <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-secondary);">Wafer Orientation</h3>

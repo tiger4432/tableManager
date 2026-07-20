@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Tuple, Set, Optional
+from typing import Dict, Tuple, Set, Optional, Any
 
 class WaferMapCoordinateTransformer:
     """
@@ -16,7 +16,8 @@ class WaferMapCoordinateTransformer:
         start_y: int = 0,
         rotation: int = 0,
         side: str = "front",
-        invert_y: bool = False
+        invert_y: bool = False,
+        physical_engine: Optional[Any] = None
     ):
         """
         좌표 변환기 초기화
@@ -28,6 +29,7 @@ class WaferMapCoordinateTransformer:
         :param rotation: 맵 회전 각도 (0, 90, 180, 270)
         :param side: 웨이퍼 기판 단면 ("front" or "back")
         :param invert_y: Y축 상하반전 적용 여부 (기입 시 True)
+        :param physical_engine: 옵션 PhysicalWaferEngine 인스턴스
         """
         self.cols = cols
         self.rows = rows
@@ -36,6 +38,7 @@ class WaferMapCoordinateTransformer:
         self.rotation = rotation
         self.side = side.lower()
         self.invert_y = invert_y
+        self.physical_engine = physical_engine
 
         # 회전(90, 270) 상태에 따른 시각적(화면상) 격자 가로/세로 크기 판별
         self.is_rotated_90_or_270 = self.rotation in (90, 270)
@@ -162,6 +165,9 @@ class WaferMapCoordinateTransformer:
         """
         DOM 셀 인덱스 (c, r)가 웨이퍼 유효 원 영역 경계 내부에 완벽히 포함되는지 판별합니다.
         """
+        if self.physical_engine is not None:
+            return self.physical_engine.is_cell_inside_wafer(c, r, self.visual_cols, self.visual_rows)
+
         u1 = (2 * c - self.visual_cols) / self.visual_cols
         u2 = (2 * (c + 1) - self.visual_cols) / self.visual_cols
         v1 = (2 * r - self.visual_rows) / self.visual_rows
