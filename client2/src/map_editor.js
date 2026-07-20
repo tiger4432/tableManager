@@ -638,7 +638,7 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
 
   if (currentRotation === 90) {
     const tmpX = offsetX;
-    offsetX = -offsetY;
+    offsetX = offsetY;
     offsetY = tmpX;
     chipX = origChipY;
     chipY = origChipX;
@@ -647,7 +647,7 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
     offsetY = -offsetY;
   } else if (currentRotation === 270) {
     const tmpX = offsetX;
-    offsetX = offsetY;
+    offsetX = -offsetY;
     offsetY = -tmpX;
     chipX = origChipY;
     chipY = origChipX;
