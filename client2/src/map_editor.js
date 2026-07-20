@@ -269,8 +269,12 @@ function getGridCellFromMouseEvent(e) {
   const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
   const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
 
-  const c = Math.max(0, Math.min(visualCols - 1, Math.floor(((xRel - shiftX) / rect.width) * visualCols)));
-  const r = Math.max(0, Math.min(visualRows - 1, Math.floor(((yRel - shiftY) / rect.height) * visualRows)));
+  const c = Math.floor((xRel - shiftX) / cellW);
+  const r = Math.floor((yRel - shiftY) / cellH);
+
+  if (c < 0 || c >= visualCols || r < 0 || r >= visualRows) {
+    return null;
+  }
 
   return gridCells2D[r]?.[c] || null;
 }
@@ -1055,8 +1059,8 @@ function renderGridCanvas() {
 
   // 8. Hover Cell highlight
   if (currentHoverCell && !isBoxDragging) {
-    const hX = currentHoverCell.c * cellW;
-    const hY = currentHoverCell.r * cellH;
+    const hX = currentHoverCell.c * cellW + shiftX;
+    const hY = currentHoverCell.r * cellH + shiftY;
     ctx.strokeStyle = '#00f0ff';
     ctx.lineWidth = 2.0;
     ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
