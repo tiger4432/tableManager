@@ -28,6 +28,14 @@ const DEFAULT_LEGEND = [
   { value: '3', desc: 'REWORK', color: '#f59e0b' }
 ];
 
+function debounce(func, wait = 200) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
 // Initialize DOM elements when loaded
 document.addEventListener('DOMContentLoaded', async () => {
   initDOMElements();
@@ -183,8 +191,9 @@ function initDOMElements() {
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
   if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
+  const debouncedRender = debounce(() => renderGridCanvas(), 200);
   [el.physWaferDia, el.physChipX, el.physChipY, el.physOffsetX, el.physOffsetY, el.physEdgeMargin].forEach(input => {
-    if (input) input.addEventListener('input', () => renderGridCanvas());
+    if (input) input.addEventListener('input', debouncedRender);
   });
   
   if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
@@ -819,7 +828,8 @@ function renderGridCanvas() {
     el.gridCanvas.classList.remove('flipped-vertical');
   }
 
-  // Render Visual Grid
+  // Render Visual Grid using DocumentFragment batching for maximum DOM performance
+  const fragment = document.createDocumentFragment();
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
@@ -872,9 +882,12 @@ function renderGridCanvas() {
       cell.title = `좌표: (${visual.x}, ${visual.y})\n값: ${val !== '' ? val : 'Empty'}`;
 
       gridCells2D[r][c] = cell;
-      el.gridCanvas.appendChild(cell);
+      fragment.appendChild(cell);
     }
   }
+
+  el.gridCanvas.innerHTML = '';
+  el.gridCanvas.appendChild(fragment);
 
   updateNotchPosition();
   updateLegendCounts();
