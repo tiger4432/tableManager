@@ -947,22 +947,37 @@ function renderGridCanvas() {
     }
   }
 
-  // 6. Physical Wafer Boundary Dashed Circle Line (Pixel-Exact Alignment)
+  // 6. Physical Wafer Circles (Outer Wafer Edge & Edge Exclusion Boundary)
   const waferCenterX = (width / 2.0) + (physConfig.offsetX / physConfig.chipX) * cellW;
   const waferCenterY = (height / 2.0) - (physConfig.offsetY / physConfig.chipY) * cellH;
 
-  const radX = (physConfig.effectiveRadius / physConfig.chipX) * cellW;
-  const radY = (physConfig.effectiveRadius / physConfig.chipY) * cellH;
+  // A. Outer Silicon Wafer Edge Circle (Full Diameter, e.g. 300mm)
+  const outerRadX = ((physConfig.waferDia / 2.0) / physConfig.chipX) * cellW;
+  const outerRadY = ((physConfig.waferDia / 2.0) / physConfig.chipY) * cellH;
 
   ctx.beginPath();
   if (typeof ctx.ellipse === 'function') {
-    ctx.ellipse(waferCenterX, waferCenterY, radX, radY, 0, 0, 2 * Math.PI);
+    ctx.ellipse(waferCenterX, waferCenterY, outerRadX, outerRadY, 0, 0, 2 * Math.PI);
   } else {
-    ctx.arc(waferCenterX, waferCenterY, radX, 0, 2 * Math.PI);
+    ctx.arc(waferCenterX, waferCenterY, outerRadX, 0, 2 * Math.PI);
   }
-  ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)';
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.6)';
   ctx.lineWidth = 1.5;
-  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+
+  // B. Edge Exclusion Boundary Circle (Effective Radius, e.g. 147mm = 150mm - Edge Exclusion)
+  const effRadX = (physConfig.effectiveRadius / physConfig.chipX) * cellW;
+  const effRadY = (physConfig.effectiveRadius / physConfig.chipY) * cellH;
+
+  ctx.beginPath();
+  if (typeof ctx.ellipse === 'function') {
+    ctx.ellipse(waferCenterX, waferCenterY, effRadX, effRadY, 0, 0, 2 * Math.PI);
+  } else {
+    ctx.arc(waferCenterX, waferCenterY, effRadX, 0, 2 * Math.PI);
+  }
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 2.0;
+  ctx.setLineDash([6, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
 
