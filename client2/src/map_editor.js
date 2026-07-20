@@ -908,7 +908,7 @@ function renderGridCanvas() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  gridCells2D = Array.from({ length: visualRows }, () => []);
+  gridCells2D = {};
 
   const rect = el.gridCanvas.getBoundingClientRect();
   const width = Math.floor(rect.width || 700);
@@ -984,6 +984,7 @@ function renderGridCanvas() {
         c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
         key: coordKey, inside: completelyInside, isOrigin: isOriginCell
       };
+      if (!gridCells2D[r]) gridCells2D[r] = {};
       gridCells2D[r][c] = cellObj;
 
       // 1. Fill cell background
@@ -2015,13 +2016,22 @@ function getEdgeClassification() {
   return { isE1, isE2 };
 }
 
+function getVisualGridDimensions() {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  return {
+    visualCols: isRotated90or270 ? rows : cols,
+    visualRows: isRotated90or270 ? cols : rows
+  };
+}
+
 function selectEdgeCells(target) {
   const { isE1, isE2 } = getEdgeClassification();
   const targetMap = target === 1 ? isE1 : isE2;
+  const { visualCols, visualRows } = getVisualGridDimensions();
 
   let count = 0;
-  const visualRows = gridCells2D.length;
-  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
@@ -2059,8 +2069,7 @@ function autoPaintE1E2() {
   }
 
   const { isE1, isE2 } = getEdgeClassification();
-  const visualRows = gridCells2D.length;
-  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const { visualCols, visualRows } = getVisualGridDimensions();
   
   let e1Count = 0;
   let e2Count = 0;
@@ -2092,8 +2101,7 @@ function fillSelectedCells() {
   }
   if (!selectedEdgeTargetMap) return;
 
-  const visualRows = gridCells2D.length;
-  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const { visualCols, visualRows } = getVisualGridDimensions();
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
@@ -2114,8 +2122,7 @@ function fillSelectedCells() {
 function clearSelectedCells() {
   if (!selectedEdgeTargetMap) return;
 
-  const visualRows = gridCells2D.length;
-  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const { visualCols, visualRows } = getVisualGridDimensions();
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
@@ -2134,13 +2141,12 @@ function clearSelectedCells() {
 }
 
 function copyGridToExcel() {
-  if (!gridCells2D || gridCells2D.length === 0) {
+  if (!gridCells2D) {
     alert('격자가 생성되어 있지 않습니다.');
     return;
   }
 
-  const visualRows = gridCells2D.length;
-  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+  const { visualCols, visualRows } = getVisualGridDimensions();
   const matrix = [];
 
   for (let r = 0; r < visualRows; r++) {
