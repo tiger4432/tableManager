@@ -623,11 +623,7 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
   let origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
 
   if (currentSide === 'back') {
-    if (currentRotation === 90 || currentRotation === 270) {
-      origOffsetY = -origOffsetY;
-    } else {
-      origOffsetX = -origOffsetX;
-    }
+    origOffsetX = -origOffsetX;
   }
 
   let chipX = origChipX;
