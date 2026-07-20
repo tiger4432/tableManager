@@ -166,7 +166,7 @@ function initDOMElements() {
         let v = parseInt(input.value, 10);
         if (isNaN(v)) input.value = 0;
       }
-      renderGridCanvas();
+      scheduleRenderGridCanvas();
     });
   });
 
@@ -191,9 +191,13 @@ function initDOMElements() {
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
   if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
-  const debouncedRender = debounce(() => renderGridCanvas(), 200);
+  
+  // Physical input triggers: use change event for typing completion and scheduleRenderGridCanvas for rAF throttling
   [el.physWaferDia, el.physChipX, el.physChipY, el.physOffsetX, el.physOffsetY, el.physEdgeMargin].forEach(input => {
-    if (input) input.addEventListener('input', debouncedRender);
+    if (input) {
+      input.addEventListener('change', () => scheduleRenderGridCanvas());
+      input.addEventListener('input', () => scheduleRenderGridCanvas());
+    }
   });
   
   if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
@@ -205,15 +209,15 @@ function initDOMElements() {
   // Dynamic Metadata Inputs change triggers
   el.colMapX.addEventListener('change', () => {
     renderMetadataInputs();
-    renderGridCanvas();
+    scheduleRenderGridCanvas();
   });
   el.colMapY.addEventListener('change', () => {
     renderMetadataInputs();
-    renderGridCanvas();
+    scheduleRenderGridCanvas();
   });
   el.colMapVal.addEventListener('change', () => {
     renderMetadataInputs();
-    renderGridCanvas();
+    scheduleRenderGridCanvas();
   });
 
   // Rotation Buttons
@@ -222,7 +226,7 @@ function initDOMElements() {
       document.querySelectorAll('.btn-rot').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentRotation = parseInt(btn.dataset.rot, 10);
-      renderGridCanvas();
+      scheduleRenderGridCanvas();
     });
   });
 
@@ -230,7 +234,7 @@ function initDOMElements() {
   document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
       currentSide = e.target.value;
-      renderGridCanvas();
+      scheduleRenderGridCanvas();
     });
   });
 
@@ -795,6 +799,17 @@ function updateLegendCounts() {
 // ----------------------------------------------------
 // Rendering Functions
 // ----------------------------------------------------
+let isRenderScheduled = false;
+
+function scheduleRenderGridCanvas() {
+  if (isRenderScheduled) return;
+  isRenderScheduled = true;
+  requestAnimationFrame(() => {
+    isRenderScheduled = false;
+    renderGridCanvas();
+  });
+}
+
 function renderGridCanvas() {
   if (!el.gridCanvas) return;
 
