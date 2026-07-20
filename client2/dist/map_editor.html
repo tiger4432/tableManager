@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-C4HWRJ4t.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-BEu6c6YN.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CrrbD5fT.js">
   <link rel="stylesheet" crossorigin href="/assets/config-DyFlHOn8.css">
@@ -233,7 +233,9 @@
           <div id="grid-wrapper" class="map-grid-wrapper">
             <!-- V-Notch가 동적으로 이 wrapper의 상/하/좌/우 중 하나로 렌더링됩니다. -->
             <div id="grid-notch" class="wafer-notch notch-bottom"></div>
-            <div id="grid-canvas" class="map-grid-canvas"></div>
+            <div id="grid-canvas" class="map-grid-canvas">
+              <canvas id="wafer-grid-canvas" style="width: 100%; height: 100%; display: block; border-radius: 50%;"></canvas>
+            </div>
           </div>
         </div>
       </section>

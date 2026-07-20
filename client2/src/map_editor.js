@@ -99,8 +99,11 @@ function initDOMElements() {
   el.btnChoiceCancel = document.getElementById('btn-choice-cancel');
 
   el.gridCanvas = document.getElementById('grid-canvas');
+  el.waferCanvas = document.getElementById('wafer-grid-canvas');
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
+
+  window.addEventListener('resize', () => scheduleRenderGridCanvas());
 
   // Bind Events
   el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
@@ -242,19 +245,44 @@ function initDOMElements() {
   el.gridCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function getGridCellFromMouseEvent(e) {
+  const canvasTarget = el.waferCanvas || el.gridCanvas;
+  if (!canvasTarget) return null;
+  const rect = canvasTarget.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  const xRel = e.clientX - rect.left;
+  const yRel = e.clientY - rect.top;
+
+  if (xRel < 0 || xRel > rect.width || yRel < 0 || yRel > rect.height) return null;
+
+  const c = Math.max(0, Math.min(visualCols - 1, Math.floor((xRel / rect.width) * visualCols)));
+  const r = Math.max(0, Math.min(visualRows - 1, Math.floor((yRel / rect.height) * visualRows)));
+
+  return gridCells2D[r]?.[c] || null;
+}
+
+let currentHoverCell = null;
+
 function initMouseDragEvents() {
   window.addEventListener('mousedown', (e) => {
     isMouseDown = true;
     isRightDrag = (e.button === 2);
   });
 
-  if (el.gridCanvas) {
-    el.gridCanvas.addEventListener('mousedown', (e) => {
+  const canvasTarget = el.waferCanvas || el.gridCanvas;
+  if (canvasTarget) {
+    canvasTarget.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      const cell = e.target.closest('.grid-cell');
+      const cell = getGridCellFromMouseEvent(e);
       if (!cell) return;
 
-      // Hide batch actions when starting a new interaction
       if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
 
       if (isOriginMode) {
@@ -266,88 +294,49 @@ function initMouseDragEvents() {
       isBoxDragging = true;
       boxStartCell = cell;
       dragType = isRight ? 'erase' : 'paint';
-      el.gridCanvas.classList.add('drag-active');
+      lastSelectionBox = { minC: cell.c, maxC: cell.c, minR: cell.r, maxR: cell.r };
 
-      const c = parseInt(cell.dataset.c, 10);
-      const r = parseInt(cell.dataset.r, 10);
-      lastSelectionBox = { minC: c, maxC: c, minR: r, maxR: r };
-
-      cell.classList.add(isRight ? 'cell-in-selection-erase' : 'cell-in-selection');
+      scheduleRenderGridCanvas();
     });
 
-    let lastHoverCell = null;
-
-    el.gridCanvas.addEventListener('mouseleave', () => {
-      lastHoverCell = null;
+    canvasTarget.addEventListener('mouseleave', () => {
+      if (currentHoverCell !== null) {
+        currentHoverCell = null;
+        scheduleRenderGridCanvas();
+      }
     });
 
-    el.gridCanvas.addEventListener('mousemove', (e) => {
-      const cell = e.target.closest('.grid-cell');
-      if (!cell || cell === lastHoverCell) return;
-      lastHoverCell = cell;
+    canvasTarget.addEventListener('mousemove', (e) => {
+      const cell = getGridCellFromMouseEvent(e);
+      if (cell === currentHoverCell && !isBoxDragging) return;
+      currentHoverCell = cell;
 
-      const c = parseInt(cell.dataset.c, 10);
-      const r = parseInt(cell.dataset.r, 10);
-
-      if (!isBoxDragging) {
-        requestAnimationFrame(() => {
-          const val = gridData[cell.dataset.key] || '';
-          el.gridStatusCoords.textContent = `Cursor: (${cell.dataset.x}, ${cell.dataset.y}) = ${val !== '' ? val : 'Empty'}`;
-        });
-        return;
+      if (cell) {
+        const val = gridData[cell.key] || '';
+        el.gridStatusCoords.textContent = `Cursor: (${cell.x}, ${cell.y}) = ${val !== '' ? val : 'Empty'}`;
       }
 
-      if (boxStartCell) {
-        const c1 = parseInt(boxStartCell.dataset.c, 10);
-        const r1 = parseInt(boxStartCell.dataset.r, 10);
-        const c2 = c;
-        const r2 = r;
+      if (isBoxDragging && boxStartCell && cell) {
+        const c1 = boxStartCell.c;
+        const r1 = boxStartCell.r;
+        const c2 = cell.c;
+        const r2 = cell.r;
 
         const minC = Math.min(c1, c2);
         const maxC = Math.max(c1, c2);
         const minR = Math.min(r1, r2);
         const maxR = Math.max(r1, r2);
 
-        // If selection box bounds haven't changed, skip DOM writes to prevent lag
         if (lastSelectionBox && 
             lastSelectionBox.minC === minC && lastSelectionBox.maxC === maxC &&
             lastSelectionBox.minR === minR && lastSelectionBox.maxR === maxR) {
           return;
         }
 
-        const activeClass = (dragType === 'erase') ? 'cell-in-selection-erase' : 'cell-in-selection';
-
-        // 1. Remove selection class from old box cells that are no longer inside the new box bounds
-        if (lastSelectionBox) {
-          for (let row = lastSelectionBox.minR; row <= lastSelectionBox.maxR; row++) {
-            for (let col = lastSelectionBox.minC; col <= lastSelectionBox.maxC; col++) {
-              const outsideNewBox = (col < minC || col > maxC || row < minR || row > maxR);
-              if (outsideNewBox) {
-                const oldCell = gridCells2D[row]?.[col];
-                if (oldCell) {
-                  oldCell.classList.remove('cell-in-selection');
-                  oldCell.classList.remove('cell-in-selection-erase');
-                }
-              }
-            }
-          }
-        }
-
-        // 2. Add selection class to cells in the new box bounds
-        for (let row = minR; row <= maxR; row++) {
-          for (let col = minC; col <= maxC; col++) {
-            const insideOldBox = lastSelectionBox && (col >= lastSelectionBox.minC && col <= lastSelectionBox.maxC && row >= lastSelectionBox.minR && row <= lastSelectionBox.maxR);
-            if (!insideOldBox) {
-              const newCell = gridCells2D[row]?.[col];
-              if (newCell) {
-                newCell.classList.add(activeClass);
-              }
-            }
-          }
-        }
-
-        // 3. Update cached box bounds
         lastSelectionBox = { minC, maxC, minR, maxR };
+        scheduleRenderGridCanvas();
+      } else if (!isBoxDragging) {
+        scheduleRenderGridCanvas();
       }
     });
   }
@@ -359,25 +348,17 @@ function initMouseDragEvents() {
     if (isBoxDragging) {
       if (boxStartCell && lastSelectionBox) {
         const { minC, maxC, minR, maxR } = lastSelectionBox;
-        const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
 
-        // Apply values to final box selection cells in O(Box_Area) instead of O(Grid_Size)
         for (let r = minR; r <= maxR; r++) {
           for (let c = minC; c <= maxC; c++) {
             const cell = gridCells2D[r]?.[c];
             if (!cell) continue;
 
-            const key = cell.dataset.key;
+            const key = cell.key;
             if (dragType === 'erase') {
               gridData[key] = '';
-              cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
-              cell.style.fontSize = '0.65rem';
-              cell.style.color = 'var(--text-dim)';
-              updateCellStyles(cell, '');
-              cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
-              cell.classList.remove('has-value');
             } else if (dragType === 'paint') {
-              if (cell.classList.contains('cell-outside-wafer')) continue;
+              if (!cell.inside) continue;
 
               const existingVal = gridData[key] || '';
               const isSingleClick = (minC === maxC && minR === maxR);
@@ -387,25 +368,10 @@ function initMouseDragEvents() {
 
               if (activeBrush !== undefined && activeBrush !== null) {
                 gridData[key] = activeBrush;
-                cell.textContent = activeBrush;
-                cell.style.fontSize = '0.8rem';
-                cell.style.color = '#fff';
-                updateCellStyles(cell, activeBrush);
-                cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
-                cell.classList.add('has-value');
               }
             }
           }
         }
-      }
-
-      // Safeguard: Clear any orphaned selection classes across the entire canvas
-      if (el.gridCanvas) {
-        el.gridCanvas.querySelectorAll('.cell-in-selection, .cell-in-selection-erase').forEach(cell => {
-          cell.classList.remove('cell-in-selection');
-          cell.classList.remove('cell-in-selection-erase');
-        });
-        el.gridCanvas.classList.remove('drag-active');
       }
 
       if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
@@ -416,6 +382,7 @@ function initMouseDragEvents() {
       dragType = null;
       
       updateLegendCounts();
+      scheduleRenderGridCanvas();
     }
   });
 }
@@ -820,7 +787,7 @@ function scheduleRenderGridCanvas() {
 }
 
 function renderGridCanvas() {
-  if (!el.gridCanvas) return;
+  if (!el.waferCanvas || !el.gridCanvas) return;
 
   const cols = parseInt(el.gridCols.value, 10) || 10;
   const rows = parseInt(el.gridRows.value, 10) || 10;
@@ -828,10 +795,7 @@ function renderGridCanvas() {
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert.checked;
 
-  // Check if coordinate grid contains (0,0) based on start coordinates and dimensions
   const hasZeroZero = (startX <= 0 && (startX + cols - 1) >= 0) && (startY <= 0 && (startY + rows - 1) >= 0);
-
-  el.gridCanvas.innerHTML = '';
 
   const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
@@ -839,22 +803,24 @@ function renderGridCanvas() {
 
   gridCells2D = Array.from({ length: visualRows }, () => []);
 
-  el.gridCanvas.style.gridTemplateColumns = `repeat(${visualCols}, 1fr)`;
-  el.gridCanvas.style.gridTemplateRows = `repeat(${visualRows}, 1fr)`;
+  const rect = el.gridCanvas.getBoundingClientRect();
+  const width = Math.floor(rect.width || 700);
+  const height = Math.floor(rect.height || 700);
 
-  // Mirror effect animation class based on rotation
-  if (currentSide === 'back') {
-    if (currentRotation === 90 || currentRotation === 270) {
-      el.gridCanvas.classList.add('flipped-vertical');
-      el.gridCanvas.classList.remove('flipped');
-    } else {
-      el.gridCanvas.classList.add('flipped');
-      el.gridCanvas.classList.remove('flipped-vertical');
-    }
-  } else {
-    el.gridCanvas.classList.remove('flipped');
-    el.gridCanvas.classList.remove('flipped-vertical');
-  }
+  if (width <= 0 || height <= 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  el.waferCanvas.width = width * dpr;
+  el.waferCanvas.height = height * dpr;
+
+  const ctx = el.waferCanvas.getContext('2d');
+  ctx.save();
+  ctx.scale(dpr, dpr);
+
+  ctx.clearRect(0, 0, width, height);
+
+  const cellW = width / visualCols;
+  const cellH = height / visualRows;
 
   const tStart = performance.now();
 
@@ -871,8 +837,16 @@ function renderGridCanvas() {
     chipX, chipY, offsetX, offsetY, effectiveRadius, radiusSq: effectiveRadius * effectiveRadius
   };
 
-  // Render Visual Grid using DocumentFragment batching for maximum DOM performance
-  const fragment = document.createDocumentFragment();
+  const colorMap = {};
+  legend.forEach(item => {
+    colorMap[item.value] = item.color;
+  });
+
+  const fontPx = Math.max(8, Math.min(13, Math.floor(cellH * 0.45)));
+  ctx.font = `bold ${fontPx}px "JetBrains Mono", monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
@@ -880,62 +854,94 @@ function renderGridCanvas() {
       const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
 
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      cell.dataset.x = visual.x;
-      cell.dataset.y = visual.y;
-      cell.dataset.c = c;
-      cell.dataset.r = r;
-      cell.dataset.key = coordKey;
-
-      if (val !== '') {
-        cell.classList.add('has-value');
-      }
-
-      // Check if this cell is the origin point (falls back to start cell if (0,0) is outside the grid bounds)
       const isOriginCell = hasZeroZero 
         ? (visual.x === 0 && visual.y === 0) 
         : (visual.x === startX && visual.y === startY);
 
-      if (isOriginCell) {
-        cell.classList.add('cell-is-origin');
-      }
-
-      // Check if visual cell (c, r) is inside the wafer boundary circle / physical dimensions
       const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig);
 
+      const cellObj = {
+        c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
+        key: coordKey, inside: completelyInside, isOrigin: isOriginCell
+      };
+      gridCells2D[r][c] = cellObj;
+
+      const x0 = c * cellW;
+      const y0 = r * cellH;
+
+      // 1. Fill cell background
+      if (!completelyInside) {
+        ctx.fillStyle = 'rgba(10, 15, 26, 0.45)';
+      } else if (val !== '') {
+        ctx.fillStyle = colorMap[val] || '#10b981';
+      } else {
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.08)';
+      }
+      ctx.fillRect(x0, y0, cellW, cellH);
+
+      // 2. Stroke grid border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x0, y0, cellW, cellH);
+
+      // 3. Wafer inside boundary outline
       if (completelyInside) {
-        cell.classList.add('cell-inside-wafer');
-      } else {
-        cell.classList.add('cell-outside-wafer');
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, cellW - 1, cellH - 1);
       }
 
-      updateCellStyles(cell, val);
-
-      cell.textContent = val !== '' ? val : (showAnno ? `${visual.x},${visual.y}` : '');
-      if (val === '') {
-        cell.style.fontSize = '0.65rem';
-        cell.style.color = 'var(--text-dim)';
-      } else {
-        cell.style.fontSize = '0.8rem';
-        cell.style.color = '#fff';
+      // 4. Origin cell highlight
+      if (isOriginCell) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.fillRect(x0, y0, cellW, cellH);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.0;
+        ctx.strokeRect(x0 + 1, y0 + 1, cellW - 2, cellH - 2);
       }
 
-      cell.title = `좌표: (${visual.x}, ${visual.y})\n값: ${val !== '' ? val : 'Empty'}`;
-
-      gridCells2D[r][c] = cell;
-      fragment.appendChild(cell);
+      // 5. Annotations text
+      const textToDraw = val !== '' ? String(val) : (showAnno ? `${visual.x},${visual.y}` : '');
+      if (textToDraw) {
+        ctx.fillStyle = val !== '' ? '#ffffff' : 'rgba(100, 116, 139, 0.75)';
+        ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
+      }
     }
   }
 
-  el.gridCanvas.innerHTML = '';
-  el.gridCanvas.appendChild(fragment);
+  // 6. Selection Box overlay
+  if (isBoxDragging && lastSelectionBox) {
+    const { minC, maxC, minR, maxR } = lastSelectionBox;
+    const boxX = minC * cellW;
+    const boxY = minR * cellH;
+    const boxW = (maxC - minC + 1) * cellW;
+    const boxH = (maxR - minR + 1) * cellH;
+
+    const isErase = (dragType === 'erase');
+    ctx.fillStyle = isErase ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+
+    ctx.strokeStyle = isErase ? '#ef4444' : '#3b82f6';
+    ctx.lineWidth = 2.0;
+    ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+  }
+
+  // 7. Hover Cell highlight
+  if (currentHoverCell && !isBoxDragging) {
+    const hX = currentHoverCell.c * cellW;
+    const hY = currentHoverCell.r * cellH;
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 2.0;
+    ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
+  }
+
+  ctx.restore();
 
   updateNotchPosition();
   updateLegendCounts();
 
   const tEnd = performance.now();
-  console.log(`[PERF DEBUG] renderGridCanvas completed in ${(tEnd - tStart).toFixed(2)} ms (${visualCols}x${visualRows} = ${visualCols * visualRows} cells)`);
+  console.log(`[PERF DEBUG] Canvas renderGridCanvas completed in ${(tEnd - tStart).toFixed(2)} ms (${visualCols}x${visualRows} = ${visualCols * visualRows} cells)`);
 }
 
 function handleCellClick(cell, event) {
