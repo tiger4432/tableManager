@@ -601,27 +601,16 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
   return { x: xv, y: yv };
 }
 
-function isCellInsideWafer(c, r, visualCols, visualRows) {
-  const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
-  const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
-  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-
-  const chipX = el.physChipX ? parseFloat(el.physChipX.value) : 2.5;
-  const chipY = el.physChipY ? parseFloat(el.physChipY.value) : 2.5;
-  const offsetX = el.physOffsetX ? parseFloat(el.physOffsetX.value) : 0.0;
-  const offsetY = el.physOffsetY ? parseFloat(el.physOffsetY.value) : 0.0;
-
-  if (chipX > 0 && chipY > 0 && effectiveRadius > 0) {
+function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig) {
+  if (physConfig && physConfig.chipX > 0 && physConfig.chipY > 0 && physConfig.effectiveRadius > 0) {
     const centerC = (visualCols - 1) / 2.0;
     const centerR = (visualRows - 1) / 2.0;
 
-    const x_mm = (c - centerC) * chipX - offsetX;
-    const y_mm = (centerR - r) * chipY - offsetY;
+    const x_mm = (c - centerC) * physConfig.chipX - physConfig.offsetX;
+    const y_mm = (centerR - r) * physConfig.chipY - physConfig.offsetY;
 
     const distSq = x_mm * x_mm + y_mm * y_mm;
-    const radiusSq = effectiveRadius * effectiveRadius;
-
-    return distSq <= radiusSq;
+    return distSq <= physConfig.radiusSq;
   }
 
   const u1 = (2 * c - visualCols) / visualCols;
@@ -632,6 +621,21 @@ function isCellInsideWafer(c, r, visualCols, visualRows) {
   const maxU2 = Math.max(u1 * u1, u2 * u2);
   const maxV2 = Math.max(v1 * v1, v2 * v2);
   return (maxU2 + maxV2) <= 1.0;
+}
+
+function isCellInsideWafer(c, r, visualCols, visualRows) {
+  const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
+  const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
+  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
+
+  const chipX = el.physChipX ? parseFloat(el.physChipX.value) : 2.5;
+  const chipY = el.physChipY ? parseFloat(el.physChipY.value) : 2.5;
+  const offsetX = el.physOffsetX ? parseFloat(el.physOffsetX.value) : 0.0;
+  const offsetY = el.physOffsetY ? parseFloat(el.physOffsetY.value) : 0.0;
+
+  return isCellInsideWaferFast(c, r, visualCols, visualRows, {
+    chipX, chipY, offsetX, offsetY, effectiveRadius, radiusSq: effectiveRadius * effectiveRadius
+  });
 }
 
 function applyPhysicalGeometry() {
@@ -828,6 +832,21 @@ function renderGridCanvas() {
     el.gridCanvas.classList.remove('flipped-vertical');
   }
 
+  const tStart = performance.now();
+
+  const waferDia = el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300;
+  const edgeMargin = el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0;
+  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
+  const chipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
+  const chipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
+  const offsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
+  const offsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
+  const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
+
+  const physConfig = {
+    chipX, chipY, offsetX, offsetY, effectiveRadius, radiusSq: effectiveRadius * effectiveRadius
+  };
+
   // Render Visual Grid using DocumentFragment batching for maximum DOM performance
   const fragment = document.createDocumentFragment();
   for (let r = 0; r < visualRows; r++) {
@@ -859,7 +878,7 @@ function renderGridCanvas() {
       }
 
       // Check if visual cell (c, r) is inside the wafer boundary circle / physical dimensions
-      const completelyInside = isCellInsideWafer(c, r, visualCols, visualRows);
+      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig);
 
       if (completelyInside) {
         cell.classList.add('cell-inside-wafer');
@@ -869,7 +888,6 @@ function renderGridCanvas() {
 
       updateCellStyles(cell, val);
 
-      const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
       cell.textContent = val !== '' ? val : (showAnno ? `${visual.x},${visual.y}` : '');
       if (val === '') {
         cell.style.fontSize = '0.65rem';
@@ -891,6 +909,9 @@ function renderGridCanvas() {
 
   updateNotchPosition();
   updateLegendCounts();
+
+  const tEnd = performance.now();
+  console.log(`[PERF DEBUG] renderGridCanvas completed in ${(tEnd - tStart).toFixed(2)} ms (${visualCols}x${visualRows} = ${visualCols * visualRows} cells)`);
 }
 
 function handleCellClick(cell, event) {
