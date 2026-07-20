@@ -872,7 +872,7 @@ function renderGridCanvas() {
 
       // 1. Fill cell background
       if (!completelyInside) {
-        ctx.fillStyle = 'rgba(10, 15, 26, 0.45)';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
       } else if (val !== '') {
         ctx.fillStyle = colorMap[val] || '#10b981';
       } else {
@@ -880,12 +880,12 @@ function renderGridCanvas() {
       }
       ctx.fillRect(x0, y0, cellW, cellH);
 
-      // 2. Stroke grid border
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      // 2. Stroke grid border across ALL cells (inside and outside wafer)
+      ctx.strokeStyle = completelyInside ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x0, y0, cellW, cellH);
 
-      // 3. Wafer inside boundary outline
+      // 3. Wafer inside boundary cell outline
       if (completelyInside) {
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = 1.2;
@@ -904,13 +904,25 @@ function renderGridCanvas() {
       // 5. Annotations text
       const textToDraw = val !== '' ? String(val) : (showAnno ? `${visual.x},${visual.y}` : '');
       if (textToDraw) {
-        ctx.fillStyle = val !== '' ? '#ffffff' : 'rgba(100, 116, 139, 0.75)';
+        ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? 'rgba(100, 116, 139, 0.75)' : 'rgba(71, 85, 105, 0.5)');
         ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
       }
     }
   }
 
-  // 6. Selection Box overlay
+  // 6. Physical Wafer Boundary Dashed Circle Line
+  const centerX = width / 2.0;
+  const centerY = height / 2.0;
+  const radiusPx = (effectiveRadius / (waferDia / 2.0)) * (Math.min(width, height) / 2.0);
+  ctx.beginPath();
+  ctx.arc(centerX + (offsetX * (width / waferDia)), centerY - (offsetY * (height / waferDia)), radiusPx, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
     const { minC, maxC, minR, maxR } = lastSelectionBox;
     const boxX = minC * cellW;
@@ -927,7 +939,7 @@ function renderGridCanvas() {
     ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
   }
 
-  // 7. Hover Cell highlight
+  // 8. Hover Cell highlight
   if (currentHoverCell && !isBoxDragging) {
     const hX = currentHoverCell.c * cellW;
     const hY = currentHoverCell.r * cellH;
