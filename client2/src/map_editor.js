@@ -635,27 +635,38 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
   };
 }
 
-function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig) {
-  if (physConfig && physConfig.chipX > 0 && physConfig.chipY > 0 && physConfig.effectiveRadius > 0) {
-    const centerC = (visualCols - 1) / 2.0;
-    const centerR = (visualRows - 1) / 2.0;
+function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height) {
+  if (physConfig && physConfig.chipX > 0 && physConfig.chipY > 0 && physConfig.effectiveRadius > 0 && width > 0 && height > 0) {
+    const cellW = width / visualCols;
+    const cellH = height / visualRows;
 
-    const cx_mm = (c - centerC) * physConfig.chipX - physConfig.offsetX;
-    const cy_mm = (centerR - r) * physConfig.chipY - physConfig.offsetY;
+    const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
+    const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
 
-    const halfW = physConfig.chipX / 2.0;
-    const halfH = physConfig.chipY / 2.0;
-    const radiusSq = physConfig.radiusSq;
+    const x0 = c * cellW + shiftX;
+    const y0 = r * cellH + shiftY;
 
-    const x1 = cx_mm - halfW, y1 = cy_mm - halfH;
-    const x2 = cx_mm + halfW, y2 = cy_mm - halfH;
-    const x3 = cx_mm - halfW, y3 = cy_mm + halfH;
-    const x4 = cx_mm + halfW, y4 = cy_mm + halfH;
+    const centerX = width / 2.0;
+    const centerY = height / 2.0;
 
-    if (x1 * x1 + y1 * y1 > radiusSq) return false;
-    if (x2 * x2 + y2 * y2 > radiusSq) return false;
-    if (x3 * x3 + y3 * y3 > radiusSq) return false;
-    if (x4 * x4 + y4 * y4 > radiusSq) return false;
+    const effRadX = (physConfig.effectiveRadius / physConfig.chipX) * cellW;
+    const effRadY = (physConfig.effectiveRadius / physConfig.chipY) * cellH;
+
+    const corners = [
+      { x: x0, y: y0 },
+      { x: x0 + cellW, y: y0 },
+      { x: x0, y: y0 + cellH },
+      { x: x0 + cellW, y: y0 + cellH }
+    ];
+
+    for (const corner of corners) {
+      const dx = corner.x - centerX;
+      const dy = corner.y - centerY;
+      const normDistSq = (dx * dx) / (effRadX * effRadX) + (dy * dy) / (effRadY * effRadY);
+      if (normDistSq > 1.0) {
+        return false;
+      }
+    }
 
     return true;
   }
@@ -918,7 +929,7 @@ function renderGridCanvas() {
         ? (visual.x === 0 && visual.y === 0) 
         : (visual.x === startX && visual.y === startY);
 
-      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig);
+      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
 
       const cellObj = {
         c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
