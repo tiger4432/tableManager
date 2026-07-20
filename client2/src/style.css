@@ -1517,24 +1517,9 @@ body.resizing-active .history-sidebar {
   height: min(780px, 82vh, 82vw);
   padding: 0;
   background: rgba(255, 255, 255, 0.01);
-  border-radius: 50%; /* 웨이퍼 원형 외관 */
+  border-radius: 0;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   box-sizing: border-box;
-}
-
-/* 웨이퍼 원형 테두리 라인을 최상위에 오버레이로 얹어 셀들과 정확히 내접 정렬 */
-.map-grid-wrapper::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 3.5px solid rgba(255, 255, 255, 0.45); /* 선명한 솔리드 흰색 반투명 테두리 */
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 255, 255, 0.15); /* 은은한 백색 광원 효과 */
-  pointer-events: none; /* 클릭 이벤트가 하단 셀로 전달되도록 방어 */
-  z-index: 12;
 }
 
 .map-grid-canvas {

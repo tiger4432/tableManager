@@ -995,8 +995,8 @@ function renderGridCanvas() {
   ctx.setLineDash([]);
 
   // C. Centering Offset Marker Point (Rendered at chip grid offset relative to wafer center (0,0))
-  const offsetPxX = waferCenterX - (physConfig.offsetX / physConfig.chipX) * cellW;
-  const offsetPxY = waferCenterY + (physConfig.offsetY / physConfig.chipY) * cellH;
+  const offsetPxX = waferCenterX + (physConfig.offsetX / physConfig.chipX) * cellW;
+  const offsetPxY = waferCenterY - (physConfig.offsetY / physConfig.chipY) * cellH;
 
   ctx.beginPath();
   ctx.arc(offsetPxX, offsetPxY, 4, 0, 2 * Math.PI);
