@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 # Setup Unified Logger & Hook Uvicorn Loggers
 import logging
 from utils.logger import get_process_logger, ColoredProcessFormatter
+from utils.payload_helper import get_payload_dict
 logger = get_process_logger("Server", "server.log")
 
 for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
@@ -2112,7 +2113,7 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     elif transaction_id is not None:
         failed_events = [
             e for e in failed_events 
-            if (e.payload.get("transaction_id") == transaction_id if e.payload else False) or
+            if (get_payload_dict(e).get("transaction_id") == transaction_id) or
                (f"single_{e.event_uuid}" == transaction_id)
         ]
         
@@ -2123,10 +2124,12 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
         event.status = "PENDING"
         event.retry_count = 0
         event.processed_chain = False
-        if event.payload and "error_log" in event.payload:
-            payload_copy = dict(event.payload)
-            payload_copy["error_log"] = dict(payload_copy["error_log"])
-            payload_copy["error_log"]["resolved_at"] = datetime.now().isoformat()
+        pay_dict = get_payload_dict(event)
+        if pay_dict and "error_log" in pay_dict:
+            payload_copy = dict(pay_dict)
+            if isinstance(payload_copy.get("error_log"), dict):
+                payload_copy["error_log"] = dict(payload_copy["error_log"])
+                payload_copy["error_log"]["resolved_at"] = datetime.now().isoformat()
             event.payload = payload_copy
             
     db.commit()
@@ -2144,7 +2147,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
     from collections import defaultdict
     groups = defaultdict(list)
     for e in all_failed:
-        tx_id = e.payload.get("transaction_id") if e.payload else None
+        tx_id = get_payload_dict(e).get("transaction_id")
         if not tx_id:
             tx_id = f"single_{e.event_uuid}"
         groups[tx_id].append(e)

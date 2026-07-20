@@ -76,6 +76,14 @@ class DatabaseOutbox(Base):
         Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'")),
     )
 
+    @property
+    def safe_payload(self) -> dict:
+        """
+        Guarantees payload is returned as a python dictionary even if stored as a JSON string.
+        """
+        from utils.payload_helper import get_payload_dict
+        return get_payload_dict(self.payload)
+
 
 class FileIngestionLog(Base):
     __tablename__ = "file_ingestion_logs"

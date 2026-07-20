@@ -1862,25 +1862,11 @@ function copyGridToExcel() {
 
   const visualRows = gridCells2D.length;
   const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
-  
-  const isFlippedHoriz = el.gridCanvas ? el.gridCanvas.classList.contains('flipped') : false;
-  const isFlippedVert = el.gridCanvas ? el.gridCanvas.classList.contains('flipped-vertical') : false;
-
   const matrix = [];
 
-  // Determine row processing order based on vertical mirroring (flipped-vertical scaleY(-1))
-  const rowStart = isFlippedVert ? visualRows - 1 : 0;
-  const rowEnd = isFlippedVert ? -1 : visualRows;
-  const rowStep = isFlippedVert ? -1 : 1;
-
-  // Determine col processing order based on horizontal mirroring (flipped scaleX(-1))
-  const colStart = isFlippedHoriz ? visualCols - 1 : 0;
-  const colEnd = isFlippedHoriz ? -1 : visualCols;
-  const colStep = isFlippedHoriz ? -1 : 1;
-
-  for (let r = rowStart; r !== rowEnd; r += rowStep) {
+  for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
-    for (let c = colStart; c !== colEnd; c += colStep) {
+    for (let c = 0; c < visualCols; c++) {
       const cell = gridCells2D[r]?.[c];
       if (cell) {
         const key = cell.dataset.key;

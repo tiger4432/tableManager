@@ -7,6 +7,8 @@ from datetime import datetime
 
 # Setup Unified Logger
 from utils.logger import get_process_logger
+from utils.payload_helper import get_payload_dict
+
 logger = get_process_logger("GraphSync", "graph_sync.log")
 
 ONTOLOGY_PATH = os.path.join(os.path.dirname(__file__), "config", "ontology_mapping.json")
@@ -253,7 +255,7 @@ async def execute_batch_queries(queries, tx_id):
 def build_queries_for_event(event, ontology):
     event_type = event.event_type
     table_name = event.table_name
-    payload = event.payload
+    payload = get_payload_dict(event)
     
     queries = []
     if event_type == "CREATE":
