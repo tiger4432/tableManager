@@ -17,8 +17,9 @@ let isOriginMode = false; // Origin designation mode state
 let isBoxDragging = false; // Bounding box drag selection state
 let boxStartCell = null; // Start cell reference for bounding box
 let lastSelectionBox = null; // Track coordinates of current selection bounding box
-let gridCells2D = []; // 2D reference array of cell DOM elements [row][col]
+let gridCells2D = []; // 2D reference array of cell metadata objects [row][col]
 let dragType = null; // 'paint' | 'erase'
+let selectedEdgeTargetMap = null; // Track active E1/E2 edge selection map
 
 // Default Legend
 const DEFAULT_LEGEND = [
@@ -945,32 +946,31 @@ function renderGridCanvas() {
 }
 
 function handleCellClick(cell, event) {
+  if (!cell) return;
+  const c = cell.c !== undefined ? cell.c : 0;
+  const r = cell.r !== undefined ? cell.r : 0;
+  const key = cell.key;
+
   if (isOriginMode) {
-    const c = parseInt(cell.dataset.c, 10);
-    const r = parseInt(cell.dataset.r, 10);
     const cols = parseInt(el.gridCols.value, 10) || 10;
     const rows = parseInt(el.gridRows.value, 10) || 10;
     const invertY = el.gridYInvert.checked;
 
-    // Calculate 0-indexed visual coordinate (with startX=0, startY=0)
     const visualCoords = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
 
-    // Adjust start offsets so this cell becomes (0,0) visually
     const newStartX = -visualCoords.x;
     const newStartY = -visualCoords.y;
 
     el.gridStartX.value = newStartX;
     el.gridStartY.value = newStartY;
 
-    // Turn off origin mode
     isOriginMode = false;
     el.btnSetOrigin.classList.remove('active');
     el.btnSetOrigin.style.borderColor = '';
     el.btnSetOrigin.style.color = '';
     el.gridCanvas.classList.remove('origin-mode-active');
 
-    // Redraw grid
-    renderGridCanvas();
+    scheduleRenderGridCanvas();
     return;
   }
 
@@ -979,34 +979,20 @@ function handleCellClick(cell, event) {
     isRight = (event.button === 2 || event.buttons === 2);
   }
 
-  const key = cell.dataset.key;
   if (isRight) {
-    // Clear cell
     gridData[key] = '';
-    const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
-    cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
-    cell.style.fontSize = '0.65rem';
-    cell.style.color = 'var(--text-dim)';
-    updateCellStyles(cell, '');
-    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
-    cell.classList.remove('has-value');
   } else {
-    // Draw cell
     if (activeBrush !== undefined && activeBrush !== null) {
-      // 드래그 드로잉 중(event가 없는 경우)이고 이미 값이 채워져 있다면 기존 값 보존
       const existingVal = gridData[key] || '';
       if (!event && existingVal !== '') {
         return;
       }
       gridData[key] = activeBrush;
-      cell.textContent = activeBrush;
-      cell.style.fontSize = '0.8rem';
-      cell.style.color = '#fff';
-      updateCellStyles(cell, activeBrush);
-      cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
-      cell.classList.add('has-value');
     }
   }
+
+  updateLegendCounts();
+  scheduleRenderGridCanvas();
 }
 
 function updateCellStyles(cell, val) {
@@ -1852,48 +1838,41 @@ function getEdgeClassification() {
 }
 
 function selectEdgeCells(target) {
-  if (!el.gridCanvas) return;
-  const cells = el.gridCanvas.querySelectorAll('.grid-cell');
-  
-  // Clear any existing selection highlight
-  cells.forEach(cell => {
-    cell.classList.remove('cell-in-selection');
-    cell.classList.remove('cell-in-selection-erase');
-  });
-
   const { isE1, isE2 } = getEdgeClassification();
   const targetMap = target === 1 ? isE1 : isE2;
 
   let count = 0;
-  cells.forEach(cell => {
-    const c = parseInt(cell.dataset.c, 10);
-    const r = parseInt(cell.dataset.r, 10);
-    if (targetMap[r] && targetMap[r][c]) {
-      cell.classList.add('cell-in-selection');
-      count++;
+  const visualRows = gridCells2D.length;
+  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
+
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      if (targetMap[r] && targetMap[r][c]) {
+        count++;
+      }
     }
-  });
+  }
 
   if (count > 0) {
+    selectedEdgeTargetMap = targetMap;
     if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'flex';
     el.gridStatusCoords.textContent = `Selected ${count} E${target} cells`;
   } else {
+    selectedEdgeTargetMap = null;
     if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
     alert(`격자 상에 E${target} 조건에 부합하는 셀이 존재하지 않습니다.`);
   }
+  scheduleRenderGridCanvas();
 }
 
 function autoPaintE1E2() {
-  if (!el.gridCanvas) return;
-  
-  // Ensure E1 and E2 exist in legend
   let legendUpdated = false;
   if (!legend.some(item => item.value === 'E1')) {
-    legend.push({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' }); // Purple
+    legend.push({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' });
     legendUpdated = true;
   }
   if (!legend.some(item => item.value === 'E2')) {
-    legend.push({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' }); // Pink
+    legend.push({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' });
     legendUpdated = true;
   }
   if (legendUpdated) {
@@ -1902,26 +1881,29 @@ function autoPaintE1E2() {
   }
 
   const { isE1, isE2 } = getEdgeClassification();
-  const cells = el.gridCanvas.querySelectorAll('.grid-cell');
+  const visualRows = gridCells2D.length;
+  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
   
   let e1Count = 0;
   let e2Count = 0;
 
-  cells.forEach(cell => {
-    const c = parseInt(cell.dataset.c, 10);
-    const r = parseInt(cell.dataset.r, 10);
-    const key = cell.dataset.key;
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const cell = gridCells2D[r]?.[c];
+      if (!cell) continue;
+      const key = cell.key;
 
-    if (isE1[r] && isE1[r][c]) {
-      gridData[key] = 'E1';
-      e1Count++;
-    } else if (isE2[r] && isE2[r][c]) {
-      gridData[key] = 'E2';
-      e2Count++;
+      if (isE1[r] && isE1[r][c]) {
+        gridData[key] = 'E1';
+        e1Count++;
+      } else if (isE2[r] && isE2[r][c]) {
+        gridData[key] = 'E2';
+        e2Count++;
+      }
     }
-  });
+  }
 
-  renderGridCanvas();
+  scheduleRenderGridCanvas();
   alert(`E1/E2 자동 페인팅 완료!\n- E1 (가장 외곽 1칸): ${e1Count}개 셀\n- E2 (외곽에서 2칸): ${e2Count}개 셀`);
 }
 
@@ -1930,44 +1912,47 @@ function fillSelectedCells() {
     alert('페인팅 브러쉬를 먼저 선택하십시오.');
     return;
   }
-  if (!el.gridCanvas) return;
-  const selectedCells = el.gridCanvas.querySelectorAll('.grid-cell.cell-in-selection');
-  if (selectedCells.length === 0) return;
+  if (!selectedEdgeTargetMap) return;
 
-  selectedCells.forEach(cell => {
-    const key = cell.dataset.key;
-    gridData[key] = activeBrush;
-    cell.textContent = activeBrush;
-    cell.style.fontSize = '0.8rem';
-    cell.style.color = '#fff';
-    updateCellStyles(cell, activeBrush);
-    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: ${activeBrush}`;
-    cell.classList.add('has-value');
-    cell.classList.remove('cell-in-selection');
-  });
+  const visualRows = gridCells2D.length;
+  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
 
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      if (selectedEdgeTargetMap[r] && selectedEdgeTargetMap[r][c]) {
+        const cell = gridCells2D[r]?.[c];
+        if (cell) {
+          gridData[cell.key] = activeBrush;
+        }
+      }
+    }
+  }
+
+  selectedEdgeTargetMap = null;
   if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
+  scheduleRenderGridCanvas();
 }
 
 function clearSelectedCells() {
-  if (!el.gridCanvas) return;
-  const selectedCells = el.gridCanvas.querySelectorAll('.grid-cell.cell-in-selection');
-  if (selectedCells.length === 0) return;
+  if (!selectedEdgeTargetMap) return;
 
-  selectedCells.forEach(cell => {
-    const key = cell.dataset.key;
-    gridData[key] = '';
-    const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
-    cell.textContent = showAnno ? `${cell.dataset.x},${cell.dataset.y}` : '';
-    cell.style.fontSize = '0.65rem';
-    cell.style.color = 'var(--text-dim)';
-    updateCellStyles(cell, '');
-    cell.title = `좌표: (${cell.dataset.x}, ${cell.dataset.y})\n값: Empty`;
-    cell.classList.remove('has-value');
-    cell.classList.remove('cell-in-selection');
-  });
+  const visualRows = gridCells2D.length;
+  const visualCols = gridCells2D[0] ? gridCells2D[0].length : 0;
 
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      if (selectedEdgeTargetMap[r] && selectedEdgeTargetMap[r][c]) {
+        const cell = gridCells2D[r]?.[c];
+        if (cell) {
+          gridData[cell.key] = '';
+        }
+      }
+    }
+  }
+
+  selectedEdgeTargetMap = null;
   if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
+  scheduleRenderGridCanvas();
 }
 
 function copyGridToExcel() {
@@ -1985,7 +1970,7 @@ function copyGridToExcel() {
     for (let c = 0; c < visualCols; c++) {
       const cell = gridCells2D[r]?.[c];
       if (cell) {
-        const key = cell.dataset.key;
+        const key = cell.key;
         const val = gridData[key] || '';
         rowCells.push(val);
       } else {
