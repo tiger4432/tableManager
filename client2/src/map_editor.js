@@ -634,8 +634,8 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig) {
     const centerC = (visualCols - 1) / 2.0;
     const centerR = (visualRows - 1) / 2.0;
 
-    const cx_mm = (c - centerC) * physConfig.chipX + physConfig.offsetX;
-    const cy_mm = (centerR - r) * physConfig.chipY + physConfig.offsetY;
+    const cx_mm = (c - centerC) * physConfig.chipX - physConfig.offsetX;
+    const cy_mm = (centerR - r) * physConfig.chipY - physConfig.offsetY;
 
     const halfW = physConfig.chipX / 2.0;
     const halfH = physConfig.chipY / 2.0;
