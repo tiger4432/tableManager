@@ -947,19 +947,20 @@ function renderGridCanvas() {
     }
   }
 
-  // 6. Physical Wafer Boundary Dashed Circle Line
-  const centerX = width / 2.0;
-  const centerY = height / 2.0;
-  const radiusPx = (physConfig.effectiveRadius / (physConfig.waferDia / 2.0)) * (Math.min(width, height) / 2.0);
+  // 6. Physical Wafer Boundary Dashed Circle Line (Pixel-Exact Alignment)
+  const waferCenterX = (width / 2.0) + (physConfig.offsetX / physConfig.chipX) * cellW;
+  const waferCenterY = (height / 2.0) - (physConfig.offsetY / physConfig.chipY) * cellH;
+
+  const radX = (physConfig.effectiveRadius / physConfig.chipX) * cellW;
+  const radY = (physConfig.effectiveRadius / physConfig.chipY) * cellH;
+
   ctx.beginPath();
-  ctx.arc(
-    centerX + (physConfig.offsetX * (width / physConfig.waferDia)),
-    centerY - (physConfig.offsetY * (height / physConfig.waferDia)),
-    radiusPx,
-    0,
-    2 * Math.PI
-  );
-  ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
+  if (typeof ctx.ellipse === 'function') {
+    ctx.ellipse(waferCenterX, waferCenterY, radX, radY, 0, 0, 2 * Math.PI);
+  } else {
+    ctx.arc(waferCenterX, waferCenterY, radX, 0, 2 * Math.PI);
+  }
+  ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 4]);
   ctx.stroke();
