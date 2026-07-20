@@ -532,7 +532,11 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   let r_m = rowVisual;
 
   if (side === 'back') {
-    c_m = (visualCols - 1) - colVisual;
+    if (rotation === 90 || rotation === 270) {
+      r_m = (visualRows - 1) - rowVisual;
+    } else {
+      c_m = (visualCols - 1) - colVisual;
+    }
   }
 
   let xp = c_m;
@@ -590,7 +594,11 @@ function getTransformedPhysicalConfig(currentRotation, currentSide) {
   let offsetY = origOffsetY;
 
   if (currentSide === 'back') {
-    offsetX = -offsetX;
+    if (currentRotation === 90 || currentRotation === 270) {
+      offsetY = -offsetY;
+    } else {
+      offsetX = -offsetX;
+    }
   }
 
   if (currentRotation === 90) {

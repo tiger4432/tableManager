@@ -49,21 +49,30 @@ class WaferMapCoordinateTransformer:
         """
         DOM 셀 인덱스 (c, r)를 물리 칩 좌표 (xp, yp)로 변환합니다. (getPhysicalCoords 매칭)
         """
-        xp = c
-        yp = r
+        c_m = c
+        r_m = r
+
+        if self.side == "back":
+            if self.is_rotated_90_or_270:
+                r_m = (self.visual_rows - 1) - r
+            else:
+                c_m = (self.visual_cols - 1) - c
+
+        xp = c_m
+        yp = r_m
 
         if self.rotation == 0:
-            xp = c
-            yp = r
+            xp = c_m
+            yp = r_m
         elif self.rotation == 90:
-            xp = r
-            yp = (self.visual_cols - 1) - c
+            xp = r_m
+            yp = (self.visual_cols - 1) - c_m
         elif self.rotation == 180:
-            xp = (self.visual_cols - 1) - c
-            yp = (self.visual_rows - 1) - r
+            xp = (self.visual_cols - 1) - c_m
+            yp = (self.visual_rows - 1) - r_m
         elif self.rotation == 270:
-            xp = (self.visual_rows - 1) - r
-            yp = c
+            xp = (self.visual_rows - 1) - r_m
+            yp = c_m
 
         return xp, yp
 
@@ -71,21 +80,30 @@ class WaferMapCoordinateTransformer:
         """
         물리 칩 좌표 (xp, yp)를 DOM 셀 인덱스 (c, r)로 역변환합니다.
         """
-        c = xp
-        r = yp
+        c_m = xp
+        r_m = yp
 
         if self.rotation == 0:
-            c = xp
-            r = yp
+            c_m = xp
+            r_m = yp
         elif self.rotation == 90:
-            c = (self.visual_cols - 1) - yp
-            r = xp
+            c_m = (self.visual_cols - 1) - yp
+            r_m = xp
         elif self.rotation == 180:
-            c = (self.visual_cols - 1) - xp
-            r = (self.visual_rows - 1) - yp
+            c_m = (self.visual_cols - 1) - xp
+            r_m = (self.visual_rows - 1) - yp
         elif self.rotation == 270:
-            c = yp
-            r = (self.visual_rows - 1) - xp
+            c_m = yp
+            r_m = (self.visual_rows - 1) - xp
+
+        c = c_m
+        r = r_m
+
+        if self.side == "back":
+            if self.is_rotated_90_or_270:
+                r = (self.visual_rows - 1) - r_m
+            else:
+                c = (self.visual_cols - 1) - c_m
 
         return c, r
 
