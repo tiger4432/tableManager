@@ -922,8 +922,29 @@ function renderGridCanvas() {
   const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
   const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
 
-  for (let r = 0; r < visualRows; r++) {
-    for (let c = 0; c < visualCols; c++) {
+  const startC = Math.floor(-shiftX / cellW) - 1;
+  const endC = Math.ceil((width - shiftX) / cellW) + 1;
+  const startR = Math.floor(-shiftY / cellH) - 1;
+  const endR = Math.ceil((height - shiftY) / cellH) + 1;
+
+  for (let r = startR; r <= endR; r++) {
+    for (let c = startC; c <= endC; c++) {
+      const x0 = c * cellW + shiftX;
+      const y0 = r * cellH + shiftY;
+
+      if (x0 + cellW < 0 || x0 > width || y0 + cellH < 0 || y0 > height) continue;
+
+      const isMatrixCell = (c >= 0 && c < visualCols && r >= 0 && r < visualRows);
+
+      if (!isMatrixCell) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+        ctx.fillRect(x0, y0, cellW, cellH);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x0, y0, cellW, cellH);
+        continue;
+      }
+
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
       const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
       const coordKey = `${physical.x}_${physical.y}`;
@@ -940,9 +961,6 @@ function renderGridCanvas() {
         key: coordKey, inside: completelyInside, isOrigin: isOriginCell
       };
       gridCells2D[r][c] = cellObj;
-
-      const x0 = c * cellW + shiftX;
-      const y0 = r * cellH + shiftY;
 
       // 1. Fill cell background
       if (!completelyInside) {
@@ -975,10 +993,16 @@ function renderGridCanvas() {
         ctx.strokeRect(x0 + 1, y0 + 1, cellW - 2, cellH - 2);
       }
 
-      // 5. Annotations text
+      // 5. Annotations text (Dynamic font size fitting)
       const textToDraw = val !== '' ? String(val) : (showAnno ? `${visual.x},${visual.y}` : '');
       if (textToDraw) {
-        ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? 'rgba(100, 116, 139, 0.75)' : 'rgba(71, 85, 105, 0.5)');
+        const len = textToDraw.length;
+        const maxFontW = (cellW * 0.85) / Math.max(1, len * 0.58);
+        const maxFontH = cellH * 0.35;
+        const fontPx = Math.max(5, Math.min(12, Math.floor(Math.min(maxFontW, maxFontH))));
+
+        ctx.font = `bold ${fontPx}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? 'rgba(148, 163, 184, 0.85)' : 'rgba(71, 85, 105, 0.5)');
         ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
       }
     }
