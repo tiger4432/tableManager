@@ -947,10 +947,10 @@ function renderGridCanvas() {
   const shiftX = (physConfig.offsetX / physConfig.chipX) * cellW;
   const shiftY = -(physConfig.offsetY / physConfig.chipY) * cellH;
 
-  const startC = Math.floor(-shiftX / cellW) - 1;
-  const endC = Math.ceil((width - shiftX) / cellW) + 1;
-  const startR = Math.floor(-shiftY / cellH) - 1;
-  const endR = Math.ceil((height - shiftY) / cellH) + 1;
+  const startC = Math.min(-visualCols, Math.floor(-shiftX / cellW) - 2);
+  const endC = Math.max(2 * visualCols, Math.ceil((width - shiftX) / cellW) + 2);
+  const startR = Math.min(-visualRows, Math.floor(-shiftY / cellH) - 2);
+  const endR = Math.max(2 * visualRows, Math.ceil((height - shiftY) / cellH) + 2);
 
   for (let r = startR; r <= endR; r++) {
     for (let c = startC; c <= endC; c++) {
@@ -959,7 +959,8 @@ function renderGridCanvas() {
 
       if (x0 + cellW < 0 || x0 > width || y0 + cellH < 0 || y0 > height) continue;
 
-      const isMatrixCell = (c >= 0 && c < visualCols && r >= 0 && r < visualRows);
+      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+      const isMatrixCell = completelyInside || (c >= -visualCols && c < 2 * visualCols && r >= -visualRows && r < 2 * visualRows);
 
       if (!isMatrixCell) {
         ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
@@ -978,8 +979,6 @@ function renderGridCanvas() {
       const isOriginCell = hasZeroZero 
         ? (visual.x === 0 && visual.y === 0) 
         : (visual.x === startX && visual.y === startY);
-
-      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
 
       const cellObj = {
         c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
