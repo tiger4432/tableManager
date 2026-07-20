@@ -960,9 +960,9 @@ function renderGridCanvas() {
     }
   }
 
-  // 6. Physical Wafer Circles (Fixed at Wafer Center 0,0) & Centering Offset Marker
-  const waferCenterX = width / 2.0;
-  const waferCenterY = height / 2.0;
+  // 6. Physical Wafer Circles (Centered at Physical Wafer Center on Screen)
+  const waferCenterX = (width / 2.0) + (physConfig.offsetX / physConfig.chipX) * cellW;
+  const waferCenterY = (height / 2.0) - (physConfig.offsetY / physConfig.chipY) * cellH;
 
   // A. White Outer Silicon Wafer Edge Circle (Full Diameter, e.g. 300mm)
   const outerRadX = ((physConfig.waferDia / 2.0) / physConfig.chipX) * cellW;
@@ -994,26 +994,25 @@ function renderGridCanvas() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // C. Centering Offset Marker Point (Rendered at chip grid offset relative to wafer center (0,0))
-  const offsetPxX = waferCenterX + (physConfig.offsetX / physConfig.chipX) * cellW;
-  const offsetPxY = waferCenterY - (physConfig.offsetY / physConfig.chipY) * cellH;
+  // C. Wafer Center / Offset Marker Point
+  if (physConfig.offsetX !== 0 || physConfig.offsetY !== 0) {
+    ctx.beginPath();
+    ctx.arc(waferCenterX, waferCenterY, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
 
-  ctx.beginPath();
-  ctx.arc(offsetPxX, offsetPxY, 4, 0, 2 * Math.PI);
-  ctx.fillStyle = '#f59e0b';
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.0;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(offsetPxX - 8, offsetPxY);
-  ctx.lineTo(offsetPxX + 8, offsetPxY);
-  ctx.moveTo(offsetPxX, offsetPxY - 8);
-  ctx.lineTo(offsetPxX, offsetPxY + 8);
-  ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(waferCenterX - 8, waferCenterY);
+    ctx.lineTo(waferCenterX + 8, waferCenterY);
+    ctx.moveTo(waferCenterX, waferCenterY - 8);
+    ctx.lineTo(waferCenterX, waferCenterY + 8);
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
 
   // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
