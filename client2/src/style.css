@@ -1560,7 +1560,7 @@ body.resizing-active .history-sidebar {
   transform: scaleX(-1);
 }
 .map-grid-canvas.flipped .grid-cell:hover {
-  transform: scaleX(-1) scale(1.05);
+  transform: scaleX(-1);
 }
 
 /* 뒷면(Back) 상하 대칭 반전 스타일 (90도, 270도) */
@@ -1572,7 +1572,7 @@ body.resizing-active .history-sidebar {
   transform: scaleY(-1);
 }
 .map-grid-canvas.flipped-vertical .grid-cell:hover {
-  transform: scaleY(-1) scale(1.05);
+  transform: scaleY(-1);
 }
 
 .grid-cell {
@@ -1586,7 +1586,6 @@ body.resizing-active .history-sidebar {
   font-weight: bold;
   color: #fff;
   cursor: crosshair;
-  transition: transform 0.1s ease, background 0.15s ease;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -1594,8 +1593,8 @@ body.resizing-active .history-sidebar {
   border-radius: 2px;
 }
 .grid-cell:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 8px var(--color-primary);
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: -2px;
   z-index: 10;
 }
 
@@ -1604,8 +1603,7 @@ body.resizing-active .history-sidebar {
   box-shadow: none !important;
 }
 .map-grid-canvas.drag-active .grid-cell:hover {
-  transform: inherit !important;
-  box-shadow: none !important;
+  outline: none !important;
 }
 
 /* 웨이퍼 V-Notch 데코레이션 */

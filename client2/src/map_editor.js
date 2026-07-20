@@ -275,16 +275,25 @@ function initMouseDragEvents() {
       cell.classList.add(isRight ? 'cell-in-selection-erase' : 'cell-in-selection');
     });
 
+    let lastHoverCell = null;
+
+    el.gridCanvas.addEventListener('mouseleave', () => {
+      lastHoverCell = null;
+    });
+
     el.gridCanvas.addEventListener('mousemove', (e) => {
       const cell = e.target.closest('.grid-cell');
-      if (!cell) return;
+      if (!cell || cell === lastHoverCell) return;
+      lastHoverCell = cell;
 
       const c = parseInt(cell.dataset.c, 10);
       const r = parseInt(cell.dataset.r, 10);
 
       if (!isBoxDragging) {
-        const val = gridData[cell.dataset.key] || '';
-        el.gridStatusCoords.textContent = `Cursor: (${cell.dataset.x}, ${cell.dataset.y}) = ${val !== '' ? val : 'Empty'}`;
+        requestAnimationFrame(() => {
+          const val = gridData[cell.dataset.key] || '';
+          el.gridStatusCoords.textContent = `Cursor: (${cell.dataset.x}, ${cell.dataset.y}) = ${val !== '' ? val : 'Empty'}`;
+        });
         return;
       }
 
