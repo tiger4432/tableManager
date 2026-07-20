@@ -50,22 +50,35 @@ class PhysicalWaferEngine:
         center_c = (cols - 1) / 2.0
         center_r = (rows - 1) / 2.0
         
-        x_mm = (c - center_c) * self.chip_size_x_mm - self.offset_x_mm
-        y_mm = (center_r - r) * self.chip_size_y_mm - self.offset_y_mm
+        x_mm = (c - center_c) * self.chip_size_x_mm + self.offset_x_mm
+        y_mm = (center_r - r) * self.chip_size_y_mm + self.offset_y_mm
         return x_mm, y_mm
 
     def is_cell_inside_wafer(self, c: int, r: int, cols: int, rows: int) -> bool:
         """
-        Determines if a cell center is inside the effective wafer radius.
+        Determines if a cell is COMPLETELY inside the effective wafer radius.
+        All 4 corners of the chip cell must be <= effective_radius_mm.
         """
         if self.effective_radius_mm <= 0:
             return False
             
-        x_mm, y_mm = self.get_cell_physical_mm(c, r, cols, rows)
-        dist_sq = x_mm * x_mm + y_mm * y_mm
+        cx_mm, cy_mm = self.get_cell_physical_mm(c, r, cols, rows)
+        half_w = self.chip_size_x_mm / 2.0
+        half_h = self.chip_size_y_mm / 2.0
         radius_sq = self.effective_radius_mm * self.effective_radius_mm
         
-        return dist_sq <= radius_sq
+        corners = [
+            (cx_mm - half_w, cy_mm - half_h),
+            (cx_mm + half_w, cy_mm - half_h),
+            (cx_mm - half_w, cy_mm + half_h),
+            (cx_mm + half_w, cy_mm + half_h),
+        ]
+        
+        for x, y in corners:
+            if (x * x + y * y) > radius_sq:
+                return False
+                
+        return True
 
     def generate_wafer_mask(self, cols: int = None, rows: int = None) -> List[List[bool]]:
         """

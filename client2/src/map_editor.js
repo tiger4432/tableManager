@@ -634,11 +634,24 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig) {
     const centerC = (visualCols - 1) / 2.0;
     const centerR = (visualRows - 1) / 2.0;
 
-    const x_mm = (c - centerC) * physConfig.chipX - physConfig.offsetX;
-    const y_mm = (centerR - r) * physConfig.chipY - physConfig.offsetY;
+    const cx_mm = (c - centerC) * physConfig.chipX + physConfig.offsetX;
+    const cy_mm = (centerR - r) * physConfig.chipY + physConfig.offsetY;
 
-    const distSq = x_mm * x_mm + y_mm * y_mm;
-    return distSq <= physConfig.radiusSq;
+    const halfW = physConfig.chipX / 2.0;
+    const halfH = physConfig.chipY / 2.0;
+    const radiusSq = physConfig.radiusSq;
+
+    const x1 = cx_mm - halfW, y1 = cy_mm - halfH;
+    const x2 = cx_mm + halfW, y2 = cy_mm - halfH;
+    const x3 = cx_mm - halfW, y3 = cy_mm + halfH;
+    const x4 = cx_mm + halfW, y4 = cy_mm + halfH;
+
+    if (x1 * x1 + y1 * y1 > radiusSq) return false;
+    if (x2 * x2 + y2 * y2 > radiusSq) return false;
+    if (x3 * x3 + y3 * y3 > radiusSq) return false;
+    if (x4 * x4 + y4 * y4 > radiusSq) return false;
+
+    return true;
   }
 
   const u1 = (2 * c - visualCols) / visualCols;
@@ -947,11 +960,11 @@ function renderGridCanvas() {
     }
   }
 
-  // 6. Physical Wafer Circles (Outer Wafer Edge & Edge Exclusion Boundary)
-  const waferCenterX = (width / 2.0) + (physConfig.offsetX / physConfig.chipX) * cellW;
-  const waferCenterY = (height / 2.0) - (physConfig.offsetY / physConfig.chipY) * cellH;
+  // 6. Physical Wafer Circles (Fixed at Wafer Center 0,0) & Centering Offset Marker
+  const waferCenterX = width / 2.0;
+  const waferCenterY = height / 2.0;
 
-  // A. Outer Silicon Wafer Edge Circle (Full Diameter, e.g. 300mm)
+  // A. White Outer Silicon Wafer Edge Circle (Full Diameter, e.g. 300mm)
   const outerRadX = ((physConfig.waferDia / 2.0) / physConfig.chipX) * cellW;
   const outerRadY = ((physConfig.waferDia / 2.0) / physConfig.chipY) * cellH;
 
@@ -961,11 +974,11 @@ function renderGridCanvas() {
   } else {
     ctx.arc(waferCenterX, waferCenterY, outerRadX, 0, 2 * Math.PI);
   }
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.6)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = 2.0;
   ctx.stroke();
 
-  // B. Edge Exclusion Boundary Circle (Effective Radius, e.g. 147mm = 150mm - Edge Exclusion)
+  // B. Green Edge Exclusion Boundary Circle (Effective Radius, e.g. 147mm = 150mm - Edge Exclusion)
   const effRadX = (physConfig.effectiveRadius / physConfig.chipX) * cellW;
   const effRadY = (physConfig.effectiveRadius / physConfig.chipY) * cellH;
 
@@ -980,6 +993,27 @@ function renderGridCanvas() {
   ctx.setLineDash([6, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
+
+  // C. Centering Offset Marker Point (Rendered at chip grid offset relative to wafer center (0,0))
+  const offsetPxX = waferCenterX - (physConfig.offsetX / physConfig.chipX) * cellW;
+  const offsetPxY = waferCenterY + (physConfig.offsetY / physConfig.chipY) * cellH;
+
+  ctx.beginPath();
+  ctx.arc(offsetPxX, offsetPxY, 4, 0, 2 * Math.PI);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.0;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(offsetPxX - 8, offsetPxY);
+  ctx.lineTo(offsetPxX + 8, offsetPxY);
+  ctx.moveTo(offsetPxX, offsetPxY - 8);
+  ctx.lineTo(offsetPxX, offsetPxY + 8);
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
 
   // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
