@@ -246,6 +246,31 @@ function initDOMElements() {
   el.gridCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, height) {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
+
+  const hasZeroZero = (startX <= 0 && (startX + cols - 1) >= 0) && (startY <= 0 && (startY + rows - 1) >= 0);
+
+  const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+  const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const coordKey = `${physical.x}_${physical.y}`;
+
+  const isOriginCell = hasZeroZero 
+    ? (visual.x === 0 && visual.y === 0) 
+    : (visual.x === startX && visual.y === startY);
+
+  const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+
+  return {
+    c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
+    key: coordKey, inside: completelyInside, isOrigin: isOriginCell
+  };
+}
+
 function getGridCellFromMouseEvent(e) {
   const canvasTarget = el.waferCanvas || el.gridCanvas;
   if (!canvasTarget) return null;
@@ -272,11 +297,11 @@ function getGridCellFromMouseEvent(e) {
   const c = Math.floor((xRel - shiftX) / cellW);
   const r = Math.floor((yRel - shiftY) / cellH);
 
-  if (c < 0 || c >= visualCols || r < 0 || r >= visualRows) {
-    return null;
+  if (c >= 0 && c < visualCols && r >= 0 && r < visualRows && gridCells2D[r]?.[c]) {
+    return gridCells2D[r][c];
   }
 
-  return gridCells2D[r]?.[c] || null;
+  return getGridCellObject(c, r, visualCols, visualRows, physConfig, rect.width, rect.height);
 }
 
 let currentHoverCell = null;
