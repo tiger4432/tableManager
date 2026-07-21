@@ -1835,70 +1835,67 @@ async function pushMapData() {
   const yType = tableSchema.column_types[yCol] || 'number';
   const valType = tableSchema.column_types[valCol] || 'string';
 
-  const updates = [];
-  
-  // Serialize current grid metadata config if the table supports it
-  let gridMetaStr = null;
-  if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
-    const gridMeta = {
-      grid_cols: parseInt(el.gridCols.value, 10) || 10,
-      grid_rows: parseInt(el.gridRows.value, 10) || 10,
-      grid_start_x: 0,
-      grid_start_y: 0,
-      grid_y_invert: false,
-      rotation: 0,
-      side: 'front'
-    };
-    gridMetaStr = JSON.stringify(gridMeta);
-  }
-
   const cols = parseInt(el.gridCols.value, 10) || 10;
   const rows = parseInt(el.gridRows.value, 10) || 10;
   const startX = parseInt(el.gridStartX.value, 10) || 0;
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert.checked;
 
-  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
-  const visualCols = isRotated90or270 ? rows : cols;
-  const visualRows = isRotated90or270 ? cols : rows;
+  // Serialize current grid metadata config if the table supports it
+  let gridMetaStr = null;
+  if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
+    const gridMeta = {
+      grid_cols: cols,
+      grid_rows: rows,
+      grid_start_x: startX,
+      grid_start_y: startY,
+      grid_y_invert: invertY,
+      rotation: currentRotation,
+      side: currentSide
+    };
+    gridMetaStr = JSON.stringify(gridMeta);
+  }
 
-  for (let r = 0; r < visualRows; r++) {
-    for (let c = 0; c < visualCols; c++) {
-      // Determine if visual cell (c, r) is inside the wafer boundary
-      const completelyInside = isCellInsideWafer(c, r, visualCols, visualRows);
-      if (!completelyInside) continue; // Skip blocked outside-wafer cells
+  const updates = [];
 
-      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
-      const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-      const key = `${physical.x}_${physical.y}`;
-      const val = gridData[key] || '';
+  if (gridCells2D) {
+    Object.keys(gridCells2D).forEach(rStr => {
+      const r = parseInt(rStr, 10);
+      if (!gridCells2D[r]) return;
+      Object.keys(gridCells2D[r]).forEach(cStr => {
+        const c = parseInt(cStr, 10);
+        const cellObj = gridCells2D[r][c];
+        if (!cellObj || !cellObj.inside) return; // Skip blocked outside-wafer cells
 
-      let valParsed = null;
-      if (val !== '') {
-        valParsed = valType === 'number' ? Number(val) : val;
-      }
+        const val = gridData[cellObj.key] || '';
 
-      let xParsed = xType === 'number' ? parseInt(physical.x, 10) : String(physical.x);
-      let yParsed = yType === 'number' ? parseInt(physical.y, 10) : String(physical.y);
+        let valParsed = null;
+        if (val !== '') {
+          valParsed = valType === 'number' ? Number(val) : val;
+        }
 
-      const rowUpdates = {
-        [xCol]: xParsed,
-        [yCol]: yParsed,
-        [valCol]: valParsed,
-        ...metaValues
-      };
+        let xParsed = xType === 'number' ? parseInt(cellObj.x, 10) : String(cellObj.x);
+        let yParsed = yType === 'number' ? parseInt(cellObj.y, 10) : String(cellObj.y);
 
-      if (gridMetaStr) {
-        rowUpdates['grid_metadata'] = gridMetaStr;
-      }
+        const rowUpdates = {
+          [xCol]: xParsed,
+          [yCol]: yParsed,
+          [valCol]: valParsed,
+          ...metaValues
+        };
 
-      const updateItem = {
-        updates: rowUpdates,
-        source_name: 'user',
-        updated_by: CURRENT_USER
-      };
-      updates.push(updateItem);
-    }
+        if (gridMetaStr) {
+          rowUpdates['grid_metadata'] = gridMetaStr;
+        }
+
+        const updateItem = {
+          updates: rowUpdates,
+          source_name: 'user',
+          updated_by: CURRENT_USER
+        };
+        updates.push(updateItem);
+      });
+    });
   }
 
   if (updates.length === 0) {
