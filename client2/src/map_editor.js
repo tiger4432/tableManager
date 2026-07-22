@@ -677,13 +677,13 @@ function getScreenShift(physConfig, cellW, cellH) {
     shiftX = (origOffsetX / chipX) * cellW;
     shiftY = -(origOffsetY / chipY) * cellH;
   } else if (rotation === 90) {
-    shiftX = -(origOffsetY / chipY) * cellW;
+    shiftX = (origOffsetY / chipY) * cellW;
     shiftY = (origOffsetX / chipX) * cellH;
   } else if (rotation === 180) {
     shiftX = -(origOffsetX / chipX) * cellW;
     shiftY = (origOffsetY / chipY) * cellH;
   } else if (rotation === 270) {
-    shiftX = (origOffsetY / chipY) * cellW;
+    shiftX = -(origOffsetY / chipY) * cellW;
     shiftY = -(origOffsetX / chipX) * cellH;
   }
 
