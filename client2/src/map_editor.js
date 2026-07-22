@@ -872,18 +872,10 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width =
 }
 
 function isCellInsideWafer(c, r, visualCols, visualRows) {
-  const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
-  const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
-  const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-
-  const chipX = el.physChipX ? parseFloat(el.physChipX.value) : 2.5;
-  const chipY = el.physChipY ? parseFloat(el.physChipY.value) : 2.5;
-  const offsetX = el.physOffsetX ? parseFloat(el.physOffsetX.value) : 0.0;
-  const offsetY = el.physOffsetY ? parseFloat(el.physOffsetY.value) : 0.0;
-
-  return isCellInsideWaferFast(c, r, visualCols, visualRows, {
-    chipX, chipY, offsetX, offsetY, effectiveRadius, radiusSq: effectiveRadius * effectiveRadius
-  });
+  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
+  const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
+  return isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
 }
 
 function applyPhysicalGeometry() {
@@ -1303,10 +1295,18 @@ function handleCellClick(cell, event) {
 
   if (isOriginMode) {
     const box = getWaferBoundingBox(currentRotation, currentSide);
-    const invertY = el.gridYInvert.checked;
+    const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
+    const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+    const isXMirrored = (currentSide === 'back' && !isRotated90or270);
+    const isYMirrored = (currentSide === 'back' && isRotated90or270);
 
-    const newStartX = box.minC - c;
-    const newStartY = !invertY ? (box.minR - r) : (r - box.maxR);
+    const newStartX = isXMirrored ? (c - box.maxC) : (box.minC - c);
+    let newStartY = 0;
+    if (!invertY) {
+      newStartY = !isYMirrored ? (box.minR - r) : (r - box.maxR);
+    } else {
+      newStartY = !isYMirrored ? (r - box.maxR) : (box.minR - r);
+    }
 
     el.gridStartX.value = newStartX;
     el.gridStartY.value = newStartY;
