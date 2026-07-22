@@ -14,6 +14,7 @@ let isRightDrag = false;
 let currentRotation = 0; // 0, 90, 180, 270
 let currentSide = 'front'; // 'front', 'back'
 let isOriginMode = false; // Origin designation mode state
+let physicalOrigin = null; // Coordinates of fixed physical origin chip { x, y }
 let isBoxDragging = false; // Bounding box drag selection state
 let boxStartCell = null; // Start cell reference for bounding box
 let lastSelectionBox = null; // Track coordinates of current selection bounding box
@@ -229,7 +230,9 @@ function initDOMElements() {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.btn-rot').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      currentRotation = parseInt(btn.dataset.rot, 10);
+      const nextRotation = parseInt(btn.dataset.rot, 10);
+      recalculateOriginOffset(nextRotation, currentSide);
+      currentRotation = nextRotation;
       scheduleRenderGridCanvas();
     });
   });
@@ -237,7 +240,9 @@ function initDOMElements() {
   // Wafer Side Radios
   document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-      currentSide = e.target.value;
+      const nextSide = e.target.value;
+      recalculateOriginOffset(currentRotation, nextSide);
+      currentSide = nextSide;
       scheduleRenderGridCanvas();
     });
   });
@@ -253,7 +258,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
-  const hasZeroZero = (startX <= 0 && (startX + cols - 1) >= 0) && (startY <= 0 && (startY + rows - 1) >= 0);
+  const hasZeroZero = (startX <= 0 && (startX + visualCols - 1) >= 0) && (startY <= 0 && (startY + visualRows - 1) >= 0);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
   const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
@@ -610,6 +615,94 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   return { x: xp, y: yp };
 }
 
+function getCellFromPhysicalCoords(xp, yp, cols, rows, rotation, side) {
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  let xRot = xp - (cols - 1) / 2.0;
+  let yRot = yp - (rows - 1) / 2.0;
+
+  if (side === 'back') {
+    xRot = -xRot;
+  }
+
+  // Rotate back to screen coordinates
+  let xScreenWafer = xRot;
+  let yScreenWafer = yRot;
+
+  if (rotation === 0) {
+    xScreenWafer = xRot;
+    yScreenWafer = yRot;
+  } else if (rotation === 90) {
+    xScreenWafer = -yRot;
+    yScreenWafer = xRot;
+  } else if (rotation === 180) {
+    xScreenWafer = -xRot;
+    yScreenWafer = -yRot;
+  } else if (rotation === 270) {
+    xScreenWafer = yRot;
+    yScreenWafer = -xRot;
+  }
+
+  // Get screen-space shift for the current rotation in cell units
+  const physConfig = getTransformedPhysicalConfig(rotation, side);
+  const { shiftX, shiftY } = getScreenShift(physConfig, 1.0, 1.0);
+
+  const colVisual = xScreenWafer + (visualCols - 1) / 2.0 - shiftX;
+  const rowVisual = yScreenWafer + (visualRows - 1) / 2.0 - shiftY;
+
+  return { c: Math.round(colVisual), r: Math.round(rowVisual) };
+}
+
+function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, startX, startY) {
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  let c_screen = xv - startX;
+  let r_screen = yv - startY;
+
+  if (invertY) {
+    r_screen = (visualRows - 1) - r_screen;
+  }
+
+  let c = c_screen;
+  let r = r_screen;
+
+  if (side === 'back') {
+    if (isRotated90or270) {
+      r = (visualRows - 1) - r_screen;
+    } else {
+      c = (visualCols - 1) - c_screen;
+    }
+  }
+
+  return { c, r };
+}
+
+function recalculateOriginOffset(newRotation, newSide) {
+  if (!physicalOrigin) return;
+
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const invertY = el.gridYInvert.checked;
+
+  // 1. Find the screen cell index of physicalOrigin under the new rotation & side
+  const cellOrigin = getCellFromPhysicalCoords(physicalOrigin.x, physicalOrigin.y, cols, rows, newRotation, newSide);
+
+  // 2. Find visual coordinates of this cell under new rotation/side with startX = 0, startY = 0
+  const visualCoords = getVisualCoords(cellOrigin.c, cellOrigin.r, cols, rows, newRotation, newSide, invertY, 0, 0);
+
+  // 3. Negate visual coordinates to get the new startX and startY
+  const newStartX = -visualCoords.x;
+  const newStartY = -visualCoords.y;
+
+  // 4. Update the input values
+  el.gridStartX.value = newStartX;
+  el.gridStartY.value = newStartY;
+}
+
 function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
@@ -920,11 +1013,11 @@ function renderGridCanvas() {
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert.checked;
 
-  const hasZeroZero = (startX <= 0 && (startX + cols - 1) >= 0) && (startY <= 0 && (startY + rows - 1) >= 0);
-
   const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
+
+  const hasZeroZero = (startX <= 0 && (startX + visualCols - 1) >= 0) && (startY <= 0 && (startY + visualRows - 1) >= 0);
 
   gridCells2D = {};
 
@@ -1151,6 +1244,9 @@ function handleCellClick(cell, event) {
     const cols = parseInt(el.gridCols.value, 10) || 10;
     const rows = parseInt(el.gridRows.value, 10) || 10;
     const invertY = el.gridYInvert.checked;
+
+    // Save physical coordinates of origin
+    physicalOrigin = { x: cell.px, y: cell.py };
 
     const visualCoords = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
 
@@ -1689,6 +1785,10 @@ async function loadExistingMap() {
         }
       });
     }
+
+    // Set the physical origin based on loaded metadata
+    const cellOrigin = getCellFromVisualCoords(0, 0, cols, rows, rotation, side, invertY, startX, startY);
+    physicalOrigin = getPhysicalCoords(cellOrigin.c, cellOrigin.r, cols, rows, rotation, side);
 
     // Sync state variables and input values back to left panel
     el.gridCols.value = cols;
