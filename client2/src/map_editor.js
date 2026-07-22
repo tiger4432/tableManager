@@ -702,17 +702,17 @@ function getWaferBoundingBox(rotation, side) {
   const oy = el.physOffsetY ? el.physOffsetY.value : '0';
   const em = el.physEdgeMargin ? el.physEdgeMargin.value : '3';
 
-  const key = `${rotation}_${side}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
+  const cols = parseInt(el.gridCols ? el.gridCols.value : '10', 10) || 10;
+  const rows = parseInt(el.gridRows ? el.gridRows.value : '10', 10) || 10;
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  const key = `${rotation}_${side}_${visualCols}_${visualRows}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
   if (boundingBoxCache[key]) {
     console.log(`[getWaferBoundingBox DEBUG Cache Hit] key="${key}" =>`, boundingBoxCache[key]);
     return boundingBoxCache[key];
   }
-
-  const cols = parseInt(el.gridCols.value, 10) || 10;
-  const rows = parseInt(el.gridRows.value, 10) || 10;
-  const isRotated90or270 = (rotation === 90 || rotation === 270);
-  const visualCols = isRotated90or270 ? rows : cols;
-  const visualRows = isRotated90or270 ? cols : rows;
 
   const physConfig = getTransformedPhysicalConfig(rotation, side);
   const width = 700;
