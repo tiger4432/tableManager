@@ -690,7 +690,7 @@ function getScreenShift(physConfig, cellW, cellH) {
   return { shiftX, shiftY };
 }
 
-function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height) {
+function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width = 700, height = 700) {
   if (physConfig && physConfig.chipX > 0 && physConfig.chipY > 0 && physConfig.effectiveRadius > 0 && width > 0 && height > 0) {
     const cellW = width / visualCols;
     const cellH = height / visualRows;
@@ -725,14 +725,7 @@ function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, 
     return true;
   }
 
-  const u1 = (2 * c - visualCols) / visualCols;
-  const u2 = (2 * (c + 1) - visualCols) / visualCols;
-  const v1 = (2 * r - visualRows) / visualRows;
-  const v2 = (2 * (r + 1) - visualRows) / visualRows;
-
-  const maxU2 = Math.max(u1 * u1, u2 * u2);
-  const maxV2 = Math.max(v1 * v1, v2 * v2);
-  return (maxU2 + maxV2) <= 1.0;
+  return false;
 }
 
 function isCellInsideWafer(c, r, visualCols, visualRows) {
@@ -1970,13 +1963,7 @@ function getEdgeClassification() {
   const isInside = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      const u1 = (2 * c - visualCols) / visualCols;
-      const u2 = (2 * (c + 1) - visualCols) / visualCols;
-      const v1 = (2 * r - visualRows) / visualRows;
-      const v2 = (2 * (r + 1) - visualRows) / visualRows;
-      const maxU2 = Math.max(u1 * u1, u2 * u2);
-      const maxV2 = Math.max(v1 * v1, v2 * v2);
-      if (maxU2 + maxV2 <= 1.0) {
+      if (isCellInsideWafer(c, r, visualCols, visualRows)) {
         isInside[r][c] = true;
       }
     }
