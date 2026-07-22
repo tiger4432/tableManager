@@ -704,6 +704,7 @@ function getWaferBoundingBox(rotation, side) {
 
   const key = `${rotation}_${side}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
   if (boundingBoxCache[key]) {
+    console.log(`[getWaferBoundingBox DEBUG Cache Hit] key="${key}" =>`, boundingBoxCache[key]);
     return boundingBoxCache[key];
   }
 
@@ -719,10 +720,12 @@ function getWaferBoundingBox(rotation, side) {
 
   let minC = 9999, maxC = -9999;
   let minR = 9999, maxR = -9999;
+  let insideCount = 0;
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       if (isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height)) {
+        insideCount++;
         if (c < minC) minC = c;
         if (c > maxC) maxC = c;
         if (r < minR) minR = r;
@@ -737,6 +740,9 @@ function getWaferBoundingBox(rotation, side) {
     minR: minR === 9999 ? 0 : minR,
     maxR: maxR === -9999 ? 0 : maxR
   };
+
+  console.log(`[getWaferBoundingBox DEBUG Computation] rot=${rotation}, side=${side}, visualGrid=${visualCols}x${visualRows}, physChip=${physConfig.chipX}x${physConfig.chipY}, effRad=${physConfig.effectiveRadius}`);
+  console.log(`[getWaferBoundingBox DEBUG Result] insideCells=${insideCount}/${visualCols * visualRows}, box=`, box);
 
   boundingBoxCache[key] = box;
   return box;
