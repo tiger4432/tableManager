@@ -986,6 +986,15 @@ function loadSelectedPreset() {
     currentRotation = preset.rot;
     currentSide = preset.side;
 
+    if (preset.physWaferDia !== undefined && el.physWaferDia) el.physWaferDia.value = preset.physWaferDia;
+    if (preset.physChipX !== undefined && el.physChipX) el.physChipX.value = preset.physChipX;
+    if (preset.physChipY !== undefined && el.physChipY) el.physChipY.value = preset.physChipY;
+    if (preset.physOffsetX !== undefined && el.physOffsetX) el.physOffsetX.value = preset.physOffsetX;
+    if (preset.physOffsetY !== undefined && el.physOffsetY) el.physOffsetY.value = preset.physOffsetY;
+    if (preset.physEdgeMargin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.physEdgeMargin;
+
+    boundingBoxCache = {};
+
     updateOrientationUI();
     renderGridCanvas();
     updateLegendCounts();
@@ -1005,7 +1014,13 @@ function saveCustomPreset() {
     startY: parseInt(el.gridStartY.value, 10) || 0,
     rot: currentRotation,
     side: currentSide,
-    invertY: el.gridYInvert.checked
+    invertY: el.gridYInvert.checked,
+    physWaferDia: el.physWaferDia ? parseFloat(el.physWaferDia.value) || 300 : 300,
+    physChipX: el.physChipX ? parseFloat(el.physChipX.value) || 2.5 : 2.5,
+    physChipY: el.physChipY ? parseFloat(el.physChipY.value) || 2.5 : 2.5,
+    physOffsetX: el.physOffsetX ? parseFloat(el.physOffsetX.value) || 0.0 : 0.0,
+    physOffsetY: el.physOffsetY ? parseFloat(el.physOffsetY.value) || 0.0 : 0.0,
+    physEdgeMargin: el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) || 3.0 : 3.0
   };
 
   const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
@@ -1783,6 +1798,15 @@ async function loadExistingMap() {
       invertY = loadedGridMeta.grid_y_invert;
       rotation = loadedGridMeta.rotation || 0;
       side = loadedGridMeta.side || 'front';
+
+      if (loadedGridMeta.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = loadedGridMeta.phys_wafer_dia;
+      if (loadedGridMeta.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = loadedGridMeta.phys_chip_x;
+      if (loadedGridMeta.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = loadedGridMeta.phys_chip_y;
+      if (loadedGridMeta.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = loadedGridMeta.phys_offset_x;
+      if (loadedGridMeta.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = loadedGridMeta.phys_offset_y;
+      if (loadedGridMeta.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = loadedGridMeta.phys_edge_margin;
+
+      boundingBoxCache = {};
     } else {
       // Use current UI settings
       cols = parseInt(el.gridCols.value, 10) || 10;
@@ -2001,7 +2025,13 @@ async function pushMapData() {
       grid_start_y: startY,
       grid_y_invert: invertY,
       rotation: currentRotation,
-      side: currentSide
+      side: currentSide,
+      phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
+      phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
+      phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
+      phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
+      phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
+      phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
     };
     gridMetaStr = JSON.stringify(gridMeta);
   }
