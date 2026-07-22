@@ -14,7 +14,6 @@ let isRightDrag = false;
 let currentRotation = 0; // 0, 90, 180, 270
 let currentSide = 'front'; // 'front', 'back'
 let isOriginMode = false; // Origin designation mode state
-let physicalOrigin = null; // Coordinates of fixed physical origin chip { x, y }
 let isBoxDragging = false; // Bounding box drag selection state
 let boxStartCell = null; // Start cell reference for bounding box
 let lastSelectionBox = null; // Track coordinates of current selection bounding box
@@ -258,7 +257,8 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
-  const hasZeroZero = (startX <= 0 && (startX + visualCols - 1) >= 0) && (startY <= 0 && (startY + visualRows - 1) >= 0);
+  const box = getWaferBoundingBox(currentRotation, currentSide);
+  const hasZeroZero = (startX <= 0 && (startX + (box.maxC - box.minC)) >= 0) && (startY <= 0 && (startY + (box.maxR - box.minR)) >= 0);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
   const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
@@ -656,21 +656,25 @@ function getCellFromPhysicalCoords(xp, yp, cols, rows, rotation, side) {
 }
 
 function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, startX, startY) {
-  const isRotated90or270 = (rotation === 90 || rotation === 270);
-  const visualCols = isRotated90or270 ? rows : cols;
-  const visualRows = isRotated90or270 ? cols : rows;
+  const box = getWaferBoundingBox(rotation, side);
 
-  let c_screen = xv - startX;
-  let r_screen = yv - startY;
+  let c_screen = xv - startX + box.minC;
+  let r_screen = 0;
 
-  if (invertY) {
-    r_screen = (visualRows - 1) - r_screen;
+  if (!invertY) {
+    r_screen = yv - startY + box.minR;
+  } else {
+    r_screen = box.maxR - (yv - startY);
   }
 
   let c = c_screen;
   let r = r_screen;
 
   if (side === 'back') {
+    const isRotated90or270 = (rotation === 90 || rotation === 270);
+    const visualCols = isRotated90or270 ? rows : cols;
+    const visualRows = isRotated90or270 ? cols : rows;
+
     if (isRotated90or270) {
       r = (visualRows - 1) - r_screen;
     } else {
@@ -692,52 +696,26 @@ function getWaferBoundingBox(rotation, side) {
   const width = 700;
   const height = 700;
 
-  let minC = 9999;
-  let minR = 9999;
+  let minC = 9999, maxC = -9999;
+  let minR = 9999, maxR = -9999;
 
   for (let r = -visualRows; r < 2 * visualRows; r++) {
     for (let c = -visualCols; c < 2 * visualCols; c++) {
       if (isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height)) {
         if (c < minC) minC = c;
+        if (c > maxC) maxC = c;
         if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
       }
     }
   }
 
-  return { minC: minC === 9999 ? 0 : minC, minR: minR === 9999 ? 0 : minR };
-}
-
-function recalculateOriginOffsetByBoundingBox(newRotation, newSide) {
-  const cols = parseInt(el.gridCols.value, 10) || 10;
-  const rows = parseInt(el.gridRows.value, 10) || 10;
-  const invertY = el.gridYInvert.checked;
-
-  // 1. Get current bounding box top-left cell
-  const curBox = getWaferBoundingBox(currentRotation, currentSide);
-  
-  // 2. Get visual coordinates of curBox.minC, curBox.minR under current rotation/side with startX = 0, startY = 0
-  const curStartX = parseInt(el.gridStartX.value, 10) || 0;
-  const curStartY = parseInt(el.gridStartY.value, 10) || 0;
-  
-  const curVisualBound = getVisualCoords(curBox.minC, curBox.minR, cols, rows, currentRotation, currentSide, invertY, 0, 0);
-
-  // 3. Compute relative offsets dx, dy from bounding box to origin (0, 0)
-  const dx = -curVisualBound.x - curStartX;
-  const dy = -curVisualBound.y - curStartY;
-
-  // 4. Get new bounding box top-left cell under new rotation/side
-  const newBox = getWaferBoundingBox(newRotation, newSide);
-
-  // 5. Get visual coordinates of newBox.minC, newBox.minR under new rotation/side with startX = 0, startY = 0
-  const newVisualBound = getVisualCoords(newBox.minC, newBox.minR, cols, rows, newRotation, newSide, invertY, 0, 0);
-
-  // 6. Recalculate new startX and startY
-  const newStartX = -dx - newVisualBound.x;
-  const newStartY = -dy - newVisualBound.y;
-
-  // 7. Update inputs
-  el.gridStartX.value = newStartX;
-  el.gridStartY.value = newStartY;
+  return {
+    minC: minC === 9999 ? 0 : minC,
+    maxC: maxC === -9999 ? 0 : maxC,
+    minR: minR === 9999 ? 0 : minR,
+    maxR: maxR === -9999 ? 0 : maxR
+  };
 }
 
 function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
@@ -748,13 +726,24 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
   let c_screen = colVisual;
   let r_screen = rowVisual;
 
-  const xv = c_screen + startX;
-  let yv = r_screen;
-
-  if (invertY) {
-    yv = (visualRows - 1) - yv;
+  if (side === 'back') {
+    if (isRotated90or270) {
+      r_screen = (visualRows - 1) - rowVisual;
+    } else {
+      c_screen = (visualCols - 1) - colVisual;
+    }
   }
-  yv = yv + startY;
+
+  const box = getWaferBoundingBox(rotation, side);
+
+  const xv = c_screen - box.minC + startX;
+  let yv = 0;
+
+  if (!invertY) {
+    yv = r_screen - box.minR + startY;
+  } else {
+    yv = box.maxR - r_screen + startY;
+  }
 
   return { x: xv, y: yv };
 }
@@ -1054,7 +1043,8 @@ function renderGridCanvas() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const hasZeroZero = (startX <= 0 && (startX + visualCols - 1) >= 0) && (startY <= 0 && (startY + visualRows - 1) >= 0);
+  const box = getWaferBoundingBox(currentRotation, currentSide);
+  const hasZeroZero = (startX <= 0 && (startX + (box.maxC - box.minC)) >= 0) && (startY <= 0 && (startY + (box.maxR - box.minR)) >= 0);
 
   gridCells2D = {};
 
@@ -1278,17 +1268,11 @@ function handleCellClick(cell, event) {
   const key = cell.key;
 
   if (isOriginMode) {
-    const cols = parseInt(el.gridCols.value, 10) || 10;
-    const rows = parseInt(el.gridRows.value, 10) || 10;
+    const box = getWaferBoundingBox(currentRotation, currentSide);
     const invertY = el.gridYInvert.checked;
 
-    // Save physical coordinates of origin
-    physicalOrigin = { x: cell.px, y: cell.py };
-
-    const visualCoords = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, 0, 0);
-
-    const newStartX = -visualCoords.x;
-    const newStartY = -visualCoords.y;
+    const newStartX = box.minC - c;
+    const newStartY = !invertY ? (box.minR - r) : (r - box.maxR);
 
     el.gridStartX.value = newStartX;
     el.gridStartY.value = newStartY;
@@ -1822,10 +1806,6 @@ async function loadExistingMap() {
         }
       });
     }
-
-    // Set the physical origin based on loaded metadata
-    const cellOrigin = getCellFromVisualCoords(0, 0, cols, rows, rotation, side, invertY, startX, startY);
-    physicalOrigin = getPhysicalCoords(cellOrigin.c, cellOrigin.r, cols, rows, rotation, side);
 
     // Sync state variables and input values back to left panel
     el.gridCols.value = cols;
