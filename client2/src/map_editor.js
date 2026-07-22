@@ -562,34 +562,51 @@ function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  let c_m = colVisual;
-  let r_m = rowVisual;
+  const origChipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
+  const origChipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
+  let origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
+  let origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
 
   if (side === 'back') {
-    if (rotation === 90 || rotation === 270) {
-      r_m = (visualRows - 1) - rowVisual;
-    } else {
-      c_m = (visualCols - 1) - colVisual;
-    }
+    origOffsetX = -origOffsetX;
   }
 
-  let xp = c_m;
-  let yp = r_m;
+  // Visual grid relative position from center
+  const xGridRel = colVisual - (visualCols - 1) / 2.0;
+  const yGridRel = rowVisual - (visualRows - 1) / 2.0;
 
-  // Apply rotation to map c_m, r_m back to physical coordinate xp, yp
+  // Wafer center relative offset in cell units
+  const cWaferCenter = -origOffsetX / origChipX;
+  const rWaferCenter = -origOffsetY / origChipY;
+
+  // Cell position relative to wafer center
+  const xWaferRel = xGridRel - cWaferCenter;
+  const yWaferRel = yGridRel - rWaferCenter;
+
+  let xRot = xWaferRel;
+  let yRot = yWaferRel;
+
   if (rotation === 0) {
-    xp = c_m;
-    yp = r_m;
+    xRot = xWaferRel;
+    yRot = yWaferRel;
   } else if (rotation === 90) {
-    xp = r_m;
-    yp = (visualCols - 1) - c_m;
+    xRot = yWaferRel;
+    yRot = -xWaferRel;
   } else if (rotation === 180) {
-    xp = (visualCols - 1) - c_m;
-    yp = (visualRows - 1) - r_m;
+    xRot = -xWaferRel;
+    yRot = -yWaferRel;
   } else if (rotation === 270) {
-    xp = (visualRows - 1) - r_m;
-    yp = c_m;
+    xRot = -yWaferRel;
+    yRot = xWaferRel;
   }
+
+  if (side === 'back') {
+    xRot = -xRot;
+  }
+
+  // Map back to physical grid coordinate (xp, yp)
+  const xp = Math.round(xRot - (origOffsetX / origChipX) + (cols - 1) / 2.0);
+  const yp = Math.round(yRot - (origOffsetY / origChipY) + (rows - 1) / 2.0);
 
   return { x: xp, y: yp };
 }
