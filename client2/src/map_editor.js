@@ -26,8 +26,7 @@ const DEFAULT_LEGEND = [
   { value: '1', desc: 'GOOD', color: '#10b981' },
   { value: '0', desc: 'FAIL', color: '#ef4444' },
   { value: '2', desc: 'EMPTY', color: '#4b5563' },
-  { value: '3', desc: 'REWORK', color: '#f59e0b' },
-  { value: 'EXCLUDE', desc: 'EXCLUDE (Exclusion)', color: '#1e293b' }
+  { value: '3', desc: 'REWORK', color: '#f59e0b' }
 ];
 
 function debounce(func, wait = 200) {
@@ -264,10 +263,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
     ? (visual.x === 0 && visual.y === 0) 
     : (visual.x === startX && visual.y === startY);
 
-  let completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
-  if (gridData[coordKey] === 'EXCLUDE') {
-    completelyInside = false;
-  }
+  const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
 
   return {
     c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
@@ -971,15 +967,7 @@ function renderGridCanvas() {
 
       if (x0 + cellW < 0 || x0 > width || y0 + cellH < 0 || y0 > height) continue;
 
-      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
-      const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-      const coordKey = `${physical.x}_${physical.y}`;
-      const val = gridData[coordKey] || '';
-
-      let completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
-      if (val === 'EXCLUDE') {
-        completelyInside = false;
-      }
+      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
       const isMatrixCell = completelyInside || (c >= -visualCols && c < 2 * visualCols && r >= -visualRows && r < 2 * visualRows);
 
       if (!isMatrixCell) {
@@ -990,6 +978,11 @@ function renderGridCanvas() {
         ctx.strokeRect(x0, y0, cellW, cellH);
         continue;
       }
+
+      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const coordKey = `${physical.x}_${physical.y}`;
+      const val = gridData[coordKey] || '';
 
       const isOriginCell = hasZeroZero 
         ? (visual.x === 0 && visual.y === 0) 
@@ -1004,7 +997,7 @@ function renderGridCanvas() {
 
       // 1. Fill cell background
       if (!completelyInside) {
-        ctx.fillStyle = val === 'EXCLUDE' ? (colorMap[val] || '#1e293b') : 'rgba(15, 23, 42, 0.6)';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
       } else if (val !== '') {
         ctx.fillStyle = colorMap[val] || '#10b981';
       } else {
@@ -1271,11 +1264,6 @@ function loadLegendFromStorage() {
   } else {
     legend = [...DEFAULT_LEGEND];
   }
-  // Ensure EXCLUDE brush is always in the legend!
-  if (!legend.some(item => item.value === 'EXCLUDE')) {
-    legend.push({ value: 'EXCLUDE', desc: 'EXCLUDE (Exclusion)', color: '#1e293b' });
-    saveLegendToStorage();
-  }
   if (legend.length > 0) {
     activeBrush = legend[0].value;
   } else {
@@ -1313,11 +1301,6 @@ function renderLegendTable() {
     inputVal.style.fontSize = '0.9rem';
     inputVal.style.width = '100%';
     inputVal.value = item.value;
-    if (item.value === 'EXCLUDE') {
-      inputVal.disabled = true;
-      inputVal.style.cursor = 'not-allowed';
-      inputVal.style.opacity = '0.7';
-    }
     inputVal.addEventListener('change', (e) => {
       const oldVal = item.value;
       const newVal = e.target.value.trim();
@@ -1401,11 +1384,6 @@ function renderLegendTable() {
     btnDel.className = 'glass-page-btn btn-delete hover-danger';
     btnDel.style.padding = '2px 6px';
     btnDel.innerHTML = '&times;';
-    if (item.value === 'EXCLUDE') {
-      btnDel.disabled = true;
-      btnDel.style.cursor = 'not-allowed';
-      btnDel.style.opacity = '0.3';
-    }
     btnDel.addEventListener('click', () => {
       if (legend.length <= 1) {
         alert('최소 하나의 범례 정의가 필요합니다.');
@@ -1774,9 +1752,6 @@ async function loadExistingMap() {
 
       // Update legend array, save to localStorage and rebuild legend table
       legend = newLegend;
-      if (!legend.some(item => item.value === 'EXCLUDE')) {
-        legend.push({ value: 'EXCLUDE', desc: 'EXCLUDE (Exclusion)', color: '#1e293b' });
-      }
       saveLegendToStorage();
       
       // Auto select the first legend item as the active brush
@@ -1975,20 +1950,18 @@ function getEdgeClassification() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const rect = el.gridCanvas.getBoundingClientRect();
-  const width = Math.floor(rect.width || 700);
-  const height = Math.floor(rect.height || 700);
-  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
-
   // 1. Build inside wafer map
   const isInside = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      if (gridCells2D[r] && gridCells2D[r][c]) {
-        isInside[r][c] = gridCells2D[r][c].inside;
-      } else {
-        const cellObj = getGridCellObject(c, r, visualCols, visualRows, physConfig, width, height);
-        isInside[r][c] = cellObj.inside;
+      const u1 = (2 * c - visualCols) / visualCols;
+      const u2 = (2 * (c + 1) - visualCols) / visualCols;
+      const v1 = (2 * r - visualRows) / visualRows;
+      const v2 = (2 * (r + 1) - visualRows) / visualRows;
+      const maxU2 = Math.max(u1 * u1, u2 * u2);
+      const maxV2 = Math.max(v1 * v1, v2 * v2);
+      if (maxU2 + maxV2 <= 1.0) {
+        isInside[r][c] = true;
       }
     }
   }
