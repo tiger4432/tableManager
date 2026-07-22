@@ -107,26 +107,56 @@ class WaferMapCoordinateTransformer:
 
         return c, r
 
+    def get_wafer_bounding_box(self) -> Tuple[int, int, int, int]:
+        """
+        현재 구성 상태에서 유효 웨이퍼 영역 Bounding Box (min_c, max_c, min_r, max_r)를 캐싱 및 반환합니다.
+        """
+        if hasattr(self, "_cached_bbox") and self._cached_bbox is not None:
+            return self._cached_bbox
+
+        min_c, max_c = 9999, -9999
+        min_r, max_r = 9999, -9999
+
+        for r in range(self.visual_rows):
+            for c in range(self.visual_cols):
+                if self.is_inside_wafer(c, r):
+                    if c < min_c: min_c = c
+                    if c > max_c: max_c = c
+                    if r < min_r: min_r = r
+                    if r > max_r: max_r = r
+
+        self._cached_bbox = (
+            0 if min_c == 9999 else min_c,
+            0 if max_c == -9999 else max_c,
+            0 if min_r == 9999 else min_r,
+            0 if max_r == -9999 else max_r
+        )
+        return self._cached_bbox
+
     def cell_to_visual(self, c: int, r: int) -> Tuple[int, int]:
         """
         DOM 셀 인덱스 (c, r)를 화면 시각 좌표 (xv, yv)로 변환합니다. (getVisualCoords 매칭)
         """
-        c_screen = c
-        r_screen = r
+        min_c, max_c, min_r, max_r = self.get_wafer_bounding_box()
 
-        # 백면(Back Side)인 경우 CSS 미러링 효과와 매칭되도록 보정
-        if self.side == "back":
-            if self.is_rotated_90_or_270:
-                r_screen = (self.visual_rows - 1) - r
+        xv = 0
+        if self.side == "back" and not self.is_rotated_90_or_270:
+            xv = max_c - c + self.start_x
+        else:
+            xv = c - min_c + self.start_x
+
+        is_y_mirrored = (self.side == "back" and self.is_rotated_90_or_270)
+        yv = 0
+        if not self.invert_y:
+            if not is_y_mirrored:
+                yv = r - min_r + self.start_y
             else:
-                c_screen = (self.visual_cols - 1) - c
-
-        xv = c_screen + self.start_x
-        yv = r_screen
-
-        if self.invert_y:
-            yv = (self.visual_rows - 1) - yv
-        yv = yv + self.start_y
+                yv = max_r - r + self.start_y
+        else:
+            if not is_y_mirrored:
+                yv = max_r - r + self.start_y
+            else:
+                yv = r - min_r + self.start_y
 
         return xv, yv
 
@@ -134,20 +164,26 @@ class WaferMapCoordinateTransformer:
         """
         화면 시각 좌표 (xv, yv)를 DOM 셀 인덱스 (c, r)로 역변환합니다.
         """
-        c_screen = xv - self.start_x
-        r_screen = yv - self.start_y
+        min_c, max_c, min_r, max_r = self.get_wafer_bounding_box()
 
-        if self.invert_y:
-            r_screen = (self.visual_rows - 1) - r_screen
+        c = 0
+        if self.side == "back" and not self.is_rotated_90_or_270:
+            c = max_c - (xv - self.start_x)
+        else:
+            c = xv - self.start_x + min_c
 
-        c = c_screen
-        r = r_screen
-
-        if self.side == "back":
-            if self.is_rotated_90_or_270:
-                r = (self.visual_rows - 1) - r_screen
+        is_y_mirrored = (self.side == "back" and self.is_rotated_90_or_270)
+        r = 0
+        if not self.invert_y:
+            if not is_y_mirrored:
+                r = yv - self.start_y + min_r
             else:
-                c = (self.visual_cols - 1) - c_screen
+                r = max_r - (yv - self.start_y)
+        else:
+            if not is_y_mirrored:
+                r = max_r - (yv - self.start_y)
+            else:
+                r = yv - self.start_y + min_r
 
         return c, r
 

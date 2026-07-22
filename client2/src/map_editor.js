@@ -229,9 +229,7 @@ function initDOMElements() {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.btn-rot').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const nextRotation = parseInt(btn.dataset.rot, 10);
-      recalculateOriginOffsetByBoundingBox(nextRotation, currentSide);
-      currentRotation = nextRotation;
+      currentRotation = parseInt(btn.dataset.rot, 10);
       scheduleRenderGridCanvas();
     });
   });
@@ -239,9 +237,7 @@ function initDOMElements() {
   // Wafer Side Radios
   document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-      const nextSide = e.target.value;
-      recalculateOriginOffsetByBoundingBox(currentRotation, nextSide);
-      currentSide = nextSide;
+      currentSide = e.target.value;
       scheduleRenderGridCanvas();
     });
   });
@@ -258,7 +254,18 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
   const box = getWaferBoundingBox(currentRotation, currentSide);
-  const hasZeroZero = (startX <= 0 && (startX + (box.maxC - box.minC)) >= 0) && (startY <= 0 && (startY + (box.maxR - box.minR)) >= 0);
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const isXMirrored = (currentSide === 'back' && !isRotated90or270);
+  const isYMirrored = (currentSide === 'back' && isRotated90or270);
+
+  const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);
+  let r_zero = 0;
+  if (!invertY) {
+    r_zero = !isYMirrored ? (box.minR - startY) : (box.maxR + startY);
+  } else {
+    r_zero = !isYMirrored ? (box.maxR + startY) : (box.minR - startY);
+  }
+  const hasZeroZero = (c_zero >= 0 && c_zero < visualCols) && (r_zero >= 0 && r_zero < visualRows);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
   const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
@@ -657,35 +664,49 @@ function getCellFromPhysicalCoords(xp, yp, cols, rows, rotation, side) {
 
 function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, startX, startY) {
   const box = getWaferBoundingBox(rotation, side);
-
-  let c_screen = xv - startX + box.minC;
-  let r_screen = 0;
-
-  if (!invertY) {
-    r_screen = yv - startY + box.minR;
+  const isRotated90or270 = (rotation === 90 || rotation === 270);
+  
+  let c = 0;
+  if (side === 'back' && !isRotated90or270) {
+    c = box.maxC - (xv - startX);
   } else {
-    r_screen = box.maxR - (yv - startY);
+    c = xv - startX + box.minC;
   }
 
-  let c = c_screen;
-  let r = r_screen;
-
-  if (side === 'back') {
-    const isRotated90or270 = (rotation === 90 || rotation === 270);
-    const visualCols = isRotated90or270 ? rows : cols;
-    const visualRows = isRotated90or270 ? cols : rows;
-
-    if (isRotated90or270) {
-      r = (visualRows - 1) - r_screen;
+  const isYMirrored = (side === 'back' && isRotated90or270);
+  let r = 0;
+  if (!invertY) {
+    if (!isYMirrored) {
+      r = yv - startY + box.minR;
     } else {
-      c = (visualCols - 1) - c_screen;
+      r = box.maxR - (yv - startY);
+    }
+  } else {
+    if (!isYMirrored) {
+      r = box.maxR - (yv - startY);
+    } else {
+      r = yv - startY + box.minR;
     }
   }
 
   return { c, r };
 }
 
+let boundingBoxCache = {};
+
 function getWaferBoundingBox(rotation, side) {
+  const dia = el.physWaferDia ? el.physWaferDia.value : '300';
+  const cx = el.physChipX ? el.physChipX.value : '2.5';
+  const cy = el.physChipY ? el.physChipY.value : '2.5';
+  const ox = el.physOffsetX ? el.physOffsetX.value : '0';
+  const oy = el.physOffsetY ? el.physOffsetY.value : '0';
+  const em = el.physEdgeMargin ? el.physEdgeMargin.value : '3';
+
+  const key = `${rotation}_${side}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
+  if (boundingBoxCache[key]) {
+    return boundingBoxCache[key];
+  }
+
   const cols = parseInt(el.gridCols.value, 10) || 10;
   const rows = parseInt(el.gridRows.value, 10) || 10;
   const isRotated90or270 = (rotation === 90 || rotation === 270);
@@ -699,8 +720,8 @@ function getWaferBoundingBox(rotation, side) {
   let minC = 9999, maxC = -9999;
   let minR = 9999, maxR = -9999;
 
-  for (let r = -visualRows; r < 2 * visualRows; r++) {
-    for (let c = -visualCols; c < 2 * visualCols; c++) {
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
       if (isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height)) {
         if (c < minC) minC = c;
         if (c > maxC) maxC = c;
@@ -710,39 +731,42 @@ function getWaferBoundingBox(rotation, side) {
     }
   }
 
-  return {
+  const box = {
     minC: minC === 9999 ? 0 : minC,
     maxC: maxC === -9999 ? 0 : maxC,
     minR: minR === 9999 ? 0 : minR,
     maxR: maxR === -9999 ? 0 : maxR
   };
+
+  boundingBoxCache[key] = box;
+  return box;
 }
 
 function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
   const isRotated90or270 = (rotation === 90 || rotation === 270);
-  const visualCols = isRotated90or270 ? rows : cols;
-  const visualRows = isRotated90or270 ? cols : rows;
-
-  let c_screen = colVisual;
-  let r_screen = rowVisual;
-
-  if (side === 'back') {
-    if (isRotated90or270) {
-      r_screen = (visualRows - 1) - rowVisual;
-    } else {
-      c_screen = (visualCols - 1) - colVisual;
-    }
-  }
-
   const box = getWaferBoundingBox(rotation, side);
 
-  const xv = c_screen - box.minC + startX;
-  let yv = 0;
-
-  if (!invertY) {
-    yv = r_screen - box.minR + startY;
+  let xv = 0;
+  if (side === 'back' && !isRotated90or270) {
+    xv = box.maxC - colVisual + startX;
   } else {
-    yv = box.maxR - r_screen + startY;
+    xv = colVisual - box.minC + startX;
+  }
+
+  const isYMirrored = (side === 'back' && isRotated90or270);
+  let yv = 0;
+  if (!invertY) {
+    if (!isYMirrored) {
+      yv = rowVisual - box.minR + startY;
+    } else {
+      yv = box.maxR - rowVisual + startY;
+    }
+  } else {
+    if (!isYMirrored) {
+      yv = box.maxR - rowVisual + startY;
+    } else {
+      yv = rowVisual - box.minR + startY;
+    }
   }
 
   return { x: xv, y: yv };
@@ -1044,7 +1068,17 @@ function renderGridCanvas() {
   const visualRows = isRotated90or270 ? cols : rows;
 
   const box = getWaferBoundingBox(currentRotation, currentSide);
-  const hasZeroZero = (startX <= 0 && (startX + (box.maxC - box.minC)) >= 0) && (startY <= 0 && (startY + (box.maxR - box.minR)) >= 0);
+  const isXMirrored = (currentSide === 'back' && !isRotated90or270);
+  const isYMirrored = (currentSide === 'back' && isRotated90or270);
+
+  const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);
+  let r_zero = 0;
+  if (!invertY) {
+    r_zero = !isYMirrored ? (box.minR - startY) : (box.maxR + startY);
+  } else {
+    r_zero = !isYMirrored ? (box.maxR + startY) : (box.minR - startY);
+  }
+  const hasZeroZero = (c_zero >= 0 && c_zero < visualCols) && (r_zero >= 0 && r_zero < visualRows);
 
   gridCells2D = {};
 
@@ -1780,25 +1814,9 @@ async function loadExistingMap() {
               yNum = yNum - minY;
             }
 
-            const c_screen = xNum - startX;
-            const isRotated90or270 = (rotation === 90 || rotation === 270);
-            const visualCols = isRotated90or270 ? rows : cols;
-            const visualRows = isRotated90or270 ? cols : rows;
-
-            let r_screen = yNum - startY;
-            if (invertY) {
-              r_screen = (visualRows - 1) - r_screen;
-            }
-
-            let c = c_screen;
-            let r = r_screen;
-            if (side === 'back') {
-              if (rotation === 90 || rotation === 270) {
-                r = (visualRows - 1) - r_screen;
-              } else {
-                c = (visualCols - 1) - c_screen;
-              }
-            }
+            const cell = getCellFromVisualCoords(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
+            const c = cell.c;
+            const r = cell.r;
 
             const physical = getPhysicalCoords(c, r, cols, rows, rotation, side);
             gridData[`${physical.x}_${physical.y}`] = strVal;
