@@ -1915,6 +1915,33 @@ async function loadExistingMap() {
       side = currentSide;
     }
 
+    // Sync state variables and input values back to UI panel BEFORE mapping cell coordinates
+    el.gridCols.value = cols;
+    el.gridRows.value = rows;
+    el.gridStartX.value = startX;
+    el.gridStartY.value = startY;
+    el.gridYInvert.checked = invertY;
+    currentRotation = rotation;
+    currentSide = side;
+    boundingBoxCache = {}; // Invalidate bounding box cache so getWaferBoundingBox calculates with new dimensions
+
+    // Update Side Radio UI
+    document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
+      if (radio.value === currentSide) {
+        radio.checked = true;
+      }
+    });
+
+    // Update Rotation Buttons UI
+    document.querySelectorAll('.btn-rot').forEach(btn => {
+      const rotVal = parseInt(btn.dataset.rot, 10);
+      if (rotVal === currentRotation) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
     const uniqueVals = new Set();
 
     if (result && result.data) {
@@ -1956,32 +1983,6 @@ async function loadExistingMap() {
         }
       });
     }
-
-    // Sync state variables and input values back to left panel
-    el.gridCols.value = cols;
-    el.gridRows.value = rows;
-    el.gridStartX.value = startX;
-    el.gridStartY.value = startY;
-    el.gridYInvert.checked = invertY;
-    currentRotation = rotation;
-    currentSide = side;
-
-    // Update Side Radio UI
-    document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
-      if (radio.value === currentSide) {
-        radio.checked = true;
-      }
-    });
-
-    // Update Rotation Buttons UI
-    document.querySelectorAll('.btn-rot').forEach(btn => {
-      const rotVal = parseInt(btn.dataset.rot, 10);
-      if (rotVal === currentRotation) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
 
     // Auto detect legend from unique values
     if (uniqueVals.size > 0) {
