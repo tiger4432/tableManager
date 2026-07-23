@@ -2494,7 +2494,7 @@ function clearSelectedCells() {
   scheduleRenderGridCanvas();
 }
 
-function copyGridToExcel() {
+async function copyGridToExcel() {
   if (!gridCells2D) {
     alert('격자가 생성되어 있지 않습니다.');
     return;
@@ -2502,34 +2502,103 @@ function copyGridToExcel() {
 
   const { visualCols, visualRows } = getVisualGridDimensions();
   const matrix = [];
+  
+  // HTML table for rich formatting in Excel (Border + Fill Colors)
+  let html = '<table style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif;">';
+
+  // Helper to find background color from legend
+  const getColorForValue = (v) => {
+    if (!v) return null;
+    const item = legend.find(l => l.value === String(v));
+    return item ? item.color : null;
+  };
+
+  // Helper for text color contrast
+  const getContrastColor = (hexcolor) => {
+    if (!hexcolor || hexcolor.charAt(0) !== '#') return '#000000';
+    const r = parseInt(hexcolor.substr(1,2),16);
+    const g = parseInt(hexcolor.substr(3,2),16);
+    const b = parseInt(hexcolor.substr(5,2),16);
+    const yiq = ((r*299)+(g*587)+(b*114))/1000;
+    return (yiq >= 128) ? '#000000' : '#ffffff';
+  };
 
   for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
+    html += '<tr>';
     for (let c = 0; c < visualCols; c++) {
       const cell = gridCells2D[r]?.[c];
       if (cell) {
         const key = cell.key;
         const val = gridData[key] || '';
         rowCells.push(val);
+
+        const bgColor = getColorForValue(val);
+        const isInside = cell.inside;
+
+        let style = 'width: 32px; height: 32px; font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle;';
+        
+        // 1. Thick border formatting for valid wafer cells
+        if (isInside) {
+          style += ' border: 2px solid #222222;';
+        } else {
+          style += ' border: 1px dashed #d1d5db; background-color: #f8fafc; color: #cbd5e1;';
+        }
+
+        // 2. Background color & text color formatting for painted value cells
+        if (bgColor && val !== '') {
+          const textColor = getContrastColor(bgColor);
+          style += ` background-color: ${bgColor}; color: ${textColor};`;
+        }
+
+        html += `<td style="${style}">${val}</td>`;
       } else {
         rowCells.push('');
+        html += '<td style="border: 1px dashed #d1d5db; background-color: #f8fafc;"></td>';
       }
     }
+    html += '</tr>';
     matrix.push(rowCells.join('\t'));
   }
 
+  html += '</table>';
   const tsv = matrix.join('\n');
 
-  navigator.clipboard.writeText(tsv).then(() => {
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      const blobText = new Blob([tsv], { type: 'text/plain' });
+      const blobHtml = new Blob([html], { type: 'text/html' });
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': blobText,
+          'text/html': blobHtml
+        })
+      ]);
+    } else {
+      await navigator.clipboard.writeText(tsv);
+    }
+
     if (el.btnCopyExcel) {
       const originalText = el.btnCopyExcel.textContent;
-      el.btnCopyExcel.textContent = '✅ Copied!';
+      el.btnCopyExcel.textContent = '✅ Copied to Excel!';
       setTimeout(() => {
         el.btnCopyExcel.textContent = originalText;
       }, 1500);
     }
-  }).catch(err => {
-    console.error('Failed to copy to clipboard', err);
-    alert('클립보드 복사에 실패했습니다.');
-  });
+  } catch (err) {
+    console.warn('Rich clipboard write failed, falling back to plain text:', err);
+    try {
+      await navigator.clipboard.writeText(tsv);
+      if (el.btnCopyExcel) {
+        const originalText = el.btnCopyExcel.textContent;
+        el.btnCopyExcel.textContent = '✅ Copied!';
+        setTimeout(() => {
+          el.btnCopyExcel.textContent = originalText;
+        }, 1500);
+      }
+    } catch (e) {
+      console.error('Failed to copy to clipboard', e);
+      alert('클립보드 복사에 실패했습니다.');
+    }
+  }
 }
