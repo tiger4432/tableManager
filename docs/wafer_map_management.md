@@ -63,10 +63,9 @@
 ### 3.1 visual 좌표 $\leftrightarrow$ physical 좌표 매핑
 화면 스크린 상의 시각적 셀 좌표 $(c, r)$과 백엔드 DB 저장 좌표 $(x, y)$ 간의 변환 방정식:
 
-$$\begin{aligned}
-\text{Visual Column } (xv) &= c - \text{box.minC} + \text{startX} \\
-\text{Visual Row } (yv) &= r - \text{box.minR} + \text{startY}
-\end{aligned}$$
+$$xv = c - \text{minC} + \text{startX}$$
+
+$$yv = r - \text{minR} + \text{startY}$$
 
 * $\text{box.minC}, \text{box.minR}$: 현재 회전 각도 및 Front/Back side 상태에서 웨이퍼 영역 내 유효 칩 셀들이 위치한 최소 바운딩 박스(Bounding Box) 인덱스
 * **통일 규칙**: 회전 각도($0^\circ, 90^\circ, 180^\circ, 270^\circ$)나 면 상태(Front/Back)에 구애받지 않고, **화면 상 최소 유효 영역 위치가 항상 `startX`, `startY` 매핑 시작점과 직접 결합**되도록 수식 통일.
