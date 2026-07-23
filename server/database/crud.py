@@ -930,35 +930,13 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         target_ids = [u.row_id for u in batch.updates if u.row_id]
         target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
 
-        from sqlalchemy import or_, and_
+        from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(
             or_(
                 table_model.row_id.in_(target_ids) if target_ids else False,
                 table_model.business_key_val.in_(target_bks) if target_bks else False
             )
         ).all()
-
-        # Cascade update grid_metadata to all existing rows of the same map BASE
-        if batch.updates and hasattr(table_model, "grid_metadata"):
-            sample_item = batch.updates[0]
-            grid_meta_sample = sample_item.updates.get("grid_metadata")
-            if grid_meta_sample:
-                config = TABLE_CONFIG.get(table_name, {})
-                col_types = config.get("column_types", {})
-                meta_conditions = []
-                for c_name, c_val in sample_item.updates.items():
-                    if c_name in ["created_at", "updated_at", "grid_metadata", "x", "y", "col_x", "col_y", "val", "code", "die_id"]:
-                        continue
-                    if c_name in col_types and c_val is not None and str(c_val).strip() != "":
-                        attr = getattr(table_model, c_name, None)
-                        if attr is not None:
-                            meta_conditions.append(attr == c_val)
-                if meta_conditions:
-                    map_rows = db.query(table_model).filter(and_(*meta_conditions)).all()
-                    for m_row in map_rows:
-                        setattr(m_row, "grid_metadata", grid_meta_sample)
-                        if m_row not in existing_rows_list:
-                            existing_rows_list.append(m_row)
         
         row_cache = {}
         for r in existing_rows_list:

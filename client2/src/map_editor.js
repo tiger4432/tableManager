@@ -1772,13 +1772,39 @@ async function loadExistingMap() {
     }
 
     let loadedGridMeta = null;
-    if (result && result.data) {
+    
+    // 1. Try fetching from dedicated wafer_map_metadata table
+    try {
+      const mapIdValues = Object.values(filterModel).map(f => f.filter).filter(Boolean);
+      if (mapIdValues.length > 0) {
+        const mapIdStr = mapIdValues.join('_');
+        const metaFilter = {
+          map_id: { filterType: 'text', type: 'equals', filter: mapIdStr }
+        };
+        const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=1&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
+        if (metaRes.ok) {
+          const metaResult = await metaRes.json();
+          if (metaResult && metaResult.data && metaResult.data.length > 0) {
+            const metaRow = metaResult.data[0].data || {};
+            const metaStr = metaRow['grid_metadata']?.value;
+            if (metaStr) {
+              loadedGridMeta = JSON.parse(metaStr);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Map Editor] Dedicated wafer_map_metadata table fetch skipped:', e);
+    }
+
+    // 2. Fallback to cell-level grid_metadata
+    if (!loadedGridMeta && result && result.data) {
       const firstWithMeta = result.data.find(row => row.data && row.data['grid_metadata'] && row.data['grid_metadata'].value);
       if (firstWithMeta) {
         try {
           loadedGridMeta = JSON.parse(firstWithMeta.data['grid_metadata'].value);
         } catch (e) {
-          console.error('Failed to parse grid_metadata:', e);
+          console.error('Failed to parse fallback grid_metadata:', e);
         }
       }
     }
@@ -2144,6 +2170,34 @@ async function pushMapData() {
 
   el.btnPushMap.textContent = '⚡ Pushing...';
   el.btnPushMap.disabled = true;
+
+  // Push dedicated wafer_map_metadata record if map_id can be computed
+  const mapIdVals = Object.values(metaValues).filter(Boolean);
+  if (mapIdVals.length > 0 && gridMetaStr) {
+    const mapIdStr = mapIdVals.join('_');
+    try {
+      const metaPayload = {
+        updates: [{
+          business_key_val: `${selectedTable}_${mapIdStr}`,
+          updates: {
+            map_pk: `${selectedTable}_${mapIdStr}`,
+            target_table: selectedTable,
+            map_id: mapIdStr,
+            grid_metadata: gridMetaStr
+          },
+          source_name: 'user',
+          updated_by: CURRENT_USER
+        }]
+      };
+      await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metaPayload)
+      }).catch(e => console.warn('[Map Editor] Dedicated wafer_map_metadata push skipped:', e));
+    } catch (e) {
+      // Non-blocking
+    }
+  }
 
   const payload = {
     updates: updates,
