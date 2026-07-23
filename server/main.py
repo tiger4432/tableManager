@@ -1446,7 +1446,8 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         "columns": columns,
         "column_types": col_types,
         "business_key": config.get("business_key", ""),
-        "composite_key_source": config.get("composite_key_source", [])
+        "composite_key_source": config.get("composite_key_source", []),
+        "map_key_columns": config.get("map_key_columns", [])
     }
 
 

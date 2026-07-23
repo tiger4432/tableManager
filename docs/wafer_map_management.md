@@ -56,6 +56,27 @@
 | `rotation` | `number` | 맵 회전 각도 (`0`, `90`, `180`, `270`) | `0` |
 | `side` | `string` | 웨이퍼 관찰면 (`'front'`, `'back'`) | `'front'` |
 
+### 2.4 필수 `map_key_columns` 설정 및 테이블 필터링 규칙
+웨이퍼 맵을 다루는 모든 테이블은 `table_config.json`에 `map_key_columns` 컬럼 목록을 **무조건 필수 명시**해야 합니다:
+
+```json
+"bonding_map": {
+  "business_key": "pkg_id",
+  "map_key_columns": ["pkg_id", "base"],
+  "column_types": {
+    "pkg_id": "string",
+    "base": "string",
+    "x": "number",
+    "y": "number",
+    "val": "string"
+  }
+}
+```
+
+* **맵 에디터 조회 제한**: 맵 에디터의 Target Table 목록은 `map_key_columns` 속성이 설정된 맵 전용 테이블들만 엄격히 필터링되어 조회/선택이 가능합니다.
+* **클린 삭제 덮어쓰기 파이프라인 (`replace_map: true`)**:  
+  맵 저장 시 오리진(ORIGIN)이나 규격이 변경되었을 때, `map_key_columns` 조건에 해당하는 기존 DB 맵 행과 셀 소스(`CellSource`, `CellOverwrite`)들을 백엔드에서 먼저 bulk purge(SQL Delete)한 후 신규 활성 칩들만 재적재하여 유령 셀(Ghost Chips) 잔존을 100% 원천 차단합니다.
+
 ---
 
 ## 3. 좌표계 변환 및 회전/대칭 통일 공식

@@ -936,23 +936,42 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             config = TABLE_CONFIG.get(table_name, {})
             col_types = config.get("column_types", {})
             skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata"}
+            
             meta_conditions = []
+            col_types_lower = {k.lower(): k for k in col_types.keys()}
+            
             for c_name, c_val in sample_item.updates.items():
                 if c_name.lower() in skip_cols:
                     continue
-                if c_name in col_types and c_val is not None and str(c_val).strip() != "":
-                    attr = getattr(table_model, c_name, None)
+                real_col_name = col_types_lower.get(c_name.lower())
+                if real_col_name and c_val is not None and str(c_val).strip() != "":
+                    attr = getattr(table_model, real_col_name, None)
                     if attr is not None:
                         meta_conditions.append(attr == c_val)
             
             if meta_conditions:
                 from sqlalchemy import and_
-                rows_to_clear = db.query(table_model).filter(and_(*meta_conditions)).all()
-                for old_row in rows_to_clear:
-                    db.delete(old_row)
-                    if old_row.row_id not in deleted_row_ids:
-                        deleted_row_ids.append(old_row.row_id)
-                db.flush()
+                matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
+                deleted_row_ids = [r[0] for r in matching_rows if r[0]]
+                
+                if deleted_row_ids:
+                    # 1. Purge cell sources & overwrites for old map rows
+                    db.query(models.CellSource).filter(
+                        models.CellSource.table_name == table_name,
+                        models.CellSource.row_id.in_(deleted_row_ids)
+                    ).delete(synchronize_session=False)
+
+                    db.query(models.CellOverwrite).filter(
+                        models.CellOverwrite.table_name == table_name,
+                        models.CellOverwrite.row_id.in_(deleted_row_ids)
+                    ).delete(synchronize_session=False)
+
+                    # 2. Purge main dynamic table rows
+                    db.query(table_model).filter(
+                        table_model.row_id.in_(deleted_row_ids)
+                    ).delete(synchronize_session=False)
+                    
+                    db.flush()
 
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(

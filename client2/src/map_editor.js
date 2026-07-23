@@ -463,17 +463,38 @@ async function loadTablesList() {
     el.tableSelect.innerHTML = '';
     
     if (data.tables && data.tables.length > 0) {
-      data.tables.forEach(table => {
-        const option = document.createElement('option');
-        option.value = table;
-        option.textContent = table;
-        el.tableSelect.appendChild(option);
-      });
-      // Auto select bonding_map if exists, otherwise first table
-      const hasBondingMap = data.tables.includes('bonding_map');
-      const startTable = hasBondingMap ? 'bonding_map' : data.tables[0];
-      el.tableSelect.value = startTable;
-      await switchTable(startTable);
+      // Fetch schema for all tables and filter ONLY map tables that have map_key_columns configured
+      const mapTables = [];
+      for (const tableName of data.tables) {
+        try {
+          const sRes = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+          if (sRes.ok) {
+            const schema = await sRes.json();
+            const keys = schema.map_key_columns || [];
+            if (Array.isArray(keys) && keys.length > 0) {
+              mapTables.push(tableName);
+            }
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch schema for ${tableName}:`, e);
+        }
+      }
+
+      if (mapTables.length > 0) {
+        mapTables.forEach(table => {
+          const option = document.createElement('option');
+          option.value = table;
+          option.textContent = table;
+          el.tableSelect.appendChild(option);
+        });
+        // Auto select bonding_map if available, otherwise first map table
+        const hasBondingMap = mapTables.includes('bonding_map');
+        const startTable = hasBondingMap ? 'bonding_map' : mapTables[0];
+        el.tableSelect.value = startTable;
+        await switchTable(startTable);
+      } else {
+        el.tableSelect.innerHTML = '<option value="">No map tables available (map_key_columns missing)</option>';
+      }
     } else {
       el.tableSelect.innerHTML = '<option value="">No tables available</option>';
     }
