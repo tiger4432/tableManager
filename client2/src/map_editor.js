@@ -514,25 +514,38 @@ function renderMetadataInputs() {
   container.innerHTML = '';
 
   const cols = tableSchema.columns || [];
-  const xCol = el.colMapX.value;
-  const yCol = el.colMapY.value;
-  const valCol = el.colMapVal.value;
+  const xCol = el.colMapX ? el.colMapX.value : 'x';
+  const yCol = el.colMapY ? el.colMapY.value : 'y';
+  const valCol = el.colMapVal ? el.colMapVal.value : 'val';
 
-  // Filter out system columns and coordinate/value columns
-  const systemCols = [
-    'created_at', 'updated_at', 'row_id', 'business_key_val',
-    'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
-    'grid_metadata'
-  ];
+  // Determine map_id search columns
+  let searchCols = tableSchema.map_key_columns;
+  if (!searchCols || !Array.isArray(searchCols) || searchCols.length === 0) {
+    if (tableSchema.composite_key_source && Array.isArray(tableSchema.composite_key_source)) {
+      searchCols = tableSchema.composite_key_source.filter(col => 
+        !['x', 'y', 'val', 'die_id', 'code', 'grid_metadata'].includes(col.toLowerCase()) &&
+        col !== xCol && col !== yCol && col !== valCol
+      );
+    }
+  }
+  if (!searchCols || searchCols.length === 0) {
+    if (tableSchema.business_key && !['x', 'y', 'val', 'die_id', 'code'].includes(tableSchema.business_key.toLowerCase())) {
+      searchCols = [tableSchema.business_key];
+    }
+  }
 
-  const metaCols = cols.filter(col => {
-    return !systemCols.includes(col) &&
-           col !== xCol &&
-           col !== yCol &&
-           col !== valCol;
-  });
+  // Fallback: system cols filter
+  if (!searchCols || searchCols.length === 0) {
+    const systemCols = [
+      'created_at', 'updated_at', 'row_id', 'business_key_val',
+      'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
+      'grid_metadata'
+    ];
+    searchCols = cols.filter(col => !systemCols.includes(col) && col !== xCol && col !== yCol && col !== valCol);
+  }
 
-  metaCols.forEach(col => {
+  searchCols.forEach(col => {
+    if (!cols.includes(col)) return;
     const colType = tableSchema.column_types[col] || 'string';
     const formGroup = document.createElement('div');
     formGroup.className = 'control-group-vertical';
@@ -545,7 +558,7 @@ function renderMetadataInputs() {
     input.type = 'text';
     input.id = `meta-input-${col}`;
     input.className = 'glass-input w-full';
-    input.placeholder = `${col} 값 입력`;
+    input.placeholder = `${col} 검색어 입력`;
     
     formGroup.appendChild(label);
     formGroup.appendChild(input);
