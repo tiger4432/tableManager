@@ -2347,10 +2347,7 @@ def get_map_presets():
     config_data = load_maps_config()
     return {"status": "success", "presets": config_data.get("presets", {})}
 
-@app.post("/map-presets")
-@app.post("/api/map-presets")
-def save_map_preset(item: MapPresetItem):
-    """웨이퍼 물리 규격 커스텀 프리셋을 server/config/maps.json에 영속화합니다."""
+def _save_map_preset_impl(item: MapPresetItem):
     config_data = load_maps_config()
     presets = config_data.get("presets", {})
     
@@ -2375,10 +2372,15 @@ def save_map_preset(item: MapPresetItem):
         
     return {"status": "success", "preset_key": key, "preset": preset_entry}
 
-@app.delete("/map-presets/{preset_key}")
-@app.delete("/api/map-presets/{preset_key}")
-def delete_map_preset(preset_key: str):
-    """server/config/maps.json에서 커스텀 프리셋을 삭제합니다."""
+@app.post("/map-presets")
+def save_map_preset_root(item: MapPresetItem):
+    return _save_map_preset_impl(item)
+
+@app.post("/api/map-presets")
+def save_map_preset_api(item: MapPresetItem):
+    return _save_map_preset_impl(item)
+
+def _delete_map_preset_impl(preset_key: str):
     config_data = load_maps_config()
     presets = config_data.get("presets", {})
     
@@ -2392,6 +2394,14 @@ def delete_map_preset(preset_key: str):
         raise HTTPException(status_code=500, detail="Failed to update maps.json on deletion.")
         
     return {"status": "success", "message": f"Preset '{preset_key}' deleted successfully."}
+
+@app.delete("/map-presets/{preset_key}")
+def delete_map_preset_root(preset_key: str):
+    return _delete_map_preset_impl(preset_key)
+
+@app.delete("/api/map-presets/{preset_key}")
+def delete_map_preset_api(preset_key: str):
+    return _delete_map_preset_impl(preset_key)
 
 @app.get("/admin/file-ingestion/workspaces")
 def get_ingestion_workspaces():
