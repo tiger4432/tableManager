@@ -174,31 +174,34 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
 
-    # ID와 Timestamp는 DB 커밋 시점에 생성되지만, 캐싱을 위해 파이썬 레벨에서 타임스탬프를 명시적으로 주입합니다.
     from datetime import timezone
     ts = datetime.now(timezone.utc)
     
-    log = models.AuditLog(
-        table_name=table_name,
-        row_id=row_id,
-        column_name=col_name,
-        old_value=sanitize_to_utf8(old_val),
-        new_value=sanitize_to_utf8(new_val),
-        source_name=source,
-        updated_by=user,
-        transaction_id=transaction_id,
-        timestamp=ts,
-        business_key=business_key
-    )
-    db.add(log)
+    clean_old = sanitize_to_utf8(old_val)
+    clean_new = sanitize_to_utf8(new_val)
+
+    if add_to_cache:
+        log = models.AuditLog(
+            table_name=table_name,
+            row_id=row_id,
+            column_name=col_name,
+            old_value=clean_old,
+            new_value=clean_new,
+            source_name=source,
+            updated_by=user,
+            transaction_id=transaction_id,
+            timestamp=ts,
+            business_key=business_key
+        )
+        db.add(log)
 
     log_dict = {
         "id": 0,
         "table_name": table_name,
         "row_id": row_id,
         "column_name": col_name,
-        "old_value": log.old_value,
-        "new_value": log.new_value,
+        "old_value": clean_old,
+        "new_value": clean_new,
         "source_name": source,
         "updated_by": user,
         "transaction_id": transaction_id,
@@ -206,11 +209,30 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         "timestamp": ts
     }
     if add_to_cache:
-        # 인메모리 캐시에 즉시 반영 (ID는 클라이언트 뷰에서 사용되지 않으므로 0으로 임시 매핑)
         from audit_cache import audit_cache
         audit_cache.add_log(log_dict)
         
     return log_dict
+
+def bulk_insert_audit_logs(db: Session, logs: list[dict]):
+    """AuditLog를 Bulk Insert로 초고속 적재합니다."""
+    if not logs:
+        return
+    mappings = []
+    for l in logs:
+        mappings.append({
+            "table_name": l["table_name"],
+            "row_id": l["row_id"],
+            "column_name": l["column_name"],
+            "old_value": l["old_value"],
+            "new_value": l["new_value"],
+            "source_name": l["source_name"],
+            "updated_by": l["updated_by"],
+            "transaction_id": l["transaction_id"],
+            "timestamp": l["timestamp"],
+            "business_key": l.get("business_key")
+        })
+    db.bulk_insert_mappings(models.AuditLog, mappings)
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
     if not mappings:
@@ -991,10 +1013,9 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 for col in changed_cols:
                     total_changed_cells.append((row.row_id, col))
                     
-        # Capture newly created AuditLog objects before commit/flush
-        created_log_objs = [obj for obj in db.new if isinstance(obj, models.AuditLog)]
-        
-        # Execute Bulk Upserts and Deletes
+        # Execute Bulk Upserts, Bulk Inserts, and Deletes
+        if logs_to_cache:
+            bulk_insert_audit_logs(db, logs_to_cache)
         bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
         bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
         bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
@@ -1002,19 +1023,20 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         db.flush()
         
         serialized_logs = []
-        for log in created_log_objs:
+        for l in logs_to_cache:
+            ts_val = l["timestamp"]
             serialized_logs.append({
-                "id": log.id,
-                "table_name": log.table_name,
-                "row_id": log.row_id,
-                "column_name": log.column_name,
-                "old_value": log.old_value,
-                "new_value": log.new_value,
-                "source_name": log.source_name,
-                "updated_by": log.updated_by,
-                "transaction_id": log.transaction_id,
-                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "business_key": log.business_key
+                "id": 0,
+                "table_name": l["table_name"],
+                "row_id": l["row_id"],
+                "column_name": l["column_name"],
+                "old_value": l["old_value"],
+                "new_value": l["new_value"],
+                "source_name": l["source_name"],
+                "updated_by": l["updated_by"],
+                "transaction_id": l["transaction_id"],
+                "timestamp": ts_val.isoformat() if hasattr(ts_val, "isoformat") else ts_val,
+                "business_key": l.get("business_key")
             })
             
         db.commit()

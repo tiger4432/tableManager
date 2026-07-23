@@ -10,7 +10,7 @@ import os
 import io
 import csv
 import time
-from fastapi import UploadFile, File, Body, HTTPException
+from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -1596,7 +1596,12 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows], "created_logs": created_logs}
 
 @app.put("/tables/{table_name}/data/updates")
-async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUpdateBatch, db: Session = Depends(get_db)):
+async def apply_batch_updates_endpoint(
+    table_name: str, 
+    batch: schemas.GeneralUpdateBatch, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
     try:
@@ -1607,8 +1612,6 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
     if results:
         invalidate_table_cache(table_name)
     
-    # [정합성 보장] results 내 모든 row 객체에 최신 채색 정보(is_overwrite, priority_source)를 일괄 병합!
-    # (이를 통해 WebSocket 병합 시 다른 컬럼들의 주황색 스타일이 풀리던 문제를 완벽 차단합니다.)
     cfg = crud.TABLE_CONFIG.get(table_name, {})
     col_types = cfg.get("column_types", {})
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
@@ -1627,45 +1630,47 @@ async def apply_batch_updates_endpoint(table_name: str, batch: schemas.GeneralUp
             "updated_at": to_local_str(row.updated_at)
         })
     
-    # WebSocket 브로드캐스트 (batch.silent가 False인 경우에만 수행)
+    # WebSocket 브로드캐스트를 백그라운드 태스크로 이관하여 즉시 HTTP 200 반환!
     if not batch.silent:
         user_name = batch.updates[0].updated_by if batch.updates else "system"
         tx_id = created_logs[0]["transaction_id"] if created_logs else (batch.transaction_id or str(uuid.uuid4()))
         
-        # 껍데기 행 실시간 제거 브로드캐스트 전송
-        if deleted_row_ids:
-            delete_msg = {
-                "event": "batch_row_delete",
-                "table_name": table_name,
-                "row_ids": deleted_row_ids
-            }
-            await manager.broadcast(json.dumps(delete_msg))
-
-        if len(msg_items) > 100:
-            msg = {
-                "event": "batch_refresh_required",
-                "table_name": table_name,
-                "change_count": len(msg_items)
-            }
-            if created_logs and len(created_logs) <= 5000:
-                msg["created_logs"] = created_logs
-            await manager.broadcast(json.dumps(msg))
-        else:
-            CHUNK_SIZE = 500
-            for i in range(0, len(msg_items), CHUNK_SIZE):
-                chunk = msg_items[i:i + CHUNK_SIZE]
-                chunk_row_ids = {item["row_id"] for item in chunk}
-                chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
-                msg = {
-                    "event": "batch_row_upsert",
+        async def async_broadcast():
+            if deleted_row_ids:
+                delete_msg = {
+                    "event": "batch_row_delete",
                     "table_name": table_name,
-                    "items": chunk,
-                    "change_count": len(chunk), 
-                    "updated_by": user_name,
-                    "transaction_id": tx_id,
-                    "created_logs": chunk_logs
+                    "row_ids": deleted_row_ids
                 }
+                await manager.broadcast(json.dumps(delete_msg))
+
+            if len(msg_items) > 100:
+                msg = {
+                    "event": "batch_refresh_required",
+                    "table_name": table_name,
+                    "change_count": len(msg_items)
+                }
+                if created_logs and len(created_logs) <= 5000:
+                    msg["created_logs"] = created_logs
                 await manager.broadcast(json.dumps(msg))
+            else:
+                CHUNK_SIZE = 500
+                for i in range(0, len(msg_items), CHUNK_SIZE):
+                    chunk = msg_items[i:i + CHUNK_SIZE]
+                    chunk_row_ids = {item["row_id"] for item in chunk}
+                    chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
+                    msg = {
+                        "event": "batch_row_upsert",
+                        "table_name": table_name,
+                        "items": chunk,
+                        "change_count": len(chunk), 
+                        "updated_by": user_name,
+                        "transaction_id": tx_id,
+                        "created_logs": chunk_logs
+                    }
+                    await manager.broadcast(json.dumps(msg))
+
+        background_tasks.add_task(async_broadcast)
     
     return {
         "status": "success", 
