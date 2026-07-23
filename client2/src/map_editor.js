@@ -34,6 +34,25 @@ const DEFAULT_LEGEND = [
   { value: '3', desc: 'REWORK', color: '#f59e0b' }
 ];
 
+function getMapIdFromMeta(metaDict) {
+  if (!metaDict) return 'default_map';
+
+  let mapKeyCols = tableSchema.map_key_columns;
+  if (!mapKeyCols || !Array.isArray(mapKeyCols) || mapKeyCols.length === 0) {
+    if (tableSchema.composite_key_source && Array.isArray(tableSchema.composite_key_source)) {
+      mapKeyCols = tableSchema.composite_key_source.filter(col => !['x', 'y', 'val', 'die_id', 'code', 'grid_metadata'].includes(col.toLowerCase()));
+    }
+  }
+
+  if (mapKeyCols && mapKeyCols.length > 0) {
+    const vals = mapKeyCols.map(col => metaDict[col]).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
+    if (vals.length > 0) return vals.join('_');
+  }
+
+  const allVals = Object.values(metaDict).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
+  return allVals.length > 0 ? allVals.join('_') : 'default_map';
+}
+
 function debounce(func, wait = 200) {
   let timeout;
   return function(...args) {
@@ -1775,9 +1794,14 @@ async function loadExistingMap() {
     
     // 1. Try fetching from dedicated wafer_map_metadata table
     try {
-      const mapIdValues = Object.values(filterModel).map(f => f.filter).filter(Boolean);
-      if (mapIdValues.length > 0) {
-        const mapIdStr = mapIdValues.join('_');
+      const filterMetaDict = {};
+      Object.keys(filterModel).forEach(col => {
+        if (filterModel[col] && filterModel[col].filter) {
+          filterMetaDict[col] = filterModel[col].filter;
+        }
+      });
+      const mapIdStr = getMapIdFromMeta(filterMetaDict);
+      if (mapIdStr && mapIdStr !== 'default_map') {
         const metaFilter = {
           map_id: { filterType: 'text', type: 'equals', filter: mapIdStr }
         };
@@ -2172,9 +2196,8 @@ async function pushMapData() {
   el.btnPushMap.disabled = true;
 
   // Push dedicated wafer_map_metadata record if map_id can be computed
-  const mapIdVals = Object.values(metaValues).filter(Boolean);
-  if (mapIdVals.length > 0 && gridMetaStr) {
-    const mapIdStr = mapIdVals.join('_');
+  const mapIdStr = getMapIdFromMeta(metaValues);
+  if (mapIdStr && mapIdStr !== 'default_map' && gridMetaStr) {
     try {
       const metaPayload = {
         updates: [{
