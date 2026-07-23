@@ -2282,54 +2282,52 @@ function getEdgeClassification() {
     }
   }
 
-  // 2. Classify E1 (Edge 1): Outermost active layer adjacent to outside or grid bounds
-  const isE1 = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
+  // 2. BFS Distance Transform from outside cells to compute exact layer depth
+  const dist = Array.from({ length: visualRows }, () => Array(visualCols).fill(Infinity));
+  const queue = [];
+
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      if (!isInside[r][c]) continue;
-      
-      // Check 8 neighbors
-      let touchesOutside = false;
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr < 0 || nr >= visualRows || nc < 0 || nc >= visualCols || !isInside[nr][nc]) {
-            touchesOutside = true;
-            break;
-          }
-        }
-        if (touchesOutside) break;
-      }
-      if (touchesOutside) {
-        isE1[r][c] = true;
+      if (!isInside[r][c]) {
+        dist[r][c] = 0;
+        queue.push({ r, c });
       }
     }
   }
 
-  // 3. Classify E2 (Edge 2): Second layer, not E1 but adjacent to E1
+  const dRow = [-1, 1, 0, 0];
+  const dCol = [0, 0, -1, 1];
+
+  let head = 0;
+  while (head < queue.length) {
+    const { r, c } = queue[head++];
+    const currentDist = dist[r][c];
+
+    for (let i = 0; i < 4; i++) {
+      const nr = r + dRow[i];
+      const nc = c + dCol[i];
+
+      if (nr >= 0 && nr < visualRows && nc >= 0 && nc < visualCols) {
+        if (dist[nr][nc] === Infinity) {
+          dist[nr][nc] = currentDist + 1;
+          queue.push({ r: nr, c: nc });
+        }
+      }
+    }
+  }
+
+  // 3. Classify E1 (Distance == 1) and E2 (Distance == 2)
+  const isE1 = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
   const isE2 = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
+
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      if (!isInside[r][c] || isE1[r][c]) continue;
-
-      // Check if adjacent to E1
-      let touchesE1 = false;
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr >= 0 && nr < visualRows && nc >= 0 && nc < visualCols && isE1[nr][nc]) {
-            touchesE1 = true;
-            break;
-          }
+      if (isInside[r][c]) {
+        if (dist[r][c] === 1) {
+          isE1[r][c] = true;
+        } else if (dist[r][c] === 2) {
+          isE2[r][c] = true;
         }
-        if (touchesE1) break;
-      }
-      if (touchesE1) {
-        isE2[r][c] = true;
       }
     }
   }
