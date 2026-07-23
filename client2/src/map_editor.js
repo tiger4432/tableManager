@@ -20,6 +20,11 @@ let lastSelectionBox = null; // Track coordinates of current selection bounding 
 let gridCells2D = []; // 2D reference array of cell metadata objects [row][col]
 let dragType = null; // 'paint' | 'erase'
 let selectedEdgeTargetMap = null; // Track active E1/E2 edge selection map
+let loadedFCells = new Set(); // Track physical keys of cells loaded with value 'F'
+
+function isProtectedFCell(key) {
+  return loadedFCells.has(key);
+}
 
 // Default Legend
 const DEFAULT_LEGEND = [
@@ -397,6 +402,8 @@ function initMouseDragEvents() {
             if (!cell) continue;
 
             const key = cell.key;
+            if (isProtectedFCell(key)) continue;
+
             if (dragType === 'erase') {
               gridData[key] = '';
             } else if (dragType === 'paint') {
@@ -1356,6 +1363,10 @@ function handleCellClick(cell, event) {
   const r = cell.r !== undefined ? cell.r : 0;
   const key = cell.key;
 
+  if (isProtectedFCell(key)) {
+    return;
+  }
+
   if (isOriginMode) {
     const box = getWaferBoundingBox(currentRotation, currentSide);
     const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
@@ -1684,6 +1695,7 @@ function addNewLegendRow() {
 
 function remapGridValues(oldVal, newVal) {
   Object.keys(gridData).forEach(k => {
+    if (isProtectedFCell(k)) return;
     if (gridData[k] === oldVal) {
       gridData[k] = newVal;
     }
@@ -1730,8 +1742,9 @@ async function loadExistingMap() {
     if (!res.ok) throw new Error('API fetch failed');
     const result = await res.json();
 
-    // Reset local cache
+    // Reset local cache & loaded F cells protection set
     gridData = {};
+    loadedFCells.clear();
     let count = 0;
     
     // Pre-calculate coordinate bounds first
@@ -1883,7 +1896,12 @@ async function loadExistingMap() {
             const r = cell.r;
 
             const physical = getPhysicalCoords(c, r, cols, rows, rotation, side);
-            gridData[`${physical.x}_${physical.y}`] = strVal;
+            const gridKey = `${physical.x}_${physical.y}`;
+            gridData[gridKey] = strVal;
+
+            if (strVal === 'F') {
+              loadedFCells.add(gridKey);
+            }
           }
         }
       });
@@ -1985,6 +2003,7 @@ async function loadExistingMap() {
 function clearGrid() {
   if (!confirm('격자 내의 모든 입력 값을 삭제하시겠습니까?')) return;
   gridData = {};
+  loadedFCells.clear();
   renderGridCanvas();
 }
 
@@ -2005,7 +2024,9 @@ function fillGrid() {
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
-      gridData[`${physical.x}_${physical.y}`] = activeBrush;
+      const key = `${physical.x}_${physical.y}`;
+      if (isProtectedFCell(key)) continue;
+      gridData[key] = activeBrush;
     }
   }
 
@@ -2292,6 +2313,7 @@ function autoPaintE1E2() {
       const cell = gridCells2D[r]?.[c];
       if (!cell) continue;
       const key = cell.key;
+      if (isProtectedFCell(key)) continue;
 
       if (isE1[r] && isE1[r][c]) {
         gridData[key] = 'E1';
@@ -2320,7 +2342,7 @@ function fillSelectedCells() {
     for (let c = 0; c < visualCols; c++) {
       if (selectedEdgeTargetMap[r] && selectedEdgeTargetMap[r][c]) {
         const cell = gridCells2D[r]?.[c];
-        if (cell) {
+        if (cell && !isProtectedFCell(cell.key)) {
           gridData[cell.key] = activeBrush;
         }
       }
@@ -2341,7 +2363,7 @@ function clearSelectedCells() {
     for (let c = 0; c < visualCols; c++) {
       if (selectedEdgeTargetMap[r] && selectedEdgeTargetMap[r][c]) {
         const cell = gridCells2D[r]?.[c];
-        if (cell) {
+        if (cell && !isProtectedFCell(cell.key)) {
           gridData[cell.key] = '';
         }
       }
