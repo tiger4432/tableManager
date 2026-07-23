@@ -33,12 +33,7 @@ def main():
         merged_env = os.environ.copy()
         if env:
             merged_env.update(env)
-        
-        creationflags = 0
-        if os.name == 'nt':
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-
-        proc = subprocess.Popen(cmd, cwd=cwd, env=merged_env, creationflags=creationflags)
+        proc = subprocess.Popen(cmd, cwd=cwd, env=merged_env)
         processes.append((name, proc))
         return proc
 
@@ -46,26 +41,12 @@ def main():
     server_env = {"DECOUPLED": "True"}
     server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", "8080"]
     if "--reload" in sys.argv:
-        server_cmd.extend([
-            "--reload",
-            "--reload-dir", server_dir,
-            "--reload-exclude", "*.log",
-            "--reload-exclude", "*.db",
-            "--reload-exclude", "*.csv"
-        ])
+        server_cmd.append("--reload")
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
-    # Wait for web server to initialize fast via active health polling
-    log_launcher("Waiting for backend server readiness...")
-    import urllib.request
-    start_wait = time.time()
-    while time.time() - start_wait < 3.0:
-        try:
-            with urllib.request.urlopen("http://127.0.0.1:8080/tables", timeout=0.3) as response:
-                if response.status == 200:
-                    break
-        except Exception:
-            time.sleep(0.1)
+    # Wait for web server to initialize
+    log_launcher("Waiting for server to initialize...")
+    time.sleep(2.0)
     
     # 2. Start File Ingestion Watcher
     watcher_cmd = [python_exe, "run_watcher.py"]
@@ -120,24 +101,8 @@ def main():
         print("=" * 60)
         sys.exit(0)
 
-    is_reloading_mode = "--reload" in sys.argv
-    last_sigint_time = [0.0]
-
-    def handle_signal(signum, frame):
-        now = time.time()
-        # If in reload mode and signal is SIGINT (Signal 2 from WatchFiles)
-        if is_reloading_mode and signum == signal.SIGINT:
-            all_alive = all(proc.poll() is None for name, proc in processes)
-            # Ignore WatchFiles reload SIGINT signal unless Ctrl+C pressed twice within 1.5s
-            if all_alive and (now - last_sigint_time[0] > 1.5):
-                last_sigint_time[0] = now
-                log_launcher("uvicorn WatchFiles hot-reload detected. Server is reloading... (Press Ctrl+C twice to force stop)", level="INFO")
-                return
-
-        shutdown_all(signum, frame)
-
     # Register signal handler for Ctrl+C (SIGINT) and SIGTERM
-    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGINT, shutdown_all)
     signal.signal(signal.SIGTERM, shutdown_all)
     
     try:
