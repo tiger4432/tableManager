@@ -33,7 +33,12 @@ def main():
         merged_env = os.environ.copy()
         if env:
             merged_env.update(env)
-        proc = subprocess.Popen(cmd, cwd=cwd, env=merged_env)
+        
+        creationflags = 0
+        if os.name == 'nt':
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        proc = subprocess.Popen(cmd, cwd=cwd, env=merged_env, creationflags=creationflags)
         processes.append((name, proc))
         return proc
 
@@ -41,7 +46,7 @@ def main():
     server_env = {"DECOUPLED": "True"}
     server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", "8080"]
     if "--reload" in sys.argv:
-        server_cmd.append("--reload")
+        server_cmd.extend(["--reload", "--reload-dir", server_dir])
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
     # Wait for web server to initialize
