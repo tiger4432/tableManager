@@ -2195,8 +2195,19 @@ async function pushMapData() {
   el.btnPushMap.textContent = '⚡ Pushing...';
   el.btnPushMap.disabled = true;
 
-  // Push dedicated wafer_map_metadata record if map_id can be computed
   const mapIdStr = getMapIdFromMeta(metaValues);
+
+  console.group('%c🚀 [Map Editor API] PUSH MAP DATA EXECUTED', 'color: #3b82f6; font-weight: bold; font-size: 13px;');
+  console.log('📌 Target Table:', selectedTable);
+  console.log('📌 Map ID:', mapIdStr);
+  console.log('📌 Cell Update Count:', updates.length);
+  if (gridMetaStr) {
+    try {
+      console.log('📌 Grid Metadata Payload:', JSON.parse(gridMetaStr));
+    } catch (e) {}
+  }
+
+  // Push dedicated wafer_map_metadata record if map_id can be computed
   if (mapIdStr && mapIdStr !== 'default_map' && gridMetaStr) {
     try {
       const metaPayload = {
@@ -2212,13 +2223,15 @@ async function pushMapData() {
           updated_by: CURRENT_USER
         }]
       };
-      await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
+      console.log('📤 [API Request 1/2] Header Metadata:', `${API_BASE}/tables/wafer_map_metadata/data/updates`, metaPayload);
+      const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(metaPayload)
-      }).catch(e => console.warn('[Map Editor] Dedicated wafer_map_metadata push skipped:', e));
+      });
+      console.log('📥 [API Response 1/2] Status:', metaRes.status);
     } catch (e) {
-      // Non-blocking
+      console.warn('[Map Editor] Dedicated wafer_map_metadata push skipped/warn:', e);
     }
   }
 
@@ -2228,6 +2241,7 @@ async function pushMapData() {
   };
 
   try {
+    console.log(`📤 [API Request 2/2] Cell Data (${updates.length} rows):`, `${API_BASE}/tables/${selectedTable}/data/updates`, payload);
     const res = await fetch(`${API_BASE}/tables/${selectedTable}/data/updates`, {
       method: 'PUT',
       headers: {
@@ -2238,13 +2252,18 @@ async function pushMapData() {
 
     if (res.ok) {
       const result = await res.json();
+      console.log('📥 [API Response 2/2] Success Result:', result);
+      console.groupEnd();
       alert(`성공적으로 적재 완료!\n- 적재 처리 건수: ${result.updated_count || result.count || updates.length}개\n- 비즈니스 키 중복 발생 시 자동 병합(Silent Merge) 처리가 완결되었습니다.`);
     } else {
       const errData = await res.json().catch(() => ({}));
+      console.error('❌ [API Response 2/2] Error Payload:', errData);
+      console.groupEnd();
       throw new Error(errData.detail || 'Push failed');
     }
   } catch (err) {
-    console.error(err);
+    console.error('❌ [API Error]', err);
+    console.groupEnd();
     alert(`데이터 적재 실패: ${err.message}`);
   } finally {
     el.btnPushMap.textContent = '⚡ Push Map Data';
