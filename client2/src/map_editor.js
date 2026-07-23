@@ -1479,6 +1479,7 @@ function updateNotchPosition() {
   if (!el.gridNotch) return;
 
   el.gridNotch.className = 'wafer-notch';
+  el.gridNotch.textContent = 'D';
 
   let positionClass = '';
   if (currentRotation === 0) positionClass = 'notch-bottom';
@@ -1487,7 +1488,7 @@ function updateNotchPosition() {
   else if (currentRotation === 270) positionClass = 'notch-right';
   el.gridNotch.classList.add(positionClass);
 
-  const offset = 20; // px shift
+  const offset = 24; // px shift
   el.gridNotch.style.left = '';
   el.gridNotch.style.right = '';
   el.gridNotch.style.top = '';
@@ -1495,15 +1496,17 @@ function updateNotchPosition() {
   el.gridNotch.style.transform = '';
 
   if (currentRotation === 0) { // Bottom
-    el.gridNotch.style.bottom = '5px';
+    el.gridNotch.style.bottom = '2px';
     if (currentSide === 'front') {
+      // FRONT면 하단 살짝 오른쪽 (+24px)
       el.gridNotch.style.left = `calc(50% + ${offset}px)`;
     } else {
+      // BACK이면 하단 살짝 왼쪽 (-24px)
       el.gridNotch.style.left = `calc(50% - ${offset}px)`;
     }
     el.gridNotch.style.transform = 'translateX(-50%)';
   } else if (currentRotation === 180) { // Top
-    el.gridNotch.style.top = '5px';
+    el.gridNotch.style.top = '2px';
     if (currentSide === 'front') {
       el.gridNotch.style.left = `calc(50% + ${offset}px)`;
     } else {
@@ -1511,7 +1514,7 @@ function updateNotchPosition() {
     }
     el.gridNotch.style.transform = 'translateX(-50%)';
   } else if (currentRotation === 90) { // Left
-    el.gridNotch.style.left = '5px';
+    el.gridNotch.style.left = '2px';
     if (currentSide === 'front') {
       el.gridNotch.style.top = `calc(50% - ${offset}px)`;
     } else {
@@ -1519,7 +1522,7 @@ function updateNotchPosition() {
     }
     el.gridNotch.style.transform = 'translateY(-50%)';
   } else if (currentRotation === 270) { // Right
-    el.gridNotch.style.right = '5px';
+    el.gridNotch.style.right = '2px';
     if (currentSide === 'front') {
       el.gridNotch.style.top = `calc(50% + ${offset}px)`;
     } else {
@@ -2523,23 +2526,37 @@ async function copyGridToExcel() {
     return (yiq >= 128) ? '#000000' : '#ffffff';
   };
 
+  const box = getWaferBoundingBox(currentRotation, currentSide);
+  const centerC = Math.floor((box.minC + box.maxC) / 2);
+  const notchR = box.maxR + 1;
+  const notchC = (currentSide === 'front') ? (centerC + 1) : (centerC - 1);
+
   for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
     html += '<tr>';
     for (let c = 0; c < visualCols; c++) {
       const cell = gridCells2D[r]?.[c];
+      const isNotchCell = (r === notchR && c === notchC);
+
       if (cell) {
         const key = cell.key;
-        const val = gridData[key] || '';
+        let val = gridData[key] || '';
+        const isInside = cell.inside;
+
+        if (isNotchCell && val === '') {
+          val = 'D';
+        }
         rowCells.push(val);
 
         const bgColor = getColorForValue(val);
-        const isInside = cell.inside;
 
         let style = 'width: 32px; height: 32px; font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle;';
         
-        // 1. Thick border & background color formatting for valid wafer cells
-        if (isInside) {
+        if (isNotchCell && val === 'D') {
+          // Notch D indicator cell 1 row below valid wafer area
+          style += ' border: 2px solid #222222; background-color: #a855f7; color: #ffffff; font-size: 11pt;';
+        } else if (isInside) {
+          // 1. Thick border & background color formatting for valid wafer cells
           style += ' border: 2px solid #222222;';
           if (bgColor && val !== '') {
             const textColor = getContrastColor(bgColor);
@@ -2554,8 +2571,12 @@ async function copyGridToExcel() {
 
         html += `<td style="${style}">${val}</td>`;
       } else {
-        rowCells.push('');
-        html += '<td style="border: 1px dashed #d1d5db; background-color: #f8fafc;"></td>';
+        const val = isNotchCell ? 'D' : '';
+        rowCells.push(val);
+        const style = isNotchCell
+          ? 'border: 2px solid #222222; background-color: #a855f7; color: #ffffff; font-weight: bold; text-align: center; vertical-align: middle;'
+          : 'border: 1px dashed #d1d5db; background-color: #f8fafc;';
+        html += `<td style="${style}">${val}</td>`;
       }
     }
     html += '</tr>';

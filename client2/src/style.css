@@ -1591,35 +1591,67 @@ body.resizing-active .history-sidebar {
   outline: none !important;
 }
 
-/* 웨이퍼 V-Notch 데코레이션 */
+/* 웨이퍼 V-Notch 데코레이션 및 'D' 표기 */
 .wafer-notch {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-secondary);
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 800;
+  font-size: 0.75rem;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.8), 0 0 0 2px rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* V-Notch 화살표 포인터 */
+.wafer-notch::after {
+  content: '';
   position: absolute;
   width: 0;
   height: 0;
   border-style: solid;
-  z-index: 15;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 /* 노치 상/하/좌/우 위치 매핑 */
 .wafer-notch.notch-bottom {
-  bottom: 5px;
-  border-width: 15px 12px 0 12px;
+  bottom: 2px;
+}
+.wafer-notch.notch-bottom::after {
+  bottom: -6px;
+  border-width: 6px 5px 0 5px;
   border-color: var(--color-secondary) transparent transparent transparent;
 }
 .wafer-notch.notch-top {
-  top: 5px;
-  border-width: 0 12px 15px 12px;
+  top: 2px;
+}
+.wafer-notch.notch-top::after {
+  top: -6px;
+  border-width: 0 5px 6px 5px;
   border-color: transparent transparent var(--color-secondary) transparent;
 }
 .wafer-notch.notch-left {
-  left: 5px;
-  border-width: 12px 15px 12px 0;
+  left: 2px;
+}
+.wafer-notch.notch-left::after {
+  left: -6px;
+  border-width: 5px 6px 5px 0;
   border-color: transparent var(--color-secondary) transparent transparent;
 }
 .wafer-notch.notch-right {
-  right: 5px;
-  border-width: 12px 0 12px 15px;
+  right: 2px;
+}
+.wafer-notch.notch-right::after {
+  right: -6px;
+  border-width: 5px 0 5px 6px;
   border-color: transparent transparent transparent var(--color-secondary);
 }
 
