@@ -9,6 +9,7 @@ import uuid
 import os
 import io
 import csv
+import time
 from fastapi import UploadFile, File, Body, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -3013,6 +3014,7 @@ if os.path.exists(client2_dist_path):
             file_name.startswith("admin") or
             file_name.startswith("map-editor") or
             file_name.startswith("map_editor") or
+            file_name.startswith("map-presets") or
             file_name.startswith("api")):
             raise HTTPException(status_code=404)
 

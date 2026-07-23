@@ -897,7 +897,7 @@ function updateOrientationUI() {
 async function fetchAndRenderPresets() {
   if (!el.presetSelect) return;
   try {
-    const res = await fetch(`${API_BASE}/map-presets`);
+    const res = await fetch(`${API_BASE}/api/map-presets`);
     if (res.ok) {
       const data = await res.json();
       serverPresets = data.presets || {};
@@ -1022,7 +1022,7 @@ async function saveCustomPreset() {
   };
 
   try {
-    const res = await fetch(`${API_BASE}/map-presets`, {
+    const res = await fetch(`${API_BASE}/api/map-presets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1057,7 +1057,7 @@ async function deleteCustomPreset() {
   if (!confirm(`Are you sure you want to delete custom preset '${preset.name}' from server?`)) return;
 
   try {
-    const res = await fetch(`${API_BASE}/map-presets/${val}`, {
+    const res = await fetch(`${API_BASE}/api/map-presets/${val}`, {
       method: 'DELETE'
     });
 

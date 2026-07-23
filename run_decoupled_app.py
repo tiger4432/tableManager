@@ -55,9 +55,17 @@ def main():
         ])
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
-    # Wait for web server to initialize
-    log_launcher("Waiting for server to initialize...")
-    time.sleep(2.0)
+    # Wait for web server to initialize fast via active health polling
+    log_launcher("Waiting for backend server readiness...")
+    import urllib.request
+    start_wait = time.time()
+    while time.time() - start_wait < 3.0:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8080/tables", timeout=0.3) as response:
+                if response.status == 200:
+                    break
+        except Exception:
+            time.sleep(0.1)
     
     # 2. Start File Ingestion Watcher
     watcher_cmd = [python_exe, "run_watcher.py"]
