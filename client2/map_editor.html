@@ -22,149 +22,152 @@
     </header>
 
     <main class="main-layout">
-      <!-- 좌측 패널: 메타데이터 검색 및 설정 -->
+      <!-- 좌측 패널: 기능별 4단계 맵 설정 및 메타데이터 검색 -->
       <aside class="history-sidebar glass-panel" style="width: 350px; min-width: 350px;">
         <div class="sidebar-header">
-          <h2>1. Map search</h2>
+          <h2>Map Configuration</h2>
         </div>
         <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 15px; padding: 15px; overflow-y: auto;">
-          <!-- 대상 테이블 선택 -->
-          <div class="control-group-vertical">
-            <label for="map-table-select">Target Table</label>
-            <select id="map-table-select" class="glass-input w-full"></select>
-          </div>
-
-          <!-- 동적 메타데이터 입력 영역 -->
-          <div id="metadata-fields-container" style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Javascript에 의해 동적 입력 필드들이 생성됩니다. -->
-          </div>
-
-          <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
-          <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold; justify-content: center; padding: 8px; margin: 4px 0 8px 0;">📂 Load Existing Map</button>
-
-          <!-- 격자 크기 및 시작 인덱스 -->
-          <div style="display: flex; gap: 10px;">
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="grid-cols">Width (Cols / X) (Calculated)</label>
-              <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
-            </div>
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="grid-rows">Height (Rows / Y) (Calculated)</label>
-              <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
-            </div>
-          </div>
-
-          <!-- X, Y 시작 좌표 설정 -->
-          <div style="display: flex; gap: 10px;">
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="grid-start-x">X Start</label>
-              <input type="number" id="grid-start-x" class="glass-input w-full" value="1" />
-            </div>
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="grid-start-y">Y Start</label>
-              <input type="number" id="grid-start-y" class="glass-input w-full" value="1" />
-            </div>
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 8px; margin: 5px 0;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <input type="checkbox" id="grid-y-invert" class="glass-checkbox" />
-              <label for="grid-y-invert" class="checkbox-label">Invert Y (Bottom-Up)</label>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <input type="checkbox" id="show-annotations" class="glass-checkbox" checked />
-              <label for="show-annotations" class="checkbox-label" style="color: var(--color-primary);">Show Cell Coordinates</label>
-            </div>
-          </div>
-
-          <!-- 물리적 웨이퍼 기하학 및 센터링 설정 -->
-          <hr style="border-color: var(--border-color); margin: 5px 0;">
-          <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary);">📏 Physical Wafer Geometry</h3>
           
-          <!-- Wafer Geometry Presets (Server maps.json) -->
-          <div class="control-group-vertical" style="border: 1px dashed rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 10px; background: rgba(168, 85, 247, 0.05); margin: 6px 0;">
-            <label for="preset-select" style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
-              <span>⚙️ Geometry Presets</span>
-              <div style="display: flex; gap: 4px;">
-                <button type="button" id="btn-save-preset" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);" title="Save current physical geometry to server maps.json">💾 Save</button>
-                <button type="button" id="btn-delete-preset" class="glass-page-btn hover-danger" style="padding: 2px 6px; font-size: 0.75rem; display: none;" title="Delete selected custom preset from server">🗑️</button>
+          <!-- 1. Map Search & Load -->
+          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
+              <span>🔍 1. Map Search & Load</span>
+            </h3>
+            <!-- 대상 테이블 선택 -->
+            <div class="control-group-vertical">
+              <label for="map-table-select">Target Table</label>
+              <select id="map-table-select" class="glass-input w-full"></select>
+            </div>
+            <!-- 동적 메타데이터 입력 영역 -->
+            <div id="metadata-fields-container" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Javascript에 의해 동적 입력 필드들이 생성됩니다. -->
+            </div>
+            <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
+            <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
+          </div>
+
+          <!-- 2. Physical Wafer Geometry -->
+          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
+              <span>📏 2. Physical Wafer Geometry</span>
+            </h3>
+            <!-- Wafer Geometry Presets (Server maps.json) -->
+            <div class="control-group-vertical" style="border: 1px dashed rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 10px; background: rgba(168, 85, 247, 0.05);">
+              <label for="preset-select" style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                <span>⚙️ Geometry Presets</span>
+                <div style="display: flex; gap: 4px;">
+                  <button type="button" id="btn-save-preset" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);" title="Save current physical geometry to server maps.json">💾 Save</button>
+                  <button type="button" id="btn-delete-preset" class="glass-page-btn hover-danger" style="padding: 2px 6px; font-size: 0.75rem; display: none;" title="Delete selected custom preset from server">🗑️</button>
+                </div>
+              </label>
+              <select id="preset-select" class="glass-input w-full" style="margin-top: 4px;">
+                <option value="">-- Select Preset --</option>
+              </select>
+            </div>
+            <div class="control-group-vertical">
+              <label for="phys-wafer-dia">Wafer Diameter (mm)</label>
+              <select id="phys-wafer-dia" class="glass-input w-full">
+                <option value="300" selected>300 mm (12")</option>
+                <option value="200">200 mm (8")</option>
+                <option value="150">150 mm (6")</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="phys-chip-x">Chip X (mm)</label>
+                <input type="number" id="phys-chip-x" class="glass-input w-full" step="0.1" value="2.5" />
               </div>
-            </label>
-            <select id="preset-select" class="glass-input w-full" style="margin-top: 4px;">
-              <option value="">-- Select Preset --</option>
-            </select>
-          </div>
-
-          <div class="control-group-vertical">
-            <label for="phys-wafer-dia">Wafer Diameter (mm)</label>
-            <select id="phys-wafer-dia" class="glass-input w-full">
-              <option value="300" selected>300 mm (12")</option>
-              <option value="200">200 mm (8")</option>
-              <option value="150">150 mm (6")</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-
-          <div style="display: flex; gap: 8px;">
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="phys-chip-x">Chip X (mm)</label>
-              <input type="number" id="phys-chip-x" class="glass-input w-full" step="0.1" value="2.5" />
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="phys-chip-y">Chip Y (mm)</label>
+                <input type="number" id="phys-chip-y" class="glass-input w-full" step="0.1" value="2.5" />
+              </div>
             </div>
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="phys-chip-y">Chip Y (mm)</label>
-              <input type="number" id="phys-chip-y" class="glass-input w-full" step="0.1" value="2.5" />
+            <div style="display: flex; gap: 8px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="phys-offset-x">Offset X (mm)</label>
+                <input type="number" id="phys-offset-x" class="glass-input w-full" step="0.1" value="0.0" />
+              </div>
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="phys-offset-y">Offset Y (mm)</label>
+                <input type="number" id="phys-offset-y" class="glass-input w-full" step="0.1" value="0.0" />
+              </div>
+            </div>
+            <div class="control-group-vertical">
+              <label for="phys-edge-margin">Edge Exclusion (mm)</label>
+              <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
+            </div>
+            <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡ Apply Physical Geometry</button>
+          </div>
+
+          <!-- 3. Grid & Orientation Settings -->
+          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-secondary); display: flex; align-items: center; gap: 6px;">
+              <span>🧩 3. Grid & Orientation Settings</span>
+            </h3>
+            <!-- 격자 크기 (Calculated) -->
+            <div style="display: flex; gap: 10px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-cols">Width (Cols / X)</label>
+                <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
+              </div>
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-rows">Height (Rows / Y)</label>
+                <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
+              </div>
+            </div>
+            <!-- X, Y 시작 좌표 설정 -->
+            <div style="display: flex; gap: 10px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-start-x">X Start</label>
+                <input type="number" id="grid-start-x" class="glass-input w-full" value="1" />
+              </div>
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-start-y">Y Start</label>
+                <input type="number" id="grid-start-y" class="glass-input w-full" value="1" />
+              </div>
+            </div>
+            <!-- 회전 설정 -->
+            <div class="control-group-vertical">
+              <label>Map Rotation (회전)</label>
+              <div style="display: flex; gap: 5px;">
+                <button type="button" class="glass-btn btn-rot active" data-rot="0" style="flex: 1; padding: 4px; justify-content: center;">0°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="90" style="flex: 1; padding: 4px; justify-content: center;">90°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="180" style="flex: 1; padding: 4px; justify-content: center;">180°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="270" style="flex: 1; padding: 4px; justify-content: center;">270°</button>
+              </div>
+            </div>
+            <!-- 관찰면 설정 -->
+            <div class="control-group-vertical">
+              <label>Wafer Side (앞/뒷면 반전)</label>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+                  <input type="radio" name="wafer-side" value="front" checked style="accent-color: var(--color-primary);" />
+                  Front (앞면 / 노치 우측 편향)
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+                  <input type="radio" name="wafer-side" value="back" style="accent-color: var(--color-primary);" />
+                  Back (뒷면 / 노치 좌측 편향)
+                </label>
+              </div>
+            </div>
+            <!-- 옵션 체크박스 -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="grid-y-invert" class="glass-checkbox" />
+                <label for="grid-y-invert" class="checkbox-label">Invert Y (Bottom-Up)</label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="show-annotations" class="glass-checkbox" checked />
+                <label for="show-annotations" class="checkbox-label" style="color: var(--color-primary);">Show Cell Coordinates</label>
+              </div>
             </div>
           </div>
 
-          <div style="display: flex; gap: 8px;">
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="phys-offset-x">Offset X (mm)</label>
-              <input type="number" id="phys-offset-x" class="glass-input w-full" step="0.1" value="0.0" />
-            </div>
-            <div class="control-group-vertical" style="flex: 1;">
-              <label for="phys-offset-y">Offset Y (mm)</label>
-              <input type="number" id="phys-offset-y" class="glass-input w-full" step="0.1" value="0.0" />
-            </div>
-          </div>
-
-          <div class="control-group-vertical">
-            <label for="phys-edge-margin">Edge Exclusion (mm)</label>
-            <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
-          </div>
-
-          <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); padding: 5px; font-weight: bold; width: 100%; justify-content: center; margin-top: 4px;">⚡ Apply Physical Geometry</button>
-
-          <!-- 웨이퍼 노치/회전 설정 -->
-          <hr style="border-color: var(--border-color); margin: 5px 0;">
-          <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-secondary);">Wafer Orientation</h3>
-          
-          <div class="control-group-vertical">
-            <label>Map Rotation (회전)</label>
-            <div style="display: flex; gap: 5px;">
-              <button type="button" class="glass-btn btn-rot active" data-rot="0" style="flex: 1; padding: 4px; justify-content: center;">0°</button>
-              <button type="button" class="glass-btn btn-rot" data-rot="90" style="flex: 1; padding: 4px; justify-content: center;">90°</button>
-              <button type="button" class="glass-btn btn-rot" data-rot="180" style="flex: 1; padding: 4px; justify-content: center;">180°</button>
-              <button type="button" class="glass-btn btn-rot" data-rot="270" style="flex: 1; padding: 4px; justify-content: center;">270°</button>
-            </div>
-          </div>
-
-          <div class="control-group-vertical">
-            <label>Wafer Side (앞/뒷면 반전)</label>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
-                <input type="radio" name="wafer-side" value="front" checked style="accent-color: var(--color-primary);" />
-                Front (앞면 / 노치 우측 편향)
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
-                <input type="radio" name="wafer-side" value="back" style="accent-color: var(--color-primary);" />
-                Back (뒷면 / 노치 좌측 편향)
-              </label>
-            </div>
-          </div>
-
-          <!-- 상세 컬럼 매핑 설정 -->
+          <!-- 4. Advanced Column Mapping -->
           <details class="glass-details">
-            <summary>Advanced Column Mapping</summary>
+            <summary>⚙️ 4. Advanced Column Mapping</summary>
             <div style="padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
               <div class="control-group-vertical">
                 <label for="col-map-x">X Column</label>
