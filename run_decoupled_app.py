@@ -46,7 +46,13 @@ def main():
     server_env = {"DECOUPLED": "True"}
     server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", "8080"]
     if "--reload" in sys.argv:
-        server_cmd.extend(["--reload", "--reload-dir", server_dir])
+        server_cmd.extend([
+            "--reload",
+            "--reload-dir", server_dir,
+            "--reload-exclude", "*.log",
+            "--reload-exclude", "*.db",
+            "--reload-exclude", "*.csv"
+        ])
     spawn_process("Backend FastAPI Server", server_cmd, server_dir, env=server_env)
     
     # Wait for web server to initialize
@@ -106,8 +112,24 @@ def main():
         print("=" * 60)
         sys.exit(0)
 
+    is_reloading_mode = "--reload" in sys.argv
+    last_sigint_time = [0.0]
+
+    def handle_signal(signum, frame):
+        now = time.time()
+        # If in reload mode and signal is SIGINT (Signal 2 from WatchFiles)
+        if is_reloading_mode and signum == signal.SIGINT:
+            all_alive = all(proc.poll() is None for name, proc in processes)
+            # Ignore WatchFiles reload SIGINT signal unless Ctrl+C pressed twice within 1.5s
+            if all_alive and (now - last_sigint_time[0] > 1.5):
+                last_sigint_time[0] = now
+                log_launcher("uvicorn WatchFiles hot-reload detected. Server is reloading... (Press Ctrl+C twice to force stop)", level="INFO")
+                return
+
+        shutdown_all(signum, frame)
+
     # Register signal handler for Ctrl+C (SIGINT) and SIGTERM
-    signal.signal(signal.SIGINT, shutdown_all)
+    signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, shutdown_all)
     
     try:

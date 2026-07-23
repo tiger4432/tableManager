@@ -86,6 +86,7 @@ function initDOMElements() {
   
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
+  el.btnDeletePreset = document.getElementById('btn-delete-preset');
   
   el.btnSelectMenu = document.getElementById('btn-select-menu');
   el.selectMenuDropdown = document.getElementById('select-menu-dropdown');
@@ -149,7 +150,10 @@ function initDOMElements() {
   if (el.btnSavePreset) {
     el.btnSavePreset.addEventListener('click', saveCustomPreset);
   }
-  renderPresetDropdown();
+  if (el.btnDeletePreset) {
+    el.btnDeletePreset.addEventListener('click', deleteCustomPreset);
+  }
+  fetchAndRenderPresets();
   
   const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert, el.showAnnotations];
   inputsToRedraw.forEach(input => {
@@ -873,12 +877,7 @@ function applyPhysicalGeometry() {
 // ----------------------------------------------------
 // Value Counts & Preset Functions
 // ----------------------------------------------------
-const BUILTIN_PRESETS = {
-  std_10: { name: "Std 10x10 (0°, Front)", cols: 10, rows: 10, startX: 0, startY: 0, rot: 0, side: "front", invertY: false },
-  prod_a: { name: "Product A (30x30, 90°, Back)", cols: 30, rows: 30, startX: 0, startY: 0, rot: 90, side: "back", invertY: false },
-  prod_b: { name: "Product B (50x50, 180°, Front)", cols: 50, rows: 50, startX: 0, startY: 0, rot: 180, side: "front", invertY: false },
-  prod_c: { name: "Product C (60x60, 270°, Back)", cols: 60, rows: 60, startX: 0, startY: 0, rot: 270, side: "back", invertY: false }
-};
+let serverPresets = {};
 
 function updateOrientationUI() {
   document.querySelectorAll('.btn-rot').forEach(btn => {
@@ -899,28 +898,54 @@ function updateOrientationUI() {
   });
 }
 
+async function fetchAndRenderPresets() {
+  if (!el.presetSelect) return;
+  try {
+    const res = await fetch(`${API_BASE}/map-presets`);
+    if (res.ok) {
+      const data = await res.json();
+      serverPresets = data.presets || {};
+      renderPresetDropdown();
+    }
+  } catch (err) {
+    console.error('[Map Presets] Failed to fetch map presets:', err);
+  }
+}
+
 function renderPresetDropdown() {
   if (!el.presetSelect) return;
-  el.presetSelect.innerHTML = '<option value="">-- Select Preset --</option>';
+  el.presetSelect.innerHTML = '<option value="">-- Select Geometry Preset --</option>';
 
-  const optGroupBuiltin = document.createElement('optgroup');
-  optGroupBuiltin.label = 'Built-in Presets';
-  Object.entries(BUILTIN_PRESETS).forEach(([k, p]) => {
-    const opt = document.createElement('option');
-    opt.value = k;
-    opt.textContent = p.name;
-    optGroupBuiltin.appendChild(opt);
+  const builtins = [];
+  const customs = [];
+
+  Object.entries(serverPresets).forEach(([key, p]) => {
+    if (p.is_custom) {
+      customs.push({ key, ...p });
+    } else {
+      builtins.push({ key, ...p });
+    }
   });
-  el.presetSelect.appendChild(optGroupBuiltin);
 
-  const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
-  if (Object.keys(customPresets).length > 0) {
-    const optGroupCustom = document.createElement('optgroup');
-    optGroupCustom.label = 'Custom Presets';
-    Object.entries(customPresets).forEach(([k, p]) => {
+  if (builtins.length > 0) {
+    const optGroupBuiltin = document.createElement('optgroup');
+    optGroupBuiltin.label = 'Built-in Geometry Presets';
+    builtins.forEach(p => {
       const opt = document.createElement('option');
-      opt.value = k;
+      opt.value = p.key;
       opt.textContent = p.name;
+      optGroupBuiltin.appendChild(opt);
+    });
+    el.presetSelect.appendChild(optGroupBuiltin);
+  }
+
+  if (customs.length > 0) {
+    const optGroupCustom = document.createElement('optgroup');
+    optGroupCustom.label = 'Custom Geometry Presets';
+    customs.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.key;
+      opt.textContent = `⭐ ${p.name}`;
       optGroupCustom.appendChild(opt);
     });
     el.presetSelect.appendChild(optGroupCustom);
@@ -930,66 +955,104 @@ function renderPresetDropdown() {
 function loadSelectedPreset() {
   if (!el.presetSelect) return;
   const val = el.presetSelect.value;
-  if (!val) return;
-
-  let preset = BUILTIN_PRESETS[val];
-  if (!preset) {
-    const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
-    preset = customPresets[val];
+  if (!val) {
+    if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
+    return;
   }
 
+  const preset = serverPresets[val];
   if (preset) {
-    el.gridCols.value = preset.cols;
-    el.gridRows.value = preset.rows;
-    el.gridStartX.value = preset.startX;
-    el.gridStartY.value = preset.startY;
-    el.gridYInvert.checked = preset.invertY;
-    currentRotation = preset.rot;
-    currentSide = preset.side;
+    if (preset.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = preset.phys_wafer_dia;
+    if (preset.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = preset.phys_chip_x;
+    if (preset.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = preset.phys_chip_y;
+    if (preset.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = preset.phys_offset_x;
+    if (preset.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = preset.phys_offset_y;
+    if (preset.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.phys_edge_margin;
 
-    if (preset.physWaferDia !== undefined && el.physWaferDia) el.physWaferDia.value = preset.physWaferDia;
-    if (preset.physChipX !== undefined && el.physChipX) el.physChipX.value = preset.physChipX;
-    if (preset.physChipY !== undefined && el.physChipY) el.physChipY.value = preset.physChipY;
-    if (preset.physOffsetX !== undefined && el.physOffsetX) el.physOffsetX.value = preset.physOffsetX;
-    if (preset.physOffsetY !== undefined && el.physOffsetY) el.physOffsetY.value = preset.physOffsetY;
-    if (preset.physEdgeMargin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.physEdgeMargin;
+    if (preset.rotation !== undefined) currentRotation = preset.rotation;
+    if (preset.side !== undefined) currentSide = preset.side;
+
+    if (preset.is_custom) {
+      if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'inline-block';
+    } else {
+      if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
+    }
 
     boundingBoxCache = {};
-
     updateOrientationUI();
-    renderGridCanvas();
+    applyPhysicalGeometry();
+    scheduleRenderGridCanvas();
     updateLegendCounts();
   }
 }
 
-function saveCustomPreset() {
-  const presetName = prompt('Enter custom preset name:', `Product Preset ${new Date().toLocaleDateString()}`);
+async function saveCustomPreset() {
+  const presetName = prompt('Enter custom geometry preset name:', `Geometry Preset ${new Date().toLocaleDateString()}`);
   if (!presetName) return;
 
-  const key = `custom_${Date.now()}`;
-  const newPreset = {
+  const payload = {
     name: presetName,
-    cols: parseInt(el.gridCols.value, 10) || 10,
-    rows: parseInt(el.gridRows.value, 10) || 10,
-    startX: parseInt(el.gridStartX.value, 10) || 0,
-    startY: parseInt(el.gridStartY.value, 10) || 0,
-    rot: currentRotation,
-    side: currentSide,
-    invertY: el.gridYInvert.checked,
-    physWaferDia: el.physWaferDia ? parseFloat(el.physWaferDia.value) || 300 : 300,
-    physChipX: el.physChipX ? parseFloat(el.physChipX.value) || 2.5 : 2.5,
-    physChipY: el.physChipY ? parseFloat(el.physChipY.value) || 2.5 : 2.5,
-    physOffsetX: el.physOffsetX ? parseFloat(el.physOffsetX.value) || 0.0 : 0.0,
-    physOffsetY: el.physOffsetY ? parseFloat(el.physOffsetY.value) || 0.0 : 0.0,
-    physEdgeMargin: el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) || 3.0 : 3.0
+    phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
+    phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
+    phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
+    phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
+    phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
+    phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0,
+    rotation: currentRotation,
+    side: currentSide
   };
 
-  const customPresets = JSON.parse(localStorage.getItem('map_editor_custom_presets') || '{}');
-  customPresets[key] = newPreset;
-  localStorage.setItem('map_editor_custom_presets', JSON.stringify(customPresets));
+  try {
+    const res = await fetch(`${API_BASE}/map-presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-  renderPresetDropdown();
-  el.presetSelect.value = key;
+    if (res.ok) {
+      const data = await res.json();
+      await fetchAndRenderPresets();
+      if (el.presetSelect && data.preset_key) {
+        el.presetSelect.value = data.preset_key;
+        loadSelectedPreset();
+      }
+      alert(`Custom geometry preset '${presetName}' saved to server!`);
+    } else {
+      alert('Failed to save custom geometry preset to server.');
+    }
+  } catch (err) {
+    console.error('[Map Presets] Error saving preset:', err);
+    alert('Error saving custom preset to server.');
+  }
+}
+
+async function deleteCustomPreset() {
+  if (!el.presetSelect) return;
+  const val = el.presetSelect.value;
+  if (!val) return;
+
+  const preset = serverPresets[val];
+  if (!preset || !preset.is_custom) return;
+
+  if (!confirm(`Are you sure you want to delete custom preset '${preset.name}' from server?`)) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/map-presets/${val}`, {
+      method: 'DELETE'
+    });
+
+    if (res.ok) {
+      await fetchAndRenderPresets();
+      el.presetSelect.value = '';
+      if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
+      alert(`Preset '${preset.name}' deleted successfully.`);
+    } else {
+      alert('Failed to delete preset from server.');
+    }
+  } catch (err) {
+    console.error('[Map Presets] Error deleting preset:', err);
+    alert('Error deleting preset from server.');
+  }
 }
 
 function updateLegendCounts() {

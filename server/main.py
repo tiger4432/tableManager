@@ -2304,6 +2304,92 @@ def reload_system_configs(db: Session = Depends(get_db)):
         
     return {"status": "success", "message": "System configurations and custom scripts modules successfully reloaded."}
 
+# -----------------------------------------------------------------------------
+# Map Geometry & Offset Presets Endpoints (server/config/maps.json)
+# -----------------------------------------------------------------------------
+MAPS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "maps.json")
+
+def load_maps_config() -> dict:
+    if os.path.exists(MAPS_CONFIG_PATH):
+        try:
+            with open(MAPS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Maps Config] Error loading maps.json: {e}")
+    return {"presets": {}}
+
+def save_maps_config(data: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(MAPS_CONFIG_PATH), exist_ok=True)
+        with open(MAPS_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"[Maps Config] Error saving maps.json: {e}")
+        return False
+
+class MapPresetItem(BaseModel):
+    preset_key: Optional[str] = None
+    name: str
+    phys_wafer_dia: float = 300.0
+    phys_chip_x: float = 2.5
+    phys_chip_y: float = 2.5
+    phys_offset_x: float = 0.0
+    phys_offset_y: float = 0.0
+    phys_edge_margin: float = 3.0
+    rotation: int = 0
+    side: str = "front"
+
+@app.get("/api/map-presets")
+def get_map_presets():
+    """서버 config/maps.json에 저장된 웨이퍼 물리 규격 및 오프셋 프리셋 목록을 반환합니다."""
+    config_data = load_maps_config()
+    return {"status": "success", "presets": config_data.get("presets", {})}
+
+@app.post("/api/map-presets")
+def save_map_preset(item: MapPresetItem):
+    """웨이퍼 물리 규격 커스텀 프리셋을 server/config/maps.json에 영속화합니다."""
+    config_data = load_maps_config()
+    presets = config_data.get("presets", {})
+    
+    key = item.preset_key or f"custom_{int(time.time() * 1000)}"
+    preset_entry = {
+        "name": item.name,
+        "phys_wafer_dia": item.phys_wafer_dia,
+        "phys_chip_x": item.phys_chip_x,
+        "phys_chip_y": item.phys_chip_y,
+        "phys_offset_x": item.phys_offset_x,
+        "phys_offset_y": item.phys_offset_y,
+        "phys_edge_margin": item.phys_edge_margin,
+        "rotation": item.rotation,
+        "side": item.side,
+        "is_custom": True
+    }
+    presets[key] = preset_entry
+    config_data["presets"] = presets
+    
+    if not save_maps_config(config_data):
+        raise HTTPException(status_code=500, detail="Failed to save map preset to server config.")
+        
+    return {"status": "success", "preset_key": key, "preset": preset_entry}
+
+@app.delete("/api/map-presets/{preset_key}")
+def delete_map_preset(preset_key: str):
+    """server/config/maps.json에서 커스텀 프리셋을 삭제합니다."""
+    config_data = load_maps_config()
+    presets = config_data.get("presets", {})
+    
+    if preset_key not in presets:
+        raise HTTPException(status_code=404, detail=f"Preset '{preset_key}' not found.")
+        
+    del presets[preset_key]
+    config_data["presets"] = presets
+    
+    if not save_maps_config(config_data):
+        raise HTTPException(status_code=500, detail="Failed to update maps.json on deletion.")
+        
+    return {"status": "success", "message": f"Preset '{preset_key}' deleted successfully."}
+
 @app.get("/admin/file-ingestion/workspaces")
 def get_ingestion_workspaces():
     """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""

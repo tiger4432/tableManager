@@ -1,3 +1,5 @@
+import time
+
 def test_get_tables_data(client):
     response = client.get("/tables/raw_table_1/data?skip=0&limit=10")
     assert response.status_code == 200
@@ -604,6 +606,52 @@ def test_dynamic_schema_hot_reloading(db_session):
     inspector = inspect(test_engine)
     db_cols = {c["name"] for c in inspector.get_columns(table_name)}
     assert "hot_reloaded_col" in db_cols
+
+
+def test_map_presets_api(client):
+    # 1. Test GET /api/map-presets
+    get_res = client.get("/api/map-presets")
+    assert get_res.status_code == 200
+    res_data = get_res.json()
+    assert res_data["status"] == "success"
+    assert "presets" in res_data
+    assert "std_300_12x13" in res_data["presets"]
+
+    # 2. Test POST /api/map-presets (Save custom preset)
+    custom_key = f"pytest_custom_{int(time.time())}"
+    payload = {
+        "preset_key": custom_key,
+        "name": "Pytest Custom Spec",
+        "phys_wafer_dia": 300,
+        "phys_chip_x": 8.5,
+        "phys_chip_y": 9.5,
+        "phys_offset_x": 1.0,
+        "phys_offset_y": -1.0,
+        "phys_edge_margin": 3.0,
+        "rotation": 90,
+        "side": "front"
+    }
+    post_res = client.post("/api/map-presets", json=payload)
+    assert post_res.status_code == 200
+    post_data = post_res.json()
+    assert post_data["status"] == "success"
+    assert post_data["preset_key"] == custom_key
+
+    # Verify preset was saved
+    verify_res = client.get("/api/map-presets")
+    presets = verify_res.json()["presets"]
+    assert custom_key in presets
+    assert presets[custom_key]["phys_chip_x"] == 8.5
+
+    # 3. Test DELETE /api/map-presets/{preset_key}
+    del_res = client.delete(f"/api/map-presets/{custom_key}")
+    assert del_res.status_code == 200
+    assert del_res.json()["status"] == "success"
+
+    # Verify preset was deleted
+    after_del_res = client.get("/api/map-presets")
+    assert custom_key not in after_del_res.json()["presets"]
+
 
 
 
