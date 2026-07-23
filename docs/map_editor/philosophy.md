@@ -1,4 +1,4 @@
-# wafer_map_philosophy.md - 격자 맵 에디터 좌표계 설계 철학 (Wafer Map Coordinate System Philosophy)
+# 🗺️ Wafer Map Coordinate System Philosophy (`philosophy.md`)
 
 본 문서는 `assyManager` 프로젝트에 구축된 격자 맵 에디터(Grid Map Editor)의 **물리적 공간 표현(Physical Layout)**과 **화면 기준 좌표 매핑(Screen Visual Coordinates)** 설계 철학을 기록합니다. 
 
