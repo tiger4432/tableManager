@@ -938,21 +938,30 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             sample_item = batch.updates[0]
             config = TABLE_CONFIG.get(table_name, {})
             col_types = config.get("column_types", {})
-            skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata"}
+            map_key_cols = config.get("map_key_columns", [])
             
             meta_conditions = []
             meta_dict_log = {}
             col_types_lower = {k.lower(): k for k in col_types.keys()}
             
-            for c_name, c_val in sample_item.updates.items():
-                if c_name.lower() in skip_cols:
+            # Unconditionally restrict filter columns strictly to map_key_columns
+            if map_key_cols and isinstance(map_key_cols, list) and len(map_key_cols) > 0:
+                target_cols = [c for c in map_key_cols]
+            else:
+                skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata", "leg"}
+                target_cols = [c for c in col_types.keys() if c.lower() not in skip_cols]
+
+            for target_col in target_cols:
+                real_col_name = col_types_lower.get(target_col.lower())
+                if not real_col_name:
                     continue
-                real_col_name = col_types_lower.get(c_name.lower())
-                if real_col_name and c_val is not None and str(c_val).strip() != "":
-                    attr = getattr(table_model, real_col_name, None)
-                    if attr is not None:
-                        meta_conditions.append(attr == c_val)
-                        meta_dict_log[real_col_name] = c_val
+                for c_name, c_val in sample_item.updates.items():
+                    if c_name.lower() == real_col_name.lower() and c_val is not None and str(c_val).strip() != "":
+                        attr = getattr(table_model, real_col_name, None)
+                        if attr is not None:
+                            meta_conditions.append(attr == c_val)
+                            meta_dict_log[real_col_name] = c_val
+                        break
             
             if meta_conditions:
                 from sqlalchemy import and_
