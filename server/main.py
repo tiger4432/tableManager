@@ -2340,12 +2340,14 @@ class MapPresetItem(BaseModel):
     rotation: int = 0
     side: str = "front"
 
+@app.get("/map-presets")
 @app.get("/api/map-presets")
 def get_map_presets():
     """서버 config/maps.json에 저장된 웨이퍼 물리 규격 및 오프셋 프리셋 목록을 반환합니다."""
     config_data = load_maps_config()
     return {"status": "success", "presets": config_data.get("presets", {})}
 
+@app.post("/map-presets")
 @app.post("/api/map-presets")
 def save_map_preset(item: MapPresetItem):
     """웨이퍼 물리 규격 커스텀 프리셋을 server/config/maps.json에 영속화합니다."""
@@ -2373,6 +2375,7 @@ def save_map_preset(item: MapPresetItem):
         
     return {"status": "success", "preset_key": key, "preset": preset_entry}
 
+@app.delete("/map-presets/{preset_key}")
 @app.delete("/api/map-presets/{preset_key}")
 def delete_map_preset(preset_key: str):
     """server/config/maps.json에서 커스텀 프리셋을 삭제합니다."""

@@ -690,7 +690,6 @@ function getWaferBoundingBox(rotation, side) {
 
   const key = `${rotation}_${side}_${visualCols}_${visualRows}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
   if (boundingBoxCache[key]) {
-    console.log(`[getWaferBoundingBox DEBUG Cache Hit] key="${key}" =>`, boundingBoxCache[key]);
     return boundingBoxCache[key];
   }
 
@@ -720,9 +719,6 @@ function getWaferBoundingBox(rotation, side) {
     minR: minR === 9999 ? 0 : minR,
     maxR: maxR === -9999 ? 0 : maxR
   };
-
-  console.log(`[getWaferBoundingBox DEBUG Computation] rot=${rotation}, side=${side}, visualGrid=${visualCols}x${visualRows}, physChip=${physConfig.chipX}x${physConfig.chipY}, effRad=${physConfig.effectiveRadius}`);
-  console.log(`[getWaferBoundingBox DEBUG Result] insideCells=${insideCount}/${visualCols * visualRows}, box=`, box);
 
   boundingBoxCache[key] = box;
   return box;
@@ -962,7 +958,21 @@ function loadSelectedPreset() {
 
   const preset = serverPresets[val];
   if (preset) {
-    if (preset.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = preset.phys_wafer_dia;
+    if (preset.phys_wafer_dia !== undefined && el.physWaferDia) {
+      const diaStr = String(preset.phys_wafer_dia);
+      if (['300', '200', '150'].includes(diaStr)) {
+        el.physWaferDia.value = diaStr;
+      } else {
+        let opt = el.physWaferDia.querySelector(`option[value="${diaStr}"]`);
+        if (!opt) {
+          opt = document.createElement('option');
+          opt.value = diaStr;
+          opt.textContent = `${diaStr} mm (Custom)`;
+          el.physWaferDia.appendChild(opt);
+        }
+        el.physWaferDia.value = diaStr;
+      }
+    }
     if (preset.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = preset.phys_chip_x;
     if (preset.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = preset.phys_chip_y;
     if (preset.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = preset.phys_offset_x;
@@ -990,9 +1000,18 @@ async function saveCustomPreset() {
   const presetName = prompt('Enter custom geometry preset name:', `Geometry Preset ${new Date().toLocaleDateString()}`);
   if (!presetName) return;
 
+  let diaVal = 300;
+  if (el.physWaferDia) {
+    if (el.physWaferDia.value === 'custom') {
+      diaVal = parseFloat(prompt('Enter custom wafer diameter (mm):', '300')) || 300;
+    } else {
+      diaVal = parseFloat(el.physWaferDia.value) || 300;
+    }
+  }
+
   const payload = {
     name: presetName,
-    phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
+    phys_wafer_dia: diaVal,
     phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
     phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
     phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
@@ -1018,11 +1037,12 @@ async function saveCustomPreset() {
       }
       alert(`Custom geometry preset '${presetName}' saved to server!`);
     } else {
-      alert('Failed to save custom geometry preset to server.');
+      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+      alert(`Failed to save custom geometry preset: ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error saving preset:', err);
-    alert('Error saving custom preset to server.');
+    alert(`Error saving custom preset to server: ${err.message}`);
   }
 }
 
@@ -1047,11 +1067,12 @@ async function deleteCustomPreset() {
       if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
       alert(`Preset '${preset.name}' deleted successfully.`);
     } else {
-      alert('Failed to delete preset from server.');
+      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+      alert(`Failed to delete preset from server: ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error deleting preset:', err);
-    alert('Error deleting preset from server.');
+    alert(`Error deleting preset from server: ${err.message}`);
   }
 }
 
@@ -1327,9 +1348,6 @@ function renderGridCanvas() {
 
   updateNotchPosition();
   updateLegendCounts();
-
-  const tEnd = performance.now();
-  console.log(`[PERF DEBUG] Canvas renderGridCanvas completed in ${(tEnd - tStart).toFixed(2)} ms (${visualCols}x${visualRows} = ${visualCols * visualRows} cells)`);
 }
 
 function handleCellClick(cell, event) {
