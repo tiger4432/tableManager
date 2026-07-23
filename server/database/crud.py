@@ -20,7 +20,10 @@ import uuid
 import uuid6
 import json
 import os
+import logging
 from datetime import datetime
+
+logger = logging.getLogger("Server")
 
 class LightCellSource:
     __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
@@ -938,6 +941,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata"}
             
             meta_conditions = []
+            meta_dict_log = {}
             col_types_lower = {k.lower(): k for k in col_types.keys()}
             
             for c_name, c_val in sample_item.updates.items():
@@ -948,6 +952,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     attr = getattr(table_model, real_col_name, None)
                     if attr is not None:
                         meta_conditions.append(attr == c_val)
+                        meta_dict_log[real_col_name] = c_val
             
             if meta_conditions:
                 from sqlalchemy import and_
@@ -972,6 +977,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     ).delete(synchronize_session=False)
                     
                     db.flush()
+                
+                logger.info(
+                    f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
+                    f"Filters: {meta_dict_log} | Purged Old Rows: {len(deleted_row_ids)} | "
+                    f"Incoming Active Cells: {len(batch.updates)}"
+                )
 
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(
