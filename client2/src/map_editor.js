@@ -1495,39 +1495,34 @@ function updateNotchPosition() {
   el.gridNotch.style.bottom = '';
   el.gridNotch.style.transform = '';
 
+  const dx = (currentSide === 'front') ? 1 : -1;
+  let screenDx = 0;
+  let screenDy = 0;
+
+  if (currentRotation === 0) { screenDx = dx; screenDy = 0; }
+  else if (currentRotation === 90) { screenDx = 0; screenDy = dx; }
+  else if (currentRotation === 180) { screenDx = -dx; screenDy = 0; }
+  else if (currentRotation === 270) { screenDx = 0; screenDy = -dx; }
+
   if (currentRotation === 0) { // Bottom
     el.gridNotch.style.bottom = '2px';
-    if (currentSide === 'front') {
-      // FRONT면 하단 살짝 오른쪽 (+24px)
-      el.gridNotch.style.left = `calc(50% + ${offset}px)`;
-    } else {
-      // BACK이면 하단 살짝 왼쪽 (-24px)
-      el.gridNotch.style.left = `calc(50% - ${offset}px)`;
-    }
+    const shift = screenDx * offset;
+    el.gridNotch.style.left = `calc(50% + ${shift}px)`;
     el.gridNotch.style.transform = 'translateX(-50%)';
   } else if (currentRotation === 180) { // Top
     el.gridNotch.style.top = '2px';
-    if (currentSide === 'front') {
-      el.gridNotch.style.left = `calc(50% + ${offset}px)`;
-    } else {
-      el.gridNotch.style.left = `calc(50% - ${offset}px)`;
-    }
+    const shift = screenDx * offset;
+    el.gridNotch.style.left = `calc(50% + ${shift}px)`;
     el.gridNotch.style.transform = 'translateX(-50%)';
   } else if (currentRotation === 90) { // Left
     el.gridNotch.style.left = '2px';
-    if (currentSide === 'front') {
-      el.gridNotch.style.top = `calc(50% - ${offset}px)`;
-    } else {
-      el.gridNotch.style.top = `calc(50% + ${offset}px)`;
-    }
+    const shift = screenDy * offset;
+    el.gridNotch.style.top = `calc(50% + ${shift}px)`;
     el.gridNotch.style.transform = 'translateY(-50%)';
   } else if (currentRotation === 270) { // Right
     el.gridNotch.style.right = '2px';
-    if (currentSide === 'front') {
-      el.gridNotch.style.top = `calc(50% + ${offset}px)`;
-    } else {
-      el.gridNotch.style.top = `calc(50% - ${offset}px)`;
-    }
+    const shift = screenDy * offset;
+    el.gridNotch.style.top = `calc(50% + ${shift}px)`;
     el.gridNotch.style.transform = 'translateY(-50%)';
   }
 }
@@ -2528,8 +2523,37 @@ async function copyGridToExcel() {
 
   const box = getWaferBoundingBox(currentRotation, currentSide);
   const centerC = Math.floor((box.minC + box.maxC) / 2);
-  const notchR = box.maxR + 1;
-  const notchC = (currentSide === 'front') ? (centerC + 1) : (centerC - 1);
+  const centerR = Math.floor((box.minR + box.maxR) / 2);
+
+  const dx = (currentSide === 'front') ? 1 : -1;
+  let screenDx = 0;
+  let screenDy = 0;
+
+  if (currentRotation === 0) { screenDx = dx; screenDy = 0; }
+  else if (currentRotation === 90) { screenDx = 0; screenDy = dx; }
+  else if (currentRotation === 180) { screenDx = -dx; screenDy = 0; }
+  else if (currentRotation === 270) { screenDx = 0; screenDy = -dx; }
+
+  let notchR = -1;
+  let notchC = -1;
+
+  if (currentRotation === 0) {
+    // Bottom Notch: 1 row below box.maxR
+    notchR = box.maxR + 1;
+    notchC = centerC + screenDx;
+  } else if (currentRotation === 180) {
+    // Top Notch: 1 row above box.minR
+    notchR = box.minR - 1;
+    notchC = centerC + screenDx;
+  } else if (currentRotation === 90) {
+    // Left Notch: 1 col left of box.minC
+    notchC = box.minC - 1;
+    notchR = centerR + screenDy;
+  } else if (currentRotation === 270) {
+    // Right Notch: 1 col right of box.maxC
+    notchC = box.maxC + 1;
+    notchR = centerR + screenDy;
+  }
 
   for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
