@@ -2538,17 +2538,18 @@ async function copyGridToExcel() {
 
         let style = 'width: 32px; height: 32px; font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle;';
         
-        // 1. Thick border formatting for valid wafer cells
+        // 1. Thick border & background color formatting for valid wafer cells
         if (isInside) {
           style += ' border: 2px solid #222222;';
+          if (bgColor && val !== '') {
+            const textColor = getContrastColor(bgColor);
+            style += ` background-color: ${bgColor}; color: ${textColor};`;
+          } else {
+            // NULL / Empty area inside valid wafer filled with #DAF2D0
+            style += ' background-color: #DAF2D0; color: #2e7d32;';
+          }
         } else {
           style += ' border: 1px dashed #d1d5db; background-color: #f8fafc; color: #cbd5e1;';
-        }
-
-        // 2. Background color & text color formatting for painted value cells
-        if (bgColor && val !== '') {
-          const textColor = getContrastColor(bgColor);
-          style += ` background-color: ${bgColor}; color: ${textColor};`;
         }
 
         html += `<td style="${style}">${val}</td>`;
