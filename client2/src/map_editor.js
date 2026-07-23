@@ -2120,26 +2120,23 @@ async function pushMapData() {
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert.checked;
 
-  // Serialize current grid metadata config if the table supports it
-  let gridMetaStr = null;
-  if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
-    const gridMeta = {
-      grid_cols: cols,
-      grid_rows: rows,
-      grid_start_x: startX,
-      grid_start_y: startY,
-      grid_y_invert: invertY,
-      rotation: currentRotation,
-      side: currentSide,
-      phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
-      phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
-      phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
-      phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
-      phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
-      phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
-    };
-    gridMetaStr = JSON.stringify(gridMeta);
-  }
+  // Always construct grid metadata object & JSON string for dedicated wafer_map_metadata table
+  const gridMeta = {
+    grid_cols: cols,
+    grid_rows: rows,
+    grid_start_x: startX,
+    grid_start_y: startY,
+    grid_y_invert: invertY,
+    rotation: currentRotation,
+    side: currentSide,
+    phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
+    phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
+    phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
+    phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
+    phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
+    phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
+  };
+  const gridMetaStr = JSON.stringify(gridMeta);
 
   const updates = [];
 
@@ -2169,7 +2166,7 @@ async function pushMapData() {
           ...metaValues
         };
 
-        if (gridMetaStr) {
+        if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
           rowUpdates['grid_metadata'] = gridMetaStr;
         }
 
@@ -2195,44 +2192,38 @@ async function pushMapData() {
   el.btnPushMap.textContent = '⚡ Pushing...';
   el.btnPushMap.disabled = true;
 
-  const mapIdStr = getMapIdFromMeta(metaValues);
+  const mapIdStr = getMapIdFromMeta(metaValues) || 'default_map';
 
   console.group('%c🚀 [Map Editor API] PUSH MAP DATA EXECUTED', 'color: #3b82f6; font-weight: bold; font-size: 13px;');
   console.log('📌 Target Table:', selectedTable);
   console.log('📌 Map ID:', mapIdStr);
   console.log('📌 Cell Update Count:', updates.length);
-  if (gridMetaStr) {
-    try {
-      console.log('📌 Grid Metadata Payload:', JSON.parse(gridMetaStr));
-    } catch (e) {}
-  }
+  console.log('📌 Grid Metadata Payload:', gridMeta);
 
-  // Push dedicated wafer_map_metadata record if map_id can be computed
-  if (mapIdStr && mapIdStr !== 'default_map' && gridMetaStr) {
-    try {
-      const metaPayload = {
-        updates: [{
-          business_key_val: `${selectedTable}_${mapIdStr}`,
-          updates: {
-            map_pk: `${selectedTable}_${mapIdStr}`,
-            target_table: selectedTable,
-            map_id: mapIdStr,
-            grid_metadata: gridMetaStr
-          },
-          source_name: 'user',
-          updated_by: CURRENT_USER
-        }]
-      };
-      console.log('📤 [API Request 1/2] Header Metadata:', `${API_BASE}/tables/wafer_map_metadata/data/updates`, metaPayload);
-      const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(metaPayload)
-      });
-      console.log('📥 [API Response 1/2] Status:', metaRes.status);
-    } catch (e) {
-      console.warn('[Map Editor] Dedicated wafer_map_metadata push skipped/warn:', e);
-    }
+  // Always push dedicated wafer_map_metadata record
+  try {
+    const metaPayload = {
+      updates: [{
+        business_key_val: `${selectedTable}_${mapIdStr}`,
+        updates: {
+          map_pk: `${selectedTable}_${mapIdStr}`,
+          target_table: selectedTable,
+          map_id: mapIdStr,
+          grid_metadata: gridMetaStr
+        },
+        source_name: 'user',
+        updated_by: CURRENT_USER
+      }]
+    };
+    console.log('📤 [API Request 1/2] Header Metadata:', `${API_BASE}/tables/wafer_map_metadata/data/updates`, metaPayload);
+    const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metaPayload)
+    });
+    console.log('📥 [API Response 1/2] Status:', metaRes.status);
+  } catch (e) {
+    console.warn('[Map Editor] Dedicated wafer_map_metadata push skipped/warn:', e);
   }
 
   const payload = {
