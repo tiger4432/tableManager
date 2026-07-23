@@ -84,6 +84,7 @@ class GeneralUpdateBatch(BaseModel):
     updates: list[GeneralUpdateItem]
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
     silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략
+    replace_map: bool = False            # True일 경우 동일 맵의 기존 레코드를 클린 삭제 후 재기록
 
 class RowDeleteBatch(BaseModel):
     row_ids: list[str]

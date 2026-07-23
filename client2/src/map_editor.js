@@ -2151,11 +2151,9 @@ async function pushMapData() {
         if (!cellObj || !cellObj.inside) return; // Skip blocked outside-wafer cells
 
         const val = gridData[cellObj.key] || '';
+        if (val === '' || val === null || val === undefined) return; // Skip empty/NULL cells since replace_map=true cleans existing map
 
-        let valParsed = null;
-        if (val !== '') {
-          valParsed = valType === 'number' ? Number(val) : val;
-        }
+        let valParsed = valType === 'number' ? Number(val) : val;
 
         let xParsed = xType === 'number' ? parseInt(cellObj.x, 10) : String(cellObj.x);
         let yParsed = yType === 'number' ? parseInt(cellObj.y, 10) : String(cellObj.y);
@@ -2186,7 +2184,7 @@ async function pushMapData() {
     return;
   }
 
-  if (!confirm(`총 ${updates.length}건의 좌표 맵 데이터를 '${selectedTable}' 테이블에 바로 적재(Upsert/Push)하시겠습니까?`)) {
+  if (!confirm(`총 ${updates.length}건의 활성 맵 데이터를 '${selectedTable}' 테이블에 덮어쓰기 적재(Clean Replace)하시겠습니까?`)) {
     return;
   }
 
@@ -2229,7 +2227,8 @@ async function pushMapData() {
 
   const payload = {
     updates: updates,
-    silent: false
+    silent: false,
+    replace_map: true
   };
 
   try {

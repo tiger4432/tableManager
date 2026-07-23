@@ -930,6 +930,30 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         target_ids = [u.row_id for u in batch.updates if u.row_id]
         target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
 
+        deleted_row_ids = []
+        if batch.replace_map and batch.updates:
+            sample_item = batch.updates[0]
+            config = TABLE_CONFIG.get(table_name, {})
+            col_types = config.get("column_types", {})
+            skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata"}
+            meta_conditions = []
+            for c_name, c_val in sample_item.updates.items():
+                if c_name.lower() in skip_cols:
+                    continue
+                if c_name in col_types and c_val is not None and str(c_val).strip() != "":
+                    attr = getattr(table_model, c_name, None)
+                    if attr is not None:
+                        meta_conditions.append(attr == c_val)
+            
+            if meta_conditions:
+                from sqlalchemy import and_
+                rows_to_clear = db.query(table_model).filter(and_(*meta_conditions)).all()
+                for old_row in rows_to_clear:
+                    db.delete(old_row)
+                    if old_row.row_id not in deleted_row_ids:
+                        deleted_row_ids.append(old_row.row_id)
+                db.flush()
+
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(
             or_(
