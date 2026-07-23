@@ -254,17 +254,8 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
   const box = getWaferBoundingBox(currentRotation, currentSide);
-  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
-  const isXMirrored = (currentSide === 'back' && !isRotated90or270);
-  const isYMirrored = (currentSide === 'back' && isRotated90or270);
-
-  const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);
-  let r_zero = 0;
-  if (!invertY) {
-    r_zero = !isYMirrored ? (box.minR - startY) : (box.maxR + startY);
-  } else {
-    r_zero = !isYMirrored ? (box.maxR + startY) : (box.minR - startY);
-  }
+  const c_zero = box.minC - startX;
+  const r_zero = !invertY ? (box.minR - startY) : (box.maxR + startY);
   const hasZeroZero = (c_zero >= 0 && c_zero < visualCols) && (r_zero >= 0 && r_zero < visualRows);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
@@ -664,29 +655,14 @@ function getCellFromPhysicalCoords(xp, yp, cols, rows, rotation, side) {
 
 function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, startX, startY) {
   const box = getWaferBoundingBox(rotation, side);
-  const isRotated90or270 = (rotation === 90 || rotation === 270);
   
-  let c = 0;
-  if (side === 'back' && !isRotated90or270) {
-    c = box.maxC - (xv - startX);
-  } else {
-    c = xv - startX + box.minC;
-  }
+  const c = xv - startX + box.minC;
 
-  const isYMirrored = (side === 'back' && isRotated90or270);
   let r = 0;
   if (!invertY) {
-    if (!isYMirrored) {
-      r = yv - startY + box.minR;
-    } else {
-      r = box.maxR - (yv - startY);
-    }
+    r = yv - startY + box.minR;
   } else {
-    if (!isYMirrored) {
-      r = box.maxR - (yv - startY);
-    } else {
-      r = yv - startY + box.minR;
-    }
+    r = box.maxR - (yv - startY);
   }
 
   return { c, r };
@@ -749,30 +725,15 @@ function getWaferBoundingBox(rotation, side) {
 }
 
 function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
-  const isRotated90or270 = (rotation === 90 || rotation === 270);
   const box = getWaferBoundingBox(rotation, side);
 
-  let xv = 0;
-  if (side === 'back' && !isRotated90or270) {
-    xv = box.maxC - colVisual + startX;
-  } else {
-    xv = colVisual - box.minC + startX;
-  }
+  const xv = colVisual - box.minC + startX;
 
-  const isYMirrored = (side === 'back' && isRotated90or270);
   let yv = 0;
   if (!invertY) {
-    if (!isYMirrored) {
-      yv = rowVisual - box.minR + startY;
-    } else {
-      yv = box.maxR - rowVisual + startY;
-    }
+    yv = rowVisual - box.minR + startY;
   } else {
-    if (!isYMirrored) {
-      yv = box.maxR - rowVisual + startY;
-    } else {
-      yv = rowVisual - box.minR + startY;
-    }
+    yv = box.maxR - rowVisual + startY;
   }
 
   return { x: xv, y: yv };
@@ -1317,17 +1278,9 @@ function handleCellClick(cell, event) {
   if (isOriginMode) {
     const box = getWaferBoundingBox(currentRotation, currentSide);
     const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
-    const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
-    const isXMirrored = (currentSide === 'back' && !isRotated90or270);
-    const isYMirrored = (currentSide === 'back' && isRotated90or270);
 
-    const newStartX = isXMirrored ? (c - box.maxC) : (box.minC - c);
-    let newStartY = 0;
-    if (!invertY) {
-      newStartY = !isYMirrored ? (box.minR - r) : (r - box.maxR);
-    } else {
-      newStartY = !isYMirrored ? (r - box.maxR) : (box.minR - r);
-    }
+    const newStartX = box.minC - c;
+    const newStartY = !invertY ? (box.minR - r) : (r - box.maxR);
 
     el.gridStartX.value = newStartX;
     el.gridStartY.value = newStartY;

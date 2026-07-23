@@ -139,24 +139,12 @@ class WaferMapCoordinateTransformer:
         """
         min_c, max_c, min_r, max_r = self.get_wafer_bounding_box()
 
-        xv = 0
-        if self.side == "back" and not self.is_rotated_90_or_270:
-            xv = max_c - c + self.start_x
-        else:
-            xv = c - min_c + self.start_x
+        xv = c - min_c + self.start_x
 
-        is_y_mirrored = (self.side == "back" and self.is_rotated_90_or_270)
-        yv = 0
         if not self.invert_y:
-            if not is_y_mirrored:
-                yv = r - min_r + self.start_y
-            else:
-                yv = max_r - r + self.start_y
+            yv = r - min_r + self.start_y
         else:
-            if not is_y_mirrored:
-                yv = max_r - r + self.start_y
-            else:
-                yv = r - min_r + self.start_y
+            yv = max_r - r + self.start_y
 
         return xv, yv
 
@@ -166,24 +154,12 @@ class WaferMapCoordinateTransformer:
         """
         min_c, max_c, min_r, max_r = self.get_wafer_bounding_box()
 
-        c = 0
-        if self.side == "back" and not self.is_rotated_90_or_270:
-            c = max_c - (xv - self.start_x)
-        else:
-            c = xv - self.start_x + min_c
+        c = xv - self.start_x + min_c
 
-        is_y_mirrored = (self.side == "back" and self.is_rotated_90_or_270)
-        r = 0
         if not self.invert_y:
-            if not is_y_mirrored:
-                r = yv - self.start_y + min_r
-            else:
-                r = max_r - (yv - self.start_y)
+            r = yv - self.start_y + min_r
         else:
-            if not is_y_mirrored:
-                r = max_r - (yv - self.start_y)
-            else:
-                r = yv - self.start_y + min_r
+            r = max_r - (yv - self.start_y)
 
         return c, r
 
