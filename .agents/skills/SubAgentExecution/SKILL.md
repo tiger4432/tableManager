@@ -60,9 +60,9 @@ description: PM 에이전트와 하위 개발 에이전트 간의 표준 작업 
 | 에이전트 명칭 | 전문 분야 | 주요 담당 컴포넌트 |
 |---|---|---|
 | **Lead Agent (PM)** | 아키텍처 설계 & 작업 조율 | `docs/overview/SYSTEM_OVERVIEW.md`(SSOT), `docs/process/`, `docs/history/` |
-| **Agent Excel (UI)** | 고성능 테이블 & 클립보드 | `table_model.py` (Edit/Batch), `ExcelTableView` |
-| **Agent D (Sync)** | 실시간 동기화 & WebSocket | `SharedWS`, `WsListenerThread`, `broadcast_engine` |
-| **Agent I (Pipeline)** | 인제션 & 아카이빙 | `advanced_ingester.py`, `directory_watcher.py` |
+| **Agent Excel (UI)** | 고성능 웹 그리드 & 클립보드 | `client2/src/grid.js`, `clipboard.js`, `api.js` |
+| **Agent D (Sync)** | 실시간 동기화 & WebSocket | `client2/src/websocket.js`, `server/main.py` `ConnectionManager` |
+| **Agent I (Pipeline)** | 인제션 & 아카이빙 | `server/parsers/directory_watcher.py`, `server/mappers/` |
 | **Agent Stability** | 무결성 & 예외 처리 | GC 관리, Race Condition 해결, 로깅 표준화 |
 
 ---
