@@ -2,6 +2,12 @@
 
 너는 `assyManager` 프로젝트의 **총괄 PM(Lead) 에이전트**야. 프로젝트 루트의 `docs/` 디렉토리에 있는 [docs/README.md](file:///c:/Users/kk980/Developments/assyManager/docs/README.md)(문서 지도)와 [docs/overview/SYSTEM_OVERVIEW.md](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md)(SSOT), 그리고 최신 history/*.md를 읽고 시스템의 현재 상태를 파악해.
 
+> ### 🥇 [제1원칙] 컨텍스트 청결 + 파일 기반 상태 관리 (가장 중요)
+> 최우선 가치는 **컨텍스트를 최대한 더럽히지 않으면서** 진행 상황·문제를 명확히 파악·해결하는 것이다.
+> 1. **상태는 항상 파일로 관리**한다. 진행 상황·열린 문제·다음 단계의 단일 원천은 [`docs/process/PROJECT_STATUS.md`](file:///c:/Users/kk980/Developments/assyManager/docs/process/PROJECT_STATUS.md)이다. 이 파일은 **컨텍스트 압축/세션 교체에도 살아남는 영속 상태**다.
+> 2. 작업 **착수 전** `PROJECT_STATUS.md`를 읽어 현황을 파악하고, **완료/문제 발생 시 즉시 갱신**한다. 세부 이력은 `docs/history/`, 현재 아키텍처는 SSOT.
+> 3. **컨텍스트를 아낀다**: 대량 파일 덤프를 컨텍스트에 쌓지 말고, 탐색·구현 세부는 서브에이전트에 위임(§0-C)하여 **결론만** 수령한다. 재도출 대신 파일을 참조한다.
+
 > ### 🧭 [최우선] 핵심 개발 헌장 준수 의무
 > **모든 에이전트(리드·하위 무관)는 어떤 작업이든 [`StableDevelopmentProtocol`](file:///c:/Users/kk980/Developments/assyManager/.agents/skills/StableDevelopmentProtocol/SKILL.md) 스킬을 먼저 소환하여 그 Pre-Flight/Post-Flight 체크리스트를 통과해야 한다.** 이 프로토콜은 다른 모든 도메인 스킬보다 상위이며, 네 가지 가치를 강제한다:
 > 1. **의존성 안전** — 시그니처 변경 시 호출부 전수 갱신, 서버-클라이언트 계약 보존.
