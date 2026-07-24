@@ -516,13 +516,27 @@ async function switchTable(tableName) {
 
     // Render Dynamic Metadata Inputs
     renderMetadataInputs();
-    
-    // Load Legend from localStorage or defaults
-    loadLegendFromStorage();
-    renderLegendTable();
-    
-    // Reset Grid data and Draw
-    gridData = {};
+
+    // If a map is currently in progress, offer to carry it over to the newly
+    // selected table so it can be edited-then-saved there directly, instead of
+    // always resetting. pushMapData() targets selectedTable, so the kept map is
+    // pushed to the new table once its metadata (map identity) is entered.
+    const hasWorkingMap = gridData && Object.keys(gridData).length > 0;
+    const keepMap = hasWorkingMap && confirm(
+      `현재 편집 중인 맵을 유지한 채 '${tableName}' 테이블로 전환하시겠습니까?\n\n` +
+      `[확인] 맵 유지 — 저장 시 '${tableName}'에 적재됩니다. (대상 테이블의 메타데이터를 새로 입력하세요)\n` +
+      `[취소] 맵 초기화`
+    );
+
+    if (keepMap) {
+      // Preserve current grid + legend/colors; only the target metadata is re-entered.
+      renderLegendTable();
+    } else {
+      // Load target table's legend, then reset the grid (original behavior).
+      loadLegendFromStorage();
+      renderLegendTable();
+      gridData = {};
+    }
     renderGridCanvas();
   } catch (err) {
     console.error('Schema fetch failed', err);
