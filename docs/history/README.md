@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **179개** 이력. (거버넌스 규칙 #4)
+> 총 **180개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-25 07:30** — [Chain Worker Cold Start Warmup](./20260725_073000_chain_worker_cold_start_warmup.md)
 - **2026-07-25 06:30** — [Chain Latency Slo Inline Dispatch](./20260725_063000_chain_latency_slo_inline_dispatch.md)
 - **2026-07-25 00:18** — [Chain Outbox Reliability F1 F2 F3](./20260725_001824_chain_outbox_reliability_f1_f2_f3.md)
 - **2026-07-24 23:20** — [Chain Outbox Race And Hol Fix](./20260724_232027_chain_outbox_race_and_hol_fix.md)

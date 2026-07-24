@@ -7,13 +7,14 @@
 ---
 
 ## 🎯 현재 초점 (Current Focus)
-- **이슈 #0 SLO 구조수정 구현 완료 → 총괄 검수·커밋 대기.** 체인 반응 **SLO 100ms** 공식화(현 실측 ~1.4s). 통지 기아 제거(배경 태스크 → 배치 직후 인라인 발사) + `[Latency]` 구간 계측(tx당 1줄) + `main.py` 기동 마이그레이션 information_schema 게이팅(UndefinedColumn 크래시 회귀 수정). 단위 7/7 통과, **런타임 SLO 실측은 사용자 재기동 후**. 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) · 보고서: `agent_workspace/reports/Server_latency_slo_report.md`.
+- **이슈 #0 SLO 구조수정 + 콜드 스타트 웜업까지 구현 완료 → 총괄 검수·커밋 대기.** 체인 반응 **SLO 100ms**: 인라인 발사 후 정상 상태 실측 31~47ms 달성, 남은 첫 체인 1.3s(콜드 스타트)도 웜업(매퍼 선import + DB 풀 프라임 + HTTP keep-alive, SYSTEM_RELOAD 재웜업 포함)으로 해소. 단위 12/12 통과, **런타임 실측은 사용자 재기동 후**(첫 체인 total + `[Warmup]` 로그). 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) · [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) · 보고서: `agent_workspace/reports/Server_warmup_report.md`.
 - 조직 등록 완료: `.claude/agents/`에 lead-pm·server-pm·client-pm 3종(`396b59e`).
 - 맵 에디터 사용성 개선 (Client PM 도메인)은 병행 관찰.
 
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 서버/체인 | 체인 워커 콜드 스타트 웜업 — 매퍼 선import(+SYSTEM_RELOAD 재웜업)·DB 풀 프라임·HTTP keep-alive(스레드-로컬 Session)·[Warmup] 계측, 첫 체인 1.3s → 100ms 목표 — 검수·커밋 대기 | [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) |
 | 2026-07-25 | 서버/체인 | 체인 100ms SLO 구조수정 — 통지 인라인 발사(기아 제거)·[Latency] 구간 계측·기동 마이그레이션 게이팅(UndefinedColumn 회귀 수정) — 검수·커밋 대기 | [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) |
 | 2026-07-25 | 서버/체인 | 체인 outbox 신뢰성 후속수정 F1(broadcast_at 전달확정+미전달 스윕+백필)·F2(그룹간 단일 순차 발사)·F3(idx_outbox_txid 실사용) + F4/F5 문서화 — 검수·커밋 대기 | [20260725_001824](../history/20260725_001824_chain_outbox_reliability_f1_f2_f3.md) |
 | 2026-07-24 | 기획/검수 | 이슈 #0 총괄 적대적 검수 — GO-WITH-FIXES 판정, 고위험 결함 2건(F1 stale·F2 순서역전)+인덱스버그(F3) 확인 → #0 재개 | — |
@@ -37,7 +38,7 @@
 ## 🐞 열린 문제 / 알려진 이슈 (Open Problems)
 | # | 심각도 | 문제 | 도메인 | 상태 |
 |---|---|---|---|---|
-| 0 | **높음** | **체인 인제션 outbox — SLO 100ms 구조수정 구현 완료, 총괄 검수·커밋 대기.** F1~F3 위에 ①통지 기아 제거(`dispatch_broadcasts_bg` 배경 예약 → 배치 직후 인라인 `await _dispatch_broadcasts`, F1/F2 이득 유지) ②`[Latency] tx=.. wake/mapper/commit/notify/total` tx당 1줄 계측 ③스윕 오발동 구조적 차단 확인(grace 5s 유지) ④`main.py` 기동 마이그레이션 information_schema 게이팅+rollback(UndefinedColumn 크래시 회귀 수정) ⑤SLO 공식화(`task/chain_outbox_latency.md`). 단위 7/7 통과. **런타임 실측 필요**(재기동 후 [Latency] total ≤100ms 확인·스윕 무-오발사·마이그레이션 로그 + 기존 F1~F3 런타임 검증 항목). 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) | Server | ✅구현완료·검수/런타임실측 대기 |
+| 0 | **높음** | **체인 인제션 outbox — SLO 100ms 구조수정 구현 완료, 총괄 검수·커밋 대기.** F1~F3 위에 ①통지 기아 제거(`dispatch_broadcasts_bg` 배경 예약 → 배치 직후 인라인 `await _dispatch_broadcasts`, F1/F2 이득 유지) ②`[Latency] tx=.. wake/mapper/commit/notify/total` tx당 1줄 계측 ③스윕 오발동 구조적 차단 확인(grace 5s 유지) ④`main.py` 기동 마이그레이션 information_schema 게이팅+rollback(UndefinedColumn 크래시 회귀 수정) ⑤SLO 공식화(`task/chain_outbox_latency.md`) ⑥**콜드 스타트 웜업**(첫 체인 1.3s → 기동/SYSTEM_RELOAD 직후 매퍼 선import·DB 풀 프라임·HTTP keep-alive, `[Warmup]` 계측). 정상 상태 실측 31~47ms(SLO 달성). 단위 12/12 통과. **런타임 실측 필요**(재기동 후 첫 체인 포함 [Latency] total ≤100ms·`[Warmup]` 로그·스윕 무-오발사·마이그레이션 로그 + 기존 F1~F3 런타임 검증 항목). 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) · [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) | Server | ✅구현완료·검수/런타임실측 대기 |
 | 1 | 낮음 | `IntegrityAndQAExpert` 스킬 §3 QA 체크리스트가 아직 PySide 항목(QThread/DLL/PySide 임포트) — 웹 client2 QA 항목으로 미전환 | 프로세스 | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |

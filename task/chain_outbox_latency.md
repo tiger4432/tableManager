@@ -1,6 +1,6 @@
 # 이슈: 체인 인제션 outbox 반응 지연 (진단 + 조치)
 
-> **상태:** ✅ **SLO 구조수정 구현 완료(통지 인라인화·계측·기동 마이그레이션 회귀 수정), 총괄 검수·커밋 대기** — F1~F3 위에 통지 기아(starvation) 제거(배경 태스크 → 배치 직후 인라인 발사) + [Latency] 구간 계측 + `main.py` 기동 마이그레이션 information_schema 게이팅. 단위 7/7 통과·런타임 SLO 실측 필요. 이력: [20260725_063000](../docs/history/20260725_063000_chain_latency_slo_inline_dispatch.md). | **도메인:** Server PM | **작성:** 2026-07-24 | **검수:** 2026-07-24 | **후속:** 2026-07-25
+> **상태:** ✅ **SLO 구조수정 + 콜드 스타트 웜업 구현 완료, 총괄 검수·커밋 대기** — F1~F3 위에 통지 기아(starvation) 제거(배경 태스크 → 배치 직후 인라인 발사) + [Latency] 구간 계측 + `main.py` 기동 마이그레이션 information_schema 게이팅 + **콜드 스타트 웜업**(하단 §콜드 스타트). 단위 12/12 통과·런타임 실측 필요. 이력: [20260725_063000](../docs/history/20260725_063000_chain_latency_slo_inline_dispatch.md) · [20260725_073000](../docs/history/20260725_073000_chain_worker_cold_start_warmup.md). | **도메인:** Server PM | **작성:** 2026-07-24 | **검수:** 2026-07-24 | **후속:** 2026-07-25
 
 ## 🎯 SLO (공식)
 
@@ -10,6 +10,13 @@
 - **1.4s의 원인(확정)**: 워커 asyncio 루프가 동기 DB 쿼리·매퍼에 블로킹되는 동안 `asyncio.create_task`로 예약한 통지 태스크가 기아(starvation) 상태 — 루프가 다음 `await`에 닿을 때까지 발사 불가.
 - **이번 수정 후 기대치**: 통지가 commit 직후 **인라인 await**로 발사되므로 기아 구간 제거. 잔여 지연 = LISTEN wake(수 ms) + 매퍼 실행 + commit + POST 왕복(로컬 ~수 ms) → 경량 체인 기준 **수십 ms 수준** 예상. 워커 로그의 `[Latency] tx=... wake=..ms mapper=..ms commit=..ms notify=..ms total=..ms` 1줄로 tx별 검증한다(병목 구간 즉시 특정 가능).
 - **주의**: mapper 구간은 체인 규칙의 커스텀 매퍼 비용에 비례한다(SLO 위반 시 mapper_ms부터 확인).
+
+### 콜드 스타트 (2026-07-25 실측 → 웜업으로 해소)
+
+- **실측**: 인라인 발사 적용 후 정상 상태 `total=47ms/31ms`(SLO 달성)이나, **워커 기동 후 첫 체인만** `wake=0 mapper=1125 commit=0 notify=172 total=1297ms`. 원인: ①매퍼 첫 동적 import ②SQLAlchemy 풀 첫 커넥션 ③requests 첫 import + 첫 HTTP 커넥션.
+- **재발 조건**: `SYSTEM_RELOAD`가 매퍼 캐시를 비우므로 운영 중 리로드 직후에도 재발 — 수용 불가.
+- **조치**(`chain_ingestion_worker.py`): `warmup_worker()` 신설 — 기동 시(매퍼 선import + `SELECT 1` DB 프라임 + HTTP 클라이언트 준비) 및 SYSTEM_RELOAD 직후(매퍼 재웜업, DB 프라임 생략) 실행. `[Warmup] mappers=Xms db=Yms total=Zms` 1줄 계측. `post_event_async`는 스레드-로컬 `requests.Session`(keep-alive)으로 전환(단일 코루틴 순차 await → 유휴 스레드 1개 재사용으로 이득 유지, timeout=3 불변).
+- **검증 필요**: 재기동 후 첫 체인 `total ≤100ms` + `[Warmup]` 로그, SYSTEM_RELOAD 직후 첫 체인 실측. 이력: [20260725_073000](../docs/history/20260725_073000_chain_worker_cold_start_warmup.md).
 > 조사: Explore 서브에이전트 → 총괄 최상위 2건 스팟체크 검증 완료. 수정 이력: [docs/history/20260724_230117_chain_outbox_latency_fix.md](../docs/history/20260724_230117_chain_outbox_latency_fix.md)(#1~#3) · [docs/history/20260724_232027_chain_outbox_race_and_hol_fix.md](../docs/history/20260724_232027_chain_outbox_race_and_hol_fix.md)(#4/#5).
 >
 > **처리 현황**

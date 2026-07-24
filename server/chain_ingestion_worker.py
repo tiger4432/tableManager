@@ -5,6 +5,7 @@ import logging
 import importlib
 import uuid
 import select
+import threading
 import time
 from collections import defaultdict
 
@@ -105,19 +106,38 @@ RULES_PATH = os.path.join(os.path.dirname(__file__), "config", "chain_rules.json
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 
+# [Warmup #3] 스레드별 requests.Session 저장소 (keep-alive 커넥션 재사용).
+_http_local = threading.local()
+
+def _get_http_session():
+    """[Warmup #3] 호출 스레드 전용 requests.Session을 반환한다(keep-alive 재사용).
+
+    매 호출 `requests.post`는 매번 새 TCP 커넥션을 수립해 첫 통지에 커넥션 비용이 붙는다.
+    requests.Session은 스레드 안전이 보장되지 않으므로(쿠키 저장소 등 내부 상태 변이 레이스),
+    threading.local로 스레드당 1개 세션을 유지한다. post_event_async는 asyncio.to_thread(기본
+    ThreadPoolExecutor)로 실행되고 워커의 통지는 단일 태스크에서 순차 await되므로 실제로는
+    유휴 스레드 1개가 재사용된다 → 스레드당 세션이어도 keep-alive 재사용 이득이 유지된다.
+    """
+    sess = getattr(_http_local, "session", None)
+    if sess is None:
+        import requests
+        sess = requests.Session()
+        _http_local.session = sess
+    return sess
+
 async def post_event_async(endpoint: str, payload: dict) -> bool:
     """통지를 fire-and-forget으로 전송하고 전달 확정 여부(bool)를 반환한다.
 
     [Reliability F1] 반환값은 broadcast_at 스탬프 판정에만 쓰인다(전달 확정 시 True).
     데이터 처리 성공/재시도 판정에는 절대 반영하지 않는다(통지 실패 ≠ 처리 실패).
     """
-    import requests
     url = f"{API_BASE_URL}{endpoint}"
     def do_post():
         try:
             # [Latency Fix #2] 통지는 커밋 이후 fire-and-forget으로 수행되므로
             # 워커 폴링을 오래 붙잡지 않도록 타임아웃을 짧게(3초) 유지한다.
-            res = requests.post(url, json=payload, timeout=3)
+            # [Warmup #3] 스레드-로컬 Session으로 keep-alive 재사용(매 호출 커넥션 수립 제거).
+            res = _get_http_session().post(url, json=payload, timeout=3)
             if not res.ok:
                 logger.error(f"[Chain Worker] API notification failed: {url} -> {res.status_code}")
                 return False
@@ -416,6 +436,54 @@ def reload_worker_process_cache():
         
     logger.info("[Reload] Chain worker modules cache cleared.")
 
+def warmup_worker(rules, db_session_factory=None):
+    """[Warmup] 첫 체인 처리의 콜드 스타트를 기동/리로드 시점으로 앞당긴다.
+
+    실측(2026-07-25): 워커 기동 후 첫 체인만 total≈1.3s(mapper=1125ms notify=172ms), 2번째부터 ≈47ms.
+    원인은 ①매퍼 모듈 첫 동적 import ②SQLAlchemy 풀 첫 커넥션 수립 ③requests 첫 import·커넥션.
+    SYSTEM_RELOAD가 매퍼 캐시를 비우면(reload_worker_process_cache) 콜드 스타트가 운영 중에도
+    재발하므로, 리로드 직후에도 이 함수로 재웜업한다(리로드 시엔 DB 풀이 유지되므로
+    db_session_factory=None으로 호출해 DB 프라임은 생략).
+
+    웜업 실패는 치명 아님 — 경고 로깅 후 계속 기동한다(실제 처리 경로에서 재시도됨).
+    HTTP는 requests import + Session 준비까지만 수행한다(웹서버가 아직 기동 전일 수 있어
+    실제 커넥션 수립은 시도하지 않음 — 첫 통지에서 수립 후 keep-alive로 재사용).
+    """
+    t0 = time.monotonic()
+    # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
+    for rule in rules:
+        if not rule.get("enabled", True):
+            continue
+        module_name = rule.get("mapper_module")
+        if not module_name:
+            continue
+        try:
+            importlib.import_module(module_name)
+        except Exception as e:
+            logger.warning(f"[Warmup] Mapper pre-import failed ({module_name}): {e}")
+    t1 = time.monotonic()
+    # 2) DB 커넥션 프라임 — 풀 첫 커넥션·다이얼렉트 초기화(기동 시에만).
+    if db_session_factory is not None:
+        try:
+            db = db_session_factory()
+            try:
+                db.execute(text("SELECT 1"))
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[Warmup] DB connection prime failed: {e}")
+    t2 = time.monotonic()
+    # 3) HTTP 클라이언트 준비 — requests 모듈 import(전역 캐시)로 첫 통지의 import 비용 제거.
+    try:
+        _get_http_session()
+    except Exception as e:
+        logger.warning(f"[Warmup] HTTP session init failed: {e}")
+    t3 = time.monotonic()
+    logger.info(
+        f"[Warmup] mappers={(t1 - t0) * 1000.0:.0f}ms db={(t2 - t1) * 1000.0:.0f}ms "
+        f"total={(t3 - t0) * 1000.0:.0f}ms"
+    )
+
 async def process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=None):
     """[Latency Fix #5] 한 배치 안의 트랜잭션 그룹들을 순차 처리한다.
 
@@ -638,6 +706,10 @@ async def start_chain_ingestion_worker(db_session_factory):
     if script_dir not in sys.path:
         sys.path.append(script_dir)
 
+    # [Warmup] 콜드 스타트 제거: 매퍼 선(先)import + DB 풀 프라임 + HTTP 클라이언트 준비.
+    #   sys.path에 server 디렉토리가 추가된 뒤에 실행해야 mappers.* import가 해석된다.
+    warmup_worker(rules, db_session_factory)
+
     while True:
         try:
             db = db_session_factory()
@@ -665,6 +737,9 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # 2. Reload chain rules configurations from disk
                     rules = load_chain_rules()
                     logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
+                    # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
+                    #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
+                    warmup_worker(rules)
                     
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)
