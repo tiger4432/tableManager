@@ -1,6 +1,6 @@
 # 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · Graph DB 동기화
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-24 | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-25 | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 개괄 [backend.md](./backend.md)
 > 관련 howto: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [graph_db_integration_plan](../spec/graph_db_integration_plan.md)(그래프 상세)
 >
@@ -173,13 +173,26 @@ graph TD
 ### 3.5 폴링·브로드캐스트 지연 최적화 (Latency Model)
 간헐적 반응 지연을 없애기 위해 다음 두 축이 적용되어 있습니다.
 
-* **커밋 우선 → 통지 후행 (Commit-before-Broadcast)**: 트랜잭션 그룹은 `apply_batch_updates` 성공 후 **먼저 `processed_chain=True` + `commit`** 을 확정하고, 그다음에 WebSocket 통지(`/internal/events/broadcast`)를 **fire-and-forget** 배경 태스크로 발사합니다(`chain_ingestion_worker.py`, `dispatch_broadcasts_bg`). 통지의 성공/실패는 처리 성공 여부·재시도 판정에 **절대 반영되지 않으며**, 재시도는 오직 실제 데이터 처리 실패로만 트리거됩니다(이미 커밋된 그룹의 재처리/중복 방지). 통지 HTTP 타임아웃은 3초입니다. **경계 계약(이벤트명 `batch_row_upsert`/`batch_row_delete`/`batch_refresh_required` 및 페이로드 형식)은 불변이며 타이밍만 커밋 이후로 이동**했습니다.
+* **커밋 우선 → 통지 후행·인라인 (Commit-before-Broadcast, Inline Dispatch)**: 트랜잭션 그룹은 `apply_batch_updates` 성공 후 **먼저 `processed_chain=True` + `commit`** 을 확정하고, 그다음에 WebSocket 통지(`/internal/events/broadcast`)를 발사합니다. 통지는 배치의 모든 그룹 커밋 직후 **인라인 `await`** 로 발사합니다(`chain_ingestion_worker.py`, `_dispatch_broadcasts`). 한때 `asyncio.create_task` 배경 예약으로 구현했으나, 워커 이벤트 루프가 동기 DB 쿼리·매퍼에 블로킹되는 동안 태스크가 **기아(starvation)** 상태로 통지가 수 초 지연되고 스윕 오발동을 유발해 인라인으로 전환했습니다(커밋은 이미 완료된 뒤라 데이터 경로 지연 없음). 통지의 성공/실패는 처리 성공 여부·재시도 판정에 **절대 반영되지 않으며**, 재시도는 오직 실제 데이터 처리 실패로만 트리거됩니다(이미 커밋된 그룹의 재처리/중복 방지). 통지 HTTP 타임아웃은 3초입니다. **경계 계약(이벤트명 `batch_row_upsert`/`batch_row_delete`/`batch_refresh_required` 및 페이로드 형식)은 불변이며 타이밍만 커밋 이후로 이동**했습니다.
+* **지연 SLO + 구간 계측**: 체인 경로의 목표는 **"값 변경 commit → 클라이언트 통지 도착 100ms 이내"** 입니다(`task/chain_outbox_latency.md` §SLO). 검증을 위해 워커는 통지가 있는 tx당 1줄의 INFO 계측 로그를 남깁니다 — `[Latency] tx=<id> wake=Xms mapper=Yms commit=Zms notify=Wms total=Tms ok=<bool>` (wake: outbox 감지→매퍼 시작, mapper: 매퍼+`apply_batch_updates`, commit, notify: 커밋→POST 응답+스탬프, total: 감지→통지 완료). 병목 구간은 로그만으로 특정 가능합니다.
 * **Outbox 폴링 부분 인덱스**: `database_outbox` 스캔 비용을 상수화하기 위해 부분/표현식 인덱스를 사용합니다(`models.py` `DatabaseOutbox.__table_args__`, 기존 운영 DB는 `scripts/setup_db_performance.py`로 멱등 반영).
   * `idx_outbox_reload` — `(event_type, id) WHERE event_type='SYSTEM_RELOAD'`: SYSTEM_RELOAD 트리거 조회용. 조회 자체도 매 루프가 아니라 최소 1초 간격으로 스로틀됩니다.
   * `idx_outbox_unprocessed` — `(processed_chain, id) WHERE processed_chain=false`: 미처리 이벤트 큐 스캔용.
   * `idx_outbox_txid` — `(payload->>'transaction_id')` 표현식 인덱스(**PostgreSQL 전용**, SQLite는 dialect 가드로 미생성): tx 보완(dynamic fetch guard) 조회용.
 * **LISTEN 전용 커넥션 상시 유지 (`OutboxListener`)**: 빈 폴링 후 `LISTEN/NOTIFY` 대기 시, 예전에는 **대기마다 새 커넥션으로 `LISTEN outbox_event`를 재등록**하여 빈 폴링과 등록 사이 발행된 NOTIFY가 유실(최대 2초 tail latency)됐습니다. 이제 워커 시작 시 LISTEN 커넥션을 **1회만** 등록·재사용합니다(`chain_ingestion_worker.py`, `OutboxListener`). LISTEN이 항상 폴링보다 선행 등록되므로 폴링 이후 NOTIFY는 소켓에 버퍼링되고, 대기 진입 직후 버퍼된 통지를 먼저 소비(drain)해 즉시 재폴링을 유도합니다. 커넥션 끊김/예외 시 안전 재생성(누수 방지), blocking `select`는 `asyncio.to_thread`로 오프로딩, SYSTEM_RELOAD 통지도 같은 채널로 공존합니다.
 * **실패 head-of-line 블로킹 제거 (`process_pending_groups`)**: 예전에는 한 그룹 실패 시 `break`로 **배치 전체를 중단**(+`sleep(1)`)하여, 큐 선두(id asc)의 실패 그룹이 3회 재시도 동안 뒤의 정상 이벤트를 전부 정체시켰습니다. 이제 실패 그룹은 rollback되어 미처리(`processed_chain=False`)로 남고 `retry_count`만 증가(3회 후 격리 유지), 나머지 그룹은 계속 처리합니다. **순서 보존**을 위해 실패 그룹이 기록하려던 `target_table`을 건드리는 **후속 그룹만** 이번 배치에서 보류하고(동일 target에 대해 나중 그룹이 먼저 적용되어 순서가 뒤집히는 것을 방지), 서로 다른 target_table 그룹은 계속 처리합니다. target_table은 규칙 설정에서 결정되므로 매퍼 실행 없이 정적으로 판정(`_group_target_tables`)합니다. 실패 그룹의 매퍼 쓰기는 rollback되어 커밋되지 않으므로 유실/중복이 없습니다.
+
+### 3.6 브로드캐스트 전달 신뢰성 (Reliability Model) — 핵심가치 #3(실시간 신뢰 전파)
+
+커밋 우선(§3.5) 설계는 지연을 없애는 대가로 통지 신뢰성을 약화시킬 수 있어, 다음 세 축으로 **"결국엔 반드시 반영된다(eventual delivery)"** 를 보장합니다. 세 축 모두 **경계 계약(이벤트명·페이로드 형식)은 불변**이며 신규 이벤트를 추가하지 않습니다.
+
+* **전달 확정 추적 (`broadcast_at` 컬럼) + 미전달 안전망 스윕 (F1)**: `database_outbox.broadcast_at`(nullable timestamptz)이 각 행의 브로드캐스트 전달 확정 시각을 기록합니다. 커밋 직후엔 통지할 메시지가 있는 그룹은 `NULL`(=미확정)로 두고, 통지할 것이 없는 no-op 그룹(순환 필터로 걸러진 그룹 등)은 즉시 스탬프합니다. 인라인 통지(`_dispatch_broadcasts`)가 그룹의 **모든** 메시지를 성공 전송하면 별도 짧은 세션으로 `broadcast_at`을 스탬프합니다. 웹서버 재시작·타임아웃(3s)·HTTP 실패로 통지가 유실되면 `broadcast_at`은 `NULL`로 남고, 워커 메인 루프의 주기 스윕(`sweep_undelivered_broadcasts`, 최소 5초 간격)이 이를 감지해 영향 `target_table`에 table-level `batch_refresh_required`를 **재발사**하고 확정합니다. 통지·스탬프가 배치 처리와 **같은 코루틴 반복 안에서 인라인 완료**되므로 스윕은 정상 경로("커밋됐지만 아직 미발사")를 구조적으로 볼 수 없고, **진짜 유실만** 잡습니다(정상 경로 오발동 제로, grace 5s 유지). `broadcast_at IS NULL` 마커는 DB에 durable하므로 **워커가 재시작돼도 복구**됩니다. 확장성: 부분 인덱스 `idx_outbox_undelivered`(`WHERE processed_chain=true AND status='SUCCESS' AND broadcast_at IS NULL`, 정상 상태에선 거의 빈 인덱스) + `LIMIT 500` + grace(`created_at < now()-5s`, in-flight 정상 통지 제외)로 **1000만행 누적에도 스윕이 O(미전달)** 로 동작합니다. **마이그레이션 필수**: 컬럼 최초 추가 시 기존 처리완료 행을 `COALESCE(processed_at, created_at)`로 **1회 청킹 백필**(`main.py` 기동 마이그레이션 + `scripts/setup_db_performance.py`)하여, 기존 outbox 전량이 미확정으로 오인되어 스윕이 대량 오발사(refresh storm)하는 것을 방지합니다.
+* **그룹 간 브로드캐스트 순서 보존 (F2)**: 예전에는 성공 그룹마다 독립 배경 태스크를 발사하여 동일 `target_table`에 대한 두 그룹의 통지가 병렬 도착·역전(늦게 커밋된 최종값이 먼저 도착)될 수 있었습니다. 이제 한 배치의 모든 성공 그룹 통지를 `group_order` 순서의 `(event_ids, messages, timing)` 리스트로 모아, 배치 종료 시 **단일 순차 인라인 발사**합니다(그룹 간·그룹 내(삭제→upsert) 모두 직렬화). commit은 이미 완료된 뒤이므로 §3.5의 지연 이득은 유지됩니다.
+* **tx 보완 쿼리 인덱스 정렬 (F3)**: 동적 fetch 가드의 tx 보완 쿼리를 `type_coerce(payload, JSONB)['transaction_id'].astext`(→ `payload ->> 'transaction_id'`로 컴파일)로 정렬하여 표현식 인덱스 `idx_outbox_txid`(`(payload->>'transaction_id')`)를 **실제로 사용**하게 했습니다. (기존 `.as_string()`은 `CAST(payload -> 'transaction_id' AS VARCHAR)`로 컴파일되어 인덱스식과 불일치했습니다. 인덱스·마이그레이션 변경 없음.)
+
+> **⚠️ 순서 보존의 한계 (F4/F5) — 알려진 사각지대**
+> * **순서 보존은 "동일 `target_table`" 정적 추정 기반**입니다(§3.5 HOL 가드 + §3.6 F2). 즉 **매퍼가 자신의 `target_table`이 아닌 다른 테이블을 read하여 계산하는 교차 테이블 의존(cross-table read dependency)** 은 이 가드가 보호하지 못합니다. 선행 그룹이 테이블 X를 쓰고 후행 그룹의 매퍼가 X를 읽어 테이블 Y를 쓰는 경우, 두 그룹의 `target_table`(Y vs X)이 달라 보류 대상이 아니므로 **순서가 보장되지 않습니다**. 이런 의존이 있는 규칙은 현재 선언적으로 표현할 수 없으며, 필요 시 규칙 스키마에 `depends_on`(교차 테이블 선행 조건) 도입을 검토해야 합니다.
+> * **격리(3회 실패)의 순서 함의 (F5)**: 한 그룹이 3회 재시도 후 격리(`RETRYING` 유지)되면, **그 그룹이 기록하려던 값이 적용되지 않은 상태**에서 후속 그룹이 처리를 이어갑니다. 후속 그룹의 매퍼가 격리된 선행 그룹의 산출물에 (교차 테이블로) 의존하면 "적용된 적 없는 선행" 위에서 계산하게 됩니다. HOL 가드는 동일 `target_table` 후속만 보류하므로, 교차 테이블 의존이 없는 한 데이터 유실/중복은 없으나(실패 그룹 쓰기는 rollback), 교차 의존이 있으면 후속 산출물이 부정확할 수 있습니다.
 
 ---
 

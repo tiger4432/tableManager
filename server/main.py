@@ -125,15 +125,59 @@ async def startup_event():
                 if res.rowcount > 0:
                     logger.info(f"Successfully updated {res.rowcount} rows.")
             except Exception as e:
+                # [Migration Fix] rollback 필수 — 같은 커넥션의 실패한 트랜잭션이 남으면 이후 모든
+                # 마이그레이션 블록이 InFailedSqlTransaction 으로 조용히 실패한다(회귀 원인).
+                conn.rollback()
                 logger.error(f"Skip data_rows migration (table may not exist): {e}")
-                
-            # [Migration] database_outbox 테이블에 processed_chain 컬럼 보정
+
+            # [Migration] database_outbox.processed_chain 컬럼 보정 (information_schema 존재확인 게이팅).
+            #   기존: 무조건 ADD COLUMN → 기존 DB에서 "컬럼 이미 존재" 예외로 트랜잭션 abort(rollback 부재)
+            #   → 같은 커넥션의 후속 broadcast_at ADD COLUMN 이 InFailedSqlTransaction 으로 조용히 실패
+            #   → 워커가 UndefinedColumn(broadcast_at) 크래시. 존재확인 게이팅으로 예외 경로 자체를 제거한다.
             try:
-                conn.execute(text("ALTER TABLE database_outbox ADD COLUMN processed_chain BOOLEAN DEFAULT FALSE"))
-                conn.commit()
-                logger.info("Added processed_chain column to database_outbox.")
-            except Exception:
-                pass
+                col_exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'database_outbox' AND column_name = 'processed_chain'"
+                )).first()
+                if not col_exists:
+                    conn.execute(text("ALTER TABLE database_outbox ADD COLUMN processed_chain BOOLEAN DEFAULT FALSE"))
+                    conn.commit()
+                    logger.info("Added processed_chain column to database_outbox.")
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"processed_chain migration failed: {e}")
+
+            # [Reliability F1] database_outbox.broadcast_at 컬럼 + **최초 생성 시에만** 1회 백필.
+            #   broadcast_at NULL 인 처리완료(SUCCESS) 행 = "통지 미확정" → 워커 스윕이 재발사 대상으로 삼는다.
+            #   백필하지 않으면 기존 outbox 전량이 미확정으로 오인되어 스윕이 대량 오발사(refresh storm)한다.
+            #   재기동 시엔 컬럼 존재 → 백필 skip 필수: 진짜 미전달 행(NULL)을 전달됨으로 덮어쓰면
+            #   재기동 중 유실분이 영구 stale 이 된다(스윕 회수 경로 보존).
+            try:
+                col_exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'database_outbox' AND column_name = 'broadcast_at'"
+                )).first()
+                if not col_exists:
+                    conn.execute(text("ALTER TABLE database_outbox ADD COLUMN broadcast_at TIMESTAMPTZ"))
+                    conn.commit()
+                    logger.info("Added broadcast_at column to database_outbox. Backfilling existing processed rows...")
+                    # 1000행 청킹 백필(1000만행 대비 락/WAL 부담 최소화). 기존 행은 이미 전달된 것으로 간주.
+                    backfilled = 0
+                    while True:
+                        res = conn.execute(text(
+                            "UPDATE database_outbox SET broadcast_at = COALESCE(processed_at, created_at) "
+                            "WHERE id IN (SELECT id FROM database_outbox "
+                            "WHERE processed_chain = true AND broadcast_at IS NULL LIMIT 1000)"
+                        ))
+                        conn.commit()
+                        if not res.rowcount:
+                            break
+                        backfilled += res.rowcount
+                    logger.info(f"[Reliability F1] Backfilled broadcast_at for {backfilled} pre-existing processed outbox row(s).")
+            except Exception as e:
+                # 백필 중단 시 잔여 NULL 행은 워커 스윕이 회수(over-refresh 1회, stale 아님) — 삼키지 않고 기록.
+                conn.rollback()
+                logger.error(f"broadcast_at migration/backfill failed (undelivered rows recovered by worker sweep): {e}")
 
         if os.getenv("DECOUPLED") == "True":
             logger.info("Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")

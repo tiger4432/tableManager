@@ -1,18 +1,23 @@
 # 📌 PROJECT STATUS — 진행 상황 & 문제 현황 (Living Board)
 
-> **Status:** 🟢 Living | **Last-updated:** 2026-07-24
+> **Status:** 🟢 Living | **Last-updated:** 2026-07-25
 > **역할:** 프로젝트의 **현재 진행 상황·열린 문제·다음 단계**를 담는 단일 상태 보드. **컨텍스트 압축/세션 교체에도 살아남는 영속 상태**다.
 > **규칙:** 총괄(및 각 PM)은 작업 **착수 전 이 파일을 읽고**, **완료 후 갱신**한다. 상세 이력은 [history/](../history/README.md), 현재 아키텍처는 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
 
 ---
 
 ## 🎯 현재 초점 (Current Focus)
-- **비전 재정의 SSOT 반영 완료** — 제품 정체를 "교정 표면(Correction Surface) → 온톨로지/지식 그래프 기반"으로 재정의, 5대 핵심 가치 우선순위 확정. **다음: 척추(실시간 신뢰 전파 = 이슈 #0) 착수.**
+- **이슈 #0 SLO 구조수정 구현 완료 → 총괄 검수·커밋 대기.** 체인 반응 **SLO 100ms** 공식화(현 실측 ~1.4s). 통지 기아 제거(배경 태스크 → 배치 직후 인라인 발사) + `[Latency]` 구간 계측(tx당 1줄) + `main.py` 기동 마이그레이션 information_schema 게이팅(UndefinedColumn 크래시 회귀 수정). 단위 7/7 통과, **런타임 SLO 실측은 사용자 재기동 후**. 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) · 보고서: `agent_workspace/reports/Server_latency_slo_report.md`.
+- 조직 등록 완료: `.claude/agents/`에 lead-pm·server-pm·client-pm 3종(`396b59e`).
 - 맵 에디터 사용성 개선 (Client PM 도메인)은 병행 관찰.
 
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 서버/체인 | 체인 100ms SLO 구조수정 — 통지 인라인 발사(기아 제거)·[Latency] 구간 계측·기동 마이그레이션 게이팅(UndefinedColumn 회귀 수정) — 검수·커밋 대기 | [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) |
+| 2026-07-25 | 서버/체인 | 체인 outbox 신뢰성 후속수정 F1(broadcast_at 전달확정+미전달 스윕+백필)·F2(그룹간 단일 순차 발사)·F3(idx_outbox_txid 실사용) + F4/F5 문서화 — 검수·커밋 대기 | [20260725_001824](../history/20260725_001824_chain_outbox_reliability_f1_f2_f3.md) |
+| 2026-07-24 | 기획/검수 | 이슈 #0 총괄 적대적 검수 — GO-WITH-FIXES 판정, 고위험 결함 2건(F1 stale·F2 순서역전)+인덱스버그(F3) 확인 → #0 재개 | — |
+| 2026-07-24 | 조직 | `.claude/agents/` PM 3종 등록(lead/server/client-pm) — 헌장 참조형 | `396b59e` |
 | 2026-07-24 | 서버/체인 | 체인 outbox #4/#5 — LISTEN 레이스 제거(상시 LISTEN+drain)·실패 head-of-line 제거(그룹 skip+동일target 보류) | `4bf5b21` |
 | 2026-07-24 | 프로세스 | 위임 시 대상 구조 docs 제공 원칙(SOP §0-C) | `8c20921` |
 | 2026-07-24 | 서버/체인 | 체인 outbox #2/#1/#3 — commit후 통지 fire-and-forget·outbox 부분/표현식 인덱스 | `1f02712` |
@@ -32,7 +37,7 @@
 ## 🐞 열린 문제 / 알려진 이슈 (Open Problems)
 | # | 심각도 | 문제 | 도메인 | 상태 |
 |---|---|---|---|---|
-| 0 | 중 | **체인 인제션 outbox 간헐 지연** — ①②③④⑤ 수정 완료(총괄 검수·커밋 대기). 조치: ②commit 우선→통지 fire-and-forget(타임아웃 3s), ①SYSTEM_RELOAD 부분 인덱스+조회 1s 스로틀, ③`processed_chain`/`payload->>tx` 부분·표현식 인덱스, ④LISTEN 전용 커넥션 상시 유지(`OutboxListener`, 레이스 제거), ⑤실패 head-of-line 제거(`process_pending_groups`, break 제거+동일 target 순서 보존 가드). 이력: [20260724_230117](../history/20260724_230117_chain_outbox_latency_fix.md)(①②③) · [20260724_232027](../history/20260724_232027_chain_outbox_race_and_hol_fix.md)(④⑤) · 상세: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md) | Server | ①②③④⑤수정완료 |
+| 0 | **높음** | **체인 인제션 outbox — SLO 100ms 구조수정 구현 완료, 총괄 검수·커밋 대기.** F1~F3 위에 ①통지 기아 제거(`dispatch_broadcasts_bg` 배경 예약 → 배치 직후 인라인 `await _dispatch_broadcasts`, F1/F2 이득 유지) ②`[Latency] tx=.. wake/mapper/commit/notify/total` tx당 1줄 계측 ③스윕 오발동 구조적 차단 확인(grace 5s 유지) ④`main.py` 기동 마이그레이션 information_schema 게이팅+rollback(UndefinedColumn 크래시 회귀 수정) ⑤SLO 공식화(`task/chain_outbox_latency.md`). 단위 7/7 통과. **런타임 실측 필요**(재기동 후 [Latency] total ≤100ms 확인·스윕 무-오발사·마이그레이션 로그 + 기존 F1~F3 런타임 검증 항목). 이력: [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) | Server | ✅구현완료·검수/런타임실측 대기 |
 | 1 | 낮음 | `IntegrityAndQAExpert` 스킬 §3 QA 체크리스트가 아직 PySide 항목(QThread/DLL/PySide 임포트) — 웹 client2 QA 항목으로 미전환 | 프로세스 | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |

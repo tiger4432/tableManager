@@ -72,6 +72,10 @@ class DatabaseOutbox(Base):
     processed_chain = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
+    # [Reliability F1] 브로드캐스트 전달 확정 시각. 커밋 직후엔 NULL(통지할 메시지가 있는 그룹) 또는
+    # 즉시 스탬프(통지할 메시지가 없는 no-op 그룹). NULL로 남은 SUCCESS 행 = 통지 미확정 →
+    # 주기 스윕이 감지·재발사(batch_refresh_required)·확정한다. eventual delivery 보장의 durable 마커.
+    broadcast_at = Column(DateTime(timezone=True), nullable=True)
 
     # [핵심] Outbox 폴링 스캔 최적화 색인 일람.
     # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
@@ -85,6 +89,11 @@ class DatabaseOutbox(Base):
 
         # [Latency Fix #3] 미처리 체인 이벤트 큐 스캔(processed_chain==false order by id asc) 전용 부분 인덱스.
         Index("idx_outbox_unprocessed", "processed_chain", "id", postgresql_where=text("processed_chain = false")),
+
+        # [Reliability F1] 통지 미확정(broadcast_at IS NULL) 교정 행 안전망 스윕 전용 부분 인덱스.
+        # 정상 상태(전달 확정)에선 거의 빈 인덱스이므로 1000만행 누적에도 스윕이 O(미전달)로 안전하다.
+        Index("idx_outbox_undelivered", "id",
+              postgresql_where=text("processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL")),
     ]
     if not is_sqlite:
         _outbox_index_list.append(

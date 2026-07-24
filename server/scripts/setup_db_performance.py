@@ -63,7 +63,38 @@ def setup_performance():
             # [#3] tx 보완 쿼리(payload->>'transaction_id') 가속용 표현식 인덱스
             ("idx_outbox_txid", "database_outbox",
              "((payload->>'transaction_id'))"),
+
+            # [Reliability F1] 통지 미확정 교정 행 안전망 스윕 전용 부분 인덱스.
+            #   정상 상태에선 거의 빈 인덱스 → 1000만행 누적에도 스윕이 O(미전달)로 안전.
+            ("idx_outbox_undelivered", "database_outbox",
+             "(id) WHERE processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL"),
         ]
+
+        # [Reliability F1] broadcast_at 컬럼 보정 + 최초 생성 시 1회 청킹 백필.
+        #   idx_outbox_undelivered(부분 인덱스)가 broadcast_at 을 참조하므로 인덱스 생성 전에 컬럼이 존재해야 한다.
+        #   컬럼을 새로 만든 경우에만 기존 처리완료 행을 백필한다(기존 행을 전달완료로 간주 → 스윕 대량 오발사 방지).
+        #   이미 존재하면(=앱 기동 시 마이그레이션됨) skip 하여 진짜 미전달 행을 덮어쓰지 않는다.
+        print("\nStep 2.5: Ensuring database_outbox.broadcast_at column (Reliability F1)...")
+        col_exists = conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'database_outbox' AND column_name = 'broadcast_at'"
+        )).first()
+        if not col_exists:
+            conn.execute(text("ALTER TABLE database_outbox ADD COLUMN broadcast_at TIMESTAMPTZ"))
+            print(" - Column added. Backfilling existing processed rows (chunked)...")
+            backfilled = 0
+            while True:
+                res = conn.execute(text(
+                    "UPDATE database_outbox SET broadcast_at = COALESCE(processed_at, created_at) "
+                    "WHERE id IN (SELECT id FROM database_outbox "
+                    "WHERE processed_chain = true AND broadcast_at IS NULL LIMIT 1000)"
+                ))
+                if not res.rowcount:
+                    break
+                backfilled += res.rowcount
+            print(f"   Backfilled broadcast_at for {backfilled} row(s).")
+        else:
+            print(" - Column already present. Skipping backfill (undelivered rows handled by worker sweep).")
 
         print("\nStep 3: Creating Outbox Polling Indices...")
         for idx_name, table, definition in outbox_indices:
