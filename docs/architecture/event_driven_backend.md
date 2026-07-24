@@ -170,6 +170,15 @@ graph TD
 ### 3.4 순환 루프 방지 장치
 체인 워커는 무한 재트리거(A 테이블 ➡️ B 테이블 ➡️ A 테이블...)를 막기 위해, 이벤트 페이로드 내 `source_name`이 `"chain_ingestion"`으로 설정된 건에 대해서는 **체인 규칙을 발동시키지 않고 즉시 패스**하도록 설계되어 있습니다.
 
+### 3.5 폴링·브로드캐스트 지연 최적화 (Latency Model)
+간헐적 반응 지연을 없애기 위해 다음 두 축이 적용되어 있습니다.
+
+* **커밋 우선 → 통지 후행 (Commit-before-Broadcast)**: 트랜잭션 그룹은 `apply_batch_updates` 성공 후 **먼저 `processed_chain=True` + `commit`** 을 확정하고, 그다음에 WebSocket 통지(`/internal/events/broadcast`)를 **fire-and-forget** 배경 태스크로 발사합니다(`chain_ingestion_worker.py`, `dispatch_broadcasts_bg`). 통지의 성공/실패는 처리 성공 여부·재시도 판정에 **절대 반영되지 않으며**, 재시도는 오직 실제 데이터 처리 실패로만 트리거됩니다(이미 커밋된 그룹의 재처리/중복 방지). 통지 HTTP 타임아웃은 3초입니다. **경계 계약(이벤트명 `batch_row_upsert`/`batch_row_delete`/`batch_refresh_required` 및 페이로드 형식)은 불변이며 타이밍만 커밋 이후로 이동**했습니다.
+* **Outbox 폴링 부분 인덱스**: `database_outbox` 스캔 비용을 상수화하기 위해 부분/표현식 인덱스를 사용합니다(`models.py` `DatabaseOutbox.__table_args__`, 기존 운영 DB는 `scripts/setup_db_performance.py`로 멱등 반영).
+  * `idx_outbox_reload` — `(event_type, id) WHERE event_type='SYSTEM_RELOAD'`: SYSTEM_RELOAD 트리거 조회용. 조회 자체도 매 루프가 아니라 최소 1초 간격으로 스로틀됩니다.
+  * `idx_outbox_unprocessed` — `(processed_chain, id) WHERE processed_chain=false`: 미처리 이벤트 큐 스캔용.
+  * `idx_outbox_txid` — `(payload->>'transaction_id')` 표현식 인덱스(**PostgreSQL 전용**, SQLite는 dialect 가드로 미생성): tx 보완(dynamic fetch guard) 조회용.
+
 ---
 
 ## 4. Graph DB (Neo4j) 동기화 가이드

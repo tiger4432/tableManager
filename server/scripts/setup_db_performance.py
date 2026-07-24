@@ -48,9 +48,37 @@ def setup_performance():
             except Exception as e:
                 print(f"   Failed to create {idx_name}: {e}")
 
-        # 3. 통계 정보 갱신
-        print("\nStep 3: Refreshing Statistics (ANALYZE)...")
+        # 3. Outbox 폴링 최적화 인덱스 (체인/그래프 워커 폴링 스캔 가속)
+        #    부분/표현식 인덱스는 PostgreSQL 전용이며, models.py DatabaseOutbox.__table_args__ 와 동일 패턴.
+        #    기존 운영 DB(create_all 이 새 인덱스를 추가하지 않는 환경)에 멱등적으로 반영한다.
+        outbox_indices = [
+            # [#1] SYSTEM_RELOAD 트리거 조회 전용 부분 인덱스
+            ("idx_outbox_reload", "database_outbox",
+             "(event_type, id) WHERE event_type = 'SYSTEM_RELOAD'"),
+
+            # [#3] 미처리 체인 이벤트 큐 스캔 전용 부분 인덱스
+            ("idx_outbox_unprocessed", "database_outbox",
+             "(processed_chain, id) WHERE processed_chain = false"),
+
+            # [#3] tx 보완 쿼리(payload->>'transaction_id') 가속용 표현식 인덱스
+            ("idx_outbox_txid", "database_outbox",
+             "((payload->>'transaction_id'))"),
+        ]
+
+        print("\nStep 3: Creating Outbox Polling Indices...")
+        for idx_name, table, definition in outbox_indices:
+            print(f" - Creating {idx_name} on {table}...")
+            t0 = time.time()
+            try:
+                conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
+                print(f"   Success ({time.time() - t0:.2f}s)")
+            except Exception as e:
+                print(f"   Failed to create {idx_name}: {e}")
+
+        # 4. 통계 정보 갱신
+        print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE data_rows"))
+        conn.execute(text("ANALYZE database_outbox"))
         print("Done.")
 
     print("\n✅ All performance optimizations have been applied successfully!")

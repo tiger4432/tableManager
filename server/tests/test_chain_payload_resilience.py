@@ -78,6 +78,8 @@ async def test_process_chain_transaction_group_with_string_payload():
     ]
     
     # Execute transaction group processing
-    success, error = await process_chain_transaction_group("tx_str_test", [event], mock_db, rules)
+    success, error, broadcast_messages = await process_chain_transaction_group("tx_str_test", [event], mock_db, rules)
     assert success is True
     assert error is None
+    # 통지 메시지는 커밋 이후 호출부에서 fire-and-forget으로 발사되며, 반환은 리스트여야 한다.
+    assert isinstance(broadcast_messages, list)

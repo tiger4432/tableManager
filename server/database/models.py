@@ -68,13 +68,31 @@ class DatabaseOutbox(Base):
     payload = Column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
     status = Column(String(20), default="PENDING", index=True)
     retry_count = Column(Integer, default=0)
-    processed_chain = Column(Boolean, default=False, index=True)
+    # [Latency Fix #3] 비부분 boolean 인덱스(전체 행 색인) 대신 아래 부분 인덱스(WHERE processed_chain=false)로 대체.
+    processed_chain = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
+    # [핵심] Outbox 폴링 스캔 최적화 색인 일람.
+    # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
+    # 일반 인덱스로 생성되므로 두 dialect 모두 안전하게 create_all 가능하다.
+    _outbox_index_list = [
         Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'")),
-    )
+
+        # [Latency Fix #1] SYSTEM_RELOAD 트리거 조회(event_type=='SYSTEM_RELOAD' order by id desc) 전용 부분 인덱스.
+        # (event_type, id) 복합으로 id 정렬 first()까지 색인만으로 처리.
+        Index("idx_outbox_reload", "event_type", "id", postgresql_where=text("event_type = 'SYSTEM_RELOAD'")),
+
+        # [Latency Fix #3] 미처리 체인 이벤트 큐 스캔(processed_chain==false order by id asc) 전용 부분 인덱스.
+        Index("idx_outbox_unprocessed", "processed_chain", "id", postgresql_where=text("processed_chain = false")),
+    ]
+    if not is_sqlite:
+        _outbox_index_list.append(
+            # [Latency Fix #3] tx 보완 쿼리(payload->>'transaction_id') 가속용 표현식 인덱스.
+            # JSON 연산자는 PostgreSQL 전용이므로 dialect 가드로 SQLite에서는 생성하지 않는다.
+            Index("idx_outbox_txid", text("((payload->>'transaction_id'))")),
+        )
+    __table_args__ = tuple(_outbox_index_list)
 
     @property
     def safe_payload(self) -> dict:
