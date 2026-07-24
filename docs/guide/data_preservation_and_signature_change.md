@@ -1,5 +1,7 @@
 # 함수 시그니처 변경 영향 분석 및 병합 데이터 보존 지침서
 
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Integrity/QA | **Source-of-truth:** `server/database/crud.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율 [CONTRIBUTING](../process/CONTRIBUTING.md)
+
 이 문서는 `assyManager` 프로젝트 내에서 공용 유틸리티, 데이터베이스 CRUD 코어를 변경할 때 발생할 수 있는 부작용(Side-effects)을 방지하고, 충돌 병합 시의 데이터 유실을 막기 위해 모든 에이전트가 엄격히 준수해야 하는 엔지니어링 표준 지침서입니다.
 
 ---

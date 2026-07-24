@@ -33,7 +33,7 @@ description: PM 에이전트와 하위 개발 에이전트 간의 표준 작업 
 
 1. **지시 수신**: `find_by_name` 혹은 `list_dir` 도구를 이용해 `agent_workspace/tasks/` 디렉토리를 열고, 자신에게 할당된 작업 지시서(`.md`)를 `view_file`로 정독하십시오.
 2. **작업 수행**: 지시서에 포함된 코딩, 디버깅, 리팩토링 임무를 실제로 프로젝트 파일에 수행하십시오.
-3. **기능 검증**: 보고서 작성 전, [**클라이언트 전수 기능 점검표**](file:///c:/Users/kk980/Developments/assyManager/docs/CLIENT_FEATURE_CHECKLIST.md)를 참조하여 기존/신규 기능에 이상이 없는지 확인하십시오.
+3. **기능 검증**: 보고서 작성 전, [**아키텍처/프론트엔드 기준 문서**](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/frontend.md)를 참조하여 기존/신규 기능에 이상이 없는지 확인하십시오.
 4. **결과 보고**: 작업이 완료되면 `agent_workspace/reports/` 디렉토리에 작업 내용, 수정한 파일 리스트, 미해결 이슈(있을 경우)를 명시한 `[자신의이름]_report.md` 파일을 `write_to_file`로 생성하십시오.
 5. **종료 알림**: 사용자에게 "작업 보고서 작성을 완료했습니다." 라고 대답하고 턴을 종료하십시오.
 
@@ -55,7 +55,7 @@ description: PM 에이전트와 하위 개발 에이전트 간의 표준 작업 
 
 | 에이전트 명칭 | 전문 분야 | 주요 담당 컴포넌트 |
 |---|---|---|
-| **Lead Agent (PM)** | 아키텍처 설계 & 작업 조율 | `task.md`, `technical_manual.md`, `docs/history/` |
+| **Lead Agent (PM)** | 아키텍처 설계 & 작업 조율 | `docs/overview/SYSTEM_OVERVIEW.md`(SSOT), `docs/process/`, `docs/history/` |
 | **Agent Excel (UI)** | 고성능 테이블 & 클립보드 | `table_model.py` (Edit/Batch), `ExcelTableView` |
 | **Agent D (Sync)** | 실시간 동기화 & WebSocket | `SharedWS`, `WsListenerThread`, `broadcast_engine` |
 | **Agent I (Pipeline)** | 인제션 & 아카이빙 | `advanced_ingester.py`, `directory_watcher.py` |

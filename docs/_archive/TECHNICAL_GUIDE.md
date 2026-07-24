@@ -1,5 +1,8 @@
 # AssyManager Master Technical Guide (Enterprise Edition)
 
+> 🗄️ **SUPERSEDED** by [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) on 2026-07-24.
+> 이 문서(v2.2, ~2026-06)는 PySide6 프론트엔드 기준으로 **더 이상 유효하지 않습니다.** 히스토리 추적용으로만 보존됩니다.
+
 본 문서는 AssyManager 프로젝트의 **최상위 마스터 기술 가이드**입니다. 시스템의 아키텍처, 데이터 흐름, 비즈니스 규칙, 그리고 트러블슈팅에 관한 모든 정보를 집대성하며, 새로운 개발자가 즉시 프로젝트에 투입되어 디버깅 및 확장을 수행할 수 있게 하는 것을 목적으로 합니다.
 
 ---
@@ -13,7 +16,7 @@ AssyManager는 반도체 및 패키징 산업의 복합 데이터를 관리하�
 - **Data**: PostgreSQL 상의 동적 JSONB 스토리지 및 GIN 색인 기반 로그 트리거 시스템.
 
 > [!TIP]
-> 상세 아키텍처 맵과 UI 제어 흐름은 **[시스템 아키텍처 분석서](../analysis/ARCHITECTURE_ANALYSIS.md)**를 참조하십시오.
+> 상세 아키텍처 맵과 UI 제어 흐름은 **[시스템 아키텍처 분석서](./ARCHITECTURE_ANALYSIS.md)**를 참조하십시오.
 
 ---
 

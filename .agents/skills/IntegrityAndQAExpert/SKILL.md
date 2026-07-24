@@ -29,7 +29,7 @@ description: 데스크톱 및 백엔드 시스템의 에러를 정밀 분석하�
 - [ ] PySide6/PyQt6 관련 임포트(`QtCore`, `QtWidgets` 등)가 적절한 경로에서 이루어졌는가?
 - [ ] 비동기 작업(QRunnable, QThread) 사용 시 메인 UI 스레드와의 통신(Signal/Slot)이 안전한가?
 - [ ] 서버 API 응답의 JSON 스키마 변경이 클라이언트 모델에 영향을 주지 않는가?
-- [ ] **[필수 점검]** 작업 완료 후 [**클라이언트 전수 기능 점검표**](file:///c:/Users/kk980/Developments/assyManager/docs/CLIENT_FEATURE_CHECKLIST.md)의 모든 기능이 정상 동작하는지 확인했는가?
+- [ ] **[필수 점검]** 작업 완료 후 [**아키텍처/프론트엔드 기준 문서**](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/frontend.md)의 모든 기능이 정상 동작하는지 확인했는가?
 - [ ] Windows 환경의 DLL 충돌 방지 로직이 훼손되지 않았는가?
 
 ---

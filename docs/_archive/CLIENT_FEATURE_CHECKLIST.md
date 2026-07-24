@@ -1,5 +1,8 @@
 # 📋 AssyManager Client: Full Feature Checklist (QA & Inspection Guide)
 
+> 🗄️ **SUPERSEDED** by [architecture/frontend.md](../architecture/frontend.md) on 2026-07-24.
+> 이 점검표(v1.4)는 PySide6 QTableView/QMessageBox 기준으로 **현재 웹 client2 UI를 반영하지 않습니다.** 히스토리 추적용으로만 보존됩니다.
+
 본 문서는 AssyManager Enterprise Client의 모든 현재 기능을 정리한 전수 점검표입니다. 향후 시스템 업그레이드나 리팩토링 시 기능 회귀(Regression) 방지를 위한 표준 체크리스트로 활용하십시오.
 
 ---

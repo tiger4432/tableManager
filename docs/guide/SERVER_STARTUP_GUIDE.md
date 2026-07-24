@@ -1,6 +1,9 @@
 # 🚀 AssyManager 서버 스타팅 가이드 (High-Performance Engine)
 
-이 가이드는 1,000만 건 이상의 대규모 데이터를 초고속(0.1초대)으로 처리하는 AssyManager 서버의 설치 및 운영 방법을 설명합니다.
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-24 | **Owner:** Ops | 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> ⚠️ 아래 실행 예시(`uvicorn ... --port 8000`, `pip install`)는 DB 성능 튜닝 관점의 참고입니다. **정식 기동은 `python run_decoupled_app.py`**(웹서버 :8080 + 워커 4종)이며, 환경 구성은 [CONDA_SETUP_GUIDE](./CONDA_SETUP_GUIDE.md)·[NATIVE_POSTGRES_SETUP_GUIDE](./NATIVE_POSTGRES_SETUP_GUIDE.md)를 따르십시오. 정식 실행 절차는 [SYSTEM_OVERVIEW §7](../overview/SYSTEM_OVERVIEW.md)을 참조.
+
+이 가이드는 1,000만 건 이상의 대규모 데이터를 초고속(0.1초대)으로 처리하는 AssyManager 서버의 성능 최적화(인덱스·트라이그램·work_mem) 관점을 설명합니다.
 
 ## 1. 환경 구축 (Environment)
 *   **Python 버전**: 3.10 이상 권장

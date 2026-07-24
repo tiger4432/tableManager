@@ -1,5 +1,7 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+
 본 문서는 `assyManager` 프로젝트의 2세대 격자 맵 에디터([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js))에 구현된 모든 프론트엔드 자바스크립트 함수들의 설계 규격, 변환 공식 및 상세 API 레퍼런스를 정리합니다.
 
 ---

@@ -1,5 +1,7 @@
 # 🕵️ AssyManager: 아이콘 미출력 원인 분석 보고서
 
+> 🗄️ **ARCHIVED** on 2026-07-24 — 일회성 진단 보고서(PySide6 데스크톱 시대). 히스토리 추적용 보존.
+
 본 보고서는 AssyManager Enterprise Edition 실행 시 아이콘이 출력되지 않는 현상에 대한 기술적 분석 결과를 담고 있습니다.
 
 ---

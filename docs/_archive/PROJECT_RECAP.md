@@ -1,6 +1,8 @@
 # 🚀 assyManager 프로젝트 히스토리 및 성과 요약 (Project Recap)
 
-본 문서는 `assyManager` 프로젝트의 개발 여정(Phase 1~16)과 최종 기능적 성과를 정리한 회고록입니다.
+> 🗄️ **ARCHIVED** on 2026-07-24 — Phase 1~80 시대의 회고록입니다. 살아있는 릴리스 기록은 [process/RELEASE_LOG.md](../process/RELEASE_LOG.md), 현재 아키텍처는 [overview/SYSTEM_OVERVIEW.md](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오. 일부 서술(PySide6·SQLite·port 8000 등)은 과거 시점 기준입니다.
+
+본 문서는 `assyManager` 프로젝트의 개발 여정(Phase 1~80)과 당시 기능적 성과를 정리한 회고록입니다.
 
 ---
 
@@ -37,9 +39,9 @@
 ---
 
 ## 📂 3. 핵심 기술 자산 (Core Tech Assets)
-본 프로젝트의 핵심 아키텍처와 주요 구현 방식은 다음 문서를 통해 상세히 관리됩니다.
-- **[TECHNICAL_GUIDE.md](./guide/TECHNICAL_GUIDE.md)**: 시스템 전반의 아키텍처 및 API 상세 가이드.
-- **[INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md)**: 데이터 인제션 및 워크스페이스 확장 가이드.
+당시 핵심 아키텍처 문서(현재 위치 기준):
+- **[overview/SYSTEM_OVERVIEW.md](../overview/SYSTEM_OVERVIEW.md)**: 현재 아키텍처 SSOT.
+- **[guide/INGESTION_GUIDE.md](../guide/INGESTION_GUIDE.md)**: 데이터 인제션 및 워크스페이스 확장 가이드.
 
 ---
 

@@ -1,6 +1,6 @@
 # AssyManager 에이전트 표준 작업 헌장 (Standard Operating Procedures)
 
-너는 `assyManager` 프로젝트의 리드 PM 에이전트야. 프로젝트 루트의 `docs/` 디렉토리에 있는 history/*.md 와 ASSY_MANAGER_BIBLE.md를 읽고 시스템의 현재 상태를 파악해.
+너는 `assyManager` 프로젝트의 리드 PM 에이전트야. 프로젝트 루트의 `docs/` 디렉토리에 있는 [docs/README.md](file:///c:/Users/kk980/Developments/assyManager/docs/README.md)(문서 지도)와 [docs/overview/SYSTEM_OVERVIEW.md](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md)(SSOT), 그리고 최신 history/*.md를 읽고 시스템의 현재 상태를 파악해.
 
 항상 작업에는 아래의 프로세스를 따르도록
 
@@ -28,6 +28,17 @@
 - 모든 주요 변경 사항은 `docs/history/YYYYMMDD_HHMMSS_설명이름.md`에 기록한다.
 - **코드 스니펫 필수 포함**: 변경된 핵심 로직의 전/후 또는 최종 형태의 **코드 조각(Snippet)**을 반드시 포함하여, 문서만 보고도 기술적 변화를 완벽히 이해할 수 있게 한다.
 - **아키텍처 영향 보고**: 해당 수정이 다른 모듈이나 데이터 흐름에 미친 영향을 기술한다.
+- **히스토리 인덱스 갱신**: 새 이력 파일 추가 후 `python docs/history/gen_index.py`를 실행하여 `docs/history/README.md`를 재생성한다. (인덱스는 자동 생성물이므로 수동 편집 금지)
+
+### B. [CRITICAL] Docs-as-Code 갱신 규율
+
+히스토리 기록만으로는 부족하다. 히스토리는 append-only 로그일 뿐이며, **현재 상태를 말하는 것은 리빙 문서**이다. 코드 변경이 아래에 해당하면 **같은 작업에서** 해당 리빙 문서를 반드시 갱신한다.
+
+- **아키텍처/프로세스 토폴로지 변경** → `docs/overview/SYSTEM_OVERVIEW.md`(SSOT) + `docs/architecture/*`
+- **서브시스템 동작 변경** → 해당 소유 문서([docs/process/DOC_OWNERSHIP.md](file:///c:/Users/kk980/Developments/assyManager/docs/process/DOC_OWNERSHIP.md) 참조)
+- **API/CRUD 시그니처 변경** → `docs/architecture/backend.md` + `docs/spec/api_documentation.md`
+
+판단 기준: **"다음 사람이 이 변경을 알아야 하는가?"** 예이면 리빙 문서를 고친다. 전체 규율은 [docs/process/CONTRIBUTING.md](file:///c:/Users/kk980/Developments/assyManager/docs/process/CONTRIBUTING.md) 필독.
 
 ## 3. 기술적 안전판 (Technical Resilience)
 

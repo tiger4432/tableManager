@@ -1,5 +1,8 @@
 # AssyManager: 시스템 아키텍처 및 제어 로직 상세 분석
 
+> 🗄️ **SUPERSEDED** by [architecture/backend.md](../architecture/backend.md) · [frontend.md](../architecture/frontend.md) on 2026-07-24.
+> 이 문서(v2.0)는 "SQLite/JSON DB", `client/main.py`, `navigation_rail.py` 등 **실존하지 않는 구조**를 서술합니다. 히스토리 추적용으로만 보존됩니다.
+
 본 문서는 AssyManager Enterprise Edition의 전체 구조와 핵심 UI 제어 메커니즘을 기술합니다. 시스템의 유지보수 및 화면 전환 관련 디버깅 시 최우선 참조 가이드입니다.
 
 ---

@@ -1,0 +1,43 @@
+# 📦 RELEASE_LOG — 릴리스 요약
+
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Lead / PM
+> 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
+
+불연속 `Phase N.x` 번호 체계를 대체하는 릴리스 요약입니다. 상세 이력은 [history/](../history/README.md)에 있으며, 이 문서는 **큰 흐름의 마일스톤**만 시맨틱하게 기록합니다.
+
+**형식:** `YYYY-MM-DD | 영역 | 요약` (최신순). 상세가 필요하면 history 링크.
+
+---
+
+## 2026-07 — 웨이퍼 맵 에디터 & 물리 지오메트리
+
+- **2026-07-21 | Map/Ingestion** | 물리 웨이퍼 지오메트리 엔진 도입, 체인 인제션 페이로드 문자열 내성 강화.
+- **2026-07-19~20 | Map Editor** | 2세대 격자 맵 에디터 완성 — 회전/면반전 좌표계, E1/E2 외곽 자동 추출, 드래그 페인팅, 엑셀 복사, 메타데이터 전용 테이블(`wafer_map_metadata`), 프리셋.
+- **2026-07-17 | Admin** | 브라우저 내 Monaco 코드 에디터 시스템(맵퍼/스크립트 인라인 편집, no-cache 응답).
+- **2026-07-15 | Ingestion** | Silent Upsert + 하이브리드 Auto-Update 스케줄러(주석기반 크론).
+
+## 2026-06 — RDB 전환 & 관리자 대시보드
+
+- **2026-06-20 | Data Model** | 복합 비즈니스 키 생성 및 고유성 보장.
+- **2026-06-16 | Admin/Perf** | 전용 관리자 대시보드(ingestions/chains/mappers), 배치 업서트·클라이언트 성능 최적화.
+- **2026-06-13 | Data Model** | JSONB blob → 정규화 RDB(동적 네이티브 테이블) 마이그레이션.
+- **2026-06-09 | Ingestion** | 체인 인제션 Pandas 배치 맵퍼, 공용 맵퍼 유틸 베이스, 폴트 톨러런스·리플레이.
+
+## 2026-05 — 웹 클라이언트 전환
+
+- **2026-05-25 | Frontend** | `client2` AG-Grid 웹 클라이언트 재구축 및 프로덕션 통합. PySide6 데스크톱 → QtWebEngine 셸 + 웹앱 체제로 전환.
+
+## 2026-04 이전 — 기반 플랫폼 (구 Phase 1~80)
+
+- 실시간 WebSocket 동기화, 가상 로딩 그리드, 데이터 계보(AuditLog), 비즈니스 키 업서트, 검색 세션 가드, Float-to-top, 트랜잭션 그룹화 등. 상세: [PROJECT_RECAP(archived)](../_archive/PROJECT_RECAP.md) 및 [history/](../history/README.md).
+
+---
+
+## 앞으로 (백로그)
+
+루트 `task/` 디렉토리의 대기 작업:
+- `cursor_based_pagination_pending.md`
+- `total_count_sync_pending.md`
+- `desktop_hybrid_wrapper_plan.md`
+
+> 새 릴리스는 이 파일 상단(해당 월 섹션)에 한 줄 추가하고 history 상세를 링크하십시오.

@@ -1,0 +1,71 @@
+# 📚 AssyManager Documentation
+
+> **여기서 시작하세요.** 이 파일은 전체 문서의 **유일한 진입점(문서 지도)**입니다.
+> 현재 아키텍처의 권위 있는 설명은 **[SYSTEM_OVERVIEW (SSOT)](./overview/SYSTEM_OVERVIEW.md)** 하나뿐입니다.
+
+**Status 범례:** 🟢 Living(최신·검증됨) · 🟠 부분 최신 · ⚪ 참고/스냅샷 · 🗄️ Archived(대체됨)
+
+---
+
+## 🧭 1. 먼저 읽을 것
+
+| 문서 | 내용 |
+|---|---|
+| 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
+| 🟢 [DOC_AUDIT.md](./DOC_AUDIT.md) | 문서·개발체계 진단서 및 정비 계획 |
+| 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로 |
+
+## 🏛️ 2. 아키텍처 (architecture/)
+
+| 문서 | 내용 |
+|---|---|
+| 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴 |
+| 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 |
+| 🟢 [data_model.md](./architecture/data_model.md) | ORM 모델 + 동적 테이블 + 레이어링/우선순위 |
+| 🟠 [event_driven_backend.md](./architecture/event_driven_backend.md) | Outbox 패턴 · 체인 인제션 · Graph DB(Neo4j) 동기화 심화 |
+
+## 🧩 3. 서브시스템 리빙 가이드
+
+| 서브시스템 | 문서 |
+|---|---|
+| 파일 인제션 파이프라인 | 🟢 [guide/INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md) |
+| 체인 인제션(DB세션 맵퍼) | 🟢 [guide/chain_ingestion_guide.md](./guide/chain_ingestion_guide.md) |
+| Auto-Update 스케줄러 | 🟢 [guide/AUTO_UPDATE_GUIDE.md](./guide/AUTO_UPDATE_GUIDE.md) |
+| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) |
+| HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
+| 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |
+| 실시간 동기화 | 🟠 [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md) |
+| 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
+| 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
+| 그래프 DB 통합 | ⚪ [spec/graph_db_integration_plan.md](./spec/graph_db_integration_plan.md) |
+| API 레퍼런스 | 🟠 [spec/api_documentation.md](./spec/api_documentation.md) |
+
+## 🛠️ 4. 운영 & 셋업 (guide/)
+
+| 문서 | 내용 |
+|---|---|
+| 🟢 [CONDA_SETUP_GUIDE.md](./guide/CONDA_SETUP_GUIDE.md) | Conda 환경 구성 |
+| 🟢 [NATIVE_POSTGRES_SETUP_GUIDE.md](./guide/NATIVE_POSTGRES_SETUP_GUIDE.md) | PostgreSQL 설치 |
+| 🟢 [POSTGRES_OPERATIONS_GUIDE.md](./guide/POSTGRES_OPERATIONS_GUIDE.md) | DB 운영 |
+| 🟠 [SERVER_STARTUP_GUIDE.md](./guide/SERVER_STARTUP_GUIDE.md) | 서버 기동·성능 튜닝(인덱스/work_mem) |
+| 🟢 [data_preservation_and_signature_change.md](./guide/data_preservation_and_signature_change.md) | 시그니처 변경·병합 보존 규율(SOP 필독) |
+| 🟠 [spec/DEBUGGING_GUIDE.md](./spec/DEBUGGING_GUIDE.md) | 트러블슈팅 체크리스트 |
+
+## 📜 5. 이력 & 개발 체계
+
+| 문서 | 내용 |
+|---|---|
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(167개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
+| 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
+| 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
+| 🟠 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계 |
+| 🟢 [prompts/starting_prompt.md](./prompts/starting_prompt.md) | 에이전트 작업 헌장(SOP) |
+
+## 🗄️ 6. 아카이브 (_archive/)
+
+과거 PySide6 시대의 문서로, **더 이상 유효하지 않습니다.** 히스토리 추적용으로만 보존됩니다: [_archive/](./_archive/) — `ASSY_MANAGER_BIBLE`, `TECHNICAL_GUIDE`, `ARCHITECTURE_ANALYSIS`, `CLIENT_FEATURE_CHECKLIST` 등.
+
+---
+
+*문서를 추가·변경할 때는 이 인덱스와 해당 문서의 Status 배지를 함께 갱신하십시오 → [process/CONTRIBUTING.md](./process/CONTRIBUTING.md)*

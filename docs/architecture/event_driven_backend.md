@@ -1,4 +1,10 @@
-# 가이드: Outbox 패턴, 체인 인제션 및 Graph DB(Neo4j) 연동 매뉴얼
+# 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · Graph DB 동기화
+
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-24 | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`
+> 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 개괄 [backend.md](./backend.md)
+> 관련 howto: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [graph_db_integration_plan](../spec/graph_db_integration_plan.md)(그래프 상세)
+>
+> ⚠️ **검증 주의:** §1 다이어그램·§2.1의 `data_rows`/`DataRow` 리스너 서술은 JSONB blob 시대 기준입니다. 현재는 동적 네이티브 테이블([data_model.md](./data_model.md))이 주 저장소이므로, Outbox staging 대상의 정확한 범위는 코드 재확인이 필요합니다. 패턴(Transactional Outbox + LISTEN/NOTIFY)은 유효합니다.
 
 이 문서는 `assyManager` 백엔드 서버에 구축된 **Database Outbox**, **체인 인제션(Chained Ingestion)**, 그리고 **Graph DB(Neo4j) 동적 동기화** 시스템의 아키텍처, 설정 방법, 신규 연동 규칙 개발 가이드를 종합적으로 제공합니다.
 

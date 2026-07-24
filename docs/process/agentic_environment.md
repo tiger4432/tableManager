@@ -1,5 +1,7 @@
 # 🤖 assyManager 에이전틱 운영 환경 (Agentic Environment)
 
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-24 | 에이전트 협업 규약은 유효하나, 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 정본으로 참조. 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
+
 본 프로젝트는 각 분야의 전문성을 갖춘 AI 에이전트들이 상호 유기적으로 협업하는 **에이전틱 지능형 프로젝트**입니다. 본 문서는 시스템을 관리하고 고도화하는 에이전트들의 구성과 협업 규약을 설명합니다.
 
 ---
@@ -9,7 +11,7 @@
 
 ### 🛡️ 리드 에이전트 (Lead Agent / PM)
 - **책임**: 전체 시스템 아키텍처 보호, 작업 우선순위 결정, 기술 문서 및 이력 관리 총괄.
-- **주요 관리 자산**: `task.md`, `technical_manual.md`, `docs/history/`.
+- **주요 관리 자산**: `docs/overview/SYSTEM_OVERVIEW.md`(SSOT), `docs/process/`(개발 체계), `docs/history/`.
 - **특징**: 하위 에이전트의 결과물을 검토하고 최종 통합을 승인합니다.
 
 ### 📊 Agent Excel (High-Performance UI)
@@ -45,8 +47,8 @@ Conda 환경(`assy_manager`)에서 검증되지 않은 코드는 절대 커밋�
 ## 🚀 3. 신규 에이전트 온보딩 가이드
 본 프로젝트에 새롭게 참여하는 에이전트는 다음 순서로 프로젝트를 파악하십시오.
 1. `docs/history/`의 최신 이력 3개 읽기.
-2. `technical_manual.md`를 통해 전체 아키텍처 이해.
-3. `task.md`를 열어 현재 진행 중인 Phase 확인.
+2. `docs/overview/SYSTEM_OVERVIEW.md`(SSOT)를 통해 전체 아키텍처 이해.
+3. 루트 `task/` 디렉토리와 `docs/process/RELEASE_LOG.md`로 진행/백로그 확인.
 4. `.agents/skills/SubAgentExecution/SKILL.md`를 통해 보고 체계 숙지.
 
 ---

@@ -1,5 +1,8 @@
 # 📖 AssyManager: The Ultimate Technical Bible (Enterprise Revision)
 
+> 🗄️ **SUPERSEDED** by [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) on 2026-07-24.
+> 이 문서는 PySide6 데스크톱 시대(v1.5, ~2026-06)의 서술로 **더 이상 유효하지 않습니다.** (현재는 웹 client2 + PostgreSQL + 5-프로세스 체제) 히스토리 추적용으로만 보존됩니다.
+
 본 문서는 AssyManager 프로젝트의 모든 기술적 지식, 아키텍처, 비즈니스 로직, 그리고 디버깅 가이드를 집대성한 **'시스템 전수 백서'**입니다. 프로젝트의 유지보수, 확장, 그리고 문제 해결을 위한 가장 권위 있는 단일 참조 문서로 기능합니다.
 
 ---
