@@ -98,6 +98,7 @@
 관찰면을 한눈에 구분하도록 **그리드 바깥(그리드 툴바)**에 색상 구분 칩(`#side-indicator`)을 표시합니다. 격자를 가리지 않도록 캔버스가 아닌 DOM 요소로 분리했습니다.
 * `FRONT · 앞면` / `BACK · 뒷면` 텍스트, **FRONT = 하늘색(`#38bdf8`)**, **BACK = 앰버(`#f59e0b`)** 배경.
 * `updateSideIndicator()`가 side 라디오 변경·`updateOrientationUI()`(맵 로드/프리셋 복원)에서 즉시 갱신(rAF 비의존).
+* 추가로 캔버스 중앙에 **대형 반투명 워터마크(표시 전용 오버레이)**를 함께 표기합니다(`renderGridCanvas()` step 9). `FRONT`=하늘색 `rgba(56,189,248,0.13)` / `BACK`=앰버 `rgba(245,158,11,0.13)`, 표시 전용이라 셀 데이터·`gridCells2D`·hit-test에 영향 없음.
 
 #### 반응형 격자 채움 (Responsive Fit)
 `fitGridToWorkspace()`가 작업영역(`#map-workspace`)의 가용 공간에 맞춰 격자 래퍼를 **정사각(min(가용W, 가용H))**으로 리사이즈한 뒤 재렌더합니다. 정사각 유지로 원형 웨이퍼의 타원 왜곡을 방지합니다.

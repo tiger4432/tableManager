@@ -1456,6 +1456,27 @@ function renderGridCanvas() {
     ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
   }
 
+  // 9. FRONT / BACK translucent watermark (display-only overlay, centered)
+  //    Faint large label showing the current observation side. Purely visual:
+  //    it draws centered text only and touches NO cell data / gridCells2D / hit-test,
+  //    so it never affects mouse->cell mapping. Font/alignment state is isolated
+  //    via save/restore so it doesn't leak into the next render pass.
+  //    FRONT = sky blue, BACK = amber (matches the DOM #side-indicator chip).
+  {
+    const isBack = (currentSide === 'back');
+    const sideWord = isBack ? 'BACK' : 'FRONT';
+    const wmColor = isBack ? 'rgba(245, 158, 11, 0.13)' : 'rgba(56, 189, 248, 0.13)';
+    const wmFont = Math.max(40, Math.floor(width * 0.16));
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `900 ${wmFont}px "JetBrains Mono", monospace`;
+    ctx.fillStyle = wmColor;
+    ctx.fillText(sideWord, width / 2, height / 2);
+    ctx.restore();
+  }
+
   ctx.restore();
 
   updateNotchPosition();
