@@ -59,8 +59,10 @@
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
-| 🟠 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계 |
-| 🟢 [prompts/starting_prompt.md](./prompts/starting_prompt.md) | 에이전트 작업 헌장(SOP) |
+| 🟢 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계(총괄 + 2 PM) |
+| 🟢 [prompts/starting_prompt.md](./prompts/starting_prompt.md) | 총괄 PM 작업 헌장(SOP) + 조직 구조 |
+| 🟢 [prompts/server_pm.md](./prompts/server_pm.md) | Server(백엔드) 도메인 PM 헌장 |
+| 🟢 [prompts/client_pm.md](./prompts/client_pm.md) | Client(프론트엔드) 도메인 PM 헌장 |
 
 ## 🗄️ 6. 아카이브 (_archive/)
 

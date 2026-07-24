@@ -1,33 +1,37 @@
 # 🤖 assyManager 에이전틱 운영 환경 (Agentic Environment)
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-24 | 에이전트 협업 규약은 유효하나, 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 정본으로 참조. 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | 조직 구조(총괄 + 2 PM) 반영. 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md), 각 PM 헌장은 [server_pm](../prompts/server_pm.md)·[client_pm](../prompts/client_pm.md). 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
 
 본 프로젝트는 각 분야의 전문성을 갖춘 AI 에이전트들이 상호 유기적으로 협업하는 **에이전틱 지능형 프로젝트**입니다. 본 문서는 시스템을 관리하고 고도화하는 에이전트들의 구성과 협업 규약을 설명합니다.
 
 ---
 
-## 🏗️ 1. 멀티 에이전트 협업 체계
-시스템의 복잡도를 관리하기 위해 리드(Lead) 에이전트를 중심으로 기능별 전문 에이전트들이 분산형으로 작업을 수행합니다.
+## 🏗️ 1. 멀티 에이전트 협업 체계 (총괄 + 2 도메인 PM)
 
-### 🛡️ 리드 에이전트 (Lead Agent / PM)
-- **책임**: 전체 시스템 아키텍처 보호, 작업 우선순위 결정, 기술 문서 및 이력 관리 총괄.
-- **주요 관리 자산**: `docs/overview/SYSTEM_OVERVIEW.md`(SSOT), `docs/process/`(개발 체계), `docs/history/`.
-- **특징**: 하위 에이전트의 결과물을 검토하고 최종 통합을 승인합니다.
+시스템의 복잡도를 관리하기 위해 **총괄 PM(Lead)** 아래 **서버·클라이언트 도메인 PM 2인**을 두고, 각 PM이 필요 시 전문 스킬을 소환하여 작업한다.
 
-### 📊 Agent Excel (High-Performance UI)
-- **책임**: 수만 건의 데이터를 처리하는 QTableView의 성능 최적화 및 엑셀 수준의 사용자 경험 제공.
-- **주요 관리 자산**: `client/models/table_model.py`, `client/ui/`.
-- **전문 기술**: 가상 스크롤링, TSV 클립보드 파싱, 다중 셀 배치 업데이트.
+```
+총괄 PM (Lead)  — 아키텍처 무결성 · 경계 계약 수호 · 작업 분배 · 문서 총괄
+├── Server PM   →  server/ 전 영역          [헌장: docs/prompts/server_pm.md]
+└── Client PM   →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
+```
 
-### 🌐 Agent D (Real-time Sync)
-- **책임**: 모든 클라이언트와 서버 간의 데이터 실시간 정합성 유지 및 통신 신뢰성 확보.
-- **주요 관리 자산**: `SharedWS` 아키텍처, `server/main.py`(Broadcaster), 비동기 워커 생명주기.
-- **전문 기술**: WebSocket 프로토콜, 순차 로딩 알고리즘, 비동기 워커 GC 관리.
+### 🛡️ 총괄 PM (Lead)
+- **책임**: 전체 아키텍처 보호, 작업 분배, **서버-클라이언트 경계 계약(REST·WS·셀 형태·스키마) 수호**, 기술 문서·이력 총괄.
+- **주요 관리 자산**: `docs/overview/SYSTEM_OVERVIEW.md`(SSOT), `docs/process/`, `docs/history/`.
+- **헌장**: [`docs/prompts/starting_prompt.md`](../prompts/starting_prompt.md) §0.
 
-### ⚙️ Agent I (Automation Pipeline)
-- **책임**: 비정형 로그 데이터의 지능형 파싱 및 자동 적재 워크플로우 구축.
-- **주요 관리 자산**: `advanced_ingester.py`, `directory_watcher.py`, `ingestion_workspace/`.
-- **전문 기술**: 정규표현식 엔진, 비즈니스 키 맵핑, 실시간 디렉토리 감시.
+### 🖥️ Server PM (Backend Domain)
+- **책임**: `server/` 전 영역 — API/CRUD, 레이어링 엔진, 인제션 파이프라인, 체인 워커, 그래프 동기화, Auto-Update, DB.
+- **스킬**: `DataIngester`, `WebSocketExpert`(서버측), `IntegrityAndQAExpert`.
+- **헌장**: [`docs/prompts/server_pm.md`](../prompts/server_pm.md).
+
+### 🖼️ Client PM (Frontend Domain)
+- **책임**: 웹 `client2`(AG-Grid 그리드, 클립보드, 이력 타임라인, 어드민, 맵 에디터) + QtWebEngine 데스크톱 셸.
+- **스킬**: `ExcelInteractionExpert`, `PanelUIExpert`, `WebSocketExpert`(클라측).
+- **헌장**: [`docs/prompts/client_pm.md`](../prompts/client_pm.md).
+
+> 경계 계약(양측 공유 규약)은 어느 PM도 단독 변경 불가 — 총괄이 양측을 동시 조율한다.
 
 ---
 
