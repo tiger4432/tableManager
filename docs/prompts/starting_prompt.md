@@ -42,6 +42,7 @@
 ### C. 위임 운영 원칙 (Delegation Mode) — [기본 운영 방식]
 총괄은 직접 코딩하지 않고 **위임 후 검수**한다. 특히:
 1. **짜잘한 수정(사소한 UI/스타일/문구/버그)은 서브에이전트에 위임**한다. 총괄은 구현 세부를 수행하지 않는다.
+   - **[필수] 관련 docs 제공**: 위임 지시서에 **작업 대상 구조에 해당하는 리빙 문서 경로**를 명시한다(예: 백엔드=`architecture/backend.md`·`event_driven_backend.md`·`data_model.md`, 프론트=`architecture/frontend.md`, 맵=`map_editor/`·`MAP_EDITOR_SPEC`, 해당 서브시스템 가이드). 서브에이전트가 SSOT·소유 문서·`StableDevelopmentProtocol`을 먼저 읽고 착수하도록 한다.
 2. 서브에이전트는 완료 후 **요약 보고**만 총괄에 제출한다. 보고 필수 항목:
    - **완료 여부** (무엇을 어떻게 바꿨는지 1~3줄)
    - **사이드 이펙트 체크리스트** (StableDevelopmentProtocol §1의 좌표계/공유상태/타이밍/리사이즈 등 각 항목 통과 여부)
