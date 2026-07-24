@@ -1507,14 +1507,35 @@ body.resizing-active .history-sidebar {
   user-select: none;
 }
 
+/* 관찰면(FRONT/BACK) 표기 칩 — 그리드 바깥(툴바)에 색상 구분 표시 */
+.side-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  color: #0b1220;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  white-space: nowrap;
+  transition: background 0.2s ease;
+}
+.side-indicator.side-front { background: #38bdf8; }
+.side-indicator.side-back  { background: #f59e0b; }
+
 /* 2D Interactive Grid & Notch Wrapper */
 .map-grid-wrapper {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(780px, 82vh, 82vw);
-  height: min(780px, 82vh, 82vw);
+  /* 크기는 JS(fitGridToWorkspace)가 작업영역 가용 공간에 맞춰 정사각으로 설정.
+     아래는 JS 실행 전 초기 폴백값(상한 제거). */
+  width: min(82vh, 82vw);
+  height: min(82vh, 82vw);
   padding: 0;
   background: rgba(255, 255, 255, 0.01);
   border-radius: 0;

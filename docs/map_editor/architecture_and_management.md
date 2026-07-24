@@ -94,11 +94,15 @@
 * **BACK (뒷면 관찰)**: 회전 $0^\circ$ 기준, 노치가 좌우 반전되어 하단 **살짝 왼쪽 (`calc(50% - 24px)`)**에 배치됨.
 * **회전($0^\circ, 90^\circ, 180^\circ, 270^\circ$) 연동**: 맵 회전 각도에 맞추어 상/하/좌/우 외곽선으로 동적으로 뱃지와 V-Notch 화살표가 포지셔닝됩니다.
 
-#### FRONT / BACK 캔버스 표기 (Side Indicator)
-`renderGridCanvas()`는 관찰면을 한눈에 구분할 수 있도록 캔버스에 **색상 구분된 FRONT/BACK 표기**를 그립니다(항상 표시, `currentSide` 변경 시 자동 갱신):
-* **좌상단 배지(pill)**: `FRONT · 앞면` / `BACK · 뒷면` 텍스트. **FRONT = 하늘색(`#38bdf8`)**, **BACK = 앰버(`#f59e0b`)**로 배경 색상 구분.
-* **중앙 워터마크**: 동일 색 계열의 대형 반투명 `FRONT`/`BACK` 글자(격자 가독성을 해치지 않는 opacity 0.13).
-* 배지는 노치 'D' 마커(상단 중앙 부근)와 겹치지 않도록 좌상단 코너에 고정.
+#### FRONT / BACK 관찰면 표기 (Side Indicator)
+관찰면을 한눈에 구분하도록 **그리드 바깥(그리드 툴바)**에 색상 구분 칩(`#side-indicator`)을 표시합니다. 격자를 가리지 않도록 캔버스가 아닌 DOM 요소로 분리했습니다.
+* `FRONT · 앞면` / `BACK · 뒷면` 텍스트, **FRONT = 하늘색(`#38bdf8`)**, **BACK = 앰버(`#f59e0b`)** 배경.
+* `updateSideIndicator()`가 side 라디오 변경·`updateOrientationUI()`(맵 로드/프리셋 복원)에서 즉시 갱신(rAF 비의존).
+
+#### 반응형 격자 채움 (Responsive Fit)
+`fitGridToWorkspace()`가 작업영역(`#map-workspace`)의 가용 공간에 맞춰 격자 래퍼를 **정사각(min(가용W, 가용H))**으로 리사이즈한 뒤 재렌더합니다. 정사각 유지로 원형 웨이퍼의 타원 왜곡을 방지합니다.
+* 트리거: `window.resize` + **`ResizeObserver(#map-workspace)`**. 후자는 창 리사이즈가 발생하지 않는 **분할 패널(스플리터) 크기 변경**까지 커버합니다.
+* 마우스→셀 매핑(`getGridCellFromMouseEvent`)과 렌더(`renderGridCanvas`)는 **둘 다 live `getBoundingClientRect()`(CSS px)** 로 `cellW`를 계산하고 셀 조회는 인덱스 기반이므로, 크기 변경·DPR/브라우저 줌에도 좌표 정합이 유지됩니다.
 
 ### 3.3 테이블 간 맵 이월 (Cross-Table Carry-Over)
 한 테이블(A)에서 편집한 맵을 다른 테이블(B)로 전환하여 그대로 저장할 수 있습니다. `switchTable()`은 전환 시 **편집 중인 맵(`gridData`)이 존재하면 유지/초기화 확인창**을 띄웁니다:

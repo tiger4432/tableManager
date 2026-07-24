@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **172개** 이력. (거버넌스 규칙 #4)
+> 총 **173개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-24 20:16** — [Map Editor Side Label Outside And Responsive Fit](./20260724_201608_map_editor_side_label_outside_and_responsive_fit.md)
 - **2026-07-24 20:02** — [Map Editor Front Back Indicator](./20260724_200235_map_editor_front_back_indicator.md)
 - **2026-07-24 19:42** — [Map Editor Cross Table Carryover](./20260724_194218_map_editor_cross_table_carryover.md)
 - **2026-07-24 19:12** — [Two Pm Org Structure](./20260724_191249_two_pm_org_structure.md)

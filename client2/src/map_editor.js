@@ -128,8 +128,16 @@ function initDOMElements() {
   el.waferCanvas = document.getElementById('wafer-grid-canvas');
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
+  el.mapWorkspace = document.getElementById('map-workspace');
+  el.sideIndicator = document.getElementById('side-indicator');
 
-  window.addEventListener('resize', () => scheduleRenderGridCanvas());
+  // Fit the (square) grid to the available workspace on any size change.
+  // ResizeObserver also covers container-only resizes (split panels) that window 'resize' misses.
+  window.addEventListener('resize', fitGridToWorkspace);
+  if (window.ResizeObserver && el.mapWorkspace) {
+    new ResizeObserver(() => fitGridToWorkspace()).observe(el.mapWorkspace);
+  }
+  updateSideIndicator();
 
   // Bind Events
   el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
@@ -266,6 +274,7 @@ function initDOMElements() {
   document.querySelectorAll('input[name="wafer-side"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
       currentSide = e.target.value;
+      updateSideIndicator();
       scheduleRenderGridCanvas();
     });
   });
@@ -966,6 +975,7 @@ function updateOrientationUI() {
       radio.checked = false;
     }
   });
+  updateSideIndicator();
 }
 
 async function fetchAndRenderPresets() {
@@ -1184,6 +1194,34 @@ function scheduleRenderGridCanvas() {
     isRenderScheduled = false;
     renderGridCanvas();
   });
+}
+
+// Update the FRONT/BACK indicator chip (DOM, outside the grid). Cheap; call directly
+// on every side change so the label is instant even if the canvas re-render is throttled.
+function updateSideIndicator() {
+  if (!el.sideIndicator) return;
+  const isBack = (currentSide === 'back');
+  el.sideIndicator.textContent = isBack ? 'BACK · 뒷면' : 'FRONT · 앞면';
+  el.sideIndicator.classList.toggle('side-back', isBack);
+  el.sideIndicator.classList.toggle('side-front', !isBack);
+}
+
+// Size the (square) grid wrapper to fill the available workspace, then re-render.
+// Square-fit avoids distorting the circular wafer; min(availW,availH) never overflows,
+// so it won't fight the workspace scrollbars (no ResizeObserver feedback loop).
+function fitGridToWorkspace() {
+  const ws = el.mapWorkspace;
+  const wrapper = el.gridWrapper;
+  if (!ws || !wrapper) { scheduleRenderGridCanvas(); return; }
+  const cs = getComputedStyle(ws);
+  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const availW = ws.clientWidth - padX;
+  const availH = ws.clientHeight - padY;
+  const side = Math.max(200, Math.floor(Math.min(availW, availH)));
+  wrapper.style.width = `${side}px`;
+  wrapper.style.height = `${side}px`;
+  scheduleRenderGridCanvas();
 }
 
 function renderGridCanvas() {
@@ -1416,57 +1454,6 @@ function renderGridCanvas() {
     ctx.strokeStyle = '#00f0ff';
     ctx.lineWidth = 2.0;
     ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
-  }
-
-  // 9. FRONT / BACK side indicator (color-coded, high-visibility)
-  //    FRONT = sky blue, BACK = amber. Big translucent watermark + top-left pill badge.
-  {
-    const isBack = (currentSide === 'back');
-    const sideWord = isBack ? 'BACK' : 'FRONT';
-    const sideLabel = isBack ? 'BACK · 뒷면' : 'FRONT · 앞면';
-    const sideColor = isBack ? '#f59e0b' : '#38bdf8';
-    const wmColor = isBack ? 'rgba(245, 158, 11, 0.13)' : 'rgba(56, 189, 248, 0.13)';
-
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // 9a. Large translucent centered watermark (visible through the whole grid)
-    const wmFont = Math.max(40, Math.floor(width * 0.16));
-    ctx.font = `900 ${wmFont}px "JetBrains Mono", monospace`;
-    ctx.fillStyle = wmColor;
-    ctx.fillText(sideWord, width / 2, height / 2);
-
-    // 9b. Top-left pill badge (crisp, high-contrast)
-    const badgeFont = Math.max(15, Math.floor(width * 0.032));
-    ctx.font = `800 ${badgeFont}px "JetBrains Mono", monospace`;
-    ctx.textAlign = 'left';
-    const textW = ctx.measureText(sideLabel).width;
-    const padX = badgeFont * 0.8;
-    const padY = badgeFont * 0.5;
-    const bw = textW + padX * 2;
-    const bh = badgeFont + padY * 2;
-    const bx = 12;
-    const by = 12;
-    const rr = bh / 2;
-
-    ctx.beginPath();
-    ctx.moveTo(bx + rr, by);
-    ctx.arcTo(bx + bw, by, bx + bw, by + bh, rr);
-    ctx.arcTo(bx + bw, by + bh, bx, by + bh, rr);
-    ctx.arcTo(bx, by + bh, bx, by, rr);
-    ctx.arcTo(bx, by, bx + bw, by, rr);
-    ctx.closePath();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = sideColor;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = '#0b1220';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(sideLabel, bx + padX, by + bh / 2 + 1);
-    ctx.restore();
   }
 
   ctx.restore();
