@@ -178,6 +178,8 @@ graph TD
   * `idx_outbox_reload` — `(event_type, id) WHERE event_type='SYSTEM_RELOAD'`: SYSTEM_RELOAD 트리거 조회용. 조회 자체도 매 루프가 아니라 최소 1초 간격으로 스로틀됩니다.
   * `idx_outbox_unprocessed` — `(processed_chain, id) WHERE processed_chain=false`: 미처리 이벤트 큐 스캔용.
   * `idx_outbox_txid` — `(payload->>'transaction_id')` 표현식 인덱스(**PostgreSQL 전용**, SQLite는 dialect 가드로 미생성): tx 보완(dynamic fetch guard) 조회용.
+* **LISTEN 전용 커넥션 상시 유지 (`OutboxListener`)**: 빈 폴링 후 `LISTEN/NOTIFY` 대기 시, 예전에는 **대기마다 새 커넥션으로 `LISTEN outbox_event`를 재등록**하여 빈 폴링과 등록 사이 발행된 NOTIFY가 유실(최대 2초 tail latency)됐습니다. 이제 워커 시작 시 LISTEN 커넥션을 **1회만** 등록·재사용합니다(`chain_ingestion_worker.py`, `OutboxListener`). LISTEN이 항상 폴링보다 선행 등록되므로 폴링 이후 NOTIFY는 소켓에 버퍼링되고, 대기 진입 직후 버퍼된 통지를 먼저 소비(drain)해 즉시 재폴링을 유도합니다. 커넥션 끊김/예외 시 안전 재생성(누수 방지), blocking `select`는 `asyncio.to_thread`로 오프로딩, SYSTEM_RELOAD 통지도 같은 채널로 공존합니다.
+* **실패 head-of-line 블로킹 제거 (`process_pending_groups`)**: 예전에는 한 그룹 실패 시 `break`로 **배치 전체를 중단**(+`sleep(1)`)하여, 큐 선두(id asc)의 실패 그룹이 3회 재시도 동안 뒤의 정상 이벤트를 전부 정체시켰습니다. 이제 실패 그룹은 rollback되어 미처리(`processed_chain=False`)로 남고 `retry_count`만 증가(3회 후 격리 유지), 나머지 그룹은 계속 처리합니다. **순서 보존**을 위해 실패 그룹이 기록하려던 `target_table`을 건드리는 **후속 그룹만** 이번 배치에서 보류하고(동일 target에 대해 나중 그룹이 먼저 적용되어 순서가 뒤집히는 것을 방지), 서로 다른 target_table 그룹은 계속 처리합니다. target_table은 규칙 설정에서 결정되므로 매퍼 실행 없이 정적으로 판정(`_group_target_tables`)합니다. 실패 그룹의 매퍼 쓰기는 rollback되어 커밋되지 않으므로 유실/중복이 없습니다.
 
 ---
 

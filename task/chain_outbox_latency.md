@@ -1,14 +1,14 @@
 # 이슈: 체인 인제션 outbox 반응 지연 (진단 + 조치)
 
-> **상태:** 🛠️ #2/#1/#3 수정 완료(총괄 검수·커밋 대기) · #4/#5 보류(분석만) | **도메인:** Server PM | **작성:** 2026-07-24
-> 조사: Explore 서브에이전트 → 총괄 최상위 2건 스팟체크 검증 완료. 수정 이력: [docs/history/20260724_230117_chain_outbox_latency_fix.md](../docs/history/20260724_230117_chain_outbox_latency_fix.md).
+> **상태:** 🛠️ #1~#5 수정 완료(총괄 검수·커밋 대기) | **도메인:** Server PM | **작성:** 2026-07-24
+> 조사: Explore 서브에이전트 → 총괄 최상위 2건 스팟체크 검증 완료. 수정 이력: [docs/history/20260724_230117_chain_outbox_latency_fix.md](../docs/history/20260724_230117_chain_outbox_latency_fix.md)(#1~#3) · [docs/history/20260724_232027_chain_outbox_race_and_hol_fix.md](../docs/history/20260724_232027_chain_outbox_race_and_hol_fix.md)(#4/#5).
 >
 > **처리 현황**
 > - ✅ **#2** commit 우선 → 통지 fire-and-forget(타임아웃 3s), 이벤트 형식 불변 — `chain_ingestion_worker.py`
 > - ✅ **#1** SYSTEM_RELOAD 부분 인덱스 `idx_outbox_reload` + 조회 1s 스로틀 — `models.py`, `chain_ingestion_worker.py`
 > - ✅ **#3** `idx_outbox_unprocessed`(부분) + `idx_outbox_txid`(PG 표현식) — `models.py`, `setup_db_performance.py`
-> - ⏸️ **#4** LISTEN-after-check 레이스 — 보류(커넥션 수명 변경 리스크, 분석만)
-> - ⏸️ **#5** 실패 head-of-line — 보류(그룹 커밋·재시도 재설계 리스크, 분석만)
+> - ✅ **#4** LISTEN-after-check 레이스 — `OutboxListener`로 LISTEN 전용 커넥션 상시 유지 + 대기 진입 시 buffered notify drain(재폴링). 끊김 시 안전 재생성, `to_thread` 유지 — `chain_ingestion_worker.py`
+> - ✅ **#5** 실패 head-of-line — `process_pending_groups`로 추출, `break` 제거(실패 그룹 skip·rollback·재시도) + **동일 target_table 후속 그룹만 보류**하는 보수적 순서 보존 가드(`_group_target_tables`). 단위 테스트 4건 추가 — `chain_ingestion_worker.py`, `tests/test_chain_hol_scheduling.py`
 > - ⛔ **#6/#7** 본 작업 범위 밖(미착수)
 
 ## 증상

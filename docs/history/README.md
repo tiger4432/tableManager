@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **176개** 이력. (거버넌스 규칙 #4)
+> 총 **177개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-24 23:20** — [Chain Outbox Race And Hol Fix](./20260724_232027_chain_outbox_race_and_hol_fix.md)
 - **2026-07-24 23:06** — [Vision Redefinition Correction Surface](./20260724_230632_vision_redefinition_correction_surface.md)
 - **2026-07-24 23:01** — [Chain Outbox Latency Fix](./20260724_230117_chain_outbox_latency_fix.md)
 - **2026-07-24 20:20** — [Map Editor Watermark Restore](./20260724_202013_map_editor_watermark_restore.md)
