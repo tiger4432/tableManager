@@ -16,6 +16,7 @@ description: 모든 에이전트가 준수하는 assyManager 핵심 개발 헌�
 1. **진입점부터 읽기**: `docs/README.md`(문서 지도) → `docs/overview/SYSTEM_OVERVIEW.md`(SSOT)로 현재 아키텍처를 파악한다. **낡은 정보 주의**: 메인 클라이언트는 웹 `client2`(AG-Grid)이며 구 PySide6 클라이언트는 없다. DB는 PostgreSQL/JSONB. 백엔드는 5-프로세스 + Outbox.
 2. **소유 문서 확인**: 손댈 서브시스템의 리빙 문서를 `DOC_OWNERSHIP.md`에서 찾아 설계 의도와 데이터 흐름을 먼저 이해한다. (Docs-First)
 3. **영향 범위 매핑**: 수정 대상이 참조되는 곳(라우터·워커·클라이언트 모듈·테스트)을 Grep으로 사전 조사한다.
+4. **사이드 이펙트 전수 분석 (필수 소양)**: 변경이 직접 바꾸는 것뿐 아니라 **2차로 파급되는 것**을 먼저 나열한다(§1 참조). "겉보기 동작"만 보고 넘어가지 않는다.
 
 ---
 
@@ -23,6 +24,12 @@ description: 모든 에이전트가 준수하는 assyManager 핵심 개발 헌�
 
 **단 한 곳의 누락도 런타임 전체를 마비시킨다.** 아래를 강제한다.
 
+- **[필수 소양] 사이드 이펙트 전수 분석 (Side-Effect Analysis)**: 어떤 변경이든 착수 전, 그것이 **공유 상태·좌표계·타이밍·이벤트 흐름**에 미치는 2차 효과를 전수 나열하고 각각을 처리/검증한다. 눈에 보이는 결과만 확인하고 커밋하는 것을 금한다. 특히 다음을 반드시 점검한다:
+  - **좌표계/기하 변경**(캔버스 크기·DPR·리사이즈·회전·zoom): 마우스 이벤트 → 셀 매핑(`getGridCellFromMouseEvent`/`getBoundingClientRect`), hit-test, 드래그 선택·hover 좌표, 캔버스 backing store(`canvas.width` vs CSS width)와 `devicePixelRatio` 정합, 오버레이(노치·라벨) 위치.
+  - **공유 가변 상태 변경**: 그 상태를 읽는 **모든** 경로(`state.js` 싱글턴, 모듈 전역 `let`).
+  - **타이밍**(debounce·`requestAnimationFrame`·async·WS 수신): 레이스, 스로틀, 순서 의존, 재진입.
+  - **레이아웃/반응형 변경**: 리사이즈·확대축소 시 재렌더·재측정이 걸려 있는지, 이벤트 좌표가 새 크기 기준으로 재계산되는지.
+  분석 결과는 작업 계획서와 히스토리의 "검증" 항목에 명시한다.
 - **시그니처 영향 전수 분석**: CRUD 코어(`server/database/crud.py`)나 공용 함수의 매개변수/반환 구조를 바꾸기 전, 프로젝트 전체를 Grep하여 호출부를 찾고 **연쇄 갱신**한다. 필수 대상: `server/main.py`(라우터), `server/chain_ingestion_worker.py`(워커), `server/tests/`(테스트). 완료 후 `pytest` 통과 증명. 상세: [`docs/guide/data_preservation_and_signature_change.md`](file:///c:/Users/kk980/Developments/assyManager/docs/guide/data_preservation_and_signature_change.md) **(필독)**.
 - **계약(Contract) 보존**: `crud.apply_batch_updates`의 반환 `(results, changed_cells, created_logs, deleted_row_ids)` 등 확립된 반환 구조를 임의로 깨지 않는다.
 - **레이어 간 계약 인지**: 서버 스키마 JSON 형태 ↔ 클라이언트 셀 형태 `data[col] = {value, is_overwrite, priority_source}`(`client2/src/grid.js` `ensureCellObject`), WS 이벤트명(`batch_row_create|upsert|delete`, `batch_refresh_required`), API 엔드포인트(`api.js`/`websocket.js` 소비)는 한쪽만 바꾸면 즉시 파손된다. 항상 양쪽을 함께 본다.
@@ -84,6 +91,7 @@ description: 모든 에이전트가 준수하는 assyManager 핵심 개발 헌�
 
 ## ✅ 종료 전 체크리스트 (Post-Flight)
 
+- [ ] ① **사이드 이펙트 전수 분석**했는가? (좌표계/기하·공유상태·타이밍·리사이즈 → 마우스 매핑 등 2차 효과)
 - [ ] ① 시그니처/계약 변경 시 호출부 전수 갱신 + `pytest` 통과했는가?
 - [ ] ① 서버-클라이언트 데이터 계약(셀 형태·WS 이벤트·API)을 깨지 않았는가?
 - [ ] ② 새 쿼리/루프/페이로드가 1,000만 행에서도 안전한가? (인덱스/청킹/LIMIT)
