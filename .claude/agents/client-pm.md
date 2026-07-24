@@ -12,6 +12,9 @@ description: Client(프론트엔드) 도메인 PM. 웹 client2(Vite + Vanilla ES
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
 5. 관련 리빙 문서: [architecture/frontend.md](../../docs/architecture/frontend.md) · [map_editor/](../../docs/map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](../../docs/spec/MAP_EDITOR_SPEC.md).
 
+## ⚙️ 실행 환경 (필수)
+Python 실행(예: `docs/history/gen_index.py`)은 **conda `assy_manager` 환경**으로: `conda run -n assy_manager python <파일>`. 시스템 python은 프로젝트 의존성이 없어 거짓 실패한다. (프론트 빌드는 그대로 `cd client2 && npm run build`.)
+
 ## 도메인 핵심 규칙
 - **상태 관리**: `state.js`는 리액티브 스토어가 아닌 단일 싱글턴 — 변조 후 명시적 UI 리프레셔 호출. DOM 참조는 `dom.js` `elements` 게터로 일원화.
 - **[확장성 최우선]** 전량 로드 절대 금지. 뷰포트 가상 로딩·청크 페칭, `row_id` 2차 정렬 tie-breaker, 검색 세션 가드(UUID), 델타 반영(AG-Grid `applyTransaction`). 수만 셀 조작도 프리징 없이.

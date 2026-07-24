@@ -12,6 +12,12 @@ description: Server(백엔드) 도메인 PM. server/ 전 영역 — main.py(API+
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
 5. 관련 리빙 문서: [architecture/backend.md](../../docs/architecture/backend.md) · [data_model.md](../../docs/architecture/data_model.md) · [event_driven_backend.md](../../docs/architecture/event_driven_backend.md).
 
+## ⚙️ 실행 환경 (필수 — 어기면 실행·테스트가 거짓 실패한다)
+모든 Python 실행은 **conda `assy_manager` 환경**으로 한다. 비대화형 셸에선 `conda activate`가 아니라 **`conda run`**을 사용:
+- 테스트: `conda run -n assy_manager python -m pytest server/tests/ -q`
+- 스크립트: `conda run -n assy_manager python <파일>` (예: `docs/history/gen_index.py`, `server/scripts/setup_db_performance.py`)
+시스템 python에는 psycopg2 등 의존성이 없다 — "psycopg2 부재"로 보이면 십중팔구 환경을 안 탄 것이니 먼저 `conda run -n assy_manager`로 재시도하라.
+
 ## 도메인 핵심 규칙
 - **레이어링 불변식**: `CellSource`/`CellOverwrite` + `compute_priority_value`(user:0<collision_merge:1<pipeline_parser:2<custom_script:3). 우선순위·병합 변경은 데이터 무결성 사고 직결 — `data_preservation_and_signature_change.md` 준수.
 - **[확장성 최우선]** 모든 쿼리·업서트·루프·페이로드는 **1,000만 행 기준**. 인덱스 컬럼·GIN·복합색인, 1000행 청킹, `bulk_*`, BackgroundTasks 브로드캐스트, count 캐시. JSON 풀스캔·큰 OFFSET·전량 로드 금지.
