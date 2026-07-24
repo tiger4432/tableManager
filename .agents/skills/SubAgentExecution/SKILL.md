@@ -22,9 +22,13 @@ description: PM 에이전트와 하위 개발 에이전트 간의 표준 작업 
 | 구분 | 명령어 |
 |---|---|
 | 환경 활성화 | `conda activate assy_manager` |
-| 서버 실행 | `cd server && uvicorn main:app --reload` |
-| 클라이언트 실행 | `cd client && python main.py` |
+| **전체 스택 기동** | `python run_decoupled_app.py` (웹서버 :8080 + 워커 4종 + 데스크톱 셸) |
+| 서버만 기동 | `python run_decoupled_app.py --server-only` |
+| 프론트엔드 개발 | `cd client2 && npm run dev` (:5173 → API/WS는 :8080 자동 타겟) |
+| 테스트 | `cd server && pytest` |
 | 패키지 설치 시 | `conda run -n assy_manager pip install <패키지명>` |
+
+> ⚠️ 구 PySide6 데스크톱 클라이언트(`cd client && python main.py`)는 **더 이상 없습니다.** 메인 클라이언트는 웹 `client2`이며, 데스크톱은 이를 감싸는 QtWebEngine 셸입니다. 상세: [SYSTEM_OVERVIEW](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md).
 
 > ⚠️ 터미널 프롬프트가 `(assy_manager)`로 표시되어 있는지 반드시 확인하십시오.
 

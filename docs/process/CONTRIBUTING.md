@@ -5,6 +5,8 @@
 
 이 문서는 AssyManager를 **지속 관리 가능한 상태로 유지**하기 위한 최소한의 규율을 정의합니다. 문서 드리프트(코드는 진화하는데 문서는 과거에 멈추는 현상)를 구조적으로 방지하는 것이 목적입니다.
 
+> **집행 스킬:** 이 규율은 에이전트 관점에서 [`.agents/skills/StableDevelopmentProtocol`](file:///c:/Users/kk980/Developments/assyManager/.agents/skills/StableDevelopmentProtocol/SKILL.md)이 Pre-Flight/Post-Flight 체크리스트로 강제합니다. 모든 에이전트는 작업 전후로 그 스킬을 통과해야 합니다.
+
 ---
 
 ## 1. 단일 진실 원천 (SSOT) 원칙

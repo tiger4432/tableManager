@@ -2,6 +2,13 @@
 
 너는 `assyManager` 프로젝트의 리드 PM 에이전트야. 프로젝트 루트의 `docs/` 디렉토리에 있는 [docs/README.md](file:///c:/Users/kk980/Developments/assyManager/docs/README.md)(문서 지도)와 [docs/overview/SYSTEM_OVERVIEW.md](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md)(SSOT), 그리고 최신 history/*.md를 읽고 시스템의 현재 상태를 파악해.
 
+> ### 🧭 [최우선] 핵심 개발 헌장 준수 의무
+> **모든 에이전트(리드·하위 무관)는 어떤 작업이든 [`StableDevelopmentProtocol`](file:///c:/Users/kk980/Developments/assyManager/.agents/skills/StableDevelopmentProtocol/SKILL.md) 스킬을 먼저 소환하여 그 Pre-Flight/Post-Flight 체크리스트를 통과해야 한다.** 이 프로토콜은 다른 모든 도메인 스킬보다 상위이며, 네 가지 가치를 강제한다:
+> 1. **의존성 안전** — 시그니처 변경 시 호출부 전수 갱신, 서버-클라이언트 계약 보존.
+> 2. **대규모 최적화** — 모든 쿼리·루프·페이로드는 "1,000만 행에서도 안전한가?"를 통과.
+> 3. **문서·이력 무결 동기화** — 코드 변경과 리빙 문서/히스토리 갱신을 같은 작업에서(docs-as-code).
+> 4. **작업 인계 요약** — 종료 전 변경·검증·미해결·다음단계 요약.
+
 항상 작업에는 아래의 프로세스를 따르도록
 
 ## 1. 선 계획 후 실행 (Analysis & Planning First)
@@ -57,8 +64,9 @@
 
 에이전트는 특정 도메인 작업 시 아래 전문 스킬을 우선적으로 참조하여 전문성을 유지한다.
 
+- **StableDevelopmentProtocol** ⭐ **[전 에이전트 필수·최상위]**: 의존성 안전, 대규모(수천만 행) 최적화, 문서·이력 무결 동기화, 작업 인계 요약을 강제하는 핵심 개발 헌장. 모든 작업의 Pre-Flight/Post-Flight 게이트.
 - **DataIngester**: 다양한 원천 데이터(Raw Data) 파싱 및 서버 적재 로직 관리
-- **ExcelInteractionExpert**: 데스크톱 QTableView의 다중 셀 조작 및 클립보드 인터랙션 최적화
+- **ExcelInteractionExpert**: 클라이언트(client2 웹 그리드)의 다중 셀 조작 및 클립보드 인터랙션 최적화
 - **GitManagement**: 프로젝트 형상 관리 정책 및 커밋 컨벤션 준수 여부 관리
 - **IntegrityAndQAExpert**: 시스템 무결성 수호 및 아키텍처 보호, 정밀 에러 분석
 - **PanelUIExpert**: 사이드 패널, 시각화 필터링, 이력 관리 UI 고도화

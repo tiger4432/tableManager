@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **167개** 이력. (거버넌스 규칙 #4)
+> 총 **168개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-24 18:58** — [Stable Development Protocol Skill](./20260724_185829_stable_development_protocol_skill.md)
 - **2026-07-21 06:38** — [Physical Wafer Geometry Engine](./20260721_063800_physical_wafer_geometry_engine.md)
 - **2026-07-21 06:28** — [Chain Ingestion Payload String Resilience](./20260721_062800_chain_ingestion_payload_string_resilience.md)
 - **2026-07-20 01:08** — [Map Editor Copy To Excel](./20260720_010800_map_editor_copy_to_excel.md)

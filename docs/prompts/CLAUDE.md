@@ -63,3 +63,16 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
+## 5. assyManager 프로젝트 헌장 (Project-Specific Charter)
+
+이 저장소에서 작업할 때는 위의 일반 원칙에 더해 **핵심 개발 헌장 스킬 [`StableDevelopmentProtocol`](file:///c:/Users/kk980/Developments/assyManager/.agents/skills/StableDevelopmentProtocol/SKILL.md)을 반드시 소환·준수**한다. 네 가지 타협 불가 가치:
+
+1. **의존성 안전** — CRUD/공용 시그니처 변경 시 호출부(라우터·워커·테스트) 전수 Grep 후 연쇄 갱신, `pytest` 통과. 서버 스키마 ↔ client2 셀 형태/WS 이벤트/API 계약을 한쪽만 바꾸지 않는다.
+2. **대규모 최적화** — 모든 쿼리·루프·페이로드는 **"1,000만 행에서도 안전한가?"**를 통과한다. JSON 풀스캔·큰 OFFSET·전량 로드 금지, 인덱스 컬럼/GIN·1000행 청킹·LIMIT·delta 동기화 사용.
+3. **문서·이력 무결 동기화 (docs-as-code)** — 주요 변경은 `docs/history/`에 기록 후 `python docs/history/gen_index.py` 실행. 아키텍처/동작 변경이면 SSOT([`docs/overview/SYSTEM_OVERVIEW.md`](file:///c:/Users/kk980/Developments/assyManager/docs/overview/SYSTEM_OVERVIEW.md))와 소유 리빙 문서([`docs/process/DOC_OWNERSHIP.md`](file:///c:/Users/kk980/Developments/assyManager/docs/process/DOC_OWNERSHIP.md))를 같은 작업에서 갱신.
+4. **작업 인계 요약** — 종료 전 변경·수정파일·검증결과·미해결/다음단계 요약을 남긴다.
+
+**현행 아키텍처 주의(낡은 정보 방지):** 메인 클라이언트는 웹 `client2`(AG-Grid), 구 PySide6 클라이언트 없음. DB는 PostgreSQL/JSONB. 백엔드는 5-프로세스 + Outbox. 상세는 SSOT 참조. 정식 기동은 `python run_decoupled_app.py`.
