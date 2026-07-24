@@ -26,6 +26,7 @@
 ## 🐞 열린 문제 / 알려진 이슈 (Open Problems)
 | # | 심각도 | 문제 | 도메인 | 상태 |
 |---|---|---|---|---|
+| 0 | 높음 | **체인 인제션 outbox 간헐 지연** — 원인 진단 완료(수정 대기): ①`event_type` 무인덱스 매-루프 스캔 ②브로드캐스트(HTTP)가 commit 앞 → 웹서버 지연 시 그룹당 20~40s ③인덱스 부재 ④폴링 2s+LISTEN 레이스 ⑤실패 head-of-line. 상세·착수순서: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md) | Server | 진단완료 |
 | 1 | 낮음 | `IntegrityAndQAExpert` 스킬 §3 QA 체크리스트가 아직 PySide 항목(QThread/DLL/PySide 임포트) — 웹 client2 QA 항목으로 미전환 | 프로세스 | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
