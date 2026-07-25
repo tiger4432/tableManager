@@ -589,6 +589,88 @@ def test_h2_retarget_preserves_other_rows(onto_env):
     assert len(edges) == 2
 
 
+def _seed_two_resolved_as(db, mappings):
+    """[H2-b 공용] 파생 행 2개(LOTA|3, LOTA|4)를 각각 user 교정(wafer_id=W777)해
+    RESOLVED_AS 엣지 2개를 만든다. 반환: (r1_row, r2_row)."""
+    tx1 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_core_map", [
+        {"core_key": "LOTA_3", "core_lot": "LOTA", "core_slot": "3", "chip_count": 1},
+        {"core_key": "LOTA_4", "core_lot": "LOTA", "core_slot": "4", "chip_count": 1},
+    ], tx1, source_name="chain_ingestion")
+    tx2 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_core_map", [
+        {"core_key": "LOTA_3", "core_lot": "LOTA", "core_slot": "3", "wafer_id": "W777"},
+        {"core_key": "LOTA_4", "core_lot": "LOTA", "core_slot": "4", "wafer_id": "W777"},
+    ], tx2, source_name="user")
+    for tx in (tx1, tx2):
+        graph_materializer.materialize_events(
+            db, _events_for(db, "onto_test_core_map", tx), mappings)
+    db.commit()
+    assert db.query(GraphEdge).filter(GraphEdge.type == "RESOLVED_AS").count() == 2
+    model = models.DYNAMIC_TABLES["onto_test_core_map"]
+    r1 = db.query(model).filter(model.business_key_val == "LOTA_3").one()
+    r2 = db.query(model).filter(model.business_key_val == "LOTA_4").one()
+    return r1, r2
+
+
+def _assert_only_r2_resolved(db, r2_row_id):
+    """[H2-b 공용] RESOLVED_AS는 R2의 것 1개만 남고, 노드는 보존(§8 밖)돼야 한다."""
+    resolved = db.query(GraphEdge).filter(GraphEdge.type == "RESOLVED_AS").all()
+    assert len(resolved) == 1                                   # R1 잔존 엣지 소멸, R2 보존
+    assert resolved[0].source_row_ref == f"onto_test_core_map:{r2_row_id}"
+    for key in ("LOTA|3", "LOTA|4", "W777"):
+        assert db.query(GraphNode).filter(
+            GraphNode.label == "Wafer", GraphNode.identity_key == key
+        ).count() == 1
+
+
+def test_h2b_source_delete_blank_clears_edge_incremental(onto_env):
+    """[H2-b] 교정을 비우는 흐름(user 소스 삭제 → wafer_id blank 복귀)에서 로우의 이번
+    산출 엣지가 **0개**여도 낡은 RESOLVED_AS가 증분 경로로 소멸한다. 같은 타깃(W777)을
+    주장하는 다른 로우의 엣지는 보존된다(source_row_ref 스코핑). 라이브 재현 경로:
+    DELETE .../sources/user → EDIT 전 컬럼 스냅샷 outbox → materialize_events."""
+    db = onto_env
+    mappings = _load_mappings()
+    r1, r2 = _seed_two_resolved_as(db, mappings)
+
+    consumed = len(_events_for(db, "onto_test_core_map"))
+    crud.delete_cell_source(db, "onto_test_core_map", r1.row_id, "wafer_id", "user")
+    model = models.DYNAMIC_TABLES["onto_test_core_map"]
+    assert db.query(model).filter(model.row_id == r1.row_id).one().wafer_id is None
+
+    new_events = _events_for(db, "onto_test_core_map")[consumed:]
+    assert new_events, "소스 삭제는 EDIT outbox 이벤트를 발생시켜야 한다"
+    graph_materializer.materialize_events(db, new_events, mappings)
+    db.commit()
+    _assert_only_r2_resolved(db, r2.row_id)
+
+    # 멱등: 같은 이벤트 재처리에도 수 불변(재소비 안전)
+    graph_materializer.materialize_events(db, new_events, mappings)
+    db.commit()
+    _assert_only_r2_resolved(db, r2.row_id)
+
+
+def test_h2b_source_delete_blank_clears_edge_resync(onto_env):
+    """[H2-b] 증분 소비를 놓쳐 잔존한 엣지도 재동기화(부분·전체)가 동일 의미론으로
+    정리한다 — 현재 로우 상태에 산출이 없으면 그 로우 ref의 잔존 엣지 삭제."""
+    db = onto_env
+    mappings = _load_mappings()
+    r1, r2 = _seed_two_resolved_as(db, mappings)
+
+    # blank 복귀시키되 증분 이벤트는 소비하지 않음 → 그래프에 낡은 엣지 잔존 상태
+    crud.delete_cell_source(db, "onto_test_core_map", r1.row_id, "wafer_id", "user")
+    assert db.query(GraphEdge).filter(GraphEdge.type == "RESOLVED_AS").count() == 2
+
+    # 부분 재동기화(라이브 잔존분 정리와 동일 경로)만으로 정리돼야 한다
+    graph_materializer.resync_table(
+        db, "onto_test_core_map", mappings, row_ids=[r1.row_id])
+    _assert_only_r2_resolved(db, r2.row_id)
+
+    # 전체 재동기화도 동일 결과(멱등)
+    graph_materializer.resync_table(db, "onto_test_core_map", mappings)
+    _assert_only_r2_resolved(db, r2.row_id)
+
+
 def test_check_needs_rollback_v2_with_promotion(onto_env, monkeypatch):
     """[QA ④] rollback 신호가 materializer와 같은 매핑(승격 포함)을 본다 —
     enrichment target 컬럼(wafer_id) 변경이 신호에 잡힌다."""

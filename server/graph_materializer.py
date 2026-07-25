@@ -246,14 +246,19 @@ def bulk_upsert_nodes(db, node_map: dict, chunk_size: int = CHUNK_SIZE) -> dict:
     return node_ids
 
 
-def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE) -> int:
-    """[QA G1-H2] 이번 배치의 원본 로우들이 과거에 주장한 stale 타깃 엣지를 삭제한다.
+def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE,
+                          processed_refs: set = None) -> int:
+    """[QA G1-H2 / H2-b] 이번 배치에서 처리한 원본 로우들의 stale 엣지 주장을 삭제한다.
 
-    스코프: source_row_ref가 이번 배치에 포함된 엣지 중, (from_node, type, source_row_ref)가
-    일치하지만 to_node가 이번 산출 집합에 없는 것. **로우가 주장의 단위** — 같은 로우의 구
-    타깃 주장은 provenance가 무엇이었든 무효다(사용자 교정은 winner 소스도 함께 바꾸므로
-    source_name을 매칭 키에 넣으면 구 소스 엣지가 잔존한다). 다른 로우가 주장한 엣지는
-    source_row_ref 스코프 밖이라 절대 건드리지 않는다.
+    스코프: source_row_ref가 (processed_refs ∪ 이번 산출 엣지의 ref)에 포함된 엣지 중,
+    (from_node, type, to_node)가 그 로우의 이번 산출 집합에 없는 것. **로우가 주장의
+    단위** — 로우의 현재 상태가 산출하지 않는 주장은 provenance가 무엇이었든 무효다
+    (사용자 교정은 winner 소스도 함께 바꾸므로 source_name을 매칭 키에 넣으면 구 소스
+    엣지가 잔존한다). [H2-b] 산출이 **0개**인 로우(예: enrichment 소스 삭제로 타깃 blank
+    복귀)도 processed_refs로 스코프에 들어와 잔존 엣지가 정리된다 — outbox EDIT payload는
+    항상 전 컬럼 스냅샷(stage_event)이므로 "산출 없음 = 현재 로우가 주장 없음"이 보장된다.
+    다른 로우가 주장한 엣지는 source_row_ref 스코프 밖이라 절대 건드리지 않는다.
+    DELETE 이벤트(행 삭제) 정리는 스펙 §8 범위 밖 — 이 함수는 관여하지 않는다.
     idx_graph_edges_row_ref 인덱스 룩업 + id 청크 삭제(1000행 규율). 반환: 삭제 수.
     """
     from database.models import GraphEdge
@@ -262,12 +267,16 @@ def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE) -> int:
     for r in rows:
         if not r.get("source_row_ref"):
             continue
-        key = (r["from_node"], r["type"], r["source_row_ref"])
-        allowed.setdefault(key, set()).add(r["to_node"])
-    if not allowed:
+        allowed.setdefault(r["source_row_ref"], set()).add(
+            (r["from_node"], r["type"], r["to_node"])
+        )
+
+    ref_scope = set(processed_refs or ())
+    ref_scope.update(allowed)
+    if not ref_scope:
         return 0
 
-    row_refs = sorted({key[2] for key in allowed})
+    row_refs = sorted(ref_scope)
     stale_ids = []
     for i in range(0, len(row_refs), chunk_size):
         ref_chunk = row_refs[i:i + chunk_size]
@@ -276,8 +285,7 @@ def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE) -> int:
             GraphEdge.source_row_ref, GraphEdge.to_node,
         ).filter(GraphEdge.source_row_ref.in_(ref_chunk)).all()
         for eid, from_node, e_type, row_ref, to_node in existing:
-            key = (from_node, e_type, row_ref)
-            if key in allowed and to_node not in allowed[key]:
+            if (from_node, e_type, to_node) not in allowed.get(row_ref, ()):
                 stale_ids.append(eid)
 
     for i in range(0, len(stale_ids), chunk_size):
@@ -290,15 +298,17 @@ def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE) -> int:
     return len(stale_ids)
 
 
-def bulk_upsert_edges(db, edges: dict, node_ids: dict, chunk_size: int = CHUNK_SIZE) -> int:
-    """엣지 벌크 UPSERT. 반환: 반영 시도한 엣지 수."""
+def bulk_upsert_edges(db, edges: dict, node_ids: dict, chunk_size: int = CHUNK_SIZE,
+                      processed_refs: set = None) -> int:
+    """엣지 벌크 UPSERT. 반환: 반영 시도한 엣지 수.
+
+    processed_refs: 이번 배치에서 처리한 전체 로우 ref 집합(산출 0개 로우 포함) —
+    [H2-b] 산출 없는 로우의 잔존 엣지 정리를 위해 edges가 비어도 retarget은 수행한다.
+    """
     from database.models import GraphEdge
 
-    if not edges:
-        return 0
-
     rows = []
-    for edge in edges.values():
+    for edge in (edges or {}).values():
         from_id = node_ids.get(edge["from_key"])
         to_id = node_ids.get(edge["to_key"])
         if from_id is None or to_id is None:
@@ -320,11 +330,14 @@ def bulk_upsert_edges(db, edges: dict, node_ids: dict, chunk_size: int = CHUNK_S
 
     rows.sort(key=lambda r: (r["from_node"], r["type"], r["to_node"], r["source_name"]))
 
-    # [QA G1-H2] retarget 의미론: 같은 원본 로우(source_row_ref)가 과거에 주장했으나
-    # 이번 산출의 타깃 집합에 없는 (from, type) 동일 엣지는 삭제 후 UPSERT.
-    # 재교정(W123→W124) 시 모순된 구 엣지가 병존하지 않는다. 다른 로우가 주장한 엣지는
-    # source_row_ref 스코프 밖이므로 건드리지 않는다.
-    _retarget_stale_edges(db, rows, chunk_size=chunk_size)
+    # [QA G1-H2 / H2-b] retarget 의미론: 같은 원본 로우(source_row_ref)가 과거에 주장했으나
+    # 이번 산출 집합에 없는 엣지는 삭제 후 UPSERT — 재교정(W123→W124) 시 모순된 구 엣지가
+    # 병존하지 않고, 산출이 0개인 로우(타깃 비움)의 잔존 엣지도 processed_refs 스코프로
+    # 정리된다. 다른 로우가 주장한 엣지는 source_row_ref 스코프 밖이므로 건드리지 않는다.
+    _retarget_stale_edges(db, rows, chunk_size=chunk_size, processed_refs=processed_refs)
+
+    if not rows:
+        return 0
 
     for i in range(0, len(rows), chunk_size):
         chunk = rows[i:i + chunk_size]
@@ -347,7 +360,13 @@ def materialize_rows(db, table_name: str, rows: list, mapping: dict,
     """로우 목록 1묶음을 그래프에 반영한다(commit은 호출자 책임)."""
     node_map, edges = extract_graph_items(table_name, rows, mapping)
     node_ids = bulk_upsert_nodes(db, node_map, chunk_size=chunk_size)
-    edge_count = bulk_upsert_edges(db, edges, node_ids, chunk_size=chunk_size)
+    # [H2-b] 처리한 전체 로우 ref(산출 0개 로우 포함) — resync 경로에서도 현재 로우 상태에
+    # 산출이 없으면 그 로우 ref의 잔존 엣지가 정리된다(증분 경로와 동일 의미론).
+    processed_refs = {
+        f"{table_name}:{r['row_id']}" for r in rows if r.get("row_id") is not None
+    }
+    edge_count = bulk_upsert_edges(db, edges, node_ids, chunk_size=chunk_size,
+                                   processed_refs=processed_refs)
     return {"rows": len(rows), "nodes": len(node_map), "edges": edge_count}
 
 
@@ -385,15 +404,21 @@ def materialize_events(db, events: list, mappings: dict,
         })
 
     node_map, edges = {}, {}
+    processed_refs = set()
     total_rows = 0
     for table_name, rows in rows_by_table.items():
         # [QA G1-H1] 엣지 provenance는 이벤트 소스가 아니라 셀 레이어 winner로 결정(경로 동등성).
         attach_col_sources(db, table_name, rows, mappings[table_name])
         extract_graph_items(table_name, rows, mappings[table_name], node_map, edges)
+        # [H2-b] 산출 0개 로우(예: 타깃 blank 복귀)도 retarget 스코프에 포함.
+        processed_refs.update(
+            f"{table_name}:{r['row_id']}" for r in rows if r.get("row_id") is not None
+        )
         total_rows += len(rows)
 
     node_ids = bulk_upsert_nodes(db, node_map, chunk_size=chunk_size)
-    edge_count = bulk_upsert_edges(db, edges, node_ids, chunk_size=chunk_size)
+    edge_count = bulk_upsert_edges(db, edges, node_ids, chunk_size=chunk_size,
+                                   processed_refs=processed_refs)
     return {
         "rows": total_rows,
         "nodes": len(node_map),
