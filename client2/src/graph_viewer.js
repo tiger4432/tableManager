@@ -20,6 +20,7 @@ import { initTheme } from './theme.js';
 
 const NEIGHBOR_LIMIT = 200;   // 서버 하드캡과 동일 (무제한 로드 금지)
 const SEARCH_LIMIT = 20;
+const CONN_PAGE = 80;         // Connections 테이블 렌더 상한 단위 ("더 보기" 페이지)
 const AC_DEBOUNCE_MS = 200;   // 자동완성 debounce
 const MIN_SCALE = 0.12;
 const MAX_SCALE = 3;
@@ -49,6 +50,11 @@ const S = {
 
   // 뷰 변환 (screen = world * scale + t)
   view: { scale: 1, tx: 0, ty: 0, cssW: 0, cssH: 0, dpr: 1 },
+
+  // 우측 Connections 테이블 상태
+  conn: null,           // {nodeId, rows, shown, partial, loading, truncated, error}
+  connSeq: 0,           // 이웃 재조회 stale 가드
+  panelCollapsed: false,
 
   // 요청 시퀀스 가드 (stale 응답 폐기)
   seq: 0,
@@ -232,7 +238,20 @@ function setCanvasOverlay(state, text, sub) {
   el('canvas-overlay-sub').textContent = sub || '';
 }
 
-async function explore(label, identity) {
+// ── URL 동기화: ?label=&identity= (trace.html 크로스링크와 동일 관례) ──
+// 검색/시드 이동마다 push → 브라우저 뒤로가기가 이전 중심으로 자연 복귀.
+function syncUrl(label, identity, mode) {
+  if (mode === 'none') return;
+  const next = `${window.location.pathname}?label=${encodeURIComponent(label)}&identity=${encodeURIComponent(identity)}`;
+  if (window.location.pathname + window.location.search === next) return; // 동일 중심 재조회 → 히스토리 오염 방지
+  try {
+    if (mode === 'replace') window.history.replaceState({ label, identity }, '', next);
+    else window.history.pushState({ label, identity }, '', next);
+  } catch (e) { /* pushState 불가 환경(file:// 등) 방어 — URL 동기화만 포기 */ }
+}
+
+// opts.history: 'push'(기본) | 'replace'(초기 쿼리 파라미터 진입) | 'none'(popstate 복원)
+async function explore(label, identity, opts = {}) {
   const seq = ++S.seq;
   showGraphView();
   setCanvasOverlay('loading', `${label}:${identity} 이웃 조회 중... (depth ${S.depth})`);
@@ -275,7 +294,8 @@ async function explore(label, identity) {
     renderCanvas();
     renderGraphMeta();
     renderLegend();
-    renderNodePanel(center);
+    syncUrl(center.label, center.identity_key, opts.history || 'push');
+    selectNode(center, { expand: false }); // 중심 노드 선택 + Connections 테이블 (center는 로컬 데이터 완결)
   } catch (err) {
     if (seq !== S.seq) return;
     const msg = String(err.message || err);
@@ -579,8 +599,168 @@ function renderLegend() {
 }
 
 // ============================================================
-// [4] Node Inspector (우측 패널)
+// [4] Node Inspector (우측 패널) — 선택 노드 정보 + Connections 테이블
 // ============================================================
+
+// 서브그래프(또는 재조회 응답)에서 특정 노드의 연결 행 추출
+// 행 = {dir: 'in'|'out'|'self', type, other(노드), edge}
+function connectionRows(nodeId, edges, nodesById) {
+  const rows = [];
+  for (const e of edges) {
+    const isOut = e.from === nodeId;
+    const isIn = e.to === nodeId;
+    if (!isOut && !isIn) continue;
+    if (e.from === e.to) {
+      const self = nodesById.get(nodeId);
+      if (self) rows.push({ dir: 'self', type: e.type, other: self, edge: e });
+      continue;
+    }
+    const other = nodesById.get(isOut ? e.to : e.from);
+    if (!other) continue; // truncated 응답 방어 (끝점 노드 미포함 엣지)
+    rows.push({ dir: isOut ? 'out' : 'in', type: e.type, other, edge: e });
+  }
+  rows.sort((a, b) => {
+    if (a.type !== b.type) return a.type < b.type ? -1 : 1;
+    if (a.other.label !== b.other.label) return a.other.label < b.other.label ? -1 : 1;
+    return String(a.other.identity_key).localeCompare(String(b.other.identity_key));
+  });
+  return rows;
+}
+
+// 대표 props 요약: 앞쪽 2개 key=value (테이블 한 줄용, esc는 호출부에서)
+function propsSummary(props) {
+  if (!props || typeof props !== 'object') return '';
+  const parts = [];
+  for (const [k, v] of Object.entries(props)) {
+    if (v === null || v === undefined || v === '') continue;
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    parts.push(`${k}=${truncate(val, 16)}`);
+    if (parts.length >= 2) break;
+  }
+  return truncate(parts.join(' '), 52);
+}
+
+// 노드 선택 = 패널 갱신 + Connections 구성. 비중심 노드는 로컬 단면을 먼저
+// 보여주고 depth-1 재조회(label+identity — node_id 아님)로 전체 이웃을 보강.
+function selectNode(node, opts = {}) {
+  S.selectedId = node.id;
+  if (opts.expand !== false && S.panelCollapsed) setPanelCollapsed(false);
+
+  const isCenter = node.id === S.centerId;
+  S.connSeq++; // 이전 노드의 in-flight 재조회 무효화
+  S.conn = {
+    nodeId: node.id,
+    rows: connectionRows(node.id, S.edges, S.nodesById),
+    shown: CONN_PAGE,
+    partial: !isCenter,   // 비중심: 로드된 서브그래프의 단면일 수 있음
+    loading: !isCenter,
+    truncated: isCenter ? S.truncated : false,
+    error: null,
+  };
+  renderNodePanel(node);
+  renderCanvas();
+  if (!isCenter) fetchNodeConnections(node);
+}
+
+// 비중심 노드의 전체 1-hop 이웃 재조회 → Connections 테이블 보강
+async function fetchNodeConnections(node) {
+  const seq = ++S.connSeq;
+  try {
+    const params = new URLSearchParams({
+      label: node.label, identity: node.identity_key, depth: '1', limit: String(NEIGHBOR_LIMIT),
+    });
+    const res = await fetch(`${API_BASE}/graph/neighbors?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (seq !== S.connSeq || !S.conn || S.conn.nodeId !== node.id) return; // stale 폐기
+    const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+    const edges = Array.isArray(data.edges) ? data.edges : [];
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const self = nodes.find((n) => n.label === node.label && n.identity_key === node.identity_key);
+    if (self) {
+      S.conn.rows = connectionRows(self.id, edges, byId);
+      S.conn.partial = false;
+      S.conn.truncated = !!data.truncated;
+    }
+    S.conn.loading = false;
+    renderConnBlock();
+  } catch (err) {
+    if (seq !== S.connSeq || !S.conn || S.conn.nodeId !== node.id) return;
+    S.conn.loading = false;
+    S.conn.error = String(err.message || err); // 로컬 단면은 유지 — 실패해도 화면을 잃지 않음
+    renderConnBlock();
+  }
+}
+
+// Connections 블록만 부분 재렌더 (재조회 완료/더 보기)
+function renderConnBlock() {
+  const block = el('conn-block');
+  if (!block || !S.conn) return;
+  const c = S.conn;
+  const total = c.rows.length;
+  const shown = Math.min(c.shown, total);
+
+  let badge = '';
+  if (c.loading) badge = '<span class="conn-badge">전체 이웃 조회 중…</span>';
+  else if (c.error) badge = '<span class="conn-badge conn-warn" title="전체 이웃 조회 실패 — 서브그래프 단면 표시 중">단면 · 조회 실패</span>';
+  else if (c.partial) badge = '<span class="conn-badge">서브그래프 단면</span>';
+  else if (c.truncated) badge = `<span class="conn-badge conn-warn">LIMIT ${NEIGHBOR_LIMIT}</span>`;
+
+  const header = `<div class="detail-block-header conn-header"><span>Connections · ${fmtInt(total)}</span>${badge}</div>`;
+
+  let body;
+  if (!total) {
+    body = c.loading
+      ? '<div class="props-empty">연결 조회 중…</div>'
+      : `<div class="props-empty">${c.error ? `연결 조회 실패: ${esc(c.error)}` : '연결된 노드가 없습니다'}</div>`;
+  } else {
+    const rowsHtml = c.rows.slice(0, shown).map((r) => {
+      const o = r.other;
+      const dir = r.dir === 'out'
+        ? '<span class="conn-dir out" title="outgoing">→</span>'
+        : r.dir === 'in'
+          ? '<span class="conn-dir in" title="incoming">←</span>'
+          : '<span class="conn-dir" title="self-loop">⟲</span>';
+      const time = r.edge.event_time ? fmtSync(r.edge.event_time) : '';
+      const summary = propsSummary(o.props);
+      const sub = [esc(o.label), summary ? esc(summary) : '', time ? esc(time) : '']
+        .filter(Boolean).join(' · ');
+      const isUser = r.edge.source_name === 'user';
+      return `<tr class="conn-row${isUser ? ' conn-user' : ''}" tabindex="0" role="button"
+           data-label="${esc(o.label)}" data-identity="${esc(o.identity_key)}"
+           title="클릭 → 이 노드를 새 검색 시드로 재조회">
+        <td class="conn-rel">${dir}<span class="conn-type">${esc(truncate(r.type, 18))}</span></td>
+        <td class="conn-node">
+          <span class="conn-id"><span class="label-dot" style="background: var(${labelToken(o.label)})"></span>${esc(o.identity_key)}</span>
+          <span class="conn-sub">${sub}</span>
+        </td>
+      </tr>`;
+    }).join('');
+    body = `<div class="conn-scroll"><table class="conn-table"><tbody>${rowsHtml}</tbody></table></div>`;
+    if (shown < total) {
+      body += `<button type="button" class="conn-more" id="conn-more-btn">더 보기 (남은 ${fmtInt(total - shown)})</button>`;
+    }
+  }
+
+  block.innerHTML = header + body;
+
+  // 행 클릭/Enter → 검색 시드 연동 (explore = 서브그래프 재로드 + URL push + 검색바 반영)
+  block.querySelectorAll('.conn-row').forEach((tr) => {
+    const go = () => explore(tr.dataset.label, tr.dataset.identity);
+    tr.addEventListener('click', go);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+  });
+  const more = el('conn-more-btn');
+  if (more) {
+    more.addEventListener('click', () => {
+      S.conn.shown += CONN_PAGE;
+      renderConnBlock();
+    });
+  }
+}
+
 function renderNodePanel(node) {
   const empty = el('node-empty');
   const detail = el('node-detail');
@@ -621,12 +801,16 @@ function renderNodePanel(node) {
       <div class="node-identity">${esc(node.identity_key)}</div>
     </div>
 
+    ${isCenter ? '' : '<button type="button" id="node-seed-btn" class="glass-btn node-seed-btn" title="이 노드를 새 검색 시드로 재조회">🔍 이 노드 중심으로 탐색</button>'}
+
     <div class="detail-block">
       <div class="detail-block-header">Props</div>
       ${propKeys.length
         ? `<table class="props-table">${propRows}</table>`
         : '<div class="props-empty">props 없음</div>'}
     </div>
+
+    <div class="detail-block" id="conn-block"></div>
 
     <div class="detail-block">
       <div class="detail-block-header">Subgraph Degree</div>
@@ -636,8 +820,23 @@ function renderNodePanel(node) {
       </table>
     </div>
 
-    ${isCenter ? '' : '<div class="node-hint">노드를 클릭하면 그 노드 중심으로 재조회됩니다</div>'}
+    <div class="node-hint">연결 행 클릭 = 그 노드로 재검색 · 캔버스 더블클릭 = 중심 이동</div>
   `;
+
+  const seedBtn = el('node-seed-btn');
+  if (seedBtn) seedBtn.addEventListener('click', () => explore(node.label, node.identity_key));
+
+  renderConnBlock();
+}
+
+// ── 패널 접기/펼치기 (캔버스 잠식 방지 — ResizeObserver가 캔버스 재조정) ──
+function setPanelCollapsed(v) {
+  S.panelCollapsed = v;
+  el('node-panel').classList.toggle('collapsed', v);
+  const btn = el('panel-collapse-btn');
+  btn.textContent = v ? '«' : '»';
+  btn.title = v ? '패널 펼치기' : '패널 접기';
+  btn.setAttribute('aria-expanded', v ? 'false' : 'true');
 }
 
 // ============================================================
@@ -659,13 +858,10 @@ function nodeAtScreen(mx, my) {
   return best;
 }
 
+// 클릭 = 선택 + 우측 Connections 테이블 (즉시 재조회하지 않음 — 캔버스 맥락 유지)
+// 중심 이동은 더블클릭 / 패널 "이 노드 중심으로 탐색" 버튼 / 테이블 행 클릭.
 function onNodeClick(node) {
-  S.selectedId = node.id;
-  renderNodePanel(node);
-  renderCanvas();
-  if (node.id !== S.centerId) {
-    explore(node.label, node.identity_key); // 탐색 이동: 클릭 노드 중심 재조회
-  }
+  selectNode(node, { expand: true });
 }
 
 function initCanvasEvents() {
@@ -712,6 +908,12 @@ function initCanvasEvents() {
       S.hoverId = hitId;
       renderCanvas();
     }
+  });
+
+  // 더블클릭 = 그 노드 중심으로 재조회 (기존 단일클릭 재조회의 대체 경로)
+  canvas.addEventListener('dblclick', (e) => {
+    const hit = nodeAtScreen(e.offsetX, e.offsetY);
+    if (hit && hit.id !== S.centerId) explore(hit.label, hit.identity_key);
   });
 
   canvas.addEventListener('mouseleave', () => {
@@ -910,6 +1112,7 @@ function init() {
     loadStats(); // 라이브 검증용 — 돌아올 때마다 신선한 카운트
   });
   el('back-to-graph-btn').addEventListener('click', showGraphView);
+  el('panel-collapse-btn').addEventListener('click', () => setPanelCollapsed(!S.panelCollapsed));
   el('stats-retry-btn').addEventListener('click', loadStats);
   el('stats-empty-retry-btn').addEventListener('click', loadStats);
   el('stats-refresh-btn').addEventListener('click', loadStats);
@@ -921,7 +1124,20 @@ function init() {
   const qp = new URLSearchParams(window.location.search);
   const qpLabel = (qp.get('label') || '').trim();
   const qpIdentity = (qp.get('identity') || '').trim();
-  if (qpLabel && qpIdentity) explore(qpLabel, qpIdentity);
+  if (qpLabel && qpIdentity) explore(qpLabel, qpIdentity, { history: 'replace' });
+
+  // 뒤로가기/앞으로가기 → URL의 중심으로 복원 (push 없이 재조회)
+  window.addEventListener('popstate', () => {
+    const p = new URLSearchParams(window.location.search);
+    const l = (p.get('label') || '').trim();
+    const i = (p.get('identity') || '').trim();
+    if (l && i) {
+      explore(l, i, { history: 'none' });
+    } else {
+      S.seq++; // in-flight explore 무효화
+      showStatsView();
+    }
+  });
 }
 
 init();

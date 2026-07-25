@@ -718,7 +718,7 @@
 
     /* 우측 Node Inspector */
     .node-panel {
-      width: 320px;
+      width: 360px;
       flex-shrink: 0;
       background: var(--bg-surface);
       border: 1px solid var(--border);
@@ -727,6 +727,44 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      transition: width 0.2s ease;
+    }
+
+    /* 접힌 상태: 캔버스에 폭 양보 (ResizeObserver가 캔버스 재조정) */
+    .node-panel.collapsed {
+      width: 46px;
+    }
+
+    .node-panel.collapsed .panel-title,
+    .node-panel.collapsed .panel-meta,
+    .node-panel.collapsed .panel-body {
+      display: none;
+    }
+
+    .node-panel.collapsed .panel-header {
+      justify-content: center;
+      padding: 13px 6px;
+      border-bottom: none;
+    }
+
+    .panel-collapse-btn {
+      flex-shrink: 0;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border-radius: 7px;
+      width: 26px;
+      height: 26px;
+      line-height: 1;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+    }
+
+    .panel-collapse-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-weak);
     }
 
     .panel-header {
@@ -904,6 +942,146 @@
       text-align: center;
     }
 
+    .node-seed-btn {
+      justify-content: center;
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-weak);
+      font-weight: 600;
+    }
+
+    /* ── Connections 테이블 (선택 노드의 연결 목록 → 행 클릭 = 재검색) ── */
+    .conn-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .conn-badge {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1px 7px;
+      background: var(--bg-inset);
+      white-space: nowrap;
+    }
+
+    .conn-badge.conn-warn {
+      color: var(--warning);
+      border-color: var(--warning);
+      background: var(--warning-weak);
+    }
+
+    .conn-scroll {
+      max-height: 340px;
+      overflow-y: auto;
+    }
+
+    .conn-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .conn-row td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .conn-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .conn-row {
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    .conn-row:hover,
+    .conn-row:focus-visible {
+      background: var(--accent-weak);
+      outline: none;
+    }
+
+    .conn-rel {
+      width: 1%;
+      white-space: nowrap;
+    }
+
+    .conn-dir {
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-right: 5px;
+    }
+
+    .conn-dir.out {
+      color: var(--success);
+    }
+
+    .conn-dir.in {
+      color: var(--info);
+    }
+
+    .conn-type {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .conn-user .conn-type {
+      color: var(--overwrite);
+      font-weight: 600;
+    }
+
+    .conn-node {
+      min-width: 0;
+    }
+
+    .conn-id {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .conn-sub {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+      word-break: break-all;
+    }
+
+    .conn-more {
+      width: 100%;
+      border: none;
+      border-top: 1px solid var(--border);
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--font-sans);
+      font-size: 0.74rem;
+      font-weight: 500;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    .conn-more:hover {
+      background: var(--accent-weak);
+    }
+
     /* 좁은 화면 대응 */
     @media (max-width: 1100px) {
       .stats-columns {
@@ -911,7 +1089,7 @@
       }
 
       .node-panel {
-        width: 260px;
+        width: 300px;
       }
 
       .logo-sub {
@@ -919,7 +1097,7 @@
       }
     }
   </style>
-  <script type="module" crossorigin src="/assets/graph-BFqrLVXx.js"></script>
+  <script type="module" crossorigin src="/assets/graph-BFQ7Swjm.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-DqWd5E8W.js">
   <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
@@ -1044,7 +1222,7 @@
           </div>
 
           <div id="graph-legend" class="graph-legend" style="display: none;"></div>
-          <div class="canvas-hint">드래그 이동 · 휠 확대/축소 · 노드 클릭 = 중심 이동</div>
+          <div class="canvas-hint">드래그 이동 · 휠 확대/축소 · 클릭 = 연결 테이블 · 더블클릭 = 중심 이동</div>
 
           <div id="canvas-overlay" class="canvas-overlay" style="display: none;">
             <div class="overlay-card">
@@ -1056,15 +1234,17 @@
           </div>
         </div>
 
-        <aside class="node-panel">
+        <aside id="node-panel" class="node-panel">
           <div class="panel-header">
             <div class="panel-title">🔎 Node Inspector</div>
             <div id="node-panel-meta" class="panel-meta"></div>
+            <button type="button" id="panel-collapse-btn" class="panel-collapse-btn" title="패널 접기"
+              aria-label="패널 접기/펼치기" aria-expanded="true">»</button>
           </div>
           <div class="panel-body">
             <div id="node-empty" class="node-empty">
               <div class="empty-icon">👈</div>
-              <div>캔버스에서 노드를 클릭하면<br>속성(props)이 표시됩니다.</div>
+              <div>캔버스에서 노드를 클릭하면<br>속성과 연결 노드 테이블이 표시됩니다.</div>
             </div>
             <div id="node-detail" class="node-detail" style="display: none;"></div>
           </div>
