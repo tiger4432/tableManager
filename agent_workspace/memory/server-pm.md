@@ -34,3 +34,11 @@
   **올바른 방법**: 스키마는 `GET /tables/{t}/schema`. API 검증 시 응답이 JSON인지 확인.
 - **함정**: 테스트용 가짜 테이블명이 사용자 config(gitignored)의 실제 테이블과 겹치면, import 시점 `init_dynamic_models`가 공유 in-memory sqlite에 실 스키마를 선점해 `create_all(checkfirst)`이 스킵되고 테스트가 `no such column`으로 깨진다(사용자가 나중에 동명 테이블을 추가해도 터짐 — `bonding_log` 사례).
   **올바른 방법**: 테스트 테이블명은 사용자 config에 실존 불가능한 고유 접두 이름(`enrich_test_*` 등)을 사용.
+- **함정**: 프로세스 간 통지 페이로드에 CRUD 반환 컬렉션(created_logs 등)을 무절단으로 실으면, 대형 tx(재기동 스윕 등)에서 수신 웹서버의 json.loads/pydantic 검증이 GIL을 점유해 이벤트 루프가 동결된다 — `run_in_threadpool`로 옮겨도 CPU 바운드면 못 막는다(2026-07-25 인시던트: 6.5만 건 ~50MB 페이로드로 :8080 수십 초 동결).
+  **올바른 방법**: 절단은 **발신 측·직렬화 이전**에 수행하고 실건수는 별도 카운트 필드(`total_log_count`)로 전달. 상한 상수는 `server/event_constants.py` 단일 정의를 공유.
+- **함정**: 동일 결함이 발신자별(워처/체인 워커)로 재발한다 — 한 발신 경로만 고치면 다른 데몬이 같은 내부 이벤트 엔드포인트를 같은 방식으로 오염시킨다.
+  **올바른 방법**: `/internal/events/*` 발신·수신 계약을 바꿀 땐 워처·체인 워커(및 향후 데몬) 전 발신 경로를 grep으로 교차 점검.
+- **함정**: override 성격의 카운트 필드(total_log_count → audit_cache total_count)는 **SET**이라, 같은 tx로 메시지가 2회 이상 도착하는 경로(멀티 target-table 체인 등)에서 마지막 메시지가 이전 총계를 덮어써 과소 표기된다(QA D-1).
+  **올바른 방법**: 카운트 필드를 설계할 땐 "같은 키로 메시지 N회 도착" 경로를 먼저 나열하고 SET/누적 의미론을 명시적으로 선택·문서화.
+- **함정**: 기존 테이블 런타임 ALTER의 유일한 경로는 `config_watcher`(on_modified)인데, 에이전트 Edit 같은 **원자적 쓰기(temp+rename)는 on_modified를 발화시키지 않아 ALTER가 조용히 누락**된다. `/tables/{t}/schema`는 config 싱글턴을 읽으므로 200에 컬럼이 보여도 물리 반영 증거가 아니다.
+  **올바른 방법**: table_config 수정 후에는 information_schema로 물리 컬럼을 직접 확인하고, watcher 미발화 시 in-place 재기록으로 발화시킨다. (`/admin/reload-configs`는 신규 CREATE 전용 — ALTER 안 함.)
