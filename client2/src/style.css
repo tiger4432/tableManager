@@ -660,8 +660,8 @@ body.resizing-active .history-sidebar {
 .glass-checkbox {
   cursor: pointer;
   accent-color: var(--accent);
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   border-radius: 4px;
 }
 
@@ -1128,6 +1128,8 @@ body.resizing-active .history-sidebar {
   color: var(--accent-2);
   border-radius: 4px;
   padding: 1px 4px;
+  min-width: 24px; /* WCAG 클릭 타깃 */
+  min-height: 24px;
   margin-left: 6px;
   cursor: pointer;
   font-size: 0.75rem;
@@ -1156,6 +1158,7 @@ body.resizing-active .history-sidebar {
   color: var(--text);
   border-radius: 4px;
   padding: 2px 10px;
+  min-height: 24px; /* WCAG 클릭 타깃 (Design_audit.md 개선 #5) */
   cursor: pointer;
   font-family: var(--font-sans);
   font-size: 0.75rem;
@@ -1195,6 +1198,7 @@ body.resizing-active .history-sidebar {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   padding: 1px 2px;
+  min-height: 24px; /* WCAG 클릭 타깃 */
   outline: none;
   transition: var(--transition-smooth);
 }
@@ -1375,8 +1379,8 @@ body.resizing-active .history-sidebar {
 .col-selector-checkbox {
   cursor: pointer;
   accent-color: var(--accent);
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .col-selector-label {
