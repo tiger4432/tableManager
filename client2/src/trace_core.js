@@ -21,9 +21,9 @@ export function normalizeIdentityPart(v) {
   }
   const s = String(v).trim();
   if (s === '') return null;
-  // float 정수 안정화 미러: "3.0" / "3.00" → "3" (숫자형 문자열만)
-  const m = s.match(/^(-?\d+)\.0+$/);
-  return m ? m[1] : s;
+  // 문자열은 그대로 둔다 — 서버 _normalize_identity_part는 float "타입"만 정수 안정화하고
+  // 문자열 "3.0"은 보존하므로, 여기서 숫자형 문자열을 축약하면 시드가 어긋난다(총괄 검수 수정).
+  return s;
 }
 
 /** 파이프/백슬래시 이스케이프 — ("A|B","C") ≠ ("A","B|C") 보장 미러 */

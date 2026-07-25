@@ -63,6 +63,7 @@
 - **오늘 완료 롤업(2026-07-25)**: std parser 배치(QA 수정 포함, 115 passed)·enrichment 테스트 격리·듀얼 테마 C안(병합·빌드·라이브 검증)·헤더 드롭다운 z-order 수정·코드맵+교훈 파일 체계(유지보수 doc-keeper 전담으로 변경)·기능 체크리스트 초판. 사용자 전 기능 수동 점검 "다 잘 작동" 확인.
 - **비이슈 종결**: source delete "미작동" 신고 — 서버 API(단일/배치) 정상 실증, 정체는 가동 중 파이프라인의 소스 재생성(레이어링 설계상 정상, 교정 정석은 user 덮어쓰기). 사용자 재확인 결과 정상 동작으로 종결. UX 개선 후보(재생성 소스 삭제 시 경고 표시)는 백로그 low.
 - **관찰(낮음, 신규)**: 진단 중 `priority_source: chain_ingestion`인데 표시 값은 system 소스 값인 셀 목격(38320 vs 3832) — 레이어링 표시 정합 의심. chain_ingestion의 우선순위 랭크 정의 여부 포함 server-pm 점검 후보(#5 배치에 동승 가능).
+- **[대기·사용자 승인 2026-07-25] 맵 split 서술 관리 테이블 승격** — value description(실험 split 자연어)이 localStorage에만 있어 영속·공유·온톨로지 승격 불가 → `map_split_registry` 동적 테이블 + SplitCondition 온톨로지 매핑 + 맵 에디터 로드/저장 전환·push 경고 UX. 지시서 `Client_map_split_registry_task.md` 준비됨 — G2 추적 UI 병합 후 client-pm 착수.
 - 루트 `task/` 대기 항목: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
 
 ## 🧭 환경 메모 (Env Notes)
