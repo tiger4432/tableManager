@@ -95,6 +95,21 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **공간 분석 (G3 결합)**: 불량 시드의 wafer 좌표 분포 → zonal 패턴 분류(edge ring/center/scratch/random — 반도체 표준 불량 패턴), 설비 좌표 그리드 위 집중도. PPR(관계 축) + 공간 클러스터링(좌표 축) + 시간 창(시간 축)의 3축 교차가 물리 추론의 실체.
 - **LLM 도구 연결**: `spatial_pattern(seeds)` → "이 불량들 wafer 위에서 엣지 링 패턴, base 지그 3번 열 집중" 같은 물리 서술을 도구 응답으로.
 
+## 7.5b 상태·이벤트 물화와 2계층 원칙 (사용자 확정 2026-07-25) — 시공간 topology의 데이터 모델
+
+사용자 구상: wafer에 **WaferState 노드**들이 달리고, WaferState 간 전이는 **ProcessEvent 노드**를 매개로 일어난다. ProcessEvent는 함수다: `f(WaferState_in, EqpState_in) → WaferState_out`. 물화 형태: `(WaferState, EqpState) -[INPUT_TO]-> ProcessEvent -[PRODUCED]-> WaferState`. 이 인과 체인이 불량 추론(가치 ③)의 전이 경로이자 LLM이 읽는 인과 서사(가치 ①)가 된다.
+
+**2계층 원칙 (확정)** — 파생 그래프에서 "엣지 삭제의 복잡성"을 원천 차단하는 규율:
+
+| 계층 | 내용 | 쓰기 주체 | 수정/삭제 정책 |
+|---|---|---|---|
+| **L1 사실 계층** | 로그 로우의 직접 투영 — ProcessEvent·Chip·BONDED_FROM 등. 반도체 로그 특성상 사실상 append-only 불변 | materializer (로우 이벤트) | row-ref 스코프 정리 (G1 현행 — retarget/H2-b) |
+| **L2 상태 계층** | WaferState/EqpState 노드 + 전이 엣지 — L1 이벤트 체인의 **폴드(fold) 계산 결과**. 각 상태 노드는 계보(`derived_from: [event ids]`)를 기록 | 파생 엔진만 (직접 쓰기 금지) | **삭제하지 않는다 — 재파생한다.** 상류 이벤트 수정/삭제 시 해당 엔티티(wafer 등)의 상태 체인만 **스코프 재파생** (엔티티당 이벤트 수십~수백 개 — 저비용·멱등) |
+
+핵심 문장: **"WaferState는 직접 쓰지 않고 항상 재파생한다."** 얽힌 파생 엣지는 언제든 재계산 가능하므로 수술적 삭제 대상이 아니다. 전체 재구성(과잉) vs 수술적 삭제(불가능)의 양자택일이 아니라 계보 단위 부분 재파생이 정답.
+
+구현 단계: **G3.5 (상태·이벤트 물화)** — EqpState 소스(설비 상태 로그) 데이터 전제가 있어 G3(불량 추론)와 함께 설계.
+
 ## 7.6 그래프 보조 교정 (inference-assisted enrichment) — 가치사슬의 순환 완성
 
 사용자 통찰(2026-07-25): **LOT-SLOT-WAFER 매칭 같은 교정 과제 자체를 온톨로지에 올려 추론**하면 구현이 더 원활해진다.
@@ -119,4 +134,4 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 
 - k-hop 추적의 기본 깊이·타입 필터 기본값 (v1 리포트 화면 설계와 함께)
 - 서브그래프 직렬화 포맷 상세 (G2.5 착수 시)
-- 노드 삭제/행 삭제 시 그래프 정리 정책 (soft-delete 마킹 vs 물리 삭제)
+- **행 삭제 정리 정책 — 방향 확정(§7.5b 전제), 구현 대기**: L1은 DELETE 이벤트에 row-ref 스코프 정리(H2-b와 동일 메커니즘) + 고아 노드 GC(엣지 0 + 원본 로우 부재), L2는 정리 대상 아님(재파생으로 수렴). 신뢰 게이트는 입구(수동 푸시)가 아니라 **provenance 기반 소비 시점 게이트**(자동 materialize + 엣지 출처 표기 — 2026-07-25 사용자 논의로 확정, 구 수동 Graph Sync 버튼은 백필/복구 도구로 존치)
