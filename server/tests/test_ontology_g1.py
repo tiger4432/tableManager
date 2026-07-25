@@ -157,10 +157,20 @@ def _load_mappings():
 
 
 def _seed(db, table, rows, tx_id, source_name="pipeline_parser"):
-    updates = [
-        schemas.GeneralUpdateItem(updates=dict(row), source_name=source_name, updated_by="tester")
-        for row in rows
-    ]
+    """단순 business_key 테이블은 API 경로처럼 business_key_val을 명시해 기존 행에 매칭한다
+    (composite_key_source 테이블은 crud가 updates에서 자동 조립)."""
+    cfg = crud.TABLE_CONFIG.get(table, {})
+    key_col = cfg.get("business_key")
+    is_composite = bool(cfg.get("composite_key_source"))
+    updates = []
+    for row in rows:
+        bk = None
+        if key_col and not is_composite and row.get(key_col) is not None:
+            bk = str(row[key_col])
+        updates.append(schemas.GeneralUpdateItem(
+            updates=dict(row), source_name=source_name, updated_by="tester",
+            business_key_val=bk,
+        ))
     batch = schemas.GeneralUpdateBatch(updates=updates, transaction_id=tx_id, silent=True)
     crud.apply_batch_updates(db, table, batch)
 
@@ -422,8 +432,174 @@ def test_materialize_chunking_boundary(onto_env):
 def test_compose_identity_normalization():
     assert graph_materializer.compose_identity(["LOTA", "3"]) == "LOTA|3"
     assert graph_materializer.compose_identity(["LOTA", 3.0]) == "LOTA|3"   # float 정수 안정화
+    assert graph_materializer.compose_identity([3.0]) == graph_materializer.compose_identity(["3"])
+    assert graph_materializer.compose_identity([3.5]) == "3.5"
     assert graph_materializer.compose_identity(["LOTA", None]) is None
     assert graph_materializer.compose_identity(["", "3"]) is None
+    # [QA ⑦] 구분자 이스케이프 — ("A|B","C") ≠ ("A","B|C"), 백슬래시 모호성 차단
+    assert graph_materializer.compose_identity(["A|B", "C"]) != \
+        graph_materializer.compose_identity(["A", "B|C"])
+    assert graph_materializer.compose_identity(["A\\", "B"]) != \
+        graph_materializer.compose_identity(["A", "\\B"])
+    assert graph_materializer.compose_identity(["A\\|B"]) != \
+        graph_materializer.compose_identity(["A|B"])
+
+
+def test_source_priority_single_origin(onto_env):
+    """[QA ⑥] 소스 서열은 crud 단일 원천 — chain_ingestion 등재 + 테이블 커스텀 반영."""
+    assert crud.get_source_priority("user") == 0
+    assert crud.get_source_priority("chain_ingestion") == 4      # 미등재(99) 해소
+    assert crud.get_source_priority("no_such_source") == 99
+    # 테이블별 source_priority 커스텀이 있으면 그 맵을 따른다 (compute_priority_value와 동일)
+    crud.TABLE_CONFIG["onto_test_bonding"]["source_priority"] = {"pipeline_parser": 0, "user": 5}
+    try:
+        assert crud.get_source_priority("pipeline_parser", "onto_test_bonding") == 0
+        assert crud.get_source_priority("user", "onto_test_bonding") == 5
+    finally:
+        crud.TABLE_CONFIG["onto_test_bonding"].pop("source_priority", None)
+
+
+# ---------------------------------------------------------------------------
+# 3.5) [QA H1] 엣지 provenance = 셀 레이어 진실 + 경로 동등성
+# ---------------------------------------------------------------------------
+
+def _edge_signatures(db):
+    """노드 id에 독립적인 엣지 서명 집합: (from_label, from_key, type, to_label, to_key, source)."""
+    sigs = set()
+    nodes = {n.id: (n.label, n.identity_key) for n in db.query(GraphNode).all()}
+    for e in db.query(GraphEdge).all():
+        sigs.add(nodes[e.from_node] + (e.type,) + nodes[e.to_node] + (e.source_name,))
+    return sigs
+
+
+def test_h1_no_user_forgery_on_unrelated_edit(onto_env):
+    """무관 컬럼(cx)의 user 편집이 엣지에 user를 위조 날인하거나 병렬 증식시키지 않는다."""
+    db = onto_env
+    mappings = _load_mappings()
+    tx1 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", _bonding_rows(1), tx1)
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx1), mappings)
+    db.commit()
+    n1, e1 = _counts(db)
+
+    # user가 무관 컬럼 cx만 수정 → 전 컬럼 스냅샷 EDIT(source=user) 발생
+    tx2 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", [{"log_id": "LOG0000", "cx": 99}], tx2, source_name="user")
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx2), mappings)
+    db.commit()
+
+    # 엣지 수 불변(병렬 증식 없음) + 소스는 셀 레이어 진실(pipeline_parser) 유지
+    assert _counts(db) == (n1, e1)
+    for e in db.query(GraphEdge).all():
+        assert e.source_name == "pipeline_parser"
+    # 노드 props는 최신값 반영
+    chip = db.query(GraphNode).filter(GraphNode.label == "Chip").first()
+    assert chip.props.get("cx") == 99
+
+
+def test_h1_multi_column_conservative_and_retarget(onto_env):
+    """식별 컬럼 일부만 user 교정 → 보수적으로 최저 서열(pipeline_parser) 유지 + 구 타깃 정리.
+    전부 user 교정 → user 날인."""
+    db = onto_env
+    mappings = _load_mappings()
+    tx1 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", _bonding_rows(1), tx1)
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx1), mappings)
+    db.commit()
+
+    # core_slot만 user 교정("3"→"4") — winner: core_lot=pipeline, core_slot=user → 보수적 pipeline
+    tx2 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", [{"log_id": "LOG0000", "core_slot": "4"}], tx2, source_name="user")
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx2), mappings)
+    db.commit()
+    bonded = db.query(GraphEdge).filter(GraphEdge.type == "BONDED_FROM").all()
+    assert len(bonded) == 1                                     # [H2] 구 타깃(LOTA|3) 엣지 소멸
+    to_node = db.query(GraphNode).get(bonded[0].to_node)
+    assert to_node.identity_key == "LOTA|4"
+    assert bonded[0].source_name == "pipeline_parser"           # [H1] user 위조 날인 없음
+
+    # core_lot까지 user 교정 → 식별 전 컬럼이 user winner → user 날인
+    tx3 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", [{"log_id": "LOG0000", "core_lot": "LOTB"}], tx3, source_name="user")
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx3), mappings)
+    db.commit()
+    bonded = db.query(GraphEdge).filter(GraphEdge.type == "BONDED_FROM").all()
+    assert len(bonded) == 1
+    to_node = db.query(GraphNode).get(bonded[0].to_node)
+    assert to_node.identity_key == "LOTB|4"
+    assert bonded[0].source_name == "user"
+
+
+def test_h1_path_equivalence_incremental_vs_resync(onto_env):
+    """[H1 경로 동등성] 같은 로우 상태에 대해 증분·재동기화가 키 필드까지 동일한
+    엣지 레코드 집합을 산출한다(혼합 소스 로우 포함)."""
+    db = onto_env
+    mappings = _load_mappings()
+    tx1 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", _bonding_rows(3), tx1)
+    # 로우 1개에 user 혼합 레이어(무관 컬럼 + 식별 컬럼 일부)
+    tx2 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", [{"log_id": "LOG0001", "cx": 77, "core_slot": "9"}],
+          tx2, source_name="user")
+
+    # 경로 A: 증분(outbox 이벤트 순차)
+    for tx in (tx1, tx2):
+        graph_materializer.materialize_events(db, _events_for(db, "onto_test_bonding", tx), mappings)
+    db.commit()
+    sigs_incremental = _edge_signatures(db)
+    assert sigs_incremental
+
+    # 그래프 초기화 후 경로 B: 전체 재동기화
+    db.query(GraphEdge).delete(synchronize_session=False)
+    db.query(GraphNode).delete(synchronize_session=False)
+    db.commit()
+    graph_materializer.resync_table(db, "onto_test_bonding", mappings)
+    sigs_resync = _edge_signatures(db)
+
+    assert sigs_incremental == sigs_resync
+
+
+def test_h2_retarget_preserves_other_rows(onto_env):
+    """[H2] retarget은 같은 로우의 구 주장만 제거 — 같은 from 노드를 공유하는 다른
+    로우의 엣지는 보존된다(source_row_ref 스코핑)."""
+    db = onto_env
+    mappings = _load_mappings()
+    tx1 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_wafer_hist", [
+        {"hist_id": "H1", "step": "STEP1", "lot": "L", "slot": "1",
+         "wafer_id": "W123", "event_time": "2026-07-25 09:00:00"},
+        {"hist_id": "H2", "step": "STEP2", "lot": "L", "slot": "1",
+         "wafer_id": "W123", "event_time": "2026-07-25 10:00:00"},
+    ], tx1)
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_wafer_hist", tx1), mappings)
+    db.commit()
+    assert db.query(GraphEdge).filter(GraphEdge.type == "WENT_THROUGH").count() == 2
+
+    # H1 로우의 step만 user 교정(STEP1→STEP3) → H1의 구 엣지만 대체, H2 엣지는 보존
+    tx2 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_wafer_hist", [{"hist_id": "H1", "step": "STEP3"}], tx2, source_name="user")
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_wafer_hist", tx2), mappings)
+    db.commit()
+
+    edges = db.query(GraphEdge).filter(GraphEdge.type == "WENT_THROUGH").all()
+    steps = set()
+    for e in edges:
+        steps.add(db.query(GraphNode).get(e.to_node).identity_key)
+    assert steps == {"STEP2", "STEP3"}                          # STEP1 소멸, STEP2 보존
+    assert len(edges) == 2
+
+
+def test_check_needs_rollback_v2_with_promotion(onto_env, monkeypatch):
+    """[QA ④] rollback 신호가 materializer와 같은 매핑(승격 포함)을 본다 —
+    enrichment target 컬럼(wafer_id) 변경이 신호에 잡힌다."""
+    monkeypatch.setattr(crud, "_ontology_cache", _load_mappings())
+    assert crud.check_needs_rollback("onto_test_core_map", ["wafer_id"]) is True   # 승격 RESOLVED_AS
+    assert crud.check_needs_rollback("onto_test_core_map", ["core_slot"]) is True  # 노드 identity
+    assert crud.check_needs_rollback("onto_test_bonding", ["cx"]) is False         # 무관 컬럼
+    assert crud.check_needs_rollback("onto_test_bonding", ["core_slot"]) is True   # 엣지 식별
+    # 실 config 경로 로드도 크래시 없이 dict 반환(캐시 재구축 스모크)
+    monkeypatch.setattr(crud, "_ontology_cache", None)
+    assert isinstance(crud.get_ontology_mapping(), dict)
 
 
 # ---------------------------------------------------------------------------
@@ -488,6 +664,20 @@ def test_e2e_demo_flow_resolved_as(onto_env):
         GraphEdge.type == "WENT_THROUGH", GraphEdge.from_node == real.id
     ).count() == 1
 
+    # 5) [QA H2] 재교정: W123 → W124 — 모순된 구 RESOLVED_AS 소멸 + 신 엣지 1개
+    tx5 = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_core_map", [{
+        "core_key": "LOTA_3", "core_lot": "LOTA", "core_slot": "3", "wafer_id": "W124",
+    }], tx5, source_name="user")
+    graph_materializer.materialize_events(db, _events_for(db, "onto_test_core_map", tx5), mappings)
+    db.commit()
+
+    resolved = db.query(GraphEdge).filter(GraphEdge.type == "RESOLVED_AS").all()
+    assert len(resolved) == 1                                   # 구 엣지(→W123) 병존 금지
+    new_target = db.query(GraphNode).get(resolved[0].to_node)
+    assert new_target.identity_key == "W124"
+    assert resolved[0].source_name == "user"
+
 
 # ---------------------------------------------------------------------------
 # 5) 전체 재동기화 (C-7 키셋 청킹) + 커서
@@ -531,6 +721,23 @@ def test_resync_table_partial_row_ids(onto_env):
     )
     assert stats["rows"] == 2
     assert db.query(GraphNode).filter(GraphNode.label == "Chip").count() == 2
+
+
+def test_resync_partial_row_ids_sliced(onto_env):
+    """[QA ⑤] 부분 재동기화의 row_ids는 청크 크기로 슬라이스되어 처리된다."""
+    db = onto_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed(db, "onto_test_bonding", _bonding_rows(5), tx)
+    model = models.DYNAMIC_TABLES["onto_test_bonding"]
+    all_ids = [r.row_id for r in db.query(model).all()]
+
+    mappings = _load_mappings()
+    stats = graph_materializer.resync_table(
+        db, "onto_test_bonding", mappings, chunk_size=2, row_ids=all_ids
+    )
+    assert stats["rows"] == 5
+    assert stats["chunks"] == 3                                 # 5개 id → 2/2/1 슬라이스
+    assert db.query(GraphNode).filter(GraphNode.label == "Chip").count() == 5
 
 
 def test_graph_cursor_init_and_advance(onto_env):

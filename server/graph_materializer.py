@@ -31,26 +31,40 @@ _META_COLUMNS = {
 # 매핑 없는 테이블 무시 로그 1회 규율용 (프로세스 수명 동안 테이블당 1회)
 _unmapped_logged = set()
 
-# 셀 소스 → 우선순위 서열 (crud.compute_priority_value와 동일 서열 — user 최우선)
-_SOURCE_PRIORITY = {"user": 0, "collision_merge": 1, "pipeline_parser": 2, "custom_script": 3}
+
+def _source_priority(source_name, table_name: str = None) -> int:
+    """[QA G1-⑥] 소스 서열은 crud를 단일 원천으로 재사용(테이블별 커스텀 포함).
+
+    작을수록 우선(user=0). 미등재/결측은 99(최하) — 하드코딩 서열 이원화 금지.
+    """
+    from database import crud
+    if not source_name:
+        return 99
+    return crud.get_source_priority(source_name, table_name)
+
+
+def _normalize_identity_part(v):
+    """identity 구성값 정규화 — number 컬럼의 정수값 float(3.0)은 "3"으로 안정화하여
+    타 테이블의 string 표기("3")와 정확 일치 MERGE(§2)가 어긋나지 않도록 한다."""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip()
 
 
 def compose_identity(values) -> str:
     """복수 컬럼 identity를 "|" 조인 문자열로 정규화한다. 하나라도 비면 None(해석 불가).
 
-    number 컬럼의 정수값 float(3.0)은 "3"으로 안정화 — 타 테이블의 string 표기("3")와
-    identity 정확 일치 MERGE(§2)가 어긋나지 않도록.
+    [QA G1-⑦] 값 내부의 구분자/이스케이프 문자는 이스케이프한다("\\"→"\\\\", "|"→"\\|") —
+    ("A|B","C")와 ("A","B|C")가 같은 identity_key로 충돌하지 않도록.
     """
     parts = []
     for v in values:
         if v is None:
             return None
-        if isinstance(v, float) and v.is_integer():
-            v = int(v)
-        s = str(v).strip()
+        s = _normalize_identity_part(v)
         if not s:
             return None
-        parts.append(s)
+        parts.append(s.replace("\\", "\\\\").replace("|", "\\|"))
     return "|".join(parts)
 
 
@@ -87,9 +101,17 @@ def extract_graph_items(table_name: str, rows: list, mapping: dict,
                         node_map: dict = None, edges: dict = None):
     """로우 목록 → (node_map, edges) 누적 추출.
 
-    rows: [{"row_id", "values": {col: value}, "source_name", "updated_by", "event_time"}]
+    rows: [{"row_id", "values": {col: value}, "col_sources": {col: 표시 우선 소스},
+            "updated_by", "event_time"}]
     node_map: {(label, identity_key): props_dict} — 스텁(빈 props)은 기존 props를 덮지 않음.
     edges: {(from_key, type, to_key, source_name): edge_row_dict} — 배치 내 dedup(last wins).
+
+    [QA G1-H1] 엣지 provenance는 이벤트의 source_name이 아니라 **셀 레이어 진실**로 결정:
+    target_identity_from 컬럼들의 priority_source(CellSource 최우선 소스) 중 **가장 낮은
+    서열**(보수적 — 관계 주장은 가장 신뢰도 낮은 입력만큼만 신뢰됨)을 날인한다.
+    무관 컬럼의 user 편집이 엣지에 user를 위조 날인하는 경로가 구조적으로 없고,
+    증분(materialize_events)·재동기화(resync_table) 두 경로가 동일 입력에 대해
+    동일 (from, type, to, source_name) 레코드를 산출한다(경로 동등성).
     """
     node_map = node_map if node_map is not None else {}
     edges = edges if edges is not None else {}
@@ -137,11 +159,18 @@ def extract_graph_items(table_name: str, rows: list, mapping: dict,
                 v = values.get(p["col"])
                 if v is not None:
                     e_props[p["col"]] = _json_safe(v)
-            source_name = (
-                edge_cfg.get("source_override")
-                or row.get("source_name")
-                or "unknown"
-            )
+            source_name = edge_cfg.get("source_override")
+            if not source_name:
+                # [QA G1-H1] 셀 레이어 진실: 식별 컬럼 winner들 중 최저 서열(보수적) 채택.
+                col_sources = row.get("col_sources") or {}
+                candidates = [
+                    col_sources.get(c) or "unknown"
+                    for c in edge_cfg["target_identity_from"]
+                ]
+                source_name = max(
+                    candidates,
+                    key=lambda s: (_source_priority(s, table_name), s),
+                )
             edge_key = (node_key, edge_cfg["type"], target_key, source_name)
             edges[edge_key] = {
                 "from_key": node_key,
@@ -217,6 +246,50 @@ def bulk_upsert_nodes(db, node_map: dict, chunk_size: int = CHUNK_SIZE) -> dict:
     return node_ids
 
 
+def _retarget_stale_edges(db, rows: list, chunk_size: int = CHUNK_SIZE) -> int:
+    """[QA G1-H2] 이번 배치의 원본 로우들이 과거에 주장한 stale 타깃 엣지를 삭제한다.
+
+    스코프: source_row_ref가 이번 배치에 포함된 엣지 중, (from_node, type, source_row_ref)가
+    일치하지만 to_node가 이번 산출 집합에 없는 것. **로우가 주장의 단위** — 같은 로우의 구
+    타깃 주장은 provenance가 무엇이었든 무효다(사용자 교정은 winner 소스도 함께 바꾸므로
+    source_name을 매칭 키에 넣으면 구 소스 엣지가 잔존한다). 다른 로우가 주장한 엣지는
+    source_row_ref 스코프 밖이라 절대 건드리지 않는다.
+    idx_graph_edges_row_ref 인덱스 룩업 + id 청크 삭제(1000행 규율). 반환: 삭제 수.
+    """
+    from database.models import GraphEdge
+
+    allowed = {}
+    for r in rows:
+        if not r.get("source_row_ref"):
+            continue
+        key = (r["from_node"], r["type"], r["source_row_ref"])
+        allowed.setdefault(key, set()).add(r["to_node"])
+    if not allowed:
+        return 0
+
+    row_refs = sorted({key[2] for key in allowed})
+    stale_ids = []
+    for i in range(0, len(row_refs), chunk_size):
+        ref_chunk = row_refs[i:i + chunk_size]
+        existing = db.query(
+            GraphEdge.id, GraphEdge.from_node, GraphEdge.type,
+            GraphEdge.source_row_ref, GraphEdge.to_node,
+        ).filter(GraphEdge.source_row_ref.in_(ref_chunk)).all()
+        for eid, from_node, e_type, row_ref, to_node in existing:
+            key = (from_node, e_type, row_ref)
+            if key in allowed and to_node not in allowed[key]:
+                stale_ids.append(eid)
+
+    for i in range(0, len(stale_ids), chunk_size):
+        id_chunk = stale_ids[i:i + chunk_size]
+        db.query(GraphEdge).filter(GraphEdge.id.in_(id_chunk)).delete(
+            synchronize_session=False
+        )
+    if stale_ids:
+        logger.info(f"[Graph] retargeted {len(stale_ids)} stale edge(s) (H2 재교정 정리)")
+    return len(stale_ids)
+
+
 def bulk_upsert_edges(db, edges: dict, node_ids: dict, chunk_size: int = CHUNK_SIZE) -> int:
     """엣지 벌크 UPSERT. 반환: 반영 시도한 엣지 수."""
     from database.models import GraphEdge
@@ -246,6 +319,13 @@ def bulk_upsert_edges(db, edges: dict, node_ids: dict, chunk_size: int = CHUNK_S
         })
 
     rows.sort(key=lambda r: (r["from_node"], r["type"], r["to_node"], r["source_name"]))
+
+    # [QA G1-H2] retarget 의미론: 같은 원본 로우(source_row_ref)가 과거에 주장했으나
+    # 이번 산출의 타깃 집합에 없는 (from, type) 동일 엣지는 삭제 후 UPSERT.
+    # 재교정(W123→W124) 시 모순된 구 엣지가 병존하지 않는다. 다른 로우가 주장한 엣지는
+    # source_row_ref 스코프 밖이므로 건드리지 않는다.
+    _retarget_stale_edges(db, rows, chunk_size=chunk_size)
+
     for i in range(0, len(rows), chunk_size):
         chunk = rows[i:i + chunk_size]
         stmt = _insert_stmt_for(db, GraphEdge).values(chunk)
@@ -300,7 +380,6 @@ def materialize_events(db, events: list, mappings: dict,
         rows_by_table.setdefault(event.table_name, []).append({
             "row_id": payload.get("row_id"),
             "values": flatten_payload_data(payload.get("data")),
-            "source_name": payload.get("source_name"),
             "updated_by": payload.get("updated_by"),
             "event_time": payload.get("timestamp"),
         })
@@ -308,6 +387,8 @@ def materialize_events(db, events: list, mappings: dict,
     node_map, edges = {}, {}
     total_rows = 0
     for table_name, rows in rows_by_table.items():
+        # [QA G1-H1] 엣지 provenance는 이벤트 소스가 아니라 셀 레이어 winner로 결정(경로 동등성).
+        attach_col_sources(db, table_name, rows, mappings[table_name])
         extract_graph_items(table_name, rows, mappings[table_name], node_map, edges)
         total_rows += len(rows)
 
@@ -323,30 +404,63 @@ def materialize_events(db, events: list, mappings: dict,
 
 # ----------------- 전체/부분 재동기화 (C-7 해소: 키셋 페이지네이션 청킹) -----------------
 
-def _load_best_cell_sources(db, table_name: str, row_ids: list, columns: set) -> dict:
-    """청크 로우들의 엣지 관련 컬럼별 최우선 셀 소스를 일괄 조회한다.
+def _edge_provenance_cols(mapping: dict) -> set:
+    """엣지 provenance 결정에 필요한 컬럼 집합(source_override 엣지는 제외)."""
+    cols = set()
+    for edge_cfg in mapping.get("edges", []):
+        if not edge_cfg.get("source_override"):
+            cols.update(edge_cfg["target_identity_from"])
+    return cols
 
-    반환: {(row_id, column_name): source_name} — user 최우선 서열(레이어링과 동일).
-    idx_sources_lookup(table_name, row_id, column_name) 인덱스 경로.
+
+def _load_best_cell_sources(db, table_name: str, row_ids: list, columns: set,
+                            chunk_size: int = CHUNK_SIZE) -> dict:
+    """로우들의 엣지 관련 컬럼별 표시 우선(winner) 셀 소스를 일괄 조회한다.
+
+    반환: {(row_id, column_name): source_name} — crud 서열(단일 원천, 테이블 커스텀 포함).
+    idx_sources_lookup(table_name, row_id, column_name) 인덱스 경로 + row_id IN 청킹.
     """
     from database.models import CellSource
 
     best = {}
     if not row_ids or not columns:
         return best
-    rows = db.query(
-        CellSource.row_id, CellSource.column_name, CellSource.source_name
-    ).filter(
-        CellSource.table_name == table_name,
-        CellSource.row_id.in_(row_ids),
-        CellSource.column_name.in_(list(columns)),
-    ).all()
-    for row_id, col, source in rows:
-        key = (row_id, col)
-        prev = best.get(key)
-        if prev is None or _SOURCE_PRIORITY.get(source, 9) < _SOURCE_PRIORITY.get(prev, 9):
-            best[key] = source
+    col_list = list(columns)
+    for i in range(0, len(row_ids), chunk_size):
+        id_chunk = row_ids[i:i + chunk_size]
+        rows = db.query(
+            CellSource.row_id, CellSource.column_name, CellSource.source_name
+        ).filter(
+            CellSource.table_name == table_name,
+            CellSource.row_id.in_(id_chunk),
+            CellSource.column_name.in_(col_list),
+        ).all()
+        for row_id, col, source in rows:
+            key = (row_id, col)
+            prev = best.get(key)
+            if prev is None or (
+                _source_priority(source, table_name) < _source_priority(prev, table_name)
+            ):
+                best[key] = source
     return best
+
+
+def attach_col_sources(db, table_name: str, rows: list, mapping: dict):
+    """[QA G1-H1] 로우 목록에 col_sources(식별 컬럼별 winner 소스)를 부착한다.
+
+    증분·재동기화 두 경로가 이 함수를 공유 — 엣지 provenance 산출의 단일 지점.
+    """
+    cols = _edge_provenance_cols(mapping)
+    if not cols:
+        for row in rows:
+            row["col_sources"] = {}
+        return
+    winners = _load_best_cell_sources(db, table_name, [r["row_id"] for r in rows], cols)
+    for row in rows:
+        row["col_sources"] = {
+            c: winners.get((row["row_id"], c)) for c in cols
+            if winners.get((row["row_id"], c)) is not None
+        }
 
 
 def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SIZE,
@@ -367,50 +481,23 @@ def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SI
     if model is None or mapping is None:
         return stats
 
-    # 엣지 provenance 복원 대상 컬럼: 모든 엣지의 target_identity_from 합집합
-    provenance_cols = set()
-    for edge_cfg in mapping["edges"]:
-        if not edge_cfg.get("source_override"):
-            provenance_cols.update(edge_cfg["target_identity_from"])
-
     data_columns = [
         c.name for c in model.__table__.columns if c.name not in _META_COLUMNS
     ]
 
-    last_row_id = None
-    while True:
-        q = db.query(model)
-        if row_ids:
-            q = q.filter(model.row_id.in_(row_ids))
-        if last_row_id is not None:
-            q = q.filter(model.row_id > last_row_id)
-        chunk = q.order_by(model.row_id.asc()).limit(chunk_size).all()
-        if not chunk:
-            break
-
+    def _process_chunk(chunk):
         chunk_ids = [r.row_id for r in chunk]
-        cell_sources = _load_best_cell_sources(db, table_name, chunk_ids, provenance_cols)
-
-        rows = []
-        for r in chunk:
-            values = {c: getattr(r, c, None) for c in data_columns}
-            # 로우 대표 소스: provenance 컬럼들 중 최우선 소스(없으면 unknown).
-            row_source = None
-            for col in provenance_cols:
-                s = cell_sources.get((r.row_id, col))
-                if s is not None and (
-                    row_source is None
-                    or _SOURCE_PRIORITY.get(s, 9) < _SOURCE_PRIORITY.get(row_source, 9)
-                ):
-                    row_source = s
-            rows.append({
+        rows = [
+            {
                 "row_id": r.row_id,
-                "values": values,
-                "source_name": row_source or "unknown",
+                "values": {c: getattr(r, c, None) for c in data_columns},
                 "updated_by": "graph_resync",
                 "event_time": getattr(r, "updated_at", None),
-            })
-
+            }
+            for r in chunk
+        ]
+        # [QA G1-H1] 증분 경로와 동일 지점(attach_col_sources)에서 provenance 결정 — 경로 동등성.
+        attach_col_sources(db, table_name, rows, mapping)
         chunk_stats = materialize_rows(db, table_name, rows, mapping, chunk_size=chunk_size)
 
         if chunk_hook is not None:
@@ -434,7 +521,30 @@ def resync_table(db, table_name: str, mappings: dict, chunk_size: int = CHUNK_SI
         stats["nodes"] += chunk_stats["nodes"]
         stats["edges"] += chunk_stats["edges"]
         stats["chunks"] += 1
-        last_row_id = chunk_ids[-1]
+
+    if row_ids:
+        # [QA G1-⑤] 부분 동기화: row_ids를 청크 크기로 슬라이스 — 청크마다 전체 목록
+        # IN 반복 없이 슬라이스 단위 IN 조회(대량 선택에도 페이로드/플랜 안정).
+        unique_ids = sorted(set(row_ids))
+        for i in range(0, len(unique_ids), chunk_size):
+            id_slice = unique_ids[i:i + chunk_size]
+            chunk = db.query(model).filter(
+                model.row_id.in_(id_slice)
+            ).order_by(model.row_id.asc()).all()
+            if chunk:
+                _process_chunk(chunk)
+        return stats
+
+    last_row_id = None
+    while True:
+        q = db.query(model)
+        if last_row_id is not None:
+            q = q.filter(model.row_id > last_row_id)
+        chunk = q.order_by(model.row_id.asc()).limit(chunk_size).all()
+        if not chunk:
+            break
+        last_row_id = chunk[-1].row_id  # commit 전 캡처(expire_on_commit 재조회 방지)
+        _process_chunk(chunk)
         if len(chunk) < chunk_size:
             break
     return stats

@@ -573,39 +573,47 @@ async def run_graph_materializer_loop():
         except Exception as e:
             logger.warning(f"[Graph] LISTEN unavailable, falling back to polling: {e}")
 
-    while True:
-        wait_needed = False
+    def _run_one_batch(current_mappings):
+        """[QA G1-M3] 동기 DB 배치 처리 본체 — to_thread에서 실행되어 이 프로세스의
+        이벤트 루프(/sync HTTP 서빙)를 백로그 소진 중에도 블로킹하지 않는다.
+        반환: (wait_needed, mappings)."""
+        db = SessionLocal()
         try:
-            db = SessionLocal()
-            try:
-                cursor = _get_or_init_graph_cursor(db)
-                events = db.query(DatabaseOutbox).filter(
-                    DatabaseOutbox.id > cursor
-                ).order_by(DatabaseOutbox.id.asc()).limit(GRAPH_BATCH_LIMIT).all()
+            cursor = _get_or_init_graph_cursor(db)
+            events = db.query(DatabaseOutbox).filter(
+                DatabaseOutbox.id > cursor
+            ).order_by(DatabaseOutbox.id.asc()).limit(GRAPH_BATCH_LIMIT).all()
 
-                if not events:
-                    wait_needed = True
-                else:
-                    # [이슈 #8] 배치 내 SYSTEM_RELOAD 감지 → 모델/매핑 리로드 후 배치 처리 계속.
-                    # (커서가 스캔한 범위만 전진하므로 리로드 이벤트를 놓치는 경로가 없다.)
-                    if any(e.event_type == "SYSTEM_RELOAD" for e in events):
-                        mappings = _reload_graph_worker_configs()
+            if not events:
+                return True, current_mappings
 
-                    t0 = time.monotonic()
-                    stats = graph_materializer.materialize_events(db, events, mappings)
-                    _advance_graph_cursor(db, events[-1].id)
-                    db.commit()  # 그래프 반영 + 커서 전진 원자 커밋(재처리 시에도 UPSERT 멱등)
-                    exec_ms = (time.monotonic() - t0) * 1000.0
-                    lag_ms = _lag_ms_from(events[0].created_at)
-                    logger.info(
-                        f"[GraphLatency] batch={len(events)} rows={stats['rows']} "
-                        f"nodes={stats['nodes']} edges={stats['edges']} "
-                        f"lag_ms={lag_ms:.0f} exec_ms={exec_ms:.0f}"
-                        + (f" skipped_deletes={stats['skipped_deletes']}"
-                           if stats.get("skipped_deletes") else "")
-                    )
-            finally:
-                db.close()
+            # [이슈 #8] 배치 내 SYSTEM_RELOAD 감지 → 모델/매핑 리로드 후 배치 처리 계속.
+            # (커서가 스캔한 범위만 전진하므로 리로드 이벤트를 놓치는 경로가 없다.)
+            if any(e.event_type == "SYSTEM_RELOAD" for e in events):
+                current_mappings = _reload_graph_worker_configs()
+
+            t0 = time.monotonic()
+            stats = graph_materializer.materialize_events(db, events, current_mappings)
+            _advance_graph_cursor(db, events[-1].id)
+            db.commit()  # 그래프 반영 + 커서 전진 원자 커밋(재처리 시에도 UPSERT 멱등)
+            exec_ms = (time.monotonic() - t0) * 1000.0
+            lag_ms = _lag_ms_from(events[0].created_at)
+            logger.info(
+                f"[GraphLatency] batch={len(events)} rows={stats['rows']} "
+                f"nodes={stats['nodes']} edges={stats['edges']} "
+                f"lag_ms={lag_ms:.0f} exec_ms={exec_ms:.0f}"
+                + (f" skipped_deletes={stats['skipped_deletes']}"
+                   if stats.get("skipped_deletes") else "")
+            )
+            return False, current_mappings
+        finally:
+            db.close()
+
+    while True:
+        try:
+            # [QA G1-M3] 배치 처리를 스레드로 격리 — 연속 배치(백로그 소진) 중에도
+            # 이벤트 루프가 자유로워 /sync 요청이 기아 상태에 빠지지 않는다.
+            wait_needed, mappings = await asyncio.to_thread(_run_one_batch, mappings)
         except Exception as e:
             logger.error(f"[Graph] materializer loop error: {e}")
             await asyncio.sleep(1.0)

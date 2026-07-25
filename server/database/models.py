@@ -218,6 +218,9 @@ class GraphEdge(Base):
         # 멱등 UPSERT 키: 동일 (from, type, to, source_name) 엣지는 1개만 존재.
         # source_name은 nullable=False(기본 "unknown") — NULL 중복 우회를 구조적으로 차단.
         Index("idx_graph_edges_upsert", "from_node", "type", "to_node", "source_name", unique=True),
+        # [QA H2] 재교정(retarget) 시 같은 원본 로우가 과거에 주장한 구 엣지 조회용 —
+        # source_row_ref 기반 stale 엣지 삭제가 인덱스 룩업이 되도록.
+        Index("idx_graph_edges_row_ref", "source_row_ref"),
     )
 
 
