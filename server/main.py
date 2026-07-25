@@ -2394,12 +2394,18 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
     return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
 def reload_local_process_cache():
-    """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
+    """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다.
+
+    [이슈 #7] config 재로드 시 TABLE_CONFIG 싱글턴·DYNAMIC_TABLES(ORM) 갱신과 함께
+    런타임에 추가된 신규 테이블의 물리 CREATE까지 동기적으로 수행한다
+    (watchdog 스레드 디바운스 타이밍에 의존하지 않는 결정적 경로 — 기존 테이블 ALTER는 범위 밖).
+    """
     import sys
-    from database.crud import load_table_config
-    
+
     try:
-        load_table_config()
+        created = models.refresh_dynamic_models(engine)
+        if created:
+            logger.info(f"[Reload] Created missing physical tables at runtime: {created}")
     except Exception as e:
         print(f"[Reload] Failed to reload table_config.json: {e}")
         

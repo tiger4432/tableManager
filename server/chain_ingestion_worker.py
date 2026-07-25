@@ -826,6 +826,16 @@ async def start_chain_ingestion_worker(db_session_factory):
                     logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
                     # 1. Reload dynamic modules cache
                     reload_worker_process_cache()
+                    # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
+                    #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
+                    try:
+                        from database.database import engine as _db_engine
+                        from database import models as _db_models
+                        created_tables = _db_models.refresh_dynamic_models(_db_engine)
+                        if created_tables:
+                            logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
+                    except Exception as e:
+                        logger.error(f"[Reload] Dynamic model refresh failed: {e}")
                     # 2. Reload chain rules configurations from disk
                     rules = load_chain_rules()
                     logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")

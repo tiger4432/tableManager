@@ -302,3 +302,75 @@ def sync_dynamic_tables_schema(engine):
                     print(f"[Schema Sync] Successfully added column '{col_name}' to table '{table_name}'.")
                 except Exception as err:
                     print(f"[Schema Sync] Failed to add column '{col_name}' to table '{table_name}': {err}")
+
+
+# [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
+# /admin/reload-configs 요청 스레드가 동시에 진입할 수 있으므로 in-process 직렬화 락 사용.
+import threading
+_runtime_ddl_lock = threading.Lock()
+
+
+def create_missing_dynamic_tables(engine):
+    """[이슈 #7] DYNAMIC_TABLES에 등록됐지만 물리 DB에 아직 없는 **신규 테이블만** CREATE한다.
+
+    부팅 시에는 Base.metadata.create_all이 전 테이블을 생성하지만, 런타임 config 핫리로드로
+    추가된 테이블은 재기동 전까지 물리 테이블이 없어 조회가 UndefinedTable 500이 된다.
+    이 함수가 그 갭을 메운다. 기존 테이블에 대한 런타임 ALTER는 **수행하지 않는다**
+    (락 컨보이 방지 — 이슈 #5/C-8 범위 밖).
+
+    안전장치:
+    - information_schema 게이트(inspector.has_table): 존재하는 테이블에는 DDL 자체를 발행하지 않음.
+    - checkfirst=True: 게이트 통과 직후 타 프로세스가 먼저 CREATE한 경합도 무해화.
+    - engine 단위 독립 커넥션/트랜잭션(create_all 내부): 실패 시 자체 rollback되며
+      공유 세션 트랜잭션을 오염시키지 않음. 개별 테이블 실패는 격리되어 다음 테이블로 진행.
+
+    반환: 새로 CREATE한 테이블명 리스트.
+    """
+    from sqlalchemy import inspect
+
+    created = []
+    with _runtime_ddl_lock:
+        try:
+            inspector = inspect(engine)
+        except Exception as err:
+            print(f"[Schema Sync] Failed to inspect database for missing tables: {err}")
+            return created
+
+        for table_name, model_class in list(DYNAMIC_TABLES.items()):
+            try:
+                if inspector.has_table(table_name):
+                    continue
+                Base.metadata.create_all(
+                    bind=engine, tables=[model_class.__table__], checkfirst=True
+                )
+                created.append(table_name)
+                print(f"[Schema Sync] Created missing physical table '{table_name}' at runtime.")
+            except Exception as err:
+                # CREATE 경합(DuplicateTable 등) 포함 — 실패를 격리하고 계속 진행
+                print(f"[Schema Sync] Failed to create missing table '{table_name}': {err}")
+    return created
+
+
+def refresh_dynamic_models(engine=None):
+    """[이슈 #7] config 핫리로드 공용 진입점 — table_config.json을 디스크에서 재로드하여
+    crud.TABLE_CONFIG 싱글턴과 DYNAMIC_TABLES(ORM 모델)를 갱신하고, engine이 주어지면
+    신규 테이블의 물리 CREATE(create_missing_dynamic_tables)까지 수행한다.
+
+    호출처: 웹서버 reload_local_process_cache(/admin/reload-configs),
+            워커 SYSTEM_RELOAD 핸들러(run_watcher 폴러, chain_ingestion_worker 루프).
+    기존 테이블 ALTER는 수행하지 않는다(부팅 경로 sync_dynamic_tables_schema 전용).
+
+    반환: 새로 CREATE된 테이블명 리스트 (engine 미지정 또는 config 로드 실패 시 []).
+    """
+    from database import crud  # 순환 import 방지를 위한 지연 import
+
+    new_config = crud.load_table_config()
+    if not new_config:
+        # 빈/손상 config로 기존 싱글턴을 지우지 않는다 (일시적 파일 읽기 실패 방어)
+        return []
+    crud.TABLE_CONFIG.clear()
+    crud.TABLE_CONFIG.update(new_config)
+    init_dynamic_models(new_config)
+    if engine is not None:
+        return create_missing_dynamic_tables(engine)
+    return []

@@ -38,8 +38,12 @@ class ConfigChangeHandler(FileSystemEventHandler):
                     # 2. models.DYNAMIC_TABLES 동적 모델 갱신 및 핫스왑
                     models.init_dynamic_models(new_config)
                     
-                    # 3. 데이터베이스 엔진이 인입된 경우(웹 서버 전용) 실제 DB 물리 컬럼 동기화 가동
+                    # 3. 데이터베이스 엔진이 인입된 경우(웹 서버 전용) 실제 DB 물리 스키마 동기화 가동
                     if self.engine:
+                        # [이슈 #7] 런타임에 추가된 신규 테이블 물리 CREATE (게이트 + checkfirst로 경합 무해)
+                        created = models.create_missing_dynamic_tables(self.engine)
+                        if created:
+                            logger.info(f"Created missing physical tables at runtime: {created}")
                         models.sync_dynamic_tables_schema(self.engine)
                         logger.info("Physical database schema synced successfully.")
                         

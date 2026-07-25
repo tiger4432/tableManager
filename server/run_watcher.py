@@ -134,6 +134,15 @@ def poll_pending_retries():
                 last_reload_event_id = latest_reload.id
                 logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading scripts...")
                 reload_watcher_cache()
+                # [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
+                # (웹서버가 1차로 CREATE하지만, information_schema 게이트 + checkfirst로
+                #  중복/경합이 무해하므로 인제션 직전 안전망으로 한 번 더 보장)
+                try:
+                    created = models.refresh_dynamic_models(engine)
+                    if created:
+                        logger.info(f"[Reload] Created missing physical tables at runtime: {created}")
+                except Exception as e:
+                    logger.error(f"[Reload] Dynamic model refresh failed: {e}")
                 # [Std Ingestion] 신규 테이블 워크스페이스 자동 생성 + 실행 중 observer에 런타임 감시 등록
                 if workspace_watcher is not None:
                     try:
