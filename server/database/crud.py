@@ -173,7 +173,12 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     return val, top_source
 
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None, add_to_cache: bool = True):
-    """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)"""
+    """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)
+
+    add_to_cache=False는 인메모리 캐시 추가뿐 아니라 DB persist(db.add)도 생략한다.
+    이 경우 호출자가 반환된 log_dict를 모아 commit 전에 bulk_insert_audit_logs로
+    직접 DB에 적재할 책임을 진다.
+    """
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
 
@@ -1148,13 +1153,16 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
                     add_to_cache=False
                 )
                 logs_to_cache.append(log_dict)
-        
+
+        if logs_to_cache:
+            bulk_insert_audit_logs(db, logs_to_cache)
+
         db.commit()
-        
+
         if logs_to_cache:
             from audit_cache import audit_cache
             audit_cache.add_logs_batch(logs_to_cache)
-            
+
         return new_rows
 
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "system"):
@@ -1205,8 +1213,10 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
                     add_to_cache=False
                 )
                 logs_to_cache.append(log_dict)
+            if logs_to_cache:
+                bulk_insert_audit_logs(db, logs_to_cache)
             db.commit()
-            
+
             if logs_to_cache:
                 from audit_cache import audit_cache
                 audit_cache.add_logs_batch(logs_to_cache)
@@ -1359,22 +1369,24 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
             changed_rows.append(row)
 
     # 4. 벌크 갱신 및 삭제
+    if logs_to_cache:
+        bulk_insert_audit_logs(db, logs_to_cache)
     bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
     bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
     db.commit()
-    
+
     if logs_to_cache:
         from audit_cache import audit_cache
         audit_cache.add_logs_batch(logs_to_cache)
-        
+
     serialized_logs = []
     for log in logs_to_cache:
         log_copy = log.copy()
         if isinstance(log_copy.get("timestamp"), datetime):
             log_copy["timestamp"] = log_copy["timestamp"].isoformat()
         serialized_logs.append(log_copy)
-        
+
     return changed_rows, serialized_logs
 
 def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str):
@@ -1721,6 +1733,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         r.needs_graph_rollback = True
             
     # 3. 벌크 갱신 및 삭제 수행
+    if logs_to_cache:
+        bulk_insert_audit_logs(db, logs_to_cache)
     bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
     bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
