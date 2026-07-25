@@ -1541,10 +1541,10 @@ function updateCellStyles(cell, val) {
   const match = legend.find(item => item.value === val);
   if (match && val !== '') {
     cell.style.backgroundColor = match.color;
-    cell.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+    cell.style.borderColor = 'var(--border-strong)';
   } else {
-    cell.style.backgroundColor = 'rgba(30, 41, 59, 0.8)';
-    cell.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+    cell.style.backgroundColor = 'var(--bg-inset)';
+    cell.style.borderColor = 'var(--border)';
   }
 }
 

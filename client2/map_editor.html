@@ -50,7 +50,7 @@
               <!-- Javascript에 의해 동적 입력 필드들이 생성됩니다. -->
             </div>
             <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
-            <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
+            <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
           </div>
 
           <!-- 2. Physical Wafer Geometry -->
@@ -59,7 +59,7 @@
               <span>📏 2. Physical Wafer Geometry</span>
             </h3>
             <!-- Wafer Geometry Presets (Server maps.json) -->
-            <div class="control-group-vertical" style="border: 1px dashed rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 10px; background: rgba(168, 85, 247, 0.05);">
+            <div class="control-group-vertical" style="border: 1px dashed var(--accent-2); border-radius: 8px; padding: 10px; background: var(--accent-2-weak);">
               <label for="preset-select" style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
                 <span>⚙️ Geometry Presets</span>
                 <div style="display: flex; gap: 4px;">
@@ -104,7 +104,7 @@
               <label for="phys-edge-margin">Edge Exclusion (mm)</label>
               <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
             </div>
-            <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡ Apply Physical Geometry</button>
+            <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡ Apply Physical Geometry</button>
           </div>
 
           <!-- 3. Grid & Orientation Settings -->
@@ -116,11 +116,11 @@
             <div style="display: flex; gap: 10px;">
               <div class="control-group-vertical" style="flex: 1;">
                 <label for="grid-cols">Width (Cols / X)</label>
-                <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
+                <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
               </div>
               <div class="control-group-vertical" style="flex: 1;">
                 <label for="grid-rows">Height (Rows / Y)</label>
-                <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: rgba(255, 255, 255, 0.05);" />
+                <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
               </div>
             </div>
             <!-- X, Y 시작 좌표 설정 -->
@@ -195,7 +195,7 @@
 
       <!-- 우측 메인 영역: 2D 대화형 격자 편집 캔버스 -->
       <section class="grid-section" style="display: flex; flex-direction: column;">
-        <div class="grid-toolbar" style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border-color); background: rgba(10, 15, 26, 0.4);">
+        <div class="grid-toolbar" style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: var(--bg-header);">
           <div style="display: flex; gap: 15px; align-items: center;">
             <!-- 관찰면(FRONT/BACK) 표기: 그리드 바깥(툴바)에 색상 구분 칩으로 표시 -->
             <div id="side-indicator" class="side-indicator side-front">FRONT · 앞면</div>
@@ -214,8 +214,8 @@
               <button id="btn-select-menu" class="glass-btn">🔍 Select Tools</button>
               <div id="select-menu-dropdown" class="glass-dropdown-panel" style="display: none; right: 0; min-width: 180px;">
                 <button id="btn-set-origin" class="dropdown-item">📍 Set Origin (0,0)</button>
-                <button id="btn-select-e1" class="dropdown-item" style="color: #a78bfa;">✔️ Select E1</button>
-                <button id="btn-select-e2" class="dropdown-item" style="color: #f472b6;">✔️ Select E2</button>
+                <button id="btn-select-e1" class="dropdown-item" style="color: var(--accent-2);">✔️ Select E1</button>
+                <button id="btn-select-e2" class="dropdown-item" style="color: var(--danger);">✔️ Select E2</button>
                 <button id="btn-autopaint-e1e2" class="dropdown-item" style="color: var(--color-success); border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px;">⚡ Auto-Paint E1/E2</button>
               </div>
             </div>
@@ -231,12 +231,12 @@
             </div>
 
             <!-- Primary Save Action -->
-            <button id="btn-push-map" class="glass-btn" style="background: rgba(16,185,129,0.2); border-color: var(--color-success); color: var(--color-success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
+            <button id="btn-push-map" class="glass-btn" style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
           </div>
         </div>
 
         <!-- 2D 캔버스 격자 조작 영역 (노치 표기용 래퍼 컨테이너 추가) -->
-        <div id="map-workspace" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 40px; background: rgba(0,0,0,0.2);">
+        <div id="map-workspace" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 40px; background: var(--bg-app);">
           <div id="grid-wrapper" class="map-grid-wrapper">
             <!-- V-Notch가 동적으로 이 wrapper의 상/하/좌/우 중 하나로 렌더링되며 D로 표기됩니다. -->
             <div id="grid-notch" class="wafer-notch notch-bottom">D</div>

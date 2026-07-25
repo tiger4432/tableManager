@@ -28,7 +28,7 @@
         <div class="log-indicator-area" style="display: flex; align-items: center; gap: 8px;">
           <span id="performance-log" class="glass-log-badge">Ready</span>
           <!-- Dynamic Unsaved Tx State Indicator -->
-          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: rgba(245, 158, 11, 0.15); border-color: var(--color-warning); color: var(--color-warning); font-weight: bold;">⚡ Unsaved: 0</span>
+          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: var(--warning-weak); border-color: var(--warning); color: var(--warning); font-weight: bold;">⚡ Unsaved: 0</span>
           <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
           <span id="enrichment-badge" class="glass-log-badge" style="display: none;">🧩 결손 0건</span>
           <button id="tx-apply-btn" class="glass-btn success-glow" style="display: none; padding: 4px 12px; font-size: 0.8rem; font-weight: bold; border-radius: 6px;">Apply</button>
@@ -44,7 +44,7 @@
           <button id="refresh-grid-btn" class="glass-btn" title="Refresh Grid Data">🔄 Refresh</button>
           <button id="add-row-btn" class="glass-btn" title="Add Row">➕ Row</button>
           <button id="delete-row-btn" class="glass-btn hover-danger" title="Delete Selected Rows">🗑️ Row</button>
-          <button id="graph-sync-btn" class="glass-btn" style="display: none; background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold;">⚡ Graph Sync</button>
+          <button id="graph-sync-btn" class="glass-btn" style="display: none; background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold;">⚡ Graph Sync</button>
         </div>
         <div class="control-group">
           <input type="file" id="toolbar-file-input" multiple style="display: none;" />
@@ -166,8 +166,8 @@
         Show/Hide Columns
       </div>
       <div style="display: flex; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-        <button id="col-select-all-btn" style="background: rgba(134, 59, 255, 0.15); border: 1px solid rgba(134, 59, 255, 0.4); color: var(--color-primary); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">All</button>
-        <button id="col-select-none-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--color-danger); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">Clear</button>
+        <button id="col-select-all-btn" style="background: var(--accent-weak); border: 1px solid var(--accent); color: var(--accent); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">All</button>
+        <button id="col-select-none-btn" style="background: var(--danger-weak); border: 1px solid var(--danger); color: var(--danger); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">Clear</button>
       </div>
       <ul id="column-list-container" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
         <!-- Dynamic Checkboxes -->

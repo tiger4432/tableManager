@@ -408,9 +408,9 @@ export function renderSubDetails(container, logs) {
     moreBtn.style.margin = '10px 0 10px 24px';
     moreBtn.style.padding = '6px 16px';
     moreBtn.style.fontSize = '0.8rem';
-    moreBtn.style.color = 'var(--color-primary)';
-    moreBtn.style.borderColor = 'rgba(137, 180, 250, 0.3)';
-    moreBtn.style.background = 'rgba(137, 180, 250, 0.05)';
+    moreBtn.style.color = 'var(--accent)';
+    moreBtn.style.borderColor = 'var(--border-strong)';
+    moreBtn.style.background = 'var(--accent-weak)';
     moreBtn.textContent = `➕ Show remaining ${remainingLogs.length} logs`;
     
     moreBtn.addEventListener('click', (e) => {
