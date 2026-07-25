@@ -1,11 +1,11 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD cd3f90c) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD 7932926) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
 - **소스 파일을 통째로 Read하지 말 것.** 이 지도에서 함수·라인을 찾은 뒤 **해당 섹션만** `Read(offset, limit)`로 읽는다.
-- 라인 앵커는 HEAD `cd3f90c` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- 라인 앵커는 HEAD `7932926` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
 - 이 문서는 **지도이지 교과서가 아니다** — 구현 설명은 각 리빙 문서([backend](./backend.md)·[data_model](./data_model.md)·[frontend](./frontend.md)·[event_driven_backend](./event_driven_backend.md)) 참조.
 
 **유지보수 규율:** 코드맵 갱신은 **doc-keeper 전담** — 총괄이 코드 배치를 병합·커밋한 뒤 doc-keeper에 위임하면, doc-keeper가 **타 에이전트들의 수정 이력(history 문서·보고서·커밋 diff)을 요약**해 해당 모듈 맵을 갱신한다(구현 에이전트는 맵을 직접 수정하지 않음 — 보고서에 변경 함수/시그니처 목록만 남긴다). 정기 정합 감사도 doc-keeper. 라인 앵커는 대략치로 충분 — 시그니처·역할 서술의 정확성이 우선.
@@ -16,11 +16,11 @@
 
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
-| `server/main.py` | ~3,295 | [§1](#1-servermainpy--api--ws-허브) |
+| `server/main.py` | ~3,301 | [§1](#1-servermainpy--api--ws-허브) |
 | `server/database/crud.py` | ~1,795 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
 | `server/parsers/directory_watcher.py` | ~865 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
-| `server/chain_ingestion_worker.py` | ~945 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
-| 소형 서버 모듈 (std_parser/enrichment_*) | ~700 | [§5](#5-소형-서버-모듈) |
+| `server/chain_ingestion_worker.py` | ~955 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
+| 소형 서버 모듈 (models/std_parser/enrichment_*) | ~1,075 | [§5](#5-소형-서버-모듈) |
 | 기타 서버 모듈 (한줄 요약) | — | [§6](#6-기타-서버-모듈-한줄-요약) |
 | `client2/src/*` | ~10,300 | [§7](#7-client2src--웹-클라이언트) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
@@ -47,7 +47,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | `get_deleted_row_business_key(db, table_name, row_id)` / `..._bulk(...) -> dict` | 삭제 행의 비즈니스 키 역추적(감사 표시용) | ~593/616 |
 | `check_rows_exist(db, row_keys) -> set` | (table,row_id) 존재 일괄 확인 | ~654 |
 | `get_column_filter_condition(table_model, col_name, f_info)` | 컬럼 필터 → SQLAlchemy 조건 변환(타입별) | ~840 |
-| `reload_local_process_cache()` | 웹서버 프로세스의 config 캐시 리로드 | ~2396 |
+| `reload_local_process_cache()` | 웹서버 config 핫리로드 — `models.refresh_dynamic_models(engine)` 위임(싱글턴·ORM·신규 테이블 물리 CREATE, 이슈 #7 — 그 전엔 반환값 버리는 no-op이었음) | ~2396 |
 | `load_maps_config() / save_maps_config(data)` | 맵 프리셋 JSON 파일 IO | ~2469/2478 |
 
 ### 1.2 API 라우트 표 — 데이터 조회/편집
@@ -94,7 +94,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` 등 | 파일 인제션 로그/실패 목록 | ~2356/2391 |
 | POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) | ~2776 |
 | GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 | ~2563 |
-| POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드(+SYSTEM_RELOAD outbox 발화) | ~2418 |
+| POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화) | ~2425 |
 | GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | ~2634/2656 |
 | GET `/admin/auto-update/status` · POST `.../run-now` | — | 오토업데이트 상태/즉시실행 | ~2882/2906 |
 | GET/POST `/admin/scripts/list|code` | `list_admin_scripts` 등 | Monaco 에디터용 스크립트 IO | ~3040–3139 |
@@ -183,11 +183,23 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `warmup_worker(rules, db_session_factory)` | 콜드스타트 제거 — 맵퍼·커넥션 프리로드 | ~525 |
 | `process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts)` | 배치 내 그룹 순차 처리 — 실패 그룹 skip(HOL 블로킹 제거, F5) | ~573 |
 | `sweep_undelivered_broadcasts(db, rules, db_session_factory)` | 통지 미확정 행 안전망 스윕(F1) | ~690 |
-| `start_chain_ingestion_worker(db_session_factory)` | **메인 루프** — LISTEN 대기, 리로드 체크(1s 간격), 스윕, purge 스케줄 | ~768 |
+| `start_chain_ingestion_worker(db_session_factory)` | **메인 루프** — LISTEN 대기, 리로드 체크(1s 간격), 스윕, purge 스케줄. SYSTEM_RELOAD 블록(~834)에서 `models.refresh_dynamic_models(engine)`(지연 import) 호출 — 신규 테이블 CREATE 보충 안전망(이슈 #7) | ~768 |
 
 ---
 
 ## 5. 소형 서버 모듈
+
+### `server/database/models.py` (~376줄) — ORM + 동적 모델/런타임 DDL
+정적 ORM 클래스(`DataRow`/`AuditLog`/`DatabaseOutbox`/`FileIngestionLog`/`CellOverwrite`/`CellSource`, ~7–180)와 config 주도 동적 테이블 관리 함수.
+
+| 시그니처 | 역할 | 라인 |
+|---|---|---|
+| `DYNAMIC_TABLES` | 동적 테이블 싱글턴(`sys._dynamic_tables_singleton`) | ~181 |
+| `init_dynamic_models(config_dict)` | config → 동적 ORM 클래스 생성·등록 | ~186 |
+| `sync_dynamic_tables_schema(engine)` | ⚠️ 이름과 달리 **존재하는 테이블의 ALTER 전용**(`has_table` 아니면 skip — 신규 CREATE 안 함). 부팅 경로에서만 호출 | ~273 |
+| `_runtime_ddl_lock` | in-process DDL 직렬화 락(watchdog 스레드 vs reload-configs 요청 스레드) | ~310 |
+| `create_missing_dynamic_tables(engine) -> list[str]` | **신규 테이블 한정 물리 CREATE**(이슈 #7) — information_schema 게이트 + `checkfirst=True` + 테이블별 독립 트랜잭션(실패 자체 rollback). 기존 테이블 런타임 ALTER는 범위 밖(C-8) | ~313 |
+| `refresh_dynamic_models(engine=None) -> list[str]` | **핫리로드 공용 진입점** — config 디스크 재로드 → `crud.TABLE_CONFIG` 싱글턴 갱신(빈/손상 config 시 기존 보존) → `init_dynamic_models` → engine 지정 시 물리 CREATE. 호출처 4곳: main `reload_local_process_cache` / config_watcher(간접) / run_watcher SYSTEM_RELOAD(~141) / chain worker SYSTEM_RELOAD(~834) | ~354 |
 
 ### `server/parsers/std_parser.py` (~222줄) — 무스크립트 표준 파서
 | 시그니처 | 역할 | 라인 |
@@ -220,13 +232,13 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 책임 |
 |---|---|
-| `server/database/models.py` | ORM — 정적(AuditLog·CellSource·CellOverwrite·FileIngestionLog·outbox) + `DYNAMIC_TABLES`(config 주도 동적 테이블) |
+| `server/database/models.py` | ORM — 정적 + `DYNAMIC_TABLES` + 런타임 DDL(핫리로드 CREATE) — **함수 앵커는 [§5](#5-소형-서버-모듈)** |
 | `server/database/schemas.py` | Pydantic — `GeneralUpdateItem/Batch` 등 API·배치 계약 |
 | `server/database/database.py` | 엔진·SessionLocal·outbox 발화(`database_outbox` + NOTIFY) |
-| `server/database/config_watcher.py` | table_config.json 변경 감시 → 동적 테이블 재구성 |
+| `server/database/config_watcher.py` | table_config.json 변경 감시 → 동적 테이블 재구성. engine 분기(~44)에서 `create_missing_dynamic_tables` 선(先)호출 후 기존 sync(ALTER) — 직접 파일 편집 경로의 신규 테이블 CREATE(이슈 #7) |
 | `server/graph_sync_worker.py` | outbox 소비 → Neo4j 동기화(ontology_mapping.json 기반) |
 | `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행 |
-| `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지) |
+| `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher의 SYSTEM_RELOAD 폴러(`poll_pending_retries`, ~141)는 `refresh_dynamic_models(engine)` 호출(보충 안전망, 이슈 #7) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함** |
 | `server/config/*.json` (gitignored) | table_config·chain_rules·enrichment_rules·ontology_mapping 등 사용자 설정 |
@@ -292,8 +304,8 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지(index/admin/map_editor/enrichment)
 | 파일 | 책임 |
 |---|---|
 | `theme.js` (~92) | 라이트/다크 토큰 전환 — export `getTheme/applyTheme/toggleTheme/syncAgGridThemeClasses/initTheme` |
-| `tokens.css` (~283) | 디자인 토큰(색·타이포·간격) — 듀얼 테마 CSS 변수의 SSOT |
-| `style.css` (~1,840) | index 페이지 스타일 본체 |
+| `tokens.css` (~287) | 디자인 토큰(색·타이포·간격) — 듀얼 테마 CSS 변수의 SSOT. 2026-07-25 다크 세트 심화(Ground L* 9.2, WCAG AA 유지) |
+| `style.css` (~1,844) | index 페이지 스타일 본체(맵 에디터와 공유). app-header는 `position:relative; z-index:200` — split-resizer(z:100) 위 스태킹 보장(드롭다운 가림 수정) |
 | `utils.js` (~195) | `getLocalTimeString`/`showToast`/`getCleanFilename`/인제션 진행 토스트(`showIngestionProgress`/`finishIngestionProgress`) |
 | `dom.js` (~55) | DOM 참조 일원화 — `elements` 게터 객체 |
 | `config.js` (~5) | `API_BASE`/`CURRENT_USER`/`pageLimit` |
@@ -308,5 +320,5 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지(index/admin/map_editor/enrichment)
 3. **체인 인제션**: `apply_batch_updates`의 outbox 발화 → NOTIFY → `start_chain_ingestion_worker` 루프 → `process_pending_groups` → `process_chain_transaction_group`(맵퍼 실행, 예: `map_enrichment_dedup`) → 파생 테이블 `apply_batch_updates`(source=chain_ingestion, 순환 차단) → `_dispatch_broadcasts` → `/internal/events/broadcast` → WS.
 4. **조회**: client `fetchData` → GET `/tables/{t}/data` → `get_table_data` → `get_column_filter_condition` + `fetch_and_merge_metadata`(셀 객체 병합) → client `ensureCellObject` 정규화 → AG-Grid.
 5. **레이어링 조작**: 소스 모달/Pin → `/tables/{t}/cells/*` 라우트 → `crud.delete_cell_source_batch`/`set_cell_manual_priority_batch` → `compute_priority_value` 재계산 → WS 반영.
-6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 캐시 리로드 + SYSTEM_RELOAD outbox → 워커 `reload_worker_process_cache`.
+6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 `reload_local_process_cache` → `models.refresh_dynamic_models(engine)`(싱글턴·ORM·**신규 테이블 물리 CREATE** — 1차 DDL 소유자, outbox 발화보다 선행) → SYSTEM_RELOAD outbox → 워커들 `reload_worker_process_cache` + `refresh_dynamic_models`(게이트+checkfirst로 무해한 보충 안전망). 직접 파일 편집 시엔 `config_watcher`가 동일 CREATE 수행. graph_sync 워커만 리로드 경로 없음(재기동 전 신규 테이블 미인지 — 열린 이슈).
 7. **맵 에디터**: `loadExistingMap` → GET `/tables/{t}/data`(REST) → 편집 → `pushMapData` → PUT `/data/updates`. 프리셋은 `/map-presets` CRUD. (WS 미사용)

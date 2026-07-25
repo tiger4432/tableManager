@@ -76,7 +76,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | :2106~ | 아웃박스·파일적재 데드레터 관리·재시도 |
 | `/admin/chain/rules`, `/admin/mappers/list` | :2484, :2506 | 체인 규칙·맵퍼(AST 파싱) 목록 |
 | `/admin/auto-update/{status,run-now}` | :2654, :2678 | 스케줄러 상태·즉시실행 |
-| `/admin/reload-configs` | :2277 | 로컬 캐시 리로드 + `SYSTEM_RELOAD` 발행 |
+| `/admin/reload-configs` | :2425 | 로컬 캐시 리로드(`models.refresh_dynamic_models` — 신규 테이블 **물리 CREATE 포함**, 이슈 #7) + `SYSTEM_RELOAD` 발행. CREATE가 발행보다 선행(웹서버가 1차 DDL 소유자) |
 | `/admin/scripts/{list,code}` | :2798~ | 브라우저 코드 에디터(경로 traversal 가드) |
 | `POST /internal/events/{batch-refresh,broadcast,file-processed}` | :2717~ | 데몬→웹서버 콜백 |
 | `/map-presets`, `/api/map-presets` | :2350~ | 맵 지오메트리 프리셋(`config/maps.json`) |
@@ -111,7 +111,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(루프 방지 필터 :92) → `/internal/events/broadcast`. 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker** (`graph_sync_worker.py`) | `/api/graph/sync` 수동 호출 | 독립 FastAPI(:8090). dirty 행(`is_graph_synced=False`) → incremental vs rollback_and_replay 판정 → Neo4j Cypher 또는 `virtual_graph.json` 기록 |
 
-공통: 모든 워커는 `SYSTEM_RELOAD` outbox 이벤트로 규칙·설정·맵퍼 캐시를 핫리로드합니다.
+공통: Graph Sync를 제외한 워커는 `SYSTEM_RELOAD` outbox 이벤트로 규칙·설정·맵퍼 캐시를 핫리로드하며, 이때 `models.refresh_dynamic_models(engine)`로 **신규 동적 테이블의 물리 CREATE까지 보충**합니다(게이트+checkfirst로 중복 무해 — 웹서버가 1차 소유자, 이슈 #7). Graph Sync 워커만 리로드 경로가 없어 재기동 전까지 신규 테이블을 모릅니다(열린 이슈).
 
 ---
 

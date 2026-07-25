@@ -20,7 +20,9 @@
 | 실시간 동기화(WS) | `client2/src/websocket.js`, `main.py` ConnectionManager | [spec/DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) | Sync |
 | 배치 업서트 | `crud.apply_batch_updates` | [spec/batch_update_technical_specification](../spec/batch_update_technical_specification.md) | Backend |
 | 실패 관리/재시도 | `FileIngestionLog`, outbox retry, `admin/*` | [spec/FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | Integrity/QA |
-| 그래프 동기화 | `graph_sync_worker.py`, `config/ontology_mapping.json` | [architecture/event_driven_backend §4](../architecture/event_driven_backend.md), [spec/graph_db_integration_plan](../spec/graph_db_integration_plan.md) | Sync |
+| 그래프 동기화 | `graph_sync_worker.py`, `config/ontology_mapping.json` | [architecture/event_driven_backend §4](../architecture/event_driven_backend.md), [spec/graph_db_integration_plan](../spec/graph_db_integration_plan.md)(구식화 예정) | Sync |
+| 온톨로지 지식그래프 (트랙 스펙) | `graph_sync_worker.py`, `config/ontology_mapping.json`, (G1~) graph_nodes/edges | [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) | 총괄 |
+| Enrichment Queue | `enrichment_config.py`, `enrichment_mapper.py`, `client2/src/enrichment.js` | [spec/ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) | 총괄 |
 | HTML 토폴로지 파서 | `parsers/html_topology_parser.py` | [guide/HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | Ingester |
 | 어드민(코드 에디터) | `client2/src/admin.js`, `main.py /admin/*` | [architecture/frontend §5](../architecture/frontend.md) | UI/Panel |
 | 설정 주도 스키마 | `config/table_config.json`, `database/config_watcher.py` | [architecture/data_model §5](../architecture/data_model.md) | Backend |

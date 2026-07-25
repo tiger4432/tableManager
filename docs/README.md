@@ -39,7 +39,9 @@
 | 실시간 동기화 | 🟠 [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md) |
 | 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
 | 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
-| 그래프 DB 통합 | ⚪ [spec/graph_db_integration_plan.md](./spec/graph_db_integration_plan.md) |
+| Enrichment Queue(결손 보정 워크리스트) | 🟢 [spec/ENRICHMENT_QUEUE_SPEC.md](./spec/ENRICHMENT_QUEUE_SPEC.md) |
+| 온톨로지 지식그래프(LLM 백본) | 🟠 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — 제안 초안 v0(총괄·사용자 논의 중) |
+| 그래프 DB 통합(구식화 예정 — ONTOLOGY_GRAPH_SPEC이 대체) | ⚪ [spec/graph_db_integration_plan.md](./spec/graph_db_integration_plan.md) |
 | API 레퍼런스 | 🟠 [spec/api_documentation.md](./spec/api_documentation.md) |
 
 ## ✅ 3.5 QA (qa/)
@@ -63,7 +65,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(187개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(188개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
