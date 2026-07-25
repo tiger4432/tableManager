@@ -95,6 +95,16 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **공간 분석 (G3 결합)**: 불량 시드의 wafer 좌표 분포 → zonal 패턴 분류(edge ring/center/scratch/random — 반도체 표준 불량 패턴), 설비 좌표 그리드 위 집중도. PPR(관계 축) + 공간 클러스터링(좌표 축) + 시간 창(시간 축)의 3축 교차가 물리 추론의 실체.
 - **LLM 도구 연결**: `spatial_pattern(seeds)` → "이 불량들 wafer 위에서 엣지 링 패턴, base 지그 3번 열 집중" 같은 물리 서술을 도구 응답으로.
 
+## 7.6 그래프 보조 교정 (inference-assisted enrichment) — 가치사슬의 순환 완성
+
+사용자 통찰(2026-07-25): **LOT-SLOT-WAFER 매칭 같은 교정 과제 자체를 온톨로지에 올려 추론**하면 구현이 더 원활해진다.
+
+- **순환 구조**: 사람 교정 → `RESOLVED_AS` 엣지 축적 → 그래프가 미해결 항목의 **후보를 추론** → 사람은 확인만 → 다시 그래프 강화. 핵심가치 #1(최소 공수 교정)의 공수가 "타이핑"에서 "확인 클릭"으로 줄어드는 것이 목표.
+- **후보 추론 신호** (④의 3축 그대로): ① 시간 근접성 — 본딩 event_time과 wafer 이력 event_time의 근접 ② 관계 일치 — lot/slot 조인 경로 ③ **물리 제약** — 한 wafer는 동시에 한 곳에만 존재(배타 제약 위반 후보 제거), 이미 확정된 이웃 매칭의 패턴(같은 lot의 slot 순서 규칙성 등).
+- **잠정 엣지 규율**: 추론 결과는 `SUGGESTED_AS {score, evidence[]}` 엣지에 `inference` provenance로 저장 — **자동 확정 절대 금지**. 사람이 enrichment UI에서 수락하면 `RESOLVED_AS`(user)로 승격, 거절하면 negative 신호로 보존. 미해결 워크리스트 = `RESOLVED_AS 없음` 필터는 불변.
+- **Enrichment UI 연결**: 입력창에 후보 추천 리스트(점수+근거 요약 — "이력 시각 3분 차, 동일 lot, 배타 제약 통과") 표시. 기존 참조뷰(수기 SQL)는 유지하되 추론 후보가 1순위 보조로.
+- LLM 도구: `match_candidates(rule, decision_key)` — 교정 보조를 LLM 에이전트가 수행하는 경로도 동일 API로 열린다.
+
 ## 8. 단계
 
 | 단계 | 내용 | 비고 |
@@ -102,7 +112,7 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 | **G1** | 매핑 config 실전화 + PG nodes/edges(인덱스 규율 §2) + 자동 승격 materializer + C-7 해소 + 이슈 #8 동승 | 데모 3종 E2E |
 | **G2** | 추적 쿼리 API(k-hop, 시간 범위) + 추적 리포트 UI (그리드 선택 → 추적) | 킬러 유스케이스 + 가치 ② 실증 |
 | **G2.5** | LLM 액세스 계층 — MCP/도구 API + schema_card + 서브그래프 직렬화 | 가치 ① 개방 |
-| **G3** | 불량 추론 네트워크 + 시공간 분석 — 시드 마킹 UX + 분석 워커(PPR·zonal 패턴·시간 인접) + 의심 랭킹 리포트/도구 | 가치 ③④ (공간 스키마 자체는 G1 매핑 config부터) |
+| **G3** | 불량 추론 네트워크 + 시공간 분석 — 시드 마킹 UX + 분석 워커(PPR·zonal 패턴·시간 인접) + 의심 랭킹 리포트/도구 + **그래프 보조 교정(§7.6 — SUGGESTED_AS 후보 추론 → enrichment UI 추천)** | 가치 ③④ + #1 순환 (공간 스키마는 G1부터) |
 | **G4** | Neo4j 병행 타깃(시각화·Cypher 에이전트·GDS 가속) + pgvector 하이브리드 | 옵션 |
 
 ## 8. 미결(논의 계속)
