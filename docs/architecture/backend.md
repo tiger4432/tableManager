@@ -80,7 +80,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `POST /api/graph/sync` | GraphSync 워커(:8090)로 프록시 — **백필/복구 도구**(주 경로는 materializer 자동 승격, [event_driven_backend §4](./event_driven_backend.md)) |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |
 | `/admin/chain/rules`, `/admin/mappers/list` | 체인 규칙·맵퍼(AST 파싱) 목록 |
-| `/admin/auto-update/{status,run-now}` | 스케줄러 상태·즉시실행 |
+| `/admin/auto-update/{status,run-now,toggle}` | 스케줄러 상태(각 항목에 `active` 부가)·즉시실행·수집기 active 토글. toggle body `{"script": "<workspace>/<script.py>", "active": bool}` → `config/auto_update_control.json` 갱신(스케줄러 핫 반영, 재기동 불필요; 미존재 404·검증실패 400). **run-now는 active 무관 실행**(수동 실행은 명시적 의도) |
 | `/admin/reload-configs` | 로컬 캐시 리로드(`models.refresh_dynamic_models` — 신규 테이블 **물리 CREATE 포함**, 이슈 #7) + `SYSTEM_RELOAD` 발행. CREATE가 발행보다 선행(웹서버가 1차 DDL 소유자) |
 | `/admin/scripts/{list,code}` | 브라우저 코드 에디터(경로 traversal 가드) |
 | `POST /internal/events/{batch-refresh,broadcast,file-processed}` | 데몬→웹서버 콜백 |
@@ -112,7 +112,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 워커 | 트리거 | 동작 요약 |
 |---|---|---|
 | **Directory Watcher** (`directory_watcher.py`) | watchdog 파일 이벤트 | `raws/` 신규 파일 → `scripts/*.py`의 `BasePipelineParser.match()` 매칭 → `parse()` → 정규화 → `apply_batch_updates` 1000행 청크. **커스텀 스크립트 무매칭 시 std parser 폴백**(`parsers/std_parser.py` — `column_types` 헤더 검증 기반 CSV/TSV/TXT 스트리밍, 키 결측 행 스킵). 성공 시 `archives/`, 실패 시 `err/`. `FileIngestionLog` 기록. 워크스페이스 폴더는 config 등록 시 자동 보충 |
-| **Auto-Update Scheduler** (`run_auto_update.py`) | 5초 틱 + 크론 | `auto_update/*.py` 발견 → 상단 `# schedule:` 크론 파싱 → `exec()`로 `out` 변수 캡처(또는 stdout 폴백) → CSV를 `raws/`에 원자적 드롭. `scheduler_status.json` 갱신 |
+| **Auto-Update Scheduler** (`run_auto_update.py`) | 5초 틱 + 크론 | `auto_update/*.py` 발견 → 상단 `# schedule:` 크론 파싱 → `exec()`로 `out` 변수 캡처(또는 stdout 폴백) → CSV를 `raws/`에 원자적 드롭. `scheduler_status.json` 갱신(`active` 포함). 매 틱 `config/auto_update_control.json`(`{"disabled": [...]}`, 부재/손상 시 전부 active)을 읽어 disabled 수집기는 실행 스킵 + `last_status="SKIPPED"` + next_run 전진(핫 반영). run-now(on-demand)는 active 무관 실행 |
 | **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(source=chain_ingestion 순환 차단) → `/internal/events/broadcast`. 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker — materializer** (`graph_sync_worker.py` + `graph_materializer.py`) | outbox 증분 소비(자체 keyset 커서 `graph_sync_state.last_outbox_id`, LISTEN/NOTIFY) | 독립 FastAPI(:8090). 이벤트 행을 `ontology_mapping.json` v2 매핑에 따라 **PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**. 엣지 provenance는 식별 컬럼 CellSource winner의 최저 서열(보수적), 재교정 시 `(from,type,source_row_ref)` 스코프 retarget. `[GraphLatency]` 계측(SLO 10s), 배치 본체는 `asyncio.to_thread` 격리. `/sync`(수동)는 키셋 청킹 **백필/복구** 도구(`"all"` 지원). Neo4j는 청크 훅으로 병행 가능(G3). 상세: [event_driven_backend §4](./event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
 

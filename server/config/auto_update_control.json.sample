@@ -1,0 +1,5 @@
+{
+  "disabled": [
+    "example_table/example_collector.py"
+  ]
+}

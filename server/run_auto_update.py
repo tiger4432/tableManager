@@ -14,6 +14,7 @@ from croniter import croniter
 
 # Setup Logging
 from utils.logger import get_process_logger
+from utils.auto_update_control import read_disabled_scripts
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 class BaseCollector(ABC):
@@ -77,7 +78,7 @@ class GenericScriptRunnerCollector:
     임의의 독립 스크립트를 주석에 기재된 크론 일정에 맞춰 기동하고,
     그 표준 출력(stdout)을 CSV 파일로 가공하여 raws/ 폴더에 원자적 적재하는 범용 래퍼 컬렉터입니다.
     """
-    def __init__(self, table_name: str, script_path: str, cron_expression: str, filename_prefix: str):
+    def __init__(self, table_name: str, script_path: str, cron_expression: str, filename_prefix: str, server_dir: str = None):
         self.table_name = table_name
         self.script_path = script_path
         self.cron_expression = cron_expression
@@ -91,8 +92,8 @@ class GenericScriptRunnerCollector:
             self.last_mtime = os.path.getmtime(script_path)
         except:
             pass
-        
-        server_dir = os.path.dirname(os.path.abspath(__file__))
+
+        server_dir = server_dir or os.path.dirname(os.path.abspath(__file__))
         self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
         os.makedirs(self.target_dir, exist_ok=True)
         
@@ -245,9 +246,9 @@ class MultiDiscoveryScheduler:
     ingestion_workspace/*/auto_update/*.py 디렉토리를 통합 모니터링하며,
     주석 기반의 Cron 설정 또는 클래스 상속 수집기들을 스케줄러 스레드로 자동 구동하는 디스커버리 스케줄러입니다.
     """
-    def __init__(self, check_interval: int = 5):
+    def __init__(self, check_interval: int = 5, server_dir: str = None):
         self.check_interval = check_interval
-        self.server_dir = os.path.dirname(os.path.abspath(__file__))
+        self.server_dir = server_dir or os.path.dirname(os.path.abspath(__file__))
         self.workspace_dir = os.path.join(self.server_dir, "ingestion_workspace")
         self.status_file_path = os.path.join(self.server_dir, "config", "scheduler_status.json")
         self.collectors = []
@@ -313,7 +314,8 @@ class MultiDiscoveryScheduler:
                     table_name=table_name,
                     script_path=script_path,
                     cron_expression=cron_expr,
-                    filename_prefix=comment_config["filename_prefix"]
+                    filename_prefix=comment_config["filename_prefix"],
+                    server_dir=self.server_dir
                 )
                 self.collectors.append(collector_inst)
                 logger.info(f"Registered Comment-Driven Script Runner: '{os.path.basename(script_path)}' for table '{table_name}' (Cron: {cron_expr}, Next Run: {collector_inst.next_run})")
@@ -357,11 +359,17 @@ class MultiDiscoveryScheduler:
         except Exception as e:
             logger.error(f"Failed to load script module '{script_path}': {e}")
 
+    def _collector_key(self, collector) -> str:
+        """제어 파일 규격('<workspace>/<script.py>')과 일치하는 수집기 식별 키를 반환합니다."""
+        script_name = os.path.basename(collector.script_path) if getattr(collector, "script_path", None) else collector.__class__.__name__
+        return f"{collector.table_name}/{script_name}"
+
     def _write_status_file(self):
         """
         현재 메모리상 활성 수집기 목록 상태를 JSON 파일로 직렬화하여 영속화합니다.
         """
         try:
+            disabled_set = read_disabled_scripts(self.server_dir)
             status_data = {
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "collectors": []
@@ -377,7 +385,8 @@ class MultiDiscoveryScheduler:
                         "next_run": col.next_run.strftime("%Y-%m-%d %H:%M:%S") if getattr(col, "next_run", None) else None,
                         "last_run": col.last_run,
                         "last_status": col.last_status,
-                        "last_error": col.last_error
+                        "last_error": col.last_error,
+                        "active": self._collector_key(col) not in disabled_set
                     })
             
             config_dir = os.path.dirname(self.status_file_path)
@@ -390,6 +399,7 @@ class MultiDiscoveryScheduler:
     def run_collector_on_demand(self, table_name: str, script_name: str):
         """
         On-Demand 강제 구동 지시를 받아 비동기로 대상 수집기를 실행합니다.
+        [계약] run-now(수동 실행)는 active(disabled) 상태와 무관하게 항상 실행합니다 — 수동 실행은 명시적 의도.
         """
         for collector in self.collectors:
             col_script_name = os.path.basename(getattr(collector, "script_path", "")) if getattr(collector, "script_path", None) else collector.__class__.__name__
@@ -426,6 +436,49 @@ class MultiDiscoveryScheduler:
             logger.error(f"Collector Execution Failed for table '{collector.table_name}': {err}")
         finally:
             self._write_status_file()
+
+    def check_and_run_schedules(self, now: datetime = None):
+        """
+        크론 스케줄 타이밍 검사 + 동적 파일 변경 감지를 수행하고, 도래한 수집기를 실행합니다.
+        [핫 반영] 매 호출 시 제어 파일(auto_update_control.json)을 읽어 disabled 수집기는
+        실행을 스킵하고(next_run만 전진) last_status="SKIPPED"로 status에 반영합니다.
+        재기동 없이 toggle이 즉시 적용됩니다.
+        """
+        now = now or datetime.now()
+        disabled_set = read_disabled_scripts(self.server_dir)
+        for collector in self.collectors:
+            # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
+            if isinstance(collector, GenericScriptRunnerCollector):
+                try:
+                    current_mtime = os.path.getmtime(collector.script_path)
+                    if current_mtime > collector.last_mtime:
+                        collector.last_mtime = current_mtime
+                        comment_config = parse_script_comments(collector.script_path)
+                        if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
+                            old_cron = collector.cron_expression
+                            collector.cron_expression = comment_config["schedule"]
+                            collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
+                            logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
+                        if comment_config["filename_prefix"] != collector.filename_prefix:
+                            collector.filename_prefix = comment_config["filename_prefix"]
+                except Exception as file_err:
+                    logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
+
+            if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
+                if now >= collector.next_run:
+                    key = self._collector_key(collector)
+                    if key in disabled_set:
+                        # 비활성 수집기: 실행 스킵, 다음 스케줄로 전진, 상태 파일에 SKIPPED 기록
+                        try:
+                            collector.next_run = croniter(collector.cron_expression, now).get_next(datetime)
+                        except Exception as cron_err:
+                            logger.error(f"Failed to advance next_run for disabled collector '{key}': {cron_err}")
+                        collector.last_status = "SKIPPED"
+                        collector.last_error = None
+                        logger.info(f"[Skip] Collector '{key}' is disabled via control file. Skipping scheduled run (Next Run: {collector.next_run}).")
+                        self._write_status_file()
+                    else:
+                        self.execute_collector(collector)
 
     def run(self):
         """
@@ -503,30 +556,9 @@ class MultiDiscoveryScheduler:
                 except Exception as e:
                     logger.warning(f"Database outbox polling failed inside scheduler: {e}")
 
-                # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지
+                # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지 (disabled 스크립트 핫 스킵 포함)
                 try:
-                    now = datetime.now()
-                    for collector in self.collectors:
-                        # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
-                        if isinstance(collector, GenericScriptRunnerCollector):
-                            try:
-                                current_mtime = os.path.getmtime(collector.script_path)
-                                if current_mtime > collector.last_mtime:
-                                    collector.last_mtime = current_mtime
-                                    comment_config = parse_script_comments(collector.script_path)
-                                    if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
-                                        old_cron = collector.cron_expression
-                                        collector.cron_expression = comment_config["schedule"]
-                                        collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
-                                        logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
-                                    if comment_config["filename_prefix"] != collector.filename_prefix:
-                                        collector.filename_prefix = comment_config["filename_prefix"]
-                            except Exception as file_err:
-                                logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
-
-                        if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
-                            if now >= collector.next_run:
-                                self.execute_collector(collector)
+                    self.check_and_run_schedules()
                 except Exception as e:
                     logger.error(f"Scheduler runtime error: {e}")
                     

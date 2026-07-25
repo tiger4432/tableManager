@@ -3221,27 +3221,66 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
 
 @app.get("/admin/auto-update/status")
 async def get_auto_update_status():
-    """실시간 auto_update 스케줄러의 기동 현황(JSON)을 조회합니다."""
+    """실시간 auto_update 스케줄러의 기동 현황(JSON)을 조회합니다. 각 항목에 active(제어 파일 기준) 필드를 부가합니다."""
     import os
     import json
-    
-    server_dir = os.path.dirname(os.path.abspath(__file__))
-    status_path = os.path.join(server_dir, "config", "scheduler_status.json")
-    
+    from utils import auto_update_control as auc
+
+    status_path = os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
+
     if not os.path.exists(status_path):
         return {"status": "success", "data": [], "last_updated": None}
-        
+
     try:
         with open(status_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        collectors = data.get("collectors", [])
+        # [핫 반영] active는 항상 제어 파일(auto_update_control.json)을 실시간으로 읽어 계산 —
+        # 스케줄러가 다음 사이클에 status 파일을 재기록하기 전에도 toggle 결과가 즉시 일치한다.
+        disabled_set = auc.read_disabled_scripts()
+        for col in collectors:
+            key = f"{col.get('table_name')}/{col.get('script_name')}"
+            col["active"] = key not in disabled_set
         return {
             "status": "success",
-            "data": data.get("collectors", []),
+            "data": collectors,
             "last_updated": data.get("last_updated")
         }
     except Exception as e:
         logger.error(f"Failed to read scheduler status file: {e}")
         return {"status": "error", "message": str(e), "data": []}
+
+@app.post("/admin/auto-update/toggle")
+def toggle_auto_update_script(payload: dict = Body(...)):
+    """
+    auto_update 수집기 스크립트의 active 상태를 토글합니다.
+    body: {"script": "<workspace>/<script.py>", "active": bool}
+    제어 파일(server/config/auto_update_control.json)을 갱신하며, 스케줄러가 매 사이클
+    이를 읽으므로 재기동 없이 핫 반영됩니다. 단, run-now(수동 실행)는 active와 무관하게 항상 실행됩니다.
+    """
+    import os
+    from utils import auto_update_control as auc
+
+    script = payload.get("script")
+    active = payload.get("active")
+
+    if not auc.validate_script_key(script):
+        raise HTTPException(status_code=400, detail="Invalid 'script' field. Expected format: '<workspace>/<script.py>'.")
+    if not isinstance(active, bool):
+        raise HTTPException(status_code=400, detail="Invalid 'active' field. Expected a boolean.")
+
+    script_file = auc.resolve_script_file(script)
+    if not os.path.isfile(script_file):
+        raise HTTPException(status_code=404, detail=f"Auto update script not found: '{script}'")
+
+    try:
+        auc.set_script_active(script, active)
+    except Exception as e:
+        logger.error(f"Failed to update auto update control file for '{script}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to persist control file: {e}")
+
+    logger.info(f"[Toggle] Auto update script '{script}' set to active={active}")
+    return {"status": "success", "script": script, "active": active}
 
 @app.post("/admin/auto-update/run-now")
 def trigger_auto_update_run_now(
