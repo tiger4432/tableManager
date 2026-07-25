@@ -80,7 +80,7 @@ graph TD
 
 ## 3. 클라이언트 (웹이 메인)
 
-- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음, ~9,200줄). 진입점 3개: `index.html`→`main.js`(데이터 그리드), `admin.html`→`admin.js`(어드민, Monaco CDN), `map_editor.html`→`map_editor.js`(웨이퍼 맵 에디터).
+- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음, ~10,300줄). 진입점 4개: `index.html`→`main.js`(데이터 그리드), `admin.html`→`admin.js`(어드민, Monaco CDN), `map_editor.html`→`map_editor.js`(웨이퍼 맵 에디터), `enrichment.html`→`enrichment.js`(Enrichment Queue 컨베이어).
 - **그리드:** AG-Grid Community `^35.3.0` (유일한 런타임 의존성). 맵 에디터는 AG-Grid 미사용 — 커스텀 캔버스 렌더링.
 - **상태 관리:** `state.js`의 단일 싱글턴 객체를 직접 변조하고 명시적 UI 리프레셔를 호출하는 **수동 반응성**(리액티브 프레임워크 아님).
 - **데스크톱 셸:** `client/desktop_wrapper.py`(259줄)는 `http://localhost:8080/?client=desktop`를 로드하는 **QtWebEngine 래퍼**. OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, `assymanager://` URI 스킴을 제공.

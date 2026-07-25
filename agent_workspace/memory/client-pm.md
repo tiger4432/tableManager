@@ -22,3 +22,5 @@
   **올바른 방법**: 셀은 항상 `grid.js`의 `ensureCellObject`로 정규화해서 접근.
 - **함정**: worktree에는 node_modules가 없어 `npm run build`가 실패하거나 잘못된 산출물을 만든다.
   **올바른 방법**: worktree에선 빌드 금지 — `node --check`까지만, 빌드는 총괄이 본체에서 수행.
+- **함정**: `dom.js`에 게터가 있다고 해당 UI가 실존하는 게 아니다(HTML에 id가 없는 잔존 게터 존재 — `smart-paste-btn` 사례).
+  **올바른 방법**: UI 트리거를 확정할 땐 html 파일에서 id 실존까지 Grep으로 확인.

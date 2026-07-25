@@ -24,6 +24,7 @@
 | HTML 토폴로지 파서 | `parsers/html_topology_parser.py` | [guide/HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | Ingester |
 | 어드민(코드 에디터) | `client2/src/admin.js`, `main.py /admin/*` | [architecture/frontend §5](../architecture/frontend.md) | UI/Panel |
 | 설정 주도 스키마 | `config/table_config.json`, `database/config_watcher.py` | [architecture/data_model §5](../architecture/data_model.md) | Backend |
+| QA 기능 점검 | 전 서브시스템(사용자 관점 기능 단위) | [qa/FEATURE_CHECKLIST](../qa/FEATURE_CHECKLIST.md) — 갱신은 doc-keeper 전담(코드맵과 같은 사이클) | Integrity/QA |
 | 운영/셋업 | 환경·DB | [guide/*_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md) | Ops |
 | 엔지니어링 규율 | CRUD 시그니처·병합 | [guide/data_preservation_and_signature_change](../guide/data_preservation_and_signature_change.md) | Integrity/QA |
 

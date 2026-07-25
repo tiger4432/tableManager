@@ -42,6 +42,12 @@
 | 그래프 DB 통합 | ⚪ [spec/graph_db_integration_plan.md](./spec/graph_db_integration_plan.md) |
 | API 레퍼런스 | 🟠 [spec/api_documentation.md](./spec/api_documentation.md) |
 
+## ✅ 3.5 QA (qa/)
+
+| 문서 | 내용 |
+|---|---|
+| 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). 새 기능 병합 시 doc-keeper가 갱신 |
+
 ## 🛠️ 4. 운영 & 셋업 (guide/)
 
 | 문서 | 내용 |
@@ -57,7 +63,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(185개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(187개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
