@@ -26,11 +26,9 @@ log_path = os.path.join(server_dir, "watcher.log")
 logger = logging.getLogger("Watcher.DirectoryWatcher")
 
 # [C-5] 파일 인제션 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
-# 웹서버(main.py /internal/events/*)가 어차피 500건으로 절단·캐시하므로, 워처가 전량(수십만~수백만
-# dict)을 메모리에 누적·HTTP POST하는 것은 순수 낭비이자 OOM/이벤트 루프 동결 요인이었다.
-# 이벤트 필드 형태(created_logs: list)는 그대로 유지하고 항목 수만 제한한다(경계 계약 불변).
+# 체인 워커(chain_ingestion_worker.py)와 공유하는 공용 상수로 승격됨 — 정의·근거는 event_constants 참조.
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
-MAX_NOTIFY_CREATED_LOGS = 500
+from event_constants import MAX_NOTIFY_CREATED_LOGS
 
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
 # (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)

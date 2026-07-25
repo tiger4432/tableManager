@@ -18,6 +18,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
 
+# [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
+from event_constants import MAX_NOTIFY_CREATED_LOGS
+
 logger = get_process_logger("Chain", "chain_worker.log")
 
 class OutboxListener:
@@ -453,10 +456,15 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     user_name = "chain_worker"
                     
                     # Ensure created_logs has clean string timestamps
+                    # [C-5 확장] 절단은 직렬화 루프 **앞**에서 수행 — 6.5만 건 dict copy/isoformat 자체가 낭비.
+                    # 재기동 스윕 재인제션 등 대형 tx에서 전량(수만 건, ~50MB JSON) 전송 시
+                    # 웹서버 이벤트 루프가 동결되던 인시던트(2026-07-25)의 재발 방지.
+                    # 실제 총 건수는 total_log_count로 별도 전달(순수 추가 필드, 계약 불변).
+                    total_log_count = len(created_logs) if created_logs else 0
                     serialized_logs = []
                     if created_logs:
                         from datetime import datetime
-                        for log in created_logs:
+                        for log in created_logs[:MAX_NOTIFY_CREATED_LOGS]:
                             log_copy = dict(log)
                             ts = log_copy.get("timestamp")
                             if ts is not None and isinstance(ts, datetime):
@@ -469,7 +477,8 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "table_name": target_table,
                             "change_count": len(msg_items),
                             "transaction_id": chain_tx_id,
-                            "created_logs": serialized_logs
+                            "created_logs": serialized_logs,
+                            "total_log_count": total_log_count
                         }
                     else:
                         msg = {
@@ -478,7 +487,8 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "items": msg_items,
                             "updated_by": user_name,
                             "transaction_id": chain_tx_id,
-                            "created_logs": serialized_logs
+                            "created_logs": serialized_logs,
+                            "total_log_count": total_log_count
                         }
                     # 껍데기 행 실시간 제거 이벤트를 먼저(순서 보존) 큐잉한 뒤 upsert/refresh 이벤트를 큐잉
                     if deleted_row_ids:

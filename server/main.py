@@ -657,6 +657,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
     return existing_keys
 
 from audit_cache import audit_cache
+from event_constants import MAX_NOTIFY_CREATED_LOGS
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
 def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
@@ -3342,7 +3343,7 @@ async def internal_event_batch_refresh(
         # [C-5] 워처가 이미 500건으로 절단해 보내며(total_log_count = 실제 총 건수),
         # 구버전 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다.
         actual_count = total_log_count if total_log_count is not None else len(created_logs)
-        sliced_logs = created_logs[:500] if len(created_logs) > 500 else created_logs
+        sliced_logs = created_logs[:MAX_NOTIFY_CREATED_LOGS] if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs
         msg["created_logs"] = sliced_logs
         # Update the web server's in-memory audit cache
         # [C-1] pydantic 검증(add_logs_batch)은 CPU 바운드 — threadpool로 이관(루프 비블로킹, 내부 Lock으로 안전)
@@ -3367,8 +3368,12 @@ async def internal_event_broadcast(payload: dict = Body(...)):
     created_logs = payload.get("created_logs")
     if created_logs:
         try:
-            actual_count = len(created_logs)
-            sliced_logs = created_logs[:500] if actual_count > 500 else created_logs
+            # [C-5 확장] 체인 워커가 created_logs를 500건으로 절단해 보내며,
+            # total_log_count가 절단 전 실제 총 건수(audit_cache total_count 표기용).
+            # 구버전(무절단 전량 전송, 필드 부재) 호환: len(created_logs) 사용 + 서버측 절단 유지.
+            total_log_count = payload.get("total_log_count")
+            actual_count = total_log_count if total_log_count is not None else len(created_logs)
+            sliced_logs = created_logs[:MAX_NOTIFY_CREATED_LOGS] if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs
             payload["created_logs"] = sliced_logs
             # [C-1] pydantic 검증(add_logs_batch)·대형 json.dumps는 CPU 바운드 — threadpool로 이관
             await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
