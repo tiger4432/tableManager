@@ -1,5 +1,5 @@
 // ============================================================
-// Enrichment Queue Page Orchestrator (Phase 1)
+// Enrichment Queue Page Orchestrator (Phase 1 conveyor + Phase 2 reference views)
 // - admin.js / map_editor.js 선례: 자체 모듈 지역 상태 (state.js/dom.js/api.js 미임포트)
 // - 재사용: config.js / utils.js / AG-Grid Community
 // - 계약(확정): GET /enrichment/rules
@@ -7,6 +7,8 @@
 //                  target_fields[], list_columns[], reference_views:[{label}] } ] }
 // - 워크리스트: GET /tables/{derived}/data + blank 필터 청크 페칭 (전량 로드 금지)
 // - 저장: PUT /tables/{derived}/data/updates (source_name='user' → priority 0)
+// - 참조뷰(계약 확정): GET /enrichment/rules/{rule}/references/{i}?params=<JSON {decision_key: value}>
+//   → {label, columns[], rows[[]]} (서버 LIMIT 강제 · 400: 비허용 키 · 404: 규칙/인덱스 미존재)
 // ============================================================
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
@@ -18,6 +20,9 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 // 컨베이어 버퍼 보충 임계치: 남은 행이 이보다 적으면 skip=0 재페치
 const REFILL_THRESHOLD = 50;
+
+// 참조뷰 로드 debounce(ms): 빠른 ↑/↓ 이동·연속 Enter 시 요청 폭주 방지
+const REF_DEBOUNCE_MS = 250;
 
 // ── 지역 상태 (싱글턴) ─────────────────────────────────────
 const S = {
@@ -32,6 +37,14 @@ const S = {
   exhausted: false,     // 서버에 버퍼 밖 잔여분이 없음
   saving: false,
   selectedRowId: null,
+
+  // ── [C] 참조뷰 상태 ──
+  refViews: [],         // 현재 규칙의 reference_views 메타 [{label}]
+  refActiveIdx: 0,      // 활성 탭 인덱스
+  refSeq: 0,            // 요청 시퀀스 가드: 최신 요청의 응답만 렌더 (stale 폐기)
+  refTimer: null,       // debounce 타이머 핸들
+  refCache: new Map(),  // 현재 선택 행 한정 탭 캐시: viewIdx → {columns, rows, ms}
+  refCacheRowId: null,  // refCache가 유효한 row_id (행 변경 시 클리어)
 };
 
 const el = (id) => document.getElementById(id);
@@ -109,7 +122,7 @@ function selectRule(rule) {
 
   el('rule-select').value = rule.name;
   el('conveyor-meta').textContent = `${rule.derived_table}`;
-  renderReferencePlaceholder(rule);
+  initReferencePanel(rule);
   showConveyorEmpty();
   rebuildGrid(rule);
   updateHeaderStats();
@@ -289,6 +302,7 @@ function showConveyorEmpty() {
   el('conveyor-empty').style.display = 'flex';
   el('conveyor-detail').style.display = 'none';
   S.selectedRowId = null;
+  clearReferencePanel();
 }
 
 function renderDetail(row) {
@@ -360,6 +374,9 @@ function renderDetail(row) {
 
   const first = inputsBody.querySelector('input');
   if (first) first.focus();
+
+  // [C] 참조뷰: 선택 행 기준 비동기 로드 예약 (debounce — 입력·이동을 절대 막지 않음)
+  scheduleReferenceLoad();
 }
 
 function onInputKeydown(e) {
@@ -488,17 +505,218 @@ function flashSaved() {
   setTimeout(() => block.classList.remove('saved-flash'), 600);
 }
 
-// ── [C] 참조뷰 placeholder (단계②에서 실데이터 연동) ───────
-function renderReferencePlaceholder(rule) {
+// ── [C] 참조뷰 (실데이터) ──────────────────────────────────
+// 계약: GET /enrichment/rules/{rule}/references/{i}?params=<urlencoded JSON {decision_key col: value}>
+//   → 200 {"label", "columns": [str], "rows": [[...]]} (서버 LIMIT 강제, 기본 200)
+//   → 400 params에 decision_key 외 키 / 404 규칙·인덱스 미존재
+// 원칙: 활성 탭만 조회(선택 이동당 1요청), debounce + 시퀀스/세션 이중 가드,
+//       로딩이 컨베이어 입력·포커스를 절대 막지 않음(순수 비동기, 포커스 무접촉).
+
+function initReferencePanel(rule) {
+  S.refViews = Array.isArray(rule.reference_views) ? rule.reference_views : [];
+  S.refActiveIdx = 0;
+  S.refSeq += 1; // 규칙 전환: 진행 중 응답 전부 무효화
+  if (S.refTimer) { clearTimeout(S.refTimer); S.refTimer = null; }
+  S.refCache.clear();
+  S.refCacheRowId = null;
+  el('reference-meta').textContent = '';
+
   const tabs = el('reference-tabs');
   tabs.innerHTML = '';
-  (rule.reference_views || []).forEach(view => {
-    const tab = document.createElement('span');
-    tab.className = 'reference-tab';
-    tab.textContent = view.label || '(unnamed)';
-    tab.title = '단계②에서 활성화됩니다';
+
+  if (S.refViews.length === 0) {
+    tabs.style.display = 'none';
+    showRefStatus('🗒️', '참조뷰 미설정',
+      '이 규칙에는 참조뷰가 정의되어 있지 않습니다.\nenrichment_rules.json의 reference_views에 등록하면 표시됩니다.');
+    return;
+  }
+
+  tabs.style.display = 'flex';
+  S.refViews.forEach((view, idx) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'reference-tab' + (idx === S.refActiveIdx ? ' active' : '');
+    tab.textContent = view.label || `참조뷰 ${idx + 1}`;
+    // mousedown 기본동작 차단 → 탭 클릭이 [B] 입력 포커스를 빼앗지 않음 (컨베이어 무간섭)
+    tab.addEventListener('mousedown', (e) => e.preventDefault());
+    tab.addEventListener('click', () => activateRefTab(idx));
     tabs.appendChild(tab);
   });
+  showRefIdle();
+}
+
+function activateRefTab(idx) {
+  if (idx === S.refActiveIdx) return;
+  S.refActiveIdx = idx;
+  el('reference-tabs').querySelectorAll('.reference-tab').forEach((t, i) => {
+    t.classList.toggle('active', i === idx);
+  });
+  // 탭 전환은 의도적 단일 행동 — debounce 없이 즉시 로드 (같은 행이면 캐시 히트)
+  if (S.refTimer) { clearTimeout(S.refTimer); S.refTimer = null; }
+  loadActiveReference();
+}
+
+// 선택 변경 시 호출: debounce로 고속 ↑/↓ 이동·연속 Enter의 요청 폭주 방지
+function scheduleReferenceLoad() {
+  if (S.refViews.length === 0) return;
+  S.refSeq += 1; // 이전 in-flight 응답 즉시 무효화 (이전 행의 데이터가 새 행에 표시되는 것 방지)
+  if (S.refTimer) clearTimeout(S.refTimer);
+  S.refTimer = setTimeout(() => {
+    S.refTimer = null;
+    loadActiveReference();
+  }, REF_DEBOUNCE_MS);
+}
+
+// 컨베이어가 비었을 때: 대기 로드 취소 + 패널을 유휴 상태로
+function clearReferencePanel() {
+  S.refSeq += 1;
+  if (S.refTimer) { clearTimeout(S.refTimer); S.refTimer = null; }
+  el('reference-meta').textContent = '';
+  if (S.refViews.length > 0) showRefIdle();
+}
+
+async function loadActiveReference() {
+  if (!S.rule || S.refViews.length === 0 || !S.gridApi) return;
+  if (S.selectedRowId === null) { showRefIdle(); return; }
+  const node = S.gridApi.getRowNode(String(S.selectedRowId));
+  if (!node || !node.data) { showRefIdle(); return; }
+
+  const rowId = S.selectedRowId;
+  const idx = S.refActiveIdx;
+  const view = S.refViews[idx];
+
+  // 행 단위 캐시: 같은 행에서 탭을 오가면 재요청하지 않음 (행이 바뀌면 무효)
+  if (S.refCacheRowId !== rowId) {
+    S.refCache.clear();
+    S.refCacheRowId = rowId;
+  }
+  const cached = S.refCache.get(idx);
+  if (cached) { renderRefTable(cached); return; }
+
+  const seq = ++S.refSeq;
+  const token = S.sessionToken;
+  showRefLoading(view.label || `참조뷰 ${idx + 1}`);
+
+  // params = 선택 행의 decision_key 전체 값 (계약: decision_key 외 키 금지 → 400)
+  const paramsObj = {};
+  (S.rule.decision_key || []).forEach(col => {
+    const v = cellVal(node.data, col);
+    paramsObj[col] = v === '' ? '' : v;
+  });
+  const url = `${API_BASE}/enrichment/rules/${encodeURIComponent(S.rule.name)}` +
+    `/references/${idx}?params=${encodeURIComponent(JSON.stringify(paramsObj))}`;
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url);
+    if (seq !== S.refSeq || token !== S.sessionToken) return; // stale 폐기
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (seq !== S.refSeq || token !== S.sessionToken) return;
+      showRefError(res.status, typeof err.detail === 'string' ? err.detail : null);
+      return;
+    }
+    const data = await res.json();
+    if (seq !== S.refSeq || token !== S.sessionToken) return;
+    const payload = {
+      columns: Array.isArray(data.columns) ? data.columns : [],
+      rows: Array.isArray(data.rows) ? data.rows : [],
+      ms: (performance.now() - t0).toFixed(0),
+    };
+    S.refCache.set(idx, payload);
+    renderRefTable(payload);
+  } catch (e) {
+    if (seq !== S.refSeq || token !== S.sessionToken) return;
+    showRefError(0, null); // 네트워크 오류
+  }
+}
+
+// 서버 LIMIT(기본 200, 최대 1000) 이하 행만 오므로 경량 HTML 테이블로 충분 (읽기 전용)
+function renderRefTable(payload) {
+  const wrap = el('reference-table-wrap');
+  el('reference-meta').textContent = `${payload.rows.length.toLocaleString()}건 · ${payload.ms}ms`;
+
+  if (payload.rows.length === 0) {
+    wrap.style.display = 'none';
+    showRefStatus('🫙', '근거 데이터 없음', '이 판단키에 해당하는 참조 데이터가 없습니다.');
+    return;
+  }
+
+  hideRefStatus();
+  wrap.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'reference-table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  payload.columns.forEach(colName => {
+    const th = document.createElement('th');
+    th.textContent = colName; // XSS 안전: textContent만 사용
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  payload.rows.forEach(r => {
+    const tr = document.createElement('tr');
+    payload.columns.forEach((_, i) => {
+      const td = document.createElement('td');
+      const v = r[i];
+      if (v === null || v === undefined) {
+        td.textContent = '-';
+        td.className = 'ref-null';
+      } else {
+        td.textContent = String(v);
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  wrap.appendChild(table);
+  wrap.scrollTop = 0;
+  wrap.style.display = 'block';
+}
+
+// ── 참조뷰 상태 표시 헬퍼 (loading / idle / empty / error) ──
+function showRefStatus(icon, text, sub, spinning) {
+  el('reference-table-wrap').style.display = 'none';
+  el('reference-status').style.display = 'flex';
+  el('reference-spinner').style.display = spinning ? 'block' : 'none';
+  el('reference-status-icon').style.display = spinning ? 'none' : 'block';
+  el('reference-status-icon').textContent = icon;
+  el('reference-status-text').textContent = text;
+  el('reference-status-sub').textContent = sub || '';
+}
+
+function hideRefStatus() {
+  el('reference-status').style.display = 'none';
+}
+
+function showRefIdle() {
+  el('reference-meta').textContent = '';
+  showRefStatus('🛰️', '항목을 선택하면 근거 데이터가 표시됩니다.', '');
+}
+
+function showRefLoading(label) {
+  showRefStatus('', `'${label}' 조회 중...`, '', true);
+}
+
+// 오류는 토스트가 아닌 패널 내 표시 — 고속 이동 중 토스트 스팸으로 컨베이어를 방해하지 않음
+function showRefError(status, detail) {
+  el('reference-meta').textContent = '';
+  if (status === 404) {
+    showRefStatus('🧭', '참조뷰를 찾을 수 없습니다',
+      '규칙 설정이 변경되었을 수 있습니다. 새로고침(🔄) 해 주세요.');
+  } else if (status === 400) {
+    showRefStatus('⚠️', '참조뷰 조회 실패', detail || '요청 파라미터를 서버가 거부했습니다.');
+  } else if (status === 0) {
+    showRefStatus('📡', '서버에 연결할 수 없습니다', '네트워크 상태 확인 후 다시 시도해 주세요.');
+  } else {
+    showRefStatus('⚠️', `참조뷰 조회 실패 (HTTP ${status})`, detail || '');
+  }
 }
 
 // ── 초기화 ─────────────────────────────────────────────────

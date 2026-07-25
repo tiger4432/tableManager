@@ -573,23 +573,134 @@
       color: var(--text-muted);
     }
 
-    /* [C] reference placeholder */
+    /* [C] reference views (Phase 2 — 실데이터) */
     .reference-tabs {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       padding: 12px 14px 0;
+      flex-shrink: 0;
     }
 
     .reference-tab {
-      border: 1px dashed var(--border-color);
+      border: 1px solid var(--border-color);
       border-radius: 8px;
       padding: 6px 14px;
       font-size: 0.8rem;
+      font-family: var(--font-sans);
       color: var(--text-dim);
       background: rgba(255, 255, 255, 0.02);
-      cursor: not-allowed;
+      cursor: pointer;
       user-select: none;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .reference-tab:hover {
+      color: var(--text-muted);
+      border-color: var(--border-color-glow);
+    }
+
+    .reference-tab.active {
+      color: var(--color-primary);
+      border-color: var(--border-color-glow);
+      background: rgba(0, 240, 255, 0.07);
+      font-weight: 600;
+    }
+
+    .reference-content {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 14px 14px;
+    }
+
+    .reference-status {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .reference-status-text {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .reference-status-sub {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      white-space: pre-line;
+      max-width: 320px;
+    }
+
+    .ref-spinner {
+      width: 26px;
+      height: 26px;
+      border: 3px solid rgba(0, 240, 255, 0.15);
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: refSpin 0.8s linear infinite;
+    }
+
+    @keyframes refSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .reference-table-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: rgba(10, 14, 22, 0.5);
+      animation: detailIn 0.2s ease-out;
+    }
+
+    .reference-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .reference-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: rgba(13, 19, 31, 0.98);
+      color: var(--color-primary);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-color-glow);
+      white-space: nowrap;
+    }
+
+    .reference-table td {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      white-space: nowrap;
+    }
+
+    .reference-table tbody tr:hover {
+      background: rgba(0, 240, 255, 0.04);
+    }
+
+    .reference-table td.ref-null {
+      color: var(--text-dim);
     }
 
     /* ── Setup overlay (규칙 API 미배포/규칙 없음 안내) ── */
@@ -790,17 +901,22 @@
         </div>
       </section>
 
-      <!-- [C] 참조뷰 (단계② placeholder) -->
+      <!-- [C] 참조뷰 (판단 근거 데이터 — 규칙 reference_views 실데이터) -->
       <section class="panel reference-panel">
         <div class="panel-header">
           <div class="panel-title">🔭 참조뷰</div>
-          <div class="panel-meta">Phase 2</div>
+          <div id="reference-meta" class="panel-meta"></div>
         </div>
         <div class="panel-body">
           <div id="reference-tabs" class="reference-tabs"></div>
-          <div class="empty-state">
-            <div class="empty-icon">🛰️</div>
-            <div>판단 보조 참조뷰는 단계②에서<br>이 자리에 연동됩니다.</div>
+          <div class="reference-content">
+            <div id="reference-status" class="reference-status">
+              <div id="reference-spinner" class="ref-spinner" style="display: none;"></div>
+              <div id="reference-status-icon" class="empty-icon">🛰️</div>
+              <div id="reference-status-text" class="reference-status-text">규칙을 불러오는 중...</div>
+              <div id="reference-status-sub" class="reference-status-sub"></div>
+            </div>
+            <div id="reference-table-wrap" class="reference-table-wrap" style="display: none;"></div>
           </div>
         </div>
       </section>
