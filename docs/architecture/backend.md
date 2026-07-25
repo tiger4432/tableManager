@@ -80,8 +80,10 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `/admin/scripts/{list,code}` | :2798~ | 브라우저 코드 에디터(경로 traversal 가드) |
 | `POST /internal/events/{batch-refresh,broadcast,file-processed}` | :2717~ | 데몬→웹서버 콜백 |
 | `/map-presets`, `/api/map-presets` | :2350~ | 맵 지오메트리 프리셋(`config/maps.json`) |
+| `GET /enrichment/rules` | :2688~ | Enrichment 규칙 메타(참조뷰는 label만 노출 — 쿼리 본문 노출 금지). 소스: `config/enrichment_rules.json`(`enrichment_config.py` 로더, 요청 시 재로드) |
+| `GET /enrichment/rules/{rule}/references/{i}` | :2707~ | 참조뷰 서버측 실행 — `params`는 decision_key 컬럼만 허용(그 외 400), 파라미터 바인딩 전용(주입 불가), 서버 LIMIT 강제(기본 200/최대 1000), 규칙·인덱스 미존재 404 |
 | `WS /ws` | :1741 | `ConnectionManager` 브로드캐스트 허브(:231) |
-| `GET /`, `/admin`, `/map-editor`, `/{file:path}` | :260~ | SPA 서빙 + fallback |
+| `GET /`, `/admin`, `/map-editor`, `/enrichment`, `/{file:path}` | :260~ | SPA 서빙 + fallback (`enrichment.html` 포함) |
 
 ---
 
@@ -106,7 +108,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|---|
 | **Directory Watcher** (`directory_watcher.py`) | watchdog 파일 이벤트 | `raws/` 신규 파일 → `scripts/*.py`의 `BasePipelineParser.match()` 매칭 → `parse()` → 정규화 → `apply_batch_updates` 1000행 청크. 성공 시 `archives/`, 실패 시 `err/`. `FileIngestionLog` 기록 |
 | **Auto-Update Scheduler** (`run_auto_update.py`) | 5초 틱 + 크론 | `auto_update/*.py` 발견 → 상단 `# schedule:` 크론 파싱 → `exec()`로 `out` 변수 캡처(또는 stdout 폴백) → CSV를 `raws/`에 원자적 드롭. `scheduler_status.json` 갱신 |
-| **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(루프 방지 필터 :92) → `/internal/events/broadcast`. 3회 재시도 후 FAILED |
+| **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(루프 방지 필터 :92) → `/internal/events/broadcast`. 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker** (`graph_sync_worker.py`) | `/api/graph/sync` 수동 호출 | 독립 FastAPI(:8090). dirty 행(`is_graph_synced=False`) → incremental vs rollback_and_replay 판정 → Neo4j Cypher 또는 `virtual_graph.json` 기록 |
 
 공통: 모든 워커는 `SYSTEM_RELOAD` outbox 이벤트로 규칙·설정·맵퍼 캐시를 핫리로드합니다.

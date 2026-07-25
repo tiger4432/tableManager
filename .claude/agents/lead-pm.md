@@ -20,5 +20,12 @@ description: 총괄/기획 PM(기획부장). 비전·핵심가치·우선순위 
 ## ⚙️ 실행 환경 (필수)
 모든 Python 실행은 **conda `assy_manager` 환경**으로: `conda run -n assy_manager python <파일>` / `conda run -n assy_manager python -m pytest ...`. 시스템 python은 psycopg2 등 의존성이 없어 거짓 실패한다. 서브에이전트 위임 지시서에도 이 규칙을 명시하라.
 
+## 🔀 병렬 위임 정책 (worktree)
+파일을 **수정하는** 구현 위임이 2건 이상 동시에 필요하면 `isolation: "worktree"`로 병렬 기동한다(도메인별 분신 폴더 — 충돌 원천 차단). 규칙:
+1. worktree 에이전트는 **자기 브랜치 커밋 허용, main 병합·push 금지** — 총괄이 브랜치 diff 검수 후 병합.
+2. worktree 에이전트는 **공유 조정 파일(`PROJECT_STATUS.md`·history 인덱스·스펙) 수정 금지** — 통합 시 총괄이 일괄 갱신. 이력 초안은 보고서에 담게 한다.
+3. worktree엔 node_modules 없음 — `npm run build`는 총괄이 통합 시 본체에서 1회.
+4. 분석·점검·계획(읽기 전용) 위임은 worktree 불필요 — 그냥 병렬.
+
 ## 제1원칙 — 컨텍스트 청결 + 파일 기반 상태
 상태는 항상 파일(`PROJECT_STATUS.md`)로 관리. 대량 덤프를 쌓지 말고 탐색·구현 세부는 서브에이전트에 위임해 **결론만** 수령. 착수 전 상태보드를 읽고, 완료/문제 발생 시 즉시 갱신한다.

@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import importlib
+import inspect
 import uuid
 import select
 import threading
@@ -265,24 +266,58 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
             )
 
 def load_chain_rules():
+    rules = []
     if not os.path.exists(RULES_PATH):
         logger.warning(f"Chain rules configuration file not found at {RULES_PATH}. Using empty rules.")
-        return []
-    try:
-        with open(RULES_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("rules", [])
-    except Exception as e:
-        logger.error(f"Failed to load chain rules: {e}")
-        return []
+    else:
+        try:
+            with open(RULES_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                rules = data.get("rules", [])
+        except Exception as e:
+            logger.error(f"Failed to load chain rules: {e}")
 
-def execute_custom_mapper(module_name: str, function_name: str, db, payload):
+    # [Enrichment Queue] enrichment_rules.json으로부터 dedup 투영 체인 룰을 자동 파생하여 병합.
+    #   파생 룰은 일반 체인 룰과 동일 형태이므로 워커 파이프라인(HOL 가드·SLO 계측·warmup·재시도)을
+    #   그대로 탄다. SYSTEM_RELOAD 시 본 함수가 재호출되므로 enrichment 규칙도 무중단 반영된다.
+    try:
+        from database import crud
+        import enrichment_config
+        enrich_rules = enrichment_config.load_enrichment_chain_rules(known_tables=crud.TABLE_CONFIG)
+        if enrich_rules:
+            rules = rules + enrich_rules
+            logger.info(
+                f"[Enrichment] Synthesized {len(enrich_rules)} dedup chain rule(s) from enrichment_rules.json"
+            )
+    except Exception as e:
+        logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
+
+    return rules
+
+def _mapper_accepts_rule(mapper_func) -> bool:
+    """맵퍼 함수가 선택적 `rule` 키워드 인자를 받는지 판정한다(기존 맵퍼 하위호환 유지)."""
+    try:
+        sig = inspect.signature(mapper_func)
+    except (TypeError, ValueError):
+        return False
+    params = sig.parameters
+    if "rule" in params:
+        return True
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+def execute_custom_mapper(module_name: str, function_name: str, db, payload, rule=None):
     """
     Dynamically imports a python mapper module and executes the mapping function.
+
+    rule: 현재 실행 중인 체인 룰 dict. 맵퍼가 `rule` 인자를 선언한 경우에만 전달한다
+    (generic 맵퍼가 룰 설정을 참조하는 용도 — 예: enrichment_mapper.map_enrichment_dedup).
+    기존 (db, payload) 시그니처 맵퍼는 종전과 완전히 동일하게 호출된다.
     """
     try:
         module = importlib.import_module(module_name)
         mapper_func = getattr(module, function_name)
+        if rule is not None and _mapper_accepts_rule(mapper_func):
+            return mapper_func(db, payload, rule=rule)
         return mapper_func(db, payload)
     except Exception as e:
         logger.error(f"Error executing custom mapper {module_name}.{function_name}: {e}")
@@ -346,14 +381,14 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     # Collect all payloads for this trigger table in the current transaction group
                     payloads = [get_payload_dict(e) for e in valid_events if e.table_name == table_name and e.event_type in ["CREATE", "EDIT"]]
                     # Pass the whole list to custom mapper
-                    target_payload = execute_custom_mapper(module_name, func_name, db, payloads)
+                    target_payload = execute_custom_mapper(module_name, func_name, db, payloads, rule=rule)
                     if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload.get("updates"))
                 else:
                     # Single event execution
                     for event in valid_events:
                         if event.table_name == table_name and event.event_type in ["CREATE", "EDIT"]:
-                            target_payload = execute_custom_mapper(module_name, func_name, db, get_payload_dict(event))
+                            target_payload = execute_custom_mapper(module_name, func_name, db, get_payload_dict(event), rule=rule)
                             if target_payload and isinstance(target_payload, dict) and target_payload.get("updates"):
                                 table_updates[target_table].extend(target_payload.get("updates"))
             except Exception as e:

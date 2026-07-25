@@ -45,9 +45,11 @@
 4. **저장 + 논리적 파급**: 입력값은 **파생 테이블에 저장**(원본 log 물리 갱신 없음). 출처는 **레이어링상 `source=user`(priority 0)** 로 기록되어 자동값을 이긴다([data_model](../architecture/data_model.md)). Source의 chip 행들은 판단키 조인으로 연결 — 온톨로지도 관계(`log —(판단키)→ 파생 —(target)→ 객체`)로 추적.
 5. **완료 축소**: 채워진 판단키는 결손 필터에서 빠짐 → 남은 개수가 곧 잔여 공수. (진행률 = 채운 키 / 전체 유니크 키.)
 
-## 5. Config 스키마 (예시 — 확정 아님)
+## 5. Config 스키마
 
-기존 설정 주도 패턴(`table_config.json`, `chain_rules.json`)과 정합시킨다. 아래는 **형태 제안**이며 구현 설계 리뷰에서 확정.
+> ✅ **서버 구현됨 (2026-07-25, Server PM)** — 로더/검증 `server/enrichment_config.py`, dedup mapper `server/enrichment_mapper.py`(체인 룰 자동 파생), API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) `server/main.py`. 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md). 서버 전용 추가 필드: `aggregations`(v1 count만)·`enabled`·참조뷰 `query`(인라인)/`query_ref`(`config/enrichment_queries/*.sql`)/`limit`(기본 200, 최대 1000). Living 승격은 클라 통합 후 총괄이 수행.
+
+기존 설정 주도 패턴(`table_config.json`, `chain_rules.json`)과 정합시킨다.
 
 ```jsonc
 // enrichment_rules.json — 계약 확정분(2026-07-25): derived_table 필수, pending 의미 고정

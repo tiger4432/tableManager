@@ -2685,6 +2685,81 @@ def get_mappers():
             
     return {"status": "success", "data": mappers}
 
+# -----------------------------------------------------------------------------
+# Enrichment Queue Endpoints (docs/spec/ENRICHMENT_QUEUE_SPEC.md §5 — 경계 계약 확정분)
+#   워크리스트/결손 카운트/저장은 기존 GET /tables/{t}/data + PUT /tables/{t}/data/updates 재사용.
+#   신규는 아래 2종(규칙 메타 + 참조뷰 조회)뿐이다.
+# -----------------------------------------------------------------------------
+import enrichment_config
+
+@app.get("/enrichment/rules")
+def get_enrichment_rules():
+    """활성 enrichment 규칙 메타를 반환합니다.
+
+    응답 계약(변경 금지): {"rules": [{name, source_table, derived_table, decision_key[],
+    target_fields[], list_columns[], reference_views: [{label}]}]}
+    참조뷰의 쿼리 본문은 서버 config에만 존재하며 클라이언트에 절대 노출하지 않습니다.
+    """
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    return {"rules": [enrichment_config.to_public_rule(r) for r in rules]}
+
+@app.get("/enrichment/rules/{rule_name}/references/{index}")
+def get_enrichment_reference(rule_name: str, index: int, params: str = None, db: Session = Depends(get_db)):
+    """규칙의 참조뷰 쿼리를 서버측 정의로 실행해 반환합니다.
+
+    - `params`: URL 인코딩된 JSON 객체 {decision_key_col: value}. 해당 규칙의
+      decision_key 컬럼만 허용(그 외 400). 값은 SQLAlchemy 파라미터 바인딩으로만
+      전달되어 SQL 주입이 구조적으로 불가합니다.
+    - LIMIT은 서버가 강제합니다(뷰별 설정, 기본 200 / 최대 1000).
+    - 규칙/인덱스 미존재 404.
+    """
+    from sqlalchemy import text
+
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    rule = next((r for r in rules if r["name"] == rule_name), None)
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
+    views = rule.get("reference_views", [])
+    if index < 0 or index >= len(views):
+        raise HTTPException(status_code=404, detail=f"Reference view index {index} not found for rule '{rule_name}'")
+    view = views[index]
+
+    bind_params = {}
+    if params:
+        try:
+            parsed = json.loads(params)
+            if not isinstance(parsed, dict):
+                raise ValueError("not an object")
+        except Exception:
+            raise HTTPException(status_code=400, detail="'params' must be a URL-encoded JSON object")
+        allowed = set(rule.get("decision_key", []))
+        invalid = sorted(k for k in parsed.keys() if k not in allowed)
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'params' keys must be decision_key columns only; invalid: {invalid}"
+            )
+        bind_params = parsed
+
+    # 서버 LIMIT 강제: 사용자 쿼리를 서브쿼리로 감싸 상한을 바인딩한다(내부 LIMIT이 더 작으면 그 값 유지).
+    wrapped_sql = text(
+        f"SELECT * FROM ({view['query']}) AS __enrichment_ref LIMIT :__enrichment_limit"
+    )
+    exec_params = dict(bind_params)
+    exec_params["__enrichment_limit"] = view.get("limit") or enrichment_config.DEFAULT_REFERENCE_LIMIT
+    try:
+        result = db.execute(wrapped_sql, exec_params)
+        columns = list(result.keys())
+        rows = [list(r) for r in result.fetchall()]
+    except Exception as e:
+        # 필수 바인드 누락 등 파라미터/실행 오류 — 쿼리 본문은 응답에 노출하지 않는다.
+        logger.warning(f"[Enrichment] reference view '{rule_name}'#{index} execution failed: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reference query execution failed ({e.__class__.__name__}). Check required params."
+        )
+    return {"label": view["label"], "columns": columns, "rows": rows}
+
 @app.post("/admin/file-ingestion/retry-failed")
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""
@@ -3157,17 +3232,35 @@ if os.path.exists(client2_dist_path):
             return FileResponse(dev_map_file, headers=no_cache_headers)
         raise HTTPException(status_code=404, detail="Map Editor page not found. Please build frontend first.")
 
+    @app.get("/enrichment")
+    @app.get("/enrichment.html")
+    def serve_enrichment_page():
+        """Enrichment Queue 페이지(enrichment.html)를 반환합니다."""
+        no_cache_headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        page_file = os.path.join(client2_dist_path, "enrichment.html")
+        if os.path.exists(page_file):
+            return FileResponse(page_file, headers=no_cache_headers)
+        dev_page_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "enrichment.html"))
+        if os.path.exists(dev_page_file):
+            return FileResponse(dev_page_file, headers=no_cache_headers)
+        raise HTTPException(status_code=404, detail="Enrichment page not found. Please build frontend first.")
+
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):
         # Prevent catching API endpoints or WebSocket or Admin page
-        if (file_name.startswith("tables") or 
-            file_name.startswith("ws") or 
-            file_name.startswith("audit_logs") or 
+        if (file_name.startswith("tables") or
+            file_name.startswith("ws") or
+            file_name.startswith("audit_logs") or
             file_name.startswith("dashboard") or
             file_name.startswith("admin") or
             file_name.startswith("map-editor") or
             file_name.startswith("map_editor") or
             file_name.startswith("map-presets") or
+            file_name.startswith("enrichment/") or
             file_name.startswith("api")):
             raise HTTPException(status_code=404)
 

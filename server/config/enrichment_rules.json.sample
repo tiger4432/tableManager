@@ -1,0 +1,22 @@
+{
+  "bonding_wafer_attribution": {
+    "source_table": "bonding_log",
+    "derived_table": "bonding_job_inventory",
+    "decision_key": ["equipment", "event_time"],
+    "target_fields": ["wafer_id"],
+    "list_columns": ["chip_count", "lot_hint"],
+    "aggregations": { "chip_count": "count" },
+    "enabled": true,
+    "reference_views": [
+      {
+        "label": "lot event",
+        "query": "SELECT lot_id, event_time, event_type FROM lot_events WHERE equipment = :equipment AND event_time <= :event_time ORDER BY event_time DESC",
+        "limit": 200
+      },
+      {
+        "label": "lot-slot history",
+        "query_ref": "lot_slot_history"
+      }
+    ]
+  }
+}

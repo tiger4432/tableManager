@@ -7,7 +7,7 @@
 ---
 
 ## 🎯 현재 초점 (Current Focus)
-- **다음: Enrichment Queue 구현 착수** — 스펙 확정됨([spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md), `dc6659d`). 순서: 총괄이 경계 계약(파생 테이블 config·결손 카운트·배지 API) 설계 → Server PM(dedup mapper + config) / Client PM(enrichment.html + 그리드 배지) 분할 위임.
+- **Enrichment Queue: 서버측 구현 완료(2026-07-25, 검수·커밋 대기)** — config 로더/검증(`server/enrichment_config.py`) + dedup mapper(`server/enrichment_mapper.py`, 체인 룰 자동 파생·SLO 경로 재사용) + 경계 계약 API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) + `/enrichment.html` 서빙. 테스트 75통과(신규 16). 상세: [reports/Server_enrichment_report.md](../../agent_workspace/reports/Server_enrichment_report.md). **다음: Client PM 구현(enrichment.html + 그리드 배지 — 계획서 [Client_enrichment_plan.md](../../agent_workspace/reports/Client_enrichment_plan.md) ①단계 착수 가능)** → 통합 후 총괄이 스펙 Living 승격.
 - ✅ **이슈 #0(체인 outbox) 종결(2026-07-25)** — 최종 실측: 정상 31ms(SLO 100ms 달성), 재기동 첫 체인 579ms(알려진 기동 특성으로 수용). 상세: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md).
 - **경합 수정 배치 1 완료(2026-07-25, 검수·커밋 대기)** — C-2 outbox ×2 중복 발행 근절 / C-1 이벤트 루프 격리 / C-5 워처 payload 상한 / C-3 7일 보관 정책. 상세: [reports/Server_contention_fix_report.md](../../agent_workspace/reports/Server_contention_fix_report.md).
 - 운영 서버 반영 대기(순서 중요): ① C-2 반영 코드로 전 프로세스 재기동 → ② `conda run -n assy_manager python server/scripts/setup_db_performance.py`(멱등: 레거시 인덱스 4종 DROP + purge/failed 인덱스 생성) → ③ `... python server/scripts/purge_outbox_backlog.py --dry-run` 확인 후 본실행(백로그 270만 행 정리) → ④ 오프피크 `VACUUM (ANALYZE) database_outbox`(공간 완전 반환 필요 시 VACUUM FULL — 전 프로세스 중지 필요).
@@ -16,6 +16,7 @@
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 서버 | Enrichment Queue 서버측 — enrichment_rules 로더/검증 + generic dedup mapper(체인 룰 자동 파생, target 보존 이중 방어, 멱등 count) + API 2종(규칙 메타·참조뷰 서버측 실행) + enrichment.html 서빙, 테스트 75통과(신규 16) — 검수·커밋 대기 | [20260725_113000](../history/20260725_113000_enrichment_queue_server_impl.md) |
 | 2026-07-25 | 서버 | 경합 수정 배치 1 — C-2 import 통일(outbox ×2 발행 근절)·C-1 async 핸들러 threadpool 격리+batch_delete N+1 제거·C-5 created_logs 500건 상한·C-3 outbox 7일 purge+레거시 인덱스 4종 정리, 테스트 58 통과(신규 8) — 검수·커밋 대기 | [20260725_090000](../history/20260725_090000_contention_fix_batch1.md) |
 | 2026-07-25 | 서버 | 5-프로세스 경합 전수 점검(분석 전용) — C-1~C-12 리스크 12건 식별·실측(outbox 중복 1.26M그룹, 루프 동결 7s), 착수순서 권고 | [보고서](../../agent_workspace/reports/Server_contention_audit.md) |
 | 2026-07-25 | 서버/체인 | 체인 워커 콜드 스타트 웜업 — 매퍼 선import(+SYSTEM_RELOAD 재웜업)·DB 풀 프라임·HTTP keep-alive(스레드-로컬 Session)·[Warmup] 계측, 첫 체인 1.3s → 100ms 목표 — 검수·커밋 대기 | [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) |

@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -142,3 +142,48 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
    - 대량 인제션이 예상되는 경우, `calculate_shortage.py` 모듈 초기화 시점에 `inventory_master` 전체 리스트를 한 번에 긁어 메모리 딕셔너리에 캐시해 두고 룩업(Lookup)을 도는 형태의 배칭 최적화를 권장합니다.
 3. **스키마 동적 로드 시점 고려**:
    - `database.models.get_dynamic_model_class(table_name)`는 DB 초기화 이후 동작합니다. 안전을 위해 맵퍼 내부에서 모델 임포트 시 `from database.models import ...`를 함수 내부에서 지연 임포트(Lazy Import)하는 것이 안전합니다.
+
+---
+
+## 🧩 4. Enrichment Queue 규칙 작성 (dedup 투영 — 자동 파생 체인 룰)
+
+> 기준 스펙: [ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) · 구현: `server/enrichment_config.py`, `server/enrichment_mapper.py`
+
+**맵퍼 코드를 쓸 필요가 없습니다.** `server/config/enrichment_rules.json`(사용자 영역, gitignored — 형식은 `enrichment_rules.json.sample` 참조)에 규칙을 선언하면, 체인 워커의 `load_chain_rules()`가 규칙마다 dedup 투영 체인 룰(`enrichment_mapper.map_enrichment_dedup`, `is_batch: true`)을 자동 파생하여 기존 체인 파이프라인(HOL 가드·SLO 계측·재시도·warmup)을 그대로 태웁니다.
+
+### 4.1 규칙 스키마
+
+```jsonc
+// server/config/enrichment_rules.json — {규칙명: 규칙}
+{
+  "bonding_wafer_attribution": {
+    "source_table":  "bonding_log",              // 필수: 대량 원본 테이블
+    "derived_table": "bonding_job_inventory",    // 필수: 파생 영속 테이블 — table_config.json에 등록되어 있어야 함
+    "decision_key":  ["equipment", "event_time"],// 필수: 판단키(사람이 1회 판단하는 단위)
+    "target_fields": ["wafer_id"],               // 필수: 사람이 채울 필드 — 맵퍼는 이 필드를 절대 쓰지 않음
+    "list_columns":  ["chip_count", "lot_hint"], // 선택: 워크리스트 표시 단서(배치 내 대표값)
+    "aggregations":  { "chip_count": "count" },  // 선택(서버 전용): v1은 count만 — 영향 키 한정 재계산(멱등)
+    "enabled": true,
+    "reference_views": [
+      { "label": "lot event",
+        "query": "SELECT lot_id, event_time FROM lot_events WHERE equipment = :equipment", // 인라인 SQL
+        "limit": 200 },
+      { "label": "lot-slot 이력", "query_ref": "lot_slot_history" }  // config/enrichment_queries/<ref>.sql
+    ]
+  }
+}
+```
+
+### 4.2 필수 전제·제약 (위반 시 규칙이 로그와 함께 **스킵**됨)
+
+1. **파생 테이블 등록**: `derived_table`은 `table_config.json`의 보통 테이블이어야 합니다(레이어링·AuditLog·WS·그리드 편집이 공짜로 적용되는 이유). `decision_key`·`target_fields`·`list_columns`는 파생 테이블 컬럼이어야 하고, `decision_key`는 원본 테이블 컬럼이기도 해야 합니다.
+2. **파생 테이블 키 계약**: 파생 테이블 config는 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 합니다(맵퍼가 판단키로 business_key_val을 결정론적으로 조립 — 키당 1행 upsert의 근거).
+3. **참조뷰 SQL**: 단일 SELECT(또는 WITH)만, `;` 다중문 금지, 바인드 파라미터(`:col`)는 decision_key 컬럼명만. 쿼리 본문은 서버에만 존재하며 클라이언트에는 label만 노출됩니다. LIMIT은 서버가 강제(기본 200, 최대 1000).
+4. **[확장성] count 집계 인덱스**: `aggregations: count`는 "영향받은 판단키 한정" `GROUP BY` 재계산(500키 청킹)을 수행합니다. 원본 테이블이 대규모(수백만 행 이상)라면 **decision_key 컬럼 복합 인덱스**를 생성하십시오(미생성 시 청크당 스캔 발생).
+
+### 4.3 동작 요약 (불변식)
+
+- 원본 변경 이벤트 배치 → decision_key 유니크 조합 추출(**증분** — 이벤트 행만, 풀스캔 없음) → 파생 테이블에 키당 1행 upsert.
+- **신규 키**: 행 생성, `target_fields`는 NULL(결손) → blank 필터 워크리스트에 잡힘.
+- **기존 키**: 집계·단서 컬럼만 갱신. 맵퍼는 `target_fields`를 updates에 아예 포함하지 않으며(1차 방어), 설령 포함되더라도 source `chain_ingestion`(우선순위 최하)는 user(priority 0)를 이길 수 없습니다(2차 방어 — 레이어링).
+- 규칙 반영: 웹서버는 요청 시마다 재로드(무중단), 워커는 `SYSTEM_RELOAD`(`/admin/reload-configs`) 시 재파생.
