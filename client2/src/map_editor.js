@@ -2,6 +2,7 @@ import './tokens.css';
 import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
+import { getLocalTimeString, showToast } from './utils.js';
 
 let tables = [];
 let selectedTable = '';
@@ -35,6 +36,90 @@ const DEFAULT_LEGEND = [
   { value: '2', desc: 'EMPTY', color: '#4b5563' },
   { value: '3', desc: 'REWORK', color: '#f59e0b' }
 ];
+
+// ----------------------------------------------------
+// Split Registry (map_split_registry) — legend의 서버 영속화
+// value description = 실험 split 조건의 자연어 기록.
+// 서버(제네릭 테이블 API)가 SSOT, localStorage는 오프라인 캐시로 강등.
+// ----------------------------------------------------
+const SPLIT_REGISTRY_TABLE = 'map_split_registry';
+// map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔하므로 bk 분리자는 '|' 사용
+// (server/config/table_config.json의 composite_key_separator와 반드시 일치해야 함)
+const SPLIT_KEY_SEP = '|';
+
+let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
+let legendServerSaveTimer = null;
+
+function buildSplitKey(refTable, mapKey, value) {
+  return [refTable, mapKey, value].join(SPLIT_KEY_SEP);
+}
+
+// PUT /tables/map_split_registry/data/updates 페이로드 빌더 (순수 함수 — 하니스 검증 대상)
+function buildLegendRegistryUpdates(refTable, mapKey, legendArr, user, nowStr) {
+  if (!refTable || !mapKey || !Array.isArray(legendArr)) return [];
+  return legendArr
+    .filter(item => item && item.value !== undefined && item.value !== null && String(item.value).trim() !== '')
+    .map(item => {
+      const value = String(item.value).trim();
+      const bk = buildSplitKey(refTable, mapKey, value);
+      return {
+        business_key_val: bk,
+        updates: {
+          split_key: bk,
+          ref_table: refTable,
+          map_key: mapKey,
+          value: value,
+          split_desc: (item.desc || '').trim(),
+          color: item.color || '',
+          eventtime: nowStr
+        },
+        source_name: 'user',
+        updated_by: user
+      };
+    });
+}
+
+// GET /tables/map_split_registry/data 응답 → legend 행 배열 (순수 함수 — 하니스 검증 대상)
+// 셀 계약 준수: 각 컬럼은 {value, is_overwrite, priority_source, updated_by, ...} 객체로 읽는다.
+// dedupeByValue=true(테이블 단위 조회)면 value 중복 시 updated_at 최신 행이 이긴다.
+function parseLegendRegistryRows(result, dedupeByValue) {
+  const rows = [];
+  if (result && Array.isArray(result.data)) {
+    result.data.forEach(row => {
+      const d = row.data || {};
+      const value = d.value?.value;
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      rows.push({
+        value: String(value).trim(),
+        desc: d.split_desc?.value != null ? String(d.split_desc.value) : '',
+        color: d.color?.value != null && String(d.color.value) !== '' ? String(d.color.value) : '#6b7280',
+        map_key: d.map_key?.value != null ? String(d.map_key.value) : '',
+        updated_by: d.split_desc?.updated_by || d.value?.updated_by || 'system',
+        updated_at: d.updated_at?.value || ''
+      });
+    });
+  }
+  if (!dedupeByValue) return rows;
+  const byValue = new Map();
+  rows.forEach(r => {
+    const prev = byValue.get(r.value);
+    if (!prev || String(r.updated_at) > String(prev.updated_at)) byValue.set(r.value, r);
+  });
+  return Array.from(byValue.values());
+}
+
+// push 대상 값 중 split 서술이 비어있는 값 추출 (순수 함수 — 하니스 검증 대상)
+function getMissingDescValues(pushedValues, legendArr) {
+  return (pushedValues || []).filter(v => {
+    const item = (legendArr || []).find(l => String(l.value) === String(v));
+    return !item || !(item.desc || '').trim();
+  });
+}
+
+function formatLegendMetaText(meta) {
+  if (!meta || (!meta.updated_by && !meta.updated_at)) return '서버 미저장';
+  return `${meta.updated_by || 'system'} · ${meta.updated_at || ''}`;
+}
 
 function getMapIdFromMeta(metaDict) {
   if (!metaDict) return 'default_map';
@@ -545,7 +630,9 @@ async function switchTable(tableName) {
       renderLegendTable();
     } else {
       // Load target table's legend, then reset the grid (original behavior).
-      loadLegendFromStorage();
+      // 서버 split registry(테이블 단위, value별 최신) 우선 → localStorage 캐시 → DEFAULT.
+      // 메타 미입력 시점이라 map_key는 없음 — 정확한 맵 단위 legend는 Load Existing Map에서 재적용.
+      await loadLegend(tableName, null);
       renderLegendTable();
       gridData = {};
     }
@@ -1673,6 +1760,119 @@ function saveLegendToStorage() {
   localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(legend));
 }
 
+// ── Split Registry 서버 IO ──────────────────────────
+
+// 현재 메타 입력값들로 맵 식별자(map_key) 해석 — 미입력이면 null (push 시 일괄 저장으로 미룸)
+function getCurrentMapKey() {
+  const dict = {};
+  document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val !== '') dict[col] = val;
+  });
+  if (Object.keys(dict).length === 0) return null;
+  const mapKey = getMapIdFromMeta(dict);
+  return (mapKey && mapKey !== 'default_map') ? mapKey : null;
+}
+
+async function fetchLegendFromServer(refTable, mapKey) {
+  const filters = { ref_table: { filterType: 'text', type: 'equals', filter: refTable } };
+  if (mapKey) filters.map_key = { filterType: 'text', type: 'equals', filter: mapKey };
+  const url = `${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=500&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`split registry fetch failed (HTTP ${res.status})`);
+  const result = await res.json();
+  return parseLegendRegistryRows(result, !mapKey);
+}
+
+// legend 로드 오케스트레이터: 서버 registry 우선 → localStorage 캐시 폴백 → DEFAULT
+async function loadLegend(refTable, mapKey) {
+  legendMeta = {};
+  try {
+    const rows = await fetchLegendFromServer(refTable, mapKey);
+    if (rows.length > 0) {
+      legend = rows.map(r => ({ value: r.value, desc: r.desc, color: r.color }));
+      rows.forEach(r => { legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at }; });
+      activeBrush = legend[0].value;
+      saveLegendToStorage(); // 서버 로드 성공 시 오프라인 캐시 동기화
+      return 'server';
+    }
+    loadLegendFromStorage(); // 서버 접근 성공, 등록 행 없음 → 캐시 폴백
+    return 'local';
+  } catch (e) {
+    console.warn('[Map Editor] split registry load failed — localStorage fallback:', e);
+    loadLegendFromStorage();
+    return 'offline';
+  }
+}
+
+// legend 전체를 registry에 업서트. map_key 미확정이면 조용히 스킵(false).
+async function saveLegendToServer(mapKeyOverride) {
+  const mapKey = mapKeyOverride || getCurrentMapKey();
+  if (!selectedTable || !mapKey) return false;
+  const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, getLocalTimeString());
+  if (updates.length === 0) return false;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data/updates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const nowStr = getLocalTimeString();
+    legend.forEach(item => {
+      legendMeta[item.value] = { updated_by: CURRENT_USER, updated_at: nowStr };
+    });
+    renderLegendMetaOnly();
+    return true;
+  } catch (e) {
+    console.warn('[Map Editor] split registry save skipped (offline?):', e);
+    return false;
+  }
+}
+
+// 입력 도중 포커스를 깨지 않도록 디바운스 서버 저장
+function scheduleLegendServerSave() {
+  clearTimeout(legendServerSaveTimer);
+  legendServerSaveTimer = setTimeout(() => { saveLegendToServer(); }, 800);
+}
+
+// legend 변조의 단일 영속화 관문: 캐시 즉시 + 서버 디바운스
+function persistLegend() {
+  saveLegendToStorage();
+  scheduleLegendServerSave();
+}
+
+// 행 DOM을 유지한 채 수정자·시각 라인만 갱신 (textarea 포커스 보존)
+function renderLegendMetaOnly() {
+  if (!el.legendList) return;
+  el.legendList.querySelectorAll('.legend-row').forEach(row => {
+    const line = row.querySelector('.legend-meta-line');
+    if (line) line.textContent = formatLegendMetaText(legendMeta[row.dataset.value]);
+  });
+}
+
+// 1회 마이그레이션: 서버 registry가 비어 있고 localStorage legend가 있으면 업로드 제안
+async function maybeOfferLegendMigration(refTable, mapKey) {
+  if (!refTable || !mapKey) return;
+  const migFlag = `map_split_migrated_${refTable}${SPLIT_KEY_SEP}${mapKey}`;
+  if (localStorage.getItem(migFlag)) return;
+  const stored = localStorage.getItem(`map_legend_${refTable}`);
+  if (!stored) return;
+  let localLegend = [];
+  try { localLegend = JSON.parse(stored); } catch (e) { return; }
+  if (!Array.isArray(localLegend) || localLegend.length === 0) return;
+  localStorage.setItem(migFlag, '1'); // 수락 여부와 무관하게 1회만 제안
+  const ok = confirm(
+    `이 맵(${mapKey})의 legend ${localLegend.length}건이 브라우저(localStorage)에만 저장되어 있습니다.\n` +
+    `서버 split registry로 업로드하여 팀과 공유하시겠습니까?`
+  );
+  if (!ok) return;
+  const saved = await saveLegendToServer(mapKey);
+  if (saved) showToast('로컬 legend를 서버 split registry로 마이그레이션했습니다.', 'success');
+  else showToast('legend 마이그레이션 실패 — 서버 연결을 확인하십시오.', 'error');
+}
+
 function renderLegendTable() {
   el.legendList.innerHTML = '';
   legend.forEach((item, index) => {
@@ -1686,7 +1886,7 @@ function renderLegendTable() {
     }
 
     row.addEventListener('click', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.classList.contains('btn-delete')) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.classList.contains('btn-delete')) return;
       selectBrush(item.value);
     });
 
@@ -1723,28 +1923,55 @@ function renderLegendTable() {
       } else {
         row.dataset.value = newVal;
       }
-      saveLegendToStorage();
+      // 값 rename = registry에는 신규 bk 행 생성 (구 값 행은 서버에 이력으로 잔존)
+      delete legendMeta[oldVal];
+      persistLegend();
       renderGridCanvas();
     });
     tdVal.appendChild(inputVal);
 
-    // Description column
+    // Description column — 자연어 split 조건 서술 (여러 줄 textarea, 자동 확장)
     const tdDesc = document.createElement('td');
-    const inputDesc = document.createElement('input');
-    inputDesc.type = 'text';
-    inputDesc.className = 'glass-input';
+    const inputDesc = document.createElement('textarea');
+    inputDesc.className = 'glass-input legend-desc-input';
+    inputDesc.rows = 1;
+    inputDesc.placeholder = '실험 split 조건 서술…';
     inputDesc.style.padding = '6px 10px';
     inputDesc.style.fontSize = '0.9rem';
     inputDesc.style.width = '100%';
+    inputDesc.style.resize = 'none';
+    inputDesc.style.overflow = 'hidden';
+    inputDesc.style.lineHeight = '1.4';
+    inputDesc.style.fontFamily = 'inherit';
+    inputDesc.style.display = 'block';
     inputDesc.value = item.desc;
+    const autoGrowDesc = () => {
+      inputDesc.style.height = 'auto';
+      inputDesc.style.height = `${Math.min(Math.max(inputDesc.scrollHeight, 32), 120)}px`;
+    };
+    inputDesc.addEventListener('input', autoGrowDesc);
+    inputDesc.addEventListener('focus', autoGrowDesc);
+    requestAnimationFrame(autoGrowDesc);
     inputDesc.addEventListener('change', (e) => {
       item.desc = e.target.value.trim();
-      saveLegendToStorage();
+      persistLegend();
       if (activeBrush === item.value) {
         el.activeBrushVal.textContent = `${item.value} (${item.desc})`;
       }
     });
     tdDesc.appendChild(inputDesc);
+
+    // 마지막 수정자·시각 (서버 registry 메타 — 미저장 시 '서버 미저장')
+    const metaLine = document.createElement('div');
+    metaLine.className = 'legend-meta-line';
+    metaLine.style.fontSize = '0.7rem';
+    metaLine.style.color = 'var(--text-muted)';
+    metaLine.style.marginTop = '3px';
+    metaLine.style.whiteSpace = 'nowrap';
+    metaLine.style.overflow = 'hidden';
+    metaLine.style.textOverflow = 'ellipsis';
+    metaLine.textContent = formatLegendMetaText(legendMeta[item.value]);
+    tdDesc.appendChild(metaLine);
 
     // Color indicator and Picker column
     const tdColor = document.createElement('td');
@@ -1769,7 +1996,7 @@ function renderLegendTable() {
       if (activeBrush === item.value) {
         el.activeBrushVal.style.color = col;
       }
-      saveLegendToStorage();
+      persistLegend();
       renderGridCanvas();
     });
 
@@ -1789,7 +2016,8 @@ function renderLegendTable() {
       }
       const deletedVal = item.value;
       legend.splice(index, 1);
-      saveLegendToStorage();
+      delete legendMeta[deletedVal]; // 서버 registry 행은 이력으로 잔존 (삭제 API 미사용)
+      persistLegend();
       // Remove all elements in gridData matching deleted value
       Object.keys(gridData).forEach(k => {
         if (gridData[k] === deletedVal) gridData[k] = '';
@@ -1857,11 +2085,11 @@ function addNewLegendRow() {
 
   legend.push({
     value: String(nextVal),
-    desc: `VALUE ${nextVal}`,
+    desc: '',
     color: nextColor
   });
-  
-  saveLegendToStorage();
+
+  persistLegend();
   renderLegendTable();
 }
 
@@ -1944,7 +2172,8 @@ async function loadExistingMap() {
     }
 
     let loadedGridMeta = null;
-    
+    let loadedMapKey = null; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
+
     // 1. Try fetching from dedicated wafer_map_metadata table
     try {
       const filterMetaDict = {};
@@ -1955,6 +2184,7 @@ async function loadExistingMap() {
       });
       const mapIdStr = getMapIdFromMeta(filterMetaDict);
       if (mapIdStr && mapIdStr !== 'default_map') {
+        loadedMapKey = mapIdStr;
         const metaFilter = {
           map_id: { filterType: 'text', type: 'equals', filter: mapIdStr }
         };
@@ -2193,6 +2423,41 @@ async function loadExistingMap() {
       renderLegendTable();
     }
 
+    // [Split Registry] 서버에 기록된 이 맵의 split 서술·색을 최우선 적용.
+    // 값 일치 항목은 override, 그리드에 없지만 registry에 정의된 값은 브러시로 추가 노출.
+    if (loadedMapKey) {
+      try {
+        const regRows = await fetchLegendFromServer(selectedTable, loadedMapKey);
+        if (regRows.length > 0) {
+          const byValue = new Map(regRows.map(r => [r.value, r]));
+          legendMeta = {};
+          legend.forEach(item => {
+            const r = byValue.get(String(item.value));
+            if (r) {
+              if (r.desc) item.desc = r.desc;
+              if (r.color) item.color = r.color;
+              legendMeta[item.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
+              byValue.delete(String(item.value));
+            }
+          });
+          byValue.forEach(r => {
+            legend.push({ value: r.value, desc: r.desc, color: r.color });
+            legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
+          });
+          if (legend.length > 0 && !legend.some(l => l.value === activeBrush)) {
+            activeBrush = legend[0].value;
+          }
+          saveLegendToStorage();
+          renderLegendTable();
+        } else {
+          // 서버 접근은 됐지만 이 맵의 registry가 빈 경우 — 로컬 legend 1회 마이그레이션 제안
+          await maybeOfferLegendMigration(selectedTable, loadedMapKey);
+        }
+      } catch (e) {
+        console.warn('[Map Editor] split registry apply skipped:', e);
+      }
+    }
+
     renderGridCanvas();
     alert(`기존 데이터 로드 완료: ${count}개 좌표 데이터 매핑.`);
   } catch (err) {
@@ -2337,6 +2602,19 @@ async function pushMapData() {
     return;
   }
 
+  // [Split Registry] push 대상 값 중 split 서술이 비어있는 값 경고 (자연어 기록 누락 방지 관문)
+  const pushedValues = Array.from(new Set(updates.map(u => String(u.updates[valCol]))));
+  const missingDescVals = getMissingDescValues(pushedValues, legend);
+  if (missingDescVals.length > 0) {
+    const preview = missingDescVals.slice(0, 10).join(', ') + (missingDescVals.length > 10 ? ' …' : '');
+    const okMissing = confirm(
+      `split 서술(Description)이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
+      `대상 값: [${preview}]\n\n` +
+      `서술은 실험 split 조건의 자연어 기록으로, 팀 공유·검색·온톨로지 승격에 사용됩니다.`
+    );
+    if (!okMissing) return;
+  }
+
   if (!confirm(`총 ${updates.length}건의 활성 맵 데이터를 '${selectedTable}' 테이블에 덮어쓰기 적재(Clean Replace)하시겠습니까?`)) {
     return;
   }
@@ -2398,6 +2676,16 @@ async function pushMapData() {
       const result = await res.json();
       console.log('📥 [API Response 2/2] Success Result:', result);
       console.groupEnd();
+
+      // [Split Registry] 맵과 서술의 원자적 동행 — push 성공 시 legend 일괄 서버 저장
+      saveLegendToStorage();
+      const legendSaved = await saveLegendToServer(mapIdStr);
+      if (legendSaved) {
+        showToast(`Split 서술 registry 저장 완료 (${legend.length}건)`, 'success');
+      } else {
+        showToast('Split 서술 registry 저장 실패 — 오프라인 캐시에만 보관됨', 'warning');
+      }
+
       alert(`성공적으로 적재 완료!\n- 적재 처리 건수: ${result.updated_count || result.count || updates.length}개\n- 비즈니스 키 중복 발생 시 자동 병합(Silent Merge) 처리가 완결되었습니다.`);
     } else {
       const errData = await res.json().catch(() => ({}));
@@ -2536,7 +2824,7 @@ function autoPaintE1E2() {
     legendUpdated = true;
   }
   if (legendUpdated) {
-    saveLegendToStorage();
+    persistLegend();
     renderLegendTable();
   }
 
