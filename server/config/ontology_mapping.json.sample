@@ -1,36 +1,60 @@
 {
-  "default": {
-    "node_label": "Row",
-    "identity_property": "row_id",
-    "property_mappings": {},
-    "relationships": {}
-  },
-  "tables": {
-    "assemblies": {
-      "node_label": "Assembly",
-      "identity_property": "assembly_id",
-      "property_mappings": {
-        "desc": "description",
-        "qty": "quantity"
-      },
-      "relationships": {
-        "supplier_id": {
-          "type": "SUPPLIED_BY",
-          "target_label": "Supplier",
-          "target_identity": "supplier_id"
-        }
-      }
+  "__comment": "Ontology 매핑 v2 (docs/spec/ONTOLOGY_GRAPH_SPEC.md §3). 테이블별 노드/엣지 선언 — description은 LLM 그라운딩용 필수 필드. enrichment_rules.json의 rule은 RESOLVED_AS 엣지로 자동 승격되므로 여기 선언하지 않아도 된다. 구 v1 형식(default/tables 래퍼)은 레거시 Neo4j 경로 전용이며 v2 로더는 무시한다.",
+
+  "bonding_log": {
+    "description": "본딩 설비가 wafer에서 잘려 나온 chip 1개를 base(지그)에 실장한 이벤트 로그",
+    "node": {
+      "label": "Chip",
+      "identity": "log_id",
+      "props": [
+        { "col": "bx", "spatial": { "coord_system": "base_grid", "axis": "x" } },
+        { "col": "by", "spatial": { "coord_system": "base_grid", "axis": "y" } },
+        { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },
+        { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }
+      ]
     },
-    "parts": {
-      "node_label": "Part",
-      "identity_property": "part_id",
-      "relationships": {
-        "assembly_id": {
-          "type": "PART_OF",
-          "target_label": "Assembly",
-          "target_identity": "assembly_id"
-        }
+    "edges": [
+      {
+        "type": "BONDED_FROM",
+        "target_label": "Wafer",
+        "target_identity_from": ["core_lot", "core_slot"],
+        "description": "이 chip이 잘려 나온 원판 wafer (lot|slot 표기 기준 — RESOLVED_AS로 실제 wafer_id에 연결됨)"
+      },
+      {
+        "type": "PLACED_ON",
+        "target_label": "Base",
+        "target_identity_from": ["base_id"],
+        "props": ["eventtime"],
+        "description": "chip이 실장된 대상 base 지그/설비"
       }
-    }
+    ]
+  },
+
+  "wafer_slot_history": {
+    "description": "wafer가 공정 step을 통과한 이력 (wafer_id 기준 실개체 노드의 소스)",
+    "node": {
+      "label": "Wafer",
+      "identity": "wafer_id",
+      "props": ["lot", "slot"]
+    },
+    "edges": [
+      {
+        "type": "WENT_THROUGH",
+        "target_label": "Step",
+        "target_identity_from": ["step"],
+        "props": ["event_time", "lot", "slot"],
+        "description": "wafer가 이 공정 step을 통과한 이벤트"
+      }
+    ]
+  },
+
+  "core_wafer_map": {
+    "description": "bonding_log의 (core_lot, core_slot) 표기를 실제 wafer_id로 해석한 사람 교정 결과(enrichment 파생 테이블). RESOLVED_AS 엣지는 enrichment_rules.json에서 자동 승격된다.",
+    "node": {
+      "label": "Wafer",
+      "identity": ["core_lot", "core_slot"],
+      "props": ["chip_count"]
+    },
+    "edges": []
   }
 }

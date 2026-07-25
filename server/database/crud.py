@@ -1781,13 +1781,38 @@ def get_ontology_mapping():
     return _ontology_cache
 
 def check_needs_rollback(table_name: str, modified_cols: list) -> bool:
-    """변경된 컬럼 중 그래프 DB 관계(Relationship) 형성에 영향을 주는 컬럼이 있는지 판별합니다."""
+    """변경된 컬럼 중 그래프 관계(엣지/identity) 형성에 영향을 주는 컬럼이 있는지 판별합니다.
+
+    [Ontology G1] v2 형식({table: {node, edges}})과 v1 형식({tables: {..relationships..}})을
+    모두 인식한다. v2에서는 노드 identity 또는 엣지 target_identity_from 컬럼 변경 시 True.
+    """
     if not modified_cols:
         return False
     ontology = get_ontology_mapping()
+
+    # v2 형식: 최상위 {table_name: {node/edges}} 항목
+    v2_cfg = ontology.get(table_name)
+    if isinstance(v2_cfg, dict) and isinstance(v2_cfg.get("node"), dict):
+        relation_cols = set()
+        identity = v2_cfg["node"].get("identity")
+        if isinstance(identity, str):
+            relation_cols.add(identity)
+        elif isinstance(identity, list):
+            relation_cols.update(c for c in identity if isinstance(c, str))
+        for edge in v2_cfg.get("edges") or []:
+            if not isinstance(edge, dict):
+                continue
+            t_from = edge.get("target_identity_from")
+            if isinstance(t_from, str):
+                relation_cols.add(t_from)
+            elif isinstance(t_from, list):
+                relation_cols.update(c for c in t_from if isinstance(c, str))
+        return any(col in relation_cols for col in modified_cols)
+
+    # v1 형식(구 Neo4j 경로) 폴백
     table_cfg = ontology.get("tables", {}).get(table_name, ontology.get("default", {}))
     rel_cfgs = table_cfg.get("relationships", {})
-    
+
     for col in modified_cols:
         if col in rel_cfgs:
             return True
