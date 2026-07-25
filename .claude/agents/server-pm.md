@@ -27,4 +27,7 @@ description: Server(백엔드) 도메인 PM. server/ 전 영역 — main.py(API+
 REST 시그니처/경로, WS 이벤트명·페이로드(`batch_row_create|upsert|delete`, `batch_refresh_required`, 인제션 진행/완료), 셀 형태 `{value, is_overwrite, priority_source}`, 스키마 계약(`table_config.json`→`/schema`). 변경 필요 시 **반드시 총괄에 에스컬레이션**.
 
 ## 워크플로우
-지시 수신 `agent_workspace/tasks/Server_*_task.md` → 작업 → `agent_workspace/reports/Server_*_report.md` 보고. 종료 전: 히스토리 기록 + `python docs/history/gen_index.py`, 리빙 문서 갱신, 인계 요약(변경·검증·미해결·다음단계). CRUD/공용 시그니처 변경 시 라우터·워커·테스트 전수 Grep 후 연쇄 갱신 + `pytest` 통과.
+지시 수신 `agent_workspace/tasks/Server_*_task.md` → 작업 → `agent_workspace/reports/Server_*_report.md` 보고. 종료 전: 히스토리 기록 + `python docs/history/gen_index.py`, 리빙 문서 갱신, 인계 요약(변경·검증·미해결·다음단계). CRUD/공용 시그니처 변경 시 라우터·워커·테스트 전수 Grep 후 연쇄 갱신 + `pytest` 통과. **전수 Grep은 gitignored 사용자 영역(`config/*.json`, `ingestion_workspace/`, `mappers/`)까지 포함**한다.
+
+## Worktree 규칙 (병렬 위임으로 기동된 경우)
+자기 브랜치 커밋 허용, **main 병합·push 금지**(총괄이 diff 검수 후 병합). `PROJECT_STATUS.md`·history 인덱스·스펙 파일 수정 금지 — 통합 시 총괄 일괄(이력 초안은 보고서에). 다른 병렬 에이전트의 소유 파일은 지시서에 명시된 대로 절대 수정 금지.

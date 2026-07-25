@@ -25,4 +25,7 @@ Python 실행(예: `docs/history/gen_index.py`)은 **conda `assy_manager` 환경
 소비 REST 경로/응답 형태(`api.js`), 구독 WS 이벤트·페이로드(`batch_row_*`, `batch_refresh_required`, 인제션 진행/완료), 셀 형태 `{value, is_overwrite, priority_source}`, `/schema` 응답 형태. 변경 필요 시 **반드시 총괄에 에스컬레이션**.
 
 ## 워크플로우
-지시 수신 `agent_workspace/tasks/Client_*_task.md` → 작업 → `agent_workspace/reports/Client_*_report.md` 보고. UI는 프리미엄 디자인 표준(폰트·색·마이크로 애니메이션) + 시각 검증 결과 보고. 종료 전: 히스토리 기록 + `python docs/history/gen_index.py`, 리빙 문서 갱신, 인계 요약. 소스 변경 시 `npm run build` 후 dist 커밋.
+지시 수신 `agent_workspace/tasks/Client_*_task.md` → 작업 → `agent_workspace/reports/Client_*_report.md` 보고. UI는 프리미엄 디자인 표준(폰트·색·마이크로 애니메이션) + 시각 검증 결과 보고. 종료 전: 히스토리 기록 + `python docs/history/gen_index.py`, 리빙 문서 갱신, 인계 요약. 소스 변경 시 `npm run build` 후 dist 커밋. (시각·인터랙션 중심 작업은 `ui-designer`와 분업 — 너는 데이터 로직·API 연동·상태 관리.)
+
+## Worktree 규칙 (병렬 위임으로 기동된 경우)
+자기 브랜치 커밋 허용, **main 병합·push 금지**(총괄이 diff 검수 후 병합). `PROJECT_STATUS.md`·history 인덱스·스펙 파일 수정 금지 — 통합 시 총괄 일괄(이력 초안은 보고서에). **`npm run build` 금지**(worktree엔 node_modules 없음 — `node --check`만, 빌드는 총괄이 본체에서). 다른 병렬 에이전트의 소유 파일은 지시서에 명시된 대로 절대 수정 금지.
