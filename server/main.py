@@ -115,21 +115,10 @@ async def startup_event():
         return
         
     try:
-        # [Migration] NULL updated_at 보정 (coalesce 제거 및 성능 최적화 대비)
+        # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
+        # (data_rows 테이블 자체가 폐기 — scripts/drop_legacy_tables_20260725.sql 참조).
         from sqlalchemy import text
         with engine.connect() as conn:
-            try:
-                logger.info("Checking for NULL updated_at...")
-                res = conn.execute(text("UPDATE data_rows SET updated_at = created_at WHERE updated_at IS NULL"))
-                conn.commit()
-                if res.rowcount > 0:
-                    logger.info(f"Successfully updated {res.rowcount} rows.")
-            except Exception as e:
-                # [Migration Fix] rollback 필수 — 같은 커넥션의 실패한 트랜잭션이 남으면 이후 모든
-                # 마이그레이션 블록이 InFailedSqlTransaction 으로 조용히 실패한다(회귀 원인).
-                conn.rollback()
-                logger.error(f"Skip data_rows migration (table may not exist): {e}")
-
             # [Migration] database_outbox.processed_chain 컬럼 보정 (information_schema 존재확인 게이팅).
             #   기존: 무조건 ADD COLUMN → 기존 DB에서 "컬럼 이미 존재" 예외로 트랜잭션 abort(rollback 부재)
             #   → 같은 커넥션의 후속 broadcast_at ADD COLUMN 이 InFailedSqlTransaction 으로 조용히 실패

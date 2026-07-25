@@ -39,40 +39,33 @@ def get_db():
 
 @event.listens_for(Session, "before_flush")
 def auto_stage_database_outbox(session, flush_context, instances):
-    from .models import DataRow, DYNAMIC_TABLES
+    from .models import DYNAMIC_TABLES
     from sqlalchemy import inspect
     dynamic_classes = tuple(DYNAMIC_TABLES.values())
-    
+
     for obj in session.new:
-        if isinstance(obj, DataRow):
-            stage_event(session, "CREATE", obj.table_name, obj)
-        elif dynamic_classes and isinstance(obj, dynamic_classes):
+        if dynamic_classes and isinstance(obj, dynamic_classes):
             stage_event(session, "CREATE", obj.__table__.name, obj)
-            
+
     for obj in session.dirty:
-        is_row = isinstance(obj, DataRow)
-        is_dyn = dynamic_classes and isinstance(obj, dynamic_classes)
-        if is_row or is_dyn:
+        if dynamic_classes and isinstance(obj, dynamic_classes):
             # 변경된 속성 컬럼 목록 검출
             try:
                 insp = inspect(obj)
                 dirty_cols = [attr.key for attr in insp.attrs if attr.history.has_changes()]
             except Exception:
                 dirty_cols = []
-                
+
             # 변경 항목이 오직 그래프 동기화 메타 컬럼(is_graph_synced 등)뿐이면 Outbox 발행 생략
             if dirty_cols:
                 graph_meta_cols = {"is_graph_synced", "needs_graph_rollback", "graph_synced_at"}
                 if all(col in graph_meta_cols for col in dirty_cols):
                     continue
-            
-            t_name = obj.table_name if is_row else obj.__table__.name
-            stage_event(session, "EDIT", t_name, obj)
-            
+
+            stage_event(session, "EDIT", obj.__table__.name, obj)
+
     for obj in session.deleted:
-        if isinstance(obj, DataRow):
-            stage_event(session, "DELETE", obj.table_name, obj)
-        elif dynamic_classes and isinstance(obj, dynamic_classes):
+        if dynamic_classes and isinstance(obj, dynamic_classes):
             stage_event(session, "DELETE", obj.__table__.name, obj)
 
 
@@ -85,27 +78,15 @@ def stage_event(session, event_type, table_name, data_row):
     source = request_source.get()
     
     data_dict = {}
-    if hasattr(data_row, "__table__"):
-        for col in data_row.__table__.columns:
-            if col.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
-                val = getattr(data_row, col.name, None)
-                data_dict[col.name] = {
-                    "value": val,
-                    "is_overwrite": False,
-                    "updated_by": "system"
-                }
-    else:
-        raw_data = getattr(data_row, "data", {})
-        for col, cell in raw_data.items():
-            if isinstance(cell, dict) and "value" in cell:
-                data_dict[col] = cell
-            else:
-                data_dict[col] = {
-                    "value": cell,
-                    "is_overwrite": False,
-                    "updated_by": "system"
-                }
-        
+    for col in data_row.__table__.columns:
+        if col.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
+            val = getattr(data_row, col.name, None)
+            data_dict[col.name] = {
+                "value": val,
+                "is_overwrite": False,
+                "updated_by": "system"
+            }
+
     event_obj = DatabaseOutbox(
         event_uuid=str(uuid.uuid4()),
         event_type=event_type,

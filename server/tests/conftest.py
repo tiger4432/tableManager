@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from main import app
 from database.database import Base, get_db
-from database.models import DataRow
 
 from sqlalchemy.pool import StaticPool
 
@@ -60,12 +59,6 @@ def db_session():
     models.init_dynamic_models(test_table_config)
     crud.TABLE_CONFIG.clear()
     crud.TABLE_CONFIG.update(test_table_config)
-
-    # SQLite 호환성을 위해 PostgreSQL 전용 GIN / Trigram 인덱스를 임시 제거
-    if "sqlite" in str(engine.url):
-        table = Base.metadata.tables.get("data_rows")
-        if table is not None:
-            table.indexes = {idx for idx in table.indexes if "trgm" not in idx.name and "gin" not in idx.name}
 
     # Create the database and tables
     Base.metadata.create_all(bind=engine)

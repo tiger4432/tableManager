@@ -19,34 +19,8 @@ def setup_performance():
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gin"))
         print("Done.")
 
-        # 2. 최적화 인덱스 일괄 생성
-        # CONCURRENTLY 옵션으로 서비스 중인 서버에서도 안전하게 실행 가능합니다.
-        indices = [
-            # [A] 테이블별 품번 정렬 (Covering Index)
-            ("idx_table_bk", "data_rows", "USING btree (table_name, business_key_val, row_id)"),
-            
-            # [B] 테이블별 최신순 정렬 (Covering Index)
-            ("idx_table_updated", "data_rows", "USING btree (table_name, updated_at, row_id)"),
-            
-            # [C] 테이블별 기본 정렬 (row_id)
-            ("idx_table_rowid", "data_rows", "USING btree (table_name, row_id)"),
-            
-            # [D] JSONB 데이터 구조 검색용 GIN
-            ("idx_data_gin", "data_rows", "USING gin (data)"),
-            
-            # [E] 테이블 범위 한정 풀텍스트 검색용 복합 GIN Trigram (핵심 최적화)
-            ("idx_table_data_trgm", "data_rows", "USING gin (table_name, (CAST(data AS text)) gin_trgm_ops)")
-        ]
-
-        print("\nStep 2: Creating Optimized Indices (this may take a few minutes)...")
-        for idx_name, table, definition in indices:
-            print(f" - Creating {idx_name} on {table}...")
-            t0 = time.time()
-            try:
-                conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
-                print(f"   Success ({time.time() - t0:.2f}s)")
-            except Exception as e:
-                print(f"   Failed to create {idx_name}: {e}")
+        # [2026-07-25 정리] Step 2(레거시 data_rows 전용 인덱스 5종)는 data_rows 폐기와 함께 제거됨
+        # (동적 네이티브 테이블 인덱스는 models.py의 동적 모델 정의가 소유 — drop_legacy_tables_20260725.sql 참조).
 
         # 3. Outbox 폴링 최적화 인덱스 (체인/그래프 워커 폴링 스캔 가속)
         #    부분/표현식 인덱스는 PostgreSQL 전용이며, models.py DatabaseOutbox.__table_args__ 와 동일 패턴.
@@ -139,7 +113,6 @@ def setup_performance():
 
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
-        conn.execute(text("ANALYZE data_rows"))
         conn.execute(text("ANALYZE database_outbox"))
         print("Done.")
 
