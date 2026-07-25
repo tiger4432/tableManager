@@ -1,11 +1,11 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD 078fb2c) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD 178aafa) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
 - **소스 파일을 통째로 Read하지 말 것.** 이 지도에서 함수·라인을 찾은 뒤 **해당 섹션만** `Read(offset, limit)`로 읽는다.
-- 라인 앵커는 HEAD `078fb2c` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- 라인 앵커는 HEAD `178aafa` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
 - 이 문서는 **지도이지 교과서가 아니다** — 구현 설명은 각 리빙 문서([backend](./backend.md)·[data_model](./data_model.md)·[frontend](./frontend.md)·[event_driven_backend](./event_driven_backend.md)) 참조.
 
 **유지보수 규율:** 코드맵 갱신은 **doc-keeper 전담** — 총괄이 코드 배치를 병합·커밋한 뒤 doc-keeper에 위임하면, doc-keeper가 **타 에이전트들의 수정 이력(history 문서·보고서·커밋 diff)을 요약**해 해당 모듈 맵을 갱신한다(구현 에이전트는 맵을 직접 수정하지 않음 — 보고서에 변경 함수/시그니처 목록만 남긴다). 정기 정합 감사도 doc-keeper. 라인 앵커는 대략치로 충분 — 시그니처·역할 서술의 정확성이 우선.
@@ -16,10 +16,10 @@
 
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
-| `server/main.py` | ~3,646 | [§1](#1-servermainpy--api--ws-허브) |
+| `server/main.py` | ~3,679 | [§1](#1-servermainpy--api--ws-허브) |
 | `server/database/crud.py` | ~1,863 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
-| `server/parsers/directory_watcher.py` | ~865 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
-| `server/chain_ingestion_worker.py` | ~955 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
+| `server/parsers/directory_watcher.py` | ~985 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
+| `server/chain_ingestion_worker.py` | ~965 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
 | 소형 서버 모듈 (models/std_parser/enrichment_*) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) | ~3,050 | [§5](#5-소형-서버-모듈) |
 | 기타 서버 모듈 (한줄 요약) | — | [§6](#6-기타-서버-모듈-한줄-요약) |
 | `client2/src/*` | ~13,000 | [§7](#7-client2src--웹-클라이언트) |
@@ -96,13 +96,15 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 | ~2915 |
 | POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화) | ~2770 |
 | GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | ~2986/3008 |
-| GET `/admin/auto-update/status` · POST `.../run-now` | — | 오토업데이트 상태/즉시실행 | ~3234/3257 |
-| GET/POST `/admin/scripts/list|code` | `list_admin_scripts` 등 | Monaco 에디터용 스크립트 IO | ~3391–3530 |
+| GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | ~3224 |
+| POST `/admin/auto-update/toggle` | `toggle_auto_update_script` | 수집기 active 토글 — `config/auto_update_control.json` 갱신(핫 반영, 404/400 명시) | ~3255 |
+| POST `/admin/auto-update/run-now` | — | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도) | ~3286 |
+| GET/POST `/admin/scripts/list|code` | `list_admin_scripts` 등 | Monaco 에디터용 스크립트 IO | ~3425–3560 |
 | GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `_save_map_preset_impl` 등 | 맵 프리셋 CRUD | ~2853–2910 |
 | GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회 | ~3060/3071 |
 | WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager) | ~2191 |
-| POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_*` | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** | ~3298–3355 |
-| GET `/admin`·`/map-editor`·`/enrichment`·`/{path}` | `serve_*` | 정적 페이지 서빙(`graph.html`/`trace.html`은 catch-all `serve_static_or_index` 경유) | ~3574–3624 |
+| POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_*` | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`) | ~3327–3397 |
+| GET `/admin`·`/map-editor`·`/enrichment`·`/{path}` | `serve_*` | 정적 페이지 서빙(`graph.html`/`trace.html`은 catch-all `serve_static_or_index` 경유) | ~3607–3657 |
 
 ### 1.5 그래프 조회 구간 (read-only — `graph_nodes/edges` 직접 조회, 워커 미경유)
 
@@ -155,7 +157,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 ## 3. `server/parsers/directory_watcher.py` — 파일 인제션
 
-워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱) 통합됨.
+워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합됨. 통지 로그 상한 `MAX_NOTIFY_CREATED_LOGS`는 로컬 정의에서 `event_constants.py` 공용 상수 import로 전환(~31, 모듈 속성 노출은 유지 — 기존 참조 호환).
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
@@ -196,7 +198,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `_mapper_accepts_rule(mapper_func) -> bool` | 맵퍼가 rule 인자를 받는지 시그니처 검사 | ~297 |
 | `execute_custom_mapper(module_name, function_name, db, payload, rule=None)` | mappers/ 동적 로드·실행 | ~308 |
 | `_group_target_tables(events_in_tx, rules)` | tx 내 이벤트 → 타깃 테이블 그룹핑 | ~326 |
-| `process_chain_transaction_group(tx_id, events, db, rules) -> (ok, err, broadcast_messages)` | **핵심** — 순환 차단(source=chain_ingestion 제외), 맵퍼 실행, 업서트, 브로드캐스트 큐 반환 | ~349 |
+| `process_chain_transaction_group(tx_id, events, db, rules) -> (ok, err, broadcast_messages)` | **핵심** — 순환 차단(source=chain_ingestion 제외), 맵퍼 실행, 업서트, 브로드캐스트 큐 반환. broadcast 구성부(~458)는 created_logs를 **직렬화 전** `MAX_NOTIFY_CREATED_LOGS`(500)로 절단 + `total_log_count`(실건수) 동봉 — 양 분기(`batch_refresh_required`/`batch_row_upsert`) 공통(인시던트 `cc57b64`, C-5 계약 확장) | ~352 |
 | `reload_worker_process_cache()` | SYSTEM_RELOAD 수신 시 config 캐시 리로드 | ~509 |
 | `warmup_worker(rules, db_session_factory)` | 콜드스타트 제거 — 맵퍼·커넥션 프리로드 | ~525 |
 | `process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts)` | 배치 내 그룹 순차 처리 — 실패 그룹 skip(HOL 블로킹 제거, F5) | ~573 |
@@ -288,7 +290,9 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/database/database.py` | 엔진·SessionLocal·outbox 발화(`database_outbox` + NOTIFY) |
 | `server/database/config_watcher.py` | table_config.json 변경 감시 → 동적 테이블 재구성. engine 분기(~44)에서 `create_missing_dynamic_tables` 선(先)호출 후 기존 sync(ALTER) — 직접 파일 편집 경로의 신규 테이블 CREATE(이슈 #7) |
 | `server/graph_sync_worker.py` · `graph_materializer.py` · `ontology_config.py` | 온톨로지 그래프 트랙 — **함수 앵커는 [§5](#5-소형-서버-모듈)** |
-| `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행 |
+| `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행. 매 틱 제어 파일(`auto_update_control.json`)을 읽어 disabled 수집기는 실행 스킵+`last_status="SKIPPED"`+next_run 전진(핫 반영, 재활성화 시 백로그 폭주 없음). run-now는 active 무관 실행 |
+| `server/event_constants.py` | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(발신측 created_logs 절단 상한, 워처·체인 워커·수신 main.py 공유) |
+| `server/utils/auto_update_control.py` | auto-update 수집기 active 제어 파일(`config/auto_update_control.json`, gitignored) 공용 IO — `read_disabled_scripts`(fail-open)/`set_script_active`(tmp+`os.replace` 원자적 쓰기)/`validate_script_key`(경로 탈출 차단)/`resolve_script_file`. 웹서버 toggle·스케줄러 공유 |
 | `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher의 SYSTEM_RELOAD 폴러(`poll_pending_retries`, ~141)는 `refresh_dynamic_models(engine)` 호출(보충 안전망, 이슈 #7) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함** |
@@ -339,14 +343,15 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - 레전드/브러시: `renderLegendTable`(~1676) `selectBrush`(~1824) + `localStorage` 동기화 `load/saveLegendToStorage`(~1654/1672).
 - 편집 도구: `fillGrid`(~2214) `getEdgeClassification`(~2421) `selectEdgeCells`(~2501) `autoPaintE1E2`(~2528) `copyGridToExcel`(~2616).
 
-### `admin.js` (~2,437줄) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
+### `admin.js` (~2,515줄) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
 - 라우팅: `parseRoute`(~231) `applyRoute`(~243) — `#overview/#file/#chain/#autoupdate/#enrichment` + 구 별칭(`#outbox→chain` 등) + `#editor=<path>`. `switchTab(tabName, opts)`(~288, 해시 동기·Overview 전폭 레이아웃).
 - 탭 데이터: `fetchData(options)`(~608, 탭당 병렬 fetch를 한 seq로 묶어 stale 렌더 차단) → 각 `render*Table` + 섹션 카운트 배지(`setSectionCount`), `clearRowHighlights`/`clearSelections`.
 - Overview: `fetchOverview`(~1185) `renderOverview`(~1310, 4카드+최근 이벤트+딥링크).
-- 유기 연계: `renderLinkedFailTable`(~1093, AutoUpdate §오류 — 산출물 인제션 실패 교집합) `showEventDiagnostics`(~1814, +Edit Mapper 딥링크) `selectFileRow`(파서 편집 딥링크).
-- Enrichment 탭: `renderEnrichmentTable`(~1122) `fetchEnrichmentStatus`(~2280, 15s TTL 캐시 — 스트립·탭·Overview 3소비처 공용).
-- 에디터(공용 뷰): `initMonacoEditor`(~1999, pending open) `populateEditorPicker`(~2056) `selectEditorFile`(~2102, dirty confirm) `openInlineEditor`(~2182). (구 좌측 파일트리 `renderEditorTree` 일습은 피커로 대체·삭제됨)
-- 소비 API: `/admin/*` 전역 + `/enrichment/rules` + `/tables/{t}/data`(결손 카운트). 신규 서버 API 0건.
+- 유기 연계: `renderLinkedFailTable`(~1112, AutoUpdate §오류 — 산출물 인제션 실패 교집합) `showEventDiagnostics`(~1888, +Edit Mapper 딥링크) `selectFileRow`(~1665, 파서 편집 딥링크).
+- AutoUpdate 토글: `renderAutoUpdateTable`(~1031, 수집기별 Active 스위치·비활성 행 dim) `toggleCollectorActive`(~1561, POST `/admin/auto-update/toggle` — 낙관 갱신+실패 원복, fetchSeq 가드 table+script 키 재조회) `runAutoUpdateNow`(~1534, active 무관+툴팁). Overview 카드·헬스 스트립에 active/total 표기.
+- Enrichment 탭: `renderEnrichmentTable`(~1141) `fetchEnrichmentStatus`(~2354, 15s TTL 캐시 — 스트립·탭·Overview 3소비처 공용).
+- 에디터(공용 뷰): `initMonacoEditor`(~2073, pending open) `populateEditorPicker`(~2130) `selectEditorFile`(~2176, dirty confirm) `openInlineEditor`(~2256). (구 좌측 파일트리 `renderEditorTree` 일습은 피커로 대체·삭제됨)
+- 소비 API: `/admin/*` 전역 + `/enrichment/rules` + `/tables/{t}/data`(결손 카운트).
 
 ### `enrichment.js` (~754줄) — 인리치먼트 컨베이어 페이지 (export 없음)
 - 규칙: `loadRules`(~69) `selectRule`(~116) `rebuildGrid`(~151). 워크리스트: `fetchWorklist`(~190) `fetchTotalAll`(~241) `refillIfNeeded`(~257).
@@ -384,7 +389,7 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → `process_with_retry` → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님) → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
 2. **수동 편집**: client `handleCellEdit`/`applyValueToSelectedRange` → PUT `/tables/{t}/data/updates` → `apply_batch_updates_endpoint` → `crud.apply_batch_updates` → outbox 발화 + WS `batch_row_upsert` → 전 클라이언트 `handleWebSocketMessage` 델타 반영.
-3. **체인 인제션**: `apply_batch_updates`의 outbox 발화 → NOTIFY → `start_chain_ingestion_worker` 루프 → `process_pending_groups` → `process_chain_transaction_group`(맵퍼 실행, 예: `map_enrichment_dedup`) → 파생 테이블 `apply_batch_updates`(source=chain_ingestion, 순환 차단) → `_dispatch_broadcasts` → `/internal/events/broadcast` → WS.
+3. **체인 인제션**: `apply_batch_updates`의 outbox 발화 → NOTIFY → `start_chain_ingestion_worker` 루프 → `process_pending_groups` → `process_chain_transaction_group`(맵퍼 실행, 예: `map_enrichment_dedup`) → 파생 테이블 `apply_batch_updates`(source=chain_ingestion, 순환 차단) → `_dispatch_broadcasts` → `/internal/events/broadcast`(created_logs 500건 절단 + `total_log_count` 실건수) → WS.
 4. **조회**: client `fetchData` → GET `/tables/{t}/data` → `get_table_data` → `get_column_filter_condition` + `fetch_and_merge_metadata`(셀 객체 병합) → client `ensureCellObject` 정규화 → AG-Grid.
 5. **레이어링 조작**: 소스 모달/Pin → `/tables/{t}/cells/*` 라우트 → `crud.delete_cell_source_batch`/`set_cell_manual_priority_batch` → `compute_priority_value` 재계산 → WS 반영.
 6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 `reload_local_process_cache` → `models.refresh_dynamic_models(engine)`(싱글턴·ORM·**신규 테이블 물리 CREATE** — 1차 DDL 소유자, outbox 발화보다 선행) → SYSTEM_RELOAD outbox → 워커들 `reload_worker_process_cache` + `refresh_dynamic_models`(게이트+checkfirst로 무해한 보충 안전망). 직접 파일 편집 시엔 `config_watcher`가 동일 CREATE 수행. graph 워커도 배치 내 SYSTEM_RELOAD 감지로 매핑·테이블 리로드(이슈 #8 해소).

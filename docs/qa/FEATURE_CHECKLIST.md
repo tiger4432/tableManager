@@ -9,7 +9,7 @@
 
 ## 1. 기능 인벤토리 (서브시스템별)
 
-> 진입 경로의 페이지: 메인 그리드 `/`(index.html) · 어드민 `/admin.html` · 맵 에디터 `/map_editor.html` · 인리치먼트 `/enrichment.html`. 페이지 간 이동은 메인 그리드 우상단 **🧭 Menu** 드롭다운. 코드 열은 [CODE_MAP](../architecture/CODE_MAP.md)의 섹션 참조(소스 전량 읽기 금지).
+> 진입 경로의 페이지: 메인 그리드 `/`(index.html) · 어드민 `/admin.html` · 맵 에디터 `/map_editor.html` · 인리치먼트 `/enrichment.html` · 그래프 뷰어 `/graph.html` · 추적 리포트 `/trace.html`. 페이지 간 이동은 메인 그리드 우상단 **🧭 Menu** 드롭다운(추적은 「🕸️ 추적」 버튼/메뉴). 코드 열은 [CODE_MAP](../architecture/CODE_MAP.md)의 섹션 참조(소스 전량 읽기 금지).
 
 ### 1.1 데이터 그리드 (메인 페이지 `/`)
 
@@ -50,6 +50,7 @@
 | 실패 재시도(재처리) | 아카이브/실패 파일을 어드민에서 동기 재실행 | 어드민 File 탭 재시도 버튼 | POST `/admin/file-ingestion/retry-failed` → `process_archived_file_sync`(§1.4/§3) |
 | 워크스페이스 자동 생성 | `table_config.json` 등록만으로 폴더 스캐폴딩 + 런타임 감시 등록(SYSTEM_RELOAD) | config 등록 → 자동 | `WorkspaceWatcher._provision_workspaces/sync_new_workspaces`(§3) · [INGESTION_GUIDE §1.6](../guide/INGESTION_GUIDE.md) |
 | 인제션 진행 토스트 | 파싱·적재 진행률/완료가 그리드 화면에 실시간 표시 | (자동) 메인 페이지 | `utils.showIngestionProgress` · WS `file_ingestion_progress/completed`(§7) |
+| 기동/주기 스윕 (이벤트 유실 안전망) | 기동 시·신규 워크스페이스 등록 시 `raws/` 직속 기존 파일을 mtime 순으로 자동 처리 + 300s 주기 잔류 재스캔. (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, 이벤트 경로와 동일 처리(`_handle_event` 재사용, 락으로 이중 진입 가드) | (자동) 서버 기동만 | `WorkspaceWatcher.sweep_existing_files(_async)/_periodic_sweep_loop`(§3) |
 
 ### 1.4 Auto-Update 스케줄러
 
@@ -57,7 +58,8 @@
 |---|---|---|---|
 | 주석 기반 크론 수집 | `auto_update/*.py` 상단 `# schedule:` 주석대로 주기 실행 → `out` 변수(또는 stdout)를 CSV로 `raws/` 드롭 | 스크립트 배치(무설정) | `run_auto_update.py`(§6) · [AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) |
 | 핫 리로드 | 스크립트/스케줄 주석 수정 시 재기동 없이 다음 실행에 반영(mtime 폴링) | 파일 저장만 | 동상 |
-| 즉시 실행/상태 | 어드민에서 스크립트 상태 확인·즉시 실행 | 어드민 Auto-update 탭 | GET `/admin/auto-update/status` · POST `.../run-now`(§1.4) |
+| 즉시 실행/상태 | 어드민에서 스크립트 상태 확인·즉시 실행. **즉시 실행은 active 여부 무관**(수동 실행은 명시적 의도) | 어드민 AutoUpdate 탭 | GET `/admin/auto-update/status` · POST `.../run-now`(§1.4) |
+| 수집기 Active 토글 | 수집기별 스케줄 활성/비활성 스위치 — 제어 파일(`config/auto_update_control.json`, 원자적 쓰기·fail-open)에 영속, 스케줄러가 매 틱 읽어 비활성은 SKIPPED 스킵+next_run 전진(**핫 반영, 재기동 불필요**·재활성화 시 백로그 폭주 없음). 비활성 행은 dim 표시, Overview 카드·헬스 스트립에 active/total | 어드민 AutoUpdate 탭 행별 Active 스위치 | `admin.toggleCollectorActive`(§7) · POST `/admin/auto-update/toggle`(§1.4) · `utils/auto_update_control.py`(§6) |
 
 ### 1.5 체인 인제션 (파생 데이터)
 
@@ -90,23 +92,28 @@
 | 엑셀 복사 | 그리드를 TSV로 클립보드 복사 | 작업영역 툴바 "🛠️ Edit Grid" 드롭다운 → "📋 Copy to Excel" | `copyGridToExcel`(§7) |
 | 테이블 간 맵 이월 | 테이블 A→B 전환 시 유지/초기화 확인창(컬럼명 상이 시 Advanced Column Mapping 수동 확인 필요 — 이슈 #2) | 테이블 전환 시 자동 확인창 | history `a41007e` |
 
-### 1.8 어드민 대시보드 (`/admin.html`)
+### 1.8 어드민 대시보드 (`/admin.html`) — 파이프라인 생애주기 5탭 IA (2026-07-25 재편)
+
+탭 축은 **파이프라인 생애주기 5탭**(`#overview/#file/#chain/#autoupdate/#enrichment`) + 코드 에디터 **공용 뷰**(`#editor=<path>` 딥링크). 구 해시 별칭(`#outbox→#chain` 등) 호환 유지.
 
 | 탭/기능 | 설명 | 코드 |
 |---|---|---|
-| Outbox | 실패/대기 outbox 트랜잭션 목록·단건/전체 재시도 | `renderOutboxTable/retryTransaction/retryAllFailed` · `/admin/outbox/*`(§1.4/§7) |
-| File Ingestion | 파일 인제션 로그/실패 목록·재처리 | `renderFileTable/retryFileIngestion` · `/admin/file-ingestion/*` |
-| Workspace | 워크스페이스 현황(폴더·설정) | `renderWorkspaceTable` · GET `/admin/file-ingestion/workspaces` |
-| Chain Rules / Mapper | 체인 룰·맵퍼 목록 열람 | `renderChainTable/renderMapperTable` · `/admin/chain/rules`·`/admin/mappers/list` |
-| Auto-update | 스크립트 상태 + 즉시 실행 | `renderAutoUpdateTable` · `/admin/auto-update/*` |
-| Code Editor | Monaco(CDN) 파일트리 + 스크립트 편집·저장(인라인 폴백 있음) | `initMonacoEditor/saveScriptCode` · `/admin/scripts/*` |
-| Config Reload | `table_config.json` 등 핫리로드(+SYSTEM_RELOAD 전파로 워커도 리로드) | `reloadSystemConfigs` → POST `/admin/reload-configs`(§1.4) |
+| Overview | 파이프라인 4카드(File/Chain/AutoUpdate/Enrichment) 헬스 요약 + 최근 이벤트 + 각 탭 딥링크. 상단 파이프라인 헬스 스트립 공용 | `fetchOverview/renderOverview` · `parseRoute/applyRoute/switchTab`(§7) |
+| File | 파일 인제션 로그/실패 목록·재처리 + 워크스페이스 현황 + 파서 스크립트 편집 딥링크 | `renderFileTable/retryFileIngestion/renderWorkspaceTable/selectFileRow` · `/admin/file-ingestion/*` |
+| Chain | outbox 실패/대기 트랜잭션 재시도 + 체인 룰·맵퍼 목록 + 이벤트 진단(Edit Mapper 딥링크) | `renderOutboxTable/renderChainTable/renderMapperTable/showEventDiagnostics` · `/admin/outbox/*`·`/admin/chain/rules`·`/admin/mappers/list` |
+| AutoUpdate | 수집기 상태·즉시 실행·**Active 토글**(§1.4) + 산출물 인제션 실패 교집합(`renderLinkedFailTable`) | `renderAutoUpdateTable/toggleCollectorActive/runAutoUpdateNow` · `/admin/auto-update/*` |
+| Enrichment | 규칙별 결손 현황(15s TTL 캐시 — 스트립·탭·Overview 공용) + 컨베이어 딥링크 | `renderEnrichmentTable/fetchEnrichmentStatus` · `/enrichment/rules` |
+| Code Editor(공용 뷰) | Monaco(CDN) 파일 피커 + 스크립트 편집·저장(인라인 폴백, dirty confirm) — 각 탭에서 `#editor=<path>` 딥링크 진입 | `initMonacoEditor/populateEditorPicker/selectEditorFile/saveScriptCode` · `/admin/scripts/*` |
+| Config Reload | `table_config.json` 등 핫리로드(+SYSTEM_RELOAD 전파로 워커도 리로드, 신규 테이블 물리 CREATE 포함) | `reloadSystemConfigs` → POST `/admin/reload-configs`(§1.4) |
 
-### 1.9 그래프 동기화
+### 1.9 온톨로지 그래프 (승격·뷰어·추적)
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
-| 온톨로지 그래프 승격 | outbox 증분 소비 → `ontology_mapping.json` v2 매핑대로 PG 엣지 스토어(graph_nodes/edges) 자동 materialize. 수동 트리거는 백필/복구용 | (자동) + 메인 툴바 `graph-sync-btn`(백필) + `graph.html` 뷰어 / `trace.html` 추적 리포트 | `graph_sync_worker.py`+`graph_materializer.py`(:8090) · [event_driven_backend §4](../architecture/event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
+| 온톨로지 그래프 승격 | outbox 증분 소비 → `ontology_mapping.json` v2 매핑대로 PG 엣지 스토어(graph_nodes/edges) 자동 materialize(provenance 포함). 수동 트리거는 백필/복구용 | (자동) + 메인 툴바 `graph-sync-btn`(백필) | `graph_sync_worker.py`+`graph_materializer.py`(:8090) · [event_driven_backend §4](../architecture/event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
+| 서브그래프 뷰어 | stats 카운트 카드 + identity 자동완성 검색 + k-hop(1\|2) 이웃 탐색을 BFS 동심원 캔버스로 렌더(무라이브러리). 팬·줌·노드 클릭 재중심, truncated 배지, user provenance 엣지 강조 | `/graph.html`(🧭 Menu 또는 추적 리포트 크로스링크 `?label=&identity=`) | `graph_viewer.js`(§7) · GET `/graph/stats·neighbors·nodes/search`(§1.5) |
+| 객체 중심 추적 리포트 | 멀티 시드(≤20) BFS 합집합 → 라벨별 그룹 테이블 + event_time 타임라인. depth 1..3·시간 범위·타입 필터, missing seeds 분리 표시, 뷰어 양방향 크로스링크 | `/trace.html` — 메인 그리드 행 선택 → 「🕸️ 추적」 버튼(새 탭, 선택 행→identity 시드) | `trace.js`/`trace_core.js`/`trace_launch.js`(§7) · POST `/graph/trace`·GET `/graph/mapping-summary`(§1.5) |
+| 추적 진입점 자동 표시 | `mapping-summary`로 현재 테이블의 매핑 활성 여부를 판정해 「🕸️ 추적」 버튼 노출/숨김 | (자동) 메인 그리드 툴바 | `trace_launch.refreshTraceEntry`(§7) |
 
 ### 1.10 듀얼 테마 / 실시간 동기화 / 데스크톱 래퍼
 
@@ -167,13 +174,17 @@
 - [ ] **err 격리**: 헤더에 비즈니스 키 컬럼이 없는 CSV 드롭 → `err/`로 이동 + 어드민 File 탭에 FAILED 로그.
 - [ ] 🎯 **멱등성 — 재드롭 무중복**: 동일 파일을 `raws/`에 2회 드롭 → 행 수 불변(비즈니스 키 업서트), 신규/변경 셀만 이력 추가. 중복 행·중복 outbox 브로드캐스트 없음.
 - [ ] **실패 재시도**: err 원인(예: 스크립트 버그) 수정 후 어드민 File 탭에서 재시도 → 성공 전환 + 데이터 적재.
-- [ ] **워크스페이스 자동 생성**: `table_config.json`에 테이블 추가 → `/admin/reload-configs` → 워크스페이스 폴더 자동 생성·감시 시작. (⚠️ 알려진 제약 이슈 #7: 물리 테이블 CREATE는 재기동 필요 — 조회 500은 알려진 문제로 기록.)
+- [ ] **워크스페이스 자동 생성**: `table_config.json`에 테이블 추가 → `/admin/reload-configs` → 워크스페이스 폴더 자동 생성·감시 시작 + 물리 테이블 즉시 CREATE(이슈 #7 해소 — 재기동 없이 조회 정상).
+- [ ] **기동 스윕**: 서버 정지 상태에서 `raws/`에 파일을 미리 넣고 기동 → 기동 직후 자동 처리·아카이브(이벤트 없이도 적재). 신규 워크스페이스 런타임 등록 시에도 기존 파일 스윕.
+- [ ] **스윕 에지 — 잔류 파일 무한 재시도 없음**: 처리 불가 파일이 `raws/`에 남아도 300s 주기 스윕이 동일 (mtime,size) 파일을 반복 재시도하지 않음(워커 로그 확인). 파일 수정(mtime 변경) 시에는 재처리됨.
 
 ### 2.6 Auto-Update
 
 - [ ] **크론 실행**: `# schedule: */5 * * * *` 스크립트 배치 → 주기 도래 시 `raws/`에 CSV 생성 → 인제션까지 연쇄 완료.
 - [ ] **핫 리로드 에지**: 스크립트의 schedule 주석 변경 → 재기동 없이 다음 실행 타이밍이 변경(스케줄러 로그 확인).
-- [ ] **즉시 실행**: 어드민 Auto-update 탭에서 run-now → 즉시 수집·드롭·적재.
+- [ ] **즉시 실행**: 어드민 AutoUpdate 탭에서 run-now → 즉시 수집·드롭·적재.
+- [ ] **Active 토글**: AutoUpdate 탭에서 수집기 Active 스위치 OFF → 다음 주기에 실행되지 않고 상태가 SKIPPED(next_run은 전진), 행 dim 표시 + Overview 카드 active/total 감소. **OFF 상태에서도 run-now는 실행됨**(툴팁 확인). ON 복귀 → 다음 주기 정상 실행 1회(밀린 주기 몰아 실행 없음). 재기동 없이 전 과정 핫 반영.
+- [ ] **토글 에지 — 제어 파일 부재**: `config/auto_update_control.json` 삭제 후 status 조회 → 전 수집기 active(fail-open), 에러 없음.
 
 ### 2.7 체인 인제션 + 실시간 SLO
 
@@ -181,7 +192,8 @@
 - [ ] 🎯 **SLO 100ms**: 원본 편집 커밋 → 파생 반영 WS 통지까지 워커 `[Latency]` 로그 기준 100ms 이내(정상 상태 기대치 ~31ms). 재기동 직후 첫 체인은 ~600ms까지 허용(웜업 잔여, 알려짐).
 - [ ] 🎯 **순환 차단**: 파생 테이블 갱신이 다시 체인을 트리거하지 않음(워커 로그에 재귀 처리 없음, outbox 무한 증가 없음).
 - [ ] **멱등성 — 체인 재실행**: 동일 원본 재드롭 → 파생 테이블 행 수 불변, count류 집계값 정확(중복 가산 없음).
-- [ ] **실패 격리 에지**: 맵퍼 예외를 유발하는 그룹 발생 시 해당 그룹만 실패(어드민 Outbox 탭 FAILED)하고 이후 정상 그룹은 계속 처리됨.
+- [ ] **실패 격리 에지**: 맵퍼 예외를 유발하는 그룹 발생 시 해당 그룹만 실패(어드민 Chain 탭 outbox FAILED)하고 이후 정상 그룹은 계속 처리됨.
+- [ ] **대형 tx 통지 비동결(인시던트 `cc57b64` 회귀)**: 수만 행 파일 재인제션 등 대형 tx 발생 시 :8080이 동결되지 않고(`[Latency] notify=` 정상), 히스토리 패널 트랜잭션 총계는 실건수(`total_log_count`) 표기 — 로그 항목 자체는 500건까지만 보존(부분 보존이 정상). ⚠️ 알려진 잔여: 멀티 target-table tx 총계 과소(이슈 #10, D-1).
 
 ### 2.8 Enrichment Queue
 
@@ -201,17 +213,24 @@
 - [ ] **맵 이월 에지**: 편집 중 테이블 A→B 전환 → 유지/초기화 확인창 표시. (⚠️ 컬럼명이 크게 다르면 자동 정합 안 됨 — 이슈 #2, 저장 전 수동 매핑 확인.)
 - [ ] **엑셀 복사**: 맵 그리드를 엑셀로 복사 → 셀 배치 일치.
 
-### 2.10 어드민 대시보드
+### 2.10 어드민 대시보드 (5탭 IA)
 
-- [ ] **탭 전환**: outbox/file/workspace/chain/mapper/autoupdate/editor 7개 탭 모두 렌더 + 콘솔 에러 없음(알려진 잔재: 구 null 컨테이너 에러 — 별도 칩).
-- [ ] **Outbox 재시도**: 실패 outbox 이벤트 단건 재시도 → 상태 전환. "전체 재시도" 동작.
-- [ ] **코드 에디터**: 파일트리에서 파서 스크립트 열기 → Monaco 편집 → 저장 → 다음 인제션에 반영. (오프라인 등 Monaco CDN 실패 시 인라인 에디터 폴백.)
-- [ ] **Config 리로드**: `table_config.json` 수정 → Reload Configs → 웹서버·워커 캐시 리로드(SYSTEM_RELOAD), 신규 워크스페이스 감시 시작.
+- [ ] **탭 전환**: Overview/File/Chain/AutoUpdate/Enrichment 5탭 모두 렌더 + 콘솔 에러 없음. 해시 라우팅(`#file` 등) 직접 진입 동작, 구 별칭(`#outbox`)이 Chain 탭으로 리다이렉트.
+- [ ] **Overview**: 4카드에 헬스 상태·핵심 지표 표시, 최근 이벤트 목록, 카드 클릭 → 해당 탭 딥링크 이동. 파이프라인 헬스 스트립이 탭 전환에도 유지.
+- [ ] **Outbox 재시도**(Chain 탭): 실패 outbox 이벤트 단건 재시도 → 상태 전환. "전체 재시도" 동작. 이벤트 진단 → Edit Mapper 딥링크로 에디터 뷰 진입.
+- [ ] **코드 에디터(공용 뷰)**: 파일 피커에서 파서 스크립트 열기 → Monaco 편집 → 저장 → 다음 인제션에 반영. `#editor=<path>` 딥링크 직접 진입 동작. dirty 상태에서 다른 파일 선택 시 confirm. (오프라인 등 Monaco CDN 실패 시 인라인 에디터 폴백.)
+- [ ] **Config 리로드**: `table_config.json` 수정 → Reload Configs → 웹서버·워커 캐시 리로드(SYSTEM_RELOAD), 신규 테이블 물리 CREATE + 워크스페이스 감시 시작(이슈 #7 해소 확인).
 
-### 2.11 그래프 동기화
+### 2.11 온톨로지 그래프 (승격·뷰어·추적)
 
-- [ ] **수동 동기화**: 메인 툴바 그래프 동기화 버튼 → 성공 응답. Neo4j 미설치 환경은 `virtual_graph.json` 갱신으로 확인.
-- [ ] **자동 반영**: 셀 교정 후 온톨로지 매핑 대상 데이터가 그래프에 반영(가상 그래프 파일 diff 또는 Neo4j 조회).
+- [ ] 🎯 **자동 승격**: 매핑 대상 테이블 셀 교정 → 재조회 없이 graph_nodes/edges에 반영(워커 `[GraphLatency]` 로그 lag 확인, 실측 기대 ~수백 ms). 교정값 엣지는 provenance=user.
+- [ ] **수동 백필**: 메인 툴바 그래프 동기화 버튼(또는 POST `/api/graph/sync`) → 성공 응답 + 테이블 노드/엣지 수 stats 반영.
+- [ ] **뷰어 — 탐색**: `/graph.html` 진입 → stats 카운트 카드 표시 → 검색창에 identity 일부 입력 → 자동완성 → 선택 → k-hop 동심원 서브그래프 렌더. 팬·줌 동작, 노드 클릭 → 재중심 탐색, 노드 캡 초과 시 truncated 배지.
+- [ ] **뷰어 — user 강조**: 사람이 교정한 값에서 유래한 엣지가 강조색(`--overwrite`)으로 구분 표시.
+- [ ] **추적 리포트**: 메인 그리드에서 매핑 대상 행 1~여러 개 선택 → 「🕸️ 추적」 → 새 탭 trace.html에 시드 칩 + 라벨별 그룹 테이블 + 타임라인 렌더. depth 변경 → 즉시 재실행, 시간 범위 입력 → 재실행 버튼 동작.
+- [ ] **추적 에지 — missing seeds**: 그래프에 없는 시드 포함 시 missing 구분 표시(전체 실패 아님). 시드 21개 이상 선택 시 상한 20 토스트.
+- [ ] **크로스링크**: 추적 리포트 노드 → 뷰어(`?label=&identity=`) 이동, 뷰어 → 추적 리포트 역방향 이동.
+- [ ] **진입점 자동 표시**: 매핑 없는 테이블에서는 「🕸️ 추적」 버튼 숨김, 매핑 대상 테이블 전환 시 노출.
 
 ### 2.12 듀얼 테마
 

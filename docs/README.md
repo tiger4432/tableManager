@@ -64,7 +64,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(192개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(195개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |

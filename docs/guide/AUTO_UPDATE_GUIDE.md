@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -71,3 +71,15 @@ server/ingestion_workspace/
 ## ⚡ 4. 실시간 무설정 핫 리로드 (Zero-Interaction Hot-Reload)
 * **즉시 코드 반영**: 스케줄러가 매 크론 실행 타이밍마다 디스크에서 최신 소스 코드를 새로 읽어 실행(`exec`)하므로, **파일을 수정하고 저장하면 어드민 버튼을 누르거나 재기동할 필요 없이 다음 실행 때 즉각 반영**됩니다.
 * **즉시 스케줄 반영**: 메인 데몬 루프가 파일의 수정 시각(`mtime`)을 실시간 폴링 감시합니다. 파일 상단의 `# schedule: ` 크론 설정을 수정하는 즉시 스케줄러가 이를 감지하여 다음 실행 타이밍을 동적으로 갱신하고 로깅합니다.
+
+---
+
+## 🎚️ 5. 수집기별 Active 토글 (2026-07-25 추가)
+
+어드민 **AutoUpdate 탭**의 수집기별 Active 스위치로 개별 스크립트의 스케줄 실행을 켜고 끌 수 있습니다.
+
+* **영속 제어 파일**: `server/config/auto_update_control.json` (`{"disabled": ["<workspace>/<script.py>", ...]}`, gitignored — `.sample` tracked). 공용 IO는 `server/utils/auto_update_control.py`(원자적 tmp+replace 쓰기).
+* **핫 반영**: 스케줄러가 **매 사이클** 제어 파일을 읽으므로 재기동이 필요 없습니다. 비활성 수집기는 실행을 스킵하고 `last_status="SKIPPED"` 기록 + `next_run` 전진 — **재활성화해도 밀린 주기를 몰아 실행하지 않습니다**.
+* **fail-open**: 제어 파일이 없거나 손상되면 전부 active로 간주합니다.
+* **run-now 예외**: 어드민의 즉시 실행(run-now)은 active 여부와 **무관하게 항상 실행**됩니다(수동 실행은 명시적 의도).
+* API: `GET /admin/auto-update/status`(항목별 `active` 부가) · `POST /admin/auto-update/toggle` (body `{"script": "<workspace>/<script.py>", "active": bool}`, 미존재 404·형식 오류 400).
