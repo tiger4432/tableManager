@@ -1188,6 +1188,46 @@ function updateLegendCounts() {
 // ----------------------------------------------------
 // Rendering Functions
 // ----------------------------------------------------
+
+// ── 캔버스 테마 색 캐시 ─────────────────────────────────────
+// 성능 규율: 렌더 루프(수만 셀)에서 getComputedStyle 호출 금지.
+// 최초 1회 캐싱 후, 테마 전환(themechange) 시에만 재캐싱한다 (tokens.css --canvas-* 토큰).
+let themeColors = null;
+
+function rebuildThemeColorCache() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
+  themeColors = {
+    outBg: v('--canvas-out-bg', '#e2e6ec'),               // 매트릭스/웨이퍼 밖 셀 배경
+    line: v('--canvas-line', 'rgba(31, 39, 51, 0.10)'),   // 기본 격자선
+    lineStrong: v('--canvas-line-strong', 'rgba(31, 39, 51, 0.16)'), // 원 내부 격자선
+    insideEmpty: v('--canvas-inside-empty', 'rgba(23, 114, 69, 0.06)'), // 원 내부 빈 셀 채움
+    textEmpty: v('--canvas-text-empty', 'rgba(71, 83, 107, 0.8)'),   // 좌표 표기(원 내부)
+    textOut: v('--canvas-text-out', 'rgba(91, 103, 121, 0.45)'),     // 좌표 표기(원 외부)
+    waferEdge: v('--canvas-wafer-edge', 'rgba(31, 39, 51, 0.7)'),    // 웨이퍼 외곽 원
+    wmFront: v('--canvas-wm-front', 'rgba(26, 102, 208, 0.09)'),     // FRONT 워터마크
+    wmBack: v('--canvas-wm-back', 'rgba(138, 90, 0, 0.09)'),         // BACK 워터마크
+    accent: v('--accent', '#1a66d0'),
+    success: v('--success', '#177245'),
+    warning: v('--warning', '#8a5a00'),
+    danger: v('--danger', '#c22f2f'),
+    dangerWeak: v('--danger-weak', 'rgba(194, 47, 47, 0.15)'),
+    rangeFill: v('--range-fill', 'rgba(26, 102, 208, 0.14)'),
+    surface: v('--bg-surface', '#ffffff'),
+  };
+}
+
+function getThemeColors() {
+  if (!themeColors) rebuildThemeColorCache();
+  return themeColors;
+}
+
+// 테마 전환 시: 색 캐시 재빌드 + 캔버스 1회 재렌더 (theme.js 'themechange' 구독)
+document.addEventListener('themechange', () => {
+  rebuildThemeColorCache();
+  scheduleRenderGridCanvas();
+});
+
 let isRenderScheduled = false;
 
 function scheduleRenderGridCanvas() {
@@ -1271,6 +1311,9 @@ function renderGridCanvas() {
 
   ctx.clearRect(0, 0, width, height);
 
+  // 테마 색 캐시 (렌더 루프 내 getComputedStyle 금지 — 캐시만 참조)
+  const C = getThemeColors();
+
   const cellW = width / visualCols;
   const cellH = height / visualRows;
 
@@ -1307,9 +1350,9 @@ function renderGridCanvas() {
       const isMatrixCell = completelyInside || (c >= -visualCols && c < 2 * visualCols && r >= -visualRows && r < 2 * visualRows);
 
       if (!isMatrixCell) {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+        ctx.fillStyle = C.outBg;
         ctx.fillRect(x0, y0, cellW, cellH);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.strokeStyle = C.line;
         ctx.lineWidth = 0.5;
         ctx.strokeRect(x0, y0, cellW, cellH);
         continue;
@@ -1333,31 +1376,32 @@ function renderGridCanvas() {
 
       // 1. Fill cell background
       if (!completelyInside) {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+        ctx.fillStyle = C.outBg;
       } else if (val !== '') {
+        // 범례 색은 사용자 데이터(테마 불변) — 미등록 값만 기본 범례색 폴백
         ctx.fillStyle = colorMap[val] || '#10b981';
       } else {
-        ctx.fillStyle = 'rgba(34, 197, 94, 0.08)';
+        ctx.fillStyle = C.insideEmpty;
       }
       ctx.fillRect(x0, y0, cellW, cellH);
 
       // 2. Stroke grid border across ALL cells (inside and outside wafer)
-      ctx.strokeStyle = completelyInside ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = completelyInside ? C.lineStrong : C.line;
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x0, y0, cellW, cellH);
 
       // 3. Wafer inside boundary cell outline
       if (completelyInside) {
-        ctx.strokeStyle = '#22c55e';
+        ctx.strokeStyle = C.success;
         ctx.lineWidth = 1.2;
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, cellW - 1, cellH - 1);
       }
 
       // 4. Origin cell highlight
       if (isOriginCell) {
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.fillStyle = C.dangerWeak;
         ctx.fillRect(x0, y0, cellW, cellH);
-        ctx.strokeStyle = '#ef4444';
+        ctx.strokeStyle = C.danger;
         ctx.lineWidth = 2.0;
         ctx.strokeRect(x0 + 1, y0 + 1, cellW - 2, cellH - 2);
       }
@@ -1371,7 +1415,8 @@ function renderGridCanvas() {
         const fontPx = Math.max(5, Math.min(12, Math.floor(Math.min(maxFontW, maxFontH))));
 
         ctx.font = `bold ${fontPx}px "JetBrains Mono", monospace`;
-        ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? 'rgba(148, 163, 184, 0.85)' : 'rgba(71, 85, 105, 0.5)');
+        // 값 셀 텍스트: 채도 높은 범례색 위 흰색 고정(테마 불변), 좌표 표기: 테마 토큰
+        ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? C.textEmpty : C.textOut);
         ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
       }
     }
@@ -1391,7 +1436,7 @@ function renderGridCanvas() {
   } else {
     ctx.arc(waferCenterX, waferCenterY, outerRadX, 0, 2 * Math.PI);
   }
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.strokeStyle = C.waferEdge;
   ctx.lineWidth = 2.0;
   ctx.stroke();
 
@@ -1405,7 +1450,7 @@ function renderGridCanvas() {
   } else {
     ctx.arc(waferCenterX, waferCenterY, effRadX, 0, 2 * Math.PI);
   }
-  ctx.strokeStyle = '#22c55e';
+  ctx.strokeStyle = C.success;
   ctx.lineWidth = 2.0;
   ctx.setLineDash([6, 4]);
   ctx.stroke();
@@ -1417,9 +1462,9 @@ function renderGridCanvas() {
   if (physConfig.offsetX !== 0 || physConfig.offsetY !== 0) {
     ctx.beginPath();
     ctx.arc(gridCenterX, gridCenterY, 4, 0, 2 * Math.PI);
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = C.warning;
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = C.surface;
     ctx.lineWidth = 1.0;
     ctx.stroke();
 
@@ -1428,7 +1473,7 @@ function renderGridCanvas() {
     ctx.lineTo(gridCenterX + 8, gridCenterY);
     ctx.moveTo(gridCenterX, gridCenterY - 8);
     ctx.lineTo(gridCenterX, gridCenterY + 8);
-    ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+    ctx.strokeStyle = C.warning;
     ctx.lineWidth = 1.2;
     ctx.stroke();
   }
@@ -1442,10 +1487,10 @@ function renderGridCanvas() {
     const boxH = (maxR - minR + 1) * cellH;
 
     const isErase = (dragType === 'erase');
-    ctx.fillStyle = isErase ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)';
+    ctx.fillStyle = isErase ? C.dangerWeak : C.rangeFill;
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
-    ctx.strokeStyle = isErase ? '#ef4444' : '#3b82f6';
+    ctx.strokeStyle = isErase ? C.danger : C.accent;
     ctx.lineWidth = 2.0;
     ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
   }
@@ -1454,7 +1499,7 @@ function renderGridCanvas() {
   if (currentHoverCell && !isBoxDragging) {
     const hX = currentHoverCell.c * cellW + shiftX;
     const hY = currentHoverCell.r * cellH + shiftY;
-    ctx.strokeStyle = '#00f0ff';
+    ctx.strokeStyle = C.accent;
     ctx.lineWidth = 2.0;
     ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
   }
@@ -1468,7 +1513,7 @@ function renderGridCanvas() {
   {
     const isBack = (currentSide === 'back');
     const sideWord = isBack ? 'BACK' : 'FRONT';
-    const wmColor = isBack ? 'rgba(245, 158, 11, 0.13)' : 'rgba(56, 189, 248, 0.13)';
+    const wmColor = isBack ? C.wmBack : C.wmFront;
     const wmFont = Math.max(40, Math.floor(width * 0.16));
 
     ctx.save();
