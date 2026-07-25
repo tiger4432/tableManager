@@ -1,0 +1,1079 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>AssyManager - Knowledge Graph</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕸️</text></svg>" />
+  <!-- Google Fonts (main page tone: Outfit + JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ── 디자인 토큰은 tokens.css(SSOT, graph_viewer.js가 임포트)에서 공급 ──
+       이 블록은 페이지 전용 레이아웃/컴포넌트만 정의하며 시맨틱 토큰만 참조한다. */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      line-height: 1.5;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header (z 스케일: 본문 오버레이 < 200 < 자동완성 팝업 1000) ── */
+    .app-header {
+      position: relative;
+      height: 70px;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 0 24px;
+      z-index: 200;
+      flex-shrink: 0;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo-badge {
+      background: var(--accent-weak);
+      border: 1px solid var(--border-strong);
+      font-size: 1.25rem;
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+
+    .logo-area h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .logo-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    .glass-input {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 14px;
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      outline: none;
+      transition: var(--transition-smooth);
+    }
+
+    .glass-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
+    .glass-input option {
+      background-color: var(--bg-surface);
+      color: var(--text);
+    }
+
+    .glass-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: 0.85rem;
+      transition: var(--transition-smooth);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .glass-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    /* ── 검색 클러스터 ── */
+    .search-cluster {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-width: 0;
+      max-width: 780px;
+    }
+
+    .label-select {
+      max-width: 170px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    .ac-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 160px;
+      max-width: 340px;
+    }
+
+    .identity-input {
+      width: 100%;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .ac-list {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      box-shadow: var(--shadow-pop);
+      max-height: 320px;
+      overflow-y: auto;
+      z-index: 1000;
+      padding: 5px;
+    }
+
+    .ac-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background 0.12s ease;
+    }
+
+    .ac-item:hover,
+    .ac-item.active {
+      background: var(--accent-weak);
+    }
+
+    .ac-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .ac-id {
+      font-family: var(--font-mono);
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ac-label {
+      font-size: 0.66rem;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      flex-shrink: 0;
+    }
+
+    .ac-empty {
+      padding: 10px 12px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    /* depth 세그먼트 토글 */
+    .depth-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+    }
+
+    .depth-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+
+    .depth-btn + .depth-btn {
+      border-left: 1px solid var(--border);
+    }
+
+    .depth-btn:hover {
+      color: var(--text-muted);
+    }
+
+    .depth-btn.active {
+      background: var(--accent-weak);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .explore-btn {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-weak);
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ── 본문 ── */
+    .viewer {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* [1] Stats 첫 화면 */
+    .stats-view {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 26px 30px 40px;
+    }
+
+    .stats-inner {
+      max-width: 1060px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .center-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      padding: 60px 30px;
+      color: var(--text-muted);
+    }
+
+    .center-state .state-icon {
+      font-size: 2.8rem;
+      opacity: 0.55;
+    }
+
+    .center-state .state-sub {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      white-space: pre-line;
+      max-width: 420px;
+    }
+
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 3px solid var(--focus-ring);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: gvSpin 0.8s linear infinite;
+    }
+
+    @keyframes gvSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes gvFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stats-content {
+      animation: gvFadeIn 0.25s ease-out;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .stats-hero {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .hero-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .hero-key {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+    }
+
+    .hero-val {
+      font-family: var(--font-mono);
+      font-size: 1.7rem;
+      font-weight: 500;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+      word-break: break-all;
+    }
+
+    .hero-val.hero-sync {
+      font-size: 1.05rem;
+      padding-top: 6px;
+    }
+
+    .hero-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .stats-columns {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .stats-block {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+    }
+
+    .stats-block-header {
+      padding: 11px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .stats-block-count {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .label-cards {
+      padding: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .label-card {
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      border-radius: 10px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .label-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      box-shadow: var(--shadow-card);
+    }
+
+    .label-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .label-name {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .label-count {
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .edge-rows {
+      padding: 10px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .edge-row {
+      display: grid;
+      grid-template-columns: minmax(110px, auto) 1fr auto;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+    }
+
+    .edge-name {
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .edge-bar-track {
+      height: 7px;
+      border-radius: 5px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .edge-bar {
+      height: 100%;
+      border-radius: 5px;
+      background: var(--accent);
+      opacity: 0.75;
+    }
+
+    .edge-count {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stats-hint {
+      font-size: 0.74rem;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    .stats-footer-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    /* [2] Graph 뷰 */
+    .graph-view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      gap: 16px;
+      padding: 16px 20px 20px;
+    }
+
+    .canvas-wrap {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+    }
+
+    #graph-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+
+    #graph-canvas.dragging {
+      cursor: grabbing;
+    }
+
+    #graph-canvas.on-node {
+      cursor: pointer;
+    }
+
+    /* 캔버스 오버레이 칩들 */
+    .graph-meta {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      pointer-events: none;
+      max-width: calc(100% - 24px);
+    }
+
+    .meta-chip {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      box-shadow: var(--shadow-card);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .meta-chip .chip-accent {
+      color: var(--accent);
+    }
+
+    .truncated-badge {
+      background: var(--warning-weak);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      box-shadow: var(--shadow-card);
+      white-space: nowrap;
+    }
+
+    .graph-legend {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 5;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow-card);
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      pointer-events: none;
+      max-height: 45%;
+      overflow: hidden;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .legend-row .legend-user {
+      display: inline-block;
+      width: 16px;
+      height: 0;
+      border-top: 2px solid var(--overwrite);
+    }
+
+    .canvas-hint {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 5;
+      font-size: 0.66rem;
+      color: var(--text-dim);
+      pointer-events: none;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      opacity: 0.85;
+    }
+
+    .canvas-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      padding: 30px;
+      background: var(--scrim);
+    }
+
+    .canvas-overlay .overlay-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow-pop);
+      padding: 26px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      max-width: 420px;
+      animation: gvFadeIn 0.25s ease-out;
+    }
+
+    .overlay-icon {
+      font-size: 2.2rem;
+    }
+
+    .overlay-text {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .overlay-sub {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      word-break: break-all;
+    }
+
+    /* 우측 Node Inspector */
+    .node-panel {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .panel-meta {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .node-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 30px;
+      font-size: 0.82rem;
+    }
+
+    .node-empty .empty-icon {
+      font-size: 2.4rem;
+      opacity: 0.45;
+    }
+
+    .node-detail {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 16px;
+      animation: gvFadeIn 0.2s ease-out;
+    }
+
+    .node-id-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .node-label-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+    }
+
+    .center-chip {
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      background: var(--accent-weak);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+
+    .node-identity {
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--accent);
+      word-break: break-all;
+      line-height: 1.35;
+    }
+
+    .detail-block {
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .detail-block-header {
+      padding: 7px 12px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
+    }
+
+    .props-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .props-table td {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.74rem;
+      vertical-align: top;
+    }
+
+    .props-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .props-table .prop-key {
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      width: 1%;
+      padding-right: 14px;
+    }
+
+    .props-table .prop-val {
+      color: var(--text);
+      font-family: var(--font-mono);
+      word-break: break-all;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .props-table .prop-null {
+      color: var(--text-dim);
+    }
+
+    .props-empty {
+      padding: 12px;
+      font-size: 0.74rem;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    .node-hint {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    /* 좁은 화면 대응 */
+    @media (max-width: 1100px) {
+      .stats-columns {
+        grid-template-columns: 1fr;
+      }
+
+      .node-panel {
+        width: 260px;
+      }
+
+      .logo-sub {
+        display: none;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/graph-D-Cx2C9_.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-BNY5Fzu9.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-G-8TXAIM.js">
+  <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
+</head>
+
+<body>
+  <div id="app">
+    <!-- ── Header: 검색바(label + identity 자동완성 + depth) ── -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-badge">🕸️</div>
+        <div>
+          <h1>Knowledge Graph</h1>
+          <div class="logo-sub">온톨로지 서브그래프 뷰어 · G1 검증 도구</div>
+        </div>
+      </div>
+
+      <div class="search-cluster">
+        <select id="label-select" class="glass-input label-select" aria-label="노드 라벨 필터">
+          <option value="">ALL LABELS</option>
+        </select>
+        <div class="ac-wrap">
+          <input id="identity-input" class="glass-input identity-input" type="text"
+            placeholder="identity 검색 (예: LOT ID)" autocomplete="off" spellcheck="false"
+            role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="ac-list" />
+          <div id="ac-list" class="ac-list" role="listbox" style="display: none;"></div>
+        </div>
+        <div class="depth-toggle" role="group" aria-label="탐색 깊이">
+          <button id="depth-1" class="depth-btn active" aria-pressed="true" title="1-hop 이웃">1-hop</button>
+          <button id="depth-2" class="depth-btn" aria-pressed="false" title="2-hop 이웃">2-hop</button>
+        </div>
+        <button id="explore-btn" class="glass-btn explore-btn" title="서브그래프 탐색">🔍 탐색</button>
+      </div>
+
+      <div class="header-actions">
+        <button id="stats-btn" class="glass-btn" title="그래프 통계 화면">📊 Stats</button>
+        <a href="/" class="glass-btn" title="메인 그리드로">🏠 Main</a>
+        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="viewer">
+      <!-- ── [1] Stats 첫 화면: 그래프가 쌓이는지 즉시 확인 ── -->
+      <section id="stats-view" class="stats-view">
+        <div class="stats-inner">
+          <div id="stats-loading" class="center-state">
+            <div class="spinner"></div>
+            <div>그래프 통계를 불러오는 중...</div>
+          </div>
+
+          <div id="stats-error" class="center-state" style="display: none;">
+            <div class="state-icon">🚧</div>
+            <div>그래프 통계를 불러오지 못했습니다</div>
+            <div id="stats-error-sub" class="state-sub"></div>
+            <button id="stats-retry-btn" class="glass-btn">🔄 다시 시도</button>
+          </div>
+
+          <div id="stats-empty" class="center-state" style="display: none;">
+            <div class="state-icon">🕳️</div>
+            <div>그래프가 아직 비어 있습니다</div>
+            <div class="state-sub">graph_sync_worker가 동기화를 시작하면
+노드/엣지 카운트가 여기에 나타납니다.</div>
+            <button id="stats-empty-retry-btn" class="glass-btn">🔄 새로고침</button>
+          </div>
+
+          <div id="stats-content" class="stats-content" style="display: none;">
+            <div class="stats-hero">
+              <div class="hero-card">
+                <div class="hero-key">Total Nodes</div>
+                <div id="hero-nodes" class="hero-val">-</div>
+                <div id="hero-nodes-sub" class="hero-sub"></div>
+              </div>
+              <div class="hero-card">
+                <div class="hero-key">Total Edges</div>
+                <div id="hero-edges" class="hero-val">-</div>
+                <div id="hero-edges-sub" class="hero-sub"></div>
+              </div>
+              <div class="hero-card">
+                <div class="hero-key">Last Sync</div>
+                <div id="hero-sync" class="hero-val hero-sync">-</div>
+                <div class="hero-sub">graph_sync_worker</div>
+              </div>
+            </div>
+
+            <div class="stats-columns">
+              <div class="stats-block">
+                <div class="stats-block-header">
+                  <span>Nodes by Label</span>
+                  <span id="label-block-count" class="stats-block-count"></span>
+                </div>
+                <div id="label-cards" class="label-cards"></div>
+              </div>
+              <div class="stats-block">
+                <div class="stats-block-header">
+                  <span>Edges by Type</span>
+                  <span id="edge-block-count" class="stats-block-count"></span>
+                </div>
+                <div id="edge-rows" class="edge-rows"></div>
+              </div>
+            </div>
+
+            <p class="stats-hint">라벨 카드를 클릭하면 검색 필터가 설정됩니다 · 상단 검색바에서 노드를 찾아 서브그래프를 탐색하세요</p>
+            <div class="stats-footer-actions">
+              <button id="stats-refresh-btn" class="glass-btn">🔄 카운트 새로고침</button>
+              <button id="back-to-graph-btn" class="glass-btn" style="display: none;">🕸️ 그래프로 돌아가기</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── [2] 서브그래프 캔버스 + Node Inspector ── -->
+      <section id="graph-view" class="graph-view" style="display: none;">
+        <div id="canvas-wrap" class="canvas-wrap">
+          <canvas id="graph-canvas"></canvas>
+
+          <div class="graph-meta">
+            <span id="graph-meta-chip" class="meta-chip"></span>
+            <span id="truncated-badge" class="truncated-badge" style="display: none;">⚠ LIMIT 200 — 일부 노드 생략됨</span>
+          </div>
+
+          <div id="graph-legend" class="graph-legend" style="display: none;"></div>
+          <div class="canvas-hint">드래그 이동 · 휠 확대/축소 · 노드 클릭 = 중심 이동</div>
+
+          <div id="canvas-overlay" class="canvas-overlay" style="display: none;">
+            <div class="overlay-card">
+              <div id="canvas-overlay-spinner" class="spinner" style="display: none;"></div>
+              <div id="canvas-overlay-icon" class="overlay-icon" style="display: none;"></div>
+              <div id="canvas-overlay-text" class="overlay-text"></div>
+              <div id="canvas-overlay-sub" class="overlay-sub"></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="node-panel">
+          <div class="panel-header">
+            <div class="panel-title">🔎 Node Inspector</div>
+            <div id="node-panel-meta" class="panel-meta"></div>
+          </div>
+          <div class="panel-body">
+            <div id="node-empty" class="node-empty">
+              <div class="empty-icon">👈</div>
+              <div>캔버스에서 노드를 클릭하면<br>속성(props)이 표시됩니다.</div>
+            </div>
+            <div id="node-detail" class="node-detail" style="display: none;"></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+</body>
+
+</html>
