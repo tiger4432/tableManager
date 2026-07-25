@@ -32,26 +32,29 @@
 | 빈 파일 | 빈 파일/헤더만 있는 파일은 적재 없이 안전하게 `archives/`로 이동 |
 | 적재 경로 | 기존 통합 경로(`_send_to_upsert` → `crud.apply_batch_updates`) 그대로 — 1000행 청킹, 진행률/완료 WS 이벤트, 소스 계보(`source_name`=원본 파일명) 모두 커스텀 파이프라인과 동일 |
 | 확장성 | 스트리밍 2-pass(카운트→yield)로 수십만 행 파일도 전량 메모리 로드 없음 |
-| 옵트아웃 | 워크스페이스 `config/config.json`에 `"std_parse": false` 지정 시 폴백 비활성 (기본 활성) |
+| 옵트아웃 | `table_config.json` 테이블 항목에 `"std_parse": false` 지정 시 폴백 비활성 (기본 활성 — JSON **boolean**만 유효, 문자열 `"false"`는 무시+경고. **파일 단위 핫리로드**: 다음 파일부터 반영) |
 
-`config.json`이 없는 워크스페이스도 **폴더명=테이블명 규약**으로 동작합니다(폴더명이 `table_config.json`에 등록된 테이블이면 감시 대상 포함).
+워크스페이스는 기본적으로 **폴더명=테이블명 규약**으로 동작하며, 폴더명≠테이블명인 경우 `table_config.json` 테이블 항목의 `"workspace_name": "<폴더명>"` 별칭으로 매핑합니다. 별칭이 **다른 실존 테이블명과 동명**이거나 **복수 테이블이 같은 별칭을 선언**하면 해당 별칭은 무시되고 ERROR 로그가 남습니다(섀도잉 차단). 경로 구분자·드라이브 접두 등 워크스페이스 루트의 직속 자식으로 해석되지 않는 별칭도 무시됩니다.
 
 > **⚠️ 옵트아웃 주의사항**
-> - `"std_parse": false`는 **핫리로드되지 않습니다** — 핸들러가 값을 캐시하므로 config 변경 후 워처(또는 임베디드 모드의 웹 서버) **재기동이 필요**합니다. `SYSTEM_RELOAD`(/admin/reload-configs)로는 반영되지 않습니다.
+> - `"std_parse": false`는 `table_config.json` 소관이므로 **재기동 없이 핫리로드**됩니다 (2026-07-25 F4 해소). 반영 시점은 **파일 단위**입니다 — 파일 처리 시작 시 config 스냅샷을 잡아 그 파일은 시작 시점 기준으로 완결되고, 변경은 **다음 파일부터** 적용됩니다(처리 도중 config 변경에 의한 오배송/무음 드롭 차단).
 > - **커스텀 변환(컬럼 연산·정규화 등)에 의존하는 워크스페이스는 `"std_parse": false` 명시를 권장**합니다. 헤더가 스키마와 우연히 일치하는 파일이 커스텀 파서의 `match()`에 걸리지 않으면, 변환 없이 raw 값 그대로 적재될 수 있습니다.
+
+> **🗑️ [Deprecated 2026-07-25] 워크스페이스 `config/config.json`**
+> 과거 워크스페이스별 `config.json`의 `table_name`/`std_parse` 필드는 **글로벌 `table_config.json`의 `workspace_name`/`std_parse` 필드로 흡수**되었습니다. 기존 파일은 계속 읽히지만(하위호환 폴백) 기동 시 deprecation WARNING이 남으며, **두 원천이 충돌하면 `table_config.json`이 승리**합니다. 신규 워크스페이스에는 더 이상 생성되지 않습니다.
 
 ## 1.6 테이블 온보딩 = config 등록이 전부
 
 `table_config.json`에 테이블을 등록하면 워처가 **누락된 워크스페이스 구조를 자동 생성**합니다 (`WorkspaceWatcher._provision_workspaces`):
 
 ```text
-server/ingestion_workspace/<table>/
-├── raws/  archives/  err/  auto_update/  scripts/
-└── config/config.json      # {"table_name": "<table>"} 최소형
+server/ingestion_workspace/<table 또는 workspace_name>/
+└── raws/  archives/  err/  auto_update/  scripts/  config/
 ```
 
 - **생성 시점**: ① 워처 부팅 시(`discover_and_watch`) ② `SYSTEM_RELOAD` 시(`sync_new_workspaces` — watchdog 런타임 `schedule()`로 **재기동 없이** 즉시 감시 시작).
-- **기존 파일·설정은 변경하지 않음(누락분만 보충)**: 없는 폴더/파일만 새로 만들며 기존 내용은 절대 덮어쓰지 않습니다. config 폴더에 어떤 `.json`이라도 이미 있으면 `config.json`을 추가 생성하지 않지만, **config 폴더가 비어 있으면 최소형 `config.json`이 신설**될 수 있습니다(예: `bonding_map`).
+- **폴더명**: 기본은 테이블명, 테이블 항목에 `workspace_name` 별칭이 있으면 그 이름으로 생성합니다.
+- **기존 파일·설정은 변경하지 않음(누락 폴더만 보충)**: 없는 폴더만 새로 만들며 기존 내용은 절대 덮어쓰지 않습니다. [Deprecated 2026-07-25] 워크스페이스 `config.json`은 **더 이상 생성하지 않습니다** (§1.5 참조).
 - 시스템 내부 테이블은 제외 목록(`directory_watcher.AUTO_PROVISION_EXCLUDED_TABLES`, 현재 `wafer_map_metadata`)으로 관리합니다.
 
 즉, **"config에 테이블 추가 → 폴더 자동 생성 → 스키마와 같은 헤더의 CSV를 raws/에 드롭 → 적재"** 가 무스크립트로 완결됩니다.

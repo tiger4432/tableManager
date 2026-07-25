@@ -2944,6 +2944,16 @@ def get_ingestion_workspaces():
                     table_name = config_data.get("table_name", table_name)
                 except Exception as e:
                     print(f"Error reading workspace config {config_path}: {e}")
+
+            # [Deprecation 2026-07-25] 글로벌 table_config.json의 workspace_name 별칭이
+            # 레거시 워크스페이스 config.json보다 우선한다 (충돌 시 table_config 승리).
+            try:
+                from directory_watcher import find_workspace_alias, load_global_table_config
+                aliased = find_workspace_alias(name, load_global_table_config())
+                if aliased is not None:
+                    table_name = aliased
+            except Exception as e:
+                print(f"Error resolving workspace alias for '{name}': {e}")
             
             # Check for custom scripts
             custom_scripts = []
@@ -3191,7 +3201,11 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     for log in failed_logs:
         table_name = log.table_name or "unknown"
         server_dir = os.path.dirname(os.path.abspath(__file__))
-        workspace_root = os.path.join(server_dir, "ingestion_workspace", table_name)
+        # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도 오배송 방지
+        from directory_watcher import resolve_workspace_root, load_global_table_config
+        workspace_root = resolve_workspace_root(
+            os.path.join(server_dir, "ingestion_workspace"), table_name, load_global_table_config()
+        )
         config_path = os.path.join(workspace_root, "config", "config.json")
         if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
             json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]

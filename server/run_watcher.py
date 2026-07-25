@@ -164,8 +164,13 @@ def poll_pending_retries():
                 
                 # Setup handler and run synchronous retry
                 table_name = log.table_name or "unknown"
-                workspace_root = os.path.join(script_dir, "ingestion_workspace", table_name)
-                
+                # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도가
+                # ingestion_workspace/<table_name> 허공 경로로 오배송되지 않게 한다.
+                from directory_watcher import resolve_workspace_root, load_global_table_config
+                workspace_root = resolve_workspace_root(
+                    os.path.join(script_dir, "ingestion_workspace"), table_name, load_global_table_config()
+                )
+
                 config_path = os.path.join(workspace_root, "config", "config.json")
                 if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
                     json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]

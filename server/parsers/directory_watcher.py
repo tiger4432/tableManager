@@ -57,6 +57,142 @@ def load_global_table_config() -> dict:
     return {}
 
 
+# [Deprecation 2026-07-25] 워크스페이스 config.json 폐지 — 경고는 프로세스당 경로별 1회만.
+_legacy_config_warned_paths = set()
+
+
+def warn_legacy_workspace_config(config_path: str):
+    """워크스페이스 config.json(레거시) 사용 감지 시 1회 WARNING을 남긴다.
+
+    파일은 삭제하지 않고 계속 읽되(하위호환), 소비 필드(table_name/std_parse)는
+    글로벌 table_config.json의 `workspace_name`/`std_parse`로 이관을 안내한다.
+    충돌 시 우선순위: **table_config.json 승리**."""
+    abs_path = os.path.abspath(config_path)
+    if abs_path in _legacy_config_warned_paths:
+        return
+    _legacy_config_warned_paths.add(abs_path)
+    logger.warning(
+        f"[DEPRECATED] Workspace config file is deprecated and will be ignored in a future release: {abs_path} — "
+        f"migrate 'table_name' -> table_config.json entry field 'workspace_name' (folder alias), "
+        f"'std_parse' -> table_config.json entry field 'std_parse' (boolean, default true). "
+        f"On conflict, table_config.json wins."
+    )
+
+
+# [D3/D5] 별칭 충돌 ERROR·중복 경고는 키별 1회만 (청크당 재발화로 인한 로그 홍수 방지)
+_alias_conflict_logged = set()
+# [D6] 신규 필드 타입 오류 경고도 원천별 1회만
+_invalid_field_warned = set()
+
+
+def _log_alias_conflict_once(folder_name: str, message: str):
+    key = (folder_name, message)
+    if key in _alias_conflict_logged:
+        return
+    _alias_conflict_logged.add(key)
+    logger.error(message)
+
+
+def warn_invalid_std_parse_once(source_key: str, value):
+    """[D6] `std_parse`에 bool 외 값(예: 문자열 "false")이 오면 무시하고 1회 경고한다."""
+    key = ("std_parse", source_key)
+    if key in _invalid_field_warned:
+        return
+    _invalid_field_warned.add(key)
+    logger.warning(
+        f"Ignoring non-boolean 'std_parse' value {value!r} in {source_key} — "
+        f"expected JSON boolean true/false (string \"false\" is NOT an opt-out)."
+    )
+
+
+def find_workspace_alias(folder_name: str, table_config: dict) -> str | None:
+    """`workspace_name` 별칭이 폴더명과 일치하는 table_config 항목의 테이블명을 찾는다.
+
+    명시 별칭 매칭 전용 — 폴더명=테이블명 규약은 다루지 않는다. 명시 별칭은
+    레거시 워크스페이스 config.json의 `table_name`보다 항상 우선한다(글로벌 승리).
+
+    [D3] 충돌 시 별칭은 무효(ERROR 로그 1회):
+    - 별칭이 **다른 실존 테이블명**과 동명이면 섀도잉 차단을 위해 해당 별칭을 무시한다
+      (자기 자신의 테이블명을 별칭으로 쓴 자기-별칭은 허용).
+    - 동일 별칭을 복수 테이블이 선언하면 전부 무시한다(어느 쪽이 정당한지 판정 불가)."""
+    if not folder_name or not isinstance(table_config, dict):
+        return None
+    matches = [
+        t_name for t_name, t_cfg in table_config.items()
+        if isinstance(t_cfg, dict) and t_cfg.get("workspace_name") == folder_name
+    ]
+    if not matches:
+        return None
+    # [D3-①] 별칭이 다른 실존 테이블명과 충돌 → 그 별칭들은 무효 (폴더는 동명 테이블 소유로 유지)
+    if folder_name in table_config:
+        others = [t for t in matches if t != folder_name]
+        if others:
+            _log_alias_conflict_once(
+                folder_name,
+                f"workspace_name alias '{folder_name}' declared by table(s) {others} collides with an "
+                f"existing table name in table_config.json — alias ignored; folder resolves to table '{folder_name}'.",
+            )
+        matches = [t for t in matches if t == folder_name]
+        if not matches:
+            return None
+    # [D3-②] 동일 별칭 복수 선언 → 전부 무효
+    if len(matches) > 1:
+        _log_alias_conflict_once(
+            folder_name,
+            f"Duplicate workspace_name alias '{folder_name}' declared by tables {matches} in "
+            f"table_config.json — alias ignored for all of them (folder falls back to name convention).",
+        )
+        return None
+    return matches[0]
+
+
+def resolve_workspace_root(base_dir: str, table_name: str, table_config: dict) -> str:
+    """테이블명 → 워크스페이스 루트 **절대경로** 역조회 (재시도/자동생성 공용).
+
+    `workspace_name` 별칭이 유효하면 그 폴더, 아니면 테이블명 폴더.
+    - [D3 대칭] 별칭이 충돌로 무효(find_workspace_alias가 해당 테이블로 역해석되지 않음)면 무시.
+    - [D2] 결과 기반 봉쇄: normpath(join()) 결과가 base_dir의 **직속 자식**이 아니면 무시
+      (Windows 드라이브 상대경로 `C:evil`이 join에서 base를 폐기하는 탈출 경로 차단)."""
+    base_abs = os.path.abspath(base_dir)
+    folder = None
+    t_cfg = table_config.get(table_name) if isinstance(table_config, dict) else None
+    if isinstance(t_cfg, dict):
+        ws = t_cfg.get("workspace_name")
+        if isinstance(ws, str) and ws:
+            folder = ws
+    # 정방향 해석과의 대칭성: 이 별칭으로 폴더를 만들었을 때 실제로 이 테이블로 인제션되는가
+    if folder is not None and find_workspace_alias(folder, table_config) != table_name:
+        folder = None
+    if folder is not None:
+        candidate = os.path.abspath(os.path.normpath(os.path.join(base_abs, folder)))
+        # 직속 자식 + 폴더명 원형 보존(드라이브 접두 등이 join에서 소거·변형되지 않았는지)까지 요구
+        if (os.path.normcase(os.path.dirname(candidate)) == os.path.normcase(base_abs)
+                and os.path.basename(candidate) == folder):
+            return candidate
+        key = ("unsafe_workspace_name", table_name, folder)
+        if key not in _invalid_field_warned:
+            _invalid_field_warned.add(key)
+            logger.warning(
+                f"Ignoring unsafe workspace_name '{folder}' for table '{table_name}' "
+                f"(must resolve to a direct child of the ingestion workspace)."
+            )
+    return os.path.join(base_abs, table_name)
+
+
+def resolve_workspace_table(folder_name: str, table_config: dict) -> str | None:
+    """폴더명 → 테이블명 해석 (글로벌 table_config.json 단일 원천).
+
+    1) `workspace_name` 별칭이 폴더명과 일치하는 테이블 항목
+    2) 폴더명=테이블명 규약 (기본값: 항목에 workspace_name이 없으면 폴더명이 곧 테이블명)
+    해석 불가 시 None."""
+    aliased = find_workspace_alias(folder_name, table_config)
+    if aliased is not None:
+        return aliased
+    if isinstance(table_config, dict) and folder_name in table_config:
+        return folder_name
+    return None
+
+
 def _register_legacy_import_shim():
     """[C-2 하위호환 shim] gitignored 사용자 워크스페이스 스크립트의 구식 `server.*` import 지원.
 
@@ -149,41 +285,87 @@ class IngestionHandler(FileSystemEventHandler):
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
-        
-    @property
-    def table_name(self):
-        if hasattr(self, '_cached_table_name'):
-            return self._cached_table_name
-            
-        t_name = self.default_table_name
-        import json
+        # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
+        self._legacy_config_cache = None
+
+    def _load_legacy_config(self) -> dict:
+        """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
+
+        소비 필드(table_name/std_parse)가 있으면 deprecation 경고를 1회 남긴다.
+        글로벌 table_config.json이 항상 우선하며, 이 파일은 폴백 원천일 뿐이다."""
+        if self._legacy_config_cache is not None:
+            return self._legacy_config_cache
+        data = {}
         if self.config_path and os.path.exists(self.config_path):
+            import json
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                t_name = config.get("table_name", t_name)
-            except: pass
-        self._cached_table_name = t_name
-        return t_name
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception:
+                data = {}
+            if ("table_name" in data) or ("std_parse" in data):
+                warn_legacy_workspace_config(self.config_path)
+        self._legacy_config_cache = data
+        return data
+
+    def _resolve_table_name(self, global_cfg: dict):
+        """워크스페이스 → 테이블명 해석. 우선순위(충돌 시 상위가 승리):
+        1) 글로벌 table_config.json의 `workspace_name` 별칭 (전달된 global_cfg 스냅샷 기준)
+        2) [deprecated] 레거시 워크스페이스 config.json의 `table_name`
+        3) 생성자 default_table_name → 폴더명=테이블명 규약"""
+        folder_name = os.path.basename(os.path.abspath(self.workspace_path))
+        # 별칭 명시 매칭만 글로벌 승리 대상 — 폴더명=테이블명 규약 해석은 기존 폴백 순서 유지
+        aliased = find_workspace_alias(folder_name, global_cfg)
+        if aliased is not None:
+            return aliased
+        legacy_name = self._load_legacy_config().get("table_name")
+        if legacy_name:
+            return legacy_name
+        return self.default_table_name or folder_name
+
+    def _snapshot_table_context(self):
+        """[D1] 파일 처리 단위 `(t_name, table_info)` 스냅샷 — 글로벌 config를 **1회만** 읽어
+        헤더 검증→정규화→업서트 전 구간이 같은 config를 보게 한다. 핫리로드 의미론은
+        "파일 경계에서 반영"(처리 중인 파일은 시작 시점 config로 완결)."""
+        global_cfg = load_global_table_config()
+        t_name = self._resolve_table_name(global_cfg)
+        table_info = global_cfg.get(t_name) if t_name else None
+        if not isinstance(table_info, dict):
+            table_info = {}
+        return t_name, table_info
+
+    def _std_parse_enabled_for(self, t_name, table_info) -> bool:
+        """std parser 폴백 옵트아웃 게이트 (스냅샷 기반). 우선순위(충돌 시 상위가 승리):
+        1) 글로벌 table_config.json 테이블 항목의 `std_parse` (파일 경계 핫리로드 — F4 해소)
+        2) [deprecated] 레거시 워크스페이스 config.json의 `std_parse`
+        3) 기본 활성(True) — config가 없는 워크스페이스도 활성.
+        [D6] bool 외 값은 무시(1회 경고) 후 하위 원천으로 폴백."""
+        if isinstance(table_info, dict) and "std_parse" in table_info:
+            val = table_info["std_parse"]
+            if isinstance(val, bool):
+                return val
+            warn_invalid_std_parse_once(f"table_config.json entry '{t_name}'", val)
+        legacy = self._load_legacy_config()
+        if "std_parse" in legacy:
+            lval = legacy["std_parse"]
+            if isinstance(lval, bool):
+                return lval
+            warn_invalid_std_parse_once(f"workspace config '{self.config_path}'", lval)
+        return True
+
+    @property
+    def table_name(self):
+        """현재 시점 config 기준 테이블명 (표시/이벤트용). 파일 처리 경로는
+        `_snapshot_table_context`가 잡은 파일 단위 스냅샷을 사용한다(D1)."""
+        return self._resolve_table_name(load_global_table_config())
 
     @property
     def std_parse_enabled(self):
-        """워크스페이스 config.json의 `"std_parse": false`로 표준 파서 폴백을 옵트아웃할 수 있다.
-        기본값은 활성(True). config가 없는 워크스페이스도 활성이다."""
-        if hasattr(self, '_cached_std_parse_enabled'):
-            return self._cached_std_parse_enabled
-
-        enabled = True
-        import json
-        if self.config_path and os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                enabled = config.get("std_parse", True) is not False
-            except Exception:
-                pass
-        self._cached_std_parse_enabled = enabled
-        return enabled
+        """현재 시점 config 기준 옵트아웃 게이트 (파일 처리 경로는 스냅샷 사용 — D1)."""
+        t_name, table_info = self._snapshot_table_context()
+        return self._std_parse_enabled_for(t_name, table_info)
 
     @property
     def errors_path(self):
@@ -229,20 +411,24 @@ class IngestionHandler(FileSystemEventHandler):
         """
         # Initial debounce to allow file copy to finish
         time.sleep(delay)
-        
+
         abs_path = os.path.abspath(file_path)
         if not os.path.exists(abs_path):
             logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
             return
 
+        # [D1] 파일당 1회 스냅샷 — 해석·검증·업서트·로그가 전부 같은 config 스냅샷을 본다.
+        # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
+        t_name, table_info = self._snapshot_table_context()
+
         for attempt in range(retries):
             try:
                 # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석
-                rows, total_rows, skipped_no_key = self._resolve_rows(file_path)
+                rows, total_rows, skipped_no_key = self._resolve_rows(file_path, t_name=t_name, table_info=table_info)
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
                 if (total_rows > 0) if total_rows is not None else bool(rows):
-                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path), total_rows=total_rows)
+                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path), total_rows=total_rows, t_name=t_name, table_info=table_info)
 
                 # 3. Archive the file
                 dest_path = self._archive_file(file_path)
@@ -251,72 +437,76 @@ class IngestionHandler(FileSystemEventHandler):
                 # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
                 detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None
                 logger.info(
-                    f"[{self.table_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}"
+                    f"[{t_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}"
                     + (f" ({detail})" if detail else "")
                 )
-                self._log_ingestion_success(file_path, dest_path)
+                self._log_ingestion_success(file_path, dest_path, t_name=t_name)
                 if self.on_file_processed_callback:
-                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "SUCCESS", detail)
+                    self.on_file_processed_callback(t_name, os.path.basename(file_path), "SUCCESS", detail)
                 return
             except PermissionError:
-                logger.warning(f"[{self.table_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
+                logger.warning(f"[{t_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
                 time.sleep(delay)
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
-                logger.error(f"[{self.table_name}] ❌ Error processing file {os.path.basename(file_path)}: {error_msg}")
+                logger.error(f"[{t_name}] ❌ Error processing file {os.path.basename(file_path)}: {error_msg}")
                 dest_path = self._move_to_err_folder(file_path)
                 if not dest_path:
                     dest_path = file_path
-                self._log_ingestion_failure(file_path, dest_path, error_msg)
+                self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
                 if self.on_file_processed_callback:
-                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "FAILED", str(e))
+                    self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", str(e))
                 return
-        
+
         error_msg = f"Failed to process file after {retries} attempts: PermissionError (file locked)"
-        logger.error(f"[{self.table_name}] ❌ {error_msg}: {os.path.basename(file_path)}")
+        logger.error(f"[{t_name}] ❌ {error_msg}: {os.path.basename(file_path)}")
         dest_path = self._move_to_err_folder(file_path)
         if not dest_path:
             dest_path = file_path
-        self._log_ingestion_failure(file_path, dest_path, error_msg)
+        self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
         if self.on_file_processed_callback:
-            self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "FAILED", error_msg)
+            self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", error_msg)
 
-    def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str):
+    def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str, t_name: str = None):
+        if t_name is None:
+            t_name = self.table_name
         db = SessionLocal()
         try:
             from database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
-                table_name=self.table_name or "unknown",
+                table_name=t_name or "unknown",
                 status="FAILED",
                 error_message=error_msg,
                 retry_count=0
             )
             db.add(log_obj)
             db.commit()
-            logger.info(f"[{self.table_name}] 📝 Logged file ingestion failure to database.")
+            logger.info(f"[{t_name}] 📝 Logged file ingestion failure to database.")
         except Exception as e:
             logger.error(f"Failed to write file ingestion error log to DB: {e}")
         finally:
             db.close()
 
-    def _log_ingestion_success(self, original_path: str, archived_path: str):
+    def _log_ingestion_success(self, original_path: str, archived_path: str, t_name: str = None):
+        if t_name is None:
+            t_name = self.table_name
         db = SessionLocal()
         try:
             from database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
-                table_name=self.table_name or "unknown",
+                table_name=t_name or "unknown",
                 status="SUCCESS",
                 error_message=None,
                 retry_count=0
             )
             db.add(log_obj)
             db.commit()
-            logger.info(f"[{self.table_name}] 📝 Logged file ingestion success to database.")
+            logger.info(f"[{t_name}] 📝 Logged file ingestion success to database.")
         except Exception as e:
             logger.error(f"Failed to write file ingestion success log to DB: {e}")
         finally:
@@ -328,10 +518,12 @@ class IngestionHandler(FileSystemEventHandler):
         Does not move it again.
         """
         filepath = log_entry.filepath
+        # [D1] 재시도 경로도 파일당 1회 스냅샷 (핫리로드는 파일 경계에서 반영)
+        t_name, table_info = self._snapshot_table_context()
         try:
-            rows, total_rows, skipped_no_key = self._resolve_rows(filepath)
+            rows, total_rows, skipped_no_key = self._resolve_rows(filepath, t_name=t_name, table_info=table_info)
             if (total_rows > 0) if total_rows is not None else bool(rows):
-                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows)
+                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows, t_name=t_name, table_info=table_info)
 
             # If successful, update the log entry to SUCCESS
             log_entry.status = "SUCCESS"
@@ -339,18 +531,18 @@ class IngestionHandler(FileSystemEventHandler):
             db.commit()
             detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None  # [F1]
             if self.on_file_processed_callback:
-                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "SUCCESS", detail)
+                self.on_file_processed_callback(t_name, os.path.basename(filepath), "SUCCESS", detail)
             return True
         except Exception as e:
             import traceback
             error_msg = traceback.format_exc()
-            logger.error(f"[{self.table_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
+            logger.error(f"[{t_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
             log_entry.status = "FAILED"
             log_entry.error_message = error_msg
             log_entry.retry_count += 1
             db.commit()
             if self.on_file_processed_callback:
-                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "FAILED", str(e))
+                self.on_file_processed_callback(t_name, os.path.basename(filepath), "FAILED", str(e))
             return False
 
     def _move_to_err_folder(self, file_path: str) -> str:
@@ -498,9 +690,12 @@ class IngestionHandler(FileSystemEventHandler):
 
         return None # 매칭된 파서가 없음
 
-    def _resolve_rows(self, file_path: str):
+    def _resolve_rows(self, file_path: str, t_name: str = None, table_info: dict = None):
         """파일을 행 컬렉션으로 해석한다. 커스텀 파이프라인 디스커버리가 **우선**(하위호환)이며,
         어떤 스크립트도 매칭하지 않았을 때(None)만 표준 파서(std parser) 폴백을 시도한다.
+
+        [D1] t_name/table_info는 파일 단위 config 스냅샷 — 미전달 시(레거시 직접 호출)
+        이 시점에 1회 스냅샷을 잡는다.
 
         반환: (rows, total_rows, skipped_no_key)
           - 커스텀 파이프라인 경로: (list[dict], None, 0) — 기존과 동일.
@@ -509,12 +704,15 @@ class IngestionHandler(FileSystemEventHandler):
         스크립트 로드/매칭 오류 시에는 기존과 동일하게 _discover_and_execute_pipeline이
         ValueError를 raise하며, 이 경우 std 폴백은 **발동하지 않는다**(깨진 스크립트 은폐 방지).
         """
+        if t_name is None and table_info is None:
+            t_name, table_info = self._snapshot_table_context()
+
         rows = self._discover_and_execute_pipeline(file_path)
         if rows is not None:
             return rows, None, 0
 
-        if self.std_parse_enabled:
-            std_result = self._try_std_parse(file_path)
+        if self._std_parse_enabled_for(t_name, table_info):
+            std_result = self._try_std_parse(file_path, t_name, table_info)
             if std_result is not None:
                 return std_result
 
@@ -523,8 +721,11 @@ class IngestionHandler(FileSystemEventHandler):
             f"and the standard parser fallback was not applicable."
         )
 
-    def _try_std_parse(self, file_path: str):
+    def _try_std_parse(self, file_path: str, t_name: str, table_info: dict):
         """[Std Parser Fallback] 표준 파서 적용을 시도한다.
+
+        t_name/table_info는 [D1] 파일 단위 config 스냅샷(호출자 전달) — 헤더 검증과
+        이후 업서트 정규화가 반드시 같은 스냅샷을 보게 한다.
 
         반환: (row_iterator, total_rows, skipped_no_key) 또는 적용 불가 시 None
               (미지원 확장자 / 테이블 미확정 / table_config 미등록).
@@ -538,11 +739,9 @@ class IngestionHandler(FileSystemEventHandler):
         if not is_std_supported(file_path):
             return None
 
-        t_name = self.table_name
         if not t_name:
             return None
 
-        table_info = load_global_table_config().get(t_name)
         if not table_info:
             logger.warning(
                 f"[{t_name}] Std parser skipped: table '{t_name}' is not defined in table_config.json"
@@ -563,24 +762,25 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
-    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None):
+    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None, t_name: str = None, table_info: dict = None):
         """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
 
         rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
         total_rows: 이터레이터 경로에서 진행률 계산용 총 행 수 — list면 생략 가능(len 사용).
+        t_name/table_info: [D1] 파일 단위 config 스냅샷 — 헤더 검증(_try_std_parse)과 동일
+        스냅샷을 사용해 처리 도중 config 변경에 의한 오배송/무음 0행 업서트를 차단한다.
+        미전달 시(레거시 직접 호출) 이 시점에 1회 스냅샷을 잡는다.
         """
-        # 1. 대상 테이블 설정 로드
-        table_config = load_global_table_config()
-
-        # 2. 현재 워크스페이스의 table_name 결정
-        t_name = self.table_name
+        # 1-2. 대상 테이블 스냅샷 확보
+        if t_name is None and table_info is None:
+            t_name, table_info = self._snapshot_table_context()
 
         if not t_name:
             logger.error("No table_name identified for upsert.")
             return
 
         # 3. 비즈니스 키 및 컬럼 매핑 정보 획득
-        table_info = table_config.get(t_name, {})
+        table_info = table_info or {}
         bk_col = table_info.get("business_key", "id")
         defined_cols = table_info.get("display_columns", [])
         
@@ -663,10 +863,10 @@ class IngestionHandler(FileSystemEventHandler):
                         remaining = MAX_NOTIFY_CREATED_LOGS - len(all_created_logs)
                         if remaining > 0:
                             all_created_logs.extend(created_logs[:remaining])
-                    logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
+                    logger.info(f"[{t_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
                     db.rollback()
-                    logger.error(f"[{self.table_name}] ❌ Failed to apply local batch update: {e}")
+                    logger.error(f"[{t_name}] ❌ Failed to apply local batch update: {e}")
                     raise e
                 finally:
                     db.close()
@@ -683,7 +883,7 @@ class IngestionHandler(FileSystemEventHandler):
                 self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)
                 
         except Exception as outer_e:
-            logger.error(f"[{self.table_name}] Outer error during batch injection loop: {outer_e}")
+            logger.error(f"[{t_name}] Outer error during batch injection loop: {outer_e}")
             raise outer_e
 
 class WorkspaceWatcher:
@@ -713,30 +913,25 @@ class WorkspaceWatcher:
 
     def _provision_workspaces(self) -> list:
         """[테이블 온보딩 자동화] table_config.json에 등록된 각 테이블에 대해
-        표준 워크스페이스 구조(raws/archives/err/auto_update/scripts/config + 최소형 config.json)를
-        보충 생성한다. **기존 파일/설정은 절대 덮어쓰지 않는다**(없는 폴더·파일만 보충).
+        표준 워크스페이스 구조(raws/archives/err/auto_update/scripts/config)를 보충 생성한다.
+        **기존 파일/설정은 절대 덮어쓰지 않는다**(없는 폴더만 보충).
+        [Deprecation 2026-07-25] 워크스페이스 config.json은 더 이상 생성하지 않는다 —
+        폴더명↔테이블명 별칭은 table_config 항목의 `workspace_name` 필드가 담당한다.
         반환: 생성/보충이 실제로 발생한 테이블명 목록."""
-        import json
         table_config = load_global_table_config()
         provisioned = []
-        for t_name in table_config.keys():
+        for t_name, t_cfg in table_config.items():
             if t_name in AUTO_PROVISION_EXCLUDED_TABLES:
                 continue
             try:
-                workspace_root = os.path.join(self.base_dir, t_name)
+                # [D2] 결과 기반 경로 봉쇄 + [D3] 충돌 별칭 무효화가 적용된 공용 역조회
+                workspace_root = resolve_workspace_root(self.base_dir, t_name, table_config)
                 changed = False
                 for sub in WORKSPACE_SUBDIRS:
                     sub_dir = os.path.join(workspace_root, sub)
                     if not os.path.exists(sub_dir):
                         os.makedirs(sub_dir, exist_ok=True)
                         changed = True
-                config_dir = os.path.join(workspace_root, "config")
-                has_json_config = any(f.endswith(".json") for f in os.listdir(config_dir))
-                if not has_json_config:
-                    config_path = os.path.join(config_dir, "config.json")
-                    with open(config_path, "w", encoding="utf-8") as f:
-                        json.dump({"table_name": t_name}, f, ensure_ascii=False, indent=2)
-                    changed = True
                 if changed:
                     provisioned.append(t_name)
             except Exception as e:
@@ -763,12 +958,22 @@ class WorkspaceWatcher:
                 config_path = os.path.join(config_dir, json_files[0])
                 logger.info(f"Using alternative config: {config_path}")
 
+        folder_name = os.path.basename(workspace_root)
+        # 글로벌 table_config 기준 폴더명 해석 (workspace_name 별칭 > 폴더명=테이블명 규약)
+        resolved_table = resolve_workspace_table(folder_name, table_config)
+
         if os.path.exists(config_path):
-            handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
-            watch_desc = f"using config: {os.path.basename(config_path)}"
+            # [Deprecation 2026-07-25] 레거시 워크스페이스 config — 하위호환 유지 + 기동/리로드 시 1회 경고.
+            # [D4] 등록 시점 경고는 표준 파일명 config.json에만 — 커스텀 파서 규칙 파일
+            # (예: sensor_config.json)에 대한 허위 발화 방지. 그런 파일이라도 table_name/std_parse를
+            # 실제 소비하면 _load_legacy_config의 필드 게이트 경고가 처리 시점에 발화한다.
+            if os.path.basename(config_path) == "config.json":
+                warn_legacy_workspace_config(config_path)
+            handler = IngestionHandler(workspace_root, config_path, archives_path, default_table_name=resolved_table or folder_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
+            watch_desc = f"using config: {os.path.basename(config_path)} (deprecated)"
         else:
             # config 가 없더라도 scripts 폴더 내에 파이썬 파일이 있거나(파이프라인 전용),
-            # 폴더명이 table_config에 등록된 테이블명과 일치하면(std parser 규약) 감지 대상으로 포함
+            # 폴더명이 table_config에 해석되면(workspace_name 별칭 또는 std parser 규약) 감지 대상으로 포함
             scripts_dir = os.path.join(workspace_root, "scripts")
             has_scripts = False
             if os.path.exists(scripts_dir):
@@ -777,11 +982,11 @@ class WorkspaceWatcher:
                         has_scripts = True
                         break
 
-            table_name = os.path.basename(workspace_root)
+            table_name = resolved_table or folder_name
             if has_scripts:
                 watch_desc = f"Pipeline-only workspace, Table: {table_name}"
-            elif table_name in table_config:
-                watch_desc = f"Std-parser workspace (folder name = table), Table: {table_name}"
+            elif resolved_table is not None:
+                watch_desc = f"Std-parser workspace (table_config resolved), Table: {table_name}"
             else:
                 logger.warning(f"Skipping {raws_root}: No JSON config or custom_parser found.")
                 return False
