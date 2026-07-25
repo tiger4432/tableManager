@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
   <title>AssyManager - Enrichment Queue</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>" />
   <!-- Google Fonts (main page tone: Outfit + JetBrains Mono) -->
@@ -13,28 +15,8 @@
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <style>
-    /* ── Design tokens: main page(style.css)와 동일 팔레트, 페이지 자체 포함(자체 모듈 선례) ── */
-    :root {
-      --bg-app: #07090e;
-      --bg-surface: rgba(15, 22, 36, 0.95);
-      --bg-header: rgba(10, 15, 26, 0.96);
-      --border-color: rgba(255, 255, 255, 0.08);
-      --border-color-glow: rgba(0, 240, 255, 0.2);
-      --text-main: #f1f5f9;
-      --text-muted: #94a3b8;
-      --text-dim: #64748b;
-      --color-primary: #00f0ff;
-      --color-primary-glow: rgba(0, 240, 255, 0.4);
-      --color-secondary: #a855f7;
-      --color-success: #10b981;
-      --color-warning: #f59e0b;
-      --color-danger: #ef4444;
-      --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-      --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
+    /* ── 디자인 토큰은 tokens.css(SSOT, enrichment.js가 임포트)에서 공급 ──
+       이 블록은 페이지 전용 레이아웃/컴포넌트만 정의하며 시맨틱 토큰만 참조한다. */
     * {
       box-sizing: border-box;
       margin: 0;
@@ -44,13 +26,10 @@
     body {
       font-family: var(--font-sans);
       background-color: var(--bg-app);
-      color: var(--text-main);
+      color: var(--text);
       height: 100vh;
       overflow: hidden;
       line-height: 1.5;
-      background-image:
-        radial-gradient(at 8% 8%, rgba(0, 240, 255, 0.04) 0px, transparent 50%),
-        radial-gradient(at 92% 92%, rgba(168, 85, 247, 0.04) 0px, transparent 50%);
     }
 
     #app {
@@ -63,7 +42,7 @@
     .app-header {
       height: 70px;
       background: var(--bg-header);
-      border-bottom: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -81,21 +60,18 @@
     }
 
     .logo-badge {
-      background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(168, 85, 247, 0.25));
-      border: 1px solid var(--border-color-glow);
+      background: var(--accent-weak);
+      border: 1px solid var(--border-strong);
       font-size: 1.25rem;
       padding: 6px 10px;
       border-radius: 10px;
-      box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
     }
 
     .logo-area h1 {
       font-size: 1.25rem;
       font-weight: 600;
       letter-spacing: -0.4px;
-      background: linear-gradient(to right, #f1f5f9, var(--color-primary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--text);
       white-space: nowrap;
     }
 
@@ -136,8 +112,8 @@
     .progress-track {
       height: 8px;
       border-radius: 6px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--border-color);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
       overflow: hidden;
     }
 
@@ -145,8 +121,7 @@
       height: 100%;
       width: 0%;
       border-radius: 6px;
-      background: linear-gradient(90deg, var(--color-primary), var(--color-success));
-      box-shadow: 0 0 10px var(--color-primary-glow);
+      background: var(--accent);
       transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
@@ -155,17 +130,17 @@
       font-size: 0.8rem;
       padding: 6px 14px;
       border-radius: 20px;
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      color: var(--color-warning);
-      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      background: var(--warning-weak);
       white-space: nowrap;
       transition: var(--transition-smooth);
     }
 
     .stat-badge.all-done {
-      border-color: rgba(16, 185, 129, 0.4);
-      color: var(--color-success);
-      background: rgba(16, 185, 129, 0.08);
+      border-color: var(--success);
+      color: var(--success);
+      background: var(--success-weak);
     }
 
     .stat-badge-session {
@@ -189,10 +164,10 @@
     }
 
     .glass-input {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border-color);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
       border-radius: 8px;
-      color: var(--text-main);
+      color: var(--text);
       padding: 8px 14px;
       font-family: var(--font-sans);
       font-size: 0.88rem;
@@ -202,20 +177,19 @@
     }
 
     .glass-input:focus {
-      border-color: var(--color-primary);
-      background: rgba(255, 255, 255, 0.06);
-      box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.15);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
     .glass-input option {
-      background-color: #0b0f19;
-      color: var(--text-main);
+      background-color: var(--bg-surface);
+      color: var(--text);
     }
 
     .glass-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
-      color: var(--text-main);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
       padding: 8px 16px;
       border-radius: 8px;
       cursor: pointer;
@@ -230,8 +204,8 @@
     }
 
     .glass-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: var(--surface-hover);
+      border-color: var(--accent);
       transform: translateY(-1px);
     }
 
@@ -246,9 +220,9 @@
 
     .panel {
       background: var(--bg-surface);
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border);
       border-radius: 12px;
-      box-shadow: var(--glass-shadow);
+      box-shadow: var(--shadow-card);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -271,7 +245,8 @@
 
     .panel-header {
       padding: 13px 18px;
-      border-bottom: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -282,7 +257,7 @@
     .panel-title {
       font-size: 0.95rem;
       font-weight: 600;
-      color: var(--color-primary);
+      color: var(--text);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -313,18 +288,8 @@
       min-height: 0;
     }
 
-    /* AG-Grid Deep Theme Integration (main page와 동일 톤) */
-    .ag-theme-quartz-dark {
-      --ag-font-family: var(--font-sans) !important;
-      --ag-background-color: transparent !important;
-      --ag-header-background-color: rgba(15, 22, 36, 0.9) !important;
-      --ag-odd-row-background-color: rgba(255, 255, 255, 0.01) !important;
-      --ag-border-color: var(--border-color) !important;
-      --ag-row-hover-color: rgba(0, 240, 255, 0.05) !important;
-      --ag-selected-row-background-color: rgba(0, 240, 255, 0.1) !important;
-      --ag-header-column-separator-color: var(--border-color) !important;
-    }
-
+    /* AG-Grid 테마 변수는 tokens.css의 듀얼 테마 오버라이드가 담당 */
+    .ag-theme-quartz .ag-row,
     .ag-theme-quartz-dark .ag-row {
       cursor: pointer;
     }
@@ -357,8 +322,7 @@
       gap: 12px;
       text-align: center;
       padding: 30px;
-      background: rgba(7, 9, 14, 0.6);
-      backdrop-filter: blur(2px);
+      background: var(--scrim);
       z-index: 5;
     }
 
@@ -420,8 +384,8 @@
     }
 
     .detail-block {
-      border: 1px solid var(--border-color);
-      background: rgba(10, 14, 22, 0.5);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
       border-radius: 10px;
       overflow: hidden;
       transition: border-color 0.3s ease, box-shadow 0.3s ease;
@@ -434,8 +398,8 @@
       text-transform: uppercase;
       letter-spacing: 0.7px;
       color: var(--text-dim);
-      border-bottom: 1px solid var(--border-color);
-      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
     }
 
     .detail-block-body {
@@ -464,7 +428,7 @@
       font-family: var(--font-mono);
       font-size: 0.95rem;
       font-weight: 500;
-      color: var(--color-primary);
+      color: var(--accent);
       word-break: break-all;
       text-align: right;
     }
@@ -476,8 +440,8 @@
     }
 
     .clue-chip {
-      border: 1px solid var(--border-color);
-      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
       border-radius: 6px;
       padding: 5px 10px;
       font-size: 0.78rem;
@@ -497,14 +461,14 @@
 
     .clue-chip .chip-val {
       font-family: var(--font-mono);
-      color: var(--text-main);
+      color: var(--text);
       word-break: break-all;
     }
 
     /* target inputs */
     .target-input-block.saved-flash {
-      border-color: rgba(16, 185, 129, 0.6);
-      box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+      border-color: var(--success);
+      box-shadow: 0 0 0 3px var(--success-weak);
     }
 
     .target-field-row {
@@ -516,7 +480,7 @@
     .target-field-label {
       font-size: 0.75rem;
       font-weight: 600;
-      color: var(--color-warning);
+      color: var(--warning);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -536,16 +500,17 @@
     }
 
     .save-btn {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.45);
-      color: var(--color-success);
+      background: var(--success-weak);
+      border-color: var(--success);
+      color: var(--success);
       font-weight: 600;
       padding: 9px 20px;
     }
 
     .save-btn:hover {
-      background: rgba(16, 185, 129, 0.22);
-      box-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+      background: var(--success-weak);
+      border-color: var(--success);
+      box-shadow: var(--shadow-card);
     }
 
     .save-btn:disabled {
@@ -565,11 +530,11 @@
     .key-hints kbd {
       font-family: var(--font-mono);
       font-size: 0.68rem;
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border-strong);
       border-bottom-width: 2px;
       border-radius: 4px;
       padding: 1px 5px;
-      background: rgba(255, 255, 255, 0.04);
+      background: var(--bg-inset);
       color: var(--text-muted);
     }
 
@@ -583,13 +548,13 @@
     }
 
     .reference-tab {
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 6px 14px;
       font-size: 0.8rem;
       font-family: var(--font-sans);
       color: var(--text-dim);
-      background: rgba(255, 255, 255, 0.02);
+      background: var(--bg-inset);
       cursor: pointer;
       user-select: none;
       transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -597,13 +562,13 @@
 
     .reference-tab:hover {
       color: var(--text-muted);
-      border-color: var(--border-color-glow);
+      border-color: var(--border-strong);
     }
 
     .reference-tab.active {
-      color: var(--color-primary);
-      border-color: var(--border-color-glow);
-      background: rgba(0, 240, 255, 0.07);
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-weak);
       font-weight: 600;
     }
 
@@ -641,8 +606,8 @@
     .ref-spinner {
       width: 26px;
       height: 26px;
-      border: 3px solid rgba(0, 240, 255, 0.15);
-      border-top-color: var(--color-primary);
+      border: 3px solid var(--focus-ring);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: refSpin 0.8s linear infinite;
     }
@@ -657,9 +622,9 @@
       flex: 1;
       min-height: 0;
       overflow: auto;
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border);
       border-radius: 10px;
-      background: rgba(10, 14, 22, 0.5);
+      background: var(--bg-surface);
       animation: detailIn 0.2s ease-out;
     }
 
@@ -673,30 +638,35 @@
       position: sticky;
       top: 0;
       z-index: 1;
-      background: rgba(13, 19, 31, 0.98);
-      color: var(--color-primary);
+      background: var(--bg-header);
+      color: var(--text-muted);
       font-family: var(--font-mono);
       font-size: 0.68rem;
-      font-weight: 500;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       text-align: left;
       padding: 8px 12px;
-      border-bottom: 1px solid var(--border-color-glow);
+      border-bottom: 2px solid var(--border-strong);
       white-space: nowrap;
     }
 
     .reference-table td {
       padding: 6px 12px;
-      border-bottom: 1px solid var(--border-color);
-      color: var(--text-main);
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
       font-family: var(--font-mono);
       font-size: 0.74rem;
+      font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
 
+    .reference-table tbody tr:nth-child(even) {
+      background: var(--row-stripe);
+    }
+
     .reference-table tbody tr:hover {
-      background: rgba(0, 240, 255, 0.04);
+      background: var(--accent-weak);
     }
 
     .reference-table td.ref-null {
@@ -710,17 +680,16 @@
       display: none;
       align-items: center;
       justify-content: center;
-      background: rgba(7, 9, 14, 0.75);
-      backdrop-filter: blur(4px);
+      background: var(--scrim);
       z-index: 50;
       padding: 30px;
     }
 
     .setup-card {
       background: var(--bg-surface);
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      box-shadow: var(--glass-shadow);
+      box-shadow: var(--shadow-pop);
       max-width: 480px;
       width: 100%;
       padding: 36px 32px;
@@ -752,62 +721,13 @@
       margin-top: 8px;
     }
 
-    /* ── Toast (utils.js showToast 계약: #toast-container + .toast.toast-{type}) ── */
-    #toast-container {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      z-index: 9999;
-    }
-
-    .toast {
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(0, 240, 255, 0.3);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 240, 255, 0.15);
-      color: var(--text-main);
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-family: var(--font-sans);
-      font-size: 0.85rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transform: translateY(20px);
-      opacity: 0;
-      animation: toastFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-      transition: opacity 0.3s, transform 0.3s;
-    }
-
-    .toast.toast-success {
-      border-color: rgba(16, 185, 129, 0.4);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(16, 185, 129, 0.15);
-    }
-
-    .toast.toast-error {
-      border-color: rgba(239, 68, 68, 0.4);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(239, 68, 68, 0.15);
-    }
-
-    .toast.toast-warning {
-      border-color: rgba(245, 158, 11, 0.4);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(245, 158, 11, 0.15);
-    }
-
-    @keyframes toastFadeIn {
-      to {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
+    /* (토스트 시스템은 tokens.css로 일원화 — 3중 복제 해소) */
   </style>
-  <script type="module" crossorigin src="/assets/enrichment-D-1rIuGU.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
+  <script type="module" crossorigin src="/assets/enrichment-Bz1JmVyb.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/theme-c-WC1pCZ.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-BsZ8jKs9.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BNY5Fzu9.js">
+  <link rel="stylesheet" crossorigin href="/assets/theme-2kMM13jK.css">
   <link rel="stylesheet" crossorigin href="/assets/utils-NphWruxx.css">
 </head>
 
@@ -844,6 +764,10 @@
         </select>
         <button id="refresh-btn" class="glass-btn" title="워크리스트 새로고침">🔄</button>
         <a href="/" class="glass-btn" title="메인 그리드로">🏠 Main</a>
+        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
       </div>
     </header>
 

@@ -56,7 +56,7 @@
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 - **[신규·사용자 요청 2026-07-25] 코드맵(압축 구조 문서) 체계** — 에이전트들이 매번 소스 전체를 읽어 토큰 소모 과다. 조치안: ① `docs/architecture/CODE_MAP.md`(또는 모듈별) 신설 — 파일별 핵심 함수/클래스 시그니처·역할 1줄·대략 라인 앵커·호출 관계 요약 ② 에이전트 정의 Pre-Flight에 "코드맵 먼저, 소스는 필요한 부분만" 규칙 추가 ③ 유지보수는 doc-keeper 정기 위임(코드 변경 시 해당 모듈 맵 갱신) ④ 우선 대상: `main.py`(3,000줄+)·`chain_ingestion_worker.py`·`crud.py`·`directory_watcher.py`·client2 모듈들 ⑤ **에이전트별 교훈 파일 포함**(`agent_workspace/memory/<agent>.md` — 도메인 함정 목록(예: editable 설치·cp949·type_coerce), 정의 Pre-Flight에 로드 배선, 신규 교훈은 에이전트가 제안→총괄 검수 후 반영). **컴팩트 후 착수.**
-- **진행 중(in-flight)**: ① ✅ std parser 배치 — QA GO-WITH-FIXES 후 F1(공백 키 행 스킵+카운트)·F2(sync Lock 직렬화)·F3(observer 기동 가드)·F5(검증 기준 통일) 수정 완료, 115 passed 검증 후 커밋됨. 잔여: F4(옵트아웃 핫리로드 불가 — 재기동 필요, 가이드에 고지됨·코드 수정은 보류) ② client-pm이 듀얼 테마 C안 구현 중(worktree, 완료 시 검수→병합→빌드) ③ 디자인 감사 완료(시안 3종 전달됨, C안 확정).
+- **진행 중(in-flight)**: ① ✅ std parser 배치 — QA GO-WITH-FIXES 후 F1(공백 키 행 스킵+카운트)·F2(sync Lock 직렬화)·F3(observer 기동 가드)·F5(검증 기준 통일) 수정 완료, 115 passed 검증 후 커밋됨. 잔여: F4(옵트아웃 핫리로드 불가 — 재기동 필요, 가이드에 고지됨·코드 수정은 보류) ② ✅ 듀얼 테마 C안 — client-pm worktree 구현 완료 → 총괄 검수(경계 파일 무접촉 확인)→병합→본체 빌드→라이브 시각 검증(index/enrichment 양 테마 전환·페이지 간 localStorage 유지·AG-Grid 무재생성 재도색·admin 라이트 렌더 확인) 후 커밋. 기본 라이트, 토큰 SSOT `client2/src/tokens.css` + `theme.js`. 잔여 후속: `--transition-smooth: all` 성능 개선(감사 #8), 실브라우저 체크리스트 일부(QtWebEngine localStorage 등 — `Client_dualtheme_report.md` §9) ③ 디자인 감사 완료(시안 3종, C안 확정·반영됨). ④ admin.js 기존 null 컨테이너 콘솔 에러(테마 무관, 구 번들에서도 재현) — 별도 작업 칩 발행.
 - 루트 `task/` 대기 항목: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
 
 ## 🧭 환경 메모 (Env Notes)

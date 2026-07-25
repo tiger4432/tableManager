@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>방향 A — 라이트 테마 전환 (Enrichment 축소판)</title>
+<style>
+  /* ============================================================
+     방향 A: 라이트 테마 — 종이톤/쿨그레이 + 절제된 블루 액센트
+     주간 사무환경 R&D 데이터 툴 기준. 외부 의존 없음(폰트는 시스템 폴백).
+     ============================================================ */
+  :root {
+    /* Surfaces: 3단 명도 위계 (bg < header < card) */
+    --bg-app: #eef0f4;        /* L* 94.8 — 쿨그레이 지면 */
+    --bg-header: #f7f8fa;     /* 헤더/툴바 */
+    --bg-surface: #ffffff;    /* 카드/패널/그리드 */
+    --bg-inset: #f3f5f8;      /* 입력부/코드블록 배경 */
+    --border: #d7dce4;        /* 구조선 — 반투명 아님, 솔리드 */
+    --border-strong: #b9c2cf;
+
+    /* Ink: 전부 흰 배경 기준 AA 통과 */
+    --ink: #1f2733;           /* 15.04:1 on white */
+    --ink-muted: #47536b;     /* 7.73:1 */
+    --ink-dim: #5b6779;       /* 5.74:1 (bg 위에서도 5.03:1) */
+
+    /* Accent: 네온 시안 → 데이터 툴 블루. 채도 절제 */
+    --accent: #1a66d0;        /* 5.45:1 on white */
+    --accent-weak: #e8f0fc;   /* 선택/활성 배경 */
+
+    /* Status: 텍스트로 쓰여도 AA 통과하는 진한 톤 + 옅은 배경 짝 */
+    --success: #177245;  --success-bg: #e6f4ec;   /* 5.95:1 */
+    --warning: #8a5a00;  --warning-bg: #fdf3dd;   /* 5.93:1 */
+    --danger:  #c22f2f;  --danger-bg:  #fdecec;   /* 5.61:1 */
+
+    --font-sans: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+    --shadow-card: 0 1px 3px rgba(30, 41, 59, 0.08), 0 1px 2px rgba(30, 41, 59, 0.05);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); background: var(--bg-app); color: var(--ink); line-height: 1.5; padding-bottom: 40px; }
+
+  .frame { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  .direction-title { margin-bottom: 4px; font-size: 1.3rem; }
+  .direction-sub { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 20px; }
+
+  /* ── 미니 헤더 ── */
+  .app-header {
+    background: var(--bg-header); border: 1px solid var(--border); border-radius: 10px 10px 0 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 18px;
+  }
+  .logo h1 { font-size: 1rem; font-weight: 600; }
+  .logo .sub { font-size: 0.7rem; color: var(--ink-dim); }
+  .progress-wrap { flex: 1; max-width: 420px; display: flex; align-items: center; gap: 12px; }
+  .progress-track { flex: 1; height: 8px; border-radius: 5px; background: #e1e6ed; border: 1px solid var(--border); overflow: hidden; }
+  .progress-fill { height: 100%; width: 62%; background: var(--accent); border-radius: 5px; }
+  .progress-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-muted); white-space: nowrap; }
+  .stat-badge {
+    font-family: var(--font-mono); font-size: 0.75rem; padding: 4px 12px; border-radius: 14px;
+    color: var(--warning); background: var(--warning-bg); border: 1px solid #ecd9ae; white-space: nowrap;
+  }
+  .btn {
+    background: var(--bg-surface); border: 1px solid var(--border-strong); color: var(--ink);
+    padding: 6px 14px; border-radius: 7px; font-size: 0.8rem; font-family: var(--font-sans); font-weight: 500;
+    cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:hover { background: var(--bg-inset); border-color: var(--accent); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-primary:hover { background: #1557b3; }
+
+  /* ── 3구역 워크벤치 ── */
+  .workbench {
+    display: flex; gap: 14px; padding: 14px;
+    background: var(--bg-app); border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px;
+    min-height: 460px;
+  }
+  .panel {
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: 9px;
+    box-shadow: var(--shadow-card); display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+  }
+  .worklist-panel { flex: 3; } .conveyor-panel { flex: 2.4; } .reference-panel { flex: 2.6; }
+  .panel-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-header);
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .panel-title { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+  .panel-title .count { color: var(--accent); }
+  .panel-meta { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-dim); }
+
+  /* [A] 워크리스트 테이블 */
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  th {
+    text-align: left; font-family: var(--font-sans); font-weight: 600; font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted);
+    padding: 8px 12px; border-bottom: 2px solid var(--border-strong); background: var(--bg-header);
+    position: sticky; top: 0;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+  tbody tr:nth-child(even) { background: #f7f9fb; }
+  tbody tr:hover { background: var(--accent-weak); cursor: pointer; }
+  tbody tr.selected { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  td.missing { color: var(--danger); background: var(--danger-bg); font-weight: 600; }
+
+  /* [B] 판단·입력 */
+  .conveyor-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .block { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .block-header {
+    padding: 6px 12px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--ink-dim); background: var(--bg-header); border-bottom: 1px solid var(--border);
+  }
+  .block-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .kv .k { font-size: 0.7rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .kv .v { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--border); background: var(--bg-inset); border-radius: 5px; padding: 3px 8px; font-size: 0.72rem; display: inline-flex; gap: 5px; align-items: baseline; }
+  .chip .ck { color: var(--ink-dim); font-size: 0.62rem; text-transform: uppercase; }
+  .chip .cv { font-family: var(--font-mono); color: var(--ink); }
+  .field label { display: block; font-size: 0.7rem; font-weight: 600; color: var(--warning); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .field input {
+    width: 100%; font-family: var(--font-mono); font-size: 0.9rem; padding: 8px 12px;
+    background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--ink); outline: none;
+  }
+  .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26, 102, 208, 0.15); }
+  .actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .hints { font-size: 0.66rem; color: var(--ink-dim); display: flex; gap: 8px; flex-wrap: wrap; }
+  kbd { font-family: var(--font-mono); font-size: 0.62rem; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px; background: var(--bg-inset); color: var(--ink-muted); }
+  .save-btn { background: var(--success); border: 1px solid var(--success); color: #fff; font-weight: 600; padding: 8px 16px; border-radius: 7px; font-size: 0.8rem; cursor: pointer; }
+  .save-btn:hover { background: #115c37; }
+
+  /* [C] 참조뷰 */
+  .ref-tabs { display: flex; gap: 6px; padding: 10px 12px 0; }
+  .ref-tab { border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 0.72rem; color: var(--ink-dim); background: var(--bg-inset); cursor: pointer; }
+  .ref-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-weak); font-weight: 600; }
+  .ref-wrap { margin: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; overflow: auto; flex: 1; }
+
+  /* 상태색 데모 행 */
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 600; font-family: var(--font-sans); }
+  .pill.ok { color: var(--success); background: var(--success-bg); }
+  .pill.warn { color: var(--warning); background: var(--warning-bg); }
+  .pill.err { color: var(--danger); background: var(--danger-bg); }
+
+  /* ── 팔레트 스와치 ── */
+  .swatch-section { margin-top: 28px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; box-shadow: var(--shadow-card); }
+  .swatch-section h2 { font-size: 1rem; margin-bottom: 4px; }
+  .swatch-note { font-size: 0.8rem; color: var(--ink-muted); margin-bottom: 14px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .swatch { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .swatch .color { height: 44px; display: flex; align-items: center; padding: 0 12px; font-family: var(--font-mono); font-size: 0.75rem; }
+  .swatch .info { padding: 7px 12px; font-size: 0.7rem; color: var(--ink-muted); background: var(--bg-header); }
+  .swatch .info b { color: var(--ink); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <h1 class="direction-title">방향 A — 라이트 테마 전환</h1>
+  <p class="direction-sub">종이톤/쿨그레이 지면 + 흰 카드 + 절제된 블루 액센트. 주간 사무환경에서 하루 종일 데이터를 보는 R&amp;D 엔지니어 기준 — Excel·JMP·BI 툴과 같은 양(陽)극성. 상태색은 "진한 텍스트 + 옅은 배경" 짝으로 씀.</p>
+
+  <!-- 미니 헤더 -->
+  <header class="app-header">
+    <div class="logo">
+      <h1>🧩 Enrichment Queue</h1>
+      <div class="sub">결손 보정 워크리스트</div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <span class="progress-label">31 / 50 · 62%</span>
+    </div>
+    <span class="stat-badge">잔여 19건</span>
+    <button class="btn">🔄</button>
+    <button class="btn">🏠 Main</button>
+  </header>
+
+  <!-- 3구역 워크벤치 축소판 -->
+  <main class="workbench">
+    <!-- [A] 워크리스트 -->
+    <section class="panel worklist-panel">
+      <div class="panel-header">
+        <span class="panel-title">워크리스트 <span class="count">19</span></span>
+        <span class="panel-meta">core_wafer_map · missing: base_lot</span>
+      </div>
+      <div style="overflow:auto; flex:1;">
+        <table>
+          <thead><tr><th>core_lot</th><th>core_slot</th><th>chip_count</th><th>base_lot</th><th>eventtime</th></tr></thead>
+          <tbody>
+            <tr class="selected"><td>KAX4471.1</td><td>03</td><td>1,284</td><td class="missing">— 결손</td><td>07-25 09:12:44</td></tr>
+            <tr><td>KAX4471.1</td><td>07</td><td>1,281</td><td class="missing">— 결손</td><td>07-25 09:12:47</td></tr>
+            <tr><td>KAX4472.2</td><td>11</td><td>1,290</td><td class="missing">— 결손</td><td>07-25 09:13:01</td></tr>
+            <tr><td>KBX1205.1</td><td>02</td><td>1,144</td><td class="missing">— 결손</td><td>07-25 10:02:19</td></tr>
+            <tr><td>KBX1205.1</td><td>05</td><td>1,152</td><td class="missing">— 결손</td><td>07-25 10:02:22</td></tr>
+            <tr><td>KBX1206.3</td><td>18</td><td>1,150</td><td class="missing">— 결손</td><td>07-25 10:04:56</td></tr>
+            <tr><td>KCX0038.1</td><td>21</td><td>988</td><td class="missing">— 결손</td><td>07-25 11:41:03</td></tr>
+            <tr><td>KCX0038.1</td><td>24</td><td>991</td><td class="missing">— 결손</td><td>07-25 11:41:07</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- [B] 판단·입력 -->
+    <section class="panel conveyor-panel">
+      <div class="panel-header">
+        <span class="panel-title">판단 · 입력</span>
+        <span class="panel-meta">1 / 19</span>
+      </div>
+      <div class="conveyor-body">
+        <div class="block">
+          <div class="block-header">판단키 (Decision Key)</div>
+          <div class="block-body">
+            <div class="kv"><span class="k">core_lot</span><span class="v">KAX4471.1</span></div>
+            <div class="kv"><span class="k">core_slot</span><span class="v">03</span></div>
+          </div>
+        </div>
+        <div class="block">
+          <div class="block-header">단서 (Context)</div>
+          <div class="block-body">
+            <div class="chips">
+              <span class="chip"><span class="ck">chip_count</span><span class="cv">1,284</span></span>
+              <span class="chip"><span class="ck">eventtime</span><span class="cv">09:12:44</span></span>
+              <span class="chip"><span class="ck">eqp</span><span class="cv">BND-07</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="block" style="border-color:#ecd9ae;">
+          <div class="block-header" style="color:var(--warning); background:var(--warning-bg);">입력 (Target)</div>
+          <div class="block-body">
+            <div class="field">
+              <label>base_lot</label>
+              <input type="text" value="PBX9912.1" />
+            </div>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="hints">
+            <span><kbd>Enter</kbd> 저장 후 다음</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd> 이동</span>
+          </div>
+          <button class="save-btn">💾 저장 → 다음</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- [C] 참조뷰 -->
+    <section class="panel reference-panel">
+      <div class="panel-header">
+        <span class="panel-title">참조뷰</span>
+        <span class="panel-meta">lot-slot 매핑 이력</span>
+      </div>
+      <div class="ref-tabs">
+        <span class="ref-tab active">lot-slot 매핑</span>
+        <span class="ref-tab">같은 lot 전체</span>
+      </div>
+      <div class="ref-wrap">
+        <table>
+          <thead><tr><th>base_lot</th><th>slot</th><th>status</th><th>updated</th></tr></thead>
+          <tbody>
+            <tr><td>PBX9912.1</td><td>01</td><td><span class="pill ok">MAPPED</span></td><td>07-24 18:20</td></tr>
+            <tr><td>PBX9912.1</td><td>02</td><td><span class="pill ok">MAPPED</span></td><td>07-24 18:20</td></tr>
+            <tr><td>PBX9912.1</td><td>04</td><td><span class="pill warn">PENDING</span></td><td>07-24 18:22</td></tr>
+            <tr><td>PBX9913.2</td><td>05</td><td><span class="pill ok">MAPPED</span></td><td>07-24 19:05</td></tr>
+            <tr><td>PBX9913.2</td><td>06</td><td><span class="pill err">FAILED</span></td><td>07-24 19:06</td></tr>
+            <tr><td>PBX9914.1</td><td>09</td><td><span class="pill ok">MAPPED</span></td><td>07-25 08:11</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- 팔레트 스와치 + 대비율 -->
+  <section class="swatch-section">
+    <h2>팔레트 스와치 · 실측 WCAG 대비율</h2>
+    <p class="swatch-note">모든 본문 텍스트 조합 AA(4.5:1) 통과. 수치는 WCAG 2.1 상대휘도 공식으로 계산.</p>
+    <div class="swatches">
+      <div class="swatch"><div class="color" style="background:#eef0f4; color:#1f2733;">#eef0f4</div><div class="info">bg-app (쿨그레이 지면) · <b>L* 94.8</b></div></div>
+      <div class="swatch"><div class="color" style="background:#ffffff; color:#1f2733; border-bottom:1px solid #d7dce4;">#ffffff</div><div class="info">bg-surface (카드/그리드)</div></div>
+      <div class="swatch"><div class="color" style="background:#1f2733; color:#fff;">#1f2733</div><div class="info">ink (본문) · 대 white <b>15.04:1</b> AA/AAA</div></div>
+      <div class="swatch"><div class="color" style="background:#47536b; color:#fff;">#47536b</div><div class="info">ink-muted · 대 white <b>7.73:1</b> AA/AAA</div></div>
+      <div class="swatch"><div class="color" style="background:#5b6779; color:#fff;">#5b6779</div><div class="info">ink-dim · 대 white <b>5.74:1</b> AA (bg 위 5.03:1)</div></div>
+      <div class="swatch"><div class="color" style="background:#1a66d0; color:#fff;">#1a66d0</div><div class="info">accent (블루) · 대 white <b>5.45:1</b> AA</div></div>
+      <div class="swatch"><div class="color" style="background:#177245; color:#fff;">#177245</div><div class="info">success · 대 white <b>5.95:1</b> AA</div></div>
+      <div class="swatch"><div class="color" style="background:#8a5a00; color:#fff;">#8a5a00</div><div class="info">warning(텍스트) · 대 white <b>5.93:1</b> AA</div></div>
+      <div class="swatch"><div class="color" style="background:#c22f2f; color:#fff;">#c22f2f</div><div class="info">danger · 대 white <b>5.61:1</b> AA</div></div>
+      <div class="swatch"><div class="color" style="background:#d7dce4; color:#1f2733;">#d7dce4</div><div class="info">border (솔리드 구조선)</div></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
