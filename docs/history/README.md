@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **190개** 이력. (거버넌스 규칙 #4)
+> 총 **191개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-25 20:30** — [Ontology G2 Trace Api](./20260725_203000_ontology_g2_trace_api.md)
 - **2026-07-25 19:30** — [Graph Viewer Readonly Api](./20260725_193000_graph_viewer_readonly_api.md)
 - **2026-07-25 18:30** — [Ontology H2b Empty Target Retarget](./20260725_183000_ontology_h2b_empty_target_retarget.md)
 - **2026-07-25 17:00** — [Issue7 Runtime Table Create](./20260725_170000_issue7_runtime_table_create.md)

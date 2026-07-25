@@ -1853,11 +1853,115 @@ async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session 
 GRAPH_NEIGHBOR_NODE_CAP = 500        # limit 하드캡 — 무제한 로드 금지(C-7 교훈)
 GRAPH_NEIGHBOR_EDGE_FETCH_CAP = 2000  # 홉·방향당 엣지 페치 상한 (수퍼노드 방어)
 GRAPH_SEARCH_LIMIT_CAP = 50
+GRAPH_TRACE_NODE_CAP = 1000          # [G2] trace 노드 하드캡 (경계 계약 — 총괄 고정)
+GRAPH_TRACE_DEPTH_CAP = 3            # [G2] trace depth 하드캡
+GRAPH_TRACE_DEFAULT_LIMIT = 500
 
 
 def _escape_like_term(term: str) -> str:
     """LIKE 패턴 메타문자 이스케이프 (escape='\\'와 짝)."""
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _expand_graph_subgraph(
+    db: Session,
+    seed_nodes: list,
+    depth: int,
+    node_cap: int,
+    edge_types: Optional[list] = None,
+    time_from=None,
+    time_to=None,
+):
+    """시드 노드 집합에서 k-hop BFS로 서브그래프를 수집한다 (뷰어/추적 공용 코어).
+
+    - 엣지 접근은 (from,type)/(to,type) 인덱스 경로만 사용(방향별 2쿼리).
+    - edge_types: 지정(비어있지 않은 리스트) 시 해당 타입 엣지만 확장.
+    - time_from/time_to: 엣지 event_time 범위 필터 — event_time이 NULL인 엣지는
+      구조 엣지이므로 항상 통과(경계 계약 — 배제 금지).
+    - node_cap 도달로 일부가 잘리면 truncated=True. 잘린 노드로 향하는 엣지는 응답에서 제외.
+    반환: (nodes {id: GraphNode}, edges_out [직렬화 dict], truncated)
+    """
+    from sqlalchemy import and_, or_
+
+    nodes = {n.id: n for n in seed_nodes}
+    collected_edges = []
+    seen_edge_ids = set()
+    truncated = False
+    frontier = list(nodes.keys())
+
+    time_conds = []
+    if time_from is not None:
+        time_conds.append(models.GraphEdge.event_time >= time_from)
+    if time_to is not None:
+        time_conds.append(models.GraphEdge.event_time <= time_to)
+
+    for _hop in range(depth):
+        if not frontier:
+            break
+        hop_edges = []
+        # idx_graph_edges_from_type / idx_graph_edges_to_type 프리픽스 룩업
+        for endpoint_col in (models.GraphEdge.from_node, models.GraphEdge.to_node):
+            query = db.query(models.GraphEdge).filter(endpoint_col.in_(frontier))
+            if edge_types:
+                query = query.filter(models.GraphEdge.type.in_(edge_types))
+            if time_conds:
+                query = query.filter(
+                    or_(models.GraphEdge.event_time.is_(None), and_(*time_conds))
+                )
+            rows = (
+                query.order_by(models.GraphEdge.id.asc())
+                .limit(GRAPH_NEIGHBOR_EDGE_FETCH_CAP)
+                .all()
+            )
+            if len(rows) >= GRAPH_NEIGHBOR_EDGE_FETCH_CAP:
+                truncated = True
+            hop_edges.extend(rows)
+
+        new_ids = []
+        new_seen = set()
+        for e in hop_edges:
+            if e.id in seen_edge_ids:
+                continue
+            seen_edge_ids.add(e.id)
+            collected_edges.append(e)
+            for nid in (e.from_node, e.to_node):
+                if nid not in nodes and nid not in new_seen:
+                    new_seen.add(nid)
+                    new_ids.append(nid)
+
+        capacity = node_cap - len(nodes)
+        if len(new_ids) > capacity:
+            truncated = True
+            new_ids = new_ids[: max(capacity, 0)]
+
+        for i in range(0, len(new_ids), 500):
+            chunk = new_ids[i : i + 500]
+            for n in db.query(models.GraphNode).filter(models.GraphNode.id.in_(chunk)).all():
+                nodes[n.id] = n
+        frontier = new_ids
+
+    node_ids = set(nodes.keys())
+    edges_out = [
+        {
+            "from": e.from_node,
+            "to": e.to_node,
+            "type": e.type,
+            "source_name": e.source_name,
+            "updated_by": e.updated_by,
+            "event_time": e.event_time.isoformat() if e.event_time else None,
+        }
+        for e in collected_edges
+        if e.from_node in node_ids and e.to_node in node_ids   # 캡으로 잘린 노드의 엣지 제외
+    ]
+    return nodes, edges_out, truncated
+
+
+def _serialize_graph_nodes(nodes: dict) -> list:
+    """노드 형태 계약 {id, label, identity_key, props} — 뷰어/추적 공용."""
+    return [
+        {"id": n.id, "label": n.label, "identity_key": n.identity_key, "props": n.props or {}}
+        for n in nodes.values()
+    ]
 
 
 @app.get("/graph/stats")
@@ -1911,71 +2015,10 @@ def get_graph_neighbors(
     if center is None:
         raise HTTPException(status_code=404, detail=f"노드를 찾을 수 없습니다: ({label}, {identity})")
 
-    nodes = {center.id: center}
-    collected_edges = []
-    seen_edge_ids = set()
-    truncated = False
-    frontier = [center.id]
-
-    for _hop in range(depth):
-        if not frontier:
-            break
-        hop_edges = []
-        # idx_graph_edges_from_type / idx_graph_edges_to_type 프리픽스 룩업
-        for endpoint_col in (models.GraphEdge.from_node, models.GraphEdge.to_node):
-            rows = (
-                db.query(models.GraphEdge)
-                .filter(endpoint_col.in_(frontier))
-                .order_by(models.GraphEdge.id.asc())
-                .limit(GRAPH_NEIGHBOR_EDGE_FETCH_CAP)
-                .all()
-            )
-            if len(rows) >= GRAPH_NEIGHBOR_EDGE_FETCH_CAP:
-                truncated = True
-            hop_edges.extend(rows)
-
-        new_ids = []
-        new_seen = set()
-        for e in hop_edges:
-            if e.id in seen_edge_ids:
-                continue
-            seen_edge_ids.add(e.id)
-            collected_edges.append(e)
-            for nid in (e.from_node, e.to_node):
-                if nid not in nodes and nid not in new_seen:
-                    new_seen.add(nid)
-                    new_ids.append(nid)
-
-        capacity = limit - len(nodes)
-        if len(new_ids) > capacity:
-            truncated = True
-            new_ids = new_ids[: max(capacity, 0)]
-
-        for i in range(0, len(new_ids), 500):
-            chunk = new_ids[i : i + 500]
-            for n in db.query(models.GraphNode).filter(models.GraphNode.id.in_(chunk)).all():
-                nodes[n.id] = n
-        frontier = new_ids
-
-    node_ids = set(nodes.keys())
-    edges_out = [
-        {
-            "from": e.from_node,
-            "to": e.to_node,
-            "type": e.type,
-            "source_name": e.source_name,
-            "updated_by": e.updated_by,
-            "event_time": e.event_time.isoformat() if e.event_time else None,
-        }
-        for e in collected_edges
-        if e.from_node in node_ids and e.to_node in node_ids   # 캡으로 잘린 노드의 엣지 제외
-    ]
+    nodes, edges_out, truncated = _expand_graph_subgraph(db, [center], depth, limit)
 
     return {
-        "nodes": [
-            {"id": n.id, "label": n.label, "identity_key": n.identity_key, "props": n.props or {}}
-            for n in nodes.values()
-        ],
+        "nodes": _serialize_graph_nodes(nodes),
         "edges": edges_out,
         "truncated": truncated,
     }
@@ -2008,6 +2051,138 @@ def search_graph_nodes(
     return {
         "results": [
             {"id": r.id, "label": r.label, "identity_key": r.identity_key} for r in rows
+        ]
+    }
+
+
+# ----------------- [Ontology G2] 추적(trace) API (경계 계약 — 총괄 고정) -----------------
+# 킬러 유스케이스: 그리드에서 불량 개체들 선택 → 멀티 시드 BFS 합집합으로 연관 전체 추적.
+# 응답 노드/엣지 형태는 뷰어(/graph/neighbors)와 동일 계약을 공유한다.
+
+class GraphTraceSeed(BaseModel):
+    label: str
+    identity: str
+
+
+class GraphTraceRequest(BaseModel):
+    seeds: list[GraphTraceSeed]
+    depth: int = 2
+    # 시간 필터는 문자열로 받아 핸들러에서 파싱 — 형식 오류를 계약대로 400으로 응답하기 위함
+    time_from: Optional[str] = None
+    time_to: Optional[str] = None
+    edge_types: Optional[list[str]] = None
+    limit: int = GRAPH_TRACE_DEFAULT_LIMIT
+
+
+def _parse_trace_time(value: Optional[str], field: str):
+    """ISO 8601 문자열 → datetime. 형식 오류는 400 (경계 계약: 검증 실패 400)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail=f"{field}은(는) ISO 8601 형식이어야 합니다: {value!r}"
+        )
+
+
+@app.post("/graph/trace")
+def post_graph_trace(req: GraphTraceRequest, db: Session = Depends(get_db)):
+    """멀티 시드 k-hop 추적 — 시드별 BFS의 합집합 서브그래프를 반환한다.
+
+    - depth 1..3 (기본 2), 노드 하드캡 GRAPH_TRACE_NODE_CAP(수퍼노드 방어 — 뷰어 패턴 준용).
+    - time_from/to: 엣지 event_time 범위 필터. event_time이 NULL인 구조 엣지는 항상 통과.
+    - edge_types 지정 시 해당 타입 엣지만 확장.
+    - 존재하지 않는 시드는 무시하고 missing_seeds로 보고. 전부 미존재여도 404가 아니라
+      빈 nodes로 200 응답(경계 계약).
+    """
+    if not req.seeds:
+        raise HTTPException(status_code=400, detail="seeds는 1개 이상이어야 합니다.")
+    if not (1 <= req.depth <= GRAPH_TRACE_DEPTH_CAP):
+        raise HTTPException(
+            status_code=400, detail=f"depth는 1..{GRAPH_TRACE_DEPTH_CAP}만 허용됩니다."
+        )
+    time_from = _parse_trace_time(req.time_from, "time_from")
+    time_to = _parse_trace_time(req.time_to, "time_to")
+    limit = max(1, min(int(req.limit), GRAPH_TRACE_NODE_CAP))
+
+    # 시드 해석 — 요청 순서 보존 dedup 후 label 그룹별 (label, identity_key) 인덱스 조회(500 청킹)
+    requested = []
+    seen_pairs = set()
+    for s in req.seeds:
+        pair = (s.label, s.identity)
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
+            requested.append(pair)
+
+    identities_by_label = {}
+    for lbl, ident in requested:
+        identities_by_label.setdefault(lbl, []).append(ident)
+    found = {}
+    for lbl, identities in identities_by_label.items():
+        for i in range(0, len(identities), 500):
+            chunk = identities[i : i + 500]
+            rows = (
+                db.query(models.GraphNode)
+                .filter(
+                    models.GraphNode.label == lbl,
+                    models.GraphNode.identity_key.in_(chunk),
+                )
+                .all()
+            )
+            for n in rows:
+                found[(n.label, n.identity_key)] = n
+
+    missing_seeds = [
+        {"label": lbl, "identity": ident}
+        for (lbl, ident) in requested
+        if (lbl, ident) not in found
+    ]
+    seed_nodes = [found[p] for p in requested if p in found]
+
+    truncated = False
+    if len(seed_nodes) > limit:   # 시드 자체가 캡 초과 — 하드캡 우선(무제한 로드 금지)
+        seed_nodes = seed_nodes[:limit]
+        truncated = True
+
+    if seed_nodes:
+        nodes, edges_out, bfs_truncated = _expand_graph_subgraph(
+            db, seed_nodes, req.depth, limit,
+            edge_types=req.edge_types, time_from=time_from, time_to=time_to,
+        )
+        truncated = truncated or bfs_truncated
+    else:
+        nodes, edges_out = {}, []
+
+    return {
+        "nodes": _serialize_graph_nodes(nodes),
+        "edges": edges_out,
+        "seed_ids": [n.id for n in seed_nodes],
+        "missing_seeds": missing_seeds,
+        "truncated": truncated,
+    }
+
+
+@app.get("/graph/mapping-summary")
+def get_graph_mapping_summary():
+    """현재 로드된 온톨로지 매핑(enrichment RESOLVED_AS 자동 승격 포함) 요약.
+
+    클라이언트가 그리드 선택 행 → trace 시드 변환에 사용한다(경계 계약).
+    materializer(_load_graph_mappings)와 같은 로더를 태워 같은 신호원을 보장하고,
+    config 파일이 작으므로 요청 시마다 디스크에서 읽는다(무중단 반영 — enrichment 패턴).
+    매핑 없는 테이블은 포함하지 않는다.
+    """
+    import ontology_config
+    known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
+    mappings = ontology_config.load_ontology_mappings(known_tables=known)
+    return {
+        "tables": [
+            {
+                "table": table_name,
+                "node_label": m["node"]["label"],
+                "identity_columns": list(m["node"]["identity"]),
+            }
+            for table_name, m in sorted(mappings.items())
         ]
     }
 
