@@ -147,7 +147,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~56 |
 | `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** | ~130 |
 | ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 워크스페이스 설정 해석(std_parse 게이트 포함) | ~147–182 |
-| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신 → 처리 위임 | ~185–195 |
+| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신 → 처리 위임(processing_files check-then-add를 락으로 원자화 — 스윕/이벤트 이중 진입 가드) | ~193–204 |
 | ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 파싱→업서트→아카이브/에러 이동, 재시도 | ~217 |
 | ├ `_log_ingestion_failure/success(...)` | FileIngestionLog 기록(직접 DB) | ~276/296 |
 | ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행) | ~316 |
@@ -156,10 +156,12 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | ├ `_resolve_rows(file_path)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백 | ~492 |
 | ├ `_try_std_parse(file_path)` | std_parser 호출 래퍼(게이트·에러 처리) | ~517 |
 | └ `_send_to_upsert(rows, uploader, filename, total_rows)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백 | ~557 |
-| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 | ~680 |
-| ├ `_provision_workspaces()` / `_register_workspace(raws_root, table_config)` | 폴더 스캐폴딩·핸들러 등록 | ~697/731 |
-| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화 | ~779/795 |
-| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 | ~819–839 |
+| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 | ~691 |
+| ├ `_provision_workspaces()` / `_register_workspace(raws_root, table_config)` | 폴더 스캐폴딩·핸들러 등록(+`handlers_by_raw_path` 레지스트리) | ~716/750 |
+| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~799/815 |
+| ├ `sweep_existing_files(raw_paths)` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, err/·하위 dir 제외 | ~845/912 |
+| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~921/925 |
+| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥 | ~934–985 |
 
 ---
 
