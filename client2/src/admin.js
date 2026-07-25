@@ -1042,8 +1042,11 @@ function renderAutoUpdateTable() {
   autoUpdateEmptyState.style.display = 'none';
 
   autoUpdateData.forEach(col => {
+    // 서버가 active 필드를 아직 내려주지 않는 과도기엔 활성으로 간주 (기존 동작 보존)
+    const isActive = col.active !== false;
+
     const row = document.createElement('tr');
-    row.className = `table-row ${selectedAutoUpdateScript === col.script_name ? 'active' : ''}`;
+    row.className = `table-row ${selectedAutoUpdateScript === col.script_name ? 'active' : ''}${isActive ? '' : ' row-inactive'}`;
     row.dataset.script = col.script_name;
     row.dataset.table = col.table_name;
 
@@ -1053,15 +1056,26 @@ function renderAutoUpdateTable() {
       col.last_status === 'RUNNING' ? 'badge-warning' : 'badge-warning'
     }">${col.last_status || 'PENDING'}</span>`;
 
+    const inactiveBadge = isActive ? '' :
+      '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">비활성</span>';
+
     row.innerHTML = `
       <td style="font-weight: bold; color: var(--color-primary);">${col.table_name}</td>
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${col.script_name}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${col.script_name}${inactiveBadge}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${col.cron_expression}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.next_run || ''}">${formatTimestamp(col.next_run)}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.last_run || ''}">${formatTimestamp(col.last_run)}</td>
       <td style="text-align: center;">${statusBadge}</td>
-      <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}" style="padding: 4px 10px; font-size: 0.75rem;">Run Now</button>
+      <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
+        <label class="au-switch" title="${isActive ? '클릭 → 수집기 비활성화 (스케줄 중단)' : '클릭 → 수집기 활성화 (스케줄 재개)'}">
+          <input type="checkbox" class="au-active-toggle" ${isActive ? 'checked' : ''} aria-label="수집기 스케줄 활성 토글">
+          <span class="au-slider"></span>
+        </label>
+      </td>
+      <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
+        <button class="glass-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}"
+          style="padding: 4px 10px; font-size: 0.75rem;"
+          title="${isActive ? '즉시 1회 수집 실행' : '비활성 수집기도 수동 실행은 가능합니다'}">Run Now</button>
       </td>
     `;
 
@@ -1074,6 +1088,11 @@ function renderAutoUpdateTable() {
       if (confirm(`수집기 스크립트 '${col.script_name}'을 즉시 실행하시겠습니까?`)) {
         await runAutoUpdateNow(col.table_name, col.script_name);
       }
+    });
+
+    const activeToggle = row.querySelector('.au-active-toggle');
+    activeToggle.addEventListener('change', () => {
+      toggleCollectorActive(col, activeToggle);
     });
 
     autoUpdateListBody.appendChild(row);
@@ -1364,6 +1383,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich }) {
   {
     const collectors = auto ? (auto.data || []) : null;
     const failCount = collectors ? collectors.filter(c => c.last_status === 'FAIL').length : null;
+    const activeCount = collectors ? collectors.filter(c => c.active !== false).length : null;
     let linked = null;
     if (collectors && failed) {
       const autoTables = new Set(collectors.map(c => c.table_name));
@@ -1373,6 +1393,7 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich }) {
     if (collectors) {
       if (failCount > 0) status = 'danger';
       else if (linked > 0) status = 'warn';
+      else if (collectors.length > 0 && activeCount === 0) status = 'warn'; // 전부 비활성 = 수집 전면 중단
       else status = 'ok';
     }
     const events = (collectors || [])
@@ -1389,7 +1410,13 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich }) {
       status,
       title: 'Auto Update',
       metrics: [
-        { value: collectors == null ? '—' : collectors.length, label: '수집기' },
+        {
+          value: collectors == null ? '—' : `${activeCount}/${collectors.length}`,
+          label: '활성 수집기',
+          tone: collectors && collectors.length > 0 && activeCount === 0 ? 'warn'
+            : (collectors && activeCount < collectors.length ? null
+              : (collectors ? 'ok' : null))
+        },
         { value: failCount == null ? '—' : failCount, label: '수집기 실패', tone: failCount > 0 ? 'danger' : (failCount === 0 ? 'ok' : null) },
         { value: linked == null ? '—' : linked, label: '산출물 인제션 실패', tone: linked > 0 ? 'warn' : (linked === 0 ? 'ok' : null) }
       ],
@@ -1525,6 +1552,53 @@ async function runAutoUpdateNow(tableName, scriptName) {
   } catch (err) {
     console.error('Failed to trigger run-now', tableName, scriptName, err);
     showToast('❌ 강제 수집 구동 요청 실패', 'error');
+  }
+}
+
+// API Call: 수집기 스케줄 활성/비활성 토글
+// 계약: POST /admin/auto-update/toggle {script: "<workspace>/<script.py>", active: bool}
+//       → {status: "success", script, active} · 404(미존재)/400(형식 오류)
+async function toggleCollectorActive(col, inputEl) {
+  const nextActive = inputEl.checked;
+  inputEl.disabled = true; // 응답 전 연타 방지 (성공 시 재렌더로 새 토글로 교체됨)
+  try {
+    const res = await fetch(`${API_BASE}/admin/auto-update/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        script: `${col.table_name}/${col.script_name}`,
+        active: nextActive
+      })
+    });
+    if (!res.ok) {
+      let msg = res.status === 404 ? '해당 수집기를 찾을 수 없습니다' : `요청 거부 (HTTP ${res.status})`;
+      try {
+        const err = await res.json();
+        if (err && err.detail) msg = typeof err.detail === 'string' ? err.detail : msg;
+      } catch (e) { /* 본문 없는 에러 응답은 기본 메시지 유지 */ }
+      throw new Error(msg);
+    }
+    const r = await res.json();
+    const applied = (r && r.active !== undefined) ? !!r.active : nextActive;
+
+    // fetchSeq 가드 준수: 보관해 둔 옛 배열/행을 되살리지 않고, "현재" autoUpdateData에서
+    // 키로 다시 찾아 갱신한다 (토글 요청 중 fetchData가 배열을 교체했어도 안전).
+    const target = autoUpdateData.find(c =>
+      c.script_name === col.script_name && c.table_name === col.table_name);
+    if (target) target.active = applied;
+    col.active = applied;
+    if (currentTab === 'autoupdate') renderAutoUpdateTable();
+
+    showToast(applied
+      ? `▶️ [${col.script_name}] 수집기 스케줄이 활성화되었습니다.`
+      : `⏸️ [${col.script_name}] 수집기 스케줄이 비활성화되었습니다. (Run Now 수동 실행은 계속 가능)`,
+      'success');
+  } catch (err) {
+    console.error('Failed to toggle collector active', col.table_name, col.script_name, err);
+    // 실패 시 원복: 스위치를 이전 상태로 되돌리고 다시 조작 가능하게
+    inputEl.checked = !nextActive;
+    inputEl.disabled = false;
+    showToast(`❌ 수집기 활성 상태 변경 실패 — ${err.message || '네트워크 오류'}`, 'error');
   }
 }
 
@@ -2376,6 +2450,7 @@ async function refreshFileAndAutoHealth() {
     }
 
     const failCount = collectors.filter(c => c.last_status === 'FAIL').length;
+    const activeCount = collectors.filter(c => c.active !== false).length;
     // 감사 §1.2 실증 시나리오 연계: 수집기는 SUCCESS인데 산출물 파일 인제션이
     // 실패 중인 경우를 카드에서 즉시 노출 (auto-update 대상 테이블 ∩ 최근 실패 로그)
     const autoTables = new Set(collectors.map(c => c.table_name));
@@ -2385,13 +2460,16 @@ async function refreshFileAndAutoHealth() {
     let status = 'ok';
     if (failCount > 0) status = 'danger';
     else if (linkedFails > 0) status = 'warn';
+    else if (activeCount === 0) status = 'warn'; // 전 수집기 비활성 = 자동 수집 전면 중단
 
     const main = failCount > 0
       ? `수집기 실패 ${failCount}/${collectors.length}`
-      : `수집기 ${collectors.length}개 정상`;
+      : `수집기 ${collectors.length}개 중 ${activeCount} 활성`;
     const sub = linkedFails > 0
       ? `산출물 인제션 실패 ${linkedFails}${linkedSuffix}건`
-      : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`;
+      : (activeCount === 0
+        ? '모든 수집기가 비활성 상태입니다'
+        : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`);
     setHealthCard('auto', status, main, sub);
   } catch (e) {
     setHealthCard('auto', 'loading', '—', '상태 조회 실패');

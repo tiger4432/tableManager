@@ -330,6 +330,73 @@
       border: 1px solid var(--success);
     }
 
+    .badge-muted {
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border-strong);
+    }
+
+    /* ── Auto Update 수집기 active 토글 스위치 ── */
+    .au-switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 21px;
+      vertical-align: middle;
+    }
+
+    .au-switch input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .au-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border-strong);
+      border-radius: 999px;
+      transition: background 0.18s ease;
+      cursor: pointer;
+    }
+
+    .au-slider::before {
+      content: '';
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.18s ease;
+    }
+
+    .au-switch input:checked + .au-slider {
+      background: var(--success);
+    }
+
+    .au-switch input:checked + .au-slider::before {
+      transform: translateX(17px);
+    }
+
+    .au-switch input:disabled + .au-slider {
+      opacity: 0.55;
+      cursor: progress;
+    }
+
+    .au-switch input:focus-visible + .au-slider {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    /* 비활성 수집기 행 시각 강등 — 토글·Run Now 셀은 조작 가능성 유지 위해 제외 */
+    .table-row.row-inactive td:not(.au-live) {
+      opacity: 0.5;
+    }
+
     .glass-select {
       background: var(--bg-surface) !important;
       border: 1px solid var(--border-strong);
@@ -956,6 +1023,7 @@
                     <th style="width: 140px;">Next Run</th>
                     <th style="width: 140px;">Last Run</th>
                     <th style="width: 100px; text-align: center;">Status</th>
+                    <th style="width: 70px; text-align: center;" title="스케줄 활성/비활성 (비활성이어도 Run Now 수동 실행은 가능)">Active</th>
                     <th style="width: 120px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
