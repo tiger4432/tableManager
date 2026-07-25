@@ -28,5 +28,9 @@
   **올바른 방법**: 신규 테이블은 `create_missing_dynamic_tables`(information_schema 게이트 + checkfirst) 경로임을 구분해 배선.
 - **함정**: "리로드" 함수가 반환값을 버리는 no-op일 수 있고, watchdog 스레드가 우연히 메워주면 증상이 늦게 드러난다.
   **올바른 방법**: 리로드 경로는 단일 공용 진입점(`refresh_dynamic_models`)으로 수렴시키고 결정적(동기) 경로를 1차로.
+- **함정**: `/graph/neighbors`에 node_id를 넘기면 422 — 파라미터는 `label`+`identity`다.
+  **올바른 방법**: 그래프 조회 API 계약은 CODE_MAP §1.5/스펙 §6 확인 후 호출.
+- **함정**: 전역 `/schema` 경로는 존재하지 않고, 없는 경로는 정적 catch-all이 **HTML을 200으로** 반환해 성공처럼 보인다.
+  **올바른 방법**: 스키마는 `GET /tables/{t}/schema`. API 검증 시 응답이 JSON인지 확인.
 - **함정**: 테스트용 가짜 테이블명이 사용자 config(gitignored)의 실제 테이블과 겹치면, import 시점 `init_dynamic_models`가 공유 in-memory sqlite에 실 스키마를 선점해 `create_all(checkfirst)`이 스킵되고 테스트가 `no such column`으로 깨진다(사용자가 나중에 동명 테이블을 추가해도 터짐 — `bonding_log` 사례).
   **올바른 방법**: 테스트 테이블명은 사용자 config에 실존 불가능한 고유 접두 이름(`enrich_test_*` 등)을 사용.
