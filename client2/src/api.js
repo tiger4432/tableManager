@@ -6,6 +6,7 @@ import { updateSelectedCellUI, updateTxModeUI, updateEnrichmentBadge } from './u
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject } from './grid.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
+import { refreshTraceEntry } from './trace_launch.js';
 
 // Check backend server status
 export async function checkServerHealth() {
@@ -90,6 +91,9 @@ export async function switchTable(tableName) {
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)
   updateEnrichmentBadge();
+
+  // G2 추적 진입점: 현재 테이블의 그래프 매핑 여부 재판정 (fire-and-forget, 실패 무음)
+  refreshTraceEntry();
 }
 
 // Load table column schema

@@ -915,6 +915,13 @@ function init() {
   el('stats-refresh-btn').addEventListener('click', loadStats);
 
   loadStats();
+
+  // 쿼리 파라미터 초기 중심 (trace.html 크로스링크 계약): ?label=&identity=
+  // stats 로드는 그대로 병행 — renderStats는 기존 select 값을 보존하므로 경쟁 무해.
+  const qp = new URLSearchParams(window.location.search);
+  const qpLabel = (qp.get('label') || '').trim();
+  const qpIdentity = (qp.get('identity') || '').trim();
+  if (qpLabel && qpIdentity) explore(qpLabel, qpIdentity);
 }
 
 init();
