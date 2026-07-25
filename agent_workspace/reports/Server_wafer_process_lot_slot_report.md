@@ -113,6 +113,48 @@
 - **함정**: 에이전트 Edit(원자적 temp+rename)로 `table_config.json`을 고치면 config_watcher의 `on_modified`가 발화하지 않아 기존 테이블 ALTER가 조용히 누락된다. `/admin/reload-configs`는 신규 CREATE 전용이라 대체 경로가 아니며, schema API는 config 싱글턴을 읽으므로 "200 + 컬럼 노출"이 물리 반영 증거가 아니다.
   **올바른 방법**: 기존 테이블 컬럼 추가 후엔 파일을 in-place 재기록(`open(path,"w")`)해 watcher를 깨우고, information_schema 직접 조회로 물리 반영을 확정할 것.
 
-## 7. 이력 초안 (총괄 통합용 — 직접 기록하지 않음)
+---
 
-> 2026-07-25: wafer_process에 lot_id/slot_no 추가 (config·수집기·ProcessEvent props·enrichment 뷰, 전부 gitignored 사용자 영역·핫리로드). 부산물: config_watcher가 원자적 파일 교체(on_modified 미발화)에 반응하지 않아 런타임 ALTER가 누락될 수 있음을 실측 — on_moved 처리 보강 검토 후보.
+## 8. [추가 작업] 수집기 v2 — bonding 워크리스트 조합 우주 커버 (22:0x KST)
+
+**배경**: 사용자 리포트 "bonding log enrich에서 공정 이력이 하나도 안 뜬다 (LOT-D, LOT-E)". 총괄 triage: 워크리스트 조합 수십 개 대비 wafer_process에는 11개 조합만 존재 — 뷰 쿼리는 정상, 데이터 커버리지 결손.
+
+### 8.1 접근법 선택 근거 (권장안 채택 — DB에서 실존 조합 읽기)
+
+- 수집기는 `run_auto_update.py`의 `GenericScriptRunnerCollector.execute()`가 **동일 프로세스 내 `exec()`로 실행** — conda `assy_manager` 환경이라 psycopg2 가용, 폴백 subprocess도 `sys.executable`(동일 env)이므로 양 경로 모두 DB 접근 가능.
+- 하드코딩 확장은 bonding이 2분마다 30% 확률로 신규 조합을 만들어 **우주가 계속 자라므로** 곧 다시 결손이 생긴다. DB에서 `SELECT DISTINCT core_lot, core_slot FROM bonding_log`로 우주를 읽으면 신규 조합을 자동 추종.
+- 안전장치: `connect_timeout=3` + 전체 try/except → 실패 시 실측 분포 하드코딩 폴백(`FALLBACK_UNIVERSE` 10조합)으로 동작, 수집기는 죽지 않음.
+
+### 8.2 생성 정책 (폭주 방지)
+
+| 항목 | 값 |
+|------|-----|
+| 미커버 조합(우주 − wafer_process 기존 lot/slot) | 셔플 후 **전부** 타겟 (백필) |
+| 정상 상태 추가 생성 | 기존 조합 1~2개 재선택, 조합당 3~6 이벤트 |
+| 절대 상한 | `MAX_ROWS_PER_CYCLE=240` (외/내 루프 이중 가드 — 초과분은 다음 사이클이 미커버로 자연 이월) |
+| 정상 상태 사이클당 생성량 | 신규 bonding 조합 0~2개 + 재선택 1~2개 ≈ 10~25행 (기존 v1의 10~20행과 동급) |
+| 시각 리얼리즘 | 시작 오프셋 720~1080분 전 — 이벤트 최대 소요(6×120분)를 흡수해 §5-3의 미래 시각 문제 함께 해소 |
+
+lot_id/slot_no 분해 기록·`WF-<lot>-<slot>`·셀/엣지 규격은 §4.2 그대로 유지. proc_id는 `WP-<HHMMSS>-<seq:03d>`로 자릿수만 확장(240행 대응, 포맷 계약 없음 확인).
+
+### 8.3 발견한 실행 컨텍스트 함정 (교훈 후보 — 실측)
+
+스케줄러의 `exec(code, global_ns, local_ns)`는 **globals/locals 분리 네임스페이스**다. 스크립트 top-level에서 import한 이름(`os` 등)은 local_ns에 바인딩되는데, 스크립트 안에서 **함수를 정의하면 그 함수의 `__globals__`는 global_ns**라 함수 본문에서 top-level 이름 참조 시 NameError가 난다. 실측: `_load_combos()` 함수 안의 `os.getenv`가 NameError → except가 삼켜 **조용히 폴백 10조합만 생성**(드라이런에서 적발). 함수 제거 후 top-level 인라인 try/except로 재작성해 해결. → **auto_update 수집기 스크립트에서는 top-level 이름을 참조하는 함수 정의 금지** (모든 import를 함수 안에서 다시 하거나, 인라인으로 작성).
+
+### 8.4 라이브 검증 (run-now 1회 + 후속 주기, 무재기동)
+
+| 항목 | 결과 |
+|------|------|
+| 드라이런 (exec 분리 네임스페이스 재현) | 240행 / 54조합 / `lot_id==lot`·`slot_no==slot` 전행 True / LOT-C 포함 |
+| run-now(22:07) + 22:07 주기 | 총 177→**586행**. SQL 실측: bonding universe **62조합**, wafer_process 커버 64조합, **uncovered = 0** (완전 커버) |
+| 참조뷰 — 임의 조합 3개 | `LOT-C\|05` 4행 (FAIL 1건 포함) · `LOT-D\|08` 3행 · `LOT-E\|18` 4행 — 전부 `columns=[wafer_id, lot_id, slot_no, step, eqp_id, start_time, end_time, result]`로 이력 반환, start_time 전부 과거 시각 |
+| 그래프 추종 | `/graph/stats`: ProcessEvent 586 = 테이블 행수, PERFORMED_ON/EXECUTED_BY 586, last_sync 22:08:03 — 자동 완주 |
+
+### 8.5 참고
+
+- covered(64) > universe(62)인 것은 v1이 생성한 `LOT-E|25` 등 bonding에 없는 조합 이력이 남아 있기 때문 — 로그로서 무해.
+- 백필 첫 사이클 이후 테이블 성장은 bonding 신규 조합 발생률(2분당 30%)에 종속 — 일 수천 행 수준으로 v1과 동급. 장기 운용 시 보존기간 purge는 별도 과제.
+
+## 7-1. 이력 초안 (총괄 통합용 — 직접 기록하지 않음)
+
+> 2026-07-25: wafer_process에 lot_id/slot_no 추가 (config·수집기·ProcessEvent props·enrichment 뷰, 전부 gitignored 사용자 영역·핫리로드). 추가로 수집기 v2 — bonding_log 실존 조합 우주를 DB에서 읽어 미커버 조합 백필(상한 240행/사이클), 워크리스트 전 조합에서 공정 이력 참조뷰 표시 확인. 부산물 실측 2건: (1) config_watcher가 원자적 파일 교체(on_modified 미발화)에 반응하지 않아 런타임 ALTER 누락 가능 — on_moved 보강 후보. (2) auto_update의 분리 네임스페이스 exec에서 스크립트 내 함수가 top-level import 이름을 참조하면 NameError — 수집기 작성 가이드 반영 후보.

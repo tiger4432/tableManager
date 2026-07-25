@@ -30,7 +30,8 @@ def setup_workspace():
             print(f"  - {sub}/")
 
     print("\nWorkspace setup complete.")
-    print("Next steps: Place your config.json in the respective 'config/' folders.")
+    print("Note: workspace config.json is deprecated — folder name = table name by default;")
+    print("      use 'workspace_name'/'std_parse' fields in config/table_config.json instead.")
 
 if __name__ == "__main__":
     setup_workspace()

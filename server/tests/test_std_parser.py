@@ -507,8 +507,8 @@ def test_provision_creates_missing_workspaces(tmp_path, monkeypatch):
     assert "new_table" in provisioned
     for sub in ("raws", "archives", "err", "auto_update", "scripts", "config"):
         assert (base / "new_table" / sub).is_dir()
-    cfg = json.loads((base / "new_table" / "config" / "config.json").read_text(encoding="utf-8"))
-    assert cfg == {"table_name": "new_table"}
+    # [Deprecation 2026-07-25] 워크스페이스 config.json은 더 이상 자동 생성하지 않는다
+    assert not (base / "new_table" / "config" / "config.json").exists()
     # 시스템 내부 테이블은 생성하지 않는다
     assert not (base / "wafer_map_metadata").exists()
 
