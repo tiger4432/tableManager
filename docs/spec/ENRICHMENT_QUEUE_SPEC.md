@@ -50,22 +50,28 @@
 기존 설정 주도 패턴(`table_config.json`, `chain_rules.json`)과 정합시킨다. 아래는 **형태 제안**이며 구현 설계 리뷰에서 확정.
 
 ```jsonc
-// enrichment_rules.json (제안)
+// enrichment_rules.json — 계약 확정분(2026-07-25): derived_table 필수, pending 의미 고정
 {
   "bonding_wafer_attribution": {
     "source_table": "bonding_log",
-    "decision_key": ["equipment", "event_time"],   // job_id 구성
+    "derived_table": "bonding_job_inventory",       // [확정] 파생 영속 테이블(§9-1) — table_config.json에도 등록
+    "decision_key": ["equipment", "event_time"],    // 판단키(job_id 구성)
     "target_fields": ["wafer_id"],                  // 사람이 채울 값
-    "pending_when": "wafer_id IS NULL",             // 결손 판정
+    // [확정] 결손 판정 의미: target이 blank(NULL 또는 '') — 서버 blank 필터와 동일 의미
     "list_columns": ["chip_count", "lot_hint"],     // 유니크 리스트 표시 단서
-    "reference_views": [                             // 참조뷰(옆에 표시)
+    "reference_views": [                             // 참조뷰 — 쿼리는 서버 config에만, 클라는 판단키 값만 전송, 서버 LIMIT 강제
       { "label": "lot event", "query_ref": "lot_events_by_time" },
       { "label": "lot-slot 이력", "query_ref": "lot_slot_history" }
-    ],
-    "fan_out": "all_rows_matching_key"
+    ]
   }
 }
 ```
+
+**클라이언트 소비 계약(확정 방향, 상세는 Server PM 위임 시 명세):**
+- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비.
+- ♻️ 워크리스트/결손 카운트 — 기존 `GET /tables/{derived}/data` + blank 필터 재사용(신규 없음).
+- 🆕 `GET /enrichment/rules/{rule}/references/{i}?params=...` — 참조뷰 조회(서버측 쿼리 정의·LIMIT).
+- ♻️ 입력 저장 — 기존 `PUT /tables/{derived}/data/updates`(셀 계약 불변).
 
 ## 6. 기존 시스템 통합
 
