@@ -15,6 +15,7 @@
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 스킬 | 이슈 #1 — IntegrityAndQAExpert 스킬 웹 전환: §3 체크리스트 PySide(QThread/DLL/임포트)→client2·5-프로세스 QA 항목 전면 교체 + §1·§2·frontmatter 데스크톱 잔재 정리 — 검수·커밋 대기 | — |
 | 2026-07-25 | 서버 | Enrichment Queue 서버측 — enrichment_rules 로더/검증 + generic dedup mapper(체인 룰 자동 파생, target 보존 이중 방어, 멱등 count) + API 2종(규칙 메타·참조뷰 서버측 실행) + enrichment.html 서빙, 테스트 75통과(신규 16) | [20260725_113000](../history/20260725_113000_enrichment_queue_server_impl.md) |
 | 2026-07-25 | 서버 | 이슈 #6 — 감사 로그 DB 미저장 수정: add_to_cache=False 경로 4개 함수(행 생성/삭제·소스 삭제·수동 우선순위)에 commit 전 bulk_insert_audit_logs 적재 추가 + 회귀 테스트 3건, DELETE/CREATE 이력 재시작 후 보존 | — |
 | 2026-07-25 | 서버 | 경합 수정 배치 1 — C-2 import 통일(outbox ×2 발행 근절)·C-1 async 핸들러 threadpool 격리+batch_delete N+1 제거·C-5 created_logs 500건 상한·C-3 outbox 7일 purge+레거시 인덱스 4종 정리, 테스트 58 통과(신규 8) — 검수·커밋 대기 | [20260725_090000](../history/20260725_090000_contention_fix_batch1.md) |
@@ -44,7 +45,7 @@
 | # | 심각도 | 문제 | 도메인 | 상태 |
 |---|---|---|---|---|
 | 0 | — | 🏁 **[종결 2026-07-25] 체인 인제션 outbox 지연·신뢰성** — 진단 5건 → F1~F5 신뢰성 후속수정 → 기동 마이그레이션 회귀 근절 → 통지 기아 제거(인라인 발사) → 콜드 스타트 웜업. **최종 실측: 정상 31ms(SLO 100ms), 38행 배치 172ms, 재기동 첫 체인 579ms(수용, 잔여 mapper 첫 쿼리 웜업은 백로그).** `[Latency]`/`[Warmup]` 상시 계측 확보. 커밋: `1f02712`→`4bf5b21`→`cc26773`→`acc60dd`. 상세: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md) | Server | 🏁종결 |
-| 1 | 낮음 | `IntegrityAndQAExpert` 스킬 §3 QA 체크리스트가 아직 PySide 항목(QThread/DLL/PySide 임포트) — 웹 client2 QA 항목으로 미전환 | 프로세스 | 대기 |
+| 1 | — | 🏁 **[종결 2026-07-25] `IntegrityAndQAExpert` 스킬 PySide 잔재** — §3 체크리스트를 웹 client2/5-프로세스 QA 항목(state.js 리프레셔 누락·셀 계약 `{value,is_overwrite,priority_source}`·WS 재연결/applyTransaction 델타·stale 응답 UUID 가드·이벤트 루프 블로킹·outbox/우선순위 엔진 보존·4엔트리 빌드·conda pytest+`node --check`)으로 전면 교체. §1 원칙(DLL 워크어라운드→outbox/설정주도)·§2 워크플로우(프로세스 분리 진단·통합 테스트 명령)·frontmatter의 데스크톱 서술도 정리 | 프로세스 | 🏁종결 |
 | 4 | 낮음 | `test_map_presets_api` 기존 실패(#0 이전부터, 맵 프리셋 도메인·체인 무관) — conda 환경 전체 스위트 51개 중 유일 실패(50 통과, 2026-07-25 확인) | Client | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 5 | 중간 | **경합 점검 잔여 리스크(승인 대기)** — C-4(인제션 체인 큐 독점·HOL, 매퍼 의미론 총괄 협의 필요)·C-6(동시 upsert 행 락 순서)·C-7(그래프 전체 동기화 무제한 로드/브로드캐스트)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + 체인 워커의 created_logs 무상한 전송·broadcast body 파싱 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) | Server | 대기(수정 배치 2 후보) |
@@ -54,7 +55,6 @@
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 - 루트 `task/` 대기 항목: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
-- 이슈 #1(QA 스킬 웹 전환)은 여력 시 서브에이전트 위임.
 
 ## 🧭 환경 메모 (Env Notes)
 - 로컬 테스트 테이블 `sample_map`은 `server/config/table_config.json`(gitignored)에만 존재 — 운영 무영향.
