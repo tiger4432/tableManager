@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-DGBfYP3T.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-CjHcw4oh.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-BNY5Fzu9.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-DqWd5E8W.js">
   <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
   <link rel="stylesheet" crossorigin href="/assets/style-CEja5iu0.css">
 </head>
@@ -259,17 +259,17 @@
         </div>
         <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 15px; padding: 15px; overflow-y: auto;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.85rem; color: var(--text-dim);">격자 채우기용 범례 정의 및 브러쉬</span>
+            <span style="font-size: 0.85rem; color: var(--text-dim);">value별 실험 split 조건 서술 · 브러쉬 (서버 registry 공유)</span>
             <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.8rem; font-weight: 500;">+ Add Legend</button>
           </div>
           <div class="table-container" style="flex: 1; min-height: 350px; overflow-y: auto;">
             <table class="sources-table" style="font-size: 0.9rem; width: 100%;">
               <thead>
                 <tr>
-                  <th style="width: 75px; text-align: left; padding: 8px;">Value</th>
-                  <th style="text-align: left; padding: 8px;">Description</th>
-                  <th style="width: 70px; text-align: center; padding: 8px;">Count</th>
-                  <th style="width: 70px; text-align: center; padding: 8px;">Color</th>
+                  <th style="width: 65px; text-align: left; padding: 8px;">Value</th>
+                  <th style="text-align: left; padding: 8px;">Split Description</th>
+                  <th style="width: 55px; text-align: center; padding: 8px;">Count</th>
+                  <th style="width: 60px; text-align: center; padding: 8px;">Color</th>
                   <th style="width: 40px; text-align: center; padding: 8px;">Del</th>
                 </tr>
               </thead>
