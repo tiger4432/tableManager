@@ -3,6 +3,7 @@
    · 하나의 시맨틱 토큰 계층 + 두 개의 값 세트 (light / dark)
    · 값 출처: agent_workspace/reports/design_mockups/direction_C_dual_tokens.html
      (Light = 방향 A, Dark = 방향 B "밝힌 다크" — Design_audit.md §1.4)
+   · Dark 세트는 2026-07-25 "진한 다크" 리비전 적용 (지면 L* 13.7→9.2, 아래 주석 참조)
    · 컴포넌트 CSS는 오직 시맨틱 토큰만 참조한다.
    · 테마 전환: <html data-theme="light|dark"> (theme.js가 스탬프, localStorage 영속)
    · 이 파일은 4개 엔트리(main/map_editor/enrichment/admin) 전부가 최우선 임포트.
@@ -66,53 +67,56 @@
   --canvas-wm-back: rgba(138, 90, 0, 0.09);
 }
 
-/* ── 값 세트 2: Dark (밝힌 다크 — 지면 L* 13.7, 탈네온) ── */
+/* ── 값 세트 2: Dark (진한 다크 — 지면 L* 9.2, 탈네온 유지) ──
+   2026-07-25 사용자 피드백 "더 진하게": 지면 L* 13.7 → 9.2
+   (구 near-black L* 2.5로의 회귀 금지 — 그 중간대를 취함)
+   표면 위계 ΔL*(app→surface)는 4.8 → 5.4로 오히려 강화. */
 :root[data-theme="dark"] {
-  --bg-app: #1c2331;
-  --bg-header: #212a3b;
-  --bg-surface: #242d3f;
-  --bg-inset: #1e2634;
-  --border: #3b4763;
-  --border-strong: #4d5b7c;
-  /* --text-dim 은 표면 대비 4.7:1 — WCAG AA 충족 */
+  --bg-app: #121a29;
+  --bg-header: #182134;
+  --bg-surface: #1b2537;
+  --bg-inset: #141c2c;
+  --border: #36425f;
+  --border-strong: #4a5980;
+  /* --text-dim 은 표면 대비 5.3:1 — WCAG AA 충족 */
   --text: #e9edf4;
-  --text-muted: #aab6c8;
-  --text-dim: #8b98ac;
-  --accent: #6cc4ee;
-  --accent-weak: rgba(108, 196, 238, 0.12);
-  --accent-contrast: #10202c;
-  --accent-2: #b9a8ef;
-  --accent-2-weak: rgba(185, 168, 239, 0.12);
-  --success: #45d195;
-  --success-weak: rgba(69, 209, 149, 0.12);
-  --warning: #f5c04a;
-  --warning-weak: rgba(245, 192, 74, 0.12);
-  --danger: #f58a8a;
-  --danger-weak: rgba(245, 138, 138, 0.12);
-  --info: #6fd4e6;
-  --info-weak: rgba(111, 212, 230, 0.12);
-  --orange: #f0975c;
-  --orange-weak: rgba(240, 151, 92, 0.12);
-  --overwrite: #f5b45e;
-  --overwrite-weak: rgba(245, 180, 94, 0.14);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.5);
-  --row-stripe: rgba(255, 255, 255, 0.025);
-  --focus-ring: rgba(108, 196, 238, 0.2);
+  --text-muted: #a8b5c9;
+  --text-dim: #8b99ae;
+  --accent: #54c2f5;
+  --accent-weak: rgba(84, 194, 245, 0.14);
+  --accent-contrast: #0c1926;
+  --accent-2: #b39cf7;
+  --accent-2-weak: rgba(179, 156, 247, 0.14);
+  --success: #33d68f;
+  --success-weak: rgba(51, 214, 143, 0.14);
+  --warning: #f6bd35;
+  --warning-weak: rgba(246, 189, 53, 0.14);
+  --danger: #f87e7e;
+  --danger-weak: rgba(248, 126, 126, 0.14);
+  --info: #4ed3ec;
+  --info-weak: rgba(78, 211, 236, 0.14);
+  --orange: #f68e48;
+  --orange-weak: rgba(246, 142, 72, 0.14);
+  --overwrite: #f6ac43;
+  --overwrite-weak: rgba(246, 172, 67, 0.16);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --row-stripe: rgba(255, 255, 255, 0.03);
+  --focus-ring: rgba(84, 194, 245, 0.22);
   --surface-hover: rgba(255, 255, 255, 0.06);
   --surface-active: rgba(255, 255, 255, 0.10);
-  --scrim: rgba(5, 8, 14, 0.6);
-  --flash: rgba(108, 196, 238, 0.45);
-  --range-fill: rgba(108, 196, 238, 0.16);
-  --canvas-out-bg: rgba(15, 23, 42, 0.6);
-  --canvas-line: rgba(255, 255, 255, 0.05);
-  --canvas-line-strong: rgba(255, 255, 255, 0.08);
-  --canvas-inside-empty: rgba(69, 209, 149, 0.08);
-  --canvas-text-empty: rgba(170, 182, 200, 0.8);
-  --canvas-text-out: rgba(139, 152, 172, 0.45);
+  --scrim: rgba(3, 6, 12, 0.65);
+  --flash: rgba(84, 194, 245, 0.45);
+  --range-fill: rgba(84, 194, 245, 0.16);
+  --canvas-out-bg: rgba(9, 14, 26, 0.6);
+  --canvas-line: rgba(255, 255, 255, 0.06);
+  --canvas-line-strong: rgba(255, 255, 255, 0.09);
+  --canvas-inside-empty: rgba(51, 214, 143, 0.08);
+  --canvas-text-empty: rgba(168, 181, 201, 0.8);
+  --canvas-text-out: rgba(139, 153, 174, 0.45);
   --canvas-wafer-edge: rgba(255, 255, 255, 0.85);
-  --canvas-wm-front: rgba(56, 189, 248, 0.13);
-  --canvas-wm-back: rgba(245, 158, 11, 0.13);
+  --canvas-wm-front: rgba(84, 194, 245, 0.14);
+  --canvas-wm-back: rgba(246, 172, 67, 0.14);
 }
 
 /* ── 테마 무관 공통 ───────────────────────────────────────── */
