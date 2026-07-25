@@ -52,7 +52,10 @@ SOURCE_PRIORITY = {
     "user": 0,
     "collision_merge": 1,
     "pipeline_parser": 2,
-    "custom_script": 3
+    "custom_script": 3,
+    # [QA G1-⑥] 체인 파생 쓰기 소스 서열 명시(구: 미등재 기본 99). 기존 4대 소스와의
+    # 상대 서열은 불변(4 > 3)이라 표시값 레이어링 결과는 유지되며, 미등재 소스 대비로만 승격된다.
+    "chain_ingestion": 4,
 }
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
@@ -145,22 +148,37 @@ def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
         table_model.business_key_val == target_val
     ).first()
 
-def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None):
-    """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
-    if not sources:
-        return None, None
-        
-    if manual_priority_source and manual_priority_source in sources:
-        val_data = sources[manual_priority_source]
-        val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
-        return val, manual_priority_source
+def resolve_priority_map(table_name: str = None) -> dict:
+    """[QA G1-⑥] 소스 서열 맵 해석의 단일 원천 — 테이블별 source_priority 커스텀 포함.
 
+    compute_priority_value(표시값 레이어링)와 graph_materializer(엣지 provenance)가
+    같은 맵을 공유한다(서열 이원화 금지).
+    """
     priority_map = SOURCE_PRIORITY
     if table_name:
         table_info = TABLE_CONFIG.get(table_name, {})
         custom_priority = table_info.get("source_priority")
         if custom_priority and isinstance(custom_priority, dict):
             priority_map = custom_priority
+    return priority_map
+
+
+def get_source_priority(source_name: str, table_name: str = None) -> int:
+    """소스명 → 우선순위 값(작을수록 우선, 미등재 99). 레이어링과 동일 서열."""
+    return resolve_priority_map(table_name).get(source_name, 99)
+
+
+def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None):
+    """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다."""
+    if not sources:
+        return None, None
+
+    if manual_priority_source and manual_priority_source in sources:
+        val_data = sources[manual_priority_source]
+        val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
+        return val, manual_priority_source
+
+    priority_map = resolve_priority_map(table_name)
 
     sorted_sources = sorted(
         sources.keys(),
@@ -1763,31 +1781,81 @@ def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name
 _ontology_cache = None
 
 def get_ontology_mapping():
+    """온톨로지 매핑 캐시 조회 (check_needs_rollback 판정용).
+
+    [QA G1-④] v2 항목은 검증·정규화 + enrichment RESOLVED_AS 자동 승격을 적용해
+    graph materializer가 보는 매핑과 **같은 신호원**을 쓴다(enrichment target 컬럼 변경이
+    rollback 신호에 잡히도록). v1 키(tables/default)는 원본 그대로 보존(레거시 폴백).
+    """
     global _ontology_cache
     if _ontology_cache is not None:
         return _ontology_cache
-        
+
     import os, json
     curr_dir = os.path.dirname(os.path.abspath(__file__))
     ont_path = os.path.join(curr_dir, "..", "config", "ontology_mapping.json")
+    raw = {}
     if os.path.exists(ont_path):
         try:
             with open(ont_path, "r", encoding="utf-8") as f:
-                _ontology_cache = json.load(f)
-                return _ontology_cache
+                raw = json.load(f)
         except Exception:
-            pass
-    _ontology_cache = {}
+            raw = {}
+
+    merged = {}
+    if isinstance(raw, dict):
+        # v1 레거시 키는 원본 유지 (check_needs_rollback의 v1 폴백 경로)
+        for k in ("tables", "default"):
+            if k in raw:
+                merged[k] = raw[k]
+    try:
+        import ontology_config
+        from enrichment_config import load_enrichment_rules
+        normalized = ontology_config.validate_ontology_mapping(raw, known_tables=None)
+        normalized = ontology_config.synthesize_enrichment_mappings(
+            normalized, load_enrichment_rules(known_tables=None)
+        )
+        merged.update(normalized)
+    except Exception:
+        # 검증/승격 실패 시에도 v1 폴백은 유지 — 판정 신호가 전멸하지 않게
+        pass
+
+    _ontology_cache = merged
     return _ontology_cache
 
 def check_needs_rollback(table_name: str, modified_cols: list) -> bool:
-    """변경된 컬럼 중 그래프 DB 관계(Relationship) 형성에 영향을 주는 컬럼이 있는지 판별합니다."""
+    """변경된 컬럼 중 그래프 관계(엣지/identity) 형성에 영향을 주는 컬럼이 있는지 판별합니다.
+
+    [Ontology G1] v2 형식({table: {node, edges}})과 v1 형식({tables: {..relationships..}})을
+    모두 인식한다. v2에서는 노드 identity 또는 엣지 target_identity_from 컬럼 변경 시 True.
+    """
     if not modified_cols:
         return False
     ontology = get_ontology_mapping()
+
+    # v2 형식: 최상위 {table_name: {node/edges}} 항목
+    v2_cfg = ontology.get(table_name)
+    if isinstance(v2_cfg, dict) and isinstance(v2_cfg.get("node"), dict):
+        relation_cols = set()
+        identity = v2_cfg["node"].get("identity")
+        if isinstance(identity, str):
+            relation_cols.add(identity)
+        elif isinstance(identity, list):
+            relation_cols.update(c for c in identity if isinstance(c, str))
+        for edge in v2_cfg.get("edges") or []:
+            if not isinstance(edge, dict):
+                continue
+            t_from = edge.get("target_identity_from")
+            if isinstance(t_from, str):
+                relation_cols.add(t_from)
+            elif isinstance(t_from, list):
+                relation_cols.update(c for c in t_from if isinstance(c, str))
+        return any(col in relation_cols for col in modified_cols)
+
+    # v1 형식(구 Neo4j 경로) 폴백
     table_cfg = ontology.get("tables", {}).get(table_name, ontology.get("default", {}))
     rel_cfgs = table_cfg.get("relationships", {})
-    
+
     for col in modified_cols:
         if col in rel_cfgs:
             return True

@@ -463,6 +463,169 @@ async def post_event_async(endpoint: str, payload: dict):
             logger.error(f"[GraphSync Process] Failed to send API notification: {e}")
     await asyncio.to_thread(do_post)
 
+# ----------------- [Ontology G1] PG 엣지 스토어 materializer -----------------
+# outbox 증분 소비(자체 keyset 커서) → 매핑 config(v2) 적용 → graph_nodes/graph_edges UPSERT.
+# 1차 타깃은 PG 엣지 스토어(스펙 §1 확정). Neo4j 경로(위 Cypher 빌더들)는 저장소 중립(§4)
+# 원칙에 따라 인터페이스를 보존하며, 수동 재동기화에서 청크 훅으로 병행 동승한다.
+
+GRAPH_BATCH_LIMIT = 1000  # 배치당 outbox 소비 상한 (1000행 청킹 규율 — 스펙 §5)
+
+
+def _load_graph_mappings():
+    """v2 온톨로지 매핑(+enrichment RESOLVED_AS 자동 승격)을 로드한다."""
+    from database import crud
+    import ontology_config
+    known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
+    return ontology_config.load_ontology_mappings(known_tables=known)
+
+
+def _get_or_init_graph_cursor(db) -> int:
+    """materializer의 outbox 소비 커서를 조회한다(최초 1회 현재 최대 id로 초기화).
+
+    최초 초기화가 백로그를 건너뛰는 것은 의도된 동작 — 과거 데이터는 전체 재동기화
+    (/api/graph/sync)가 커버하고, 커서는 이후 증분만 따라간다.
+    """
+    from database.models import GraphSyncState, DatabaseOutbox
+    from sqlalchemy import func as sa_func
+
+    state = db.query(GraphSyncState).filter(GraphSyncState.id == 1).first()
+    if state is None:
+        max_id = db.query(sa_func.max(DatabaseOutbox.id)).scalar() or 0
+        state = GraphSyncState(id=1, last_outbox_id=max_id)
+        db.add(state)
+        db.commit()
+        logger.info(
+            f"[Graph] materializer cursor initialized at outbox id {max_id} "
+            "(기존 백로그는 전체 재동기화로 커버)"
+        )
+        return max_id
+    return state.last_outbox_id or 0
+
+
+def _advance_graph_cursor(db, last_id: int):
+    """커서 전진(commit은 호출자 — 그래프 반영과 같은 트랜잭션으로 원자화)."""
+    from database.models import GraphSyncState
+    db.query(GraphSyncState).filter(GraphSyncState.id == 1).update(
+        {GraphSyncState.last_outbox_id: last_id}, synchronize_session=False
+    )
+
+
+def _lag_ms_from(created_at) -> float:
+    """이벤트 적재 시각 → 그래프 반영 완료 시각의 지연(ms). tz-aware/naive 모두 안전."""
+    if not created_at:
+        return 0.0
+    now = datetime.now(created_at.tzinfo) if created_at.tzinfo else datetime.now()
+    return max((now - created_at).total_seconds() * 1000.0, 0.0)
+
+
+def _reload_graph_worker_configs():
+    """[이슈 #8] SYSTEM_RELOAD 구독 처리 — 신규 테이블 모델/매핑 리로드.
+
+    #7의 refresh_dynamic_models 공용 진입점을 재사용한다(신규 테이블 ORM 등록 +
+    물리 CREATE 보충 + 그래프 시스템 테이블 보장). 이후 온톨로지 매핑을 재로드한다.
+    """
+    from database.database import engine as _db_engine
+    from database import models as _db_models, crud as _crud
+    try:
+        created = _db_models.refresh_dynamic_models(_db_engine)
+        if created:
+            logger.info(f"[Graph Reload] Created missing physical tables at runtime: {created}")
+    except Exception as e:
+        logger.error(f"[Graph Reload] Dynamic model refresh failed: {e}")
+    # 웹서버 rollback-flag 판정용 온톨로지 캐시도 이 프로세스에서는 무효화(다음 접근 시 재로드)
+    try:
+        _crud._ontology_cache = None
+    except Exception:
+        pass
+    mappings = _load_graph_mappings()
+    logger.info(f"[Graph Reload] Reloaded ontology mappings for {len(mappings)} table(s).")
+    return mappings
+
+
+async def run_graph_materializer_loop():
+    """outbox 증분 소비 메인 루프 (chain_ingestion_worker의 소비 골격 준용).
+
+    - 자체 커서(graph_sync_state.last_outbox_id) 기반 keyset 소비 — 체인 워커의
+      processed_chain 플래그와 완전 독립.
+    - LISTEN/NOTIFY(outbox_event 채널)로 저지연 wake, 폴백 폴링 2s.
+    - 배치 내 SYSTEM_RELOAD 이벤트 감지 시 모델/매핑 핫리로드(이슈 #8).
+    - [GraphLatency] 계측 상시 (SLO: 배치당 10초 이내 — 스펙 §5).
+    """
+    from database.database import SessionLocal, engine
+    from database.models import DatabaseOutbox, ensure_graph_tables
+    import graph_materializer
+
+    try:
+        ensure_graph_tables(engine)
+    except Exception as e:
+        logger.error(f"[Graph] ensure_graph_tables failed at loop start: {e}")
+
+    mappings = _load_graph_mappings()
+    logger.info(
+        f"[Graph] materializer loop started — {len(mappings)} mapped table(s): {sorted(mappings)}"
+    )
+
+    listener = None
+    if engine.dialect.name == "postgresql":
+        try:
+            from chain_ingestion_worker import OutboxListener
+            listener = OutboxListener(SessionLocal, "outbox_event")
+        except Exception as e:
+            logger.warning(f"[Graph] LISTEN unavailable, falling back to polling: {e}")
+
+    def _run_one_batch(current_mappings):
+        """[QA G1-M3] 동기 DB 배치 처리 본체 — to_thread에서 실행되어 이 프로세스의
+        이벤트 루프(/sync HTTP 서빙)를 백로그 소진 중에도 블로킹하지 않는다.
+        반환: (wait_needed, mappings)."""
+        db = SessionLocal()
+        try:
+            cursor = _get_or_init_graph_cursor(db)
+            events = db.query(DatabaseOutbox).filter(
+                DatabaseOutbox.id > cursor
+            ).order_by(DatabaseOutbox.id.asc()).limit(GRAPH_BATCH_LIMIT).all()
+
+            if not events:
+                return True, current_mappings
+
+            # [이슈 #8] 배치 내 SYSTEM_RELOAD 감지 → 모델/매핑 리로드 후 배치 처리 계속.
+            # (커서가 스캔한 범위만 전진하므로 리로드 이벤트를 놓치는 경로가 없다.)
+            if any(e.event_type == "SYSTEM_RELOAD" for e in events):
+                current_mappings = _reload_graph_worker_configs()
+
+            t0 = time.monotonic()
+            stats = graph_materializer.materialize_events(db, events, current_mappings)
+            _advance_graph_cursor(db, events[-1].id)
+            db.commit()  # 그래프 반영 + 커서 전진 원자 커밋(재처리 시에도 UPSERT 멱등)
+            exec_ms = (time.monotonic() - t0) * 1000.0
+            lag_ms = _lag_ms_from(events[0].created_at)
+            logger.info(
+                f"[GraphLatency] batch={len(events)} rows={stats['rows']} "
+                f"nodes={stats['nodes']} edges={stats['edges']} "
+                f"lag_ms={lag_ms:.0f} exec_ms={exec_ms:.0f}"
+                + (f" skipped_deletes={stats['skipped_deletes']}"
+                   if stats.get("skipped_deletes") else "")
+            )
+            return False, current_mappings
+        finally:
+            db.close()
+
+    while True:
+        try:
+            # [QA G1-M3] 배치 처리를 스레드로 격리 — 연속 배치(백로그 소진) 중에도
+            # 이벤트 루프가 자유로워 /sync 요청이 기아 상태에 빠지지 않는다.
+            wait_needed, mappings = await asyncio.to_thread(_run_one_batch, mappings)
+        except Exception as e:
+            logger.error(f"[Graph] materializer loop error: {e}")
+            await asyncio.sleep(1.0)
+            continue
+
+        if wait_needed:
+            if listener is not None:
+                await listener.wait(2.0)
+            else:
+                await asyncio.sleep(2.0)
+
+
 # ----------------- 리팩토링 Core: 모듈식 비즈니스 함수 세트 -----------------
 
 from fastapi import FastAPI, HTTPException, Body
@@ -477,7 +640,11 @@ class GraphSyncRequest(BaseModel):
 
 # 2) RDB 데이터 수집 및 조회 함수
 def get_row_data_for_sync(db, table_name: str, row_ids: list[str]) -> dict:
-    """RDB 물리 테이블로부터 동기화가 필요한 행 데이터를 수집하고 분기를 결정합니다."""
+    """[DEPRECATED — C-7] 무제한 `.all()` 로드를 수행하는 구 수집 경로.
+
+    /api/graph/sync 흐름에서는 더 이상 사용하지 않는다(키셋 청킹 resync_table로 대체).
+    Neo4j rollback&replay(G4) 참고 구현으로만 보존 — 신규 배선 금지.
+    """
     from database.models import DYNAMIC_TABLES
     from datetime import datetime, timezone
     
@@ -651,127 +818,128 @@ async def build_graph_db_ingestion(sync_data: dict, ontology: dict):
         else:
             sync_virtual_graph_incremental(sync_data, ontology)
 
-# 10) [동기화 메인 오케스트레이션] execute_manual_sync
+# 10) [동기화 메인 오케스트레이션] execute_manual_sync — [C-7 해소] 키셋 청킹 재동기화
+def _neo4j_chunk_hook_factory(table_name: str):
+    """[저장소 중립 §4] Neo4j 병행 타깃 청크 훅 — 기존 Cypher 빌더 인터페이스 보존.
+
+    PG materialize와 같은 청크 단위로 Cypher MERGE를 동승시킨다(무제한 로드 없음).
+    neo4j 비활성 시 None을 반환하는 게이트는 호출부가 담당.
+    """
+    ontology_v1 = load_ontology_mapping()
+
+    def hook(chunk_rows):
+        queries = []
+        for r in chunk_rows:
+            event_mock = create_light_event_mock("EDIT", table_name, r)
+            queries.extend(build_queries_for_event(event_mock, ontology_v1))
+        if not queries:
+            return
+        with neo4j_driver.session() as session:
+            def execute_tx(tx):
+                for cypher, params in queries:
+                    tx.run(cypher, **params)
+            session.execute_write(execute_tx)
+    return hook
+
+
 async def execute_manual_sync(table_name: str, row_ids: list[str]) -> dict:
-    """RDB 데이터 수집부터 그래프 반영, DB 완료 커밋 및 웹소켓 알림 피드백을 조율하는 수동 동기화 메인 프로세스입니다."""
-    from database.database import SessionLocal
-    from datetime import datetime
-    
-    logger.info(f"[GraphSync Server] ==================== 수동 동기화 시작 (Table: {table_name}, Request Row Count: {len(row_ids) if row_ids else 'All'}) ====================")
+    """수동 재동기화 메인 프로세스 — PG 엣지 스토어 1차 타깃, 테이블별 키셋 청킹.
+
+    [C-7 해소] 구 경로의 ①무제한 로드 ②무제한 items 브로드캐스트 ③수십만 행 단일 커밋을
+    모두 제거: resync_table이 1000행 keyset 청크로 로드→materialize→스탬프→커밋을 반복하고,
+    통지는 테이블당 batch_refresh_required 1건(기존 WS 계약 재사용)으로 강등한다.
+    무거운 동기 구간은 to_thread로 이벤트 루프에서 격리한다.
+    """
+    from database.database import SessionLocal, engine
+    from database.models import ensure_graph_tables, DYNAMIC_TABLES
+    import graph_materializer
+
+    logger.info(
+        f"[GraphSync Server] ==================== 수동 동기화 시작 "
+        f"(Table: {table_name}, Request Row Count: {len(row_ids) if row_ids else 'All'}) ===================="
+    )
     if row_ids:
         logger.info(f"[GraphSync Server] 요청된 로우 ID 목록: {format_id_list(row_ids)}")
-        
-    db = SessionLocal()
-    ontology = load_ontology_mapping()
-    
+
     try:
-        sync_data = get_row_data_for_sync(db, table_name, row_ids)
-        
-        mode = sync_data["mode"]
-        targets_count = sync_data["total_sync_targets"]
-        deletes_count = len(sync_data["deleted_row_ids"])
-        
-        logger.info(
-            f"[GraphSync Server] [1/4 RDB 데이터 수집 완료] "
-            f"결정된 싱크 모드: {mode} | "
-            f"실제 동기화 대상 로우: {targets_count}개 | "
-            f"삭제할 유실 ID: {deletes_count}개"
-        )
-        
-        if targets_count == 0 and deletes_count == 0:
-            logger.info("[GraphSync Server] 동기화할 대상(신규/변경/삭제)이 없어 조기 완료 처리합니다.")
-            if row_ids:
-                logger.info("[GraphSync Server] 기존 완료된 상태 복구를 위해 화면에 Synced 피드백 브로드캐스트 송출")
-                items = [{"row_id": rid, "is_new": False} for rid in row_ids]
-                await post_event_async("/internal/events/broadcast", {
-                    "event": "batch_row_upsert",
-                    "table_name": table_name,
-                    "items": items,
-                    "change_count": len(items)
-                })
-            logger.info("[GraphSync Server] ==================== 수동 동기화 조기 마감 ====================")
-            return {"status": "success", "message": "동기화할 대상이 없습니다.", "synced_count": 0}
-            
-        if mode == "rollback_and_replay":
-            dirty_time = sync_data["dirty_timestamp"]
-            all_dirty_rows = sync_data["all_dirty_rows"]
-            logger.info(
-                f"[GraphSync Server] [2/4 롤백&재생 분석] "
-                f"롤백 기준 시점 (Dirty Time): {dirty_time.isoformat()} | "
-                f"RDB 전체 복원 대상 로우: {len(all_dirty_rows)}개"
-            )
-            replay_summary = [f"{t_name}:{row.row_id}" for t_name, row in all_dirty_rows]
-            logger.info(f"[GraphSync Server] 순차 재생 예정 로우 리스트: {format_id_list(replay_summary)}")
-        else:
-            logger.info("[GraphSync Server] [2/4 증분 업데이트 분석]")
-            for t_name, rows in sync_data["target_rows_map"].items():
-                target_ids = [r.row_id for r in rows]
-                logger.info(f"[GraphSync Server] {t_name} 테이블 증분 대상 로우 ID: {format_id_list(target_ids)}")
-                
-        if sync_data["deleted_row_ids"]:
-            logger.info(f"[GraphSync Server] 그래프 DB에서 DETACH DELETE 될 소멸 대상 ID: {format_id_list(sync_data['deleted_row_ids'])}")
-            
-        target_db_name = "Neo4j DB" if (neo4j_enabled and neo4j_driver) else "가상 파일 DB (virtual_graph.json)"
-        logger.info(f"[GraphSync Server] [3/4 그래프 Ingestion 실행] 대상 저장소: {target_db_name}")
-        await build_graph_db_ingestion(sync_data, ontology)
-        
-        target_rows_map = sync_data["target_rows_map"]
-        for t_name, rows in target_rows_map.items():
-            for r in rows:
-                r.is_graph_synced = True
-                r.needs_graph_rollback = False
-                r.graph_synced_at = datetime.now()
-                
-        logger.info("[GraphSync Server] [4/4 웹소켓 갱신 통지] 브라우저 UI로 Synced 배지 드로잉 이벤트 방출 요청")
-        for t_name, rows in target_rows_map.items():
-            if not rows: continue
-            items = []
-            for r in rows:
-                r_data = {}
-                mapper = getattr(r, "_sa_class_manager", None)
-                if mapper:
-                    for col_name in mapper.keys():
-                        val = getattr(r, col_name, None)
-                        if isinstance(val, datetime):
-                            val = val.isoformat()
-                        r_data[col_name] = {"value": val}
-                items.append({
-                    "row_id": r.row_id,
-                    "is_new": False,
-                    "data": r_data,
-                    "created_at": to_local_str(r.created_at),
-                    "updated_at": to_local_str(r.updated_at)
-                })
-            if items:
-                await post_event_async("/internal/events/broadcast", {
-                    "event": "batch_row_upsert",
-                    "table_name": t_name,
-                    "items": items,
-                    "change_count": len(items)
-                })
-                
-        db.commit()
-        synced_total = len(sync_data["all_dirty_rows"]) if mode == "rollback_and_replay" else targets_count
-        logger.info(
-            f"[GraphSync Server] ==================== 수동 동기화 성공 완료 "
-            f"(Mode: {mode}, Synced: {synced_total}개, Deleted: {deletes_count}개) ===================="
-        )
-        
-        return {
-            "status": "success",
-            "mode": mode,
-            "synced_count": synced_total,
-            "deleted_count": deletes_count
-        }
-    except HTTPException:
-        db.rollback()
-        raise
+        ensure_graph_tables(engine)
     except Exception as e:
-        db.rollback()
+        logger.error(f"[GraphSync Server] ensure_graph_tables failed: {e}")
+
+    mappings = _load_graph_mappings()
+
+    if table_name and table_name != "all":
+        if table_name not in DYNAMIC_TABLES:
+            raise HTTPException(status_code=400, detail=f"유효하지 않은 테이블 이름입니다: {table_name}")
+        if table_name not in mappings:
+            return {
+                "status": "success", "mode": "no_mapping", "synced_count": 0, "deleted_count": 0,
+                "message": f"'{table_name}' 테이블에 온톨로지 매핑이 없어 동기화할 대상이 없습니다.",
+            }
+        targets = [table_name]
+    else:
+        targets = [t for t in sorted(mappings.keys()) if t in DYNAMIC_TABLES]
+        if not targets:
+            return {
+                "status": "success", "mode": "no_mapping", "synced_count": 0, "deleted_count": 0,
+                "message": "온톨로지 매핑이 선언된 테이블이 없습니다.",
+            }
+
+    use_neo4j = bool(neo4j_enabled and neo4j_driver)
+    target_db_name = "PG 엣지 스토어" + (" + Neo4j 병행" if use_neo4j else "")
+    logger.info(f"[GraphSync Server] 대상 저장소: {target_db_name} | 대상 테이블: {targets}")
+
+    def run_sync():
+        db = SessionLocal()
+        results = {}
+        try:
+            for t in targets:
+                hook = _neo4j_chunk_hook_factory(t) if use_neo4j else None
+                t0 = time.monotonic()
+                stats = graph_materializer.resync_table(
+                    db, t, mappings, row_ids=(row_ids or None), chunk_hook=hook
+                )
+                stats["exec_ms"] = (time.monotonic() - t0) * 1000.0
+                results[t] = stats
+            return results
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    try:
+        results = await asyncio.to_thread(run_sync)
+    except Exception as e:
         logger.error(f"[GraphSync Server] Background manual sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
+
+    total_rows = 0
+    for t, stats in results.items():
+        total_rows += stats["rows"]
+        logger.info(
+            f"[GraphLatency] resync table={t} chunks={stats['chunks']} rows={stats['rows']} "
+            f"nodes={stats['nodes']} edges={stats['edges']} exec_ms={stats['exec_ms']:.0f}"
+        )
+        # [C-7 ②] 무제한 items 브로드캐스트 제거 — 테이블당 refresh 1건(기존 계약 재사용).
+        if stats["rows"] > 0:
+            await post_event_async("/internal/events/broadcast", {
+                "event": "batch_refresh_required",
+                "table_name": t,
+                "change_count": stats["rows"],
+            })
+
+    logger.info(
+        f"[GraphSync Server] ==================== 수동 동기화 성공 완료 "
+        f"(Mode: chunked_resync, Synced: {total_rows}개) ===================="
+    )
+    return {
+        "status": "success",
+        "mode": "chunked_resync",
+        "synced_count": total_rows,
+        "deleted_count": 0,
+        "tables": {t: {k: v for k, v in s.items() if k != "exec_ms"} for t, s in results.items()},
+    }
 
 # 1) [서버부] handle_manual_sync API 및 락 래핑
 sync_lock = asyncio.Lock()
@@ -799,11 +967,25 @@ async def startup_event():
         new_config = crud.load_table_config()
         if new_config:
             models.init_dynamic_models(new_config)
+            crud.TABLE_CONFIG.clear()
+            crud.TABLE_CONFIG.update(new_config)
         logger.info("[GraphSync Worker Server] Dynamic models pre-initialized successfully.")
     except Exception as e:
         logger.error(f"[GraphSync Worker Server] Failed to pre-init dynamic models: {e}")
-        
-    pass
+
+    # [Ontology G1] 그래프 시스템 테이블 보장 + PG materializer 루프 기동(outbox 증분 소비)
+    try:
+        from database.database import engine
+        from database.models import ensure_graph_tables
+        ensure_graph_tables(engine)
+    except Exception as e:
+        logger.error(f"[GraphSync Worker Server] ensure_graph_tables failed at startup: {e}")
+
+    if os.getenv("GRAPH_MATERIALIZER_ENABLED", "true").lower() == "true":
+        asyncio.create_task(run_graph_materializer_loop())
+        logger.info("[GraphSync Worker Server] PG materializer loop task started.")
+    else:
+        logger.info("[GraphSync Worker Server] PG materializer loop disabled by env.")
 
 if __name__ == "__main__":
     import uvicorn

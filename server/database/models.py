@@ -175,6 +175,68 @@ class CellSource(Base):
     )
 
 
+# ----------------- [Ontology G1] PG 엣지 스토어 (docs/spec/ONTOLOGY_GRAPH_SPEC.md §2) -----------------
+# 저장소 중립 속성 그래프의 PostgreSQL 물리화. table_config과 무관한 **시스템 테이블**이며
+# 부팅 create_all + ensure_graph_tables(핫리로드/워커 부팅 경로)로 항상 존재가 보장된다.
+
+class GraphNode(Base):
+    __tablename__ = "graph_nodes"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    label = Column(String(100), nullable=False)
+    # 복수 컬럼 identity는 "|" 조인 문자열로 정규화(graph_materializer.compose_identity 참조)
+    identity_key = Column(String, nullable=False)
+    props = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # [인덱스 규율 §2] (label, identity_key) UNIQUE — 정확 일치 MERGE의 물리적 실체.
+        Index("idx_graph_nodes_identity", "label", "identity_key", unique=True),
+    )
+
+
+class GraphEdge(Base):
+    __tablename__ = "graph_edges"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    type = Column(String(100), nullable=False)
+    from_node = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    to_node = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    props = Column(JSON().with_variant(JSONB, "postgresql"), default=dict)
+    # 엣지 provenance = 셀 레이어링의 그래프 확장(§2). G1은 저장까지 — 표시 우선순위 계산은 G2.
+    source_name = Column(String, nullable=False, default="unknown")
+    source_row_ref = Column(String, nullable=True)   # "table_name:row_id"
+    updated_by = Column(String, nullable=True)
+    event_time = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        # [인덱스 규율 §2] k-hop 순회가 인덱스 룩업의 연쇄가 되도록 — 인덱스 없는 엣지 접근 경로 금지.
+        Index("idx_graph_edges_from_type", "from_node", "type"),
+        Index("idx_graph_edges_to_type", "to_node", "type"),
+        # 멱등 UPSERT 키: 동일 (from, type, to, source_name) 엣지는 1개만 존재.
+        # source_name은 nullable=False(기본 "unknown") — NULL 중복 우회를 구조적으로 차단.
+        Index("idx_graph_edges_upsert", "from_node", "type", "to_node", "source_name", unique=True),
+        # [QA H2] 재교정(retarget) 시 같은 원본 로우가 과거에 주장한 구 엣지 조회용 —
+        # source_row_ref 기반 stale 엣지 삭제가 인덱스 룩업이 되도록.
+        Index("idx_graph_edges_row_ref", "source_row_ref"),
+    )
+
+
+class GraphSyncState(Base):
+    """[Ontology G1] materializer의 outbox 소비 커서 (프로세스 재시작에도 durable).
+
+    outbox의 processed_chain 플래그는 체인 워커 전용이므로, 그래프 materializer는
+    자체 keyset 커서(last_outbox_id)로 증분 소비한다. id=1 단일 행 규약.
+    """
+    __tablename__ = "graph_sync_state"
+
+    id = Column(Integer, primary_key=True)
+    last_outbox_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 import sys
 if not hasattr(sys, "_dynamic_tables_singleton"):
     sys._dynamic_tables_singleton = {}
@@ -351,6 +413,43 @@ def create_missing_dynamic_tables(engine):
     return created
 
 
+def ensure_graph_tables(engine):
+    """[Ontology G1] 그래프 시스템 테이블(graph_nodes/graph_edges/graph_sync_state)의 존재를 보장한다.
+
+    table_config과 무관한 시스템 테이블이므로 부팅 create_all(웹서버) 외에도
+    핫리로드(refresh_dynamic_models)와 그래프 워커 부팅 경로에서 항상 호출된다.
+    #7 패턴 준용: information_schema 게이트 + checkfirst + engine 단위 독립 트랜잭션
+    (실패가 공유 세션을 오염시키지 않음).
+
+    반환: 새로 CREATE한 테이블명 리스트.
+    """
+    from sqlalchemy import inspect
+
+    created = []
+    graph_models = (GraphNode, GraphEdge, GraphSyncState)
+    with _runtime_ddl_lock:
+        try:
+            inspector = inspect(engine)
+        except Exception as err:
+            print(f"[Graph Schema] Failed to inspect database for graph tables: {err}")
+            return created
+
+        for model_class in graph_models:
+            table_name = model_class.__tablename__
+            try:
+                if inspector.has_table(table_name):
+                    continue
+                Base.metadata.create_all(
+                    bind=engine, tables=[model_class.__table__], checkfirst=True
+                )
+                created.append(table_name)
+                print(f"[Graph Schema] Created graph system table '{table_name}'.")
+            except Exception as err:
+                # CREATE 경합(DuplicateTable 등) 포함 — 실패를 격리하고 계속 진행
+                print(f"[Graph Schema] Failed to create graph table '{table_name}': {err}")
+    return created
+
+
 def refresh_dynamic_models(engine=None):
     """[이슈 #7] config 핫리로드 공용 진입점 — table_config.json을 디스크에서 재로드하여
     crud.TABLE_CONFIG 싱글턴과 DYNAMIC_TABLES(ORM 모델)를 갱신하고, engine이 주어지면
@@ -372,5 +471,8 @@ def refresh_dynamic_models(engine=None):
     crud.TABLE_CONFIG.update(new_config)
     init_dynamic_models(new_config)
     if engine is not None:
-        return create_missing_dynamic_tables(engine)
+        created = create_missing_dynamic_tables(engine)
+        # [Ontology G1] 그래프 시스템 테이블도 핫리로드 경로에서 항상 존재 보장(#7 패턴 동승).
+        created.extend(ensure_graph_tables(engine))
+        return created
     return []

@@ -2409,6 +2409,12 @@ def reload_local_process_cache():
     except Exception as e:
         print(f"[Reload] Failed to reload table_config.json: {e}")
         
+    # [Ontology G1] 온톨로지 매핑 캐시 무효화(핫리로드 대상 — check_needs_rollback 판정용)
+    try:
+        crud._ontology_cache = None
+    except Exception:
+        pass
+
     # Remove custom mappers from sys.modules cache
     mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
     for k in mapper_keys:
