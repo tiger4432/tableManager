@@ -10,7 +10,7 @@
 
 메인 클라이언트는 **`client2`(웹)**이며, 데스크톱 앱은 이를 감싸는 QtWebEngine 셸입니다.
 
-- **`client2/`** — Vite 멀티페이지 앱(4엔트리), **Vanilla ESM JavaScript(프레임워크 없음)**, JS ~10,300줄.
+- **`client2/`** — Vite 멀티페이지 앱(6엔트리), **Vanilla ESM JavaScript(프레임워크 없음)**, JS ~13,000줄. 듀얼 테마(기본 라이트, `tokens.css` 토큰 SSOT + `theme.js` 토글).
 - **`client/desktop_wrapper.py`** — `http://localhost:8080/?client=desktop`를 로드하는 `QWebEngineView`(:64-65, URL :254). `?client=desktop` 플래그로 `state.isDesktop`(state.js:32) 토글.
 
 > ⚠️ 구 PySide6 데스크톱 클라이언트(`client/main.py`, `client/ui/`, `client/models/table_model.py`)는 **제거되었습니다.** 남은 것은 `desktop_wrapper.py`뿐.
@@ -31,10 +31,12 @@
 
 | HTML | ESM 모듈 | 페이지 |
 |---|---|---|
-| `index.html` | `src/main.js` | 데이터 그리드(메인) |
-| `admin.html` | `src/admin.js` | 어드민 대시보드(Monaco CDN) |
+| `index.html` | `src/main.js` | 데이터 그리드(메인) — 「🕸️ 추적」 진입점(`trace_launch.js`) 포함 |
+| `admin.html` | `src/admin.js` | 어드민 — 파이프라인 생애주기 5탭(§5, Monaco CDN) |
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 |
 | `enrichment.html` | `src/enrichment.js` | Enrichment Queue 컨베이어(결손 보정 워크리스트) |
+| `graph.html` | `src/graph_viewer.js` | 지식그래프 서브그래프 뷰어(§6) |
+| `trace.html` | `src/trace.js` | 객체 중심 추적 리포트(§6) |
 
 빌드 산출물 `dist/`는 FastAPI(:8080)가 서빙. `define`로 빌드 타임에 `import.meta.env.VITE_USER`(OS 사용자명) 주입 → `config.js`의 `CURRENT_USER`.
 
@@ -50,10 +52,10 @@ npm run build     # dist/ 생성
 
 | 파일 | 줄(≈) | 책임 |
 |---|---|---|
-| `main.js` | 1791 | 메인 페이지 오케스트레이터: init, 이벤트 바인딩, 소스 모달, 스마트 페이스트, Tx 모드 apply/discard |
+| `main.js` | 1793 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트, Tx 모드 apply/discard |
 | `state.js` | 49 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) |
 | `dom.js` | 55 | `getElementById` 지연 게터 모음(`elements`) |
-| `api.js` | 418 | REST 계층: health, loadTables, switchTable, loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows |
+| `api.js` | 422 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows |
 | `websocket.js` | 249 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
 | `grid.js` | 526 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화) |
 | `clipboard.js` | 788 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
@@ -62,9 +64,13 @@ npm run build     # dist/ 생성
 | `utils.js` | 195 | `getLocalTimeString`, `showToast`(window 부착), 인제션 진행 위젯 |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 5 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
-| `admin.js` | 1433 | 어드민(§5) |
+| `admin.js` | 2437 | 어드민 5탭(§5) |
 | `map_editor.js` | 2771 | 맵 에디터(§4) |
 | `enrichment.js` | 754 | Enrichment 컨베이어: 규칙 선택(`loadRules/selectRule`), 워크리스트(`fetchWorklist`), 입력 흐름(`onInputKeydown/saveCurrent` → PUT `/data/updates`), 참조 패널(`initReferencePanel/loadActiveReference`, stale 가드) |
+| `graph_viewer.js` | 927 | 그래프 서브그래프 뷰어(§6): stats 카드, 자동완성 검색, BFS 동심원 캔버스(무라이브러리), 팬·줌, Node Inspector, `?label=&identity=` 딥링크 |
+| `trace.js` | 454 | trace.html 오케스트레이터(§6): `runTrace`(POST `/graph/trace`, seq 가드) → `renderReport`(그룹+타임라인 청크 렌더), 시드 칩·depth·시간범위, URL 동기화 |
+| `trace_core.js` | 234 | 추적 순수 로직(무의존): `composeIdentity`(서버 G1 미러), `capSeeds`(상한 20), `buildTraceRequest`, `groupNodesByLabel`, `splitTimeline` |
+| `trace_launch.js` | 107 | index 진입점: `initTraceEntry`/`refreshTraceEntry`(mapping-summary 판정), `openTraceForSelection`(선택 행→시드 변환) |
 
 > `counter.js`는 Vite 템플릿 잔재(미사용).
 > **상태 관리 주의:** `state.js`는 리액티브 스토어가 아닌 **평범한 싱글턴**. 변조 후 명시적 UI 리프레셔를 호출하는 수동 패턴. `admin.js`/`map_editor.js`는 `state.js`를 임포트하지 않고 자체 모듈 지역 변수를 사용.
@@ -88,19 +94,36 @@ npm run build     # dist/ 생성
 
 ---
 
-## 5. 어드민 (`admin.js`, ~1433줄)
+## 5. 어드민 (`admin.js`, ~2437줄) — 파이프라인 생애주기 5탭
 
-탭 구동 대시보드(`currentTab`: outbox · file · workspace · chain · mapper · autoupdate · editor):
+2026-07-25 IA 재편: 탭 축이 메커니즘 7탭에서 **파이프라인 생애주기 5탭**으로 바뀌었습니다. 각 탭 본문은 생애 단계(현황 → 오류 → 수정/실행) 접이식 섹션 스택.
 
-- **Ingestion Outbox** — 실패/대기 트랜잭션 목록 + 재시도(`retryTransaction`, `retryAllFailed`)
-- **File / Workspace / Chain / Mapper** — 각 목록 렌더 + 선택
-- **Auto-update** — 스크립트 목록 + `runAutoUpdateNow(table, script)`
-- **Code editor** — **Monaco**(cdnjs `monaco-editor@0.39.0`), 파일트리 브라우저, `saveScriptCode`
-- **System configs** — `reloadSystemConfigs()`
+| 탭 | 내용 |
+|---|---|
+| **Overview** (첫 화면) | 헬스 4카드(File/Chain/AutoUpdate/Enrichment — 상세 수치+최근 이벤트+탭 딥링크), 전폭 레이아웃 |
+| **File Ingestion** | 인제션 로그(필터/정렬/페이지) + Workspaces(기본 접힘·요약) + 실패 진단→커스텀 파서 편집 딥링크 |
+| **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
+| **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
+| **Enrichment** | 규칙 표 + 결손 카운트 배지 + Queue 딥링크(`enrichment.html?rule=`) — 규칙 편집은 read-only 안내(CRUD API는 백로그) |
+
+- **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
+- **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
+- 신규 서버 API 0건 — 기존 `/admin/*`·`/enrichment/rules`만 소비. 함수 목록: [CODE_MAP §7](./CODE_MAP.md#7-client2src--웹-클라이언트).
 
 ---
 
-## 6. 백엔드 계약
+## 6. 지식그래프 뷰어 & 추적 리포트 (온톨로지 트랙 UI)
+
+| 페이지 | 역할 |
+|---|---|
+| `graph.html` + `graph_viewer.js` | **서브그래프 뷰어** — 첫 화면 `/graph/stats` 카운트 카드, label+identity 자동완성 검색, `/graph/neighbors` 1/2-hop 서브그래프를 무라이브러리 BFS 동심원 캔버스로 렌더. 노드 클릭=재중심 탐색, user provenance 엣지 강조(`--overwrite` 색), truncated 배지. 테마 색은 1회 캐싱+`themechange` 재캐싱(상시 rAF 없음) |
+| `trace.html` + `trace.js`/`trace_core.js` | **추적 리포트** — 시드 칩(상한 20)·depth 1–3·시간 범위로 `POST /graph/trace` → 라벨별 엔티티 그룹 테이블 + event_time 시간순 타임라인(user provenance 강조, 구조 엣지 접이식). URL 동기화(`replaceState`), 청크 렌더(그룹 100행/타임라인 300건) |
+| 진입 흐름 | 메인 그리드에서 행 선택 → 「🕸️ 추적」(`trace_launch.js`, `/graph/mapping-summary`로 활성 판정) → 선택 행을 identity로 조립(서버 `compose_identity` 미러 — `\|` 조인+이스케이프+float 안정화)해 시드로 전달. graph.html ↔ trace.html 양방향 크로스링크 |
+
+---
+
+## 7. 백엔드 계약
 
 - REST + WebSocket at `127.0.0.1:8080` (FastAPI). 엔드포인트: [backend.md](./backend.md)
 - 셀 데이터 형태: `data[col] = {value, is_overwrite, priority_source}` (grid.js `ensureCellObject`가 정규화)
+- 그래프 조회: `GET /graph/{stats,neighbors,nodes/search,mapping-summary}` + `POST /graph/trace` (read-only)

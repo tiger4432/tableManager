@@ -1,3 +1,5 @@
+> 🗄️ **SUPERSEDED** by [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) + [event_driven_backend §4](../architecture/event_driven_backend.md) on 2026-07-25. 실제 구현은 Kafka/Neo4j 구상이 아니라 PG 엣지 스토어 + outbox materializer로 진행되었습니다. 히스토리 추적용으로만 보존됩니다.
+
 # Graph DB Integration Architecture & Design Report
 
 This report outlines the structural design and integration plan to synchronize real-time data updates from the current `assyManager` server (PostgreSQL-based relational structure) into a Graph Database (e.g., **Neo4j** or **Cosmos DB Gremlin**).

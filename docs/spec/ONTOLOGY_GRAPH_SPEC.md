@@ -1,7 +1,7 @@
 # 🕸️ Ontology Knowledge Graph Spec — LLM 백본 지식그래프
 
-> **Status:** 🟠 제안(초안 v0 — 총괄·사용자 논의 중) | **Last-verified:** 2026-07-25 | **Owner:** 총괄 PM
-> 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 구식화 대상: [graph_db_integration_plan.md](./graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체)
+> **Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계) | **Last-verified:** 2026-07-25 | **Owner:** 총괄 PM
+> 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 대체 완료: [graph_db_integration_plan.md](../_archive/graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체, 2026-07-25 아카이브)
 
 ## 0. 핵심 가치 (사용자 확정 2026-07-25)
 

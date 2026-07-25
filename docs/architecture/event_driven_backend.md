@@ -1,35 +1,35 @@
-# 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · Graph DB 동기화
+# 🔗 이벤트 기반 백엔드: Outbox · 체인 인제션 · 온톨로지 그래프 승격
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-25 | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Backend / Sync | **Source-of-truth:** `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 개괄 [backend.md](./backend.md)
-> 관련 howto: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [graph_db_integration_plan](../spec/graph_db_integration_plan.md)(그래프 상세)
+> 관련: [chain_ingestion_guide](../guide/chain_ingestion_guide.md)(맵퍼 개발) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(그래프 트랙 스펙)
 >
-> ⚠️ **검증 주의:** §1 다이어그램·§2.1의 `data_rows`/`DataRow` 리스너 서술은 JSONB blob 시대 기준입니다. 현재는 동적 네이티브 테이블([data_model.md](./data_model.md))이 주 저장소이므로, Outbox staging 대상의 정확한 범위는 코드 재확인이 필요합니다. 패턴(Transactional Outbox + LISTEN/NOTIFY)은 유효합니다.
+> ⚠️ **검증 주의:** §2.1의 `DataRow` 리스너 서술은 JSONB blob 시대 기준입니다. 현재는 동적 네이티브 테이블([data_model.md](./data_model.md))이 주 저장소이므로, Outbox staging 대상의 정확한 범위는 코드 재확인이 필요합니다. 패턴(Transactional Outbox + LISTEN/NOTIFY)은 유효합니다.
 
-이 문서는 `assyManager` 백엔드 서버에 구축된 **Database Outbox**, **체인 인제션(Chained Ingestion)**, 그리고 **Graph DB(Neo4j) 동적 동기화** 시스템의 아키텍처, 설정 방법, 신규 연동 규칙 개발 가이드를 종합적으로 제공합니다.
+이 문서는 `assyManager` 백엔드 서버에 구축된 **Database Outbox**, **체인 인제션(Chained Ingestion)**, 그리고 **온톨로지 그래프 승격(materializer)** 시스템의 아키텍처, 설정 방법, 신규 연동 규칙 개발 가이드를 종합적으로 제공합니다.
 
 ---
 
 ## 1. 전체 시스템 아키텍처 개요
 
-본 시스템은 데이터베이스의 변경 사항을 100% 신뢰성 있게 추적하고 연쇄 반응을 일으키기 위해 **이벤트 기반 아키텍처(EDA)**와 **Transactional Outbox 패턴**을 채택하고 있습니다.
+본 시스템은 데이터베이스의 변경 사항을 100% 신뢰성 있게 추적하고 연쇄 반응을 일으키기 위해 **이벤트 기반 아키텍처(EDA)**와 **Transactional Outbox 패턴**을 채택하고 있습니다. outbox는 두 독립 소비자를 가지며, 각자 자기 진도 표식을 씁니다 — 체인 워커는 행별 `processed_chain` 플래그, graph materializer는 keyset 커서(`graph_sync_state.last_outbox_id`).
 
 ```mermaid
 graph TD
-    Client[Client / Ingestion Watcher] -->|1. Data Mutation| FastAPI[FastAPI Server]
-    
-    subgraph PostgreSQL Transaction Boundary (ACID)
-        FastAPI -->|2a. Update Data| DataRows[data_rows Table]
-        FastAPI -->|2b. Auto-Stage (ORM Listener)| Outbox[database_outbox Table]
+    Client[Client / Ingestion Watcher] -->|1. Data Mutation| Upsert[crud.apply_batch_updates]
+
+    subgraph PostgreSQL Transaction Boundary
+        Upsert -->|2a. Update Data| Tables[동적 네이티브 테이블 + CellSource]
+        Upsert -->|2b. Stage Event| Outbox[database_outbox + NOTIFY]
     end
-    
+
     subgraph Background Daemons
-        Outbox -->|3a. Poll processed_chain = False| ChainWorker[Chained Ingestion Worker]
-        Outbox -->|3b. Poll status = PENDING| GraphWorker[Graph DB Sync Worker]
+        Outbox -->|3a. processed_chain=False| ChainWorker[Chain Ingestion Worker]
+        Outbox -->|3b. keyset 커서 증분| GraphWorker[Graph Sync Worker materializer]
     end
-    
-    ChainWorker -->|4. Dynamic Ingestion| DataRows
-    GraphWorker -->|5. Dynamic Cypher Commit| Neo4j[(Neo4j Graph DB)]
+
+    ChainWorker -->|4. 파생 업서트 source=chain_ingestion| Upsert
+    GraphWorker -->|5. 노드/엣지 UPSERT| GraphStore[(graph_nodes / graph_edges)]
 ```
 
 ---
@@ -208,65 +208,56 @@ outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at
 
 ---
 
-## 4. Graph DB (Neo4j) 동기화 가이드
+## 4. 온톨로지 그래프 승격 (Graph Materializer)
 
-PostgreSQL의 RDB 관계형 데이터를 온톨로지(Ontology) 매핑 규칙에 따라 Graph DB의 엔티티(Nodes)와 의미적 연결(Relationships)로 동적 변환하여 동기화하는 데몬입니다.
+인제션·교정되는 모든 로우를 매핑 config에 따라 **PG 엣지 스토어(`graph_nodes`/`graph_edges`)의 속성 그래프로 자동 승격**하는 데몬입니다(`graph_sync_worker.py` + `graph_materializer.py`, :8090). 설계 배경·킬러 쿼리·로드맵은 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)이 정본이며, 여기서는 소비 흐름만 요약합니다.
 
-### 4.1 온톨로지 매핑 설정 (`server/config/ontology_mapping.json`)
-테이블명과 컬럼을 Neo4j의 노드 라벨, 속성 키, 관계 에지로 동적 치환하는 규칙을 선언합니다.
+### 4.1 소비 흐름 (outbox 증분 → 자동 승격)
 
-```json
+1. **커서**: `graph_sync_state.last_outbox_id`(단일 행)가 소비 진도. 체인 워커의 `processed_chain`과 독립 — 같은 outbox를 두 소비자가 각자 진도로 읽는다. 최초 기동 시 커서는 현재 최대 id로 초기화(과거 백로그는 전체 재동기화가 담당).
+2. **루프**(`run_graph_materializer_loop`): LISTEN/NOTIFY 대기 → 커서 이후 이벤트를 배치로 읽어 `materialize_events` — 1000행 청킹, 배치 본체는 `asyncio.to_thread`로 격리(이벤트 루프 기아 방지, /sync HTTP 서빙 유지). `[GraphLatency] batch= rows= nodes= edges= lag_ms=` 계측(SLO 10s, 라이브 실측 lag 162ms).
+3. **identity 조립**(`compose_identity`): 복합 식별 컬럼을 `"|"` 조인 + 이스케이프(`\`→`\\`, `|`→`\|`) + float 정수 안정화(`3.0`≡`"3"`). `(label, identity_key)` UNIQUE MERGE.
+4. **엣지 provenance = 레이어링의 그래프 확장**: 엣지 `source_name`은 이벤트 발화자가 아니라 **식별 컬럼들의 CellSource winner 중 최저 서열(보수적)**(`attach_col_sources` — 증분·재동기화 공용 단일 지점, 서열은 `crud.resolve_priority_map` 단일 원천). 식별 컬럼 전부가 user winner일 때만 user 날인.
+5. **재교정 retarget**: 같은 원본 로우(`source_row_ref`)가 과거에 주장했으나 이번 산출에 없는 `(from_node, type)` 엣지는 삭제 후 UPSERT(`_retarget_stale_edges`) — 모순 엣지 병존 제거. 교정 값을 비우면 잔존 엣지도 정리(H2-b).
+6. **핫리로드(이슈 #8)**: 배치 내 `SYSTEM_RELOAD` 감지 시 매핑·테이블 config 리로드 — 신규 테이블·매핑이 재기동 없이 그래프까지 이어진다. **행 DELETE 이벤트는 스킵**(그래프 정리 정책은 스펙 §8 미결).
+
+### 4.2 매핑 config v2 (`server/config/ontology_mapping.json`)
+
+로더/검증은 `ontology_config.py`. `description`은 **필수**(LLM이 스키마를 읽고 질의를 구성하는 근거)이며, enrichment rule의 `decision_key → target`은 `RESOLVED_AS(source_override="user")` 엣지 매핑으로 **자동 승격**됩니다(`synthesize_enrichment_mappings`).
+
+```jsonc
 {
-  "default": {
-    "node_label": "Row",
-    "identity_property": "row_id",
-    "property_mappings": {},
-    "relationships": {}
-  },
-  "tables": {
-    "assemblies": {
-      "node_label": "Assembly",
-      "identity_property": "assembly_id",
-      "property_mappings": {
-        "desc": "description"
-      },
-      "relationships": {
-        "supplier_id": {
-          "type": "SUPPLIED_BY",
-          "target_label": "Supplier",
-          "target_identity": "supplier_id"
-        }
-      }
-    }
+  "bonding_log": {
+    "node": { "label": "Chip", "identity": "log_id", "props": ["bx","by"] },
+    "description": "본딩 설비가 chip 1개를 base에 실장한 이벤트",
+    "edges": [
+      { "type": "BONDED_FROM", "target_label": "Wafer",
+        "target_identity_from": ["core_lot","core_slot"],
+        "description": "이 chip이 잘려 나온 원판 wafer" }
+    ]
   }
 }
 ```
-* `node_label`: Graph DB에 생성될 노드의 라벨 (예: `Assembly`).
-* `identity_property`: 해당 노드의 Primary Key 속성명.
-* `property_mappings`: 테이블의 컬럼명과 Graph DB 노드 프로퍼티명 간의 일대일 매핑.
-* `relationships`: 컬럼 업데이트 시 추가로 연결해야 할 관계 에지(Edge) 정의.
-  * 위 예시에서 `supplier_id` 컬럼 값이 업데이트되면, 자동으로 `(:Assembly)-[:SUPPLIED_BY]->(:Supplier {supplier_id: 값})` 관계 에지가 생성됩니다.
 
-### 4.2 트랜잭션 기반 배치(Batch) 커밋 최적화
-초당 대량의 쓰기 작업이 일어날 때 Neo4j의 커밋 오버헤드를 막기 위해 **트랜잭션 일괄 처리**가 적용되어 있습니다.
-* **동작**: 워커가 `PENDING` 이벤트를 한 번에 최대 200개씩 읽어들인 뒤, 메모리에서 **`transaction_id` 단위로 그룹핑**합니다.
-* **실행**: 그룹에 포함된 수십~수백 개의 Cypher 질의들을 단 1번의 Neo4j 트랜잭션(`session.execute_write`) 내에서 전부 실행하고 일괄 성공/실패 처리합니다.
+### 4.3 수동 동기화 = 백필/복구 도구
 
-### 4.3 헬스체크 및 Mock 모드 Fallback
-* **연동 스위치**: 시스템 환경 변수 `NEO4J_ENABLED=true` 로 켜고 끌 수 있습니다.
-* **Mock 모드**: 만약 `NEO4J_ENABLED`가 `false` 이거나, Neo4j 드라이버 라이브러리가 없거나, Neo4j 서버가 다운된 경우, 워커는 **자동으로 Mock 모드로 Fallback**합니다.
-  * Mock 모드에서는 오류로 서버를 정지시키는 대신, 동적으로 생성된 Cypher 질의와 바인딩 파라미터를 백엔드 콘솔 로그 스트림에 이쁘게 출력하고 이벤트를 완료 처리하여 개발 편의성을 높입니다.
+`POST /api/graph/sync {"table_name": "..." | "all"}`(웹서버가 :8090으로 프록시)은 이제 주 경로가 아니라 **백필·복구 도구**입니다 — 키셋 청킹 재동기화(C-7 무제한 로드 해소) + 테이블당 `batch_refresh_required` 1건, 멱등. 운영 수칙: outbox 7일 purge보다 materializer가 오래 정지했다면 증분이 유실되므로 `"all"` 재동기화로 복구합니다.
+
+### 4.4 Neo4j 병행 (G3)
+
+Neo4j 반영 경로는 청크 훅 인터페이스(`_neo4j_chunk_hook_factory`)로 보존되어 있습니다(`NEO4J_ENABLED` 시). PG 엣지 스토어가 본체이고 Neo4j는 G3의 병행 타깃입니다.
+
+### 4.5 조회 계층
+
+읽기는 워커가 아니라 **웹서버(main.py)의 read-only API 5종**(`/graph/stats·neighbors·nodes/search·trace·mapping-summary`)이 담당합니다 — [backend.md §2](./backend.md) 참조. 클라이언트는 `graph.html`(서브그래프 뷰어)·`trace.html`(추적 리포트)이 소비합니다([frontend.md §6](./frontend.md)).
 
 ---
 
 ## 5. 모니터링 및 문제 해결 (Troubleshooting)
 
-Outbox 테이블(`database_outbox`)을 조회하여 동기화 상태를 모니터링할 수 있습니다.
+Outbox 테이블(`database_outbox`)과 `graph_sync_state`를 조회하여 동기화 상태를 모니터링할 수 있습니다.
 
-* **상태 필드 (`status`)**:
-  * `PENDING`: 아직 Graph DB 싱크 워커가 처리하지 않은 대기 상태.
-  * `DISPATCHED`: 성공적으로 Graph DB 동기화가 반영 완료된 상태.
-  * `FAILED`: 3회 재시도 실패 후 영구 실패 처리된 상태 (에러 디버깅 필요).
+* **그래프 소비 진도**: `graph_sync_state.last_outbox_id` vs `max(database_outbox.id)` — 격차가 크면 materializer 정지/지연([GraphLatency] 로그 확인). (구 `status` 필드의 PENDING/DISPATCHED 의미는 레거시 그래프 워커 시대의 것으로, materializer는 사용하지 않습니다.)
 * **체인 처리 필드 (`processed_chain`)**:
   * `False`: 체인 인제션 워커가 아직 검토하지 않은 상태.
   * `True`: 체인 인제션 규칙 매칭 및 연쇄 실행이 완결된 상태.

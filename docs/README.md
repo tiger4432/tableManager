@@ -24,7 +24,7 @@
 | 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴 |
 | 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 |
 | 🟢 [data_model.md](./architecture/data_model.md) | ORM 모델 + 동적 테이블 + 레이어링/우선순위 |
-| 🟠 [event_driven_backend.md](./architecture/event_driven_backend.md) | Outbox 패턴 · 체인 인제션 · Graph DB(Neo4j) 동기화 심화 |
+| 🟢 [event_driven_backend.md](./architecture/event_driven_backend.md) | Outbox 패턴 · 체인 인제션 · 온톨로지 그래프 승격(materializer) 심화 |
 
 ## 🧩 3. 서브시스템 리빙 가이드
 
@@ -40,8 +40,7 @@
 | 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
 | 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
 | Enrichment Queue(결손 보정 워크리스트) | 🟢 [spec/ENRICHMENT_QUEUE_SPEC.md](./spec/ENRICHMENT_QUEUE_SPEC.md) |
-| 온톨로지 지식그래프(LLM 백본) | 🟠 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — 제안 초안 v0(총괄·사용자 논의 중) |
-| 그래프 DB 통합(구식화 예정 — ONTOLOGY_GRAPH_SPEC이 대체) | ⚪ [spec/graph_db_integration_plan.md](./spec/graph_db_integration_plan.md) |
+| 온톨로지 지식그래프(LLM 백본) | 🟠 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — **G1+뷰어+G2 구현 라이브 가동**(헤더 Status 승격은 총괄 검토 대기). 승격 흐름 요약: [event_driven_backend §4](./architecture/event_driven_backend.md) |
 | API 레퍼런스 | 🟠 [spec/api_documentation.md](./spec/api_documentation.md) |
 
 ## ✅ 3.5 QA (qa/)
@@ -65,7 +64,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(188개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(192개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
@@ -76,7 +75,7 @@
 
 ## 🗄️ 6. 아카이브 (_archive/)
 
-과거 PySide6 시대의 문서로, **더 이상 유효하지 않습니다.** 히스토리 추적용으로만 보존됩니다: [_archive/](./_archive/) — `ASSY_MANAGER_BIBLE`, `TECHNICAL_GUIDE`, `ARCHITECTURE_ANALYSIS`, `CLIENT_FEATURE_CHECKLIST` 등.
+현실과 상충하게 되어 대체된 문서들로, **더 이상 유효하지 않습니다.** 히스토리 추적용으로만 보존됩니다: [_archive/](./_archive/) — 구 PySide6 시대 문서(`ASSY_MANAGER_BIBLE`, `TECHNICAL_GUIDE`, `ARCHITECTURE_ANALYSIS`, `CLIENT_FEATURE_CHECKLIST`) 및 `graph_db_integration_plan`(Kafka/Neo4j 구상 — ONTOLOGY_GRAPH_SPEC + PG materializer가 대체) 등.
 
 ---
 

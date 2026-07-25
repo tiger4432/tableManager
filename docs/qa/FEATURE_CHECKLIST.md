@@ -106,7 +106,7 @@
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
-| 온톨로지 동기화 | outbox 이벤트 → `ontology_mapping.json` 매핑대로 Neo4j(또는 `virtual_graph.json`) 반영 | (자동) + 메인 툴바 `graph-sync-btn` 수동 트리거 | `graph_sync_worker.py`(:8090, §6) · [graph_db_integration_plan](../spec/graph_db_integration_plan.md) |
+| 온톨로지 그래프 승격 | outbox 증분 소비 → `ontology_mapping.json` v2 매핑대로 PG 엣지 스토어(graph_nodes/edges) 자동 materialize. 수동 트리거는 백필/복구용 | (자동) + 메인 툴바 `graph-sync-btn`(백필) + `graph.html` 뷰어 / `trace.html` 추적 리포트 | `graph_sync_worker.py`+`graph_materializer.py`(:8090) · [event_driven_backend §4](../architecture/event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
 
 ### 1.10 듀얼 테마 / 실시간 동기화 / 데스크톱 래퍼
 
