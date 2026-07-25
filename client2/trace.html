@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>AssyManager - Trace Report</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>" />
+  <!-- Google Fonts (main page tone: Outfit + JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ── 디자인 토큰은 tokens.css(SSOT, trace.js가 임포트)에서 공급 ──
+       이 블록은 페이지 전용 레이아웃/컴포넌트만 정의하며 시맨틱 토큰만 참조한다. */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      line-height: 1.5;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      position: relative;
+      height: 70px;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 0 24px;
+      z-index: 200;
+      flex-shrink: 0;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo-badge {
+      background: var(--accent-weak);
+      border: 1px solid var(--border-strong);
+      font-size: 1.25rem;
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+
+    .logo-area h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .logo-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .glass-input {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 14px;
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      outline: none;
+      transition: var(--transition-smooth);
+    }
+
+    .glass-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
+    .glass-input option {
+      background-color: var(--bg-surface);
+      color: var(--text);
+    }
+
+    .glass-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: 0.85rem;
+      transition: var(--transition-smooth);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .glass-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .run-btn {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-weak);
+      font-weight: 600;
+    }
+
+    /* ── 컨트롤 바: 시드 칩 + depth + 시간 범위 + 재실행 ── */
+    .trace-controls {
+      flex-shrink: 0;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .control-label {
+      font-size: 0.66rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .seed-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-height: 30px;
+      flex: 1;
+    }
+
+    .seed-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      padding: 4px 6px 4px 11px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text);
+      max-width: 320px;
+      animation: trFadeIn 0.2s ease-out;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .seed-chip:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .seed-chip .chip-label {
+      color: var(--text-dim);
+      font-size: 0.64rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      flex-shrink: 0;
+    }
+
+    .seed-chip .chip-id {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .seed-chip .chip-remove {
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.85rem;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 50%;
+      transition: color 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .seed-chip .chip-remove:hover {
+      color: var(--danger);
+      background: var(--danger-weak);
+    }
+
+    .seed-chip.chip-missing {
+      border-color: var(--warning);
+      background: var(--warning-weak);
+    }
+
+    .seed-chip.chip-missing .chip-id {
+      color: var(--warning);
+    }
+
+    .seed-chip .chip-warn {
+      flex-shrink: 0;
+      font-size: 0.72rem;
+    }
+
+    .seed-count {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .time-input {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      padding: 6px 10px;
+      color-scheme: light;
+    }
+
+    :root[data-theme="dark"] .time-input {
+      color-scheme: dark;
+    }
+
+    .time-sep {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    .depth-select {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 6px 10px;
+    }
+
+    .control-spacer {
+      flex: 1;
+    }
+
+    /* ── 메타 바 ── */
+    .meta-bar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 24px 0;
+    }
+
+    .meta-chip {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      box-shadow: var(--shadow-card);
+      white-space: nowrap;
+    }
+
+    .meta-chip .chip-accent {
+      color: var(--accent);
+    }
+
+    .warn-badge {
+      background: var(--warning-weak);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      box-shadow: var(--shadow-card);
+      white-space: nowrap;
+    }
+
+    /* ── 본문 리포트 2단 ── */
+    .report-view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      gap: 16px;
+      padding: 12px 24px 20px;
+    }
+
+    .report-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .groups-panel {
+      flex: 11;
+    }
+
+    .timeline-panel {
+      flex: 9;
+    }
+
+    .panel-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .panel-meta {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* 엔티티 그룹 섹션 */
+    .group-block {
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      border-radius: 10px;
+      overflow: hidden;
+      animation: trFadeIn 0.25s ease-out;
+    }
+
+    .group-header {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-header);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .label-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .group-name {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text);
+    }
+
+    .group-count {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+
+    .group-seed-count {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      color: var(--accent);
+      background: var(--accent-weak);
+      border: 1px solid var(--accent);
+      border-radius: 20px;
+      padding: 1px 9px;
+      white-space: nowrap;
+    }
+
+    .group-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .group-table td {
+      padding: 7px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+      vertical-align: middle;
+    }
+
+    .group-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .group-row {
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    .group-row:hover {
+      background: var(--surface-hover);
+    }
+
+    .group-row:hover .row-identity {
+      color: var(--accent);
+    }
+
+    .row-identity {
+      font-family: var(--font-mono);
+      color: var(--text);
+      word-break: break-all;
+      transition: color 0.12s ease;
+    }
+
+    .row-identity .seed-mark {
+      color: var(--accent);
+      font-weight: 600;
+      margin-right: 5px;
+    }
+
+    .row-degree {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      width: 1%;
+      text-align: right;
+    }
+
+    .row-props {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 0;
+      width: 45%;
+    }
+
+    .row-open {
+      width: 1%;
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+      white-space: nowrap;
+    }
+
+    .group-row:hover .row-open {
+      opacity: 1;
+    }
+
+    .group-more {
+      display: block;
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    .group-more:hover {
+      background: var(--accent-weak);
+    }
+
+    /* 타임라인 */
+    .tl-list {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .tl-item {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 7px 10px 7px 4px;
+      border-left: 2px solid var(--border);
+      margin-left: 6px;
+      padding-left: 14px;
+      position: relative;
+      font-size: 0.76rem;
+      animation: trFadeIn 0.2s ease-out;
+    }
+
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -5px;
+      top: 13px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      border: 2px solid var(--bg-surface);
+    }
+
+    .tl-item.tl-user {
+      border-left-color: var(--overwrite);
+    }
+
+    .tl-item.tl-user::before {
+      background: var(--overwrite);
+    }
+
+    .tl-time {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tl-flow {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tl-node {
+      font-family: var(--font-mono);
+      color: var(--text);
+      cursor: pointer;
+      border-bottom: 1px dashed transparent;
+      transition: color 0.12s ease, border-color 0.12s ease;
+      max-width: 210px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tl-node:hover {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tl-node .tl-node-label {
+      color: var(--text-dim);
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-right: 3px;
+    }
+
+    .tl-arrow {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      flex-shrink: 0;
+    }
+
+    .tl-type {
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      color: var(--text-muted);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 7px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .tl-badge {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      border-radius: 20px;
+      padding: 1px 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+    }
+
+    .tl-badge.badge-user {
+      color: var(--overwrite);
+      border-color: var(--overwrite);
+      background: var(--overwrite-weak);
+      font-weight: 600;
+    }
+
+    .tl-more {
+      border: none;
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 10px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.12s ease;
+    }
+
+    .tl-more:hover {
+      background: var(--accent-weak);
+    }
+
+    .tl-empty {
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.76rem;
+    }
+
+    /* 구조 관계 접이식 */
+    .structural-block {
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      border-radius: 10px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .structural-block summary {
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.12s ease;
+      user-select: none;
+    }
+
+    .structural-block summary:hover {
+      background: var(--surface-hover);
+    }
+
+    .structural-block summary::before {
+      content: '▸';
+      color: var(--text-dim);
+      transition: transform 0.15s ease;
+    }
+
+    .structural-block[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .structural-block summary .struct-count {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      color: var(--text-dim);
+    }
+
+    .structural-body {
+      border-top: 1px solid var(--border);
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 8px 10px;
+    }
+
+    /* ── 상태 화면 (로딩/빈/오류/시드 없음) ── */
+    .center-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      padding: 60px 30px;
+      color: var(--text-muted);
+    }
+
+    .center-state .state-icon {
+      font-size: 2.8rem;
+      opacity: 0.55;
+    }
+
+    .center-state .state-sub {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      white-space: pre-line;
+      max-width: 460px;
+    }
+
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 3px solid var(--focus-ring);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: trSpin 0.8s linear infinite;
+    }
+
+    @keyframes trSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes trFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 좁은 화면: 리포트 1단 전환 */
+    @media (max-width: 1100px) {
+      .report-view {
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      .report-panel {
+        flex: none;
+      }
+
+      .panel-body {
+        max-height: 60vh;
+      }
+
+      .logo-sub {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <!-- ── Header ── -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-badge">🧭</div>
+        <div>
+          <h1>Trace Report</h1>
+          <div class="logo-sub">온톨로지 추적 리포트 · 시드 기점 이력 조망</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <a href="graph.html" class="glass-btn" title="그래프 뷰어로">🕸️ Graph</a>
+        <a href="/" class="glass-btn" title="메인 그리드로">🏠 Main</a>
+        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── 컨트롤 바: 시드 칩 + depth + 시간 범위 + 재실행 ── -->
+    <section class="trace-controls">
+      <div class="controls-row">
+        <span class="control-label">Seeds</span>
+        <div id="seed-chips" class="seed-chips"></div>
+        <span id="seed-count" class="seed-count"></span>
+      </div>
+      <div class="controls-row">
+        <span class="control-label">Depth</span>
+        <select id="depth-select" class="glass-input depth-select" aria-label="탐색 깊이">
+          <option value="1">1-hop</option>
+          <option value="2" selected>2-hop</option>
+          <option value="3">3-hop</option>
+        </select>
+        <span class="control-label">Time</span>
+        <input id="time-from" class="glass-input time-input" type="datetime-local" aria-label="시작 시각" />
+        <span class="time-sep">→</span>
+        <input id="time-to" class="glass-input time-input" type="datetime-local" aria-label="끝 시각" />
+        <button id="time-clear-btn" class="glass-btn" style="padding: 6px 10px; font-size: 0.72rem;"
+          title="시간 범위 지우기">✕ 시간 해제</button>
+        <span class="control-spacer"></span>
+        <button id="run-btn" class="glass-btn run-btn" title="현재 조건으로 추적 재실행">🔍 재실행</button>
+      </div>
+    </section>
+
+    <!-- ── 메타 바 ── -->
+    <div id="meta-bar" class="meta-bar" style="display: none;">
+      <span id="meta-summary" class="meta-chip"></span>
+      <span id="truncated-badge" class="warn-badge" style="display: none;">⚠ LIMIT — 일부 노드/엣지 생략됨</span>
+      <span id="missing-badge" class="warn-badge" style="display: none;"></span>
+    </div>
+
+    <main class="viewer" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+      <!-- 상태 화면들 -->
+      <div id="state-no-seeds" class="center-state" style="display: none;">
+        <div class="state-icon">🧭</div>
+        <div>추적할 시드가 없습니다</div>
+        <div class="state-sub">메인 그리드에서 행을 선택한 뒤 「🕸️ 추적」 버튼으로 진입하세요.
+(그래프 매핑이 설정된 테이블에서만 활성화됩니다)</div>
+        <a href="/" class="glass-btn">🏠 메인 그리드로</a>
+      </div>
+
+      <div id="state-loading" class="center-state" style="display: none;">
+        <div class="spinner"></div>
+        <div>추적 중...</div>
+        <div id="loading-sub" class="state-sub"></div>
+      </div>
+
+      <div id="state-error" class="center-state" style="display: none;">
+        <div class="state-icon">🚧</div>
+        <div>추적에 실패했습니다</div>
+        <div id="error-sub" class="state-sub"></div>
+        <button id="retry-btn" class="glass-btn">🔄 다시 시도</button>
+      </div>
+
+      <div id="state-empty" class="center-state" style="display: none;">
+        <div class="state-icon">🕳️</div>
+        <div>추적 결과가 없습니다</div>
+        <div class="state-sub">시드가 그래프에 없거나 시간 범위가 너무 좁습니다.
+depth를 늘리거나 시간 범위를 해제해 보세요.</div>
+      </div>
+
+      <!-- 리포트 본문 2단 -->
+      <section id="report-view" class="report-view" style="display: none;">
+        <!-- 좌: 라벨별 엔티티 그룹 -->
+        <div class="report-panel groups-panel">
+          <div class="panel-header">
+            <div class="panel-title">🧩 엔티티 그룹</div>
+            <div id="groups-meta" class="panel-meta"></div>
+          </div>
+          <div id="groups-body" class="panel-body"></div>
+        </div>
+
+        <!-- 우: 시간순 타임라인 + 구조 관계 -->
+        <div class="report-panel timeline-panel">
+          <div class="panel-header">
+            <div class="panel-title">🕗 타임라인</div>
+            <div id="timeline-meta" class="panel-meta"></div>
+          </div>
+          <div class="panel-body">
+            <div id="tl-list" class="tl-list"></div>
+            <details id="structural-block" class="structural-block" style="display: none;">
+              <summary>🧱 구조 관계 <span style="font-weight: 400; color: var(--text-dim);">(event_time 없음)</span>
+                <span id="struct-count" class="struct-count"></span></summary>
+              <div id="structural-body" class="structural-body"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/src/trace.js"></script>
+</body>
+
+</html>

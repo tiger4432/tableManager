@@ -18,7 +18,8 @@ export default defineConfig({
         admin: resolve(__dirname, 'admin.html'),
         map_editor: resolve(__dirname, 'map_editor.html'),
         enrichment: resolve(__dirname, 'enrichment.html'),
-        graph: resolve(__dirname, 'graph.html')
+        graph: resolve(__dirname, 'graph.html'),
+        trace: resolve(__dirname, 'trace.html')
       }
     }
   }

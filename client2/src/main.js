@@ -54,6 +54,7 @@ import {
   updatePageCacheOnUpsert,
   updatePageCacheOnDelete
 } from './ui.js';
+import { initTraceEntry } from './trace_launch.js';
 
 // Register AG-Grid Community Modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -89,6 +90,7 @@ async function init() {
 
   initTheme();
   setupEventListeners();
+  initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
   setupDragAndDrop();
   await checkServerHealth();

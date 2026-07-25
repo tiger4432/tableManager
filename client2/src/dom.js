@@ -33,6 +33,8 @@ export const elements = {
   get addRowBtn() { return document.getElementById('add-row-btn'); },
   get deleteRowBtn() { return document.getElementById('delete-row-btn'); },
   get graphSyncBtn() { return document.getElementById('graph-sync-btn'); },
+  get traceBtn() { return document.getElementById('trace-btn'); },
+  get menuTrace() { return document.getElementById('menu-trace'); },
   get ingestFileBtn() { return document.getElementById('ingest-file-btn'); },
   get smartPasteBtn() { return document.getElementById('smart-paste-btn'); },
   get toolbarFileInput() { return document.getElementById('toolbar-file-input'); },
