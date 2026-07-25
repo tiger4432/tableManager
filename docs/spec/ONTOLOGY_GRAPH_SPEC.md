@@ -97,7 +97,17 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 
 ## 7.5b 상태·이벤트 물화와 2계층 원칙 (사용자 확정 2026-07-25) — 시공간 topology의 데이터 모델
 
-사용자 구상: wafer에 **WaferState 노드**들이 달리고, WaferState 간 전이는 **ProcessEvent 노드**를 매개로 일어난다. ProcessEvent는 함수다: `f(WaferState_in, EqpState_in) → WaferState_out`. 물화 형태: `(WaferState, EqpState) -[INPUT_TO]-> ProcessEvent -[PRODUCED]-> WaferState`. 이 인과 체인이 불량 추론(가치 ③)의 전이 경로이자 LLM이 읽는 인과 서사(가치 ①)가 된다.
+**함수형 온톨로지 (사용자 명명)**: 이벤트 노드는 **다른 노드들을 인풋으로 받는 함수**다. 물화 형태는 공통으로 `(입력 노드들) -[INPUT_TO]-> 함수노드 -[PRODUCED]-> (출력 노드들)`. 함수 타입 2종:
+
+| 함수 타입 | 서명 | 예 |
+|---|---|---|
+| **변환 함수** (상태를 바꾼다) | `ProcessEvent: (WaferState_in, EqpState_in) → WaferState_out` | 본딩·증착 등 공정 이벤트 — WaferState 전이의 매개 |
+| **관측 함수** (상태를 읽는다, 불변) | `MetrologyEvent: (WaferState) → Measurement` | 계측 — defect, thk(두께) 등 결과 반환 |
+
+- **Measurement/Defect 노드**: 계측 로그 로우의 직접 투영(L1 사실). defect이면 공간 속성을 2단 좌표로 가진다 — `wafer_grid`(chip 위치 x,y) + `chip_local`(in-chip x,y). 가치 ④ 공간 스키마의 중첩 좌표계 확장이며, **가치 ③ 불량 추론의 시드가 계측에서 자연 공급**된다(zonal 패턴을 wafer 스케일·chip 스케일 양쪽에서).
+- **계층 귀속 주의**: 계측 노드·원시 속성은 L1(로그 사실)이지만, 계측이 **어느 WaferState를 읽었는가**의 INPUT_TO 엣지는 시간 정렬로 계산되는 **L2 파생 엣지**다(상태 체인이 재파생되면 이 연결도 함께 재해석) — 직접 쓰지 않고 항상 재파생 원칙 동일 적용.
+
+이 인과 체인이 불량 추론(가치 ③)의 전이 경로이자 LLM이 읽는 인과 서사(가치 ①)가 된다.
 
 **2계층 원칙 (확정)** — 파생 그래프에서 "엣지 삭제의 복잡성"을 원천 차단하는 규율:
 
