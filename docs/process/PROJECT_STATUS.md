@@ -49,6 +49,8 @@
 - map_split_registry(현재 초점 #2) — client-pm 착수.
 - enrichment 실전 규칙(현재 초점 #3).
 
+- **[신규·사용자 승인 2026-07-25] 워크스페이스 config.json 폐지(레거시 정리)** — 실소비 필드가 `table_name` 별칭·`std_parse` 옵트아웃 2개뿐(스키마는 전부 글로벌 table_config). 방침: ① 두 필드를 `table_config.json` 테이블 항목으로 흡수(단일 원천화 + 옵트아웃 핫리로드화 → F4 자연 해소) ② 워크스페이스 자동 생성에서 config.json 신설 중단 ③ 기존 파일은 하위호환 읽기 + deprecation 경고 후 제거. 소규모 서버 배치 — wafer_process 구축 다음 순서.
+
 **그래프 트랙 미결 정책**
 - 행 DELETE 시 그래프 정리 정책(스펙 §8 — materializer는 DELETE 스킵, stale 엣지 잔존). `idx_graph_edges_row_ref`가 구현 기반.
 - 운영 수칙: outbox 7일 purge보다 materializer 장기 정지 시 증분 유실 → `/api/graph/sync {"table_name":"all"}` 복구(문서화됨 — [event_driven_backend §4.3](../architecture/event_driven_backend.md)).
