@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { checkServerHealth, loadTables, fetchData } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showToast, getLocalTimeString } from './utils.js';
-import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
+import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete, notifyEnrichmentTableEvent } from './ui.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 
@@ -114,6 +114,12 @@ export function handleWebSocketMessage(msg) {
 
       appendHistoryLocally(log, false);
     });
+  }
+
+  // Enrichment 결손 배지: derived 테이블 이벤트는 source 테이블을 보는 중에도 도착하므로
+  // currentTable 가드보다 앞에서 훅 (내부에서 관련 규칙 여부 판정, fire-and-forget)
+  if (msg.event && msg.event.startsWith('batch_')) {
+    notifyEnrichmentTableEvent(msg.table_name);
   }
 
   // 2. Perform table-specific data/grid updates

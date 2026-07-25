@@ -27,6 +27,8 @@
           <span id="performance-log" class="glass-log-badge">Ready</span>
           <!-- Dynamic Unsaved Tx State Indicator -->
           <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: rgba(245, 158, 11, 0.15); border-color: var(--color-warning); color: var(--color-warning); font-weight: bold;">⚡ Unsaved: 0</span>
+          <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
+          <span id="enrichment-badge" class="glass-log-badge" style="display: none;">🧩 결손 0건</span>
           <button id="tx-apply-btn" class="glass-btn success-glow" style="display: none; padding: 4px 12px; font-size: 0.8rem; font-weight: bold; border-radius: 6px;">Apply</button>
           <button id="tx-discard-btn" class="glass-btn hover-danger" style="display: none; padding: 4px 12px; font-size: 0.8rem; border-radius: 6px;">Discard</button>
         </div>
@@ -71,6 +73,7 @@
           <button id="nav-menu-btn" class="glass-btn" style="color: var(--color-secondary); border-color: var(--color-secondary);">🧭 Menu</button>
           <div id="nav-dropdown" class="glass-dropdown-panel" style="display: none;">
             <a href="/map_editor.html" class="dropdown-item nav-link">🗺️ Wafer Map Editor</a>
+            <a href="/enrichment.html" class="dropdown-item nav-link">🧩 Enrichment Queue</a>
             <a href="/admin.html" class="dropdown-item nav-link">⚙️ Admin Dashboard</a>
             <a href="/api/download/client" class="dropdown-item nav-link" download style="color: var(--color-success);">📥 Download Desktop</a>
           </div>
