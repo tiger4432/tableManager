@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **195개** 이력. (거버넌스 규칙 #4)
+> 총 **197개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -10,6 +10,8 @@
 
 - **2026-07-25 23:45** — [Auto Update Active Toggle](./20260725_234500_auto_update_active_toggle.md)
 - **2026-07-25 23:30** — [Ontology Graph Track Live And Architecture Sync](./20260725_233000_ontology_graph_track_live_and_architecture_sync.md)
+- **2026-07-25 22:23** — [Ontology Spec Static Dynamic Traversal Policy](./20260725_222347_ontology_spec_static_dynamic_traversal_policy.md)
+- **2026-07-25 22:22** — [Graph Viewer Connections Table](./20260725_222215_graph_viewer_connections_table.md)
 - **2026-07-25 22:06** — [Workspace Config Deprecation](./20260725_220619_workspace_config_deprecation.md)
 - **2026-07-25 21:55** — [Chain Created Logs Truncation Incident](./20260725_215500_chain_created_logs_truncation_incident.md)
 - **2026-07-25 20:30** — [Ontology G2 Trace Api](./20260725_203000_ontology_g2_trace_api.md)

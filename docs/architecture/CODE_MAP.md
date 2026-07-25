@@ -1,11 +1,11 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD 178aafa) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 (HEAD 20d6898) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
 - **소스 파일을 통째로 Read하지 말 것.** 이 지도에서 함수·라인을 찾은 뒤 **해당 섹션만** `Read(offset, limit)`로 읽는다.
-- 라인 앵커는 HEAD `178aafa` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- 라인 앵커는 HEAD `20d6898` 기준 **±20줄 오차 허용**(단, `graph_viewer.js`는 커밋 `18218da` 기준 — 병행 수정 진행 중이라 그 커밋본으로 실측). 정확 위치는 Grep으로 확정.
 - 이 문서는 **지도이지 교과서가 아니다** — 구현 설명은 각 리빙 문서([backend](./backend.md)·[data_model](./data_model.md)·[frontend](./frontend.md)·[event_driven_backend](./event_driven_backend.md)) 참조.
 
 **유지보수 규율:** 코드맵 갱신은 **doc-keeper 전담** — 총괄이 코드 배치를 병합·커밋한 뒤 doc-keeper에 위임하면, doc-keeper가 **타 에이전트들의 수정 이력(history 문서·보고서·커밋 diff)을 요약**해 해당 모듈 맵을 갱신한다(구현 에이전트는 맵을 직접 수정하지 않음 — 보고서에 변경 함수/시그니처 목록만 남긴다). 정기 정합 감사도 doc-keeper. 라인 앵커는 대략치로 충분 — 시그니처·역할 서술의 정확성이 우선.
@@ -16,9 +16,9 @@
 
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
-| `server/main.py` | ~3,679 | [§1](#1-servermainpy--api--ws-허브) |
+| `server/main.py` | ~3,693 | [§1](#1-servermainpy--api--ws-허브) |
 | `server/database/crud.py` | ~1,863 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
-| `server/parsers/directory_watcher.py` | ~985 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
+| `server/parsers/directory_watcher.py` | ~1,190 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | `server/chain_ingestion_worker.py` | ~965 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
 | 소형 서버 모듈 (models/std_parser/enrichment_*) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) | ~3,050 | [§5](#5-소형-서버-모듈) |
 | 기타 서버 모듈 (한줄 요약) | — | [§6](#6-기타-서버-모듈-한줄-요약) |
@@ -92,8 +92,8 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 | ~2587 |
 | GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) | ~2626 |
 | GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` 등 | 파일 인제션 로그/실패 목록 | ~2696/2731 |
-| POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) | ~3128 |
-| GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 | ~2915 |
+| POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) | ~3128 |
+| GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 — 표시 table_name에 글로벌 별칭(`find_workspace_alias`) 우선 적용 | ~2905 |
 | POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화) | ~2770 |
 | GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | ~2986/3008 |
 | GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | ~3224 |
@@ -157,29 +157,39 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 ## 3. `server/parsers/directory_watcher.py` — 파일 인제션
 
-워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합됨. 통지 로그 상한 `MAX_NOTIFY_CREATED_LOGS`는 로컬 정의에서 `event_constants.py` 공용 상수 import로 전환(~31, 모듈 속성 노출은 유지 — 기존 참조 호환).
+워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합, 같은 날 **워크스페이스 config.json 폐지**(`5fac5f0` — `table_name`/`std_parse`를 글로벌 `table_config.json`의 `workspace_name`/`std_parse`로 흡수, 레거시 파일은 하위호환 읽기+deprecation 경고). 통지 로그 상한 `MAX_NOTIFY_CREATED_LOGS`는 `event_constants.py` 공용 상수 import(~31). 테스트: `tests/test_workspace_config_deprecation.py`(21개).
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `load_global_table_config() -> dict` | table_config.json 로드 | ~43 |
-| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~56 |
-| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** | ~130 |
-| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 워크스페이스 설정 해석(std_parse 게이트 포함) | ~147–182 |
-| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신 → 처리 위임(processing_files check-then-add를 락으로 원자화 — 스윕/이벤트 이중 진입 가드) | ~193–204 |
-| ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 파싱→업서트→아카이브/에러 이동, 재시도 | ~217 |
-| ├ `_log_ingestion_failure/success(...)` | FileIngestionLog 기록(직접 DB) | ~276/296 |
-| ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행) | ~316 |
-| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~347/375 |
-| ├ `_discover_and_execute_pipeline(file_path) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~402 |
-| ├ `_resolve_rows(file_path)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백 | ~492 |
-| ├ `_try_std_parse(file_path)` | std_parser 호출 래퍼(게이트·에러 처리) | ~517 |
-| └ `_send_to_upsert(rows, uploader, filename, total_rows)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백 | ~557 |
-| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 | ~691 |
-| ├ `_provision_workspaces()` / `_register_workspace(raws_root, table_config)` | 폴더 스캐폴딩·핸들러 등록(+`handlers_by_raw_path` 레지스트리) | ~716/750 |
-| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~799/815 |
-| ├ `sweep_existing_files(raw_paths)` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, err/·하위 dir 제외 | ~845/912 |
-| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~921/925 |
-| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥 | ~934–985 |
+| `load_global_table_config() -> dict` | table_config.json 로드 | ~47 |
+| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~64 |
+| `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~88/96 |
+| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉(실존 테이블명과 동명)·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~108 |
+| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 `C:evil` 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~149 |
+| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~182 |
+| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~196 |
+| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** | ~270 |
+| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~291 |
+| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~313 |
+| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) — 파일 처리 시작 시점에 잡아 전 구간 전달, 처리 도중 핫리로드에 의한 오배송/무음 드롭 차단 | ~328 |
+| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~339 |
+| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~358–372 |
+| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신 → 처리 위임(processing_files check-then-add를 락으로 원자화 — 스윕/이벤트 이중 진입 가드) | ~374–405 |
+| ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 스냅샷→파싱→업서트→아카이브/에러 이동, 재시도 | ~408 |
+| ├ `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명 사용) | ~471/493 |
+| ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행 — 역시 스냅샷 진입점) | ~515 |
+| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~548/576 |
+| ├ `_discover_and_execute_pipeline(file_path) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~603 |
+| ├ `_resolve_rows(file_path, t_name=None, table_info=None)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파) | ~693 |
+| ├ `_try_std_parse(file_path, t_name, table_info)` | std_parser 호출 래퍼(게이트·에러 처리) | ~724 |
+| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백 | ~765 |
+| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 | ~889 |
+| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시) | ~914 |
+| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리) — table_config 기반 폴더 해석(별칭 포함), 레거시 config 발견 시 1회 경고(`config.json` 파일명 게이트 — QA D4) | ~943 |
+| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1002/1018 |
+| ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, err/·하위 dir 제외 | ~1048/1109/1115 |
+| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~1124/1128 |
+| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥 | ~1137–1190 |
 
 ---
 
@@ -293,7 +303,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행. 매 틱 제어 파일(`auto_update_control.json`)을 읽어 disabled 수집기는 실행 스킵+`last_status="SKIPPED"`+next_run 전진(핫 반영, 재활성화 시 백로그 폭주 없음). run-now는 active 무관 실행 |
 | `server/event_constants.py` | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(발신측 created_logs 절단 상한, 워처·체인 워커·수신 main.py 공유) |
 | `server/utils/auto_update_control.py` | auto-update 수집기 active 제어 파일(`config/auto_update_control.json`, gitignored) 공용 IO — `read_disabled_scripts`(fail-open)/`set_script_active`(tmp+`os.replace` 원자적 쓰기)/`validate_script_key`(경로 탈출 차단)/`resolve_script_file`. 웹서버 toggle·스케줄러 공유 |
-| `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher의 SYSTEM_RELOAD 폴러(`poll_pending_retries`, ~141)는 `refresh_dynamic_models(engine)` 호출(보충 안전망, 이슈 #7) |
+| `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher의 SYSTEM_RELOAD 폴러(`poll_pending_retries`, ~120)는 `refresh_dynamic_models(engine)` 호출(~141, 보충 안전망 이슈 #7) + 재처리 대상 워크스페이스를 `directory_watcher.resolve_workspace_root` 역조회(별칭 대응, ~169) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함** |
 | `server/config/*.json` (gitignored) | table_config·chain_rules·enrichment_rules·ontology_mapping(v2 — `.sample`은 tracked) 등 사용자 설정 |
@@ -359,9 +369,13 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - 참조 패널: `initReferencePanel`(~517) `loadActiveReference`(~580) `renderRefTable`(~637).
 - 소비 API: `/enrichment/rules`, `/enrichment/rules/{r}/references/{i}`, `/tables/{t}/data`, PUT `/data/updates`.
 
-### `graph_viewer.js` (~927줄) — 지식그래프 서브그래프 뷰어 (graph.html 엔트리, 무라이브러리)
-- `renderStats`(~147, `/graph/stats` 카운트 카드+라벨 색 팔레트) `explore(label, identity)`(~235, `/graph/neighbors` 조회→BFS 동심원 레이아웃) `renderCanvas`(~417, 캔버스 본체 — 테마 색 1회 캐싱+`themechange` 재캐싱, 상시 rAF 없음) `initCanvasEvents`(~671, 팬·줌·노드 클릭 재중심) `exploreFromInput`(~827) `initSearchBar`(~859, `/graph/nodes/search` 자동완성+200ms debounce+seq 가드) `init`(~895, `?label=&identity=` 초기 중심 — trace 크로스링크).
-- user provenance 엣지는 `--overwrite` 색 강조. truncated 배지. 소비 API: `/graph/stats·neighbors·nodes/search`.
+### `graph_viewer.js` (~1,143줄) — 지식그래프 서브그래프 뷰어 (graph.html 엔트리, 무라이브러리)
+> ⚠️ 이 섹션의 앵커는 커밋 `18218da` 기준 실측(맵 갱신 시점에 병행 에이전트가 추가 수정 중 — 다음 사이클에 재실측).
+- 조회·URL: `syncUrl`(~243, `?label=&identity=` pushState — 동일 URL 중복 push 방지) `explore(label, identity, opts)`(~254, `/graph/neighbors` 조회→BFS 동심원 레이아웃. `opts.history: 'push'|'replace'|'none'`) `renderStats`(~153, `/graph/stats` 카운트 카드+라벨 색 팔레트).
+- 렌더: `layoutGraph`(~332) `renderCanvas`(~437, 캔버스 본체 — 테마 색 1회 캐싱+`themechange` 재캐싱, 상시 rAF 없음).
+- **Connections 테이블**(`18218da` 신설): `connectionRows(nodeId, edges, nodesById)`(~607) `propsSummary`(~631) `selectNode(node, opts)`(~645, 선택 확립+`connSeq` stale 가드) `fetchNodeConnections`(~666, 비중심 노드 depth-1 재조회 보강 — label+identity 파라미터) `renderConnBlock`(~696, `CONN_PAGE=80` 단위 "더 보기"·행 클릭 시드 연동) `renderNodePanel`(~764) `setPanelCollapsed`(~833, 패널 접기).
+- 이벤트: `onNodeClick`(~863, **선택만** — 중심 이동은 더블클릭/시드 버튼) `initCanvasEvents`(~867, 팬·줌·dblclick 재중심) `exploreFromInput`(~1029) `initSearchBar`(~1061, `/graph/nodes/search` 자동완성+200ms debounce+seq 가드) `init`(~1097, popstate 복원·접기 버튼·초기 쿼리 replaceState — trace 크로스링크).
+- user provenance 엣지는 `--overwrite` 색 강조(테이블은 `.conn-user`). truncated 배지. 소비 API: `/graph/stats·neighbors·nodes/search`.
 
 ### `trace_core.js` (~234줄) — G2 추적 순수 로직 (무의존, node 테스트 가능)
 - export: `SEED_CAP=20`(~10) `composeIdentity`(~38, 서버 G1 `compose_identity` 미러 — `|` 조인+이스케이프+float 안정화) `capSeeds`(~57) `parseSeedsParam`(~73) `normalizeMissingSeeds`(~98) `buildTraceRequest`(~128) `groupNodesByLabel`(~146) `splitTimeline`(~187) 표시 헬퍼(`propsSummary`/`fmtEventTime` 등, ~211–228).
@@ -387,7 +401,7 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 ## 8. 주요 호출 흐름 요약
 
-1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → `process_with_retry` → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님) → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
+1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → `process_with_retry` → `_snapshot_table_context`(파일당 1회 config 스냅샷 — 테이블 해석은 글로벌 별칭 > 레거시 config.json > 폴더명) → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님) → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
 2. **수동 편집**: client `handleCellEdit`/`applyValueToSelectedRange` → PUT `/tables/{t}/data/updates` → `apply_batch_updates_endpoint` → `crud.apply_batch_updates` → outbox 발화 + WS `batch_row_upsert` → 전 클라이언트 `handleWebSocketMessage` 델타 반영.
 3. **체인 인제션**: `apply_batch_updates`의 outbox 발화 → NOTIFY → `start_chain_ingestion_worker` 루프 → `process_pending_groups` → `process_chain_transaction_group`(맵퍼 실행, 예: `map_enrichment_dedup`) → 파생 테이블 `apply_batch_updates`(source=chain_ingestion, 순환 차단) → `_dispatch_broadcasts` → `/internal/events/broadcast`(created_logs 500건 절단 + `total_log_count` 실건수) → WS.
 4. **조회**: client `fetchData` → GET `/tables/{t}/data` → `get_table_data` → `get_column_filter_condition` + `fetch_and_merge_metadata`(셀 객체 병합) → client `ensureCellObject` 정규화 → AG-Grid.

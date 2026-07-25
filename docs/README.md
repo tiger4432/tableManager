@@ -40,7 +40,7 @@
 | 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
 | 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
 | Enrichment Queue(결손 보정 워크리스트) | 🟢 [spec/ENRICHMENT_QUEUE_SPEC.md](./spec/ENRICHMENT_QUEUE_SPEC.md) |
-| 온톨로지 지식그래프(LLM 백본) | 🟠 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — **G1+뷰어+G2 구현 라이브 가동**(헤더 Status 승격은 총괄 검토 대기). 승격 흐름 요약: [event_driven_backend §4](./architecture/event_driven_backend.md) |
+| 온톨로지 지식그래프(LLM 백본) | 🟢 [spec/ONTOLOGY_GRAPH_SPEC.md](./spec/ONTOLOGY_GRAPH_SPEC.md) — **G1+뷰어+G2 라이브 가동으로 §1~§6 실증**(2026-07-25 Living 승격). §7.x는 G3+ 설계(§7.5c 탐색 정책은 G2.5 전제). 승격 흐름 요약: [event_driven_backend §4](./architecture/event_driven_backend.md) |
 | API 레퍼런스 | 🟠 [spec/api_documentation.md](./spec/api_documentation.md) |
 
 ## ✅ 3.5 QA (qa/)
@@ -64,7 +64,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(195개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(197개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |

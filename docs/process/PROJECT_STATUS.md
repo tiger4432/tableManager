@@ -8,7 +8,7 @@
 
 ## 🎯 현재 초점 (Current Focus)
 
-1. **온톨로지 그래프 트랙 — G1+뷰어+G2 라이브 가동 완료(2026-07-25)**. PG 엣지 스토어 + outbox 증분 materializer(자동 승격) + 조회 API 5종 + 서브그래프 뷰어(graph.html) + 추적 리포트(trace.html)까지 실동·라이브 검증 통과([GraphLatency] lag 162ms, 교정→RESOLVED_AS(user) 실시간). 종합: [20260725_233000](../history/20260725_233000_ontology_graph_track_live_and_architecture_sync.md) · 스펙 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md). **다음: G2.5(서브그래프 직렬화) → G3(시각화 고도화·Neo4j 병행)**.
+1. **온톨로지 그래프 트랙 — G1+뷰어+G2 라이브 가동 완료(2026-07-25)**. PG 엣지 스토어 + outbox 증분 materializer(자동 승격) + 조회 API 5종 + 서브그래프 뷰어(graph.html) + 추적 리포트(trace.html)까지 실동·라이브 검증 통과([GraphLatency] lag 162ms, 교정→RESOLVED_AS(user) 실시간). 종합: [20260725_233000](../history/20260725_233000_ontology_graph_track_live_and_architecture_sync.md) · 스펙 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md). **다음: G2.5 — §7.5c 탐색 정책 엔진(node_class 선언 + 4대 룰) 선행 → 서브그래프 직렬화·도구 API → G3(시각화 고도화·Neo4j 병행)**.
 2. **map_split_registry 착수 대기(사용자 승인)** — 맵 value description(실험 split 자연어)을 localStorage에서 동적 테이블로 승격 + SplitCondition 온톨로지 매핑 + 맵 에디터 로드/저장 전환. 지시서 `agent_workspace/tasks/Client_map_split_registry_task.md` 준비됨 — client-pm 위임 예정.
 3. **Enrichment 실전 규칙 작성 대기** — 사용자의 실제 설비이력/bonding log 스키마 확보 → `table_config.json` 파생 테이블 + `enrichment_rules.json` 실규칙. (스모크 규칙 `line_model_owner_attribution`은 데모로 유지.)
 4. **아키텍처 문서 대청소 완료(2026-07-25)** — SSOT·architecture 4종·CODE_MAP이 그래프 트랙/admin 5탭/6엔트리/온보딩 완결을 반영. SYSTEM_OVERVIEW 하나로 현행 파악 가능.
@@ -17,6 +17,9 @@
 
 | 영역 | 요약 | 근거 |
 |---|---|---|
+| 클라/그래프 | **뷰어 Connections 테이블 + 검색 시드 연동** — 노드 클릭=선택+관계 테이블(비중심은 depth-1 보강, 80행 페이지), 행 클릭 → 중심 재조회+URL push/popstate+검색바 반영, 패널 접기. ⚠️ 중심 이동이 클릭→**더블클릭**으로 변경(사용자 공지 권장) | `18218da` · [히스토리](../history/20260725_222215_graph_viewer_connections_table.md) |
+| 스펙/그래프 | **§7.5c 정적/동적 노드 분류 + 4대 탐색 정책** 수렴(S→D 기본 금지·2단계 백본→ROI·EqpState 허브앤스포크) — 정책 엔진이 **G2.5 전제 조건**으로 승격 | `99c4cb6` · [히스토리](../history/20260725_222347_ontology_spec_static_dynamic_traversal_policy.md) |
+| 서버/인제션 | **워크스페이스 config.json 폐지** — `table_name`/`std_parse`를 글로벌 table_config의 `workspace_name`/`std_parse`로 흡수(옵트아웃 핫리로드화 → F4 자연 해소), 신규 생성 중단+하위호환 읽기, QA 6건 반영(파일당 config 스냅샷·별칭 섀도잉/경로탈출 방어)·테스트 21건(스위트 229 passed) | `5fac5f0`+`20d6898` · [히스토리](../history/20260725_220619_workspace_config_deprecation.md) |
 | 서버/그래프 | **온톨로지 G1** — graph_nodes/edges/graph_sync_state + 매핑 v2(description 필수, enrichment `RESOLVED_AS` 자동 승격) + materializer(증분 소비·QA H1/H2 provenance·retarget) | `6da2276`→`7c40a33`→`d130c65` |
 | 서버/그래프 | **조회 API 5종** — stats/neighbors/search(뷰어) + trace/mapping-summary(G2, 공용 BFS 추출) | `c63b881`, `d8d109d` |
 | 클라/그래프 | **그래프 뷰어 + 추적 리포트** — graph.html(BFS 동심원 캔버스)·trace.html(그룹+타임라인) + index 「🕸️ 추적」 진입점, 양방향 크로스링크 | `eea929d`/`f41ca3e`, `6c0a722`/`83507aa` |
@@ -53,8 +56,6 @@
 - map_split_registry(현재 초점 #2) — client-pm 착수.
 - enrichment 실전 규칙(현재 초점 #3).
 
-- **[신규·사용자 승인 2026-07-25] 워크스페이스 config.json 폐지(레거시 정리)** — 실소비 필드가 `table_name` 별칭·`std_parse` 옵트아웃 2개뿐(스키마는 전부 글로벌 table_config). 방침: ① 두 필드를 `table_config.json` 테이블 항목으로 흡수(단일 원천화 + 옵트아웃 핫리로드화 → F4 자연 해소) ② 워크스페이스 자동 생성에서 config.json 신설 중단 ③ 기존 파일은 하위호환 읽기 + deprecation 경고 후 제거. 소규모 서버 배치 — wafer_process 구축 다음 순서.
-
 **그래프 트랙 미결 정책**
 - 행 DELETE 시 그래프 정리 정책(스펙 §8 — materializer는 DELETE 스킵, stale 엣지 잔존). `idx_graph_edges_row_ref`가 구현 기반.
 - 운영 수칙: outbox 7일 purge보다 materializer 장기 정지 시 증분 유실 → `/api/graph/sync {"table_name":"all"}` 복구(문서화됨 — [event_driven_backend §4.3](../architecture/event_driven_backend.md)).
@@ -64,10 +65,12 @@
 - Enrichment 규칙 CRUD API · Chain rule CRUD API · 워크스페이스 생성/검증 API · 파이프라인별 "신규 추가" 위저드 UI · 헬스 시간창 집계 API(+파일 로그 서버 검색/정렬).
 
 **관찰/저순위**
+- 워크스페이스 레거시 config.json **읽기 경로의 최종 제거 시점** — 총괄 결정 대기(현재는 하위호환 읽기 + deprecation 경고 가동, 실 워크스페이스 14곳 전수 무영향 확인).
 - 레이어링 표시 정합 의심 1건: `priority_source: chain_ingestion`인데 표시 값은 system 소스 값(38320 vs 3832) — chain_ingestion 서열 등재(#5 배치에 동승 가능) 후 재확인.
 - 재생성 소스 삭제 시 경고 표시 UX(파이프라인이 소스를 재생성하는 것은 레이어링 설계상 정상 — 비이슈 종결됨).
 - main.py 셀 히스토리 라우트 이중 정의(~2020 사장) · `client2/src/counter.js` 템플릿 잔재 — 소규모 정리 후보.
 - 재기동 첫 체인 579ms(수용) — 잔여 mapper 첫 쿼리 웜업.
+- [라이브 검증 PASS 관찰 3건, 다음 서버 배치 동승 후보] ① pytest가 라이브 로그 파일 오염 → 테스트 로거 분리 ② created_logs 절단 발동 시 무음 → `truncated N→500` 1줄 로그 ③ wafer_process lot_id UndefinedColumn 1회(21:48, 컬럼 핫추가 과도기 — #9와 같은 뿌리 추정).
 - wafer_process에 `lot`/`slot`(기존)과 `lot_id`/`slot_no`(신규)가 중복 공존 — 데모 테이블이라 수용, 실전화 시 하나로 통일 필요. Lot 노드 label 신설 여부도 미결(현재 props까지만).
 - 루트 `task/` 대기: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
 
