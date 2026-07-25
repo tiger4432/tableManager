@@ -3,14 +3,20 @@
 > **Status:** 🟠 제안(초안 v0 — 총괄·사용자 논의 중) | **Last-verified:** 2026-07-25 | **Owner:** 총괄 PM
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 구식화 대상: [graph_db_integration_plan.md](./graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체)
 
-## 0. 한 줄 정의
+## 0. 핵심 가치 (사용자 확정 2026-07-25)
 
-라인에서 수집·교정된 모든 데이터를 **속성 그래프(property graph)로 자동 승격**해, ① 사람에게는 "불량 wafer 선택 → 연관 전체 추적"을, ② **LLM에게는 백본 지식그래프**(도구로 질의 가능한 사실 기반)를 제공한다.
+라인에서 수집·교정된 모든 데이터를 **속성 그래프(property graph)로 자동 승격**한다. 이 그래프의 존재 이유 3가지:
+
+1. **LLM용 지식 그래프** — LLM이 도구로 질의·검색하는 사실 기반(백본). 스키마 의미론(description)·provenance 출처 표기·MCP 도구 API가 여기서 나온다.
+2. **수많은 RDB JOIN의 효율화** — 이종 키로 흩어진 테이블들을 매번 N-way JOIN으로 꿰지 않고, 사전 구체화(materialize)된 엣지를 인덱스 순회로 탐색한다. 특히 enrichment 해석(사람 교정)이 있어야만 이어지는 조인(core_lot/slot↔wafer_id)은 관계형으로는 매번 매핑 테이블 경유가 필요하지만 그래프에선 엣지 하나다. 추적 리포트·참조뷰·향후 앱 내 조회의 가속 계층.
+3. **불량 추론 네트워크** — 불량 개체(wf/chip)를 시드로 그래프 알고리즘(Personalized PageRank, 공유 이웃 분석, 커뮤니티 탐지 등)을 돌려 **의심 개체 랭킹**(설비·lot·시간대)을 산출하는 근본원인 분석 기반.
+4. **시공간 topology 매핑 (물리적 추론)** — 반도체 R&D 관점에서 공정 관여 객체(wafer, chip, 설비/지그)의 **시간·공간 좌표를 1급 속성**으로 매핑해, 관계 순회를 넘어 **실제 물리 추론**을 가능하게 한다: wafer 좌표계 위 불량의 공간 패턴(엣지 링/센터/스크래치), 설비·지그 위치별 불량 집중, 처리 시간축 인접성(같은 설비 연속 처리 전이) 등.
 
 ## 1. 확정된 방향 (2026-07-25 사용자 논의)
 
 | 결정 | 내용 |
 |---|---|
+| 핵심 가치 | §0의 4가지 — ①LLM 지식그래프 ②JOIN 효율화 ③불량 추론 네트워크 ④시공간 topology(물리 추론) |
 | 인구(population) 방식 | **자동 승격이 본체** — 인제션되는 모든 로우가 매핑 config에 따라 노드/엣지가 됨. enrichment는 여러 소스 중 하나(사람 검증이라 신뢰도만 특별) |
 | 최종 용도 | **LLM용 백본 지식그래프** — LLM이 도구로 질의·검색하는 사실 기반 |
 | 추적 UX (v1) | **추적 리포트**(엔티티별 그룹 테이블 + 시간순 타임라인). 그래프 시각화는 G3 |
@@ -25,6 +31,7 @@ graph_edges(id, type, from_node, to_node, props JSONB,
             source_name, source_row_ref, updated_by, event_time, created_at)
 ```
 
+- **인덱스 규율 (가치 ② JOIN 효율화의 물리적 실체)**: `graph_nodes(label, identity_key)` UNIQUE, `graph_edges(from_node, type)` / `(to_node, type)` 복합 인덱스 — k-hop 순회가 인덱스 룩업의 연쇄가 되도록. 이종 키 N-way JOIN을 균일한 엣지 순회로 대체하는 것이 이 스토어의 존재 이유이므로, 인덱스 없는 엣지 접근 경로는 금지.
 - **엣지 provenance = 레이어링의 그래프 확장**: `source_name`(pipeline_parser/chain/user/…)과 우선순위 규칙(user 최우선)을 셀과 동일하게 적용. 같은 관계를 자동·사람이 다르게 주장하면 사람이 이긴다. LLM 답변의 출처 표기 근거이기도 하다.
 - identity: v1은 정확 일치 MERGE. 표기 변형 해석(dirty identity)은 enrichment로 사람이 교정 — 교정 결과가 `RESOLVED_AS` 엣지로 승격.
 
@@ -74,14 +81,29 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **서브그래프 직렬화**: 조회 결과를 LLM 컨텍스트 주입용 압축 텍스트 포맷으로(노드/엣지/출처 포함) 정의
 - **출처 표기**: 모든 결과 엣지에 provenance 동봉 — "사람 교정" vs "자동 파이프라인" 구분이 LLM 답변 신뢰도의 근거
 
-## 7. 단계
+## 7. 불량 추론 네트워크 (G3) — 가치 ③의 설계 골격
+
+- **시드**: 불량 판정 컬럼(데이터 유래) 또는 사용자 마킹(그리드/추적 리포트에서 "불량 시드 지정") → `Defect` 플래그 노드 props.
+- **알고리즘**: 시드 기반 **Personalized PageRank**(불량에서 출발한 랜덤워크가 자주 도달하는 개체 = 의심), 공유 이웃 분석(불량 wf들이 공통으로 거친 설비/시간대), 커뮤니티 탐지. **시간 창 스코핑 필수**(불량은 시간적으로 군집) — 알고리즘 입력은 항상 `event_time` 범위로 잘라낸 서브그래프.
+- **실행 구조 (v1)**: PG에서 서브그래프 추출 → **Python 분석 워커**(scipy/igraph)로 계산 → 의심 점수를 `analysis` provenance의 노드 props/결과 테이블로 저장 → 추적 리포트에 "의심 랭킹" 탭. 실시간 아닌 배치/온디맨드 잡. (Neo4j GDS 내장 알고리즘은 G4에서 가속 옵션 — 이관 안전성 §4와 같은 논리로 분석 계층도 저장소 중립 유지.)
+- LLM 연결: 의심 랭킹이 곧 LLM 도구 응답(`suspect_ranking(seeds, time_range)`)이 됨 — "이 불량들 원인 후보 뽑아줘"가 도구 호출 한 번.
+
+## 7.5 시공간 topology (가치 ④) — 물리 추론의 설계 골격
+
+- **공간 스키마 표준화**: 좌표를 자유 props가 아니라 **규격화된 공간 속성**으로 — `{coord_system, x, y}` (예: `wafer_grid`(cx,cy), `base_grid`(bx,by), `map_physical`). 매핑 config의 노드/엣지 정의에서 좌표 컬럼을 공간 속성으로 선언. 좌표계 정의·변환(회전/면반전)은 **기존 맵 에디터 자산 재사용**(`utils/coordinate_transformer.py`, `physical_wafer_engine.py`) — 좌표 변환 불변식을 그래프가 재발명하지 않는다.
+- **시간 topology**: 모든 이벤트 엣지에 `event_time` 필수(§2 모델에 이미 존재)를 넘어, **파생 시간 인접 엣지**를 배치로 구체화 — 예: 같은 Base에서 연속 처리된 개체 간 `PROCESSED_AFTER {gap}` (전이·오염 전파 추론용). 파생 엣지는 `analysis` provenance.
+- **공간 분석 (G3 결합)**: 불량 시드의 wafer 좌표 분포 → zonal 패턴 분류(edge ring/center/scratch/random — 반도체 표준 불량 패턴), 설비 좌표 그리드 위 집중도. PPR(관계 축) + 공간 클러스터링(좌표 축) + 시간 창(시간 축)의 3축 교차가 물리 추론의 실체.
+- **LLM 도구 연결**: `spatial_pattern(seeds)` → "이 불량들 wafer 위에서 엣지 링 패턴, base 지그 3번 열 집중" 같은 물리 서술을 도구 응답으로.
+
+## 8. 단계
 
 | 단계 | 내용 | 비고 |
 |---|---|---|
-| **G1** | 매핑 config 실전화 + PG nodes/edges + 자동 승격 materializer + C-7 해소 + 이슈 #8 동승 | 데모 3종 E2E |
-| **G2** | 추적 쿼리 API(k-hop, 시간 범위) + 추적 리포트 UI (그리드 선택 → 추적) | 킬러 유스케이스 완성 |
-| **G2.5** | LLM 액세스 계층 — MCP/도구 API + schema_card + 서브그래프 직렬화 | 백본 개방 |
-| **G3** | Neo4j 병행 타깃(시각화·Cypher 에이전트) + pgvector 하이브리드 | 옵션 |
+| **G1** | 매핑 config 실전화 + PG nodes/edges(인덱스 규율 §2) + 자동 승격 materializer + C-7 해소 + 이슈 #8 동승 | 데모 3종 E2E |
+| **G2** | 추적 쿼리 API(k-hop, 시간 범위) + 추적 리포트 UI (그리드 선택 → 추적) | 킬러 유스케이스 + 가치 ② 실증 |
+| **G2.5** | LLM 액세스 계층 — MCP/도구 API + schema_card + 서브그래프 직렬화 | 가치 ① 개방 |
+| **G3** | 불량 추론 네트워크 + 시공간 분석 — 시드 마킹 UX + 분석 워커(PPR·zonal 패턴·시간 인접) + 의심 랭킹 리포트/도구 | 가치 ③④ (공간 스키마 자체는 G1 매핑 config부터) |
+| **G4** | Neo4j 병행 타깃(시각화·Cypher 에이전트·GDS 가속) + pgvector 하이브리드 | 옵션 |
 
 ## 8. 미결(논의 계속)
 
