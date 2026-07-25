@@ -44,6 +44,7 @@
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 
 **우선 순위 높음 (현재 초점 연동)**
+- **[신규·사용자 승인 2026-07-25] 대형 파일 인제션 대응 전략** — 실측: 99,999행 CSV ≈ 7분(250행/s). 장애 4종(HOL 실시간 지연 / 재기동 시 전체 재처리 / outbox 후단 폭주 / 낮은 처리율). 단계: **P1** heavy 레인 분리(크기 임계 라우팅) + admin 진행 표시·재기동 경고 → **P2** FileIngestionLog 오프셋 체크포인트 재개 + 파일 해시 dedup → **P3** 경합 배치 2(C-4)와 통합한 후단 backpressure(outbox 파일 단위 집계) + PG COPY 벌크 경로(프로파일링 선행). 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드.
 - G2.5 서브그래프 직렬화 → G3(그래프 시각화 고도화, Neo4j 병행 타깃). 시간 범위 스캔용 엣지 인덱스(event_time)는 G2.5 쿼리 설계와 함께.
 - map_split_registry(현재 초점 #2) — client-pm 착수.
 - enrichment 실전 규칙(현재 초점 #3).
