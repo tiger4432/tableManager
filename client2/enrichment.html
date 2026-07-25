@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AssyManager - Enrichment Queue</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>" />
+  <!-- Google Fonts (main page tone: Outfit + JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ── Design tokens: main page(style.css)와 동일 팔레트, 페이지 자체 포함(자체 모듈 선례) ── */
+    :root {
+      --bg-app: #07090e;
+      --bg-surface: rgba(15, 22, 36, 0.95);
+      --bg-header: rgba(10, 15, 26, 0.96);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-color-glow: rgba(0, 240, 255, 0.2);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --color-primary: #00f0ff;
+      --color-primary-glow: rgba(0, 240, 255, 0.4);
+      --color-secondary: #a855f7;
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-danger: #ef4444;
+      --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      line-height: 1.5;
+      background-image:
+        radial-gradient(at 8% 8%, rgba(0, 240, 255, 0.04) 0px, transparent 50%),
+        radial-gradient(at 92% 92%, rgba(168, 85, 247, 0.04) 0px, transparent 50%);
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      height: 70px;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 0 24px;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(168, 85, 247, 0.25));
+      border: 1px solid var(--border-color-glow);
+      font-size: 1.25rem;
+      padding: 6px 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
+    }
+
+    .logo-area h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      background: linear-gradient(to right, #f1f5f9, var(--color-primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      white-space: nowrap;
+    }
+
+    .logo-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    /* progress cluster */
+    .progress-cluster {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      min-width: 0;
+      max-width: 620px;
+    }
+
+    .progress-track-wrap {
+      flex: 1;
+      min-width: 120px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .progress-track {
+      height: 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-success));
+      box-shadow: 0 0 10px var(--color-primary-glow);
+      transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .stat-badge {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: var(--color-warning);
+      background: rgba(245, 158, 11, 0.08);
+      white-space: nowrap;
+      transition: var(--transition-smooth);
+    }
+
+    .stat-badge.all-done {
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--color-success);
+      background: rgba(16, 185, 129, 0.08);
+    }
+
+    .stat-badge-session {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .control-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-dim);
+    }
+
+    .glass-input {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 8px 14px;
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      outline: none;
+      transition: var(--transition-smooth);
+      max-width: 260px;
+    }
+
+    .glass-input:focus {
+      border-color: var(--color-primary);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.15);
+    }
+
+    .glass-input option {
+      background-color: #0b0f19;
+      color: var(--text-main);
+    }
+
+    .glass-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-weight: 500;
+      font-size: 0.85rem;
+      transition: var(--transition-smooth);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+
+    .glass-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    /* ── Workbench: 3구역 ── */
+    .workbench {
+      flex: 1;
+      display: flex;
+      gap: 16px;
+      padding: 16px 20px 20px;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--glass-shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .worklist-panel {
+      flex: 3;
+    }
+
+    .conveyor-panel {
+      flex: 2;
+      min-width: 300px;
+    }
+
+    .reference-panel {
+      flex: 2;
+      min-width: 240px;
+    }
+
+    .panel-header {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--color-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .panel-meta {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* [A] worklist grid */
+    #worklist-grid {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+    }
+
+    /* AG-Grid Deep Theme Integration (main page와 동일 톤) */
+    .ag-theme-quartz-dark {
+      --ag-font-family: var(--font-sans) !important;
+      --ag-background-color: transparent !important;
+      --ag-header-background-color: rgba(15, 22, 36, 0.9) !important;
+      --ag-odd-row-background-color: rgba(255, 255, 255, 0.01) !important;
+      --ag-border-color: var(--border-color) !important;
+      --ag-row-hover-color: rgba(0, 240, 255, 0.05) !important;
+      --ag-selected-row-background-color: rgba(0, 240, 255, 0.1) !important;
+      --ag-header-column-separator-color: var(--border-color) !important;
+    }
+
+    .ag-theme-quartz-dark .ag-row {
+      cursor: pointer;
+    }
+
+    /* worklist row leave animation */
+    @keyframes rowResolved {
+      0% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateX(24px);
+      }
+    }
+
+    .row-resolved {
+      animation: rowResolved 0.28s ease-in forwards;
+    }
+
+    /* overlay states (worklist) */
+    .panel-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      padding: 30px;
+      background: rgba(7, 9, 14, 0.6);
+      backdrop-filter: blur(2px);
+      z-index: 5;
+    }
+
+    .overlay-icon {
+      font-size: 2.6rem;
+      opacity: 0.55;
+    }
+
+    .overlay-text {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    /* [B] conveyor */
+    .conveyor-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 30px;
+    }
+
+    .empty-icon {
+      font-size: 2.6rem;
+      opacity: 0.45;
+    }
+
+    .detail-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: detailIn 0.25s ease-out;
+    }
+
+    @keyframes detailIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .detail-block {
+      border: 1px solid var(--border-color);
+      background: rgba(10, 14, 22, 0.5);
+      border-radius: 10px;
+      overflow: hidden;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .detail-block-header {
+      padding: 8px 14px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .detail-block-body {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .kv-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .kv-key {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+    }
+
+    .kv-val {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--color-primary);
+      word-break: break-all;
+      text-align: right;
+    }
+
+    .clue-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .clue-chip {
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      max-width: 100%;
+    }
+
+    .clue-chip .chip-key {
+      color: var(--text-dim);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+    }
+
+    .clue-chip .chip-val {
+      font-family: var(--font-mono);
+      color: var(--text-main);
+      word-break: break-all;
+    }
+
+    /* target inputs */
+    .target-input-block.saved-flash {
+      border-color: rgba(16, 185, 129, 0.6);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+    }
+
+    .target-field-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .target-field-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-warning);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .target-input {
+      width: 100%;
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      padding: 10px 14px;
+    }
+
+    .conveyor-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .save-btn {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.45);
+      color: var(--color-success);
+      font-weight: 600;
+      padding: 9px 20px;
+    }
+
+    .save-btn:hover {
+      background: rgba(16, 185, 129, 0.22);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+    }
+
+    .save-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .key-hints {
+      display: flex;
+      gap: 10px;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+    }
+
+    .key-hints kbd {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      border: 1px solid var(--border-color);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 1px 5px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+    }
+
+    /* [C] reference placeholder */
+    .reference-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 14px 0;
+    }
+
+    .reference-tab {
+      border: 1px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.02);
+      cursor: not-allowed;
+      user-select: none;
+    }
+
+    /* ── Setup overlay (규칙 API 미배포/규칙 없음 안내) ── */
+    .setup-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(7, 9, 14, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      padding: 30px;
+    }
+
+    .setup-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--glass-shadow);
+      max-width: 480px;
+      width: 100%;
+      padding: 36px 32px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      animation: detailIn 0.3s ease-out;
+    }
+
+    .setup-card .setup-icon {
+      font-size: 3rem;
+    }
+
+    .setup-card h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+
+    .setup-card p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    .setup-card .setup-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    /* ── Toast (utils.js showToast 계약: #toast-container + .toast.toast-{type}) ── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 9999;
+    }
+
+    .toast {
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 240, 255, 0.15);
+      color: var(--text-main);
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(20px);
+      opacity: 0;
+      animation: toastFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .toast.toast-success {
+      border-color: rgba(16, 185, 129, 0.4);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(16, 185, 129, 0.15);
+    }
+
+    .toast.toast-error {
+      border-color: rgba(239, 68, 68, 0.4);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(239, 68, 68, 0.15);
+    }
+
+    .toast.toast-warning {
+      border-color: rgba(245, 158, 11, 0.4);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 10px rgba(245, 158, 11, 0.15);
+    }
+
+    @keyframes toastFadeIn {
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <!-- ── Header: 규칙 선택 + 진행률 + 잔여 ── -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-badge">🧩</div>
+        <div>
+          <h1>Enrichment Queue</h1>
+          <div class="logo-sub">결손 보정 워크리스트 · 판단 1회 = 파급 전체</div>
+        </div>
+      </div>
+
+      <div class="progress-cluster">
+        <div class="progress-track-wrap">
+          <div class="progress-labels">
+            <span id="progress-text">- / -</span>
+            <span id="progress-percent">-%</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+        <span id="remaining-badge" class="stat-badge">잔여 -건</span>
+        <span id="session-badge" class="stat-badge-session">이번 세션 0건</span>
+      </div>
+
+      <div class="header-actions">
+        <span class="control-label">Rule</span>
+        <select id="rule-select" class="glass-input">
+          <option value="">Loading...</option>
+        </select>
+        <button id="refresh-btn" class="glass-btn" title="워크리스트 새로고침">🔄</button>
+        <a href="/" class="glass-btn" title="메인 그리드로">🏠 Main</a>
+      </div>
+    </header>
+
+    <!-- ── 3구역 워크벤치 ── -->
+    <main class="workbench" style="position: relative;">
+      <!-- [A] 워크리스트 -->
+      <section class="panel worklist-panel">
+        <div class="panel-header">
+          <div class="panel-title">📋 워크리스트</div>
+          <div id="worklist-meta" class="panel-meta">-</div>
+        </div>
+        <div class="panel-body">
+          <div id="worklist-grid" class="ag-theme-quartz-dark"></div>
+          <div id="worklist-overlay" class="panel-overlay" style="display: none;">
+            <div id="worklist-overlay-icon" class="overlay-icon">🎉</div>
+            <div id="worklist-overlay-text" class="overlay-text">모든 결손이 처리되었습니다!</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- [B] 판단 · 입력 (컨베이어) -->
+      <section class="panel conveyor-panel">
+        <div class="panel-header">
+          <div class="panel-title">⚡ 판단 · 입력</div>
+          <div id="conveyor-meta" class="panel-meta"></div>
+        </div>
+        <div class="conveyor-body">
+          <div id="conveyor-empty" class="empty-state">
+            <div class="empty-icon">👈</div>
+            <div>워크리스트에서 항목을 선택하면<br>판단키와 입력 필드가 표시됩니다.</div>
+          </div>
+
+          <div id="conveyor-detail" class="detail-section" style="display: none;">
+            <div class="detail-block">
+              <div class="detail-block-header">판단키 (Decision Key)</div>
+              <div id="decision-key-body" class="detail-block-body"></div>
+            </div>
+
+            <div class="detail-block" id="clue-block">
+              <div class="detail-block-header">단서 (Context)</div>
+              <div class="detail-block-body">
+                <div id="clue-chips" class="clue-chips"></div>
+              </div>
+            </div>
+
+            <div class="detail-block target-input-block" id="target-input-block">
+              <div class="detail-block-header">입력 (Target)</div>
+              <div id="target-inputs" class="detail-block-body"></div>
+            </div>
+
+            <div class="conveyor-actions">
+              <div class="key-hints">
+                <span><kbd>Enter</kbd> 저장 후 다음</span>
+                <span><kbd>↑</kbd><kbd>↓</kbd> 항목 이동</span>
+                <span><kbd>Esc</kbd> 입력 지우기</span>
+              </div>
+              <button id="save-btn" class="glass-btn save-btn">💾 저장 → 다음</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- [C] 참조뷰 (단계② placeholder) -->
+      <section class="panel reference-panel">
+        <div class="panel-header">
+          <div class="panel-title">🔭 참조뷰</div>
+          <div class="panel-meta">Phase 2</div>
+        </div>
+        <div class="panel-body">
+          <div id="reference-tabs" class="reference-tabs"></div>
+          <div class="empty-state">
+            <div class="empty-icon">🛰️</div>
+            <div>판단 보조 참조뷰는 단계②에서<br>이 자리에 연동됩니다.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 규칙 미배포/없음 안내 오버레이 -->
+      <div id="setup-overlay" class="setup-overlay">
+        <div class="setup-card">
+          <div id="setup-icon" class="setup-icon">🧩</div>
+          <h2 id="setup-title">Enrichment 규칙을 불러오는 중...</h2>
+          <p id="setup-desc"></p>
+          <div class="setup-actions">
+            <button id="setup-retry-btn" class="glass-btn">🔄 다시 시도</button>
+            <a href="/" class="glass-btn">🏠 메인으로</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/src/enrichment.js"></script>
+</body>
+
+</html>

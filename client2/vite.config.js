@@ -16,7 +16,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         admin: resolve(__dirname, 'admin.html'),
-        map_editor: resolve(__dirname, 'map_editor.html')
+        map_editor: resolve(__dirname, 'map_editor.html'),
+        enrichment: resolve(__dirname, 'enrichment.html')
       }
     }
   }
