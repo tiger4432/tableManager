@@ -7,10 +7,9 @@
 ---
 
 ## 🎯 현재 초점 (Current Focus)
-- **Enrichment Queue: 서버측 구현 완료(2026-07-25, 검수·커밋 대기)** — config 로더/검증(`server/enrichment_config.py`) + dedup mapper(`server/enrichment_mapper.py`, 체인 룰 자동 파생·SLO 경로 재사용) + 경계 계약 API 2종(`GET /enrichment/rules`, `GET /enrichment/rules/{rule}/references/{i}`) + `/enrichment.html` 서빙. 테스트 75통과(신규 16). 상세: [reports/Server_enrichment_report.md](../../agent_workspace/reports/Server_enrichment_report.md). **다음: Client PM 구현(enrichment.html + 그리드 배지 — 계획서 [Client_enrichment_plan.md](../../agent_workspace/reports/Client_enrichment_plan.md) ①단계 착수 가능)** → 통합 후 총괄이 스펙 Living 승격.
-- ✅ **이슈 #0(체인 outbox) 종결(2026-07-25)** — 최종 실측: 정상 31ms(SLO 100ms 달성), 재기동 첫 체인 579ms(알려진 기동 특성으로 수용). 상세: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md).
-- **경합 수정 배치 1 완료(2026-07-25, 검수·커밋 대기)** — C-2 outbox ×2 중복 발행 근절 / C-1 이벤트 루프 격리 / C-5 워처 payload 상한 / C-3 7일 보관 정책. 상세: [reports/Server_contention_fix_report.md](../../agent_workspace/reports/Server_contention_fix_report.md).
-- 운영 서버 반영 대기(순서 중요): ① C-2 반영 코드로 전 프로세스 재기동 → ② `conda run -n assy_manager python server/scripts/setup_db_performance.py`(멱등: 레거시 인덱스 4종 DROP + purge/failed 인덱스 생성) → ③ `... python server/scripts/purge_outbox_backlog.py --dry-run` 확인 후 본실행(백로그 270만 행 정리) → ④ 오프피크 `VACUUM (ANALYZE) database_outbox`(공간 완전 반환 필요 시 VACUUM FULL — 전 프로세스 중지 필요).
+- 🎉 **Enrichment Queue v1 완성(2026-07-25)** — 서버(dedup mapper 체인 자동파생 `4c8c2a4`) + 클라 전 단계(컨베이어 `c21bdb8` · 참조뷰 탭 + 결손 배지 `100112c`) 병합·빌드·E2E 실동 검증 완료. 스펙 **Living 승격** + SSOT §6 배선. 스모크 규칙 `line_model_owner_attribution`(production_plan→line_model_registry, 로컬 config)로 검증. 이력: [20260725_130000](../history/20260725_130000_enrichment_queue_v1_complete.md).
+- **다음: 실전 규칙 작성** — 사용자의 실제 설비이력/bonding log 스키마 확보 → `table_config.json` 파생 테이블 + `enrichment_rules.json` 실규칙. (스모크 규칙은 데모로 유지. 신규 테이블 추가 시 이슈 #7 제약으로 재기동 필요.)
+- ✅ 이슈 #0(체인 outbox) 종결 — 정상 31ms(SLO 달성). 경합 배치 1 커밋(`4329c29`) + **로컬 운영 절차(재기동→인덱스→purge→VACUUM) 실행 완료.** 운영 서버는 `git pull` 후 동일 순서 필요.
 - 맵 에디터 사용성 개선 (Client PM 도메인)은 병행 관찰.
 
 ## ✅ 최근 완료 (Recently Done) — 최신순
@@ -50,6 +49,7 @@
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 5 | 중간 | **경합 점검 잔여 리스크(승인 대기)** — C-4(인제션 체인 큐 독점·HOL, 매퍼 의미론 총괄 협의 필요)·C-6(동시 upsert 행 락 순서)·C-7(그래프 전체 동기화 무제한 로드/브로드캐스트)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + 체인 워커의 created_logs 무상한 전송·broadcast body 파싱 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) | Server | 대기(수정 배치 2 후보) |
 | 6 | — | 🏁 **[종결 2026-07-25] 감사 로그 DB 미저장(add_to_cache=False가 persist까지 생략)** — 전수 조사 결과 delete_rows_batch뿐 아니라 create_empty_rows_batch·delete_cell_source_batch·set_cell_manual_priority_batch까지 4개 함수가 캐시에만 기록. 각 함수 commit 전 `bulk_insert_audit_logs` 벌크 적재 추가(시그니처 무변경, apply_batch_updates 기존 패턴 준용) + 회귀 테스트 3건(`test_audit_log_persistence.py`). | Server | 🏁종결 |
+| 7 | 중간 | **런타임 신규 테이블 추가 시 물리 CREATE 누락** — `table_config.json`에 새 테이블 추가 시 핫리로드가 ORM 모델 등록·`/tables` 노출까지는 하지만 실제 `CREATE TABLE`은 부팅 스키마 동기화에서만 수행 → 재기동 전까지 해당 테이블 조회가 `UndefinedTable` 500 (2026-07-25 enrichment 스모크에서 실측). 조치안: config_watcher 리로드 경로에 `sync_dynamic_tables_schema` 신규 테이블 생성 포함 | Server | 대기 |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)

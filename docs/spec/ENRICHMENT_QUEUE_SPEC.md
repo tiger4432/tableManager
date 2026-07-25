@@ -1,8 +1,8 @@
-# 🧩 Enrichment Queue (결손 보정 워크리스트) — 기능 스펙 (Proposal)
+# 🧩 Enrichment Queue (결손 보정 워크리스트) — 리빙 스펙
 
-> **Status:** 🟢 확정(구현 준비) — §9 핵심 결정 완료 | **작성:** 2026-07-25 | **확정:** 2026-07-25 | **Owner:** 기획(Lead) → 구현 시 Server+Client PM
+> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
-> 본 문서는 아직 **미구현 제안**이다. 확정·구현 시 Living으로 승격하고 SSOT·DOC_OWNERSHIP에 배선한다.
+> **v1 구성:** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(`enrichment.html` 컨베이어 + 참조뷰 탭 + 메인 그리드 결손 배지). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 
 ---
 

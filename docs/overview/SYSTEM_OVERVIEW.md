@@ -136,6 +136,7 @@ graph TD
 | 실패 관리/재시도 | [FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | `FileIngestionLog`, outbox retry |
 | 이벤트 기반(Outbox/EDA) | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | `database/database.py`, `chain_ingestion_worker.py` |
 | 그래프 동기화 | [event_driven_backend §4](../architecture/event_driven_backend.md) · [graph_db_integration_plan](../spec/graph_db_integration_plan.md) | `graph_sync_worker.py`, `ontology_mapping.json` |
+| **Enrichment Queue(결손 보정 워크리스트)** | [spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md) | `enrichment_config.py`, `enrichment_mapper.py`, `client2/src/enrichment.js`, `config/enrichment_rules.json` |
 | 어드민(코드 에디터) | — | `client2/src/admin.js`, `main.py /admin/*` |
 | HTML 토폴로지 파서 | [HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | `parsers/html_topology_parser.py` |
 
