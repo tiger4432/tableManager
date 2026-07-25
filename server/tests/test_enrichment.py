@@ -18,10 +18,15 @@ from database import crud, models, schemas
 
 # ---------------------------------------------------------------------------
 # 테스트 픽스처: 파생/원본 테이블 + 규칙 파일
+#
+# [격리] 테이블명은 반드시 사용자 실 config(table_config.json)에 실존 불가능한 이름이어야
+# 한다. conftest가 import 시점에 실 config로 init_dynamic_models를 수행하므로, 실존
+# 테이블명(예: bonding_log)과 겹치면 공유 in-memory sqlite(StaticPool)에 실 스키마가
+# 선점되어 create_all(checkfirst)이 스킵된다 → "no such column" 격리 실패.
 # ---------------------------------------------------------------------------
 
 ENRICH_TABLES = {
-    "bonding_log": {
+    "enrich_test_src": {
         "business_key": "log_key",
         "composite_key_source": ["equipment", "event_time", "chip_id"],
         "composite_key_separator": "_",
@@ -33,7 +38,7 @@ ENRICH_TABLES = {
             "lot_hint": "string",
         },
     },
-    "bonding_job_inventory": {
+    "enrich_test_derived": {
         "business_key": "job_id",
         "composite_key_source": ["equipment", "event_time"],
         "composite_key_separator": "_",
@@ -50,8 +55,8 @@ ENRICH_TABLES = {
 
 RULES_FILE = {
     "bonding_wafer_attribution": {
-        "source_table": "bonding_log",
-        "derived_table": "bonding_job_inventory",
+        "source_table": "enrich_test_src",
+        "derived_table": "enrich_test_derived",
         "decision_key": ["equipment", "event_time"],
         "target_fields": ["wafer_id"],
         "list_columns": ["chip_count", "lot_hint"],
@@ -59,7 +64,7 @@ RULES_FILE = {
         "reference_views": [
             {
                 "label": "chips on equipment",
-                "query": "SELECT chip_id, lot_hint FROM bonding_log WHERE equipment = :equipment ORDER BY chip_id",
+                "query": "SELECT chip_id, lot_hint FROM enrich_test_src WHERE equipment = :equipment ORDER BY chip_id",
                 "limit": 2,
             }
         ],
@@ -85,13 +90,13 @@ def enrich_env(db_session, tmp_path, monkeypatch):
 
 
 def _seed_source(db, rows, tx_id, source_name="pipeline_parser"):
-    """원본(bonding_log)에 행을 인제션한다 — outbox 이벤트가 자동 적재된다."""
+    """원본(enrich_test_src)에 행을 인제션한다 — outbox 이벤트가 자동 적재된다."""
     updates = [
         schemas.GeneralUpdateItem(updates=dict(row), source_name=source_name, updated_by="watcher")
         for row in rows
     ]
     batch = schemas.GeneralUpdateBatch(updates=updates, transaction_id=tx_id, silent=True)
-    crud.apply_batch_updates(db, "bonding_log", batch)
+    crud.apply_batch_updates(db, "enrich_test_src", batch)
 
 
 def _run_chain_for_tx(db, tx_id):
@@ -103,7 +108,7 @@ def _run_chain_for_tx(db, tx_id):
     assert rules, "enrichment chain rules must be synthesized"
 
     events = db.query(DatabaseOutbox).filter(
-        DatabaseOutbox.table_name == "bonding_log",
+        DatabaseOutbox.table_name == "enrich_test_src",
         DatabaseOutbox.processed_chain == False,  # noqa: E712
     ).order_by(DatabaseOutbox.id.asc()).all()
     evs = [e for e in events if (e.payload or {}).get("transaction_id") == tx_id]
@@ -121,7 +126,7 @@ def _run_chain_for_tx(db, tx_id):
 
 
 def _derived_rows(db):
-    model = models.DYNAMIC_TABLES["bonding_job_inventory"]
+    model = models.DYNAMIC_TABLES["enrich_test_derived"]
     return db.query(model).order_by(model.business_key_val.asc()).all()
 
 
@@ -134,8 +139,8 @@ KNOWN = ENRICH_TABLES
 
 def _base_rule(**overrides):
     rule = {
-        "source_table": "bonding_log",
-        "derived_table": "bonding_job_inventory",
+        "source_table": "enrich_test_src",
+        "derived_table": "enrich_test_derived",
         "decision_key": ["equipment", "event_time"],
         "target_fields": ["wafer_id"],
         "list_columns": ["chip_count", "lot_hint"],
@@ -148,8 +153,8 @@ def _base_rule(**overrides):
 
 def test_loader_valid_rule_normalized():
     raw = {"r1": _base_rule(reference_views=[
-        {"label": "v1", "query": "SELECT chip_id FROM bonding_log WHERE equipment = :equipment"},
-        {"label": "v2", "query": "SELECT chip_id FROM bonding_log", "limit": 5000},
+        {"label": "v1", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
+        {"label": "v2", "query": "SELECT chip_id FROM enrich_test_src", "limit": 5000},
     ])}
     rules = enrichment_config.validate_enrichment_rules(raw, known_tables=KNOWN)
     assert len(rules) == 1
@@ -190,12 +195,12 @@ def test_loader_unknown_tables_or_columns_skipped():
 def test_loader_derived_key_contract_enforced():
     """파생 테이블 키 계약: composite_key_source ⊆ decision_key 또는 business_key ∈ decision_key."""
     bad_known = {
-        "bonding_log": ENRICH_TABLES["bonding_log"],
+        "enrich_test_src": ENRICH_TABLES["enrich_test_src"],
         # composite가 decision_key 밖의 컬럼을 포함 → 규칙 스킵
-        "bonding_job_inventory": {
+        "enrich_test_derived": {
             "business_key": "job_id",
             "composite_key_source": ["equipment", "wafer_id"],
-            "column_types": ENRICH_TABLES["bonding_job_inventory"]["column_types"],
+            "column_types": ENRICH_TABLES["enrich_test_derived"]["column_types"],
         },
     }
     assert enrichment_config.validate_enrichment_rules({"r": _base_rule()}, known_tables=bad_known) == []
@@ -203,11 +208,11 @@ def test_loader_derived_key_contract_enforced():
 
 def test_loader_reference_view_safety():
     views = [
-        {"label": "bad_insert", "query": "INSERT INTO bonding_log VALUES (1)"},
-        {"label": "bad_multi", "query": "SELECT 1; DROP TABLE bonding_log"},
-        {"label": "bad_bind", "query": "SELECT 1 FROM bonding_log WHERE chip_id = :chip_id"},
+        {"label": "bad_insert", "query": "INSERT INTO enrich_test_src VALUES (1)"},
+        {"label": "bad_multi", "query": "SELECT 1; DROP TABLE enrich_test_src"},
+        {"label": "bad_bind", "query": "SELECT 1 FROM enrich_test_src WHERE chip_id = :chip_id"},
         {"label": "bad_ref", "query_ref": "../evil"},
-        {"label": "good", "query": "SELECT chip_id FROM bonding_log WHERE equipment = :equipment"},
+        {"label": "good", "query": "SELECT chip_id FROM enrich_test_src WHERE equipment = :equipment"},
     ]
     rules = enrichment_config.validate_enrichment_rules(
         {"r": _base_rule(reference_views=views)}, known_tables=KNOWN)
@@ -231,8 +236,8 @@ def test_loader_synthesized_chain_rule_shape(tmp_path):
         path=str(rules_path), known_tables=KNOWN)
     assert len(chain_rules) == 1
     cr = chain_rules[0]
-    assert cr["trigger_table"] == "bonding_log"
-    assert cr["target_table"] == "bonding_job_inventory"
+    assert cr["trigger_table"] == "enrich_test_src"
+    assert cr["target_table"] == "enrich_test_derived"
     assert cr["mapper_module"] == "enrichment_mapper"
     assert cr["mapper_function"] == "map_enrichment_dedup"
     assert cr["is_batch"] is True and cr["enabled"] is True
@@ -278,7 +283,7 @@ def test_dedup_preserves_user_target_on_reingestion(enrich_env):
 
     # 사람이 target(wafer_id)을 채운다 — source=user(priority 0)
     row = _derived_rows(db)[0]
-    crud.apply_batch_updates(db, "bonding_job_inventory", schemas.GeneralUpdateBatch(updates=[
+    crud.apply_batch_updates(db, "enrich_test_derived", schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(row_id=row.row_id, updates={"wafer_id": "W123"},
                                   source_name="user", updated_by="tester")
     ], silent=True))
@@ -297,7 +302,7 @@ def test_dedup_preserves_user_target_on_reingestion(enrich_env):
     assert rows[0].chip_count == 4, "기존 키는 집계 메타만 갱신"
     # 레이어링 2차 방어 확인: chain_ingestion 소스가 wafer_id 셀에 아예 기록되지 않았다(1차 방어)
     src = db.query(models.CellSource).filter(
-        models.CellSource.table_name == "bonding_job_inventory",
+        models.CellSource.table_name == "enrich_test_derived",
         models.CellSource.row_id == rows[0].row_id,
         models.CellSource.column_name == "wafer_id",
         models.CellSource.source_name == "chain_ingestion",
@@ -357,7 +362,7 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
         "target_fields", "list_columns", "reference_views",
     }
     assert rule["name"] == "bonding_wafer_attribution"
-    assert rule["derived_table"] == "bonding_job_inventory"
+    assert rule["derived_table"] == "enrich_test_derived"
     assert rule["decision_key"] == ["equipment", "event_time"]
     assert rule["target_fields"] == ["wafer_id"]
     # 참조뷰는 label만 노출 — 쿼리 본문/limit 절대 노출 금지
@@ -427,7 +432,7 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
     blank_filter = json.dumps({"wafer_id": {"type": "blank"}})
 
     # 결손 워크리스트: target blank 필터로 2건
-    res = client.get("/tables/bonding_job_inventory/data",
+    res = client.get("/tables/enrich_test_derived/data",
                      params={"filters": blank_filter, "order_by": "row_id"})
     assert res.status_code == 200
     body = res.json()
@@ -438,7 +443,7 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
 
     # 기존 배치 업서트 계약으로 사용자 입력 저장
     target_row_id = first["row_id"]
-    res = client.put("/tables/bonding_job_inventory/data/updates", json={
+    res = client.put("/tables/enrich_test_derived/data/updates", json={
         "updates": [{"row_id": target_row_id, "updates": {"wafer_id": "W777"},
                      "source_name": "user", "updated_by": "tester"}],
         "silent": True,
@@ -448,13 +453,13 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
 
     # 채워진 키는 결손 필터에서 빠진다 (5초 count 캐시는 테스트에서 무효화)
     main.TABLE_COUNT_CACHE.clear()
-    res = client.get("/tables/bonding_job_inventory/data",
+    res = client.get("/tables/enrich_test_derived/data",
                      params={"filters": blank_filter, "order_by": "row_id"})
     assert res.status_code == 200
     body = res.json()
     assert body["total"] == 1 and len(body["data"]) == 1
     assert body["data"][0]["row_id"] != target_row_id
     # 채워진 셀은 user 소스로 표시된다(레이어링 계약)
-    res = client.get("/tables/bonding_job_inventory/data", params={"order_by": "row_id"})
+    res = client.get("/tables/enrich_test_derived/data", params={"order_by": "row_id"})
     filled = next(r for r in res.json()["data"] if r["row_id"] == target_row_id)
     assert filled["data"]["wafer_id"]["value"] == "W777"
