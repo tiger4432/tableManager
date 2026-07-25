@@ -39,6 +39,12 @@ AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}
 # 표준 워크스페이스 구조 (테이블 온보딩 시 자동 보충되는 하위 폴더)
 WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "config")
 
+# [Startup Sweep] 이벤트 유실 안전망 — 주기 잔류 파일 재스캔 간격(초).
+# watchdog 이벤트가 유실되어도 최대 이 간격 안에 raws/ 직속 잔류 파일이 처리된다.
+# 업서트가 멱등이라 중복 처리는 무해하고, 동일 (mtime, size) 시그니처 재시도 차단으로
+# 처리 실패 잔류 파일의 무한 재시도 루프를 막는다.
+PERIODIC_SWEEP_INTERVAL_SECONDS = 300
+
 
 def load_global_table_config() -> dict:
     """전역 table_config.json 로드 (실패 시 빈 dict — 워처는 계속 동작해야 한다)."""
@@ -138,7 +144,10 @@ class IngestionHandler(FileSystemEventHandler):
         self.default_table_name = default_table_name # Agent D v13: 폴더 머신 명칭 기반 Fallback
         self.scripts_path = os.path.join(workspace_path, "scripts")
         self.supported_extensions = ('.log', '.txt', '.csv')
-        self.processing_files = set() 
+        self.processing_files = set()
+        # [Startup Sweep] 스윕 스레드와 watchdog 이벤트 스레드가 같은 파일에 동시 진입하는
+        # 레이스 방지 — processing_files의 check-then-add를 원자화하는 락.
+        self._processing_lock = threading.Lock()
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
@@ -194,25 +203,27 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _handle_event(self, file_path: str):
         abs_path = os.path.abspath(file_path)
-        if True:
+        # [Startup Sweep] 멤버십 검사→add 사이 갭에서 스윕 스레드와 watchdog 스레드가
+        # 동시에 통과하던 비원자 check-then-add를 락으로 원자화 (이중 처리 가드).
+        with self._processing_lock:
             if abs_path in self.processing_files:
                 return
             if not os.path.exists(abs_path):
                 return
-                
-            logger.info(f"New file detected: {abs_path}")
             self.processing_files.add(abs_path)
-            
-            # [Fix] 파일명에서 업로더 정보 추출
-            uploader = self._extract_user_from_filename(os.path.basename(abs_path))
-            
-            logger.info(f"[{self.table_name}] 📥 New file detected: {os.path.basename(abs_path)}")
-            
-            try:
-                self.process_with_retry(abs_path, uploader=uploader)
-            finally:
-                if abs_path in self.processing_files:
-                    self.processing_files.remove(abs_path)
+
+        logger.info(f"New file detected: {abs_path}")
+
+        # [Fix] 파일명에서 업로더 정보 추출
+        uploader = self._extract_user_from_filename(os.path.basename(abs_path))
+
+        logger.info(f"[{self.table_name}] 📥 New file detected: {os.path.basename(abs_path)}")
+
+        try:
+            self.process_with_retry(abs_path, uploader=uploader)
+        finally:
+            with self._processing_lock:
+                self.processing_files.discard(abs_path)
 
     def process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         """
@@ -690,6 +701,14 @@ class WorkspaceWatcher:
         # sync def(스레드풀)로 동시 실행되면 watched_raw_paths의 check-then-add가 비원자라
         # 같은 raws/가 observer에 이중 schedule될 수 있다(파일 이벤트 2회 처리 → 중복 인제션 경쟁).
         self._sync_lock = threading.Lock()
+        # [Startup Sweep] raws/ 절대경로 → IngestionHandler. 기동/런타임 등록/주기 스윕이
+        # 기존 이벤트 처리 경로(_handle_event)를 그대로 재사용하기 위한 레지스트리.
+        self.handlers_by_raw_path = {}
+        self._sweep_lock = threading.Lock()  # 스윕 동시 실행(기동+주기 등) 직렬화
+        # path → (mtime, size): 동일 시그니처 재시도 차단(처리 실패 잔류 파일 무한 루프 방지)
+        self._sweep_attempted = {}
+        self._stop_event = threading.Event()
+        self._periodic_sweep_thread = None
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
@@ -772,6 +791,7 @@ class WorkspaceWatcher:
 
         self.observer.schedule(handler, raws_root, recursive=False)
         self.watched_raw_paths.add(abs_root)
+        self.handlers_by_raw_path[abs_root] = handler
         self.watch_count += 1
         logger.info(f"Watching: {raws_root} ({watch_desc})")
         return True
@@ -806,15 +826,110 @@ class WorkspaceWatcher:
                 logger.error(f"Workspace auto-provisioning failed during sync: {e}")
 
             added = 0
+            new_raw_paths = []
             table_config = load_global_table_config()
             for root, dirs, files in os.walk(self.base_dir):
                 if os.path.basename(root) == "raws":
                     if self._register_workspace(root, table_config):
                         added += 1
+                        new_raw_paths.append(os.path.abspath(root))
             if added:
                 logger.info(f"🔄 Runtime workspace sync: {added} new raws/ folder(s) now being watched.")
                 self._ensure_observer_running()
+                # [Startup Sweep] 신규 등록 raws/에 이미 존재하던 파일 처리 (백그라운드 —
+                # 임베디드 모드에서 /admin/reload-configs 응답을 스윕이 블로킹하지 않도록).
+                self.sweep_existing_files_async(new_raw_paths, reason="runtime-registration")
+                self._ensure_periodic_sweep_running()
             return added
+
+    def sweep_existing_files(self, raw_paths=None) -> int:
+        """[Startup Sweep] 감시 대상 raws/ '직속' 기존 파일을 mtime 오름차순으로,
+        기존 watchdog 이벤트 처리 경로(IngestionHandler._handle_event)와 동일하게 처리한다.
+
+        - watchdog 이벤트 전용이던 워처가 다운타임(재기동 등) 중 도착한 파일을 영영
+          방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니고,
+          raws/ 내부 하위 디렉토리도 제외한다(observer의 recursive=False와 동일 범위).
+        - 동일 (mtime, size) 시그니처로 이미 시도한 파일은 재시도하지 않는다 — 처리 실패로
+          raws/에 잔류한 파일이 주기 스윕마다 무한 재시도되는 루프 방지. 파일이 갱신되어
+          시그니처가 바뀌면 다시 시도한다.
+        - _handle_event가 중복 진입 가드·존재 확인·디바운스·재시도·아카이브/에러 이동·
+          FileIngestionLog 기록을 모두 수행하므로 처리 의미론은 이벤트 경로와 동일하다.
+
+        raw_paths: None이면 등록된 전체 raws/, 아니면 해당 절대경로 목록만.
+        반환: 처리를 시도한 파일 수."""
+        with self._sweep_lock:
+            if raw_paths is None:
+                targets = list(self.handlers_by_raw_path.items())
+            else:
+                wanted = {os.path.abspath(p) for p in raw_paths}
+                targets = [(p, h) for p, h in self.handlers_by_raw_path.items() if p in wanted]
+
+            candidates = []  # (mtime, abs_file_path, handler, signature)
+            seen_paths = set()
+            for raw_path, handler in targets:
+                try:
+                    names = os.listdir(raw_path)
+                except OSError as e:
+                    logger.warning(f"Sweep: cannot list {raw_path}: {e}")
+                    continue
+                for name in names:
+                    fp = os.path.join(raw_path, name)
+                    try:
+                        if not os.path.isfile(fp):
+                            continue
+                        st = os.stat(fp)
+                    except OSError:
+                        continue  # 열거 중 이동/삭제된 파일
+                    seen_paths.add(fp)
+                    sig = (st.st_mtime, st.st_size)
+                    if self._sweep_attempted.get(fp) == sig:
+                        continue
+                    candidates.append((st.st_mtime, fp, handler, sig))
+
+            # 처리 완료(이동)된 파일의 시그니처는 정리해 무한 성장 방지
+            for stale in [p for p in self._sweep_attempted
+                          if p not in seen_paths and not os.path.exists(p)]:
+                self._sweep_attempted.pop(stale, None)
+
+            candidates.sort(key=lambda c: c[0])
+            processed = 0
+            for _mtime, fp, handler, sig in candidates:
+                if self._stop_event.is_set():
+                    break
+                self._sweep_attempted[fp] = sig
+                handler._handle_event(fp)
+                processed += 1
+            if processed:
+                logger.info(f"🧹 Sweep: attempted {processed} pre-existing file(s) in raws/.")
+            return processed
+
+    def _sweep_safely(self, raw_paths=None, reason=""):
+        try:
+            self.sweep_existing_files(raw_paths)
+        except Exception as e:
+            logger.error(f"Sweep failed ({reason or 'unspecified'}): {e}")
+
+    def sweep_existing_files_async(self, raw_paths=None, reason=""):
+        """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
+        t = threading.Thread(
+            target=self._sweep_safely, args=(raw_paths, reason),
+            name="watcher-sweep", daemon=True,
+        )
+        t.start()
+        return t
+
+    def _periodic_sweep_loop(self):
+        while not self._stop_event.wait(PERIODIC_SWEEP_INTERVAL_SECONDS):
+            self._sweep_safely(None, "periodic")
+
+    def _ensure_periodic_sweep_running(self):
+        """[Startup Sweep] 이벤트 유실 안전망 — 저빈도 주기 재스캔 스레드 기동(1회)."""
+        if self._periodic_sweep_thread is not None and self._periodic_sweep_thread.is_alive():
+            return
+        self._periodic_sweep_thread = threading.Thread(
+            target=self._periodic_sweep_loop, name="watcher-periodic-sweep", daemon=True,
+        )
+        self._periodic_sweep_thread.start()
 
     def _ensure_observer_running(self):
         """[F3] 기동 시 watch 0건이면 start()가 observer를 띄우지 않는다 — 이후 런타임 등록된
@@ -833,20 +948,27 @@ class WorkspaceWatcher:
             )
 
     def stop(self):
+        self._stop_event.set()  # 스윕/주기 스레드 중단 신호
         self.observer.stop()
         self.observer.join()
 
     def start(self, blocking: bool = True):
         if self.watch_count == 0:
             # [F3] 이 시점에 미기동이어도 sync_new_workspaces의 _ensure_observer_running이
-            # 런타임 등록 시 기동을 시도한다.
+            # 런타임 등록 시 기동을 시도한다. (스윕·주기 재스캔도 sync 경로에서 함께 기동됨)
             logger.error("No valid 'raws' folders found to watch.")
             return
 
         if not self.observer.is_alive():
             self.observer.start()
         logger.info(f"Started observer with {self.watch_count} watches.")
-        
+
+        # [Startup Sweep] 워처 다운타임 중 raws/에 이미 도착해 있던 파일 처리.
+        # observer 기동 '이후'에 스윕하므로 스윕 중 새로 떨어지는 파일 이벤트도 유실되지 않고,
+        # 같은 파일의 스윕/이벤트 이중 진입은 핸들러의 processing_files 락 가드가 차단한다.
+        self.sweep_existing_files_async(reason="startup")
+        self._ensure_periodic_sweep_running()
+
         if blocking:
             try:
                 while True:
