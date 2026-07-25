@@ -33,6 +33,16 @@ let activeEventInTx = null;
 // Code Editor State
 let isMonacoLoaded = false;
 let activeEditorFilePath = null;
+let isEditorDirty = false;          // B2: Monaco 미저장 변경 추적
+let suppressDirtyTracking = false;  // 프로그램틱 setValue 중 dirty 오탐 방지
+let isInlineEditorActive = false;   // B1: 비-editor 탭에서 인라인 에디터 뷰 열림 여부
+
+// UX State
+let fetchSeq = 0;                   // 탭 전환/연타 fetch 레이스 가드 시퀀스
+let fileSortKey = null;             // B3: 파일 로그 현재 페이지 내 클라이언트 정렬
+let fileSortDir = 'asc';
+let tabDefs = [];                   // switchTab()이 참조하는 탭 정의 (setupEventListeners에서 채움)
+const AUTO_REFRESH_MS = 30000;      // 절제된 자동 갱신 주기 (Outbox/File 탭 + 헬스 스트립)
 
 // DOM Elements
 const tabOutboxBtn = document.getElementById('tab-outbox-btn');
@@ -68,9 +78,12 @@ const mapperEmptyState = document.getElementById('mapper-empty');
 const autoUpdateEmptyState = document.getElementById('autoupdate-empty');
 
 const totalCountSpan = document.getElementById('total-count');
+const totalCountLabel = document.getElementById('total-count-label');
+const lastRefreshedSpan = document.getElementById('last-refreshed');
 const retryAllBtn = document.getElementById('retry-all-btn');
 const refreshBtn = document.getElementById('refresh-btn');
 const reloadConfigsBtn = document.getElementById('reload-configs-btn');
+const pageSizeSelect = document.getElementById('page-size-select');
 
 const diagnosticsContent = document.getElementById('diagnostics-content');
 const diagnosticsEmpty = document.getElementById('diagnostics-empty');
@@ -106,10 +119,109 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchData();
   setupEventListeners();
   initMonacoEditor();
+  refreshHealthStrip();
+
+  // 절제된 자동 갱신: 백그라운드 탭·에디터 사용 중엔 건너뛴다 (감사 F2)
+  setInterval(() => {
+    if (document.hidden) return;
+    refreshHealthStrip();
+    if (isInlineEditorActive || isEditorDirty || currentTab === 'editor') return;
+    if (currentTab === 'outbox' || currentTab === 'file') {
+      fetchData({ silent: true });
+    }
+  }, AUTO_REFRESH_MS);
+
+  // B2: 페이지 이탈 시 미저장 코드 변경 보호
+  window.addEventListener('beforeunload', (e) => {
+    if (isEditorDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 });
 
+// ── 공통 헬퍼 ──────────────────────────────────────────────
+
+// 타임스탬프 단일 포맷: MM-DD HH:mm:ss (감사 P1 — toLocaleString/원시 문자열 혼재 해소)
+function formatTimestamp(value) {
+  if (!value) return '-';
+  const s = String(value);
+  // ISO("2026-07-25T13:30:00") / 원시("2026-07-25 13:30:00") 모두 슬라이스로 처리 (타임존 재해석 없음)
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    return `${s.slice(5, 10)} ${s.slice(11, 19)}`;
+  }
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) {
+    const p = n => String(n).padStart(2, '0');
+    return `${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+  }
+  return s;
+}
+
+// Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로
+function shortTxId(txId) {
+  const s = String(txId || '');
+  if (s.startsWith('single_')) {
+    return `single_${s.slice(7, 15)}…`;
+  }
+  return s.length > 12 ? `${s.slice(0, 8)}…` : s;
+}
+
+function markRefreshed() {
+  if (!lastRefreshedSpan) return;
+  const now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  lastRefreshedSpan.textContent = `갱신 ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+}
+
+// 탭 전환 본체 — 탭 버튼 클릭과 헬스 카드 딥링크가 공용
+function switchTab(tabName) {
+  const t = tabDefs.find(x => x.tab === tabName);
+  if (!t) return;
+
+  currentTab = t.tab;
+
+  // Update Tab Button styles
+  tabDefs.forEach(o => o.btn.classList.remove('active'));
+  t.btn.classList.add('active');
+
+  // Update Table Wrapper Visibility
+  tabDefs.forEach(o => o.wrapper.style.display = 'none');
+  t.wrapper.style.display = 'block';
+
+  // Controls visibility
+  statusFilterSelect.style.display = (t.tab === 'file') ? 'block' : 'none';
+  retryAllBtn.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'block' : 'none';
+  panelFooter.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'flex' : 'none';
+  // 감사 F6: editor 탭에서 직전 탭 Total 잔존 방지
+  if (totalCountLabel) totalCountLabel.style.display = (t.tab === 'editor') ? 'none' : 'inline';
+  if (pageSizeSelect) pageSizeSelect.value = String(t.tab === 'file' ? fileLimit : outboxLimit);
+
+  if (t.tab === 'editor') {
+    diagnosticsContent.style.display = 'none';
+    diagnosticsEmpty.style.display = 'none';
+    editorContentWrapper.style.display = 'flex';
+    isInlineEditorActive = false;
+    if (editorBackBtn) editorBackBtn.style.display = 'none';
+    if (window.monacoEditor) {
+      setTimeout(() => {
+        window.monacoEditor.layout();
+      }, 50);
+    }
+  } else {
+    // 인라인 에디터가 열려 있었어도 탭 전환은 뷰만 닫는다
+    // (Monaco 내용은 유지 — 같은 파일을 다시 열면 미저장 변경이 보존됨)
+    editorContentWrapper.style.display = 'none';
+    isInlineEditorActive = false;
+    if (editorBackBtn) editorBackBtn.style.display = 'none';
+    clearDiagnostics();
+  }
+
+  fetchData();
+}
+
 function setupEventListeners() {
-  const tabs = [
+  tabDefs = [
     { btn: tabOutboxBtn, tab: 'outbox', wrapper: outboxTableWrapper },
     { btn: tabFileBtn, tab: 'file', wrapper: fileTableWrapper },
     { btn: tabWorkspaceBtn, tab: 'workspace', wrapper: workspaceTableWrapper },
@@ -119,41 +231,41 @@ function setupEventListeners() {
     { btn: tabEditorBtn, tab: 'editor', wrapper: editorTreeWrapper }
   ];
 
-  tabs.forEach(t => {
+  tabDefs.forEach(t => {
     t.btn.addEventListener('click', () => {
       if (currentTab === t.tab) return;
-      currentTab = t.tab;
-      
-      // Update Tab Button styles
-      tabs.forEach(o => o.btn.classList.remove('active'));
-      t.btn.classList.add('active');
-      
-      // Update Table Wrapper Visibility
-      tabs.forEach(o => o.wrapper.style.display = 'none');
-      t.wrapper.style.display = 'block';
-      
-      // Controls visibility
-      statusFilterSelect.style.display = (t.tab === 'file') ? 'block' : 'none';
-      retryAllBtn.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'block' : 'none';
-      panelFooter.style.display = (t.tab === 'outbox' || t.tab === 'file') ? 'flex' : 'none';
-      
-      if (t.tab === 'editor') {
-        diagnosticsContent.style.display = 'none';
-        diagnosticsEmpty.style.display = 'none';
-        editorContentWrapper.style.display = 'flex';
-        if (window.monacoEditor) {
-          setTimeout(() => {
-            window.monacoEditor.layout();
-          }, 50);
-        }
-      } else {
-        editorContentWrapper.style.display = 'none';
-        clearDiagnostics();
-      }
-      
-      fetchData();
+      switchTab(t.tab);
     });
   });
+
+  // Pipeline Health 카드 딥링크: 해당 탭 + 필터로 이동
+  const healthCardFile = document.getElementById('health-card-file');
+  const healthCardChain = document.getElementById('health-card-chain');
+  const healthCardAuto = document.getElementById('health-card-auto');
+  const healthCardEnrichment = document.getElementById('health-card-enrichment');
+  if (healthCardFile) {
+    healthCardFile.addEventListener('click', () => {
+      statusFilterSelect.value = 'FAILED';
+      filePage = 1;
+      switchTab('file');
+    });
+  }
+  if (healthCardChain) {
+    healthCardChain.addEventListener('click', () => {
+      outboxPage = 1;
+      switchTab('outbox');
+    });
+  }
+  if (healthCardAuto) {
+    healthCardAuto.addEventListener('click', () => {
+      switchTab('autoupdate');
+    });
+  }
+  if (healthCardEnrichment) {
+    healthCardEnrichment.addEventListener('click', () => {
+      window.location.href = '/enrichment.html';
+    });
+  }
 
   // Status filter change
   statusFilterSelect.addEventListener('change', () => {
@@ -161,11 +273,45 @@ function setupEventListeners() {
     fetchData();
   });
 
-  // Actions
-  refreshBtn.addEventListener('click', () => {
-    fetchData();
-    let message = '♻️ 실패 목록을 새로고침했습니다.';
-    if (currentTab === 'file') {
+  // 페이지 크기 선택 (B3): 활성 탭(outbox/file)의 limit에 적용
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener('change', () => {
+      const n = parseInt(pageSizeSelect.value, 10) || 10;
+      if (currentTab === 'file') {
+        fileLimit = n;
+        filePage = 1;
+      } else {
+        outboxLimit = n;
+        outboxPage = 1;
+      }
+      fetchData();
+    });
+  }
+
+  // 파일 로그 헤더 클릭 정렬 (B3): 현재 페이지 내 클라이언트측 정렬
+  document.querySelectorAll('#file-table-wrapper th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (fileSortKey === key) {
+        fileSortDir = fileSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        fileSortKey = key;
+        fileSortDir = 'asc';
+      }
+      updateFileSortIndicators();
+      renderFileTable();
+    });
+  });
+
+  // Actions — Refresh: fetch 완료 후 실제 결과로만 토스트 (감사 F3)
+  refreshBtn.addEventListener('click', async () => {
+    refreshHealthStrip();
+    const ok = await fetchData();
+    if (!ok) return; // 실패 토스트는 fetchData가 담당
+    let message = '♻️ 목록을 새로고침했습니다.';
+    if (currentTab === 'outbox') {
+      message = '♻️ 아웃박스 실패 목록을 새로고침했습니다.';
+    } else if (currentTab === 'file') {
       const statusVal = statusFilterSelect.value || 'ALL';
       if (statusVal === 'ALL') message = '♻️ 모든 파일 인제션 목록을 새로고침했습니다.';
       else if (statusVal === 'SUCCESS') message = '♻️ 성공 파일 인제션 목록을 새로고침했습니다.';
@@ -176,6 +322,10 @@ function setupEventListeners() {
       message = '♻️ 체인 룰 목록을 새로고침했습니다.';
     } else if (currentTab === 'mapper') {
       message = '♻️ 맵퍼 모듈 목록을 새로고침했습니다.';
+    } else if (currentTab === 'autoupdate') {
+      message = '♻️ Auto-Update 스케줄러 현황을 새로고침했습니다.';
+    } else if (currentTab === 'editor') {
+      message = '♻️ 스크립트 목록을 새로고침했습니다.';
     }
     showToast(message, 'success');
   });
@@ -209,12 +359,17 @@ function setupEventListeners() {
       payloadToCopy = chainData.find(c => c.name === selectedChainName);
     } else if (currentTab === 'mapper' && selectedMapperFile) {
       payloadToCopy = mapperData.find(m => m.filename === selectedMapperFile);
+    } else if (currentTab === 'autoupdate' && selectedAutoUpdateScript) {
+      // 감사 F7: Auto Updates 탭 분기 누락으로 무피드백 no-op이던 것 수리
+      payloadToCopy = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
     }
 
     if (payloadToCopy) {
       navigator.clipboard.writeText(JSON.stringify(payloadToCopy, null, 2))
         .then(() => showToast('📋 페이로드가 클립보드에 복사되었습니다.', 'success'))
         .catch(() => showToast('❌ 복사에 실패했습니다.', 'error'));
+    } else {
+      showToast('⚠️ 복사할 항목이 선택되지 않았습니다.', 'warning');
     }
   });
 
@@ -321,64 +476,84 @@ function setupEventListeners() {
 }
 
 // Fetch lists depending on active tab
-async function fetchData() {
+// - 레이스 가드: 탭 전환/연타 시 늦게 도착한 이전 요청 응답이 현재 탭 위에 렌더되는 것을 차단
+// - options.silent: 자동 갱신 경로에서 실패 토스트 반복 방지
+// - 반환값: 성공 여부 (Refresh 버튼이 실결과 토스트에 사용)
+async function fetchData(options = {}) {
+  const { silent = false } = options;
+  const seq = ++fetchSeq;
+  const tab = currentTab;
+  const isStale = () => (seq !== fetchSeq || currentTab !== tab);
   try {
-    if (currentTab === 'outbox') {
+    if (tab === 'outbox') {
       const res = await fetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       outboxData = result.data || [];
       outboxTotal = result.total || 0;
       renderOutboxTable();
-    } else if (currentTab === 'file') {
+    } else if (tab === 'file') {
       const statusVal = statusFilterSelect.value || 'FAILED';
       const res = await fetch(`${API_BASE}/admin/file-ingestion/logs?status=${statusVal}&page=${filePage}&limit=${fileLimit}`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       fileData = result.data || [];
       fileTotal = result.total || 0;
       renderFileTable();
-    } else if (currentTab === 'workspace') {
+    } else if (tab === 'workspace') {
       const res = await fetch(`${API_BASE}/admin/file-ingestion/workspaces`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       workspaceData = result.data || [];
       renderWorkspaceTable();
-    } else if (currentTab === 'chain') {
+    } else if (tab === 'chain') {
       const res = await fetch(`${API_BASE}/admin/chain/rules`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       chainData = result.data || [];
       renderChainTable();
-    } else if (currentTab === 'mapper') {
+    } else if (tab === 'mapper') {
       const res = await fetch(`${API_BASE}/admin/mappers/list`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       mapperData = result.data || [];
       renderMapperTable();
-    } else if (currentTab === 'autoupdate') {
+    } else if (tab === 'autoupdate') {
       const res = await fetch(`${API_BASE}/admin/auto-update/status`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       autoUpdateData = result.data || [];
       renderAutoUpdateTable();
-    } else if (currentTab === 'editor') {
+    } else if (tab === 'editor') {
       const res = await fetch(`${API_BASE}/admin/scripts/list`);
       if (!res.ok) throw new Error('API fetch failed');
       const result = await res.json();
+      if (isStale()) return false;
       renderEditorTree(result.data);
     }
+    markRefreshed();
+    return true;
   } catch (err) {
+    if (isStale()) return false; // 무효화된 요청의 실패는 무음 처리
     console.error('Failed to fetch items', err);
-    let errorMsg = '❌ 목록 로드 실패';
-    if (currentTab === 'outbox') errorMsg = '❌ 아웃박스 실패 목록 로드 실패';
-    else if (currentTab === 'file') errorMsg = '❌ 파일 인제션 목록 로드 실패';
-    else if (currentTab === 'workspace') errorMsg = '❌ 인제션 워크스페이스 목록 로드 실패';
-    else if (currentTab === 'chain') errorMsg = '❌ 체인 룰 목록 로드 실패';
-    else if (currentTab === 'mapper') errorMsg = '❌ 맵퍼 모듈 목록 로드 실패';
-    else if (currentTab === 'autoupdate') errorMsg = '❌ Auto-Update 스케줄러 현황 로드 실패';
-    else if (currentTab === 'editor') errorMsg = '❌ 스크립트 목록 로드 실패';
-    showToast(errorMsg, 'error');
+    if (!silent) {
+      let errorMsg = '❌ 목록 로드 실패';
+      if (tab === 'outbox') errorMsg = '❌ 아웃박스 실패 목록 로드 실패';
+      else if (tab === 'file') errorMsg = '❌ 파일 인제션 목록 로드 실패';
+      else if (tab === 'workspace') errorMsg = '❌ 인제션 워크스페이스 목록 로드 실패';
+      else if (tab === 'chain') errorMsg = '❌ 체인 룰 목록 로드 실패';
+      else if (tab === 'mapper') errorMsg = '❌ 맵퍼 모듈 목록 로드 실패';
+      else if (tab === 'autoupdate') errorMsg = '❌ Auto-Update 스케줄러 현황 로드 실패';
+      else if (tab === 'editor') errorMsg = '❌ 스크립트 목록 로드 실패';
+      showToast(errorMsg, 'error');
+    }
+    return false;
   }
 }
 
@@ -401,24 +576,25 @@ function renderOutboxTable() {
     const row = document.createElement('tr');
     row.className = `table-row ${selectedTxId === tx.transaction_id ? 'active' : ''}`;
     row.dataset.txid = tx.transaction_id;
-    
-    let timeStr = tx.failed_at || '';
-    if (timeStr) {
-      const dt = new Date(timeStr);
-      timeStr = dt.toLocaleString();
-    }
 
+    const timeStr = formatTimestamp(tx.failed_at);
     const tablesJoined = tx.table_names.join(', ') || '-';
-    const eventTypesJoined = tx.event_types.map(t => 
+    const eventTypesJoined = tx.event_types.map(t =>
       `<span class="badge ${t === 'CREATE' ? 'badge-warning' : 'badge-danger'}" style="margin-right: 4px;">${t}</span>`
     ).join('');
+    // 감사 F8: 풀 UUID → head8… 축약 + title 풀값 + 클릭 복사 (행 높이 정상화)
+    const retryStyle = tx.retry_count > 0
+      ? 'color: var(--warning); font-weight: 600;'
+      : 'color: var(--text-dim);';
 
     row.innerHTML = `
-      <td style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: bold; color: var(--color-primary); word-break: break-all;">${tx.transaction_id}</td>
+      <td style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; color: var(--color-primary);">
+        <span class="tx-id-chip" title="${tx.transaction_id}&#10;(클릭하여 전체 ID 복사)">${shortTxId(tx.transaction_id)}</span>
+      </td>
       <td style="font-weight: 500;">${tablesJoined}</td>
       <td>${eventTypesJoined}</td>
-      <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${tx.retry_count}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem;">${timeStr}</td>
+      <td style="text-align: center; ${retryStyle}">${tx.retry_count}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${tx.failed_at || ''}">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
         <button class="glass-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
       </td>
@@ -428,9 +604,17 @@ function renderOutboxTable() {
       selectTxRow(tx);
     });
 
+    const idChip = row.querySelector('.tx-id-chip');
+    idChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(tx.transaction_id)
+        .then(() => showToast(`📋 Transaction ID [${shortTxId(tx.transaction_id)}] 전체값이 복사되었습니다.`, 'info'))
+        .catch(() => showToast('❌ 복사에 실패했습니다.', 'error'));
+    });
+
     const retryBtn = row.querySelector('.btn-retry-tx');
     retryBtn.addEventListener('click', async () => {
-      if (confirm(`트랜잭션 [${tx.transaction_id}] 내의 모든 이벤트를 다시 재시도하시겠습니까?`)) {
+      if (confirm(`트랜잭션 [${shortTxId(tx.transaction_id)}] 내의 모든 이벤트를 다시 재시도하시겠습니까?`)) {
         await retryTransaction(tx.transaction_id);
       }
     });
@@ -438,7 +622,7 @@ function renderOutboxTable() {
     outboxListBody.appendChild(row);
   });
 
-  if (selectedTxId) {
+  if (selectedTxId && !isInlineEditorActive) {
     const exists = outboxData.find(t => t.transaction_id === selectedTxId);
     if (exists) {
       selectTxRow(exists, activeEventInTx ? activeEventInTx.id : null);
@@ -474,29 +658,43 @@ function renderFileTable() {
 
   fileEmptyState.style.display = 'none';
 
-  fileData.forEach(log => {
+  // B3: 현재 페이지 내 클라이언트측 정렬 (서버 정렬 파라미터는 중안 이관)
+  let viewData = fileData;
+  if (fileSortKey) {
+    const dir = fileSortDir === 'desc' ? -1 : 1;
+    viewData = [...fileData].sort((a, b) => {
+      const va = a[fileSortKey];
+      const vb = b[fileSortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+  }
+
+  viewData.forEach(log => {
     const row = document.createElement('tr');
     row.className = `table-row ${selectedFileId === log.id ? 'active' : ''}`;
     row.dataset.id = log.id;
-    
-    let timeStr = log.created_at || '';
-    if (timeStr) {
-      const dt = new Date(timeStr);
-      timeStr = dt.toLocaleString();
-    }
 
+    const timeStr = formatTimestamp(log.created_at);
     const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${log.status || 'FAILED'}</span>`;
     const retryBtnHtml = log.status === 'SUCCESS'
       ? `<button class="glass-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
       : `<button class="glass-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
+    // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만
+    const retryStyle = log.retry_count > 0
+      ? 'color: var(--warning); font-weight: 600;'
+      : 'color: var(--text-dim);';
 
     row.innerHTML = `
       <td>${log.id}</td>
-      <td style="font-weight: 500; color: var(--success); word-break: break-all;">${log.filename}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${log.filename}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${log.table_name}</td>
       <td style="text-align: center;">${statusBadge}</td>
-      <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${log.retry_count}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem;">${timeStr}</td>
+      <td style="text-align: center; ${retryStyle}">${log.retry_count}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${log.created_at || ''}">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
         ${retryBtnHtml}
       </td>
@@ -518,7 +716,7 @@ function renderFileTable() {
     fileListBody.appendChild(row);
   });
 
-  if (selectedFileId) {
+  if (selectedFileId && !isInlineEditorActive) {
     const exists = fileData.find(f => f.id === selectedFileId);
     if (exists) {
       selectFileRow(exists);
@@ -529,6 +727,17 @@ function renderFileTable() {
 
   const maxPage = Math.ceil(fileTotal / fileLimit) || 1;
   updatePaginationFooter(fileTotal, filePage, maxPage);
+}
+
+// B3: 파일 로그 정렬 헤더 표시자(▲/▼) 갱신
+function updateFileSortIndicators() {
+  document.querySelectorAll('#file-table-wrapper th.sortable').forEach(th => {
+    const ind = th.querySelector('.sort-ind');
+    if (!ind) return;
+    ind.textContent = (th.dataset.key === fileSortKey)
+      ? (fileSortDir === 'asc' ? ' ▲' : ' ▼')
+      : '';
+  });
 }
 
 // Render Workspace table rows
@@ -578,7 +787,7 @@ function renderWorkspaceTable() {
     workspaceListBody.appendChild(row);
   });
 
-  if (selectedWorkspaceName) {
+  if (selectedWorkspaceName && !isInlineEditorActive) {
     const exists = workspaceData.find(w => w.name === selectedWorkspaceName);
     if (exists) {
       selectWorkspaceRow(exists);
@@ -626,7 +835,7 @@ function renderChainTable() {
     chainListBody.appendChild(row);
   });
 
-  if (selectedChainName) {
+  if (selectedChainName && !isInlineEditorActive) {
     const exists = chainData.find(c => c.name === selectedChainName);
     if (exists) {
       selectChainRow(exists);
@@ -658,7 +867,7 @@ function renderMapperTable() {
     const funcCount = mapper.functions.length;
 
     row.innerHTML = `
-      <td style="font-weight: bold; color: var(--success); word-break: break-all;">${mapper.filename}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${mapper.filename}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">${mapper.module_name}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
     `;
@@ -699,10 +908,10 @@ function renderAutoUpdateTable() {
 
     row.innerHTML = `
       <td style="font-weight: bold; color: var(--color-primary);">${col.table_name}</td>
-      <td style="font-weight: 500; color: var(--success); word-break: break-all;">${col.script_name}</td>
+      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${col.script_name}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${col.cron_expression}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem;">${col.next_run || '-'}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem;">${col.last_run || '-'}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.next_run || ''}">${formatTimestamp(col.next_run)}</td>
+      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.last_run || ''}">${formatTimestamp(col.last_run)}</td>
       <td style="text-align: center;">${statusBadge}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
         <button class="glass-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}" style="padding: 4px 10px; font-size: 0.75rem;">Run Now</button>
@@ -723,7 +932,7 @@ function renderAutoUpdateTable() {
     autoUpdateListBody.appendChild(row);
   });
 
-  if (selectedAutoUpdateScript) {
+  if (selectedAutoUpdateScript && !isInlineEditorActive) {
     const exists = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
     if (exists) {
       selectAutoUpdateRow(exists);
@@ -733,8 +942,29 @@ function renderAutoUpdateTable() {
   }
 }
 
+// B1: 좌측 행 선택 시 인라인 에디터 뷰가 진단 패널과 스택되어 클립되던 결함 수리.
+// 에디터 뷰가 열려 있으면 닫고 진행 — dirty면 사용자 확인(취소 시 행 선택 중단).
+// Monaco 내용 자체는 유지되므로 같은 파일을 다시 열면 미저장 변경이 보존된다.
+function ensureEditorViewClosed() {
+  if (currentTab === 'editor') return true;
+  if (editorContentWrapper.style.display !== 'flex') return true;
+  if (isEditorDirty) {
+    const ok = confirm(
+      '에디터에 저장하지 않은 코드 변경이 있습니다.\n' +
+      '에디터를 닫고 선택한 항목의 상세를 표시할까요?\n' +
+      '(같은 파일을 다시 열면 변경 내용은 유지됩니다)'
+    );
+    if (!ok) return false;
+  }
+  editorContentWrapper.style.display = 'none';
+  isInlineEditorActive = false;
+  if (editorBackBtn) editorBackBtn.style.display = 'none';
+  return true;
+}
+
 // Select Auto Update Row
 function selectAutoUpdateRow(col) {
+  if (!ensureEditorViewClosed()) return;
   selectedAutoUpdateScript = col.script_name;
   selectedFileId = null;
   selectedTxId = null;
@@ -800,6 +1030,7 @@ async function runAutoUpdateNow(tableName, scriptName) {
 
 // Select Transaction Row
 function selectTxRow(tx, forceSelectEventId = null) {
+  if (!ensureEditorViewClosed()) return;
   selectedTxId = tx.transaction_id;
   selectedFileId = null;
   selectedWorkspaceName = null;
@@ -861,6 +1092,7 @@ function selectTxRow(tx, forceSelectEventId = null) {
 
 // Select File Row
 function selectFileRow(log) {
+  if (!ensureEditorViewClosed()) return;
   selectedFileId = log.id;
   selectedTxId = null;
   selectedWorkspaceName = null;
@@ -900,6 +1132,7 @@ function selectFileRow(log) {
 
 // Select Workspace Row
 function selectWorkspaceRow(ws) {
+  if (!ensureEditorViewClosed()) return;
   selectedWorkspaceName = ws.name;
   selectedFileId = null;
   selectedTxId = null;
@@ -931,7 +1164,7 @@ function selectWorkspaceRow(ws) {
       div.style.borderBottom = '1px solid var(--border-color)';
       div.style.paddingBottom = '8px';
       div.innerHTML = `
-        <span>📄 <strong style="color: var(--success);">${s}</strong> (Active Custom Parser)</span>
+        <span>📄 <strong style="color: var(--text); font-family: var(--font-mono);">${s}</strong> (Active Custom Parser)</span>
         <button class="glass-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
       `;
       
@@ -951,6 +1184,7 @@ function selectWorkspaceRow(ws) {
 
 // Select Chain Row
 function selectChainRow(rule) {
+  if (!ensureEditorViewClosed()) return;
   selectedChainName = rule.name;
   selectedFileId = null;
   selectedTxId = null;
@@ -1043,11 +1277,12 @@ function clearDiagnostics() {
   selectedChainName = null;
   selectedMapperFile = null;
   activeEventInTx = null;
-  
+
   diagnosticsContent.style.display = 'none';
-  diagnosticsEmpty.style.display = 'flex';
+  // B1: 인라인 에디터가 열려 있는 동안엔 빈 상태를 겹쳐 표시하지 않는다
+  diagnosticsEmpty.style.display = isInlineEditorActive ? 'none' : 'flex';
   diagnosticsEmptyText.textContent = 'Select an item from the left list to view detailed configurations or diagnostics.';
-  
+
   txEventsSelectorBlock.style.display = 'none';
   txEventsList.innerHTML = '';
   tracebackViewer.textContent = '';
@@ -1068,21 +1303,29 @@ function updatePaginationFooter(total, currentPage, maxPage) {
 }
 
 // API Call: Retry single Outbox Transaction
+// 감사 F1: 낙관적 제거 폐기 — 재조회로 실제 결과를 확정한다.
+// (재시도는 상태를 PENDING으로 리셋 → 워커가 비동기 처리. 잠시 후 재조회해
+//  FAILED 목록에 다시 나타나면 재실패로 판정해 행 잔존 + 경고를 표시)
 async function retryTransaction(txId) {
   try {
     const res = await fetch(`${API_BASE}/admin/outbox/retry-failed?transaction_id=${txId}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
-    
-    showToast(`🔄 트랜잭션 [${txId}] 이 재처리 목록으로 리셋되었습니다.`, 'success');
-    
-    outboxData = outboxData.filter(t => t.transaction_id !== txId);
-    outboxTotal = Math.max(0, outboxTotal - 1);
-    if (selectedTxId === txId) {
-      clearDiagnostics();
-    }
-    renderOutboxTable();
+
+    showToast(`🔄 트랜잭션 [${shortTxId(txId)}] 재시도 발행 — 잠시 후 결과를 확인합니다.`, 'info');
+
+    setTimeout(async () => {
+      await fetchData({ silent: true });
+      refreshHealthStrip();
+      if (currentTab !== 'outbox') return;
+      const still = outboxData.find(t => t.transaction_id === txId);
+      if (still) {
+        showToast(`⚠️ 트랜잭션 [${shortTxId(txId)}] 이 재시도 후에도 실패 상태로 남아 있습니다. 오류를 확인하세요.`, 'warning');
+      } else {
+        showToast(`✅ 트랜잭션 [${shortTxId(txId)}] 이 실패 목록에서 해제되었습니다.`, 'success');
+      }
+    }, 3000);
   } catch (err) {
     console.error('Failed to retry transaction', txId, err);
     showToast('❌ 트랜잭션 재시도 요청 실패', 'error');
@@ -1090,15 +1333,25 @@ async function retryTransaction(txId) {
 }
 
 // API Call: Retry single File Ingestion
+// 감사 F1 준용: 재시도는 동기 처리이므로 즉시 재조회해 실제 상태로 피드백한다.
 async function retryFileIngestion(logId) {
   try {
     const res = await fetch(`${API_BASE}/admin/file-ingestion/retry-failed?log_id=${logId}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
-    
-    showToast(`🔄 파일 인제션 ID #${logId}가 성공적으로 재실행되었습니다.`, 'success');
-    fetchData();
+    const result = await res.json().catch(() => ({}));
+
+    await fetchData({ silent: true });
+    refreshHealthStrip();
+    if (currentTab === 'file') {
+      const log = fileData.find(f => f.id === logId);
+      if (log && log.status === 'FAILED') {
+        showToast(`⚠️ 파일 인제션 ID #${logId} 재시도가 다시 실패했습니다. 오류 메시지를 확인하세요.`, 'warning');
+        return;
+      }
+    }
+    showToast(`✅ 파일 인제션 ID #${logId} 재시도 완료 — ${result.message || '실패 목록에서 해제되었습니다.'}`, 'success');
   } catch (err) {
     console.error('Failed to retry file ingestion', logId, err);
     showToast('❌ 파일 인제션 재시도 요청 실패', 'error');
@@ -1140,8 +1393,9 @@ function showToast(message, type = 'success') {
   const toast = document.createElement('div');
   // tokens.css 공통 토스트 계약(.toast.toast-{type})에 정렬 (구 .toast.{type}도 호환 유지됨)
   toast.className = `toast toast-${type}`;
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
   toast.innerHTML = `
-    <span style="font-size: 1.2rem;">${type === 'success' ? '✅' : '❌'}</span>
+    <span style="font-size: 1.2rem;">${icons[type] || icons.success}</span>
     <span class="toast-message">${message}</span>
   `;
   
@@ -1191,8 +1445,29 @@ function initMonacoEditor() {
       minimap: { enabled: true }
     });
     isMonacoLoaded = true;
+    // B2: 미저장 변경(dirty) 추적 — 프로그램틱 setValue는 suppressDirtyTracking으로 제외
+    window.monacoEditor.onDidChangeModelContent(() => {
+      if (suppressDirtyTracking) return;
+      if (!isEditorDirty) {
+        isEditorDirty = true;
+        updateDirtyIndicator();
+      }
+    });
     console.log('Monaco Editor loaded successfully');
   });
+}
+
+// B2: dirty 상태 헬퍼 — 저장 버튼에 미저장 도트 표시
+function updateDirtyIndicator() {
+  if (!saveCodeBtn) return;
+  saveCodeBtn.innerHTML = isEditorDirty
+    ? '💾 Save Code <span style="color: var(--warning); line-height: 0;">●</span>'
+    : '💾 Save Code';
+}
+
+function markEditorClean() {
+  isEditorDirty = false;
+  updateDirtyIndicator();
 }
 
 // 테마 토글 시 Monaco 에디터 테마 동기화 (theme.js 'themechange' 구독)
@@ -1316,8 +1591,33 @@ function createTreeFileItem(file) {
 
 // Select a file and load its contents into Monaco Editor
 async function selectEditorFile(path) {
+  // B2: 편집 중인 동일 파일 재선택 — 서버 리로드로 미저장 변경을 덮어쓰지 않는다
+  if (activeEditorFilePath === path && isEditorDirty) {
+    document.querySelectorAll('.tree-file-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.path === path);
+    });
+    editorFilePath.textContent = `📝 ${path}`;
+    saveCodeBtn.style.display = 'inline-flex';
+    updateDirtyIndicator();
+    return;
+  }
+
+  // B2: 다른 파일로 이동 시 미저장 변경 보호 (무조건 setValue로 유실되던 결함 수리)
+  if (isEditorDirty && activeEditorFilePath && activeEditorFilePath !== path) {
+    const ok = confirm(
+      `'${activeEditorFilePath}' 에 저장하지 않은 변경이 있습니다.\n버리고 다른 파일을 여시겠습니까?`
+    );
+    if (!ok) {
+      // 트리 하이라이트를 기존 파일로 복원하고 이동 취소
+      document.querySelectorAll('.tree-file-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.path === activeEditorFilePath);
+      });
+      return;
+    }
+  }
+
   activeEditorFilePath = path;
-  
+
   // Highlight active item in tree
   document.querySelectorAll('.tree-file-item').forEach(item => {
     item.classList.toggle('active', item.dataset.path === path);
@@ -1332,13 +1632,16 @@ async function selectEditorFile(path) {
     const result = await res.json();
 
     if (window.monacoEditor) {
+      suppressDirtyTracking = true;
       window.monacoEditor.setValue(result.code || '');
+      suppressDirtyTracking = false;
+      markEditorClean();
       const model = window.monacoEditor.getModel();
       if (model) {
         monaco.editor.setModelLanguage(model, 'python');
       }
     }
-    
+
     editorFilePath.textContent = `📝 ${path}`;
     saveCodeBtn.style.display = 'inline-flex';
   } catch (err) {
@@ -1362,7 +1665,8 @@ async function saveScriptCode(path, code) {
       })
     });
     if (!res.ok) throw new Error('Save API returned error status');
-    
+
+    markEditorClean(); // B2: 저장 성공 → dirty 해제
     showToast('💾 코드가 정상 저장 및 핫 리로드되었습니다.', 'success');
   } catch (err) {
     console.error('Failed to save code for file', path, err);
@@ -1383,7 +1687,8 @@ function openInlineEditor(path) {
   
   // 에디터 뷰 활성화
   editorContentWrapper.style.display = 'flex';
-  
+  isInlineEditorActive = true; // B1: 자동 갱신·재선택이 에디터 뷰를 덮지 않도록 표시
+
   // 제어 단추 상태 강제 매칭 보장
   if (editorBackBtn) {
     editorBackBtn.style.display = 'inline-flex';
@@ -1409,11 +1714,12 @@ function openInlineEditor(path) {
 function closeInlineEditor() {
   editorContentWrapper.style.display = 'none';
   diagnosticsContent.style.display = 'flex';
-  
+  isInlineEditorActive = false;
+
   if (editorBackBtn) {
     editorBackBtn.style.display = 'none';
   }
-  
+
   if (currentTab === 'outbox' && selectedTxId) {
     const tx = outboxData.find(t => t.transaction_id === selectedTxId);
     if (tx) selectTxRow(tx, activeEventInTx ? activeEventInTx.id : null);
@@ -1429,5 +1735,149 @@ function closeInlineEditor() {
   } else if (currentTab === 'autoupdate' && selectedAutoUpdateScript) {
     const col = autoUpdateData.find(c => c.script_name === selectedAutoUpdateScript);
     if (col) selectAutoUpdateRow(col);
+  } else {
+    // 복원할 선택이 없으면 빈 상태 표시 (스택 잔존 방지)
+    clearDiagnostics();
+  }
+}
+
+// --- Pipeline Health Strip (소안 §C) ---------------------------------------
+// 기존 API만 조합: /admin/file-ingestion/failed · /admin/outbox/failed
+//                 · /admin/auto-update/status · /enrichment/rules (+blank 필터 카운트)
+// 신규 서버 API 없음. 실패 시 카드만 '조회 실패'로 두고 무음 (본문 흐름 비방해).
+
+function setHealthCard(key, status, main, sub) {
+  const card = document.getElementById(`health-card-${key}`);
+  if (!card) return;
+  card.dataset.status = status;
+  const mainEl = document.getElementById(`health-${key}-main`);
+  const subEl = document.getElementById(`health-${key}-sub`);
+  if (mainEl) mainEl.textContent = main;
+  if (subEl) {
+    subEl.textContent = sub;
+    subEl.title = sub;
+  }
+}
+
+let healthRefreshInFlight = false;
+async function refreshHealthStrip() {
+  if (healthRefreshInFlight) return; // 수동 Refresh + 30s 폴링 중첩 방지
+  healthRefreshInFlight = true;
+  try {
+    await Promise.allSettled([
+      refreshFileAndAutoHealth(),
+      refreshChainHealth(),
+      refreshEnrichmentHealth()
+    ]);
+  } finally {
+    healthRefreshInFlight = false;
+  }
+}
+
+// File 카드 + Auto Update 카드 (실패 로그 최근 100건을 공용으로 사용)
+async function refreshFileAndAutoHealth() {
+  let failedTotal = null;
+  let failedLogs = [];
+  try {
+    const res = await fetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`);
+    if (res.ok) {
+      const r = await res.json();
+      failedTotal = r.total || 0;
+      failedLogs = r.data || [];
+    }
+  } catch (e) { /* 아래에서 조회 실패 카드 처리 */ }
+
+  if (failedTotal === null) {
+    setHealthCard('file', 'loading', '—', '상태 조회 실패');
+  } else if (failedTotal > 0) {
+    setHealthCard('file', 'danger', `실패 ${failedTotal}건`, '클릭 → 실패 로그 필터로 이동');
+  } else {
+    setHealthCard('file', 'ok', '실패 0건', '파일 인제션 정상');
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/admin/auto-update/status`);
+    if (!res.ok) throw new Error('auto-update status fetch failed');
+    const r = await res.json();
+    const collectors = r.data || [];
+    if (collectors.length === 0) {
+      setHealthCard('auto', 'loading', '수집기 없음', '등록된 auto-update 설정 없음');
+      return;
+    }
+
+    const failCount = collectors.filter(c => c.last_status === 'FAIL').length;
+    // 감사 §1.2 실증 시나리오 연계: 수집기는 SUCCESS인데 산출물 파일 인제션이
+    // 실패 중인 경우를 카드에서 즉시 노출 (auto-update 대상 테이블 ∩ 최근 실패 로그)
+    const autoTables = new Set(collectors.map(c => c.table_name));
+    const linkedFails = failedLogs.filter(l => autoTables.has(l.table_name)).length;
+    const linkedSuffix = (failedTotal !== null && failedTotal > failedLogs.length) ? '+' : '';
+
+    let status = 'ok';
+    if (failCount > 0) status = 'danger';
+    else if (linkedFails > 0) status = 'warn';
+
+    const main = failCount > 0
+      ? `수집기 실패 ${failCount}/${collectors.length}`
+      : `수집기 ${collectors.length}개 정상`;
+    const sub = linkedFails > 0
+      ? `산출물 인제션 실패 ${linkedFails}${linkedSuffix}건`
+      : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`;
+    setHealthCard('auto', status, main, sub);
+  } catch (e) {
+    setHealthCard('auto', 'loading', '—', '상태 조회 실패');
+  }
+}
+
+function latestLastRun(collectors) {
+  const runs = collectors.map(c => c.last_run).filter(Boolean).sort();
+  return runs.length ? runs[runs.length - 1] : null;
+}
+
+async function refreshChainHealth() {
+  try {
+    const res = await fetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1`);
+    if (!res.ok) throw new Error('chain health fetch failed');
+    const r = await res.json();
+    const total = r.total || 0;
+    if (total > 0) {
+      setHealthCard('chain', 'danger', `실패 트랜잭션 ${total}건`, '클릭 → Outbox 실패 목록으로 이동');
+    } else {
+      setHealthCard('chain', 'ok', '실패 0건', '체인 파이프라인 정상');
+    }
+  } catch (e) {
+    setHealthCard('chain', 'loading', '—', '상태 조회 실패');
+  }
+}
+
+async function refreshEnrichmentHealth() {
+  try {
+    const res = await fetch(`${API_BASE}/enrichment/rules`);
+    if (!res.ok) throw new Error('enrichment rules fetch failed');
+    const r = await res.json();
+    const rules = r.rules || [];
+    if (rules.length === 0) {
+      setHealthCard('enrichment', 'loading', '규칙 없음', '활성 enrichment 규칙 없음');
+      return;
+    }
+    // 결손 카운트: 메인 페이지 배지(ui.js updateEnrichmentBadge)와 동일한
+    // blank 필터 total 조회를 규칙별로 재사용 (limit=1 — total만 사용)
+    let missing = 0;
+    for (const rule of rules) {
+      const filters = {};
+      (rule.target_fields || []).forEach(f => { filters[f] = { type: 'blank' }; });
+      const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
+        `?skip=0&limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+      const cres = await fetch(url);
+      if (!cres.ok) continue;
+      const cr = await cres.json();
+      missing += cr.total || 0;
+    }
+    if (missing > 0) {
+      setHealthCard('enrichment', 'warn', `결손 ${missing}건`, `규칙 ${rules.length}개 · 클릭 → Enrichment Queue`);
+    } else {
+      setHealthCard('enrichment', 'ok', '결손 0건', `규칙 ${rules.length}개 · 모두 충족`);
+    }
+  } catch (e) {
+    setHealthCard('enrichment', 'loading', '—', '상태 조회 실패');
   }
 }
