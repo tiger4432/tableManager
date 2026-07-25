@@ -1841,11 +1841,175 @@ async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session 
         except httpx.RequestError as e:
             logger.error(f"[GraphSync Routing] Failed to connect to sync worker service: {e}")
             raise HTTPException(
-                status_code=503, 
+                status_code=503,
                 detail="그래프 동기화 서비스가 가동 중이 아닙니다. graph_sync_worker.py 가 실행되어 있는지 확인하세요."
             )
 
 
+# ----------------- [Ontology 뷰어] read-only 그래프 조회 API (경계 계약 — 총괄 승인) -----------------
+# graph_nodes/graph_edges를 웹서버가 직접 조회한다(read-only — 워커 경유 불필요).
+# G2 추적 리포트가 같은 응답 형태를 공유할 예정이므로 필드는 최소로 유지(과설계 금지).
+
+GRAPH_NEIGHBOR_NODE_CAP = 500        # limit 하드캡 — 무제한 로드 금지(C-7 교훈)
+GRAPH_NEIGHBOR_EDGE_FETCH_CAP = 2000  # 홉·방향당 엣지 페치 상한 (수퍼노드 방어)
+GRAPH_SEARCH_LIMIT_CAP = 50
+
+
+def _escape_like_term(term: str) -> str:
+    """LIKE 패턴 메타문자 이스케이프 (escape='\\'와 짝)."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@app.get("/graph/stats")
+def get_graph_stats(db: Session = Depends(get_db)):
+    """뷰어 첫 화면 + 라이브 검증용 — label/edge_type별 카운트와 마지막 동기화 시각."""
+    from sqlalchemy import func as sa_func
+
+    label_rows = (
+        db.query(models.GraphNode.label, sa_func.count(models.GraphNode.id))
+        .group_by(models.GraphNode.label)
+        .order_by(sa_func.count(models.GraphNode.id).desc())
+        .all()
+    )
+    type_rows = (
+        db.query(models.GraphEdge.type, sa_func.count(models.GraphEdge.id))
+        .group_by(models.GraphEdge.type)
+        .order_by(sa_func.count(models.GraphEdge.id).desc())
+        .all()
+    )
+    state = db.query(models.GraphSyncState).filter(models.GraphSyncState.id == 1).first()
+    return {
+        "labels": [{"label": lbl, "count": cnt} for lbl, cnt in label_rows],
+        "edge_types": [{"type": typ, "count": cnt} for typ, cnt in type_rows],
+        "last_sync": state.updated_at.isoformat() if state and state.updated_at else None,
+    }
+
+
+@app.get("/graph/neighbors")
+def get_graph_neighbors(
+    label: str,
+    identity: str,
+    depth: int = 1,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """중심 노드 (label, identity)에서 k-hop 이웃 서브그래프를 반환한다.
+
+    - limit = 응답 노드 총수 상한(중심 포함), 하드캡 GRAPH_NEIGHBOR_NODE_CAP.
+    - 엣지 접근은 (from,type)/(to,type) 인덱스 경로만 사용(방향별 2쿼리).
+    - 상한 도달로 일부가 잘리면 truncated=True.
+    """
+    if depth not in (1, 2):
+        raise HTTPException(status_code=400, detail="depth는 1 또는 2만 허용됩니다.")
+    limit = max(1, min(int(limit), GRAPH_NEIGHBOR_NODE_CAP))
+
+    center = (
+        db.query(models.GraphNode)
+        .filter(models.GraphNode.label == label, models.GraphNode.identity_key == identity)
+        .first()
+    )
+    if center is None:
+        raise HTTPException(status_code=404, detail=f"노드를 찾을 수 없습니다: ({label}, {identity})")
+
+    nodes = {center.id: center}
+    collected_edges = []
+    seen_edge_ids = set()
+    truncated = False
+    frontier = [center.id]
+
+    for _hop in range(depth):
+        if not frontier:
+            break
+        hop_edges = []
+        # idx_graph_edges_from_type / idx_graph_edges_to_type 프리픽스 룩업
+        for endpoint_col in (models.GraphEdge.from_node, models.GraphEdge.to_node):
+            rows = (
+                db.query(models.GraphEdge)
+                .filter(endpoint_col.in_(frontier))
+                .order_by(models.GraphEdge.id.asc())
+                .limit(GRAPH_NEIGHBOR_EDGE_FETCH_CAP)
+                .all()
+            )
+            if len(rows) >= GRAPH_NEIGHBOR_EDGE_FETCH_CAP:
+                truncated = True
+            hop_edges.extend(rows)
+
+        new_ids = []
+        new_seen = set()
+        for e in hop_edges:
+            if e.id in seen_edge_ids:
+                continue
+            seen_edge_ids.add(e.id)
+            collected_edges.append(e)
+            for nid in (e.from_node, e.to_node):
+                if nid not in nodes and nid not in new_seen:
+                    new_seen.add(nid)
+                    new_ids.append(nid)
+
+        capacity = limit - len(nodes)
+        if len(new_ids) > capacity:
+            truncated = True
+            new_ids = new_ids[: max(capacity, 0)]
+
+        for i in range(0, len(new_ids), 500):
+            chunk = new_ids[i : i + 500]
+            for n in db.query(models.GraphNode).filter(models.GraphNode.id.in_(chunk)).all():
+                nodes[n.id] = n
+        frontier = new_ids
+
+    node_ids = set(nodes.keys())
+    edges_out = [
+        {
+            "from": e.from_node,
+            "to": e.to_node,
+            "type": e.type,
+            "source_name": e.source_name,
+            "updated_by": e.updated_by,
+            "event_time": e.event_time.isoformat() if e.event_time else None,
+        }
+        for e in collected_edges
+        if e.from_node in node_ids and e.to_node in node_ids   # 캡으로 잘린 노드의 엣지 제외
+    ]
+
+    return {
+        "nodes": [
+            {"id": n.id, "label": n.label, "identity_key": n.identity_key, "props": n.props or {}}
+            for n in nodes.values()
+        ],
+        "edges": edges_out,
+        "truncated": truncated,
+    }
+
+
+@app.get("/graph/nodes/search")
+def search_graph_nodes(
+    q: str,
+    label: Optional[str] = None,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    """identity_key 시작일치 자동완성 (label 지정 시 (label, identity_key) 인덱스 경로)."""
+    term = (q or "").strip()
+    if not term:
+        return {"results": []}
+    limit = max(1, min(int(limit), GRAPH_SEARCH_LIMIT_CAP))
+
+    query = db.query(models.GraphNode.id, models.GraphNode.label, models.GraphNode.identity_key)
+    if label:
+        query = query.filter(models.GraphNode.label == label)
+    query = query.filter(
+        models.GraphNode.identity_key.ilike(_escape_like_term(term) + "%", escape="\\")
+    )
+    rows = (
+        query.order_by(models.GraphNode.label.asc(), models.GraphNode.identity_key.asc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "results": [
+            {"id": r.id, "label": r.label, "identity_key": r.identity_key} for r in rows
+        ]
+    }
 
 
 @app.websocket("/ws")

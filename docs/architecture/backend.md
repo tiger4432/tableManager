@@ -73,6 +73,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|---|
 | `POST /tables/{t}/upload` | :1753 | 클라이언트 파일을 `raws/`로 업로드 |
 | `POST /api/graph/sync` | :1693 | GraphSync 워커(:8090)로 프록시 |
+| `GET /graph/{stats,neighbors,nodes/search}` | :1863~ | [온톨로지 뷰어] read-only 그래프 조회(웹서버가 `graph_nodes/edges` 직접 조회 — 워커 미경유). stats=label/edge_type 카운트+`last_sync` · neighbors=k-hop(1\|2) 이웃 서브그래프(**노드 limit 하드캡 500, 초과 시 `truncated`**, (from,type)/(to,type) 인덱스 경로만) · search=identity 시작일치 자동완성(LIKE 메타문자 이스케이프) |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | :2106~ | 아웃박스·파일적재 데드레터 관리·재시도 |
 | `/admin/chain/rules`, `/admin/mappers/list` | :2484, :2506 | 체인 규칙·맵퍼(AST 파싱) 목록 |
 | `/admin/auto-update/{status,run-now}` | :2654, :2678 | 스케줄러 상태·즉시실행 |
