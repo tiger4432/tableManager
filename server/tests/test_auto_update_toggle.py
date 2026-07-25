@@ -88,6 +88,8 @@ class TestControlFileIO:
     def test_validate_script_key(self):
         assert auc.validate_script_key("tbl/script.py") is True
         assert auc.validate_script_key("my_table-1/coll.v2.py") is True
+        assert auc.validate_script_key("bonding_map/fetch_data copy.py") is True  # 공백 파일명 실사용 사례
+        assert auc.validate_script_key("tbl/한글 수집기.py") is True
         assert auc.validate_script_key("tbl/script.txt") is False
         assert auc.validate_script_key("script.py") is False
         assert auc.validate_script_key("a/b/script.py") is False

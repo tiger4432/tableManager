@@ -22,7 +22,10 @@ SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTROL_FILENAME = "auto_update_control.json"
 
 # "<workspace>/<script.py>" — 경로 구분자·상위 탐색 문자 금지
-SCRIPT_KEY_RE = re.compile(r"^[A-Za-z0-9_\-.]+/[A-Za-z0-9_\-.]+\.py$")
+# 파일명은 공백·한글 등 실존 가능한 문자를 허용하되 경로 구분자만 금지 —
+# 실사용 파일명(예: "fetch_data copy.py")이 검증에 막히던 결함 수정(2026-07-25).
+# 경로 탈출은 구분자 금지 + validate_script_key의 ".." 검사로 차단.
+SCRIPT_KEY_RE = re.compile(r"^[^/\\]+/[^/\\]+\.py$")
 
 _write_lock = threading.Lock()
 
