@@ -38,8 +38,11 @@
       height: 100vh;
     }
 
-    /* ── Header ── */
+    /* ── Header ──
+       flex item(#app)의 z-index는 static이어도 스태킹 컨텍스트를 만든다.
+       헤더 소속 팝업이 본문 고z 요소에 가리지 않도록 헤더 레이어는 200 (resizer/오버레이 < 200 < 팝업 1000). */
     .app-header {
+      position: relative;
       height: 70px;
       background: var(--bg-header);
       border-bottom: 1px solid var(--border);
@@ -48,7 +51,7 @@
       justify-content: space-between;
       gap: 20px;
       padding: 0 24px;
-      z-index: 10;
+      z-index: 200;
       flex-shrink: 0;
     }
 

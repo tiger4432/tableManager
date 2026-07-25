@@ -59,8 +59,12 @@ body {
   color: var(--text);
 }
 
-/* App Header Toolbar */
+/* App Header Toolbar
+   · #app이 flex 컨테이너라 flex item인 헤더는 z-index만으로도 스태킹 컨텍스트가 된다.
+   · 헤더 소속 드롭다운(z:1000)이 이 컨텍스트에 갇히므로, 헤더 레벨 자체를
+     본문 .split-resizer(z:100)보다 높게(200) 두어야 한다. position:relative는 의도 명시용. */
 .app-header {
+  position: relative;
   height: 70px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
@@ -68,7 +72,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  z-index: 10;
+  z-index: 200; /* 헤더 레이어: resizer(100) < 헤더(200) < 팝업(1000) < 모달(2000+) */
 }
 
 .log-indicator-area {

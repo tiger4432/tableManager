@@ -41,7 +41,8 @@
       align-items: center;
       position: sticky;
       top: 0;
-      z-index: 100;
+      /* .split-resizer(z:100)와 동률이면 DOM 순서상 resizer가 sticky 헤더 위에 그려짐 → 헤더 레이어 200 */
+      z-index: 200;
     }
 
     .brand-section {
