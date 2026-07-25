@@ -16,6 +16,7 @@
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 서버 | 이슈 #6 — 감사 로그 DB 미저장 수정: add_to_cache=False 경로 4개 함수(행 생성/삭제·소스 삭제·수동 우선순위)에 commit 전 bulk_insert_audit_logs 적재 추가 + 회귀 테스트 3건, DELETE/CREATE 이력 재시작 후 보존 | — |
 | 2026-07-25 | 서버 | 경합 수정 배치 1 — C-2 import 통일(outbox ×2 발행 근절)·C-1 async 핸들러 threadpool 격리+batch_delete N+1 제거·C-5 created_logs 500건 상한·C-3 outbox 7일 purge+레거시 인덱스 4종 정리, 테스트 58 통과(신규 8) — 검수·커밋 대기 | [20260725_090000](../history/20260725_090000_contention_fix_batch1.md) |
 | 2026-07-25 | 서버 | 5-프로세스 경합 전수 점검(분석 전용) — C-1~C-12 리스크 12건 식별·실측(outbox 중복 1.26M그룹, 루프 동결 7s), 착수순서 권고 | [보고서](../../agent_workspace/reports/Server_contention_audit.md) |
 | 2026-07-25 | 서버/체인 | 체인 워커 콜드 스타트 웜업 — 매퍼 선import(+SYSTEM_RELOAD 재웜업)·DB 풀 프라임·HTTP keep-alive(스레드-로컬 Session)·[Warmup] 계측, 첫 체인 1.3s → 100ms 목표 — 검수·커밋 대기 | [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) |
@@ -47,7 +48,7 @@
 | 4 | 낮음 | `test_map_presets_api` 기존 실패(#0 이전부터, 맵 프리셋 도메인·체인 무관) — conda 환경 전체 스위트 51개 중 유일 실패(50 통과, 2026-07-25 확인) | Client | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
 | 5 | 중간 | **경합 점검 잔여 리스크(승인 대기)** — C-4(인제션 체인 큐 독점·HOL, 매퍼 의미론 총괄 협의 필요)·C-6(동시 upsert 행 락 순서)·C-7(그래프 전체 동기화 무제한 로드/브로드캐스트)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + 체인 워커의 created_logs 무상한 전송·broadcast body 파싱 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) | Server | 대기(수정 배치 2 후보) |
-| 6 | 중간 | 배치 삭제(delete_rows_batch)의 DELETE 감사 로그가 DB 미저장(add_to_cache=False가 persist까지 생략, 인메모리 캐시만) — 재시작 시 삭제 이력 소실. 수정 태스크 칩 발행됨 | Server | 대기 |
+| 6 | — | 🏁 **[종결 2026-07-25] 감사 로그 DB 미저장(add_to_cache=False가 persist까지 생략)** — 전수 조사 결과 delete_rows_batch뿐 아니라 create_empty_rows_batch·delete_cell_source_batch·set_cell_manual_priority_batch까지 4개 함수가 캐시에만 기록. 각 함수 commit 전 `bulk_insert_audit_logs` 벌크 적재 추가(시그니처 무변경, apply_batch_updates 기존 패턴 준용) + 회귀 테스트 3건(`test_audit_log_persistence.py`). | Server | 🏁종결 |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
