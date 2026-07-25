@@ -42,7 +42,8 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 ```jsonc
 {
   "bonding_log": {
-    "node": { "label": "Chip", "identity": "log_id", "props": ["bx", "by", "cx", "cy"] },
+    "node": { "label": "Chip", "identity": "log_id", "props": ["bx", "by", "cx", "cy"],
+              "node_class": "dynamic" },                            // ← §7.5c 정적/동적 분류 (필수 예정)
     "description": "본딩 설비가 chip 1개를 base에 실장한 이벤트",   // ← LLM 그라운딩용 (필수)
     "edges": [
       { "type": "BONDED_FROM", "target_label": "Wafer",
@@ -80,6 +81,7 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **도구 API** (REST + MCP 서버 노출): `entity_lookup(label, identity)` · `neighbors(node, depth≤N, types?, time_range?)` · `path(a, b, max_hops)` · `schema_card()` (매핑 config의 label/type/description 요약)
 - **서브그래프 직렬화**: 조회 결과를 LLM 컨텍스트 주입용 압축 텍스트 포맷으로(노드/엣지/출처 포함) 정의
 - **출처 표기**: 모든 결과 엣지에 provenance 동봉 — "사람 교정" vs "자동 파이프라인" 구분이 LLM 답변 신뢰도의 근거
+- **탐색 정책 엔진 (§7.5c) 선행**: 도구 API는 4대 탐색 정책 위에서만 동작 — `node_class` 선언과 정책 적용이 G2.5의 전제 조건(LLM 개방 전 가드레일)
 
 ## 7. 불량 추론 네트워크 (G3) — 가치 ③의 설계 골격
 
@@ -123,6 +125,32 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 
 구현 단계: **G3.5 (상태·이벤트 물화)** — EqpState 소스(설비 상태 로그) 데이터 전제가 있어 G3(불량 추론)와 함께 설계.
 
+## 7.5c 정적/동적 노드 분류와 4대 탐색 정책 (사용자 확정 2026-07-25 — 외부 논의 수렴)
+
+사용자가 별도 세션(Gemini)에서 도출한 슈퍼 허브 대응 설계를 스펙으로 수렴한다. 문제: Eqp·Recipe 같은 **공유 마스터 노드는 필연적으로 슈퍼 허브**가 되고, 이를 경유하는 순진한 탐색은 무관한 제품 이력으로 컨텍스트가 범람(cross-talk)하며 그래프가 폭발한다. 해법은 노드의 **이원 분류 + 방향성 탐색 정책**이다.
+
+**노드 분류 (매핑 config 선언 — `node_class` 필수 필드)**:
+
+| 분류 | 정의 | 예시 (현행 label) | 특성 |
+|---|---|---|---|
+| **동적(dynamic)** | 타임스탬프를 갖고 특정 개체 컨텍스트에 귀속되는 이벤트/인스턴스 | Chip, Wafer, ProcessEvent, MetroResult, WaferState, EqpState, SplitCondition | 시계열로 꼬리를 무는 Sequence 엣지 형성 |
+| **정적(static)** | 시간이 흘러도 불변에 가까운 공유 기준 정보(마스터) | Eqp, Base, Recipe, DefectCode, Line, Map | 다수 동적 노드의 in-bound 수렴점 = **슈퍼 허브 후보** |
+
+**4대 탐색 정책 (쿼리 계층 글로벌 룰)** — §4.3 "쿼리 국소화" 원칙에 따라 저장소가 아니라 **그래프 쿼리 API 계층에서 강제**한다 (neighbors/trace/G2.5 도구/G3 서브그래프 추출 전부 동일 적용):
+
+| # | 방향 | 정책 | 역할 |
+|---|---|---|---|
+| 1 | 동적 → 동적 | 🟢 허용 (깊이 cap 내 무제한) | 메인 스트림(백본) 추적 — 상태 전이·이벤트 체인 |
+| 2 | 동적 → 정적 | 🟢 허용 (**1-hop 한정**) | 백본에 로컬 컨텍스트(설비·레시피)를 ROI로 결합 |
+| 3 | 정적 → 정적 | 🟢 허용 (**1-hop 한정**) | 마스터 계층 구조(Eqp→Line 등) 판독 |
+| 4 | 정적 → 동적 | 🚫 **기본 금지** | 슈퍼 허브 경유 컨텍스트 범람 원천 차단 |
+
+- **정책 4의 예외 — 영향도 분석 모드**: 탐색 **출발 노드가 정적**이면(예: "이 설비를 거친 wafer 이력") S→D 1단계를 허용하되 **시간 창 또는 개수 상한 필터를 강제 동반**한다. 출발 노드의 분류가 곧 탐색 모드를 결정한다(역추적 모드 vs 영향도 모드).
+- **2단계 백본→ROI 추출**: 추적(trace)·G3 서브그래프 추출은 ① 정적 엣지를 잠근 채 D→D 백본만 확정 → ② 확정된 백본 노드들에서 D→S 1-hop ROI 결합의 2단계로 수행. 멀티 시드 추적 시 각 시드의 identity를 **컨텍스트 토큰**으로 노드·엣지에 태깅(coloring)해 시드별 경로 격리를 유지한다(trace의 entity group이 이 초기형).
+- **EqpState 허브앤스포크 (§7.5b와 접합)**: 동적 Run이 정적 Eqp 마스터에 직결되지 않고 `[Run] →(1:1) [EqpState(시간 슬롯)] →(N:1) [Eqp]`로 잇는다. 효과 — ① 시간 비교 연산 없이 topology만으로 시간대 격리(다른 시각의 wafer는 다른 State 노드에 연결) ② **동시성 판별 = State 노드의 in-bound Run 수 ≥ 2** ③ `NEXT_STATE` 체인으로 직전 슬롯 오염 역추적. EqpState는 L2 파생 계층(재파생 규율 동일).
+- **슈퍼 허브 실링(pruning)**: degree가 임계(예: 1,000)를 넘는 노드로의 진입은 쿼리 계층에서 잘라내고 개수만 보고(현행 500-노드 cap의 일반화) — 유래 속성(롤업 카운트)으로 대체 서술.
+- **LLM 가드레일 (G2.5 전제)**: `schema_card()`에 label별 `node_class`와 4대 정책을 명시 포함 — LLM이 생성하는 질의가 정책 위에서만 구성되게 하여 쿼리 폭탄(S→D 무한 확장)을 구조적으로 차단.
+
 ## 7.6 그래프 보조 교정 (inference-assisted enrichment) — 가치사슬의 순환 완성
 
 사용자 통찰(2026-07-25): **LOT-SLOT-WAFER 매칭 같은 교정 과제 자체를 온톨로지에 올려 추론**하면 구현이 더 원활해진다.
@@ -139,7 +167,7 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 |---|---|---|
 | **G1** | 매핑 config 실전화 + PG nodes/edges(인덱스 규율 §2) + 자동 승격 materializer + C-7 해소 + 이슈 #8 동승 | 데모 3종 E2E |
 | **G2** | 추적 쿼리 API(k-hop, 시간 범위) + 추적 리포트 UI (그리드 선택 → 추적) | 킬러 유스케이스 + 가치 ② 실증 |
-| **G2.5** | LLM 액세스 계층 — MCP/도구 API + schema_card + 서브그래프 직렬화 | 가치 ① 개방 |
+| **G2.5** | LLM 액세스 계층 — **탐색 정책 엔진(§7.5c: node_class 선언 + 4대 룰 + 2단계 백본→ROI)** 선행 + MCP/도구 API + schema_card + 서브그래프 직렬화 | 가치 ① 개방 (정책이 가드레일) |
 | **G3** | 불량 추론 네트워크 + 시공간 분석 — 시드 마킹 UX + 분석 워커(PPR·zonal 패턴·시간 인접) + 의심 랭킹 리포트/도구 + **그래프 보조 교정(§7.6 — SUGGESTED_AS 후보 추론 → enrichment UI 추천)** | 가치 ③④ + #1 순환 (공간 스키마는 G1부터) |
 | **G4** | Neo4j 병행 타깃(시각화·Cypher 에이전트·GDS 가속) + pgvector 하이브리드 | 옵션 |
 
