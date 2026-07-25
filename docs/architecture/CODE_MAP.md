@@ -276,11 +276,13 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지(index/admin/map_editor/enrichment)
 - 레전드/브러시: `renderLegendTable`(~1676) `selectBrush`(~1824) + `localStorage` 동기화 `load/saveLegendToStorage`(~1654/1672).
 - 편집 도구: `fillGrid`(~2214) `getEdgeClassification`(~2421) `selectEdgeCells`(~2501) `autoPaintE1E2`(~2528) `copyGridToExcel`(~2616).
 
-### `admin.js` (~1,433줄) — 어드민 페이지 (export 없음)
-- 탭 데이터: `fetchData`(~324) → 렌더 `renderOutboxTable`/`renderFileTable`/`renderWorkspaceTable`/`renderChainTable`/`renderMapperTable`/`renderAutoUpdateTable`(~386–675) + 행 선택 `select*Row`(~737–995).
-- 재시도: `retryTransaction`(~1071) `retryFileIngestion`(~1093) `retryAllFailed`(~1109). 설정 리로드 `reloadSystemConfigs`(~1159).
-- Monaco 에디터: `initMonacoEditor`(~1176) `renderEditorTree`(~1206) `selectEditorFile`(~1318) `saveScriptCode`(~1352) 인라인 폴백 `open/closeInlineEditor`(~1374/1409).
-- 소비 API: `/admin/*` 전역.
+### `admin.js` (~1,883줄) — 어드민 페이지 (export 없음)
+- 공통 헬퍼: `formatTimestamp`(~146, MM-DD HH:mm:ss 단일 포맷) `shortTxId`(~162, UUID head8 축약) `switchTab`(~178, 탭 전환 본체 — 헬스 카드 딥링크 공용).
+- 탭 데이터: `fetchData`(~482, 레이스 가드 fetchSeq + silent 모드) → 렌더 `renderOutboxTable`/`renderFileTable`(파일 로그는 현재 페이지 클라이언트 정렬)/`renderWorkspaceTable`/`renderChainTable`/`renderMapperTable`/`renderAutoUpdateTable` + 행 선택 `select*Row`(진입부 `ensureEditorViewClosed`(~948)로 에디터 뷰 스택 방지).
+- 재시도: `retryTransaction`(재조회로 결과 확정) `retryFileIngestion`(동기 재조회 피드백) `retryAllFailed`. 설정 리로드 `reloadSystemConfigs`.
+- Monaco 에디터: `initMonacoEditor`(+`onDidChangeModelContent` dirty 추적) `renderEditorTree` `selectEditorFile`(미저장 보호 confirm) `saveScriptCode` 인라인 `open/closeInlineEditor`. dirty 헬퍼 `updateDirtyIndicator`/`markEditorClean`(~1461/1468) + beforeunload 가드.
+- 파이프라인 헬스 스트립: `refreshHealthStrip`(~1763) → `refreshFileAndAutoHealth`/`refreshChainHealth`/`refreshEnrichmentHealth`(~1778–1852, 기존 API 조합만) + 30s 절제 폴링(Outbox/File 탭·에디터 비사용 시).
+- 소비 API: `/admin/*` 전역 + `/enrichment/rules` + `/tables/{t}/data`(blank 필터 결손 카운트 — ui.js 배지 로직 재사용).
 
 ### `enrichment.js` (~754줄) — 인리치먼트 컨베이어 페이지 (export 없음)
 - 규칙: `loadRules`(~69) `selectRule`(~116) `rebuildGrid`(~151). 워크리스트: `fetchWorklist`(~190) `fetchTotalAll`(~241) `refillIfNeeded`(~257).

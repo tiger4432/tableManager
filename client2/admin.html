@@ -26,6 +26,7 @@
       font-family: var(--font-sans);
       background-color: var(--bg-app);
       color: var(--text);
+      height: 100vh;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -118,13 +119,95 @@
     }
 
     main {
-      flex: 1;
+      /* 헬스 스트립 삽입으로 고정 calc 높이 폐기 — flex 잔여 공간을 차지 */
+      flex: 1 1 auto;
       display: flex;
-      padding: 25px 30px;
+      padding: 20px 30px 25px;
       gap: 25px;
-      height: calc(100vh - 72px);
-      min-height: 500px;
+      min-height: 0;
     }
+
+    /* ── Pipeline Health Strip (4 파이프라인 상시 요약) ── */
+    .health-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      padding: 18px 30px 0;
+      flex-shrink: 0;
+    }
+    @media (max-width: 1100px) {
+      .health-strip { grid-template-columns: repeat(2, 1fr); }
+    }
+    .health-card {
+      text-align: left;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      color: var(--text);
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .health-card:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+    }
+    .health-card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .health-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+    .health-card[data-status="ok"] .health-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-weak); }
+    .health-card[data-status="warn"] .health-dot { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-weak); }
+    .health-card[data-status="danger"] .health-dot { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-weak); }
+    .health-card-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .health-card-main {
+      font-size: 1.02rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .health-card[data-status="danger"] .health-card-main { color: var(--danger); }
+    .health-card[data-status="warn"] .health-card-main { color: var(--warning); }
+    .health-card-sub {
+      font-size: 0.73rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── 파일 로그 정렬 가능 헤더 / Transaction ID 축약 칩 ── */
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { color: var(--text); }
+    th.sortable .sort-ind { color: var(--accent); }
+    .tx-id-chip {
+      cursor: copy;
+      border-bottom: 1px dashed var(--border-strong);
+    }
+    .tx-id-chip:hover { border-bottom-color: var(--accent); }
 
     .panel {
       background: var(--bg-surface);
@@ -505,6 +588,30 @@
     </div>
   </header>
 
+  <!-- Pipeline Health Strip: File/Chain/AutoUpdate/Enrichment 4 파이프라인 요약 (기존 API 조합, admin.js가 채움) -->
+  <div id="health-strip" class="health-strip">
+    <button type="button" class="health-card" id="health-card-file" data-status="loading" title="File Ingestion 파이프라인 — 클릭: File Ingestions 탭(실패 필터)로 이동">
+      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">File Ingestion</span></div>
+      <div class="health-card-main" id="health-file-main">—</div>
+      <div class="health-card-sub" id="health-file-sub">불러오는 중…</div>
+    </button>
+    <button type="button" class="health-card" id="health-card-chain" data-status="loading" title="Chain(파생 테이블) 파이프라인 — 클릭: Outbox Failures 탭으로 이동">
+      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Chain</span></div>
+      <div class="health-card-main" id="health-chain-main">—</div>
+      <div class="health-card-sub" id="health-chain-sub">불러오는 중…</div>
+    </button>
+    <button type="button" class="health-card" id="health-card-auto" data-status="loading" title="Auto Update 수집기 — 클릭: Auto Updates 탭으로 이동">
+      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Auto Update</span></div>
+      <div class="health-card-main" id="health-auto-main">—</div>
+      <div class="health-card-sub" id="health-auto-sub">불러오는 중…</div>
+    </button>
+    <button type="button" class="health-card" id="health-card-enrichment" data-status="loading" title="Enrichment Queue — 클릭: Enrichment 페이지 열기">
+      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Enrichment</span></div>
+      <div class="health-card-main" id="health-enrichment-main">—</div>
+      <div class="health-card-sub" id="health-enrichment-sub">불러오는 중…</div>
+    </button>
+  </div>
+
   <main>
     <!-- Left panel: List of FAILED outbox events & File ingestion logs -->
     <section class="panel left-panel">
@@ -524,7 +631,8 @@
             <option value="FAILED">Failed</option>
             <option value="SUCCESS">Success</option>
           </select>
-          <span style="font-size: 0.85rem; color: var(--text-muted);">Total: <span id="total-count" style="font-weight: bold; color: var(--color-danger);">0</span></span>
+          <span id="total-count-label" style="font-size: 0.85rem; color: var(--text-muted);">Total: <span id="total-count" style="font-weight: bold; color: var(--color-danger);">0</span></span>
+          <span id="last-refreshed" style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);"></span>
           <button id="refresh-btn" class="glass-btn" style="padding: 6px 12px; font-size: 0.85rem;">🔄 Refresh</button>
         </div>
       </div>
@@ -535,7 +643,7 @@
           <table class="table-container">
             <thead class="table-header">
               <tr>
-                <th style="width: 260px;">Transaction ID</th>
+                <th style="width: 130px;">Transaction ID</th>
                 <th>Triggered Tables</th>
                 <th style="width: 110px;">Event Types</th>
                 <th style="width: 80px; text-align: center;">Retries</th>
@@ -558,12 +666,12 @@
           <table class="table-container">
             <thead class="table-header">
               <tr>
-                <th style="width: 80px;">Log ID</th>
-                <th>Filename</th>
-                <th style="width: 130px;">Target Table</th>
-                <th style="width: 100px; text-align: center;">Status</th>
-                <th style="width: 70px; text-align: center;">Retries</th>
-                <th style="width: 160px;">Processed At</th>
+                <th style="width: 80px;" class="sortable" data-key="id" title="클릭: 현재 페이지 내 정렬">Log ID<span class="sort-ind"></span></th>
+                <th class="sortable" data-key="filename" title="클릭: 현재 페이지 내 정렬">Filename<span class="sort-ind"></span></th>
+                <th style="width: 130px;" class="sortable" data-key="table_name" title="클릭: 현재 페이지 내 정렬">Target Table<span class="sort-ind"></span></th>
+                <th style="width: 100px; text-align: center;" class="sortable" data-key="status" title="클릭: 현재 페이지 내 정렬">Status<span class="sort-ind"></span></th>
+                <th style="width: 70px; text-align: center;" class="sortable" data-key="retry_count" title="클릭: 현재 페이지 내 정렬">Retries<span class="sort-ind"></span></th>
+                <th style="width: 140px;" class="sortable" data-key="created_at" title="클릭: 현재 페이지 내 정렬">Processed At<span class="sort-ind"></span></th>
                 <th style="width: 100px; text-align: center;">Actions</th>
               </tr>
             </thead>
@@ -648,8 +756,8 @@
                 <th style="width: 160px;">Target Table</th>
                 <th>Script / Collector</th>
                 <th style="width: 130px;">Cron Schedule</th>
-                <th style="width: 170px;">Next Run</th>
-                <th style="width: 170px;">Last Run</th>
+                <th style="width: 140px;">Next Run</th>
+                <th style="width: 140px;">Last Run</th>
                 <th style="width: 100px; text-align: center;">Status</th>
                 <th style="width: 120px; text-align: center;">Actions</th>
               </tr>
@@ -674,7 +782,14 @@
 
       <!-- Left Panel Footer: Pagination Controls -->
       <div class="panel-footer" style="padding: 12px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-header);">
-        <div class="pagination-info" id="pagination-info" style="font-size: 0.85rem; color: var(--text-muted);">Showing 1-10 of 25 items</div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <select id="page-size-select" class="glass-select" style="height: 28px; padding: 0 8px; font-size: 0.8rem;" title="페이지당 표시 건수">
+            <option value="10" selected>10 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <div class="pagination-info" id="pagination-info" style="font-size: 0.85rem; color: var(--text-muted);">Showing 1-10 of 25 items</div>
+        </div>
         <div class="pagination-controls" style="display: flex; gap: 8px; align-items: center;">
           <button id="prev-page-btn" class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">◀ Prev</button>
           <span id="page-indicator" style="font-size: 0.85rem; font-weight: 500; min-width: 40px; text-align: center;">1 / 3</span>
