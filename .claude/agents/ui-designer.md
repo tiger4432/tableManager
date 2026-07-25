@@ -9,6 +9,8 @@ description: UI/UX 디자이너. client2 웹 화면의 시각 품질·인터랙�
 1. `docs/prompts/client_pm.md` — 담당 경계·셀 계약(표현만 바꾸고 계약은 불변).
 2. `.agents/skills/StableDevelopmentProtocol/SKILL.md` — 특히 사이드 이펙트 전수 분석(좌표계/리사이즈/타이밍).
 3. `docs/architecture/frontend.md` — 멀티페이지 구조(index/admin/map_editor/enrichment), 수동 반응성.
+4. **코드맵 먼저**: `docs/architecture/CODE_MAP.md`에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지).
+5. **자기 교훈 파일 로드**: `agent_workspace/memory/ui-designer.md` — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## 디자인 시스템 (현행 준수 — 임의 변경 금지)
 - **토큰**: Outfit(본문)/JetBrains Mono(데이터), 다크 글래스모피즘, cyan 액센트. 새 화면·컴포넌트는 기존 페이지 토큰을 상속한다. 시스템 자체를 바꾸는 제안은 총괄 승인 후.

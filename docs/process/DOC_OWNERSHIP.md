@@ -8,6 +8,7 @@
 | 서브시스템 | 코드(진실 원천) | 리빙 문서 | Owner 역할 |
 |---|---|---|---|
 | 시스템 전체 | `run_decoupled_app.py`, `server/main.py` | [overview/SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) | Lead |
+| 코드 구조 지도 | `server/*`, `client2/src/*` (전 모듈) | [architecture/CODE_MAP](../architecture/CODE_MAP.md) — 모듈 맵 갱신은 구현 에이전트, 정합 감사는 doc-keeper | 전 에이전트 공용 |
 | 백엔드 API/워커 | `server/main.py`, `server/*_worker.py`, `server/run_*.py` | [architecture/backend](../architecture/backend.md) | Backend/Sync |
 | 이벤트 기반(Outbox/EDA) | `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py` | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | Backend/Sync |
 | 프론트엔드(웹+셸) | `client2/src/*`, `client/desktop_wrapper.py` | [architecture/frontend](../architecture/frontend.md) | UI/Excel |

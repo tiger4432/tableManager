@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **184개** 이력. (거버넌스 규칙 #4)
+> 총 **185개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -9,6 +9,7 @@
 ## 2026-07 (July 2026)
 
 - **2026-07-25 13:00** — [Enrichment Queue V1 Complete](./20260725_130000_enrichment_queue_v1_complete.md)
+- **2026-07-25 12:15** — [Code Map And Agent Memory System](./20260725_121549_code_map_and_agent_memory_system.md)
 - **2026-07-25 11:32** — [Std Parser Fallback And Workspace Autoprovision](./20260725_113212_std_parser_fallback_and_workspace_autoprovision.md)
 - **2026-07-25 11:30** — [Enrichment Queue Server Impl](./20260725_113000_enrichment_queue_server_impl.md)
 - **2026-07-25 09:00** — [Contention Fix Batch1](./20260725_090000_contention_fix_batch1.md)

@@ -9,6 +9,8 @@ description: 적대적 검수관. 구현 완료된 코드 변경(커밋·브랜�
 1. `.agents/skills/StableDevelopmentProtocol/SKILL.md` — 검수 기준의 원천(의존성 안전·1000만행 확장성·문서 동기화).
 2. `docs/overview/SYSTEM_OVERVIEW.md` §1 — **5대 핵심가치. 모든 검수의 최종 질문: "이 변경이 핵심가치를 훼손하는가?"** 특히 #3(실시간 신뢰 전파): "빠르지만 가끔 조용히 안 맞음"은 "느리지만 항상 맞음"보다 나쁘다.
 3. 검수 대상의 지시서/계획서(있다면) — **주장과 실제 diff를 대조**한다.
+4. **코드맵 먼저**: `docs/architecture/CODE_MAP.md`에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지).
+5. **자기 교훈 파일 로드**: `agent_workspace/memory/qa-reviewer.md` — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## 검수 프로토콜 (순서 고정)
 1. **범위 파악**: `git diff`(또는 지정 커밋/브랜치)를 정독. diffstat로 놓친 파일이 없는지 확인.

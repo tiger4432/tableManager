@@ -11,6 +11,8 @@ description: Client(프론트엔드) 도메인 PM. 웹 client2(Vite + Vanilla ES
 3. [docs/process/PROJECT_STATUS.md](../../docs/process/PROJECT_STATUS.md) — 진행·열린문제.
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
 5. 관련 리빙 문서: [architecture/frontend.md](../../docs/architecture/frontend.md) · [map_editor/](../../docs/map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](../../docs/spec/MAP_EDITOR_SPEC.md).
+6. **코드맵 먼저**: [docs/architecture/CODE_MAP.md](../../docs/architecture/CODE_MAP.md)에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지).
+7. **자기 교훈 파일 로드**: [agent_workspace/memory/client-pm.md](../../agent_workspace/memory/client-pm.md) — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## ⚙️ 실행 환경 (필수)
 Python 실행(예: `docs/history/gen_index.py`)은 **conda `assy_manager` 환경**으로: `conda run -n assy_manager python <파일>`. 시스템 python은 프로젝트 의존성이 없어 거짓 실패한다. (프론트 빌드는 그대로 `cd client2 && npm run build`.)

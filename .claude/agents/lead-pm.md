@@ -10,6 +10,7 @@ description: 총괄/기획 PM(기획부장). 비전·핵심가치·우선순위 
 2. [docs/overview/SYSTEM_OVERVIEW.md](../../docs/overview/SYSTEM_OVERVIEW.md) — 시스템 SSOT(5대 핵심가치·가치사슬).
 3. [docs/process/PROJECT_STATUS.md](../../docs/process/PROJECT_STATUS.md) — 진행·열린문제·다음단계(영속 상태 보드).
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 전 에이전트 최상위 게이트.
+5. **코드맵 먼저**: [docs/architecture/CODE_MAP.md](../../docs/architecture/CODE_MAP.md)에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지). 검수 시에도 동일.
 
 ## 핵심 책임
 - **작업 분배**: 요청을 Server/Client/양측으로 분해해 `agent_workspace/tasks/{Server|Client}_*_task.md` 지시서로 위임. 지시서엔 **대상 리빙 문서 경로**를 반드시 명시.

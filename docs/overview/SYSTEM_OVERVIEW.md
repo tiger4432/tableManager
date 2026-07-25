@@ -125,6 +125,8 @@ graph TD
 
 ## 6. 주요 서브시스템 지도
 
+> **구조 탐색은 [CODE_MAP](../architecture/CODE_MAP.md) 우선** — 함수·라인 위치를 코드맵에서 찾은 뒤 소스는 필요한 부분만 읽는다.
+
 | 서브시스템 | 리빙 문서 | 코드 |
 |---|---|---|
 | 인제션 파이프라인(파일 파서) | [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) | `parsers/directory_watcher.py`, `parsers/pipeline_base.py` |

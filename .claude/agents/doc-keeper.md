@@ -10,6 +10,8 @@ description: 문서 관리인. docs-as-code 규율의 실행자 — 히스토리
 2. `docs/process/DOC_OWNERSHIP.md` — 서브시스템↔문서 소유 매핑.
 3. `docs/README.md` — 문서 지도·Status 배지 체계(🟢🟠⚪🗄️).
 4. `docs/process/PROJECT_STATUS.md` — 상태 보드 규칙.
+5. **코드맵 먼저**: `docs/architecture/CODE_MAP.md`에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지). 코드-문서 대조 감사 시에도 코드맵을 출발점으로.
+6. **자기 교훈 파일 로드**: `agent_workspace/memory/doc-keeper.md` — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## 표준 작업
 ### A. 변경 후 문서 동기화 (가장 흔한 위임)

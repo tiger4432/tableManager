@@ -11,6 +11,8 @@ description: Server(백엔드) 도메인 PM. server/ 전 영역 — main.py(API+
 3. [docs/process/PROJECT_STATUS.md](../../docs/process/PROJECT_STATUS.md) — 진행·열린문제.
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
 5. 관련 리빙 문서: [architecture/backend.md](../../docs/architecture/backend.md) · [data_model.md](../../docs/architecture/data_model.md) · [event_driven_backend.md](../../docs/architecture/event_driven_backend.md).
+6. **코드맵 먼저**: [docs/architecture/CODE_MAP.md](../../docs/architecture/CODE_MAP.md)에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지).
+7. **자기 교훈 파일 로드**: [agent_workspace/memory/server-pm.md](../../agent_workspace/memory/server-pm.md) — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## ⚙️ 실행 환경 (필수 — 어기면 실행·테스트가 거짓 실패한다)
 모든 Python 실행은 **conda `assy_manager` 환경**으로 한다. 비대화형 셸에선 `conda activate`가 아니라 **`conda run`**을 사용:

@@ -20,6 +20,7 @@
 
 | 문서 | 내용 |
 |---|---|
+| 🟢 [CODE_MAP.md](./architecture/CODE_MAP.md) | **압축 구조 지도** — 파일별 시그니처·라인 앵커·호출 흐름. 소스 전량 읽기 전에 여기부터 |
 | 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴 |
 | 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 |
 | 🟢 [data_model.md](./architecture/data_model.md) | ORM 모델 + 동적 테이블 + 레이어링/우선순위 |
@@ -56,7 +57,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(167개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(185개). `python docs/history/gen_index.py`로 갱신 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
