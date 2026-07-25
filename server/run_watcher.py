@@ -35,6 +35,10 @@ except Exception as e:
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 
+# [Std Ingestion] SYSTEM_RELOAD 시 신규 테이블 워크스페이스 자동 생성 + 런타임 감시 등록을 위해
+# 폴러 스레드가 참조하는 WorkspaceWatcher 인스턴스 (main()에서 설정, None 가드 필수)
+workspace_watcher = None
+
 def post_event(endpoint: str, payload: dict):
     url = f"{API_BASE_URL}{endpoint}"
     try:
@@ -130,6 +134,12 @@ def poll_pending_retries():
                 last_reload_event_id = latest_reload.id
                 logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading scripts...")
                 reload_watcher_cache()
+                # [Std Ingestion] 신규 테이블 워크스페이스 자동 생성 + 실행 중 observer에 런타임 감시 등록
+                if workspace_watcher is not None:
+                    try:
+                        workspace_watcher.sync_new_workspaces()
+                    except Exception as e:
+                        logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {e}")
                 
             # Query for logs in PENDING_RETRY status
             pending_logs = db.query(models.FileIngestionLog).filter(
@@ -214,6 +224,10 @@ def main():
         on_progress_callback=trigger_ws_progress
     )
     watcher.discover_and_watch()
+
+    # [Std Ingestion] SYSTEM_RELOAD 폴러가 런타임 워크스페이스 동기화에 사용할 참조 등록
+    global workspace_watcher
+    workspace_watcher = watcher
     
     logger.info(f"Watching {watcher.watch_count} directory configurations...")
     try:

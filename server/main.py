@@ -217,11 +217,15 @@ async def startup_event():
 
             if status == "SUCCESS":
                 message = f"{clean_filename} 파일이 처리되었습니다."
+                # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용 —
+                # 메시지 문자열에만 덧붙인다(페이로드 구조 불변).
+                if error_msg:
+                    message += f" ({error_msg[:100]})"
             else:
                 message = f"{clean_filename} 파일 처리에 실패했습니다."
                 if error_msg:
                     message += f" ({error_msg[:100]})"
-            
+
             msg = {
                 "event": "file_ingestion_completed",
                 "table_name": table_name,
@@ -2420,7 +2424,16 @@ def reload_system_configs(db: Session = Depends(get_db)):
     
     # 1. 웹 서버 자체 메모리 캐시 갱신
     reload_local_process_cache()
-    
+
+    # 1-1. [Std Ingestion] 임베디드 워처(비-decoupled 모드) 사용 시 신규 테이블 워크스페이스
+    #      자동 생성 + 런타임 감시 등록. decoupled 모드에서는 run_watcher.py의 SYSTEM_RELOAD
+    #      폴러가 동일 처리를 담당한다.
+    if global_watcher is not None:
+        try:
+            global_watcher.sync_new_workspaces()
+        except Exception as e:
+            logger.error(f"[Reload] Embedded watcher workspace sync failed: {e}")
+
     # 2. SYSTEM_RELOAD Outbox 이벤트 적재 (데몬 프로세스들로 전파)
     from database.models import DatabaseOutbox
     from database.context import request_transaction_id
@@ -2815,6 +2828,9 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
 
         if status == "SUCCESS":
             message = f"{clean_filename} 파일이 처리되었습니다."
+            # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용.
+            if error_msg:
+                message += f" ({error_msg[:100]})"
         else:
             message = f"{clean_filename} 파일 처리에 실패했습니다."
             if error_msg:
@@ -3001,6 +3017,10 @@ async def internal_event_file_processed(
 
     if status == "SUCCESS":
         message = f"{clean_filename} 파일이 처리되었습니다."
+        # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용 —
+        # 메시지 문자열에만 반영(페이로드 구조 불변).
+        if error_msg:
+            message += f" ({error_msg[:100]})"
     else:
         message = f"{clean_filename} 파일 처리에 실패했습니다."
         if error_msg:

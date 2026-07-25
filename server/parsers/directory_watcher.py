@@ -2,6 +2,7 @@ import os
 import time
 import shutil
 import logging
+import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -30,6 +31,26 @@ logger = logging.getLogger("Watcher.DirectoryWatcher")
 # 이벤트 필드 형태(created_logs: list)는 그대로 유지하고 항목 수만 제한한다(경계 계약 불변).
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
 MAX_NOTIFY_CREATED_LOGS = 500
+
+# [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
+# (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)
+AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}
+
+# 표준 워크스페이스 구조 (테이블 온보딩 시 자동 보충되는 하위 폴더)
+WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "config")
+
+
+def load_global_table_config() -> dict:
+    """전역 table_config.json 로드 (실패 시 빈 dict — 워처는 계속 동작해야 한다)."""
+    import json
+    try:
+        global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
+        if os.path.exists(global_config_path):
+            with open(global_config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load global table_config: {e}")
+    return {}
 
 
 def _register_legacy_import_shim():
@@ -139,6 +160,25 @@ class IngestionHandler(FileSystemEventHandler):
         return t_name
 
     @property
+    def std_parse_enabled(self):
+        """워크스페이스 config.json의 `"std_parse": false`로 표준 파서 폴백을 옵트아웃할 수 있다.
+        기본값은 활성(True). config가 없는 워크스페이스도 활성이다."""
+        if hasattr(self, '_cached_std_parse_enabled'):
+            return self._cached_std_parse_enabled
+
+        enabled = True
+        import json
+        if self.config_path and os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                enabled = config.get("std_parse", True) is not False
+            except Exception:
+                pass
+        self._cached_std_parse_enabled = enabled
+        return enabled
+
+    @property
     def errors_path(self):
         return os.path.join(self.workspace_path, "err")
 
@@ -188,22 +228,26 @@ class IngestionHandler(FileSystemEventHandler):
 
         for attempt in range(retries):
             try:
-                # Pipeline Discovery: scripts 폴더 내의 파이프라인 파서 탐색
-                rows = self._discover_and_execute_pipeline(file_path)
-                
-                if rows is None:
-                    raise ValueError(f"No custom pipeline parser matched the file '{os.path.basename(file_path)}' format.")
-                
-                # 파이프라인 매칭 및 실행 성공 (빈 리스트일 수도 있음)
-                if rows:
-                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path))
-                
+                # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석
+                rows, total_rows, skipped_no_key = self._resolve_rows(file_path)
+
+                # 매칭 및 실행 성공 (빈 결과일 수도 있음)
+                if (total_rows > 0) if total_rows is not None else bool(rows):
+                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path), total_rows=total_rows)
+
                 # 3. Archive the file
                 dest_path = self._archive_file(file_path)
-                logger.info(f"[{self.table_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}")
+                # [F1] 키 결측 스킵은 성공이되 사용자에게 반드시 보여야 하는 정보 —
+                # 완료 콜백의 detail(4번째 인자, 기존 error_msg 슬롯)로 전달되어
+                # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
+                detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None
+                logger.info(
+                    f"[{self.table_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}"
+                    + (f" ({detail})" if detail else "")
+                )
                 self._log_ingestion_success(file_path, dest_path)
                 if self.on_file_processed_callback:
-                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "SUCCESS", None)
+                    self.on_file_processed_callback(self.table_name, os.path.basename(file_path), "SUCCESS", detail)
                 return
             except PermissionError:
                 logger.warning(f"[{self.table_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
@@ -276,18 +320,17 @@ class IngestionHandler(FileSystemEventHandler):
         """
         filepath = log_entry.filepath
         try:
-            rows = self._discover_and_execute_pipeline(filepath)
-            if rows is None:
-                raise ValueError(f"No custom pipeline parser matched the file '{os.path.basename(filepath)}' format.")
-            if rows:
-                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath))
-            
+            rows, total_rows, skipped_no_key = self._resolve_rows(filepath)
+            if (total_rows > 0) if total_rows is not None else bool(rows):
+                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows)
+
             # If successful, update the log entry to SUCCESS
             log_entry.status = "SUCCESS"
             log_entry.error_message = None
             db.commit()
+            detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None  # [F1]
             if self.on_file_processed_callback:
-                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "SUCCESS", None)
+                self.on_file_processed_callback(self.table_name, os.path.basename(filepath), "SUCCESS", detail)
             return True
         except Exception as e:
             import traceback
@@ -445,7 +488,61 @@ class IngestionHandler(FileSystemEventHandler):
             raise ValueError(detailed_msg)
 
         return None # 매칭된 파서가 없음
-            
+
+    def _resolve_rows(self, file_path: str):
+        """파일을 행 컬렉션으로 해석한다. 커스텀 파이프라인 디스커버리가 **우선**(하위호환)이며,
+        어떤 스크립트도 매칭하지 않았을 때(None)만 표준 파서(std parser) 폴백을 시도한다.
+
+        반환: (rows, total_rows, skipped_no_key)
+          - 커스텀 파이프라인 경로: (list[dict], None, 0) — 기존과 동일.
+          - std parser 경로: (row_iterator, int, int) — 스트리밍(전량 메모리 로드 없음).
+            skipped_no_key는 [F1] 키 컬럼 공백/결측으로 스킵된 행 수(완료 메시지에 반영).
+        스크립트 로드/매칭 오류 시에는 기존과 동일하게 _discover_and_execute_pipeline이
+        ValueError를 raise하며, 이 경우 std 폴백은 **발동하지 않는다**(깨진 스크립트 은폐 방지).
+        """
+        rows = self._discover_and_execute_pipeline(file_path)
+        if rows is not None:
+            return rows, None, 0
+
+        if self.std_parse_enabled:
+            std_result = self._try_std_parse(file_path)
+            if std_result is not None:
+                return std_result
+
+        raise ValueError(
+            f"No custom pipeline parser matched the file '{os.path.basename(file_path)}' format, "
+            f"and the standard parser fallback was not applicable."
+        )
+
+    def _try_std_parse(self, file_path: str):
+        """[Std Parser Fallback] 표준 파서 적용을 시도한다.
+
+        반환: (row_iterator, total_rows, skipped_no_key) 또는 적용 불가 시 None
+              (미지원 확장자 / 테이블 미확정 / table_config 미등록).
+        헤더 검증 실패(비즈니스 키 누락 등)는 ValueError로 전파되어
+        기존 실패 경로(err/ 이동 + FileIngestionLog FAILED)를 그대로 탄다.
+        """
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+        from std_parser import is_std_supported, parse_std_file
+
+        if not is_std_supported(file_path):
+            return None
+
+        t_name = self.table_name
+        if not t_name:
+            return None
+
+        table_info = load_global_table_config().get(t_name)
+        if not table_info:
+            logger.warning(
+                f"[{t_name}] Std parser skipped: table '{t_name}' is not defined in table_config.json"
+            )
+            return None
+
+        logger.info(f"[{t_name}] 🧰 No custom pipeline matched — engaging Std Parser fallback for: {os.path.basename(file_path)}")
+        return parse_std_file(file_path, table_info, t_name)
+
     def _extract_user_from_filename(self, filename: str) -> str:
         """파일명에 인코딩된 user(name) 정보를 추출합니다."""
         if filename.startswith("user("):
@@ -457,19 +554,14 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
-    def _send_to_upsert(self, rows: list[dict], uploader: str = "system", filename: str = None):
-        """파싱된 행 리스트를 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다."""
-        import json
-        
+    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None):
+        """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
+
+        rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
+        total_rows: 이터레이터 경로에서 진행률 계산용 총 행 수 — list면 생략 가능(len 사용).
+        """
         # 1. 대상 테이블 설정 로드
-        table_config = {}
-        try:
-            global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
-            if os.path.exists(global_config_path):
-                with open(global_config_path, "r", encoding="utf-8") as f:
-                    table_config = json.load(f)
-        except Exception as e:
-            logger.warning(f"Could not load global table_config: {e}")
+        table_config = load_global_table_config()
 
         # 2. 현재 워크스페이스의 table_name 결정
         t_name = self.table_name
@@ -497,18 +589,24 @@ class IngestionHandler(FileSystemEventHandler):
 
         # 4. 배치 단위로 정규화 및 로컬 DB 전송
         import uuid
+        from itertools import islice
         file_tx_id = str(uuid.uuid4())
-        
+
         batch_size = 1000
         total_changed = 0
         all_created_logs = []
         total_log_count = 0  # [C-5] 절단과 무관한 실제 총 감사 로그 건수
 
-        total_rows = len(rows)
+        # [확장성] list와 이터레이터 모두 지원 — 이터레이터(std parser)는 총 행 수를 인자로 받는다.
+        if total_rows is None:
+            total_rows = len(rows)
+        row_iter = iter(rows)
         processed_rows = 0
         try:
-            for i in range(0, total_rows, batch_size):
-                chunk = rows[i:i + batch_size]
+            while True:
+                chunk = list(islice(row_iter, batch_size))
+                if not chunk:
+                    break
                 items = []
                 
                 for row in chunk:
@@ -566,7 +664,7 @@ class IngestionHandler(FileSystemEventHandler):
                 
                 processed_rows += len(chunk)
                 if self.on_progress_callback:
-                    progress_pct = int((processed_rows / total_rows) * 100)
+                    progress_pct = min(int((processed_rows / total_rows) * 100), 100) if total_rows else 100
                     try:
                         self.on_progress_callback(t_name, filename or "unknown", progress_pct, processed_rows, total_rows)
                     except Exception as pe:
@@ -587,53 +685,152 @@ class WorkspaceWatcher:
         self.base_dir = base_dir
         self.observer = Observer()
         self.watch_count = 0
+        self.watched_raw_paths = set()  # 이미 감시 등록된 raws/ 절대경로 (런타임 중복 등록 방지)
+        # [F2] sync_new_workspaces 직렬화 락 — 임베디드 모드에서 /admin/reload-configs가
+        # sync def(스레드풀)로 동시 실행되면 watched_raw_paths의 check-then-add가 비원자라
+        # 같은 raws/가 observer에 이중 schedule될 수 있다(파일 이벤트 2회 처리 → 중복 인제션 경쟁).
+        self._sync_lock = threading.Lock()
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
 
+    def _provision_workspaces(self) -> list:
+        """[테이블 온보딩 자동화] table_config.json에 등록된 각 테이블에 대해
+        표준 워크스페이스 구조(raws/archives/err/auto_update/scripts/config + 최소형 config.json)를
+        보충 생성한다. **기존 파일/설정은 절대 덮어쓰지 않는다**(없는 폴더·파일만 보충).
+        반환: 생성/보충이 실제로 발생한 테이블명 목록."""
+        import json
+        table_config = load_global_table_config()
+        provisioned = []
+        for t_name in table_config.keys():
+            if t_name in AUTO_PROVISION_EXCLUDED_TABLES:
+                continue
+            try:
+                workspace_root = os.path.join(self.base_dir, t_name)
+                changed = False
+                for sub in WORKSPACE_SUBDIRS:
+                    sub_dir = os.path.join(workspace_root, sub)
+                    if not os.path.exists(sub_dir):
+                        os.makedirs(sub_dir, exist_ok=True)
+                        changed = True
+                config_dir = os.path.join(workspace_root, "config")
+                has_json_config = any(f.endswith(".json") for f in os.listdir(config_dir))
+                if not has_json_config:
+                    config_path = os.path.join(config_dir, "config.json")
+                    with open(config_path, "w", encoding="utf-8") as f:
+                        json.dump({"table_name": t_name}, f, ensure_ascii=False, indent=2)
+                    changed = True
+                if changed:
+                    provisioned.append(t_name)
+            except Exception as e:
+                logger.error(f"Failed to provision workspace for table '{t_name}': {e}")
+        if provisioned:
+            logger.info(f"🏗️ Auto-provisioned ingestion workspace structure for table(s): {provisioned}")
+        return provisioned
+
+    def _register_workspace(self, raws_root: str, table_config: dict) -> bool:
+        """단일 raws/ 폴더를 observer에 감시 등록한다. 등록 성공 시 True."""
+        abs_root = os.path.abspath(raws_root)
+        if abs_root in self.watched_raw_paths:
+            return False
+
+        workspace_root = os.path.dirname(raws_root)
+        config_dir = os.path.join(workspace_root, "config")
+        config_path = os.path.join(config_dir, "config.json")
+        archives_path = os.path.join(workspace_root, "archives")
+
+        # Agent D v7: Be more flexible if config.json is not present
+        if not os.path.exists(config_path) and os.path.exists(config_dir):
+            json_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
+            if json_files:
+                config_path = os.path.join(config_dir, json_files[0])
+                logger.info(f"Using alternative config: {config_path}")
+
+        if os.path.exists(config_path):
+            handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
+            watch_desc = f"using config: {os.path.basename(config_path)}"
+        else:
+            # config 가 없더라도 scripts 폴더 내에 파이썬 파일이 있거나(파이프라인 전용),
+            # 폴더명이 table_config에 등록된 테이블명과 일치하면(std parser 규약) 감지 대상으로 포함
+            scripts_dir = os.path.join(workspace_root, "scripts")
+            has_scripts = False
+            if os.path.exists(scripts_dir):
+                for f in os.listdir(scripts_dir):
+                    if f.endswith('.py'):
+                        has_scripts = True
+                        break
+
+            table_name = os.path.basename(workspace_root)
+            if has_scripts:
+                watch_desc = f"Pipeline-only workspace, Table: {table_name}"
+            elif table_name in table_config:
+                watch_desc = f"Std-parser workspace (folder name = table), Table: {table_name}"
+            else:
+                logger.warning(f"Skipping {raws_root}: No JSON config or custom_parser found.")
+                return False
+            handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
+
+        self.observer.schedule(handler, raws_root, recursive=False)
+        self.watched_raw_paths.add(abs_root)
+        self.watch_count += 1
+        logger.info(f"Watching: {raws_root} ({watch_desc})")
+        return True
+
     def discover_and_watch(self):
         """
         Recursively finds 'raws' folders in the ingestion workspace and registers them.
+        (사전 단계로 table_config 등록 테이블의 누락 워크스페이스를 자동 생성한다.)
         """
+        try:
+            self._provision_workspaces()
+        except Exception as e:
+            logger.error(f"Workspace auto-provisioning failed (continuing with existing workspaces): {e}")
+
         logger.info(f"Scanning {self.base_dir} for 'raws' folders...")
-        
+        table_config = load_global_table_config()
         for root, dirs, files in os.walk(self.base_dir):
             if os.path.basename(root) == "raws":
-                workspace_root = os.path.dirname(root)
-                config_dir = os.path.join(workspace_root, "config")
-                config_path = os.path.join(config_dir, "config.json")
-                archives_path = os.path.join(workspace_root, "archives")
-                
-                # Agent D v7: Be more flexible if config.json is not present
-                if not os.path.exists(config_path) and os.path.exists(config_dir):
-                    json_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
-                    if json_files:
-                        config_path = os.path.join(config_dir, json_files[0])
-                        logger.info(f"Using alternative config: {config_path}")
+                self._register_workspace(root, table_config)
 
-                if os.path.exists(config_path):
-                    handler = IngestionHandler(workspace_root, config_path, archives_path, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
-                    self.observer.schedule(handler, root, recursive=False)
-                    self.watch_count += 1
-                    logger.info(f"Watching: {root} (using config: {os.path.basename(config_path)})")
-                else:
-                    # Pipeline: config 가 없더라도 scripts 폴더 내에 파이썬 파일이 있으면 감지 대상으로 포함
-                    scripts_dir = os.path.join(workspace_root, "scripts")
-                    has_scripts = False
-                    if os.path.exists(scripts_dir):
-                        for f in os.listdir(scripts_dir):
-                            if f.endswith('.py'):
-                                has_scripts = True
-                                break
-                                
-                    if has_scripts:
-                        table_name = os.path.basename(workspace_root)
-                        handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
-                        self.observer.schedule(handler, root, recursive=False)
-                        self.watch_count += 1
-                        logger.info(f"Watching: {root} (Pipeline-only workspace, Table: {table_name})")
-                    else:
-                        logger.warning(f"Skipping {root}: No JSON config or custom_parser found.")
+    def sync_new_workspaces(self) -> int:
+        """[SYSTEM_RELOAD] table_config 재로드 후 신규 테이블 워크스페이스를 보충 생성하고,
+        아직 감시 중이 아닌 raws/ 폴더를 **실행 중인 observer에 런타임 등록**한다
+        (watchdog은 start() 이후에도 schedule() 가능 — 재기동 불필요).
+        [F2] threading.Lock으로 전체를 직렬화한다 — 동시 reload 호출이 같은 raws/를
+        이중 schedule하는 레이스 방지.
+        반환: 새로 감시 등록된 raws/ 수."""
+        with self._sync_lock:
+            try:
+                self._provision_workspaces()
+            except Exception as e:
+                logger.error(f"Workspace auto-provisioning failed during sync: {e}")
+
+            added = 0
+            table_config = load_global_table_config()
+            for root, dirs, files in os.walk(self.base_dir):
+                if os.path.basename(root) == "raws":
+                    if self._register_workspace(root, table_config):
+                        added += 1
+            if added:
+                logger.info(f"🔄 Runtime workspace sync: {added} new raws/ folder(s) now being watched.")
+                self._ensure_observer_running()
+            return added
+
+    def _ensure_observer_running(self):
+        """[F3] 기동 시 watch 0건이면 start()가 observer를 띄우지 않는다 — 이후 런타임 등록된
+        schedule()은 조용히 무동작(이벤트가 영원히 발화 안 함)이 된다. 신규 등록 시점에
+        observer 생존을 확인하고 미기동이면 기동을 시도한다. (이미 stop()된 스레드는
+        재시작 불가 → RuntimeError를 명시적 warning으로 노출.)"""
+        if self.observer.is_alive():
+            return
+        try:
+            self.observer.start()
+            logger.info(f"▶️ Observer was not running — started now with {self.watch_count} watch(es).")
+        except RuntimeError as e:
+            logger.warning(
+                f"Observer could not be (re)started for runtime-registered watches — "
+                f"file events will NOT fire until process restart: {e}"
+            )
 
     def stop(self):
         self.observer.stop()
@@ -641,10 +838,13 @@ class WorkspaceWatcher:
 
     def start(self, blocking: bool = True):
         if self.watch_count == 0:
+            # [F3] 이 시점에 미기동이어도 sync_new_workspaces의 _ensure_observer_running이
+            # 런타임 등록 시 기동을 시도한다.
             logger.error("No valid 'raws' folders found to watch.")
             return
 
-        self.observer.start()
+        if not self.observer.is_alive():
+            self.observer.start()
         logger.info(f"Started observer with {self.watch_count} watches.")
         
         if blocking:
