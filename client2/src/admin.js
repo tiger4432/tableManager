@@ -1,4 +1,7 @@
 // Ingestion Outbox Admin Dashboard client logic
+import './tokens.css';
+import { initTheme, getTheme } from './theme.js';
+
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
 
@@ -99,6 +102,7 @@ const editorBackBtn = document.getElementById('editor-back-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   fetchData();
   setupEventListeners();
   initMonacoEditor();
@@ -488,7 +492,7 @@ function renderFileTable() {
 
     row.innerHTML = `
       <td>${log.id}</td>
-      <td style="font-weight: 500; color: #a6e3a1; word-break: break-all;">${log.filename}</td>
+      <td style="font-weight: 500; color: var(--success); word-break: break-all;">${log.filename}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${log.table_name}</td>
       <td style="text-align: center;">${statusBadge}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${log.retry_count}</td>
@@ -654,7 +658,7 @@ function renderMapperTable() {
     const funcCount = mapper.functions.length;
 
     row.innerHTML = `
-      <td style="font-weight: bold; color: #a6e3a1; word-break: break-all;">${mapper.filename}</td>
+      <td style="font-weight: bold; color: var(--success); word-break: break-all;">${mapper.filename}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">${mapper.module_name}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
     `;
@@ -695,7 +699,7 @@ function renderAutoUpdateTable() {
 
     row.innerHTML = `
       <td style="font-weight: bold; color: var(--color-primary);">${col.table_name}</td>
-      <td style="font-weight: 500; color: #a6e3a1; word-break: break-all;">${col.script_name}</td>
+      <td style="font-weight: 500; color: var(--success); word-break: break-all;">${col.script_name}</td>
       <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${col.cron_expression}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem;">${col.next_run || '-'}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem;">${col.last_run || '-'}</td>
@@ -927,7 +931,7 @@ function selectWorkspaceRow(ws) {
       div.style.borderBottom = '1px solid var(--border-color)';
       div.style.paddingBottom = '8px';
       div.innerHTML = `
-        <span>📄 <strong style="color: #a6e3a1;">${s}</strong> (Active Custom Parser)</span>
+        <span>📄 <strong style="color: var(--success);">${s}</strong> (Active Custom Parser)</span>
         <button class="glass-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
       `;
       
@@ -1134,7 +1138,8 @@ async function retryAllFailed() {
 // Show feedback toasts
 function showToast(message, type = 'success') {
   const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
+  // tokens.css 공통 토스트 계약(.toast.toast-{type})에 정렬 (구 .toast.{type}도 호환 유지됨)
+  toast.className = `toast toast-${type}`;
   toast.innerHTML = `
     <span style="font-size: 1.2rem;">${type === 'success' ? '✅' : '❌'}</span>
     <span class="toast-message">${message}</span>
@@ -1179,7 +1184,8 @@ function initMonacoEditor() {
     window.monacoEditor = monaco.editor.create(document.getElementById('monaco-editor-container'), {
       value: '# Select a script file from the left explorer tree to start editing\n',
       language: 'python',
-      theme: 'vs-dark',
+      // 페이지 테마(light/dark)에 따라 Monaco 기본 테마 매핑
+      theme: getTheme() === 'dark' ? 'vs-dark' : 'vs',
       automaticLayout: true,
       fontSize: 15,
       minimap: { enabled: true }
@@ -1188,6 +1194,13 @@ function initMonacoEditor() {
     console.log('Monaco Editor loaded successfully');
   });
 }
+
+// 테마 토글 시 Monaco 에디터 테마 동기화 (theme.js 'themechange' 구독)
+document.addEventListener('themechange', (e) => {
+  if (window.monaco && isMonacoLoaded) {
+    window.monaco.editor.setTheme(e.detail.theme === 'dark' ? 'vs-dark' : 'vs');
+  }
+});
 
 // Render the editor left-side file tree
 function renderEditorTree(data) {

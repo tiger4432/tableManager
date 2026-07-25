@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
   <title>AssyManager Enterprise - AG-Grid Client</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,7 +15,7 @@
     rel="stylesheet">
 </head>
 
-<body class="dark-theme">
+<body>
   <div id="app">
     <!-- 헤더 툴바 -->
     <header class="app-header">
@@ -26,7 +28,7 @@
         <div class="log-indicator-area" style="display: flex; align-items: center; gap: 8px;">
           <span id="performance-log" class="glass-log-badge">Ready</span>
           <!-- Dynamic Unsaved Tx State Indicator -->
-          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: rgba(245, 158, 11, 0.15); border-color: var(--color-warning); color: var(--color-warning); font-weight: bold;">⚡ Unsaved: 0</span>
+          <span id="tx-pending-badge" class="glass-log-badge" style="display: none; background: var(--warning-weak); border-color: var(--warning); color: var(--warning); font-weight: bold;">⚡ Unsaved: 0</span>
           <!-- Enrichment Queue missing-value counter (hidden unless rules API is live & count > 0) -->
           <span id="enrichment-badge" class="glass-log-badge" style="display: none;">🧩 결손 0건</span>
           <button id="tx-apply-btn" class="glass-btn success-glow" style="display: none; padding: 4px 12px; font-size: 0.8rem; font-weight: bold; border-radius: 6px;">Apply</button>
@@ -42,7 +44,7 @@
           <button id="refresh-grid-btn" class="glass-btn" title="Refresh Grid Data">🔄 Refresh</button>
           <button id="add-row-btn" class="glass-btn" title="Add Row">➕ Row</button>
           <button id="delete-row-btn" class="glass-btn hover-danger" title="Delete Selected Rows">🗑️ Row</button>
-          <button id="graph-sync-btn" class="glass-btn" style="display: none; background: rgba(59, 130, 246, 0.2); border-color: var(--color-primary); color: var(--color-primary); font-weight: bold;">⚡ Graph Sync</button>
+          <button id="graph-sync-btn" class="glass-btn" style="display: none; background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold;">⚡ Graph Sync</button>
         </div>
         <div class="control-group">
           <input type="file" id="toolbar-file-input" multiple style="display: none;" />
@@ -78,6 +80,10 @@
             <a href="/api/download/client" class="dropdown-item nav-link" download style="color: var(--color-success);">📥 Download Desktop</a>
           </div>
         </div>
+        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
         <div class="status-indicators">
           <span class="status-badge" id="server-status">API: Loading</span>
           <span class="status-badge" id="ws-status">WS: Connecting</span>
@@ -160,8 +166,8 @@
         Show/Hide Columns
       </div>
       <div style="display: flex; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-        <button id="col-select-all-btn" style="background: rgba(134, 59, 255, 0.15); border: 1px solid rgba(134, 59, 255, 0.4); color: var(--color-primary); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">All</button>
-        <button id="col-select-none-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--color-danger); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">Clear</button>
+        <button id="col-select-all-btn" style="background: var(--accent-weak); border: 1px solid var(--accent); color: var(--accent); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">All</button>
+        <button id="col-select-none-btn" style="background: var(--danger-weak); border: 1px solid var(--danger); color: var(--danger); cursor: pointer; font-size: 0.75rem; padding: 3px 8px; font-weight: bold; border-radius: 4px; transition: all 0.2s;">Clear</button>
       </div>
       <ul id="column-list-container" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
         <!-- Dynamic Checkboxes -->

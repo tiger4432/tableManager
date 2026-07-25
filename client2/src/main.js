@@ -1,7 +1,9 @@
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+import './tokens.css';
 import './style.css';
+import { initTheme } from './theme.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
@@ -85,6 +87,7 @@ async function init() {
     elements.sortLatestToggle.checked = cachedSortLatest === 'true';
   }
 
+  initTheme();
   setupEventListeners();
   setupClipboardHandlers();
   setupDragAndDrop();
@@ -1523,9 +1526,7 @@ function showClipboardTypeModal(types) {
       left: '0',
       width: '100vw',
       height: '100vh',
-      backgroundColor: 'rgba(11, 14, 20, 0.7)',
-      backdropFilter: 'blur(12px)',
-      webkitBackdropFilter: 'blur(12px)',
+      backgroundColor: 'var(--scrim)',
       zIndex: '9999',
       display: 'flex',
       justifyContent: 'center',
@@ -1536,22 +1537,22 @@ function showClipboardTypeModal(types) {
 
     // 2. Map mime-types to user friendly labels & icons
     const typeConfigs = {
-      'text/plain': { label: 'Plain Text (일반 텍스트)', icon: '📋', color: '#89b4fa' },
-      'text/html': { label: 'HTML Table (엑셀 표 서식 포함)', icon: '🌐', color: '#a6e3a1' },
-      'text/rtf': { label: 'Rich Text Format (RTF 서식)', icon: '📝', color: '#f9e2af' },
-      'text/csv': { label: 'Comma Separated (CSV)', icon: '📊', color: '#f5c2e7' },
-      'application/json': { label: 'JSON Data Object', icon: '⚙️', color: '#cba6f7' }
+      'text/plain': { label: 'Plain Text (일반 텍스트)', icon: '📋', color: 'var(--accent)' },
+      'text/html': { label: 'HTML Table (엑셀 표 서식 포함)', icon: '🌐', color: 'var(--success)' },
+      'text/rtf': { label: 'Rich Text Format (RTF 서식)', icon: '📝', color: 'var(--warning)' },
+      'text/csv': { label: 'Comma Separated (CSV)', icon: '📊', color: 'var(--info)' },
+      'application/json': { label: 'JSON Data Object', icon: '⚙️', color: 'var(--accent-2)' }
     };
 
     // 3. Create modal container card
     const card = document.createElement('div');
     Object.assign(card.style, {
-      background: 'rgba(20, 26, 38, 0.88)',
-      border: '1px solid rgba(255, 255, 255, 0.08)',
+      background: 'var(--bg-surface)',
+      border: '1px solid var(--border-strong)',
       borderRadius: '16px',
       padding: '28px',
       width: '420px',
-      boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+      boxShadow: 'var(--shadow-pop)',
       display: 'flex',
       flexDirection: 'column',
       gap: '20px',
@@ -1562,8 +1563,8 @@ function showClipboardTypeModal(types) {
     // 4. Modal Header
     const header = document.createElement('div');
     header.innerHTML = `
-      <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 600; color: #cdd6f4; margin-bottom: 6px;">📋 Paste Clipboard Type</h3>
-      <p style="font-family: 'Outfit', sans-serif; font-size: 0.85rem; color: #7f849c; line-height: 1.45;">클립보드에 여러 포맷의 데이터가 감지되었습니다.<br>파싱을 위해 전송할 데이터 타입을 선택하세요.</p>
+      <h3 style="font-family: var(--font-sans); font-size: 1.35rem; font-weight: 600; color: var(--text); margin-bottom: 6px;">📋 Paste Clipboard Type</h3>
+      <p style="font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-muted); line-height: 1.45;">클립보드에 여러 포맷의 데이터가 감지되었습니다.<br>파싱을 위해 전송할 데이터 타입을 선택하세요.</p>
     `;
     card.appendChild(header);
 
@@ -1576,16 +1577,16 @@ function showClipboardTypeModal(types) {
     });
 
     types.forEach(type => {
-      const cfg = typeConfigs[type] || { label: type, icon: '📄', color: '#cdd6f4' };
+      const cfg = typeConfigs[type] || { label: type, icon: '📄', color: 'var(--text)' };
       const btn = document.createElement('button');
 
       Object.assign(btn.style, {
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'var(--bg-inset)',
+        border: '1px solid var(--border)',
         borderRadius: '10px',
         padding: '12px 16px',
-        color: '#cdd6f4',
-        fontFamily: "'Outfit', sans-serif",
+        color: 'var(--text)',
+        fontFamily: 'var(--font-sans)',
         fontSize: '0.92rem',
         fontWeight: '500',
         textAlign: 'left',
@@ -1598,22 +1599,22 @@ function showClipboardTypeModal(types) {
       });
 
       btn.innerHTML = `
-        <span style="font-size: 1.25rem; background: rgba(255,255,255,0.02); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">${cfg.icon}</span>
+        <span style="font-size: 1.25rem; background: var(--bg-surface); padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">${cfg.icon}</span>
         <div style="display: flex; flex-direction: column;">
           <span style="color: ${cfg.color}; font-weight: 600;">${cfg.label.split(' (')[0]}</span>
-          <span style="font-size: 0.72rem; color: #7f849c; margin-top: 1px;">${type}</span>
+          <span style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">${type}</span>
         </div>
       `;
 
       btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'rgba(255, 255, 255, 0.08)';
+        btn.style.background = 'var(--surface-hover)';
         btn.style.borderColor = cfg.color;
         btn.style.transform = 'translateX(4px)';
-        btn.style.boxShadow = `0 4px 15px ${cfg.color}15`;
+        btn.style.boxShadow = 'var(--shadow-card)';
       });
       btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'rgba(255, 255, 255, 0.03)';
-        btn.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+        btn.style.background = 'var(--bg-inset)';
+        btn.style.borderColor = 'var(--border)';
         btn.style.transform = 'none';
         btn.style.boxShadow = 'none';
       });
@@ -1631,11 +1632,11 @@ function showClipboardTypeModal(types) {
     const cancelBtn = document.createElement('button');
     Object.assign(cancelBtn.style, {
       background: 'transparent',
-      border: '1px solid rgba(255, 255, 255, 0.08)',
+      border: '1px solid var(--border)',
       borderRadius: '10px',
       padding: '10px',
-      color: '#7f849c',
-      fontFamily: "'Outfit', sans-serif",
+      color: 'var(--text-muted)',
+      fontFamily: 'var(--font-sans)',
       fontSize: '0.88rem',
       fontWeight: '500',
       cursor: 'pointer',
@@ -1644,14 +1645,14 @@ function showClipboardTypeModal(types) {
     });
     cancelBtn.textContent = 'Cancel (취소)';
     cancelBtn.addEventListener('mouseenter', () => {
-      cancelBtn.style.background = 'rgba(243, 139, 168, 0.1)';
-      cancelBtn.style.color = '#f38ba8';
-      cancelBtn.style.borderColor = 'rgba(243, 139, 168, 0.2)';
+      cancelBtn.style.background = 'var(--danger-weak)';
+      cancelBtn.style.color = 'var(--danger)';
+      cancelBtn.style.borderColor = 'var(--danger)';
     });
     cancelBtn.addEventListener('mouseleave', () => {
       cancelBtn.style.background = 'transparent';
-      cancelBtn.style.color = '#7f849c';
-      cancelBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+      cancelBtn.style.color = 'var(--text-muted)';
+      cancelBtn.style.borderColor = 'var(--border)';
     });
     cancelBtn.addEventListener('click', () => {
       closeModal(null);
