@@ -187,9 +187,9 @@ async def startup_event():
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_base = os.path.join(script_dir, "ingestion_workspace")
         
-        def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
+        def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
             import json
-            
+
             # 캐시 무효화
             invalidate_table_cache(table_name)
                 
@@ -608,6 +608,44 @@ def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
         if fallback_log and fallback_log[0]:
             return str(fallback_log[0])
     return None
+
+def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: list) -> dict:
+    """[C-1 Fix] batch_delete용 business_key 일괄 유도 — 행별 N+1 쿼리를 청크당 IN 쿼리 2회로 대체.
+
+    get_deleted_row_business_key와 동일 의미론(최신 business_key 우선, 없으면 key_col 셀 편집
+    로그의 new_value fallback)을 유지하되 1000행 청킹으로 대량 삭제에서도 안전하다.
+    반환: {row_id: business_key(str)}
+    """
+    result = {}
+    if not row_ids:
+        return result
+    config = crud.TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    CHUNK = 1000
+    for i in range(0, len(row_ids), CHUNK):
+        chunk = row_ids[i:i + CHUNK]
+        # 1차: AuditLog.business_key를 직접 보유한 로그 (timestamp 오름차순 순회 → 최신값이 최종 반영)
+        rows = db.query(models.AuditLog.row_id, models.AuditLog.business_key).filter(
+            models.AuditLog.table_name == table_name,
+            models.AuditLog.row_id.in_(chunk),
+            models.AuditLog.business_key.isnot(None)
+        ).order_by(models.AuditLog.timestamp.asc()).all()
+        for r_id, bk in rows:
+            if bk:
+                result[r_id] = str(bk)
+        # 2차 fallback: business_key 미보유 행은 key_col 셀 편집 로그의 new_value에서 유도
+        if key_col:
+            missing = [r for r in chunk if r not in result]
+            if missing:
+                fb_rows = db.query(models.AuditLog.row_id, models.AuditLog.new_value).filter(
+                    models.AuditLog.table_name == table_name,
+                    models.AuditLog.row_id.in_(missing),
+                    models.AuditLog.column_name == key_col
+                ).order_by(models.AuditLog.timestamp.asc()).all()
+                for r_id, nv in fb_rows:
+                    if nv:
+                        result[r_id] = str(nv)
+    return result
 
 def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[str, str]]:
     from collections import defaultdict
@@ -1113,7 +1151,9 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
     """
     행 삭제 엔드포인트
     """
-    success = crud.delete_row(db, table_name, row_id)
+    # [C-1 Fix] async 핸들러 내 동기 DB 호출 → threadpool 격리(이벤트 루프 동결 방지)
+    from fastapi.concurrency import run_in_threadpool
+    success = await run_in_threadpool(crud.delete_row, db, table_name, row_id)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
         
@@ -1132,32 +1172,41 @@ async def delete_row(table_name: str, row_id: str, db: Session = Depends(get_db)
 @app.post("/tables/{table_name}/rows/batch_delete")
 async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, db: Session = Depends(get_db)):
     """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
-    deleted_count = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
-    
-    created_logs = []
+    from fastapi.concurrency import run_in_threadpool
+
+    # [C-1 Fix] 동기 crud 삭제 + 감사 로그 조회를 threadpool로 격리(이벤트 루프 동결 방지).
+    # 기존 삭제행별 get_deleted_row_business_key N+1 쿼리(대량 삭제 시 최악의 루프 블로커)는
+    # get_deleted_rows_business_keys_bulk의 청크 IN 쿼리 2회로 대체한다.
+    def _delete_and_collect():
+        deleted = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
+        logs = []
+        if deleted > 0:
+            log_objs = db.query(models.AuditLog).filter(
+                models.AuditLog.table_name == table_name,
+                models.AuditLog.row_id.in_(batch.row_ids),
+                models.AuditLog.column_name == "DELETE"
+            ).all()
+            bk_map = get_deleted_rows_business_keys_bulk(db, table_name, [l.row_id for l in log_objs])
+            for log in log_objs:
+                logs.append({
+                    "id": log.id,
+                    "table_name": log.table_name,
+                    "row_id": log.row_id,
+                    "column_name": log.column_name,
+                    "old_value": log.old_value,
+                    "new_value": log.new_value,
+                    "source_name": log.source_name,
+                    "updated_by": log.updated_by,
+                    "transaction_id": log.transaction_id,
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                    "business_key": bk_map.get(log.row_id),
+                    "is_row_deleted": True
+                })
+        return deleted, logs
+
+    deleted_count, created_logs = await run_in_threadpool(_delete_and_collect)
+
     if deleted_count > 0:
-        log_objs = db.query(models.AuditLog).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id.in_(batch.row_ids),
-            models.AuditLog.column_name == "DELETE"
-        ).all()
-        for log in log_objs:
-            bk = get_deleted_row_business_key(db, log.table_name, log.row_id)
-            created_logs.append({
-                "id": log.id,
-                "table_name": log.table_name,
-                "row_id": log.row_id,
-                "column_name": log.column_name,
-                "old_value": log.old_value,
-                "new_value": log.new_value,
-                "source_name": log.source_name,
-                "updated_by": log.updated_by,
-                "transaction_id": log.transaction_id,
-                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "business_key": bk,
-                "is_row_deleted": True
-            })
-            
         invalidate_table_cache(table_name)
         CHUNK_SIZE = 500
         for i in range(0, len(batch.row_ids), CHUNK_SIZE):
@@ -1589,40 +1638,46 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     """
     신규 행 추가 엔드포인트 (단건 및 다건 지원)
     """
-    new_rows = crud.create_empty_rows_batch(db, table_name, count, user_name)
-    
-    created_logs = []
+    # [C-1 Fix] 동기 crud 생성 + AuditLog 조회 + ORM 속성 접근(msg_items)을 threadpool로 격리
+    from fastapi.concurrency import run_in_threadpool
+
+    def _create_and_collect():
+        new_rows_ = crud.create_empty_rows_batch(db, table_name, count, user_name)
+        logs = []
+        if new_rows_:
+            log_objs = db.query(models.AuditLog).filter(
+                models.AuditLog.table_name == table_name,
+                models.AuditLog.row_id.in_([r.row_id for r in new_rows_]),
+                models.AuditLog.column_name == "CREATE"
+            ).all()
+            for log in log_objs:
+                logs.append({
+                    "id": log.id,
+                    "table_name": log.table_name,
+                    "row_id": log.row_id,
+                    "column_name": log.column_name,
+                    "old_value": log.old_value,
+                    "new_value": log.new_value,
+                    "source_name": log.source_name,
+                    "updated_by": log.updated_by,
+                    "transaction_id": log.transaction_id,
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                    "business_key": log.business_key
+                })
+        items = []
+        for row in new_rows_:
+            inject_system_columns(row)
+            items.append({
+                "row_id": row.row_id,
+                "table_name": table_name,
+                "data": row.data
+            })
+        return new_rows_, logs, items
+
+    new_rows, created_logs, msg_items = await run_in_threadpool(_create_and_collect)
     if new_rows:
         invalidate_table_cache(table_name)
-        log_objs = db.query(models.AuditLog).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id.in_([r.row_id for r in new_rows]),
-            models.AuditLog.column_name == "CREATE"
-        ).all()
-        for log in log_objs:
-            created_logs.append({
-                "id": log.id,
-                "table_name": log.table_name,
-                "row_id": log.row_id,
-                "column_name": log.column_name,
-                "old_value": log.old_value,
-                "new_value": log.new_value,
-                "source_name": log.source_name,
-                "updated_by": log.updated_by,
-                "transaction_id": log.transaction_id,
-                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "business_key": log.business_key
-            })
-    
-    msg_items = []
-    for row in new_rows:
-        inject_system_columns(row)
-        msg_items.append({
-            "row_id": row.row_id,
-            "table_name": table_name,
-            "data": row.data
-        })
-    
+
     # WebSocket 브로드캐스트 (대량 작업 시 500개씩 청크 분할 전송하여 메모리/통신 안정성 확보)
     CHUNK_SIZE = 500
     for i in range(0, len(msg_items), CHUNK_SIZE):
@@ -1661,20 +1716,27 @@ async def apply_batch_updates_endpoint(
     col_types = cfg.get("column_types", {})
     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
     row_objects = [r for r, _ in results]
-    if row_objects:
-        fetch_and_merge_metadata(db, table_name, row_objects, user_cols, include_sources=False)
 
-    msg_items = []
-    for row, is_new in results:
-        inject_system_columns(row)
-        msg_items.append({
-            "row_id": row.row_id,
-            "is_new": is_new,
-            "data": row.data,
-            "created_at": to_local_str(row.created_at),
-            "updated_at": to_local_str(row.updated_at)
-        })
-    
+    # [C-1 Fix] fetch_and_merge_metadata(동기 DB 쿼리 + O(행×컬럼) 병합 루프)와 msg_items 구성
+    # (ORM 속성 접근 → 잠재적 lazy-load)을 async 핸들러 본문에서 실행하면 uvicorn 단일 이벤트
+    # 루프가 통째로 동결된다(라이브 실측 7초 freeze의 주범). threadpool로 격리한다.
+    def _merge_and_build_items():
+        if row_objects:
+            fetch_and_merge_metadata(db, table_name, row_objects, user_cols, include_sources=False)
+        items = []
+        for row, is_new in results:
+            inject_system_columns(row)
+            items.append({
+                "row_id": row.row_id,
+                "is_new": is_new,
+                "data": row.data,
+                "created_at": to_local_str(row.created_at),
+                "updated_at": to_local_str(row.updated_at)
+            })
+        return items
+
+    msg_items = await run_in_threadpool(_merge_and_build_items)
+
     # WebSocket 브로드캐스트를 백그라운드 태스크로 이관하여 즉시 HTTP 200 반환!
     if not batch.silent:
         user_name = batch.updates[0].updated_by if batch.updates else "system"
@@ -1822,7 +1884,8 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
 @app.get("/tables/{table_name}/{row_id}/{col_name}/sources")
-async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+    # [C-1 Fix] await가 없는 순수 동기 핸들러 — def로 전환해 FastAPI가 threadpool에서 실행(루프 비블로킹)
     """특정 셀에 중첩된 모든 데이터 원천(Sources) 정보를 반환합니다."""
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
@@ -1867,23 +1930,33 @@ async def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Sess
 @app.delete("/tables/{table_name}/{row_id}/{col_name}/sources/{source_name}")
 async def delete_cell_source(table_name: str, row_id: str, col_name: str, source_name: str, db: Session = Depends(get_db)):
     """특정 셀의 특정 원천 데이터를 삭제합니다."""
-    updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
-    if not updated_row:
+    # [C-1 Fix] 동기 crud + ORM 속성 접근을 threadpool로 격리
+    from fastapi.concurrency import run_in_threadpool
+
+    def _delete_and_build():
+        updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
+        if not updated_row:
+            return None
+        inject_system_columns(updated_row)
+        return {
+            "row_id": row_id,
+            "is_new": False,
+            "data": updated_row.data,
+            "created_at": to_local_str(updated_row.created_at),
+            "updated_at": to_local_str(updated_row.updated_at)
+        }, len(changed_cols)
+
+    built = await run_in_threadpool(_delete_and_build)
+    if not built:
         raise HTTPException(status_code=404, detail="Source or Cell not found")
-    
-    inject_system_columns(updated_row)
+    item, change_count = built
+
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
         "table_name": table_name,
-        "items": [{
-            "row_id": row_id, 
-            "is_new": False, 
-            "data": updated_row.data,
-            "created_at": to_local_str(updated_row.created_at),
-            "updated_at": to_local_str(updated_row.updated_at)
-        }],
-        "change_count": len(changed_cols)
+        "items": [item],
+        "change_count": change_count
     }))
     return {"status": "success", "row_id": row_id}
 
@@ -1895,20 +1968,27 @@ async def set_cell_priority(
     db: Session = Depends(get_db)
 ):
     """특정 셀의 표시 우선순위 소스를 수동으로 지정합니다 (Pin). source_name이 null이면 수동 지정 해제."""
-    updated_row, changed_cols, deleted_row_ids = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
-    if not updated_row:
+    # [C-1 Fix] 동기 crud + fetch_and_merge_metadata를 threadpool로 격리
+    from fastapi.concurrency import run_in_threadpool
+
+    def _apply_and_merge_single():
+        updated_row, changed_cols, deleted = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
+        if not updated_row:
+            return None, None, None
+        cfg = crud.TABLE_CONFIG.get(table_name, {})
+        col_types = cfg.get("column_types", {})
+        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+        merged = fetch_and_merge_metadata(db, table_name, [updated_row], user_cols, include_sources=True)
+        return merged, changed_cols, deleted
+
+    merged_rows, changed_cols, deleted_row_ids = await run_in_threadpool(_apply_and_merge_single)
+    if merged_rows is None:
         raise HTTPException(status_code=404, detail="Cell not found or source invalid")
-    
-    cfg = crud.TABLE_CONFIG.get(table_name, {})
-    col_types = cfg.get("column_types", {})
-    user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-    
-    merged_rows = fetch_and_merge_metadata(db, table_name, [updated_row], user_cols, include_sources=True)
     if not merged_rows:
         raise HTTPException(status_code=500, detail="Failed to serialize updated row")
-        
+
     merged_item = merged_rows[0]
-    
+
     # 껍데기 행 실시간 제거 브로드캐스트 전송
     if deleted_row_ids:
         await manager.broadcast(json.dumps({
@@ -1933,7 +2013,8 @@ async def set_cell_priority(
     return {"status": "success", "row_id": row_id, "deleted_row_ids": deleted_row_ids}
 
 @app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history")
-async def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+def get_cell_history(table_name: str, row_id: str, col_name: str, db: Session = Depends(get_db)):
+    # [C-1 Fix] await가 없는 순수 동기 핸들러 — def로 전환해 threadpool 실행(루프 비블로킹)
     """특정 셀의 변경 이력(AuditLog)을 조회합니다."""
     logs = db.query(models.AuditLog).filter(
         models.AuditLog.table_name == table_name,
@@ -1950,19 +2031,26 @@ async def set_cell_priority_batch_endpoint(
     db: Session = Depends(get_db)
 ):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
-    changed_rows, created_logs, deleted_row_ids = crud.set_cell_manual_priority_batch(
-        db, table_name, req.updates, req.source_name, req.updated_by
-    )
-    
+    # [C-1 Fix] 동기 배치 crud + fetch_and_merge_metadata(include_sources=True)를 threadpool로 격리
+    from fastapi.concurrency import run_in_threadpool
+
+    def _apply_and_merge():
+        changed, logs, deleted = crud.set_cell_manual_priority_batch(
+            db, table_name, req.updates, req.source_name, req.updated_by
+        )
+        merged = []
+        if changed:
+            cfg = crud.TABLE_CONFIG.get(table_name, {})
+            col_types = cfg.get("column_types", {})
+            user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+            merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
+        return changed, logs, deleted, merged
+
+    changed_rows, created_logs, deleted_row_ids, merged_items = await run_in_threadpool(_apply_and_merge)
+
     if changed_rows:
         invalidate_table_cache(table_name)
-        
-        cfg = crud.TABLE_CONFIG.get(table_name, {})
-        col_types = cfg.get("column_types", {})
-        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-        
-        merged_items = fetch_and_merge_metadata(db, table_name, changed_rows, user_cols, include_sources=True)
-        
+
         # 껍데기 행 실시간 제거 브로드캐스트 전송
         if deleted_row_ids:
             await manager.broadcast(json.dumps({
@@ -2014,19 +2102,24 @@ async def delete_cell_source_batch_endpoint(
     db: Session = Depends(get_db)
 ):
     """여러 셀의 특정 데이터 원천(Source)을 일괄 삭제합니다."""
-    changed_rows, created_logs = crud.delete_cell_source_batch(
-        db, table_name, req.cells, req.source_name
-    )
-    
+    # [C-1 Fix] 동기 배치 crud + fetch_and_merge_metadata(include_sources=True)를 threadpool로 격리
+    from fastapi.concurrency import run_in_threadpool
+
+    def _delete_and_merge():
+        changed, logs = crud.delete_cell_source_batch(db, table_name, req.cells, req.source_name)
+        merged = []
+        if changed:
+            cfg = crud.TABLE_CONFIG.get(table_name, {})
+            col_types = cfg.get("column_types", {})
+            user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+            merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
+        return changed, logs, merged
+
+    changed_rows, created_logs, merged_items = await run_in_threadpool(_delete_and_merge)
+
     if changed_rows:
         invalidate_table_cache(table_name)
-        
-        cfg = crud.TABLE_CONFIG.get(table_name, {})
-        col_types = cfg.get("column_types", {})
-        user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-        
-        merged_items = fetch_and_merge_metadata(db, table_name, changed_rows, user_cols, include_sources=True)
-        
+
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [{
             "row_id": item["row_id"],
@@ -2625,7 +2718,7 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     
     loop = asyncio.get_running_loop()
     
-    def sync_refresh_callback(t_name: str, count: int, created_logs: list = None):
+    def sync_refresh_callback(t_name: str, count: int, created_logs: list = None, total_log_count: int = None):
         msg = {
             "event": "batch_refresh_required",
             "table_name": t_name,
@@ -2720,7 +2813,8 @@ async def get_auto_update_status():
         return {"status": "error", "message": str(e), "data": []}
 
 @app.post("/admin/auto-update/run-now")
-async def trigger_auto_update_run_now(
+def trigger_auto_update_run_now(
+    # [C-1 Fix] await가 없는 순수 동기 핸들러(INSERT+commit) — def로 전환해 threadpool 실행
     table_name: str = Body(..., embed=True),
     script_name: str = Body(..., embed=True),
     db: Session = Depends(get_db)
@@ -2762,10 +2856,12 @@ async def trigger_auto_update_run_now(
 async def internal_event_batch_refresh(
     table_name: str = Body(..., embed=True),
     change_count: int = Body(..., embed=True),
-    created_logs: list = Body(None, embed=True)
+    created_logs: list = Body(None, embed=True),
+    total_log_count: int = Body(None, embed=True)
 ):
     """Ingestion Worker가 파일 적재 완료 시 웹 서버에 갱신 및 캐시 무효화를 알리는 내부 이벤트 엔드포인트입니다."""
     import json
+    from fastapi.concurrency import run_in_threadpool
     invalidate_table_cache(table_name)
     msg = {
         "event": "batch_refresh_required",
@@ -2773,37 +2869,44 @@ async def internal_event_batch_refresh(
         "change_count": change_count
     }
     if created_logs:
-        actual_count = len(created_logs)
-        sliced_logs = created_logs[:500] if actual_count > 500 else created_logs
+        # [C-5] 워처가 이미 500건으로 절단해 보내며(total_log_count = 실제 총 건수),
+        # 구버전 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다.
+        actual_count = total_log_count if total_log_count is not None else len(created_logs)
+        sliced_logs = created_logs[:500] if len(created_logs) > 500 else created_logs
         msg["created_logs"] = sliced_logs
         # Update the web server's in-memory audit cache
+        # [C-1] pydantic 검증(add_logs_batch)은 CPU 바운드 — threadpool로 이관(루프 비블로킹, 내부 Lock으로 안전)
         try:
-            audit_cache.add_logs_batch(sliced_logs, override_total_count=actual_count)
+            await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
         except Exception as e:
             print(f"[Main Server] Failed to update audit_cache from batch-refresh: {e}")
-    await manager.broadcast(json.dumps(msg))
+    text_msg = await run_in_threadpool(json.dumps, msg)
+    await manager.broadcast(text_msg)
     return {"status": "ok"}
 
 @app.post("/internal/events/broadcast")
 async def internal_event_broadcast(payload: dict = Body(...)):
     """외부 데몬 프로세스로부터 임의의 WebSocket 메시지를 받아 중계하는 엔드포인트입니다."""
     import json
+    from fastapi.concurrency import run_in_threadpool
     # If the payload is a table refresh/update, handle caching/invalidation
     table_name = payload.get("table_name")
     if table_name:
         invalidate_table_cache(table_name)
-        
+
     created_logs = payload.get("created_logs")
     if created_logs:
         try:
             actual_count = len(created_logs)
             sliced_logs = created_logs[:500] if actual_count > 500 else created_logs
             payload["created_logs"] = sliced_logs
-            audit_cache.add_logs_batch(sliced_logs, override_total_count=actual_count)
+            # [C-1] pydantic 검증(add_logs_batch)·대형 json.dumps는 CPU 바운드 — threadpool로 이관
+            await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
         except Exception as e:
             print(f"[Main Server] Failed to update audit_cache from broadcast: {e}")
-            
-    await manager.broadcast(json.dumps(payload))
+
+    text_msg = await run_in_threadpool(json.dumps, payload)
+    await manager.broadcast(text_msg)
     return {"status": "ok"}
 
 @app.post("/internal/events/file-processed")

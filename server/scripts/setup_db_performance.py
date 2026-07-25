@@ -68,6 +68,14 @@ def setup_performance():
             #   정상 상태에선 거의 빈 인덱스 → 1000만행 누적에도 스윕이 O(미전달)로 안전.
             ("idx_outbox_undelivered", "database_outbox",
              "(id) WHERE processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL"),
+
+            # [C-3] 보관 정책(7일) purge 대상 탐색 전용 부분 인덱스 (chain worker의 주기 purge가 사용).
+            ("idx_outbox_purge", "database_outbox",
+             "(created_at) WHERE processed_chain = true"),
+
+            # [C-3] FAILED 격리 이벤트 관리 API 전용 부분 인덱스 — 비부분 status 인덱스 DROP의 대체.
+            ("idx_outbox_failed", "database_outbox",
+             "(status, id) WHERE status = 'FAILED'"),
         ]
 
         # [Reliability F1] broadcast_at 컬럼 보정 + 최초 생성 시 1회 청킹 백필.
@@ -105,6 +113,29 @@ def setup_performance():
                 print(f"   Success ({time.time() - t0:.2f}s)")
             except Exception as e:
                 print(f"   Failed to create {idx_name}: {e}")
+
+        # 3.5 [C-3] 레거시 중복 outbox 인덱스 제거 (실측 합계 429MB — 전량 역할 중복/미사용)
+        #   - ix_database_outbox_id            : pkey와 완전 중복 (124MB)
+        #   - ix_database_outbox_event_uuid    : 조회처 전무, uuid4 유일성은 통계적 보장 (224MB)
+        #   - ix_database_outbox_status        : 부분 인덱스 idx_outbox_pending/idx_outbox_failed로 대체 (44MB)
+        #   - ix_database_outbox_processed_chain : 부분 인덱스 idx_outbox_unprocessed로 대체 (37MB)
+        #   models.py에서도 해당 컬럼의 index/unique 선언을 제거했으므로 create_all이 재생성하지 않는다.
+        #   반드시 대체 인덱스(Step 3) 생성 이후에 DROP한다. CONCURRENTLY로 무중단 삭제(멱등).
+        legacy_outbox_indexes = [
+            "ix_database_outbox_id",
+            "ix_database_outbox_event_uuid",
+            "ix_database_outbox_status",
+            "ix_database_outbox_processed_chain",
+        ]
+        print("\nStep 3.5: Dropping legacy duplicate outbox indices...")
+        for idx_name in legacy_outbox_indexes:
+            print(f" - Dropping {idx_name} (if exists)...")
+            t0 = time.time()
+            try:
+                conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
+                print(f"   Done ({time.time() - t0:.2f}s)")
+            except Exception as e:
+                print(f"   Failed to drop {idx_name}: {e}")
 
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")

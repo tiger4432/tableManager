@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -18,6 +18,18 @@ FastAPI 웹서버(`main.py`)는 API + WebSocket 허브이고, 무거운 작업�
 - `main.py:99-213` 시작 로직은 `DECOUPLED=True`가 아니면 워처·체인 워커를 인라인 기동. 운영에서는 `run_decoupled_app.py`가 `DECOUPLED=True`로 완전 분리.
 
 미들웨어 `db_context_middleware`(`main.py:55-71`)가 `X-User`/`X-Transaction-ID`/`X-Source` 헤더를 ContextVar로 읽어 감사 추적에 사용. CORS는 `localhost:5173`으로 제한.
+
+### 1.1 이벤트 루프 보호 원칙 (C-1, 2026-07-25)
+
+uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에서 동기 SQLAlchemy 쿼리·O(행×컬럼) 병합 루프·대형 JSON 직렬화를 실행하면 웹서버 전체(모든 REST/WS/내부 브로드캐스트)가 동결된다(라이브 실측 7초 freeze). 강제 규칙:
+
+- **await가 필요 없는 핸들러는 `def`(sync)로 작성** → FastAPI가 threadpool에서 실행.
+- **await(브로드캐스트 등)가 필요한 핸들러의 동기 구간(crud 호출, `fetch_and_merge_metadata`, ORM 속성 접근/직렬화)은 `run_in_threadpool`로 격리**. 적용 지점: PUT `/data/updates`, `batch_delete`(N+1 → `get_deleted_rows_business_keys_bulk` 벌크 IN 조회로 대체), `POST /rows`, `DELETE /rows/{id}`, priority(단건·배치), sources delete(단건·배치), `/internal/events/*`(audit_cache 갱신·json.dumps).
+- 신규 엔드포인트 추가 시 이 원칙을 리뷰 포인트로 명시한다.
+
+### 1.2 import 경로 불변식 (C-2)
+
+모든 프로세스·스크립트는 `server/`를 sys.path에 두고 **최상위 `database.*` / `parsers.*` 경로로만** import한다. `server.database.*` 혼용 import는 동일 모듈 이중 로드 → outbox `before_flush` 리스너 2중 등록 → **전 이벤트 ×2 중복 발행**을 유발한다(상세: [event_driven_backend.md](./event_driven_backend.md) §2.1).
 
 ---
 

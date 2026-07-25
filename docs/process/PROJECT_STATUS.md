@@ -9,12 +9,15 @@
 ## 🎯 현재 초점 (Current Focus)
 - **다음: Enrichment Queue 구현 착수** — 스펙 확정됨([spec/ENRICHMENT_QUEUE_SPEC.md](../spec/ENRICHMENT_QUEUE_SPEC.md), `dc6659d`). 순서: 총괄이 경계 계약(파생 테이블 config·결손 카운트·배지 API) 설계 → Server PM(dedup mapper + config) / Client PM(enrichment.html + 그리드 배지) 분할 위임.
 - ✅ **이슈 #0(체인 outbox) 종결(2026-07-25)** — 최종 실측: 정상 31ms(SLO 100ms 달성), 재기동 첫 체인 579ms(알려진 기동 특성으로 수용). 상세: [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md).
-- 운영 서버 반영 대기: `git pull` → `python server/scripts/setup_db_performance.py`(멱등) → 재기동.
+- **경합 수정 배치 1 완료(2026-07-25, 검수·커밋 대기)** — C-2 outbox ×2 중복 발행 근절 / C-1 이벤트 루프 격리 / C-5 워처 payload 상한 / C-3 7일 보관 정책. 상세: [reports/Server_contention_fix_report.md](../../agent_workspace/reports/Server_contention_fix_report.md).
+- 운영 서버 반영 대기(순서 중요): ① C-2 반영 코드로 전 프로세스 재기동 → ② `conda run -n assy_manager python server/scripts/setup_db_performance.py`(멱등: 레거시 인덱스 4종 DROP + purge/failed 인덱스 생성) → ③ `... python server/scripts/purge_outbox_backlog.py --dry-run` 확인 후 본실행(백로그 270만 행 정리) → ④ 오프피크 `VACUUM (ANALYZE) database_outbox`(공간 완전 반환 필요 시 VACUUM FULL — 전 프로세스 중지 필요).
 - 맵 에디터 사용성 개선 (Client PM 도메인)은 병행 관찰.
 
 ## ✅ 최근 완료 (Recently Done) — 최신순
 | 날짜 | 영역 | 요약 | 이력 |
 |---|---|---|---|
+| 2026-07-25 | 서버 | 경합 수정 배치 1 — C-2 import 통일(outbox ×2 발행 근절)·C-1 async 핸들러 threadpool 격리+batch_delete N+1 제거·C-5 created_logs 500건 상한·C-3 outbox 7일 purge+레거시 인덱스 4종 정리, 테스트 58 통과(신규 8) — 검수·커밋 대기 | [20260725_090000](../history/20260725_090000_contention_fix_batch1.md) |
+| 2026-07-25 | 서버 | 5-프로세스 경합 전수 점검(분석 전용) — C-1~C-12 리스크 12건 식별·실측(outbox 중복 1.26M그룹, 루프 동결 7s), 착수순서 권고 | [보고서](../../agent_workspace/reports/Server_contention_audit.md) |
 | 2026-07-25 | 서버/체인 | 체인 워커 콜드 스타트 웜업 — 매퍼 선import(+SYSTEM_RELOAD 재웜업)·DB 풀 프라임·HTTP keep-alive(스레드-로컬 Session)·[Warmup] 계측, 첫 체인 1.3s → 100ms 목표 — 검수·커밋 대기 | [20260725_073000](../history/20260725_073000_chain_worker_cold_start_warmup.md) |
 | 2026-07-25 | 서버/체인 | 체인 100ms SLO 구조수정 — 통지 인라인 발사(기아 제거)·[Latency] 구간 계측·기동 마이그레이션 게이팅(UndefinedColumn 회귀 수정) — 검수·커밋 대기 | [20260725_063000](../history/20260725_063000_chain_latency_slo_inline_dispatch.md) |
 | 2026-07-25 | 서버/체인 | 체인 outbox 신뢰성 후속수정 F1(broadcast_at 전달확정+미전달 스윕+백필)·F2(그룹간 단일 순차 발사)·F3(idx_outbox_txid 실사용) + F4/F5 문서화 — 검수·커밋 대기 | [20260725_001824](../history/20260725_001824_chain_outbox_reliability_f1_f2_f3.md) |
@@ -43,6 +46,8 @@
 | 1 | 낮음 | `IntegrityAndQAExpert` 스킬 §3 QA 체크리스트가 아직 PySide 항목(QThread/DLL/PySide 임포트) — 웹 client2 QA 항목으로 미전환 | 프로세스 | 대기 |
 | 4 | 낮음 | `test_map_presets_api` 기존 실패(#0 이전부터, 맵 프리셋 도메인·체인 무관) — conda 환경 전체 스위트 51개 중 유일 실패(50 통과, 2026-07-25 확인) | Client | 대기 |
 | 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
+| 5 | 중간 | **경합 점검 잔여 리스크(승인 대기)** — C-4(인제션 체인 큐 독점·HOL, 매퍼 의미론 총괄 협의 필요)·C-6(동시 upsert 행 락 순서)·C-7(그래프 전체 동기화 무제한 로드/브로드캐스트)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + 체인 워커의 created_logs 무상한 전송·broadcast body 파싱 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) | Server | 대기(수정 배치 2 후보) |
+| 6 | 중간 | 배치 삭제(delete_rows_batch)의 DELETE 감사 로그가 DB 미저장(add_to_cache=False가 persist까지 생략, 인메모리 캐시만) — 재시작 시 삭제 이력 소실. 수정 태스크 칩 발행됨 | Server | 대기 |
 | 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)

@@ -18,13 +18,15 @@ import sys
 import json
 from datetime import datetime
 
-# 프로젝트 루트를 sys.path에 추가하여 server 패키지 import 가능하게 함
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.insert(0, PROJECT_ROOT)
+# [C-2 Fix] server 디렉토리를 sys.path에 추가하고 다른 모든 프로세스와 동일한 최상위
+# `database.*` 경로로 import한다. (구 `server.database.*` 혼용은 동일 모듈 이중 로드
+# → before_flush 리스너 2중 등록 → outbox 이벤트 ×2 중복 발행의 원인 — 재도입 금지)
+SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, SERVER_DIR)
 
 from sqlalchemy import text, inspect
-from server.database.database import engine, Base, SessionLocal
-from server.database import models, crud
+from database.database import engine, Base, SessionLocal
+from database import models, crud
 
 
 # ─────────────────────────────────────────────

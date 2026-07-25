@@ -44,7 +44,7 @@ def post_event(endpoint: str, payload: dict):
     except Exception as e:
         logger.error(f"Failed to send API notification: {e}")
 
-def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
+def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
     logger.info(f"Refresh required for {table_name}: {count} rows updated.")
     payload = {
         "table_name": table_name,
@@ -60,6 +60,10 @@ def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None):
                 log_copy["timestamp"] = ts.isoformat()
             serialized_logs.append(log_copy)
         payload["created_logs"] = serialized_logs
+        # [C-5] created_logs는 상한(500) 절단본 — 실제 총 건수를 별도 필드로 전달해
+        # 웹서버 audit_cache의 트랜잭션 total_count 표기가 절단과 무관하게 정확하도록 한다.
+        if total_log_count is not None:
+            payload["total_log_count"] = total_log_count
     post_event("/internal/events/batch-refresh", payload)
 
 def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):

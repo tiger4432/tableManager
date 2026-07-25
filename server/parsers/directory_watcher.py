@@ -7,17 +7,104 @@ from watchdog.events import FileSystemEventHandler
 
 import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
-server_dir = os.path.abspath(os.path.join(script_dir, "../.."))
+# [C-2 Fix] sys.path에는 repo root가 아니라 server 디렉토리를 추가하고, DB 모듈은 다른 모든
+# 프로세스(main.py, run_watcher.py 등)와 동일하게 최상위 `database.*` 경로로 import한다.
+# 과거 `server.database.database` 혼용 import는 동일 모듈을 서로 다른 이름으로 2회 로드시켜
+# before_flush 리스너가 Session 클래스에 2중 등록되었고, 모든 outbox 이벤트가 ×2로
+# 중복 발행되는 회귀(라이브 실측 중복 그룹 1,259,076개)의 원인이었다. 재도입 금지.
+server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
-from server.database.database import SessionLocal
-from server.database import crud, schemas
+from database.database import SessionLocal
+from database import crud, schemas
 
 log_path = os.path.join(server_dir, "watcher.log")
 
 # Inherit from unified Watcher logger parent to prevent double formatting and log separation
 logger = logging.getLogger("Watcher.DirectoryWatcher")
+
+# [C-5] 파일 인제션 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
+# 웹서버(main.py /internal/events/*)가 어차피 500건으로 절단·캐시하므로, 워처가 전량(수십만~수백만
+# dict)을 메모리에 누적·HTTP POST하는 것은 순수 낭비이자 OOM/이벤트 루프 동결 요인이었다.
+# 이벤트 필드 형태(created_logs: list)는 그대로 유지하고 항목 수만 제한한다(경계 계약 불변).
+# 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
+MAX_NOTIFY_CREATED_LOGS = 500
+
+
+def _register_legacy_import_shim():
+    """[C-2 하위호환 shim] gitignored 사용자 워크스페이스 스크립트의 구식 `server.*` import 지원.
+
+    C-2 수정으로 sys.path에서 repo root가 제거되어, 기존 사용자 커스텀 파서의
+    `from server.parsers.pipeline_base import BasePipelineParser` 류 모듈 레벨 import가
+    깨질 수 있다(사용자 스크립트는 무수정 원칙 — gitignored 자산).
+
+    해법: sys.modules에 **동일 객체 별칭**을 등록한다. 파이썬 import 시스템은 dotted 완전명을
+    sys.modules에서 __path__ 탐색·meta_path보다 먼저 조회하므로, 구식 import는 이미 로드된
+    top-level 모듈(`pipeline_base`, `database.database` 등)과 **정확히 같은 모듈 객체**를 받는다.
+    → issubclass 정체성 유지 + 같은 모듈의 2차 로드(before_flush 리스너 2중 등록 → outbox ×2
+    발행)가 원천적으로 불가능해진다.
+
+    ⚠️ '차단'이 아니라 '중화'인 이유: conda env에 본 프로젝트가 pip editable로 설치되어 있어
+    (`__editable___assy_manager_*_finder`가 sys.meta_path에 상주) `server.*` import는 부모
+    __path__와 무관하게 항상 실 파일로 해석된다 — 더미 패키지의 빈 __path__로는 막을 수 없다.
+    따라서 리스너를 등록하는 위험 모듈(`server.database.*`)까지 **전부 별칭으로 선점**하여,
+    어떤 경로로 import되든 단일 객체가 되도록 한다.
+
+    (2026-07-25 워크스페이스 스크립트 전수 조사: 실사용 구식 import는
+     `server.parsers.pipeline_base` · `server.parsers.html_topology_parser` 2종.
+     `server.database.*`는 실사용 0건이나 editable finder 경유 2차 로드 방지를 위해 방어적 별칭.)
+    멱등: 재호출 시 기존 등록을 재사용한다.
+    """
+    import types
+
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+
+    # 1) top-level 정본 모듈 로드 (플러그인 신규 권장 경로와 동일 객체)
+    import pipeline_base
+    import database
+    import database.database as _db_database
+    import database.models as _db_models
+    import database.crud as _db_crud
+    import database.schemas as _db_schemas
+
+    def _ensure_pkg(name, parent=None, attr=None):
+        mod = sys.modules.get(name)
+        if mod is None:
+            mod = types.ModuleType(name)
+            mod.__path__ = []
+            sys.modules[name] = mod
+        if parent is not None and attr is not None and not hasattr(parent, attr):
+            setattr(parent, attr, mod)
+        return mod
+
+    server_pkg = _ensure_pkg("server")
+    parsers_pkg = _ensure_pkg("server.parsers", server_pkg, "parsers")
+
+    # 2) 별칭 등록 — 구식 dotted import가 top-level 모듈 객체 그대로를 받는다.
+    aliases = {
+        "server.parsers.pipeline_base": pipeline_base,
+        # 리스너(before_flush) 보유 모듈 — editable finder 경유 2차 로드를 별칭 선점으로 중화
+        "server.database": database,
+        "server.database.database": _db_database,
+        "server.database.models": _db_models,
+        "server.database.crud": _db_crud,
+        "server.database.schemas": _db_schemas,
+    }
+    try:
+        import html_topology_parser
+        aliases["server.parsers.html_topology_parser"] = html_topology_parser
+    except Exception as e:
+        # html_topology_parser는 선택 의존(bs4 등) — 실패해도 나머지 shim은 유효.
+        logger.warning(f"Legacy import shim: html_topology_parser alias skipped: {e}")
+
+    for dotted, mod in aliases.items():
+        sys.modules[dotted] = mod
+        parent_name, _, child = dotted.rpartition(".")
+        parent_mod = sys.modules.get(parent_name)
+        if parent_mod is not None:
+            setattr(parent_mod, child, mod)
 
 class IngestionHandler(FileSystemEventHandler):
     """
@@ -145,7 +232,7 @@ class IngestionHandler(FileSystemEventHandler):
     def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str):
         db = SessionLocal()
         try:
-            from server.database.models import FileIngestionLog
+            from database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
@@ -165,7 +252,7 @@ class IngestionHandler(FileSystemEventHandler):
     def _log_ingestion_success(self, original_path: str, archived_path: str):
         db = SessionLocal()
         try:
-            from server.database.models import FileIngestionLog
+            from database.models import FileIngestionLog
             log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
@@ -286,7 +373,11 @@ class IngestionHandler(FileSystemEventHandler):
             sys.path.insert(0, script_dir)
             
         try:
-            from server.parsers.pipeline_base import BasePipelineParser
+            # [C-2 Fix] 플러그인 스크립트(run_watcher 포함)와 동일한 최상위 모듈명(pipeline_base)으로
+            # import하여 BasePipelineParser의 이중 모듈 정체성(issubclass 불일치)을 방지한다.
+            from pipeline_base import BasePipelineParser
+            # [C-2 하위호환] 구식 `server.parsers.*` import를 쓰는 기존 사용자 스크립트 지원(동일 객체 별칭).
+            _register_legacy_import_shim()
         except ImportError:
             logger.error("Failed to import BasePipelineParser. Check sys.path.")
             return None
@@ -396,7 +487,7 @@ class IngestionHandler(FileSystemEventHandler):
         real_source = "batch_ingester"
         if filename:
             try:
-                from server.parsers.pipeline_base import BasePipelineParser
+                from pipeline_base import BasePipelineParser
                 real_source = BasePipelineParser.get_basename(filename)
             except Exception as e:
                 logger.warning(f"Failed to get clean original filename: {e}")
@@ -411,7 +502,8 @@ class IngestionHandler(FileSystemEventHandler):
         batch_size = 1000
         total_changed = 0
         all_created_logs = []
-        
+        total_log_count = 0  # [C-5] 절단과 무관한 실제 총 감사 로그 건수
+
         total_rows = len(rows)
         processed_rows = 0
         try:
@@ -459,7 +551,11 @@ class IngestionHandler(FileSystemEventHandler):
                     
                     total_changed += len(changed_cells)
                     if created_logs:
-                        all_created_logs.extend(created_logs)
+                        # [C-5] 누적 자체에 상한 적용 — 수십만 행 파일에서도 메모리·payload가 O(500)로 고정
+                        total_log_count += len(created_logs)
+                        remaining = MAX_NOTIFY_CREATED_LOGS - len(all_created_logs)
+                        if remaining > 0:
+                            all_created_logs.extend(created_logs[:remaining])
                     logger.info(f"[{self.table_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                 except Exception as e:
                     db.rollback()
@@ -477,7 +573,7 @@ class IngestionHandler(FileSystemEventHandler):
                         logger.warning(f"Progress callback failed: {pe}")
                     
             if self.on_refresh_callback and total_changed > 0:
-                self.on_refresh_callback(t_name, total_changed, all_created_logs)
+                self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)
                 
         except Exception as outer_e:
             logger.error(f"[{self.table_name}] Outer error during batch injection loop: {outer_e}")

@@ -148,6 +148,57 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
     return await asyncio.to_thread(do_post)
 
 
+# [C-3] Outbox 보관 정책 (사용자 확정: 7일)
+#   처리 완료(processed_chain=true)된 outbox 행을 7일 경과 후 주기적으로 삭제한다.
+#   보존 기준은 created_at — 정상 운영에서 이벤트는 생성 후 수 초 내 처리되므로 생성시점 ≈ 처리시점이며,
+#   created_at은 부분 인덱스(idx_outbox_purge: created_at WHERE processed_chain=true)로 O(대상건수) 탐색이
+#   가능하다(1000만 행 안전). 미처리(processed_chain=false) 행은 나이와 무관하게 절대 삭제하지 않는다.
+OUTBOX_RETENTION_DAYS = 7
+OUTBOX_PURGE_INTERVAL = 3600.0   # 저빈도 주기(1시간) — 시간당 삭제량은 시간당 유입량 수준의 소량
+OUTBOX_PURGE_CHUNK = 1000        # 1000행 청킹 (헌장 규칙: 대량 쓰기는 배치)
+OUTBOX_PURGE_MAX_CHUNKS = 50     # 사이클당 상한(최대 5만 행) — 초과분은 다음 사이클로 이월
+
+
+def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTION_DAYS,
+                              chunk_size=OUTBOX_PURGE_CHUNK, max_chunks=OUTBOX_PURGE_MAX_CHUNKS):
+    """[C-3] 보관기간 경과한 처리 완료 outbox 행을 청크 단위로 삭제한다(동기 — 스레드에서 실행).
+
+    - 별도의 짧은 세션 사용(워커 메인 세션·스윕 세션과 격리, 청크마다 commit → 락 보유시간 최소화).
+    - 청크 삭제 실패는 로깅 후 다음 사이클 재시도(멱등 — 남은 행은 다시 매치된다).
+    - 반환: 삭제된 총 행 수.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import delete, select
+    from database.models import DatabaseOutbox
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    total_deleted = 0
+    db = db_session_factory()
+    try:
+        for _ in range(max_chunks):
+            subq = select(DatabaseOutbox.id).where(
+                DatabaseOutbox.processed_chain == True,
+                DatabaseOutbox.created_at < cutoff,
+            ).limit(chunk_size)
+            res = db.execute(delete(DatabaseOutbox).where(DatabaseOutbox.id.in_(subq)))
+            db.commit()
+            deleted = res.rowcount or 0
+            total_deleted += deleted
+            if deleted < chunk_size:
+                break
+        if total_deleted:
+            logger.info(
+                f"[Outbox Purge] Deleted {total_deleted} processed outbox row(s) "
+                f"older than {retention_days} day(s)."
+            )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Outbox Purge] Failed (will retry next cycle): {e}")
+    finally:
+        db.close()
+    return total_deleted
+
+
 def _stamp_broadcast_at_sync(db_session_factory, event_ids):
     """[Reliability F1] 전달 확정된 그룹의 outbox 행에 broadcast_at을 찍는다.
 
@@ -694,6 +745,12 @@ async def start_chain_ingestion_worker(db_session_factory):
     last_sweep_ts = 0.0
     SWEEP_INTERVAL = 5.0
 
+    # [C-3] outbox 보관 정책(7일) purge — 기동 직후 1회(다운타임 백로그 소화) + 이후 1시간 주기.
+    #   전달 기한이 없는 유지보수 작업이므로 백그라운드 태스크(to_thread)로 발사해 폴링 루프를 막지 않는다
+    #   (통지처럼 기아가 문제되는 경로가 아님 — 늦게 완료돼도 무해·멱등). done 가드로 중복 실행을 방지한다.
+    last_purge_ts = None
+    purge_task = None
+
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
     listener = OutboxListener(db_session_factory, "outbox_event")
 
@@ -753,6 +810,15 @@ async def start_chain_ingestion_worker(db_session_factory):
                 if now_ts - last_sweep_ts >= SWEEP_INTERVAL:
                     last_sweep_ts = now_ts
                     await sweep_undelivered_broadcasts(db, rules, db_session_factory)
+
+                # [C-3] outbox 7일 보관 purge (저빈도·비블로킹·별도 세션)
+                if (purge_task is None or purge_task.done()) and (
+                    last_purge_ts is None or now_ts - last_purge_ts >= OUTBOX_PURGE_INTERVAL
+                ):
+                    last_purge_ts = now_ts
+                    purge_task = asyncio.create_task(
+                        asyncio.to_thread(purge_expired_outbox_sync, db_session_factory)
+                    )
 
                 # Fetch pending outbox records
                 pending_events = db.query(DatabaseOutbox).filter(

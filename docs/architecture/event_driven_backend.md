@@ -44,6 +44,7 @@ graph TD
   * `session.new`에 `DataRow` 감지 시 ➡️ `CREATE` 이벤트 적재.
   * `session.dirty`에 `DataRow` 감지 시 ➡️ `EDIT` 이벤트 적재.
   * `session.deleted`에 `DataRow` 감지 시 ➡️ `DELETE` 이벤트 적재.
+* ⚠️ **단일 import 경로 불변식 (C-2, 2026-07-25)**: 이 리스너는 **Session 클래스 전역**에 등록되므로, `database.database` 모듈이 서로 다른 이름(`database.database` vs `server.database.database`)으로 이중 import되면 리스너가 2회 등록되어 **모든 outbox 이벤트가 ×2 중복 발행**된다(라이브 실측: 중복 그룹 1,259,076개). 모든 프로세스·스크립트는 반드시 `server/` 디렉토리를 sys.path에 두고 최상위 `database.*` 경로로만 import한다(`server.*` 접두 import 금지). 회귀 가드: `tests/test_contention_fixes.py`(리스너 1개·flush당 이벤트 1건 검증).
 
 ### 2.2 비동기 사용자 컨텍스트 전달 (`ContextVars`)
 비동기 API 요청 루프와 완전히 디커플링된 ORM 이벤트 리스너 내부에서 "수정을 실행한 유저명"과 "요청의 성격(Source)" 등을 파악하기 위해 파이썬의 `ContextVars`를 사용합니다.
@@ -53,6 +54,17 @@ graph TD
   * `request_transaction_id`: 논리적 트랜잭션 그룹 ID
   * `request_source`: 호출 근원 (예: `"user"`, `"pipeline_parser"`, `"chain_ingestion"`)
 * **미들웨어 바인딩**: `server/main.py` 내 `db_context_middleware`가 매 API 요청 시 헤더 또는 쿼리 파라미터를 읽어 ContextVars에 값을 격리 주입하며, 요청 종료 시 안전하게 리셋(reset)합니다.
+
+### 2.3 Outbox 보관 정책 (7일) · 주기 Purge · 인덱스 구성 (C-3, 2026-07-25)
+
+outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at UPDATE)를 만드는 고쓰기 테이블이며, 무한 보존 시 DB의 최대 비중을 차지한다(실측 2.7M행/4.9GB). 다음 보관 정책이 적용된다.
+
+* **보관 기간**: **7일** (사용자 확정). `processed_chain = true`이고 `created_at`이 7일 경과한 행을 삭제한다. **미처리(`processed_chain = false`) 행은 나이와 무관하게 절대 삭제하지 않는다.**
+* **실행 주체**: 체인 워커의 저빈도 주기 태스크 — `chain_ingestion_worker.purge_expired_outbox_sync` (기동 직후 1회 + 1시간 주기, `asyncio.to_thread` 백그라운드 발사로 폴링 루프 비블로킹, 별도 짧은 세션, **1000행 청킹** + 사이클당 50청크 상한).
+* **탐색 인덱스**: 부분 인덱스 `idx_outbox_purge` — `(created_at) WHERE processed_chain = true`. 보관 정책이 유지되는 정상 상태에선 테이블 자체가 약 7일치로 소규모 유지된다.
+* **FAILED 격리 행 주의**: 3회 실패로 격리된(`status='FAILED'`, `processed_chain=true`) 행도 7일 후 삭제된다 → **수동 재시도(`/admin/outbox/retry-failed`)는 7일 이내에 수행**해야 한다. 관리 API 조회용 부분 인덱스: `idx_outbox_failed` — `(status, id) WHERE status = 'FAILED'`.
+* **레거시 인덱스 정리**: 비부분 인덱스 4종(`ix_database_outbox_id`(pkey 중복)·`ix_database_outbox_event_uuid`(미사용)·`ix_database_outbox_status`(부분 인덱스로 대체)·`ix_database_outbox_processed_chain`(부분 인덱스로 대체), 실측 합계 429MB)은 models.py 선언에서 제거되었고 기존 운영 DB는 `scripts/setup_db_performance.py`의 멱등 DROP으로 정리한다.
+* **기존 백로그 정리**: 라이브 프로세스가 건드리지 않는 수동 스크립트 `scripts/purge_outbox_backlog.py`(dry-run 지원, 청킹 DELETE) — 실행 순서는 스크립트 docstring 참조.
 
 ---
 

@@ -61,12 +61,16 @@ class AuditLog(Base):
 class DatabaseOutbox(Base):
     __tablename__ = "database_outbox"
 
-    id = Column(Integer, primary_key=True, index=True)
-    event_uuid = Column(String, unique=True, index=True, nullable=False)
+    # [C-3] 레거시 중복 인덱스 정리: id의 index=True(pkey와 완전 중복·실측 124MB),
+    # event_uuid의 unique/index(224MB — 조회처 전무, uuid4 유일성은 통계적으로 보장),
+    # status의 비부분 index(44MB — 부분 인덱스 idx_outbox_pending/idx_outbox_failed로 대체)를 제거.
+    # 기존 운영 DB의 해당 인덱스는 scripts/setup_db_performance.py의 멱등 DROP으로 정리한다.
+    id = Column(Integer, primary_key=True)
+    event_uuid = Column(String, nullable=False)
     event_type = Column(String(50), nullable=False)
     table_name = Column(String(100), nullable=False)
     payload = Column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
-    status = Column(String(20), default="PENDING", index=True)
+    status = Column(String(20), default="PENDING")
     retry_count = Column(Integer, default=0)
     # [Latency Fix #3] 비부분 boolean 인덱스(전체 행 색인) 대신 아래 부분 인덱스(WHERE processed_chain=false)로 대체.
     processed_chain = Column(Boolean, default=False)
@@ -94,6 +98,16 @@ class DatabaseOutbox(Base):
         # 정상 상태(전달 확정)에선 거의 빈 인덱스이므로 1000만행 누적에도 스윕이 O(미전달)로 안전하다.
         Index("idx_outbox_undelivered", "id",
               postgresql_where=text("processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL")),
+
+        # [C-3] 보관 정책(7일) purge 대상 탐색 전용 부분 인덱스 — 처리 완료 행의 created_at 정렬 탐색.
+        # 7일 보관이 유지되는 정상 상태에선 테이블 자체가 소규모로 유지되어 인덱스도 작다.
+        Index("idx_outbox_purge", "created_at",
+              postgresql_where=text("processed_chain = true")),
+
+        # [C-3] FAILED 격리 이벤트 관리 API(/admin/outbox/failed·retry-failed) 전용 부분 인덱스.
+        # 비부분 status 인덱스(ix_database_outbox_status) DROP의 대체 — FAILED는 극소수라 사실상 빈 인덱스.
+        Index("idx_outbox_failed", "status", "id",
+              postgresql_where=text("status = 'FAILED'")),
     ]
     if not is_sqlite:
         _outbox_index_list.append(
