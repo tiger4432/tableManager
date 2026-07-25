@@ -50,5 +50,6 @@ export const elements = {
   get settingsDropdown() { return document.getElementById('settings-dropdown'); },
   get navMenuBtn() { return document.getElementById('nav-menu-btn'); },
   get navDropdown() { return document.getElementById('nav-dropdown'); },
-  get txPendingBadge() { return document.getElementById('tx-pending-badge'); }
+  get txPendingBadge() { return document.getElementById('tx-pending-badge'); },
+  get enrichmentBadge() { return document.getElementById('enrichment-badge'); }
 };

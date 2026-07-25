@@ -2,7 +2,7 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
-import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
+import { updateSelectedCellUI, updateTxModeUI, updateEnrichmentBadge } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject } from './grid.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
@@ -87,6 +87,9 @@ export async function switchTable(tableName) {
   elements.tabCellBtn.classList.remove('active');
   elements.tabRowBtn.classList.remove('active');
   await loadHistory();
+
+  // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)
+  updateEnrichmentBadge();
 }
 
 // Load table column schema

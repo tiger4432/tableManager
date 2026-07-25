@@ -305,6 +305,89 @@ export function updatePageCacheOnUpsert(items) {
   });
 }
 
+// ── Enrichment Queue "결손 N건" 배지 (phase 3) ─────────────────────────────
+// 규칙 목록은 페이지 로드 후 최초 필요 시 1회만 페치·캐시한다.
+// 규칙 API 미배포(404 등)·빈 배열·네트워크 오류 → 배지 기능 전체 무음 비활성.
+let enrichmentRulesPromise = null;
+const enrichmentCountCache = new Map(); // derived_table -> { total, ts }
+const ENRICHMENT_COUNT_TTL = 5000; // 서버측 5초 카운트 캐시와 동일 주기
+
+function loadEnrichmentRules() {
+  if (!enrichmentRulesPromise) {
+    enrichmentRulesPromise = fetch(`${API_BASE}/enrichment/rules`)
+      .then(res => (res.ok ? res.json() : { rules: [] }))
+      .then(data => (Array.isArray(data.rules) ? data.rules.filter(r => r && r.derived_table) : []))
+      .catch(() => []);
+  }
+  return enrichmentRulesPromise;
+}
+
+function findEnrichmentRule(rules, tableName) {
+  if (!tableName) return null;
+  return rules.find(r => r.source_table === tableName || r.derived_table === tableName) || null;
+}
+
+// Fire-and-forget: 호출부는 await 하지 않는다(테이블 전환·WS 흐름 블로킹 금지).
+export async function updateEnrichmentBadge(options = {}) {
+  try {
+    const badge = elements.enrichmentBadge;
+    if (!badge) return;
+
+    const table = state.currentTable;
+    const rules = await loadEnrichmentRules();
+    const rule = findEnrichmentRule(rules, table);
+    if (!rule) {
+      badge.style.display = 'none';
+      return;
+    }
+
+    let total;
+    const cached = enrichmentCountCache.get(rule.derived_table);
+    if (!options.force && cached && (Date.now() - cached.ts) < ENRICHMENT_COUNT_TTL) {
+      total = cached.total;
+    } else {
+      const filters = {};
+      (rule.target_fields || []).forEach(f => { filters[f] = { type: 'blank' }; });
+      const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
+        `?skip=0&limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+      const res = await fetch(url);
+      if (!res.ok) { badge.style.display = 'none'; return; }
+      const result = await res.json();
+      total = result.total || 0;
+      enrichmentCountCache.set(rule.derived_table, { total, ts: Date.now() });
+    }
+
+    // 응답 대기 중 테이블이 바뀌었으면 stale 결과 폐기 (다음 switchTable 훅이 갱신)
+    if (state.currentTable !== table) return;
+
+    if (total > 0) {
+      badge.textContent = `🧩 결손 ${total}건`;
+      badge.dataset.rule = rule.name || '';
+      badge.title = `${rule.derived_table}에 결손 ${total}건 — 클릭하여 Enrichment Queue 열기`;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (err) {
+    // 무음 실패가 설계 목표: 배지가 메인 그리드 흐름을 방해해선 안 된다
+    const badge = elements.enrichmentBadge;
+    if (badge) badge.style.display = 'none';
+  }
+}
+
+// WS 델타 수신 훅: 이벤트 테이블이 현재 뷰 관련 규칙의 derived 테이블일 때만
+// 500ms 디바운스로 카운트를 강제 재조회한다. (동기 시그니처 — 호출부 무부담)
+let enrichmentWsTimer = null;
+export function notifyEnrichmentTableEvent(tableName) {
+  if (!tableName || !enrichmentRulesPromise) return; // 규칙 미로드 = 배지 미사용 상태
+  enrichmentRulesPromise.then(rules => {
+    const active = findEnrichmentRule(rules, state.currentTable);
+    if (!active || tableName !== active.derived_table) return;
+    clearTimeout(enrichmentWsTimer);
+    enrichmentWsTimer = setTimeout(() => updateEnrichmentBadge({ force: true }), 500);
+  }).catch(() => { });
+}
+
 export function updatePageCacheOnDelete(rowIds) {
   if (!rowIds || rowIds.length === 0) return;
 

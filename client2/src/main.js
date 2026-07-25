@@ -217,6 +217,16 @@ function setupEventListeners() {
     });
   }
 
+  // Enrichment 결손 배지 클릭 → 해당 규칙의 Enrichment Queue 페이지로 이동 (계획서: 현재 탭)
+  if (elements.enrichmentBadge) {
+    elements.enrichmentBadge.addEventListener('click', () => {
+      const ruleName = elements.enrichmentBadge.dataset.rule;
+      window.location.href = ruleName
+        ? `/enrichment.html?rule=${encodeURIComponent(ruleName)}`
+        : '/enrichment.html';
+    });
+  }
+
   elements.tableSelect.addEventListener('change', async (e) => {
     const table = e.target.value;
     if (table) {
