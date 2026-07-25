@@ -1,7 +1,9 @@
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+import './tokens.css';
 import './style.css';
+import { initTheme } from './theme.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
@@ -85,6 +87,7 @@ async function init() {
     elements.sortLatestToggle.checked = cachedSortLatest === 'true';
   }
 
+  initTheme();
   setupEventListeners();
   setupClipboardHandlers();
   setupDragAndDrop();

@@ -13,8 +13,10 @@
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+import './tokens.css';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { showToast } from './utils.js';
+import { initTheme } from './theme.js';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -721,6 +723,7 @@ function showRefError(status, detail) {
 
 // ── 초기화 ─────────────────────────────────────────────────
 async function init() {
+  initTheme();
   el('rule-select').addEventListener('change', (e) => {
     const rule = S.rules.find(r => r.name === e.target.value);
     if (rule) selectRule(rule);

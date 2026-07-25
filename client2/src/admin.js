@@ -1,4 +1,7 @@
 // Ingestion Outbox Admin Dashboard client logic
+import './tokens.css';
+import { initTheme, getTheme } from './theme.js';
+
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
 
@@ -99,6 +102,7 @@ const editorBackBtn = document.getElementById('editor-back-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   fetchData();
   setupEventListeners();
   initMonacoEditor();

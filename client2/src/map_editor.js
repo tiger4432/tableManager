@@ -1,5 +1,7 @@
+import './tokens.css';
 import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
+import { initTheme } from './theme.js';
 
 let tables = [];
 let selectedTable = '';
@@ -63,6 +65,7 @@ function debounce(func, wait = 200) {
 
 // Initialize DOM elements when loaded
 document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
   initDOMElements();
   initMouseDragEvents();
   await loadTablesList();
