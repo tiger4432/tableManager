@@ -215,5 +215,57 @@ def test_search_escapes_like_wildcards(client, graph_env):
 
 
 def test_search_blank_query_returns_empty(client, graph_env):
+    # 빈 q + label 없음 → 전 테이블 덤프 금지 (기존 계약 유지)
     body = client.get("/graph/nodes/search", params={"q": "   "}).json()
     assert body["results"] == []
+
+
+# ---------------------------------------------------------------------------
+# 3-1) /graph/nodes/search — 빈 q + label 리스팅 & offset 페이지네이션
+#      (Stats "Nodes by Label" 카드 → 노드 리스트 테이블)
+# ---------------------------------------------------------------------------
+
+def test_search_empty_query_with_label_lists_all(client, graph_env):
+    body = client.get("/graph/nodes/search", params={"q": "", "label": "Chip"}).json()
+    assert [r["identity_key"] for r in body["results"]] == ["LOG0001", "LOG0002"]
+
+    # 공백-only q도 리스팅으로 동작 (strip 규율 동일)
+    body = client.get("/graph/nodes/search", params={"q": "   ", "label": "Wafer"}).json()
+    assert [r["identity_key"] for r in body["results"]] == ["LOTA|3", "W123"]
+
+    # q 파라미터 생략도 허용 (신규 기본값 q="")
+    body = client.get("/graph/nodes/search", params={"label": "Base"}).json()
+    assert [r["identity_key"] for r in body["results"]] == ["B1"]
+
+
+def test_search_label_list_offset_pagination(client, graph_env):
+    # identity 오름차순 안정 정렬 전제의 offset 페이지네이션
+    page1 = client.get("/graph/nodes/search",
+                       params={"q": "", "label": "Chip", "limit": 1, "offset": 0}).json()
+    page2 = client.get("/graph/nodes/search",
+                       params={"q": "", "label": "Chip", "limit": 1, "offset": 1}).json()
+    page3 = client.get("/graph/nodes/search",
+                       params={"q": "", "label": "Chip", "limit": 1, "offset": 2}).json()
+    assert [r["identity_key"] for r in page1["results"]] == ["LOG0001"]
+    assert [r["identity_key"] for r in page2["results"]] == ["LOG0002"]
+    assert page3["results"] == []
+
+    # 음수 offset은 0으로 클램프
+    body = client.get("/graph/nodes/search",
+                      params={"q": "", "label": "Chip", "limit": 1, "offset": -5}).json()
+    assert [r["identity_key"] for r in body["results"]] == ["LOG0001"]
+
+
+def test_search_prefix_offset_pagination(client, graph_env):
+    # offset은 프리픽스 검색 모드에서도 동작
+    body = client.get("/graph/nodes/search",
+                      params={"q": "LOG", "limit": 1, "offset": 1}).json()
+    assert [r["identity_key"] for r in body["results"]] == ["LOG0002"]
+
+
+def test_search_label_list_limit_hardcap(client, graph_env, monkeypatch):
+    """리스팅 모드도 하드캡 클램프 (C-7 무제한 로드 금지)."""
+    monkeypatch.setattr(main, "GRAPH_LABEL_LIST_LIMIT_CAP", 1)
+    body = client.get("/graph/nodes/search",
+                      params={"q": "", "label": "Chip", "limit": 999999}).json()
+    assert len(body["results"]) == 1

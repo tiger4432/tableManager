@@ -1843,6 +1843,7 @@ async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session 
 GRAPH_NEIGHBOR_NODE_CAP = 500        # limit 하드캡 — 무제한 로드 금지(C-7 교훈)
 GRAPH_NEIGHBOR_EDGE_FETCH_CAP = 2000  # 홉·방향당 엣지 페치 상한 (수퍼노드 방어)
 GRAPH_SEARCH_LIMIT_CAP = 50
+GRAPH_LABEL_LIST_LIMIT_CAP = 200     # 빈 q + label 리스팅 페이지 하드캡 (뷰어 200 규율과 동일)
 GRAPH_TRACE_NODE_CAP = 1000          # [G2] trace 노드 하드캡 (경계 계약 — 총괄 고정)
 GRAPH_TRACE_DEPTH_CAP = 3            # [G2] trace depth 하드캡
 GRAPH_TRACE_DEFAULT_LIMIT = 500
@@ -2016,25 +2017,36 @@ def get_graph_neighbors(
 
 @app.get("/graph/nodes/search")
 def search_graph_nodes(
-    q: str,
+    q: str = "",
     label: Optional[str] = None,
     limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    """identity_key 시작일치 자동완성 (label 지정 시 (label, identity_key) 인덱스 경로)."""
+    """identity_key 시작일치 자동완성 (label 지정 시 (label, identity_key) 인덱스 경로).
+
+    - 빈 q + label → 해당 라벨 전체 리스팅 (Stats 라벨 카드 → 노드 리스트,
+      limit/offset 페이지네이션, 캡 GRAPH_LABEL_LIST_LIMIT_CAP).
+    - 빈 q + label 없음 → 빈 결과 (전 테이블 덤프 금지 — C-7 무제한 로드 금지).
+    - offset은 두 모드 공통 지원 (identity_key 오름차순 안정 정렬 전제).
+    """
     term = (q or "").strip()
-    if not term:
+    if not term and not label:
         return {"results": []}
-    limit = max(1, min(int(limit), GRAPH_SEARCH_LIMIT_CAP))
+    cap = GRAPH_SEARCH_LIMIT_CAP if term else GRAPH_LABEL_LIST_LIMIT_CAP
+    limit = max(1, min(int(limit), cap))
+    offset = max(0, int(offset))
 
     query = db.query(models.GraphNode.id, models.GraphNode.label, models.GraphNode.identity_key)
     if label:
         query = query.filter(models.GraphNode.label == label)
-    query = query.filter(
-        models.GraphNode.identity_key.ilike(_escape_like_term(term) + "%", escape="\\")
-    )
+    if term:
+        query = query.filter(
+            models.GraphNode.identity_key.ilike(_escape_like_term(term) + "%", escape="\\")
+        )
     rows = (
         query.order_by(models.GraphNode.label.asc(), models.GraphNode.identity_key.asc())
+        .offset(offset)
         .limit(limit)
         .all()
     )

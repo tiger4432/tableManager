@@ -55,8 +55,40 @@
 
 ## 4. 남긴 것 / 총괄 확인 요청
 - **커밋 금지 준수** — working tree에 소스+dist 변경 대기. docs/·server/ 무접촉, 히스토리·gen_index 미실행(문서는 doc-keeper 정비 중).
-- 히스토리 초안: `feat(graph): 노드 클릭 → Connections 테이블(로컬 단면+depth-1 보강, 80행 페이지) + 행 클릭 검색 시드 연동(URL pushState/popstate) + 패널 접기 · 중심 이동은 더블클릭/시드 버튼으로 이전`
+- 히스토리 초안: `feat(graph): 노드 클릭 → Connections 테이블(로컬 단면+depth-1 보강, 80행 페이지) + 행 클릭 검색 시드 연동(URL pushState/popstate) + 패널 접기 · 중심 이동은 더블클릭/시드 버튼으로 이전 · Stats 라벨 카드 → 노드 리스트 테이블(서버 /graph/nodes/search 빈 q+label 리스팅·offset 페이지네이션, 캡 200, 테스트 4건)`
 - 단일 클릭 → 즉시 재조회였던 기존 UX가 "클릭=테이블, 더블클릭=이동"으로 바뀜 — 캔버스 힌트·패널 힌트 문구로 안내했으나 사용자 공지 권장.
+
+---
+
+# 추가 작업: Stats "Nodes by Label" 카드 → 노드 리스트 테이블 (총괄 추가 지시, 2026-07-25)
+
+사용자 원문: "처음 stats 창에서 노드 by label 클릭하면 어떤 node들이 있는지 알 수 있어야 한다는 의도였음."
+
+## A. 구현 요약
+- **Stats 화면**: 라벨 카드 클릭 → 카드 그리드 아래 `#label-nodes-block`에 그 라벨의 노드 리스트 테이블(라벨 dot + identity, Connections 테이블 스타일 `.conn-row`/`.conn-table`/`.conn-more` 재사용). 헤더에 `로드 수 / stats 총 카운트`, 닫기(✕) 버튼. 카드 클릭 시 label-select 동기화(기존 동작)는 유지하되 identity-input 강제 포커스는 제거.
+- **행 클릭/Enter** → 기존과 동일 `explore()` 경로: 그래프 뷰 전환 + 서브그래프 로드 + URL `?label=&identity=` push + 검색바 반영. 뒤로가기 시 파라미터 없는 URL → Stats 뷰 복귀(기존 popstate 핸들러가 처리).
+- **페이지네이션**: 서버 페이지 200개(`LABEL_LIST_PAGE`, 서버 캡과 동일) + "더 보기" 버튼(응답 < 200이면 done). stale 가드 `S.labelListSeq`(카드 연타·라벨 전환 안전). 페치 실패 시 이미 로드된 행 유지 + "더 보기"가 재시도 역할.
+
+## B. 서버 최소 수정 (`/graph/nodes/search` — 허용 범위 내)
+- 확인 결과 기존 구현은 빈 q에서 무조건 `{"results": []}` → **확장 필요**했음.
+- `server/main.py`:
+  - `GRAPH_LABEL_LIST_LIMIT_CAP = 200` 신설 (뷰어 200 규율과 정렬; 자동완성 캡 50은 그대로).
+  - `search_graph_nodes`: `q` 기본값 `""`·`offset` 파라미터 추가. **빈 q + label → 라벨 전체 리스팅**(identity 오름차순), **빈 q + label 없음 → 기존대로 빈 결과**(전 테이블 덤프 금지). offset은 두 모드 공통(음수 0 클램프). 프리픽스 이스케이프(`_escape_like_term`)·정렬 경로 불변.
+- `server/tests/test_graph_viewer_api.py` 신규 4개: 빈 q+label 리스팅(공백 q·q 생략 포함) / 리스팅 offset 페이지네이션(음수 클램프 포함) / 프리픽스 모드 offset / 리스팅 하드캡 클램프(monkeypatch).
+
+## C. 검증 증거
+- 그래프 API 테스트 파일: **16 passed** (기존 12 + 신규 4).
+- 전체 스위트: **233 passed / 1 failed** — 기준선 229+신규4 유지, fail은 기존 허용 fail `test_api.py::test_map_presets_api` 그대로.
+- `cd client2 && npm run build` ✅ (graph-l_REypu6.js 25.54 kB).
+- 라이브(:8080) DOM 검증:
+  1. 카드 클릭(Chip) → 블록 표시 + label-select='Chip' + 제목 `Nodes · Chip` ✅
+  2. **구 서버 응답([]) graceful**: "이 라벨의 노드가 없습니다" + `0 / 1,920 loaded` (에러·프리징 없음) ✅
+  3. 신 서버 응답 모사(`window.fetch` 스텁, 총 237개): 1페이지 200행(BL-0001~0200) + "더 보기" → 237행 + 버튼 소멸(done 판정) ✅
+  4. 행 클릭(BL-0001, **실서버** neighbors 호출) → 그래프 뷰 + URL push + 검색바 반영 + Connections 테이블 ✅
+  5. `history.back()` → 파라미터 없는 URL → Stats 뷰 복귀(리스트 보존) ✅ / 닫기(✕) ✅ / 콘솔 에러 0 ✅
+
+## D. 라이브 검증 한계 (재기동 금지 준수)
+라이브 서버는 구 서버 코드로 구동 중이라 **빈-q 리스팅의 실서버 end-to-end는 미검증** — 서버 신규 로직은 pytest(TestClient)로, 클라 배선은 신 응답 모사 스텁으로 각각 검증했다. **서버 재기동 후** 카드 클릭 → 실데이터 리스팅 1회 확인을 권장한다(총괄 재기동 시점에).
 
 ## 5. 교훈 제안 (client-pm.md 반영 후보)
 - **함정**: 미리보기 pane은 `window.innerWidth=0`(뷰포트 0×0)이라 `getBoundingClientRect` 기반 캔버스 좌표 클릭이 전부 빗나간다 (`resize_window`로도 복구 불가).

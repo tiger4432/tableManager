@@ -534,6 +534,35 @@
       text-align: center;
     }
 
+    /* ── 라벨 노드 리스트 (Stats 카드 클릭 → 테이블, conn-table 스타일 재사용) ── */
+    .label-nodes-head-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .label-nodes-close {
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.85rem;
+      line-height: 1;
+      padding: 3px 7px;
+      border-radius: 6px;
+      transition: var(--transition-smooth);
+    }
+
+    .label-nodes-close:hover {
+      color: var(--danger);
+      background: var(--bg-inset);
+    }
+
+    .label-nodes-scroll {
+      max-height: 420px;
+      overflow-y: auto;
+    }
+
     .stats-footer-actions {
       display: flex;
       justify-content: center;
@@ -1097,7 +1126,7 @@
       }
     }
   </style>
-  <script type="module" crossorigin src="/assets/graph-BFQ7Swjm.js"></script>
+  <script type="module" crossorigin src="/assets/graph-l_REypu6.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-DqWd5E8W.js">
   <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
@@ -1202,7 +1231,19 @@
               </div>
             </div>
 
-            <p class="stats-hint">라벨 카드를 클릭하면 검색 필터가 설정됩니다 · 상단 검색바에서 노드를 찾아 서브그래프를 탐색하세요</p>
+            <div id="label-nodes-block" class="stats-block" style="display: none;">
+              <div class="stats-block-header">
+                <span id="label-nodes-title">Nodes</span>
+                <span class="label-nodes-head-actions">
+                  <span id="label-nodes-count" class="stats-block-count"></span>
+                  <button type="button" id="label-nodes-close" class="label-nodes-close" title="리스트 닫기"
+                    aria-label="노드 리스트 닫기">✕</button>
+                </span>
+              </div>
+              <div id="label-nodes-body"></div>
+            </div>
+
+            <p class="stats-hint">라벨 카드 클릭 = 그 라벨의 노드 리스트 · 행 클릭 = 해당 노드 서브그래프 탐색</p>
             <div class="stats-footer-actions">
               <button id="stats-refresh-btn" class="glass-btn">🔄 카운트 새로고침</button>
               <button id="back-to-graph-btn" class="glass-btn" style="display: none;">🕸️ 그래프로 돌아가기</button>

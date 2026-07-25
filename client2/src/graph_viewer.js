@@ -21,6 +21,7 @@ import { initTheme } from './theme.js';
 const NEIGHBOR_LIMIT = 200;   // 서버 하드캡과 동일 (무제한 로드 금지)
 const SEARCH_LIMIT = 20;
 const CONN_PAGE = 80;         // Connections 테이블 렌더 상한 단위 ("더 보기" 페이지)
+const LABEL_LIST_PAGE = 200;  // 라벨 노드 리스트 서버 페이지 크기 (서버 GRAPH_LABEL_LIST_LIMIT_CAP과 동일)
 const AC_DEBOUNCE_MS = 200;   // 자동완성 debounce
 const MIN_SCALE = 0.12;
 const MAX_SCALE = 3;
@@ -55,6 +56,10 @@ const S = {
   conn: null,           // {nodeId, rows, shown, partial, loading, truncated, error}
   connSeq: 0,           // 이웃 재조회 stale 가드
   panelCollapsed: false,
+
+  // Stats 라벨 노드 리스트 상태 (라벨 카드 클릭 → 테이블)
+  labelList: null,      // {label, rows, offset, done, loading, error}
+  labelListSeq: 0,
 
   // 요청 시퀀스 가드 (stale 응답 폐기)
   seq: 0,
@@ -196,11 +201,11 @@ function renderStats() {
     </div>`).join('')
     || '<div class="props-empty">엣지가 없습니다</div>';
 
-  // 라벨 카드 클릭/키보드 → 검색 필터 설정
+  // 라벨 카드 클릭/키보드 → 노드 리스트 테이블 + 검색 필터 설정
   el('label-cards').querySelectorAll('.label-card').forEach((card) => {
     const pick = () => {
-      el('label-select').value = card.dataset.label;
-      el('identity-input').focus();
+      el('label-select').value = card.dataset.label; // 검색 필터 동기화 (기존 동작 유지)
+      openLabelNodes(card.dataset.label);
     };
     card.addEventListener('click', pick);
     card.addEventListener('keydown', (e) => {
@@ -209,6 +214,101 @@ function renderStats() {
   });
 
   setStatsState('content');
+}
+
+// ── 라벨 노드 리스트: 카드 클릭 → 그 라벨의 노드 테이블 (서버 페이지네이션) ──
+function openLabelNodes(label) {
+  S.labelListSeq++; // 이전 라벨의 in-flight 페이지 무효화
+  S.labelList = { label, rows: [], offset: 0, done: false, loading: true, error: null };
+  renderLabelNodesBlock();
+  el('label-nodes-block').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  fetchLabelNodesPage();
+}
+
+function closeLabelNodes() {
+  S.labelListSeq++;
+  S.labelList = null;
+  el('label-nodes-block').style.display = 'none';
+}
+
+async function fetchLabelNodesPage() {
+  const ll = S.labelList;
+  if (!ll || ll.done) return;
+  const seq = ++S.labelListSeq;
+  ll.loading = true;
+  ll.error = null;
+  renderLabelNodesBlock();
+  try {
+    // 빈 q + label → 라벨 전체 리스팅 (identity 오름차순, limit/offset 페이지)
+    const params = new URLSearchParams({
+      q: '', label: ll.label, limit: String(LABEL_LIST_PAGE), offset: String(ll.offset),
+    });
+    const res = await fetch(`${API_BASE}/graph/nodes/search?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (seq !== S.labelListSeq || S.labelList !== ll) return; // stale 폐기
+    const items = (Array.isArray(data) ? data : (data.results || data.nodes || []))
+      .filter((x) => x && x.identity_key !== undefined);
+    ll.rows = ll.rows.concat(items);
+    ll.offset += items.length;
+    ll.done = items.length < LABEL_LIST_PAGE;
+    ll.loading = false;
+  } catch (err) {
+    if (seq !== S.labelListSeq || S.labelList !== ll) return;
+    ll.loading = false;
+    ll.error = String(err.message || err); // 이미 로드된 행은 유지
+  }
+  renderLabelNodesBlock();
+}
+
+function renderLabelNodesBlock() {
+  const ll = S.labelList;
+  const block = el('label-nodes-block');
+  if (!ll) { block.style.display = 'none'; return; }
+  block.style.display = 'block';
+  el('label-nodes-title').innerHTML =
+    `<span class="label-dot" style="background: var(${labelToken(ll.label)}); display:inline-block; margin-right:7px;"></span>Nodes · ${esc(ll.label)}`;
+
+  // 총 카운트는 stats 캐시에서 (없으면 로드 수만)
+  const statTotal = S.stats && S.stats.labels.find((x) => x.label === ll.label);
+  el('label-nodes-count').textContent = statTotal
+    ? `${fmtInt(ll.rows.length)} / ${fmtInt(statTotal.count)} loaded`
+    : `${fmtInt(ll.rows.length)} loaded`;
+
+  const body = el('label-nodes-body');
+  let html;
+  if (!ll.rows.length) {
+    html = ll.loading
+      ? '<div class="props-empty">노드 리스트 조회 중…</div>'
+      : `<div class="props-empty">${ll.error ? `조회 실패: ${esc(ll.error)}` : '이 라벨의 노드가 없습니다'}</div>`;
+  } else {
+    const rowsHtml = ll.rows.map((x) => `
+      <tr class="conn-row" tabindex="0" role="button"
+          data-label="${esc(ll.label)}" data-identity="${esc(x.identity_key)}"
+          title="클릭 → 이 노드 중심 서브그래프 탐색">
+        <td class="conn-node">
+          <span class="conn-id"><span class="label-dot" style="background: var(${labelToken(ll.label)})"></span>${esc(x.identity_key)}</span>
+        </td>
+      </tr>`).join('');
+    html = `<div class="conn-scroll label-nodes-scroll"><table class="conn-table"><tbody>${rowsHtml}</tbody></table></div>`;
+    if (ll.error) html += `<div class="props-empty">다음 페이지 조회 실패: ${esc(ll.error)}</div>`;
+    if (ll.loading) html += '<div class="props-empty">조회 중…</div>';
+    else if (!ll.done || ll.error) {
+      html += `<button type="button" class="conn-more" id="label-nodes-more-btn">더 보기 (${fmtInt(ll.rows.length)}개 로드됨)</button>`;
+    }
+  }
+  body.innerHTML = html;
+
+  // 행 클릭/Enter → 검색 시드 연동 (explore = 그래프 뷰 전환 + URL push + 검색바 반영)
+  body.querySelectorAll('.conn-row').forEach((tr) => {
+    const go = () => explore(tr.dataset.label, tr.dataset.identity);
+    tr.addEventListener('click', go);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+  });
+  const more = el('label-nodes-more-btn');
+  if (more) more.addEventListener('click', fetchLabelNodesPage);
 }
 
 // ── 뷰 전환 ────────────────────────────────────────────────
@@ -1113,6 +1213,7 @@ function init() {
   });
   el('back-to-graph-btn').addEventListener('click', showGraphView);
   el('panel-collapse-btn').addEventListener('click', () => setPanelCollapsed(!S.panelCollapsed));
+  el('label-nodes-close').addEventListener('click', closeLabelNodes);
   el('stats-retry-btn').addEventListener('click', loadStats);
   el('stats-empty-retry-btn').addEventListener('click', loadStats);
   el('stats-refresh-btn').addEventListener('click', loadStats);
