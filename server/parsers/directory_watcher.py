@@ -32,6 +32,14 @@ logger = logging.getLogger("Watcher.DirectoryWatcher")
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
 
+# [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
+import ingestion_checkpoint
+from ingestion_checkpoint import (
+    CheckpointPlan,
+    compute_file_signature,
+    is_force_reingest,
+)
+
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
 # (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)
 AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}
@@ -156,6 +164,39 @@ def get_heavy_threshold_bytes() -> int:
         warn_invalid_heavy_threshold_once(val)
         val = DEFAULT_HEAVY_FILE_MB
     return int(val * 1024 * 1024)
+
+
+# ── [P2] 체크포인트 재개 / 해시 dedup 설정 ────────────────────────────────
+DEFAULT_DEDUP_BY_SIGNATURE = True
+DEFAULT_RESUME_FROM_CHECKPOINT = True
+
+
+def _bool_setting(key: str, default: bool) -> bool:
+    """ingestion_settings.json의 boolean 설정 1건 (bool 외 값은 1회 경고 후 기본값)."""
+    val = load_ingestion_settings().get(key, default)
+    if isinstance(val, bool):
+        return val
+    warn_key = ("bool_setting", key, repr(val))
+    if warn_key not in _invalid_field_warned:
+        _invalid_field_warned.add(warn_key)
+        logger.warning(
+            f"Ignoring non-boolean '{key}' value {val!r} in ingestion_settings.json — "
+            f"expected JSON boolean true/false. Falling back to default {default}."
+        )
+    return default
+
+
+def dedup_by_signature_enabled() -> bool:
+    """동일 시그니처 파일 dedup skip 활성 여부 (기본 True).
+
+    False로 두면 같은 내용 파일이 다시 떨어질 때마다 재적재한다(업서트라 결과는 동일하나
+    감사 로그와 처리 시간이 그만큼 반복 발생). **전역 강제 재처리 스위치**로도 쓴다."""
+    return _bool_setting("dedup_by_signature", DEFAULT_DEDUP_BY_SIGNATURE)
+
+
+def resume_from_checkpoint_enabled() -> bool:
+    """오프셋 체크포인트 재개 활성 여부 (기본 True). False면 항상 처음부터 적재한다."""
+    return _bool_setting("resume_from_checkpoint", DEFAULT_RESUME_FROM_CHECKPOINT)
 
 
 # ── [Heavy Lane P1] 워크스페이스 단위 직렬화 락 레지스트리 ─────────────────
@@ -694,28 +735,54 @@ class IngestionHandler(FileSystemEventHandler):
         # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
         t_name, table_info = self._snapshot_table_context()
 
+        basename = os.path.basename(file_path)
         for attempt in range(retries):
             try:
+                # [P2-B] 파일 시그니처(내용 전체 sha256) — 재개 동일성 판정과 dedup의 공통 키.
+                # 잠긴 파일은 PermissionError로 전파되어 아래 기존 재시도 경로를 탄다.
+                signature = compute_file_signature(abs_path)
+
+                # [P2-B] 동일 내용이 이미 SUCCESS로 적재됐으면 재처리하지 않는다(명시 기록·통지).
+                skipped = self._try_dedup_skip(file_path, basename, t_name, signature)
+                if skipped:
+                    return
+
                 # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석
-                rows, total_rows, skipped_no_key = self._resolve_rows(file_path, t_name=t_name, table_info=table_info)
+                parse_meta = {}
+                rows, total_rows, skipped_no_key = self._resolve_rows(
+                    file_path, t_name=t_name, table_info=table_info, meta=parse_meta
+                )
+
+                # [P2-A] 오프셋 체크포인트 계획 수립 (재개 오프셋 또는 재시작 사유 확정)
+                has_rows = (total_rows > 0) if total_rows is not None else bool(rows)
+                effective_total = total_rows if total_rows is not None else (len(rows) if rows else 0)
+                plan = self._plan_checkpoint(
+                    signature, basename, abs_path, t_name,
+                    effective_total, parse_meta.get("source_kind"),
+                    # `__force__` 파일은 "전부 다시 넣어라"는 뜻이므로 잔여 오프셋을 이어받지 않는다.
+                    force_restart=is_force_reingest(basename),
+                )
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
-                if (total_rows > 0) if total_rows is not None else bool(rows):
-                    self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(file_path), total_rows=total_rows, t_name=t_name, table_info=table_info)
+                if has_rows:
+                    self._send_to_upsert(rows, uploader=uploader, filename=basename, total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
 
                 # 3. Archive the file
                 dest_path = self._archive_file(file_path)
+                # [P2-A] 파일 완결 확정 — 이후 같은 시그니처는 dedup skip 대상이 된다.
+                self._finalize_checkpoint(plan, effective_total)
                 # [F1] 키 결측 스킵은 성공이되 사용자에게 반드시 보여야 하는 정보 —
                 # 완료 콜백의 detail(4번째 인자, 기존 error_msg 슬롯)로 전달되어
                 # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
-                detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None
+                # [P2-A] 재개/재시작 사유도 같은 detail 슬롯으로 노출한다(조용한 폴백 금지).
+                detail = self._compose_detail(skipped_no_key, plan)
                 logger.info(
-                    f"[{t_name}] ✅ Successfully processed and archived: {os.path.basename(file_path)}"
+                    f"[{t_name}] ✅ Successfully processed and archived: {basename}"
                     + (f" ({detail})" if detail else "")
                 )
-                self._log_ingestion_success(file_path, dest_path, t_name=t_name)
+                self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail)
                 if self.on_file_processed_callback:
-                    self.on_file_processed_callback(t_name, os.path.basename(file_path), "SUCCESS", detail)
+                    self.on_file_processed_callback(t_name, basename, "SUCCESS", detail)
                 return
             except PermissionError:
                 logger.warning(f"[{t_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
@@ -741,31 +808,117 @@ class IngestionHandler(FileSystemEventHandler):
         if self.on_file_processed_callback:
             self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", error_msg)
 
-    def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str, t_name: str = None):
-        if t_name is None:
-            t_name = self.table_name
+    # ── [P2] 체크포인트 재개 / 시그니처 dedup ────────────────────────────
+
+    @staticmethod
+    def _compose_detail(skipped_no_key: int, plan) -> str | None:
+        """완료 통지 detail 문자열 조립 — 키 결측 스킵(F1) + 재개/재시작 사유(P2)."""
+        parts = []
+        if skipped_no_key:
+            parts.append(f"키 결측으로 {skipped_no_key}행 스킵")
+        if plan is not None and plan.note:
+            parts.append(plan.note)
+        return " / ".join(parts) if parts else None
+
+    def _try_dedup_skip(self, file_path: str, basename: str, t_name: str, signature: str | None) -> bool:
+        """[P2-B] 동일 시그니처가 이미 SUCCESS로 적재됐으면 재처리를 건너뛴다.
+
+        **무음 skip 금지**: 로그 + FileIngestionLog(status="SKIPPED", 사유 문장) +
+        완료 콜백(detail 포함)으로 세 곳에 남긴다. 파일은 archives/로 옮겨
+        스윕이 같은 파일을 무한히 다시 집어 올리지 않게 한다.
+
+        강제 재처리 경로(스킵하지 않음):
+          1) 파일명에 `__force__` 토큰 (사용자 명시 의사)
+          2) ingestion_settings.json `dedup_by_signature: false` (전역 스위치)
+          3) 관리자 재시도(process_archived_file_sync) — 애초에 이 함수를 타지 않는다
+
+        반환 True = 스킵 처리 완료(호출자는 즉시 반환해야 함)."""
+        if not signature or not t_name:
+            return False
+        if is_force_reingest(basename):
+            logger.info(
+                f"[{t_name}] 🔁 Force re-ingestion requested by filename token "
+                f"('{ingestion_checkpoint.FORCE_REINGEST_TOKEN}') — dedup skip bypassed: {basename}"
+            )
+            return False
+        if not dedup_by_signature_enabled():
+            return False
+
         db = SessionLocal()
         try:
-            from database.models import FileIngestionLog
-            log_obj = FileIngestionLog(
-                filename=os.path.basename(original_path),
-                filepath=os.path.abspath(archived_path),
-                table_name=t_name or "unknown",
-                status="FAILED",
-                error_message=error_msg,
-                retry_count=0
-            )
-            db.add(log_obj)
-            db.commit()
-            logger.info(f"[{t_name}] 📝 Logged file ingestion failure to database.")
+            done = ingestion_checkpoint.find_completed_ingestion(db, t_name, signature)
         except Exception as e:
-            logger.error(f"Failed to write file ingestion error log to DB: {e}")
+            # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
+            logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {e}")
+            return False
         finally:
             db.close()
 
-    def _log_ingestion_success(self, original_path: str, archived_path: str, t_name: str = None):
-        if t_name is None:
-            t_name = self.table_name
+        if done is None:
+            return False
+
+        reason = (
+            f"[dedup-skip] 동일 내용 파일이 이미 적재 완료됨 — 재처리 생략 "
+            f"(기존 적재: '{done.filename}', {done.processed_rows:,}행, "
+            f"signature={signature[:23]}…). 강제 재처리하려면 파일명에 "
+            f"'{ingestion_checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
+            f"ingestion_settings.json의 dedup_by_signature를 false로 두십시오."
+        )
+        logger.warning(f"[{t_name}] ⏭️ {reason} — {basename}")
+        dest_path = self._archive_file(file_path)
+        self._log_ingestion_record(file_path, dest_path or file_path, t_name, "SKIPPED", reason)
+        if self.on_file_processed_callback:
+            # 콜백 status는 "SUCCESS" — 수신부(main.py)가 SUCCESS 외 전부를 "처리 실패"
+            # 문구로 렌더링하므로, 실패가 아닌 스킵을 FAILED로 오표기하지 않기 위함이다.
+            # 스킵 사실은 detail 문자열과 FileIngestionLog status="SKIPPED"로 명시된다.
+            self.on_file_processed_callback(t_name, basename, "SUCCESS", reason)
+        return True
+
+    def _plan_checkpoint(self, signature, basename, abs_path, t_name,
+                         total_rows, source_kind, force_restart: bool = False):
+        """[P2-A] 체크포인트 행 준비 + 재개 오프셋 결정. 실패해도 인제션은 계속된다
+        (체크포인트 비활성 = P1과 동일 동작 — 단, 그 사실을 note로 남긴다)."""
+        if not signature or not t_name:
+            return CheckpointPlan.disabled()
+        if not resume_from_checkpoint_enabled():
+            force_restart = True
+        db = SessionLocal()
+        try:
+            return ingestion_checkpoint.plan_ingestion(
+                db, t_name, signature, basename, abs_path,
+                total_rows, source_kind, force_restart=force_restart,
+            )
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"[{t_name}] Checkpoint planning failed — ingesting from row 0 without "
+                f"checkpointing: {e}"
+            )
+            return CheckpointPlan.disabled(
+                note=f"[checkpoint-off] 체크포인트 기록 실패로 처음부터 적재 (사유: {e})"
+            )
+        finally:
+            db.close()
+
+    def _finalize_checkpoint(self, plan, processed_rows: int):
+        if plan is None or not plan.active:
+            return
+        db = SessionLocal()
+        try:
+            ingestion_checkpoint.mark_done(db, plan, processed_rows=processed_rows)
+        except Exception as e:
+            db.rollback()
+            # DONE 미기록 = 다음에 같은 파일이 오면 dedup되지 않고 재적재된다(업서트라 무해).
+            logger.warning(f"Failed to finalize ingestion checkpoint (dedup will not apply): {e}")
+        finally:
+            db.close()
+
+    def _log_ingestion_record(self, original_path: str, archived_path: str, t_name: str,
+                              status: str, message: str = None):
+        """FileIngestionLog 1행 기록 (성공/실패/스킵 공용).
+
+        `error_message`는 FAILED에서는 오류 트레이스, SUCCESS/SKIPPED에서는 **detail 슬롯**이다
+        (main.py의 file-processed SUCCESS detail 관례와 동일 — 페이로드/스키마 불변)."""
         db = SessionLocal()
         try:
             from database.models import FileIngestionLog
@@ -773,15 +926,44 @@ class IngestionHandler(FileSystemEventHandler):
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
                 table_name=t_name or "unknown",
-                status="SUCCESS",
-                error_message=None,
+                status=status,
+                error_message=message,
                 retry_count=0
             )
             db.add(log_obj)
             db.commit()
-            logger.info(f"[{t_name}] 📝 Logged file ingestion success to database.")
+            logger.info(f"[{t_name}] 📝 Logged file ingestion {status.lower()} to database.")
         except Exception as e:
-            logger.error(f"Failed to write file ingestion success log to DB: {e}")
+            logger.error(f"Failed to write file ingestion log to DB: {e}")
+        finally:
+            db.close()
+
+    def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str, t_name: str = None):
+        if t_name is None:
+            t_name = self.table_name
+        self._log_ingestion_record(original_path, archived_path, t_name, "FAILED", error_msg)
+
+    def _log_ingestion_success(self, original_path: str, archived_path: str, t_name: str = None,
+                               detail: str = None):
+        """성공 기록. [P2] detail(키 결측 스킵·재개/재시작 사유)이 있으면 error_message
+        슬롯에 함께 남긴다 — 재개 사실이 DB 이력에도 명시되도록."""
+        if t_name is None:
+            t_name = self.table_name
+        self._log_ingestion_record(original_path, archived_path, t_name, "SUCCESS", detail)
+
+    def _retry_should_restart(self, t_name: str, signature: str | None) -> bool:
+        """[P2] 관리자 재시도에서 처음부터 재적재해야 하는가.
+
+        이미 DONE인 파일을 재시도하는 것은 "다시 전부 넣어달라"는 뜻이므로 True.
+        중단(IN_PROGRESS) 상태면 이어서 넣는 것이 사용자 의도에 부합하므로 False."""
+        if not signature or not t_name:
+            return False
+        db = SessionLocal()
+        try:
+            return ingestion_checkpoint.find_completed_ingestion(db, t_name, signature) is not None
+        except Exception as e:
+            logger.warning(f"[{t_name}] Retry checkpoint lookup failed (resuming if possible): {e}")
+            return False
         finally:
             db.close()
 
@@ -794,15 +976,31 @@ class IngestionHandler(FileSystemEventHandler):
         # [D1] 재시도 경로도 파일당 1회 스냅샷 (핫리로드는 파일 경계에서 반영)
         t_name, table_info = self._snapshot_table_context()
         try:
-            rows, total_rows, skipped_no_key = self._resolve_rows(filepath, t_name=t_name, table_info=table_info)
-            if (total_rows > 0) if total_rows is not None else bool(rows):
-                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows, t_name=t_name, table_info=table_info)
+            # [P2] 관리자 재시도는 **명시적 재처리 의사**이므로 dedup skip을 적용하지 않는다.
+            # 다만 중단된 적재(IN_PROGRESS)를 이어받는 것은 여전히 이득이므로 체크포인트는 쓴다:
+            #   - IN_PROGRESS(중단됨) → 기록된 오프셋에서 재개
+            #   - DONE(이미 완료) → 사용자가 굳이 다시 눌렀으므로 0부터 전량 재적재
+            signature = compute_file_signature(filepath)
+            parse_meta = {}
+            rows, total_rows, skipped_no_key = self._resolve_rows(
+                filepath, t_name=t_name, table_info=table_info, meta=parse_meta
+            )
+            has_rows = (total_rows > 0) if total_rows is not None else bool(rows)
+            effective_total = total_rows if total_rows is not None else (len(rows) if rows else 0)
+            plan = self._plan_checkpoint(
+                signature, os.path.basename(filepath), os.path.abspath(filepath), t_name,
+                effective_total, parse_meta.get("source_kind"),
+                force_restart=self._retry_should_restart(t_name, signature),
+            )
+            if has_rows:
+                self._send_to_upsert(rows, uploader=uploader, filename=os.path.basename(filepath), total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
+            self._finalize_checkpoint(plan, effective_total)
 
             # If successful, update the log entry to SUCCESS
+            detail = self._compose_detail(skipped_no_key, plan)  # [F1] + [P2]
             log_entry.status = "SUCCESS"
-            log_entry.error_message = None
+            log_entry.error_message = detail
             db.commit()
-            detail = f"키 결측으로 {skipped_no_key}행 스킵" if skipped_no_key else None  # [F1]
             if self.on_file_processed_callback:
                 self.on_file_processed_callback(t_name, os.path.basename(filepath), "SUCCESS", detail)
             return True
@@ -873,7 +1071,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.error(f"Failed to move file to archive: {e}")
             return None
 
-    def _discover_and_execute_pipeline(self, file_path: str) -> list[dict] | None:
+    def _discover_and_execute_pipeline(self, file_path: str, meta: dict = None) -> list[dict] | None:
         """
         scripts 폴더 내의 모든 파이썬 파일을 검색하여
         BasePipelineParser를 상속받은 클래스 중 match()가 True인 첫 번째 파서를 실행합니다.
@@ -937,6 +1135,10 @@ class IngestionHandler(FileSystemEventHandler):
                             if is_match:
                                 logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
                                 parser_instance = obj()
+                                # [P2] 파서 정체성 — 체크포인트 재개 가부 판정용(파서가 바뀌면
+                                # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
+                                if meta is not None:
+                                    meta["source_kind"] = f"pipeline:{filename}::{obj.__name__}"
                                 return parser_instance.parse(file_path)
                 except Exception as e:
                     load_error_detail = traceback.format_exc()
@@ -963,12 +1165,17 @@ class IngestionHandler(FileSystemEventHandler):
 
         return None # 매칭된 파서가 없음
 
-    def _resolve_rows(self, file_path: str, t_name: str = None, table_info: dict = None):
+    def _resolve_rows(self, file_path: str, t_name: str = None, table_info: dict = None,
+                      meta: dict = None):
         """파일을 행 컬렉션으로 해석한다. 커스텀 파이프라인 디스커버리가 **우선**(하위호환)이며,
         어떤 스크립트도 매칭하지 않았을 때(None)만 표준 파서(std parser) 폴백을 시도한다.
 
         [D1] t_name/table_info는 파일 단위 config 스냅샷 — 미전달 시(레거시 직접 호출)
         이 시점에 1회 스냅샷을 잡는다.
+
+        [P2] meta는 선택적 out-dict — 채택된 파서 정체성을 `meta["source_kind"]`로 돌려준다
+        (체크포인트 재개 가부 판정용). 반환 튜플 형태를 바꾸지 않는 이유: 기존 호출부·테스트가
+        3-튜플 언패킹에 의존하고 있어 시그니처 변경의 파급이 이득보다 크다.
 
         반환: (rows, total_rows, skipped_no_key)
           - 커스텀 파이프라인 경로: (list[dict], None, 0) — 기존과 동일.
@@ -980,13 +1187,15 @@ class IngestionHandler(FileSystemEventHandler):
         if t_name is None and table_info is None:
             t_name, table_info = self._snapshot_table_context()
 
-        rows = self._discover_and_execute_pipeline(file_path)
+        rows = self._discover_and_execute_pipeline(file_path, meta=meta)
         if rows is not None:
             return rows, None, 0
 
         if self._std_parse_enabled_for(t_name, table_info):
             std_result = self._try_std_parse(file_path, t_name, table_info)
             if std_result is not None:
+                if meta is not None:
+                    meta["source_kind"] = "std"
                 return std_result
 
         raise ValueError(
@@ -1035,7 +1244,7 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
-    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None, t_name: str = None, table_info: dict = None):
+    def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None, total_rows: int = None, t_name: str = None, table_info: dict = None, checkpoint=None):
         """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
 
         rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
@@ -1043,6 +1252,10 @@ class IngestionHandler(FileSystemEventHandler):
         t_name/table_info: [D1] 파일 단위 config 스냅샷 — 헤더 검증(_try_std_parse)과 동일
         스냅샷을 사용해 처리 도중 config 변경에 의한 오배송/무음 0행 업서트를 차단한다.
         미전달 시(레거시 직접 호출) 이 시점에 1회 스냅샷을 잡는다.
+
+        [P2] checkpoint(CheckpointPlan): 재개 오프셋 + 진행 오프셋 기록 핸들. None이면
+        기존(P1) 동작 그대로. 오프셋 기록은 청크 upsert와 **같은 트랜잭션**에서 수행되어
+        "커밋된 행 수 == 기록된 오프셋"이 원자적으로 성립한다.
         """
         # 1-2. 대상 테이블 스냅샷 확보
         if t_name is None and table_info is None:
@@ -1084,11 +1297,32 @@ class IngestionHandler(FileSystemEventHandler):
             total_rows = len(rows)
         row_iter = iter(rows)
         processed_rows = 0
+
+        # [P2-A] 체크포인트 재개 — 이미 커밋된 선두 N행은 **파싱만 하고 업서트하지 않는다**.
+        # (재파싱 비용은 CSV 스캔 수준이고, 병목인 DB 업서트를 건너뛰는 것이 재개의 실이득)
+        resume_from = checkpoint.resume_from if (checkpoint is not None and checkpoint.active) else 0
+        if resume_from > 0:
+            consumed = sum(1 for _ in islice(row_iter, resume_from))
+            processed_rows = consumed
+            if consumed < resume_from:
+                # 파일이 짧아졌는데 시그니처·총행수 검증을 통과할 수는 없다(방어선).
+                logger.warning(
+                    f"[{t_name}] Checkpoint resume offset {resume_from} exceeds available rows "
+                    f"({consumed}) — nothing left to ingest for this file."
+                )
+            else:
+                logger.info(
+                    f"[{t_name}] ⏩ Resumed ingestion: skipped {consumed:,} already-committed row(s) "
+                    f"of {total_rows:,} — {filename}"
+                )
+        chunk_index = (processed_rows // batch_size) if batch_size else 0
+
         try:
             while True:
                 chunk = list(islice(row_iter, batch_size))
                 if not chunk:
                     break
+                chunk_index += 1
                 items = []
                 
                 for row in chunk:
@@ -1125,10 +1359,21 @@ class IngestionHandler(FileSystemEventHandler):
                         transaction_id=file_tx_id,
                         silent=True
                     )
+                    # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
+                    # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
+                    # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.
+                    # (호출 이후에 쓰면 별도 트랜잭션이 되어 두 커밋 사이 크래시 시
+                    #  데이터는 들어갔는데 오프셋은 안 오르는 창이 생긴다 — 그래도 업서트
+                    #  멱등성 덕에 유실이 아니라 재적재로만 열화되지만, 원자성이 더 낫다.)
+                    if checkpoint is not None:
+                        ingestion_checkpoint.record_chunk_progress(
+                            db, checkpoint, processed_rows + len(chunk), chunk_index
+                        )
+
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
-                    
+
                     db.commit()
-                    
+
                     total_changed += len(changed_cells)
                     if created_logs:
                         # [C-5] 누적 자체에 상한 적용 — 수십만 행 파일에서도 메모리·payload가 O(500)로 고정

@@ -1,5 +1,9 @@
 {
   "_comment": "파일 인제션 시스템 설정. 실제 적용하려면 이 파일을 ingestion_settings.json으로 복사하세요. 파일이 없으면 모든 값이 기본값으로 동작합니다.",
   "_heavy_file_mb_doc": "heavy 레인 라우팅 크기 임계(MB, 양수). 이 크기 이상 파일은 전용 heavy 워커에서 처리되어 다른 테이블의 소형 파일을 막지 않습니다. 기본값 10. 핫리로드: 다음 파일 이벤트부터 반영.",
-  "heavy_file_mb": 10
+  "heavy_file_mb": 10,
+  "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
+  "dedup_by_signature": true,
+  "_resume_from_checkpoint_doc": "[P2] 중단된 파일 적재를 마지막으로 커밋된 오프셋부터 재개합니다(기본 true). 재개 불가(시그니처/총행수/파서 불일치, 오프셋 손상) 시에는 처음부터 재처리하고 그 사유를 로그와 FileIngestionLog에 명시합니다. false로 두면 항상 처음부터 적재합니다.",
+  "resume_from_checkpoint": true
 }

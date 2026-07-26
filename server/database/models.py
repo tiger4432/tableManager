@@ -109,6 +109,53 @@ class FileIngestionLog(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class FileIngestionCheckpoint(Base):
+    """[P2] 파일 인제션 오프셋 체크포인트 + 해시 dedup 원장.
+
+    설계 결정 — 왜 `file_ingestion_logs`에 컬럼을 추가하지 않았는가:
+      1) `Base.metadata.create_all`은 **기존 테이블에 컬럼을 추가하지 않는다**. 운영 DB에
+         이미 존재하는 `file_ingestion_logs`에 컬럼을 늘리면 ALTER 마이그레이션이 모든
+         조회 프로세스보다 **먼저** 돌아야 하고, 그 전에 웹서버가 SELECT하면 admin File 탭이
+         UndefinedColumn 500으로 죽는다. 신규 테이블 CREATE는 그런 순서 의존이 없다.
+      2) 수명이 다르다 — `file_ingestion_logs`는 시도(attempt)마다 append되는 이력이고,
+         체크포인트는 (테이블, 파일내용)당 **단일 최신 상태**다. 후자에 필요한
+         UNIQUE(table_name, file_signature)는 전자의 append 의미론과 양립하지 않는다.
+      3) 체크포인트는 청크 커밋마다(=1000행마다) 쓰이는 핫패스다. 이력 테이블을 계속
+         UPDATE하면 이력의 불변성(append-only) 계약이 깨진다.
+    재개/스킵 **사실 자체**는 기존 `FileIngestionLog.error_message`(=detail 슬롯,
+    main.py의 SUCCESS detail 관례와 동일)에 사람이 읽는 문장으로 함께 남긴다.
+
+    [확장성] (table_name, file_signature) UNIQUE 인덱스 단일 조회 — 파일 1건당 1행이므로
+    1,000만 행 데이터에서도 이 테이블은 '처리한 파일 수' 규모로만 자란다.
+    """
+
+    __tablename__ = "file_ingestion_checkpoints"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    table_name = Column(String(100), nullable=False)
+    # "sha256:<size_bytes>:<hexdigest>" — §B 시그니처(compute_file_signature)
+    file_signature = Column(String(120), nullable=False)
+    filename = Column(String, nullable=True)
+    filepath = Column(String, nullable=True)
+    # 이 시그니처를 해석했을 때의 파서 정체성("std" / "pipeline:<ClassName>") —
+    # 파서가 바뀌면 행 순서·건수가 달라질 수 있으므로 재개 가부 판정에 사용한다.
+    source_kind = Column(String(120), nullable=True)
+    total_rows = Column(Integer, nullable=True)
+    # 커밋이 완료된 행 수 = 다음 실행의 재개 오프셋 (청크 커밋과 **같은 트랜잭션**에서 갱신)
+    processed_rows = Column(Integer, nullable=False, default=0)
+    chunk_index = Column(Integer, nullable=False, default=0)
+    # "IN_PROGRESS"(재개 대상) | "DONE"(dedup 대상)
+    status = Column(String(20), nullable=False, default="IN_PROGRESS")
+    note = Column(String, nullable=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_fic_identity", "table_name", "file_signature", unique=True),
+        Index("idx_fic_signature", "file_signature", "status"),
+    )
+
+
 class CellOverwrite(Base):
     __tablename__ = "cell_overwrites"
 
@@ -419,6 +466,39 @@ def ensure_graph_tables(engine):
     return created
 
 
+def ensure_ingestion_checkpoint_table(engine):
+    """[P2] 파일 인제션 체크포인트 테이블(file_ingestion_checkpoints)의 존재를 보장한다.
+
+    table_config과 무관한 시스템 테이블이므로 웹서버 부팅 create_all 외에도
+    워처 프로세스 부팅(run_watcher)·핫리로드(refresh_dynamic_models)에서 호출한다.
+    #7 패턴 준용: information_schema 게이트 + checkfirst + engine 단위 독립 트랜잭션.
+
+    반환: 새로 CREATE한 테이블명 리스트.
+    """
+    from sqlalchemy import inspect
+
+    created = []
+    with _runtime_ddl_lock:
+        try:
+            inspector = inspect(engine)
+        except Exception as err:
+            print(f"[Ingestion Schema] Failed to inspect database for checkpoint table: {err}")
+            return created
+
+        table_name = FileIngestionCheckpoint.__tablename__
+        try:
+            if inspector.has_table(table_name):
+                return created
+            Base.metadata.create_all(
+                bind=engine, tables=[FileIngestionCheckpoint.__table__], checkfirst=True
+            )
+            created.append(table_name)
+            print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
+        except Exception as err:
+            print(f"[Ingestion Schema] Failed to create table '{table_name}': {err}")
+    return created
+
+
 def refresh_dynamic_models(engine=None):
     """[이슈 #7] config 핫리로드 공용 진입점 — table_config.json을 디스크에서 재로드하여
     crud.TABLE_CONFIG 싱글턴과 DYNAMIC_TABLES(ORM 모델)를 갱신하고, engine이 주어지면
@@ -443,5 +523,7 @@ def refresh_dynamic_models(engine=None):
         created = create_missing_dynamic_tables(engine)
         # [Ontology G1] 그래프 시스템 테이블도 핫리로드 경로에서 항상 존재 보장(#7 패턴 동승).
         created.extend(ensure_graph_tables(engine))
+        # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
+        created.extend(ensure_ingestion_checkpoint_table(engine))
         return created
     return []

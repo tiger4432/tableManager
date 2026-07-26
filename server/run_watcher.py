@@ -30,6 +30,13 @@ try:
         logger.info("Dynamic database models and schema sync completed.")
     except Exception as e:
         logger.error(f"Failed to sync dynamic tables schema: {e}")
+    # [P2] 오프셋 체크포인트/해시 dedup 원장 테이블 보장.
+    # 웹서버는 부팅 create_all로 만들지만 워처는 create_all을 돌리지 않으므로
+    # (분리 모드에서 워처만 먼저 뜨는 경우 포함) 여기서 명시적으로 보장한다.
+    try:
+        models.ensure_ingestion_checkpoint_table(engine)
+    except Exception as e:
+        logger.error(f"Failed to ensure ingestion checkpoint table: {e}")
 except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {e}")
 
