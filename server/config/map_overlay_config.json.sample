@@ -1,5 +1,5 @@
 {
-  "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지).",
+  "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지). [v2] 계획 맵 사본(transfer_plan_map) 테이블이 폐기돼(계획 = 편집 중인 그 맵 자신) 해당 table_bindings·paint_lock 항목을 제거했다 — 계획 캔버스의 잠금은 그 stage의 target_map 테이블(bonding_map / dt_map 등)에 직접 선언한다(아래 __example_* 키는 예시일 뿐 어떤 테이블에도 매칭되지 않는다). [전제 테이블] table_bindings·paint_lock의 키는 전부 table_config.json에 선언된 테이블명이어야 한다. 여기 쓰인 dt_log·bonding_log·bonding_map·core_defect_map·eds_fail_map은 모두 현장 소유(고객 공장 데이터)라 표준 이름이 아니다 — 당신의 실제 테이블명으로 바꿔라. 애초에 이 파일은 선언이 없어도 동작한다(table_config의 map_key_columns + x/y/val 후보에서 자동 유도). 체크리스트는 docs/guide/CONFIG_GUIDE.md의 '기능별 필요 테이블 체크리스트' 참조.",
   "align_overrides": {
     "__example_eds_fail_map": {
       "default": {
@@ -51,16 +51,6 @@
           "base"
         ]
       }
-    },
-    "transfer_plan_map": {
-      "columns": {
-        "x": "x",
-        "y": "y",
-        "val": "val",
-        "key_columns": [
-          "plan_id"
-        ]
-      }
     }
   },
   "paint_lock": {
@@ -72,7 +62,7 @@
       "from_overlay": [],
       "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
     },
-    "transfer_plan_map": {
+    "__example_bonding_map": {
       "enabled": true,
       "blocking_values": [
         "F"

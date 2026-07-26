@@ -465,9 +465,11 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > 매별 소요는 지정 대상이 아니라 구간 `qty_total`의 **균등 배분**(올림)이며, `doe_source.qty`가 있으면 그것이 우선합니다. 값 단위 속성(설명·색)은 `map_split_registry`가 정본이라 `map_doe`에 중복 저장하지 않습니다.
 
-> **`.sample`은 위 발췌와 일치합니다(2026-07-26 정정 완료).** `transfer_plan_config.json.sample`의 `plan_store`에서 v1 잔재 역할(`plan`/`map`/`doe_layer`)과 폐기 컬럼(`plan_id`·`layer_from`·`layer_to`·`qty_per_unit`)을 제거하고, 코드가 실제로 요구하는 `doe`(필수 `ref_table`·`map_key`·`doe_value`·`band_seq`) / `doe_source`(필수 위 4개 + `source_lot`·`source_slot`) / `source_region`(필수 `ref_table`·`map_key`·`source_lot`·`source_slot`·`x`·`y` — **선택·휴면 역할**, 쓰지 않으려면 키 전체를 지우십시오) 바인딩으로 교체했습니다. `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
+> **`.sample`은 위 발췌와 일치합니다(2026-07-26 정정 완료).** `transfer_plan_config.json.sample`의 `plan_store`에서 v1 잔재 역할(`plan`/`map`/`doe_layer`)과 폐기 컬럼(`plan_id`·`layer_from`·`layer_to`·`qty_per_unit`)을 제거하고, 코드가 실제로 요구하는 `doe`(필수 `ref_table`·`map_key`·`doe_value`·`band_seq`) / `doe_source`(필수 위 4개 + `source_lot`·`source_slot`) 바인딩으로 교체했습니다. 두 바인딩이 가리키는 `map_doe`·`map_doe_source`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
 >
-> ⚠️ **단, 바인딩은 대상 테이블이 `table_config.json`에 등록돼 있어야 해석됩니다.** 현재 `table_config.json.sample`은 최소 세트만 담고 있어 `map_doe`·`map_doe_source`(·선택적 `map_source_region`)가 없습니다 — **`.sample`만 복사한 새 환경에서는 `plan_store`가 여전히 `missing`으로 뜹니다.** 이 테이블들을 `table_config.json`에 먼저 등록하십시오(스키마 계약이라 `table_config.json.sample` 반영은 총괄 판단 대기).
+> `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
+>
+> **`source_region`(자재별 사용 영역 스코프)은 휴면이라 `.sample`에 넣지 않았습니다.** 미선언은 결함이 아니며(`plan_store`에 키 자체가 안 나옵니다), 선언만 하고 테이블이 없으면 도리어 `missing` 소음이 됩니다. 켜려면 `plan_store.source_region`에 `(ref_table, map_key, source_lot, source_slot, x, y)` 바인딩을 추가하고 그 테이블을 `table_config.json`에 선언하십시오.
 
 ### 5.8-bis `map_overlay_config.json` — 키 구조
 
@@ -489,6 +491,43 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 | 4 | 검증: `GET /api/maps/paint-rules?table=<t>` → `GET /api/maps/overlay?target_table=&target_key=&sources=<t>:<key>` 응답의 `overlays[].status`와 `align_applied.origin`(`declared`/`default`/`derived`/`identity`) 확인 |
 
 > **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 선언 부재는 실패가 아니며 identity로 붙습니다. 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
+
+### 5.8-ter 기능별 필요 테이블 체크리스트
+
+> **바인딩 config는 `table_config.json`에 선언된 테이블만 해석합니다.** 미선언 테이블을 가리키는 바인딩은 조용히 죽지 않고 해당 역할이 `missing`으로 표면화됩니다(`bonding_plan._resolve_model_columns`). 그래서 기능을 켜는 순서는 항상 **① `table_config.json`에 테이블 선언 → ② 바인딩 config의 `table`/`columns`를 그 이름에 맞춤**입니다.
+
+테이블은 **누가 스키마를 정하는가**로 갈립니다.
+
+| 구분 | 뜻 | `.sample` 취급 |
+|---|---|---|
+| **제품 소유** | assyManager 자신의 저장소. 이름·컬럼을 제품이 정하며 현장이 바꿀 이유가 없습니다 | `table_config.json.sample`에 **선언돼 있습니다** — 그대로 쓰십시오 |
+| **현장 소유** | 고객 공장의 실 데이터. **운영 환경마다 테이블명·컬럼명이 다릅니다** | **선언하지 않습니다.** 예시 스키마를 박으면 표준이 있는 것처럼 오해되기 때문입니다 — 당신의 실제 이름으로 직접 선언하십시오 |
+
+**제품 소유(`table_config.json.sample`에 이미 선언됨 — 그대로 쓰십시오):**
+
+| 테이블 | 역할 | bk 규칙 |
+|---|---|---|
+| `map_doe` | 전사 계획 DOE 정의 | `ref_table\|map_key\|doe_value\|band_seq` (구분자 `\|`) |
+| `map_doe_source` | DOE 구간의 자재(소스) 묶음 | 위 + `\|source_lot\|source_slot` |
+| `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본 | `ref_table\|map_key\|value` (구분자 `\|`) |
+| `wafer_map_metadata` | 격자 규격(`grid_metadata`) | `target_table_map_id` |
+
+> 위 네 테이블의 **`composite_key_separator`를 바꾸지 마십시오.** `map_key`가 `_` 조인 문자열이고 테이블명에도 `_`가 흔해 `_` 구분자로는 키가 모호해집니다(클라이언트의 `SPLIT_KEY_SEP`와도 일치해야 합니다).
+
+> `table_config.json.sample`의 나머지 엔트리(`bonding_map`, `inventory_master`, `production_plan`, `parts`, `large_table_100`)는 **동작 예시**입니다 — 제품이 이름을 강제하는 저장소가 아니므로 현장 테이블로 교체하거나 지워도 됩니다.
+
+**기능을 켜려면 아래 테이블을 당신의 실제 이름/컬럼으로 `table_config.json`에 선언한 뒤, 바인딩의 `table`/`columns`를 그 이름으로 맞추십시오.**
+
+| 기능 | 바인딩 config | 현장 소유 테이블 (역할) |
+|---|---|---|
+| **전사 계획 (M2)** — stage 소스 가용·validate | `transfer_plan_config.json` | `dt_map`(DT 타깃 맵) · `dt_log`(테이프↔코어 전사 로그 = tape stage의 `total_chips`/`origin_log`) · `bonding_map`(BONDING 타깃 맵) · `bonding_log`(기전사 로그) · `core_defect_map` · `eds_fail_map`(fail 원천) · `wafer_process`(이력) |
+| **본딩 가용량 (M1)** — core-summary | `bonding_plan_config.json` | `bonding_log`(기사용 칩) · `core_defect_map` · `eds_fail_map` · `wafer_process` |
+| **결손 보정 (enrichment)** | `enrichment_rules.json` | `source_table`로 쓸 원천(샘플 예: `bonding_log`) · `derived_table`로 쓸 파생(샘플 예: `bonding_job_inventory`, `decision_key`를 `composite_key_source`로 갖는 키 계약 필요) |
+| **맵 오버레이** | `map_overlay_config.json` | 겹쳐 볼 맵 테이블 전부. **단 선언 없이도 동작합니다**(`table_config`에서 자동 유도) — 컬럼명이 관례와 다를 때만 선언 |
+
+> 위 표의 이름(`dt_log`, `bonding_log` …)은 **`.sample`이 쓰는 예시일 뿐 표준이 아닙니다.** 현장 테이블명이 다르면 그 이름 그대로 선언하고 바인딩만 맞추면 됩니다 — 코드는 실테이블명을 하드코딩하지 않습니다.
+
+> 검증: `GET /api/transfer-plan/stages`의 `roles`·`plan_store` / `GET /api/bonding-plan/core-summary`의 role 상태가 `connected`인지 확인하십시오. `missing`이면 ①테이블 미선언 ②바인딩의 컬럼명 오타 ③필수 역할키 누락 순으로 의심하십시오.
 
 ### 5.9 `maps.json` — 프리셋 1개 (**UI로 관리 권장**)
 

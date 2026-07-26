@@ -1,3 +1,4 @@
+import json
 import time
 
 def test_get_tables_data(client):
@@ -313,27 +314,31 @@ def test_audit_log_no_redundant_logs(client, db_session):
     db_session.commit()
 
 
-def test_file_ingestion_callback_direct(db_session):
+def test_file_ingestion_callback_direct(db_session, tmp_path):
+    """아카이브 재처리 → on_file_processed_callback 통지.
+
+    [격리] 이전 판은 워크스페이스 루트를 `dirname(__file__)/..`로 잡아 **라이브**
+    `server/ingestion_workspace/inventory_master/`에 mock을 세웠고, 그 과정에서
+    사용자의 `config/config.json`을 테스트 페이로드로 덮어썼다(cleanup도 안 했다).
+    `IngestionHandler`는 workspace/config/archives 경로를 전부 생성자 인자로 받으므로
+    tmp_path를 주는 것으로 격리가 끝난다.
+
+    [config.json 미생성] 워크스페이스 config.json은 폐기된 개념이다(하위호환 읽기만 남음).
+    `config_path=None`은 생성자가 명시 허용하며(`config_path: str | None`), 테이블명은
+    별칭 → 레거시 config → `default_table_name` 순서라 이 테스트에선 3순위로 해석된다
+    — 즉 폐기된 파일을 세우지 않아도 동일하게 성립한다.
+    """
     from database import models
     from directory_watcher import IngestionHandler
     import os
-    import json
 
-    # 1. Setup mock workspace
-    server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    workspace_root = os.path.join(server_dir, "ingestion_workspace", "inventory_master")
-    os.makedirs(workspace_root, exist_ok=True)
-    
-    config_dir = os.path.join(workspace_root, "config")
-    os.makedirs(config_dir, exist_ok=True)
-    config_path = os.path.join(config_dir, "config.json")
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump({"table_name": "inventory_master", "columns": ["part_no", "category"]}, f)
-    
-    # Create mock archived file
-    archives_dir = os.path.join(workspace_root, "archives")
-    os.makedirs(archives_dir, exist_ok=True)
-    dummy_file_path = os.path.join(archives_dir, "test_direct_callback.csv")
+    # 1. Setup mock workspace (폴더명=테이블명 규약을 보존해야 해석 경로가 같다)
+    workspace_root = tmp_path / "inventory_master"
+    archives_dir = workspace_root / "archives"
+    archives_dir.mkdir(parents=True)
+    config_path = None
+
+    dummy_file_path = str(archives_dir / "test_direct_callback.csv")
     with open(dummy_file_path, "w", encoding="utf-8") as f:
         f.write("part_no,category\nTEST_PART_DIR,TestCategoryWS\n")
 
@@ -354,12 +359,15 @@ def test_file_ingestion_callback_direct(db_session):
         called_back.append((table_name, filename, status, error_msg))
 
     handler = IngestionHandler(
-        workspace_path=workspace_root,
+        workspace_path=str(workspace_root),
         config_path=config_path,
-        archives_path=archives_dir,
+        archives_path=str(archives_dir),
         default_table_name="inventory_master",
         on_file_processed_callback=mock_callback
     )
+
+    # 격리 가드 — 워크스페이스가 정말 tmp인가 (라이브 경로로 되돌아가면 여기서 깨진다)
+    assert str(tmp_path) in handler.workspace_path
 
     try:
         # Directly run parsing synchronously
@@ -369,13 +377,10 @@ def test_file_ingestion_callback_direct(db_session):
         assert called_back[0][0] == "inventory_master"
         assert called_back[0][1] == "test_direct_callback.csv"
         assert called_back[0][2] == "SUCCESS"
+        # 폐기된 워크스페이스 config.json을 세우지 않았음을 고정
+        assert not os.path.exists(str(workspace_root / "config" / "config.json"))
     finally:
-        # Clean up
-        if os.path.exists(dummy_file_path):
-            try:
-                os.remove(dummy_file_path)
-            except:
-                pass
+        # 파일 정리는 불필요(tmp_path는 pytest가 회수) — DB 부작용만 정리한다
         db_session.query(models.DatabaseOutbox).delete()
         db_session.commit()
 
@@ -608,14 +613,42 @@ def test_dynamic_schema_hot_reloading(db_session):
     assert "hot_reloaded_col" in db_cols
 
 
-def test_map_presets_api(client):
+def test_map_presets_api(client, tmp_path, monkeypatch):
+    """map-presets CRUD.
+
+    [격리] 이 API는 파일(`server/config/maps.json`)이 저장소다. 격리하지 않으면
+    **사용자의 라이브 config를 읽고 그 위에 써버린다**(실제로 라이브 파일에 과거
+    테스트 산물 `custom_*` 프리셋이 남아 있었다). 그래서 `MAPS_CONFIG_PATH`를
+    tmp_path로 갈아끼우고, 단언 대상도 **테스트가 스스로 심은 프리셋**으로 한다
+    — `maps.json.sample`에만 있는 키를 라이브에서 찾던 이전 구조는 환경에 따라
+    상시 실패했고, 상시 실패는 스위트 전체의 신호를 죽인다.
+    """
+    import main
+
+    maps_path = tmp_path / "maps.json"
+    seeded = {
+        "presets": {
+            "pytest_seed_std": {
+                "name": "Pytest Seed", "phys_wafer_dia": 300.0,
+                "phys_chip_x": 2.5, "phys_chip_y": 2.5,
+                "phys_offset_x": 0.0, "phys_offset_y": 0.0,
+                "phys_edge_margin": 3.0, "rotation": 0, "side": "front",
+            }
+        }
+    }
+    maps_path.write_text(json.dumps(seeded), encoding="utf-8")
+    monkeypatch.setattr(main, "MAPS_CONFIG_PATH", str(maps_path))
+
+    # 격리 가드 — 저장소가 정말 tmp로 갈아끼워졌는가 (아래 단언들의 전제)
+    assert str(tmp_path) in main.MAPS_CONFIG_PATH
+
     # 1. Test GET /api/map-presets
     get_res = client.get("/api/map-presets")
     assert get_res.status_code == 200
     res_data = get_res.json()
     assert res_data["status"] == "success"
-    assert "presets" in res_data
-    assert "std_300_12x13" in res_data["presets"]
+    # 심은 것 '만' 보여야 한다 — 라이브 파일이 새어 들어오면 여기서 깨진다
+    assert set(res_data["presets"]) == {"pytest_seed_std"}
 
     # 2. Test POST /api/map-presets (Save custom preset)
     custom_key = f"pytest_custom_{int(time.time())}"
@@ -651,6 +684,10 @@ def test_map_presets_api(client):
     # Verify preset was deleted
     after_del_res = client.get("/api/map-presets")
     assert custom_key not in after_del_res.json()["presets"]
+
+    # 4. 쓰기가 전부 tmp 파일에만 떨어졌는가 (사용자 자산 오염 회귀 가드)
+    on_disk = json.loads(maps_path.read_text(encoding="utf-8"))
+    assert set(on_disk["presets"]) == {"pytest_seed_std"}
 
 
 

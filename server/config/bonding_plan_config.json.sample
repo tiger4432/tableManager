@@ -1,5 +1,5 @@
 {
-  "__doc__": "본딩 실험계획(M1) 역할 바인딩 config 샘플. 역할(role)→실테이블 바인딩을 정의한다 — 실 운영 환경에서는 table/columns를 실제 테이블명에 맞게 교체. 역할이 누락되면 해당 역할은 'missing'으로 부분 가동된다(에러 아님). 맵 모드 소스의 align은 소스 좌표계→canonical(CORE) 좌표계 변환 선언 — 단순형 {rotation,flip,offset} 또는 확장형 {default:{...}, by_eqp:{EQP별:{...}}} (M1은 default만 적용, by_eqp는 M2 예약). map_metadata는 격자 규격(wafer_map_metadata 관례) 조회 바인딩 — region 클램프/align 치수의 원천.",
+  "__doc__": "본딩 실험계획(M1) 역할 바인딩 config 샘플. 역할(role)→실테이블 바인딩을 정의한다 — 실 운영 환경에서는 table/columns를 실제 테이블명에 맞게 교체. 역할이 누락되면 해당 역할은 'missing'으로 부분 가동된다(에러 아님). 맵 모드 소스의 align은 소스 좌표계→canonical(CORE) 좌표계 변환 선언 — 단순형 {rotation,flip,offset} 또는 확장형 {default:{...}, by_eqp:{EQP별:{...}}} (M1은 default만 적용, by_eqp는 M2 예약). map_metadata는 격자 규격(wafer_map_metadata 관례) 조회 바인딩 — region 클램프/align 치수의 원천. [전제 테이블] 여기의 모든 table 값은 table_config.json에 선언돼 있어야 해석된다(미선언 = 그 역할 'missing'). wafer_map_metadata만 제품 소유(table_config.json.sample에 이미 있음)이고, bonding_log·core_defect_map·eds_fail_map·wafer_process는 전부 현장 소유라 표준 스키마가 아니다 — 당신의 실제 테이블명·컬럼명으로 table_config.json에 선언한 뒤 여기 table/columns를 그 이름으로 맞춰라. 체크리스트는 docs/guide/CONFIG_GUIDE.md의 '기능별 필요 테이블 체크리스트' 참조.",
   "core_identity": { "compose": ["lot", "slot"] },
   "map_metadata": {
     "table": "wafer_map_metadata",
