@@ -167,6 +167,11 @@ const SPLIT_KEY_SEP = '|';
 
 let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
 let legendServerSaveTimer = null;
+// { table, mapKey } | null - the ONE map whose registry rows we have actually read.
+// It is the sole grant of `replace_map` authority for the legend write: only a legend
+// that came from this map's own registry may be used to replace it. Cleared whenever
+// that claim stops being true (table switch, failed/truncated read, map unloaded).
+let legendReplaceScope = null;
 
 function buildSplitKey(refTable, mapKey, value) {
   return [refTable, mapKey, value].join(SPLIT_KEY_SEP);
@@ -2035,6 +2040,13 @@ async function fetchLegendFromServer(refTable, mapKey) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`split registry fetch failed (HTTP ${res.status})`);
   const result = await res.json();
+  // A truncated read is not a read. The legend save is a `replace_map` write, so
+  // saving a set built from a partial response would delete the rows we never
+  // saw. Fail the load instead - the caller falls back to the cache and, because
+  // the load failed, never claims replace authority.
+  if (result && typeof result.total === 'number' && result.total > (Array.isArray(result.data) ? result.data.length : 0)) {
+    throw new Error(`split registry response truncated (${result.total} > ${(result.data || []).length})`);
+  }
   return parseLegendRegistryRows(result, !mapKey);
 }
 
@@ -2059,17 +2071,34 @@ async function loadLegend(refTable, mapKey) {
   }
 }
 
-// legend 전체를 registry에 업서트. map_key 미확정이면 조용히 스킵(false).
+// Save the whole legend of one map to the registry. Silently skipped (false) when
+// the map key is not resolved yet.
+//
+// The unit of this write is a map's ENTIRE legend, so it is a `replace_map` write
+// (scope = map_key_columns = ref_table|map_key): a value the user removed is gone
+// from the set, and that alone deletes it on the server. It used to be an upsert
+// only, so the removed value's registry row survived and loadExistingMap resurrected
+// it on the next load (its "values defined only in the registry are re-exposed as
+// brushes" branch) - that was the "deletion does not stick" bug.
+//
+// Replace authority comes only from `legendReplaceScope`, i.e. from having read THIS
+// map's registry successfully. Replacing with a legend that did not come from that
+// map's own rows would delete rows we never saw - the same hazard as Push's
+// "a mismatched map key wipes another map's cells". Without authority we fall back
+// to the previous upsert-only write: failing to delete beats deleting blindly.
 async function saveLegendToServer(mapKeyOverride) {
   const mapKey = mapKeyOverride || getCurrentMapKey();
   if (!selectedTable || !mapKey) return false;
   const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, getLocalTimeString());
   if (updates.length === 0) return false;
+  const replaceMap = !!legendReplaceScope
+    && legendReplaceScope.table === selectedTable
+    && legendReplaceScope.mapKey === mapKey;
   try {
     const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates })
+      body: JSON.stringify({ updates, replace_map: replaceMap })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const nowStr = getLocalTimeString();
@@ -2104,6 +2133,7 @@ function persistLegend() {
   saveLegendToStorage();
   scheduleLegendServerSave();
 }
+
 
 // 행 DOM을 유지한 채 수정자·시각 라인만 갱신 (textarea 포커스 보존)
 function renderLegendMetaOnly() {
@@ -2385,7 +2415,10 @@ function deleteLegendRowForPanel(value) {
   if (legend.length <= 1) return { ok: false, error: '최소 하나의 정의가 필요합니다.' };
   const deletedVal = String(legend[idx].value);
   legend.splice(idx, 1);
-  delete legendMeta[deletedVal]; // 서버 registry 행은 이력으로 잔존 (삭제 API 미사용)
+  delete legendMeta[deletedVal];
+  // The registry row goes away with the next legend save: that save is a
+  // `replace_map` write of the whole legend, so a value dropped here is simply
+  // absent from the set and the server purges it. See saveLegendToServer.
   Object.keys(gridData).forEach(k => { if (gridData[k] === deletedVal) gridData[k] = ''; });
   if (activeBrush === deletedVal) activeBrush = legend[0].value;
   persistLegend();
@@ -2793,9 +2826,13 @@ async function loadExistingMap(opts = {}) {
 
     // [Split Registry] 서버에 기록된 이 맵의 split 서술·색을 최우선 적용.
     // 값 일치 항목은 override, 그리드에 없지만 registry에 정의된 값은 브러시로 추가 노출.
+    legendReplaceScope = null;   // the claim below is about to be re-established, or lost
     if (loadedMapKey) {
       try {
         const regRows = await fetchLegendFromServer(selectedTable, loadedMapKey);
+        // Read succeeded (0 rows is a complete answer too), so the on-screen legend is
+        // now this map's registry merged into it: it may replace this map's rows.
+        legendReplaceScope = { table: selectedTable, mapKey: loadedMapKey };
         if (regRows.length > 0) {
           const byValue = new Map(regRows.map(r => [r.value, r]));
           legendMeta = {};
@@ -2826,7 +2863,14 @@ async function loadExistingMap(opts = {}) {
           renderLegendTable();
         }
       } catch (e) {
+        // Read failed or was truncated -> the on-screen legend is NOT this map's
+        // registry, so it must never replace it. Tell the user, because from here
+        // on removing a DOE value cannot stick.
+        legendReplaceScope = null;
         console.warn('[Map Editor] split registry apply skipped:', e);
+        showToast('DOE 정의(registry) 조회에 실패했습니다 — 이 맵에서는 DOE를 지워도 서버에 반영되지 않습니다. '
+          + `맵을 다시 열면 재시도합니다 (${e && e.message ? e.message : e})`,
+          'warning', { dedupeKey: 'legend_registry_load_failed' });
       }
     }
 
@@ -3507,6 +3551,10 @@ function snapshotEditorState() {
     scrollLeft: el.mapWorkspace ? el.mapWorkspace.scrollLeft : 0,
     scrollTop: el.mapWorkspace ? el.mapWorkspace.scrollTop : 0,
     loadedIdentity: loadedIdentity ? { ...loadedIdentity } : null,
+    // The legend below was restored from this map's registry, so its replace
+    // authority belongs with it. Dropping it here would silently downgrade the
+    // parent map to upsert-only after a round trip = deletions stop sticking.
+    legendReplaceScope: legendReplaceScope ? { ...legendReplaceScope } : null,
     framePushed,
     tableSelectValue: el.tableSelect ? el.tableSelect.value : '',
     gridData: { ...gridData },
@@ -3581,6 +3629,7 @@ function restoreEditorState(s) {
   renderOverlayList();
 
   loadedIdentity = s.loadedIdentity ? { ...s.loadedIdentity } : null;
+  legendReplaceScope = s.legendReplaceScope ? { ...s.legendReplaceScope } : null;
   framePushed = !!s.framePushed;
 
   renderLegendTable();
@@ -3697,6 +3746,15 @@ function currentIdentityMismatch() {
 
 function setLoadedIdentity(table, mapKey) {
   loadedIdentity = (table && mapKey) ? { table: String(table), mapKey: String(mapKey) } : null;
+  // Replace authority belongs to ONE map. The moment the loaded map is not the map
+  // whose registry we read, the claim is void - a `replace_map` legend write under a
+  // stale scope would purge another map's rows. A fresh grant survives because
+  // loadExistingMap grants it for exactly the identity it then pins here.
+  if (!loadedIdentity || !legendReplaceScope
+      || legendReplaceScope.table !== loadedIdentity.table
+      || legendReplaceScope.mapKey !== loadedIdentity.mapKey) {
+    legendReplaceScope = null;
+  }
   framePushed = false;
 }
 
@@ -3751,6 +3809,7 @@ async function openMapFrame(spec) {
   try {
     editorFrames.push(frame);
     loadedIdentity = null;
+    legendReplaceScope = null;   // the new frame has not read any registry yet
     overlayLayers = [];
     recomputeActiveOverlays();
     renderOverlayList();

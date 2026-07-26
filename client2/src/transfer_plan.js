@@ -70,12 +70,18 @@ const S = {
   savedAt: null,
   serverSavedAt: null,
   planTablesSupported: null,
-  // [B2] 서버 상태를 **성공적으로 읽었는가**. 이것이 참일 때만 prune이 허용된다.
+  // [B2/C1] 서버 상태를 **성공적으로 읽었는가**. 이것이 참일 때만 replace 쓰기가 허용된다
+  // ("화면이 서버본에서 유래한다"가 아니면 replace는 보지 못한 행을 지운다).
   doeServerLoaded: false,
-  // [B2] "서버에 있다"고 우리가 직접 확인한 키 집합 (로드/업서트로 증가, 삭제로 감소)
-  serverKeys: { doe: new Set(), source: new Set() },
+  // How many rows this plan holds on the server, per table. Only used to tell
+  // "there is nothing to clear" apart from "we could not express the clear"
+  // (replace_map cannot carry an empty set) — never to decide what to delete.
+  serverRows: { doe: 0, source: 0 },
   // [M5] 마지막 서버 저장 실패 사유 (헤더에 표시 — "저장됨"으로 위장 금지)
   saveError: null,
+  // The last save held a deletion it could not send. Never report that as a
+  // completed save — the removed rows are still on the server.
+  deleteUnsent: false,
   loadSeq: 0,
   matSeq: 0,
   flash: new Set(),          // 1회성 하이라이트 대상 자재 키
@@ -429,6 +435,9 @@ function renderPlanHead() {
   let savedChip;
   if (S.saveError) {
     savedChip = `<span class="tp-chip bad" title="${esc(S.saveError)}">⚠ 서버 저장 실패 · 초안만</span>`;
+  } else if (S.deleteUnsent) {
+    // Covering an unsent deletion with "자동 저장 HH:MM" is how a delete evaporates silently.
+    savedChip = '<span class="tp-chip bad" title="마지막 항목까지 지운 상태는 서버에 보낼 수 없어 삭제가 반영되지 않았습니다 — 항목을 하나라도 남기면 저장됩니다">⚠ 삭제 미반영</span>';
   } else if (stageOfTable(S.ctx.table) && S.ctx.depth === 0 && S.planTablesSupported !== false && !S.doeServerLoaded) {
     savedChip = '<span class="tp-chip warn" title="서버 DOE 조회에 실패했습니다 — 잔재 정리를 하지 않습니다">⚠ 서버 상태 미확인</span>';
   } else {
@@ -928,10 +937,14 @@ function looksLikeMissingTable(status, body) {
   return /not\s*found|없|unknown table|존재하지/i.test(detail);
 }
 
-async function putUpdates(table, updates) {
+// A DOE save is one write of the plan's COMPLETE set, so it goes out as `replace_map`:
+// the server purges everything in scope (map_key_columns = ref_table|map_key, declared
+// in server/product_tables.py) and writes what we sent. Removing a value, a band or a
+// material is therefore expressed by its absence - there is no separate delete step.
+async function putUpdates(table, updates, replaceMap) {
   const res = await fetch(`${API_BASE}/tables/${table}/data/updates`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ updates }),
+    body: JSON.stringify({ updates, replace_map: !!replaceMap }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -996,6 +1009,10 @@ async function saveDoeToServer() {
   }
 
   const nowStr = getLocalTimeString();
+  // 이 저장 사이클이 속한 맵. 헤더 칩은 **현재 맵**의 상태를 말하므로, 저장 중 맵이 바뀌면
+  // 이 사이클의 결과로 새 맵 헤더를 오염시키면 안 된다(토스트는 맵 스코프가 아니라 그대로 알린다).
+  const saveSeq = S.loadSeq;
+  const saveScope = `${S.ctx.table} · ${S.ctx.mapKey}`;
 
   const doeUpdates = [];
   const srcUpdates = [];
@@ -1039,28 +1056,31 @@ async function saveDoeToServer() {
     });
   });
 
-  const doeKeep = new Set(doeUpdates.map(u => u.updates.doe_key));
-  const srcKeep = new Set(srcUpdates.map(u => u.updates.source_key));
+  // `replace_map` takes its scope from updates[0], so an EMPTY set is not a write the
+  // server can act on - it would silently leave the plan's rows in place. That is a
+  // deletion we cannot express, and it must not be reported as a completed save.
+  // (Reachable: drop the last material of every band -> srcUpdates is empty.)
+  const cannotExpress = (doeUpdates.length === 0 && S.serverRows.doe > 0)
+    || (srcUpdates.length === 0 && S.serverRows.source > 0);
 
   try {
-    if (doeUpdates.length > 0) await putUpdates(DOE_TABLE, doeUpdates);
-    if (srcUpdates.length > 0) await putUpdates(DOE_SOURCE_TABLE, srcUpdates);
-    // 업서트에 성공했으므로 이 키들은 이제 "서버에 있다고 아는" 집합에 들어간다
-    doeKeep.forEach(k => S.serverKeys.doe.add(k));
-    srcKeep.forEach(k => S.serverKeys.source.add(k));
+    if (doeUpdates.length > 0) await putUpdates(DOE_TABLE, doeUpdates, true);
+    if (srcUpdates.length > 0) await putUpdates(DOE_SOURCE_TABLE, srcUpdates, true);
     S.planTablesSupported = true;
     S.serverSavedAt = nowStr;
     S.saveError = null;
+    // What the plan now holds on the server. Used only to tell "nothing to clear"
+    // apart from "we could not express the clear" above - never to decide what to delete.
+    if (doeUpdates.length > 0) S.serverRows.doe = doeUpdates.length;
+    if (srcUpdates.length > 0) S.serverRows.source = srcUpdates.length;
 
-    // 잔재 제거 — S.doeServerLoaded가 참이고, 우리가 아는 키 중 사라진 것만 대상이다.
-    // prune 실패는 저장 실패와 **구분해서** 알린다(저장 자체는 성공했으므로).
-    try {
-      await pruneScoped(DOE_TABLE, 'doe_key', doeKeep, S.serverKeys.doe);
-      await pruneScoped(DOE_SOURCE_TABLE, 'source_key', srcKeep, S.serverKeys.source);
-    } catch (pe) {
-      console.warn('[Legend & DOE] prune failed:', pe);
-      showToast(`삭제된 DOE 잔재 정리 실패 — 서버에 유령 행이 남아 있을 수 있습니다 (${pe && pe.message ? pe.message : pe})`,
-        'warning', { dedupeKey: 'doe_prune_failed' });
+    // The header chip speaks for the CURRENT map, so a cycle that outlived a map
+    // switch must not write to it. The toast is not map-scoped and names its map.
+    if (saveSeq === S.loadSeq) S.deleteUnsent = cannotExpress;
+    if (cannotExpress) {
+      showToast(`${saveScope} — 마지막 항목까지 지운 상태는 서버에 보낼 수 없어 **삭제가 반영되지 않았습니다.** `
+        + '항목을 하나라도 남기면 저장됩니다.',
+        'warning', { dedupeKey: 'doe_delete_unsent' });
     }
     renderPlanHead();
   } catch (e) {
@@ -1080,63 +1100,26 @@ async function saveDoeToServer() {
   }
 }
 
-// ── [B2 수정] 서버 잔재 정리 ────────────────────────────────
+// [removed] `pruneScoped` — the client-side difference-and-delete step.
 //
-// 🔴 종전 결함: prune이 "현재 화면 상태에 없는 행 = 잔재"로 단정하고 batch_delete 했다.
-//    서버 로드가 **한 번만 실패해도** S.doe가 빈 채 남고, 그 다음 편집 한 번에
-//    keep = ∅ 로 그 맵의 map_doe / map_doe_source가 **전량 삭제**됐다.
-//    (빈 catch라 흔적조차 남지 않았다.)
+// It existed because a DOE save was an upsert, which can only add and overwrite, so
+// something had to go back and delete what the user removed. That second step was
+// conditional, and when it did not run the removal simply did not happen.
 //
-// ✅ 새 규율: **우리가 "서버에 있다"고 직접 확인한 키만** 삭제 대상이 된다.
-//    `S.serverKeys`는 ⓐ **서버본 채택**(adoptServerDoe — 화면이 서버본이 되는 그 지점)에서 채워지고
-//    ⓑ 성공한 업서트로 늘어나며 ⓒ 성공한 삭제로 줄어든다. 로드가 실패하면 이 집합은 비어 있고, 따라서
-//    **삭제할 대상이 아예 존재하지 않는다 — 공집합은 "전부 지워라"가 아니라 "모른다"다.**
+// The platform already had the operation: `replace_map` (crud.py, apply_batch_updates)
+// purges a table's rows inside the map's scope and rewrites them in one transaction.
+// It needed `map_key_columns` to know that scope, which map_doe / map_doe_source /
+// map_split_registry did not declare - so it could never have worked, and the
+// difference was computed beside it instead. The declaration now lives in
+// server/product_tables.py and deletion falls out of the write.
 //
-// ✅ [C1] 불변식: `keep`(화면 유래)과 `knownKeys`(서버 유래)는 **같은 출처에서 와야 한다.**
-//    그래서 권한은 "조회가 성공했다"가 아니라 "`S.doe`가 서버본에서 유래한다"에만 부여한다.
-//
-//    부수 효과(의도한 것): 우리 로드 이후 **다른 세션이 만든 행**은 이 집합에 없으므로
-//    건드리지 않는다. 동시 편집에서 남의 저장분을 지우지 않는다.
-async function pruneScoped(table, keyCol, keep, knownKeys) {
-  // [가드 ①] 서버 상태를 성공적으로 읽지 못했으면 **어떤 삭제도 하지 않는다**
-  if (!S.doeServerLoaded) return { skipped: 'load_unconfirmed' };
-  // [가드 ②] 지울 것으로 아는 키가 없으면 조회조차 하지 않는다
-  const candidates = [...knownKeys].filter(k => !keep.has(k));
-  if (candidates.length === 0) return { skipped: 'nothing_to_prune' };
-
-  const filters = {
-    ref_table: { filterType: 'text', type: 'equals', filter: S.ctx.table },
-    map_key: { filterType: 'text', type: 'equals', filter: S.ctx.mapKey },
-  };
-  const res = await fetch(`${API_BASE}/tables/${table}/data?limit=500&filters=${encodeURIComponent(JSON.stringify(filters))}`);
-  if (!res.ok) throw new Error(`잔재 조회 실패 (HTTP ${res.status})`);
-  const data = await res.json();
-  const rows = (data && Array.isArray(data.data)) ? data.data : [];
-  // 응답이 절단됐으면 diff가 불완전하다 → 과삭제 방지로 중단
-  if (typeof data.total === 'number' && data.total > rows.length) {
-    throw new Error(`잔재 조회 절단 (${data.total} > ${rows.length})`);
-  }
-  const candSet = new Set(candidates);
-  // [가드 ③] 삭제 후보는 **candidates ∩ 실제 서버 행** 교집합뿐이다
-  const stale = rows.filter(r => {
-    const k = cellVal(r.data || {}, keyCol);
-    return k !== undefined && k !== null && candSet.has(String(k));
-  });
-  if (stale.length === 0) return { deleted: 0 };
-  const ids = stale.map(r => r.row_id).filter(Boolean);
-  if (ids.length !== stale.length) throw new Error('row_id 누락 — 정리 중단');
-  const del = await fetch(`${API_BASE}/tables/${table}/rows/batch_delete`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ row_ids: ids, user_name: CURRENT_USER }),
-  });
-  if (!del.ok) throw new Error(`잔재 삭제 실패 (HTTP ${del.status})`);
-  stale.forEach(r => knownKeys.delete(String(cellVal(r.data || {}, keyCol))));
-  return { deleted: ids.length };
-}
+// The C1 invariant survives this, in a simpler form: it was "only delete the
+// difference if the screen came from the server"; it is now "only replace if the
+// screen came from the server" (S.doeServerLoaded, checked once before the write).
 
 // 서버에서 DOE 밴드·자재를 복원한다.
 // ⚠️ **로컬 초안 유무와 무관하게 항상 호출된다** — 초안이 있다고 건너뛰면
-//    다른 세션이 저장한 계획을 못 본 채 prune이 그것을 잔재로 오인한다(B2 ⓒ).
+//    다른 세션이 저장한 계획을 못 본 채 그 위에 replace를 걸어 지워버린다.
 // 반환: { ok, rowCount } — ok=false면 호출부가 그 사실을 **상태로 보존**해야 한다.
 async function loadDoeFromServer() {
   if (!doeScopeReady()) return { ok: false, rowCount: 0 };
@@ -1165,13 +1148,10 @@ async function loadDoeFromServer() {
     }
 
     const byValue = new Map();
-    const doeKeys = new Set();
     rows.forEach(r => {
       const x = r.data || {};
       const v = String(cellVal(x, 'doe_value') ?? '');
       if (!v) return;
-      const dk = cellVal(x, 'doe_key');
-      if (dk) doeKeys.add(String(dk));
       let knobs = {};
       try { const raw = cellVal(x, 'knobs'); if (raw) knobs = JSON.parse(String(raw)); } catch (e) { /* 파손 */ }
       if (!byValue.has(v)) byValue.set(v, []);
@@ -1185,7 +1165,6 @@ async function loadDoeFromServer() {
     });
 
     // 자재 묶음을 (값, 구간)에 붙인다 — 이 조회도 실패하면 로드 전체를 실패로 본다
-    const srcKeys = new Set();
     const sres = await fetch(`${API_BASE}/tables/${DOE_SOURCE_TABLE}/data?${qs}`);
     if (!sres.ok) return { ok: false, rowCount: rows.length, error: `source HTTP ${sres.status}` };
     const sd = await sres.json();
@@ -1198,8 +1177,6 @@ async function loadDoeFromServer() {
       const v = String(cellVal(x, 'doe_value') ?? '');
       const seq = Number(cellVal(x, 'band_seq')) || 1;
       const lot = cellVal(x, 'source_lot');
-      const sk = cellVal(x, 'source_key');
-      if (sk) srcKeys.add(String(sk));
       if (!v || !lot) return;
       const band = (byValue.get(v) || []).find(b => Number(b.seq) === seq);
       if (!band) return;   // 고아 행 — 재번호 금지 규율이 지켜지면 발생하지 않는다
@@ -1207,12 +1184,10 @@ async function loadDoeFromServer() {
       band.materials.push({ lot: String(lot), slot: slot == null ? '' : String(slot) });
     });
 
-    // ★ [C1] 이 함수는 **조회만 한다.** S.serverKeys·S.doeServerLoaded를 여기서 세우면
+    // ★ [C1] 이 함수는 **조회만 한다.** S.doeServerLoaded를 여기서 세우면
     //    "서버에 요청이 성공했다"가 "화면이 서버본이다"로 잘못 승격된다(회복 재시도 경로).
     //    권한은 채택 지점(adoptServerDoe)에서 화면 반영과 **원자적으로** 얻는다.
-    const keys = { doe: doeKeys, source: srcKeys };
-
-    if (rows.length === 0) return { ok: true, rowCount: 0, keys };
+    if (rows.length === 0) return { ok: true, rowCount: 0, srcCount: srows.length };
 
     const loaded = new Map();
     byValue.forEach((bands, v) => {
@@ -1220,22 +1195,22 @@ async function loadDoeFromServer() {
       loaded.set(v, bands);
     });
     S.serverSavedAt = String(cellVal(rows[0].data || {}, 'eventtime') || '');
-    return { ok: true, rowCount: rows.length, doe: loaded, keys };
+    return { ok: true, rowCount: rows.length, srcCount: srows.length, doe: loaded };
   } catch (e) {
     return { ok: false, rowCount: 0, error: e && e.message ? e.message : String(e) };
   }
 }
 
-// [C1] 서버본 **채택** — prune 권한(serverKeys/doeServerLoaded)이 생기는 유일한 지점이다.
+// [C1] 서버본 **채택** — replace 권한(doeServerLoaded)이 생기는 유일한 지점이다.
 // 불변식: `doeServerLoaded === true` ⇒ `S.doe`는 서버본에서 유래했다.
-// 서버 0건이면 serverKeys도 비므로 prune 후보가 존재하지 않는다(초안 유지가 안전).
+// 그래서 이 화면이 만든 집합으로 그 맵을 replace해도 보지 못한 행을 지우지 않는다.
 function adoptServerDoe(r) {
-  S.serverKeys = {
-    doe: (r && r.keys && r.keys.doe) || new Set(),
-    source: (r && r.keys && r.keys.source) || new Set(),
-  };
   if (r && r.doe instanceof Map && r.doe.size > 0) S.doe = r.doe;
+  S.serverRows = { doe: (r && r.rowCount) || 0, source: (r && r.srcCount) || 0 };
   S.doeServerLoaded = true;
+  // Adopting the server copy puts the screen back on server state, so anything the
+  // last save failed to delete is visible again — the warning has served its purpose.
+  S.deleteUnsent = false;
 }
 
 // ── 골격 ────────────────────────────────────────────────
@@ -1277,9 +1252,10 @@ export function notifyMapContext(info = {}) {
     S.serverSavedAt = null;
     S.saveError = null;
     S.flash.clear();
-    // [B2] 맵이 바뀌면 "서버 상태를 안다"는 주장은 무효다 — 다시 확인하기 전엔 prune 금지
+    // [B2] 맵이 바뀌면 "서버 상태를 안다"는 주장은 무효다 — 다시 확인하기 전엔 replace 금지
     S.doeServerLoaded = false;
-    S.serverKeys = { doe: new Set(), source: new Set() };
+    S.serverRows = { doe: 0, source: 0 };
+    S.deleteUnsent = false;    // 이전 맵의 경고를 새 맵 헤더로 이월하지 않는다
 
     if (S.ctx.table && S.ctx.mapKey) {
       const hadDraft = loadDraft();
@@ -1309,7 +1285,8 @@ export function notifyMapContext(info = {}) {
                 : '서버에서 DOE 정의를 복원했습니다.', 'info');
             }
           }
-          // 서버 0건 + 초안 있음 → 초안 유지(미저장 로컬 작업). serverKeys는 비어 있어 prune 무해.
+          // 서버 0건 + 초안 있음 → 초안 유지(미저장 로컬 작업). 서버 0건을 **읽어서 확인**했으므로
+          // 그 위에 replace를 거는 것은 안전하다(보지 못한 행이 없다).
           renderAll();
         }
         if (seq !== S.loadSeq) return;
