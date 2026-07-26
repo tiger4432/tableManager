@@ -58,6 +58,10 @@
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 
+**🔄 현재 가동 중 (2026-07-26)**
+- **M2 Universal Transfer Plan** — 서버부: QA F1 해소 완료(307 passed, degraded 시 `remaining: null`+경고 3층 방어) → F4/F6 수정 중 → 범용 오버레이(`/api/maps/overlay`, map meta 달라도 정렬)·페인트 잠금 config화·DOE 층별 세분화(`transfer_plan_doe_layer`) 예정. 클라부: QA 수정(C5 데이터 소실 등) 소스 반영 후 **UI 재설계**(legend 통합 모드 A/B, Map Search & Load에 "정렬 후 오버레이?" 프롬프트). **QA NO-GO 상태 — 재검수 후 병합**.
+- **대형 파일 P2** — worktree 격리 착수(체크포인트 재개 + 해시 dedup + 이슈 #10 + audit 값 길이 상한). `main.py` 수정 시 사전 보고 조건(M2와 충돌 방지).
+
 **우선 순위 높음 (현재 초점 연동)**
 - **[사용자 승인 2026-07-25] 대형 파일 인제션 대응 전략 — ✅ P1 완료(2026-07-26, 드릴 PASS), P2/P3 잔여** — 장애 4종 중 HOL은 heavy 레인으로 해소(비차단 180배 실증). 잔여 단계: **P2** FileIngestionLog 오프셋 체크포인트 재개(재기동 시 전체 재처리 잔존 — admin 경고로 지혈만 됨) + 파일 해시 dedup + **#10 total_count 과소(D-1)** + audit old/new_value 길이 무제한(대형 텍스트 셀이면 500건 절단으로도 수십 MB 재발 여지, `crud.py:224-236`) → **P3** 경합 배치 2(C-4)와 통합한 후단 backpressure(outbox 파일 단위 집계) + PG COPY 벌크 경로(프로파일링 선행) + batch_row_upsert items 행 데이터 무제한 상한 + heavy 워커 수 설정화(escalation §6-3 — heavy 간 직렬 해소, outbox 파도 증폭 주의). 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드. 드릴 잔여: heavy 도중 재기동 멱등 수렴 실측(드릴 보고서 §5 계획 — 사용자 협의 후) + QA 후속(F2 라우팅 원자화·F4 공유 큐 대기·F5~F7).
 - G2.5 서브그래프 직렬화 → G3(그래프 시각화 고도화, Neo4j 병행 타깃). 시간 범위 스캔용 엣지 인덱스(event_time)는 G2.5 쿼리 설계와 함께.
