@@ -67,7 +67,11 @@
 > 가동 중 트랙은 §현재 초점에 있다. 여기는 **대기열**이다.
 
 **우선 순위 높음 (현재 초점 연동)**
-- **[사용자 승인 2026-07-25] 대형 파일 인제션 대응 전략 — ✅ P1 완료(2026-07-26, 드릴 PASS), P2/P3 잔여** — 장애 4종 중 HOL은 heavy 레인으로 해소(비차단 180배 실증). 잔여 단계: **P2** FileIngestionLog 오프셋 체크포인트 재개(재기동 시 전체 재처리 잔존 — admin 경고로 지혈만 됨) + 파일 해시 dedup + **#10 total_count 과소(D-1)** + audit old/new_value 길이 무제한(대형 텍스트 셀이면 500건 절단으로도 수십 MB 재발 여지, `crud.py:224-236`) → **P3** 경합 배치 2(C-4)와 통합한 후단 backpressure(outbox 파일 단위 집계) + PG COPY 벌크 경로(프로파일링 선행) + batch_row_upsert items 행 데이터 무제한 상한 + heavy 워커 수 설정화(escalation §6-3 — heavy 간 직렬 해소, outbox 파도 증폭 주의). 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드. 드릴 잔여: heavy 도중 재기동 멱등 수렴 실측(드릴 보고서 §5 계획 — 사용자 협의 후) + QA 후속(F2 라우팅 원자화·F4 공유 큐 대기·F5~F7).
+- **대형 파일 인제션 — P1·P2 완료, P2 드릴 미실행, P3 미착수**
+  - **P1** heavy 레인 ✅ 병합·드릴 PASS(비차단 180배, 유실 0). **P2** 체크포인트 재개 + sha256 dedup + #10 ✅ 병합·라이브 가동(`file_ingestion_checkpoints` 643행 실적재 확인).
+  - **⚠️ P2 검증 공백**: 기능의 존재 이유인 드릴 3종을 **한 번도 실행하지 않았다** — D1 재개(처리 중 워처 강제 종료 → 재기동 → 유실·중복 0 수렴), D2 dedup(재투입 즉시 skip, `__force__`는 전량 재적재), D3 #10(멀티 테이블 체인 총계 합산). 워처를 죽여야 해서 운영 서버에서 미뤘고 그대로 잊혔다. **격리 환경의 첫 사용처로 지정.**
+  - **P3(미착수)**: 후단 backpressure(outbox 파일 단위 집계, 경합 배치 2·C-4와 통합) · PG COPY 벌크 경로(프로파일링 선행) · `batch_row_upsert` items 행 데이터 상한 · audit `old/new_value` 길이 상한(`crud.py:224-236` — 대형 텍스트 셀이면 500건 절단으로도 수십 MB 재발) · heavy 워커 수 설정화(heavy 간 직렬 해소, outbox 파도 증폭 주의).
+  - 잔여 QA 후속: F2 라우팅 원자화 · F4 공유 큐 대기 · F5~F7. 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드.
 - G2.5 서브그래프 직렬화 → G3(그래프 시각화 고도화, Neo4j 병행 타깃). 시간 범위 스캔용 엣지 인덱스(event_time)는 G2.5 쿼리 설계와 함께.
 - **[신규 2026-07-26] Chain Replay(룰 재적용)** — 룰 변경 시 기존 데이터 재적용. 설계: 원천 keyset 재계산(그래프 resync 패턴) + 레이어링의 user 보호 + stale 소스 철회(H2-b 패턴 셀 버전) + dry-run 우선. 단계 R1(dry-run+적용)→R2(stale 철회)→R3(admin 위저드). 착수 전 확정: 매퍼 파일 컨텍스트 의존성·다중 룰 의존·enrichment dedup 별도 취급. P1 병합 후 R1 권장.
 - map_split_registry(현재 초점 #2) — client-pm 착수.
