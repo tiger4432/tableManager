@@ -1,6 +1,8 @@
 # 📌 PROJECT STATUS — 진행 상황 & 문제 현황 (Living Board)
 
-> **Status:** 🟢 Living | **Last-updated:** 2026-07-26 (M2 진행중·P2 착수·범용 오버레이 격상 반영)
+> **Status:** 🟢 Living | **Last-updated:** 2026-07-26 (M2-v2·오버레이 일원화 병합 완료 / 개발 환경 격리 착수)
+> **목차:** [현재 초점](#-현재-초점-current-focus) · [최근 완료](#-최근-완료-recently-done--2026-07-2526-롤업) · [백로그](#️-다음-단계--백로그-next--backlog) · [열린 문제](#-열린-문제-open-problems) · [코드 체계](#-코드-체계-code-index--약칭이-무슨-뜻이고-어디에-정의돼-있나) · [환경 메모](#-환경-메모-env-notes)
+> **작성 규율:** 각 항목은 **목표 / 할 일 / 문제** 세 줄이면 충분하다. 경과·이력·증거는 히스토리와 보고서에 있다 — 여기 쌓지 않는다.
 > **역할:** 프로젝트의 **현재 진행 상황·열린 문제·다음 단계**를 담는 단일 상태 보드. **컨텍스트 압축/세션 교체에도 살아남는 영속 상태**다.
 > **규칙:** 총괄(및 각 PM)은 작업 **착수 전 이 파일을 읽고**, **완료 후 갱신**한다. 상세 이력은 [history/](../history/README.md), 현재 아키텍처는 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md). 이 보드는 이력 로그가 아니다 — "지금 어디까지 왔고 무엇이 문제인가"만 담는다.
 
@@ -10,91 +12,34 @@
 
 > 완료된 트랙은 여기서 내리고 §최근 완료로 옮긴다. **지금 손이 가 있는 것과 바로 다음 관문만** 남긴다.
 
-0. **🔄 재기동 대기 — M2+P2 병합 완료(2026-07-26, 381 passed / 1 allowed fail)**. `8e34804`(M2) + P2 브랜치 병합. **재기동 후 확인**: ① 신규 라우트 3종(`/api/maps/overlay`, `/api/maps/paint-rules`, `/api/transfer-plan/stages`) 실응답 ② 서버 보고서 §16-2 체크리스트 9항(오버레이 F셀 124개·`align_applied.origin: derived`·`plan_store`에 `source_region` 키 부재가 정상) ③ P2 드릴 3종(체크포인트 재개·dedup·#10 — P2 보고서 §8) ④ 페인트 잠금이 F 차단으로 동작하는지. 준비 스크립트: `setup_ingestion_checkpoint.py`(멱등).
+0. **🔴 개발 환경 격리 — 최우선, 진행 중**
+   - **목표**: 에이전트가 프로덕션에 **구조적으로 닿을 수 없는** 검증 환경. 성공 기준은 "검증할 때 fetch 셰임도, 전후 해시도, 안 썼다는 증명도 필요 없다".
+   - **할 일**: ① `assy_qa` 스냅샷 DB(멱등 재생성) ② config·워크스페이스 경로 격리 ③ 워처·스케줄러 끈 별도 포트 서버 ④ 진입점 1개 ⑤ pytest를 격리 DB로.
+   - **문제**: 수집기가 2분마다 돌아 측정이 재현되지 않고, 에이전트 노력의 상당 부분이 "내가 안 썼다"는 증명에 쓰인다. 이 세션에서 **사용자 자산 2건이 실제로 덮어써졌다**(`maps.json`, `inventory_master/config/config.json` — 후자는 원본 미상·복구 불가). 규율로 막을 것을 구조로 막지 않은 총괄 실책.
 
-1. **🔴 M2-v2 「계획 = 그 맵 자체」 재설계 — 최우선, 구현 진행 중(2026-07-26 저녁)**
+1. **🟡 doc-keeper 4차 정비 — 진행 중**
+   - **목표**: 오버레이 일원화 이후 문서를 코드와 맞춘다.
+   - **할 일**: `MAP_EDITOR_SPEC §5`(서버 정렬 계약 서술 → 클라 일원화로 재작성) · CODE_MAP 재앵커 · 히스토리 8커밋 · **메타 단일 기준 규칙을 스펙에 편입**.
+   - **문제**: 스펙 §5가 지금 **틀린 계약**을 설명하고 있다.
 
-   **원칙**: `bonding_map` 열면 본딩 계획, `dt_map` 열면 DT 계획. stage는 열린 테이블에서 유도. 별도 stage 선택·타깃 입력·`plan_id` 없음. **"절대 복잡하면 안 된다"**(사용자) — 순 추가 3(자재 목록·브레드크럼·뒤로가기) vs 삭감 12종.
+2. **🔑 도메인 규칙 — `wafer_map_metadata`가 정렬의 유일한 기준** (사용자 확정 2026-07-26)
+   - 맵을 담는 모든 테이블은 **메타 등록이 전제**다. 미등록은 정상이 아니라 **누락**. 정렬은 소스·타깃 메타 델타에서 유도하고, 계측 결과(DEFECT WF)도 메타에 기록한다. 셀 레벨 `grid_metadata`는 **폐기 스킴**.
+   - **문제**: `bonding_map` 맵 키 **약 39만 vs 메타 9건** — 오버레이 정렬이 사실상 9개 맵에서만 일한다. 나머지는 조용히 identity 폴백. → M3에서 해소.
+   - 귀결: 검수 F3 제안(셀 `grid_metadata` 노출) **폐기**(방향이 반대). `align_overrides.by_eqp` 분기는 **제거 예정** — 폐기 범위는 착수 시 사용자 확인.
+3. **⚪ M3 — 맵 메타 자동 등록 (ingestion에 체인 부착)** · 착수 대기
+   - **목표**: 맵 원천 데이터가 들어올 때 메타가 자동으로 붙어 위 §2의 누락이 구조적으로 사라진다.
+   - **할 일**: `디펙맵 → 계측 WF → 그 WF의 PLAN 조회 → 그 PLAN의 MAP PRESET META 주입`. 프리셋은 **PLAN(제품 규격)별**로 선언하고, 주입은 **메타 JSON 세트 통째**(범위는 방향·물리 규격에서 파생되므로 계산할 것이 없다).
+   - **문제/전제**: 소스 우선순위가 실제로 **USER > 체인**인지 착수 전 쿼리로 증명해야 한다 — 사용자 편집이 2분마다 덮이면 안 되고, 단순화 전체가 이 전제 위에 있다. 기존 39만 맵 **소급 등록은 별개 결정(미정)**.
 
-   | 구분 | 항목 | 상태 |
-   |---|---|---|
-   | **서버 완료** | frame↔physical 근본 수정(회전·거울상 통과, QA-B3 가드 은퇴) · 바인딩 자동 유도(선언 6→2) · 모델 v2(identity=`(ref_table,map_key)`, stage 역인덱스, DOE 재키잉) · **E1 밴드 차원**(`band_seq` 정수 identity + 라벨 비키 — 라벨 수정해도 자재 묶음 유지) | 391 passed |
-   | **서버 진행** | 남은 좌표축 — **Y축 뒤집힘 + START X/Y**를 변환 파이프라인에 편입(QA O3: 시작좌표 무시로 전 셀 균일 오프셋인데 status ok) | 지시됨 |
-   | **클라 완료** | stage 유도 · legend=DOE 아코디언 · 자재 목록 DOE별 그룹 · 프레임 스택(브레드크럼+뒤로가기) · **오버레이 경로 완전 분리**(4시점 불변 실증) · 메타 `(table,map_id)` 쌍 수정 · side indicator 누락 수정 | 빌드 통과 |
-   | **클라 대기열** | ① 성공 알럿 토스트화(로드 완료 알럿 등 4종) ② **오버레이→실맵 가져오기**(이월 대체) ③ **STACK 다중 구간**(`1, 2-15, 16` + 밴드 행 추가) ④ **편집 대상 고정 제거**(핀·키 잠금 — 과거 맵 조회 편의, **Push 불일치 가드는 유지**) ⑤ **토스트 누적 수정**(상한·만료시각 기반·visibilitychange 정리·동종 집계) | 지시됨 |
-   | **총괄 적용(라이브 config)** | `map_doe`/`map_doe_source` 생성(각 18컬럼) · paint_lock 기본 **F 잠금** · 오버레이 바인딩 복구(구코드 호환) | 완료 |
-   | **보류** | 온톨로지 매핑(§4-2 미검증 + 이슈 #15 label 충돌 패턴) · 구 계획 테이블 물리 DROP(사용자 승인 필요) · **검증/경고 기능 일습**(사용자: "검증 쪽은 일단 구현하지 마") · Push 델타 모달(서버 셀카운트 엔드포인트 없음) · 자재맵 legend 교차 주입 · knobs 스톱갭 | — |
-
-   **규율**: 읽기(조회)는 무마찰, 쓰기(Push)는 1회 확인. **다음 절차: 두 에이전트 완료 → QA 재검수 → 병합 → 재기동.**
-
-   **⏱️ 병합 관문 현황 (2026-07-26 21시 갱신)**
-   - **스위트 413 passed / 1 allowed fail**(총괄 직접 실행 확인). 서버·클라 v2 모두 **미커밋**(워킹트리). 라이브 서버는 **A1 수정 이전 코드**로 가동 중 → REST 재검증에 **재기동 필요**.
-   - **QA 재검수 = 병렬 2건**(첫 적용, 대기시간 단축 확인). **A(서버 좌표·무결성) 🔴 NO-GO → A1 수정 완료·검증됨**. **B(클라 동작) 🔴 NO-GO → C1 수정 지시 중**.
-   - **✅ A1 해소** — `_frame_phys_params`로 국소 교정(rot 90/270에서 칩 피치 스왑, back에서 offset 부호). `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정. **25,760 순서쌍 재대조: SILENT-WRONG 84 → 0, `LOUD_FAIL` 5,596 불변(거래 없음), `LOUD→SILENT` 전이 0**. 오라클을 공유 import 0으로 재작성했고 그 오라클이 구버전을 **84**로 채점(QA의 독립 오라클과 동일 수치) → 오라클 신뢰의 교차 근거. 결함 버전 주입 시 4개 테스트가 실제로 실패함을 확인. **총괄 독립 검증**: `sample_map/aa123_a` 저장 실측 **x[1,21] y[1,25]** = 스왑 예측(구 서버 예측 x[1,25] y[1,21] 반증), 라이브 메타가 `chip 11/13`·`12/16` 비등방 + `AAA`/`4B12` rot270이라 결함 축이 실데이터에서 활성.
-   - **🔴 미해결 병합 차단 C1** — `client2/src/transfer_plan.js:1153-1156`이 `loadDoeFromServer` **내부에서** `serverKeys`/`doeServerLoaded`를 세우는데 `:927-942` 회복 재시도는 `retry.doe`를 버린다 → "서버를 안다 + 화면은 서버본을 본 적 없다"는 모순 상태에서 `serverKeys − keep` 전체가 삭제 대상. QA가 라이브 브라우저에서 2회 재현(**GET 1회 500 후 회복**, **절단 응답 + 낡은 초안**) — `map_doe` 덮어쓰기 + `map_doe_source` 4행 전량 삭제, **토스트 0건**. 쓰기는 fetch 셰임으로 가로채 실 DB 무접촉(`updated_at` 불변 확인). **수정 계약**: prune 권한을 "화면이 서버본에서 유래"로 구조적으로 좁힘(권한 대입을 채택 지점으로 이동) + 회복 사이클은 쓰기 0건 + 초안 보존 토스트 1건.
-   - **반복된 함정(3회째, 이번엔 클라에서도)**: 오라클/픽스처가 **결함 축을 활성화**해야 한다. 서버는 `chip_x == chip_y` 픽스처로, 클라는 **회복 분기를 한 번도 실행하지 않는**(GET 2회 모두 차단) 검증으로 "해소"를 선언했다. 새로 만든 분기를 실행하지 않는 테스트는 그 분기에 대해 아무 말도 하지 않는다.
-   - **후속 백로그 A2**: `bonding_plan.py:199-204` 선언(override) 경로는 여전히 bbox 항 없는 구 산술 — 현재 휴면(라이브 오버라이드 없음)이나 한 줄 선언 시 부활. **A3**: A1의 REST 재검증(재기동 후).
-   - **사용자 판단 대기**: `map_doe`의 `bonding_map|AAA|F|1`·`|F|2` + 자재 4행(클라 검증 잔재 추정, AAA는 사용자 실편집 맵이라 미삭제). QA-B는 DB 쓰기 0건이라 잔재를 추가하지 않았다.
-   - ✅ **병합 완료 `da65a87`** (A1·C1 둘 다 해소·총괄 독립 검증 후). 스위트 413 passed / 1 allowed fail.
-   - ✅ **doc-keeper 정비 3차 완료** — 히스토리 3건 신설, CODE_MAP `8b0fd03`→`da65a87` 실측 갱신, `MAP_EDITOR_SPEC §5`(오버레이 정렬 계약)·`§6`(전사 계획) 신설, 죽은 링크·삭제 파일 서술 정정. 보고서 `agent_workspace/reports/DocKeeper_cycle3.md`. **비차단 이월 결함(C3/C4/C7)을 리빙 문서에 미해소로 명기**하게 했다 — 보고서·커밋 메시지만 읽으면 실제보다 강하게 읽히기 때문.
-   - ✅ **A3 통과 (2026-07-26 재기동 후 REST 실측, 총괄 직접)** — 3케이스 전부 `status: ok` + `align_applied.origin: derived` + **격자 밖 셀 0건**. `bonding_map/EXP1 ← sample_map:aa123_a` x[1,25] y[1,21](격자 x[1,29] y[1,25]) — `x=-1` 소멸 확인. 대조군 `aa123_a ← EXP1` 무회귀. `AAA(rot270 back) ← aa223(rot0 front)`는 회전차 90° + flip-x로 면 차이가 거울상에 반영됨. ⚠️ 함정 기록: `/health`는 존재하지 않는 경로라 정적 catch-all이 **HTML을 200으로** 반환한다 — 헬스체크 근거로 쓰지 말 것. 응답 필드명은 `align`이 아니라 **`align_applied`**.
-   - ✅ **오버레이 변환 일원화 병합 `7d931dc`** — 병렬 검수 A(기하) GO·B(동작) NO-GO→수정 후 병합. 오버레이 전용 변환 코드 **0줄**(규격을 읽는 두 지점만 프레임 창으로 교체, 메인 로드와 같은 두 줄 실행). 검수 A는 15개 공격 전패(합성 192축 조합·라이브 13맵·키→값 대조·독립 오라클). 검수 B가 잡은 fail-open 2종은 **뿌리가 같았고 정답이 같은 파일에 이미 있었다**(`fetchPaintRules`의 404/405 vs 그 외 구분) — 수정 후 진짜 결함 변형본으로 재현·소멸 양방향 확인. **UI 순 추가 0 / 삭감 0**, `map_editor.html` 무수정. 보드 이슈 **#18 종결**(push 페이로드 204행을 서버 오라클과 대조, 불일치 0).
-   - ✅ **B5 수정(총괄 직접, 3줄)** — `switchTable`이 `gridData`만 비우고 **오버레이는 남겨** ↓ 가져오기로 다른 테이블에 남의 값이 적재되는 경로. 같은 함수 주석이 이미 그 위험을 경고하고 있었는데 오버레이에만 규율이 빠져 있었다. 맵 Load 경로와 동일하게 `clearOverlayLayers()` + 토스트 1건. **사용자 선택: 선택지 1(전환 시 함께 비움)**.
-   - **🔑 도메인 규칙 확정 (사용자 2026-07-26): `wafer_map_metadata`가 정렬의 유일한 기준이다.**
-     원문: "**모든 맵 기반 데이터(DEFECT 계측 결과든 EDS든 뭐든)는 map_metadata를 넣을거야. 모든 얼라인 정보는 이걸 기준으로해.**"
-     귀결 — ⓐ 맵을 담는 모든 테이블(defect·EDS·DT·bonding·core…)은 **메타 등록이 전제**다. 미등록은 정상 상태가 아니라 **누락**이다. ⓑ 정렬은 소스·타깃 메타의 델타에서 **유도**한다. ⓒ 셀 레벨 `grid_metadata` 컬럼은 **폐기 스킴**이며 정렬 근거로 쓰지 않는다. ⓓ **계측 결과(DEFECT WF 계측)도 메타에 기록**한다 — 별도 override 계층을 정렬 근거로 두지 않는다.
-     → **F3 폐기**: 미등록 맵 169개를 셀 레벨 `grid_metadata`로 해석하자는 검수 A 제안은 채택하지 않는다. 방향이 반대다 — 해석 경로를 늘릴 게 아니라 **메타를 등록**해야 한다.
-     → **B3 소멸 예정**: `align_overrides`의 `by_eqp`(장비별 보정) 분기는 이 규칙 하에서 존재 이유가 없다. 관문 probe가 `eqp`를 안 보내 `by_eqp` 전용 선언이 조용히 무시되는 결함(라이브 도달 0)은 **분기 자체를 제거**하는 것으로 닫는다. ⚠️ 제거 전 확인: `align_overrides`를 **완전 폐기**할지, 메타로 표현 불가능한 잔여 케이스만 남길지 — 착수 시 사용자 확인.
-     → **후속 작업**: 미등록 맵의 메타 등록 경로(대량 등록·기본값 추론·누락 가시화)를 설계해야 한다. 현재 `bonding_map` 기준 맵 키 39만 개 vs 메타 9건이라 **거의 전부가 누락 상태**다. 이걸 "identity 폴백"으로 조용히 넘기는 현행 동작은 규칙과 충돌하므로, 최소한 **누락을 명시적으로 드러내야** 한다.
-   - **다음 순서**: doc-keeper 정비(트리거 8건 누적) · **검증 환경 격리**(아래) — 순서는 사용자 지정 대기.
-
-   **🧪 검증 환경 격리 (사용자 문제 제기 2026-07-26, 착수 대기)**
-   - **증상**: 에이전트가 라이브 데이터 위에서 검증하느라 삽질한다. 수집기가 `*/2 * * * *`로 돌아(`scheduler_status.json`) 세션 중에도 `core_defect_map`·`eds_fail_map` 각 +1,288행, `wafer_map_metadata` 164→166이 발생했다. 그 결과 ⓐ 측정이 재현되지 않아 유령 차이를 쫓고 ⓑ **자기가 쓰지 않았음을 증명하는 데** 노력의 상당 부분을 쓴다(fetch 셰임·전후 `updated_at` SQL·sha256·9,230파일 트리 스냅샷) ⓒ 총괄이 지시서마다 "DB 쓰기 금지"를 반복한다.
-   - **해법이 이미 한 걸음 거리에 있다**: `server/database/database.py:10`이 `os.getenv("DATABASE_URL", DEFAULT_PG_URL)`이다. 필요한 것은 ① `assy_qa` 스냅샷(등록 맵 13개 + 메타 + 계획 테이블만, 멱등 재생성) ② config 디렉터리 사본 ③ `DATABASE_URL`을 세팅한 두 번째 서버 인스턴스(다른 포트, 워처·스케줄러 off).
-   - **효과**: 에이전트가 **자유롭게 쓸 수 있게** 되어 셰임·전후 대조·증명 의식이 전부 사라지고, 데이터가 고정되니 측정이 재현된다. **보드 이슈 #16ⓐ**(pytest가 운영 PG에 `create_all`)도 같은 환경변수로 동시 해소.
-   - **교훈**: 규율(지시서에 "쓰지 마라" 반복)로 막을 것을 구조로 막지 않은 것이 총괄 실책이다. 이 세션에서 사용자 자산 2건이 실제로 덮어써졌다.
-
-   **🧭 아키텍처 결정 — 오버레이 변환을 클라 단일 구현으로 일원화 (2026-07-26, 사용자 지시)**
-   - **증상(사용자 실사용)**: "클라에서 변환 수정해도 오버레이는 안 따라오네." **원인은 설계**: 서버가 *가져오는 순간* 저장된 메타로 정렬을 끝내 타깃 프레임 좌표로 내려주고, 클라는 이중 변환 금지 규약(`map_editor.js:3779`)으로 재변환하지 않는다 → 화면 컨트롤 수정은 서버에 전달될 경로가 없고 정렬은 **저장 시점에 굳는다**.
-   - **사용자 지시**: "그냥 오버레이든 실 맵이든 **같은 로직** 적용하면 되잖아." → 채택.
-   - **확정 방향**: `소스 원본(x,y) --[소스 자신의 메타 프레임]--> 물리 좌표 --[타깃의 현재 화면 컨트롤]--> 셀`. 메인 로드는 *소스 메타 == 현재 컨트롤*인 특수 케이스가 된다. 오버레이 = "다른 맵을 격자 대신 레이어에 로드".
-   - **근거**: B1·A1이 정확히 **서버/클라 두 변환 구현이 어긋나서** 난 결함이다(서버=메타 물리 규격, 클라=프레임 규격). 구현이 하나가 되면 이 결함 부류가 원리적으로 소멸. 사용자가 이전에 제기한 "서버·클라 변환 동기화 관리 리스크"의 정답.
-   - **서버에 남기는 것**: **계측 보정**(`align_overrides`, DEFECT WF로 측정)은 메타에서 유도 불가능한 **데이터**다. 정렬된 좌표가 아니라 `(dx, dy, rot)` 보정값으로 내려주고 클라가 물리 좌표에서 적용. → 기하는 클라 단일 구현, 계측값은 서버 데이터.
-   - **A1이 폐기되지 않는 이유**: `bonding_plan.py` 가용량 산출이 같은 정렬을 서버에서 쓴다(A2도 같은 경로). 서버 측 정확성은 독립적으로 필요.
-   - **착수 시점**: C1 병합 후(같은 계약을 두 에이전트가 동시에 재정의하지 않도록).
-
-   **🧭 재개 브리프 (컨텍스트 압축 대비 — 2026-07-26 작성)**
-   - **미커밋 작업물의 위치**: 서버 v2는 `server/map_overlay.py`·`transfer_plan.py`·`main.py`(워킹트리), 클라 v2는 `client2/src/map_editor.js`·`transfer_plan.js`(워킹트리, `npm run build` 반영됨). **커밋 전이므로 `git status`로 범위를 먼저 확인할 것.**
-   - **읽어야 할 보고서 3종**: `agent_workspace/reports/Server_transfer_plan_v2_impl_report.md`(§0 = 클라 계약, §4-1 = 적용 완료된 config, §5-2-bis = 좌표축), `Client_transfer_plan_v2_impl_report.md`(구현/보류/제거 3분류), `Design_transfer_plan_ui_v2.md`+`.html`(확정 시안).
-   - **에이전트 재개 불가 시**: 위 보고서 3종 + 이 표만으로 잔여 작업을 새 지시서로 재구성 가능. 진행 중이던 클라 대기열 5건(위 표)이 유일한 미완 범위다.
-   - **최근 스위트**: 405 passed / 1 allowed fail(`test_map_presets_api` — 상시 허용).
-   - **재기동 필요 여부**: 서버 코드 변경분은 병합 후 재기동 필요. config 적용분(`map_doe` 등)은 이미 라이브 반영됨.
-   - **doc-keeper 정비**: 3차 완료(`da65a87` 기준). 다음 트리거는 오버레이 일원화 병합 후 — 그 작업이 `map_editor.js`의 오버레이 구간을 바꾸므로 CODE_MAP에 변경 예정 배너가 달려 있다.
-
-1-1. ~~M2 Universal Transfer Plan(1차)~~ — 병합 완료(`8e34804`), 아래 재설계로 대체 진행 중. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
-1-2. **📋 M3 — 맵 메타 자동 등록 (raw data ingestion에 체인 부착)** · 사용자 지시 2026-07-26, **착수 보류(우선순위 뒤로)**
-   - **문제**: 도메인 규칙상 `wafer_map_metadata`가 정렬의 유일한 기준인데, `bonding_map` 맵 키 **약 39만 개 vs 메타 9건** — 사실상 전부 미등록이라 오버레이 정렬이 9개 맵에서만 실제로 일한다. 나머지는 "현재 화면 규격으로 가정"으로 조용히 폴백.
-   - **사용자가 확정한 워크플로**: `디펙맵 → 디펙 계측 WF → 그 WF의 PLAN 조회 → 해당 PLAN의 MAP PRESET META 주입`. 즉 프리셋은 **PLAN(제품 규격)별**로 걸어두고, 맵 원천 데이터가 들어올 때 체인이 그 PLAN의 메타 세트를 찾아 넣는다.
-   - **주입 단위는 JSON 세트 통째**다. 예시(사용자 제시):
-     ```json
-     {"grid_cols":40,"grid_rows":40,"grid_start_x":1,"grid_start_y":1,"grid_y_invert":false,
-      "rotation":180,"side":"front","phys_wafer_dia":300.0,"phys_chip_x":7.0,"phys_chip_y":7.0,
-      "phys_offset_x":0,"phys_offset_y":0,"phys_edge_margin":3.0}
-     ```
-   - **총괄이 틀렸던 것(기록)**: ⓐ 범위(`grid_cols/rows/start`)를 **데이터 좌표 범위에서 역산**하려 했다 — 실제로는 방향·물리 규격에서 **파생**되는 값이라(`getWaferBoundingBox`) 계산할 것이 없다. ⓑ 사용자 편집을 지키려 **체인 소유권 판별·동결 로직**을 새로 설계했다 — 이 시스템은 이미 값마다 출처·우선순위를 들고 다니고 **USER가 체인보다 위**라 그냥 밀어넣어도 안전하다. 기존 강점(셀 계약의 소스 레이어링)을 안 쓰고 옆에 비슷한 걸 또 만들려 한 셈이다. 사용자 지적: "**심플하게해**".
-   - **착수 시 검증할 전제 1건**: 소스 우선순위가 실제로 USER > 체인으로 동작하는지 **쿼리로 증명**할 것. 단순화 전체가 그 위에 서 있다.
-   - **범위 밖**: 기존 39만 맵 소급 등록은 별개 결정(미정). 착수 시 소급 비용을 함께 산정.
-2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
-   - **📐 재설계 도메인 확정 사항(사용자 2026-07-26)**: ⓐ **층 차원 불요** — "1층과 꼭대기만 다르고 나머지는 거의 유사", 층에 따라 달라지는 건 *어느 소스를 쓰는가*이지 *어느 좌표를 쓰는가*가 아니다 → `bonding_map`은 `(base,x,y)` 2D 유지, 캔버스 층 스텝퍼 불요. 층 차이는 **DOE의 STACK 구간 행**이 표현하고, 층대별 좌표 차이가 있어도 **다른 value로 칠하면** 자연 표현됨. ⓑ **DOE 소스는 묶음(pool)** — "몇 층에 뭐가 들어갈지 정확히 예측 불가, 여러 DT 군 지정 가능(한 매 500칩이면 4매 묶어 투입)" → 계획 단위는 "이 층 구간에 이 묶음에서 총 N칩", 검증은 **묶음 합산 가용 vs 소요**. ⚠️ 스키마 함의: 현행 `transfer_plan_doe_layer` bk가 `doe_key|layer`라 층당 소스 1개만 담긴다 — 묶음 지원에 **키에 소스 차원 추가** 필요. ⓒ **defect = 영역×불량종류→BIN** (단순 양불 아님) → 오버레이는 종류/BIN 판독 가능해야 하고, 어떤 BIN을 사용 불가로 볼지가 설정 대상.
-   - **🔜 M2 이후 재설계 논의 예정(사용자 지시 2026-07-26 "일단 마무리하고 다시 논의")** — 사용자 지적: "bonding_map을 열어 편집하면 그게 bonding plan, dt_map을 열면 dt plan이어야 하는데 Map Search & Load와 전사 계획이 따로 논다". **계획 = 그 맵 자체**, stage는 열린 테이블에서 유도. 폐기 후보: stage 선택 UI·타깃 입력창(맵 메타와 중복)·`buildPlanId`·`transfer_plan_map`(계획 맵이 곧 bonding_map/dt_map이라 사본 불필요)·페인팅 진입/이탈 모달. 살아남는 것: **DOE 정의(value ↦ 소스·층별 배정·knob·설명)** — 단 키가 `plan_id` → **`ref_table\|map_key`**(map_split_registry 관례)로 이동, 즉 **legend/split registry와 DOE를 하나로 합치는 방향**이 재설계 핵심. ⚠️ **C5 위험 확대 주의**: 새 모델은 격리된 계획 테이블이 아니라 **실운영 bonding_map/dt_map에 직접 칠하므로**, 맵 키 오변경 후 Push가 실맵 전량을 삭제할 수 있다 → "맵 키가 로드한 맵과 달라졌으면 Push 차단" 가드로 대체 필요(#14ⓐ와 뿌리 동일).
-
-3. **🟢 대형 파일 P2 — worktree 구현 완료(브랜치 `worktree-agent-a4c63f415791a7d0e`, 커밋 `f78ab0a`+`190093a`), M2 병합 후 main 병합 대기**. 오프셋 체크포인트 재개 + sha256 파일 dedup(500MB 0.535s 실측) + 이슈 #10 + audit 값 4096자 상한. 307 passed(기준선 278 대비 +29), **`main.py` 무수정**(설계로 우회), 경계 계약 불변. 저장소는 `FileIngestionLog` 컬럼 추가 대신 **신규 테이블 `file_ingestion_checkpoints`** — `create_all`이 ALTER를 안 하므로 운영 DB에서 마이그레이션 순서 사고(admin File 탭 UndefinedColumn 500) 위험을 회피한 판단(총괄 승인). 라이브 검증은 재기동 후 드릴 3종(보고서 §8).
-4. **⚪ 대기 트랙** — ⓐ **G2.5**: §7.5c 탐색 정책 엔진(node_class + 4대 룰) 선행 → LLM 도구 API ⓑ **enrichment 실전 규칙**: 사용자 실 스키마 확보가 조건 ⓒ **map_split_registry**: M2의 DOE(=SplitCondition 확장)와 통합 여지가 커져 **M2 확정 후 재평가** ⓓ **Chain Replay R1**.
+4. **⚪ 대기 트랙** — ⓐ **G2.5** §7.5c 탐색 정책 엔진(node_class + 4대 룰) → LLM 도구 API ⓑ **enrichment 실전 규칙**(사용자 실 스키마 확보가 조건) ⓒ **Chain Replay R1** ⓓ `align_overrides` 폐기 범위 확정.
 
 ## ✅ 최근 완료 (Recently Done) — 2026-07-25~26 롤업
 
 | 영역 | 요약 | 근거 |
 |---|---|---|
+| 서버+클라/맵 | **오버레이 변환 일원화** — 정렬을 서버에서 받지 않고 클라가 `소스 메타 프레임 → 물리 → 타깃 현재 컨트롤`로 배치. 오버레이 전용 변환 코드 0줄(메인 로드와 같은 함수). 화면에서 변환을 바꾸면 오버레이가 따라온다. 검수 A(기하) 15개 공격 전패, 검수 B가 잡은 fail-open 2종 수정. UI 순증 0. 이슈 #18 종결 | `7d931dc`+`251dbfd` · [검수 A](../../agent_workspace/reports/QA_overlay_unify_geometry.md) · [검수 B](../../agent_workspace/reports/QA_overlay_unify_behavior.md) |
+| 서버+클라/계획 | **M2-v2 「계획 = 그 맵 자체」** — `bonding_map` 열면 본딩 계획, stage는 열린 테이블에서 유도. `plan_id`·별도 계획 테이블 폐기, 정체성은 `(ref_table, map_key)`. 병렬 QA 첫 적용(A·B 동시) → 양쪽 NO-GO → A1(프레임 규격 좌표)·C1(DOE 전량 삭제) 수정 후 병합 | `da65a87` · [히스토리](../history/20260726_204344_m2_v2_plan_as_map_redesign.md) |
+| 인프라/테스트 | **스위트에서 허용 실패 제거 — 414 passed / 0 failed** — 라이브 사용자 자산에 쓰던 테스트 2종 격리(`maps.json`, 워크스페이스 `config.json`). `.sample` config가 v1 잔재라 신규 환경이 안 뜨던 문제 수정 | `9a8ede8` |
 | 서버/인제션 | **대형 파일 P1 — heavy 레인 분리 + 진행 가시화 + 재기동 경고, 라이브 드릴 PASS** — 크기 임계(기본 10MB, `ingestion_settings.json` 핫리로드) 라우팅·워크스페이스 FIFO 3중 보존·스윕 경로 포함, push 진행 스냅샷(`/admin/file-ingestion/active`)+admin File 탭 HEAVY 배지/경고 배너. 드릴 실측: **비차단 180배(2.3s vs 415s)·10만 행 유실 0·bk 중복 0·created_logs 정확 500건 절단·이벤트 루프 p50 3.5ms**. QUEUED 통지 역전·total_log_count 비대칭 후속 수정 완료. 테스트 278 passed(+27) | `4fd8ac9`+`8b0fd03` · [히스토리](../history/20260726_093100_large_file_p1_heavy_lane_and_live_drill.md) · [드릴 보고서](../../agent_workspace/reports/QA_p1_live_drill_report.md) |
 | 서버+클라/맵 | **본딩 실험계획 M1(조회 전용)** — 역할 바인딩 config + `GET /api/bonding-plan/core-summary`(`server/bonding_plan.py` — align은 cell_to_physical 순수 인덱스 변환만, QA F1/F2 결함 지점 무참여) + map editor Info 패널(`bonding_plan.js` — 층 배정·수량/FAIL/조건 이탈 경고 3종·knob 비교·localStorage 초안) + fake 원천 2종(eds 180° align 실증). **rect 영역 선택 모드는 개발 중 폐기**(M2 값 페인팅 정본). 테스트 275 passed(+18) | `e6eabe4`+`24753d3` · [히스토리](../history/20260726_093200_bonding_plan_m1_info_panel_and_core_summary.md) |
 | 설계/온톨로지 | **DT/Tape 계층 편입(스펙 §7.5b) + Universal Transfer Plan/DOE 관리 단위 확정** — bonding의 core lot/slot=실제 DT lot/slot, 전사 프리미티브 일반화, value=DOE 조건군 | `63ac0c3`·`437d6d5` · [히스토리](../history/20260726_093300_dt_tape_layer_universal_transfer_plan_design.md) |
@@ -116,28 +61,6 @@
 | 서버/온톨로지 | **wafer_process lot/slot 확장**(사용자 config·핫리로드) — 수집기 lot_id/slot_no 기록, ProcessEvent props, enrichment 공정 이력 뷰 노출. 라이브 검증 통과(LOT-E\|25 분기 발화) | [보고서](../../agent_workspace/reports/Server_wafer_process_lot_slot_report.md) |
 
 2026-07-24 이전 완료분은 [history/README.md](../history/README.md)와 [RELEASE_LOG](./RELEASE_LOG.md) 참조.
-
-## 🐞 열린 문제 (Open Problems)
-
-| # | 심각도 | 문제 | 도메인 | 상태 |
-|---|---|---|---|---|
-| 4 | 낮음 | `test_map_presets_api` 기존 실패(맵 프리셋 도메인, #0 이전부터) — **잔여는 이것 1건뿐**(enrichment 테스트 격리 버그는 2026-07-25 해소, 현재 스위트 177 passed / 1 failed) | Client·Server | 대기 |
-| 5 | 중간 | **경합 점검 잔여 리스크(수정 배치 2 후보)** — C-4(체인 큐 독점·HOL, 매퍼 의미론 협의 필요)·C-6(동시 upsert 행 락 순서)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + created_logs 무상한 전송 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) (C-7은 그래프 키셋 청킹으로 해소됨) | Server | 대기 |
-| 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
-| 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
-| 9 | 중간 | **config_watcher가 원자적 쓰기(temp+rename)를 감지 못함** — on_modified만 처리해 에이전트 Edit류 저장 시 기존 테이블 ALTER가 조용히 누락(on_moved 미처리). 스키마 API는 config 싱글턴이라 200이어도 물리 반영 증거 아님 | Server | 대기(수정 소형 — on_moved 보강) |
-| 10 | 낮음 | audit_cache total_count 과소 표기(QA D-1) — 멀티 target-table tx에서 테이블별 total_log_count가 SET 덮어쓰기. 기존 결함(회귀 아님), production_plan 체인+enrichment 동시 트리거로 도달 가능 | Server | 대기(P2 동승) |
-| 11 | 중간(격하) | **좌표 변환 서버-클라 드리프트** ([감사](../../agent_workspace/reports/QA_map_transform_logic_audit.md)) — F1: rot=90/270 비등방 칩에서 transformer가 회전 치수·비회전 chip 혼용 · F2: 엔진 미장착 fallback 타원 ±1 어긋남 · F3[중]: 클라 getPhysicalCoords의 mm 오프셋 반올림 혼입(서버 정의가 정론 — 경계 계약 명문화 필요). **M1 align이 결함 지점을 구조적으로 우회 완료**(`bonding_plan.make_align_transform` — cell_to_physical 순수 인덱스 변환만, 엔진 fallback 무참여 + 90/270 치수 스왑 규약 + 규격 불명 시 `align_unavailable` 명시 실패). transformer 자체의 F1/F2 수정과 F3 계약 명문화는 잔여(현 소비자는 안전 경로만 사용) | Server·Client | M1 우회 완료 — 근본 수정 대기 |
-| 16 | **높음(격상)** | **테스트 스위트가 라이브 환경으로 샌다 — 2계통 실증** ⓐ **운영 PostgreSQL에 DDL 발행**: `main.py` import 시 모듈 레벨 `Base.metadata.create_all`(main.py:44)이 실 DB에 대해 실행되어, 테스트만 돌려도 신규 테이블이 라이브에 생성된다(P2에서 실제 발생 — 빈 테이블이라 무해했으나 경로가 위험). ⓑ **사용자 config에 써넣는다**: `test_map_presets_api`가 `POST /api/map-presets`로 라이브 `server/config/maps.json`을 수정한다. 실증 — 현재 프리셋 키가 `['custom_1784890104442', 'core_std', 'base_std', 'tape_std']`이고 첫 항목이 테스트 산물(총괄 직접 확인). 같은 테스트가 `maps.json.sample`에만 있는 키를 라이브에서 찾아 단언하므로 **세션 내내 "상시 허용 실패"로 취급돼 왔다 — 항상 실패하는 테스트는 스위트 전체의 신호를 죽인다.** **✅ ⓑ 해소(`9a8ede8`)** — 두 오염 테스트 격리. `test_map_presets_api`는 `tmp_path` + `MAPS_CONFIG_PATH` 패치, 단언을 `set(presets) == {심은 키}`로 써서 **격리가 풀리면 즉시 깨지게** 했다. `test_file_ingestion_callback_direct`는 핸들러가 이미 경로를 생성자 인자로 받으므로 패치 없이 `tmp_path` 주입으로 끝났고, `config.json` 쓰기는 **제거**(폐기 개념 + `columns` 키 무소비 + 테이블명이 `default_table_name`으로 동일 해석) 후 재생성 시 깨지는 네거티브 단언을 넣었다. **증명은 바이트 동일성** — `maps.json`의 sha256·크기·**mtime**까지 불변, `ingestion_workspace` 9,230파일 `changed=0`. 생긴 3파일이 수집기 산물임은 **pytest를 안 돌린 동일 길이 창 대조군**으로 실증. **스위트 414 passed / 0 failed — 허용 실패 소멸.** ⓐ(운영 DB DDL)는 잔존하나 테스트 엔진은 전부 sqlite 메모리/tmp로 확인됨. 라이브 잔재 2건(`maps.json`의 `custom_…`, `inventory_master/config/config.json`)은 **사용자 자산이라 미삭제 — 원본 미상·복구 불가로 고지함** | Server | ⓑ 해소 / ⓐ 대기 |
-| 15 | 중간 | **`Wafer` label에 이질적 정체 혼입**(2026-07-26 온톨로지 리뷰 발견) — `wafer_slot_history.wafer_id`(예 `A123`)와 `core_wafer_map.core_lot\|core_slot`(예 `LOT-A\|05`)이 같은 label에 공존해 서로 조인 불가. 더 근본적으로 **후자는 DT 계층 판명으로 실은 테이프 위치**(스펙 §7.5b)라 "테이프 91개를 Wafer라 부르는" 상태. 방치 시 불량 역추적이 엉뚱한 개체를 지목. **M2에서 dt_map/dt_log 올릴 때 정리 필수**. 파생 결정: 층 배정 온톨로지 매핑(§14-4)도 같은 패턴이라 보류, 별도 label(`PlanLayer`)로 §7.5c node_class 작업 시 처리 | Server·온톨로지 | M2에서 처리 |
-| 14 | 중간 | **맵 push 경로 기존 결함 3종**([QA M2 리뷰](../../agent_workspace/reports/QA_transfer_plan_m2_review.md) 부수 발견, **M2 회귀 아님 — 전 맵 공통**) — ⓐ `limit=2000` + `replace_map` 조합에서 2000셀 초과 맵의 데이터 소실 가능(현행 프리셋 최대 1600셀이라 미발화) ⓑ `GET /tables/{t}/schema`가 미존재 테이블에도 200 반환(존재 확인 불가) ⓒ 클라 `CURRENT_USER`가 빌드 시점 값으로 박힘(번들 확인) | Server·Client | 대기 |
-| 13 | 중간 | **`crud.load_table_config()`가 JSON 파싱 실패 시 로그 없이 `{}` 반환** — 가동 중에는 `refresh_dynamic_models`의 빈-config 가드가 막지만, **손상된 config로 재기동하면 전 테이블이 조용히 사라진다**. 최소 `logger.error` + 기동 시 명시 실패(fail-fast) 검토. CONFIG_GUIDE 함정 A로 문서화됨 | Server | 대기(소형) |
-| 17 | 중간 | **계획 자재 500행 초과 시 영구 저장 불가** (QA-B의 C3) — 클라가 `limit=500`으로 조회하고(`client2/src/transfer_plan.js:1068/1104`) `total > rows`면 로드 실패로 강등하는데, 그 강등이 쓰기 보류로 이어지므로 **자재 500행을 넘긴 계획은 저장 경로가 영구히 닫힌다**. 강등 자체는 옳다(절단된 상태로 prune하면 전량 삭제) — 페이징이나 상한 상향이 필요 | Client·Server | 대기 |
-| 18 | 중간 | **오버레이 기하 시그니처에 물리 파라미터 누락** (QA-B의 C7) — `currentGeomSignature()`(`client2/src/map_editor.js`)가 cols/rows/start/invertY/rot/side만 보고 `phys_*`(칩 피치·오프셋·직경·edge margin)를 빼먹어, 물리 규격을 바꾸면 오버레이가 **조용히 안 따라온다**. 기존 결함이나 신규 `importOverlayToGrid`가 어긋난 좌표를 `gridData`에 써 넣어 **표시 오류에서 데이터 오염으로 승격**됐다. **오버레이 변환 일원화 작업의 수용 기준에 포함시켰다** | Client | 일원화 작업에 동승 |
-| 19 | 낮음 | **페인트 잠금 콜드 스타트 fail-open** (QA-B의 C4) — `degrade()`가 유지하는 "직전 값"이 로드 직후에는 기본값 `{enabled:false}`(`client2/src/map_editor.js:37`)라, **첫 조회가 실패하면 8개 강제 지점이 열린 채 시작**한다. 칩으로 표시는 되므로 *조용한* fail-open은 해소된 상태 — "fail-open 제거"라는 서술만 과장이었다 | Client | 대기 |
-| 12 | 낮음 | **임베디드 모드 `trigger_ws_refresh` 레거시 경로 C-5 미적용** — main.py 임베디드(비-DECOUPLED) 콜백은 created_logs 절단 계약(C-5) 밖(레거시 5000 게이트). 분리 모드 운영에서는 무영향 — 드릴 관찰로 등재 | Server | 대기(저순위) |
-
-**종결(2026-07-25):** #0 체인 outbox 지연·신뢰성(31ms) · #1 IntegrityAndQAExpert 스킬 웹 전환 · #6 감사 로그 DB 미저장 · #7 런타임 테이블 물리 CREATE · **#8 graph 워커 신규 테이블 미인지(G1 materializer의 SYSTEM_RELOAD 구독으로 해소)**.
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 
@@ -170,6 +93,28 @@
 - [라이브 검증 PASS 관찰 3건, 다음 서버 배치 동승 후보] ① pytest가 라이브 로그 파일 오염 → 테스트 로거 분리 ② created_logs 절단 발동 시 무음 → `truncated N→500` 1줄 로그 ③ wafer_process lot_id UndefinedColumn 1회(21:48, 컬럼 핫추가 과도기 — #9와 같은 뿌리 추정).
 - wafer_process에 `lot`/`slot`(기존)과 `lot_id`/`slot_no`(신규)가 중복 공존 — 데모 테이블이라 수용, 실전화 시 하나로 통일 필요. Lot 노드 label 신설 여부도 미결(현재 props까지만).
 - 루트 `task/` 대기: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
+
+## 🐞 열린 문제 (Open Problems)
+
+| # | 심각도 | 문제 | 도메인 | 상태 |
+|---|---|---|---|---|
+| 4 | 낮음 | `test_map_presets_api` 기존 실패(맵 프리셋 도메인, #0 이전부터) — **잔여는 이것 1건뿐**(enrichment 테스트 격리 버그는 2026-07-25 해소, 현재 스위트 177 passed / 1 failed) | Client·Server | 대기 |
+| 5 | 중간 | **경합 점검 잔여 리스크(수정 배치 2 후보)** — C-4(체인 큐 독점·HOL, 매퍼 의미론 협의 필요)·C-6(동시 upsert 행 락 순서)·C-8(런타임 ALTER 락 컨보이)·C-9(커넥션 풀 합계>max_connections)·C-10(워처 .tmp 필터 부재)·C-11(WS 직렬 전송) + created_logs 무상한 전송 잔여. 상세: [점검 보고서](../../agent_workspace/reports/Server_contention_audit.md) (C-7은 그래프 키셋 청킹으로 해소됨) | Server | 대기 |
+| 2 | 낮음 | 맵 이월 시 A/B의 x·y·val 컬럼명이 크게 다르면 자동 정합 안 됨(저장 전 Advanced Column Mapping 수동 확인 필요) | Client | 대기(관찰) |
+| 3 | 정보 | 미리보기 브라우저 pane이 비-compositing → rAF/ResizeObserver 자동발화·CSS transition 프리즈로 라이브 UI 자동검증 제약(실제 브라우저 무관) | 검증환경 | 알려짐 |
+| 9 | 중간 | **config_watcher가 원자적 쓰기(temp+rename)를 감지 못함** — on_modified만 처리해 에이전트 Edit류 저장 시 기존 테이블 ALTER가 조용히 누락(on_moved 미처리). 스키마 API는 config 싱글턴이라 200이어도 물리 반영 증거 아님 | Server | 대기(수정 소형 — on_moved 보강) |
+| 10 | 낮음 | audit_cache total_count 과소 표기(QA D-1) — 멀티 target-table tx에서 테이블별 total_log_count가 SET 덮어쓰기. 기존 결함(회귀 아님), production_plan 체인+enrichment 동시 트리거로 도달 가능 | Server | 대기(P2 동승) |
+| 11 | 중간(격하) | **좌표 변환 서버-클라 드리프트** ([감사](../../agent_workspace/reports/QA_map_transform_logic_audit.md)) — F1: rot=90/270 비등방 칩에서 transformer가 회전 치수·비회전 chip 혼용 · F2: 엔진 미장착 fallback 타원 ±1 어긋남 · F3[중]: 클라 getPhysicalCoords의 mm 오프셋 반올림 혼입(서버 정의가 정론 — 경계 계약 명문화 필요). **M1 align이 결함 지점을 구조적으로 우회 완료**(`bonding_plan.make_align_transform` — cell_to_physical 순수 인덱스 변환만, 엔진 fallback 무참여 + 90/270 치수 스왑 규약 + 규격 불명 시 `align_unavailable` 명시 실패). transformer 자체의 F1/F2 수정과 F3 계약 명문화는 잔여(현 소비자는 안전 경로만 사용) | Server·Client | M1 우회 완료 — 근본 수정 대기 |
+| 16 | **높음(격상)** | **테스트 스위트가 라이브 환경으로 샌다 — 2계통 실증** ⓐ **운영 PostgreSQL에 DDL 발행**: `main.py` import 시 모듈 레벨 `Base.metadata.create_all`(main.py:44)이 실 DB에 대해 실행되어, 테스트만 돌려도 신규 테이블이 라이브에 생성된다(P2에서 실제 발생 — 빈 테이블이라 무해했으나 경로가 위험). ⓑ **사용자 config에 써넣는다**: `test_map_presets_api`가 `POST /api/map-presets`로 라이브 `server/config/maps.json`을 수정한다. 실증 — 현재 프리셋 키가 `['custom_1784890104442', 'core_std', 'base_std', 'tape_std']`이고 첫 항목이 테스트 산물(총괄 직접 확인). 같은 테스트가 `maps.json.sample`에만 있는 키를 라이브에서 찾아 단언하므로 **세션 내내 "상시 허용 실패"로 취급돼 왔다 — 항상 실패하는 테스트는 스위트 전체의 신호를 죽인다.** **✅ ⓑ 해소(`9a8ede8`)** — 두 오염 테스트 격리. `test_map_presets_api`는 `tmp_path` + `MAPS_CONFIG_PATH` 패치, 단언을 `set(presets) == {심은 키}`로 써서 **격리가 풀리면 즉시 깨지게** 했다. `test_file_ingestion_callback_direct`는 핸들러가 이미 경로를 생성자 인자로 받으므로 패치 없이 `tmp_path` 주입으로 끝났고, `config.json` 쓰기는 **제거**(폐기 개념 + `columns` 키 무소비 + 테이블명이 `default_table_name`으로 동일 해석) 후 재생성 시 깨지는 네거티브 단언을 넣었다. **증명은 바이트 동일성** — `maps.json`의 sha256·크기·**mtime**까지 불변, `ingestion_workspace` 9,230파일 `changed=0`. 생긴 3파일이 수집기 산물임은 **pytest를 안 돌린 동일 길이 창 대조군**으로 실증. **스위트 414 passed / 0 failed — 허용 실패 소멸.** ⓐ(운영 DB DDL)는 잔존하나 테스트 엔진은 전부 sqlite 메모리/tmp로 확인됨. 라이브 잔재 2건(`maps.json`의 `custom_…`, `inventory_master/config/config.json`)은 **사용자 자산이라 미삭제 — 원본 미상·복구 불가로 고지함** | Server | ⓑ 해소 / ⓐ 대기 |
+| 15 | 중간 | **`Wafer` label에 이질적 정체 혼입**(2026-07-26 온톨로지 리뷰 발견) — `wafer_slot_history.wafer_id`(예 `A123`)와 `core_wafer_map.core_lot\|core_slot`(예 `LOT-A\|05`)이 같은 label에 공존해 서로 조인 불가. 더 근본적으로 **후자는 DT 계층 판명으로 실은 테이프 위치**(스펙 §7.5b)라 "테이프 91개를 Wafer라 부르는" 상태. 방치 시 불량 역추적이 엉뚱한 개체를 지목. **M2에서 dt_map/dt_log 올릴 때 정리 필수**. 파생 결정: 층 배정 온톨로지 매핑(§14-4)도 같은 패턴이라 보류, 별도 label(`PlanLayer`)로 §7.5c node_class 작업 시 처리 | Server·온톨로지 | M2에서 처리 |
+| 14 | 중간 | **맵 push 경로 기존 결함 3종**([QA M2 리뷰](../../agent_workspace/reports/QA_transfer_plan_m2_review.md) 부수 발견, **M2 회귀 아님 — 전 맵 공통**) — ⓐ `limit=2000` + `replace_map` 조합에서 2000셀 초과 맵의 데이터 소실 가능(현행 프리셋 최대 1600셀이라 미발화) ⓑ `GET /tables/{t}/schema`가 미존재 테이블에도 200 반환(존재 확인 불가) ⓒ 클라 `CURRENT_USER`가 빌드 시점 값으로 박힘(번들 확인) | Server·Client | 대기 |
+| 13 | 중간 | **`crud.load_table_config()`가 JSON 파싱 실패 시 로그 없이 `{}` 반환** — 가동 중에는 `refresh_dynamic_models`의 빈-config 가드가 막지만, **손상된 config로 재기동하면 전 테이블이 조용히 사라진다**. 최소 `logger.error` + 기동 시 명시 실패(fail-fast) 검토. CONFIG_GUIDE 함정 A로 문서화됨 | Server | 대기(소형) |
+| 17 | 중간 | **계획 자재 500행 초과 시 영구 저장 불가** (QA-B의 C3) — 클라가 `limit=500`으로 조회하고(`client2/src/transfer_plan.js:1068/1104`) `total > rows`면 로드 실패로 강등하는데, 그 강등이 쓰기 보류로 이어지므로 **자재 500행을 넘긴 계획은 저장 경로가 영구히 닫힌다**. 강등 자체는 옳다(절단된 상태로 prune하면 전량 삭제) — 페이징이나 상한 상향이 필요 | Client·Server | 대기 |
+| 18 | 중간 | **오버레이 기하 시그니처에 물리 파라미터 누락** (QA-B의 C7) — `currentGeomSignature()`(`client2/src/map_editor.js`)가 cols/rows/start/invertY/rot/side만 보고 `phys_*`(칩 피치·오프셋·직경·edge margin)를 빼먹어, 물리 규격을 바꾸면 오버레이가 **조용히 안 따라온다**. 기존 결함이나 신규 `importOverlayToGrid`가 어긋난 좌표를 `gridData`에 써 넣어 **표시 오류에서 데이터 오염으로 승격**됐다. **오버레이 변환 일원화 작업의 수용 기준에 포함시켰다** | Client | 일원화 작업에 동승 |
+| 19 | 낮음 | **페인트 잠금 콜드 스타트 fail-open** (QA-B의 C4) — `degrade()`가 유지하는 "직전 값"이 로드 직후에는 기본값 `{enabled:false}`(`client2/src/map_editor.js:37`)라, **첫 조회가 실패하면 8개 강제 지점이 열린 채 시작**한다. 칩으로 표시는 되므로 *조용한* fail-open은 해소된 상태 — "fail-open 제거"라는 서술만 과장이었다 | Client | 대기 |
+| 12 | 낮음 | **임베디드 모드 `trigger_ws_refresh` 레거시 경로 C-5 미적용** — main.py 임베디드(비-DECOUPLED) 콜백은 created_logs 절단 계약(C-5) 밖(레거시 5000 게이트). 분리 모드 운영에서는 무영향 — 드릴 관찰로 등재 | Server | 대기(저순위) |
+
+**종결(2026-07-25):** #0 체인 outbox 지연·신뢰성(31ms) · #1 IntegrityAndQAExpert 스킬 웹 전환 · #6 감사 로그 DB 미저장 · #7 런타임 테이블 물리 CREATE · **#8 graph 워커 신규 테이블 미인지(G1 materializer의 SYSTEM_RELOAD 구독으로 해소)**.
 
 ## 🔤 코드 체계 (Code Index) — 약칭이 무슨 뜻이고 어디에 정의돼 있나
 
