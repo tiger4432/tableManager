@@ -628,11 +628,16 @@ class TestProductWritePathsAreDeclared:
 
     # The business key column identifies a write payload without depending on
     # line numbers or on the table name appearing in the same literal.
+    #
+    # M2.6 retarget (2026-07-27): map_doe / map_doe_source have no writer any
+    # more - the DOE collapsed into the map_split_registry row (knobs + bands),
+    # which map_editor.js writes. Their declarations survive as deprecated,
+    # read-only entries, so there is no payload left to check for them. This is
+    # the retarget the docstring asks for, NOT a deletion: map_split_registry
+    # below now covers every column the product writes for a DOE.
     WRITERS = {
         "wafer_map_metadata": ("map_editor.js", "map_pk"),
         "map_split_registry": ("map_editor.js", "split_key"),
-        "map_doe": ("transfer_plan.js", "doe_key"),
-        "map_doe_source": ("transfer_plan.js", "source_key"),
     }
 
     @pytest.mark.parametrize("table", sorted(WRITERS))

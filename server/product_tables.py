@@ -58,7 +58,7 @@ PRODUCT_TABLES = {
         ]
     },
     "map_split_registry": {
-        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 값(legend)의 정본 레지스트리. 값마다 split_desc(실험 split 조건의 자연어 기록)와 color를 붙이며, 맵 에디터의 legend가 이 테이블로 서버 영속화된다(localStorage는 오프라인 캐시로 강등). bk = ref_table|map_key|value 이고 구분자는 반드시 '|' 다 — map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔해 '_'로는 키가 모호해진다(client2/src/map_editor.js의 SPLIT_KEY_SEP와 일치해야 함). 전사 계획(M2)의 DOE는 값 단위 속성을 여기서 조인해 읽으므로 map_doe에 중복 저장하지 않는다. | map_key_columns = (ref_table, map_key): a legend is saved as a whole set for one map, so removing a value has to fall out of the write. Without this declaration `replace_map` has no scope to delete by and the client is forced to compute the difference itself - which is how deleted DOE values used to come back on the next load.",
+        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 값(legend)의 정본 레지스트리이자 **DOE 그 자체**(M2.6). 값 하나 = 행 하나 = DOE 조건 하나다. bk = ref_table|map_key|value 이고 구분자는 반드시 '|' 다 — map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔해 '_'로는 키가 모호해진다(client2/src/map_editor.js의 SPLIT_KEY_SEP와 일치해야 함). | M2.6 consolidation: map_doe and map_doe_source collapsed INTO this row. `split_desc` and `knobs` stay FLAT columns on purpose - they are what the ontology/LLM consumes, and nesting them would put the ontology's input inside a JSON blob. Only band structure nests, in `bands`. | `bands` CONTRACT (read this before writing a consumer): a JSON array, ordered, each element {\"seq\": int, \"to\": int, \"materials\": [str, ...]}. `seq` is the band's IDENTITY (materials belong to it; never renumber on reorder or delete). Array POSITION is the stack order: band[0] starts at layer 1, band[i] starts at band[i-1].to + 1, so only `to` is stored and `from` is derived. Layer count of band[i] = to[i] - to[i-1] with to[-1] = 0. `materials` holds the raw ID string exactly as typed - the string IS the identity, lot/slot parsing comes later and must not move the key. NOTHING derived is stored: band total = painted cells of that value * layer count, per-material share = ceil(band total / len(materials)). Compute them, never persist them - a stored total silently drifts from the map the moment someone paints another cell. | NO `updated_by` COLUMN, deliberately: crud.py lists updated_by in its `system_cols` and skips it in the column loop, so a declared updated_by can never be written through the generic table API - it would sit NULL forever and invite a join that returns nothing. map_doe/map_doe_source proved it: every row's updated_by is NULL. The 'who' is already carried per cell by cell_sources/cell_overwrites.updated_by, which is what the editor's legend meta line shows. | map_key_columns = (ref_table, map_key): a legend is saved as a whole set for one map, so removing a value has to fall out of the write. Without this declaration `replace_map` has no scope to delete by and the client is forced to compute the difference itself - which is how deleted DOE values used to come back on the next load.",
         "business_key": "split_key",
         "composite_key_source": [
             "ref_table",
@@ -73,6 +73,8 @@ PRODUCT_TABLES = {
             "value": "string",
             "split_desc": "string",
             "color": "string",
+            "knobs": "string",
+            "bands": "string",
             "eventtime": "string"
         },
         "display_columns": [
@@ -82,6 +84,8 @@ PRODUCT_TABLES = {
             "value",
             "split_desc",
             "color",
+            "knobs",
+            "bands",
             "eventtime"
         ],
         "map_key_columns": [
@@ -90,7 +94,7 @@ PRODUCT_TABLES = {
         ]
     },
     "map_doe": {
-        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 전사 계획(M2)의 DOE 정의. 행 단위는 (값, STACK 구간)이라 bk = ref_table|map_key|doe_value|band_seq 다. band_seq(정수 서수)가 정체를 지고 stack_band(자유 텍스트 라벨)는 비키 컬럼이다 — 라벨을 키에 넣으면 라벨 수정이 곧 re-key가 되어 하위 자재 행이 고아가 된다. transfer_plan_config.json의 plan_store.doe 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 클라이언트가 저장 시 함께 쓰는 감사 컬럼이며(client2/src/transfer_plan.js), 특히 eventtime은 다시 읽혀 계획 헤더의 '서버 <시각>' 칩이 된다 — 선언에서 빼면 서버가 조용히 버려(crud.py의 column_types 게이트) 칩이 사라진다. | map_key_columns = (ref_table, map_key): that pair IS the plan's identity - there is no plan_id - so it is the scope a `replace_map` write deletes by. A DOE save sends the plan's complete set; deletion is then part of the write instead of a separate client-side difference step. Removing this declaration silently turns `replace_map` into crud.py's column-guessing fallback, which matches almost nothing and deletes nothing.",
+        "__comment": "[DEPRECATED 2026-07-27 — M2.6] Nothing writes this table any more: the DOE moved into map_split_registry (one row per value, bands as JSON). The declaration stays only so an operator can still READ the rows while moving their own data by hand; the physical DROP TABLE is a separate step and needs the operator's approval. Do not add a new consumer. === historical description below === [제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 전사 계획(M2)의 DOE 정의. 행 단위는 (값, STACK 구간)이라 bk = ref_table|map_key|doe_value|band_seq 다. band_seq(정수 서수)가 정체를 지고 stack_band(자유 텍스트 라벨)는 비키 컬럼이다 — 라벨을 키에 넣으면 라벨 수정이 곧 re-key가 되어 하위 자재 행이 고아가 된다. transfer_plan_config.json의 plan_store.doe 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 클라이언트가 저장 시 함께 쓰는 감사 컬럼이며(client2/src/transfer_plan.js), 특히 eventtime은 다시 읽혀 계획 헤더의 '서버 <시각>' 칩이 된다 — 선언에서 빼면 서버가 조용히 버려(crud.py의 column_types 게이트) 칩이 사라진다. | map_key_columns = (ref_table, map_key): that pair IS the plan's identity - there is no plan_id - so it is the scope a `replace_map` write deletes by. A DOE save sends the plan's complete set; deletion is then part of the write instead of a separate client-side difference step. Removing this declaration silently turns `replace_map` into crud.py's column-guessing fallback, which matches almost nothing and deletes nothing.",
         "business_key": "doe_key",
         "composite_key_source": [
             "ref_table",
@@ -131,7 +135,7 @@ PRODUCT_TABLES = {
         ]
     },
     "map_doe_source": {
-        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] DOE 구간에 투입되는 자재(소스 웨이퍼) 묶음. 한 구간에 여러 매가 붙으므로(pool) bk에 소스 차원이 더해진다: ref_table|map_key|doe_value|band_seq|source_lot|source_slot. 매별 소요는 구간 총량(map_doe.qty_total)의 균등 배분이며 qty가 명시되면 그것이 우선한다. transfer_plan_config.json의 plan_store.doe_source 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 map_doe와 동일하게 클라이언트가 저장 시 함께 쓰는 감사 컬럼이다 — 선언에서 빼면 조용히 버려진다. | map_key_columns = (ref_table, map_key): same scope as map_doe. The material pool of a plan is saved as one complete set, so dropping the last material of a band has to be expressible as a write.",
+        "__comment": "[DEPRECATED 2026-07-27 — M2.6] Nothing writes this table any more: materials moved into map_split_registry.bands[].materials as raw ID strings. Same terms as map_doe - readable for a hand migration, DROP TABLE needs the operator's approval, no new consumers. === historical description below === [제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] DOE 구간에 투입되는 자재(소스 웨이퍼) 묶음. 한 구간에 여러 매가 붙으므로(pool) bk에 소스 차원이 더해진다: ref_table|map_key|doe_value|band_seq|source_lot|source_slot. 매별 소요는 구간 총량(map_doe.qty_total)의 균등 배분이며 qty가 명시되면 그것이 우선한다. transfer_plan_config.json의 plan_store.doe_source 바인딩이 이 테이블을 가리킨다. updated_by·eventtime은 map_doe와 동일하게 클라이언트가 저장 시 함께 쓰는 감사 컬럼이다 — 선언에서 빼면 조용히 버려진다. | map_key_columns = (ref_table, map_key): same scope as map_doe. The material pool of a plan is saved as one complete set, so dropping the last material of a band has to be expressible as a write.",
         "business_key": "source_key",
         "composite_key_source": [
             "ref_table",

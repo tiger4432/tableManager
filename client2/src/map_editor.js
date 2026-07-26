@@ -159,6 +159,10 @@ const DEFAULT_LEGEND = [
 // Split Registry (map_split_registry) — legend의 서버 영속화
 // value description = 실험 split 조건의 자연어 기록.
 // 서버(제네릭 테이블 API)가 SSOT, localStorage는 오프라인 캐시로 강등.
+//
+// [M2.6] **하나의 값 = 하나의 행 = 하나의 DOE.** map_doe / map_doe_source는 폐기됐고
+// 구간(bands)과 knob이 이 행으로 접혀 들어왔다. 그래서 이 파일이 DOE의 **유일한 기록자**다 —
+// 같은 행을 두 모듈이 쓰면 replace_map이 서로의 컬럼을 지운다.
 // ----------------------------------------------------
 const SPLIT_REGISTRY_TABLE = 'map_split_registry';
 // map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔하므로 bk 분리자는 '|' 사용
@@ -167,14 +171,145 @@ const SPLIT_KEY_SEP = '|';
 
 let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
 let legendServerSaveTimer = null;
-// { table, mapKey } | null - the ONE map whose registry rows we have actually read.
-// It is the sole grant of `replace_map` authority for the legend write: only a legend
-// that came from this map's own registry may be used to replace it. Cleared whenever
-// that claim stops being true (table switch, failed/truncated read, map unloaded).
+// { table, mapKey, fingerprint } | null - the ONE map whose registry rows we have
+// actually read, together with what they were when we read them. One object because
+// it is one claim: "the screen came from this map's rows, and they looked like this".
+//   * grant of `replace_map` authority - only a legend that came from this map's own
+//     registry may be used to replace it;
+//   * baseline of the concurrency check - the write re-reads and refuses if the
+//     server no longer matches, instead of silently erasing another session's rows.
+// Cleared whenever the claim stops being true (table switch, failed/truncated read,
+// map unloaded).
 let legendReplaceScope = null;
+// { table, mapKey } | null - another session changed this plan under us. Blocks every
+// registry write for that map until a reload puts the screen back on server state.
+// Degrading to an upsert instead would push our stale bands over theirs.
+let legendConflict = null;
+// Last registry write outcome, surfaced by the panel header (getPlanSaveState).
+let legendSaveState = { status: 'idle', at: '', error: '' };
 
 function buildSplitKey(refTable, mapKey, value) {
   return [refTable, mapKey, value].join(SPLIT_KEY_SEP);
+}
+
+// ── DOE 모델 (M2.6) ─────────────────────────────────────
+// legend 행이 곧 DOE다:
+//   { value, desc, color, knobs: [{k,v}], bands: [{seq, to, materials:[string]}] }
+//
+// `bands` 계약 (server/product_tables.py의 map_split_registry.__comment와 같은 글):
+//   * **배열 위치가 스택 순서**다. band[0]은 1층에서 시작하고 band[i]는 band[i-1].to + 1에서
+//     시작한다. 저장되는 값은 `to` 하나뿐이고 `from`은 이웃에서 유도된다.
+//   * **`seq`는 순서가 아니라 정체다.** 자재가 seq에 매달려 있으므로 재정렬·삭제가 seq를
+//     재번호하면 자재가 조용히 남의 구간으로 따라간다.
+//   * 자재는 **입력한 원문 문자열 그대로**가 정체다. lot/slot 파싱은 나중 일이고,
+//     파싱 규칙이 바뀌어도 키가 움직이면 안 된다.
+//   * **파생값은 저장하지 않는다.** 구간 총량 = 그 값의 칠한 셀 수 × 층 수,
+//     자재당 배분 = ceil(총량 / 자재 수). 저장하면 누가 한 칸 더 칠하는 순간 어긋난 채 남는다.
+function parseJsonCol(raw, fallback) {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(String(raw)); } catch (e) { return fallback; }
+}
+
+function normalizeBands(raw) {
+  const src = Array.isArray(raw) ? raw : [];
+  const out = [];
+  src.forEach((b, i) => {
+    if (!b || typeof b !== 'object') return;
+    const seqNum = Number(b.seq);
+    const seq = (Number.isFinite(seqNum) && seqNum > 0) ? Math.trunc(seqNum) : (i + 1);
+    const toNum = Number(b.to);
+    const to = (b.to === '' || b.to === null || b.to === undefined || !Number.isFinite(toNum))
+      ? '' : Math.trunc(toNum);
+    const materials = [];
+    (Array.isArray(b.materials) ? b.materials : []).forEach(m => {
+      const s = String(m === null || m === undefined ? '' : m).trim();
+      if (s && materials.indexOf(s) < 0) materials.push(s);
+    });
+    out.push({ seq, to, materials });
+  });
+  // Two bands sharing a seq would make one material set answer to both. Only
+  // corrupt data gets here, but repairing it beats aliasing two identities.
+  const seen = new Set();
+  let next = out.reduce((m, b) => Math.max(m, b.seq), 0) + 1;
+  out.forEach(b => { if (seen.has(b.seq)) b.seq = next++; seen.add(b.seq); });
+  return out;
+}
+
+// 저장 형식은 JSON 객체 {k: v}, 편집 형식은 순서 있는 쌍 배열.
+function normalizeKnobs(raw) {
+  if (Array.isArray(raw)) {
+    return raw.filter(p => p && typeof p === 'object')
+      .map(p => ({ k: String(p.k === null || p.k === undefined ? '' : p.k),
+                   v: String(p.v === null || p.v === undefined ? '' : p.v) }));
+  }
+  if (raw && typeof raw === 'object') {
+    return Object.entries(raw).map(([k, v]) => ({ k: String(k), v: (v === null || v === undefined) ? '' : String(v) }));
+  }
+  return [];
+}
+
+function knobsToObject(arr) {
+  const out = {};
+  (Array.isArray(arr) ? arr : []).forEach(p => {
+    const k = String((p && p.k) || '').trim();
+    if (k) out[k] = (p.v === undefined || p.v === null) ? '' : String(p.v);
+  });
+  return out;
+}
+
+function serializeBands(bands) {
+  return JSON.stringify(normalizeBands(bands)
+    .map(b => ({ seq: b.seq, to: b.to === '' ? null : b.to, materials: b.materials })));
+}
+function serializeKnobs(knobs) { return JSON.stringify(knobsToObject(normalizeKnobs(knobs))); }
+
+// legend 항목의 정규형 (DOE 필드 포함). 로드 경로가 여러 갈래라 한 곳에서만 만든다.
+function normalizeLegendItem(item) {
+  const it = item || {};
+  return {
+    value: String(it.value === null || it.value === undefined ? '' : it.value),
+    desc: String(it.desc || ''),
+    color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
+    knobs: normalizeKnobs(it.knobs),
+    bands: normalizeBands(it.bands),
+  };
+}
+
+// legend 배열 깊은 복사 — bands/knobs가 배열이라 얕은 복사는 프레임 스냅샷과 화면이
+// 같은 배열을 공유하게 만든다(한쪽 편집이 다른 쪽을 조용히 오염시킨다).
+function cloneLegend(arr) {
+  return (Array.isArray(arr) ? arr : []).map(l => {
+    const n = normalizeLegendItem(l);
+    n.knobs = n.knobs.map(p => ({ ...p }));
+    n.bands = n.bands.map(b => ({ seq: b.seq, to: b.to, materials: b.materials.slice() }));
+    return n;
+  });
+}
+
+// registry 행의 **유일한 정규형**. 동시성 검사의 양쪽이 모두 이 함수를 통과한다 —
+// 서버에서 읽은 행과 지금 보내려는 페이로드. "같은 행"의 구현이 둘이면 진짜 충돌을
+// 놓치거나 없는 충돌을 만들어낸다.
+function canonRegistryRow(r) {
+  const it = r || {};
+  return {
+    value: String(it.value === null || it.value === undefined ? '' : it.value).trim(),
+    desc: String(it.desc === null || it.desc === undefined ? '' : it.desc).trim(),
+    color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
+    knobs: serializeKnobs(it.knobs),
+    bands: serializeBands(it.bands),
+    eventtime: String(it.eventtime === null || it.eventtime === undefined ? '' : it.eventtime),
+  };
+}
+
+const FP_UNIT = '';   // ASCII unit separator - cannot occur in a typed field
+const FP_ROW = '';    // ASCII record separator
+function registryFingerprint(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map(canonRegistryRow)
+    .sort((a, b) => (a.value < b.value ? -1 : (a.value > b.value ? 1 : 0)))
+    .map(c => [c.value, c.desc, c.color, c.knobs, c.bands, c.eventtime].join(FP_UNIT))
+    .join(FP_ROW);
 }
 
 // PUT /tables/map_split_registry/data/updates 페이로드 빌더 (순수 함수 — 하니스 검증 대상)
@@ -194,6 +329,8 @@ function buildLegendRegistryUpdates(refTable, mapKey, legendArr, user, nowStr) {
           value: value,
           split_desc: (item.desc || '').trim(),
           color: item.color || '',
+          knobs: serializeKnobs(item.knobs),
+          bands: serializeBands(item.bands),
           eventtime: nowStr
         },
         source_name: 'user',
@@ -216,8 +353,13 @@ function parseLegendRegistryRows(result, dedupeByValue) {
         value: String(value).trim(),
         desc: d.split_desc?.value != null ? String(d.split_desc.value) : '',
         color: d.color?.value != null && String(d.color.value) !== '' ? String(d.color.value) : '#6b7280',
+        knobs: normalizeKnobs(parseJsonCol(d.knobs?.value, {})),
+        bands: normalizeBands(parseJsonCol(d.bands?.value, [])),
         map_key: d.map_key?.value != null ? String(d.map_key.value) : '',
+        // The registry has no updated_by COLUMN (crud.py's system_cols skips it, so it could
+        // only ever be NULL). The platform already carries who touched the cell.
         updated_by: d.split_desc?.updated_by || d.value?.updated_by || 'system',
+        eventtime: d.eventtime?.value != null ? String(d.eventtime.value) : '',
         updated_at: d.updated_at?.value || ''
       });
     });
@@ -280,8 +422,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   //   계획이라는 별도 개체는 없다. 패널은 "지금 열린 맵의 legend"를 편집할 뿐이고,
   //   그 legend 행이 곧 DOE다. 모드·모달·플로팅 바는 전부 폐기됐다.
   initTransferPlan({
-    // legend(= DOE) 원천은 map_editor다 — 패널은 이 관문으로만 변조한다
-    getLegend: () => legend.map(l => ({ ...l })),
+    // legend(= DOE) 원천은 map_editor다 — 패널은 이 관문으로만 변조한다.
+    // ⚠️ 깊은 복사다: bands/knobs는 배열이라 얕게 넘기면 패널의 제자리 수정이
+    //    영속화를 거치지 않고 원본을 바꿔 "화면은 됐는데 저장이 안 된" 상태가 된다.
+    getLegend: () => cloneLegend(legend),
+    getPlanSaveState,
     getActiveBrush: () => activeBrush,
     getCounts: computeLegendCounts,
     setBrush: (v) => { selectBrush(String(v)); updateLegendCounts(); },
@@ -2000,12 +2145,13 @@ function loadLegendFromStorage() {
   const stored = localStorage.getItem(`map_legend_${selectedTable}`);
   if (stored) {
     try {
-      legend = JSON.parse(stored);
+      legend = cloneLegend(JSON.parse(stored));
+      if (legend.length === 0) legend = cloneLegend(DEFAULT_LEGEND);
     } catch (e) {
-      legend = [...DEFAULT_LEGEND];
+      legend = cloneLegend(DEFAULT_LEGEND);
     }
   } else {
-    legend = [...DEFAULT_LEGEND];
+    legend = cloneLegend(DEFAULT_LEGEND);
   }
   if (legend.length > 0) {
     activeBrush = legend[0].value;
@@ -2014,8 +2160,52 @@ function loadLegendFromStorage() {
   }
 }
 
+// ⚠️ 이 캐시의 키는 **테이블**이지만 knobs/bands는 **(테이블, 맵 키) 하나**의 것이다.
+// 함께 캐시하면 맵 A의 스택이 맵 B 화면에 그대로 나타난다 — 화면은 멀쩡한데 값이 틀린 결함.
+// DOE 필드는 맵 단위 초안(saveDoeDraft)이 따로 보관한다.
 function saveLegendToStorage() {
-  localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(legend));
+  const cacheable = legend.map(l => ({ value: l.value, desc: l.desc, color: l.color }));
+  localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(cacheable));
+  saveDoeDraft();
+}
+
+// ── DOE 맵 단위 초안 (서버 저장 실패 시 편집을 잃지 않기 위한 것) ──
+// 적용은 **registry 조회가 실패했을 때만**이다. 조회에 성공했다면 서버가 정본이고,
+// 그 위에 초안을 덮으면 다른 세션의 저장이 조용히 지워진다.
+function doeDraftKey(table, mapKey) { return `map_doe_draft::${table}::${mapKey}`; }
+
+function saveDoeDraft() {
+  const mapKey = getCurrentMapKey();
+  if (!selectedTable || !mapKey) return;
+  try {
+    const doe = {};
+    legend.forEach(l => {
+      if ((l.bands && l.bands.length) || (l.knobs && l.knobs.length)) {
+        doe[l.value] = { knobs: normalizeKnobs(l.knobs), bands: normalizeBands(l.bands) };
+      }
+    });
+    localStorage.setItem(doeDraftKey(selectedTable, mapKey), JSON.stringify(doe));
+  } catch (e) {
+    console.warn('[Map Editor] DOE draft save failed:', e);
+  }
+}
+
+function applyDoeDraft(table, mapKey) {
+  try {
+    const raw = localStorage.getItem(doeDraftKey(table, mapKey));
+    if (!raw) return false;
+    const doe = JSON.parse(raw);
+    if (!doe || typeof doe !== 'object') return false;
+    let applied = false;
+    legend.forEach(l => {
+      const d = doe[l.value];
+      if (!d) return;
+      l.knobs = normalizeKnobs(d.knobs);
+      l.bands = normalizeBands(d.bands);
+      if (l.knobs.length || l.bands.length) applied = true;
+    });
+    return applied;
+  } catch (e) { return false; }
 }
 
 // ── Split Registry 서버 IO ──────────────────────────
@@ -2050,13 +2240,53 @@ async function fetchLegendFromServer(refTable, mapKey) {
   return parseLegendRegistryRows(result, !mapKey);
 }
 
+// 같은 조회를 예외 없이 쓰는 형태. 로드·저장 양쪽이 이 한 함수만 쓴다 —
+// 조회 규율(절단 = 실패)의 구현이 둘로 갈리면 한쪽만 방어된다.
+async function readRegistryScope(refTable, mapKey) {
+  try {
+    return { ok: true, rows: await fetchLegendFromServer(refTable, mapKey) };
+  } catch (e) {
+    return { ok: false, rows: [], error: e && e.message ? e.message : String(e) };
+  }
+}
+
+// 서버 registry 행을 화면 legend에 반영한다 (로드·저장중 채택 공용).
+// ⚠️ registry에 없는 값의 DOE 필드는 **비운다**. knobs/bands는 (테이블, 맵 키) 하나의
+//    것이라, 같은 테이블의 다른 맵을 열었을 때 앞 맵의 스택이 남아 있으면
+//    화면은 멀쩡한데 값이 틀린다.
+function applyRegistryRowsToLegend(rows) {
+  const byValue = new Map((rows || []).map(r => [String(r.value), r]));
+  legendMeta = {};
+  legend.forEach(item => {
+    const r = byValue.get(String(item.value));
+    if (r) {
+      if (r.desc) item.desc = r.desc;
+      if (r.color) item.color = r.color;
+      item.knobs = normalizeKnobs(r.knobs);
+      item.bands = normalizeBands(r.bands);
+      legendMeta[item.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
+      byValue.delete(String(item.value));
+    } else {
+      item.knobs = [];
+      item.bands = [];
+    }
+  });
+  byValue.forEach(r => {
+    legend.push(normalizeLegendItem(r));
+    legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
+  });
+  if (legend.length > 0 && !legend.some(l => l.value === activeBrush)) {
+    activeBrush = legend[0].value;
+  }
+}
+
 // legend 로드 오케스트레이터: 서버 registry 우선 → localStorage 캐시 폴백 → DEFAULT
 async function loadLegend(refTable, mapKey) {
   legendMeta = {};
   try {
     const rows = await fetchLegendFromServer(refTable, mapKey);
     if (rows.length > 0) {
-      legend = rows.map(r => ({ value: r.value, desc: r.desc, color: r.color }));
+      legend = rows.map(normalizeLegendItem);
       rows.forEach(r => { legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at }; });
       activeBrush = legend[0].value;
       saveLegendToStorage(); // 서버 로드 성공 시 오프라인 캐시 동기화
@@ -2071,46 +2301,114 @@ async function loadLegend(refTable, mapKey) {
   }
 }
 
-// Save the whole legend of one map to the registry. Silently skipped (false) when
-// the map key is not resolved yet.
+// Save the whole legend (= the whole DOE) of one map to the registry.
 //
-// The unit of this write is a map's ENTIRE legend, so it is a `replace_map` write
-// (scope = map_key_columns = ref_table|map_key): a value the user removed is gone
-// from the set, and that alone deletes it on the server. It used to be an upsert
-// only, so the removed value's registry row survived and loadExistingMap resurrected
-// it on the next load (its "values defined only in the registry are re-exposed as
-// brushes" branch) - that was the "deletion does not stick" bug.
+// The unit of this write is a map's ENTIRE set of values, so it is a `replace_map`
+// write (scope = map_key_columns = ref_table|map_key): a value, a band or a material
+// the user removed is simply absent from the set, and that alone deletes it on the
+// server. There is no separate delete step to forget to run.
 //
-// Replace authority comes only from `legendReplaceScope`, i.e. from having read THIS
-// map's registry successfully. Replacing with a legend that did not come from that
-// map's own rows would delete rows we never saw - the same hazard as Push's
-// "a mismatched map key wipes another map's cells". Without authority we fall back
-// to the previous upsert-only write: failing to delete beats deleting blindly.
+// Three things gate it, and each one exists because losing them cost real data:
+//
+//  1. AUTHORITY (`legendReplaceScope`) - only a legend that came from THIS map's own
+//     registry rows may replace them. Replacing with a screen that never read the map
+//     would delete rows we never saw.
+//  2. TRUNCATION - a partial read is not a read (fetchLegendFromServer throws), and a
+//     failed read blocks the write instead of downgrading it. Downgrading to an upsert
+//     used to be safe when the row held only desc/color; now the row holds the plan,
+//     so an upsert from an unverified screen would overwrite bands we never saw.
+//  3. CONCURRENCY (M2.6) - `replace_map` purges the whole scope, so with several people
+//     on one plan the later save erases the other's values silently. Before replacing we
+//     re-read and compare against the fingerprint we loaded. Different = refuse and say
+//     so. One extra read on the write path; one row per value makes it cheap.
+//
+// Returns { ok, reason } - the caller turns `reason` into what the user is told.
 async function saveLegendToServer(mapKeyOverride) {
   const mapKey = mapKeyOverride || getCurrentMapKey();
-  if (!selectedTable || !mapKey) return false;
-  const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, getLocalTimeString());
-  if (updates.length === 0) return false;
-  const replaceMap = !!legendReplaceScope
+  if (!selectedTable || !mapKey) return { ok: false, reason: 'no-map-key' };
+
+  if (legendConflict && legendConflict.table === selectedTable && legendConflict.mapKey === mapKey) {
+    return { ok: false, reason: 'conflict' };
+  }
+
+  // The one read that both the authority check and the concurrency check need.
+  const read = await readRegistryScope(selectedTable, mapKey);
+  if (!read.ok) return { ok: false, reason: 'unknown-server-state', error: read.error };
+
+  const hasAuthority = !!legendReplaceScope
     && legendReplaceScope.table === selectedTable
     && legendReplaceScope.mapKey === mapKey;
+
+  if (!hasAuthority) {
+    if (read.rows.length > 0) {
+      // The screen never saw this map's rows and the server has some. Adopt them and
+      // end this cycle WITHOUT writing - the same C1 discipline as before: recovering
+      // the read does not retroactively make the screen a server-derived set.
+      applyRegistryRowsToLegend(read.rows);
+      legendReplaceScope = { table: selectedTable, mapKey, fingerprint: registryFingerprint(read.rows) };
+      renderLegendTable();
+      renderGridCanvas();
+      return { ok: false, reason: 'adopted' };
+    }
+    // Read succeeded and the scope is empty - there is nothing we could delete unseen.
+    legendReplaceScope = { table: selectedTable, mapKey, fingerprint: registryFingerprint([]) };
+  } else if (registryFingerprint(read.rows) !== legendReplaceScope.fingerprint) {
+    legendConflict = { table: selectedTable, mapKey };
+    return { ok: false, reason: 'conflict' };
+  }
+
+  const nowStr = getLocalTimeString();
+  const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, nowStr);
+  if (updates.length === 0) return { ok: false, reason: 'empty' };
   try {
     const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates, replace_map: replaceMap })
+      body: JSON.stringify({ updates, replace_map: true })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const nowStr = getLocalTimeString();
+    // `replace_map` purged the scope and wrote exactly this payload, so the server
+    // now holds it - that is the new baseline. Both sides go through
+    // canonRegistryRow, so "what we sent" and "what we would read back" are the
+    // same normal form and a second save in a row cannot see a phantom conflict.
+    legendReplaceScope = {
+      table: selectedTable, mapKey,
+      fingerprint: registryFingerprint(legend.map(item => ({
+        value: item.value, desc: (item.desc || '').trim(), color: item.color,
+        knobs: item.knobs, bands: item.bands, eventtime: nowStr,
+      }))),
+    };
     legend.forEach(item => {
       legendMeta[item.value] = { updated_by: CURRENT_USER, updated_at: nowStr };
     });
     renderLegendMetaOnly();
-    return true;
+    return { ok: true, at: nowStr };
   } catch (e) {
     console.warn('[Map Editor] split registry save skipped (offline?):', e);
-    return false;
+    return { ok: false, reason: 'error', error: e && e.message ? e.message : String(e) };
   }
+}
+
+// 저장 결과 → 사용자 문구 (한 곳에서만). 패널 헤더 칩과 토스트가 같은 판정을 쓴다.
+const LEGEND_SAVE_MESSAGE = {
+  'unknown-server-state': '서버 DOE 상태를 확인하지 못해 **저장을 보류**했습니다 — 편집은 이 브라우저에만 있습니다. 맵을 다시 열면 재시도합니다.',
+  conflict: '다른 사람이 이 계획을 변경했습니다 — 저장하지 않았습니다. 맵을 다시 불러온 뒤 편집하십시오.',
+  adopted: '서버에 저장된 계획을 불러왔습니다. 그 사이 편집한 내용은 서버에 반영되지 않았습니다.',
+  error: 'DOE·legend 서버 저장 실패 — 이 편집은 팀에 공유되지 않았습니다 (로컬 초안만).',
+};
+
+function applyLegendSaveResult(r) {
+  if (r.ok) {
+    legendSaveState = { status: 'ok', at: r.at || '', error: '' };
+  } else if (r.reason === 'no-map-key' || r.reason === 'empty') {
+    return;   // 맵 키 미확정은 실패가 아니다 (push 때 일괄 저장)
+  } else {
+    legendSaveState = { status: r.reason === 'adopted' ? 'ok' : r.reason, at: '', error: r.error || '' };
+    const msg = LEGEND_SAVE_MESSAGE[r.reason];
+    if (msg) showToast(msg, r.reason === 'adopted' ? 'warning' : (r.reason === 'error' ? 'error' : 'warning'),
+      { dedupeKey: `legend_save_${r.reason}` });
+  }
+  notifyLegendChanged();
 }
 
 // 입력 도중 포커스를 깨지 않도록 디바운스 서버 저장
@@ -2119,13 +2417,18 @@ function scheduleLegendServerSave() {
   legendServerSaveTimer = setTimeout(async () => {
     const mapKey = getCurrentMapKey();
     if (!selectedTable || !mapKey) return;   // 맵 키 미확정은 실패가 아니다 (push 때 일괄 저장)
-    const ok = await saveLegendToServer();
-    // [M5] 종전에는 반환값 false를 호출부가 버려 **팀 공유 legend가 갱신 안 된 사실이 증발**했다.
-    if (!ok) {
-      showToast('legend(split registry) 서버 저장 실패 — 이 설명·색은 팀에 공유되지 않았습니다 (로컬 캐시만).',
-        'warning', { dedupeKey: 'legend_registry_save_failed' });
-    }
+    // [M5] 종전에는 반환값을 호출부가 버려 **팀 공유 legend가 갱신 안 된 사실이 증발**했다.
+    applyLegendSaveResult(await saveLegendToServer());
   }, 800);
+}
+
+// 패널 헤더가 읽는 저장 상태 (판정은 위 한 곳에서만 만들어진다)
+function getPlanSaveState() {
+  const mapKey = getCurrentMapKey();
+  if (legendConflict && legendConflict.table === selectedTable && legendConflict.mapKey === mapKey) {
+    return { status: 'conflict', at: '', error: LEGEND_SAVE_MESSAGE.conflict };
+  }
+  return { ...legendSaveState };
 }
 
 // legend 변조의 단일 영속화 관문: 캐시 즉시 + 서버 디바운스
@@ -2378,7 +2681,7 @@ function addLegendRowForPanel() {
   const used = new Set(legend.map(l => l.color));
   const color = colors.find(c => !used.has(c)) || colors[legend.length % colors.length];
   const value = `D${nextVal}`;
-  legend.push({ value, desc: '', color });
+  legend.push(normalizeLegendItem({ value, desc: '', color }));
   persistLegend();
   renderLegendTable();
   return value;
@@ -2399,10 +2702,15 @@ function updateLegendRowForPanel(value, patch) {
       remapGridValues(oldVal, nv);
       if (activeBrush === oldVal) activeBrush = nv;
       delete legendMeta[oldVal];
+      // 값 이름이 바뀌어도 bands/knobs는 같은 행에 그대로 붙어 있다 —
+      // DOE가 값 행 자체이므로 별도 이사가 필요 없다(구 map_doe 시절엔 필요했다).
     }
   }
   if (patch.desc !== undefined) item.desc = String(patch.desc);
   if (patch.color !== undefined) item.color = String(patch.color);
+  // DOE 필드는 패널이 만든 새 배열로 통째 교체한다 (제자리 수정 금지 — getLegend가 복사본이다)
+  if (patch.bands !== undefined) item.bands = normalizeBands(patch.bands);
+  if (patch.knobs !== undefined) item.knobs = normalizeKnobs(patch.knobs);
   persistLegend();
   renderLegendTable();
   renderGridCanvas();
@@ -2803,11 +3111,11 @@ async function loadExistingMap(opts = {}) {
           }
           
           usedColors.add(chosenColor);
-          newLegend.push({
+          newLegend.push(normalizeLegendItem({
             value: v,
             desc: v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`),
             color: chosenColor
-          });
+          }));
         }
       });
 
@@ -2828,48 +3136,31 @@ async function loadExistingMap(opts = {}) {
     // 값 일치 항목은 override, 그리드에 없지만 registry에 정의된 값은 브러시로 추가 노출.
     legendReplaceScope = null;   // the claim below is about to be re-established, or lost
     if (loadedMapKey) {
-      try {
-        const regRows = await fetchLegendFromServer(selectedTable, loadedMapKey);
+      const read = await readRegistryScope(selectedTable, loadedMapKey);
+      if (read.ok) {
         // Read succeeded (0 rows is a complete answer too), so the on-screen legend is
-        // now this map's registry merged into it: it may replace this map's rows.
-        legendReplaceScope = { table: selectedTable, mapKey: loadedMapKey };
-        if (regRows.length > 0) {
-          const byValue = new Map(regRows.map(r => [r.value, r]));
-          legendMeta = {};
-          legend.forEach(item => {
-            const r = byValue.get(String(item.value));
-            if (r) {
-              if (r.desc) item.desc = r.desc;
-              if (r.color) item.color = r.color;
-              legendMeta[item.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
-              byValue.delete(String(item.value));
-            }
-          });
-          byValue.forEach(r => {
-            legend.push({ value: r.value, desc: r.desc, color: r.color });
-            legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
-          });
-          if (legend.length > 0 && !legend.some(l => l.value === activeBrush)) {
-            activeBrush = legend[0].value;
-          }
-          saveLegendToStorage();
-          renderLegendTable();
-        } else {
-          // 서버 접근은 됐지만 이 맵의 registry가 비어 있다 = 이 맵에는 등록된 DOE가 없다.
-          // 묻지 않고 **깨끗이 초기화**한다: legendMeta는 이전 맵(같은 테이블)의 수정자·시각을
-          // 그대로 들고 있어, 그냥 두면 남의 맵 이력이 이 맵의 것처럼 보인다.
-          // legend 값·색 자체의 로드 순서(서버 → 로컬 캐시 → 기본값)는 건드리지 않는다.
-          legendMeta = {};
-          renderLegendTable();
-        }
-      } catch (e) {
+        // now this map's registry merged into it: it may replace this map's rows, and
+        // what we just read is the baseline the concurrency check compares against.
+        // 값·색뿐 아니라 **이 맵에 없는 값의 knobs/bands를 비우는 것**까지
+        // applyRegistryRowsToLegend 한 곳에서 한다 (앞 맵의 스택 잔재 차단).
+        applyRegistryRowsToLegend(read.rows);
+        legendReplaceScope = { table: selectedTable, mapKey: loadedMapKey, fingerprint: registryFingerprint(read.rows) };
+        legendConflict = null;          // 화면이 다시 서버본에서 유래한다
+        legendSaveState = { status: 'idle', at: '', error: '' };
+        saveLegendToStorage();
+        renderLegendTable();
+      } else {
         // Read failed or was truncated -> the on-screen legend is NOT this map's
-        // registry, so it must never replace it. Tell the user, because from here
-        // on removing a DOE value cannot stick.
+        // registry, so it must never replace it, and it must not be upserted over
+        // either: the row now carries the plan. Keep the local DOE draft on screen so
+        // the user's typing is not lost, and say plainly that saving is on hold.
         legendReplaceScope = null;
-        console.warn('[Map Editor] split registry apply skipped:', e);
-        showToast('DOE 정의(registry) 조회에 실패했습니다 — 이 맵에서는 DOE를 지워도 서버에 반영되지 않습니다. '
-          + `맵을 다시 열면 재시도합니다 (${e && e.message ? e.message : e})`,
+        const hadDraft = applyDoeDraft(selectedTable, loadedMapKey);
+        legendSaveState = { status: 'unknown-server-state', at: '', error: read.error || '' };
+        renderLegendTable();
+        console.warn('[Map Editor] split registry apply skipped:', read.error);
+        showToast('DOE 정의(registry) 조회에 실패했습니다 — 이 맵에서는 서버 저장을 보류합니다'
+          + `${hadDraft ? ' (이 브라우저의 초안을 표시 중)' : ''}. 맵을 다시 열면 재시도합니다 (${read.error || '알 수 없음'})`,
           'warning', { dedupeKey: 'legend_registry_load_failed' });
       }
     }
@@ -3134,13 +3425,17 @@ async function pushMapData() {
       framePushed = true;
       notifyMapContext();
 
-      // [Split Registry] 맵과 서술의 원자적 동행 — push 성공 시 legend 일괄 서버 저장
+      // [Split Registry] 맵과 계획의 원자적 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장
       saveLegendToStorage();
       const legendSaved = await saveLegendToServer(mapIdStr);
-      if (legendSaved) {
-        showToast(`Split 서술 registry 저장 완료 (${legend.length}건)`, 'success');
-      } else {
-        showToast('Split 서술 registry 저장 실패 — 오프라인 캐시에만 보관됨', 'warning');
+      applyLegendSaveResult(legendSaved);
+      if (legendSaved.ok) {
+        showToast(`DOE·split 서술 registry 저장 완료 (${legend.length}건)`, 'success');
+      } else if (legendSaved.reason !== 'adopted' && legendSaved.reason !== 'conflict'
+                 && legendSaved.reason !== 'unknown-server-state') {
+        // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
+        // 여기서 "오프라인 캐시"로 덮어 말하면 원인이 사라진다.
+        showToast('DOE·split 서술 registry 저장 실패 — 오프라인 캐시에만 보관됨', 'warning');
       }
 
       if (metaPushFailed) {
@@ -3279,11 +3574,11 @@ function selectEdgeCells(target) {
 function autoPaintE1E2() {
   let legendUpdated = false;
   if (!legend.some(item => item.value === 'E1')) {
-    legend.push({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' });
+    legend.push(normalizeLegendItem({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' }));
     legendUpdated = true;
   }
   if (!legend.some(item => item.value === 'E2')) {
-    legend.push({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' });
+    legend.push(normalizeLegendItem({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' }));
     legendUpdated = true;
   }
   if (legendUpdated) {
@@ -3555,11 +3850,15 @@ function snapshotEditorState() {
     // authority belongs with it. Dropping it here would silently downgrade the
     // parent map to upsert-only after a round trip = deletions stop sticking.
     legendReplaceScope: legendReplaceScope ? { ...legendReplaceScope } : null,
+    // A conflict is a fact about the parent map's server state, not about the frame
+    // we are entering. Dropping it here would let a round trip clear the refusal.
+    legendConflict: legendConflict ? { ...legendConflict } : null,
+    legendSaveState: { ...legendSaveState },
     framePushed,
     tableSelectValue: el.tableSelect ? el.tableSelect.value : '',
     gridData: { ...gridData },
     loadedFCells: new Set(loadedFCells),
-    legend: legend.map(l => ({ ...l })),
+    legend: cloneLegend(legend),
     legendMeta: { ...legendMeta },
     activeBrush,
     metaValues,
@@ -3617,7 +3916,7 @@ function restoreEditorState(s) {
 
   gridData = { ...s.gridData };
   loadedFCells = new Set(s.loadedFCells);
-  legend = s.legend.map(l => ({ ...l }));
+  legend = cloneLegend(s.legend);
   legendMeta = { ...s.legendMeta };
   activeBrush = s.activeBrush;
 
@@ -3630,6 +3929,8 @@ function restoreEditorState(s) {
 
   loadedIdentity = s.loadedIdentity ? { ...s.loadedIdentity } : null;
   legendReplaceScope = s.legendReplaceScope ? { ...s.legendReplaceScope } : null;
+  legendConflict = s.legendConflict ? { ...s.legendConflict } : null;
+  legendSaveState = s.legendSaveState ? { ...s.legendSaveState } : { status: 'idle', at: '', error: '' };
   framePushed = !!s.framePushed;
 
   renderLegendTable();
@@ -3810,6 +4111,8 @@ async function openMapFrame(spec) {
     editorFrames.push(frame);
     loadedIdentity = null;
     legendReplaceScope = null;   // the new frame has not read any registry yet
+    legendConflict = null;       // and it carries no conflict of its own yet
+    legendSaveState = { status: 'idle', at: '', error: '' };
     overlayLayers = [];
     recomputeActiveOverlays();
     renderOverlayList();
@@ -4453,7 +4756,7 @@ function ensureLegendValues(values) {
     const used = new Set(legend.map(l => l.color));
     const color = palette.find(c => !used.has(c))
       || '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-    legend.push({ value: String(v), desc: '', color });
+    legend.push(normalizeLegendItem({ value: String(v), desc: '', color }));
     added.push(String(v));
   });
   if (added.length > 0) saveLegendToStorage(); // 로컬 캐시만 — 서버 registry는 Push 시점에

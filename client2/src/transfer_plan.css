@@ -298,8 +298,8 @@
 .tp-doe-del:hover { background: var(--danger-weak); color: var(--danger); }
 
 /* ── 밴드(STACK 구간) 카드 ─────────────────────────────
-   DOE 행 1건 = (값, 구간). 구간이 하나면 카드가 하나뿐이라 종전과 같아 보이고,
-   구간을 추가하면 카드가 세로로 쌓인다. */
+   연속 스택의 한 마디. 사용자가 입력하는 값은 **끝 층 하나**뿐이고,
+   시작 층·층 수·소요는 전부 파생이라 읽기 전용 텍스트로 붙는다. */
 .tp-band {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -310,7 +310,33 @@
   gap: 7px;
 }
 .tp-band + .tp-band { margin-top: 2px; }
-.tp-band .tp-asg-l1 { grid-template-columns: 1fr 82px auto; }
+
+/* 유도값(범위) → 입력(끝 층) → 삭제. 입력이 하나뿐이라 폭을 고정한다. */
+.tp-band-l1 {
+  display: grid;
+  grid-template-columns: 1fr 74px auto;
+  gap: 8px;
+  align-items: end;
+}
+.tp-band-range {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tp-band-range b { color: var(--accent-2); font-weight: 600; }
+
+/* 파생 소요 — 사용자가 머릿속으로 곱하던 것을 식 그대로 보여주는 자리 */
+.tp-band-calc {
+  font-size: 0.71rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  border-top: 1px dashed var(--border);
+  padding-top: 5px;
+}
 
 .tp-band-del {
   border: 1px solid transparent;
