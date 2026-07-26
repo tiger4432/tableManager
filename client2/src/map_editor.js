@@ -927,19 +927,51 @@ function fillColumnDropdowns() {
 // ----------------------------------------------------
 // Coordinates Mapping Calculation
 // ----------------------------------------------------
+
+// ── [변환 일원화] 프레임 창(frame window) ─────────────────────────────
+// 좌표 변환 함수들은 규격(치수·물리 파라미터)을 **화면 컨트롤(DOM)** 에서 읽는다.
+// 오버레이는 소스 맵을 **소스 자신의 메타 프레임**으로 해석해야 하므로, 그 계산 동안만
+// 읽기 지점을 갈아끼운다. 이것이 오버레이 전용 변환식을 새로 쓰지 않기 위한 유일한 장치다 —
+// 변환식은 이 파일에 **하나뿐**이고, 메인 로드는 "프레임 == 현재 화면 컨트롤"인 특수 케이스다.
+//
+// ⚠️ 동기 실행 전용. fn 안에서 await 하면 그 사이 다른 코드가 뒤집힌 프레임을 보게 된다.
+let physFrameOverride = null;
+
+// 기존 규약 `parseFloat(input.value) || 기본값`을 그대로 유지한다(0 → 기본값).
+function physNum(key, domEl, dflt) {
+  if (physFrameOverride && physFrameOverride[key] !== undefined && physFrameOverride[key] !== null) {
+    const ov = parseFloat(physFrameOverride[key]);
+    if (Number.isFinite(ov)) return ov || dflt;
+  }
+  const v = domEl ? parseFloat(domEl.value) : NaN;
+  return v || dflt;
+}
+
+function gridDimNum(key, domEl, dflt) {
+  if (physFrameOverride && physFrameOverride[key] !== undefined && physFrameOverride[key] !== null) {
+    const ov = parseInt(physFrameOverride[key], 10);
+    if (Number.isFinite(ov)) return ov || dflt;
+  }
+  const v = parseInt(domEl ? domEl.value : '', 10);
+  return v || dflt;
+}
+
+function withPhysFrame(frame, fn) {
+  const prev = physFrameOverride;
+  physFrameOverride = frame || null;
+  try { return fn(); } finally { physFrameOverride = prev; }
+}
+
 function getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side) {
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const origChipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
-  const origChipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
-  let origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
-  let origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
-
-  if (side === 'back') {
-    origOffsetX = -origOffsetX;
-  }
+  // ⚠️ Do not read the physical spec (chip/offset) straight from the DOM here — that bypasses
+  //    the frame window (physFrameOverride) and would silently contaminate source-frame math
+  //    with on-screen values. Go through physNum() if you ever need them.
+  //    (Four unused leftovers were removed: this is a per-cell, per-frame hot path, so their
+  //     four parseFloat calls were pure waste.)
 
   // Get screen-space shift for the current rotation in cell units
   const physConfig = getTransformedPhysicalConfig(rotation, side);
@@ -1038,15 +1070,17 @@ function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, st
 let boundingBoxCache = {};
 
 function getWaferBoundingBox(rotation, side) {
-  const dia = el.physWaferDia ? el.physWaferDia.value : '300';
-  const cx = el.physChipX ? el.physChipX.value : '2.5';
-  const cy = el.physChipY ? el.physChipY.value : '2.5';
-  const ox = el.physOffsetX ? el.physOffsetX.value : '0';
-  const oy = el.physOffsetY ? el.physOffsetY.value : '0';
-  const em = el.physEdgeMargin ? el.physEdgeMargin.value : '3';
+  // 프레임 창이 열려 있으면 소스 메타 값이, 아니면 화면 컨트롤 값이 읽힌다.
+  // 캐시 키를 해석된 실값으로 만들어야 두 프레임의 바운딩박스가 서로를 덮어쓰지 않는다.
+  const dia = physNum('waferDia', el.physWaferDia, 300);
+  const cx = physNum('chipX', el.physChipX, 2.5);
+  const cy = physNum('chipY', el.physChipY, 2.5);
+  const ox = physNum('offsetX', el.physOffsetX, 0.0);
+  const oy = physNum('offsetY', el.physOffsetY, 0.0);
+  const em = physNum('edgeMargin', el.physEdgeMargin, 3.0);
 
-  const cols = parseInt(el.gridCols ? el.gridCols.value : '10', 10) || 10;
-  const rows = parseInt(el.gridRows ? el.gridRows.value : '10', 10) || 10;
+  const cols = gridDimNum('cols', el.gridCols, 10);
+  const rows = gridDimNum('rows', el.gridRows, 10);
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -1103,13 +1137,13 @@ function getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, inver
 }
 
 function getTransformedPhysicalConfig(currentRotation, currentSide) {
-  const waferDia = el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300;
-  const edgeMargin = el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0;
+  const waferDia = physNum('waferDia', el.physWaferDia, 300);
+  const edgeMargin = physNum('edgeMargin', el.physEdgeMargin, 3.0);
   const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
-  const origChipX = el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5;
-  const origChipY = el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5;
-  let origOffsetX = el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0;
-  let origOffsetY = el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0;
+  const origChipX = physNum('chipX', el.physChipX, 2.5);
+  const origChipY = physNum('chipY', el.physChipY, 2.5);
+  let origOffsetX = physNum('offsetX', el.physOffsetX, 0.0);
+  let origOffsetY = physNum('offsetY', el.physOffsetY, 0.0);
 
   if (currentSide === 'back') {
     origOffsetX = -origOffsetX;
@@ -1709,8 +1743,11 @@ function renderGridCanvas() {
         ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
       }
 
-      // 5b. [오버레이] 서버가 타깃 프레임으로 정렬해 준 좌표를 마커로 겹쳐 그린다.
-      //     좌표 변환 금지 — 응답 좌표를 그대로 쓴다. 셀 값은 덮지 않고 마커만 얹는다.
+      // 5b. [Overlay] Layer cells are keyed by **physical coordinate** — projectCellsToPhys
+      //     projected them through the source map's own frame — and coordKey in this loop is
+      //     the same physical key, so nothing is transformed here. When the on-screen geometry
+      //     changes, the main map and the overlay move together under the same rule.
+      //     Cell values are never overwritten; only markers are drawn on top.
       if (activeOverlayLayers.length > 0) {
         drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH);
       }
@@ -2427,7 +2464,15 @@ async function fetchGridMetaFor(table, mapId) {
     map_id: { filterType: 'text', type: 'equals', filter: String(mapId) },
   };
   const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=2&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
-  if (!res.ok) return null;
+  // 🔴 [M2 fix] Same discipline as fetchPaintRules — distinguish "there is no declaration"
+  //    from "we could not confirm". This used to return null on every failure, and the overlay
+  //    path read that null as "spec not registered" and silently fell back to the on-screen
+  //    frame (identity). A single 500 then placed markers at the wrong coordinates while the
+  //    chip displayed "무보정 / 소스 맵 규격 미등록" — a reason that is simply false.
+  //    · 404/405 → server has no such spec table. "No declaration" is the correct reading (null).
+  //    · anything else → could not confirm. Throw and let the caller decide.
+  if (res.status === 404 || res.status === 405) return null;
+  if (!res.ok) throw new Error(`맵 규격 조회 실패 (HTTP ${res.status})`);
   const result = await res.json();
   const rows = (result && Array.isArray(result.data)) ? result.data : [];
   if (rows.length === 0) return null;
@@ -3769,16 +3814,30 @@ function popMapFrame() {
 }
 
 // ====================================================
-// [범용] 맵 오버레이 엔진
-// 임의의 맵을 임의의 맵 위에 겹쳐 본다. map meta가 달라도 **서버가 정렬**해 준다.
+// [범용] 맵 오버레이 엔진 — **클라 단일 변환 구현** (총괄 아키텍처 결정 2026-07-26)
 //
-// 서버 계약 (총괄 확정 — 서버부 구현 예정, 현재는 404 → graceful):
-//   GET /api/maps/overlay?target_table=&target_key=&source_table=&source_key=
-//     → { source_table, source_key, cells:[{x,y,val}], count,
-//         align_applied: bool, status: "ok"|"align_unavailable"|..., truncated?: bool }
-//   · cells의 좌표는 **이미 타깃 프레임**이다 → 클라는 변환 금지, 그대로 렌더.
-//   · status가 정상이 아니면 겹치지 않는다. 조용히 원본 좌표로 그리면
-//     EDS(align rotation 180)처럼 180° 뒤집힌 거짓 그림이 된다.
+//   소스 원본 (x,y) ─[소스 자신의 메타 프레임]─▶ 물리 좌표 ─[타깃의 현재 화면 컨트롤]─▶ 셀
+//
+// 오버레이 = "다른 맵을 격자 대신 레이어에 로드하는 것". 그 이상도 이하도 아니다.
+// 따라서 오버레이 전용 변환 코드는 **없다** — 메인 로드(loadExistingMap)가 쓰는
+// `getCellFromVisualCoords` → `getPhysicalCoords` 두 줄을, 소스 프레임을 씌운 채 실행할 뿐이다.
+// 메인 로드는 "소스 메타 == 현재 컨트롤"인 특수 케이스다.
+//
+// [왜 서버 정렬을 그만두는가] 서버는 *가져오는 순간* 저장된 메타로 정렬을 끝내 타깃 프레임
+// 좌표로 내려줬고, 클라는 이중 변환 금지 규약으로 재변환하지 않았다. 그래서 화면 컨트롤
+// (rot·side·invertY·start·치수·물리 파라미터) 수정이 서버에 전달될 경로가 없었고 정렬이
+// **저장된 메타 시점에 굳었다** — "클라에서 변환 수정해도 오버레이는 안 따라오네"의 정체.
+// 게다가 서버/클라 두 구현이 어긋나 결함이 두 번 났다(QA B1·A1). 구현이 하나면 그 부류가 소멸한다.
+//
+// [gridData가 물리 키인 것이 정합의 열쇠]
+// gridData는 `${px}_${py}`(물리 키)로 저장되고 렌더가 매 프레임 (c,r)→물리로 되짚어 그린다.
+// 오버레이 셀도 **같은 물리 키**로 들고 있으면, 사용자가 화면 컨트롤을 어떻게 돌리든
+// 메인 맵과 **같은 규칙으로 같이** 움직인다. 물리 키는 소스 메타만으로 결정되므로
+// 화면 조작에 불변이고, 화면 조작은 렌더 단계에서 양쪽에 똑같이 적용된다.
+//
+// [서버에 남는 것 — Phase 2] 계측 보정(`align_overrides`)은 메타로 유도 불가능한 **데이터**라
+// 서버가 계속 소유한다. Phase 1은 보정을 적용하지 않으므로, 보정이 **선언돼 있으면**
+// 그리지 않고 명시적으로 실패한다(무시하고 그리면 조용한 거짓 그림).
 // ====================================================
 const OVERLAY_COLORS = ['#ef4444', '#3b82f6', '#f59e0b', '#a855f7', '#14b8a6', '#ec4899'];
 let overlayLayers = [];        // { id, sourceTable, sourceKey, cells:Map(physKey->val), count, color, visible, status, alignApplied, truncated }
@@ -3810,26 +3869,93 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
   }
 }
 
-// 서버가 준 (타깃 프레임) 좌표 → 현재 격자의 물리 키로 배치한다.
-// ⚠️ 회전·반전을 여기서 적용하지 않는다(서버가 이미 타깃 프레임으로 정렬했다 — 이중 변환 금지).
-// 아래는 "논리 (x,y) → 캔버스 셀 → 물리 키"라는 기존 맵 로드와 동일한 배치 매핑일 뿐이며,
-// loadExistingMap이 타깃 맵 자신의 셀에 쓰는 것과 정확히 같은 경로다.
-function overlayCellsToPhysMap(cells) {
-  const cols = parseInt(el.gridCols.value, 10) || 10;
-  const rows = parseInt(el.gridRows.value, 10) || 10;
-  const startX = parseInt(el.gridStartX.value, 10) || 0;
-  const startY = parseInt(el.gridStartY.value, 10) || 0;
-  const invertY = el.gridYInvert.checked;
-  const map = new Map();
-  (Array.isArray(cells) ? cells : []).forEach(c => {
-    const xn = Number(c.x);
-    const yn = Number(c.y);
-    if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
-    const cell = getCellFromVisualCoords(xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-    const p = getPhysicalCoords(cell.c, cell.r, cols, rows, currentRotation, currentSide);
-    map.set(`${p.x}_${p.y}`, c.val !== undefined && c.val !== null ? String(c.val) : '');
+// ── 프레임 기술자 ────────────────────────────────────────────
+// 좌표계를 정의하는 축 전부: 치수·시작좌표·y반전·회전·면 + 물리 파라미터.
+// 메타에 없는 물리 항목은 undefined로 남겨 두면 프레임 창에서 **현재 화면 값으로 폴백**한다
+// (그래서 물리 파라미터가 기하 시그니처에 반드시 들어가야 한다 — 아래 currentGeomSignature).
+function frameFromMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const num = (v) => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const cols = num(meta.grid_cols);
+  const rows = num(meta.grid_rows);
+  if (cols === undefined || rows === undefined) return null;   // 치수 없는 메타는 프레임이 아니다
+  return {
+    cols, rows,
+    startX: num(meta.grid_start_x) !== undefined ? num(meta.grid_start_x) : 0,
+    startY: num(meta.grid_start_y) !== undefined ? num(meta.grid_start_y) : 0,
+    invertY: !!meta.grid_y_invert,
+    rotation: Number(meta.rotation) || 0,
+    side: meta.side === 'back' ? 'back' : 'front',
+    waferDia: num(meta.phys_wafer_dia),
+    chipX: num(meta.phys_chip_x),
+    chipY: num(meta.phys_chip_y),
+    offsetX: num(meta.phys_offset_x),
+    offsetY: num(meta.phys_offset_y),
+    edgeMargin: num(meta.phys_edge_margin),
+  };
+}
+
+// 현재 화면 컨트롤도 그냥 하나의 프레임이다 (물리 항목은 undefined = DOM 그대로).
+function currentFrame() {
+  return {
+    cols: parseInt(el.gridCols.value, 10) || 10,
+    rows: parseInt(el.gridRows.value, 10) || 10,
+    startX: parseInt(el.gridStartX.value, 10) || 0,
+    startY: parseInt(el.gridStartY.value, 10) || 0,
+    invertY: !!(el.gridYInvert && el.gridYInvert.checked),
+    rotation: currentRotation,
+    side: currentSide,
+  };
+}
+
+// 프레임의 모든 축을 실값으로 확정한다(undefined → 현재 화면 값). 축 비교의 유일한 근거.
+function resolveFrame(frame) {
+  const f = frame || currentFrame();
+  return withPhysFrame(f, () => ({
+    cols: gridDimNum('cols', el.gridCols, 10),
+    rows: gridDimNum('rows', el.gridRows, 10),
+    startX: f.startX, startY: f.startY,
+    invertY: !!f.invertY, rotation: Number(f.rotation) || 0,
+    side: f.side === 'back' ? 'back' : 'front',
+    waferDia: physNum('waferDia', el.physWaferDia, 300),
+    chipX: physNum('chipX', el.physChipX, 2.5),
+    chipY: physNum('chipY', el.physChipY, 2.5),
+    offsetX: physNum('offsetX', el.physOffsetX, 0.0),
+    offsetY: physNum('offsetY', el.physOffsetY, 0.0),
+    edgeMargin: physNum('edgeMargin', el.physEdgeMargin, 3.0),
+  }));
+}
+
+function frameAxesKey(rf) {
+  return [rf.rotation, rf.side, rf.invertY ? 1 : 0, rf.startX, rf.startY, rf.cols, rf.rows,
+          rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
+}
+
+// ── 변환의 전부 ──────────────────────────────────────────────
+// 소스 **원본 셀** → 물리 키 Map.
+// 아래 두 줄은 메인 로드(loadExistingMap의 셀 루프)와 **같은 함수·같은 인자 순서**이며,
+// 다른 점은 단 하나 — 규격을 소스 자신의 프레임에서 읽는다는 것뿐이다.
+// 결과인 물리 키는 화면 컨트롤에 불변이므로, 이후 사용자가 무엇을 돌리든
+// 렌더가 메인 맵과 오버레이를 **같은 규칙으로 함께** 움직인다.
+function projectCellsToPhys(cells, frame) {
+  const f = frame || currentFrame();
+  const { cols, rows, rotation, side, invertY, startX, startY } = f;
+  return withPhysFrame(f, () => {
+    const map = new Map();
+    (Array.isArray(cells) ? cells : []).forEach(c => {
+      const xn = Number(c.x);
+      const yn = Number(c.y);
+      if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
+      const cell = getCellFromVisualCoords(xn, yn, cols, rows, rotation, side, invertY, startX, startY);
+      const p = getPhysicalCoords(cell.c, cell.r, cols, rows, rotation, side);
+      map.set(`${p.x}_${p.y}`, (c.val === undefined || c.val === null) ? '' : String(c.val));
+    });
+    return map;
   });
-  return map;
 }
 
 // 실패한 오버레이도 목록에 **행으로 남긴다**. 토스트만 띄우고 끝내면
@@ -3840,7 +3966,7 @@ function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverrid
   const layer = {
     id: overlaySeq++,
     sourceTable: String(sourceTable), sourceKey: String(sourceKey),
-    rawCells: [], cells: new Map(), count: 0,
+    rawCells: [], cells: new Map(), count: 0, frame: null,
     color: 'var(--danger)', visible: false,
     failed: true, status: String(status || 'error'), reason: String(reason || ''),
     align: null, alignApplied: false, alignText: '', truncated: false, cap: null,
@@ -3852,12 +3978,91 @@ function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverrid
   return layer;
 }
 
+// ── 소스 맵 읽기 (메인 로드와 같은 REST 경로) ──────────────────────
+// 메인 로드는 `/tables/{t}/data` + `wafer_map_metadata`를 (target_table, map_id) 쌍으로 읽는다.
+// 오버레이도 정확히 그 두 경로만 쓴다 — 좌표는 **원본 그대로** 받아 클라가 변환한다.
+const OVERLAY_CELL_LIMIT = 2000;   // 메인 로드(loadExistingMap)와 같은 상한
+const overlaySchemaCache = new Map();
+
+async function fetchTableSchemaCached(table) {
+  if (overlaySchemaCache.has(table)) return overlaySchemaCache.get(table);
+  const res = await fetch(`${API_BASE}/tables/${table}/schema`);
+  if (!res.ok) throw new Error(`스키마 조회 실패 (HTTP ${res.status})`);
+  const schema = await res.json();
+  overlaySchemaCache.set(table, schema);   // 성공만 캐시 (실패 캐시는 M5 함정)
+  return schema;
+}
+
+const OVERLAY_SYSTEM_COLS = ['row_id', 'business_key_val', 'created_at', 'updated_at',
+  'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at', 'grid_metadata'];
+const OVERLAY_VAL_CANDIDATES = ['val', 'value', 'leg', 'grade', 'result', 'code', 'split', 'doe'];
+
+// 테이블 스키마에서 맵 좌표 바인딩을 유도한다(서버 derive_table_binding과 같은 규약).
+// 유도 불가면 null — 관례로 조용히 추측하지 않는다.
+function deriveMapBinding(schema) {
+  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];
+  if (!cols.includes('x') || !cols.includes('y')) return null;
+  let keyCols = Array.isArray(schema.map_key_columns) ? schema.map_key_columns.slice() : [];
+  if (keyCols.length === 0 && cols.includes('lot') && cols.includes('slot')) keyCols = ['lot', 'slot'];
+  if (keyCols.length === 0 && Array.isArray(schema.composite_key_source)) {
+    keyCols = schema.composite_key_source.filter(c =>
+      !['x', 'y', 'val', 'die_id', 'code', 'grid_metadata'].includes(String(c).toLowerCase()));
+  }
+  if (keyCols.length === 0) return null;
+  const excluded = new Set([...keyCols, 'x', 'y', schema.business_key, ...OVERLAY_SYSTEM_COLS]);
+  const val = OVERLAY_VAL_CANDIDATES.find(c => cols.includes(c) && !excluded.has(c))
+    || cols.find(c => !excluded.has(c)) || null;
+  return { x: 'x', y: 'y', val, keyColumns: keyCols };
+}
+
+// map_key('_' 조인)를 key_columns에 분해 — 마지막 컬럼이 나머지를 흡수(랏 이름의 '_' 방어).
+function buildKeyFilters(keyColumns, mapKey) {
+  const parts = String(mapKey).split('_');
+  const filters = {};
+  if (parts.length < keyColumns.length) {
+    filters[keyColumns[0]] = { filterType: 'text', type: 'equals', filter: String(mapKey) };
+    return filters;
+  }
+  const head = parts.slice(0, keyColumns.length - 1);
+  const tail = parts.slice(keyColumns.length - 1).join('_');
+  [...head, tail].forEach((v, i) => {
+    filters[keyColumns[i]] = { filterType: 'text', type: 'equals', filter: v };
+  });
+  return filters;
+}
+
+// [Phase 2 관문] 서버에 **계측 보정(align override)** 선언이 있는지만 묻는다(셀 1건).
+// Phase 1은 기하만 일원화했고 보정은 적용하지 않는다 — 선언이 있는데 무시하고 그리면
+// 조용한 거짓 그림이 되므로, 그 경우 겹치지 않고 명시적으로 실패한다.
+//
+// 🔴 [M2 fix] This used to return null (= "no declaration") on *every* failure, which made the
+//    gate fail-open: one dropped request and we draw while ignoring a declared override, with
+//    the chip reading "정렬됨" — precisely the state this gate exists to prevent. The premise of
+//    the old comment ("old servers and network errors are not grounds to block") conflated two
+//    different things. Split them the way fetchPaintRules does:
+//    · 404/405 → an old server that does not have this API. No declaration path exists → pass (null).
+//    · any other status / network error → could not confirm. Throw; the caller refuses explicitly.
+//
+// Returns: { origin, detail } | null (no declaration / old server) · throws (could not confirm)
+async function probeAlignDeclaration(targetTable, targetKey, sourceTable, sourceKey) {
+  const srcSpec = (sourceKey && sourceKey !== targetKey) ? `${sourceTable}:${sourceKey}` : sourceTable;
+  const params = new URLSearchParams({
+    target_table: targetTable, target_key: targetKey, sources: srcSpec, limit: '1',
+  });
+  const res = await fetch(`${API_BASE}/api/maps/overlay?${params.toString()}`);
+  if (res.status === 404 || res.status === 405) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const ov = (data && Array.isArray(data.overlays)) ? data.overlays[0] : null;
+  if (!ov || !ov.align_applied || typeof ov.align_applied !== 'object') return null;
+  return { origin: String(ov.align_applied.origin || ''), detail: ov.align_applied };
+}
+
 // 오버레이 추가. 성공하면 {layer}, 실패하면 {error} 반환 (조용한 실패 금지 — 목록에도 남는다).
 //
 // ⚠️ **불변 조건**: 이 함수는 편집 중인 맵을 **어떤 방식으로도 건드리지 않는다.**
 //    selectedTable / tableSchema / gridData / legend / 규격 / 브러시 / 메타 입력을 읽기만 하고
 //    쓰지 않으며, switchTable·renderMetadataInputs 경로를 타지 않는다.
-//    오버레이는 "서버에서 정렬된 좌표를 받아 렌더 레이어에 얹는 것"이 전부다.
 async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // 타깃(= 현재 캔버스) 프레임 식별자. 자재 맵처럼 메타 입력으로 표현되지 않는
   // 화면에서는 호출자가 명시적으로 넘긴다.
@@ -3871,75 +4076,174 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     pushFailedOverlay(sourceTable, sourceKey, status || 'error', msg, targetOverride);
     return { error: msg, status, ...(extra || {}) };
   };
-  // 확정 계약: sources=<csv> ("table" 또는 "table:key"), 응답은 overlays[] 배열
-  const srcSpec = (sourceKey && sourceKey !== targetKey) ? `${sourceTable}:${sourceKey}` : sourceTable;
-  const params = new URLSearchParams({
-    target_table: targetTable, target_key: targetKey, sources: srcSpec,
+  const errText = (e) => (e && e.message ? e.message : String(e));
+
+  // ① 계측 보정 선언 관문 (Phase 2 이관 항목의 안전판)
+  let decl;
+  try {
+    decl = await probeAlignDeclaration(targetTable, targetKey, sourceTable, sourceKey);
+  } catch (e) {
+    // Passing through unconfirmed means drawing while ignoring a declared override, labelled
+    // "정렬됨". That is the gate failing open — the one outcome it exists to prevent.
+    return fail(
+      `${sourceTable}: 계측 보정(align override) 선언 여부를 확인하지 못했습니다 — ${errText(e)}. ` +
+      `선언이 있는데 무시하고 겹치면 조용히 틀린 그림이 되므로 겹치지 않습니다.`,
+      'align_unconfirmed');
+  }
+  if (decl && (decl.origin === 'declared' || decl.origin === 'default')) {
+    return fail(
+      `${sourceTable}: 서버에 계측 보정(align override)이 선언돼 있습니다 — 기하 일원화(Phase 1)는 ` +
+      `보정을 적용하지 않으므로 겹치지 않습니다. 보정 적용은 Phase 2(서버가 (dx,dy,rot)만 내려주는 계약)입니다.`,
+      'align_override_declared');
+  }
+
+  // ② 소스 테이블의 좌표 바인딩 (스키마에서 유도 — 메인 로드의 컬럼 드롭다운과 같은 관례)
+  let binding;
+  try {
+    binding = deriveMapBinding(await fetchTableSchemaCached(sourceTable));
+  } catch (e) {
+    return fail(`${sourceTable}: 스키마를 읽지 못했습니다 — ${errText(e)}`, 'error');
+  }
+  if (!binding) {
+    return fail(
+      `${sourceTable}: 맵 좌표 바인딩을 유도할 수 없습니다 (x/y 컬럼 + map_key_columns 필요). ` +
+      `좌표 컬럼명이 관례와 다른 테이블(dt_log 등)은 서버 선언에만 있어 Phase 1에서는 겹칠 수 없습니다.`,
+      'binding_unavailable');
+  }
+
+  // ③ source cells + ④ source/target specs — the same two REST paths the main load uses.
+  //    A failed cell fetch and a failed spec fetch are different reasons. Collapsing them into
+  //    one catch would report "could not confirm the spec" as "cell fetch failed", so split them
+  //    with allSettled. Requests still go out in parallel — no extra round trip.
+  let rows, sourceMeta, targetMeta;
+  const filters = buildKeyFilters(binding.keyColumns, sourceKey);
+  const cellUrl = `${API_BASE}/tables/${sourceTable}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
+    + `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const [cellR, sMetaR, tMetaR] = await Promise.allSettled([
+    fetch(cellUrl),
+    fetchGridMetaFor(sourceTable, sourceKey),
+    fetchGridMetaFor(targetTable, targetKey),
+  ]);
+  try {
+    if (cellR.status === 'rejected') throw cellR.reason;
+    if (!cellR.value.ok) throw new Error(`HTTP ${cellR.value.status}`);
+    const result = await cellR.value.json();
+    rows = Array.isArray(result && result.data) ? result.data : [];
+  } catch (e) {
+    return fail(`${sourceTable}: 셀 조회 실패 — ${errText(e)}`, 'error');
+  }
+  // 🔴 A failed spec *fetch* is not "spec not registered". Falling back to identity without
+  //    confirming puts markers at silently wrong coordinates and leaves the chip showing
+  //    "무보정 · 규격 미등록" — a false reason. Surface it as a failure row and do not draw.
+  //    The row keeps its retry button, so this is recoverable.
+  if (sMetaR.status === 'rejected') {
+    return fail(
+      `${sourceTable}: 소스 맵 규격(wafer_map_metadata)을 확인하지 못했습니다 — ${errText(sMetaR.reason)}. ` +
+      `규격을 모르는 채로 겹치면 좌표가 조용히 어긋나므로 겹치지 않습니다.`,
+      'meta_unavailable');
+  }
+  if (tMetaR.status === 'rejected') {
+    return fail(
+      `${targetTable}: 타깃 맵 규격(wafer_map_metadata)을 확인하지 못했습니다 — ${errText(tMetaR.reason)}. ` +
+      `기준 프레임을 모르는 채로 겹치면 좌표가 조용히 어긋나므로 겹치지 않습니다.`,
+      'meta_unavailable');
+  }
+  sourceMeta = sMetaR.value;
+  targetMeta = tMetaR.value;
+
+  let truncated = false;
+  if (rows.length > OVERLAY_CELL_LIMIT) { rows = rows.slice(0, OVERLAY_CELL_LIMIT); truncated = true; }
+
+  const cells = [];
+  rows.forEach(row => {
+    const d = row.data || {};
+    const xn = parseInt(d[binding.x] ? d[binding.x].value : undefined, 10);
+    const yn = parseInt(d[binding.y] ? d[binding.y].value : undefined, 10);
+    if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
+    const v = (binding.val && d[binding.val]) ? d[binding.val].value : null;
+    cells.push({ x: xn, y: yn, val: v });
   });
-  let res;
-  try {
-    res = await fetch(`${API_BASE}/api/maps/overlay?${params.toString()}`);
-  } catch (e) {
-    return fail(`오버레이 조회 실패: ${e && e.message ? e.message : e}`, 'error');
-  }
-  if (res.status === 404 || res.status === 405) {
-    const body = await res.json().catch(() => null);
-    if (!body || body.detail === 'Not Found' || res.status === 405) {
-      return fail('서버가 맵 오버레이 API(/api/maps/overlay)를 아직 제공하지 않습니다 (구버전). 정렬된 좌표를 받을 수 없어 겹쳐 그리지 않습니다.', 'unsupported', { unsupported: true });
-    }
-    return fail((typeof body.detail === 'string') ? body.detail : '오버레이 조회 실패 (404)', 'error');
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    return fail((body && typeof body.detail === 'string') ? body.detail : `오버레이 조회 실패 (HTTP ${res.status})`, 'error');
-  }
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    return fail('오버레이 응답을 해석하지 못했습니다 (형식 오류) — 겹쳐 그리지 않습니다.', 'error');
-  }
-
-  const list = (data && Array.isArray(data.overlays)) ? data.overlays : [];
-  const ov = list[0];
-  if (!ov) return fail('오버레이 응답이 비어 있습니다.', 'error');
-
-  const status = String(ov.status || 'ok');
-  // status가 ok가 아니면 그리지 않고 사유를 남긴다 (조용히 원본 좌표로 그리면 거짓 그림).
-  if (status !== 'ok') {
-    const why = status === 'align_unavailable'
-      ? '정렬 근거가 없어 겹칠 수 없습니다 (데이터 없음이 아님)'
-      : (status === 'source_missing' ? '소스 맵을 찾을 수 없습니다'
-        : (status === 'no_data' ? '정상 조회했으나 셀이 0건입니다' : `상태 "${status}"`));
-    // 서버가 준 사유(detail)를 버리지 않는다 — 사용자가 손볼 수 있는 유일한 단서다
-    const detail = (typeof ov.detail === 'string' && ov.detail.trim()) ? ` — ${ov.detail.trim()}` : '';
-    return fail(`${sourceTable}: ${why}${detail}`, status);
-  }
-  const cells = Array.isArray(ov.cells) ? ov.cells : [];
   if (cells.length === 0) return fail(`${sourceTable}: 겹칠 셀이 없습니다.`, 'no_data');
 
-  const align = (ov.align_applied && typeof ov.align_applied === 'object') ? ov.align_applied : null;
+  // ⑤ 프레임 확정. 소스 메타가 없으면 **현재 화면 규격으로 해석(identity)** 한다 —
+  //    서버 규율 3과 동일(선언 부재는 실패가 아니다). 대신 칩에 "무보정"으로 드러난다.
+  const srcFrame = frameFromMeta(sourceMeta) || currentFrame();
+  const tgtFrame = frameFromMeta(targetMeta) || currentFrame();
+  const srcResolved = resolveFrame(srcFrame);
+  const tgtResolved = resolveFrame(tgtFrame);
+
+  // ⑥ 웨이퍼 격자 규격 호환성. 물리 좌표는 cols×rows 정준 격자의 인덱스라
+  //    치수가 다르면 같은 인덱스가 같은 다이를 가리키지 않는다 (서버와 같은 명시 거절).
+  if (srcResolved.cols !== tgtResolved.cols || srcResolved.rows !== tgtResolved.rows) {
+    return fail(
+      `${sourceTable}: 웨이퍼 격자 규격이 다릅니다 — 소스 ${srcResolved.cols}x${srcResolved.rows} vs `
+      + `타깃 ${tgtResolved.cols}x${tgtResolved.rows}. 같은 웨이퍼 규격이 아니면 물리 좌표를 맞출 근거가 없습니다.`,
+      'align_unavailable');
+  }
+
+  // ⑦ 정렬 요약(표시용). **모든 축**을 비교해 identity/derived를 가른다 —
+  //    rotation/flip만 보면 y반전·START만 다른 정상 케이스를 "무보정"으로 오표시한다.
+  const identical = frameAxesKey(srcResolved) === frameAxesKey(tgtResolved);
+  const diffs = [];
+  if (srcResolved.rotation !== tgtResolved.rotation) diffs.push(`회전(${srcResolved.rotation}°→${tgtResolved.rotation}°)`);
+  if (srcResolved.side !== tgtResolved.side) diffs.push(`면(${srcResolved.side}→${tgtResolved.side})`);
+  if (srcResolved.invertY !== tgtResolved.invertY) diffs.push(`y반전(${srcResolved.invertY}→${tgtResolved.invertY})`);
+  if (srcResolved.startX !== tgtResolved.startX || srcResolved.startY !== tgtResolved.startY) {
+    diffs.push(`시작좌표(${srcResolved.startX},${srcResolved.startY})→(${tgtResolved.startX},${tgtResolved.startY})`);
+  }
+  if (srcResolved.chipX !== tgtResolved.chipX || srcResolved.chipY !== tgtResolved.chipY
+      || srcResolved.offsetX !== tgtResolved.offsetX || srcResolved.offsetY !== tgtResolved.offsetY
+      || srcResolved.waferDia !== tgtResolved.waferDia || srcResolved.edgeMargin !== tgtResolved.edgeMargin) {
+    diffs.push('웨이퍼 물리 규격 상이(바운딩박스 재계산)');
+  }
+  // [F4] Cells whose projected physical coordinate falls outside the canonical wafer grid
+  //      [0,cols) x [0,rows). Reporting the raw source row count as "N chips" hides them:
+  //      they are excluded from import (importOverlayToGrid rule 3) and are not push targets.
+  //      NOTE: this is deliberately NOT "will not be painted". The render loop sweeps a 3x3
+  //      tile window (:1658-1671), so an out-of-grid cell may still be painted in the margin
+  //      depending on canvas size — that is viewport-dependent and not a stable thing to claim.
+  //      Grid membership is frame-defined and stable, so that is what we report.
+  const projected = projectCellsToPhys(cells, srcFrame);
+  let outside = 0;
+  projected.forEach((_v, k) => {
+    const i = k.indexOf('_');
+    const px = Number(k.slice(0, i));
+    const py = Number(k.slice(i + 1));
+    if (!(px >= 0 && px < tgtResolved.cols && py >= 0 && py < tgtResolved.rows)) outside++;
+  });
+  const missingPhys = !sourceMeta ? '소스 맵 규격 미등록 — 현재 화면 규격으로 해석'
+    : (frameFromMeta(sourceMeta) && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
+        srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
+      ? '소스 물리 규격 일부 미등록 — 현재 화면 값으로 대체' : '');
+  const align = {
+    origin: identical ? 'identity' : 'derived',
+    rotation: ((srcResolved.rotation - tgtResolved.rotation) % 360 + 360) % 360,
+    flip: srcResolved.side !== tgtResolved.side ? 'x' : 'none',
+    offset: { x: 0, y: 0 },
+    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys,
+      outside ? `격자 밖 ${outside}칩 — 웨이퍼 격자를 벗어나 가져오기에서 제외됩니다` : ''].filter(Boolean).join(' · ')
+      || (identical ? '소스와 타깃의 좌표계가 완전히 같습니다 (변환 없음)' : ''),
+  };
+
   const layer = {
     id: overlaySeq++,
-    sourceTable: String(ov.source_table || sourceTable),
-    sourceKey: String(ov.source_key || sourceKey),
-    rawCells: cells, // 서버 원본(타깃 프레임) — 격자 규격 변경 시 재배치 원천
-    cells: overlayCellsToPhysMap(cells),
-    count: Number(ov.count) || cells.length,
+    sourceTable: String(sourceTable),
+    sourceKey: String(sourceKey),
+    rawCells: cells,      // **소스 원본 좌표** — 재투영의 유일한 원천
+    frame: srcFrame,      // 그 좌표가 사는 프레임 (소스 자신의 메타)
+    cells: projected,
+    count: projected.size,   // physical keys actually placed — not the raw row count, which over-reports on key collision
+    outside,
     color: OVERLAY_COLORS[(overlayLayers.length) % OVERLAY_COLORS.length],
     visible: true,
-    status,
+    status: 'ok',
     align,
     // 정렬 적용 여부의 유일한 근거는 origin이다 (rotation/flip은 표시용 요약일 뿐)
-    alignApplied: !!align && String(align.origin || '') !== 'identity',
-    alignText: align
-      ? [align.note, `origin=${align.origin || '?'}`, `rot=${align.rotation ?? 0}°`,
-         `flip=${align.flip || 'none'}`,
-         (align.offset && (align.offset.x || align.offset.y)) ? `offset=(${align.offset.x},${align.offset.y})` : '']
-        .filter(Boolean).join(' · ')
-      : '',
-    truncated: !!ov.truncated,
-    cap: ov.cap ?? data.cell_cap ?? null,
+    alignApplied: align.origin !== 'identity',
+    alignText: [align.note, `origin=${align.origin}`, `rot=${align.rotation}°`, `flip=${align.flip}`]
+      .filter(Boolean).join(' · '),
+    truncated,
+    cap: truncated ? OVERLAY_CELL_LIMIT : null,
   };
   // 같은 소스의 실패 잔존 행이 있으면 성공 행으로 교체한다 (재시도 성공)
   overlayLayers = overlayLayers.filter(o => !(o.failed && o.sourceTable === layer.sourceTable && o.sourceKey === layer.sourceKey));
@@ -3973,9 +4277,12 @@ function clearOverlayLayers() {
   scheduleRenderGridCanvas();
 }
 
-// 격자 규격(회전·면·시작좌표·치수)이 바뀌면 같은 서버 좌표라도 물리 키가 달라진다.
-// 원본(rawCells)을 보관해 두고 규격 변경을 감지하면 **재계산**한다 —
-// 재계산하지 않으면 오버레이가 조용히 어긋난 위치를 가리키게 된다.
+// 규격이 바뀌면 원본(rawCells)을 **소스 프레임으로** 재투영한다.
+//
+// 소스 메타가 완전하면 재투영은 항등이다(물리 키는 화면 조작에 불변). 그러나 소스 메타에
+// 물리 항목이 빠져 있으면 그 항목은 **현재 화면 값으로 폴백**하므로 결과가 화면에 의존한다.
+// [C7] 그래서 시그니처에 **물리 파라미터를 반드시 포함**한다 — 빠뜨리면 chip_x/offset 등을
+// 바꿨을 때 재투영이 일어나지 않아 오버레이가 조용히 어긋난 자리를 가리킨다.
 let overlayGeomSig = '';
 
 function currentGeomSignature() {
@@ -3986,6 +4293,12 @@ function currentGeomSignature() {
     el.gridStartY ? el.gridStartY.value : '',
     el.gridYInvert ? (el.gridYInvert.checked ? 1 : 0) : 0,
     currentRotation, currentSide,
+    el.physWaferDia ? el.physWaferDia.value : '',
+    el.physChipX ? el.physChipX.value : '',
+    el.physChipY ? el.physChipY.value : '',
+    el.physOffsetX ? el.physOffsetX.value : '',
+    el.physOffsetY ? el.physOffsetY.value : '',
+    el.physEdgeMargin ? el.physEdgeMargin.value : '',
   ].join('|');
 }
 
@@ -3994,7 +4307,10 @@ function syncOverlayGeometry() {
   const sig = currentGeomSignature();
   if (sig === overlayGeomSig) return;
   overlayGeomSig = sig;
-  overlayLayers.forEach(o => { o.cells = overlayCellsToPhysMap(o.rawCells); });
+  overlayLayers.forEach(o => {
+    if (o.failed) return;
+    o.cells = projectCellsToPhys(o.rawCells, o.frame);
+  });
   recomputeActiveOverlays();
 }
 
@@ -4002,8 +4318,8 @@ function syncOverlayGeometry() {
 // 정렬 상태를 **칩으로 항상 노출**한다. 종전에는 alignApplied일 때만 표기해
 // "정렬 안 함(identity)"과 "정렬 실패(align_unavailable)"가 구분되지 않았다.
 // ⚠️ **정렬 여부는 `origin`으로만 판단한다 — rotation/flip으로 판단하지 마라.**
-// 서버가 좌표축 4종(회전·거울상·Y반전·START X/Y)을 한 파이프라인으로 통합한 뒤로,
-// `origin: "derived"`인데 `rotation: 0, flip: "none"`인 응답이 **정상적으로 존재한다**
+// 좌표축 6종(회전·거울상·Y반전·START X/Y·치수·물리 규격)을 한 파이프라인에서 처리하므로
+// `origin: "derived"`인데 `rotation: 0, flip: "none"`인 경우가 **정상적으로 존재한다**
 // (Y반전이나 시작좌표만 보정된 경우). 회전값으로 분기하면 그런 보정을 "무보정"으로 표시해
 // 조용한 오답이 된다 — 실증: test/QQ → bonding_map/QQ 80셀이 전부 (-11,-13) 어긋나 있었는데
 // 구 판정에서는 `identity`로 보였다.
@@ -4013,7 +4329,7 @@ function overlayAlignChip(o) {
   if (o.failed) {
     return `<span class="ov-chip bad" title="${escapeHtmlAttr(o.reason || '')}">${escapeHtmlAttr(o.status)}</span>`;
   }
-  if (!o.align) return '<span class="ov-chip dim" title="서버가 정렬 정보를 주지 않았습니다">align 미상</span>';
+  if (!o.align) return '<span class="ov-chip dim" title="정렬 정보가 없습니다">align 미상</span>';
   const origin = String(o.align.origin || '');
   const note = String(o.align.note || '');
   const rot = Number(o.align.rotation) || 0;
@@ -4022,13 +4338,13 @@ function overlayAlignChip(o) {
   }
   // derived(및 그 외 비-identity) = 보정 적용됨. 회전은 0일 수 있으므로 있을 때만 덧붙인다.
   const label = rot ? `정렬됨 ${rot}°` : '정렬됨';
-  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '서버가 좌표를 현재 맵 프레임에 맞춰 보정했습니다')}">${escapeHtmlAttr(label)}</span>`;
+  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 맵의 좌표계가 달라 소스 메타 프레임으로 해석해 물리 좌표에 맞췄습니다')}">${escapeHtmlAttr(label)}</span>`;
 }
 
 // ── [신규] 오버레이 → 실맵 가져오기 ────────────────────────
 // 겹쳐 본 오버레이의 셀을 **현재 편집 중인 맵(gridData)** 으로 반영한다.
-// 구 "테이블 전환 시 이월"을 대체하며 더 안전하다 — 오버레이 셀은 **서버가 이미 타깃 프레임으로
-// 정렬**해 준 좌표(o.cells: 물리키→값)이므로 **재변환이 없다**(이월은 좌표계가 다르면 어긋났다).
+// 구 "테이블 전환 시 이월"을 대체하며 더 안전하다 — 오버레이 셀은 이미 **물리 키**로
+// 배치돼 있고(o.cells: 물리키→값) gridData도 같은 물리 키라 **재변환이 없다**.
 //
 // 규율 4가지:
 //   ① 서버 반영 없음 — gridData만 바꾼다. 실제 적재는 사용자가 [⚡ Push]를 눌러야 일어난다.
