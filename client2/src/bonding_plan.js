@@ -2,19 +2,19 @@
 // bonding_plan.js — 본딩 실험계획 M1 (map editor 우측 슬라이드 Info 패널, 조회 전용)
 //
 // API 계약 (총괄 고정 — 임의 변경 금지):
-//   GET /api/bonding-plan/core-summary?lot=<>&slot=<>[&region=<URL인코딩 JSON>]
+//   GET /api/bonding-plan/core-summary?lot=<>&slot=<>
 //     → { identity, sources(역할별 connected|missing),
 //         chips{total,defect,eds_fail,used,remaining},
-//         region_chips{...}(영역 요청 시),
 //         history[{step,eqp,result,time,recipe,knobs{}}], warnings[] }
-//   region 형식: {"rects":[{"x1","y1","x2","y2"}]} (칩 좌표, 복수 사각형 합집합)
+//   (서버의 region 파라미터는 M2 "값 페인팅(cells)" 모드에서 재사용 예정 —
+//    M1 클라이언트는 미사용. rect 영역 선택 모드는 사용자 지시로 폐기됨.)
 //   코어 자동완성: GET /graph/nodes/search?label=Wafer&q= (그래프 검색 재사용)
 //   Base 자동완성: 동일 API, label=Base
 //
 // 서버 graceful: 구버전 서버(엔드포인트 부재 404)면 "미지원" 빈 상태 안내로 강등.
 // 영속화: M1은 localStorage 초안(base 식별자 키) — M2에서 관리 테이블로 승격 예정.
-//   (map_split registry의 localStorage→서버 승격 전례를 따르는 평탄한 직렬화 구조)
-// 영역 지정: map_editor.js의 startRegionSelection(프리셋 규격 영역 선택 모드)에 위임.
+//   (map_split registry의 localStorage→서버 승격 전례를 따르는 평탄한 직렬화 구조.
+//    구 초안의 core_region/base_region 필드는 하위호환으로 읽되 버린다.)
 // ============================================================
 import { API_BASE } from './config.js';
 import { showToast } from './utils.js';
@@ -24,14 +24,12 @@ const DRAFT_PREFIX = 'bonding_plan_draft::';
 const LAST_BASE_KEY = 'bonding_plan_last_base';
 const DRAFT_VERSION = 1;
 
-let editor = null; // map_editor 주입 API: { startRegionSelection }
-
 const S = {
   open: false,
   base: '',
   totalLayers: 0,
   memo: '',
-  rows: [],            // { id, layer_from, layer_to, core('lot|slot'), qty, core_region, base_region }
+  rows: [],            // { id, layer_from, layer_to, core('lot|slot'), qty }
   nextRowId: 1,
   selectedRowId: null,
   serverSupported: null, // null=미확인 / true / false(구버전 — graceful)
@@ -87,8 +85,6 @@ function serializeDraft() {
         core_lot: lot,
         core_slot: slot,
         qty_per_layer: Number(r.qty) || 0,
-        core_region: r.core_region || null,
-        base_region: r.base_region || null,
       };
     }),
     saved_at: new Date().toISOString(),
@@ -99,14 +95,13 @@ function deserializeDraft(obj) {
   if (!obj || typeof obj !== 'object') return;
   S.totalLayers = Number(obj.total_layers) || 0;
   S.memo = typeof obj.memo === 'string' ? obj.memo : '';
+  // 구버전 초안의 core_region/base_region(rect 모드 폐기)은 하위호환으로 무시하고 버린다.
   S.rows = (Array.isArray(obj.assignments) ? obj.assignments : []).map(a => ({
     id: S.nextRowId++,
     layer_from: a.layer_from ?? '',
     layer_to: a.layer_to ?? '',
     core: a.core_lot ? (a.core_slot ? `${a.core_lot}|${a.core_slot}` : a.core_lot) : '',
     qty: a.qty_per_layer ?? '',
-    core_region: (a.core_region && Array.isArray(a.core_region.rects)) ? a.core_region : null,
-    base_region: (a.base_region && Array.isArray(a.base_region.rects)) ? a.base_region : null,
   }));
   S.selectedRowId = S.rows.length > 0 ? S.rows[0].id : null;
   S.savedAt = obj.saved_at || null;
@@ -145,12 +140,12 @@ function loadDraft(base) {
 }
 
 // ── core-summary API (경계 계약의 소비측 — 방어적 파싱) ──
-function summaryKey(lot, slot, region) {
-  return `${lot}${slot}${region ? JSON.stringify(region) : ''}`;
+function summaryKey(lot, slot) {
+  return `${lot}::${slot}`;
 }
 
-async function getCoreSummary(lot, slot, region, force = false) {
-  const key = summaryKey(lot, slot, region);
+async function getCoreSummary(lot, slot, force = false) {
+  const key = summaryKey(lot, slot);
   const cached = S.summaries.get(key);
   if (!force && cached && (cached.status === 'ok' || cached.status === 'loading')) {
     if (cached.promise) await cached.promise;
@@ -159,9 +154,6 @@ async function getCoreSummary(lot, slot, region, force = false) {
   const entry = { status: 'loading' };
   entry.promise = (async () => {
     const params = new URLSearchParams({ lot: lot || '', slot: slot || '' });
-    if (region && Array.isArray(region.rects) && region.rects.length > 0) {
-      params.set('region', JSON.stringify(region));
-    }
     const res = await fetch(`${API_BASE}/api/bonding-plan/core-summary?${params.toString()}`);
     if (res.status === 404 || res.status === 405) {
       const body = await res.json().catch(() => null);
@@ -221,19 +213,10 @@ function rowStats(row) {
   const layers = layerCount(row);
   const qty = Number(row.qty) || 0;
   const need = qty * layers;
-  const entry = lot ? S.summaries.get(summaryKey(lot, slot, null)) : null;
-  const regionEntry = (lot && row.core_region) ? S.summaries.get(summaryKey(lot, slot, row.core_region)) : null;
+  const entry = lot ? S.summaries.get(summaryKey(lot, slot)) : null;
 
   let remaining = null;
-  let basis = '전체';
-  if (regionEntry && regionEntry.status === 'ok') {
-    const rc = regionEntry.data.region_chips || null;
-    if (rc && rc.remaining !== undefined && rc.remaining !== null) {
-      remaining = Number(rc.remaining);
-      basis = '영역';
-    }
-  }
-  if (remaining === null && entry && entry.status === 'ok' && entry.data.chips
+  if (entry && entry.status === 'ok' && entry.data.chips
       && entry.data.chips.remaining !== undefined && entry.data.chips.remaining !== null) {
     remaining = Number(entry.data.chips.remaining);
   }
@@ -243,7 +226,7 @@ function rowStats(row) {
     ? normalizeSources(entry.data.sources).filter(s => s.status !== 'connected')
     : [];
   const shortage = (remaining !== null && need > 0 && remaining < need);
-  return { lot, slot, layers, qty, need, remaining, basis, hasFail, missing, shortage, entry, regionEntry };
+  return { lot, slot, layers, qty, need, remaining, hasFail, missing, shortage, entry };
 }
 
 // ── 렌더러들 ─────────────────────────────────────────────
@@ -320,51 +303,6 @@ function renderValidation() {
   box.innerHTML = badges + stripHtml + covText;
 }
 
-function regionBtnLabel(which, region) {
-  const n = (region && Array.isArray(region.rects)) ? region.rects.length : 0;
-  const name = which === 'core' ? '▦ core 영역' : '▦ base 부착';
-  return `${name} <b>${n}</b>`;
-}
-
-function drawThumb(canvas, region) {
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  const rects = (region && Array.isArray(region.rects)) ? region.rects : [];
-  const cs = getComputedStyle(document.documentElement);
-  const accent = (cs.getPropertyValue('--accent') || '').trim() || '#1a66d0';
-  const border = (cs.getPropertyValue('--border') || '').trim() || '#d7dce4';
-  if (!rects.length) {
-    ctx.strokeStyle = border;
-    ctx.setLineDash([3, 3]);
-    ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
-    ctx.setLineDash([]);
-    return;
-  }
-  const x1 = Math.min(...rects.map(r => r.x1));
-  const x2 = Math.max(...rects.map(r => r.x2));
-  const y1 = Math.min(...rects.map(r => r.y1));
-  const y2 = Math.max(...rects.map(r => r.y2));
-  const spanX = Math.max(1, x2 - x1 + 1);
-  const spanY = Math.max(1, y2 - y1 + 1);
-  const pad = 3;
-  const sx = (W - pad * 2) / spanX;
-  const sy = (H - pad * 2) / spanY;
-  rects.forEach(r => {
-    const rx = pad + (r.x1 - x1) * sx;
-    const ry = pad + (r.y1 - y1) * sy;
-    const rw = Math.max(2, (r.x2 - r.x1 + 1) * sx);
-    const rh = Math.max(2, (r.y2 - r.y1 + 1) * sy);
-    ctx.globalAlpha = 0.28;
-    ctx.fillStyle = accent;
-    ctx.fillRect(rx, ry, rw, rh);
-    ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
-  });
-}
-
 function rowStatusHtml(st) {
   if (!st.lot) return '<span class="bp-row-status">core 미입력</span>';
   if (!st.entry) return '<span class="bp-row-status">미조회</span>';
@@ -373,7 +311,7 @@ function rowStatusHtml(st) {
   if (st.entry.status === 'error') return '<span class="bp-row-status bad">조회 실패</span>';
   const cls = st.shortage ? 'bad' : 'ok';
   const rem = fmtNum(st.remaining);
-  return `<span class="bp-row-status ${cls}">잔여 ${rem}${st.basis === '영역' ? '(영역)' : ''} / 소요 ${st.need || '?'}</span>`;
+  return `<span class="bp-row-status ${cls}">잔여 ${rem} / 소요 ${st.need || '?'}</span>`;
 }
 
 function renderRows() {
@@ -381,7 +319,7 @@ function renderRows() {
   if (!box) return;
   if (S.rows.length === 0) {
     box.innerHTML = '<div class="bp-empty-hint">배정이 없습니다. [+ 배정 추가]로 층 범위·코어를 배정하세요.<br>'
-      + '행 = (시작층–끝층, core lot|slot, 층당 수량, core 사용 영역, base 부착 영역)</div>';
+      + '행 = (시작층–끝층, core lot|slot, 층당 수량)</div>';
     return;
   }
   box.innerHTML = S.rows.map((row, i) => {
@@ -402,10 +340,6 @@ function renderRows() {
         <input class="bp-in-qty glass-input" type="number" min="0" title="층당 수량" placeholder="층당" value="${esc(row.qty ?? '')}" />
       </div>
       <div class="bp-row-line2">
-        <button type="button" class="bp-region-btn" data-which="core">${regionBtnLabel('core', row.core_region)}</button>
-        <canvas class="bp-thumb" data-which="core" width="54" height="36"></canvas>
-        <button type="button" class="bp-region-btn" data-which="base">${regionBtnLabel('base', row.base_region)}</button>
-        <canvas class="bp-thumb" data-which="base" width="54" height="36"></canvas>
         ${rowStatusHtml(st)}
         <span class="bp-row-tools">
           <button type="button" class="bp-tool" data-act="up" title="위로">↑</button>
@@ -447,14 +381,6 @@ function renderRows() {
       onRowCoreChanged(row);
     });
 
-    rowEl.querySelectorAll('.bp-region-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectRow(id, { skipFetch: true });
-        pickRegion(id, btn.dataset.which);
-      });
-    });
-
     rowEl.querySelectorAll('.bp-tool').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -475,9 +401,6 @@ function renderRows() {
       });
     });
 
-    rowEl.querySelectorAll('.bp-thumb').forEach(cv => {
-      drawThumb(cv, cv.dataset.which === 'core' ? row.core_region : row.base_region);
-    });
   });
 }
 
@@ -519,9 +442,7 @@ async function refreshDetail(force = false) {
   const { lot, slot } = parseCore(row.core);
   if (!lot) return;
   const seq = ++S.detailSeq;
-  const jobs = [getCoreSummary(lot, slot, null, force)];
-  if (row.core_region) jobs.push(getCoreSummary(lot, slot, row.core_region, force));
-  await Promise.all(jobs);
+  await getCoreSummary(lot, slot, force);
   if (seq !== S.detailSeq) return; // 검색 세션 가드 — stale 응답 폐기
   renderDetail();
   safeRenderRows();
@@ -530,7 +451,7 @@ async function refreshDetail(force = false) {
 
 function unsupportedHtml() {
   return `<div class="bp-empty-hint">🔌 서버가 본딩 실험계획 API(core-summary)를 아직 제공하지 않습니다 (구버전).<br>
-    서버 업데이트·재기동 후 <b>다시 시도</b>하세요. 층 배정·영역·메모 초안은 계속 편집/보관됩니다.
+    서버 업데이트·재기동 후 <b>다시 시도</b>하세요. 층 배정·메모 초안은 계속 편집/보관됩니다.
     <div style="margin-top:8px;"><button type="button" class="glass-btn" id="bp-retry-btn">다시 시도</button></div></div>`;
 }
 
@@ -554,7 +475,7 @@ function renderDetail() {
     box.innerHTML = '<div class="bp-empty-hint">이 행의 core lot|slot을 입력하면 core-summary를 조회합니다.</div>';
     return;
   }
-  const entry = S.summaries.get(summaryKey(lot, slot, null));
+  const entry = S.summaries.get(summaryKey(lot, slot));
   if (!entry || entry.status === 'loading') {
     box.innerHTML = '<div class="bp-empty-hint">core-summary 조회 중…</div>';
     return;
@@ -587,32 +508,17 @@ function renderDetail() {
   const chipsHtml = `<div class="bp-chips-line">잔여 <span class="rem">${fmtNum(chips.remaining)}</span>
     = 총 ${fmtNum(chips.total)} − defect ${fmtNum(chips.defect)} − EDS ${fmtNum(chips.eds_fail)} − 기사용 ${fmtNum(chips.used)}</div>`;
 
-  // 영역 요약 (region 파라미터 재조회 결과)
-  let regionHtml = '';
-  if (row.core_region && Array.isArray(row.core_region.rects) && row.core_region.rects.length > 0) {
-    const rEntry = S.summaries.get(summaryKey(lot, slot, row.core_region));
-    const n = row.core_region.rects.length;
-    if (rEntry && rEntry.status === 'ok' && rEntry.data.region_chips) {
-      regionHtml = `<div class="bp-region-line">▦ core 사용 영역: ${n} rects · 영역 내 가용 ${fmtNum(rEntry.data.region_chips.remaining)}칩</div>`;
-    } else if (rEntry && rEntry.status === 'loading') {
-      regionHtml = `<div class="bp-region-line">▦ core 사용 영역: ${n} rects · 영역 재조회 중…</div>`;
-    } else {
-      regionHtml = `<div class="bp-region-line">▦ core 사용 영역: ${n} rects · 영역 가용 미확인</div>`;
-    }
-  }
-
   // 소요 = 층당 수량 × 층 수
   let needHtml = '';
   if (st.need > 0) {
     const remTxt = st.remaining === null ? '?' : st.remaining;
-    const basisTxt = st.basis === '영역' ? ' (영역 기준)' : '';
     if (st.shortage) {
-      needHtml = `<div class="bp-need-line bad">⚠️ 잔여 ${remTxt}${basisTxt} &lt; 소요 ${st.need} = 층당 ${st.qty} × ${st.layers}층 — ${st.need - st.remaining}칩 부족</div>`;
+      needHtml = `<div class="bp-need-line bad">⚠️ 잔여 ${remTxt} &lt; 소요 ${st.need} = 층당 ${st.qty} × ${st.layers}층 — ${st.need - st.remaining}칩 부족</div>`;
     } else {
-      needHtml = `<div class="bp-need-line">소요 ${st.need} = 층당 ${st.qty} × ${st.layers}층 · 잔여 ${remTxt}${basisTxt} 충족</div>`;
+      needHtml = `<div class="bp-need-line">소요 ${st.need} = 층당 ${st.qty} × ${st.layers}층 · 잔여 ${remTxt} 충족</div>`;
     }
   } else {
-    needHtml = '<div class="bp-region-line">층 범위·층당 수량을 입력하면 소요/잔여를 검증합니다.</div>';
+    needHtml = '<div class="bp-hint-line">층 범위·층당 수량을 입력하면 소요/잔여를 검증합니다.</div>';
   }
 
   // 서버 경고
@@ -640,7 +546,7 @@ function renderDetail() {
             : '<span class="bp-knob-chip">knob 없음</span>'}</div>
         </div>`;
       }).join('')}</div>`
-    : '<div class="bp-region-line">공정 이력이 없습니다.</div>';
+    : '<div class="bp-hint-line">공정 이력이 없습니다.</div>';
 
   const identity = data.identity ? `<div class="bp-mono bp-muted">${esc(typeof data.identity === 'string' ? data.identity : JSON.stringify(data.identity))}</div>` : '';
 
@@ -648,7 +554,6 @@ function renderDetail() {
     ${identity}
     ${srcHtml}
     ${chipsHtml}
-    ${regionHtml}
     ${needHtml}
     ${warnsHtml}
   </div>
@@ -720,7 +625,7 @@ async function loadCompare() {
   S.compareState = 'loading';
   renderCompare();
   const seq = ++S.compareSeq;
-  const entries = await Promise.all(cores.map(c => getCoreSummary(c.lot, c.slot, null)));
+  const entries = await Promise.all(cores.map(c => getCoreSummary(c.lot, c.slot)));
   if (seq !== S.compareSeq) return;
   if (entries.every(e => e.status === 'unsupported')) {
     S.compareState = 'unsupported';
@@ -776,39 +681,6 @@ function renderCompare() {
   const note = `<div class="bp-coverage-text">공통 step ${new Set(cs.rows.map(r => r.step)).size}개 · 조건 이탈 ${cs.mismatch}셀행`
     + (cs.skipped ? ` · 요약 미확보 코어 ${cs.skipped}개 제외` : '') + '</div>';
   box.innerHTML = `${note}<table class="bp-compare-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
-}
-
-// ── 영역 지정 (map_editor 영역 선택 모드 위임) ───────────
-function pickRegion(rowId, which) {
-  const row = S.rows.find(r => r.id === rowId);
-  if (!row) return;
-  if (!editor || typeof editor.startRegionSelection !== 'function') return;
-  if (which === 'core' && !parseCore(row.core).lot) {
-    showToast('core lot|slot을 먼저 입력하세요.', 'warning');
-    return;
-  }
-  const key = which === 'core' ? 'core_region' : 'base_region';
-  const label = which === 'core'
-    ? `코어 ${row.core} 사용 영역`
-    : `Base ${S.base.trim() || '(미지정)'} 부착 영역`;
-  setOpen(false); // 캔버스 시야 확보 — 완료/취소 시 재개방
-  editor.startRegionSelection({
-    kind: which,
-    label,
-    initialRects: (row[key] && row[key].rects) || [],
-    onFinish: (rects) => {
-      setOpen(true);
-      if (rects === null) return; // 취소 — 변경 없음
-      row[key] = rects.length > 0 ? { rects } : null;
-      scheduleSave();
-      renderRows();
-      if (which === 'core' && S.selectedRowId === row.id) {
-        refreshDetail(true); // region 파라미터 재조회 (영역 내 가용칩)
-      } else {
-        renderValidation();
-      }
-    },
-  });
 }
 
 // ── 자동완성 (그래프 search API 재사용 — seq 가드 + debounce) ──
@@ -977,8 +849,6 @@ function buildPanel(root) {
       layer_to: '',
       core: '',
       qty: '',
-      core_region: null,
-      base_region: null,
     };
     S.rows.push(row);
     S.selectedRowId = row.id;
@@ -1006,8 +876,7 @@ function buildPanel(root) {
   });
 }
 
-export function initBondingPlan(editorApi) {
-  editor = editorApi || {};
+export function initBondingPlan() {
   const root = document.getElementById('bonding-plan-root');
   const btn = document.getElementById('btn-bonding-plan');
   if (!root || !btn) {
