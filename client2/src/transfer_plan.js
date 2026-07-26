@@ -232,6 +232,17 @@ function knobsToArray(obj) {
   return Object.entries(obj).map(([k, v]) => ({ k, v: v === null || v === undefined ? '' : String(v) }));
 }
 
+// 한 구간이 자재 **1매당** 배정하는 수량. 서버에 저장되는 `map_doe_source.qty`가 바로 이 값이다.
+//
+// ⚠️ **단일 구현이어야 한다.** 저장부와 표시부가 각자 계산하면 화면 숫자와 DB가 갈라진다 —
+//    실제로 갈라져 있었다(저장 `Math.ceil` vs 자재 목록 `Math.round`). 총 100 / 3매면
+//    DB에는 34가 저장되는데 화면은 33을 보여줬다. 서버 규약이 올림이므로 올림이 정본이고,
+//    내림/반올림은 부족분을 숨긴다.
+function bandShare(b) {
+  const n = (b && Array.isArray(b.materials)) ? b.materials.length : 0;
+  return n > 0 ? Math.ceil((Number(b.need) || 0) / n) : 0;
+}
+
 // 값 단위 파생 요약 (접힌 행·자재 그룹에서 공용)
 function doeSummary(value) {
   const bands = getBands(value);
@@ -335,18 +346,45 @@ async function getSourceSummary(lot, slot, force = false) {
   return entry;
 }
 
-// 서버가 준 가용 수치(단순 표시용). 판정하지 않는다 — 값이 없으면 null(=미상).
-function availableOf(lot, slot) {
+// 서버 가용 응답의 **단일 해석 지점**.
+//
+// 가용량은 서버가 계산한다(`가용 = 총 − (fail ∪ transferred)`, SPEC §6.1). 클라는 읽기만 한다 —
+// 여기에 두 번째 계산을 만들면 같은 숫자의 구현이 둘이 되고 반드시 갈라진다.
+//
+// 신뢰 표기 3층 방어(SPEC §6.2)를 **전부** 통과시킨다. 서버는 역할 바인딩이 강등되면
+//   remaining: null · remaining_reliable: false · warnings[source_degraded]
+// 셋을 함께 내려보낸다. 하나라도 서면 숫자를 확정값처럼 보여주지 않는다.
+// 반환: { status, value, reliable, reason }
+function availabilityOf(lot, slot) {
   const entry = S.summaries.get(summaryKey(lot, slot));
-  if (!entry || entry.status !== 'ok') return null;
-  const chips = (entry.data && entry.data.chips) || {};
-  const v = chips.remaining;
-  return (v === null || v === undefined || Number.isNaN(Number(v))) ? null : Number(v);
+  if (!entry) return { status: null, value: null, reliable: false, reason: '아직 조회하지 않음' };
+  if (entry.status !== 'ok') {
+    return {
+      status: entry.status, value: null, reliable: false,
+      reason: entry.status === 'loading' ? '조회 중'
+        : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
+          : (entry.error || '가용 조회 실패')),
+    };
+  }
+  const data = entry.data || {};
+  const chips = data.chips || {};
+  const raw = chips.remaining;
+  const value = (raw === null || raw === undefined || Number.isNaN(Number(raw))) ? null : Number(raw);
+  const flag = (data.remaining_reliable !== undefined) ? data.remaining_reliable : chips.remaining_reliable;
+  const degraded = (Array.isArray(data.warnings) ? data.warnings : [])
+    .map(w => String((w && (w.type || w.code)) || w))
+    .filter(t => t === 'source_degraded' || t === 'availability_unreliable');
+  const reasons = [];
+  if (value === null) reasons.push('서버가 잔여 값을 주지 않았습니다');
+  if (flag === false) reasons.push('서버 판정: 잔여 신뢰 불가');
+  if (degraded.length > 0) reasons.push(`소스 강등(${degraded.join(', ')})`);
+  return { status: 'ok', value, reliable: reasons.length === 0, reason: reasons.join(' · ') };
 }
 
-function summaryStatusOf(lot, slot) {
-  const entry = S.summaries.get(summaryKey(lot, slot));
-  return entry ? entry.status : null;
+// 확정된 숫자만 필요한 호출부(왕복 전후 변화 감지)용 얇은 래퍼. 신뢰 불가는 null이다.
+function availableOf(lot, slot) {
+  const a = availabilityOf(lot, slot);
+  return a.reliable ? a.value : null;
 }
 
 // ── 자재 맵 존재 여부 ───────────────────────────────────
@@ -646,31 +684,41 @@ function sourceNodeLabel() {
   return st.sourceKind === 'core' ? 'Wafer' : 'Tape';
 }
 
-// ── 렌더: 사용 자재 (DOE별 그룹, 이동 허브) ─────────────
-function materialGroups() {
+// ── 렌더: 사용 자재 (자재 ID가 키, 이동 허브) ─────────────
+//
+// 사용자의 시점은 **자재**다: "이 테이프, 얼마 남았고 어디에 얼마나 썼나."
+// 그래서 행의 단위는 (값, 구간)이 아니라 **자재 ID(lot|slot)** 하나다. 종전처럼 (값, 구간)으로
+// 묶으면 같은 자재가 여러 그룹에 흩어져, 그 자재의 총 사용량이 화면 어디에도 없었다
+// (실데이터: `TOP`이 값 1·구간 16에 12개, 값 F·구간 16에 10개 — 합 22를 아무도 보여주지 않았다).
+// (값, 구간)은 사라지지 않고 그 자재를 소비한 **자리**로 행 안에 접혀 들어간다.
+function materialRollup() {
   const st = stageOfTable(S.ctx.table);
   if (!st || S.ctx.depth > 0) return [];
-  // 그룹 단위 = **(값, 구간)**. 구간마다 자재 묶음이 다를 수 있으므로 밴드별로 그룹이 선다.
-  const out = [];
+  const byMat = new Map();   // matKey -> { lot, slot, used, uses[] }
   S.legendRows.forEach(row => {
     const v = String(row.value);
     getBands(v).forEach(b => {
       if (b.materials.length === 0) return;
-      const need = Number(b.need) || 0;
-      const share = Math.round(need / b.materials.length);
-      out.push({
-        value: v, seq: b.seq, color: row.color, stack: b.stack,
-        need, share, materials: b.materials.slice(),
+      const qty = bandShare(b);   // 저장되는 map_doe_source.qty와 같은 식 (단일 구현)
+      b.materials.forEach(m => {
+        const k = matKey(m);
+        if (!byMat.has(k)) byMat.set(k, { lot: m.lot, slot: m.slot || '', used: 0, uses: [] });
+        const e = byMat.get(k);
+        e.used += qty;
+        e.uses.push({ value: v, color: row.color, seq: b.seq, stack: b.stack, qty });
       });
     });
   });
-  return out;
+  // 자재 ID 순 — 목록이 편집 순서에 따라 튀지 않게 한다
+  return [...byMat.values()].sort((a, b) => (a.lot === b.lot
+    ? String(a.slot).localeCompare(String(b.slot))
+    : String(a.lot).localeCompare(String(b.lot))));
 }
 
 function renderMaterialPane() {
   const box = elp.matPane;
   if (!box) return;
-  const groups = materialGroups();
+  const mats = materialRollup();
   const st = stageOfTable(S.ctx.table);
 
   if (S.ctx.depth > 0) {
@@ -701,7 +749,7 @@ function renderMaterialPane() {
     return;
   }
 
-  if (!st || groups.length === 0) {
+  if (!st || mats.length === 0) {
     // 계획 대상이 아닌 맵이거나 자재 0건 → 자재 영역은 자리를 차지하지 않는다
     box.style.display = 'none';
     box.innerHTML = '';
@@ -710,41 +758,40 @@ function renderMaterialPane() {
   box.style.display = 'flex';
 
   const { table: srcTable, derived: srcDerived } = sourceTableOf(st);
-  const total = groups.reduce((a, g) => a + g.materials.length, 0);
-  const rows = groups.map(g => {
-    const on = S.openValue === g.value || S.activeBrush === g.value;
-    const matRows = g.materials.map((m, i) => {
-      const last = i === g.materials.length - 1;
-      const avail = availableOf(m.lot, m.slot);
-      const status = summaryStatusOf(m.lot, m.slot);
-      const availHtml = (status === 'loading' || status === null) ? '<span class="tp-unknown-val">…</span>'
-        : (avail === null ? '<span class="tp-unknown-val">미상</span>' : `<b>${avail}</b>`);
-      const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, m)) : null;
-      const mapChip = exists === true ? '<span class="tp-chip ok">맵 ✓</span>'
-        : (exists === false ? '<span class="tp-chip warn">맵 없음</span>'
-          : '<span class="tp-chip dim">맵 미상</span>');
-      const flashing = S.flash.has(`${g.value}#${g.seq}::${matKey(m)}`);
-      return `<div class="tp-mat-row" data-v="${esc(g.value)}" data-lot="${esc(m.lot)}" data-slot="${esc(m.slot || '')}" title="클릭 = 이 자재의 맵 열기">
-        ${flashing ? '<span class="tp-flash go"></span>' : ''}
-        <span class="tp-tree">${last ? '└' : '├'}</span>
+  const sel = S.openValue || S.activeBrush || '';
+  const rows = mats.map(m => {
+    const av = availabilityOf(m.lot, m.slot);
+    // 신뢰 불가는 **숫자를 보여주지 않는다** — 강등된 값을 확정값처럼 보이면 계획이 틀린다.
+    const availHtml = (av.status === null || av.status === 'loading')
+      ? '<span class="tp-unknown-val">…</span>'
+      : (av.reliable
+        ? `<b>${av.value}</b>`
+        : `<span class="tp-unknown-val" title="${esc(av.reason + (av.value === null ? '' : ` (서버 원값 ${av.value})`))}">미상</span>`);
+    const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, m)) : null;
+    const mapChip = exists === true ? '<span class="tp-chip ok">맵 ✓</span>'
+      : (exists === false ? '<span class="tp-chip warn">맵 없음</span>'
+        : '<span class="tp-chip dim">맵 미상</span>');
+    // "어디에 몇 개씩" — 이 자재를 소비한 (값, 구간)과 그 수량. 항상 펼쳐 둔다(읽기 무마찰).
+    const uses = m.uses.map(u => `<span class="tp-use ${sel && sel === u.value ? 'on' : ''}"
+        title="DOE ${esc(u.value)} · STACK ${esc(u.stack || '—')} 에 ${u.qty}개 배정">
+        <i style="background:${esc(u.color || '#6b7280')}"></i>${esc(u.value)}·${esc(u.stack || '—')} <b>${u.qty}</b></span>`).join('');
+    const on = !!sel && m.uses.some(u => u.value === sel);
+    return `<div class="tp-mat-row ${on ? 'on' : ''}" data-lot="${esc(m.lot)}" data-slot="${esc(m.slot || '')}" title="클릭 = 이 자재의 맵 열기">
+      ${S.flash.has(matKey(m)) ? '<span class="tp-flash go"></span>' : ''}
+      <div class="tp-mat-l1">
         <span class="tp-mat-id">${esc(matLabel(m))}</span>
-        <span class="tp-mat-qty">${availHtml} / ${g.share}</span>
+        <span class="tp-mat-qty">가용 ${availHtml} · 사용 <b>${m.used}</b></span>
         ${mapChip}
-      </div>`;
-    }).join('');
-    return `<div class="tp-mat-grp ${on ? 'on' : ''}" data-v="${esc(g.value)}">
-      <div class="tp-mat-grp-h">
-        <span class="tp-sw sm" style="background:${esc(g.color || '#6b7280')}">${esc(g.value)}</span>
-        <span>STACK ${esc(g.stack || '—')}</span>
-        <span class="meta">소요 ${g.need || 0}</span>
-      </div>${matRows}</div>`;
+      </div>
+      <div class="tp-uses">${uses}</div>
+    </div>`;
   }).join('');
 
   box.innerHTML = `
-    <div class="tp-mat-head"><b>📦 사용 자재 <span class="tp-chip">${total}</span></b>
+    <div class="tp-mat-head"><b>📦 사용 자재 <span class="tp-chip">${mats.length}</span></b>
       <button type="button" class="glass-page-btn" id="tp-mat-refresh">↻ 가용 재조회</button></div>
     <div class="tp-mat-scroll">${rows}</div>
-    <div class="tp-mat-hint">행 클릭 = 그 자재의 맵을 엽니다 (뒤로가기로 복귀)${
+    <div class="tp-mat-hint">가용 = 서버 집계(총 − fail ∪ 전사) · 사용 = 이 계획이 배정한 합 · 행 클릭 = 그 자재의 맵을 엽니다${
       srcTable
         ? ` · 대상 <b>${esc(srcTable)}</b>${srcDerived === 'fallback'
             ? ' <span class="tp-chip warn" title="stage 선언에서 유도하지 못해 하드코딩 폴백을 씁니다 — 서버에 명시 선언 요청됨">추정</span>'
@@ -756,9 +803,9 @@ function renderMaterialPane() {
   box.querySelectorAll('.tp-mat-row').forEach(r => {
     r.addEventListener('click', () => openMaterial(r.dataset.lot, r.dataset.slot));
   });
-  // 선택된 DOE 그룹을 시야로 (필터 금지 — 전체가 보여야 한다)
-  const onGrp = box.querySelector('.tp-mat-grp.on');
-  if (onGrp) onGrp.scrollIntoView({ block: 'nearest' });
+  // 선택된 DOE를 쓰는 첫 자재를 시야로 (필터 금지 — 전체가 보여야 한다)
+  const onRow = box.querySelector('.tp-mat-row.on');
+  if (onRow) onRow.scrollIntoView({ block: 'nearest' });
   S.flash.clear();
 }
 
@@ -808,27 +855,23 @@ async function rewardAfterReturn(from) {
   if (entry && entry.status === 'error') {
     showToast(`자재 ${matLabel(m)} 가용 재조회 실패 — 미상으로 표시합니다. [↻ 가용 재조회]로 다시 시도하십시오.`, 'warning');
   }
-  // 같은 자재가 여러 DOE 그룹에 있으면 모든 그룹의 그 행이 함께 갱신·점멸한다
+  // 자재 ID가 행의 키이므로 점멸 대상도 자재 하나다 (종전엔 그룹마다 중복 등록해야 했다)
   if (before.avail !== after.avail || before.exists !== after.exists) {
-    materialGroups().forEach(g => {
-      if (g.materials.some(x => x.lot === m.lot && (x.slot || '') === (m.slot || ''))) {
-        S.flash.add(`${g.value}#${g.seq}::${matKey(m)}`);
-      }
-    });
+    S.flash.add(matKey(m));
   }
   renderMaterialPane();
 }
 
-// 자재 목록의 가용·맵 유무 일괄 갱신 (중복 자재는 1회만 조회)
+// 자재 목록의 가용·맵 유무 일괄 갱신.
+// 롤업이 이미 자재 ID로 접혀 있으므로 중복 조회 방어가 따로 필요 없다(종전 `seen` Map 폐기).
 async function refreshMaterials(force = false) {
   const seq = ++S.matSeq;
   const st = stageOfTable(S.ctx.table);
   const table = sourceTableOfStage(st);
-  const seen = new Map();
-  materialGroups().forEach(g => g.materials.forEach(m => { seen.set(matKey(m), m); }));
-  if (seen.size === 0) { renderMaterialPane(); return; }
+  const mats = materialRollup();
+  if (mats.length === 0) { renderMaterialPane(); return; }
   renderMaterialPane();
-  await Promise.all([...seen.values()].map(async m => {
+  await Promise.all(mats.map(async m => {
     await getSourceSummary(m.lot, m.slot, force);
     if (table) await probeMaterialMap(table, m, force);
   }));
@@ -976,9 +1019,9 @@ async function saveDoeToServer() {
       });
       // 자재 묶음은 값이 아니라 **구간**에 붙는다 — band_seq를 반드시 함께 쓴다.
       // 빠뜨리면 서버가 그 구간의 묶음을 못 찾아 source_unresolved가 뜬다.
-      // [M6] 서버 규약과 동일하게 **올림** 배분한다. round면 부족을 과소평가한다
-      // (예: 총 100 / 3매 → round 33*3=99 로 1칩 부족이 숨는다. 서버는 ceil 34).
-      const share = b.materials.length > 0 ? Math.ceil((Number(b.need) || 0) / b.materials.length) : 0;
+      // [M6] 배분식은 `bandShare` 하나뿐이다 — 자재 목록이 보여주는 수량과 여기 저장되는
+      //      `qty`가 같은 함수에서 나와야 화면과 DB가 갈라지지 않는다.
+      const share = bandShare(b);
       b.materials.forEach(m => {
         srcUpdates.push({
           business_key_val: doeSourceRowKey(v, seq, m.lot, m.slot),

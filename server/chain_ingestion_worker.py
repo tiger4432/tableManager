@@ -106,7 +106,8 @@ class OutboxListener:
     def close(self):
         self._reset_connection()
 
-RULES_PATH = os.path.join(os.path.dirname(__file__), "config", "chain_rules.json")
+import paths  # single override point (ASSY_DATA_ROOT)
+RULES_PATH = paths.config_path("chain_rules.json")
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 

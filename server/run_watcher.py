@@ -21,7 +21,8 @@ from directory_watcher import WorkspaceWatcher, IngestionHandler
 # Initialize dynamic database models
 try:
     import json
-    config_path = os.path.join(script_dir, "config", "table_config.json")
+    import paths  # single override point (ASSY_DATA_ROOT)
+    config_path = paths.config_path("table_config.json")
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
@@ -190,8 +191,9 @@ def poll_pending_retries():
                 # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도가
                 # ingestion_workspace/<table_name> 허공 경로로 오배송되지 않게 한다.
                 from directory_watcher import resolve_workspace_root, load_global_table_config
+                import paths
                 workspace_root = resolve_workspace_root(
-                    os.path.join(script_dir, "ingestion_workspace"), table_name, load_global_table_config()
+                    paths.WORKSPACE_DIR, table_name, load_global_table_config()
                 )
 
                 config_path = os.path.join(workspace_root, "config", "config.json")
@@ -246,8 +248,9 @@ def main():
     logger.info(f" API Base URL: {API_BASE_URL}")
     logger.info("=" * 60)
     
-    workspace_base = os.path.join(script_dir, "ingestion_workspace")
-    
+    import paths
+    workspace_base = paths.WORKSPACE_DIR
+
     # Start retry poller thread
     poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
     poller_thread.start()

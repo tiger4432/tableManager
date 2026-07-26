@@ -15,8 +15,8 @@ def reset_database():
     print("[WARNING] This will DELETE ALL DATA in the database.")
     
     # 1. table_config.json을 로드하여 동적 모델 초기화 (Base.metadata에 등록하여 drop_all이 가능하게 함)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, "..", "config", "table_config.json")
+    import paths  # single override point (ASSY_DATA_ROOT)
+    config_path = paths.config_path("table_config.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             table_config = json.load(f)

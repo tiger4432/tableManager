@@ -144,7 +144,6 @@ def _bp_config():
                 "mode": "map", "table": "tp_test_eds_fail_map",
                 "columns": {"lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val"},
                 "fail_values": ["F"],
-                "align": {"default": {"rotation": 180}, "by_eqp": {}},
             },
             "used_chips": {
                 "table": "tp_test_bonding_log",
@@ -159,7 +158,7 @@ def _bp_config():
     }
 
 
-def _tp_config(align_eds=True):
+def _tp_config():
     cfg = {
         "stages": {
             "dt": {
@@ -238,10 +237,6 @@ def _tp_config(align_eds=True):
                                           "val": "val"}},
         },
     }
-    if align_eds:
-        cfg["stages"]["bonding"]["source"]["fail_sources"]["eds_fail"]["align"] = {
-            "default": {"rotation": 180}, "by_eqp": {},
-        }
     return cfg
 
 
@@ -475,10 +470,18 @@ def test_tape_summary_projection_and_by_core(tp_env, client):
     assert body["history"][0]["step"] == "DT"
 
 
-def test_tape_projection_align_negative_control(tp_env, client, tmp_path, monkeypatch):
-    """eds align 미선언 → 저장(회전) 좌표 그대로 조인되어 투영 0 — align 실효 대조군."""
-    _seed_scenario(tp_env)
-    _write_cfg(tmp_path, monkeypatch, tp_cfg=_tp_config(align_eds=False))
+def test_tape_projection_align_negative_control(tp_env, client):
+    """eds 메타를 코어와 같은 rot 0으로 바꾸면 저장 좌표 그대로 조인되어 투영 0.
+
+    (정렬 실효 대조군 — 선언 레이어가 없어졌으므로 대조군은 **메타를 바꾸는 것**이다.)
+    """
+    db = tp_env
+    _seed_scenario(db)
+    model = models.DYNAMIC_TABLES["tp_test_map_meta"]
+    db.query(model).filter(model.target_table == "tp_test_eds_fail_map").delete()
+    _add_meta(db, "tp_test_eds_fail_map", "CORE-A_01", rotation=0)
+    _add_meta(db, "tp_test_eds_fail_map", "CORE-B_02", rotation=0)
+    db.commit()
     body = client.get("/api/transfer-plan/source-summary",
                       params={"stage": "bonding", "lot": "TAPE-X", "slot": "01"}).json()
     assert body["chips"]["fail_breakdown"]["eds_fail"] == 0
@@ -487,10 +490,20 @@ def test_tape_projection_align_negative_control(tp_env, client, tmp_path, monkey
 
 
 def test_tape_projection_align_unavailable(tp_env, client):
-    """align 선언 + grid meta 부재 코어 → 조용히 raw 계산하지 않고 명시 실패 (QA F2 승계)."""
+    """메타는 있는데 phys 규격이 없으면 → 조용히 raw 계산하지 않고 명시 실패 (QA F2 승계).
+
+    메타가 **아예 없는** 경우는 실패가 아니라 identity 폴백이다(등록 누락 신호) —
+    아래 별도 테스트가 그 경계를 지킨다.
+    """
     db = tp_env
+    _add(db, "tp_test_core_defect_map", chip_key="CC", lot="CORE-C", slot="03",
+         x=1, y=1, val="P")
+    _add_meta(db, "tp_test_core_defect_map", "CORE-C_03", rotation=0)
     _add(db, "tp_test_eds_fail_map", chip_key="EC", lot="CORE-C", slot="03",
-         x=6, y=6, val="F")  # meta 미등록
+         x=6, y=6, val="F")
+    bare = {k: v for k, v in dict(GRID, rotation=180).items() if not k.startswith("phys_")}
+    _add(db, "tp_test_map_meta", map_pk="eds_bare", target_table="tp_test_eds_fail_map",
+         map_id="CORE-C_03", grid_metadata=json.dumps(bare))
     _add(db, "tp_test_dt_log", dt_id="DT-C0", tape_lot="TAPE-Y", tape_slot="01",
          tx=1, ty=1, core_lot="CORE-C", core_slot="03", cx=1, cy=1)
     db.commit()
@@ -499,6 +512,21 @@ def test_tape_projection_align_unavailable(tp_env, client):
     assert body["sources"]["eds_fail"] == "connected(align_unavailable)"
     assert body["chips"]["fail_breakdown"]["eds_fail"] == 0
     assert body["chips"]["total"] == 1
+
+
+def test_tape_projection_without_any_meta_is_identity_not_failure(tp_env, client):
+    """메타가 아예 없으면 identity로 붙는다 — `align_unavailable`은 '근거가 없다'가 아니라
+    '근거는 있는데 계산이 불가능하다'일 때만 낸다(map_overlay 규율과 동일)."""
+    db = tp_env
+    _add(db, "tp_test_eds_fail_map", chip_key="EN", lot="CORE-N", slot="04",
+         x=1, y=1, val="F")
+    _add(db, "tp_test_dt_log", dt_id="DT-N0", tape_lot="TAPE-N9", tape_slot="01",
+         tx=1, ty=1, core_lot="CORE-N", core_slot="04", cx=1, cy=1)
+    db.commit()
+    body = client.get("/api/transfer-plan/source-summary",
+                      params={"stage": "bonding", "lot": "TAPE-N9", "slot": "01"}).json()
+    assert body["sources"]["eds_fail"] == "connected"
+    assert body["chips"]["fail_breakdown"]["eds_fail"] == 1   # (1,1) 그대로 조인
 
 
 def test_tape_origin_missing_falls_back_to_area_map(tp_env, client, tmp_path, monkeypatch):
@@ -608,12 +636,16 @@ def test_degraded_align_meta_missing_is_surfaced(tp_env, client):
     align_unavailable은 sources에만 적히고 warnings는 비어 있었다 — 그것이 F1의 핵심.
     """
     db = tp_env
-    # CORE-A/01의 eds 메타만 제거한 상태를 만들기 위해 메타 없는 코어로 테이프 구성
+    # 정렬을 해석할 수 없는(phys 규격 미등록) eds 메타를 가진 코어로 테이프를 구성한다.
     for y in range(1, 4):
         _add(db, "tp_test_core_defect_map", chip_key=f"M_{y}", lot="CORE-M", slot="01",
              x=1, y=y, val="D" if y == 1 else "P")
+    _add_meta(db, "tp_test_core_defect_map", "CORE-M_01", rotation=0)
     _add(db, "tp_test_eds_fail_map", chip_key="EM", lot="CORE-M", slot="01",
-         x=6, y=6, val="F")            # meta 미등록 → align 해석 불가
+         x=6, y=6, val="F")
+    bare = {k: v for k, v in dict(GRID, rotation=180).items() if not k.startswith("phys_")}
+    _add(db, "tp_test_map_meta", map_pk="eds_bare_M", target_table="tp_test_eds_fail_map",
+         map_id="CORE-M_01", grid_metadata=json.dumps(bare))
     for i, y in enumerate((1, 2, 3)):
         _add(db, "tp_test_dt_log", dt_id=f"DTM-{i}", tape_lot="TAPE-M", tape_slot="01",
              tx=i + 1, ty=1, core_lot="CORE-M", core_slot="01", cx=1, cy=y)
@@ -642,11 +674,19 @@ def test_degraded_fail_source_broken_is_surfaced(tp_env, client, tmp_path, monke
     assert body["sources"]["defect"] == "missing"
     assert body["chips"]["remaining"] is None
     assert body["chips"]["remaining_reliable"] is False
-    # total은 정상이므로 상한은 제공된다.
-    # defect 투영이 누락돼 fail_union = eds 2칩뿐 → |fail∪used| = |{(1,1),(2,2),(3,1),(4,2),(2,1)}| = 5
-    # → 상한 8−5 = 3. 정답 2보다 크므로 진짜 상한이 맞다(과대 방향).
-    assert body["chips"]["remaining_upper_bound"] == 3
-    assert "defect" in _degraded_roles(body)
+    # [정렬 일원화로 값이 바뀐 지점 — 상한 3 → 5]
+    # defect는 canonical(core) 프레임을 정의하는 원천이다. 그것이 파손되면 기준 프레임을
+    # 알 수 없고, eds는 자기 프레임(rot 180)만 알 뿐 **기준과의 상대 회전**을 알 수 없다.
+    # 종전에는 config의 `align: 180` 선언이 그 상대값을 따로 들고 있어 eds 투영이 계속
+    # 됐다(상한 3). 선언 레이어가 사라진 지금은 근거가 없으므로 eds도 명시 실패로 내려간다.
+    #   · 상한 5 = total 8 − |used 3|. 정답 2보다 크므로 **여전히 진짜 상한**이다(과대 방향).
+    #   · 정보량이 준 것이지 틀린 게 아니다. 그리고 강등된 역할이 하나 더 드러난다 —
+    #     종전에는 eds가 조용히 "정상"으로 보였다.
+    assert body["sources"]["eds_fail"] == "connected(align_unavailable)"
+    assert body["chips"]["remaining_upper_bound"] == 5
+    assert body["chips"]["remaining_upper_bound"] > 2      # 진짜 상한 불변식
+    deg = _degraded_roles(body)
+    assert "defect" in deg and "eds_fail" in deg
 
 
 def test_negative_remaining_is_flagged_as_population_mismatch(tp_env, client):
@@ -786,29 +826,24 @@ def test_no_truncation_field_when_within_caps(tp_env, client):
     assert not [w for w in body["warnings"] if w["type"] == "result_truncated"]
 
 
-def test_align_dst_grid_mismatch_is_explicit_failure(tp_env, client, tmp_path, monkeypatch):
-    """[QA F6] canonical(dst) 격자를 넘기므로 프레임 치수 모순이 명시 실패로 잡힌다.
+def test_align_canonical_dims_mismatch_is_explicit_failure(tp_env, client):
+    """[QA F6 승계] canonical(dst) 메타를 넘기므로 격자 치수 모순이 명시 실패로 잡힌다.
 
-    dst_grid를 생략하면 이 모순 검증(ValueError 가드)이 통째로 건너뛰어져 어긋난 좌표로
-    조용히 투영된다 — M1은 막지만 M2는 통과하던 경로.
+    dst 메타를 생략하면 이 모순 검증(ValueError 가드)이 통째로 건너뛰어져 어긋난 좌표로
+    조용히 투영된다.
     """
     db = tp_env
-    # canonical(defect)은 4x6, eds 자기 프레임은 4x6인데 rot 90 → 스왑 관계(6x4)와 모순
+    # canonical(defect)은 물리 4x6, eds는 물리 6x4 — 같은 웨이퍼 규격이 아니다
     _add(db, "tp_test_core_defect_map", chip_key="Z_1_1", lot="CORE-Z", slot="01",
          x=1, y=1, val="P")
     _add_meta(db, "tp_test_core_defect_map", "CORE-Z_01", rotation=0, cols=4, rows=6)
     _add(db, "tp_test_eds_fail_map", chip_key="EZ", lot="CORE-Z", slot="01",
          x=1, y=1, val="F")
-    _add_meta(db, "tp_test_eds_fail_map", "CORE-Z_01", rotation=90, cols=4, rows=6)
+    _add_meta(db, "tp_test_eds_fail_map", "CORE-Z_01", rotation=90, cols=6, rows=4)
     _add(db, "tp_test_dt_log", dt_id="DTZ", tape_lot="TAPE-Z9", tape_slot="01",
          tx=1, ty=1, core_lot="CORE-Z", core_slot="01", cx=1, cy=1)
     db.commit()
 
-    cfg = _tp_config()
-    cfg["stages"]["bonding"]["source"]["fail_sources"]["eds_fail"]["align"] = {
-        "default": {"rotation": 90}, "by_eqp": {},
-    }
-    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
     body = client.get("/api/transfer-plan/source-summary",
                       params={"stage": "bonding", "lot": "TAPE-Z9", "slot": "01"}).json()
     # 조용한 오답이 아니라 명시 실패 + 강등 표면화
@@ -816,24 +851,29 @@ def test_align_dst_grid_mismatch_is_explicit_failure(tp_env, client, tmp_path, m
     assert body["chips"]["remaining_reliable"] is False
 
 
-def test_align_dst_grid_is_passed_to_transform(tp_env, monkeypatch):
-    """[QA F6] _canonical_fail_set이 make_align_transform에 dst_grid를 실제로 넘기는지 직접 확인."""
+def test_canonical_meta_is_passed_to_the_shared_transform(tp_env, monkeypatch):
+    """[QA F6 승계] `_canonical_fail_set`이 **공유 변환기**에 canonical 메타를 실제로 넘긴다.
+
+    canonical 메타가 None으로 새면 `resolve_align`이 identity를 돌려주고 정렬이 통째로
+    사라진다 — 그래도 status는 `connected`라 조용한 과소 집계가 된다.
+    """
     _seed_scenario(tp_env)
-    captured = {}
-    import bonding_plan as bp
-    orig = bp.make_align_transform
+    captured = []
+    import map_overlay as mo
+    orig = mo.make_frame_transform
 
-    def spy(align, src_grid, dst_grid=None):
-        captured["dst_grid"] = dst_grid
-        return orig(align, src_grid, dst_grid)
+    def spy(source_meta, target_meta):
+        captured.append((source_meta, target_meta))
+        return orig(source_meta, target_meta)
 
-    monkeypatch.setattr(bp, "make_align_transform", spy)
+    monkeypatch.setattr(mo, "make_frame_transform", spy)
     cfg = transfer_plan.load_transfer_plan_config()
     transfer_plan.get_stage_source_summary(tp_env, cfg, "bonding", "TAPE-X", "01")
-    assert "dst_grid" in captured, "align 변환이 호출되지 않았다"
-    # canonical(defect 맵, align 미선언)의 격자가 dst로 전달돼야 한다
-    assert captured["dst_grid"] is not None, "dst_grid가 None이면 M1의 정합 검증이 무력화된다"
-    assert captured["dst_grid"]["cols"] == 6 and captured["dst_grid"]["rows"] == 6
+    assert captured, "정렬 변환이 한 번도 호출되지 않았다"
+    src_meta, dst_meta = captured[0]
+    assert dst_meta is not None, "canonical 메타가 None이면 정합 검증이 무력화된다"
+    assert dst_meta["grid_cols"] == 6 and dst_meta["grid_rows"] == 6
+    assert int(src_meta["rotation"]) == 180 and int(dst_meta["rotation"]) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -915,14 +955,19 @@ def test_source_region_scopes_core_availability_with_align(tp_env, client):
     assert rc["remaining"] == 1                   # (5,5)만 가용
 
 
-def test_source_region_core_align_negative_control(tp_env, client, tmp_path, monkeypatch):
-    """align 미선언이면 eds 저장좌표(6,6)로 비교되어 영역 내 eds가 0 — 정렬 실효 대조군."""
-    _seed_scenario(tp_env)
-    _seed_region(tp_env, "BASE-C2", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
-    tp_env.commit()
-    bp = _bp_config()
-    del bp["sources"]["eds_fail"]["align"]
-    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+def test_source_region_core_align_negative_control(tp_env, client):
+    """eds 메타를 rot 0으로 바꾸면 저장좌표(6,6)로 비교되어 영역 내 eds가 0 — 실효 대조군.
+
+    이 경로(`_core_region_counts`)는 M1 config를 M2 어댑터로 감싸므로, 어댑터가 canonical
+    후보를 못 찾으면 정렬이 조용히 identity로 떨어진다 — 그 회귀를 여기서 잡는다.
+    """
+    db = tp_env
+    _seed_scenario(db)
+    _seed_region(db, "BASE-C2", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
+    model = models.DYNAMIC_TABLES["tp_test_map_meta"]
+    db.query(model).filter(model.target_table == "tp_test_eds_fail_map").delete()
+    _add_meta(db, "tp_test_eds_fail_map", "CORE-A_01", rotation=0)
+    db.commit()
     body = client.get("/api/transfer-plan/source-summary", params=_region_params(
         "BASE-C2", stage="dt", lot="CORE-A", slot="01")).json()
     assert body["region_chips"]["fail_breakdown"]["eds_fail"] == 0

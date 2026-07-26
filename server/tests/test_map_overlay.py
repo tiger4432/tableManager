@@ -228,58 +228,41 @@ def test_flip_derived_from_side_difference(mov_env, client, tmp_path, monkeypatc
 
 
 # ---------------------------------------------------------------------------
-# 2. 선언 override / by_eqp 폴백 (차단 금지)
+# 2. 선언 레이어(align_overrides)는 제거됐다 — 메타가 유일한 근거
 # ---------------------------------------------------------------------------
 
-def test_declared_override_wins_over_derivation(mov_env, client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("stale_override", [
+    {"rotation": 0, "flip": "none"},                                    # 단순형
+    {"default": {"rotation": 0}, "by_eqp": {"METRO-A": {"rotation": 90}}},  # 확장형
+])
+def test_stale_align_overrides_in_config_are_ignored(mov_env, client, tmp_path,
+                                                     monkeypatch, stale_override):
+    """사용자 config에 `align_overrides`가 남아 있어도 **무시**하고 메타로 유도한다.
+
+    폐기 키는 조용히 무시하는 것이 정답이다 — 500으로 죽으면 config를 아직 안 지운
+    사용자의 오버레이가 전부 멎고, 반대로 적용하면 정렬 근거가 둘로 갈라진다.
+    소스 메타는 rot 180이므로 선언(rot 0)이 이겼다면 셀이 저장좌표 그대로 나온다.
+    """
     _seed(mov_env)
-    _write_cfg(tmp_path, monkeypatch, {
-        "align_overrides": {"mov_test_eds_map": {"rotation": 0, "flip": "none"}},
-    })
-    body = client.get("/api/maps/overlay", params={
-        "target_table": "mov_test_base_map", "target_key": "L1_01",
-        "sources": "mov_test_eds_map",
-    }).json()
-    o = body["overlays"][0]
-    assert o["align_applied"]["origin"] == "declared"
-    assert o["align_applied"]["rotation"] == 0
-    assert {(c["x"], c["y"]) for c in o["cells"]} == {(6, 6), (2, 5)}  # 변환 없음
-
-
-def test_by_eqp_missing_key_falls_back_to_default_without_blocking(mov_env, client,
-                                                                   tmp_path, monkeypatch):
-    """by_eqp에 장비 키가 없어도 차단하지 않고 default로 폴백 + note로 알린다."""
-    _seed(mov_env)
-    _write_cfg(tmp_path, monkeypatch, {
-        "align_overrides": {"mov_test_eds_map": {
-            "default": {"rotation": 180}, "by_eqp": {"METRO-A": {"rotation": 90}},
-        }},
-    })
-    body = client.get("/api/maps/overlay", params={
-        "target_table": "mov_test_base_map", "target_key": "L1_01",
-        "sources": "mov_test_eds_map", "eqp": "METRO-ZZ",
-    }).json()
-    o = body["overlays"][0]
-    assert o["status"] == "ok"
-    assert o["align_applied"]["origin"] == "default"
-    assert o["align_applied"]["rotation"] == 180
-    assert "METRO-ZZ" in o["align_applied"]["note"]
-
-
-def test_by_eqp_hit_uses_declared_eqp_align(mov_env, client, tmp_path, monkeypatch):
-    _seed(mov_env)
-    _write_cfg(tmp_path, monkeypatch, {
-        "align_overrides": {"mov_test_eds_map": {
-            "default": {"rotation": 0}, "by_eqp": {"METRO-A": {"rotation": 180}},
-        }},
-    })
+    _write_cfg(tmp_path, monkeypatch, {"align_overrides": {"mov_test_eds_map": stale_override}})
     body = client.get("/api/maps/overlay", params={
         "target_table": "mov_test_base_map", "target_key": "L1_01",
         "sources": "mov_test_eds_map", "eqp": "METRO-A",
     }).json()
     o = body["overlays"][0]
-    assert o["align_applied"]["origin"] == "declared"
+    assert o["align_applied"]["origin"] == "derived"      # declared/default는 더 이상 없다
+    assert o["align_applied"]["rotation"] == 180          # 메타 델타
     assert {(c["x"], c["y"]) for c in o["cells"]} == {(1, 1), (5, 2)}
+
+
+def test_declared_align_origins_are_gone_from_the_module(mov_env):
+    """상수 자체가 사라졌는지 — 코드가 아직 declared/default를 만들 수 있으면 제거가 아니다."""
+    assert not hasattr(map_overlay, "ALIGN_ORIGIN_DECLARED")
+    assert not hasattr(map_overlay, "ALIGN_ORIGIN_DEFAULT")
+    for src_rot, dst_rot in ((0, 0), (90, 0), (180, 0), (270, 90)):
+        _a, origin, _n = map_overlay.resolve_align(_meta_of(rotation=src_rot),
+                                                   _meta_of(rotation=dst_rot))
+        assert origin in ("derived", "identity"), origin
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +571,7 @@ def test_identity_shortcut_requires_all_four_axes(mov_env):
     for differing in (_meta_of(rotation=90), _meta_of(side="back"),
                       _meta_of(y_invert=True), _meta_of(start_x=0),
                       _meta_of(start_y=-12)):
-        _align, origin, _note = map_overlay.resolve_align({}, "t", differing, base)
+        _align, origin, _note = map_overlay.resolve_align(differing, base)
         assert origin == "derived", f"축이 다른데 지름길을 탔다: {differing}"
 
 
@@ -713,6 +696,34 @@ def oracle_overlay(src_meta, dst_meta, x, y):
     xp, yp = _oracle_cell_to_phys(src_meta, c, r)
     c2, r2 = _oracle_phys_to_cell(dst_meta, xp, yp)
     return _oracle_cell_to_stored(dst_meta, c2, r2)
+
+
+def oracle_stored_cells(meta):
+    """이 프레임의 **웨이퍼 안** 저장 좌표 전부 — 정답지 산술로만 만든다.
+
+    다른 테스트 모듈이 픽스처를 만들 때 쓴다. 픽스처를 검증 대상 함수로 만들면 시드와
+    복원이 서로 상쇄해, 균일 오프셋 결함이 통째로 보이지 않는다(자기 대조 함정).
+    """
+    vc, vr = _oracle_frame_dims(meta)
+    chip_x, chip_y, off_x, off_y = _oracle_frame_phys(meta)
+    eff = max(0.0, float(meta["phys_wafer_dia"]) / 2.0 - float(meta["phys_edge_margin"]))
+    rsq = eff * eff
+    cc, cr = (vc - 1) / 2.0, (vr - 1) / 2.0
+    hw, hh = chip_x / 2.0, chip_y / 2.0
+    out = []
+    for r in range(vr):
+        for c in range(vc):
+            x = (c - cc) * chip_x + off_x
+            y = (cr - r) * chip_y + off_y
+            if all((px * px + py * py) <= rsq
+                   for px in (x - hw, x + hw) for py in (y - hh, y + hh)):
+                out.append(_oracle_cell_to_stored(meta, c, r))
+    return out
+
+
+def oracle_bbox(meta):
+    """`_oracle_bbox` 공개 별칭 — 다른 모듈이 픽스처의 결함 축 활성화를 단언할 때 쓴다."""
+    return _oracle_bbox(meta)
 
 
 def _oracle_cells(m):
@@ -853,7 +864,7 @@ def test_identity_shortcut_blocked_by_grid_dim_mismatch(mov_env):
     """[M4] 치수가 다르면 지름길을 타면 안 된다 — 규격 검사를 우회하게 된다."""
     a = _meta_of(cols=6, rows=6)
     b = _meta_of(cols=8, rows=8)
-    _align, origin, _note = map_overlay.resolve_align({}, "t", a, b)
+    _align, origin, _note = map_overlay.resolve_align(a, b)
     assert origin == "derived", "치수 불일치가 identity로 통과했다"
     with pytest.raises(ValueError, match="dims differ"):
         map_overlay.make_frame_transform(a, b)
@@ -862,7 +873,7 @@ def test_identity_shortcut_blocked_by_grid_dim_mismatch(mov_env):
 def test_identity_shortcut_blocked_by_phys_spec_mismatch(mov_env):
     """[M4] 웨이퍼 규격이 다르면 바운딩박스가 달라 무보정으로 붙이면 안 된다."""
     _align, origin, _note = map_overlay.resolve_align(
-        {}, "t", _meta_of(phys=PHYS_CROP), _meta_of(phys=PHYS_STD))
+        _meta_of(phys=PHYS_CROP), _meta_of(phys=PHYS_STD))
     assert origin == "derived"
 
 

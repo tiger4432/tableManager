@@ -56,10 +56,13 @@ PLAN이고 `dt_map`을 열면 DT PLAN이다. 따라서:
      origin_log 조인으로 타깃(tape) 좌표에 투영("테이프에도 불량 섞임" 처리의 핵심),
      `frame: "self"`면 자기 identity 직접 카운트(M1 맵 모드와 동일).
 
-[align 규율 — M1 확립 그대로 승계] fail 원천의 align 블록은 소스 프레임→canonical(core)
-프레임 사상을 선언한다. 투영 조인은 좌표 비교이므로 **align 미해결 시 raw 좌표로 조용히
-계산하지 않고 명시 실패**(`connected(align_unavailable)`, 카운트 0) — QA F2 취지.
-변환은 `bonding_plan.make_align_transform`(순수 인덱스 변환, 엔진 fallback 무참여) 재사용.
+[align 규율 — 정렬의 유일한 근거는 `wafer_map_metadata`다 (사용자 확정 2026-07-26)]
+fail 원천의 소스 프레임→canonical(core) 프레임 사상은 **두 맵 메타의 델타에서 유도**한다.
+config의 `fail_sources[].align` 선언 레이어는 제거됐다 — 계측으로 잰 어긋남도 메타에 적는다.
+투영 조인은 좌표 비교이므로 **변환 미해결 시 raw 좌표로 조용히 계산하지 않고 명시 실패**
+(`connected(align_unavailable)`, 카운트 0) — QA F2 취지.
+변환 구현은 `map_overlay.resolve_map_transform` **하나뿐**이다(오버레이와 공유). 구
+`bonding_plan.make_align_transform`은 저장 좌표의 바운딩박스 규약을 반영하지 않아 삭제됐다.
 
 [스냅샷 규율] config는 요청(작업) 경계에서 1회 로드해 전 구간에 인자로 전달한다.
 [확장성] 응답은 집계만(칩 좌표 목록 금지). 좌표 페치는 내부 연산 한정 + 하드캡.
@@ -70,7 +73,8 @@ import os
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "transfer_plan_config.json")
+import paths  # single override point (ASSY_DATA_ROOT)
+CONFIG_PATH = paths.config_path("transfer_plan_config.json")
 
 # ---- 하드캡 (무제한 로드 금지 — 1,000만 행 규율) ----
 MAX_ORIGIN_POINTS = 100_000   # 타깃(테이프) 1장의 origin_log 칩 페치 상한 (내부 연산용)
@@ -430,17 +434,25 @@ def _region_block(total_pts, fail_sets: dict, used_set: set, region: set) -> dic
 def _core_region_counts(db, bp_cfg: dict, lot: str, slot: str, region: set):
     """[②] core-kind(M1 위임) 소스의 영역 내 집계.
 
-    M1 `get_core_summary`는 rect만 받으므로 셀 집합을 넘길 수 없다. `bonding_plan.py`를
-    수정하지 않는다는 불변식을 지키기 위해, M1 config의 역할 바인딩을 M2 어댑터 형태로
-    읽어 좌표 집합을 직접 구성한다(align은 M1과 동일하게 canonical 사상 후 교차).
+    M1 `get_core_summary`는 rect만 받으므로 셀 집합을 넘길 수 없다. M1 config의 역할
+    바인딩을 M2 어댑터 형태로 읽어 좌표 집합을 직접 구성한다(정렬은 M1과 동일하게 메타
+    델타에서 유도해 canonical 사상 후 교차).
+
+    ⚠️ 어댑터의 `fail_sources`는 **`bonding_plan.CANONICAL_FRAME_ROLES`와 같은 순서**로
+    쌓는다 — `_canonical_origin_meta`가 이 순서로 canonical 프레임을 고르므로, 순서가
+    다르면 M1 `get_core_summary`와 다른 프레임을 기준 삼아 두 경로의 수치가 갈린다.
+    `frame`을 "self"로 두면 canonical 후보가 하나도 없어 dst 메타가 None이 되고, 그러면
+    정렬이 통째로 identity로 떨어진다(조용한 오답).
     """
+    import bonding_plan
+
     sources = (bp_cfg.get("sources") or {})
     adapter = {
         "identity": bp_cfg.get("core_identity") or {"compose": ["lot", "slot"]},
         "map_metadata": bp_cfg.get("map_metadata"),
-        # canonical 후보: align 미선언 맵 모드 원천(총칩/defect)
         "fail_sources": {
-            k: dict(sources[k], frame="self") for k in ("defect", "eds_fail")
+            k: dict(sources[k], frame="origin")
+            for k in bonding_plan.CANONICAL_FRAME_ROLES
             if _valid_binding(sources.get(k))
         },
     }
@@ -535,67 +547,77 @@ def _origin_map_id(source_cfg, origin_lot, origin_slot) -> str:
     return "_".join(str(vals.get(k, "")) for k in identity_cols)
 
 
-def _canonical_origin_grid(db, source_cfg, origin_lot, origin_slot, cache: dict = None):
-    """[QA F6] 출신(core) 프레임의 **canonical 격자 규격**을 로드한다.
+def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
+                           cache: dict = None, meta_cache: dict = None):
+    """출신(core) 프레임의 **canonical 맵 메타**를 로드한다.
 
-    canonical = align을 선언하지 않은 core-frame 원천(대개 defect 맵)의 grid meta.
-    M1(`bonding_plan.get_core_summary`)이 `make_align_transform(align, src, canonical)`로
-    넘기는 dst_grid와 같은 것 — 이걸 생략하면 ①dst start_x/y가 소스 자신의 start로 폴백해
-    프레임 원점이 어긋나고 ②치수 불일치 ValueError 가드가 통째로 무력화된다(조용한 오답).
+    canonical = origin_log의 `(origin_x, origin_y)`가 사는 프레임, 즉 코어 웨이퍼 자신의
+    맵이다. 좌표를 바인딩한 **첫** `frame == "origin"` 원천(config 선언 순서 — 라이브는
+    defect = core_defect_map이 먼저다)이 기준을 정의하며, 그 원천의 메타가 없으면 None을
+    돌려준다. **뒤 원천으로 넘어가지 않는다.**
+
+    ⚠️ 넘어가면 회전된 계측 맵이 스스로 기준을 참칭한다. 그러면 소스 == 기준이라 변환이
+    identity로 떨어지고, 상태는 `connected`인 채 fail 투영이 통째로 빠진다(조용한 과소
+    집계). 기준을 모르면 모른다고 해야 한다 — 호출자가 align_unavailable로 표면화한다.
+
+    격자 규격만이 아니라 메타 전체가 필요하다 — 정렬은 회전·면·y반전·start·치수·phys 전부의
+    델타에서 유도되므로, 치수만 넘기면 나머지 축의 차이가 조용히 무시된다.
     """
     if cache is not None and (origin_lot, origin_slot) in cache:
         return cache[(origin_lot, origin_slot)]
 
     import bonding_plan
     map_id = _origin_map_id(source_cfg, origin_lot, origin_slot)
-    grid = None
+    meta = None
     for fs in (source_cfg.get("fail_sources") or {}).values():
         if not _valid_binding(fs):
             continue
         if (fs.get("frame") or "origin") != "origin":
             continue
-        if bonding_plan.normalize_align(fs.get("align")) is not None:
-            continue   # align 선언 원천은 자기 프레임 — canonical 후보 아님
-        grid = bonding_plan.load_grid_meta(db, source_cfg, fs["table"], map_id)
-        if grid:
-            break
+        cols = fs.get("columns") or {}
+        if "x" not in cols or "y" not in cols:
+            continue      # 좌표가 없는 원천은 프레임을 정의할 수 없다
+        meta = bonding_plan.load_map_meta(db, source_cfg, fs["table"], map_id, meta_cache)
+        break
     if cache is not None:
-        cache[(origin_lot, origin_slot)] = grid
-    return grid
+        cache[(origin_lot, origin_slot)] = meta
+    return meta
 
 
 def _canonical_fail_set(db, source_cfg, fail_cfg, cols, origin_lot, origin_slot,
-                        grid_cache: dict = None):
+                        grid_cache: dict = None, meta_cache: dict = None):
     """출신(core) 1장의 fail 좌표를 canonical 프레임 set으로 반환.
 
-    반환: (set[(x,y)], align_marker|None) — align 미해결이면 (None, "align_unavailable").
+    반환: (set[(x,y)], align_marker|None, truncated) — 변환 미해결이면
+    (None, "align_unavailable", False).
     """
     import bonding_plan
+    import map_overlay
 
     filters = [cols["lot"] == origin_lot, cols["slot"] == origin_slot]
     fail_values = fail_cfg.get("fail_values")
     if fail_values and "val" in cols:
         filters.append(cols["val"].in_([str(v) for v in fail_values]))
 
-    align = bonding_plan.normalize_align(fail_cfg.get("align"))
-    transform = None
-    marker = None
-    if align and not align.get("is_identity"):
-        map_id = _origin_map_id(source_cfg, origin_lot, origin_slot)
-        # [align 규율] 격자 규격은 프리셋이 아니라 grid meta에서 읽는다 (QA 감사 §3)
-        src_grid = bonding_plan.load_grid_meta(db, source_cfg, fail_cfg["table"], map_id)
-        if not src_grid:
-            return None, "align_unavailable", False
-        # [QA F6] canonical(dst) 프레임을 반드시 함께 넘긴다 — M1과 동일한 정합 검증을 받는다.
-        dst_grid = _canonical_origin_grid(db, source_cfg, origin_lot, origin_slot, grid_cache)
-        try:
-            transform = bonding_plan.make_align_transform(align, src_grid, dst_grid)
-        except ValueError as ve:
-            # 치수 불일치 등 — 조용히 어긋난 좌표를 쓰지 않고 명시 실패로 강등한다.
-            logger.warning("[TransferPlan] align transform build failed (%s/%s): %s",
-                           fail_cfg.get("table"), map_id, ve)
-            return None, "align_unavailable", False
-        marker = bonding_plan.align_status_label(align)
+    map_id = _origin_map_id(source_cfg, origin_lot, origin_slot)
+    src_meta = bonding_plan.load_map_meta(db, source_cfg, fail_cfg["table"], map_id, meta_cache)
+    dst_meta = _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
+                                      grid_cache, meta_cache)
+    if src_meta is not None and dst_meta is None:
+        # [비대칭 지식] 이 맵의 프레임은 아는데 기준 프레임을 모른다. 둘 다 모르면
+        # identity가 성립하지만(등록 누락), 한쪽만 알 때 identity로 가정할 근거는 없다.
+        logger.warning("[TransferPlan] canonical origin frame unregistered while '%s' declares "
+                       "its own (%s) — refusing to assume identity",
+                       fail_cfg.get("table"), map_id)
+        return None, "align_unavailable", False
+    try:
+        transform, align, _origin, _note = map_overlay.resolve_map_transform(src_meta, dst_meta)
+    except ValueError as ve:
+        # 치수 불일치·phys 미등록 등 — 조용히 어긋난 좌표를 쓰지 않고 명시 실패로 강등한다.
+        logger.warning("[TransferPlan] frame transform unavailable (%s/%s): %s",
+                       fail_cfg.get("table"), map_id, ve)
+        return None, "align_unavailable", False
+    marker = map_overlay.align_status_label(align)
 
     pts, truncated = _fetch_pairs(db, cols, filters, cap=MAX_FAIL_POINTS,
                                   tag=f"fail:{fail_cfg.get('table')}")
@@ -755,8 +777,10 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # (코어마다 origin_rows 전체를 훑으면 O(코어수 × 칩수) — 테이프당 수백 코어에서 폭발)
     rows_by_core = {}
     involved_cores = []
-    # [QA F6] canonical(dst) 격자는 코어당 1회만 조회한다 (F7 왕복 수도 일부 완화)
+    # [QA F6] canonical(dst) 메타는 코어당 1회만 조회한다 (F7 왕복 수도 일부 완화).
+    # meta_cache는 (table, map_id) 단위 — 코어 × fail 원천 수만큼의 재조회를 막는다.
     canonical_grid_cache = {}
+    meta_cache = {}
     if origin_rows is not None:
         for (tx, ty, ol, os_, ox, oy) in origin_rows:
             bucket = rows_by_core.get((ol, os_))
@@ -811,7 +835,8 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             marker = None
             for (ol, os_) in involved_cores:
                 fail_set, mk, trunc = _canonical_fail_set(
-                    db, source_cfg, fs, cols, ol, os_, grid_cache=canonical_grid_cache)
+                    db, source_cfg, fs, cols, ol, os_,
+                    grid_cache=canonical_grid_cache, meta_cache=meta_cache)
                 if fail_set is None:
                     # [align 규율] 규격 불명 시 raw 좌표로 조용히 계산하지 않는다
                     status = "connected(align_unavailable)"

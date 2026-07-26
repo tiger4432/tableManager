@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 일원화) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -298,7 +298,7 @@ sequenceDiagram
 ```
 
 - **미등록은 정상 상태가 아니라 누락입니다.** "메타가 없으면 identity"는 규칙이 아니라 **폴백**이며, 폴백이 발동했다는 사실 자체가 등록 누락의 신호입니다.
-- **계측 결과(DEFECT WF로 측정한 어긋남)도 메타에 기록합니다** — 별도 오버라이드 레이어를 두지 않습니다. 그래서 `align_overrides.by_eqp` 분기는 **제거 예정**입니다(보드 결정, 폐기 범위는 착수 시 확인).
+- **계측 결과(DEFECT WF로 측정한 어긋남)도 메타에 기록합니다** — 별도 오버라이드 레이어를 두지 않습니다. `align_overrides`(config 선언 · `by_eqp` 분기)는 **2026-07-27에 제거됐습니다**([히스토리](../history/20260727_004500_align_consolidation_meta_single_source.md)). 사용자 config에 키가 남아 있어도 서버는 무시합니다.
 - **셀 레벨 `grid_metadata` 컬럼은 폐기 스킴입니다** — 정렬 소스로 문서화하지도, 새로 구현하지도 마십시오.
   > ⚠️ 이름이 겹칩니다. 폐기 대상은 **맵 데이터 행마다 붙던 `grid_metadata` 컬럼**이고, `wafer_map_metadata` **테이블의 동명 payload 컬럼은 정본**입니다([architecture_and_management §2](../map_editor/architecture_and_management.md)). `loadExistingMap`에 셀 레벨 폴백 코드가 아직 남아 있으나(`client2/src/map_editor.js:2594-2604`), 어떤 맵 테이블도 `/tables/{t}/schema`에 `grid_metadata`를 노출하지 않아 라이브에서는 **사문**입니다.
 
@@ -320,22 +320,22 @@ sequenceDiagram
 - **격자 규격 호환성 관문** — 소스·타깃의 `cols×rows`가 다르면 `align_unavailable`로 **명시 거절**합니다(물리 좌표는 정준 격자의 인덱스라, 치수가 다르면 같은 인덱스가 같은 다이가 아닙니다).
 - **실패해도 목록에 행으로 남깁니다**(조용한 소실 금지). 각 실패 행은 재시도(`↻`) 버튼을 유지합니다.
 
-**실패 상태(status) 6종** — 전부 "그리지 않는다"입니다.
+**실패 상태(status) 4종** — 전부 "그리지 않는다"입니다.
+
+> 종전의 `align_unconfirmed` · `align_override_declared` 두 상태는 **2026-07-27에 삭제**됐습니다. 둘 다 "서버에 계측 보정 선언이 있는가"를 묻던 `probeAlignDeclaration` 관문의 산물인데, 선언 레이어 자체가 사라져 물어볼 대상이 없어졌습니다(보정은 소스 메타에 들어 있고, 소스 메타는 어차피 읽습니다). 관문이 하나 줄어든 만큼 오버레이 추가의 REST 왕복도 하나 줄었습니다.
 
 | status | 뜻 |
 |---|---|
-| `align_unconfirmed` | 계측 보정 **선언 여부를 확인하지 못했다**(probe가 404/405 외 사유로 실패). 선언을 무시한 채 겹치면 조용한 오답이므로 거절 |
-| `align_override_declared` | 서버에 보정이 **선언돼 있다**. 현 단계(기하 일원화)는 보정을 적용하지 않으므로 거절 |
 | `meta_unavailable` | 소스 또는 타깃 **규격 조회 자체가 실패**했다(≠ 미등록). 규격을 모르는 채로 겹치면 좌표가 조용히 어긋남 |
 | `binding_unavailable` | 소스 테이블의 좌표 바인딩을 스키마에서 유도할 수 없다(좌표 컬럼명이 관례 밖 — `dt_log`의 `tx/ty` 등. 선언이 서버 config에만 있음) |
 | `align_unavailable` | 격자 규격 불일치 등 **변환을 계산할 근거가 없다** |
 | `no_data` | 겹칠 셀이 0건 |
 
-이 6종 외에 **일반 `error`**가 있습니다 — 소스 스키마 조회 실패, 셀 조회 실패처럼 사유가 명확한 IO 실패입니다. 명명된 6종과 구분해 두는 이유는, 위 6종이 전부 **"근거가 없으면 그리지 않는다"는 판단**의 결과인 반면 `error`는 단순 실패이기 때문입니다.
+이 4종 외에 **일반 `error`**가 있습니다 — 소스 스키마 조회 실패, 셀 조회 실패처럼 사유가 명확한 IO 실패입니다. 명명된 4종과 구분해 두는 이유는, 위 4종이 전부 **"근거가 없으면 그리지 않는다"는 판단**의 결과인 반면 `error`는 단순 실패이기 때문입니다.
 
 > **`무보정`(identity)은 실패가 아닙니다** — 칩에 별도 표기되며, 소스 메타가 없어 현재 화면 규격으로 해석한 경우 툴팁에 그 사실이 드러납니다. §5.0의 규칙에 비추면 이 표기는 "정상"이 아니라 **등록 누락의 알림**으로 읽어야 합니다.
 
-**"확인하지 못했다"와 "선언이 없다"를 절대 같은 값으로 다루지 마십시오** — `fetchGridMetaFor`·`probeAlignDeclaration` 둘 다 **404/405만** "없다"(null)로 읽고 나머지는 throw합니다. `fetchPaintRules`가 세운 규약과 동일합니다(§5.4).
+**"확인하지 못했다"와 "선언이 없다"를 절대 같은 값으로 다루지 마십시오** — `fetchGridMetaFor`는 **404/405만** "없다"(null)로 읽고 나머지는 throw합니다. `fetchPaintRules`가 세운 규약과 동일합니다(§5.4).
 
 ### 5.2 서버 계약 — 엔드포인트는 살아 있다
 
@@ -344,24 +344,26 @@ sequenceDiagram
 | 소비자 | 무엇을 쓰는가 |
 |---|---|
 | `GET /api/maps/overlay` (`main.py`) | `map_overlay.get_overlay` — 정렬 좌표 `overlays[]` 전체 |
-| 맵 에디터 클라 | **`align_applied.origin` 한 필드만** — `limit=1` probe로 계측 보정 선언 유무를 확인하는 관문 용도. 좌표는 쓰지 않음 |
-| `server/transfer_plan.py` | `resolve_binding` / `build_key_filters` / `load_overlay_config` — **바인딩·config 헬퍼만**(정렬 함수 아님) |
+| **`server/bonding_plan.py`** | `map_overlay.resolve_map_transform` / `align_status_label` — **가용량 산출의 정렬**(2026-07-27 배선) |
+| **`server/transfer_plan.py`** | 같은 두 함수 + `resolve_binding` / `build_key_filters` / `load_overlay_config` |
 | `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.4) |
 | `server/tests/test_map_overlay.py` | 엔드포인트 계약 회귀 |
 
-> ℹ️ `server/bonding_plan.py`는 `map_overlay`를 **import하지 않습니다** — 자체 정렬 구현(`normalize_align`/`make_align_transform`, `bonding_plan_config.json`의 `sources[].align`)을 가진 **별개 경로**입니다. 두 모듈은 같은 종류의 변환을 각자 구현하고 있으며, 아래 A2가 바로 그 사본에 관한 항목입니다.
+> ℹ️ **맵 에디터 클라는 이 엔드포인트를 더 이상 호출하지 않습니다.** 좌표를 안 쓰게 된 뒤로 남아 있던 `limit=1` probe(계측 보정 선언 유무 확인)마저 선언 레이어와 함께 제거됐습니다(§5.1).
 
-**서버의 정렬 결정 규율**(엔드포인트 계약 — 클라 파이프라인과 별개):
+> ✅ **[구 A2 해소]** `server/bonding_plan.py`가 갖고 있던 자체 정렬 구현(`normalize_align`/`make_align_transform`/`align_status_label`)은 **삭제**됐고, 가용량 산출도 위 표대로 `map_overlay`를 경유합니다. 이로써 **서버의 좌표 변환 구현은 하나**입니다(렌더용 클라 구현과 합쳐 총 2개 — 가용량이 서버에서 계산되는 한 이 둘이 하한입니다).
+
+**서버의 정렬 결정 규율**(오버레이·가용량 공통 — `map_overlay.resolve_map_transform` 단일 진입점):
 
 ```
-① 선언(map_overlay_config.json의 align_overrides: by_eqp → default) 있으면 그대로 적용   origin = declared|default
-② 없으면 소스·타깃 wafer_map_metadata의 rotation/side 차이에서 유도                     origin = derived
-③ 유도 근거도 없으면 identity(0°)로 그대로 붙인다                                        origin = identity
-④ 변환을 계산할 근거 자체가 없을 때만 status = align_unavailable
+① 소스·타깃 wafer_map_metadata의 델타에서 유도한다(회전·면·y반전·start·치수·phys 6종)  origin = derived
+② 유도 근거가 없으면(양쪽 메타 부재) identity로 그대로 붙인다                            origin = identity
+③ 변환을 계산할 근거가 없을 때만 status = align_unavailable
+   (치수 비호환 · phys 규격 미등록 · **한쪽 메타만 등록**된 비대칭)
 ```
 
-- `align_overrides`는 메타에서 유도 불가능한 **계측 데이터**로 도입됐으나, §5.0의 규칙(계측 결과도 메타에 기록)에 따라 **`by_eqp` 분기는 제거 예정**입니다.
-- 클라는 ①이 걸리면 그리지 않고 `align_override_declared`로 거절합니다(§5.1). 즉 현재 ①은 **클라 경로에서 관문일 뿐 적용 경로가 아닙니다.**
+- **③의 "비대칭" 조항이 가용량 경로에만 있는 추가 규율입니다.** 소스 프레임은 아는데 canonical(코어) 프레임을 모르면 상대 회전을 알 수 없습니다. 오버레이는 그 상태를 칩으로 사용자에게 드러내지만(`무보정 · 규격 미등록`), 가용량은 숫자 하나로 나가므로 드러낼 자리가 없습니다 — 그래서 `align_unavailable` + 강등 경고로 거절합니다.
+- canonical 프레임은 **좌표를 바인딩한 첫 역할**이 정의합니다(`bonding_plan.CANONICAL_FRAME_ROLES` = total_chips → defect → eds_fail, `transfer_plan`은 `frame:"origin"` fail 원천의 선언 순서). 그 역할의 메타가 없으면 **뒤 역할로 넘어가지 않습니다** — 넘어가면 회전된 계측 맵이 스스로 기준을 참칭해 변환이 조용히 identity로 떨어집니다.
 
 ### 5.3 프레임 vs 물리 좌표계 — A1이 고친 것 (서버 측)
 
@@ -376,9 +378,9 @@ sequenceDiagram
 
 `oox`는 **back 면에서 부호가 뒤집힙니다**(`cell_to_physical`이 회전 **전에** 면 반전을 적용하고, 그 반전이 물리 x축을 뒤집기 때문). 이 보정을 빼면 회전 맵의 웨이퍼 bbox가 통째로 어긋나고, **저장 좌표가 bbox 상대값이라 전 셀이 어긋납니다.**
 
-구현은 `map_overlay._frame_phys_params` **한 함수에 가둬** 있습니다. `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정입니다 — `bonding_plan.py`가 같은 클래스를 엔진 없이 공유하므로 부작용을 피하기 위함입니다.
+구현은 `map_overlay._frame_phys_params` **한 함수에 가둬** 있습니다. `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정입니다.
 
-> **열린 항목 A2 (미해소)** — `bonding_plan.py:198-204`(`make_align_transform`의 `to_canonical`)의 선언(override) 경로는 아직 bbox 항 없는 구 산술입니다. 라이브 오버라이드 선언이 없어 **휴면**이나, 한 줄 선언하면 부활합니다. `bonding_plan`은 `map_overlay`를 쓰지 않는 **별개 구현**이므로 A1 수정이 여기로 전파되지 않았습니다.
+> **✅ A2 해소 (2026-07-27)** — `bonding_plan.make_align_transform`(bbox 항 없는 구 산술)은 **삭제**됐고 가용량 산출이 `map_overlay`로 배선됐습니다. 실측 대조: 라이브 규격(40×40 · chip 7×7 · dia 300 · margin 3)은 bbox가 `(0,39,0,39)`라 두 구현의 결과가 **1288셀 전건 일치** — 그래서 라이브 가용량 수치는 변하지 않습니다. 반면 웨이퍼 원에 잘리는 격자(29×25 · chip 11×13)에서는 **425셀 전건 불일치**하며 편차는 거울 축에서 `2·minC` = (4,4)입니다. 구 사본이 틀렸고, 그것이 휴면이 아니었다는 점도 함께 확인됐습니다 — `bonding_plan_config.json`·`transfer_plan_config.json` 둘 다 `eds_fail`에 `rotation:180`을 **라이브로 선언**하고 있었습니다(그 값은 `eds_fail_map` 메타의 rotation과 정확히 같아, 선언이 메타의 중복이었음을 보여줍니다).
 > **✅ A3 해소 (2026-07-26, 재기동 후 REST 실측)** — 3케이스 전부 `status: ok` + `align_applied.origin: derived` + 격자 밖 셀 0건, `bonding_map/EXP1`의 `x=-1` 소멸 확인. 함정 기록: `/health`는 존재하지 않는 경로라 정적 catch-all이 **HTML을 200으로** 반환합니다 — 헬스체크 근거로 쓰지 마십시오. 응답 필드명은 `align`이 아니라 **`align_applied`**입니다.
 > **회귀 시험 규율** — 오버레이 좌표 회귀는 반드시 **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인하십시오. 40×40(`minC=0`)은 결함이 **원리적으로 발현할 수 없는** 구간입니다. 축 조합은 `chip_x≠chip_y` · rot 90/180/270 · back · `offset≠0`을 **동시에** 만족시켜야 의미가 있습니다.
 

@@ -58,7 +58,8 @@ def load_global_table_config() -> dict:
     """전역 table_config.json 로드 (실패 시 빈 dict — 워처는 계속 동작해야 한다)."""
     import json
     try:
-        global_config_path = os.path.abspath(os.path.join(script_dir, "..", "config", "table_config.json"))
+        import paths  # single override point (ASSY_DATA_ROOT)
+        global_config_path = paths.config_path("table_config.json")
         if os.path.exists(global_config_path):
             with open(global_config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -122,9 +123,8 @@ def warn_invalid_std_parse_once(source_key: str, value):
 # 개별 파일 관례(chain_rules/enrichment_rules/maps/...)이므로 그 관례를 따라
 # 전용 파일 ingestion_settings.json을 신설한다. 파일 부재/손상 시 기본값으로 동작.
 DEFAULT_HEAVY_FILE_MB = 10
-INGESTION_SETTINGS_PATH = os.path.abspath(
-    os.path.join(script_dir, "..", "config", "ingestion_settings.json")
-)
+import paths  # single override point (ASSY_DATA_ROOT)
+INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 
 def load_ingestion_settings() -> dict:
@@ -1704,9 +1704,8 @@ class WorkspaceWatcher:
 
 if __name__ == "__main__":
     # Assuming the script is run from server/parsers/
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_base = os.path.abspath(os.path.join(script_dir, "..", "ingestion_workspace"))
-    
+    workspace_base = paths.WORKSPACE_DIR
+
     watcher = WorkspaceWatcher(workspace_base)
     watcher.discover_and_watch()
     watcher.start()

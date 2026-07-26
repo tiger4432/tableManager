@@ -2115,26 +2115,11 @@ function renderLegendMetaOnly() {
   });
 }
 
-// 1회 마이그레이션: 서버 registry가 비어 있고 localStorage legend가 있으면 업로드 제안
-async function maybeOfferLegendMigration(refTable, mapKey) {
-  if (!refTable || !mapKey) return;
-  const migFlag = `map_split_migrated_${refTable}${SPLIT_KEY_SEP}${mapKey}`;
-  if (localStorage.getItem(migFlag)) return;
-  const stored = localStorage.getItem(`map_legend_${refTable}`);
-  if (!stored) return;
-  let localLegend = [];
-  try { localLegend = JSON.parse(stored); } catch (e) { return; }
-  if (!Array.isArray(localLegend) || localLegend.length === 0) return;
-  localStorage.setItem(migFlag, '1'); // 수락 여부와 무관하게 1회만 제안
-  const ok = confirm(
-    `이 맵(${mapKey})의 legend ${localLegend.length}건이 브라우저(localStorage)에만 저장되어 있습니다.\n` +
-    `서버 split registry로 업로드하여 팀과 공유하시겠습니까?`
-  );
-  if (!ok) return;
-  const saved = await saveLegendToServer(mapKey);
-  if (saved) showToast('로컬 legend를 서버 split registry로 마이그레이션했습니다.', 'success');
-  else showToast('legend 마이그레이션 실패 — 서버 연결을 확인하십시오.', 'error');
-}
+// [삭제됨] legend 마이그레이션 제안(`maybeOfferLegendMigration`).
+//   맵을 여는 **읽기 경로**에 confirm 대화상자를 세웠고, 묻는 내용도 내부 개념("split registry")
+//   이라 맵을 여는 사람에게 아무 의미가 없었다. 규율은 **읽기 무마찰 · 쓰기 1회 확인**이다.
+//   대체 동작은 아래 loadExistingMap의 "registry 0건" 분기 — 묻지 않고 DOE를 깨끗이 초기화한다.
+//   (`map_split_migrated_*` localStorage 플래그도 함께 폐기됐다.)
 
 // [재설계 v2] 가시 legend UI는 우측 「2. Legend & DOE」 패널이 담당한다.
 // 이 함수는 legend 변경을 패널에 통지하고, (남아 있다면) 구 테이블 DOM도 갱신한다.
@@ -2833,8 +2818,12 @@ async function loadExistingMap(opts = {}) {
           saveLegendToStorage();
           renderLegendTable();
         } else {
-          // 서버 접근은 됐지만 이 맵의 registry가 빈 경우 — 로컬 legend 1회 마이그레이션 제안
-          await maybeOfferLegendMigration(selectedTable, loadedMapKey);
+          // 서버 접근은 됐지만 이 맵의 registry가 비어 있다 = 이 맵에는 등록된 DOE가 없다.
+          // 묻지 않고 **깨끗이 초기화**한다: legendMeta는 이전 맵(같은 테이블)의 수정자·시각을
+          // 그대로 들고 있어, 그냥 두면 남의 맵 이력이 이 맵의 것처럼 보인다.
+          // legend 값·색 자체의 로드 순서(서버 → 로컬 캐시 → 기본값)는 건드리지 않는다.
+          legendMeta = {};
+          renderLegendTable();
         }
       } catch (e) {
         console.warn('[Map Editor] split registry apply skipped:', e);
@@ -3843,9 +3832,10 @@ function popMapFrame() {
 // 메인 맵과 **같은 규칙으로 같이** 움직인다. 물리 키는 소스 메타만으로 결정되므로
 // 화면 조작에 불변이고, 화면 조작은 렌더 단계에서 양쪽에 똑같이 적용된다.
 //
-// [서버에 남는 것 — Phase 2] 계측 보정(`align_overrides`)은 메타로 유도 불가능한 **데이터**라
-// 서버가 계속 소유한다. Phase 1은 보정을 적용하지 않으므로, 보정이 **선언돼 있으면**
-// 그리지 않고 명시적으로 실패한다(무시하고 그리면 조용한 거짓 그림).
+// [정렬의 유일한 근거는 wafer_map_metadata다 — 사용자 확정 2026-07-26]
+// 서버의 선언 레이어(`align_overrides`)는 제거됐다. 계측으로 잰 어긋남도 메타에 기록하므로,
+// 소스 메타를 읽는 것만으로 보정이 이미 반영된다. 따라서 "서버에 보정 선언이 있는지" 묻던
+// probe 관문(`probeAlignDeclaration`)도 함께 사라졌다 — 물어볼 대상이 없어졌기 때문이다.
 // ====================================================
 const OVERLAY_COLORS = ['#ef4444', '#3b82f6', '#f59e0b', '#a855f7', '#14b8a6', '#ec4899'];
 let overlayLayers = [];        // { id, sourceTable, sourceKey, cells:Map(physKey->val), count, color, visible, status, alignApplied, truncated }
@@ -4039,73 +4029,39 @@ function buildKeyFilters(keyColumns, mapKey) {
   return filters;
 }
 
-// [Phase 2 관문] 서버에 **계측 보정(align override)** 선언이 있는지만 묻는다(셀 1건).
-// Phase 1은 기하만 일원화했고 보정은 적용하지 않는다 — 선언이 있는데 무시하고 그리면
-// 조용한 거짓 그림이 되므로, 그 경우 겹치지 않고 명시적으로 실패한다.
-//
-// 🔴 [M2 fix] This used to return null (= "no declaration") on *every* failure, which made the
-//    gate fail-open: one dropped request and we draw while ignoring a declared override, with
-//    the chip reading "정렬됨" — precisely the state this gate exists to prevent. The premise of
-//    the old comment ("old servers and network errors are not grounds to block") conflated two
-//    different things. Split them the way fetchPaintRules does:
-//    · 404/405 → an old server that does not have this API. No declaration path exists → pass (null).
-//    · any other status / network error → could not confirm. Throw; the caller refuses explicitly.
-//
-// Returns: { origin, detail } | null (no declaration / old server) · throws (could not confirm)
-async function probeAlignDeclaration(targetTable, targetKey, sourceTable, sourceKey) {
-  const srcSpec = (sourceKey && sourceKey !== targetKey) ? `${sourceTable}:${sourceKey}` : sourceTable;
-  const params = new URLSearchParams({
-    target_table: targetTable, target_key: targetKey, sources: srcSpec, limit: '1',
-  });
-  const res = await fetch(`${API_BASE}/api/maps/overlay?${params.toString()}`);
-  if (res.status === 404 || res.status === 405) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const ov = (data && Array.isArray(data.overlays)) ? data.overlays[0] : null;
-  if (!ov || !ov.align_applied || typeof ov.align_applied !== 'object') return null;
-  return { origin: String(ov.align_applied.origin || ''), detail: ov.align_applied };
-}
-
 // 오버레이 추가. 성공하면 {layer}, 실패하면 {error} 반환 (조용한 실패 금지 — 목록에도 남는다).
 //
 // ⚠️ **불변 조건**: 이 함수는 편집 중인 맵을 **어떤 방식으로도 건드리지 않는다.**
 //    selectedTable / tableSchema / gridData / legend / 규격 / 브러시 / 메타 입력을 읽기만 하고
 //    쓰지 않으며, switchTable·renderMetadataInputs 경로를 타지 않는다.
 async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
-  // 타깃(= 현재 캔버스) 프레임 식별자. 자재 맵처럼 메타 입력으로 표현되지 않는
-  // 화면에서는 호출자가 명시적으로 넘긴다.
   const targetTable = (targetOverride && targetOverride.table) || selectedTable;
-  const targetKey = (targetOverride && targetOverride.key) || getCurrentMapKey() || '';
+  // The target key is used for **one thing only**: looking up the target's registered spec
+  // (wafer_map_metadata). Two different values used to be conflated here:
+  //   · which map is actually on the canvas → `loadedIdentity` (pinned at load time)
+  //   · what is typed into the meta inputs  → `getCurrentMapKey()`
+  // [F2] Only the first may drive a spec lookup. Typing a key without loading it must not make
+  // the gate judge against another map's spec.
+  //
+  // No loaded map ⇒ there is no registered target spec to look up. That is **not** a refusal:
+  // the frame then comes from the live on-screen grid controls (`currentFrame()`), which is the
+  // very state a bonding plan starts in — blank canvas, EDS/defect overlaid before anything is
+  // painted. The old guard here made that impossible.
+  const targetKey = (targetOverride && targetOverride.key)
+    || ((loadedIdentity && loadedIdentity.table === targetTable) ? loadedIdentity.mapKey : '');
   if (!sourceTable || !sourceKey) return { error: '오버레이 대상 맵 식별자가 없습니다.' };
-  if (!targetTable || !targetKey) {
-    return { error: '현재 캔버스의 맵 식별자를 알 수 없습니다 — 먼저 기준 맵을 로드하세요.' };
-  }
+  if (!targetTable) return { error: '현재 캔버스의 테이블을 알 수 없습니다.' };
   const fail = (msg, status, extra) => {
     pushFailedOverlay(sourceTable, sourceKey, status || 'error', msg, targetOverride);
     return { error: msg, status, ...(extra || {}) };
   };
   const errText = (e) => (e && e.message ? e.message : String(e));
 
-  // ① 계측 보정 선언 관문 (Phase 2 이관 항목의 안전판)
-  let decl;
-  try {
-    decl = await probeAlignDeclaration(targetTable, targetKey, sourceTable, sourceKey);
-  } catch (e) {
-    // Passing through unconfirmed means drawing while ignoring a declared override, labelled
-    // "정렬됨". That is the gate failing open — the one outcome it exists to prevent.
-    return fail(
-      `${sourceTable}: 계측 보정(align override) 선언 여부를 확인하지 못했습니다 — ${errText(e)}. ` +
-      `선언이 있는데 무시하고 겹치면 조용히 틀린 그림이 되므로 겹치지 않습니다.`,
-      'align_unconfirmed');
-  }
-  if (decl && (decl.origin === 'declared' || decl.origin === 'default')) {
-    return fail(
-      `${sourceTable}: 서버에 계측 보정(align override)이 선언돼 있습니다 — 기하 일원화(Phase 1)는 ` +
-      `보정을 적용하지 않으므로 겹치지 않습니다. 보정 적용은 Phase 2(서버가 (dx,dy,rot)만 내려주는 계약)입니다.`,
-      'align_override_declared');
-  }
-
-  // ② 소스 테이블의 좌표 바인딩 (스키마에서 유도 — 메인 로드의 컬럼 드롭다운과 같은 관례)
+  // ① 소스 테이블의 좌표 바인딩 (스키마에서 유도 — 메인 로드의 컬럼 드롭다운과 같은 관례)
+  //
+  // 여기가 예전에는 ②였다. 앞에 있던 "서버에 계측 보정(align override)이 선언돼 있는지"
+  // probe 관문은 서버의 선언 레이어와 함께 제거됐다 — 정렬의 근거가 메타 하나로 좁혀져
+  // 보정이 소스 메타에 이미 들어 있으므로, 따로 물어볼 선언이 존재하지 않는다.
   let binding;
   try {
     binding = deriveMapBinding(await fetchTableSchemaCached(sourceTable));
@@ -4119,7 +4075,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
       'binding_unavailable');
   }
 
-  // ③ source cells + ④ source/target specs — the same two REST paths the main load uses.
+  // ② source cells + ③ source/target specs — the same two REST paths the main load uses.
   //    A failed cell fetch and a failed spec fetch are different reasons. Collapsing them into
   //    one catch would report "could not confirm the spec" as "cell fetch failed", so split them
   //    with allSettled. Requests still go out in parallel — no extra round trip.
@@ -4173,10 +4129,13 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   });
   if (cells.length === 0) return fail(`${sourceTable}: 겹칠 셀이 없습니다.`, 'no_data');
 
-  // ⑤ 프레임 확정. 소스 메타가 없으면 **현재 화면 규격으로 해석(identity)** 한다 —
+  // ④ 프레임 확정. 소스 메타가 없으면 **현재 화면 규격으로 해석(identity)** 한다 —
   //    서버 규율 3과 동일(선언 부재는 실패가 아니다). 대신 칩에 "무보정"으로 드러난다.
+  //    타깃도 같은 규칙이다. 타깃 규격이 없으면(미로드이거나 미등록) 프레임은 **화면 컨트롤**이
+  //    되며, 그 사실은 아래 targetBasis로 칩에 드러난다 — 등록 규격과 섞어 보이면 안 된다.
   const srcFrame = frameFromMeta(sourceMeta) || currentFrame();
-  const tgtFrame = frameFromMeta(targetMeta) || currentFrame();
+  const tgtMetaFrame = frameFromMeta(targetMeta);
+  const tgtFrame = tgtMetaFrame || currentFrame();
   const srcResolved = resolveFrame(srcFrame);
   const tgtResolved = resolveFrame(tgtFrame);
 
@@ -4223,12 +4182,19 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     : (frameFromMeta(sourceMeta) && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
         srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
       ? '소스 물리 규격 일부 미등록 — 현재 화면 값으로 대체' : '');
+  // 타깃 프레임의 근거가 **등록 규격**인지 **지금 화면**인지. 두 상태를 같은 칩으로 보이면
+  // "규격에 맞춰 정렬됨"과 "지금 화면에 맞춰 정렬됨"이 구분되지 않는다.
+  const targetBasis = tgtMetaFrame ? 'spec' : 'screen';
+  const targetNote = tgtMetaFrame ? ''
+    : (targetKey ? `타깃 맵 규격 미등록(${targetTable} · ${targetKey}) — 현재 화면 격자 설정 기준`
+                 : '기준 맵 미로드 — 현재 화면 격자 설정 기준');
   const align = {
     origin: identical ? 'identity' : 'derived',
+    targetBasis,
     rotation: ((srcResolved.rotation - tgtResolved.rotation) % 360 + 360) % 360,
     flip: srcResolved.side !== tgtResolved.side ? 'x' : 'none',
     offset: { x: 0, y: 0 },
-    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys,
+    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys, targetNote,
       outside ? `격자 밖 ${outside}칩 — 웨이퍼 격자를 벗어나 가져오기에서 제외됩니다` : ''].filter(Boolean).join(' · ')
       || (identical ? '소스와 타깃의 좌표계가 완전히 같습니다 (변환 없음)' : ''),
   };
@@ -4341,12 +4307,17 @@ function overlayAlignChip(o) {
   const origin = String(o.align.origin || '');
   const note = String(o.align.note || '');
   const rot = Number(o.align.rotation) || 0;
+  // 무엇에 맞춰 정렬했는가 — 등록 규격(wafer_map_metadata)인가, 지금 화면의 격자 설정인가.
+  // 후자를 전자처럼 보여주면 "규격대로 맞췄다"는 거짓 진술이 된다(빈 맵 오버레이의 기본 상태).
+  const basis = o.align.targetBasis === 'screen'
+    ? '<span class="ov-chip dim" title="타깃 맵의 등록 규격이 없어 **현재 화면의 격자 설정**을 기준으로 겹쳤습니다. 화면 규격을 바꾸면 정렬도 함께 바뀝니다.">화면기준</span>'
+    : '';
   if (origin === 'identity') {
-    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || '좌표 보정 없이 그대로 겹쳤습니다')}">무보정</span>`;
+    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || '좌표 보정 없이 그대로 겹쳤습니다')}">무보정</span>${basis}`;
   }
   // derived(및 그 외 비-identity) = 보정 적용됨. 회전은 0일 수 있으므로 있을 때만 덧붙인다.
   const label = rot ? `정렬됨 ${rot}°` : '정렬됨';
-  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 맵의 좌표계가 달라 소스 메타 프레임으로 해석해 물리 좌표에 맞췄습니다')}">${escapeHtmlAttr(label)}</span>`;
+  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 맵의 좌표계가 달라 소스 메타 프레임으로 해석해 물리 좌표에 맞췄습니다')}">${escapeHtmlAttr(label)}</span>${basis}`;
 }
 
 // ── [신규] 오버레이 → 실맵 가져오기 ────────────────────────
@@ -4491,10 +4462,8 @@ async function handleAddOverlayClick() {
     showToast('겹칠 맵의 테이블과 맵 키를 입력하십시오.', 'warning');
     return;
   }
-  if (!gridData || Object.keys(gridData).length === 0) {
-    showToast('겹칠 기준 맵이 없습니다 — 먼저 [📂 Load]로 편집 대상 맵을 여십시오.', 'warning');
-    return;
-  }
+  // 빈 격자에서도 겹칠 수 있다 — 본딩 계획은 **맵이 없는 상태에서 시작**하고, EDS/defect를
+  // 먼저 겹쳐 보고 나서 칠한다. 기준은 지금 화면의 격자 설정이며 그 사실은 칩(화면기준)에 뜬다.
   el.btnAddOverlay.disabled = true;
   el.btnAddOverlay.textContent = '정렬 중…';
   const r = await addOverlayLayer(table, key);
@@ -4519,9 +4488,11 @@ const CORE_CANONICAL_TABLE = 'core_defect_map';
 
 async function addOverlayForSource(sourceTable, lot, slot) {
   const key = slot ? `${lot}_${slot}` : String(lot);
-  const targetKey = getCurrentMapKey() || key;
   const targetTable = selectedTable || CORE_CANONICAL_TABLE;
-  return addOverlayLayer(sourceTable, key, { table: targetTable, key: targetKey });
+  // 타깃 키는 넘기지 않는다 — addOverlayLayer가 loadedIdentity(로드 시점 확정)에서 유도한다.
+  // 종전 `getCurrentMapKey() || key`는 미로드 상태에서 **소스 키를 타깃 키로 위조**해,
+  // 존재하지도 않는 (타깃테이블, 소스키) 규격을 조회하게 만들었다.
+  return addOverlayLayer(sourceTable, key, { table: targetTable });
 }
 
 function listOverlayLayers() {

@@ -85,7 +85,16 @@ SOURCE_PRIORITY = {
     "chain_ingestion": 4,
 }
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "table_config.json")
+# Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
+# Same import guard as event_constants above: crud can be imported without server/ on sys.path.
+try:
+    import paths as _paths
+except ImportError:  # pragma: no cover - defensive fallback
+    import sys as _sys
+    _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    import paths as _paths
+
+CONFIG_PATH = _paths.config_path("table_config.json")
 
 def sanitize_to_utf8(data: Any) -> Any:
     """
@@ -1828,8 +1837,7 @@ def get_ontology_mapping():
         return _ontology_cache
 
     import os, json
-    curr_dir = os.path.dirname(os.path.abspath(__file__))
-    ont_path = os.path.join(curr_dir, "..", "config", "ontology_mapping.json")
+    ont_path = _paths.config_path("ontology_mapping.json")
     raw = {}
     if os.path.exists(ont_path):
         try:

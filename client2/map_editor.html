@@ -278,7 +278,8 @@
 
       <!-- 우측 패널: legend = DOE 편집기 + DOE별 사용 자재 (이동 허브)
            legend 행 하나가 곧 DOE다 — 별도 「전사 계획」 영역도, 별도 「원시 범례」 details도 없다. -->
-      <aside class="history-sidebar glass-panel" id="plan-sidebar" style="width: 430px; min-width: 430px;">
+      <!-- 폭은 transfer_plan.css의 --plan-sidebar-w가 정본이다 (토스트 회피 오프셋이 같은 값을 쓴다) -->
+      <aside class="history-sidebar glass-panel" id="plan-sidebar">
         <div class="sidebar-header" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
           <h2>🎨 2. Legend &amp; DOE</h2>
           <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 500;">+ DOE</button>

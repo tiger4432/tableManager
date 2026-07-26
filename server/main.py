@@ -31,8 +31,10 @@ for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
 
 # Load table config and initialize dynamic database models
 import json
+import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(script_dir, "config", "table_config.json")
+config_path = paths.config_path("table_config.json")
+logger.info(f"[paths] {paths.describe()}")
 try:
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
@@ -173,8 +175,7 @@ async def startup_event():
             return
 
         logger.info("Initializing Directory Watcher...")
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        workspace_base = os.path.join(script_dir, "ingestion_workspace")
+        workspace_base = paths.WORKSPACE_DIR
         
         def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
             import json
@@ -2228,9 +2229,8 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
     클라이언트에서 보낸 로그 파일을 수신하여 해당 테이블의 인제션 워크스페이스(raws/)에 저장합니다.
     저장 시 directory_watcher.py가 이를 감지하여 자동으로 파싱을 시작합니다.
     """
-    # 1. 대상 디렉토리 결정 (server/ingestion_workspace/{table_name}/raws)
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    target_dir = os.path.join(base_dir, "ingestion_workspace", table_name, "raws")
+    # 1. 대상 디렉토리 결정 (<data root>/ingestion_workspace/{table_name}/raws)
+    target_dir = paths.workspace_path(table_name, "raws")
     
     # 2. 디렉토리가 없으면 생성 (setup_workspace.py가 미리 생성해두지만 안전을 위해)
     os.makedirs(target_dir, exist_ok=True)
@@ -2851,9 +2851,9 @@ def reload_system_configs(db: Session = Depends(get_db)):
     return {"status": "success", "message": "System configurations and custom scripts modules successfully reloaded."}
 
 # -----------------------------------------------------------------------------
-# Map Geometry & Offset Presets Endpoints (server/config/maps.json)
+# Map Geometry & Offset Presets Endpoints (<data root>/config/maps.json)
 # -----------------------------------------------------------------------------
-MAPS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "maps.json")
+MAPS_CONFIG_PATH = paths.config_path("maps.json")
 
 def load_maps_config() -> dict:
     if os.path.exists(MAPS_CONFIG_PATH):
@@ -2999,10 +2999,12 @@ def get_map_overlay(
     """임의의 맵들을 타깃 맵 캔버스 좌표로 정렬해 반환한다(범용 — 계획 전용 아님).
 
     - sources: "table" 또는 "table:key"의 CSV(키 생략 시 target_key 승계), 최대 8종.
-    - 정렬은 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되며,
-      map_overlay_config.json의 align_overrides가 있으면 그것이 우선한다.
-      선언·유도 근거가 없으면 identity로 간주해 그대로 붙인다(선언 부재는 실패가 아니다).
+    - 정렬은 각 맵의 wafer_map_metadata(rotation/side/start/치수/phys) 차이에서만 유도된다
+      — 선언(align_overrides) 레이어는 제거됐다(정렬의 근거는 메타 하나뿐).
+      유도 근거가 없으면 identity로 간주해 그대로 붙인다(메타 부재는 실패가 아니다).
       변환을 계산할 근거가 없을 때만 status=align_unavailable.
+    - eqp: **폐기됨(no-op)**. align_overrides.by_eqp 분기 전용 파라미터였다. 기존 호출자가
+      깨지지 않도록 시그니처만 남겨두었다 — 제거는 총괄 승인 사항.
     - 셀 목록을 반환하는 API이므로 상한 필수 — 초과 시 truncated:true로 명시한다.
     """
     config = map_overlay_module.load_overlay_config()
@@ -3018,7 +3020,7 @@ def get_map_overlay(
             raise HTTPException(status_code=400, detail="limit must be an integer")
     try:
         return map_overlay_module.get_overlay(
-            db, config, target_table, target_key, src_list, eqp=eqp, cell_cap=cap)
+            db, config, target_table, target_key, src_list, cell_cap=cap)
     except Exception as e:
         logger.error(f"[MapOverlay] overlay failed ({target_table}/{target_key}): {e}")
         raise HTTPException(status_code=500, detail="Failed to build map overlay.")
@@ -3111,9 +3113,8 @@ def get_ingestion_workspaces():
     import os
     import json
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_base = os.path.abspath(os.path.join(script_dir, "ingestion_workspace"))
-    
+    workspace_base = paths.WORKSPACE_DIR
+
     if not os.path.exists(workspace_base):
         return {"status": "success", "data": []}
         
@@ -3192,8 +3193,7 @@ def get_chain_rules():
     import os
     import json
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    rules_path = os.path.join(script_dir, "config", "chain_rules.json")
+    rules_path = paths.config_path("chain_rules.json")
     
     if not os.path.exists(rules_path):
         return {"status": "success", "data": []}
@@ -3404,11 +3404,10 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
 
     for log in failed_logs:
         table_name = log.table_name or "unknown"
-        server_dir = os.path.dirname(os.path.abspath(__file__))
         # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도 오배송 방지
         from directory_watcher import resolve_workspace_root, load_global_table_config
         workspace_root = resolve_workspace_root(
-            os.path.join(server_dir, "ingestion_workspace"), table_name, load_global_table_config()
+            paths.WORKSPACE_DIR, table_name, load_global_table_config()
         )
         config_path = os.path.join(workspace_root, "config", "config.json")
         if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
@@ -3445,6 +3444,8 @@ async def get_auto_update_status():
     import json
     from utils import auto_update_control as auc
 
+    # auc.SERVER_DIR is the relocatable data root (see server/paths.py) and is the
+    # symbol tests monkeypatch — resolve through it, not through paths directly.
     status_path = os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
 
     if not os.path.exists(status_path):
@@ -3682,7 +3683,7 @@ def list_admin_scripts():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     mappers_dir = os.path.join(script_dir, "mappers")
-    workspace_dir = os.path.join(script_dir, "ingestion_workspace")
+    workspace_dir = paths.WORKSPACE_DIR
     
     mappers = []
     if os.path.exists(mappers_dir):
@@ -3736,10 +3737,51 @@ def list_admin_scripts():
         }
     }
 
+def _resolve_admin_script_path(clean_path: str, for_write: bool = False) -> str:
+    """Resolve an admin-editable script path to an absolute path.
+
+    'ingestion_workspace/...' is user DATA and follows the relocatable data root
+    (ASSY_DATA_ROOT); 'mappers/...' is code, resolved as the `mappers` package via
+    sys.path, so it stays under server/ and is NOT relocated. Containment is
+    checked against the resolved base with a separator so that a sibling
+    directory sharing the base's prefix cannot pass.
+
+    Because mappers/ is not relocated, an isolated server would otherwise write
+    straight into the user's live files. Writes to any non-relocated prefix are
+    therefore refused while running isolated (ASSY_DATA_ROOT set). Reads stay
+    allowed - reading a mapper to understand it is harmless, overwriting it is
+    the incident. The isolated environment must be structurally unable to reach
+    production, not merely unlikely to.
+    """
+    ws_prefix = "ingestion_workspace/"
+    if clean_path.startswith(ws_prefix):
+        base = os.path.abspath(paths.WORKSPACE_DIR)
+        rel = clean_path[len(ws_prefix):]
+    else:
+        # Looked up at call time (not captured at import) so the flag stays
+        # patchable and reflects the process's actual data root.
+        if for_write and paths.IS_ISOLATED:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Refused: this server runs on an isolated data root "
+                    f"({paths.DATA_ROOT}), but '{clean_path}' resolves to the live "
+                    "server/ tree, which is not relocated. Edit it in the real "
+                    "server, or drop the file under ingestion_workspace/."
+                ),
+            )
+        base = os.path.dirname(os.path.abspath(__file__))
+        rel = clean_path
+    full_path = os.path.abspath(os.path.join(base, rel))
+    if full_path != base and not full_path.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path traversal outside project")
+    return full_path
+
+
 @app.get("/admin/scripts/code")
 def get_admin_script_code(path: str):
     import os
-    
+
     # Path Traversal & Prefix whitelist check
     clean_path = os.path.normpath(path).replace("\\", "/")
     if clean_path.startswith("../") or "/../" in clean_path or clean_path.startswith("/"):
@@ -3754,12 +3796,8 @@ def get_admin_script_code(path: str):
     if not allowed:
         raise HTTPException(status_code=400, detail="Access denied to this path prefix")
         
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    full_path = os.path.abspath(os.path.join(script_dir, clean_path))
-    
-    if not full_path.startswith(script_dir):
-        raise HTTPException(status_code=400, detail="Invalid path traversal outside project")
-        
+    full_path = _resolve_admin_script_path(clean_path)
+
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
         raise HTTPException(status_code=404, detail="File not found")
         
@@ -3804,12 +3842,8 @@ async def save_admin_script_code(
     if not allowed:
         raise HTTPException(status_code=400, detail="Access denied to this path prefix")
         
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    full_path = os.path.abspath(os.path.join(script_dir, clean_path))
-    
-    if not full_path.startswith(script_dir):
-        raise HTTPException(status_code=400, detail="Invalid path traversal outside project")
-        
+    full_path = _resolve_admin_script_path(clean_path, for_write=True)
+
     # Auto-create directories if missing
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     

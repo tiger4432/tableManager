@@ -330,19 +330,21 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | ├ `remove(table_name, filename)` | 멱등 제거 | ~115 |
 | └ `_ttl_for(entry)` / `snapshot() -> list` / `clear()` | 상태별 TTL / **조회 스냅샷(+TTL 퇴거)** — `/admin/file-ingestion/active`가 서빙 / 초기화 | ~122/126/143 |
 
-### `server/bonding_plan.py` (~542줄) — [본딩 M1 신규] 역할 바인딩 config 로더 + align 변환 + 집계 코어
-`config/bonding_plan_config.json`(gitignored, `.sample` tracked) — 역할(process_history/defect/eds_fail/used_chips/total_chips)→실테이블·컬럼 바인딩. 테스트: `tests/test_bonding_plan.py`(18개, `bdp_test_*`).
+### `server/bonding_plan.py` (~410줄) — [본딩 M1] 역할 바인딩 config 로더 + 집계 코어
+`config/bonding_plan_config.json`(gitignored, `.sample` tracked) — 역할(process_history/defect/eds_fail/used_chips/total_chips)→실테이블·컬럼 바인딩. 테스트: `tests/test_bonding_plan.py`(20개, `bdp_test_*`).
+
+> **좌표 변환은 이 모듈에 없다 (2026-07-27 일원화).** 구 `normalize_align`/`make_align_transform`/`align_status_label`은 **삭제**됐고 정렬은 `map_overlay.resolve_map_transform`(메타 델타 유도)을 경유한다. `sources[].align` config 선언도 폐기 — 정렬의 근거는 `wafer_map_metadata` 하나뿐이다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `load_bonding_plan_config(path=None) -> dict` | config 로드·검증(미연결 역할은 부분 가동) | ~44 |
-| `normalize_align(raw)` / `align_status_label(align)` | align 블록 정규화 — 단순형/확장형(`default`/`by_eqp`) 수용 / sources 마커 문자열(`aligned:180` 등) | ~73/125 |
-| `make_align_transform(align, src_grid, dst_grid=None)` | **align 어댑터(주입형)** — `coordinate_transformer.cell_to_physical` 순수 인덱스 변환만 재사용(엔진 마스크/타원 fallback **무참여** — QA F1/F2 반영). 90/270은 "자기 프레임 치수=canonical 스왑" 규약, 치수 모순 시 ValueError, 규격 불명 시 `align_unavailable` 명시 실패 | ~139 |
+| `CANONICAL_FRAME_ROLES` (상수) | canonical(CORE) 프레임 후보 순서 `("total_chips","defect","eds_fail")` — **좌표를 바인딩한 첫 역할**이 기준을 정의하며 그 역할에 메타가 없으면 canonical은 None(뒤 역할로 넘어가지 않는다 — 넘어가면 회전된 계측 맵이 기준을 참칭해 조용히 identity가 된다) | ~45 |
 | `parse_region(region_str)` / `clamp_rects(rects, grid)` | region rects 파서(잘못된 형식 → 400 소재) / canonical 메타 치수로 클램프(완전 밖 rect 제거) | ~213/239 |
-| `load_grid_meta(db, config, target_table, map_id)` | wafer_map_metadata에서 격자 규격 조회(align 해석의 근거 — 프리셋 아님) | ~270 |
+| `load_map_meta(db, config, target_table, map_id, cache=None)` | wafer_map_metadata의 **grid_metadata 원본 dict** 조회(config `map_metadata` 바인딩 경유). 정렬 유도의 근거이므로 격자 치수만 잘라 쓰면 안 된다. `cache`는 요청 경계 스냅샷(N+1 금지) | ~137 |
+| `load_grid_meta(db, config, target_table, map_id, cache=None)` | 격자 규격만 필요한 호출자용 축약(region rect 클램프 전용) | ~180 |
 | `get_core_summary(db, lot, slot, rects=None, config=None) -> dict` | **집계 진입점** — 역할별 카운트(맵 모드 fail_values 필터, used_chips distinct), `remaining = total − defect − eds_fail − used`(음수 가능 — 과도기), history 50건+warnings, region 교차(좌표 하드캡 100k, 응답 미포함) | ~344 |
 
-> ⚠️ **열린 항목 A2** — `bonding_plan.py:199-204`의 **선언(override) 경로**는 여전히 bbox 항이 없는 구 산술이다(A1이 `map_overlay`에서 고친 것과 같은 부류). 라이브에 align 오버라이드 선언이 없어 **휴면 상태**지만, 한 줄 선언하면 부활한다. `transfer_plan`의 core-kind 경로가 이 모듈에 위임하므로 영향 범위가 M1에 국한되지 않는다.
+> ✅ **A2 해소 (2026-07-27)** — bbox 항 없는 사본은 삭제됐다. 착수 전제였던 "휴면"은 사실이 아니었다 — `bonding_plan_config.json`·`transfer_plan_config.json` 둘 다 `eds_fail`에 `rotation:180`을 라이브로 선언하고 있었고, 그 값은 `eds_fail_map` 메타의 rotation과 동일했다(선언이 메타의 중복). 라이브 규격(40×40)은 bbox가 0이라 두 구현 결과가 1288셀 전건 일치 → **가용량 수치 변화 없음**. [히스토리](../history/20260727_004500_align_consolidation_meta_single_source.md)
 
 ### `server/ingestion_checkpoint.py` (~258줄) — [P2 신규] 오프셋 체크포인트 + 파일 해시 dedup
 저장소는 신규 테이블 **`file_ingestion_checkpoints`**(`UNIQUE(table_name, file_signature)` = `idx_fic_identity`). `FileIngestionLog`에 컬럼을 붙이지 않은 이유는 `create_all`이 ALTER를 하지 않아 **조회 프로세스보다 먼저 도는 마이그레이션**이 필요해지기 때문(운영 DB `UndefinedColumn` 500 회피 — 총괄 승인 판단). 테스트: `tests/test_ingestion_checkpoint.py`.
@@ -359,31 +361,35 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `mark_done(db, plan, processed_rows=None, note=None)` | 성공 확정(`status=DONE`) — 이후 dedup skip 대상 | ~243 |
 
 ### `server/map_overlay.py` (~698줄) — [M2 신규] 범용 맵 오버레이 (계획 전용 아님 — 맵 인프라)
-`config/map_overlay_config.json`(gitignored, `.sample` tracked) — 키 구조만: `align_overrides.{table}.{default|by_eqp.{eqp}}`, `table_bindings.{table}.columns{x,y,val,key_columns}`, `paint_lock.{"*"|table}{enabled,blocking_values,from_overlay,message}`. `APIRouter` 없음 — `main.py`가 `@app.get`으로 직접 등록해 위임한다. 테스트: `tests/test_map_overlay.py`.
+`config/map_overlay_config.json`(gitignored, `.sample` tracked) — 키 구조만: `table_bindings.{table}.columns{x,y,val,key_columns}`, `paint_lock.{"*"|table}{enabled,blocking_values,from_overlay,message}`. `APIRouter` 없음 — `main.py`가 `@app.get`으로 직접 등록해 위임한다. 테스트: `tests/test_map_overlay.py`.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `MAX_OVERLAY_CELLS=20,000` / `MAX_OVERLAY_SOURCES=8` | 오버레이 1종당 셀 상한(초과 시 `truncated:true`) / 요청당 소스 상한 | ~68/69 |
-| `STATUS_OK\|ALIGN_UNAVAILABLE\|SOURCE_MISSING\|NO_DATA` / `ALIGN_ORIGIN_DECLARED\|DEFAULT\|DERIVED\|IDENTITY` | 엔트리 status 어휘 / align 결정 출처 마커 | ~71–79 |
+| `STATUS_OK\|ALIGN_UNAVAILABLE\|SOURCE_MISSING\|NO_DATA` / `ALIGN_ORIGIN_DERIVED\|IDENTITY` | 엔트리 status 어휘 / align 결정 출처 마커. **`DECLARED`/`DEFAULT`는 선언 레이어와 함께 삭제됐다**(2026-07-27) | ~71–77 |
 | `ALIGN_ORIGIN_UNRESOLVABLE` | 구 QA-B3 가드 유물 — **프레임 합성(A1) 도입 후 더 이상 발화하지 않는다**(상수만 잔존) | ~82 |
 | `load_overlay_config(path=None)` / `load_map_meta(db, target_table, map_id)` | config 로드(부재·손상 시 `{}` — 에러 아님) / `wafer_map_metadata`의 `grid_metadata` 조회 | ~85/106 |
 | `_rotation_of` / `_side_of` / `_y_invert_of` / `_phys_signature` | 메타 정규화 헬퍼 — `_phys_signature`는 `phys_*` 6값 튜플(하나라도 없으면 None = bbox 재현 불가) | ~128/165/169/177 |
-| `_grid_of(meta)` / `_frame_grid_of(meta)` | **물리(canonical) 격자** / **프레임(visual) 격자** — 자기 회전 90/270이면 cols·rows 스왑 | ~135/150 |
+| `_grid_of(meta)` | 메타 선언 그대로의 **물리(canonical) 격자 규격**. (`_frame_grid_of`는 선언 경로 전용이었으므로 함께 삭제) | ~133 |
 | `frame_axes(meta)` | 프레임 정의 8축 튜플 `(rot, side, y_invert, start_x, start_y, cols, rows, phys_sig)` — identity 지름길 판정·transformer 캐시 키 | ~187 |
 | **`_frame_phys_params(meta)`** | **[A1 신설 — 이 배치의 핵심]** 물리 규격 → **프레임 축 규격**. `is_cell_inside_wafer(c, r, …)`는 프레임 인덱스를 받으므로 rot 90/270에서 **칩 피치를 스왑**하고 back에서 `off_x` 부호를 뒤집는다. 유일 호출자는 `_frame_transformer`. **보정을 이 모듈 안에 가둔 것이 계약** — `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정(`bonding_plan.py`가 같은 클래스를 공유) | ~205 |
 | `_frame_transformer(meta, grid)` | transformer(+engine) 생성 후 `frame_axes` 키로 캐시(`_FRAME_TF_CACHE`, 상한 512 초과 시 전체 clear) | ~256 |
 | `make_frame_transform(source_meta, target_meta)` | **소스 프레임 → 물리 → 타깃 프레임** 합성 변환기. 메타/격자/phys 부재·물리 치수 불일치 시 `ValueError` | ~286 |
-| `resolve_align(cfg, source_table, source_meta, target_meta, eqp=None) -> (align\|None, origin, note)` | **align 결정 규율** — 선언(`by_eqp`→`default`) > 메타 차이 유도 > **identity**(선언 부재는 실패가 아니다). 계산 근거 자체가 없을 때만 `align_unavailable` | ~339 |
+| `_align_summary(rotation, flip)` / `align_status_label(align)` | 표시용 요약 dict(변환에는 안 쓰인다) / 상태 문자열 마커 `aligned:180` 등 — **`bonding_plan`에서 이관**(변환 소유 모듈이 마커도 소유) | ~322/331 |
+| `resolve_align(source_meta, target_meta) -> (align\|None, origin, note)` | **align 결정 규율** — 메타 델타 유도 > **identity**(메타 부재는 실패가 아니라 등록 누락 신호). origin은 `derived`/`identity` 둘뿐 | ~350 |
+| **`resolve_map_transform(source_meta, target_meta) -> (transform\|None, align, origin, note)`** | **서버의 단일 좌표 변환 진입점.** 오버레이(그리기)와 가용량 산출(`bonding_plan`/`transfer_plan`)이 **같은 이 함수**를 쓴다. transform None = identity, 계산 불가 시 `ValueError`(호출자가 `align_unavailable`로 표면화) | ~390 |
 | `_pure_translation(...)` / `align_applied_payload(align, origin, note, translation)` | derived이고 rot/side/y_invert/격자/phys가 전부 같을 때만 `(dx,dy)` / 클라 표시용 `{rotation, flip, offset, origin, note?}` | ~396/412 |
 | `parse_sources(spec) -> [(table, key\|None)]` | `"table"` / `"table:key"` CSV 파싱 — 8종 초과·빈 값은 `ValueError`(→400) | ~435 |
 | `derive_table_binding(table)` / `resolve_binding(cfg, table)` | `table_config`에서 x/y/val·key_columns 자동 유도(`VAL_CANDIDATES` 순, 시스템 컬럼 제외) / **선언 우선 + 유도 폴백** | ~467/505 |
 | `build_key_filters(model, binding, map_key)` | `_` 조인 복합 map_key를 key_columns로 분해해 ORM equality 필터 생성(마지막 컬럼이 나머지 흡수) | ~517 |
-| `get_overlay(db, cfg, target_table, target_key, sources, eqp=None, cell_cap=…) -> dict` | **메인 진입점** — 소스별 바인딩·align 해결 → 셀 조회 → 타깃 프레임 좌표 변환 → `{target, overlays[], cell_cap}` | ~542 |
+| `get_overlay(db, cfg, target_table, target_key, sources, cell_cap=…) -> dict` | **메인 진입점** — 소스별 바인딩·align 해결 → 셀 조회 → 타깃 프레임 좌표 변환 → `{target, overlays[], cell_cap}`. `eqp` 인자는 `by_eqp`와 함께 제거(엔드포인트 쿼리 파라미터는 no-op으로 존치 — 축소는 총괄 승인 사항) | ~520 |
 | `get_paint_rules(cfg, table=None) -> dict` | `paint_lock`의 `"*"` 기본 + 테이블별 선언 머지 → `{enabled, blocking_values, from_overlay, message}` | ~679 |
 
 > `resolve_binding`·`build_key_filters`는 **`transfer_plan.py`도 재사용**한다(모듈 간 공용 헬퍼 2개).
 >
-> **⚠️ 소비자 지도 (`7d931dc` 이후 — 헷갈리기 쉬움)**: 이 모듈의 **정렬 산출물(정렬된 좌표)을 소비하는 것은 `/api/maps/overlay` 엔드포인트와 `test_map_overlay.py`뿐**이다. 맵 에디터 클라는 이 엔드포인트를 **`align_applied.origin` 한 필드를 읽는 관문**으로만 호출하고 좌표는 쓰지 않는다(변환은 클라 단일 구현 — [§7 `map_editor.js`](#7-client2src--웹-클라이언트)). `transfer_plan.py`는 **바인딩·config 헬퍼 3개만**(`resolve_binding`/`build_key_filters`/`load_overlay_config`) 쓴다. **`bonding_plan.py`는 이 모듈을 import하지 않는다** — 자체 `normalize_align`/`make_align_transform`을 갖는 별개 구현이며, 아래 A2 항목이 바로 그 사본이 A1 수정을 못 받은 건이다.
+> **소비자 지도 (2026-07-27 정렬 일원화 이후)**: 이 모듈의 정렬 함수군을 쓰는 것은 ① `/api/maps/overlay` 엔드포인트 ② **`bonding_plan.get_core_summary`** ③ **`transfer_plan._canonical_fail_set`** ④ `test_map_overlay.py`다. ②③이 이번에 배선됐고(구 A2), 그 결과 **정확한 구현이 운영 소비자를 갖게 됐다** — 종전에는 맞는 구현이 엔드포인트에서만 돌고 가용량은 안 고쳐진 사본으로 계산됐다. **맵 에디터 클라는 이 엔드포인트를 더 이상 호출하지 않는다**(변환은 클라 단일 구현 — [§7 `map_editor.js`](#7-client2src--웹-클라이언트)). `transfer_plan.py`는 정렬 함수 외에 바인딩·config 헬퍼 3개(`resolve_binding`/`build_key_filters`/`load_overlay_config`)도 쓴다.
+>
+> **구현 개수**: 서버 1(이 모듈) + 클라 1(렌더) = **2**. 가용량이 서버에서 계산되는 한 이것이 하한이다.
 
 ### `server/transfer_plan.py` (~1,429줄) — [M2 신규] Universal Transfer Plan 엔진 (v2 = 계획 정체성이 곧 맵 정체성)
 `config/transfer_plan_config.json`(gitignored, `.sample` tracked) — `stages.{name}.{source_kind, target_kind, target_map{table,preset}, source{...} \| source_config_ref}` + `plan_store.{doe, doe_source, source_region}`. 테스트: `tests/test_transfer_plan.py`.
@@ -400,7 +406,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `build_chips_block(total, fail_breakdown, transferred, remaining, remaining_reliable, total_reliable)` | **[QA F1 3층]** chips 블록 조립 + **음수 remaining 불변식**(전 역할 connected여도 음수면 신뢰 박탈). 신뢰불가면 `remaining: null`을 내려 **오표시를 구조적으로 차단**하고, `total_reliable ∧ remaining≥0`일 때만 `remaining_upper_bound` 부가 | ~329 |
 | `load_source_region(...)` / `_region_block(...)` / `_core_region_counts(...)` | 계획이 이 소스에서 쓸 셀 집합 로드(**현재 휴면** — 라이브 config에 `plan_store.source_region` 미선언이라 항상 None) / 영역 내 집계 / core-kind 어댑터 | ~370/404/430 |
 | `_reshape_m1_summary(m1, stage_name, stage_cfg)` | M1 `bonding_plan.get_core_summary` 응답을 M2 공통 형태로 재성형(같은 강등 규율 적용) | ~480 |
-| `_canonical_origin_grid(...)` / `_canonical_fail_set(...)` | [QA F6] origin-frame 원천의 canonical 격자 로드(코어당 1회 캐시) / 코어 1장 fail 좌표를 canonical 프레임 set으로(align 미해결이면 `(None, "align_unavailable", False)`) | ~538/567 |
+| `_canonical_origin_meta(...)` / `_canonical_fail_set(...)` | origin-frame 원천의 **canonical 맵 메타** 로드 — 좌표를 바인딩한 **첫** 원천이 기준을 정의하고 그 원천에 메타가 없으면 None(뒤로 넘어가지 않는다. 넘어가면 회전된 계측 맵이 기준을 참칭해 조용한 과소 집계) · 코어당 1회 캐시 / 코어 1장 fail 좌표를 `map_overlay.resolve_map_transform`으로 canonical 프레임 set에 사상(미해결이면 `(None, "align_unavailable", False)`; **소스 메타만 있고 canonical이 없는 비대칭도 거절**) | ~545/580 |
 | `_collect_history(db, source_cfg, lot, slot)` | process_history 최근 N건(시간 오름차순) + result fail 경고 | ~607 |
 | **`_summarize_inline(db, stage_name, stage_cfg, lot, slot, region=None)`** | **가용 엔진 정본(tape-kind)** — `origin_log` 연결 시 `remaining = total − \|fail_union ∪ used_set\|`(칩 단위 합집합 — 이중 감산 없음), 미해석 시 M1식 감산 폴백. `by_core` 7키(`core_id, core_lot, core_slot, total, fail, used, remaining`) + `by_core_origin` 마커 `"log"`(정확) \| `"area_map"`(강등 — `fail=None`으로 0 위장 금지) | ~654 |
 | `get_stage_source_summary(db, cfg, stage_name, lot, slot, bp_config=None, ref_table=None, map_key=None)` | **핸들러 진입점** — M1 ref 경로(reshape) / inline 경로 분기, 미선언 stage는 `KeyError`(→404) | ~1010 |
@@ -485,8 +491,7 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
   - **`projectCellsToPhys(cells, frame)`(~3952)** — 구 `overlayCellsToPhysMap`의 대체. `getCellFromVisualCoords` → `getPhysicalCoords`를 **소스 프레임을 씌운 채** 호출한다. `loadExistingMap` 셀 루프와 **같은 함수·같은 인자 순서**이며 다른 점은 규격을 소스 메타에서 읽는다는 것뿐 — **오버레이 전용 기하식은 0줄**이다.
   - `pushFailedOverlay`(~3971) — 실패도 목록 행으로 남긴다(같은 소스 중복은 갱신).
   - 소스 읽기: `OVERLAY_CELL_LIMIT=2000`(~3992, 메인 로드와 동일 상한) `fetchTableSchemaCached`(~3995) `deriveMapBinding(schema)`(~4010, 서버 `derive_table_binding` 규약을 `/tables/{t}/schema`에서 유도) `buildKeyFilters(keyColumns, mapKey)`(~4027, 서버 `build_key_filters`와 동일 — 마지막 컬럼이 나머지 흡수).
-  - `probeAlignDeclaration(...)`(~4055, GET `/api/maps/overlay?…&limit=1`) — **좌표가 아니라 `align_applied.origin` 한 필드만** 읽는 계측 보정 선언 관문. 404/405만 "선언 경로 없음"(null), 그 외 실패는 throw.
-  - `addOverlayLayer(sourceTable, sourceKey, targetOverride)`(~4074) — **메인 로드와 코드 경로 완전 분리**(불변식 ~4070–4073). 흐름: ① 선언 probe → ② 바인딩 유도 → ③④ `Promise.allSettled`로 셀 + 소스/타깃 메타 병렬 조회(셀 실패와 규격 실패를 다른 사유로 분리) → ⑤ 프레임 확정 → ⑥ `cols×rows` 호환성 관문 → ⑦ 정렬 요약 + 격자 밖 셀 카운트. 명명된 실패 status **6종**: `align_unconfirmed` `align_override_declared` `meta_unavailable` `binding_unavailable` `align_unavailable` `no_data`(+ 스키마·셀 조회 IO 실패는 일반 `error`).
+  - `addOverlayLayer(sourceTable, sourceKey, targetOverride)`(~4046) — **메인 로드와 코드 경로 완전 분리**. 흐름: ① 바인딩 유도 → ②③ `Promise.allSettled`로 셀 + 소스/타깃 메타 병렬 조회(셀 실패와 규격 실패를 다른 사유로 분리) → ④ 프레임 확정 → ⑤ `cols×rows` 호환성 관문 → ⑥ 정렬 요약 + 격자 밖 셀 카운트. 명명된 실패 status **4종**: `meta_unavailable` `binding_unavailable` `align_unavailable` `no_data`(+ 스키마·셀 조회 IO 실패는 일반 `error`). **구 `probeAlignDeclaration` 관문과 `align_unconfirmed`/`align_override_declared` 두 status는 서버 선언 레이어와 함께 삭제됐다**(2026-07-27) — 물어볼 선언이 없어졌다. 오버레이 추가의 REST 왕복도 하나 줄었다.
   - `removeOverlayLayer`(~4265) `toggleOverlayLayer`(~4272) `clearOverlayLayers`(~4281).
   - `overlayGeomSig`(~4294) / `currentGeomSignature`(~4296) / `syncOverlayGeometry`(~4313, 서명 변경 시 `rawCells`+`o.frame`에서 재투영, 렌더에서 훅 ~1637). ✅ **[QA C7 해소]** 서명이 `cols|rows|startX|startY|yInvert|rotation|side` + **물리 6종(`phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin`)**을 담는다. 단 소스 메타가 완비되면 재투영은 항등이라, 이 6종이 실제로 일하는 곳은 **물리 규격 미등록 폴백 경로**뿐이다.
   - `overlayAlignChip(o)`(~4336) — 정렬 상태 칩. 판정은 **`align.origin`으로만** 한다(rotation/flip/offset으로 판단 금지 — y반전·START만 다른 보정을 "무보정"으로 오표시한다).
@@ -572,7 +577,7 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 `reload_local_process_cache` → `models.refresh_dynamic_models(engine)`(싱글턴·ORM·**신규 테이블 물리 CREATE** — 1차 DDL 소유자, outbox 발화보다 선행) → SYSTEM_RELOAD outbox → 워커들 `reload_worker_process_cache` + `refresh_dynamic_models`(게이트+checkfirst로 무해한 보충 안전망). 직접 파일 편집 시엔 `config_watcher`가 동일 CREATE 수행. graph 워커도 배치 내 SYSTEM_RELOAD 감지로 매핑·테이블 리로드(이슈 #8 해소).
 7. **맵 에디터**: `loadExistingMap` → GET `/tables/{t}/data`(REST) → 편집 → `pushMapData` → PUT `/data/updates`. 프리셋은 `/map-presets` CRUD. 페인트 잠금은 기동 시 GET `/api/maps/paint-rules` → `applyPaintLockConfig` → 전 편집 경로가 `isProtectedFCell` 단일 관문 통과. (WS 미사용)
    - **[7d931dc] 오버레이(맵 인프라 — 계획 전용 아님) — 변환은 클라 단일 구현**: `handleAddOverlayClick`/`addOverlayForSource` → `addOverlayLayer` → ① GET `/api/maps/overlay?…&limit=1`(**좌표가 아니라 `align_applied.origin`만** 읽는 보정 선언 관문) → ② GET `/tables/{src}/schema`(`deriveMapBinding`) → ③④ GET `/tables/{src}/data`(**원본 좌표**) + `wafer_map_metadata` 소스/타깃 2건 병렬 → ⑤ `frameFromMeta`로 프레임 확정(부재 시 현재 화면 = identity 폴백) → ⑥ `cols×rows` 관문 → ⑦ `projectCellsToPhys`(소스 프레임 → 물리 키) → 캔버스 마커. 화면 규격이 바뀌면 `syncOverlayGeometry`가 `rawCells`에서 재투영. `importOverlayToGrid`만 `gridData`로 넘어온다(서버 쓰기 없음).
-     - **서버 경로는 삭제되지 않았다** — `map_overlay.get_overlay`(`resolve_align` + `make_frame_transform` + `_frame_phys_params`)는 엔드포인트에서 그대로 살아 있고 `test_map_overlay.py`가 계약을 지킨다. 바뀐 것은 **맵 에디터가 그 좌표를 소비하지 않는다**는 것뿐이다. `transfer_plan.py`는 `map_overlay`의 **바인딩·config 헬퍼만** 쓰고(`resolve_binding`/`build_key_filters`/`load_overlay_config`), `bonding_plan.py`는 `map_overlay`를 **import하지 않는다**(자체 `make_align_transform` 보유 — A2 항목이 그 사본이다).
+     - **서버 경로는 삭제되지 않았다** — `map_overlay.get_overlay`(`resolve_map_transform` + `make_frame_transform` + `_frame_phys_params`)는 엔드포인트에서 그대로 살아 있고 `test_map_overlay.py`가 계약을 지킨다. 바뀐 것은 **맵 에디터가 그 좌표를 소비하지 않는다**는 것뿐이다. 2026-07-27부터 `bonding_plan.py`·`transfer_plan.py`의 **가용량 산출이 이 서버 구현을 소비**한다(자체 사본은 삭제) — 서버 구현은 하나뿐이다.
    - **[M2-v2] 전사 계획(계획 = 그 맵 자체)**: 맵 로드 → `notifyMapContext` → `transfer_plan.js`가 `stage_of_table` 역인덱스로 stage 유도 → GET `/api/transfer-plan/{stages,source-summary}` → DOE 편집(값 페인팅) → PUT `/tables/map_doe|map_doe_source/data/updates` + `pruneScoped`. **prune 권한은 `adoptServerDoe` 한 지점에서만** 서버본 채택과 원자적으로 획득한다. 검증은 GET `/api/transfer-plan/validate?ref_table=&map_key=` → `status: ok|warnings|unverified`.
 8. **그래프 자동 승격**: `apply_batch_updates`의 outbox 발화 → `run_graph_materializer_loop`(keyset 커서) → `materialize_events` → `attach_col_sources`(provenance=식별 컬럼 winner 최저 서열) → `extract_graph_items` → 노드/엣지 UPSERT + `_retarget_stale_edges` → 커서 전진. 백필은 POST `/api/graph/sync` → `execute_manual_sync` → `resync_table`.
 9. **그래프 조회/추적**: index 그리드 선택 → `openTraceForSelection`(`composeIdentity` 시드) → `trace.html` `runTrace` → POST `/graph/trace`(`_expand_graph_subgraph` 공용 BFS) → 그룹+타임라인 렌더. 뷰어는 `graph.html` `explore` → GET `/graph/neighbors`. 양방향 크로스링크(`?label=&identity=`).

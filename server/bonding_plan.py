@@ -8,17 +8,22 @@
 [경계 계약 — 총괄 고정] GET /api/bonding-plan/core-summary 응답 형태는 지시서
 Server_bonding_plan_m1_task.md §C. 칩 좌표 목록은 절대 반환하지 않는다(집계만).
 
-[align — canonical frame 규약] defect/EDS 계측 맵은 코어 맵과 좌표계가 다를 수 있다
-(회전·플립·오프셋). 맵 모드 소스의 `align` 블록이 소스 프레임→canonical(CORE) 프레임
-변환을 선언하고, 집계는 로드 단에서 좌표를 canonical로 사상한 뒤 영역 교차를 계산한다.
-회전/면반전 불변식은 기존 맵 에디터 자산(utils.coordinate_transformer)을 재사용한다.
-  - 단순형: {"rotation": 180, "flip": "none|x|y", "offset": {"x": 0, "y": 0}}
-  - 확장형: {"default": {...단순형...}, "by_eqp": {"METRO-A": {...}}}
-    → M1은 default만 적용, by_eqp는 파싱만 통과(M2 장비별 적용 예약).
-  - 변환 함수(make_align_transform)는 align 파라미터를 외부 주입받는다 —
-    M2 "align 보정 모드"(시험 align 오버레이)가 동일 경로를 재사용한다.
+[align — 정렬의 유일한 근거는 `wafer_map_metadata`다 (사용자 확정 2026-07-26)]
+defect/EDS 계측 맵은 코어 맵과 좌표계가 다를 수 있다(회전·면·start·치수·물리 규격).
+그 차이는 **각 맵이 자기 메타에 이미 선언**하고 있으므로, 소스 프레임 → canonical(CORE)
+프레임 변환은 **두 메타의 델타에서 유도**한다. config의 `sources[].align` 선언 레이어는
+제거됐다 — 계측으로 잰 어긋남도 메타에 기록한다.
+
+  canonical 프레임 = 맵 모드 역할 중 메타가 등록된 첫 번째(total_chips → defect → eds_fail)
+  변환 = map_overlay.resolve_map_transform(소스 메타, canonical 메타)
+
+**변환 구현은 이 모듈에 없다.** 구 `normalize_align`/`make_align_transform`은 `map_overlay`
+의 프레임 합성 경로(`visual_to_physical` → `physical_to_visual`)로 대체돼 삭제됐다. 그
+사본은 저장 좌표가 **웨이퍼 원으로 자른 바운딩박스 상대값**이라는 규약을 반영하지 않아,
+bbox가 0이 아닌 맵(원에 잘리는 실격자)에서 거울 변환이 끼면 전 셀이 `2·minC`만큼 어긋났다.
 
 [스냅샷 규율] config는 요청(작업) 경계에서 1회 로드해 전 구간에 인자로 전달한다.
+맵 메타도 요청 경계에서 1회 캐시한다(역할 × 요청 = 고정 소수 — N+1 금지).
 """
 import json
 import logging
@@ -26,15 +31,17 @@ import os
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "bonding_plan_config.json")
+import paths  # single override point (ASSY_DATA_ROOT)
+CONFIG_PATH = paths.config_path("bonding_plan_config.json")
 
 ROLES = ("process_history", "defect", "eds_fail", "used_chips", "total_chips")
 HISTORY_LIMIT = 50          # history 최근 N건 상한 (계약)
 MAX_REGION_RECTS = 50       # region 사각형 개수 상한 (페이로드/연산 방어)
 MAX_REGION_POINTS = 100_000  # 영역 교차용 내부 좌표 페치 하드캡 (무제한 로드 금지)
 
-VALID_ROTATIONS = (0, 90, 180, 270)
-VALID_FLIPS = ("none", "x", "y")
+# canonical(CORE) 프레임 후보 — **좌표를 바인딩한 첫 역할**이 기준 프레임을 정의한다.
+# 코어 웨이퍼 자신의 맵이 앞에 오도록 정렬돼 있다(used_chips의 (cx,cy)가 사는 프레임).
+CANONICAL_FRAME_ROLES = ("total_chips", "defect", "eds_fail")
 
 
 # ---------------------------------------------------------------------------
@@ -64,146 +71,6 @@ def _valid_source(src) -> bool:
         and isinstance(src.get("table"), str) and src.get("table")
         and isinstance(src.get("columns"), dict)
     )
-
-
-# ---------------------------------------------------------------------------
-# align 정규화/변환 (M2 재사용 대비: align 파라미터 외부 주입형)
-# ---------------------------------------------------------------------------
-
-def normalize_align(raw) -> dict | None:
-    """align 블록(단순형/확장형)을 정규 dict로 변환한다. 미선언/무효 → None(identity).
-
-    반환: {"rotation": int, "flip": str, "offset_x": int, "offset_y": int,
-           "is_identity": bool, "by_eqp": dict}
-    확장형의 by_eqp는 파싱만 통과시켜 보존한다(M1 집계는 default만 적용 — M2 예약).
-    """
-    if not isinstance(raw, dict):
-        return None
-
-    by_eqp = {}
-    base = raw
-    if "default" in raw or "by_eqp" in raw:
-        base = raw.get("default")
-        if isinstance(raw.get("by_eqp"), dict):
-            by_eqp = raw["by_eqp"]
-        if not isinstance(base, dict):
-            base = {}
-
-    rotation = base.get("rotation", 0)
-    try:
-        rotation = int(rotation)
-    except (TypeError, ValueError):
-        rotation = 0
-    if rotation not in VALID_ROTATIONS:
-        logger.warning("[BondingPlan] invalid align rotation %r — coerced to 0", base.get("rotation"))
-        rotation = 0
-
-    flip = base.get("flip", "none")
-    if flip not in VALID_FLIPS:
-        logger.warning("[BondingPlan] invalid align flip %r — coerced to 'none'", base.get("flip"))
-        flip = "none"
-
-    offset = base.get("offset") or {}
-    if not isinstance(offset, dict):
-        offset = {}
-    try:
-        off_x = int(offset.get("x", 0) or 0)
-        off_y = int(offset.get("y", 0) or 0)
-    except (TypeError, ValueError):
-        off_x, off_y = 0, 0
-
-    return {
-        "rotation": rotation,
-        "flip": flip,
-        "offset_x": off_x,
-        "offset_y": off_y,
-        "is_identity": (rotation == 0 and flip == "none" and off_x == 0 and off_y == 0),
-        "by_eqp": by_eqp,
-    }
-
-
-def align_status_label(align: dict | None) -> str | None:
-    """sources 상태 문자열용 align 마커 (예: 'aligned:180', 'aligned:180,flip-x,offset')."""
-    if not align or align.get("is_identity"):
-        return None
-    parts = []
-    if align["rotation"]:
-        parts.append(str(align["rotation"]))
-    if align["flip"] != "none":
-        parts.append(f"flip-{align['flip']}")
-    if align["offset_x"] or align["offset_y"]:
-        parts.append("offset")
-    return "aligned:" + ",".join(parts)
-
-
-def make_align_transform(align: dict | None, src_grid: dict, dst_grid: dict = None):
-    """소스 프레임 좌표 → canonical 프레임 좌표 변환 함수를 생성한다.
-
-    align은 외부 주입(config default든 M2 시험값이든 동일 경로 — M2 align 보정 모드 재사용).
-    src_grid: 소스 자기 프레임 격자 규격 {"cols","rows","start_x","start_y"} — **grid meta에서
-    읽는다**(프리셋은 phys 규격만 보유 — QA 감사 지시 §3). dst_grid: canonical 프레임 규격
-    (미지정 시 src와 동일 규격 가정).
-
-    회전·면반전 산법은 utils.coordinate_transformer.WaferMapCoordinateTransformer.cell_to_physical
-    재사용(맵 에디터와 동일 불변식) — **순수 인덱스 변환만 사용**하며 엔진 마스크/타원 fallback
-    (`is_inside_wafer`/bbox — QA 감사 F1·F2의 결함 지점)은 이 경로에 참여하지 않는다.
-    - transformer 생성자 cols/rows는 canonical(물리) 치수 규약: rot 90/270에서 소스 자기 프레임
-      치수는 canonical의 스왑이므로 src_grid 치수를 스왑해 전달한다(비정방 격자 정합).
-    - flip 'y'는 변환기 시각 계층(invert_y) 소관이라 cell 단 pre-flip으로 보충.
-    - offset은 canonical 사상 후 가산(칩 인덱스 단위 — phys 오프셋 불변 관례와 별개 축).
-    """
-    if not align or align.get("is_identity"):
-        return lambda x, y: (int(x), int(y))
-
-    src_cols = int(src_grid.get("cols", 0))
-    src_rows = int(src_grid.get("rows", 0))
-    src_start_x = int(src_grid.get("start_x", 1))
-    src_start_y = int(src_grid.get("start_y", 1))
-    if src_cols <= 0 or src_rows <= 0:
-        raise ValueError("align transform requires positive source grid dims")
-
-    dst = dst_grid or {}
-    dst_start_x = int(dst.get("start_x", src_start_x))
-    dst_start_y = int(dst.get("start_y", src_start_y))
-
-    from utils.coordinate_transformer import WaferMapCoordinateTransformer
-
-    rotation = align["rotation"]
-    # canonical(물리) 치수 = rot 90/270이면 소스 자기 프레임 치수의 스왑
-    if rotation in (90, 270):
-        phys_cols, phys_rows = src_rows, src_cols
-    else:
-        phys_cols, phys_rows = src_cols, src_rows
-
-    # canonical(dst) 프레임 치수가 선언돼 있으면 회전 관계와 정합해야 한다 (불명확한 사상 방지)
-    dst_cols = int(dst.get("cols", 0))
-    dst_rows = int(dst.get("rows", 0))
-    if dst_cols and dst_rows and (dst_cols != phys_cols or dst_rows != phys_rows):
-        raise ValueError(
-            f"align frame dims mismatch: source {src_cols}x{src_rows} rotated {rotation} "
-            f"maps to {phys_cols}x{phys_rows}, but canonical grid is {dst_cols}x{dst_rows}"
-        )
-
-    transformer = WaferMapCoordinateTransformer(
-        cols=phys_cols,
-        rows=phys_rows,
-        rotation=rotation,
-        side="back" if align["flip"] == "x" else "front",
-    )
-
-    flip_y = align["flip"] == "y"
-    off_x, off_y = align["offset_x"], align["offset_y"]
-    visual_rows = transformer.visual_rows
-
-    def to_canonical(x, y):
-        c = int(x) - src_start_x
-        r = int(y) - src_start_y
-        if flip_y:
-            r = (visual_rows - 1) - r
-        xp, yp = transformer.cell_to_physical(c, r)
-        return xp + dst_start_x + off_x, yp + dst_start_y + off_y
-
-    return to_canonical
 
 
 # ---------------------------------------------------------------------------
@@ -267,44 +134,60 @@ def _point_in_rects(x, y, rects) -> bool:
 # 맵 메타(격자 규격) 로드 — config의 map_metadata 블록 경유 (하드코딩 금지)
 # ---------------------------------------------------------------------------
 
-def load_grid_meta(db, config: dict, target_table: str, map_id: str) -> dict | None:
-    """wafer_map_metadata 관례 테이블에서 (target_table, map_id)의 격자 규격을 읽는다.
+def load_map_meta(db, config: dict, target_table: str, map_id: str,
+                  cache: dict = None) -> dict | None:
+    """(target_table, map_id)의 `grid_metadata` **원본 dict**를 읽는다. 없으면 None.
 
-    반환: {"cols","rows","start_x","start_y"} 또는 None(메타 미등록/블록 미선언).
+    `map_overlay.load_map_meta`와 같은 것을 읽지만 테이블·컬럼명을 config의 `map_metadata`
+    블록에서 받는다(현장 테이블명 상이 대응 — 하드코딩 금지). 정렬은 이 dict 전체(회전·면·
+    y반전·start·치수·phys 6종)에서 유도되므로 격자 치수만 잘라 쓰면 안 된다.
+
+    cache: 요청 경계 스냅샷 딕셔너리. 같은 (table, map_id)를 역할·코어마다 다시 조회하면
+    N+1이 된다 — 호출자가 요청당 하나를 만들어 넘긴다.
     """
+    key = (target_table, map_id)
+    if cache is not None and key in cache:
+        return cache[key]
+
+    meta = None
     meta_cfg = config.get("map_metadata")
-    if not _valid_source(meta_cfg):
-        return None
-    from database import models
-    model = models.DYNAMIC_TABLES.get(meta_cfg["table"])
-    if model is None:
-        return None
-    cols_map = meta_cfg["columns"]
-    t_col = cols_map.get("target_table", "target_table")
-    id_col = cols_map.get("map_id", "map_id")
-    g_col = cols_map.get("grid_metadata", "grid_metadata")
-    try:
-        row = (
-            db.query(getattr(model, g_col))
-            .filter(getattr(model, t_col) == target_table, getattr(model, id_col) == map_id)
-            .first()
-        )
-    except Exception as e:
-        logger.warning("[BondingPlan] grid meta query failed (%s/%s): %s", target_table, map_id, e)
-        return None
-    if not row or not row[0]:
-        return None
-    try:
-        meta = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-        return {
-            "cols": int(meta["grid_cols"]),
-            "rows": int(meta["grid_rows"]),
-            "start_x": int(meta.get("grid_start_x", 1)),
-            "start_y": int(meta.get("grid_start_y", 1)),
-        }
-    except Exception as e:
-        logger.warning("[BondingPlan] grid meta parse failed (%s/%s): %s", target_table, map_id, e)
-        return None
+    if _valid_source(meta_cfg):
+        from database import models
+        model = models.DYNAMIC_TABLES.get(meta_cfg["table"])
+        if model is not None:
+            cols_map = meta_cfg["columns"]
+            t_col = cols_map.get("target_table", "target_table")
+            id_col = cols_map.get("map_id", "map_id")
+            g_col = cols_map.get("grid_metadata", "grid_metadata")
+            try:
+                row = (
+                    db.query(getattr(model, g_col))
+                    .filter(getattr(model, t_col) == target_table,
+                            getattr(model, id_col) == map_id)
+                    .first()
+                )
+                if row and row[0]:
+                    meta = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception as e:
+                logger.warning("[BondingPlan] map meta load failed (%s/%s): %s",
+                               target_table, map_id, e)
+                meta = None
+    if not isinstance(meta, dict):
+        meta = None
+    if cache is not None:
+        cache[key] = meta
+    return meta
+
+
+def load_grid_meta(db, config: dict, target_table: str, map_id: str,
+                   cache: dict = None) -> dict | None:
+    """격자 규격만 필요한 호출자용 축약 — {"cols","rows","start_x","start_y"} 또는 None.
+
+    region rect 클램프처럼 **좌표 변환이 아닌** 용도 전용이다. 변환에는 메타 전체가
+    필요하므로 `load_map_meta`를 쓴다.
+    """
+    import map_overlay
+    return map_overlay._grid_of(load_map_meta(db, config, target_table, map_id, cache))
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +230,8 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     rects: parse_region 결과(canonical 칩 좌표계) 또는 None.
     config: 요청 경계 스냅샷(미지정 시 여기서 1회 로드).
     """
+    import map_overlay
+
     cfg = config if config is not None else load_bonding_plan_config()
     sources_cfg = cfg.get("sources") or {}
 
@@ -359,15 +244,22 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     region_counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0} if rects is not None else None
     history = []
     warnings_out = []
+    meta_cache = {}          # 요청 경계 스냅샷 — 같은 (table, map_id) 재조회 금지
 
-    # ---- canonical 격자 규격: align 없는 맵 모드 소스(코어 프레임)의 메타 우선 ----
-    canonical_grid = None
-    for role in ("total_chips", "defect", "eds_fail"):
+    # ---- canonical(CORE) 프레임 ----
+    # 좌표를 바인딩한 **첫** 맵 모드 역할이 기준 프레임을 정의한다. 그 역할의 메타가
+    # 없으면 canonical은 None으로 남는다 — **뒤 역할로 넘어가지 않는다.**
+    #
+    # ⚠️ 넘어가면, 회전된 계측 맵이 스스로 기준을 참칭한다. 그러면 소스 == 기준이 되어
+    # 변환이 identity로 떨어지고, 상태는 `connected`인 채 좌표가 어긋난 과소 집계가 된다
+    # (조용한 오답). 기준을 모르면 모른다고 해야 한다 — 아래에서 align_unavailable이 된다.
+    canonical_meta = None
+    for role in CANONICAL_FRAME_ROLES:
         src = sources_cfg.get(role)
-        if _valid_source(src) and normalize_align(src.get("align")) is None:
-            canonical_grid = load_grid_meta(db, cfg, src["table"], map_id)
-            if canonical_grid:
-                break
+        if _valid_source(src) and "x" in src["columns"] and "y" in src["columns"]:
+            canonical_meta = load_map_meta(db, cfg, src["table"], map_id, meta_cache)
+            break
+    canonical_grid = map_overlay._grid_of(canonical_meta)
 
     clamped_rects = clamp_rects(rects, canonical_grid) if rects is not None else None
 
@@ -383,11 +275,37 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
             statuses[role] = "missing"
             continue
 
-        align = normalize_align(src.get("align"))
-        status = "connected"
-        marker = align_status_label(align)
-        if marker:
-            status = f"connected({marker})"
+        # [정렬] 소스 메타 ↔ canonical 메타의 델타에서 유도한다(선언 레이어 없음).
+        # 변환을 만들 수 없으면(치수 비호환·phys 미등록) 조용히 raw 좌표로 계산하지 않고
+        # align_unavailable로 표면화한다.
+        src_meta = load_map_meta(db, cfg, src["table"], map_id, meta_cache)
+        transform = None
+        align, align_ok = None, True
+        if src_meta is not None and canonical_meta is None:
+            # [비대칭 지식] 이 맵의 프레임은 아는데 **기준 프레임을 모른다**. 둘 다 모르면
+            # "차이가 없다고 볼 수밖에 없다"(identity)가 성립하지만, 한쪽만 알 때 identity로
+            # 가정하는 건 근거가 없다 — 회전 180 맵을 무보정으로 세는 조용한 오답이 된다.
+            logger.warning("[BondingPlan] canonical frame unregistered while '%s' declares its "
+                           "own (%s/%s) — refusing to assume identity", role, src["table"], map_id)
+            align_ok = False
+        else:
+            try:
+                transform, align, _origin, _note = map_overlay.resolve_map_transform(
+                    src_meta, canonical_meta)
+            except ValueError as ve:
+                logger.warning("[BondingPlan] frame transform unavailable for '%s' (%s/%s): %s",
+                               role, src["table"], map_id, ve)
+                align, align_ok = None, False
+
+        if not align_ok:
+            # 카운트(total/defect/eds)는 변환 불변이라 유효하지만, 좌표를 canonical로 옮길
+            # 수 없다는 사실은 region 조회 여부와 무관하게 드러나야 한다.
+            status = "connected(align_unavailable)"
+        else:
+            status = "connected"
+            marker = map_overlay.align_status_label(align)
+            if marker:
+                status = f"connected({marker})"
 
         filters = [cols["lot"] == lot, cols["slot"] == slot]
         fail_values = src.get("fail_values")
@@ -399,27 +317,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
 
             if region_counts is not None:
                 if "x" in cols and "y" in cols:
-                    transform = None
-                    align_ok = True
-                    if align and not align.get("is_identity"):
-                        # [QA 감사 §3] align 규격은 프리셋이 아니라 grid meta에서 읽는다
-                        src_grid = load_grid_meta(db, cfg, src["table"], map_id) or canonical_grid
-                        try:
-                            if src_grid:
-                                transform = make_align_transform(align, src_grid, canonical_grid)
-                            else:
-                                align_ok = False
-                        except ValueError as ve:
-                            logger.warning("[BondingPlan] align transform build failed for '%s': %s", role, ve)
-                            align_ok = False
                     if not align_ok:
-                        # [QA 감사 F2 취지] 규격 불명 시 조용히(raw 좌표로) 계산하지 않고 명시 실패
-                        status = "connected(align_unavailable)"
+                        # [QA 감사 F2 취지] 규격 불명 시 조용히(raw 좌표로) 계산하지 않는다
                         region_counts[count_key] = 0
-                        logger.warning(
-                            "[BondingPlan] align declared for '%s' but frame spec unresolved (%s/%s) — region count omitted",
-                            role, src["table"], map_id,
-                        )
                     else:
                         pts = _fetch_points(db, cols, filters)
                         n = 0

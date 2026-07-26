@@ -15,6 +15,7 @@ from croniter import croniter
 # Setup Logging
 from utils.logger import get_process_logger
 from utils.auto_update_control import read_disabled_scripts
+import paths  # single override point (ASSY_DATA_ROOT)
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 class BaseCollector(ABC):
@@ -31,8 +32,7 @@ class BaseCollector(ABC):
         self.last_error = None
         self.script_path = None
         
-        server_dir = os.path.dirname(os.path.abspath(__file__))
-        self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
+        self.target_dir = os.path.join(paths.WORKSPACE_DIR, table_name, "raws")
         os.makedirs(self.target_dir, exist_ok=True)
 
     @abstractmethod
@@ -93,7 +93,7 @@ class GenericScriptRunnerCollector:
         except:
             pass
 
-        server_dir = server_dir or os.path.dirname(os.path.abspath(__file__))
+        server_dir = server_dir or paths.DATA_ROOT
         self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
         os.makedirs(self.target_dir, exist_ok=True)
         
@@ -248,7 +248,7 @@ class MultiDiscoveryScheduler:
     """
     def __init__(self, check_interval: int = 5, server_dir: str = None):
         self.check_interval = check_interval
-        self.server_dir = server_dir or os.path.dirname(os.path.abspath(__file__))
+        self.server_dir = server_dir or paths.DATA_ROOT
         self.workspace_dir = os.path.join(self.server_dir, "ingestion_workspace")
         self.status_file_path = os.path.join(self.server_dir, "config", "scheduler_status.json")
         self.collectors = []

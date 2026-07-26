@@ -207,7 +207,10 @@ body {
 #toast-container {
   position: fixed;
   bottom: 24px;
-  right: 24px;
+  /* 우측에 고정 패널이 있는 페이지는 --toast-inset-right로 토스트를 비켜 세운다
+     (맵 에디터의 「사용 자재」 목록이 토스트에 가려지던 문제 — transfer_plan.css가 값을 준다).
+     min()은 좁은 화면에서 토스트가 뷰포트 밖으로 밀려 나가는 것을 막는다. */
+  right: min(var(--toast-inset-right, 24px), calc(100vw - 300px));
   display: flex;
   flex-direction: column;
   gap: 10px;

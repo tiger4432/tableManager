@@ -4,8 +4,9 @@
 - 집계 정확성(모의 데이터): total/defect/eds_fail/used(distinct)/remaining
 - region 교차: canonical 좌표 rect 합집합 + align(180) 사상 — 변환 없이 겹치면 틀리는
   네거티브 케이스 포함(얼라인 실증), 격자 규격 클램프, 형식 위반 400
-- align: 단순형/확장형(by_eqp 파싱 통과), 90°(비정방 격자 스왑 정합 — QA 감사 F1),
-  flip, grid meta 부재 시 명시 실패(align_unavailable — QA 감사 F2 취지)
+- align: **메타 델타에서 유도**(config 선언 레이어 없음). 회전 90/270·비등방 칩 피치·
+  back 면·bbox≠0(웨이퍼 원에 잘리는 격자)을 결함 축으로 활성화한 replica 픽스처 포함.
+  phys 규격 미등록 시 명시 실패(align_unavailable — QA 감사 F2 취지)
 - 역할 missing 부분 가동 / knobs 폴백 / 미존재 조합 200 / history 50건 상한·오름차순 / warnings
 
 [격리] 테이블명은 사용자 실 config에 실존 불가능한 bdp_test_* 접두를 사용한다
@@ -75,7 +76,7 @@ GRID = {"grid_cols": 6, "grid_rows": 6, "grid_start_x": 1, "grid_start_y": 1,
         "phys_offset_x": 0, "phys_offset_y": 0, "phys_edge_margin": 3}
 
 
-def _bdp_config(align_eds=True):
+def _bdp_config():
     cfg = {
         "core_identity": {"compose": ["lot", "slot"]},
         "map_metadata": {
@@ -111,12 +112,6 @@ def _bdp_config(align_eds=True):
         },
         "warnings": {"result_fail_values": ["FAIL"]},
     }
-    if align_eds:
-        # 확장형(default + by_eqp) — M1은 default만 적용, by_eqp는 파싱 통과(M2 예약)
-        cfg["sources"]["eds_fail"]["align"] = {
-            "default": {"rotation": 180, "flip": "none", "offset": {"x": 0, "y": 0}},
-            "by_eqp": {"METRO-A": {"rotation": 90}},
-        }
     return cfg
 
 
@@ -275,21 +270,27 @@ def test_region_intersection_with_align(bdp_env, client):
     assert body["chips"]["total"] == 36
 
 
-def test_region_align_negative_control(bdp_env, client, tmp_path, monkeypatch):
-    """align 미선언 config로 같은 region 조회 → EDS 저장좌표 그대로 비교되어 0이 나와야 한다.
+def test_region_align_negative_control(bdp_env, client):
+    """EDS 메타를 코어와 **같은 회전(0)** 으로 등록하면 정렬이 identity가 되어 0이 나온다.
 
-    (변환 없이 겹치면 틀리는 케이스 — align이 실제로 작동함을 증명하는 대조군)
+    (변환 없이 겹치면 틀리는 대조군 — 180 유도가 실제로 일하고 있음을 증명한다.
+    종전에는 config에서 `align` 선언을 뺐지만, 선언 레이어가 사라졌으므로 이제 대조군은
+    **메타를 다르게 등록하는 것**이다.)
     """
-    _seed_core(bdp_env)
-    cfg_path = tmp_path / "no_align.json"
-    cfg_path.write_text(json.dumps(_bdp_config(align_eds=False)), encoding="utf-8")
-    monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(cfg_path))
+    db = bdp_env
+    _seed_core(db)
+    # 메타를 rot 0으로 덮어쓴다 — 같은 (target_table, map_id)의 두 번째 행이 아니라 갱신이어야
+    # 하므로 기존 행을 지우고 다시 넣는다.
+    model = models.DYNAMIC_TABLES["bdp_test_map_meta"]
+    db.query(model).filter(model.target_table == "bdp_test_eds_fail_map").delete()
+    _add_meta(db, "bdp_test_eds_fail_map", "LOTX_01", rotation=0)
+    db.commit()
 
     body = client.get("/api/bonding-plan/core-summary", params={
         "lot": "LOTX", "slot": "01",
         "region": _region([{"x1": 1, "y1": 1, "x2": 2, "y2": 2}]),
     }).json()
-    # canonical fail (1,1)은 저장좌표 (6,6) — align 없이는 rect에 안 잡힌다
+    # 저장좌표 (6,6)/(2,5)는 rect(1..2)에 없다 — 무보정이면 0
     assert body["region_chips"]["eds_fail"] == 0
     assert body["sources"]["eds_fail"] == "connected"
 
@@ -326,10 +327,14 @@ def test_region_malformed_returns_400(bdp_env, client):
         assert res.status_code == 400, bad
 
 
-def test_region_align_unavailable_without_grid_meta(bdp_env, client):
-    """align 선언 + grid meta 부재 → 조용히 raw 좌표로 계산하지 않고 명시 실패(QA F2 취지)."""
+def test_region_without_any_meta_falls_back_to_identity(bdp_env, client):
+    """메타가 **아예 없으면** identity로 붙는다 — 실패가 아니라 등록 누락의 신호다.
+
+    map_overlay.resolve_align의 규율 그대로다(선언 부재를 실패로 만들면 대부분의 맵이
+    못 붙는다). 정렬 실패는 "근거가 없다"가 아니라 "근거는 있는데 계산이 불가능하다"일
+    때만 낸다 — 아래 phys 미등록 케이스가 그것이다.
+    """
     db = bdp_env
-    # 메타 없이 EDS fail 1건만 시딩
     _add(db, "bdp_test_eds_fail_map", chip_key="LOTN_01_6_6",
          lot="LOTN", slot="01", x=6, y=6, val="F", metro_eqp="METRO-A")
     db.commit()
@@ -337,9 +342,33 @@ def test_region_align_unavailable_without_grid_meta(bdp_env, client):
         "lot": "LOTN", "slot": "01",
         "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
     }).json()
+    assert body["sources"]["eds_fail"] == "connected"
+    assert body["region_chips"]["eds_fail"] == 1   # 저장좌표 (6,6) 그대로 rect 안
+    assert body["chips"]["eds_fail"] == 1
+
+
+def test_align_unavailable_when_phys_spec_missing(bdp_env, client):
+    """메타는 있는데 phys 규격이 없으면 → 바운딩박스를 못 만든다 → 명시 실패(QA F2 취지).
+
+    조용히 raw 좌표로 계산하면 전 셀이 어긋난 수치가 정상처럼 나간다.
+    """
+    db = bdp_env
+    _seed_core(db)
+    model = models.DYNAMIC_TABLES["bdp_test_map_meta"]
+    db.query(model).filter(model.target_table == "bdp_test_eds_fail_map").delete()
+    bare = {k: v for k, v in dict(GRID, rotation=180).items() if not k.startswith("phys_")}
+    _add(db, "bdp_test_map_meta", map_pk="bdp_test_eds_fail_map_bare",
+         target_table="bdp_test_eds_fail_map", map_id="LOTX_01",
+         grid_metadata=json.dumps(bare))
+    db.commit()
+
+    body = client.get("/api/bonding-plan/core-summary", params={
+        "lot": "LOTX", "slot": "01",
+        "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
+    }).json()
     assert body["sources"]["eds_fail"] == "connected(align_unavailable)"
     assert body["region_chips"]["eds_fail"] == 0
-    assert body["chips"]["eds_fail"] == 1  # 전체 카운트는 변환 불변이라 유효
+    assert body["chips"]["eds_fail"] == 2   # 전체 카운트는 변환 불변이라 유효
 
 
 # ---------------------------------------------------------------------------
@@ -387,67 +416,137 @@ def test_unknown_combo_all_connected_zero(bdp_env, client):
 
 
 # ---------------------------------------------------------------------------
-# 4. align 단위 검증 (M2 재사용 경로 — 외부 주입 파라미터)
+# 4. 정렬 — 메타 델타 유도 경로를 **결함 축이 살아 있는 격자로** 검증
+#
+# [왜 GRID(6x6, chip 7x7, dia 300)로는 부족한가] 그 규격은 웨이퍼 원이 격자를 전혀 자르지
+# 않아 bbox=(0,·,0,·)다. 저장 좌표가 bbox 상대값이라는 규약이 **원리적으로 발현할 수 없는**
+# 구간이라, bbox 항을 통째로 빠뜨린 구현도 통과한다(삭제된 `make_align_transform`이 정확히
+# 그랬고, 그래서 그 사본은 자기 테스트를 전부 통과한 채 틀려 있었다).
+# 또 chip_x == chip_y라 회전 90/270의 피치 스왑도 죽는다.
+#
+# CROP_GRID는 네 축을 **동시에** 살린다:
+#   · 비등방 피치 (chip 11 x 13)   · 비정방 격자 (11 x 9 → 회전 시 9 x 11)
+#   · bbox != 0 이며 **minC != minR** — rot0/front에서 (1, 8, 2, 7). 두 값이 같으면
+#     x/y 축을 혼동한 구현이 그대로 통과한다.
+#   · back 면에서 bbox가 실제로 옮겨간다 — rot0/back은 (2, 9, 2, 7)이다. 즉
+#     `phys_offset_x` 부호 반전 항이 **관측 가능**하다(off_x=4가 반 피치에 못 미치면
+#     bbox가 안 움직여 그 항이 죽는다).
 # ---------------------------------------------------------------------------
 
-def test_normalize_align_simple_and_extended():
-    simple = bonding_plan.normalize_align({"rotation": 180, "flip": "x", "offset": {"x": 1, "y": -2}})
-    assert simple["rotation"] == 180 and simple["flip"] == "x"
-    assert simple["offset_x"] == 1 and simple["offset_y"] == -2
-    assert not simple["is_identity"]
-
-    ext = bonding_plan.normalize_align({
-        "default": {"rotation": 90},
-        "by_eqp": {"METRO-A": {"rotation": 270}},
-    })
-    assert ext["rotation"] == 90
-    assert ext["by_eqp"] == {"METRO-A": {"rotation": 270}}  # 파싱 통과·보존 (M2 예약)
-
-    assert bonding_plan.normalize_align(None) is None
-    assert bonding_plan.normalize_align({"rotation": 45})["rotation"] == 0  # 무효값 → 0 강등
-    assert bonding_plan.normalize_align({})["is_identity"]
+CROP_GRID = {"grid_cols": 11, "grid_rows": 9, "grid_start_x": 1, "grid_start_y": 1,
+             "grid_y_invert": False, "side": "front",
+             "phys_wafer_dia": 100, "phys_chip_x": 11, "phys_chip_y": 13,
+             "phys_offset_x": 4, "phys_offset_y": 2, "phys_edge_margin": 3}
 
 
-def test_align_transform_180_roundtrip():
-    align = bonding_plan.normalize_align({"rotation": 180})
-    grid = {"cols": 6, "rows": 6, "start_x": 1, "start_y": 1}
-    t = bonding_plan.make_align_transform(align, grid)
-    assert t(6, 6) == (1, 1)
-    assert t(2, 5) == (5, 2)
-    # 전 셀 전단사(자기 자신 격자로)
-    cells = {t(x, y) for x in range(1, 7) for y in range(1, 7)}
-    assert cells == {(x, y) for x in range(1, 7) for y in range(1, 7)}
+def _crop_meta(rotation=0, side="front"):
+    return dict(CROP_GRID, rotation=rotation, side=side)
 
 
-def test_align_transform_90_nonsquare_grid():
-    """rot 90 + 비정방 격자 — 소스 자기 프레임 치수는 canonical의 스왑(QA 감사 F1 정합)."""
-    align = bonding_plan.normalize_align({"rotation": 90})
-    src_grid = {"cols": 3, "rows": 4, "start_x": 1, "start_y": 1}   # 소스 자기 프레임
-    dst_grid = {"cols": 4, "rows": 3, "start_x": 1, "start_y": 1}   # canonical
-    t = bonding_plan.make_align_transform(align, src_grid, dst_grid)
-    # 전단사: 소스 3x4 → canonical 4x3
-    out = {t(x, y) for x in range(1, 4) for y in range(1, 5)}
-    assert out == {(x, y) for x in range(1, 5) for y in range(1, 4)}
-    assert t(1, 1) == (1, 3)  # cell_to_physical(rot 90) 관례: xp=r, yp=(visual_cols-1)-c
+def _seed_crop(db, lot, eds_rotation, eds_side="front"):
+    """코어(rot 0/front) + EDS(회전·면 지정) — 같은 물리 다이를 각자의 프레임에 기록한다.
+
+    ⚠️ **픽스처는 검증 대상으로 만들지 않는다.** 좌표 대응을 `make_frame_transform`으로
+    만들면 시드와 복원이 같은 함수라 서로 상쇄해, bbox 항을 통째로 빼도 테스트가 전부
+    통과한다(실측: bbox_less 주입에서 이 파일 20건이 전건 통과했다). 그래서 저장 좌표는
+    `test_map_overlay`의 **독립 정답지**(클라 저장 규약을 산술 그대로 옮긴 것, 검증 대상과
+    어떤 계층도 공유하지 않음)로 만든다.
+    """
+    from test_map_overlay import oracle_overlay, oracle_stored_cells
+
+    core_meta = _crop_meta(0, "front")
+    eds_meta = _crop_meta(eds_rotation, eds_side)
+
+    core_cells = sorted(oracle_stored_cells(core_meta))
+    assert len(core_cells) >= 20, core_cells
+    fail_canon = set(core_cells[5:9])          # canonical 기준 fail 4개
+
+    for (x, y) in core_cells:
+        _add(db, "bdp_test_core_defect_map", chip_key=f"{lot}_01_{x}_{y}",
+             lot=lot, slot="01", x=x, y=y, val="P")
+    _add(db, "bdp_test_map_meta", map_pk=f"core|{lot}",
+         target_table="bdp_test_core_defect_map", map_id=f"{lot}_01",
+         grid_metadata=json.dumps(core_meta))
+
+    for (x, y) in core_cells:
+        ex, ey = oracle_overlay(core_meta, eds_meta, x, y)
+        _add(db, "bdp_test_eds_fail_map", chip_key=f"{lot}_01_{ex}_{ey}",
+             lot=lot, slot="01", x=ex, y=ey,
+             val=("F" if (x, y) in fail_canon else "P"), metro_eqp="METRO-A")
+    _add(db, "bdp_test_map_meta", map_pk=f"eds|{lot}",
+         target_table="bdp_test_eds_fail_map", map_id=f"{lot}_01",
+         grid_metadata=json.dumps(eds_meta))
+    db.commit()
+    return core_cells, sorted(fail_canon)
 
 
-def test_align_transform_flip_and_offset():
-    grid = {"cols": 6, "rows": 6, "start_x": 1, "start_y": 1}
-    fx = bonding_plan.make_align_transform(bonding_plan.normalize_align({"flip": "x"}), grid)
-    assert fx(1, 3) == (6, 3)
-    fy = bonding_plan.make_align_transform(bonding_plan.normalize_align({"flip": "y"}), grid)
-    assert fy(3, 1) == (3, 6)
-    off = bonding_plan.make_align_transform(
-        bonding_plan.normalize_align({"rotation": 180, "offset": {"x": 1, "y": 0}}), grid)
-    assert off(6, 6) == (2, 1)
+@pytest.mark.parametrize("eds_rotation,eds_side", [
+    (0, "back"),      # 면 반전만 — 거울이라 bbox 항이 상쇄되지 않고 2·minC로 쌓인다
+    (90, "front"),    # 피치 스왑 축
+    (180, "front"),   # 라이브 EDS와 같은 축
+    (270, "back"),    # 회전 × 면 조합
+])
+def test_region_align_recovers_exact_dies_on_cropped_anisotropic_grid(
+        bdp_env, client, tmp_path, monkeypatch, eds_rotation, eds_side):
+    """정렬이 옳으면 **정확히 그 다이들**이 region에 잡힌다 — 개수만 보지 않는다.
+
+    개수는 균일 오프셋 오류에도 보존될 수 있다(어긋난 위치가 우연히 다른 유효 다이에
+    떨어지면 총 개수가 같다). 그래서 fail 다이 하나만 덮는 1x1 rect로 **동일성**을 본다.
+    """
+    from test_map_overlay import oracle_bbox
+
+    db = bdp_env
+    cfg_path = tmp_path / "crop.json"
+    cfg_path.write_text(json.dumps(_bdp_config()), encoding="utf-8")
+    monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(cfg_path))
+
+    lot = f"CROP{eds_rotation}{eds_side[0].upper()}"
+    _core_cells, fail_canon = _seed_crop(db, lot, eds_rotation, eds_side)
+
+    # 픽스처가 결함 축을 실제로 켰는지 테스트 자신이 단언한다 (정답지 산술로 확인)
+    core_meta, eds_meta = _crop_meta(0, "front"), _crop_meta(eds_rotation, eds_side)
+    core_bbox, eds_bbox = oracle_bbox(core_meta), oracle_bbox(eds_meta)
+    assert core_bbox[0] > 0 and core_bbox[2] > 0, f"bbox가 0이면 결함 축이 죽는다: {core_bbox}"
+    assert core_meta["phys_chip_x"] != core_meta["phys_chip_y"], "비등방 피치가 아니다"
+    assert core_bbox[0] != core_bbox[2], f"minC == minR이면 축 혼동을 못 잡는다: {core_bbox}"
+    assert eds_bbox != (0, 0, 0, 0)
+    # back 면에서 offset 부호 항이 실제로 bbox를 옮기는지 — 안 움직이면 그 축이 죽어 있다
+    assert oracle_bbox(_crop_meta(0, "back")) != core_bbox
+
+    for (fx, fy) in fail_canon:
+        body = client.get("/api/bonding-plan/core-summary", params={
+            "lot": lot, "slot": "01",
+            "region": _region([{"x1": fx, "y1": fy, "x2": fx, "y2": fy}]),
+        }).json()
+        assert body["region_chips"]["eds_fail"] == 1, (
+            f"canonical fail 다이 ({fx},{fy})가 자기 자리로 돌아오지 않았다 "
+            f"(rot={eds_rotation} side={eds_side})")
+
+    # fail이 아닌 다이 자리에는 잡히지 않아야 한다 (전 셀 균일 이동의 대조군)
+    non_fail = next(c for c in _core_cells if c not in set(fail_canon))
+    body = client.get("/api/bonding-plan/core-summary", params={
+        "lot": lot, "slot": "01",
+        "region": _region([{"x1": non_fail[0], "y1": non_fail[1],
+                            "x2": non_fail[0], "y2": non_fail[1]}]),
+    }).json()
+    assert body["region_chips"]["eds_fail"] == 0
+    assert body["region_chips"]["total"] == 1
 
 
-def test_align_transform_dims_mismatch_raises():
-    """rot 90인데 자기 프레임 치수가 스왑 관계가 아니면 명시 실패(ValueError)."""
-    align = bonding_plan.normalize_align({"rotation": 90})
-    with pytest.raises(ValueError):
-        bonding_plan.make_align_transform(
-            align, {"cols": 3, "rows": 4}, {"cols": 3, "rows": 4})
+def test_deleted_transform_copy_is_gone():
+    """구 사본이 되살아나면(재도입/되돌림) 즉시 실패한다 — 구현은 하나뿐이어야 한다."""
+    for name in ("normalize_align", "make_align_transform", "align_status_label",
+                 "VALID_ROTATIONS", "VALID_FLIPS"):
+        assert not hasattr(bonding_plan, name), f"bonding_plan.{name}이 되살아났다"
+
+
+def test_align_marker_is_derived_from_meta_not_config(bdp_env, client):
+    """상태 마커(aligned:180)는 config 선언이 아니라 메타 델타에서 나온다."""
+    _seed_core(bdp_env)   # eds 메타 rot 180, config에는 align 키가 없다
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
+    assert "align" not in json.dumps(_bdp_config()["sources"]["eds_fail"])
 
 
 # ---------------------------------------------------------------------------

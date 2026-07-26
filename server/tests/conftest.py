@@ -1,6 +1,19 @@
 import os
 os.environ["TESTING"] = "True"
 
+# [Isolation, board issue #16a] main.py runs `Base.metadata.create_all(bind=engine)`
+# at *module import* against whatever DATABASE_URL resolves to. With DATABASE_URL
+# unset that default is the live production database (database.py DEFAULT_PG_URL),
+# so merely collecting this suite issued DDL to production.
+#
+# Pin the suite to an isolated database BEFORE `from main import app` below.
+# This is a hard assignment, not setdefault: an ambient DATABASE_URL in the shell
+# (e.g. a developer pointing at production) must not be able to leak in. To run
+# the suite against a different isolated database, set ASSY_TEST_DATABASE_URL.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "ASSY_TEST_DATABASE_URL", "sqlite:///:memory:"
+)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

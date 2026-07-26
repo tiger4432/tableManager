@@ -17,8 +17,16 @@ import threading
 
 logger = logging.getLogger("AutoUpdateControl")
 
-# server/ 디렉토리 (이 파일은 server/utils/ 하위)
-SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Base directory for config/ and ingestion_workspace/. Historically this was the
+# server/ directory itself; it now resolves through the single override point
+# (server/paths.py, ASSY_DATA_ROOT) so an isolated data root relocates both trees.
+# Name kept as SERVER_DIR: callers and tests monkeypatch this exact symbol.
+try:
+    from paths import DATA_ROOT as SERVER_DIR
+except ImportError:  # pragma: no cover - defensive fallback
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from paths import DATA_ROOT as SERVER_DIR
 CONTROL_FILENAME = "auto_update_control.json"
 
 # "<workspace>/<script.py>" — 경로 구분자·상위 탐색 문자 금지

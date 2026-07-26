@@ -2,12 +2,13 @@ import os
 import json
 
 def setup_workspace():
-    # [경로 보정] 상위 폴더(server/)를 기준으로 base_dir 설정
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.abspath(os.path.join(current_dir, ".."))
-    
-    config_path = os.path.join(base_dir, "config", "table_config.json")
-    workspace_root = os.path.join(base_dir, "ingestion_workspace")
+    # Paths come from the single override point (server/paths.py, ASSY_DATA_ROOT).
+    import sys
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+    import paths
+
+    config_path = paths.config_path("table_config.json")
+    workspace_root = paths.WORKSPACE_DIR
 
     if not os.path.exists(config_path):
         print(f"Error: Table config not found at {config_path}")

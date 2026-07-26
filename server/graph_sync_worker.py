@@ -11,7 +11,8 @@ from utils.payload_helper import get_payload_dict
 
 logger = get_process_logger("GraphSync", "graph_sync.log")
 
-ONTOLOGY_PATH = os.path.join(os.path.dirname(__file__), "config", "ontology_mapping.json")
+import paths  # single override point (ASSY_DATA_ROOT)
+ONTOLOGY_PATH = paths.config_path("ontology_mapping.json")
 
 def load_ontology_mapping():
     if not os.path.exists(ONTOLOGY_PATH):

@@ -1,9 +1,9 @@
 /* ============================================================
    transfer_plan.css — 「2. Legend & DOE」 패널 (재설계 v2)
 
-   구조: 우측 사이드바(430px) 안의 **세로 두 목록 + 이중 스크롤**
-     ┌ tp-scroll   (계획 헤더 + DOE LIST)  — flex:1, 자체 스크롤
-     └ tp-mat-pane (사용 자재, DOE별 그룹) — 고정 250px, 자체 스크롤
+   구조: 우측 사이드바(--plan-sidebar-w) 안의 **세로 두 목록 + 이중 스크롤**
+     ┌ tp-scroll   (계획 헤더 + DOE LIST)   — flex:1, 자체 스크롤
+     └ tp-mat-pane (사용 자재, 자재 ID 기준) — 고정 250px, 자체 스크롤
        (자재 목록은 이동 허브이므로 DOE를 아무리 스크롤해도 화면에 남아야 한다)
 
    색은 tokens.css 변수만 쓴다. 하드코딩 색은 DOE 스와치(데이터 색)뿐이며 인라인이다.
@@ -11,6 +11,19 @@
    ============================================================ */
 
 /* ── 사이드바 셸 ───────────────────────────────────────── */
+:root {
+  /* 계획 사이드바 폭의 단일 출처. map_editor.html의 인라인 width를 대체한다. */
+  --plan-sidebar-w: 430px;
+  /* 토스트를 이 사이드바 왼쪽으로 비켜 세운다 — 종전에는 토스트가 화면 우하단에 떠서
+     사이드바 하단의 「사용 자재」 목록(이동 허브)을 그대로 덮었다. tokens.css가 소비한다. */
+  --toast-inset-right: calc(var(--plan-sidebar-w) + 24px);
+}
+
+#plan-sidebar {
+  width: var(--plan-sidebar-w);
+  min-width: var(--plan-sidebar-w);
+}
+
 #transfer-plan-root {
   height: 100%;
   min-height: 0;
@@ -174,7 +187,6 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
-.tp-sw.sm { width: 26px; height: 20px; font-size: 0.66rem; border-radius: 5px; }
 
 .tp-doe-body {
   display: flex;
@@ -446,50 +458,66 @@
   flex-wrap: wrap;
 }
 
-.tp-mat-grp-h {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 11px;
-  background: var(--bg-header);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.73rem;
-}
-.tp-mat-grp-h .meta {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-}
-/* 선택된 DOE 그룹은 강조만 — 숨김(필터) 없음 */
-.tp-mat-grp.on .tp-mat-grp-h { box-shadow: inset 3px 0 0 var(--accent); }
-.tp-mat-grp.on .tp-mat-row { box-shadow: inset 3px 0 0 var(--accent); }
-
+/* 행 하나 = 자재 하나. 1행: 자재 ID · 가용/사용 · 맵 유무, 2행: 어디에 몇 개씩. */
 .tp-mat-row {
   position: relative;
-  display: grid;
-  grid-template-columns: 14px 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 11px 6px 19px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 11px;
   border-bottom: 1px solid var(--border);
   font-size: 0.73rem;
   cursor: pointer;
   transition: var(--transition-smooth);
 }
 .tp-mat-row:hover { background: var(--surface-hover); }
+/* 선택된 DOE를 쓰는 자재는 강조만 — 숨김(필터) 없음 */
+.tp-mat-row.on { box-shadow: inset 3px 0 0 var(--accent); }
 
-.tp-tree {
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 0.69rem;
+.tp-mat-l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .tp-mat-id { font-weight: 600; }
-.tp-mat-qty { color: var(--text-muted); }
+.tp-mat-qty {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
 .tp-mat-qty b { color: var(--text); }
+
+/* 사용처 칩 — (DOE 값 · STACK 구간) 에 몇 개. 읽기 전용, 접힘 없음(무마찰). */
+.tp-uses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tp-use {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.665rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.tp-use i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+.tp-use b { color: var(--text); }
+.tp-use.on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--text);
+}
 
 /* 복귀 시 1회성 하이라이트 — opacity만 애니메이트(배경 트랜지션은 페인트 유발) */
 .tp-flash {

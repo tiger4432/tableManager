@@ -13,8 +13,8 @@ def setup_database():
     print("[Launcher] AssyManager Database Setup Starting...")
     
     # 1. table_config.json을 로드하여 동적 모델 초기화
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, "..", "config", "table_config.json")
+    import paths  # single override point (ASSY_DATA_ROOT)
+    config_path = paths.config_path("table_config.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             table_config = json.load(f)

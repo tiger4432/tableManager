@@ -38,7 +38,7 @@ import re
 
 logger = logging.getLogger("EnrichmentConfig")
 
-CONFIG_DIR = os.path.join(os.path.dirname(__file__), "config")
+from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 ENRICHMENT_RULES_PATH = os.path.join(CONFIG_DIR, "enrichment_rules.json")
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 

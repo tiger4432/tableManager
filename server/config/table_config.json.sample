@@ -286,6 +286,7 @@
     ]
   },
   "wafer_map_metadata": {
+    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 격자 규격(grid_metadata)의 정본. 맵을 담는 모든 테이블(defect·EDS·DT·bonding·core)이 여기에 등록돼야 정렬이 성립한다 — 미등록은 정상 상태가 아니라 누락이며, 화면에는 '화면기준' 칩으로 표면화된다. bk = target_table_map_id.",
     "business_key": "map_pk",
     "composite_key_source": [
       "target_table",

@@ -48,3 +48,8 @@ server/mappers/*
 server/ingestion_workspace/
 server/database/virtual_graph.json
 .claude/doc_sync_pending
+
+# 격리 개발 환경 (server/scripts/dev_env/devenv.py bootstrap 생성물 — 운영 자산의 복사본)
+# 반드시 루트 고정(/) — 앵커가 없으면 같은 이름의 하위 디렉터리(server/scripts/dev_env/,
+# 즉 도구 소스 자체)까지 조용히 무시된다.
+/dev_env/

@@ -16,7 +16,8 @@ from database import models
 # Initialize dynamic database models
 try:
     import json
-    config_path = os.path.join(script_dir, "config", "table_config.json")
+    import paths  # single override point (ASSY_DATA_ROOT)
+    config_path = paths.config_path("table_config.json")
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)

@@ -70,7 +70,8 @@ def seed_row(db, table_name, row_id, business_key_val, data_dict, source_name="s
         db.add(cell_src)
 
 def seed():
-    config_path = os.path.join(server_root, "config", "table_config.json")
+    import paths  # single override point (ASSY_DATA_ROOT)
+    config_path = paths.config_path("table_config.json")
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)

@@ -16,15 +16,16 @@
 그 계획에서만 붙으므로 범용성이 깨진다 — 맵의 속성에서 유도하는 편이 옳다.
 (예: `eds_fail_map`은 메타 rotation 180, `core_defect_map`은 0 → 상대 180이 자동 유도된다.)
 
-[align 판정 규율 — 총괄 확정]
+[align 판정 규율 — 사용자 확정 2026-07-26: 메타가 정렬의 유일한 근거다]
 1. 두 맵 메타로 변환을 **유도할 수 있으면 유도한 대로 적용**한다(origin: "derived").
-2. override config에 선언이 있으면 그것이 우선한다(origin: "declared"/"default").
-3. 유도할 근거가 없으면(메타 부재 등) **identity로 간주해 그대로 붙인다**(origin: "identity").
-   선언 부재는 실패가 아니다 — 그렇게 처리하면 대부분의 맵이 못 붙는다.
-4. `align_unavailable`은 "**변환을 계산할 근거가 없을 때**"만 낸다 — 유도/선언된 비-identity
-   변환이 있는데 격자 규격이 비호환이라 계산이 불가능한 경우(치수 모순 등).
-`by_eqp` 선언이 있고 해당 장비 키가 없으면 `default`로, `default`도 없으면 identity로 폴백하되
-그 사실을 status에 **정보성으로만** 표기한다(차단하지 않는다).
+2. 유도할 근거가 없으면(메타 부재 등) **identity로 간주해 그대로 붙인다**(origin: "identity").
+   메타 부재는 실패가 아니라 **등록 누락의 신호**다 — 실패로 만들면 대부분의 맵이 못 붙는다.
+3. `align_unavailable`은 "**변환을 계산할 근거가 없을 때**"만 낸다 — 유도된 비-identity
+   변환이 있는데 격자 규격이 비호환이라 계산이 불가능한 경우(치수 모순, phys 규격 부재 등).
+
+> **`align_overrides`(config 선언 · `by_eqp` 분기)는 제거됐다.** 계측으로 잰 어긋남도
+> `wafer_map_metadata`에 기록한다 — 별도 오버라이드 레이어를 두지 않는다. 선언 레이어가
+> 있으면 "정렬의 근거가 둘"이 되어, 메타와 선언이 어긋났을 때 어느 쪽이 참인지 알 수 없다.
 
 [유도 경로의 변환 산법 — 프레임 합성 (구 B3 한계의 근본 수정)]
 유도 경로는 "상대 회전 + 단일 flip"을 **하나의** 변환기로 합성하지 않는다. 그 방식은
@@ -39,20 +40,20 @@
 각 프레임의 반전 축·회전이 자기 메타로 각각 처리되므로 조합 폭발이 사라진다. 따라서 이전의
 "면 반전 + 타깃 회전 90/270 거절" 가드는 **불필요해져 제거**했다(과잉 거절이었다).
 
-[격자 치수 규약 — 물리 vs 프레임 (실사고 원인)]
+[격자 치수 규약 — 물리 vs 프레임]
 `wafer_map_metadata.grid_cols/grid_rows`는 **물리(canonical) 치수**다. 셀에 저장된 x/y는
-**프레임(visual) 좌표**이며 그 치수는 맵 자신의 회전이 90/270이면 물리의 스왑이다.
-`bonding_plan.make_align_transform`은 `src_grid`로 **프레임 치수**를 받으므로, 메타 값을
-그대로 넘기면 회전 90/270 맵에서 치수 불일치 오판이 난다(라이브 사고: `test`/AAA(rot 270,
-29x25)를 `bonding_map`/aa123_a에 겹칠 때 "source 29x25 rotated 270 maps to 25x29, but
-canonical grid is 29x25"로 **정상 조합이 align_unavailable로 거절**). `_frame_grid_of`가
-메타 → 프레임 치수 변환을 담당하며, 선언(override) 경로도 이것을 쓴다.
+**프레임(visual) 좌표**이며 그 치수는 맵 자신의 회전이 90/270이면 물리의 스왑이다. 프레임
+합성 경로는 각 맵의 변환기가 자기 `visual_cols/visual_rows`를 스스로 계산하므로 이 구분을
+호출자가 신경 쓸 필요가 없다(구 선언 경로는 프레임 치수를 손으로 넘겨야 했고, 그래서
+회전 90/270 맵에서 정상 조합이 `align_unavailable`로 거절되는 사고가 났다).
 
 [남은 한계] 두 맵의 `grid_start_x/y` 차이는 identity 경로에서 보정하지 않는다
 (라이브는 전부 start=(1,1)). 유도 경로(프레임 합성)는 각 맵의 start를 정확히 반영한다.
 
-[변환 어댑터] 선언(override) 경로는 `bonding_plan.make_align_transform` 재사용 — 순수 인덱스
-변환만 사용하며 엔진 마스크/타원 fallback은 참여하지 않는다(QA 감사 F1·F2).
+[서버의 유일한 좌표 변환 구현이다 — 2026-07-26 일원화]
+`bonding_plan.make_align_transform`(bbox 항 없는 사본)은 삭제됐고, 가용량 산출
+(`bonding_plan.get_core_summary` · `transfer_plan`)도 이 모듈의 `resolve_map_transform`을
+경유한다. 서버에 좌표 변환 구현은 여기 하나뿐이다(렌더용 클라 구현과 합쳐 총 2개).
 
 [페이로드 규율] 셀 목록을 반환하는 유일한 API이므로 상한이 필수다. 캡 도달 시 **응답에 명시**
 표기한다(조용한 절단 금지 — QA F2 규율).
@@ -63,7 +64,8 @@ import os
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "map_overlay_config.json")
+import paths  # single override point (ASSY_DATA_ROOT)
+CONFIG_PATH = paths.config_path("map_overlay_config.json")
 
 MAX_OVERLAY_CELLS = 20_000     # 오버레이 1종당 셀 상한 (초과 시 truncated 표기)
 MAX_OVERLAY_SOURCES = 8        # 요청당 소스 맵 개수 상한
@@ -73,8 +75,6 @@ STATUS_ALIGN_UNAVAILABLE = "align_unavailable"
 STATUS_SOURCE_MISSING = "source_missing"
 STATUS_NO_DATA = "no_data"
 
-ALIGN_ORIGIN_DECLARED = "declared"
-ALIGN_ORIGIN_DEFAULT = "default"
 ALIGN_ORIGIN_DERIVED = "derived"
 ALIGN_ORIGIN_IDENTITY = "identity"
 # [구 QA B3] 유도 불가 마커. 프레임 합성 도입으로 **더 이상 발화하지 않는다** —
@@ -145,21 +145,6 @@ def _grid_of(meta: dict | None) -> dict | None:
         }
     except Exception:
         return None
-
-
-def _frame_grid_of(meta: dict | None) -> dict | None:
-    """맵 **자기 프레임(visual) 격자 규격** — 셀 x/y가 실제로 사는 좌표계의 치수.
-
-    맵 자신의 회전이 90/270이면 물리 치수의 스왑이다(`WaferMapCoordinateTransformer`의
-    `visual_cols/visual_rows` 규약과 동일). `make_align_transform`이 `src_grid`/`dst_grid`로
-    기대하는 것이 이 치수이며, 메타의 물리 치수를 그대로 넘기면 회전 맵에서 오판이 난다.
-    """
-    g = _grid_of(meta)
-    if g is None:
-        return None
-    if _rotation_of(meta) in (90, 270):
-        g = dict(g, cols=g["rows"], rows=g["cols"])
-    return g
 
 
 def _side_of(meta: dict | None) -> str:
@@ -333,34 +318,48 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
 
 
 # ---------------------------------------------------------------------------
-# align 결정 (선언 우선 → 메타 유도 → identity)
+# align 결정 (메타 유도 → identity) — 선언 레이어는 없다
 # ---------------------------------------------------------------------------
 
-def resolve_align(cfg: dict, source_table: str, source_meta: dict | None,
-                  target_meta: dict | None, eqp: str = None):
-    """소스→타깃 align을 결정한다. 반환: (normalized_align|None, origin, note|None).
+def _align_summary(rotation: int, flip: str) -> dict:
+    """표시용 align 요약. **좌표 변환에는 쓰이지 않는다**(`make_frame_transform` 소관).
 
-    normalized_align은 bonding_plan.normalize_align 형태(None이면 identity).
+    구 `bonding_plan.normalize_align`의 자리를 대신하지만 파서가 아니다 — 입력이 config
+    문자열이 아니라 두 메타의 차이로 계산된 값이라 검증/강등 로직이 필요 없다.
     """
-    import bonding_plan
+    return {"rotation": int(rotation) % 360, "flip": flip,
+            "offset_x": 0, "offset_y": 0,
+            "is_identity": (int(rotation) % 360 == 0 and flip == "none")}
 
+
+def align_status_label(align: dict | None) -> str | None:
+    """상태 문자열용 align 마커 (예: 'aligned:180', 'aligned:180,flip-x').
+
+    가용량 API(`bonding_plan` / `transfer_plan`)의 `sources[role]` 문자열에 붙는다 —
+    "정렬을 적용했다"를 사람이 읽을 수 있게 표면화하는 용도이며, 없으면 무보정과 구분되지
+    않는다. 변환 소유 모듈이 마커도 소유한다(구 `bonding_plan.align_status_label` 이관).
+    """
+    if not align or align.get("is_identity"):
+        return None
+    parts = []
+    if align["rotation"]:
+        parts.append(str(align["rotation"]))
+    if align["flip"] != "none":
+        parts.append(f"flip-{align['flip']}")
+    if align.get("offset_x") or align.get("offset_y"):
+        parts.append("offset")
+    return "aligned:" + ",".join(parts)
+
+
+def resolve_align(source_meta: dict | None, target_meta: dict | None):
+    """소스→타깃 align을 **두 맵의 메타만으로** 결정한다.
+
+    반환: (align_summary|None, origin, note|None). None이면 identity.
+    origin은 "derived" 또는 "identity" 둘뿐이다 — 선언(override) 레이어가 없으므로
+    "declared"/"default"는 더 이상 발생하지 않는다.
+    """
     note = None
-    overrides = (cfg.get("align_overrides") or {})
-    decl = overrides.get(source_table)
-    if isinstance(decl, dict):
-        # by_eqp 우선 — 키가 없으면 default로, default도 없으면 identity로 폴백(차단 금지)
-        if eqp and isinstance(decl.get("by_eqp"), dict) and eqp in decl["by_eqp"]:
-            return bonding_plan.normalize_align(decl["by_eqp"][eqp]), ALIGN_ORIGIN_DECLARED, None
-        if "by_eqp" in decl or "default" in decl:
-            if eqp and isinstance(decl.get("by_eqp"), dict) and eqp not in decl["by_eqp"]:
-                note = f"by_eqp에 '{eqp}' 선언이 없어 default로 폴백"
-            base = decl.get("default")
-            if isinstance(base, dict):
-                return bonding_plan.normalize_align(base), ALIGN_ORIGIN_DEFAULT, note
-            return None, ALIGN_ORIGIN_IDENTITY, (note or "default 선언이 없어 identity로 간주")
-        return bonding_plan.normalize_align(decl), ALIGN_ORIGIN_DECLARED, None
 
-    # 선언이 없으면 두 맵의 자기 규격 차이로 유도한다
     if source_meta is None or target_meta is None:
         # 규격을 모른다 = 돌릴 각도를 모른다가 아니라 "차이가 없다고 볼 수밖에 없다" →
         # identity로 간주해 붙인다(선언 부재를 실패로 만들지 않는다).
@@ -389,8 +388,26 @@ def resolve_align(cfg: dict, source_table: str, source_meta: dict | None,
     # [주의] 여기서 만드는 align은 **표시용 요약**이다(클라의 "180° 정렬됨" 배지). 실제 좌표
     # 변환은 `make_frame_transform`이 두 메타로 직접 합성하며 이 요약을 쓰지 않는다 —
     # 상대 회전 + 단일 flip으로는 두 프레임의 반전 축을 표현할 수 없기 때문이다(구 QA B3).
-    return (bonding_plan.normalize_align({"rotation": rel_rot, "flip": flip}),
-            ALIGN_ORIGIN_DERIVED, note)
+    return _align_summary(rel_rot, flip), ALIGN_ORIGIN_DERIVED, note
+
+
+def resolve_map_transform(source_meta: dict | None, target_meta: dict | None):
+    """**서버의 단일 좌표 변환 진입점.** 메타 → (변환 함수, 표시 요약, origin, note).
+
+    반환 `transform`이 None이면 identity(그대로 붙인다). 변환이 필요한데 계산할 근거가
+    없으면 `ValueError` — 호출자가 `align_unavailable`로 표면화한다(조용한 오답 금지).
+
+    오버레이(그리기)와 가용량 산출(`bonding_plan`/`transfer_plan`)이 **같은 이 함수**를
+    쓴다. 갈라지면 화면과 수치가 서로 다른 좌표계를 말하게 되고, 그 불일치는 둘 중 하나가
+    틀렸을 때에만 드러나므로 조용히 오래 산다.
+    """
+    align, origin, note = resolve_align(source_meta, target_meta)
+    transform = None
+    if origin == ALIGN_ORIGIN_DERIVED:
+        # ⚠️ `align`(표시용 요약)이 identity로 보여도 **반드시 합성한다** — 회전·면이 같아도
+        # y반전이나 start가 다르면 변환이 필요하고, 요약을 보고 건너뛰면 QA O3의 조용한 오답.
+        transform = make_frame_transform(source_meta, target_meta)
+    return transform, align, origin, note
 
 
 def _pure_translation(source_meta, target_meta, origin):
@@ -540,9 +557,8 @@ def build_key_filters(model, binding: dict, map_key: str):
 
 
 def get_overlay(db, cfg: dict, target_table: str, target_key: str,
-                sources: list, eqp: str = None, cell_cap: int = MAX_OVERLAY_CELLS) -> dict:
+                sources: list, cell_cap: int = MAX_OVERLAY_CELLS) -> dict:
     """타깃 맵 프레임 좌표로 정렬된 오버레이 셀들을 반환한다."""
-    import bonding_plan
     from database import models
 
     target_meta = load_map_meta(db, target_table, target_key)
@@ -598,29 +614,10 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
             continue
 
         source_meta = load_map_meta(db, s_table, key)
-        align, origin, note = resolve_align(cfg, s_table, source_meta, target_meta, eqp)
-
-        transform = None
         try:
-            if origin == ALIGN_ORIGIN_DERIVED:
-                # [정본 경로] 두 메타로 프레임을 각각 물리에 사상해 합성한다.
-                # ⚠️ `align`(표시용 요약)이 identity로 보여도 **반드시 합성한다** — 회전·면이
-                # 같아도 y반전이나 start가 다르면 변환이 필요하고, 여기서 요약을 보고
-                # 건너뛰면 정확히 QA O3의 조용한 오답이 된다.
-                transform = make_frame_transform(source_meta, target_meta)
-            elif align and not align.get("is_identity"):
-                # [선언 override 경로] 사용자가 못 박은 변환 — 프레임 치수로 넘긴다
-                # (메타의 물리 치수를 그대로 넘기면 회전 90/270 맵에서 오판난다).
-                src_grid = _frame_grid_of(source_meta)
-                if not src_grid:
-                    entry["status"] = STATUS_ALIGN_UNAVAILABLE
-                    entry["detail"] = f"'{s_table}' 격자 규격 미등록 — 변환을 계산할 수 없음"
-                    entry["align_applied"] = align_applied_payload(align, origin, note)
-                    overlays.append(entry)
-                    continue
-                transform = bonding_plan.make_align_transform(
-                    align, src_grid, _frame_grid_of(target_meta))
+            transform, align, origin, note = resolve_map_transform(source_meta, target_meta)
         except ValueError as ve:
+            align, origin, note = resolve_align(source_meta, target_meta)
             entry["status"] = STATUS_ALIGN_UNAVAILABLE
             entry["detail"] = f"격자 규격 비호환: {ve}"
             entry["align_applied"] = align_applied_payload(align, origin, note)

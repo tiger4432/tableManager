@@ -40,7 +40,7 @@ import re
 
 logger = logging.getLogger("OntologyConfig")
 
-CONFIG_DIR = os.path.join(os.path.dirname(__file__), "config")
+from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 ONTOLOGY_PATH = os.path.join(CONFIG_DIR, "ontology_mapping.json")
 
 _LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
