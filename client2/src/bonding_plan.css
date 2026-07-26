@@ -1,0 +1,784 @@
+/* ============================================================
+   bonding_plan.css — 본딩 실험계획 M1 (map editor 우측 슬라이드 패널)
+   · 시맨틱 토큰(tokens.css)만 참조 — 듀얼 테마 자동 대응
+   · z-index 계층: 패널 800 / 영역 선택 바 700 (토스트 9999 아래)
+   ============================================================ */
+
+/* ── 슬라이드 패널 골격 ─────────────────────────────────── */
+.bp-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 500px;
+  max-width: 94vw;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop);
+  transform: translateX(103%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 800;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+
+.bp-panel.open {
+  transform: translateX(0);
+}
+
+.bp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+}
+
+.bp-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bp-header-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.bp-close {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.bp-close:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.bp-subnote {
+  margin: 0;
+  padding: 8px 18px;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.45;
+}
+
+.bp-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 18px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── 공통: 배지·필드·섹션 ──────────────────────────────── */
+.bp-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bp-badge-draft {
+  color: var(--overwrite);
+  border-color: var(--overwrite);
+  background: var(--overwrite-weak);
+}
+
+.bp-badge-m1 {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-weak);
+}
+
+.bp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bp-section > h3,
+.bp-section-head h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.bp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bp-field label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.bp-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 108px;
+  gap: 8px;
+}
+
+.bp-panel .glass-input {
+  font-family: var(--font-sans);
+}
+
+.bp-panel textarea.glass-input {
+  resize: vertical;
+  min-height: 44px;
+  line-height: 1.4;
+}
+
+.bp-muted {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.bp-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-empty-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+/* ── 자동완성 드롭다운 ─────────────────────────────────── */
+.bp-ac-wrap {
+  position: relative;
+}
+
+.bp-ac-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  z-index: 40;
+}
+
+.bp-ac-item {
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s ease;
+}
+
+.bp-ac-item:last-child {
+  border-bottom: none;
+}
+
+.bp-ac-item:hover {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.bp-ac-empty {
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* ── 검증 요약 ─────────────────────────────────────────── */
+.bp-vbadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bp-vbadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  background: var(--bg-inset);
+}
+
+.bp-vbadge.ok {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--success-weak);
+}
+
+.bp-vbadge.bad {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-weak);
+}
+
+.bp-vbadge.warn {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-weak);
+}
+
+.bp-coverage-strip {
+  display: flex;
+  gap: 1px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.bp-cov-seg {
+  flex: 1;
+  min-width: 2px;
+  background: var(--bg-inset);
+}
+
+.bp-cov-seg.cov {
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.bp-cov-seg.overlap {
+  background: var(--warning);
+}
+
+.bp-cov-seg.gap {
+  background: var(--danger-weak);
+}
+
+.bp-coverage-text {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ── 층 배정 행 ────────────────────────────────────────── */
+#bp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bp-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-inset);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.bp-row:hover {
+  border-color: var(--border-strong);
+}
+
+.bp-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.bp-row.warn {
+  border-color: var(--danger);
+}
+
+.bp-row-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bp-row-idx {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 16px;
+  text-align: center;
+}
+
+.bp-row .glass-input {
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+.bp-in-lf,
+.bp-in-lt {
+  width: 52px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.bp-in-qty {
+  width: 64px;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.bp-core-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.bp-in-core {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+.bp-dash {
+  color: var(--text-dim);
+}
+
+.bp-row-line2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bp-region-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.bp-region-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bp-region-btn b {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.bp-thumb {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+}
+
+.bp-row-status {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.bp-row-status.ok {
+  color: var(--success);
+}
+
+.bp-row-status.bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.bp-row-tools {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.bp-tool {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 2px 5px;
+  border-radius: 5px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.bp-tool:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.bp-tool-del:hover {
+  color: var(--danger);
+  background: var(--danger-weak);
+}
+
+.bp-row-warnline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--danger);
+}
+
+.bp-warn-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--danger-weak);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.bp-warn-chip.missing {
+  background: var(--warning-weak);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* ── 코어 상세 ─────────────────────────────────────────── */
+#bp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bp-detail-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-inset);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bp-src-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.bp-src {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--success);
+  background: var(--success-weak);
+  color: var(--success);
+  font-family: var(--font-mono);
+}
+
+.bp-src.missing {
+  border-color: var(--warning);
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.bp-chips-line {
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.bp-chips-line .rem {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bp-need-line {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--success-weak);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.bp-need-line.bad {
+  background: var(--danger-weak);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.bp-region-line {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.bp-server-warns {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.73rem;
+  color: var(--warning);
+}
+
+/* 공정 이력 타임라인 */
+.bp-history {
+  display: flex;
+  flex-direction: column;
+  border-left: 2px solid var(--border-strong);
+  margin-left: 5px;
+  padding-left: 12px;
+  gap: 2px;
+}
+
+.bp-step {
+  position: relative;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.bp-step:hover {
+  background: var(--surface-hover);
+}
+
+.bp-step::before {
+  content: '';
+  position: absolute;
+  left: -17.5px;
+  top: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  border: 2px solid var(--bg-surface);
+}
+
+.bp-step.bp-step-fail::before {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-weak);
+}
+
+.bp-step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bp-step-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.bp-step-fail .bp-step-name {
+  color: var(--danger);
+}
+
+.bp-step-eqp,
+.bp-step-time {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.bp-step-result {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--success-weak);
+  color: var(--success);
+}
+
+.bp-step-fail .bp-step-result {
+  background: var(--danger-weak);
+  color: var(--danger);
+}
+
+.bp-step-recipe {
+  font-size: 0.66rem;
+  color: var(--accent-2);
+  font-family: var(--font-mono);
+}
+
+.bp-knobs {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 5px;
+}
+
+.bp-step.open .bp-knobs {
+  display: flex;
+}
+
+.bp-knob-chip {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── knob 비교 표 ─────────────────────────────────────── */
+#bp-compare {
+  overflow-x: auto;
+}
+
+.bp-compare-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.72rem;
+}
+
+.bp-compare-table th,
+.bp-compare-table td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.bp-compare-table th {
+  background: var(--bg-header);
+  color: var(--text-muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.bp-compare-table td.bp-mismatch {
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-weight: 700;
+  border-color: var(--warning);
+}
+
+.bp-compare-table td.bp-key-col,
+.bp-compare-table th.bp-key-col {
+  color: var(--text-dim);
+}
+
+/* ── 영역 선택 모드 플로팅 바 (map editor 캔버스 위) ───── */
+.bp-region-bar {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--text);
+  animation: bpBarIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: 94vw;
+  flex-wrap: wrap;
+}
+
+@keyframes bpBarIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.bp-region-bar-title {
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.bp-region-bar-preset {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--success);
+  background: var(--success-weak);
+  color: var(--success);
+  white-space: nowrap;
+}
+
+.bp-region-bar-preset.missing {
+  border-color: var(--warning);
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.bp-region-bar-count {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bp-region-bar-hint {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.bp-region-bar .glass-btn {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+}
+
+.bp-region-bar .bp-region-done {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-weak);
+  font-weight: 600;
+}

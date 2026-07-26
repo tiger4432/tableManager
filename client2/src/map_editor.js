@@ -3,6 +3,7 @@ import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
+import { initBondingPlan } from './bonding_plan.js';
 
 let tables = [];
 let selectedTable = '';
@@ -24,6 +25,10 @@ let gridCells2D = []; // 2D reference array of cell metadata objects [row][col]
 let dragType = null; // 'paint' | 'erase'
 let selectedEdgeTargetMap = null; // Track active E1/E2 edge selection map
 let loadedFCells = new Set(); // Track physical keys of cells loaded with value 'F'
+
+// Region Selection Mode (본딩 실험계획 영역 지정 — bonding_plan.js가 startRegionSelection으로 진입)
+// { kind:'core'|'base', label, rects:[{x1,y1,x2,y2}], preset, snap, onFinish, barEl }
+let regionMode = null;
 
 function isProtectedFCell(key) {
   return loadedFCells.has(key);
@@ -153,6 +158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   initDOMElements();
   initMouseDragEvents();
+  initBondingPlan({ startRegionSelection });
   await loadTablesList();
 });
 
@@ -456,7 +462,10 @@ function initMouseDragEvents() {
       const isRight = (e.button === 2 || e.buttons === 2);
       isBoxDragging = true;
       boxStartCell = cell;
-      dragType = isRight ? 'erase' : 'paint';
+      // 영역 선택 모드: 페인팅 대신 사각형 수집(좌클릭 추가 / 우클릭 교차 제거)
+      dragType = regionMode
+        ? (isRight ? 'region-erase' : 'region')
+        : (isRight ? 'erase' : 'paint');
       lastSelectionBox = { minC: cell.c, maxC: cell.c, minR: cell.r, maxR: cell.r };
 
       scheduleRenderGridCanvas();
@@ -509,7 +518,9 @@ function initMouseDragEvents() {
     isRightDrag = false;
 
     if (isBoxDragging) {
-      if (boxStartCell && lastSelectionBox) {
+      if (boxStartCell && lastSelectionBox && (dragType === 'region' || dragType === 'region-erase')) {
+        applyRegionSelectionBox(lastSelectionBox, dragType === 'region-erase');
+      } else if (boxStartCell && lastSelectionBox) {
         const { minC, maxC, minR, maxR } = lastSelectionBox;
 
         for (let r = minR; r <= maxR; r++) {
@@ -1122,6 +1133,41 @@ function renderPresetDropdown() {
   }
 }
 
+// 프리셋 객체를 물리 규격/방향 UI에 적용 (프리셋 셀렉트와 무관하게 재사용 —
+// 영역 선택 모드가 CORE/BASE 프리셋 규격 강제 시에도 동일 경로를 탄다)
+function applyPresetObject(preset) {
+  if (!preset) return;
+  if (preset.phys_wafer_dia !== undefined && el.physWaferDia) {
+    const diaStr = String(preset.phys_wafer_dia);
+    if (['300', '200', '150'].includes(diaStr)) {
+      el.physWaferDia.value = diaStr;
+    } else {
+      let opt = el.physWaferDia.querySelector(`option[value="${diaStr}"]`);
+      if (!opt) {
+        opt = document.createElement('option');
+        opt.value = diaStr;
+        opt.textContent = `${diaStr} mm (Custom)`;
+        el.physWaferDia.appendChild(opt);
+      }
+      el.physWaferDia.value = diaStr;
+    }
+  }
+  if (preset.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = preset.phys_chip_x;
+  if (preset.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = preset.phys_chip_y;
+  if (preset.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = preset.phys_offset_x;
+  if (preset.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = preset.phys_offset_y;
+  if (preset.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.phys_edge_margin;
+
+  if (preset.rotation !== undefined) currentRotation = preset.rotation;
+  if (preset.side !== undefined) currentSide = preset.side;
+
+  boundingBoxCache = {};
+  updateOrientationUI();
+  applyPhysicalGeometry();
+  scheduleRenderGridCanvas();
+  updateLegendCounts();
+}
+
 function loadSelectedPreset() {
   if (!el.presetSelect) return;
   const val = el.presetSelect.value;
@@ -1132,41 +1178,10 @@ function loadSelectedPreset() {
 
   const preset = serverPresets[val];
   if (preset) {
-    if (preset.phys_wafer_dia !== undefined && el.physWaferDia) {
-      const diaStr = String(preset.phys_wafer_dia);
-      if (['300', '200', '150'].includes(diaStr)) {
-        el.physWaferDia.value = diaStr;
-      } else {
-        let opt = el.physWaferDia.querySelector(`option[value="${diaStr}"]`);
-        if (!opt) {
-          opt = document.createElement('option');
-          opt.value = diaStr;
-          opt.textContent = `${diaStr} mm (Custom)`;
-          el.physWaferDia.appendChild(opt);
-        }
-        el.physWaferDia.value = diaStr;
-      }
+    applyPresetObject(preset);
+    if (el.btnDeletePreset) {
+      el.btnDeletePreset.style.display = preset.is_custom ? 'inline-block' : 'none';
     }
-    if (preset.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = preset.phys_chip_x;
-    if (preset.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = preset.phys_chip_y;
-    if (preset.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = preset.phys_offset_x;
-    if (preset.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = preset.phys_offset_y;
-    if (preset.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.phys_edge_margin;
-
-    if (preset.rotation !== undefined) currentRotation = preset.rotation;
-    if (preset.side !== undefined) currentSide = preset.side;
-
-    if (preset.is_custom) {
-      if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'inline-block';
-    } else {
-      if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
-    }
-
-    boundingBoxCache = {};
-    updateOrientationUI();
-    applyPhysicalGeometry();
-    scheduleRenderGridCanvas();
-    updateLegendCounts();
   }
 }
 
@@ -1565,6 +1580,40 @@ function renderGridCanvas() {
     ctx.stroke();
   }
 
+  // 6.5 Region rects overlay (본딩 실험계획 영역 선택 모드 — 확정된 사각형들)
+  if (regionMode && regionMode.rects.length > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    regionMode.rects.forEach((rect, i) => {
+      const a = getCellFromVisualCoords(rect.x1, rect.y1, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const b = getCellFromVisualCoords(rect.x2, rect.y2, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+      const rMinC = Math.min(a.c, b.c);
+      const rMaxC = Math.max(a.c, b.c);
+      const rMinR = Math.min(a.r, b.r);
+      const rMaxR = Math.max(a.r, b.r);
+      const x0 = rMinC * cellW + shiftX;
+      const y0 = rMinR * cellH + shiftY;
+      const w = (rMaxC - rMinC + 1) * cellW;
+      const h = (rMaxR - rMinR + 1) * cellH;
+      ctx.fillStyle = C.rangeFill;
+      ctx.fillRect(x0, y0, w, h);
+      ctx.strokeStyle = C.accent;
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([7, 4]);
+      ctx.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+      ctx.setLineDash([]);
+      const tagW = 26;
+      const tagH = 16;
+      ctx.fillStyle = C.accent;
+      ctx.fillRect(x0, y0, tagW, tagH);
+      ctx.fillStyle = C.surface;
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillText(`#${i + 1}`, x0 + tagW / 2, y0 + tagH / 2 + 0.5);
+    });
+    ctx.restore();
+  }
+
   // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
     const { minC, maxC, minR, maxR } = lastSelectionBox;
@@ -1573,7 +1622,7 @@ function renderGridCanvas() {
     const boxW = (maxC - minC + 1) * cellW;
     const boxH = (maxR - minR + 1) * cellH;
 
-    const isErase = (dragType === 'erase');
+    const isErase = (dragType === 'erase' || dragType === 'region-erase');
     ctx.fillStyle = isErase ? C.dangerWeak : C.rangeFill;
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
@@ -3055,5 +3104,229 @@ async function copyGridToExcel() {
       console.error('Failed to copy to clipboard', e);
       alert('클립보드 복사에 실패했습니다.');
     }
+  }
+}
+
+// ============================================================
+// Region Selection Mode — 본딩 실험계획(M1) 영역 지정
+// bonding_plan.js가 startRegionSelection()으로 진입한다.
+// · 그리드 규격: CORE/BASE 맵 메타 프리셋(/api/map-presets) 재사용.
+//   CORE = core_wafer_map·core_defect_map·eds_fail_map 공용, BASE = base/bonding.
+//   프리셋 미등록(서버 병렬 작업 중)이면 현재 그리드 규격으로 graceful 동작
+//   ("프리셋 미연결" 표기).
+// · 진입 시 편집 상태 스냅샷 → 종료(완료/취소) 시 원복 (더티 가드 관례 —
+//   기존 맵 편집 상태를 오염시키지 않는다). 진입 중 Push 버튼 비활성.
+// · rect 좌표는 칩(visual x/y) 좌표계 {x1,y1,x2,y2}, 프리셋 그리드 범위로 클램프.
+// ============================================================
+
+function escapeHtmlText(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+function snapshotEditorState() {
+  const metaVals = {};
+  document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+    metaVals[input.id] = input.value;
+  });
+  return {
+    gridData: { ...gridData },
+    loadedF: new Set(loadedFCells),
+    metaVals,
+    gridCols: el.gridCols.value,
+    gridRows: el.gridRows.value,
+    startX: el.gridStartX.value,
+    startY: el.gridStartY.value,
+    invertY: el.gridYInvert.checked,
+    rotation: currentRotation,
+    side: currentSide,
+    physWaferDia: el.physWaferDia ? el.physWaferDia.value : '300',
+    physChipX: el.physChipX ? el.physChipX.value : '2.5',
+    physChipY: el.physChipY ? el.physChipY.value : '2.5',
+    physOffsetX: el.physOffsetX ? el.physOffsetX.value : '0.0',
+    physOffsetY: el.physOffsetY ? el.physOffsetY.value : '0.0',
+    physEdgeMargin: el.physEdgeMargin ? el.physEdgeMargin.value : '3.0',
+    legend: legend.map(item => ({ ...item })),
+    activeBrush,
+  };
+}
+
+function restoreEditorState(s) {
+  if (!s) return;
+  gridData = { ...s.gridData };
+  loadedFCells = new Set(s.loadedF);
+  Object.entries(s.metaVals).forEach(([id, val]) => {
+    const input = document.getElementById(id);
+    if (input) input.value = val;
+  });
+  el.gridCols.value = s.gridCols;
+  el.gridRows.value = s.gridRows;
+  el.gridStartX.value = s.startX;
+  el.gridStartY.value = s.startY;
+  el.gridYInvert.checked = s.invertY;
+  currentRotation = s.rotation;
+  currentSide = s.side;
+  if (el.physWaferDia) el.physWaferDia.value = s.physWaferDia;
+  if (el.physChipX) el.physChipX.value = s.physChipX;
+  if (el.physChipY) el.physChipY.value = s.physChipY;
+  if (el.physOffsetX) el.physOffsetX.value = s.physOffsetX;
+  if (el.physOffsetY) el.physOffsetY.value = s.physOffsetY;
+  if (el.physEdgeMargin) el.physEdgeMargin.value = s.physEdgeMargin;
+  legend = s.legend.map(item => ({ ...item }));
+  activeBrush = s.activeBrush;
+  boundingBoxCache = {};
+  updateOrientationUI();
+  renderLegendTable();
+  renderGridCanvas();
+}
+
+// CORE/BASE 용도별 프리셋 탐색 (key → name 순, 패턴 우선순위 순회)
+function findRegionPreset(kind) {
+  const patterns = kind === 'base' ? [/base/i, /bond/i] : [/core/i, /eds/i, /defect/i];
+  const entries = Object.entries(serverPresets || {});
+  for (const re of patterns) {
+    const hit = entries.find(([key, p]) => re.test(key) || re.test((p && p.name) || ''));
+    if (hit) return { key: hit[0], ...hit[1] };
+  }
+  return null;
+}
+
+// 드래그 선택 박스(visual c/r) → 칩 좌표 rect {x1,y1,x2,y2} (그리드 범위 클램프)
+function selectionBoxToChipRect(box) {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const { visualCols, visualRows } = getVisualGridDimensions();
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
+
+  // 그리드 완전 밖 드래그는 무시
+  if (box.maxC < 0 || box.minC > visualCols - 1 || box.maxR < 0 || box.minR > visualRows - 1) return null;
+
+  const minC = Math.max(0, Math.min(box.minC, visualCols - 1));
+  const maxC = Math.max(0, Math.min(box.maxC, visualCols - 1));
+  const minR = Math.max(0, Math.min(box.minR, visualRows - 1));
+  const maxR = Math.max(0, Math.min(box.maxR, visualRows - 1));
+
+  const corners = [
+    [minC, minR], [minC, maxR], [maxC, minR], [maxC, maxR]
+  ].map(([c, r]) => getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY));
+
+  const xs = corners.map(p => p.x);
+  const ys = corners.map(p => p.y);
+  return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+}
+
+function rectsIntersect(a, b) {
+  return a.x1 <= b.x2 && b.x1 <= a.x2 && a.y1 <= b.y2 && b.y1 <= a.y2;
+}
+
+// mouseup에서 호출: 좌드래그 → rect 추가, 우드래그 → 교차 rect 제거
+function applyRegionSelectionBox(box, erase) {
+  if (!regionMode) return;
+  const rect = selectionBoxToChipRect(box);
+  if (!rect) return;
+  if (erase) {
+    const before = regionMode.rects.length;
+    regionMode.rects = regionMode.rects.filter(r => !rectsIntersect(r, rect));
+    if (regionMode.rects.length === before) return;
+  } else {
+    regionMode.rects.push(rect);
+  }
+  updateRegionBar();
+}
+
+function updateRegionBar() {
+  if (regionMode && regionMode.barEl) {
+    const countEl = regionMode.barEl.querySelector('.bp-region-bar-count');
+    if (countEl) countEl.textContent = `${regionMode.rects.length}개 영역`;
+  }
+  scheduleRenderGridCanvas();
+}
+
+function buildRegionBar() {
+  const bar = document.createElement('div');
+  bar.className = 'bp-region-bar';
+  const presetTxt = regionMode.preset
+    ? `프리셋: ${regionMode.preset.name || regionMode.preset.key}`
+    : '프리셋 미연결 · 기본 그리드';
+  bar.innerHTML = `
+    <span class="bp-region-bar-title">▦ 영역 선택 — ${escapeHtmlText(regionMode.label || '')}</span>
+    <span class="bp-region-bar-preset ${regionMode.preset ? '' : 'missing'}">${escapeHtmlText(presetTxt)}</span>
+    <span class="bp-region-bar-count">0개 영역</span>
+    <span class="bp-region-bar-hint">드래그: 사각형 추가 · 우클릭 드래그: 교차 영역 제거</span>
+    <button type="button" class="glass-btn bp-region-undo">↩ 실행취소</button>
+    <button type="button" class="glass-btn bp-region-clear">모두 지우기</button>
+    <button type="button" class="glass-btn bp-region-done">✔ 완료</button>
+    <button type="button" class="glass-btn hover-danger bp-region-cancel">✕ 취소</button>`;
+  bar.querySelector('.bp-region-undo').addEventListener('click', () => {
+    if (!regionMode) return;
+    regionMode.rects.pop();
+    updateRegionBar();
+  });
+  bar.querySelector('.bp-region-clear').addEventListener('click', () => {
+    if (!regionMode) return;
+    regionMode.rects = [];
+    updateRegionBar();
+  });
+  bar.querySelector('.bp-region-done').addEventListener('click', () => finishRegionSelection(true));
+  bar.querySelector('.bp-region-cancel').addEventListener('click', () => finishRegionSelection(false));
+  document.body.appendChild(bar);
+  regionMode.barEl = bar;
+  updateRegionBar();
+}
+
+// bonding_plan.js 진입점. kind: 'core'|'base'
+// onFinish(rects|null) — 완료 시 rect 배열, 취소 시 null.
+async function startRegionSelection({ kind, label, initialRects, onFinish }) {
+  if (regionMode) {
+    showToast('이미 영역 선택 모드가 활성화되어 있습니다.', 'warning');
+    if (typeof onFinish === 'function') onFinish(null);
+    return false;
+  }
+  const snap = snapshotEditorState();
+
+  // 프리셋 최신화 후 용도별 규격 탐색 (서버 병렬 등록 중 — 실패 시 캐시로 진행)
+  try { await fetchAndRenderPresets(); } catch (e) { /* offline — 기존 캐시로 진행 */ }
+  const preset = findRegionPreset(kind);
+
+  regionMode = {
+    kind,
+    label: label || '',
+    rects: (initialRects || []).map(r => ({ ...r })),
+    preset,
+    snap,
+    onFinish: typeof onFinish === 'function' ? onFinish : () => {},
+    barEl: null,
+  };
+
+  if (preset) {
+    applyPresetObject(preset);
+  } else {
+    showToast(`${kind === 'base' ? 'BASE' : 'CORE'} 맵 프리셋 미연결 — 현재 그리드 규격으로 진행합니다.`, 'warning');
+  }
+
+  // 영역 선택 캔버스는 해당 규격의 빈 좌표계로 렌더 (편집 중 데이터는 스냅샷에 보존)
+  gridData = {};
+  loadedFCells = new Set();
+  if (el.btnPushMap) el.btnPushMap.disabled = true;
+
+  buildRegionBar();
+  boundingBoxCache = {};
+  renderGridCanvas();
+  return true;
+}
+
+function finishRegionSelection(commit) {
+  if (!regionMode) return;
+  const { snap, onFinish, barEl } = regionMode;
+  const rects = commit ? regionMode.rects.map(r => ({ ...r })) : null;
+  if (barEl && barEl.parentNode) barEl.parentNode.removeChild(barEl);
+  regionMode = null;
+  if (el.btnPushMap) el.btnPushMap.disabled = false;
+  restoreEditorState(snap);
+  try {
+    onFinish(rects);
+  } catch (e) {
+    console.error('[Region Select] onFinish callback error:', e);
   }
 }

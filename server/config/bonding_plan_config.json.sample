@@ -1,0 +1,53 @@
+{
+  "__doc__": "본딩 실험계획(M1) 역할 바인딩 config 샘플. 역할(role)→실테이블 바인딩을 정의한다 — 실 운영 환경에서는 table/columns를 실제 테이블명에 맞게 교체. 역할이 누락되면 해당 역할은 'missing'으로 부분 가동된다(에러 아님). 맵 모드 소스의 align은 소스 좌표계→canonical(CORE) 좌표계 변환 선언 — 단순형 {rotation,flip,offset} 또는 확장형 {default:{...}, by_eqp:{EQP별:{...}}} (M1은 default만 적용, by_eqp는 M2 예약). map_metadata는 격자 규격(wafer_map_metadata 관례) 조회 바인딩 — region 클램프/align 치수의 원천.",
+  "core_identity": { "compose": ["lot", "slot"] },
+  "map_metadata": {
+    "table": "wafer_map_metadata",
+    "columns": {
+      "target_table": "target_table",
+      "map_id": "map_id",
+      "grid_metadata": "grid_metadata"
+    }
+  },
+  "sources": {
+    "process_history": {
+      "table": "wafer_process",
+      "columns": {
+        "step": "step",
+        "eqp": "eqp_id",
+        "result": "result",
+        "time": "start_time",
+        "recipe": "recipe_id",
+        "knobs": "knobs",
+        "lot": "lot",
+        "slot": "slot"
+      }
+    },
+    "defect": {
+      "mode": "map",
+      "table": "core_defect_map",
+      "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
+      "fail_values": ["D"]
+    },
+    "eds_fail": {
+      "mode": "map",
+      "table": "eds_fail_map",
+      "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
+      "fail_values": ["F"],
+      "align": {
+        "default": { "rotation": 180, "flip": "none", "offset": { "x": 0, "y": 0 } },
+        "by_eqp": {}
+      }
+    },
+    "used_chips": {
+      "table": "bonding_log",
+      "columns": { "lot": "core_lot", "slot": "core_slot", "x": "cx", "y": "cy" }
+    },
+    "total_chips": {
+      "mode": "map",
+      "table": "core_defect_map",
+      "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y" }
+    }
+  },
+  "warnings": { "result_fail_values": ["FAIL"] }
+}

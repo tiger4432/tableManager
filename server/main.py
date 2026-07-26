@@ -2949,6 +2949,39 @@ def delete_map_preset_root(preset_key: str):
 def delete_map_preset_api(preset_key: str):
     return _delete_map_preset_impl(preset_key)
 
+# -----------------------------------------------------------------------------
+# Bonding Experiment Plan (M1) — 코어 집계 API (경계 계약 — 총괄 고정)
+# -----------------------------------------------------------------------------
+import bonding_plan as bonding_plan_module
+
+@app.get("/api/bonding-plan/core-summary")
+def get_bonding_plan_core_summary(
+    lot: str,
+    slot: str,
+    region: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """본딩 실험계획 Info 창용 코어(lot, slot) 집계 요약.
+
+    - 역할 바인딩은 config/bonding_plan_config.json 경유(스냅샷은 요청당 1회) —
+      역할 누락/테이블 부재는 'missing' 부분 가동(에러 아님).
+    - region: URL 인코딩 JSON {"rects":[{"x1","y1","x2","y2"}]} (canonical 칩 좌표,
+      복수 사각형 합집합). 형식 위반은 400. 맵 메타 규격 밖 rect는 클램프.
+    - 칩 좌표 목록은 반환하지 않는다(집계만 — 페이로드 상한 규율).
+    """
+    config = bonding_plan_module.load_bonding_plan_config()
+    rects = None
+    if region is not None:
+        try:
+            rects = bonding_plan_module.parse_region(region)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid region parameter: {e}")
+    try:
+        return bonding_plan_module.get_core_summary(db, lot, slot, rects=rects, config=config)
+    except Exception as e:
+        logger.error(f"[BondingPlan] core-summary failed for ({lot}, {slot}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to compute core summary.")
+
 @app.get("/admin/file-ingestion/workspaces")
 def get_ingestion_workspaces():
     """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""

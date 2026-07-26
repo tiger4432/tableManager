@@ -9,10 +9,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-CjHcw4oh.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-BdUUzwBB.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-DqWd5E8W.js">
   <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor-BYq6WaRl.css">
   <link rel="stylesheet" crossorigin href="/assets/style-CEja5iu0.css">
 </head>
 <body>
@@ -235,6 +236,9 @@
               </div>
             </div>
 
+            <!-- Bonding Experiment Plan (M1 조회 전용 Info 패널) -->
+            <button id="btn-bonding-plan" class="glass-btn" style="border-color: var(--accent-2); color: var(--accent-2); font-weight: bold;">🧪 본딩 실험계획</button>
+
             <!-- Primary Save Action -->
             <button id="btn-push-map" class="glass-btn" style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
           </div>
@@ -300,6 +304,9 @@
       </div>
     </div>
   </div>
+
+  <!-- 본딩 실험계획 슬라이드 패널 마운트 (bonding_plan.js가 렌더) -->
+  <div id="bonding-plan-root"></div>
 
 </body>
 </html>
