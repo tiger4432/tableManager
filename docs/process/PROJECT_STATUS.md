@@ -1,6 +1,6 @@
 # 📌 PROJECT STATUS — 진행 상황 & 문제 현황 (Living Board)
 
-> **Status:** 🟢 Living | **Last-updated:** 2026-07-26 (대형 파일 P1+드릴·본딩 M1 반영)
+> **Status:** 🟢 Living | **Last-updated:** 2026-07-26 (M2 진행중·P2 착수·범용 오버레이 격상 반영)
 > **역할:** 프로젝트의 **현재 진행 상황·열린 문제·다음 단계**를 담는 단일 상태 보드. **컨텍스트 압축/세션 교체에도 살아남는 영속 상태**다.
 > **규칙:** 총괄(및 각 PM)은 작업 **착수 전 이 파일을 읽고**, **완료 후 갱신**한다. 상세 이력은 [history/](../history/README.md), 현재 아키텍처는 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md). 이 보드는 이력 로그가 아니다 — "지금 어디까지 왔고 무엇이 문제인가"만 담는다.
 
@@ -8,10 +8,12 @@
 
 ## 🎯 현재 초점 (Current Focus)
 
-1. **온톨로지 그래프 트랙 — G1+뷰어+G2 라이브 가동 완료(2026-07-25)**. PG 엣지 스토어 + outbox 증분 materializer(자동 승격) + 조회 API 5종 + 서브그래프 뷰어(graph.html) + 추적 리포트(trace.html)까지 실동·라이브 검증 통과([GraphLatency] lag 162ms, 교정→RESOLVED_AS(user) 실시간). 종합: [20260725_233000](../history/20260725_233000_ontology_graph_track_live_and_architecture_sync.md) · 스펙 [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md). **다음: G2.5 — §7.5c 탐색 정책 엔진(node_class 선언 + 4대 룰) 선행 → 서브그래프 직렬화·도구 API → G3(시각화 고도화·Neo4j 병행)**.
-2. **map_split_registry 착수 대기(사용자 승인)** — 맵 value description(실험 split 자연어)을 localStorage에서 동적 테이블로 승격 + SplitCondition 온톨로지 매핑 + 맵 에디터 로드/저장 전환. 지시서 `agent_workspace/tasks/Client_map_split_registry_task.md` 준비됨 — client-pm 위임 예정.
-3. **Enrichment 실전 규칙 작성 대기** — 사용자의 실제 설비이력/bonding log 스키마 확보 → `table_config.json` 파생 테이블 + `enrichment_rules.json` 실규칙. (스모크 규칙 `line_model_owner_attribution`은 데모로 유지.)
-4. **아키텍처 문서 대청소 완료(2026-07-25)** — SSOT·architecture 4종·CODE_MAP이 그래프 트랙/admin 5탭/6엔트리/온보딩 완결을 반영. SYSTEM_OVERVIEW 하나로 현행 파악 가능.
+> 완료된 트랙은 여기서 내리고 §최근 완료로 옮긴다. **지금 손이 가 있는 것과 바로 다음 관문만** 남긴다.
+
+1. **🔴 M2 Universal Transfer Plan — 최우선, 진행 중(QA NO-GO 상태)**. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
+2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
+3. **🟡 대형 파일 P2 — worktree 격리 진행 중**. 오프셋 체크포인트 재개(재기동 시 전체 재처리 제거) + 파일 해시 dedup + 이슈 #10 + audit 값 길이 상한. P1은 완료·드릴 PASS(비차단 180배).
+4. **⚪ 대기 트랙** — ⓐ **G2.5**: §7.5c 탐색 정책 엔진(node_class + 4대 룰) 선행 → LLM 도구 API ⓑ **enrichment 실전 규칙**: 사용자 실 스키마 확보가 조건 ⓒ **map_split_registry**: M2의 DOE(=SplitCondition 확장)와 통합 여지가 커져 **M2 확정 후 재평가** ⓓ **Chain Replay R1**.
 
 ## ✅ 최근 완료 (Recently Done) — 2026-07-25~26 롤업
 
@@ -58,9 +60,7 @@
 
 ## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
 
-**🔄 현재 가동 중 (2026-07-26)**
-- **M2 Universal Transfer Plan** — 서버부: QA F1 해소 완료(307 passed, degraded 시 `remaining: null`+경고 3층 방어) → F4/F6 수정 중 → 범용 오버레이(`/api/maps/overlay`, map meta 달라도 정렬)·페인트 잠금 config화·DOE 층별 세분화(`transfer_plan_doe_layer`) 예정. 클라부: QA 수정(C5 데이터 소실 등) 소스 반영 후 **UI 재설계**(legend 통합 모드 A/B, Map Search & Load에 "정렬 후 오버레이?" 프롬프트). **QA NO-GO 상태 — 재검수 후 병합**.
-- **대형 파일 P2** — worktree 격리 착수(체크포인트 재개 + 해시 dedup + 이슈 #10 + audit 값 길이 상한). `main.py` 수정 시 사전 보고 조건(M2와 충돌 방지).
+> 가동 중 트랙은 §현재 초점에 있다. 여기는 **대기열**이다.
 
 **우선 순위 높음 (현재 초점 연동)**
 - **[사용자 승인 2026-07-25] 대형 파일 인제션 대응 전략 — ✅ P1 완료(2026-07-26, 드릴 PASS), P2/P3 잔여** — 장애 4종 중 HOL은 heavy 레인으로 해소(비차단 180배 실증). 잔여 단계: **P2** FileIngestionLog 오프셋 체크포인트 재개(재기동 시 전체 재처리 잔존 — admin 경고로 지혈만 됨) + 파일 해시 dedup + **#10 total_count 과소(D-1)** + audit old/new_value 길이 무제한(대형 텍스트 셀이면 500건 절단으로도 수십 MB 재발 여지, `crud.py:224-236`) → **P3** 경합 배치 2(C-4)와 통합한 후단 backpressure(outbox 파일 단위 집계) + PG COPY 벌크 경로(프로파일링 선행) + batch_row_upsert items 행 데이터 무제한 상한 + heavy 워커 수 설정화(escalation §6-3 — heavy 간 직렬 해소, outbox 파도 증폭 주의). 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드. 드릴 잔여: heavy 도중 재기동 멱등 수렴 실측(드릴 보고서 §5 계획 — 사용자 협의 후) + QA 후속(F2 라우팅 원자화·F4 공유 큐 대기·F5~F7).
