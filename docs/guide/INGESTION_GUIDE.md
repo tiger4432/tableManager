@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -59,6 +59,22 @@ server/ingestion_workspace/<table 또는 workspace_name>/
 - 시스템 내부 테이블은 제외 목록(`directory_watcher.AUTO_PROVISION_EXCLUDED_TABLES`, 현재 `wafer_map_metadata`)으로 관리합니다.
 
 즉, **"config에 테이블 추가 → 폴더 자동 생성 → 스키마와 같은 헤더의 CSV를 raws/에 드롭 → 적재"** 가 무스크립트로 완결됩니다.
+
+---
+
+## 1.7 대형 파일 Heavy 레인 (P1, 2026-07-26)
+
+watchdog Observer는 모든 워크스페이스의 이벤트를 **단일 디스패치 스레드**에서 실행하므로, 종전에는 대형 파일 1개(예: 10만 행 ≈ 7분)가 처리되는 동안 **모든 테이블**의 후속 파일이 대기했습니다(HOL). P1은 크기 임계를 초과하는 파일을 전용 큐/워커로 격리합니다. 구현: `directory_watcher.HeavyIngestionLane` / `_route_and_process`.
+
+| 항목 | 동작 |
+|---|---|
+| 임계 설정 | `server/config/ingestion_settings.json`(gitignored, `.sample` tracked)의 `heavy_file_mb` — **기본 10MB**(파일 부재/무효값 시 기본 + 경고 1회). 예: `{ "heavy_file_mb": 10 }` |
+| 핫리로드 | 임계는 **파일 이벤트(라우팅 결정)당 1회** 디스크에서 읽음 — 변경은 **다음 파일부터** 반영(재기동 불필요, 파일 경계 스냅샷 규율과 동일 의미론) |
+| 교차 격리 | heavy 파일은 큐 제출 후 라우팅 스레드 즉시 반환 — A 테이블 대형 파일이 B 테이블 소형 파일을 막지 않음(라이브 드릴 실측: 2.3s vs 종전 최악 415s, **약 180배**) |
+| 순서 보존 | 같은 워크스페이스는 FIFO 유지 — ① heavy backlog 잔여 시 후속 파일은 크기 무관 큐 후미 ② 워크스페이스 직렬화 락(heavy/인라인/재처리 폴러 공용) ③ 인라인은 논블로킹 try-acquire 실패 시 큐 재라우팅 |
+| 스윕 경로 | 기동/주기 스윕도 동일 라우팅을 탐 — 재기동 캐치업이 대형 파일에 직렬 블로킹되지 않음 |
+| 진행 가시화 | watcher가 QUEUED/PROCESSING/FINISHED를 `POST /internal/events/ingestion-state`로 push → 웹서버 인메모리 레지스트리(`ingestion_activity.py`) → **`GET /admin/file-ingestion/active`**. admin File 탭에 진행 섹션(HEAVY 배지·진행률 바·경과)과 **재기동 경고 배너** 표시. WS 이벤트 계약은 무변경 |
+| 알려진 제약 | heavy 워커는 1개 — heavy 파일끼리는 직렬 처리(소형은 계속 비차단). 재기동 시 진행 중 파일은 처음부터 재처리(P2 체크포인트 예정 — 그래서 경고 배너가 있음) |
 
 ---
 

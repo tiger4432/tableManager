@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
 >
 > **유지 규율:** 새 기능이 병합·커밋되면 총괄이 doc-keeper에 위임하는 **코드맵 갱신과 같은 사이클**로 이 문서에도 해당 기능 행(§1)과 점검 항목(§2)을 추가한다. 구현 에이전트는 이 문서를 직접 수정하지 않는다.
 > **사용법:** §1은 "무엇이 있는가"(기능 지도), §2는 "어떻게 확인하는가"(릴리스 전/회귀 수동 점검). 체크박스는 점검 회차마다 복사해 사용하고 이 원본은 비워 둔다.
@@ -52,6 +52,8 @@
 | 워크스페이스 별칭·std_parse 글로벌화 | 폴더명≠테이블명 매핑은 `table_config.json` 테이블 항목의 `workspace_name` 별칭으로, std 파서 옵트아웃은 같은 항목의 `std_parse: false`로 선언(**핫리로드 — 파일 단위 스냅샷 반영**). 무효 별칭(섀도잉·중복·경로 탈출)은 무시+ERROR 1회. 레거시 워크스페이스 `config.json`은 하위호환 읽기+deprecation 경고, 충돌 시 글로벌 승리 | config 등록만 (워크스페이스 config.json 폐지) | `find_workspace_alias/resolve_workspace_root/_snapshot_table_context`(§3) · [INGESTION_GUIDE §1.5](../guide/INGESTION_GUIDE.md) |
 | 인제션 진행 토스트 | 파싱·적재 진행률/완료가 그리드 화면에 실시간 표시 | (자동) 메인 페이지 | `utils.showIngestionProgress` · WS `file_ingestion_progress/completed`(§7) |
 | 기동/주기 스윕 (이벤트 유실 안전망) | 기동 시·신규 워크스페이스 등록 시 `raws/` 직속 기존 파일을 mtime 순으로 자동 처리 + 300s 주기 잔류 재스캔. (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, 이벤트 경로와 동일 처리(`_handle_event` 재사용, 락으로 이중 진입 가드) | (자동) 서버 기동만 | `WorkspaceWatcher.sweep_existing_files(_async)/_periodic_sweep_loop`(§3) |
+| 대형 파일 heavy 레인 (P1, 2026-07-26) | 크기 임계(기본 10MB, `config/ingestion_settings.json` `heavy_file_mb` — 파일 경계 핫리로드) 초과 파일을 전용 큐/워커(`watcher-heavy-lane` 1개)로 격리 — 대형 파일이 **타 테이블 파일을 막지 않음**(드릴 실측 180배 개선). 같은 워크스페이스 후속 파일은 크기 무관 큐 후미(FIFO 보존), 스윕 경로도 자동 라우팅. heavy끼리는 직렬(알려진 제약) | (자동) 임계 초과 파일 드롭 | `HeavyIngestionLane/_route_and_process/get_workspace_serial_lock`(§3) · [INGESTION_GUIDE §1.7](../guide/INGESTION_GUIDE.md) |
+| 진행 중 인제션 가시화 + 재기동 경고 (P1) | watcher가 상태(QUEUED/PROCESSING/FINISHED)를 push → 웹서버 인메모리 레지스트리 → `GET /admin/file-ingestion/active`. admin File 탭 진행 섹션(HEAVY/normal 배지·진행률 바·경과, 5s 경량 갱신) + 재기동 경고 배너("재기동 시 처음부터 재처리") + 헬스 스트립/Overview warn. WS 계약 무변경 | 어드민 File 탭 (진행 중일 때 자동 표시) | `ingestion_activity.py`(§5) · `admin.renderActiveIngestions`(§7) · `/internal/events/ingestion-state`(§1.4) |
 
 ### 1.4 Auto-Update 스케줄러
 
@@ -92,6 +94,7 @@
 | 엣지 자동 페인팅 | 엣지 셀 분류·선택·E1/E2 자동 페인팅 | 작업영역 툴바 "🔍 Select Tools" 드롭다운 → "✔️ Select E1" / "✔️ Select E2" / "⚡ Auto-Paint E1/E2" (같은 드롭다운에 "📍 Set Origin (0,0)") | `getEdgeClassification/selectEdgeCells/autoPaintE1E2`(§7) |
 | 엑셀 복사 | 그리드를 TSV로 클립보드 복사 | 작업영역 툴바 "🛠️ Edit Grid" 드롭다운 → "📋 Copy to Excel" | `copyGridToExcel`(§7) |
 | 테이블 간 맵 이월 | 테이블 A→B 전환 시 유지/초기화 확인창(컬럼명 상이 시 Advanced Column Mapping 수동 확인 필요 — 이슈 #2) | 테이블 전환 시 자동 확인창 | history `a41007e` |
+| 본딩 실험계획 Info 패널 (M1, 조회 전용) | base+multistack core 구성 계획: 층 범위 배정 목록(코어 자동완성=그래프 검색) → 코어별 수량 라인(`잔여 = 총 − defect − EDS − 기사용`, 역할별 소스 뱃지·미연결 표시), 공정 이력 FAIL 타임라인 + knob 확장, knob 비교 뷰(조건 이탈 하이라이트), 층 커버리지 + 경고 3종(수량/FAIL/조건 이탈), localStorage 초안 자동 보관/복원. 원천은 역할 바인딩 config(`bonding_plan_config.json`) — align은 서버 단독 변환. 구버전 서버 graceful. (영역 지정은 M2 "값 페인팅"으로 예정 — rect 모드는 폐기됨) | 맵 에디터 툴바 `🧪 본딩 실험계획` 버튼 | `bonding_plan.js`(§7) · GET `/api/bonding-plan/core-summary`(§1.4) · `server/bonding_plan.py`(§5) |
 
 ### 1.8 어드민 대시보드 (`/admin.html`) — 파이프라인 생애주기 5탭 IA (2026-07-25 재편)
 
@@ -114,6 +117,7 @@
 | 온톨로지 그래프 승격 | outbox 증분 소비 → `ontology_mapping.json` v2 매핑대로 PG 엣지 스토어(graph_nodes/edges) 자동 materialize(provenance 포함). 수동 트리거는 백필/복구용 | (자동) + 메인 툴바 `graph-sync-btn`(백필) | `graph_sync_worker.py`+`graph_materializer.py`(:8090) · [event_driven_backend §4](../architecture/event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
 | 서브그래프 뷰어 | stats 카운트 카드 + identity 자동완성 검색 + k-hop(1\|2) 이웃 탐색을 BFS 동심원 캔버스로 렌더(무라이브러리). 팬·줌, truncated 배지, user provenance 엣지 강조. **노드 클릭=선택**(Connections 테이블), **중심 이동은 더블클릭/시드 버튼**(2026-07-25 `18218da`부터 UX 변경) | `/graph.html`(🧭 Menu 또는 추적 리포트 크로스링크 `?label=&identity=`) | `graph_viewer.js`(§7) · GET `/graph/stats·neighbors·nodes/search`(§1.5) |
 | 뷰어 Connections 테이블 + 검색 시드 연동 | 노드 클릭 → 우측 패널에 선택 노드 정보 + 관계 테이블(방향 →/←/⟲·엣지 type·상대 노드 요약·event_time). 비중심 노드는 서브그래프 단면 즉시 표시 후 depth-1 재조회로 전체 이웃 보강, 80행 단위 "더 보기". **행 클릭 → 해당 노드 중심 재조회 + URL `?label=&identity=` push + 검색바 반영**(뒤로가기 복원 지원). 패널 접기 토글 | 뷰어 캔버스 노드 클릭 | `selectNode/fetchNodeConnections/renderConnBlock/syncUrl`(§7 graph_viewer.js) |
+| 뷰어 라벨 노드 리스트 | stats 라벨 카드 클릭 → 그 라벨의 노드 목록 테이블(identity 오름차순, 서버 페이지 200 + "더 보기", 로드수/총수 헤더) → 행 클릭 시 중심 탐색, back으로 Stats 복귀. 서버는 빈 q + label 리스팅(캡 200 — 자동완성 캡 50 불변, 전 테이블 덤프 금지) | 뷰어 첫 화면 라벨 카드 클릭 | `openLabelNodes/fetchLabelNodesPage/renderLabelNodesBlock`(§7 graph_viewer.js) · GET `/graph/nodes/search`(§1.5) |
 | 객체 중심 추적 리포트 | 멀티 시드(≤20) BFS 합집합 → 라벨별 그룹 테이블 + event_time 타임라인. depth 1..3·시간 범위·타입 필터, missing seeds 분리 표시, 뷰어 양방향 크로스링크 | `/trace.html` — 메인 그리드 행 선택 → 「🕸️ 추적」 버튼(새 탭, 선택 행→identity 시드) | `trace.js`/`trace_core.js`/`trace_launch.js`(§7) · POST `/graph/trace`·GET `/graph/mapping-summary`(§1.5) |
 | 추적 진입점 자동 표시 | `mapping-summary`로 현재 테이블의 매핑 활성 여부를 판정해 「🕸️ 추적」 버튼 노출/숨김 | (자동) 메인 그리드 툴바 | `trace_launch.refreshTraceEntry`(§7) |
 
@@ -183,6 +187,11 @@
 - [ ] **std_parse 옵트아웃 핫리로드**: 테이블 항목에 `"std_parse": false` 추가 + 리로드 → **재기동 없이** 다음 파일부터 std 폴백 비활성(무매칭 파일은 err/ 격리). 처리 도중이던 파일은 시작 시점 config로 완결. 문자열 `"false"` 등 비-bool 값은 무시 + 경고 1회.
 - [ ] **레거시 config.json 하위호환 에지**: 워크스페이스 `config/config.json`이 있는 기존 워크스페이스 → 계속 동작하되 기동 로그에 deprecation WARNING **1회**(sensor_config.json 등 다른 파일에는 미발화). 글로벌 `table_config.json`과 충돌 시 글로벌 값 승리. 신규 자동 생성 워크스페이스에는 config.json이 생성되지 않음.
 - [ ] **스윕 에지 — 잔류 파일 무한 재시도 없음**: 처리 불가 파일이 `raws/`에 남아도 300s 주기 스윕이 동일 (mtime,size) 파일을 반복 재시도하지 않음(워커 로그 확인). 파일 수정(mtime 변경) 시에는 재처리됨.
+- [ ] 🎯 **heavy 레인 — 교차 비차단**: 임계 초과 대형 CSV(>10MB) 투입 → watcher 로그 `🐘 Routed to heavy lane queue (size, ...)` → heavy 진행 중 **다른 테이블** 소형 CSV 투입 → 수 초 내 완료(분 단위 대기 없음 — 드릴 기준 ~2.3s).
+- [ ] 🎯 **heavy 레인 — 같은 테이블 순서 보존**: heavy 진행 중 **같은 테이블**에 소형 파일 투입 → `(workspace-order)` 재라우팅 로그 → heavy 완료 후 처리(추월 없음), 최종 행 수·bk 중복 0 확인.
+- [ ] **heavy 진행 가시화**: heavy 진행 중 admin File 탭 → 진행 중 섹션에 HEAVY 배지(재라우팅 소형은 normal 배지)·진행률 바·행 카운트 표시 + 재기동 경고 배너 + 헬스 스트립 File 카드 warn. 완료 시 목록 자동 소거·경고 소멸.
+- [ ] **heavy 임계 핫리로드**: `config/ingestion_settings.json`의 `heavy_file_mb` 변경 → 재기동 없이 **다음 파일부터** 반영. 무효값(문자열/0 이하)은 기본 10MB + 경고 1회.
+- [ ] **heavy 스윕 라우팅**: watcher 정지 → raws/에 대형+소형 배치 → 기동 → 스윕이 대형만 heavy로 보내고 소형·타 테이블이 선완료.
 
 ### 2.6 Auto-Update
 
@@ -218,6 +227,10 @@
 - [ ] **레전드 유지**: 레전드 편집 → 새로고침 후 유지(localStorage). 테이블별로 분리 저장.
 - [ ] **맵 이월 에지**: 편집 중 테이블 A→B 전환 → 유지/초기화 확인창 표시. (⚠️ 컬럼명이 크게 다르면 자동 정합 안 됨 — 이슈 #2, 저장 전 수동 매핑 확인.)
 - [ ] **엑셀 복사**: 맵 그리드를 엑셀로 복사 → 셀 배치 일치.
+- [ ] **본딩 Info 패널 — 기본 흐름**: 툴바 `🧪 본딩 실험계획` → 패널 개폐, base 입력 + 층 범위 행 추가(코어 자동완성) → 행 선택 시 수량 라인(`잔여 = 총 − defect − EDS − 기사용`)·소스 역할 뱃지(미연결 구분)·공정 이력 타임라인(FAIL 강조)·step 클릭 knob 확장 표시.
+- [ ] **본딩 Info 패널 — 검증/경고**: 층 커버리지 스트립(공백·겹침 구분 표기), 잔여 < 소요 시 행 경고(수량 부족), knob 비교 로드 → 값 상이 셀만 하이라이트(조건 이탈 배지).
+- [ ] **본딩 Info 패널 — 초안 보관**: 편집 후 페이지 리로드 → base/층수/행 복원(localStorage). base 변경 시 이전 초안 확정 저장 후 새 base 초안 복원.
+- [ ] **본딩 Info 패널 에지 — 구버전/미존재**: core-summary 미제공 서버 → "서버 미지원" 안내 + 초안 편집은 지속. 미존재 코어 조회 → 전 역할 connected + total 0(오류 아님).
 
 ### 2.10 어드민 대시보드 (5탭 IA)
 
@@ -235,6 +248,7 @@
 - [ ] **뷰어 — Connections 테이블**: 노드 **단일 클릭** → 우측 패널에 선택 노드 정보 + Connections 테이블(방향·엣지 type·상대 노드) 표시, 캔버스 중심은 유지. 비중심 노드는 "서브그래프 단면" 배지 → 전체 이웃 보강 후 배지 제거. 이웃 80행 초과 시 "더 보기"로 증분 렌더(프리징 없음).
 - [ ] **뷰어 — 행 클릭 시드 연동**: Connections 테이블 행 클릭 → 해당 노드 중심 재조회 + URL `?label=&identity=` 갱신 + 검색바(label·identity) 반영. 브라우저 뒤로가기 → 이전 중심(URL·검색바·그래프) 복원. 패널 접기(`»`) 토글 후 노드 클릭 시 자동 펼침.
 - [ ] **뷰어 — user 강조**: 사람이 교정한 값에서 유래한 엣지가 강조색(`--overwrite`)으로 구분 표시(Connections 테이블 행에도 동일 강조).
+- [ ] **뷰어 — 라벨 노드 리스트**: stats 라벨 카드 클릭 → 그 라벨의 노드 목록(identity 오름차순, 로드수/총수 헤더) 표시, 200행 초과 시 "더 보기" 증분 로드. 행 클릭 → 해당 노드 중심 탐색, back → Stats 복귀.
 - [ ] **추적 리포트**: 메인 그리드에서 매핑 대상 행 1~여러 개 선택 → 「🕸️ 추적」 → 새 탭 trace.html에 시드 칩 + 라벨별 그룹 테이블 + 타임라인 렌더. depth 변경 → 즉시 재실행, 시간 범위 입력 → 재실행 버튼 동작.
 - [ ] **추적 에지 — missing seeds**: 그래프에 없는 시드 포함 시 missing 구분 표시(전체 실패 아님). 시드 21개 이상 선택 시 상한 20 토스트.
 - [ ] **크로스링크**: 추적 리포트 노드 → 뷰어(`?label=&identity=`) 이동, 뷰어 → 추적 리포트 역방향 이동.

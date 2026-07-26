@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -69,7 +69,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|
 | `GET /graph/stats` | label/edge_type 카운트 + `last_sync`(graph_sync_state) — 뷰어 첫 화면 |
 | `GET /graph/neighbors` | k-hop(1\|2) 이웃 서브그래프. **노드 limit 하드캡 500, 초과 시 `truncated`**, (from,type)/(to,type) 인덱스 경로만(C-7) |
-| `GET /graph/nodes/search` | identity 시작일치 자동완성(LIKE 메타문자 이스케이프, limit 캡 50) |
+| `GET /graph/nodes/search` | identity 시작일치 자동완성(LIKE 메타문자 이스케이프, limit 캡 50). **빈 q + label = 라벨 전체 리스팅**(identity 오름차순, limit/offset, 캡 200 — 뷰어 라벨 노드 리스트용, 전 테이블 덤프 금지 유지) |
 | `POST /graph/trace` | **[G2] 멀티 시드 BFS 합집합** — depth 1..3(기본 2), 시간 필터(NULL event_time 통과)·edge_types 필터, 노드 하드캡 1000, `missing_seeds`/`truncated`. 의미 검증 실패는 400 |
 | `GET /graph/mapping-summary` | 로드된 온톨로지 매핑 요약(enrichment 승격 포함) — 클라이언트 추적 진입점 활성 판정용 |
 
@@ -79,11 +79,14 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `POST /tables/{t}/upload` | 클라이언트 파일을 `raws/`로 업로드 |
 | `POST /api/graph/sync` | GraphSync 워커(:8090)로 프록시 — **백필/복구 도구**(주 경로는 materializer 자동 승격, [event_driven_backend §4](./event_driven_backend.md)) |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |
+| `GET /admin/file-ingestion/active` | **[P1]** 진행 중 인제션 스냅샷(웹서버 인메모리 `ingestion_activity.py` 레지스트리 — TTL 퇴거 포함). admin File 탭 진행 섹션·재기동 경고의 데이터원 |
+| `GET /api/bonding-plan/core-summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계(`bonding_plan.py` — 역할 바인딩 config, `remaining = total − defect − eds_fail − used`, align은 서버 단독 변환). `region` rects 파라미터(M2 cells 모드용 존치), 잘못된 region 400 |
 | `/admin/chain/rules`, `/admin/mappers/list` | 체인 규칙·맵퍼(AST 파싱) 목록 |
 | `/admin/auto-update/{status,run-now,toggle}` | 스케줄러 상태(각 항목에 `active` 부가)·즉시실행·수집기 active 토글. toggle body `{"script": "<workspace>/<script.py>", "active": bool}` → `config/auto_update_control.json` 갱신(스케줄러 핫 반영, 재기동 불필요; 미존재 404·검증실패 400). **run-now는 active 무관 실행**(수동 실행은 명시적 의도) |
 | `/admin/reload-configs` | 로컬 캐시 리로드(`models.refresh_dynamic_models` — 신규 테이블 **물리 CREATE 포함**, 이슈 #7) + `SYSTEM_RELOAD` 발행. CREATE가 발행보다 선행(웹서버가 1차 DDL 소유자) |
 | `/admin/scripts/{list,code}` | 브라우저 코드 에디터(경로 traversal 가드) |
-| `POST /internal/events/{batch-refresh,broadcast,file-processed}` | 데몬→웹서버 콜백 |
+| `POST /internal/events/{batch-refresh,broadcast,file-processed}` | 데몬→웹서버 콜백. batch-refresh 수신부는 msg 재구성 시 `total_log_count` 동봉(체인 passthrough 경로와 대칭 — P1 후속), broadcast/file-processed는 진행 레지스트리 인터셉트 겸함 |
+| `POST /internal/events/ingestion-state` | **[P1]** watcher → 진행 상태 push(QUEUED/PROCESSING/FINISHED, heavy만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 |
 | `/map-presets`, `/api/map-presets` | 맵 지오메트리 프리셋(`config/maps.json`) |
 | `GET /enrichment/rules` | Enrichment 규칙 메타(참조뷰는 label만 노출 — 쿼리 본문 노출 금지). 소스: `config/enrichment_rules.json`(`enrichment_config.py` 로더, 요청 시 재로드) |
 | `GET /enrichment/rules/{rule}/references/{i}` | 참조뷰 서버측 실행 — `params`는 decision_key 컬럼만 허용(그 외 400), 파라미터 바인딩 전용(주입 불가), 서버 LIMIT 강제(기본 200/최대 1000), 규칙·인덱스 미존재 404 |
@@ -111,7 +114,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 | 워커 | 트리거 | 동작 요약 |
 |---|---|---|
-| **Directory Watcher** (`directory_watcher.py`) | watchdog 파일 이벤트 | `raws/` 신규 파일 → `scripts/*.py`의 `BasePipelineParser.match()` 매칭 → `parse()` → 정규화 → `apply_batch_updates` 1000행 청크. **커스텀 스크립트 무매칭 시 std parser 폴백**(`parsers/std_parser.py` — `column_types` 헤더 검증 기반 CSV/TSV/TXT 스트리밍, 키 결측 행 스킵). 성공 시 `archives/`, 실패 시 `err/`. `FileIngestionLog` 기록. 워크스페이스 폴더는 config 등록 시 자동 보충. **기동/주기 스윕**: 기동·신규 등록 시 `raws/` 기존 파일을 이벤트 경로 재사용으로 자동 처리 + 300s 주기 잔류 재스캔((mtime,size) 시그니처로 무한 재시도 차단) |
+| **Directory Watcher** (`directory_watcher.py`) | watchdog 파일 이벤트 | `raws/` 신규 파일 → `scripts/*.py`의 `BasePipelineParser.match()` 매칭 → `parse()` → 정규화 → `apply_batch_updates` 1000행 청크. **커스텀 스크립트 무매칭 시 std parser 폴백**(`parsers/std_parser.py` — `column_types` 헤더 검증 기반 CSV/TSV/TXT 스트리밍, 키 결측 행 스킵). 성공 시 `archives/`, 실패 시 `err/`. `FileIngestionLog` 기록. 워크스페이스 폴더는 config 등록 시 자동 보충. **기동/주기 스윕**: 기동·신규 등록 시 `raws/` 기존 파일을 이벤트 경로 재사용으로 자동 처리 + 300s 주기 잔류 재스캔((mtime,size) 시그니처로 무한 재시도 차단). **[P1] Heavy 레인**: 크기 임계(기본 10MB, `config/ingestion_settings.json` 파일 경계 핫리로드) 초과 파일은 전용 큐+데몬 워커 `watcher-heavy-lane` 1개로 격리(HOL 제거 — 교차 워크스페이스 비차단), 같은 워크스페이스 FIFO는 backlog+직렬화 락+논블로킹 재라우팅으로 보존, 진행 상태는 `/internal/events/ingestion-state`로 push([INGESTION_GUIDE §1.7](../guide/INGESTION_GUIDE.md)) |
 | **Auto-Update Scheduler** (`run_auto_update.py`) | 5초 틱 + 크론 | `auto_update/*.py` 발견 → 상단 `# schedule:` 크론 파싱 → `exec()`로 `out` 변수 캡처(또는 stdout 폴백) → CSV를 `raws/`에 원자적 드롭. `scheduler_status.json` 갱신(`active` 포함). 매 틱 `config/auto_update_control.json`(`{"disabled": [...]}`, 부재/손상 시 전부 active)을 읽어 disabled 수집기는 실행 스킵 + `last_status="SKIPPED"` + next_run 전진(핫 반영). run-now(on-demand)는 active 무관 실행 |
 | **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(source=chain_ingestion 순환 차단) → `/internal/events/broadcast`(통지의 created_logs는 직렬화 전 `MAX_NOTIFY_CREATED_LOGS`=500 절단 + `total_log_count` 실건수 동봉 — `event_constants.py` 공용 상수, 워처 C-5 계약과 동일 형태). 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker — materializer** (`graph_sync_worker.py` + `graph_materializer.py`) | outbox 증분 소비(자체 keyset 커서 `graph_sync_state.last_outbox_id`, LISTEN/NOTIFY) | 독립 FastAPI(:8090). 이벤트 행을 `ontology_mapping.json` v2 매핑에 따라 **PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**. 엣지 provenance는 식별 컬럼 CellSource winner의 최저 서열(보수적), 재교정 시 `(from,type,source_row_ref)` 스코프 retarget. `[GraphLatency]` 계측(SLO 10s), 배치 본체는 `asyncio.to_thread` 격리. `/sync`(수동)는 키셋 청킹 **백필/복구** 도구(`"all"` 지원). Neo4j는 청크 훅으로 병행 가능(G3). 상세: [event_driven_backend §4](./event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |

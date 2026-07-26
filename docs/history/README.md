@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **197개** 이력. (거버넌스 규칙 #4)
+> 총 **201개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-26 09:34** — [Graph Viewer Label Node List](./20260726_093400_graph_viewer_label_node_list.md)
+- **2026-07-26 09:33** — [Dt Tape Layer Universal Transfer Plan Design](./20260726_093300_dt_tape_layer_universal_transfer_plan_design.md)
+- **2026-07-26 09:32** — [Bonding Plan M1 Info Panel And Core Summary](./20260726_093200_bonding_plan_m1_info_panel_and_core_summary.md)
+- **2026-07-26 09:31** — [Large File P1 Heavy Lane And Live Drill](./20260726_093100_large_file_p1_heavy_lane_and_live_drill.md)
 - **2026-07-25 23:45** — [Auto Update Active Toggle](./20260725_234500_auto_update_active_toggle.md)
 - **2026-07-25 23:30** — [Ontology Graph Track Live And Architecture Sync](./20260725_233000_ontology_graph_track_live_and_architecture_sync.md)
 - **2026-07-25 22:23** — [Ontology Spec Static Dynamic Traversal Policy](./20260725_222347_ontology_spec_static_dynamic_traversal_policy.md)
@@ -215,4 +219,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-07-25 by gen_index.py*
+*Last generated: 2026-07-26 by gen_index.py*
