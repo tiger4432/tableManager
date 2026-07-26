@@ -52,6 +52,48 @@ def _warn_audit_truncation_once(table_name: str, col_name: str):
     )
 
 
+# [Schema] A column that is absent from table_config.json is dropped from the update
+# while the write still reports success, so a config that lags its client loses fields
+# silently (map_doe/map_doe_source lost `eventtime` this way). Surface the first drop
+# per (table, column); repeating it from a per-cell loop would flood the log and get
+# the whole log ignored.
+#
+# Shape note: this is probed as a dict of per-table sets rather than one set of
+# (table, column) tuples so the already-warned path allocates nothing — building a
+# tuple key on every cell of a 100k-row ingest is exactly the cost this path cannot
+# afford. Entries are never cleared; a column added to the config simply stops
+# reaching the drop branch.
+_undeclared_column_warned = {}
+
+# Per-table budget. For a correct caller the registry is bounded by schema size, but
+# the keys come from the payload, so junk column names (a malformed header row, a
+# parser emitting values as headers) could otherwise grow it without limit. On
+# saturation the table stops both growing and warning — drops go silent again, which
+# is announced once so the silence is never a surprise.
+_MAX_UNDECLARED_WARNED_PER_TABLE = 64
+
+
+def _warn_undeclared_column_once(table_name: str, col_name: str):
+    warned = _undeclared_column_warned.get(table_name)
+    if warned is None:
+        warned = _undeclared_column_warned[table_name] = set()
+    elif col_name in warned or len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
+        return
+    warned.add(col_name)
+    logger.warning(
+        f"[Schema] Column '{col_name}' is not declared in column_types for table "
+        f"'{table_name}' and was DROPPED from the update; the write still succeeded "
+        f"for the declared columns. Add it to config/table_config.json to persist it. "
+        f"This warning is emitted once per (table, column) per process."
+    )
+    if len(warned) >= _MAX_UNDECLARED_WARNED_PER_TABLE:
+        logger.warning(
+            f"[Schema] Reached {_MAX_UNDECLARED_WARNED_PER_TABLE} distinct undeclared "
+            f"columns for table '{table_name}'; further undeclared columns on this table "
+            f"will be dropped WITHOUT a warning."
+        )
+
+
 class LightCellSource:
     __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
     def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at):
@@ -561,8 +603,11 @@ def apply_row_update_internal(
             
         col_types = config.get("column_types", {})
         if col_name not in col_types:
+            # Drop behaviour is deliberately unchanged: rejecting the write would turn a
+            # lagging config into an outage. Only the silence is fixed.
+            _warn_undeclared_column_once(table_name, col_name)
             continue
-            
+
         key = (row.row_id, col_name)
         col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert)
 
