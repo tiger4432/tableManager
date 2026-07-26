@@ -222,15 +222,34 @@ async def startup_event():
                 "status": status,
                 "message": message
             }
+            # [Heavy Lane P1] 완료/실패 시 진행 스냅샷 레지스트리 정리 (멱등)
+            try:
+                ingestion_activity_registry.remove(table_name, clean_filename)
+            except Exception as e:
+                logger.warning(f"Failed to clear ingestion activity entry: {e}")
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
                 logger.error(f"Failed to broadcast file ingestion completion: {e}")
-                
+
+        def trigger_ingestion_state(state: dict):
+            # [Heavy Lane P1] 임베디드 모드: watcher가 같은 프로세스이므로 HTTP 왕복 없이
+            # 레지스트리에 직접 반영한다 (분리 모드는 run_watcher가 /internal/events/ingestion-state로 POST).
+            try:
+                from pipeline_base import BasePipelineParser
+                clean = BasePipelineParser.get_basename(state.get("filename") or "")
+            except Exception:
+                clean = state.get("filename")
+            try:
+                ingestion_activity_registry.apply_state({**state, "filename": clean})
+            except Exception as e:
+                logger.warning(f"Failed to apply ingestion state: {e}")
+
         global_watcher = WorkspaceWatcher(
-            workspace_base, 
+            workspace_base,
             on_refresh_callback=trigger_ws_refresh,
-            on_file_processed_callback=trigger_ws_file_processed
+            on_file_processed_callback=trigger_ws_file_processed,
+            on_ingestion_state_callback=trigger_ingestion_state
         )
         global_watcher.discover_and_watch()
         # 비차단 모드(blocking=False)로 기동
@@ -658,6 +677,8 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
 
 from audit_cache import audit_cache
 from event_constants import MAX_NOTIFY_CREATED_LOGS
+# [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
+from ingestion_activity import registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=list[schemas.AuditLogGroupResponse])
 def get_recent_audit_logs(limit_groups: int = 100, db: Session = Depends(get_db)):
@@ -2734,6 +2755,21 @@ def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session =
     """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
     return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
+
+@app.get("/admin/file-ingestion/active")
+def get_active_file_ingestions():
+    """[Heavy Lane P1] 진행 중 파일 인제션 스냅샷 (admin File 탭 진행 목록·재기동 경고용).
+
+    원천은 watcher 프로세스가 /internal/events/*로 push한 인메모리 레지스트리 —
+    DB 조회 없음(O(진행 중 파일 수), 상시 소수). 항목: 파일명·테이블·레인(heavy/normal)·
+    상태(QUEUED/PROCESSING)·진행률·행 수·경과 초."""
+    data = ingestion_activity_registry.snapshot()
+    return {
+        "status": "success",
+        "total": len(data),
+        "data": data,
+    }
+
 def reload_local_process_cache():
     """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다.
 
@@ -3391,6 +3427,19 @@ async def internal_event_broadcast(payload: dict = Body(...)):
     if table_name:
         invalidate_table_cache(table_name)
 
+    # [Heavy Lane P1] 인제션 진행 이벤트는 진행 스냅샷 레지스트리에도 반영
+    # (normal 레인 파일 엔트리의 유일한 생성 경로 — dict 갱신이라 인라인 수행이 저렴)
+    if payload.get("event") == "file_ingestion_progress":
+        try:
+            ingestion_activity_registry.apply_progress(
+                payload.get("table_name"), payload.get("filename"),
+                progress=payload.get("progress"),
+                processed_rows=payload.get("processed_rows"),
+                total_rows=payload.get("total_rows"),
+            )
+        except Exception as e:
+            print(f"[Main Server] Failed to update ingestion activity from progress: {e}")
+
     created_logs = payload.get("created_logs")
     if created_logs:
         try:
@@ -3443,7 +3492,26 @@ async def internal_event_file_processed(
         "status": status,
         "message": message
     }
+    # [Heavy Lane P1] 완료/실패한 파일은 진행 스냅샷에서 제거 (멱등)
+    try:
+        ingestion_activity_registry.remove(table_name, clean_filename)
+    except Exception as e:
+        print(f"[Main Server] Failed to clear ingestion activity entry: {e}")
     await manager.broadcast(json.dumps(msg))
+    return {"status": "ok"}
+
+
+@app.post("/internal/events/ingestion-state")
+async def internal_event_ingestion_state(payload: dict = Body(...)):
+    """[Heavy Lane P1] watcher 프로세스가 인제션 라이프사이클 상태(QUEUED/PROCESSING/FINISHED)를
+    웹서버 진행 스냅샷 레지스트리에 push하는 내부 이벤트 엔드포인트.
+
+    WS 브로드캐스트는 하지 않는다 — admin이 GET /admin/file-ingestion/active로 조회한다.
+    페이로드는 소형 스칼라 필드만(무절단 컬렉션 금지 계약과 무관하게 컬렉션 자체가 없음)."""
+    try:
+        ingestion_activity_registry.apply_state(payload)
+    except Exception as e:
+        print(f"[Main Server] Failed to apply ingestion state event: {e}")
     return {"status": "ok"}
 
 # --- Admin Code Editor APIs ---

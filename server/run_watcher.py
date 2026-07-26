@@ -100,6 +100,22 @@ def trigger_ws_progress(table_name: str, filename: str, progress: int, processed
     }
     post_event("/internal/events/broadcast", payload)
 
+def trigger_ws_ingestion_state(state: dict):
+    """[Heavy Lane P1] 인제션 라이프사이클 상태(QUEUED/PROCESSING/FINISHED)를 웹서버
+    진행 스냅샷 레지스트리에 push한다. WS 브로드캐스트 없음 — admin active API 전용.
+    페이로드는 소형 스칼라 필드만 (무절단 컬렉션 동봉 금지 교훈 준수)."""
+    try:
+        from pipeline_base import BasePipelineParser
+        clean_filename = BasePipelineParser.get_basename(state.get("filename") or "")
+    except Exception:
+        clean_filename = state.get("filename")
+    payload = {**state, "filename": clean_filename}
+    logger.info(
+        f"Ingestion state: {payload.get('status')} lane={payload.get('lane')} "
+        f"{clean_filename} -> {payload.get('table_name')}"
+    )
+    post_event("/internal/events/ingestion-state", payload)
+
 def reload_watcher_cache():
     """와처 프로세스의 동적 모듈 캐시(pipeline plugins, mappers)를 명시적으로 무효화합니다."""
     import sys
@@ -191,7 +207,13 @@ def poll_pending_retries():
                 
                 # Process the file
                 try:
-                    res = handler.process_archived_file_sync(log, db)
+                    # [QA F3] 재처리 폴러는 heavy 워커·observer와 같은 프로세스 —
+                    # 워크스페이스 직렬화 락을 잡아 heavy/normal 레인 처리와 재처리
+                    # 업서트가 같은 테이블에서 인터리빙되지 않게 한다(순서 계약 편입).
+                    # heavy 7분 처리 중이면 폴러가 그만큼 대기하지만 백그라운드 스레드라 무해.
+                    from directory_watcher import get_workspace_serial_lock
+                    with get_workspace_serial_lock(workspace_root):
+                        res = handler.process_archived_file_sync(log, db)
                     if res:
                         logger.info(f"Retry succeeded for log ID #{log.id}.")
                     else:
@@ -235,7 +257,8 @@ def main():
         workspace_base,
         on_refresh_callback=trigger_ws_refresh,
         on_file_processed_callback=trigger_ws_file_processed,
-        on_progress_callback=trigger_ws_progress
+        on_progress_callback=trigger_ws_progress,
+        on_ingestion_state_callback=trigger_ws_ingestion_state
     )
     watcher.discover_and_watch()
 

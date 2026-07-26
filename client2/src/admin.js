@@ -21,6 +21,7 @@ let outboxTotal = 0;
 let filePage = 1;
 let fileLimit = 10;
 let fileData = [];
+let activeIngestionData = []; // [Heavy Lane P1] 진행 중 인제션 스냅샷
 let fileTotal = 0;
 
 let workspaceData = [];
@@ -94,6 +95,11 @@ const mapperListBody = byId('mapper-list-body');
 const autoUpdateListBody = byId('autoupdate-list-body');
 const autoLinkedBody = byId('autoupdate-linked-body');
 const enrichmentListBody = byId('enrichment-list-body');
+
+// [Heavy Lane P1] 진행 중 인제션 섹션
+const activeIngestionSection = byId('sec-active-ingestions');
+const activeIngestionBody = byId('active-ingestion-body');
+const activeIngestionWarning = byId('active-ingestion-warning');
 
 const outboxEmptyState = byId('outbox-empty');
 const fileEmptyState = byId('file-empty');
@@ -616,16 +622,24 @@ async function fetchData(options = {}) {
       if (isStale()) return false;
     } else if (tab === 'file') {
       const statusVal = statusFilterSelect.value || 'ALL';
-      const [logsRes, wsRes] = await Promise.all([
+      const [logsRes, wsRes, activeRes] = await Promise.all([
         fetch(`${API_BASE}/admin/file-ingestion/logs?status=${statusVal}&page=${filePage}&limit=${fileLimit}`),
-        fetch(`${API_BASE}/admin/file-ingestion/workspaces`)
+        fetch(`${API_BASE}/admin/file-ingestion/workspaces`),
+        fetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null)
       ]);
       if (!logsRes.ok || !wsRes.ok) throw new Error('API fetch failed');
       const [logs, ws] = await Promise.all([logsRes.json(), wsRes.json()]);
+      // [Heavy Lane P1] 진행 목록은 보조 정보 — 조회 실패해도 본문 흐름 비방해
+      let active = { data: [] };
+      if (activeRes && activeRes.ok) {
+        try { active = await activeRes.json(); } catch (e) { /* keep empty */ }
+      }
       if (isStale()) return false;
       fileData = logs.data || [];
       fileTotal = logs.total || 0;
       workspaceData = ws.data || [];
+      activeIngestionData = active.data || [];
+      renderActiveIngestions();
       renderWorkspaceTable();
       renderFileTable();
     } else if (tab === 'chain') {
@@ -871,6 +885,89 @@ function updateFileSortIndicators() {
     ind.textContent = (th.dataset.key === fileSortKey)
       ? (fileSortDir === 'asc' ? ' ▲' : ' ▼')
       : '';
+  });
+}
+
+// [Heavy Lane P1] 경과 시간 포맷: 45s / 7m 32s / 1h 5m
+function formatElapsed(sec) {
+  if (sec == null || isNaN(sec)) return '-';
+  const s = Math.max(0, Math.floor(sec));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+// [Heavy Lane P1] 진행 중 항목이 있는 동안만 도는 경량 갱신 타이머 (5s, File 탭 표시 중 한정).
+// 서버 부하는 인메모리 스냅샷 조회 1회 — 진행 목록이 비면 자동 소멸.
+let activeRefreshTimer = null;
+function scheduleActiveRefresh() {
+  if (activeRefreshTimer) return;
+  activeRefreshTimer = setTimeout(async () => {
+    activeRefreshTimer = null;
+    if (document.hidden || currentTab !== 'file' || !activeIngestionData.length) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/file-ingestion/active`);
+      if (res.ok) {
+        const r = await res.json();
+        activeIngestionData = r.data || [];
+        renderActiveIngestions();
+      }
+    } catch (e) { /* 보조 정보 — 무음 */ }
+  }, 5000);
+}
+
+// File 탭 §진행 중: Active Ingestions (진행률 바 + heavy 배지 + 재기동 경고)
+// 항목이 없으면 섹션 자체를 숨긴다. 갱신: File 탭 fetch(30s/수동) + 활성 시 5s 경량 타이머.
+function renderActiveIngestions() {
+  if (!activeIngestionSection) return;
+  const items = activeIngestionData;
+  if (!items.length) {
+    activeIngestionSection.style.display = 'none';
+    return;
+  }
+  scheduleActiveRefresh();
+  activeIngestionSection.style.display = '';
+  setSectionCount('active-ingestion-count', items.length, 'warn');
+  const heavyCount = items.filter(i => i.lane === 'heavy').length;
+  const summaryEl = byId('active-ingestion-summary');
+  if (summaryEl) summaryEl.textContent = heavyCount ? `heavy ${heavyCount}건 포함` : '';
+
+  // [P1 재기동 경고] 체크포인트(P2) 도입 전 운영 안전장치 — 표시만, 서버측 차단 없음
+  const maxProg = Math.max(...items.map(i => i.progress || 0));
+  activeIngestionWarning.style.display = '';
+  activeIngestionWarning.textContent =
+    `⚠️ 인제션 진행 중 ${items.length}건 — 지금 서버를 재기동하면 진행 중 파일은 처음부터 재처리됩니다` +
+    (items.length === 1 ? ` (${maxProg}% 진행)` : '');
+
+  activeIngestionBody.innerHTML = '';
+  items.forEach(item => {
+    const row = document.createElement('tr');
+    row.className = 'table-row';
+    const laneBadge = item.lane === 'heavy'
+      ? `<span class="badge badge-warning" style="font-weight: bold;">HEAVY</span>`
+      : `<span class="badge badge-success">normal</span>`;
+    const pct = Math.max(0, Math.min(item.progress || 0, 100));
+    const statusNote = item.status === 'QUEUED' ? ' 대기' : '';
+    const rowsText = (item.total_rows != null)
+      ? `${(item.processed_rows || 0).toLocaleString()} / ${item.total_rows.toLocaleString()}`
+      : ((item.processed_rows || 0) > 0 ? item.processed_rows.toLocaleString() : '-');
+    row.innerHTML = `
+      <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text); word-break: break-all;">${item.filename}</td>
+      <td style="font-weight: bold; color: var(--color-primary);">${item.table_name}</td>
+      <td style="text-align: center;">${laneBadge}</td>
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="flex: 1; height: 6px; border-radius: 3px; background: var(--bg-inset); border: 1px solid var(--border); overflow: hidden;">
+            <div style="width: ${pct}%; height: 100%; background: var(--accent); transition: width 0.4s;"></div>
+          </div>
+          <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); min-width: 46px; text-align: right;">${pct}%${statusNote}</span>
+        </div>
+      </td>
+      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${rowsText}</td>
+      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${formatElapsed(item.elapsed_seconds)}</td>
+    `;
+    activeIngestionBody.appendChild(row);
   });
 }
 
@@ -1202,18 +1299,19 @@ function renderEnrichmentTable(status) {
 // ── Overview 탭 (헬스 스트립 확장판 — 첫 화면) ─────────────
 
 async function fetchOverview(isStale) {
-  const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes] = await Promise.all([
+  const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
     fetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
     fetch(`${API_BASE}/admin/file-ingestion/workspaces`),
     fetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
     fetch(`${API_BASE}/admin/chain/rules`),
     fetch(`${API_BASE}/admin/mappers/list`),
-    fetch(`${API_BASE}/admin/auto-update/status`)
+    fetch(`${API_BASE}/admin/auto-update/status`),
+    fetch(`${API_BASE}/admin/file-ingestion/active`) // [Heavy Lane P1] 진행 중 인제션
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
-  const [failed, ws, outbox, rules, mappers, auto] = await Promise.all(
-    [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes].map(jsonOf)
+  const [failed, ws, outbox, rules, mappers, auto, active] = await Promise.all(
+    [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes].map(jsonOf)
   );
 
   let enrich = null;
@@ -1228,7 +1326,7 @@ async function fetchOverview(isStale) {
     throw new Error('overview fetch failed');
   }
 
-  renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich });
+  renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, active });
 }
 
 function ovEventItem({ time, text, badge, badgeTone }) {
@@ -1326,25 +1424,37 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
   return card;
 }
 
-function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich }) {
+function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, active }) {
   overviewGrid.innerHTML = '';
 
-  // ① File Ingestion 카드
+  // ① File Ingestion 카드 (+ [Heavy Lane P1] 진행 중 인제션 = 재기동 경고)
   {
     const total = failed ? (failed.total || 0) : null;
     const wsCount = ws ? (ws.data || []).length : null;
-    const status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
-    const events = (failed ? (failed.data || []).slice(0, 3) : []).map(l => ({
-      time: formatTimestamp(l.created_at),
-      text: `${l.filename} → ${l.table_name}`,
-      badge: 'FAIL',
-      badgeTone: 'danger'
+    const activeItems = active ? (active.data || []) : [];
+    let status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
+    if (status === 'ok' && activeItems.length > 0) status = 'warn';
+    // 진행 중 항목을 이벤트 라인 상단에 노출 (실패 라인보다 앞) — 재기동 전 확인 유도
+    const activeEvents = activeItems.slice(0, 2).map(i => ({
+      time: null,
+      text: `${i.filename} → ${i.table_name} (${i.progress || 0}%${i.lane === 'heavy' ? ' · heavy' : ''}) — 재기동 시 처음부터 재처리`,
+      badge: i.status === 'QUEUED' ? '대기' : '진행 중',
+      badgeTone: 'warn'
     }));
+    const events = activeEvents.concat(
+      (failed ? (failed.data || []).slice(0, 3 - activeEvents.length) : []).map(l => ({
+        time: formatTimestamp(l.created_at),
+        text: `${l.filename} → ${l.table_name}`,
+        badge: 'FAIL',
+        badgeTone: 'danger'
+      }))
+    );
     overviewGrid.appendChild(ovCard({
       status,
       title: 'File Ingestion',
       metrics: [
         { value: total == null ? '—' : total, label: '인제션 실패', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
+        { value: activeItems.length, label: '진행 중', tone: activeItems.length > 0 ? 'warn' : null },
         { value: wsCount == null ? '—' : wsCount, label: 'Workspaces' }
       ],
       events,
@@ -2431,10 +2541,28 @@ async function refreshFileAndAutoHealth() {
     }
   } catch (e) { /* 아래에서 조회 실패 카드 처리 */ }
 
+  // [Heavy Lane P1] 진행 중 인제션 — 재기동 경고 (조회 실패는 무음, 카운트 0 취급)
+  let activeCount = 0;
+  let activeHeavy = 0;
+  try {
+    const res = await fetch(`${API_BASE}/admin/file-ingestion/active`);
+    if (res.ok) {
+      const r = await res.json();
+      activeCount = r.total || 0;
+      activeHeavy = (r.data || []).filter(i => i.lane === 'heavy').length;
+    }
+  } catch (e) { /* 보조 정보 — 무음 */ }
+  const activeSub = activeCount > 0
+    ? `⚠️ 인제션 진행 중 ${activeCount}건${activeHeavy ? ` (heavy ${activeHeavy})` : ''} — 재기동 시 처음부터 재처리`
+    : null;
+
   if (failedTotal === null) {
-    setHealthCard('file', 'loading', '—', '상태 조회 실패');
+    setHealthCard('file', 'loading', '—', activeSub || '상태 조회 실패');
   } else if (failedTotal > 0) {
-    setHealthCard('file', 'danger', `실패 ${failedTotal}건`, '클릭 → File 탭 실패 필터로 이동');
+    setHealthCard('file', 'danger', `실패 ${failedTotal}건`,
+      activeSub || '클릭 → File 탭 실패 필터로 이동');
+  } else if (activeCount > 0) {
+    setHealthCard('file', 'warn', `인제션 진행 중 ${activeCount}건`, activeSub);
   } else {
     setHealthCard('file', 'ok', '실패 0건', '파일 인제션 정상');
   }

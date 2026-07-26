@@ -1,8 +1,10 @@
 import os
 import time
+import queue
 import shutil
 import logging
 import threading
+from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -103,6 +105,130 @@ def warn_invalid_std_parse_once(source_key: str, value):
         f"Ignoring non-boolean 'std_parse' value {value!r} in {source_key} — "
         f"expected JSON boolean true/false (string \"false\" is NOT an opt-out)."
     )
+
+
+# ── [Heavy Lane P1] 대형 파일 인제션 격리 설정 ─────────────────────────────
+# 임계값 위치 결정 근거: table_config.json에 `_system` 메타 키를 넣는 안은
+# 모든 소비처(init_dynamic_models·_provision_workspaces·/tables·마이그레이션 등)가
+# 키를 테이블로 순회하므로 블라스트 반경이 크다. server/config는 서브시스템별
+# 개별 파일 관례(chain_rules/enrichment_rules/maps/...)이므로 그 관례를 따라
+# 전용 파일 ingestion_settings.json을 신설한다. 파일 부재/손상 시 기본값으로 동작.
+DEFAULT_HEAVY_FILE_MB = 10
+INGESTION_SETTINGS_PATH = os.path.abspath(
+    os.path.join(script_dir, "..", "config", "ingestion_settings.json")
+)
+
+
+def load_ingestion_settings() -> dict:
+    """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작)."""
+    import json
+    try:
+        if os.path.exists(INGESTION_SETTINGS_PATH):
+            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                return loaded
+    except Exception as e:
+        logger.warning(f"Could not load ingestion settings ({INGESTION_SETTINGS_PATH}): {e}")
+    return {}
+
+
+def warn_invalid_heavy_threshold_once(value):
+    """`heavy_file_mb`에 양수(int/float) 외 값이 오면 무시하고 1회만 경고한다."""
+    key = ("heavy_file_mb", repr(value))
+    if key in _invalid_field_warned:
+        return
+    _invalid_field_warned.add(key)
+    logger.warning(
+        f"Ignoring invalid 'heavy_file_mb' value {value!r} in ingestion_settings.json — "
+        f"expected a positive number (MB). Falling back to default {DEFAULT_HEAVY_FILE_MB}MB."
+    )
+
+
+def get_heavy_threshold_bytes() -> int:
+    """heavy 레인 라우팅 크기 임계(bytes).
+
+    파일 이벤트(라우팅 결정)당 1회 디스크에서 읽는다 — 핫리로드는 '다음 파일부터'
+    자연 반영되고, 한 파일의 라우팅 결정 안에서 값이 갈리는 일이 없다(파일 경계 스냅샷 규율).
+    """
+    val = load_ingestion_settings().get("heavy_file_mb", DEFAULT_HEAVY_FILE_MB)
+    if isinstance(val, bool) or not isinstance(val, (int, float)) or val <= 0:
+        warn_invalid_heavy_threshold_once(val)
+        val = DEFAULT_HEAVY_FILE_MB
+    return int(val * 1024 * 1024)
+
+
+# ── [Heavy Lane P1] 워크스페이스 단위 직렬화 락 레지스트리 ─────────────────
+# 경계 계약(순서 보존): 같은 워크스페이스(=테이블)의 파일이 heavy/normal 두 레인에서
+# 동시에 처리되어 업서트 순서가 뒤집히는 일이 없어야 한다. 핸들러 인스턴스가 경로별로
+# 여럿 생길 수 있으므로(워처 등록 핸들러 + 재시도 임시 핸들러) 락은 모듈 레벨에서
+# 워크스페이스 절대경로 키로 공유한다. (프로세스 간 배타는 범위 밖 — 기존과 동일)
+_workspace_serial_locks: dict = {}
+_workspace_serial_locks_guard = threading.Lock()
+
+
+def get_workspace_serial_lock(workspace_path: str) -> threading.Lock:
+    key = os.path.normcase(os.path.abspath(workspace_path))
+    with _workspace_serial_locks_guard:
+        lock = _workspace_serial_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _workspace_serial_locks[key] = lock
+        return lock
+
+
+class HeavyIngestionLane:
+    """[Heavy Lane P1] 대형 파일 전용 처리 레인 — 단일 워커 스레드 + FIFO 큐.
+
+    목적은 **교차 워크스페이스 격리**: A 테이블의 수 분짜리 대형 파일이 watchdog
+    observer 디스패치 스레드/스윕 스레드를 점유해 B 테이블의 소형 파일을 분 단위로
+    막던 HOL(head-of-line) 차단을 제거한다. 큐에 넘긴 뒤 라우팅 스레드는 즉시
+    반환되고, 실제 처리는 이 레인의 데몬 스레드에서 수행된다.
+
+    같은 워크스페이스 내 순서 보존은 핸들러의 backlog 라우팅(후속 파일도 큐 후미로)
+    + 워크스페이스 직렬화 락(get_workspace_serial_lock)이 담당한다.
+    """
+
+    WORKER_THREAD_NAME = "watcher-heavy-lane"
+
+    def __init__(self):
+        self._queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._thread_guard = threading.Lock()
+
+    def submit(self, job) -> None:
+        """job: 인자 없는 callable. 워커 스레드는 지연 기동(첫 submit 시)."""
+        self._ensure_running()
+        self._queue.put(job)
+
+    def _ensure_running(self):
+        with self._thread_guard:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            if self._stop_event.is_set():
+                raise RuntimeError("HeavyIngestionLane is stopped")
+            self._thread = threading.Thread(
+                target=self._worker_loop, name=self.WORKER_THREAD_NAME, daemon=True,
+            )
+            self._thread.start()
+
+    def _worker_loop(self):
+        while not self._stop_event.is_set():
+            try:
+                job = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                job()
+            except Exception as e:
+                # 방어선: _run_lane_job이 자체 예외 처리를 하므로 여기는 최후 로깅만
+                logger.error(f"[HeavyLane] Unexpected error in heavy lane job: {e}")
+            finally:
+                self._queue.task_done()
+
+    def stop(self):
+        self._stop_event.set()
 
 
 def find_workspace_alias(folder_name: str, table_config: dict) -> str | None:
@@ -271,7 +397,7 @@ class IngestionHandler(FileSystemEventHandler):
     """
     Handles file system events and triggers ingestion.
     """
-    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None):
+    def __init__(self, workspace_path: str, config_path: str | None, archives_path: str, default_table_name: str | None = None, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None, on_ingestion_state_callback=None, heavy_lane=None):
         self.workspace_path = workspace_path
         self.config_path = config_path
         self.archives_path = archives_path
@@ -285,6 +411,16 @@ class IngestionHandler(FileSystemEventHandler):
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
+        # [Heavy Lane P1] 진행 상태(QUEUED/PROCESSING/FINISHED) 통지 콜백 (선택)
+        self.on_ingestion_state_callback = on_ingestion_state_callback
+        # [Heavy Lane P1] 대형 파일 전용 레인 (None이면 기존 인라인 경로 그대로 — 하위호환)
+        self.heavy_lane = heavy_lane
+        # 같은 워크스페이스 파일 처리 직렬화 락 (모듈 레벨 공유 — 순서 보존 경계 계약)
+        self._serial_lock = get_workspace_serial_lock(workspace_path)
+        # heavy 레인에 제출됐으나 아직 완료되지 않은 이 워크스페이스 파일 수.
+        # > 0이면 후속 파일(크기 무관)도 큐 후미로 보내 워크스페이스 내 FIFO를 보존한다.
+        self._lane_state_lock = threading.Lock()
+        self._heavy_backlog = 0
         # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
         self._legacy_config_cache = None
 
@@ -399,11 +535,141 @@ class IngestionHandler(FileSystemEventHandler):
 
         logger.info(f"[{self.table_name}] 📥 New file detected: {os.path.basename(abs_path)}")
 
+        routed_heavy = False
+        try:
+            routed_heavy = self._route_and_process(abs_path, uploader)
+        finally:
+            # heavy 큐로 넘긴 파일의 processing_files 정리는 heavy 워커(_run_lane_job)가
+            # 처리 완료 후 수행한다 — 큐 대기 중 스윕/이벤트 이중 진입을 막기 위해 유지.
+            if not routed_heavy:
+                with self._processing_lock:
+                    self.processing_files.discard(abs_path)
+
+    # ── [Heavy Lane P1] 레인 라우팅 ──────────────────────────────────────
+
+    def _classify_lane(self, abs_path: str):
+        """파일 크기 기준 레인 분류. 반환: ("heavy"|"normal", size_bytes).
+
+        크기는 이벤트 시점 1회 stat — 복사가 진행 중인 파일은 최종보다 작게 읽혀
+        normal로 오분류될 수 있으나, 그 경우 기존(레인 도입 전) 인라인 경로와 동일한
+        동작으로 열화될 뿐 정합성 문제는 없다. 임계값은 라우팅 결정당 1회 로드(핫리로드는
+        다음 파일부터)."""
+        try:
+            size_bytes = os.stat(abs_path).st_size
+        except OSError:
+            return "normal", 0
+        lane = "heavy" if size_bytes >= get_heavy_threshold_bytes() else "normal"
+        return lane, size_bytes
+
+    def _heavy_backlog_nonzero(self) -> bool:
+        with self._lane_state_lock:
+            return self._heavy_backlog > 0
+
+    def _route_and_process(self, abs_path: str, uploader: str) -> bool:
+        """레인 라우팅 + 처리 실행.
+
+        반환 True  → heavy 큐에 제출됨 (processing_files 정리 책임은 heavy 워커).
+        반환 False → 인라인으로 처리 완료됨 (호출자가 정리).
+
+        순서 보존 불변식: 같은 워크스페이스의 파일은 (1) heavy backlog가 있으면
+        후속 파일도 큐 후미로 보내 FIFO를 유지하고, (2) 인라인 경로도 워크스페이스
+        직렬화 락을 잡아 두 레인이 같은 테이블을 동시에 업서트하지 않게 한다.
+        인라인 경로가 락 획득에 실패하면(다른 스레드/레인이 처리 중) 블로킹 대기 대신
+        큐 후미로 보낸다 — observer 디스패치 스레드의 HOL 차단 방지."""
+        if self.heavy_lane is None:
+            # 레인 미배선(재시도 임시 핸들러·레거시 직접 사용) — 기존 경로 그대로
+            self.process_with_retry(abs_path, uploader=uploader)
+            return False
+
+        lane, size_bytes = self._classify_lane(abs_path)
+        if lane == "heavy" or self._heavy_backlog_nonzero():
+            if self._submit_to_heavy_lane(abs_path, uploader, lane, size_bytes):
+                return True
+            # 제출 실패(레인 정지 등) → 인라인 폴백 (아래 직렬화 락 경로)
+
+        acquired = self._serial_lock.acquire(blocking=False)
+        if not acquired:
+            # 같은 워크스페이스에서 처리 진행 중 — 순서 보존을 위해 큐 후미로
+            if self._submit_to_heavy_lane(abs_path, uploader, lane, size_bytes):
+                return True
+            self._serial_lock.acquire()  # 최후 폴백: 블로킹 직렬화 (정합 우선)
         try:
             self.process_with_retry(abs_path, uploader=uploader)
         finally:
+            self._serial_lock.release()
+        return False
+
+    def _submit_to_heavy_lane(self, abs_path: str, uploader: str, lane: str, size_bytes: int) -> bool:
+        """heavy 레인 큐에 제출. 성공 시 True (processing_files 정리 책임 이관).
+
+        [QA F4] lane은 **크기 분류 실값**을 그대로 통지한다 — 순서 보존을 위해 큐 후미로
+        재라우팅된 소형 파일(lane="normal")이 admin에 HEAVY 배지로 오표기되거나
+        heavy 카운트를 부풀리지 않게 한다 (처리 스레드는 동일하게 heavy 워커)."""
+        t_display = self.table_name  # 표시/통지용 (실제 처리는 process_with_retry의 스냅샷 사용)
+        filename = os.path.basename(abs_path)
+        with self._lane_state_lock:
+            self._heavy_backlog += 1
+        try:
+            self.heavy_lane.submit(
+                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes)
+            )
+        except Exception as e:
+            with self._lane_state_lock:
+                self._heavy_backlog -= 1
+            logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {e}")
+            return False
+        reason = "size" if lane == "heavy" else "workspace-order"
+        logger.info(f"[{t_display}] 🐘 Routed to heavy lane queue ({reason}, {size_bytes:,}B): {filename}")
+        self._notify_ingestion_state({
+            "table_name": t_display,
+            "filename": filename,
+            "lane": lane,
+            "status": "QUEUED",
+            "size_bytes": size_bytes,
+            "queued_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        return True
+
+    def _run_lane_job(self, abs_path: str, uploader: str, t_display: str, lane: str, size_bytes: int):
+        """heavy 워커 스레드에서 실행되는 처리 본체.
+
+        아카이브/에러 이동·FileIngestionLog·완료/진행 콜백은 전부 process_with_retry
+        내부에서 기존과 동일하게 수행된다 (레인과 무관한 경로 불변 계약)."""
+        filename = os.path.basename(abs_path)
+        try:
+            with self._serial_lock:
+                self._notify_ingestion_state({
+                    "table_name": t_display,
+                    "filename": filename,
+                    "lane": lane,  # [QA F4] 분류 실값 (재라우팅 소형 파일은 "normal")
+                    "status": "PROCESSING",
+                    "size_bytes": size_bytes,
+                    "started_at": datetime.now().isoformat(timespec="seconds"),
+                })
+                self.process_with_retry(abs_path, uploader=uploader)
+        except Exception as e:
+            # process_with_retry는 자체적으로 err 이동/로그를 수행 — 여기는 방어선
+            logger.error(f"[{t_display}] Heavy lane job failed unexpectedly: {e}")
+        finally:
+            with self._lane_state_lock:
+                self._heavy_backlog -= 1
             with self._processing_lock:
                 self.processing_files.discard(abs_path)
+            # 파일 소실 등으로 완료 콜백 없이 반환되는 경로까지 확실히 정리 (수신측 멱등)
+            self._notify_ingestion_state({
+                "table_name": t_display, "filename": filename, "status": "FINISHED",
+            })
+
+    def _notify_ingestion_state(self, state: dict):
+        """진행 상태 통지 — 콜백 미배선/실패는 처리 흐름에 영향을 주지 않는다.
+        페이로드는 소형 스칼라 필드만 담는다 (프로세스 간 통지 무절단 컬렉션 금지 교훈)."""
+        cb = self.on_ingestion_state_callback
+        if not cb:
+            return
+        try:
+            cb(state)
+        except Exception as e:
+            logger.warning(f"Ingestion state callback failed: {e}")
 
     def process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         """
@@ -890,9 +1156,12 @@ class WorkspaceWatcher:
     """
     Monitors all ingestion workspaces for new files.
     """
-    def __init__(self, base_dir: str, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None):
+    def __init__(self, base_dir: str, on_refresh_callback=None, on_file_processed_callback=None, on_progress_callback=None, on_ingestion_state_callback=None):
         self.base_dir = base_dir
         self.observer = Observer()
+        # [Heavy Lane P1] 전 워크스페이스 공유 heavy 레인 (워커 스레드는 첫 제출 시 지연 기동)
+        self.heavy_lane = HeavyIngestionLane()
+        self.on_ingestion_state_callback = on_ingestion_state_callback
         self.watch_count = 0
         self.watched_raw_paths = set()  # 이미 감시 등록된 raws/ 절대경로 (런타임 중복 등록 방지)
         # [F2] sync_new_workspaces 직렬화 락 — 임베디드 모드에서 /admin/reload-configs가
@@ -969,7 +1238,7 @@ class WorkspaceWatcher:
             # 실제 소비하면 _load_legacy_config의 필드 게이트 경고가 처리 시점에 발화한다.
             if os.path.basename(config_path) == "config.json":
                 warn_legacy_workspace_config(config_path)
-            handler = IngestionHandler(workspace_root, config_path, archives_path, default_table_name=resolved_table or folder_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
+            handler = IngestionHandler(workspace_root, config_path, archives_path, default_table_name=resolved_table or folder_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback, on_ingestion_state_callback=self.on_ingestion_state_callback, heavy_lane=self.heavy_lane)
             watch_desc = f"using config: {os.path.basename(config_path)} (deprecated)"
         else:
             # config 가 없더라도 scripts 폴더 내에 파이썬 파일이 있거나(파이프라인 전용),
@@ -990,7 +1259,7 @@ class WorkspaceWatcher:
             else:
                 logger.warning(f"Skipping {raws_root}: No JSON config or custom_parser found.")
                 return False
-            handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback)
+            handler = IngestionHandler(workspace_root, None, archives_path, default_table_name=table_name, on_refresh_callback=self.on_refresh_callback, on_file_processed_callback=self.on_file_processed_callback, on_progress_callback=self.on_progress_callback, on_ingestion_state_callback=self.on_ingestion_state_callback, heavy_lane=self.heavy_lane)
 
         self.observer.schedule(handler, raws_root, recursive=False)
         self.watched_raw_paths.add(abs_root)
@@ -1152,6 +1421,7 @@ class WorkspaceWatcher:
 
     def stop(self):
         self._stop_event.set()  # 스윕/주기 스레드 중단 신호
+        self.heavy_lane.stop()  # [Heavy Lane P1] 레인 워커 중단 신호 (데몬 스레드)
         self.observer.stop()
         self.observer.join()
 

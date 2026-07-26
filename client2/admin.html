@@ -845,8 +845,35 @@
           </div>
         </div>
 
-        <!-- ═══ File Ingestion 탭: 현황(Workspaces) → 오류/실행(Logs + Retry) ═══ -->
+        <!-- ═══ File Ingestion 탭: 진행 중(Active) → 현황(Workspaces) → 오류/실행(Logs + Retry) ═══ -->
         <div id="file-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <!-- [Heavy Lane P1] 진행 중 인제션 — 활성 항목이 있을 때만 표시 -->
+          <div class="stage-section" id="sec-active-ingestions" style="display: none;">
+            <div class="section-header" data-section="sec-active-ingestions">
+              <span class="stage-chip">진행 중</span>
+              <span class="section-title">Active Ingestions</span>
+              <span class="section-count" id="active-ingestion-count">0</span>
+              <span class="section-summary" id="active-ingestion-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body">
+              <div id="active-ingestion-warning" style="display: none; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--warning); border-radius: 8px; background: var(--warning-weak); color: var(--warning); font-size: 0.82rem; font-weight: 600;"></div>
+              <table class="table-container">
+                <thead class="table-header">
+                  <tr>
+                    <th>Filename</th>
+                    <th style="width: 150px;">Target Table</th>
+                    <th style="width: 90px; text-align: center;">Lane</th>
+                    <th style="width: 230px;">Progress</th>
+                    <th style="width: 130px; text-align: center;">Rows</th>
+                    <th style="width: 90px; text-align: center;">Elapsed</th>
+                  </tr>
+                </thead>
+                <tbody id="active-ingestion-body"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="stage-section collapsed" id="sec-workspaces">
             <div class="section-header" data-section="sec-workspaces">
               <span class="stage-chip">현황</span>
