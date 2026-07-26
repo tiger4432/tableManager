@@ -114,6 +114,12 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 
 이 인과 체인이 불량 추론(가치 ③)의 전이 경로이자 LLM이 읽는 인과 서사(가치 ①)가 된다.
 
+**DT(Die Transfer)/Tape 계층 (사용자 도메인 공개 2026-07-26)** — 실제 물류 체인에는 코어와 본딩 사이에 **테이프 계층**이 있다: 여러 코어의 칩을 TAPE 위에 한데 모아두고(DT 공정) 본딩은 테이프에서 집는다. 따라서:
+- **bonding_log의 core_lot/slot은 실제로는 DT(테이프) lot/slot**이다. 칩의 진짜 출신 코어는 `테이프 좌표 × DT 맵(영역→코어)` 또는 칩 단위 DT 로그로 해석한다.
+- 원천 2종: **DT 로그**(칩 단위 — 코어 좌표↔테이프 좌표 대응) + **DT 맵**(테이프 lot|slot 자체 맵 — 영역→코어 귀속).
+- 함수형 온톨로지 확장: `DTEvent: (WaferState_in, TapeState_in) → (WaferState_out, TapeState_out)` — Tape는 동적 노드. 칩 계보는 `Base ← bonding ← TapePos ← DT ← Core`의 2단 전사가 되며, 불량 역추적(가치 ③)·교정(§7.6)이 이 체인을 탄다.
+- 좌표 프레임: defect/EDS는 core frame, DT 맵·bonding 좌표는 tape frame — 프레임 간 다리는 변환이 아니라 **DT 로그 조인**(칩 단위 대응이 데이터로 존재).
+
 **2계층 원칙 (확정)** — 파생 그래프에서 "엣지 삭제의 복잡성"을 원천 차단하는 규율:
 
 | 계층 | 내용 | 쓰기 주체 | 수정/삭제 정책 |
