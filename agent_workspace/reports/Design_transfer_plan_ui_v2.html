@@ -280,12 +280,13 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
   <p class="doc-sub">
     현행은 「1. Map Search &amp; Load」(무슨 맵을 여는가)와 「2. 전사 계획」(별도 stage·타깃·plan_id)이 <b>서로 다른 정체성 2개</b>를 들고 따로 논다.
     본 시안은 정체성을 <b>하나(열린 테이블 + 맵 키)</b>로 합치고, stage는 테이블에서 유도하며, legend 행 하나가 곧 DOE가 된다.
-    아래 탭으로 상태별 화면을 전환해 보십시오. (정적 시안 — 실제 데이터·API 없음)
+    우측 패널은 <b>세로 두 목록</b> — 위 DOE LIST, 아래 <b>DOE별 사용 자재</b>(자재 맵으로 가는 유일한 허브).
+    아래 탭으로 화면을 전환하고, 자재 행 <b>WF-05</b>를 눌러 왕복 보상(복귀 시 수량 갱신)을 확인해 보십시오. (정적 시안 — 실제 데이터·API 없음)
   </p>
 
   <div class="scenario-bar" id="scenarios">
     <button class="on" data-sc="bonding">① bonding_map 편집 = BONDING PLAN</button>
-    <button data-sc="source">② 소스(코어) 맵 열림 — 왕복 중</button>
+    <button data-sc="source">② 자재 맵 열림 — 왕복 중</button>
     <button data-sc="plain">③ 계획 대상이 아닌 맵 — 순수 legend</button>
     <button data-sc="mismatch">④ 맵 키 불일치 — Push 차단</button>
   </div>
@@ -404,11 +405,10 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 
         <!-- 질문 ②: 왕복 — 모드가 아니라 '편집 스택 브레드크럼' -->
         <div class="bcrumb hidden" id="bcrumb">
-          <button class="back" type="button">← bonding_map · BASE-77</button>
+          <button class="back" type="button" id="bc-back">← bonding_map · BASE-77</button>
           <span class="sep">›</span>
-          <span class="cur">core_defect_map · LOT-A|05</span>
-          <span class="chip info">D2 사용 영역을 칠하는 중</span>
-          <span class="why">돌아가면 BASE-77의 편집 상태·오버레이·스크롤이 그대로 복원됩니다</span>
+          <span class="cur" id="bc-cur">dt_map · DT-C</span>
+          <span class="why">돌아가면 BASE-77의 편집 상태·오버레이·스크롤이 복원되고, <b>이 자재의 가용이 재조회</b>됩니다</span>
         </div>
 
         <div class="toolbar">
@@ -480,13 +480,13 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
           <div class="doe-list" id="doelist">
 
             <!-- 접힌 행 -->
-            <div class="doe">
+            <div class="doe" data-doe="D1">
               <div class="doe-row">
                 <span class="caret">▶</span>
                 <span class="sw" style="background:#10b981">D1</span>
                 <span class="doe-body">
                   <span class="doe-l1">저온 본딩 · 250℃ 조건군</span>
-                  <span class="doe-l2">TP-7|02 · 층 1–3 · 소요 120 · 칠함 120</span>
+                  <span class="doe-l2">STACK 1 · DT-A 외 1매 · 120 / 120</span>
                 </span>
                 <span class="chip ok">충족</span>
               </div>
@@ -494,15 +494,15 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
             </div>
 
             <!-- 펼친 행 = DOE 편집기 -->
-            <div class="doe open on warn">
+            <div class="doe open on warn" data-doe="D2">
               <div class="doe-row">
                 <span class="caret">▶</span>
                 <span class="sw" style="background:#3b82f6">D2</span>
                 <span class="doe-body">
                   <span class="doe-l1">고압 본딩 · 30N 조건군 <span class="brush-tag">브러시</span></span>
-                  <span class="doe-l2">TP-9|01 · 층 4–8 · 소요 200 · 칠함 180</span>
+                  <span class="doe-l2">STACK 2-11 · DT-A 외 3매 · 200 / 180</span>
                   <span class="doe-chips">
-                    <span class="chip warn">잔여 미상</span>
+                    <span class="chip warn">묶음 가용 ≥1,131 (1매 미상)</span>
                     <span class="chip warn">🖌 180 ≠ 200</span>
                   </span>
                 </span>
@@ -511,50 +511,25 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 
               <div class="doe-detail">
                 <div class="sec">
-                  <div class="sec-h"><span>층별 배정 <span style="text-transform:none;font-weight:400">(층마다 다른 소스·수량 가능)</span></span>
-                    <button class="glass-btn mini" type="button">+ 배정</button></div>
-
-                  <div class="asg on">
-                    <div class="asg-l1">
-                      <input class="glass-input mono" value="4"><span class="dash">–</span><input class="glass-input mono" value="8">
-                      <input class="glass-input src" value="TP-9|01" placeholder="Tape lot|slot">
-                      <input class="glass-input mono" value="40" title="층당 수량">
-                      <button class="icobtn" title="이 배정 삭제">🗑</button>
-                    </div>
-                    <div class="asg-l2">
-                      <span>소요 <b>200</b> · 잔여 <span class="unknown" title="서버가 remaining: null + unverified">미상</span> · 사용영역 <b>200</b>칩</span>
-                      <button class="glass-btn mini primary" type="button">🎨 소스 맵 열기 ▸</button>
-                    </div>
-                    <div class="formula">
-                      가용 = 총 <b>900</b> − defect <b>40</b> − EDS <b>30</b> − 기사용 <b>590</b>
-                      = <span class="rem"><span class="unknown">미상</span></span> <span class="chip dim">≤ 240 (상한 — 실제는 이보다 작음)</span>
-                    </div>
-                    <div class="unrel">
-                      ⚠️ <b>잔여 수치를 신뢰할 수 없습니다</b> — fail 집계 누락/미제공으로 과대일 수 있습니다.
-                      <span class="why">source_degraded: eds_fail_map 조회 실패 · availability_checked=false</span>
-                    </div>
-                    <table class="bycore">
-                      <thead><tr><th>코어</th><th>총</th><th>fail</th><th>사용</th><th>잔여</th></tr></thead>
-                      <tbody>
-                        <tr><td>LOT-A|05</td><td>600</td><td>45</td><td>380</td><td class="u">미상</td></tr>
-                        <tr><td>LOT-B|02</td><td>300</td><td>25</td><td>210</td><td class="u">미상</td></tr>
-                      </tbody>
-                    </table>
-                    <span class="chip dim">영역 귀속 기준 (칩 단위 DT 로그 없음 — DT 맵 영역 귀속으로 분해)</span>
+                  <div class="asg-l1" style="grid-template-columns:1fr 1fr">
+                    <span class="fld"><label>STACK 구간</label>
+                      <input class="glass-input mono" value="2-11" placeholder="1 / 2-11 / H1~H2" title="자유 입력 — 표기를 강제하지 않습니다"></span>
+                    <span class="fld"><label>총 소요 (칩)</label>
+                      <input class="glass-input mono" value="200"></span>
                   </div>
+                  <span class="hint">층별 정밀 배정은 하지 않습니다 — <b>"이 구간에 이 묶음에서 총 N칩"</b>이 계획의 단위입니다.</span>
+                </div>
 
-                  <div class="asg">
-                    <div class="asg-l1">
-                      <input class="glass-input mono" value="7"><span class="dash">–</span><input class="glass-input mono" value="7">
-                      <input class="glass-input src" value="TP-7|02">
-                      <input class="glass-input mono" value="20">
-                      <button class="icobtn">🗑</button>
-                    </div>
-                    <div class="asg-l2">
-                      <span>소요 <b>20</b> · 잔여 <b>310</b> · 사용영역 <b>20</b>칩</span>
-                      <button class="glass-btn mini" type="button">🎨 소스 맵 열기 ▸</button>
-                    </div>
+                <div class="sec">
+                  <div class="sec-h"><span>사용 자재 (묶음)</span></div>
+                  <div class="matchips">
+                    <span class="matchip">DT-A <button title="묶음에서 제거">✕</button></span>
+                    <span class="matchip">DT-B <button>✕</button></span>
+                    <span class="matchip">DT-C <button>✕</button></span>
+                    <span class="matchip">DT-D <button>✕</button></span>
+                    <span class="matchip add">＋ 자재</span>
                   </div>
+                  <span class="hint">여기서는 <b>"무엇을 쓴다"만 선언</b>합니다 — 수량·맵 구축·이동은 아래 <b>사용 자재</b> 목록이 담당합니다.</span>
                 </div>
 
                 <div class="sec">
@@ -568,26 +543,25 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 
                 <div class="sec">
                   <div class="sec-h"><span>설명 (split registry 서술과 동일 필드)</span></div>
-                  <textarea class="glass-input">고압 조건군 — 층 4~8을 TP-9|01에서 공급. 7층은 TP-7|02 혼합(겹침 의도).</textarea>
+                  <textarea class="glass-input">고압 조건군 — 2~11층은 DT-A~D 4매 묶음 투입. 어느 매가 몇 층에 갈지는 예측하지 않는다.</textarea>
                   <span class="hint">이 서술이 곧 <b>map_split_registry.split_desc</b> 입니다 — legend와 DOE는 같은 행의 두 얼굴.</span>
                 </div>
               </div>
             </div>
 
-            <div class="doe bad">
+            <div class="doe bad" data-doe="D3">
               <div class="doe-row">
                 <span class="caret">▶</span>
                 <span class="sw" style="background:#ec4899">D3</span>
                 <span class="doe-body">
                   <span class="doe-l1">기준군 (control)</span>
-                  <span class="doe-l2">TP-7|02 · 층 4–5 · 소요 90 · 칠함 0</span>
+                  <span class="doe-l2">STACK 12 · DT-A 외 1매 · 90 / 0</span>
                   <span class="doe-chips">
-                    <span class="chip bad">잔여 60 &lt; 소요 90</span>
-                    <span class="chip bad">FAIL 이력</span>
+                    <span class="chip bad">교차 초과 (DT-A)</span>
                     <span class="chip warn">미페인팅</span>
                   </span>
                 </span>
-                <span class="chip bad">부족 30</span>
+                <span class="chip bad">부족</span>
               </div>
               <div class="doe-detail"></div>
             </div>
@@ -611,12 +585,17 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
           <div class="hidden" id="source-panel">
             <div class="plan-head" style="border-color:var(--accent-2)">
               <div class="plan-head-l1">
-                <span class="stage-badge">소스 맵</span>
-                <span class="chip mono">core_defect_map · LOT-A|05</span>
+                <span class="stage-badge">자재 맵</span>
+                <span class="chip mono" id="src-title">dt_map · DT-C</span>
               </div>
               <div class="plan-head-l2">
-                이 코어에서 칩을 가져가는 DOE가 <b>2개</b> 있습니다 — 각각의 사용 영역을 이 맵 위에 칠하십시오.
+                이 자재에서 칩을 가져가는 DOE가 <b>2개</b> 있습니다 — 각각의 사용 영역을 이 맵 위에 칠하십시오.
               </div>
+            </div>
+            <div class="skip-banner" id="src-empty" style="display:none;border-color:var(--warning);background:var(--warning-weak);color:var(--warning)">
+              📄 <b>이 자재의 맵이 아직 없습니다</b>
+              <span class="why">빈 격자 + 자재 규격 프리셋이 적용된 상태로 열렸습니다 — 지금 만들어 [⚡ Push]하면 됩니다.</span>
+              <span class="why">"맵을 만들러 간다"와 "맵을 고치러 간다"가 <b>같은 동작</b>입니다.</span>
             </div>
             <div class="vbadges" style="margin-bottom:2px">
               <span class="chip">총 600</span><span class="chip bad">defect 45</span>
@@ -661,6 +640,54 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
               그래도 잠금 해제 후 변경했다면, 이 배너 + Push 비활성 + 툴바 칩 적색화 <b>3중</b>으로 막습니다.</p>
           </div>
 
+         </div><!-- /rside-scroll -->
+
+         <!-- ═══ 사용 자재 리스트 (DOE별 그룹) — 이동 허브 ═══ -->
+         <div class="mat-pane" id="mat-pane">
+           <div class="mat-head">
+             <b>📦 사용 자재 <span class="chip" style="margin-left:4px">6</span></b>
+             <button class="glass-btn mini" type="button">↻ 가용 재조회</button>
+           </div>
+           <div class="mat-scroll">
+
+             <div class="mat-grp">
+               <div class="mat-grp-h"><span class="sw" style="background:#10b981">D1</span>
+                 <span>STACK 1</span><span class="meta">소요 120</span></div>
+               <div class="mat-row"><span class="flash"></span><span class="tree">├</span>
+                 <span class="mat-id">DT-F</span><span class="mat-qty"><b>410</b> / 60</span><span class="chip ok">맵 ✓</span></div>
+               <div class="mat-row"><span class="flash"></span><span class="tree">└</span>
+                 <span class="mat-id">DT-G</span><span class="mat-qty"><b>388</b> / 60</span><span class="chip ok">맵 ✓</span></div>
+             </div>
+
+             <div class="mat-grp on">
+               <div class="mat-grp-h"><span class="sw" style="background:#3b82f6">D2</span>
+                 <span>STACK 2-11</span><span class="meta">소요 200</span></div>
+               <div class="mat-row over" data-mat="DT-A"><span class="flash"></span><span class="tree">├</span>
+                 <span class="mat-id">DT-A</span><span class="mat-qty"><b>480</b> / 50</span>
+                 <span style="display:flex;gap:4px"><span class="chip bad" title="같은 자재가 D2·D3에 함께 쓰임 — 합계 540 &gt; 가용 480">↔ 2 DOE ⚠ 540/480</span><span class="chip ok">맵 ✓</span></span></div>
+               <div class="mat-row"><span class="flash"></span><span class="tree">├</span>
+                 <span class="mat-id">DT-B</span><span class="mat-qty"><b>372</b> / 50</span><span class="chip ok">맵 ✓</span></div>
+               <div class="mat-row"><span class="flash"></span><span class="tree">├</span>
+                 <span class="mat-id">DT-C</span><span class="mat-qty"><span class="unknown" title="서버 remaining: null">미상</span> / 50</span><span class="chip ok">맵 ✓</span></div>
+               <div class="mat-row"><span class="flash"></span><span class="tree">└</span>
+                 <span class="mat-id">DT-D</span><span class="mat-qty"><b>279</b> / 50</span><span class="chip ok">맵 ✓</span></div>
+             </div>
+
+             <div class="mat-grp">
+               <div class="mat-grp-h"><span class="sw" style="background:#ec4899">D3</span>
+                 <span>STACK 12</span><span class="meta">소요 90</span></div>
+               <div class="mat-row over" data-mat="DT-A"><span class="flash"></span><span class="tree">├</span>
+                 <span class="mat-id">DT-A</span><span class="mat-qty"><b>480</b> / 45</span>
+                 <span style="display:flex;gap:4px"><span class="chip bad">↔ 2 DOE ⚠ 540/480</span><span class="chip ok">맵 ✓</span></span></div>
+               <div class="mat-row" id="mat-wf05"><span class="flash"></span><span class="tree">└</span>
+                 <span class="mat-id">WF-05</span><span class="mat-qty" id="wf-qty"><span class="unknown">—</span> / 45</span>
+                 <span class="chip warn" id="wf-state">맵 없음</span></div>
+             </div>
+
+           </div>
+           <div class="mat-hint">행 클릭 = 그 자재의 맵을 엽니다 (뒤로가기로 복귀) · <b>WF-05</b>를 눌러 왕복 보상을 확인해 보십시오</div>
+         </div>
+
         </div>
       </aside>
     </div>
@@ -668,7 +695,8 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 
   <div class="note">
     <b>변경 요지 한 줄</b> — 「전사 계획」이라는 <b>개체를 없앴습니다</b>. stage 선택·타깃 입력·plan_id·모드 A/B·페인팅 진입/이탈 버튼이 전부 사라지고,
-    남는 것은 ⓐ <b>무슨 맵을 열었나</b>(좌) ⓑ <b>그 맵의 값들이 무슨 뜻인가 = legend = DOE</b>(우) 두 가지뿐입니다.
+    남는 것은 ⓐ <b>무슨 맵을 열었나</b>(좌) ⓑ <b>그 맵의 값이 무슨 뜻인가 = legend = DOE</b>(우 상) ⓒ <b>그 DOE들이 무슨 자재를 쓰나</b>(우 하) 뿐입니다.
+    <b>순 추가는 목록 1개 + 브레드크럼 1줄 + 뒤로가기 1버튼</b>이고, 삭감된 컨트롤은 12종입니다.
   </div>
 
   <!-- ═══ 2안 비교 ═══ -->
@@ -680,21 +708,25 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
         <div class="wire">┌ 2. Legend & DOE ────────── 430px ┐
 │ [BONDING PLAN] bonding_map·BASE-77│
 ├ 요약(sticky): 배지·커버리지 스트립 ┤
-│ ▶ ●D1  TP-7|02 · 1–3 · 120/120   │
-│ ▼ ●D2  TP-9|01 · 4–8 · 200/180   │
-│    층별 배정 [4]-[8] [TP-9|01][40]│
-│    가용 = 총900−40−30−590 = 미상  │
-│    knob · 설명                    │
-│ ▶ ●D3  TP-7|02 · 4–5 · 90/0  ⛔   │
+│ ▶ ●D1  1     DT-A 외 1매  120/120 │ ▲
+│ ▼ ●D2  2-11  DT-A 외 3매  200/180 │ │ 스크롤 A
+│    STACK [2-11]   총 소요 [200]   │ │
+│    자재 (DT-A)(DT-B)(DT-C)(＋)    │ │
+│    knob · 설명                    │ ▼
+├ 📦 사용 자재 (DOE별) ─────────────┤
+│ ●D2  STACK 2-11        소요 200   │ ▲
+│  ├ DT-A  480/50 ↔2DOE⚠  [맵 ✓]   │ │ 스크롤 B
+│  ├ DT-B  372/50         [맵 ✓]   │ │ (허브 상주)
+│  └ DT-C  미상/50        [맵 ✓]   │ ▼
 └───────────────────────────────────┘</div>
         <div class="pro">
           <span>스캔 열이 <b>하나</b> — 수십 개 DOE도 위→아래 한 번에 훑는다</span>
-          <span>브러시 팔레트가 항상 보인다(칠하면서 상세 편집 가능)</span>
+          <span>세로 스택이라 <b>자재 목록을 아래에 그대로 얹을 수 있다</b> (이중 스크롤로 허브 상주)</span>
           <span>사이드바를 620→430px로 <b>줄여 캔버스를 190px 넓힌다</b></span>
           <span>선택 상태와 편집 상태가 <b>같은 행</b> — "어느 DOE를 고치는 중인지" 혼동 없음</span>
         </div>
         <div class="pro con">
-          <span>펼친 행이 길면 다음 DOE가 화면 밖으로 밀린다 → <b>한 번에 하나만 펼침</b> + 행 헤더 sticky로 완화</span>
+          <span>펼친 행이 길면 다음 DOE가 화면 밖으로 밀린다 → <b>한 번에 하나만 펼침</b>으로 완화</span>
         </div>
       </div>
     </div>
@@ -705,18 +737,21 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 │ [BONDING PLAN] bonding_map·BASE-77│
 ├──────────┬────────────────────────┤
 │ ●D1 120  │ D2 상세                │
-│ ●D2 180  │  층별 배정             │
-│ ●D3   0  │  가용 산식             │
+│ ●D2 180  │  STACK · 총 소요       │
+│ ●D3   0  │  자재 칩               │
 │          │  knob · 설명           │
-│ (브러시) │  [소스 맵 열기]        │
-└──────────┴────────────────────────┘</div>
+│ (브러시) │                        │
+├──────────┴────────────────────────┤
+│ 📦 사용 자재 (DOE별)  ← 2열 아래에 │
+│ ●D2 ├ DT-A … ├ DT-B …             │  ← 좌우 2열 + 상하 2단
+└───────────────────────────────────┘</div>
         <div class="pro">
           <span>상세가 길어도 목록이 밀리지 않는다</span>
           <span>현행 코드(renderLeft/renderRight) 구조를 그대로 재사용 — 이행 비용 최소</span>
         </div>
         <div class="pro con">
-          <span>620px 사이드바 유지 → 1280px 화면에서 캔버스가 <b>330+620=950px</b>에 눌린다</span>
-          <span>좁은 2열이라 층별 배정 행(from–to·소스·수량·버튼)이 <b>줄바꿈</b>된다</span>
+          <span><b>자재 목록이 얹히는 순간 "좌우 2열 + 상하 2단" 격자</b>가 된다 — "절대 복잡하면 안 된다"와 정면 충돌</span>
+          <span>620px 유지 → 1280px 화면에서 캔버스가 <b>330+620=950px</b>에 눌린다</span>
           <span>목록과 상세의 <b>선택 동기화</b>가 또 하나의 상태 — "따로 논다"는 원래 불만의 축소판</span>
         </div>
       </div>
@@ -778,7 +813,7 @@ for (let i = 0; i < 16*14; i++) {
   fg.appendChild(c);
 }
 
-// 아코디언
+// 아코디언 + DOE ↔ 자재 그룹 연동 (필터 아님 — 강조 + 시야 확보)
 document.querySelectorAll('.doe-row').forEach(row => {
   row.addEventListener('click', () => {
     const d = row.parentElement;
@@ -788,13 +823,66 @@ document.querySelectorAll('.doe-row').forEach(row => {
     if (!wasOpen) d.classList.add('open');
     const sw = row.querySelector('.sw');
     if (sw) document.getElementById('brush-txt').textContent = sw.textContent;
+    const val = d.dataset.doe;
+    if (!val) return;
+    document.querySelectorAll('.mat-grp').forEach(g => {
+      const on = g.querySelector('.sw').textContent === val;
+      g.classList.toggle('on', on);
+      if (on) g.scrollIntoView({ block: 'nearest' });
+    });
   });
+});
+
+// 교차 초과배정 칩 → 같은 자재의 형제 행 동시 하이라이트
+document.querySelectorAll('.mat-row .chip.bad').forEach(chip => {
+  chip.addEventListener('click', e => {
+    e.stopPropagation();
+    const mat = chip.closest('.mat-row').dataset.mat;
+    document.querySelectorAll(`.mat-row[data-mat="${mat}"] .flash`).forEach(f => {
+      f.classList.remove('go'); void f.offsetWidth; f.style.background = 'var(--danger-weak)'; f.classList.add('go');
+    });
+  });
+});
+
+// 자재 행 클릭 = 그 자재 맵으로 이동 (WF-05는 왕복 보상 데모)
+document.querySelectorAll('.mat-row').forEach(r => {
+  r.addEventListener('click', () => {
+    const id = r.querySelector('.mat-id').textContent;
+    goSource(id, r.id === 'mat-wf05');
+  });
+});
+let pendingReward = false;
+function goSource(matId, reward) {
+  pendingReward = !!reward;
+  document.querySelectorAll('#scenarios button').forEach(x => x.classList.remove('on'));
+  document.querySelector('#scenarios button[data-sc="source"]').classList.add('on');
+  SC.source();
+  document.getElementById('bc-cur').textContent = 'dt_map · ' + matId;
+  document.getElementById('src-title').textContent = 'dt_map · ' + matId;
+  document.getElementById('tgt-txt').textContent = 'dt_map · ' + matId;
+  document.getElementById('src-empty').style.display = reward ? '' : 'none';
+}
+// 뒤로가기 = 프레임 pop + ★ 해당 자재만 재조회 + 델타 하이라이트
+document.getElementById('bc-back').addEventListener('click', () => {
+  document.querySelectorAll('#scenarios button').forEach(x => x.classList.remove('on'));
+  document.querySelector('#scenarios button[data-sc="bonding"]').classList.add('on');
+  SC.bonding();
+  if (!pendingReward) return;
+  pendingReward = false;
+  const row = document.getElementById('mat-wf05');
+  document.getElementById('wf-qty').innerHTML = '<b>318</b> / 45';
+  const st = document.getElementById('wf-state');
+  st.textContent = '맵 ✓'; st.className = 'chip ok';
+  const f = row.querySelector('.flash');
+  f.style.background = 'var(--success-weak)';
+  f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  row.scrollIntoView({ block: 'nearest' });
 });
 
 // 시나리오
 const SC = {
   bonding: () => {
-    show('#plan-head,#sum,#doelist'); hide('#plain-legend,#source-panel,#mismatch-panel,#bcrumb');
+    show('#plan-head,#sum,#doelist,#mat-pane'); hide('#plain-legend,#source-panel,#mismatch-panel,#bcrumb');
     set('#stage-badge','BONDING PLAN','stage-badge');
     set('#tgt-txt','bonding_map · BASE-77');
     cls('#tgt-chip','tgt-chip locked'); txtPrefix('#tgt-chip','🔒 편집 대상 ');
@@ -804,17 +892,17 @@ const SC = {
     pin(true,'bonding_map · BASE-77');
   },
   source: () => {
-    show('#source-panel,#bcrumb'); hide('#plan-head,#sum,#doelist,#plain-legend,#mismatch-panel');
-    set('#stage-badge','소스 맵 (읽기 프레임)','stage-badge none');
-    set('#tgt-txt','core_defect_map · LOT-A|05');
-    cls('#tgt-chip','tgt-chip'); txtPrefix('#tgt-chip','🎨 편집 대상 ');
-    document.getElementById('push-btn').disabled = true;
+    show('#source-panel,#bcrumb'); hide('#plan-head,#sum,#doelist,#plain-legend,#mismatch-panel,#mat-pane');
+    set('#stage-badge','DT PLAN','stage-badge');
+    set('#tgt-txt','dt_map · DT-C');
+    cls('#tgt-chip','tgt-chip locked'); txtPrefix('#tgt-chip','🔒 편집 대상 ');
+    document.getElementById('push-btn').disabled = false;
     document.getElementById('rside-title').textContent = '🎨 2. 사용 영역 (DOE별)';
-    document.getElementById('cnote').textContent = '왕복은 "모드"가 아니라 "맵을 하나 더 연 것" — 브레드크럼으로 되돌아갑니다';
-    pin(true,'core_defect_map · LOT-A|05');
+    document.getElementById('cnote').textContent = '왕복은 "모드"가 아니라 "맵을 하나 더 연 것" — 자재 맵도 실맵이라 정체성 핀이 따라옵니다';
+    pin(true,'dt_map · DT-C');
   },
   plain: () => {
-    show('#plain-legend'); hide('#plan-head,#sum,#doelist,#source-panel,#mismatch-panel,#bcrumb');
+    show('#plain-legend'); hide('#plan-head,#sum,#doelist,#source-panel,#mismatch-panel,#bcrumb,#mat-pane');
     set('#stage-badge','계획 대상 아님','stage-badge none');
     set('#tgt-txt','eds_fail_map · LOT-A|05');
     cls('#tgt-chip','tgt-chip locked'); txtPrefix('#tgt-chip','🔒 편집 대상 ');
@@ -824,7 +912,7 @@ const SC = {
     pin(true,'eds_fail_map · LOT-A|05');
   },
   mismatch: () => {
-    show('#mismatch-panel,#doelist'); hide('#plan-head,#sum,#plain-legend,#source-panel,#bcrumb');
+    show('#mismatch-panel,#doelist,#mat-pane'); hide('#plan-head,#sum,#plain-legend,#source-panel,#bcrumb');
     set('#stage-badge','BONDING PLAN','stage-badge');
     set('#tgt-txt','bonding_map · BASE-78 ⚠');
     cls('#tgt-chip','tgt-chip mismatch'); txtPrefix('#tgt-chip','🚫 키 불일치 ');
