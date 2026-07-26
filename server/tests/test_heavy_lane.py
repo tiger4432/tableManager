@@ -584,6 +584,92 @@ def test_retry_pattern_waits_for_heavy_via_workspace_serial_lock(tmp_path, monke
         lane.stop()
 
 
+# ---------------------------------------------------------------------------
+# 10) 라이브 드릴 후속 수정 회귀 (QA_p1_live_drill_report.md 결함1 + 관찰)
+# ---------------------------------------------------------------------------
+
+def test_queued_notification_precedes_instant_worker_pickup(tmp_path, monkeypatch, inline_calls):
+    """[드릴 결함1] 큐가 비어 워커가 제출 '즉시' 잡을 집는 최악 타이밍에서도
+    QUEUED 통지가 PROCESSING보다 먼저 발신되어야 한다 (역행 덮어쓰기 오표시 방지)."""
+
+    class InstantLane:
+        """submit 즉시 잡을 동기 실행 — 빈 큐 + 즉시 픽업 경합의 결정적 재현."""
+        def submit(self, job):
+            job()
+
+    monkeypatch.setattr(directory_watcher, "get_heavy_threshold_bytes", lambda: 100)
+    ws = _make_workspace(tmp_path, "hvy_test_drill1", {"big.csv": 300})
+    states = []
+    handler = IngestionHandler(
+        ws, None, os.path.join(ws, "archives"),
+        default_table_name="hvy_test_drill1", heavy_lane=InstantLane(),
+        on_ingestion_state_callback=states.append,
+    )
+    handler._handle_event(os.path.join(ws, "raws", "big.csv"))
+
+    assert [s["status"] for s in states] == ["QUEUED", "PROCESSING", "FINISHED"], \
+        "즉시 픽업에서도 QUEUED가 선행해야 한다 (submit 이전 발신)"
+    assert not handler.processing_files and handler._heavy_backlog == 0
+
+
+def test_submit_failure_cleans_up_preemptive_queued_state(tmp_path, monkeypatch, inline_calls):
+    """[드릴 결함1 후속] QUEUED 선발신으로 바뀌면서 submit 실패 시 고아 QUEUED 엔트리
+    (장기 TTL — F1)가 남지 않도록 FINISHED 정리를 발신하고 인라인 폴백해야 한다."""
+
+    class BrokenLane:
+        def submit(self, job):
+            raise RuntimeError("lane stopped")
+
+    monkeypatch.setattr(directory_watcher, "get_heavy_threshold_bytes", lambda: 100)
+    ws = _make_workspace(tmp_path, "hvy_test_drill1b", {"big.csv": 300})
+    states = []
+    handler = IngestionHandler(
+        ws, None, os.path.join(ws, "archives"),
+        default_table_name="hvy_test_drill1b", heavy_lane=BrokenLane(),
+        on_ingestion_state_callback=states.append,
+    )
+    handler._handle_event(os.path.join(ws, "raws", "big.csv"))
+
+    assert [s["status"] for s in states] == ["QUEUED", "FINISHED"], \
+        "submit 실패 시 선발신 QUEUED는 FINISHED로 정리되어야 한다"
+    assert [c[1] for c in inline_calls] == ["big.csv"], "submit 실패는 인라인 폴백 처리"
+    assert not handler.processing_files and handler._heavy_backlog == 0
+
+
+def test_batch_refresh_ws_payload_includes_total_log_count(client, monkeypatch):
+    """[드릴 관찰] watcher-직행 경로(/internal/events/batch-refresh)의 WS 페이로드도
+    체인 경로(passthrough)와 대칭으로 total_log_count를 동봉해야 한다 (C-5 계약 정합 —
+    클라이언트가 절단 여부를 양 경로에서 동일하게 판별 가능)."""
+    import main as main_module
+
+    sent = []
+
+    async def capture_broadcast(text):
+        sent.append(text)
+
+    monkeypatch.setattr(main_module.manager, "broadcast", capture_broadcast)
+
+    logs = [{"row_id": f"r{i}", "table_name": "hvy_test_ws"} for i in range(3)]
+    res = client.post("/internal/events/batch-refresh", json={
+        "table_name": "hvy_test_ws", "change_count": 1200,
+        "created_logs": logs, "total_log_count": 1200,
+    })
+    assert res.status_code == 200
+    assert len(sent) == 1
+    msg = json.loads(sent[0])
+    assert msg["event"] == "batch_refresh_required"
+    assert msg["total_log_count"] == 1200, "실제 총 건수(절단 전)가 WS 페이로드에 실려야 한다"
+    assert len(msg["created_logs"]) == 3
+
+    # 구버전 워처 호환: total_log_count 미전송 시 len(created_logs)로 폴백
+    sent.clear()
+    res = client.post("/internal/events/batch-refresh", json={
+        "table_name": "hvy_test_ws", "change_count": 3, "created_logs": logs,
+    })
+    assert res.status_code == 200
+    assert json.loads(sent[0])["total_log_count"] == 3
+
+
 def test_active_api_snapshot_shape(client):
     ingestion_activity.registry.clear()
     try:

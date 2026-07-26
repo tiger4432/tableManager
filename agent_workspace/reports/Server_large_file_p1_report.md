@@ -238,12 +238,38 @@ watchdog `Observer`는 **모든 워크스페이스 핸들러의 이벤트를 단
 - 전체 스위트: **257 passed / 1 allowed fail(test_map_presets_api)** — 기준선 253 이상 유지, 회귀 0.
 - `py_compile` 3개 파일 OK. main.py·client2 무변경(재빌드 불필요).
 
+## 9b. 라이브 드릴 후속 수정 (PASS 후 소결함 2건 — `QA_p1_live_drill_report.md`)
+
+### 결함1 [낮음] QUEUED/PROCESSING 통지 역전
+- `directory_watcher.py` `_submit_to_heavy_lane`: QUEUED 통지·로그를 **submit 이전**으로 이동 —
+  빈 큐에서 워커가 즉시 픽업해 PROCESSING을 먼저 쏘고 뒤늦은 QUEUED가 레지스트리를 역행
+  덮어쓰던(~5초 '대기' 오표시) 경합 제거. 통지는 동기 발신이므로 수신측 순서도 보장.
+- 부수 안전장치: 선발신으로 바뀌면서 submit 실패 시 QUEUED 고아(F1의 장기 TTL 24h라 오래
+  잔류)가 생길 수 있어 실패 경로에서 **FINISHED 정리 통지** 후 인라인 폴백.
+- 회귀: `test_queued_notification_precedes_instant_worker_pickup`(제출 즉시 동기 실행하는
+  InstantLane으로 최악 타이밍 결정적 재현 — QUEUED→PROCESSING→FINISHED 순서 강제),
+  `test_submit_failure_cleans_up_preemptive_queued_state`(QUEUED→FINISHED 정리 + 인라인 폴백).
+
+### 관찰 [C-5 비대칭] watcher-직행 WS 페이로드 total_log_count 누락
+- `main.py` `internal_event_batch_refresh`: msg 재구성 시 `msg["total_log_count"] = actual_count`
+  동봉(순수 추가 필드) — 체인 경로(broadcast passthrough)와 대칭화, 클라이언트가 절단 여부
+  (`len(created_logs) < total_log_count`)를 양 경로에서 동일 판별 가능. 구워처 폴백
+  (`len(created_logs)`) 유지. ※ 임베디드 모드 `trigger_ws_refresh`(레거시 5000 게이트)는
+  C-5 절단 자체가 미적용인 기존 경로라 범위 외 — 관찰만 기록.
+- 회귀: `test_batch_refresh_ws_payload_includes_total_log_count`(manager.broadcast 캡처 —
+  명시 전달·폴백 두 케이스).
+
+### 검증
+- 신규 파일 단독 **27 passed**(24+3). 전체 스위트 **278 passed / 1 allowed fail**(기준선 275 이상,
+  회귀 0). py_compile OK. client2 무접촉(병렬 rect 작업 존중), 커밋 안 함.
+
 ## 10. 인계 요약
 
 - **변경**: §2 표 + §9(QA 픽스 F1/F3/F4) 참조. 커밋 없음(총괄 diff 검수 대기), docs/·main.py
   무변경(M1 병렬 작업 존중).
-- **검증**: 전체 pytest **257 passed / 1 allowed fail**(기준선 253 이상), 신규 24 통과,
-  py_compile OK, vite build OK. 라이브 검증은 §4 계획으로 이관(재기동 필요).
+- **검증**: 전체 pytest **278 passed / 1 allowed fail**(당시 기준선 275 이상), 신규 27 통과,
+  py_compile OK, vite build OK. 라이브 드릴 PASS(§9b — QA_p1_live_drill_report.md), 잔여
+  라이브 항목은 드릴 보고서 §5(재기동 멱등 수렴)만.
 - **미해결/후속**: §6 escalation(§6-5는 F3로 run_watcher 측 해소 — main.py 재시도 경로만 백로그),
   QA F2(라우팅 check-then-act 잔여 창 원자화)·F4 잔여(공유 큐 소형 파일 대기)·F5·F6·F7은 QA
   판정대로 후속. P2(체크포인트)·P3(outbox 파도)는 범위 밖 유지.

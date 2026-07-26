@@ -609,15 +609,9 @@ class IngestionHandler(FileSystemEventHandler):
         filename = os.path.basename(abs_path)
         with self._lane_state_lock:
             self._heavy_backlog += 1
-        try:
-            self.heavy_lane.submit(
-                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes)
-            )
-        except Exception as e:
-            with self._lane_state_lock:
-                self._heavy_backlog -= 1
-            logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {e}")
-            return False
+        # [라이브 드릴 결함1] QUEUED 통지는 **submit 이전**에 발신한다 — 큐가 비어 있으면
+        # 워커가 제출 즉시 잡을 집어 PROCESSING 통지를 먼저 쏘고, 뒤늦은 QUEUED가
+        # 레지스트리를 역행 덮어쓰기(실처리 중인데 '대기' 오표시)하던 경합 제거.
         reason = "size" if lane == "heavy" else "workspace-order"
         logger.info(f"[{t_display}] 🐘 Routed to heavy lane queue ({reason}, {size_bytes:,}B): {filename}")
         self._notify_ingestion_state({
@@ -628,6 +622,19 @@ class IngestionHandler(FileSystemEventHandler):
             "size_bytes": size_bytes,
             "queued_at": datetime.now().isoformat(timespec="seconds"),
         })
+        try:
+            self.heavy_lane.submit(
+                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes)
+            )
+        except Exception as e:
+            with self._lane_state_lock:
+                self._heavy_backlog -= 1
+            # 선발신한 QUEUED 엔트리 정리 — QUEUED는 장기 TTL(F1)이라 방치 시 고아가 오래 남는다.
+            self._notify_ingestion_state({
+                "table_name": t_display, "filename": filename, "status": "FINISHED",
+            })
+            logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {e}")
+            return False
         return True
 
     def _run_lane_job(self, abs_path: str, uploader: str, t_display: str, lane: str, size_bytes: int):

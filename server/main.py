@@ -3440,6 +3440,11 @@ async def internal_event_batch_refresh(
         actual_count = total_log_count if total_log_count is not None else len(created_logs)
         sliced_logs = created_logs[:MAX_NOTIFY_CREATED_LOGS] if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs
         msg["created_logs"] = sliced_logs
+        # [C-5 대칭화 — 라이브 드릴 관찰] 체인 경로(/internal/events/broadcast passthrough)는
+        # WS 페이로드에 total_log_count가 실리는데 이 경로는 msg 재구성 과정에서 누락됐다.
+        # 순수 추가 필드로 동봉해 클라이언트가 절단 여부(len(created_logs) < total_log_count)를
+        # 양 경로에서 동일하게 판별할 수 있게 한다.
+        msg["total_log_count"] = actual_count
         # Update the web server's in-memory audit cache
         # [C-1] pydantic 검증(add_logs_batch)은 CPU 바운드 — threadpool로 이관(루프 비블로킹, 내부 Lock으로 안전)
         try:
