@@ -11,6 +11,7 @@ sys.path.append(os.path.join(script_dir, "parsers"))
 
 # Setup Unified Logger
 from utils.logger import get_process_logger
+from utils import heartbeat
 logger = get_process_logger("Watcher", "watcher.log")
 
 # Now we can import database, models, and directory_watcher
@@ -144,8 +145,13 @@ def reload_watcher_cache():
 def poll_pending_retries():
     logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
-    
+
     while True:
+        # [B1/B2] Progress beat. This loop does real work every ~3 s (a database
+        # query plus the reload check), so a beat that stops advancing means the
+        # watcher process can no longer schedule this thread or reach the
+        # database - not merely that a pid vanished.
+        heartbeat.beat("watcher")
         db = SessionLocal()
         try:
             # Check for SYSTEM_RELOAD outbox event to reload modules

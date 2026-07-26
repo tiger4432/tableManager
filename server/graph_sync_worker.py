@@ -8,6 +8,7 @@ from datetime import datetime
 # Setup Unified Logger
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
+from utils import heartbeat
 
 logger = get_process_logger("GraphSync", "graph_sync.log")
 
@@ -615,6 +616,9 @@ async def run_graph_materializer_loop():
             db.close()
 
     while True:
+        # [B1/B2] Progress beat from the materializer loop itself. Idle
+        # iterations are bounded by the 2 s LISTEN timeout below.
+        heartbeat.beat("graph")
         try:
             # [QA G1-M3] 배치 처리를 스레드로 격리 — 연속 배치(백로그 소진) 중에도
             # 이벤트 루프가 자유로워 /sync 요청이 기아 상태에 빠지지 않는다.

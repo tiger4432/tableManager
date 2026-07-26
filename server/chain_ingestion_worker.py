@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 # Setup Unified Logger
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
+from utils import heartbeat
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
@@ -814,6 +815,11 @@ async def start_chain_ingestion_worker(db_session_factory):
     warmup_worker(rules, db_session_factory)
 
     while True:
+        # [B1/B2] Progress beat, emitted from the work loop itself. Idle
+        # iterations are bounded by the 2 s LISTEN timeout below, so a beat that
+        # stops advancing means this loop stopped advancing - the freeze case a
+        # pid check cannot see.
+        heartbeat.beat("chain")
         try:
             db = db_session_factory()
             try:

@@ -85,6 +85,83 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Estimated-Content-Length", "X-Total-Rows"]
 )
 
+# --- Health endpoint -------------------------------------------------------
+# Registered HERE, far above the SPA catch-all `@app.get("/{file_name:path}")` at
+# the bottom of this file. That ordering is the whole point: FastAPI matches in
+# registration order, and before this route existed `/health` fell through to the
+# catch-all and returned index.html with a 200. An external monitor would have
+# called a dead server alive. server/tests/test_health_endpoint.py asserts both
+# halves - /health is JSON, a bogus path is still HTML - so a future reorder that
+# re-shadows this route fails the suite instead of failing silently in production.
+import asyncio as _health_asyncio
+from fastapi.responses import JSONResponse
+import health as health_mod
+import process_supervisor as _supervisor_mod
+from utils import heartbeat as _heartbeat_mod
+
+# A health check that blocks is a second outage, so the database probe is bounded.
+_HEALTH_DB_TIMEOUT_SEC = 2.0
+# When the database hangs, `wait_for` frees the request but not the worker thread.
+# This flag stops a monitor polling every 10 s from stacking up one hung thread
+# per poll: at most one probe is ever in flight, and it is cleared by the thread
+# that owns it, not by the request that gave up waiting.
+_health_probe_inflight = False
+
+
+def _health_probe_db_sync():
+    from sqlalchemy import text as _sql_text
+    t0 = time.perf_counter()
+    db = SessionLocal()
+    try:
+        db.execute(_sql_text("SELECT 1"))
+        latency_ms = (time.perf_counter() - t0) * 1000.0
+        outbox = health_mod.probe_outbox(db)
+        return {"status": "ok", "latency_ms": round(latency_ms, 2)}, outbox
+    finally:
+        db.close()
+
+
+def _health_probe_and_release():
+    global _health_probe_inflight
+    try:
+        return _health_probe_db_sync()
+    finally:
+        _health_probe_inflight = False
+
+
+@app.get("/health")
+async def health_check():
+    """운영 모니터링용 헬스체크. 정상 200, 비정상 503 (항상 JSON)."""
+    global _health_probe_inflight
+    if _health_probe_inflight:
+        db_result = {"status": "timeout",
+                     "error": "a previous database probe has not returned"}
+        outbox_result = {"status": "unavailable"}
+    else:
+        _health_probe_inflight = True
+        try:
+            db_result, outbox_result = await _health_asyncio.wait_for(
+                _health_asyncio.to_thread(_health_probe_and_release),
+                timeout=_HEALTH_DB_TIMEOUT_SEC)
+        except _health_asyncio.TimeoutError:
+            db_result = {"status": "timeout",
+                         "error": f"no answer within {_HEALTH_DB_TIMEOUT_SEC}s"}
+            outbox_result = {"status": "unavailable"}
+        except Exception as e:
+            _health_probe_inflight = False
+            db_result = {"status": "down", "error": f"{type(e).__name__}: {e}"}
+            outbox_result = {"status": "unavailable"}
+
+    payload, http_status = health_mod.compute_health(
+        db_result=db_result,
+        heartbeats=_heartbeat_mod.read_all(),
+        supervisor_status=_supervisor_mod.read_status(),
+        outbox_result=outbox_result,
+        stale_after=_heartbeat_mod.DEFAULT_STALE_AFTER_SEC,
+    )
+    return JSONResponse(status_code=http_status, content=payload,
+                        headers={"Cache-Control": "no-store"})
+
 # --- Directory Watcher Integration ---
 import sys
 import os

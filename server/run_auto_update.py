@@ -15,6 +15,7 @@ from croniter import croniter
 # Setup Logging
 from utils.logger import get_process_logger
 from utils.auto_update_control import read_disabled_scripts
+from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
 logger = get_process_logger("Scheduler", "auto_update.log")
 
@@ -509,6 +510,9 @@ class MultiDiscoveryScheduler:
 
         try:
             while True:
+                # [B1/B2] Progress beat from the scheduler's own loop
+                # (check_interval = 5 s).
+                heartbeat.beat("scheduler")
                 # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 및 강제 실행(SCHEDULER_RUN_NOW) 감시
                 try:
                     from database.database import SessionLocal
