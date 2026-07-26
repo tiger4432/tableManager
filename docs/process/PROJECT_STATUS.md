@@ -10,6 +10,8 @@
 
 > 완료된 트랙은 여기서 내리고 §최근 완료로 옮긴다. **지금 손이 가 있는 것과 바로 다음 관문만** 남긴다.
 
+0. **🔄 재기동 대기 — M2+P2 병합 완료(2026-07-26, 381 passed / 1 allowed fail)**. `8e34804`(M2) + P2 브랜치 병합. **재기동 후 확인**: ① 신규 라우트 3종(`/api/maps/overlay`, `/api/maps/paint-rules`, `/api/transfer-plan/stages`) 실응답 ② 서버 보고서 §16-2 체크리스트 9항(오버레이 F셀 124개·`align_applied.origin: derived`·`plan_store`에 `source_region` 키 부재가 정상) ③ P2 드릴 3종(체크포인트 재개·dedup·#10 — P2 보고서 §8) ④ 페인트 잠금이 F 차단으로 동작하는지. 준비 스크립트: `setup_ingestion_checkpoint.py`(멱등).
+
 1. **🔴 M2 Universal Transfer Plan — 최우선, 진행 중(QA NO-GO 상태)**. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
 2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
    - **📐 재설계 도메인 확정 사항(사용자 2026-07-26)**: ⓐ **층 차원 불요** — "1층과 꼭대기만 다르고 나머지는 거의 유사", 층에 따라 달라지는 건 *어느 소스를 쓰는가*이지 *어느 좌표를 쓰는가*가 아니다 → `bonding_map`은 `(base,x,y)` 2D 유지, 캔버스 층 스텝퍼 불요. 층 차이는 **DOE의 STACK 구간 행**이 표현하고, 층대별 좌표 차이가 있어도 **다른 value로 칠하면** 자연 표현됨. ⓑ **DOE 소스는 묶음(pool)** — "몇 층에 뭐가 들어갈지 정확히 예측 불가, 여러 DT 군 지정 가능(한 매 500칩이면 4매 묶어 투입)" → 계획 단위는 "이 층 구간에 이 묶음에서 총 N칩", 검증은 **묶음 합산 가용 vs 소요**. ⚠️ 스키마 함의: 현행 `transfer_plan_doe_layer` bk가 `doe_key|layer`라 층당 소스 1개만 담긴다 — 묶음 지원에 **키에 소스 차원 추가** 필요. ⓒ **defect = 영역×불량종류→BIN** (단순 양불 아님) → 오버레이는 종류/BIN 판독 가능해야 하고, 어떤 BIN을 사용 불가로 볼지가 설정 대상.
