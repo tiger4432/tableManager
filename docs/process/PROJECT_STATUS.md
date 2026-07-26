@@ -27,6 +27,14 @@
 
    **규율**: 읽기(조회)는 무마찰, 쓰기(Push)는 1회 확인. **다음 절차: 두 에이전트 완료 → QA 재검수 → 병합 → 재기동.**
 
+   **🧭 재개 브리프 (컨텍스트 압축 대비 — 2026-07-26 작성)**
+   - **미커밋 작업물의 위치**: 서버 v2는 `server/map_overlay.py`·`transfer_plan.py`·`main.py`(워킹트리), 클라 v2는 `client2/src/map_editor.js`·`transfer_plan.js`(워킹트리, `npm run build` 반영됨). **커밋 전이므로 `git status`로 범위를 먼저 확인할 것.**
+   - **읽어야 할 보고서 3종**: `agent_workspace/reports/Server_transfer_plan_v2_impl_report.md`(§0 = 클라 계약, §4-1 = 적용 완료된 config, §5-2-bis = 좌표축), `Client_transfer_plan_v2_impl_report.md`(구현/보류/제거 3분류), `Design_transfer_plan_ui_v2.md`+`.html`(확정 시안).
+   - **에이전트 재개 불가 시**: 위 보고서 3종 + 이 표만으로 잔여 작업을 새 지시서로 재구성 가능. 진행 중이던 클라 대기열 5건(위 표)이 유일한 미완 범위다.
+   - **최근 스위트**: 405 passed / 1 allowed fail(`test_map_presets_api` — 상시 허용).
+   - **재기동 필요 여부**: 서버 코드 변경분은 병합 후 재기동 필요. config 적용분(`map_doe` 등)은 이미 라이브 반영됨.
+   - **doc-keeper 정비 미실행**: 트리거 17건 누적 — M2-v2 병합 후 CODE_MAP·히스토리·체크리스트 일괄 정비 필요(보드는 총괄 전담이라 제외).
+
 1-1. ~~M2 Universal Transfer Plan(1차)~~ — 병합 완료(`8e34804`), 아래 재설계로 대체 진행 중. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
 2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
    - **📐 재설계 도메인 확정 사항(사용자 2026-07-26)**: ⓐ **층 차원 불요** — "1층과 꼭대기만 다르고 나머지는 거의 유사", 층에 따라 달라지는 건 *어느 소스를 쓰는가*이지 *어느 좌표를 쓰는가*가 아니다 → `bonding_map`은 `(base,x,y)` 2D 유지, 캔버스 층 스텝퍼 불요. 층 차이는 **DOE의 STACK 구간 행**이 표현하고, 층대별 좌표 차이가 있어도 **다른 value로 칠하면** 자연 표현됨. ⓑ **DOE 소스는 묶음(pool)** — "몇 층에 뭐가 들어갈지 정확히 예측 불가, 여러 DT 군 지정 가능(한 매 500칩이면 4매 묶어 투입)" → 계획 단위는 "이 층 구간에 이 묶음에서 총 N칩", 검증은 **묶음 합산 가용 vs 소요**. ⚠️ 스키마 함의: 현행 `transfer_plan_doe_layer` bk가 `doe_key|layer`라 층당 소스 1개만 담긴다 — 묶음 지원에 **키에 소스 차원 추가** 필요. ⓒ **defect = 영역×불량종류→BIN** (단순 양불 아님) → 오버레이는 종류/BIN 판독 가능해야 하고, 어떤 BIN을 사용 불가로 볼지가 설정 대상.
