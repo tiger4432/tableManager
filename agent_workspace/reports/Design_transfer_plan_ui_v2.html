@@ -207,6 +207,36 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
 .bycore td{padding:4px 7px;border-top:1px solid var(--border)}
 .bycore td.u{color:var(--text-dim)}
 
+/* ── 자재 칩 (DOE 펼침 안) ─────────────────────────────────────────────── */
+.matchips{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.matchip{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:.71rem;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:2px 4px 2px 8px}
+.matchip button{background:transparent;border:none;color:var(--text-dim);font-size:.68rem;padding:1px 3px;border-radius:4px}
+.matchip button:hover{background:var(--danger-weak);color:var(--danger)}
+.matchip.add{border-style:dashed;color:var(--accent);border-color:var(--accent);padding:2px 9px;cursor:pointer}
+
+/* ── 사용 자재 리스트 (DOE별 그룹) ───────────────────────────────────── */
+.rside-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:14px 14px 4px}
+.mat-pane{height:250px;min-height:250px;border-top:1px solid var(--border);background:var(--bg-inset);display:flex;flex-direction:column}
+.mat-head{display:flex;align-items:center;justify-content:space-between;padding:8px 13px;border-bottom:1px solid var(--border);background:var(--bg-header)}
+.mat-head b{font-size:.83rem}
+.mat-scroll{flex:1;min-height:0;overflow-y:auto}
+.mat-grp-h{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--bg-header);border-bottom:1px solid var(--border);font-size:.74rem}
+.mat-grp-h .sw{width:26px;height:20px;font-size:.68rem;border-radius:5px}
+.mat-grp-h .meta{margin-left:auto;font-family:var(--font-mono);color:var(--text-muted);font-size:.71rem}
+.mat-grp.on .mat-grp-h{box-shadow:inset 3px 0 0 var(--accent)}
+.mat-row{position:relative;display:grid;grid-template-columns:14px 1fr auto auto;gap:8px;align-items:center;padding:6px 12px 6px 20px;border-bottom:1px solid var(--border);font-size:.74rem;cursor:pointer;transition:var(--transition-smooth)}
+.mat-row:hover{background:var(--surface-hover)}
+.mat-grp.on .mat-row{box-shadow:inset 3px 0 0 var(--accent)}
+.mat-row.over{background:var(--danger-weak)}
+.mat-row .tree{color:var(--text-dim);font-family:var(--font-mono);font-size:.7rem}
+.mat-id{font-family:var(--font-mono);font-weight:600}
+.mat-qty{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--text-muted)}
+.mat-qty b{color:var(--text)}
+.flash{position:absolute;inset:0;background:var(--success-weak);pointer-events:none;opacity:0;border-radius:4px}
+.flash.go{animation:fade 1.1s ease-out forwards}
+@keyframes fade{from{opacity:1}to{opacity:0}}
+.mat-hint{padding:7px 12px;font-size:.69rem;color:var(--text-dim);border-top:1px dashed var(--border)}
+
 /* ── ⑤ Push 가드 모달 ───────────────────────────────────────────────── */
 .modal-wrap{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px}
 .modal-wrap.on{display:flex}
@@ -408,7 +438,8 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
           <h3 id="rside-title">🎨 2. Legend &amp; DOE</h3>
           <button class="glass-btn mini primary" type="button">+ DOE</button>
         </div>
-        <div class="sidebar-content" id="rside">
+        <div class="sidebar-content" id="rside" style="padding:0;gap:0;overflow:hidden">
+         <div class="rside-scroll">
 
           <!-- 계획 헤더: 입력이 아니라 '유도된 사실'의 표시 -->
           <div class="plan-head" id="plan-head">
@@ -418,8 +449,7 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
               <span class="chip dim" title="자동 저장 — legend와 동일 규율">자동 저장 09:41</span>
             </div>
             <div class="plan-head-l2">
-              <span>소스 <b>Tape</b></span><span>·</span>
-              <span>층 <b>1–8</b></span><span>·</span>
+              <span>자재 <b>Tape</b></span><span>·</span>
               <span>값 컬럼 <b class="mono">leg</b></span>
               <span style="margin-left:auto" class="chip dim">stage는 테이블에서 유도됨 (선택 UI 없음)</span>
             </div>
@@ -434,7 +464,7 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
             </div>
             <div class="vbadges">
               <span class="chip warn">수량 부족 <b>검증 스킵</b></span>
-              <span class="chip warn">FAIL 이력 0 ⚠</span>
+              <span class="chip bad">교차 초과배정 1 <b>잠정</b></span>
               <span class="chip warn">🖌 페인팅 불일치 1</span>
               <span class="chip dim">신뢰: 미검증</span>
             </div>
@@ -442,7 +472,7 @@ textarea.glass-input{resize:vertical;min-height:46px;font-size:.78rem}
               <div class="cov-strip">
                 <i></i><i></i><i></i><i class="gap"></i><i></i><i></i><i class="ov"></i><i></i>
               </div>
-              <div class="cov-txt">커버리지 1–8층 · 공백 1층 (4) · 겹침 1층 (7)</div>
+              <div class="cov-txt">STACK 커버리지 1–12 · 공백 1구간 · 겹침 1구간</div>
             </div>
           </div>
 
