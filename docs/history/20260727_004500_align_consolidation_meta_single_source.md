@@ -1,6 +1,7 @@
 # 정렬 일원화 — `wafer_map_metadata` 단일 근거화 + `bonding_plan` 변환 사본 삭제
 
-**일자:** 2026-07-27 · **담당:** Server PM · **보드:** #20 · **관련 스펙:** [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md)
+**커밋:** `4ba13ae` · **일자:** 2026-07-27 · **담당:** Server PM · **보드:** #20 · **관련 스펙:** [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md)
+같은 커밋의 다른 두 트랙: [격리 개발 환경](./20260727_000000_isolated_dev_environment.md) · [M2.5 맵 에디터](./20260727_004000_m25_blank_map_overlay_and_material_rollup.md)
 
 ## 현상
 

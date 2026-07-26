@@ -381,7 +381,8 @@ sequenceDiagram
 구현은 `map_overlay._frame_phys_params` **한 함수에 가둬** 있습니다. `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정입니다.
 
 > **✅ A2 해소 (2026-07-27)** — `bonding_plan.make_align_transform`(bbox 항 없는 구 산술)은 **삭제**됐고 가용량 산출이 `map_overlay`로 배선됐습니다. 실측 대조: 라이브 규격(40×40 · chip 7×7 · dia 300 · margin 3)은 bbox가 `(0,39,0,39)`라 두 구현의 결과가 **1288셀 전건 일치** — 그래서 라이브 가용량 수치는 변하지 않습니다. 반면 웨이퍼 원에 잘리는 격자(29×25 · chip 11×13)에서는 **425셀 전건 불일치**하며 편차는 거울 축에서 `2·minC` = (4,4)입니다. 구 사본이 틀렸고, 그것이 휴면이 아니었다는 점도 함께 확인됐습니다 — `bonding_plan_config.json`·`transfer_plan_config.json` 둘 다 `eds_fail`에 `rotation:180`을 **라이브로 선언**하고 있었습니다(그 값은 `eds_fail_map` 메타의 rotation과 정확히 같아, 선언이 메타의 중복이었음을 보여줍니다).
-> **✅ A3 해소 (2026-07-26, 재기동 후 REST 실측)** — 3케이스 전부 `status: ok` + `align_applied.origin: derived` + 격자 밖 셀 0건, `bonding_map/EXP1`의 `x=-1` 소멸 확인. 함정 기록: `/health`는 존재하지 않는 경로라 정적 catch-all이 **HTML을 200으로** 반환합니다 — 헬스체크 근거로 쓰지 마십시오. 응답 필드명은 `align`이 아니라 **`align_applied`**입니다.
+> **✅ A3 해소 (2026-07-26, 재기동 후 REST 실측)** — 3케이스 전부 `status: ok` + `align_applied.origin: derived` + 격자 밖 셀 0건, `bonding_map/EXP1`의 `x=-1` 소멸 확인. 응답 필드명은 `align`이 아니라 **`align_applied`**입니다.
+> 함정 기록: **존재하지 않는 경로는 정적 catch-all이 HTML을 200으로** 반환하므로 살아있음의 근거로 쓸 수 없습니다. ~~당시 `/health`도 그런 경로였습니다~~ — **2026-07-27부터 `/health`는 실제 라우트로 존재하고 항상 JSON을 반환합니다**([backend §1.3](../architecture/backend.md)). 그 외 경로에는 이 함정이 그대로 유효합니다.
 > **회귀 시험 규율** — 오버레이 좌표 회귀는 반드시 **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인하십시오. 40×40(`minC=0`)은 결함이 **원리적으로 발현할 수 없는** 구간입니다. 축 조합은 `chip_x≠chip_y` · rot 90/180/270 · back · `offset≠0`을 **동시에** 만족시켜야 의미가 있습니다.
 
 ### 5.4 클라 측 경계 규약 (메인 로드와의 분리)

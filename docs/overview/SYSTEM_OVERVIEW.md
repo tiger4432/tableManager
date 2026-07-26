@@ -134,7 +134,7 @@ graph TD
 | `scheduler_status.json` | Auto-Update 스케줄러 실시간 상태(쓰기 전용) |
 | `auto_update_control.json` | Auto-Update 수집기별 active 토글(어드민이 쓰고 스케줄러가 매 틱 읽음 — 핫 반영, 부재 시 전부 active) — IO `utils/auto_update_control.py` |
 | `ingestion_settings.json` | 인제션 런타임 노브 — `heavy_file_mb`(P1 레인 임계)·`dedup_by_signature`·`resume_from_checkpoint`(P2). 파일 경계 핫리로드 |
-| `map_overlay_config.json` | **범용 맵 오버레이** — `align_overrides`(계측 보정 선언)·`table_bindings`(맵 좌표 컬럼)·`paint_lock`(페인트 잠금 정본) |
+| `map_overlay_config.json` | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼)·`paint_lock`(페인트 잠금 정본). **`align_overrides`는 2026-07-27 폐지** — 정렬의 근거는 `wafer_map_metadata` 하나뿐이다 |
 | `bonding_plan_config.json` / `transfer_plan_config.json` | 계획 엔진 역할 바인딩 — 역할(role)→실테이블·컬럼, stage 선언(`target_map`), `plan_store` |
 
 **설정 파일 전수 지도와 시나리오별 온보딩 절차(무엇을 어떤 순서로 넣고 어떻게 검증하는가)는 [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)를 참조하세요.**

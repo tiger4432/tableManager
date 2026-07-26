@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (HEAD `be58210` — §1.11/§2.15 운영 감시 신설, 오버레이 실패 status 4종으로 정정) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
 >
 > **유지 규율:** 새 기능이 병합·커밋되면 총괄이 doc-keeper에 위임하는 **코드맵 갱신과 같은 사이클**로 이 문서에도 해당 기능 행(§1)과 점검 항목(§2)을 추가한다. 구현 에이전트는 이 문서를 직접 수정하지 않는다.
 > **사용법:** §1은 "무엇이 있는가"(기능 지도), §2는 "어떻게 확인하는가"(릴리스 전/회귀 수동 점검). 체크박스는 점검 회차마다 복사해 사용하고 이 원본은 비워 둔다.
@@ -97,7 +97,7 @@
 | 엑셀 복사 | 그리드를 TSV로 클립보드 복사 | 작업영역 툴바 "🛠️ Edit Grid" 드롭다운 → "📋 Copy to Excel" | `copyGridToExcel`(§7) |
 | 테이블 간 맵 이월 | 테이블 A→B 전환 시 유지/초기화 확인창(컬럼명 상이 시 Advanced Column Mapping 수동 확인 필요 — 이슈 #2) | 테이블 전환 시 자동 확인창 | history `a41007e` |
 | 페인트 잠금 (M2, 2026-07-26) | 특정 값(기본 `F`)의 셀을 편집 불가로 잠금. **선언 정본이 서버**(`config/map_overlay_config.json`의 `paint_lock`)로 이동 — 종전 클라 하드코딩 `'F'` 대체. **조용한 fail-open 제거**: 404/405만 "선언 없음"(해제), 네트워크·5xx는 직전 잠금 유지 + `⚠ 잠금 규칙 미확인` 툴바 칩 + 경고 토스트. 모든 편집 경로가 `isProtectedFCell` 단일 관문 통과. ⚠️ **콜드 스타트(페이지 로드 후 첫 조회 실패)는 아직 잠금 없이 시작**(QA C4 미해소 — 칩은 뜨나 잠기지는 않음) | (자동) 맵 로드 시 규칙 조회 · 툴바 잠금 칩 | `fetchPaintRules/isProtectedFCell`(§7) · GET `/api/maps/paint-rules`(§1.2) · `map_overlay.get_paint_rules`(§5) |
-| **범용 맵 오버레이** (M2 → `7d931dc` 클라 일원화, 2026-07-26) | 임의의 맵을 임의의 맵 위에 겹쳐 본다(계획 전용 아님, **맵 인프라**). **좌표 변환은 클라 단일 구현** — 소스 원본 좌표를 소스 자신의 `wafer_map_metadata` 프레임으로 해석해 물리 키로 투영하므로, 사용자가 화면 규격(회전·면·치수·물리값)을 바꾸면 **메인 맵과 오버레이가 함께 움직인다**. 셀 상한 2,000(메인 로드와 동일, 초과 시 `truncated`). 레이어별 색점 마커·표시 토글·정렬 상태 칩(`align.origin` 기준 — `무보정`/`정렬됨 N°`). 명명된 실패 status 6종(`align_unconfirmed`/`align_override_declared`/`meta_unavailable`/`binding_unavailable`/`align_unavailable`/`no_data`, + IO 실패는 일반 `error`) 전부 **그리지 않고 목록에 행으로 남음**(재시도 버튼 유지). `📥 가져오기`는 `gridData`로만 반영(서버 쓰기 없음, 잠금 존중, 격자 밖 제외). **메인 맵 로드와 코드 경로 완전 분리**. **기준이 바뀌면 해제**(맵 로드·테이블 전환·프레임 진입). ⚠️ 정렬은 `wafer_map_metadata` 등록 맵에서만 실제로 일한다(§5.0 — 미등록은 `무보정` 폴백) | 맵 에디터 오버레이 블록 `＋ 겹치기` | `addOverlayLayer/projectCellsToPhys/syncOverlayGeometry/importOverlayToGrid`(§7) · GET `/api/maps/overlay`(§1.2 — 클라는 선언 probe로만 사용) · `server/map_overlay.py`(§5) · [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md) |
+| **범용 맵 오버레이** (M2 → `7d931dc` 클라 일원화, 2026-07-26) | 임의의 맵을 임의의 맵 위에 겹쳐 본다(계획 전용 아님, **맵 인프라**). **좌표 변환은 클라 단일 구현** — 소스 원본 좌표를 소스 자신의 `wafer_map_metadata` 프레임으로 해석해 물리 키로 투영하므로, 사용자가 화면 규격(회전·면·치수·물리값)을 바꾸면 **메인 맵과 오버레이가 함께 움직인다**. 셀 상한 2,000(메인 로드와 동일, 초과 시 `truncated`). 레이어별 색점 마커·표시 토글·정렬 상태 칩(`align.origin` 기준 — `무보정`/`정렬됨 N°`). 명명된 실패 status **4종**(`meta_unavailable`/`binding_unavailable`/`align_unavailable`/`no_data`, + IO 실패는 일반 `error`) 전부 **그리지 않고 목록에 행으로 남음**(재시도 버튼 유지). *(구 `align_unconfirmed`·`align_override_declared`는 서버 선언 레이어와 함께 2026-07-27 삭제 — 물어볼 선언이 없어졌고 REST 왕복도 하나 줄었다)* `📥 가져오기`는 `gridData`로만 반영(서버 쓰기 없음, 잠금 존중, 격자 밖 제외). **메인 맵 로드와 코드 경로 완전 분리**. **기준이 바뀌면 해제**(맵 로드·테이블 전환·프레임 진입). ⚠️ 정렬은 `wafer_map_metadata` 등록 맵에서만 실제로 일한다(§5.0 — 미등록은 `무보정` 폴백) | 맵 에디터 오버레이 블록 `＋ 겹치기` | `addOverlayLayer/projectCellsToPhys/syncOverlayGeometry/importOverlayToGrid`(§7) · GET `/api/maps/overlay`(§1.2 — **맵 에디터 클라는 이 엔드포인트를 호출하지 않는다**. 선언 probe가 사라지면서 마지막 호출처가 없어졌고, 서버 경로는 `bonding_plan`/`transfer_plan` 가용량 산출이 쓴다) · `server/map_overlay.py`(§5) · [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md) |
 | **전사 계획 사이드바** (M2-v2, 2026-07-26) | **「계획 = 지금 열어 편집 중인 그 맵」** — `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획. stage는 열린 테이블에서 유도(선택 UI 없음), `plan_id`·계획 맵 사본 없음. legend = **DOE 아코디언**(값 = 조건군), 밴드는 `band_seq` 정체 + `stack_band` 자유 텍스트 라벨(다중 구간 `1, 2-15, 16`), 자재 목록 DOE별 그룹 + `openMaterial`이 맵 간 이동의 유일 허브(브레드크럼·뒤로가기). 자재 가용은 `가용 = 총 − (fail ∪ 기전사)`. **서버가 degraded면 `remaining`이 `null`로 오고 클라는 이를 초록으로 뒤집지 않는다.** 검증/경고 UI는 **미구현**(사용자 지시 보류 — `__held_*` 구역) | 맵 에디터 우측 사이드바(맵 로드 시 자동) | `transfer_plan.js`(§7) · GET `/api/transfer-plan/{stages,source-summary,validate}`(§1.2) · `server/transfer_plan.py`(§5) · [MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) |
 | 본딩 실험계획 (M1) — **UI 대체됨** | M1의 조회 전용 Info 패널(`bonding_plan.js`/`.css`)은 `8e34804`에서 **삭제**되고 위 전사 계획 사이드바로 대체됐습니다. **서버 API `GET /api/bonding-plan/core-summary`와 `server/bonding_plan.py`는 존치**하며, `transfer_plan`의 core-kind 경로가 여기에 위임합니다 | (직접 UI 없음 — 전사 계획 경유) | `server/bonding_plan.py`(§5) · GET `/api/bonding-plan/core-summary`(§1.2) |
 
@@ -133,6 +133,19 @@
 | 듀얼 테마(라이트/다크) | 토큰 SSOT `tokens.css` + `theme.js`. 기본 라이트, localStorage로 페이지 간 유지, AG-Grid 무재생성 재도색, FOUC 방지 스탬프 | 테마 토글 버튼(`data-theme-toggle`) — **4개 페이지(index/admin/map_editor/enrichment) 모두** 각 헤더/툴바에 존재 | `theme.js`·`tokens.css`(§7) |
 | WS 실시간 반영 | 편집·인제션·체인 결과를 전 클라이언트에 델타 반영(`batch_row_create/upsert/delete`, `batch_refresh_required`) + 셀 플래시, 지수 백오프 재연결 | (자동) 메인 그리드 | `websocket.js`(§7) · `ConnectionManager`(§1.1) · [DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) |
 | 데스크톱 래퍼 | QtWebEngine 셸(`?client=desktop`): OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, F12 DevTools, `assymanager://` URI | `python run_decoupled_app.py`(셸 포함 기동) · 배포는 GET `/api/download/client` | `client/desktop_wrapper.py` · [frontend §1](../architecture/frontend.md) |
+
+### 1.11 운영 감시 (프로세스 감시 · 헬스 · 격리 환경) — 2026-07-27 신설
+
+> UI가 아니라 **운영 표면**이다. 화면이 멀쩡한데 데이터가 안 들어오는 상태를 밖에서 알아채는 것이 목적.
+
+| 기능 | 설명 | 진입 경로 | 코드 |
+|---|---|---|---|
+| 자식 프로세스 감시·자동 재시작 | 런처가 5~6개 자식을 1초 주기로 감시. 죽으면 백오프 재시작(2/4/8/16/32초), **6번째 연속 실패에서 영구 `FAILED`**(배너 로그 + `/health` 503). 60초 이상 살아 있었으면 예산 회복. 데스크톱 셸 종료 = 전체 종료 | `python run_decoupled_app.py` (상태 파일 `config/supervisor_status.json`) | `server/process_supervisor.py` · [backend §1.3](../architecture/backend.md) |
+| 워커 진행 박동 | 워커 4종(`watcher`/`chain`/`graph`/`scheduler`)이 **자기 작업 루프 안에서** 박동. pid가 아니라 진행이 신호라 **살아 있는 채 멈춘 워커**(`wedged`)를 잡는다. 정체 임계 60초 | (자동) `config/worker_heartbeats/*.json` | `server/utils/heartbeat.py` |
+| 헬스 엔드포인트 | **항상 JSON**, 정상 200 / `unhealthy` 503. `checks{database, workers, outbox, supervisor}` + 사람이 읽는 `problems[]`. DB 프로브 2초 타임아웃·중복 프로브 차단 | `GET /health` | `server/health.py` · `main.py` |
+| outbox 적체 판정 | **크기가 아니라 나이**(5분 degraded / 15분 unhealthy). 정상적인 10만 행 적재가 outbox 11.6만 행을 만들기 때문에 크기 임계는 큰 파일마다 오경보한다 | 위 응답의 `checks.outbox` | `health.probe_outbox` |
+| 격리 개발/검증 환경 | 스냅샷 DB(`assy_qa`) + 별도 포트(:8081/:8091) + 별도 데이터 루트(`dev_env/`). `up`은 워처·스케줄러를 **일부러 안 띄운다**. 드릴용 워처는 별도 동사이며 **운영을 향하면 기동을 거부** | `python server/scripts/dev_env/devenv.py {snapshot,up,status,env,down,watcher-up,watcher-down}` | `server/scripts/dev_env/devenv.py` · `iso_watcher.py` · `server/paths.py` · [DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) |
+| 제품 소유 테이블 설치 | 제품이 정의하는 4종을 사이트 `table_config.json`에 **바이트 스플라이스 병합**(현장 항목 무접촉, dry run 기본, 백업, 드리프트는 보고만) | `python server/scripts/install_product_tables.py [--apply]` | `server/product_tables.py` · `server/scripts/install_product_tables.py` · [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) |
 
 ---
 
@@ -241,7 +254,7 @@
 - [ ] **오버레이 — 기본 흐름**: `＋ 겹치기`로 다른 테이블/키 맵 추가 → 셀 마커 표시, 표시 토글·제거 동작, 정렬 상태 칩이 `declared`/`derived`/`identity` 중 하나로 표기. **메인 맵의 테이블·규격·legend·brush가 하나도 변하지 않는지** 확인(경로 분리 불변식).
 - [ ] **오버레이 — 좌표 정확성** ⚠️: 회전 90/270 + **비등방 칩**(chip_x ≠ chip_y) + **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인할 것. 40×40(`minC=0`)은 결함이 원리적으로 발현하지 않는 구간이라 통과해도 아무 의미가 없다(과거 2회 이 사각지대에서 "해소" 오판정). 오라클은 앱의 변환 함수를 쓰지 말고 독립 계산으로.
 - [ ] **오버레이 — 규격 변경 추종**: 오버레이가 떠 있는 상태에서 회전·면반전·start 좌표 **및 물리값(`phys_chip_*`/`phys_offset_*`)** 변경 → 마커가 메인 맵과 **같은 칸에서 함께** 이동(`syncOverlayGeometry`). ⚠️ **판정은 "오버레이가 움직였는가"가 아니라 "메인 맵과 같은 칸에 있는가"다** — invertY·START는 `(c,r)↔물리` 사상에 개입하지 않으므로 **양쪽 다 안 움직이는 것이 정답**이다(구 설계에서는 이 두 축에서 오버레이만 움직였고, 그것이 사용자가 본 어긋남의 한 갈래였다).
-- [ ] **오버레이 — 실패 표면화**: 존재하지 않는 소스 맵 추가 → 목록에 **실패 행으로 남고** 사유 표시(조용히 사라지지 않음). 규격 조회를 5xx로 막아 `meta_unavailable`, probe를 5xx로 막아 `align_unconfirmed`가 뜨고 **마커가 0개**인지 확인(둘 다 "확인 못 함"이지 "미등록"이 아니다 — 폴백해서 그리면 결함).
+- [ ] **오버레이 — 실패 표면화**: 존재하지 않는 소스 맵 추가 → 목록에 **실패 행으로 남고** 사유 표시(조용히 사라지지 않음). 규격 조회를 5xx로 막아 `meta_unavailable`이 뜨고 **마커가 0개**인지 확인("확인 못 함"이지 "미등록"이 아니다 — 폴백해서 그리면 결함). *(구 `align_unconfirmed` 점검 항목은 선언 probe 삭제로 2026-07-27 폐기)*
 - [ ] **오버레이 — 기준 변경 시 해제**: 오버레이를 띄운 채 ⓐ 다른 맵 로드 ⓑ **다른 테이블로 전환** ⓒ 프레임 진입 → 세 경우 모두 오버레이가 사라진다. 특히 ⓑ에서 목록이 비었는지 확인 — 남아 있으면 `가져오기`로 **이전 테이블 값이 새 테이블에 써진다**(`251dbfd`가 닫은 경로).
 - [ ] **오버레이 — 캔버스 측정 함정**: 비표시(백그라운드) 창에서는 `requestAnimationFrame`이 멈춰 캔버스가 얼어붙는다. "마커 0개"를 결함으로 판정하기 전에 **탭을 앞으로 꺼내고 명시적 재렌더를 유발**할 것. `phys-*` 입력은 재렌더 예약 목록에 없어 값만 바꾸면 화면이 낡은 채로 남는다.
 - [ ] **전사 계획 — 기본 흐름**: `bonding_map` 로드 → 사이드바에 stage가 **자동 유도**되어 표시(선택 UI 없음) → DOE 값 아코디언 펼침 → 밴드 추가·STACK 라벨 자유 입력(`1, 2-15, 16`) → 자재 추가(lot\|slot 자동완성) → 서버 저장 후 재로드 시 유지.
@@ -292,6 +305,20 @@
 - [ ] **OS 드래그앤드롭**: 파일을 셸 창에 드롭 → 현재 테이블로 업로드·인제션 완료.
 - [ ] **네이티브 다운로드**: CSV export → OS 파일 저장 다이얼로그 표시·저장.
 - [ ] **다운로드 배포**: 웹에서 GET `/api/download/client` → 셸 패키지 다운로드.
+
+### 2.15 운영 감시 🎯
+
+> ⚠️ **아래 정지·종료 항목은 격리 환경에서 하십시오** — `devenv.py up`(:8081) + `ASSY_API_PORT=8081`. 운영 스택에서 워커를 죽여 보는 것은 실데이터 유입을 끊는 행위입니다.
+
+- [ ] **헬스 기본**: `curl -i http://localhost:8080/health` → **200 + `Content-Type: application/json`**. 본문 `status: ok`, `checks.workers`에 워커 4종이 모두 있고 전부 `ok`.
+- [ ] **catch-all과 구분**: 아무 오타 경로(`/healthz` 등) → **HTML 200**이 온다. `/health`만 JSON인지 확인(감시 대상 경로를 틀리면 죽은 서버가 살아 보인다).
+- [ ] 🎯 **죽으면 되살아난다**: 워커 프로세스 하나를 강제 종료 → 로그에 재시작 줄 + `supervisor_status.json`의 `restarts` 증가 → 수십 초 내 `/health` 다시 `ok`.
+- [ ] 🎯 **살아 있는데 멈춘 것을 잡는다**: 워커를 **정지(suspend)**시킨다(kill 아님) → **약 1분 뒤**(마지막 박동 기준 60초) `/health`가 **503**, 해당 워커 `status: wedged`. 재개하면 곧(초 단위) `ok`, pid 불변. *(pid만 보는 감시로는 절대 안 잡히는 케이스 — 이 항목이 이 절의 핵심이다)*
+- [ ] **영구 실패는 조용히 넘어가지 않는다**: 자식이 즉사하도록 만들면(예: 잘못된 config) 5회 재시작 후 **`FAILED` 배너 로그** + `/health` 503이 **계속** 유지된다(무한 재시작 금지).
+- [ ] **적체는 나이로 본다**: 대형 파일(수만 행) 적재 중 `/health`가 `ok`를 유지하는지. 건수가 많다는 이유만으로 경보가 뜨면 회귀다.
+- [ ] **격리 워처 관문**: `DATABASE_URL`을 운영으로 둔 채 `devenv.py watcher-up` → **REFUSED로 기동 거부**(워처 프로세스가 뜨지 않음). 로그 파일이 새로 생기지 않는 것까지 확인.
+- [ ] **격리 로그 누수 없음**: 격리 스택을 돌린 전후로 `server/*.log` 5종의 크기·mtime이 불변인지.
+- [ ] **설치 스크립트 안전성**: `install_product_tables.py`(인자 없음) → **아무것도 쓰지 않고** 할 일만 출력. `--apply` 후 현장 항목의 키 순서·들여쓰기가 그대로인지.
 
 ---
 

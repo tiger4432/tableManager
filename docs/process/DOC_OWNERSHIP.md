@@ -1,6 +1,6 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (운영 감시·격리 환경·제품 테이블 배포·PRIMITIVES 매핑 추가) | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
 각 서브시스템을 **어느 코드가 구현하고, 어느 문서가 설명하는지** 매핑합니다. 코드를 바꾸면 "문서" 열의 리빙 문서를 함께 갱신합니다([docs-as-code](./CONTRIBUTING.md#2-docs-as-code-갱신-규율)).
@@ -8,7 +8,13 @@
 | 서브시스템 | 코드(진실 원천) | 리빙 문서 | Owner 역할 |
 |---|---|---|---|
 | 시스템 전체 | `run_decoupled_app.py`, `server/main.py` | [overview/SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) | Lead |
-| 코드 구조 지도 | `server/*`, `client2/src/*` (전 모듈) | [architecture/CODE_MAP](../architecture/CODE_MAP.md) — 갱신·정합 감사 **doc-keeper 전담**(구현 에이전트는 보고서에 변경 함수 목록만) | 전 에이전트 공용 |
+| **재사용 가능한 연산·패턴 카탈로그** | (전 모듈에서 추출한 개념) | [architecture/PRIMITIVES](../architecture/PRIMITIVES.md) — **유지 doc-keeper 전담**. 정비 사이클마다 신규 프리미티브 추가·소멸분 삭제 | 전 에이전트 공용 |
+| **프로세스 감시·헬스** | `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `run_decoupled_app.py` | [architecture/backend §1.3](../architecture/backend.md) · 게이트 판정은 [process/PRODUCTION_READINESS](./PRODUCTION_READINESS.md) | Backend / Ops |
+| **데이터 루트·격리 환경** | `server/paths.py`, `server/scripts/dev_env/devenv.py`, `iso_watcher.py` | [guide/DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) · 설정 관점은 [guide/CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md) | Backend / Ops |
+| **제품 소유 테이블 배포** | `server/product_tables.py`(단일 정의), `server/scripts/install_product_tables.py` | [guide/DEPLOY_SETUP §1-2](../guide/DEPLOY_SETUP.md) · [guide/CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) | Lead / Backend |
+| **프로덕션 게이트** | (전 서브시스템 — 운영 관점) | [process/PRODUCTION_READINESS](./PRODUCTION_READINESS.md) — 차단 항목 해소 시 갱신 | Lead |
+| DOE 저장 분해도 | `client2/src/transfer_plan.js`, `client2/src/map_editor.js`(legend), `map_doe`·`map_doe_source`·`map_split_registry` | [spec/DOE_STORAGE_MAP](../spec/DOE_STORAGE_MAP.md) — ⚠️ M2.6 진행 중(최종 구조는 보드가 정본) | UI/Map |
+| 코드 구조 지도 | `server/*`, `client2/src/*` (전 모듈) | [architecture/CODE_MAP](../architecture/CODE_MAP.md) — 갱신 **code-mapper 전담**, 정합 감사 **doc-auditor 전담**(2026-07-27 분할. 구현 에이전트는 보고서에 변경 함수 목록만) | 전 에이전트 공용 |
 | 백엔드 API/워커 | `server/main.py`, `server/*_worker.py`, `server/run_*.py` | [architecture/backend](../architecture/backend.md) | Backend/Sync |
 | 이벤트 기반(Outbox/EDA) | `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py` | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | Backend/Sync |
 | 프론트엔드(웹+셸) | `client2/src/*`, `client/desktop_wrapper.py` | [architecture/frontend](../architecture/frontend.md) | UI/Excel |
@@ -31,7 +37,7 @@
 | **범용 맵 오버레이(맵 인프라)** | `client2/src/map_editor.js`(오버레이 레이어 — **좌표 변환의 정본**), `server/map_overlay.py`, `config/map_overlay_config.json` | [spec/MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md)(정렬 계약 — 도메인 규칙 §5.0 / 클라 파이프라인 §5.1 / 서버 계약 §5.2) · [guide/CONFIG_GUIDE §5.8-bis](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |
 | 맵 정렬 메타(`wafer_map_metadata`) | `server/map_overlay.load_map_meta`, `client2/src/map_editor.js`(`fetchGridMetaFor`/`frameFromMeta`), `config/table_config.json` | [spec/MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)(정렬의 유일한 기준) · [map_editor/architecture_and_management §2](../map_editor/architecture_and_management.md)(스키마·필드 규격) | Backend / UI-Map |
 | 본딩·전사 계획 엔진(역할 바인딩) | `server/bonding_plan.py`, `server/transfer_plan.py`, `client2/src/transfer_plan.js`, `config/bonding_plan_config.json`, `config/transfer_plan_config.json` | [spec/MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md)(엔진·클라 계약) · [guide/CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |
-| QA 기능 점검 | 전 서브시스템(사용자 관점 기능 단위) | [qa/FEATURE_CHECKLIST](../qa/FEATURE_CHECKLIST.md) — 갱신은 doc-keeper 전담(코드맵과 같은 사이클) | Integrity/QA |
+| QA 기능 점검 | 전 서브시스템(사용자 관점 기능 단위) | [qa/FEATURE_CHECKLIST](../qa/FEATURE_CHECKLIST.md) — 갱신은 doc-keeper 전담. 정합 감사는 doc-auditor | Integrity/QA |
 | 운영/셋업 | 환경·DB | [guide/*_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md) | Ops |
 | 엔지니어링 규율 | CRUD 시그니처·병합 | [guide/data_preservation_and_signature_change](../guide/data_preservation_and_signature_change.md) | Integrity/QA |
 

@@ -1,7 +1,7 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** Backend / Sync
-> **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (HEAD `be58210` — 프로세스 감시·헬스 신설) | **Owner:** Backend / Sync
+> **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -16,6 +16,8 @@ FastAPI 웹서버(`main.py`)는 API + WebSocket 허브이고, 무거운 작업�
 - **LISTEN/NOTIFY** 채널 `outbox_event` — 데몬이 폴링 대신 알림 기반으로 반응.
 - **HTTP 콜백** `POST /internal/events/*` — 데몬이 웹서버에 UI 이벤트(브로드캐스트/캐시 무효화)를 되돌려 보냄.
 - `main.py`의 `startup_event`는 `DECOUPLED=True`가 아니면 워처·체인 워커를 인라인 기동. 운영에서는 `run_decoupled_app.py`가 `DECOUPLED=True`로 완전 분리.
+- **런처는 감시자다** — 자식을 띄우고 자는 것이 아니라 생존을 감시하고 재시작한다(§1.3). API 포트는 `ASSY_API_PORT`(기본 8080)로 덮을 수 있어, 감시 정책 자체를 격리 스택(:8081)에서 재구현 없이 그대로 검증할 수 있다.
+- **데이터 루트는 `ASSY_DATA_ROOT` 하나로 옮긴다**(`server/paths.py`) — `config/`·`ingestion_workspace/`·프로세스 로그가 모두 여기서 유도된다. 미설정이면 `server/` 그대로. 새 경로를 `__file__`에서 다시 조립하면 격리가 샌다.
 
 미들웨어 `db_context_middleware`가 `X-User`/`X-Transaction-ID`/`X-Source` 헤더를 ContextVar로 읽어 감사 추적에 사용. CORS는 `localhost:5173`으로 제한.
 
@@ -30,6 +32,39 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 ### 1.2 import 경로 불변식 (C-2)
 
 모든 프로세스·스크립트는 `server/`를 sys.path에 두고 **최상위 `database.*` / `parsers.*` 경로로만** import한다. `server.database.*` 혼용 import는 동일 모듈 이중 로드 → outbox `before_flush` 리스너 2중 등록 → **전 이벤트 ×2 중복 발행**을 유발한다(상세: [event_driven_backend.md](./event_driven_backend.md) §2.1).
+
+### 1.3 프로세스 감시와 헬스 (2026-07-27)
+
+런처는 더 이상 자식을 띄우고 자기만 자는 루프가 아니다. `run_decoupled_app.py`가 `process_supervisor.Supervisor`를 돌리고, 그 결과를 `/health`가 밖으로 내보낸다. **두 축이 한 쌍**이다 — 감시 결과를 외부에서 볼 수 없으면 감시는 없는 것과 같다.
+
+**감시자** (`server/process_supervisor.py` — 상태 파일 `<DATA_ROOT>/config/supervisor_status.json`)
+
+- `ChildSpec(name, cmd, cwd, env, restartable, heartbeat, start_delay)`로 자식을 선언하고 1초 주기로 `poll_once()`.
+- **유한 재시작 예산**: 연속 실패 n회째 `min(2·2^(n-1), 60)`초 백오프(2/4/8/16/32) → **6번째 연속 실패에서 `FAILED` 확정, 이후 재기동 없음**. 무한 재시작은 고장을 "감시가 도는 것처럼" 위장하므로 금지.
+- **예산 회복**: 60초 이상 살아 있었으면 크래시 루프가 아니라고 보고 연속 카운터를 리셋.
+- `restartable=False`(데스크톱 셸)의 종료는 **전체 종료 신호**다.
+- `stop_all()`은 **정지 플래그를 먼저 세운 뒤** 종료한다(감시 루프가 종료 중인 자식을 "죽었다"고 되살리는 경쟁 방지). 자식의 손자 프로세스(스케줄러가 띄우는 수집기)는 부모가 살아 있는 동안 pid를 수집해 함께 정리한다 — 부모가 먼저 죽으면 손자를 찾을 방법이 없다.
+- 상태 파일의 `updated_at`이 **감시자 자신의 생존 신호**다(감시자가 죽으면 자식은 계속 박동하는데 이 값만 멈춘다).
+
+**진행 박동** (`server/utils/heartbeat.py` — `<DATA_ROOT>/config/worker_heartbeats/<name>.json`)
+
+- 워커가 **자기 작업 루프 안에서** `beat(name)`을 호출한다. 이름 4종: `watcher` · `chain` · `graph` · `scheduler`.
+- pid 검사가 아니라 **진행** 신호인 이유: 우리가 실제로 겪은 장애는 프로세스가 살아 있는 채 멈춘 이벤트 루프 동결이었다.
+- 쓰기는 워커당 1초 이하로 스로틀되고, 원자적 replace이며, **모든 디스크 오류를 삼킨다**(감시 기능이 새 장애 원인이 되면 안 된다).
+- 정체 임계 기본 **60초** — 워커별 루프 주기(2~5초) 대비 연속 12회 이상 누락에 해당한다. DB가 아니라 파일에 두는 이유는, DB 장애 때 전 워커가 동시에 정체로 보여 "DB 다운"과 "워커 정지"가 뭉개지기 때문이다.
+
+**판정 조인** (`server/health.py`) — 프로세스 존재는 감시자가, 진행은 워커가 권위를 갖는다.
+
+| 감시자 | 박동 | 판정 |
+|---|---|---|
+| running 아님 | — | `down` |
+| running | 정체 | `wedged` (살아 있는데 진행 없음) |
+| running | 없음 · uptime < 60s | `starting` (유예, 경보 아님) |
+| running | 신선 | `ok` |
+
+- **박동은 감시자가 띄운 pid의 것만 인정한다.** 같은 역할의 유령 프로세스나 재기동 직전에 죽은 전임자의 박동이 정체를 가리는 사례가 드릴에서 관측됐다(불일치 시 `foreign_beat`).
+- **outbox 적체는 크기가 아니라 나이로 판정한다** — 정상적인 10만 행 적재 하나가 outbox 약 11.6만 행을 만들기 때문에, 멈춘 워커를 잡을 만큼 낮은 크기 임계는 큰 파일마다 오경보한다. 가장 오래된 미처리 행이 5분 초과 `degraded` / 15분 초과 `unhealthy`, 건수는 참고값(1만 캡). 두 질의 모두 부분 인덱스 `idx_outbox_unprocessed` 위 O(1).
+- 감시자 상태 파일이 없으면 `supervisor: absent`(bare uvicorn·격리 스택) — 디스크의 박동만 참고 판정한다.
 
 ---
 
@@ -76,6 +111,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 ### 인제션 / 어드민 / 내부 / 맵 / WS
 | 경로 | 용도 |
 |---|---|
+| `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor}}`. DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
 | `POST /tables/{t}/upload` | 클라이언트 파일을 `raws/`로 업로드 |
 | `POST /api/graph/sync` | GraphSync 워커(:8090)로 프록시 — **백필/복구 도구**(주 경로는 materializer 자동 승격, [event_driven_backend §4](./event_driven_backend.md)) |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |
@@ -123,6 +159,8 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | **Auto-Update Scheduler** (`run_auto_update.py`) | 5초 틱 + 크론 | `auto_update/*.py` 발견 → 상단 `# schedule:` 크론 파싱 → `exec()`로 `out` 변수 캡처(또는 stdout 폴백) → CSV를 `raws/`에 원자적 드롭. `scheduler_status.json` 갱신(`active` 포함). 매 틱 `config/auto_update_control.json`(`{"disabled": [...]}`, 부재/손상 시 전부 active)을 읽어 disabled 수집기는 실행 스킵 + `last_status="SKIPPED"` + next_run 전진(핫 반영). run-now(on-demand)는 active 무관 실행 |
 | **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(source=chain_ingestion 순환 차단) → `/internal/events/broadcast`(통지의 created_logs는 직렬화 전 `MAX_NOTIFY_CREATED_LOGS`=500 절단 + `total_log_count` 실건수 동봉 — `event_constants.py` 공용 상수, 워처 C-5 계약과 동일 형태). 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker — materializer** (`graph_sync_worker.py` + `graph_materializer.py`) | outbox 증분 소비(자체 keyset 커서 `graph_sync_state.last_outbox_id`, LISTEN/NOTIFY) | 독립 FastAPI(:8090). 이벤트 행을 `ontology_mapping.json` v2 매핑에 따라 **PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**. 엣지 provenance는 식별 컬럼 CellSource winner의 최저 서열(보수적), 재교정 시 `(from,type,source_row_ref)` 스코프 retarget. `[GraphLatency]` 계측(SLO 10s), 배치 본체는 `asyncio.to_thread` 격리. `/sync`(수동)는 키셋 청킹 **백필/복구** 도구(`"all"` 지원). Neo4j는 청크 훅으로 병행 가능(G3). 상세: [event_driven_backend §4](./event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
+
+공통: 위 4종 워커는 각자의 작업 루프 안에서 **진행 박동**(`watcher`/`chain`/`graph`/`scheduler`)을 발행하며, `/health`가 감시자의 프로세스 관점과 조인해 `ok`/`starting`/`wedged`/`down`을 판정합니다(§1.3).
 
 공통: 모든 워커가 `SYSTEM_RELOAD` outbox 이벤트로 규칙·설정·맵퍼 캐시를 핫리로드하며, 이때 `models.refresh_dynamic_models(engine)`로 **신규 동적 테이블의 물리 CREATE까지 보충**합니다(게이트+checkfirst로 중복 무해 — 웹서버가 1차 소유자, 이슈 #7). graph materializer도 배치 내 SYSTEM_RELOAD를 감지해 매핑·테이블 config를 리로드합니다(이슈 #8 해소).
 

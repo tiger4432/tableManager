@@ -1,7 +1,7 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Backend / Integrity
-> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (§5 제품/현장 소유 구분 · 미선언 컬럼 경고) | **Owner:** Backend / Integrity
+> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -88,4 +88,11 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 `table_config.json`(테이블별): `business_key`, `column_types`, `display_columns`, `composite_key_source`/`separator`, `map_key_columns`, 선택적 `source_priority`. 변경은 `config_watcher.py` + `SYSTEM_RELOAD`로 무중단 반영.
 
-현재 테이블: `bonding_map`, `inventory_master`, `production_plan`, `large_table_100`, `parts`, `wafer_map_metadata`.
+**어떤 테이블이 있는지는 환경마다 다릅니다** — 이 파일은 gitignored인 현장 자산입니다. 갈리는 기준은 *누가 스키마를 정하는가*입니다.
+
+- **제품 소유**(이름·컬럼을 제품이 정함): `wafer_map_metadata` · `map_split_registry` · `map_doe` · `map_doe_source`. 정의의 원본은 **`server/product_tables.py` 하나**이며 `.sample`도 거기서 생성됩니다. 사이트 반영은 `server/scripts/install_product_tables.py`(현장 항목 무접촉 병합) → [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md).
+- **현장 소유**: 공장 로그·맵 테이블 전부. `.sample`의 `bonding_map`·`inventory_master`·`production_plan`·`parts`·`large_table_100`은 **동작 예시**일 뿐 표준이 아닙니다.
+
+> ⚠️ **선언되지 않은 컬럼은 저장에서 조용히 드롭되고 HTTP는 200입니다.** `column_types` 게이트가 미선언 컬럼을 버린 뒤 성공을 반환하므로, **컬럼 오타·config 누락이 저장 성공처럼 보입니다**(실제로 `map_doe`가 이 경로로 `eventtime`을 잃었습니다). 2026-07-27부터 `crud`가 **`(테이블, 컬럼)`당 1회** `[Schema]` 경고를 남깁니다(핫패스라 반복은 접고, 테이블당 예산을 넘기면 포화 사실도 1회 알립니다).
+
+> ⚠️ **`map_key_columns` 미선언은 기능 누락처럼 보입니다.** `replace_map` 쓰기가 지울 **범위**를 이 선언에서 잡으므로, 선언이 없으면 아무것도 지우지 않으면서 **똑같이 200을 냅니다**. 맵·계획 저장 테이블에는 반드시 선언하십시오 → [PRIMITIVES](./PRIMITIVES.md) `replace_map`.

@@ -1,6 +1,7 @@
 # 격리 개발 환경 — 에이전트가 운영 환경에서 검증하는 것을 구조적으로 차단
 
-> 미커밋 (working tree) · 2026-07-27 00:00 · 도메인 Server / 개발환경·테스트
+> 커밋 `4ba13ae` · 2026-07-27 00:00 · 도메인 Server / 개발환경·테스트
+> (작성 시점에는 미커밋이었다 — 세 트랙이 같은 파일에서 얽혀 `4ba13ae` 한 커밋으로 함께 들어갔다.)
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 보고서: `agent_workspace/reports/Server_dev_env_isolation.md`
 > 선행: [.sample 정정 + 스위트의 사용자 자산 오염 차단](20260726_215155_config_sample_repair_and_test_isolation.md)
 
@@ -94,3 +95,14 @@ os.environ["DATABASE_URL"] = os.environ.get("ASSY_TEST_DATABASE_URL", "sqlite://
 
 1. 동시 편집 중인 서버 모듈(`map_overlay.py`·`bonding_plan.py`·`transfer_plan.py` + `.sample` 3종)의 diff가 내 diff와 같은 파일에 섞여 있다 — 병합 전 분리 필요. 잔여 스위트 실패는 전부 그쪽이다.
 2. 교훈 3건이 총괄 검수 대기 — 보고서 §7.
+
+> **후기(커밋 시점 정정, 기록자 추가).** 1번은 **분리하지 못했고, 분리하지 않기로 결론났다** — 세 트랙이
+> 같은 파일에서 얽혀 `4ba13ae` 한 커밋으로 함께 들어갔다. 그 커밋의 스위트는 **457 passed / 0 failed**이므로
+> 위에 적힌 잔여 실패는 그 시점에 해소됐다. 나머지 두 트랙은
+> [정렬 일원화](./20260727_004500_align_consolidation_meta_single_source.md) ·
+> [M2.5 맵 에디터](./20260727_004000_m25_blank_map_overlay_and_material_rollup.md).
+>
+> 이 커밋의 격리 작업에는 **구멍 둘이 남아 있었고**(로그와 virtual graph가 여전히 `__file__`로 경로를 지어
+> live 트리에 썼다) 후속 커밋 `47c20f3`에서 수정됐다 →
+> [격리 환경의 구멍 둘](./20260727_054837_dev_env_logs_virtual_graph_isolated_watcher.md).
+> 즉 이 시점의 격리는 **부분 격리**였다.

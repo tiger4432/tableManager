@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 선언 레이어 폐지 · 제품 테이블 설치기 · 데이터 루트 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -31,14 +31,20 @@ server/database/virtual_graph.json
 | **`chain_rules.json`** | 체인 인제션 룰(trigger→target→mapper) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` | chain_ingestion_worker, web(조회) |
 | **`auto_update_control.json`** | 수집기 비활성 목록(= active 토글) | 사용자 (**API로 쓰기 권장**) | ignored (`.sample` 有) | 즉시(매 사이클 재조회) | run_auto_update, web |
 | **`ingestion_settings.json`** | 인제션 런타임 노브 — `heavy_file_mb`(P1 heavy 레인 임계, 기본 10) · `dedup_by_signature`(P2 동일 파일 skip, 기본 true) · `resume_from_checkpoint`(P2 오프셋 재개, 기본 true) | 사용자 | ignored (`.sample` 有) | 즉시(**다음 파일부터**) | watcher |
-| **`map_overlay_config.json`** | **범용 맵 오버레이** — `align_overrides`(장비별 계측 보정 선언) · `table_bindings`(맵 좌표 컬럼, 미선언 시 `table_config`에서 자동 유도) · `paint_lock`(페인트 잠금 **정본**) | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
+| **`map_overlay_config.json`** | **범용 맵 오버레이** — `table_bindings`(맵 좌표 컬럼, 미선언 시 `table_config`에서 자동 유도) · `paint_lock`(페인트 잠금 **정본**). ~~`align_overrides`~~는 **2026-07-27 폐지**(§5.8-bis) | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`maps.json`** | 웨이퍼 물리 규격/오프셋 **프리셋** | 사용자 (**API로 쓰기**) | ignored (`.sample` 有) | 즉시(요청마다 디스크 읽기) | web |
 | **`bonding_plan_config.json`** | M1 본딩 실험계획 — 역할(role)→실테이블 바인딩 | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`transfer_plan_config.json`** | M2 Universal Transfer Plan — stage 선언 + plan_store | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
+| `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
+| `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동 4종(`watcher`·`chain`·`graph`·`scheduler`) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
 | `*.bak`, `*.v1.bak` | 수동 백업 잔재 | 사용자 | ignored | — | 아무도 안 읽음 |
 
 > `table_config.json.bak_enrich` · `ontology_mapping.json.v1.bak` 같은 파일은 **코드가 읽지 않습니다**. 파일명이 정확히 일치해야만 로드됩니다.
+
+> ⚠️ **위 경로의 기준점은 `server/config/`가 아니라 `paths.CONFIG_DIR`입니다.** `ASSY_DATA_ROOT`를 걸면 config 트리 전체가 통째로 이동합니다(아래 "파일이 아닌 설정 원천"). 새 config를 읽는 코드는 **반드시 `server/paths.py`를 경유**하십시오 — `__file__`에서 경로를 다시 조립하면 격리가 샙니다(실제로 로그·`virtual_graph.json`이 그렇게 샜습니다).
+
+> **감시·박동 파일은 "설정"이 아니라 산출물입니다.** 손으로 고쳐도 다음 틱에 덮어써지고, **없는 것이 정상 상태**입니다(첫 사용 시 생성). 그래서 이 두 경로의 부재가 곧 "그 스택은 아직 돌지 않았다"의 증거로 쓰입니다.
 
 ### DB에 저장되는 "설정성" 데이터
 
@@ -64,7 +70,7 @@ server/database/virtual_graph.json
 
 | 원천 | 무엇 | 변경 시 |
 |---|---|---|
-| 환경변수 | `DATABASE_URL`(기본 `postgresql://postgres:admin@localhost:5432/assy_manager`), `DECOUPLED`, `TESTING`, `API_BASE_URL`(기본 `http://127.0.0.1:8080`), `GRAPH_SYNC_PORT`(8090), `GRAPH_MATERIALIZER_ENABLED`(true), `NEO4J_*`, `ASSY_API_BASE` | **전부 재기동 필요** (import 시점 1회 읽음) |
+| 환경변수 | `DATABASE_URL`(기본 `postgresql://postgres:admin@localhost:5432/assy_manager`), **`ASSY_DATA_ROOT`**(config·워크스페이스·프로세스 로그의 단일 이동점, 미설정 시 `server/`), `ASSY_API_PORT`(런처가 띄우는 uvicorn 포트, 기본 8080), `DECOUPLED`, `TESTING`, `API_BASE_URL`(기본 `http://127.0.0.1:8080`), `GRAPH_SYNC_PORT`(8090), `GRAPH_MATERIALIZER_ENABLED`(true), `NEO4J_*`, `ASSY_API_BASE` | **전부 재기동 필요** (import 시점 1회 읽음) |
 | 수집기 스케줄 | 수집기 `.py` **주석**의 `schedule`(cron) / `filename_prefix` — JSON 아님 | 스케줄러가 주석 변경을 감지해 핫 반영 → [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) |
 | 파이프라인 플러그인 등록 | 레지스트리 파일 없음. `<workspace>/scripts/*.py` **파일 존재 자체가 등록** | `POST /admin/reload-configs`가 `pipeline_plugin_*` 모듈 캐시 무효화 |
 | 커스텀 맵퍼 등록 | `server/mappers/*.py` 파일 + `chain_rules.json`의 `mapper_module`/`mapper_function` | 위와 동일(`mappers.*` 캐시 무효화) |
@@ -178,7 +184,7 @@ S1을 전부 수행한 뒤 추가로:
 | 1 | `sources.<role>.table` / `.columns`를 실제 테이블·컬럼명으로 교체. role: `process_history`, `defect`, `eds_fail`, `used_chips`, `total_chips` |
 | 2 | 각 바인딩은 `{"table": "<str>", "columns": {<역할키>: <물리컬럼>}}` 형태여야 유효. 아니면 그 role은 **`missing`(부분 가동 — 에러 아님)** |
 | 3 | 맵 모드 소스는 `"mode": "map"` + `fail_values` |
-| 4 | 좌표계가 다르면 `align` 선언: `{"rotation":0|90|180|270, "flip":"none|x|y", "offset":{"x":0,"y":0}}` 또는 확장형 `{"default":{...},"by_eqp":{...}}` — **M1은 `default`만 적용**(`by_eqp`는 파싱만, M2 예약) |
+| 4 | **좌표계가 달라도 `align`을 선언하지 않습니다(2026-07-27).** 소스 좌표계→canonical 좌표계 변환은 두 맵의 `wafer_map_metadata` **델타에서 유도**됩니다. ~~`sources[].align`~~은 폐지됐고 파일에 남아 있어도 서버가 무시합니다 — 대신 **각 맵을 `wafer_map_metadata`에 등록**하십시오 |
 | 5 | `core_identity.compose`(기본 `["lot","slot"]`), `map_metadata` 바인딩, `warnings.result_fail_values` 확인 |
 | 6 | 검증: `GET /api/bonding-plan/core-summary?lot=..&slot=..` — 응답의 role별 상태가 `connected`인지 |
 
@@ -196,7 +202,7 @@ S1을 전부 수행한 뒤 추가로:
 
 > **stage는 고르는 것이 아니라 유도됩니다(v2).** `stages.*.target_map.table`의 역인덱스이므로 `bonding_map`을 열면 `bonding`, `dt_map`을 열면 `dt`입니다. 어느 stage의 `target_map.table`도 아닌 맵은 `stage_unknown` 경고 + `status: unverified`로 표면화되며 **404가 아닙니다**(임의의 맵도 편집 대상으로 열 수 있어야 하므로).
 
-> **align 실패는 M1·M2 모두 "명시 실패"입니다.** `align`을 선언했는데 격자 규격(`wafer_map_metadata`)을 못 찾아 변환을 만들 수 없으면, **raw 좌표로 조용히 계산하지 않고** 해당 role 상태를 `connected(align_unavailable)`로 바꾸고 **카운트를 0으로** 둡니다.
+> **align 실패는 M1·M2 모두 "명시 실패"입니다.** 격자 규격(`wafer_map_metadata`)을 못 찾아 변환을 만들 수 없으면, **raw 좌표로 조용히 계산하지 않고** 해당 role 상태를 `connected(align_unavailable)`로 바꾸고 **카운트를 0으로** 둡니다. (2026-07-27부터 `align` **선언 자체가 없으므로**, 이 상태의 원인은 항상 "메타 미등록/조회 실패" 한 가지입니다.)
 > 따라서 상태별 해석은 이렇습니다 — `missing` = 바인딩 선언/테이블 없음 · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · `connected` = 정상.
 
 ### S7. 결손 보정(enrichment) 규칙 추가할 때
@@ -417,13 +423,14 @@ psql -U postgres -d assy_manager -c "\d <table>"
       "mode": "map",
       "table": "eds_fail_map",
       "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
-      "fail_values": ["F"],
-      "align": { "default": { "rotation": 180, "flip": "none", "offset": { "x": 0, "y": 0 } }, "by_eqp": {} }
+      "fail_values": ["F"]
     }
   },
   "warnings": { "result_fail_values": ["FAIL"] }
 }
 ```
+
+> **`sources[].align`이 사라진 자리** — canonical 프레임은 메타가 등록된 **첫 맵 모드 역할**(`total_chips` → `defect` → `eds_fail` 순)이고, 나머지 맵은 자기 메타와의 델타로 그 프레임에 투영됩니다. 실제로 위 예시의 `eds_fail`에 선언돼 있던 `rotation: 180`은 `eds_fail_map` 메타의 rotation과 **정확히 같은 값**이었습니다 — 선언이 메타의 손수 관리하는 복사본이었다는 뜻입니다. 복사본이 정본과 어긋나면 어느 쪽이 참인지 알 방법이 없어 폐지했습니다.
 
 ### 5.8 `transfer_plan_config.json` — stage 선언 발췌
 
@@ -476,25 +483,29 @@ psql -U postgres -d assy_manager -c "\d <table>"
 > 실값은 각 환경의 로컬 자산이므로 **키 구조만** 수록합니다.
 
 ```
-align_overrides.<table>.default.{rotation, flip, offset:{x, y}}
-align_overrides.<table>.by_eqp.<eqp_id>.{rotation, flip, offset:{x, y}}
 table_bindings.<table>.columns.{x, y, val, key_columns[]}
 paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
 paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 ```
 
+> 🗑️ **[폐지 2026-07-27] `align_overrides`** (`<table>.default` · `<table>.by_eqp.<eqp_id>`)
+> 정렬의 유일한 근거는 **`wafer_map_metadata`**입니다. 계측으로 잰 어긋남도 별도 선언이 아니라 **그 맵의 메타에 기록**합니다.
+> - 파일에 키가 남아 있어도 **서버는 무시합니다** — 지우십시오(무시된다는 사실이 테스트로 고정돼 있습니다).
+> - 왜 지웠나: 근거가 둘이면 메타와 선언이 어긋났을 때 **어느 쪽이 참인지 알 수 없습니다.** 라이브 선언 하나는 실제로 해당 맵 메타의 rotation과 값이 같은 **손수 관리하는 복사본**이었습니다.
+> - **정렬을 켜는 올바른 방법은 오버라이드 선언이 아니라 소스·타깃 맵의 메타 등록입니다** → [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md).
+
 | # | 할 일 |
 |---|---|
-| 1 | **아무것도 선언하지 않아도 오버레이는 동작합니다** — `table_bindings`는 `table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도되고, align은 `wafer_map_metadata`의 rotation/side 차이에서 유도됩니다 |
-| 2 | `align_overrides`는 **메타에서 유도 불가능한 계측 보정**(DEFECT WF로 측정한 장비별 어긋남)일 때만 선언합니다. 우선순위는 `by_eqp` > `default` > 메타 유도 > identity |
+| 1 | **아무것도 선언하지 않아도 오버레이는 동작합니다** — `table_bindings`는 `table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도되고, align은 `wafer_map_metadata` 델타(rotation·side·y반전·start·치수·phys)에서 유도됩니다 |
+| 2 | 컬럼명이 관례 밖일 때만(`dt_log`의 `tx/ty` 등) `table_bindings`를 선언합니다 |
 | 3 | `paint_lock`은 **`"*"` 기본 선언 + 테이블별 오버라이드**가 머지됩니다. 기본값은 `F` 잠금 |
-| 4 | 검증: `GET /api/maps/paint-rules?table=<t>` → `GET /api/maps/overlay?target_table=&target_key=&sources=<t>:<key>` 응답의 `overlays[].status`와 `align_applied.origin`(`declared`/`default`/`derived`/`identity`) 확인 |
+| 4 | 검증: `GET /api/maps/paint-rules?table=<t>` → `GET /api/maps/overlay?target_table=&target_key=&sources=<t>:<key>` 응답의 `overlays[].status`와 `align_applied.origin`(`derived`/`identity`) 확인 |
 
-> **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 선언 부재는 실패가 아니며 identity로 붙습니다. 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
+> **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 메타 부재는 실패가 아니며 identity로 붙습니다(다만 **미등록은 정상이 아니라 누락 신호**입니다). 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
-> ⚠️ **위 표는 서버 엔드포인트(`/api/maps/overlay`) 기준입니다.** `7d931dc` 이후 **맵 에디터 클라는 이 좌표를 소비하지 않고 변환을 자체 수행**하며, 이 엔드포인트는 **`align_applied.origin`을 읽는 보정 선언 관문**으로만 호출합니다. 실무적 귀결 두 가지:
-> - **`align_overrides`를 선언하면 맵 에디터 오버레이는 그리기를 거부합니다**(`align_override_declared`). 현 단계는 보정을 적용하지 않으므로, 조용히 무시하는 대신 명시 실패합니다.
-> - **`by_eqp` 분기는 제거 예정입니다.** 사용자 확정 규칙(2026-07-26)상 계측 결과도 `wafer_map_metadata`에 기록하므로 별도 오버라이드 레이어를 두지 않습니다 → [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md). **정렬을 켜는 올바른 방법은 오버라이드 선언이 아니라 소스·타깃 맵의 메타 등록입니다.**
+> ⚠️ **위 표는 서버 엔드포인트(`/api/maps/overlay`) 기준입니다.** `7d931dc` 이후 **맵 에디터 클라는 이 좌표를 소비하지 않고 변환을 자체 수행**합니다. 선언 레이어가 사라지면서 클라의 선언 probe 관문(`probeAlignDeclaration`)과 그 산물인 실패 status 2종(`align_unconfirmed`·`align_override_declared`)도 함께 삭제됐습니다 — 오버레이 추가의 REST 왕복이 하나 줄었습니다.
+>
+> `GET /api/maps/overlay`의 `eqp` 쿼리 파라미터는 **no-op으로 존치**돼 있습니다(`by_eqp` 전용이었음). 넘겨도 아무 일도 일어나지 않습니다.
 
 ### 5.8-ter 기능별 필요 테이블 체크리스트
 
@@ -508,6 +519,21 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 | **현장 소유** | 고객 공장의 실 데이터. **운영 환경마다 테이블명·컬럼명이 다릅니다** | **선언하지 않습니다.** 예시 스키마를 박으면 표준이 있는 것처럼 오해되기 때문입니다 — 당신의 실제 이름으로 직접 선언하십시오 |
 
 **제품 소유(`table_config.json.sample`에 이미 선언됨 — 그대로 쓰십시오):**
+
+> **정의의 원본은 `server/product_tables.py` 하나입니다(2026-07-27).** `.sample`조차 그 모듈에서 생성된 산출물이라 두 번째 목록이 존재하지 않습니다.
+> **이미 쓰던 `table_config.json`에 넣을 때는 손으로 옮기지 말고 설치 스크립트를 쓰십시오.**
+>
+> ```bash
+> python server/scripts/install_product_tables.py            # dry run (기본)
+> python server/scripts/install_product_tables.py --apply    # 반영(백업 후)
+> python server/scripts/install_product_tables.py --sample --apply   # .sample 재생성
+> ```
+>
+> - **현장 항목은 재직렬화하지 않습니다** — 원본 텍스트에 바이트 스플라이스로 끼워 넣으므로 키 순서·들여쓰기·줄바꿈·개행문자가 보존됩니다. `json.load`/`json.dump` 왕복은 건드리면 안 될 항목까지 재포맷합니다.
+> - 없으면 추가 / 동일하면 **무기록** / **다르면 드리프트로 보고만 하고 손대지 않음**(`--overwrite-drift` 필요).
+> - `--apply`는 타임스탬프 백업을 먼저 쓰고, 반영 후 손대지 않은 항목을 바이트 대조해 **어긋나면 백업을 복원**합니다.
+> - **DDL은 하지 않습니다.** 선언이 물리 테이블이 되는 것은 §4.1 리로드 경로의 일이며, 스크립트가 어느 경로가 필요한지 출력합니다.
+> - 종료코드: `0` 할 일 없음 · `1` 조치 필요 · `2` 오류.
 
 | 테이블 | 역할 | bk 규칙 |
 |---|---|---|
@@ -596,15 +622,24 @@ role이 빠지거나 테이블이 없으면 **에러가 아니라 `missing`** �
 **L. `server/config/*.json`은 어드민 UI에서 편집할 수 없습니다.**
 Monaco 코드 에디터는 `.py`(맵퍼·인제션·수집기 스크립트)만 다룹니다. 예외적으로 맵 프리셋과 수집기 토글만 전용 API가 있습니다.
 
+**M. `table_config`에 없는 컬럼은 저장에서 조용히 버려지고 HTTP는 200입니다.** ★
+`crud`는 미선언 컬럼을 드롭한 뒤 성공을 반환합니다 — 컬럼 오타·config 누락이 **저장 성공처럼 보입니다.** 실제로 `map_doe`가 이 경로로 `eventtime`을 잃고 있었습니다.
+2026-07-27부터 **`(테이블, 컬럼)`당 1회** `[Schema]` 경고가 남습니다(핫패스라 반복 경고는 접습니다). 값이 안 들어갈 때 의심 순서: ①`table_config`에 그 컬럼이 있는가 ②철자 ③리로드 경로(§4.1).
+> ⚠️ 이 경고가 **워처 프로세스의 로그 파일에는 아직 안 남습니다** — [PRODUCTION_READINESS](../process/PRODUCTION_READINESS.md) B3.
+
+**N. 격리 환경에서 config를 고쳤는데 운영이 안 바뀝니다(그리고 그 반대도).**
+`ASSY_DATA_ROOT`가 걸려 있으면 config 트리 전체가 `dev_env/config`입니다. 어느 쪽을 고쳤는지 헷갈리면 `python server/scripts/dev_env/devenv.py status`로 확인하십시오 → [DEPLOY_SETUP §5](./DEPLOY_SETUP.md).
+
 ---
 
 ## 7. 새 환경 부트스트랩 (요약)
 
 1. `server/config/*.sample` → 확장자 제거해 복사 (필요한 것만).
-2. `table_config.json`을 실제 스키마로 채운다.
+2. `table_config.json`을 실제 스키마로 채운다. **이미 쓰던 파일이 있으면** 제품 소유 4종은 `install_product_tables.py --apply`로 병합한다(§5.8-ter).
 3. 서버 기동 → 부팅 시 물리 스키마 정합(create_all + ADD COLUMN 동기화)이 1회 수행됨.
 4. `information_schema`로 테이블·컬럼 확인(§4.3).
 5. 워크스페이스 자동 생성 확인 → 파서/수집기 배치.
 6. 필요에 따라 S4·S6·S7·S8.
+7. `GET /health`가 **JSON 200**인지 확인한다(워커 4종이 `ok`인지 포함) → [backend §1.3](../architecture/backend.md).
 
 환경 구성 자체는 [CONDA_SETUP_GUIDE](./CONDA_SETUP_GUIDE.md) · [NATIVE_POSTGRES_SETUP_GUIDE](./NATIVE_POSTGRES_SETUP_GUIDE.md) · [SERVER_STARTUP_GUIDE](./SERVER_STARTUP_GUIDE.md) 참조.

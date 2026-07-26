@@ -12,6 +12,7 @@
 | 문서 | 내용 |
 |---|---|
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
+| 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
 | 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **진행 상황·열린 문제 단일 보드** — 여기서 현황 파악 |
 | 🟢 [DOC_AUDIT.md](./DOC_AUDIT.md) | 문서·개발체계 진단서 및 정비 계획 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로 |
@@ -21,8 +22,9 @@
 
 | 문서 | 내용 |
 |---|---|
+| 🟢 [PRIMITIVES.md](./architecture/PRIMITIVES.md) | **기능→구현 카탈로그** — *무엇을 할 줄 아나*. CODE_MAP이 *어디에 있나*라면 이쪽은 재사용 가능한 연산·패턴과 그 함정 |
 | 🟢 [CODE_MAP.md](./architecture/CODE_MAP.md) | **압축 구조 지도** — 파일별 시그니처·라인 앵커·호출 흐름. 소스 전량 읽기 전에 여기부터 |
-| 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴 |
+| 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴, **프로세스 감시·`/health`·진행 박동(§1.3)** |
 | 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 |
 | 🟢 [data_model.md](./architecture/data_model.md) | ORM 모델 + 동적 테이블 + 레이어링/우선순위 |
 | 🟢 [event_driven_backend.md](./architecture/event_driven_backend.md) | Outbox 패턴 · 체인 인제션 · 온톨로지 그래프 승격(materializer) 심화 |
@@ -34,7 +36,8 @@
 | 파일 인제션 파이프라인 | 🟢 [guide/INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md) |
 | 체인 인제션(DB세션 맵퍼) | 🟢 [guide/chain_ingestion_guide.md](./guide/chain_ingestion_guide.md) |
 | Auto-Update 스케줄러 | 🟢 [guide/AUTO_UPDATE_GUIDE.md](./guide/AUTO_UPDATE_GUIDE.md) |
-| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status 6종), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어·prune 권한 불변식) |
+| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어) |
+| DOE 영역 저장 지도 | 🟠 [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — 「Legend & DOE」 패널 편집이 **어느 테이블로 갈라져 저장되는가** + `replace_map` 쓰기 의미론. ⚠️ **M2.6 진행 중**이라 최종 구조는 보드가 정본 |
 | HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
 | 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |
 | 실시간 동기화 | 🟠 [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md) |
@@ -48,12 +51,14 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). 새 기능 병합 시 doc-keeper가 갱신 |
+| 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). **§1.11/§2.15 운영 감시**(감시자·`/health`·격리 환경) 포함. 새 기능 병합 시 doc-keeper가 갱신 |
 
 ## 🛠️ 4. 운영 & 셋업 (guide/)
 
 | 문서 | 내용 |
 |---|---|
+| 🟢 [DEPLOY_SETUP.md](./guide/DEPLOY_SETUP.md) | **"내가 무엇을 채워야 하는가"** — 새 환경 배포 요약(제품 소유 vs 현장 소유, 제품 테이블 설치 스크립트, **격리 개발·검증 환경 §5**, 기동 후 `/health` 확인) |
+| 🟢 [process/PRODUCTION_READINESS.md](./process/PRODUCTION_READINESS.md) | **프로덕션 게이트** — 무엇이 아직 막고 있는가(차단/조건부/통과 + 근거). 배포 판단은 여기서 |
 | 🟢 [CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **설정 전수 지도** — `server/config/*` 파일별 목적·소유·리로드 방식, 시나리오별 온보딩 체크리스트, 핫리로드/검증 규율, 함정 모음 |
 | 🟢 [CONDA_SETUP_GUIDE.md](./guide/CONDA_SETUP_GUIDE.md) | Conda 환경 구성 |
 | 🟢 [NATIVE_POSTGRES_SETUP_GUIDE.md](./guide/NATIVE_POSTGRES_SETUP_GUIDE.md) | PostgreSQL 설치 |
@@ -66,7 +71,8 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스(208개). `python docs/history/gen_index.py`로 갱신 |
+| 🟢 [history/README.md](./history/README.md) | **자동 생성** 이력 인덱스. `python docs/history/gen_index.py`로 갱신(직접 편집 금지) |
+| 🟢 [process/PRODUCTION_READINESS.md](./process/PRODUCTION_READINESS.md) | 프로덕션 게이트 — 차단/조건부/통과 판정과 근거 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | 문서 갱신 규율 |
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
