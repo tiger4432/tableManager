@@ -27,6 +27,15 @@
 
    **규율**: 읽기(조회)는 무마찰, 쓰기(Push)는 1회 확인. **다음 절차: 두 에이전트 완료 → QA 재검수 → 병합 → 재기동.**
 
+   **⏱️ 압축 시점 스냅샷 (2026-07-26 20시경)**
+   - **스위트 409 passed / 1 allowed fail**. 서버·클라 v2 모두 **미커밋**(워킹트리). 라이브 서버는 **v2 코드로 재기동됨**.
+   - **QA 재검수 = 병렬 2건**(첫 적용). **A(서버 좌표·무결성) → 🔴 NO-GO**: `agent_workspace/reports/QA_v2_rereview_server.md`. **B(클라 동작) → 진행 중**: `QA_v2_rereview_client.md` 예정.
+   - **🔴 미해결 병합 차단 A1** — `map_overlay.py:209-236` `_frame_transformer`가 `PhysicalWaferEngine`을 **메타 물리 규격 그대로** 생성. 클라(`map_editor.js:1105-1123`)는 **프레임 기준**으로 rot 90/270에서 **칩 피치 스왑** + back에서 **offset_x 부호 반전**을 한다 → bbox 불일치. 실데이터가 서버 예측 반증(`sample_map/aa123_a` 실제 x[1,21] y[1,25] = 클라 예측). **SILENT-WRONG 84/25,760 잔존 + LOUD→SILENT 전이 18서명쌍 재발**. 라이브 `bonding_map/EXP1`은 `x=-1`(격자 밖) 반환. **수정 지시 완료**(프레임 규격 교정 ~6줄 + 오라클 독립 재작성 + 이방성칩×rot270×back×bbox≠0 픽스처 + `SILENT-WRONG 0` **및** `LOUD→SILENT 0` 동시 증명). 교정표는 QA 보고서 §2.
+   - **반복된 함정(3회째)**: 오라클이 검증 대상과 **같은 엔진/파라미터를 공유**하면 오라클이 아니다. 픽스처가 **결함 축을 활성화**해야 한다(`chip_x == chip_y`면 스왑 결함이 죽는다).
+   - **후속 백로그 A2**: `bonding_plan.py:199-204` 선언(override) 경로는 여전히 bbox 항 없는 구 산술 — 현재 휴면(라이브 오버라이드 없음)이나 한 줄 선언 시 부활.
+   - **사용자 판단 대기**: `map_doe`의 `bonding_map|AAA|F|1`·`|F|2` + 자재 4행(클라 검증 잔재 추정, AAA는 사용자 실편집 맵이라 미삭제).
+   - **다음 순서**: A1 수정 → B 판정 수령 → 판정 합산 → 병합 → 재기동 신호 → doc-keeper 정비(트리거 18건 누적).
+
    **🧭 재개 브리프 (컨텍스트 압축 대비 — 2026-07-26 작성)**
    - **미커밋 작업물의 위치**: 서버 v2는 `server/map_overlay.py`·`transfer_plan.py`·`main.py`(워킹트리), 클라 v2는 `client2/src/map_editor.js`·`transfer_plan.js`(워킹트리, `npm run build` 반영됨). **커밋 전이므로 `git status`로 범위를 먼저 확인할 것.**
    - **읽어야 할 보고서 3종**: `agent_workspace/reports/Server_transfer_plan_v2_impl_report.md`(§0 = 클라 계약, §4-1 = 적용 완료된 config, §5-2-bis = 좌표축), `Client_transfer_plan_v2_impl_report.md`(구현/보류/제거 3분류), `Design_transfer_plan_ui_v2.md`+`.html`(확정 시안).
