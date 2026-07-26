@@ -3,7 +3,7 @@ import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
-import { initBondingPlan } from './bonding_plan.js';
+import { initTransferPlan } from './transfer_plan.js';
 
 let tables = [];
 let selectedTable = '';
@@ -26,8 +26,84 @@ let dragType = null; // 'paint' | 'erase'
 let selectedEdgeTargetMap = null; // Track active E1/E2 edge selection map
 let loadedFCells = new Set(); // Track physical keys of cells loaded with value 'F'
 
+// ----------------------------------------------------
+// 페인트 잠금 규칙 — 단일 관문 (하드코딩 금지, config 주입형)
+// 종래에는 값 'F'가 코드 곳곳에 박혀 있었다. 잠금 판정을 여기 한 곳으로 모으고
+// 서버 선언을 주입받을 수 있게 한다. 서버 계약 확정 전에는 builtin 기본값으로 동작.
+//   기대 형태: { locked_values: ["F", ...], case_sensitive: bool }
+// ----------------------------------------------------
+// 계약: 잠금 값은 **서버 config가 정본**이다. 클라는 'F' 같은 값을 하드코딩하지 않는다.
+// 기본값은 "잠금 없음"(enabled:false) — 선언이 없으면 아무것도 잠그지 않는다.
+const NO_PAINT_LOCK = { enabled: false, blocking_values: [], from_overlay: [], message: '' };
+let paintLockConfig = { ...NO_PAINT_LOCK, source: 'default' };
+
+// 값 자체가 잠금 대상인가 (맵 로드 시 잠금 셀 판별)
+function isLockedValue(val) {
+  if (!paintLockConfig.enabled) return false;
+  if (val === undefined || val === null) return false;
+  const s = String(val).trim();
+  if (s === '') return false;
+  const list = Array.isArray(paintLockConfig.blocking_values) ? paintLockConfig.blocking_values : [];
+  return list.some(v => String(v) === s);
+}
+
+// 오버레이 기준 잠금: 선언된 오버레이에 셀이 있는 좌표는 칠할 수 없다.
+function isOverlayLocked(key) {
+  if (!paintLockConfig.enabled) return false;
+  const from = Array.isArray(paintLockConfig.from_overlay) ? paintLockConfig.from_overlay : [];
+  if (from.length === 0) return false;
+  return overlayLayers.some(o => from.includes(o.sourceTable) && o.cells && o.cells.has(key));
+}
+
+function paintLockMessage() {
+  return paintLockConfig.message || '이 좌표는 잠금 규칙에 의해 칠할 수 없습니다.';
+}
+
+// 이 좌표를 편집(페인트/지우기)할 수 없는가 — 전 편집 경로의 단일 관문
 function isProtectedFCell(key) {
-  return loadedFCells.has(key);
+  return loadedFCells.has(key) || isOverlayLocked(key);
+}
+
+// 서버 선언 주입 지점
+function applyPaintLockConfig(payload) {
+  const rules = (payload && typeof payload === 'object')
+    ? (payload.rules && typeof payload.rules === 'object' ? payload.rules : payload) : null;
+  if (!rules) return false;
+  paintLockConfig = {
+    enabled: rules.enabled === true,
+    blocking_values: Array.isArray(rules.blocking_values) ? rules.blocking_values.map(String) : [],
+    from_overlay: Array.isArray(rules.from_overlay) ? rules.from_overlay.map(String) : [],
+    message: typeof rules.message === 'string' ? rules.message : '',
+    source: 'server',
+  };
+  return true;
+}
+
+// GET /api/maps/paint-rules?table= — 잠금 선언의 정본.
+// 미지원(404)이면 "잠금 없음"을 유지한다(하드코딩 폴백 없음).
+async function fetchPaintRules(table) {
+  const t = table || selectedTable;
+  if (!t) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/maps/paint-rules?table=${encodeURIComponent(t)}`);
+    if (!res.ok) { paintLockConfig = { ...NO_PAINT_LOCK, source: 'unsupported' }; return; }
+    const cfg = await res.json();
+    if (applyPaintLockConfig(cfg)) {
+      // 잠금 값이 바뀌었으므로 현재 맵의 잠금 셀 집합을 다시 계산한다
+      recomputeLockedCells();
+      if (paintLockConfig.enabled) {
+        console.info('[Map Editor] paint rules:', paintLockConfig.blocking_values, paintLockConfig.from_overlay);
+      }
+    }
+  } catch (e) { paintLockConfig = { ...NO_PAINT_LOCK, source: 'unsupported' }; }
+}
+
+// 현재 gridData 기준으로 값-잠금 셀 집합 재구성 (선언이 바뀌었을 때)
+function recomputeLockedCells() {
+  loadedFCells = new Set();
+  if (!paintLockConfig.enabled) { scheduleRenderGridCanvas(); return; }
+  Object.keys(gridData).forEach(k => { if (isLockedValue(gridData[k])) loadedFCells.add(k); });
+  scheduleRenderGridCanvas();
 }
 
 // Default Legend
@@ -154,7 +230,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   initDOMElements();
   initMouseDragEvents();
-  initBondingPlan();
+  // [M2] 전사 계획 패널 — 모드 컨트롤러 주입 (함수 선언은 호이스팅됨)
+  initTransferPlan({
+    enterPlanPaint,                       // 모드 A: base(계획) 맵 페인팅
+    finishPlanPaint,                      // 모드 A 종료
+    enterCorePaint,                       // 모드 B: 코어 사용 영역 페인팅
+    finishCorePaint,                      // 모드 B 종료 (저장/취소)
+    isActive: () => !!planPaint || !!corePaint,
+    isCoreMode: () => !!corePaint,
+    isPlanMode: () => !!planPaint,
+    setBrush: (v) => { selectBrush(String(v)); updateLegendCounts(); },
+    addOverlayForCore,                    // 모드 B 오버레이(defect/EDS) 토글
+    listOverlays: listOverlayLayers,
+    removeOverlay: removeOverlayLayer,
+    toggleOverlay: toggleOverlayLayer,
+    clearOverlays: clearOverlayLayers,
+  });
   await loadTablesList();
 });
 
@@ -300,7 +391,11 @@ function initDOMElements() {
     });
   });
 
-  el.btnLoadMap.addEventListener('click', loadExistingMap);
+  el.btnLoadMap.addEventListener('click', handleLoadMapClick);
+  const btnClearOv = document.getElementById('btn-clear-overlays');
+  if (btnClearOv) btnClearOv.addEventListener('click', clearOverlayLayers);
+  renderOverlayList();
+  // 잠금 선언은 테이블별이므로 switchTable에서도 재조회한다
   el.btnAddLegend.addEventListener('click', addNewLegendRow);
   el.btnSetOrigin.addEventListener('click', () => {
     isOriginMode = !isOriginMode;
@@ -606,6 +701,7 @@ async function loadTablesList() {
 // Switch current working table & load schema
 async function switchTable(tableName) {
   selectedTable = tableName;
+  fetchPaintRules(tableName); // 잠금 선언은 맵 테이블별 — 전환 시 재조회
   try {
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
     tableSchema = await res.json();
@@ -700,6 +796,23 @@ function renderMetadataInputs() {
     formGroup.appendChild(input);
     container.appendChild(formGroup);
   });
+
+  // [C5-B1] 이 함수는 container.innerHTML=''로 메타 입력을 **재생성**한다.
+  // 페인팅 중에 X/Y/Val 컬럼 드롭다운을 바꾸면 여기로 들어와 주입된 맵 키와
+  // readOnly가 통째로 날아가고, 잠금이 조용히 풀린다(타 맵 전량 삭제 경로 재개통).
+  // → 재생성 직후 반드시 맵 키 값과 잠금을 복원한다.
+  restorePlanMetaLock();
+}
+
+// 페인팅 모드 중이면 주입했던 맵 키 값 + readOnly 잠금을 다시 적용한다.
+function restorePlanMetaLock() {
+  const active = planPaint || corePaint;
+  if (!active) return;
+  if (planPaint && planPaint.planCol && planPaint.opts && planPaint.opts.planId) {
+    const input = document.getElementById(`meta-input-${planPaint.planCol}`);
+    if (input) input.value = planPaint.opts.planId;
+  }
+  lockPlanMetaInputs(true);
 }
 
 function getBaseColumnName() {
@@ -1276,6 +1389,13 @@ function updateLegendCounts() {
       badge.style.color = qty > 0 ? 'var(--color-primary)' : 'var(--text-dim)';
     }
   });
+
+  // [M2] 페인팅 모드 중이면 플로팅 바의 DOE별 카운트도 동기화
+  if (planPaint) updatePlanPaintBarCounts(counts);
+  // [M2 모드 B] 코어 사용 영역 셀 수를 계획 패널에 실시간 통지
+  if (corePaint && corePaint.opts && typeof corePaint.opts.onCountChange === 'function') {
+    corePaint.opts.onCountChange(counts[USE_VALUE] || 0);
+  }
 }
 
 // ----------------------------------------------------
@@ -1398,6 +1518,9 @@ function renderGridCanvas() {
   el.waferCanvas.width = width * dpr;
   el.waferCanvas.height = height * dpr;
 
+  // 규격이 바뀌었으면 오버레이 좌표를 먼저 재계산 (어긋난 위치 표시 방지)
+  syncOverlayGeometry();
+
   const ctx = el.waferCanvas.getContext('2d');
   ctx.save();
   ctx.scale(dpr, dpr);
@@ -1511,6 +1634,12 @@ function renderGridCanvas() {
         // 값 셀 텍스트: 채도 높은 범례색 위 흰색 고정(테마 불변), 좌표 표기: 테마 토큰
         ctx.fillStyle = val !== '' ? '#ffffff' : (completelyInside ? C.textEmpty : C.textOut);
         ctx.fillText(textToDraw, x0 + cellW / 2, y0 + cellH / 2);
+      }
+
+      // 5b. [오버레이] 서버가 타깃 프레임으로 정렬해 준 좌표를 마커로 겹쳐 그린다.
+      //     좌표 변환 금지 — 응답 좌표를 그대로 쓴다. 셀 값은 덮지 않고 마커만 얹는다.
+      if (activeOverlayLayers.length > 0) {
+        drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH);
       }
     }
   }
@@ -1763,6 +1892,9 @@ function loadLegendFromStorage() {
 }
 
 function saveLegendToStorage() {
+  // [코어 페인팅] 이때의 legend는 임시 USE 팔레트일 뿐이고 selectedTable은 여전히
+  // 원래 맵이다 — 그대로 저장하면 그 맵의 범례 캐시에 USE가 섞여 들어간다.
+  if (corePaint) return;
   localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(legend));
 }
 
@@ -1814,6 +1946,9 @@ async function loadLegend(refTable, mapKey) {
 
 // legend 전체를 registry에 업서트. map_key 미확정이면 조용히 스킵(false).
 async function saveLegendToServer(mapKeyOverride) {
+  // [코어 페인팅] 임시 USE 팔레트를 원래 맵의 split registry에 올리면 안 된다
+  // (selectedTable이 여전히 원래 맵이라 그 맵의 범례로 영구 등록되어 버린다).
+  if (corePaint) return false;
   const mapKey = mapKeyOverride || getCurrentMapKey();
   if (!selectedTable || !mapKey) return false;
   const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, getLocalTimeString());
@@ -2151,6 +2286,11 @@ async function loadExistingMap() {
     // Reset local cache & loaded F cells protection set
     gridData = {};
     loadedFCells.clear();
+    // 기준 맵이 통째로 바뀌므로 이전 맵 기준으로 정렬된 오버레이는 무효다
+    if (overlayLayers.length > 0) {
+      clearOverlayLayers();
+      showToast('기준 맵이 교체되어 오버레이를 해제했습니다.', 'info');
+    }
     let count = 0;
     
     // Pre-calculate coordinate bounds first
@@ -2365,7 +2505,8 @@ async function loadExistingMap() {
             const gridKey = `${physical.x}_${physical.y}`;
             gridData[gridKey] = strVal;
 
-            if (strVal === 'F') {
+            // 잠금 판정은 config 관문(isLockedValue)만 사용 — 값 하드코딩 금지
+            if (isLockedValue(strVal)) {
               loadedFCells.add(gridKey);
             }
           }
@@ -2621,14 +2762,22 @@ async function pushMapData() {
     if (!okMissing) return;
   }
 
-  if (!confirm(`총 ${updates.length}건의 활성 맵 데이터를 '${selectedTable}' 테이블에 덮어쓰기 적재(Clean Replace)하시겠습니까?`)) {
+  // [C5] 덮어쓰기 대상 맵을 확인문에 명시한다. replace_map은 이 맵 키의 기존 행을
+  // 전량 삭제 후 재기록하므로, 테이블명만 보여주면 "어느 맵이 지워지는지" 알 수 없다.
+  const targetMapId = getMapIdFromMeta(metaValues) || 'default_map';
+  if (!confirm(
+    `총 ${updates.length}건의 활성 맵 데이터를 덮어쓰기 적재(Clean Replace)하시겠습니까?\n\n` +
+    `· 대상 테이블: ${selectedTable}\n` +
+    `· 대상 맵 키: ${targetMapId}\n\n` +
+    `⚠️ 이 맵 키의 기존 셀은 전부 삭제된 뒤 현재 격자 내용으로 대체됩니다.`
+  )) {
     return;
   }
 
   el.btnPushMap.textContent = '⚡ Pushing...';
   el.btnPushMap.disabled = true;
 
-  const mapIdStr = getMapIdFromMeta(metaValues) || 'default_map';
+  const mapIdStr = targetMapId;
 
   console.group('%c🚀 [Map Editor API] PUSH MAP DATA EXECUTED', 'color: #3b82f6; font-weight: bold; font-size: 13px;');
   console.log('📌 Target Table:', selectedTable);
@@ -2682,6 +2831,9 @@ async function pushMapData() {
       const result = await res.json();
       console.log('📥 [API Response 2/2] Success Result:', result);
       console.groupEnd();
+
+      // [M2] 계획 페인팅 모드 중의 push = transfer_plan_map 저장 — 패널 집계에 알림
+      if (planPaint) planPaint.pushed = true;
 
       // [Split Registry] 맵과 서술의 원자적 동행 — push 성공 시 legend 일괄 서버 저장
       saveLegendToStorage();
@@ -3062,4 +3214,941 @@ async function copyGridToExcel() {
       alert('클립보드 복사에 실패했습니다.');
     }
   }
+}
+
+// ----------------------------------------------------
+// [M2] Transfer Plan 페인팅 모드 엔진
+// 패널(transfer_plan.js)이 controller.enterPlanPaint()로 진입.
+// 원칙: 신규 페인팅 엔진 발명 금지 — 기존 도구(브러시/드래그/legend/Push)의
+// 데이터 소스·저장 대상만 transfer_plan_map(해당 plan)으로 바뀐다.
+// 편집 중이던 맵은 스냅샷으로 보존 → 완료/취소 시 원복 (더티 가드).
+// ----------------------------------------------------
+const PLAN_MAP_TABLE = 'transfer_plan_map';
+let planPaint = null; // null | { snapshot, opts, serverMapAvailable, presetName, loadedMeta, pushed }
+
+function snapshotEditorState() {
+  const metaValues = {};
+  document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+    metaValues[input.id.replace('meta-input-', '')] = input.value;
+  });
+  return {
+    selectedTable,
+    tableSchema,
+    tableSelectValue: el.tableSelect ? el.tableSelect.value : '',
+    gridData: { ...gridData },
+    loadedFCells: new Set(loadedFCells),
+    legend: legend.map(l => ({ ...l })),
+    legendMeta: { ...legendMeta },
+    activeBrush,
+    metaValues,
+    colX: el.colMapX ? el.colMapX.value : '',
+    colY: el.colMapY ? el.colMapY.value : '',
+    colVal: el.colMapVal ? el.colMapVal.value : '',
+    gridCols: el.gridCols.value,
+    gridRows: el.gridRows.value,
+    gridStartX: el.gridStartX.value,
+    gridStartY: el.gridStartY.value,
+    gridYInvert: el.gridYInvert.checked,
+    showAnnotations: el.showAnnotations ? el.showAnnotations.checked : true,
+    physWaferDia: el.physWaferDia ? el.physWaferDia.value : '300',
+    physChipX: el.physChipX ? el.physChipX.value : '2.5',
+    physChipY: el.physChipY ? el.physChipY.value : '2.5',
+    physOffsetX: el.physOffsetX ? el.physOffsetX.value : '0',
+    physOffsetY: el.physOffsetY ? el.physOffsetY.value : '0',
+    physEdgeMargin: el.physEdgeMargin ? el.physEdgeMargin.value : '3',
+    rotation: currentRotation,
+    side: currentSide,
+  };
+}
+
+function restoreEditorState(s) {
+  selectedTable = s.selectedTable;
+  tableSchema = s.tableSchema;
+  if (el.tableSelect) el.tableSelect.value = s.tableSelectValue;
+  if (tableSchema) {
+    fillColumnDropdowns();
+    if (s.colX && el.colMapX) el.colMapX.value = s.colX;
+    if (s.colY && el.colMapY) el.colMapY.value = s.colY;
+    if (s.colVal && el.colMapVal) el.colMapVal.value = s.colVal;
+    renderMetadataInputs();
+    Object.entries(s.metaValues).forEach(([col, val]) => {
+      const input = document.getElementById(`meta-input-${col}`);
+      if (input) input.value = val;
+    });
+  }
+  el.gridCols.value = s.gridCols;
+  el.gridRows.value = s.gridRows;
+  el.gridStartX.value = s.gridStartX;
+  el.gridStartY.value = s.gridStartY;
+  el.gridYInvert.checked = s.gridYInvert;
+  if (el.showAnnotations) el.showAnnotations.checked = s.showAnnotations;
+  if (el.physWaferDia) el.physWaferDia.value = s.physWaferDia;
+  if (el.physChipX) el.physChipX.value = s.physChipX;
+  if (el.physChipY) el.physChipY.value = s.physChipY;
+  if (el.physOffsetX) el.physOffsetX.value = s.physOffsetX;
+  if (el.physOffsetY) el.physOffsetY.value = s.physOffsetY;
+  if (el.physEdgeMargin) el.physEdgeMargin.value = s.physEdgeMargin;
+  currentRotation = s.rotation;
+  currentSide = s.side;
+  boundingBoxCache = {};
+  updateOrientationUI();
+
+  gridData = { ...s.gridData };
+  loadedFCells = new Set(s.loadedFCells);
+  legend = s.legend.map(l => ({ ...l }));
+  legendMeta = { ...s.legendMeta };
+  activeBrush = s.activeBrush;
+  renderLegendTable();
+  renderGridCanvas();
+}
+
+// transfer_plan_map의 계획 식별 컬럼 해석 ('plan' 포함 우선, 폴백 첫 map key)
+function getPlanKeyColumn(schema) {
+  const keys = (schema && Array.isArray(schema.map_key_columns)) ? schema.map_key_columns : [];
+  const planCol = keys.find(c => /plan/i.test(c));
+  return planCol || keys[0] || 'plan_id';
+}
+
+// 계획 맵 테이블 가용성 프로브 → 사용 가능하면 schema 반환, 아니면 null.
+// 주의: GET /tables/{t}/schema 는 존재하지 않는 테이블에도 200 + 시스템 컬럼 스켈레톤을
+// 돌려준다(존재 확인 불가). 실제 존재 판정은 GET /tables/{t}/data (미존재 → 404).
+// 존재하더라도 업무 컬럼(map_key_columns / x·y·val)이 미구성이면 push가 무의미하므로
+// "미지원"으로 강등하여 초안 모드로 처리한다.
+const SYSTEM_ONLY_COLS = ['created_at', 'updated_at', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at', 'row_id', 'business_key_val'];
+
+async function probePlanMapTable() {
+  try {
+    const dataRes = await fetch(`${API_BASE}/tables/${PLAN_MAP_TABLE}/data?limit=1`);
+    if (!dataRes.ok) return null; // 404 = 테이블 자체 부재 (구버전 서버)
+    const schemaRes = await fetch(`${API_BASE}/tables/${PLAN_MAP_TABLE}/schema`);
+    if (!schemaRes.ok) return null;
+    const schema = await schemaRes.json();
+    const cols = (schema && Array.isArray(schema.columns)) ? schema.columns : [];
+    const businessCols = cols.filter(c => !SYSTEM_ONLY_COLS.includes(c));
+    const keys = (schema && Array.isArray(schema.map_key_columns)) ? schema.map_key_columns : [];
+    if (businessCols.length === 0 || keys.length === 0) {
+      console.warn('[Plan Paint] transfer_plan_map exists but has no configured business/map-key columns — draft mode.');
+      return null;
+    }
+    return schema;
+  } catch (e) {
+    return null; // offline → 초안 모드
+  }
+}
+
+// 저장된 grid_metadata 객체를 에디터 규격 UI에 적용 (loadExistingMap 'meta' 분기 미러)
+function applyGridMetaObject(meta) {
+  if (!meta || typeof meta !== 'object') return;
+  if (meta.grid_cols !== undefined) el.gridCols.value = meta.grid_cols;
+  if (meta.grid_rows !== undefined) el.gridRows.value = meta.grid_rows;
+  if (meta.grid_start_x !== undefined) el.gridStartX.value = meta.grid_start_x;
+  if (meta.grid_start_y !== undefined) el.gridStartY.value = meta.grid_start_y;
+  if (meta.grid_y_invert !== undefined) el.gridYInvert.checked = !!meta.grid_y_invert;
+  currentRotation = meta.rotation || 0;
+  currentSide = meta.side || 'front';
+  if (meta.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = meta.phys_wafer_dia;
+  if (meta.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = meta.phys_chip_x;
+  if (meta.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = meta.phys_chip_y;
+  if (meta.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = meta.phys_offset_x;
+  if (meta.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = meta.phys_offset_y;
+  if (meta.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = meta.phys_edge_margin;
+  boundingBoxCache = {};
+  updateOrientationUI();
+}
+
+// 타깃 종류(tape/base)에 맞는 규격 프리셋 탐색 (M1 전례: key → name 순 정규식)
+function findPlanPreset(targetKind) {
+  const patterns = targetKind === 'tape'
+    ? [/tape/i, /\bdt\b/i]
+    : [/base/i, /bond/i];
+  for (const re of patterns) {
+    const byKey = Object.entries(serverPresets).find(([key]) => re.test(key));
+    if (byKey) return { key: byKey[0], ...byKey[1] };
+  }
+  for (const re of patterns) {
+    const byName = Object.entries(serverPresets).find(([, p]) => p && re.test(String(p.name || '')));
+    if (byName) return { key: byName[0], ...byName[1] };
+  }
+  return null;
+}
+
+// 서버 계획 맵 조회: wafer_map_metadata 규격 + 셀 rows (조용한 실패 — 페인팅은 계속)
+async function fetchPlanMapData(planId, planCol) {
+  const out = { meta: null, rows: [] };
+  try {
+    const metaFilter = {
+      target_table: { filterType: 'text', type: 'equals', filter: PLAN_MAP_TABLE },
+      map_id: { filterType: 'text', type: 'equals', filter: planId }
+    };
+    const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=1&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
+    if (metaRes.ok) {
+      const metaResult = await metaRes.json();
+      if (metaResult && metaResult.data && metaResult.data.length > 0) {
+        const metaStr = metaResult.data[0].data?.grid_metadata?.value;
+        if (metaStr) out.meta = JSON.parse(metaStr);
+      }
+    }
+  } catch (e) {
+    console.warn('[Plan Paint] wafer_map_metadata fetch skipped:', e);
+  }
+  try {
+    const filters = { [planCol]: { filterType: 'text', type: 'equals', filter: planId } };
+    const res = await fetch(`${API_BASE}/tables/${PLAN_MAP_TABLE}/data?limit=2000&filters=${encodeURIComponent(JSON.stringify(filters))}`);
+    if (res.ok) {
+      const result = await res.json();
+      const xCol = el.colMapX.value || 'x';
+      const yCol = el.colMapY.value || 'y';
+      const valCol = el.colMapVal.value || 'val';
+      (result && Array.isArray(result.data) ? result.data : []).forEach(row => {
+        const d = row.data || {};
+        const x = d[xCol]?.value;
+        const y = d[yCol]?.value;
+        const v = d[valCol]?.value;
+        if (x === undefined || y === undefined || v === null || v === undefined || String(v).trim() === '') return;
+        const xn = parseInt(x, 10);
+        const yn = parseInt(y, 10);
+        if (!isNaN(xn) && !isNaN(yn)) out.rows.push({ x: xn, y: yn, val: String(v).trim() });
+      });
+    }
+  } catch (e) {
+    console.warn('[Plan Paint] plan map rows fetch skipped:', e);
+  }
+  return out;
+}
+
+// visual 좌표 셀들을 현재 그리드 규격으로 gridData에 반영 (loadExistingMap 좌표 경로 재사용)
+function applyCellsToGrid(cells) {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert.checked;
+  let count = 0;
+  (Array.isArray(cells) ? cells : []).forEach(cell => {
+    const xn = Number(cell.x);
+    const yn = Number(cell.y);
+    const val = cell.val !== null && cell.val !== undefined ? String(cell.val).trim() : '';
+    if (!Number.isFinite(xn) || !Number.isFinite(yn) || val === '') return;
+    const c = getCellFromVisualCoords(xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+    const physical = getPhysicalCoords(c.c, c.r, cols, rows, currentRotation, currentSide);
+    gridData[`${physical.x}_${physical.y}`] = val;
+    count++;
+  });
+  return count;
+}
+
+// 현재 격자에서 계획 셀 수집 (pushMapData와 동일 기준: inside && 값 있는 셀, visual 좌표)
+function collectPlanCells() {
+  const cells = [];
+  const counts = {};
+  if (gridCells2D) {
+    Object.keys(gridCells2D).forEach(rStr => {
+      const r = parseInt(rStr, 10);
+      if (!gridCells2D[r]) return;
+      Object.keys(gridCells2D[r]).forEach(cStr => {
+        const c = parseInt(cStr, 10);
+        const cellObj = gridCells2D[r][c];
+        if (!cellObj || !cellObj.inside) return;
+        const val = gridData[cellObj.key];
+        if (val === '' || val === null || val === undefined) return;
+        const sv = String(val);
+        cells.push({ x: cellObj.x, y: cellObj.y, val: sv });
+        counts[sv] = (counts[sv] || 0) + 1;
+      });
+    });
+  }
+  return { cells, counts };
+}
+
+// ── 플로팅 바 (DOM API로 생성 — 사용자 값 이스케이프 이슈 회피) ──
+function buildPlanPaintBar() {
+  removePlanPaintBar();
+  if (!planPaint) return;
+  const bar = document.createElement('div');
+  bar.id = 'tp-paint-bar';
+  bar.className = 'tp-paint-bar';
+
+  const title = document.createElement('span');
+  title.className = 'tp-paint-bar-title';
+  title.textContent = `🖌 계획 페인팅 · ${planPaint.opts.planLabel || planPaint.opts.planId}`;
+  bar.appendChild(title);
+
+  const info = document.createElement('span');
+  info.className = 'tp-paint-bar-info';
+  const specTxt = planPaint.loadedMeta ? '저장 규격' : (planPaint.presetName ? `프리셋 ${planPaint.presetName}` : '프리셋 미연결 · 현재 규격');
+  const storeTxt = planPaint.serverMapAvailable ? '저장 = ⚡ Push (transfer_plan_map)' : '초안 모드 (서버 맵 테이블 미지원 — Push 비활성)';
+  info.textContent = `${specTxt} · ${storeTxt}`;
+  bar.appendChild(info);
+
+  const chips = document.createElement('span');
+  chips.className = 'tp-paint-bar-chips';
+  legend.forEach(item => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'tp-paint-chip';
+    chip.dataset.v = item.value;
+    chip.title = item.desc || '';
+    const dot = document.createElement('i');
+    dot.style.background = item.color || '#6b7280';
+    chip.appendChild(dot);
+    chip.appendChild(document.createTextNode(`${item.value} `));
+    const cnt = document.createElement('b');
+    cnt.className = 'tp-chip-cnt';
+    cnt.textContent = '0';
+    chip.appendChild(cnt);
+    chip.addEventListener('click', () => {
+      selectBrush(item.value);
+      updateLegendCounts();
+    });
+    chips.appendChild(chip);
+  });
+  bar.appendChild(chips);
+
+  const btns = document.createElement('span');
+  btns.className = 'tp-paint-bar-btns';
+  const doneBtn = document.createElement('button');
+  doneBtn.type = 'button';
+  doneBtn.className = 'glass-btn success-glow';
+  doneBtn.style.padding = '4px 14px';
+  doneBtn.style.fontSize = '0.78rem';
+  doneBtn.textContent = '✓ 완료';
+  doneBtn.title = '페인팅 집계를 패널에 반영하고 원래 편집 상태로 복귀';
+  doneBtn.addEventListener('click', () => finishPlanPaint(false));
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'glass-btn hover-danger';
+  cancelBtn.style.padding = '4px 14px';
+  cancelBtn.style.fontSize = '0.78rem';
+  cancelBtn.textContent = '✕ 취소';
+  cancelBtn.title = '페인팅을 버리고 원래 편집 상태로 복귀';
+  cancelBtn.addEventListener('click', () => finishPlanPaint(true));
+  btns.appendChild(doneBtn);
+  btns.appendChild(cancelBtn);
+  bar.appendChild(btns);
+
+  document.body.appendChild(bar);
+  updateLegendCounts();
+}
+
+function updatePlanPaintBarCounts(counts) {
+  const bar = document.getElementById('tp-paint-bar');
+  if (!bar) return;
+  bar.querySelectorAll('.tp-paint-chip').forEach(chip => {
+    const v = chip.dataset.v;
+    const cnt = chip.querySelector('.tp-chip-cnt');
+    if (cnt) cnt.textContent = String(counts[v] || 0);
+    chip.classList.toggle('active', v === activeBrush);
+  });
+}
+
+function removePlanPaintBar() {
+  const bar = document.getElementById('tp-paint-bar');
+  if (bar) bar.remove();
+}
+
+// [C5] 계획 페인팅 중 메타(맵 키) 입력 잠금/해제.
+// 맵 키가 곧 replace_map의 삭제 범위이므로 페인팅 모드에서는 편집을 봉인한다.
+function lockPlanMetaInputs(locked) {
+  document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+    input.readOnly = !!locked;
+    input.classList.toggle('tp-locked-input', !!locked);
+    if (locked) {
+      input.title = '계획 페인팅 중에는 맵 키를 변경할 수 없습니다 (다른 계획의 데이터가 덮어써지는 것을 방지).';
+      input.setAttribute('aria-readonly', 'true');
+    } else {
+      input.title = '';
+      input.removeAttribute('aria-readonly');
+    }
+  });
+}
+
+// ── 진입/종료 ──
+async function enterPlanPaint(opts) {
+  if (planPaint) return false;
+  if (!opts || !opts.planId) return false;
+  const snapshot = snapshotEditorState();
+
+  // 1) 계획 맵 테이블 가용성 확인 (부재/미구성 = 구버전 서버 → 로컬 페인팅만, Push 봉인)
+  const planSchema = await probePlanMapTable();
+  const serverMapAvailable = !!planSchema;
+
+  planPaint = { snapshot, opts, serverMapAvailable, presetName: null, loadedMeta: false, pushed: false };
+
+  // 2) 에디터 컨텍스트 전환 (기존 편집물은 스냅샷에 보존됨)
+  gridData = {};
+  loadedFCells = new Set();
+  legendMeta = {};
+  let planCol = 'plan_id';
+  if (serverMapAvailable) {
+    selectedTable = PLAN_MAP_TABLE;
+    tableSchema = planSchema;
+    planCol = getPlanKeyColumn(planSchema);
+    // 드롭다운에 없는 테이블일 수 있음 — 임시 옵션 표시
+    if (el.tableSelect && !Array.from(el.tableSelect.options).some(o => o.value === PLAN_MAP_TABLE)) {
+      const opt = document.createElement('option');
+      opt.value = PLAN_MAP_TABLE;
+      opt.textContent = `🖌 ${PLAN_MAP_TABLE} (계획 페인팅)`;
+      opt.dataset.planTemp = '1';
+      el.tableSelect.appendChild(opt);
+    }
+    if (el.tableSelect) el.tableSelect.value = PLAN_MAP_TABLE;
+    planPaint.planCol = planCol; // 컬럼 드롭다운 변경으로 재생성될 때 복원용
+    fillColumnDropdowns();
+    renderMetadataInputs();
+    const planInput = document.getElementById(`meta-input-${planCol}`);
+    if (planInput) planInput.value = opts.planId;
+  }
+
+  // 3) DOE 팔레트 → legend (기존 브러시/legend 도구 그대로 사용)
+  const rows = Array.isArray(opts.legendRows) ? opts.legendRows : [];
+  legend = rows.map(x => ({ value: String(x.value), desc: x.desc || '', color: x.color || '#6b7280' }));
+  if (legend.length === 0) legend = DEFAULT_LEGEND.map(l => ({ ...l }));
+  const wanted = opts.activeValue !== undefined && opts.activeValue !== null ? String(opts.activeValue) : '';
+  activeBrush = legend.some(l => l.value === wanted) ? wanted : legend[0].value;
+
+  // 4) 저장 규격/맵 로드 → 없으면 타깃 프리셋 → 그마저 없으면 현 규격 유지 (graceful)
+  let fetched = { meta: null, rows: [] };
+  if (serverMapAvailable) fetched = await fetchPlanMapData(opts.planId, planCol);
+  if (fetched.meta) {
+    applyGridMetaObject(fetched.meta);
+    planPaint.loadedMeta = true;
+  } else {
+    const preset = findPlanPreset(opts.targetKind);
+    if (preset) {
+      applyPresetObject(preset);
+      planPaint.presetName = preset.name || preset.key;
+    } else {
+      showToast(`${opts.targetKind === 'tape' ? 'TAPE' : 'BASE'} 규격 프리셋 미등록 — 현재 그리드 규격을 유지합니다.`, 'warning');
+    }
+  }
+  if (fetched.rows.length > 0) {
+    applyCellsToGrid(fetched.rows);
+  } else if (Array.isArray(opts.draftCells) && opts.draftCells.length > 0) {
+    const n = applyCellsToGrid(opts.draftCells);
+    if (n > 0) showToast(`초안 페인팅 ${n}셀을 복원했습니다.`, 'info');
+  }
+
+  // 5) UI 잠금 + 플로팅 바
+  if (el.tableSelect) el.tableSelect.disabled = true;
+  if (el.btnLoadMap) el.btnLoadMap.disabled = true;
+  // [C5] 맵 키(plan_id) 입력 잠금 — 가장 파괴적인 입력이다.
+  // push는 map_key_columns 일치 행을 전량 삭제 후 재기록(replace_map)하므로,
+  // 이 값을 한 글자만 잘못 고쳐도 **타 계획의 페인팅 전량이 삭제**된다.
+  // tableSelect와 동일 대우로 봉인하고, 변경은 모드 이탈 후에만 가능하게 한다.
+  lockPlanMetaInputs(true);
+  if (!serverMapAvailable && el.btnPushMap) {
+    el.btnPushMap.disabled = true;
+    el.btnPushMap.title = '서버가 transfer_plan_map을 아직 제공하지 않습니다 (구버전) — 완료 시 초안으로 보관됩니다.';
+  }
+  await fetchPaintRules(PLAN_MAP_TABLE); // 계획 맵의 잠금 선언
+  renderLegendTable();
+  renderGridCanvas();
+  buildPlanPaintBar();
+  return true;
+}
+
+function finishPlanPaint(cancelled) {
+  if (!planPaint) return;
+  const { snapshot, opts, serverMapAvailable, pushed } = planPaint;
+  let result = null;
+  if (!cancelled) {
+    renderGridCanvas(); // gridCells2D 최신화 후 수집
+    result = collectPlanCells();
+  }
+  removePlanPaintBar();
+  if (el.tableSelect) {
+    el.tableSelect.disabled = false;
+    const tempOpt = el.tableSelect.querySelector('option[data-plan-temp="1"]');
+    if (tempOpt) tempOpt.remove();
+  }
+  if (el.btnLoadMap) el.btnLoadMap.disabled = false;
+  if (el.btnPushMap) {
+    el.btnPushMap.disabled = false;
+    el.btnPushMap.title = '';
+  }
+  lockPlanMetaInputs(false); // [C5] 맵 키 잠금 해제
+  planPaint = null;
+  restoreEditorState(snapshot);
+  if (cancelled) {
+    // [C10] push를 이미 눌렀다면 서버에는 반영이 끝났다 — "미반영"이라 말하면 거짓이다.
+    if (opts && typeof opts.onCancel === 'function') opts.onCancel({ pushed, serverMapAvailable });
+  } else if (opts && typeof opts.onFinish === 'function') {
+    opts.onFinish({ ...result, serverMapAvailable, pushed });
+  }
+}
+
+// ====================================================
+// [범용] 맵 오버레이 엔진
+// 임의의 맵을 임의의 맵 위에 겹쳐 본다. map meta가 달라도 **서버가 정렬**해 준다.
+//
+// 서버 계약 (총괄 확정 — 서버부 구현 예정, 현재는 404 → graceful):
+//   GET /api/maps/overlay?target_table=&target_key=&source_table=&source_key=
+//     → { source_table, source_key, cells:[{x,y,val}], count,
+//         align_applied: bool, status: "ok"|"align_unavailable"|..., truncated?: bool }
+//   · cells의 좌표는 **이미 타깃 프레임**이다 → 클라는 변환 금지, 그대로 렌더.
+//   · status가 정상이 아니면 겹치지 않는다. 조용히 원본 좌표로 그리면
+//     EDS(align rotation 180)처럼 180° 뒤집힌 거짓 그림이 된다.
+// ====================================================
+const OVERLAY_COLORS = ['#ef4444', '#3b82f6', '#f59e0b', '#a855f7', '#14b8a6', '#ec4899'];
+let overlayLayers = [];        // { id, sourceTable, sourceKey, cells:Map(physKey->val), count, color, visible, status, alignApplied, truncated }
+let activeOverlayLayers = [];  // 그리기 대상(visible)만 추린 캐시 — 렌더 루프에서 재계산 금지
+let overlaySeq = 1;
+
+function recomputeActiveOverlays() {
+  activeOverlayLayers = overlayLayers.filter(o => o.visible && o.cells && o.cells.size > 0);
+}
+
+// 셀 하나에 대한 오버레이 마커 — 레이어별 색 점을 우상단에 나란히 찍는다.
+function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
+  const r = Math.max(1.5, Math.min(cellW, cellH) * 0.13);
+  let idx = 0;
+  for (let i = 0; i < activeOverlayLayers.length; i++) {
+    const layer = activeOverlayLayers[i];
+    if (!layer.cells.has(coordKey)) continue;
+    const cx = x0 + cellW - r - 1.5 - idx * (r * 2 + 1.5);
+    const cy = y0 + r + 1.5;
+    if (cx < x0) break; // 셀이 너무 작아 더 못 찍음
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = layer.color;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    idx++;
+  }
+}
+
+// 서버가 준 (타깃 프레임) 좌표 → 현재 격자의 물리 키로 배치한다.
+// ⚠️ 회전·반전을 여기서 적용하지 않는다(서버가 이미 타깃 프레임으로 정렬했다 — 이중 변환 금지).
+// 아래는 "논리 (x,y) → 캔버스 셀 → 물리 키"라는 기존 맵 로드와 동일한 배치 매핑일 뿐이며,
+// loadExistingMap이 타깃 맵 자신의 셀에 쓰는 것과 정확히 같은 경로다.
+function overlayCellsToPhysMap(cells) {
+  const cols = parseInt(el.gridCols.value, 10) || 10;
+  const rows = parseInt(el.gridRows.value, 10) || 10;
+  const startX = parseInt(el.gridStartX.value, 10) || 0;
+  const startY = parseInt(el.gridStartY.value, 10) || 0;
+  const invertY = el.gridYInvert.checked;
+  const map = new Map();
+  (Array.isArray(cells) ? cells : []).forEach(c => {
+    const xn = Number(c.x);
+    const yn = Number(c.y);
+    if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
+    const cell = getCellFromVisualCoords(xn, yn, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+    const p = getPhysicalCoords(cell.c, cell.r, cols, rows, currentRotation, currentSide);
+    map.set(`${p.x}_${p.y}`, c.val !== undefined && c.val !== null ? String(c.val) : '');
+  });
+  return map;
+}
+
+// 오버레이 추가. 성공하면 layer, 실패하면 {error} 반환 (조용한 실패 금지).
+async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
+  // 타깃(= 현재 캔버스) 프레임 식별자. 계획 코어 맵처럼 메타 입력으로 표현되지 않는
+  // 화면에서는 호출자가 명시적으로 넘긴다.
+  const targetTable = (targetOverride && targetOverride.table) || selectedTable;
+  const targetKey = (targetOverride && targetOverride.key) || getCurrentMapKey() || '';
+  if (!sourceTable || !sourceKey) return { error: '오버레이 대상 맵 식별자가 없습니다.' };
+  if (!targetTable || !targetKey) {
+    return { error: '현재 캔버스의 맵 식별자를 알 수 없습니다 — 먼저 기준 맵을 로드하세요.' };
+  }
+  // 확정 계약: sources=<csv> ("table" 또는 "table:key"), 응답은 overlays[] 배열
+  const srcSpec = (sourceKey && sourceKey !== targetKey) ? `${sourceTable}:${sourceKey}` : sourceTable;
+  const params = new URLSearchParams({
+    target_table: targetTable, target_key: targetKey, sources: srcSpec,
+  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/maps/overlay?${params.toString()}`);
+  } catch (e) {
+    return { error: `오버레이 조회 실패: ${e && e.message ? e.message : e}` };
+  }
+  if (res.status === 404 || res.status === 405) {
+    const body = await res.json().catch(() => null);
+    if (!body || body.detail === 'Not Found' || res.status === 405) {
+      return { error: '서버가 맵 오버레이 API(/api/maps/overlay)를 아직 제공하지 않습니다 (구버전). 정렬된 좌표를 받을 수 없어 겹쳐 그리지 않습니다.', unsupported: true };
+    }
+    return { error: (typeof body.detail === 'string') ? body.detail : '오버레이 조회 실패 (404)' };
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    return { error: (body && typeof body.detail === 'string') ? body.detail : `오버레이 조회 실패 (HTTP ${res.status})` };
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { error: '오버레이 응답을 해석하지 못했습니다 (형식 오류) — 겹쳐 그리지 않습니다.' };
+  }
+
+  const list = (data && Array.isArray(data.overlays)) ? data.overlays : [];
+  const ov = list[0];
+  if (!ov) return { error: '오버레이 응답이 비어 있습니다.' };
+
+  const status = String(ov.status || 'ok');
+  // status가 ok가 아니면 그리지 않고 사유를 알린다 (조용히 원본 좌표로 그리면 거짓 그림).
+  if (status !== 'ok') {
+    const why = status === 'align_unavailable'
+      ? '정렬 근거가 없어 겹칠 수 없습니다 (데이터 없음이 아님)'
+      : (status === 'source_missing' ? '소스 맵을 찾을 수 없습니다'
+        : (status === 'no_data' ? '정상 조회했으나 셀이 0건입니다' : `상태 "${status}"`));
+    return { error: `${sourceTable}: ${why} — 표시하지 않습니다.`, status };
+  }
+  const cells = Array.isArray(ov.cells) ? ov.cells : [];
+  if (cells.length === 0) return { error: `${sourceTable}: 겹칠 셀이 없습니다.`, status: 'no_data' };
+
+  const align = (ov.align_applied && typeof ov.align_applied === 'object') ? ov.align_applied : null;
+  const layer = {
+    id: overlaySeq++,
+    sourceTable: String(ov.source_table || sourceTable),
+    sourceKey: String(ov.source_key || sourceKey),
+    rawCells: cells, // 서버 원본(타깃 프레임) — 격자 규격 변경 시 재배치 원천
+    cells: overlayCellsToPhysMap(cells),
+    count: Number(ov.count) || cells.length,
+    color: OVERLAY_COLORS[(overlayLayers.length) % OVERLAY_COLORS.length],
+    visible: true,
+    status,
+    align,
+    alignApplied: !!align && String(align.origin || '') !== 'identity',
+    alignText: align ? `${align.rotation ?? 0}° · ${align.origin || ''}${align.note ? ' · ' + align.note : ''}` : '',
+    truncated: !!ov.truncated,
+    cap: ov.cap ?? data.cell_cap ?? null,
+  };
+  overlayLayers.push(layer);
+  recomputeActiveOverlays();
+  renderOverlayList();
+  scheduleRenderGridCanvas();
+  return { layer };
+}
+
+function removeOverlayLayer(id) {
+  overlayLayers = overlayLayers.filter(o => o.id !== id);
+  recomputeActiveOverlays();
+  renderOverlayList();
+  scheduleRenderGridCanvas();
+}
+
+function toggleOverlayLayer(id) {
+  const o = overlayLayers.find(x => x.id === id);
+  if (!o) return;
+  o.visible = !o.visible;
+  recomputeActiveOverlays();
+  renderOverlayList();
+  scheduleRenderGridCanvas();
+}
+
+function clearOverlayLayers() {
+  overlayLayers = [];
+  recomputeActiveOverlays();
+  renderOverlayList();
+  scheduleRenderGridCanvas();
+}
+
+// 격자 규격(회전·면·시작좌표·치수)이 바뀌면 같은 서버 좌표라도 물리 키가 달라진다.
+// 원본(rawCells)을 보관해 두고 규격 변경을 감지하면 **재계산**한다 —
+// 재계산하지 않으면 오버레이가 조용히 어긋난 위치를 가리키게 된다.
+let overlayGeomSig = '';
+
+function currentGeomSignature() {
+  return [
+    el.gridCols ? el.gridCols.value : '',
+    el.gridRows ? el.gridRows.value : '',
+    el.gridStartX ? el.gridStartX.value : '',
+    el.gridStartY ? el.gridStartY.value : '',
+    el.gridYInvert ? (el.gridYInvert.checked ? 1 : 0) : 0,
+    currentRotation, currentSide,
+  ].join('|');
+}
+
+function syncOverlayGeometry() {
+  if (overlayLayers.length === 0) { overlayGeomSig = currentGeomSignature(); return; }
+  const sig = currentGeomSignature();
+  if (sig === overlayGeomSig) return;
+  overlayGeomSig = sig;
+  overlayLayers.forEach(o => { o.cells = overlayCellsToPhysMap(o.rawCells); });
+  recomputeActiveOverlays();
+}
+
+// ── 좌측 패널 오버레이 목록 UI ──
+function renderOverlayList() {
+  const box = document.getElementById('overlay-list');
+  if (!box) return;
+  if (overlayLayers.length === 0) {
+    box.innerHTML = '<div class="ov-empty">겹쳐진 맵이 없습니다. 위에서 다른 맵을 검색해 [📂 Load]를 누르면 <b>정렬 후 오버레이</b>를 선택할 수 있습니다.</div>';
+    return;
+  }
+  box.innerHTML = overlayLayers.map(o => `
+    <div class="ov-row" data-id="${o.id}">
+      <span class="ov-dot" style="background:${escapeHtmlAttr(o.color)}"></span>
+      <span class="ov-name" title="${escapeHtmlAttr(o.sourceTable + ' · ' + o.sourceKey)}">
+        <b>${escapeHtmlAttr(o.sourceTable)}</b><br><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
+      </span>
+      <span class="ov-meta" title="${escapeHtmlAttr(o.alignText || '')}">${o.count}칩${o.alignApplied ? ' · 정렬 ' + escapeHtmlAttr(String((o.align && o.align.rotation) ?? 0)) + '°' : ''}${o.truncated ? ` · <b class="ov-trunc">일부만 표시 (상한 ${o.cap || '?'})</b>` : ''}</span>
+      <button type="button" class="ov-btn" data-act="toggle" title="표시/숨김">${o.visible ? '👁' : '🚫'}</button>
+      <button type="button" class="ov-btn ov-del" data-act="del" title="제거">✕</button>
+    </div>`).join('');
+  box.querySelectorAll('.ov-row').forEach(row => {
+    const id = Number(row.dataset.id);
+    row.querySelectorAll('.ov-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.dataset.act === 'del') removeOverlayLayer(id);
+        else toggleOverlayLayer(id);
+      });
+    });
+  });
+}
+
+function escapeHtmlAttr(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+// 현재 메타 입력값을 맵 키 문자열로 (오버레이 소스 식별자)
+function getMetaInputsMapKey() {
+  const dict = {};
+  document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val !== '') dict[col] = val;
+  });
+  if (Object.keys(dict).length === 0) return null;
+  const k = getMapIdFromMeta(dict);
+  return (k && k !== 'default_map') ? k : null;
+}
+
+// Load 버튼 분기: 이미 맵이 떠 있으면 "정렬 후 오버레이 / 교체 로드"를 묻는다.
+async function handleLoadMapClick() {
+  const hasCurrentMap = gridData && Object.keys(gridData).length > 0;
+  if (hasCurrentMap) {
+    const sourceKey = getMetaInputsMapKey();
+    if (sourceKey) {
+      const wantOverlay = confirm(
+        `이 맵을 현재 캔버스 위에 겹쳐 볼까요?\n\n` +
+        `[확인] 정렬(align) 후 오버레이 — 서버가 좌표를 현재 맵 프레임에 맞춰 정렬합니다.\n` +
+        `[취소] 기존처럼 교체 로드 (현재 편집 내용은 사라집니다)\n\n` +
+        `· 겹칠 맵: ${selectedTable} · ${sourceKey}`
+      );
+      if (wantOverlay) {
+        el.btnLoadMap.textContent = '📂 정렬 중...';
+        el.btnLoadMap.disabled = true;
+        const r = await addOverlayLayer(selectedTable, sourceKey);
+        el.btnLoadMap.textContent = '📂 Load Existing Map';
+        el.btnLoadMap.disabled = false;
+        if (r.error) {
+          showToast(r.error, r.unsupported ? 'warning' : 'error');
+        } else {
+          const t = r.layer.truncated ? ' (일부만 표시 — 서버 절단)' : '';
+          showToast(`오버레이 추가: ${r.layer.sourceTable} · ${r.layer.sourceKey} — ${r.layer.count}칩${t}`, 'success');
+        }
+        return;
+      }
+    }
+  }
+  await loadExistingMap();
+}
+
+// ====================================================
+// [M2 모드 B] 코어 맵 페인팅 — DOE 소스의 "사용 영역"을 코어 맵 위에 칠한다.
+// planPaint(base 맵) 위에 한 겹 더 쌓이는 2단 스냅샷 구조:
+//   base 계획 맵 편집 상태 → (스냅샷) → 코어 맵 → 저장/취소 → base 복귀
+//
+// 서버 계약 미확정 [스텁]: 사용 영역 저장 테이블 `transfer_plan_source_map`
+//   (cell_key = plan_id|doe_value|source_lot|source_slot|x|y, val='USE')
+//   부재 시 초안 모드로 강등하고 로컬에만 보관한다.
+// ====================================================
+const SOURCE_MAP_TABLE = 'transfer_plan_source_map';
+const USE_VALUE = 'USE';
+let corePaint = null; // null | { snapshot, opts, serverAvailable }
+
+// 코어 맵 규격 로드: 해당 코어(lot|slot)의 wafer_map_metadata → 없으면 CORE 프리셋
+async function applyCoreGeometry(lot, slot) {
+  const mapId = slot ? `${lot}_${slot}` : String(lot);
+  try {
+    const metaFilter = { map_id: { filterType: 'text', type: 'equals', filter: mapId } };
+    const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=1&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
+    if (res.ok) {
+      const result = await res.json();
+      if (result && Array.isArray(result.data) && result.data.length > 0) {
+        const metaStr = result.data[0].data?.grid_metadata?.value;
+        if (metaStr) {
+          applyGridMetaObject(JSON.parse(metaStr));
+          return 'meta';
+        }
+      }
+    }
+  } catch (e) { /* 메타 미등록 — 프리셋 폴백 */ }
+  const preset = findCorePreset();
+  if (preset) {
+    applyPresetObject(preset);
+    return `preset:${preset.name || preset.key}`;
+  }
+  return 'current';
+}
+
+// CORE 규격 프리셋 탐색 (findPlanPreset은 tape/base만 알므로 core 전용 분기)
+function findCorePreset() {
+  const patterns = [/core/i, /eds/i, /defect/i];
+  for (const re of patterns) {
+    const byKey = Object.entries(serverPresets).find(([key]) => re.test(key));
+    if (byKey) return { key: byKey[0], ...byKey[1] };
+  }
+  for (const re of patterns) {
+    const byName = Object.entries(serverPresets).find(([, p]) => p && re.test(String(p.name || '')));
+    if (byName) return { key: byName[0], ...byName[1] };
+  }
+  return null;
+}
+
+// 기존 사용 영역 로드 (스텁 테이블 — 부재 시 조용히 빈 배열)
+async function fetchSourceUseCells(planId, doeValue, lot, slot) {
+  try {
+    const filters = {
+      plan_id: { filterType: 'text', type: 'equals', filter: planId },
+      doe_value: { filterType: 'text', type: 'equals', filter: doeValue },
+      source_lot: { filterType: 'text', type: 'equals', filter: lot },
+    };
+    if (slot) filters.source_slot = { filterType: 'text', type: 'equals', filter: slot };
+    const res = await fetch(`${API_BASE}/tables/${SOURCE_MAP_TABLE}/data?limit=2000&filters=${encodeURIComponent(JSON.stringify(filters))}`);
+    if (!res.ok) return { available: false, cells: [] };
+    const result = await res.json();
+    const cells = [];
+    (result && Array.isArray(result.data) ? result.data : []).forEach(row => {
+      const d = row.data || {};
+      const x = d.x?.value, y = d.y?.value;
+      if (x === undefined || y === undefined) return;
+      const xn = parseInt(x, 10), yn = parseInt(y, 10);
+      if (!isNaN(xn) && !isNaN(yn)) cells.push({ x: xn, y: yn, val: USE_VALUE });
+    });
+    return { available: true, cells };
+  } catch (e) {
+    return { available: false, cells: [] };
+  }
+}
+
+async function enterCorePaint(opts) {
+  if (corePaint) return false;
+  if (!opts || !opts.planId || !opts.doeValue || !opts.lot) return false;
+  const snapshot = snapshotEditorState();
+  corePaint = { snapshot, opts, serverAvailable: false };
+
+  // 사용 영역 저장 테이블 가용성 (존재 판정은 /data — /schema는 미존재에도 200)
+  let available = false;
+  try {
+    const probe = await fetch(`${API_BASE}/tables/${SOURCE_MAP_TABLE}/data?limit=1`);
+    available = probe.ok;
+  } catch (e) { available = false; }
+  corePaint.serverAvailable = available;
+
+  // 컨텍스트 전환: 코어 맵 규격 + 사용/미사용 팔레트
+  gridData = {};
+  loadedFCells = new Set();
+  legendMeta = {};
+  clearOverlayLayers();
+
+  const geom = await applyCoreGeometry(opts.lot, opts.slot);
+  corePaint.geom = geom;
+
+  legend = [{ value: USE_VALUE, desc: `${opts.doeValue} 사용 영역`, color: opts.color || '#10b981' }];
+  activeBrush = USE_VALUE;
+
+  const existing = await fetchSourceUseCells(opts.planId, opts.doeValue, opts.lot, opts.slot || '');
+  if (existing.cells.length > 0) {
+    applyCellsToGrid(existing.cells);
+  } else if (Array.isArray(opts.draftCells) && opts.draftCells.length > 0) {
+    applyCellsToGrid(opts.draftCells);
+  }
+
+  // 코어 맵에서는 계획 맵 push를 막는다 (대상 테이블이 다름)
+  if (el.tableSelect) el.tableSelect.disabled = true;
+  if (el.btnLoadMap) el.btnLoadMap.disabled = true;
+  if (el.btnPushMap) {
+    el.btnPushMap.disabled = true;
+    el.btnPushMap.title = '코어 맵(사용 영역)은 계획 패널의 [저장하고 base로]로 저장합니다.';
+  }
+  lockPlanMetaInputs(true);
+  await fetchPaintRules(CORE_CANONICAL_TABLE); // 코어 맵의 잠금 선언(불량 위치 배정 차단)
+  renderLegendTable();
+  renderGridCanvas();
+  return true;
+}
+
+// 현재 격자에서 사용 영역 셀 수집 (inside && 값 있는 셀)
+function collectUseCells() {
+  const { cells, counts } = collectPlanCells();
+  return { cells, count: counts[USE_VALUE] || cells.length };
+}
+
+// 사용 영역 저장 (스텁 테이블 — 부재 시 로컬 초안으로만)
+async function saveSourceUseCells(planId, doeValue, lot, slot, cells) {
+  if (!corePaint || !corePaint.serverAvailable) {
+    return { saved: false, reason: `서버가 ${SOURCE_MAP_TABLE} 테이블을 아직 제공하지 않습니다 (구버전) — 사용 영역은 브라우저 초안에만 보관됩니다.` };
+  }
+  const updates = cells.map(c => {
+    const bk = [planId, doeValue, lot, slot || '', c.x, c.y].join('|');
+    return {
+      business_key_val: bk,
+      updates: {
+        cell_key: bk, plan_id: planId, doe_value: doeValue,
+        source_lot: lot, source_slot: slot || '',
+        x: c.x, y: c.y, val: USE_VALUE,
+      },
+      source_name: 'user',
+      updated_by: CURRENT_USER,
+    };
+  });
+  if (updates.length === 0) return { saved: true, count: 0 };
+  try {
+    const res = await fetch(`${API_BASE}/tables/${SOURCE_MAP_TABLE}/data/updates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates, replace_map: true }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { saved: false, reason: (body && body.detail) ? String(body.detail) : `HTTP ${res.status}` };
+    }
+    return { saved: true, count: updates.length };
+  } catch (e) {
+    return { saved: false, reason: e && e.message ? e.message : String(e) };
+  }
+}
+
+async function finishCorePaint(save) {
+  if (!corePaint) return;
+  const { snapshot, opts } = corePaint;
+  let result = null;
+  if (save) {
+    renderGridCanvas();
+    const collected = collectUseCells();
+    const saveRes = await saveSourceUseCells(
+      opts.planId, opts.doeValue, opts.lot, opts.slot || '', collected.cells);
+    result = { ...collected, ...saveRes };
+  }
+  if (el.tableSelect) el.tableSelect.disabled = false;
+  if (el.btnLoadMap) el.btnLoadMap.disabled = false;
+  if (el.btnPushMap) { el.btnPushMap.disabled = false; el.btnPushMap.title = ''; }
+  lockPlanMetaInputs(false);
+  clearOverlayLayers();
+  const cb = save ? opts.onSave : opts.onCancel;
+  corePaint = null;
+  restoreEditorState(snapshot);
+  if (typeof cb === 'function') cb(result);
+}
+
+// 계획 패널이 쓰는 오버레이 헬퍼 (모드 B의 defect/EDS 토글).
+// 코어 맵 캔버스의 프레임 = 코어 canonical 프레임이다. config상 align 선언이 없는
+// core_defect_map이 canonical이므로 이를 타깃 프레임 식별자로 넘긴다.
+// (서버가 이 좌표계로 소스를 정렬해 준다 — 클라는 변환하지 않는다.)
+const CORE_CANONICAL_TABLE = 'core_defect_map';
+
+async function addOverlayForCore(sourceTable, lot, slot) {
+  const key = slot ? `${lot}_${slot}` : String(lot);
+  return addOverlayLayer(sourceTable, key, { table: CORE_CANONICAL_TABLE, key });
+}
+
+function listOverlayLayers() {
+  return overlayLayers.map(o => ({
+    id: o.id, sourceTable: o.sourceTable, sourceKey: o.sourceKey,
+    count: o.count, visible: o.visible, color: o.color,
+    alignApplied: o.alignApplied, truncated: o.truncated,
+  }));
 }

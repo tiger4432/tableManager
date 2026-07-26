@@ -1,0 +1,87 @@
+{
+  "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지).",
+  "align_overrides": {
+    "__example_eds_fail_map": {
+      "default": {
+        "rotation": 180,
+        "flip": "none",
+        "offset": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "by_eqp": {
+        "METRO-A": {
+          "rotation": 180
+        },
+        "METRO-B": {
+          "rotation": 180
+        }
+      }
+    }
+  },
+  "table_bindings": {
+    "dt_log": {
+      "columns": {
+        "x": "tx",
+        "y": "ty",
+        "val": "core_lot",
+        "key_columns": [
+          "tape_lot",
+          "tape_slot"
+        ]
+      }
+    },
+    "bonding_log": {
+      "columns": {
+        "x": "bx",
+        "y": "by",
+        "val": "core_lot",
+        "key_columns": [
+          "base_id"
+        ]
+      }
+    },
+    "bonding_map": {
+      "columns": {
+        "x": "x",
+        "y": "y",
+        "val": "leg",
+        "key_columns": [
+          "base"
+        ]
+      }
+    },
+    "transfer_plan_map": {
+      "columns": {
+        "x": "x",
+        "y": "y",
+        "val": "val",
+        "key_columns": [
+          "plan_id"
+        ]
+      }
+    }
+  },
+  "paint_lock": {
+    "*": {
+      "enabled": true,
+      "blocking_values": [
+        "F"
+      ],
+      "from_overlay": [],
+      "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
+    },
+    "transfer_plan_map": {
+      "enabled": true,
+      "blocking_values": [
+        "F"
+      ],
+      "from_overlay": [
+        "core_defect_map",
+        "eds_fail_map"
+      ],
+      "message": "불량 칩 위치라 배정할 수 없습니다 (오버레이 기준)."
+    }
+  }
+}

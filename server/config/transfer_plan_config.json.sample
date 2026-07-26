@@ -1,0 +1,102 @@
+{
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
+  "stages": {
+    "dt": {
+      "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",
+      "source_kind": "core",
+      "target_kind": "tape",
+      "source_config_ref": "bonding_plan",
+      "target_map": {
+        "preset": "TAPE",
+        "table": "dt_map"
+      }
+    },
+    "bonding": {
+      "description": "Bonding: 테이프 위의 칩을 base에 본딩하는 단계. 테이프에는 여러 코어 칩이 혼재하고 불량도 섞여 있다 — 코어 fail은 dt_log 조인으로 테이프 좌표에 투영된다.",
+      "source_kind": "tape",
+      "target_kind": "base",
+      "source": {
+        "identity": { "compose": ["lot", "slot"] },
+        "map_metadata": {
+          "table": "wafer_map_metadata",
+          "columns": { "target_table": "target_table", "map_id": "map_id", "grid_metadata": "grid_metadata" }
+        },
+        "total_chips": {
+          "table": "dt_log",
+          "columns": { "lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty" }
+        },
+        "transfer_log": {
+          "table": "bonding_log",
+          "columns": { "lot": "core_lot", "slot": "core_slot", "x": "cx", "y": "cy" }
+        },
+        "origin_log": {
+          "table": "dt_log",
+          "columns": {
+            "lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty",
+            "origin_lot": "core_lot", "origin_slot": "core_slot", "origin_x": "cx", "origin_y": "cy"
+          }
+        },
+        "origin_area_map": {
+          "table": "dt_map",
+          "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" }
+        },
+        "process_history": {
+          "table": "wafer_process",
+          "columns": {
+            "step": "step", "eqp": "eqp_id", "result": "result", "time": "start_time",
+            "recipe": "recipe_id", "knobs": "knobs", "lot": "lot", "slot": "slot"
+          }
+        },
+        "fail_sources": {
+          "defect": {
+            "frame": "origin",
+            "table": "core_defect_map",
+            "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
+            "fail_values": ["D"]
+          },
+          "eds_fail": {
+            "frame": "origin",
+            "table": "eds_fail_map",
+            "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
+            "fail_values": ["F"],
+            "align": { "default": { "rotation": 180, "flip": "none", "offset": { "x": 0, "y": 0 } }, "by_eqp": {} }
+          }
+        },
+        "warnings": { "result_fail_values": ["FAIL"] }
+      },
+      "target_map": {
+        "preset": "BASE",
+        "table": "bonding_map"
+      }
+    }
+  },
+  "plan_store": {
+    "plan": {
+      "table": "transfer_plan",
+      "columns": {
+        "plan_id": "plan_id", "stage": "stage", "target_lot": "target_lot",
+        "target_slot": "target_slot", "status": "status", "memo": "memo"
+      }
+    },
+    "doe": {
+      "table": "transfer_plan_doe",
+      "columns": {
+        "plan_id": "plan_id", "doe_value": "doe_value", "source_lot": "source_lot",
+        "source_slot": "source_slot", "qty_per_unit": "qty_per_unit",
+        "layer_from": "layer_from", "layer_to": "layer_to",
+        "knobs": "knobs", "description": "description"
+      }
+    },
+    "map": {
+      "table": "transfer_plan_map",
+      "columns": { "plan_id": "plan_id", "x": "x", "y": "y", "val": "val" }
+    },
+    "doe_layer": {
+      "table": "transfer_plan_doe_layer",
+      "columns": {
+        "doe_key": "doe_key", "layer": "layer", "source_lot": "source_lot",
+        "source_slot": "source_slot", "qty": "qty", "note": "note"
+      }
+    }
+  }
+}

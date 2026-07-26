@@ -2982,6 +2982,121 @@ def get_bonding_plan_core_summary(
         logger.error(f"[BondingPlan] core-summary failed for ({lot}, {slot}): {e}")
         raise HTTPException(status_code=500, detail="Failed to compute core summary.")
 
+# -----------------------------------------------------------------------------
+# 범용 맵 오버레이 (S1') — 맵 인프라(계획 전용 아님). 경계 계약 — 총괄 고정
+# -----------------------------------------------------------------------------
+import map_overlay as map_overlay_module
+
+@app.get("/api/maps/overlay")
+def get_map_overlay(
+    target_table: str,
+    target_key: str,
+    sources: str,
+    eqp: Optional[str] = None,
+    limit: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """임의의 맵들을 타깃 맵 캔버스 좌표로 정렬해 반환한다(범용 — 계획 전용 아님).
+
+    - sources: "table" 또는 "table:key"의 CSV(키 생략 시 target_key 승계), 최대 8종.
+    - 정렬은 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되며,
+      map_overlay_config.json의 align_overrides가 있으면 그것이 우선한다.
+      선언·유도 근거가 없으면 identity로 간주해 그대로 붙인다(선언 부재는 실패가 아니다).
+      변환을 계산할 근거가 없을 때만 status=align_unavailable.
+    - 셀 목록을 반환하는 API이므로 상한 필수 — 초과 시 truncated:true로 명시한다.
+    """
+    config = map_overlay_module.load_overlay_config()
+    try:
+        src_list = map_overlay_module.parse_sources(sources)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    cap = map_overlay_module.MAX_OVERLAY_CELLS
+    if limit is not None:
+        try:
+            cap = max(1, min(int(limit), map_overlay_module.MAX_OVERLAY_CELLS))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="limit must be an integer")
+    try:
+        return map_overlay_module.get_overlay(
+            db, config, target_table, target_key, src_list, eqp=eqp, cell_cap=cap)
+    except Exception as e:
+        logger.error(f"[MapOverlay] overlay failed ({target_table}/{target_key}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to build map overlay.")
+
+@app.get("/api/maps/paint-rules")
+def get_map_paint_rules(table: Optional[str] = None):
+    """맵 페인트 잠금 선언(정본은 서버 config — 클라는 읽어서 적용, 하드코딩 금지)."""
+    config = map_overlay_module.load_overlay_config()
+    return {
+        "table": table,
+        "rules": map_overlay_module.get_paint_rules(config, table),
+    }
+
+# -----------------------------------------------------------------------------
+# Universal Transfer Plan (M2) — 전사 프레임워크 API (경계 계약 — 총괄 고정)
+# -----------------------------------------------------------------------------
+import transfer_plan as transfer_plan_module
+
+@app.get("/api/transfer-plan/stages")
+def get_transfer_plan_stages():
+    """선언된 전사 stage 목록 + 역할 연결 상태 (config 선언 해석만 — 행 조회 없음).
+
+    stage 선언은 config/transfer_plan_config.json (스냅샷은 요청당 1회).
+    역할/plan_store 누락은 'missing' 부분 가동(에러 아님).
+    """
+    config = transfer_plan_module.load_transfer_plan_config()
+    try:
+        return transfer_plan_module.list_stages(config)
+    except Exception as e:
+        logger.error(f"[TransferPlan] stages listing failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list transfer plan stages.")
+
+@app.get("/api/transfer-plan/source-summary")
+def get_transfer_plan_source_summary(
+    stage: str,
+    lot: str,
+    slot: str,
+    plan_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """단계별 소스 (lot, slot) 가용 집계.
+
+    - 공통 형태: {identity, stage, source_kind, sources, chips{total, fail_breakdown,
+      transferred, remaining}, history, warnings}
+    - tape-kind(origin_log 연결) 소스면 by_core(출신 코어별 분해 — 집계만) 동봉.
+    - 미선언 stage는 404. 역할 누락은 'missing'/'unavailable(...)' 부분 가동.
+    - plan_id 지정 시 그 계획이 이 소스에서 쓰기로 페인팅한 **셀 집합**을 스코프로
+      `region_chips`(영역 내 가용)를 동봉한다. 영역 미저장/바인딩 미선언이면 생략.
+    - 칩 좌표 목록은 반환하지 않는다(집계만 — 페이로드 상한 규율).
+    """
+    config = transfer_plan_module.load_transfer_plan_config()
+    try:
+        return transfer_plan_module.get_stage_source_summary(
+            db, config, stage, lot, slot, plan_id=plan_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[TransferPlan] source-summary failed for stage={stage} ({lot}, {slot}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to compute source summary.")
+
+@app.get("/api/transfer-plan/validate")
+def validate_transfer_plan(
+    plan_id: str,
+    db: Session = Depends(get_db),
+):
+    """계획 검증 — 경고 목록(수량 부족·층 커버리지·DOE 값-맵 정합·소스 fail).
+
+    plan_store 미구성 또는 plan_id 미존재는 404 (detail로 구분).
+    """
+    config = transfer_plan_module.load_transfer_plan_config()
+    try:
+        return transfer_plan_module.validate_plan(db, config, plan_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[TransferPlan] validate failed for plan '{plan_id}': {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate transfer plan.")
+
 @app.get("/admin/file-ingestion/workspaces")
 def get_ingestion_workspaces():
     """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""

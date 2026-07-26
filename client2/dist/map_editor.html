@@ -9,11 +9,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-B_IpEs-a.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-CkwjHWFR.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/theme-CPYUIy8y.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-DqWd5E8W.js">
   <link rel="stylesheet" crossorigin href="/assets/theme-WDMlJs1u.css">
-  <link rel="stylesheet" crossorigin href="/assets/map_editor-CVTx9yXZ.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor-BAnKN4-M.css">
   <link rel="stylesheet" crossorigin href="/assets/style-CEja5iu0.css">
 </head>
 <body>
@@ -57,6 +57,18 @@
             </div>
             <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
             <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
+            <p style="margin: 0; font-size: 0.7rem; color: var(--text-dim); line-height: 1.45;">
+              이미 맵이 떠 있으면 <b>정렬(align) 후 오버레이</b>로 겹칠지 물어봅니다 — 서버가 좌표를 현재 맵 프레임에 맞춰 정렬합니다.
+            </p>
+
+            <!-- 오버레이(겹쳐 보기) 목록 -->
+            <div class="overlay-box">
+              <div class="overlay-box-head">
+                <span>🗂 오버레이</span>
+                <button type="button" id="btn-clear-overlays" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.7rem;">모두 해제</button>
+              </div>
+              <div id="overlay-list"></div>
+            </div>
           </div>
 
           <!-- 2. Physical Wafer Geometry -->
@@ -236,8 +248,8 @@
               </div>
             </div>
 
-            <!-- Bonding Experiment Plan (M1 조회 전용 Info 패널) -->
-            <button id="btn-bonding-plan" class="glass-btn" style="border-color: var(--accent-2); color: var(--accent-2); font-weight: bold;">🧪 본딩 실험계획</button>
+            <!-- [M2] 계획 워크스페이스는 우측 사이드바에 상주 — 툴바 버튼은 포커스 이동용 -->
+            <button id="btn-transfer-plan" class="glass-btn" style="border-color: var(--accent-2); color: var(--accent-2); font-weight: bold;">🎯 전사 계획</button>
 
             <!-- Primary Save Action -->
             <button id="btn-push-map" class="glass-btn" style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
@@ -256,32 +268,42 @@
         </div>
       </section>
 
-      <!-- 우측 패널: 범례 관리 및 페인팅 브러쉬 -->
-      <aside class="history-sidebar glass-panel" style="width: 400px; min-width: 400px;">
+      <!-- 우측 패널: 전사 계획(DOE) + 범례/브러쉬 통합 워크스페이스 -->
+      <aside class="history-sidebar glass-panel" id="plan-sidebar" style="width: 620px; min-width: 620px;">
         <div class="sidebar-header">
-          <h2>2. Value Legend & Brush</h2>
+          <h2>2. 전사 계획 &amp; 브러시</h2>
         </div>
-        <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 15px; padding: 15px; overflow-y: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.85rem; color: var(--text-dim);">value별 실험 split 조건 서술 · 브러쉬 (서버 registry 공유)</span>
-            <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.8rem; font-weight: 500;">+ Add Legend</button>
-          </div>
-          <div class="table-container" style="flex: 1; min-height: 350px; overflow-y: auto;">
-            <table class="sources-table" style="font-size: 0.9rem; width: 100%;">
-              <thead>
-                <tr>
-                  <th style="width: 65px; text-align: left; padding: 8px;">Value</th>
-                  <th style="text-align: left; padding: 8px;">Split Description</th>
-                  <th style="width: 55px; text-align: center; padding: 8px;">Count</th>
-                  <th style="width: 60px; text-align: center; padding: 8px;">Color</th>
-                  <th style="width: 40px; text-align: center; padding: 8px;">Del</th>
-                </tr>
-              </thead>
-              <tbody id="legend-list">
-                <!-- 범례 아이템 및 브러쉬 선택 활성화 상태가 여기에 생성됨 -->
-              </tbody>
-            </table>
-          </div>
+        <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow-y: auto;">
+
+          <!-- [M2] 전사 계획 워크스페이스 (transfer_plan.js가 렌더 — 모드 A: base 맵 / 모드 B: 코어 맵) -->
+          <div id="transfer-plan-root"></div>
+
+          <!-- 원시 범례/브러쉬 (일반 맵 편집용 — 계획 모드에서는 접어둔다) -->
+          <details class="glass-details" id="legend-details">
+            <summary>🎨 원시 범례 &amp; 브러시 (일반 맵 편집)</summary>
+            <div style="padding-top: 10px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.78rem; color: var(--text-dim);">value별 split 조건 서술 (서버 registry 공유)</span>
+                <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.8rem; font-weight: 500;">+ Add Legend</button>
+              </div>
+              <div class="table-container" style="max-height: 320px; overflow-y: auto;">
+                <table class="sources-table" style="font-size: 0.88rem; width: 100%;">
+                  <thead>
+                    <tr>
+                      <th style="width: 65px; text-align: left; padding: 8px;">Value</th>
+                      <th style="text-align: left; padding: 8px;">Split Description</th>
+                      <th style="width: 55px; text-align: center; padding: 8px;">Count</th>
+                      <th style="width: 60px; text-align: center; padding: 8px;">Color</th>
+                      <th style="width: 40px; text-align: center; padding: 8px;">Del</th>
+                    </tr>
+                  </thead>
+                  <tbody id="legend-list">
+                    <!-- 범례 아이템 및 브러쉬 선택 활성화 상태가 여기에 생성됨 -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
         </div>
       </aside>
     </main>
@@ -305,8 +327,6 @@
     </div>
   </div>
 
-  <!-- 본딩 실험계획 슬라이드 패널 마운트 (bonding_plan.js가 렌더) -->
-  <div id="bonding-plan-root"></div>
 
 </body>
 </html>
