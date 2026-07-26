@@ -5,7 +5,11 @@ DT 원천·계획 저장소에 복합 인덱스를 보장한다.
 - dt_log: 테이프 identity(tape_lot, tape_slot) = total/origin 조회의 진입점.
           (core_lot, core_slot)은 fail 투영 대상 코어 역조회·계보 질의용.
 - dt_map: 영역 귀속 강등 경로 진입점.
-- transfer_plan*: 계획 로드·검증(plan_id)과 페인팅 group-by 진입점.
+- map_doe / map_doe_source: 계획 v2의 진입점은 `(ref_table, map_key)` 동치다
+  (계획 정체성 = 지금 열어 편집 중인 맵). 구 `transfer_plan*` 인덱스는 테이블 폐기와 함께
+  제거했다 — 물리 DROP은 총괄이 별도로 수행한다.
+- 계획 맵의 페인팅 값 group-by는 **대상 맵 자신**(bonding_map/dt_map)의 맵 키 인덱스를
+  그대로 탄다(아래 idx_*_base / idx_dt_map_lot_slot).
 M1 인덱스(core_defect_map/eds_fail_map/wafer_process/bonding_log/wafer_map_metadata)는
 setup_bonding_plan_indexes.py가 담당한다 — 중복 선언하지 않는다.
 
@@ -24,15 +28,12 @@ INDEXES = [
     ("idx_dt_log_tape_lot_slot", "dt_log", "(tape_lot, tape_slot)"),
     ("idx_dt_log_core_lot_slot", "dt_log", "(core_lot, core_slot)"),
     ("idx_dt_map_lot_slot", "dt_map", "(lot, slot)"),
-    ("idx_transfer_plan_stage", "transfer_plan", "(stage)"),
-    ("idx_transfer_plan_doe_plan", "transfer_plan_doe", "(plan_id)"),
-    ("idx_transfer_plan_map_plan", "transfer_plan_map", "(plan_id)"),
-    # S3: 층 배정은 doe_key(= plan_id|doe_value) 접두 조회가 진입점
-    ("idx_transfer_plan_doe_layer_doe", "transfer_plan_doe_layer", "(doe_key)"),
-    # ②: 소스 사용 영역은 (plan_id, source_lot, source_slot) 캔버스 단위 조회가 진입점
-    #     (테이블은 모델 재설계 대기로 보류 — 적용 시 자동 생성된다)
-    ("idx_transfer_plan_region_plan_src", "transfer_plan_source_region",
-     "(plan_id, source_lot, source_slot)"),
+    # v2: DOE·자재 묶음은 계획 맵 정체성 (ref_table, map_key) 동치가 진입점
+    ("idx_map_doe_ref_map", "map_doe", "(ref_table, map_key)"),
+    ("idx_map_doe_source_ref_map", "map_doe_source", "(ref_table, map_key)"),
+    # ②: 소스 사용 영역 (휴면 — 테이블 미적용 시 자동 skip)
+    ("idx_map_source_region_ref_map_src", "map_source_region",
+     "(ref_table, map_key, source_lot, source_slot)"),
     # [QA S1] 오버레이가 맵 키 컬럼으로 진입한다 — 인덱스가 없으면 175만 행 풀스캔(214ms 실측).
     # 요청당 소스 8종까지 가능하므로 왕복마다 반복된다.
     ("idx_bonding_map_base", "bonding_map", "(base)"),

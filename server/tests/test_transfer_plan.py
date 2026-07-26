@@ -76,43 +76,39 @@ TP_TABLES = {
             "result": "string", "recipe_id": "string", "knobs": "string",
         },
     },
-    "tp_test_plan": {
-        "business_key": "plan_id",
-        "column_types": {
-            "plan_id": "string", "stage": "string", "target_lot": "string",
-            "target_slot": "string", "status": "string", "memo": "string",
-        },
-    },
-    "tp_test_plan_doe": {
-        "business_key": "doe_key",
-        "column_types": {
-            "doe_key": "string", "plan_id": "string", "doe_value": "string",
-            "source_lot": "string", "source_slot": "string", "qty_per_unit": "number",
-            "layer_from": "number", "layer_to": "number",
-            "knobs": "string", "description": "string",
-        },
-    },
-    "tp_test_plan_map": {
+    # [v2] 계획 맵 사본은 없다 — bonding stage의 target_map 자체가 계획 캔버스다.
+    "tp_test_bonding_map": {
         "business_key": "cell_key",
         "column_types": {
-            "cell_key": "string", "plan_id": "string",
-            "x": "number", "y": "number", "val": "string",
+            "cell_key": "string", "base": "string",
+            "x": "number", "y": "number", "leg": "string",
+        },
+        "map_key_columns": ["base"],
+    },
+    "tp_test_map_doe": {   # bk = ref_table|map_key|doe_value|band_seq
+        "business_key": "doe_key",
+        "column_types": {
+            "doe_key": "string", "ref_table": "string", "map_key": "string",
+            "doe_value": "string", "band_seq": "number", "stack_band": "string",
+            "qty_total": "number", "knobs": "string", "note": "string",
         },
     },
-    "tp_test_plan_region": {   # ② — 소스 사용 영역 (자유 페인팅 셀 집합)
+    # bk = ref_table|map_key|doe_value|band_seq|source_lot|source_slot
+    "tp_test_map_doe_source": {
+        "business_key": "source_key",
+        "column_types": {
+            "source_key": "string", "ref_table": "string", "map_key": "string",
+            "doe_value": "string", "band_seq": "number",
+            "source_lot": "string", "source_slot": "string",
+            "qty": "number", "note": "string",
+        },
+    },
+    "tp_test_plan_region": {   # ② — 소스 사용 영역 (자유 페인팅 셀 집합, 휴면)
         "business_key": "region_key",
         "column_types": {
-            "region_key": "string", "plan_id": "string",
+            "region_key": "string", "ref_table": "string", "map_key": "string",
             "source_lot": "string", "source_slot": "string",
             "x": "number", "y": "number", "val": "string",
-        },
-    },
-    "tp_test_plan_doe_layer": {   # S3 — DOE 층별 세분화
-        "business_key": "layer_key",
-        "column_types": {
-            "layer_key": "string", "doe_key": "string", "layer": "number",
-            "source_lot": "string", "source_slot": "string", "qty": "number",
-            "note": "string",
         },
     },
 }
@@ -224,26 +220,22 @@ def _tp_config(align_eds=True):
             },
         },
         "plan_store": {
-            "plan": {"table": "tp_test_plan",
-                     "columns": {"plan_id": "plan_id", "stage": "stage",
-                                 "target_lot": "target_lot", "target_slot": "target_slot",
-                                 "status": "status", "memo": "memo"}},
-            "doe": {"table": "tp_test_plan_doe",
-                    "columns": {"plan_id": "plan_id", "doe_value": "doe_value",
-                                "source_lot": "source_lot", "source_slot": "source_slot",
-                                "qty_per_unit": "qty_per_unit", "layer_from": "layer_from",
-                                "layer_to": "layer_to", "knobs": "knobs",
-                                "description": "description"}},
-            "map": {"table": "tp_test_plan_map",
-                    "columns": {"plan_id": "plan_id", "x": "x", "y": "y", "val": "val"}},
+            "doe": {"table": "tp_test_map_doe",
+                    "columns": {"ref_table": "ref_table", "map_key": "map_key",
+                                "doe_value": "doe_value", "band_seq": "band_seq",
+                                "stack_band": "stack_band", "qty_total": "qty_total",
+                                "knobs": "knobs", "note": "note"}},
+            "doe_source": {"table": "tp_test_map_doe_source",
+                           "columns": {"ref_table": "ref_table", "map_key": "map_key",
+                                       "doe_value": "doe_value", "band_seq": "band_seq",
+                                       "source_lot": "source_lot",
+                                       "source_slot": "source_slot", "qty": "qty",
+                                       "note": "note"}},
             "source_region": {"table": "tp_test_plan_region",
-                              "columns": {"plan_id": "plan_id", "source_lot": "source_lot",
+                              "columns": {"ref_table": "ref_table", "map_key": "map_key",
+                                          "source_lot": "source_lot",
                                           "source_slot": "source_slot", "x": "x", "y": "y",
                                           "val": "val"}},
-            "doe_layer": {"table": "tp_test_plan_doe_layer",
-                          "columns": {"doe_key": "doe_key", "layer": "layer",
-                                      "source_lot": "source_lot", "source_slot": "source_slot",
-                                      "qty": "qty", "note": "note"}},
         },
     }
     if align_eds:
@@ -281,6 +273,10 @@ def _write_cfg(tmp_path, monkeypatch, tp_cfg=None, bp_cfg=None):
     bp_path.write_text(json.dumps(bp_cfg if bp_cfg is not None else _bp_config()),
                        encoding="utf-8")
     monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(bp_path))
+    # 오버레이 config는 비워 둔다 — 계획 맵의 좌표 바인딩이 **table_config 유도만으로**
+    # 해석되는지(선언 의존이 남아 있지 않은지) 함께 고정하기 위함.
+    import map_overlay
+    monkeypatch.setattr(map_overlay, "CONFIG_PATH", str(tmp_path / "no_overlay.json"))
 
 
 @pytest.fixture()
@@ -380,20 +376,29 @@ def test_stages_listing_and_role_status(tp_env, client):
     assert bd["roles"]["origin_log"] == "connected"
     assert bd["roles"]["eds_fail"] == "connected"
 
-    assert body["plan_store"] == {"plan": "connected", "doe": "connected",
-                                  "map": "connected", "doe_layer": "connected",
+    # [v2] plan(헤더)·map(계획 맵 사본) 역할은 폐기 — DOE와 그 소스 묶음만 남는다
+    assert body["plan_store"] == {"doe": "connected", "doe_source": "connected",
                                   "source_region": "connected"}
+
+
+def test_stage_reverse_index_from_target_map_table(tp_env):
+    """[v2 핵심] stage는 고르는 것이 아니라 **열린 맵 테이블에서 유도**된다."""
+    cfg = _tp_config()
+    assert transfer_plan.stage_of_table(cfg, "tp_test_bonding_map") == "bonding"
+    assert transfer_plan.stage_of_table(cfg, "tp_test_dt_map") == "dt"
+    assert transfer_plan.stage_of_table(cfg, "tp_test_core_defect_map") is None
+    assert transfer_plan.stage_of_table(cfg, None) is None
 
 
 def test_stages_missing_roles_partial(tp_env, client, tmp_path, monkeypatch):
     cfg = _tp_config()
     cfg["stages"]["bonding"]["source"]["origin_log"]["table"] = "tp_test_no_such"
-    del cfg["plan_store"]["map"]
+    cfg["plan_store"]["doe"]["table"] = "tp_test_no_such"
     _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
     body = client.get("/api/transfer-plan/stages").json()
     bd = {s["name"]: s for s in body["stages"]}["bonding"]
     assert bd["roles"]["origin_log"] == "missing"
-    assert body["plan_store"]["map"] == "missing"
+    assert body["plan_store"]["doe"] == "missing"
 
 
 def test_stages_empty_config(tp_env, client, tmp_path, monkeypatch):
@@ -835,12 +840,19 @@ def test_align_dst_grid_is_passed_to_transform(tp_env, monkeypatch):
 # 3-quater. [②] 소스 사용 영역 영속화 — 자유 페인팅 셀 집합 스코프
 # ---------------------------------------------------------------------------
 
-def _seed_region(db, plan_id, source, cells, val="USE"):
+MAP_T = "tp_test_bonding_map"     # bonding stage의 target_map = 계획 캔버스 자신
+
+
+def _seed_region(db, map_key, source, cells, val="USE", ref_table=MAP_T):
     for (x, y) in cells:
         _add(db, "tp_test_plan_region",
-             region_key=f"{plan_id}|{source[0]}|{source[1]}|{x}|{y}",
-             plan_id=plan_id, source_lot=source[0], source_slot=source[1],
-             x=x, y=y, val=val)
+             region_key=f"{ref_table}|{map_key}|{source[0]}|{source[1]}|{x}|{y}",
+             ref_table=ref_table, map_key=map_key,
+             source_lot=source[0], source_slot=source[1], x=x, y=y, val=val)
+
+
+def _region_params(map_key, **kw):
+    return dict({"ref_table": MAP_T, "map_key": map_key}, **kw)
 
 
 def test_source_region_scopes_tape_availability(tp_env, client):
@@ -852,12 +864,11 @@ def test_source_region_scopes_tape_availability(tp_env, client):
       fail∪used = {(1,1),(2,1),(3,1)} = 3 → remaining 1.
     """
     _seed_scenario(tp_env)
-    _seed_region(tp_env, "PLAN-R", ("TAPE-X", "01"), [(1, 1), (2, 1), (3, 1), (4, 1)])
+    _seed_region(tp_env, "BASE-R", ("TAPE-X", "01"), [(1, 1), (2, 1), (3, 1), (4, 1)])
     tp_env.commit()
 
-    body = client.get("/api/transfer-plan/source-summary", params={
-        "stage": "bonding", "lot": "TAPE-X", "slot": "01", "plan_id": "PLAN-R",
-    }).json()
+    body = client.get("/api/transfer-plan/source-summary", params=_region_params(
+        "BASE-R", stage="bonding", lot="TAPE-X", slot="01")).json()
 
     assert body["chips"]["remaining"] == 2          # 전체 집계는 불변
     rc = body["region_chips"]
@@ -868,10 +879,10 @@ def test_source_region_scopes_tape_availability(tp_env, client):
     assert rc["reliable"] is True
 
 
-def test_source_region_absent_when_no_plan_id(tp_env, client):
-    """plan_id 없이는 영역 스코프가 없다(기존 계약 불변)."""
+def test_source_region_absent_without_map_identity(tp_env, client):
+    """(ref_table, map_key) 없이는 영역 스코프가 없다 — v2 키로 이동한 계약."""
     _seed_scenario(tp_env)
-    _seed_region(tp_env, "PLAN-R", ("TAPE-X", "01"), [(1, 1)])
+    _seed_region(tp_env, "BASE-R", ("TAPE-X", "01"), [(1, 1)])
     tp_env.commit()
     body = client.get("/api/transfer-plan/source-summary", params={
         "stage": "bonding", "lot": "TAPE-X", "slot": "01",
@@ -882,27 +893,20 @@ def test_source_region_absent_when_no_plan_id(tp_env, client):
 def test_source_region_empty_set_is_zero_not_missing(tp_env, client):
     """저장된 영역이 없으면 빈 집합 → 영역 내 가용 0 (필드는 존재)."""
     _seed_scenario(tp_env)
-    body = client.get("/api/transfer-plan/source-summary", params={
-        "stage": "bonding", "lot": "TAPE-X", "slot": "01", "plan_id": "PLAN-NONE",
-    }).json()
+    body = client.get("/api/transfer-plan/source-summary", params=_region_params(
+        "BASE-NONE", stage="bonding", lot="TAPE-X", slot="01")).json()
     rc = body["region_chips"]
     assert rc["cells"] == 0 and rc["total"] == 0 and rc["remaining"] == 0
 
 
 def test_source_region_scopes_core_availability_with_align(tp_env, client):
-    """[②] core-kind(M1 위임) 소스도 영역 스코프가 된다 — align 적용 좌표로 교차.
-
-    bonding_plan.py 무수정 불변식을 지키기 위해 M1 config 바인딩을 어댑터로 읽어
-    좌표 집합을 직접 구성한다. eds는 저장 좌표가 180° 회전이라 정렬이 필수.
-    """
+    """[②] core-kind(M1 위임) 소스도 영역 스코프가 된다 — align 적용 좌표로 교차."""
     _seed_scenario(tp_env)
-    # CORE-A canonical: defect (2,2)(3,3), eds canonical (1,1)
-    _seed_region(tp_env, "PLAN-C", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
+    _seed_region(tp_env, "BASE-C", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
     tp_env.commit()
 
-    body = client.get("/api/transfer-plan/source-summary", params={
-        "stage": "dt", "lot": "CORE-A", "slot": "01", "plan_id": "PLAN-C",
-    }).json()
+    body = client.get("/api/transfer-plan/source-summary", params=_region_params(
+        "BASE-C", stage="dt", lot="CORE-A", slot="01")).json()
     rc = body["region_chips"]
     assert rc["cells"] == 3
     assert rc["total"] == 3                       # 3칸 모두 defect 풀맵에 존재
@@ -914,14 +918,13 @@ def test_source_region_scopes_core_availability_with_align(tp_env, client):
 def test_source_region_core_align_negative_control(tp_env, client, tmp_path, monkeypatch):
     """align 미선언이면 eds 저장좌표(6,6)로 비교되어 영역 내 eds가 0 — 정렬 실효 대조군."""
     _seed_scenario(tp_env)
-    _seed_region(tp_env, "PLAN-C2", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
+    _seed_region(tp_env, "BASE-C2", ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
     tp_env.commit()
     bp = _bp_config()
     del bp["sources"]["eds_fail"]["align"]
     _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
-    body = client.get("/api/transfer-plan/source-summary", params={
-        "stage": "dt", "lot": "CORE-A", "slot": "01", "plan_id": "PLAN-C2",
-    }).json()
+    body = client.get("/api/transfer-plan/source-summary", params=_region_params(
+        "BASE-C2", stage="dt", lot="CORE-A", slot="01")).json()
     assert body["region_chips"]["fail_breakdown"]["eds_fail"] == 0
     assert body["region_chips"]["fail_breakdown"]["defect"] == 1   # 무회전 원천은 불변
 
@@ -932,57 +935,74 @@ def test_source_region_binding_reported_in_plan_store(tp_env, client):
 
 
 # ---------------------------------------------------------------------------
-# 4. validate
+# 4. validate — 계획 모델 v2
+#
+# 계획 정체성은 `(ref_table, map_key)` = 지금 열어 편집 중인 맵. plan_id도, 계획 헤더도,
+# 계획 맵 사본도 없다. 페인팅 값 분포는 **대상 맵 자신**에서 group-by로 읽는다.
 # ---------------------------------------------------------------------------
 
-def _seed_plan(db, plan_id="PLAN-1", stage="bonding"):
-    _add(db, "tp_test_plan", plan_id=plan_id, stage=stage,
-         target_lot="TB-1", target_slot="01", status="draft", memo="demo")
+def _seed_doe(db, map_key, value, band=None, seq=1, qty_total=None, ref_table=MAP_T):
+    """DOE 행 1건 = (값, STACK 구간). 같은 값에 seq를 달리해 구간을 여러 개 둘 수 있다."""
+    _add(db, "tp_test_map_doe",
+         doe_key=f"{ref_table}|{map_key}|{value}|{seq}", ref_table=ref_table,
+         map_key=map_key, doe_value=value, band_seq=seq, stack_band=band,
+         qty_total=qty_total, knobs="{}", note=None)
 
 
-def _seed_doe(db, plan_id, value, source=("TAPE-X", "01"), qty=1,
-              layer_from=None, layer_to=None):
-    _add(db, "tp_test_plan_doe", doe_key=f"{plan_id}|{value}", plan_id=plan_id,
-         doe_value=value, source_lot=source[0], source_slot=source[1],
-         qty_per_unit=qty, layer_from=layer_from, layer_to=layer_to,
-         knobs="{}", description=f"DOE {value}")
+def _seed_source(db, map_key, value, source=("TAPE-X", "01"), seq=1, qty=None, note=None,
+                 ref_table=MAP_T):
+    """구간의 사용 자재 1매 (묶음의 구성원 — 묶음은 값이 아니라 **구간** 아래 붙는다)."""
+    _add(db, "tp_test_map_doe_source",
+         source_key=f"{ref_table}|{map_key}|{value}|{seq}|{source[0]}|{source[1]}",
+         ref_table=ref_table, map_key=map_key, doe_value=value, band_seq=seq,
+         source_lot=source[0], source_slot=source[1], qty=qty, note=note)
 
 
-def _paint(db, plan_id, cells):
+def _paint(db, map_key, cells, ref_table=MAP_T):
+    """대상 맵 **자신**에 칠한다 (계획 맵 사본 없음)."""
     for (x, y, val) in cells:
-        _add(db, "tp_test_plan_map", cell_key=f"{plan_id}|{x}|{y}",
-             plan_id=plan_id, x=x, y=y, val=val)
+        _add(db, ref_table, cell_key=f"{map_key}|{x}|{y}",
+             base=map_key, x=x, y=y, leg=val)
+
+
+def _validate(client, map_key, ref_table=MAP_T):
+    return client.get("/api/transfer-plan/validate",
+                      params={"ref_table": ref_table, "map_key": map_key}).json()
 
 
 def _types(warnings):
     return [w["type"] for w in warnings]
 
 
-def test_validate_ok_plan(tp_env, client):
+def test_validate_reads_painted_values_from_the_map_itself(tp_env, client):
+    """[v2 핵심] 값 분포의 출처가 계획 맵 사본이 아니라 **대상 맵 자신**이다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-OK")
-    _seed_doe(tp_env, "PLAN-OK", "A", qty=1)          # 층 미선언 → 1층
-    _paint(tp_env, "PLAN-OK", [(1, 1, "A"), (2, 1, "A")])
+    _seed_doe(tp_env, "BASE-OK", "A", qty_total=2)
+    _seed_source(tp_env, "BASE-OK", "A")
+    _paint(tp_env, "BASE-OK", [(1, 1, "A"), (2, 1, "A")])
+    # 다른 맵 키의 셀은 섞이면 안 된다
+    _paint(tp_env, "BASE-OTHER", [(1, 1, "Z"), (2, 1, "Z")])
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-OK"}).json()
-    assert body["plan"]["stage"] == "bonding"
+
+    body = _validate(client, "BASE-OK")
+    assert body["ref_table"] == MAP_T and body["map_key"] == "BASE-OK"
+    assert body["stage"] == "bonding"            # 테이블에서 유도 (선택 UI 없음)
+    assert body["map_status"] == "connected"
     assert body["doe_count"] == 1
-    assert body["painted_values"] == {"A": 2}
-    # 필요 2 ≤ 가용 2 → 수량 경고 없음. 단 소스 fail 칩·이력 경고는 정보로 표시된다.
+    assert body["painted_values"] == {"A": 2}    # Z는 다른 맵 → 불참
     types = _types(body["warnings"])
-    assert transfer_plan.WARN_QTY_SHORTAGE not in types
+    assert transfer_plan.WARN_QTY_SHORTAGE not in types   # 필요 2 ≤ 가용 2
     assert transfer_plan.WARN_SOURCE_FAIL_CHIPS in types
     assert transfer_plan.WARN_SOURCE_HISTORY_FAIL in types
 
 
-def test_validate_qty_shortage_with_layers(tp_env, client):
-    _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-1")
-    # 칩 2 × 층 2 × 개당 1 = 필요 4 > 가용 2 → 부족
-    _seed_doe(tp_env, "PLAN-1", "A", qty=1, layer_from=1, layer_to=2)
-    _paint(tp_env, "PLAN-1", [(1, 1, "A"), (2, 1, "A")])
+def test_validate_qty_shortage(tp_env, client):
+    _seed_scenario(tp_env)          # TAPE-X/01 가용 2
+    _seed_doe(tp_env, "BASE-1", "A", band="1", qty_total=4)
+    _seed_source(tp_env, "BASE-1", "A")
+    _paint(tp_env, "BASE-1", [(1, 1, "A"), (2, 1, "A")])
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-1"}).json()
+    body = _validate(client, "BASE-1")
     assert body["status"] == "warnings"
     shortage = [w for w in body["warnings"] if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
     assert len(shortage) == 1
@@ -991,11 +1011,11 @@ def test_validate_qty_shortage_with_layers(tp_env, client):
 
 def test_validate_doe_map_consistency(tp_env, client):
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-2")
-    _seed_doe(tp_env, "PLAN-2", "A")                    # 페인팅 없음 → unpainted
-    _paint(tp_env, "PLAN-2", [(1, 1, "C")])             # DOE 정의 없음 → undefined
+    _seed_doe(tp_env, "BASE-2", "A")                    # 페인팅 없음 → unpainted
+    _seed_source(tp_env, "BASE-2", "A")
+    _paint(tp_env, "BASE-2", [(1, 1, "C")])             # DOE 정의 없음 → undefined
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-2"}).json()
+    body = _validate(client, "BASE-2")
     types = _types(body["warnings"])
     assert transfer_plan.WARN_UNDEFINED_DOE_VALUE in types
     assert transfer_plan.WARN_DOE_VALUE_UNPAINTED in types
@@ -1004,15 +1024,17 @@ def test_validate_doe_map_consistency(tp_env, client):
     assert undefined["value"] == "C"
 
 
-def test_validate_layer_coverage_and_range(tp_env, client):
+def test_validate_stack_band_coverage_and_range(tp_env, client):
+    """STACK 구간은 자유 텍스트지만 **수치로 읽히면** 커버리지 검증에 참여한다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-3")
-    _seed_doe(tp_env, "PLAN-3", "L1", layer_from=1, layer_to=1)
-    _seed_doe(tp_env, "PLAN-3", "L3", layer_from=3, layer_to=3)   # 2층 공백
-    _seed_doe(tp_env, "PLAN-3", "LR", layer_from=5, layer_to=4)   # 역전
-    _paint(tp_env, "PLAN-3", [(1, 1, "L1"), (2, 1, "L3"), (3, 1, "LR")])
+    _seed_doe(tp_env, "BASE-3", "L1", band="1")
+    _seed_doe(tp_env, "BASE-3", "L3", band="3")        # 2 구간 공백
+    _seed_doe(tp_env, "BASE-3", "LR", band="5-4")     # 역전
+    for v in ("L1", "L3", "LR"):
+        _seed_source(tp_env, "BASE-3", v)
+    _paint(tp_env, "BASE-3", [(1, 1, "L1"), (2, 1, "L3"), (3, 1, "LR")])
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-3"}).json()
+    body = _validate(client, "BASE-3")
     types = _types(body["warnings"])
     assert transfer_plan.WARN_LAYER_RANGE_INVALID in types
     gap = [w for w in body["warnings"]
@@ -1020,108 +1042,191 @@ def test_validate_layer_coverage_and_range(tp_env, client):
     assert len(gap) == 1 and "[2]" in gap[0]["detail"]
 
 
-def _seed_layer(db, plan_id, value, layer, source=None, qty=None, note=None):
-    """S3: DOE 층별 배정 1건."""
-    _add(db, "tp_test_plan_doe_layer",
-         layer_key=f"{plan_id}|{value}|{layer}", doe_key=f"{plan_id}|{value}",
-         layer=layer, source_lot=(source or (None, None))[0],
-         source_slot=(source or (None, None))[1], qty=qty, note=note)
-
-
-def test_doe_layer_assignments_drive_quantity(tp_env, client):
-    """[S3] 층마다 다른 소스/수량 — 층 배정이 있으면 DOE 기본값 대신 그것이 쓰인다."""
-    _seed_scenario(tp_env)          # TAPE-X/01 가용 2
-    _seed_plan(tp_env, "PLAN-L")
-    # DOE 기본은 층 1~2(=2층)이지만, 층 배정이 우선한다
-    _seed_doe(tp_env, "PLAN-L", "A", source=("TAPE-X", "01"), qty=1,
-              layer_from=1, layer_to=2)
-    _seed_layer(tp_env, "PLAN-L", "A", 1, source=("TAPE-X", "01"), qty=1)
-    _seed_layer(tp_env, "PLAN-L", "A", 2, source=("TAPE-X", "01"), qty=5)  # 층2만 5개씩
-    _paint(tp_env, "PLAN-L", [(1, 1, "A")])   # 칩 1
-    tp_env.commit()
-
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-L"}).json()
-    assert body["availability_checked"] is True
-    # 층1 필요 1(<=2, 통과) / 층2 필요 5(>2, 부족)
-    short = [w for w in body["warnings"] if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
-    assert len(short) == 1
-    assert short[0]["demand"] == "A@L2" and short[0]["required"] == 5
-
-
-def test_doe_layer_sources_aggregate_per_source(tp_env, client):
-    """[S3 x F4] 층별 소스가 같으면 합산이 소스 단위로 누적된다."""
-    _seed_scenario(tp_env)          # 가용 2
-    _seed_plan(tp_env, "PLAN-LS")
-    _seed_doe(tp_env, "PLAN-LS", "A", source=("TAPE-X", "01"), qty=1)
-    _seed_layer(tp_env, "PLAN-LS", "A", 1, source=("TAPE-X", "01"), qty=1)
-    _seed_layer(tp_env, "PLAN-LS", "A", 2, source=("TAPE-X", "01"), qty=1)
-    _paint(tp_env, "PLAN-LS", [(1, 1, "A"), (2, 1, "A")])   # 칩 2
-    tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-LS"}).json()
-    # 층1 필요 2, 층2 필요 2 → 각각은 가용 2 이하지만 합 4 > 2
-    over = [w for w in body["warnings"]
-            if w["type"] == transfer_plan.WARN_SOURCE_OVERALLOCATED]
-    assert len(over) == 1
-    assert over[0]["required_total"] == 4 and over[0]["available"] == 2
-    assert set(over[0]["doe_values"]) == {"A@L1", "A@L2"}
-
-
-def test_doe_layer_falls_back_to_doe_source(tp_env, client):
-    """층 배정에 소스가 비면 DOE 기본 소스를 승계한다(부분 선언 허용)."""
+def test_validate_free_text_band_does_not_break_coverage(tp_env, client):
+    """수치로 못 읽는 표기(`H1~H2`)는 조용히 불참한다 — 표기를 강제하지 않는다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-LF")
-    _seed_doe(tp_env, "PLAN-LF", "A", source=("TAPE-X", "01"), qty=1)
-    _seed_layer(tp_env, "PLAN-LF", "A", 3, source=None, qty=None)   # 전부 승계
-    _paint(tp_env, "PLAN-LF", [(1, 1, "A")])
+    _seed_doe(tp_env, "BASE-FT", "A", band="바닥", qty_total=1)
+    _seed_source(tp_env, "BASE-FT", "A")
+    _paint(tp_env, "BASE-FT", [(1, 1, "A")])
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-LF"}).json()
-    assert body["availability_checked"] is True
-    assert transfer_plan.WARN_SOURCE_UNRESOLVED not in _types(body["warnings"])
-    # 층 3만 배정 → 1,2층 공백 경고
-    gap = [w for w in body["warnings"]
-           if w["type"] == transfer_plan.WARN_LAYER_COVERAGE_GAP]
-    assert len(gap) == 1
-
-
-def test_plan_store_reports_doe_layer_binding(tp_env, client):
-    body = client.get("/api/transfer-plan/stages").json()
-    assert body["plan_store"]["doe_layer"] == "connected"
-
-
-def test_validate_detects_source_overallocation(tp_env, client):
-    """[QA F4] 여러 DOE가 한 소스를 나눠 쓸 때 합산 초과를 검출한다.
-
-    개별 DOE는 각각 가용 이하라 qty_shortage가 안 나는데 합이 넘는 경우 — DOE 계획의
-    가장 흔한 초과 형태인데 아무도 보지 않던 구멍.
-    """
-    _seed_scenario(tp_env)          # TAPE-X/01 가용 2
-    _seed_plan(tp_env, "PLAN-OVER")
-    _seed_doe(tp_env, "PLAN-OVER", "A", qty=1)   # 칩 1 → 필요 1 (<= 2)
-    _seed_doe(tp_env, "PLAN-OVER", "B", qty=1)   # 칩 2 → 필요 2 (<= 2)
-    _paint(tp_env, "PLAN-OVER", [(1, 1, "A"), (2, 1, "B"), (3, 1, "B")])
-    tp_env.commit()
-
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-OVER"}).json()
+    body = _validate(client, "BASE-FT")
     types = _types(body["warnings"])
-    # 개별 부족은 없다 (1<=2, 2<=2)
-    assert transfer_plan.WARN_QTY_SHORTAGE not in types
-    # 그러나 합산 3 > 가용 2 → 초과배정 검출
+    assert transfer_plan.WARN_LAYER_COVERAGE_GAP not in types
+    assert transfer_plan.WARN_LAYER_RANGE_INVALID not in types
+
+
+def test_band_range_parsing():
+    assert transfer_plan._band_range("1") == (1, 1)
+    assert transfer_plan._band_range("2-11") == (2, 11)
+    assert transfer_plan._band_range(" 3 ~ 5 ") == (3, 5)
+    assert transfer_plan._band_range("H1~H2") is None
+    assert transfer_plan._band_range("바닥") is None
+    assert transfer_plan._band_range("") is None
+    assert transfer_plan._band_range(None) is None
+
+
+# ---- 값당 다중 STACK 구간 (사용자 스케치: A|H1~H2, A|H2~H3, B|H1~H3) ----
+
+def test_one_value_can_have_multiple_stack_bands(tp_env, client):
+    """[E1] 한 값이 **여러 구간 행**을 갖고, 구간마다 **다른 자재 묶음**이 붙는다.
+
+    스케치 그대로:
+        A | H1~H2 | DT(TAPE-X)
+        A | H2~H3 | DT(TAPE-Y)
+        B | H1~H3 | DT(TAPE-X)
+    """
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "BASE-MB", "A", band="H1~H2", seq=1, qty_total=2)
+    _seed_source(tp_env, "BASE-MB", "A", seq=1, source=("TAPE-X", "01"))
+    _seed_doe(tp_env, "BASE-MB", "A", band="H2~H3", seq=2, qty_total=6)
+    _seed_source(tp_env, "BASE-MB", "A", seq=2, source=("TAPE-Y", "09"))
+    _seed_doe(tp_env, "BASE-MB", "B", band="H1~H3", seq=1, qty_total=1)
+    _seed_source(tp_env, "BASE-MB", "B", seq=1, source=("TAPE-X", "01"))
+    _paint(tp_env, "BASE-MB", [(1, 1, "A"), (2, 1, "B")])
+    tp_env.commit()
+
+    body = _validate(client, "BASE-MB")
+    assert body["doe_count"] == 3, "구간 행이 각각 살아 있어야 한다(값당 1행으로 뭉개지면 2)"
+    assert body["painted_values"] == {"A": 1, "B": 1}
+
+    short = {w["demand"]: w["required"] for w in body["warnings"]
+             if w["type"] == transfer_plan.WARN_QTY_SHORTAGE}
+    # A의 두 구간이 **서로 다른 자재**를 본다 — 묶음이 값이 아니라 구간에 붙는 증거
+    assert "A[H2~H3]@TAPE-Y|09" in short and short["A[H2~H3]@TAPE-Y|09"] == 6
+    assert "A[H1~H2]@TAPE-X|01" not in short          # 소요 2 ≤ 가용 2
+    assert "B[H1~H3]@TAPE-X|01" not in short          # 소요 1 ≤ 가용 2
+
+
+def test_bands_of_same_value_aggregate_on_shared_material(tp_env, client):
+    """같은 자재를 여러 **구간**이 나눠 쓰면 구간을 가로질러 합산된다(F4 규율 승계)."""
+    _seed_scenario(tp_env)          # TAPE-X/01 가용 2
+    _seed_doe(tp_env, "BASE-BA", "A", band="1", seq=1, qty_total=1)
+    _seed_source(tp_env, "BASE-BA", "A", seq=1, source=("TAPE-X", "01"))
+    _seed_doe(tp_env, "BASE-BA", "A", band="2-3", seq=2, qty_total=2)
+    _seed_source(tp_env, "BASE-BA", "A", seq=2, source=("TAPE-X", "01"))
+    _paint(tp_env, "BASE-BA", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-BA")
+    assert transfer_plan.WARN_QTY_SHORTAGE not in _types(body["warnings"])  # 1<=2, 2<=2
     over = [w for w in body["warnings"]
             if w["type"] == transfer_plan.WARN_SOURCE_OVERALLOCATED]
     assert len(over) == 1
     assert over[0]["required_total"] == 3 and over[0]["available"] == 2
-    assert set(over[0]["doe_values"]) == {"A", "B"}
+    assert set(over[0]["doe_values"]) == {"A[1]@TAPE-X|01", "A[2-3]@TAPE-X|01"}
+
+
+def test_band_label_is_not_part_of_identity(tp_env, client):
+    """[설계 근거] 구간 라벨은 **비키 컬럼**이다 — 고쳐도 자재 묶음이 따라온다.
+
+    자유 텍스트를 bk에 넣었다면 라벨 수정이 곧 re-key라 하위 자재 행이 고아가 된다
+    (`crud.py`의 composite key는 키 컬럼이 바뀌면 business_key_val을 다시 만든다).
+    여기서는 라벨만 바꿔도 (값, band_seq) 조인이 유지되는지 고정한다.
+    """
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "BASE-RN", "A", band="2-11", seq=1, qty_total=9)
+    _seed_source(tp_env, "BASE-RN", "A", seq=1, source=("TAPE-X", "01"))
+    _paint(tp_env, "BASE-RN", [(1, 1, "A")])
+    tp_env.commit()
+    before = _validate(client, "BASE-RN")
+    assert "A[2-11]@TAPE-X|01" in {w.get("demand") for w in before["warnings"]}
+
+    # 라벨만 수정 (band_seq·doe_value 불변 = 정체성 불변)
+    model = models.DYNAMIC_TABLES["tp_test_map_doe"]
+    row = tp_env.query(model).filter(model.doe_value == "A").first()
+    row.stack_band = "2~12층"
+    tp_env.commit()
+
+    after = _validate(client, "BASE-RN")
+    short = [w for w in after["warnings"] if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
+    assert len(short) == 1, "자재가 고아가 됐다면 source_unresolved로 바뀐다"
+    assert short[0]["demand"] == "A[2~12층]@TAPE-X|01"
+    assert short[0]["required"] == 9
+
+
+def test_pipe_in_band_label_does_not_corrupt_identity(tp_env, client):
+    """구분자(`|`)가 섞인 라벨도 안전하다 — 라벨이 키에 들어가지 않기 때문."""
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "BASE-PIPE", "A", band="H1|H2", seq=1, qty_total=9)
+    _seed_source(tp_env, "BASE-PIPE", "A", seq=1, source=("TAPE-X", "01"))
+    _paint(tp_env, "BASE-PIPE", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-PIPE")
+    short = [w for w in body["warnings"] if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
+    assert len(short) == 1 and short[0]["required"] == 9
+
+
+# ---- 소스 묶음(pool) — 사용자 확정: "한 매당 500칩이면 4매 묶어서 투입" ----
+
+def test_pool_splits_total_demand_evenly(tp_env, client):
+    """[v2] 매별 소요는 지정 대상이 아니라 **묶음 총 소요의 균등 배분**이다."""
+    _seed_scenario(tp_env)          # TAPE-X/01 가용 2, TAPE-Y/09는 데이터 없음(가용 0)
+    _seed_doe(tp_env, "BASE-P", "A", qty_total=4)
+    _seed_source(tp_env, "BASE-P", "A", source=("TAPE-X", "01"))
+    _seed_source(tp_env, "BASE-P", "A", source=("TAPE-Y", "09"))
+    _paint(tp_env, "BASE-P", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-P")
+    short = [w for w in body["warnings"] if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
+    # 총 4를 2매로 나눠 매당 2 → TAPE-X(가용 2)는 통과, TAPE-Y(가용 0)만 부족
+    assert len(short) == 1
+    assert short[0]["required"] == 2, "배분하지 않았다면 4가 나온다"
+    assert short[0]["demand"] == "A[1]@TAPE-Y|09"
+
+
+def test_pool_row_qty_overrides_even_share(tp_env, client):
+    """행에 수량이 명시돼 있으면 균등 배분보다 우선한다(부분 선언 허용)."""
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "BASE-Q", "A", qty_total=4)
+    _seed_source(tp_env, "BASE-Q", "A", source=("TAPE-X", "01"), qty=9)
+    _seed_source(tp_env, "BASE-Q", "A", source=("TAPE-Y", "09"))
+    _paint(tp_env, "BASE-Q", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-Q")
+    short = {w["demand"]: w["required"] for w in body["warnings"]
+             if w["type"] == transfer_plan.WARN_QTY_SHORTAGE}
+    assert short["A[1]@TAPE-X|01"] == 9      # 명시값
+    assert short["A[1]@TAPE-Y|09"] == 2      # 균등 배분
+
+
+def test_pool_shares_aggregate_per_source_across_does(tp_env, client):
+    """[QA F4 승계] 여러 DOE가 같은 자재를 나눠 쓰면 합산 초과배정을 검출한다."""
+    _seed_scenario(tp_env)          # TAPE-X/01 가용 2
+    _seed_doe(tp_env, "BASE-OVER", "A", qty_total=1)
+    _seed_source(tp_env, "BASE-OVER", "A", source=("TAPE-X", "01"))
+    _seed_doe(tp_env, "BASE-OVER", "B", qty_total=2)
+    _seed_source(tp_env, "BASE-OVER", "B", source=("TAPE-X", "01"))
+    _paint(tp_env, "BASE-OVER", [(1, 1, "A"), (2, 1, "B")])
+    tp_env.commit()
+    body = _validate(client, "BASE-OVER")
+    types = _types(body["warnings"])
+    assert transfer_plan.WARN_QTY_SHORTAGE not in types   # 1<=2, 2<=2 각각은 통과
+    over = [w for w in body["warnings"]
+            if w["type"] == transfer_plan.WARN_SOURCE_OVERALLOCATED]
+    assert len(over) == 1
+    assert over[0]["required_total"] == 3 and over[0]["available"] == 2
     assert over[0]["source_lot"] == "TAPE-X"
 
 
-def test_validate_no_overallocation_warning_for_single_doe(tp_env, client):
-    """단독 DOE 소스는 qty_shortage가 이미 같은 사실을 말한다 — 중복 경고 금지."""
+def test_doe_without_pool_is_unresolved(tp_env, client):
+    """자재를 하나도 선언하지 않은 DOE는 수량 검증 불가로 표면화된다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-SOLO")
-    _seed_doe(tp_env, "PLAN-SOLO", "A", qty=1, layer_from=1, layer_to=2)  # 필요 4 > 2
-    _paint(tp_env, "PLAN-SOLO", [(1, 1, "A"), (2, 1, "A")])
+    _seed_doe(tp_env, "BASE-NP", "A", qty_total=10)
+    _paint(tp_env, "BASE-NP", [(1, 1, "A")])
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-SOLO"}).json()
+    body = _validate(client, "BASE-NP")
+    assert transfer_plan.WARN_SOURCE_UNRESOLVED in _types(body["warnings"])
+    assert body["availability_checked"] is False
+    assert body["status"] == "unverified"
+
+
+def test_validate_no_overallocation_warning_for_single_demand(tp_env, client):
+    """단독 수요 소스는 qty_shortage가 이미 같은 사실을 말한다 — 중복 경고 금지."""
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "BASE-SOLO", "A", qty_total=4)
+    _seed_source(tp_env, "BASE-SOLO", "A")
+    _paint(tp_env, "BASE-SOLO", [(1, 1, "A"), (2, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-SOLO")
     types = _types(body["warnings"])
     assert transfer_plan.WARN_QTY_SHORTAGE in types
     assert transfer_plan.WARN_SOURCE_OVERALLOCATED not in types
@@ -1130,15 +1235,16 @@ def test_validate_no_overallocation_warning_for_single_doe(tp_env, client):
 def test_validate_overallocation_skipped_when_degraded(tp_env, client, tmp_path, monkeypatch):
     """[F1 규율] 강등 입력에서는 합산 판정도 하지 않는다(오염된 가용치 사용 금지)."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-OVD")
-    _seed_doe(tp_env, "PLAN-OVD", "A", qty=1)
-    _seed_doe(tp_env, "PLAN-OVD", "B", qty=1)
-    _paint(tp_env, "PLAN-OVD", [(1, 1, "A"), (2, 1, "B"), (3, 1, "B")])
+    _seed_doe(tp_env, "BASE-OVD", "A", qty_total=1)
+    _seed_source(tp_env, "BASE-OVD", "A")
+    _seed_doe(tp_env, "BASE-OVD", "B", qty_total=2)
+    _seed_source(tp_env, "BASE-OVD", "B")
+    _paint(tp_env, "BASE-OVD", [(1, 1, "A"), (2, 1, "B")])
     tp_env.commit()
     cfg = _tp_config()
     cfg["stages"]["bonding"]["source"]["origin_log"]["table"] = "tp_test_no_such"
     _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-OVD"}).json()
+    body = _validate(client, "BASE-OVD")
     types = _types(body["warnings"])
     assert transfer_plan.WARN_SOURCE_OVERALLOCATED not in types
     assert transfer_plan.WARN_AVAILABILITY_UNRELIABLE in types
@@ -1146,85 +1252,79 @@ def test_validate_overallocation_skipped_when_degraded(tp_env, client, tmp_path,
 
 
 def test_validate_refuses_to_judge_on_degraded_source(tp_env, client, tmp_path, monkeypatch):
-    """[QA F1] 오염된 remaining으로 qty_shortage를 판정하지 않는다.
-
-    강등 시 remaining이 과대라 '부족 아님'으로 조용히 통과하던 경로 — 안전망 붕괴 지점.
-    """
+    """[QA F1] 오염된 remaining으로 qty_shortage를 판정하지 않는다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-DEG")
-    # 정상이면 필요 4 > 가용 2로 qty_shortage가 나야 하는 계획
-    _seed_doe(tp_env, "PLAN-DEG", "A", qty=1, layer_from=1, layer_to=2)
-    _paint(tp_env, "PLAN-DEG", [(1, 1, "A"), (2, 1, "A")])
+    _seed_doe(tp_env, "BASE-DEG", "A", qty_total=4)
+    _seed_source(tp_env, "BASE-DEG", "A")
+    _paint(tp_env, "BASE-DEG", [(1, 1, "A"), (2, 1, "A")])
     tp_env.commit()
 
     # 대조군: 정상 config에서는 qty_shortage가 발화한다
-    ok = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-DEG"}).json()
+    ok = _validate(client, "BASE-DEG")
     assert transfer_plan.WARN_QTY_SHORTAGE in _types(ok["warnings"])
     assert ok["availability_checked"] is True
 
-    # 강등: origin_log 파손 → remaining 과대(5) → 예전이라면 4 <= 5로 "부족 아님" 통과
+    # 강등: origin_log 파손 → remaining 과대 → 예전이라면 "부족 아님"으로 통과
     cfg = _tp_config()
     cfg["stages"]["bonding"]["source"]["origin_log"]["table"] = "tp_test_no_such"
     _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
-    deg = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-DEG"}).json()
+    deg = _validate(client, "BASE-DEG")
     types = _types(deg["warnings"])
     assert transfer_plan.WARN_QTY_SHORTAGE not in types, "오염값으로 부족 여부를 판정하면 안 된다"
     assert transfer_plan.WARN_AVAILABILITY_UNRELIABLE in types, "판정 불가를 명시해야 한다"
-    # "검사 안 함"이 "이상 없음"으로 읽히지 않아야 한다
     assert deg["status"] == "unverified"
     assert deg["availability_checked"] is False
     unrel = [w for w in deg["warnings"]
              if w["type"] == transfer_plan.WARN_AVAILABILITY_UNRELIABLE][0]
     assert unrel["required"] == 4
     assert "origin_log" in unrel["degraded_roles"]
-    # fail 칩 경고도 오염값 기반으로 내지 않는다
     assert transfer_plan.WARN_SOURCE_FAIL_CHIPS not in types
 
 
-def test_validate_stage_unknown_is_unverified_not_ok(tp_env, client):
-    """[QA F1] stage 미선언으로 검증을 통째로 스킵했으면 status가 ok/warnings여선 안 된다."""
-    _seed_plan(tp_env, "PLAN-SKIP", stage="unknown_stage")
-    _seed_doe(tp_env, "PLAN-SKIP", "A")
+def test_validate_unmapped_table_is_unverified_not_404(tp_env, client):
+    """[v2] stage를 유도할 수 없는 맵도 **열 수 있어야 한다** — 404가 아니라 unverified.
+
+    임의의 맵을 편집 대상으로 여는 것이 새 모델의 전제이므로, 전사 대상이 아닌 맵은
+    거절이 아니라 "검증 안 됨"으로 표면화한다.
+    """
+    _seed_scenario(tp_env)
+    _seed_doe(tp_env, "AAA", "A", ref_table="tp_test_core_defect_map")
     tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-SKIP"}).json()
+    body = _validate(client, "AAA", ref_table="tp_test_core_defect_map")
+    assert body["stage"] is None
     assert body["status"] == "unverified"
     assert body["availability_checked"] is False
     sw = [w for w in body["warnings"] if w["type"] == transfer_plan.WARN_STAGE_UNKNOWN][0]
     assert sw["effect"] == "validation_skipped"
 
 
-def test_validate_ok_status_only_when_actually_checked(tp_env, client):
-    """정상 경로에서만 availability_checked=True — 대조군(오탐 방지)."""
+def test_validate_unknown_map_key_is_empty_not_404(tp_env, client):
+    """[v2] 계획 헤더가 없으므로 '계획 미존재' 404도 없다 — 빈 계획일 뿐이다."""
     _seed_scenario(tp_env)
-    _seed_plan(tp_env, "PLAN-CHK")
-    _seed_doe(tp_env, "PLAN-CHK", "A", qty=1)
-    _paint(tp_env, "PLAN-CHK", [(1, 1, "A"), (2, 1, "A")])
-    tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-CHK"}).json()
-    assert body["availability_checked"] is True
-    assert body["status"] in ("ok", "warnings")
-
-
-def test_validate_stage_unknown_warning(tp_env, client):
-    _seed_plan(tp_env, "PLAN-4", stage="unknown_stage")
-    tp_env.commit()
-    body = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-4"}).json()
-    assert _types(body["warnings"]) == [transfer_plan.WARN_STAGE_UNKNOWN]
-
-
-def test_validate_plan_not_found_404(tp_env, client):
-    res = client.get("/api/transfer-plan/validate", params={"plan_id": "NOPE"})
-    assert res.status_code == 404
-    assert "not found" in res.json()["detail"]
+    body = _validate(client, "BASE-NEVER-PAINTED")
+    assert body["doe_count"] == 0
+    assert body["painted_values"] == {}
+    assert body["stage"] == "bonding"
 
 
 def test_validate_plan_store_unbound_404(tp_env, client, tmp_path, monkeypatch):
     cfg = _tp_config()
     del cfg["plan_store"]
     _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
-    res = client.get("/api/transfer-plan/validate", params={"plan_id": "PLAN-1"})
+    res = client.get("/api/transfer-plan/validate",
+                     params={"ref_table": MAP_T, "map_key": "BASE-1"})
     assert res.status_code == 404
     assert "plan store" in res.json()["detail"]
+
+
+def test_validate_unresolvable_map_binding_is_surfaced(tp_env, client, tmp_path, monkeypatch):
+    """대상 맵의 좌표 바인딩을 유도할 수 없으면 `map_status: missing`으로 알린다."""
+    cfg = _tp_config()
+    cfg["stages"]["bonding"]["target_map"]["table"] = "tp_test_bonding_log"   # x/y 없음
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    body = _validate(client, "BASE-X", ref_table="tp_test_bonding_log")
+    assert body["map_status"] == "missing"
+    assert body["painted_values"] == {}
 
 
 # ---------------------------------------------------------------------------

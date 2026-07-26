@@ -84,7 +84,13 @@ export function handleWebSocketMessage(msg) {
   if (msg.event === 'file_ingestion_completed') {
     const status = msg.status || 'SUCCESS';
     const message = msg.message || '파일 처리가 완료되었습니다.';
-    showToast(message, status === 'SUCCESS' ? 'success' : 'error');
+    // 데모 수집기가 2~3분마다 도는 환경에서 이 알림이 가장 많이 쌓인다 →
+    // **성공은 한 줄로 집계**하고(dedupeKey), 실패는 집계하지 않아 개별 사유가 남게 한다.
+    showToast(
+      message,
+      status === 'SUCCESS' ? 'success' : 'error',
+      status === 'SUCCESS' ? { dedupeKey: 'file_ingestion_completed' } : {},
+    );
 
     // Finish floating progress bar
     finishIngestionProgress(msg.table_name, msg.filename, status, msg.error_msg);

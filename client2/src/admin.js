@@ -4,6 +4,9 @@
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
 import { initTheme, getTheme } from './theme.js';
+// [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
+// 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
+import { showToast } from './utils.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -130,7 +133,6 @@ const tracebackViewer = byId('traceback-viewer');
 const payloadTitle = byId('payload-title');
 const payloadViewer = byId('payload-viewer');
 const copyPayloadBtn = byId('copy-payload-btn');
-const toastContainer = byId('toast-container');
 
 // Pagination DOM Elements
 const panelFooter = document.querySelector('.panel-footer');
@@ -2136,27 +2138,6 @@ async function retryAllFailed(kind) {
     console.error('Failed to retry all failed items', err);
     showToast('❌ 일괄 재시도 요청 실패', 'error');
   }
-}
-
-// Show feedback toasts
-function showToast(message, type = 'success') {
-  const toast = document.createElement('div');
-  // tokens.css 공통 토스트 계약(.toast.toast-{type})에 정렬 (구 .toast.{type}도 호환 유지됨)
-  toast.className = `toast toast-${type}`;
-  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-  toast.innerHTML = `
-    <span style="font-size: 1.2rem;">${icons[type] || icons.success}</span>
-    <span class="toast-message">${message}</span>
-  `;
-
-  toastContainer.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.animation = 'toastIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) reverse forwards';
-    setTimeout(() => {
-      toast.remove();
-    }, 300);
-  }, 3000);
 }
 
 // API Call: Reload system configurations and python modules cache

@@ -3056,7 +3056,8 @@ def get_transfer_plan_source_summary(
     stage: str,
     lot: str,
     slot: str,
-    plan_id: Optional[str] = None,
+    ref_table: Optional[str] = None,
+    map_key: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """단계별 소스 (lot, slot) 가용 집계.
@@ -3065,14 +3066,15 @@ def get_transfer_plan_source_summary(
       transferred, remaining}, history, warnings}
     - tape-kind(origin_log 연결) 소스면 by_core(출신 코어별 분해 — 집계만) 동봉.
     - 미선언 stage는 404. 역할 누락은 'missing'/'unavailable(...)' 부분 가동.
-    - plan_id 지정 시 그 계획이 이 소스에서 쓰기로 페인팅한 **셀 집합**을 스코프로
-      `region_chips`(영역 내 가용)를 동봉한다. 영역 미저장/바인딩 미선언이면 생략.
+    - (ref_table, map_key) 지정 시 그 계획 맵이 이 소스에서 쓰기로 페인팅한 **셀 집합**을
+      스코프로 `region_chips`(영역 내 가용)를 동봉한다. 영역 미저장/바인딩 미선언이면 생략.
+      (v2 모델: 구 `plan_id` 파라미터 대체 — 계획 정체성이 곧 맵 정체성이다)
     - 칩 좌표 목록은 반환하지 않는다(집계만 — 페이로드 상한 규율).
     """
     config = transfer_plan_module.load_transfer_plan_config()
     try:
         return transfer_plan_module.get_stage_source_summary(
-            db, config, stage, lot, slot, plan_id=plan_id)
+            db, config, stage, lot, slot, ref_table=ref_table, map_key=map_key)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -3081,20 +3083,26 @@ def get_transfer_plan_source_summary(
 
 @app.get("/api/transfer-plan/validate")
 def validate_transfer_plan(
-    plan_id: str,
+    ref_table: str,
+    map_key: str,
     db: Session = Depends(get_db),
 ):
-    """계획 검증 — 경고 목록(수량 부족·층 커버리지·DOE 값-맵 정합·소스 fail).
+    """계획 검증 — 경고 목록(수량 부족·STACK 커버리지·DOE 값-맵 정합·소스 fail).
 
-    plan_store 미구성 또는 plan_id 미존재는 404 (detail로 구분).
+    [v2 계획 모델] 계획 정체성은 **지금 열어 편집 중인 맵**(`ref_table`, `map_key`)이다.
+    구 `plan_id` 파라미터는 폐기 — 계획 헤더 테이블도 계획 맵 사본도 존재하지 않는다.
+    stage는 `stages.*.target_map.table` 역인덱스로 유도되며 미선언 맵은 `stage_unknown`
+    경고 + `status: unverified`(404 아님 — 임의의 맵도 열 수 있어야 한다).
+
+    plan_store.doe 미구성은 404.
     """
     config = transfer_plan_module.load_transfer_plan_config()
     try:
-        return transfer_plan_module.validate_plan(db, config, plan_id)
+        return transfer_plan_module.validate_plan(db, config, ref_table, map_key)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[TransferPlan] validate failed for plan '{plan_id}': {e}")
+        logger.error(f"[TransferPlan] validate failed for map '{ref_table}/{map_key}': {e}")
         raise HTTPException(status_code=500, detail="Failed to validate transfer plan.")
 
 @app.get("/admin/file-ingestion/workspaces")

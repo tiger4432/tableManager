@@ -38,10 +38,36 @@ MOV_TABLES = {
         "column_types": {"cell_key": "string", "tape_lot": "string", "tape_slot": "string",
                          "tx": "number", "ty": "number", "core_lot": "string"},
     },
+    # 바인딩 **자동 유도** 검증용: map_key_columns 선언 + 값 컬럼이 'val'이 아님(leg)
+    "mov_test_derived_map": {
+        "business_key": "cell_key",
+        "column_types": {"cell_key": "string", "base": "string",
+                         "x": "number", "y": "number", "leg": "string"},
+        "map_key_columns": ["base"],
+    },
+    # 맵으로 해석 불가(좌표 컬럼 없음) — 명시 실패 검증용
+    "mov_test_notamap": {
+        "business_key": "row_key",
+        "column_types": {"row_key": "string", "memo": "string"},
+    },
 }
 
+# phys 규격은 **필수**다 — 셀 좌표가 웨이퍼 원으로 자른 바운딩박스 상대값이라
+# (클라 저장 규약) 이것 없이는 정렬을 보증할 수 없다(QA B1).
+# 300mm/7mm 조합은 6x6 격자가 원 안에 통째로 들어가 bbox 크롭이 없는 기준 케이스다.
+PHYS_STD = {"phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
+            "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0}
+# 칩을 크게 잡아 원이 격자를 실제로 자르는 케이스 (bbox minC/minR > 0)
+PHYS_CROP = dict(PHYS_STD, phys_chip_x=60.0, phys_chip_y=60.0)
+# ⚠️ 위 두 픽스처는 **chip_x == chip_y**라 회전 시 피치 스왑의 유무가 결과에 영향을 주지
+# 않는다 — 결함 축이 죽어 있다(QA A1이 지적한 바로 그 구멍).
+# 아래는 **이방성(chip_x ≠ chip_y)** + 원 크롭으로 스왑 축을 살린 픽스처다.
+PHYS_ANISO = dict(PHYS_STD, phys_chip_x=40.0, phys_chip_y=70.0)
+# 오프셋 부호 항까지 살리는 픽스처 (back에서 x 부호가 뒤집힌다)
+PHYS_ANISO_OFF = dict(PHYS_ANISO, phys_offset_x=18.0, phys_offset_y=-11.0)
+
 GRID6 = {"grid_cols": 6, "grid_rows": 6, "grid_start_x": 1, "grid_start_y": 1,
-         "side": "front", "rotation": 0}
+         "side": "front", "rotation": 0, **PHYS_STD}
 
 
 def _add(db, table, **cols):
@@ -51,12 +77,17 @@ def _add(db, table, **cols):
                  business_key_val=str(cols.get(bk) or uuid.uuid4()), **cols))
 
 
-def _meta(db, target_table, map_id, rotation=0, side="front", cols=6, rows=6):
+def _meta(db, target_table, map_id, rotation=0, side="front", cols=6, rows=6,
+          y_invert=False, start_x=1, start_y=1, phys=None):
     meta = dict(GRID6)
+    meta.update(phys or {})
     meta["rotation"] = rotation
     meta["side"] = side
     meta["grid_cols"] = cols
     meta["grid_rows"] = rows
+    meta["grid_y_invert"] = y_invert
+    meta["grid_start_x"] = start_x
+    meta["grid_start_y"] = start_y
     model = models.DYNAMIC_TABLES["wafer_map_metadata"]
     db.add(model(row_id=str(uuid.uuid4()),
                  business_key_val=f"{target_table}_{map_id}",
@@ -328,19 +359,25 @@ def test_sources_required_and_capped(mov_env, client):
 
 
 # ---------------------------------------------------------------------------
-# 3-bis. [QA B3] side × 타깃 회전 조합 — 조용한 거울상 오답 차단 가드
+# 3-bis. side × 타깃 회전 조합 — 프레임 합성 (구 QA B3 한계의 근본 수정)
 #
-# 배경: rel_rot + 단일 flip을 하나의 변환기로 합성하는데, back 반전 축이 프레임 자신의
-# 회전에 따라 달라진다(90/270이면 행, 아니면 열). 따라서 두 프레임의 반전 축을 표현할 수
-# 없고 QA 전수 대조에서 64조합 중 16개가 status=ok인 채 거울상으로 틀렸다.
-# 현행 조치는 **명시 거절**이며, 근본 수정 시 아래 테스트가 기준이 된다.
+# 배경: 예전에는 rel_rot + 단일 flip을 **하나의** 변환기로 합성했는데, back 반전 축이 프레임
+# 자신의 회전에 따라 달라져(90/270이면 행, 아니면 열) 두 프레임의 반전 축을 표현할 수 없었다
+# (전수 대조 64조합 중 16개가 status=ok인 채 거울상 오답 → 당시엔 명시 거절로 봉인).
+# 현재는 각 맵을 자기 메타로 물리 좌표에 사상 후 타깃 프레임으로 역사상하므로 **정상 처리**된다.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("target_rot", [90, 270])
 @pytest.mark.parametrize("source_rot", [0, 90, 180, 270])
-def test_side_mismatch_with_rotated_target_is_refused(mov_env, client, tmp_path,
-                                                      monkeypatch, target_rot, source_rot):
-    """면 반전 + 타깃 rot 90/270 → 그리지 않고 align_unavailable로 거절한다."""
+def test_side_mismatch_with_rotated_target_composes_correctly(
+        mov_env, client, target_rot, source_rot):
+    """면 반전 + 타깃 rot 90/270 — 거절하지 않고 **프레임 합성으로 올바르게** 그린다.
+
+    검증은 구현을 되풀이하지 않고 **불변식 3종**으로 한다:
+      ① 타깃 프레임 격자 범위 안에 든다(범위 밖 = 조용한 오답)
+      ② 소스 프레임 전역이 타깃 프레임으로 **단사(중복 없음)** 사상된다
+      ③ 역방향 사상과 왕복하면 원좌표로 돌아온다(거울상이면 깨진다)
+    """
     db = mov_env
     _add(db, "mov_test_base_map", cell_key="TB", lot="LR", slot="01", x=1, y=1, val="P")
     _meta(db, "mov_test_base_map", "LR_01", rotation=target_rot, side="back")
@@ -353,10 +390,67 @@ def test_side_mismatch_with_rotated_target_is_refused(mov_env, client, tmp_path,
         "sources": "mov_test_defect_map",
     }).json()
     o = body["overlays"][0]
-    assert o["status"] == "align_unavailable", "거울상 오답을 조용히 내보내면 안 된다"
-    assert o["cells"] == []
-    assert o["align_applied"]["origin"] == "unresolvable"
-    assert "면 반전" in (o["detail"] or "")
+    assert o["status"] == "ok", o.get("detail")
+    assert o["count"] == 1
+    for c in o["cells"]:
+        assert 1 <= c["x"] <= 6 and 1 <= c["y"] <= 6, f"타깃 격자 밖: {c}"   # ①
+
+    src_meta = map_overlay.load_map_meta(db, "mov_test_defect_map", "LR_01")
+    tgt_meta = map_overlay.load_map_meta(db, "mov_test_base_map", "LR_01")
+    fwd = map_overlay.make_frame_transform(src_meta, tgt_meta)
+    back = map_overlay.make_frame_transform(tgt_meta, src_meta)
+    frame = [(x, y) for x in range(1, 7) for y in range(1, 7)]
+    mapped = [fwd(x, y) for (x, y) in frame]
+    assert len(set(mapped)) == len(frame), "두 셀이 같은 타깃 셀로 겹쳤다(사상이 단사가 아님)"  # ②
+    assert all(back(*fwd(x, y)) == (x, y) for (x, y) in frame), "왕복이 항등이 아니다"        # ③
+
+
+def test_frame_compose_golden_rot90_back_target(mov_env, client):
+    """[손계산 골든] 소스 rot0/front (1,1) → 타깃 rot90/back 에서는 (6,6)이다.
+
+    소스 (1,1)=0-based(0,0) → 물리 (0,0). 타깃(rot90·back) 역사상:
+    c_m=(6-1)-yp=5, r_m=xp=0 → back·회전이므로 r=(6-1)-r_m=5 → (5,5) → 1-based (6,6).
+    """
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="G1", lot="LG", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LG_01", rotation=90, side="back")
+    _add(db, "mov_test_defect_map", cell_key="G2", lot="LG", slot="01", x=1, y=1, val="D")
+    _meta(db, "mov_test_defect_map", "LG_01", rotation=0, side="front")
+    db.commit()
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LG_01",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "ok"
+    assert o["cells"] == [{"x": 6, "y": 6, "val": "D"}]
+
+
+def test_same_map_id_in_two_tables_uses_each_own_spec(mov_env, client):
+    """[회귀] 같은 map_id를 여러 테이블이 쓸 때 **각자 자기 규격**을 집는다.
+
+    라이브 실데이터 재현: map_id 'AAA'가 base 맵(rot 0)과 defect 맵(rot 270)에 동시에 존재.
+    메타 조회가 map_id만으로 매칭하면 남의 회전을 집어 좌표가 어긋난다.
+    """
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="A1", lot="AAA", slot="", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "AAA", rotation=0, side="front")
+    _add(db, "mov_test_defect_map", cell_key="A2", lot="AAA", slot="", x=1, y=1, val="D")
+    _meta(db, "mov_test_defect_map", "AAA", rotation=270, side="front")
+    db.commit()
+
+    assert map_overlay.load_map_meta(db, "mov_test_base_map", "AAA")["rotation"] == 0
+    assert map_overlay.load_map_meta(db, "mov_test_defect_map", "AAA")["rotation"] == 270
+
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "AAA",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    # 소스 270 − 타깃 0 = 270이 유도돼야 한다 (남의 0°를 집었다면 identity가 된다)
+    assert o["align_applied"]["rotation"] == 270
+    assert o["align_applied"]["origin"] == "derived"
+    assert o["status"] == "ok"
 
 
 @pytest.mark.parametrize("target_rot", [0, 180])
@@ -422,6 +516,472 @@ def test_nonsquare_grid_rotation_is_handled_or_refused(mov_env, client, tmp_path
             assert 1 <= c["x"] <= 6 and 1 <= c["y"] <= 4, f"타깃 격자 밖: {c}"
     else:
         assert o["cells"] == []
+
+
+# ---------------------------------------------------------------------------
+# 3-quater. 나머지 두 좌표축 — grid_y_invert / grid_start_x·y (QA O3)
+#
+# 사용자 요구: "회전, 거울상, Y축 뒤집힘, START X,Y 모두 고려해서 오버레이 기준 좌표계에 올려".
+# 회전·면은 프레임 합성으로 이미 처리되지만, y반전과 시작좌표는 **지름길(identity 판정)이
+# 통째로 건너뛰던** 축이었다 — 전 셀이 균일하게 어긋나는데 status는 ok(조용한 오답).
+# ---------------------------------------------------------------------------
+
+def _meta_of(rotation=0, side="front", y_invert=False, start_x=1, start_y=1,
+             cols=6, rows=6, phys=None):
+    return {"grid_cols": cols, "grid_rows": rows, "rotation": rotation, "side": side,
+            "grid_y_invert": y_invert, "grid_start_x": start_x, "grid_start_y": start_y,
+            **(phys or PHYS_STD)}
+
+
+def test_y_invert_alone_is_applied(mov_env, client):
+    """[축 단독] y반전만 다른 두 맵 — 행이 뒤집혀 올라와야 한다.
+
+    손계산: 소스 (1,2) → 셀 (0,1) → y반전 해제 r=(6-1)-1=4 → 물리 (0,4)
+            → 타깃(반전 없음) 셀 (0,4) → 1-based (1,5)
+    """
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="YT", lot="LY", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LY_01", y_invert=False)
+    _add(db, "mov_test_defect_map", cell_key="YS", lot="LY", slot="01", x=1, y=2, val="D")
+    _meta(db, "mov_test_defect_map", "LY_01", y_invert=True)
+    db.commit()
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LY_01",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "ok"
+    assert o["align_applied"]["origin"] == "derived", "지름길을 타면 identity가 된다"
+    assert o["cells"] == [{"x": 1, "y": 5, "val": "D"}]
+    assert "y반전" in (o["align_applied"].get("note") or "")
+
+
+def test_start_offset_alone_is_applied(mov_env, client):
+    """[축 단독] 시작좌표만 다른 두 맵 — 균일 평행이동이 보정돼야 한다.
+
+    손계산: 소스 start(0,0)의 (2,3) → 셀 (2,3) → 물리 (2,3)
+            → 타깃 start(1,1) 셀 (2,3) → (3,4)
+    """
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="ST", lot="LS2", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LS2_01", start_x=1, start_y=1)
+    _add(db, "mov_test_defect_map", cell_key="SS", lot="LS2", slot="01", x=2, y=3, val="D")
+    _meta(db, "mov_test_defect_map", "LS2_01", start_x=0, start_y=0)
+    db.commit()
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LS2_01",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "ok"
+    assert o["align_applied"]["origin"] == "derived"
+    assert o["cells"] == [{"x": 3, "y": 4, "val": "D"}]
+    # 순수 평행이동이므로 offset을 실제 수치로 싣는다
+    assert o["align_applied"]["offset"] == {"x": 1, "y": 1}
+    assert "시작좌표" in (o["align_applied"].get("note") or "")
+
+
+def test_identity_shortcut_requires_all_four_axes(mov_env):
+    """[핵심 규율] 지름길은 **네 축이 전부 같을 때만**. 하나라도 다르면 derived다."""
+    base = _meta_of()
+    assert map_overlay.frame_axes(base) == map_overlay.frame_axes(_meta_of())
+    for differing in (_meta_of(rotation=90), _meta_of(side="back"),
+                      _meta_of(y_invert=True), _meta_of(start_x=0),
+                      _meta_of(start_y=-12)):
+        _align, origin, _note = map_overlay.resolve_align({}, "t", differing, base)
+        assert origin == "derived", f"축이 다른데 지름길을 탔다: {differing}"
+
+
+# ---------------------------------------------------------------------------
+# 독립 정답(oracle) — 클라 저장 규약을 **산술 그대로** 옮겨 쓴 것.
+#
+# [왜 필요한가 — QA B1의 뼈아픈 교훈] 이전 회귀는 단사·범위·**왕복 항등**만 봤다. 셋 다
+# 같은 함수의 자기 대조라 **균일 오프셋에는 전부 참**이다(f가 통째로 +4 밀려 있어도
+# 단사이고 왕복도 항등이다). 그래서 라이브 12쌍이 조용히 틀린 것을 못 잡았다.
+# 정답은 반드시 **바깥에서** 와야 한다 — 아래는 map_overlay를 일절 호출하지 않는다.
+# ---------------------------------------------------------------------------
+
+def _oracle_frame_dims(m):
+    rot = int(m.get("rotation", 0) or 0) % 360
+    cols, rows = int(m["grid_cols"]), int(m["grid_rows"])
+    return (rows, cols) if rot in (90, 270) else (cols, rows)
+
+
+def _oracle_frame_phys(m):
+    """물리 규격 → 프레임 축 규격. **클라 산술을 그대로 옮긴 것**(서버 코드 미참조).
+
+    회전 90/270에서 칩 피치 스왑, back에서 offset x 부호 반전.
+    """
+    cx, cy = float(m["phys_chip_x"]), float(m["phys_chip_y"])
+    ox, oy = float(m["phys_offset_x"]), float(m["phys_offset_y"])
+    oox = -ox if str(m.get("side", "front") or "front") == "back" else ox
+    rot = int(m.get("rotation", 0) or 0) % 360
+    if rot == 90:
+        return cy, cx, oy, -oox
+    if rot == 180:
+        return cx, cy, -oox, -oy
+    if rot == 270:
+        return cy, cx, -oy, oox
+    return cx, cy, oox, oy
+
+
+def _oracle_bbox(m):
+    """웨이퍼 원 밖 셀을 제외한 바운딩박스 — **원 판정 산술을 직접 구현**한다.
+
+    ⚠️ `PhysicalWaferEngine`을 쓰지 않는다. 이전 오라클은 검증 대상과 **같은 파라미터로
+    같은 엔진**을 만들어서, 합성 계층에서만 독립이고 bbox 계층에서는 검증 대상의 복사본이었다
+    — 결함이 정확히 그 계층에 있었으므로 원리적으로 통과했다(QA A1). 정답지는 검증 대상과
+    **어떤 계층도 공유해선 안 된다.**
+    """
+    vc, vr = _oracle_frame_dims(m)
+    chip_x, chip_y, off_x, off_y = _oracle_frame_phys(m)
+    eff = max(0.0, float(m["phys_wafer_dia"]) / 2.0 - float(m["phys_edge_margin"]))
+    rsq = eff * eff
+    cc, cr = (vc - 1) / 2.0, (vr - 1) / 2.0
+    hw, hh = chip_x / 2.0, chip_y / 2.0
+    cs, rs = [], []
+    for r in range(vr):
+        for c in range(vc):
+            x = (c - cc) * chip_x + off_x
+            y = (cr - r) * chip_y + off_y
+            if all((px * px + py * py) <= rsq
+                   for px in (x - hw, x + hw) for py in (y - hh, y + hh)):
+                cs.append(c)
+                rs.append(r)
+    if not cs:
+        return 0, 0, 0, 0
+    return min(cs), max(cs), min(rs), max(rs)
+
+
+def _oracle_cell_to_stored(m, c, r):
+    min_c, _max_c, min_r, max_r = _oracle_bbox(m)
+    sx, sy = int(m.get("grid_start_x", 1)), int(m.get("grid_start_y", 1))
+    xv = c - min_c + sx
+    yv = (max_r - r + sy) if m.get("grid_y_invert") else (r - min_r + sy)
+    return xv, yv
+
+
+def _oracle_stored_to_cell(m, xv, yv):
+    min_c, _max_c, min_r, max_r = _oracle_bbox(m)
+    sx, sy = int(m.get("grid_start_x", 1)), int(m.get("grid_start_y", 1))
+    c = xv - sx + min_c
+    r = (max_r - (yv - sy)) if m.get("grid_y_invert") else (yv - sy + min_r)
+    return c, r
+
+
+def _oracle_cell_to_phys(m, c, r):
+    rot = int(m.get("rotation", 0) or 0) % 360
+    vc, vr = _oracle_frame_dims(m)
+    cm, rm = c, r
+    if str(m.get("side", "front") or "front") == "back":
+        if rot in (90, 270):
+            rm = (vr - 1) - r
+        else:
+            cm = (vc - 1) - c
+    if rot == 0:
+        return cm, rm
+    if rot == 90:
+        return rm, (vc - 1) - cm
+    if rot == 180:
+        return (vc - 1) - cm, (vr - 1) - rm
+    return (vr - 1) - rm, cm
+
+
+def _oracle_phys_to_cell(m, xp, yp):
+    rot = int(m.get("rotation", 0) or 0) % 360
+    vc, vr = _oracle_frame_dims(m)
+    if rot == 0:
+        cm, rm = xp, yp
+    elif rot == 90:
+        cm, rm = (vc - 1) - yp, xp
+    elif rot == 180:
+        cm, rm = (vc - 1) - xp, (vr - 1) - yp
+    else:
+        cm, rm = yp, (vr - 1) - xp
+    c, r = cm, rm
+    if str(m.get("side", "front") or "front") == "back":
+        if rot in (90, 270):
+            r = (vr - 1) - rm
+        else:
+            c = (vc - 1) - cm
+    return c, r
+
+
+def oracle_overlay(src_meta, dst_meta, x, y):
+    """소스 저장좌표 → 타깃 저장좌표 (같은 물리 칩을 가리키도록). 정답지."""
+    c, r = _oracle_stored_to_cell(src_meta, x, y)
+    xp, yp = _oracle_cell_to_phys(src_meta, c, r)
+    c2, r2 = _oracle_phys_to_cell(dst_meta, xp, yp)
+    return _oracle_cell_to_stored(dst_meta, c2, r2)
+
+
+def _oracle_cells(m):
+    """그 맵이 실제로 저장하는 좌표들(원 안 셀만)."""
+    min_c, max_c, min_r, max_r = _oracle_bbox(m)
+    return [_oracle_cell_to_stored(m, c, r)
+            for c in range(min_c, max_c + 1)
+            for r in range(min_r, max_r + 1)]
+
+
+def test_transform_matches_independent_oracle_all_axis_combos(mov_env):
+    """[전수 대조 — 독립 정답] 모든 축 조합에서 **오라클과 좌표가 일치**해야 한다.
+
+    회전 4 × 면 2 × y반전 2 × 시작좌표 2 = 32 프레임, 쌍 1024개.
+    자기 왕복이 아니라 바깥 정답과 맞춘다 — 균일 오프셋도 여기서는 즉시 잡힌다.
+    """
+    frames = [_meta_of(rotation=rot, side=side, y_invert=inv, start_x=sx, start_y=sy)
+              for rot in (0, 90, 180, 270)
+              for side in ("front", "back")
+              for inv in (False, True)
+              for (sx, sy) in ((1, 1), (0, -2))]
+    assert len(frames) == 32
+
+    bad = []
+    for src in frames:
+        cells = _oracle_cells(src)
+        for dst in frames:
+            fwd = map_overlay.make_frame_transform(src, dst)
+            for (x, y) in cells:
+                got = tuple(fwd(x, y))
+                want = oracle_overlay(src, dst, x, y)
+                if got != want:
+                    bad.append((src, dst, (x, y), got, want))
+                    break
+    assert not bad, f"오라클 불일치 {len(bad)}쌍. 예: {bad[0]}"
+
+
+def test_transform_matches_oracle_when_wafer_circle_crops_the_grid(mov_env):
+    """[B1 직격] 웨이퍼 원이 격자를 **실제로 자를 때**(bbox minC/minR > 0) 대조.
+
+    이 케이스가 없었기 때문에 바운딩박스 항 누락이 통과했다. 칩을 크게 잡아
+    모서리 셀이 원 밖으로 나가도록 만든 뒤, 거울(면 반전)이 끼는 조합을 함께 본다.
+    """
+    assert _oracle_bbox(_meta_of(phys=PHYS_CROP))[0] > 0, "이 픽스처는 크롭이 있어야 의미가 있다"
+
+    frames = [_meta_of(rotation=rot, side=side, phys=PHYS_CROP)
+              for rot in (0, 90, 180, 270) for side in ("front", "back")]
+    for src in frames:
+        cells = _oracle_cells(src)
+        for dst in frames:
+            fwd = map_overlay.make_frame_transform(src, dst)
+            for (x, y) in cells:
+                assert tuple(fwd(x, y)) == oracle_overlay(src, dst, x, y), \
+                    f"{src['rotation']}/{src['side']} -> {dst['rotation']}/{dst['side']} @{(x, y)}"
+
+
+@pytest.mark.parametrize("phys_name", ["PHYS_ANISO", "PHYS_ANISO_OFF"])
+def test_anisotropic_chip_pitch_swaps_on_rotated_frames(mov_env, phys_name):
+    """[A1 직격] **이방성 칩 피치**(chip_x ≠ chip_y) × 회전 90/270 × front/back.
+
+    회전 프레임에서는 프레임 x축이 물리 y축이므로 피치가 스왑돼야 한다. 스왑을 빠뜨리면
+    bbox가 통째로 달라지고 전 셀이 어긋난다. `chip_x == chip_y` 픽스처로는 이 축이
+    죽어 있어 영원히 안 잡힌다.
+    """
+    phys = {"PHYS_ANISO": PHYS_ANISO, "PHYS_ANISO_OFF": PHYS_ANISO_OFF}[phys_name]
+    frames = [_meta_of(rotation=rot, side=side, phys=phys)
+              for rot in (0, 90, 180, 270) for side in ("front", "back")]
+
+    # 픽스처가 결함 축을 실제로 활성화하는지 먼저 확인한다(죽은 픽스처 방지).
+    assert _oracle_bbox(_meta_of(rotation=0, phys=phys)) != \
+        _oracle_bbox(_meta_of(rotation=90, phys=phys)), \
+        "회전으로 bbox가 안 바뀌면 이 픽스처는 스왑 축을 검사하지 못한다"
+
+    for src in frames:
+        cells = _oracle_cells(src)
+        assert cells, "빈 bbox면 아무것도 검사하지 못한다"
+        for dst in frames:
+            fwd = map_overlay.make_frame_transform(src, dst)
+            for (x, y) in cells:
+                assert tuple(fwd(x, y)) == oracle_overlay(src, dst, x, y), (
+                    f"{src['rotation']}/{src['side']} -> {dst['rotation']}/{dst['side']} "
+                    f"@{(x, y)}")
+
+
+def test_nonsquare_grid_with_anisotropic_pitch(mov_env):
+    """[A1 조합] 비정방 격자 + 이방성 피치 + 회전 — 치수와 피치가 함께 스왑되는지."""
+    frames = [_meta_of(rotation=rot, side=side, cols=9, rows=5,
+                       phys=dict(PHYS_ANISO, phys_chip_x=30.0, phys_chip_y=55.0))
+              for rot in (0, 90, 180, 270) for side in ("front", "back")]
+    for src in frames:
+        cells = _oracle_cells(src)
+        for dst in frames:
+            if _oracle_frame_dims(src) != _oracle_frame_dims(dst):
+                continue          # 프레임 치수가 다르면 겹칠 대상이 아니다
+            fwd = map_overlay.make_frame_transform(src, dst)
+            for (x, y) in cells:
+                assert tuple(fwd(x, y)) == oracle_overlay(src, dst, x, y), \
+                    f"{src['rotation']}/{src['side']} -> {dst['rotation']}/{dst['side']}"
+
+
+def test_frame_phys_params_match_independent_derivation(mov_env):
+    """[표 고정] 프레임 규격 변환표를 오라클(독립 이식)과 직접 대조한다."""
+    for rot in (0, 90, 180, 270):
+        for side in ("front", "back"):
+            m = _meta_of(rotation=rot, side=side, phys=PHYS_ANISO_OFF)
+            _dia, cx, cy, ox, oy, _mar = map_overlay._frame_phys_params(m)
+            assert (cx, cy, ox, oy) == _oracle_frame_phys(m), f"rot{rot}/{side}"
+
+
+def test_missing_phys_spec_fails_explicitly(mov_env, client):
+    """[규율] phys 규격이 없으면 바운딩박스를 재현할 수 없다 → **명시 실패**(조용히 그리지 않는다)."""
+    no_phys = {k: v for k, v in _meta_of(rotation=90).items() if not k.startswith("phys_")}
+    with pytest.raises(ValueError, match="phys"):
+        map_overlay.make_frame_transform(no_phys, _meta_of())
+
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="NP1", lot="LP", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LP_01", rotation=0)
+    _add(db, "mov_test_defect_map", cell_key="NP2", lot="LP", slot="01", x=1, y=1, val="D")
+    model = models.DYNAMIC_TABLES["wafer_map_metadata"]
+    db.add(model(row_id=str(uuid.uuid4()), business_key_val="mov_test_defect_map_LP_01",
+                 map_pk="mov_test_defect_map_LP_01", target_table="mov_test_defect_map",
+                 map_id="LP_01", grid_metadata=json.dumps(
+                     {"grid_cols": 6, "grid_rows": 6, "grid_start_x": 1, "grid_start_y": 1,
+                      "rotation": 90, "side": "front"})))
+    db.commit()
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LP_01",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "align_unavailable"
+    assert o["cells"] == []
+    assert "phys" in (o["detail"] or "")
+
+
+def test_identity_shortcut_blocked_by_grid_dim_mismatch(mov_env):
+    """[M4] 치수가 다르면 지름길을 타면 안 된다 — 규격 검사를 우회하게 된다."""
+    a = _meta_of(cols=6, rows=6)
+    b = _meta_of(cols=8, rows=8)
+    _align, origin, _note = map_overlay.resolve_align({}, "t", a, b)
+    assert origin == "derived", "치수 불일치가 identity로 통과했다"
+    with pytest.raises(ValueError, match="dims differ"):
+        map_overlay.make_frame_transform(a, b)
+
+
+def test_identity_shortcut_blocked_by_phys_spec_mismatch(mov_env):
+    """[M4] 웨이퍼 규격이 다르면 바운딩박스가 달라 무보정으로 붙이면 안 된다."""
+    _align, origin, _note = map_overlay.resolve_align(
+        {}, "t", _meta_of(phys=PHYS_CROP), _meta_of(phys=PHYS_STD))
+    assert origin == "derived"
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_y_invert_combined_with_rotation(mov_env, rotation):
+    """[조합] y반전 × 회전 — 반전 축이 회전 뒤 프레임 기준으로 잡혀야 한다."""
+    src = _meta_of(rotation=rotation, y_invert=True)
+    dst = _meta_of(rotation=rotation, y_invert=False)
+    fwd = map_overlay.make_frame_transform(src, dst)
+    # 같은 회전 + y반전만 차이 → 프레임 행 수 기준 순수 상하 반전이어야 한다
+    frame_rows = 6   # 정방 격자라 회전과 무관
+    for x in range(1, 7):
+        for y in range(1, 7):
+            assert fwd(x, y) == (x, (frame_rows + 1) - y), f"rot={rotation} ({x},{y})"
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_start_offset_combined_with_rotation(mov_env, rotation):
+    """[조합] 시작좌표 × 회전 — 회전이 같으면 start 차이는 순수 평행이동으로 남는다."""
+    src = _meta_of(rotation=rotation, start_x=0, start_y=0)
+    dst = _meta_of(rotation=rotation, start_x=1, start_y=1)
+    fwd = map_overlay.make_frame_transform(src, dst)
+    for x in range(0, 6):
+        for y in range(0, 6):
+            assert fwd(x, y) == (x + 1, y + 1), f"rot={rotation} ({x},{y})"
+
+
+def test_nonsquare_grid_y_invert_uses_rotated_row_count(mov_env):
+    """[비정방] y반전 축 길이는 **회전 반영 후** 프레임 행 수다(물리 rows가 아니다).
+
+    물리 6x4를 90° 돌리면 프레임은 4x6 — 반전은 6행 기준이어야 한다.
+    """
+    src = _meta_of(rotation=90, y_invert=True, cols=6, rows=4)
+    dst = _meta_of(rotation=90, y_invert=False, cols=6, rows=4)
+    fwd = map_overlay.make_frame_transform(src, dst)
+    # 프레임: cols=4, rows=6 → y는 1..6, 반전이면 y -> 7-y
+    for x in range(1, 5):
+        for y in range(1, 7):
+            assert fwd(x, y) == (x, 7 - y), f"({x},{y})"
+
+
+def test_start_offset_survives_mirror_and_rotation_end_to_end(mov_env, client):
+    """[전 축 동시] 회전 + 거울상 + y반전 + 시작좌표가 한꺼번에 달라도 격자 안에 든다."""
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="AT", lot="LA", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LA_01", rotation=270, side="back",
+          y_invert=True, start_x=1, start_y=1)
+    for i in range(1, 7):
+        _add(db, "mov_test_defect_map", cell_key=f"AS{i}", lot="LA", slot="01",
+             x=i - 3, y=i - 3, val="D")
+    _meta(db, "mov_test_defect_map", "LA_01", rotation=90, side="front",
+          y_invert=False, start_x=-2, start_y=-2)
+    db.commit()
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LA_01",
+        "sources": "mov_test_defect_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "ok"
+    assert o["count"] == 6
+    got = {(c["x"], c["y"]) for c in o["cells"]}
+    assert len(got) == 6, "겹쳐 떨어진 셀이 있다"
+    for (x, y) in got:
+        assert 1 <= x <= 6 and 1 <= y <= 6, f"타깃 격자 밖: {(x, y)}"
+
+
+# ---------------------------------------------------------------------------
+# 3-ter. 바인딩 자동 유도 — "선언된 맵만 겹칠 수 있다"는 구조를 깬다
+# ---------------------------------------------------------------------------
+
+def test_binding_derived_from_table_config_without_declaration(mov_env, client):
+    """`map_overlay_config`에 **선언이 전혀 없어도** table_config에서 유도해 겹친다.
+
+    라이브 사고: `test` 테이블이 table_bindings에 없어 "소스 맵을 찾을 수 없습니다"로
+    실패했다. 맵의 좌표계는 이미 table_config가 선언하고 있으므로 거기서 유도한다.
+    """
+    db = mov_env
+    _seed(db)
+    _add(db, "mov_test_derived_map", cell_key="R1", base="BASE-7", x=3, y=5, leg="D2")
+    db.commit()
+
+    derived = map_overlay.derive_table_binding("mov_test_derived_map")
+    assert derived == {"x": "x", "y": "y", "val": "leg", "key_columns": ["base"]}
+
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "L1_01",
+        "sources": "mov_test_derived_map:BASE-7",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "ok"
+    assert o["cells"] == [{"x": 3, "y": 5, "val": "D2"}]
+
+
+def test_declaration_still_overrides_derivation(mov_env, client, tmp_path, monkeypatch):
+    """선언은 **예외 보정용**으로 남아 유도보다 우선한다(관례 밖 컬럼명 구제)."""
+    db = mov_env
+    _seed(db)
+    _add(db, "mov_test_derived_map", cell_key="R2", base="BASE-8", x=2, y=2, leg="IGNORED")
+    db.commit()
+    _write_cfg(tmp_path, monkeypatch, {"table_bindings": {"mov_test_derived_map": {
+        "columns": {"x": "x", "y": "y", "val": "cell_key", "key_columns": ["base"]}}}})
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "L1_01",
+        "sources": "mov_test_derived_map:BASE-8",
+    }).json()
+    assert body["overlays"][0]["cells"] == [{"x": 2, "y": 2, "val": "R2"}]
+
+
+def test_underivable_table_fails_explicitly(mov_env, client):
+    """유도 불가(좌표 컬럼 없음)는 **명시 실패** — 관례로 추측해 0건을 정상처럼 내지 않는다."""
+    _seed(mov_env)
+    assert map_overlay.derive_table_binding("mov_test_notamap") is None
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "L1_01",
+        "sources": "mov_test_notamap",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "source_missing"
+    assert "map_key_columns" in (o["detail"] or "")
 
 
 # ---------------------------------------------------------------------------

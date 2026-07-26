@@ -29,7 +29,7 @@
 
     <main class="main-layout">
       <!-- 좌측 패널: 기능별 4단계 맵 설정 및 메타데이터 검색 -->
-      <aside class="history-sidebar glass-panel" style="width: 350px; min-width: 350px;">
+      <aside class="history-sidebar glass-panel" style="width: 330px; min-width: 330px;">
         <div class="sidebar-header">
           <h2>Map Configuration</h2>
         </div>
@@ -51,19 +51,32 @@
             </div>
             <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
             <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
-            <p style="margin: 0; font-size: 0.7rem; color: var(--text-dim); line-height: 1.45;">
-              이미 맵이 떠 있으면 <b>정렬(align) 후 오버레이</b>로 겹칠지 물어봅니다 — 서버가 좌표를 현재 맵 프레임에 맞춰 정렬합니다.
-            </p>
 
-            <!-- 오버레이(겹쳐 보기) 목록 -->
-            <div class="overlay-box">
-              <div class="overlay-box-head">
-                <span>🗂 오버레이</span>
-                <button type="button" id="btn-clear-overlays" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.7rem;">모두 해제</button>
-              </div>
-              <div id="overlay-list"></div>
-            </div>
+
+            <p style="margin: 0; font-size: 0.7rem; color: var(--text-dim); line-height: 1.45;">
+              [📂 Load]는 <b>항상 교체 로드</b>입니다. 겹쳐 보려면 아래 <b>오버레이</b> 블록을 쓰십시오.
+            </p>
           </div>
+
+          <!-- 오버레이(겹쳐 보기) — 메인 Load와 **완전히 분리된 전용 블록**.
+               메인 Load = 항상 교체 / 여기 [＋ 겹치기] = 항상 겹치기.
+               모드 토글도 확인 다이얼로그도 없다 — 어느 버튼을 눌렀는지가 곧 의도다.
+               여러 테이블·여러 맵 키를 누적할 수 있다. -->
+          <details class="overlay-box" id="overlay-box" open>
+            <summary class="overlay-box-head">
+              <span>🗂 오버레이 <b id="overlay-count" class="ov-count">0</b></span>
+            </summary>
+            <div class="ov-body">
+              <div class="ov-add">
+                <select id="overlay-src-table" class="glass-input" title="겹칠 맵의 테이블"></select>
+                <input type="text" id="overlay-src-key" class="glass-input ov-key-input" placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
+                <button type="button" id="btn-add-overlay" class="glass-page-btn ov-add-btn">＋ 겹치기</button>
+              </div>
+              <p class="ov-note">서버가 좌표를 <b>현재 캔버스 프레임에 맞춰 정렬</b>합니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에 남깁니다.</p>
+              <div id="overlay-list"></div>
+              <button type="button" id="btn-clear-overlays" class="glass-page-btn ov-clear">모두 해제</button>
+            </div>
+          </details>
 
           <!-- 2. Physical Wafer Geometry -->
           <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
@@ -207,12 +220,16 @@
 
       <!-- 우측 메인 영역: 2D 대화형 격자 편집 캔버스 -->
       <section class="grid-section" style="display: flex; flex-direction: column;">
+        <!-- [편집 스택] 자재 맵을 연 동안에만 등장하는 브레드크럼 한 줄 + 뒤로가기 버튼 하나 -->
+        <div id="map-breadcrumb" class="map-breadcrumb" style="display: none;"></div>
         <div class="grid-toolbar" style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: var(--bg-header);">
           <div style="display: flex; gap: 15px; align-items: center;">
             <!-- 관찰면(FRONT/BACK) 표기: 그리드 바깥(툴바)에 색상 구분 칩으로 표시 -->
             <div id="side-indicator" class="side-indicator side-front">FRONT · 앞면</div>
             <span class="glass-log-badge">Active Brush: <strong id="active-brush-val" style="color: var(--color-primary);">None</strong></span>
             <span class="glass-log-badge" id="grid-status-coords">Cursor: -</span>
+            <!-- [M2] 페인트 잠금 상태 — 특히 "조회 실패로 직전 값 사용 중"을 화면에 남긴다 -->
+            <span id="paint-lock-indicator" class="plock-chip" style="display: none;"></span>
             
             <!-- Contextual Selection Actions -->
             <div id="selection-actions-container" style="display: none; align-items: center; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 15px;">
@@ -242,9 +259,6 @@
               </div>
             </div>
 
-            <!-- [M2] 계획 워크스페이스는 우측 사이드바에 상주 — 툴바 버튼은 포커스 이동용 -->
-            <button id="btn-transfer-plan" class="glass-btn" style="border-color: var(--accent-2); color: var(--accent-2); font-weight: bold;">🎯 전사 계획</button>
-
             <!-- Primary Save Action -->
             <button id="btn-push-map" class="glass-btn" style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
           </div>
@@ -262,42 +276,16 @@
         </div>
       </section>
 
-      <!-- 우측 패널: 전사 계획(DOE) + 범례/브러쉬 통합 워크스페이스 -->
-      <aside class="history-sidebar glass-panel" id="plan-sidebar" style="width: 620px; min-width: 620px;">
-        <div class="sidebar-header">
-          <h2>2. 전사 계획 &amp; 브러시</h2>
+      <!-- 우측 패널: legend = DOE 편집기 + DOE별 사용 자재 (이동 허브)
+           legend 행 하나가 곧 DOE다 — 별도 「전사 계획」 영역도, 별도 「원시 범례」 details도 없다. -->
+      <aside class="history-sidebar glass-panel" id="plan-sidebar" style="width: 430px; min-width: 430px;">
+        <div class="sidebar-header" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <h2>🎨 2. Legend &amp; DOE</h2>
+          <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 500;">+ DOE</button>
         </div>
-        <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow-y: auto;">
-
-          <!-- [M2] 전사 계획 워크스페이스 (transfer_plan.js가 렌더 — 모드 A: base 맵 / 모드 B: 코어 맵) -->
-          <div id="transfer-plan-root"></div>
-
-          <!-- 원시 범례/브러쉬 (일반 맵 편집용 — 계획 모드에서는 접어둔다) -->
-          <details class="glass-details" id="legend-details">
-            <summary>🎨 원시 범례 &amp; 브러시 (일반 맵 편집)</summary>
-            <div style="padding-top: 10px; display: flex; flex-direction: column; gap: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.78rem; color: var(--text-dim);">value별 split 조건 서술 (서버 registry 공유)</span>
-                <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.8rem; font-weight: 500;">+ Add Legend</button>
-              </div>
-              <div class="table-container" style="max-height: 320px; overflow-y: auto;">
-                <table class="sources-table" style="font-size: 0.88rem; width: 100%;">
-                  <thead>
-                    <tr>
-                      <th style="width: 65px; text-align: left; padding: 8px;">Value</th>
-                      <th style="text-align: left; padding: 8px;">Split Description</th>
-                      <th style="width: 55px; text-align: center; padding: 8px;">Count</th>
-                      <th style="width: 60px; text-align: center; padding: 8px;">Color</th>
-                      <th style="width: 40px; text-align: center; padding: 8px;">Del</th>
-                    </tr>
-                  </thead>
-                  <tbody id="legend-list">
-                    <!-- 범례 아이템 및 브러쉬 선택 활성화 상태가 여기에 생성됨 -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </details>
+        <!-- 이중 스크롤: 위 DOE LIST는 자체 스크롤, 아래 자재 목록은 항상 화면에 남는다(이동 허브) -->
+        <div class="sidebar-content" id="plan-sidebar-content" style="display: flex; flex-direction: column; gap: 0; padding: 0; overflow: hidden;">
+          <div id="transfer-plan-root" style="display: flex; flex-direction: column; flex: 1; min-height: 0;"></div>
         </div>
       </aside>
     </main>

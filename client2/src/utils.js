@@ -10,44 +10,156 @@ export function getLocalTimeString(date = new Date()) {
   return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
 }
 
-// Premium Toast Notification Helper
-export function showToast(message, type = 'info') {
-  let container = document.getElementById('toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toast-container';
-    document.body.appendChild(container);
+// ============================================================
+// 전역 토스트 시스템
+//
+// 설계 규율 (백그라운드 탭 누적 사고 대응):
+//   ① **수명은 만료 시각(expireAt)이 정본이다.** 브라우저는 백그라운드 탭의 setTimeout을
+//      수 초~분 단위로 throttle하므로, 타이머에 수명을 맡기면 탭을 벗어난 동안 토스트가
+//      무한 누적된다(실제 사고: 복귀 시 15개 이상 적재). 타이머는 "스윕을 깨우는 힌트"일 뿐
+//      만료 판정은 언제나 Date.now() 비교로 한다.
+//   ② **동시 표시 상한**(MAX_VISIBLE). 초과분은 오래된 성공/정보부터 밀어낸다.
+//   ③ **visibilitychange 훅** — 탭이 다시 보이는 순간 만료분을 즉시 일괄 정리한다.
+//   ④ **동종 이벤트 집계** — 같은 dedupeKey는 새 토스트를 쌓지 않고 기존 토스트의
+//      카운트·본문만 갱신한다(파일 처리 완료처럼 반복되는 알림).
+//   ⑤ **실패는 집계·자동 해제에서 제외**하고 더 오래 남긴다. 성공 알림에 밀려 사라지면 안 된다.
+//
+// 이 변경은 **표시 계층만** 손댄다 — WS 이벤트 형태나 showToast 호출부 시그니처는 불변이다.
+// ============================================================
+const TOAST_MAX_VISIBLE = 4;
+const TOAST_TTL = { info: 5000, success: 5000, warning: 9000, error: 15000 };
+const toastItems = [];   // { el, type, expireAt, dedupeKey, count, baseMessage, sticky }
+let toastSweepTimer = null;
+
+function toastContainer() {
+  let c = document.getElementById('toast-container');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'toast-container';
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+function toastIcon(type) {
+  if (type === 'success') return '✅';
+  if (type === 'error') return '❌';
+  if (type === 'warning') return '⚠️';
+  return 'ℹ️';
+}
+
+function removeToast(item) {
+  const i = toastItems.indexOf(item);
+  if (i >= 0) toastItems.splice(i, 1);
+  const node = item.el;
+  node.classList.add('hide');
+  setTimeout(() => {
+    node.remove();
+    const c = document.getElementById('toast-container');
+    if (c && c.children.length === 0) c.remove();
+  }, 400);
+}
+
+// 만료 판정은 항상 경과 시간으로 한다 (throttle된 타이머를 신뢰하지 않는다)
+//
+// [M1 수정] `keep`은 **방금 삽입한 토스트**다. 종전에는 push 직후 sweep을 부르면서
+// "가장 오래된 비-에러"를 찾았는데, 에러가 상한만큼 떠 있으면 **방금 넣은 성공 토스트가
+// 유일한 비-에러**라 삽입 즉시 스스로 퇴거됐다(사용자는 알림을 아예 못 본다).
+// 새로 넣은 것은 퇴거 대상에서 제외한다.
+function sweepToasts(keep) {
+  const now = Date.now();
+  for (let i = toastItems.length - 1; i >= 0; i--) {
+    const it = toastItems[i];
+    if (it !== keep && !it.sticky && now >= it.expireAt) removeToast(it);
+  }
+  // 상한 초과분은 **오래된 비-에러부터** 밀어낸다 (에러는 마지막까지 남긴다)
+  const evictable = () => toastItems.filter(it => it !== keep);
+  let overflow = toastItems.length - TOAST_MAX_VISIBLE;
+  if (overflow > 0) {
+    for (const it of evictable()) {
+      if (overflow <= 0) break;
+      if (it.type !== 'error') { removeToast(it); overflow--; }
+    }
+    // 전부 에러라면 그때만 가장 오래된 것부터 정리한다 (새로 넣은 것은 여전히 보호)
+    for (const it of evictable()) {
+      if (toastItems.length <= TOAST_MAX_VISIBLE) break;
+      removeToast(it);
+    }
+  }
+  scheduleToastSweep();
+}
+
+function scheduleToastSweep() {
+  clearTimeout(toastSweepTimer);
+  if (toastItems.length === 0) return;
+  const next = toastItems.reduce((m, it) => (it.sticky ? m : Math.min(m, it.expireAt)), Infinity);
+  if (!Number.isFinite(next)) return;
+  toastSweepTimer = setTimeout(sweepToasts, Math.max(250, next - Date.now()));
+}
+
+// 탭 복귀 즉시 정리 — 사용자가 과거 알림 더미를 마주하지 않게 한다
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) sweepToasts();
+  });
+  window.addEventListener('focus', sweepToasts);
+}
+
+function paintToast(item) {
+  const label = item.count > 1 ? `${item.baseMessage} · ${item.count}건` : item.baseMessage;
+  const icon = item.el.querySelector('.toast-icon');
+  const body = item.el.querySelector('.toast-body');
+  if (icon) icon.textContent = toastIcon(item.type);
+  // ⚠️ textContent — 메시지에 파일명·서버 원문이 섞이므로 HTML로 해석시키지 않는다
+  if (body) body.textContent = label;
+}
+
+/**
+ * @param {string} message
+ * @param {'info'|'success'|'error'|'warning'} type
+ * @param {{dedupeKey?: string, sticky?: boolean, ttl?: number}} [opts]
+ *        dedupeKey — 같은 키의 알림은 쌓지 않고 기존 토스트에 집계된다.
+ */
+export function showToast(message, type = 'info', opts = {}) {
+  sweepToasts(); // 새 토스트를 올리기 전에 먼저 만료분을 걷어낸다
+  const now = Date.now();
+  const ttl = Number(opts.ttl) || TOAST_TTL[type] || 5000;
+  const text = String(message);
+
+  // ④ 동종 집계 — 실패는 집계하지 않는다(개별 사유가 중요하므로)
+  if (opts.dedupeKey && type !== 'error') {
+    const hit = toastItems.find(it => it.dedupeKey === opts.dedupeKey && it.type === type);
+    if (hit) {
+      hit.count += 1;
+      hit.baseMessage = text;          // 최신 메시지로 갱신 (예: 최근 파일명)
+      hit.expireAt = now + ttl;        // 수명 연장
+      paintToast(hit);
+      scheduleToastSweep();
+      return;
+    }
   }
 
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  const iconEl = document.createElement('span');
+  iconEl.className = 'toast-icon';
+  iconEl.style.fontSize = '1.1rem';
+  const bodyEl = document.createElement('span');
+  bodyEl.className = 'toast-body';
+  el.appendChild(iconEl);
+  el.appendChild(bodyEl);
+  el.addEventListener('click', () => { const it = toastItems.find(x => x.el === el); if (it) removeToast(it); });
 
-  let icon = 'ℹ️';
-  if (type === 'success') icon = '✅';
-  else if (type === 'error') icon = '❌';
-  else if (type === 'warning') icon = '⚠️';
-
-  toast.innerHTML = `
-    <span style="font-size: 1.1rem;">${icon}</span>
-    <span>${message}</span>
-  `;
-
-  container.appendChild(toast);
-
-  // Auto remove toast after 5 seconds
-  setTimeout(() => {
-    toast.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
-    toast.style.animation = 'none';
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(-20px) scale(0.9)';
-
-    setTimeout(() => {
-      toast.remove();
-      if (container.children.length === 0) {
-        container.remove();
-      }
-    }, 400);
-  }, 5000);
+  const item = {
+    el, type, expireAt: now + ttl,
+    dedupeKey: opts.dedupeKey || null,
+    count: 1, baseMessage: text,
+    sticky: !!opts.sticky,
+  };
+  paintToast(item);
+  toastContainer().appendChild(el);
+  toastItems.push(item);
+  sweepToasts(item);   // [M1] 방금 넣은 것은 퇴거 대상에서 제외
 }
 
 // Helper to strip user prefix and unique UUID suffixes from filename in client

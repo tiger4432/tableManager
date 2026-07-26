@@ -190,8 +190,10 @@ S1을 전부 수행한 뒤 추가로:
 | 3 | 소스는 **둘 중 하나** — ① `"source_config_ref": "bonding_plan"`(M1 바인딩 재사용, 현재 유일 허용값) ② 인라인 `"source": {...}` |
 | 4 | 인라인 소스 역할: `identity.compose`, `map_metadata`, `total_chips`, `transfer_log`, `origin_log`, `origin_area_map`, `process_history`, `fail_sources`, `warnings` |
 | 5 | `fail_sources.<name>.frame` — `"origin"`=출신 프레임 fail을 `origin_log` 조인으로 타깃 좌표에 투영 / `"self"`=자기 프레임에서 계산 |
-| 6 | `plan_store.{plan,doe,map}` — 계획 저장 테이블 바인딩 |
-| 7 | 검증: `GET /api/transfer-plan/stages` → `GET /api/transfer-plan/validate` → `GET /api/transfer-plan/source-summary` |
+| 6 | `plan_store.{doe,doe_source}` — 계획 저장 테이블 바인딩. **v2에서 `plan`(헤더)·`map`(계획 맵 사본) 역할은 폐기**됐습니다 — 계획 정체성이 `(ref_table, map_key)`, 즉 *지금 열어 편집 중인 그 맵*이고 페인팅 결과가 곧 그 맵 자신의 셀이기 때문입니다 |
+| 7 | 검증: `GET /api/transfer-plan/stages` → `GET /api/transfer-plan/validate?ref_table=&map_key=` → `GET /api/transfer-plan/source-summary` |
+
+> **stage는 고르는 것이 아니라 유도됩니다(v2).** `stages.*.target_map.table`의 역인덱스이므로 `bonding_map`을 열면 `bonding`, `dt_map`을 열면 `dt`입니다. 어느 stage의 `target_map.table`도 아닌 맵은 `stage_unknown` 경고 + `status: unverified`로 표면화되며 **404가 아닙니다**(임의의 맵도 편집 대상으로 열 수 있어야 하므로).
 
 > **align 실패는 M1·M2 모두 "명시 실패"입니다.** `align`을 선언했는데 격자 규격(`wafer_map_metadata`)을 못 찾아 변환을 만들 수 없으면, **raw 좌표로 조용히 계산하지 않고** 해당 role 상태를 `connected(align_unavailable)`로 바꾸고 **카운트를 0으로** 둡니다.
 > 따라서 상태별 해석은 이렇습니다 — `missing` = 바인딩 선언/테이블 없음 · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · `connected` = 정상.
@@ -436,16 +438,31 @@ psql -U postgres -d assy_manager -c "\d <table>"
     }
   },
   "plan_store": {
-    "plan": {
-      "table": "transfer_plan",
+    "doe": {
+      "table": "map_doe",
       "columns": {
-        "plan_id": "plan_id", "stage": "stage", "target_lot": "target_lot",
-        "target_slot": "target_slot", "status": "status", "memo": "memo"
+        "ref_table": "ref_table", "map_key": "map_key", "doe_value": "doe_value",
+        "band_seq": "band_seq", "stack_band": "stack_band", "qty_total": "qty_total",
+        "knobs": "knobs", "note": "note"
+      }
+    },
+    "doe_source": {
+      "table": "map_doe_source",
+      "columns": {
+        "ref_table": "ref_table", "map_key": "map_key", "doe_value": "doe_value",
+        "band_seq": "band_seq", "source_lot": "source_lot", "source_slot": "source_slot",
+        "qty": "qty", "note": "note"
       }
     }
   }
 }
 ```
+
+> **DOE 행의 단위는 `(값, STACK 구간)`입니다.** 한 값이 구간을 여러 개 가질 수 있어(`A|H1~H2`, `A|H2~H3`) bk가 `ref_table|map_key|doe_value|band_seq`이고, 자재 묶음(`doe_source`)은 **그 구간 아래에** 붙습니다 — 구간마다 다른 묶음이 가능합니다.
+>
+> ⚠️ **구간 정체는 `band_seq`(정수 서수)가 지고, 사람이 읽는 표기 `stack_band`는 비키 컬럼입니다.** 자유 텍스트를 키에 넣으면 ①bk 조립이 구분자 `|`를 이스케이프하지 않아 라벨에 `|`가 섞이면 키가 모호해지고 ②키 컬럼이 바뀌면 행이 **re-key**되므로 라벨을 고치는 순간 하위 자재 행이 고아가 됩니다. 라벨은 `1`/`2-11`/`H1~H2`/`바닥` 무엇이든 자유이며 정규화가 필요 없습니다.
+>
+> 매별 소요는 지정 대상이 아니라 구간 `qty_total`의 **균등 배분**(올림)이며, `doe_source.qty`가 있으면 그것이 우선합니다. 값 단위 속성(설명·색)은 `map_split_registry`가 정본이라 `map_doe`에 중복 저장하지 않습니다.
 
 ### 5.9 `maps.json` — 프리셋 1개 (**UI로 관리 권장**)
 

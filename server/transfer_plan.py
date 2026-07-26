@@ -5,20 +5,42 @@
 `server/config/transfer_plan_config.json`(사용자 config, gitignored)의 stage 선언만으로
 추가된다 — 코드에 실테이블명 하드코딩 금지.
 
+[계획 모델 v2 — "계획 = 지금 열어 편집 중인 그 맵" (사용자 확정 2026-07-26)]
+계획이라는 **별도 개체는 존재하지 않는다**. `bonding_map`을 열어 편집하면 그게 BONDING
+PLAN이고 `dt_map`을 열면 DT PLAN이다. 따라서:
+- **계획 정체성 = `(ref_table, map_key)`** — `plan_id`도 계획 헤더 테이블도 없다.
+- **stage는 유도된다** — `stages.*.target_map.table`의 역인덱스(`stage_of_table`).
+  사용자가 stage를 고르는 동작은 어디에도 없다.
+- **페인팅 결과 = 대상 맵 자신의 셀** — 계획 맵 사본(`transfer_plan_map`)은 폐기됐고,
+  값 분포는 대상 맵 테이블에서 직접 group-by한다(`_painted_values`).
+- **DOE 행의 단위는 `(값, STACK 구간)`** — 한 값이 여러 구간을 가질 수 있다(사용자 스케치:
+  `A|H1~H2`, `A|H2~H3`, `B|H1~H3`). 따라서 저장 키는
+  **`ref_table|map_key|doe_value|band_seq`** 이며, 소스 묶음은 그 **구간 아래에** 붙는다
+  (구간마다 다른 자재 묶음이 가능해야 한다).
+- **`band_seq`는 키, `stack_band`는 라벨이다.** 구간 표기는 자유 텍스트라(`1`/`2-11`/`H1~H2`)
+  키에 넣을 수 없다 — ①bk 조립이 구분자 `|`를 이스케이프하지 않아 값에 `|`가 섞이면 키가
+  모호해지고(`crud._build_composite_key`) ②키 컬럼이 바뀌면 행이 **re-key**되므로
+  (`crud.py` 업데이트 경로) 라벨을 고치는 순간 DOE 행의 정체가 바뀌어 하위 자재 행이
+  고아가 된다. 그래서 정체는 **클라가 부여하는 정수 서수(`band_seq`)** 가 지고, 사람이 읽는
+  표기는 비키 컬럼(`stack_band`)에 둔다 — 라벨을 자유롭게 고쳐도 묶음이 따라온다.
+- **값 단위 속성은 `map_split_registry`가 이미 갖는다** — `split_desc`(설명)·`color`는 동일
+  키 앞부분(`ref_table|map_key|value`)으로 1:N 조인된다. `map_doe`에 중복 저장하지 않는다.
+- **소스는 묶음(pool)** — 한 구간에 여러 매가 붙으므로(사용자 확정: "한 매당 500칩이면
+  4매 묶어서 투입") 소스 테이블의 bk에 **소스 차원**이 들어간다. 매별 소요는 지정 대상이
+  아니라 구간 총 소요의 균등 배분이다. 구 `doe_layer`의 "층마다 소스 1개" 차원은 소멸했다.
+
 [경계 계약 — 총괄 고정]
 - GET /api/transfer-plan/stages           : 선언 stage 목록 + 역할 연결 상태
 - GET /api/transfer-plan/source-summary   : 단계별 소스 가용
   `{identity, stage, source_kind, sources, chips{total, fail_breakdown{...}, transferred,
     remaining}, history, warnings}` + tape 소스면 `by_core` 동봉(집계만 — 칩 좌표 목록 금지)
-- GET /api/transfer-plan/validate         : 계획 경고 목록(수량/층/DOE-맵 정합/소스 fail)
+- GET /api/transfer-plan/validate?ref_table=&map_key=  : 계획 경고 목록
 - M1 `GET /api/bonding-plan/core-summary`는 외부 계약 불변 — core-kind 소스 가용의
   인스턴스로 내부 통합(본 모듈이 `bonding_plan.get_core_summary`를 어댑터로 감싼다).
 
-[plan_id 계약 — 총괄 확정] `plan_id`의 **합성 규칙은 클라이언트 소유**이며(현행: `<stage>__
-<target>`), **서버는 plan_id를 절대 파싱하지 않는다**. `validate_plan`은 plan_id를 컬럼
-equals 조회에만 쓰고 `stage`·`target_lot`·`target_slot`은 **각각 별도 컬럼**에서 읽는다.
-이 불변식이 깨지면(예: 서버가 plan_id에서 stage를 유추) 클라의 합성 규칙 변경이 곧바로
-서버 동작 변경이 되므로, 향후에도 파싱을 도입하지 말 것.
+[키 파싱 금지 — v1에서 승계한 불변식] 서버는 `map_key`를 **파싱하지 않는다**. 컬럼 equality
+조회에만 쓰고, 맵 셀 조회 시의 분해는 `table_config.map_key_columns` 선언에 따른 공용 규칙
+(`map_overlay.build_key_filters`) 하나로만 수행한다. 모듈마다 다른 파싱을 도입하지 말 것.
 
 [stage 어휘] 선언된 stage 이름의 **유일한 정본은 이 config의 `stages` 키**이며
 `GET /api/transfer-plan/stages`가 그것을 그대로 노출한다. 미선언 stage는 조용히 매핑하지
@@ -57,7 +79,7 @@ MAX_BY_CORE = 500             # by_core 분해 응답 상한 (초과분 절단 +
 CORE_ID_SEP = "|"             # by_core.core_id 합성 분리자 (lot|slot — bk 관례 '_' 모호 회피)
 MAX_DOE_PER_PLAN = 500        # validate가 다루는 DOE 정의 상한
 MAX_PLAN_VALUES = 1000        # validate의 페인팅 값 group-by 상한
-MAX_PLAN_LAYERS = 64          # DOE당 층 배정 행 상한 (S3)
+MAX_SOURCES_PER_DOE = 64      # DOE 1건이 묶을 수 있는 자재(소스) 행 상한
 MAX_REGION_CELLS = 100_000    # 소스 사용 영역 셀 상한 (내부 연산용 — 응답에 싣지 않는다)
 
 M1_SOURCE_REFS = ("bonding_plan",)   # source_config_ref 허용 값
@@ -176,21 +198,45 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
 
 
 def _plan_store_statuses(cfg: dict) -> dict:
+    """계획 저장소 역할 상태.
+
+    [v2 모델] `plan`(헤더)·`map`(계획 맵 사본) 역할은 **폐기**됐다 — 계획 정체가
+    `(ref_table, map_key)`이고 페인팅 결과가 곧 대상 맵 자신의 셀이라 사본이 존재할
+    이유가 없다. 남는 것은 DOE 정의와 그 소스 묶음뿐이다.
+    """
     store = cfg.get("plan_store") or {}
     out = {
-        "plan": _binding_status(store.get("plan"), required=("plan_id",)),
-        "doe": _binding_status(store.get("doe"), required=("plan_id", "doe_value")),
-        "map": _binding_status(store.get("map"), required=("plan_id", "x", "y", "val")),
+        "doe": _binding_status(store.get("doe"),
+                               required=("ref_table", "map_key", "doe_value", "band_seq")),
     }
-    # S3 층별 배정은 선택 — 선언됐을 때만 상태를 노출한다(미선언은 결함이 아님)
-    if _valid_binding(store.get("doe_layer")):
-        out["doe_layer"] = _binding_status(store.get("doe_layer"),
-                                           required=("doe_key", "layer"))
+    # 소스 묶음(pool)은 선택 — 선언됐을 때만 상태를 노출한다(미선언은 결함이 아님)
+    if _valid_binding(store.get("doe_source")):
+        out["doe_source"] = _binding_status(
+            store.get("doe_source"),
+            required=("ref_table", "map_key", "doe_value", "band_seq",
+                      "source_lot", "source_slot"))
     if _valid_binding(store.get("source_region")):
         out["source_region"] = _binding_status(
             store.get("source_region"),
-            required=("plan_id", "source_lot", "source_slot", "x", "y"))
+            required=("ref_table", "map_key", "source_lot", "source_slot", "x", "y"))
     return out
+
+
+def stage_of_table(cfg: dict, ref_table: str):
+    """맵 테이블 → stage **역인덱스**. 미선언 테이블이면 None.
+
+    [v2 모델의 핵심] 사용자는 stage를 고르지 않는다 — `bonding_map`을 열면 bonding,
+    `dt_map`을 열면 dt다. 이 매핑은 이미 `stages.*.target_map.table`에 선언돼 있으므로
+    새 계약이 아니라 **기존 선언의 역방향 조회**다.
+    """
+    if not ref_table:
+        return None
+    for name, stage_cfg in get_stages(cfg).items():
+        if not isinstance(stage_cfg, dict):
+            continue
+        if ((stage_cfg.get("target_map") or {}).get("table")) == ref_table:
+            return name
+    return None
 
 
 def list_stages(cfg: dict) -> dict:
@@ -321,31 +367,34 @@ def build_chips_block(total, fail_breakdown, transferred, remaining,
     return chips, extra_warnings
 
 
-def load_source_region(db, cfg: dict, plan_id: str, source_lot: str, source_slot: str):
+def load_source_region(db, cfg: dict, ref_table: str, map_key: str,
+                       source_lot: str, source_slot: str):
     """[②] 계획의 '이 소스에서 쓰기로 한 영역'을 셀 집합으로 로드한다.
 
-    ⚠️ **보류 중 — 계획 모델 재설계 대기 (총괄 지시)**. `plan_store.source_region` 바인딩이
-    라이브 config에서 **의도적으로 제거**되어 있어 이 경로는 항상 None을 반환하는 휴면
-    상태다. 배선 누락 결함이 아니다 — 재설계("계획 = 맵 자체") 확정 후 살릴지 결정한다.
-    테스트는 자체 픽스처로 바인딩을 선언해 동작을 고정해 둔다.
+    ⚠️ **휴면 중 (총괄 지시로 보류)**. `plan_store.source_region` 바인딩이 라이브 config에
+    선언돼 있지 않아 이 경로는 항상 None을 반환한다. 배선 누락 결함이 아니다.
+    v2 모델에 맞춰 **키만 `(ref_table, map_key, source_lot, source_slot)`로 이동**했다
+    (구 키 `plan_id`는 소멸). 살릴지 여부는 자재 맵 왕복 UX 확정 후 결정한다.
 
-    자유 페인팅 결과라 rect로는 표현되지 않는다 — `transfer_plan_map`과 동일 패턴의
-    셀 집합 테이블에 저장하고 여기서 집합으로 읽는다(rect는 UX 보조일 뿐 저장 정본이 아니다).
+    자유 페인팅 결과라 rect로는 표현되지 않으므로 셀 집합 테이블에서 집합으로 읽는다
+    (rect는 UX 보조일 뿐 저장 정본이 아니다).
     반환: set[(x, y)] 또는 None(바인딩 미선언/미해석 — 영역 스코프 없음).
     """
     store = (cfg.get("plan_store") or {}).get("source_region")
-    model, cols = _resolve(store, required=("plan_id", "source_lot", "source_slot", "x", "y"))
+    model, cols = _resolve(store, required=("ref_table", "map_key",
+                                            "source_lot", "source_slot", "x", "y"))
     if model is None:
         return None
     try:
         rows = (db.query(cols["x"], cols["y"])
-                .filter(cols["plan_id"] == plan_id,
+                .filter(cols["ref_table"] == ref_table,
+                        cols["map_key"] == map_key,
                         cols["source_lot"] == source_lot,
                         cols["source_slot"] == source_slot)
                 .limit(MAX_REGION_CELLS).all())
     except Exception as e:
-        logger.warning("[TransferPlan] source_region query failed (%s/%s/%s): %s",
-                       plan_id, source_lot, source_slot, e)
+        logger.warning("[TransferPlan] source_region query failed (%s/%s/%s/%s): %s",
+                       ref_table, map_key, source_lot, source_slot, e)
         return None
     if len(rows) >= MAX_REGION_CELLS:
         logger.warning("[TransferPlan] source_region hit hard cap (%d)", MAX_REGION_CELLS)
@@ -959,12 +1008,14 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
 
 
 def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str,
-                             bp_config: dict = None, plan_id: str = None) -> dict:
+                             bp_config: dict = None,
+                             ref_table: str = None, map_key: str = None) -> dict:
     """단계별 소스 가용 집계 — 계약 공통 형태를 생성한다.
 
     stage 미선언 시 KeyError (라우트가 404로 변환).
     bp_config: source_config_ref 스테이지용 M1 config 스냅샷(미지정 시 여기서 1회 로드 —
     validate처럼 반복 호출하는 상위는 스냅샷을 주입해 작업 경계 1회 로드 규율을 지킨다).
+    ref_table/map_key: 계획 맵 정체성(v2 — 구 plan_id 대체). 소스 영역 스코프에만 쓰인다.
     """
     import bonding_plan
 
@@ -975,8 +1026,8 @@ def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str
 
     # [②] 계획이 지정한 소스 사용 영역(자유 페인팅 셀 집합)을 스코프로 소비한다
     region = None
-    if plan_id:
-        region = load_source_region(db, cfg, plan_id, lot, slot)
+    if ref_table and map_key:
+        region = load_source_region(db, cfg, ref_table, map_key, lot, slot)
 
     ref = stage_cfg.get("source_config_ref")
     if ref in M1_SOURCE_REFS:
@@ -1012,35 +1063,88 @@ def _num(v, default=None):
         return default
 
 
-def validate_plan(db, cfg: dict, plan_id: str) -> dict:
-    """GET /api/transfer-plan/validate — 경고 목록 생성.
+def _band_range(band):
+    """STACK 구간 표기에서 수치 범위를 **읽을 수 있으면** 읽는다. 못 읽으면 None.
 
-    LookupError: plan_store 미구성 또는 plan_id 미존재 (라우트가 404로 변환).
+    [규율] 표기는 강제하지 않는다(사용자 확정) — `1` / `2-11` / `H1~H2` 무엇이든 받는다.
+    커버리지 검증은 수치로 읽히는 구간에만 적용되고, 나머지는 조용히 불참한다(경고 신설 금지).
+    """
+    if band is None:
+        return None
+    s = str(band).strip()
+    if not s:
+        return None
+    for sep in ("-", "~", ".."):
+        if sep in s:
+            a, _, b = s.partition(sep)
+            lo, hi = _num(a.strip()), _num(b.strip())
+            if lo is None or hi is None:
+                return None
+            return int(lo), int(hi)
+    v = _num(s)
+    return (int(v), int(v)) if v is not None else None
+
+
+def _painted_values(db, ref_table: str, map_key: str, overlay_cfg: dict):
+    """대상 맵 **자신의** 셀에서 값 분포를 group-by로 센다 (계획 맵 사본 없음 — v2).
+
+    반환: ({값: 셀 수}, 상태 문자열). 좌표/키 바인딩은 맵 오버레이와 **동일한 유도 규칙**을
+    쓴다(table_config의 map_key_columns + x/y + val 후보 → 선언이 있으면 선언 우선).
+    [확장성] 셀을 전량 로드하지 않고 group-by 집계만 한다 — 맵 1장이 수만 셀이다.
     """
     from sqlalchemy import func
+    from database import models
+    import map_overlay
 
-    plan_src, plan_model, plan_cols = _plan_store_binding(
-        cfg, "plan", required=("plan_id",))
-    if plan_model is None:
-        raise LookupError("plan store is not configured (plan_store.plan unresolved)")
+    model = models.DYNAMIC_TABLES.get(ref_table)
+    if model is None:
+        return {}, "missing"
+    binding = map_overlay.resolve_binding(overlay_cfg, ref_table)
+    if binding is None:
+        return {}, "missing"
+    val_col = getattr(model, binding.get("val") or "", None)
+    if val_col is None:
+        return {}, "missing"
+    filters = map_overlay.build_key_filters(model, binding, map_key)
+    if filters is None:
+        return {}, "missing"
+    try:
+        rows = (db.query(val_col, func.count())
+                .filter(*filters).group_by(val_col).limit(MAX_PLAN_VALUES).all())
+    except Exception as e:
+        logger.warning("[TransferPlan] painted values query failed (%s/%s): %s",
+                       ref_table, map_key, e)
+        return {}, "missing"
+    painted = {}
+    for val, cnt in rows:
+        if val is None or str(val).strip() == "":
+            continue
+        painted[str(val)] = int(cnt)
+    return painted, "connected"
 
-    plan_row = db.query(plan_model).filter(plan_cols["plan_id"] == plan_id).first()
-    if plan_row is None:
-        raise LookupError(f"plan '{plan_id}' not found")
 
-    def _plan_get(role_key):
-        name = (plan_src.get("columns") or {}).get(role_key)
-        return getattr(plan_row, name, None) if name else None
+def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
+                  overlay_cfg: dict = None) -> dict:
+    """GET /api/transfer-plan/validate — 경고 목록 생성 (**v2 계획 모델**).
 
-    stage_name = _plan_get("stage")
-    plan_out = {
-        "plan_id": plan_id,
-        "stage": stage_name,
-        "target_lot": _plan_get("target_lot"),
-        "target_slot": _plan_get("target_slot"),
-        "status": _plan_get("status"),
-        "memo": _plan_get("memo"),
-    }
+    [정체성] 계획은 `(ref_table, map_key)` — 지금 열어 편집 중인 그 맵 자체다. `plan_id`도
+    계획 헤더 테이블도 없다. stage는 `stages.*.target_map.table` 역인덱스로 유도한다.
+    [DOE 행 단위] `(doe_value, band_seq)` — 한 값이 여러 STACK 구간을 갖는다.
+    [소스 묶음] 한 **구간**에 소스가 여러 매 붙는다(pool). 매별 소요는 지정 대상이 아니라
+    **구간 총 소요의 균등 배분**이며, 행에 `qty`가 명시돼 있으면 그것이 우선한다.
+
+    LookupError: plan_store.doe 미구성 (라우트가 404로 변환).
+    """
+    doe_src, doe_model, doe_cols = _plan_store_binding(
+        cfg, "doe", required=("ref_table", "map_key", "doe_value", "band_seq"))
+    if doe_model is None:
+        raise LookupError("plan store is not configured (plan_store.doe unresolved)")
+
+    if overlay_cfg is None:
+        import map_overlay
+        overlay_cfg = map_overlay.load_overlay_config()   # 작업 경계 1회 스냅샷
+
+    stage_name = stage_of_table(cfg, ref_table)
     warnings_out = []
 
     stage_cfg = get_stages(cfg).get(stage_name) if stage_name else None
@@ -1048,72 +1152,63 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
         warnings_out.append({
             "type": WARN_STAGE_UNKNOWN,
             "effect": "validation_skipped",
-            "detail": f"plan stage '{stage_name}'가 transfer_plan_config에 미선언 — "
+            "detail": f"맵 테이블 '{ref_table}'을 target_map으로 선언한 stage가 없음 — "
                       f"**수량·가용·fail 검증을 전혀 수행하지 못했다**(경고 없음 = 이상 없음이 아님)",
         })
         stage_cfg = None
 
-    # ---- 층별 배정(S3) 로드 — DOE당 층마다 다른 소스/수량을 지정할 수 있다 ----
-    # DOE 행의 (source_lot, source_slot, qty, layer_from/to)는 **기본값/요약**이고,
-    # 층 배정 행이 있으면 그것이 우선한다(부분 선언 허용 — 선언된 층만 대체).
-    layer_src, layer_model, layer_cols = _plan_store_binding(
-        cfg, "doe_layer", required=("doe_key", "layer"))
-    layers_by_doe = {}
-    if layer_model is not None:
-        try:
-            l_rows = (db.query(layer_model)
-                      .filter(layer_cols["doe_key"].like(f"{plan_id}|%"))
-                      .limit(MAX_DOE_PER_PLAN * MAX_PLAN_LAYERS).all())
-            lcols = layer_src.get("columns") or {}
-
-            def _lget(row, key):
-                name = lcols.get(key)
-                return getattr(row, name, None) if name else None
-
-            for r in l_rows:
-                dk = str(_lget(r, "doe_key") or "")
-                lay = _num(_lget(r, "layer"))
-                if not dk or lay is None:
-                    continue
-                layers_by_doe.setdefault(dk, []).append({
-                    "layer": int(lay),
-                    "source_lot": _lget(r, "source_lot"),
-                    "source_slot": _lget(r, "source_slot"),
-                    "qty": _num(_lget(r, "qty")),
-                    "note": _lget(r, "note"),
-                })
-        except Exception as e:
-            logger.warning("[TransferPlan] doe_layer load failed for '%s': %s", plan_id, e)
-            layers_by_doe = {}
-
-    # ---- DOE 정의 로드 ----
-    doe_src, doe_model, doe_cols = _plan_store_binding(cfg, "doe", required=("plan_id", "doe_value"))
-    doe_rows = []
-    if doe_model is not None:
-        doe_rows = (db.query(doe_model)
-                    .filter(doe_cols["plan_id"] == plan_id)
-                    .limit(MAX_DOE_PER_PLAN + 1).all())
-        if len(doe_rows) > MAX_DOE_PER_PLAN:
-            logger.warning("[TransferPlan] plan '%s' DOE rows exceed cap (%d) — truncated",
-                           plan_id, MAX_DOE_PER_PLAN)
-            doe_rows = doe_rows[:MAX_DOE_PER_PLAN]
+    # ---- DOE 정의 로드 (계획 맵 정체성으로 equality 조회 — LIKE 프리픽스 스캔 금지) ----
+    doe_rows = (db.query(doe_model)
+                .filter(doe_cols["ref_table"] == ref_table,
+                        doe_cols["map_key"] == map_key)
+                .limit(MAX_DOE_PER_PLAN + 1).all())
+    if len(doe_rows) > MAX_DOE_PER_PLAN:
+        logger.warning("[TransferPlan] plan '%s/%s' DOE rows exceed cap (%d) — truncated",
+                       ref_table, map_key, MAX_DOE_PER_PLAN)
+        doe_rows = doe_rows[:MAX_DOE_PER_PLAN]
 
     def _doe_get(row, role_key):
         name = (doe_src.get("columns") or {}).get(role_key)
         return getattr(row, name, None) if name else None
 
-    # ---- 페인팅 값 분포 (group-by 집계만 — 셀 전량 로드 금지) ----
-    map_src, map_model, map_cols = _plan_store_binding(cfg, "map", required=("plan_id", "val"))
-    painted = {}   # doe_value → cell count
-    if map_model is not None:
-        rows = (db.query(map_cols["val"], func.count())
-                .filter(map_cols["plan_id"] == plan_id)
-                .group_by(map_cols["val"])
-                .limit(MAX_PLAN_VALUES).all())
-        for val, cnt in rows:
-            if val is None or str(val).strip() == "":
-                continue
-            painted[str(val)] = int(cnt)
+    # ---- 소스 묶음(pool) 로드 — (DOE값, 구간) → [자재 행] ----
+    # [v2] bk에 **구간 차원 + 소스 차원**이 들어간다: 한 값이 여러 구간을 갖고, 한 구간에
+    # 여러 매를 묶어 투입하기 때문(사용자 확정: "한 매당 500칩이면 4매 묶어서 투입").
+    # 묶음이 구간 아래 붙으므로 구간마다 다른 자재 조합을 지정할 수 있다.
+    src_binding, src_model, src_cols = _plan_store_binding(
+        cfg, "doe_source",
+        required=("ref_table", "map_key", "doe_value", "band_seq",
+                  "source_lot", "source_slot"))
+    pool_by_band = {}
+    if src_model is not None:
+        try:
+            s_rows = (db.query(src_model)
+                      .filter(src_cols["ref_table"] == ref_table,
+                              src_cols["map_key"] == map_key)
+                      .limit(MAX_DOE_PER_PLAN * MAX_SOURCES_PER_DOE).all())
+            scols = src_binding.get("columns") or {}
+
+            def _sget(row, key):
+                name = scols.get(key)
+                return getattr(row, name, None) if name else None
+
+            for r in s_rows:
+                v = _sget(r, "doe_value")
+                if v is None:
+                    continue
+                pool_by_band.setdefault((str(v), _num(_sget(r, "band_seq"))), []).append({
+                    "source_lot": _sget(r, "source_lot"),
+                    "source_slot": _sget(r, "source_slot"),
+                    "qty": _num(_sget(r, "qty")),
+                    "note": _sget(r, "note"),
+                })
+        except Exception as e:
+            logger.warning("[TransferPlan] doe_source load failed for '%s/%s': %s",
+                           ref_table, map_key, e)
+            pool_by_band = {}
+
+    # ---- 페인팅 값 분포 — **대상 맵 자신**에서 (계획 맵 사본 폐기) ----
+    painted, painted_status = _painted_values(db, ref_table, map_key, overlay_cfg)
 
     doe_values = []
     for row in doe_rows:
@@ -1134,28 +1229,23 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
             "detail": f"DOE '{val}'가 맵에 페인팅되지 않음 (수량 0)",
         })
 
-    # ---- 층 커버리지 (층을 선언한 DOE가 하나라도 있을 때만) ----
+    # ---- STACK 구간 커버리지 (수치로 읽히는 구간만 참여 — 표기 강제 없음) ----
+    # (한 값이 여러 구간 행을 가지므로 구간은 행 단위로 수집된다 — 값 단위가 아니다)
     layered = []
     for row in doe_rows:
-        lf = _num(_doe_get(row, "layer_from"))
-        lt = _num(_doe_get(row, "layer_to"))
-        v = _doe_get(row, "doe_value")
-        if lf is None and lt is None:
+        v = str(_doe_get(row, "doe_value"))
+        band = _doe_get(row, "stack_band")
+        rng = _band_range(band)
+        if rng is None:
             continue
-        lf = int(lf if lf is not None else lt)
-        lt = int(lt if lt is not None else lf)
+        lf, lt = rng
         if lf > lt:
             warnings_out.append({
-                "type": WARN_LAYER_RANGE_INVALID, "value": str(v),
-                "detail": f"DOE '{v}' 층 범위 역전: layer_from({lf}) > layer_to({lt})",
+                "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": band,
+                "detail": f"DOE '{v}' STACK 구간 역전: {lf} > {lt}",
             })
             continue
-        layered.append((str(v), lf, lt))
-    # S3: 층 배정 행이 선언한 층도 커버리지에 포함한다
-    for dk, entries in layers_by_doe.items():
-        v = dk.split("|", 1)[1] if "|" in dk else dk
-        for e in entries:
-            layered.append((v, e["layer"], e["layer"]))
+        layered.append((v, lf, lt))
     if layered:
         covered = set()
         for (_v, lf, lt) in layered:
@@ -1165,7 +1255,7 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
         if missing_layers:
             warnings_out.append({
                 "type": WARN_LAYER_COVERAGE_GAP,
-                "detail": f"층 커버리지 공백: 1..{max_layer} 중 {missing_layers} 층에 배정된 DOE 없음",
+                "detail": f"STACK 커버리지 공백: 1..{max_layer} 중 {missing_layers} 구간에 배정된 DOE 없음",
             })
 
     # ---- 수량 부족 + 소스 fail 경고 (소스 가용은 (lot,slot)당 1회 캐시) ----
@@ -1189,41 +1279,31 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
     source_alloc = {}   # [QA F4] (lot, slot) → {required 누계, available, does[]}
 
     if stage_cfg is not None:
-        # [S3] DOE → 수요(demand) 목록으로 정규화한다.
-        # 층 배정이 없으면 DOE 자체가 수요 1건(층수만큼 곱), 있으면 층마다 별도 수요
-        # (층마다 소스·수량이 다를 수 있으므로 소스별 합산이 자연히 층을 가로지른다).
+        # [v2] DOE 행(= 값×구간) → 수요(demand) 목록. 구간 총 소요를 묶음 매 수로
+        # **균등 배분**하되, 행에 qty가 명시돼 있으면 그것이 우선한다(부분 선언 허용).
+        # 같은 자재가 여러 구간·여러 값에 걸쳐 있으면 아래 source_alloc이 자연히 합산한다.
         demands = []   # (doe_value, source_lot, source_slot, required, label)
         for row in doe_rows:
             v = str(_doe_get(row, "doe_value"))
-            cells = painted.get(v, 0)
-            base_lot = _doe_get(row, "source_lot")
-            base_slot = _doe_get(row, "source_slot")
-            base_qty = _num(_doe_get(row, "qty_per_unit"), default=1)
-            if base_qty is None:
-                base_qty = 1
-            entries = layers_by_doe.get(f"{plan_id}|{v}")
-
-            if entries:
-                for e in sorted(entries, key=lambda x: x["layer"]):
-                    q = e["qty"] if e["qty"] is not None else base_qty
-                    demands.append((
-                        v,
-                        e["source_lot"] or base_lot,
-                        e["source_slot"] or base_slot,
-                        int(cells * (q or 0)),
-                        f"{v}@L{e['layer']}",
-                    ))
+            seq = _num(_doe_get(row, "band_seq"))
+            band_label = _doe_get(row, "stack_band") or (seq if seq is not None else "")
+            total = _num(_doe_get(row, "qty_total"), default=0) or 0
+            pool = pool_by_band.get((v, seq)) or []
+            if not pool:
+                warnings_out.append({
+                    "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": band_label,
+                    "detail": f"DOE '{v}[{band_label}]'에 사용 자재(소스 묶음)가 "
+                              f"선언되지 않음 — 수량 검증 불가",
+                })
                 continue
-
-            lf = _num(_doe_get(row, "layer_from"))
-            lt = _num(_doe_get(row, "layer_to"))
-            layers = 1
-            if lf is not None or lt is not None:
-                lf_i = int(lf if lf is not None else lt)
-                lt_i = int(lt if lt is not None else lf)
-                if lf_i <= lt_i:
-                    layers = lt_i - lf_i + 1
-            demands.append((v, base_lot, base_slot, int(cells * layers * (base_qty or 0)), v))
+            n = len(pool)
+            share = -(-int(total) // n) if total else 0   # 올림 배분 (부족 과소평가 방지)
+            for entry in pool:
+                q = entry["qty"] if entry["qty"] is not None else share
+                label = (f"{v}[{band_label}]@"
+                         f"{entry['source_lot']}|{entry['source_slot']}")
+                demands.append((v, entry["source_lot"], entry["source_slot"],
+                                int(q or 0), label))
 
         for (v, s_lot, s_slot, required, label) in demands:
             if not s_lot or not s_slot:
@@ -1318,9 +1398,9 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
                 "source_lot": s_lot, "source_slot": s_slot,
                 "required_total": acc["required"], "available": acc["available"],
                 "doe_values": list(acc["does"]),
-                "detail": (f"소스({s_lot},{s_slot}) 합산 초과배정: DOE {len(acc['does'])}건"
+                "detail": (f"소스({s_lot},{s_slot}) 합산 초과배정: 수요 {len(acc['does'])}건"
                            f"({', '.join(acc['does'])})의 필요 합계 {acc['required']} > 가용 "
-                           f"{acc['available']} — 개별 DOE는 각각 가용 이하라 "
+                           f"{acc['available']} — 개별 수요는 각각 가용 이하라 "
                            f"{WARN_QTY_SHORTAGE}로는 잡히지 않는다"),
             })
 
@@ -1337,8 +1417,10 @@ def validate_plan(db, cfg: dict, plan_id: str) -> dict:
         status_out = "ok"
 
     return {
-        "plan_id": plan_id,
-        "plan": plan_out,
+        "ref_table": ref_table,
+        "map_key": map_key,
+        "stage": stage_name,
+        "map_status": painted_status,
         "doe_count": len(doe_rows),
         "painted_values": {k: painted[k] for k in sorted(painted.keys())},
         "status": status_out,
