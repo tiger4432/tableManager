@@ -8,16 +8,21 @@ import signal
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 
-from process_supervisor import ChildSpec, Supervisor  # noqa: E402
+from process_supervisor import ChildSpec, Supervisor, psutil_status  # noqa: E402
+from utils.logger import get_process_logger  # noqa: E402
+
+# [B3] The supervisor's restart decisions used to be print() to stdout only, so
+# running the launcher detached - or with the console scrolled past - lost the
+# permanent-failure and shared-cause banners entirely. They are the record of why
+# a child stopped coming back, so they go to a file. Console output is unchanged:
+# get_process_logger keeps a stdout handler alongside the file one.
+_launcher_logger = get_process_logger("Launcher", "launcher.log")
+
+_LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
+
 
 def log_launcher(msg, level="INFO"):
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    WHITE = "\033[97m"
-
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    prefix = f"{WHITE}{BOLD}[Launcher]{RESET}"
-    print(f"{prefix} [{timestamp}] {level} - {msg}", flush=True)
+    _launcher_logger.log(_LEVELS.get(level, 20), msg)
 
 def main():
     root_dir = _ROOT_DIR
@@ -93,6 +98,12 @@ def main():
     # leaving its children orphaned.
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, shutdown_all)
+
+    # Announced at boot, not discovered at shutdown: without psutil the launcher
+    # still stops its five children but leaves their own subprocesses (the
+    # auto-update collector scripts) running as orphans.
+    psutil_ok, psutil_detail = psutil_status()
+    log_launcher(psutil_detail, level="INFO" if psutil_ok else "WARNING")
 
     supervisor.start_all()
     log_launcher(f"Supervising {len(specs)} process(es). "

@@ -17,6 +17,13 @@ WHAT THIS HAS TO GET RIGHT
        supervisor: running + beat stale         -> wedged  (alive, not progressing)
        supervisor: running + no beat yet, young -> starting (grace, not an alarm)
        supervisor: running + beat fresh         -> ok
+       ... + a claimed unit of work that has stopped progressing -> stalled
+
+   The last row is what a beat alone cannot see. A beat proves *a* loop is
+   turning; the watcher's came from its 3 s retry poller, so a watcher wedged
+   inside ingestion kept beating and this endpoint said ok. Workers therefore
+   also publish work claims (server/utils/heartbeat.py), and a claim that stops
+   advancing is unhealthy no matter how fresh the beat is.
 
 3. It must not hang when the database is down, and it must be cheap enough to
    poll continuously. Every query here is O(1) against a partial index; the
@@ -104,16 +111,20 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         sup_children = supervisor_status.get("children") or {}
         age = now - float(supervisor_status.get("updated_at") or 0.0)
         failed = supervisor_status.get("failed_children") or []
+        correlated = supervisor_status.get("correlated_children") or []
         sup_check = {
             "status": STATUS_OK,
             "pid": supervisor_status.get("supervisor_pid"),
             "updated_age_seconds": round(age, 2),
             "failed_children": failed,
+            "correlated_children": correlated,
             "children": {n: {"state": c.get("state"),
                              "restarts": c.get("restarts"),
                              "pid": c.get("pid"),
                              "last_exit_code": c.get("last_exit_code"),
-                             "failure_reason": c.get("failure_reason")}
+                             "failure_reason": c.get("failure_reason"),
+                             "correlated_with": c.get("correlated_with"),
+                             "correlated_retries": c.get("correlated_retries")}
                          for n, c in sup_children.items()},
         }
         if age > stale_after:
@@ -122,6 +133,18 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             problems.append(
                 f"supervisor status is {age:.0f}s old - the supervisor itself "
                 f"is not running, so no child is being watched")
+        # Reported before permanent failures, because it changes what the
+        # operator should do: a shared-cause outage needs the environment fixed
+        # and then recovers by itself, with no launcher restart.
+        if correlated:
+            sup_check["status"] = "correlated_failure"
+            escalate(STATUS_UNHEALTHY)
+            problems.append(
+                f"{len(correlated)} children are failing together "
+                f"({', '.join(correlated)}) - treated as a shared-cause outage. "
+                f"They are being retried indefinitely and will recover on their "
+                f"own once the cause clears; no manual restart is needed. Check "
+                f"the database, the disk and the network first.")
         if failed:
             sup_check["status"] = "failed_children"
             escalate(STATUS_UNHEALTHY)
@@ -209,6 +232,26 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             entry["status"] = STATUS_OK
             entry["age_seconds"] = hb.get("age_seconds")
             entry["beats"] = hb.get("beats")
+
+        # A fresh beat only proves *a* loop is turning. If the worker also has a
+        # unit of real work claimed and that work has stopped progressing, the
+        # worker is wedged where it matters even though it is still beating -
+        # which is precisely the watcher case: its 3 s retry poller kept beating
+        # while ingestion was stuck, and this endpoint said ok.
+        work = (hb or {}).get("work") or {}
+        if work.get("open"):
+            entry["work"] = work
+            if work.get("stalled"):
+                # Do not mask a more specific verdict (down/wedged/missing);
+                # those name a bigger problem than a stalled unit of work.
+                if entry["status"] == STATUS_OK:
+                    entry["status"] = "stalled"
+                escalate(STATUS_UNHEALTHY)
+                problems.append(
+                    f"worker '{hb_name}' is beating but its work has not "
+                    f"progressed for {work.get('no_progress_seconds')}s "
+                    f"(threshold {work.get('stall_after_seconds')}s): "
+                    f"{work.get('what')}")
         entry["stale_after_seconds"] = stale_after
         workers[hb_name] = entry
 

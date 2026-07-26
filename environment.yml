@@ -12,6 +12,10 @@ dependencies:
   - python-dotenv
   - pyside6
   - watchdog
+  # Process-tree inspection for the launcher's supervisor. Windows
+  # TerminateProcess does not walk the tree, so without psutil a stopped child
+  # leaves its own subprocesses (auto-update collector scripts) orphaned.
+  - psutil
   - pytest
   - httpx
   - pyinstaller

@@ -21,6 +21,20 @@ if server_dir not in sys.path:
 
 from database.database import SessionLocal
 from database import crud, schemas
+from utils import heartbeat
+
+# [B1/B2 follow-up] Name of the progress beat the ingestion path publishes.
+# It is the watcher's own beat: run_watcher.py's retry poller writes it too, and
+# that is deliberate. The poller proves the process is alive; the work claim
+# opened around each file proves ingestion is actually moving. A beat from the
+# poller therefore stops being able to mask a wedged ingestion and becomes the
+# thing that reports it - see server/utils/heartbeat.py.
+#
+# In DECOUPLED mode (production) only run_watcher.py reaches this code. In the
+# inline mode main.py runs the watcher itself, so the web server legitimately
+# owns the role; a second process writing the same beat is caught by /health's
+# supervised-pid check rather than silently trusted.
+HEARTBEAT_NAME = "watcher"
 
 # (An unused module-level `log_path = join(server_dir, "watcher.log")` lived here.
 #  Dead since the unified logger landed, and it rebuilt a log path from __file__ -
@@ -725,7 +739,19 @@ class IngestionHandler(FileSystemEventHandler):
     def process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         """
         Processes a file with debouncing and retries to handle locked files.
+
+        [B1/B2 follow-up] The whole unit is wrapped in a heartbeat work claim, so
+        an ingestion that stops making progress is visible in /health even though
+        the watcher's retry poller keeps beating. Both lanes funnel through here
+        (inline normal lane and the heavy lane's worker thread), so one claim site
+        covers both; claims are thread-affine, so a healthy heavy-lane job cannot
+        refresh a wedged inline job's claim.
         """
+        with heartbeat.work_claim(HEARTBEAT_NAME,
+                                  f"ingest {os.path.basename(file_path)}"):
+            return self._process_with_retry(file_path, uploader, retries, delay)
+
+    def _process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         # Initial debounce to allow file copy to finish
         time.sleep(delay)
 
@@ -744,6 +770,11 @@ class IngestionHandler(FileSystemEventHandler):
                 # [P2-B] 파일 시그니처(내용 전체 sha256) — 재개 동일성 판정과 dedup의 공통 키.
                 # 잠긴 파일은 PermissionError로 전파되어 아래 기존 재시도 경로를 탄다.
                 signature = compute_file_signature(abs_path)
+                # Stage beats. These bracket the steps we can see into; the parse
+                # itself is a single opaque call (a custom pipeline script reads a
+                # whole file), which is what sets the stall threshold - see
+                # heartbeat.DEFAULT_STALL_AFTER_SEC.
+                heartbeat.beat(HEARTBEAT_NAME, note=f"hashed {basename}")
 
                 # [P2-B] 동일 내용이 이미 SUCCESS로 적재됐으면 재처리하지 않는다(명시 기록·통지).
                 skipped = self._try_dedup_skip(file_path, basename, t_name, signature)
@@ -755,6 +786,7 @@ class IngestionHandler(FileSystemEventHandler):
                 rows, total_rows, skipped_no_key = self._resolve_rows(
                     file_path, t_name=t_name, table_info=table_info, meta=parse_meta
                 )
+                heartbeat.beat(HEARTBEAT_NAME, note=f"parsed {basename}")
 
                 # [P2-A] 오프셋 체크포인트 계획 수립 (재개 오프셋 또는 재시작 사유 확정)
                 has_rows = (total_rows > 0) if total_rows is not None else bool(rows)
@@ -978,6 +1010,17 @@ class IngestionHandler(FileSystemEventHandler):
         filepath = log_entry.filepath
         # [D1] 재시도 경로도 파일당 1회 스냅샷 (핫리로드는 파일 경계에서 반영)
         t_name, table_info = self._snapshot_table_context()
+        # [B1/B2 follow-up] The retry path is a third way into ingestion (the
+        # poller thread, not an observer or the heavy lane), so it needs its own
+        # claim. Without it a retry that wedges is invisible: the poller thread
+        # is the very thread that would otherwise keep beating.
+        with heartbeat.work_claim(HEARTBEAT_NAME,
+                                  f"retry-ingest {os.path.basename(filepath or '?')}"):
+            return self._process_archived_file_sync(log_entry, db, uploader,
+                                                    filepath, t_name, table_info)
+
+    def _process_archived_file_sync(self, log_entry, db, uploader, filepath,
+                                    t_name, table_info):
         try:
             # [P2] 관리자 재시도는 **명시적 재처리 의사**이므로 dedup skip을 적용하지 않는다.
             # 다만 중단된 적재(IN_PROGRESS)를 이어받는 것은 여전히 이득이므로 체크포인트는 쓴다:
@@ -1393,6 +1436,13 @@ class IngestionHandler(FileSystemEventHandler):
                     db.close()
                 
                 processed_rows += len(chunk)
+                # [B1/B2 follow-up] One beat per committed chunk. This is the
+                # signal that separates "ingesting a large file" from "wedged
+                # mid-ingestion": it advances with committed rows, so it stops
+                # exactly when the upsert stops, and it refreshes the work claim
+                # opened by process_with_retry on this same thread.
+                heartbeat.beat(HEARTBEAT_NAME,
+                               note=f"{filename or '?'} {processed_rows}/{total_rows}")
                 if self.on_progress_callback:
                     progress_pct = min(int((processed_rows / total_rows) * 100), 100) if total_rows else 100
                     try:

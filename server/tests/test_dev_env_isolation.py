@@ -349,9 +349,23 @@ import paths
 from utils.logger import get_process_logger
 
 name = os.environ["PROBE_LOG_NAME"]
+import logging
+
 lg = get_process_logger("IsoLogProbe", name)
 lg.info("PROBE_LINE_MARKER")
-for h in lg.handlers:
+
+# [B3] Handlers live on the root logger now, so collect them the way logging
+# itself does at emit time: walk the logger and its ancestors. Reading only
+# lg.handlers would have reported "no file handler" for a logger that writes
+# perfectly well - and, worse, would have passed for a logger that wrote nowhere
+# if the handlers were ever put back on the named logger alone.
+effective = []
+node = lg
+while node:
+    effective.extend(node.handlers)
+    node = node.parent if node.propagate else None
+
+for h in effective:
     try:
         h.flush()
     except Exception:
@@ -359,7 +373,7 @@ for h in lg.handlers:
 print("@@" + json.dumps({
     "DATA_ROOT": paths.DATA_ROOT,
     "expected": paths.log_path(name),
-    "handler_files": [h.baseFilename for h in lg.handlers
+    "handler_files": [h.baseFilename for h in effective
                       if hasattr(h, "baseFilename")],
 }))
 """

@@ -10,7 +10,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4",
-    "watchdog"
+    "watchdog",
+    # Grandchild cleanup in server/process_supervisor.py. The code degrades
+    # loudly rather than crashing without it, but orphaned collector
+    # subprocesses are the cost, so it is declared, not optional.
+    "psutil"
 ]
 
 [tool.setuptools.packages.find]

@@ -147,10 +147,17 @@ def poll_pending_retries():
     last_reload_event_id = 0
 
     while True:
-        # [B1/B2] Progress beat. This loop does real work every ~3 s (a database
+        # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
         # query plus the reload check), so a beat that stops advancing means the
         # watcher process can no longer schedule this thread or reach the
         # database - not merely that a pid vanished.
+        #
+        # This beat used to be the ONLY watcher signal, which left a hole: a
+        # watcher wedged inside ingestion kept polling and reported healthy. It
+        # is no longer sufficient on its own and no longer needs to be - the
+        # ingestion path opens work claims (directory_watcher.HEARTBEAT_NAME),
+        # and this beat carries their stall age. The poller is now the reporter
+        # of a wedged ingestion rather than a mask over it.
         heartbeat.beat("watcher")
         db = SessionLocal()
         try:

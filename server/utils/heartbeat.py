@@ -42,11 +42,34 @@ backlog can spin much faster, so writes are throttled to at most one per
 
 A monitoring feature must never become a new failure mode: every disk error here
 is swallowed and counted, never raised into the worker's loop.
+
+WORK CLAIMS - WHY A LIVENESS BEAT IS NOT ENOUGH
+-----------------------------------------------
+A beat proves *some* loop in the process is still turning. It does not prove the
+loop that matters is. The watcher is the case in point: its beat came from the
+3-second retry poller, so a watcher wedged **inside ingestion** - the exact shape
+of the incident this was built for - kept beating and reported healthy.
+
+Beating from the ingestion path instead would only move the hole: ingestion is
+idle most of the time, so an ingestion-only beat is stale most of the time and
+says nothing.
+
+So the two facts are kept separate. A worker opens a ``work_claim`` around each
+unit of real work and refreshes it as it progresses; the claim's age is published
+*inside* whatever beat is written next, by whichever thread writes it. The poller
+therefore stops being able to mask a wedged ingestion and starts being the thing
+that reports it: it is alive, so it beats, and its beat carries "a file has been
+claimed for 400 s with no progress".
+
+Claims are thread-affine. A beat only refreshes claims opened on its own thread,
+so a healthy heavy-lane job cannot refresh a wedged inline job's claim.
 """
 import os
 import json
 import time
+import itertools
 import threading
+from contextlib import contextmanager
 
 try:
     import paths
@@ -78,8 +101,37 @@ MIN_WRITE_INTERVAL_SEC = 1.0
 # earlier on its own.
 DEFAULT_STALE_AFTER_SEC = 60.0
 
+# How long a claimed unit of work may go without progress before /health calls it
+# stalled. Deliberately much larger than DEFAULT_STALE_AFTER_SEC, because the two
+# numbers bound different things.
+#
+# A missed beat means a loop that runs every 2-5 s did not run. A missed *claim
+# progress* means a chunk of real work did not finish, and chunks are not
+# uniform. Measured under a live 100,000-row heavy-lane ingestion (35 MB, 893 s
+# end to end): chunk-to-chunk intervals p50 9.20 s, p95 9.70 s, **max 12.50 s**
+# over 42 unambiguous single-chunk intervals. That is the instrumented part, and
+# on its own it would justify something far tighter than this.
+#
+# The part we CANNOT instrument is what sets the floor: a custom pipeline parser
+# is a user script that reads a whole file in one opaque call and reports nothing
+# while it does. On a large workbook that legitimately takes minutes, and no beat
+# can be emitted from inside it. 300 s clears the measured chunk cadence by 24x
+# and still surfaces a genuinely wedged ingestion inside five minutes.
+#
+# The bias is toward silence, and that is the deliberate choice: this fires a 503
+# on an operator dashboard, and a health check that cries wolf during the exact
+# operation people care about gets muted, which costs more than five minutes of
+# detection delay.
+DEFAULT_STALL_AFTER_SEC = 300.0
+
 _state_lock = threading.Lock()
 _state = {}  # name -> {"beats": int, "last_write": float, "started_at": float, "errors": int}
+
+# claim_id -> {"name", "what", "thread", "started", "last_progress"}
+# Bounded by the number of units of work in flight (one per ingestion lane), not
+# by time: every claim is removed in a finally block.
+_claims = {}
+_claim_seq = itertools.count(1)
 
 
 def heartbeat_dir():
@@ -98,7 +150,15 @@ def beat(name, note=None, force=False):
     callers ignore the result; it exists for the tests.
     """
     now = time.time()
+    tid = threading.get_ident()
     with _state_lock:
+        # Progress on this thread's own claims. Thread-affine on purpose: a
+        # healthy heavy-lane job must not be able to refresh a wedged inline
+        # job's claim just because both belong to the same worker.
+        for c in _claims.values():
+            if c["name"] == name and c["thread"] == tid:
+                c["last_progress"] = now
+
         st = _state.get(name)
         if st is None:
             st = {"beats": 0, "last_write": 0.0, "started_at": now, "errors": 0}
@@ -114,6 +174,9 @@ def beat(name, note=None, force=False):
             "beats": st["beats"],
             "started_at": st["started_at"],
             "note": note,
+            # Written by whichever thread beats next - which is the point. The
+            # poller reports the ingestion thread's stall.
+            "work": _work_snapshot_locked(name),
         }
 
     try:
@@ -132,7 +195,58 @@ def beat(name, note=None, force=False):
         return False
 
 
-def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None):
+def _work_snapshot_locked(name):
+    """Oldest un-progressed claim for ``name``. Caller holds ``_state_lock``.
+
+    Publishes an absolute timestamp rather than an age, so a reader measures the
+    stall from *now* and not from whenever the beat happened to be written.
+    """
+    mine = [c for c in _claims.values() if c["name"] == name]
+    if not mine:
+        return {"open": 0}
+    oldest = min(mine, key=lambda c: c["last_progress"])
+    return {
+        "open": len(mine),
+        "oldest_progress_ts": oldest["last_progress"],
+        "oldest_started_ts": oldest["started"],
+        "oldest_what": oldest["what"],
+    }
+
+
+@contextmanager
+def work_claim(name, what):
+    """Declare a unit of real work in progress for worker ``name``.
+
+    Wrap the whole unit (one file's ingestion), and call ``beat(name)`` from
+    inside it as it progresses - each beat on this thread refreshes the claim.
+    The claim is always released, including on the failure paths, because a claim
+    left open by a crashed job would look exactly like a stall forever.
+    """
+    now = time.time()
+    cid = next(_claim_seq)
+    with _state_lock:
+        _claims[cid] = {"name": name, "what": str(what)[:200],
+                        "thread": threading.get_ident(),
+                        "started": now, "last_progress": now}
+    # Beat on entry so the claim is visible in the heartbeat file immediately,
+    # rather than only after the next poller tick.
+    beat(name, note=f"start: {what}", force=True)
+    try:
+        yield
+    finally:
+        with _state_lock:
+            _claims.pop(cid, None)
+        beat(name, note=f"done: {what}", force=True)
+
+
+def open_claims():
+    """Every claim currently open in this process (for tests and diagnostics)."""
+    with _state_lock:
+        return [dict(c) for c in _claims.values()]
+
+
+def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
+             stall_after=DEFAULT_STALL_AFTER_SEC):
     """Read every worker heartbeat. Returns ``{name: {...}}``.
 
     Each entry carries ``age_seconds`` and ``stale``. Unreadable or corrupt files
@@ -154,7 +268,7 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None):
                 data = json.load(f)
             ts = float(data.get("ts") or 0.0)
             age = max(0.0, now - ts)
-            out[name] = {
+            entry = {
                 "pid": data.get("pid"),
                 "beats": data.get("beats"),
                 "note": data.get("note"),
@@ -162,6 +276,21 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None):
                 "stale": age > stale_after,
                 "stale_after_seconds": stale_after,
             }
+            work = data.get("work") or {}
+            if work.get("open"):
+                # Measured from now, not from when the beat was written: a beat
+                # that is itself 30 s old must not under-report the stall by 30 s.
+                since = now - float(work.get("oldest_progress_ts") or now)
+                entry["work"] = {
+                    "open": work.get("open"),
+                    "what": work.get("oldest_what"),
+                    "no_progress_seconds": round(max(0.0, since), 2),
+                    "held_seconds": round(
+                        max(0.0, now - float(work.get("oldest_started_ts") or now)), 2),
+                    "stalled": since > stall_after,
+                    "stall_after_seconds": stall_after,
+                }
+            out[name] = entry
         except Exception as e:
             out[name] = {
                 "pid": None,

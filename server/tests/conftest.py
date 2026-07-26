@@ -38,6 +38,34 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# [Isolation] Same class of leak as the DATABASE_URL pin above, found the hard
+# way: the ingestion path now publishes a heartbeat (work claims), so any test
+# that drives `process_with_retry` - test_std_parser.py and
+# test_workspace_config_deprecation.py both do - wrote a real
+# `server/config/worker_heartbeats/watcher.json` into the USER'S LIVE TREE.
+#
+# Nothing was destroyed (it creates a new file), but a stray watcher beat in
+# production is not harmless: /health reads heartbeats off disk, so a dead
+# pytest process's beat would be reported as a stale worker and serve a 503 on a
+# perfectly healthy system.
+#
+# Session-scoped and autouse so it cannot be forgotten by a future test. Tests
+# that want their own heartbeat directory still monkeypatch over this per
+# function; that is strictly narrower and restores back to this.
+@pytest.fixture(scope="session", autouse=True)
+def _heartbeats_never_touch_the_live_tree(tmp_path_factory):
+    from utils import heartbeat
+    d = str(tmp_path_factory.mktemp("worker_heartbeats"))
+    orig_dir, orig_path = heartbeat.heartbeat_dir, heartbeat.heartbeat_path
+    heartbeat.heartbeat_dir = lambda: d
+    heartbeat.heartbeat_path = lambda name: os.path.join(d, f"{name}.json")
+    try:
+        yield d
+    finally:
+        heartbeat.heartbeat_dir = orig_dir
+        heartbeat.heartbeat_path = orig_path
+
+
 @pytest.fixture(scope="function")
 def db_session():
     # Initialize dynamic models with test configuration (SQLite compatible)

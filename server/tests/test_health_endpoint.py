@@ -347,3 +347,217 @@ def test_stale_threshold_covers_at_least_ten_loop_periods():
     """The threshold must never be so tight that one missed beat trips it."""
     slowest_loop_period = 5.0  # auto-update scheduler check_interval
     assert heartbeat.DEFAULT_STALE_AFTER_SEC >= 10 * slowest_loop_period
+
+
+# ===========================================================================
+# Work claims: a beating worker that is wedged where it matters.
+#
+# The hole: the watcher's beat came from its 3 s retry poller, so a watcher
+# wedged INSIDE ingestion kept beating and /health said ok - a hole in exactly
+# the property this endpoint exists for, since the real incident was a process
+# that was alive and not progressing.
+# ===========================================================================
+
+def working(what="ingest big.csv", no_progress=1.0, held=None, stalled=False):
+    return {"open": 1, "what": what, "no_progress_seconds": no_progress,
+            "held_seconds": held if held is not None else no_progress,
+            "stalled": stalled,
+            "stall_after_seconds": heartbeat.DEFAULT_STALL_AFTER_SEC}
+
+
+def test_a_beating_worker_with_stalled_work_is_unhealthy():
+    """The regression: fresh beat, stalled ingestion, must not be 200/ok."""
+    hb = dict(fresh(age=1.0))
+    hb["work"] = working(no_progress=612.0, stalled=True)
+    payload, status = run(hbs={"watcher": hb},
+                          sup=supervisor_status({"File Ingestion Watcher": running("watcher")}))
+    assert status == 503, "a wedged ingestion behind a healthy poller reported 200"
+    assert payload["status"] == STATUS_UNHEALTHY
+    assert payload["checks"]["workers"]["watcher"]["status"] == "stalled"
+    assert any("has not progressed" in p for p in payload["problems"])
+    assert any("ingest big.csv" in p for p in payload["problems"]), \
+        "the operator is not told WHICH unit of work is stuck"
+
+
+def test_the_same_worker_with_progressing_work_is_ok():
+    """The control that makes the test above attributable.
+
+    Identical fixture except that the claim is advancing - so a failure of the
+    test above is about the stall, not about the mere presence of a claim.
+    """
+    hb = dict(fresh(age=1.0))
+    hb["work"] = working(no_progress=2.0, held=900.0, stalled=False)
+    payload, status = run(hbs={"watcher": hb},
+                          sup=supervisor_status({"File Ingestion Watcher": running("watcher")}))
+    assert status == 200
+    assert payload["status"] == STATUS_OK
+    assert payload["checks"]["workers"]["watcher"]["status"] == STATUS_OK
+    # A long-running ingestion is reported, just not as a problem.
+    assert payload["checks"]["workers"]["watcher"]["work"]["held_seconds"] == 900.0
+
+
+def test_idle_is_not_stalled():
+    """No claim open means nothing to stall on - an idle watcher is healthy."""
+    payload, status = run(hbs={"watcher": fresh()},
+                          sup=supervisor_status({"File Ingestion Watcher": running("watcher")}))
+    assert status == 200
+    assert "work" not in payload["checks"]["workers"]["watcher"]
+
+
+def test_a_stall_does_not_mask_a_worse_verdict():
+    """down/wedged name a bigger problem than a stalled unit of work."""
+    hb = dict(stale(age=200.0))
+    hb["work"] = working(no_progress=612.0, stalled=True)
+    payload, status = run(hbs={"watcher": hb},
+                          sup=supervisor_status({"File Ingestion Watcher": running("watcher")}))
+    assert status == 503
+    assert payload["checks"]["workers"]["watcher"]["status"] == "wedged"
+
+
+def test_claim_refreshes_only_on_its_own_thread(hb_dir):
+    """Thread affinity, driven with real threads.
+
+    Without it a healthy heavy-lane job would refresh a wedged inline job's
+    claim just because both belong to the watcher, and the wedge would vanish.
+    """
+    import threading
+    heartbeat._claims.clear()
+    started = threading.Event()
+    release = threading.Event()
+
+    def holder():
+        with heartbeat.work_claim("watcher", "wedged file"):
+            started.set()
+            release.wait(10.0)
+
+    t = threading.Thread(target=holder, daemon=True)
+    t.start()
+    assert started.wait(5.0), "fixture broken: the claim was never opened"
+
+    claims = heartbeat.open_claims()
+    assert len(claims) == 1
+    before = claims[0]["last_progress"]
+
+    time.sleep(0.05)
+    # A beat from THIS thread (standing in for the retry poller) must not
+    # advance a claim held by the other one.
+    heartbeat.beat("watcher", force=True)
+    after = heartbeat.open_claims()[0]["last_progress"]
+    assert after == before, \
+        "another thread's beat refreshed a wedged claim - the wedge is masked"
+
+    release.set()
+    t.join(5.0)
+    assert heartbeat.open_claims() == [], "the claim outlived its work"
+
+
+def test_a_claim_is_released_even_when_the_work_raises(hb_dir):
+    """A claim leaked by a failed ingestion would look like a stall forever."""
+    heartbeat._claims.clear()
+    with pytest.raises(ValueError):
+        with heartbeat.work_claim("watcher", "doomed file"):
+            raise ValueError("parser blew up")
+    assert heartbeat.open_claims() == []
+
+
+def test_the_pollers_beat_carries_the_wedged_threads_stall(hb_dir):
+    """The whole mechanism, end to end, with two real threads.
+
+    One thread holds a claim and stops progressing (the wedged ingestion); the
+    other beats (the retry poller). The poller's beat is what reaches disk, and
+    it must report the *other* thread's stall - that is what turns the poller
+    from a mask over the wedge into the thing that reports it.
+
+    Also pins the age to read time: a 30 s old beat must not under-report a
+    stall by 30 s.
+    """
+    import threading
+    heartbeat._claims.clear()
+    holder_ready = threading.Event()
+    release = threading.Event()
+
+    def holder():
+        with heartbeat.work_claim("watcher", "slow file"):
+            # Backdate: no progress for 400 s.
+            with heartbeat._state_lock:
+                for c in heartbeat._claims.values():
+                    c["last_progress"] -= 400.0
+            holder_ready.set()
+            release.wait(10.0)
+
+    t = threading.Thread(target=holder, daemon=True)
+    t.start()
+    assert holder_ready.wait(5.0), "fixture broken: claim never opened"
+    try:
+        heartbeat.beat("watcher", force=True)       # the poller thread
+        entry = heartbeat.read_all(now=time.time() + 30.0)["watcher"]
+    finally:
+        release.set()
+        t.join(5.0)
+
+    assert entry["stale"] is False, "fixture broken: the beat itself was stale"
+    assert entry["work"]["no_progress_seconds"] >= 430.0
+    assert entry["work"]["stalled"] is True
+
+
+def test_stall_threshold_leaves_room_for_a_real_ingestion():
+    """Measured, not guessed: under a live 100,000-row heavy-lane ingestion the
+    worst chunk-to-chunk interval was 12.50 s (p50 9.20 s) over 42 unambiguous
+    single-chunk intervals. The threshold must clear that by a wide margin or it
+    fires during exactly the operation people care about."""
+    measured_worst_chunk_gap = 12.50
+    assert heartbeat.DEFAULT_STALL_AFTER_SEC >= 10 * measured_worst_chunk_gap
+    assert heartbeat.DEFAULT_STALL_AFTER_SEC > heartbeat.DEFAULT_STALE_AFTER_SEC
+
+
+def test_stale_threshold_survives_the_measured_load(hb_dir):
+    """The 60 s beat-staleness threshold was justified on an IDLE stack (worst
+    gap 10.26 s). Under a live 100k-row ingestion the worst beat gap across all
+    four workers was 7.01 s - load did not eat the headroom."""
+    measured_worst_beat_gap_under_load = 7.01
+    assert heartbeat.DEFAULT_STALE_AFTER_SEC >= 8 * measured_worst_beat_gap_under_load
+
+
+# ===========================================================================
+# Shared-cause failure surfaced to the operator.
+# ===========================================================================
+
+def test_correlated_children_are_unhealthy_and_named_as_an_outage():
+    """A shared-cause outage must be loudly unhealthy AND must tell the operator
+    that no manual restart is needed - the response differs from a permanent
+    failure, so the message has to differ too."""
+    sup = supervisor_status({
+        "File Ingestion Watcher": {"state": "retrying_correlated", "heartbeat": "watcher",
+                                   "pid": None, "restarts": 9, "uptime_seconds": None,
+                                   "last_exit_code": 1, "failure_reason": "shared cause",
+                                   "correlated_with": ["Chained Ingestion Worker"],
+                                   "correlated_retries": 4},
+        "Chained Ingestion Worker": {"state": "retrying_correlated", "heartbeat": "chain",
+                                     "pid": None, "restarts": 9, "uptime_seconds": None,
+                                     "last_exit_code": 1, "failure_reason": "shared cause",
+                                     "correlated_with": ["File Ingestion Watcher"],
+                                     "correlated_retries": 4},
+    })
+    sup["correlated_children"] = ["File Ingestion Watcher", "Chained Ingestion Worker"]
+
+    payload, status = run(hbs={"watcher": stale(), "chain": stale()}, sup=sup)
+    assert status == 503
+    assert payload["checks"]["supervisor"]["status"] == "correlated_failure"
+    joined = " ".join(payload["problems"])
+    assert "failing together" in joined
+    assert "no manual restart is needed" in joined
+    assert payload["checks"]["supervisor"]["correlated_children"]
+
+
+def test_a_permanent_failure_still_reads_as_a_permanent_failure():
+    """The control: the correlated branch must not have swallowed the other."""
+    sup = supervisor_status(
+        {"Graph DB Sync Worker": {"state": "failed", "heartbeat": "graph", "pid": None,
+                                  "restarts": 5, "uptime_seconds": None,
+                                  "last_exit_code": 1,
+                                  "failure_reason": "exited 6 times in a row"}},
+        failed=["Graph DB Sync Worker"])
+    payload, status = run(hbs={"graph": stale()}, sup=sup)
+    assert status == 503
+    assert payload["checks"]["supervisor"]["status"] == "failed_children"
+    assert any("permanently failed" in p for p in payload["problems"])
