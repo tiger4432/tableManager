@@ -12,6 +12,8 @@
 
 1. **🔴 M2 Universal Transfer Plan — 최우선, 진행 중(QA NO-GO 상태)**. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
 2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
+   - **🔜 M2 이후 재설계 논의 예정(사용자 지시 2026-07-26 "일단 마무리하고 다시 논의")** — 사용자 지적: "bonding_map을 열어 편집하면 그게 bonding plan, dt_map을 열면 dt plan이어야 하는데 Map Search & Load와 전사 계획이 따로 논다". **계획 = 그 맵 자체**, stage는 열린 테이블에서 유도. 폐기 후보: stage 선택 UI·타깃 입력창(맵 메타와 중복)·`buildPlanId`·`transfer_plan_map`(계획 맵이 곧 bonding_map/dt_map이라 사본 불필요)·페인팅 진입/이탈 모달. 살아남는 것: **DOE 정의(value ↦ 소스·층별 배정·knob·설명)** — 단 키가 `plan_id` → **`ref_table\|map_key`**(map_split_registry 관례)로 이동, 즉 **legend/split registry와 DOE를 하나로 합치는 방향**이 재설계 핵심. ⚠️ **C5 위험 확대 주의**: 새 모델은 격리된 계획 테이블이 아니라 **실운영 bonding_map/dt_map에 직접 칠하므로**, 맵 키 오변경 후 Push가 실맵 전량을 삭제할 수 있다 → "맵 키가 로드한 맵과 달라졌으면 Push 차단" 가드로 대체 필요(#14ⓐ와 뿌리 동일).
+
 3. **🟡 대형 파일 P2 — worktree 격리 진행 중**. 오프셋 체크포인트 재개(재기동 시 전체 재처리 제거) + 파일 해시 dedup + 이슈 #10 + audit 값 길이 상한. P1은 완료·드릴 PASS(비차단 180배).
 4. **⚪ 대기 트랙** — ⓐ **G2.5**: §7.5c 탐색 정책 엔진(node_class + 4대 룰) 선행 → LLM 도구 API ⓑ **enrichment 실전 규칙**: 사용자 실 스키마 확보가 조건 ⓒ **map_split_registry**: M2의 DOE(=SplitCondition 확장)와 통합 여지가 커져 **M2 확정 후 재평가** ⓓ **Chain Replay R1**.
 
