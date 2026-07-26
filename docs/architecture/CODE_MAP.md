@@ -1,12 +1,12 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
 - **소스 파일을 통째로 Read하지 말 것.** 이 지도에서 함수·라인을 찾은 뒤 **해당 섹션만** `Read(offset, limit)`로 읽는다.
-- 라인 앵커는 HEAD `da65a87` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
-- ⚠️ **`map_editor.js` 오버레이 구간([§7](#7-client2src--웹-클라이언트))은 변경 예정이다** — 오버레이 변환의 클라 단일 구현 전환이 진행 중이므로 그 구간 시그니처를 확정 계약으로 인용하지 말 것.
+- 라인 앵커는 HEAD `251dbfd` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- `client2/*` 앵커는 **`client2/src/`**(원본) 기준이다 — `client2/dist/assets/map_editor-*.js`는 vite 산출물이라 파일명 해시가 빌드마다 바뀐다. **dist 번들명을 문서에 고정 인용하지 말 것.**
 - 이 문서는 **지도이지 교과서가 아니다** — 구현 설명은 각 리빙 문서([backend](./backend.md)·[data_model](./data_model.md)·[frontend](./frontend.md)·[event_driven_backend](./event_driven_backend.md)) 참조.
 
 **유지보수 규율:** 코드맵 갱신은 **doc-keeper 전담** — 총괄이 코드 배치를 병합·커밋한 뒤 doc-keeper에 위임하면, doc-keeper가 **타 에이전트들의 수정 이력(history 문서·보고서·커밋 diff)을 요약**해 해당 모듈 맵을 갱신한다(구현 에이전트는 맵을 직접 수정하지 않음 — 보고서에 변경 함수/시그니처 목록만 남긴다). 정기 정합 감사도 doc-keeper. 라인 앵커는 대략치로 충분 — 시그니처·역할 서술의 정확성이 우선.
@@ -382,6 +382,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `get_paint_rules(cfg, table=None) -> dict` | `paint_lock`의 `"*"` 기본 + 테이블별 선언 머지 → `{enabled, blocking_values, from_overlay, message}` | ~679 |
 
 > `resolve_binding`·`build_key_filters`는 **`transfer_plan.py`도 재사용**한다(모듈 간 공용 헬퍼 2개).
+>
+> **⚠️ 소비자 지도 (`7d931dc` 이후 — 헷갈리기 쉬움)**: 이 모듈의 **정렬 산출물(정렬된 좌표)을 소비하는 것은 `/api/maps/overlay` 엔드포인트와 `test_map_overlay.py`뿐**이다. 맵 에디터 클라는 이 엔드포인트를 **`align_applied.origin` 한 필드를 읽는 관문**으로만 호출하고 좌표는 쓰지 않는다(변환은 클라 단일 구현 — [§7 `map_editor.js`](#7-client2src--웹-클라이언트)). `transfer_plan.py`는 **바인딩·config 헬퍼 3개만**(`resolve_binding`/`build_key_filters`/`load_overlay_config`) 쓴다. **`bonding_plan.py`는 이 모듈을 import하지 않는다** — 자체 `normalize_align`/`make_align_transform`을 갖는 별개 구현이며, 아래 A2 항목이 바로 그 사본이 A1 수정을 못 받은 건이다.
 
 ### `server/transfer_plan.py` (~1,429줄) — [M2 신규] Universal Transfer Plan 엔진 (v2 = 계획 정체성이 곧 맵 정체성)
 `config/transfer_plan_config.json`(gitignored, `.sample` tracked) — `stages.{name}.{source_kind, target_kind, target_map{table,preset}, source{...} \| source_config_ref}` + `plan_store.{doe, doe_source, source_region}`. 테스트: `tests/test_transfer_plan.py`.
@@ -424,7 +426,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/scripts/setup_ingestion_checkpoint.py` | [P2] `file_ingestion_checkpoints`를 **프로세스 재기동 없이** 미리 생성(멱등) — 직접 SQL 없이 `models.ensure_ingestion_checkpoint_table(engine)` 호출 후 컬럼·인덱스 출력 |
 | `server/scripts/setup_transfer_plan_indexes.py` | [M2] 전사 계획 엔진 진입 필터용 복합 인덱스 8종 `CREATE INDEX IF NOT EXISTS`(테이블별 information_schema 존재 게이트) — `dt_log(tape_lot,tape_slot)`·`dt_log(core_lot,core_slot)`·`dt_map(lot,slot)`·`map_doe(ref_table,map_key)`·`map_doe_source(ref_table,map_key)`·`map_source_region(...)`(휴면)·**`bonding_map(base)`**(Seq Scan 214ms → 0.345ms)·`sample_map(base)`. M1 인덱스는 `setup_bonding_plan_indexes.py` 담당 |
 | `server/utils/auto_update_control.py` | auto-update 수집기 active 제어 파일(`config/auto_update_control.json`, gitignored) 공용 IO — `read_disabled_scripts`(fail-open)/`set_script_active`(tmp+`os.replace` 원자적 쓰기)/`validate_script_key`(경로 탈출 차단)/`resolve_script_file`. 웹서버 toggle·스케줄러 공유 |
-| `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher: `trigger_ws_ingestion_state`(~103 — [P1] 파일명 정규화 후 `/internal/events/ingestion-state` push, WorkspaceWatcher에 배선 ~261) · SYSTEM_RELOAD/재처리 폴러 `poll_pending_retries`(~136)는 `refresh_dynamic_models(engine)` 보충(이슈 #7) + `resolve_workspace_root` 역조회(별칭 대응) + 재처리를 `get_workspace_serial_lock`으로 감쌈(~215 — [P1 QA F3] heavy와 순서 계약 편입) |
+| `run_decoupled_app.py`(루트) / `server/run_watcher.py` / `run_chain_worker.py` / `run_graph_sync.py` / `run_auto_update.py` | 프로세스 런처(5-프로세스 토폴로지). **API 서버는 전용 런처 파일이 없다** — `run_decoupled_app.py`가 `python -m uvicorn main:app --port 8080`을 직접 띄운다(`run_decoupled_app.py:42`). ~~`server/run_api.py`~~는 **존재하지 않는다**(2026-07-26 정정). run_watcher: `trigger_ws_ingestion_state`(~103 — [P1] 파일명 정규화 후 `/internal/events/ingestion-state` push, WorkspaceWatcher에 배선 ~261) · SYSTEM_RELOAD/재처리 폴러 `poll_pending_retries`(~136)는 `refresh_dynamic_models(engine)` 보충(이슈 #7) + `resolve_workspace_root` 역조회(별칭 대응) + 재처리를 `get_workspace_serial_lock`으로 감쌈(~215 — [P1 QA F3] heavy와 순서 계약 편입) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함** |
 | `server/config/*.json` (gitignored) | table_config·chain_rules·enrichment_rules·ontology_mapping(v2 — `.sample`은 tracked) 등 사용자 설정 |
@@ -467,22 +469,31 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - export: `loadHistory`(~9) DOM 빌더 `createTimelineItemDom`/`createGlobalTimelineItemDom`(~50/103) 증분 렌더 `renderTimeline*`(~271–346) `renderSubDetails`(~362) `appendHistoryLocally`(~445) 로그→셀 점프 `navigateToLog`(~507)+`navigatorStep2/3`/`navigatorFinalScroll`/`releaseNavigationGuard`(~566–709).
 - 소비 API: `/audit_logs/recent`, `/audit_logs/transaction/{tx}`.
 
-### `map_editor.js` (~4,209줄) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
-- 좌표 변환 코어: `getPhysicalCoords`(~965) `getCellFromPhysicalCoords`(~1018) `getCellFromVisualCoords`(~1058) `getVisualCoords`(~1127) `getTransformedPhysicalConfig`(~1142) `isCellInsideWaferFast`/`isCellInsideWafer`(~1203/1241) — 회전/면반전 불변식은 [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md).
-- 캔버스 렌더: `renderGridCanvas`(~1593, 본체) `scheduleRenderGridCanvas`(~1556) `fitGridToWorkspace`(~1578) `updateNotchPosition`(~1931).
-- 데이터 IO(REST — WS 아님): `loadExistingMap`(~2485) `pushMapData`(~2882, 저장 본체) 프리셋 `fetchAndRenderPresets`/`saveCustomPreset`/`deleteCustomPreset`(~1298/1404/1454) + `applyPresetObject`(~1354, `loadSelectedPreset` ~1387에서 추출한 공용 함수).
-- 레전드/브러시: `renderLegendTable`(~2133) `selectBrush`(~2320) + `localStorage` 동기화 `load/saveLegendToStorage`(~1986/2004).
-- 편집 도구: `fillGrid`(~2853) `getEdgeClassification`(~3123) `selectEdgeCells`(~3203) `autoPaintE1E2`(~3230) `copyGridToExcel`(~3318).
+### `map_editor.js` (~4,533줄) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
+- 좌표 변환 코어: `getPhysicalCoords`(~973) `getCellFromPhysicalCoords`(~1023) `getCellFromVisualCoords`(~1063) `getVisualCoords`(~1132) `getTransformedPhysicalConfig`(~1147) `getWaferBoundingBox`(~1080) `getScreenShift`(~1182) `isCellInsideWaferFast`/`isCellInsideWafer`(~1208/1246) — 회전/면반전 불변식은 [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md).
+  - **[7d931dc] 프레임 창(frame window)** — `physFrameOverride`(~946) + `physNum`(~949)/`gridDimNum`(~958)/`withPhysFrame(frame, fn)`(~967). 변환 함수가 규격을 DOM에서 읽는 지점을 잠깐 갈아끼우는 장치로, **주입 지점은 `getTransformedPhysicalConfig`·`getWaferBoundingBox` 두 곳뿐**이다. `withPhysFrame`은 **동기 전용**(내부 `await` 금지 — `try/finally` 복원이 새면 조용한 오답). 기존 `parseFloat(v) || dflt` 규약(0 → 기본값) 보존.
+- 캔버스 렌더: `renderGridCanvas`(~1598, 본체) `scheduleRenderGridCanvas`(~1561) `fitGridToWorkspace`(~1583) `updateNotchPosition`(~1939).
+- 데이터 IO(REST — WS 아님): `loadExistingMap`(~2501) `pushMapData`(~2898, 저장 본체) `fetchGridMetaFor(table, mapId)`(~2468) 프리셋 `fetchAndRenderPresets`/`saveCustomPreset`/`deleteCustomPreset`(~1303/1409/1459) + `applyPresetObject`(~1359, `loadSelectedPreset` ~1392에서 추출한 공용 함수).
+  - `fetchGridMetaFor`는 **404/405만 "규격 미등록"(null)**으로 읽고 그 외 실패는 **throw**한다(`[M2 fix]` — 종전엔 모든 실패가 null이라 오버레이가 조용히 identity로 폴백했다). `loadExistingMap`의 셀 레벨 `grid_metadata` 폴백(~2594–2604)은 **폐기 스킴**이며 어떤 맵 테이블도 스키마에 그 컬럼을 노출하지 않아 라이브에서 사문이다.
+- 레전드/브러시: `renderLegendTable`(~2141) `selectBrush`(~2328) + `localStorage` 동기화 `load/saveLegendToStorage`(~1994/2012). `getCurrentMapKey`(~2019)는 **로드된 맵이 아니라 현재 메타 입력 필드**를 읽는다(오버레이 관문 F2의 근원).
+- 편집 도구: `fillGrid`(~2869) `getEdgeClassification`(~3139) `selectEdgeCells`(~3219) `autoPaintE1E2`(~3246) `copyGridToExcel`(~3334).
+- 프레임 스택: `snapshotEditorState`(~3506) `restoreEditorState`(~3549) `openMapFrame`(~3757) `popMapFrame`(~3808).
 - **[M2] 페인트 잠금**(~36–148, 서버 선언 소비 — 구 `'F'` 하드코딩 대체): `isLockedValue`(~41) `isOverlayLocked`(~51) **`isProtectedFCell`(~63 — 편집 불가 판정의 단일 관문, 전 편집 경로가 여기로 수렴)** `applyPaintLockConfig`(~68) `fetchPaintRules`(~92, GET `/api/maps/paint-rules`) `updatePaintLockIndicator`(~126) `recomputeLockedCells`(~143). 404/405만 "선언 없음"(해제)이고 네트워크·5xx는 **직전 잠금 유지** + `source:'stale'` + 툴바 칩. ⚠️ **[QA C4 미해소] 콜드 스타트는 여전히 fail-open** — "직전 값"이 페이지 로드 직후엔 기본값 `NO_PAINT_LOCK{enabled:false}`(~37)라 첫 조회가 실패하면 8개 강제 지점이 열린 채 시작한다(칩은 뜨므로 **조용한** fail-open은 아님). 테이블 전환 시 실패하면 **이전 테이블의 잠금 값**을 새 테이블에 계속 적용한다(fail-closed 방향이라 안전하나 의미상 부정확).
-- **[M2-v2] 오버레이 레이어**(~3783–4209) ⚠️ **변경 예정 구간** — 오버레이 변환의 클라 단일 구현 전환이 진행 중이므로 아래 시그니처를 확정 계약으로 인용하지 말 것:
-  - 상태 `overlayLayers`(~3784, 레이어당 `{id, sourceTable, sourceKey, cells:Map(physKey→val), rawCells, count, color, visible, status, alignApplied, truncated, failed, reason, targetOverride, align, cap}`) / `activeOverlayLayers`(~3785) / `recomputeActiveOverlays`(~3788, 렌더 루프 내 재계산 금지).
-  - `overlayCellsToPhysMap(cells)`(~3817) — 서버가 **이미 타깃 프레임으로 정렬해 내려준** 좌표를 현재 격자 물리키로 배치. **재변환 금지**(이중 변환 방지 규약).
-  - `addOverlayLayer(sourceTable, sourceKey, targetOverride)`(~3861, GET `/api/maps/overlay`) — **메인 로드와 코드 경로 완전 분리**. 불변식(~3857–3860): `selectedTable`·`tableSchema`·`gridData`·legend·규격·brush·메타 입력을 읽지도 쓰지도 않고 `switchTable`을 경유하지 않는다. 실패도 `pushFailedOverlay`(~3837)로 목록 행에 남긴다.
-  - `currentGeomSignature`(~3981, `cols|rows|startX|startY|yInvert|rotation|side`) / `syncOverlayGeometry`(~3992, 서명 변경 시 `rawCells`에서 물리키 재계산, 렌더에서 훅 ~1595). ⚠️ **[QA C7 미해소] 서명에 물리 파라미터(`phys_chip_x/y`, `phys_offset_x/y`, `phys_wafer_dia`, `phys_edge_margin`)가 빠져 있다** — 배치는 웨이퍼 bbox(`box.minC/minR`)에 의존하는데, 격자 치수를 바꾸지 않는 offset 변경은 bbox를 옮기고도 서명이 그대로라 오버레이 물리키가 **낡은 채로 남는다**. 기존 결함이지만 신규 `importOverlayToGrid`가 그 어긋난 좌표를 `gridData`에 써 넣어 **표시 오류를 데이터 오염 경로로 승격**시켰다.
-  - `overlayAlignChip(o)`(~4012) — 정렬 상태 칩. 판정은 **`align.origin`으로만** 한다.
-  - `importOverlayToGrid(id)`(~4038) — 유일한 의도적 교차: 오버레이 셀을 `gridData`로만 가져온다(**서버 쓰기 없음**, `isProtectedFCell` 존중, 격자 밖 셀 스킵).
-  - `renderOverlayList`(~4109) `handleAddOverlayClick`(~4163) `addOverlayForSource(sourceTable, lot, slot)`(~4196) `listOverlayLayers`(~4203) — 뒤 둘은 `transfer_plan.js`에 넘기는 컨트롤러 표면(~298–302). 세션 저장·복원에 `overlayLayers`+`overlayGeomSig` 포함(~3462/3535), 테이블 전환 시 전체 제거(~2491/3712).
-- [M2-v2] 전사 계획 배선: `initTransferPlan({...})`(~277, import ~6) + `notifyMapContext`(~813/2831/3086/3780–3804) `notifyLegendChanged`(~2102/2134/2334) `notifyPaintCounts`(~1508). rect 영역 선택 모드는 **전면 폐기**(값 페인팅이 정본 — 코드 부재).
+- **[7d931dc] 오버레이 레이어**(~3850–4533) — **변환은 클라 단일 구현**이다. 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md):
+  - 상태 `OVERLAY_COLORS`(~3850) / `overlayLayers`(~3851, 레이어당 `{id, sourceTable, sourceKey, rawCells, frame, cells:Map(physKey→val), count, outside, color, visible, status, align, alignApplied, alignText, truncated, cap, failed, reason, targetOverride}`) / `activeOverlayLayers`(~3852) / `overlaySeq`(~3853) / `recomputeActiveOverlays`(~3855, 렌더 루프 내 재계산 금지) / `drawOverlayMarkers`(~3860, 렌더 호출 ~1760).
+  - **프레임 계산**: `frameFromMeta(meta)`(~3884, `grid_metadata` JSON → 프레임 기술자. **없는 물리 항목은 undefined로 남겨** 현재 화면 값 폴백) / `currentFrame()`(~3911) / `resolveFrame(frame)`(~3924, 축 전부를 실값으로 확정) / `frameAxesKey(rf)`(~3941, 회전·면·y반전·START·치수·물리 6종 = identity/derived 판정의 유일한 근거).
+  - **`projectCellsToPhys(cells, frame)`(~3952)** — 구 `overlayCellsToPhysMap`의 대체. `getCellFromVisualCoords` → `getPhysicalCoords`를 **소스 프레임을 씌운 채** 호출한다. `loadExistingMap` 셀 루프와 **같은 함수·같은 인자 순서**이며 다른 점은 규격을 소스 메타에서 읽는다는 것뿐 — **오버레이 전용 기하식은 0줄**이다.
+  - `pushFailedOverlay`(~3971) — 실패도 목록 행으로 남긴다(같은 소스 중복은 갱신).
+  - 소스 읽기: `OVERLAY_CELL_LIMIT=2000`(~3992, 메인 로드와 동일 상한) `fetchTableSchemaCached`(~3995) `deriveMapBinding(schema)`(~4010, 서버 `derive_table_binding` 규약을 `/tables/{t}/schema`에서 유도) `buildKeyFilters(keyColumns, mapKey)`(~4027, 서버 `build_key_filters`와 동일 — 마지막 컬럼이 나머지 흡수).
+  - `probeAlignDeclaration(...)`(~4055, GET `/api/maps/overlay?…&limit=1`) — **좌표가 아니라 `align_applied.origin` 한 필드만** 읽는 계측 보정 선언 관문. 404/405만 "선언 경로 없음"(null), 그 외 실패는 throw.
+  - `addOverlayLayer(sourceTable, sourceKey, targetOverride)`(~4074) — **메인 로드와 코드 경로 완전 분리**(불변식 ~4070–4073). 흐름: ① 선언 probe → ② 바인딩 유도 → ③④ `Promise.allSettled`로 셀 + 소스/타깃 메타 병렬 조회(셀 실패와 규격 실패를 다른 사유로 분리) → ⑤ 프레임 확정 → ⑥ `cols×rows` 호환성 관문 → ⑦ 정렬 요약 + 격자 밖 셀 카운트. 명명된 실패 status **6종**: `align_unconfirmed` `align_override_declared` `meta_unavailable` `binding_unavailable` `align_unavailable` `no_data`(+ 스키마·셀 조회 IO 실패는 일반 `error`).
+  - `removeOverlayLayer`(~4265) `toggleOverlayLayer`(~4272) `clearOverlayLayers`(~4281).
+  - `overlayGeomSig`(~4294) / `currentGeomSignature`(~4296) / `syncOverlayGeometry`(~4313, 서명 변경 시 `rawCells`+`o.frame`에서 재투영, 렌더에서 훅 ~1637). ✅ **[QA C7 해소]** 서명이 `cols|rows|startX|startY|yInvert|rotation|side` + **물리 6종(`phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin`)**을 담는다. 단 소스 메타가 완비되면 재투영은 항등이라, 이 6종이 실제로 일하는 곳은 **물리 규격 미등록 폴백 경로**뿐이다.
+  - `overlayAlignChip(o)`(~4336) — 정렬 상태 칩. 판정은 **`align.origin`으로만** 한다(rotation/flip/offset으로 판단 금지 — y반전·START만 다른 보정을 "무보정"으로 오표시한다).
+  - `importOverlayToGrid(id)`(~4362) — 유일한 의도적 교차: 오버레이 셀을 `gridData`로만 가져온다(**서버 쓰기 없음**, `isProtectedFCell` 존중, 웨이퍼 밖 셀 스킵, 정체성 불변). `ensureLegendValues`(~4418)는 **로컬 legend 캐시만** 갱신한다(Push 전 서버 무접촉).
+  - `renderOverlayList`(~4433) `handleAddOverlayClick`(~4487) `addOverlayForSource(sourceTable, lot, slot)`(~4520) `listOverlayLayers`(~4527) — 뒤 둘은 `transfer_plan.js`에 넘기는 컨트롤러 표면(~296–302). 세션 저장·복원에 `overlayLayers`+`overlayGeomSig` 포함(~3516/3589).
+  - **오버레이 해제 지점 3곳**: 맵 로드 `loadExistingMap`(~2545, 토스트) · **테이블 전환 `switchTable`(~814, 토스트 — `251dbfd` 신설)** · 프레임 진입 `openMapFrame`(~3765, 무음). ⚠️ `251dbfd` 이전에는 **테이블 전환에서 해제되지 않았고**, 남아 있던 오버레이의 `가져오기`가 이전 테이블 값을 새 테이블에 써 넣을 수 있었다.
+- [M2-v2] 전사 계획 배선: `initTransferPlan({...})`(~277, import ~6) + `notifyMapContext`(~821/2847/3102/3796–3820) `notifyLegendChanged`(~2110/2142/2342) `notifyPaintCounts`(~1513). rect 영역 선택 모드는 **전면 폐기**(값 페인팅이 정본 — 코드 부재).
 
 ### `transfer_plan.js` (~1,405줄) — [M2-v2] 전사 계획 사이드바 (map_editor.html에서 소비)
 **「계획 = 지금 열어 편집 중인 그 맵」.** 계획 정체성은 `(ref_table, map_key)`이며 `plan_id`도 계획 맵 사본도 없다. 스타일은 `transfer_plan.css`. (구 M1 `bonding_plan.js`/`.css`는 `8e34804`에서 **삭제**됐다.)
@@ -560,7 +571,8 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 5. **레이어링 조작**: 소스 모달/Pin → `/tables/{t}/cells/*` 라우트 → `crud.delete_cell_source_batch`/`set_cell_manual_priority_batch` → `compute_priority_value` 재계산 → WS 반영.
 6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 `reload_local_process_cache` → `models.refresh_dynamic_models(engine)`(싱글턴·ORM·**신규 테이블 물리 CREATE** — 1차 DDL 소유자, outbox 발화보다 선행) → SYSTEM_RELOAD outbox → 워커들 `reload_worker_process_cache` + `refresh_dynamic_models`(게이트+checkfirst로 무해한 보충 안전망). 직접 파일 편집 시엔 `config_watcher`가 동일 CREATE 수행. graph 워커도 배치 내 SYSTEM_RELOAD 감지로 매핑·테이블 리로드(이슈 #8 해소).
 7. **맵 에디터**: `loadExistingMap` → GET `/tables/{t}/data`(REST) → 편집 → `pushMapData` → PUT `/data/updates`. 프리셋은 `/map-presets` CRUD. 페인트 잠금은 기동 시 GET `/api/maps/paint-rules` → `applyPaintLockConfig` → 전 편집 경로가 `isProtectedFCell` 단일 관문 통과. (WS 미사용)
-   - **[M2] 오버레이(맵 인프라 — 계획 전용 아님)**: `handleAddOverlayClick`/`addOverlayForSource` → `addOverlayLayer` → GET `/api/maps/overlay?target_table&target_key&sources` → `map_overlay.get_overlay` → 소스별 `resolve_align`(선언 > 메타 유도 > identity) + `make_frame_transform`(소스 프레임 → 물리 → 타깃 프레임, `_frame_phys_params`가 rot 90/270 피치 스왑·back offset 부호 담당) → 타깃 프레임 좌표 `overlays[]` → 클라 `overlayCellsToPhysMap`(**재변환 없음**) → 캔버스 마커. `importOverlayToGrid`만 `gridData`로 넘어온다(서버 쓰기 없음). ⚠️ 이 경로는 **클라 단일 변환 구현으로 전환 진행 중**이다.
+   - **[7d931dc] 오버레이(맵 인프라 — 계획 전용 아님) — 변환은 클라 단일 구현**: `handleAddOverlayClick`/`addOverlayForSource` → `addOverlayLayer` → ① GET `/api/maps/overlay?…&limit=1`(**좌표가 아니라 `align_applied.origin`만** 읽는 보정 선언 관문) → ② GET `/tables/{src}/schema`(`deriveMapBinding`) → ③④ GET `/tables/{src}/data`(**원본 좌표**) + `wafer_map_metadata` 소스/타깃 2건 병렬 → ⑤ `frameFromMeta`로 프레임 확정(부재 시 현재 화면 = identity 폴백) → ⑥ `cols×rows` 관문 → ⑦ `projectCellsToPhys`(소스 프레임 → 물리 키) → 캔버스 마커. 화면 규격이 바뀌면 `syncOverlayGeometry`가 `rawCells`에서 재투영. `importOverlayToGrid`만 `gridData`로 넘어온다(서버 쓰기 없음).
+     - **서버 경로는 삭제되지 않았다** — `map_overlay.get_overlay`(`resolve_align` + `make_frame_transform` + `_frame_phys_params`)는 엔드포인트에서 그대로 살아 있고 `test_map_overlay.py`가 계약을 지킨다. 바뀐 것은 **맵 에디터가 그 좌표를 소비하지 않는다**는 것뿐이다. `transfer_plan.py`는 `map_overlay`의 **바인딩·config 헬퍼만** 쓰고(`resolve_binding`/`build_key_filters`/`load_overlay_config`), `bonding_plan.py`는 `map_overlay`를 **import하지 않는다**(자체 `make_align_transform` 보유 — A2 항목이 그 사본이다).
    - **[M2-v2] 전사 계획(계획 = 그 맵 자체)**: 맵 로드 → `notifyMapContext` → `transfer_plan.js`가 `stage_of_table` 역인덱스로 stage 유도 → GET `/api/transfer-plan/{stages,source-summary}` → DOE 편집(값 페인팅) → PUT `/tables/map_doe|map_doe_source/data/updates` + `pruneScoped`. **prune 권한은 `adoptServerDoe` 한 지점에서만** 서버본 채택과 원자적으로 획득한다. 검증은 GET `/api/transfer-plan/validate?ref_table=&map_key=` → `status: ok|warnings|unverified`.
 8. **그래프 자동 승격**: `apply_batch_updates`의 outbox 발화 → `run_graph_materializer_loop`(keyset 커서) → `materialize_events` → `attach_col_sources`(provenance=식별 컬럼 winner 최저 서열) → `extract_graph_items` → 노드/엣지 UPSERT + `_retarget_stale_edges` → 커서 전진. 백필은 POST `/api/graph/sync` → `execute_manual_sync` → `resync_table`.
 9. **그래프 조회/추적**: index 그리드 선택 → `openTraceForSelection`(`composeIdentity` 시드) → `trace.html` `runTrace` → POST `/graph/trace`(`_expand_graph_subgraph` 공용 BFS) → 그룹+타임라인 렌더. 뷰어는 `graph.html` `explore` → GET `/graph/neighbors`. 양방향 크로스링크(`?label=&identity=`).

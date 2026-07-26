@@ -53,8 +53,11 @@ graph TD
 
 ## 3. 공정 데이터 통합성 (Data Integrity)
 
+> 🗄️ **아래 "각 데이터 행에 스냅샷" 서술은 초기 설계이며 현재 유효하지 않습니다.** 셀(행) 레벨 `grid_metadata` 컬럼은 **폐기 스킴**입니다 — 일부 셀만 수정해 Push하면 같은 맵 안에서 메타가 꼬이는 문제 때문에 **맵 헤더 전용 테이블 `wafer_map_metadata`**로 이관됐습니다([architecture_and_management §2](./architecture_and_management.md)). 나아가 사용자 확정 규칙(2026-07-26)에 따라 **정렬의 유일한 기준은 `wafer_map_metadata`**이며, 셀 레벨 컬럼은 정렬 근거로 쓰지 않습니다([MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)). `loadExistingMap`에 셀 레벨 폴백 코드가 남아 있으나 어떤 맵 테이블도 그 컬럼을 스키마에 노출하지 않아 라이브에서는 사문입니다.
+> 아래 문단은 **스냅샷되는 필드 목록과 역복원(inverse restore)의 원리**를 설명하는 부분만 유효하며, 그 저장 위치는 `wafer_map_metadata` 행의 `grid_metadata` payload 컬럼입니다.
+
 * **메타데이터 동기화 (`grid_metadata`)**:
-  * 맵을 저장할 때, 각 데이터 행에는 저장 당시의 격자 설정 스냅샷(`grid_cols`, `grid_rows`, `grid_start_x`, `grid_start_y`, `grid_y_invert`, `rotation`, `side`)이 JSON 컬럼인 `grid_metadata` 형태로 함께 영속화됩니다.
+  * 맵을 저장할 때, 저장 당시의 격자 설정 스냅샷(`grid_cols`, `grid_rows`, `grid_start_x`, `grid_start_y`, `grid_y_invert`, `rotation`, `side`)이 JSON 형태로 함께 영속화됩니다. *(초기 설계에서는 각 데이터 행의 컬럼이었고, 현재는 `wafer_map_metadata` 테이블의 맵 단위 행입니다.)*
 * **무결한 복원 (Inverse Restore)**:
   * 저장된 데이터를 다시 로드할 때, 우선적으로 `grid_metadata`를 읽어 캔버스의 형상과 회전 슬롯을 세팅합니다.
   * 그리고 데이터베이스에 시각 좌표로 기록되어 있던 `(x, y)` 값들을 저장 당시의 회전/반전 메타데이터를 역으로 적용하여 **물리 좌표 `(xp, yp)`로 디코딩**한 뒤 `gridData`에 안전하게 배치합니다.

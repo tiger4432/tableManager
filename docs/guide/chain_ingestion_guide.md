@@ -19,7 +19,9 @@
 
 맵퍼 스크립트는 `server/mappers/` 디렉토리 하위에 작성되며, 가공 실행 시점에 SQLAlchemy 데이터베이스 세션(`db: Session`) 객체를 인자로 전달받아 직접 자유로운 SQL 쿼리 및 ORM 조작을 수행할 수 있습니다.
 
-### [calculate_shortage.py](file:///c:/Users/kk980/Developments/assyManager/server/mappers/calculate_shortage.py)
+### `calculate_shortage.py` (예제 — 저장소에 없는 파일입니다)
+
+> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `production_mapper.py.sample` 하나뿐이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
 ```python
 import logging
 from sqlalchemy.orm import Session

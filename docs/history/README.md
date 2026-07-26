@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **204개** 이력. (거버넌스 규칙 #4)
+> 총 **208개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-26 22:58** — [Switch Table Clears Overlays Metadata Alignment Truth](./20260726_225809_switch_table_clears_overlays_metadata_alignment_truth.md)
+- **2026-07-26 22:53** — [Overlay Geometry Unified Into Client](./20260726_225311_overlay_geometry_unified_into_client.md)
+- **2026-07-26 22:41** — [Agent Output Language Rule](./20260726_224153_agent_output_language_rule.md)
+- **2026-07-26 21:51** — [Config Sample Repair And Test Isolation](./20260726_215155_config_sample_repair_and_test_isolation.md)
 - **2026-07-26 20:43** — [M2 V2 Plan As Map Redesign](./20260726_204344_m2_v2_plan_as_map_redesign.md)
 - **2026-07-26 17:04** — [Universal Map Overlay And Transfer Plan M2](./20260726_170434_universal_map_overlay_and_transfer_plan_m2.md)
 - **2026-07-26 16:46** — [Large File P2 Checkpoint Resume And Hash Dedup](./20260726_164640_large_file_p2_checkpoint_resume_and_hash_dedup.md)

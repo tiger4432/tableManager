@@ -492,6 +492,10 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 
 > **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 선언 부재는 실패가 아니며 identity로 붙습니다. 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
+> ⚠️ **위 표는 서버 엔드포인트(`/api/maps/overlay`) 기준입니다.** `7d931dc` 이후 **맵 에디터 클라는 이 좌표를 소비하지 않고 변환을 자체 수행**하며, 이 엔드포인트는 **`align_applied.origin`을 읽는 보정 선언 관문**으로만 호출합니다. 실무적 귀결 두 가지:
+> - **`align_overrides`를 선언하면 맵 에디터 오버레이는 그리기를 거부합니다**(`align_override_declared`). 현 단계는 보정을 적용하지 않으므로, 조용히 무시하는 대신 명시 실패합니다.
+> - **`by_eqp` 분기는 제거 예정입니다.** 사용자 확정 규칙(2026-07-26)상 계측 결과도 `wafer_map_metadata`에 기록하므로 별도 오버라이드 레이어를 두지 않습니다 → [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md). **정렬을 켜는 올바른 방법은 오버라이드 선언이 아니라 소스·타깃 맵의 메타 등록입니다.**
+
 ### 5.8-ter 기능별 필요 테이블 체크리스트
 
 > **바인딩 config는 `table_config.json`에 선언된 테이블만 해석합니다.** 미선언 테이블을 가리키는 바인딩은 조용히 죽지 않고 해당 역할이 `missing`으로 표면화됩니다(`bonding_plan._resolve_model_columns`). 그래서 기능을 켜는 순서는 항상 **① `table_config.json`에 테이블 선언 → ② 바인딩 config의 `table`/`columns`를 그 이름에 맞춤**입니다.

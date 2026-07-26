@@ -1,6 +1,6 @@
 # 🤖 assyManager 에이전틱 운영 환경 (Agentic Environment)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | 조직 구조(총괄 + 2 PM) 반영. 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md), 각 PM 헌장은 [server_pm](../prompts/server_pm.md)·[client_pm](../prompts/client_pm.md). 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | 조직 구조(총괄 + 2 PM) 반영. 개발·문서 갱신 규율은 [CONTRIBUTING.md](./CONTRIBUTING.md), 각 PM 헌장은 [server_pm](../prompts/server_pm.md)·[client_pm](../prompts/client_pm.md). 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md).
 
 본 프로젝트는 각 분야의 전문성을 갖춘 AI 에이전트들이 상호 유기적으로 협업하는 **에이전틱 지능형 프로젝트**입니다. 본 문서는 시스템을 관리하고 고도화하는 에이전트들의 구성과 협업 규약을 설명합니다.
 
@@ -45,6 +45,18 @@
 
 ### C. 환경 무결성 (Environment Integrity)
 Conda 환경(`assy_manager`)에서 검증되지 않은 코드는 절대 커밋하거나 보고하지 않습니다. 윈도우 DLL 충돌 및 패키지 정합성을 에이전트 선에서 항시 체크합니다.
+
+### D. 산출 언어 규약 (사용자 지시 2026-07-26 · `6ac2ac9`)
+**에이전트가 산출하는 텍스트는 영어로 씁니다.** 기준은 "누가 읽는가"입니다 — 에이전트가 읽는 것은 영어, 사람이 읽는 것은 한국어.
+
+| 영어 | 한국어 유지 |
+|---|---|
+| `agent_workspace/reports/**` 보고서 | 사용자에게 직접 보이는 **UI 문자열·토스트·에러 문구** |
+| 코드에 **새로 쓰거나 수정하는 주석** | **`docs/**` 프로젝트 문서**(사용자가 읽는 산출물) |
+| 서브에이전트 지시서·메시지 | 기존 주석의 일괄 번역은 하지 않음(**건드리는 줄만** 영어로) |
+| 커밋 메시지 | |
+
+각 에이전트의 교훈 파일(`agent_workspace/memory/*.md`) 공통 절에 같은 규약이 실려 있으며, 착수 시 Pre-Flight로 로드합니다.
 
 ---
 

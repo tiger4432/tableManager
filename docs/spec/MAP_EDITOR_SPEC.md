@@ -1,8 +1,8 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
-> §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. §5는 **변경 예정 구간**입니다(오버레이 변환 클라 일원화 진행 중).
+> §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
 본 문서는 `assyManager` 프로젝트의 2세대 격자 맵 에디터([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js))에 구현된 모든 프론트엔드 자바스크립트 함수들의 설계 규격, 변환 공식 및 상세 API 레퍼런스를 정리합니다.
 
@@ -286,23 +286,84 @@ sequenceDiagram
 
 ## 5. 범용 맵 오버레이 (Universal Map Overlay) — 정렬 계약
 
-> **⚠️ 변경 예정** — 사용자 지시로 **오버레이 변환을 클라 단일 구현으로 일원화**하는 작업이 진행 중입니다(2026-07-26). 아래는 `da65a87` 시점의 **현재 상태 기술**이며, 특히 "서버가 정렬된 좌표를 내려준다"는 부분이 바뀝니다. 목표 형태는 `소스 원본(x,y) --[소스 자신의 메타 프레임]--> 물리 좌표 --[타깃의 현재 화면 컨트롤]--> 셀`이고, 서버는 **계측 보정값 `(dx, dy, rot)`만** 내려줍니다. 세부 함수 시그니처를 확정 계약으로 인용하지 마십시오.
-
 오버레이는 **계획 전용 기능이 아니라 맵 인프라**입니다 — 임의의 맵을 임의의 맵 위에, map meta가 달라도 겹칩니다. 계획 UI는 이 능력의 소비자 중 하나일 뿐입니다.
 
-### 5.1 정렬(align) 결정 규율 — 총괄 고정 계약
+> **읽는 순서**: §5.0이 도메인 규칙(무엇이 정렬의 근거인가), §5.1이 **클라 파이프라인**(현재 화면에 그려지는 것), §5.2가 **서버 계약**(엔드포인트는 살아 있고 여전히 정렬된 좌표를 내려줍니다 — 다만 맵 에디터가 그 좌표를 더 이상 소비하지 않습니다).
+
+### 5.0 정렬의 유일한 기준은 `wafer_map_metadata`다 (사용자 확정 2026-07-26 · `251dbfd`)
+
+```
+맵 데이터를 담는 모든 테이블(defect / EDS / DT / bonding / core …)은 메타 등록이 전제다.
+정렬은 소스·타깃 메타의 델타에서 유도한다. 그 외의 정렬 근거는 두지 않는다.
+```
+
+- **미등록은 정상 상태가 아니라 누락입니다.** "메타가 없으면 identity"는 규칙이 아니라 **폴백**이며, 폴백이 발동했다는 사실 자체가 등록 누락의 신호입니다.
+- **계측 결과(DEFECT WF로 측정한 어긋남)도 메타에 기록합니다** — 별도 오버라이드 레이어를 두지 않습니다. 그래서 `align_overrides.by_eqp` 분기는 **제거 예정**입니다(보드 결정, 폐기 범위는 착수 시 확인).
+- **셀 레벨 `grid_metadata` 컬럼은 폐기 스킴입니다** — 정렬 소스로 문서화하지도, 새로 구현하지도 마십시오.
+  > ⚠️ 이름이 겹칩니다. 폐기 대상은 **맵 데이터 행마다 붙던 `grid_metadata` 컬럼**이고, `wafer_map_metadata` **테이블의 동명 payload 컬럼은 정본**입니다([architecture_and_management §2](../map_editor/architecture_and_management.md)). `loadExistingMap`에 셀 레벨 폴백 코드가 아직 남아 있으나(`client2/src/map_editor.js:2594-2604`), 어떤 맵 테이블도 `/tables/{t}/schema`에 `grid_metadata`를 노출하지 않아 라이브에서는 **사문**입니다.
+
+> **🔴 열린 격차(규칙과 현실의 충돌)** — `bonding_map`의 distinct 맵 키 **약 39만 개**에 대해 `wafer_map_metadata` 등록은 **9행**입니다. 즉 실사용의 거의 전부가 "규격 미등록 → 현재 화면 규격으로 해석"으로 **조용히** 떨어집니다. 규칙상 이것은 누락이므로, 그 조용함 자체가 계약 위반입니다. 해소 트랙은 보드의 **M3**(맵 메타 자동 등록)에서 추적합니다 — 계획·우선순위는 [PROJECT_STATUS](../process/PROJECT_STATUS.md)가 정본이며 여기서 되풀이하지 않습니다.
+
+### 5.1 클라 파이프라인 — 변환은 클라 단일 구현이다 (`7d931dc`)
+
+```
+소스 원본 (x,y) ─[소스 자신의 메타 프레임]─▶ 물리 좌표 ─[타깃의 현재 화면 컨트롤]─▶ 셀
+```
+
+**메인 맵 로드는 이 파이프라인의 특수 케이스**입니다(소스 메타 == 현재 화면 컨트롤). 그래서 **오버레이 전용 변환 코드는 존재하지 않습니다.**
+
+- **프레임 창(frame window)** — 변환 함수들이 규격을 DOM에서 읽는 지점은 `getTransformedPhysicalConfig`·`getWaferBoundingBox` **두 곳뿐**이며, 이 두 곳이 `physNum`/`gridDimNum`을 경유합니다. `withPhysFrame(frame, fn)`이 `physFrameOverride`를 잠깐 갈아끼운 채 콜백을 돌립니다. **동기 전용**입니다(내부 `await` 금지 — `try/finally` 복원이 프레임 경계를 넘어 새면 조용한 오답이 됩니다).
+- **투영은 메인 로드와 같은 두 줄**입니다 — `projectCellsToPhys`는 `getCellFromVisualCoords` → `getPhysicalCoords`를 소스 프레임을 씌운 채 호출할 뿐, 새 기하식을 쓰지 않습니다.
+- **물리 키는 화면 조작에 불변**입니다. `gridData`가 이미 물리 키(`${px}_${py}`)로 저장되고 렌더가 매 프레임 `(c,r) → getPhysicalCoords → coordKey`로 되짚으므로, 사용자가 회전·면·치수를 어떻게 돌리든 **메인 맵과 오버레이가 같은 규칙으로 함께 움직입니다**.
+- **재투영 규율** — 레이어는 `rawCells`(소스 원본 좌표) + `frame`(그 좌표가 사는 프레임)을 동반 보관하고, `currentGeomSignature`가 바뀌면 `syncOverlayGeometry`가 원본에서 다시 투영합니다. 서명에는 **물리 파라미터 6종(`phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin`)이 반드시 포함**됩니다 — 소스 메타에 물리 항목이 빠져 현재 화면 값으로 폴백하는 경로에서는 이 재투영이 실제로 일해야 하기 때문입니다(이전 C7 결함 해소).
+- **정렬 여부 판정은 `align.origin`으로만** 합니다. `origin`은 `frameAxesKey`(회전·면·y반전·START·치수·물리 6종 = **축 전부**) 비교로 산출합니다. `rotation`/`flip`/`offset` 값으로 판단하면 y반전·START만 다른 정상 보정을 "무보정"으로 오표시합니다.
+- **격자 규격 호환성 관문** — 소스·타깃의 `cols×rows`가 다르면 `align_unavailable`로 **명시 거절**합니다(물리 좌표는 정준 격자의 인덱스라, 치수가 다르면 같은 인덱스가 같은 다이가 아닙니다).
+- **실패해도 목록에 행으로 남깁니다**(조용한 소실 금지). 각 실패 행은 재시도(`↻`) 버튼을 유지합니다.
+
+**실패 상태(status) 6종** — 전부 "그리지 않는다"입니다.
+
+| status | 뜻 |
+|---|---|
+| `align_unconfirmed` | 계측 보정 **선언 여부를 확인하지 못했다**(probe가 404/405 외 사유로 실패). 선언을 무시한 채 겹치면 조용한 오답이므로 거절 |
+| `align_override_declared` | 서버에 보정이 **선언돼 있다**. 현 단계(기하 일원화)는 보정을 적용하지 않으므로 거절 |
+| `meta_unavailable` | 소스 또는 타깃 **규격 조회 자체가 실패**했다(≠ 미등록). 규격을 모르는 채로 겹치면 좌표가 조용히 어긋남 |
+| `binding_unavailable` | 소스 테이블의 좌표 바인딩을 스키마에서 유도할 수 없다(좌표 컬럼명이 관례 밖 — `dt_log`의 `tx/ty` 등. 선언이 서버 config에만 있음) |
+| `align_unavailable` | 격자 규격 불일치 등 **변환을 계산할 근거가 없다** |
+| `no_data` | 겹칠 셀이 0건 |
+
+이 6종 외에 **일반 `error`**가 있습니다 — 소스 스키마 조회 실패, 셀 조회 실패처럼 사유가 명확한 IO 실패입니다. 명명된 6종과 구분해 두는 이유는, 위 6종이 전부 **"근거가 없으면 그리지 않는다"는 판단**의 결과인 반면 `error`는 단순 실패이기 때문입니다.
+
+> **`무보정`(identity)은 실패가 아닙니다** — 칩에 별도 표기되며, 소스 메타가 없어 현재 화면 규격으로 해석한 경우 툴팁에 그 사실이 드러납니다. §5.0의 규칙에 비추면 이 표기는 "정상"이 아니라 **등록 누락의 알림**으로 읽어야 합니다.
+
+**"확인하지 못했다"와 "선언이 없다"를 절대 같은 값으로 다루지 마십시오** — `fetchGridMetaFor`·`probeAlignDeclaration` 둘 다 **404/405만** "없다"(null)로 읽고 나머지는 throw합니다. `fetchPaintRules`가 세운 규약과 동일합니다(§5.4).
+
+### 5.2 서버 계약 — 엔드포인트는 살아 있다
+
+**`/api/maps/overlay`와 `server/map_overlay.py`는 삭제되지 않았고 여전히 정렬된 좌표를 제공합니다.** 바뀐 것은 **맵 에디터가 그 좌표를 더 이상 소비하지 않는다**는 것뿐입니다. 현재 소비자:
+
+| 소비자 | 무엇을 쓰는가 |
+|---|---|
+| `GET /api/maps/overlay` (`main.py`) | `map_overlay.get_overlay` — 정렬 좌표 `overlays[]` 전체 |
+| 맵 에디터 클라 | **`align_applied.origin` 한 필드만** — `limit=1` probe로 계측 보정 선언 유무를 확인하는 관문 용도. 좌표는 쓰지 않음 |
+| `server/transfer_plan.py` | `resolve_binding` / `build_key_filters` / `load_overlay_config` — **바인딩·config 헬퍼만**(정렬 함수 아님) |
+| `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.4) |
+| `server/tests/test_map_overlay.py` | 엔드포인트 계약 회귀 |
+
+> ℹ️ `server/bonding_plan.py`는 `map_overlay`를 **import하지 않습니다** — 자체 정렬 구현(`normalize_align`/`make_align_transform`, `bonding_plan_config.json`의 `sources[].align`)을 가진 **별개 경로**입니다. 두 모듈은 같은 종류의 변환을 각자 구현하고 있으며, 아래 A2가 바로 그 사본에 관한 항목입니다.
+
+**서버의 정렬 결정 규율**(엔드포인트 계약 — 클라 파이프라인과 별개):
 
 ```
 ① 선언(map_overlay_config.json의 align_overrides: by_eqp → default) 있으면 그대로 적용   origin = declared|default
 ② 없으면 소스·타깃 wafer_map_metadata의 rotation/side 차이에서 유도                     origin = derived
-③ 유도 근거도 없으면 identity(0°)로 그대로 붙인다  ← 선언 부재는 실패가 아니다          origin = identity
+③ 유도 근거도 없으면 identity(0°)로 그대로 붙인다                                        origin = identity
 ④ 변환을 계산할 근거 자체가 없을 때만 status = align_unavailable
 ```
 
-- 클라의 정렬 상태 표시(`overlayAlignChip`)는 **`align.origin`만으로** 판정합니다.
-- `align_overrides`는 메타에서 유도 불가능한 **계측 데이터**입니다(DEFECT WF로 측정한 장비별 보정). 기하가 아니라 데이터이므로 서버에 남습니다.
+- `align_overrides`는 메타에서 유도 불가능한 **계측 데이터**로 도입됐으나, §5.0의 규칙(계측 결과도 메타에 기록)에 따라 **`by_eqp` 분기는 제거 예정**입니다.
+- 클라는 ①이 걸리면 그리지 않고 `align_override_declared`로 거절합니다(§5.1). 즉 현재 ①은 **클라 경로에서 관문일 뿐 적용 경로가 아닙니다.**
 
-### 5.2 프레임 vs 물리 좌표계 — A1이 고친 것
+### 5.3 프레임 vs 물리 좌표계 — A1이 고친 것 (서버 측)
 
 `WaferMapCoordinateTransformer.cell_to_physical`이 정의하는 **프레임(visual) → 물리(canonical)** 사상과, `PhysicalWaferEngine.is_cell_inside_wafer(c, r, cols, rows)`가 쓰는 좌표계는 **다릅니다.** 엔진은 `x_mm = (c-cc)*chip_x + off_x`로 격자 인덱스를 mm로 바꾸는데, 여기의 `(c, r)`은 **프레임** 인덱스이므로 `chip_x`도 **프레임 x축의 피치**여야 합니다.
 
@@ -317,18 +378,18 @@ sequenceDiagram
 
 구현은 `map_overlay._frame_phys_params` **한 함수에 가둬** 있습니다. `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정입니다 — `bonding_plan.py`가 같은 클래스를 엔진 없이 공유하므로 부작용을 피하기 위함입니다.
 
-> **열린 항목 A2** — `bonding_plan.py:199-204`의 선언(override) 경로는 아직 bbox 항 없는 구 산술입니다. 라이브 오버라이드 선언이 없어 **휴면**이나, 한 줄 선언하면 부활합니다.
-> **열린 항목 A3** — A1의 REST 재검증은 **미완**입니다(라이브 서버가 수정 이전 코드로 가동 중, 재기동 대기). 현재 근거는 오프라인 대조(25,760 순서쌍에서 SILENT-WRONG 84→0, LOUD_FAIL 5,596 불변)와 테스트뿐입니다.
-> **회귀 시험 규율** — 오버레이 좌표 회귀는 반드시 **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인하십시오. 40×40(`minC=0`)은 결함이 **원리적으로 발현할 수 없는** 구간입니다.
+> **열린 항목 A2 (미해소)** — `bonding_plan.py:198-204`(`make_align_transform`의 `to_canonical`)의 선언(override) 경로는 아직 bbox 항 없는 구 산술입니다. 라이브 오버라이드 선언이 없어 **휴면**이나, 한 줄 선언하면 부활합니다. `bonding_plan`은 `map_overlay`를 쓰지 않는 **별개 구현**이므로 A1 수정이 여기로 전파되지 않았습니다.
+> **✅ A3 해소 (2026-07-26, 재기동 후 REST 실측)** — 3케이스 전부 `status: ok` + `align_applied.origin: derived` + 격자 밖 셀 0건, `bonding_map/EXP1`의 `x=-1` 소멸 확인. 함정 기록: `/health`는 존재하지 않는 경로라 정적 catch-all이 **HTML을 200으로** 반환합니다 — 헬스체크 근거로 쓰지 마십시오. 응답 필드명은 `align`이 아니라 **`align_applied`**입니다.
+> **회귀 시험 규율** — 오버레이 좌표 회귀는 반드시 **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인하십시오. 40×40(`minC=0`)은 결함이 **원리적으로 발현할 수 없는** 구간입니다. 축 조합은 `chip_x≠chip_y` · rot 90/180/270 · back · `offset≠0`을 **동시에** 만족시켜야 의미가 있습니다.
 
-### 5.3 클라 측 규약
+### 5.4 클라 측 경계 규약 (메인 로드와의 분리)
 
-- **이중 변환 금지** — 서버가 이미 타깃 프레임 좌표로 내려주므로 `overlayCellsToPhysMap`은 **재변환하지 않고** 현재 격자 물리키로 배치만 합니다.
-- **메인 로드와 코드 경로 분리** — `addOverlayLayer`는 `selectedTable`·`tableSchema`·`gridData`·legend·규격·brush·메타 입력을 읽지도 쓰지도 않고 `switchTable`을 경유하지 않습니다. 유일한 의도적 교차는 `importOverlayToGrid`(오버레이 → `gridData`, **서버 쓰기 없음**, 페인트 잠금 존중)입니다.
-- **격자 규격 변경 추종** — `currentGeomSignature`(`cols|rows|startX|startY|yInvert|rotation|side`)가 바뀌면 `syncOverlayGeometry`가 원본 `rawCells`에서 물리키를 재계산합니다.
-- 실패한 오버레이도 목록에 행으로 남깁니다(조용한 소실 금지).
+- **메인 로드와 코드 경로 분리** — `addOverlayLayer`는 `selectedTable`·`tableSchema`·`gridData`·legend·규격·brush·메타 입력을 읽기만 하고 쓰지 않으며 `switchTable`을 경유하지 않습니다. 유일한 의도적 교차는 `importOverlayToGrid`(오버레이 → `gridData`, **서버 쓰기 없음**, 페인트 잠금 존중, 격자 밖 셀 제외, 정체성 불변)입니다.
+- **오버레이는 그 시점 타깃 프레임에 묶입니다** — 기준이 바뀌면 남겨두지 않고 **해제**합니다. 해제 지점은 셋입니다: 맵 로드(`loadExistingMap`) · **테이블 전환(`switchTable`)** · 프레임 진입(`openMapFrame`). 앞의 둘은 토스트로 알립니다.
+  > 테이블 전환 해제는 `251dbfd`에서 **신설**됐습니다. 그전에는 오버레이가 그대로 서 있었고 `가져오기` 버튼도 살아 있어, **이전 테이블의 값을 새 테이블에 써 넣을 수 있었습니다.** `gridData`만 비우는 것으로는 그 경로가 닫히지 않습니다.
+- 세션 저장·복원에는 `overlayLayers`와 `overlayGeomSig`가 함께 들어가고, 복원 직후 `syncOverlayGeometry`로 재투영합니다.
 
-### 5.4 페인트 잠금 (Paint Lock)
+### 5.5 페인트 잠금 (Paint Lock)
 
 잠금 선언의 **정본은 서버**(`GET /api/maps/paint-rules`)입니다 — 종전 클라 하드코딩 `'F'`를 대체했습니다. 기본은 F 잠금.
 
@@ -337,7 +398,9 @@ sequenceDiagram
 
 > **⚠️ 열린 항목 (QA v2 재검수 — 미해소)**
 > - **C4 콜드 스타트 fail-open** — "직전 값"이 페이지 로드 직후엔 기본값 `{enabled:false}`라, **첫 조회가 실패하면 잠금이 걸리지 않은 채 시작**합니다. 칩이 뜨므로 *조용하지는* 않지만 잠기지도 않습니다. 테이블 전환 시 실패하면 이전 테이블의 잠금 값이 새 테이블에 계속 적용됩니다(fail-closed 방향이라 안전하나 의미상 부정확).
-> - **C7 오버레이 기하 서명에 물리 파라미터 누락** — `currentGeomSignature`가 `cols/rows/startX/startY/yInvert/rotation/side`만 담고 `phys_*`를 담지 않습니다. 격자 치수를 바꾸지 않는 offset 변경은 웨이퍼 bbox를 옮기지만 서명이 그대로라 오버레이 좌표가 **낡은 채로 남습니다**. 기존 결함이지만 신규 `importOverlayToGrid`가 그 좌표를 `gridData`에 써 넣으면서 **표시 오류가 데이터 오염 경로로 승격**됐습니다.
+> - **~~C7 오버레이 기하 서명에 물리 파라미터 누락~~ → ✅ 해소(`7d931dc`)** — `currentGeomSignature`가 `phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin` 6종을 포함합니다. 다만 **소스 메타가 완비된 정상 경로에서는 재투영이 항등**이라 이 6종은 여분이고, **실제로 일하는 곳은 소스 물리 규격이 미등록이라 화면 값으로 폴백하는 경로**뿐입니다(§5.0의 등록 누락 문제와 같은 뿌리).
+> - **F1 물리 규격 불일치를 관문이 막지 않는다 (미해소·잠복)** — §5.1의 호환성 관문은 `cols×rows`만 비교하고, 소스·타깃의 `phys_chip_*`/`phys_offset_*` 차이는 **툴팁 문구로만** 드러납니다. 물리 좌표는 인덱스이고 그 인덱스가 어느 다이인지는 `offset/chip` 비율이 정하므로, 반 피치를 넘는 offset 차이는 **전 셀 1다이 이동**을 조용히 만듭니다(임계값에서 불연속으로 튐). 라이브 등록 9건은 계열별로 물리 규격이 같아 **현재 도달성 0**.
+> - **F2 관문의 타깃 기준이 DOM 메타 입력이다 (미해소)** — `addOverlayLayer`의 `targetKey`는 `getCurrentMapKey()`, 즉 **로드된 맵이 아니라 현재 메타 입력 필드**를 읽습니다. 맵을 로드하지 않고 입력만 바꾸면 관문이 엉뚱한 맵의 메타로 판정합니다. 로드 시점에 확정된 식별자(`loadedIdentity`)를 쓰는 것이 정답입니다.
 > - **C3 계획 규모 상한** — 클라 조회가 `limit=500`이고 절단을 로드 실패로 강등하므로, **자재 행 500 초과 계획은 영구히 저장 불가**가 됩니다(20값 × 3구간 × 10자재 = 600행이면 도달).
 > - **C6 헤더 신선도** — 초안 시각(`S.savedAt`)이 서버 시각(`S.serverSavedAt`)보다 우선해, 화면 데이터는 서버본인데 칩은 낡은 초안 시각을 표시할 수 있습니다.
 > - **C5 legend 저장 오탐** — `saveLegendToServer`가 *실패*와 *보낼 것 없음*을 같은 `false`로 반환해, 마지막 값 삭제 시 근거 없는 경고 토스트가 뜹니다.

@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -89,10 +89,10 @@ npm run build     # dist/ 생성
 | 메타/레전드 | `renderMetadataInputs`, 프리셋 `/api/map-presets`, 레전드 `localStorage`(`map_legend_{table}`) |
 | 데이터 동기화 | `loadExistingMap()`(REST pull), `pushMapData()`(REST push) |
 | **페인트 잠금** (M2) | `fetchPaintRules`(GET `/api/maps/paint-rules` — 선언 정본이 서버로 이동, 구 `'F'` 하드코딩 대체), **`isProtectedFCell`**(편집 가능 판정의 **단일 관문** — 모든 편집 경로가 여기로 수렴), `updatePaintLockIndicator`. 404/405만 "선언 없음", 네트워크·5xx는 직전 잠금 유지(**조용한 fail-open 제거**). ⚠️ 콜드 스타트(첫 조회 실패)는 아직 열린 채 시작 — QA C4 미해소 |
-| **오버레이 레이어** (M2) ⚠️ | `addOverlayLayer`(GET `/api/maps/overlay`), `overlayCellsToPhysMap`(**재변환 금지** — 서버가 이미 타깃 프레임으로 정렬), `currentGeomSignature`/`syncOverlayGeometry`, `overlayAlignChip`, `importOverlayToGrid`(오버레이 → `gridData`, 서버 쓰기 없음). **메인 로드와 코드 경로 완전 분리** — `selectedTable`·`gridData`·legend·규격·brush를 읽지도 쓰지도 않고 `switchTable`을 경유하지 않는다 |
+| **오버레이 레이어** (`7d931dc`) | **좌표 변환은 클라 단일 구현이다** — `소스 원본(x,y) →[소스 메타 프레임]→ 물리 →[현재 화면 컨트롤]→ 셀`. `addOverlayLayer`가 `/tables/{src}/data`(원본 좌표) + `wafer_map_metadata` 2건을 읽고 `projectCellsToPhys`로 투영한다. 오버레이 전용 기하 코드는 없다 — `withPhysFrame`(프레임 창)으로 규격 읽기 지점만 갈아끼운 채 메인 로드와 **같은 두 함수**를 돌린다. `currentGeomSignature`(물리 6종 포함)/`syncOverlayGeometry`가 화면 규격 변경을 추종하고, `overlayAlignChip`은 `align.origin`으로만 판정한다. `importOverlayToGrid`는 `gridData`로만 반영(서버 쓰기 없음). **메인 로드와 코드 경로 완전 분리** — `selectedTable`·`gridData`·legend·규격·brush를 쓰지 않고 `switchTable`을 경유하지 않는다. 기준이 바뀌면 오버레이는 **해제**된다(맵 로드·테이블 전환·프레임 진입 3곳) |
 
 > **정정:** 맵 에디터는 **WebSocket을 사용하지 않습니다.** REST pull/push + localStorage. 실시간 WS는 메인 그리드(`websocket.js`)에만.
-> ⚠️ **오버레이 구간은 변경 예정** — 오버레이 변환을 클라 단일 구현으로 일원화하는 작업이 진행 중입니다(사용자 지시 2026-07-26). 위 함수 시그니처를 확정 계약으로 인용하지 마십시오.
+> **오버레이와 서버의 관계(`7d931dc` 이후)**: 클라는 `GET /api/maps/overlay`를 **`limit=1` probe로만** 호출해 계측 보정 선언 유무(`align_applied.origin`)를 확인하고, **좌표는 소비하지 않습니다.** 엔드포인트와 `server/map_overlay.py`는 삭제되지 않았습니다 — 계약·실패 상태 6종은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
 ### 4.1 전사 계획 사이드바 (`transfer_plan.js`, ~1,405줄)
 
