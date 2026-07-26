@@ -274,7 +274,11 @@ def build_queries_for_event(event, ontology):
     return queries
 
 # ----------------- Manual Graph Sync CLI Spawner Support -----------------
-VIRTUAL_GRAPH_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "database", "virtual_graph.json"))
+# Routed through paths.py like ONTOLOGY_PATH above: this file is *written*
+# (save_virtual_graph), so an isolated graph worker building it from __file__
+# would overwrite the user's live virtual graph. Unset ASSY_DATA_ROOT keeps the
+# production location server/database/virtual_graph.json unchanged.
+VIRTUAL_GRAPH_PATH = os.path.abspath(os.path.join(paths.DATA_ROOT, "database", "virtual_graph.json"))
 
 def load_virtual_graph() -> dict:
     if os.path.exists(VIRTUAL_GRAPH_PATH):

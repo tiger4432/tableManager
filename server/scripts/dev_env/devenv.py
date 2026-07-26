@@ -14,19 +14,25 @@ freely. It structurally cannot reach production:
     API  127.0.0.1:8080            127.0.0.1:8081         (--port)
     graph 127.0.0.1:8090           127.0.0.1:8091         (GRAPH_SYNC_PORT)
 
-The directory watcher and the auto-update scheduler are NOT started and this
-script has no flag to start them - their 2-minute collector cron is exactly the
-churn that makes measurements irreproducible. The collector scripts themselves
-are copied in, so "the scheduler is off" is a fact about the running processes,
-not about a missing file.
+`up` starts no directory watcher and no auto-update scheduler - their 2-minute
+collector cron is exactly the churn that makes measurements irreproducible. The
+collector scripts themselves are copied in, so "the scheduler is off" is a fact
+about the running processes, not about a missing file.
+
+An ingestion drill does need a watcher, so that is a SEPARATE verb
+(`watcher-up`) and `up` stays churn-free. The watcher runs behind an isolation
+gate that refuses to start unless the running process itself proves it is
+isolated - see scripts/dev_env/iso_watcher.py.
 
 Commands:
-    bootstrap   copy config/ + ingestion_workspace/ into dev_env/ (skips raws/archives)
-    snapshot    build or refresh the assy_qa snapshot database
-    up          bootstrap if needed, then start the isolated processes
-    down        stop them
-    status      what is running, what it points at
-    env         print the environment variables (for running one-off scripts)
+    bootstrap    copy config/ + ingestion_workspace/ into dev_env/ (skips raws/archives)
+    snapshot     build or refresh the assy_qa snapshot database
+    up           bootstrap if needed, then start the isolated processes
+    down         stop them (including the watcher, if one is running)
+    status       what is running, what it points at
+    env          print the environment variables (for running one-off scripts)
+    watcher-up   start a directory watcher against the ISOLATED env only
+    watcher-down stop it
 """
 import os
 import sys
@@ -41,7 +47,11 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file_
 SERVER_DIR = os.path.join(REPO_ROOT, "server")
 DEV_ROOT = os.path.join(REPO_ROOT, "dev_env")
 PID_FILE = os.path.join(DEV_ROOT, "pids.json")
+# The watcher is a separate verb, so it gets a separate ledger: `up --force`
+# must not be able to forget a running watcher.
+WATCHER_PID_FILE = os.path.join(DEV_ROOT, "watcher_pid.json")
 LOG_DIR = os.path.join(DEV_ROOT, "logs")
+ISO_WATCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iso_watcher.py")
 
 API_PORT = int(os.getenv("ASSY_DEV_API_PORT", "8081"))
 GRAPH_PORT = int(os.getenv("ASSY_DEV_GRAPH_PORT", "8091"))
@@ -152,14 +162,44 @@ PROCESSES = [
 ]
 
 
-def _read_pids():
-    if not os.path.exists(PID_FILE):
+def _read_pids(path=PID_FILE):
+    if not os.path.exists(path):
         return {}
     try:
-        with open(PID_FILE, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
+
+
+def _write_pids(path, pids):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(pids, f, indent=2)
+
+
+def _stop_recorded(path, label):
+    """Stop everything recorded in a pid file. Returns how many were alive."""
+    pids = _read_pids(path)
+    stopped = 0
+    for name, pid in pids.items():
+        if not _alive(pid):
+            log(f"{name} (pid {pid}) already gone")
+            continue
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True)
+            else:
+                os.kill(pid, signal.SIGTERM)
+            log(f"stopped {name} (pid {pid})")
+            stopped += 1
+        except Exception as e:
+            log(f"failed to stop {name} (pid {pid}): {e}")
+    if pids and os.path.exists(path):
+        os.remove(path)
+    elif not pids:
+        log(f"no {label} recorded as running")
+    return stopped
 
 
 def _alive(pid):
@@ -195,36 +235,81 @@ def cmd_up(args):
         if name == "api":
             time.sleep(2.5)
 
-    with open(PID_FILE, "w", encoding="utf-8") as f:
-        json.dump(pids, f, indent=2)
+    _write_pids(PID_FILE, pids)
 
     print()
     log(f"API      http://127.0.0.1:{API_PORT}")
     log(f"database {QA_DB_URL}")
     log(f"data     {DEV_ROOT}")
     log("watcher + auto-update scheduler: NOT started (no churn)")
+    log("need a watcher for an ingestion drill? 'watcher-up' (gated)")
     return 0
 
 
 def cmd_down(args):
-    pids = _read_pids()
-    if not pids:
-        log("nothing recorded as running")
-        return 0
-    for name, pid in pids.items():
-        if not _alive(pid):
-            log(f"{name} (pid {pid}) already gone")
-            continue
-        try:
-            if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                               capture_output=True)
-            else:
-                os.kill(pid, signal.SIGTERM)
-            log(f"stopped {name} (pid {pid})")
-        except Exception as e:
-            log(f"failed to stop {name} (pid {pid}): {e}")
-    os.remove(PID_FILE)
+    n = _stop_recorded(WATCHER_PID_FILE, "watcher")
+    n += _stop_recorded(PID_FILE, "process")
+    return 0
+
+
+# --------------------------------------------------------------- watcher-up
+def cmd_watcher_up(args):
+    """Start a directory watcher that CANNOT be pointed at production.
+
+    The gate is not implemented here on purpose: a check made by this process
+    proves nothing about the process that will do the ingesting. It lives inside
+    iso_watcher.py and runs there, in the watcher's own interpreter, against its
+    own resolved paths and its own opened database session.
+
+    We do run it once in --check-only mode first, so a refusal lands in the
+    operator's terminal instead of disappearing into a log file. The real
+    process re-runs the whole gate itself - that is the load-bearing one.
+    """
+    if not os.path.isdir(DEV_ROOT):
+        log(f"{DEV_ROOT} missing - run 'bootstrap' first "
+            "(a watcher needs an isolated workspace to watch)")
+        return 1
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    running = {n: p for n, p in _read_pids(WATCHER_PID_FILE).items() if _alive(p)}
+    if running and not args.force:
+        log(f"watcher already running: {running}. "
+            "Use 'watcher-down' first, or 'watcher-up --force'.")
+        return 1
+
+    env = isolated_env()
+    log("running the isolation gate...")
+    rc = subprocess.call([sys.executable, ISO_WATCHER, "--check-only"],
+                         cwd=SERVER_DIR, env=env)
+    if rc != 0:
+        log(f"isolation gate REFUSED (exit {rc}) - watcher NOT started")
+        return rc
+
+    logfile = os.path.join(LOG_DIR, "watcher_stdout.log")
+    f = open(logfile, "ab")
+    proc = subprocess.Popen([sys.executable, ISO_WATCHER],
+                            cwd=SERVER_DIR, env=env, stdout=f, stderr=f)
+    _write_pids(WATCHER_PID_FILE, {"watcher": proc.pid})
+    log(f"started watcher pid={proc.pid}  -> {logfile}")
+
+    # The child re-runs the gate; if it refuses, it exits before watching
+    # anything. Confirm it actually survived rather than reporting a pid that
+    # is already gone.
+    time.sleep(3.0)
+    if not _alive(proc.pid):
+        log(f"watcher exited immediately (gate refused in the real process?) "
+            f"- see {logfile}")
+        if os.path.exists(WATCHER_PID_FILE):
+            os.remove(WATCHER_PID_FILE)
+        return 1
+
+    log(f"watching  {os.path.join(DEV_ROOT, 'ingestion_workspace')}")
+    log(f"log file  {os.path.join(DEV_ROOT, 'watcher.log')}")
+    return 0
+
+
+def cmd_watcher_down(args):
+    _stop_recorded(WATCHER_PID_FILE, "watcher")
     return 0
 
 
@@ -237,8 +322,13 @@ def cmd_status(args):
     if not pids:
         print("processes  none recorded")
     for name, pid in pids.items():
-        print(f"processes  {name:<6} pid={pid} {'RUNNING' if _alive(pid) else 'dead'}")
-    print("never started: directory watcher, auto-update scheduler")
+        print(f"processes  {name:<7} pid={pid} {'RUNNING' if _alive(pid) else 'dead'}")
+    watcher = _read_pids(WATCHER_PID_FILE)
+    if not watcher:
+        print("processes  watcher not started (use 'watcher-up')")
+    for name, pid in watcher.items():
+        print(f"processes  {name:<7} pid={pid} {'RUNNING' if _alive(pid) else 'dead'} (gated)")
+    print("never started: auto-update scheduler")
     return 0
 
 
@@ -266,6 +356,10 @@ def main():
 
     sub.add_parser("down").set_defaults(func=cmd_down)
     sub.add_parser("status").set_defaults(func=cmd_status)
+
+    w = sub.add_parser("watcher-up"); w.add_argument("--force", action="store_true")
+    w.set_defaults(func=cmd_watcher_up)
+    sub.add_parser("watcher-down").set_defaults(func=cmd_watcher_down)
 
     e = sub.add_parser("env"); e.add_argument("--cmd-style", action="store_true")
     e.set_defaults(func=cmd_env)

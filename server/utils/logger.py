@@ -2,6 +2,17 @@ import os
 import sys
 import logging
 
+# Log files follow the data root, never this module's location. utils/ can be
+# imported before the entry point puts server/ on sys.path (main.py imports
+# utils.logger at line 19, `import paths` at line 34), so fall back the same way
+# database/crud.py does rather than silently reverting to the live tree.
+try:
+    import paths
+except ImportError:  # pragma: no cover - defensive fallback
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import paths
+
+
 class ColoredProcessFormatter(logging.Formatter):
     """
     로그 레벨 및 프로세스명에 따라 콘솔 출력 색상을 동적으로 매핑해 주는 표준 로깅 포맷터입니다.
@@ -79,9 +90,12 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     logger.addHandler(console_handler)
     
     # 2. 파일 핸들러 (ANSI 문자 없는 평문 Formatter 장착)
-    server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log_path = os.path.join(server_dir, log_filename)
-    
+    # Routed through paths.py - the single ASSY_DATA_ROOT override point - so an
+    # isolated process cannot append to the user's live server/*.log. Unset,
+    # paths.DATA_ROOT is server/, i.e. production is byte-for-byte unchanged.
+    log_path = paths.log_path(log_filename)
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
     file_handler = logging.FileHandler(log_path, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter(log_format))
     logger.addHandler(file_handler)

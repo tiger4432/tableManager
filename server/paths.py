@@ -1,17 +1,19 @@
 """Single override point for the server's **data root**.
 
 `DATABASE_URL` already makes the database swappable. This module does the same
-for the two user-owned data trees that live on disk:
+for the user-owned trees that live on disk:
 
     server/config/**                -> paths.CONFIG_DIR
     server/ingestion_workspace/**   -> paths.WORKSPACE_DIR
+    server/<process>.log            -> paths.log_path(...)
 
-Set ``ASSY_DATA_ROOT`` to relocate both. Unset (the default) resolves to
+Set ``ASSY_DATA_ROOT`` to relocate them. Unset (the default) resolves to
 ``server/`` so production behaviour is byte-for-byte unchanged.
 
     ASSY_DATA_ROOT=C:/repo/dev_env
-      -> CONFIG_DIR    = C:/repo/dev_env/config
-      -> WORKSPACE_DIR = C:/repo/dev_env/ingestion_workspace
+      -> CONFIG_DIR         = C:/repo/dev_env/config
+      -> WORKSPACE_DIR      = C:/repo/dev_env/ingestion_workspace
+      -> log_path("x.log")  = C:/repo/dev_env/x.log
 
 Why one module instead of an env var per file: ~17 modules build these paths
 independently from ``os.path.dirname(__file__)``. Each now reads from here, so
@@ -48,6 +50,19 @@ def config_path(*parts):
 def workspace_path(*parts):
     """Path inside the (possibly relocated) ingestion workspace."""
     return os.path.join(WORKSPACE_DIR, *parts)
+
+
+def log_path(filename):
+    """Path of a process log file inside the (possibly relocated) data root.
+
+    Process logs sit directly at the data root, exactly where they sat before
+    (``server/server.log``, ``server/watcher.log``, ...), so an unset
+    ``ASSY_DATA_ROOT`` keeps production's layout byte-for-byte. An isolated
+    process writes ``<ASSY_DATA_ROOT>/server.log`` instead of appending to the
+    user's live log - the file a reviewer reads to reconstruct an incident must
+    not carry a drill's lines.
+    """
+    return os.path.join(DATA_ROOT, filename)
 
 
 def describe():

@@ -22,7 +22,10 @@ if server_dir not in sys.path:
 from database.database import SessionLocal
 from database import crud, schemas
 
-log_path = os.path.join(server_dir, "watcher.log")
+# (An unused module-level `log_path = join(server_dir, "watcher.log")` lived here.
+#  Dead since the unified logger landed, and it rebuilt a log path from __file__ -
+#  the exact pattern that leaked isolated logs into the live tree. Removed rather
+#  than left as a trap; the real path comes from paths.log_path() in utils/logger.)
 
 # Inherit from unified Watcher logger parent to prevent double formatting and log separation
 logger = logging.getLogger("Watcher.DirectoryWatcher")
