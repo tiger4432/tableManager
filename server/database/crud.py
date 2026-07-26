@@ -25,6 +25,33 @@ from datetime import datetime
 
 logger = logging.getLogger("Server")
 
+# [P2-C9] 감사 로그 값 길이 상한 — 공용 상수(server/event_constants.py) 단일 정의를 공유한다.
+# crud는 server/ 상위가 sys.path에 없는 컨텍스트에서 import될 수 있으므로(플러그인 shim 등)
+# 실패 시 무제한 폴백 대신 **동일 기본값을 내장한 로컬 구현**으로 폴백한다(조용한 무상한 금지).
+try:
+    from event_constants import MAX_AUDIT_VALUE_CHARS, truncate_audit_value
+except ImportError:  # pragma: no cover - 방어적 폴백
+    import sys as _sys
+    _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from event_constants import MAX_AUDIT_VALUE_CHARS, truncate_audit_value
+
+# 값 절단 경고는 (테이블, 컬럼)별 1회만 — create_audit_log는 셀 단위 핫패스라
+# 무조건 로깅하면 대형 파일 1건이 수십만 줄의 WARNING을 쏟아 로그 자체가 병목이 된다.
+_audit_truncation_warned = set()
+
+
+def _warn_audit_truncation_once(table_name: str, col_name: str):
+    key = (table_name, col_name)
+    if key in _audit_truncation_warned:
+        return
+    _audit_truncation_warned.add(key)
+    logger.warning(
+        f"[Audit] Audit value(s) exceeded {MAX_AUDIT_VALUE_CHARS} chars and were truncated "
+        f"with an explicit marker (table='{table_name}', column='{col_name}'). "
+        f"This warning is emitted once per (table, column) per process."
+    )
+
+
 class LightCellSource:
     __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
     def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at):
@@ -205,6 +232,15 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
     
     clean_old = sanitize_to_utf8(old_val)
     clean_new = sanitize_to_utf8(new_val)
+
+    # [P2-C9] 값 길이 상한 — sanitize_to_utf8은 인코딩 정제만 하므로 길이는 무제한이었다.
+    # 대형 텍스트 셀(맵 문자열류)이 대상이 되면 created_logs 500건 절단 후에도 페이로드가
+    # 수십 MB가 될 수 있다(2026-07-25 이벤트 루프 동결 인시던트의 잔여 경로).
+    # 절단은 **DB 저장본과 통지 dict 양쪽에 동일 적용**하고, 절단 사실은 값 안의 마커로 명시된다.
+    clean_old, old_truncated = truncate_audit_value(clean_old)
+    clean_new, new_truncated = truncate_audit_value(clean_new)
+    if old_truncated or new_truncated:
+        _warn_audit_truncation_once(table_name, col_name)
 
     if add_to_cache:
         log = models.AuditLog(

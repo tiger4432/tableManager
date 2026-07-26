@@ -16,6 +16,8 @@ class AuditLogCache:
         self.groups: List[Dict] = []
         self.is_loaded = False
         self._lock = threading.Lock()
+        # [P2 #10] 다중 tx 혼재 배치 경고 1회 게이트 (핫패스 로그 홍수 방지)
+        self._multi_tx_warned = False
 
     def load_initial(self, db: Session, limit_groups: int = 100):
         """서버 기동 후 최초 1회만 DB에서 청크 단위로 조회하여 캐시를 로드합니다."""
@@ -104,14 +106,34 @@ class AuditLogCache:
             # 없으면 새 그룹 생성
             self.groups.insert(0, {"transaction_id": tid, "logs": [log_model], "total_count": 1})
 
-    def add_logs_batch(self, logs_list: List[dict], override_total_count: int = None):
-        """대량의 로그를 단일 락(Lock) 획득으로 캐시에 일괄 편입합니다."""
+    def add_logs_batch(self, logs_list: List[dict], message_total_count: int = None):
+        """대량의 로그를 단일 락(Lock) 획득으로 캐시에 일괄 편입합니다.
+
+        [P2 이슈 #10 / QA D-1] `message_total_count`의 의미론 = **이 메시지 1건이 나르는
+        로그의 절단 전 실건수(=이 tx에 대한 이 메시지의 기여분)**이며, 그룹 total_count에는
+        **누적(+=)** 된다. 종전 이름(`override_total_count`)과 SET 대입은 "같은 tx id로
+        메시지가 2회 이상 도착하는 경로"에서 마지막 메시지가 이전 총계를 지워 과소 표기를
+        일으켰다. 실제 도달 경로(2026-07-26 실측):
+
+          - 체인 워커: 한 소스 tx가 여러 target_table 룰을 트리거하면 `chain_{tx}` 하나로
+            target_table 수만큼 broadcast가 발신된다(chain_ingestion_worker target_table 루프).
+            600건 → 50건 순 도착 시 종전 SET는 total_count를 50으로 만들었다(실제 650).
+          - 워처(파일 인제션): 파일당 file_tx_id가 유일하고 통지도 1회 → 신·구 의미론 동일.
+          - override 미전달(crud 내부 호출): 종전과 동일하게 len(logs) 누적.
+
+        절단 없는 재전송(중복 배달)이 존재하면 누적은 과대 표기가 되지만, 현행 발신 경로
+        (post_event 단발 POST, 복구 스윕은 created_logs 미동봉)에는 재전송이 없다.
+        **발신 경로를 추가할 때는 "같은 tx로 같은 로그가 두 번 오는가"를 먼저 확인할 것.**
+
+        `logs_list` 하나에 서로 다른 tx가 섞여 있으면 기여분을 tx별로 나눌 근거가 없으므로
+        message_total_count를 적용하지 않고 그룹별 len(logs)로 폴백한다(경고 1회).
+        """
         if not logs_list:
             return
         with self._lock:
-            if not self.is_loaded: 
+            if not self.is_loaded:
                 return
-            
+
             from collections import defaultdict
             logs_by_tx = defaultdict(list)
             for log_dict in logs_list:
@@ -121,18 +143,30 @@ class AuditLogCache:
                     logs_by_tx[tid].append(log_model)
                 except Exception:
                     continue
-            
+
+            # 다중 tx가 섞인 메시지에서는 message_total_count를 어느 tx에 귀속시킬지 알 수 없다.
+            # (현행 발신 경로는 메시지당 단일 tx — 방어적 폴백 + 1회 경고)
+            effective_total = message_total_count
+            if effective_total is not None and len(logs_by_tx) > 1:
+                if not self._multi_tx_warned:
+                    self._multi_tx_warned = True
+                    print(
+                        "[AuditCache] message_total_count ignored: batch contains "
+                        f"{len(logs_by_tx)} transactions — falling back to per-group len(logs). "
+                        "(Sender should emit one transaction per message.)"
+                    )
+                effective_total = None
+
             for tid, logs in logs_by_tx.items():
-                tx_total_count = override_total_count if (override_total_count is not None) else len(logs)
-                
+                contribution = effective_total if (effective_total is not None) else len(logs)
+
                 found = False
                 for group in self.groups:
                     if group["transaction_id"] == tid:
-                        if override_total_count is not None:
-                            group["total_count"] = override_total_count
-                        else:
-                            group["total_count"] += len(logs)
-                            
+                        # [P2 #10] SET → 누적. 같은 tx가 여러 메시지로 나뉘어 도착해도
+                        # 총계가 마지막 메시지 값으로 덮어써지지 않는다.
+                        group["total_count"] += contribution
+
                         for log_model in reversed(logs):
                             if len(group["logs"]) < 500:
                                 group["logs"].insert(0, log_model)
@@ -148,7 +182,7 @@ class AuditLogCache:
                     self.groups.insert(0, {
                         "transaction_id": tid,
                         "logs": logs[:500],
-                        "total_count": tx_total_count
+                        "total_count": contribution
                     })
             
             while len(self.groups) > 100:

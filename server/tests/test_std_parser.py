@@ -341,9 +341,29 @@ def test_std_unsupported_extension_not_parsed(tmp_path, fake_table_config):
 # 전체 처리 경로 (process_with_retry) — 가짜 DB/crud로 통합 흐름 검증
 # ---------------------------------------------------------------------------
 
+class _FakeQuery:
+    """[P2] 체크포인트 조회/갱신용 최소 스텁 — '기록은 되지만 남은 진행분은 없음' 상태.
+
+    이 스텁이 없으면 체크포인트 계층이 AttributeError로 degrade되어(설계상 안전하지만)
+    완료 detail에 '[checkpoint-off] …' 사유가 붙어 기존 계약 검증이 흐려진다.
+    체크포인트 자체의 동작은 test_ingestion_checkpoint.py가 실 DB로 검증한다."""
+
+    def filter(self, *a, **kw):
+        return self
+
+    def one_or_none(self):
+        return None
+
+    def update(self, *a, **kw):
+        return 0
+
+
 class _FakeDB:
     def add(self, obj):
         pass
+
+    def query(self, *a, **kw):
+        return _FakeQuery()
 
     def commit(self):
         pass
