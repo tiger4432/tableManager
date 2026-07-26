@@ -806,6 +806,14 @@ async function switchTable(tableName) {
     renderLegendTable();
     gridData = {};
     loadedFCells.clear();
+    // Overlays belong to the previous table's frame, so ⓑ above applies to them
+    // verbatim: an overlay left behind stays importable, and importing it writes
+    // the old table's values into this one. Clearing gridData alone did not close
+    // that path. Matches what a map load already does.
+    if (overlayLayers.length > 0) {
+      clearOverlayLayers();
+      showToast('테이블이 바뀌어 오버레이를 해제했습니다.', 'info');
+    }
 
     // 테이블이 바뀌면 이전 맵의 정체성 핀은 무효다 (Push 대상이 달라진다)
     setLoadedIdentity(null, null);
