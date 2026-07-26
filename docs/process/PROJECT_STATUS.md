@@ -35,7 +35,9 @@
    - **반복된 함정(3회째, 이번엔 클라에서도)**: 오라클/픽스처가 **결함 축을 활성화**해야 한다. 서버는 `chip_x == chip_y` 픽스처로, 클라는 **회복 분기를 한 번도 실행하지 않는**(GET 2회 모두 차단) 검증으로 "해소"를 선언했다. 새로 만든 분기를 실행하지 않는 테스트는 그 분기에 대해 아무 말도 하지 않는다.
    - **후속 백로그 A2**: `bonding_plan.py:199-204` 선언(override) 경로는 여전히 bbox 항 없는 구 산술 — 현재 휴면(라이브 오버라이드 없음)이나 한 줄 선언 시 부활. **A3**: A1의 REST 재검증(재기동 후).
    - **사용자 판단 대기**: `map_doe`의 `bonding_map|AAA|F|1`·`|F|2` + 자재 4행(클라 검증 잔재 추정, AAA는 사용자 실편집 맵이라 미삭제). QA-B는 DB 쓰기 0건이라 잔재를 추가하지 않았다.
-   - **다음 순서**: C1 수정 수령 → 병합 → 재기동 → A3(REST 재검증) → doc-keeper 정비(트리거 19건 누적) → **오버레이 변환 일원화 착수(아래 §2-1)**.
+   - ✅ **병합 완료 `da65a87`** (A1·C1 둘 다 해소·총괄 독립 검증 후). 스위트 413 passed / 1 allowed fail.
+   - ✅ **doc-keeper 정비 3차 완료** — 히스토리 3건 신설, CODE_MAP `8b0fd03`→`da65a87` 실측 갱신, `MAP_EDITOR_SPEC §5`(오버레이 정렬 계약)·`§6`(전사 계획) 신설, 죽은 링크·삭제 파일 서술 정정. 보고서 `agent_workspace/reports/DocKeeper_cycle3.md`. **비차단 이월 결함(C3/C4/C7)을 리빙 문서에 미해소로 명기**하게 했다 — 보고서·커밋 메시지만 읽으면 실제보다 강하게 읽히기 때문.
+   - **다음 순서**: 사용자 재기동 → **A3(A1의 REST 재검증** — `bonding_map/EXP1`의 격자 밖 `x=-1` 소멸 확인) → 오버레이 일원화 수령·검수 → `.sample` config 정정 수령.
 
    **🧭 아키텍처 결정 — 오버레이 변환을 클라 단일 구현으로 일원화 (2026-07-26, 사용자 지시)**
    - **증상(사용자 실사용)**: "클라에서 변환 수정해도 오버레이는 안 따라오네." **원인은 설계**: 서버가 *가져오는 순간* 저장된 메타로 정렬을 끝내 타깃 프레임 좌표로 내려주고, 클라는 이중 변환 금지 규약(`map_editor.js:3779`)으로 재변환하지 않는다 → 화면 컨트롤 수정은 서버에 전달될 경로가 없고 정렬은 **저장 시점에 굳는다**.
@@ -52,7 +54,7 @@
    - **에이전트 재개 불가 시**: 위 보고서 3종 + 이 표만으로 잔여 작업을 새 지시서로 재구성 가능. 진행 중이던 클라 대기열 5건(위 표)이 유일한 미완 범위다.
    - **최근 스위트**: 405 passed / 1 allowed fail(`test_map_presets_api` — 상시 허용).
    - **재기동 필요 여부**: 서버 코드 변경분은 병합 후 재기동 필요. config 적용분(`map_doe` 등)은 이미 라이브 반영됨.
-   - **doc-keeper 정비 미실행**: 트리거 17건 누적 — M2-v2 병합 후 CODE_MAP·히스토리·체크리스트 일괄 정비 필요(보드는 총괄 전담이라 제외).
+   - **doc-keeper 정비**: 3차 완료(`da65a87` 기준). 다음 트리거는 오버레이 일원화 병합 후 — 그 작업이 `map_editor.js`의 오버레이 구간을 바꾸므로 CODE_MAP에 변경 예정 배너가 달려 있다.
 
 1-1. ~~M2 Universal Transfer Plan(1차)~~ — 병합 완료(`8e34804`), 아래 재설계로 대체 진행 중. 전사 프리미티브(stage config 선언) + 관리 단위 value(DOE) + DT/Tape 계층. 서버부는 QA F1(degraded 시 `remaining` 과대) 3층 방어로 해소(307 passed) 후 F4/F6 수정 중, 클라부는 **사용자 지시로 UI 전면 단순화 재설계**(별도 패널 폐기 → 「2. Value Legend & Brush」 통합, 모드 A=base·DOE 팔레트 / 모드 B=코어·오버레이·수량). **관문: 재검수 GO → 병합 → 재기동**. 상세 골자는 §백로그 M2 항목.
 2. **🟡 범용 맵 오버레이 — M2에서 파생돼 맵 인프라로 격상(사용자 지시)**. "모든 MAP을 universal하게 오버레이" — 임의의 맵을 임의의 맵 위에, **map meta가 달라도 서버가 정렬**해서 겹친다. 진입점은 「1. Map Search & Load」의 "정렬 후 오버레이?" 프롬프트. 계획 UI는 이 능력의 소비자일 뿐. align 기본값 규율: **선언 있으면 그대로 적용 / 없으면 identity(0°) / 계산 근거 없을 때만 `align_unavailable` 명시 실패**. 부수: 페인트 잠금(값 `F`) config화, align 선언의 맵 속성 승격 검토.
@@ -103,6 +105,9 @@
 | 15 | 중간 | **`Wafer` label에 이질적 정체 혼입**(2026-07-26 온톨로지 리뷰 발견) — `wafer_slot_history.wafer_id`(예 `A123`)와 `core_wafer_map.core_lot\|core_slot`(예 `LOT-A\|05`)이 같은 label에 공존해 서로 조인 불가. 더 근본적으로 **후자는 DT 계층 판명으로 실은 테이프 위치**(스펙 §7.5b)라 "테이프 91개를 Wafer라 부르는" 상태. 방치 시 불량 역추적이 엉뚱한 개체를 지목. **M2에서 dt_map/dt_log 올릴 때 정리 필수**. 파생 결정: 층 배정 온톨로지 매핑(§14-4)도 같은 패턴이라 보류, 별도 label(`PlanLayer`)로 §7.5c node_class 작업 시 처리 | Server·온톨로지 | M2에서 처리 |
 | 14 | 중간 | **맵 push 경로 기존 결함 3종**([QA M2 리뷰](../../agent_workspace/reports/QA_transfer_plan_m2_review.md) 부수 발견, **M2 회귀 아님 — 전 맵 공통**) — ⓐ `limit=2000` + `replace_map` 조합에서 2000셀 초과 맵의 데이터 소실 가능(현행 프리셋 최대 1600셀이라 미발화) ⓑ `GET /tables/{t}/schema`가 미존재 테이블에도 200 반환(존재 확인 불가) ⓒ 클라 `CURRENT_USER`가 빌드 시점 값으로 박힘(번들 확인) | Server·Client | 대기 |
 | 13 | 중간 | **`crud.load_table_config()`가 JSON 파싱 실패 시 로그 없이 `{}` 반환** — 가동 중에는 `refresh_dynamic_models`의 빈-config 가드가 막지만, **손상된 config로 재기동하면 전 테이블이 조용히 사라진다**. 최소 `logger.error` + 기동 시 명시 실패(fail-fast) 검토. CONFIG_GUIDE 함정 A로 문서화됨 | Server | 대기(소형) |
+| 17 | 중간 | **계획 자재 500행 초과 시 영구 저장 불가** (QA-B의 C3) — 클라가 `limit=500`으로 조회하고(`client2/src/transfer_plan.js:1068/1104`) `total > rows`면 로드 실패로 강등하는데, 그 강등이 쓰기 보류로 이어지므로 **자재 500행을 넘긴 계획은 저장 경로가 영구히 닫힌다**. 강등 자체는 옳다(절단된 상태로 prune하면 전량 삭제) — 페이징이나 상한 상향이 필요 | Client·Server | 대기 |
+| 18 | 중간 | **오버레이 기하 시그니처에 물리 파라미터 누락** (QA-B의 C7) — `currentGeomSignature()`(`client2/src/map_editor.js`)가 cols/rows/start/invertY/rot/side만 보고 `phys_*`(칩 피치·오프셋·직경·edge margin)를 빼먹어, 물리 규격을 바꾸면 오버레이가 **조용히 안 따라온다**. 기존 결함이나 신규 `importOverlayToGrid`가 어긋난 좌표를 `gridData`에 써 넣어 **표시 오류에서 데이터 오염으로 승격**됐다. **오버레이 변환 일원화 작업의 수용 기준에 포함시켰다** | Client | 일원화 작업에 동승 |
+| 19 | 낮음 | **페인트 잠금 콜드 스타트 fail-open** (QA-B의 C4) — `degrade()`가 유지하는 "직전 값"이 로드 직후에는 기본값 `{enabled:false}`(`client2/src/map_editor.js:37`)라, **첫 조회가 실패하면 8개 강제 지점이 열린 채 시작**한다. 칩으로 표시는 되므로 *조용한* fail-open은 해소된 상태 — "fail-open 제거"라는 서술만 과장이었다 | Client | 대기 |
 | 12 | 낮음 | **임베디드 모드 `trigger_ws_refresh` 레거시 경로 C-5 미적용** — main.py 임베디드(비-DECOUPLED) 콜백은 created_logs 절단 계약(C-5) 밖(레거시 5000 게이트). 분리 모드 운영에서는 무영향 — 드릴 관찰로 등재 | Server | 대기(저순위) |
 
 **종결(2026-07-25):** #0 체인 outbox 지연·신뢰성(31ms) · #1 IntegrityAndQAExpert 스킬 웹 전환 · #6 감사 로그 DB 미저장 · #7 런타임 테이블 물리 CREATE · **#8 graph 워커 신규 테이블 미인지(G1 materializer의 SYSTEM_RELOAD 구독으로 해소)**.

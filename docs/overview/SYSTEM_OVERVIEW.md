@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Lead / Architecture
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** Lead / Architecture
 > **Source-of-truth:** `server/`, `client2/`, `client/desktop_wrapper.py`, `run_decoupled_app.py`
 > 본 문서는 AssyManager의 **현재 아키텍처에 대한 유일한 권위(SSOT)**입니다. 다른 모든 문서는 이 문서를 기준으로 하며, 여기와 상충하면 이 문서가 우선합니다. 세부는 하위 문서로 링크합니다.
 
@@ -71,7 +71,7 @@ graph TD
 | 프로세스 | 진입점 | 역할 | 상세 |
 |---|---|---|---|
 | **Web API + WS 허브** | `server/main.py` (~3,650줄) | REST/WebSocket, `127.0.0.1:8080`. 그래프 조회 API(`/graph/*`)는 여기서 직접 서빙 | [architecture/backend.md](../architecture/backend.md) |
-| **File Ingestion Watcher** | `run_watcher.py` → `parsers/directory_watcher.py` | `ingestion_workspace/*/raws/` 감시·파싱·적재·아카이빙. 커스텀 스크립트 없으면 **std parser 폴백**(헤더 검증 기반 CSV/TSV/TXT). 크기 임계(기본 10MB) 초과 파일은 **heavy 레인**(전용 큐/워커)으로 격리해 타 테이블 비차단 — 워크스페이스 내 순서는 보존, 진행 상태는 웹서버 push로 admin에 가시화 | [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) |
+| **File Ingestion Watcher** | `run_watcher.py` → `parsers/directory_watcher.py` | `ingestion_workspace/*/raws/` 감시·파싱·적재·아카이빙. 커스텀 스크립트 없으면 **std parser 폴백**(헤더 검증 기반 CSV/TSV/TXT). 크기 임계(기본 10MB) 초과 파일은 **heavy 레인**(전용 큐/워커)으로 격리해 타 테이블 비차단 — 워크스페이스 내 순서는 보존, 진행 상태는 웹서버 push로 admin에 가시화(P1). 파일 전체 sha256 시그니처로 **동일 파일 재투입 skip**과 **오프셋 체크포인트 재개**(재기동 시 전량 재처리 제거) 수행(P2) | [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) |
 | **Auto-Update Scheduler** | `run_auto_update.py` | `auto_update/*.py` 주석기반 크론 실행 → `raws/`에 CSV 드롭 | [AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) |
 | **Chain Ingestion Worker** | `run_chain_worker.py` → `chain_ingestion_worker.py` | outbox 소비(LISTEN/NOTIFY), 규칙별 맵퍼로 파생 데이터 생성. SLO 100ms | [chain_ingestion_guide](../guide/chain_ingestion_guide.md) |
 | **Graph Sync Worker (materializer)** | `run_graph_sync.py` → `graph_sync_worker.py` | 독립 FastAPI(:8090). **outbox 증분 소비 → 매핑 config에 따라 PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**(자체 keyset 커서, SYSTEM_RELOAD 구독). `/api/graph/sync`(수동)는 백필/복구 도구. Neo4j는 청크 훅으로 병행 가능(G3) | [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [event_driven_backend §4](../architecture/event_driven_backend.md) |
@@ -82,12 +82,12 @@ graph TD
 
 ## 3. 클라이언트 (웹이 메인)
 
-- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음, JS ~13,000줄). 진입점 **6개**:
+- **`client2/`** — Vite 멀티페이지 앱(Vanilla ESM, 프레임워크 없음, JS ~16,000줄). 진입점 **6개**:
   | 엔트리 | 모듈 | 페이지 |
   |---|---|---|
   | `index.html` | `main.js` | 데이터 그리드(메인, AG-Grid) — 「🕸️ 추적」 진입점 포함 |
   | `admin.html` | `admin.js` | 어드민 — **파이프라인 생애주기 5탭**(Overview/File/Chain/AutoUpdate/Enrichment) + 코드 에디터 공용 뷰(Monaco CDN, `#editor=<path>` 딥링크) |
-  | `map_editor.html` | `map_editor.js` | 웨이퍼 맵 에디터(커스텀 캔버스) |
+  | `map_editor.html` | `map_editor.js` (+ `transfer_plan.js`) | 웨이퍼 맵 에디터(커스텀 캔버스) + **오버레이 레이어** + **전사 계획 사이드바**(계획 = 지금 열어 편집 중인 그 맵) |
   | `enrichment.html` | `enrichment.js` | Enrichment Queue 컨베이어(결손 보정 워크리스트) |
   | `graph.html` | `graph_viewer.js` | 지식그래프 서브그래프 뷰어(stats·검색·k-hop 캔버스) |
   | `trace.html` | `trace.js` | 객체 중심 추적 리포트(멀티 시드 BFS — 그리드 선택→시드) |
@@ -113,11 +113,12 @@ graph TD
 | `DatabaseOutbox` | 프로세스 간 이벤트(event_uuid, status, processed_chain) |
 | `FileIngestionLog` | 파일 적재 로그(FAILED/SUCCESS/PENDING_RETRY) |
 | `GraphNode` / `GraphEdge` / `GraphSyncState` | **온톨로지 그래프 스토어** — 속성 그래프 노드/엣지(provenance 포함) + materializer의 outbox 소비 커서 |
+| `FileIngestionCheckpoint` | 파일 인제션 오프셋 체크포인트 + 해시 dedup(`file_ingestion_checkpoints`, `UNIQUE(table_name, file_signature)`) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |
 
 **우선순위 결정** (`crud.compute_priority_value`): 수동 핀 우선 → `SOURCE_PRIORITY {user:0, collision_merge:1, pipeline_parser:2, custom_script:3, chain_ingestion:4}`(낮을수록 우선) → 표시값 확정. 테이블별 `source_priority` 오버라이드 지원. 서열의 단일 원천은 `crud.resolve_priority_map`(그래프 엣지 provenance도 동일 서열 사용).
 
-상세: [architecture/data_model.md](../architecture/data_model.md) · [architecture/layering_and_priority.md](../architecture/layering_and_priority.md)
+상세: [architecture/data_model.md](../architecture/data_model.md)
 
 ---
 
@@ -132,6 +133,9 @@ graph TD
 | `maps.json` | 맵 에디터 지오메트리 프리셋 |
 | `scheduler_status.json` | Auto-Update 스케줄러 실시간 상태(쓰기 전용) |
 | `auto_update_control.json` | Auto-Update 수집기별 active 토글(어드민이 쓰고 스케줄러가 매 틱 읽음 — 핫 반영, 부재 시 전부 active) — IO `utils/auto_update_control.py` |
+| `ingestion_settings.json` | 인제션 런타임 노브 — `heavy_file_mb`(P1 레인 임계)·`dedup_by_signature`·`resume_from_checkpoint`(P2). 파일 경계 핫리로드 |
+| `map_overlay_config.json` | **범용 맵 오버레이** — `align_overrides`(계측 보정 선언)·`table_bindings`(맵 좌표 컬럼)·`paint_lock`(페인트 잠금 정본) |
+| `bonding_plan_config.json` / `transfer_plan_config.json` | 계획 엔진 역할 바인딩 — 역할(role)→실테이블·컬럼, stage 선언(`target_map`), `plan_store` |
 
 **설정 파일 전수 지도와 시나리오별 온보딩 절차(무엇을 어떤 순서로 넣고 어떻게 검증하는가)는 [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)를 참조하세요.**
 
@@ -149,6 +153,8 @@ graph TD
 | 체인 인제션(DB세션 맵퍼) | [chain_ingestion_guide](../guide/chain_ingestion_guide.md) | `chain_ingestion_worker.py`, `mappers/` |
 | Auto-Update 스케줄러 | [AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) | `run_auto_update.py` |
 | 웨이퍼 맵 에디터 | [map_editor/](../map_editor/README.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` |
+| **범용 맵 오버레이(맵 인프라)** | [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md) | `server/map_overlay.py`, `client2/src/map_editor.js`(오버레이 레이어) |
+| **전사 계획(본딩/DT — 계획 = 그 맵 자체)** | [MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) · [CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md) | `server/transfer_plan.py`, `server/bonding_plan.py`, `client2/src/transfer_plan.js` |
 | 실시간 동기화 | [DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) | `client2/src/websocket.js`, `main.py` ConnectionManager |
 | 배치 업서트 | [batch_update_technical_specification](../spec/batch_update_technical_specification.md) | `crud.apply_batch_updates` |
 | 실패 관리/재시도 | [FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | `FileIngestionLog`, outbox retry |
@@ -194,6 +200,8 @@ cd client2 && npm run dev    # :5173 → API/WS는 127.0.0.1:8080로 자동 타�
 - `GET /graph/{stats,neighbors,nodes/search,mapping-summary}` + `POST /graph/trace` — 그래프 조회 5종(read-only, 웹서버가 엣지 스토어 직접 조회)
 - `POST /api/graph/sync` — 그래프 백필/복구(워커 :8090으로 프록시)
 - `GET /enrichment/rules`, `.../references/{i}` — Enrichment 규칙·참조뷰
+- `GET /api/maps/overlay`, `/api/maps/paint-rules` — **범용 맵 오버레이**(임의 맵을 타깃 맵 프레임으로 정렬) · 페인트 잠금 선언 정본
+- `GET /api/transfer-plan/{stages,source-summary,validate}`, `/api/bonding-plan/core-summary` — 전사 계획 stage·가용 집계·검증(계획 정체성 = `(ref_table, map_key)`)
 - `/admin/*`, `/internal/events/*`, `/map-presets` — 어드민·프로세스간·맵프리셋
 
 ---

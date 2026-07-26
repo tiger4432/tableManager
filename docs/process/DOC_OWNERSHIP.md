@@ -16,7 +16,8 @@
 | 파일 인제션 파이프라인 | `parsers/directory_watcher.py`, `parsers/pipeline_base.py` | [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) | Ingester |
 | 체인 인제션 | `chain_ingestion_worker.py`, `mappers/` | [guide/chain_ingestion_guide](../guide/chain_ingestion_guide.md) | Ingester |
 | Auto-Update 스케줄러 | `run_auto_update.py` | [guide/AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) | Ingester |
-| 웨이퍼 맵 에디터 | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` | [map_editor/](../map_editor/README.md), [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) | UI/Map |
+| 웨이퍼 맵 에디터 | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` | [map_editor/](../map_editor/README.md), [spec/MAP_EDITOR_SPEC §1~§4](../spec/MAP_EDITOR_SPEC.md) | UI/Map |
+| 파일 인제션 체크포인트·dedup(P2) | `server/ingestion_checkpoint.py`, `models.FileIngestionCheckpoint`, `config/ingestion_settings.json` | [guide/INGESTION_GUIDE §1.8](../guide/INGESTION_GUIDE.md) | Ingester |
 | 실시간 동기화(WS) | `client2/src/websocket.js`, `main.py` ConnectionManager | [spec/DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) | Sync |
 | 배치 업서트 | `crud.apply_batch_updates` | [spec/batch_update_technical_specification](../spec/batch_update_technical_specification.md) | Backend |
 | 실패 관리/재시도 | `FileIngestionLog`, outbox retry, `admin/*` | [spec/FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | Integrity/QA |
@@ -27,7 +28,8 @@
 | 어드민(파이프라인 5탭 + 코드 에디터) | `client2/src/admin.js`, `main.py /admin/*` | [architecture/frontend §5](../architecture/frontend.md) | UI/Panel |
 | 설정 주도 스키마 | `config/table_config.json`, `database/config_watcher.py` | [architecture/data_model §5](../architecture/data_model.md) | Backend |
 | **설정 전반(온보딩 지도)** | `server/config/*` 전체, `.gitignore` config 규칙 | [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md) — **config 파일 추가/폐지·리로드 경로 변경 시 필수 갱신**. 상세 동작은 각 서브시스템 가이드로 링크(중복 서술 금지) | Lead / Backend |
-| 본딩·전사 계획 엔진(역할 바인딩) | `server/bonding_plan.py`, `server/transfer_plan.py`, `config/bonding_plan_config.json`, `config/transfer_plan_config.json` | [guide/CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md)(설정 관점) · 엔진 스펙은 미작성 — 신설 시 이 행 갱신 | Backend / UI-Map |
+| **범용 맵 오버레이(맵 인프라)** | `server/map_overlay.py`, `config/map_overlay_config.json`, `client2/src/map_editor.js`(오버레이 레이어) | [spec/MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md)(정렬 계약 — **변경 예정 구간**) · [guide/CONFIG_GUIDE §5.8-bis](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |
+| 본딩·전사 계획 엔진(역할 바인딩) | `server/bonding_plan.py`, `server/transfer_plan.py`, `client2/src/transfer_plan.js`, `config/bonding_plan_config.json`, `config/transfer_plan_config.json` | [spec/MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md)(엔진·클라 계약) · [guide/CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |
 | QA 기능 점검 | 전 서브시스템(사용자 관점 기능 단위) | [qa/FEATURE_CHECKLIST](../qa/FEATURE_CHECKLIST.md) — 갱신은 doc-keeper 전담(코드맵과 같은 사이클) | Integrity/QA |
 | 운영/셋업 | 환경·DB | [guide/*_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md) | Ops |
 | 엔지니어링 규율 | CRUD 시그니처·병합 | [guide/data_preservation_and_signature_change](../guide/data_preservation_and_signature_change.md) | Integrity/QA |

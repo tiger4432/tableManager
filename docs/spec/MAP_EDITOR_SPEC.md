@@ -1,6 +1,8 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+>
+> §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. §5는 **변경 예정 구간**입니다(오버레이 변환 클라 일원화 진행 중).
 
 본 문서는 `assyManager` 프로젝트의 2세대 격자 맵 에디터([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js))에 구현된 모든 프론트엔드 자바스크립트 함수들의 설계 규격, 변환 공식 및 상세 API 레퍼런스를 정리합니다.
 
@@ -279,3 +281,108 @@ sequenceDiagram
 ```
 
 본 명세에 수록된 모든 물리 맵 변환 법칙 및 47가지 전원 함수 규격을 바탕으로 코드를 해석 및 유지보수하여 주시기 바랍니다.
+
+---
+
+## 5. 범용 맵 오버레이 (Universal Map Overlay) — 정렬 계약
+
+> **⚠️ 변경 예정** — 사용자 지시로 **오버레이 변환을 클라 단일 구현으로 일원화**하는 작업이 진행 중입니다(2026-07-26). 아래는 `da65a87` 시점의 **현재 상태 기술**이며, 특히 "서버가 정렬된 좌표를 내려준다"는 부분이 바뀝니다. 목표 형태는 `소스 원본(x,y) --[소스 자신의 메타 프레임]--> 물리 좌표 --[타깃의 현재 화면 컨트롤]--> 셀`이고, 서버는 **계측 보정값 `(dx, dy, rot)`만** 내려줍니다. 세부 함수 시그니처를 확정 계약으로 인용하지 마십시오.
+
+오버레이는 **계획 전용 기능이 아니라 맵 인프라**입니다 — 임의의 맵을 임의의 맵 위에, map meta가 달라도 겹칩니다. 계획 UI는 이 능력의 소비자 중 하나일 뿐입니다.
+
+### 5.1 정렬(align) 결정 규율 — 총괄 고정 계약
+
+```
+① 선언(map_overlay_config.json의 align_overrides: by_eqp → default) 있으면 그대로 적용   origin = declared|default
+② 없으면 소스·타깃 wafer_map_metadata의 rotation/side 차이에서 유도                     origin = derived
+③ 유도 근거도 없으면 identity(0°)로 그대로 붙인다  ← 선언 부재는 실패가 아니다          origin = identity
+④ 변환을 계산할 근거 자체가 없을 때만 status = align_unavailable
+```
+
+- 클라의 정렬 상태 표시(`overlayAlignChip`)는 **`align.origin`만으로** 판정합니다.
+- `align_overrides`는 메타에서 유도 불가능한 **계측 데이터**입니다(DEFECT WF로 측정한 장비별 보정). 기하가 아니라 데이터이므로 서버에 남습니다.
+
+### 5.2 프레임 vs 물리 좌표계 — A1이 고친 것
+
+`WaferMapCoordinateTransformer.cell_to_physical`이 정의하는 **프레임(visual) → 물리(canonical)** 사상과, `PhysicalWaferEngine.is_cell_inside_wafer(c, r, cols, rows)`가 쓰는 좌표계는 **다릅니다.** 엔진은 `x_mm = (c-cc)*chip_x + off_x`로 격자 인덱스를 mm로 바꾸는데, 여기의 `(c, r)`은 **프레임** 인덱스이므로 `chip_x`도 **프레임 x축의 피치**여야 합니다.
+
+| rotation | 엔진에 넣을 (chip_x, chip_y) | (off_x, off_y) |
+|---|---|---|
+| 0 | (cx, cy) | ( oox, ooy) |
+| 90 | **(cy, cx)** ← 스왑 | ( ooy, −oox) |
+| 180 | (cx, cy) | (−oox, −ooy) |
+| 270 | **(cy, cx)** ← 스왑 | (−ooy, oox) |
+
+`oox`는 **back 면에서 부호가 뒤집힙니다**(`cell_to_physical`이 회전 **전에** 면 반전을 적용하고, 그 반전이 물리 x축을 뒤집기 때문). 이 보정을 빼면 회전 맵의 웨이퍼 bbox가 통째로 어긋나고, **저장 좌표가 bbox 상대값이라 전 셀이 어긋납니다.**
+
+구현은 `map_overlay._frame_phys_params` **한 함수에 가둬** 있습니다. `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정입니다 — `bonding_plan.py`가 같은 클래스를 엔진 없이 공유하므로 부작용을 피하기 위함입니다.
+
+> **열린 항목 A2** — `bonding_plan.py:199-204`의 선언(override) 경로는 아직 bbox 항 없는 구 산술입니다. 라이브 오버라이드 선언이 없어 **휴면**이나, 한 줄 선언하면 부활합니다.
+> **열린 항목 A3** — A1의 REST 재검증은 **미완**입니다(라이브 서버가 수정 이전 코드로 가동 중, 재기동 대기). 현재 근거는 오프라인 대조(25,760 순서쌍에서 SILENT-WRONG 84→0, LOUD_FAIL 5,596 불변)와 테스트뿐입니다.
+> **회귀 시험 규율** — 오버레이 좌표 회귀는 반드시 **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인하십시오. 40×40(`minC=0`)은 결함이 **원리적으로 발현할 수 없는** 구간입니다.
+
+### 5.3 클라 측 규약
+
+- **이중 변환 금지** — 서버가 이미 타깃 프레임 좌표로 내려주므로 `overlayCellsToPhysMap`은 **재변환하지 않고** 현재 격자 물리키로 배치만 합니다.
+- **메인 로드와 코드 경로 분리** — `addOverlayLayer`는 `selectedTable`·`tableSchema`·`gridData`·legend·규격·brush·메타 입력을 읽지도 쓰지도 않고 `switchTable`을 경유하지 않습니다. 유일한 의도적 교차는 `importOverlayToGrid`(오버레이 → `gridData`, **서버 쓰기 없음**, 페인트 잠금 존중)입니다.
+- **격자 규격 변경 추종** — `currentGeomSignature`(`cols|rows|startX|startY|yInvert|rotation|side`)가 바뀌면 `syncOverlayGeometry`가 원본 `rawCells`에서 물리키를 재계산합니다.
+- 실패한 오버레이도 목록에 행으로 남깁니다(조용한 소실 금지).
+
+### 5.4 페인트 잠금 (Paint Lock)
+
+잠금 선언의 **정본은 서버**(`GET /api/maps/paint-rules`)입니다 — 종전 클라 하드코딩 `'F'`를 대체했습니다. 기본은 F 잠금.
+
+- **조용한 fail-open 금지**: 404/405만 "선언이 없다"(=해제가 정답)로 해석하고, 네트워크·5xx는 **"확인하지 못했다"**로 분류해 **직전 잠금 값을 유지**하고 `source:'stale'` + 툴바 칩 + 경고 토스트를 냅니다.
+- 편집 가능 판정의 단일 관문은 `isProtectedFCell`입니다 — 모든 편집 경로(브러시·Fill·Auto-Paint·오버레이 가져오기)가 여기로 수렴합니다.
+
+> **⚠️ 열린 항목 (QA v2 재검수 — 미해소)**
+> - **C4 콜드 스타트 fail-open** — "직전 값"이 페이지 로드 직후엔 기본값 `{enabled:false}`라, **첫 조회가 실패하면 잠금이 걸리지 않은 채 시작**합니다. 칩이 뜨므로 *조용하지는* 않지만 잠기지도 않습니다. 테이블 전환 시 실패하면 이전 테이블의 잠금 값이 새 테이블에 계속 적용됩니다(fail-closed 방향이라 안전하나 의미상 부정확).
+> - **C7 오버레이 기하 서명에 물리 파라미터 누락** — `currentGeomSignature`가 `cols/rows/startX/startY/yInvert/rotation/side`만 담고 `phys_*`를 담지 않습니다. 격자 치수를 바꾸지 않는 offset 변경은 웨이퍼 bbox를 옮기지만 서명이 그대로라 오버레이 좌표가 **낡은 채로 남습니다**. 기존 결함이지만 신규 `importOverlayToGrid`가 그 좌표를 `gridData`에 써 넣으면서 **표시 오류가 데이터 오염 경로로 승격**됐습니다.
+> - **C3 계획 규모 상한** — 클라 조회가 `limit=500`이고 절단을 로드 실패로 강등하므로, **자재 행 500 초과 계획은 영구히 저장 불가**가 됩니다(20값 × 3구간 × 10자재 = 600행이면 도달).
+> - **C6 헤더 신선도** — 초안 시각(`S.savedAt`)이 서버 시각(`S.serverSavedAt`)보다 우선해, 화면 데이터는 서버본인데 칩은 낡은 초안 시각을 표시할 수 있습니다.
+> - **C5 legend 저장 오탐** — `saveLegendToServer`가 *실패*와 *보낼 것 없음*을 같은 `false`로 반환해, 마지막 값 삭제 시 근거 없는 경고 토스트가 뜹니다.
+> - **C8 `sticky` 토스트** — 상한 초과 퇴거에서 보호되지 않습니다. 현재 프로덕션 호출부가 없어 영향 0.
+
+---
+
+## 6. 전사 계획 (Transfer Plan) — 「계획 = 그 맵 자체」
+
+**계획은 별도 개체가 아니라 지금 열어 편집 중인 그 맵입니다.** `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획이며, stage는 열린 테이블에서 `stages.*.target_map.table` 역인덱스로 유도합니다. 별도 stage 선택 UI·타깃 입력창·`plan_id`·계획 맵 사본은 **없습니다**.
+
+| 개념 | 정의 |
+|---|---|
+| 계획 정체성 | `(ref_table, map_key)` — 맵 정체성과 동일 |
+| 관리 단위 | **DOE = value** — 맵에 칠한 값 하나가 조건군 하나 |
+| 밴드(STACK) | `band_seq`(정수)가 **정체**, `stack_band`는 **자유 텍스트 라벨**(다중 구간 `1, 2-15, 16` — 파싱하지 않음). 라벨을 고쳐도 자재 묶음이 유지되는 이유. **삭제 시 재번호를 매기지 않습니다** — 재번호는 자식 `map_doe_source`를 전부 고아로 만듭니다 |
+| 영역 지정 | **값 페인팅이 정본**(rect 영역 선택 모드는 폐기됨) |
+| 저장소 | `map_doe` / `map_doe_source`(`plan_store` config 바인딩) |
+
+### 6.1 가용량 계약
+
+```
+가용 = 총 − (fail ∪ transferred)      ← 칩 단위 합집합(이중 감산 없음)
+```
+
+`origin_log`가 연결되지 않으면 M1식 단순 감산으로 폴백합니다. tape 계층의 fail은 코어 fail을 `dt_log` 조인으로 투영해 내립니다.
+
+### 6.2 신뢰 표기 3층 방어 — 이 스펙에서 가장 중요한 계약
+
+역할 바인딩이 하나라도 강등되면(또는 하드캡 절단·음수 remaining), 서버는 **값을 주지 않습니다**:
+
+```
+remaining: null                 ← 숫자 자체를 내려보내지 않는다
+remaining_reliable: false
+warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
+```
+
+`validate`는 이 상태에서 부족·fail 판정을 **전부 생략**하고 `availability_unreliable`만 발행합니다. 최종 `status`는 `ok` / `warnings` / **`unverified`** 3값으로, **"검사 안 함"과 "이상 없음"을 절대 같은 값으로 내지 않습니다.**
+
+### 6.3 클라 prune 권한 불변식 (C1)
+
+```
+doeServerLoaded === true  ⇒  S.doe는 서버본에서 유래했다
+```
+
+서버 잔재 삭제(prune)의 권한(`serverKeys` / `doeServerLoaded`)이 생기는 **유일한 지점은 `adoptServerDoe`**이며, **서버본 채택과 원자적으로** 일어납니다. "조회에 성공했다"를 "화면이 서버본이다"로 승격시키면 안 됩니다 — 회복 재시도가 응답 본문을 버리는 경로가 있었고, 그 모순 상태에서 `serverKeys − keep`이 그 맵의 행 전량이 되어 실제로 데이터가 파괴됐습니다(QA 라이브 2회 재현).
+
+부속 규율: ① 절단 응답(`total > rows.length`)은 **로드 실패로 강등** ② `doeServerLoaded`가 거짓이면 **삭제뿐 아니라 쓰기도 보류** ③ `loadSeq` 세대 가드로 맵 전환 중 늦게 도착한 응답을 채택하지 않음 ④ 자재 수량 분배는 **`Math.ceil`**(서버 규약 일치 — `round`면 부족이 숨는다).

@@ -1,13 +1,16 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **201개** 이력. (거버넌스 규칙 #4)
+> 총 **204개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-26 20:43** — [M2 V2 Plan As Map Redesign](./20260726_204344_m2_v2_plan_as_map_redesign.md)
+- **2026-07-26 17:04** — [Universal Map Overlay And Transfer Plan M2](./20260726_170434_universal_map_overlay_and_transfer_plan_m2.md)
+- **2026-07-26 16:46** — [Large File P2 Checkpoint Resume And Hash Dedup](./20260726_164640_large_file_p2_checkpoint_resume_and_hash_dedup.md)
 - **2026-07-26 09:34** — [Graph Viewer Label Node List](./20260726_093400_graph_viewer_label_node_list.md)
 - **2026-07-26 09:33** — [Dt Tape Layer Universal Transfer Plan Design](./20260726_093300_dt_tape_layer_universal_transfer_plan_design.md)
 - **2026-07-26 09:32** — [Bonding Plan M1 Info Panel And Core Summary](./20260726_093200_bonding_plan_m1_info_panel_and_core_summary.md)

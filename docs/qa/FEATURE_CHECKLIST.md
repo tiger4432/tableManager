@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
 >
 > **유지 규율:** 새 기능이 병합·커밋되면 총괄이 doc-keeper에 위임하는 **코드맵 갱신과 같은 사이클**로 이 문서에도 해당 기능 행(§1)과 점검 항목(§2)을 추가한다. 구현 에이전트는 이 문서를 직접 수정하지 않는다.
 > **사용법:** §1은 "무엇이 있는가"(기능 지도), §2는 "어떻게 확인하는가"(릴리스 전/회귀 수동 점검). 체크박스는 점검 회차마다 복사해 사용하고 이 원본은 비워 둔다.
@@ -53,6 +53,8 @@
 | 인제션 진행 토스트 | 파싱·적재 진행률/완료가 그리드 화면에 실시간 표시 | (자동) 메인 페이지 | `utils.showIngestionProgress` · WS `file_ingestion_progress/completed`(§7) |
 | 기동/주기 스윕 (이벤트 유실 안전망) | 기동 시·신규 워크스페이스 등록 시 `raws/` 직속 기존 파일을 mtime 순으로 자동 처리 + 300s 주기 잔류 재스캔. (mtime,size) 시그니처로 잔류 파일 무한 재시도 차단, 이벤트 경로와 동일 처리(`_handle_event` 재사용, 락으로 이중 진입 가드) | (자동) 서버 기동만 | `WorkspaceWatcher.sweep_existing_files(_async)/_periodic_sweep_loop`(§3) |
 | 대형 파일 heavy 레인 (P1, 2026-07-26) | 크기 임계(기본 10MB, `config/ingestion_settings.json` `heavy_file_mb` — 파일 경계 핫리로드) 초과 파일을 전용 큐/워커(`watcher-heavy-lane` 1개)로 격리 — 대형 파일이 **타 테이블 파일을 막지 않음**(드릴 실측 180배 개선). 같은 워크스페이스 후속 파일은 크기 무관 큐 후미(FIFO 보존), 스윕 경로도 자동 라우팅. heavy끼리는 직렬(알려진 제약) | (자동) 임계 초과 파일 드롭 | `HeavyIngestionLane/_route_and_process/get_workspace_serial_lock`(§3) · [INGESTION_GUIDE §1.7](../guide/INGESTION_GUIDE.md) |
+| 오프셋 체크포인트 재개 (P2, 2026-07-26) | 재기동/중단 후 **중단 지점부터** 이어서 적재(종전에는 0행부터 전량 재처리). 오프셋 갱신이 청크 upsert와 **같은 트랜잭션**이라 "커밋된 행 수 == 기록된 오프셋" 성립. 재개는 시그니처+`total_rows`+`source_kind`+오프셋 범위가 전부 일치할 때만 하고, 불일치는 0부터 + **사유를 로그·`FileIngestionLog.detail`·완료 통지에 명시**(조용한 재처리 금지). heavy/normal·스윕·관리자 재시도 4경로 동일. ⚠️ **라이브 드릴 미실행(재기동 대기)** | (자동) 대형 파일 처리 중 서버 중단 후 재기동 | `server/ingestion_checkpoint.py`(§5) · `_plan_checkpoint/_send_to_upsert`(§3) · [INGESTION_GUIDE §1.8](../guide/INGESTION_GUIDE.md) |
+| 파일 해시 dedup (P2, 2026-07-26) | 파일 전체 sha256(`sha256:<size>:<digest>`, 500MB 0.535s 실측)로 **동일 내용 재투입을 skip** — archives 이동 + `FileIngestionLog(SKIPPED, 사유)`. ⚠️ **WS 통지의 `status`는 `SUCCESS`**(수신부가 비-SUCCESS를 일괄 실패로 렌더링하므로 오표기 방지), 사유는 `detail`. 강제 재처리 3경로: 파일명 `__force__` / `dedup_by_signature:false` / 관리자 재시도. ⚠️ **라이브 드릴 미실행** | (자동) 같은 파일 재투입 | `ingestion_checkpoint.compute_file_signature` · `_try_dedup_skip`(§3) · [INGESTION_GUIDE §1.8](../guide/INGESTION_GUIDE.md) |
 | 진행 중 인제션 가시화 + 재기동 경고 (P1) | watcher가 상태(QUEUED/PROCESSING/FINISHED)를 push → 웹서버 인메모리 레지스트리 → `GET /admin/file-ingestion/active`. admin File 탭 진행 섹션(HEAVY/normal 배지·진행률 바·경과, 5s 경량 갱신) + 재기동 경고 배너("재기동 시 처음부터 재처리") + 헬스 스트립/Overview warn. WS 계약 무변경 | 어드민 File 탭 (진행 중일 때 자동 표시) | `ingestion_activity.py`(§5) · `admin.renderActiveIngestions`(§7) · `/internal/events/ingestion-state`(§1.4) |
 
 ### 1.4 Auto-Update 스케줄러
@@ -94,7 +96,10 @@
 | 엣지 자동 페인팅 | 엣지 셀 분류·선택·E1/E2 자동 페인팅 | 작업영역 툴바 "🔍 Select Tools" 드롭다운 → "✔️ Select E1" / "✔️ Select E2" / "⚡ Auto-Paint E1/E2" (같은 드롭다운에 "📍 Set Origin (0,0)") | `getEdgeClassification/selectEdgeCells/autoPaintE1E2`(§7) |
 | 엑셀 복사 | 그리드를 TSV로 클립보드 복사 | 작업영역 툴바 "🛠️ Edit Grid" 드롭다운 → "📋 Copy to Excel" | `copyGridToExcel`(§7) |
 | 테이블 간 맵 이월 | 테이블 A→B 전환 시 유지/초기화 확인창(컬럼명 상이 시 Advanced Column Mapping 수동 확인 필요 — 이슈 #2) | 테이블 전환 시 자동 확인창 | history `a41007e` |
-| 본딩 실험계획 Info 패널 (M1, 조회 전용) | base+multistack core 구성 계획: 층 범위 배정 목록(코어 자동완성=그래프 검색) → 코어별 수량 라인(`잔여 = 총 − defect − EDS − 기사용`, 역할별 소스 뱃지·미연결 표시), 공정 이력 FAIL 타임라인 + knob 확장, knob 비교 뷰(조건 이탈 하이라이트), 층 커버리지 + 경고 3종(수량/FAIL/조건 이탈), localStorage 초안 자동 보관/복원. 원천은 역할 바인딩 config(`bonding_plan_config.json`) — align은 서버 단독 변환. 구버전 서버 graceful. (영역 지정은 M2 "값 페인팅"으로 예정 — rect 모드는 폐기됨) | 맵 에디터 툴바 `🧪 본딩 실험계획` 버튼 | `bonding_plan.js`(§7) · GET `/api/bonding-plan/core-summary`(§1.4) · `server/bonding_plan.py`(§5) |
+| 페인트 잠금 (M2, 2026-07-26) | 특정 값(기본 `F`)의 셀을 편집 불가로 잠금. **선언 정본이 서버**(`config/map_overlay_config.json`의 `paint_lock`)로 이동 — 종전 클라 하드코딩 `'F'` 대체. **조용한 fail-open 제거**: 404/405만 "선언 없음"(해제), 네트워크·5xx는 직전 잠금 유지 + `⚠ 잠금 규칙 미확인` 툴바 칩 + 경고 토스트. 모든 편집 경로가 `isProtectedFCell` 단일 관문 통과. ⚠️ **콜드 스타트(페이지 로드 후 첫 조회 실패)는 아직 잠금 없이 시작**(QA C4 미해소 — 칩은 뜨나 잠기지는 않음) | (자동) 맵 로드 시 규칙 조회 · 툴바 잠금 칩 | `fetchPaintRules/isProtectedFCell`(§7) · GET `/api/maps/paint-rules`(§1.2) · `map_overlay.get_paint_rules`(§5) |
+| **범용 맵 오버레이** (M2, 2026-07-26) ⚠️ | 임의의 맵을 임의의 맵 위에 겹쳐 본다 — map meta가 달라도 서버가 정렬한다(계획 전용 아님, **맵 인프라**). 소스 CSV 최대 8종·셀 상한 20,000(초과 시 `truncated` 표기). 정렬 규율: **선언 > 메타(rotation/side) 차이 유도 > identity**, 근거가 없을 때만 `align_unavailable`. 레이어별 색점 마커·표시 토글·정렬 상태 칩(`align.origin` 기준). 실패한 오버레이도 목록에 행으로 남음. `📥 가져오기`는 `gridData`로만 반영(서버 쓰기 없음, 잠금 존중). **메인 맵 로드와 코드 경로 완전 분리** | 맵 에디터 오버레이 블록 `＋ 겹치기` | `addOverlayLayer/overlayCellsToPhysMap/syncOverlayGeometry/importOverlayToGrid`(§7) · GET `/api/maps/overlay`(§1.2) · `server/map_overlay.py`(§5) · [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md) |
+| **전사 계획 사이드바** (M2-v2, 2026-07-26) | **「계획 = 지금 열어 편집 중인 그 맵」** — `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획. stage는 열린 테이블에서 유도(선택 UI 없음), `plan_id`·계획 맵 사본 없음. legend = **DOE 아코디언**(값 = 조건군), 밴드는 `band_seq` 정체 + `stack_band` 자유 텍스트 라벨(다중 구간 `1, 2-15, 16`), 자재 목록 DOE별 그룹 + `openMaterial`이 맵 간 이동의 유일 허브(브레드크럼·뒤로가기). 자재 가용은 `가용 = 총 − (fail ∪ 기전사)`. **서버가 degraded면 `remaining`이 `null`로 오고 클라는 이를 초록으로 뒤집지 않는다.** 검증/경고 UI는 **미구현**(사용자 지시 보류 — `__held_*` 구역) | 맵 에디터 우측 사이드바(맵 로드 시 자동) | `transfer_plan.js`(§7) · GET `/api/transfer-plan/{stages,source-summary,validate}`(§1.2) · `server/transfer_plan.py`(§5) · [MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) |
+| 본딩 실험계획 (M1) — **UI 대체됨** | M1의 조회 전용 Info 패널(`bonding_plan.js`/`.css`)은 `8e34804`에서 **삭제**되고 위 전사 계획 사이드바로 대체됐습니다. **서버 API `GET /api/bonding-plan/core-summary`와 `server/bonding_plan.py`는 존치**하며, `transfer_plan`의 core-kind 경로가 여기에 위임합니다 | (직접 UI 없음 — 전사 계획 경유) | `server/bonding_plan.py`(§5) · GET `/api/bonding-plan/core-summary`(§1.2) |
 
 ### 1.8 어드민 대시보드 (`/admin.html`) — 파이프라인 생애주기 5탭 IA (2026-07-25 재편)
 
@@ -192,6 +197,11 @@
 - [ ] **heavy 진행 가시화**: heavy 진행 중 admin File 탭 → 진행 중 섹션에 HEAVY 배지(재라우팅 소형은 normal 배지)·진행률 바·행 카운트 표시 + 재기동 경고 배너 + 헬스 스트립 File 카드 warn. 완료 시 목록 자동 소거·경고 소멸.
 - [ ] **heavy 임계 핫리로드**: `config/ingestion_settings.json`의 `heavy_file_mb` 변경 → 재기동 없이 **다음 파일부터** 반영. 무효값(문자열/0 이하)은 기본 10MB + 경고 1회.
 - [ ] **heavy 스윕 라우팅**: watcher 정지 → raws/에 대형+소형 배치 → 기동 → 스윕이 대형만 heavy로 보내고 소형·타 테이블이 선완료.
+- [ ] 🎯 **[P2] 체크포인트 재개**(재기동 후 최초 드릴): 대형 파일 처리 도중 watcher 강제 종료 → 재기동 → 로그에 `[resume]`과 재개 오프셋 → **처음부터가 아니라 이어서** 적재되고 최종 행 수·bk 중복 0. `file_ingestion_checkpoints`의 `processed_rows`가 실제 커밋 행 수와 일치.
+- [ ] **[P2] 재개 거부 표면화**: 같은 파일명으로 **내용이 다른** 파일 투입(시그니처·total_rows 불일치) → 0부터 재처리 + 로그·`FileIngestionLog.detail`·완료 통지에 `[resume-abort] … 사유:` 명시(조용히 재처리되면 실패).
+- [ ] 🎯 **[P2] 해시 dedup**: 이미 적재 완료한 파일을 그대로 재투입 → skip + archives 이동 + `FileIngestionLog(SKIPPED)` + 사유 detail. **클라 알림이 "실패"로 보이지 않는지** 확인(통지 status는 SUCCESS).
+- [ ] **[P2] 강제 재처리 3경로**: ① 파일명에 `__force__` 포함 ② `ingestion_settings.json`의 `dedup_by_signature: false` ③ 어드민 재시도 — 셋 다 skip을 우회해 재적재.
+- [ ] **[P2] 감사 총계(이슈 #10)**: 멀티 target-table 체인이 걸린 트랜잭션 유발 → 타임라인의 tx 총건수가 **마지막 메시지 값이 아니라 누적 합**으로 표시.
 
 ### 2.6 Auto-Update
 
@@ -227,10 +237,17 @@
 - [ ] **레전드 유지**: 레전드 편집 → 새로고침 후 유지(localStorage). 테이블별로 분리 저장.
 - [ ] **맵 이월 에지**: 편집 중 테이블 A→B 전환 → 유지/초기화 확인창 표시. (⚠️ 컬럼명이 크게 다르면 자동 정합 안 됨 — 이슈 #2, 저장 전 수동 매핑 확인.)
 - [ ] **엑셀 복사**: 맵 그리드를 엑셀로 복사 → 셀 배치 일치.
-- [ ] **본딩 Info 패널 — 기본 흐름**: 툴바 `🧪 본딩 실험계획` → 패널 개폐, base 입력 + 층 범위 행 추가(코어 자동완성) → 행 선택 시 수량 라인(`잔여 = 총 − defect − EDS − 기사용`)·소스 역할 뱃지(미연결 구분)·공정 이력 타임라인(FAIL 강조)·step 클릭 knob 확장 표시.
-- [ ] **본딩 Info 패널 — 검증/경고**: 층 커버리지 스트립(공백·겹침 구분 표기), 잔여 < 소요 시 행 경고(수량 부족), knob 비교 로드 → 값 상이 셀만 하이라이트(조건 이탈 배지).
-- [ ] **본딩 Info 패널 — 초안 보관**: 편집 후 페이지 리로드 → base/층수/행 복원(localStorage). base 변경 시 이전 초안 확정 저장 후 새 base 초안 복원.
-- [ ] **본딩 Info 패널 에지 — 구버전/미존재**: core-summary 미제공 서버 → "서버 미지원" 안내 + 초안 편집은 지속. 미존재 코어 조회 → 전 역할 connected + total 0(오류 아님).
+- [ ] **페인트 잠금**: 맵 로드 → 잠금 값(기본 `F`) 셀에 브러시·Fill·Auto-Paint·오버레이 가져오기 시도 → 전부 차단. `/api/maps/paint-rules`를 500으로 막고 재로드 → **잠금이 풀리지 않고** `⚠ 잠금 규칙 미확인` 칩 + 경고 토스트(fail-open 금지).
+- [ ] **오버레이 — 기본 흐름**: `＋ 겹치기`로 다른 테이블/키 맵 추가 → 셀 마커 표시, 표시 토글·제거 동작, 정렬 상태 칩이 `declared`/`derived`/`identity` 중 하나로 표기. **메인 맵의 테이블·규격·legend·brush가 하나도 변하지 않는지** 확인(경로 분리 불변식).
+- [ ] **오버레이 — 좌표 정확성** ⚠️: 회전 90/270 + **비등방 칩**(chip_x ≠ chip_y) + **bbox ≠ 0인 실데이터**(29×25, 27×21 등)로 확인할 것. 40×40(`minC=0`)은 결함이 원리적으로 발현하지 않는 구간이라 통과해도 아무 의미가 없다(과거 2회 이 사각지대에서 "해소" 오판정). 오라클은 앱의 변환 함수를 쓰지 말고 독립 계산으로.
+- [ ] **오버레이 — 규격 변경 추종**: 오버레이가 떠 있는 상태에서 회전·면반전·start 좌표 변경 → 마커가 새 격자에 맞게 재배치(`syncOverlayGeometry`).
+- [ ] **오버레이 — 실패 표면화**: 존재하지 않는 소스 맵 추가 → 목록에 **실패 행으로 남고** 사유 표시(조용히 사라지지 않음).
+- [ ] **전사 계획 — 기본 흐름**: `bonding_map` 로드 → 사이드바에 stage가 **자동 유도**되어 표시(선택 UI 없음) → DOE 값 아코디언 펼침 → 밴드 추가·STACK 라벨 자유 입력(`1, 2-15, 16`) → 자재 추가(lot\|slot 자동완성) → 서버 저장 후 재로드 시 유지.
+- [ ] **전사 계획 — 라벨/정체 분리**: `stack_band` 라벨만 수정 → 하위 자재 행이 **고아가 되지 않고 유지**(`band_seq`가 정체). 밴드 삭제 후 추가 → 기존 밴드의 `band_seq`가 **재번호되지 않음**.
+- [ ] **전사 계획 — prune 권한(C1 회귀)** 🔴: `map_doe`/`map_doe_source` **GET만** 500으로 1회 막았다가 **복구**시킨 뒤 편집 → 서버 행이 삭제·덮어쓰기되지 않아야 한다. 지속 실패만 시험하면 **회복 분기를 한 번도 실행하지 않으므로 이 항목은 검증되지 않은 것**이다. 절단 응답(`total > rows.length`)·맵 전환 중 늦은 응답도 같은 방식으로 확인.
+- [ ] **전사 계획 — degraded 표기**: 역할 바인딩을 하나 끊고 자재 요약 조회 → `remaining`이 숫자가 아니라 **미상**으로 표시되고 경고가 뜬다. **초록/정상으로 뒤집히면 실패.**
+- [ ] **전사 계획 — 이동 허브**: 자재 행 클릭 → 해당 자재 맵으로 이동, 브레드크럼·뒤로가기로 복귀 후 그 자재만 재조회.
+- [ ] **전역 토스트**(전 페이지): 에러 토스트 4개를 띄운 뒤 성공 토스트 1개 → **새 토스트가 즉시 사라지지 않고** 가장 오래된 에러가 밀려난다. 토스트를 띄운 채 탭을 30초 이상 백그라운드로 두었다 복귀 → **만료된 토스트가 즉시 정리**된다(누적 없음). 같은 `dedupeKey`의 비-에러 알림 반복 → `… · N건`으로 합쳐진다. 에러는 **합쳐지지 않는다**.
 
 ### 2.10 어드민 대시보드 (5탭 IA)
 

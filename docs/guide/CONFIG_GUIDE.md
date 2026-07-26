@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -30,7 +30,8 @@ server/database/virtual_graph.json
 | **`enrichment_rules.json`** | 결손 보정 워크리스트 규칙(`decision_key`/`target_fields`/`reference_views`) | 사용자 | ignored (`.sample` 有) | 조회 API는 즉시 / 체인 파생 룰은 `reload-configs` | web, chain_ingestion_worker |
 | **`chain_rules.json`** | 체인 인제션 룰(trigger→target→mapper) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` | chain_ingestion_worker, web(조회) |
 | **`auto_update_control.json`** | 수집기 비활성 목록(= active 토글) | 사용자 (**API로 쓰기 권장**) | ignored (`.sample` 有) | 즉시(매 사이클 재조회) | run_auto_update, web |
-| **`ingestion_settings.json`** | `heavy_file_mb` — heavy 레인 라우팅 임계 | 사용자 | ignored (`.sample` 有) | 즉시(**다음 파일부터**) | watcher |
+| **`ingestion_settings.json`** | 인제션 런타임 노브 — `heavy_file_mb`(P1 heavy 레인 임계, 기본 10) · `dedup_by_signature`(P2 동일 파일 skip, 기본 true) · `resume_from_checkpoint`(P2 오프셋 재개, 기본 true) | 사용자 | ignored (`.sample` 有) | 즉시(**다음 파일부터**) | watcher |
+| **`map_overlay_config.json`** | **범용 맵 오버레이** — `align_overrides`(장비별 계측 보정 선언) · `table_bindings`(맵 좌표 컬럼, 미선언 시 `table_config`에서 자동 유도) · `paint_lock`(페인트 잠금 **정본**) | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`maps.json`** | 웨이퍼 물리 규격/오프셋 **프리셋** | 사용자 (**API로 쓰기**) | ignored (`.sample` 有) | 즉시(요청마다 디스크 읽기) | web |
 | **`bonding_plan_config.json`** | M1 본딩 실험계획 — 역할(role)→실테이블 바인딩 | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`transfer_plan_config.json`** | M2 Universal Transfer Plan — stage 선언 + plan_store | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
@@ -234,7 +235,7 @@ S1을 전부 수행한 뒤 추가로:
 | `table_config` — **기존 테이블에 컬럼 추가(ALTER)** | **config watcher 경로만** (`sync_dynamic_tables_schema`) | 불필요 — 단, watcher 미발화면 재기동 |
 | `table_config` — **컬럼 삭제 / 타입 변경** | 어떤 리로드 경로도 하지 않음 | **재기동 필요**(+ 필요 시 수동 마이그레이션) |
 | `ontology_mapping` / `chain_rules` / `enrichment_rules` | `POST /admin/reload-configs` | 불필요 |
-| `bonding_plan_config` / `transfer_plan_config` | 없음 — **요청마다 디스크 재읽기** | 불필요 |
+| `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` | 없음 — **요청마다 디스크 재읽기** | 불필요 |
 | `ingestion_settings` | 없음 — **파일 이벤트마다 재읽기** | 불필요 |
 | `auto_update_control` | 없음 — 스케줄러가 매 사이클 재읽기 + API가 실시간 계산 | 불필요 |
 | `maps.json` | 없음 — 요청마다 재읽기 | 불필요 |
@@ -253,7 +254,7 @@ S1을 전부 수행한 뒤 추가로:
 **안 하는 일**
 - ❌ **기존 테이블 ALTER를 하지 않습니다.** (락 컨보이 방지 — 의도된 설계)
 - ❌ 컬럼 삭제·타입 변경을 반영하지 않습니다. 동적 모델 핫스왑은 **컬럼 append만** 합니다.
-- ❌ `bonding_plan_config` / `transfer_plan_config` / `maps` / `ingestion_settings` / `auto_update_control`은 애초에 캐시가 없어 건드릴 게 없습니다.
+- ❌ `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` / `maps` / `ingestion_settings` / `auto_update_control`은 애초에 캐시가 없어 건드릴 게 없습니다.
 
 **안전장치:** 재로드 시 config가 비었거나 손상됐으면 **기존 싱글턴을 유지**하고 아무것도 바꾸지 않습니다.
 
@@ -463,6 +464,31 @@ psql -U postgres -d assy_manager -c "\d <table>"
 > ⚠️ **구간 정체는 `band_seq`(정수 서수)가 지고, 사람이 읽는 표기 `stack_band`는 비키 컬럼입니다.** 자유 텍스트를 키에 넣으면 ①bk 조립이 구분자 `|`를 이스케이프하지 않아 라벨에 `|`가 섞이면 키가 모호해지고 ②키 컬럼이 바뀌면 행이 **re-key**되므로 라벨을 고치는 순간 하위 자재 행이 고아가 됩니다. 라벨은 `1`/`2-11`/`H1~H2`/`바닥` 무엇이든 자유이며 정규화가 필요 없습니다.
 >
 > 매별 소요는 지정 대상이 아니라 구간 `qty_total`의 **균등 배분**(올림)이며, `doe_source.qty`가 있으면 그것이 우선합니다. 값 단위 속성(설명·색)은 `map_split_registry`가 정본이라 `map_doe`에 중복 저장하지 않습니다.
+
+> **`.sample`은 위 발췌와 일치합니다(2026-07-26 정정 완료).** `transfer_plan_config.json.sample`의 `plan_store`에서 v1 잔재 역할(`plan`/`map`/`doe_layer`)과 폐기 컬럼(`plan_id`·`layer_from`·`layer_to`·`qty_per_unit`)을 제거하고, 코드가 실제로 요구하는 `doe`(필수 `ref_table`·`map_key`·`doe_value`·`band_seq`) / `doe_source`(필수 위 4개 + `source_lot`·`source_slot`) / `source_region`(필수 `ref_table`·`map_key`·`source_lot`·`source_slot`·`x`·`y` — **선택·휴면 역할**, 쓰지 않으려면 키 전체를 지우십시오) 바인딩으로 교체했습니다. `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
+>
+> ⚠️ **단, 바인딩은 대상 테이블이 `table_config.json`에 등록돼 있어야 해석됩니다.** 현재 `table_config.json.sample`은 최소 세트만 담고 있어 `map_doe`·`map_doe_source`(·선택적 `map_source_region`)가 없습니다 — **`.sample`만 복사한 새 환경에서는 `plan_store`가 여전히 `missing`으로 뜹니다.** 이 테이블들을 `table_config.json`에 먼저 등록하십시오(스키마 계약이라 `table_config.json.sample` 반영은 총괄 판단 대기).
+
+### 5.8-bis `map_overlay_config.json` — 키 구조
+
+> 실값은 각 환경의 로컬 자산이므로 **키 구조만** 수록합니다.
+
+```
+align_overrides.<table>.default.{rotation, flip, offset:{x, y}}
+align_overrides.<table>.by_eqp.<eqp_id>.{rotation, flip, offset:{x, y}}
+table_bindings.<table>.columns.{x, y, val, key_columns[]}
+paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
+paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
+```
+
+| # | 할 일 |
+|---|---|
+| 1 | **아무것도 선언하지 않아도 오버레이는 동작합니다** — `table_bindings`는 `table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도되고, align은 `wafer_map_metadata`의 rotation/side 차이에서 유도됩니다 |
+| 2 | `align_overrides`는 **메타에서 유도 불가능한 계측 보정**(DEFECT WF로 측정한 장비별 어긋남)일 때만 선언합니다. 우선순위는 `by_eqp` > `default` > 메타 유도 > identity |
+| 3 | `paint_lock`은 **`"*"` 기본 선언 + 테이블별 오버라이드**가 머지됩니다. 기본값은 `F` 잠금 |
+| 4 | 검증: `GET /api/maps/paint-rules?table=<t>` → `GET /api/maps/overlay?target_table=&target_key=&sources=<t>:<key>` 응답의 `overlays[].status`와 `align_applied.origin`(`declared`/`default`/`derived`/`identity`) 확인 |
+
+> **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 선언 부재는 실패가 아니며 identity로 붙습니다. 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
 ### 5.9 `maps.json` — 프리셋 1개 (**UI로 관리 권장**)
 

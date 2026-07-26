@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -61,11 +61,12 @@ npm run build     # dist/ 생성
 | `clipboard.js` | 788 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
 | `timeline.js` | 718 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
 | `ui.js` | 408 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`, Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
-| `utils.js` | 195 | `getLocalTimeString`, `showToast`(window 부착), 인제션 진행 위젯 |
+| `utils.js` | 307 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 5 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
 | `admin.js` | 2437 | 어드민 5탭(§5) |
-| `map_editor.js` | 2771 | 맵 에디터(§4) |
+| `map_editor.js` | 4209 | 맵 에디터 + 페인트 잠금 + **오버레이 레이어**(§4) |
+| `transfer_plan.js` | 1405 | **전사 계획 사이드바**(§4.1) — map_editor.html에서 소비. 구 `bonding_plan.js`(M1 Info 패널)를 대체·삭제 |
 | `enrichment.js` | 754 | Enrichment 컨베이어: 규칙 선택(`loadRules/selectRule`), 워크리스트(`fetchWorklist`), 입력 흐름(`onInputKeydown/saveCurrent` → PUT `/data/updates`), 참조 패널(`initReferencePanel/loadActiveReference`, stale 가드) |
 | `graph_viewer.js` | 927 | 그래프 서브그래프 뷰어(§6): stats 카드, 자동완성 검색, BFS 동심원 캔버스(무라이브러리), 팬·줌, Node Inspector, `?label=&identity=` 딥링크 |
 | `trace.js` | 454 | trace.html 오케스트레이터(§6): `runTrace`(POST `/graph/trace`, seq 가드) → `renderReport`(그룹+타임라인 청크 렌더), 시드 칩·depth·시간범위, URL 동기화 |
@@ -77,20 +78,36 @@ npm run build     # dist/ 생성
 
 ---
 
-## 4. 맵 에디터 (`map_editor.js`, ~2771줄)
+## 4. 맵 에디터 (`map_editor.js`, ~4,209줄)
 
 | 영역 | 대표 함수 |
 |---|---|
 | 렌더링 | `renderGridCanvas`/`scheduleRenderGridCanvas`, `updateCellStyles`, `renderLegendTable`, `updateNotchPosition` |
 | 좌표 변환 | `getPhysicalCoords`/`getCellFromPhysicalCoords`, `getVisualCoords`, `getWaferBoundingBox`, `getTransformedPhysicalConfig`, `isCellInsideWafer{,Fast}` |
 | 드래그 선택/페인팅 | `initMouseDragEvents`, `handleCellClick`, `fillSelectedCells`, `remapGridValues`, `autoPaintE1E2` |
-| 엑셀 복사 | `copyGridToExcel()` (~2616) — TSV 클립보드 |
+| 엑셀 복사 | `copyGridToExcel()` — TSV 클립보드 |
 | 메타/레전드 | `renderMetadataInputs`, 프리셋 `/api/map-presets`, 레전드 `localStorage`(`map_legend_{table}`) |
 | 데이터 동기화 | `loadExistingMap()`(REST pull), `pushMapData()`(REST push) |
+| **페인트 잠금** (M2) | `fetchPaintRules`(GET `/api/maps/paint-rules` — 선언 정본이 서버로 이동, 구 `'F'` 하드코딩 대체), **`isProtectedFCell`**(편집 가능 판정의 **단일 관문** — 모든 편집 경로가 여기로 수렴), `updatePaintLockIndicator`. 404/405만 "선언 없음", 네트워크·5xx는 직전 잠금 유지(**조용한 fail-open 제거**). ⚠️ 콜드 스타트(첫 조회 실패)는 아직 열린 채 시작 — QA C4 미해소 |
+| **오버레이 레이어** (M2) ⚠️ | `addOverlayLayer`(GET `/api/maps/overlay`), `overlayCellsToPhysMap`(**재변환 금지** — 서버가 이미 타깃 프레임으로 정렬), `currentGeomSignature`/`syncOverlayGeometry`, `overlayAlignChip`, `importOverlayToGrid`(오버레이 → `gridData`, 서버 쓰기 없음). **메인 로드와 코드 경로 완전 분리** — `selectedTable`·`gridData`·legend·규격·brush를 읽지도 쓰지도 않고 `switchTable`을 경유하지 않는다 |
 
 > **정정:** 맵 에디터는 **WebSocket을 사용하지 않습니다.** REST pull/push + localStorage. 실시간 WS는 메인 그리드(`websocket.js`)에만.
+> ⚠️ **오버레이 구간은 변경 예정** — 오버레이 변환을 클라 단일 구현으로 일원화하는 작업이 진행 중입니다(사용자 지시 2026-07-26). 위 함수 시그니처를 확정 계약으로 인용하지 마십시오.
 
-상세 규격: [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) · [map_editor/](../map_editor/README.md)
+### 4.1 전사 계획 사이드바 (`transfer_plan.js`, ~1,405줄)
+
+**「계획 = 지금 열어 편집 중인 그 맵」** — `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획. stage는 열린 테이블에서 유도되며 `plan_id`도 계획 맵 사본도 없습니다.
+
+| 영역 | 내용 |
+|---|---|
+| 배선 | `map_editor.js`가 `initTransferPlan(paintController)`로 초기화하고 `notifyMapContext`/`notifyLegendChanged`/`notifyPaintCounts`로 통지(단방향) |
+| 관리 단위 | **DOE = value**(맵에 칠한 값 하나 = 조건군 하나). 밴드는 `band_seq`(정수 정체) + `stack_band`(자유 텍스트 라벨, 다중 구간 `1, 2-15, 16`) |
+| 키 조립 | `doeRowKey`/`doeSourceRowKey` **단일 지점** — `table\|mapKey\|value\|seq[\|lot\|slot]` |
+| 서버 왕복 | GET `/api/transfer-plan/{stages,source-summary,validate}` + PUT `/tables/map_doe\|map_doe_source/data/updates` |
+| **prune 권한 불변식** | `doeServerLoaded === true ⇒ S.doe는 서버본에서 유래`. 권한 획득은 **`adoptServerDoe` 한 지점**에서 서버본 채택과 **원자적으로**. 조회 성공을 "화면이 서버본이다"로 승격시키지 않는다. 로드 미확인 시 **삭제뿐 아니라 쓰기도 보류**. `loadSeq` 세대 가드로 맵 전환 레이스 차단 |
+| 이동 | `openMaterial(lot, slot)` — 맵 간 이동의 유일 허브(브레드크럼 + 뒤로가기 프레임 스택) |
+
+상세 규격: [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)(§5 오버레이 정렬 계약 · §6 전사 계획) · [map_editor/](../map_editor/README.md)
 
 ---
 

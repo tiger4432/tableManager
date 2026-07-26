@@ -1,11 +1,12 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 8b0fd03) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD da65a87) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
 - **소스 파일을 통째로 Read하지 말 것.** 이 지도에서 함수·라인을 찾은 뒤 **해당 섹션만** `Read(offset, limit)`로 읽는다.
-- 라인 앵커는 HEAD `8b0fd03` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- 라인 앵커는 HEAD `da65a87` 기준 **±20줄 오차 허용**. 정확 위치는 Grep으로 확정.
+- ⚠️ **`map_editor.js` 오버레이 구간([§7](#7-client2src--웹-클라이언트))은 변경 예정이다** — 오버레이 변환의 클라 단일 구현 전환이 진행 중이므로 그 구간 시그니처를 확정 계약으로 인용하지 말 것.
 - 이 문서는 **지도이지 교과서가 아니다** — 구현 설명은 각 리빙 문서([backend](./backend.md)·[data_model](./data_model.md)·[frontend](./frontend.md)·[event_driven_backend](./event_driven_backend.md)) 참조.
 
 **유지보수 규율:** 코드맵 갱신은 **doc-keeper 전담** — 총괄이 코드 배치를 병합·커밋한 뒤 doc-keeper에 위임하면, doc-keeper가 **타 에이전트들의 수정 이력(history 문서·보고서·커밋 diff)을 요약**해 해당 모듈 맵을 갱신한다(구현 에이전트는 맵을 직접 수정하지 않음 — 보고서에 변경 함수/시그니처 목록만 남긴다). 정기 정합 감사도 doc-keeper. 라인 앵커는 대략치로 충분 — 시그니처·역할 서술의 정확성이 우선.
@@ -16,13 +17,13 @@
 
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
-| `server/main.py` | ~3,811 | [§1](#1-servermainpy--api--ws-허브) |
-| `server/database/crud.py` | ~1,863 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
-| `server/parsers/directory_watcher.py` | ~1,467 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
+| `server/main.py` | ~3,934 | [§1](#1-servermainpy--api--ws-허브) |
+| `server/database/crud.py` | ~1,890 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
+| `server/parsers/directory_watcher.py` | ~1,712 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | `server/chain_ingestion_worker.py` | ~965 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
-| 소형 서버 모듈 (models/std_parser/enrichment_*/ingestion_activity/bonding_plan) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) | ~3,740 | [§5](#5-소형-서버-모듈) |
+| 소형 서버 모듈 (models/std_parser/enrichment_*/ingestion_activity/ingestion_checkpoint/bonding_plan/**map_overlay**/**transfer_plan**) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) | ~6,120 | [§5](#5-소형-서버-모듈) |
 | 기타 서버 모듈 (한줄 요약) | — | [§6](#6-기타-서버-모듈-한줄-요약) |
-| `client2/src/*` | ~14,000 | [§7](#7-client2src--웹-클라이언트) |
+| `client2/src/*` | ~16,000 | [§7](#7-client2src--웹-클라이언트) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
 
 ---
@@ -104,7 +105,12 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | POST `/admin/auto-update/run-now` | `trigger_auto_update_run_now` | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도) | ~3381 |
 | GET/POST `/admin/scripts/list|code` | `list_admin_scripts` 등 | Monaco 에디터용 스크립트 IO | ~3556–3655 |
 | GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `_save_map_preset_impl` 등 | 맵 프리셋 CRUD | ~2889–2949 |
-| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1 신설]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 클라 M1은 미사용, M2 cells 모드용 존치), 잘못된 region 400 | ~2957 |
+| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 현 클라 미사용), 잘못된 region 400 | ~2957 |
+| GET `/api/maps/overlay` | `get_map_overlay(target_table, target_key, sources, eqp=None, limit=None)` | **[M2 신설 · 맵 인프라]** 임의의 맵들을 타깃 맵 프레임 좌표로 정렬해 `overlays[]` 반환. `sources`는 `table` 또는 `table:key`의 CSV(키 생략 시 target_key 승계, 최대 8종). `map_overlay.get_overlay` 위임([§5](#5-소형-서버-모듈)), `parse_sources` ValueError → 400, 셀 상한 `MAX_OVERLAY_CELLS=20,000`(초과 시 `truncated:true`) | ~2990 |
+| GET `/api/maps/paint-rules` | `get_map_paint_rules(table=None)` | **[M2 신설]** 페인트 잠금 선언 정본(**기존엔 클라 하드코딩 `'F'`**) — `map_overlay.get_paint_rules`. 응답 `{table, rules{enabled, blocking_values, from_overlay, message}}` | ~3026 |
+| GET `/api/transfer-plan/stages` | `get_transfer_plan_stages` | **[M2 신설]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). `transfer_plan.list_stages` | ~3040 |
+| GET `/api/transfer-plan/source-summary` | `get_transfer_plan_source_summary(stage, lot, slot, ref_table=None, map_key=None)` | **[M2 신설]** 단계별 소스 (lot,slot) 가용 집계 — `transfer_plan.get_stage_source_summary`. 미선언 stage 404. **칩 좌표 목록은 반환하지 않는다**(집계만 — 페이로드 상한 규율). `(ref_table, map_key)` 지정 시 `region_chips` 동봉(v2에서 구 `plan_id` 대체) | ~3054 |
+| GET `/api/transfer-plan/validate` | `validate_transfer_plan(ref_table, map_key)` | **[M2 신설 · v2 모델]** 계획 검증 — **계획 정체성 = 지금 열어 편집 중인 맵**(`plan_id` 폐기). stage는 `stages.*.target_map.table` 역인덱스로 유도, 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status:"unverified"`. `plan_store.doe` 미구성만 404 | ~3084 |
 | GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회 | ~3140/3151 |
 | WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager) | ~2213 |
 | POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_*` | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`). [P1] batch-refresh는 msg 재구성 시 `total_log_count` 동봉(~3447 — 체인 passthrough 경로와 대칭화), broadcast는 `file_ingestion_progress`를 레지스트리에 인터셉트, file-processed는 레지스트리 제거 인터셉트 | ~3421–3540 |
@@ -136,73 +142,85 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 |---|---|---|
 | `transaction_context(user, tx_id, source)` | 컨텍스트매니저 — 감사·outbox용 트랜잭션 식별 주입 | ~8 |
 | `class LightCellSource` / `LightCellOverwrite` | ORM 미경유 경량 메타 객체(성능) | ~28/39 |
-| `sanitize_to_utf8(data)` | cp949 등 오염 문자열 정화 | ~60 |
-| `load_table_config()` / `update_table_config(new_config)` | table_config.json IO | ~82/91 |
-| `cast_value_by_type(value, col_type, col_name)` | 컬럼 타입 캐스팅 | ~107 |
-| `get_row_by_business_key(db, table_name, key_value)` | 비즈니스 키로 행 조회 | ~134 |
-| `resolve_priority_map(table_name=None) -> dict` / `get_source_priority(source_name, table_name=None) -> int` | **소스 서열 단일 원천**(테이블별 오버라이드 포함) — compute_priority_value·graph materializer 공용. `SOURCE_PRIORITY`에 `chain_ingestion: 4` 등재 | ~151/166 |
-| `compute_priority_value(sources, manual_priority_source, table_name)` | **표시값 결정** — user:0 < collision_merge:1 < pipeline_parser:2 < custom_script:3 < chain_ingestion:4 + 수동 Pin | ~171 |
-| `create_audit_log(db, ..., transaction_id, business_key, add_to_cache)` | 감사 로그 1건 생성 | ~198 |
-| `bulk_insert_audit_logs(db, logs)` | 감사 로그 벌크 삽입 | ~248 |
-| `bulk_upsert_cell_sources(db, mappings)` / `bulk_upsert_cell_overwrites(db, mappings)` | 메타 테이블 벌크 업서트(ON CONFLICT) | ~268/300 |
-| `bulk_delete_cell_overwrites(db, delete_keys)` | overwrite 벌크 삭제 | ~333 |
-| `_get_or_create_row(db, table_model, update_item, row_cache, table_name) -> (row, is_new)` | row_id/비즈니스키로 행 확보(캐시 활용) | ~349 |
-| `_load_metadata_row_cell(...) -> (sources_list, overwrite)` | 셀 메타 로드(캐시·업서트 큐 연동) | ~405 |
-| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴 | ~469 |
-| `apply_batch_updates(db, table_name, batch: GeneralUpdateBatch)` | **배치 진입점** — tx 컨텍스트, 캐시 프리로드, 행별 코어 호출, 벌크 flush, outbox 발화. 반환 `(results, changed_cells, created_logs, deleted_row_ids)` | ~944 |
-| `create_empty_row(s)_batch(db, table_name, count, user_name)` | 빈 행 생성 | ~1137/1142 |
-| `delete_row(db,...)` / `delete_rows_batch(db, table_name, row_ids, user_name)` | 행 삭제(+감사·메타 정리) | ~1186/1190 |
-| `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 | ~1254 |
-| `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) | ~1410 |
-| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) | ~1415 |
-| `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) | ~1774 |
-| `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) | ~1783/1826 |
+| `_warn_audit_truncation_once(table_name, col_name)` | [P2] 감사 값 절단 경고 dedup(테이블·컬럼당 1회) | ~43 |
+| `sanitize_to_utf8(data)` | cp949 등 오염 문자열 정화 | ~90 |
+| `load_table_config()` / `update_table_config(new_config)` | table_config.json IO | ~112/121 |
+| `cast_value_by_type(value, col_type, col_name)` | 컬럼 타입 캐스팅 | ~137 |
+| `get_row_by_business_key(db, table_name, key_value)` | 비즈니스 키로 행 조회 | ~164 |
+| `resolve_priority_map(table_name=None) -> dict` / `get_source_priority(source_name, table_name=None) -> int` | **소스 서열 단일 원천**(테이블별 오버라이드 포함) — compute_priority_value·graph materializer 공용. `SOURCE_PRIORITY`에 `chain_ingestion: 4` 등재 | ~178/193 |
+| `compute_priority_value(sources, manual_priority_source, table_name)` | **표시값 결정** — user:0 < collision_merge:1 < pipeline_parser:2 < custom_script:3 < chain_ingestion:4 + 수동 Pin | ~198 |
+| `create_audit_log(db, ..., transaction_id, business_key, add_to_cache)` | 감사 로그 1건 생성. [P2] `old_val`/`new_val`은 `event_constants.truncate_audit_value`로 **4096자 상한**(~240) — 절단본이 DB 저장본과 통지 dict **양쪽에** 동일 적용되고, 절단 사실은 값 내부 마커(`…[truncated: 총 N자]`)로 명시 | ~220 |
+| `bulk_insert_audit_logs(db, logs)` | 감사 로그 벌크 삽입 | ~279 |
+| `bulk_upsert_cell_sources(db, mappings)` / `bulk_upsert_cell_overwrites(db, mappings)` | 메타 테이블 벌크 업서트(ON CONFLICT) | ~299/331 |
+| `bulk_delete_cell_overwrites(db, delete_keys)` | overwrite 벌크 삭제 | ~364 |
+| `_get_or_create_row(db, table_model, update_item, row_cache, table_name) -> (row, is_new)` | row_id/비즈니스키로 행 확보(캐시 활용) | ~380 |
+| `_load_metadata_row_cell(...) -> (sources_list, overwrite)` | 셀 메타 로드(캐시·업서트 큐 연동) | ~436 |
+| `apply_row_update_internal(db, table_name, update_item, row_cache, sources_cache, overwrites_cache, transaction_id, logs_to_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, cell_overwrites_to_delete, deleted_row_ids) -> (row, is_new, changed_cols)` | **[통합 코어]** 단일 행 업데이트 + 레이어링 재계산. 모든 쓰기 경로가 여기로 수렴 | ~500 |
+| `apply_batch_updates(db, table_name, batch: GeneralUpdateBatch)` | **배치 진입점** — tx 컨텍스트, 캐시 프리로드, 행별 코어 호출, 벌크 flush, outbox 발화. 반환 `(results, changed_cells, created_logs, deleted_row_ids)`. [P2] 워처가 이 함수의 commit에 오프셋 갱신을 동승시킨다 | ~980 |
+| `create_empty_row(s)_batch(db, table_name, count, user_name)` | 빈 행 생성 | ~1173/1178 |
+| `delete_row(db,...)` / `delete_rows_batch(db, table_name, row_ids, user_name)` | 행 삭제(+감사·메타 정리) | ~1222/1226 |
+| `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 | ~1290 |
+| `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) | ~1446 |
+| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) | ~1451 |
+| `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) | ~1810 |
+| `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) | ~1819/1862 |
 
 ---
 
 ## 3. `server/parsers/directory_watcher.py` — 파일 인제션
 
-워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합, **워크스페이스 config.json 폐지**(`5fac5f0`). 2026-07-26 **대형 파일 P1 heavy 레인**(`4fd8ac9`+`8b0fd03`) — 크기 임계(기본 10MB, `config/ingestion_settings.json` 파일 경계 핫리로드) 초과 파일을 전용 큐/워커로 이관해 observer 디스패치 스레드 HOL 제거. 워크스페이스 내 FIFO는 backlog 카운터+직렬화 락+논블로킹 재라우팅 3중 장치로 보존. 통지 로그 상한 `MAX_NOTIFY_CREATED_LOGS`는 `event_constants.py` 공용 상수 import. 테스트: `tests/test_workspace_config_deprecation.py`(21개) · `tests/test_heavy_lane.py`(27개, `hvy_test_*`).
+워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합, **워크스페이스 config.json 폐지**(`5fac5f0`).
+
+- **[P1] heavy 레인**(`4fd8ac9`+`8b0fd03`) — 크기 임계(기본 10MB, `config/ingestion_settings.json` 파일 경계 핫리로드) 초과 파일을 전용 큐/워커로 이관해 observer 디스패치 스레드 HOL 제거. 워크스페이스 내 FIFO는 backlog 카운터+직렬화 락+논블로킹 재라우팅 3중 장치로 보존.
+- **[P2] 체크포인트 재개 + 해시 dedup**(`f78ab0a`) — 파일 전체 sha256 시그니처(`sha256:<size>:<digest>`)를 계산해 ① 동일 시그니처 `DONE`이면 skip ② 미완이면 오프셋 재개. 저장소는 신규 테이블 `file_ingestion_checkpoints`([`ingestion_checkpoint.py` §5](#5-소형-서버-모듈)). **오프셋 갱신은 청크 upsert와 같은 트랜잭션** — "커밋된 행 수 == 기록된 오프셋"이 원자적으로 성립. 재개는 시그니처+`total_rows`+`source_kind`+오프셋 범위가 **전부** 일치할 때만. heavy/normal·스윕·관리자 재시도 4경로 동일 동작.
+- 통지 로그 상한 `MAX_NOTIFY_CREATED_LOGS`는 `event_constants.py` 공용 상수 import.
+- 테스트: `tests/test_workspace_config_deprecation.py`(21개) · `tests/test_heavy_lane.py`(27개, `hvy_test_*`) · `tests/test_ingestion_checkpoint.py`.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `load_global_table_config() -> dict` | table_config.json 로드 | ~49 |
-| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~66 |
-| `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~90/98 |
-| `DEFAULT_HEAVY_FILE_MB=10` / `INGESTION_SETTINGS_PATH` | [P1] heavy 임계 기본값·설정 파일 경로(`server/config/ingestion_settings.json`, `.sample` tracked) | ~116/117 |
-| `load_ingestion_settings()` / `warn_invalid_heavy_threshold_once` / `get_heavy_threshold_bytes()` | [P1] 임계 로더 — **파일 이벤트(라우팅 결정)당 1회 디스크 읽기**(파일 경계 핫리로드), 양수만 유효·그 외 기본 10MB+1회 경고 | ~122/136/148 |
-| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | ~170 |
-| `class HeavyIngestionLane` — `submit/_ensure_running/_worker_loop/stop` | [P1] FIFO `queue.Queue` + 데몬 워커 스레드 `watcher-heavy-lane` **1개**(첫 제출 시 지연 기동). WorkspaceWatcher가 1개 생성해 전 핸들러 주입. heavy끼리는 직렬(escalation §6-3) | ~180–233 |
-| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~234 |
-| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~275 |
-| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~308 |
-| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~322 |
-| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환) | ~396 |
-| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~427 |
-| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~449 |
-| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | ~464 |
-| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~475 |
-| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~495–507 |
-| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임으로 재구성 | ~510–548 |
-| ├ `_classify_lane(abs_path)` / `_heavy_backlog_nonzero()` | [P1] 이벤트 시점 `os.stat` 1회 크기 분류 / 워크스페이스 heavy backlog 잔여 확인 | ~550/564 |
-| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | ~568 |
-| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | ~602 |
-| ├ `_run_lane_job(...)` / `_notify_ingestion_state(state)` | [P1] heavy 워커 잡 본체(직렬화 락 획득→`process_with_retry`→finally 정리) / 상태 push 콜백 래퍼 | ~640/670 |
-| ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 스냅샷→파싱→업서트→아카이브/에러 이동, 재시도 | ~681 |
-| ├ `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명 사용) | ~744/766 |
-| ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행 — 역시 스냅샷 진입점, 내부에서 락 안 잡음) | ~788 |
-| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~821/849 |
-| ├ `_discover_and_execute_pipeline(file_path) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~876 |
-| ├ `_resolve_rows(file_path, t_name=None, table_info=None)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파) | ~966 |
-| ├ `_try_std_parse(file_path, t_name, table_info)` | std_parser 호출 래퍼(게이트·에러 처리) | ~997 |
-| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백 | ~1038 |
-| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성·전 핸들러 주입 + `on_ingestion_state_callback` 배선 | ~1162 |
-| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시) | ~1190 |
-| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리) — 레거시 config 발견 시 1회 경고(QA D4) | ~1219 |
-| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1278/1294 |
-| ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — [P1] 스윕도 자동으로 heavy 라우팅을 탐(대형 파일이 캐치업을 직렬 블로킹하지 않음). (mtime,size) 시그니처로 무한 재시도 차단, err/·하위 dir 제외 | ~1324/1385/1391 |
-| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~1400/1404 |
-| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥, stop()이 heavy 레인도 정지 | ~1413–1467 |
+| `load_global_table_config() -> dict` | table_config.json 로드 | ~57 |
+| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~74 |
+| `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~98/106 |
+| `DEFAULT_HEAVY_FILE_MB=10` / `INGESTION_SETTINGS_PATH` | [P1] heavy 임계 기본값·설정 파일 경로(`server/config/ingestion_settings.json`, `.sample` tracked) | ~124/125 |
+| `load_ingestion_settings()` / `warn_invalid_heavy_threshold_once` / `get_heavy_threshold_bytes()` | [P1] 임계 로더 — **파일 이벤트(라우팅 결정)당 1회 디스크 읽기**(파일 경계 핫리로드), 양수만 유효·그 외 기본 10MB+1회 경고 | ~130/144/156 |
+| `DEFAULT_DEDUP_BY_SIGNATURE=True` / `DEFAULT_RESUME_FROM_CHECKPOINT=True` / `_bool_setting(key, default)` | [P2] dedup·재개 기본값과 설정 판독기(같은 `ingestion_settings.json`) | ~170/171/174 |
+| `dedup_by_signature_enabled()` / `resume_from_checkpoint_enabled()` | [P2] 게이트 — `dedup_by_signature: false`가 **전역 강제 재처리 스위치**(파일명 `__force__`와 관리자 재시도가 나머지 2경로) | ~189/197 |
+| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | ~211 |
+| `class HeavyIngestionLane` — `submit/_ensure_running/_worker_loop/stop` | [P1] FIFO `queue.Queue` + 데몬 워커 스레드 `watcher-heavy-lane` **1개**(첫 제출 시 지연 기동). WorkspaceWatcher가 1개 생성해 전 핸들러 주입. heavy끼리는 직렬(escalation §6-3) | ~221–273 |
+| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~275 |
+| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~316 |
+| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~349 |
+| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~363 |
+| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환) | ~437 |
+| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~468 |
+| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~490 |
+| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | ~505 |
+| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~516 |
+| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~536–548 |
+| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임으로 재구성 | ~551–589 |
+| ├ `_classify_lane(abs_path)` / `_heavy_backlog_nonzero()` | [P1] 이벤트 시점 `os.stat` 1회 크기 분류 / 워크스페이스 heavy backlog 잔여 확인 | ~591/605 |
+| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | ~609 |
+| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | ~643 |
+| ├ `_run_lane_job(...)` / `_notify_ingestion_state(state)` | [P1] heavy 워커 잡 본체(직렬화 락 획득→`process_with_retry`→finally 정리) / 상태 push 콜백 래퍼 | ~681/711 |
+| ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 스냅샷→파싱→[P2] 시그니처 계산(~743)→dedup skip→`_plan_checkpoint`(~759)→`_send_to_upsert`→`_finalize_checkpoint`→아카이브/에러 이동, 재시도 | ~722 |
+| ├ `_compose_detail(skipped_no_key, plan)` (staticmethod) | [P2] 완료 통지 `detail` 조립 — 키 결측 스킵 수 + 재개/재시작 사유 | ~814 |
+| ├ `_try_dedup_skip(file_path, basename, t_name, signature) -> bool` | [P2] 동일 시그니처 `DONE`이면 skip — **무음 skip 금지**: WARNING + archive + `FileIngestionLog(status="SKIPPED")` + 콜백 status는 `"SUCCESS"`(수신부가 비-SUCCESS를 실패로 렌더링하므로 오표기 방지) + 사유 detail | ~823 |
+| ├ `_plan_checkpoint(...)` / `_finalize_checkpoint(plan, processed_rows)` | [P2] `ingestion_checkpoint.plan_ingestion` 게이트 래퍼(실패 시 `CheckpointPlan.disabled(note=...)`) / `mark_done` — 실패 시 "dedup will not apply" 경고 | ~877/903 |
+| ├ `_log_ingestion_record(...)` / `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명). `error_message`는 SUCCESS/SKIPPED에서 **detail 슬롯**으로 겸용 | ~916/941/946 |
+| ├ `_retry_should_restart(t_name, signature) -> bool` | [P2] 재시도 시 완료 체크포인트가 있으면 처음부터 재시작 판정 | ~954 |
+| ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행 — 스냅샷 진입점, 내부에서 락 안 잡음). [P2] 체크포인트는 태우되 **dedup skip은 미적용**(재시도는 명시적 의도) | ~970 |
+| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~1019/1047 |
+| ├ `_discover_and_execute_pipeline(file_path, meta=None) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~1074 |
+| ├ `_resolve_rows(file_path, t_name=None, table_info=None, ...)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파). `source_kind`(`"std"` / `"pipeline:<Class>"`)의 산출처 | ~1168 |
+| ├ `_try_std_parse(file_path, t_name, table_info)` | std_parser 호출 래퍼(게이트·에러 처리) | ~1206 |
+| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None, checkpoint=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백. [P2] `checkpoint`로 `resume_from` 스킵(~1303)·오프셋 초과 경고(~1310)·**청크마다 `record_chunk_progress`(~1368, 같은 트랜잭션)**, created_logs는 `MAX_NOTIFY_CREATED_LOGS` 잔여분만 누적(~1381) | ~1247 |
+| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성(~1415)·전 핸들러 주입 + `on_ingestion_state_callback` 배선 | ~1407 |
+| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시) | ~1435 |
+| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리, `heavy_lane` 주입) — 레거시 config 발견 시 1회 경고(QA D4) | ~1464 |
+| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1523/1539 |
+| ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — [P1] 스윕도 자동으로 heavy 라우팅을 탐. (mtime,size) 시그니처로 무한 재시도 차단, err/·하위 dir 제외 | ~1569/1630/1636 |
+| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~1645/1649 |
+| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥, stop()이 heavy 레인도 정지(~1676) | ~1658–1712 |
 
 ---
 
@@ -324,6 +342,69 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `load_grid_meta(db, config, target_table, map_id)` | wafer_map_metadata에서 격자 규격 조회(align 해석의 근거 — 프리셋 아님) | ~270 |
 | `get_core_summary(db, lot, slot, rects=None, config=None) -> dict` | **집계 진입점** — 역할별 카운트(맵 모드 fail_values 필터, used_chips distinct), `remaining = total − defect − eds_fail − used`(음수 가능 — 과도기), history 50건+warnings, region 교차(좌표 하드캡 100k, 응답 미포함) | ~344 |
 
+> ⚠️ **열린 항목 A2** — `bonding_plan.py:199-204`의 **선언(override) 경로**는 여전히 bbox 항이 없는 구 산술이다(A1이 `map_overlay`에서 고친 것과 같은 부류). 라이브에 align 오버라이드 선언이 없어 **휴면 상태**지만, 한 줄 선언하면 부활한다. `transfer_plan`의 core-kind 경로가 이 모듈에 위임하므로 영향 범위가 M1에 국한되지 않는다.
+
+### `server/ingestion_checkpoint.py` (~258줄) — [P2 신규] 오프셋 체크포인트 + 파일 해시 dedup
+저장소는 신규 테이블 **`file_ingestion_checkpoints`**(`UNIQUE(table_name, file_signature)` = `idx_fic_identity`). `FileIngestionLog`에 컬럼을 붙이지 않은 이유는 `create_all`이 ALTER를 하지 않아 **조회 프로세스보다 먼저 도는 마이그레이션**이 필요해지기 때문(운영 DB `UndefinedColumn` 500 회피 — 총괄 승인 판단). 테스트: `tests/test_ingestion_checkpoint.py`.
+
+| 시그니처 | 역할 | 라인 |
+|---|---|---|
+| `SIGNATURE_ALGO="sha256"` / `STATUS_IN_PROGRESS` / `STATUS_DONE` / `FORCE_REINGEST_TOKEN="__force__"` | 시그니처 알고리즘·상태 어휘·강제 재처리 파일명 토큰 | ~51/53/54/58 |
+| `compute_file_signature(file_path) -> str\|None` | **전체 파일** 1MB 스트리밍 해시 → `sha256:<size>:<digest>`. 샘플링 아님 — 500MB 0.535초 실측(드릴 총 415초의 0.004%)이라 정확성을 택했다. `OSError`면 경고 후 None(체크포인트·dedup 비활성), `PermissionError`는 **재raise**(호출자 재시도 경로로) | ~61 |
+| `is_force_reingest(filename) -> bool` | 파일명에 `__force__` 토큰(대소문자 무시) | ~88 |
+| `class CheckpointPlan` (+`disabled(note)` classmethod, `is_resume` property) | 파일 1건의 계획 값 객체 — 비활성 사유(note)도 detail·이력에 노출 | ~93/116/122 |
+| `find_checkpoint(db, table_name, file_signature)` / `find_completed_ingestion(...)` | UNIQUE 인덱스 단일행 조회 / 동일 내용 `DONE` 여부(dedup 판정) | ~132/142 |
+| `plan_ingestion(db, table_name, file_signature, filename, filepath, total_rows, source_kind, force_restart=False) -> CheckpointPlan` | **재개 판정** — `force_restart` 아님 ∧ `status != DONE` ∧ `source_kind` 일치 ∧ `total_rows` 일치 ∧ `0 ≤ processed_rows ≤ total_rows`가 **전부** 성립할 때만 `resume_from = processed_rows`. 하나라도 어긋나면 0부터 + `[resume-abort] … 사유:` note를 WARNING·`row.note`에 남긴다(조용한 재처리 금지) | ~150 |
+| `record_chunk_progress(db, plan, processed_rows, chunk_index)` | **청크 적재와 같은 세션·같은 트랜잭션**에서 오프셋 Core UPDATE — "커밋된 행 수 == 기록된 오프셋" 원자성의 근거 | ~218 |
+| `mark_done(db, plan, processed_rows=None, note=None)` | 성공 확정(`status=DONE`) — 이후 dedup skip 대상 | ~243 |
+
+### `server/map_overlay.py` (~698줄) — [M2 신규] 범용 맵 오버레이 (계획 전용 아님 — 맵 인프라)
+`config/map_overlay_config.json`(gitignored, `.sample` tracked) — 키 구조만: `align_overrides.{table}.{default|by_eqp.{eqp}}`, `table_bindings.{table}.columns{x,y,val,key_columns}`, `paint_lock.{"*"|table}{enabled,blocking_values,from_overlay,message}`. `APIRouter` 없음 — `main.py`가 `@app.get`으로 직접 등록해 위임한다. 테스트: `tests/test_map_overlay.py`.
+
+| 시그니처 | 역할 | 라인 |
+|---|---|---|
+| `MAX_OVERLAY_CELLS=20,000` / `MAX_OVERLAY_SOURCES=8` | 오버레이 1종당 셀 상한(초과 시 `truncated:true`) / 요청당 소스 상한 | ~68/69 |
+| `STATUS_OK\|ALIGN_UNAVAILABLE\|SOURCE_MISSING\|NO_DATA` / `ALIGN_ORIGIN_DECLARED\|DEFAULT\|DERIVED\|IDENTITY` | 엔트리 status 어휘 / align 결정 출처 마커 | ~71–79 |
+| `ALIGN_ORIGIN_UNRESOLVABLE` | 구 QA-B3 가드 유물 — **프레임 합성(A1) 도입 후 더 이상 발화하지 않는다**(상수만 잔존) | ~82 |
+| `load_overlay_config(path=None)` / `load_map_meta(db, target_table, map_id)` | config 로드(부재·손상 시 `{}` — 에러 아님) / `wafer_map_metadata`의 `grid_metadata` 조회 | ~85/106 |
+| `_rotation_of` / `_side_of` / `_y_invert_of` / `_phys_signature` | 메타 정규화 헬퍼 — `_phys_signature`는 `phys_*` 6값 튜플(하나라도 없으면 None = bbox 재현 불가) | ~128/165/169/177 |
+| `_grid_of(meta)` / `_frame_grid_of(meta)` | **물리(canonical) 격자** / **프레임(visual) 격자** — 자기 회전 90/270이면 cols·rows 스왑 | ~135/150 |
+| `frame_axes(meta)` | 프레임 정의 8축 튜플 `(rot, side, y_invert, start_x, start_y, cols, rows, phys_sig)` — identity 지름길 판정·transformer 캐시 키 | ~187 |
+| **`_frame_phys_params(meta)`** | **[A1 신설 — 이 배치의 핵심]** 물리 규격 → **프레임 축 규격**. `is_cell_inside_wafer(c, r, …)`는 프레임 인덱스를 받으므로 rot 90/270에서 **칩 피치를 스왑**하고 back에서 `off_x` 부호를 뒤집는다. 유일 호출자는 `_frame_transformer`. **보정을 이 모듈 안에 가둔 것이 계약** — `WaferMapCoordinateTransformer`·`PhysicalWaferEngine`은 무수정(`bonding_plan.py`가 같은 클래스를 공유) | ~205 |
+| `_frame_transformer(meta, grid)` | transformer(+engine) 생성 후 `frame_axes` 키로 캐시(`_FRAME_TF_CACHE`, 상한 512 초과 시 전체 clear) | ~256 |
+| `make_frame_transform(source_meta, target_meta)` | **소스 프레임 → 물리 → 타깃 프레임** 합성 변환기. 메타/격자/phys 부재·물리 치수 불일치 시 `ValueError` | ~286 |
+| `resolve_align(cfg, source_table, source_meta, target_meta, eqp=None) -> (align\|None, origin, note)` | **align 결정 규율** — 선언(`by_eqp`→`default`) > 메타 차이 유도 > **identity**(선언 부재는 실패가 아니다). 계산 근거 자체가 없을 때만 `align_unavailable` | ~339 |
+| `_pure_translation(...)` / `align_applied_payload(align, origin, note, translation)` | derived이고 rot/side/y_invert/격자/phys가 전부 같을 때만 `(dx,dy)` / 클라 표시용 `{rotation, flip, offset, origin, note?}` | ~396/412 |
+| `parse_sources(spec) -> [(table, key\|None)]` | `"table"` / `"table:key"` CSV 파싱 — 8종 초과·빈 값은 `ValueError`(→400) | ~435 |
+| `derive_table_binding(table)` / `resolve_binding(cfg, table)` | `table_config`에서 x/y/val·key_columns 자동 유도(`VAL_CANDIDATES` 순, 시스템 컬럼 제외) / **선언 우선 + 유도 폴백** | ~467/505 |
+| `build_key_filters(model, binding, map_key)` | `_` 조인 복합 map_key를 key_columns로 분해해 ORM equality 필터 생성(마지막 컬럼이 나머지 흡수) | ~517 |
+| `get_overlay(db, cfg, target_table, target_key, sources, eqp=None, cell_cap=…) -> dict` | **메인 진입점** — 소스별 바인딩·align 해결 → 셀 조회 → 타깃 프레임 좌표 변환 → `{target, overlays[], cell_cap}` | ~542 |
+| `get_paint_rules(cfg, table=None) -> dict` | `paint_lock`의 `"*"` 기본 + 테이블별 선언 머지 → `{enabled, blocking_values, from_overlay, message}` | ~679 |
+
+> `resolve_binding`·`build_key_filters`는 **`transfer_plan.py`도 재사용**한다(모듈 간 공용 헬퍼 2개).
+
+### `server/transfer_plan.py` (~1,429줄) — [M2 신규] Universal Transfer Plan 엔진 (v2 = 계획 정체성이 곧 맵 정체성)
+`config/transfer_plan_config.json`(gitignored, `.sample` tracked) — `stages.{name}.{source_kind, target_kind, target_map{table,preset}, source{...} \| source_config_ref}` + `plan_store.{doe, doe_source, source_region}`. 테스트: `tests/test_transfer_plan.py`.
+
+| 시그니처 | 역할 | 라인 |
+|---|---|---|
+| `MAX_ORIGIN_POINTS/MAX_FAIL_POINTS=100k` · `MAX_BY_CORE=500` · `MAX_DOE_PER_PLAN=500` · `MAX_PLAN_VALUES=1000` · `MAX_SOURCES_PER_DOE=64` · `MAX_REGION_CELLS=100k` | 하드캡 일습(무제한 로드 금지) | ~76–83 |
+| `WARN_*` 12종 / `EFFECT_*` 4종 | validate·강등 경고 타입과 **효과 분류**(`remaining_overstated`/`total_unknown`/`by_core_degraded`/`history_incomplete`) | ~88–112 |
+| `load_transfer_plan_config(path=None)` / `get_stages(cfg)` | config 로드(부재·손상 시 부분 가동) / stages dict 추출 | ~119/136 |
+| `_resolve(src_cfg, required)` / `_binding_status(...)` / `_stage_role_statuses(stage_cfg)` / `_plan_store_statuses(cfg)` | 바인딩 → (model, 컬럼맵) / `connected`\|`missing` / stage 역할별·plan_store 역할별 상태 | ~150/162/169/200 |
+| **`stage_of_table(cfg, ref_table)`** | **[v2 핵심] `stages.*.target_map.table` 역인덱스** — 열린 테이블에서 stage를 유도한다(별도 stage 선택 UI 폐기의 근거) | ~225 |
+| `list_stages(cfg)` | `GET /api/transfer-plan/stages` 응답 `{stages[], plan_store}` | ~242 |
+| `_status_is_degraded` / `_degradation_effect(role, fail_roles)` / `assess_degradation(statuses, fail_roles)` | **[QA F1 1층]** 역할 강등 탐지 → `(경고 리스트, remaining_reliable, total_reliable)` | ~263/276/290 |
+| `build_chips_block(total, fail_breakdown, transferred, remaining, remaining_reliable, total_reliable)` | **[QA F1 3층]** chips 블록 조립 + **음수 remaining 불변식**(전 역할 connected여도 음수면 신뢰 박탈). 신뢰불가면 `remaining: null`을 내려 **오표시를 구조적으로 차단**하고, `total_reliable ∧ remaining≥0`일 때만 `remaining_upper_bound` 부가 | ~329 |
+| `load_source_region(...)` / `_region_block(...)` / `_core_region_counts(...)` | 계획이 이 소스에서 쓸 셀 집합 로드(**현재 휴면** — 라이브 config에 `plan_store.source_region` 미선언이라 항상 None) / 영역 내 집계 / core-kind 어댑터 | ~370/404/430 |
+| `_reshape_m1_summary(m1, stage_name, stage_cfg)` | M1 `bonding_plan.get_core_summary` 응답을 M2 공통 형태로 재성형(같은 강등 규율 적용) | ~480 |
+| `_canonical_origin_grid(...)` / `_canonical_fail_set(...)` | [QA F6] origin-frame 원천의 canonical 격자 로드(코어당 1회 캐시) / 코어 1장 fail 좌표를 canonical 프레임 set으로(align 미해결이면 `(None, "align_unavailable", False)`) | ~538/567 |
+| `_collect_history(db, source_cfg, lot, slot)` | process_history 최근 N건(시간 오름차순) + result fail 경고 | ~607 |
+| **`_summarize_inline(db, stage_name, stage_cfg, lot, slot, region=None)`** | **가용 엔진 정본(tape-kind)** — `origin_log` 연결 시 `remaining = total − \|fail_union ∪ used_set\|`(칩 단위 합집합 — 이중 감산 없음), 미해석 시 M1식 감산 폴백. `by_core` 7키(`core_id, core_lot, core_slot, total, fail, used, remaining`) + `by_core_origin` 마커 `"log"`(정확) \| `"area_map"`(강등 — `fail=None`으로 0 위장 금지) | ~654 |
+| `get_stage_source_summary(db, cfg, stage_name, lot, slot, bp_config=None, ref_table=None, map_key=None)` | **핸들러 진입점** — M1 ref 경로(reshape) / inline 경로 분기, 미선언 stage는 `KeyError`(→404) | ~1010 |
+| `_band_range(band)` / `_painted_values(db, ref_table, map_key, overlay_cfg)` | STACK 구간 표기(`1`/`2-11`/`H1~H2`) 파싱(못 읽으면 경고 없이 불참) / **대상 맵 자신**의 셀 값 분포 group-by(`map_overlay.resolve_binding`·`build_key_filters` 재사용) | ~1066/1088 |
+| `validate_plan(db, cfg, ref_table, map_key, overlay_cfg=None)` | **핸들러 진입점** — `remaining_reliable=False`면 부족·fail 판정을 **전부 생략**하고 `availability_unreliable`만 발행(오염된 과대 remaining으로 "부족 아님"을 판정하지 않는다). 최종 `status`는 `ok`/`warnings`/**`unverified`** 3값 — **"검사 안 함"과 "이상 없음"을 같은 값으로 내지 않는다.** `plan_store.doe` 미구성은 `LookupError`(→404) | ~1126 |
+
 ---
 
 ## 6. 기타 서버 모듈 (한줄 요약)
@@ -332,13 +413,16 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 책임 |
 |---|---|
-| `server/database/models.py` | ORM — 정적 + `DYNAMIC_TABLES` + 런타임 DDL(핫리로드 CREATE) — **함수 앵커는 [§5](#5-소형-서버-모듈)** |
+| `server/database/models.py` | ORM — 정적 + `DYNAMIC_TABLES` + 런타임 DDL(핫리로드 CREATE) — **함수 앵커는 [§5](#5-소형-서버-모듈)**. [P2] `class FileIngestionCheckpoint`(~112, `__tablename__="file_ingestion_checkpoints"` ~132) — `table_name/file_signature/filename/filepath/source_kind/total_rows/processed_rows/chunk_index/status/note/started_at/updated_at`, `Index("idx_fic_identity", table_name, file_signature, unique=True)`(~154) + `idx_fic_signature`. 준비 함수 `ensure_ingestion_checkpoint_table(engine)`(~469, information_schema 게이트 + `checkfirst` + `_runtime_ddl_lock`) |
+| `server/audit_cache.py` | 최근 감사 로그 인메모리 캐시. [P2/이슈 #10] `add_logs_batch(logs_list, message_total_count=None)`(~109) — 인자 의미가 "이 메시지 1건이 나르는 **절단 전 실건수**"이고 `group["total_count"] += contribution`으로 **누적**한다(구 `override_total_count`는 SET 대입이라 멀티 target-table tx에서 마지막 메시지가 총계를 지웠다). 한 배치에 tx가 2개 이상 섞이면 귀속 불가로 `len(logs)` 폴백 + 1회 경고 |
 | `server/database/schemas.py` | Pydantic — `GeneralUpdateItem/Batch` 등 API·배치 계약 |
 | `server/database/database.py` | 엔진·SessionLocal·outbox 발화(`database_outbox` + NOTIFY) |
 | `server/database/config_watcher.py` | table_config.json 변경 감시 → 동적 테이블 재구성. engine 분기(~44)에서 `create_missing_dynamic_tables` 선(先)호출 후 기존 sync(ALTER) — 직접 파일 편집 경로의 신규 테이블 CREATE(이슈 #7) |
 | `server/graph_sync_worker.py` · `graph_materializer.py` · `ontology_config.py` | 온톨로지 그래프 트랙 — **함수 앵커는 [§5](#5-소형-서버-모듈)** |
 | `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행. 매 틱 제어 파일(`auto_update_control.json`)을 읽어 disabled 수집기는 실행 스킵+`last_status="SKIPPED"`+next_run 전진(핫 반영, 재활성화 시 백로그 폭주 없음). run-now는 active 무관 실행 |
-| `server/event_constants.py` | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(발신측 created_logs 절단 상한, 워처·체인 워커·수신 main.py 공유) |
+| `server/event_constants.py` | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(~14, 발신측 created_logs 절단 상한: 워처 `directory_watcher:1381` · 체인 워커 `:467` · 수신 `main.py:3564/3612` 공유) · [P2] `MAX_AUDIT_VALUE_CHARS=4096`(~22)과 `truncate_audit_value(value, max_chars)`(~25 — 반환 `(값, 절단여부)`, str은 `…[truncated: 총 N자]` 마커, dict/list는 타입·길이 플레이스홀더)를 `crud.create_audit_log`가 소비 |
+| `server/scripts/setup_ingestion_checkpoint.py` | [P2] `file_ingestion_checkpoints`를 **프로세스 재기동 없이** 미리 생성(멱등) — 직접 SQL 없이 `models.ensure_ingestion_checkpoint_table(engine)` 호출 후 컬럼·인덱스 출력 |
+| `server/scripts/setup_transfer_plan_indexes.py` | [M2] 전사 계획 엔진 진입 필터용 복합 인덱스 8종 `CREATE INDEX IF NOT EXISTS`(테이블별 information_schema 존재 게이트) — `dt_log(tape_lot,tape_slot)`·`dt_log(core_lot,core_slot)`·`dt_map(lot,slot)`·`map_doe(ref_table,map_key)`·`map_doe_source(ref_table,map_key)`·`map_source_region(...)`(휴면)·**`bonding_map(base)`**(Seq Scan 214ms → 0.345ms)·`sample_map(base)`. M1 인덱스는 `setup_bonding_plan_indexes.py` 담당 |
 | `server/utils/auto_update_control.py` | auto-update 수집기 active 제어 파일(`config/auto_update_control.json`, gitignored) 공용 IO — `read_disabled_scripts`(fail-open)/`set_script_active`(tmp+`os.replace` 원자적 쓰기)/`validate_script_key`(경로 탈출 차단)/`resolve_script_file`. 웹서버 toggle·스케줄러 공유 |
 | `server/run_api.py` / `run_watcher.py` / `run_chain_worker.py` / `run_decoupled_app.py` | 프로세스 런처(5-프로세스 토폴로지). run_watcher: `trigger_ws_ingestion_state`(~103 — [P1] 파일명 정규화 후 `/internal/events/ingestion-state` push, WorkspaceWatcher에 배선 ~261) · SYSTEM_RELOAD/재처리 폴러 `poll_pending_retries`(~136)는 `refresh_dynamic_models(engine)` 보충(이슈 #7) + `resolve_workspace_root` 역조회(별칭 대응) + 재처리를 `get_workspace_serial_lock`으로 감쌈(~215 — [P1 QA F3] heavy와 순서 계약 편입) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
@@ -383,21 +467,40 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - export: `loadHistory`(~9) DOM 빌더 `createTimelineItemDom`/`createGlobalTimelineItemDom`(~50/103) 증분 렌더 `renderTimeline*`(~271–346) `renderSubDetails`(~362) `appendHistoryLocally`(~445) 로그→셀 점프 `navigateToLog`(~507)+`navigatorStep2/3`/`navigatorFinalScroll`/`releaseNavigationGuard`(~566–709).
 - 소비 API: `/audit_logs/recent`, `/audit_logs/transaction/{tx}`.
 
-### `map_editor.js` (~3,065줄) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
-- 좌표 변환 코어: `getPhysicalCoords`(~742) `getCellFromPhysicalCoords`(~795) `getCellFromVisualCoords`(~835) `getVisualCoords`(~902) `getTransformedPhysicalConfig`(~917) `isCellInsideWafer(Fast)`(~1016/978) — 회전/면반전 불변식은 [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md).
-- 캔버스 렌더: `renderGridCanvas`(~1363, 본체) `scheduleRenderGridCanvas`(~1326) `fitGridToWorkspace`(~1348) `updateNotchPosition`(~1692).
-- 데이터 IO(REST — WS 아님): `loadExistingMap`(~2114) `pushMapData`(~2514, 저장 본체) 프리셋 `fetchAndRenderPresets`/`saveCustomPreset`/`deleteCustomPreset`(~1073–1229) + `applyPresetObject`(~1129 — [M1] `loadSelectedPreset`(~1162)에서 추출한 프리셋 규격 적용 공용 함수).
-- 레전드/브러시: `renderLegendTable`(~1882) `selectBrush`(~2058) + `localStorage` 동기화 `load/saveLegendToStorage`(~1747/1765).
-- 편집 도구: `fillGrid`(~2485) `getEdgeClassification`(~2715) `selectEdgeCells`(~2795) `autoPaintE1E2`(~2822) `copyGridToExcel`(~2910).
-- [M1] 본딩 실험계획 배선: `initBondingPlan()` 호출(~157, import ~6 — 패널 본체는 `bonding_plan.js`). rect 영역 선택 모드는 v2에서 **전면 폐기**(M2 "값 페인팅"이 정본 — 코드 부재).
+### `map_editor.js` (~4,209줄) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
+- 좌표 변환 코어: `getPhysicalCoords`(~965) `getCellFromPhysicalCoords`(~1018) `getCellFromVisualCoords`(~1058) `getVisualCoords`(~1127) `getTransformedPhysicalConfig`(~1142) `isCellInsideWaferFast`/`isCellInsideWafer`(~1203/1241) — 회전/면반전 불변식은 [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md).
+- 캔버스 렌더: `renderGridCanvas`(~1593, 본체) `scheduleRenderGridCanvas`(~1556) `fitGridToWorkspace`(~1578) `updateNotchPosition`(~1931).
+- 데이터 IO(REST — WS 아님): `loadExistingMap`(~2485) `pushMapData`(~2882, 저장 본체) 프리셋 `fetchAndRenderPresets`/`saveCustomPreset`/`deleteCustomPreset`(~1298/1404/1454) + `applyPresetObject`(~1354, `loadSelectedPreset` ~1387에서 추출한 공용 함수).
+- 레전드/브러시: `renderLegendTable`(~2133) `selectBrush`(~2320) + `localStorage` 동기화 `load/saveLegendToStorage`(~1986/2004).
+- 편집 도구: `fillGrid`(~2853) `getEdgeClassification`(~3123) `selectEdgeCells`(~3203) `autoPaintE1E2`(~3230) `copyGridToExcel`(~3318).
+- **[M2] 페인트 잠금**(~36–148, 서버 선언 소비 — 구 `'F'` 하드코딩 대체): `isLockedValue`(~41) `isOverlayLocked`(~51) **`isProtectedFCell`(~63 — 편집 불가 판정의 단일 관문, 전 편집 경로가 여기로 수렴)** `applyPaintLockConfig`(~68) `fetchPaintRules`(~92, GET `/api/maps/paint-rules`) `updatePaintLockIndicator`(~126) `recomputeLockedCells`(~143). 404/405만 "선언 없음"(해제)이고 네트워크·5xx는 **직전 잠금 유지** + `source:'stale'` + 툴바 칩. ⚠️ **[QA C4 미해소] 콜드 스타트는 여전히 fail-open** — "직전 값"이 페이지 로드 직후엔 기본값 `NO_PAINT_LOCK{enabled:false}`(~37)라 첫 조회가 실패하면 8개 강제 지점이 열린 채 시작한다(칩은 뜨므로 **조용한** fail-open은 아님). 테이블 전환 시 실패하면 **이전 테이블의 잠금 값**을 새 테이블에 계속 적용한다(fail-closed 방향이라 안전하나 의미상 부정확).
+- **[M2-v2] 오버레이 레이어**(~3783–4209) ⚠️ **변경 예정 구간** — 오버레이 변환의 클라 단일 구현 전환이 진행 중이므로 아래 시그니처를 확정 계약으로 인용하지 말 것:
+  - 상태 `overlayLayers`(~3784, 레이어당 `{id, sourceTable, sourceKey, cells:Map(physKey→val), rawCells, count, color, visible, status, alignApplied, truncated, failed, reason, targetOverride, align, cap}`) / `activeOverlayLayers`(~3785) / `recomputeActiveOverlays`(~3788, 렌더 루프 내 재계산 금지).
+  - `overlayCellsToPhysMap(cells)`(~3817) — 서버가 **이미 타깃 프레임으로 정렬해 내려준** 좌표를 현재 격자 물리키로 배치. **재변환 금지**(이중 변환 방지 규약).
+  - `addOverlayLayer(sourceTable, sourceKey, targetOverride)`(~3861, GET `/api/maps/overlay`) — **메인 로드와 코드 경로 완전 분리**. 불변식(~3857–3860): `selectedTable`·`tableSchema`·`gridData`·legend·규격·brush·메타 입력을 읽지도 쓰지도 않고 `switchTable`을 경유하지 않는다. 실패도 `pushFailedOverlay`(~3837)로 목록 행에 남긴다.
+  - `currentGeomSignature`(~3981, `cols|rows|startX|startY|yInvert|rotation|side`) / `syncOverlayGeometry`(~3992, 서명 변경 시 `rawCells`에서 물리키 재계산, 렌더에서 훅 ~1595). ⚠️ **[QA C7 미해소] 서명에 물리 파라미터(`phys_chip_x/y`, `phys_offset_x/y`, `phys_wafer_dia`, `phys_edge_margin`)가 빠져 있다** — 배치는 웨이퍼 bbox(`box.minC/minR`)에 의존하는데, 격자 치수를 바꾸지 않는 offset 변경은 bbox를 옮기고도 서명이 그대로라 오버레이 물리키가 **낡은 채로 남는다**. 기존 결함이지만 신규 `importOverlayToGrid`가 그 어긋난 좌표를 `gridData`에 써 넣어 **표시 오류를 데이터 오염 경로로 승격**시켰다.
+  - `overlayAlignChip(o)`(~4012) — 정렬 상태 칩. 판정은 **`align.origin`으로만** 한다.
+  - `importOverlayToGrid(id)`(~4038) — 유일한 의도적 교차: 오버레이 셀을 `gridData`로만 가져온다(**서버 쓰기 없음**, `isProtectedFCell` 존중, 격자 밖 셀 스킵).
+  - `renderOverlayList`(~4109) `handleAddOverlayClick`(~4163) `addOverlayForSource(sourceTable, lot, slot)`(~4196) `listOverlayLayers`(~4203) — 뒤 둘은 `transfer_plan.js`에 넘기는 컨트롤러 표면(~298–302). 세션 저장·복원에 `overlayLayers`+`overlayGeomSig` 포함(~3462/3535), 테이블 전환 시 전체 제거(~2491/3712).
+- [M2-v2] 전사 계획 배선: `initTransferPlan({...})`(~277, import ~6) + `notifyMapContext`(~813/2831/3086/3780–3804) `notifyLegendChanged`(~2102/2134/2334) `notifyPaintCounts`(~1508). rect 영역 선택 모드는 **전면 폐기**(값 페인팅이 정본 — 코드 부재).
 
-### `bonding_plan.js` (~903줄) — [M1 신규] 본딩 실험계획 Info 패널 (map_editor.html에서 소비, 조회 전용)
-- 진입: export `initBondingPlan`(~879) — 툴바 `#btn-bonding-plan` → 우측 슬라이드 패널(`#bonding-plan-root`, `buildPanel` ~777). 스타일은 `bonding_plan.css`(tokens 시맨틱 토큰만).
-- 초안: `serializeDraft/saveDraft/loadDraft`(~74/116/130) — `localStorage['bonding_plan_draft::<base>']` 500ms 디바운스, `bonding_plan_last_base` 복원. 구 초안의 `core_region`/`base_region`은 로드 시 버림(재직렬화에서 자연 탈락 — rect 폐기 하위호환).
-- 조회: `getCoreSummary`(~147, GET `/api/bonding-plan/core-summary` 캐시+stale 가드) `refreshDetail/renderDetail`(~438/463 — 수량 라인·sources 역할 뱃지(missing=미연결)·FAIL 타임라인·knob 칩 확장·서버 warnings). 구버전 서버 graceful(404→"서버 미지원"+편집 지속).
-- 검증: `rowStats`(~211) `renderValidation`(~251 — 층 커버리지 스트립(배정/공백/겹침)+경고 3종: 수량 부족/FAIL 이력/조건 이탈) `renderRows`(~317, 층 범위 배정 행 목록).
-- knob 비교: `buildKnobCompare/loadCompare/renderCompare`(~585/619/650 — 공통 step × knob 표, 값 상이 셀 warning 하이라이트).
-- 자동완성: `attachAutocomplete`(~687, `/graph/nodes/search` 재사용 — 200ms debounce + seq 가드, 실패 시 수기 입력 폴백).
+### `transfer_plan.js` (~1,405줄) — [M2-v2] 전사 계획 사이드바 (map_editor.html에서 소비)
+**「계획 = 지금 열어 편집 중인 그 맵」.** 계획 정체성은 `(ref_table, map_key)`이며 `plan_id`도 계획 맵 사본도 없다. 스타일은 `transfer_plan.css`. (구 M1 `bonding_plan.js`/`.css`는 `8e34804`에서 **삭제**됐다.)
+
+- 상태 `S`(~58–83): `stages`/`stagesStatus` · `ctx{table,mapKey,loaded,depth,parent}` · `legendRows` · `doe: Map<value, Band[]>`(`Band = {seq, stack, need, materials[], knobs[]}`) · `openValue` · `counts` · `summaries` · `matMapState` · `keyColumns` · `savedAt`/`serverSavedAt` · `planTablesSupported` · **`doeServerLoaded`(~74)** · **`serverKeys{doe:Set, source:Set}`(~76)** · `saveError` · **`loadSeq`(~79)** · `matSeq` · `flash` · `navBusy`.
+- 진입/통지 export: `initTransferPlan(paintController)`(~1302) `notifyMapContext(info={})`(~1220, 로드 오케스트레이션) `notifyLegendChanged`(~1284) `notifyPaintCounts(counts)`(~1293, **`textContent`만 패치** — 대형 그리드 페인팅 성능).
+- **키 조립 유일 지점**: `doeRowKey(value, seq)`(~187) = `` `${table}|${mapKey}|${value}|${seq}` `` · `doeSourceRowKey(value, seq, lot, slot)`(~190) = 거기에 `|${lot}|${slot||''}`. 이 문자열이 `business_key_val`·`keep`·`serverKeys`를 **모두** 채운다. 테이블 상수 `map_doe`/`map_doe_source`(~40/41).
+- **밴드(STACK)**: `band_seq`가 정수 **정체**, `stack_band`는 **자유 텍스트 라벨**(다중 구간 `1, 2-15, 16` — 파싱하지 않는다). `blankBand`(~196) `getBands`(~199) `nextBandSeq`(~206, `max+1` — **삭제 시 재번호 금지**: 재번호는 자식 `map_doe_source`를 전부 고아로 만든다) `getBand`(~217) `addBand`(~210).
+- 서버 왕복: `putUpdates`(~888) `scheduleServerSave`(~912, 1200ms 디바운스) **`saveDoeToServer`(~919)** `pruneScoped(table, keyCol, keep, knownKeys)`(~1057, 3중 가드) **`loadDoeFromServer`(~1098 — 조회만 한다. `keys`를 반환할 뿐 권한을 세우지 않는다)** **`adoptServerDoe(r)`(~1189)**.
+  - **[C1 불변식] `doeServerLoaded === true` ⇒ `S.doe`는 서버본에서 유래했다.** prune 권한(`serverKeys`/`doeServerLoaded`)이 생기는 **유일한 지점이 `adoptServerDoe`**이며 서버본 채택과 **원자적으로** 일어난다. 호출 지점은 둘뿐 — 맵 컨텍스트 로드(~1262, seq 가드 통과 후)와 저장 회복(~946).
+  - 회복 사이클(~927–953)은 **쓰기 0건**으로 끝나고 로컬 초안을 보존한다(삭제뿐 아니라 **쓰기도 보류** — 로드 실패 후 편집하면 `band_seq`가 1부터 다시 매겨져 서버 행을 덮어썼다).
+  - 절단 응답(`data.total > rows.length`)은 **로드 실패로 강등**한다(~1119/1150) — "안다"고 주장하지 않는다. ⚠️ **[QA C3 미해소] 조회 `limit=500`(~1068/1104)이 `map_doe`·`map_doe_source` 양쪽에 걸려 있어, 자재 행이 500을 넘는 계획은 매번 절단 → 매번 로드 실패 → 저장이 영구 보류된다**(20값 × 3구간 × 10자재 = 600행이면 도달). 회복 수단은 경고 토스트뿐. 서버 캡 `MAX_DOE_PER_PLAN=500`과의 정합·페이지네이션이 필요하다.
+  - `loadSeq` 가드(~928/931, ~1230/1249/1272): 맵 전환 중 늦게 도착한 응답을 채택하지 않는다.
+- 소스 요약: `getSourceSummary(lot, slot, force)`(~310, GET `/api/transfer-plan/source-summary`) `availableOf`(~339) `summaryStatusOf`(~347) `refreshMaterials`(~823) `rewardAfterReturn`(~790).
+- 렌더: `renderPlanHead`(~380) `renderDoeList`(~418) `renderBand`(~469) `renderDoeDetail`(~498) `bindDoeList`(~530) `materialGroups`(~650) `renderMaterialPane`(~670) `renderAll`(~1199) `buildWorkspace`(~1205).
+- 이동 허브: `openMaterial(lot, slot)`(~766) — **맵 간 이동의 유일 지점**(브레드크럼·뒤로가기 프레임 스택).
+- 자재 수량 분배는 **`Math.ceil`**(서버 규약 일치 — `round`면 100/3매가 33×3=99로 부족이 숨는다).
+- ⚠️ **`__held_*` 6함수(~1324–1405)는 명시적 보류 구역** — 호출자 없음. 검증/경고 UI는 사용자 지시로 미구현이다.
 
 ### `admin.js` (~2,643줄) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
 - 라우팅: `parseRoute`(~237) `applyRoute`(~249) — `#overview/#file/#chain/#autoupdate/#enrichment` + 구 별칭(`#outbox→chain` 등) + `#editor=<path>`. `switchTab(tabName, opts)`(~294, 해시 동기·Overview 전폭 레이아웃).
@@ -439,8 +542,8 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 | `theme.js` (~92) | 라이트/다크 토큰 전환 — export `getTheme/applyTheme/toggleTheme/syncAgGridThemeClasses/initTheme` |
 | `tokens.css` (~287) | 디자인 토큰(색·타이포·간격) — 듀얼 테마 CSS 변수의 SSOT. 2026-07-25 다크 세트 심화(Ground L* 9.2, WCAG AA 유지) |
 | `style.css` (~1,844) | index 페이지 스타일 본체(맵 에디터와 공유). app-header는 `position:relative; z-index:200` — split-resizer(z:100) 위 스태킹 보장(드롭다운 가림 수정) |
-| `bonding_plan.css` | [M1] 본딩 실험계획 패널 스타일 — tokens.css 시맨틱 토큰만 사용(듀얼 테마 자동 대응) |
-| `utils.js` (~195) | `getLocalTimeString`/`showToast`/`getCleanFilename`/인제션 진행 토스트(`showIngestionProgress`/`finishIngestionProgress`) |
+| `transfer_plan.css` | [M2-v2] 전사 계획 사이드바 스타일 — tokens.css 시맨틱 토큰만 사용(듀얼 테마 자동 대응). 구 `bonding_plan.css`를 대체 |
+| `utils.js` (~307) | `getLocalTimeString`(~2) / **전역 토스트 재작성**(~29–164) / `getCleanFilename`(~166) / 인제션 진행 토스트 `showIngestionProgress`(~182)·`finishIngestionProgress`(~255). **토스트 규율(전 페이지 영향)**: 만료는 **벽시계 `expireAt`** 기준(`sweepToasts`가 `now >= expireAt` 비교 — 백그라운드 탭 `setTimeout` 스로틀링으로 무한 누적되던 원인 제거, 타이머는 스윕을 깨우는 힌트일 뿐) · 상한 `TOAST_MAX_VISIBLE=4`(~29)이고 퇴거는 **비-에러 오래된 것 우선**, 방금 삽입분은 `keep` 인자로 면제 · TTL `{info:5s, success:5s, warning:9s, error:15s}`(~30 — **에러 15초는 성공 알림에 밀려나지 않게 하는 의도적 예외**) · 스윕 트리거는 타이머 + `visibilitychange` + `window.focus` + 삽입 전후(~101–105) · `dedupeKey` 합치기는 **에러 제외**(건별 원인이 중요), 같은 키+타입이면 `count+=1`·만료 연장·`… · N건` 표기 · 본문은 `textContent`(HTML 해석 금지) |
 | `dom.js` (~57) | DOM 참조 일원화 — `elements` 게터 객체(+`traceBtn`/`menuTrace`) |
 | `config.js` (~5) | `API_BASE`/`CURRENT_USER`/`pageLimit` |
 | `clipboard.js`·`counter.js` | counter.js는 Vite 템플릿 잔재(미사용) |
@@ -449,14 +552,15 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 ## 8. 주요 호출 흐름 요약
 
-1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → **[P1] `_route_and_process`**(임계 초과·backlog 잔여 → heavy 큐 / 인라인은 직렬화 락 try-acquire, 실패 시 큐 재라우팅) → `process_with_retry` → `_snapshot_table_context`(파일당 1회 config 스냅샷 — 테이블 해석은 글로벌 별칭 > 레거시 config.json > 폴더명) → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님) → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
+1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → **[P1] `_route_and_process`**(임계 초과·backlog 잔여 → heavy 큐 / 인라인은 직렬화 락 try-acquire, 실패 시 큐 재라우팅) → `process_with_retry` → `_snapshot_table_context`(파일당 1회 config 스냅샷 — 테이블 해석은 글로벌 별칭 > 레거시 config.json > 폴더명) → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → **[P2] `compute_file_signature` → `_try_dedup_skip`(동일 시그니처 `DONE`이면 skip+archive+`SKIPPED` 로그) → `_plan_checkpoint`(재개 오프셋 결정)** → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님, 청크마다 `record_chunk_progress`가 **같은 트랜잭션**에 동승) → `_finalize_checkpoint(mark_done)` → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
    - [P1] 진행 가시화(push-캐시-서빙): watcher `_notify_ingestion_state` → `run_watcher.trigger_ws_ingestion_state` → POST `/internal/events/ingestion-state` → `IngestionActivityRegistry`(+ 기존 progress/file-processed 인터셉트) → GET `/admin/file-ingestion/active` → admin File 탭 진행 섹션·재기동 경고. WS 이벤트 계약 무변경.
 2. **수동 편집**: client `handleCellEdit`/`applyValueToSelectedRange` → PUT `/tables/{t}/data/updates` → `apply_batch_updates_endpoint` → `crud.apply_batch_updates` → outbox 발화 + WS `batch_row_upsert` → 전 클라이언트 `handleWebSocketMessage` 델타 반영.
 3. **체인 인제션**: `apply_batch_updates`의 outbox 발화 → NOTIFY → `start_chain_ingestion_worker` 루프 → `process_pending_groups` → `process_chain_transaction_group`(맵퍼 실행, 예: `map_enrichment_dedup`) → 파생 테이블 `apply_batch_updates`(source=chain_ingestion, 순환 차단) → `_dispatch_broadcasts` → `/internal/events/broadcast`(created_logs 500건 절단 + `total_log_count` 실건수) → WS.
 4. **조회**: client `fetchData` → GET `/tables/{t}/data` → `get_table_data` → `get_column_filter_condition` + `fetch_and_merge_metadata`(셀 객체 병합) → client `ensureCellObject` 정규화 → AG-Grid.
 5. **레이어링 조작**: 소스 모달/Pin → `/tables/{t}/cells/*` 라우트 → `crud.delete_cell_source_batch`/`set_cell_manual_priority_batch` → `compute_priority_value` 재계산 → WS 반영.
 6. **설정 핫리로드**: 어드민 `reloadSystemConfigs` → POST `/admin/reload-configs` → 웹서버 `reload_local_process_cache` → `models.refresh_dynamic_models(engine)`(싱글턴·ORM·**신규 테이블 물리 CREATE** — 1차 DDL 소유자, outbox 발화보다 선행) → SYSTEM_RELOAD outbox → 워커들 `reload_worker_process_cache` + `refresh_dynamic_models`(게이트+checkfirst로 무해한 보충 안전망). 직접 파일 편집 시엔 `config_watcher`가 동일 CREATE 수행. graph 워커도 배치 내 SYSTEM_RELOAD 감지로 매핑·테이블 리로드(이슈 #8 해소).
-7. **맵 에디터**: `loadExistingMap` → GET `/tables/{t}/data`(REST) → 편집 → `pushMapData` → PUT `/data/updates`. 프리셋은 `/map-presets` CRUD. (WS 미사용)
-   - [M1] 본딩 실험계획: 툴바 버튼 → `bonding_plan.js` Info 패널 → GET `/api/bonding-plan/core-summary` → `bonding_plan.get_core_summary`(역할 바인딩 config + wafer_map_metadata 격자 규격 + align 서버 단독 변환) → 수량/이력/knob 비교/경고 렌더. 초안은 localStorage(M2에서 관리 테이블 승격 예정).
+7. **맵 에디터**: `loadExistingMap` → GET `/tables/{t}/data`(REST) → 편집 → `pushMapData` → PUT `/data/updates`. 프리셋은 `/map-presets` CRUD. 페인트 잠금은 기동 시 GET `/api/maps/paint-rules` → `applyPaintLockConfig` → 전 편집 경로가 `isProtectedFCell` 단일 관문 통과. (WS 미사용)
+   - **[M2] 오버레이(맵 인프라 — 계획 전용 아님)**: `handleAddOverlayClick`/`addOverlayForSource` → `addOverlayLayer` → GET `/api/maps/overlay?target_table&target_key&sources` → `map_overlay.get_overlay` → 소스별 `resolve_align`(선언 > 메타 유도 > identity) + `make_frame_transform`(소스 프레임 → 물리 → 타깃 프레임, `_frame_phys_params`가 rot 90/270 피치 스왑·back offset 부호 담당) → 타깃 프레임 좌표 `overlays[]` → 클라 `overlayCellsToPhysMap`(**재변환 없음**) → 캔버스 마커. `importOverlayToGrid`만 `gridData`로 넘어온다(서버 쓰기 없음). ⚠️ 이 경로는 **클라 단일 변환 구현으로 전환 진행 중**이다.
+   - **[M2-v2] 전사 계획(계획 = 그 맵 자체)**: 맵 로드 → `notifyMapContext` → `transfer_plan.js`가 `stage_of_table` 역인덱스로 stage 유도 → GET `/api/transfer-plan/{stages,source-summary}` → DOE 편집(값 페인팅) → PUT `/tables/map_doe|map_doe_source/data/updates` + `pruneScoped`. **prune 권한은 `adoptServerDoe` 한 지점에서만** 서버본 채택과 원자적으로 획득한다. 검증은 GET `/api/transfer-plan/validate?ref_table=&map_key=` → `status: ok|warnings|unverified`.
 8. **그래프 자동 승격**: `apply_batch_updates`의 outbox 발화 → `run_graph_materializer_loop`(keyset 커서) → `materialize_events` → `attach_col_sources`(provenance=식별 컬럼 winner 최저 서열) → `extract_graph_items` → 노드/엣지 UPSERT + `_retarget_stale_edges` → 커서 전진. 백필은 POST `/api/graph/sync` → `execute_manual_sync` → `resync_table`.
 9. **그래프 조회/추적**: index 그리드 선택 → `openTraceForSelection`(`composeIdentity` 시드) → `trace.html` `runTrace` → POST `/graph/trace`(`_expand_graph_subgraph` 공용 BFS) → 그룹+타임라인 렌더. 뷰어는 `graph.html` `explore` → GET `/graph/neighbors`. 양방향 크로스링크(`?label=&identity=`).
