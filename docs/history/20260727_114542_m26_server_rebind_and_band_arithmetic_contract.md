@@ -4,6 +4,7 @@
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 저장 지도: [DOE_STORAGE_MAP](../spec/DOE_STORAGE_MAP.md) · 프리미티브: [PRIMITIVES](../architecture/PRIMITIVES.md)
 > 선행: [M2.6 — DOE 모델이 테이블 하나로 접힌다](./20260727_080028_m26_doe_model_collapses_into_one_table.md) (`cdcddee`, 클라 절반)
 > 보고서: [서버 재바인딩](../../agent_workspace/reports/Server_m26_bands_rebind_report.md) · [클라 계약 정합](../../agent_workspace/reports/Client_band_arithmetic_contract_report.md) — 검수 지적과 그 대응이 여기 남았다.
+> ⚠️ **정정(2026-07-27, `bae86d0`)** — 아래 "다음 단계"의 **seq 타입 축 확장 권고는 뒤집혔다.** 사용자 판단으로 계약은 축소됐고(185→110), 이제 그 축을 타입 표로 넓히지 **않는** 것이 규칙이다 → [계약 축소](./20260727_125252_contract_shrink_and_reanchoring_docs_to_the_tree.md). 본문은 기록이므로 그대로 둔다.
 
 ## 배경 — 화면은 멀쩡했고 서버는 빈 계획을 검증하고 있었다
 
