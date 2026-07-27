@@ -24,7 +24,7 @@
 | Auto-Update 스케줄러 | `run_auto_update.py` | [guide/AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) | Ingester |
 | 웨이퍼 맵 에디터 | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` | [map_editor/](../map_editor/README.md), [spec/MAP_EDITOR_SPEC §1~§4](../spec/MAP_EDITOR_SPEC.md) | UI/Map |
 | 파일 인제션 체크포인트·dedup(P2) | `server/ingestion_checkpoint.py`, `models.FileIngestionCheckpoint`, `config/ingestion_settings.json` | [guide/INGESTION_GUIDE §1.8](../guide/INGESTION_GUIDE.md) | Ingester |
-| 실시간 동기화(WS) | `client2/src/websocket.js`, `main.py` ConnectionManager | **현행 서술은 [architecture/frontend §3](../architecture/frontend.md)**. [spec/DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md)은 ⚪ 폐기된 PySide6 클라 기준이라 **구현 서술을 신뢰하지 말 것**(무결성 가드의 *문제* 서술만 유효) | Sync |
+| 실시간 동기화(WS) | `client2/src/websocket.js`, `main.py` ConnectionManager | [architecture/frontend §3.1](../architecture/frontend.md) — **유일한 정본**. 무결성 가드의 *문제* 서술은 2026-07-27에 여기로 이관 완료됐고, `spec/DATA_SYNC_SPEC`은 더 이상 참조 대상이 아니다(아카이브 대기) | Sync |
 | 배치 업서트 | `crud.apply_batch_updates` | [spec/batch_update_technical_specification](../spec/batch_update_technical_specification.md) | Backend |
 | 실패 관리/재시도 | `FileIngestionLog`, outbox retry, `admin/*` | [spec/FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | Integrity/QA |
 | 온톨로지 그래프(materializer·엣지 스토어) | `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`, `config/ontology_mapping.json` | [architecture/event_driven_backend §4](../architecture/event_driven_backend.md)(승격 흐름), [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(트랙 스펙 — Owner 총괄) | Sync / 총괄 |

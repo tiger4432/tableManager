@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — 전사 계획 항목을 M2.6 1테이블·`bands` 모델로 재작성) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`90e284f` — **§1.12/§2.16 접근 통제 신설**: 어드민 공유 토큰 게이트 · `/internal/events/*` 게이트 · 정적 폴백 traversal 봉쇄. 앞선 `512dca7`의 auto-update·Ctrl+C 항목은 §2.6/§2.3에 반영됨) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
 >
 > **유지 규율:** 새 기능이 병합·커밋되면 총괄이 doc-keeper에 위임하는 **코드맵 갱신과 같은 사이클**로 이 문서에도 해당 기능 행(§1)과 점검 항목(§2)을 추가한다. 구현 에이전트는 이 문서를 직접 수정하지 않는다.
 > **사용법:** §1은 "무엇이 있는가"(기능 지도), §2는 "어떻게 확인하는가"(릴리스 전/회귀 수동 점검). 체크박스는 점검 회차마다 복사해 사용하고 이 원본은 비워 둔다.
@@ -105,6 +105,8 @@
 
 탭 축은 **파이프라인 생애주기 5탭**(`#overview/#file/#chain/#autoupdate/#enrichment`) + 코드 에디터 **공용 뷰**(`#editor=<path>` 딥링크). 구 해시 별칭(`#outbox→#chain` 등) 호환 유지.
 
+> 🔒 **2026-07-27(`90e284f`)부터 아래 탭이 부르는 `/admin/*` API는 전부 공유 토큰 게이트 뒤에 있다.** 페이지(`GET /admin.html`) 자체는 열려 있으므로 화면은 뜨지만, 토큰이 없으면 **모든 표가 비어 있고** 클라가 토큰을 한 번 묻는다. 게이트 자체와 점검 절차는 **§1.12 / §2.16**에 있고, 이 절은 게이트를 통과한 뒤의 기능만 다룬다.
+
 | 탭/기능 | 설명 | 코드 |
 |---|---|---|
 | Overview | 파이프라인 4카드(File/Chain/AutoUpdate/Enrichment) 헬스 요약 + 최근 이벤트 + 각 탭 딥링크. 상단 파이프라인 헬스 스트립 공용 | `fetchOverview/renderOverview` · `parseRoute/applyRoute/switchTab`(§7) |
@@ -131,7 +133,7 @@
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
 | 듀얼 테마(라이트/다크) | 토큰 SSOT `tokens.css` + `theme.js`. 기본 라이트, localStorage로 페이지 간 유지, AG-Grid 무재생성 재도색, FOUC 방지 스탬프 | 테마 토글 버튼(`data-theme-toggle`) — **4개 페이지(index/admin/map_editor/enrichment) 모두** 각 헤더/툴바에 존재 | `theme.js`·`tokens.css`(§7) |
-| WS 실시간 반영 | 편집·인제션·체인 결과를 전 클라이언트에 델타 반영(`batch_row_create/upsert/delete`, `batch_refresh_required`) + 셀 플래시, 지수 백오프 재연결 | (자동) 메인 그리드 | `websocket.js`(§7) · `ConnectionManager`(§1.1) · [DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) |
+| WS 실시간 반영 | 편집·인제션·체인 결과를 전 클라이언트에 델타 반영(`batch_row_create/upsert/delete`, `batch_refresh_required`) + 셀 플래시, 지수 백오프 재연결. 행 정체는 `getRowId`(`row_id`)가 강제 — 중복 행이 구조적으로 막힌다 | (자동) 메인 그리드 | `websocket.js`(§7) · `ConnectionManager`(§1.1) · **[frontend §3.1](../architecture/frontend.md)**(무결성 3문제 — 구 `DATA_SYNC_SPEC`은 아카이브 대기) |
 | 데스크톱 래퍼 | QtWebEngine 셸(`?client=desktop`): OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, F12 DevTools, `assymanager://` URI | `python run_decoupled_app.py`(셸 포함 기동) · 배포는 GET `/api/download/client` | `client/desktop_wrapper.py` · [frontend §1](../architecture/frontend.md) |
 
 ### 1.11 운영 감시 (프로세스 감시 · 헬스 · 격리 환경) — 2026-07-27 신설
@@ -146,6 +148,22 @@
 | outbox 적체 판정 | **크기가 아니라 나이**(5분 degraded / 15분 unhealthy). 정상적인 10만 행 적재가 outbox 11.6만 행을 만들기 때문에 크기 임계는 큰 파일마다 오경보한다 | 위 응답의 `checks.outbox` | `health.probe_outbox` |
 | 격리 개발/검증 환경 | 스냅샷 DB(`assy_qa`) + 별도 포트(:8081/:8091) + 별도 데이터 루트(`dev_env/`). `up`은 워처·스케줄러를 **일부러 안 띄운다**. 드릴용 워처는 별도 동사이며 **운영을 향하면 기동을 거부** | `python server/scripts/dev_env/devenv.py {snapshot,up,status,env,down,watcher-up,watcher-down}` | `server/scripts/dev_env/devenv.py` · `iso_watcher.py` · `server/paths.py` · [DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) |
 | 제품 소유 테이블 설치 | 제품이 정의하는 4종을 사이트 `table_config.json`에 **바이트 스플라이스 병합**(현장 항목 무접촉, dry run 기본, 백업, 드리프트는 보고만) | `python server/scripts/install_product_tables.py [--apply]` | `server/product_tables.py` · `server/scripts/install_product_tables.py` · [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) |
+
+### 1.12 접근 통제 (어드민 토큰 · 내부 IPC · 정적 서빙 봉쇄) — 2026-07-27 신설 (`90e284f`)
+
+> **로그인 화면도 사용자 계정도 없다.** 사내 2~5명 공유 전제라 **공유 비밀 하나**를 헤더로 제시하는 형태다(SSOT §8 · [PRODUCTION_READINESS C1](../process/PRODUCTION_READINESS.md)).
+> ⚠️ **이 절은 반드시 사내망 평문 HTTP 주소(`http://<사내IP>:8080`)에서 점검한다.** 게이트를 뚫는 쪽도, 뚫린 것을 보는 쪽도 그 주소로 들어온다. `localhost`에서만 확인한 결과는 이 절의 어떤 항목도 증명하지 못한다.
+
+| 기능 | 설명 | 진입 경로 | 코드 |
+|---|---|---|---|
+| 어드민 공유 토큰 게이트 | `/admin/*` **API 16개 전부**가 `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더 필요(비교 `secrets.compare_digest`). **조회도 포함** — 소스 코드 반환·파이프라인 열거도 유출이다. 미제시 **401**, 불일치 **403**. 예외는 페이지 서빙 `GET /admin`·`/admin.html` 2개(브라우저 내비게이션이라 헤더를 붙일 수 없고, 표시 데이터는 전부 게이트된 JSON에서 온다) | 서버 환경변수 | `server/admin_auth.py` · [backend §API](../architecture/backend.md) · [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md) |
+| 미설정 시 **부분** fail-closed | 토큰이 없으면 코드 실행 2라우트(`POST /admin/scripts/code`·`POST /admin/auto-update/run-now`)만 **503**, 나머지는 **열린 채 동작**. 전부 잠그면 운영자가 **고치러 들어갈 페이지에서 잠긴다** — 의도된 비대칭이다 | (자동) 기동 시 | `require_admin_token{,_strict}` |
+| 비-ASCII 토큰 거부 | HTTP 헤더는 latin-1 디코딩이라 **한글·이모지 토큰은 구조적으로 인증 불가**. 서버가 기동 시 **거부하고 미설정 상태로 취급**하며 배너를 `ERROR`로 남긴다. 조용히 16라우트를 죽이고 "토큰이 틀렸다"고 답하는 **복구 불능 상태**를 만들지 않기 위함 | 기동 로그 `[admin-auth]` | `token_is_unusable`/`startup_banner` |
+| `/internal/events/*` 게이트 | 워커→웹서버 IPC 4개도 **같은 토큰**. `broadcast`는 임의 dict를 **접속 중인 전 클라이언트 그리드에 중계**하고 `audit_cache`에 주입하므로, 조회 admin만 잠그는 것은 거꾸로였다. 워커 3종은 **런처 환경을 상속**해 자동으로 헤더를 붙인다 | (자동) 워커 기동 | `internal_event_headers()` · `run_watcher`/`chain_ingestion_worker`/`graph_sync_worker` |
+| 정적 폴백 봉쇄 (traversal 차단) | SPA catch-all이 **결과 기반 containment 검사** 후에만 파일을 낸다. 이전에는 **무인증으로 임의 파일**(`table_config.json`, `Windows/win.ini`, 게이트 자신의 소스)이 200이었다 — 잠근 조회 라우트가 지키던 바로 그 바이트가 옆문으로 나가고 있었다. 탈출은 **403이 아니라 404**(탈출이 파싱됐다는 사실조차 확인해 주지 않는다) | `GET /{경로}` | `main.py serve_static_or_index` · `_resolve_admin_script_path`(재사용된 원형) |
+| 클라 토큰 흐름 | 게이트 거부에만 붙는 **`WWW-Authenticate: X-Admin-Token`** 헤더로 판정 → `prompt` 1회 → `localStorage['assy.adminToken']` 보관 → 이후 `X-Admin-Token` 헤더 전송. **새 화면·탭·설정 패널 없음**(구현은 `adminFetch()` 하나) | 어드민 페이지 최초 진입 | `client2/src/admin.js adminFetch` · [frontend §5](../architecture/frontend.md) |
+| 서빙되는 것은 **번들**이다 | 서버가 보내는 것은 `client2/src/admin.js`가 아니라 git에 올라간 `client2/dist/assets/admin-*.js`다. 소스만 고치고 번들을 안 올리면 **토큰을 켜는 순간 어드민이 죽는다**(401은 오는데 물어보는 코드가 서빙 파일에 없어 프롬프트가 안 뜬다) | `cd client2 && npm run build` | 판정: `grep -c X-Admin-Token client2/dist/assets/admin-*.js` |
+| 회귀 방어(범위 있음) | `test_admin_auth.py`가 FastAPI 라우트 테이블을 **열거**해 커버리지를 단언 — 나중에 추가되는 admin 라우트는 무방비 배포 대신 스위트를 빨갛게 만든다. ⚠️ **WebSocket 라우트와 mount는 걸리지 않는다**(`route.methods`가 `None`) — 그 축은 사람이 봐야 한다(§2.16) | `pytest server/tests/test_admin_auth.py` | `ADMIN_GATES` |
 
 ---
 
@@ -280,6 +298,8 @@
 
 ### 2.10 어드민 대시보드 (5탭 IA)
 
+> 🔒 **선행: §2.16을 먼저 통과시킬 것.** 2026-07-27부터 이 절의 모든 화면은 토큰 게이트 뒤에 있다 — 게이트가 막고 있는 빈 표를 "렌더 결함"으로 오진하기 쉽다.
+
 - [ ] **탭 전환**: Overview/File/Chain/AutoUpdate/Enrichment 5탭 모두 렌더 + 콘솔 에러 없음. 해시 라우팅(`#file` 등) 직접 진입 동작, 구 별칭(`#outbox`)이 Chain 탭으로 리다이렉트.
 - [ ] **Overview**: 4카드에 헬스 상태·핵심 지표 표시, 최근 이벤트 목록, 카드 클릭 → 해당 탭 딥링크 이동. 파이프라인 헬스 스트립이 탭 전환에도 유지.
 - [ ] **Outbox 재시도**(Chain 탭): 실패 outbox 이벤트 단건 재시도 → 상태 전환. "전체 재시도" 동작. 이벤트 진단 → Edit Mapper 딥링크로 에디터 뷰 진입.
@@ -336,6 +356,52 @@
 - [ ] **격리 로그 누수 없음**: 격리 스택을 돌린 전후로 `server/*.log` 5종의 크기·mtime이 불변인지.
 - [ ] **설치 스크립트 안전성**: `install_product_tables.py`(인자 없음) → **아무것도 쓰지 않고** 할 일만 출력. `--apply` 후 현장 항목의 키 순서·들여쓰기가 그대로인지.
 
----
+### 2.16 접근 통제 🎯 — 2026-07-27 신설 (`90e284f`)
+
+> 🚨 **전 항목을 사내망 평문 HTTP 주소(`http://<사내IP>:8080`)에서 점검한다.** `localhost`/`127.0.0.1`에서 통과한 것은 **아무것도 증명하지 않는다** — 공격면도 사용자도 그 주소에 있지 않다. 이 절이 닫는 결함 중 하나는 실제로 라이브에서 열려 있었고, 로컬에서는 보이지 않았다.
+> **순서가 있다.** 번들 확인(첫 항목) → 미설정 상태 → 설정 상태. 번들 확인을 건너뛰고 토큰을 켜면 어드민에서 잠기고, 되돌리려면 보안 조치를 취소해야 한다.
+
+**A. 토큰을 켜기 전에**
+
+- [ ] 🎯 **번들 선행 확인**: `grep -c X-Admin-Token client2/dist/assets/admin-*.js` → **1 이상**. **0이면 여기서 멈추고** `cd client2 && npm run build` 후 `dist/` 커밋. 0인 채로 토큰을 켜면 어드민 페이지가 401만 받고 **프롬프트조차 뜨지 않는다**(서버가 서빙하는 것은 소스가 아니라 번들이다).
+- [ ] 🎯 **traversal은 404다**(토큰 설정 여부와 무관 — **인증 없이** 확인할 것):
+  ```bash
+  # 🚨 --path-as-is 가 없으면 curl이 클라이언트에서 ../를 접어 버린다.
+  #    그 경우 서버에는 traversal이 도착조차 하지 않고, 404를 보고 "닫혔다"고 오판한다.
+  H=http://<사내IP>:8080
+  curl -si --path-as-is "$H/../../server/config/table_config.json"  | head -1   # 404
+  curl -si --path-as-is "$H/../../../../../../Windows/win.ini"      | head -1   # 404
+  curl -si --path-as-is "$H/../../server/admin_auth.py"             | head -1   # 404
+  curl -si --path-as-is "$H/%2e%2e%2f%2e%2e%2fserver/admin_auth.py" | head -1   # 404 (인코딩 변형)
+  curl -si "$H/index.html"                                          | head -1   # 200 (정상 서빙은 살아 있어야 한다)
+  ```
+  ⚠️ **상태코드만 보지 말고 본문을 볼 것.** 200에 SPA HTML이 오는 것은 catch-all의 정상 동작이고, **파일 내용이 오면 실패**다. 위 4종 외에 `..%5c`(백슬래시)·절대경로 `/C:/Windows/win.ini`·드라이브 상대 `C:server/admin_auth.py`도 던진다 — **문자 denylist로 막은 구현이라면 바로 여기서 갈린다.**
+  ⚠️ **403이 와도 회귀다.** 탈출이 파싱됐다는 사실조차 확인해 주면 안 된다.
+  > 브라우저 주소창으로는 이 점검을 할 수 없다(브라우저도 `../`를 접는다). `curl --path-as-is` 또는 raw 소켓으로만 가능하다.
+
+**B. 토큰 미설정 상태 (`ASSY_ADMIN_TOKEN` 없이 기동)**
+
+- [ ] **배너가 상태를 말한다**: 기동 로그 첫머리에 `[admin-auth] ... is NOT set`이 **WARNING**으로, 무엇이 꺼졌고 어떤 변수를 설정해야 하는지 담겨 있다.
+- [ ] 🎯 **위험한 둘만 막힌다**: 어드민 코드 에디터 저장(`POST /admin/scripts/code`)·AutoUpdate Run Now → **503**, 본문에 "환경변수를 설정하고 재시작하라"는 문장. **그 문장이 화면 토스트로 보이는지** 확인(삼키면 "저장 중 오류"만 남아 503 분기의 존재 이유가 사라진다).
+- [ ] **나머지는 열려 있다**: 5탭 전부 정상 렌더 + 토큰 프롬프트가 **뜨지 않음**. (첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 한 의도된 상태다.)
+
+**C. 토큰 설정 상태 (스택 전체 재기동 후)**
+
+- [ ] **배너 `INFO`**: `[admin-auth] ... is set`.
+- [ ] 🎯 **헤더 없이는 안 된다**: `curl -si http://<사내IP>:8080/admin/chain/rules | head -1` → **401**, 응답에 `WWW-Authenticate: X-Admin-Token`. 틀린 토큰 → **403** + 같은 헤더. 올바른 토큰(`-H "X-Admin-Token: <값>"`) → 200.
+- [ ] **`/health`는 계속 무인증**: 헤더 없이 `curl -i .../health` → **JSON 200**. 401이 오면 회귀다(잠그면 감시가 무의미해진다).
+- [ ] 🎯 **비-ASCII 토큰은 잠그지 않고 거부된다**: `ASSY_ADMIN_TOKEN=관리자토큰` 으로 기동 → 배너가 **`ERROR`**, 그리고 상태는 **미설정과 동일**(코드 실행 2개 503, 나머지 열림). **"is set"이라고 안심시켜 놓고 올바른 토큰에 403을 돌려주면 실패** — 이게 복구 불능 상태를 만드는 경로다.
+- [ ] 🎯 **워커가 토큰을 못 받으면 조용히 멈춘다**: 워커를 런처 밖에서 **변수 없는 셸**로 띄우고 파일 드롭 → 워커 로그에 `API notification failed: ... -> 401`이 쌓이고 **그리드가 갱신되지 않는다**. 런처(`run_decoupled_app.py`)로 정상 기동하면 워커가 환경을 상속해 별도 설정 없이 동작.
+- [ ] **어드민 프롬프트 1회**: 어드민 페이지 최초 진입 → 프롬프트 1회 → 붙여넣기 → 5탭 정상. 새로고침해도 다시 묻지 않음(`localStorage`).
+- [ ] 🎯 **정상 토큰이 파괴되지 않는다**(가장 비싸게 산 항목): 격리 서버(`devenv.py up`)에서 **라이브 트리로 쓰기**를 시도해 `_resolve_admin_script_path`의 **격리 403**을 유발 → 토큰 프롬프트가 **뜨면 안 된다**(그 403에는 `WWW-Authenticate`가 없다). 뜬 뒤 아무거나 입력하면 **멀쩡한 토큰이 덮어써진다.**
+- [ ] **동시 401 → 프롬프트 1회**: 토큰을 지우고 Overview 진입(동시 요청 다수) → 모달이 **하나만** 뜬다. 두 번째 모달이 **올바른 토큰을 두고** "거부되었습니다"라고 말하면 세대 카운터 회귀.
+- [ ] **취소가 토큰을 지우지 않는다**: 프롬프트에서 취소(Esc) → 토스트 안내 후 **더 묻지 않음**. 30초 갱신 타이머가 모달을 반복해 띄우면 실패. 저장돼 있던 토큰이 빈 문자열로 덮어써져도 실패.
+- [ ] **맨 `fetch` 잔존 없음**: `client2/src/`에서 `adminFetch`를 거치지 않고 `/admin/` 경로를 직접 부르는 곳이 **0건**이어야 한다.
+  ```bash
+  grep -rn 'fetch(`${API_BASE}/admin/' client2/src/     # 0건
+  ```
+  남은 호출부는 **미설정 서버에서 멀쩡히 동작하다가 운영에서만** 401이 난다 — 개발 환경에서 절대 안 잡히는 부류다.
+- [ ] **라우트 커버리지 회귀**: `pytest server/tests/test_admin_auth.py` 통과.
+- [ ] ⚠️ **열거가 못 잡는 축은 사람이 본다**: `grep -rn '@app.websocket\|app.mount' server/main.py` → `/admin` 접두 라우트가 새로 생겼는지 눈으로 확인. `route.methods`가 `None`이라 **위 테스트는 이것을 통과시킨다**.
 
 *이 문서는 기능 병합 시마다 doc-keeper가 갱신한다 — [CONTRIBUTING](../process/CONTRIBUTING.md) · 소유 매핑: [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md).*

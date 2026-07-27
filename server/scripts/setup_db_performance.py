@@ -111,9 +111,29 @@ def setup_performance():
             except Exception as e:
                 print(f"   Failed to drop {idx_name}: {e}")
 
+        # 3.6 [재교정률] 대시보드 재교정률 집계 전용 부분 커버링 인덱스.
+        #   create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않으므로, 운영 DB에는 이 경로로만
+        #   반영된다(models.py AuditLog.__table_args__ 와 동일 정의 — 두 곳을 함께 고칠 것).
+        #   없으면 /dashboard/summary 의 재교정률 집계가 병렬 Seq Scan으로 떨어진다(실측 512ms/2.6M행).
+        print("\nStep 3.6: Creating audit_logs re-correction index...")
+        recorrection_idx = (
+            "idx_audit_user_recorrection", "audit_logs",
+            "(timestamp) INCLUDE (table_name, row_id, column_name, transaction_id) "
+            "WHERE source_name = 'user'",
+        )
+        idx_name, table, definition = recorrection_idx
+        print(f" - Creating {idx_name} on {table}...")
+        t0 = time.time()
+        try:
+            conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
+            print(f"   Success ({time.time() - t0:.2f}s)")
+        except Exception as e:
+            print(f"   Failed to create {idx_name}: {e}")
+
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
+        conn.execute(text("ANALYZE audit_logs"))
         print("Done.")
 
     print("\n✅ All performance optimizations have been applied successfully!")

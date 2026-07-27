@@ -39,7 +39,7 @@
 | DOE 영역 저장 지도 | 🗄️ [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — **본문은 폐기된 3테이블 모델**이며 기존 데이터 해석용으로만 보존합니다. M2.6이 양쪽 다 착지해(`cdcddee`+`0f8d35f`) 지금은 `map_split_registry` **한 테이블**입니다 → 현행 계약은 [MAP_EDITOR_SPEC §6](./spec/MAP_EDITOR_SPEC.md)·[CONFIG_GUIDE §5.8](./guide/CONFIG_GUIDE.md) |
 | HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
 | 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |
-| 실시간 동기화 | ⚪ [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md) — **구현 서술은 폐기된 PySide6 클라 기준**(문제 서술만 유효). 현행은 [architecture/frontend §3](./architecture/frontend.md) |
+| 실시간 동기화 | 🟢 **현행 정본은 [architecture/frontend §3·§3.1](./architecture/frontend.md)** — 모듈 구조 + **무결성 3문제**(중복 행·늦은 응답 오염·`total` 드리프트). 🗄️ [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md)은 **폐기된 PySide6 클라 기준이고 §3 문제 서술도 2026-07-27 이관 완료** — **남은 유효 내용 0, 아카이브 대기**(SSOT 링크 정리 후 총괄이 이관). 인용하지 말 것 |
 | 실패 관리/재시도 | 🟢 [spec/FAILURE_MANAGEMENT_SPEC.md](./spec/FAILURE_MANAGEMENT_SPEC.md) |
 | 비즈니스 로직/레이어링 | 🟠 [spec/BUSINESS_LOGIC_SPEC.md](./spec/BUSINESS_LOGIC_SPEC.md) |
 | Enrichment Queue(결손 보정 워크리스트) | 🟢 [spec/ENRICHMENT_QUEUE_SPEC.md](./spec/ENRICHMENT_QUEUE_SPEC.md) |

@@ -97,6 +97,14 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 ### 이력 / 감사
 `GET /audit_logs/recent` · `GET /audit_logs/transaction/{tx_id}` · `GET /tables/{t}/rows/{id}/history` · `GET .../cells/{col}/history` · `GET /dashboard/summary`
 
+#### 재교정률 (`/dashboard/summary` → `recorrection`)
+핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 유일한 계기. 정의·집계는 `crud.get_recorrection_stats`([data_model](./data_model.md#재교정률) 참조), 응답 래핑은 `main._get_recorrection_stat`.
+
+- **응답 형태**: `{window_days, measured_cells, recorrected_cells, rate_pct, unavailable_reason}`. `rate_pct`는 표본 0 또는 집계 실패 시 `null` — 0%로 위장하지 않는다. 소비자는 **분모(`measured_cells`)를 반드시 함께 표시**한다.
+- **비용 방어 2중화**: ① `RECORRECTION_CACHE` 60초 TTL(대시보드 로드마다 GROUP BY 금지) ② PostgreSQL `SET LOCAL statement_timeout`(`RECORRECTION_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `rate_pct=null` + 사유 — **지표 한 칸이 비는 것이 대시보드 전체가 느려지는 것보다 낫다.**
+- 계산은 엔드포인트 **맨 마지막**에 수행한다(타임아웃 rollback이 앞선 집계를 건드리지 않도록).
+- ⚠️ `/dashboard/summary` 자체가 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(2026-07-27 실측 ~1.5s, `bonding_map` 176만 행 단독 0.5s). **주기 폴링에 얹지 말 것** — 클라이언트는 별도 간격(5분)으로 비차단 조회한다.
+
 ### 소스 / 레이어링
 | 경로 | 용도 |
 |---|---|

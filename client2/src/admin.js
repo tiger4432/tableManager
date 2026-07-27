@@ -1427,9 +1427,61 @@ function renderEnrichmentTable(status) {
   }
 }
 
+// ── 재교정률 한 줄 (Overview 상단) ───────────────────────────
+// 사람이 같은 셀을 두 번 이상 고친 비율. 낮을수록 좋다.
+//
+// 이 한 줄은 Overview 자동 갱신 루프에 **태우지 않는다**. 출처인 /dashboard/summary 는
+// 테이블마다 count(*)를 도는 무거운 엔드포인트라(실측 ~1.5s, bonding_map 176만행 단독 0.5s)
+// AUTO_REFRESH_MS 주기에 얹으면 관리 화면 전체가 그 비용을 계속 문다.
+// 대신 별도 간격으로 한 번씩, 본문 렌더를 막지 않고(await 하지 않고) 갱신한다.
+const RECORRECTION_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let recorrectionLastAt = 0;
+
+function renderRecorrection(stat) {
+  const line = byId('recorrection-line');
+  const valueEl = byId('recorrection-value');
+  const subEl = byId('recorrection-sub');
+  if (!line || !valueEl || !subEl) return;
+
+  if (!stat || stat.rate_pct == null) {
+    valueEl.textContent = '—';
+    line.dataset.tone = 'muted';
+    subEl.textContent = stat && stat.unavailable_reason
+      ? stat.unavailable_reason
+      : `최근 ${stat ? stat.window_days : 7}일간 사람이 고친 셀 없음`;
+    return;
+  }
+
+  const { rate_pct: rate, measured_cells: cells, recorrected_cells: recorr, window_days: days } = stat;
+  valueEl.textContent = `${rate.toFixed(1)}%`;
+  // 분모는 항상 함께 — 표본이 작으면 읽는 사람이 스스로 알아채야 한다.
+  subEl.textContent =
+    `최근 ${days}일 · 사람이 고친 셀 ${cells.toLocaleString()}개 중 ${recorr.toLocaleString()}개를 두 번 이상 고침`
+    + (cells < 100 ? ' · 표본이 작아 추세로 읽지 말 것' : '');
+  line.dataset.tone = cells < 100 ? 'muted' : (rate >= 10 ? 'danger' : (rate >= 5 ? 'warn' : ''));
+}
+
+async function refreshRecorrection(force = false) {
+  const now = Date.now();
+  if (!force && now - recorrectionLastAt < RECORRECTION_MIN_INTERVAL_MS) return;
+  recorrectionLastAt = now;
+  try {
+    const res = await adminFetch(`${API_BASE}/dashboard/summary`);
+    if (!res.ok) throw new Error(`dashboard summary ${res.status}`);
+    const data = await res.json();
+    renderRecorrection(data.recorrection || null);
+  } catch (e) {
+    // 보조 지표다 — 실패해도 Overview 본문 흐름을 방해하지 않는다.
+    renderRecorrection({ rate_pct: null, window_days: 7, unavailable_reason: '조회 실패' });
+  }
+}
+
 // ── Overview 탭 (헬스 스트립 확장판 — 첫 화면) ─────────────
 
 async function fetchOverview(isStale) {
+  // 의도적으로 await 하지 않는다(위 주석 참조): 본문 카드가 이 요청을 기다리지 않는다.
+  refreshRecorrection();
+
   const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
     adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),

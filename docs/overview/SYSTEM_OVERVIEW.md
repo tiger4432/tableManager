@@ -21,6 +21,7 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 **5대 핵심 가치 (우선순위순):**
 
 1. **최소 공수 교정** — 불완전 데이터를 사람이 가장 적은 손으로 진실로 바꾼다. Human-in-the-loop이 설계의 중심.
+   - **계기: 재교정률**(`/dashboard/summary` → `recorrection`, 어드민 Overview 한 줄) — 사람이 **같은 셀을 두 번 이상 고친 비율**. 첫 시도가 먹히지 않았다는 직접 증거이므로 낮을수록 좋다. 정의·함정은 [data_model §2.3](../architecture/data_model.md), 계약은 [backend](../architecture/backend.md#재교정률-dashboardsummary--recorrection). **비율은 반드시 분모와 함께 읽는다.**
 2. **온톨로지/지식 그래프 기반** — 최종 목적지. 교정된 진실이 그래프에 반영되어, 객체(예: 불량 WF) 선택 시 연관 공정 이력이 전부 추적된다.
 3. **실시간 신뢰 전파** — 교정→그래프 신뢰의 **척추**. 반영이 안 믿기면 교정이 멈추고 온톨로지가 틀린 채 굳는다.
 4. **다중 소스 레이어링** — 위 1·2를 떠받치는 메커니즘. 한 셀에 여러 출처를 겹쳐 보관, 수동 값이 자동 값을 이긴다.
@@ -155,7 +156,7 @@ graph TD
 | 웨이퍼 맵 에디터 | [map_editor/](../map_editor/README.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` |
 | **범용 맵 오버레이(맵 인프라)** | [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md) | `server/map_overlay.py`, `client2/src/map_editor.js`(오버레이 레이어) |
 | **전사 계획(본딩/DT — 계획 = 그 맵 자체)** | [MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) · [CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md) | `server/transfer_plan.py`, `server/bonding_plan.py`, `client2/src/transfer_plan.js` |
-| 실시간 동기화 | [DATA_SYNC_SPEC](../spec/DATA_SYNC_SPEC.md) | `client2/src/websocket.js`, `main.py` ConnectionManager |
+| 실시간 동기화 | [architecture/frontend §3.1](../architecture/frontend.md) | `client2/src/websocket.js`, `main.py` ConnectionManager |
 | 배치 업서트 | [batch_update_technical_specification](../spec/batch_update_technical_specification.md) | `crud.apply_batch_updates` |
 | 실패 관리/재시도 | [FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | `FileIngestionLog`, outbox retry |
 | 이벤트 기반(Outbox/EDA) | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | `database/database.py`, `chain_ingestion_worker.py` |

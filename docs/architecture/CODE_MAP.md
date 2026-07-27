@@ -1,6 +1,6 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (HEAD `0f8d35f`, **+ `transfer_plan.py`·`contracts/**`는 미커밋 워킹트리** — [§0 측정 기준](#0-묘비-목록--소스에-존재하지-않는-이름)) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (**HEAD `90e284f`의 커밋된 blob 실측** — 워킹트리 아님. [§0 측정 기준](#0-묘비-목록--소스에-존재하지-않는-이름)) | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md)
 
 **⚠️ 사용 규칙 — 이 문서가 존재하는 이유:**
@@ -35,10 +35,14 @@
 > grep -n "adoptServerDoe\|doeRowKey\|deleteUnsent\|_doe_get\|layer_coverage_gap" docs/architecture/CODE_MAP.md
 > ```
 >
-> **측정 기준 (라인 앵커가 가리키는 상태)**: `transfer_plan.py`·`contracts/**` 계열 앵커는 **HEAD `0f8d35f` + 미커밋 워킹트리 편집** 기준이다(2026-07-27 재측정 — 서버 라운드 2회가 아직 커밋 전이었다). 검증용 blob 해시:
-> `server/transfer_plan.py` = `5a5352c` · `contracts/band_arithmetic/vectors.json` = `8696ea7` · `client_harness.mjs` = `5b2c6a5` (`git hash-object <path>`로 대조). **이 값이 다르면 해당 절의 라인 앵커는 재측정 대상**이고, 함수명으로 Grep해서 쓰라.
+> **측정 기준 (라인 앵커가 가리키는 상태)**: **전 절이 HEAD `90e284f`의 커밋된 blob 실측**이다(워킹트리 클린 확인 후 `git show 90e284f:<path>` 기준). 앞판이 "미커밋 워킹트리" 기준이라 단서를 달았던 `transfer_plan.py`·`contracts/**`는 그 편집이 `bae86d0`으로 **그대로 커밋**됐고 이후 무변경이라 blob이 바이트 동일하다 — 즉 그 절의 앵커는 재측정 없이 승계된다(2026-07-27 확인, 아래 해시로 대조함). 검증용 blob 해시:
+> `server/transfer_plan.py` = `5a5352c` · `contracts/band_arithmetic/vectors.json` = `8696ea7` · `client_harness.mjs` = `5b2c6a5` (`git hash-object <path>`로 대조 — 세 값 모두 `90e284f`에서 **변동 없음**). **이 값이 다르면 해당 절의 라인 앵커는 재측정 대상**이고, 함수명으로 Grep해서 쓰라.
 >
-> 💡 **이 해시가 실제로 일한 기록**: 이번 패스 도중 `vectors.json`이 다른 에이전트에 의해 바뀌어(`17698dd` → `8696ea7`) 방금 적은 서술 하나가 즉시 낡았다 — "패널을 통해 도달할 수 없다"가 "패널이 **만들어내지** 못한다(단 보존은 한다)"로 정정돼야 했다. 해시가 없었으면 그 정정은 다음 감사까지 살아남았을 것이다.
+> 💡 **이 해시가 실제로 일한 기록**: 앞선 패스 도중 `vectors.json`이 다른 에이전트에 의해 바뀌어(`17698dd` → `8696ea7`) 방금 적은 서술 하나가 즉시 낡았다 — "패널을 통해 도달할 수 없다"가 "패널이 **만들어내지** 못한다(단 보존은 한다)"로 정정돼야 했다. 해시가 없었으면 그 정정은 다음 감사까지 살아남았을 것이다. 이번 패스에서는 세 해시가 전부 일치해 **해당 절을 재측정 대상에서 제외하는 근거**로 쓰였다 — 검사는 통과할 때도 일을 한다.
+>
+> ⚠️ **해시가 보증하지 않는 것**: 이 세 파일 밖의 앵커는 해시로 지켜지지 않으므로 **패스마다 다시 재야 한다.** 이번 실측에서 이 범위(`0f8d35f..90e284f`)가 **건드리지도 않은** 파일들이 이미 밀려 있었다 — `directory_watcher.py` 최대 +53줄, `process_supervisor.py`는 선언 431줄 대비 실제 **709줄**. 커밋 diff만 따라가는 갱신은 이런 것을 영원히 못 본다.
+>
+> ⚠️ **왜 "커밋된 blob"이라고 못박는가 — 이번 패스에서 실제로 일어난 일**: 착수 시점에 워킹트리가 클린이었으나, 이 절을 쓰는 동안 다른 에이전트들이 `server/main.py`·`crud.py`·`models.py`·`schemas.py`를 **동시 편집**해 트리가 갈라졌다. 앵커를 워킹트리에서 쟀다면 **아무도 리뷰하지 않은 중간 상태**가 지도에 박혔을 것이다. 그래서 이 지도의 모든 앵커는 `git show 90e284f:<path>` 기준이고, **위 4개 파일은 다음 커밋에서 다시 밀릴 것이 이미 확정**돼 있다 — 라인이 아니라 **함수명으로 Grep하라**는 규율이 특히 그 파일들에 적용된다.
 >
 > ⚠️ **`plan_store.doe`는 예외적으로 소스에 남아 있다** — 폐기된 `map_doe`의 `__comment` 안(`product_tables.py:97` 및 그것이 생성한 `table_config.json.sample`)에서 "historical description" 구간의 일부다. **낡은 주석이 운영자를 능동적으로 오도하는** 바로 그 사례이며, `install_product_tables.py --sync-comments`가 그래서 생겼다(`tests/test_install_product_tables.py:231`이 이 시나리오를 이름으로 기술한다).
 
@@ -61,13 +65,14 @@
 | 파일 | 라인수 | 섹션 |
 |---|---|---|
 | **묘비 목록 (소스에 없는 이름)** | — | [§0](#0-묘비-목록--소스에-존재하지-않는-이름) |
-| `server/main.py` | ~4,049 | [§1](#1-servermainpy--api--ws-허브) |
+| `server/main.py` | ~4,112 | [§1](#1-servermainpy--api--ws-허브) |
+| **`server/admin_auth.py`** (어드민 토큰 게이트) | ~219 | [§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설) |
 | `server/database/crud.py` | ~1,952 | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
-| `server/parsers/directory_watcher.py` | ~1,714 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
-| `server/chain_ingestion_worker.py` | ~972 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
-| 소형 서버 모듈 (models/std_parser/enrichment_*/ingestion_activity/ingestion_checkpoint/bonding_plan/**map_overlay**/**transfer_plan**) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) + **운영 5종**(paths/process_supervisor/health/heartbeat/product_tables) | ~7,400 | [§5](#5-소형-서버-모듈) |
+| `server/parsers/directory_watcher.py` | ~1,764 | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
+| `server/chain_ingestion_worker.py` | ~977 | [§4](#4-serverchain_ingestion_workerpy--체인-워커) |
+| 소형 서버 모듈 (models/std_parser/enrichment_*/ingestion_activity/ingestion_checkpoint/bonding_plan/**map_overlay**/**transfer_plan**) + 그래프 트랙(graph_sync_worker/graph_materializer/ontology_config) + **운영 5종**(paths/process_supervisor/health/heartbeat/product_tables) | ~8,070 | [§5](#5-소형-서버-모듈) |
 | 기타 서버 모듈 (한줄 요약) + 설치·개발환경 스크립트 + **교차 구현 계약 `contracts/`** | — | [§6](#6-기타-서버-모듈-한줄-요약) |
-| `client2/src/*` | ~19,900 | [§7](#7-client2src--웹-클라이언트) |
+| `client2/src/*` | ~20,000 (js 17,040 + css) | [§7](#7-client2src--웹-클라이언트) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
 
 > **경로의 단일 원천 (2026-07-27):** `server/config/**`·`server/ingestion_workspace/**`·프로세스 로그는 이제 전부 **`server/paths.py`**([§5](#5-소형-서버-모듈))를 경유한다. 소스에서 `os.path.dirname(__file__)`로 config/워크스페이스 경로를 조립하는 코드를 보면 **누락**이다. 이 맵의 경로 표기는 모두 `paths.*` 기준.
@@ -82,112 +87,165 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `config_path = paths.config_path("table_config.json")` / `logger.info(paths.describe())` | **[신설]** 부팅 첫 줄에 데이터 루트를 찍는다 — 로그만 보고 이 프로세스가 격리 환경인지 라이브인지 판별 가능 | ~36/37 |
-| `db_context_middleware(request, call_next)` | 요청별 DB 세션 수명 관리 미들웨어 | ~58 |
-| `startup_event()` | 기동: 테이블 준비, 워처 스레드, 콜백 배선, 캐시 워밍 | ~179 |
-| ├ `trigger_ws_refresh(table_name, count, created_logs, total_log_count)` | (내부·임베디드 모드 전용) 인제션 완료 → WS 갱신 브로드캐스트 콜백 (⚠️ C-5 절단 미적용 레거시 경로 — 드릴 관찰, 저순위) | ~257 |
-| ├ `trigger_ws_file_processed(table_name, filename, status, error_msg)` | (내부) 파일 처리 상태 → WS 통지 콜백 | ~277 |
-| └ (임베디드 ingestion-state 배선) | [P1] 비-DECOUPLED 시 HTTP 없이 `ingestion_activity_registry`에 직접 반영, file-processed 시 제거 | ~305–322 |
-| `shutdown_event()` | 종료 정리 | ~350 |
-| `class ConnectionManager` — `connect/disconnect/broadcast` | WS 연결 풀 + 전체 브로드캐스트 | ~365 |
-| `invalidate_table_cache(table_name)` | 테이블 count 캐시 무효화 | ~432 |
-| `inject_system_columns(row)` | 응답 행에 시스템 컬럼 주입 | ~466 |
-| `fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=True) -> list` | 행들에 CellSource/Overwrite 메타 병합 → 셀 객체 `{value,is_overwrite,priority_source}` 생성 (조회 응답의 핵심) | ~551 |
-| `get_deleted_row_business_key(db, table_name, row_id)` / `..._bulk(...) -> dict` | 삭제 행의 비즈니스 키 역추적(감사 표시용) | ~679/702 |
-| `check_rows_exist(db, row_keys) -> set` | (table,row_id) 존재 일괄 확인 | ~740 |
-| `from ingestion_activity import registry as ingestion_activity_registry` | [P1] 진행 스냅샷 레지스트리 싱글턴 import([§5](#5-소형-서버-모듈)) | ~759 |
-| `get_column_filter_condition(table_model, col_name, f_info)` | 컬럼 필터 → SQLAlchemy 조건 변환(타입별) | ~929 |
-| `reload_local_process_cache()` | 웹서버 config 핫리로드 — `models.refresh_dynamic_models(engine)` 위임(싱글턴·ORM·신규 테이블 물리 CREATE, 이슈 #7) + `crud._ontology_cache` 무효화 | ~2850 |
-| `load_maps_config() / save_maps_config(data)` | 맵 프리셋 JSON 파일 IO (`MAPS_CONFIG_PATH = paths.config_path("maps.json")` ~2933) | ~2935/2944 |
+| `config_path = paths.config_path("table_config.json")` / `logger.info(paths.describe())` | 부팅 첫 줄에 데이터 루트를 찍는다 — 로그만 보고 이 프로세스가 격리 환경인지 라이브인지 판별 가능 | ~41/42 |
+| **`from admin_auth import require_admin_token, require_admin_token_strict`** | **[`90e284f` 신설]** `/admin/*`·`/internal/*` 게이트 의존성 import([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)) | ~38/39 |
+| `db_context_middleware(request, call_next)` | 요청별 DB 세션 수명 관리 미들웨어. **읽는 헤더는 `X-User`/`X-Transaction-ID`/`X-Source`뿐** — 토큰 헤더명(`X-Admin-Token`)이 여기와 겹치지 않는 것이 감사 행 유출 차단의 근거([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)) | ~63 |
+| `startup_event()` | 기동: 테이블 준비, 워처 스레드, 콜백 배선, 캐시 워밍. **[`90e284f`] `admin_auth.startup_banner()`를 1회만 로깅**(`_admin_auth_banner_logged` ~183 가드 — reload마다 재발화하면 배너가 소음이 된다), 호출부 ~196–198 | ~187 |
+| ├ `trigger_ws_refresh(table_name, count, created_logs, total_log_count)` | (내부·임베디드 모드 전용) 인제션 완료 → WS 갱신 브로드캐스트 콜백 (⚠️ C-5 절단 미적용 레거시 경로 — 드릴 관찰, 저순위) | ~275 |
+| ├ `trigger_ws_file_processed(table_name, filename, status, error_msg)` | (내부) 파일 처리 상태 → WS 통지 콜백 | ~295 |
+| └ `trigger_ingestion_state(state)` | [P1] 비-DECOUPLED 시 HTTP 없이 `ingestion_activity_registry`에 직접 반영, file-processed 시 제거 | ~331 |
+| `shutdown_event()` | 종료 정리 | ~368 |
+| `class ConnectionManager` — `connect/disconnect/broadcast` | WS 연결 풀 + 전체 브로드캐스트 | ~383 |
+| `invalidate_table_cache(table_name)` | 테이블 count 캐시 무효화 | ~450 |
+| `inject_system_columns(row)` | 응답 행에 시스템 컬럼 주입 | ~484 |
+| `fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=True) -> list` | 행들에 CellSource/Overwrite 메타 병합 → 셀 객체 `{value,is_overwrite,priority_source}` 생성 (조회 응답의 핵심) | ~569 |
+| `get_deleted_row_business_key(db, table_name, row_id)` / `..._bulk(...) -> dict` | 삭제 행의 비즈니스 키 역추적(감사 표시용) | ~697/720 |
+| `check_rows_exist(db, row_keys) -> set` | (table,row_id) 존재 일괄 확인 | ~758 |
+| `from ingestion_activity import registry as ingestion_activity_registry` | [P1] 진행 스냅샷 레지스트리 싱글턴 import([§5](#5-소형-서버-모듈)). 바로 위 ~775가 `MAX_NOTIFY_CREATED_LOGS` import | ~777 |
+| `get_column_filter_condition(table_model, col_name, f_info)` | 컬럼 필터 → SQLAlchemy 조건 변환(타입별) | ~947 |
+| `reload_local_process_cache()` | 웹서버 config 핫리로드 — `models.refresh_dynamic_models(engine)` 위임(싱글턴·ORM·신규 테이블 물리 CREATE, 이슈 #7) + `crud._ontology_cache` 무효화 | ~2868 |
+| `load_maps_config() / save_maps_config(data)` | 맵 프리셋 JSON 파일 IO (`MAPS_CONFIG_PATH = paths.config_path("maps.json")` ~2951) | ~2953/2962 |
 
-### 1.1-bis 헬스 블록 (`8117456` 신설 — 파일 상단 ~88–176)
+### 1.1-bis 헬스 블록 (`8117456` 신설 — 파일 상단 ~93–180)
 
-**등록 위치가 계약이다.** FastAPI는 등록 순서로 매칭하므로 이 블록은 파일 맨 아래 SPA catch-all `@app.get("/{file_name:path}")`(~4022)보다 **위에** 있어야 한다. 이 라우트가 없던 시절 `/health`는 catch-all로 떨어져 **HTML을 200으로** 반환했다 — 외부 모니터가 죽은 서버를 살아 있다고 불렀다. `tests/test_health_endpoint.py`가 양쪽(‌`/health`는 JSON · 엉뚱한 경로는 여전히 HTML)을 단언하므로, 재배치로 라우트가 다시 가려지면 조용히 죽지 않고 테스트가 깨진다.
+**등록 위치가 계약이다.** FastAPI는 등록 순서로 매칭하므로 이 블록은 파일 맨 아래 SPA catch-all `@app.get("/{file_name:path}")`(~4067)보다 **위에** 있어야 한다. 이 라우트가 없던 시절 `/health`는 catch-all로 떨어져 **HTML을 200으로** 반환했다 — 외부 모니터가 죽은 서버를 살아 있다고 불렀다. `tests/test_health_endpoint.py`가 양쪽(‌`/health`는 JSON · 엉뚱한 경로는 여전히 HTML)을 단언하므로, 재배치로 라우트가 다시 가려지면 조용히 죽지 않고 테스트가 깨진다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `_HEALTH_DB_TIMEOUT_SEC=2.0` / `_health_probe_inflight` | DB 프로브 시간 상한 / **동시 프로브 1개 제한** — DB가 멎으면 `wait_for`는 요청만 놓아주고 워커 스레드는 못 놓아준다. 10초 폴링 모니터가 행마다 스레드를 쌓지 않도록 하는 플래그(해제는 대기를 포기한 요청이 아니라 **스레드 자신**이 한다) | ~103/108 |
-| `_health_probe_db_sync()` / `_health_probe_and_release()` | 동기 DB 프로브(+`health.probe_outbox`) / inflight 해제 래퍼 | ~111/124 |
-| GET `/health` → `health_check()` | `heartbeat.read_all()` + `process_supervisor.read_status()` + DB/outbox 프로브를 `health.compute_health`에 넘겨 **JSONResponse + 실제 HTTP 상태**(unhealthy면 503)로 반환 | ~132/133 |
+| `_HEALTH_DB_TIMEOUT_SEC=2.0` / `_health_probe_inflight` | DB 프로브 시간 상한 / **동시 프로브 1개 제한** — DB가 멎으면 `wait_for`는 요청만 놓아주고 워커 스레드는 못 놓아준다. 10초 폴링 모니터가 행마다 스레드를 쌓지 않도록 하는 플래그(해제는 대기를 포기한 요청이 아니라 **스레드 자신**이 한다) | ~108/113 |
+| `_health_probe_db_sync()` / `_health_probe_and_release()` | 동기 DB 프로브(+`health.probe_outbox`) / inflight 해제 래퍼 | ~116/129 |
+| GET `/health` → `health_check()` | `heartbeat.read_all()` + `process_supervisor.read_status()` + DB/outbox 프로브를 `health.compute_health`에 넘겨 **JSONResponse + 실제 HTTP 상태**(unhealthy면 503)로 반환. ⚠️ **게이트 없음** — 외부 모니터가 토큰 없이 폴링해야 하므로 의도적으로 열려 있다(`/admin/*`이 아니라 `/health`다) | ~137/138 |
 
 ### 1.2 API 라우트 표 — 데이터 조회/편집
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| GET `/` | `read_root` | index 서빙 | ~394 |
-| GET `/api/download/client` | `download_desktop_client` | 데스크톱 셸 배포 | ~407 |
-| GET `/tables` | `list_tables` | 테이블 목록 | ~672 |
-| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합 | ~1032 |
-| GET `/tables/{t}/schema` | `get_table_schema` | 스키마 계약(`table_config.json` 기반) | ~1603 |
-| GET `/tables/{t}/{row_id}` | `get_row_data` | 단일 행 조회 | ~1641 |
-| GET `/tables/{t}/export` | `export_table_csv` | CSV 스트리밍 export | ~1408 |
-| POST `/tables/{t}/rows` | `create_row` | 빈 행 N개 생성(+WS 통지) | ~1729 |
-| PUT `/tables/{t}/data/updates` | `apply_batch_updates_endpoint` | **메인 편집** — crud.apply_batch_updates 호출 후 병합·브로드캐스트. 배치의 `replace_map:true`(schemas.py ~87)는 **동일 맵 기존 행 클린 삭제 후 재기록** — 맵 Push와 **[M2.6] legend/DOE 저장(`map_split_registry`)**이 이 연산을 쓴다([§7 map_editor.js](#7-client2src--웹-클라이언트)) | ~1791 |
-| DELETE `/tables/{t}/rows/{row_id}` | `delete_row` | 단일 삭제 | ~1242 |
-| POST `/tables/{t}/rows/batch_delete` | `delete_rows_batch_endpoint` | 일괄 삭제(+WS) | ~1265 |
-| POST `/tables/{t}/row_ids/target` | `get_target_row_ids` | 필터 조건 → row_id 목록(범위 작업용) | ~1320 |
-| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")` ~2310) | ~2303 |
+| GET `/` | `read_root` | index 서빙 | ~412 |
+| GET `/api/download/client` | `download_desktop_client` | 데스크톱 셸 배포 | ~425 |
+| GET `/tables` | `list_tables` | 테이블 목록 | ~690 |
+| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합 | ~1050 |
+| GET `/tables/{t}/schema` | `get_table_schema` | 스키마 계약(`table_config.json` 기반) | ~1621 |
+| GET `/tables/{t}/{row_id}` | `get_row_data` | 단일 행 조회 | ~1659 |
+| GET `/tables/{t}/export` | `export_table_csv` | CSV 스트리밍 export | ~1426 |
+| POST `/tables/{t}/rows` | `create_row` | 빈 행 N개 생성(+WS 통지) | ~1747 |
+| PUT `/tables/{t}/data/updates` | `apply_batch_updates_endpoint` | **메인 편집** — crud.apply_batch_updates 호출 후 병합·브로드캐스트. 배치의 `replace_map:true`(schemas.py ~87)는 **동일 맵 기존 행 클린 삭제 후 재기록** — 맵 Push와 **[M2.6] legend/DOE 저장(`map_split_registry`)**이 이 연산을 쓴다([§7 map_editor.js](#7-client2src--웹-클라이언트)) | ~1809 |
+| DELETE `/tables/{t}/rows/{row_id}` | `delete_row` | 단일 삭제 | ~1260 |
+| POST `/tables/{t}/rows/batch_delete` | `delete_rows_batch_endpoint` | 일괄 삭제(+WS) | ~1283 |
+| POST `/tables/{t}/row_ids/target` | `get_target_row_ids` | 필터 조건 → row_id 목록(범위 작업용) | ~1338 |
+| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")` ~2328) | ~2321 |
 
 ### 1.3 API 라우트 표 — 이력/레이어링(소스·우선순위)
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| GET `/audit_logs/recent` | `get_recent_audit_logs` | 최근 트랜잭션 그룹 이력 | ~761 |
-| GET `/audit_logs/transaction/{tx_id}` | `get_transaction_logs` | 트랜잭션 상세 로그 | ~806 |
-| GET `/dashboard/summary` | `get_dashboard_summary` | 대시보드 통계 | ~885 |
-| GET `/tables/{t}/rows/{r}/history` | `get_row_history` | 행 이력 | ~1676 |
-| GET `/tables/{t}/rows/{r}/cells/{c}/history` | `get_cell_history` | 셀 이력 (⚠️ ~2458에 동일 경로 중복 정의 — 선등록인 ~1702가 유효) | ~1702 |
-| GET `/tables/{t}/{r}/{c}/sources` | `get_cell_sources` | 셀의 레이어(소스) 목록 | ~2329 |
-| DELETE `/tables/{t}/{r}/{c}/sources/{s}` | `delete_cell_source` | 단일 소스 삭제(+재계산·WS) | ~2373 |
-| PUT `/tables/{t}/{r}/{c}/priority` | `set_cell_priority` | 단일 셀 수동 우선순위(Pin) | ~2406 |
-| PUT `/tables/{t}/cells/priority/batch` | `set_cell_priority_batch_endpoint` | Pin 일괄 | ~2470 |
-| POST `/tables/{t}/cells/sources/delete/batch` | `delete_cell_source_batch_endpoint` | 소스 삭제 일괄 | ~2541 |
-| POST `/tables/{t}/cells/sources/query` | `query_cells_sources` | 셀 범위 소스 일괄 조회 | ~2602 |
+| GET `/audit_logs/recent` | `get_recent_audit_logs` | 최근 트랜잭션 그룹 이력 | ~779 |
+| GET `/audit_logs/transaction/{tx_id}` | `get_transaction_logs` | 트랜잭션 상세 로그 | ~824 |
+| GET `/dashboard/summary` | `get_dashboard_summary` | 대시보드 통계 | ~903 |
+| GET `/tables/{t}/rows/{r}/history` | `get_row_history` | 행 이력 | ~1694 |
+| GET `/tables/{t}/rows/{r}/cells/{c}/history` | `get_cell_history` | 셀 이력 (⚠️ ~2476에 동일 경로 중복 정의 — 선등록인 ~1720이 유효) | ~1720 |
+| GET `/tables/{t}/{r}/{c}/sources` | `get_cell_sources` | 셀의 레이어(소스) 목록 | ~2347 |
+| DELETE `/tables/{t}/{r}/{c}/sources/{s}` | `delete_cell_source` | 단일 소스 삭제(+재계산·WS) | ~2391 |
+| PUT `/tables/{t}/{r}/{c}/priority` | `set_cell_priority` | 단일 셀 수동 우선순위(Pin) | ~2424 |
+| PUT `/tables/{t}/cells/priority/batch` | `set_cell_priority_batch_endpoint` | Pin 일괄 | ~2488 |
+| POST `/tables/{t}/cells/sources/delete/batch` | `delete_cell_source_batch_endpoint` | 소스 삭제 일괄 | ~2559 |
+| POST `/tables/{t}/cells/sources/query` | `query_cells_sources` | 셀 범위 소스 일괄 조회 | ~2620 |
 
 ### 1.4 API 라우트 표 — 어드민/운영/그래프/맵·인리치먼트
 
+> 🔒 **[`90e284f`] `/admin/*` 16개 + `/internal/events/*` 4개 = 20개 라우트가 데코레이터에 `dependencies=[Depends(require_admin_token)]`을 달고 있다.** 그중 **2개만 `..._strict`**(토큰 미설정 시 503). 게이트 자체는 [§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설). **아래 표에서 🔒 = `require_admin_token` · 🔒! = `require_admin_token_strict`.** 새 `/admin` 라우트를 게이트 없이 추가하면 `tests/test_admin_auth.py`가 앱의 라우트 목록을 훑어 실패시킨다(목록을 손으로 관리하지 않는다).
+
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| POST `/api/graph/sync` | `manual_graph_sync` | 그래프 **백필/복구** 트리거(:8090 프록시 — 주 경로는 materializer) | ~1892 |
-| POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 | ~2686 |
-| GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) | ~2725 |
-| GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` 등 | 파일 인제션 로그/실패 목록 | ~2795/2830 |
-| GET `/admin/file-ingestion/active` | `get_active_file_ingestions` | **[P1 신설]** 진행 중 인제션 스냅샷(레지스트리 `snapshot()` — 인메모리, TTL 퇴거 포함) — admin File 탭/헬스 스트립 소비 | ~2836 |
-| POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함, 내부 `sync_refresh_callback` ~3441) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) | ~3408 |
-| GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 — 표시 table_name에 글로벌 별칭(`find_workspace_alias`) 우선 적용 | ~3187 |
-| POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화) | ~2884 |
-| GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | ~3267/3288 |
-| GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | ~3517 |
-| POST `/admin/auto-update/toggle` | `toggle_auto_update_script` | 수집기 active 토글 — `config/auto_update_control.json` 갱신(핫 반영, 404/400 명시) | ~3550 |
-| POST `/admin/auto-update/run-now` | `trigger_auto_update_run_now` | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도) | ~3582 |
-| GET/POST `/admin/scripts/list|code` | `list_admin_scripts` 등 | Monaco 에디터용 스크립트 IO (경로 검사 `_resolve_admin_script_path` ~3817) | ~3757–3893 |
-| GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `_save_map_preset_impl` 등 | 맵 프리셋 CRUD | ~2966–3026 |
-| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 현 클라 미사용), 잘못된 region 400 | ~3034 |
-| GET `/api/maps/overlay` | `get_map_overlay(target_table, target_key, sources, eqp=None, limit=None)` | **[M2 신설 · 맵 인프라]** 임의의 맵들을 타깃 맵 프레임 좌표로 정렬해 `overlays[]` 반환. `sources`는 `table` 또는 `table:key`의 CSV(키 생략 시 target_key 승계, 최대 8종). `map_overlay.get_overlay` 위임([§5](#5-소형-서버-모듈)), `parse_sources` ValueError → 400, 셀 상한 `MAX_OVERLAY_CELLS=20,000`(초과 시 `truncated:true`). ⚠️ **`eqp` 쿼리 파라미터는 no-op으로 존치** — `map_overlay.get_overlay`의 `eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다(축소는 총괄 승인 사항). **맵 에디터 클라는 이 엔드포인트를 호출하지 않는다** | ~3067 |
-| GET `/api/maps/paint-rules` | `get_map_paint_rules(table=None)` | **[M2 신설]** 페인트 잠금 선언 정본(**기존엔 클라 하드코딩 `'F'`**) — `map_overlay.get_paint_rules`. 응답 `{table, rules{enabled, blocking_values, from_overlay, message}}` | ~3105 |
-| GET `/api/transfer-plan/stages` | `get_transfer_plan_stages` | **[M2 신설]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). `transfer_plan.list_stages` | ~3119 |
-| GET `/api/transfer-plan/source-summary` | `get_transfer_plan_source_summary(stage, lot, slot, ref_table=None, map_key=None)` | **[M2 신설]** 단계별 소스 (lot,slot) 가용 집계 — `transfer_plan.get_stage_source_summary`. 미선언 stage 404. **칩 좌표 목록은 반환하지 않는다**(집계만 — 페이로드 상한 규율). `(ref_table, map_key)` 지정 시 `region_chips` 동봉(v2에서 구 `plan_id` 대체) | ~3133 |
-| GET `/api/transfer-plan/validate` | `validate_transfer_plan(ref_table, map_key)` | **[M2 신설 · v2 모델]** 계획 검증 — **계획 정체성 = 지금 열어 편집 중인 맵**(`plan_id` 폐기). stage는 `stages.*.target_map.table` 역인덱스로 유도, 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status:"unverified"`. **[M2.6] `plan_store.registry` 미구성만 404**(구 `plan_store.doe`가 아니다 — 역할이 통째로 개명됐다) | ~3163 |
-| GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회 | ~3340/3351 |
-| WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager) | ~2291 |
-| POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_*` | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`). [P1] batch-refresh는 msg 재구성 시 `total_log_count` 동봉(~3648 — 체인 passthrough 경로와 대칭화), broadcast는 `file_ingestion_progress`를 레지스트리에 인터셉트(~3673), file-processed는 레지스트리 제거 인터셉트(~3736) | ~3622–3742 |
-| POST `/internal/events/ingestion-state` | `internal_event_ingestion_state` | **[P1 신설]** watcher → 진행 스냅샷 push(QUEUED/PROCESSING/FINISHED — heavy 파일만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 | ~3743 |
-| GET `/admin`·`/map-editor`·`/enrichment`·`/{path}` | `serve_*` | 정적 페이지 서빙(`graph.html`/`trace.html`은 catch-all `serve_static_or_index` ~4023 경유). **catch-all이 파일 최하단인 것이 계약** — `/health`가 이보다 위에 등록돼야 한다(§1.1-bis) | ~3971–4023 |
+| POST `/api/graph/sync` | `manual_graph_sync` | 그래프 **백필/복구** 트리거(:8090 프록시 — 주 경로는 materializer). ⚠️ `/admin` 접두어가 아니라 **게이트 대상이 아니다** | ~1910 |
+| 🔒 POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 | ~2704 |
+| 🔒 GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) | ~2743 |
+| 🔒 GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` 등 | 파일 인제션 로그/실패 목록 | ~2813/2848 |
+| 🔒 GET `/admin/file-ingestion/active` | `get_active_file_ingestions` | **[P1]** 진행 중 인제션 스냅샷(레지스트리 `snapshot()` — 인메모리, TTL 퇴거 포함) — admin File 탭/헬스 스트립 소비 | ~2854 |
+| 🔒 POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함, 내부 `sync_refresh_callback` ~3463) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) | ~3430 |
+| 🔒 GET `/admin/file-ingestion/workspaces` | `get_ingestion_workspaces` | 워크스페이스 현황 — 표시 table_name에 글로벌 별칭(`find_workspace_alias`) 우선 적용 | ~3209 |
+| 🔒 POST `/admin/reload-configs` | `reload_system_configs` | config 핫리로드 — 동기 CREATE(1차 DDL 소유자)가 outbox 발화보다 선행 (+SYSTEM_RELOAD outbox 발화) | ~2902 |
+| 🔒 GET `/admin/chain/rules` · `/admin/mappers/list` | `get_chain_rules` / `get_mappers` | 체인 룰·맵퍼 목록 | ~3289/3310 |
+| 🔒 GET `/admin/auto-update/status` | `get_auto_update_status` | 스케줄러 상태 — 항목별 `active` 부가(제어 파일 실시간 계산) | ~3539 |
+| 🔒 POST `/admin/auto-update/toggle` | `toggle_auto_update_script` | 수집기 active 토글 — `config/auto_update_control.json` 갱신(핫 반영, 404/400 명시) | ~3572 |
+| **🔒! POST `/admin/auto-update/run-now`** | `trigger_auto_update_run_now` | 즉시 실행(**active 무관** — 수동 실행은 명시적 의도). **strict인 이유: 스케줄러에게 임의 파이썬 파일을 실행시킨다**(아래 `scripts/code`와 짝) | ~3607 |
+| 🔒 GET `/admin/scripts/list` · GET `/admin/scripts/code` | `list_admin_scripts` / `get_admin_script_code` | Monaco 에디터용 스크립트 조회 (경로 검사 `_resolve_admin_script_path` ~3857 — 격리 서버가 라이브 트리에 쓰려 하면 **403**. ⚠️ 이 403은 **게이트가 낸 것이 아니라 핸들러가 낸 것**이라 `WWW-Authenticate`가 없다. 클라가 둘을 구분하는 근거 → [§7 `admin.js` `isGateRejection`](#7-client2src--웹-클라이언트)) | ~3797/3900 |
+| **🔒! POST `/admin/scripts/code`** | `save_admin_script_code` | 스크립트 저장. **strict인 이유: `mappers/`·`ingestion_workspace/`에 임의 파이썬 파일을 쓴다** | ~3937 |
+| GET/POST/DELETE `/map-presets` (+`/api/` 별칭) | `_save_map_preset_impl` 등 | 맵 프리셋 CRUD | ~2984–3044 |
+| GET `/api/bonding-plan/core-summary` | `get_bonding_plan_core_summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계 — `bonding_plan.get_core_summary` 위임([§5](#5-소형-서버-모듈)), `region` 파라미터(rects — 현 클라 미사용), 잘못된 region 400 | ~3052 |
+| GET `/api/maps/overlay` | `get_map_overlay(target_table, target_key, sources, eqp=None, limit=None)` | **[M2 신설 · 맵 인프라]** 임의의 맵들을 타깃 맵 프레임 좌표로 정렬해 `overlays[]` 반환. `sources`는 `table` 또는 `table:key`의 CSV(키 생략 시 target_key 승계, 최대 8종). `map_overlay.get_overlay` 위임([§5](#5-소형-서버-모듈)), `parse_sources` ValueError → 400, 셀 상한 `MAX_OVERLAY_CELLS=20,000`(초과 시 `truncated:true`). ⚠️ **`eqp` 쿼리 파라미터는 no-op으로 존치** — `map_overlay.get_overlay`의 `eqp` 인자는 `by_eqp` 분기와 함께 삭제됐다(축소는 총괄 승인 사항). **맵 에디터 클라는 이 엔드포인트를 호출하지 않는다** | ~3085 |
+| GET `/api/maps/paint-rules` | `get_map_paint_rules(table=None)` | **[M2 신설]** 페인트 잠금 선언 정본(**기존엔 클라 하드코딩 `'F'`**) — `map_overlay.get_paint_rules`. 응답 `{table, rules{enabled, blocking_values, from_overlay, message}}` | ~3123 |
+| GET `/api/transfer-plan/stages` | `get_transfer_plan_stages` | **[M2 신설]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). `transfer_plan.list_stages` | ~3137 |
+| GET `/api/transfer-plan/source-summary` | `get_transfer_plan_source_summary(stage, lot, slot, ref_table=None, map_key=None)` | **[M2 신설]** 단계별 소스 (lot,slot) 가용 집계 — `transfer_plan.get_stage_source_summary`. 미선언 stage 404. **칩 좌표 목록은 반환하지 않는다**(집계만 — 페이로드 상한 규율). `(ref_table, map_key)` 지정 시 `region_chips` 동봉(v2에서 구 `plan_id` 대체) | ~3151 |
+| GET `/api/transfer-plan/validate` | `validate_transfer_plan(ref_table, map_key)` | **[M2 신설 · v2 모델]** 계획 검증 — **계획 정체성 = 지금 열어 편집 중인 맵**(`plan_id` 폐기). stage는 `stages.*.target_map.table` 역인덱스로 유도, 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status:"unverified"`. **[M2.6] `plan_store.registry` 미구성만 404**(구 `plan_store.doe`가 아니다 — 역할이 통째로 개명됐다) | ~3181 |
+| GET `/enrichment/rules` · `.../references/{index}` | `get_enrichment_rules` / `get_enrichment_reference` | 인리치먼트 규칙 공개본·참조 뷰 조회 | ~3362/3373 |
+| WS `/ws` | `websocket_endpoint` | WS 접속(ConnectionManager). ⚠️ **WS 라우트는 게이트 대상이 아니다** — `Depends`가 HTTP 라우트에만 걸리므로 `test_admin_auth.py`도 WS와 mount는 건너뛴다 | ~2309 |
+| 🔒 POST `/internal/events/batch-refresh` · `/broadcast` · `/file-processed` | `internal_event_*` | **워커/워처 → 웹서버 브로드캐스트 위임 (경계 계약)** — 수신부는 `total_log_count`(실건수) 우선 + `MAX_NOTIFY_CREATED_LOGS` 방어 절단(인시던트 `cc57b64`). [P1] batch-refresh는 msg 재구성 시 `total_log_count` 동봉(~3688 — 체인 passthrough 경로와 대칭화), broadcast는 `file_ingestion_progress`를 레지스트리에 인터셉트(~3714), file-processed는 레지스트리 제거 인터셉트(~3777). **[`90e284f`] 게이트 추가 — `/internal`이 `/admin`과 같이 묶인 이유는 `broadcast`가 임의 dict를 전 WS 클라이언트에 중계하고 audit_cache에 주입하기 때문**(읽기 전용 admin은 잠그고 이건 열어 두는 것이 거꾸로였다) | ~3662–3782 |
+| 🔒 POST `/internal/events/ingestion-state` | `internal_event_ingestion_state` | **[P1]** watcher → 진행 스냅샷 push(QUEUED/PROCESSING/FINISHED — heavy 파일만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 | ~3783 |
+| GET `/admin`·`/admin.html` | `serve_admin_page` | **어드민 HTML 자체는 게이트 없이 서빙된다** — 페이지가 떠야 토큰을 물어볼 수 있다. `test_admin_auth.PUBLIC_ADMIN_PATHS`가 **이 둘만** 면제로 허용한다(이름으로 고정) | ~4016 |
+| GET `/map-editor`·`/enrichment` | `serve_map_editor_page` / `serve_enrichment_page` | 정적 페이지 서빙 | ~4033/4050 |
+| GET `/{file_name:path}` | **`serve_static_or_index`** | SPA catch-all. **[`90e284f`] 격리(containment) 경계** — 아래 §1.4-bis. **catch-all이 파일 최하단인 것이 계약** — `/health`가 이보다 위에 등록돼야 한다(§1.1-bis) | ~4067/4068 |
+
+### 1.4-bis `serve_static_or_index` — SPA catch-all이자 **파일시스템 격리 경계** (`90e284f`)
+
+⛔ **이것은 "정적 파일 핸들러"가 아니다.** 인증 없이 도달 가능한 이 함수가 곧 **프로세스가 읽을 수 있는 모든 파일과 외부 사이의 유일한 경계**다. 격리 검사가 없던 시절 `os.path.join(client2_dist_path, file_name)`이 그대로 서빙돼 `/../../server/config/table_config.json` · `/../../../../../../Windows/win.ini` · `/../../server/admin_auth.py`가 **전부 200을 반환**했다. 그 상태에서는 `GET /admin/scripts/code`·`/admin/chain/rules`·`/admin/file-ingestion/workspaces`에 건 게이트가 **장식**이다 — 지키려던 바이트를 옆문으로 읽을 수 있었고, 읽히는 파일 어딘가에 토큰이 있었다면 그것까지 함께 나갔다.
+
+| 구간 | 라인 | 내용 |
+|---|---|---|
+| 접두어 목록 (`tables`/`ws`/`audit_logs`/`dashboard`/`admin`/`map-editor`/`map_editor`/`map-presets`/`enrichment/`/`api`) | ~4073–4083 | **API 섀도잉 방지장치이지 보안 경계가 아니다** — 소스 주석이 그렇게 명시한다. 경로 **시작**만 보므로 `../../server/config/table_config.json`은 `admin`과 조금도 닮지 않아 그대로 통과한다 |
+| **격리 검사** | **~4099–4103** | `dist_base = os.path.abspath(client2_dist_path)` → `target_path = os.path.abspath(os.path.join(dist_base, file_name))` → **`target_path`가 `dist_base` 자신이거나 `dist_base + os.sep`로 시작하지 않으면 거부.** `_resolve_admin_script_path`와 **같은 모양**이다 |
+| 서빙/폴백 | ~4105–4111 | 통과한 실파일만 `FileResponse`, 그 외 `index.html` |
+
+**이 형태를 "단순화"하지 마라 — 세 가지가 전부 의도다:**
+- **먼저 resolve하고 나서 검사한다.** 문자 denylist(`..` 금지 등)로는 못 막는다 — `os.path.join`은 두 번째 인자가 절대경로(`/C:/Windows/win.ini`)거나 **윈도우 드라이브 상대경로(`C:foo`)면 base를 통째로 버린다.** 해석된 결과만 검사하는 것이 유일하게 건전한 방법이다.
+- **거부는 403이 아니라 404다**(~4102 주석) — 정적 라우트가 "그 탈출 경로는 파싱됐다"고 확인해 주면 안 된다.
+- **접두어 목록을 격리 검사로 착각하지 마라.** 위 표의 첫 줄이 그 오해를 막으려고 소스 주석에 박혀 있다.
+
+`tests/test_admin_auth.py::TestStaticFallbackCannotServeArbitraryFiles`가 이 경계를 지킨다.
 
 ### 1.5 그래프 조회 구간 (read-only — `graph_nodes/edges` 직접 조회, 워커 미경유)
 
 | 메서드 경로 | 핸들러 | 역할 | 라인 |
 |---|---|---|---|
-| (상수) | `GRAPH_NEIGHBOR_NODE_CAP=500` / `GRAPH_LABEL_LIST_LIMIT_CAP=200` / `GRAPH_TRACE_NODE_CAP=1000` / `GRAPH_TRACE_DEPTH_CAP=3` 등 | 하드캡(C-7 무제한 로드 금지) | ~1942–1948 |
-| (헬퍼) | `_escape_like_term(term)` | LIKE 메타문자 이스케이프 | ~1951 |
-| (헬퍼) | `_expand_graph_subgraph(db, seed_nodes, depth, node_cap, edge_types=None, time_from=None, time_to=None)` | 뷰어/추적 **공용 BFS 코어** — 방향별 (from,type)/(to,type) 인덱스 2쿼리, 홉·방향당 엣지 페치 캡 2000, 노드 500청크 IN, 캡 절단 시 dangling 엣지 제외 | ~1956 |
-| (헬퍼) | `_serialize_graph_nodes(nodes)` | 노드 `{id,label,identity_key,props}` 직렬화 | ~2049 |
-| GET `/graph/stats` | `get_graph_stats` | label/edge_type GROUP BY 카운트 + last_sync | ~2057 |
-| GET `/graph/neighbors` | `get_graph_neighbors` | k-hop(1\|2) 서브그래프 — `_expand_graph_subgraph([center])` 위임, truncated | ~2082 |
-| GET `/graph/nodes/search` | `search_graph_nodes` | identity 시작일치 ILIKE 자동완성(limit 캡 50) + **빈 q + label = 라벨 전체 리스팅**(`df63f3a` — identity 오름차순, limit/offset, 캡 200. 전 테이블 덤프 금지 유지) | ~2117 |
-| (헬퍼) | `_parse_trace_time(value, field)` | ISO 8601 파싱(`Z` 허용), 실패 시 400 | ~2178 |
-| POST `/graph/trace` | `post_graph_trace(req: GraphTraceRequest, db)` | **[G2]** 멀티 시드 BFS 합집합 — 시드 순서보존 dedup→(label,identity) 인덱스 조회→missing_seeds 분리→공용 BFS. depth 1..3, 시간·타입 필터, 의미 검증 400 | ~2190 |
-| GET `/graph/mapping-summary` | `get_graph_mapping_summary` | `ontology_config.load_ontology_mappings(known_tables=crud.TABLE_CONFIG)` — materializer와 동일 신호원, 요청 시 디스크 로드 | ~2267 |
+| (상수) | `GRAPH_NEIGHBOR_NODE_CAP=500` / `GRAPH_LABEL_LIST_LIMIT_CAP=200` / `GRAPH_TRACE_NODE_CAP=1000` / `GRAPH_TRACE_DEPTH_CAP=3` 등 | 하드캡(C-7 무제한 로드 금지) | ~1960–1966 |
+| (헬퍼) | `_escape_like_term(term)` | LIKE 메타문자 이스케이프 | ~1969 |
+| (헬퍼) | `_expand_graph_subgraph(db, seed_nodes, depth, node_cap, edge_types=None, time_from=None, time_to=None)` | 뷰어/추적 **공용 BFS 코어** — 방향별 (from,type)/(to,type) 인덱스 2쿼리, 홉·방향당 엣지 페치 캡 2000, 노드 500청크 IN, 캡 절단 시 dangling 엣지 제외 | ~1974 |
+| (헬퍼) | `_serialize_graph_nodes(nodes)` | 노드 `{id,label,identity_key,props}` 직렬화 | ~2067 |
+| GET `/graph/stats` | `get_graph_stats` | label/edge_type GROUP BY 카운트 + last_sync | ~2075 |
+| GET `/graph/neighbors` | `get_graph_neighbors` | k-hop(1\|2) 서브그래프 — `_expand_graph_subgraph([center])` 위임, truncated | ~2100 |
+| GET `/graph/nodes/search` | `search_graph_nodes` | identity 시작일치 ILIKE 자동완성(limit 캡 50) + **빈 q + label = 라벨 전체 리스팅**(`df63f3a` — identity 오름차순, limit/offset, 캡 200. 전 테이블 덤프 금지 유지) | ~2135 |
+| (헬퍼) | `_parse_trace_time(value, field)` | ISO 8601 파싱(`Z` 허용), 실패 시 400 | ~2196 |
+| POST `/graph/trace` | `post_graph_trace(req: GraphTraceRequest, db)` | **[G2]** 멀티 시드 BFS 합집합 — 시드 순서보존 dedup→(label,identity) 인덱스 조회→missing_seeds 분리→공용 BFS. depth 1..3, 시간·타입 필터, 의미 검증 400 | ~2208 |
+| GET `/graph/mapping-summary` | `get_graph_mapping_summary` | `ontology_config.load_ontology_mappings(known_tables=crud.TABLE_CONFIG)` — materializer와 동일 신호원, 요청 시 디스크 로드 | ~2285 |
+
+---
+
+## 1.6 `server/admin_auth.py` — 어드민/내부 토큰 게이트 (`90e284f` 신설)
+
+219줄. **로그인 시스템이 아니다** — 사용자도 세션도 비밀번호 저장소도 없다. 환경변수에서 읽는 **비밀 하나**를 요청 헤더로 제시한다. 프로덕션이 소수 인원의 인트라넷 공유라는 전제에서 의도적으로 이 크기다.
+
+**이 모듈이 생긴 이유**: 그전까지 `/admin/*` 전 라우트가 **패킷을 보낼 수 있는 누구에게나** 열려 있었고 그중 둘은 임의 코드 실행으로 이어진다 — `POST /admin/scripts/code`가 `mappers/`·`ingestion_workspace/`에 파이썬 파일을 쓰고 `POST /admin/auto-update/run-now`가 그것을 실행시킨다. `GET`도 단순 정보가 아니다(소스 코드를 반환하고 파이프라인 표면을 열거한다).
+
+| 시그니처 | 역할 | 라인 |
+|---|---|---|
+| `ADMIN_TOKEN_ENV="ASSY_ADMIN_TOKEN"` / `ADMIN_TOKEN_HEADER="X-Admin-Token"` | 운영자가 세팅하는 환경변수명 / 제시 헤더명. **헤더명이 `X-User`/`X-Transaction-ID`/`X-Source`와 다른 것이 계약** — 컨텍스트 미들웨어가 읽는 이름과 겹치지 않아야 토큰이 `AuditLog` 행에 실려 들어가지 못한다 | ~64/68 |
+| **`GATE_CHALLENGE_HEADER="WWW-Authenticate"`** / `_GATE_HEADERS` | **게이트 자신이 낸 거부에만 붙는 마커.** 상태코드만으로는 부족하다 — `_resolve_admin_script_path`도 403을 내는데(격리 서버가 라이브 트리에 쓰려 할 때) 그건 토큰과 무관하다. 이 헤더가 없던 시절 어드민 페이지는 그 403을 "토큰이 틀렸다"로 읽고 **멀쩡한 저장 토큰을 덮어썼다** | ~83/84 |
+| `_raw_token()` / **`token_is_unusable()`** | env 원문(strip) / **토큰이 설정됐지만 절대 인증될 수 없는 상태**(비-ASCII). HTTP 헤더는 latin-1로 디코딩돼 오므로 비-ASCII 비밀은 왕복에서 살아남지 못한다 — 모든 정답 시도가 "틀렸다"로 답해지는데 기동 배너는 "잠겼다"고 안심시킨다. **토큰이 아예 없는 것보다 나쁜 실패**라 요청 시점에 맡기지 않고 명시적으로 탐지한다 | ~87/91 |
+| **`configured_token()`** | 운영자의 비밀 \| **`None`**. import 시점이 아니라 **호출 시점에 읽는다**(테스트가 `main`을 재import하지 않고 env를 monkeypatch할 수 있게). 공백만 있는 값은 미설정 취급 — 빈 문자열을 export한 운영자는 아무것도 설정하지 않은 것이고, 그걸 진짜 토큰으로 치면 **아무 요청이나 맞힐 수 있는 비밀**이 된다. 비-ASCII도 `None`으로 떨어져 **미설정 상태**(코드 실행만 거부, 나머지는 개방)에 착지한다 — 아무도 제시할 수 없는 비밀로 강제하면 **어드민 16개 라우트가 전부 벽돌**이 되고 복구는 변수를 지우고 재시작하는 길뿐이다 | ~104 |
+| `_matches(presented, expected)` | **상수 시간 비교**(`secrets.compare_digest`). **절대 raise하지 않고 어느 쪽 피연산자도 노출하지 않는다** — 깨진 헤더 값이 `TypeError` 트레이스백에 값을 실어 나가지 않도록 통째로 감쌌다 | ~126 |
+| `_enforce(request, fail_closed)` | 판정 본체 — 미설정 시 `fail_closed`면 **503**, 아니면 통과. 설정 시 헤더 없으면 **401**, 불일치면 **403**(둘 다 `_GATE_HEADERS` 동봉). **거부 detail은 전부 상수 문자열**이라 제시된 값을 되비추지 않는다 | ~138 |
+| **`require_admin_token(request)`** | 일반 게이트 — **`/admin/*` 14곳 + `/internal/events/*` 4곳 = 18 라우트**. 토큰 설정 시 강제, 미설정 시 개방 — 이 빌드로 처음 재시작한 운영자가 릴리스 노트를 읽기도 전에 어드민 페이지 전체에서 잠기지 않게 한다 | ~153 |
+| **`require_admin_token_strict(request)`** | 코드 실행에 닿는 **2 라우트 전용**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now`). 토큰 미설정이면 **503으로 거부**한다 — 비밀 설정을 잊은 것이 구멍을 열어 두는 결과가 되면 안 된다. **이 둘은 절대 개방되지 않는다** | ~162 |
+| **`ADMIN_GATES = (require_admin_token, require_admin_token_strict)`** | 이 모듈이 제공하는 의존성 전량. `tests/test_admin_auth.py`가 **FastAPI 앱의 라우트를 직접 훑어** 각 `/admin`·`/internal` 라우트가 이 둘 중 하나로 해석되는지 단언한다 — 나중에 추가된 무방비 라우트는 배포되지 않고 스위트에서 깨진다(**손으로 관리하는 목록이 아니다**) | ~174 |
+| **`internal_event_headers()`** | 워커가 `/internal/events/*`를 호출할 때 붙일 헤더 dict. 워커는 `run_decoupled_app.py`의 자식이고 `process_supervisor`가 각 자식 env를 `os.environ.copy()`(~357)로 만들므로 **런처에 한 번 세팅하면 충분**하다. 토큰 미설정 시 빈 dict(게이트가 열려 있는 상태와 대칭) | ~177 |
+| `startup_banner() -> (level, message)` | 기동 로그 한 줄. **3상태**: 비-ASCII → `error`(가장 시끄럽다 — 운영자가 잠겼다고 **믿고** 있다) / 설정됨 → `info` / 미설정 → `warning`(**무엇이 멈추는지 이름으로 말한다**). `main.py`가 `_admin_auth_banner_logged`(~183)로 1회만 찍는다 | ~190 |
+
+> **두 상태의 분할이 설계의 핵심**: `ASSY_ADMIN_TOKEN` **설정** → `/admin/*`·`/internal/*` 전량이 헤더 필수(읽기 포함). **미설정** → 코드 실행 2종만 503으로 거부(fail closed)하고 나머지 admin 라우트는 계속 서빙. 새 빌드로 재시작한 운영자가 전면 잠금을 당하지 않으면서, **다칠 수 있는 정확히 그 둘만 잃는다.**
+>
+> **왜 config 파일이 아니라 환경변수인가**: `server/config/`는 gitignored라 커밋 안전성은 같지만, ① 저장소에 이미 운영자 비밀·위치의 관례가 있고(`DATABASE_URL`·`ASSY_DATA_ROOT`·`ASSY_API_PORT`) ② 환경변수만이 **저장소 안 디스크에 전혀 남지 않는** 유일한 선택지이며 ③ `server/config/**`를 격리 데이터 루트로 복제하는 스냅샷 도구(`devenv.py bootstrap`)에 **딸려 가지 않는다**(비밀이 두 번째 트리에 복제되지 않는다).
+>
+> **누출 규율 (전부 의도)**: 쿼리 파라미터가 아니라 헤더다(uvicorn 액세스 로그에 안 남는다) · 거부 detail은 상수 문자열이다 · 헤더 선언을 `Header(...)`가 아니라 `Request`로 하는 것도 이 규율이다(FastAPI 검증 에러가 **문제의 값을 422 본문에 렌더링**해 버린다).
+>
+> 🧪 `tests/test_admin_auth.py` — `PUBLIC_ADMIN_PATHS={"/admin","/admin.html"}`(허용된 면제는 이 둘뿐, 이름으로 고정) · `GATED_PREFIXES=("/admin","/internal")` · `STRICT_ADMIN_ROUTES={("POST","/admin/scripts/code"),("POST","/admin/auto-update/run-now")}`. 클래스 축: 라우트 전수 커버리지 · 토큰 강제 · 미설정 시 fail-closed 범위 · **토큰 무유출** · **정적 폴백 격리**(§1.4-bis) · 비-ASCII 처리 · 거부의 기계 판독성 · `/internal` 게이팅 · conftest가 앰비언트 셸 변수를 격리하는지.
 
 ---
 
@@ -230,7 +288,11 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 워크스페이스별 폴더 감시 → 파서 실행 → **HTTP 아닌 직접 DB**(`crud.apply_batch_updates`) 업서트 → 웹서버에 `/internal/events/*` 콜백. 2026-07-25 std parser(무스크립트 표준 파싱)·기동/주기 스윕 통합, **워크스페이스 config.json 폐지**(`5fac5f0`).
 
-> **경로 (2026-07-27):** config·워크스페이스 루트는 전부 `paths.config_path(...)` / `paths.WORKSPACE_DIR` 경유다. 아래 앵커는 HEAD `be58210` 실측(구 값 대비 일괄 +3줄).
+> **경로 (2026-07-27):** config·워크스페이스 루트는 전부 `paths.config_path(...)` / `paths.WORKSPACE_DIR` 경유다.
+>
+> ⚠️ **앵커 재측정 (2026-07-27, HEAD `90e284f`)** — 앞판은 `be58210` 실측이었고 그 뒤 **이 절이 밀린 채 방치됐다**(파일 1,714 → **1,764줄**, 앵커 최대 **+53**). 이 파일은 `0f8d35f..90e284f` 범위에서 **한 줄도 바뀌지 않았다** — 즉 커밋 diff를 따라가는 갱신 방식으로는 영원히 안 잡히는 종류의 드리프트다.
+>
+> 🫀 **[신설] 진척 비트가 "루프"가 아니라 "작업 단위"에 걸린다** — `process_with_retry`(~739)와 `process_archived_file_sync`(~1005)는 이제 **얇은 래퍼**이고, 각각 `heartbeat.work_claim(HEARTBEAT_NAME, …)`(~750/~1017)로 감싼 뒤 실제 본체 `_process_with_retry`(~754)·`_process_archived_file_sync`(~1022)에 위임한다. 파일 1건의 인제션 전체가 하나의 claim이고, 그 안에서 찍히는 비트가 claim의 진척을 갱신한다([§5 `heartbeat.py`](#5-소형-서버-모듈)의 `DEFAULT_STALL_AFTER_SEC`). **`_` 접두 본체를 직접 부르면 claim 없이 돌아 `/health`가 그 인제션을 보지 못한다.**
 
 - **[P1] heavy 레인**(`4fd8ac9`+`8b0fd03`) — 크기 임계(기본 10MB, `config/ingestion_settings.json` 파일 경계 핫리로드) 초과 파일을 전용 큐/워커로 이관해 observer 디스패치 스레드 HOL 제거. 워크스페이스 내 FIFO는 backlog 카운터+직렬화 락+논블로킹 재라우팅 3중 장치로 보존.
 - **[P2] 체크포인트 재개 + 해시 dedup**(`f78ab0a`) — 파일 전체 sha256 시그니처(`sha256:<size>:<digest>`)를 계산해 ① 동일 시그니처 `DONE`이면 skip ② 미완이면 오프셋 재개. 저장소는 신규 테이블 `file_ingestion_checkpoints`([`ingestion_checkpoint.py` §5](#5-소형-서버-모듈)). **오프셋 갱신은 청크 upsert와 같은 트랜잭션** — "커밋된 행 수 == 기록된 오프셋"이 원자적으로 성립. 재개는 시그니처+`total_rows`+`source_kind`+오프셋 범위가 **전부** 일치할 때만. heavy/normal·스윕·관리자 재시도 4경로 동일 동작.
@@ -239,49 +301,50 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `load_global_table_config() -> dict` | table_config.json 로드 (`paths.config_path` ~65) | ~60 |
-| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~78 |
-| `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~102/110 |
-| `DEFAULT_HEAVY_FILE_MB=10` / `INGESTION_SETTINGS_PATH` | [P1] heavy 임계 기본값·설정 파일 경로 — `paths.config_path("ingestion_settings.json")`(`.sample` tracked) | ~128/130 |
-| `load_ingestion_settings()` / `warn_invalid_heavy_threshold_once` / `get_heavy_threshold_bytes()` | [P1] 임계 로더 — **파일 이벤트(라우팅 결정)당 1회 디스크 읽기**(파일 경계 핫리로드), 양수만 유효·그 외 기본 10MB+1회 경고 | ~130/144/156 |
-| `DEFAULT_DEDUP_BY_SIGNATURE=True` / `DEFAULT_RESUME_FROM_CHECKPOINT=True` / `_bool_setting(key, default)` | [P2] dedup·재개 기본값과 설정 판독기(같은 `ingestion_settings.json`) | ~170/171/174 |
-| `dedup_by_signature_enabled()` / `resume_from_checkpoint_enabled()` | [P2] 게이트 — `dedup_by_signature: false`가 **전역 강제 재처리 스위치**(파일명 `__force__`와 관리자 재시도가 나머지 2경로) | ~189/197 |
-| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | ~211 |
-| `class HeavyIngestionLane` — `submit/_ensure_running/_worker_loop/stop` | [P1] FIFO `queue.Queue` + 데몬 워커 스레드 `watcher-heavy-lane` **1개**(첫 제출 시 지연 기동). WorkspaceWatcher가 1개 생성해 전 핸들러 주입. heavy끼리는 직렬(escalation §6-3) | ~221–273 |
-| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~275 |
-| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~316 |
-| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~349 |
-| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~363 |
-| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환) | ~437 |
-| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~468 |
-| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~490 |
-| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | ~505 |
-| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~516 |
-| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~536–548 |
-| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임으로 재구성 | ~551–589 |
-| ├ `_classify_lane(abs_path)` / `_heavy_backlog_nonzero()` | [P1] 이벤트 시점 `os.stat` 1회 크기 분류 / 워크스페이스 heavy backlog 잔여 확인 | ~591/605 |
-| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | ~609 |
-| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | ~643 |
-| ├ `_run_lane_job(...)` / `_notify_ingestion_state(state)` | [P1] heavy 워커 잡 본체(직렬화 락 획득→`process_with_retry`→finally 정리) / 상태 push 콜백 래퍼 | ~681/711 |
-| ├ `process_with_retry(file_path, uploader, retries=3, delay=1.0)` | 처리 본체 — 스냅샷→파싱→[P2] 시그니처 계산(~743)→dedup skip→`_plan_checkpoint`(~759)→`_send_to_upsert`→`_finalize_checkpoint`→아카이브/에러 이동, 재시도 | ~722 |
-| ├ `_compose_detail(skipped_no_key, plan)` (staticmethod) | [P2] 완료 통지 `detail` 조립 — 키 결측 스킵 수 + 재개/재시작 사유 | ~814 |
-| ├ `_try_dedup_skip(file_path, basename, t_name, signature) -> bool` | [P2] 동일 시그니처 `DONE`이면 skip — **무음 skip 금지**: WARNING + archive + `FileIngestionLog(status="SKIPPED")` + 콜백 status는 `"SUCCESS"`(수신부가 비-SUCCESS를 실패로 렌더링하므로 오표기 방지) + 사유 detail | ~823 |
-| ├ `_plan_checkpoint(...)` / `_finalize_checkpoint(plan, processed_rows)` | [P2] `ingestion_checkpoint.plan_ingestion` 게이트 래퍼(실패 시 `CheckpointPlan.disabled(note=...)`) / `mark_done` — 실패 시 "dedup will not apply" 경고 | ~877/903 |
-| ├ `_log_ingestion_record(...)` / `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명). `error_message`는 SUCCESS/SKIPPED에서 **detail 슬롯**으로 겸용 | ~916/941/946 |
-| ├ `_retry_should_restart(t_name, signature) -> bool` | [P2] 재시도 시 완료 체크포인트가 있으면 처음부터 재시작 판정 | ~954 |
-| ├ `process_archived_file_sync(log_entry, db, uploader)` | 어드민 재처리 경로(아카이브 파일 동기 재실행 — 스냅샷 진입점, 내부에서 락 안 잡음). [P2] 체크포인트는 태우되 **dedup skip은 미적용**(재시도는 명시적 의도) | ~970 |
-| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~1019/1047 |
-| ├ `_discover_and_execute_pipeline(file_path, meta=None) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~1074 |
-| ├ `_resolve_rows(file_path, t_name=None, table_info=None, ...)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파). `source_kind`(`"std"` / `"pipeline:<Class>"`)의 산출처 | ~1168 |
-| ├ `_try_std_parse(file_path, t_name, table_info)` | std_parser 호출 래퍼(게이트·에러 처리) | ~1206 |
-| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None, checkpoint=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백. [P2] `checkpoint`로 `resume_from` 스킵(~1303)·오프셋 초과 경고(~1310)·**청크마다 `record_chunk_progress`(~1368, 같은 트랜잭션)**, created_logs는 `MAX_NOTIFY_CREATED_LOGS` 잔여분만 누적(~1381) | ~1247 |
-| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성(~1415)·전 핸들러 주입 + `on_ingestion_state_callback` 배선 | ~1407 |
-| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시) | ~1435 |
-| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리, `heavy_lane` 주입) — 레거시 config 발견 시 1회 경고(QA D4) | ~1464 |
-| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1523/1539 |
-| ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — [P1] 스윕도 자동으로 heavy 라우팅을 탐. (mtime,size) 시그니처로 무한 재시도 차단, err/·하위 dir 제외 | ~1569/1630/1636 |
-| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~1645/1649 |
-| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥, stop()이 heavy 레인도 정지(~1676) | ~1658–1712 |
+| `load_global_table_config() -> dict` | table_config.json 로드 (`paths.config_path` ~79) | ~74 |
+| `warn_legacy_workspace_config(config_path)` | 레거시 config.json 발견 시 경로당 1회 deprecation WARNING | ~92 |
+| `_log_alias_conflict_once` / `warn_invalid_std_parse_once` | 별칭 충돌·std_parse 비-bool 경고 dedup(키별 1회 — QA D5/D6) | ~116/124 |
+| `DEFAULT_HEAVY_FILE_MB=10` / `INGESTION_SETTINGS_PATH` | [P1] heavy 임계 기본값·설정 파일 경로 — `paths.config_path("ingestion_settings.json")`(`.sample` tracked) | ~142/144 |
+| `load_ingestion_settings()` / `warn_invalid_heavy_threshold_once` / `get_heavy_threshold_bytes()` | [P1] 임계 로더 — **파일 이벤트(라우팅 결정)당 1회 디스크 읽기**(파일 경계 핫리로드), 양수만 유효·그 외 기본 10MB+1회 경고 | ~147/161/173 |
+| `DEFAULT_DEDUP_BY_SIGNATURE=True` / `DEFAULT_RESUME_FROM_CHECKPOINT=True` / `_bool_setting(key, default)` | [P2] dedup·재개 기본값과 설정 판독기(같은 `ingestion_settings.json`) | ~187/188/191 |
+| `dedup_by_signature_enabled()` / `resume_from_checkpoint_enabled()` | [P2] 게이트 — `dedup_by_signature: false`가 **전역 강제 재처리 스위치**(파일명 `__force__`와 관리자 재시도가 나머지 2경로) | ~206/214 |
+| `get_workspace_serial_lock(workspace_path) -> Lock` | [P1] **워크스페이스 직렬화 락 — 모듈 레벨 경로 키 레지스트리**(핸들러 복수여도 공유). heavy 워커/인라인/run_watcher 재처리 폴러가 공용 | ~228 |
+| `class HeavyIngestionLane` — `submit/_ensure_running/_worker_loop/stop` | [P1] FIFO `queue.Queue` + 데몬 워커 스레드 `watcher-heavy-lane` **1개**(첫 제출 시 지연 기동). WorkspaceWatcher가 1개 생성해 전 핸들러 주입. heavy끼리는 직렬(escalation §6-3) | ~238–290 |
+| `find_workspace_alias(folder_name, table_config) -> str\|None` | 폴더명↔`workspace_name` 명시 별칭 매칭 — 섀도잉·중복 선언 별칭은 무효+ERROR 1회(QA D3) | ~292 |
+| `resolve_workspace_root(base_dir, table_name, table_config) -> str` | 테이블→워크스페이스 루트 **역조회 공용 함수**(별칭 포함) — 결과 기반 경로 검사(base 직속 자식만, 드라이브 상대경로 탈출 차단, QA D2). main.py `retry-failed`·run_watcher 폴러가 사용 | ~333 |
+| `resolve_workspace_table(folder_name, table_config) -> str\|None` | 폴더→테이블 해석: 별칭 > 폴더명 규약 | ~366 |
+| `_register_legacy_import_shim()` | 구식 사용자 파이프라인 스크립트의 import 호환 shim | ~380 |
+| `class IngestionHandler(FileSystemEventHandler)` | **워크스페이스 1개 담당 핸들러** — 생성자(~458) 말단 kwargs `on_ingestion_state_callback`/`heavy_lane`(기본 None=종전 인라인 경로, 하위호환) | ~454 |
+| ├ `_load_legacy_config()` | [deprecated] 레거시 워크스페이스 config.json 파싱(이것만 캐시) | ~485 |
+| ├ `_resolve_table_name(global_cfg)` | 테이블명 해석: 글로벌 `workspace_name` 별칭 > 레거시 `table_name` > 폴더명 규약 | ~507 |
+| ├ `_snapshot_table_context() -> (t_name, table_info)` | **파일당 1회 config 스냅샷**(QA D1) | ~522 |
+| ├ `_std_parse_enabled_for(t_name, table_info) -> bool` | std_parse 게이트: 글로벌(JSON bool만 유효) > 레거시 폴백 > 기본 true | ~533 |
+| ├ `table_name` / `std_parse_enabled` / `errors_path` (property) | 즉석 해석 래퍼 — **글로벌 조회 비캐시**(핫리로드 반영) | ~553–565 |
+| ├ `on_created/on_moved → _handle_event(file_path)` | 파일 이벤트 수신(processing_files check-then-add 락 원자화) → [P1] `_route_and_process` 위임으로 재구성 | ~568–578 |
+| ├ `_classify_lane(abs_path)` / `_heavy_backlog_nonzero()` | [P1] 이벤트 시점 `os.stat` 1회 크기 분류 / 워크스페이스 heavy backlog 잔여 확인 | ~608/622 |
+| ├ `_route_and_process(abs_path, uploader) -> bool` | [P1] **레인 라우팅 본체** — heavy(크기)·backlog(>0이면 크기 무관 큐 후미=FIFO 보존)·인라인은 직렬화 락 **논블로킹 try-acquire**(실패 시 큐 후미 재라우팅 — HOL 방지+순서 보존 동시 만족) | ~626 |
+| ├ `_submit_to_heavy_lane(abs_path, uploader, lane, size_bytes)` | [P1] 큐 제출 — QUEUED 통지를 **submit 이전 선발신**(드릴 결함1: 즉시 픽업 역전 경합 제거), submit 실패 시 FINISHED 정리 통지 후 인라인 폴백. `lane`은 분류 실값(재라우팅 소형은 "normal" — QA F4) | ~660 |
+| ├ `_run_lane_job(...)` / `_notify_ingestion_state(state)` | [P1] heavy 워커 잡 본체(직렬화 락 획득→`process_with_retry`→finally 정리) / 상태 push 콜백 래퍼 | ~698/728 |
+| ├ **`process_with_retry(file_path, uploader, retries=3, delay=1.0)`** | **[신설 구조] `heartbeat.work_claim`(~750) 래퍼일 뿐** — 실제 처리는 `_process_with_retry`(~754) | ~739 |
+| ├ `_process_with_retry(...)` | 처리 본체 — 스냅샷→파싱→[P2] 시그니처 계산(~772)→dedup skip→`_plan_checkpoint`(~794)→`_send_to_upsert`→`_finalize_checkpoint`→아카이브/에러 이동, 재시도 | ~754 |
+| ├ `_compose_detail(skipped_no_key, plan)` (staticmethod) | [P2] 완료 통지 `detail` 조립 — 키 결측 스킵 수 + 재개/재시작 사유 | ~849 |
+| ├ `_try_dedup_skip(file_path, basename, t_name, signature) -> bool` | [P2] 동일 시그니처 `DONE`이면 skip — **무음 skip 금지**: WARNING + archive + `FileIngestionLog(status="SKIPPED")` + 콜백 status는 `"SUCCESS"`(수신부가 비-SUCCESS를 실패로 렌더링하므로 오표기 방지) + 사유 detail | ~858 |
+| ├ `_plan_checkpoint(...)` / `_finalize_checkpoint(plan, processed_rows)` | [P2] `ingestion_checkpoint.plan_ingestion` 게이트 래퍼(실패 시 `CheckpointPlan.disabled(note=...)`) / `mark_done` — 실패 시 "dedup will not apply" 경고 | ~912/938 |
+| ├ `_log_ingestion_record(...)` / `_log_ingestion_failure/success(..., t_name=None)` | FileIngestionLog 기록(직접 DB, 스냅샷 테이블명). `error_message`는 SUCCESS/SKIPPED에서 **detail 슬롯**으로 겸용 | ~951/976/981 |
+| ├ `_retry_should_restart(t_name, signature) -> bool` | [P2] 재시도 시 완료 체크포인트가 있으면 처음부터 재시작 판정 | ~989 |
+| ├ **`process_archived_file_sync(log_entry, db, uploader)`** | 어드민 재처리 경로. **이것도 `work_claim`(~1017) 래퍼**이고 본체는 `_process_archived_file_sync`(~1022) — 스냅샷 진입점, 내부에서 락 안 잡음. [P2] 체크포인트는 태우되 **dedup skip은 미적용**(재시도는 명시적 의도) | ~1005 |
+| ├ `_move_to_err_folder` / `_archive_file` | 파일 이동 | ~1065/1093 |
+| ├ `_discover_and_execute_pipeline(file_path, meta=None) -> list[dict]\|None` | 사용자 파이프라인 스크립트(pipeline_*.py) 탐색·실행 | ~1120 |
+| ├ `_resolve_rows(file_path, t_name=None, table_info=None, ...)` | **파서 라우팅** — 파이프라인 우선, 없으면 std parser 폴백(스냅샷 인자 전파). `source_kind`(`"std"` / `"pipeline:<Class>"`)의 산출처 | ~1214 |
+| ├ `_try_std_parse(file_path, t_name, table_info)` / `_extract_user_from_filename(filename)` | std_parser 호출 래퍼(게이트·에러 처리) / 파일명에서 업로더 유도 | ~1252/1282 |
+| └ `_send_to_upsert(rows, uploader, filename, total_rows, t_name=None, table_info=None, checkpoint=None)` | list 또는 스트리밍 이터레이터 → 청킹 → `crud.apply_batch_updates` 직접 호출 + 진행률 콜백. [P2] `checkpoint`로 `resume_from` 스킵(~1349)·오프셋 초과 경고(~1356)·**청크마다 `record_chunk_progress`(~1415, 같은 트랜잭션)**, created_logs는 `MAX_NOTIFY_CREATED_LOGS` 잔여분만 누적(~1427) | ~1293 |
+| `class WorkspaceWatcher` | 전체 워크스페이스 관리자 — [P1] `HeavyIngestionLane` 1개 생성(~1468)·전 핸들러 주입 + `on_ingestion_state_callback` 배선 | ~1460 |
+| ├ `_provision_workspaces()` | 폴더 스캐폴딩 — **config.json 신설 중단**(폴더만 보충), `workspace_name` 별칭 폴더명 지원(unsafe 별칭 무시) | ~1488 |
+| ├ `_register_workspace(raws_root, table_config)` | 핸들러 등록(+`handlers_by_raw_path` 레지스트리, `heavy_lane` 주입) — 레거시 config 발견 시 1회 경고(QA D4) | ~1517 |
+| ├ `discover_and_watch()` / `sync_new_workspaces()` | 기동 스캔·신규 워크스페이스 동기화(신규 raws는 등록 직후 스윕) | ~1576/1592 |
+| ├ `sweep_existing_files(raw_paths)` / `_sweep_safely` / `sweep_existing_files_async(...)` | **[Startup Sweep]** raws/ 직속 기존 파일을 mtime 오름차순으로 `_handle_event` 경로 재사용 처리 — [P1] 스윕도 자동으로 heavy 라우팅을 탐. (mtime,size) 시그니처로 무한 재시도 차단, err/·하위 dir 제외 | ~1622/1683/1689 |
+| ├ `_periodic_sweep_loop()` / `_ensure_periodic_sweep_running()` | 이벤트 유실 안전망 — 300s 주기 잔류 재스캔 데몬 | ~1698/1702 |
+| └ `_ensure_observer_running()` / `stop()` / `start(blocking)` | watchdog Observer 수명 관리 — start()가 observer 기동 후 기동 스윕+주기 스윕 킥, stop()이 heavy 레인도 정지 | ~1711/1727/1733 |
 
 ---
 
@@ -291,21 +354,21 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `class OutboxListener` — `_ensure_connection/_reset_connection/_wait_blocking/wait(timeout)/close` | psycopg2 LISTEN 전용 커넥션 + async 대기 | ~23–103 |
-| `_get_http_session()` / `post_event_async(endpoint, payload) -> bool` | 웹서버 `/internal/events/*` POST(커넥션 재사용) | ~113/129 |
-| `purge_expired_outbox_sync(db_session_factory, retention_days, ...)` | 처리 완료 outbox 보존기간 청소 | ~163 |
-| `_stamp_broadcast_at_sync(db_session_factory, event_ids)` | 브로드캐스트 완료 스탬프(F1 전달 확정) | ~203 |
-| `_dispatch_broadcasts(pending_broadcasts, db_session_factory)` | 커밋 후 인라인 브로드캐스트 발사 + 스탬프 | ~224 |
-| `load_chain_rules()` | chain_rules 설정 로드(+enrichment 룰 병합) | ~268 |
-| `_mapper_accepts_rule(mapper_func) -> bool` | 맵퍼가 rule 인자를 받는지 시그니처 검사 | ~297 |
-| `execute_custom_mapper(module_name, function_name, db, payload, rule=None)` | mappers/ 동적 로드·실행 | ~308 |
-| `_group_target_tables(events_in_tx, rules)` | tx 내 이벤트 → 타깃 테이블 그룹핑 | ~326 |
-| `process_chain_transaction_group(tx_id, events, db, rules) -> (ok, err, broadcast_messages)` | **핵심** — 순환 차단(source=chain_ingestion 제외), 맵퍼 실행, 업서트, 브로드캐스트 큐 반환. broadcast 구성부(~458)는 created_logs를 **직렬화 전** `MAX_NOTIFY_CREATED_LOGS`(500)로 절단 + `total_log_count`(실건수) 동봉 — 양 분기(`batch_refresh_required`/`batch_row_upsert`) 공통(인시던트 `cc57b64`, C-5 계약 확장) | ~352 |
-| `reload_worker_process_cache()` | SYSTEM_RELOAD 수신 시 config 캐시 리로드 | ~509 |
-| `warmup_worker(rules, db_session_factory)` | 콜드스타트 제거 — 맵퍼·커넥션 프리로드 | ~525 |
-| `process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts)` | 배치 내 그룹 순차 처리 — 실패 그룹 skip(HOL 블로킹 제거, F5) | ~573 |
-| `sweep_undelivered_broadcasts(db, rules, db_session_factory)` | 통지 미확정 행 안전망 스윕(F1) | ~690 |
-| `start_chain_ingestion_worker(db_session_factory)` | **메인 루프** — LISTEN 대기, 리로드 체크(1s 간격), 스윕, purge 스케줄. SYSTEM_RELOAD 블록에서 `models.refresh_dynamic_models(engine)`(지연 import) 호출 — 신규 테이블 CREATE 보충 안전망(이슈 #7). **[`8117456`] 루프 안에서 `heartbeat.beat("chain")`(~822)** — `/health`가 "살아 있음"이 아니라 **"진척이 있음"**으로 판정하는 근거(`server/utils/heartbeat.py`, [§5](#5-소형-서버-모듈)) | ~780 |
+| `class OutboxListener` — `_ensure_connection/_reset_connection/_wait_blocking/wait(timeout)/close` | psycopg2 LISTEN 전용 커넥션 + async 대기 | ~27–107 |
+| `_get_http_session()` / **`post_event_async(endpoint, payload) -> bool`** | 웹서버 `/internal/events/*` POST(커넥션 재사용). **[`90e284f`] `headers=admin_auth.internal_event_headers()`(~151, 지연 import ~148)** — `/internal/events/*`가 게이트 뒤로 들어갔으므로 이게 없으면 워커의 브로드캐스트가 401로 조용히 죽는다([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)) | ~118/134 |
+| `purge_expired_outbox_sync(db_session_factory, retention_days, ...)` | 처리 완료 outbox 보존기간 청소 | ~173 |
+| `_stamp_broadcast_at_sync(db_session_factory, event_ids)` | 브로드캐스트 완료 스탬프(F1 전달 확정) | ~213 |
+| `_dispatch_broadcasts(pending_broadcasts, db_session_factory)` | 커밋 후 인라인 브로드캐스트 발사 + 스탬프 | ~234 |
+| `load_chain_rules()` | chain_rules 설정 로드(+enrichment 룰 병합) | ~278 |
+| `_mapper_accepts_rule(mapper_func) -> bool` | 맵퍼가 rule 인자를 받는지 시그니처 검사 | ~307 |
+| `execute_custom_mapper(module_name, function_name, db, payload, rule=None)` | mappers/ 동적 로드·실행 | ~318 |
+| `_group_target_tables(events_in_tx, rules)` | tx 내 이벤트 → 타깃 테이블 그룹핑 | ~336 |
+| `process_chain_transaction_group(tx_id, events, db, rules) -> (ok, err, broadcast_messages)` | **핵심** — 순환 차단(source=chain_ingestion 제외), 맵퍼 실행, 업서트, 브로드캐스트 큐 반환. broadcast 구성부(~474)는 created_logs를 **직렬화 전** `MAX_NOTIFY_CREATED_LOGS`(500)로 절단 + `total_log_count`(실건수) 동봉 — 양 분기(`batch_refresh_required`/`batch_row_upsert`) 공통(인시던트 `cc57b64`, C-5 계약 확장) | ~359 |
+| `reload_worker_process_cache()` | SYSTEM_RELOAD 수신 시 config 캐시 리로드 | ~526 |
+| `warmup_worker(rules, db_session_factory)` | 콜드스타트 제거 — 맵퍼·커넥션 프리로드 | ~542 |
+| `process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts)` | 배치 내 그룹 순차 처리 — 실패 그룹 skip(HOL 블로킹 제거, F5) | ~590 |
+| `sweep_undelivered_broadcasts(db, rules, db_session_factory)` | 통지 미확정 행 안전망 스윕(F1) | ~707 |
+| `start_chain_ingestion_worker(db_session_factory)` | **메인 루프** — LISTEN 대기, 리로드 체크(1s 간격), 스윕, purge 스케줄. SYSTEM_RELOAD 블록에서 `models.refresh_dynamic_models(engine)`(지연 import) 호출 — 신규 테이블 CREATE 보충 안전망(이슈 #7). **[`8117456`] 루프 안에서 `heartbeat.beat("chain")`(~827)** — `/health`가 "살아 있음"이 아니라 **"진척이 있음"**으로 판정하는 근거(`server/utils/heartbeat.py`, [§5](#5-소형-서버-모듈)) | ~785 |
 
 ---
 
@@ -327,50 +390,71 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 > **의도적 제외**: `server/mappers/**`는 데이터가 아니라 **코드**이고 `sys.path`의 `mappers` 패키지로 해석되므로 이 모듈이 다루지 않는다.
 > import 규약은 `event_constants.py`와 동일 — 모든 엔트리포인트에서 `server/`가 `sys.path`에 있으므로 `import paths`로 해석된다(그렇지 않을 수 있는 호출자는 `crud.py`와 같은 try/except 폴백).
 
-### `server/process_supervisor.py` (431줄) — 자식 프로세스 감독
+### `server/process_supervisor.py` (**709줄** — 종전 지도의 431줄은 낡은 값) — 자식 프로세스 감독
 **`8117456` 신설.** 구 `run_decoupled_app.py`는 5프로세스를 띄우고 `while True: time.sleep(1)`을 돌았다 — 워처나 체인 워커가 죽어도 **아무도 탐지하지 않고 아무도 재시작하지 않았다.** 웹서버는 살아 있으니 UI는 멀쩡해 보이고 데이터만 조용히 멎었다. 테스트: `tests/test_process_supervisor.py`.
+
+> ⚠️ **2026-07-27 재측정에서 이 절이 가장 크게 밀려 있었다** — 선언 431줄 대비 실제 **709줄**이고 앵커는 최대 **+330**. 그 사이에 들어온 것이 아래 **공유원인(correlated) 실패** 축인데 지도에 **한 줄도 없었다.**
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `BACKOFF_BASE_SEC=2.0` / `BACKOFF_MAX_SEC=60.0` / `MAX_CONSECUTIVE_FAILURES=5` / `HEALTHY_UPTIME_SEC` | **재시도 예산** — 연속 n번째 실패는 `min(base·2^(n-1), max)` 대기, 예산 초과 시 `FAILED`로 **영구 정지**(배너 로그 + `/health` 비-200). 즉사하는 자식을 무한 재시작하면 CPU를 태우고 로그를 덮고 **무엇보다 감독이 동작하는 것처럼 보인다** | ~57–62 |
-| `HEALTHY_UPTIME_SEC` | 이만큼 살아 있었다면 크래시 루프가 아니므로 **연속 카운터를 0으로 리셋**한다 — 이게 없으면 한 달에 한 번 재시작하는 시스템이 결국 아무것도 재시작하지 않게 된다 | ~61 |
-| `STATE_RUNNING\|BACKOFF\|FAILED\|STOPPED` | 자식 상태 어휘 | ~68–71 |
-| `status_path()` | `paths.config_path("supervisor_status.json")` | ~74 |
-| `_descendant_pids(pid)` / `_kill_pids(pids)` | 종료 시 손자 프로세스까지 수거 | ~78/97 |
-| `class ChildSpec(name, cmd, cwd, env, restartable=True, heartbeat=None, start_delay=0.0)` | 자식 1개의 기동법 + 죽었을 때의 처분. **`restartable=False`는 "이게 죽으면 전체를 멈춘다"**(데스크톱 창 닫기), **`heartbeat=`는 그 자식이 발행하는 비트 이름** — `/health`가 프로세스 관점(감독자)과 진척 관점(비트)을 조인하는 열쇠 | ~116/123 |
-| `class Supervisor(specs, status_file, log, spawn, clock, sleep, …)` | `spawn`/`clock`/`sleep` 주입 가능 — **실제 프로세스를 띄우지 않고 실제 초를 기다리지 않고** 재시작 정책을 결정론적으로 테스트하기 위함(프로덕션은 아무것도 넘기지 않는다) | ~151/159 |
-| ├ `start_all()` / `_start(child)` | 순차 기동(+`start_delay`). **spawn 예외도 즉사와 동일한 실패로 계산**한다 — 아니면 잘못된 커맨드라인에서 영원히 돈다 | ~208/215 |
-| ├ `_register_failure(child, exit_code, reason=None)` | **정책 본체** — uptime ≥ `healthy_uptime`이면 연속 카운터 1로 리셋, 아니면 +1. 예산 초과 시 `FAILED` + `failure_reason` 기록 | ~233 |
-| ├ `poll_once()` / `run()` | 1틱 점검(종료 감지·백오프 만료 재기동·상태 파일 갱신) / **`run_decoupled_app.py`의 sleep 루프를 대체한 메인 루프** | ~287/322 |
-| ├ `stop_all(timeout=3.0)` / `snapshot()` | 종료(자손 포함) / `/health`가 읽는 상태 dict | ~331/375 |
-| └ `write_status(force=False)` | `supervisor_status.json` 기록. **`updated_at`이 감독자 자신의 생존 신호** — 감독자가 죽으면 자식들은 계속 비트를 찍지만 이 타임스탬프가 멈추고 `/health`가 그걸 말한다 | ~406 |
-| `read_status(path=None)` | 상태 파일 판독(`main.py` 헬스가 소비) | ~424 |
+| `BACKOFF_BASE_SEC=2.0` / `BACKOFF_MAX_SEC=60.0` / `MAX_CONSECUTIVE_FAILURES=5` | **재시도 예산** — 연속 n번째 실패는 `min(base·2^(n-1), max)` 대기, 예산 초과 시 `FAILED`로 **영구 정지**(배너 로그 + `/health` 비-200). 즉사하는 자식을 무한 재시작하면 CPU를 태우고 로그를 덮고 **무엇보다 감독이 동작하는 것처럼 보인다** | ~97–99 |
+| `HEALTHY_UPTIME_SEC=60.0` / `POLL_INTERVAL_SEC=1.0` / `STATUS_REFRESH_SEC=5.0` / `MAX_EVENTS=100` | 이만큼 살아 있었다면 크래시 루프가 아니므로 **연속 카운터를 리셋**한다 — 이게 없으면 한 달에 한 번 재시작하는 시스템이 결국 아무것도 재시작하지 않게 된다 / 폴 주기·상태파일 갱신 주기·이벤트 링버퍼 상한 | ~101/102/104/106 |
+| **`CORRELATION_WINDOW_SEC=120.0` / `CORRELATED_MIN_CHILDREN=2` / `CORRELATED_BACKOFF_SEC=60.0`** | **[신설] 공유원인 실패 판정.** 상관은 **exit code가 아니라 시간으로** 정의한다 — 윈도우에선 미처리 파이썬 예외가 전부 exit 1이라 코드 시그니처는 아무 쌍이나 상관으로 부르고 아무것도 증명하지 못한다. 규칙은 **창 안에서 서로 다른 자식 2개 이상이 죽었는가**. 창이 120초인 것은 **예산 1사이클보다 길어야** 하기 때문(2+4+8+16+32초 ≈ 첫 죽음 후 80초에 판정이 나고, 그 시점에 동료들의 마지막 실패는 20–40초 전이다) | ~119/123/126 |
+| `STATE_RUNNING\|BACKOFF\|FAILED\|STOPPED` / **`STATE_RETRYING_CORRELATED`** / `_WAITING_STATES` | 자식 상태 어휘. **`retrying_correlated` = 예산은 소진했지만 혼자가 아니다 → 영구 실패시키지 않고 계속 재시도** | ~128–131/133/136 |
+| `status_path()` | `paths.config_path("supervisor_status.json")` | ~139 |
+| `_database_endpoint(url=None)` / **`shared_dependency_down(url=None, timeout=2.0) -> (down, detail)`** | **[신설] 환경이 깨졌다는 직접 증거.** 왜 동료실패 규칙만으론 부족한가 — PostgreSQL 불통 콜드스타트 실측에서 **죽는 자식은 정확히 하나**다(import가 `Base.metadata.create_all`을 도는 웹서버). 워커 4개는 자기 루프에서 에러를 삼키고 살아남는다. 즉 "재부팅 후 DB가 늦게 떴다"의 가장 흔한 실제 형태가 **고립된 자식 1개**이고, 동료만 세는 규칙은 94초 뒤 웹서버를 영구 실패시킨 뒤 DB가 돌아와도 안 살린다. **TCP 도달성만** 본다(인증·스키마 결손은 재시도가 못 고치는 설정 결함). **모르면 healthy** — 이 프로브는 증거를 **더하기만** 할 뿐 실패시킬 능력을 빼앗지 않는다 | ~143/163 |
+| `psutil_status()` / `_psutil_or_warn(log=None)` | 손자 정리 무장 여부를 **기동 시 1회 announce**. 정리 경로가 조용히 퇴화하는 것이 고아 수집기 프로세스가 몇 주씩 쌓이는 경위라, 종료 때 발견하지 않고 부팅 때 말한다 | ~195/216 |
+| `_descendant_pids(pid, log=None)` / `_kill_pids(pids, log=None)` | 종료 시 손자 프로세스까지 수거 | ~233/251 |
+| `class ChildSpec(name, cmd, cwd, env=None, restartable=True, heartbeat=None, start_delay=0.0)` | 자식 1개의 기동법 + 죽었을 때의 처분. **`restartable=False`는 "이게 죽으면 전체를 멈춘다"**(데스크톱 창 닫기), **`heartbeat=`는 그 자식이 발행하는 비트 이름** — `/health`가 프로세스 관점(감독자)과 진척 관점(비트)을 조인하는 열쇠 | ~269/276 |
+| `class _ChildState(spec)` | 자식 1개의 런타임 상태(상태·연속 실패수·시작시각·이벤트) | ~290 |
+| `class Supervisor(specs, status_file, log, spawn, clock, sleep, environment_probe, …)` | `spawn`/`clock`/`sleep` 주입 가능 — **실제 프로세스를 띄우지 않고 실제 초를 기다리지 않고** 재시작 정책을 결정론적으로 테스트하기 위함(프로덕션은 아무것도 넘기지 않는다). **`environment_probe`는 기본값이 `shared_dependency_down`**(~344) | ~310/318 |
+| ├ `_default_spawn` / `_find` / `_record(child, event, **fields)` / `_backoff_for(n)` | 기본 spawn / 이름 조회 / 이벤트 링버퍼 기록 / 백오프 계산 | ~356/362/368/375 |
+| ├ **`_peers_failed_recently(child, now)`** | 창 안에서 **다른** 자식이 몇이나 실패했는지 — 상관 판정의 계수기 | ~378 |
+| ├ `start_all()` / `_start(child)` | 순차 기동(+`start_delay`). **spawn 예외도 즉사와 동일한 실패로 계산**한다 — 아니면 잘못된 커맨드라인에서 영원히 돈다 | ~395/402 |
+| ├ `_register_failure(child, exit_code, reason=None)` | **정책 본체** — uptime ≥ `healthy_uptime`이면 연속 카운터 리셋, 아니면 +1. 예산 초과 시 **혼자면 `_fail_permanently`, 아니면(동료 실패 ∨ 환경 프로브 down) `_enter_correlated`** | ~420 |
+| ├ `_fail_permanently(child, exit_code, reason)` / **`_enter_correlated(child, now, peers, exit_code, env_detail=None)`** | 영구 정지 / **`STATE_RETRYING_CORRELATED`로 진입해 `CORRELATED_BACKOFF_SEC` 간격으로 계속 재시도** — 이미 힘든 DB를 두들기지 않을 만큼 길고, 원인이 걷히면 1분 안에 자동 복구될 만큼 짧다 | ~477/504 |
+| ├ `poll_once()` / `run()` | 1틱 점검(종료 감지·백오프 만료 재기동·상태 파일 갱신) / **`run_decoupled_app.py`의 sleep 루프를 대체한 메인 루프** | ~551/591 |
+| ├ `stop_all(timeout=3.0)` / `snapshot()` | 종료(자손 포함) / `/health`가 읽는 상태 dict | ~600/644 |
+| └ `write_status(force=False)` | `supervisor_status.json` 기록. **`updated_at`이 감독자 자신의 생존 신호** — 감독자가 죽으면 자식들은 계속 비트를 찍지만 이 타임스탬프가 멈추고 `/health`가 그걸 말한다 | ~684 |
+| `read_status(path=None)` | 상태 파일 판독(`main.py` 헬스가 소비) | ~702 |
 
 > 미드-인제션 워처를 재시작해도 안전하다는 것이 이 설계의 전제다 — P2 체크포인트 재개가 10만 행 중 3만 행 지점 `taskkill /F` 하에서 드릴됐고 커밋된 오프셋이 실제 행수와 정확히 일치했다(`agent_workspace/reports/QA_p2_drills_isolated.md` §2). **자동 재시작이 허용되는 근거는 그것 하나다.**
 
-### `server/health.py` (280줄) — `/health` 판정표 (순수 함수)
+### `server/health.py` (**323줄**) — `/health` 판정표 (순수 함수)
 **`8117456` 신설.** 테스트: `tests/test_health_endpoint.py`.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `STATUS_OK\|DEGRADED\|UNHEALTHY` / `HTTP_OK=200` / `HTTP_UNHEALTHY=503` | 상태 어휘와 HTTP 사상 | ~38–43 |
-| `STARTUP_GRACE_SEC=60.0` | 갓 뜬 워커는 모듈 import 후 루프에 닿아야 비트를 찍는다. 이 유예가 없으면 부팅마다 503이 나가고, **부팅 때마다 틀리는 헬스체크는 무시당한다** | ~48 |
-| `OUTBOX_AGE_DEGRADED_SEC=300` / `OUTBOX_AGE_UNHEALTHY_SEC=900` / `OUTBOX_COUNT_CAP=10000` | **백로그는 크기가 아니라 나이로 잰다.** 정상적인 10만 행 인제션 1건이 outbox 약 11.6만 행을 만든다(P2 드릴 실측) — 멎은 워커를 잡을 만큼 낮은 크기 임계는 대용량 파일마다 오발화한다. "바쁨"과 "멈춤"을 가르는 건 큐가 **빠지는가**이고, 빠지고 있으면 뒤에 몇 행이 쌓였든 가장 오래된 미처리 행은 젊게 유지된다 | ~55–59 |
-| **`compute_health(db_result, heartbeats, supervisor_status, outbox_result, stale_after, now=None) -> (payload, http_status)`** | **판정표 본체 — I/O 없음**(DB·감독자·워커 없이 직접 테스트 가능). 워커 판정은 감독자 뷰 × 비트 뷰의 조인: `not running→down` · `running + 비트 낡음→wedged` · `running + 비트 없음 + 어림→starting` · `running + 비트 신선→ok`. **비트의 pid가 감독 대상 pid와 다르면 비트를 없는 것으로 친다**(~169–177) — 손으로 띄운 유령 워커나 같은 데이터 루트를 공유하는 두 번째 스택이 wedged된 진짜 워커를 가리는 것이 **실제로 관측됐다**. 재시작 직후 죽은 전임자의 신선한 비트가 후임을 대신 살아 있게 만드는 경우도 같은 가드로 막는다 | ~66 |
-| `probe_outbox(db)` | 백로그 나이 + (상한된) 크기. 둘 다 부분 인덱스 `idx_outbox_unprocessed`를 타고, 나이는 `ORDER BY id ASC LIMIT 1`로 **테이블 크기와 무관한 O(1)**, 카운트는 `LIMIT cap+1`로 감싸 1천만 행 테이블에서도 ~1만 인덱스 엔트리를 넘지 않는다 | ~250 |
+| `STATUS_OK\|DEGRADED\|UNHEALTHY` / `HTTP_OK=200` / `HTTP_UNHEALTHY=503` | 상태 어휘와 HTTP 사상 | ~45–47/49/50 |
+| `STARTUP_GRACE_SEC=60.0` | 갓 뜬 워커는 모듈 import 후 루프에 닿아야 비트를 찍는다. 이 유예가 없으면 부팅마다 503이 나가고, **부팅 때마다 틀리는 헬스체크는 무시당한다** | ~55 |
+| `OUTBOX_AGE_DEGRADED_SEC=300` / `OUTBOX_AGE_UNHEALTHY_SEC=900` / `OUTBOX_COUNT_CAP=10000` | **백로그는 크기가 아니라 나이로 잰다.** 정상적인 10만 행 인제션 1건이 outbox 약 11.6만 행을 만든다(P2 드릴 실측) — 멎은 워커를 잡을 만큼 낮은 크기 임계는 대용량 파일마다 오발화한다. "바쁨"과 "멈춤"을 가르는 건 큐가 **빠지는가**이고, 빠지고 있으면 뒤에 몇 행이 쌓였든 가장 오래된 미처리 행은 젊게 유지된다 | ~62/63/66 |
+| `_iso(ts)` | 타임스탬프 직렬화 헬퍼 | ~69 |
+| **`compute_health(db_result, heartbeats, supervisor_status, outbox_result, stale_after, now=None) -> (payload, http_status)`** | **판정표 본체 — I/O 없음**(DB·감독자·워커 없이 직접 테스트 가능). 내부 `escalate(level)`(~84)이 최악 상태를 끌어올린다. 워커 판정은 감독자 뷰 × 비트 뷰의 조인: `not running→down` · `running + 비트 낡음→wedged` · `running + 비트 없음 + 어림→starting` · `running + 비트 신선→ok`. **비트의 pid가 감독 대상 pid와 다르면 비트를 없는 것으로 친다** — 손으로 띄운 유령 워커나 같은 데이터 루트를 공유하는 두 번째 스택이 wedged된 진짜 워커를 가리는 것이 **실제로 관측됐다**. 재시작 직후 죽은 전임자의 신선한 비트가 후임을 대신 살아 있게 만드는 경우도 같은 가드로 막는다 | ~73 |
+| `probe_outbox(db)` | 백로그 나이 + (상한된) 크기. 둘 다 부분 인덱스 `idx_outbox_unprocessed`를 타고, 나이는 `ORDER BY id ASC LIMIT 1`로 **테이블 크기와 무관한 O(1)**, 카운트는 `LIMIT cap+1`로 감싸 1천만 행 테이블에서도 ~1만 인덱스 엔트리를 넘지 않는다 | ~293 |
 
-### `server/utils/heartbeat.py` (174줄) — 워커 진척 비트
+### `server/utils/heartbeat.py` (**303줄** — 종전 지도의 174줄은 낡은 값) — 워커 진척 비트 + **작업 단위 claim**
 **`8117456` 신설.** 프로덕션 인시던트는 이벤트 루프 프리즈였다 — 프로세스는 내내 살아 있었고 수십 초간 아무것도 서빙하지 못했다. **pid 점검은 그걸 healthy라고 답한다.** 그래서 워커는 **자기 루프 안에서** 진척을 발행한다.
+
+> **[신설] "루프가 돈다"와 "일이 진척된다"는 다른 사실이라 따로 잰다.** 비트는 전자, `work_claim`은 후자다. 파일 1건의 인제션처럼 **한 번에 몇 분씩 걸리는 작업 단위**는 루프 비트만으로는 진척을 증명하지 못한다.
 
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
-| `HEARTBEAT_DIRNAME="worker_heartbeats"` / `heartbeat_dir()` / `heartbeat_path(name)` | 저장 위치 — **`paths.config_path("worker_heartbeats")/<name>.json`** | ~56/85/89 |
-| `MIN_WRITE_INTERVAL_SEC=1.0` | 워커당 초당 1회 초과 디스크 접촉 금지(비트 1건 ≈ 200바이트 원자 replace) | ~60 |
-| `DEFAULT_STALE_AFTER_SEC=60.0` | **감으로 고른 숫자가 아니다** — 자연 루프 주기(워처 3.0s · 체인 2.0s · 그래프 2.0s · 스케줄러 5.0s) 기준 **가장 느린 루프로도 연속 12회 이상 결번**. 1회 결번으로 알람이 울리면(GC 정지·느린 디스크) 헬스체크는 음소거되고, 그건 없느니만 못하다 | ~79 |
-| `beat(name, note=None, force=False)` | **워커의 실제 작업 루프 안에서 반복마다 호출.** 반환값은 테스트용이고 호출자는 무시한다. 고정 temp 파일명 + `os.replace`로 **원자적**(독자가 부분 파일을 보지 않는다). **모니터링 기능이 새 장애 모드가 되면 안 되므로 모든 디스크 오류는 삼키고 카운트만 한다** — 워커 루프로 예외를 올리지 않는다 | ~93 |
-| `read_all(stale_after, now=None) -> {name: {...}}` | 전 비트 판독(+`age_seconds`/`stale`). **읽을 수 없거나 깨진 파일은 건너뛰지 않고 `error` 필드를 단 stale로 보고한다** — 침묵은 헬스체크가 절대 주면 안 되는 답이다 | ~135 |
+| `HEARTBEAT_DIRNAME="worker_heartbeats"` / `heartbeat_dir()` / `heartbeat_path(name)` | 저장 위치 — **`paths.config_path("worker_heartbeats")/<name>.json`** | ~79/137/141 |
+| `MIN_WRITE_INTERVAL_SEC=1.0` | 워커당 초당 1회 초과 디스크 접촉 금지(비트 1건 ≈ 200바이트 원자 replace) | ~83 |
+| `DEFAULT_STALE_AFTER_SEC=60.0` | **감으로 고른 숫자가 아니다** — 자연 루프 주기(워처 3.0s · 체인 2.0s · 그래프 2.0s · 스케줄러 5.0s) 기준 **가장 느린 루프로도 연속 12회 이상 결번**. 1회 결번으로 알람이 울리면(GC 정지·느린 디스크) 헬스체크는 음소거되고, 그건 없느니만 못하다 | ~102 |
+| **`DEFAULT_STALL_AFTER_SEC=300.0`** | **[신설] claim된 작업이 진척 없이 버틸 수 있는 상한.** `STALE`보다 의도적으로 훨씬 크다 — **두 수가 다른 것을 재기 때문**이다. 비트 결번은 2–5초 루프가 안 돌았다는 뜻이지만, claim 진척 결번은 **실제 작업 청크가 안 끝났다**는 뜻이고 청크는 균일하지 않다. 라이브 10만 행 heavy 인제션 실측(35MB·893초)에서 청크 간격 p50 9.20s · p95 9.70s · **max 12.50s**(단일청크 구간 42건). 바닥을 정한 건 **계측할 수 없는 쪽**이다 — 커스텀 파이프라인 파서는 파일 하나를 불투명한 한 번의 호출로 읽고 그동안 아무 보고도 하지 않는 사용자 스크립트라, 큰 워크북에서 몇 분이 정당하게 걸리고 그 안에서는 비트를 찍을 수단이 없다. 300s는 실측 청크 케이던스의 24배이면서 진짜 멈춘 인제션은 5분 안에 드러낸다. **편향은 침묵 쪽이고 그것이 의도다** — 이건 운영자 대시보드에 503을 띄우고, 사람들이 가장 신경 쓰는 바로 그 작업 중에 늑대를 외치는 헬스체크는 음소거된다 | ~125 |
+| `_state` / **`_claims` / `_claim_seq`** | 워커별 비트 상태 / claim 레지스트리 — **시간이 아니라 진행 중 작업 수로 유계**(레인당 1개, 모든 claim이 finally에서 제거된다) | ~128/133/134 |
+| `beat(name, note=None, force=False)` | **워커의 실제 작업 루프 안에서 반복마다 호출.** 반환값은 테스트용이고 호출자는 무시한다. 고정 temp 파일명 + `os.replace`로 **원자적**(독자가 부분 파일을 보지 않는다). **모니터링 기능이 새 장애 모드가 되면 안 되므로 모든 디스크 오류는 삼키고 카운트만 한다** — 워커 루프로 예외를 올리지 않는다 | ~145 |
+| `_work_snapshot_locked(name)` | 그 워커의 **가장 오래 진척 없는 claim**. **나이가 아니라 절대 타임스탬프를 publish**한다 — 독자가 비트가 쓰인 시점이 아니라 **지금**에서 stall을 재게 하기 위함 | ~198 |
+| **`work_claim(name, what)` (contextmanager)** | **작업 단위 1건 선언.** 파일 1건의 인제션 전체를 감싸고 그 안에서 `beat(name)`을 부르면 같은 스레드의 비트가 claim 진척을 갱신한다. **실패 경로 포함 항상 해제**된다 — 크래시한 잡이 남긴 claim은 영원한 stall과 구분되지 않는다. 진입 시 `force=True` 비트를 한 번 찍어 **다음 폴러 틱을 기다리지 않고** 즉시 보이게 한다. 소비자: `directory_watcher.process_with_retry`(~750)·`process_archived_file_sync`(~1017) | ~217 |
+| `open_claims()` | 이 프로세스의 열린 claim 전량(테스트·진단용) | ~242 |
+| `read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None, stall_after=DEFAULT_STALL_AFTER_SEC)` | 전 비트 판독(+`age_seconds`/`stale`). **읽을 수 없거나 깨진 파일은 건너뛰지 않고 `error` 필드를 단 stale로 보고한다** — 침묵은 헬스체크가 절대 주면 안 되는 답이다 | ~248 |
 
-> **비트 이름 4종**: `watcher`(`run_watcher.poll_pending_retries` ~154) · `chain`(`chain_ingestion_worker` ~822) · `graph`(`graph_sync_worker` ~621) · `scheduler`(`run_auto_update` ~515). 이 이름이 `run_decoupled_app.py`의 `ChildSpec(heartbeat=…)`와 짝을 이룬다.
+> **비트 이름 4종 (2026-07-27 `90e284f` 실측)**: `watcher`(`run_watcher.poll_pending_retries` ~151 안 **~167**) · `chain`(`chain_ingestion_worker.start_chain_ingestion_worker` ~785 안 **~827**) · `graph`(`graph_sync_worker.run_graph_materializer_loop` ~555의 `while True` ~622 안 **~625**) · `scheduler`(`run_auto_update.MultiDiscoveryScheduler.run` ~569 안 **~600**). 이 이름이 `run_decoupled_app.py`의 `ChildSpec(heartbeat=…)`와 짝을 이룬다.
+>
+> ⚠️ **`scheduler` 앵커가 `~515`로 적혀 있던 것을 실측 `600`으로 정정했다(+85).** 이것이 이 문서 상단이 경고하는 함정의 **교과서적 실례**다 — `run_auto_update.py:515`로 가면 지금은 `execute_collector`(~499)의 `try: collector.execute()` 블록이 있다. **실재하는 다른 함수 안이라 도착지가 멀쩡해 보이고**, 심지어 "수집기 실행"이라 문맥까지 그럴듯하다. 함수명으로 Grep하지 않으면 아무것도 이상해 보이지 않는다.
+>
+> ⚠️ **`graph` 비트는 `_run_one_batch`(~586) 안이 아니라 그 바깥 `while True`(~622) 안이다** — 배치 본체는 `asyncio.to_thread`로 격리돼 있고, 비트는 **루프가 도는 것**을 증명해야 하므로 격리된 스레드 안에 있으면 안 된다.
 
 ### `server/product_tables.py` (193줄) — 제품 소유 테이블 선언 정본
 **`8e80fcc` 신설.** 소유권 경계: **제품 소유**(assyManager 자신의 저장소 — 이름·컬럼을 제품이 정하고 사이트가 바꿀 이유가 없다)는 여기 선언, **사이트 소유**(고객 공장 데이터 — 배포마다 이름이 다르다)는 여기 절대 등재하지 않고 설치기도 건드리지 않는다.
@@ -431,16 +515,17 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `_load_best_cell_sources(...)` / `attach_col_sources(db, table_name, rows, mapping)` | provenance 결정 단일 지점 — CellSource winner 로드(crud 서열, row_id IN 청킹). 증분·resync 공용 | ~441/473 |
 | `resync_table(db, table_name, mappings, chunk_size=1000, row_ids=None, chunk_hook=None, stamp_synced=True) -> stats` | 백필/복구 — 키셋 청킹(C-7), row_ids 슬라이스 모드, Neo4j 청크 훅 | ~491 |
 
-### `server/graph_sync_worker.py` (~1,003줄) — 그래프 워커 (materializer 루프 + 백필 API :8090)
+### `server/graph_sync_worker.py` (~1,007줄) — 그래프 워커 (materializer 루프 + 백필 API :8090)
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `ONTOLOGY_PATH` / **`VIRTUAL_GRAPH_PATH`** | `paths.config_path("ontology_mapping.json")` / **`<paths.DATA_ROOT>/database/virtual_graph.json`**. 후자가 `paths` 경유인 것은 이 파일이 **쓰기 대상**이기 때문 — `save_virtual_graph()`(~293)가 통째로 덮어쓰므로, `__file__`에서 조립하던 종전 코드로는 격리 워커가 **라이브 파일을 덮어썼다** | ~16/282 |
-| `_load_graph_mappings()` / `_get_or_init_graph_cursor(db)` / `_reload_graph_worker_configs()` | 매핑 로드 / 커서 초기화(최초=현재 최대 outbox id) / SYSTEM_RELOAD 리로드(이슈 #8) | ~480/488/527 |
-| `run_graph_materializer_loop()` | **메인 루프** — LISTEN/NOTIFY + keyset 커서, 배치 본체 `_run_one_batch`를 `asyncio.to_thread` 격리, `[GraphLatency]` 계측. 루프 안 `heartbeat.beat("graph")` ~621 | ~551 |
-| `get_row_data_for_sync(db, table_name, row_ids)` | ⚠️ DEPRECATED(신규 배선 금지) | ~651 |
-| `_neo4j_chunk_hook_factory(table_name)` | Neo4j 병행 경로 청크 훅(G3 인터페이스 보존) | ~831 |
-| `execute_manual_sync(table_name, row_ids) -> dict` | `/sync` 백필 — 키셋 청킹 + 테이블당 `batch_refresh_required` 1건 + to_thread, `"all"` 지원 | ~854 |
-| `startup_event()` | TABLE_CONFIG 동기화 + `ensure_graph_tables` + 루프 기동(`GRAPH_MATERIALIZER_ENABLED`) | ~973 |
+| `post_event_async(endpoint, payload)` | 웹서버 `/internal/events/*` POST. **[`90e284f`] `headers=admin_auth.internal_event_headers()`(~469, 지연 import ~467)** | ~459 |
+| `_load_graph_mappings()` / `_get_or_init_graph_cursor(db)` / `_advance_graph_cursor(db, last_id)` / `_reload_graph_worker_configs()` | 매핑 로드 / 커서 초기화(최초=현재 최대 outbox id) / 커서 전진 / SYSTEM_RELOAD 리로드(이슈 #8) | ~484/492/515/531 |
+| `run_graph_materializer_loop()` | **메인 루프** — LISTEN/NOTIFY + keyset 커서, 배치 본체 `_run_one_batch`(~586)를 `asyncio.to_thread` 격리, `[GraphLatency]` 계측. **`while True`(~622) 진입 직후 `heartbeat.beat("graph")`(~625) — 격리 스레드 밖이다** | ~555 |
+| `get_row_data_for_sync(db, table_name, row_ids)` | ⚠️ DEPRECATED(신규 배선 금지) | ~655 |
+| `_neo4j_chunk_hook_factory(table_name)` | Neo4j 병행 경로 청크 훅(G3 인터페이스 보존) | ~835 |
+| `execute_manual_sync(table_name, row_ids) -> dict` | `/sync` 백필 — 키셋 청킹 + 테이블당 `batch_refresh_required` 1건 + to_thread, `"all"` 지원 | ~858 |
+| `startup_event()` | TABLE_CONFIG 동기화 + `ensure_graph_tables` + 루프 기동(`GRAPH_MATERIALIZER_ENABLED`) | ~977 |
 
 ### `server/parsers/std_parser.py` (~222줄) — 무스크립트 표준 파서
 | 시그니처 | 역할 | 라인 |
@@ -599,14 +684,14 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/database/database.py` | 엔진·SessionLocal·outbox 발화(`database_outbox` + NOTIFY) |
 | `server/database/config_watcher.py` | table_config.json 변경 감시 → 동적 테이블 재구성. engine 분기(~44)에서 `create_missing_dynamic_tables` 선(先)호출 후 기존 sync(ALTER) — 직접 파일 편집 경로의 신규 테이블 CREATE(이슈 #7) |
 | `server/graph_sync_worker.py` · `graph_materializer.py` · `ontology_config.py` | 온톨로지 그래프 트랙 — **함수 앵커는 [§5](#5-소형-서버-모듈)** |
-| `server/run_auto_update.py` | 스케줄 기반 사용자 스크립트 자동 실행. 매 틱 제어 파일(`auto_update_control.json`)을 읽어 disabled 수집기는 실행 스킵+`last_status="SKIPPED"`+next_run 전진(핫 반영, 재활성화 시 백로그 폭주 없음). run-now는 active 무관 실행 |
-| `server/event_constants.py` | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(~14, 발신측 created_logs 절단 상한: 워처 `directory_watcher:1381` · 체인 워커 `:467` · 수신 `main.py:3564/3612` 공유) · [P2] `MAX_AUDIT_VALUE_CHARS=4096`(~22)과 `truncate_audit_value(value, max_chars)`(~25 — 반환 `(값, 절단여부)`, str은 `…[truncated: 총 N자]` 마커, dict/list는 타입·길이 플레이스홀더)를 `crud.create_audit_log`가 소비 |
+| **`server/run_auto_update.py`** (661줄) | 스케줄 기반 사용자 스크립트 자동 실행. 매 틱 제어 파일(`auto_update_control.json`)을 읽어 disabled 수집기는 실행 스킵+`last_status="SKIPPED"`(~562)+next_run 전진(핫 반영, 재활성화 시 백로그 폭주 없음). run-now는 active 무관 실행. 함수 앵커: `class GenericScriptRunnerCollector`(~77)·**`execute()`(~104)**·`parse_script_comments`(~301)·`class MultiDiscoveryScheduler`(~330)·`discover_and_load_collectors`(~343)·`_write_status_file`(~453)·`run_collector_on_demand`(~485)·`execute_collector`(~499)·`check_and_run_schedules`(~526)·**`run()`(~569, 루프 안 `heartbeat.beat("scheduler")` ~600)**.<br>**[`512dca7` 재작성 — `execute()`의 실패 계약] "확인할 수 없었다"를 "이상 없다"로 보고하지 않는다.** 판정은 세 로컬(`out_data`·**`out_declared`**(~147)·**`exec_error`**(~148))의 조합이고 **함수 밖에 헬퍼가 없다** — 4상태: ① `out` 미정의 + 무예외 → stdout 수집기이며 폴백이 **정상 경로**(INFO) ② `out = None` **대입** → 스크립트가 줄 게 없다고 선언한 것이므로 **즉시 FAIL, stdout 재실행 없음**(~199, 이런 스크립트는 네트워크 페치의 에러 핸들러라 재실행하면 외부 호출만 반복한다) ③ `out`은 있는데 비었음 → 이번 주기에 수집할 게 없다, SUCCESS ④ 실행이 **raise** → ERROR + 트레이스백, 폴백은 시도하되 **그것도 비면 raise해서 FAIL**(~283). ①과 ④가 종전엔 같은 WARNING 한 줄로 뭉개져 **크래시해서 0행을 모은 실행이 깨끗한 성공으로 보고됐다**. ②가 ①과 구분 불가였던 것은 `.get("out")`이 "None 대입"과 "미정의"를 구분하지 못하기 때문이다.<br>**`SystemExit` 처리(~176)**: `sys.exit(0)`으로 끝나는 수집기는 정상 완료이므로 `out`을 존중한다. `SystemExit`는 `BaseException`이라 잡지 않으면 `execute_collector`·`check_and_run_schedules`(둘 다 `Exception`만 잡는다)를 **관통해 스케줄러 데몬을 종료시킨다**. 0/None이 아닌 코드는 `exec_error`로 강등 후 폴백 시도.<br>**`exec(code_content, script_ns)` — globals/locals에 같은 dict 하나(~170)**: 서로 다른 두 dict를 넘기면 클래스 바디 스코핑이 돼 모듈 레벨 `def`/`import`가 locals에만 바인딩되고 **함수 본문은 `LOAD_GLOBAL`이라 그것을 못 본다** → 다른 함수에서 호출된 헬퍼가 `NameError`로 죽고 수집기는 조용히 아무것도 못 모은다(모듈 레벨 호출은 `LOAD_NAME`이라 locals를 보므로 **일부 수집기만 고장 나 보였다**). 테스트: `tests/test_auto_update_script_exec.py`(21건 — `TestSingleNamespace`·`TestStdoutFallback`·`TestFailuresAreLoud`·`TestOutAssignedNone`·`TestOutFormattingFailure`·`TestSystemExitContainment`) |
+| `server/event_constants.py` (51줄) | 프로세스 간 내부 이벤트(`/internal/events/*`) 공용 상수 — `MAX_NOTIFY_CREATED_LOGS=500`(~14, 발신측 created_logs 절단 상한: 워처 `directory_watcher:1427` · 체인 워커 `chain_ingestion_worker:474` · 수신 `main.py:3682/3730` 공유 — **네 앵커 전부 2026-07-27 실측으로 정정**, 구 값 `1381`/`467`/`3564`/`3612`는 최대 +118 밀려 있었다) · [P2] `MAX_AUDIT_VALUE_CHARS=4096`(~22)과 `truncate_audit_value(value, max_chars)`(~25 — 반환 `(값, 절단여부)`, str은 `…[truncated: 총 N자]` 마커, dict/list는 타입·길이 플레이스홀더)를 `crud.create_audit_log`가 소비 |
 | `server/scripts/setup_ingestion_checkpoint.py` | [P2] `file_ingestion_checkpoints`를 **프로세스 재기동 없이** 미리 생성(멱등) — 직접 SQL 없이 `models.ensure_ingestion_checkpoint_table(engine)` 호출 후 컬럼·인덱스 출력 |
 | `server/scripts/setup_transfer_plan_indexes.py` (68줄) | [M2] 전사 계획 엔진 진입 필터용 인덱스 **9종**(`INDEXES` 리스트 ~30) `CREATE INDEX IF NOT EXISTS`(테이블별 information_schema 존재 게이트) — `dt_log(tape_lot,tape_slot)`·`dt_log(core_lot,core_slot)`·`dt_map(lot,slot)`·**`map_split_registry(ref_table,map_key)`([M2.6 신설] `validate_plan`이 계획을 통째로 읽는 진입점. 행 수가 맵 수 × legend 값 수로 자란다)**·~~`map_doe(ref_table,map_key)`~~·~~`map_doe_source(ref_table,map_key)`~~(**둘 다 폐기 테이블용 — 물리 DROP과 함께 이 두 줄도 지운다**)·`map_source_region(...)`(휴면)·**`bonding_map(base)`**(Seq Scan 214ms → 0.345ms)·`sample_map(base)`. 뒤 둘은 단일 컬럼이라 "복합"이 아니다. M1 인덱스는 `setup_bonding_plan_indexes.py` 담당 |
 | `server/utils/auto_update_control.py` | auto-update 수집기 active 제어 파일(`config/auto_update_control.json`, gitignored) 공용 IO — `read_disabled_scripts`(fail-open)/`set_script_active`(tmp+`os.replace` 원자적 쓰기)/`validate_script_key`(경로 탈출 차단)/`resolve_script_file`. 웹서버 toggle·스케줄러 공유 |
-| `run_decoupled_app.py`(루트) / `server/run_watcher.py` / `run_chain_worker.py` / `run_graph_sync.py` / `run_auto_update.py` | 프로세스 런처(5-프로세스 토폴로지). **API 서버는 전용 런처 파일이 없다** — `run_decoupled_app.py`의 `main()`(~22)이 `server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", api_port]`(~39)를 직접 띄우며, 포트는 **`ASSY_API_PORT` 환경변수로 오버라이드 가능**(기본 `"8080"`, ~32 — 런처 자신을 격리 스택 :8081에 걸어 감독 정책까지 실검증하기 위함). ~~`server/run_api.py`~~는 **존재하지 않는다**(2026-07-26 정정, 2026-07-27 재확인). **[`8117456`] sleep 루프가 `Supervisor`로 대체됐다** — `specs`(~50)는 `ChildSpec(..., heartbeat=…)` 5개(+ 비-server-only일 때 `restartable=False`인 데스크톱 셸 ~65), `supervisor.start_all()`(~97) 후 `supervisor.run()`(~105). run_watcher: `trigger_ws_ingestion_state`(~112 — [P1] 파일명 정규화 후 `/internal/events/ingestion-state` push) · 재처리 폴러 `poll_pending_retries`(~145, 루프 안 `heartbeat.beat("watcher")` ~154)는 `refresh_dynamic_models(engine)` 보충(이슈 #7) + `resolve_workspace_root` 역조회(별칭 대응) + 재처리를 `get_workspace_serial_lock`으로 감쌈([P1 QA F3] heavy와 순서 계약 편입) |
+| `run_decoupled_app.py`(루트) / `server/run_watcher.py` / `run_chain_worker.py` / `run_graph_sync.py` / `run_auto_update.py` | 프로세스 런처(5-프로세스 토폴로지). **API 서버는 전용 런처 파일이 없다** — `run_decoupled_app.py`의 `main()`(~27)이 `server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", api_port]`(~44)를 직접 띄우며, 포트는 **`ASSY_API_PORT` 환경변수로 오버라이드 가능**(기본 `"8080"`, ~37 — 런처 자신을 격리 스택 :8081에 걸어 감독 정책까지 실검증하기 위함). ~~`server/run_api.py`~~는 **존재하지 않는다**(2026-07-26 정정, 2026-07-27 재확인). **[`8117456`] sleep 루프가 `Supervisor`로 대체됐다** — `specs`(~55)는 `ChildSpec(..., heartbeat=…)` 5개(+ 비-server-only일 때 `restartable=False`인 데스크톱 셸 ~70), `supervisor.start_all()`(~108) 후 `supervisor.run()`(~116). `psutil_status`를 import(~11)해 손자 정리 무장 여부를 부팅 시 announce. **[`90e284f`] `ASSY_ADMIN_TOKEN`은 여기서 상속된다** — `process_supervisor`가 자식 env를 `os.environ.copy()`(~357)로 만들므로 런처 프로세스에 한 번 세팅하면 5자식 전부가 `admin_auth.internal_event_headers()`로 토큰을 실어 보낼 수 있다([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)). run_watcher(312줄): `post_event`(~51, **[`90e284f`] `headers=admin_auth.internal_event_headers()` ~60**) · `trigger_ws_refresh`(~66) · `trigger_ws_file_processed`(~88) · `trigger_ws_progress`(~99) · `trigger_ws_ingestion_state`(~118 — [P1] 파일명 정규화 후 `/internal/events/ingestion-state` push) · 재처리 폴러 `poll_pending_retries`(~151, 루프 안 `heartbeat.beat("watcher")` **~167**)는 `refresh_dynamic_models(engine)` 보충(이슈 #7) + `resolve_workspace_root` 역조회(별칭 대응) + 재처리를 `get_workspace_serial_lock`으로 감쌈([P1 QA F3] heavy와 순서 계약 편입) |
 | `server/utils/physical_wafer_engine.py` · `coordinate_transformer.py` | 웨이퍼 물리 좌표 엔진(맵 에디터 서버측) |
-| `server/utils/logger.py` (~103줄) | 프로세스별 로거 — `get_process_logger(process_name, log_filename)`(~66)의 파일 핸들러가 **`paths.log_path(log_filename)`**(~96)를 쓴다. 격리 프로세스가 사용자의 라이브 로그에 append하지 않는 근거 |
+| `server/utils/logger.py` (145줄) | 프로세스별 로거 — `class ColoredProcessFormatter`(~16) · `get_process_logger(process_name, log_filename)`(~77)의 파일 핸들러가 **`paths.log_path(log_filename)`**(~125)를 쓴다. 격리 프로세스가 사용자의 라이브 로그에 append하지 않는 근거 |
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함**. ⚠️ **`paths.py`가 의도적으로 다루지 않는 트리**(데이터가 아니라 코드 — `sys.path`의 패키지로 해석) |
 | `server/config/*.json` (gitignored) | table_config·chain_rules·enrichment_rules·ontology_mapping(v2 — `.sample`은 tracked) 등 사용자 설정. 실값을 이 문서에 옮겨 적지 말 것 — 구조만 기술한다 |
 
@@ -641,12 +726,13 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - `state` 객체: gridApi, currentTable/Columns/Types, 비즈니스키(`currentBusinessKey`/`currentCompositeKeySources`), ws, 셀 선택(`selectedCell`/`selectedCellsMap`/드래그), 이력 탭 데이터, 페이징(`currentSkip`/`pageCache`/`viewMode`), 트랜잭션 모드(`txModeActive`/`pendingTxEdits`), `isDesktop`.
 - export: `updateVisibleColIndexMap()` (~37).
 
-### `main.js` (~1,793줄) — index 페이지 오케스트레이터
-- 진입 `init()`(~66, `initTraceEntry()` 호출 포함) → `setupEventListeners()`(~100, 거대 — 툴바·모달·키보드 전체 배선), `setupDragAndDrop()`(~1020).
-- 셀 범위 `getSelectedCells()`(~1105), 소스 모달 `openSourcesModal/refreshSourcesList`(~1152/1177).
-- 스마트 페이스트 `smartPasteViaIngestion()`(~1425) + `showClipboardTypeModal`(~1518).
-- 트랜잭션 모드 커밋/롤백 `applyPendingTxEdits()`/`discardPendingTxEdits()`(~1692/1765).
+### `main.js` (~1,784줄) — index 페이지 오케스트레이터
+- 진입 `init()`(~66, `initTraceEntry()` 호출 포함) → `setupEventListeners()`(~101, 거대 — 툴바·모달·키보드 전체 배선), `setupDragAndDrop()`(~1013).
+- 셀 범위 `getSelectedCells()`(~1098), 소스 모달 `openSourcesModal/refreshSourcesList`(~1145/1170).
+- 스마트 페이스트 `smartPasteViaIngestion()`(~1418) + `showClipboardTypeModal`(~1511).
+- 트랜잭션 모드 커밋/롤백 `applyPendingTxEdits()`/`discardPendingTxEdits()`(~1685/1758).
 - export 없음(엔트리) — 다른 모듈을 소비만 한다.
+- ⛔ **[`90e284f`] 키보드 배선에서 Ctrl+C 분기가 삭제됐다 — 되돌리지 마라**(~421에 그 자리를 지키는 주석이 있다). 복사는 `clipboard.js`의 `copy` 리스너(~560)가 `e.clipboardData`로 처리하므로 **`navigator.clipboard`가 없는 비보안 컨텍스트(평문 HTTP)에서도 동작한다.** 구 분기는 `navigator.clipboard.writeText`를 썼고 사내 평문 HTTP 배포에서는 그것이 `undefined`다 — 즉 삭제된 코드가 하던 일은 **작동하는 경로를 가로채 아무 일도 안 하는 것**이었다. `getRangeSelectedTSV` import도 함께 빠졌다(이 파일에서 더는 안 쓴다 — 여전히 `clipboard.js`가 export한다).
 
 ### `api.js` (~422줄) — REST 소비 계층 (경계 계약의 클라이언트측)
 - export: `checkServerHealth`(~11) `loadTables`(~28) `switchTable`(~56, 말미에 `refreshTraceEntry()` fire-and-forget) `loadSchema`(~96) `fetchData(resetSkip)`(~124, 메인 조회+세션가드) `handleCellEdit(event)`(~217, 셀 편집→PUT updates) `addRows`(~364) `deleteSelectedRows`(~383).
@@ -726,16 +812,32 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 - 진입/통지 export **4종**: `notifyMapContext(info={})`(~1033 — ⚠️ **[M2.6] 여기서 서버 조회를 하지 않는다.** legend(= DOE) 로드·채택·가드는 전부 `map_editor`의 registry 경로에 있고 이 함수는 그 결과를 그리기만 한다) `notifyLegendChanged`(~1056) `notifyPaintCounts(counts)`(~1068, **`textContent`만 패치** — 수만 셀 페인팅 중 재렌더는 프리징) `initTransferPlan(paintController)`(~1098). (+ 순수 함수 `bandToState` export ~220)
 - ⚠️ **`__held_*` 함수군(~1120–1201)은 명시적 보류 구역** — 호출자 없음. 검증/경고 UI는 사용자 지시로 미구현이다. 재연결 시 유의: DOE 모델이 `{stack, need}` → `{seq, to, materials[]}`로 바뀌었고 소요·배분은 **파생**이므로 수량 판정은 `bandTotal`/`bandShare`를 호출해야 한다. ⚠️ `__HELD_WARN_SEVERITY`(~1170)에 **`layer_coverage_gap` 키가 남아 있으나 서버에서 삭제된 경고 타입이라 사문**이다.
 
-### `admin.js` (~2,624줄) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
-- 라우팅: `parseRoute`(~237) `applyRoute`(~249) — `#overview/#file/#chain/#autoupdate/#enrichment` + 구 별칭(`#outbox→chain` 등) + `#editor=<path>`. `switchTab(tabName, opts)`(~294, 해시 동기·Overview 전폭 레이아웃).
-- 탭 데이터: `fetchData(options)`(~614, 탭당 병렬 fetch를 한 seq로 묶어 stale 렌더 차단 — [P1] File 탭은 `/admin/file-ingestion/active`도 병렬 수집 ~641) → 각 `render*Table` + 섹션 카운트 배지(`setSectionCount`), `clearRowHighlights`/`clearSelections`.
-- [P1] File 탭 진행 중 섹션: `renderActiveIngestions`(~922, `#sec-active-ingestions` — HEAVY=badge-warning/normal=badge-success 배지·진행률 바·행 카운트·경과 + **재기동 경고 배너**, 항목 0이면 섹션 숨김) `scheduleActiveRefresh`(~904, 진행 항목 존재+File 탭 표시 중 한정 5s 경량 타이머 — `document.hidden` 시 스킵) `formatElapsed`(~892). 헬스 스트립 File 카드 warn·Overview 카드 진행 메트릭 통합.
-- Overview: `fetchOverview`(~1301) `renderOverview`(~1427, 4카드+최근 이벤트+딥링크).
-- 유기 연계: `renderLinkedFailTable`(~1209, AutoUpdate §오류 — 산출물 인제션 실패 교집합) `showEventDiagnostics`(~1998, +Edit Mapper 딥링크) `selectFileRow`(~1775, 파서 편집 딥링크).
-- AutoUpdate 토글: `renderAutoUpdateTable`(~1128, 수집기별 Active 스위치·비활성 행 dim) `toggleCollectorActive`(~1671, POST `/admin/auto-update/toggle` — 낙관 갱신+실패 원복, fetchSeq 가드 table+script 키 재조회) `runAutoUpdateNow`(~1644, active 무관+툴팁). Overview 카드·헬스 스트립에 active/total 표기.
-- Enrichment 탭: `renderEnrichmentTable`(~1238) `fetchEnrichmentStatus`(~2464, 15s TTL 캐시 — 스트립·탭·Overview 3소비처 공용).
-- 에디터(공용 뷰): `initMonacoEditor`(~2183, pending open) `populateEditorPicker`(~2240) `selectEditorFile`(~2286, dirty confirm) `openInlineEditor`(~2366). (구 좌측 파일트리 `renderEditorTree` 일습은 피커로 대체·삭제됨)
-- 소비 API: `/admin/*` 전역 + `/enrichment/rules` + `/tables/{t}/data`(결손 카운트).
+### `admin.js` (~2,753줄) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
+
+> 🔑 **[`90e284f`] 파일 최상단이 토큰 블록이다(~16–143).** 서버가 `/admin/*`을 공유 비밀 뒤로 옮겼으므로([§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설)) 이 페이지는 **로그인 화면도 사용자 모델도 없이** 토큰 하나를 묻고, 보관하고, 헤더로 붙인다. 서버에 토큰이 설정돼 있지 않으면 게이트 라우트가 정상 응답하므로 **아무것도 묻지 않고 이 장치는 보이지 않는다** — 프롬프트는 **게이트가 낸 거부**에만 뜬다.
+>
+> ⚠️ **`grep "fetch(\`${API_BASE}/admin/"`가 0건이어야 한다.** 히트가 있으면 그 호출부는 `adminFetch`를 우회한 것이고, 미설정 서버에선 잘 돌다가 **프로덕션에서만 401**이 된다.
+
+| 심볼 | 역할 | 라인 |
+|---|---|---|
+| `ADMIN_TOKEN_HEADER='X-Admin-Token'` / `ADMIN_TOKEN_KEY='assy.adminToken'` | 헤더명(서버 `admin_auth.ADMIN_TOKEN_HEADER`와 짝) / localStorage 키 | ~28/29 |
+| `getAdminToken()` / `storeAdminToken(value)` | localStorage 읽기·쓰기. **둘 다 try/catch** — 프라이빗 모드·스토리지 비활성이면 토큰이 이 페이지 수명만큼만 산다 | ~31/35 |
+| **`adminTokenGeneration`** | **토큰이 바뀔 때마다 증가.** 토큰 교체 시점에 이미 날아가 있던 응답은 **낡은 증거**라 새 토큰에 대해 아무것도 말하지 않으므로 두 번째 프롬프트를 띄우면 안 된다. 이것이 없으면 "동시 7요청에 프롬프트 1회"가 타이밍 운에 좌우되고, 실제로 모달이 몇 초 열려 있는 동안 도착한 응답들이 **멀쩡한 토큰을 틀렸다고 몰아세웠다** | ~48 |
+| `adminTokenDeclined` / `tokenPromptInFlight` | 운영자가 취소했음(30초 리프레시마다 영원히 다시 묻는 것은 수정이 아니라 함정 — 새로고침하면 다시 묻는다) / 진행 중 프롬프트 1개 공유 | ~51/52 |
+| **`isGateRejection(res)`** | **게이트가 낸 거부만 true.** 상태코드만으론 부족하다 — `_resolve_admin_script_path`도 403을 내는데 토큰과 무관하다. 그것을 인증 실패로 취급했더니 페이지가 토큰을 요구하고 **맞는 저장 토큰을 덮어썼다.** 판정 근거는 `WWW-Authenticate: X-Admin-Token` 헤더 | ~62 |
+| `askForAdminToken(message)` | `window.prompt` 1회(진행 중이면 공유). **`setTimeout(…, 0)`로 한 틱 미룬다** — 같은 `Promise.all`의 형제 핸들러들이 모달이 스레드를 막기 전에 이 프라미스에 붙게 하기 위함. **취소는 저장 토큰을 지우지 않는다**(구 코드는 취소를 `storeAdminToken('')`로 바꿔 **작동하던 토큰을 삭제했다**) | ~69 |
+| `withAdminToken(init)` | fetch init에 헤더 주입. **쿼리 파라미터가 아니라 헤더인 이유는 쿼리스트링이 서버 액세스 로그에 남기 때문** | ~97 |
+| **`adminFetch(url, init)`** | **`/admin/*` 전용 fetch — 이 파일의 모든 어드민 호출이 여기를 지난다.** ① **503이면 본문 `detail`을 토스트로 띄우고 그대로 반환**(~117 — 미설정 서버가 코드 실행 라우트를 거부하는 상태다. 본문이 변수명과 재시작 방법을 말해 주는데 호출부에 맡기면 "저장 중 오류 발생"이 된다) ② 게이트 거부가 아니면 통과 ③ **세대가 바뀌었으면 조용히 새 토큰으로 1회 재시도**(~129) ④ 프롬프트 후 **딱 한 번만 재시도**(~141 — 두 번째 거부는 호출자에게 돌려줘 운영자를 모달에 가두지 않는다) | ~109 |
+
+- 라우팅: `parseRoute`(~368) `applyRoute`(~380) — `#overview/#file/#chain/#autoupdate/#enrichment` + 구 별칭(`#outbox→chain` 등) + `#editor=<path>`. `switchTab(tabName, opts)`(~425, 해시 동기·Overview 전폭 레이아웃). `setSectionCount`(~351).
+- 탭 데이터: `fetchData(options)`(~745, 탭당 병렬 fetch를 한 seq로 묶어 stale 렌더 차단 — [P1] File 탭은 `/admin/file-ingestion/active`도 병렬 수집 ~759) → 각 `render*Table` + 섹션 카운트 배지, `clearSelections`(~1697)/`clearRowHighlights`(~1709).
+- [P1] File 탭 진행 중 섹션: `renderActiveIngestions`(~1053, `#sec-active-ingestions` — HEAVY=badge-warning/normal=badge-success 배지·진행률 바·행 카운트·경과 + **재기동 경고 배너**, 항목 0이면 섹션 숨김) `scheduleActiveRefresh`(~1035, 진행 항목 존재+File 탭 표시 중 한정 5s 경량 타이머 — `document.hidden` 시 스킵) `formatElapsed`(~1023). 헬스 스트립 File 카드 warn·Overview 카드 진행 메트릭 통합.
+- Overview: `fetchOverview`(~1432) `renderOverview`(~1558, 4카드+최근 이벤트+딥링크).
+- 유기 연계: `renderLinkedFailTable`(~1340, AutoUpdate §오류 — 산출물 인제션 실패 교집합) `showEventDiagnostics`(~2129, +Edit Mapper 딥링크) `selectFileRow`(~1906, 파서 편집 딥링크).
+- AutoUpdate 토글: `renderAutoUpdateTable`(~1259, 수집기별 Active 스위치·비활성 행 dim) `toggleCollectorActive`(~1802, POST `/admin/auto-update/toggle` — 낙관 갱신+실패 원복, fetchSeq 가드 table+script 키 재조회) `runAutoUpdateNow`(~1775, active 무관+툴팁 — **strict 게이트 라우트라 토큰 미설정 서버에선 503 토스트가 뜬다**). Overview 카드·헬스 스트립에 active/total 표기.
+- Enrichment 탭: `renderEnrichmentTable`(~1369) `fetchEnrichmentStatus`(~2574, 15s TTL 캐시 — 스트립·탭·Overview 3소비처 공용).
+- 에디터(공용 뷰): `initMonacoEditor`(~2293, pending open) `populateEditorPicker`(~2350) `selectEditorFile`(~2396, dirty confirm) `openInlineEditor`(~2476, 저장은 **strict 게이트** POST `/admin/scripts/code` ~2455). (구 좌측 파일트리 `renderEditorTree` 일습은 피커로 대체·삭제됨)
+- 소비 API: `/admin/*` 전역(**전부 `adminFetch` 경유**) + `/enrichment/rules` + `/tables/{t}/data`(결손 카운트).
 
 ### `enrichment.js` (~754줄) — 인리치먼트 컨베이어 페이지 (export 없음)
 - 규칙: `loadRules`(~69) `selectRule`(~116) `rebuildGrid`(~151). 워크리스트: `fetchWorklist`(~190) `fetchTotalAll`(~241) `refillIfNeeded`(~257).
@@ -776,6 +878,8 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
 
 ## 8. 주요 호출 흐름 요약
 
+> 🔒 **[`90e284f`] 아래 흐름 중 `/internal/events/*`를 지나는 것(1·3·8)은 전부 `X-Admin-Token` 헤더를 실어 나른다** — 워커측은 `admin_auth.internal_event_headers()`, 서버측은 `Depends(require_admin_token)`. 토큰 미설정이면 양쪽 다 무동작이라 흐름이 종전과 동일하다. **토큰을 웹서버에만 설정하고 런처에 안 하면 워커의 브로드캐스트가 전부 401이 되어 WS 갱신이 조용히 멎는다**(데이터는 계속 들어가고 화면만 안 바뀐다).
+
 1. **파일 인제션**: 폴더 투입 → `IngestionHandler._handle_event` → **[P1] `_route_and_process`**(임계 초과·backlog 잔여 → heavy 큐 / 인라인은 직렬화 락 try-acquire, 실패 시 큐 재라우팅) → `process_with_retry` → `_snapshot_table_context`(파일당 1회 config 스냅샷 — 테이블 해석은 글로벌 별칭 > 레거시 config.json > 폴더명) → `_resolve_rows`(파이프라인 우선 → std parser 폴백) → **[P2] `compute_file_signature` → `_try_dedup_skip`(동일 시그니처 `DONE`이면 skip+archive+`SKIPPED` 로그) → `_plan_checkpoint`(재개 오프셋 결정)** → `_send_to_upsert` → **`crud.apply_batch_updates` 직접 호출**(HTTP 아님, 청크마다 `record_chunk_progress`가 **같은 트랜잭션**에 동승) → `_finalize_checkpoint(mark_done)` → 웹서버 `/internal/events/batch-refresh|file-processed` → WS 브로드캐스트.
    - [P1] 진행 가시화(push-캐시-서빙): watcher `_notify_ingestion_state` → `run_watcher.trigger_ws_ingestion_state` → POST `/internal/events/ingestion-state` → `IngestionActivityRegistry`(+ 기존 progress/file-processed 인터셉트) → GET `/admin/file-ingestion/active` → admin File 탭 진행 섹션·재기동 경고. WS 이벤트 계약 무변경.
 2. **수동 편집**: client `handleCellEdit`/`applyValueToSelectedRange` → PUT `/tables/{t}/data/updates` → `apply_batch_updates_endpoint` → `crud.apply_batch_updates` → outbox 발화 + WS `batch_row_upsert` → 전 클라이언트 `handleWebSocketMessage` 델타 반영.
@@ -798,3 +902,9 @@ Vite + Vanilla ESM + AG-Grid. 멀티페이지 **6엔트리**(index/admin/map_edi
     - 병렬로 각 워커가 **자기 루프 안에서** `heartbeat.beat(name)` → `config/worker_heartbeats/<name>.json` 원자적 replace.
     - GET `/health` → `heartbeat.read_all()` + `process_supervisor.read_status()` + DB/outbox 프로브 → **`health.compute_health`(순수 함수)** → `{status, problems[], checks{database,workers,outbox,supervisor}}` + unhealthy면 **503**. 워커 판정은 두 신호의 조인이므로 `down`/`wedged`/`starting`/`foreign_beat`/`ok`를 구분해 이름 붙일 수 있다.
 11. **[`4ba13ae`] 격리 개발환경**: `devenv.py bootstrap`(config·워크스페이스 **구조만** 복제) → `snapshot_db.py`(라이브 → QA DB, 읽기 전용 소스·1000행 청크) → `devenv.py up`이 `ASSY_DATA_ROOT=<repo>/dev_env` + QA DB URL로 프로세스 기동(API :8081, graph :8091) → 모든 모듈이 `paths.py`를 통해 격리 트리를 읽고 쓴다. 워처만은 `iso_watcher.py` 게이트를 지나며, **정적(경로)·라이브(실접속 DB 이름·포트) 단언에 하나라도 걸리면 기동을 거부**한다(exit 9). 드릴 전후 비교는 `manifest.py capture|diff`.
+12. **[`90e284f`] 어드민 접근 (공유 비밀 1개 — 로그인 아님)**: 운영자가 `ASSY_ADMIN_TOKEN`을 **런처 프로세스 환경에** 설정 → `run_decoupled_app.main()` → `process_supervisor`가 자식 env를 `os.environ.copy()`로 상속 → 5자식 전부가 같은 토큰을 본다.
+    - **기동**: `main.startup_event` → `admin_auth.startup_banner()` 1회 로깅(설정=info / 미설정=warning **무엇이 멈추는지 명시** / 비-ASCII=error **잠긴 줄 알고 있는 상태라 가장 시끄럽다**).
+    - **사람 경로**: 브라우저가 `/admin`(게이트 없음 — 페이지가 떠야 물어볼 수 있다) → `admin.js`의 `adminFetch`가 저장 토큰을 `X-Admin-Token`으로 첨부 → 게이트 거부(401/403 + `WWW-Authenticate`)면 `askForAdminToken` 1회 → **한 번만** 재시도. 503이면 프롬프트가 아니라 **서버 본문을 그대로 토스트**(토큰 미설정 + 코드 실행 라우트).
+    - **워커 경로**: 워처·체인·그래프 워커가 `admin_auth.internal_event_headers()`를 `/internal/events/*` POST에 붙인다.
+    - **거부 지점 3종**: 미설정+strict → **503** · 설정+헤더없음 → **401** · 설정+불일치 → **403**(constant-time 비교, 세 detail 모두 상수 문자열).
+    - **이 흐름과 무관하게 항상 열려 있는 것**: `/health`(외부 모니터) · `/admin`·`/admin.html` 페이지 HTML · `/api/*`·`/tables/*`(데이터 평면 — 이번 범위의 대상이 아니다).

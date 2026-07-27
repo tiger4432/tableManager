@@ -900,6 +900,47 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
     }
 
 
+# [재교정률] 대시보드 로드마다 감사 테이블을 집계하지 않기 위한 TTL 캐시.
+# 값은 7일 창 집계라 초 단위로 변하지 않는다 — 60초 캐시로 충분하고, 이 캐시가
+# "대시보드를 열 때마다 GROUP BY"를 구조적으로 막는 1차 방어선이다.
+RECORRECTION_CACHE = {"value": None, "at": 0.0}
+RECORRECTION_CACHE_TTL = 60.0
+# 2차 방어선: 인덱스(idx_audit_user_recorrection)가 아직 없는 운영 DB에서도 대시보드가
+# 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
+# (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
+RECORRECTION_TIMEOUT_MS = 1500
+
+
+def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
+    """재교정률을 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    import sqlalchemy as sa
+    now = time.time()
+    if RECORRECTION_CACHE["value"] is not None and (now - RECORRECTION_CACHE["at"]) < RECORRECTION_CACHE_TTL:
+        return RECORRECTION_CACHE["value"]
+
+    try:
+        # SET LOCAL은 현재 트랜잭션에서만 유효하고 세션 종료(get_db의 db.close())에서 되돌아간다.
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            db.execute(sa.text(f"SET LOCAL statement_timeout = {RECORRECTION_TIMEOUT_MS}"))
+        result = schemas.RecorrectionStat(**crud.get_recorrection_stats(db))
+    except Exception as e:
+        # 타임아웃은 트랜잭션을 오염시킨다 — 즉시 rollback 하지 않으면 이후 쿼리가 전부 실패한다.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print(f"[Dashboard] re-correction rate unavailable: {e}")
+        result = schemas.RecorrectionStat(
+            window_days=crud.RECORRECTION_WINDOW_DAYS,
+            measured_cells=0, recorrected_cells=0, rate_pct=None,
+            unavailable_reason="집계 시간 초과 또는 실패 (idx_audit_user_recorrection 인덱스 확인)",
+        )
+
+    RECORRECTION_CACHE["value"] = result
+    RECORRECTION_CACHE["at"] = now
+    return result
+
+
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_db)):
     """
@@ -936,12 +977,16 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
     today_updates_count = db.query(models.AuditLog).filter(models.AuditLog.timestamp >= today_start).count()
 
+    # 재교정률은 **마지막에** 계산한다 — 타임아웃 시 rollback 이 위쪽 집계를 건드리지 않도록.
+    recorrection = _get_recorrection_stat(db)
+
     return schemas.DashboardSummaryResponse(
         total_tables=len(table_names),
         total_rows=total_global_rows,
         today_updates=today_updates_count,
         table_stats=table_stats,
-        system_health="Excellent"
+        system_health="Excellent",
+        recorrection=recorrection
     )
 
 def get_column_filter_condition(table_model, col_name: str, f_info: dict):

@@ -26,6 +26,27 @@ class AuditLog(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     business_key = Column(String, nullable=True, index=True)
 
+    __table_args__ = (
+        # [재교정률] 대시보드가 매 로드마다 감사 테이블을 훑지 않게 하는 유일한 수단.
+        # 이 인덱스가 없으면 7일 창 집계가 병렬 Seq Scan으로 떨어진다(2026-07-27 실측:
+        # 2,628,453행/1.6GB 기준 512ms, 128,523 블록 판독). 1,000만 행에서는 그대로 초 단위다.
+        #
+        # 부분 인덱스로 만드는 이유: source_name의 값 집합이 열려 있다(파서가 파일명을 소스명으로
+        # 쓰므로 실측 10,750종). 전량 색인은 수백 MB인데 사람이 쓴 행은 그중 2.8%뿐이다.
+        # 부분 술어가 planner에 매칭되는 근거: 드라이버가 psycopg2(클라이언트측 보간)라
+        # `source_name = 'user'`가 리터럴로 서버에 도달한다(2026-07-27 current_query()로 확인).
+        #
+        # INCLUDE 4컬럼은 GROUP BY 키 + count(DISTINCT) 대상 전부 → Index Only Scan이 되어
+        # 힙 방문이 사라진다. 사람 쓰기만 담으므로 현재 규모에서 수 MB 수준.
+        # PostgreSQL 전용 옵션(postgresql_*)은 SQLite에서 무시되어 일반 timestamp 인덱스가 된다.
+        Index(
+            "idx_audit_user_recorrection",
+            "timestamp",
+            postgresql_include=["table_name", "row_id", "column_name", "transaction_id"],
+            postgresql_where=text("source_name = 'user'"),
+        ),
+    )
+
 
 class DatabaseOutbox(Base):
     __tablename__ = "database_outbox"

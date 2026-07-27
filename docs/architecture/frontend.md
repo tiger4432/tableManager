@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (§5 `adminFetch` — 게이트 판정 4규칙 · §6 전사 계획 패널 M2.6 정정) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`90e284f` — **§3.1 실시간 동기화 무결성 3문제 이관**(구 `DATA_SYNC_SPEC §3`) · §5 `adminFetch` 게이트 판정 4규칙 · §6 전사 계획 패널 M2.6 정정) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -78,6 +78,22 @@ npm run build     # dist/ 생성
 > ⚠️ 같은 결함이 남아 있는 곳(평문 HTTP에서 실패): `admin.js`(페이로드/트랜잭션 ID 복사), `map_editor.js` `copyGridToExcel`, `main.js` `smartPasteViaIngestion`(우클릭 Smart Paste).
 > **상태 관리 주의:** `state.js`는 리액티브 스토어가 아닌 **평범한 싱글턴**. 변조 후 명시적 UI 리프레셔를 호출하는 수동 패턴. `admin.js`/`map_editor.js`는 `state.js`를 임포트하지 않고 자체 모듈 지역 변수를 사용.
 
+### 3.1 실시간 동기화 무결성 — **되풀이되는 세 문제** (2026-07-27 이관)
+
+> **출처·이관 사유:** 아래 세 문제는 ⚪ [spec/DATA_SYNC_SPEC §3](../spec/DATA_SYNC_SPEC.md)에서 옮겨 왔다. 그 문서의 **해결책 서술은 제거된 PySide6 클라이언트의 것이라 전부 폐기**됐지만, **문제 자체는 프레임워크와 무관하게 되풀이된다** — "페이지 단위로 나눠 읽는 목록"에 "밖에서 들어오는 변경"이 겹치면 언제나 같은 세 가지가 생긴다. 문제 서술을 여기로 옮김으로써 원 문서에 남은 마지막 유효 내용이 없어졌다.
+
+**문제 ①: 중복 행** — 가상/페이지 로딩으로 이미 들고 있는 행과 WS로 새로 들어온 같은 행이 겹쳐, 한 행이 두 번 보인다.
+- **올바른 형태**: 행의 **정체를 명시적으로 선언**하고, 유입을 *삽입*이 아니라 **정체 기준 교체**로 처리한다. 로컬 배열 인덱스를 정체로 쓰면 반드시 어긋난다.
+- **현행**: `grid.js`가 `getRowId: params => params.data?.row_id || params.data?.id`(:282)를 선언하므로 **AG-Grid가 정체를 강제**하고 `applyTransaction`이 같은 `row_id`를 갱신으로 흡수한다. 즉 이 문제는 **구조적으로 닫혀 있다** — 단 `row_id`가 항상 실려 온다는 전제 위에서다.
+
+**문제 ②: 늦게 도착한 응답이 현재 화면을 오염시킨다** — 필터·검색·페이지를 빠르게 바꾸면 먼저 떠난 요청의 응답이 **나중에** 도착해 이미 바뀐 화면을 덮는다.
+- **올바른 형태**: 요청마다 **세대(시퀀스/세션 id)**를 부여하고, **현재 세대가 아닌 응답은 전량 폐기**한다. "마지막에 도착한 것이 최신"이라는 가정이 이 부류의 원인이다.
+- **현행**: 이 형태가 실제로 있는 곳은 `trace.js`(`runTrace` seq 가드)와 `enrichment.js`(참조 패널 stale 가드)다. ⚠️ **메인 그리드 `api.fetchData` 경로에서는 대응 장치를 찾지 못했다**(2026-07-27 확인) — `state.pageCache`는 캐시일 뿐 세대 가드가 아니다. **미검증 항목**이며 판정은 [doc-auditor 소관](../process/DOC_OWNERSHIP.md).
+
+**문제 ③: `total`이 외부 삭제 후 드리프트한다** — 다른 클라이언트나 인제션이 행을 지우면, 클라가 로컬로 카운트를 가감하는 순간 **현재 필터에 매칭되던 행이었는지**를 알 수 없어 총계가 틀어진다.
+- **올바른 형태**: 총계를 **로컬에서 계산하지 말고**, 현재 필터를 실어 **서버에 다시 묻는다.** 이 값은 클라가 알 수 있는 종류의 값이 아니다.
+- **현행**: 조회 경로(`api.fetchData`)는 매 요청 **서버가 준 `result.total`을 그대로 쓴다**(:200-209 — 올바른 형태). ⚠️ 반면 WS 삭제 수신부(`websocket.js` :236-240)는 `applyTransaction({remove})`만 하고 **`total` 재조회를 하지 않는 것으로 보인다** — 하단 `Matches: N`이 낡은 채 남는 경로다. **미검증 항목**, 위와 같이 doc-auditor 소관.
+
 ---
 
 ## 4. 맵 에디터 (`map_editor.js`, ~4,209줄)
@@ -94,7 +110,8 @@ npm run build     # dist/ 생성
 | **오버레이 레이어** (`7d931dc`) | **좌표 변환은 클라 단일 구현이다** — `소스 원본(x,y) →[소스 메타 프레임]→ 물리 →[현재 화면 컨트롤]→ 셀`. `addOverlayLayer`가 `/tables/{src}/data`(원본 좌표) + `wafer_map_metadata` 2건을 읽고 `projectCellsToPhys`로 투영한다. 오버레이 전용 기하 코드는 없다 — `withPhysFrame`(프레임 창)으로 규격 읽기 지점만 갈아끼운 채 메인 로드와 **같은 두 함수**를 돌린다. `currentGeomSignature`(물리 6종 포함)/`syncOverlayGeometry`가 화면 규격 변경을 추종하고, `overlayAlignChip`은 `align.origin`으로만 판정한다. `importOverlayToGrid`는 `gridData`로만 반영(서버 쓰기 없음). **메인 로드와 코드 경로 완전 분리** — `selectedTable`·`gridData`·legend·규격·brush를 쓰지 않고 `switchTable`을 경유하지 않는다. 기준이 바뀌면 오버레이는 **해제**된다(맵 로드·테이블 전환·프레임 진입 3곳) |
 
 > **정정:** 맵 에디터는 **WebSocket을 사용하지 않습니다.** REST pull/push + localStorage. 실시간 WS는 메인 그리드(`websocket.js`)에만.
-> **오버레이와 서버의 관계(`7d931dc` 이후)**: 클라는 `GET /api/maps/overlay`를 **`limit=1` probe로만** 호출해 계측 보정 선언 유무(`align_applied.origin`)를 확인하고, **좌표는 소비하지 않습니다.** 엔드포인트와 `server/map_overlay.py`는 삭제되지 않았습니다 — 계약·실패 상태 6종은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
+> **오버레이와 서버의 관계 (2026-07-27 정정)**: 맵 에디터 클라는 `GET /api/maps/overlay`를 **전혀 호출하지 않습니다** — `client2/src/**` 전수 grep 0건(2026-07-27 실측). `7d931dc` 직후 남아 있던 `limit=1` 선언 probe가 **서버 선언 오버레이 레이어와 함께 삭제되면서 마지막 호출처가 없어졌습니다.** 엔드포인트와 `server/map_overlay.py`는 살아 있으나 소비자는 `bonding_plan`/`transfer_plan`의 가용량 산출 쪽입니다.
+> 실패 상태는 **명명된 4종**(`meta_unavailable`·`binding_unavailable`·`align_unavailable`·`no_data`) + IO 실패의 일반 `error`이며, 전부 **그리지 않고 목록에 실패 행으로 남습니다.** *(구 `align_unconfirmed`·`align_override_declared`는 서버·클라 양쪽 어디에도 없습니다 — 선언 레이어와 함께 2026-07-27 삭제.)* 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
 ### 4.1 전사 계획 사이드바 (`transfer_plan.js`, ~1,405줄)
 
@@ -120,12 +137,15 @@ npm run build     # dist/ 생성
 
 | 탭 | 내용 |
 |---|---|
-| **Overview** (첫 화면) | 헬스 4카드(File/Chain/AutoUpdate/Enrichment — 상세 수치+최근 이벤트+탭 딥링크), 전폭 레이아웃 |
+| **Overview** (첫 화면) | **재교정률 한 줄** + 헬스 4카드(File/Chain/AutoUpdate/Enrichment — 상세 수치+최근 이벤트+탭 딥링크), 전폭 레이아웃 |
 | **File Ingestion** | 인제션 로그(필터/정렬/페이지) + Workspaces(기본 접힘·요약) + 실패 진단→커스텀 파서 편집 딥링크 |
 | **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
 | **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
 | **Enrichment** | 규칙 표 + 결손 카운트 배지 + Queue 딥링크(`enrichment.html?rule=`) — 규칙 편집은 read-only 안내(CRUD API는 백로그) |
 
+- **재교정률 한 줄 (Overview 상단, `renderRecorrection`/`refreshRecorrection`)**: 사람이 같은 셀을 두 번 이상 고친 비율 — 핵심가치 #1의 계기([backend](./backend.md#재교정률-dashboardsummary--recorrection)). **카드도 패널도 모달도 아닌 한 줄**이고, 값 옆에 **분모를 항상 같이 적는다**(표본 100 미만이면 "추세로 읽지 말 것" 문구 + muted 톤). 지켜야 할 두 가지:
+  1. **자동 갱신 루프(`fetchOverview`)에 태우지 않는다.** 출처 `/dashboard/summary`는 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(실측 ~1.5s). `await` 없이 던지고 **5분(`RECORRECTION_MIN_INTERVAL_MS`) 간격**으로만 갱신한다 — 본문 카드 렌더가 이 요청을 기다리지 않는다.
+  2. **`rate_pct=null`은 "0%"가 아니라 "—"로 렌더한다.** 표본 없음과 조회 실패를 정상 0%로 위장하면 지표가 거짓말을 한다.
 - **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
 - **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
 - 신규 서버 API 0건 — 기존 `/admin/*`·`/enrichment/rules`만 소비. 함수 목록: [CODE_MAP §7](./CODE_MAP.md#7-client2src--웹-클라이언트).

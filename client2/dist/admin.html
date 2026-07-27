@@ -512,6 +512,32 @@
       padding: 0 4px;
     }
 
+    /* ── 재교정률 한 줄 (Overview 상단) ──
+       카드도 패널도 아닌 한 줄. 값 옆에 분모를 항상 같이 적는다 —
+       분모 없는 비율은 표본이 8개일 때도 그럴듯해 보인다. */
+    .recorrection-line {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 14px 20px 0;
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+    }
+    .recorrection-line .rc-label {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .recorrection-line .rc-value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text-primary);
+    }
+    .recorrection-line[data-tone="warn"] .rc-value { color: var(--warning); }
+    .recorrection-line[data-tone="danger"] .rc-value { color: var(--danger); }
+    .recorrection-line[data-tone="muted"] .rc-value { color: var(--text-secondary); }
+    .recorrection-line .rc-sub { font-size: 0.78rem; }
+
     /* ── Overview 탭 (좌패널 전폭 — 4 파이프라인 확장 카드) ── */
     .overview-grid {
       display: grid;
@@ -776,7 +802,7 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-Bu_i-itZ.js"></script>
+  <script type="module" crossorigin src="/assets/admin-CvsIvQOb.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/utils-BLiCfJ97.js">
   <link rel="stylesheet" crossorigin href="/assets/utils-rmd-75wa.css">
 </head>
@@ -843,6 +869,12 @@
       <div class="panel-body" style="padding: 0; display: flex; flex-direction: column;">
         <!-- ═══ Overview 탭: 4 파이프라인 확장 카드 (첫 화면, 좌패널 전폭) ═══ -->
         <div id="overview-wrapper" style="flex: 1; overflow: auto;">
+          <!-- 재교정률 한 줄: 사람이 같은 셀을 두 번 이상 고친 비율 (핵심가치 #1 "최소 공수 교정" 계기) -->
+          <div id="recorrection-line" class="recorrection-line">
+            <span class="rc-label">재교정률</span>
+            <span class="rc-value" id="recorrection-value">—</span>
+            <span class="rc-sub" id="recorrection-sub">불러오는 중…</span>
+          </div>
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->
           </div>

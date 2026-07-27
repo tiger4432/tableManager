@@ -141,9 +141,24 @@ class TableStat(BaseModel):
     last_updated: Optional[str] = None
     status: str = "Active" # Active / Idle
 
+class RecorrectionStat(BaseModel):
+    """재교정률 — 사람이 같은 셀을 두 번 이상 고친 비율 (SYSTEM_OVERVIEW §1 핵심가치 #1의 계기).
+
+    `rate_pct`는 표본이 없거나(measured_cells=0) 집계가 시간 초과되면 None이다.
+    소비자는 **반드시 measured_cells(분모)와 함께** 표시할 것 — 분모 없는 비율은 읽을 수 없다.
+    """
+    window_days: int
+    measured_cells: int          # 창 안에서 사람이 쓴 서로 다른 셀 수 (= 분모)
+    recorrected_cells: int       # 그중 서로 다른 트랜잭션으로 2회 이상 쓰인 셀 수 (= 분자)
+    rate_pct: Optional[float] = None
+    unavailable_reason: Optional[str] = None  # 집계 실패/시간초과 시 사유 (정상 시 None)
+
+
 class DashboardSummaryResponse(BaseModel):
     total_tables: int
     total_rows: int
     today_updates: int
     table_stats: list[TableStat]
     system_health: str = "Excellent"
+    # 신규 필드는 Optional — 구 클라이언트 호환(응답 확장은 하위호환이지만 명시적으로 둔다).
+    recorrection: Optional[RecorrectionStat] = None

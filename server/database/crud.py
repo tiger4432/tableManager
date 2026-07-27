@@ -127,6 +127,15 @@ SOURCE_PRIORITY = {
     "chain_ingestion": 4,
 }
 
+# The priority-0 layer above is the only source that means "a human typed this".
+# Every other writer is machine-driven: `collision_merge` is the merge engine,
+# `chain_ingestion` is the derived-table worker, and file parsers write under the
+# *ingested filename* as their source name (so the set of automatic source values is
+# open-ended - 10,750 distinct values on the live DB as of 2026-07-27). That is why
+# human writes must be selected POSITIVELY by this constant and never by blacklisting
+# automatic ones.
+USER_SOURCE = "user"
+
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
 # Same import guard as event_constants above: crud can be imported without server/ on sys.path.
 try:
@@ -346,6 +355,90 @@ def bulk_insert_audit_logs(db: Session, logs: list[dict]):
             "business_key": l.get("business_key")
         })
     db.bulk_insert_mappings(models.AuditLog, mappings)
+
+
+# ── 재교정률 (re-correction rate) — SYSTEM_OVERVIEW §1 핵심가치 #1 "최소 공수 교정"의 계기 ──
+#
+# 정의: 창(window) 안에서 사람이 쓴 셀 중, 사람이 **두 번 이상** 쓴 셀의 비율.
+#       셀 = (table_name, row_id, column_name). 낮을수록 좋다.
+#
+# 이 값이 왜 그렇게 계산되는지(각 결정의 근거)는 아래 주석에 남긴다. 숫자만 보고
+# 정의를 되짚을 수 없으면, 이 지표는 다시 "그럴듯해 보이는 틀린 숫자"가 된다.
+
+RECORRECTION_WINDOW_DAYS = 7
+# 감사 로그는 프루닝되지 않는다(2026-07-27 확인: outbox의 7일 보존은 database_outbox 전용이고
+# audit_logs를 지우는 운영 경로는 존재하지 않는다 — 실측 2,628,453행이 프로젝트 개시일부터
+# 연속). 창을 7일로 고정하는 것은 보존 한계 때문이 아니라 **지표를 현재 마찰에 반응하게**
+# 하기 위해서다. 전 기간 창은 과거 누적에 희석돼 어떤 회귀에도 움직이지 않는다.
+
+
+def _is_json_null(col):
+    """JSON 컬럼이 '값 없음'인지 — SQL NULL과 JSON null 양쪽을 덮는다.
+
+    AuditLog.old/new_value는 SQLAlchemy JSON 타입이라 파이썬 None이 SQL NULL이 아니라
+    JSON 'null'로 저장된다(실측: old_value IS NULL = 0행, old_value::text='null' = 4,290행).
+    한쪽만 검사하면 조용히 빗나간다.
+    """
+    import sqlalchemy as sa
+    return sa.or_(col.is_(None), sa.cast(col, sa.String) == "null")
+
+
+def get_recorrection_stats(db: Session, window_days: int = RECORRECTION_WINDOW_DAYS) -> dict:
+    """사람이 같은 셀을 두 번 이상 고친 비율을 반환한다.
+
+    반환: {window_days, measured_cells, recorrected_cells, rate_pct}
+    `rate_pct`는 분모가 0이면 None — 표본이 없을 때 0%로 위장하지 않는다.
+    분모(`measured_cells`)는 **항상 함께** 반환한다. 분모 없는 비율은 읽을 수 없다.
+    """
+    import sqlalchemy as sa
+    from datetime import timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    AL = models.AuditLog
+
+    inner = (
+        db.query(
+            AL.table_name.label("t"),
+            AL.row_id.label("r"),
+            AL.column_name.label("c"),
+            # [함정 2] 한 transaction_id 안의 여러 행은 **한 번의 사람 행위**다.
+            # 엑셀 붙여넣기 한 번이 같은 셀을 두 번 건드릴 수 있다(실측: 643개 그룹/1,286행).
+            # 행 수로 세면 44일 기준 3.88%로 부풀고, 트랜잭션으로 접으면 2.96%다.
+            sa.func.count(sa.distinct(AL.transaction_id)).label("txs"),
+        )
+        .filter(
+            # [함정 1] 자동 소스 제외. 파서/체인이 같은 셀을 반복해 덮는 것은 정상 동작이지
+            # 사람의 재교정이 아니다. 자동 소스는 파일명을 소스명으로 쓰기 때문에 값 집합이
+            # 열려 있다 — 블랙리스트가 아니라 USER_SOURCE 양성 선택이어야 한다.
+            AL.source_name == USER_SOURCE,
+            AL.timestamp >= cutoff,
+            # [함정 3] "같은 값을 다시 쓴 것"의 처리.
+            # 실제 값이 같은 재기입은 감사 로그에 **애초에 들어오지 않는다** —
+            # apply_row_update_internal의 has_changed 가드가 값이 바뀐 컬럼만 기록한다.
+            # (실측: 값이 동일한 user 행 중 진짜 동일값 재기입은 0건.)
+            # 남는 것은 신규 행 생성 시 is_new=True가 가드를 건너뛰며 남기는 null→null 행뿐이다
+            # (실측 4,290행). 이는 사람이 **빈칸으로 둔** 컬럼이지 쓴 셀이 아니므로 분모에서 뺀다.
+            sa.not_(sa.and_(_is_json_null(AL.old_value), _is_json_null(AL.new_value))),
+        )
+        .group_by(AL.table_name, AL.row_id, AL.column_name)
+        .subquery()
+    )
+
+    # FILTER 절 대신 CASE — SQLite/PostgreSQL 양쪽에서 동일하게 동작한다.
+    measured, recorrected = db.query(
+        sa.func.count(),
+        sa.func.coalesce(sa.func.sum(sa.case((inner.c.txs > 1, 1), else_=0)), 0),
+    ).select_from(inner).one()
+
+    measured = int(measured or 0)
+    recorrected = int(recorrected or 0)
+    return {
+        "window_days": window_days,
+        "measured_cells": measured,
+        "recorrected_cells": recorrected,
+        "rate_pct": round(100.0 * recorrected / measured, 2) if measured else None,
+    }
+
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
     if not mappings:
