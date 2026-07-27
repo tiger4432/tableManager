@@ -18,10 +18,11 @@
    * 물리 기판 공간 배치(Physical Alignment)와 화면 시각 눈금(Screen Visual)의 이원화 매핑
    * 회전/대칭 상태에서의 공정 데이터 무결성 보증 수식
 
-3. **[프론트엔드 함수 & API 규격서 (`specification.md`)](file:///c:/Users/kk980/Developments/assyManager/docs/map_editor/specification.md)**
+3. **[프론트엔드 함수 & API 규격서 — `spec/MAP_EDITOR_SPEC.md`](../spec/MAP_EDITOR_SPEC.md)**
    * 자바스크립트 모듈 ([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js)) 전체 함수 명세
    * 좌표 기하 변환 및 Bounding Box 연산 레퍼런스
-   * 캔버스 랜더링 엔진 및 WebSocket 실시간 브로드캐스트 파이프라인
+   * §4 렌더링 라이프사이클 · **§5 범용 맵 오버레이(정렬 계약)** · **§6 전사 계획**
+   * 🗄️ 이 자리에 있던 `specification.md`(선행판)는 2026-07-27 [_archive](../_archive/map_editor_specification.md)로 이관됐습니다 — 위 문서가 그 내용을 포함한 정본입니다
 
 ---
 

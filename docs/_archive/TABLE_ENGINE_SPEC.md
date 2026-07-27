@@ -1,5 +1,9 @@
 # 시스템 명세: 고성능 가상화 테이블 엔진 (Table Engine Specification)
 
+> 🗄️ **SUPERSEDED** by [architecture/frontend](../architecture/frontend.md) on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** `ApiLazyTableModel` · `BaseApiWorker`는 **폐기된 PySide6 데스크톱 클라이언트**의 구성요소입니다. 2026-07-27 전수 검색 결과 소스에 한 건도 없고 `client/__pycache__`의 컴파일 잔류물에만 남아 있습니다. 현행 클라이언트는 웹 `client2`(Vite + AG-Grid)입니다.
+
 이 문서는 `assyManager` 프로젝트의 핵심 뷰포트 관리 모델인 `ApiLazyTableModel`과 리팩토링된 비동기 백그라운드 워커 시스템의 아키텍처 및 동작 상세를 규정합니다.
 
 ---

@@ -23,6 +23,8 @@ description: 적대적 검수관. 구현 완료된 코드 변경(커밋·브랜�
    - **핫리로드/기동**: 재기동 없이 반영되나? 기동 마이그레이션이 기존 DB·트랜잭션 오염에 안전한가(rollback·information_schema 게이팅 교훈)?
 4. **테스트 실증**: `PYTHONIOENCODING=utf-8 conda run -n assy_manager python -m pytest server/tests/ -q` 직접 실행(주장 말고 실측). 기존 알려진 실패(`test_map_presets_api`)는 무관 처리. 프론트는 `node --check`.
 5. **문서 동기화 검수**: 히스토리·리빙 문서·`PROJECT_STATUS.md`가 변경과 정합한가. 과장("순서 보존"이 실제론 부분 보존 등)이 없는가.
+   - **어느 문서가 대상인지는 구현자의 "follow-ups" 목록으로 판단하지 마라** — 구현자는 자기가 연 파일만 본다. `docs/process/DOC_OWNERSHIP.md`에서 **변경된 코드 경로로 행을 찾아** 그 행의 문서를 전부 확인하라. 2026-07-27 실측: 구현자가 문서 2곳을 지목했는데 실제로는 8개 파일이 낡아 있었다.
+   - **개수를 세지 말고 집합을 비교하라.** `WARN_*`가 변경 전후 모두 "14종"인데 구성원이 바뀐 사례가 있다 — 개수 검사는 통과하고 오답이 남는다.
 
 ## 보고 형식 (이대로 반환)
 1. **판정**: GO / GO-WITH-FIXES / NO-GO + 한 줄 근거.

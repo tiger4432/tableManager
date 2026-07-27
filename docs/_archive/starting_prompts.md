@@ -1,5 +1,9 @@
 # 🤖 assyManager 에이전트별 스타팅 프롬프트 가이드
 
+> 🗄️ **SUPERSEDED** by [prompts/starting_prompt](../prompts/starting_prompt.md)(단수형) · `.claude/agents/*` on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 복수형 중복 파일입니다. 에이전트 역할 정의의 정본은 `.claude/agents/*`이고 총괄 SOP는 단수형 `starting_prompt.md`입니다 — 둘 다 살아 있으며 여기로 들어오는 링크는 없었습니다.
+
 본 문서는 `assyManager` 프로젝트에 투입되는 각 에이전트들이 프로젝트의 맥락과 본인의 역할을 즉시 파악할 수 있도록 제안된 시스템 프롬프트 모음입니다.
 
 ---

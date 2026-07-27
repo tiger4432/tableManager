@@ -1,5 +1,9 @@
 # AssyManager: 고성능 데이터 핸들링 및 인제션 기술 명세서
 
+> 🗄️ **SUPERSEDED** by [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) · [spec/batch_update_technical_specification](../spec/batch_update_technical_specification.md) on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 이 문서가 서술하는 `PUT /tables/{t}/upsert/batch` · `/cells/batch` 엔드포인트는 **`server/main.py`에 존재하지 않습니다**(2026-07-27 확인, 0건). 현행 배치 경로는 `PUT /tables/{t}/data/updates` → `crud.apply_batch_updates` 입니다.
+
 본 문서는 `assyManager` 프로젝트의 모든 데이터 변경 이벤트(인제션, 수동 수정, 삭제 등)에 대한 아키텍처와 API 호출 흐름을 설명합니다.
 
 ---

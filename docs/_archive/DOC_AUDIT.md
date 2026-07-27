@@ -1,5 +1,9 @@
 # 📋 AssyManager 문서·개발체계 진단서 (Documentation Audit & Governance Proposal)
 
+> 🗄️ **SUPERSEDED** by [process/CONTRIBUTING](../process/CONTRIBUTING.md) · [process/DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md) · [README](../README.md) on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 실행이 끝난 **1회성 계획서**입니다(P1~P5 반영 완료). 여기 제안됐던 규율 — 배지 표준·docs-as-code·아카이브 처리 방식·소유 매핑 — 은 전부 위 세 문서로 옮겨졌고 **그쪽이 정본**입니다. 새 작업에서 이 파일을 읽을 이유는 없습니다.
+
 > **Status:** ✅ Executed (2026-07-24 — P1~P5 반영 완료)
 > **작성일:** 2026-07-24
 > **범위:** 현황 진단 + 정비 목표 구조 + 개발 체계(거버넌스) 규칙 + 단계별 실행 계획
@@ -170,7 +174,7 @@ docs/
    ```
    → mtime 추정이 아니라 명시적 검증일로 신선도 판별.
 4. **히스토리 인덱스 자동화** — `history/README.md`를 파일명에서 자동 생성하는 스크립트 도입(수동 관리 종료).
-5. **낡은 문서는 삭제가 아니라 `_archive/`로 이관** — 상단에 SUPERSEDED 배지 부착. 링크·히스토리 보존 + 혼선 제거. **(승인된 처리 방식)** → 배지 문구의 정본은 [CONTRIBUTING §5](./process/CONTRIBUTING.md)이며, 여기 있던 사본은 그쪽으로 흡수됐습니다.
+5. **낡은 문서는 삭제가 아니라 `_archive/`로 이관** — 상단에 SUPERSEDED 배지 부착. 링크·히스토리 보존 + 혼선 제거. **(승인된 처리 방식)** → 배지 문구의 정본은 [CONTRIBUTING §5](../process/CONTRIBUTING.md)이며, 여기 있던 사본은 그쪽으로 흡수됐습니다.
 6. **버전 체계 통일** — 불연속 `Phase N.x` 폐기, `RELEASE_LOG.md`에 `YYYY-MM-DD | 영역 | 시맨틱 요약` 형식으로 일원화.
 
 ---

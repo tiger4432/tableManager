@@ -51,6 +51,7 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 | `activeBrush` | `string` | 현재 팔레트에서 선택되어 격자에 색칠할 값(Legend Value) |
 | `gridData` | `object` | 기판 고유 물리 좌표 키(`"${xp}_${yp}"`)를 기준으로 맵핑된 칩 값 매트릭스 |
 | `gridCells2D` | `object` | 스크린 인덱스 `gridCells2D[r][c]` 기준으로 맵핑된 시각/물리 좌표 정보 캐시 |
+| `loadedFCells` | `Set` | **로드 시점에 잠금 값이었던 셀**의 물리 좌표 키 집합. `isProtectedFCell`이 이것과 오버레이 잠금을 OR로 묶어 편집을 거부한다(§5.5의 단일 관문). ⚠️ 잠금 값은 **하드코딩 `'F'`가 아니라** 서버 `paint_lock` 선언에서 오는 `isLockedValue` 판정이다 — 맵을 다시 로드할 때마다 다시 채워진다 |
 | `isOriginMode` | `boolean` | 사용자가 마우스 클릭으로 `(0, 0)` 원점의 위치를 직접 지정하는 모드 활성화 여부 |
 | `isPainting` | `boolean` | 마우스 드래그를 이용해 격자에 연속 페인팅을 수행 중인지 여부 |
 | `isRightDrag` | `boolean` | 마우스 오른쪽 버튼을 드래그하여 연속 지우개(Erase)를 수행 중인지 여부 |

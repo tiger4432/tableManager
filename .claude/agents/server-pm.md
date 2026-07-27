@@ -10,7 +10,7 @@ description: Server(백엔드) 도메인 PM. server/ 전 영역 — main.py(API+
 2. [docs/overview/SYSTEM_OVERVIEW.md](../../docs/overview/SYSTEM_OVERVIEW.md) — 시스템 SSOT.
 3. `docs/process/PROJECT_STATUS.md` — **의무 아님.** 보드는 총괄의 도구다. 이 작업에 필요한 상태는 지시서에 발췌돼 온다. 발췌가 없어 막히면 읽지 말고 **총괄에게 물어라.**
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
-5. 관련 리빙 문서: [architecture/backend.md](../../docs/architecture/backend.md) · [data_model.md](../../docs/architecture/data_model.md) · [event_driven_backend.md](../../docs/architecture/event_driven_backend.md).
+5. **어떤 문서를 갱신할지는 열거하지 말고 표에서 찾아라**: [process/DOC_OWNERSHIP.md](../../docs/process/DOC_OWNERSHIP.md)가 **서브시스템 ↔ 코드 ↔ 문서** 매핑의 정본이다. 네가 손댄 **코드 경로**로 행을 찾고 그 행의 "리빙 문서" 열만 읽어라. 자주 걸리는 곳: `architecture/backend.md` · `data_model.md` · `event_driven_backend.md`, 그리고 **설정·배포·게이트를 건드렸다면** `guide/CONFIG_GUIDE.md` · `guide/DEPLOY_SETUP.md` · `process/PRODUCTION_READINESS.md` · `qa/FEATURE_CHECKLIST.md`(2026-07-27 감사: 이 네 개가 어느 헌장에도 없어 방치될 뻔했다 — 열거는 낡고 표는 안 낡는다).
 6. **코드맵은 읽지 말고 grep하라**: `docs/architecture/CODE_MAP.md`는 790줄(15,000단어)이다 — 전량 읽기는 착수만 늦춘다. 찾는 심볼로 앵커만 얻어라 (`grep -n "<심볼>" docs/architecture/CODE_MAP.md`) → 소스는 **그 부분만 Read**. 앵커는 최대 ±20줄 어긋날 수 있다고 가정하고, 어긋났으면 보고서에 적어라. 파일 전량 읽기는 여전히 금지.
 7. **자기 교훈 파일 로드**: [agent_workspace/memory/server-pm.md](../../agent_workspace/memory/server-pm.md) — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 

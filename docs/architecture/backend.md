@@ -55,14 +55,22 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 **판정 조인** (`server/health.py`) — 프로세스 존재는 감시자가, 진행은 워커가 권위를 갖는다.
 
-| 감시자 | 박동 | 판정 |
-|---|---|---|
-| running 아님 | — | `down` |
-| running | 정체 | `wedged` (살아 있는데 진행 없음) |
-| running | 없음 · uptime < 60s | `starting` (유예, 경보 아님) |
-| running | 신선 | `ok` |
+워커 상태값은 **정확히 8종**이며 전수는 다음과 같다(`health.py`의 `entry["status"]` 대입 지점 전수 — 2026-07-27 대조).
 
+| 감시자 | 박동 | 판정 | 뜻 |
+|---|---|---|---|
+| running 아님 | — | `down` | 감시자가 프로세스 없음/실패로 본다 |
+| running | 없음 · uptime < 60s | `starting` | 기동 유예 — **경보 아님**(`degraded`까지만) |
+| running | 없음 · 유예 경과 | `missing` | 프로세스는 도는데 **한 번도 박동한 적 없음** |
+| running | 다른 pid의 박동 | `foreign_beat` | 아래 pid 규율 참조 |
+| running | 정체(60초) | `wedged` | **살아 있는데 진행 없음** — pid 검사로는 안 보이는 케이스 |
+| 정보 없음 | 정체(60초) | `stale` | 감시자 상태 파일이 없어(`supervisor: absent`) 프로세스 관점을 못 얻음 |
+| running | 신선 | `ok` | |
+| running | 신선하지만 **claim한 작업이 300초간 무진행** | `stalled` | |
+
+- ⚠️ **`stalled`는 `wedged`와 다른 검출기다.** 박동은 *루프 하나가 돈다*는 것만 증명한다 — 워처의 3초 재시도 폴러가 계속 박동하는 동안 인제션이 멈춰 있었고 `/health`는 `ok`였다. 그래서 **작업 단위의 진행**을 따로 본다. 임계가 60초가 아니라 **300초**인 것은 의도적이다(박동은 2~5초 루프, 작업 청크는 실측 p95 9.7초·max 12.5초로 균일하지 않다). 더 구체적인 판정(`down`/`wedged`/`missing`)은 **덮어쓰지 않는다** — `ok`일 때만 `stalled`로 강등된다.
 - **박동은 감시자가 띄운 pid의 것만 인정한다.** 같은 역할의 유령 프로세스나 재기동 직전에 죽은 전임자의 박동이 정체를 가리는 사례가 드릴에서 관측됐다(불일치 시 `foreign_beat`).
+- **감시자 자신의 상태값은 별개 어휘다** — `absent` · `ok` · `stale` · `correlated_failure` · `failed_children` 5종. 워커 상태값과 섞어 쓰지 말 것(`stale`만 두 어휘에 모두 존재하며 뜻이 다르다).
 - **outbox 적체는 크기가 아니라 나이로 판정한다** — 정상적인 10만 행 적재 하나가 outbox 약 11.6만 행을 만들기 때문에, 멈춘 워커를 잡을 만큼 낮은 크기 임계는 큰 파일마다 오경보한다. 가장 오래된 미처리 행이 5분 초과 `degraded` / 15분 초과 `unhealthy`, 건수는 참고값(1만 캡). 두 질의 모두 부분 인덱스 `idx_outbox_unprocessed` 위 O(1).
 - 감시자 상태 파일이 없으면 `supervisor: absent`(bare uvicorn·격리 스택) — 디스크의 박동만 참고 판정한다.
 
@@ -160,7 +168,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | **Chain Ingestion Worker** (`chain_ingestion_worker.py`) | outbox LISTEN/NOTIFY | `processed_chain=False` 폴링(200 배치) → tx별 그룹 → `chain_rules.json` 매칭 규칙의 맵퍼 동적 임포트·실행 → 파생 업데이트를 `chain_*` tx로 적용(source=chain_ingestion 순환 차단) → `/internal/events/broadcast`(통지의 created_logs는 직렬화 전 `MAX_NOTIFY_CREATED_LOGS`=500 절단 + `total_log_count` 실건수 동봉 — `event_constants.py` 공용 상수, 워처 C-5 계약과 동일 형태). 3회 재시도 후 FAILED. `load_chain_rules()`는 `enrichment_rules.json`에서 dedup 투영 룰(`enrichment_mapper.map_enrichment_dedup`, is_batch)을 자동 파생·병합하며, `rule` 인자를 선언한 맵퍼에만 룰 dict가 전달된다(기존 맵퍼 시그니처 불변) |
 | **Graph Sync Worker — materializer** (`graph_sync_worker.py` + `graph_materializer.py`) | outbox 증분 소비(자체 keyset 커서 `graph_sync_state.last_outbox_id`, LISTEN/NOTIFY) | 독립 FastAPI(:8090). 이벤트 행을 `ontology_mapping.json` v2 매핑에 따라 **PG 엣지 스토어(`graph_nodes/edges`)로 자동 승격**. 엣지 provenance는 식별 컬럼 CellSource winner의 최저 서열(보수적), 재교정 시 `(from,type,source_row_ref)` 스코프 retarget. `[GraphLatency]` 계측(SLO 10s), 배치 본체는 `asyncio.to_thread` 격리. `/sync`(수동)는 키셋 청킹 **백필/복구** 도구(`"all"` 지원). Neo4j는 청크 훅으로 병행 가능(G3). 상세: [event_driven_backend §4](./event_driven_backend.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) |
 
-공통: 위 4종 워커는 각자의 작업 루프 안에서 **진행 박동**(`watcher`/`chain`/`graph`/`scheduler`)을 발행하며, `/health`가 감시자의 프로세스 관점과 조인해 `ok`/`starting`/`wedged`/`down`을 판정합니다(§1.3).
+공통: 위 4종 워커는 각자의 작업 루프 안에서 **진행 박동**(`watcher`/`chain`/`graph`/`scheduler`)을 발행하며, `/health`가 감시자의 프로세스 관점과 조인해 **8종**(`ok`·`starting`·`missing`·`foreign_beat`·`wedged`·`stale`·`stalled`·`down`)을 판정합니다 — 전수와 뜻은 §1.3.
 
 공통: 모든 워커가 `SYSTEM_RELOAD` outbox 이벤트로 규칙·설정·맵퍼 캐시를 핫리로드하며, 이때 `models.refresh_dynamic_models(engine)`로 **신규 동적 테이블의 물리 CREATE까지 보충**합니다(게이트+checkfirst로 중복 무해 — 웹서버가 1차 소유자, 이슈 #7). graph materializer도 배치 내 SYSTEM_RELOAD를 감지해 매핑·테이블 config를 리로드합니다(이슈 #8 해소).
 

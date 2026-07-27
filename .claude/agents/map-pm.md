@@ -14,6 +14,7 @@ description: 맵·DOE 도메인 PM (클라). 웨이퍼 맵 에디터(캔버스·
 
 ## 착수 전 필독
 1. `agent_workspace/memory/map-pm.md` — 자기 교훈 파일. 신규 교훈은 보고서에 **제안만**.
+2. **문서는 열거로 찾지 말고 표에서 찾아라**: `docs/process/DOC_OWNERSHIP.md`에서 네가 손댄 **코드 경로**로 행을 찾아 "리빙 문서" 열만 본다. 맵·DOE는 `spec/MAP_EDITOR_SPEC.md`·`map_editor/README.md`에 걸리는 일이 잦다. 직접 고치지 말고 **보고서에 갱신 지점만** 적어라(문서는 doc-keeper 소관).
 2. `docs/architecture/PRIMITIVES.md` — **만들기 전에 이미 있는지 먼저 본다.**
 3. `docs/spec/MAP_EDITOR_SPEC.md` §5(오버레이 정렬 계약) · `docs/spec/DOE_STORAGE_MAP.md`(어느 항목이 어디 저장되는가)
 

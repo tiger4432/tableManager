@@ -1,6 +1,14 @@
 # AssyManager: 데이터 동기화 및 무결성 관리 명세서
 
-본 문서는 실시간 데이터 동기화, 가상 로딩, 그리고 클라이언트 사이드 데이터 무결성 보호 메커니즘을 기술합니다. 데이터 누락 또는 중복 현상 디버깅 시의 핵심 참조서입니다.
+> **Status:** ⚪ 스냅샷 — **폐기된 PySide6 데스크톱 클라이언트 기준** | **Last-verified:** 2026-07-27
+>
+> 🛑 **읽기 전에: 본문의 구현 서술은 현행 클라이언트의 것이 아닙니다.** 2026-07-27 전수 대조 결과 `WsListenerThread` · `ApiLazyTableModel` · `_build_row_id_map` · `_search_session_id` · `_chunk_size` · `beginMoveRows`/`beginResetModel`/`canFetchMore`(Qt 모델 API)는 **`server/`·`client2/`·`client/` 어디에도 없습니다.** 전부 제거된 데스크톱 클라이언트의 심볼입니다.
+>
+> **현행 정본** — 실시간 동기화는 `client2/src/websocket.js`(249줄, 지수 백오프 재연결 + AG-Grid 트랜잭션 적용)와 `server/main.py`의 `ConnectionManager`이며, 서술은 [architecture/frontend §3](../architecture/frontend.md)·[architecture/event_driven_backend](../architecture/event_driven_backend.md)에 있습니다.
+>
+> **그럼에도 남겨 두는 이유:** §3의 무결성 가드가 다루는 **문제**(가상 로딩과 실시간 유입이 겹쳐 생기는 중복 행, 늦게 도착한 검색 응답이 현재 화면을 오염시키는 경합, 외부 삭제 시 total 불일치)는 프레임워크와 무관하게 되풀이됩니다. **문제 서술은 유효하고 해결책 서술은 폐기됐다**고 읽으십시오.
+
+본 문서는 실시간 데이터 동기화, 가상 로딩, 그리고 클라이언트 사이드 데이터 무결성 보호 메커니즘을 기술합니다.
 
 ---
 

@@ -1,5 +1,9 @@
 # 🗺️ Map Editor Specifications & Function Reference (`specification.md`)
 
+> 🗄️ **SUPERSEDED** by [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 같은 제목·같은 §1~§3 구조의 선행판이며, 후속 문서가 §4~§6(렌더링 라이프사이클·오버레이 정렬 계약·전사 계획)까지 담습니다. **이 문서에만 있던 `loadedFCells` 상태 변수는 아카이브 전에 후속 문서 §2로 이관했습니다**(설명은 현행 `paint_lock` 선언 기준으로 정정). `initTableSelect`는 코드에도 없는 죽은 심볼이라 이관하지 않았습니다.
+
 본 문서는 `assyManager` 프로젝트의 2세대 격자 맵 에디터([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js))에 구현된 모든 프론트엔드 자바스크립트 함수들의 설계 규격, 변환 공식 및 상세 API 레퍼런스를 정리합니다.
 
 ---

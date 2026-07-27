@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+> 🗄️ **SUPERSEDED** by [process/CONTRIBUTING](../process/CONTRIBUTING.md) · `.claude/agents/*` on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 프로젝트와 무관한 일반 LLM 행동 지침이며 어느 헌장도 이 파일을 참조하지 않습니다. **원래 이름이 `CLAUDE.md`라 그대로 두면 프로젝트 지침 파일로 오인될 수 있어** 이관하면서 이름을 바꿨습니다(구명: `docs/prompts/CLAUDE.md`).
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.

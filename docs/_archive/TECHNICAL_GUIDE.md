@@ -45,7 +45,7 @@ AssyManager는 수만 건의 자동화 로그를 지연 없이 처리하기 위�
 - **Precise Search**: 보이는 컬럼 및 사용자 선택 컬럼에 대한 정밀 필터링 지원.
 
 > [!NOTE]
-> 인제션 파이프라인과 배치 시퀀스는 **[배치 처리 기술 명세서](../spec/BATCH_PROCESSING_SPEC.md)**에 상술되어 있습니다.
+> 인제션 파이프라인과 배치 시퀀스는 **[배치 처리 기술 명세서](./BATCH_PROCESSING_SPEC.md)**에 상술되어 있습니다(2026-07-27 함께 아카이브됨 — 현행 문서는 [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md)).
 
 ---
 

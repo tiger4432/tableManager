@@ -28,7 +28,7 @@
 | 2 | **C1 접근 통제** — 최소 `admin/scripts/code`·`auto-update/run-now` 두 라우트 | 대기 |
 | 3 | **B4 롤백 절차** (프로덕션 차단). ⚠️ 실제 사례 확보(2026-07-27): config를 먼저 바꾸면 **코드만 되돌려서는 복구되지 않는다** — config는 요청마다 재로드, 코드는 재기동까지 고정. + 스키마 싱크가 `print()`라 **ALTER가 로그 파일에 안 남아 사후 감사 불가**(B3와 같은 계열) | 대기 |
 | 4 | **C3 백업 절차** — config·workspace·PG. **사용자 입력 필요**(보관 위치·주기). 복원을 실제로 해볼 것 | 대기 |
-| 5 | **문서 감사 후속** — ⓐ CODE_MAP 클라 앵커 5파일 재측정(`cdcddee` 이후 +145~308줄 어긋남, 선언 허용오차 ±20 초과) ⓑ **7건 아카이브**(49→42): `spec/BATCH_INGESTION_SPEC`·`BATCH_PROCESSING_SPEC`·`TABLE_ENGINE_SPEC`·`prompts/CLAUDE`·`prompts/starting_prompts`(복수형 중복)·`map_editor/specification`·`DOC_AUDIT` ⓒ 헬스 상태값 문서 4종 vs 코드 8종(`stalled` 누락) ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) ⓔ **헌장 공백** — `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 **어느 에이전트 헌장에도 안 적혀 있다.** 이번엔 doc-keeper가 `DOC_OWNERSHIP` 표를 따라가 고쳤을 뿐 — 헌장만 읽는 에이전트였으면 방치됐다. 문서 문제가 아니라 헌장 문제(총괄 소관) | 대기 |
+| 5 | ~~**문서 감사 후속**~~ ✅ **완료** — ⓐ 클라 앵커 재측정(code-mapper, 감사 13표본 정확) ⓑ **7건 아카이브 49→42**(링크 666개 검사·끊김 0) ⓒ 헬스 상태값 — 코드에 **어휘가 4종류** 따로 있고 워커 상태는 8종, 문서 4곳이 `missing`·`stale`·`stalled` 누락. **`stalled`는 라벨 누락이 아니라 다른 탐지기**(임계 300초, 청크 간격이 균일하지 않아서. 우리 실제 인시던트가 "워처는 3초마다 뛰는데 인제션은 얼어붙은" 형태였다) ⓓ `DATA_SYNC_SPEC` — 죽은 건 문단 하나가 아니라 **문서 전체**라 삭제 대신 배너+등급조정, 무결성 가드의 *문제* 서술만 유효 ⓔ 헌장이 문서를 **열거**하던 것을 `DOC_OWNERSHIP` 표 참조로 전환 ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) ⓔ **헌장 공백** — `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 **어느 에이전트 헌장에도 안 적혀 있다.** 이번엔 doc-keeper가 `DOC_OWNERSHIP` 표를 따라가 고쳤을 뿐 — 헌장만 읽는 에이전트였으면 방치됐다. 문서 문제가 아니라 헌장 문제(총괄 소관) | 대기 |
 | 6 | `replace_map` 빈 집합 — 서버 scope 필드 | 대기 |
 | 7 | M3 맵 메타 자동 등록 (ingestion 체인) | 대기 |
 | 8 | P3 대형 파일 (backpressure·COPY·상한) | 대기 |

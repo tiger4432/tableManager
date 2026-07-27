@@ -1,5 +1,9 @@
 # AssyManager: 고성능 배치 처리 및 인제션 기술 명세서 (Enterprise Rev.)
 
+> 🗄️ **SUPERSEDED** by [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) · [architecture/event_driven_backend](../architecture/event_driven_backend.md) on 2026-07-27. 히스토리 추적용으로만 보존됩니다.
+>
+> **아카이브 근거:** 위와 같은 이유로 엔드포인트가 실재하지 않으며, 현행 전파 경로는 WebSocket 직통이 아니라 **Outbox + LISTEN/NOTIFY**입니다.
+
 본 문서는 `assyManager` 프로젝트의 핵심 엔진인 **배치 처리(Batch Processing)** 및 **실시간 인제션(Real-time Ingestion)** 아키텍처를 상세히 기술합니다.
 
 ---
