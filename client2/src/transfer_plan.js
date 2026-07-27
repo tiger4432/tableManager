@@ -167,18 +167,64 @@ async function fetchStages() {
 // 표시와 저장이 같은 함수를 쓰지 않으면 화면과 DB가 반드시 갈라진다.
 // ============================================================
 
-// 끝 층. 미입력('' / null)은 "아직 정하지 않음"이며 0과 다르다.
-function bandTo(b) {
-  if (!b || b.to === '' || b.to === null || b.to === undefined) return null;
-  const n = Number(b.to);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
+// 끝 층 판정 — **3상태**이고, `to` 해석의 구현은 이 함수 하나뿐이다.
+//
+//   blank   : 없음 / null / '' / 공백뿐인 문자열 → 오류가 아니라 "아직 정하지 않음". 층 수 0.
+//   ok      : 유한한 JSON 숫자, 또는 공백을 제거한 10진 정수 문자열. |값| ≤ 2^53.
+//   invalid : 그 외 전부 — true / [] / {} / '0x10' / '1_0' / '7.5' / '1e3' / NaN / 2^53 초과.
+//
+// ⚠️ **`Number()` 강제 변환을 쓰지 않는다.** `Number('  ')===0` · `Number([])===0` ·
+//    `Number('0x10')===16` · `Number(true)===1` 은 JS의 사고이고, 이식하면 버그가 스펙이 된다.
+//    핵심은 값이 아니라 **구조**다: 0으로 읽히면 `prevTo` 걷기가 **거기서 멈추고**, null로
+//    읽히면 **건너뛴다**. 그래서 `[10, '  ', 20]`이 화면에서는 20층, 서버에서는 10층이 됐다
+//    (한 화면, 두 숫자). blank와 invalid를 걷기에서 **똑같이 건너뛰게** 두는 것이 강제 변환
+//    흉내내기로 갈라지는 경우를 통째로 없애는 방법이다. 건너뛰되 **보이게** 한다(renderBand).
+//
+// 정본 벡터: `contracts/band_arithmetic/vectors.json` — 서버 `_band_to`와 같은 파일에 고정된다.
+// 상수·정규식을 함수 안에 두는 것은 의도적이다: 계약 하네스가 이 함수를 **본문만 떼어** 평가하므로
+// 규칙이 밖에 있으면 하네스가 검사하는 것과 앱이 실행하는 것이 갈린다.
+function bandToState(b) {
+  if (!b || typeof b !== 'object') return { value: null, state: 'invalid' };
+  const raw = b.to;
+  if (raw === null || raw === undefined) return { value: null, state: 'blank' };
+  if (typeof raw === 'boolean') return { value: null, state: 'invalid' };
+  const MAX_LAYER = 9007199254740992;                       // 2^53 — 계약의 max_layer
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (s === '') return { value: null, state: 'blank' };
+    if (!/^[+-]?[0-9]+$/.test(s)) return { value: null, state: 'invalid' };
+    // 자릿수를 그대로 비교한다. `Number('9007199254740993')`은 검사가 돌기도 전에 2^53으로
+    // 접혀 경계를 통과시킨다 — 문자열 경로에서는 BigInt로 **정확히** 판정할 수 있다.
+    let big;
+    try { big = BigInt(s); } catch (e) { return { value: null, state: 'invalid' }; }
+    if (big > BigInt(MAX_LAYER) || big < -BigInt(MAX_LAYER)) return { value: null, state: 'invalid' };
+    return { value: Number(big), state: 'ok' };
+  }
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return { value: null, state: 'invalid' };     // NaN · ±Infinity
+    if (Math.abs(raw) > MAX_LAYER) return { value: null, state: 'invalid' }; // 1e300 등
+    return { value: Math.trunc(raw), state: 'ok' };                          // 0 방향 절사
+  }
+  return { value: null, state: 'invalid' };                                  // 배열 · 객체 등
 }
 
+// 값만 필요한 호출부용 얇은 래퍼. **blank와 invalid는 둘 다 null**이다 — 산술에서 구분되지
+// 않는 것이 계약이고, 구분이 필요한 곳(표시)은 `bandToState`를 직접 쓴다.
+function bandTo(b) { return bandToState(b).value; }
+
+// map_editor의 `normalizeBands`가 저장 정규형을 만들 때 같은 판정기를 쓴다. 정규화가 자기
+// 나름의 `Number()`를 돌리면 **읽기-수정-쓰기가 조용히 값을 바꾼다** (실제로 '0x10'이 16으로
+// 저장되고 있었다). 의존 방향은 map_editor → transfer_plan 하나뿐이라 순환이 생기지 않는다.
+// ⚠️ `export function bandToState`로 합치지 말 것 — 계약 하네스가 `function NAME(`로 본문을
+//    떼어 가므로, 선언 앞에 `export`가 붙으면 추출이 깨진다(하네스는 exit 2로 죽는다).
+export { bandToState };
+
 // 앞 구간의 끝 층(없으면 0). **배열 위치**가 순서라는 규칙이 여기 한 줄에 들어 있다.
+// `ok`인 구간만 걷기를 멈춘다 — blank도 invalid도 건너뛴다.
 function prevTo(bands, i) {
   for (let j = i - 1; j >= 0; j--) {
-    const t = bandTo(bands[j]);
-    if (t !== null) return t;
+    const st = bandToState(bands[j]);
+    if (st.state === 'ok') return st.value;
   }
   return 0;
 }
@@ -188,8 +234,8 @@ function bandFrom(bands, i) { return prevTo(bands, i) + 1; }
 
 // 층 수 = to_i − to_(i−1). 뺄셈 한 번 — 라벨을 파싱하지 않는다.
 function bandLayers(bands, i) {
-  const t = bandTo(bands[i]);
-  return t === null ? 0 : Math.max(0, t - prevTo(bands, i));
+  const st = bandToState(bands[i]);
+  return st.state === 'ok' ? Math.max(0, st.value - prevTo(bands, i)) : 0;
 }
 
 function paintedOf(value) { return Number(S.counts[value] || 0); }
@@ -236,14 +282,27 @@ function nextBandSeq(bands) {
 }
 
 // 자재 ID는 **원문 그대로가 정체**다(저장 키에 그대로 들어간다).
-// 아래 분해는 오직 ① 가용 조회 파라미터 ② 자재 맵 열기의 맵 키 조립에만 쓰는
-// **최선 노력 해석**이며, 규칙은 새로 만들지 않고 이미 쓰던 것(맵 키 `lot_slot`을
-// 마지막 '_'에서 가르기)을 그대로 쓴다. 파싱 규칙이 바뀌어도 키는 움직이지 않는다.
+// 아래 분해는 오직 ① 가용 조회 파라미터 ② 자재 맵 열기의 맵 키 조립에만 쓴다.
+// 규칙은 `plan_store.material_identity` {compose:[lot,slot], separator:'_'} —
+// **뒤에서부터** 가르므로 앞 필드가 나머지를 흡수한다(`LOT_A_01` → `LOT_A` + `01`).
+// ⚠️ 같은 분리자를 쓰는 관례가 셋이다. `map_overlay.build_key_filters`는 반대 방향이다
+//    (PRIMITIVES §2). 이쪽이 서버 `_split_material`과 맞아야 하는 이유는 하나다:
+//    DOE 패널과 서버 validate가 **같은 자재로 같은 엔드포인트**(`source-summary`)를 묻기
+//    때문에, 분해가 갈리면 한 화면에 두 개의 가용치가 생긴다.
+//
+// [못 풀면 **거부**한다 — 총괄 결정 2026-07-27, PRIMITIVES §2에 등록됨]
+// 분리자가 없는 `ABC`, 한쪽이 비는 `ABC_`/`_01`은 `(lot, slot)`으로 풀 수 없다.
+// 종전 폴백 `("ABC", "")`는 그대로 `?lot=ABC&slot=`를 조회해 **0을 확정 숫자로 표시**했는데,
+// "조회 못 함"과 "잔여 0"이 합쳐지면 부족 경고가 조용히 죽는다(PRIMITIVES §7).
+// 반환은 `{lot: null, slot: null}` — 빈 문자열이 아니라 null이라야 호출부가 검사를 잊지 못한다.
 function splitMaterialId(id) {
-  const s = String(id || '').trim();
+  const s = String(id === null || id === undefined ? '' : id).trim();
   const i = s.lastIndexOf('_');
-  if (i <= 0) return { lot: s, slot: '' };
-  return { lot: s.slice(0, i), slot: s.slice(i + 1) };
+  if (i < 0) return { lot: null, slot: null };            // 분리자 부재 — 추측하지 않는다
+  const lot = s.slice(0, i).trim();
+  const slot = s.slice(i + 1).trim();
+  if (!lot || !slot) return { lot: null, slot: null };    // 선행/후행 분리자로 한쪽이 빔
+  return { lot, slot };
 }
 
 // ── legend 행 접근 (원천은 map_editor · 여기선 읽기 전용 미러) ──
@@ -290,6 +349,13 @@ async function getSourceSummary(id, force = false) {
   }
   const st = stageOfTable(S.ctx.table);
   const { lot, slot } = splitMaterialId(id);
+  if (lot === null || slot === null) {
+    // 해석 실패는 **조회하지 않는다.** `?lot=ABC&slot=`를 물으면 서버가 0을 돌려주고
+    // 화면은 그것을 확정 잔여로 보여준다 — 부족 경고가 조용히 죽는 경로다.
+    const entry = { status: 'unresolved' };
+    S.summaries.set(key, entry);
+    return entry;
+  }
   const entry = { status: 'loading' };
   entry.promise = (async () => {
     const params = new URLSearchParams({ stage: st ? st.id : '', lot, slot });
@@ -322,8 +388,9 @@ function availabilityOf(id) {
     return {
       status: entry.status, value: null, reliable: false,
       reason: entry.status === 'loading' ? '조회 중'
-        : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
-          : (entry.error || '가용 조회 실패')),
+        : (entry.status === 'unresolved' ? '자재 ID를 lot·slot으로 나눌 수 없어 조회하지 않았습니다 (형식: lot_slot)'
+          : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
+            : (entry.error || '가용 조회 실패'))),
     };
   }
   const data = entry.data || {};
@@ -361,6 +428,9 @@ async function materialMetaValues(table, id) {
   // 맵 키 컬럼이 하나면 자재 ID **원문이 곧 맵 키**다 — 해석이 끼지 않는다.
   if (cols.length === 1) { out[cols[0]] = String(id); return out; }
   const { lot, slot } = splitMaterialId(id);
+  // 해석 실패면 **빈 필터**를 돌려준다 → `probeMapExists`가 null(=미상)을 준다.
+  // 여기서 억지로 조회하면 "맵 없음"이 나오는데, 그건 "확인 못 했다"의 위장이다.
+  if (lot === null || slot === null) return out;
   out[cols[0]] = lot;
   out[cols[1]] = slot;
   return out;
@@ -460,7 +530,7 @@ function doeLine2(value, planMode) {
   if (!planMode) return `칠함 ${painted}`;
   const bands = bandsOf(value);
   if (bands.length === 0) return `칠함 ${painted} · 구간 없음`;
-  const top = bands.reduce((m, b) => Math.max(m, bandTo(b) === null ? 0 : bandTo(b)), 0);
+  const top = bands.reduce((m, b) => { const t = bandTo(b); return Math.max(m, t === null ? 0 : t); }, 0);
   const total = bands.reduce((a, b, i) => a + bandTotal(value, bands, i), 0);
   const mats = new Set();
   bands.forEach(b => (b.materials || []).forEach(m => mats.add(m)));
@@ -469,6 +539,11 @@ function doeLine2(value, planMode) {
 
 // 파생 숫자 한 줄 — 사용자가 머릿속으로 곱하지 않도록 **식을 그대로 보여준다**.
 function bandCalcText(value, bands, i) {
+  // 읽을 수 없는 끝 층은 0층으로 세되 **왜 0인지**를 이 줄에서 말한다.
+  // (틀린 숫자보다 나쁜 것은 틀린 줄 모르는 숫자다.)
+  if (bandToState(bands[i]).state === 'invalid') {
+    return '끝 층을 숫자로 읽을 수 없어 이 구간은 0층으로 셉니다 — 끝 층을 다시 입력하세요.';
+  }
   const layers = bandLayers(bands, i);
   if (layers <= 0) return '끝 층을 입력하면 소요가 계산됩니다.';
   const painted = paintedOf(value);
@@ -483,15 +558,25 @@ function bandCalcText(value, bands, i) {
 function renderBand(value, bands, i) {
   const b = bands[i];
   const from = bandFrom(bands, i);
-  const to = bandTo(b);
+  const st = bandToState(b);
   const layers = bandLayers(bands, i);
-  const rangeTxt = to === null ? `${from}층 ~ <span class="tp-unknown-val">미정</span>`
-    : `${from}–${to}층 <b>${layers}층</b>`;
-  return `<div class="tp-band" data-i="${i}" data-seq="${b.seq}">
+  // 3상태를 **이미 있는 한 줄 안에서** 구분한다 — 새 영역·모달을 만들지 않는다.
+  // 읽을 수 없는 값은 원문을 그대로 보여준다: 무엇을 고쳐야 하는지가 곧 값 자체다.
+  let rangeTxt;
+  if (st.state === 'ok') {
+    rangeTxt = `${from}–${st.value}층 <b>${layers}층</b>`;
+  } else if (st.state === 'blank') {
+    rangeTxt = `${from}층 ~ <span class="tp-unknown-val">미정</span>`;
+  } else {
+    const shown = String(JSON.stringify(b.to));
+    const clipped = shown.length > 24 ? `${shown.slice(0, 24)}…` : shown;   // 한 줄을 넘기지 않는다
+    rangeTxt = `${from}층 ~ <span class="tp-unknown-val bad" title="저장된 끝 층 값 ${esc(shown)} 을(를) 숫자로 읽을 수 없습니다. 이 구간은 0층으로 세고, 다음 구간은 이 구간을 건너뛰어 계산합니다. 아래 [끝 층]에 숫자를 넣으면 고쳐집니다.">읽을 수 없는 값 ${esc(clipped)}</span>`;
+  }
+  return `<div class="tp-band${st.state === 'invalid' ? ' bad' : ''}" data-i="${i}" data-seq="${b.seq}">
     <div class="tp-band-l1">
       <span class="tp-band-range" title="시작 층은 앞 구간의 끝 + 1로 자동 결정됩니다 (편집 불가)">${rangeTxt}</span>
       <span class="tp-fld"><label>끝 층</label>
-        <input class="glass-input mono tp-b-to" type="number" min="1" step="1" value="${to === null ? '' : to}"
+        <input class="glass-input mono tp-b-to" type="number" min="1" step="1" value="${st.state === 'ok' ? st.value : ''}"
           title="이 구간이 끝나는 층. 다음 구간은 여기 +1에서 시작합니다." /></span>
       <button type="button" class="tp-band-del" title="이 구간 삭제 (아래 구간이 당겨지고 자재는 각자 구간에 남습니다)">🗑</button>
     </div>
@@ -606,10 +691,13 @@ function bindDoeList(box, planMode) {
       bandNode.querySelector('.tp-b-to').addEventListener('change', e => {
         const bands = bandsOf(v).map(cloneBand);
         if (!bands[i]) return;
-        const raw = e.target.value.trim();
-        const next = raw === '' ? '' : Math.trunc(Number(raw));
-        if (raw !== '' && !Number.isFinite(next)) { renderDoeList(); return; }
-        bands[i].to = next;
+        // 입력도 **같은 판정기**를 통과한다. 여기서 따로 `Number()`를 쓰면 화면이 읽는 규칙과
+        // 사용자가 만드는 값의 규칙이 갈린다(예: 종전 코드는 '7.5'를 조용히 7로 바꿔 저장했다).
+        const st = bandToState({ to: e.target.value.trim() });
+        if (st.state === 'invalid') {
+          showToast('끝 층은 정수로 입력하세요.', 'warning'); renderDoeList(); return;
+        }
+        bands[i].to = st.state === 'ok' ? st.value : '';
         // 위치는 `to`를 따라가고 seq는 그대로 — 자재가 자기 구간에 남는 이유다.
         const sorted = sortBands(bands);
         const err = validateBands(sorted);

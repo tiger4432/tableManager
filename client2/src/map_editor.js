@@ -3,7 +3,7 @@ import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
-import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts } from './transfer_plan.js';
+import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, bandToState } from './transfer_plan.js';
 
 let tables = [];
 let selectedTable = '';
@@ -216,11 +216,18 @@ function normalizeBands(raw) {
   const out = [];
   src.forEach((b, i) => {
     if (!b || typeof b !== 'object') return;
-    const seqNum = Number(b.seq);
-    const seq = (Number.isFinite(seqNum) && seqNum > 0) ? Math.trunc(seqNum) : (i + 1);
-    const toNum = Number(b.to);
-    const to = (b.to === '' || b.to === null || b.to === undefined || !Number.isFinite(toNum))
-      ? '' : Math.trunc(toNum);
+    // seq 정체 규칙은 서버 `_assign_band_seqs`와 **같은 규칙**이어야 한다: 양의 정수 타입만
+    // 인정하고 나머지는 위치 폴백. 종전 `Number(b.seq)`는 '2'·true도 통과시켜, 그리드가 쓴
+    // 문자열 seq에서 서버는 위치 폴백 · 클라는 2가 되어 같은 구간에 두 이름이 붙었다.
+    const rawSeq = b.seq;
+    const seq = (typeof rawSeq === 'number' && Number.isInteger(rawSeq) && rawSeq > 0)
+      ? rawSeq : (i + 1);
+    // `to` 해석은 **transfer_plan의 판정기 하나뿐**이다. 여기서 따로 `Number()`를 돌리면
+    // 읽기-수정-쓰기가 값을 조용히 바꾼다 — 실제로 '0x10'이 16으로, '  '가 0으로 저장됐다.
+    // 읽을 수 없는 값은 **원문 그대로 보존**한다: 임의로 ''로 만들면 패널이 표시할 근거가
+    // 사라져 "틀린 줄 모르는 채" 0층으로 계산된다.
+    const toSt = bandToState(b);
+    const to = toSt.state === 'ok' ? toSt.value : (toSt.state === 'blank' ? '' : b.to);
     const materials = [];
     (Array.isArray(b.materials) ? b.materials : []).forEach(m => {
       const s = String(m === null || m === undefined ? '' : m).trim();

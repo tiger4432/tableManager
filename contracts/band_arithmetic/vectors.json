@@ -1,0 +1,218 @@
+{
+  "$comment": [
+    "SHARED CONTRACT — band arithmetic for map_split_registry.bands (M2.6).",
+    "Both sides derive the same quantities from the same stored blob, so both sides must",
+    "read it identically. This file is the specification; server and client are each",
+    "checked AGAINST it rather than against each other.",
+    "",
+    "Consumers:",
+    "  server  -> server/tests/test_transfer_plan.py (must pass; part of the pytest suite)",
+    "  client  -> contracts/band_arithmetic/client_harness.mjs (read-only; reports divergence)",
+    "",
+    "This is a NARROWED contract, deliberately not a port of JS coercion. Number('  ')===0",
+    "and Number([])===0 are JS accidents; adopting them would promote a bug to a spec. The",
+    "structural rule that removes the whole divergence class: BLANK and INVALID behave",
+    "identically for the prevTo walk (both are skipped, neither stops it). INVALID is still",
+    "reported (layer_range_invalid), just never silently absorbed as 0.",
+    "",
+    "NaN / Infinity are absent on purpose: JSON cannot express them, so they are not",
+    "reachable through the stored column. The server covers them in a unit test.",
+    "",
+    "to states:  blank = not decided yet (0 layers, not an error)",
+    "            ok    = finite JSON number, or trimmed decimal-integer string, |v| <= 2^53",
+    "            invalid = everything else"
+  ],
+  "version": 1,
+  "max_layer": 9007199254740992,
+
+  "to_cases": [
+    {"name": "absent_key",          "band": {},                     "state": "blank",   "value": null},
+    {"name": "null",                "band": {"to": null},           "state": "blank",   "value": null},
+    {"name": "empty_string",        "band": {"to": ""},             "state": "blank",   "value": null},
+    {"name": "spaces_only",         "band": {"to": "  "},           "state": "blank",   "value": null},
+    {"name": "tab_newline_only",    "band": {"to": "\t\n "},        "state": "blank",   "value": null},
+
+    {"name": "int",                 "band": {"to": 7},              "state": "ok",      "value": 7},
+    {"name": "zero",                "band": {"to": 0},              "state": "ok",      "value": 0},
+    {"name": "int_string",          "band": {"to": "7"},            "state": "ok",      "value": 7},
+    {"name": "int_string_padded",   "band": {"to": " 7 "},          "state": "ok",      "value": 7},
+    {"name": "int_string_plus",     "band": {"to": "+7"},           "state": "ok",      "value": 7},
+    {"name": "negative_string",     "band": {"to": "-3"},           "state": "ok",      "value": -3},
+    {"name": "float_truncates",     "band": {"to": 7.9},            "state": "ok",      "value": 7},
+    {"name": "negative_float_trunc","band": {"to": -7.9},           "state": "ok",      "value": -7},
+    {"name": "max_layer",           "band": {"to": 9007199254740992},"state": "ok",     "value": 9007199254740992},
+
+    {"name": "decimal_string",      "band": {"to": "7.9"},          "state": "invalid", "value": null},
+    {"name": "hex_string",          "band": {"to": "0x10"},         "state": "invalid", "value": null},
+    {"name": "underscore_numeric",  "band": {"to": "1_0"},          "state": "invalid", "value": null},
+    {"name": "alpha_label",         "band": {"to": "H2"},           "state": "invalid", "value": null},
+    {"name": "exponent_string",     "band": {"to": "1e3"},          "state": "invalid", "value": null},
+    {"name": "bool_true",           "band": {"to": true},           "state": "invalid", "value": null},
+    {"name": "bool_false",          "band": {"to": false},          "state": "invalid", "value": null},
+    {"name": "empty_array",         "band": {"to": []},             "state": "invalid", "value": null},
+    {"name": "object",              "band": {"to": {}},             "state": "invalid", "value": null},
+    {"name": "over_max_layer",      "band": {"to": "9007199254740993"},"state": "invalid","value": null},
+    {"name": "huge_float",          "band": {"to": 1e300},          "state": "invalid", "value": null}
+  ],
+
+  "sequence_cases": [
+    {
+      "name": "blank_between_does_not_reset_the_walk",
+      "$why": "The divergence that motivated this file. A whitespace `to` reads as 0 under JS coercion, which STOPS the backward walk; under this spec it is blank and is SKIPPED. One screen, two numbers for the same material.",
+      "painted": 1,
+      "bands": [
+        {"seq": 1, "to": 10, "materials": ["M_1"]},
+        {"seq": 2, "to": "  ", "materials": ["M_1"]},
+        {"seq": 3, "to": 20, "materials": ["M_1"]}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok",    "prev_to": 0,  "layers": 10, "total": 10, "share": 10},
+        {"seq": 2, "state": "blank", "prev_to": 10, "layers": 0,  "total": 0,  "share": 0},
+        {"seq": 3, "state": "ok",    "prev_to": 10, "layers": 10, "total": 10, "share": 10}
+      ]
+    },
+    {
+      "name": "invalid_between_is_skipped_exactly_like_blank",
+      "$why": "The structural rule. If invalid stopped the walk at 0 while blank skipped it, every coercion quirk would become its own divergence.",
+      "painted": 1,
+      "bands": [
+        {"seq": 1, "to": 10, "materials": ["M_1"]},
+        {"seq": 2, "to": "0x10", "materials": ["M_1"]},
+        {"seq": 3, "to": 20, "materials": ["M_1"]}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok",      "prev_to": 0,  "layers": 10, "total": 10, "share": 10},
+        {"seq": 2, "state": "invalid", "prev_to": 10, "layers": 0,  "total": 0,  "share": 0},
+        {"seq": 3, "state": "ok",      "prev_to": 10, "layers": 10, "total": 10, "share": 10}
+      ]
+    },
+    {
+      "name": "non_increasing_inflates_the_next_band",
+      "$why": "A reversed `to` does NOT stop the walk - it is a valid number. The empty band contributes nothing, but the band after it counts from the low value, so the stack over-counts. 10 + 15 = 25 layers for a 20-layer stack.",
+      "painted": 1,
+      "bands": [
+        {"seq": 1, "to": 10, "materials": ["M_1"]},
+        {"seq": 2, "to": 5,  "materials": ["M_1"]},
+        {"seq": 3, "to": 20, "materials": ["M_1"]}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok", "prev_to": 0,  "layers": 10, "total": 10, "share": 10},
+        {"seq": 2, "state": "ok", "prev_to": 10, "layers": 0,  "total": 0,  "share": 0},
+        {"seq": 3, "state": "ok", "prev_to": 5,  "layers": 15, "total": 15, "share": 15}
+      ]
+    },
+    {
+      "name": "array_position_is_order_seq_is_only_identity",
+      "$why": "Sorting by seq would flip the layer counts and drag materials into the wrong band.",
+      "painted": 1,
+      "bands": [
+        {"seq": 2, "to": 1, "materials": ["X_1"]},
+        {"seq": 1, "to": 4, "materials": ["Y_9"]}
+      ],
+      "expect": [
+        {"seq": 2, "state": "ok", "prev_to": 0, "layers": 1, "total": 1, "share": 1},
+        {"seq": 1, "state": "ok", "prev_to": 1, "layers": 3, "total": 3, "share": 3}
+      ]
+    },
+    {
+      "name": "share_rounds_up",
+      "$why": "Floor or round would hide a shortage.",
+      "painted": 1,
+      "bands": [
+        {"seq": 1, "to": 3, "materials": ["A_1", "B_2"]}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok", "prev_to": 0, "layers": 3, "total": 3, "share": 2}
+      ]
+    },
+    {
+      "name": "no_materials_yields_zero_share",
+      "painted": 10,
+      "bands": [
+        {"seq": 1, "to": 2, "materials": []}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok", "prev_to": 0, "layers": 2, "total": 20, "share": 0}
+      ]
+    },
+    {
+      "name": "painted_scales_the_total",
+      "$why": "Nothing derived is stored - painting one more cell must move the demand.",
+      "painted": 7,
+      "bands": [
+        {"seq": 1, "to": 2, "materials": ["A_1"]}
+      ],
+      "expect": [
+        {"seq": 1, "state": "ok", "prev_to": 0, "layers": 2, "total": 14, "share": 14}
+      ]
+    }
+  ],
+
+  "normalization_cases": [
+    {
+      "name": "duplicate_seq_is_resolved_not_merged",
+      "$why": "seq used to be part of a composite business key, so collisions were impossible. It now arrives in a browser-written JSON blob through a plain varchar column. Two bands sharing a seq must stay two bands.",
+      "bands": [
+        {"seq": 1, "to": 5, "materials": ["M_1"]},
+        {"seq": 1, "to": 10, "materials": ["M_1"]}
+      ],
+      "expect_seqs": [1, 2],
+      "expect_count": 2
+    },
+    {
+      "name": "missing_seq_falls_back_to_position",
+      "bands": [
+        {"to": 5, "materials": ["M_1"]},
+        {"seq": 2, "to": 10, "materials": ["M_1"]}
+      ],
+      "expect_seqs": [1, 2],
+      "expect_count": 2,
+      "$why": "Position fallback gives band 0 seq 1; band 1 already declares 2. No collision, nothing to resolve. Contrast with the next case."
+    },
+    {
+      "name": "position_fallback_can_collide_and_must_be_resolved",
+      "bands": [
+        {"seq": 2, "to": 5, "materials": ["M_1"]},
+        {"to": 10, "materials": ["M_1"]}
+      ],
+      "expect_seqs": [2, 3],
+      "expect_count": 2,
+      "$why": "Band 1 has no seq, so position fallback proposes 2 - which band 0 already holds. Unresolved, both label as #2 and the over-allocation guard sees one demand instead of two."
+    },
+    {
+      "name": "non_object_element_is_dropped_not_fatal",
+      "$why": "One bad element must not void the whole value's plan.",
+      "bands": [
+        {"seq": 1, "to": 5, "materials": ["M_1"]},
+        42,
+        {"seq": 2, "to": 10, "materials": ["M_1"]}
+      ],
+      "expect_seqs": [1, 2],
+      "expect_count": 2
+    },
+    {
+      "name": "invalid_seq_types_fall_back_to_position",
+      "bands": [
+        {"seq": "abc", "to": 5, "materials": ["M_1"]},
+        {"seq": 0, "to": 10, "materials": ["M_1"]},
+        {"seq": -4, "to": 15, "materials": ["M_1"]}
+      ],
+      "expect_seqs": [1, 2, 3],
+      "expect_count": 3
+    }
+  ],
+
+  "material_split_cases": [
+    {"$comment": "Rule: plan_store.material_identity {compose:[lot,slot], separator:'_'}. Split from the RIGHT so the FIRST field absorbs extras. Refuse rather than guess - a material that does not resolve must not be reported as availability 0."},
+    {"name": "simple",            "id": "TAPE-A_01",  "lot": "TAPE-A", "slot": "01"},
+    {"name": "first_absorbs",     "id": "LOT_A_01",   "lot": "LOT_A",  "slot": "01"},
+    {"name": "outer_whitespace",  "id": "  A_01  ",   "lot": "A",      "slot": "01"},
+    {"name": "inner_whitespace",  "id": " A _ 01 ",   "lot": "A",      "slot": "01"},
+    {"name": "non_ascii",         "id": "웨이퍼-갑_03", "lot": "웨이퍼-갑", "slot": "03"},
+    {"name": "no_separator",      "id": "ABC",        "lot": null,     "slot": null},
+    {"name": "trailing_separator","id": "ABC_",       "lot": null,     "slot": null},
+    {"name": "leading_separator", "id": "_01",        "lot": null,     "slot": null},
+    {"name": "separator_only",    "id": "_",          "lot": null,     "slot": null},
+    {"name": "blank",             "id": "   ",        "lot": null,     "slot": null}
+  ]
+}

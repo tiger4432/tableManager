@@ -634,6 +634,12 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true", help="write the changes (default is a dry run)")
     parser.add_argument("--overwrite-drift", action="store_true",
                         help="also replace entries that differ from the product definition")
+    parser.add_argument("--sync-comments", action="store_true",
+                        help="treat a differing __comment as drift too (needs --overwrite-drift "
+                             "to act). Off by default because the comment is the one part of a "
+                             "product entry an operator may have annotated -- but a stale comment "
+                             "can actively mislead, e.g. still naming a binding that was retired, "
+                             "so there has to be a way to refresh it")
     args = parser.parse_args(argv)
 
     if args.sample and args.config:
@@ -645,8 +651,10 @@ def main(argv=None):
     else:
         target = paths.config_path("table_config.json")
 
+    # `strict` is exactly "compare the whole entry, comments included" -- which is what
+    # --sample has always needed and what --sync-comments now asks for on a live config.
     return run(target, apply_mode=args.apply, overwrite_drift=args.overwrite_drift,
-               strict=args.sample)
+               strict=args.sample or args.sync_comments)
 
 
 if __name__ == "__main__":

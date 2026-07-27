@@ -13,21 +13,31 @@ PLAN이고 `dt_map`을 열면 DT PLAN이다. 따라서:
   사용자가 stage를 고르는 동작은 어디에도 없다.
 - **페인팅 결과 = 대상 맵 자신의 셀** — 계획 맵 사본(`transfer_plan_map`)은 폐기됐고,
   값 분포는 대상 맵 테이블에서 직접 group-by한다(`_painted_values`).
-- **DOE 행의 단위는 `(값, STACK 구간)`** — 한 값이 여러 구간을 가질 수 있다(사용자 스케치:
-  `A|H1~H2`, `A|H2~H3`, `B|H1~H3`). 따라서 저장 키는
-  **`ref_table|map_key|doe_value|band_seq`** 이며, 소스 묶음은 그 **구간 아래에** 붙는다
-  (구간마다 다른 자재 묶음이 가능해야 한다).
-- **`band_seq`는 키, `stack_band`는 라벨이다.** 구간 표기는 자유 텍스트라(`1`/`2-11`/`H1~H2`)
-  키에 넣을 수 없다 — ①bk 조립이 구분자 `|`를 이스케이프하지 않아 값에 `|`가 섞이면 키가
-  모호해지고(`crud._build_composite_key`) ②키 컬럼이 바뀌면 행이 **re-key**되므로
-  (`crud.py` 업데이트 경로) 라벨을 고치는 순간 DOE 행의 정체가 바뀌어 하위 자재 행이
-  고아가 된다. 그래서 정체는 **클라가 부여하는 정수 서수(`band_seq`)** 가 지고, 사람이 읽는
-  표기는 비키 컬럼(`stack_band`)에 둔다 — 라벨을 자유롭게 고쳐도 묶음이 따라온다.
-- **값 단위 속성은 `map_split_registry`가 이미 갖는다** — `split_desc`(설명)·`color`는 동일
-  키 앞부분(`ref_table|map_key|value`)으로 1:N 조인된다. `map_doe`에 중복 저장하지 않는다.
-- **소스는 묶음(pool)** — 한 구간에 여러 매가 붙으므로(사용자 확정: "한 매당 500칩이면
-  4매 묶어서 투입") 소스 테이블의 bk에 **소스 차원**이 들어간다. 매별 소요는 지정 대상이
-  아니라 구간 총 소요의 균등 배분이다. 구 `doe_layer`의 "층마다 소스 1개" 차원은 소멸했다.
+
+[M2.6 — the plan store collapsed into ONE table (client landed in `cdcddee`)]
+`map_doe` and `map_doe_source` are retired. **One `map_split_registry` row = one legend
+value = one DOE condition**, bk = `ref_table|map_key|value`, and the band structure lives
+in that row's `bands` JSON column. What that buys, and what it costs the reader here:
+
+- **`bands` is an ordered JSON array**: `[{"seq": int, "to": int|null, "materials": [str]}]`.
+  **Array position carries the stack order** — `bands[0]` starts at layer 1 and `bands[i]`
+  starts at `bands[i-1].to + 1`, so only `to` is stored and `from` is derived. Never sort by
+  `seq` to find adjacency.
+- **`seq` is identity, not order.** Materials belong to a `seq`, so renumbering on reorder or
+  delete would silently move a material into someone else's band. Nothing here renumbers.
+- **Nothing derived is stored.** Band total = painted cells of that value x layer count;
+  per-material share = `ceil(total / len(materials))`. A stored total drifts the moment
+  someone paints one more cell, so `qty_total`/`qty` are gone and this module computes them.
+- **`to` may be blank mid-edit.** That is not a defect, it yields 0 layers — but the band
+  then contributes no verified demand, which this module says out loud rather than letting
+  an unchecked plan read as a clean one.
+- **`materials` holds the raw ID string exactly as typed — the string IS the identity.**
+  Resolving it to a source `(lot, slot)` is a separate, *declared* step
+  (`plan_store.material_identity`); there is no built-in parse. Undeclared or unparseable
+  means `source_unresolved`, never a guess.
+- **The band arithmetic has a reference implementation**: `client2/src/transfer_plan.js`
+  (`bandTo`/`prevTo`/`bandLayers`/`bandShare`). The screen and this validator derive the same
+  numbers, so the two must agree exactly — mirror it, do not re-derive it.
 
 [경계 계약 — 총괄 고정]
 - GET /api/transfer-plan/stages           : 선언 stage 목록 + 역할 연결 상태
@@ -70,6 +80,7 @@ config의 `fail_sources[].align` 선언 레이어는 제거됐다 — 계측으�
 import json
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +92,45 @@ MAX_ORIGIN_POINTS = 100_000   # 타깃(테이프) 1장의 origin_log 칩 페치 
 MAX_FAIL_POINTS = 100_000     # 코어 1장의 fail 좌표 페치 상한
 MAX_BY_CORE = 500             # by_core 분해 응답 상한 (초과분 절단 + 경고)
 CORE_ID_SEP = "|"             # by_core.core_id 합성 분리자 (lot|slot — bk 관례 '_' 모호 회피)
-MAX_DOE_PER_PLAN = 500        # validate가 다루는 DOE 정의 상한
+MAX_DOE_PER_PLAN = 500        # validate가 다루는 DOE 정의(= 레지스트리 행) 상한
 MAX_PLAN_VALUES = 1000        # validate의 페인팅 값 group-by 상한
-MAX_SOURCES_PER_DOE = 64      # DOE 1건이 묶을 수 있는 자재(소스) 행 상한
+MAX_SOURCES_PER_DOE = 64      # 구간 1건이 묶을 수 있는 자재 상한
+MAX_BANDS_PER_PLAN = 2000     # 계획 전체에서 전개하는 구간 상한 (손상된 blob의 폭주 차단)
+# [팬아웃 차단] 위 두 상한의 **곱**이 진짜 상한이 되면 안 된다 — 레지스트리 행 하나가
+# 128,000 수요와 그만큼의 소스 요약 조회를 낼 수 있었다(실측: 1.53MB blob 1행).
+# 수요 총량과 **서로 다른 소스 수**를 따로 묶어야 조회 비용이 blob 크기를 따라 자라지 않는다.
+MAX_DEMANDS_PER_PLAN = 5000        # 계획 전체 수요 상한
+MAX_SOURCES_PER_PLAN = 200         # 계획 전체에서 가용을 조회하는 **서로 다른** 소스 상한
+MAX_BANDS_BLOB_BYTES = 256 * 1024  # `bands` 컬럼 1건의 파싱 전 크기 상한 (json.loads는 캡 밖이다)
+# `to`의 유효 크기 상한. JSON 정수 안전범위를 넘는 값은 층 수가 아니라 손상이며, 여기서
+# 막지 않으면 `painted × layers`가 수백 자리 정수가 되어 응답에 실린다.
+MAX_LAYER = 2 ** 53
 MAX_REGION_CELLS = 100_000    # 소스 사용 영역 셀 상한 (내부 연산용 — 응답에 싣지 않는다)
 
 M1_SOURCE_REFS = ("bonding_plan",)   # source_config_ref 허용 값
 
+# [M2.6] 계획 저장소는 legend 레지스트리 **하나**다. `bands`가 필수인 이유: 그 컬럼이
+# 선언돼 있지 않으면 계획을 읽을 수단 자체가 없으므로, 조용히 "구간 없음"으로 통과시키지
+# 않고 plan_store 미구성(404)으로 떨어뜨린다.
+REGISTRY_ROLES = ("ref_table", "map_key", "value", "bands")
+
 # validate 경고 타입 (계약)
 WARN_QTY_SHORTAGE = "qty_shortage"
+# [M2.6 repurposed] Band-structure defect. It used to mean "the free-text `stack_band`
+# label parsed to a reversed range"; labels are gone and bands are integers now, so it
+# means "this band's structure cannot yield a layer count" and carries a `reason`:
+#   unreadable     — the row's `bands` column is not a readable band array
+#   incomplete     — `to` is still blank (mid-edit; 0 layers, demand not counted)
+#   not_increasing — `to` is <= the preceding band's `to` (empty or reversed band)
+# All three mean the same thing to a consumer: that band was NOT verified.
+# `layer_coverage_gap` was REMOVED, not renamed — with `from(i) = prevTo(i) + 1` the
+# coverage is contiguous by construction, so a gap is no longer expressible.
 WARN_LAYER_RANGE_INVALID = "layer_range_invalid"
-WARN_LAYER_COVERAGE_GAP = "layer_coverage_gap"
 WARN_UNDEFINED_DOE_VALUE = "undefined_doe_value"
+# [B2] 페인팅 분포를 못 읽었거나 절단됐다. 수량이 **저장이 아니라 painted에서 유도**되므로
+# 이 읽기가 실패하면 모든 required가 0이 되어 부족이 영원히 발화하지 않는다. 구 모델은
+# qty_total을 저장에서 읽어 이 실패에 면역이었다 — 유도로 바꾸면서 생긴 새 의존이다.
+WARN_PAINTED_UNAVAILABLE = "painted_unavailable"
 WARN_DOE_VALUE_UNPAINTED = "doe_value_unpainted"
 WARN_SOURCE_FAIL_CHIPS = "source_fail_chips"
 WARN_SOURCE_HISTORY_FAIL = "source_history_fail"
@@ -204,21 +242,21 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
 def _plan_store_statuses(cfg: dict) -> dict:
     """계획 저장소 역할 상태.
 
-    [v2 모델] `plan`(헤더)·`map`(계획 맵 사본) 역할은 **폐기**됐다 — 계획 정체가
+    [v2] `plan`(헤더)·`map`(계획 맵 사본) 역할은 폐기됐다 — 계획 정체가
     `(ref_table, map_key)`이고 페인팅 결과가 곧 대상 맵 자신의 셀이라 사본이 존재할
-    이유가 없다. 남는 것은 DOE 정의와 그 소스 묶음뿐이다.
+    이유가 없다.
+    [M2.6] `doe`·`doe_source` 역할도 폐기됐다 — legend 행 하나가 곧 DOE 조건 하나이고
+    구간·자재는 그 행의 `bands` JSON에 있다. 남는 역할은 레지스트리 하나뿐이다.
+
+    `material_identity`는 테이블 바인딩이 아니라 문자열 해석 규칙이라 별도로 판정한다.
+    미선언이면 **모든** 자재가 해석 불가가 되어 계획 전체가 unverified로 떨어지므로,
+    수요마다 경고를 내기 전에 배선 상태 자체로 드러낸다.
     """
     store = cfg.get("plan_store") or {}
     out = {
-        "doe": _binding_status(store.get("doe"),
-                               required=("ref_table", "map_key", "doe_value", "band_seq")),
+        "registry": _binding_status(store.get("registry"), required=REGISTRY_ROLES),
+        "material_identity": "connected" if _material_identity_rule(cfg) else "missing",
     }
-    # 소스 묶음(pool)은 선택 — 선언됐을 때만 상태를 노출한다(미선언은 결함이 아님)
-    if _valid_binding(store.get("doe_source")):
-        out["doe_source"] = _binding_status(
-            store.get("doe_source"),
-            required=("ref_table", "map_key", "doe_value", "band_seq",
-                      "source_lot", "source_slot"))
     if _valid_binding(store.get("source_region")):
         out["source_region"] = _binding_status(
             store.get("source_region"),
@@ -1078,44 +1116,191 @@ def _plan_store_binding(cfg: dict, role: str, required: tuple):
     return store, model, cols
 
 
-def _num(v, default=None):
-    if v is None or v == "":
-        return default
-    try:
-        f = float(v)
-        return int(f) if f == int(f) else f
-    except (TypeError, ValueError):
-        return default
+def _parse_bands(raw):
+    """`bands` 컬럼 → (구간 리스트, 읽었는가).
 
+    읽기 실패(`False`)는 "이 값에 구간이 없다"와 **다르다**. 빈 컬럼은 아직 DOE를 정의하지
+    않은 정상적인 legend 행이지만, 손상된 blob은 계획을 통째로 못 읽은 것이다. 둘을 합치면
+    장애가 "설정 없음"으로 위장한다 — 이 모듈이 막으려는 바로 그 실패 형태다.
 
-def _band_range(band):
-    """STACK 구간 표기에서 수치 범위를 **읽을 수 있으면** 읽는다. 못 읽으면 None.
+    객체가 아닌 원소는 **버리고 나머지로 계속 유도**한다(클라 `normalizeBands`와 동일) —
+    원소 하나 때문에 그 값의 계획 전체를 못 읽은 것으로 만들지 않는다. 통째로 못 읽는 것은
+    blob 자체가 JSON 배열이 아닐 때뿐이다.
 
-    [규율] 표기는 강제하지 않는다(사용자 확정) — `1` / `2-11` / `H1~H2` 무엇이든 받는다.
-    커버리지 검증은 수치로 읽히는 구간에만 적용되고, 나머지는 조용히 불참한다(경고 신설 금지).
+    파싱 **전에** 크기를 본다: `json.loads`는 아래 어떤 캡보다도 먼저 실행되므로 여기서
+    막지 않으면 20MB blob이 40만 원소로 펼쳐진 뒤에야 상한을 만난다.
     """
-    if band is None:
+    if raw is None or raw == "":
+        return [], True
+    parsed = raw
+    if not isinstance(parsed, list):
+        s = str(raw)
+        if len(s) > MAX_BANDS_BLOB_BYTES:
+            logger.warning("[TransferPlan] bands blob exceeds %d bytes — refused before parse",
+                           MAX_BANDS_BLOB_BYTES)
+            return [], False
+        try:
+            parsed = json.loads(s)
+        except Exception:
+            return [], False
+    if not isinstance(parsed, list):
+        return [], False
+    return _assign_band_seqs([b for b in parsed if isinstance(b, dict)]), True
+
+
+def _assign_band_seqs(bands):
+    """`seq`를 **계획 안에서 유일**하게 만든다 (클라 `normalizeBands`의 seq 규칙 미러).
+
+    [B1] 구 모델에서 `band_seq`는 복합 business key의 일부라 중복이 구조적으로 불가능했다.
+    M2.6에서 `seq`는 브라우저가 쓰는 자유 JSON 안의 필드가 되었고 `bands`는 평범한
+    `character varying`이라 제네릭 그리드·`/tables/.../data/updates`로 무엇이든 들어올 수
+    있다 — 특히 `map_doe` 9행을 손으로 옮기는 경로가 정확히 충돌을 만든다. 중복 `seq`는
+    두 구간을 한 이름으로 뭉개므로 여기서 미리 푼다.
+    ⚠️ 이것은 **표시 이름의 충돌**만 없앤다. 집계 판정이 이름의 유일성에 기대면 안 된다
+    (아래 source_alloc은 이름이 아니라 **수요 건수**를 센다).
+    """
+    out = []
+    for i, b in enumerate(bands):
+        raw = b.get("seq")
+        seq = raw if (isinstance(raw, int) and not isinstance(raw, bool) and raw > 0) else (i + 1)
+        out.append((b, seq))
+    seen = set()
+    nxt = max([s for (_b, s) in out], default=0) + 1
+    resolved = []
+    for (b, seq) in out:
+        if seq in seen:
+            seq = nxt
+            nxt += 1
+        seen.add(seq)
+        resolved.append(dict(b, seq=seq))
+    return resolved
+
+
+# `to` 판정 3상태. blank와 invalid는 **prevTo 걷기에서 똑같이 건너뛴다** — 그것이 구조적
+# 수정이다(강제 변환 흉내로 갈라지는 경우를 통째로 없앤다). invalid는 건너뛰되 **보고한다**.
+BAND_TO_OK = "ok"
+BAND_TO_BLANK = "blank"
+BAND_TO_INVALID = "invalid"
+
+_INT_STR = re.compile(r"^[+-]?[0-9]+$")
+
+
+def _band_to(band):
+    """구간의 끝 층 → `(값|None, 상태)`.
+
+    [계약 — 클라와 **공유하는 좁힌 스펙**이지 JS 강제변환의 이식이 아니다]
+      blank   : None / "" / 공백뿐인 문자열 → 오류 아님, 층 수 0
+      ok      : 유한한 JSON 숫자, 또는 공백 제거 후 10진 정수 문자열. |값| ≤ MAX_LAYER
+      invalid : 그 외 전부 — True/[]/"0x10"/"1_0"/"H2"/NaN/Infinity/2^53 초과
+
+    ⚠️ **클라의 `Number()`를 흉내 내지 않는다.** `Number("  ") === 0`, `Number([]) === 0`은
+    JS 강제변환의 사고이며, 이식하면 버그가 스펙으로 승격된다. 그 값들이 0으로 읽히면
+    `prevTo` 걷기가 **거기서 멈추고**, None으로 읽히면 **건너뛴다** — `[10, "  ", 20]`이
+    한쪽에선 20층, 다른 쪽에선 10층이 된다(한 화면, 두 숫자). blank와 invalid를 걷기에서
+    동일하게 취급하는 것이 그 분기 계열 전체를 없애는 방법이다.
+    정본 벡터: `contracts/band_arithmetic/vectors.json` (양쪽이 같은 파일로 고정된다).
+    """
+    if not isinstance(band, dict):
+        return None, BAND_TO_INVALID
+    raw = band.get("to")
+    if raw is None:
+        return None, BAND_TO_BLANK
+    if isinstance(raw, bool):
+        return None, BAND_TO_INVALID          # bool은 int의 하위형이라 먼저 걸러야 한다
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None, BAND_TO_BLANK
+        if not _INT_STR.match(s):
+            return None, BAND_TO_INVALID      # "7.9"·"0x10"·"1_0"·"H2" 전부 여기
+        raw = int(s)
+    if isinstance(raw, int):
+        return (raw, BAND_TO_OK) if abs(raw) <= MAX_LAYER else (None, BAND_TO_INVALID)
+    if isinstance(raw, float):
+        if raw != raw or raw in (float("inf"), float("-inf")):
+            return None, BAND_TO_INVALID
+        if abs(raw) > MAX_LAYER:
+            return None, BAND_TO_INVALID      # 1e300 등 — 301자리 정수를 required에 넣지 않는다
+        return int(raw), BAND_TO_OK           # trunc toward zero
+    return None, BAND_TO_INVALID              # list·dict 등
+
+
+def _prev_to(bands, i):
+    """앞 구간의 끝 층(첫 구간 앞은 0).
+
+    **`ok`인 구간만 걷기를 멈춘다** — blank도 invalid도 건너뛴다. 순서를 지는 것은
+    **배열 위치**이며 `seq`는 정체일 뿐이라 인접성 판단에 쓰지 않는다.
+    """
+    for j in range(i - 1, -1, -1):
+        val, state = _band_to(bands[j])
+        if state == BAND_TO_OK:
+            return val
+    return 0
+
+
+def _material_identity_rule(cfg: dict):
+    """자재 ID 문자열을 소스 `(lot, slot)`으로 푸는 **선언된** 규칙. 미선언이면 None.
+
+    자재는 사용자가 입력한 **원문 문자열이 곧 정체**다(`map_editor.js`) — 파싱은 나중 일이고
+    파싱 규칙이 바뀌어도 키가 움직여선 안 된다. 그래서 해석은 코드에 박힌 관례가 아니라
+    `plan_store.material_identity` 선언으로만 성립한다. 형태는 `_origin_map_id`가 쓰는
+    `identity.compose` 관례와 같고 분리자만 더한다.
+    """
+    rule = (cfg.get("plan_store") or {}).get("material_identity")
+    if not isinstance(rule, dict):
         return None
-    s = str(band).strip()
+    compose = rule.get("compose")
+    if not (isinstance(compose, list) and all(isinstance(c, str) for c in compose)):
+        return None
+    if not {"lot", "slot"}.issubset(set(compose)):
+        return None        # 소스 가용 조회가 요구하는 두 역할이 없으면 규칙이 무의미하다
+    return {"compose": list(compose), "separator": str(rule.get("separator") or "_")}
+
+
+def _split_material(material_id, rule):
+    """자재 ID → `(lot, slot)`. 규칙 미선언이거나 안 풀리면 `(None, None)` — 추측 금지.
+
+    [분리 방향] **뒤에서부터** 자르므로 앞 필드가 나머지를 흡수한다 —
+    `client2/src/transfer_plan.js`의 `splitMaterialId`(`lastIndexOf('_')`)와 **방향만** 같다.
+    풀리지 않는 입력에서는 일부러 갈린다(아래) — "같은 읽기"라고 뭉뚱그리지 말 것.
+    ⚠️ `map_overlay.build_key_filters`는 반대(**뒤** 필드가 흡수)이며, 이제 같은 분리자를
+    세 관례가 나눠 쓴다 — `PRIMITIVES.md` §2에 등록된 결정을 따른다. 이쪽이 클라와 맞아야
+    하는 이유는 하나다: DOE 패널과 이 검증기가 **같은 자재로 같은 엔드포인트**
+    (`source-summary`)를 묻기 때문에, 분해가 다르면 한 화면에 두 개의 가용치가 생긴다.
+
+    [분리자가 없으면 **거부**한다 — 총괄 결정 2026-07-27]
+    `ABC`는 `(lot, slot)`으로 풀 수 없다. 클라는 `("ABC", "")`를 돌려주고 그대로
+    `source-summary?lot=ABC&slot=`를 물어 **0을 숫자로 표시**하는데, 그쪽이 틀린 쪽이다 —
+    조회되지 않은 것과 잔여가 0인 것은 다르고, 후자로 보이면 부족 경고가 조용히 죽는다.
+    여기서는 해석 실패로 두어 `source_unresolved` + `unverified`가 되게 한다.
+    양쪽 필드 모두 공백을 제거한 뒤 판정하므로 `" A _ 01 "`도 `("A", "01")`로 풀린다.
+    """
+    if rule is None:
+        return None, None
+    s = str(material_id or "").strip()
     if not s:
-        return None
-    for sep in ("-", "~", ".."):
-        if sep in s:
-            a, _, b = s.partition(sep)
-            lo, hi = _num(a.strip()), _num(b.strip())
-            if lo is None or hi is None:
-                return None
-            return int(lo), int(hi)
-    v = _num(s)
-    return (int(v), int(v)) if v is not None else None
+        return None, None
+    parts = s.rsplit(rule["separator"], len(rule["compose"]) - 1)
+    if len(parts) < len(rule["compose"]):
+        return None, None            # 분리자 부재 — 추측하지 않는다
+    vals = dict(zip(rule["compose"], parts))
+    lot, slot = str(vals.get("lot") or "").strip(), str(vals.get("slot") or "").strip()
+    if not lot or not slot:
+        return None, None            # 선행/후행 분리자로 한쪽이 비면 그것도 해석 실패다
+    return lot, slot
 
 
 def _painted_values(db, ref_table: str, map_key: str, overlay_cfg: dict):
     """대상 맵 **자신의** 셀에서 값 분포를 group-by로 센다 (계획 맵 사본 없음 — v2).
 
-    반환: ({값: 셀 수}, 상태 문자열). 좌표/키 바인딩은 맵 오버레이와 **동일한 유도 규칙**을
-    쓴다(table_config의 map_key_columns + x/y + val 후보 → 선언이 있으면 선언 우선).
+    반환: ({값: 셀 수}, 상태 문자열, 절단 여부). 좌표/키 바인딩은 맵 오버레이와 **동일한
+    유도 규칙**을 쓴다(table_config의 map_key_columns + x/y + val 후보 → 선언이 있으면 선언 우선).
     [확장성] 셀을 전량 로드하지 않고 group-by 집계만 한다 — 맵 1장이 수만 셀이다.
+
+    [B2] 세 번째 반환값이 있는 이유: `MAX_PLAN_VALUES` 절단은 이 모듈의 네 번째 캡인데
+    유일하게 조용했다. M2.6에서 수량이 **이 dict에서 유도**되므로, 값이 빠지면 그 값의
+    required가 0이 되어 부족이 영원히 발화하지 않는다. 호출자가 절단을 알아야 한다.
+    [재현성] 절단이 있을 수 있으면 어떤 행이 살아남는지가 결정적이어야 한다 → ORDER BY.
     """
     from sqlalchemy import func
     from database import models
@@ -1123,29 +1308,36 @@ def _painted_values(db, ref_table: str, map_key: str, overlay_cfg: dict):
 
     model = models.DYNAMIC_TABLES.get(ref_table)
     if model is None:
-        return {}, "missing"
+        return {}, "missing", False
     binding = map_overlay.resolve_binding(overlay_cfg, ref_table)
     if binding is None:
-        return {}, "missing"
+        return {}, "missing", False
     val_col = getattr(model, binding.get("val") or "", None)
     if val_col is None:
-        return {}, "missing"
+        return {}, "missing", False
     filters = map_overlay.build_key_filters(model, binding, map_key)
     if filters is None:
-        return {}, "missing"
+        return {}, "missing", False
     try:
         rows = (db.query(val_col, func.count())
-                .filter(*filters).group_by(val_col).limit(MAX_PLAN_VALUES).all())
+                .filter(*filters).group_by(val_col).order_by(val_col)
+                .limit(MAX_PLAN_VALUES + 1).all())
     except Exception as e:
         logger.warning("[TransferPlan] painted values query failed (%s/%s): %s",
                        ref_table, map_key, e)
-        return {}, "missing"
+        return {}, "missing", False
+    truncated = len(rows) > MAX_PLAN_VALUES
+    if truncated:
+        logger.warning("[TransferPlan] painted values hit cap (%d) for '%s/%s' — "
+                       "derived quantities would be understated",
+                       MAX_PLAN_VALUES, ref_table, map_key)
+        rows = rows[:MAX_PLAN_VALUES]
     painted = {}
     for val, cnt in rows:
         if val is None or str(val).strip() == "":
             continue
         painted[str(val)] = int(cnt)
-    return painted, "connected"
+    return painted, "connected", truncated
 
 
 def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
@@ -1154,16 +1346,16 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
     [정체성] 계획은 `(ref_table, map_key)` — 지금 열어 편집 중인 그 맵 자체다. `plan_id`도
     계획 헤더 테이블도 없다. stage는 `stages.*.target_map.table` 역인덱스로 유도한다.
-    [DOE 행 단위] `(doe_value, band_seq)` — 한 값이 여러 STACK 구간을 갖는다.
-    [소스 묶음] 한 **구간**에 소스가 여러 매 붙는다(pool). 매별 소요는 지정 대상이 아니라
-    **구간 총 소요의 균등 배분**이며, 행에 `qty`가 명시돼 있으면 그것이 우선한다.
+    [M2.6 DOE 단위] **레지스트리 행 1개 = legend 값 1개 = DOE 조건 1개.** 구간과 자재는 그
+    행의 `bands` JSON 배열 안에 있고, 수량은 **저장되지 않고 유도된다**:
+    `layers = to − prevTo`, `total = painted(값) × layers`, `share = ceil(total / 자재수)`.
 
-    LookupError: plan_store.doe 미구성 (라우트가 404로 변환).
+    LookupError: plan_store.registry 미구성 (라우트가 404로 변환).
     """
-    doe_src, doe_model, doe_cols = _plan_store_binding(
-        cfg, "doe", required=("ref_table", "map_key", "doe_value", "band_seq"))
-    if doe_model is None:
-        raise LookupError("plan store is not configured (plan_store.doe unresolved)")
+    reg_src, reg_model, reg_cols = _plan_store_binding(
+        cfg, "registry", required=REGISTRY_ROLES)
+    if reg_model is None:
+        raise LookupError("plan store is not configured (plan_store.registry unresolved)")
 
     if overlay_cfg is None:
         import map_overlay
@@ -1182,105 +1374,84 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         })
         stage_cfg = None
 
-    # ---- DOE 정의 로드 (계획 맵 정체성으로 equality 조회 — LIKE 프리픽스 스캔 금지) ----
-    doe_rows = (db.query(doe_model)
-                .filter(doe_cols["ref_table"] == ref_table,
-                        doe_cols["map_key"] == map_key)
+    # ---- 계획 로드 (계획 맵 정체성으로 equality 조회 — LIKE 프리픽스 스캔 금지) ----
+    # [M2.6] 조회가 한 번이다. 구간·자재가 각각 테이블이던 시절의 2회 조회 + 조인은 사라졌다.
+    # [재현성] 절단이 가능한 조회는 정렬이 있어야 어느 행이 살아남는지가 결정적이다 —
+    # 없으면 같은 계획이 요청마다 다른 부분집합으로 검증된다.
+    reg_rows = (db.query(reg_model)
+                .filter(reg_cols["ref_table"] == ref_table,
+                        reg_cols["map_key"] == map_key)
+                .order_by(reg_cols["value"])
                 .limit(MAX_DOE_PER_PLAN + 1).all())
-    if len(doe_rows) > MAX_DOE_PER_PLAN:
-        logger.warning("[TransferPlan] plan '%s/%s' DOE rows exceed cap (%d) — truncated",
+    rows_truncated = len(reg_rows) > MAX_DOE_PER_PLAN
+    if rows_truncated:
+        logger.warning("[TransferPlan] plan '%s/%s' registry rows exceed cap (%d) — truncated",
                        ref_table, map_key, MAX_DOE_PER_PLAN)
-        doe_rows = doe_rows[:MAX_DOE_PER_PLAN]
+        reg_rows = reg_rows[:MAX_DOE_PER_PLAN]
 
-    def _doe_get(row, role_key):
-        name = (doe_src.get("columns") or {}).get(role_key)
+    def _reg_get(row, role_key):
+        name = (reg_src.get("columns") or {}).get(role_key)
         return getattr(row, name, None) if name else None
 
-    # ---- 소스 묶음(pool) 로드 — (DOE값, 구간) → [자재 행] ----
-    # [v2] bk에 **구간 차원 + 소스 차원**이 들어간다: 한 값이 여러 구간을 갖고, 한 구간에
-    # 여러 매를 묶어 투입하기 때문(사용자 확정: "한 매당 500칩이면 4매 묶어서 투입").
-    # 묶음이 구간 아래 붙으므로 구간마다 다른 자재 조합을 지정할 수 있다.
-    src_binding, src_model, src_cols = _plan_store_binding(
-        cfg, "doe_source",
-        required=("ref_table", "map_key", "doe_value", "band_seq",
-                  "source_lot", "source_slot"))
-    pool_by_band = {}
-    if src_model is not None:
-        try:
-            s_rows = (db.query(src_model)
-                      .filter(src_cols["ref_table"] == ref_table,
-                              src_cols["map_key"] == map_key)
-                      .limit(MAX_DOE_PER_PLAN * MAX_SOURCES_PER_DOE).all())
-            scols = src_binding.get("columns") or {}
-
-            def _sget(row, key):
-                name = scols.get(key)
-                return getattr(row, name, None) if name else None
-
-            for r in s_rows:
-                v = _sget(r, "doe_value")
-                if v is None:
-                    continue
-                pool_by_band.setdefault((str(v), _num(_sget(r, "band_seq"))), []).append({
-                    "source_lot": _sget(r, "source_lot"),
-                    "source_slot": _sget(r, "source_slot"),
-                    "qty": _num(_sget(r, "qty")),
-                    "note": _sget(r, "note"),
-                })
-        except Exception as e:
-            logger.warning("[TransferPlan] doe_source load failed for '%s/%s': %s",
-                           ref_table, map_key, e)
-            pool_by_band = {}
+    plan = []          # [(값, 구간 배열)] — 구간을 읽어낸 행만
+    unreadable = []    # `bands` blob을 읽지 못한 값 (= "구간 없음"이 아니다)
+    for row in reg_rows:
+        v = _reg_get(row, "value")
+        if v is None or str(v).strip() == "":
+            continue
+        bands, readable = _parse_bands(_reg_get(row, "bands"))
+        if not readable:
+            unreadable.append(str(v))
+            continue
+        plan.append((str(v), bands))
 
     # ---- 페인팅 값 분포 — **대상 맵 자신**에서 (계획 맵 사본 폐기) ----
-    painted, painted_status = _painted_values(db, ref_table, map_key, overlay_cfg)
+    painted, painted_status, painted_truncated = _painted_values(
+        db, ref_table, map_key, overlay_cfg)
+    # [B2] 수량이 이 dict에서 **유도**되므로, 못 읽었거나 절단됐다면 required가 전부 과소하다
+    # (0으로 내려가면 `0 > available`이 영원히 거짓이라 부족이 발화하지 않는다). 구 모델은
+    # qty_total을 저장에서 읽어 이 실패에 면역이었다 — 유도로 바꾸며 생긴 새 의존이다.
+    painted_reliable = (painted_status == "connected") and not painted_truncated
 
-    doe_values = []
-    for row in doe_rows:
-        v = _doe_get(row, "doe_value")
-        if v is not None:
-            doe_values.append(str(v))
-    doe_value_set = set(doe_values)
+    # DOE로 취급되는 값 = **구간이 하나라도 있는** 행. 색만 지정된 legend 행은 아직 DOE가
+    # 아니므로 unpainted 경고로 사용자를 괴롭히지 않는다.
+    doe_value_set = {v for (v, bands) in plan if bands}
+    unreadable_set = set(unreadable)
+
+    for v in sorted(unreadable_set):
+        warnings_out.append({
+            "type": WARN_LAYER_RANGE_INVALID, "value": v, "reason": "unreadable",
+            "detail": f"DOE '{v}'의 구간 정의(bands)를 읽을 수 없음 — 이 값은 검증에서 제외됐다",
+        })
+
+    if not painted_reliable:
+        warnings_out.append({
+            "type": WARN_PAINTED_UNAVAILABLE,
+            "map_status": painted_status,
+            "truncated": painted_truncated,
+            "cap": MAX_PLAN_VALUES if painted_truncated else None,
+            "effect": "validation_skipped",
+            "detail": ("대상 맵의 값 분포를 " + ("상한(%d)까지만 읽었다" % MAX_PLAN_VALUES
+                       if painted_truncated else "읽지 못했다")
+                       + " — 수량은 페인팅 셀 수에서 유도되므로 소요를 산출할 근거가 없다. "
+                         "부족 판정을 수행하지 않았다(경고 없음 = 이상 없음이 아님)"),
+        })
 
     # ---- DOE 값-맵 정합 ----
-    for val in sorted(set(painted.keys()) - doe_value_set):
-        warnings_out.append({
-            "type": WARN_UNDEFINED_DOE_VALUE, "value": val,
-            "detail": f"맵에 페인팅된 값 '{val}'({painted[val]}칩)의 DOE 정의가 없음",
-        })
-    for val in sorted(doe_value_set - set(painted.keys())):
-        warnings_out.append({
-            "type": WARN_DOE_VALUE_UNPAINTED, "value": val,
-            "detail": f"DOE '{val}'가 맵에 페인팅되지 않음 (수량 0)",
-        })
-
-    # ---- STACK 구간 커버리지 (수치로 읽히는 구간만 참여 — 표기 강제 없음) ----
-    # (한 값이 여러 구간 행을 가지므로 구간은 행 단위로 수집된다 — 값 단위가 아니다)
-    layered = []
-    for row in doe_rows:
-        v = str(_doe_get(row, "doe_value"))
-        band = _doe_get(row, "stack_band")
-        rng = _band_range(band)
-        if rng is None:
-            continue
-        lf, lt = rng
-        if lf > lt:
+    # 페인팅을 못 읽었으면 이 두 경고는 **사실을 주장할 수 없다** — "칠해졌는데 정의가 없다"도
+    # "정의됐는데 안 칠해졌다"도 모두 painted를 근거로 하는 단정이다.
+    if painted_reliable:
+        # 읽지 못한 값은 빼고 센다: 정의가 **없는** 것이 아니라 **손상된** 것이고, 그건 바로
+        # 위에서 이미 말했다. 둘 다 내보내면 뒤엣것이 거짓을 말한다.
+        for val in sorted(set(painted.keys()) - doe_value_set - unreadable_set):
             warnings_out.append({
-                "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": band,
-                "detail": f"DOE '{v}' STACK 구간 역전: {lf} > {lt}",
+                "type": WARN_UNDEFINED_DOE_VALUE, "value": val,
+                "detail": f"맵에 페인팅된 값 '{val}'({painted[val]}칩)의 DOE 정의가 없음",
             })
-            continue
-        layered.append((v, lf, lt))
-    if layered:
-        covered = set()
-        for (_v, lf, lt) in layered:
-            covered.update(range(lf, lt + 1))
-        max_layer = max(covered)
-        missing_layers = sorted(set(range(1, max_layer + 1)) - covered)
-        if missing_layers:
+        for val in sorted(doe_value_set - set(painted.keys())):
             warnings_out.append({
-                "type": WARN_LAYER_COVERAGE_GAP,
-                "detail": f"STACK 커버리지 공백: 1..{max_layer} 중 {missing_layers} 구간에 배정된 DOE 없음",
+                "type": WARN_DOE_VALUE_UNPAINTED, "value": val,
+                "detail": f"DOE '{val}'가 맵에 페인팅되지 않음 (수량 0)",
             })
 
     # ---- 수량 부족 + 소스 fail 경고 (소스 가용은 (lot,slot)당 1회 캐시) ----
@@ -1291,56 +1462,129 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         bp_snapshot = bonding_plan.load_bonding_plan_config()  # 작업 경계 1회 스냅샷
 
     def _get_summary(s_lot, s_slot):
+        """(lot, slot)당 1회. **실패도 캐시한다** — 안 그러면 계속 실패하는 소스가
+        수요마다 재조회되어, 팬아웃이 큰 계획에서 실패 비용이 수요 수만큼 곱해진다.
+        반환: (요약 dict, 오류|None)."""
         key = (s_lot, s_slot)
         if key not in summary_cache:
-            summary_cache[key] = get_stage_source_summary(
-                db, cfg, stage_name, s_lot, s_slot, bp_config=bp_snapshot)
+            try:
+                summary_cache[key] = (get_stage_source_summary(
+                    db, cfg, stage_name, s_lot, s_slot, bp_config=bp_snapshot), None)
+            except Exception as e:
+                logger.warning("[TransferPlan] source summary failed for (%s,%s): %s",
+                               s_lot, s_slot, e)
+                summary_cache[key] = (None, e)
         return summary_cache[key]
 
     # [QA F1] 수량 검증이 실제로 수행됐는지 추적한다 — "검사 안 함"이 "이상 없음"으로
     # 읽히는 것이 이 API의 최대 위험이다(스킵을 침묵으로 두지 않는다).
-    availability_checked = stage_cfg is not None
     any_doe_checked = False
-    source_alloc = {}   # [QA F4] (lot, slot) → {required 누계, available, does[]}
+    # [QA F4/B1] (lot, slot) → {required 누계, available, demands 건수, labels[]}
+    # ⚠️ `demands`(건수)와 `labels`(표시)는 **다른 것**이다. 예전에는 라벨 집합의 크기로
+    # 합산 판정을 게이트했는데, `seq` 중복으로 두 수요가 한 라벨이 되면 `len < 2`가 되어
+    # 초과배정 검사가 통째로 꺼졌다(required는 이미 합산돼 있는데도 조용히 통과).
+    source_alloc = {}
+    truncations = []    # [(role, cap)] — 어떤 상한에 걸렸는지 각각 보고한다
 
-    if stage_cfg is not None:
-        # [v2] DOE 행(= 값×구간) → 수요(demand) 목록. 구간 총 소요를 묶음 매 수로
-        # **균등 배분**하되, 행에 qty가 명시돼 있으면 그것이 우선한다(부분 선언 허용).
+    if stage_cfg is not None and painted_reliable:
+        # [M2.6] 구간 → 수요(demand) 전개. 수량은 **저장돼 있지 않고 여기서 유도된다**:
+        #   layers = to − prevTo · total = painted(값) × layers · share = ceil(total / 자재수)
+        # 구현은 `client2/src/transfer_plan.js`의 미러다 — 같은 수를 두 번 정의하지 않는다.
         # 같은 자재가 여러 구간·여러 값에 걸쳐 있으면 아래 source_alloc이 자연히 합산한다.
-        demands = []   # (doe_value, source_lot, source_slot, required, label)
-        for row in doe_rows:
-            v = str(_doe_get(row, "doe_value"))
-            seq = _num(_doe_get(row, "band_seq"))
-            band_label = _doe_get(row, "stack_band") or (seq if seq is not None else "")
-            total = _num(_doe_get(row, "qty_total"), default=0) or 0
-            pool = pool_by_band.get((v, seq)) or []
-            if not pool:
-                warnings_out.append({
-                    "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": band_label,
-                    "detail": f"DOE '{v}[{band_label}]'에 사용 자재(소스 묶음)가 "
-                              f"선언되지 않음 — 수량 검증 불가",
-                })
-                continue
-            n = len(pool)
-            share = -(-int(total) // n) if total else 0   # 올림 배분 (부족 과소평가 방지)
-            for entry in pool:
-                q = entry["qty"] if entry["qty"] is not None else share
-                label = (f"{v}[{band_label}]@"
-                         f"{entry['source_lot']}|{entry['source_slot']}")
-                demands.append((v, entry["source_lot"], entry["source_slot"],
-                                int(q or 0), label))
+        material_rule = _material_identity_rule(cfg)
+        demands = []   # (값, source_lot, source_slot, required, label, 자재 원문)
+        bands_seen = 0
+        stop = False
+        for (v, bands) in plan:
+            if stop:
+                break
+            painted_cells = int(painted.get(v, 0))
+            for i, band in enumerate(bands):
+                if bands_seen >= MAX_BANDS_PER_PLAN:
+                    truncations.append(("bands", MAX_BANDS_PER_PLAN))
+                    stop = True
+                    break
+                if len(demands) >= MAX_DEMANDS_PER_PLAN:
+                    truncations.append(("demands", MAX_DEMANDS_PER_PLAN))
+                    stop = True
+                    break
+                bands_seen += 1
+                # `seq`는 `_assign_band_seqs`가 이미 계획 안에서 유일하게 만들었다.
+                seq = band.get("seq")
+                label_prefix = f"{v}[#{seq}]"
+                prev = _prev_to(bands, i)
+                to, state = _band_to(band)
+                if state != BAND_TO_OK:
+                    blank = (state == BAND_TO_BLANK)
+                    warnings_out.append({
+                        "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": seq,
+                        "reason": "incomplete" if blank else "unreadable",
+                        "detail": (f"DOE '{label_prefix}'의 끝 층이 "
+                                   + ("비어 있음 — 편집 중" if blank
+                                      else "숫자가 아님 — 값이 손상됐다")
+                                   + ". 층 수 0이라 이 구간의 소요는 검증되지 않았다"),
+                    })
+                    continue
+                if to <= prev:
+                    warnings_out.append({
+                        "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": seq,
+                        "reason": "not_increasing", "to": to, "prev_to": prev,
+                        "detail": (f"DOE '{label_prefix}'의 끝 층 {to}이(가) 앞 구간의 끝 층 "
+                                   f"{prev}보다 크지 않음 — 이 구간 자체는 빈 구간이라 소요가 "
+                                   f"없지만, **다음 구간이 {to}층부터 세므로 그쪽 소요가 "
+                                   f"과다 계상된다**(스택 총 층수를 넘을 수 있다)"),
+                    })
+                    continue
+                layers = to - prev
+                raw_mats = band.get("materials")
+                materials = []
+                for m in (raw_mats if isinstance(raw_mats, list) else []):
+                    s = str("" if m is None else m).strip()
+                    if s and s not in materials:
+                        materials.append(s)
+                if not materials:
+                    warnings_out.append({
+                        "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": seq,
+                        "detail": f"DOE '{label_prefix}'에 사용 자재가 선언되지 않음 — "
+                                  f"수량 검증 불가",
+                    })
+                    continue
+                if len(materials) > MAX_SOURCES_PER_DOE:
+                    materials = materials[:MAX_SOURCES_PER_DOE]
+                    truncations.append(("materials", MAX_SOURCES_PER_DOE))
+                total = painted_cells * layers
+                share = -(-total // len(materials))   # 올림 배분 (부족 과소평가 방지)
+                # 수요 상한은 **자재 전개 안에서도** 걸려야 한다 — 구간 단위로만 보면
+                # 구간 하나가 자재 상한만큼(64) 한 번에 넘겨 상한을 넘긴다.
+                for mat in materials:
+                    if len(demands) >= MAX_DEMANDS_PER_PLAN:
+                        truncations.append(("demands", MAX_DEMANDS_PER_PLAN))
+                        stop = True
+                        break
+                    s_lot, s_slot = _split_material(mat, material_rule)
+                    demands.append((v, s_lot, s_slot, share,
+                                    f"{label_prefix}@{mat}", mat))
+                if stop:
+                    break
 
-        for (v, s_lot, s_slot, required, label) in demands:
+        # [팬아웃] 조회 비용은 수요 수가 아니라 **서로 다른 소스 수**를 따라 자란다.
+        # 여기서 묶지 않으면 손상된 blob 하나가 수만 건의 소스 요약을 유발한다.
+        for (v, s_lot, s_slot, required, label, mat) in demands:
             if not s_lot or not s_slot:
                 warnings_out.append({
-                    "type": WARN_SOURCE_UNRESOLVED, "value": v,
-                    "detail": f"DOE '{label}'의 소스(lot/slot) 미지정 — 수량 검증 불가",
+                    "type": WARN_SOURCE_UNRESOLVED, "value": v, "material": mat,
+                    "detail": (f"DOE '{label}'의 자재 '{mat}'를 소스(lot/slot)로 해석할 수 없음"
+                               + ("" if material_rule
+                                  else " — plan_store.material_identity 규칙이 선언되지 않았다")
+                               + " — 수량 검증 불가"),
                 })
                 continue
-            try:
-                summary = _get_summary(s_lot, s_slot)
-            except Exception as e:
-                logger.warning("[TransferPlan] source summary failed for (%s,%s): %s", s_lot, s_slot, e)
+            if ((s_lot, s_slot) not in summary_cache
+                    and len(summary_cache) >= MAX_SOURCES_PER_PLAN):
+                truncations.append(("distinct_sources", MAX_SOURCES_PER_PLAN))
+                break
+            summary, err = _get_summary(s_lot, s_slot)
+            if err is not None:
                 warnings_out.append({
                     "type": WARN_SOURCE_UNRESOLVED, "value": v,
                     "detail": f"DOE '{label}' 소스({s_lot},{s_slot}) 가용 조회 실패",
@@ -1371,14 +1615,18 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
             any_doe_checked = True
             available = int(chips_block.get("remaining") or 0)
-            # [QA F4] 소스별 합산 누적 — DOE 단독 판정만으로는 분할 초과배정을 못 잡는다
+            # [QA F4] 소스별 합산 누적 — DOE 단독 판정만으로는 분할 초과배정을 못 잡는다.
+            # [B1] **건수와 표시 이름을 분리한다.** 합산 판정의 게이트는 `demands`(실제 수요
+            # 건수)여야 하며 `labels`(사람이 읽는 목록)의 크기여선 안 된다 — 라벨은 중복될 수
+            # 있고, 중복되는 순간 게이트가 꺼져 required는 합산됐는데 검사는 건너뛰게 된다.
             acc = source_alloc.get((s_lot, s_slot))
             if acc is None:
                 acc = source_alloc[(s_lot, s_slot)] = {
-                    "required": 0, "available": available, "does": []}
+                    "required": 0, "available": available, "demands": 0, "labels": []}
             acc["required"] += required
-            if label not in acc["does"]:
-                acc["does"].append(label)
+            acc["demands"] += 1
+            if label not in acc["labels"]:
+                acc["labels"].append(label)
 
             if required > available:
                 warnings_out.append({
@@ -1416,22 +1664,43 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         # 단독 DOE만 쓰는 소스는 qty_shortage가 이미 정확히 같은 사실을 말하므로 제외한다.
         for (s_lot, s_slot) in sorted(source_alloc.keys(), key=lambda k: (str(k[0]), str(k[1]))):
             acc = source_alloc[(s_lot, s_slot)]
-            if len(acc["does"]) < 2 or acc["required"] <= acc["available"]:
+            # [B1] 게이트는 **수요 건수**다. 라벨 수로 세면 `seq` 중복 하나가 검사를 끈다.
+            if acc["demands"] < 2 or acc["required"] <= acc["available"]:
                 continue
             warnings_out.append({
                 "type": WARN_SOURCE_OVERALLOCATED,
                 "source_lot": s_lot, "source_slot": s_slot,
                 "required_total": acc["required"], "available": acc["available"],
-                "doe_values": list(acc["does"]),
-                "detail": (f"소스({s_lot},{s_slot}) 합산 초과배정: 수요 {len(acc['does'])}건"
-                           f"({', '.join(acc['does'])})의 필요 합계 {acc['required']} > 가용 "
+                "demand_count": acc["demands"],
+                "doe_values": list(acc["labels"]),
+                "detail": (f"소스({s_lot},{s_slot}) 합산 초과배정: 수요 {acc['demands']}건"
+                           f"({', '.join(acc['labels'])})의 필요 합계 {acc['required']} > 가용 "
                            f"{acc['available']} — 개별 수요는 각각 가용 이하라 "
                            f"{WARN_QTY_SHORTAGE}로는 잡히지 않는다"),
             })
 
-    # DOE가 있는데 단 하나도 실제 판정에 도달하지 못했으면 "검증했다"고 말할 수 없다.
-    if doe_rows and not any_doe_checked:
+    # [QA F1] 실제로 **한 건이라도 판정에 도달**했을 때만 검증했다고 말한다. 빈 계획도,
+    # stage 미유도도, painted 미확보도, 전 수요가 해석 불가·강등인 경우도 전부 여기서
+    # unverified로 떨어진다 — "검사 안 함"이 "이상 없음"으로 새는 경로를 한 줄로 막는다.
+    availability_checked = any_doe_checked
+
+    # 계획을 끝까지 읽지 못했으면 통과 판정의 근거가 없다 — **어느 상한에 걸렸는지 각각**
+    # 보고한다. 하나로 뭉치면 진단이 거짓말을 한다(자재를 64에서 자르고 "구간 2000"이라 보고).
+    if rows_truncated:
+        truncations.append(("plan_registry", MAX_DOE_PER_PLAN))
+    seen_trunc = set()
+    for (role, cap) in truncations:
+        if role in seen_trunc:
+            continue
+        seen_trunc.add(role)
         availability_checked = False
+        warnings_out.append({
+            "type": WARN_RESULT_TRUNCATED,
+            "role": role, "cap": cap,
+            "effect": "validation_skipped",
+            "detail": (f"'{role}'가 상한({cap})에 걸려 계획을 끝까지 전개하지 못했다 — "
+                       f"읽지 못한 부분은 검증되지 않았으므로 경고가 없다고 이상이 없는 것이 아니다"),
+        })
 
     # [QA F1] status는 "검사 안 함"과 "이상 없음"을 절대 같은 값으로 내지 않는다.
     if not availability_checked:
@@ -1446,7 +1715,8 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         "map_key": map_key,
         "stage": stage_name,
         "map_status": painted_status,
-        "doe_count": len(doe_rows),
+        # [M2.6] DOE 조건의 수 = **구간을 가진 값의 수**. 색만 지정된 legend 행은 세지 않는다.
+        "doe_count": len(doe_value_set),
         "painted_values": {k: painted[k] for k in sorted(painted.keys())},
         "status": status_out,
         "availability_checked": availability_checked,

@@ -5,9 +5,10 @@ DT 원천·계획 저장소에 복합 인덱스를 보장한다.
 - dt_log: 테이프 identity(tape_lot, tape_slot) = total/origin 조회의 진입점.
           (core_lot, core_slot)은 fail 투영 대상 코어 역조회·계보 질의용.
 - dt_map: 영역 귀속 강등 경로 진입점.
-- map_doe / map_doe_source: 계획 v2의 진입점은 `(ref_table, map_key)` 동치다
-  (계획 정체성 = 지금 열어 편집 중인 맵). 구 `transfer_plan*` 인덱스는 테이블 폐기와 함께
-  제거했다 — 물리 DROP은 총괄이 별도로 수행한다.
+- map_split_registry: [M2.6] 계획 저장소가 이 한 테이블로 접혔다 — `validate_plan`의
+  진입 필터가 `(ref_table, map_key)` 동치이고, 행 수는 (맵 수 × legend 값 수)로 자란다.
+- map_doe / map_doe_source: **폐기됨**(M2.6). 코드는 더 이상 읽지 않지만 물리 DROP이
+  사용자 승인 대기 중이라 인덱스를 남겨 둔다 — DROP과 함께 이 두 줄도 지운다.
 - 계획 맵의 페인팅 값 group-by는 **대상 맵 자신**(bonding_map/dt_map)의 맵 키 인덱스를
   그대로 탄다(아래 idx_*_base / idx_dt_map_lot_slot).
 M1 인덱스(core_defect_map/eds_fail_map/wafer_process/bonding_log/wafer_map_metadata)는
@@ -28,7 +29,9 @@ INDEXES = [
     ("idx_dt_log_tape_lot_slot", "dt_log", "(tape_lot, tape_slot)"),
     ("idx_dt_log_core_lot_slot", "dt_log", "(core_lot, core_slot)"),
     ("idx_dt_map_lot_slot", "dt_map", "(lot, slot)"),
-    # v2: DOE·자재 묶음은 계획 맵 정체성 (ref_table, map_key) 동치가 진입점
+    # [M2.6] 계획 저장소의 진입점 — validate가 여기서 계획을 통째로 읽는다.
+    ("idx_map_split_registry_ref_map", "map_split_registry", "(ref_table, map_key)"),
+    # 아래 둘은 폐기된 테이블용 — 물리 DROP(사용자 승인 대기)까지만 유지한다.
     ("idx_map_doe_ref_map", "map_doe", "(ref_table, map_key)"),
     ("idx_map_doe_source_ref_map", "map_doe_source", "(ref_table, map_key)"),
     # ②: 소스 사용 영역 (휴면 — 테이블 미적용 시 자동 skip)

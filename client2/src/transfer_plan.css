@@ -86,6 +86,13 @@
   border-bottom: 1px dashed var(--text-dim);
   cursor: help;
 }
+/* "모른다"의 강한 쪽 — 저장된 값 자체가 읽히지 않는 상태. 새 영역을 만들지 않고
+   같은 자리에서 색만 올린다(미정=회색 / 읽을 수 없음=빨강). */
+.tp-unknown-val.bad {
+  color: var(--danger);
+  border-bottom-color: var(--danger);
+}
+.tp-band.bad { border-color: var(--danger); }
 
 /* ── 계획 헤더: 입력이 아니라 "유도된 사실"의 표시 ────── */
 .tp-plan-head {

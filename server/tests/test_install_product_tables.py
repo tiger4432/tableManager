@@ -225,6 +225,49 @@ class TestNoOpAndPreservation:
         assert "DRIFT" not in report
         assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"] == "our own note"
 
+    def test_sync_comments_makes_a_stale_comment_actionable(self, tmp_path):
+        """A comment cannot change behaviour, but it can actively mislead.
+
+        `map_doe`'s live comment still told an operator that `plan_store.doe` points at
+        it, months after that binding was retired. Ignoring comment drift is right by
+        default -- the operator may have annotated it -- but there has to be a way to
+        refresh one, and it has to be opt-in and visible in the report.
+        """
+        cfg = {name: dict(entry) for name, entry in product_tables.PRODUCT_TABLES.items()}
+        cfg["map_doe"]["__comment"] = "stale: plan_store.doe points here"
+        path = write(tmp_path / "table_config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
+
+        # default: invisible, and nothing is written
+        code, report = run(path, apply_mode=True, overwrite_drift=True)
+        assert code == 0 and "DRIFT" not in report
+        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"].startswith("stale")
+
+        # opt-in: reported as drift, and still not written without --overwrite-drift
+        code, report = run(path, strict=True)
+        assert code == 1 and "DRIFT" in report and "__comment" in report
+        assert json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"].startswith("stale")
+
+        # opt-in + overwrite: replaced with the product text
+        code, report = run(path, apply_mode=True, overwrite_drift=True, strict=True)
+        assert code == 0, report
+        assert (json.loads(read_bytes(path).decode("utf-8"))["map_doe"]["__comment"]
+                == product_tables.PRODUCT_TABLES["map_doe"]["__comment"])
+
+    def test_sync_comments_leaves_site_entries_byte_identical(self, tmp_path):
+        """The comment path must not become a licence to reformat the operator's file."""
+        cfg = {"pti_site_log": {"business_key": "lot_id", "column_types": {"lot_id": "string"}}}
+        for name, entry in product_tables.PRODUCT_TABLES.items():
+            cfg[name] = dict(entry)
+        cfg["map_doe"]["__comment"] = "stale"
+        path = write(tmp_path / "table_config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
+        before = read_bytes(path).decode("utf-8")
+        site_span = before[before.index('"pti_site_log"'):before.index('"wafer_map_metadata"')]
+
+        code, _ = run(path, apply_mode=True, overwrite_drift=True, strict=True)
+        assert code == 0
+        after = read_bytes(path).decode("utf-8")
+        assert site_span in after
+
 
 # ---------------------------------------------------------------------------
 # 4. operator-modified product entry -> drift

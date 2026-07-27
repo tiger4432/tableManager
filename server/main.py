@@ -3166,14 +3166,18 @@ def validate_transfer_plan(
     map_key: str,
     db: Session = Depends(get_db),
 ):
-    """계획 검증 — 경고 목록(수량 부족·STACK 커버리지·DOE 값-맵 정합·소스 fail).
+    """계획 검증 — 경고 목록(수량 부족·구간 구조 결함·DOE 값-맵 정합·소스 fail).
 
     [v2 계획 모델] 계획 정체성은 **지금 열어 편집 중인 맵**(`ref_table`, `map_key`)이다.
     구 `plan_id` 파라미터는 폐기 — 계획 헤더 테이블도 계획 맵 사본도 존재하지 않는다.
     stage는 `stages.*.target_map.table` 역인덱스로 유도되며 미선언 맵은 `stage_unknown`
     경고 + `status: unverified`(404 아님 — 임의의 맵도 열 수 있어야 한다).
 
-    plan_store.doe 미구성은 404.
+    [M2.6] 계획 저장소는 `map_split_registry` 하나다(값 1행 = DOE 1건, 구간은 `bands` JSON).
+    수량은 저장되지 않고 `painted × layers`에서 유도된다. 구 STACK 커버리지 공백 검사는
+    구간이 정의상 연속이라 사라졌고, 지금의 구조 결함은 `layer_range_invalid`가 낸다.
+
+    plan_store.registry 미구성은 404.
     """
     config = transfer_plan_module.load_transfer_plan_config()
     try:
