@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-25 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -36,7 +36,10 @@ server/ingestion_workspace/
 ---
 
 ## 💾 3. 네임스페이스 `out` 변수 가로채기 (Variable Capture)
-수집 스크립트 내부에서 복잡하게 파일 쓰기(I/O)를 하거나 표준 출력(`print`)으로 인한 로그 오염을 겪을 필요가 없습니다. 스크립트 마지막 시점에 **`out` 이라는 이름의 전역/로컬 변수에 데이터를 대입**해 두기만 하면 스케줄러가 메모리에서 이를 자동으로 덤프 및 CSV 변환하여 적재합니다.
+수집 스크립트 내부에서 복잡하게 파일 쓰기(I/O)를 하거나 표준 출력(`print`)으로 인한 로그 오염을 겪을 필요가 없습니다. 스크립트 마지막 시점에 **`out` 이라는 이름의 모듈 레벨 변수에 데이터를 대입**해 두기만 하면 스케줄러가 메모리에서 이를 자동으로 덤프 및 CSV 변환하여 적재합니다.
+
+> [!IMPORTANT]
+> `out`에 담을 값이 없을 때는 **`out = []` (또는 `out = ""`)** 를 쓰십시오. **`out = None`은 실패로 판정**되어 수집기가 `FAIL` 처리됩니다 — 자세한 이유는 아래 [실패 판정 규칙](#-실패-판정-규칙-failure-semantics-2026-07-27) 참조.
 
 ### 💡 지원 가능한 `out` 변수 데이터 타입
 1. **문자열 (`str`)**: CSV로 변환할 문자열 데이터를 담아둡니다.
@@ -63,8 +66,64 @@ server/ingestion_workspace/
    out = pd.DataFrame(data_list)
    ```
 
+### 🧩 스코프 보장 — 일반 파이썬 모듈과 동일 (2026-07-27 수정)
+수집 스크립트는 **평범한 파이썬 모듈과 똑같은 이름 해석 규칙**으로 실행됩니다. 헬퍼 함수를 자유롭게 정의해 다른 함수 안에서 호출할 수 있고, 모듈 최상단 `import`를 함수 본문 안에서 사용할 수 있습니다.
+
+```python
+import json                     # 함수 안에서 그대로 보인다
+
+def build_rows():
+    return json.loads(fetch())  # 헬퍼 → 헬퍼 호출 OK
+
+def fetch():
+    return '[{"a": 1}]'
+
+out = build_rows()
+```
+
+> [!WARNING]
+> **과거 결함(2026-07-27 수정 전):** 러너가 `exec(code, globals, locals)`에 **서로 다른 두 네임스페이스**를 넘겨, 스크립트가 *클래스 본문(class body)* 스코프로 실행됐습니다. 모듈 레벨 `def`/`import`는 locals에 바인딩되는데 함수 본문은 `LOAD_GLOBAL`로 이름을 찾으므로 그것들을 보지 못해, **함수 안에서 헬퍼나 import를 참조하는 순간 `NameError`**가 났습니다. 그 예외는 warning으로 삼켜지고 stdout 폴백으로 넘어가는데, 해당 스크립트는 `print` 대신 `out`을 쓰므로 stdout이 비어 **"수집 0건 + 에러 0건"으로 조용히 끝났습니다.** 지금은 네임스페이스를 하나만 넘깁니다. (모듈 레벨에서 헬퍼를 호출한 스크립트는 `LOAD_NAME`이라 영향을 받지 않았습니다 — 그래서 일부만 고장 나 보였습니다.)
+
 ### 🛡️ 완충 폴백 (Stdout Capture Fallback)
-스크립트 내부에 `out` 변수가 선언되어 있지 않다면, 자동으로 **자식 프로세스 표준 출력(stdout, print) 캡처 모드**로 전환하여 `print(...)`로 출력한 텍스트 전체를 낚아채 CSV로 저장해 줍니다.
+스크립트에 `out` 변수가 **한 번도 선언되지 않았다면**, 자동으로 **자식 프로세스 표준 출력(stdout, print) 캡처 모드**로 전환하여 `print(...)`로 출력한 텍스트 전체를 낚아채 CSV로 저장해 줍니다.
+
+> [!CAUTION]
+> **폴백은 스크립트를 자식 프로세스로 한 번 더 실행합니다 — 부작용도 두 번 일어납니다.**
+> 폴백이 걸리는 경우는 두 가지뿐입니다: ① `out`을 아예 선언하지 않은 stdout 수집기, ② 실행 중 예외 발생. 두 경우 모두 **in-memory 1회 + subprocess 1회, 총 2회** 실행됩니다.
+> * 수집 외에 **외부 부작용**(ack POST, 소스 커서 전진, 메일 발송, 카운터 증가)이 있는 스크립트는 반드시 `out` 방식을 쓰십시오. 특히 **커서를 전진시키는 수집기는 매 주기 배치를 하나씩 건너뜁니다.**
+> * ⚠️ **2026-07-27 스코프 수정으로 이 위험이 새로 생긴 부류가 있습니다.** 이전에는 헬퍼 함수를 쓰는 print 수집기가 첫 `LOAD_GLOBAL`에서 `NameError`로 즉사해 in-memory 실행이 부작용을 남기지 못했습니다. 이제는 끝까지 실행되고 자식 프로세스가 이를 반복합니다(측정: 1회 → 2회).
+> * `out = None`은 **폴백을 타지 않습니다**(아래 실패 판정 참조) — 실패한 fetch를 두 번 호출하지 않기 위함입니다.
+
+### 🚨 실패 판정 규칙 (Failure Semantics, 2026-07-27)
+"확인 불가"가 "이상 없음"으로 보고되지 않도록, 러너는 아래를 **엄격히 구분**합니다.
+
+| 상황 | 로그 | 결과 |
+|---|---|---|
+| `out` 있음 · 내용 있음 | INFO | CSV 적재, `SUCCESS` |
+| `out` 있음 · 내용 비어 있음 (`[]`, `""`) | WARNING | 파일 미생성, `SUCCESS` (이번 주기 수집 0건 = 정상) |
+| **`out = None` 대입** | **ERROR** | **`FAIL`** — 스크립트가 "줄 데이터가 없다"고 선언한 것. **폴백 없음**(외부 호출 재실행 방지) |
+| `out` 있음 · **CSV 변환 실패** | (호출부 traceback) | **`FAIL`** — 폴백 **없음**. stdout 사본이 있어도 쓰지 않는다 |
+| `out` 없음 · 예외 없음 | INFO (`stdout collector`) | stdout 폴백 — **정상 경로** |
+| `out` 없음 · stdout 비어 있음 | WARNING | 파일 미생성, `SUCCESS` (수집할 게 없었음) |
+| **실행 중 예외** + 폴백 성공 | **ERROR + 트레이스백** | CSV 적재, `SUCCESS` (에러는 로그에 남음) |
+| **실행 중 예외** + 폴백도 빈손 | **ERROR + 트레이스백** | **`FAIL`** — 예외를 던져 admin `last_error`에 근본 원인 노출 |
+| 자식 프로세스 종료코드 ≠ 0 | ERROR | **`FAIL`** |
+
+> [!IMPORTANT]
+> **"이번 주기엔 수집할 게 없다"를 표현하려면 `out = []` 또는 `out = ""`를 쓰십시오. `out = None`은 실패입니다.**
+> `out = None`은 `out`을 **아예 선언하지 않은 것과 구분되지 않아**(둘 다 `.get("out")`이 `None`) 과거에는 stdout 수집기로 오인됐습니다. 그 결과 fetch 실패 → 스크립트 재실행(외부 API 2차 호출) → stdout 비어 있음 → `"Skipping file generation"` → **`SUCCESS` / `last_error=None`**. 수집기 작성자들이 이미 "에러가 난다"고 믿고 쓰던 관용구(`ingestion_workspace/bonding_map/auto_update/fetch_data.py:28-32`)라 실제 판정을 그 기대에 맞췄습니다.
+
+* **CSV 변환 실패는 폴백하지 않습니다.** 행을 `print`도 하고 `out = df`도 하는 하이브리드 수집기는, 혼합 dtype 등으로 `to_csv`가 깨지면 **stdout 사본이 있어도 실패로 끝납니다**(수정 전에는 폴백이 CSV를 만들어 `SUCCESS`였습니다). 두 출력이 조용히 어긋나는 것보다 시끄러운 실패가 낫다는 판단입니다.
+* **`sys.exit(0)`으로 끝나는 수집기**는 정상 완료로 처리되어 `out`이 그대로 채택됩니다. (`SystemExit`은 `Exception`이 아니라 `BaseException`이라, 이전에는 `execute_collector`와 `check_and_run_schedules`의 `except Exception`을 모두 관통해 **스케줄러 데몬 자체를 종료**시켰습니다.) 종료코드가 0이 아니면 실패로 처리합니다.
+
+### ⚠️ 알려진 한계 (Known Limits)
+
+| 항목 | 동작 | 비고 |
+|---|---|---|
+| `sys.exit("메시지")` | 문자열 종료코드는 **실패**로 처리되며, 이미 만들어진 `out`도 **버려집니다** | 파이썬 자체 의미론(문자열 코드 = 종료코드 1)과 일치. 정상 종료는 `sys.exit(0)` |
+| `os._exit()` | 스케줄러 데몬을 **즉시 종료**시킵니다 | 인터프리터를 우회하므로 잡을 수 없음. 수집기에서 사용 금지 |
+| 수집기의 `KeyboardInterrupt` | 데몬이 종료되고 로그에는 **"terminated gracefully"** 로 남습니다(`run_auto_update.py:655-656`) | **의도적 미수정** — Ctrl+C 정상 종료가 우선. 수집기가 원인인 종료가 정상 종료처럼 보일 수 있음에 유의 |
+| `sys.path.insert(0, script_dir)` | 수집기 디렉터리가 **`sys.path[0]`에 영구 고정**됩니다(제거하지 않음) | 형제 파일에 `paths.py`·`utils.py`·`config.py`가 있으면 **서버 자체 모듈을 가릴 수 있습니다.** 현재는 `server/paths.py`가 수집기 실행 전 이미 `sys.modules`에 올라와 있어 import 순서로만 보호됩니다 — 이 이름들을 수집기 폴더에 두지 마십시오 |
 
 ---
 

@@ -105,82 +105,158 @@ class GenericScriptRunnerCollector:
         """
         스크립트를 동적으로 로드 및 exec() 실행하여 메모리상에서 'out' 변수를 낚아채며,
         만약 'out' 변수가 감지되지 않을 경우 기존 subprocess stdout 캡처 방식으로 폴백합니다.
+
+        [Failure contract] "could not check" must never be reported as "nothing is wrong".
+          * 'out' absent, no exception -> a stdout collector. The fallback is the
+            normal path (INFO).
+          * 'out' assigned None        -> the script declared it has nothing to
+            give: FAIL immediately, no stdout re-run.
+          * 'out' present but empty    -> nothing to collect this cycle. SUCCESS.
+          * execution RAISED           -> ERROR + traceback. Still attempt the
+            fallback, but if that also yields nothing, raise so the run is FAIL.
+        Full table: docs/guide/AUTO_UPDATE_GUIDE.md, "실패 판정 규칙".
         """
         import io
         import csv
         import subprocess
-        
-        
-        
+        import traceback
+
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.filename_prefix}_{timestamp_str}.csv"
         final_dest = os.path.join(self.target_dir, filename)
         tmp_dest = final_dest + ".tmp"
-        
+
         self.logger.info(f"Triggering execution of script '{os.path.basename(self.script_path)}'...")
-        
+
         # 1. exec()를 통한 인스턴스 전역 변수 'out' 가로채기 감지 시도
+        #
+        # [Contract] This block keeps THREE outcomes strictly separate:
+        #   (a) ran fine, 'out' never defined -> a stdout collector; the fallback
+        #                                        is the normal path (INFO).
+        #   (b) ran fine, 'out' set to None   -> the script declared it has
+        #                                        nothing to give: FAIL, no fallback.
+        #   (c) execution raised              -> script (or runner) is broken;
+        #                                        ERROR + traceback.
+        # (a) and (c) used to collapse into one WARNING line, so a run that
+        # collected zero rows because it had crashed was reported as a clean
+        # success. (b) looked identical to (a) because `.get("out")` cannot tell
+        # "assigned None" from "never defined" - and collectors in the wild are
+        # written believing `out = None` raises an error, e.g.
+        # ingestion_workspace/bonding_map/auto_update/fetch_data.py.
+        out_data = None
+        out_declared = False  # 'out' 이름이 실제로 바인딩됐는가 (None 대입과 미정의를 구분)
+        exec_error = None  # traceback text when the script raised
+        script_ns = {
+            "__file__": self.script_path,
+            "__name__": "__main__"
+        }
         try:
             script_dir = os.path.dirname(self.script_path)
             if script_dir not in sys.path:
                 sys.path.insert(0, script_dir)
-                
+
             with open(self.script_path, "r", encoding="utf-8") as f:
                 code_content = f.read()
-                
-            global_ns = {
-                "__file__": self.script_path,
-                "__name__": "__main__"
-            }
-            local_ns = {}
-            
-            # exec 실행
-            exec(code_content, global_ns, local_ns)
-            
+
+            # [REQUIRED] Pass ONE dict for both globals and locals. Two distinct
+            # dicts make exec() run the file with class-body scoping: module-level
+            # `def`/`import` bind into locals, but function bodies resolve names
+            # via LOAD_GLOBAL and never see them. A helper called from inside
+            # another function - or a module-level import used inside a function -
+            # then dies with NameError and the collector silently gathers nothing.
+            # One dict restores ordinary module scoping.
+            # (Module-level calls compile to LOAD_NAME, which does consult locals,
+            # which is why only some collectors appeared broken.)
+            exec(code_content, script_ns)
+
             # out 변수 검출 (None 여부 명시적 체크를 통해 DataFrame Truth Value Ambiguity 버그 차단)
-            out_data = local_ns.get("out")
-            if out_data is None:
-                out_data = global_ns.get("out")
-            
-            if out_data is not None:
-                self.logger.info(f"Captured 'out' variable ({type(out_data).__name__}). Formatting to CSV...")
-                csv_content = ""
-                
-                # 타입 감지 및 CSV 인코딩
-                if isinstance(out_data, str):
-                    csv_content = out_data
-                elif isinstance(out_data, list):
-                    output = io.StringIO()
-                    writer = csv.writer(output, lineterminator='\n')
-                    
-                    if out_data and isinstance(out_data[0], dict):
-                        # 딕셔너리 리스트 -> 키명을 헤더로 매핑
-                        headers = list(out_data[0].keys())
-                        dict_writer = csv.DictWriter(output, fieldnames=headers, lineterminator='\n')
-                        dict_writer.writeheader()
-                        dict_writer.writerows(out_data)
-                    else:
-                        # 2차원 리스트
-                        writer.writerows(out_data)
-                    csv_content = output.getvalue()
-                elif hasattr(out_data, "to_csv"):
-                    # Pandas DataFrame 등
-                    csv_content = out_data.to_csv(index=False)
+            out_declared = "out" in script_ns
+            out_data = script_ns.get("out")
+
+        except SystemExit as e:
+            # A collector ending in sys.exit(0) completed normally - honour its
+            # 'out'. Uncaught, SystemExit is a BaseException and so passes
+            # straight through execute_collector() and check_and_run_schedules()
+            # (both catch only Exception), terminating the scheduler daemon.
+            if e.code in (0, None):
+                out_declared = "out" in script_ns
+                out_data = script_ns.get("out")
+            else:
+                exec_error = f"Script terminated with sys.exit({e.code!r})."
+                self.logger.error(
+                    f"Script '{os.path.basename(self.script_path)}' exited with a non-zero "
+                    f"code during in-memory execution. {exec_error} "
+                    f"Attempting stdout fallback; the run FAILS if that yields nothing."
+                )
+        except Exception:
+            exec_error = traceback.format_exc()
+            self.logger.error(
+                f"In-memory execution of '{os.path.basename(self.script_path)}' RAISED. "
+                f"The script collected nothing this way. Attempting stdout fallback; "
+                f"the run FAILS if that also yields nothing.\n{exec_error}"
+            )
+
+        if exec_error is None and out_declared and out_data is None:
+            # The script ran to completion and explicitly set `out = None`, i.e.
+            # it declared it has nothing to give. That is a failure, and it must
+            # NOT fall through to the stdout re-run: collectors that do this are
+            # error handlers around a network fetch, so re-running the file would
+            # repeat the external call and still produce nothing.
+            # To report "nothing to collect this cycle" without failing, a script
+            # assigns an empty value (`out = []` / `out = ""`) instead.
+            msg = (
+                f"Script '{os.path.basename(self.script_path)}' set 'out = None': it ran to "
+                f"completion but explicitly produced no data. Treating as a failure "
+                f"(no stdout fallback). The script's own error output, if any, is on the "
+                f"scheduler's stderr - collectors typically print the cause there."
+            )
+            self.logger.error(msg)
+            raise RuntimeError(msg)
+
+        if out_data is not None:
+            self.logger.info(f"Captured 'out' variable ({type(out_data).__name__}). Formatting to CSV...")
+            csv_content = ""
+
+            # 타입 감지 및 CSV 인코딩
+            if isinstance(out_data, str):
+                csv_content = out_data
+            elif isinstance(out_data, list):
+                output = io.StringIO()
+                writer = csv.writer(output, lineterminator='\n')
+
+                if out_data and isinstance(out_data[0], dict):
+                    # 딕셔너리 리스트 -> 키명을 헤더로 매핑
+                    headers = list(out_data[0].keys())
+                    dict_writer = csv.DictWriter(output, fieldnames=headers, lineterminator='\n')
+                    dict_writer.writeheader()
+                    dict_writer.writerows(out_data)
                 else:
-                    csv_content = str(out_data)
-                    
-                if not csv_content.strip():
-                    self.logger.warning("Captured 'out' variable resulted in empty CSV content. Skipping.")
-                    return
-                    
-                with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
-                    f.write(csv_content)
-                os.replace(tmp_dest, final_dest)
-                self.logger.info(f"Successfully wrote captured 'out' data to raw file '{filename}'.")
+                    # 2차원 리스트
+                    writer.writerows(out_data)
+                csv_content = output.getvalue()
+            elif hasattr(out_data, "to_csv"):
+                # Pandas DataFrame 등
+                csv_content = out_data.to_csv(index=False)
+            else:
+                csv_content = str(out_data)
+
+            if not csv_content.strip():
+                # 'out' existed but was empty: nothing to collect this cycle. Normal.
+                self.logger.warning("Captured 'out' variable resulted in empty CSV content. Skipping.")
                 return
-                
-        except Exception as e:
-            self.logger.warning(f"In-memory exec() failed or 'out' variable not found: {e}. Falling back to stdout capture...")
+
+            with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
+                f.write(csv_content)
+            os.replace(tmp_dest, final_dest)
+            self.logger.info(f"Successfully wrote captured 'out' data to raw file '{filename}'.")
+            return
+
+        if exec_error is None:
+            # Normal path: this script print()s its output instead of setting 'out'.
+            self.logger.info(
+                f"No 'out' variable defined by '{os.path.basename(self.script_path)}'. "
+                f"Running as a stdout collector..."
+            )
 
         # 2. [폴백 모드] subprocess 표준 출력(stdout, print) 캡처 기동
         try:
@@ -200,9 +276,18 @@ class GenericScriptRunnerCollector:
                 
             stdout_content = result.stdout
             if not stdout_content.strip():
+                if exec_error:
+                    # Execution died AND the fallback captured nothing: this run
+                    # failed. Returning quietly here is what reported a zero-row
+                    # failure as SUCCESS (the original bug).
+                    raise RuntimeError(
+                        "Collector produced no data: in-memory execution failed AND the "
+                        "stdout fallback captured nothing. Original error:\n" + exec_error
+                    )
+                # 정상: 'out'도 없고 출력도 없다 = 이번 주기에 수집할 게 없었다.
                 self.logger.warning(f"Script stdout was empty. Skipping file generation.")
                 return
-                
+
             with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
                 f.write(stdout_content)
                 

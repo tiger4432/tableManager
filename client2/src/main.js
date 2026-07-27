@@ -27,7 +27,6 @@ import {
   refreshSelectedRangeDiff,
   clearRangeSelection,
   commitDragSelection,
-  getRangeSelectedTSV,
   setupClipboardHandlers,
   clearSelectedCells
 } from './clipboard.js';
@@ -419,18 +418,10 @@ function setupEventListeners() {
           e.preventDefault();
           clearSelectedCells();
         }
-        // Ctrl+C / Cmd+C inside the grid to copy selected cells
-        else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-          const rangeTsv = getRangeSelectedTSV();
-          if (rangeTsv) {
-            e.preventDefault();
-            navigator.clipboard.writeText(rangeTsv).then(() => {
-              elements.performanceLog.textContent = '📋 Range copied to clipboard';
-            }).catch(err => {
-              console.error('Failed to copy via Clipboard API', err);
-            });
-          }
-        }
+        // NOTE: Ctrl+C is intentionally NOT intercepted here. The native copy
+        // event is handled by the `copy` listener in clipboard.js, which uses
+        // e.clipboardData and therefore works in non-secure (plain HTTP)
+        // contexts where navigator.clipboard is undefined.
         // Ctrl+A / Cmd+A inside the grid to select all cells
         else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
           e.preventDefault();
