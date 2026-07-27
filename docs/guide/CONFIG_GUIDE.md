@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 선언 레이어 폐지 · 제품 테이블 설치기 · 데이터 루트 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (M2.6 `plan_store` 리바인딩 `0f8d35f` · `--sync-comments` · config-먼저-바꾸면-롤백 불가 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -197,8 +197,9 @@ S1을 전부 수행한 뒤 추가로:
 | 3 | 소스는 **둘 중 하나** — ① `"source_config_ref": "bonding_plan"`(M1 바인딩 재사용, 현재 유일 허용값) ② 인라인 `"source": {...}` |
 | 4 | 인라인 소스 역할: `identity.compose`, `map_metadata`, `total_chips`, `transfer_log`, `origin_log`, `origin_area_map`, `process_history`, `fail_sources`, `warnings` |
 | 5 | `fail_sources.<name>.frame` — `"origin"`=출신 프레임 fail을 `origin_log` 조인으로 타깃 좌표에 투영 / `"self"`=자기 프레임에서 계산 |
-| 6 | `plan_store.{doe,doe_source}` — 계획 저장 테이블 바인딩. **v2에서 `plan`(헤더)·`map`(계획 맵 사본) 역할은 폐기**됐습니다 — 계획 정체성이 `(ref_table, map_key)`, 즉 *지금 열어 편집 중인 그 맵*이고 페인팅 결과가 곧 그 맵 자신의 셀이기 때문입니다 |
-| 7 | 검증: `GET /api/transfer-plan/stages` → `GET /api/transfer-plan/validate?ref_table=&map_key=` → `GET /api/transfer-plan/source-summary` |
+| 6 | `plan_store.registry` — 계획 저장 테이블 바인딩. **M2.6(2026-07-27)부터 테이블은 `map_split_registry` 하나**이고 필수 역할키는 `ref_table`·`map_key`·`value`·`bands`입니다. v1 역할 `plan`(헤더)·`map`(계획 맵 사본)·`doe_layer`에 이어 **v2의 `doe`·`doe_source`도 폐기**됐습니다 — 계획 정체성이 `(ref_table, map_key)`, 즉 *지금 열어 편집 중인 그 맵*이고 페인팅 결과가 곧 그 맵 자신의 셀이기 때문입니다. **`bands` 역할이 빠지면 `validate`는 "구간 없음"으로 조용히 통과시키지 않고 404를 냅니다** |
+| 7 | `plan_store.material_identity` — 자재 ID 원문을 `(lot, slot)`으로 푸는 **선언된 규칙**(`compose: ["lot","slot"]` + `separator`). 서버는 자재 문자열을 파싱하는 관례를 코드에 두지 않습니다. 미선언이면 모든 자재가 `source_unresolved`가 되고 계획은 `unverified`로 남습니다 |
+| 8 | 검증: `GET /api/transfer-plan/stages` → `GET /api/transfer-plan/validate?ref_table=&map_key=` → `GET /api/transfer-plan/source-summary` |
 
 > **stage는 고르는 것이 아니라 유도됩니다(v2).** `stages.*.target_map.table`의 역인덱스이므로 `bonding_map`을 열면 `bonding`, `dt_map`을 열면 `dt`입니다. 어느 stage의 `target_map.table`도 아닌 맵은 `stage_unknown` 경고 + `status: unverified`로 표면화되며 **404가 아닙니다**(임의의 맵도 편집 대상으로 열 수 있어야 하므로).
 
@@ -247,6 +248,8 @@ S1을 전부 수행한 뒤 추가로:
 | `maps.json` | 없음 — 요청마다 재읽기 | 불필요 |
 | 워크스페이스 `config.json`(deprecated) | **핸들러 인스턴스 수명 동안 캐시** | 재기동 |
 | 환경변수 전부 / CORS | — | **재기동** |
+
+> 🚨 **반영 시점이 다르다는 것은 곧 롤백 순서 제약입니다.** "요청마다 재읽기"인 config는 즉시 반영되는데 코드는 재기동까지 고정이므로, **config를 먼저 바꾸면 코드만 되돌려서 복구할 수 없습니다** — config가 이미 새 형태라 옛 코드가 읽지 못합니다. 배포는 **코드 먼저·config 나중**, 롤백은 그 **역순**입니다. 실제 사례와 절차는 [DEPLOY_SETUP §7](./DEPLOY_SETUP.md) · [PRODUCTION_READINESS B4](../process/PRODUCTION_READINESS.md).
 
 ### 4.2 `/admin/reload-configs`가 하는 일 / **안 하는 일**
 
@@ -446,33 +449,34 @@ psql -U postgres -d assy_manager -c "\d <table>"
     }
   },
   "plan_store": {
-    "doe": {
-      "table": "map_doe",
+    "registry": {
+      "table": "map_split_registry",
       "columns": {
-        "ref_table": "ref_table", "map_key": "map_key", "doe_value": "doe_value",
-        "band_seq": "band_seq", "stack_band": "stack_band", "qty_total": "qty_total",
-        "knobs": "knobs", "note": "note"
+        "ref_table": "ref_table", "map_key": "map_key", "value": "value",
+        "bands": "bands"
       }
     },
-    "doe_source": {
-      "table": "map_doe_source",
-      "columns": {
-        "ref_table": "ref_table", "map_key": "map_key", "doe_value": "doe_value",
-        "band_seq": "band_seq", "source_lot": "source_lot", "source_slot": "source_slot",
-        "qty": "qty", "note": "note"
-      }
+    "material_identity": {
+      "compose": ["lot", "slot"],
+      "separator": "_"
     }
   }
 }
 ```
 
-> **DOE 행의 단위는 `(값, STACK 구간)`입니다.** 한 값이 구간을 여러 개 가질 수 있어(`A|H1~H2`, `A|H2~H3`) bk가 `ref_table|map_key|doe_value|band_seq`이고, 자재 묶음(`doe_source`)은 **그 구간 아래에** 붙습니다 — 구간마다 다른 묶음이 가능합니다.
+> **DOE 행의 단위는 `값` 하나입니다(M2.6).** legend 행 하나가 곧 DOE 조건 하나이고 bk는 `ref_table|map_key|value`입니다. 구간(band)과 그 구간에 투입할 자재는 **그 행의 `bands` JSON 컬럼 안**에 있습니다 — `[{"seq": 정수, "to": 정수, "materials": ["<원문 ID>", ...]}, ...]`.
 >
-> ⚠️ **구간 정체는 `band_seq`(정수 서수)가 지고, 사람이 읽는 표기 `stack_band`는 비키 컬럼입니다.** 자유 텍스트를 키에 넣으면 ①bk 조립이 구분자 `|`를 이스케이프하지 않아 라벨에 `|`가 섞이면 키가 모호해지고 ②키 컬럼이 바뀌면 행이 **re-key**되므로 라벨을 고치는 순간 하위 자재 행이 고아가 됩니다. 라벨은 `1`/`2-11`/`H1~H2`/`바닥` 무엇이든 자유이며 정규화가 필요 없습니다.
+> ⚠️ **구간 정체는 `seq`(정수)가 지고 순서는 배열 위치가 집니다.** 구간은 **연속**이라 `from`은 앞 원소의 `to`+1로 유도되고 층 수 = `to − 이전 to`입니다. **파생값은 저장하지 않습니다** — 구간 소요 = `칠한 셀 수 × 층 수`, 매당 소요 = `ceil(구간 소요 / 자재 수)`를 매번 계산합니다. 저장된 총량은 누군가 셀을 하나 더 칠하는 순간 조용히 어긋납니다.
 >
-> 매별 소요는 지정 대상이 아니라 구간 `qty_total`의 **균등 배분**(올림)이며, `doe_source.qty`가 있으면 그것이 우선합니다. 값 단위 속성(설명·색)은 `map_split_registry`가 정본이라 `map_doe`에 중복 저장하지 않습니다.
+> ⚠️ **`seq`는 DB가 유일성을 강제해 주지 않습니다.** 구 모델에서는 bk의 일부라 중복이 구조적으로 불가능했지만, 지금은 자유 텍스트 varchar 안의 JSON이고 제네릭 그리드도 같은 컬럼에 쓸 수 있습니다. 서버는 파싱 시점에 `seq`를 유일하게 재배정합니다 → [PRIMITIVES §2](../architecture/PRIMITIVES.md).
+>
+> **자재 ID는 사용자가 입력한 원문 그대로가 정체입니다.** `(lot, slot)` 분해는 소스 가용 조회에만 필요하며 그 규칙은 `material_identity`에 **선언**합니다. 못 푸는 ID(`ABC`, `ABC_`, `_01`)는 추측하지 않고 `source_unresolved`로 보고합니다 — "조회 못 함"을 "잔여 0"으로 합치면 부족 경고가 조용히 죽기 때문입니다.
 
-> **`.sample`은 위 발췌와 일치합니다(2026-07-26 정정 완료).** `transfer_plan_config.json.sample`의 `plan_store`에서 v1 잔재 역할(`plan`/`map`/`doe_layer`)과 폐기 컬럼(`plan_id`·`layer_from`·`layer_to`·`qty_per_unit`)을 제거하고, 코드가 실제로 요구하는 `doe`(필수 `ref_table`·`map_key`·`doe_value`·`band_seq`) / `doe_source`(필수 위 4개 + `source_lot`·`source_slot`) 바인딩으로 교체했습니다. 두 바인딩이 가리키는 `map_doe`·`map_doe_source`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
+> **`.sample`은 위 발췌와 일치합니다(2026-07-27 M2.6 재정정).** `transfer_plan_config.json.sample`의 `plan_store`에서 폐기된 `doe`·`doe_source` 역할과 그 컬럼(`doe_value`·`band_seq`·`stack_band`·`qty_total`·`qty`)을 제거하고, 코드가 실제로 요구하는 `registry`(필수 `ref_table`·`map_key`·`value`·`bands`) + `material_identity` 선언으로 교체했습니다. `registry`가 가리키는 `map_split_registry`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
+>
+> 🚨 **이미 쓰던 환경이라면 `transfer_plan_config.json`(라이브)도 같이 고쳐야 합니다.** 라이브 파일은 gitignored라 `.sample` 갱신이 자동으로 따라가지 않습니다. 옛 `doe`/`doe_source` 바인딩만 남아 있으면 `validate`가 **404**입니다.
+>
+> ⚠️ **`table_config.json`에 `map_split_registry.knobs`·`bands` 컬럼 선언이 있어야 합니다.** 없으면 클라이언트가 보낸 `bands`가 **드롭되고 HTTP 200이 나갑니다**(§6 함정 M). 실제로 M2.6 클라가 착지한 뒤 이 선언이 없어 **쓰기가 조용히 버려지고 있었습니다.** 선언은 손으로 넣지 말고 `install_product_tables.py --apply`를 쓰십시오(§5.8-ter).
 >
 > `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
 >
@@ -527,20 +531,24 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 > python server/scripts/install_product_tables.py            # dry run (기본)
 > python server/scripts/install_product_tables.py --apply    # 반영(백업 후)
 > python server/scripts/install_product_tables.py --sample --apply   # .sample 재생성
+> python server/scripts/install_product_tables.py --sync-comments --overwrite-drift --apply   # __comment까지 갱신
 > ```
 >
 > - **현장 항목은 재직렬화하지 않습니다** — 원본 텍스트에 바이트 스플라이스로 끼워 넣으므로 키 순서·들여쓰기·줄바꿈·개행문자가 보존됩니다. `json.load`/`json.dump` 왕복은 건드리면 안 될 항목까지 재포맷합니다.
 > - 없으면 추가 / 동일하면 **무기록** / **다르면 드리프트로 보고만 하고 손대지 않음**(`--overwrite-drift` 필요).
+> - **`__comment`는 기본적으로 드리프트로 세지 않습니다** — 운영자가 주석을 달았을 수 있는 유일한 부분이라 함부로 덮지 않습니다. 다만 **낡은 주석은 적극적으로 오해를 만듭니다**(폐기된 바인딩 이름을 계속 가리키는 등). 갱신하려면 `--sync-comments`를 켜십시오(여전히 `--overwrite-drift` 필요, dry run 기본·백업·미접촉 항목 바이트 재대조는 그대로).
 > - `--apply`는 타임스탬프 백업을 먼저 쓰고, 반영 후 손대지 않은 항목을 바이트 대조해 **어긋나면 백업을 복원**합니다.
 > - **DDL은 하지 않습니다.** 선언이 물리 테이블이 되는 것은 §4.1 리로드 경로의 일이며, 스크립트가 어느 경로가 필요한지 출력합니다.
 > - 종료코드: `0` 할 일 없음 · `1` 조치 필요 · `2` 오류.
 
 | 테이블 | 역할 | bk 규칙 |
 |---|---|---|
-| `map_doe` | 전사 계획 DOE 정의 | `ref_table\|map_key\|doe_value\|band_seq` (구분자 `\|`) |
-| `map_doe_source` | DOE 구간의 자재(소스) 묶음 | 위 + `\|source_lot\|source_slot` |
-| `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본 | `ref_table\|map_key\|value` (구분자 `\|`) |
+| `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본이자 **DOE 그 자체**(M2.6). 값 하나 = 행 하나 = DOE 조건 하나이며, 구간·자재는 `bands` JSON 컬럼 안에 있다(`knobs`·`split_desc`는 온톨로지가 소비하므로 **평면 컬럼으로 남긴다**) | `ref_table\|map_key\|value` (구분자 `\|`) |
 | `wafer_map_metadata` | 격자 규격(`grid_metadata`) | `target_table_map_id` |
+| 🗄️ `map_doe` | **[DEPRECATED 2026-07-27 — M2.6] 아무것도 쓰지 않습니다.** 선언은 운영자가 기존 행을 **읽어서** 손으로 옮길 수 있도록만 남아 있습니다. 새 소비자를 붙이지 마십시오 | `ref_table\|map_key\|doe_value\|band_seq` |
+| 🗄️ `map_doe_source` | **[DEPRECATED 2026-07-27 — M2.6]** 자재는 `map_split_registry.bands[].materials`로 이동했습니다. 위와 같은 조건 | 위 + `\|source_lot\|source_slot` |
+
+> 🗄️ **폐기 2종의 물리 `DROP TABLE`은 별도 단계이며 운영자 승인이 필요합니다.** 선언을 지우기 전에 그 행을 읽을 수 없게 된다는 점을 확인하십시오.
 
 > 위 네 테이블의 **`composite_key_separator`를 바꾸지 마십시오.** `map_key`가 `_` 조인 문자열이고 테이블명에도 `_`가 흔해 `_` 구분자로는 키가 모호해집니다(클라이언트의 `SPLIT_KEY_SEP`와도 일치해야 합니다).
 

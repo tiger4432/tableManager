@@ -1117,35 +1117,101 @@ def _plan_store_binding(cfg: dict, role: str, required: tuple):
 
 
 def _parse_bands(raw):
-    """`bands` 컬럼 → (구간 리스트, 읽었는가).
+    """`bands` 컬럼 → `(구간 리스트, 읽었는가, 거부된 원소 수)`.
 
     읽기 실패(`False`)는 "이 값에 구간이 없다"와 **다르다**. 빈 컬럼은 아직 DOE를 정의하지
     않은 정상적인 legend 행이지만, 손상된 blob은 계획을 통째로 못 읽은 것이다. 둘을 합치면
     장애가 "설정 없음"으로 위장한다 — 이 모듈이 막으려는 바로 그 실패 형태다.
 
-    객체가 아닌 원소는 **버리고 나머지로 계속 유도**한다(클라 `normalizeBands`와 동일) —
-    원소 하나 때문에 그 값의 계획 전체를 못 읽은 것으로 만들지 않는다. 통째로 못 읽는 것은
-    blob 자체가 JSON 배열이 아닐 때뿐이다.
+    [객체가 아닌 원소는 **거부**한다 — 총괄 결정 2026-07-27]
+    버리되 **조용히 버리지 않는다**: 세어서 호출자에게 돌려주고, 호출자가 표면화한 뒤
+    계획을 `unverified`로 내린다. 원소 하나 때문에 그 값의 계획 전체를 못 읽은 것으로
+    만들지는 않지만(나머지 구간은 계속 읽는다), 배열 길이가 바뀌면 위치 기반 `seq` 폴백과
+    뒤 구간의 `prevTo` 이웃이 함께 밀리므로 **파생 수치가 움직인다** — 그래서 침묵은 안 된다.
+    (클라는 `typeof [] === 'object'`라 중첩 배열을 빈 구간으로 살려 둔다. 그리드로만 들어올
+    수 있는 입력이라 일치시킬 대상이 없고, 서버는 거부하는 쪽이 옳다.)
 
     파싱 **전에** 크기를 본다: `json.loads`는 아래 어떤 캡보다도 먼저 실행되므로 여기서
     막지 않으면 20MB blob이 40만 원소로 펼쳐진 뒤에야 상한을 만난다.
     """
     if raw is None or raw == "":
-        return [], True
+        return [], True, 0
     parsed = raw
     if not isinstance(parsed, list):
         s = str(raw)
         if len(s) > MAX_BANDS_BLOB_BYTES:
             logger.warning("[TransferPlan] bands blob exceeds %d bytes — refused before parse",
                            MAX_BANDS_BLOB_BYTES)
-            return [], False
+            return [], False, 0
         try:
             parsed = json.loads(s)
         except Exception:
-            return [], False
+            return [], False, 0
     if not isinstance(parsed, list):
-        return [], False
-    return _assign_band_seqs([b for b in parsed if isinstance(b, dict)]), True
+        return [], False, 0
+    kept = [b for b in parsed if isinstance(b, dict)]
+    return _assign_band_seqs(kept), True, len(parsed) - len(kept)
+
+
+def _band_seq(raw):
+    """선언된 `seq` → 양의 정수, 아니면 None(배열 위치 폴백).
+
+    클라 `normalizeBands`의 `typeof === 'number' && Number.isInteger && > 0` 미러.
+
+    ⚠️ **정수값 float(`2.0`)은 반드시 받아들여야 한다.** `JSON.parse`는 어떤 가드가 돌기도
+    **전에** `2.0`을 `2`로 접어버리므로 클라는 그것을 거부할 방법이 물리적으로 없다 —
+    타입 검사가 볼 때 이미 정수다. 즉 여기서는 **클라가 움직일 수 없는 쪽**이고, 맞추러
+    가야 하는 것은 서버다(`to`의 강제변환 흉내를 거부한 것과는 반대 상황: 저쪽은 클라가
+    고칠 수 있었고, 이쪽은 전송 형식 자체의 한계다).
+    구 규칙(`isinstance(raw, int)`)은 파이썬 float를 그대로 떨어뜨려 위치 폴백을 썼고,
+    같은 구간에 서버·클라가 서로 다른 이름을 붙였다.
+
+    [2^53 위] 값은 그대로 받는다 — `seq`는 **이름일 뿐** 산술에 들어가지 않으므로 `to`처럼
+    크기를 묶을 이유가 없다. 다만 double로 정확히 표현되지 않는 값(홀수 > 2^53, `1e300`)은
+    `JSON.parse` 단계에서 이미 값이 달라져 양쪽 라벨이 갈린다 — 계약이 **의도적으로 고정하지
+    않은 꼬리**이며, 묶으려면 양쪽 동시 변경이 필요하다(벡터 파일 주석 참조).
+    """
+    if isinstance(raw, bool):
+        return None                       # bool은 int의 하위형 — 먼저 걸러야 한다
+    if isinstance(raw, int):
+        return raw if raw > 0 else None
+    if isinstance(raw, float):
+        if raw != raw or raw in (float("inf"), float("-inf")):
+            return None
+        if raw != int(raw):
+            return None                   # 2.5 — 클라 Number.isInteger도 거부한다
+        v = int(raw)
+        return v if v > 0 else None
+    return None                           # str·None·list·dict
+
+
+def _band_materials(band):
+    """구간의 자재 목록 → `(자재 문자열 리스트, 거부된 원소 리스트)`.
+
+    문자열은 공백을 제거하고, 빈 값(`None`·`""`·공백뿐)은 **조용히 버린다** — 그건 "자재가
+    없다"는 뜻이지 손상이 아니다. 중복은 첫 등장 순서로 접는다(`share`의 분모가 바뀌므로
+    파생값에 영향이 있다).
+
+    [문자열이 아닌 원소는 **거부**한다 — 총괄 결정 2026-07-27]
+    숫자·bool·배열·객체는 문자열화하지 않는다. 패널은 텍스트 입력으로 문자열만 쓰므로
+    이런 값은 제네릭 그리드로만 들어올 수 있고, 그리드 입력에 대한 옳은 답은 "클라와 같은
+    방식으로 잘못 읽기"가 아니라 **"읽을 수 없다"**이다. 흉내 낼 대상이 애초에 없다 —
+    클라가 그 값을 만든 적이 없기 때문이다. (실제로 양쪽 문자열화는 갈린다:
+    `True`/`true`, `42.0`/`42`, `"{'a': 1}"`/`[object Object]`. 어느 쪽도 자재 ID가 아니다.)
+    거부는 호출자가 `source_unresolved`로 표면화하고 계획을 `unverified`로 내린다.
+    """
+    raw = band.get("materials") if isinstance(band, dict) else None
+    out, refused = [], []
+    for m in (raw if isinstance(raw, list) else []):
+        if m is None:
+            continue                       # 자재 없음 — 손상이 아니다
+        if not isinstance(m, str):
+            refused.append(m)
+            continue
+        s = m.strip()
+        if s and s not in out:
+            out.append(s)
+    return out, refused
 
 
 def _assign_band_seqs(bands):
@@ -1161,9 +1227,8 @@ def _assign_band_seqs(bands):
     """
     out = []
     for i, b in enumerate(bands):
-        raw = b.get("seq")
-        seq = raw if (isinstance(raw, int) and not isinstance(raw, bool) and raw > 0) else (i + 1)
-        out.append((b, seq))
+        seq = _band_seq(b.get("seq"))
+        out.append((b, seq if seq is not None else (i + 1)))
     seen = set()
     nxt = max([s for (_b, s) in out], default=0) + 1
     resolved = []
@@ -1395,14 +1460,27 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
     plan = []          # [(값, 구간 배열)] — 구간을 읽어낸 행만
     unreadable = []    # `bands` blob을 읽지 못한 값 (= "구간 없음"이 아니다)
+    # [구조 거부] 우리가 정한 형태가 아닌 것을 만났다는 뜻. `to`가 비었거나 역전된 것과 달리
+    # 저장된 blob이 계약의 모양이 아니라는 신호라, 나머지를 읽은 방식도 믿을 근거가 없다 →
+    # 계획 전체를 unverified로 내린다(아래 availability_checked).
+    structural_refusal = False
     for row in reg_rows:
         v = _reg_get(row, "value")
         if v is None or str(v).strip() == "":
             continue
-        bands, readable = _parse_bands(_reg_get(row, "bands"))
+        bands, readable, dropped = _parse_bands(_reg_get(row, "bands"))
         if not readable:
             unreadable.append(str(v))
             continue
+        if dropped:
+            structural_refusal = True
+            warnings_out.append({
+                "type": WARN_LAYER_RANGE_INVALID, "value": str(v),
+                "reason": "not_a_band", "dropped": dropped,
+                "detail": (f"DOE '{v}'의 구간 목록에 구간이 아닌 원소 {dropped}개가 있어 "
+                           f"거부했다 — 배열 길이가 바뀌면 뒤 구간의 시작 층이 함께 밀리므로 "
+                           f"이 값의 수치는 검증하지 않았다"),
+            })
         plan.append((str(v), bands))
 
     # ---- 페인팅 값 분포 — **대상 맵 자신**에서 (계획 맵 사본 폐기) ----
@@ -1536,12 +1614,21 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
                     })
                     continue
                 layers = to - prev
-                raw_mats = band.get("materials")
-                materials = []
-                for m in (raw_mats if isinstance(raw_mats, list) else []):
-                    s = str("" if m is None else m).strip()
-                    if s and s not in materials:
-                        materials.append(s)
+                materials, refused = _band_materials(band)
+                if refused:
+                    # 자재로 읽을 수 없는 원소가 섞였다. 남은 것만으로 배분하면 분모가
+                    # 틀린 채 그럴듯한 수가 나오므로 이 구간은 통째로 검증하지 않는다.
+                    structural_refusal = True
+                    shown = ", ".join(repr(x) for x in refused[:3])
+                    warnings_out.append({
+                        "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": seq,
+                        "refused": len(refused),
+                        "detail": (f"DOE '{label_prefix}'의 자재 목록에 문자열이 아닌 원소가 "
+                                   f"{len(refused)}개 있다({shown}) — 자재 ID는 적은 그대로의 "
+                                   f"문자열이어야 한다. 숫자로 읽어 넘기지 않고 거부했으므로 "
+                                   f"이 구간의 수량은 검증되지 않았다"),
+                    })
+                    continue
                 if not materials:
                     warnings_out.append({
                         "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": seq,
@@ -1682,7 +1769,11 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     # [QA F1] 실제로 **한 건이라도 판정에 도달**했을 때만 검증했다고 말한다. 빈 계획도,
     # stage 미유도도, painted 미확보도, 전 수요가 해석 불가·강등인 경우도 전부 여기서
     # unverified로 떨어진다 — "검사 안 함"이 "이상 없음"으로 새는 경로를 한 줄로 막는다.
-    availability_checked = any_doe_checked
+    #
+    # 구조 거부는 **한 건이라도 있으면** 계획 전체를 내린다. `to`가 비었거나 역전된 것은
+    # 정상적인 편집 중 상태라 다른 구간의 검증까지 무효로 만들지 않지만(그 구분은 의도적이다),
+    # 저장된 blob이 계약의 모양이 아니라면 우리가 나머지를 읽은 방식도 신뢰할 근거가 없다.
+    availability_checked = any_doe_checked and not structural_refusal
 
     # 계획을 끝까지 읽지 못했으면 통과 판정의 근거가 없다 — **어느 상한에 걸렸는지 각각**
     # 보고한다. 하나로 뭉치면 진단이 거짓말을 한다(자재를 64에서 자르고 "구간 2000"이라 보고).

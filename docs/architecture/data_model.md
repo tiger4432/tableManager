@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (§5 제품/현장 소유 구분 · 미선언 컬럼 경고) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -90,7 +90,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 **어떤 테이블이 있는지는 환경마다 다릅니다** — 이 파일은 gitignored인 현장 자산입니다. 갈리는 기준은 *누가 스키마를 정하는가*입니다.
 
-- **제품 소유**(이름·컬럼을 제품이 정함): `wafer_map_metadata` · `map_split_registry` · `map_doe` · `map_doe_source`. 정의의 원본은 **`server/product_tables.py` 하나**이며 `.sample`도 거기서 생성됩니다. 사이트 반영은 `server/scripts/install_product_tables.py`(현장 항목 무접촉 병합) → [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md).
+- **제품 소유**(이름·컬럼을 제품이 정함): `wafer_map_metadata` · `map_split_registry`(M2.6부터 **DOE 그 자체** — 구간·자재가 `bands` JSON 컬럼 안에 있고 `knobs`·`split_desc`는 온톨로지가 소비하므로 평면 컬럼으로 남습니다) · 🗄️ `map_doe` · 🗄️ `map_doe_source`(**DEPRECATED 2026-07-27 — 아무것도 쓰지 않으며, 기존 행 읽기용 선언만 남아 있습니다. 물리 DROP은 운영자 승인 필요**). 정의의 원본은 **`server/product_tables.py` 하나**이며 `.sample`도 거기서 생성됩니다. 사이트 반영은 `server/scripts/install_product_tables.py`(현장 항목 무접촉 병합) → [CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md).
 - **현장 소유**: 공장 로그·맵 테이블 전부. `.sample`의 `bonding_map`·`inventory_master`·`production_plan`·`parts`·`large_table_100`은 **동작 예시**일 뿐 표준이 아닙니다.
 
 > ⚠️ **선언되지 않은 컬럼은 저장에서 조용히 드롭되고 HTTP는 200입니다.** `column_types` 게이트가 미선언 컬럼을 버린 뒤 성공을 반환하므로, **컬럼 오타·config 누락이 저장 성공처럼 보입니다**(실제로 `map_doe`가 이 경로로 `eventtime`을 잃었습니다). 2026-07-27부터 `crud`가 **`(테이블, 컬럼)`당 1회** `[Schema]` 경고를 남깁니다(핫패스라 반복은 접고, 테이블당 예산을 넘기면 포화 사실도 1회 알립니다).

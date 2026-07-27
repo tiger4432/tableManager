@@ -1184,11 +1184,15 @@ def _vectors():
 
 def test_band_to_matches_the_shared_contract():
     spec = _vectors()
-    assert spec["to_cases"], "벡터가 비면 이 테스트는 아무것도 증명하지 않는다"
+    seen = 0
     for c in spec["to_cases"]:
+        if "band" not in c:
+            continue                      # $comment 항목
+        seen += 1
         val, state = transfer_plan._band_to(c["band"])
         assert state == c["state"], f"{c['name']}: state {state} != {c['state']}"
         assert val == c["value"], f"{c['name']}: value {val} != {c['value']}"
+    assert seen >= 5, "to 벡터가 사라졌다"
 
 
 def test_band_sequence_arithmetic_matches_the_shared_contract():
@@ -1218,6 +1222,102 @@ def test_band_seq_normalization_matches_the_shared_contract():
         out = transfer_plan._parse_bands(json.dumps(case["bands"]))[0]
         assert len(out) == case["expect_count"], case["name"]
         assert [b["seq"] for b in out] == case["expect_seqs"], case["name"]
+
+
+def test_band_materials_match_the_shared_contract():
+    """양쪽이 합의하고 **패널이 실제로 만들 수 있는** 자재 규칙만 고정한다.
+
+    빈 값 제거·중복 제거가 여기 있는 이유는 서식이 아니라 파생값이기 때문이다 —
+    `share = ceil(total / len(materials))`의 분모가 바뀐다.
+    """
+    spec = _vectors()
+    seen = 0
+    for c in spec["materials_cases"]:
+        if "name" not in c:
+            continue                      # $comment 항목
+        seen += 1
+        band = {"seq": 1, "to": 1}
+        if "materials" in c:
+            band["materials"] = c["materials"]
+        kept, refused = transfer_plan._band_materials(band)
+        assert kept == c["expect"], c["name"]
+        assert refused == [], f"{c['name']}: 합의 케이스는 거부가 없어야 한다"
+    assert seen >= 6, "materials 벡터가 사라졌다"
+
+
+# ---- 구조 거부 (서버 전용 — 계약 벡터가 아니다) ----
+#
+# 문자열이 아닌 자재 원소, 객체가 아닌 구간 원소는 **제네릭 그리드로만** 들어올 수 있다.
+# 패널은 텍스트 입력으로 문자열을, `normalizeBands`로 객체를 쓴다. 그래서 이 입력에는
+# 맞출 상대가 없고, 옳은 답은 "클라와 같은 방식으로 잘못 읽기"가 아니라 "읽을 수 없다"다.
+# 양쪽 동작이 **의도적으로 다르므로** 공유 벡터가 아니라 여기서 고정한다.
+
+def test_non_string_material_is_refused_not_stringified():
+    for bad in (42, 42.0, True, False, ["a"], {"a": 1}):
+        kept, refused = transfer_plan._band_materials({"materials": ["A_1", bad]})
+        assert kept == ["A_1"], f"{bad!r}가 자재로 둔갑했다"
+        assert refused == [bad]
+
+
+def test_refused_material_blocks_verification_and_says_so(tp_env, client):
+    """남은 자재만으로 배분하면 분모가 틀린 채 그럴듯한 수가 나온다 — 구간을 통째로 뺀다."""
+    _seed_scenario(tp_env)
+    _add(tp_env, "tp_test_split_registry",
+         split_key=f"{MAP_T}|BASE-BADMAT|A", ref_table=MAP_T, map_key="BASE-BADMAT",
+         value="A", split_desc=None, color="#6b7280", knobs="{}",
+         bands='[{"seq":1,"to":2,"materials":["TAPE-X_01",42]}]')
+    _paint(tp_env, "BASE-BADMAT", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-BADMAT")
+    unres = [w for w in body["warnings"]
+             if w["type"] == transfer_plan.WARN_SOURCE_UNRESOLVED]
+    assert len(unres) == 1 and unres[0]["refused"] == 1
+    assert transfer_plan.WARN_QTY_SHORTAGE not in _types(body["warnings"])
+    assert body["availability_checked"] is False and body["status"] == "unverified"
+
+
+def test_non_object_band_element_is_refused_and_reported(tp_env, client):
+    """배열 길이가 바뀌면 뒤 구간의 시작 층이 밀린다 — 조용히 버리면 파생값이 조용히 움직인다."""
+    _seed_scenario(tp_env)
+    _add(tp_env, "tp_test_split_registry",
+         split_key=f"{MAP_T}|BASE-BADBAND|A", ref_table=MAP_T, map_key="BASE-BADBAND",
+         value="A", split_desc=None, color="#6b7280", knobs="{}",
+         bands='[{"seq":1,"to":1,"materials":["TAPE-X_01"]},[],{"seq":2,"to":2,"materials":["TAPE-X_01"]}]')
+    _paint(tp_env, "BASE-BADBAND", [(1, 1, "A")])
+    tp_env.commit()
+    body = _validate(client, "BASE-BADBAND")
+    bad = [w for w in body["warnings"]
+           if w["type"] == transfer_plan.WARN_LAYER_RANGE_INVALID
+           and w.get("reason") == "not_a_band"]
+    assert len(bad) == 1 and bad[0]["dropped"] == 1
+    assert body["availability_checked"] is False and body["status"] == "unverified"
+
+
+def test_to_defects_do_not_invalidate_the_whole_plan_but_refusals_do(tp_env, client):
+    """구분이 의도적이라는 것을 고정한다 — 빈 `to`는 편집 중이고, 구조 거부는 손상이다."""
+    _seed_scenario(tp_env)
+    _seed_plan(tp_env, "BASE-MIX", "A", [_band(None, ["TAPE-X_01"], seq=1),
+                                         _band(2, ["TAPE-X_01"], seq=2)])
+    _paint(tp_env, "BASE-MIX", [(1, 1, "A")])
+    tp_env.commit()
+    assert _validate(client, "BASE-MIX")["availability_checked"] is True
+
+
+# 이 모듈이 **소비하는** 벡터 그룹. 그룹이 추가됐는데 소비하는 테스트가 없으면 계약이
+# 조용히 그 축을 놓친다 — `seq` 타입 축이 정확히 그렇게 빠져 있었다.
+# 클라 하네스에도 같은 관문이 있다(`client_harness.mjs`의 unwired 검사).
+_CONSUMED_VECTOR_GROUPS = {
+    "to_cases", "sequence_cases", "normalization_cases",
+    "material_split_cases", "materials_cases",
+}
+
+
+def test_every_vector_group_is_consumed_by_a_test():
+    present = {k for k in _vectors() if k.endswith("_cases")}
+    assert present == _CONSUMED_VECTOR_GROUPS, (
+        "벡터 그룹 구성이 바뀌었다. 새 그룹을 추가했다면 그것을 소비하는 테스트를 쓰고 "
+        "여기에 등록하라 — 등록만 지우면 계약이 그 축을 조용히 놓친다. "
+        f"파일: {sorted(present)} · 등록: {sorted(_CONSUMED_VECTOR_GROUPS)}")
 
 
 def test_material_split_matches_the_shared_contract():
@@ -1261,25 +1361,25 @@ def test_huge_int_does_not_abort_the_whole_plan(tp_env, client):
 
 
 def test_parse_bands_separates_absent_from_unreadable():
-    assert transfer_plan._parse_bands(None) == ([], True)      # 아직 DOE 없음 — 정상
-    assert transfer_plan._parse_bands("") == ([], True)
-    assert transfer_plan._parse_bands("[]") == ([], True)
+    assert transfer_plan._parse_bands(None) == ([], True, 0)   # 아직 DOE 없음 — 정상
+    assert transfer_plan._parse_bands("") == ([], True, 0)
+    assert transfer_plan._parse_bands("[]") == ([], True, 0)
     assert transfer_plan._parse_bands('[{"seq":1,"to":3,"materials":[]}]')[1] is True
-    assert transfer_plan._parse_bands("not json") == ([], False)
-    assert transfer_plan._parse_bands('{"seq":1}') == ([], False)   # 배열이 아님
-    # 원소 하나가 객체가 아니어도 **나머지로 계속 유도**한다 (클라와 동일) —
-    # 원소 하나 때문에 그 값의 계획을 통째로 못 읽은 것으로 만들지 않는다
-    kept, readable = transfer_plan._parse_bands('[{"to":5}, 42, {"to":10}]')
-    assert readable is True and len(kept) == 2
+    assert transfer_plan._parse_bands("not json") == ([], False, 0)
+    assert transfer_plan._parse_bands('{"seq":1}') == ([], False, 0)   # 배열이 아님
+    # 원소 하나가 객체가 아니어도 **나머지로 계속 유도**한다 —
+    # 다만 조용히 버리지 않는다: 몇 개를 거부했는지 호출자에게 돌려준다
+    kept, readable, dropped = transfer_plan._parse_bands('[{"to":5}, 42, {"to":10}]')
+    assert readable is True and len(kept) == 2 and dropped == 1
     # 통째로 못 읽는 것은 blob 자체가 배열이 아닐 때뿐이다
-    assert transfer_plan._parse_bands("[1,2]") == ([], True)
+    assert transfer_plan._parse_bands("[1,2]") == ([], True, 2)
 
 
 def test_oversized_blob_is_refused_before_parsing():
     """`json.loads`는 어떤 캡보다 먼저 실행된다 — 크기는 파싱 **전에** 봐야 한다."""
     huge = "[" + ",".join(['{"seq":1,"to":1,"materials":[]}'] * 40000) + "]"
     assert len(huge) > transfer_plan.MAX_BANDS_BLOB_BYTES
-    assert transfer_plan._parse_bands(huge) == ([], False)
+    assert transfer_plan._parse_bands(huge) == ([], False, 0)
 
 
 def test_material_split_is_declared_never_guessed():

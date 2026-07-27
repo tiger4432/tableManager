@@ -13,7 +13,7 @@
 | **데이터 루트·격리 환경** | `server/paths.py`, `server/scripts/dev_env/devenv.py`, `iso_watcher.py` | [guide/DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) · 설정 관점은 [guide/CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md) | Backend / Ops |
 | **제품 소유 테이블 배포** | `server/product_tables.py`(단일 정의), `server/scripts/install_product_tables.py` | [guide/DEPLOY_SETUP §1-2](../guide/DEPLOY_SETUP.md) · [guide/CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) | Lead / Backend |
 | **프로덕션 게이트** | (전 서브시스템 — 운영 관점) | [process/PRODUCTION_READINESS](./PRODUCTION_READINESS.md) — 차단 항목 해소 시 갱신 | Lead |
-| DOE 저장 분해도 | `client2/src/transfer_plan.js`, `client2/src/map_editor.js`(legend), `map_doe`·`map_doe_source`·`map_split_registry` | [spec/DOE_STORAGE_MAP](../spec/DOE_STORAGE_MAP.md) — ⚠️ M2.6 진행 중(최종 구조는 보드가 정본) | UI/Map |
+| DOE 저장 분해도 | `client2/src/map_editor.js`(legend 저장 = 유일한 기록자), `client2/src/transfer_plan.js`(읽기·파생), `server/transfer_plan.py`, `map_split_registry` | 현행 계약은 [spec/MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) · [guide/CONFIG_GUIDE §5.8](../guide/CONFIG_GUIDE.md). [spec/DOE_STORAGE_MAP](../spec/DOE_STORAGE_MAP.md)은 🗄️ **폐기된 3테이블 모델**로, 기존 데이터 해석용으로만 보존(M2.6 양측 착지 `cdcddee`+`0f8d35f`) | UI/Map |
 | 코드 구조 지도 | `server/*`, `client2/src/*` (전 모듈) | [architecture/CODE_MAP](../architecture/CODE_MAP.md) — 갱신 **code-mapper 전담**, 정합 감사 **doc-auditor 전담**(2026-07-27 분할. 구현 에이전트는 보고서에 변경 함수 목록만) | 전 에이전트 공용 |
 | 백엔드 API/워커 | `server/main.py`, `server/*_worker.py`, `server/run_*.py` | [architecture/backend](../architecture/backend.md) | Backend/Sync |
 | 이벤트 기반(Outbox/EDA) | `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py` | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | Backend/Sync |

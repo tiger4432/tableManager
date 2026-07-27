@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-26 (HEAD 251dbfd) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — §6 전사 계획 패널을 M2.6 모델로 정정: 쓰기 소유권 · `legendReplaceScope`) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -101,10 +101,11 @@ npm run build     # dist/ 생성
 | 영역 | 내용 |
 |---|---|
 | 배선 | `map_editor.js`가 `initTransferPlan(paintController)`로 초기화하고 `notifyMapContext`/`notifyLegendChanged`/`notifyPaintCounts`로 통지(단방향) |
-| 관리 단위 | **DOE = value**(맵에 칠한 값 하나 = 조건군 하나). 밴드는 `band_seq`(정수 정체) + `stack_band`(자유 텍스트 라벨, 다중 구간 `1, 2-15, 16`) |
-| 키 조립 | `doeRowKey`/`doeSourceRowKey` **단일 지점** — `table\|mapKey\|value\|seq[\|lot\|slot]` |
-| 서버 왕복 | GET `/api/transfer-plan/{stages,source-summary,validate}` + PUT `/tables/map_doe\|map_doe_source/data/updates` |
-| **prune 권한 불변식** | `doeServerLoaded === true ⇒ S.doe는 서버본에서 유래`. 권한 획득은 **`adoptServerDoe` 한 지점**에서 서버본 채택과 **원자적으로**. 조회 성공을 "화면이 서버본이다"로 승격시키지 않는다. 로드 미확인 시 **삭제뿐 아니라 쓰기도 보류**. `loadSeq` 세대 가드로 맵 전환 레이스 차단 |
+| 관리 단위 | **DOE = value**(맵에 칠한 값 하나 = `map_split_registry` 행 하나 = 조건군 하나). 구간은 그 행의 **`bands` JSON 배열** — `seq`가 정체, **배열 위치가 순서**, 사용자가 넣는 값은 구간당 **끝 층(`to`) 하나**뿐(`1, 2-15, 16`은 구간 3개). 층 수 = `to − 이전 to` |
+| **쓰기 소유권** | ⭐ **[M2.6] `transfer_plan.js`는 서버에 쓰지 않습니다.** 레지스트리 행의 유일한 기록자는 `map_editor.js`(legend 저장 경로)이고, 패널은 `controller.getLegend()`로 읽고 `controller.updateLegendRow(value, {bands, knobs})`로만 씁니다 — 저장·삭제·동시성 가드가 **한 경로**에 모입니다 |
+| 파생값 | **저장하지 않습니다.** 구간 소요 = `칠한 셀 수 × 층 수`, 자재당 = `ceil(소요/자재 수)`. 식의 구현은 각각 하나뿐입니다(저장 `ceil`/표시 `round`로 갈려 DB 34·화면 33이던 결함) |
+| 서버 왕복 | GET `/api/transfer-plan/{stages,source-summary,validate}` + PUT `/tables/map_split_registry/data/updates`(`replace_map`). ~~`map_doe`/`map_doe_source`~~는 M2.6에서 폐기 |
+| **replace 권한 불변식** | `legendReplaceScope`(= `{table, mapKey, fingerprint}`) — "이 화면은 **이 맵의 행**에서 왔고 읽었을 때 이랬다"는 **하나의 주장**. `replace_map` 권한이자 동시성 검사의 기준선이며, 테이블 전환·조회 실패·**절단 응답**·맵 언로드에서 **소거**됩니다. 쓰기 직전 재읽기해 서버가 달라졌으면 upsert로 강등하지 않고 **거부**합니다(`legendConflict`) — 강등하면 낡은 `bands`가 남의 것을 덮습니다 |
 | 이동 | `openMaterial(lot, slot)` — 맵 간 이동의 유일 허브(브레드크럼 + 뒤로가기 프레임 스택) |
 
 상세 규격: [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)(§5 오버레이 정렬 계약 · §6 전사 계획) · [map_editor/](../map_editor/README.md)

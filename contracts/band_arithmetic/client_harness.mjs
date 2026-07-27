@@ -84,8 +84,10 @@ for (const fn of ['bandToState', 'bandTo', 'prevTo', 'bandLayers', 'bandTotal', 
 const spec = JSON.parse(readFileSync(VECTORS, 'utf8'));
 const failures = [];
 let compared = 0;
+const scored = new Set();          // which groups actually contributed assertions
 const rec = (group, name, field, expected, actual) => {
   compared++;
+  scored.add(group);
   const same = JSON.stringify(expected) === JSON.stringify(actual);
   if (!same) failures.push({ group, name, field, expected, actual });
 };
@@ -109,6 +111,7 @@ const ambiguous = new Set();
 {
   const byInput = new Map();
   for (const c of spec.to_cases) {
+    if (!('band' in c)) continue;                        // $comment entry
     const k = JSON.stringify(c.band);
     if (!byInput.has(k)) byInput.set(k, []);
     byInput.get(k).push(c);
@@ -127,7 +130,7 @@ const ambiguous = new Set();
 }
 
 for (const c of spec.to_cases) {
-  if (ambiguous.has(c.name)) continue;
+  if (!('band' in c) || ambiguous.has(c.name)) continue;
   const expected = c.state === 'ok' ? c.value : null;
   let actual;
   try { actual = sandbox.bandTo(c.band); } catch (e) { actual = `THREW ${e.message}`; }
@@ -165,7 +168,7 @@ for (const c of spec.normalization_cases) {
 // it; '  ' became 0). The normalization_cases group cannot see this: it only inspects seq
 // and count. The invariant: a band's classification must survive normalizeBands unchanged.
 for (const c of spec.to_cases) {
-  if (ambiguous.has(c.name)) continue;
+  if (!('band' in c) || ambiguous.has(c.name)) continue;
   const before = sandbox.bandToState(c.band);
   const out = sandbox.normalizeBands([c.band]);
   const after = (out.length === 1)
@@ -181,6 +184,40 @@ for (const c of spec.material_split_cases) {
   const got = sandbox.splitMaterialId(c.id);
   rec('material_split', c.name, 'lot', c.lot, got.lot === '' ? null : got.lot);
   rec('material_split', c.name, 'slot', c.slot, got.slot === '' ? null : got.slot);
+}
+
+// --- materials_cases: element types of bands[].materials ------------------------------
+// The raw string IS the material's identity, so a difference here changes WHICH wafer's
+// availability is queried. Read through normalizeBands, which is the client's only path
+// from stored JSON to the strings the panel uses.
+for (const c of spec.materials_cases) {
+  if (!c.name) continue;                           // skip the $comment entry
+  const band = { seq: 1, to: 1 };
+  if ('materials' in c) band.materials = c.materials;
+  const out = sandbox.normalizeBands([band]);
+  rec('materials', c.name, 'materials', c.expect, out.length === 1 ? out[0].materials : null);
+}
+
+// --- every vector group must actually be scored --------------------------------------
+// The ambiguity check above catches an individual vector going unscored. It cannot catch a
+// whole GROUP being added to the file and never wired in here — which would be silent, and
+// silence is the failure this harness exists to prevent. Any top-level `*_cases` key must
+// have contributed assertions, so adding a group without wiring it fails the run.
+const scoredGroups = new Set(scored);
+const GROUP_TO_LABEL = {
+  to_cases: 'to_cases',
+  sequence_cases: 'sequence',
+  normalization_cases: 'normalization',
+  material_split_cases: 'material_split',
+  materials_cases: 'materials',
+};
+const unwired = Object.keys(spec)
+  .filter(k => k.endsWith('_cases'))
+  .filter(k => !GROUP_TO_LABEL[k] || !scoredGroups.has(GROUP_TO_LABEL[k]));
+if (unwired.length) {
+  console.error(`HARNESS FAILURE: vector group(s) present but never scored: ${unwired.join(', ')}`);
+  console.error('Wire them into this harness, or the contract silently stops covering them.');
+  process.exit(2);
 }
 
 if (process.argv.includes('--json')) {

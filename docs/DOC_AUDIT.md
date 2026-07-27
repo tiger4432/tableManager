@@ -170,7 +170,7 @@ docs/
    ```
    → mtime 추정이 아니라 명시적 검증일로 신선도 판별.
 4. **히스토리 인덱스 자동화** — `history/README.md`를 파일명에서 자동 생성하는 스크립트 도입(수동 관리 종료).
-5. **낡은 문서는 삭제가 아니라 `_archive/`로 이관** — 상단에 `> ⚠️ SUPERSEDED by [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) on YYYY-MM-DD` 배지 부착. 링크·히스토리 보존 + 혼선 제거. **(승인된 처리 방식)**
+5. **낡은 문서는 삭제가 아니라 `_archive/`로 이관** — 상단에 SUPERSEDED 배지 부착. 링크·히스토리 보존 + 혼선 제거. **(승인된 처리 방식)** → 배지 문구의 정본은 [CONTRIBUTING §5](./process/CONTRIBUTING.md)이며, 여기 있던 사본은 그쪽으로 흡수됐습니다.
 6. **버전 체계 통일** — 불연속 `Phase N.x` 폐기, `RELEASE_LOG.md`에 `YYYY-MM-DD | 영역 | 시맨틱 요약` 형식으로 일원화.
 
 ---

@@ -8,10 +8,10 @@ description: Server(백엔드) 도메인 PM. server/ 전 영역 — main.py(API+
 ## 착수 전 필독 (Pre-Flight)
 1. [docs/prompts/server_pm.md](../../docs/prompts/server_pm.md) — 네 전체 헌장(담당범위·도메인규칙·경계계약·워크플로우). **이 파일이 네 역할의 SSOT.**
 2. [docs/overview/SYSTEM_OVERVIEW.md](../../docs/overview/SYSTEM_OVERVIEW.md) — 시스템 SSOT.
-3. [docs/process/PROJECT_STATUS.md](../../docs/process/PROJECT_STATUS.md) — 진행·열린문제.
+3. `docs/process/PROJECT_STATUS.md` — **의무 아님.** 보드는 총괄의 도구다. 이 작업에 필요한 상태는 지시서에 발췌돼 온다. 발췌가 없어 막히면 읽지 말고 **총괄에게 물어라.**
 4. [.agents/skills/StableDevelopmentProtocol/SKILL.md](../../.agents/skills/StableDevelopmentProtocol/SKILL.md) — 최상위 게이트(Pre/Post-Flight 필수 통과).
 5. 관련 리빙 문서: [architecture/backend.md](../../docs/architecture/backend.md) · [data_model.md](../../docs/architecture/data_model.md) · [event_driven_backend.md](../../docs/architecture/event_driven_backend.md).
-6. **코드맵 먼저**: [docs/architecture/CODE_MAP.md](../../docs/architecture/CODE_MAP.md)에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지).
+6. **코드맵은 읽지 말고 grep하라**: `docs/architecture/CODE_MAP.md`는 790줄(15,000단어)이다 — 전량 읽기는 착수만 늦춘다. 찾는 심볼로 앵커만 얻어라 (`grep -n "<심볼>" docs/architecture/CODE_MAP.md`) → 소스는 **그 부분만 Read**. 앵커는 최대 ±20줄 어긋날 수 있다고 가정하고, 어긋났으면 보고서에 적어라. 파일 전량 읽기는 여전히 금지.
 7. **자기 교훈 파일 로드**: [agent_workspace/memory/server-pm.md](../../agent_workspace/memory/server-pm.md) — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## ⚙️ 실행 환경 (필수 — 어기면 실행·테스트가 거짓 실패한다)

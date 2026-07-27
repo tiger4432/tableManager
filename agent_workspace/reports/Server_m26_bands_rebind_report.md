@@ -302,3 +302,82 @@ Every cap surfaces `result_truncated` with its own role and forces `unverified`.
   `plan_store.doe unresolved`. The physical columns need nothing.
 - Client-side divergences are map-pm's, against the vector file above.
 - `CONFIG_GUIDE.md` / `CODE_MAP.md` left to you as instructed.
+
+---
+
+# 10. Shrink round — constrain the writer, stop pinning garbage (2026-07-27)
+
+**pytest 608 passed / 0 failed · harness 110 assertions / 0 divergences** (was 604 / 185).
+
+## The write path really is constrained — verified, not taken on trust
+
+The panel's end-layer field is `<input type="number" min="1" step="1">`, and its change handler
+(`transfer_plan.js:691-700`) runs the typed text through `bandToState` and **refuses** anything
+invalid before it can reach state. `serializeBands` then writes `to` as `null` or a number.
+So `'0x10'`, `'1_0'`, `'1e3'`, `true`, `[]` — and out-of-range magnitudes — cannot arrive through
+the panel at all. The 25-entry coercion table was pinning agreement on values that cannot be stored.
+
+## What the contract is now
+
+| group | before | after |
+|---|---|---|
+| `to_cases` | 25 | **6** |
+| `normalization_cases` | 12 | **5** |
+| `materials_cases` | 10 | **6** |
+| `sequence_cases` | 7 | 7 (untouched) |
+| `material_split_cases` | 10 | 10 (untouched) |
+| `$known_divergences` | present | **removed** |
+
+`to_cases` is now `null`, `absent_key`, `empty_string`, `int`, one `unreadable` representative,
+and `over_max_layer`. Each carries a `$why`, and the file header explains why the axis is small so
+nobody "restores coverage" later.
+
+## One deviation, stated
+
+**I kept `over_max_layer`** as a sixth case. It is not coercion: it is the second branch of the
+rule — readable as an integer but out of range — and it guards a server-side consequence that
+exists regardless of who wrote the value, since `to` feeds `painted × layers` and an unbounded
+magnitude puts a 301-digit integer into `required`. Delete it and `MAX_LAYER` can be removed with
+the suite still green. Stated as a decimal string so both sides parse it exactly.
+
+## The refusal decision, and a conflict in the instruction
+
+The server now **refuses** rather than stringifies:
+
+- `_band_materials` returns `(kept, refused)`. A non-string element is refused (`None`, `""` and
+  whitespace are still dropped silently — that means "no material", not corruption). The band is
+  skipped entirely, because deriving `share` from a divisor we know is wrong produces a
+  plausible-looking number.
+- `_parse_bands` returns `(bands, readable, dropped)`. A non-object band element is dropped **and
+  counted**, then reported as `layer_range_invalid(reason="not_a_band")` — silence there would let
+  array length change, which shifts positional `seq` and every later band's `prevTo`.
+- Either refusal forces `availability_checked = False` for the whole plan.
+
+**The conflict:** your keep-list named ten material cases including `integer_element_stringified`
+(`42` → `"42"`) and `non_integral_float_element` (`4.5` → `"4.5"`). Those two cannot survive the
+refusal rule — `42` is not a string, so it is now refused, not stringified. I applied the
+principle and dropped those two vectors, keeping the other eight minus `null_element_dropped`,
+`empty_string_dropped` and `whitespace_only_dropped`, which I collapsed into one
+`empty_values_dropped`. Result is six. Say if you wanted the other reading.
+
+Refusal behaviour is covered by **server-only pytest tests**, not vectors — the two sides do
+different things with unreachable input by design, so it does not belong in a shared contract:
+`test_non_string_material_is_refused_not_stringified`,
+`test_refused_material_blocks_verification_and_says_so`,
+`test_non_object_band_element_is_refused_and_reported`, and
+`test_to_defects_do_not_invalidate_the_whole_plan_but_refusals_do` — the last pins the deliberate
+asymmetry: a blank `to` is normal editing and must not invalidate other bands, a structural
+refusal is corruption and does.
+
+## Also done
+
+- Dropped the seq type expansion (7 vectors) entirely; `invalid_seq_types_fall_back_to_position`
+  carries the axis with one case and a `$why` telling the next reader not to expand it.
+- Kept the `_band_seq` integral-float acceptance — harmless, removes a real difference, no vectors.
+- Kept `sequence_cases`, `invalid_between_is_skipped_exactly_like_blank`, `normalize_roundtrip`
+  and `material_split_cases` untouched.
+- No `client2/` changes.
+- Re-verified both unconsumed-group guards by injecting `bogus_cases`: harness prints
+  `HARNESS FAILURE ... never scored` and pytest fails `test_every_vector_group_is_consumed_by_a_test`.
+  Restored and re-confirmed 110/0.
+- Live `validate_plan` against real PostgreSQL: unchanged, response key set still asserted.

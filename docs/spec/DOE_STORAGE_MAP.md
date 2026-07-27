@@ -1,19 +1,21 @@
 # 🗺️ DOE 영역 저장 지도 — 무엇을 어디에 쓰는가
 
-> **Status:** 🗄️ **대체됨 — 아래 본문은 폐기된 3테이블 모델이다** | **Last-verified:** 2026-07-27 (커밋된 상태 기준) · 소스에서 역산(추정 아님)
+> **Status:** 🗄️ **대체됨 — 아래 본문은 폐기된 3테이블 모델이다** | **Last-verified:** 2026-07-27 (M2.6 서버 리바인딩 `0f8d35f` 반영) · 소스에서 역산(추정 아님)
 > **대상:** map editor 우측 「2. Legend & DOE」 패널에서 편집하는 모든 항목
 > **근거:** `client2/src/transfer_plan.js`(DOE 저장) · `client2/src/map_editor.js`(legend 저장)
 
-> 🛑 **읽기 전에: 아래 본문은 더 이상 사실이 아닙니다.** M2.6(`cdcddee`)이 착지해 **3테이블 → 1테이블**로 바뀌었습니다.
+> 🛑 **읽기 전에: 아래 본문은 더 이상 사실이 아닙니다.** M2.6이 착지해 **3테이블 → 1테이블**로 바뀌었습니다(클라 `cdcddee` · 서버 `0f8d35f`).
 >
 > **지금의 모델** — `map_split_registry` 한 테이블이 값(=DOE 조건) 전부를 담습니다:
 > `split_key` · `color` · `split_desc` · `knobs` · **`bands` JSON** `[{seq, to, materials[]}]`.
 > `map_doe`·`map_doe_source`는 **폐기**됐습니다(기존 행을 읽을 수 있게 선언만 DEPRECATED로 남아 있고, 아무것도 쓰지 않습니다).
 > 구간은 **연속**이라 `from`은 앞 구간의 `to`+1로 유도되고, 층 수 = `to_i − to_(i−1)`, **수량·자재 배분은 저장하지 않고 파생**합니다.
 >
-> **아래 본문을 남겨두는 이유는 기존 데이터를 해석하기 위해서입니다.** 새 작업의 정본은 [PROJECT_STATUS](../process/PROJECT_STATUS.md)의 **M2.6**과 `server/product_tables.py`입니다.
-> ⚠️ 라이브에는 아직 `bands` 컬럼이 물리적으로 없고 `transfer_plan.py`도 폐기 테이블을 바인딩 중입니다 — 대기열 1번.
-> 바뀌지 않는 것: **`band_seq`는 정수 정체로 남습니다.** `(from, to)`나 라벨을 정체로 삼으면 범위를 고치는 순간 자재가 고아가 됩니다.
+> **양쪽이 착지했습니다(2026-07-27).** `knobs`·`bands`는 라이브 `table_config.json`에 선언돼 **물리 컬럼으로 존재**하고(config watcher가 재기동 없이 ALTER 실행), `server/transfer_plan.py`는 `plan_store.registry` → `map_split_registry`로 **리바인딩됐습니다**.
+> ⚠️ **남은 것은 웹서버 재기동 하나입니다.** 물리 컬럼은 재기동이 필요 없고 **코드만** 필요합니다. 2026-07-27 관측: 옛 모듈을 든 채 실행 중이던 프로세스에서 `GET /api/transfer-plan/validate`가 `plan_store.doe unresolved`로 404를 냈습니다. 재기동 여부는 이 문서가 아니라 실제 응답으로 확인하십시오 — **이 문장은 그날의 관측이지 현재 상태 표시가 아닙니다.**
+>
+> **아래 본문을 남겨두는 이유는 기존 데이터를 해석하기 위해서입니다.** 새 작업의 정본은 `server/product_tables.py`(`map_split_registry`의 `bands` 계약)와 [CONFIG_GUIDE §5.8](../guide/CONFIG_GUIDE.md)입니다.
+> 바뀌지 않는 것: **구간의 정체는 정수 서수로 남습니다**(`band_seq` → `bands[].seq`). `(from, to)`나 라벨을 정체로 삼으면 범위를 고치는 순간 자재가 고아가 됩니다. 다만 **`seq`는 이제 DB가 유일성을 강제하지 않습니다** → [PRIMITIVES §2](../architecture/PRIMITIVES.md).
 
 ---
 

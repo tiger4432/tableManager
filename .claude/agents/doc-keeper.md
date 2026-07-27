@@ -9,8 +9,8 @@ description: 리빙 문서 관리인. 코드 변경의 **의미**를 읽어 SSOT
 1. `docs/process/CONTRIBUTING.md` — docs-as-code 규율(무엇이 바뀌면 어떤 문서를 고치는가).
 2. `docs/process/DOC_OWNERSHIP.md` — 서브시스템↔문서 소유 매핑.
 3. `docs/README.md` — 문서 지도·Status 배지 체계(🟢🟠⚪🗄️).
-4. `docs/process/PROJECT_STATUS.md` — 상태 보드(**읽기 전용 참조**: 현재 상황 파악용. 수정은 총괄 전담).
-5. **코드맵 먼저**: `docs/architecture/CODE_MAP.md`에서 함수·라인을 찾은 뒤 소스는 **필요한 부분만 Read** (파일 전량 읽기 금지). 코드-문서 대조 감사 시에도 코드맵을 출발점으로.
+4. `docs/process/PROJECT_STATUS.md` — **의무 아님.** 보드는 총괄의 도구다. 이 작업에 필요한 상태는 지시서에 발췌돼 온다. 발췌가 없어 막히면 읽지 말고 **총괄에게 물어라.**
+5. **코드맵은 읽지 말고 grep하라**: `docs/architecture/CODE_MAP.md`는 790줄(15,000단어)이다 — 전량 읽기는 착수만 늦춘다. 찾는 심볼로 앵커만 얻어라 (`grep -n "<심볼>" docs/architecture/CODE_MAP.md`) → 소스는 **그 부분만 Read**. 앵커는 최대 ±20줄 어긋날 수 있다고 가정하고, 어긋났으면 보고서에 적어라. 파일 전량 읽기는 여전히 금지.
 6. **자기 교훈 파일 로드**: `agent_workspace/memory/doc-keeper.md` — 반복 함정 목록. 신규 교훈은 보고서에 제안(직접 추가 금지).
 
 ## 표준 작업

@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (HEAD `be58210` — 프로세스 감시·헬스 신설) | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — `/api/transfer-plan/validate` M2.6 리바인딩 반영) | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -121,7 +121,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `GET /api/maps/paint-rules` | **[M2]** 페인트 잠금 선언 정본(`config/map_overlay_config.json`의 `paint_lock`) — **기존엔 클라 하드코딩 `'F'`**였다. 응답 `{table, rules{enabled, blocking_values, from_overlay, message}}`. 클라는 404/405만 "선언 없음"으로 해석하고 네트워크·5xx는 직전 잠금을 유지한다(fail-open 금지) |
 | `GET /api/transfer-plan/stages` | **[M2]** 선언된 전사 stage 목록 + 역할 연결 상태(config 해석만 — 행 조회 없음). 역할·`plan_store` 누락은 `missing` 부분 가동(에러 아님) |
 | `GET /api/transfer-plan/source-summary` | **[M2]** 단계별 소스 (lot,slot) 가용 집계(`transfer_plan.py`). 공통 형태 `{identity, stage, source_kind, sources, chips{total, fail_breakdown, transferred, remaining, remaining_reliable}, history, warnings}`. tape-kind는 `by_core`(7키 `core_id/core_lot/core_slot/total/fail/used/remaining`) + `by_core_origin`(`"log"` 정확 \| `"area_map"` 강등, 후자는 `fail=null`) 동봉. **degraded 시 `remaining: null` + `remaining_reliable: false` + `warnings[source_degraded]` 3층 방어** — 소비자가 초록으로 뒤집을 수 없다. **칩 좌표 목록은 반환하지 않는다**(집계만). 미선언 stage 404 |
-| `GET /api/transfer-plan/validate` | **[M2-v2]** 계획 검증 — **계획 정체성은 `(ref_table, map_key)`**(구 `plan_id` 폐기, 계획 헤더 테이블도 계획 맵 사본도 없다). stage는 `stages.*.target_map.table` 역인덱스로 유도하며 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status: unverified`(임의의 맵도 열 수 있어야 하므로). `status`는 `ok`/`warnings`/`unverified` 3값 — **"검사 안 함"과 "이상 없음"을 같은 값으로 내지 않는다.** `plan_store.doe` 미구성만 404 |
+| `GET /api/transfer-plan/validate` | **[M2-v2]** 계획 검증 — **계획 정체성은 `(ref_table, map_key)`**(구 `plan_id` 폐기, 계획 헤더 테이블도 계획 맵 사본도 없다). stage는 `stages.*.target_map.table` 역인덱스로 유도하며 미선언 맵은 404가 아니라 `stage_unknown` 경고 + `status: unverified`(임의의 맵도 열 수 있어야 하므로). `status`는 `ok`/`warnings`/`unverified` 3값 — **"검사 안 함"과 "이상 없음"을 같은 값으로 내지 않는다.** **[M2.6 `0f8d35f`]** 계획 저장소는 `plan_store.registry` → `map_split_registry` 하나이고 구간·자재는 `bands` JSON에서 읽는다. **수량은 저장분을 읽지 않고 파생**한다(`층 수 = to − 이전 to` · `소요 = 칠한 셀 수 × 층 수` · `매당 = ceil(소요/자재 수)`) — 그래서 칠한 셀 집계가 불완전하면 **파생 전체를 게이트**해 `unverified`로 떨어뜨린다(0으로 읽으면 부족 경고가 조용히 죽는다). 캡 절단은 역할별로 `result_truncated`를 표면화하고 역시 `unverified`를 강제한다. `plan_store.registry`(필수 역할키 `bands` 포함) 미구성만 404 |
 | `/admin/chain/rules`, `/admin/mappers/list` | 체인 규칙·맵퍼(AST 파싱) 목록 |
 | `/admin/auto-update/{status,run-now,toggle}` | 스케줄러 상태(각 항목에 `active` 부가)·즉시실행·수집기 active 토글. toggle body `{"script": "<workspace>/<script.py>", "active": bool}` → `config/auto_update_control.json` 갱신(스케줄러 핫 반영, 재기동 불필요; 미존재 404·검증실패 400). **run-now는 active 무관 실행**(수동 실행은 명시적 의도) |
 | `/admin/reload-configs` | 로컬 캐시 리로드(`models.refresh_dynamic_models` — 신규 테이블 **물리 CREATE 포함**, 이슈 #7) + `SYSTEM_RELOAD` 발행. CREATE가 발행보다 선행(웹서버가 1차 DDL 소유자) |

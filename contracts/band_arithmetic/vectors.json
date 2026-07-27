@@ -9,11 +9,34 @@
     "  server  -> server/tests/test_transfer_plan.py (must pass; part of the pytest suite)",
     "  client  -> contracts/band_arithmetic/client_harness.mjs (read-only; reports divergence)",
     "",
-    "This is a NARROWED contract, deliberately not a port of JS coercion. Number('  ')===0",
-    "and Number([])===0 are JS accidents; adopting them would promote a bug to a spec. The",
-    "structural rule that removes the whole divergence class: BLANK and INVALID behave",
-    "identically for the prevTo walk (both are skipped, neither stops it). INVALID is still",
-    "reported (layer_range_invalid), just never silently absorbed as 0.",
+    "WHY `to_cases` IS SHORT, AND WHY IT MUST STAY SHORT (2026-07-27).",
+    "It is tempting to grow this into a coercion table. Do not. The WRITE PATH is",
+    "constrained, so most of that table would pin agreement on values that cannot be",
+    "stored:",
+    "  * the panel's end-layer field is <input type=number min=1 step=1>",
+    "    (transfer_plan.js), and its change handler runs the typed text through the same",
+    "    classifier and REFUSES anything invalid - it never reaches storage;",
+    "  * normalizeBands/serializeBands (map_editor.js) write `to` as a number for ok and",
+    "    '' for blank -- but an INVALID value is preserved VERBATIM (map_editor.js:230),",
+    "    deliberately: blanking it would destroy the panel's only evidence that the value",
+    "    is wrong, and it would then compute as 0 layers with nobody the wiser.",
+    "So the panel cannot ORIGINATE '0x10', '1_0', '1e3', true, [] or an out-of-range",
+    "magnitude -- but it faithfully PRESERVES one the grid created, so such a value can",
+    "survive a round trip. The only writer that creates them is the generic data grid,",
+    "and for that the server",
+    "needs ONE rule, not a mirror: anything it cannot read as an integer is `invalid` ->",
+    "layer_range_invalid -> unverified. That rule does not need to match the client's",
+    "coercion, because the client will never have produced such a value. Enumerating more",
+    "of that class buys agreement on garbage and costs a table nobody can keep true.",
+    "",
+    "So this group covers exactly: the two blank spellings a real row can hold, the happy",
+    "path, and ONE representative of the unreadable class per branch of the rule.",
+    "The behavioural rules live elsewhere and are the part with teeth:",
+    "  * sequence_cases       - the derivation itself (prev_to / layers / total / share)",
+    "  * invalid_between_...  - blank and invalid are skipped identically by the walk",
+    "  * normalize_roundtrip  - derived in the harness; guards the WRITER, which is where",
+    "                           the constraint lives. It caught normalizeBands storing 16",
+    "                           for '0x10' - the highest-value defect this file has found.",
     "",
     "NaN / Infinity are absent on purpose: JSON cannot express them, so they are not",
     "reachable through the stored column. The server covers them in a unit test.",
@@ -26,33 +49,23 @@
   "max_layer": 9007199254740992,
 
   "to_cases": [
-    {"name": "absent_key",          "band": {},                     "state": "blank",   "value": null},
-    {"name": "null",                "band": {"to": null},           "state": "blank",   "value": null},
-    {"name": "empty_string",        "band": {"to": ""},             "state": "blank",   "value": null},
-    {"name": "spaces_only",         "band": {"to": "  "},           "state": "blank",   "value": null},
-    {"name": "tab_newline_only",    "band": {"to": "\t\n "},        "state": "blank",   "value": null},
+    {"$comment": "Five cases, one per decision. Read the WHY note at the top of this file before adding a sixth - the write path is constrained and this axis is about degradation, not parity."},
 
-    {"name": "int",                 "band": {"to": 7},              "state": "ok",      "value": 7},
-    {"name": "zero",                "band": {"to": 0},              "state": "ok",      "value": 0},
-    {"name": "int_string",          "band": {"to": "7"},            "state": "ok",      "value": 7},
-    {"name": "int_string_padded",   "band": {"to": " 7 "},          "state": "ok",      "value": 7},
-    {"name": "int_string_plus",     "band": {"to": "+7"},           "state": "ok",      "value": 7},
-    {"name": "negative_string",     "band": {"to": "-3"},           "state": "ok",      "value": -3},
-    {"name": "float_truncates",     "band": {"to": 7.9},            "state": "ok",      "value": 7},
-    {"name": "negative_float_trunc","band": {"to": -7.9},           "state": "ok",      "value": -7},
-    {"name": "max_layer",           "band": {"to": 9007199254740992},"state": "ok",     "value": 9007199254740992},
+    {"name": "null",        "band": {"to": null}, "state": "blank", "value": null,
+     "$why": "What serializeBands actually writes for an unfinished band. Blank is not 0 - that distinction is the whole reason for a tri-state."},
+    {"name": "absent_key",  "band": {},           "state": "blank", "value": null,
+     "$why": "A row written before `to` existed, or a hand-built one. Same answer as null."},
+    {"name": "empty_string","band": {"to": ""},   "state": "blank", "value": null,
+     "$why": "Legacy rows hold '' where new writes hold null."},
 
-    {"name": "decimal_string",      "band": {"to": "7.9"},          "state": "invalid", "value": null},
-    {"name": "hex_string",          "band": {"to": "0x10"},         "state": "invalid", "value": null},
-    {"name": "underscore_numeric",  "band": {"to": "1_0"},          "state": "invalid", "value": null},
-    {"name": "alpha_label",         "band": {"to": "H2"},           "state": "invalid", "value": null},
-    {"name": "exponent_string",     "band": {"to": "1e3"},          "state": "invalid", "value": null},
-    {"name": "bool_true",           "band": {"to": true},           "state": "invalid", "value": null},
-    {"name": "bool_false",          "band": {"to": false},          "state": "invalid", "value": null},
-    {"name": "empty_array",         "band": {"to": []},             "state": "invalid", "value": null},
-    {"name": "object",              "band": {"to": {}},             "state": "invalid", "value": null},
-    {"name": "over_max_layer",      "band": {"to": "9007199254740993"},"state": "invalid","value": null},
-    {"name": "huge_float",          "band": {"to": 1e300},          "state": "invalid", "value": null}
+    {"name": "int",         "band": {"to": 7},    "state": "ok",    "value": 7,
+     "$why": "The happy path - the only shape the panel can store."},
+
+    {"name": "unreadable",  "band": {"to": "H2"}, "state": "invalid", "value": null,
+     "$why": "ONE representative of the whole unreadable class (grid-written text). The server's rule is single: not readable as an integer -> invalid -> layer_range_invalid -> unverified. It does NOT need to agree with the client's coercion, because the client cannot have produced this. Do not re-enumerate '0x10' / '1_0' / '1e3' / true / [] here - they all take this same branch, and sequence_cases already pins that an invalid band is skipped by the walk exactly like a blank one."},
+
+    {"name": "over_max_layer", "band": {"to": "9007199254740993"}, "state": "invalid", "value": null,
+     "$why": "KEPT DELIBERATELY, and it is not a coercion case. This is the second branch of the rule: readable as an integer but out of range. It guards a server-side consequence that exists no matter who wrote the value - `to` feeds painted x layers, so an unbounded magnitude puts a 301-digit integer into `required` in the response. Deleting this vector would let the MAX_LAYER bound be removed with the suite still green. Stated as a decimal string so both sides parse it exactly (a JSON number past 2^53 is rounded by JSON.parse before any guard runs)."}
   ],
 
   "sequence_cases": [
@@ -192,6 +205,7 @@
     },
     {
       "name": "invalid_seq_types_fall_back_to_position",
+      "$why": "ONE case for the whole seq type axis, same reasoning as to_cases: normalizeBands assigns an integer seq, so a non-integer seq is grid-only. The rule is single - not a positive integer means fall back to array position - and it does not need to agree with the client's coercion on values the panel cannot write. Do not expand this into a type table.",
       "bands": [
         {"seq": "abc", "to": 5, "materials": ["M_1"]},
         {"seq": 0, "to": 10, "materials": ["M_1"]},
@@ -200,6 +214,16 @@
       "expect_seqs": [1, 2, 3],
       "expect_count": 3
     }
+  ],
+
+  "materials_cases": [
+    {"$comment": "Behavioural rules that BOTH sides agree on and the panel can actually produce. Empty-dropping and dedupe belong here because they change len(materials), which is the divisor in share = ceil(total / len(materials)) - a derived number, not a formatting detail. This group is deliberately NOT an element-type table: a non-string element is grid-only, and the server REFUSES it (source_unresolved -> unverified) rather than stringifying it. There is nothing to be consistent with, because the panel writes materials through a text input and has never produced a number, a bool or an object. Do not add vectors trying to make the two sides stringify garbage the same way - the server-side refusal is covered by pytest, where it belongs."},
+    {"name": "strings_pass_through",      "materials": ["TAPE-A_01"],            "expect": ["TAPE-A_01"]},
+    {"name": "empty_values_dropped",      "materials": ["A_1", null, "", "   "], "expect": ["A_1"]},
+    {"name": "trimmed_then_deduped",      "materials": [" A_1 ", "A_1"],         "expect": ["A_1"]},
+    {"name": "order_of_first_appearance", "materials": ["B_2", "A_1", "B_2"],    "expect": ["B_2", "A_1"]},
+    {"name": "not_a_list_is_empty",       "materials": "A_1",                    "expect": []},
+    {"name": "absent_is_empty",                                                  "expect": []}
   ],
 
   "material_split_cases": [

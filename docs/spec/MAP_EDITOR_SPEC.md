@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 일원화) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 일원화 · §6 M2.6 1테이블 계획 저장소 `0f8d35f`) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -404,7 +404,7 @@ sequenceDiagram
 > - **~~C7 오버레이 기하 서명에 물리 파라미터 누락~~ → ✅ 해소(`7d931dc`)** — `currentGeomSignature`가 `phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin` 6종을 포함합니다. 다만 **소스 메타가 완비된 정상 경로에서는 재투영이 항등**이라 이 6종은 여분이고, **실제로 일하는 곳은 소스 물리 규격이 미등록이라 화면 값으로 폴백하는 경로**뿐입니다(§5.0의 등록 누락 문제와 같은 뿌리).
 > - **F1 물리 규격 불일치를 관문이 막지 않는다 (미해소·잠복)** — §5.1의 호환성 관문은 `cols×rows`만 비교하고, 소스·타깃의 `phys_chip_*`/`phys_offset_*` 차이는 **툴팁 문구로만** 드러납니다. 물리 좌표는 인덱스이고 그 인덱스가 어느 다이인지는 `offset/chip` 비율이 정하므로, 반 피치를 넘는 offset 차이는 **전 셀 1다이 이동**을 조용히 만듭니다(임계값에서 불연속으로 튐). 라이브 등록 9건은 계열별로 물리 규격이 같아 **현재 도달성 0**.
 > - **F2 관문의 타깃 기준이 DOM 메타 입력이다 (미해소)** — `addOverlayLayer`의 `targetKey`는 `getCurrentMapKey()`, 즉 **로드된 맵이 아니라 현재 메타 입력 필드**를 읽습니다. 맵을 로드하지 않고 입력만 바꾸면 관문이 엉뚱한 맵의 메타로 판정합니다. 로드 시점에 확정된 식별자(`loadedIdentity`)를 쓰는 것이 정답입니다.
-> - **C3 계획 규모 상한** — 클라 조회가 `limit=500`이고 절단을 로드 실패로 강등하므로, **자재 행 500 초과 계획은 영구히 저장 불가**가 됩니다(20값 × 3구간 × 10자재 = 600행이면 도달).
+> - **C3 계획 규모 상한 (M2.6으로 단위가 바뀜 — 재등급 필요)** — 클라 조회는 여전히 `limit=500`이고 절단을 로드 실패로 강등하지만, **세는 단위가 자재 행에서 legend 값으로 바뀌었습니다.** 자재·구간이 `map_split_registry` 한 행의 `bands` JSON 안으로 들어갔기 때문에 종전의 도달 예시(20값 × 3구간 × 10자재 = 600행)는 이제 **20행**입니다. 상한은 `map_split_registry` **행 = 계획의 값 수** 500이고, 서버 쪽 대응 캡은 `MAX_DOE_PER_PLAN`(500 레지스트리 행)·`MAX_BANDS_PER_PLAN`(2000 구간)입니다. 여유가 커졌을 뿐 상한 자체가 사라진 것은 아니며, **재등급은 QA 몫입니다.**
 > - **C6 헤더 신선도** — 초안 시각(`S.savedAt`)이 서버 시각(`S.serverSavedAt`)보다 우선해, 화면 데이터는 서버본인데 칩은 낡은 초안 시각을 표시할 수 있습니다.
 > - **C5 legend 저장 오탐** — `saveLegendToServer`가 *실패*와 *보낼 것 없음*을 같은 `false`로 반환해, 마지막 값 삭제 시 근거 없는 경고 토스트가 뜹니다.
 > - **C8 `sticky` 토스트** — 상한 초과 퇴거에서 보호되지 않습니다. 현재 프로덕션 호출부가 없어 영향 0.
@@ -419,9 +419,11 @@ sequenceDiagram
 |---|---|
 | 계획 정체성 | `(ref_table, map_key)` — 맵 정체성과 동일 |
 | 관리 단위 | **DOE = value** — 맵에 칠한 값 하나가 조건군 하나 |
-| 밴드(STACK) | `band_seq`(정수)가 **정체**, `stack_band`는 **자유 텍스트 라벨**(다중 구간 `1, 2-15, 16` — 파싱하지 않음). 라벨을 고쳐도 자재 묶음이 유지되는 이유. **삭제 시 재번호를 매기지 않습니다** — 재번호는 자식 `map_doe_source`를 전부 고아로 만듭니다 |
+| 밴드(STACK) | **[M2.6]** `bands` JSON 배열의 원소 하나 = 구간 하나. `seq`(정수)가 **정체**, **배열 위치가 순서**입니다. 구간은 **연속**이라 `to`만 저장하고 `from`은 앞 원소의 `to`+1로 유도합니다(층 수 = `to − 이전 to`). **삭제·재정렬 시 재번호를 매기지 않습니다** — 재번호는 그 구간에 붙은 자재를 고아로 만듭니다. ⚠️ `seq`는 이제 **DB가 유일성을 강제하지 않습니다**(자유 텍스트 varchar 안의 JSON) — 서버가 파싱 시점에 유일하게 재배정하며, 집계·판정을 `seq` 유일성에 기대면 조용히 꺼집니다 |
 | 영역 지정 | **값 페인팅이 정본**(rect 영역 선택 모드는 폐기됨) |
-| 저장소 | `map_doe` / `map_doe_source`(`plan_store` config 바인딩) |
+| 수량 | **저장하지 않고 파생합니다.** 구간 소요 = `칠한 셀 수 × 층 수`, 매당 소요 = `ceil(구간 소요 / 자재 수)`. 저장된 총량은 누가 셀을 하나 더 칠하는 순간 어긋납니다. 클라·서버가 **같은 벡터 파일**(`contracts/band_arithmetic/vectors.json`)에 대조돼 있습니다 |
+| 자재 | `bands[].materials[]`에 **사용자 입력 원문 그대로**. `(lot, slot)` 분해는 `plan_store.material_identity` **선언**을 따르며, 못 푸는 ID는 추측하지 않고 `source_unresolved`(클라는 조회조차 하지 않고 `미상`) |
+| 저장소 | **`map_split_registry` 한 테이블**(`plan_store.registry` 바인딩). ~~`map_doe`/`map_doe_source`~~는 M2.6에서 폐기 — 읽기용 선언만 남아 있습니다 |
 
 ### 6.1 가용량 계약
 
@@ -443,12 +445,18 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 
 `validate`는 이 상태에서 부족·fail 판정을 **전부 생략**하고 `availability_unreliable`만 발행합니다. 최종 `status`는 `ok` / `warnings` / **`unverified`** 3값으로, **"검사 안 함"과 "이상 없음"을 절대 같은 값으로 내지 않습니다.**
 
-### 6.3 클라 prune 권한 불변식 (C1)
+### 6.3 클라 `replace` 권한 불변식 (C1) — **M2.6에서 자리를 옮겼습니다**
 
 ```
-doeServerLoaded === true  ⇒  S.doe는 서버본에서 유래했다
+legendReplaceScope = { table, mapKey, fingerprint } | null
+   ⇒ "이 화면은 이 맵의 레지스트리 행에서 왔고, 읽었을 때 이랬다"
 ```
 
-서버 잔재 삭제(prune)의 권한(`serverKeys` / `doeServerLoaded`)이 생기는 **유일한 지점은 `adoptServerDoe`**이며, **서버본 채택과 원자적으로** 일어납니다. "조회에 성공했다"를 "화면이 서버본이다"로 승격시키면 안 됩니다 — 회복 재시도가 응답 본문을 버리는 경로가 있었고, 그 모순 상태에서 `serverKeys − keep`이 그 맵의 행 전량이 되어 실제로 데이터가 파괴됐습니다(QA 라이브 2회 재현).
+M2.6 전에는 계획 행을 지우는 **prune 권한**(`serverKeys`/`doeServerLoaded`/`adoptServerDoe`)이었습니다. 계획이 `map_split_registry` 한 테이블로 접히면서 저장이 legend 저장과 같은 **`replace_map` 쓰기**가 됐고, 차집합 계산 기계장치(`pruneScoped`·`serverKeys`)는 비활성화가 아니라 **삭제**됐습니다. 남은 것은 같은 위험을 막는 **하나의 주장**이며 구현은 `client2/src/map_editor.js`에 있습니다.
 
-부속 규율: ① 절단 응답(`total > rows.length`)은 **로드 실패로 강등** ② `doeServerLoaded`가 거짓이면 **삭제뿐 아니라 쓰기도 보류** ③ `loadSeq` 세대 가드로 맵 전환 중 늦게 도착한 응답을 채택하지 않음 ④ 자재 수량 분배는 **`Math.ceil`**(서버 규약 일치 — `round`면 부족이 숨는다).
+- **권한**: 그 맵 자신의 레지스트리에서 온 legend만 그 맵을 replace할 수 있습니다. "조회에 성공했다"를 "화면이 서버본이다"로 승격시키면 안 됩니다 — 회복 재시도가 응답 본문을 버리는 경로가 있었고, 그 모순 상태에서 삭제 범위가 그 맵의 행 전량이 되어 실제로 데이터가 파괴됐습니다(QA 라이브 2회 재현).
+- **소거 조건**: 테이블 전환 · 조회 실패 · **절단 응답(`total > rows.length`)** · 맵 언로드. 절단된 읽기는 replace 의미론 아래서 **데이터 파괴 읽기**입니다.
+- **동시성(M2.6 신설)**: 쓰기 직전 재읽기해 `fingerprint`가 어긋나면 **upsert로 강등하지 않고 거부**합니다(`legendConflict`, 해당 맵의 모든 레지스트리 쓰기 차단 → 리로드해야 풀림). 강등하면 낡은 `bands`가 남의 세션 것을 덮습니다.
+- **분배**: 자재 수량은 **`Math.ceil`**(서버 규약 일치 — `round`면 부족이 숨습니다).
+
+> ⚠️ `transfer_plan.js`는 **서버에 직접 쓰지 않습니다.** 위 가드 전부가 한 경로에 있어야 갈라지지 않기 때문입니다.

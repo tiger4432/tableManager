@@ -8,6 +8,8 @@
 
 ---
 
+> 🌙 **사용자 저녁 세션 대기 (2026-07-27)** — 집에서 처리: ① `git push origin main`(64커밋 이상 밀림) ② **웹서버 재기동** — M2.6 코드 반영. 재기동 전까지 `/api/transfer-plan/validate`는 404고 DOE 패널은 뜨지 않는다. 재기동 후 검증할 것: `/stages`가 `registry: connected` · 실제 맵에서 `validate` 200 · **첫 실 `bands` 쓰기**(라이브 102행은 전부 `bands IS NULL`이라 파싱 경로를 아직 아무도 안 밟았다).
+
 ## 📋 개발 대기열 (Queue) — 사용자 지시 2026-07-27
 
 > **규율:** 새 요청은 **즉시 착수하지 않고 이 대기열에 넣는다.** 위에서부터 순차 처리하며, 파일이 겹치지 않을 때만 병렬로 돌린다.
@@ -24,9 +26,9 @@
 | — | 문서 정비 — 4분할 첫 실행 | ✅ `52a668b` (감사 지적 반영까지 완료) |
 | 1 | 서버 `transfer_plan.py`를 M2.6 `bands` JSON 계약에 맞춤 | ✅ **병합** (QA 2건 NO-GO → 수정 → 클라 정합. **재기동 대기**) |
 | 2 | **C1 접근 통제** — 최소 `admin/scripts/code`·`auto-update/run-now` 두 라우트 | 대기 |
-| 3 | **B4 롤백 절차** (프로덕션 차단) | 대기 |
+| 3 | **B4 롤백 절차** (프로덕션 차단). ⚠️ 실제 사례 확보(2026-07-27): config를 먼저 바꾸면 **코드만 되돌려서는 복구되지 않는다** — config는 요청마다 재로드, 코드는 재기동까지 고정. + 스키마 싱크가 `print()`라 **ALTER가 로그 파일에 안 남아 사후 감사 불가**(B3와 같은 계열) | 대기 |
 | 4 | **C3 백업 절차** — config·workspace·PG. **사용자 입력 필요**(보관 위치·주기). 복원을 실제로 해볼 것 | 대기 |
-| 5 | **문서 감사 후속** — ⓐ CODE_MAP 클라 앵커 5파일 재측정(`cdcddee` 이후 +145~308줄 어긋남, 선언 허용오차 ±20 초과) ⓑ **7건 아카이브**(49→42): `spec/BATCH_INGESTION_SPEC`·`BATCH_PROCESSING_SPEC`·`TABLE_ENGINE_SPEC`·`prompts/CLAUDE`·`prompts/starting_prompts`(복수형 중복)·`map_editor/specification`·`DOC_AUDIT` ⓒ 헬스 상태값 문서 4종 vs 코드 8종(`stalled` 누락) ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) | 대기 |
+| 5 | **문서 감사 후속** — ⓐ CODE_MAP 클라 앵커 5파일 재측정(`cdcddee` 이후 +145~308줄 어긋남, 선언 허용오차 ±20 초과) ⓑ **7건 아카이브**(49→42): `spec/BATCH_INGESTION_SPEC`·`BATCH_PROCESSING_SPEC`·`TABLE_ENGINE_SPEC`·`prompts/CLAUDE`·`prompts/starting_prompts`(복수형 중복)·`map_editor/specification`·`DOC_AUDIT` ⓒ 헬스 상태값 문서 4종 vs 코드 8종(`stalled` 누락) ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) ⓔ **헌장 공백** — `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 **어느 에이전트 헌장에도 안 적혀 있다.** 이번엔 doc-keeper가 `DOC_OWNERSHIP` 표를 따라가 고쳤을 뿐 — 헌장만 읽는 에이전트였으면 방치됐다. 문서 문제가 아니라 헌장 문제(총괄 소관) | 대기 |
 | 6 | `replace_map` 빈 집합 — 서버 scope 필드 | 대기 |
 | 7 | M3 맵 메타 자동 등록 (ingestion 체인) | 대기 |
 | 8 | P3 대형 파일 (backpressure·COPY·상한) | 대기 |

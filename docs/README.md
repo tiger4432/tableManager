@@ -14,7 +14,7 @@
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
 | 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
 | 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **진행 상황·열린 문제 단일 보드** — 여기서 현황 파악 |
-| 🟢 [DOC_AUDIT.md](./DOC_AUDIT.md) | 문서·개발체계 진단서 및 정비 계획 |
+| ⚪ [DOC_AUDIT.md](./DOC_AUDIT.md) | 2026-07-24 문서 진단서 — **이미 실행 완료된 1회성 계획**(스냅샷). 살아 있는 규율은 [CONTRIBUTING](./process/CONTRIBUTING.md)·[DOC_OWNERSHIP](./process/DOC_OWNERSHIP.md)으로 옮겨졌으므로 **새 작업에서 읽을 이유는 없습니다.** 아카이브는 보드 대기열 5번(7건 일괄) |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로 |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **"무엇을 설정해야 하는가" 단일 참조** — config 전수 지도 + 시나리오별 체크리스트(새 테이블/맵/수집기/그래프 온보딩) |
 
@@ -36,8 +36,8 @@
 | 파일 인제션 파이프라인 | 🟢 [guide/INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md) |
 | 체인 인제션(DB세션 맵퍼) | 🟢 [guide/chain_ingestion_guide.md](./guide/chain_ingestion_guide.md) |
 | Auto-Update 스케줄러 | 🟢 [guide/AUTO_UPDATE_GUIDE.md](./guide/AUTO_UPDATE_GUIDE.md) |
-| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어) |
-| DOE 영역 저장 지도 | 🟠 [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — 「Legend & DOE」 패널 편집이 **어느 테이블로 갈라져 저장되는가** + `replace_map` 쓰기 의미론. ⚠️ **M2.6 진행 중**이라 최종 구조는 보드가 정본 |
+| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어 · **M2.6부터 저장소는 `map_split_registry` 한 테이블, 구간·자재는 `bands` JSON**) |
+| DOE 영역 저장 지도 | 🗄️ [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — **본문은 폐기된 3테이블 모델**이며 기존 데이터 해석용으로만 보존합니다. M2.6이 양쪽 다 착지해(`cdcddee`+`0f8d35f`) 지금은 `map_split_registry` **한 테이블**입니다 → 현행 계약은 [MAP_EDITOR_SPEC §6](./spec/MAP_EDITOR_SPEC.md)·[CONFIG_GUIDE §5.8](./guide/CONFIG_GUIDE.md) |
 | HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
 | 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |
 | 실시간 동기화 | 🟠 [spec/DATA_SYNC_SPEC.md](./spec/DATA_SYNC_SPEC.md) |
