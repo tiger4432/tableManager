@@ -625,7 +625,7 @@ Monaco 코드 에디터는 `.py`(맵퍼·인제션·수집기 스크립트)만 �
 **M. `table_config`에 없는 컬럼은 저장에서 조용히 버려지고 HTTP는 200입니다.** ★
 `crud`는 미선언 컬럼을 드롭한 뒤 성공을 반환합니다 — 컬럼 오타·config 누락이 **저장 성공처럼 보입니다.** 실제로 `map_doe`가 이 경로로 `eventtime`을 잃고 있었습니다.
 2026-07-27부터 **`(테이블, 컬럼)`당 1회** `[Schema]` 경고가 남습니다(핫패스라 반복 경고는 접습니다). 값이 안 들어갈 때 의심 순서: ①`table_config`에 그 컬럼이 있는가 ②철자 ③리로드 경로(§4.1).
-> ⚠️ 이 경고가 **워처 프로세스의 로그 파일에는 아직 안 남습니다** — [PRODUCTION_READINESS](../process/PRODUCTION_READINESS.md) B3.
+> ✅ 이 경고는 **워처 프로세스의 로그 파일에도 남습니다**(2026-07-27 `d56e7e2` — 그 전까지는 `logging.lastResort`로 떨어져 파일에 안 남았습니다).
 
 **N. 격리 환경에서 config를 고쳤는데 운영이 안 바뀝니다(그리고 그 반대도).**
 `ASSY_DATA_ROOT`가 걸려 있으면 config 트리 전체가 `dev_env/config`입니다. 어느 쪽을 고쳤는지 헷갈리면 `python server/scripts/dev_env/devenv.py status`로 확인하십시오 → [DEPLOY_SETUP §5](./DEPLOY_SETUP.md).

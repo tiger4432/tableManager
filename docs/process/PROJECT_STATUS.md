@@ -26,7 +26,7 @@
 | 2 | **C1 접근 통제** — 최소 `admin/scripts/code`·`auto-update/run-now` 두 라우트 | 대기 |
 | 3 | **B4 롤백 절차** (프로덕션 차단) | 대기 |
 | 4 | **C3 백업 절차** — config·workspace·PG. **사용자 입력 필요**(보관 위치·주기). 복원을 실제로 해볼 것 | 대기 |
-| 5 | 문서 등급 감사(A/B/C) + C등급 아카이브 — 살아있는 문서 49개 축소 | 대기 |
+| 5 | **문서 감사 후속** — ⓐ CODE_MAP 클라 앵커 5파일 재측정(`cdcddee` 이후 +145~308줄 어긋남, 선언 허용오차 ±20 초과) ⓑ **7건 아카이브**(49→42): `spec/BATCH_INGESTION_SPEC`·`BATCH_PROCESSING_SPEC`·`TABLE_ENGINE_SPEC`·`prompts/CLAUDE`·`prompts/starting_prompts`(복수형 중복)·`map_editor/specification`·`DOC_AUDIT` ⓒ 헬스 상태값 문서 4종 vs 코드 8종(`stalled` 누락) ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) | 대기 |
 | 6 | `replace_map` 빈 집합 — 서버 scope 필드 | 대기 |
 | 7 | M3 맵 메타 자동 등록 (ingestion 체인) | 대기 |
 | 8 | P3 대형 파일 (backpressure·COPY·상한) | 대기 |
