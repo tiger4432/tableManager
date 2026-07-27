@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**§5.8 DOE zone 모델**(STACK + 1H/MID/TOP) 반영 — `plan_store.registry` 필수 역할이 zone 컬럼 넷으로 바뀌고 `bands`는 선택으로 강등 · `stack`이 `string`이어야 하는 이유 · §5.8-ter에 `--overwrite-drift` 전역 적용/컬럼 타입 변경 불가 경고. 직전: §4.1 롤백 순서 재기동 위치 + 함정 O · `ASSY_ADMIN_TOKEN` · M2.6 `plan_store` 리바인딩 `0f8d35f`) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (§5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -219,7 +219,7 @@ S1을 전부 수행한 뒤 추가로:
 | 3 | 소스는 **둘 중 하나** — ① `"source_config_ref": "bonding_plan"`(M1 바인딩 재사용, 현재 유일 허용값) ② 인라인 `"source": {...}` |
 | 4 | 인라인 소스 역할: `identity.compose`, `map_metadata`, `total_chips`, `transfer_log`, `origin_log`, `origin_area_map`, `process_history`, `fail_sources`, `warnings` |
 | 5 | `fail_sources.<name>.frame` — `"origin"`=출신 프레임 fail을 `origin_log` 조인으로 타깃 좌표에 투영 / `"self"`=자기 프레임에서 계산 |
-| 6 | `plan_store.registry` — 계획 저장 테이블 바인딩. **M2.6(2026-07-27)부터 테이블은 `map_split_registry` 하나**이고 필수 역할키는 `ref_table`·`map_key`·`value`·`bands`입니다. v1 역할 `plan`(헤더)·`map`(계획 맵 사본)·`doe_layer`에 이어 **v2의 `doe`·`doe_source`도 폐기**됐습니다 — 계획 정체성이 `(ref_table, map_key)`, 즉 *지금 열어 편집 중인 그 맵*이고 페인팅 결과가 곧 그 맵 자신의 셀이기 때문입니다. **`bands` 역할이 빠지면 `validate`는 "구간 없음"으로 조용히 통과시키지 않고 404를 냅니다** |
+| 6 | `plan_store.registry` — 계획 저장 테이블 바인딩. **M2.6(2026-07-27)부터 테이블은 `map_split_registry` 하나**이고, **[ZONE 2026-07-28] 필수 역할키는 `ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`**입니다(코드 정본 `transfer_plan.REGISTRY_ROLES`). v1 역할 `plan`(헤더)·`map`(계획 맵 사본)·`doe_layer`에 이어 **v2의 `doe`·`doe_source`도 폐기**됐습니다 — 계획 정체성이 `(ref_table, map_key)`, 즉 *지금 열어 편집 중인 그 맵*이고 페인팅 결과가 곧 그 맵 자신의 셀이기 때문입니다. **zone 역할이 하나라도 빠지면 `validate`는 조용히 통과시키지 않고 404를 냅니다.** 🗄️ `bands`는 **선택**(폐기·읽기 전용) — 없어도 200이며, 폐기 계획을 못 읽을 뿐입니다(§5.8) |
 | 7 | `plan_store.material_identity` — 자재 ID 원문을 `(lot, slot)`으로 푸는 **선언된 규칙**(`compose: ["lot","slot"]` + `separator`). 서버는 자재 문자열을 파싱하는 관례를 코드에 두지 않습니다. 미선언이면 모든 자재가 `source_unresolved`가 되고 계획은 `unverified`로 남습니다 |
 | 8 | 검증: `GET /api/transfer-plan/stages` → `GET /api/transfer-plan/validate?ref_table=&map_key=` → `GET /api/transfer-plan/source-summary` |
 
@@ -512,6 +512,8 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > **자재 ID는 사용자가 입력한 원문 그대로가 정체입니다.** 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**이고 구현은 `transfer_plan.parse_material_token` 하나입니다. 분리자 없는 `MID1`은 해석 실패가 아니라 **그 로트 전체**를 뜻하며, 진짜 malformed한 토큰(`ABC_`·`_01`·`_`·BIN 실패)만 거부합니다(V4). ⚠️ `material_identity`는 이제 **게이트로만** 씁니다 — 클라는 config를 읽지 못하므로 파싱 규칙이 config에 살면 양쪽이 갈리고, 갈리는 순간 한 화면에 두 개의 가용치가 생깁니다. 미선언이면 아무것도 조회하지 않고 `source_unresolved`로 보고합니다.
 >
+> **BIN 축은 `bin_map` 선언으로만 켜집니다 — 미선언은 결함이 아니라 「아직 배선되지 않음」입니다.** `lot_slot:BIN` 토큰의 BIN별 가용을 세려면 stage 블록(또는 그 `source` 블록)에 `bin_map: {table, columns: {lot, slot, x, y, bin}}`을 선언해야 합니다. 선언이 없으면 서버는 **BIN 컬럼을 추측하지 않고**(`transfer_plan._bin_axis_binding` — 같은 `dt_map.val`이 이미 `origin_area_map`의 **출신 코어 식별자**로 선언돼 있어, "맵의 val이 곧 BIN"으로 박으면 라이브에서 즉시 틀립니다) 축을 `axis: "unavailable"`로 보고하며, 클라 롤업의 해당 칸은 `미상`으로 남습니다(`0`이 아닙니다). 동작 계약은 [MAP_EDITOR_SPEC §6.1-bis](../spec/MAP_EDITOR_SPEC.md)가 정본입니다.
+>
 > ℹ️ **로트 전체 토큰은 `validate`가 값을 매기지 않습니다**(`source_scope_unpriced`). `scope=lot` 응답에 `chips`가 없는 것과 같은 이유입니다 — 로트 하나의 `remaining` 숫자를 지어내지 않습니다. "조회 못 함"도 "이상 없음"도 아닌 **"판정하지 않았다"**로 나갑니다.
 >
 > 🗄️ **폐기된 `bands`는 필수 역할이 아니지만 계속 읽습니다.** 실계획이 아직 그 컬럼에 남아 있고, legend 저장은 `replace_map`이라 **읽지 못하면 그 맵을 여는 순간 화면이 비고 다음 편집 한 번이 계획을 빈 집합으로 지웁니다.** 서버는 `bands_to_zones`로 옮기며, 세 구역으로 표현할 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는 **접지 않고 거부**합니다(`layer_range_invalid` / `reason: not_convertible`). 접은 결과를 되쓰면 서버의 진짜 계획이 그 손실 읽기로 덮입니다. 새 writer를 만들지 마십시오.
@@ -522,7 +524,7 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > ⚠️ **`table_config.json`에 `map_split_registry`의 `knobs`·`stack`·`mat_1h`·`mat_mid`·`mat_top` 선언이 있어야 하고, 물리 컬럼이 실제로 존재해야 합니다.** 선언이 없으면 클라이언트가 보낸 값이 **드롭되고 HTTP 200이 나갑니다**(§6 함정 M) — 그리고 legend 저장은 `replace_map`이라 그 200이 **층 구조 없는 행으로 계획 전체를 갈아치웁니다.** 실제로 M2.6 클라가 착지한 뒤 `bands` 선언이 없어 쓰기가 조용히 버려지고 있었고, zone 착지 때도 같은 자리에서 물리 ALTER가 밀려 있었습니다.
 >
-> 기존 테이블에 컬럼을 더하는 것은 **BLOCKING drift**이므로 `install_product_tables.py --apply --overwrite-drift`가 필요합니다(§5.8-ter). ALTER를 수행하는 것은 **config watcher 뿐**이며 `/admin/reload-configs`는 하지 않습니다(§4.2). 🚨 **물리 반영은 `/tables/{t}/schema`가 아니라 `information_schema.columns`로 확인하십시오** — 스키마 API는 config 싱글턴을 읽으므로 200에 컬럼이 보여도 증거가 아닙니다(§4.3). 클라이언트는 이 상태를 스스로 감지해 저장을 **보류**합니다(실제 행의 셀 키 집합을 봅니다) — 컬럼이 나타나면 다음 자동 저장에서 알아서 풀립니다.
+> 기존 테이블에 컬럼을 더하는 것은 **BLOCKING drift**이므로 `install_product_tables.py --apply --overwrite-drift`가 필요합니다(§5.8-ter). ALTER를 수행하는 것은 **config watcher 뿐**이며 `/admin/reload-configs`는 하지 않습니다(§4.2). 🚨 **물리 반영은 `/tables/{t}/schema`가 아니라 `information_schema.columns`로 확인하십시오** — 스키마 API는 config 싱글턴을 읽으므로 200에 컬럼이 보여도 증거가 아닙니다(§4.3). 클라이언트는 이 상태를 스스로 감지해 저장을 **보류**합니다(실제 행의 셀 키 집합을 봅니다 — `probeZoneColumns`) — 컬럼이 나타나면 다음 ⚡ Push 시도에서 재확인해 풀립니다(자동 저장은 `b35bc9f`에서 삭제됐고 Push가 유일한 기록자입니다).
 >
 > `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
 >

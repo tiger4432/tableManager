@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`90e284f` — **§3.1 실시간 동기화 무결성 3문제 이관**(구 `DATA_SYNC_SPEC §3`) · §5 `adminFetch` 게이트 판정 4규칙 · §6 전사 계획 패널 M2.6 정정) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -120,12 +120,12 @@ npm run build     # dist/ 생성
 | 영역 | 내용 |
 |---|---|
 | 배선 | `map_editor.js`가 `initTransferPlan(paintController)`로 초기화하고 `notifyMapContext`/`notifyLegendChanged`/`notifyPaintCounts`로 통지(단방향) |
-| 관리 단위 | **DOE = value**(맵에 칠한 값 하나 = `map_split_registry` 행 하나 = 조건군 하나). 구간은 그 행의 **`bands` JSON 배열** — `seq`가 정체, **배열 위치가 순서**, 사용자가 넣는 값은 구간당 **끝 층(`to`) 하나**뿐(`1, 2-15, 16`은 구간 3개). 층 수 = `to − 이전 to` |
-| **쓰기 소유권** | ⭐ **[M2.6] `transfer_plan.js`는 서버에 쓰지 않습니다.** 레지스트리 행의 유일한 기록자는 `map_editor.js`(legend 저장 경로)이고, 패널은 `controller.getLegend()`로 읽고 `controller.updateLegendRow(value, {bands, knobs})`로만 씁니다 — 저장·삭제·동시성 가드가 **한 경로**에 모입니다 |
-| 파생값 | **저장하지 않습니다.** 구간 소요 = `칠한 셀 수 × 층 수`, 자재당 = `ceil(소요/자재 수)`. 식의 구현은 각각 하나뿐입니다(저장 `ceil`/표시 `round`로 갈려 DB 34·화면 33이던 결함) |
+| 관리 단위 | **DOE = value**(맵에 칠한 값 하나 = `map_split_registry` 행 하나 = 조건군 하나). **[ZONE 2026-07-28 `b35bc9f` — band 모델 대체]** 층 구조는 그 행의 `stack`(총 층수) + **고정 구역 셋**(`mat_1h`=1층 · `mat_top`=STACK층 · `mat_mid`=그 사이 전부). FROM/TO·`bands` 행·`seq`·배열 순서는 **없습니다**(🗄️ `bands`는 폐기·읽기 전용) |
+| **쓰기 소유권** | ⭐ **[M2.6] `transfer_plan.js`는 서버에 쓰지 않습니다.** 레지스트리 행의 유일한 기록자는 `map_editor.js`(⚡ Push 경로 — **자동 저장은 `b35bc9f`에서 삭제**)이고, 패널은 `controller.getLegend()`로 읽고 `controller.updateLegendRow(value, {stack, mat_1h, mat_mid, mat_top, knobs, …})`로만 씁니다 — 저장·삭제·동시성 가드가 **한 경로**에 모입니다. Push 전 편집은 지문 게이트 로컬 초안에만 존재합니다([MAP_EDITOR_SPEC §4-bis](../spec/MAP_EDITOR_SPEC.md)) |
+| 파생값 | **저장하지 않습니다.** 구역 소요 = `칠한 셀 수 × 그 구역의 층 수`, 자재당 = `ceil(소요/자재 수)`(합을 먼저 내고 나눔). 식의 구현은 각각 하나뿐입니다(저장 `ceil`/표시 `round`로 갈려 DB 34·화면 33이던 결함) — 정본은 `doe_bands.js`의 순수 zone 모델 + `contracts/doe_band_rules/vectors.json` |
 | 서버 왕복 | GET `/api/transfer-plan/{stages,source-summary,validate}` + PUT `/tables/map_split_registry/data/updates`(`replace_map`). ~~`map_doe`/`map_doe_source`~~는 M2.6에서 폐기 |
-| **replace 권한 불변식** | `legendReplaceScope`(= `{table, mapKey, fingerprint}`) — "이 화면은 **이 맵의 행**에서 왔고 읽었을 때 이랬다"는 **하나의 주장**. `replace_map` 권한이자 동시성 검사의 기준선이며, 테이블 전환·조회 실패·**절단 응답**·맵 언로드에서 **소거**됩니다. 쓰기 직전 재읽기해 서버가 달라졌으면 upsert로 강등하지 않고 **거부**합니다(`legendConflict`) — 강등하면 낡은 `bands`가 남의 것을 덮습니다 |
-| 이동 | `openMaterial(lot, slot)` — 맵 간 이동의 유일 허브(브레드크럼 + 뒤로가기 프레임 스택) |
+| **replace 권한 불변식** | `legendReplaceScope`(= `{table, mapKey, fingerprint}`) — "이 화면은 **이 맵의 행**에서 왔고 읽었을 때 이랬다"는 **하나의 주장**. `replace_map` 권한이자 동시성 검사의 기준선이며, 테이블 전환·조회 실패·**절단 응답**·맵 언로드에서 **소거**됩니다. 쓰기 직전 재읽기해 서버가 달라졌으면 upsert로 강등하지 않고 **거부**합니다(`legendConflict`) — 강등하면 낡은 층 구조가 남의 것을 덮습니다 |
+| 이동 | `openMaterial(id)` — 맵 간 이동의 유일 허브(브레드크럼 + 뒤로가기 프레임 스택). **[`280ebf0`] 분해 안 되는 ID는 `{첫 맵 키 컬럼: 원문}` 폴백으로 LOAD와 같은 라우팅** — 없는 키는 빈 프레임으로 열리고 Push 시 생성. 존재 probe는 여전히 추측하지 않고 `미상`([MAP_EDITOR_SPEC §6.4](../spec/MAP_EDITOR_SPEC.md)) |
 
 상세 규격: [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)(§5 오버레이 정렬 계약 · §6 전사 계획) · [map_editor/](../map_editor/README.md)
 

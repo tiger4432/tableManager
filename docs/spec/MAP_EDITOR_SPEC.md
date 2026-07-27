@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**§6 DOE zone 모델** — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙. 직전: 정렬 일원화 · §6 M2.6 1테이블 계획 저장소 · §6.1-bis BIN 축) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -285,6 +285,25 @@ sequenceDiagram
 
 ---
 
+## 4-bis. 새로고침 생존 계약 (2026-07-28 · `b35bc9f`+`280ebf0`)
+
+새로고침이 보존하는 것은 두 축입니다 — **무엇을** 편집하고 있었나(초안)와 **어디를** 열고 있었나(최근 열람). 둘은 다른 저장소·다른 규율을 씁니다.
+
+### 4-bis.1 초안 — 지문 게이트 로컬 초안 (`map_doe_draft::<table>::<mapKey>`)
+
+DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습니다. 자동 저장이 삭제되고 `pushMapData`가 유일한 서버 기록자가 된 뒤로, **Push 전의 모든 편집은 이 초안에만 존재합니다.** 페인팅·드래그·fill·paste·legend 개명 전 편집 경로가 디바운스 writer(`scheduleCellDraft`, 400ms)를 태웁니다.
+
+핵심 규율은 **기반 지문(fingerprint) 우선순위**입니다 — 초안은 뜰 때 기반이 된 서버 상태의 지문(registry FNV-1a + 셀 digest)을 함께 저장하고, 다시 열 때: **일치 → 초안 적용**(내 편집이 엄격히 더 새 것) · **불일치 → 적용하지 않되 버리지도 않음**(화면은 서버본, 사실은 토스트) · **서버 조회 실패 → 초안 표시 + 저장 보류** · **저장 성공 → 초안 삭제**. 재사용 관점 정리는 [PRIMITIVES §1](../architecture/PRIMITIVES.md)에 있습니다.
+
+### 4-bis.2 최근 열람 — 부팅 복원은 수동 경로의 재연이다 (`map_editor_last_open` · `280ebf0`)
+
+- **기록**: `{v: 1, table, metaValues, at}` — `loadExistingMap` 성공 말미와 Push 성공 직후에 씁니다. **자재 프레임 안에서는 둘 다 기록하지 않습니다**(`editorFrames.length > 0` 스킵) — 프레임은 여정이지 집이 아니므로, 새로고침은 항상 depth-0의 루트 맵으로 돌아갑니다.
+- **복원**: 부팅 시 `loadTablesList()` 직후 `restoreLastOpenMap()`이 **한 번** 읽고, **사용자가 손으로 했을 경로를 그대로 재연**합니다 — `switchTable` → 메타 입력 채움 → `loadExistingMap({quiet: true})`. 병렬 복원 경로를 만들지 않았으므로 초안 우선순위(§4-bis.1)·missing-key 동작(빈 맵)·정체 고정(`loadedIdentity`)이 전부 기존 코드로 처리됩니다.
+- **실패는 조용히**: 레코드 파싱 실패·테이블 소멸(목록에 없음)·로드 예외 전부 초기 화면으로 물러납니다. 부팅이 에러 다이얼로그를 띄우지 않습니다. 복원 동안 테이블 선택과 Load 버튼을 잠가 더블 로드를 막습니다.
+- ⚠️ **`wafer_map_metadata`가 없는 맵은 복원 시에도 좌표계 선택 모달이 다시 뜹니다.** 결함이 아니라 의도입니다 — 복원 경로는 `allowEmpty`를 쓰지 않으므로, 물어봐야 하는 맵은 복원이라고 해서 조용히 프레임을 추측하지 않습니다.
+
+---
+
 ## 5. 범용 맵 오버레이 (Universal Map Overlay) — 정렬 계약
 
 오버레이는 **계획 전용 기능이 아니라 맵 인프라**입니다 — 임의의 맵을 임의의 맵 위에, map meta가 달라도 겹칩니다. 계획 UI는 이 능력의 소비자 중 하나일 뿐입니다.
@@ -496,3 +515,11 @@ M2.6 전에는 계획 행을 지우는 **prune 권한**(`serverKeys`/`doeServerL
 - **분배**: 자재 수량은 **`Math.ceil`**(서버 규약 일치 — `round`면 부족이 숨습니다).
 
 > ⚠️ `transfer_plan.js`는 **서버에 직접 쓰지 않습니다.** 위 가드 전부가 한 경로에 있어야 갈라지지 않기 때문입니다.
+
+### 6.4 자재 이동 라우팅 — LOAD 동등성 (2026-07-28 · `280ebf0`)
+
+`openMaterial(id)`(맵 간 이동의 유일 허브)는 자재 ID를 `material_identity` 규칙으로 `(lot, slot)`에 분해해 프레임 필터를 만듭니다. **분해가 안 되는 ID는 이제 막다른 길이 아니라 LOAD와 같은 라우팅입니다** — `{첫 번째 맵 키 컬럼: 원문 ID}` 폴백으로, 「1. Map Search & Load」에 그 필드 하나만 치고 로드한 것과 정확히 같은 경로를 탑니다:
+
+- **없는 키**(예: 아직 만들지 않은 dt_map 풀)를 클릭하면 **빈 격자 프레임**이 열리고(`openMapFrame`의 `allowEmpty`), 키는 ⚡ Push 시점에 생성됩니다.
+- **존재 주장은 여전히 추측하지 않습니다** — `probeMaterialMap`은 분해 불가 ID에 계속 `null`(미상)을 반환합니다. 사용자가 요청한 **이동**은 추측해도 되지만, 시스템이 내보이는 **존재 표시**는 추측하면 안 되기 때문입니다.
+- 맵 키 컬럼 자체를 못 읽은 테이블(`keyColumns` 빈 배열)만 종전대로 에러 토스트로 남습니다.
