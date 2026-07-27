@@ -223,13 +223,15 @@
   align-items: center;
   gap: 4px;
   padding: 2px 4px;
-  font-size: .58rem;
+  /* Sizes below bumped one full step (user 2026-07-28: "인풋창이랑 라벨 너무 작아") —
+     these are primary work surfaces, not metadata. Fixed columns widened to match. */
+  font-size: .7rem;
   font-family: var(--font-mono, monospace);
   letter-spacing: .04em;
   color: var(--text-dim);
 }
 .tp-ch-row.l1,
-.tp-v-l1 { grid-template-columns: 22px 44px 38px 1fr 30px 18px; }
+.tp-v-l1 { grid-template-columns: 24px 56px 52px 1fr 36px 20px; }
 .tp-ch-row.l2,
 .tp-v-l2 { grid-template-columns: 1fr 1.6fr 1fr; }
 .tp-ch-row.l2 { padding-bottom: 3px; letter-spacing: 0; }
@@ -252,22 +254,22 @@
 .tp-v-l2 { margin-top: 2px; align-items: stretch; }
 
 .tp-sw {
-  width: 22px; height: 20px; padding: 0;
+  width: 24px; height: 26px; padding: 0;
   border: 1px solid var(--border); border-radius: 4px; background: none; cursor: pointer;
 }
 .tp-gi {
-  min-width: 0; width: 100%; height: 20px;
-  padding: 0 4px;
-  font-size: .68rem;
+  min-width: 0; width: 100%; height: 26px;
+  padding: 0 6px;
+  font-size: .82rem;
   border: 1px solid var(--border); border-radius: 4px;
   background: var(--bg-inset); color: var(--text);
 }
 .tp-gi.stk { text-align: right; font-family: var(--font-mono, monospace); }
 .tp-gi.bad { border-color: var(--danger); }
-.tp-pnt { font-size: .62rem; text-align: right; color: var(--text-dim); font-family: var(--font-mono, monospace); }
+.tp-pnt { font-size: .74rem; text-align: right; color: var(--text-dim); font-family: var(--font-mono, monospace); }
 .tp-del {
   border: none; background: none; cursor: pointer; padding: 0;
-  font-size: .68rem; color: var(--text-dim); line-height: 1;
+  font-size: .82rem; color: var(--text-dim); line-height: 1;
 }
 .tp-del:hover { color: var(--danger); }
 
@@ -278,7 +280,7 @@
 .tp-zc {
   position: relative;
   display: block;
-  min-height: 22px;
+  min-height: 28px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg-inset);
@@ -287,9 +289,9 @@
 .tp-zc.empty { border-style: dashed; }          /* 점선 = 채울 수 있다는 초대 */
 .tp-zc.bad { border-color: var(--danger); }
 .tp-zc-raw {
-  width: 100%; height: 100%; min-height: 20px;
-  border: 0; outline: 0; resize: none; padding: 1px 4px;
-  font-size: .62rem; line-height: 1.5;
+  width: 100%; height: 100%; min-height: 26px;
+  border: 0; outline: 0; resize: none; padding: 2px 6px;
+  font-size: .78rem; line-height: 1.5;
   font-family: var(--font-mono, monospace);
   background: transparent; color: transparent; caret-color: var(--accent);
 }
@@ -297,7 +299,7 @@
 .tp-zc-chips {
   position: absolute; inset: 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
-  padding: 1px 4px;
+  padding: 2px 6px;
   pointer-events: none;
   overflow: hidden;
 }
@@ -319,14 +321,14 @@
   opacity: .8;
 }
 .tp-zc.na .tp-zc-raw { cursor: not-allowed; }
-.tp-na-t { font-size: .58rem; color: var(--text-dim); }
-.tp-emp { font-size: .58rem; color: var(--text-dim); }
+.tp-na-t { font-size: .7rem; color: var(--text-dim); }
+.tp-emp { font-size: .7rem; color: var(--text-dim); }
 .tp-emp.bad { color: var(--danger); }
 
 /* 계산된 층 범위 — 입력이 아니라 파생값이라 조용히 앞에 붙는다(세로 비용 0px). */
 .tp-lr {
   flex: none;
-  font-size: .55rem; font-family: var(--font-mono, monospace);
+  font-size: .66rem; font-family: var(--font-mono, monospace);
   padding: 0 3px; border-radius: 3px;
   background: var(--border); color: var(--text-muted);
 }
@@ -335,8 +337,8 @@
 /* ── 자재 칩 — 그림이다. 저장·복사되는 것은 원문 토큰뿐. ── */
 .tp-mc {
   flex: none;
-  font-size: .58rem; font-family: var(--font-mono, monospace);
-  padding: 0 3px; border-radius: 3px;
+  font-size: .72rem; font-family: var(--font-mono, monospace);
+  padding: 0 4px; border-radius: 3px;
   border: 1px solid var(--border); background: var(--bg-panel);
   white-space: nowrap;
 }
@@ -357,7 +359,7 @@
   margin: 2px 2px 0;
   padding: 2px 5px;
   border-left: 2px solid var(--danger);
-  font-size: .6rem; line-height: 1.5;
+  font-size: .68rem; line-height: 1.5;
   color: var(--text-muted);
 }
 .tp-blk .rid {
@@ -368,22 +370,22 @@
 .tp-foot-note {
   margin-top: 5px; padding-top: 4px;
   border-top: 1px dashed var(--border);
-  font-size: .56rem; line-height: 1.6; color: var(--text-dim);
+  font-size: .64rem; line-height: 1.6; color: var(--text-dim);
 }
 
 /* ── ② 자재 롤업 ───────────────────────────────────── */
 .tp-pane.t2 .tp-ch-row,
-.tp-r2 { grid-template-columns: 1fr 22px 52px 52px 52px; }
+.tp-r2 { grid-template-columns: 1fr 24px 56px 56px 56px; }
 .tp-pool { border-radius: 6px; margin-bottom: 2px; }
 .tp-pool:hover { background: var(--bg-inset); }
 .tp-pool.clash { outline: 1px solid var(--danger); }
 .tp-r2 {
   display: grid; gap: 4px; align-items: center;
-  padding: 2px 4px; cursor: pointer; font-size: .62rem;
+  padding: 3px 4px; cursor: pointer; font-size: .74rem;
 }
 .tp-matcell { display: flex; align-items: center; gap: 3px; min-width: 0; }
-.tp-matcell .go { color: var(--text-dim); font-size: .6rem; }
-.tp-mapb { text-align: center; font-family: var(--font-mono, monospace); font-size: .6rem; }
+.tp-matcell .go { color: var(--text-dim); font-size: .7rem; }
+.tp-mapb { text-align: center; font-family: var(--font-mono, monospace); font-size: .7rem; }
 .tp-mapb.ok { color: var(--success); }
 .tp-mapb.no { color: var(--warning); }
 .tp-mapb.unk { color: var(--text-dim); }
@@ -394,7 +396,7 @@
 .tp-num.left.neg { color: var(--danger); font-weight: 600; }
 /* 미상은 0이 아니다. 숫자를 보이지 않고 이유를 title로 단다. */
 .tp-unk {
-  font-size: .58rem; color: var(--text-dim);
+  font-size: .68rem; color: var(--text-dim);
   border-bottom: 1px dotted var(--text-dim); cursor: help;
 }
 .tp-unk.w { color: var(--warning); border-color: var(--warning); }
@@ -405,10 +407,187 @@
   padding: 0 4px 3px 15px;
 }
 .tp-kc {
-  font-size: .55rem; font-family: var(--font-mono, monospace);
-  padding: 0 3px; border-radius: 3px;
+  font-size: .66rem; font-family: var(--font-mono, monospace);
+  padding: 0 4px; border-radius: 3px;
   background: var(--bg-inset); color: var(--text-dim);
 }
 .tp-kc .h { opacity: .6; }
 .tp-mat-nosrc { color: var(--warning); }
 .tp-ov-suggest { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 6px; }
+
+/* ============================================================
+   Overlay block (left sidebar). RESTORED: the b35bc9f rewrite of this file dropped
+   every .overlay-box / .ov-* rule while map_editor.html and renderOverlayList()
+   kept the classes, so the block rendered unstyled. Rules below are the pre-b35bc9f
+   originals verbatim.
+   ============================================================ */
+
+/* ── 오버레이 전용 블록 (메인 Load와 분리) ────────────── */
+/* 메인 [📂 Load] = 항상 교체 / 여기 [＋ 겹치기] = 항상 겹치기. 모드 상태 없음. */
+.overlay-box {
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-inset);
+}
+
+.overlay-box-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.overlay-box-head::-webkit-details-marker { display: none; }
+.overlay-box-head::before {
+  content: '▸';
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.overlay-box[open] > .overlay-box-head::before { transform: rotate(90deg); }
+
+.ov-count {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: 20px;
+  padding: 0 7px;
+}
+
+.ov-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+/* 소스 선택기 2칸 + 추가 버튼 1개 — 그 이상 두지 않는다 */
+.ov-add {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px;
+}
+.ov-add .glass-input { padding: 5px 8px; font-size: 0.74rem; width: 100%; }
+.ov-key-input { font-family: var(--font-mono); grid-column: 1; }
+.ov-add-btn {
+  grid-column: 2;
+  grid-row: 2;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+#overlay-src-table { grid-column: 1 / -1; }
+
+.ov-note {
+  margin: 0;
+  font-size: 0.66rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.ov-clear {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  padding: 2px 9px;
+}
+
+.ov-empty {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+#overlay-list:empty { display: none; }
+#overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ov-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-surface);
+}
+.ov-row.off { opacity: 0.5; }
+/* 실패한 오버레이도 목록에 남는다 — 토스트로 흘리면 사유가 화면에서 증발한다 */
+.ov-row.err { border-color: var(--danger); background: var(--danger-weak); }
+
+.ov-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  padding: 0 5px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-left: 3px;
+}
+.ov-chip.ok   { color: var(--success); border-color: var(--success); background: var(--success-weak); }
+.ov-chip.warn { color: var(--warning); border-color: var(--warning); background: var(--warning-weak); }
+.ov-chip.bad  { color: var(--danger);  border-color: var(--danger);  background: var(--danger-weak); }
+.ov-chip.dim  { border-style: dashed; }
+
+.ov-btns { display: flex; gap: 2px; flex-shrink: 0; }
+
+.ov-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ov-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.ov-key {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-size: 0.64rem;
+}
+
+.ov-meta {
+  font-size: 0.63rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.ov-trunc { color: var(--warning); }
+
+.ov-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 2px 4px;
+  border-radius: 5px;
+  color: var(--text-dim);
+}
+
+.ov-btn:hover { background: var(--surface-hover); color: var(--text); }
+.ov-del:hover { color: var(--danger); background: var(--danger-weak); }
+
+/* 오버레이 → 실맵 가져오기 버튼 (목록 행) */
+.ov-import { color: var(--accent-2); font-weight: 700; }
+.ov-import:hover { background: var(--accent-2-weak); color: var(--accent-2); }

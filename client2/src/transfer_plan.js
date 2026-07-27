@@ -1059,9 +1059,19 @@ async function openMaterial(id) {
   if (!table) { showToast('자재 맵 테이블을 알 수 없습니다 (stage 선언 확인 필요).', 'warning'); return; }
   S.navBusy = true;
   try {
-    const metaValues = await materialMetaValues(table, id);
+    let metaValues = await materialMetaValues(table, id);
     if (Object.keys(metaValues).length === 0) {
-      showToast(`${table}의 맵 키 컬럼을 읽지 못했습니다.`, 'error'); return;
+      // LOAD parity (user 2026-07-28): an id that does not split into (lot, slot) must
+      // still ROUTE - the raw id becomes the first key column's filter, exactly what
+      // typing only that field in "1. Map Search & Load" does. A key with no rows then
+      // opens as an empty grid (openMapFrame allowEmpty) and is created on ⚡ Push.
+      // NOTE: probeMaterialMap keeps returning null (미상) for these ids on purpose -
+      // guessing is fine for navigation the user asked for, not for an existence claim.
+      const cols = S.keyColumns.get(table) || [];
+      if (cols.length === 0) {
+        showToast(`${table}의 맵 키 컬럼을 읽지 못했습니다.`, 'error'); return;
+      }
+      metaValues = { [cols[0]]: String(id) };
     }
     const r = await controller.openMapFrame({
       table, metaValues,

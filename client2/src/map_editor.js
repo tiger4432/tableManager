@@ -574,7 +574,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     getPlanSaveState,
     getActiveBrush: () => activeBrush,
     getCounts: computeLegendCounts,
-    setBrush: (v) => { selectBrush(String(v)); updateLegendCounts(); },
+    // Selection alone changes no counts - updateLegendCounts here scanned every grid
+    // cell (O(cells)) on each mousedown in the panel and added visible click latency.
+    // Counts refresh where they actually change: the paint paths.
+    setBrush: (v) => { selectBrush(String(v)); },
     addLegendRow: addLegendRowForPanel,
     updateLegendRow: updateLegendRowForPanel,
     deleteLegendRow: deleteLegendRowForPanel,
@@ -600,6 +603,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     probeMapExists,
   });
   await loadTablesList();
+  // Refresh must land back on the last open map, not the initial screen. Runs after the
+  // table list exists; walks the manual LOAD path so the DOE/cell draft precedence
+  // (readDoeDraft inside loadExistingMap) does its existing job on the reopened map.
+  await restoreLastOpenMap();
 });
 
 // Cache DOM Elements
@@ -2414,6 +2421,60 @@ function clearDoeDraft(table, mapKey) {
   try { localStorage.removeItem(doeDraftKey(table, mapKey)); } catch (e) { /* 무해 */ }
 }
 
+// ── Last-open map — the ENTRY POINT survives refresh, not just the content ──────────
+// The draft system keeps what was drawn; this record keeps WHICH map was open (user
+// 2026-07-28: "새로 고침하면 그냥 아예 처음창으로 가는데"). Depth-0 identity only —
+// a material frame is a journey, not a home, so frame loads never overwrite it.
+const LAST_OPEN_KEY = 'map_editor_last_open';
+
+function recordLastOpenMap() {
+  if (editorFrames.length > 0) return;   // material frame — keep the root map's record
+  try {
+    const metaValues = {};
+    document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
+      const val = input.value.trim();
+      if (val) metaValues[input.id.replace('meta-input-', '')] = val;
+    });
+    if (!selectedTable || Object.keys(metaValues).length === 0) return;
+    localStorage.setItem(LAST_OPEN_KEY, JSON.stringify({
+      v: 1, table: selectedTable, metaValues, at: getLocalTimeString(),
+    }));
+  } catch (e) { /* recording must never break a load */ }
+}
+
+// Boot restore. Walks the EXACT manual path — table select + switchTable + meta inputs +
+// loadExistingMap({quiet}) — so draft precedence, missing-key behavior (opens empty, key
+// created on ⚡ Push) and identity pinning are the same code, not a parallel restore path.
+// Any failure falls back to the initial screen; boot never raises an error dialog.
+async function restoreLastOpenMap() {
+  let rec = null;
+  try { rec = JSON.parse(localStorage.getItem(LAST_OPEN_KEY) || 'null'); } catch (e) { return; }
+  if (!rec || rec.v !== 1 || !rec.table || !rec.metaValues
+    || Object.keys(rec.metaValues).length === 0) return;
+  // Table gone (renamed/removed/no longer a map table) — initial screen, silently.
+  if (!el.tableSelect || !Array.from(el.tableSelect.options).some(o => o.value === rec.table)) return;
+  // Double-load guard: loadExistingMap only disables the button during its own fetch,
+  // so cover the whole restore (including switchTable) to keep the user from racing it.
+  if (el.btnLoadMap) el.btnLoadMap.disabled = true;
+  el.tableSelect.disabled = true;
+  try {
+    if (rec.table !== selectedTable) {
+      el.tableSelect.value = rec.table;
+      await switchTable(rec.table);
+    }
+    Object.entries(rec.metaValues).forEach(([col, val]) => {
+      const input = document.getElementById(`meta-input-${col}`);
+      if (input) input.value = val === null || val === undefined ? '' : String(val);
+    });
+    await loadExistingMap({ quiet: true });
+  } catch (e) {
+    console.warn('[Map Editor] last-open restore failed — staying on the initial screen:', e);
+  } finally {
+    el.tableSelect.disabled = false;
+    if (el.btnLoadMap) { el.btnLoadMap.disabled = false; el.btnLoadMap.textContent = '📂 Load Existing Map'; }
+  }
+}
+
 // 초안을 화면에 적용한다. **우선순위 판정은 호출부가 한다** — 이 함수는 적용만 한다.
 function applyDoeDraftRecord(draft) {
   const doe = (draft && draft.doe) || {};
@@ -3102,7 +3163,11 @@ function selectBrush(val) {
       el.activeBrushVal.style.color = 'var(--text-dim)';
     }
   }
-  notifyLegendChanged();
+  // NO notifyLegendChanged() here. Selecting a brush changes no legend data, and the
+  // panel renders nothing from the active brush - but notify triggers renderDoeList's
+  // full innerHTML rebuild. The panel fires setBrush on MOUSEDOWN inside its rows, so
+  // that rebuild used to destroy the very input being clicked before the browser could
+  // focus it: the first click into any DOE field died ("클릭 반응이 굼뜨다").
   if (!el.legendList) return;
 
   // Toggle active styling on existing row elements without tearing down DOM
@@ -3674,6 +3739,7 @@ async function loadExistingMap(opts = {}) {
     // [가드 ①] 로드 순간 편집 정체성을 고정하고 맵 키 입력을 잠근다.
     setLoadedIdentity(selectedTable, loadedMapKey || getCurrentMapKey());
     notifyMapContext();
+    recordLastOpenMap();   // refresh returns here (no-op inside a material frame)
     if (quiet) showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드`, 'success');
     else showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드 완료`, 'success');
     return { count, mapKey: loadedMapKey };
@@ -3930,6 +3996,7 @@ async function pushMapData() {
       // [재설계 v2] Push 성공 = 이 프레임의 편집이 서버에 적재됨 (뒤로가기 경고 해제)
       framePushed = true;
       notifyMapContext();
+      recordLastOpenMap();   // a just-created key becomes the refresh target too
 
       // [Split Registry] 맵과 계획의 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장.
       //

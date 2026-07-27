@@ -46,7 +46,11 @@ body {
   font-family: var(--font-sans);
   font-size: 0.9rem;
   outline: none;
-  transition: var(--transition-smooth);
+  /* Text fields must react instantly. `var(--transition-smooth)` (all 0.3s) made every
+     focus/click ramp the border+ring over 300ms, which reads as input lag. Scoped to the
+     two properties that actually change, at a tenth of the time. The token itself is
+     untouched - panels/buttons keep using it deliberately. */
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
 }
 
 .glass-input:focus {
