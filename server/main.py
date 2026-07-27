@@ -32,6 +32,11 @@ for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
 # Load table config and initialize dynamic database models
 import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
+# Shared-token gate for /admin/*. Every route below whose path starts with
+# /admin carries one of these two dependencies; server/tests/test_admin_auth.py
+# enumerates the app's routes and fails if a new one ever misses.
+from admin_auth import require_admin_token, require_admin_token_strict
+import admin_auth
 script_dir = os.path.dirname(os.path.abspath(__file__))
 config_path = paths.config_path("table_config.json")
 logger.info(f"[paths] {paths.describe()}")
@@ -175,12 +180,25 @@ from directory_watcher import WorkspaceWatcher
 global_watcher: WorkspaceWatcher = None
 global_config_watcher = None
 
+_admin_auth_banner_logged = False
+
+
 @app.on_event("startup")
 async def startup_event():
-    global global_watcher, global_config_watcher
+    global global_watcher, global_config_watcher, _admin_auth_banner_logged
     import asyncio
     main_loop = asyncio.get_running_loop()
-    
+
+    # Emitted BEFORE the TESTING early-return below, and before anything that can
+    # fail, so an operator restarting into this build always sees whether the
+    # admin surface is locked and which variable locks it. Guarded by a
+    # module-level flag because TestClient(app) re-runs startup per test.
+    if not _admin_auth_banner_logged:
+        _admin_auth_banner_logged = True
+        _lvl, _msg = admin_auth.startup_banner()
+        getattr(logger, _lvl)(_msg)
+
+
     # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작
     try:
         from database.config_watcher import start_config_watcher
@@ -2683,7 +2701,7 @@ def query_cells_sources(
         
     return result
 
-@app.post("/admin/outbox/retry-failed")
+@app.post("/admin/outbox/retry-failed", dependencies=[Depends(require_admin_token)])
 def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None, db: Session = Depends(get_db)):
     """
     실패(FAILED) 상태인 Outbox 체인 이벤트를 
@@ -2722,7 +2740,7 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     db.commit()
     return {"status": "success", "message": f"Successfully reset {len(failed_events)} failed events to PENDING."}
 
-@app.get("/admin/outbox/failed")
+@app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
     query = db.query(models.DatabaseOutbox).filter(
@@ -2792,7 +2810,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
         "data": result_list
     }
 
-@app.get("/admin/file-ingestion/logs")
+@app.get("/admin/file-ingestion/logs", dependencies=[Depends(require_admin_token)])
 def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """File Ingestion 로그 목록을 페이지네이션하여 반환합니다. status 필터(ALL, SUCCESS, FAILED)를 지원합니다."""
     query = db.query(models.FileIngestionLog)
@@ -2827,13 +2845,13 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         "data": result_list
     }
 
-@app.get("/admin/file-ingestion/failed")
+@app.get("/admin/file-ingestion/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그 목록을 페이지네이션하여 반환합니다."""
     return get_file_ingestion_logs(status="FAILED", page=page, limit=limit, db=db)
 
 
-@app.get("/admin/file-ingestion/active")
+@app.get("/admin/file-ingestion/active", dependencies=[Depends(require_admin_token)])
 def get_active_file_ingestions():
     """[Heavy Lane P1] 진행 중 파일 인제션 스냅샷 (admin File 탭 진행 목록·재기동 경고용).
 
@@ -2881,7 +2899,7 @@ def reload_local_process_cache():
         
     print("[Reload] Local web server process cache successfully cleared.")
 
-@app.post("/admin/reload-configs")
+@app.post("/admin/reload-configs", dependencies=[Depends(require_admin_token)])
 def reload_system_configs(db: Session = Depends(get_db)):
     """시스템 전역의 설정 및 파이썬 모듈 캐시를 리로드하는 이벤트를 Outbox에 적재하여 모든 워커에 전파합니다."""
     import uuid
@@ -3188,7 +3206,7 @@ def validate_transfer_plan(
         logger.error(f"[TransferPlan] validate failed for map '{ref_table}/{map_key}': {e}")
         raise HTTPException(status_code=500, detail="Failed to validate transfer plan.")
 
-@app.get("/admin/file-ingestion/workspaces")
+@app.get("/admin/file-ingestion/workspaces", dependencies=[Depends(require_admin_token)])
 def get_ingestion_workspaces():
     """등록된 모든 파일 인제션 워크스페이스 목록을 반환합니다."""
     import os
@@ -3268,7 +3286,7 @@ def get_ingestion_workspaces():
             
     return {"status": "success", "data": workspaces}
 
-@app.get("/admin/chain/rules")
+@app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
 def get_chain_rules():
     """등록된 모든 체인 인제션 룰 목록을 반환합니다."""
     import os
@@ -3289,7 +3307,7 @@ def get_chain_rules():
         print(f"Error reading chain rules: {e}")
         return {"status": "error", "message": str(e), "data": []}
 
-@app.get("/admin/mappers/list")
+@app.get("/admin/mappers/list", dependencies=[Depends(require_admin_token)])
 def get_mappers():
     """등록된 맵퍼 파일들과 내부 매핑 함수 목록을 반환합니다."""
     import os
@@ -3409,7 +3427,7 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
         )
     return {"label": view["label"], "columns": columns, "rows": rows}
 
-@app.post("/admin/file-ingestion/retry-failed")
+@app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""
     import os
@@ -3518,7 +3536,7 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
         "message": f"Successfully retried. Success: {success_count}, Failed: {fail_count}."
     }
 
-@app.get("/admin/auto-update/status")
+@app.get("/admin/auto-update/status", dependencies=[Depends(require_admin_token)])
 async def get_auto_update_status():
     """실시간 auto_update 스케줄러의 기동 현황(JSON)을 조회합니다. 각 항목에 active(제어 파일 기준) 필드를 부가합니다."""
     import os
@@ -3551,7 +3569,7 @@ async def get_auto_update_status():
         logger.error(f"Failed to read scheduler status file: {e}")
         return {"status": "error", "message": str(e), "data": []}
 
-@app.post("/admin/auto-update/toggle")
+@app.post("/admin/auto-update/toggle", dependencies=[Depends(require_admin_token)])
 def toggle_auto_update_script(payload: dict = Body(...)):
     """
     auto_update 수집기 스크립트의 active 상태를 토글합니다.
@@ -3583,7 +3601,10 @@ def toggle_auto_update_script(payload: dict = Body(...)):
     logger.info(f"[Toggle] Auto update script '{script}' set to active={active}")
     return {"status": "success", "script": script, "active": active}
 
-@app.post("/admin/auto-update/run-now")
+# [STRICT] The execution half of the pair with POST /admin/scripts/code: this
+# publishes SCHEDULER_RUN_NOW, which makes the scheduler run the named script.
+# Refuses with 503 when no admin token is configured.
+@app.post("/admin/auto-update/run-now", dependencies=[Depends(require_admin_token_strict)])
 def trigger_auto_update_run_now(
     # [C-1 Fix] await가 없는 순수 동기 핸들러(INSERT+commit) — def로 전환해 threadpool 실행
     table_name: str = Body(..., embed=True),
@@ -3623,7 +3644,22 @@ def trigger_auto_update_run_now(
         logger.error(f"Failed to publish on-demand run trigger: {e}")
         return {"status": "error", "message": str(e)}
 
-@app.post("/internal/events/batch-refresh")
+# [B5] /internal/events/* is worker->web-server IPC, and it was completely
+# unauthenticated while read-only admin routes were gated - an inverted
+# asymmetry, because POST /internal/events/broadcast relays an arbitrary dict to
+# EVERY connected WebSocket client and injects into audit_cache. Anyone able to
+# reach the port could make every operator's grid display a fabricated value and
+# put fabricated rows in the history timeline, which SYSTEM_OVERVIEW section 1
+# ranks as worse than the system being slow: if the propagation is not believed,
+# correction stops and the ontology sets wrong.
+#
+# Gated with the SAME secret rather than bound to loopback, because the server
+# already binds loopback (run_decoupled_app.py runs uvicorn with no --host, so
+# uvicorn's 127.0.0.1 default applies) and that plainly was not sufficient on its
+# own. The workers inherit the variable from the launcher's environment, so
+# nothing extra has to be configured. Open when no token is set, exactly like
+# the ordinary admin routes, so an unconfigured server behaves as it does today.
+@app.post("/internal/events/batch-refresh", dependencies=[Depends(require_admin_token)])
 async def internal_event_batch_refresh(
     table_name: str = Body(..., embed=True),
     change_count: int = Body(..., embed=True),
@@ -3660,7 +3696,7 @@ async def internal_event_batch_refresh(
     await manager.broadcast(text_msg)
     return {"status": "ok"}
 
-@app.post("/internal/events/broadcast")
+@app.post("/internal/events/broadcast", dependencies=[Depends(require_admin_token)])
 async def internal_event_broadcast(payload: dict = Body(...)):
     """외부 데몬 프로세스로부터 임의의 WebSocket 메시지를 받아 중계하는 엔드포인트입니다."""
     import json
@@ -3702,7 +3738,7 @@ async def internal_event_broadcast(payload: dict = Body(...)):
     await manager.broadcast(text_msg)
     return {"status": "ok"}
 
-@app.post("/internal/events/file-processed")
+@app.post("/internal/events/file-processed", dependencies=[Depends(require_admin_token)])
 async def internal_event_file_processed(
     table_name: str = Body(..., embed=True),
     filename: str = Body(..., embed=True),
@@ -3744,7 +3780,7 @@ async def internal_event_file_processed(
     return {"status": "ok"}
 
 
-@app.post("/internal/events/ingestion-state")
+@app.post("/internal/events/ingestion-state", dependencies=[Depends(require_admin_token)])
 async def internal_event_ingestion_state(payload: dict = Body(...)):
     """[Heavy Lane P1] watcher 프로세스가 인제션 라이프사이클 상태(QUEUED/PROCESSING/FINISHED)를
     웹서버 진행 스냅샷 레지스트리에 push하는 내부 이벤트 엔드포인트.
@@ -3758,7 +3794,7 @@ async def internal_event_ingestion_state(payload: dict = Body(...)):
     return {"status": "ok"}
 
 # --- Admin Code Editor APIs ---
-@app.get("/admin/scripts/list")
+@app.get("/admin/scripts/list", dependencies=[Depends(require_admin_token)])
 def list_admin_scripts():
     import os
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3859,7 +3895,9 @@ def _resolve_admin_script_path(clean_path: str, for_write: bool = False) -> str:
     return full_path
 
 
-@app.get("/admin/scripts/code")
+# Reading source is a leak, not a lookup: this returns the contents of any file
+# under mappers/ or ingestion_workspace/. Gated like every other admin read.
+@app.get("/admin/scripts/code", dependencies=[Depends(require_admin_token)])
 def get_admin_script_code(path: str):
     import os
 
@@ -3893,7 +3931,10 @@ def get_admin_script_code(path: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
 
-@app.post("/admin/scripts/code")
+# [STRICT] Half of a remote-code-execution pair: this writes an arbitrary Python
+# file, /admin/auto-update/run-now runs it. Refuses with 503 when no admin token
+# is configured - an unconfigured server must not offer this at all.
+@app.post("/admin/scripts/code", dependencies=[Depends(require_admin_token_strict)])
 async def save_admin_script_code(
     payload: dict = Body(...),
     db: Session = Depends(get_db)
@@ -4025,7 +4066,10 @@ if os.path.exists(client2_dist_path):
 
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):
-        # Prevent catching API endpoints or WebSocket or Admin page
+        # The prefix list below is an API-SHADOWING guard, not a security
+        # boundary. It matches on the start of the path, so
+        # `../../server/config/table_config.json` looks nothing like `admin` and
+        # sails straight through. Containment is enforced after resolution, below.
         if (file_name.startswith("tables") or
             file_name.startswith("ws") or
             file_name.startswith("audit_logs") or
@@ -4038,7 +4082,26 @@ if os.path.exists(client2_dist_path):
             file_name.startswith("api")):
             raise HTTPException(status_code=404)
 
-        target_path = os.path.join(client2_dist_path, file_name)
+        # [B1] Containment check - the same shape _resolve_admin_script_path uses.
+        # Before this, `os.path.join(client2_dist_path, file_name)` handed out any
+        # file the process could read, unauthenticated: `/../../server/config/
+        # table_config.json`, `/../../../../../../Windows/win.ini`, and even
+        # `/../../server/admin_auth.py` all returned 200. That made the gate on
+        # GET /admin/scripts/code, /admin/chain/rules and
+        # /admin/file-ingestion/workspaces decorative - the bytes they protect were
+        # readable next door, and a token persisted in any readable file would have
+        # gone with them.
+        #
+        # Resolve first, then require the result to sit inside the dist root.
+        # A denylist of characters cannot do this: `os.path.join` DISCARDS the base
+        # when the second argument is absolute (`/C:/Windows/win.ini`) or Windows
+        # drive-relative (`C:foo`), so only checking the resolved result is sound.
+        dist_base = os.path.abspath(client2_dist_path)
+        target_path = os.path.abspath(os.path.join(dist_base, file_name))
+        if target_path != dist_base and not target_path.startswith(dist_base + os.sep):
+            # 404, not 403: a static route must not confirm that the escape parsed.
+            raise HTTPException(status_code=404)
+
         if file_name and os.path.exists(target_path) and os.path.isfile(target_path):
             return FileResponse(target_path)
 

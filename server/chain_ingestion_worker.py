@@ -143,7 +143,12 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
             # [Latency Fix #2] 통지는 커밋 이후 fire-and-forget으로 수행되므로
             # 워커 폴링을 오래 붙잡지 않도록 타임아웃을 짧게(3초) 유지한다.
             # [Warmup #3] 스레드-로컬 Session으로 keep-alive 재사용(매 호출 커넥션 수립 제거).
-            res = _get_http_session().post(url, json=payload, timeout=3)
+            # [B5] /internal/events/* carries the admin secret; inherited from
+            # the launcher's environment. 401 here = worker started without it.
+            import admin_auth
+            res = _get_http_session().post(
+                url, json=payload, timeout=3,
+                headers=admin_auth.internal_event_headers())
             if not res.ok:
                 logger.error(f"[Chain Worker] API notification failed: {url} -> {res.status_code}")
                 return False

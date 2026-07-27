@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — `/api/transfer-plan/validate` M2.6 리바인딩 반영) | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `/api/transfer-plan/validate` M2.6 리바인딩) | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -134,6 +134,9 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `/admin/auto-update/{status,run-now,toggle}` | 스케줄러 상태(각 항목에 `active` 부가)·즉시실행·수집기 active 토글. toggle body `{"script": "<workspace>/<script.py>", "active": bool}` → `config/auto_update_control.json` 갱신(스케줄러 핫 반영, 재기동 불필요; 미존재 404·검증실패 400). **run-now는 active 무관 실행**(수동 실행은 명시적 의도) |
 | `/admin/reload-configs` | 로컬 캐시 리로드(`models.refresh_dynamic_models` — 신규 테이블 **물리 CREATE 포함**, 이슈 #7) + `SYSTEM_RELOAD` 발행. CREATE가 발행보다 선행(웹서버가 1차 DDL 소유자) |
 | `/admin/scripts/{list,code}` | 브라우저 코드 에디터(경로 traversal 가드) |
+| **🔒 `/admin/*` 전체 (16개 API 라우트)** | **공유 토큰 게이트**(`admin_auth.py`, 2026-07-27). 토큰은 `ASSY_ADMIN_TOKEN` 환경변수, 제시는 `X-Admin-Token` 헤더, 비교는 `secrets.compare_digest`. **토큰 설정 시 조회 포함 전부 필수**(소스 코드 반환·파이프라인 열거도 유출이다), 미제시 401·불일치 403. **미설정 시 둘로 갈린다** — `POST /admin/scripts/code`·`POST /admin/auto-update/run-now`는 **503**(코드 실행 경로는 fail closed), 나머지는 **그대로 동작**(첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 — 사용자 확정). 예외는 페이지 서빙 `GET /admin`·`/admin.html` 2개뿐(브라우저 내비게이션이라 헤더를 붙일 수 없고, 표시 데이터는 전부 게이트된 JSON 라우트에서 온다). **`GET /health`는 무인증 유지**(모니터링 표면). 토큰이 **비-ASCII면 인증이 구조적으로 불가**(헤더는 latin-1 디코딩)하므로 `configured_token()`이 거부하고 기동 배너가 `ERROR`로 알린다 — 미설정 상태로 취급하며, 조용히 전 라우트를 죽이지 않는다. 게이트가 낸 거부에는 **`WWW-Authenticate: X-Admin-Token`**이 붙는다: 핸들러가 자기 이유로 내는 동일 상태코드(예: `_resolve_admin_script_path`의 격리 403)와 클라가 구별할 수 있어야 하기 때문이다. 커버리지는 하드코딩 목록이 아니라 `test_admin_auth.py`가 **FastAPI 라우트 테이블을 열거**해 단언 — 신규 **HTTP** admin 라우트가 게이트 없이 등록되면 스위트가 빨개진다(⚠️ WS 라우트·mount는 `methods`가 `None`이라 열거에서 빠진다). 설정 절차 [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md) |
+| **🔒 `/internal/events/*` 4종** | **같은 토큰으로 게이트**(2026-07-27). 조회 전용 admin은 잠겨 있는데 **임의 dict를 접속 중인 전 WS 클라이언트에 중계**하고 `audit_cache`에 주입하는 이 경로가 무인증이던 비대칭을 해소. 워커 3종(`run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`)이 `admin_auth.internal_event_headers()`로 헤더를 붙이며, **런처 환경을 상속**하므로 별도 설정이 없다. 미설정 시 개방(admin과 동일 규칙) |
+| **정적 폴백 containment** | `GET /{file:path}` SPA 폴백은 **결과 기반 containment 검사** 후에만 파일을 낸다(`abspath(join(dist, name))`이 dist 하위인지). 상단의 접두 denylist는 **API 섀도잉 방지용이지 보안 경계가 아니다** — 접두 매칭이라 `../../server/config/table_config.json`이 그냥 통과했고, 2026-07-27 이전엔 **무인증으로 임의 파일**(win.ini, `admin_auth.py` 자신)을 200으로 반환했다. 이 구멍은 admin 조회를 잠근 근거 자체를 무효화했다 |
 | `POST /internal/events/{batch-refresh,broadcast,file-processed}` | 데몬→웹서버 콜백. batch-refresh 수신부는 msg 재구성 시 `total_log_count` 동봉(체인 passthrough 경로와 대칭 — P1 후속), broadcast/file-processed는 진행 레지스트리 인터셉트 겸함 |
 | `POST /internal/events/ingestion-state` | **[P1]** watcher → 진행 상태 push(QUEUED/PROCESSING/FINISHED, heavy만 명시 통지). **WS 브로드캐스트 없음** — 레지스트리 전용 내부 이벤트 |
 | `/map-presets`, `/api/map-presets` | 맵 지오메트리 프리셋(`config/maps.json`) |

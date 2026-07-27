@@ -14,6 +14,16 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "ASSY_TEST_DATABASE_URL", "sqlite:///:memory:"
 )
 
+# [Isolation] Same class of leak as the DATABASE_URL pin above. An operator who
+# has exported ASSY_ADMIN_TOKEN in their shell (which is exactly what production
+# setup tells them to do) would otherwise run the suite with the admin gate
+# ENFORCING, so every existing /admin test would 401 - and, worse, the reverse:
+# a suite that only ever runs with the variable set would never exercise the
+# unset branch. Delete it here and let each test set what it needs via
+# monkeypatch, so the suite's behaviour does not depend on whose shell it runs
+# in. Tests for the configured case live in test_admin_auth.py.
+os.environ.pop("ASSY_ADMIN_TOKEN", None)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — §6 전사 계획 패널을 M2.6 모델로 정정: 쓰기 소유권 · `legendReplaceScope`) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (§5 `adminFetch` — 게이트 판정 4규칙 · §6 전사 계획 패널 M2.6 정정) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -129,6 +129,13 @@ npm run build     # dist/ 생성
 - **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
 - **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
 - 신규 서버 API 0건 — 기존 `/admin/*`·`/enrichment/rules`만 소비. 함수 목록: [CODE_MAP §7](./CODE_MAP.md#7-client2src--웹-클라이언트).
+- **🔒 어드민 토큰 (2026-07-27)**: 서버가 `/admin/*`을 공유 토큰으로 잠근다([backend §API](./backend.md)). 클라 측 구현은 `admin.js`의 `adminFetch()` 하나뿐 — **로그인 화면도, 새 탭·모드·설정 패널도 없다.** `localStorage['assy.adminToken']`에 보관하고 `X-Admin-Token` 헤더로 전송한다. 서버에 토큰이 미설정이면 게이트가 열려 있어 프롬프트 자체가 뜨지 않는다. 판정 규칙 4가지가 **모두 필요**하다(각각 실제 오작동을 막는다):
+  1. **상태코드가 아니라 `WWW-Authenticate: X-Admin-Token` 헤더로 판정한다.** `_resolve_admin_script_path`가 격리 사유로 내는 403이 있어, 상태코드만 보면 그것을 "토큰이 틀렸다"로 오해해 **정상 토큰을 사용자 입력으로 덮어썼다.**
+  2. **토큰 세대 카운터** — 프롬프트 도중 이미 교체된 토큰에 대해 **먼저 날아간 응답**이 뒤늦게 도착하면 조용히 재시도한다. 이게 없으면 "동시 7건 → 프롬프트 1회"는 타이밍 운이고, 두 번째 모달이 **올바른 토큰을 두고** "거부되었습니다"라고 말한다.
+  3. **취소(`prompt`→`null`)는 저장된 토큰을 지우지 않는다** — 지우면 30초 갱신 타이머가 영원히 모달을 띄운다. 취소 후에는 더 묻지 않고 토스트로 "새로고침하면 다시 물어봅니다"를 알린다.
+  4. **503 본문을 토스트로 노출한다** — 서버가 `ASSY_ADMIN_TOKEN`을 설정하고 재기동하라고 정확히 알려주는데, 삼키면 화면엔 "저장 중 오류 발생"만 남아 503 분기의 존재 이유가 사라진다.
+  ⚠️ **`/admin/*` 호출은 반드시 `adminFetch`로** — `grep 'fetch(\`${API_BASE}/admin/'`가 0건이어야 한다. 맨 `fetch`로 남은 호출부는 미설정 서버에서 멀쩡히 동작하다가 운영에서만 401이 난다.
+  ⚠️ **서빙되는 것은 `dist/assets/admin-*.js`다.** 소스만 고치고 번들을 안 올리면 토큰을 켜는 순간 어드민이 잠긴다 — 판정은 `grep -c X-Admin-Token client2/dist/assets/admin-*.js` > 0.
 
 ---
 

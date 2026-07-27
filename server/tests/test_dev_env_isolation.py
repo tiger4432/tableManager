@@ -29,6 +29,26 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
+import admin_auth
+
+#: POST /admin/scripts/code is one of the two code-execution routes, so it now
+#: refuses with 503 unless an admin token is configured (see admin_auth.py). The
+#: tests below are about the *isolation* guard, not the gate, so they configure
+#: the gate and present the header - which keeps them exercising the handler
+#: exactly as before instead of stopping at the door.
+_ISOLATION_TEST_TOKEN = "isolation-suite-token"
+
+
+@pytest.fixture
+def admin_client(client, monkeypatch):
+    """`client` with the admin gate configured and the header attached."""
+    monkeypatch.setenv(admin_auth.ADMIN_TOKEN_ENV, _ISOLATION_TEST_TOKEN)
+    client.headers[admin_auth.ADMIN_TOKEN_HEADER] = _ISOLATION_TEST_TOKEN
+    try:
+        yield client
+    finally:
+        client.headers.pop(admin_auth.ADMIN_TOKEN_HEADER, None)
+
 
 # --------------------------------------------------------------------------- 1
 class TestSuiteNeverTouchesProduction:
@@ -267,23 +287,27 @@ class TestIsolatedServerCannotWriteLiveMappers:
         assert str(tmp_path) in got
 
     def test_write_to_mappers_is_refused_end_to_end(
-            self, client, monkeypatch, tmp_path, live_mappers_must_be_untouched):
+            self, admin_client, monkeypatch, tmp_path, live_mappers_must_be_untouched):
         """Same guard over real HTTP, with the tree protected by the fixture."""
         import paths
 
         monkeypatch.setattr(paths, "IS_ISOLATED", True)
         monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
 
-        res = client.post("/admin/scripts/code", json={
+        res = admin_client.post("/admin/scripts/code", json={
             "path": self.PROBE,
             "code": "# isolation probe - must never be written\n",
         })
         assert res.status_code == 403, (
             f"isolated server accepted a write into the live mappers/ tree "
             f"(status {res.status_code})")
+        # The admin gate ALSO answers 403 (wrong token), so the status code alone
+        # would let this pass for the wrong reason if the header ever broke.
+        # Pin the reason to the isolation guard's own message.
+        assert "isolated data root" in res.json()["detail"], res.text
 
     def test_existing_live_mapper_is_not_even_opened(
-            self, client, monkeypatch, tmp_path, live_mappers_must_be_untouched):
+            self, admin_client, monkeypatch, tmp_path, live_mappers_must_be_untouched):
         """Targets a real file: byte- AND mtime-identical is the claim."""
         import paths
 
@@ -294,9 +318,12 @@ class TestIsolatedServerCannotWriteLiveMappers:
         monkeypatch.setattr(paths, "IS_ISOLATED", True)
         monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
 
-        res = client.post("/admin/scripts/code", json={
+        res = admin_client.post("/admin/scripts/code", json={
             "path": target, "code": "# CLOBBERED\n"})
         assert res.status_code == 403
+        # See the sibling test: the admin gate shares this status code, so the
+        # refusal has to be attributed to the isolation guard explicitly.
+        assert "isolated data root" in res.json()["detail"], res.text
 
     def test_reads_still_work_when_isolated(
             self, client, monkeypatch, tmp_path, live_mappers_must_be_untouched):
@@ -312,7 +339,7 @@ class TestIsolatedServerCannotWriteLiveMappers:
         res = client.get("/admin/scripts/code", params={"path": target})
         assert res.status_code == 200, res.text
 
-    def test_workspace_writes_still_work_when_isolated(self, client, monkeypatch, tmp_path):
+    def test_workspace_writes_still_work_when_isolated(self, admin_client, monkeypatch, tmp_path):
         """The relocated tree stays writable - that is the whole point.
 
         Guards against 'fixing' the mappers gap by refusing every write.
@@ -325,7 +352,7 @@ class TestIsolatedServerCannotWriteLiveMappers:
         monkeypatch.setattr(paths, "WORKSPACE_DIR", str(iso_root / "ingestion_workspace"))
 
         rel = "ingestion_workspace/devenv_probe_tbl/scripts/probe.py"
-        res = client.post("/admin/scripts/code", json={"path": rel, "code": "# ok\n"})
+        res = admin_client.post("/admin/scripts/code", json={"path": rel, "code": "# ok\n"})
         assert res.status_code == 200, res.text
 
         written = iso_root / "ingestion_workspace" / "devenv_probe_tbl" / "scripts" / "probe.py"

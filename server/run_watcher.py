@@ -49,9 +49,15 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
 workspace_watcher = None
 
 def post_event(endpoint: str, payload: dict):
+    # [B5] /internal/events/* is gated with the admin secret; this worker
+    # inherits ASSY_ADMIN_TOKEN from the launcher's environment. A 401 here means
+    # the worker was started without it - the notification is dropped and
+    # real-time sync goes quiet, so the status code is logged, not swallowed.
+    import admin_auth
     url = f"{API_BASE_URL}{endpoint}"
     try:
-        res = requests.post(url, json=payload, timeout=5)
+        res = requests.post(url, json=payload, timeout=5,
+                            headers=admin_auth.internal_event_headers())
         if not res.ok:
             logger.warning(f"API notification failed: {url} -> {res.status_code}")
     except Exception as e:

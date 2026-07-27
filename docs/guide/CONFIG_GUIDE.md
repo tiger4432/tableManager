@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (M2.6 `plan_store` 리바인딩 `0f8d35f` · `--sync-comments` · config-먼저-바꾸면-롤백 불가 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`ASSY_ADMIN_TOKEN` 환경변수 추가 · M2.6 `plan_store` 리바인딩 `0f8d35f` · `--sync-comments` · config-먼저-바꾸면-롤백 불가 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -70,7 +70,7 @@ server/database/virtual_graph.json
 
 | 원천 | 무엇 | 변경 시 |
 |---|---|---|
-| 환경변수 | `DATABASE_URL`(기본 `postgresql://postgres:admin@localhost:5432/assy_manager`), **`ASSY_DATA_ROOT`**(config·워크스페이스·프로세스 로그의 단일 이동점, 미설정 시 `server/`), `ASSY_API_PORT`(런처가 띄우는 uvicorn 포트, 기본 8080), `DECOUPLED`, `TESTING`, `API_BASE_URL`(기본 `http://127.0.0.1:8080`), `GRAPH_SYNC_PORT`(8090), `GRAPH_MATERIALIZER_ENABLED`(true), `NEO4J_*`, `ASSY_API_BASE` | **전부 재기동 필요** (import 시점 1회 읽음) |
+| 환경변수 | `DATABASE_URL`(기본 `postgresql://postgres:admin@localhost:5432/assy_manager`), **`ASSY_DATA_ROOT`**(config·워크스페이스·프로세스 로그의 단일 이동점, 미설정 시 `server/`), `ASSY_API_PORT`(런처가 띄우는 uvicorn 포트, 기본 8080), `DECOUPLED`, `TESTING`, `API_BASE_URL`(기본 `http://127.0.0.1:8080`), `GRAPH_SYNC_PORT`(8090), `GRAPH_MATERIALIZER_ENABLED`(true), `NEO4J_*`, `ASSY_API_BASE`, **`ASSY_ADMIN_TOKEN`**(어드민 공유 토큰 — 미설정 시 코드 쓰기·즉시실행 2개 라우트가 503, 나머지 `/admin/*`은 열림 → [DEPLOY_SETUP §1-4](./DEPLOY_SETUP.md)) | **전부 재기동 필요** (import 시점 1회 읽음. ⚠️ 예외: `ASSY_ADMIN_TOKEN`은 요청마다 다시 읽히지만, 프로세스 환경을 바깥에서 바꿀 수는 없으므로 **운영상으로는 동일하게 재기동이 필요**하다) |
 | 수집기 스케줄 | 수집기 `.py` **주석**의 `schedule`(cron) / `filename_prefix` — JSON 아님 | 스케줄러가 주석 변경을 감지해 핫 반영 → [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) |
 | 파이프라인 플러그인 등록 | 레지스트리 파일 없음. `<workspace>/scripts/*.py` **파일 존재 자체가 등록** | `POST /admin/reload-configs`가 `pipeline_plugin_*` 모듈 캐시 무효화 |
 | 커스텀 맵퍼 등록 | `server/mappers/*.py` 파일 + `chain_rules.json`의 `mapper_module`/`mapper_function` | 위와 동일(`mappers.*` 캐시 무효화) |

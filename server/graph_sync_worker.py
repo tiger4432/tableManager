@@ -462,7 +462,11 @@ async def post_event_async(endpoint: str, payload: dict):
     url = f"{api_url}{endpoint}"
     def do_post():
         try:
-            res = requests.post(url, json=payload, timeout=20)
+            # [B5] /internal/events/* carries the admin secret; inherited from
+            # the launcher's environment. 401 here = worker started without it.
+            import admin_auth
+            res = requests.post(url, json=payload, timeout=20,
+                                headers=admin_auth.internal_event_headers())
             if not res.ok:
                 logger.error(f"[GraphSync Process] API notification failed: {url} -> {res.status_code}")
         except Exception as e:

@@ -13,6 +13,135 @@ const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
 
 const byId = (id) => document.getElementById(id);
 
+// ── Admin token (C1 access control) ──────────────────────────
+// The server gates /admin/* behind a shared secret it reads from
+// ASSY_ADMIN_TOKEN at startup. There is no login screen and no user model by
+// design: this page asks for the one token, keeps it, and attaches it as a
+// header. Every /admin/* call in this file goes through adminFetch() - `grep
+// "fetch(\`${API_BASE}/admin/"` must return nothing, or that call site is
+// unauthenticated and will 401 in production while working on an
+// unconfigured server.
+//
+// When the server has no token configured the gated routes answer normally, so
+// nothing prompts and this is invisible. The prompt appears only on a rejection
+// the GATE issued, which is exactly the first load against a locked server.
+const ADMIN_TOKEN_HEADER = 'X-Admin-Token';
+const ADMIN_TOKEN_KEY = 'assy.adminToken';
+
+function getAdminToken() {
+  try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }
+}
+
+function storeAdminToken(value) {
+  try {
+    if (value) localStorage.setItem(ADMIN_TOKEN_KEY, value);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch (e) { /* private mode / storage disabled: token lives for this page only */ }
+}
+
+// Bumped every time the stored token changes. A response that was already in
+// flight when the token changed is stale evidence: it says nothing about the
+// NEW token, so it must not trigger a second prompt. Without this the "one
+// prompt for seven concurrent requests" property is timing luck - with a
+// realistic multi-second modal, responses arriving after it closed produced
+// extra prompts that accused a perfectly correct token of being wrong.
+let adminTokenGeneration = 0;
+// Set when the operator dismisses the prompt. Re-prompting on every 30s refresh
+// forever is not a fix, it is a trap; they can reload the page to be asked again.
+let adminTokenDeclined = false;
+let tokenPromptInFlight = null;
+
+/** True only for rejections the admin GATE issued.
+ *
+ * Status alone is not enough: `_resolve_admin_script_path` answers 403 when an
+ * isolated server refuses a write into the live mappers/ tree, which has nothing
+ * to do with the token. Treating that as an auth failure made the page demand a
+ * token and then OVERWRITE the correct stored one with whatever was retyped.
+ * The server marks its own rejections with `WWW-Authenticate: X-Admin-Token`.
+ */
+function isGateRejection(res) {
+  if (res.status !== 401 && res.status !== 403) return false;
+  const challenge = res.headers && res.headers.get
+    ? (res.headers.get('WWW-Authenticate') || '') : '';
+  return challenge.toLowerCase().includes(ADMIN_TOKEN_HEADER.toLowerCase());
+}
+
+function askForAdminToken(message) {
+  if (!tokenPromptInFlight) {
+    tokenPromptInFlight = new Promise((resolve) => {
+      // Deferred a tick so sibling handlers from the same Promise.all attach to
+      // this promise before the modal blocks the thread.
+      setTimeout(() => {
+        const entered = window.prompt(message, '');
+        tokenPromptInFlight = null;
+        if (entered === null) {
+          // Cancel. Do NOT clear the stored token - the previous code turned a
+          // cancel into storeAdminToken('') and DELETED a working token.
+          adminTokenDeclined = true;
+          showToast('관리자 토큰 입력을 취소했습니다. 새로고침하면 다시 물어봅니다.', 'warning');
+          resolve('');
+          return;
+        }
+        const value = entered.trim();
+        if (value) {
+          storeAdminToken(value);
+          adminTokenGeneration += 1;
+        }
+        resolve(value);
+      }, 0);
+    });
+  }
+  return tokenPromptInFlight;
+}
+
+function withAdminToken(init) {
+  const token = getAdminToken();
+  if (!token) return init;
+  const next = Object.assign({}, init || {});
+  // Header only, never a query parameter: query strings are written to the
+  // server's access log, headers are not.
+  next.headers = Object.assign({}, (init && init.headers) || {},
+    { [ADMIN_TOKEN_HEADER]: token });
+  return next;
+}
+
+/** fetch() for /admin/* — attaches the token, and re-asks once if the GATE rejects it. */
+async function adminFetch(url, init) {
+  const generationAtSend = adminTokenGeneration;
+  let res = await fetch(url, withAdminToken(init));
+
+  // 503 = the server has no token configured and this route refuses to run
+  // without one. The body names the variable and says to restart; surfacing it
+  // here is the whole point of the 503 split, and the call sites would otherwise
+  // show a generic "저장 중 오류 발생".
+  if (res.status === 503) {
+    try {
+      const body = await res.clone().json();
+      if (body && body.detail) showToast(body.detail, 'error', { ttl: 12000 });
+    } catch (e) { /* not a JSON body - let the caller report it */ }
+    return res;
+  }
+
+  if (!isGateRejection(res)) return res;
+
+  // Someone else already replaced the token while this was in flight. Retry
+  // silently with the new one instead of accusing it of being wrong.
+  if (adminTokenGeneration !== generationAtSend) {
+    return fetch(url, withAdminToken(init));
+  }
+
+  if (adminTokenDeclined) return res;
+
+  const message = getAdminToken()
+    ? '관리자 토큰이 거부되었습니다. 다시 입력해 주세요.'
+    : '관리자 토큰을 입력하세요.';
+  const token = await askForAdminToken(message);
+  // Retry once only. A second rejection returns to the caller so the page shows
+  // its own error instead of looping the operator on a modal.
+  if (token) res = await fetch(url, withAdminToken(init));
+  return res;
+}
+
 // ── State Cache ─────────────────────────────────────────────
 let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment'
 
@@ -625,9 +754,9 @@ async function fetchData(options = {}) {
     } else if (tab === 'file') {
       const statusVal = statusFilterSelect.value || 'ALL';
       const [logsRes, wsRes, activeRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/file-ingestion/logs?status=${statusVal}&page=${filePage}&limit=${fileLimit}`),
-        fetch(`${API_BASE}/admin/file-ingestion/workspaces`),
-        fetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null)
+        adminFetch(`${API_BASE}/admin/file-ingestion/logs?status=${statusVal}&page=${filePage}&limit=${fileLimit}`),
+        adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
+        adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null)
       ]);
       if (!logsRes.ok || !wsRes.ok) throw new Error('API fetch failed');
       const [logs, ws] = await Promise.all([logsRes.json(), wsRes.json()]);
@@ -646,9 +775,9 @@ async function fetchData(options = {}) {
       renderFileTable();
     } else if (tab === 'chain') {
       const [obRes, rulesRes, mapRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}`),
-        fetch(`${API_BASE}/admin/chain/rules`),
-        fetch(`${API_BASE}/admin/mappers/list`)
+        adminFetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}`),
+        adminFetch(`${API_BASE}/admin/chain/rules`),
+        adminFetch(`${API_BASE}/admin/mappers/list`)
       ]);
       if (!obRes.ok || !rulesRes.ok || !mapRes.ok) throw new Error('API fetch failed');
       const [ob, rules, maps] = await Promise.all([obRes.json(), rulesRes.json(), mapRes.json()]);
@@ -662,9 +791,9 @@ async function fetchData(options = {}) {
       renderMapperTable();
     } else if (tab === 'autoupdate') {
       const [stRes, failRes, wsRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/auto-update/status`),
-        fetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
-        fetch(`${API_BASE}/admin/file-ingestion/workspaces`)
+        adminFetch(`${API_BASE}/admin/auto-update/status`),
+        adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
+        adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`)
       ]);
       if (!stRes.ok) throw new Error('API fetch failed');
       const st = await stRes.json();
@@ -909,7 +1038,7 @@ function scheduleActiveRefresh() {
     activeRefreshTimer = null;
     if (document.hidden || currentTab !== 'file' || !activeIngestionData.length) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/file-ingestion/active`);
+      const res = await adminFetch(`${API_BASE}/admin/file-ingestion/active`);
       if (res.ok) {
         const r = await res.json();
         activeIngestionData = r.data || [];
@@ -1302,13 +1431,13 @@ function renderEnrichmentTable(status) {
 
 async function fetchOverview(isStale) {
   const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
-    fetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
-    fetch(`${API_BASE}/admin/file-ingestion/workspaces`),
-    fetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
-    fetch(`${API_BASE}/admin/chain/rules`),
-    fetch(`${API_BASE}/admin/mappers/list`),
-    fetch(`${API_BASE}/admin/auto-update/status`),
-    fetch(`${API_BASE}/admin/file-ingestion/active`) // [Heavy Lane P1] 진행 중 인제션
+    adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
+    adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
+    adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
+    adminFetch(`${API_BASE}/admin/chain/rules`),
+    adminFetch(`${API_BASE}/admin/mappers/list`),
+    adminFetch(`${API_BASE}/admin/auto-update/status`),
+    adminFetch(`${API_BASE}/admin/file-ingestion/active`) // [Heavy Lane P1] 진행 중 인제션
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
@@ -1645,7 +1774,7 @@ function selectAutoUpdateRow(col) {
 // API Call: Trigger Auto Update Run Now
 async function runAutoUpdateNow(tableName, scriptName) {
   try {
-    const res = await fetch(`${API_BASE}/admin/auto-update/run-now`, {
+    const res = await adminFetch(`${API_BASE}/admin/auto-update/run-now`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1674,7 +1803,7 @@ async function toggleCollectorActive(col, inputEl) {
   const nextActive = inputEl.checked;
   inputEl.disabled = true; // 응답 전 연타 방지 (성공 시 재렌더로 새 토글로 교체됨)
   try {
-    const res = await fetch(`${API_BASE}/admin/auto-update/toggle`, {
+    const res = await adminFetch(`${API_BASE}/admin/auto-update/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2060,7 +2189,7 @@ function updatePaginationFooter(total, currentPage, maxPage) {
 //  FAILED 목록에 다시 나타나면 재실패로 판정해 행 잔존 + 경고를 표시)
 async function retryTransaction(txId) {
   try {
-    const res = await fetch(`${API_BASE}/admin/outbox/retry-failed?transaction_id=${txId}`, {
+    const res = await adminFetch(`${API_BASE}/admin/outbox/retry-failed?transaction_id=${txId}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
@@ -2088,7 +2217,7 @@ async function retryTransaction(txId) {
 // 감사 F1 준용: 재시도는 동기 처리이므로 즉시 재조회해 실제 상태로 피드백한다.
 async function retryFileIngestion(logId) {
   try {
-    const res = await fetch(`${API_BASE}/admin/file-ingestion/retry-failed?log_id=${logId}`, {
+    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?log_id=${logId}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
@@ -2114,7 +2243,7 @@ async function retryFileIngestion(logId) {
 async function retryAllFailed(kind) {
   try {
     if (kind === 'outbox') {
-      const res = await fetch(`${API_BASE}/admin/outbox/retry-failed`, {
+      const res = await adminFetch(`${API_BASE}/admin/outbox/retry-failed`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Retry-all API returned error status');
@@ -2123,7 +2252,7 @@ async function retryAllFailed(kind) {
       showToast(`🔄 ${result.message || '모든 실패 체인 트랜잭션이 초기화되었습니다.'}`, 'success');
       outboxPage = 1;
     } else {
-      const res = await fetch(`${API_BASE}/admin/file-ingestion/retry-failed`, {
+      const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Retry-all API returned error status');
@@ -2143,7 +2272,7 @@ async function retryAllFailed(kind) {
 // API Call: Reload system configurations and python modules cache
 async function reloadSystemConfigs() {
   try {
-    const res = await fetch(`${API_BASE}/admin/reload-configs`, {
+    const res = await adminFetch(`${API_BASE}/admin/reload-configs`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Reload configs API returned error status');
@@ -2222,7 +2351,7 @@ async function populateEditorPicker(force = false) {
   if (!editorFilePicker) return;
   if (!scriptsListCache || force) {
     try {
-      const res = await fetch(`${API_BASE}/admin/scripts/list`);
+      const res = await adminFetch(`${API_BASE}/admin/scripts/list`);
       if (res.ok) {
         const result = await res.json();
         scriptsListCache = result.data || null;
@@ -2293,7 +2422,7 @@ async function selectEditorFile(path) {
     editorFilePath.textContent = '🔄 Loading file...';
     saveCodeBtn.style.display = 'none';
 
-    const res = await fetch(`${API_BASE}/admin/scripts/code?path=${encodeURIComponent(path)}`);
+    const res = await adminFetch(`${API_BASE}/admin/scripts/code?path=${encodeURIComponent(path)}`);
     if (!res.ok) throw new Error('Failed to load file contents');
     const result = await res.json();
 
@@ -2323,7 +2452,7 @@ async function selectEditorFile(path) {
 // Save modified code to server
 async function saveScriptCode(path, code) {
   try {
-    const res = await fetch(`${API_BASE}/admin/scripts/code`, {
+    const res = await adminFetch(`${API_BASE}/admin/scripts/code`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -2514,7 +2643,7 @@ async function refreshFileAndAutoHealth() {
   let failedTotal = null;
   let failedLogs = [];
   try {
-    const res = await fetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`);
+    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`);
     if (res.ok) {
       const r = await res.json();
       failedTotal = r.total || 0;
@@ -2526,7 +2655,7 @@ async function refreshFileAndAutoHealth() {
   let activeCount = 0;
   let activeHeavy = 0;
   try {
-    const res = await fetch(`${API_BASE}/admin/file-ingestion/active`);
+    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/active`);
     if (res.ok) {
       const r = await res.json();
       activeCount = r.total || 0;
@@ -2549,7 +2678,7 @@ async function refreshFileAndAutoHealth() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/admin/auto-update/status`);
+    const res = await adminFetch(`${API_BASE}/admin/auto-update/status`);
     if (!res.ok) throw new Error('auto-update status fetch failed');
     const r = await res.json();
     const collectors = r.data || [];
@@ -2592,7 +2721,7 @@ function latestLastRun(collectors) {
 
 async function refreshChainHealth() {
   try {
-    const res = await fetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1`);
+    const res = await adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1`);
     if (!res.ok) throw new Error('chain health fetch failed');
     const r = await res.json();
     const total = r.total || 0;

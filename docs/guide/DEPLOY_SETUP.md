@@ -1,6 +1,6 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — config를 먼저 바꾸면 코드 롤백만으로 복구 불가) | **대상:** 새 환경에 assyManager를 올리는 사람
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (§1-4 `ASSY_ADMIN_TOKEN` — ASCII 제약 · 번들 재빌드 선행 · config를 먼저 바꾸면 코드 롤백만으로 복구 불가) | **대상:** 새 환경에 assyManager를 올리는 사람
 > **상세:** 각 항목의 키·함정·검증 절차는 [CONFIG_GUIDE](CONFIG_GUIDE.md)에 있다. 이 문서는 **"내가 무엇을 채워야 하는가"** 만 담는다.
 > **프로덕션 게이트:** 배포 전 남은 차단 항목은 [PRODUCTION_READINESS](../process/PRODUCTION_READINESS.md).
 
@@ -68,6 +68,56 @@ python server/scripts/install_product_tables.py --apply    # 실제 반영
 `server/ingestion_workspace/<테이블명>/` 아래에 `raws/ archives/ err/ config/ auto_update/ scripts/`가 필요하다. 파일을 `raws/`에 떨구면 워처가 집어간다.
 
 > 워크스페이스별 `config/config.json`은 **폐기된 개념**이다(하위호환 읽기만 남아 있음). 테이블명·파싱 규칙은 전역 `table_config.json`이 이긴다. 새로 만들지 마라.
+
+### 1-4. `ASSY_ADMIN_TOKEN` — 어드민 접근 토큰 (2026-07-27 신설)
+
+`/admin/*`은 **인증이 전혀 없었다.** 사내망에 패킷을 보낼 수 있는 누구나 `POST /admin/scripts/code`로 임의의 파이썬 파일을 쓰고 `POST /admin/auto-update/run-now`로 그것을 실행시킬 수 있었다. 이제 **공유 토큰 하나**로 잠근다 — 로그인 화면도, 사용자 계정도 없다(2~5명 사내 공유 환경이라 의도적으로 그렇게 두었다).
+
+```bash
+ASSY_ADMIN_TOKEN=<길고 추측 불가능한 ASCII 문자열>
+```
+
+> 🚨 **반드시 ASCII로.** HTTP 헤더는 latin-1로 디코딩되므로 **한글·이모지 토큰은 절대 인증에 성공할 수 없다.** 서버는 이런 값을 **거부하고 무시**하며 기동 로그에 `ERROR`로 남긴다 — 즉 토큰을 넣었는데도 어드민이 잠기지 않은 상태가 된다. 예전에는 이 경우 "is set"이라고 안심시켜 놓고 올바른 토큰에도 매번 403을 돌려줬다(2026-07-27 수정). `openssl rand -hex 24` 같은 출력이 안전하다.
+
+**환경변수인 이유**: `DATABASE_URL`·`ASSY_DATA_ROOT`와 같은 자리다. 그리고 `server/config/`에 파일로 두면 gitignore가 지켜주긴 하지만 `devenv.py snapshot`이 config 트리를 통째로 복사하므로 **비밀이 두 군데로 늘어난다.** 환경변수는 저장소 안에 아예 존재하지 않는다.
+
+**설정하지 않으면 (fail closed, 단 부분적으로)**:
+
+| 라우트 | 토큰 미설정 | 토큰 설정 |
+|---|---|---|
+| `POST /admin/scripts/code`, `POST /admin/auto-update/run-now` | **503으로 거부** (코드 실행 경로 — 설정을 잊었다고 구멍이 열려선 안 된다) | 헤더 필수 |
+| 나머지 `/admin/*` 전체 (조회 포함) | 그대로 동작 | 헤더 필수 |
+| `/internal/events/*` (워커→웹서버 IPC) | 그대로 동작 | 헤더 필수 — **워커가 자동으로 보낸다** |
+| `GET /health` | 항상 무인증 (모니터링 표면) | 항상 무인증 |
+
+나머지를 열어 두는 것은 **의도된 선택**이다. 새 빌드로 처음 재기동한 운영자가 어드민 페이지 전체에서 잠겨버리는 사고를 막는다 — 잃는 것은 위험한 두 개뿐이다.
+
+> `/internal/events/*`는 워커가 웹서버에 보내는 내부 통지다. 조회 전용 어드민은 잠겨 있는데 **모든 접속 클라이언트의 그리드에 임의의 값을 뿌릴 수 있는 이 경로가 열려 있던 것**이 거꾸로였다(2026-07-27). 워커는 런처(`run_decoupled_app.py`)의 환경을 그대로 물려받으므로 **변수를 한 번만 설정하면 따로 해줄 일이 없다.** 단, 워커를 손으로 따로 띄운다면 그 셸에도 같은 변수가 있어야 한다 — 없으면 워커 로그에 `API notification failed: ... -> 401`이 쌓이고 실시간 동기화가 조용히 멈춘다.
+
+**기동 로그가 상태를 말해 준다.** 미설정이면 `WARNING`으로 어떤 라우트가 꺼졌고 어떤 변수를 설정해야 하는지 한 줄에 담아 찍는다:
+
+```
+[admin-auth] ASSY_ADMIN_TOKEN is NOT set. POST /admin/scripts/code and
+POST /admin/auto-update/run-now are DISABLED (503) ...
+```
+
+**클라이언트**: 어드민 페이지가 게이트 거부(`WWW-Authenticate: X-Admin-Token`)를 받으면 토큰을 한 번 묻고 `localStorage`에 보관한 뒤 `X-Admin-Token` 헤더로 보낸다. 운영자가 할 일은 **처음 한 번 붙여넣기**뿐이다.
+
+#### 🚨 토큰을 켜기 전에 — 클라이언트 번들을 반드시 다시 빌드해서 커밋할 것
+
+서버가 서빙하는 것은 `client2/src/admin.js`가 **아니라** 빌드 산출물 `client2/dist/assets/admin-*.js`다(그리고 그 파일은 git에 올라간다). 소스만 고치고 번들을 그대로 두면 **토큰을 설정하는 순간 어드민 페이지가 죽는다** — 요청은 401을 받는데 토큰을 물어보는 코드가 서빙되는 파일에 없어서 **프롬프트가 아예 뜨지 않는다.** 복구하려면 변수를 도로 지우고 재기동해야 하니, 사실상 보안 조치를 되돌리게 된다.
+
+```bash
+cd client2 && npm run build      # dist/ 갱신 후 커밋
+```
+
+**확인 방법 (운영자·리뷰어 모두 이걸로 판정한다 — 0이면 아직 옛 번들이다):**
+
+```bash
+grep -c X-Admin-Token client2/dist/assets/admin-*.js    # 1 이상이어야 한다
+```
+
+> ⚠️ 토큰을 **쿼리 파라미터로 보내지 마라.** 쿼리 문자열은 액세스 로그에 남는다. 서버는 헤더만 받는다.
 
 ---
 
@@ -173,7 +223,9 @@ python server/scripts/dev_env/devenv.py watcher-down
 4. `server/ingestion_workspace/<테이블>/` 디렉터리 생성
 5. 켤 기능의 config에서 `table`/`columns`를 우리 이름으로 맞춤 (§2)
 6. 맵을 쓴다면 `wafer_map_metadata` 등록 (§3)
-7. 기동 → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
+7. **`ASSY_ADMIN_TOKEN` 설정** (§1-4) — 안 하면 어드민의 코드 저장·즉시 실행이 503으로 막힌다
+   - ⚠️ **먼저** `grep -c X-Admin-Token client2/dist/assets/admin-*.js`가 1 이상인지 확인. 0이면 번들부터 다시 빌드·커밋한다(§1-4) — 아니면 토큰을 켜는 순간 어드민 페이지가 잠긴다
+8. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
 
 ### 6.1 기동 후 상시 감시
 
