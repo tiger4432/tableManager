@@ -1,13 +1,15 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **217개** 이력. (거버넌스 규칙 #4)
+> 총 **219개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-27 08:35** — [Correlated Failure And Ingestion Work Claim](./20260727_083551_correlated_failure_and_ingestion_work_claim.md)
+- **2026-07-27 08:00** — [M26 Doe Model Collapses Into One Table](./20260727_080028_m26_doe_model_collapses_into_one_table.md)
 - **2026-07-27 06:49** — [Doe Delete Via Replace Map](./20260727_064938_doe_delete_via_replace_map.md)
 - **2026-07-27 06:40** — [Process Supervision And Health Endpoint](./20260727_064058_process_supervision_and_health_endpoint.md)
 - **2026-07-27 06:20** — [Primitives Catalog And Agent Split](./20260727_062045_primitives_catalog_and_agent_split.md)
