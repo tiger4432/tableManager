@@ -27,39 +27,30 @@
 > **예외:** 사용자 작업을 지금 막고 있거나 프로덕션이 깨진 건은 앞으로 당긴다 — 단 **당긴다고 말하고** 당긴다.
 > **순서 변경은 사용자 권한.** 총괄은 제안만 한다.
 
-> **순서 확정 (사용자 2026-07-27)**: 문서 정비 먼저 — **컴팩트 대비**다. 압축되면 문서가 남는 것의 전부다. 이후 `1 → 5 → 2 → 3 → 4`.
+> **포맷 (2026-07-28 통일):** 한 항목 = **제목 한 줄 + 착수에 필요한 핵심 1~3문장**. 경과·근거·수치는 히스토리/보고서에 있다 — 여기 쌓지 않는다. 완료 항목은 표에서 내리고 아래 「종결」 한 줄로 압축한다.
+> **열:** 순번(처리 순서) · 항목 · 담당 · 등급([[review-tiers]] T1/T2/T3) · 상태
 
-| # | 항목 | 상태 |
-|---|---|---|
-| — | 운영 강화 2차 | ✅ `d56e7e2` |
-| — | M2.6 DOE 통합 | ✅ `cdcddee` (라이브 미적용 — §현재 초점 2) |
-| — | 문서 정비 — 4분할 첫 실행 | ✅ `52a668b` (감사 지적 반영까지 완료) |
-| 1 | 서버 `transfer_plan.py`를 M2.6 `bands` JSON 계약에 맞춤 | ✅ **병합** (QA 2건 NO-GO → 수정 → 클라 정합. **재기동 대기**) |
-| **0** | 🔴 **자동 수집기가 조용히 아무것도 안 넣는다 — 대기열 앞으로 당김**(사용자 작업 차단, 2026-07-27). `run_auto_update.py:131-138`이 `exec()`에 네임스페이스를 **둘** 넘겨 코드가 클래스 정의 안처럼 실행된다 → 모듈 레벨 `def`/`import`는 `local_ns`에, 함수 본문의 이름 조회는 `global_ns`에서 일어나 **함수가 함수를 부르는 순간 `NameError`**. 재현 완료. 그 예외가 `:183`에서 **warning으로 삼켜지고** stdout 폴백으로 넘어가는데 스크립트는 `print`가 아니라 `out`에 담으므로 stdout이 비어 `:203` "Skipping file generation" → **에러 없이 수집 0건**. 스크립트는 정상이며 `python`으로 직접 돌리면 잘 된다. **QA가 같은 증상의 두 번째 경로를 찾았다** — `out = None`을 "`out` 미정의"와 구별 못 해 stdout 폴백으로 넘어가고(외부 API **2회차 호출**) 결국 SUCCESS 0건. 라이브 수집기 2개가 이미 그 패턴이고 **주석에 "에러 로그를 남긴다"고 적혀 있다**(사실 아님). 조치: `"out" in ns`(존재)와 값을 분리해 명시적 `None`은 **FAIL** | ✅ **수정 완료** (스위트 +22) |
-| **0b** | 🔴 **그리드 Ctrl+C가 운영에서 안 먹는다 — 앞으로 당김**(사용자 작업 차단, 2026-07-27). 복사 구현이 **둘**이고 안 되는 쪽이 되는 쪽을 막는다: `main.js:422-433`이 keydown을 가로채 `preventDefault()` 후 `navigator.clipboard.writeText()`를 부르는데, 이건 **보안 컨텍스트 전용**이라 사내망 평문 HTTP에선 `undefined`다(localhost는 보안 컨텍스트라 개발 PC에선 멀쩡). `preventDefault`가 `copy` 이벤트를 없애 `clipboard.js:560`의 **정상 구현이 호출조차 안 된다.** 게다가 `getRangeSelectedTSV`가 드래그 범위 없으면 **포커스 셀 하나를 범위로** 돌려주므로 그 분기는 사실상 항상 발화 → **행 복사·헤더 토글은 개발 포함 전 환경에서 죽어 있었다.** 조치: 중복 분기 **삭제**(폴백 추가 아님). ⚠️ 원인 정정 — 포커스 셀 폴백은 빈 문자열을 돌려준다. 실제 원인은 `grid.js:451` `commitDragSelection()`이 **클릭한 셀을 `selectedCellsMap`에 영구 기록**하는 것. **행 복사는 `clipboard.js:569`에 같은 우선순위 게이트가 있어 이 삭제로 안 고쳐지며, 사용자 판단으로 불필요**. 붙여넣기(엑셀→그리드)는 **정상**(Ctrl+V 가로채기 없음). Smart Paste만 평문 HTTP에서 깨지나 시끄럽게 실패 | ✅ **수정 완료** (빌드 반영) |
-| 2 | **C1 접근 통제** — 실태는 체크리스트보다 넓다: `main.py`에 **admin 라우트 16개, 인증 전무**(모든 `Depends`가 `get_db`). `POST /admin/scripts/code`(:3896, 임의 py 파일 쓰기) + `POST /admin/auto-update/run-now`(:3586, 실행) = **사내망 임의 코드 실행**. 설계(사용자 확정): **공유 토큰 헤더** · 미설정 시 **위험 2개는 503으로 차단**(fail closed)하고 나머지는 열어둬 잠금 사고 방지 · `/health`는 무인증 유지(B2) · 로그인 화면 없음 | ✅ **완료** — 게이트는 안 뚫렸으나 **QA 2건이 게이트 옆 구멍을 각각 하나씩** 찾았다: ⓐ `serve_static_or_index`의 **무인증 파일시스템 읽기**(`/../../server/config/table_config.json` 200, `win.ini` 200 — 잠근 GET 라우트의 바이트가 그대로 나갔다) ⓑ **서빙되는 admin 번들이 낡아** 토큰을 켜면 프롬프트 없이 401만 뜨는 상태. 둘 다 닫음. 게이트는 16이 아니라 **20 라우트**(`/admin` 16 + `/internal/events` 4) |
-| **2b** | ✅ **핵심가치 #1 계기 신설 — 재교정률** (`/dashboard/summary` → 어드민 Overview 한 줄). 같은 셀을 USER 소스로 **두 번 이상** 고친 비율. 새 계측 코드 없이 `audit_logs`에서 파생. **⚠️ 정의 미확정**: 라이브 실측 전체 **2.01%**(51,217셀)인데 대량 트랜잭션(맵 푸시) 제외 시 **13.13%**(3,381셀) — 한 번의 사람 행동이 수천 셀을 쓰므로 손편집 신호가 **6.5배 희석**된다. 지금 형태로는 고장이 나도 숫자가 안 움직인다. 테이블별: `core_wafer_map` 36.4% · `inventory_master` 26.9% · `bonding_map` 2.3%. **사용자 결정 대기**(둘 다 표시 / 테이블별 / 손편집만 / 현행) | 임의 기준 없는 쪽으로 우선 반영 |
-| — | ⏳ **DB 인덱스 미생성** — 재교정 집계가 현재 **512ms**(1.6GB 순차 스캔). 부분 인덱스가 `setup_db_performance.py`에 들어갔으나 **라이브에 실행되지 않았다**(에이전트는 읽기 전용). 60초 캐시 + 1500ms 타임아웃으로 방어 중. 같은 스크립트에 낡은 outbox 인덱스 정리도 대기 | **DB 쓰기 필요** |
-| **U1** | **맵 에디터 — 사용 자재 패널이 너무 아래·너무 작다**(사용자 2026-07-27). `transfer_plan.css`가 `tp-scroll`(계획 헤더+DOE)=`flex:1`, `tp-mat-pane`(사용 자재)=**고정 250px**로 잡고 있다 → **DOE와 반반**으로. CSS 상단의 레이아웃 주석도 같이 갱신 | 대기 (**T3**) |
-| **U2** | ~~없는 DT MAP 클릭 시 빈 채로 열리기~~ ✅ **완료**(`280ebf0`) — `openMaterial`이 분해 불가 id를 `{첫 키 컬럼: 원문}`으로 폴백, LOAD와 동일 경로. 프레임 빈 채로 열리고 키는 Push 시 생성. probe는 여전히 존재를 추측하지 않음(미상 유지) | ✅ 완료 |
-| **U8** | 🔵 **↻ 가용 버튼을 눌러도 업데이트 안 됨**(사용자 2026-07-28, **다음 작업 투입 지정**). 총괄 1차 진단: **`bin_map` 선언이 현장 config에 0건**이라 서버가 BIN별 가용 계산을 거부(`transfer_plan.py:646-670` 추측 금지) → 조회는 성공하되 결과가 계속 미상 = **버튼이 무반응처럼 보인다.** 두 갈래 확인 필요: ⓐ **선언** — **컬럼명을 박지 않는다(사용자 확정 2026-07-28 "커스텀 가능하게")**. `bin_map`은 사이트가 아무 컬럼이나 선언하는 구조 그대로 두고, 격리 환경에서 임시 선언 → 가용 숫자 E2E만 검증(선언하는 날 처음 켜서 실패하는 사고 방지). 라이브 config에는 아무것도 넣지 않는다 ⓑ **피드백** — 조회가 돌았는데 여전히 미상일 때 아무 변화가 없는 UX. "조회했으나 BIN 축 미구성" 사유가 이미 `{value,reliable,reason}`에 실려 오므로 툴팁/토스트로 노출만 하면 됨(새 컨트롤 금지). 로직+표현 혼합 → 진단은 map-pm, 순수 표현이면 ui-designer로 분리 | 대기 (다음 라운드 선두) |
-| **U3** | **토스트를 화면 하단 중앙 배너로**(사용자 2026-07-27). 현재 `tokens.css:207` `#toast-container`는 **우하단 고정**(`bottom:24px` + `right: min(--toast-inset-right, ...)`)이고 `toastFadeIn`이 **위로 떠오른다**. → 하단 중앙 고정, 치고 올라오는 모션 제거. ⭐ **U1과 함께 처리할 것** — `--toast-inset-right`(`transfer_plan.css:19`)는 **「사용 자재」 목록이 토스트에 가려지던 문제** 때문에 생긴 회피 장치인데, 중앙으로 옮기면 **불필요해져 죽은 코드가 된다**. 그리고 그 패널이 바로 U1에서 키우는 대상이다 | 대기 (**T3**) |
-| **U7** | **뒤로가기 바 CSS 깨짐**(사용자 2026-07-28, "이따 체크해" — 급하지 않음). 스크린샷: `← 뒤로` 버튼과 브레드크럼(`bonding_map · 23FDSF › dt_map · AAA`)·힌트 문구("뒤로가면 편집 상태·오버레이·스크롤이 복원됩니다")가 **겹치거나 구겨져** 보인다. 좁은 폭에서 flex 줄바꿈/말줄임 누락 추정. **로직 무관 시각 건 → ui-designer 소관**(2026-07-28 역할 규칙) | 대기 (**T3**, ui-designer) |
-| **U9** | 🔵 **STACK 0 허용 — "상태 표시 값"**(사용자 2026-07-28). BASE의 FAIL 등 **층 구조 없이 상태만 뜻하는 색칠 값**이 있는데 지금은 DOE 조건과 같은 계열로 취급돼 검수(V5)가 잔소리한다. 의미 확정: **`STACK=0` = 마커 값** — 구역 없음·자재 수요 없음·롤업 제외·V-규칙 미적용. 단 `STACK=0`인데 1H/MID/TOP에 내용이 있으면 그건 모순이므로 **보고**(막지는 않음, 기존 규율대로). 빈 STACK(미입력)은 현행 유지 — 0은 "층 없음"의 **명시적 선언**이고 빈칸은 "아직 안 적음"이다. **계약 변경**: `contracts/doe_band_rules/vectors.json`에 벡터 추가 후 클라(`doe_bands.js` stackState·zoneDemand·validateZonePlan)와 서버(`transfer_plan.py` validate·수요)가 **함께** 이동. U8과 같은 라운드로 처리 | 대기 (U8과 한 라운드, **T2**) |
-| **U6** | 🔵 **클라 하드코딩 전면 config 이관**(사용자 2026-07-27 백로그 → **2026-07-28 격상**: "최대한 하드코딩하지 말고 모두 CONFIG 파일로" + "올려"). **U8+U9 바로 다음 순번.** 세 건 묶음: ⓐ **stage 바인딩** — `transfer_plan.js:42`의 `{ id:'bonding', targetTable:'bonding_map', builtin:true }`와 `map_editor.js:944` 자동 선택이 서버 `stages` 선언과 중복. 클라가 서버 선언을 읽게 하고 중복 목록 삭제(새 config 설계 아님 — `stage_of_table` 역인덱스가 이미 있다). 사용자 원 요청 `plan_list = {"bonding_map":{"source":"dt_map"}, "dt_map":{"source":"core_map"}}` 연쇄는 이 선언 위에서 표현 ⓑ **legend 폴백 어휘** — `map_editor.js`의 `'1'=GOOD·'0'=FAIL·E1·E2` 하드코딩 → config 선언(온톨로지 보고서 6단계와 동일 건) ⓒ **값 컬럼 후보 목록 3사본 분기** — `map_overlay.py:475`·`map_editor.js:4890`(`val,value,leg,grade,result,code,split,doe`) vs `map_editor.js:1228`(`leg,status,value,val,bin`): 목록도 순서도 달라 순서가 승자를 정한다 → 선언 1곳으로 통일. dt_map 자재 기입은 존 모델이 이미 수용(`STACK=1`·MID만) | 대기 (U8+U9 다음, **T2**) |
-| — | ⏳ **운영 DB에 선언 없는 테이블 7개**(B4 드릴이 읽기전용으로 검출, 아무것도 안 지웠다). 빈 것: `data_rows` · `hvy_drill_big` · `hvy_drill_small`. **행이 있는 것: `transfer_plan` · `transfer_plan_doe` · `transfer_plan_doe_layer` · `transfer_plan_map`** — M2.6이 선언을 내린 폐기 DOE 모델이라 **청소가 아니라 결정**이다. 선언 없는 컬럼도 둘(`bonding_map.grid_metadata`, `inventory_master.M22N`). `map_band_registry`는 사용자가 이미 DROP. 도구: `python server/scripts/list_undeclared_tables.py`(DROP 문 출력만, 실행은 사람) | 사용자 결정 |
-| 3 | ~~**B4 롤백 절차**~~ ✅ **완료 — 문서가 아니라 드릴로**(2026-07-28). `docs/guide/ROLLBACK_PROCEDURE.md` + 읽기전용 잔여물 검출 `server/scripts/list_undeclared_tables.py`(테스트 11건). **격리 스택에서 전진→파손→롤백 전 구간 실행: 총 30초, 체감 장애 16초, 재기동 5.7초, config 반영 0.01초.** 실측이 뒤집은 것 셋: ⓐ **롤백은 배포의 역순이 아니다** — 배포 `코드→재기동→config`, 롤백 `config→코드→재기동`(재기동이 가운데→맨끝) ⓑ 🔴 **`/health`로 롤백을 판정할 수 없다** — 코드/config 완전 불일치 상태가 `status: ok, problems: []`를 보고했다. B2 헬스의 사각 ⓒ 전진 배포에도 창이 있다("코드 먼저"는 새 코드가 옛 config를 견딜 때만) | ✅ 완료 (**C3 의존**) |
-| 4 | ~~**C3 백업**~~ ✅ **완료 — 복원 드릴 실행으로**(`b35bc9f`). `<이름>_<yymmdd>.json.bak` 파일별 주간 스냅샷, 31일 FIFO + **최신 4개 무조건 보존**(장기 중단 후 재개가 이력을 지우는 것 방지), 크론 시각이 아니라 "디스크 최신본이 7일보다 오래됐나"로 판정. `/health`에 `checks.config_backup`(missing/stale → degraded, 503 아님). **복원 2회 실행**: 0.17s / 0.33s — 단 1초 디바운스 창 안의 복원은 watcher가 조용히 버린다(절차에 판별법 기록). 라이브 확인: 재기동 후 스냅샷 9개 실존, `/health` ok | ✅ 완료 |
-| 5 | ~~**문서 감사 후속**~~ ✅ **완료** — ⓐ 클라 앵커 재측정(code-mapper, 감사 13표본 정확) ⓑ **7건 아카이브 49→42**(링크 666개 검사·끊김 0) ⓒ 헬스 상태값 — 코드에 **어휘가 4종류** 따로 있고 워커 상태는 8종, 문서 4곳이 `missing`·`stale`·`stalled` 누락. **`stalled`는 라벨 누락이 아니라 다른 탐지기**(임계 300초, 청크 간격이 균일하지 않아서. 우리 실제 인시던트가 "워처는 3초마다 뛰는데 인제션은 얼어붙은" 형태였다) ⓓ `DATA_SYNC_SPEC` — 죽은 건 문단 하나가 아니라 **문서 전체**라 삭제 대신 배너+등급조정, 무결성 가드의 *문제* 서술만 유효 ⓔ 헌장이 문서를 **열거**하던 것을 `DOC_OWNERSHIP` 표 참조로 전환 ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) ⓔ **헌장 공백** — `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 **어느 에이전트 헌장에도 안 적혀 있다.** 이번엔 doc-keeper가 `DOC_OWNERSHIP` 표를 따라가 고쳤을 뿐 — 헌장만 읽는 에이전트였으면 방치됐다. 문서 문제가 아니라 헌장 문제(총괄 소관) | 대기 |
-| 6 | `replace_map` 빈 집합 — 서버 scope 필드 | 대기 |
-| 7 | M3 맵 메타 자동 등록 (ingestion 체인) | 대기 |
-| 8 | P3 대형 파일 (backpressure·COPY·상한) | 대기 |
-| 9 | 온톨로지 — **장기 트랙** | 별도 |
+| 순번 | 항목 | 담당 | 등급 | 상태 |
+|---|---|---|---|---|
+| 1 | **U8 — ↻ 가용 버튼 무반응.** 1차 진단: `bin_map` 미선언 → 서버가 거부 → 결과가 계속 미상이라 버튼이 죽은 것처럼 보임. ⓐ 컬럼명 박지 않음(사용자 "커스텀 가능하게") — 격리 환경에서 선언→숫자 E2E만 검증 ⓑ 조회 후에도 미상이면 사유(`{value,reliable,reason}`)를 기존 툴팁·토스트로 노출. 진짜 fetch 고장 여부 배제 검증 포함 | map-pm → server-pm | T2 | 🔵 진행 |
+| 1 | **U9 — STACK 0 = 마커 값** (BASE FAIL 등 상태 표시 색칠). 구역·수요·롤업·V-규칙 제외, `0`+구역내용 = 모순 보고(비차단), 빈칸은 현행(미정 ≠ 층없음). 벡터 먼저 → 클라·서버 동시 이동 | map-pm → server-pm | T2 | 🔵 진행 (U8과 한 라운드) |
+| 2 | **U6 — 클라 하드코딩 전면 config 이관** (2026-07-28 격상: "모두 CONFIG로"). ⓐ stage 바인딩 — `transfer_plan.js:42` builtin이 서버 `stages` 선언과 중복, 클라가 선언을 읽게 ⓑ legend 폴백 어휘(`'1'/'0'/E1/E2`) → config ⓒ 값 컬럼 후보 목록 3사본 분기(`map_overlay.py:475`·`map_editor.js:4890` vs `:1228`) → 선언 1곳 | map-pm + server-pm | T2 | 대기 |
+| 3 | **U7 — 뒤로가기 바 CSS 깨짐** (버튼·브레드크럼·힌트 겹침, 좁은 폭 flex 추정). U1·U3과 시각 배치로 묶음 | ui-designer | T3 | 대기 |
+| 3 | **U1 — 사용 자재 패널 반반** (`tp-mat-pane` 고정 250px → DOE와 flex 반반, 레이아웃 주석 동반 갱신) | ui-designer | T3 | 대기 |
+| 3 | **U3 — 토스트 하단 중앙 배너** (우하단·상승 모션 제거). U1과 함께 — `--toast-inset-right` 회피 장치가 죽은 코드가 됨 | ui-designer | T3 | 대기 |
+| 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
+| 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
+| 6 | **`replace_map` 빈 집합** — 서버 scope 필드 | server-pm | — | 대기 |
+| 7 | **M3 맵 메타 자동 등록** (ingestion 체인) — `bonding_map` 맵 키 39만 vs 메타 9건 해소 경로 | server-pm | — | 대기 |
+| 8 | **P3 대형 파일** (backpressure·COPY·상한) | server-pm | — | 대기 |
+| 9 | **온톨로지 — 장기 트랙** (전략: [보고서](../../agent_workspace/reports/ONTOLOGY_STRATEGY_20260728.md) §7 순서) | ontology-pm | — | 별도 |
+
+**종결 (2026-07-25~28)**: 운영 강화 2차 `d56e7e2` · M2.6 DOE 통합 `cdcddee` · 문서 4분할 `52a668b` · 수집기 exec 스코프+`out=None` FAIL · 그리드 Ctrl+C 중복 분기 삭제 · C1 접근 통제(+경로 탈출·낡은 번들) `90e284f` · 재교정률 계기 `ec75d4c` · B4 롤백 드릴(30초 실측) · C3 백업(복원 드릴 2회) `b35bc9f` · U2 없는 키 라우팅 `280ebf0` · 문서 감사 후속(아카이브 7건·헬스 어휘) — 상세는 [히스토리](../history/README.md).
 
 **사용자 승인·답변 대기**:
-- `map_doe`·`map_doe_source` — 폐기 선언이 `--overwrite-drift`에 딸려 **재설치**됐고 watcher가 **빈 물리 테이블을 부활**시켰다(2026-07-28). 선언을 되돌릴지 결정 필요. `map_split_registry`의 UUID 맵 키 잔재도 동일 대기.
-- ~~`dt_map`의 BIN 컬럼명~~ → **해소**(2026-07-28): "커스텀 가능하게" — 컬럼명을 코드·config 어디에도 박지 않고 선언 구조 유지. 스키마 확정되는 날 사이트가 직접 한 줄 선언(재기동 불필요).
-- **실공장 `bonding_log`의 lot/slot은 테이프인가 코어인가** — [온톨로지 보고서 §2](../../agent_workspace/reports/ONTOLOGY_STRATEGY_20260728.md). 이 답이 그래프 엣지 7,765개의 참/거짓과 라벨 분리안을 가른다.
+- **선언 없는 테이블 처분** — `transfer_plan`·`transfer_plan_doe`·`transfer_plan_doe_layer`·`transfer_plan_map`(행 있음, 폐기 DOE 모델) + 빈 3개 + `map_doe`·`map_doe_source`(watcher가 빈 테이블 **부활**시킴, 선언 되돌릴지 포함). 도구: `list_undeclared_tables.py`(출력만, 실행은 사람)
+- **재교정률 정의** — 전체 2.01% vs 대량 트랜잭션 제외 13.13%(6.5배 희석). 둘 다 표시 / 테이블별 / 손편집만 / 현행 중 택
+- **실공장 `bonding_log`의 lot/slot은 테이프인가 코어인가** — [온톨로지 보고서 §2](../../agent_workspace/reports/ONTOLOGY_STRATEGY_20260728.md). 그래프 엣지 7,765개의 참/거짓을 가름
 
 ## 🎯 현재 초점 (Current Focus)
 
