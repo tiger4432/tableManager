@@ -8,7 +8,17 @@
 
 ---
 
-> 🌙 **사용자 저녁 세션 대기 (2026-07-27)** — 집에서 처리: ① `git push origin main`(64커밋 이상 밀림) ② **웹서버 재기동** — M2.6 코드 반영. 재기동 전까지 `/api/transfer-plan/validate`는 404고 DOE 패널은 뜨지 않는다. 재기동 후 검증할 것: `/stages`가 `registry: connected` · 실제 맵에서 `validate` 200 · **첫 실 `bands` 쓰기**(라이브 102행은 전부 `bands IS NULL`이라 파싱 경로를 아직 아무도 안 밟았다).
+> ✅ **재기동 완료 — 라이브는 `269b39e` (2026-07-28 01:00 기동, 커밋 23:35보다 뒤)**. 포트는 **8080**이다(8000 아님 — 진단할 때 여기서 자주 헛짚는다).
+>
+> 실측 확인: `/health` 200 · `/api/transfer-plan/stages` 200에 roles 전부 `connected` · `/api/transfer-plan/validate`는 **404가 아니라 422**(라우트 존재, 파라미터 누락) · `POST /admin/auto-update/run-now` → **503**.
+>
+> ✅ **어드민 표면 실제로 잠김 (2026-07-28 01:02, 운영에서 처음)** — 토큰 없음 **401** / 틀린 토큰 **403** / `/health` 200(설계대로 무인증 유지). `/internal/events/*` 4개 라우트도 전부 401.
+>
+> **워커 토큰 상속도 실측됐다**: 워커 4종 정상 하트비트, 아웃박스 pending 0, 워커 로그에 `401` 없음. 부분 재기동 실패 모드만 아직 미재현([ROLLBACK_PROCEDURE §미실행 표](../guide/ROLLBACK_PROCEDURE.md)).
+>
+> ⚠️ **PowerShell에서 `set`은 조용히 실패한다.** `set ASSY_ADMIN_TOKEN=…`은 환경변수가 아니라 동명의 PowerShell 변수를 만들고 끝나며 **에러도 안 난다**. `$env:ASSY_ADMIN_TOKEN = "…"`를 써야 하고, 설정한 **그 셸에서** 런처를 띄워야 자식이 물려받는다. 2026-07-28 실제로 여기서 막혔고 [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md)에 셸별 표로 명문화했다.
+>
+> 남은 한 가지: **첫 실 `bands` 쓰기**. 라이브 행은 여전히 전부 `bands IS NULL`이라 파싱 경로를 아무도 안 밟았다 — 존 컬럼 설치가 끝나야 처음 밟힌다.
 
 ## 📋 개발 대기열 (Queue) — 사용자 지시 2026-07-27
 
@@ -34,9 +44,9 @@
 | **U2** | **없는 DT MAP을 클릭하면 빈 채로 열리고, 저장 시 키가 새로 생성되게**(사용자 2026-07-27). 사용 자재 행 클릭이 그 자재 맵으로 가는 **유일한 이동 허브**이고 `matMapState`가 존재 여부를 `true/false/null`로 들고 있는데, 없으면 현재 막힌다. ⭐ **새로 만들 것 없음** — "없는 키를 열면 빈 채로, 저장 시 생성"은 `loadExistingMap`(`map_editor.js:2834`)에 **이미 있는 동작**이다. 자재 클릭 경로가 그것을 재사용하게 하면 된다 | 대기 (**T2** — 저장이 키를 만드는 경로라) |
 | **U3** | **토스트를 화면 하단 중앙 배너로**(사용자 2026-07-27). 현재 `tokens.css:207` `#toast-container`는 **우하단 고정**(`bottom:24px` + `right: min(--toast-inset-right, ...)`)이고 `toastFadeIn`이 **위로 떠오른다**. → 하단 중앙 고정, 치고 올라오는 모션 제거. ⭐ **U1과 함께 처리할 것** — `--toast-inset-right`(`transfer_plan.css:19`)는 **「사용 자재」 목록이 토스트에 가려지던 문제** 때문에 생긴 회피 장치인데, 중앙으로 옮기면 **불필요해져 죽은 코드가 된다**. 그리고 그 패널이 바로 U1에서 키우는 대상이다 | 대기 (**T3**) |
 | **U6** | **DOE 계획 대상 테이블을 config로**(사용자 2026-07-27, 백로그 지정). 사용자 예시: `plan_list = {"bonding_map": {"source": "dt_map"}, "dt_map": {"source": "core_map"}}` — 테이블마다 계획 스킴과 소스를 선언해 연쇄로 잇는다. ⭐ **새 config를 만들 일이 아니다** — 서버 `transfer_plan_config.json`의 `stages`가 이미 `target_map.table` + `source_kind`로 같은 것을 선언하고 `stage_of_table`이 역인덱스를 돈다. **하드코딩은 클라에 있다**: `transfer_plan.js:42`의 `{ id:'bonding', targetTable:'bonding_map', builtin:true }`와 `map_editor.js:944`의 자동 선택. 즉 작업은 "클라가 서버 선언을 읽게 하고 중복 목록을 지우는 것"이지 새 스킴 설계가 아니다. **요청 이유(사용자)**: `dt_map`에도 자재를 적고 싶다 — 거긴 `STACK=1`에 **MID만**(1H·TOP 없음). 존 모델이 그대로 수용한다(MID 구역 = `1~1`). ⚠️ 총괄이 한 번 "1H만 있다"로 오독해 `MID 필수`를 조건부로 바꿀 뻔했다 — 조건부 형태 자체는 별개 이유로 옳다(`STACK=2`에 1H·TOP만 있으면 MID 구역이 비므로) | 백로그 |
-| — | ⏳ **운영 DB에 죽은 테이블 1개** — `map_band_registry`. 폐기된 구간 모델을 만들다 config 워처가 물리 생성했고, 선언은 되돌렸으나 **테이블은 남아 있다**(0행, 어디에도 선언 없음, 무해). `DROP TABLE map_band_registry;` — 운영 DDL이라 `map_doe`·`map_doe_source`와 함께 **승인 대기** | 승인 대기 |
-| 3 | **B4 롤백 절차** (프로덕션 차단). ⚠️ 실제 사례 확보(2026-07-27): config를 먼저 바꾸면 **코드만 되돌려서는 복구되지 않는다** — config는 요청마다 재로드, 코드는 재기동까지 고정. + 스키마 싱크가 `print()`라 **ALTER가 로그 파일에 안 남아 사후 감사 불가**(B3와 같은 계열) | 대기 |
-| 4 | **C3 백업 절차** — config·workspace·PG. **사용자 입력 필요**(보관 위치·주기). 복원을 실제로 해볼 것 | 대기 |
+| — | ⏳ **운영 DB에 선언 없는 테이블 7개**(B4 드릴이 읽기전용으로 검출, 아무것도 안 지웠다). 빈 것: `data_rows` · `hvy_drill_big` · `hvy_drill_small`. **행이 있는 것: `transfer_plan` · `transfer_plan_doe` · `transfer_plan_doe_layer` · `transfer_plan_map`** — M2.6이 선언을 내린 폐기 DOE 모델이라 **청소가 아니라 결정**이다. 선언 없는 컬럼도 둘(`bonding_map.grid_metadata`, `inventory_master.M22N`). `map_band_registry`는 사용자가 이미 DROP. 도구: `python server/scripts/list_undeclared_tables.py`(DROP 문 출력만, 실행은 사람) | 사용자 결정 |
+| 3 | ~~**B4 롤백 절차**~~ ✅ **완료 — 문서가 아니라 드릴로**(2026-07-28). `docs/guide/ROLLBACK_PROCEDURE.md` + 읽기전용 잔여물 검출 `server/scripts/list_undeclared_tables.py`(테스트 11건). **격리 스택에서 전진→파손→롤백 전 구간 실행: 총 30초, 체감 장애 16초, 재기동 5.7초, config 반영 0.01초.** 실측이 뒤집은 것 셋: ⓐ **롤백은 배포의 역순이 아니다** — 배포 `코드→재기동→config`, 롤백 `config→코드→재기동`(재기동이 가운데→맨끝) ⓑ 🔴 **`/health`로 롤백을 판정할 수 없다** — 코드/config 완전 불일치 상태가 `status: ok, problems: []`를 보고했다. B2 헬스의 사각 ⓒ 전진 배포에도 창이 있다("코드 먼저"는 새 코드가 옛 config를 견딜 때만) | ✅ 완료 (**C3 의존**) |
+| 4 | **C3 백업** — **B4의 남은 의존성.** 절차 2단계가 존재하지 않는 백업에 의존한다: `install_product_tables.py`의 `.bak.<ts>`는 **그 스크립트가 쓸 때만** 생겨 손 수정엔 백업이 없고, 통째 복원은 이후의 정당한 현장 수정을 지운다. **사용자 확정**: `config_yymmdd.json.bak`, 파일별, **1개월 FIFO 풍차**. 총괄 결정: 설치 스크립트의 `.bak.<ts>`와 구분되게(날짜가 확장자 **앞**) · 같은 날 두 번이면 조용한 덮어쓰기 금지 · 복원을 **실행**해서 절차에 쓸 것 | 🔵 착수 |
 | 5 | ~~**문서 감사 후속**~~ ✅ **완료** — ⓐ 클라 앵커 재측정(code-mapper, 감사 13표본 정확) ⓑ **7건 아카이브 49→42**(링크 666개 검사·끊김 0) ⓒ 헬스 상태값 — 코드에 **어휘가 4종류** 따로 있고 워커 상태는 8종, 문서 4곳이 `missing`·`stale`·`stalled` 누락. **`stalled`는 라벨 누락이 아니라 다른 탐지기**(임계 300초, 청크 간격이 균일하지 않아서. 우리 실제 인시던트가 "워처는 3초마다 뛰는데 인제션은 얼어붙은" 형태였다) ⓓ `DATA_SYNC_SPEC` — 죽은 건 문단 하나가 아니라 **문서 전체**라 삭제 대신 배너+등급조정, 무결성 가드의 *문제* 서술만 유효 ⓔ 헌장이 문서를 **열거**하던 것을 `DOC_OWNERSHIP` 표 참조로 전환 ⓓ `DATA_SYNC_SPEC`의 죽은 문단 1개만 삭제(문서는 유지) ⓔ **헌장 공백** — `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 **어느 에이전트 헌장에도 안 적혀 있다.** 이번엔 doc-keeper가 `DOC_OWNERSHIP` 표를 따라가 고쳤을 뿐 — 헌장만 읽는 에이전트였으면 방치됐다. 문서 문제가 아니라 헌장 문제(총괄 소관) | 대기 |
 | 6 | `replace_map` 빈 집합 — 서버 scope 필드 | 대기 |
 | 7 | M3 맵 메타 자동 등록 (ingestion 체인) | 대기 |
@@ -50,8 +60,13 @@
 > 완료된 트랙은 여기서 내리고 §최근 완료로 옮긴다. **지금 손이 가 있는 것과 바로 다음 관문만** 남긴다.
 > 항목 형식은 **목표 / 할 일 / 문제** 세 줄. 경과는 히스토리와 보고서에 있다.
 
-1. **🟡 M2.6 — 코드·컬럼·config 전부 착지. 남은 것은 웹서버 재기동 하나**
-   - **목표**: DOE 패널이 1테이블 모델(`map_split_registry.bands`)로 실제 동작.
+1. **🔵 DOE 존 모델(M3) — 클라 완료, 서버 진행 중** (2026-07-28)
+   - **모델**: 표① 값 정의(`COLOR·VALUE·STACK·DESC·1H·MID·TOP`) + 표② 자재 롤업(`MAT·MAP·KNOB·가용·사용·잔여`). 구간 표는 **폐기** — `STACK` 숫자 하나가 층 구조 전부이고 `1H`/`MID`/`TOP` 세 구역이 `1..STACK`을 **구조적으로** 채운다(겹침·빈층이 표현 불가능). `dt_map`은 `STACK=1`·MID만.
+   - **저장**: **자동 저장 없음.** `pushMapData`가 유일한 기록자이며 맵과 계획이 원자적으로 함께 간다(`map_editor.js:5210`이 원래 그렇게 적혀 있었고 자동저장이 그 규율을 어겼던 것). **검수는 보고만 하고 저장을 막지 않는다**(사용자 확정). 저장을 막는 것은 **파괴를 막는 둘뿐** — 컬럼 없음 / 옛 밴드 해석 불가.
+   - **엑셀 호환이 UI의 핵심**(사용자): 6칼럼 TSV `VALUE·STACK·DESC·1H·MID·TOP`, COLOR·칠함은 파생이라 계약 밖. 헤더 있으면 이름 매칭, 없으면 왼→오. `clipboard.js`의 TSV 코어를 **재사용**(복사 금지). `navigator.clipboard`는 평문 HTTP에서 못 쓴다.
+   - **자재 토큰**: `lot[_slot][:BIN]`, BIN 생략 시 1, lot 단독 = 로트 전체. 롤업 행 정체는 `(자재, BIN)`.
+   - **🔴 문제**: `stack`·`mat_1h`·`mat_mid`·`mat_top` 컬럼이 **물리적으로 없다**(선언만, ALTER 미실행). 그대로 저장하면 `crud`가 컬럼을 버리고 `replace_map`이 **계획을 통째로 덮는다** — 그래서 클라가 스스로 저장을 거부 중(`zone-columns-missing`). **서버가 컬럼을 올려야 DOE 저장이 처음으로 동작한다.**
+   - **컨트롤 순증**: −7개, −1모드(`＋자재`·`추가`·`+knob`·`＋구간` 등 11종 제거, `STACK`+3구역 4종 추가).
    - **할 일**: ⓐ **재기동** ⓑ 사용자 DOE 재입력(이관 없음 — 구간이 자유 텍스트→정수라 무손실 변환 불가) ⓒ `map_doe`·`map_doe_source` 물리 DROP(승인 후).
    - **문제**: **지금 `/api/transfer-plan/validate`는 404다.** 라이브 config는 새 바인딩인데 실행 중 프로세스가 옛 코드를 들고 있다 — config는 요청마다 다시 읽히고 코드는 안 읽힌다. **이 순서 문제를 B4 롤백 절차에 실제 사례로 넣을 것**: config를 먼저 바꾸면 코드만 되돌려서는 복구되지 않는다.
    - **파생 계약**: 클라·서버가 같은 JSON에서 다른 수를 내던 문제는 `contracts/band_arithmetic/vectors.json` 한 파일로 고정했다(pytest + node 하네스 양쪽이 읽는다). 계약을 바꾸려면 두 구현이 함께 움직여야 한다.

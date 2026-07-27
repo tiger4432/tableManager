@@ -57,6 +57,7 @@
 | 문서 | 내용 |
 |---|---|
 | 🟢 [DEPLOY_SETUP.md](./guide/DEPLOY_SETUP.md) | **"내가 무엇을 채워야 하는가"** — 새 환경 배포 요약(제품 소유 vs 현장 소유, 제품 테이블 설치 스크립트, **격리 개발·검증 환경 §5**, 기동 후 `/health` 확인) |
+| 🟢 [ROLLBACK_PROCEDURE.md](./guide/ROLLBACK_PROCEDURE.md) | **배포를 되돌리는 법** — 코드·config·스키마의 반영 시점이 다르다는 전제 위의 절차. 순서(`config → 코드 → 재기동`)·재기동 대상 5개·`/health`의 사각·**남는 물리 스키마**. 2026-07-28 격리 스택 드릴 실측 포함 |
 | 🟢 [process/PRODUCTION_READINESS.md](./process/PRODUCTION_READINESS.md) | **프로덕션 게이트** — 무엇이 아직 막고 있는가(차단/조건부/통과 + 근거). 배포 판단은 여기서 |
 | 🟢 [CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **설정 전수 지도** — `server/config/*` 파일별 목적·소유·리로드 방식, 시나리오별 온보딩 체크리스트, 핫리로드/검증 규율, 함정 모음 |
 | 🟢 [CONDA_SETUP_GUIDE.md](./guide/CONDA_SETUP_GUIDE.md) | Conda 환경 구성 |

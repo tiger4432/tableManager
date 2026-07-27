@@ -1,6 +1,6 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (운영 감시·격리 환경·제품 테이블 배포·PRIMITIVES 매핑 추가) | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**config 백업 행 추가** — `config_backup.py` + `backup_config.py`, C3의 복원 원본. 직전: 롤백 서브시스템 행 — `ROLLBACK_PROCEDURE` + `list_undeclared_tables.py`) | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
 각 서브시스템을 **어느 코드가 구현하고, 어느 문서가 설명하는지** 매핑합니다. 코드를 바꾸면 "문서" 열의 리빙 문서를 함께 갱신합니다([docs-as-code](./CONTRIBUTING.md#2-docs-as-code-갱신-규율)).
@@ -11,6 +11,8 @@
 | **재사용 가능한 연산·패턴 카탈로그** | (전 모듈에서 추출한 개념) | [architecture/PRIMITIVES](../architecture/PRIMITIVES.md) — **유지 doc-keeper 전담**. 정비 사이클마다 신규 프리미티브 추가·소멸분 삭제 | 전 에이전트 공용 |
 | **프로세스 감시·헬스** | `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `run_decoupled_app.py` | [architecture/backend §1.3](../architecture/backend.md) · 게이트 판정은 [process/PRODUCTION_READINESS](./PRODUCTION_READINESS.md) | Backend / Ops |
 | **데이터 루트·격리 환경** | `server/paths.py`, `server/scripts/dev_env/devenv.py`, `iso_watcher.py` | [guide/DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) · 설정 관점은 [guide/CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md) | Backend / Ops |
+| **롤백(배포 되돌리기)** | `run_decoupled_app.py`(재기동 단위), `database/config_watcher.py`, `models.sync_dynamic_tables_schema`/`create_missing_dynamic_tables`(한 방향 DDL), `server/scripts/list_undeclared_tables.py`(잔여물 검출 — 읽기 전용) | [guide/ROLLBACK_PROCEDURE](../guide/ROLLBACK_PROCEDURE.md) — **반영 시점(코드/config/스키마)이나 재기동 단위를 바꾸면 필수 갱신**. 요약은 [guide/DEPLOY_SETUP §7](../guide/DEPLOY_SETUP.md), 게이트 판정은 [process/PRODUCTION_READINESS B4](./PRODUCTION_READINESS.md) | Backend / Ops |
+| **config 백업(복원 원본)** | `server/config_backup.py`(스냅샷·보관·신선도 판정), `server/scripts/backup_config.py`(운영자 CLI), `run_auto_update.MultiDiscoveryScheduler.maybe_backup_configs`(주기 호출), `health.probe_config_backups` | [guide/ROLLBACK_PROCEDURE §3.1-bis](../guide/ROLLBACK_PROCEDURE.md)(복원 절차 — **정본**) · [guide/CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md)(`.bak` 3종 구분·규격) · [guide/AUTO_UPDATE_GUIDE §4-bis](../guide/AUTO_UPDATE_GUIDE.md)(왜 수집기가 아닌가) · 게이트 판정은 [process/PRODUCTION_READINESS C3](./PRODUCTION_READINESS.md). **명명 규칙·보관 주기·제외 대상을 바꾸면 네 곳 모두 필수 갱신** | Backend / Ops |
 | **제품 소유 테이블 배포** | `server/product_tables.py`(단일 정의), `server/scripts/install_product_tables.py` | [guide/DEPLOY_SETUP §1-2](../guide/DEPLOY_SETUP.md) · [guide/CONFIG_GUIDE §5.8-ter](../guide/CONFIG_GUIDE.md) | Lead / Backend |
 | **프로덕션 게이트** | (전 서브시스템 — 운영 관점) | [process/PRODUCTION_READINESS](./PRODUCTION_READINESS.md) — 차단 항목 해소 시 갱신 | Lead |
 | DOE 저장 분해도 | `client2/src/map_editor.js`(legend 저장 = 유일한 기록자), `client2/src/transfer_plan.js`(읽기·파생), `server/transfer_plan.py`, `map_split_registry` | 현행 계약은 [spec/MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md) · [guide/CONFIG_GUIDE §5.8](../guide/CONFIG_GUIDE.md). [spec/DOE_STORAGE_MAP](../spec/DOE_STORAGE_MAP.md)은 🗄️ **폐기된 3테이블 모델**로, 기존 데이터 해석용으로만 보존(M2.6 양측 착지 `cdcddee`+`0f8d35f`) | UI/Map |

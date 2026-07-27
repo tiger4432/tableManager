@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`ASSY_ADMIN_TOKEN` 환경변수 추가 · M2.6 `plan_store` 리바인딩 `0f8d35f` · `--sync-comments` · config-먼저-바꾸면-롤백 불가 반영) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**§5.8 DOE zone 모델**(STACK + 1H/MID/TOP) 반영 — `plan_store.registry` 필수 역할이 zone 컬럼 넷으로 바뀌고 `bands`는 선택으로 강등 · `stack`이 `string`이어야 하는 이유 · §5.8-ter에 `--overwrite-drift` 전역 적용/컬럼 타입 변경 불가 경고. 직전: §4.1 롤백 순서 재기동 위치 + 함정 O · `ASSY_ADMIN_TOKEN` · M2.6 `plan_store` 리바인딩 `0f8d35f`) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -38,9 +38,31 @@ server/database/virtual_graph.json
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동 4종(`watcher`·`chain`·`graph`·`scheduler`) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
-| `*.bak`, `*.v1.bak` | 수동 백업 잔재 | 사용자 | ignored | — | 아무도 안 읽음 |
+| **`<이름>_<yymmdd>.json.bak`** | **[운영] C3 주간 config 스냅샷** — 롤백 단계 2의 복원 원본 | **시스템(자동 생성)** | ignored | — | `run_auto_update`가 씀, `/health`가 신선도를 읽음 |
+| `*.json.bak.<ts>`, `*.bak-<ts>`, `*.v1.bak` | 설치 이력·수동 백업 잔재 | 스크립트/사용자 | ignored | — | 아무도 안 읽음 |
 
 > `table_config.json.bak_enrich` · `ontology_mapping.json.v1.bak` 같은 파일은 **코드가 읽지 않습니다**. 파일명이 정확히 일치해야만 로드됩니다.
+
+#### `.bak`가 세 종류다 — 날짜 위치로 구분한다
+
+```
+table_config_260728.json.bak          ← ① 주간 스냅샷 (날짜가 확장자 앞)
+table_config.json.bak.20260727-225922 ← ② 제품 테이블 설치 이력 (날짜가 확장자 뒤)
+ontology_mapping.json.v1.bak          ← ③ 손으로 남긴 잔재 (날짜 없음)
+```
+
+**롤백 때 되돌릴 원본은 ①뿐입니다.** ②는 `install_product_tables.py`가 실행된 순간에만 생기므로 **배포 이력이 아니라 설치 이력**이고, 어드민 UI나 에디터로 한 수정은 거기에 없습니다. 판단 기준 전문은 [ROLLBACK_PROCEDURE §3.1 / §3.1-bis](ROLLBACK_PROCEDURE.md).
+
+①의 규격 — 주 1회 전량, 파일당 1개, **1개월 FIFO**(최신 4개는 나이 무관 보존), 같은 날 두 번째는 내용이 다를 때만 `_260728b`로 글자가 붙습니다(**덮어쓰지 않음**). `yymmdd`가 사전순 = 시간순이라 `ls`의 마지막 줄이 최신입니다.
+
+```bash
+conda run -n assy_manager python server/scripts/backup_config.py list|check|snapshot
+conda run -n assy_manager python server/scripts/backup_config.py restore <파일> --yes
+```
+
+> **대상 선정 규칙**: `server/config/` 바로 아래에서 이름이 정확히 `.json`으로 끝나는 파일 전량. 그래서 `.sample`·`.bak` 계열이 자동으로 빠지고(백업의 백업이 생기지 않음), **새 config 파일은 등록 없이 자동 포함**됩니다. 예외는 산출물인 `scheduler_status.json`·`supervisor_status.json` 2개뿐입니다.
+
+> ⚠️ **백업이 멈추면 `/health`가 말합니다** — `checks.config_backup`이 `missing`/`stale`이면 `problems`에 뜨고 상태가 `degraded`(HTTP 200 유지)가 됩니다. 판정 근거는 작업이 자기 손으로 쓴 "마지막 실행" 기록이 아니라 **디스크의 스냅샷 파일 자체**입니다.
 
 > ⚠️ **위 경로의 기준점은 `server/config/`가 아니라 `paths.CONFIG_DIR`입니다.** `ASSY_DATA_ROOT`를 걸면 config 트리 전체가 통째로 이동합니다(아래 "파일이 아닌 설정 원천"). 새 config를 읽는 코드는 **반드시 `server/paths.py`를 경유**하십시오 — `__file__`에서 경로를 다시 조립하면 격리가 샙니다(실제로 로그·`virtual_graph.json`이 그렇게 샜습니다).
 
@@ -249,7 +271,9 @@ S1을 전부 수행한 뒤 추가로:
 | 워크스페이스 `config.json`(deprecated) | **핸들러 인스턴스 수명 동안 캐시** | 재기동 |
 | 환경변수 전부 / CORS | — | **재기동** |
 
-> 🚨 **반영 시점이 다르다는 것은 곧 롤백 순서 제약입니다.** "요청마다 재읽기"인 config는 즉시 반영되는데 코드는 재기동까지 고정이므로, **config를 먼저 바꾸면 코드만 되돌려서 복구할 수 없습니다** — config가 이미 새 형태라 옛 코드가 읽지 못합니다. 배포는 **코드 먼저·config 나중**, 롤백은 그 **역순**입니다. 실제 사례와 절차는 [DEPLOY_SETUP §7](./DEPLOY_SETUP.md) · [PRODUCTION_READINESS B4](../process/PRODUCTION_READINESS.md).
+> 🚨 **반영 시점이 다르다는 것은 곧 롤백 순서 제약입니다.** "요청마다 재읽기"인 config는 즉시 반영되는데 코드는 재기동까지 고정이므로, **config를 먼저 바꾸면 코드만 되돌려서 복구할 수 없습니다** — config가 이미 새 형태라 옛 코드가 읽지 못합니다.
+> 배포는 **코드 → 재기동 → config**, 롤백은 **config → 코드 → 재기동**입니다. 목록을 거꾸로 읽은 것이 아닙니다 — **재기동이 배포에서는 가운데, 롤백에서는 맨 마지막**입니다(재기동 시점에 config가 이미 옛 형태여야 정확한 상태로 올라옵니다).
+> 전체 절차·실측 소요 시간은 **[ROLLBACK_PROCEDURE](./ROLLBACK_PROCEDURE.md)** (2026-07-28 격리 스택에서 드릴 실행). 실제 사례는 [DEPLOY_SETUP §7](./DEPLOY_SETUP.md).
 
 ### 4.2 `/admin/reload-configs`가 하는 일 / **안 하는 일**
 
@@ -453,6 +477,7 @@ psql -U postgres -d assy_manager -c "\d <table>"
       "table": "map_split_registry",
       "columns": {
         "ref_table": "ref_table", "map_key": "map_key", "value": "value",
+        "stack": "stack", "mat_1h": "mat_1h", "mat_mid": "mat_mid", "mat_top": "mat_top",
         "bands": "bands"
       }
     },
@@ -464,19 +489,40 @@ psql -U postgres -d assy_manager -c "\d <table>"
 }
 ```
 
-> **DOE 행의 단위는 `값` 하나입니다(M2.6).** legend 행 하나가 곧 DOE 조건 하나이고 bk는 `ref_table|map_key|value`입니다. 구간(band)과 그 구간에 투입할 자재는 **그 행의 `bands` JSON 컬럼 안**에 있습니다 — `[{"seq": 정수, "to": 정수, "materials": ["<원문 ID>", ...]}, ...]`.
+> **DOE 행의 단위는 `값` 하나입니다.** legend 행 하나가 곧 DOE 조건 하나이고 bk는 `ref_table|map_key|value`입니다.
 >
-> ⚠️ **구간 정체는 `seq`(정수)가 지고 순서는 배열 위치가 집니다.** 구간은 **연속**이라 `from`은 앞 원소의 `to`+1로 유도되고 층 수 = `to − 이전 to`입니다. **파생값은 저장하지 않습니다** — 구간 소요 = `칠한 셀 수 × 층 수`, 매당 소요 = `ceil(구간 소요 / 자재 수)`를 매번 계산합니다. 저장된 총량은 누군가 셀을 하나 더 칠하는 순간 조용히 어긋납니다.
+> **[ZONE 모델 2026-07-28 — band 모델을 대체합니다]** 한 값의 층 구조는 **숫자 하나와 구역 셋**입니다:
 >
-> ⚠️ **`seq`는 DB가 유일성을 강제해 주지 않습니다.** 구 모델에서는 bk의 일부라 중복이 구조적으로 불가능했지만, 지금은 자유 텍스트 varchar 안의 JSON이고 제네릭 그리드도 같은 컬럼에 쓸 수 있습니다. 서버는 파싱 시점에 `seq`를 유일하게 재배정합니다 → [PRIMITIVES §2](../architecture/PRIMITIVES.md).
+> | 컬럼 | 뜻 |
+> |---|---|
+> | `stack` | 그 값의 **총 층수** |
+> | `mat_1h` | **1층** |
+> | `mat_top` | **STACK층** |
+> | `mat_mid` | **그 사이 전부** — 1H가 비면 1층부터, TOP이 비면 STACK층까지 |
 >
-> **자재 ID는 사용자가 입력한 원문 그대로가 정체입니다.** `(lot, slot)` 분해는 소스 가용 조회에만 필요하며 그 규칙은 `material_identity`에 **선언**합니다. 못 푸는 ID(`ABC`, `ABC_`, `_01`)는 추측하지 않고 `source_unresolved`로 보고합니다 — "조회 못 함"을 "잔여 0"으로 합치면 부족 경고가 조용히 죽기 때문입니다.
+> 세 구역이 `1..STACK`을 **구성적으로** 덮으므로 겹침·구멍·`FROM>TO`는 완화된 것이 아니라 **말할 수 없는 상태**가 됐습니다. 그 검사가 코드에 없는 것은 누락이 아닙니다. `dt_map`은 `STACK=1`, MID만인 **퇴화형**이며 **조용히 통과해야 합니다**.
+>
+> ⚠️ **`stack`은 `"string"`으로 선언합니다 — `"number"`가 아닙니다.** 한 커밋 동안 `number`였고, 물리 컬럼이 `double precision`으로 만들어지자 `crud.cast_value_by_type`가 `'0x10'`·`'nope'`에서 **예외를 던져 저장 자체가 실패**했고 `'7.5'`는 조용히 `7.5`로 고쳐져 다음 읽기에서 7층이 됐습니다. 읽을 수 없는 STACK은 **왕복에서 살아남아야** 합니다(V5가 그것을 근거로 차단하고, 사용자는 자기가 적은 글자를 화면에서 봅니다). 판독 여부는 컬럼 타입이 아니라 **정수 판정기 하나**(`transfer_plan._int_state` / 클라 `bandToState`)가 정합니다.
+>
+> ⚠️ **`mat_*` 세 컬럼은 원문 토큰의 JSON 배열**(`["MID1","MID3"]`)이지 분리자로 이은 문자열이 아닙니다. 로트 이름에는 `:`도 `_`도 합법이라 안전한 분리자가 없습니다. 서버는 읽을 때 **JSON을 먼저** 시도하고(그것이 writer가 쓰는 형태), JSON이 아니면 사람이 손으로 적은 텍스트로 보고 줄바꿈/쉼표로 나눕니다.
+>
+> **파생값은 저장하지 않습니다** — 구역 소요 = `칠한 셀 수 × 그 구역의 층 수`, 매당 소요 = `ceil(구역 소요 / 자재 수)`를 매번 계산합니다. 저장된 총량은 누군가 셀을 하나 더 칠하는 순간 조용히 어긋납니다.
+>
+> **차단 규칙은 V1~V5 다섯 개**이고 정본은 `contracts/doe_band_rules/vectors.json`(클라 하네스와 서버 테스트가 **같은 파일**을 채점)입니다. V5(STACK 판독 불가)가 **가장 먼저** 판정됩니다 — 다른 모든 판정이 계산할 수 없는 층 수에서 유도되기 때문입니다.
+>
+> **자재 ID는 사용자가 입력한 원문 그대로가 정체입니다.** 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**이고 구현은 `transfer_plan.parse_material_token` 하나입니다. 분리자 없는 `MID1`은 해석 실패가 아니라 **그 로트 전체**를 뜻하며, 진짜 malformed한 토큰(`ABC_`·`_01`·`_`·BIN 실패)만 거부합니다(V4). ⚠️ `material_identity`는 이제 **게이트로만** 씁니다 — 클라는 config를 읽지 못하므로 파싱 규칙이 config에 살면 양쪽이 갈리고, 갈리는 순간 한 화면에 두 개의 가용치가 생깁니다. 미선언이면 아무것도 조회하지 않고 `source_unresolved`로 보고합니다.
+>
+> ℹ️ **로트 전체 토큰은 `validate`가 값을 매기지 않습니다**(`source_scope_unpriced`). `scope=lot` 응답에 `chips`가 없는 것과 같은 이유입니다 — 로트 하나의 `remaining` 숫자를 지어내지 않습니다. "조회 못 함"도 "이상 없음"도 아닌 **"판정하지 않았다"**로 나갑니다.
+>
+> 🗄️ **폐기된 `bands`는 필수 역할이 아니지만 계속 읽습니다.** 실계획이 아직 그 컬럼에 남아 있고, legend 저장은 `replace_map`이라 **읽지 못하면 그 맵을 여는 순간 화면이 비고 다음 편집 한 번이 계획을 빈 집합으로 지웁니다.** 서버는 `bands_to_zones`로 옮기며, 세 구역으로 표현할 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는 **접지 않고 거부**합니다(`layer_range_invalid` / `reason: not_convertible`). 접은 결과를 되쓰면 서버의 진짜 계획이 그 손실 읽기로 덮입니다. 새 writer를 만들지 마십시오.
 
-> **`.sample`은 위 발췌와 일치합니다(2026-07-27 M2.6 재정정).** `transfer_plan_config.json.sample`의 `plan_store`에서 폐기된 `doe`·`doe_source` 역할과 그 컬럼(`doe_value`·`band_seq`·`stack_band`·`qty_total`·`qty`)을 제거하고, 코드가 실제로 요구하는 `registry`(필수 `ref_table`·`map_key`·`value`·`bands`) + `material_identity` 선언으로 교체했습니다. `registry`가 가리키는 `map_split_registry`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
+> **`.sample`은 위 발췌와 일치합니다(2026-07-28 zone 모델 반영).** `transfer_plan_config.json.sample`의 `plan_store`에서 폐기된 `doe`·`doe_source` 역할과 그 컬럼(`doe_value`·`band_seq`·`stack_band`·`qty_total`·`qty`)을 제거하고, 코드가 실제로 요구하는 `registry`(**필수** `ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`, **선택** `bands`) + `material_identity` 선언으로 교체했습니다. 🚨 **기존 환경은 라이브 파일에 zone 역할 넷을 손으로 더해야 합니다** — 하나라도 없으면 `validate`가 404입니다. 반대로 `bands`는 이제 없어도 200입니다(폐기 계획을 못 읽을 뿐). `registry`가 가리키는 `map_split_registry`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
 >
 > 🚨 **이미 쓰던 환경이라면 `transfer_plan_config.json`(라이브)도 같이 고쳐야 합니다.** 라이브 파일은 gitignored라 `.sample` 갱신이 자동으로 따라가지 않습니다. 옛 `doe`/`doe_source` 바인딩만 남아 있으면 `validate`가 **404**입니다.
 >
-> ⚠️ **`table_config.json`에 `map_split_registry.knobs`·`bands` 컬럼 선언이 있어야 합니다.** 없으면 클라이언트가 보낸 `bands`가 **드롭되고 HTTP 200이 나갑니다**(§6 함정 M). 실제로 M2.6 클라가 착지한 뒤 이 선언이 없어 **쓰기가 조용히 버려지고 있었습니다.** 선언은 손으로 넣지 말고 `install_product_tables.py --apply`를 쓰십시오(§5.8-ter).
+> ⚠️ **`table_config.json`에 `map_split_registry`의 `knobs`·`stack`·`mat_1h`·`mat_mid`·`mat_top` 선언이 있어야 하고, 물리 컬럼이 실제로 존재해야 합니다.** 선언이 없으면 클라이언트가 보낸 값이 **드롭되고 HTTP 200이 나갑니다**(§6 함정 M) — 그리고 legend 저장은 `replace_map`이라 그 200이 **층 구조 없는 행으로 계획 전체를 갈아치웁니다.** 실제로 M2.6 클라가 착지한 뒤 `bands` 선언이 없어 쓰기가 조용히 버려지고 있었고, zone 착지 때도 같은 자리에서 물리 ALTER가 밀려 있었습니다.
+>
+> 기존 테이블에 컬럼을 더하는 것은 **BLOCKING drift**이므로 `install_product_tables.py --apply --overwrite-drift`가 필요합니다(§5.8-ter). ALTER를 수행하는 것은 **config watcher 뿐**이며 `/admin/reload-configs`는 하지 않습니다(§4.2). 🚨 **물리 반영은 `/tables/{t}/schema`가 아니라 `information_schema.columns`로 확인하십시오** — 스키마 API는 config 싱글턴을 읽으므로 200에 컬럼이 보여도 증거가 아닙니다(§4.3). 클라이언트는 이 상태를 스스로 감지해 저장을 **보류**합니다(실제 행의 셀 키 집합을 봅니다) — 컬럼이 나타나면 다음 자동 저장에서 알아서 풀립니다.
 >
 > `map_overlay_config.json.sample`에서도 폐기 테이블 `transfer_plan_map`의 `table_bindings`·`paint_lock` 항목을 제거했습니다 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블(`bonding_map`/`dt_map` 등)에 직접 선언합니다.
 >
@@ -540,10 +586,14 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 > - `--apply`는 타임스탬프 백업을 먼저 쓰고, 반영 후 손대지 않은 항목을 바이트 대조해 **어긋나면 백업을 복원**합니다.
 > - **DDL은 하지 않습니다.** 선언이 물리 테이블이 되는 것은 §4.1 리로드 경로의 일이며, 스크립트가 어느 경로가 필요한지 출력합니다.
 > - 종료코드: `0` 할 일 없음 · `1` 조치 필요 · `2` 오류.
+>
+> 🚨 **`--overwrite-drift`는 항목 단위가 아니라 전부에 걸립니다.** 드리프트 하나를 고치려고 돌리면 **미선언 항목까지 함께 추가**됩니다 — 2026-07-28에 `map_split_registry`의 zone 컬럼을 넣으면서 폐기 2종(`map_doe`·`map_doe_source`)이 같이 선언되고 물리 테이블까지 새로 만들어졌습니다(운영자가 이전에 지워 둔 것이었습니다). **dry run의 `[ADD]` 줄을 먼저 읽으십시오.**
+>
+> ⚠️ **컬럼 타입을 바꾸는 것은 이 경로로 되지 않습니다.** `sync_dynamic_tables_schema`는 **없는 컬럼을 추가만** 하고 기존 컬럼의 타입은 건드리지 않습니다. 잘못된 타입으로 이미 만들어졌다면 `DROP COLUMN` 후 다시 sync해야 하며, **그 컬럼에 데이터가 있으면 지워집니다** — 먼저 `SELECT count(*) ... WHERE <col> IS NOT NULL`로 확인하십시오.
 
 | 테이블 | 역할 | bk 규칙 |
 |---|---|---|
-| `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본이자 **DOE 그 자체**(M2.6). 값 하나 = 행 하나 = DOE 조건 하나이며, 구간·자재는 `bands` JSON 컬럼 안에 있다(`knobs`·`split_desc`는 온톨로지가 소비하므로 **평면 컬럼으로 남긴다**) | `ref_table\|map_key\|value` (구분자 `\|`) |
+| `map_split_registry` | 맵 값(legend) 레지스트리 — `split_desc`·`color`의 정본이자 **DOE 그 자체**. 값 하나 = 행 하나 = DOE 조건 하나이며, 층 구조는 **zone 컬럼 넷**(`stack`·`mat_1h`·`mat_mid`·`mat_top`, 2026-07-28)에 있다(`knobs`·`split_desc`는 온톨로지가 소비하므로 **평면 컬럼으로 남긴다**). 🗄️ `bands`는 폐기됐지만 실계획이 남아 있어 **읽기 전용**으로 계속 선언한다 — 새 writer 금지 | `ref_table\|map_key\|value` (구분자 `\|`) |
 | `wafer_map_metadata` | 격자 규격(`grid_metadata`) | `target_table_map_id` |
 | 🗄️ `map_doe` | **[DEPRECATED 2026-07-27 — M2.6] 아무것도 쓰지 않습니다.** 선언은 운영자가 기존 행을 **읽어서** 손으로 옮길 수 있도록만 남아 있습니다. 새 소비자를 붙이지 마십시오 | `ref_table\|map_key\|doe_value\|band_seq` |
 | 🗄️ `map_doe_source` | **[DEPRECATED 2026-07-27 — M2.6]** 자재는 `map_split_registry.bands[].materials`로 이동했습니다. 위와 같은 조건 | 위 + `\|source_lot\|source_slot` |
@@ -637,6 +687,16 @@ Monaco 코드 에디터는 `.py`(맵퍼·인제션·수집기 스크립트)만 �
 
 **N. 격리 환경에서 config를 고쳤는데 운영이 안 바뀝니다(그리고 그 반대도).**
 `ASSY_DATA_ROOT`가 걸려 있으면 config 트리 전체가 `dev_env/config`입니다. 어느 쪽을 고쳤는지 헷갈리면 `python server/scripts/dev_env/devenv.py status`로 확인하십시오 → [DEPLOY_SETUP §5](./DEPLOY_SETUP.md).
+
+**O. 선언을 되돌려도 물리 테이블·컬럼은 남습니다 — 선언은 한 방향 문입니다.** ★
+watcher는 새 선언을 `CREATE TABLE`로, 새 컬럼을 `ALTER TABLE ADD COLUMN`으로 바꾸지만 **지우는 경로는 없습니다.** 선언을 되돌리면 조회·인제션·화면에서는 사라지지만 **물리 객체는 그대로 남아, 어디에도 선언되지 않은 채** 남습니다(2026-07-27 `map_band_registry` 실사례 — 폐기된 밴드 모델의 선언을 되돌렸는데 빈 테이블이 남았습니다).
+찾는 방법(읽기 전용, DDL 없음 — `DROP` 문을 출력만 합니다):
+
+```bash
+conda run -n assy_manager python server/scripts/list_undeclared_tables.py
+```
+
+**비어 있는** 미선언 테이블은 되돌린 선언의 잔여물일 가능성이 높고, **행이 있는** 것은 config 이전의 레거시일 가능성이 높습니다 — 후자는 감으로 지우지 마십시오. 판단과 실행은 사람이 합니다 → [ROLLBACK_PROCEDURE §5](./ROLLBACK_PROCEDURE.md).
 
 ---
 

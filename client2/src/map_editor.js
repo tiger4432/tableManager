@@ -4,6 +4,10 @@ import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, bandToState } from './transfer_plan.js';
+// The ONE material-list normalizer. The panel parses what the user types with it and the
+// storage layer normalizes with it, so the material COUNT on screen and the denominator of
+// `ceil(total / n)` in the save can never be two different numbers.
+import { parseMaterialList, bandsToZones } from './doe_bands.js';
 
 let tables = [];
 let selectedTable = '';
@@ -147,12 +151,20 @@ function recomputeLockedCells() {
   scheduleRenderGridCanvas();
 }
 
-// Default Legend
+// 초기 DOE — **분기는 둘뿐이다** (사용자 지시 2026-07-28):
+//
+//   그 (ref_table, map_key)에 registry 행이 있다  →  **그것만** 로드
+//   없다                                        →  **빈 DOE 한 줄**, VALUE = 1
+//
+// 세 번째 분기는 없다. 테이블 전체 어휘 시딩도, 네 개짜리 기본 팔레트(1/0/2/3
+// GOOD/FAIL/EMPTY/REWORK)도, `map_legend_<table>` 캐시 폴백도 전부 사라졌다. 쓰는 사람에게는
+// **자기가 넣은 적 없는 값이 네 개 있는 화면**이었고, 그것은 결함과 구별되지 않는다 —
+// 실제로 두 번 결함으로 보고됐다. 아무도 요청하지 않았는데 결함처럼 읽히는 기능은 결함이다.
+//
+// STACK·자재는 비워 둔다. 사용자가 치기 전에 층 구조를 지어내면 그것이 곧 "사용자가 만든 적
+// 없는 계획"이 되고, 이 도메인이 없애려는 결함 그 자체다. 비어 있으면 V5가 그 사실을 말한다.
 const DEFAULT_LEGEND = [
-  { value: '1', desc: 'GOOD', color: '#10b981' },
-  { value: '0', desc: 'FAIL', color: '#ef4444' },
-  { value: '2', desc: 'EMPTY', color: '#4b5563' },
-  { value: '3', desc: 'REWORK', color: '#f59e0b' }
+  { value: '1', desc: '', color: '#10b981' }
 ];
 
 // ----------------------------------------------------
@@ -170,7 +182,7 @@ const SPLIT_REGISTRY_TABLE = 'map_split_registry';
 const SPLIT_KEY_SEP = '|';
 
 let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
-let legendServerSaveTimer = null;
+// (자동 저장 디바운스 타이머는 2026-07-28에 제거됐다 — 서버 쓰기는 Push 하나뿐이다)
 // { table, mapKey, fingerprint } | null - the ONE map whose registry rows we have
 // actually read, together with what they were when we read them. One object because
 // it is one claim: "the screen came from this map's rows, and they looked like this".
@@ -196,19 +208,26 @@ function buildSplitKey(refTable, mapKey, value) {
   return [refTable, mapKey, value].join(SPLIT_KEY_SEP);
 }
 
-// ── DOE 모델 (M2.6) ─────────────────────────────────────
+// ── DOE 모델 (ZONE, 2026-07-27) ─────────────────────────
 // legend 행이 곧 DOE다:
-//   { value, desc, color, knobs: [{k,v}], bands: [{seq, to, materials:[string]}] }
+//   { value, desc, color, knobs: [{k,v}], stack, mat_1h[], mat_mid[], mat_top[] }
 //
-// `bands` 계약 (server/product_tables.py의 map_split_registry.__comment와 같은 글):
-//   * **배열 위치가 스택 순서**다. band[0]은 1층에서 시작하고 band[i]는 band[i-1].to + 1에서
-//     시작한다. 저장되는 값은 `to` 하나뿐이고 `from`은 이웃에서 유도된다.
-//   * **`seq`는 순서가 아니라 정체다.** 자재가 seq에 매달려 있으므로 재정렬·삭제가 seq를
-//     재번호하면 자재가 조용히 남의 구간으로 따라간다.
-//   * 자재는 **입력한 원문 문자열 그대로**가 정체다. lot/slot 파싱은 나중 일이고,
-//     파싱 규칙이 바뀌어도 키가 움직이면 안 된다.
-//   * **파생값은 저장하지 않는다.** 구간 총량 = 그 값의 칠한 셀 수 × 층 수,
-//     자재당 배분 = ceil(총량 / 자재 수). 저장하면 누가 한 칸 더 칠하는 순간 어긋난 채 남는다.
+// zone 계약 (server/product_tables.py의 map_split_registry.__comment와 같은 글):
+//   * `stack` = 그 값의 총 층수. `mat_1h` = 1층, `mat_top` = stack층, `mat_mid` = 그 사이 전부.
+//     세 구역이 `1..stack`을 **구성적으로** 덮으므로 겹침·구멍 검사가 사라졌다 — 옮긴 게
+//     아니라 어길 방법이 없어졌다. 자세한 것은 docs/spec/DOE_ZONE_MODEL.md.
+//   * **세 mat_* 컬럼은 원문 토큰의 JSON 배열**이다. 분리자로 이어붙이지 않는다: lot 이름에
+//     ':' 도 '_' 도 합법이라 안전한 문자가 없고, 한 번 가정했다가 서로 다른 두 풀이 한 행으로
+//     합쳐져 수량이 더해진 적이 있다(doe_bands.js의 `materialPoolKey` 주석).
+//   * 자재는 **입력한 원문 문자열 그대로**가 정체다. lot/slot/BIN 파싱은 나중의, 선언된
+//     단계이고 저장된 문자열을 움직여서는 안 된다.
+//   * **파생값은 저장하지 않는다.** 구역 총량 = 그 값의 칠한 셀 수 × 층 수,
+//     자재당 = ceil(총량 / 자재 수). 저장하면 누가 한 칸 더 칠하는 순간 어긋난 채 남는다.
+//
+// ⚠️ `bands`는 **폐기됐지만 읽기 전용으로 살아 있다.** 서버에 band 모델로 쓰인 실계획이
+//    남아 있고, legend 저장은 `replace_map`이다 — 읽지 않으면 그 맵을 여는 순간 화면이
+//    비고, 다음 키 입력 한 번이 그 계획을 **빈 집합으로 지운다**. 그래서 `normalizeBands`는
+//    지우지 않았다. 다만 **쓰지는 않는다**(새 writer 금지 — product_tables.py의 지시).
 function parseJsonCol(raw, fallback) {
   if (raw === null || raw === undefined || raw === '') return fallback;
   if (typeof raw === 'object') return raw;
@@ -269,11 +288,26 @@ function knobsToObject(arr) {
   return out;
 }
 
-function serializeBands(bands) {
-  return JSON.stringify(normalizeBands(bands)
-    .map(b => ({ seq: b.seq, to: b.to === '' ? null : b.to, materials: b.materials })));
-}
 function serializeKnobs(knobs) { return JSON.stringify(knobsToObject(normalizeKnobs(knobs))); }
+
+// ── zone 저장 정규형 ────────────────────────────────────
+//
+// `stack`은 문자열 컬럼이다. **읽을 수 없는 값은 원문 그대로 보존한다** — 임의로 ''로 만들면
+// 패널이 무엇을 고치라고 말할 근거가 사라지고, 그 값은 "틀린 줄 모르는 채" 계산에서 빠진다.
+// 판정기는 `bandToState` 하나뿐이다: 정규화기가 자기 나름의 `Number()`를 돌리면
+// 읽기-수정-쓰기가 조용히 값을 바꾼다(실제로 '0x10'이 16으로 저장되고 있었다).
+function serializeStack(raw) {
+  const st = bandToState({ to: raw });
+  if (st.state === 'ok') return String(st.value);
+  if (st.state === 'blank') return '';
+  return String(raw);
+}
+// 원문 토큰의 JSON 배열. 목록 정규화는 `parseMaterialList` **하나뿐**이다 — 패널의 입력
+// 파서와 저장 정규화기가 서로 다른 trim/중복 규칙을 가지면 화면의 자재 수와 `share`의
+// 분모가 갈린다(분모가 갈리면 수량이 갈린다).
+function serializeMaterials(raw) {
+  return JSON.stringify(parseMaterialList(raw));
+}
 
 // legend 항목의 정규형 (DOE 필드 포함). 로드 경로가 여러 갈래라 한 곳에서만 만든다.
 //
@@ -292,20 +326,61 @@ function normalizeLegendItem(item) {
     desc: String(it.desc || ''),
     color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
     knobs: normalizeKnobs(it.knobs),
-    bands: normalizeBands(it.bands),
+    stack: (it.stack === null || it.stack === undefined) ? '' : it.stack,
+    mat_1h: parseMaterialList(it.mat_1h),
+    mat_mid: parseMaterialList(it.mat_mid),
+    mat_top: parseMaterialList(it.mat_top),
+    // 폐기 모델의 흔적. 마이그레이션이 실패한 행에서만 값이 남고(그 행은 저장이 막힌다),
+    // 정상 마이그레이션된 행에서는 비어 있다. **쓰기 대상이 아니다.**
+    legacyBands: Array.isArray(it.legacyBands) ? normalizeBands(it.legacyBands) : [],
+    legacyReason: String(it.legacyReason || ''),
     vocab: it.vocab === true,
   };
 }
 
-// legend 배열 깊은 복사 — bands/knobs가 배열이라 얕은 복사는 프레임 스냅샷과 화면이
+// legend 배열 깊은 복사 — 자재 목록·knobs가 배열이라 얕은 복사는 프레임 스냅샷과 화면이
 // 같은 배열을 공유하게 만든다(한쪽 편집이 다른 쪽을 조용히 오염시킨다).
 function cloneLegend(arr) {
   return (Array.isArray(arr) ? arr : []).map(l => {
     const n = normalizeLegendItem(l);
     n.knobs = n.knobs.map(p => ({ ...p }));
-    n.bands = n.bands.map(b => ({ seq: b.seq, to: b.to, materials: b.materials.slice() }));
+    n.mat_1h = n.mat_1h.slice();
+    n.mat_mid = n.mat_mid.slice();
+    n.mat_top = n.mat_top.slice();
+    n.legacyBands = n.legacyBands.map(b => ({ seq: b.seq, to: b.to, materials: b.materials.slice() }));
     return n;
   });
+}
+
+// ── 저장되는 컬럼의 목록. 한 곳에서만 만든다. ─────────────────────────────────
+//
+// 🔴 THIS LIST IS THE GATE, and that is why it is a list rather than five hand-written
+//    field references. Three things read it: the write payload, the concurrency
+//    fingerprint, and `legendRowSignature` (which is what DERIVES a vocabulary claim when
+//    an edit path forgets to declare one). Previously each of the three spelled the fields
+//    out separately. Add a column to the writer alone and the consequence is not a missing
+//    column - it is that an edit touching ONLY that column is invisible to
+//    `reconcileVocabClaims`, so the user's typing stays on screen and is dropped from the
+//    save that was supposed to carry it. Visible, plausible, wrong.
+//
+//    With one list, a saved field is NECESSARILY a compared field. That is the difference
+//    between documenting the rule and making it unbreakable.
+const LEGEND_PAYLOAD_COLUMNS = ['value', 'split_desc', 'color', 'knobs', 'stack', 'mat_1h', 'mat_mid', 'mat_top'];
+
+// legend 행 -> 저장 컬럼 맵. 키는 **DB 컬럼 이름**이다.
+// ⚠️ `bands`는 여기 없다. 폐기됐고 새 writer를 만들지 않는다(product_tables.py의 지시).
+function legendRowPayload(item) {
+  const it = item || {};
+  return {
+    value: String(it.value === null || it.value === undefined ? '' : it.value).trim(),
+    split_desc: String(it.desc === null || it.desc === undefined ? '' : it.desc).trim(),
+    color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
+    knobs: serializeKnobs(it.knobs),
+    stack: serializeStack(it.stack),
+    mat_1h: serializeMaterials(it.mat_1h),
+    mat_mid: serializeMaterials(it.mat_mid),
+    mat_top: serializeMaterials(it.mat_top),
+  };
 }
 
 // registry 행의 **유일한 정규형**. 동시성 검사의 양쪽이 모두 이 함수를 통과한다 —
@@ -313,14 +388,9 @@ function cloneLegend(arr) {
 // 놓치거나 없는 충돌을 만들어낸다.
 function canonRegistryRow(r) {
   const it = r || {};
-  return {
-    value: String(it.value === null || it.value === undefined ? '' : it.value).trim(),
-    desc: String(it.desc === null || it.desc === undefined ? '' : it.desc).trim(),
-    color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
-    knobs: serializeKnobs(it.knobs),
-    bands: serializeBands(it.bands),
-    eventtime: String(it.eventtime === null || it.eventtime === undefined ? '' : it.eventtime),
-  };
+  const p = legendRowPayload(it);
+  p.eventtime = String(it.eventtime === null || it.eventtime === undefined ? '' : it.eventtime);
+  return p;
 }
 
 const FP_UNIT = '';   // ASCII unit separator - cannot occur in a typed field
@@ -329,7 +399,7 @@ function registryFingerprint(rows) {
   return (Array.isArray(rows) ? rows : [])
     .map(canonRegistryRow)
     .sort((a, b) => (a.value < b.value ? -1 : (a.value > b.value ? 1 : 0)))
-    .map(c => [c.value, c.desc, c.color, c.knobs, c.bands, c.eventtime].join(FP_UNIT))
+    .map(c => LEGEND_PAYLOAD_COLUMNS.map(k => c[k]).concat([c.eventtime]).join(FP_UNIT))
     .join(FP_ROW);
 }
 
@@ -348,17 +418,36 @@ function buildLegendRegistryUpdates(refTable, mapKey, legendArr, user, nowStr) {
     .map(item => {
       const value = String(item.value).trim();
       const bk = buildSplitKey(refTable, mapKey, value);
+      // ⚠️ THE COLUMN NAMES ARE SPELLED OUT AS A LITERAL, DELIBERATELY, and the values all
+      //    come from the shared projection. Both halves of that sentence are load-bearing:
+      //
+      //    * literal KEYS, because `server/tests/test_install_product_tables.py` reads this
+      //      object statically to prove every column written here is declared in
+      //      product_tables.py. Building it with `Object.assign`/spread hides the names from
+      //      that reader - the test then either fails outright or, worse, passes while
+      //      checking fewer columns than the code writes.
+      //    * shared VALUES, because the serialisation rules (stack tri-state, material
+      //      lists as JSON arrays) must be identical to what the fingerprint and the vocab
+      //      signature compare, or an edit is saved in a form the comparison cannot see.
+      //
+      //    The remaining risk - adding a column to `legendRowPayload` and forgetting it
+      //    here - is closed by contracts/legend_map_scope, which asserts that every entry
+      //    of LEGEND_PAYLOAD_COLUMNS actually appears in a built payload.
+      const p = legendRowPayload(item);
       return {
         business_key_val: bk,
         updates: {
           split_key: bk,
           ref_table: refTable,
           map_key: mapKey,
-          value: value,
-          split_desc: (item.desc || '').trim(),
-          color: item.color || '',
-          knobs: serializeKnobs(item.knobs),
-          bands: serializeBands(item.bands),
+          value: p.value,
+          split_desc: p.split_desc,
+          color: p.color,
+          knobs: p.knobs,
+          stack: p.stack,
+          mat_1h: p.mat_1h,
+          mat_mid: p.mat_mid,
+          mat_top: p.mat_top,
           eventtime: nowStr
         },
         source_name: 'user',
@@ -377,12 +466,40 @@ function parseLegendRegistryRows(result, dedupeByValue) {
       const d = row.data || {};
       const value = d.value?.value;
       if (value === undefined || value === null || String(value).trim() === '') return;
+      // ── zone 컬럼이 정본, `bands`는 폐기 모델의 읽기 폴백 ──────────────────
+      // 폴백이 필요한 이유는 호의가 아니라 불변식이다: legend 저장은 `replace_map`이라
+      // band 모델로 쓰인 계획을 읽지 못하면 그 맵을 여는 순간 화면이 비고, 다음 편집
+      // 한 번이 그 계획을 **빈 집합으로 지운다**.
+      // 그리고 세 구역으로 **표현할 수 없는** 배치는 추측하지 않는다 — 원문을 들고 와서
+      // 저장을 막는다(`legacyReason`). 접어 넣고 replace_map으로 덮는 것이 바로
+      // "화면은 멀쩡한데 값이 틀린" 결함이다.
+      const zoneCols = {
+        stack: d.stack?.value,
+        mat_1h: parseJsonCol(d.mat_1h?.value, []),
+        mat_mid: parseJsonCol(d.mat_mid?.value, []),
+        mat_top: parseJsonCol(d.mat_top?.value, []),
+      };
+      const hasZone = String(zoneCols.stack ?? '').trim() !== ''
+        || parseMaterialList(zoneCols.mat_1h).length > 0
+        || parseMaterialList(zoneCols.mat_mid).length > 0
+        || parseMaterialList(zoneCols.mat_top).length > 0;
+      const legacy = hasZone ? [] : normalizeBands(parseJsonCol(d.bands?.value, []));
+      const migrated = (legacy.length > 0) ? bandsToZones(legacy) : null;
+      const zone = (migrated && migrated.ok)
+        ? { stack: migrated.stack, mat_1h: migrated.mat_1h, mat_mid: migrated.mat_mid, mat_top: migrated.mat_top }
+        : zoneCols;
+
       rows.push({
         value: String(value).trim(),
         desc: d.split_desc?.value != null ? String(d.split_desc.value) : '',
         color: d.color?.value != null && String(d.color.value) !== '' ? String(d.color.value) : '#6b7280',
         knobs: normalizeKnobs(parseJsonCol(d.knobs?.value, {})),
-        bands: normalizeBands(parseJsonCol(d.bands?.value, [])),
+        stack: zone.stack,
+        mat_1h: parseMaterialList(zone.mat_1h),
+        mat_mid: parseMaterialList(zone.mat_mid),
+        mat_top: parseMaterialList(zone.mat_top),
+        legacyBands: (migrated && !migrated.ok) ? legacy : [],
+        legacyReason: (migrated && !migrated.ok) ? migrated.reason : '',
         map_key: d.map_key?.value != null ? String(d.map_key.value) : '',
         // The registry has no updated_by COLUMN (crud.py's system_cols skips it, so it could
         // only ever be NULL). The platform already carries who touched the cell.
@@ -891,6 +1008,7 @@ function initMouseDragEvents() {
       
       updateLegendCounts();
       scheduleRenderGridCanvas();
+      scheduleCellDraft();
     }
   });
 }
@@ -977,12 +1095,12 @@ async function switchTable(tableName) {
     // 편집 내용이 사라지는 사실은 모달이 아니라 토스트 한 줄로만 알린다.
     const hadWorkingMap = gridData && Object.keys(gridData).length > 0;
 
-    // 대상 테이블의 legend 로드 후 격자 초기화.
-    // 이 시점에는 **맵이 없다** — 메타 입력 전이라 map_key가 존재하지 않는다. 그래서 맵 단위
-    // 조회가 원리적으로 불가능하고, 테이블의 값 어휘(vocabulary)를 브러시로 깔아주는 것이
-    // 맞다. 그 행들은 남의 맵 것이므로 `vocab`으로 표시되어 **저장되지 않는다**.
+    // 대상 테이블의 legend 초기화 후 격자 초기화.
+    // 이 시점에는 **맵이 없다** — 메타 입력 전이라 map_key가 존재하지 않는다. 규칙상 그때의
+    // 답은 하나뿐이다: **빈 DOE 한 줄.** 종전에는 테이블 전체 어휘를 읽어 브러시로 깔았고,
+    // 그것이 "내가 넣은 적 없는 값이 화면에 있다"의 원천이었다.
     // 맵 단위 legend는 맵을 실제로 여는 loadExistingMap에서 재적용된다.
-    await loadLegendVocabulary(tableName);
+    seedEmptyDoe();
     renderLegendTable();
     gridData = {};
     loadedFCells.clear();
@@ -2100,6 +2218,9 @@ function handleCellClick(cell, event) {
 
   updateLegendCounts();
   scheduleRenderGridCanvas();
+  // 그림이 곧 계획이다 — 칠한 셀 수가 모든 파생 수량의 입력이므로, 새로고침으로 그림이
+  // 사라지면 계획의 수량도 함께 사라진다.
+  scheduleCellDraft();
 }
 
 function updateCellStyles(cell, val) {
@@ -2171,31 +2292,28 @@ function updateNotchPosition() {
 // ----------------------------------------------------
 // Legend / Palette Management
 // ----------------------------------------------------
-function loadLegendFromStorage() {
-  const stored = localStorage.getItem(`map_legend_${selectedTable}`);
-  if (stored) {
-    try {
-      legend = cloneLegend(JSON.parse(stored));
-      if (legend.length === 0) legend = cloneLegend(DEFAULT_LEGEND);
-    } catch (e) {
-      legend = cloneLegend(DEFAULT_LEGEND);
-    }
-  } else {
-    legend = cloneLegend(DEFAULT_LEGEND);
-  }
-  if (legend.length > 0) {
-    activeBrush = legend[0].value;
-  } else {
-    activeBrush = '';
-  }
+// 빈 DOE 한 줄. **"registry 행이 없다"의 유일한 답**이고, 그 답의 구현도 여기 하나뿐이다.
+//
+// `vocab: true`로 표시하고 서명을 남기는 것은 여전히 의미가 있다 — 어휘 시딩이 사라져도 이
+// 자리표시 행은 남기 때문이다. 사용자가 손대지 않은 자리표시가 registry 행을 만들어서는
+// 안 되고(그러면 "만든 적 없는 계획"이 서버에 생긴다), 한 글자라도 치거나 그 값으로 칠하는
+// 순간 `reconcileVocabClaims`가 그것을 이 맵의 것으로 판정해 저장한다.
+function seedEmptyDoe() {
+  legendMeta = {};
+  legend = cloneLegend(DEFAULT_LEGEND);
+  legendVocabularySeed = new Map();
+  legend.forEach(l => { l.vocab = true; legendVocabularySeed.set(String(l.value), legendRowSignature(l)); });
+  activeBrush = legend.length > 0 ? legend[0].value : '';
 }
 
-// ⚠️ 이 캐시의 키는 **테이블**이지만 knobs/bands는 **(테이블, 맵 키) 하나**의 것이다.
-// 함께 캐시하면 맵 A의 스택이 맵 B 화면에 그대로 나타난다 — 화면은 멀쩡한데 값이 틀린 결함.
-// DOE 필드는 맵 단위 초안(saveDoeDraft)이 따로 보관한다.
+// ⚠️ 종전에 여기에 `map_legend_<table>` 캐시가 있었다. **테이블 키인데 계획은 맵 단위**라,
+//    맵 A에서 만든 값이 맵 B를 열었을 때 화면에 남는 두 번째 시딩 경로였다. 2026-07-28의
+//    규칙("행이 있으면 그것만, 없으면 빈 줄 하나")은 그런 경로를 금지하므로 **읽기를 지웠고,
+//    쓰기도 지웠다** — 아무도 읽지 않는 캐시는 다음 사람에게 함정이다. 이미 브라우저에 남아
+//    있는 것은 아래에서 능동적으로 치운다(남겨 두면 예전 코드가 돌아왔을 때 되살아난다).
+//    오프라인 복구는 **맵 단위**인 `saveDoeDraft`가 맡는다 — 그쪽은 스코프가 맞다.
 function saveLegendToStorage() {
-  const cacheable = legend.map(l => ({ value: l.value, desc: l.desc, color: l.color }));
-  localStorage.setItem(`map_legend_${selectedTable}`, JSON.stringify(cacheable));
+  try { localStorage.removeItem(`map_legend_${selectedTable}`); } catch (e) { /* 지우기 실패는 무해 */ }
   saveDoeDraft();
 }
 
@@ -2204,38 +2322,140 @@ function saveLegendToStorage() {
 // 그 위에 초안을 덮으면 다른 세션의 저장이 조용히 지워진다.
 function doeDraftKey(table, mapKey) { return `map_doe_draft::${table}::${mapKey}`; }
 
+// 🔴 초안의 우선순위 규칙 — 이 규칙이 없으면 초안이 남의 최신 저장을 조용히 덮는다.
+//
+// 초안은 **아직 서버가 받아들이지 않은 내 편집**일 때만 이긴다. 그것을 증명하는 방법은 하나뿐:
+// 초안을 뜰 때 기반이 된 서버 상태의 지문을 함께 저장하고, 다시 열 때 그 지문이 그대로인지
+// 본다. 지문이 같으면 그 사이 아무도 쓰지 않았으므로 초안이 엄격히 더 새 것이다. 다르면
+// **누가 썼다** — 그때 초안을 적용하면 남의 저장을 지우는 것이고, 이것은 이미 저장 경로에서
+// 막고 있는 것(`legendReplaceScope` + fingerprint)과 정확히 같은 사고다. 그래서:
+//
+//   지문 일치      → 초안 적용 (내 편집이 서버보다 새 것)
+//   지문 불일치    → **적용하지 않는다. 그리고 조용히 버리지도 않는다** — 화면은 서버본,
+//                    사실은 토스트로 드러내고 초안은 저장소에 남긴다.
+//   서버 조회 실패 → 비교할 대상이 없다. 초안을 보여주고 저장은 보류한다(종전 동작).
+//   저장 성공      → 초안을 지운다. 저장을 넘겨 살아남은 초안은 다음 로드에서 유령 편집이 된다.
+//
+// ⚠️ 이 초안이 **하중을 받게 된 것은 오늘부터**다. 차단 검증(V1–V5)이 붙으면서 잘못된 계획은
+//    저장이 나가지 않고, 그동안 사용자의 작업은 **브라우저에만** 있다. 검증이 엄격할수록
+//    초안에만 존재하는 시간이 길어지고, 새로고침 한 번의 비용이 커진다.
+//
+// 맵 셀도 같은 규율이다. 셀의 서버 상태는 registry가 아니라 맵 테이블이므로 지문도 따로
+// 뜬다(로드된 셀의 결정적 요약). 두 지문 중 하나라도 어긋나면 그 쪽은 적용하지 않는다.
+const DRAFT_VERSION = 3;
+
+// 결정적 요약. 암호학적 강도가 필요 없다 — "그 사이에 바뀌었나"만 답하면 되고, 같은 입력이
+// 같은 값을 내는 것과 두 브라우저가 같은 규칙을 쓰는 것만 지켜지면 된다 (FNV-1a).
+function cellsDigest(cells) {
+  const keys = Object.keys(cells || {}).filter(k => String(cells[k] ?? '') !== '').sort();
+  let h = 0x811c9dc5;
+  for (const k of keys) {
+    const s = JSON.stringify([k, cells[k]]);
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  }
+  return `${keys.length}:${(h >>> 0).toString(16)}`;
+}
+
+// 이 맵을 열었을 때 서버가 갖고 있던 것. 초안의 기반 지문이고, 새 초안을 뜰 때마다 여기서
+// 읽어 함께 저장한다. null이면 서버본에서 유래한 화면이 아니다(= 초안의 기반을 증명할 수 없다).
+let draftBase = null;   // { table, mapKey, registryFp, cellsFp } | null
+
 function saveDoeDraft() {
   const mapKey = getCurrentMapKey();
   if (!selectedTable || !mapKey) return;
   try {
     const doe = {};
     legend.forEach(l => {
-      if ((l.bands && l.bands.length) || (l.knobs && l.knobs.length)) {
-        doe[l.value] = { knobs: normalizeKnobs(l.knobs), bands: normalizeBands(l.bands) };
+      const zoned = String(l.stack ?? '').trim() !== ''
+        || (l.mat_1h && l.mat_1h.length) || (l.mat_mid && l.mat_mid.length) || (l.mat_top && l.mat_top.length);
+      if (zoned || (l.knobs && l.knobs.length)) {
+        doe[l.value] = {
+          knobs: normalizeKnobs(l.knobs),
+          stack: (l.stack === null || l.stack === undefined) ? '' : l.stack,
+          mat_1h: parseMaterialList(l.mat_1h),
+          mat_mid: parseMaterialList(l.mat_mid),
+          mat_top: parseMaterialList(l.mat_top),
+        };
       }
     });
-    localStorage.setItem(doeDraftKey(selectedTable, mapKey), JSON.stringify(doe));
+    const base = (draftBase && draftBase.table === selectedTable && draftBase.mapKey === mapKey)
+      ? draftBase : null;
+    localStorage.setItem(doeDraftKey(selectedTable, mapKey), JSON.stringify({
+      v: DRAFT_VERSION,
+      at: getLocalTimeString(),
+      // 기반 지문. 없으면(`null`) 이 초안은 서버본에서 유래하지 않았다는 뜻이고, 로드 때
+      // 비교할 수 없으므로 **서버 조회가 실패했을 때만** 쓰인다.
+      registryFp: base ? base.registryFp : null,
+      cellsFp: base ? base.cellsFp : null,
+      doe,
+      // 맵 셀 — 사용자 지시 2026-07-28 ("맵도"). 새로고침으로 그림이 사라지면 계획의 모든
+      // 파생 수량(칠한 셀 수 × 층 수)이 함께 사라진다.
+      cells: { ...gridData },
+    }));
   } catch (e) {
     console.warn('[Map Editor] DOE draft save failed:', e);
   }
 }
 
-function applyDoeDraft(table, mapKey) {
+function readDoeDraft(table, mapKey) {
   try {
     const raw = localStorage.getItem(doeDraftKey(table, mapKey));
-    if (!raw) return false;
-    const doe = JSON.parse(raw);
-    if (!doe || typeof doe !== 'object') return false;
-    let applied = false;
-    legend.forEach(l => {
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    // v3 이전 초안은 기반 지문이 없다. 버리지 않고 "기반 미상"으로 받는다 — 서버 조회가
+    // 실패했을 때의 복구 경로에서는 여전히 쓸모가 있고, 성공했을 때는 적용되지 않는다.
+    if (d.v !== DRAFT_VERSION) return { v: 0, doe: d, cells: null, registryFp: null, cellsFp: null };
+    return d;
+  } catch (e) { return null; }
+}
+
+function clearDoeDraft(table, mapKey) {
+  try { localStorage.removeItem(doeDraftKey(table, mapKey)); } catch (e) { /* 무해 */ }
+}
+
+// 초안을 화면에 적용한다. **우선순위 판정은 호출부가 한다** — 이 함수는 적용만 한다.
+function applyDoeDraftRecord(draft) {
+  const doe = (draft && draft.doe) || {};
+  let applied = false;
+  legend.forEach(l => {
       const d = doe[l.value];
       if (!d) return;
       l.knobs = normalizeKnobs(d.knobs);
-      l.bands = normalizeBands(d.bands);
-      if (l.knobs.length || l.bands.length) applied = true;
-    });
-    return applied;
-  } catch (e) { return false; }
+      // A draft written by the retired band model is migrated on read, exactly like the
+      // server column - and refused the same way if it cannot be expressed. A draft is a
+      // recovery path, so it is the last place that may quietly reshape a plan.
+      const z = Array.isArray(d.bands) ? bandsToZones(normalizeBands(d.bands)) : null;
+      const src = (z && z.ok) ? z : d;
+      l.stack = (src.stack === null || src.stack === undefined) ? '' : src.stack;
+      l.mat_1h = parseMaterialList(src.mat_1h);
+      l.mat_mid = parseMaterialList(src.mat_mid);
+      l.mat_top = parseMaterialList(src.mat_top);
+      if (z && !z.ok) { l.legacyBands = normalizeBands(d.bands); l.legacyReason = z.reason; }
+      if (l.knobs.length || String(l.stack).trim() !== ''
+        || l.mat_1h.length || l.mat_mid.length || l.mat_top.length) applied = true;
+  });
+  // 값 자체가 초안에만 있는 경우 — 사용자가 [+ 값]으로 만들고 아직 저장이 안 나갔다.
+  Object.keys(doe).forEach(v => {
+    if (legend.some(l => String(l.value) === String(v))) return;
+    legend.push(normalizeLegendItem({ ...doe[v], value: v, vocab: false }));
+    applied = true;
+  });
+  return applied;
+}
+
+// 초안의 맵 셀을 적용한다. 잠긴 셀은 건드리지 않는다 — 페인트 잠금은 초안보다 위다.
+function applyDraftCells(cells) {
+  if (!cells || typeof cells !== 'object') return 0;
+  let n = 0;
+  Object.keys(cells).forEach(k => {
+    if (isProtectedFCell(k)) return;
+    const v = cells[k];
+    if (gridData[k] === v) return;
+    gridData[k] = v;
+    n++;
+  });
+  return n;
 }
 
 // ── Split Registry 서버 IO ──────────────────────────
@@ -2253,21 +2473,27 @@ function getCurrentMapKey() {
   return (mapKey && mapKey !== 'default_map') ? mapKey : null;
 }
 
-// The registry is keyed (ref_table, map_key, value). There are exactly TWO legitimate
-// reads of it and they are NOT interchangeable:
+// The registry is keyed (ref_table, map_key, value). There is exactly ONE legitimate read
+// of it now:
 //
-//   'map'        - one map's own rows. The ONLY read that may back a `replace_map` write.
-//   'vocabulary' - every map key in the table, deduped by value (newest updated_at wins).
-//                  A brush palette for when no map is open yet. Its rows belong to OTHER
-//                  maps BY DEFINITION, so the caller marks what it puts on screen
-//                  `vocab: true` and nothing here is ever written back.
+//   'map' - one map's own rows. The ONLY read, and the only one that may back a
+//           `replace_map` write.
 //
-// The mode is SPELLED, not inferred from `mapKey == null`. That inference is the whole
-// defect: two call sites passed null for a reason that was true where they stood (no map
-// chosen yet), the read silently became table-wide, and the resulting legend then sat
-// under an opened map indistinguishable from that map's own rows. Saving it wrote another
-// map's values in - and because the write is `replace_map`, they became this map's plan.
-const REGISTRY_SCOPES = ['map', 'vocabulary'];
+// ⚠️ 'vocabulary' (every map key in the table, deduped by value) WAS the second one, and it
+//    is GONE (2026-07-28). It backed the "no map open yet" brush palette, which the user
+//    reported twice as a defect - a panel that opens with values nobody entered is
+//    indistinguishable from a bug. The rule is now two branches with no third: this map's
+//    rows if it has any, one empty DOE row if it does not (`seedEmptyDoe`).
+//
+// THE SCOPE IS STILL SPELLED, and the list still exists with one member on purpose. The
+// original defect was not "there were two modes" - it was that the mode was INFERRED from
+// `mapKey == null`. Two call sites passed null for a reason that was true where they stood,
+// the read silently became table-wide, and the resulting legend sat under an opened map
+// indistinguishable from that map's own rows. Saving it wrote another map's values in - and
+// because the write is `replace_map`, they became this map's plan. A named scope that
+// refuses anything it does not recognise is what closed that, and it stays closed whether
+// the list has one entry or two.
+const REGISTRY_SCOPES = ['map'];
 async function fetchRegistryRows(scope, refTable, mapKey) {
   if (REGISTRY_SCOPES.indexOf(scope) < 0) throw new Error(`unknown registry scope '${scope}'`);
   if (scope === 'map' && !mapKey) throw new Error('registry scope "map" requires a map key');
@@ -2284,7 +2510,11 @@ async function fetchRegistryRows(scope, refTable, mapKey) {
   if (result && typeof result.total === 'number' && result.total > (Array.isArray(result.data) ? result.data.length : 0)) {
     throw new Error(`split registry response truncated (${result.total} > ${(result.data || []).length})`);
   }
-  return parseLegendRegistryRows(result, scope === 'vocabulary');
+  // ⚠️ `false`, always, and the parameter is kept rather than removed. The map scope must
+  //    NEVER dedupe: dedupe was the vocabulary mode's collapse across map keys, and doing
+  //    it here would MASK a broken `map_key` filter - a widened read would come back as a
+  //    plausible one-row-per-value legend instead of an obviously wrong pile.
+  return parseLegendRegistryRows(result, false);
 }
 
 // 같은 조회를 예외 없이 쓰는 형태. 로드·저장 양쪽이 이 한 함수만 쓴다 —
@@ -2302,7 +2532,9 @@ async function readRegistryScope(refTable, mapKey) {
 // not something the user typed - comparing it would make every row look edited.
 function legendRowSignature(item) {
   const c = canonRegistryRow(item);
-  return [c.value, c.desc, c.color, c.knobs, c.bands].join(FP_UNIT);
+  // The SAME list the write payload is built from. Not a hand-picked subset: a field that
+  // is saved but not signed here is a field whose edit is silently dropped from the save.
+  return LEGEND_PAYLOAD_COLUMNS.map(k => c[k]).join(FP_UNIT);
 }
 
 // A CLAIM IS DERIVED, NOT ONLY DECLARED.
@@ -2355,14 +2587,21 @@ function applyRegistryRowsToLegend(rows) {
       if (r.desc) item.desc = r.desc;
       if (r.color) item.color = r.color;
       item.knobs = normalizeKnobs(r.knobs);
-      item.bands = normalizeBands(r.bands);
+      item.stack = (r.stack === null || r.stack === undefined) ? '' : r.stack;
+      item.mat_1h = parseMaterialList(r.mat_1h);
+      item.mat_mid = parseMaterialList(r.mat_mid);
+      item.mat_top = parseMaterialList(r.mat_top);
+      item.legacyBands = Array.isArray(r.legacyBands) ? r.legacyBands : [];
+      item.legacyReason = String(r.legacyReason || '');
       item.vocab = false;   // this map's own registry row - it is claimed now
       legendMeta[item.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
       byValue.delete(String(item.value));
     } else {
       if (item.vocab) return;   // borrowed from another map key, unclaimed here - drop it
       item.knobs = [];
-      item.bands = [];
+      item.stack = '';
+      item.mat_1h = []; item.mat_mid = []; item.mat_top = [];
+      item.legacyBands = []; item.legacyReason = '';
     }
     kept.push(item);
   });
@@ -2381,42 +2620,11 @@ function applyRegistryRowsToLegend(rows) {
   }
 }
 
-// Seed the legend with the TABLE's value vocabulary - every map key in the table, deduped
-// by value. This is the deliberate no-map-open mode, and the only caller of the
-// 'vocabulary' scope. Everything it puts on screen is marked `vocab: true`: it is a brush
-// palette borrowed from other maps, never this map's plan. All three sources are
-// table-scoped (server registry, the `map_legend_<table>` cache, DEFAULT_LEGEND), so all
-// three are marked.
-// 정확한 맵 단위 legend는 맵을 실제로 여는 지점(loadExistingMap)에서 재적용된다.
-async function loadLegendVocabulary(refTable) {
-  legendMeta = {};
-  // Mark every seeded row AND record what it looked like when seeded. The snapshot is
-  // what makes the claim derivable later (reconcileVocabClaims) instead of depending on
-  // every future edit path remembering to clear the mark.
-  const mark = () => {
-    legendVocabularySeed = new Map();
-    legend.forEach(l => { l.vocab = true; legendVocabularySeed.set(String(l.value), legendRowSignature(l)); });
-  };
-  try {
-    const rows = await fetchRegistryRows('vocabulary', refTable, null);
-    if (rows.length > 0) {
-      legend = rows.map(normalizeLegendItem);
-      mark();
-      rows.forEach(r => { legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at }; });
-      activeBrush = legend[0].value;
-      saveLegendToStorage(); // 서버 로드 성공 시 오프라인 캐시 동기화
-      return 'server';
-    }
-    loadLegendFromStorage(); // 서버 접근 성공, 등록 행 없음 → 캐시 폴백
-    mark();
-    return 'local';
-  } catch (e) {
-    console.warn('[Map Editor] split registry load failed — localStorage fallback:', e);
-    loadLegendFromStorage();
-    mark();
-    return 'offline';
-  }
-}
+// ⚠️ `loadLegendVocabulary`는 **삭제됐다** (2026-07-28). 테이블 전체 어휘를 읽어 브러시로
+//    깔던 함수이고, 그것이 "내가 넣은 적 없는 값이 화면에 있다"의 원천이었다. 남은 두 분기는
+//    `applyRegistryRowsToLegend`(행이 있을 때)와 `seedEmptyDoe`(없을 때)뿐이다.
+//    'vocabulary' registry 스코프도 호출자가 없어져 `REGISTRY_SCOPES`에서 함께 내렸다 —
+//    부르는 사람이 없는 스코프는 다음 사람이 "이건 되는구나"로 읽는 함정이다.
 
 // Save the whole legend (= the whole DOE) of one map to the registry.
 //
@@ -2454,6 +2662,27 @@ async function saveLegendToServer(mapKeyOverride) {
   if (legendConflict && legendConflict.table === selectedTable && legendConflict.mapKey === mapKey) {
     return { ok: false, reason: 'conflict' };
   }
+
+  // 🔴 ZONE COLUMNS MUST PHYSICALLY EXIST BEFORE THIS WRITE IS ALLOWED.
+  //
+  // `stack`/`mat_1h`/`mat_mid`/`mat_top` are DECLARED in server/product_tables.py but the
+  // physical ALTER is a separate step. If they are not there yet, crud.py drops them from
+  // the payload - and this write is `replace_map`, so the scope is replaced by rows that
+  // carry desc/color/knobs and NO LAYER STRUCTURE. The screen would still look right until
+  // the next load. That is the whole plan, deleted, with a green "자동 저장" chip.
+  //
+  // Refusing here costs nothing: reading and editing still work, and the moment the column
+  // appears the next debounced save goes out on its own. This is invariant ③ ("서버 상태를
+  // 모르면 쓰지도 지우지도 않는다") applied to the schema instead of to the rows, and it
+  // reuses the existing `unknown-server-state` treatment - no new control, no new panel.
+  const zoneCols = await probeZoneColumns();
+  if (zoneCols !== true) return { ok: false, reason: 'zone-columns-missing' };
+
+  // A row we could not express as three zones must not be written. `bandsToZones` refused
+  // it precisely because collapsing it would change the plan, and this write would then
+  // replace the server's real bands with our lossy reading of them.
+  const unreadable = legend.filter(l => l && l.vocab !== true && Array.isArray(l.legacyBands) && l.legacyBands.length > 0);
+  if (unreadable.length > 0) return { ok: false, reason: 'legacy-unreadable', error: unreadable.map(l => `${l.value}: ${l.legacyReason}`).join(' · ') };
 
   // The one read that both the authority check and the concurrency check need.
   const read = await readRegistryScope(selectedTable, mapKey);
@@ -2506,14 +2735,25 @@ async function saveLegendToServer(mapKeyOverride) {
     // same normal form and a second save in a row cannot see a phantom conflict.
     legendReplaceScope = {
       table: selectedTable, mapKey,
-      fingerprint: registryFingerprint(sent.map(item => ({
-        value: item.value, desc: (item.desc || '').trim(), color: item.color,
-        knobs: item.knobs, bands: item.bands, eventtime: nowStr,
-      }))),
+      // The whole item, not a hand-listed projection of it: `canonRegistryRow` already
+      // knows which columns count (LEGEND_PAYLOAD_COLUMNS), and re-listing them here is
+      // how a new column ends up in the payload but not in the baseline - which surfaces
+      // as "다른 사람이 이 계획을 변경했습니다" on the very next save, with nobody there.
+      fingerprint: registryFingerprint(sent.map(item => ({ ...item, eventtime: nowStr }))),
     };
     sent.forEach(item => {
       legendMeta[item.value] = { updated_by: CURRENT_USER, updated_at: nowStr };
     });
+    // 🔴 저장이 받아들여졌으므로 초안의 기반이 **여기**로 옮겨간다. 새 기반을 세우지 않으면
+    //    다음 초안이 낡은 지문을 들고 다니게 되고, 그 초안은 다시 열 때 "누가 썼다"로 오판돼
+    //    적용되지 않는다 — 있지도 않은 충돌로 사용자의 편집이 버려지는 경로다.
+    //    셀 지문은 지금 화면 그대로다: Push 전이라 서버 맵은 움직이지 않았다.
+    draftBase = { table: selectedTable, mapKey, registryFp: legendReplaceScope.fingerprint,
+                  cellsFp: cellsDigest(gridData) };
+    // 저장을 넘겨 살아남은 초안은 다음 로드에서 유령 편집이 된다. 지운 뒤 곧바로 현재
+    // 상태를 새 기반으로 다시 뜬다(셀은 아직 서버로 나가지 않았으므로 초안이 유일한 사본이다).
+    clearDoeDraft(selectedTable, mapKey);
+    saveDoeDraft();
     renderLegendMetaOnly();
     return { ok: true, at: nowStr, count: updates.length };
   } catch (e) {
@@ -2522,8 +2762,52 @@ async function saveLegendToServer(mapKeyOverride) {
   }
 }
 
+// 이 배포의 registry 테이블에 zone 컬럼이 **물리적으로** 있는가. `true` | `false` | `null`(미상)
+// 한 세션에 한 번만 묻는다. 실패는 캐시하지 않는다 — 한 번의 네트워크 실패가 그 세션 내내
+// 저장을 막으면 그것도 조용한 데이터 유실이다(fetchMapKeyColumns의 [M5] 교훈과 같은 형태).
+let zoneColumnsPresent = null;
+
+// ⚠️ `/schema`는 **선언**을 돌려준다(config의 display_columns), 물리 컬럼이 아니다. 선언만
+//    보고 통과시키면 ALTER 전에도 초록불이 켜지고, 그때 저장은 정확히 우리가 막으려는
+//    파괴적 write가 된다. 그래서 실제 행 하나를 읽어 **셀 키 집합**을 본다: 제네릭 데이터
+//    API는 물리 컬럼당 셀 하나를 돌려주므로 그 키가 물리 스키마의 증거다.
+//    테이블이 비어 있으면 증거가 없다 — 그때만 선언으로 물러선다(지울 것도 없는 상태다).
+const ZONE_COLUMNS = ['stack', 'mat_1h', 'mat_mid', 'mat_top'];
+async function probeZoneColumns() {
+  if (zoneColumnsPresent !== null) return zoneColumnsPresent;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=1`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    const first = (result && Array.isArray(result.data) && result.data[0]) ? (result.data[0].data || {}) : null;
+    if (first) {
+      zoneColumnsPresent = ZONE_COLUMNS.every(c => Object.prototype.hasOwnProperty.call(first, c));
+    } else {
+      const sres = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/schema`);
+      if (!sres.ok) throw new Error(`HTTP ${sres.status}`);
+      const schema = await sres.json();
+      const cols = Array.isArray(schema.columns) ? schema.columns : [];
+      zoneColumnsPresent = ZONE_COLUMNS.every(c => cols.indexOf(c) >= 0);
+    }
+    if (zoneColumnsPresent === false) {
+      console.warn(`[Map Editor] ${SPLIT_REGISTRY_TABLE}에 zone 컬럼(${ZONE_COLUMNS.join(', ')})이 없습니다 — `
+        + 'DOE 저장을 보류합니다. 선언은 server/product_tables.py에 있으나 물리 ALTER가 아직 실행되지 않았습니다.');
+    }
+    return zoneColumnsPresent;
+  } catch (e) {
+    console.warn('[Map Editor] zone 컬럼 확인 실패 — 캐시하지 않고 다음 저장에 재시도:', e);
+    return null;      // 미상. 저장은 보류되지만 다음 시도에서 다시 묻는다.
+  }
+}
+
 // 저장 결과 → 사용자 문구 (한 곳에서만). 패널 헤더 칩과 토스트가 같은 판정을 쓴다.
 const LEGEND_SAVE_MESSAGE = {
+  // ⚠️ 이 둘은 **계획이 틀려서가 아니라 저장이 데이터를 지우기 때문에** 막는다.
+  //    미완성 계획은 그대로 저장된다(사용자 지시 2026-07-28: "그냥 doe 무효인대로 저장해") —
+  //    V1–V5는 행 옆에 사유를 띄우고 서버 `validate`가 보고할 뿐, 저장을 막지 않는다.
+  //    문구도 "무효"가 아니라 **무엇이 사라지는지**를 말한다.
+  'zone-columns-missing': '서버 DOE 저장소에 층 구조(STACK·1H·MID·TOP) 컬럼이 아직 없습니다 — 지금 저장하면 그 컬럼들이 버려진 채 계획 전체가 교체되어 **층 구조가 사라집니다.** 그래서 저장하지 않았습니다. 서버가 갱신되면 자동으로 다시 시도합니다.',
+  'legacy-unreadable': '이 계획에는 새 층 구조로 옮길 수 없는 **폐기된 구간 배치**가 남아 있습니다 — 지금 저장하면 그 구간들이 3구역으로 뭉개진 채 서버 원본을 덮어 **지금 남아 있는 정보가 사라집니다.** 그래서 저장하지 않았습니다. 해당 값의 STACK·구역을 직접 채우면 풀립니다.',
   'unknown-server-state': '서버 DOE 상태를 확인하지 못해 **저장을 보류**했습니다 — 편집은 이 브라우저에만 있습니다. 맵을 다시 열면 재시도합니다.',
   conflict: '다른 사람이 이 계획을 변경했습니다 — 저장하지 않았습니다. 맵을 다시 불러온 뒤 편집하십시오.',
   adopted: '서버에 저장된 계획을 불러왔습니다. 그 사이 편집한 내용은 서버에 반영되지 않았습니다.',
@@ -2544,30 +2828,57 @@ function applyLegendSaveResult(r) {
   notifyLegendChanged();
 }
 
-// 입력 도중 포커스를 깨지 않도록 디바운스 서버 저장
-function scheduleLegendServerSave() {
-  clearTimeout(legendServerSaveTimer);
-  legendServerSaveTimer = setTimeout(async () => {
-    const mapKey = getCurrentMapKey();
-    if (!selectedTable || !mapKey) return;   // 맵 키 미확정은 실패가 아니다 (push 때 일괄 저장)
-    // [M5] 종전에는 반환값을 호출부가 버려 **팀 공유 legend가 갱신 안 된 사실이 증발**했다.
-    applyLegendSaveResult(await saveLegendToServer());
-  }, 800);
-}
+// ⚠️ `scheduleLegendServerSave`는 **삭제됐다** (사용자 지시 2026-07-28: "변경 시 자동 저장을
+//    하지마"). 800ms 디바운스로 서버에 쓰던 경로이고, 이제 서버 쓰기는 명시 저장 하나뿐이다.
+//
+//    이것이 검증 게이트 문제를 정리한다. 자동 저장을 V1–V5로 막으면 **타이핑 도중** 저장이
+//    조용히 안 나가는 상태가 생기는데, 사람은 그 순간 저장을 기대하지 않았으므로 알 방법이
+//    없다. 명시 저장은 그 문제가 없다 — 아무도 키를 치는 도중에 저장 버튼을 누르지 않는다.
+//    그래서 지금은 V1–V5가 저장을 막고, 막힌 이유는 고칠 자리(행 옆)에 이미 떠 있다.
+//
+// 저장되지 않은 편집이 있는가. 화면이 이것을 보여줘야 한다 — 자동 저장이 있을 때는 아무도
+// 궁금해할 필요가 없었지만 이제는 궁금해진다.
+let legendDirty = false;
 
 // 패널 헤더가 읽는 저장 상태 (판정은 위 한 곳에서만 만들어진다)
 function getPlanSaveState() {
   const mapKey = getCurrentMapKey();
   if (legendConflict && legendConflict.table === selectedTable && legendConflict.mapKey === mapKey) {
-    return { status: 'conflict', at: '', error: LEGEND_SAVE_MESSAGE.conflict };
+    return { status: 'conflict', at: '', error: LEGEND_SAVE_MESSAGE.conflict, dirty: legendDirty };
   }
-  return { ...legendSaveState };
+  return { ...legendSaveState, dirty: legendDirty };
 }
 
-// legend 변조의 단일 영속화 관문: 캐시 즉시 + 서버 디바운스
+// legend 변조의 단일 영속화 관문.
+//
+// 🔴 서버에 쓰지 않는다. 여기서 하는 일은 **초안 저장**뿐이다. 그리고 자동 저장이 사라진
+//    지금, 그 초안이 세션과 작업 손실 사이에 서 있는 유일한 것이다 — 종전에는 저장 안 된
+//    편집의 수명이 1초 미만이었지만 이제는 계획 하나를 짓는 시간 전체다.
 function persistLegend() {
+  legendDirty = true;
   saveLegendToStorage();
-  scheduleLegendServerSave();
+}
+
+// ⚠️ 저장 버튼은 **만들지 않았다** (사용자 지시 2026-07-28: "어차피 push map data때 다
+//    저장하잖아. 저장은 이거면 충분해"). `pushMapData`가 이미 유일한 서버 쓰기 경로이고,
+//    이 파일이 스스로 그렇게 적어 두었다("규율 ①에 따라 Push 전에는 서버에 아무것도 쓰지
+//    않는다"). 자동 저장은 그 규율을 어기고 있던 쪽이었다 — 지운 것이지 옮긴 것이 아니다.
+//    저장을 위해 추가된 컨트롤은 **0개**다.
+
+// ── 페인팅의 초안 저장 ────────────────────────────────
+//
+// 측정 결과(2026-07-28): **페인팅은 자동 저장을 타고 있지 않았다.** 셀은 `gridData`에 직접
+// 쓰이고 `persistLegend`를 부르지 않으며, 서버로는 ⚡ Push로만 나간다. 그래서 자동 저장
+// 제거가 페인팅에서 빼앗아 간 것은 없다 — 대신 **새로고침 생존("맵도")을 위해 없던 writer를
+// 여기서 만든다.**
+//
+// 디바운스가 필요한 이유는 포커스가 아니라 양이다: 드래그 한 번에 수천 셀이 바뀌고, 셀마다
+// localStorage에 쓰면 페인팅이 얼어붙는다.
+let cellDraftTimer = null;
+function scheduleCellDraft() {
+  legendDirty = true;
+  clearTimeout(cellDraftTimer);
+  cellDraftTimer = setTimeout(() => { saveDoeDraft(); notifyLegendChanged(); }, 400);
 }
 
 
@@ -2754,6 +3065,7 @@ function renderLegendTable() {
       }
       renderLegendTable();
       renderGridCanvas();
+      scheduleCellDraft();
     });
     tdDel.appendChild(btnDel);
 
@@ -2846,8 +3158,19 @@ function updateLegendRowForPanel(value, patch) {
   // never saved.
   item.vocab = false;
   // DOE 필드는 패널이 만든 새 배열로 통째 교체한다 (제자리 수정 금지 — getLegend가 복사본이다)
-  if (patch.bands !== undefined) item.bands = normalizeBands(patch.bands);
   if (patch.knobs !== undefined) item.knobs = normalizeKnobs(patch.knobs);
+  if (patch.stack !== undefined) item.stack = (patch.stack === null || patch.stack === undefined) ? '' : patch.stack;
+  // The three zones are walked from ONE list, so a fourth zone (or a rename) cannot be
+  // handled here and forgotten in the payload, the signature, or the renderer.
+  ['mat_1h', 'mat_mid', 'mat_top'].forEach(z => {
+    if (patch[z] !== undefined) item[z] = parseMaterialList(patch[z]);
+  });
+  // Any structural edit means the row is no longer the retired band arrangement we could
+  // not express - the user has replaced it. Keeping the marker would block the save of a
+  // row that is now perfectly expressible.
+  if (patch.stack !== undefined || patch.mat_1h !== undefined || patch.mat_mid !== undefined || patch.mat_top !== undefined) {
+    item.legacyBands = []; item.legacyReason = '';
+  }
   persistLegend();
   renderLegendTable();
   renderGridCanvas();
@@ -2869,6 +3192,7 @@ function deleteLegendRowForPanel(value) {
   persistLegend();
   renderLegendTable();
   renderGridCanvas();
+  scheduleCellDraft();
   return { ok: true };
 }
 
@@ -2916,6 +3240,9 @@ function remapGridValues(oldVal, newVal) {
       gridData[k] = newVal;
     }
   });
+  // 값 이름 변경도 셀을 바꾼다 — `persistLegend`는 legend만 저장하므로 초안의 cells는
+  // 여기서 따로 갱신해야 새로고침 후에도 이름이 바뀐 채로 남는다.
+  scheduleCellDraft();
 }
 
 // ----------------------------------------------------
@@ -3284,9 +3611,41 @@ async function loadExistingMap(opts = {}) {
         // 값·색뿐 아니라 **이 맵에 없는 값의 knobs/bands를 비우는 것**까지
         // applyRegistryRowsToLegend 한 곳에서 한다 (앞 맵의 스택 잔재 차단).
         applyRegistryRowsToLegend(read.rows);
-        legendReplaceScope = { table: selectedTable, mapKey: loadedMapKey, fingerprint: registryFingerprint(read.rows) };
+        const serverFp = registryFingerprint(read.rows);
+        const serverCellsFp = cellsDigest(gridData);
+        legendReplaceScope = { table: selectedTable, mapKey: loadedMapKey, fingerprint: serverFp };
         legendConflict = null;          // 화면이 다시 서버본에서 유래한다
         legendSaveState = { status: 'idle', at: '', error: '' };
+        // 이 지점이 초안의 **기반**이다: 지금 서버가 갖고 있는 것.
+        draftBase = { table: selectedTable, mapKey: loadedMapKey, registryFp: serverFp, cellsFp: serverCellsFp };
+
+        // ── 초안 우선순위 ────────────────────────────────────────────────────
+        // 저장되지 못한 편집(차단 검증에 걸린 계획이 대표적이다)은 브라우저에만 있다.
+        // 기반 지문이 그대로면 그 사이 아무도 쓰지 않았으므로 초안이 더 새 것이다.
+        // 어긋나면 **누가 썼다** — 적용하면 남의 저장을 지운다. 적용하지 않고, 버리지도 않고,
+        // 사실을 드러낸다.
+        const draft = readDoeDraft(selectedTable, loadedMapKey);
+        if (draft) {
+          const doeFresh = draft.registryFp !== null && draft.registryFp === serverFp;
+          const cellsFresh = draft.cellsFp !== null && draft.cellsFp === serverCellsFp;
+          const restoredDoe = doeFresh ? applyDoeDraftRecord(draft) : false;
+          const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
+          if (restoredDoe || restoredCells > 0) {
+            showToast(`저장되지 않은 편집을 복구했습니다 — ${restoredDoe ? 'DOE' : ''}`
+              + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
+              + ' (이 브라우저의 초안). 아직 서버에 반영되지 않았습니다.', 'warning',
+              { dedupeKey: 'draft_restored' });
+          }
+          // 기반이 어긋난 초안이 실제로 내용을 갖고 있을 때만 말한다 — 빈 초안까지 알리면
+          // 신호가 죽는다.
+          const hasDoe = draft.doe && Object.keys(draft.doe).length > 0;
+          const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
+          if ((!doeFresh && hasDoe) || (!cellsFresh && hasCells)) {
+            showToast('이 맵이 이 브라우저의 초안 이후에 변경됐습니다 — 초안을 적용하지 않고 '
+              + '서버본을 표시합니다. 초안은 지우지 않았습니다.', 'warning',
+              { dedupeKey: 'draft_stale' });
+          }
+        }
         saveLegendToStorage();
         renderLegendTable();
       } else {
@@ -3295,7 +3654,13 @@ async function loadExistingMap(opts = {}) {
         // either: the row now carries the plan. Keep the local DOE draft on screen so
         // the user's typing is not lost, and say plainly that saving is on hold.
         legendReplaceScope = null;
-        const hadDraft = applyDoeDraft(selectedTable, loadedMapKey);
+        // 비교할 서버본이 없다. 기반 지문을 검사할 수 없으므로 초안을 보여주되, 이 화면은
+        // 서버본에서 유래하지 않았으므로 `draftBase`는 세우지 않는다 — 이 상태에서 뜬 초안은
+        // 다음 로드에서 "기반 미상"이 되어 서버 조회 성공 시 적용되지 않는다. 그게 맞다.
+        draftBase = null;
+        const draft = readDoeDraft(selectedTable, loadedMapKey);
+        const hadDraft = draft ? applyDoeDraftRecord(draft) : false;
+        if (draft && draft.cells) applyDraftCells(draft.cells);
         legendSaveState = { status: 'unknown-server-state', at: '', error: read.error || '' };
         renderLegendTable();
         console.warn('[Map Editor] split registry apply skipped:', read.error);
@@ -3354,6 +3719,7 @@ function fillGrid() {
   }
 
   renderGridCanvas();
+  scheduleCellDraft();
 }
 
 // ----------------------------------------------------
@@ -3565,9 +3931,21 @@ async function pushMapData() {
       framePushed = true;
       notifyMapContext();
 
-      // [Split Registry] 맵과 계획의 원자적 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장
+      // [Split Registry] 맵과 계획의 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장.
+      //
+      // ⚠️ 「원자적」이라고 적혀 있었으나 **원자적이지 않다** (2026-07-28 실측). 셀이 먼저
+      //    `replace_map`으로 커밋되고 registry 저장은 그 뒤에 별도 요청으로 나가므로, 아래
+      //    실패 분기가 존재한다는 사실 자체가 반례다 — 셀은 들어갔는데 계획은 안 들어간 상태가
+      //    실제로 만들어진다(그때 그렇게 토스트한다). 말과 동작이 다른 주석은 하루를 태운
+      //    결함 계열이라 문구를 고쳤다. 진짜 보장은 **순서**다: 맵이 서버에 들어간 뒤에만
+      //    계획을 쓴다.
+      //
+      // ⚠️ 계획이 **미완성이어도 그대로 저장한다.** V1–V5는 보고이지 관문이 아니다.
+      //    저장을 막는 것은 `saveLegendToServer` 안의 두 가지뿐이고, 그 둘은 계획이 틀려서가
+      //    아니라 **저장이 지금 있는 데이터를 지우기 때문에** 막는다.
       saveLegendToStorage();
       const legendSaved = await saveLegendToServer(mapIdStr);
+      if (legendSaved.ok) legendDirty = false;
       applyLegendSaveResult(legendSaved);
       if (legendSaved.ok) {
         // 저장된 행 수는 저장한 쪽이 센다 — legend.length로 다시 세면 아직 이 맵의 것이 아닌
@@ -3752,6 +4130,7 @@ function autoPaintE1E2() {
   }
 
   scheduleRenderGridCanvas();
+  scheduleCellDraft();
   showToast(`E1/E2 자동 페인팅 완료 — E1 ${e1Count}셀 · E2 ${e2Count}셀`, 'success');
 }
 
@@ -3778,6 +4157,7 @@ function fillSelectedCells() {
   selectedEdgeTargetMap = null;
   if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
   scheduleRenderGridCanvas();
+  scheduleCellDraft();
 }
 
 function clearSelectedCells() {
@@ -3799,6 +4179,7 @@ function clearSelectedCells() {
   selectedEdgeTargetMap = null;
   if (el.selectionActionsContainer) el.selectionActionsContainer.style.display = 'none';
   scheduleRenderGridCanvas();
+  scheduleCellDraft();
 }
 
 async function copyGridToExcel() {
@@ -4241,10 +4622,10 @@ async function switchTableQuiet(tableName) {
   tableSchema = await res.json();
   fillColumnDropdowns();
   renderMetadataInputs();
-  // Vocabulary, not the map's legend - and this is not a shortcut. openMapFrame fills the
+  // An empty DOE, not the map's legend - and this is not a shortcut. openMapFrame fills the
   // meta inputs AFTER this returns, so no map key exists yet at this line; the map-scoped
   // legend arrives with the loadExistingMap that follows.
-  await loadLegendVocabulary(tableName);
+  seedEmptyDoe();
   renderLegendTable();
   gridData = {};
   loadedFCells.clear();
@@ -4889,6 +5270,7 @@ function importOverlayToGrid(id) {
   recomputeLockedCells();
   renderLegendTable();
   renderGridCanvas();
+  scheduleCellDraft();
   framePushed = false; // 미저장 편집이 생겼다 — 뒤로가기 가드가 작동해야 한다
 
   const parts = [`${applied}셀 반영`];

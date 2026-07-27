@@ -53,17 +53,38 @@ function extractFunction(source, name, file) {
 const planSrc = readFileSync(SRC_PLAN, 'utf8');
 const editorSrc = readFileSync(SRC_EDITOR, 'utf8');
 
+// ── THE CLIENT RETIRED THE BAND EDITOR (2026-07-28). This file did not become wrong. ──
+//
+// The panel now edits ZONES (STACK + 1H/MID/TOP), which have no walk at all - a zone's
+// layers come from STACK and the presence of its neighbours, not from its position in an
+// array. What did NOT change is that `map_split_registry.bands` still holds real plans and
+// the SERVER still reads them exactly this way. So `sequence_cases` are not stale: they
+// describe a path that still runs on both sides, and pytest
+// (`test_band_sequence_arithmetic_matches_the_shared_contract`) still scores all four
+// columns against `server/transfer_plan.py`.
+//
+// On the CLIENT the surviving reader is `bandsToZones`, which walks with `prevTo` to
+// migrate a stored band plan into zones. So `prevTo` and `bandToState` stay pinned here.
+//
+// RETIRED, and asserted GONE below rather than merely unreferenced:
+//   `bandTo` · `bandLayers` · `bandTotal` · `bandShare`
+// Their layers/total/share coverage did not disappear - it moved to `zoneDemand` in
+// contracts/doe_band_rules (`demand_cases`), including a case that pins ceil against both
+// round and floor. Asserting their ABSENCE is the point: if one came back it would be a
+// second implementation of an arithmetic this project has already seen diverge (saving
+// used ceil, display used round, the DB held 34 and the screen said 33).
+const RETIRED_CLIENT_FNS = ['bandTo', 'bandLayers', 'bandTotal', 'bandShare'];
+for (const name of RETIRED_CLIENT_FNS) {
+  if (new RegExp(`(^|\\n)\\s*function\\s+${name}\\s*\\(`).test(planSrc)) {
+    die(`'${name}' is back in transfer_plan.js. The band editor was retired on 2026-07-28 and its arithmetic lives in doe_bands.js \`zoneDemand\` now; two implementations of the same layer arithmetic is the divergence this contract exists to prevent. If it is genuinely needed again, wire it here deliberately.`);
+  }
+}
+
 const pieces = [
-  // `bandToState` is the single `to` classifier (blank | ok | invalid). `bandTo` is a thin
-  // wrapper over it and `normalizeBands` calls it across the module boundary, so it must be
-  // in the sandbox. Added deliberately 2026-07-27 when the client was narrowed to this
-  // contract — if it is renamed, extraction dies loudly, which is the point.
+  // `bandToState` is the single `to` classifier (blank | ok | invalid); `normalizeBands`
+  // calls it across the module boundary and `bandsToZones` reads stored plans through it.
   extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),
-  extractFunction(planSrc, 'bandTo', 'transfer_plan.js'),
   extractFunction(planSrc, 'prevTo', 'transfer_plan.js'),
-  extractFunction(planSrc, 'bandLayers', 'transfer_plan.js'),
-  extractFunction(planSrc, 'bandTotal', 'transfer_plan.js'),
-  extractFunction(planSrc, 'bandShare', 'transfer_plan.js'),
   extractFunction(planSrc, 'splitMaterialId', 'transfer_plan.js'),
   extractFunction(editorSrc, 'normalizeBands', 'map_editor.js'),
 ];
@@ -77,7 +98,7 @@ try {
 } catch (e) {
   die(`extracted sources did not evaluate: ${e && e.message}`);
 }
-for (const fn of ['bandToState', 'bandTo', 'prevTo', 'bandLayers', 'bandTotal', 'bandShare', 'splitMaterialId', 'normalizeBands']) {
+for (const fn of ['bandToState', 'prevTo', 'splitMaterialId', 'normalizeBands']) {
   if (typeof sandbox[fn] !== 'function') die(`'${fn}' did not evaluate to a function`);
 }
 
@@ -132,20 +153,30 @@ const ambiguous = new Set();
 for (const c of spec.to_cases) {
   if (!('band' in c) || ambiguous.has(c.name)) continue;
   const expected = c.state === 'ok' ? c.value : null;
+  // `bandTo` was the thin wrapper; with it retired the value comes from the classifier
+  // itself, which is what the wrapper always returned. Same assertion, one hop shorter.
   let actual;
-  try { actual = sandbox.bandTo(c.band); } catch (e) { actual = `THREW ${e.message}`; }
+  try { actual = sandbox.bandToState(c.band).value; } catch (e) { actual = `THREW ${e.message}`; }
   rec('to_cases', c.name, 'to', expected, actual === undefined ? null : actual);
 }
 
-// --- sequence_cases: prev_to / layers / total / share --------------------------------
+// --- sequence_cases: prev_to (+ the state that decides whether the walk stops) --------
+//
+// `layers` / `total` / `share` are NOT scored here any more, and that is a deliberate
+// narrowing rather than a gap: the client no longer computes them from bands at all. The
+// server still does, and pytest still scores all four columns of every one of these
+// vectors against `server/transfer_plan.py`. On this side the surviving question is the
+// one `bandsToZones` depends on - where does band `i` START - and the walk that answers it.
+//
+// ⚠️ The two sides now consume DIFFERENT SUBSETS of the same vectors. That is the honest
+//    state of affairs (one side retired an editor, the other still reads the column) and
+//    it is written down here so a later reader does not mistake the narrower client scoring
+//    for a contract that quietly lost an axis.
 for (const c of spec.sequence_cases) {
-  sandbox.S.counts = { V: c.painted };
   for (let i = 0; i < c.expect.length; i++) {
     const e = c.expect[i];
     rec('sequence', c.name, `[${i}].prev_to`, e.prev_to, sandbox.prevTo(c.bands, i));
-    rec('sequence', c.name, `[${i}].layers`, e.layers, sandbox.bandLayers(c.bands, i));
-    rec('sequence', c.name, `[${i}].total`, e.total, sandbox.bandTotal('V', c.bands, i));
-    rec('sequence', c.name, `[${i}].share`, e.share, sandbox.bandShare('V', c.bands, i));
+    rec('sequence', c.name, `[${i}].state`, e.state, sandbox.bandToState(c.bands[i]).state);
   }
 }
 

@@ -73,11 +73,12 @@
     }
   },
   "plan_store": {
-    "__comment": "[v2] 계획은 별도 개체가 아니라 '지금 열어 편집 중인 그 맵' 자신이다 — 정체성 = (ref_table, map_key). v1 역할 plan(계획 헤더)·map(계획 맵 사본)·doe_layer는 폐기됐다. [M2.6] doe·doe_source 역할도 폐기됐다: legend 행 하나가 곧 DOE 조건 하나이고, 구간(band)과 자재는 그 행의 bands JSON 컬럼 안에 있다. 구 테이블(map_doe / map_doe_source)과 구 키(plan_id, band_seq, qty_total, qty)는 코드가 더 이상 읽지 않는다 — 남겨둬도 무시되지만 지우는 편이 낫다. 필수 역할키: registry=(ref_table, map_key, value, bands). 하나라도 빠지면 GET /api/transfer-plan/validate가 404가 된다(조용히 '구간 없음'으로 통과시키지 않는다). [material_identity] 자재는 사용자가 입력한 원문 문자열이 곧 정체이며 서버는 그것을 파싱하는 관례를 코드에 두지 않는다 — 소스 가용을 조회하려면 (lot, slot)이 필요하므로 그 해석 규칙을 여기에 선언한다. compose에 lot·slot이 모두 있어야 하고, 분해는 뒤에서부터 잘라 앞 필드가 나머지를 흡수한다(client2/src/transfer_plan.js의 splitMaterialId와 같은 읽기). 미선언이면 모든 자재가 source_unresolved가 되고 계획은 unverified로 남는다. [선택 역할] source_region — 자재별 '쓰기로 한 사용 영역'을 셀 집합으로 저장하는 역할이며 현재 휴면이라 일부러 선언하지 않았다(미선언은 결함이 아니다 — 선언만 하고 테이블이 없으면 도리어 missing 소음이 된다). 활성화하려면 (ref_table, map_key, source_lot, source_slot, x, y) 바인딩을 여기 추가하고 그 테이블을 table_config.json에 선언하라.",
+    "__comment": "[v2] 계획은 별도 개체가 아니라 '지금 열어 편집 중인 그 맵' 자신이다 — 정체성 = (ref_table, map_key). v1 역할 plan(계획 헤더)·map(계획 맵 사본)·doe_layer는 폐기됐다. [M2.6] doe·doe_source 역할도 폐기됐다: legend 행 하나가 곧 DOE 조건 하나다. 구 테이블(map_doe / map_doe_source)과 구 키(plan_id, band_seq, qty_total, qty)는 코드가 더 이상 읽지 않는다 — 남겨둬도 무시되지만 지우는 편이 낫다. [ZONE 2026-07-28] 층 구조는 그 행의 zone 컬럼 넷이다: stack(총 층수) · mat_1h(1층) · mat_top(stack층) · mat_mid(그 사이 전부). 1H가 비면 MID가 1층부터, TOP이 비면 MID가 stack층까지다 — 세 구역이 1..stack을 구성적으로 덮으므로 겹침·구멍은 표현 불가능한 상태다. 필수 역할키: registry=(ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top). 하나라도 빠지면 GET /api/transfer-plan/validate가 404가 된다(조용히 '구조 없음'으로 통과시키지 않는다). bands는 필수가 아니다 — 폐기된 읽기 전용 역할이며, 선언돼 있으면 옛 계획을 zone으로 옮겨 읽고(표현 불가한 배치는 접지 않고 거부한다) 없으면 없는 대로 간다. [material_identity] 자재 토큰 문법 lot[_slot][:BIN]은 contracts/doe_band_rules/vectors.json의 공유 계약이고 서버 구현은 parse_material_token 하나다 — 클라는 config를 읽을 수 없으므로 파싱 규칙을 여기에 두면 양쪽이 갈리고, 갈리는 순간 한 화면에 두 개의 가용치가 생긴다. 이 선언은 이제 게이트로만 쓴다: 있으면 이 배포의 자재 문자열이 lot/slot 모양이라는 뜻이고, 미선언이면 모든 자재가 source_unresolved가 되어 계획은 unverified로 남는다. [선택 역할] source_region — 자재별 '쓰기로 한 사용 영역'을 셀 집합으로 저장하는 역할이며 현재 휴면이라 일부러 선언하지 않았다(미선언은 결함이 아니다 — 선언만 하고 테이블이 없으면 도리어 missing 소음이 된다). 활성화하려면 (ref_table, map_key, source_lot, source_slot, x, y) 바인딩을 여기 추가하고 그 테이블을 table_config.json에 선언하라.",
     "registry": {
       "table": "map_split_registry",
       "columns": {
         "ref_table": "ref_table", "map_key": "map_key", "value": "value",
+        "stack": "stack", "mat_1h": "mat_1h", "mat_mid": "mat_mid", "mat_top": "mat_top",
         "bands": "bands"
       }
     },

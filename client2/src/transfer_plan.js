@@ -34,6 +34,17 @@
 // ============================================================
 import { API_BASE } from './config.js';
 import { showToast } from './utils.js';
+// The ONE TSV reader/writer, shared with the grid's Ctrl+C/Ctrl+V (client2/src/tsv.js).
+import { parseTsv, serializeTsv } from './tsv.js';
+// The pure zone model. Every derived number on this screen comes from here, so the panel
+// cannot grow a second opinion about a figure it also displays.
+import {
+  ZONES, ZONE_LABEL, DOE_COLUMNS,
+  stackState, midZone, zoneLayers, formatLayerRuns,
+  parseMaterialList, serializeMaterialList, parseMaterialToken,
+  validateZonePlan, materialRollupRows, remainingState,
+  mapPastedGrid, planToGrid,
+} from './doe_bands.js';
 import './transfer_plan.css';
 
 // stage 미선언 서버(구버전) 폴백 — target_map.table 역인덱스의 최소 형태
@@ -55,12 +66,13 @@ const S = {
   stages: BUILTIN_STAGES,
   stagesStatus: null,
   ctx: { table: '', mapKey: '', loaded: null, depth: 0, parent: null },
-  // legend 미러 = DOE 그 자체 { value, desc, color, knobs:[{k,v}], bands:[{seq,to,materials:[str]}] }
+  // legend 미러 = DOE 그 자체
+  //   { value, desc, color, knobs:[{k,v}], stack, mat_1h:[str], mat_mid:[str], mat_top:[str] }
   legendRows: [],
-  openValue: null,           // 펼친 DOE (한 번에 하나)
+  blocks: [],                // 마지막 검증의 차단 목록 (①이 행 옆에, ②가 V3를 그린다)
   counts: {},                // value -> 칠한 셀 수
   activeBrush: '',
-  summaries: new Map(),      // 자재 ID -> { status, data, error }
+  summaries: new Map(),      // 풀 키 -> { status, data, error }
   matMapState: new Map(),    // "table|자재ID" -> true | false | null(미상)
   keyColumns: new Map(),     // table -> map_key_columns
   matSeq: 0,
@@ -208,19 +220,30 @@ function bandToState(b) {
   return { value: null, state: 'invalid' };                                  // 배열 · 객체 등
 }
 
-// 값만 필요한 호출부용 얇은 래퍼. **blank와 invalid는 둘 다 null**이다 — 산술에서 구분되지
-// 않는 것이 계약이고, 구분이 필요한 곳(표시)은 `bandToState`를 직접 쓴다.
-function bandTo(b) { return bandToState(b).value; }
-
 // map_editor의 `normalizeBands`가 저장 정규형을 만들 때 같은 판정기를 쓴다. 정규화가 자기
 // 나름의 `Number()`를 돌리면 **읽기-수정-쓰기가 조용히 값을 바꾼다** (실제로 '0x10'이 16으로
 // 저장되고 있었다). 의존 방향은 map_editor → transfer_plan 하나뿐이라 순환이 생기지 않는다.
 // ⚠️ `export function bandToState`로 합치지 말 것 — 계약 하네스가 `function NAME(`로 본문을
 //    떼어 가므로, 선언 앞에 `export`가 붙으면 추출이 깨진다(하네스는 exit 2로 죽는다).
-export { bandToState };
+// ⚠️ `prevTo` is exported for the SAME reason: `doe_bands.js`'s `bandsToZones` needs the
+//    retired model's backward walk to read plans that were written with it, and a
+//    re-typed copy of "the previous band's `to`" would be a second implementation of a
+//    rule `contracts/band_arithmetic/vectors.json` already fixes on both sides.
+export { bandToState, prevTo };
 
 // 앞 구간의 끝 층(없으면 0). **배열 위치**가 순서라는 규칙이 여기 한 줄에 들어 있다.
 // `ok`인 구간만 걷기를 멈춘다 — blank도 invalid도 건너뛴다.
+//
+// ⚠️ THIS IS NOW A LEGACY READER, and it is the only band arithmetic left in this file.
+//    The panel edits zones (STACK + 1H/MID/TOP), which have no walk at all - a zone's
+//    layers come from STACK and the presence of its neighbours, not from its position.
+//    What survives is the one job that still exists: reading `map_split_registry.bands`
+//    rows that the retired model wrote, so opening such a map does not show an empty plan
+//    and let the next `replace_map` delete it. The server still walks the same way, which
+//    is why the shared vectors keep pinning it.
+//    RETIRED WITH THE MODEL: `bandFrom` · `bandLayers` · `bandTotal` · `bandShare` ·
+//    `validateBands` · `sortBands` · `nextBandSeq` · `bandTo`. Their coverage moved to
+//    `zoneDemand`/`validateZonePlan` in contracts/doe_band_rules, not away.
 function prevTo(bands, i) {
   for (let j = i - 1; j >= 0; j--) {
     const st = bandToState(bands[j]);
@@ -229,57 +252,7 @@ function prevTo(bands, i) {
   return 0;
 }
 
-// 시작 층 = 앞 구간의 끝 + 1. 유도값이라 편집 대상이 아니다.
-function bandFrom(bands, i) { return prevTo(bands, i) + 1; }
-
-// 층 수 = to_i − to_(i−1). 뺄셈 한 번 — 라벨을 파싱하지 않는다.
-function bandLayers(bands, i) {
-  const st = bandToState(bands[i]);
-  return st.state === 'ok' ? Math.max(0, st.value - prevTo(bands, i)) : 0;
-}
-
 function paintedOf(value) { return Number(S.counts[value] || 0); }
-
-// 구간 총 소요 = 칠한 셀 수 × 층 수. **저장하지 않는다** — 맵을 더 칠하면 따라 움직인다.
-function bandTotal(value, bands, i) { return paintedOf(value) * bandLayers(bands, i); }
-
-// 자재 1매당 배분 = ceil(총 소요 / 자재 수). 내림/반올림은 부족분을 숨긴다.
-function bandShare(value, bands, i) {
-  const b = bands[i];
-  const n = (b && Array.isArray(b.materials)) ? b.materials.length : 0;
-  return n > 0 ? Math.ceil(bandTotal(value, bands, i) / n) : 0;
-}
-
-// 각 `to`는 앞 구간의 `to`보다 **커야** 한다 (같거나 작으면 빈 구간·역전).
-// 반환: 오류 문구 또는 ''(정상).
-function validateBands(bands) {
-  let last = 0;
-  for (let i = 0; i < bands.length; i++) {
-    const t = bandTo(bands[i]);
-    if (t === null) continue;
-    if (t < 1) return `끝 층은 1 이상이어야 합니다.`;
-    if (t <= last) return `끝 층 ${t}은(는) 앞 구간의 끝 층 ${last}보다 커야 합니다.`;
-    last = t;
-  }
-  return '';
-}
-
-// 배열 위치가 스택 순서이므로 `to`가 바뀌면 위치도 따라간다.
-// ⚠️ **`seq`는 절대 손대지 않는다.** 자재가 seq에 매달려 있어서, 재정렬이 seq를
-//    재번호하면 자재가 조용히 남의 구간으로 따라간다(순서 ≠ 정체).
-function sortBands(bands) {
-  return bands.slice().sort((a, b) => {
-    const ta = bandTo(a), tb = bandTo(b);
-    if (ta === null && tb === null) return 0;
-    if (ta === null) return 1;     // 미입력은 항상 뒤
-    if (tb === null) return -1;
-    return ta - tb;
-  });
-}
-
-function nextBandSeq(bands) {
-  return bands.reduce((m, b) => Math.max(m, Number(b.seq) || 0), 0) + 1;
-}
 
 // 자재 ID는 **원문 그대로가 정체**다(저장 키에 그대로 들어간다).
 // 아래 분해는 오직 ① 가용 조회 파라미터 ② 자재 맵 열기의 맵 키 조립에만 쓴다.
@@ -309,56 +282,61 @@ function splitMaterialId(id) {
 function rowOf(value) {
   return S.legendRows.find(r => String(r.value) === String(value)) || null;
 }
-function bandsOf(value) {
-  const r = rowOf(value);
-  return (r && Array.isArray(r.bands)) ? r.bands : [];
-}
-function knobsOf(value) {
-  const r = rowOf(value);
-  return (r && Array.isArray(r.knobs)) ? r.knobs : [];
-}
 
 // DOE 변조의 **유일한 관문**. map_editor가 영속화(로컬 캐시 + 서버 registry 디바운스)를
 // 맡으므로 이 파일에는 저장 코드가 없다.
-function commitBands(value, bands) {
-  const r = controller.updateLegendRow(value, { bands });
+//
+// 🔴 EVERY edit path in this file goes through here, and there is no second one. The
+//    two-table redesign adds a lot of edit paths (a STACK box and three material fields
+//    per row, plus a paste that writes several rows at once); if any of them mutated the
+//    mirror directly, the row would look edited and be dropped from the save, because
+//    `updateLegendRow` is where `vocab` is cleared and the debounced save is scheduled.
+//    `map_editor.reconcileVocabClaims` is the second net under this one - it re-derives
+//    the claim from the row's own signature - but a bypass would still skip persistence.
+function commitRow(value, patch) {
+  const r = controller.updateLegendRow(value, patch);
   if (!r || !r.ok) { showToast((r && r.error) || 'DOE 저장 실패', 'warning'); return false; }
   return true;
 }
-function commitKnobs(value, knobs) {
-  const r = controller.updateLegendRow(value, { knobs });
-  if (!r || !r.ok) { showToast((r && r.error) || 'knob 저장 실패', 'warning'); return false; }
-  return true;
+
+// ── 자재 가용 — 풀 `(lot, slot, BIN)` 단위 ─────────────────────────────
+//
+// ⚠️ THE OLD KEY WAS THE RAW STRING AND THAT IS NOW A BUG SOURCE. `splitMaterialId`
+//    splits on the last `_`, so `ADFE1H_01:1` used to yield slot `01:1` and the server was
+//    asked about a slot that does not exist - a confident 0 for a material that is fine.
+//    Identity comes from `parseMaterialToken` now, and the cache key is `materialPoolKey`,
+//    which is the same key table ② groups rows by. One identity, one cache, one number.
+//    (`splitMaterialId` survives for the map-key assembly path, which is a different
+//    convention - PRIMITIVES §2 lists all three and they are not interchangeable.)
+
+// The id used for map-existence probing and for opening the material's map. That path
+// assembles a MAP KEY, which has no BIN in it: the BIN is a partition INSIDE one map.
+function poolCacheId(pool) {
+  return pool.scope === 'lot' ? String(pool.lot) : `${pool.lot}_${pool.slot}`;
 }
 
-// ── 자재 가용 (source-summary) ──────────────────────────
-function summaryKey(id) {
+function summaryKeyFor(pool) {
   const st = stageOfTable(S.ctx.table);
-  return `${st ? st.id : S.ctx.table}::${id}`;
-}
-function isPlainNotFound(status, body) {
-  return (status === 405) || (status === 404 && (!body || body.detail === 'Not Found'));
+  return `${st ? st.id : S.ctx.table}::${pool.key}`;
 }
 
-async function getSourceSummary(id, force = false) {
-  const key = summaryKey(id);
+async function getPoolSummary(pool, force = false) {
+  const key = summaryKeyFor(pool);
   const cached = S.summaries.get(key);
   if (!force && cached && (cached.status === 'ok' || cached.status === 'loading')) {
     if (cached.promise) await cached.promise;
     return S.summaries.get(key);
   }
   const st = stageOfTable(S.ctx.table);
-  const { lot, slot } = splitMaterialId(id);
-  if (lot === null || slot === null) {
-    // 해석 실패는 **조회하지 않는다.** `?lot=ABC&slot=`를 물으면 서버가 0을 돌려주고
-    // 화면은 그것을 확정 잔여로 보여준다 — 부족 경고가 조용히 죽는 경로다.
-    const entry = { status: 'unresolved' };
-    S.summaries.set(key, entry);
-    return entry;
-  }
   const entry = { status: 'loading' };
   entry.promise = (async () => {
-    const params = new URLSearchParams({ stage: st ? st.id : '', lot, slot });
+    const params = new URLSearchParams({
+      stage: st ? st.id : '',
+      lot: String(pool.lot),
+      scope: pool.scope === 'lot' ? 'lot' : 'slot',
+      bins: String(pool.bin),
+    });
+    if (pool.scope !== 'lot') params.set('slot', String(pool.slot));
     const res = await fetch(`${API_BASE}/api/transfer-plan/source-summary?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
@@ -376,42 +354,59 @@ async function getSourceSummary(id, force = false) {
   return entry;
 }
 
-// 서버 가용 응답의 **단일 해석 지점**.
+// 서버 가용 응답의 **단일 해석 지점**. 반환: { status, value, reliable, reason }
 //
-// 가용량은 서버가 계산한다(`가용 = 총 − (fail ∪ transferred)`, SPEC §6.1). 클라는 읽기만 한다 —
-// 여기에 두 번째 계산을 만들면 같은 숫자의 구현이 둘이 되고 반드시 갈라진다.
-// 반환: { status, value, reliable, reason }
-function availabilityOf(id) {
-  const entry = S.summaries.get(summaryKey(id));
+// 가용량은 서버가 계산한다(SPEC §6.1). 클라는 읽기만 한다 — 두 번째 계산을 만들면 같은
+// 숫자의 구현이 둘이 되고 반드시 갈라진다.
+//
+// 🔴 BIN 축은 **선언**이다. `data.bins.entries`에서 이 BIN의 항목을 찾는다:
+//      status ok         -> 그 항목의 remaining
+//      status bin_absent -> "이 맵에 이 BIN이 없다" (0이 아니다 — remainingState가 구분한다)
+//      status unknown    -> 절단 등으로 수를 신뢰할 수 없다
+//      항목이 없음/축 미구성 -> 미상. **chips.remaining으로 대체하지 않는다** — 그것은 이
+//      자재 전체(모든 BIN)의 수이고, 한 BIN의 가용으로 쓰면 조용히 과대 보고가 된다.
+function availabilityOfPool(pool) {
+  const entry = S.summaries.get(summaryKeyFor(pool));
   if (!entry) return { status: null, value: null, reliable: false, reason: '아직 조회하지 않음' };
   if (entry.status !== 'ok') {
     return {
       status: entry.status, value: null, reliable: false,
       reason: entry.status === 'loading' ? '조회 중'
-        : (entry.status === 'unresolved' ? '자재 ID를 lot·slot으로 나눌 수 없어 조회하지 않았습니다 (형식: lot_slot)'
-          : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
-            : (entry.error || '가용 조회 실패'))),
+        : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
+          : (entry.error || '가용 조회 실패')),
     };
   }
   const data = entry.data || {};
-  const chips = data.chips || {};
-  const raw = chips.remaining;
-  const value = (raw === null || raw === undefined || Number.isNaN(Number(raw))) ? null : Number(raw);
-  const flag = (data.remaining_reliable !== undefined) ? data.remaining_reliable : chips.remaining_reliable;
   const degraded = (Array.isArray(data.warnings) ? data.warnings : [])
     .map(w => String((w && (w.type || w.code)) || w))
     .filter(t => t === 'source_degraded' || t === 'availability_unreliable');
+
+  const block = data.bins;
+  if (!block || typeof block !== 'object' || block.axis !== 'connected' || !Array.isArray(block.entries)) {
+    const why = (block && block.detail) ? String(block.detail) : 'BIN별 가용을 서버가 주지 않았습니다';
+    return { status: 'bins_unavailable', value: null, reliable: false, reason: why };
+  }
+  const hit = block.entries.find(e => e && Number(e.bin) === Number(pool.bin));
+  if (!hit) {
+    return { status: 'bin_absent', value: null, reliable: false, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+  }
+  if (hit.status === 'bin_absent') {
+    return { status: 'bin_absent', value: null, reliable: false, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+  }
   const reasons = [];
-  if (value === null) reasons.push('서버가 잔여 값을 주지 않았습니다');
-  if (flag === false) reasons.push('서버 판정: 잔여 신뢰 불가');
+  if (hit.reliable !== true) reasons.push(hit.reason || '서버 판정: 이 BIN의 잔여 신뢰 불가');
+  if (hit.remaining === null || hit.remaining === undefined) reasons.push('서버가 잔여 값을 주지 않았습니다');
   if (degraded.length > 0) reasons.push(`소스 강등(${degraded.join(', ')})`);
-  return { status: 'ok', value, reliable: reasons.length === 0, reason: reasons.join(' · ') };
+  return {
+    status: 'ok',
+    value: (hit.remaining === null || hit.remaining === undefined) ? null : Number(hit.remaining),
+    reliable: reasons.length === 0,
+    reason: reasons.join(' · '),
+  };
 }
 
-// 확정된 숫자만 필요한 호출부(왕복 전후 변화 감지)용 얇은 래퍼. 신뢰 불가는 null이다.
-function availableOf(id) {
-  const a = availabilityOf(id);
-  return a.reliable ? a.value : null;
+function isPlainNotFound(status, body) {
+  return (status === 405) || (status === 404 && (!body || body.detail === 'Not Found'));
 }
 
 // ── 자재 맵 존재 여부 ───────────────────────────────────
@@ -460,18 +455,36 @@ function renderPlanHead() {
     : (st ? `<span class="tp-stage-badge">${esc(st.name)}</span>`
           : '<span class="tp-stage-badge none">일반 맵 (legend)</span>');
 
+  // ── 저장 상태. 자동 저장이 없으므로 화면이 이것을 말해야 한다. ───────────────
+  //
+  // 🔴 검증(V1–V5)은 여기 없다 — 미완성 계획도 그대로 저장되므로(사용자 지시 2026-07-28)
+  //    "차단"과 "저장 가능"을 구분할 필요가 사라졌다. 규칙은 고칠 자리(행 옆)에만 뜬다.
+  //
+  //   ① 저장이 데이터를 지운다  → 막는다. **무엇이 사라지는지**를 말한다(무효가 아니다).
+  //   ② 저장 안 된 편집이 있다  → [⚡ Push]가 저장한다는 것과, **탭을 닫아도 남는다**는 것을
+  //                              함께 말한다. 후자를 빼면 사람은 불안해서 아무 때나 Push하게
+  //                              되고, 그게 습관이 되면 초안의 의미가 사라진다.
+  //   ③ 저장됨               → 시각.
   const ss = (controller && controller.getPlanSaveState) ? controller.getPlanSaveState() : { status: 'idle' };
+  const dirtyTail = '<br><br>편집은 이 브라우저에 초안으로 보관됩니다 — <b>탭을 닫거나 새로고침해도 사라지지 않습니다.</b> 서버에는 [⚡ Push Map Data]가 맵과 함께 올립니다.';
   let savedChip;
   if (ss.status === 'conflict') {
     savedChip = '<span class="tp-chip bad" title="다른 사람이 이 계획을 바꿨습니다. 지금 저장하면 그 편집이 지워지므로 저장을 막았습니다 — 맵을 다시 불러오십시오.">⚠ 다른 사람이 변경함 · 다시 불러오기</span>';
+  } else if (ss.status === 'zone-columns-missing') {
+    savedChip = '<span class="tp-chip bad" title="서버 DOE 저장소에 STACK·1H·MID·TOP 컬럼이 아직 없습니다. 지금 저장하면 그 컬럼들이 버려진 채 계획 전체가 교체되어 층 구조가 사라집니다 — 그래서 저장하지 않았습니다. 계획이 틀려서가 아닙니다. 서버가 갱신되면 자동으로 다시 시도합니다.'
+      + esc(dirtyTail.replace(/<[^>]+>/g, '')) + '">⚠ 저장하면 층 구조가 사라짐 · 보류</span>';
+  } else if (ss.status === 'legacy-unreadable') {
+    savedChip = `<span class="tp-chip bad" title="지금 저장하면 폐기된 구간 배치가 3구역으로 뭉개진 채 서버 원본을 덮어, 지금 남아 있는 정보가 사라집니다 — 그래서 저장하지 않았습니다. 계획이 틀려서가 아닙니다.&#10;${esc(ss.error || '')}">⚠ 저장하면 구간 정보가 사라짐 · 보류</span>`;
   } else if (ss.status === 'unknown-server-state') {
     savedChip = `<span class="tp-chip warn" title="${esc(ss.error || '서버 조회 실패')}">⚠ 서버 상태 미확인 · 저장 보류</span>`;
   } else if (ss.status === 'error') {
     savedChip = `<span class="tp-chip bad" title="${esc(ss.error || '')}">⚠ 서버 저장 실패</span>`;
+  } else if (ss.dirty) {
+    savedChip = `<span class="tp-chip warn" title="아직 서버에 올라가지 않은 편집이 있습니다.${dirtyTail}">● 저장 안 됨 · [⚡ Push]로 저장</span>`;
   } else if (ss.status === 'ok' && ss.at) {
-    savedChip = `<span class="tp-chip dim" title="legend와 같은 디바운스 자동 저장">자동 저장 ${esc(hhmm(ss.at))}</span>`;
+    savedChip = `<span class="tp-chip ok" title="맵과 함께 서버에 저장됐습니다.">저장됨 ${esc(hhmm(ss.at))}</span>`;
   } else {
-    savedChip = '<span class="tp-chip dim" title="legend와 같은 디바운스 자동 저장">변경 시 자동 저장</span>';
+    savedChip = '<span class="tp-chip dim" title="편집하면 초안으로 보관되고, [⚡ Push Map Data]가 맵과 함께 서버에 올립니다.">변경 없음</span>';
   }
   const idTxt = S.ctx.table ? `${S.ctx.table}${S.ctx.mapKey ? ' · ' + S.ctx.mapKey : ''}` : '맵 미로드';
 
@@ -488,7 +501,120 @@ function renderPlanHead() {
     </div>`;
 }
 
-// ── 렌더: DOE LIST (= legend) ───────────────────────────
+// ============================================================
+// ① 값 정의 — 한 행 = 두 줄
+//
+// WHY TWO LINES. Seven fields cannot share one visual line here. The sidebar's usable
+// width is 405px and the measured minimum of the seven cells is 511px (1H 103 · MID 172 ·
+// TOP 96 · COLOR 22 · VALUE 40 · STACK 34 · 삭제 16 · gaps 28) - 106px short before DESC
+// gets a single pixel. So line 1 is identity (COLOR·VALUE·STACK·DESC·칠함) and line 2 is
+// structure (1H·MID·TOP).
+//
+// 🔴 AND THAT IS WHY THE PASTE CONTRACT IS AN INDEX, NOT A DIRECTION. "the cell to the
+//    right" and "the next contract column" are different things in a two-line layout. The
+//    contract lives in `DOE_COLUMNS`; the layout is free to change without touching it.
+//
+// 칸의 세 상태, and they must not look alike:
+//   · 비움      — 점선. 채울 수 있다. 치면 층 구조가 바뀐다.
+//   · 해당 없음 — 실선 + 빗금 + `disabled`. **구조상 존재하지 않는 층**이다. The cell states
+//                 its own precondition IN TEXT ("STACK을 2 이상으로"), not in a `title`:
+//                 a tooltip is invisible to keyboard and touch users, who are exactly the
+//                 people most likely to get stuck. And we do NOT raise STACK for them - a
+//                 screen that edits a number nobody typed is the defect class this project
+//                 has spent the week removing.
+//   · 채움      — 앞에 계산된 층 범위가 조용히 붙는다 (파생값이지 입력이 아니다).
+// ============================================================
+
+// The zone cell's chip overlay and the raw textarea are the SAME element stack, swapped by
+// `:focus-within` in CSS. Never by replacing the DOM: replacing it while the user is in the
+// field destroys the caret and the selection, and the reactive "MID dies when STACK
+// becomes 1" behaviour fires on every keystroke.
+function zoneCellHtml(row, zone) {
+  const st = stackState(row);
+  const tokens = parseMaterialList(row[zone]);
+  const na = zoneIsInapplicable(row, zone);
+  const raw = esc(serializeMaterialList(tokens));
+
+  if (na.inapplicable) {
+    // `disabled` gives us "no caret, no focus ring, no tab order" without swapping the
+    // node out. The reason is rendered as TEXT inside the cell.
+    return `<span class="tp-zc na" data-zone="${zone}">
+      <textarea class="tp-zc-raw" data-zone="${zone}" disabled></textarea>
+      <span class="tp-zc-chips" aria-hidden="true">
+        ${na.layers === 0 ? '<span class="tp-lr zero">0층</span>' : ''}
+        <span class="tp-na-t">해당 없음 · ${esc(na.fix)}</span>
+      </span></span>`;
+  }
+
+  const layers = zoneLayers(row, zone) || [];
+  const lr = (st.state === 'ok' && layers.length > 0)
+    ? `<span class="tp-lr">${esc(formatLayerRuns(layers).replace(/층/g, ''))}</span>` : '';
+  const chips = tokens.map(t => materialChipHtml(t)).join('');
+  const empty = tokens.length === 0;
+  const blocked = empty && zone === 'mat_mid' && st.state === 'ok' && midZone(row).size > 0;
+
+  return `<span class="tp-zc${empty ? ' empty' : ''}${blocked ? ' bad' : ''}" data-zone="${zone}">
+    <textarea class="tp-zc-raw" data-zone="${zone}" placeholder="${esc(ZONE_PLACEHOLDER[zone])}">${raw}</textarea>
+    <span class="tp-zc-chips" aria-hidden="true">${lr}${
+      empty ? `<span class="tp-emp${blocked ? ' bad' : ''}">${blocked ? '— 비어 있음' : '— 비움'}</span>` : chips
+    }</span></span>`;
+}
+
+// 비면 어떻게 되는지를 placeholder가 말한다 — 이것도 title이 아니라 보이는 글자다.
+const ZONE_PLACEHOLDER = {
+  mat_1h: '비우면 MID가 1층부터',
+  mat_mid: '자재',
+  mat_top: '비우면 MID가 STACK까지',
+};
+
+// A zone whose layer does not exist. Derived from STACK and the other two zones, so it
+// changes live as the user types - which is how the screen SHOWS that the rule is
+// conditional instead of explaining it in a footnote.
+//   · STACK 1 이고 MID가 그 1층을 잡았다        -> 1H·TOP은 들어갈 층이 없다
+//   · 1H와 TOP이 STACK의 두 끝을 다 가져갔다    -> MID 구역이 0층이다
+// Returns { inapplicable, layers, fix } - `fix` is the visible instruction.
+function zoneIsInapplicable(row, zone) {
+  const st = stackState(row);
+  if (st.state !== 'ok') return { inapplicable: false, layers: null, fix: '' };
+  const has = z => parseMaterialList(row[z]).length > 0;
+  if (zone === 'mat_mid') {
+    const z = midZone(row);
+    if (z.size === 0) return { inapplicable: true, layers: 0, fix: `STACK ${st.value}의 층을 1H·TOP이 모두 가져갔습니다` };
+    return { inapplicable: false, layers: z.size, fix: '' };
+  }
+  // 1H / TOP only vanish at STACK 1, and only when MID already holds the single layer.
+  // At STACK 1 with 1H+TOP and no MID the answer is NOT "inapplicable" - it is V2, a real
+  // conflict the user has to resolve, and hiding one of the two cells would hide the fix.
+  if (st.value === 1 && has('mat_mid')) {
+    return { inapplicable: true, layers: null, fix: 'STACK을 2 이상으로' };
+  }
+  return { inapplicable: false, layers: null, fix: '' };
+}
+
+// A material chip. `_✱` marks where the slot WOULD be, so a vertical scan splits at the
+// same character position; BIN is drawn even at its default 1 so an unspoken default never
+// disappears from the screen.
+//
+// ⚠️ 칩은 그림이다. 원문은 `MID1`이고 저장되는 것도 `MID1`이다 - `MID1_✱:1`을 저장하면
+//    `_✱`라는 슬롯을 가진 로트가 생긴다. 복사도 원문만 나간다(planRowToRecord).
+function materialChipHtml(rawToken) {
+  const t = parseMaterialToken(rawToken);
+  if (!t.ok) {
+    return `<span class="tp-mc bad" title="${esc(t.reason)}">${esc(rawToken)}</span>`;
+  }
+  const lotWide = t.scope === 'lot';
+  return `<span class="tp-mc${lotWide ? ' lotwide' : ''}"><span class="lot">${esc(t.lot)}</span>${
+    lotWide ? '<span class="st">_✱</span>' : `<span class="lot">_${esc(t.slot)}</span>`
+  }<span class="bn${t.bin !== 1 ? ' hi' : ''}">:${t.bin}</span></span>`;
+}
+
+// The plan as the pure model sees it. ONE conversion point: every derived number on this
+// screen comes from `doe_bands.js` applied to this object, so the panel cannot grow a
+// second opinion about a value it also displays.
+function planOf() {
+  return { values: S.legendRows };
+}
+
 function renderDoeList() {
   const box = elp.list;
   if (!box) return;
@@ -500,333 +626,234 @@ function renderDoeList() {
     return;
   }
   if (S.legendRows.length === 0) {
-    box.innerHTML = '<div class="tp-empty">정의된 값이 없습니다. 우상단 [+ DOE]로 만드세요.</div>';
+    box.innerHTML = '<div class="tp-empty">정의된 값이 없습니다. 우상단 [+ 값]으로 만드세요.</div>';
     return;
   }
 
-  box.innerHTML = S.legendRows.map(row => {
-    const v = String(row.value);
-    const open = S.openValue === v;
-    const brush = S.activeBrush === v;
-    return `<div class="tp-doe ${open ? 'open' : ''} ${brush ? 'on' : ''}" data-v="${esc(v)}">
-      <div class="tp-doe-row">
-        <span class="tp-caret">▶</span>
-        <span class="tp-sw" style="background:${esc(row.color || '#6b7280')}">${esc(v)}</span>
-        <span class="tp-doe-body">
-          <span class="tp-doe-l1">${esc(row.desc || '(설명 없음)')}${brush ? '<span class="tp-brush-tag">브러시</span>' : ''}</span>
-          <span class="tp-doe-l2" data-count-for="${esc(v)}">${esc(doeLine2(v, planMode))}</span>
-        </span>
+  const v = planMode ? validateZonePlan(planOf()) : { ok: true, blocks: [], warns: [] };
+  S.blocks = v.blocks;
+  const byValue = new Map();
+  v.blocks.forEach(b => {
+    if (!b.value) return;
+    if (!byValue.has(b.value)) byValue.set(b.value, []);
+    byValue.get(b.value).push(b);
+  });
+
+  // 머리줄 글자 = **엑셀에 적을 열 이름 그대로**. 이름으로 맞추기가 되려면 화면이 보여 주는
+  // 단어와 파서가 찾는 단어가 같아야 하므로, 둘 다 DOE_COLUMNS에서 나온다.
+  const head = planMode ? `
+    <div class="tp-ch-row l1">
+      <span class="drv" title="색은 앱이 소유합니다 — 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외). 엑셀의 셀 채우기는 클립보드 텍스트로 이동하지 않습니다.">COLOR*</span>
+      <span>${esc(colHeader('value'))}</span>
+      <span class="r">${esc(colHeader('stack'))}</span><span>${esc(colHeader('desc'))}</span>
+      <span class="r drv" title="맵에서 이 값으로 칠해진 셀 수 — 파생값이라 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외).">칠함*</span><span></span>
+    </div>
+    <div class="tp-ch-row l2">
+      <span>${esc(colHeader('mat_1h'))} — 1층</span>
+      <span>${esc(colHeader('mat_mid'))} — 그 사이 (구역 있으면 필수)</span>
+      <span>${esc(colHeader('mat_top'))} — STACK층</span>
+    </div>` : '';
+
+  box.innerHTML = head + S.legendRows.map(row => {
+    const val = String(row.value);
+    const blocks = byValue.get(val) || [];
+    const legacy = Array.isArray(row.legacyBands) && row.legacyBands.length > 0;
+    const zoneBad = new Set(blocks.map(b => b.zone).filter(Boolean));
+    const l2 = planMode ? `<div class="tp-v-l2">${
+      ZONES.map(z => zoneCellHtml(row, z)).join('')
+    }</div>` : '';
+    const msgs = blocks.map(b => `<div class="tp-blk"><span class="rid">${esc(b.rule)}</span><span>${esc(b.message)}</span></div>`).join('')
+      + (legacy ? `<div class="tp-blk"><span class="rid">폐기</span><span>${esc(row.legacyReason)} — 이 값의 STACK·구역을 직접 채우면 저장이 풀립니다. (원래 구간: ${
+        esc(row.legacyBands.map(b => b.to).join(' / '))})</span></div>` : '');
+    const stSt = stackState(row);
+    return `<div class="tp-vrow${blocks.length || legacy ? ' bad' : ''}" data-v="${esc(val)}">
+      <div class="tp-v-l1">
+        <input type="color" class="tp-sw" data-f="color" value="${esc(row.color || '#6b7280')}" />
+        <input class="tp-gi vin" data-f="value" value="${esc(val)}" />
+        ${planMode ? `<input class="tp-gi stk${stSt.state === 'ok' ? '' : ' bad'}" data-f="stack" inputmode="numeric"
+          value="${esc(row.stack === null || row.stack === undefined ? '' : String(row.stack))}" placeholder="총 층수" />` : ''}
+        <input class="tp-gi din" data-f="desc" value="${esc(row.desc || '')}" placeholder="이 값이 무슨 조건인지" />
+        <span class="tp-pnt" data-count-for="${esc(val)}">${paintedOf(val)}</span>
+        <button type="button" class="tp-del" title="이 값 삭제 (격자에서 이 값이 지워지고 층 구조도 함께 사라집니다)">🗑</button>
       </div>
-      ${open ? renderDoeDetail(row, planMode) : '<div class="tp-doe-detail-stub"></div>'}
+      ${l2}${msgs}
     </div>`;
-  }).join('');
+  }).join('') + (planMode ? `
+    <div class="tp-foot-note">
+      <b>STACK</b>=총 층수 · <b>MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)</b> ·
+      <b>구역이 0층이면 MID는 필요 없습니다</b><br>
+      자재는 줄바꿈 또는 쉼표로 나눔 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
+    </div>` : '');
 
   bindDoeList(box, planMode);
 }
 
-// 접힌 행의 2번째 줄. 전부 파생값이라 페인팅과 함께 즉시 따라 움직인다.
-function doeLine2(value, planMode) {
-  const painted = paintedOf(value);
-  if (!planMode) return `칠함 ${painted}`;
-  const bands = bandsOf(value);
-  if (bands.length === 0) return `칠함 ${painted} · 구간 없음`;
-  const top = bands.reduce((m, b) => { const t = bandTo(b); return Math.max(m, t === null ? 0 : t); }, 0);
-  const total = bands.reduce((a, b, i) => a + bandTotal(value, bands, i), 0);
-  const mats = new Set();
-  bands.forEach(b => (b.materials || []).forEach(m => mats.add(m)));
-  return `칠함 ${painted} · 구간 ${bands.length}개 (1–${top || '?'}층) · 자재 ${mats.size}매 · 소요 ${total}`;
+function colHeader(id) {
+  const c = DOE_COLUMNS.find(x => x.id === id);
+  return c ? c.header : id;
 }
 
-// 파생 숫자 한 줄 — 사용자가 머릿속으로 곱하지 않도록 **식을 그대로 보여준다**.
-function bandCalcText(value, bands, i) {
-  // 읽을 수 없는 끝 층은 0층으로 세되 **왜 0인지**를 이 줄에서 말한다.
-  // (틀린 숫자보다 나쁜 것은 틀린 줄 모르는 숫자다.)
-  if (bandToState(bands[i]).state === 'invalid') {
-    return '끝 층을 숫자로 읽을 수 없어 이 구간은 0층으로 셉니다 — 끝 층을 다시 입력하세요.';
-  }
-  const layers = bandLayers(bands, i);
-  if (layers <= 0) return '끝 층을 입력하면 소요가 계산됩니다.';
-  const painted = paintedOf(value);
-  const total = bandTotal(value, bands, i);
-  const n = (bands[i].materials || []).length;
-  const share = bandShare(value, bands, i);
-  return `칠함 ${painted} × ${layers}층 = 소요 ${total}`
-    + (n > 0 ? ` · 자재 ${n}매 → 매당 ${share}` : ' · 자재 미지정');
+// ── 반응성. DOM을 갈아끼우지 않고 클래스만 토글한다. ──────────────────────────
+//
+// STACK·1H·TOP 중 하나가 바뀌면 같은 행의 다른 칸이 입력 가능 ↔ 불가능으로 바뀐다. If this
+// ran through `renderDoeList()` the user would lose the caret on every keystroke, so it
+// patches the three zone cells of ONE row in place. The model is not touched here - that
+// happens on `change` through `commitRow`, the single gate.
+function refreshRowZones(node, row) {
+  ZONES.forEach(z => {
+    const cell = node.querySelector(`.tp-zc[data-zone="${z}"]`);
+    if (!cell) return;
+    const ta = cell.querySelector('.tp-zc-raw');
+    const na = zoneIsInapplicable(row, z);
+    const st = stackState(row);
+    const tokens = parseMaterialList(row[z]);
+    cell.classList.toggle('na', na.inapplicable);
+    cell.classList.toggle('empty', !na.inapplicable && tokens.length === 0);
+    const blocked = tokens.length === 0 && z === 'mat_mid' && st.state === 'ok' && midZone(row).size > 0;
+    cell.classList.toggle('bad', blocked);
+    if (ta) ta.disabled = na.inapplicable;
+    const chips = cell.querySelector('.tp-zc-chips');
+    if (!chips) return;
+    if (na.inapplicable) {
+      chips.innerHTML = `${na.layers === 0 ? '<span class="tp-lr zero">0층</span>' : ''}<span class="tp-na-t">해당 없음 · ${esc(na.fix)}</span>`;
+      return;
+    }
+    const layers = zoneLayers(row, z) || [];
+    const lr = (st.state === 'ok' && layers.length > 0)
+      ? `<span class="tp-lr">${esc(formatLayerRuns(layers).replace(/층/g, ''))}</span>` : '';
+    chips.innerHTML = lr + (tokens.length === 0
+      ? `<span class="tp-emp${blocked ? ' bad' : ''}">${blocked ? '— 비어 있음' : '— 비움'}</span>`
+      : tokens.map(t => materialChipHtml(t)).join(''));
+  });
 }
 
-// 밴드(구간) 카드 하나 — 사용자가 입력하는 값은 **끝 층 하나**뿐이다.
-function renderBand(value, bands, i) {
-  const b = bands[i];
-  const from = bandFrom(bands, i);
-  const st = bandToState(b);
-  const layers = bandLayers(bands, i);
-  // 3상태를 **이미 있는 한 줄 안에서** 구분한다 — 새 영역·모달을 만들지 않는다.
-  // 읽을 수 없는 값은 원문을 그대로 보여준다: 무엇을 고쳐야 하는지가 곧 값 자체다.
-  let rangeTxt;
-  if (st.state === 'ok') {
-    rangeTxt = `${from}–${st.value}층 <b>${layers}층</b>`;
-  } else if (st.state === 'blank') {
-    rangeTxt = `${from}층 ~ <span class="tp-unknown-val">미정</span>`;
-  } else {
-    const shown = String(JSON.stringify(b.to));
-    const clipped = shown.length > 24 ? `${shown.slice(0, 24)}…` : shown;   // 한 줄을 넘기지 않는다
-    rangeTxt = `${from}층 ~ <span class="tp-unknown-val bad" title="저장된 끝 층 값 ${esc(shown)} 을(를) 숫자로 읽을 수 없습니다. 이 구간은 0층으로 세고, 다음 구간은 이 구간을 건너뛰어 계산합니다. 아래 [끝 층]에 숫자를 넣으면 고쳐집니다.">읽을 수 없는 값 ${esc(clipped)}</span>`;
-  }
-  return `<div class="tp-band${st.state === 'invalid' ? ' bad' : ''}" data-i="${i}" data-seq="${b.seq}">
-    <div class="tp-band-l1">
-      <span class="tp-band-range" title="시작 층은 앞 구간의 끝 + 1로 자동 결정됩니다 (편집 불가)">${rangeTxt}</span>
-      <span class="tp-fld"><label>끝 층</label>
-        <input class="glass-input mono tp-b-to" type="number" min="1" step="1" value="${st.state === 'ok' ? st.value : ''}"
-          title="이 구간이 끝나는 층. 다음 구간은 여기 +1에서 시작합니다." /></span>
-      <button type="button" class="tp-band-del" title="이 구간 삭제 (아래 구간이 당겨지고 자재는 각자 구간에 남습니다)">🗑</button>
-    </div>
-    <div class="tp-matchips">
-      ${(b.materials || []).map((m, mi) => `<span class="tp-matchip" title="${esc(m)}">${esc(m)}<button type="button" class="tp-mat-del" data-i="${mi}" title="묶음에서 제거">✕</button></span>`).join('')}
-      <span class="tp-matchip add tp-mat-add">＋ 자재</span>
-    </div>
-    <div class="tp-mat-addbox" style="display:none;">
-      <span class="bp-ac-wrap"><input class="glass-input mono tp-mat-input" placeholder="자재 ID (적은 그대로 저장됩니다)" autocomplete="off" /></span>
-      <button type="button" class="glass-page-btn tp-mat-ok">추가</button>
-    </div>
-    <div class="tp-band-calc" data-band-calc="${i}">${esc(bandCalcText(value, bands, i))}</div>
-  </div>`;
+// The row the panel considers "selected" - it is whatever has focus. No checkbox column,
+// no selection mode, no new control: selection IS focus.
+function focusedRowValue() {
+  const el = document.activeElement;
+  if (!el || !elp.list || !elp.list.contains(el)) return '';
+  const row = el.closest('.tp-vrow');
+  return row ? row.dataset.v : '';
 }
-
-function renderDoeDetail(row, planMode) {
-  const v = String(row.value);
-  const bands = Array.isArray(row.bands) ? row.bands : [];
-  const knobs = Array.isArray(row.knobs) ? row.knobs : [];
-  const planFields = planMode ? `
-    <div class="tp-sec">
-      <div class="tp-sec-h"><span>STACK 구간 · 자재</span>
-        <button type="button" class="glass-page-btn tp-band-add" title="구간을 하나 더 추가합니다 (끝 층만 입력하면 됩니다)">+ 구간</button></div>
-      ${bands.length === 0
-        ? '<div class="tp-hint">구간이 없습니다. [+ 구간]으로 만드세요 — 첫 구간은 <b>1층</b>에서 시작합니다.</div>'
-        : bands.map((b, i) => renderBand(v, bands, i)).join('')}
-      <span class="tp-hint">스택은 <b>끊는 지점 목록</b>입니다. 구간마다 <b>끝 층</b>만 적으면 시작 층·층 수·소요는 자동으로 나옵니다
-        (<span class="mono">1 / 15 / 16</span> = 1층, 2–15층, 16층).</span>
-    </div>
-    <div class="tp-sec">
-      <div class="tp-sec-h"><span>knob (이 값의 DOE 조건)</span>
-        <button type="button" class="glass-page-btn tp-knob-add">+ knob</button></div>
-      <div class="tp-knobs">
-        ${knobs.map((p, i) => `<span class="tp-knob" data-ki="${i}">
-          <input class="tp-knob-k" placeholder="knob" value="${esc(p.k || '')}" />
-          <span>=</span>
-          <input class="tp-knob-v" placeholder="값" value="${esc(p.v || '')}" />
-          <button type="button" class="tp-knob-del" title="삭제">✕</button></span>`).join('')}
-      </div>
-    </div>` : '';
-
-  return `<div class="tp-doe-detail">
-    <div class="tp-sec">
-      <div class="tp-asg-l1">
-        <span class="tp-fld"><label>VALUE (페인팅 값)</label>
-          <input class="glass-input mono tp-d-val" value="${esc(v)}" /></span>
-        <span class="tp-fld"><label>색</label>
-          <input type="color" class="tp-d-color" value="${esc(row.color || '#6b7280')}" /></span>
-      </div>
-    </div>
-    ${planFields}
-    <div class="tp-sec">
-      <div class="tp-sec-h"><span>설명 (split registry 서술과 동일 필드)</span>
-        <button type="button" class="tp-doe-del" title="이 값 삭제">🗑</button></div>
-      <textarea class="glass-input tp-d-desc" rows="2" placeholder="이 값이 무슨 조건인지">${esc(row.desc || '')}</textarea>
-    </div>
-  </div>`;
+function focusedColumnId() {
+  const el = document.activeElement;
+  if (!el || !elp.list || !elp.list.contains(el)) return DOE_COLUMNS[0].id;
+  const z = el.getAttribute && el.getAttribute('data-zone');
+  if (z) return z;
+  const f = el.getAttribute && el.getAttribute('data-f');
+  return f || DOE_COLUMNS[0].id;
 }
 
 function bindDoeList(box, planMode) {
-  box.querySelectorAll('.tp-doe').forEach(node => {
+  box.querySelectorAll('.tp-vrow').forEach(node => {
     const v = node.dataset.v;
-    const rowEl = node.querySelector('.tp-doe-row');
-    // 행 클릭 = ① 선택 ② 브러시 전환 ③ 펼침 — 한 동작으로 셋 다. 한 번에 하나만 펼친다.
-    rowEl.addEventListener('click', () => {
-      S.openValue = (S.openValue === v) ? null : v;
-      if (controller && controller.setBrush) controller.setBrush(v);
-      S.activeBrush = v;
-      renderDoeList();
-      renderMaterialPane();
+
+    // 행을 만지면 곧 브러시. 클릭 = 선택 + 브러시 (펼침은 없다 — 접히는 것이 없다).
+    node.addEventListener('mousedown', () => {
+      if (controller && controller.setBrush) { controller.setBrush(v); S.activeBrush = v; }
     });
 
-    const detail = node.querySelector('.tp-doe-detail');
-    if (!detail) return;
-    detail.addEventListener('click', e => e.stopPropagation());
+    node.querySelector('[data-f="color"]').addEventListener('change', e => {
+      commitRow(v, { color: e.target.value });
+    });
+    node.querySelector('[data-f="desc"]').addEventListener('change', e => {
+      commitRow(v, { desc: e.target.value.trim() });
+    });
 
-    const valIn = detail.querySelector('.tp-d-val');
+    const valIn = node.querySelector('[data-f="value"]');
     valIn.addEventListener('change', () => {
       const nv = valIn.value.trim();
       if (!nv || nv === v) { valIn.value = v; return; }
       const r = controller.updateLegendRow(v, { value: nv });
       if (!r.ok) { showToast(r.error, 'warning'); valIn.value = v; return; }
-      // DOE는 값 행 자체다 — 구간·자재는 같은 행에 그대로 붙어 있어 이사가 필요 없다.
-      if (S.openValue === v) S.openValue = nv;
+      // 값 이름이 바뀌어도 층 구조는 같은 행에 그대로 붙어 있다 — zone 모델에는 값을 이름으로
+      // 가리키는 참조가 없으므로(구간 모델의 `values[]`가 사라졌다) 개명 전파가 필요 없다.
     });
-    detail.querySelector('.tp-d-color').addEventListener('change', e => {
-      controller.updateLegendRow(v, { color: e.target.value });
-    });
-    detail.querySelector('.tp-d-desc').addEventListener('change', e => {
-      controller.updateLegendRow(v, { desc: e.target.value.trim() });
-    });
-    detail.querySelector('.tp-doe-del').addEventListener('click', () => {
-      if (!confirm(`값 '${v}'을(를) 삭제할까요? (격자에서 이 값이 지워지고 구간·자재도 함께 사라집니다)`)) return;
+
+    node.querySelector('.tp-del').addEventListener('click', () => {
+      if (!confirm(`값 '${v}'을(를) 삭제할까요? (격자에서 이 값이 지워지고 층 구조도 함께 사라집니다)`)) return;
       const r = controller.deleteLegendRow(v);
-      if (!r.ok) { showToast(r.error, 'warning'); return; }
-      if (S.openValue === v) S.openValue = null;
+      if (!r.ok) showToast(r.error, 'warning');
     });
 
     if (!planMode) return;
 
-    const addBtn = detail.querySelector('.tp-band-add');
-    if (addBtn) addBtn.addEventListener('click', () => {
-      const bands = bandsOf(v).map(cloneBand);
-      // seq = max+1, 끝 층은 미입력. 미입력은 정렬에서 항상 뒤로 간다.
-      bands.push({ seq: nextBandSeq(bands), to: '', materials: [] });
-      if (commitBands(v, bands)) refreshMaterials();
-    });
-
-    detail.querySelectorAll('.tp-band').forEach(bandNode => {
-      const i = Number(bandNode.dataset.i);
-
-      bandNode.querySelector('.tp-b-to').addEventListener('change', e => {
-        const bands = bandsOf(v).map(cloneBand);
-        if (!bands[i]) return;
-        // 입력도 **같은 판정기**를 통과한다. 여기서 따로 `Number()`를 쓰면 화면이 읽는 규칙과
-        // 사용자가 만드는 값의 규칙이 갈린다(예: 종전 코드는 '7.5'를 조용히 7로 바꿔 저장했다).
-        const st = bandToState({ to: e.target.value.trim() });
-        if (st.state === 'invalid') {
-          showToast('끝 층은 정수로 입력하세요.', 'warning'); renderDoeList(); return;
-        }
-        bands[i].to = st.state === 'ok' ? st.value : '';
-        // 위치는 `to`를 따라가고 seq는 그대로 — 자재가 자기 구간에 남는 이유다.
-        const sorted = sortBands(bands);
-        const err = validateBands(sorted);
-        if (err) { showToast(err, 'warning'); renderDoeList(); return; }
-        if (commitBands(v, sorted)) refreshMaterials();
+    const stk = node.querySelector('[data-f="stack"]');
+    if (stk) {
+      // `input` -> 화면만 (반응성) · `change` -> 모델. Two events, two jobs: the live one
+      // never persists and the persisting one never runs per keystroke.
+      stk.addEventListener('input', () => {
+        const draft = { ...rowOf(v), stack: stk.value };
+        stk.classList.toggle('bad', stackState(draft).state !== 'ok');
+        refreshRowZones(node, draft);
       });
-
-      bandNode.querySelector('.tp-band-del').addEventListener('click', () => {
-        const bands = bandsOf(v).map(cloneBand);
-        bands.splice(i, 1);          // ⚠️ 남은 구간의 seq는 **재번호하지 않는다**
-        if (commitBands(v, bands)) refreshMaterials();
+      stk.addEventListener('change', () => {
+        // 입력도 **같은 판정기**를 통과한다. 읽을 수 없는 값은 거부하지 않고 원문 그대로
+        // 저장한다 — 그래야 패널이 무엇을 고치라고 말할 수 있고, V5가 그것을 말한다.
+        commitRow(v, { stack: stk.value.trim() });
       });
+    }
 
-      bandNode.querySelectorAll('.tp-mat-del').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const bands = bandsOf(v).map(cloneBand);
-          if (!bands[i]) return;
-          bands[i].materials.splice(Number(btn.dataset.i), 1);
-          if (commitBands(v, bands)) refreshMaterials();
-        });
+    node.querySelectorAll('.tp-zc-raw').forEach(ta => {
+      const zone = ta.dataset.zone;
+      ta.addEventListener('input', () => {
+        const draft = { ...rowOf(v) };
+        draft[zone] = parseMaterialList(ta.value);
+        refreshRowZones(node, draft);
       });
-
-      const addChip = bandNode.querySelector('.tp-mat-add');
-      const addBox = bandNode.querySelector('.tp-mat-addbox');
-      if (addChip && addBox) {
-        const input = addBox.querySelector('.tp-mat-input');
-        const commit = () => {
-          const id = String(input.value || '').trim();   // 원문 그대로가 정체다
-          if (!id) return;
-          const bands = bandsOf(v).map(cloneBand);
-          if (!bands[i]) return;
-          if (bands[i].materials.indexOf(id) >= 0) {
-            showToast('이미 이 구간의 묶음에 있는 자재입니다.', 'warning'); return;
-          }
-          bands[i].materials.push(id);
-          if (commitBands(v, bands)) refreshMaterials();
-        };
-        addChip.addEventListener('click', () => {
-          addBox.style.display = 'flex';
-          input.focus();
-          attachAutocomplete(input, sourceNodeLabel(), val => { input.value = val; commit(); });
-        });
-        addBox.querySelector('.tp-mat-ok').addEventListener('click', commit);
-        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
-      }
-    });
-
-    // knob은 **값 층위**다 (구간별이 아니다).
-    const knobAdd = detail.querySelector('.tp-knob-add');
-    if (knobAdd) knobAdd.addEventListener('click', () => {
-      commitKnobs(v, knobsOf(v).concat([{ k: '', v: '' }]));
-    });
-    detail.querySelectorAll('.tp-knob').forEach(kn => {
-      const ki = Number(kn.dataset.ki);
-      const patch = (field, val) => {
-        const knobs = knobsOf(v).map(p => ({ ...p }));
-        if (!knobs[ki]) return;
-        knobs[ki][field] = val;
-        commitKnobs(v, knobs);
-      };
-      kn.querySelector('.tp-knob-k').addEventListener('change', e => patch('k', e.target.value));
-      kn.querySelector('.tp-knob-v').addEventListener('change', e => patch('v', e.target.value));
-      kn.querySelector('.tp-knob-del').addEventListener('click', () => {
-        const knobs = knobsOf(v).map(p => ({ ...p }));
-        knobs.splice(ki, 1);
-        commitKnobs(v, knobs);
+      ta.addEventListener('change', () => {
+        // `parseMaterialList` accepts newline OR comma and is the SAME function the
+        // storage layer normalizes with, so the material count on screen and the
+        // denominator of `ceil(total / n)` in the save cannot be two different numbers.
+        commitRow(v, { [zone]: parseMaterialList(ta.value) });
       });
     });
   });
 }
 
-function cloneBand(b) {
-  return { seq: b.seq, to: b.to, materials: Array.isArray(b.materials) ? b.materials.slice() : [] };
-}
-
-function sourceNodeLabel() {
-  const st = stageOfTable(S.ctx.table);
-  if (!st) return 'Wafer';
-  return st.sourceKind === 'core' ? 'Wafer' : 'Tape';
-}
-
-// ── 렌더: 사용 자재 (자재 ID가 키, 이동 허브) ─────────────
+// ============================================================
+// ② 자재 롤업 — 전부 파생. 여기서 입력받는 것은 없다.
 //
-// 사용자의 시점은 **자재**다: "이 테이프, 얼마 남았고 어디에 얼마나 썼나."
-// 그래서 행의 단위는 (값, 구간)이 아니라 **자재 ID** 하나다. (값, 구간)은 사라지지 않고
-// 그 자재를 소비한 **자리**로 행 안에 접혀 들어간다.
-function materialRollup() {
+// 행의 정체는 **풀** `(lot, slot, BIN)`이지 자재 이름이 아니다. A DT map is not one pool:
+// it is partitioned by BIN, and two values can draw different BINs from the same map
+// without competing. Collapse BIN and 잔여 comes out low with no visible cause.
+//
+// 사용 is a SUFFICIENCY CHECK, NOT AN ALLOCATION. Wafers are consumed one at a time in an
+// order nobody records, so the even split answers exactly one question - "is there enough
+// across this pool" - and says nothing about which wafer goes where. The screen says so
+// three ways: every number carries `≈`, 잔여 carries it too, and the header says it once.
+// ============================================================
+
+function rollupRows() {
   const st = stageOfTable(S.ctx.table);
   if (!st || S.ctx.depth > 0) return [];
-  const byMat = new Map();   // 자재 ID -> { id, used, uses[] }
-  S.legendRows.forEach(row => {
-    const v = String(row.value);
-    const bands = Array.isArray(row.bands) ? row.bands : [];
-    bands.forEach((b, i) => {
-      const mats = Array.isArray(b.materials) ? b.materials : [];
-      if (mats.length === 0) return;
-      const qty = bandShare(v, bands, i);   // 화면과 저장이 같은 함수를 쓴다 (단일 구현)
-      mats.forEach(id => {
-        if (!byMat.has(id)) byMat.set(id, { id, used: 0, uses: [] });
-        const e = byMat.get(id);
-        e.used += qty;
-        e.uses.push({ value: v, color: row.color, seq: b.seq, from: bandFrom(bands, i), to: bandTo(b), qty });
-      });
-    });
-  });
-  // 자재 ID 순 — 목록이 편집 순서에 따라 튀지 않게 한다
-  return [...byMat.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return materialRollupRows(planOf(), paintedOf);
 }
 
-function useLabel(u) { return u.to === null ? `${u.from}층~?` : `${u.from}–${u.to}층`; }
+// 미상은 0이 아니다. `{value, reliable, reason}`을 그대로 받아 숫자를 숨기고 이유를 말한다 —
+// 숫자만 넘기면 미상이 0으로 붕괴하고, 0은 "다 썼다"로 읽힌다.
+function unknownCellHtml(state, extraClass) {
+  return `<span class="tp-unk ${extraClass || ''}" title="${esc(state.reason || '')}">미상</span>`;
+}
 
 function renderMaterialPane() {
   const box = elp.matPane;
   if (!box) return;
-  const mats = materialRollup();
   const st = stageOfTable(S.ctx.table);
 
   if (S.ctx.depth > 0) {
     // 자재 맵을 연 상태 — 허브 대신 이 맵에서 할 일을 안내한다
     box.style.display = 'flex';
     box.innerHTML = `
-      <div class="tp-mat-head"><b>📦 자재 맵 편집 중</b>
-        <button type="button" class="glass-page-btn" id="tp-frame-back">← 돌아가기</button></div>
-      <div class="tp-mat-body">
+      <div class="tp-pane-h"><span class="no">📦</span><span class="nm">자재 맵 편집 중</span>
+        <span class="sp"></span>
+        <button type="button" class="tp-btn" id="tp-frame-back">← 돌아가기</button></div>
+      <div class="tp-pane-b">
         <p class="tp-hint">이 맵도 실맵입니다 — 오버레이·페인팅·<b>⚡ Push</b>가 그대로 동작합니다.
           맵 키 잠금과 정체성 핀도 동일하게 적용됩니다.</p>
         <div class="tp-ov-suggest">
           <span class="tp-hint">겹쳐 보기:</span>
-          ${SOURCE_OVERLAY_SUGGESTIONS.map(s => `<button type="button" class="glass-page-btn tp-ov-add" data-tbl="${esc(s.table)}">＋ ${esc(s.label)}</button>`).join('')}
+          ${SOURCE_OVERLAY_SUGGESTIONS.map(s => `<button type="button" class="tp-btn tp-ov-add" data-tbl="${esc(s.table)}">＋ ${esc(s.label)}</button>`).join('')}
         </div>
       </div>`;
     const back = box.querySelector('#tp-frame-back');
@@ -843,8 +870,8 @@ function renderMaterialPane() {
     return;
   }
 
-  if (!st || mats.length === 0) {
-    // 계획 대상이 아닌 맵이거나 자재 0건 → 자재 영역은 자리를 차지하지 않는다
+  const pools = rollupRows();
+  if (!st || pools.length === 0) {
     box.style.display = 'none';
     box.innerHTML = '';
     return;
@@ -852,56 +879,176 @@ function renderMaterialPane() {
   box.style.display = 'flex';
 
   const { table: srcTable, derived: srcDerived } = sourceTableOf(st);
-  const sel = S.openValue || S.activeBrush || '';
-  const rows = mats.map(m => {
-    const av = availabilityOf(m.id);
-    // 신뢰 불가는 **숫자를 보여주지 않는다** — 강등된 값을 확정값처럼 보이면 계획이 틀린다.
+  // V3 (로트 전체 + 그 로트의 슬롯)의 메시지는 ②에만 있다 — 두 토큰이 한 화면에 같이 보이는
+  // 곳이 여기뿐이기 때문이다. ①에서는 서로 다른 행이라 어디 붙여도 반쪽이 된다.
+  const clashes = (S.blocks || []).filter(b => b.rule === 'V3');
+  const clashTokens = new Set();
+  clashes.forEach(b => { if (b.message) clashTokens.add(b.message); });
+
+  const rows = pools.map(p => {
+    const av = availabilityOfPool(p);
+    const rem = remainingState(av, p.used);
+    const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, poolCacheId(p))) : null;
+    const bad = clashes.some(c => c.value && p.uses.some(u => u.value === c.value));
     const availHtml = (av.status === null || av.status === 'loading')
-      ? '<span class="tp-unknown-val">…</span>'
-      : (av.reliable
-        ? `<b>${av.value}</b>`
-        : `<span class="tp-unknown-val" title="${esc(av.reason + (av.value === null ? '' : ` (서버 원값 ${av.value})`))}">미상</span>`);
-    const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, m.id)) : null;
-    const mapChip = exists === true ? '<span class="tp-chip ok">맵 ✓</span>'
-      : (exists === false ? '<span class="tp-chip warn">맵 없음</span>'
-        : '<span class="tp-chip dim">맵 미상</span>');
-    // "어디에 몇 개씩" — 이 자재를 소비한 (값, 구간)과 그 수량. 항상 펼쳐 둔다(읽기 무마찰).
-    const uses = m.uses.map((u, ui) => `<span class="tp-use ${sel && sel === u.value ? 'on' : ''}"
-        data-use-for="${esc(m.id)}" data-use-i="${ui}"
-        title="DOE ${esc(u.value)} · ${esc(useLabel(u))} 에 ${u.qty}개 배정">
-        <i style="background:${esc(u.color || '#6b7280')}"></i>${esc(u.value)}·${esc(useLabel(u))} <b>${u.qty}</b></span>`).join('');
-    const on = !!sel && m.uses.some(u => u.value === sel);
-    return `<div class="tp-mat-row ${on ? 'on' : ''}" data-id="${esc(m.id)}" title="클릭 = 이 자재의 맵 열기">
-      ${S.flash.has(m.id) ? '<span class="tp-flash go"></span>' : ''}
-      <div class="tp-mat-l1">
-        <span class="tp-mat-id">${esc(m.id)}</span>
-        <span class="tp-mat-qty">가용 ${availHtml} · 사용 <b data-mat-used="${esc(m.id)}">${m.used}</b></span>
-        ${mapChip}
+      ? '<span class="tp-unk">…</span>'
+      : (av.reliable ? `<b>${av.value}</b>` : unknownCellHtml(av, 'w'));
+    // 전개된 슬롯 행은 그리지 않는다: 슬롯별 배분을 그리는 순간 화면이 매 단위 할당을
+    // 주장하게 된다. 배분은 풀 단위로만 존재한다.
+    const where = p.uses.map(u => `${u.value}·${ZONE_LABEL[u.zone]}`).join(' + ');
+    return `<div class="tp-pool${bad ? ' clash' : ''}" data-pool="${esc(p.key)}" data-id="${esc(poolCacheId(p))}">
+      <div class="tp-r2" title="클릭 → ${esc(p.raw)}의 맵">
+        <span class="tp-matcell">${materialChipHtml(p.raw)}<span class="go">→</span></span>
+        <span class="tp-mapb ${exists === true ? 'ok' : (exists === false ? 'no' : 'unk')}"
+          title="${exists === true ? '자재 맵 있음' : (exists === false ? '자재 맵을 찾지 못했습니다' : '맵 유무를 확인하지 못했습니다')}">${
+          exists === true ? 'O' : (exists === false ? 'X' : '?')}</span>
+        <span class="tp-num avail">${availHtml}</span>
+        <span class="tp-num share" title="${esc(where)}"><span class="ap">≈</span>${p.used}</span>
+        <span class="tp-num left${rem.reliable && rem.value < 0 ? ' neg' : ''}">${
+          rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w')}</span>
       </div>
-      <div class="tp-uses">${uses}</div>
+      <div class="tp-knob" title="이 자재를 쓰는 값들의 knob을 모은 파생 표시입니다 — 여기서는 편집하지 않습니다.">${
+        knobChipsFor(p) || '<span class="tp-emp">— knob 없음</span>'}</div>
     </div>`;
   }).join('');
 
   box.innerHTML = `
-    <div class="tp-mat-head"><b>📦 사용 자재 <span class="tp-chip">${mats.length}</span></b>
-      <button type="button" class="glass-page-btn" id="tp-mat-refresh">↻ 가용 재조회</button></div>
-    <div class="tp-mat-scroll">${rows}</div>
-    <div class="tp-mat-hint">가용 = 서버 집계(총 − fail ∪ 전사) · 사용 = 칠한 셀 × 층 수를 자재 수로 나눈 합(올림) · 행 클릭 = 그 자재의 맵을 엽니다${
-      srcTable
-        ? ` · 대상 <b>${esc(srcTable)}</b>${srcDerived === 'fallback'
-            ? ' <span class="tp-chip warn" title="stage 선언에서 유도하지 못해 하드코딩 폴백을 씁니다 — 서버에 명시 선언 요청됨">추정</span>'
-            : ''}`
-        : ' · <b class="tp-mat-nosrc">자재 맵 테이블 미상 — stage 선언 확인 필요</b>'
-    }</div>`;
+    <div class="tp-pane-h"><span class="no">②</span><span class="nm">자재 롤업</span>
+      <span class="sub">행 클릭 → 그 자재의 맵</span>
+      <span class="sp"></span>
+      <span class="tp-cnt">${pools.length} 풀</span>
+      <button type="button" class="tp-btn" id="tp-mat-refresh">↻ 가용</button></div>
+    <div class="tp-pane-b">
+      <div class="tp-ch-row"><span>MAT</span><span class="c">MAP</span>
+        <span class="r">가용</span><span class="r">사용<span class="ap">≈</span></span><span class="r">잔여<span class="ap">≈</span></span></div>
+      ${rows}
+      ${clashes.map(c => `<div class="tp-blk"><span class="rid">V3</span><span>${esc(c.message)}</span></div>`).join('')}
+      <div class="tp-foot-note">
+        <b>사용<span class="ap">≈</span></b>은 실제 소비가 아닙니다 — 이 풀의 총 소요를 자재 수로
+        <b>균등 분배한 가정값</b>입니다. <b>충분한지</b> 보는 용도이며, 어느 매를 먼저 쓰는지는 이 화면이 말하지 않습니다.<br>
+        <b>미상</b>은 <b>0이 아닙니다.</b> 가용이 미상·신뢰 불가면 <b>잔여도 미상</b>입니다.${
+        srcTable ? ` · 대상 <b>${esc(srcTable)}</b>${srcDerived === 'fallback'
+          ? ' <span class="tp-chip warn" title="stage 선언에서 유도하지 못해 하드코딩 폴백을 씁니다 — 서버에 명시 선언 요청됨">추정</span>' : ''}`
+        : ' · <b class="tp-mat-nosrc">자재 맵 테이블 미상 — stage 선언 확인 필요</b>'}
+      </div>
+    </div>`;
 
   box.querySelector('#tp-mat-refresh').addEventListener('click', () => refreshMaterials(true));
-  box.querySelectorAll('.tp-mat-row').forEach(r => {
+  box.querySelectorAll('.tp-pool').forEach(r => {
     r.addEventListener('click', () => openMaterial(r.dataset.id));
   });
-  // 선택된 DOE를 쓰는 첫 자재를 시야로 (필터 금지 — 전체가 보여야 한다)
-  const onRow = box.querySelector('.tp-mat-row.on');
-  if (onRow) onRow.scrollIntoView({ block: 'nearest' });
   S.flash.clear();
+}
+
+// knob은 값 층위에 저장돼 있고(map_split_registry.knobs), ②는 그것을 자재 기준으로 **모아
+// 보여주기만** 한다.
+// ⚠️ 편집 경로를 만들지 않았다. 자재 층위 knob에는 선언된 저장 자리가 없고, 저장할 곳이 없는
+//    입력 칸은 사용자의 타이핑을 조용히 버린다 — 이 도메인이 없애려는 결함 그 자체다.
+//    자재 층위 knob 편집은 서버에 저장 자리가 선언된 뒤에 붙인다.
+function knobChipsFor(pool) {
+  const seen = new Map();
+  (pool.uses || []).forEach(u => {
+    const row = rowOf(u.value);
+    ((row && row.knobs) || []).forEach(p => {
+      const k = String((p && p.k) || '').trim();
+      if (!k) return;
+      const label = String(p.v || '').trim() ? `${k}=${p.v}` : k;
+      if (!seen.has(label)) seen.set(label, true);
+    });
+  });
+  return [...seen.keys()].map(l => `<span class="tp-kc"><span class="h">#</span>${esc(l)}</span>`).join('');
+}
+
+// ============================================================
+// 엑셀 ⇄ 왕복. 이 화면의 목적이다.
+//
+// 🔴 `navigator.clipboard`는 쓸 수 없다. 운영은 LAN 평문 HTTP = 비보안 컨텍스트라
+//    **undefined**다. 모든 것이 네이티브 이벤트의 `e.clipboardData`를 지난다. 그래서 이
+//    화면에는 클립보드를 호출하는 버튼이 하나도 없다 — `⇄ 엑셀`은 버튼이 아니라 **표시**다.
+//
+// 계약은 픽셀이 아니라 TSV에 있다. 일곱 칸이 화면에서 한 줄로 그려지든 두 줄로 그려지든
+// 파서는 모른다 — 채우기는 **논리 인덱스** 기준이지 "화면에서 오른쪽 칸"이 아니다.
+// ============================================================
+
+function planClipboardActive() {
+  return !!stageOfTable(S.ctx.table) && S.ctx.depth === 0;
+}
+
+// 붙여넣기는 **거절하지 않는다.** 3열만 복사해도 받는다. 거절이 안전한 건 맞지만 "쉽게"가
+// 지배 요구이고, 3열 붙여넣기를 "7열이어야 합니다"로 되돌리면 사람은 엑셀로 돌아가 표를 다시
+// 만든다 — 그 순간 이 화면의 목적이 사라진다. 진짜 위험(열 어긋남)은 머리줄 이름 매칭이 없앤다.
+function onPlanPaste(e) {
+  if (!planClipboardActive()) return;
+  const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+  if (!text) return;
+  const grid = parseTsv(text, { trimCells: true });
+  if (grid.length === 0) return;
+  // 1×1은 가로채지 않는다 — 자재 한 칸에 토큰 하나를 붙여넣는 것은 평범한 입력이고,
+  // 여기서 가로채면 읽기·입력 동선에 마찰이 생긴다.
+  if (grid.length === 1 && grid[0].length === 1) return;
+  e.preventDefault();
+
+  const startCol = focusedColumnId();
+  const focused = focusedRowValue();
+  const startRow = Math.max(0, S.legendRows.findIndex(r => String(r.value) === focused));
+  const mapped = mapPastedGrid(grid, startCol);
+
+  let applied = 0;
+  mapped.rows.forEach((patch, i) => {
+    const idx = startRow + i;
+    let target = S.legendRows[idx];
+    if (!target) {
+      // 부족하면 만든다. 만드는 것도 map_editor의 관문을 지난다.
+      const created = controller.addLegendRow && controller.addLegendRow();
+      if (!created) return;
+      S.legendRows = controller.getLegend();
+      target = S.legendRows[S.legendRows.length - 1];
+      if (!target) return;
+    }
+    let name = String(target.value);
+    // 개명이 먼저다 — 나머지 패치는 새 이름 아래로 들어가야 한다.
+    if (patch.value !== undefined && String(patch.value).trim() && String(patch.value).trim() !== name) {
+      const r = controller.updateLegendRow(name, { value: String(patch.value).trim() });
+      if (r && r.ok) name = String(patch.value).trim();
+    }
+    // COLOR is app-owned and outside the contract: `DOE_COLUMNS` has no `color`, so
+    // `patch.color` cannot exist. A new value gets a colour assigned by `addLegendRow`;
+    // an existing one keeps the one it has. (사용자 지시 2026-07-28 — 엑셀의 셀 채우기는
+    // `text/plain`으로 이동하지 않으므로 색 열은 어차피 빈 칸이나 잡음으로 도착한다.)
+    const rest = {};
+    if (patch.desc !== undefined) rest.desc = String(patch.desc).trim();
+    if (patch.stack !== undefined) rest.stack = String(patch.stack).trim();
+    ZONES.forEach(z => { if (patch[z] !== undefined) rest[z] = parseMaterialList(patch[z]); });
+    if (Object.keys(rest).length > 0) commitRow(name, rest);
+    S.legendRows = controller.getLegend();
+    applied++;
+  });
+
+  // 붙여넣기는 저장이 아니다 — 화면에 다 보이고, 검증은 행 옆에 붙는다. 그래도 몇 줄이
+  // 들어갔는지는 말해야 한다: 조용한 대량 변경은 되돌릴 근거조차 안 남긴다.
+  showToast(`값 ${applied}개를 붙여넣었습니다${mapped.header ? ' (머리줄 이름으로 맞춤)' : ''}`
+    + `${mapped.droppedLeading ? ' · 앞의 빈 열(색)은 건너뛰었습니다' : ''}`
+    + `${mapped.wide > 0 ? ` · 계약 밖 칸 ${mapped.wide}개는 무시했습니다` : ''}`, 'info');
+  renderDoeList();
+  refreshMaterials();
+}
+
+// 복사는 **원문 토큰만** 나간다. `_✱`·`≈`·「미상」·「해당 없음」·「칠함」은 전부 렌더링이고,
+// TSV에 나가면 다시 붙여넣을 수 없는 표가 된다.
+function onPlanCopy(e) {
+  if (!planClipboardActive()) return;
+  const el = document.activeElement;
+  if (!el || !elp.pane1 || !elp.pane1.contains(el)) return;
+  // 필드 안에서 글자를 선택해 복사하는 것은 평범한 복사다 — 가로채지 않는다.
+  const sel = window.getSelection && window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+    if (typeof el.selectionStart === 'number' && el.selectionStart !== el.selectionEnd) return;
+  }
+  e.preventDefault();
+  const v = focusedRowValue();
+  const rows = v ? S.legendRows.filter(r => String(r.value) === v) : S.legendRows;
+  e.clipboardData.setData('text/plain', serializeTsv(planToGrid(rows)));
 }
 
 // ── 자재 맵 왕복 ────────────────────────────────────────
@@ -926,25 +1073,24 @@ async function openMaterial(id) {
   }
 }
 
-// ★ 왕복의 보상 — 복귀 시 **그 자재만** 재조회해 수량·맵 유무를 갱신하고,
-//   값이 실제로 바뀌었을 때만 1회 하이라이트한다(매번 번쩍이면 신호가 죽는다).
+// ★ 왕복의 보상 — 복귀 시 **그 자재만** 재조회해 수량·맵 유무를 갱신한다.
 async function rewardAfterReturn(from) {
   if (!from || !from.mapKey) return;
   const st = stageOfTable(S.ctx.table);
   const table = sourceTableOfStage(st);
   if (!table || from.table !== table) return;
-
-  // 맵 키가 곧 자재 ID의 표기다(자재 ID 원문이 맵 키로 해석돼 열렸으므로).
   const id = String(from.mapKey);
-  const before = { avail: availableOf(id), exists: S.matMapState.get(matMapCacheKey(table, id)) };
-  const entry = await getSourceSummary(id, true);
-  const exists = await probeMaterialMap(table, id, true);
-  const after = { avail: availableOf(id), exists };
-
-  if (entry && entry.status === 'error') {
-    showToast(`자재 ${id} 가용 재조회 실패 — 미상으로 표시합니다. [↻ 가용 재조회]로 다시 시도하십시오.`, 'warning');
+  const pools = rollupRows().filter(p => poolCacheId(p) === id);
+  if (pools.length === 0) return;
+  let failed = false;
+  await Promise.all(pools.map(async p => {
+    const entry = await getPoolSummary(p, true);
+    if (entry && entry.status === 'error') failed = true;
+  }));
+  await probeMaterialMap(table, id, true);
+  if (failed) {
+    showToast(`자재 ${id} 가용 재조회 실패 — 미상으로 표시합니다. [↻ 가용]으로 다시 시도하십시오.`, 'warning');
   }
-  if (before.avail !== after.avail || before.exists !== after.exists) S.flash.add(id);
   renderMaterialPane();
 }
 
@@ -953,60 +1099,22 @@ async function refreshMaterials(force = false) {
   const seq = ++S.matSeq;
   const st = stageOfTable(S.ctx.table);
   const table = sourceTableOfStage(st);
-  const mats = materialRollup();
-  if (mats.length === 0) { renderMaterialPane(); return; }
+  const pools = rollupRows();
   renderMaterialPane();
-  await Promise.all(mats.map(async m => {
-    await getSourceSummary(m.id, force);
-    if (table) await probeMaterialMap(table, m.id, force);
+  if (pools.length === 0) return;
+  await Promise.all(pools.map(async p => {
+    await getPoolSummary(p, force);
+    if (table) await probeMaterialMap(table, poolCacheId(p), force);
   }));
   if (seq !== S.matSeq) return;
   renderMaterialPane();
 }
 
-// ── 자동완성 (그래프 노드) ──────────────────────────────
-function attachAutocomplete(input, label, onPick) {
-  if (input.dataset.acBound === '1') return;
-  input.dataset.acBound = '1';
-  const wrap = input.closest('.bp-ac-wrap') || input.parentElement;
-  if (!wrap) return;
-  const list = document.createElement('div');
-  list.className = 'bp-ac-list';
-  list.style.display = 'none';
-  wrap.appendChild(list);
-  let seq = 0, timer = null;
-  const hide = () => { list.style.display = 'none'; };
-  const search = async (q) => {
-    const my = ++seq;
-    try {
-      const params = new URLSearchParams({ q, label, limit: '15' });
-      const res = await fetch(`${API_BASE}/graph/nodes/search?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (my !== seq) return;
-      const items = (Array.isArray(data) ? data : (data.nodes || data.results || data.items || []))
-        .filter(x => x && x.identity_key !== undefined);
-      if (!items.length) list.innerHTML = `<div class="bp-ac-empty">일치 노드 없음 (label=${esc(label)}) — 수기 입력 가능</div>`;
-      else {
-        list.innerHTML = items.map(x => `<div class="bp-ac-item" data-v="${esc(String(x.identity_key))}">${esc(String(x.identity_key))}</div>`).join('');
-        list.querySelectorAll('.bp-ac-item').forEach(item => {
-          item.addEventListener('mousedown', e => { e.preventDefault(); hide(); onPick(item.dataset.v); });
-        });
-      }
-      list.style.display = 'block';
-    } catch (e) { if (my === seq) hide(); }
-  };
-  input.addEventListener('input', () => {
-    clearTimeout(timer);
-    const q = input.value.trim();
-    if (!q) { hide(); return; }
-    timer = setTimeout(() => search(q), 200);
-  });
-  input.addEventListener('blur', () => setTimeout(hide, 120));
-  input.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
-}
-
 // ── 골격 ────────────────────────────────────────────────
+//
+// 표 둘. 세 번째 표면도, 모드도, 모달도 없다. ①·②는 `flex:1 1 0`으로 정확히 반씩 나누고
+// **각자 스크롤한다** — 카드에 `flex:none`이 없으면 내용이 길어질 때 스크롤되지 않고
+// 찌그러진다(이전 시안에서 696px→211px로 실측된 함정).
 function renderAll() {
   renderPlanHead();
   renderDoeList();
@@ -1015,14 +1123,35 @@ function renderAll() {
 
 function buildWorkspace(root) {
   root.innerHTML = `
-    <div class="tp-scroll" id="tp-scroll">
-      <div class="tp-plan-head" id="tp-head"></div>
-      <div class="tp-doe-list" id="tp-list"></div>
-    </div>
-    <div class="tp-mat-pane" id="tp-mat-pane" style="display:none;"></div>`;
+    <div class="tp-plan-head" id="tp-head"></div>
+    <div class="tp-split">
+      <div class="tp-pane" id="tp-pane1">
+        <div class="tp-pane-h">
+          <span class="no">①</span><span class="nm">값 정의</span>
+          <span class="sp"></span>
+          <span class="tp-xl" title="엑셀 표를 그대로 붙여넣습니다 (Ctrl+V).
+열 순서 — VALUE · STACK · DESC · 1H · MID · TOP
+머리줄을 같이 복사하면 이름으로 맞춥니다 — 열 순서가 달라도, 일부만 복사해도 됩니다.
+Ctrl+C — 포커스한 값(없으면 전체)이 같은 형태의 TSV로 나갑니다.
+「COLOR」와 「칠함」은 계약 밖입니다 — 붙여넣기·복사 양쪽에서 빠집니다.
+엑셀 표에 색 열이 있어도 됩니다: 머리줄이 있으면 이름으로 빠지고, 없으면 앞의 빈 열을 건너뜁니다."><b>⇄</b> 엑셀</span>
+          <button type="button" class="tp-btn" id="tp-add-value">+ 값</button>
+        </div>
+        <div class="tp-pane-b" id="tp-list"></div>
+      </div>
+      <div class="tp-pane t2" id="tp-mat-pane" style="display:none;"></div>
+    </div>`;
   elp.head = root.querySelector('#tp-head');
+  elp.pane1 = root.querySelector('#tp-pane1');
   elp.list = root.querySelector('#tp-list');
   elp.matPane = root.querySelector('#tp-mat-pane');
+  root.querySelector('#tp-add-value').addEventListener('click', () => {
+    if (controller && controller.addLegendRow) controller.addLegendRow();
+  });
+  // 클립보드는 ① 안에서만 듣는다. 문서 전역에 걸면 그리드의 핸들러와 다툰다.
+  // `⇄ 엑셀`은 표시이지 버튼이 아니다 — 클릭 핸들러가 없다(비보안 컨텍스트 제약).
+  elp.pane1.addEventListener('paste', onPlanPaste);
+  elp.pane1.addEventListener('copy', onPlanCopy);
 }
 
 // ── map_editor → 패널 통지 (export) ─────────────────────
@@ -1039,10 +1168,7 @@ export function notifyMapContext(info = {}) {
     mapKey: (c.loaded && c.loaded.mapKey) || c.mapKey || '',
     loaded: c.loaded, depth: c.depth || 0, parent: c.parent || null,
   };
-  if (changed) {
-    S.openValue = null;
-    S.flash.clear();
-  }
+  if (changed) S.flash.clear();
   if (controller.getLegend) S.legendRows = controller.getLegend();
   renderAll();
   if (changed) {
@@ -1052,7 +1178,7 @@ export function notifyMapContext(info = {}) {
   }
 }
 
-// legend(값·설명·색·knobs·bands·브러시)가 바뀌었다.
+// legend(값·설명·색·knobs·층 구조·브러시)가 바뀌었다.
 export function notifyLegendChanged() {
   if (!controller || !controller.getLegend) return;
   S.legendRows = controller.getLegend();
@@ -1068,29 +1194,25 @@ export function notifyLegendChanged() {
 export function notifyPaintCounts(counts) {
   S.counts = counts || {};
   if (!elp.list) return;
-  const planMode = !!stageOfTable(S.ctx.table) && S.ctx.depth === 0;
   elp.list.querySelectorAll('[data-count-for]').forEach(node => {
-    node.textContent = doeLine2(node.getAttribute('data-count-for'), planMode);
+    node.textContent = paintedOf(node.getAttribute('data-count-for'));
   });
-  if (S.openValue) {
-    const bands = bandsOf(S.openValue);
-    elp.list.querySelectorAll('[data-band-calc]').forEach(node => {
-      const i = Number(node.getAttribute('data-band-calc'));
-      if (bands[i]) node.textContent = bandCalcText(S.openValue, bands, i);
-    });
-  }
   if (elp.matPane && elp.matPane.style.display !== 'none') {
-    const mats = materialRollup();
-    const byId = new Map(mats.map(m => [m.id, m]));
-    elp.matPane.querySelectorAll('[data-mat-used]').forEach(node => {
-      const m = byId.get(node.getAttribute('data-mat-used'));
-      if (m) node.textContent = m.used;
-    });
-    elp.matPane.querySelectorAll('[data-use-for]').forEach(node => {
-      const m = byId.get(node.getAttribute('data-use-for'));
-      const u = m && m.uses[Number(node.getAttribute('data-use-i'))];
-      const b = u && node.querySelector('b');
-      if (b) b.textContent = u.qty;
+    // ②의 사용·잔여는 **같은 함수**로 다시 계산한다(`materialRollupRows`). 여기에 두 번째
+    // 계산을 두면 DB 34 · 화면 33 사건이 그대로 재현된다 — 저장이 `ceil`, 표시가 `round`
+    // 였을 때 정확히 그렇게 갈라졌다.
+    const byKey = new Map(rollupRows().map(p => [p.key, p]));
+    elp.matPane.querySelectorAll('.tp-pool').forEach(node => {
+      const p = byKey.get(node.getAttribute('data-pool'));
+      if (!p) return;
+      const share = node.querySelector('.tp-num.share');
+      if (share) share.innerHTML = `<span class="ap">≈</span>${p.used}`;
+      const rem = remainingState(availabilityOfPool(p), p.used);
+      const left = node.querySelector('.tp-num.left');
+      if (left) {
+        left.classList.toggle('neg', rem.reliable && rem.value < 0);
+        left.innerHTML = rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w');
+      }
     });
   }
 }

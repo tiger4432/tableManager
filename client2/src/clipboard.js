@@ -4,6 +4,11 @@ import { elements } from './dom.js';
 import { ensureCellObject, updateGridSortState } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
 import { getLocalTimeString } from './utils.js';
+// The ONE TSV reader/writer. Lifted out of this file (it used to be four lines inline in
+// the paste handler) so the DOE panel can run the same code instead of growing a second
+// one. A second clipboard implementation is how this project got a Ctrl+C that did nothing
+// on the intranet, and it cost a day to find.
+import { parseTsv, serializeTsv } from './tsv.js';
 
 export function isCellInRange(rowIndex, colId) {
   const key = `${rowIndex}_${colId}`;
@@ -235,11 +240,14 @@ export function getRangeSelectedTSV() {
   });
   if (colsToCopy.length === 0) return '';
 
-  let tsvRows = [];
+  // A grid of raw strings; `serializeTsv` does the quoting at the end. Previously each
+  // value had its tabs and newlines REPLACED with spaces here - silent data loss on copy,
+  // and the reason a copied cell could never be pasted back to produce the same cell.
+  const tsvMatrix = [];
 
   const includeHeaders = elements.copyHeaderToggle && elements.copyHeaderToggle.checked;
   if (includeHeaders) {
-    tsvRows.push(colsToCopy.map(c => c.toUpperCase()).join('\t'));
+    tsvMatrix.push(colsToCopy.map(c => c.toUpperCase()));
   }
 
   for (let r = minRow; r <= maxRow; r++) {
@@ -270,12 +278,12 @@ export function getRangeSelectedTSV() {
       if (val === null || val === undefined) {
         val = '';
       }
-      rowVals.push(String(val).replace(/\t/g, ' ').replace(/\n/g, ' '));
+      rowVals.push(String(val));
     });
-    tsvRows.push(rowVals.join('\t'));
+    tsvMatrix.push(rowVals);
   }
 
-  return tsvRows.join('\n');
+  return serializeTsv(tsvMatrix);
 }
 
 export function setupClipboardHandlers() {
@@ -324,9 +332,11 @@ export function setupClipboardHandlers() {
     const clipboardText = e.clipboardData.getData('text/plain');
     if (!clipboardText) return;
 
-    // Parse TSV clipboard
-    const rows = clipboardText.replace(/\r\n/g, '\n').split('\n').filter(r => r.length > 0);
-    const parsedMatrix = rows.map(r => r.split('\t').map(c => c.trim()));
+    // Parse TSV clipboard through the shared reader. `trimCells`/`dropBlankLines` keep this
+    // handler's long-standing whitespace and blank-line treatment byte for byte; what
+    // CHANGES is that a cell Excel quoted because it contains a newline is now one cell.
+    // It used to become two grid rows, the second of them garbage ending in a stray quote.
+    const parsedMatrix = parseTsv(clipboardText, { trimCells: true, dropBlankLines: true });
     if (parsedMatrix.length === 0) return;
 
     elements.performanceLog.textContent = 'Processing paste updates...';
@@ -589,7 +599,7 @@ export function setupClipboardHandlers() {
     const lines = [];
 
     if (includeHeaders) {
-      lines.push(columns.map(c => c.toUpperCase()).join('\t'));
+      lines.push(columns.map(c => c.toUpperCase()));
     }
 
     selectedNodes.forEach(node => {
@@ -605,10 +615,12 @@ export function setupClipboardHandlers() {
         }
         return cell !== undefined ? cell : '';
       });
-      lines.push(rowCells.join('\t'));
+      lines.push(rowCells);
     });
 
-    e.clipboardData.setData('text/plain', lines.join('\n'));
+    // `e.clipboardData`, never `navigator.clipboard`: production is plain-HTTP LAN, a
+    // non-secure context, where the async Clipboard API is undefined.
+    e.clipboardData.setData('text/plain', serializeTsv(lines));
     elements.performanceLog.textContent = `📋 Copied ${selectedNodes.length} rows to clipboard`;
   });
 }

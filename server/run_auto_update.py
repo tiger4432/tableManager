@@ -17,6 +17,7 @@ from utils.logger import get_process_logger
 from utils.auto_update_control import read_disabled_scripts
 from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
+import config_backup
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 class BaseCollector(ABC):
@@ -337,8 +338,12 @@ class MultiDiscoveryScheduler:
         self.server_dir = server_dir or paths.DATA_ROOT
         self.workspace_dir = os.path.join(self.server_dir, "ingestion_workspace")
         self.status_file_path = os.path.join(self.server_dir, "config", "scheduler_status.json")
+        self.config_dir = os.path.join(self.server_dir, "config")
         self.collectors = []
         self._lock = threading.RLock()
+        # 0.0 = "check on the very first tick", so a scheduler that starts after
+        # a week of downtime takes the missed snapshot at boot rather than waiting.
+        self._last_backup_check = 0.0
 
     def discover_and_load_collectors(self):
         """
@@ -566,6 +571,37 @@ class MultiDiscoveryScheduler:
                     else:
                         self.execute_collector(collector)
 
+    def maybe_backup_configs(self, now=None):
+        """Weekly ``server/config/`` snapshot — a maintenance job, NOT a collector.
+
+        [Why it lives in this process but outside the collector mechanism]
+        A collector is per-table: it writes a CSV into
+        ``ingestion_workspace/<table>/raws/``, where the directory watcher picks it
+        up and ingests it into that table. A config backup has no table and must
+        never be ingested, so registering it as a collector would be structurally
+        wrong — and it would also be indistinguishable from a broken one, since a
+        collector that yields nothing now reports FAIL by design.
+
+        What it does reuse is this daemon's tick. This is the system's only
+        time-driven process, and adding a sixth supervised process for a weekly
+        file copy would cost more than it buys.
+
+        [Why the cadence is not a cron expression] ``config_backup.due()`` compares
+        against the newest snapshot on disk. A cron instant is simply missed when
+        the machine is off at that moment; deriving the cadence from the files
+        makes a missed week self-heal on the next tick. See config_backup.py.
+        """
+        now_wall = time.time()
+        if now_wall - self._last_backup_check < config_backup.CHECK_INTERVAL_SEC:
+            return None
+        self._last_backup_check = now_wall
+        try:
+            return config_backup.run_scheduled(config_dir=self.config_dir, now=now)
+        except Exception as e:
+            # Never let a backup failure stop the collectors from running.
+            logger.error(f"[ConfigBackup] maintenance cycle raised: {e}")
+            return None
+
     def run(self):
         """
         주기적으로 DB의 SYSTEM_RELOAD 및 SCHEDULER_RUN_NOW 아웃박스 신호를 모니터링하며,
@@ -650,7 +686,10 @@ class MultiDiscoveryScheduler:
                     self.check_and_run_schedules()
                 except Exception as e:
                     logger.error(f"Scheduler runtime error: {e}")
-                    
+
+                # 3. 주간 config 스냅샷 (수집기가 아닌 유지보수 작업 — maybe_backup_configs 참조)
+                self.maybe_backup_configs()
+
                 time.sleep(self.check_interval)
         except KeyboardInterrupt:
             logger.info("Auto Update Scheduler daemon terminated gracefully.")

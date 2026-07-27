@@ -1,491 +1,510 @@
 {
   "$comment": [
-    "Authority for the DOE band validation rules B1-B8. docs/spec/DOE_BAND_MODEL.md is the prose;",
-    "this file is the executable form, and both sides (client2/src/doe_bands.js today, a server",
-    "validator when the model lands) must answer identically.",
+    "DOE ZONE MODEL — shared contract vectors.",
     "",
-    "THE RULE THIS FILE EXISTS TO PIN: every rule is evaluated PER VALUE, never per row.",
-    "`A 2-15` beside `B,C 2-15` is not an overlap. A fixture where every band scopes to a single",
-    "value cannot tell a per-value implementation from a per-row one, so several cases below",
-    "deliberately mix ALL / single / multi scopes in one plan.",
+    "Consumed by contracts/doe_band_rules/client_harness.mjs (node, read-only over",
+    "client2/src/{doe_bands.js,tsv.js,transfer_plan.js}). The server side lands against this",
+    "same file, which is the point: a rule that lives in one language drifts.",
     "",
-    "`expect_blocks` and `expect_warns` are SETS of rule ids (order-independent, duplicates",
-    "collapsed). Messages are not asserted - they are Korean user-facing text and will be",
-    "reworded; what must not drift is WHICH rule fires."
+    "WHAT REPLACED WHAT (2026-07-28). The band model (rows with FROM->TO, a value-set scope,",
+    "`seq` identity) is retired. A value now carries ONE number and THREE zones:",
+    "  STACK = total layers | 1H = layer 1 | TOP = layer STACK | MID = everything between",
+    "  MID zone = (1H present ? 2 : 1) .. (TOP present ? STACK-1 : STACK)",
+    "",
+    "DELETED VECTOR GROUPS, and why each one could not be translated rather than moved:",
+    "  * expansion_cases  — `expandBandValues`, `ALL`, `B,C`. A zone belongs to exactly one",
+    "    value BY POSITION; there is no by-name reference from a layer range to a value set,",
+    "    so there is nothing to expand and B4 (naming an undefined value) has no referent.",
+    "  * span_cases       — `bandLayerSpan(from,to)`. Replaced 1:1 by zone_extent_cases,",
+    "    which pins the same question (`which layers does this cover, or is it unknowable`)",
+    "    against the geometry that actually exists now. Coverage moved; it was not dropped.",
+    "  * rename_cases     — `remapBandValues`. Renaming a value used to orphan the bands that",
+    "    referenced it by name. Zones live IN the value's own row, so a rename carries them",
+    "    for free and there is no propagation left to get wrong.",
+    "  * the B1/B2/B5/B6/B9 plan cases — FROM>TO, FROM<1, overlap, gap, a band scoped to no",
+    "    value. These were not relaxed: the three zones TILE `1..STACK` by construction, so",
+    "    those states are UNSTATEABLE. B9's hazard is the one that survived translation and",
+    "    is now V5 — see stack_cases.$why.",
+    "",
+    "CARRIED OVER BYTE FOR BYTE: material_token_cases and remaining_cases. The token grammar",
+    "and the 3-state availability rule were settled with the user and say nothing about",
+    "whether layers are described by bands or by zones.",
+    "",
+    "`expect_blocks` / `expect_warns` are SETS of rule ids (order-independent)."
   ],
-  "version": 1,
+  "version": 2,
 
-  "expansion_cases": [
-    {
-      "name": "ALL_expands_to_every_defined_value",
-      "$why": "A plan built entirely from ALL rows must still validate per value like any other.",
-      "defined": ["1", "2", "F"],
-      "band": { "values": ["ALL"], "from": 1, "to": 1 },
-      "expect": ["1", "2", "F"]
-    },
-    {
-      "name": "multi_value_scope_keeps_order_and_dedupes",
-      "defined": ["A", "B", "C"],
-      "band": { "values": ["B", "C", "B"], "from": 2, "to": 15 },
-      "expect": ["B", "C"]
-    },
-    {
-      "name": "comma_string_scope_is_accepted",
-      "$why": "The sketch writes `B,C` in one cell; the panel may hand it over unsplit.",
-      "defined": ["A", "B", "C"],
-      "band": { "values": "B,C", "from": 2, "to": 15 },
-      "expect": ["B", "C"]
-    },
-    {
-      "name": "ALL_mixed_with_names_still_yields_every_value_once",
-      "defined": ["A", "B"],
-      "band": { "values": ["B", "ALL"], "from": 1, "to": 1 },
-      "expect": ["B", "A"]
-    },
-    {
-      "name": "undefined_names_are_returned_not_dropped",
-      "$why": "B4 has to be able to name them. Dropping here would make the reference vanish silently.",
-      "defined": ["A"],
-      "band": { "values": ["A", "Z"], "from": 1, "to": 1 },
-      "expect": ["A", "Z"]
-    },
-    {
-      "name": "empty_scope_expands_to_nothing",
-      "defined": ["A"],
-      "band": { "values": [], "from": 1, "to": 1 },
-      "expect": []
-    }
+  "stack_cases": [
+    {"$why": "🔴 THE RULE THAT CARRIES B9's HAZARD ACROSS THE REWRITE. The band model derived a value's height from its COVERED layers, so an unassigned top range simply LOWERED max and every other rule passed - a 16-layer stack silently became 15. Zones do not derive the height; STACK states it. That closes the hole only while STACK is READABLE: an unreadable STACK treated as 0, or skipped, reproduces the identical defect behind a screen that looks fine. So it is invalid, it blocks, and it blocks FIRST."},
+    {"name": "plain_integer", "stack": 16, "state": "ok", "value": 16},
+    {"name": "integer_string", "stack": "16", "state": "ok", "value": 16},
+    {"name": "one_is_a_legal_height", "stack": 1, "state": "ok", "value": 1,
+     "$why": "dt_map. The degenerate case is not the invalid case."},
+    {"name": "blank_is_not_yet_typed", "stack": "", "state": "blank", "value": null},
+    {"name": "whitespace_is_blank_not_zero", "stack": "   ", "state": "blank", "value": null,
+     "$why": "`Number('  ')` is 0. A height of 0 makes every zone empty and every other rule pass."},
+    {"name": "missing_is_blank", "stack": null, "state": "blank", "value": null},
+    {"name": "zero_is_not_a_height", "stack": 0, "state": "invalid", "value": 0},
+    {"name": "negative_is_not_a_height", "stack": -3, "state": "invalid", "value": -3},
+    {"name": "hex_string_is_not_16", "stack": "0x10", "state": "invalid", "value": null,
+     "$why": "`Number('0x10')` is 16. Reading it that way once wrote 16 into the DB for text the user had typed."},
+    {"name": "decimal_is_refused_not_truncated", "stack": "7.5", "state": "invalid", "value": null},
+    {"name": "boolean_is_not_one", "stack": true, "state": "invalid", "value": null}
   ],
 
-  "span_cases": [
-    {
-      "$comment": [
-        "`bandLayerSpan` returns null for 'cannot be computed' and an ARRAY for a real range.",
-        "No current caller can tell null from [] - both produce zero coverage and zero demand -",
-        "so without these assertions the distinction is an equivalent mutant and would rot.",
-        "It is pinned anyway because this codebase's standing rule is that '확인 못 함' must never",
-        "collapse into '0' (PRIMITIVES section 7): the next caller to ask `span.length === 0`",
-        "would silently read an unreadable boundary as an empty range."
-      ]
-    },
-    { "name": "readable_range", "band": { "from": 2, "to": 15 }, "expect": [2, 15, 14] },
-    { "name": "single_layer", "band": { "from": 16, "to": 16 }, "expect": [16, 16, 1] },
-    { "name": "unreadable_to_is_null", "band": { "from": 1, "to": "0x10" }, "expect": null },
-    { "name": "blank_to_is_null", "band": { "from": 1, "to": "" }, "expect": null },
-    { "name": "unreadable_from_is_null", "band": { "from": "abc", "to": 5 }, "expect": null },
-    { "name": "missing_from_is_null", "band": { "to": 5 }, "expect": null },
-    { "name": "from_below_one_is_null", "band": { "from": 0, "to": 5 }, "expect": null },
-    { "name": "reversed_is_null", "band": { "from": 9, "to": 3 }, "expect": null },
-    { "name": "boolean_boundary_is_null", "band": { "from": true, "to": 5 }, "expect": null }
+  "zone_extent_cases": [
+    {"$why": "The whole geometry. A fixture in which every row carried all three zones would let a bug in the `has1H ? 2 : 1` branch pass every case, so rows with 1H ABSENT and rows with TOP ABSENT are both present and are the only place those branches are exercised."},
+    {"name": "all_three_present",
+     "row": {"value": "B", "stack": 16, "mat_1h": ["ADFE1H_01"], "mat_mid": ["MID1", "MID3"], "mat_top": ["TOP1"]},
+     "mid": {"from": 2, "to": 15, "size": 14, "known": true},
+     "layers": {"mat_1h": [1, 1, 1], "mat_mid": [2, 15, 14], "mat_top": [16, 16, 1]}},
+
+    {"name": "no_1h_so_mid_starts_at_one",
+     "row": {"value": "A", "stack": 8, "mat_1h": [], "mat_mid": ["MID2"], "mat_top": ["TOP1"]},
+     "mid": {"from": 1, "to": 7, "size": 7, "known": true},
+     "layers": {"mat_1h": [], "mat_mid": [1, 7, 7], "mat_top": [8, 8, 1]},
+     "$why": "An implementation that hardcoded MID's start at 2 passes every all-three-present case and fails only here."},
+
+    {"name": "no_top_so_mid_runs_to_stack",
+     "row": {"value": "G", "stack": 12, "mat_1h": ["H_01"], "mat_mid": ["M_01"], "mat_top": []},
+     "mid": {"from": 2, "to": 12, "size": 11, "known": true},
+     "layers": {"mat_1h": [1, 1, 1], "mat_mid": [2, 12, 11], "mat_top": []},
+     "$why": "The mirror of the case above. Hardcoding MID's end at STACK-1 fails only here."},
+
+    {"name": "dt_map_degenerate_mid_only",
+     "row": {"value": "DT", "stack": 1, "mat_1h": [], "mat_mid": ["DTM4_11"], "mat_top": []},
+     "mid": {"from": 1, "to": 1, "size": 1, "known": true},
+     "layers": {"mat_1h": [], "mat_mid": [1, 1, 1], "mat_top": []}},
+
+    {"name": "stack_two_with_both_ends_leaves_a_zero_layer_mid",
+     "row": {"value": "E", "stack": 2, "mat_1h": ["ADFE1H_01"], "mat_mid": [], "mat_top": ["TOP1"]},
+     "mid": {"from": 2, "to": 1, "size": 0, "known": true},
+     "layers": {"mat_1h": [1, 1, 1], "mat_mid": [], "mat_top": [2, 2, 1]},
+     "$why": "🔴 `size: 0` with `known: true` is NOT the same as unknown. This row is CORRECT and must not block. `from > to` is deliberate - the extent is empty, and clamping it to `from == to` would invent a layer."},
+
+    {"name": "unreadable_stack_makes_every_extent_unknowable",
+     "row": {"value": "X", "stack": "0x10", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+     "mid": {"from": null, "to": null, "size": 0, "known": false},
+     "layers": {"mat_1h": null, "mat_mid": null, "mat_top": null},
+     "$why": "🔴 `zoneLayers` returns null, never []. An unreadable height that silently contributed zero layers is how a 16-layer stack becomes 15 - `[]` here would be indistinguishable from the legitimate E-row above."}
   ],
 
   "plan_cases": [
-    {
-      "name": "users_own_sketch_minus_the_typo_is_valid",
-      "$why": "ALL 1-1 / A 2-15 / B,C 2-15 / ALL 16-16. Two rows share 2-15 for different dies.",
-      "values": ["A", "B", "C"],
-      "bands": [
-        { "seq": 1, "values": ["ALL"], "from": 1, "to": 1, "materials": ["3AB201_02", "3AB01_03"] },
-        { "seq": 2, "values": ["A"], "from": 2, "to": 15, "materials": ["MID1"] },
-        { "seq": 3, "values": ["B", "C"], "from": 2, "to": 15, "materials": ["MID2"] },
-        { "seq": 4, "values": ["ALL"], "from": 16, "to": 16, "materials": ["TOP1"] }
-      ],
-      "expect_blocks": [],
-      "expect_warns": []
-    },
-    {
-      "name": "users_own_sketch_AS_DRAWN_is_an_overlap",
-      "$why": "Row 4 was typed `ALL 15-16`. Layer 15 is already covered for A, B and C. The user called it a mistake and asked for it to be caught.",
-      "values": ["A", "B", "C"],
-      "bands": [
-        { "seq": 1, "values": ["ALL"], "from": 1, "to": 1, "materials": ["3AB201_02"] },
-        { "seq": 2, "values": ["A"], "from": 2, "to": 15, "materials": ["MID1"] },
-        { "seq": 3, "values": ["B", "C"], "from": 2, "to": 15, "materials": ["MID2"] },
-        { "seq": 4, "values": ["ALL"], "from": 15, "to": 16, "materials": ["TOP1"] }
-      ],
-      "expect_blocks": ["B5"],
-      "expect_warns": []
-    },
-    {
-      "name": "same_range_different_values_is_NOT_an_overlap",
-      "$why": "The per-value rule in its purest form. A per-row implementation blocks this correct plan.",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 10, "materials": ["M1"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 10, "materials": ["M2"] }
-      ],
-      "expect_blocks": [],
-      "expect_warns": []
-    },
-    {
-      "name": "overlap_inside_one_value_of_a_multi_value_band",
-      "$why": "The other direction: B is covered twice, A once. A per-row check sees two disjoint scopes and passes.",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["A", "B"], "from": 1, "to": 5, "materials": ["M1"] },
-        { "seq": 2, "values": ["B"], "from": 3, "to": 8, "materials": ["M2"] },
-        { "seq": 3, "values": ["A"], "from": 6, "to": 8, "materials": ["M3"] }
-      ],
-      "expect_blocks": ["B5"],
-      "expect_warns": []
-    },
-    {
-      "name": "gap_in_the_middle_of_one_value",
-      "$why": "Someone nudged 2-15 to 2-12 and forgot. 13-15 vanished for A only.",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["ALL"], "from": 1, "to": 1, "materials": ["M0"] },
-        { "seq": 2, "values": ["A"], "from": 2, "to": 12, "materials": ["M1"] },
-        { "seq": 3, "values": ["B"], "from": 2, "to": 15, "materials": ["M2"] },
-        { "seq": 4, "values": ["A"], "from": 16, "to": 16, "materials": ["M3"] },
-        { "seq": 5, "values": ["B"], "from": 16, "to": 16, "materials": ["M3"] }
-      ],
-      "expect_blocks": ["B6"],
-      "expect_warns": []
-    },
-    {
-      "name": "gap_at_layer_1_when_nothing_starts_at_1",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 3, "to": 9, "materials": ["M1"] }],
-      "expect_blocks": ["B6"],
-      "expect_warns": []
-    },
-    {
-      "name": "gap_at_layer_1_ONLY",
-      "$why": "Pins the lower bound of the sweep. With from=3 above, layers 1 AND 2 are missing, so a sweep that wrongly starts at 2 still finds layer 2 and fires anyway. Only a stack starting at exactly 2 can tell the two implementations apart.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 2, "to": 9, "materials": ["M1"] }],
-      "expect_blocks": ["B6"],
-      "expect_warns": []
-    },
-    {
-      "name": "value_defined_but_covered_by_nothing",
-      "$why": "B8. Distinct from B6: there is no max to measure a gap against.",
-      "values": ["A", "ORPHAN"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 4, "materials": ["M1"] }],
-      "expect_blocks": ["B8"],
-      "expect_warns": []
-    },
-    {
-      "name": "reversed_range",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 9, "to": 3, "materials": ["M1"] }],
-      "expect_blocks": ["B1", "B8"],
-      "expect_warns": []
-    },
-    {
-      "name": "from_below_one",
-      "$why": "Reported as B2, not as a gap. FROM 0 with TO 5 would otherwise read as a confusing coverage result.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 0, "to": 5, "materials": ["M1"] }],
-      "expect_blocks": ["B2", "B8"],
-      "expect_warns": []
-    },
-    {
-      "name": "unreadable_from_is_B3_not_a_silent_zero",
-      "$why": "'0x10' used to coerce to 16 on one side and 0 on the other. Both boundaries go through the SAME classifier as `to` always did.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": "0x10", "to": 20, "materials": ["M1"] }],
-      "expect_blocks": ["B3", "B8"],
-      "expect_warns": []
-    },
-    {
-      "name": "blank_to_is_B3_too",
-      "$why": "blank and invalid are ONE case for validation - both mean 'no number', and coverage cannot be computed from either.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": "", "materials": ["M1"] }],
-      "expect_blocks": ["B3", "B8"],
-      "expect_warns": []
-    },
-    {
-      "name": "reference_to_an_undefined_value",
-      "values": ["A"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["M1"] },
-        { "seq": 2, "values": ["A", "GHOST"], "from": 6, "to": 9, "materials": ["M2"] }
-      ],
-      "expect_blocks": ["B4"],
-      "expect_warns": []
-    },
-    {
-      "name": "band_with_no_material",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": [] }],
-      "expect_blocks": ["B7"],
-      "expect_warns": []
-    },
-    {
-      "name": "duplicate_material_inside_one_band_is_a_WARN",
-      "$why": "Save proceeds. It changes the per-material share, but the user may genuinely mean two reels of the same lot.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["M1", "M1"] }],
-      "expect_blocks": [],
-      "expect_warns": ["W-DUP-MAT"]
-    },
-    {
-      "name": "unassigned_TOP_range_is_blocked_by_B9",
-      "$why": "B9. max(V) is the highest COVERED layer, so a top range nobody assigned simply lowers max and all eight other rules pass - a 16-layer stack silently becomes 15. Blocked as of 2026-07-27 (user: 빈 층 있으면 저장시키지 말고). Compare with the MIDDLE case below: identical mistake, caught by B6, which is exactly the position-dependent asymmetry B9 removes.",
-      "values": ["A"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 15, "materials": ["M1"] },
-        { "seq": 2, "values": [], "from": 16, "to": 16, "materials": ["M2"] }
-      ],
-      "expect_blocks": ["B9"],
-      "expect_warns": []
-    },
-    {
-      "name": "unassigned_MIDDLE_range_IS_caught_by_B6",
-      "$why": "The contrast that proves the hole is specifically about the top. Same defect, different position, opposite outcome.",
-      "values": ["A"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["M1"] },
-        { "seq": 2, "values": [], "from": 6, "to": 10, "materials": ["M2"] },
-        { "seq": 3, "values": ["A"], "from": 11, "to": 16, "materials": ["M3"] }
-      ],
-      "expect_blocks": ["B6", "B9"],
-      "expect_warns": []
-    },
-    {
-      "name": "B10_whole_lot_and_its_own_slot_in_the_same_bin",
-      "$why": "MID1:2 covers every slot at BIN 2; MID1_03:2 covers slot 03 at BIN 2. Slot 03 is counted twice, and inflated demand shows up as a shortage at the worst moment.",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1:2"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 5, "materials": ["MID1_03:2"] }
-      ],
-      "expect_blocks": ["B10"],
-      "expect_warns": []
-    },
-    {
-      "name": "B10_does_NOT_fire_across_different_bins",
-      "$why": "Different BIN = different pool = no double count. A rule that ignored BIN would block a legitimate plan.",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1:2"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 5, "materials": ["MID1_03:1"] }
-      ],
-      "expect_blocks": [],
-      "expect_warns": []
-    },
-    {
-      "name": "B10_does_NOT_fire_for_two_slots_of_one_lot",
-      "values": ["A", "B"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1_01:2"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 5, "materials": ["MID1_03:2"] }
-      ],
-      "expect_blocks": [],
-      "expect_warns": []
-    },
-    {
-      "name": "B10_fires_within_a_single_band_too",
-      "$why": "The overlap is a property of the plan, not of a row pair.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1:2", "MID1_03:2"] }],
-      "expect_blocks": ["B10"],
-      "expect_warns": []
-    },
-    {
-      "name": "unparseable_material_blocks_rather_than_reporting_availability_zero",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1:abc"] }],
-      "expect_blocks": ["B7"],
-      "expect_warns": []
-    },
-    {
-      "name": "bare_lot_name_is_now_a_valid_material",
-      "$why": "The reversal, exercised through the whole validator and not just the parser.",
-      "values": ["A"],
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 5, "materials": ["MID1"] }],
-      "expect_blocks": [],
-      "expect_warns": []
-    },
-    {
-      "name": "several_rules_at_once_are_all_reported",
-      "$why": "The panel names every reason at once; a validator that returns the first failure makes the user fix one thing per save.",
-      "values": ["A", "B", "LONELY"],
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 5, "to": 2, "materials": [] },
-        { "seq": 2, "values": ["B", "NOPE"], "from": 1, "to": 3, "materials": ["M1"] }
-      ],
-      "expect_blocks": ["B1", "B7", "B4", "B8"],
-      "expect_warns": []
-    }
+    {"$why": "Five blocking rules replaced ten. V5 STACK unreadable | V2 STACK 1 with both ends | V1 MID missing while its zone is non-empty | V4 unreadable material token | V3 whole lot + one of its own slots in one BIN."},
+
+    {"name": "dt_map_plan_is_silent",
+     "values": [{"value": "DT", "stack": 1, "mat_1h": [], "mat_mid": ["DTM4_11"], "mat_top": []}],
+     "expect_blocks": [], "expect_warns": [],
+     "$why": "🔴 THE DEGENERATE CASE MUST NOT BE NAGGED AT. A validator that complains about its own degenerate case teaches people to ignore it, and then they ignore the one that matters."},
+
+    {"name": "empty_mid_zone_passes_with_no_mid",
+     "values": [{"value": "E", "stack": 2, "mat_1h": ["ADFE1H_01"], "mat_mid": [], "mat_top": ["TOP1"]}],
+     "expect_blocks": [], "expect_warns": [],
+     "$why": "🔴 V1 IS CONDITIONAL AND THIS IS THE ONLY CASE THAT PROVES IT. An unconditional `MID required` passes every other plan case in this file and fails here."},
+
+    {"name": "non_empty_mid_zone_with_no_mid_blocks",
+     "values": [{"value": "C", "stack": 16, "mat_1h": [], "mat_mid": [], "mat_top": ["TOP1:2"]}],
+     "expect_blocks": ["V1"], "expect_warns": [],
+     "$why": "MID zone is 1-15 here. Fifteen layers with nothing on them."},
+
+    {"name": "stack_one_with_both_ends_blocks",
+     "values": [{"value": "D", "stack": 1, "mat_1h": ["3AB77_04"], "mat_mid": [], "mat_top": ["TOP1"]}],
+     "expect_blocks": ["V2"], "expect_warns": [],
+     "$why": "🔴 PAIRED WITH THE E-ROW ABOVE, WHICH IS THE SAME SHAPE ONE LAYER TALLER AND PASSES. One layer decides pass vs block. And MID is NOT a reason here - its zone is 0 layers - so V1 must stay silent, or the message sends the user to the one cell that is innocent."},
+
+    {"name": "unreadable_stack_blocks_and_suppresses_the_extent_rules",
+     "values": [{"value": "X", "stack": "0x10", "mat_1h": [], "mat_mid": [], "mat_top": []}],
+     "expect_blocks": ["V5"], "expect_warns": [],
+     "$why": "V1 must NOT also fire: its zone cannot be computed, and two contradictory messages about one row is worse than one."},
+
+    {"name": "blank_stack_blocks_too",
+     "values": [{"value": "N", "stack": "", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []}],
+     "expect_blocks": ["V5"], "expect_warns": []},
+
+    {"name": "unreadable_material_token_blocks",
+     "values": [{"value": "A", "stack": 4, "mat_1h": [], "mat_mid": ["MID2_07:"], "mat_top": []}],
+     "expect_blocks": ["V4"], "expect_warns": [],
+     "$why": "It cannot be looked up, so its availability could only ever be reported as 0 - and 0 reads as 'all consumed' when the truth is 'we never resolved it'."},
+
+    {"name": "whole_lot_plus_its_own_slot_same_bin_blocks",
+     "values": [
+       {"value": "A", "stack": 8, "mat_1h": [], "mat_mid": ["MID1_03", "MID2"], "mat_top": ["TOP1"]},
+       {"value": "B", "stack": 16, "mat_1h": ["ADFE1H_01"], "mat_mid": ["MID1", "MID3"], "mat_top": ["TOP1"]}
+     ],
+     "expect_blocks": ["V3"], "expect_warns": [],
+     "$why": "🔴 A PROPERTY OF THE WHOLE PLAN, NOT OF A ROW PAIR. The two tokens are on DIFFERENT VALUES here on purpose: a per-row implementation passes this, and the double-counted wafers show up as a shortage at the worst moment."},
+
+    {"name": "same_lot_different_bin_is_a_different_pool",
+     "values": [
+       {"value": "A", "stack": 4, "mat_1h": [], "mat_mid": ["MID1_03:1"], "mat_top": []},
+       {"value": "B", "stack": 4, "mat_1h": [], "mat_mid": ["MID1:2"], "mat_top": []}
+     ],
+     "expect_blocks": [], "expect_warns": [],
+     "$why": "🔴 THE CONTROL FOR V3. An implementation that ignored BIN blocks this correct plan."},
+
+    {"name": "duplicate_within_one_zone_warns_but_saves",
+     "values": [{"value": "A", "stack": 4, "mat_1h": [], "mat_mid": ["M_01", "M_01"], "mat_top": []}],
+     "expect_blocks": [], "expect_warns": ["W-DUP-MAT"],
+     "$why": "A duplicate changes the denominator of `ceil(total / n)` for no reason."},
+
+    {"name": "same_material_in_two_zones_is_legitimate",
+     "values": [{"value": "A", "stack": 6, "mat_1h": ["M_01"], "mat_mid": ["M_01"], "mat_top": []}],
+     "expect_blocks": [], "expect_warns": [],
+     "$why": "The control for W-DUP-MAT. The same lot at the bottom and in the middle is two demands on different layers."},
+
+    {"name": "several_defects_are_all_reported",
+     "values": [
+       {"value": "C", "stack": 16, "mat_1h": [], "mat_mid": [], "mat_top": ["TOP1"]},
+       {"value": "D", "stack": 1, "mat_1h": ["3AB77_04"], "mat_mid": [], "mat_top": ["TOP1"]},
+       {"value": "X", "stack": "nope", "mat_1h": [], "mat_mid": [], "mat_top": []}
+     ],
+     "expect_blocks": ["V1", "V2", "V5"], "expect_warns": [],
+     "$why": "The panel names every reason on its own row; stopping at the first would make the user fix them one reload at a time."}
   ],
 
   "material_token_cases": [
-    {
-      "$comment": [
-        "GRAMMAR (user-confirmed 2026-07-27):  token ::= identifier [ ':' BIN ] ;",
-        "identifier ::= lot '_' slot (one slot) | lot (WHOLE LOT, every slot) ; BIN omitted -> 1.",
-        "Both separators split from the RIGHT: a lot name may contain ':' and '_'.",
-        "",
-        "THIS GROUP SUPERSEDES contracts/band_arithmetic material_split_cases, which pins",
-        "`splitMaterialId`. Exactly ONE legacy case changes meaning: `no_separator` ('ABC')",
-        "went from REFUSE to 'the whole lot ABC'. Every other refusal stands, because the",
-        "never-guess principle is unchanged - a bare lot name is now a DEFINED meaning, not",
-        "an unresolvable input. `splitMaterialId` is deleted when the model lands; until then",
-        "both contracts are green because both describe the function they actually pin."
-      ]
-    },
-    { "name": "slot_with_bin", "raw": "MID1_01:2", "ok": true, "lot": "MID1", "slot": "01", "bin": 2, "scope": "slot" },
-    { "name": "slot_bin_defaults_to_1", "raw": "MID1_01", "ok": true, "lot": "MID1", "slot": "01", "bin": 1, "scope": "slot" },
-    { "name": "whole_lot_with_bin", "raw": "MID1:2", "ok": true, "lot": "MID1", "slot": null, "bin": 2, "scope": "lot" },
-    { "name": "whole_lot_bin_defaults_to_1", "$why": "THE REVERSAL. Under splitMaterialId this refused.", "raw": "MID1", "ok": true, "lot": "MID1", "slot": null, "bin": 1, "scope": "lot" },
-    { "name": "first_field_absorbs_extra_underscores", "raw": "LOT_A_01:3", "ok": true, "lot": "LOT_A", "slot": "01", "bin": 3, "scope": "slot" },
-    { "name": "colon_inside_lot_name_survives", "$why": "Splitting from the right is what leaves room for this.", "raw": "A:B_01:2", "ok": true, "lot": "A:B", "slot": "01", "bin": 2, "scope": "slot" },
-    { "name": "colon_inside_whole_lot_name", "raw": "A:B:2", "ok": true, "lot": "A:B", "slot": null, "bin": 2, "scope": "lot" },
-    { "name": "whitespace_is_trimmed_everywhere", "raw": "  A _ 01 : 2  ", "ok": true, "lot": "A", "slot": "01", "bin": 2, "scope": "slot" },
-    { "name": "non_ascii_lot", "raw": "웨이퍼-갑_03:4", "ok": true, "lot": "웨이퍼-갑", "slot": "03", "bin": 4, "scope": "slot" },
-    { "name": "large_bin", "raw": "M_1:99", "ok": true, "lot": "M", "slot": "1", "bin": 99, "scope": "lot_or_slot_ignored" },
+    {"$why": "CARRIED OVER FROM THE BAND MODEL UNCHANGED. The grammar was settled with the user; whether layers are bands or zones says nothing about how a material is named."},
+    {"name": "lot_and_slot", "raw": "MID1_01", "ok": true, "lot": "MID1", "slot": "01", "bin": 1, "scope": "slot"},
+    {"name": "bare_lot_means_the_whole_lot", "raw": "MID1", "ok": true, "lot": "MID1", "slot": null, "bin": 1, "scope": "lot",
+     "$why": "⚠️ REVERSES `splitMaterialId`'s refusal, and exactly one case changes. That function says 'never guess' for a separator-less id; under THIS grammar a bare name is not unresolvable, it MEANS the whole lot. Every genuinely malformed token below still refuses."},
+    {"name": "explicit_bin", "raw": "MID1:2", "ok": true, "lot": "MID1", "slot": null, "bin": 2, "scope": "lot"},
+    {"name": "slot_with_explicit_bin", "raw": "ADFE1H_01:3", "ok": true, "lot": "ADFE1H", "slot": "01", "bin": 3, "scope": "slot",
+     "$why": "🔴 THIS IS WHY IDENTITY CANNOT COME FROM `splitMaterialId` ANY MORE. That function splits on the last `_`, so it reads slot `01:3` here and asks the server about a slot that does not exist - a confident 0 for a material that is fine."},
+    {"name": "first_field_absorbs_extra_separators", "raw": "LOT_A_01", "ok": true, "lot": "LOT_A", "slot": "01", "bin": 1, "scope": "slot"},
+    {"name": "colon_splits_from_the_right", "raw": "A:B_01:2", "ok": true, "lot": "A:B", "slot": "01", "bin": 2, "scope": "slot",
+     "$why": "A lot name may legitimately contain a colon."},
+    {"name": "surrounding_space_is_trimmed", "raw": "  MID1_01  ", "ok": true, "lot": "MID1", "slot": "01", "bin": 1, "scope": "slot"},
+    {"name": "empty_refuses", "raw": "", "ok": false},
+    {"name": "blank_refuses", "raw": "   ", "ok": false},
+    {"name": "dangling_underscore_refuses", "raw": "ABC_", "ok": false,
+     "$why": "A typo, not a scope. Reading it as 'the whole lot ABC' would be the guess this grammar refuses to make."},
+    {"name": "leading_underscore_refuses", "raw": "_01", "ok": false},
+    {"name": "lone_underscore_refuses", "raw": "_", "ok": false},
+    {"name": "empty_bin_refuses", "raw": "MID1:", "ok": false},
+    {"name": "non_integer_bin_refuses", "raw": "MID1:x", "ok": false},
+    {"name": "hex_bin_refuses", "raw": "MID1:0x2", "ok": false,
+     "$why": "Same integer reader as STACK. A second number parser is how '0x10' became 16 on one side and 0 on the other."},
+    {"name": "zero_bin_refuses", "raw": "MID1:0", "ok": false},
+    {"name": "negative_bin_refuses", "raw": "MID1:-1", "ok": false},
 
-    { "name": "empty_bin_refused", "$why": "Never fall back to 1 - a typed colon says the user meant to pick a bin.", "raw": "MID1:", "ok": false },
-    { "name": "non_numeric_bin_refused", "raw": "MID1:abc", "ok": false },
-    { "name": "hex_bin_refused", "$why": "'0x10' became 16 on one side and 0 on the other once already. Same integer reader as the layer boundaries.", "raw": "MID1:0x10", "ok": false },
-    { "name": "zero_bin_refused", "raw": "MID1:0", "ok": false },
-    { "name": "negative_bin_refused", "raw": "MID1:-1", "ok": false },
-    { "name": "empty_identifier_refused", "raw": ":2", "ok": false },
-    { "name": "trailing_underscore_still_refused", "$why": "A dangling separator is a typo, not a scope. Reading it as 'whole lot' would be the guess this grammar still refuses.", "raw": "ABC_", "ok": false },
-    { "name": "leading_underscore_still_refused", "raw": "_01", "ok": false },
-    { "name": "separator_only_still_refused", "raw": "_", "ok": false },
-    { "name": "blank_still_refused", "raw": "   ", "ok": false },
-
-    { "name": "pool_key_lot_scope_differs_from_slot_scope", "$why": "The whole lot and one of its slots are DIFFERENT pools and must never collide in the rollup key.", "raw": "MID1", "distinct_from": "MID1_01" },
-    { "name": "pool_key_ambiguous_boundary_does_not_collide", "$why": "REGRESSION 2026-07-27. A key built by concatenating lot+slot+bin with no separator makes MID1_12:3 and MID11_2:3 the same string, so two unrelated pools merge into one rollup row and their 사용 is summed. It happened: the U+001F separators in the first version were silently dropped on write. Any keying scheme must survive this pair.", "raw": "MID1_12:3", "distinct_from": "MID11_2:3" },
-    { "name": "pool_key_lot_scope_is_not_a_stringified_null", "$why": "If the key were built as `${lot}|${slot}|${bin}` with slot=null for whole-lot scope, a slot literally named null would collide with the whole lot. Identity must come from the SCOPE, not from how null prints.", "raw": "MID1", "distinct_from": "MID1_null" },
-    { "name": "pool_key_bin_is_part_of_identity", "$why": "Collapse BIN and 잔여 comes out low with no visible cause.", "raw": "MID1_01:1", "distinct_from": "MID1_01:2" }
-  ],
-
-  "rollup_cases": [
-    {
-      "name": "same_map_different_bins_do_not_compete",
-      "$why": "The reason BIN is a dimension at all: two values drawing different BINs from one DT map are separate pools.",
-      "values": ["A", "B"],
-      "painted": { "A": 4, "B": 6 },
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 1, "materials": ["DT1_01:1"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 1, "materials": ["DT1_01:2"] }
-      ],
-      "expect": [
-        { "pool": ["DT1", "01", 1], "used": 4 },
-        { "pool": ["DT1", "01", 2], "used": 6 }
-      ]
-    },
-    {
-      "name": "bundle_is_split_evenly_with_the_ceiling_taken_once_per_material",
-      "$why": "Shares of one band sum to MORE than its total. Deliberate: rounding down hides a shortfall.",
-      "values": ["A"],
-      "painted": { "A": 3 },
-      "bands": [{ "seq": 1, "values": ["A"], "from": 1, "to": 1, "materials": ["M_1:1", "M_2:1"] }],
-      "expect": [
-        { "pool": ["M", "1", 1], "used": 2 },
-        { "pool": ["M", "2", 1], "used": 2 }
-      ]
-    },
-    {
-      "name": "one_pool_used_by_several_bands_accumulates",
-      "values": ["A", "B"],
-      "painted": { "A": 5, "B": 5 },
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 2, "materials": ["M_1:3"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 2, "materials": ["M_1:3"] }
-      ],
-      "expect": [{ "pool": ["M", "1", 3], "used": 20 }]
-    },
-    {
-      "name": "whole_lot_is_its_own_pool_alongside_a_slot_of_the_same_lot",
-      "$why": "B10 blocks this combination for the SAME bin; the rollup must still keep them apart when the bins differ.",
-      "values": ["A", "B"],
-      "painted": { "A": 2, "B": 2 },
-      "bands": [
-        { "seq": 1, "values": ["A"], "from": 1, "to": 1, "materials": ["MID1:1"] },
-        { "seq": 2, "values": ["B"], "from": 1, "to": 1, "materials": ["MID1_03:2"] }
-      ],
-      "expect": [
-        { "pool": ["MID1", null, 1], "used": 2 },
-        { "pool": ["MID1", "03", 2], "used": 2 }
-      ]
-    }
-  ],
-
-  "remaining_cases": [
-    {
-      "$comment": [
-        "잔여 = 가용 − 사용, but ONLY when 가용 is trustworthy. A confident figure derived from",
-        "an untrustworthy input is worse than none: 0 reads as 'all consumed'."
-      ]
-    },
-    { "name": "reliable", "availability": { "status": "ok", "value": 100, "reliable": true }, "used": 30, "expect": { "value": 70, "reliable": true } },
-    { "name": "reliable_and_short", "$why": "A negative 잔여 is a real, showable answer - it is the shortage the plan must surface.", "availability": { "status": "ok", "value": 10, "reliable": true }, "used": 30, "expect": { "value": -20, "reliable": true } },
-    { "name": "not_yet_queried", "availability": { "status": null, "value": null, "reliable": false }, "used": 30, "expect": { "value": null, "reliable": false } },
-    { "name": "loading", "availability": { "status": "loading", "value": null, "reliable": false }, "used": 30, "expect": { "value": null, "reliable": false } },
-    { "name": "server_says_unreliable", "availability": { "status": "ok", "value": 100, "reliable": false, "reason": "서버 판정: 잔여 신뢰 불가" }, "used": 30, "expect": { "value": null, "reliable": false } },
-    { "name": "value_missing_despite_ok_status", "availability": { "status": "ok", "value": null, "reliable": true }, "used": 30, "expect": { "value": null, "reliable": false } },
-    { "name": "bin_absent_is_NOT_zero", "$why": "THE RED RULE. Default BIN 1 missing from that map must be reported, never rendered as 가용 0 - zero reads as consumed, the truth is 'that bin does not exist here'.", "availability": { "status": "bin_absent", "value": null, "reliable": false }, "reason_contains": "BIN", "used": 30, "expect": { "value": null, "reliable": false } },
-    { "name": "reasons_are_distinguishable", "$why": "THE POINT OF THE RED RULE. All three hide the number, but the user must be able to tell bin-absent from server-flaky from not-yet-asked. Wording is not pinned (Korean, will be reworded); DISTINCTNESS is.", "availability": { "status": "bin_absent", "value": null, "reliable": false }, "reason_contains": "BIN", "used": 1, "expect": { "value": null, "reliable": false }, "reason_differs_from": [ { "status": null, "value": null, "reliable": false }, { "status": "ok", "value": 5, "reliable": false, "reason": "서버 판정: 잔여 신뢰 불가" }, { "status": "loading", "value": null, "reliable": false } ] },
-    { "name": "unresolved_material", "availability": { "status": "unresolved", "value": null, "reliable": false }, "used": 5, "expect": { "value": null, "reliable": false } }
-  ],
-
-  "rename_cases": [
-    {
-      "$comment": [
-        "In the old model `bands` lived INSIDE the value's row, so a rename carried them along",
-        "for free. With the inversion the reference is BY NAME and a rename orphans it. Call at",
-        "the same site that already remaps grid cells (updateLegendRowForPanel -> remapGridValues)."
-      ]
-    },
-    { "name": "rename_follows_into_every_band", "bands": [{ "values": ["A", "B"] }, { "values": ["A"] }, { "values": ["C"] }], "from": "A", "to": "A2", "expect": [["A2", "B"], ["A2"], ["C"]] },
-    { "name": "rename_onto_a_sibling_merges_rather_than_duplicating", "$why": "Otherwise the band would list the same value twice and its layer would read as double-covered under B5.", "bands": [{ "values": ["A", "B"] }], "from": "A", "to": "B", "expect": [["B"]] },
-    { "name": "ALL_scope_is_untouched_by_a_rename", "$why": "ALL is resolved at expansion time, so it never holds a stale name.", "bands": [{ "values": ["ALL"] }], "from": "A", "to": "A2", "expect": [["ALL"]] },
-    { "name": "unrelated_values_are_left_alone", "bands": [{ "values": ["X", "Y"] }], "from": "A", "to": "A2", "expect": [["X", "Y"]] }
+    {"name": "pool_key_separates_lot_scope_from_a_slot_literally_named_null",
+     "raw": "MID1", "distinct_from": "MID1_null",
+     "$why": "`null` (whole lot) must be structurally distinct from the string 'null'. Joining on a separator cannot express that."},
+    {"name": "pool_key_separates_bins", "raw": "MID1:1", "distinct_from": "MID1:2"},
+    {"name": "pool_key_does_not_collide_across_underscore_boundaries",
+     "raw": "MID1_12:3", "distinct_from": "MID11_2:3",
+     "$why": "🔴 THE REAL INCIDENT. An earlier version joined on U+001F, the control characters were dropped on write, and both of these produced 'MID1123'. Two unrelated pools merged into one rollup row and their 사용 was summed."}
   ],
 
   "demand_cases": [
-    {
-      "name": "ceiling_does_not_distribute_over_a_multi_value_band",
-      "$why": "THE arithmetic trap of the inversion. Per-value shares summed give 4; one ceiling over the summed total gives 3. Storing or displaying the wrong one is the ceil/round family of defect.",
-      "painted": { "B": 3, "C": 3 },
-      "defined": ["A", "B", "C"],
-      "band": { "values": ["B", "C"], "from": 1, "to": 1, "materials": ["M1", "M2"] },
-      "expect": { "layers": 1, "total": 6, "share": 3 },
-      "wrong_if_summed_per_value": 4
-    },
-    {
-      "name": "ALL_band_sums_every_defined_value",
-      "painted": { "A": 2, "B": 3, "C": 4 },
-      "defined": ["A", "B", "C"],
-      "band": { "values": ["ALL"], "from": 1, "to": 1, "materials": ["M1"] },
-      "expect": { "layers": 1, "total": 9, "share": 9 }
-    },
-    {
-      "name": "layers_come_from_typed_boundaries_not_from_a_walk",
-      "$why": "2-15 is 14 layers wherever the row sits in the array. No prevTo, no position.",
-      "painted": { "A": 10 },
-      "defined": ["A"],
-      "band": { "values": ["A"], "from": 2, "to": 15, "materials": ["M1", "M2", "M3"] },
-      "expect": { "layers": 14, "total": 140, "share": 47 }
-    },
-    {
-      "name": "single_layer_band",
-      "painted": { "A": 7 },
-      "defined": ["A"],
-      "band": { "values": ["A"], "from": 16, "to": 16, "materials": ["M1"] },
-      "expect": { "layers": 1, "total": 7, "share": 7 }
-    },
-    {
-      "name": "unreadable_boundary_yields_zero_not_a_guess",
-      "painted": { "A": 7 },
-      "defined": ["A"],
-      "band": { "values": ["A"], "from": 1, "to": "0x10", "materials": ["M1"] },
-      "expect": { "layers": 0, "total": 0, "share": 0 }
-    },
-    {
-      "name": "no_material_means_no_share_but_the_total_still_stands",
-      "$why": "The demand exists; nothing is assigned to carry it. B7 blocks the save, but the number shown must not pretend the demand is zero.",
-      "painted": { "A": 5 },
-      "defined": ["A"],
-      "band": { "values": ["A"], "from": 1, "to": 4, "materials": [] },
-      "expect": { "layers": 4, "total": 20, "share": 0 }
-    }
+    {"$why": "구역 총 소요 = 칠한 셀 수 × 층 수 · 자재당 = ceil(총 소요 / 그 구역의 자재 수)."},
+    {"name": "mid_of_a_16_layer_stack",
+     "row": {"value": "B", "stack": 16, "mat_1h": ["H_01"], "mat_mid": ["MID1", "MID3"], "mat_top": ["TOP1"]},
+     "zone": "mat_mid", "painted": 64,
+     "expect": {"layers": 14, "total": 896, "share": 448}},
+
+    {"name": "1h_is_always_exactly_one_layer",
+     "row": {"value": "B", "stack": 16, "mat_1h": ["H_01"], "mat_mid": ["MID1"], "mat_top": ["TOP1"]},
+     "zone": "mat_1h", "painted": 64,
+     "expect": {"layers": 1, "total": 64, "share": 64}},
+
+    {"name": "top_is_always_exactly_one_layer",
+     "row": {"value": "B", "stack": 16, "mat_1h": ["H_01"], "mat_mid": ["MID1"], "mat_top": ["TOP1"]},
+     "zone": "mat_top", "painted": 64,
+     "expect": {"layers": 1, "total": 64, "share": 64}},
+
+    {"name": "ceiling_not_rounding_and_not_flooring",
+     "row": {"value": "A", "stack": 4, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": ["T_01", "T_02", "T_03", "T_04"]},
+     "zone": "mat_top", "painted": 5,
+     "expect": {"layers": 1, "total": 5, "share": 2},
+     "wrong_if_rounded": 1, "wrong_if_floored": 1,
+     "$why": "🔴 5/4. Rounding and flooring both give 1 and both hide a shortfall. A plan that quietly under-orders is worse than one that over-orders - and this is the exact shape of the incident where saving used ceil, display used round, and the DB held 34 while the screen said 33."},
+
+    {"name": "zero_layer_mid_zone_demands_nothing",
+     "row": {"value": "E", "stack": 2, "mat_1h": ["H_01"], "mat_mid": [], "mat_top": ["T_01"]},
+     "zone": "mat_mid", "painted": 40,
+     "expect": {"layers": 0, "total": 0, "share": 0}},
+
+    {"name": "unreadable_stack_demands_nothing",
+     "row": {"value": "X", "stack": "0x10", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+     "zone": "mat_mid", "painted": 96,
+     "expect": {"layers": 0, "total": 0, "share": 0},
+     "$why": "V5 has already blocked the plan. What must NOT happen is a plausible non-zero number derived from a height nobody could read."},
+
+    {"name": "unpainted_value_demands_nothing_but_still_has_layers",
+     "row": {"value": "A", "stack": 16, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+     "zone": "mat_mid", "painted": 0,
+     "expect": {"layers": 16, "total": 0, "share": 0},
+     "$why": "층 수는 그대로 16이다 — 구조는 있고 그림이 없을 뿐이다."}
+  ],
+
+  "rollup_cases": [
+    {"$why": "행의 정체는 풀 (lot, slot, BIN)이지 자재 이름이 아니다."},
+    {"name": "one_material_across_two_values_and_two_zones",
+     "values": [
+       {"value": "B", "stack": 16, "mat_1h": ["ADFE1H_01"], "mat_mid": ["MID1"], "mat_top": ["TOP1"]},
+       {"value": "E", "stack": 2, "mat_1h": ["ADFE1H_01"], "mat_mid": [], "mat_top": ["TOP1"]}
+     ],
+     "painted": {"B": 64, "E": 40},
+     "expect": [
+       {"pool": ["ADFE1H", "01", 1], "used": 104},
+       {"pool": ["MID1", null, 1], "used": 896},
+       {"pool": ["TOP1", null, 1], "used": 104}
+     ],
+     "$why": "ADFE1H_01: B의 1H(64×1) + E의 1H(40×1) = 104. 서로 다른 값의 서로 다른 구역이 한 풀에 합쳐진다 — 그것이 ②가 존재하는 이유다. 두 값의 painted를 일부러 다르게(64/40) 두었다: 같으면 엉뚱한 값의 수를 쓰는 결함이 나타나지 않는다."},
+
+    {"name": "bin_is_part_of_the_identity",
+     "values": [
+       {"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["TOP1:1"], "mat_top": []},
+       {"value": "B", "stack": 2, "mat_1h": [], "mat_mid": ["TOP1:2"], "mat_top": []}
+     ],
+     "painted": {"A": 10, "B": 3},
+     "expect": [
+       {"pool": ["TOP1", null, 1], "used": 20},
+       {"pool": ["TOP1", null, 2], "used": 6}
+     ],
+     "$why": "🔴 두 행이어야 한다. BIN을 접으면 한 행에 26이 되고 잔여가 이유 없이 낮게 나온다."},
+
+    {"name": "whole_lot_and_a_slot_are_different_pools",
+     "values": [{"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["MID1", "MID1_03"], "mat_top": []}],
+     "painted": {"A": 6},
+     "expect": [
+       {"pool": ["MID1", null, 1], "used": 6},
+       {"pool": ["MID1", "03", 1], "used": 6}
+     ],
+     "$why": "V3 blocks this plan, and the rollup still has to SHOW both rows - that is where the user sees the two tokens side by side and fixes it. total 6×2층=12, 자재 2개 -> 각 6."},
+
+    {"name": "unreadable_token_is_not_a_row_but_still_counts_in_the_denominator",
+     "values": [{"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["M_01", "ABC_"], "mat_top": []}],
+     "painted": {"A": 5},
+     "expect": [{"pool": ["M", "01", 1], "used": 5}],
+     "$why": "V4 blocks the save. Here it must not become a row with a fabricated identity - but the DENOMINATOR still counts it (10/2 = 5), because the user typed two materials and silently re-dividing by one would change a number they can see."}
+  ],
+
+  "remaining_cases": [
+    {"$why": "CARRIED OVER UNCHANGED. 잔여 must NEVER be a number when 가용 is not trustworthy: `0` reads as 'all consumed' when the truth may be 'that BIN does not exist' or 'we could not ask'."},
+    {"name": "reliable_subtracts", "availability": {"status": "ok", "value": 1200, "reliable": true, "reason": ""}, "used": 104,
+     "expect": {"value": 1096, "reliable": true}},
+    {"name": "negative_remainder_is_still_a_number", "availability": {"status": "ok", "value": 48, "reliable": true, "reason": ""}, "used": 336,
+     "expect": {"value": -288, "reliable": true},
+     "$why": "부족은 숨기지 않는다 — 음수가 곧 부족의 크기다."},
+    {"name": "bin_absent_is_not_zero", "availability": {"status": "bin_absent", "value": null, "reliable": false, "reason": ""}, "used": 48,
+     "expect": {"value": null, "reliable": false},
+     "reason_contains": "BIN",
+     "reason_differs_from": [
+       {"status": "loading", "value": null, "reliable": false, "reason": ""},
+       {"status": null, "value": null, "reliable": false, "reason": ""}
+     ]},
+    {"name": "loading_is_not_zero", "availability": {"status": "loading", "value": null, "reliable": false, "reason": ""}, "used": 12,
+     "expect": {"value": null, "reliable": false}},
+    {"name": "never_asked_is_not_zero", "availability": {"status": null, "value": null, "reliable": false, "reason": ""}, "used": 12,
+     "expect": {"value": null, "reliable": false}},
+    {"name": "server_degraded_is_not_zero", "availability": {"status": "ok", "value": 900, "reliable": false, "reason": "소스 강등(source_degraded)"}, "used": 232,
+     "expect": {"value": null, "reliable": false},
+     "$why": "🔴 서버가 숫자를 줬는데도 숨긴다. 강등된 값을 확정값처럼 보이면 계획이 틀린다."}
+  ],
+
+  "tsv_cases": [
+    {"$why": "🔴 EXCEL'S QUOTING RULES, WHICH THE PREVIOUS INLINE PARSER DID NOT HAVE. A `split('\\n')` breaks ONE cell into TWO records the moment a cell holds two lines - and a MID cell with two materials is exactly that shape. Pinned here because client2/src/tsv.js is now shared with the grid's Ctrl+C/Ctrl+V."},
+    {"name": "plain_grid", "text": "a\tb\nc\td", "grid": [["a", "b"], ["c", "d"]]},
+    {"name": "trailing_newline_is_not_a_row", "text": "a\tb\n", "grid": [["a", "b"]],
+     "$why": "Excel always ends its clipboard block with one."},
+    {"name": "empty_text_is_no_rows", "text": "", "grid": [],
+     "$why": "One empty row here would blank a value's fields."},
+    {"name": "crlf_is_normalized", "text": "a\tb\r\nc\td", "grid": [["a", "b"], ["c", "d"]]},
+    {"name": "empty_cells_are_kept", "text": "a\t\tc", "grid": [["a", "", "c"]],
+     "$why": "An empty 1H is DATA - it means MID starts at layer 1. Dropping it shifts every column after it."},
+    {"name": "quoted_newline_stays_one_cell", "text": "x\t\"MID1\nMID3\"\ty", "grid": [["x", "MID1\nMID3", "y"]],
+     "$why": "🔴 THE CASE THIS PARSER EXISTS FOR."},
+    {"name": "quoted_tab_stays_one_cell", "text": "\"a\tb\"\tc", "grid": [["a\tb", "c"]]},
+    {"name": "doubled_quote_is_a_literal_quote", "text": "\"say \"\"hi\"\"\"\tb", "grid": [["say \"hi\"", "b"]]},
+    {"name": "a_quote_mid_field_is_literal", "text": "a\"b\tc", "grid": [["a\"b", "c"]],
+     "$why": "Excel only treats a quote as an opener at the START of a field."},
+    {"name": "blank_line_in_the_middle_survives", "text": "a\n\nb", "grid": [["a"], [""], ["b"]]},
+
+    {"name": "serialize_quotes_only_what_it_must", "grid": [["a", "b c"]], "text_out": "a\tb c"},
+    {"name": "serialize_quotes_a_newline", "grid": [["MID1\nMID3"]], "text_out": "\"MID1\nMID3\""},
+    {"name": "serialize_quotes_a_tab", "grid": [["a\tb"]], "text_out": "\"a\tb\""},
+    {"name": "serialize_doubles_a_quote", "grid": [["say \"hi\""]], "text_out": "\"say \"\"hi\"\"\""}
+  ],
+
+  "paste_cases": [
+    {"$why": "㉠ 머리줄이 있으면 이름으로 · ㉡ 없으면 포커스한 칸의 논리 인덱스부터 왼→오른쪽 · ㉢ 거절은 없다. 계약은 여섯 열 — VALUE·STACK·DESC·1H·MID·TOP. COLOR와 칠함은 계약 밖이지만 **머리줄에서는 알아본다**(사람은 화면의 머리줄을 통째로 긁는다)."},
+
+    {"name": "full_header_in_contract_order",
+     "grid": [["VALUE", "STACK", "DESC", "1H", "MID", "TOP"],
+              ["A", "8", "게이트 산화", "", "MID2", "TOP1"]],
+     "start": "value", "header": true, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "A", "stack": "8", "desc": "게이트 산화", "mat_1h": "", "mat_mid": "MID2", "mat_top": "TOP1"}]},
+
+    {"name": "a_header_naming_COLOR_is_still_a_header_and_the_column_is_dropped",
+     "grid": [["COLOR", "VALUE", "STACK"], ["#c0392b", "A", "8"]],
+     "start": "value", "header": true, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "A", "stack": "8"}],
+     "$why": "🔴 IF THE PARSER DID NOT RECOGNISE `COLOR`, `looksLikeHeader` would reject this record and the whole heading row would be pasted AS DATA - producing a value literally named 'COLOR'. Recognised-and-ignored is not the same as unknown."},
+
+    {"name": "a_header_naming_칠함_is_ignored_too",
+     "grid": [["VALUE", "칠함", "STACK"], ["A", "96", "8"]],
+     "start": "value", "header": true, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "A", "stack": "8"}],
+     "$why": "파생값이다. 받으면 사용자가 칠 수 없는 수를 사용자의 입력이 덮는다."},
+
+    {"name": "header_in_any_order",
+     "grid": [["MID", "VALUE", "STACK"], ["MID1\nMID3", "B", "16"]],
+     "start": "value", "header": true, "wide": 0, "droppedLeading": false,
+     "expect": [{"mat_mid": "MID1\nMID3", "value": "B", "stack": "16"}],
+     "$why": "🔴 THE ACCIDENT THIS PREVENTS: the same three columns pasted positionally from VALUE would put MID into VALUE, VALUE into STACK and STACK into DESC - and nothing on screen would look wrong."},
+
+    {"name": "header_is_case_insensitive",
+     "grid": [["value", "Stack"], ["B", "16"]],
+     "start": "value", "header": true, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "B", "stack": "16"}]},
+
+    {"name": "headerless_fills_from_the_focused_column",
+     "grid": [["ADFE1H_01", "MID1", "TOP1"]],
+     "start": "mat_1h", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"mat_1h": "ADFE1H_01", "mat_mid": "MID1", "mat_top": "TOP1"}],
+     "$why": "🔴 논리 인덱스지 '화면에서 오른쪽 칸'이 아니다. 한 행이 두 줄로 그려지므로 그 둘은 다르다."},
+
+    {"name": "headerless_from_the_first_column",
+     "grid": [["A", "8", "게이트"]],
+     "start": "value", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "A", "stack": "8", "desc": "게이트"}]},
+
+    {"name": "headerless_leading_blank_colour_column_is_skipped_not_shifted",
+     "grid": [["", "B", "16", "라이너", "ADFE1H_01", "MID1", "TOP1"],
+              ["", "A", "8", "산화", "", "MID2", "TOP1"]],
+     "start": "value", "header": false, "wide": 0, "droppedLeading": true,
+     "expect": [
+       {"value": "B", "stack": "16", "desc": "라이너", "mat_1h": "ADFE1H_01", "mat_mid": "MID1", "mat_top": "TOP1"},
+       {"value": "A", "stack": "8", "desc": "산화", "mat_1h": "", "mat_mid": "MID2", "mat_top": "TOP1"}
+     ],
+     "$why": "🔴 THE COLOUR COLUMN THE USER STILL HAS IN EXCEL. Cell fill does not travel through `text/plain`, so a coloured-but-empty column arrives as a leading blank field and taking it literally puts VALUE into STACK. Four conditions must ALL hold: no header, start is VALUE, the first field is blank in EVERY record (a column property, not a row guess), and the block is WIDER than the contract."},
+
+    {"name": "exactly_six_wide_with_a_blank_first_field_is_NOT_shifted",
+     "grid": [["", "16", "라이너", "ADFE1H_01", "MID1", "TOP1"]],
+     "start": "value", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "", "stack": "16", "desc": "라이너", "mat_1h": "ADFE1H_01", "mat_mid": "MID1", "mat_top": "TOP1"}],
+     "$why": "🔴 THE GUARD ON THE RULE ABOVE. Six fields already fit the contract, so dropping one WOULD be the silent shift we are preventing. The honest reading is 'VALUE is blank' - a value with no name cannot exist, so the row shows up empty on screen immediately. Refusing to shift beats being clever."},
+
+    {"name": "a_blank_first_field_in_only_some_rows_is_data_not_a_colour_column",
+     "grid": [["", "16", "a", "b", "c", "d", "e"], ["X", "8", "a", "b", "c", "d", "e"]],
+     "start": "value", "header": false, "wide": 2, "droppedLeading": false,
+     "expect": [
+       {"value": "", "stack": "16", "desc": "a", "mat_1h": "b", "mat_mid": "c", "mat_top": "d"},
+       {"value": "X", "stack": "8", "desc": "a", "mat_1h": "b", "mat_mid": "c", "mat_top": "d"}
+     ],
+     "$why": "🔴 IT IS A COLUMN PROPERTY. One blank cell is data; a blank in every row is a column. Checking only the first record would drop a real VALUE from the second."},
+
+    {"name": "leading_blank_is_not_skipped_when_the_start_is_not_VALUE",
+     "grid": [["", "MID1", "TOP1"]],
+     "start": "mat_1h", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"mat_1h": "", "mat_mid": "MID1", "mat_top": "TOP1"}],
+     "$why": "An empty 1H is meaningful data - it means MID starts at layer 1. The colour column can only ever precede VALUE."},
+
+    {"name": "cells_past_the_last_column_are_counted_not_silently_dropped",
+     "grid": [["MID1", "TOP1", "junk", "more"]],
+     "start": "mat_mid", "header": false, "wide": 2, "droppedLeading": false,
+     "expect": [{"mat_mid": "MID1", "mat_top": "TOP1"}],
+     "$why": "무시하는 것은 맞지만 **몇 개를 무시했는지 말해야** 한다. 조용히 버리면 사용자는 다 들어간 줄 안다."},
+
+    {"name": "a_single_word_that_names_a_column_is_not_a_header",
+     "grid": [["MID"]],
+     "start": "mat_mid", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"mat_mid": "MID"}],
+     "$why": "🔴 `MID`는 완벽하게 합법적인 lot 이름이다. 머리줄 판정에 '두 칸 이상' 바닥이 없으면 사용자의 자재가 머리줄로 먹힌다."},
+
+    {"name": "a_row_of_data_is_not_mistaken_for_a_header",
+     "grid": [["A", "8"], ["B", "16"]],
+     "start": "value", "header": false, "wide": 0, "droppedLeading": false,
+     "expect": [{"value": "A", "stack": "8"}, {"value": "B", "stack": "16"}]}
+  ],
+
+  "roundtrip_cases": [
+    {"$why": "🔴 THE USER'S ACTUAL REQUIREMENT, and the one thing a unit test of the parser alone will not catch. 엑셀에서 뚝딱 만든 표를 붙여넣고, 고치고, 다시 복사해 엑셀로 돌아갈 수 있어야 한다. `tsv` -> parse -> mapPastedGrid -> legend rows -> planToGrid -> serialize must equal `expect_tsv` (default: `tsv` itself)."},
+
+    {"name": "canonical_block_survives_paste_then_copy",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nA\t8\t게이트 산화\t\tMID2\tTOP1\nB\t16\t라이너\tADFE1H_01\t\"MID1\nMID3\"\tTOP1\nDT\t1\tDT 맵\t\tDTM4_11\t",
+     "$why": "세 행이 각각 다른 축을 켠다: A는 1H 비움, B는 MID에 자재 둘(엑셀 따옴표), DT는 퇴화형. 한 행짜리 픽스처는 열 어긋남도 따옴표도 증명하지 못한다."},
+
+    {"name": "a_colour_column_in_the_source_does_not_survive_the_trip",
+     "tsv": "COLOR\tVALUE\tSTACK\tDESC\t1H\tMID\tTOP\n#2f7d63\tB\t16\t라이너\tADFE1H_01\tMID1\tTOP1",
+     "expect_tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t16\t라이너\tADFE1H_01\tMID1\tTOP1",
+     "$why": "🔴 COLOUR IS APP-OWNED (사용자 지시 2026-07-28). It is read out of the paste by name and never emitted, so the second trip is an identity."},
+
+    {"name": "comma_input_is_accepted_and_normalizes_to_newline",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t16\t라이너\tADFE1H_01\tMID1, MID3\tTOP1",
+     "expect_tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t16\t라이너\tADFE1H_01\t\"MID1\nMID3\"\tTOP1",
+     "$why": "🔴 NOT AN IDENTITY ROUND TRIP, AND THAT IS THE POINT. 쉼표는 **받는** 입력이고 줄바꿈은 **내보내는** 형태다. 쉼표로 내보내면 lot 이름에 쉼표가 든 날 한 토큰이 둘로 쪼개진다. 두 번째 왕복부터는 항등이어야 한다(하네스가 두 번 돈다)."},
+
+    {"name": "unreadable_stack_round_trips_as_typed",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nX\t0x10\t\t\tM_01\t",
+     "$why": "🔴 복사가 고쳐서 내보내면 안 된다. 왕복의 요점은 있는 그대로 돌려주어 사용자가 엑셀에서 고치는 것이다 — 16으로 '수리'해 내보내면 사용자가 친 적 없는 값이 계획이 된다."},
+
+    {"name": "inapplicable_zone_exports_as_an_empty_cell",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nDT\t1\t\t\tDTM4_11\t",
+     "$why": "「해당 없음」은 렌더링이다. 글자로 내보내면 다시 붙여넣을 수 없는 표가 된다."},
+
+    {"name": "whole_lot_exports_as_the_raw_token_not_the_chip",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t4\t\t\tMID1\t",
+     "forbid_in_output": ["_✱", "≈", "미상", "해당 없음"],
+     "$why": "🔴 칩은 그림이다. `MID1_✱:1`을 내보내면 `_✱`라는 슬롯을 가진 로트가 생긴다."},
+
+    {"name": "a_desc_containing_a_tab_is_quoted_and_comes_back_whole",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t4\t\"a\tb\"\t\tM_01\t",
+     "$why": "종전 직렬화기는 탭을 공백으로 **바꿔** 내보냈다 — 조용한 데이터 손실이고, 복사한 칸을 다시 붙여넣어도 같은 칸이 나오지 않던 이유다."}
+  ],
+
+  "legacy_band_cases": [
+    {"$why": "🔴 `map_split_registry.bands` HOLDS REAL PLANS. legend 저장은 `replace_map`이므로, 읽지 못하면 그 맵을 여는 순간 화면이 비고 다음 편집 한 번이 계획을 **빈 집합으로 지운다**. 그래서 이 마이그레이션은 호의가 아니라 불변식이다. 아래 production 행들은 2026-07-28 라이브 DB(읽기 전용 조회)에서 읽은 실제 payload 형태다."},
+
+    {"name": "production_bonding_map_AAA_three_bands",
+     "bands": [{"seq": 1, "to": 1, "materials": ["TAPE-B_02_14_4"]},
+               {"seq": 2, "to": 15, "materials": ["3MID", "AAA"]},
+               {"seq": 3, "to": 16, "materials": ["TOP-X_01"]}],
+     "expect": {"ok": true, "stack": 16, "mat_1h": ["TAPE-B_02_14_4"], "mat_mid": ["3MID", "AAA"], "mat_top": ["TOP-X_01"]}},
+
+    {"name": "production_single_band_becomes_mid_only",
+     "bands": [{"seq": 1, "to": 1, "materials": ["DSFS"]}],
+     "expect": {"ok": true, "stack": 1, "mat_1h": [], "mat_mid": ["DSFS"], "mat_top": []},
+     "$why": "🔴 한 구간이 스택 전체를 덮으면 그것은 '그 사이 전부'다. 1H로 넣으면 dt_map 계획이 1H만 있고 MID가 빈 행으로 보인다 — 같은 물리 구조를 다른 칸에 넣는 것이고, 사용자가 만든 적 없는 배치다."},
+
+    {"name": "two_bands_1h_and_mid",
+     "bands": [{"seq": 1, "to": 1, "materials": ["H_01"]}, {"seq": 2, "to": 16, "materials": ["M_01"]}],
+     "expect": {"ok": true, "stack": 16, "mat_1h": ["H_01"], "mat_mid": ["M_01"], "mat_top": []}},
+
+    {"name": "two_bands_mid_and_top",
+     "bands": [{"seq": 1, "to": 15, "materials": ["M_01"]}, {"seq": 2, "to": 16, "materials": ["T_01"]}],
+     "expect": {"ok": true, "stack": 16, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": ["T_01"]}},
+
+    {"name": "two_bands_at_stack_two_are_the_two_ends",
+     "bands": [{"seq": 1, "to": 1, "materials": ["H_01"]}, {"seq": 2, "to": 2, "materials": ["T_01"]}],
+     "expect": {"ok": true, "stack": 2, "mat_1h": ["H_01"], "mat_mid": [], "mat_top": ["T_01"]},
+     "$why": "The E-row, arriving from the old model. MID zone is 0 layers and stays empty - it must NOT be filled from one of the two ends."},
+
+    {"name": "empty_bands_is_an_empty_plan_not_a_refusal",
+     "bands": [], "expect": {"ok": true, "stack": "", "mat_1h": [], "mat_mid": [], "mat_top": []}},
+
+    {"name": "four_bands_cannot_be_expressed_and_are_REFUSED",
+     "bands": [{"seq": 1, "to": 1, "materials": ["A_01"]}, {"seq": 2, "to": 5, "materials": ["B_01"]},
+               {"seq": 3, "to": 15, "materials": ["C_01"]}, {"seq": 4, "to": 16, "materials": ["D_01"]}],
+     "expect": {"ok": false},
+     "$why": "🔴 THE MOST IMPORTANT CASE IN THIS GROUP. Collapsing two middle bands into one MID changes the plan, and the save would then `replace_map` our lossy reading over the server's truth."},
+
+    {"name": "unreadable_to_is_REFUSED_not_skipped",
+     "bands": [{"seq": 1, "to": 1, "materials": ["A_01"]}, {"seq": 2, "to": "0x10", "materials": ["B_01"]}],
+     "expect": {"ok": false},
+     "$why": "🔴 `prevTo` SKIPS an unreadable `to` - correct for a panel that was still editing bands (show it, mark it, keep going), fatal for a migration. Skipping here silently shortens the stack."},
+
+    {"name": "non_increasing_to_is_REFUSED",
+     "bands": [{"seq": 1, "to": 10, "materials": ["A_01"]}, {"seq": 2, "to": 5, "materials": ["B_01"]}],
+     "expect": {"ok": false},
+     "$why": "band_arithmetic's `non_increasing_inflates_the_next_band` shows the old model counted 25 layers for a 20-layer stack here. There is no honest zone reading of that."},
+
+    {"name": "three_bands_where_the_first_is_not_layer_one_is_REFUSED",
+     "bands": [{"seq": 1, "to": 3, "materials": ["A_01"]}, {"seq": 2, "to": 15, "materials": ["B_01"]},
+               {"seq": 3, "to": 16, "materials": ["C_01"]}],
+     "expect": {"ok": false},
+     "$why": "1H is layer 1 exactly. A 3-layer first band is not a 1H, and forcing it into that cell would move two layers of material."}
   ]
 }

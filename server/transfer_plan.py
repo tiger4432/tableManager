@@ -14,30 +14,36 @@ PLAN이고 `dt_map`을 열면 DT PLAN이다. 따라서:
 - **페인팅 결과 = 대상 맵 자신의 셀** — 계획 맵 사본(`transfer_plan_map`)은 폐기됐고,
   값 분포는 대상 맵 테이블에서 직접 group-by한다(`_painted_values`).
 
-[M2.6 — the plan store collapsed into ONE table (client landed in `cdcddee`)]
+[M2.6 — the plan store collapsed into ONE table]
 `map_doe` and `map_doe_source` are retired. **One `map_split_registry` row = one legend
-value = one DOE condition**, bk = `ref_table|map_key|value`, and the band structure lives
-in that row's `bands` JSON column. What that buys, and what it costs the reader here:
+value = one DOE condition**, bk = `ref_table|map_key|value`.
 
-- **`bands` is an ordered JSON array**: `[{"seq": int, "to": int|null, "materials": [str]}]`.
-  **Array position carries the stack order** — `bands[0]` starts at layer 1 and `bands[i]`
-  starts at `bands[i-1].to + 1`, so only `to` is stored and `from` is derived. Never sort by
-  `seq` to find adjacency.
-- **`seq` is identity, not order.** Materials belong to a `seq`, so renumbering on reorder or
-  delete would silently move a material into someone else's band. Nothing here renumbers.
-- **Nothing derived is stored.** Band total = painted cells of that value x layer count;
-  per-material share = `ceil(total / len(materials))`. A stored total drifts the moment
-  someone paints one more cell, so `qty_total`/`qty` are gone and this module computes them.
-- **`to` may be blank mid-edit.** That is not a defect, it yields 0 layers — but the band
-  then contributes no verified demand, which this module says out loud rather than letting
-  an unchecked plan read as a clean one.
-- **`materials` holds the raw ID string exactly as typed — the string IS the identity.**
-  Resolving it to a source `(lot, slot)` is a separate, *declared* step
-  (`plan_store.material_identity`); there is no built-in parse. Undeclared or unparseable
-  means `source_unresolved`, never a guess.
-- **The band arithmetic has a reference implementation**: `client2/src/transfer_plan.js`
-  (`bandTo`/`prevTo`/`bandLayers`/`bandShare`). The screen and this validator derive the same
-  numbers, so the two must agree exactly — mirror it, do not re-derive it.
+[ZONE 모델 2026-07-28 — band 모델을 대체한다]
+한 값의 층 구조는 **숫자 하나와 구역 셋**이다. FROM도, TO도, band 행도, 값 집합 스코프도
+없다:
+
+    STACK = 그 값의 총 층수      (컬럼 `stack`, **문자열** — 읽을 수 없는 원문을 보존한다)
+    1H    = 1층                  (컬럼 `mat_1h`, 원문 토큰의 JSON 배열)
+    MID   = 그 사이 전부         (컬럼 `mat_mid`)
+    TOP   = STACK층              (컬럼 `mat_top`)
+    MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)
+
+- **세 구역이 `1..STACK`을 구성적으로 덮는다.** 그래서 겹침·구멍·`FROM>TO`·`FROM<1`은
+  완화된 것이 아니라 **말할 수 없는 상태**가 됐다. 이 파일에 그 검사가 없는 것은 누락이 아니다.
+- **`dt_map`은 퇴화형이지 미완성이 아니다**: STACK 1, MID만. **조용히 통과해야 한다.**
+- **파생값은 저장하지 않는다.** 구역 총 소요 = 칠한 셀 수 × 층 수, 자재당 = `ceil(총/자재수)`.
+  저장된 총계는 누가 한 칸 더 칠하는 순간 어긋난다.
+- **자재 문자열은 적은 그대로가 정체다.** 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**
+  (`contracts/doe_band_rules/vectors.json`)이며 `parse_material_token`이 유일한 구현이다.
+  분리자 없는 `MID1`은 해석 실패가 아니라 **로트 전체**를 뜻한다.
+- **차단 규칙은 V1~V5 다섯 개**이고 `validate_zone_plan`이 판정한다. V5(STACK 판독 불가)가
+  **가장 먼저**다 — 다른 모든 판정이 계산할 수 없는 층 수에서 유도되기 때문이다.
+- **폐기된 `bands` 컬럼은 읽되 쓰지 않는다.** `bands_to_zones`가 세 구역으로 옮기고,
+  옮길 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는
+  **접지 않고 거부**한다. 접은 뒤 저장하면 `replace_map`이 서버의 진짜 계획을 그 손실
+  읽기로 덮는다.
+- **참조 구현은 `client2/src/doe_bands.js`**이고 양쪽은 같은 벡터 파일로 고정된다.
+  한 언어에만 사는 규칙은 흘러간다 — 미러하되 다시 유도하지 말 것.
 
 [경계 계약 — 총괄 고정]
 - GET /api/transfer-plan/stages           : 선언 stage 목록 + 역할 연결 상태
@@ -115,23 +121,56 @@ MAX_LOT_SLOTS = 50            # `scope=lot` 팬아웃 상한 (로트 1개 = 보�
 
 M1_SOURCE_REFS = ("bonding_plan",)   # source_config_ref 허용 값
 
-# [M2.6] 계획 저장소는 legend 레지스트리 **하나**다. `bands`가 필수인 이유: 그 컬럼이
-# 선언돼 있지 않으면 계획을 읽을 수단 자체가 없으므로, 조용히 "구간 없음"으로 통과시키지
-# 않고 plan_store 미구성(404)으로 떨어뜨린다.
-REGISTRY_ROLES = ("ref_table", "map_key", "value", "bands")
+# ---- ZONE 모델 (2026-07-28, bands를 대체) ----
+#
+#   STACK = 그 값의 총 층수 · 1H = 1층 · TOP = STACK층 · MID = 그 사이 전부
+#   MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)
+#
+# 세 구역이 `1..STACK`을 **구성적으로** 덮는다. 그래서 구 모델의 겹침(B5)·구멍(B6)·
+# `FROM>TO`(B1)·`FROM<1`(B2)은 완화된 것이 아니라 **말할 수 없는 상태가 됐다** — 이 파일에
+# 그 검사가 없는 것은 누락이 아니다. 정본 벡터: `contracts/doe_band_rules/vectors.json`.
+ZONES = ("mat_1h", "mat_mid", "mat_top")
+ZONE_LABEL = {"mat_1h": "1H", "mat_mid": "MID", "mat_top": "TOP"}
+
+# [M2.6→zone] 계획 저장소는 legend 레지스트리 **하나**다. 역할이 하나라도 빠지면 계획을
+# 읽을 수단 자체가 없으므로, 조용히 "구간 없음"으로 통과시키지 않고 plan_store
+# 미구성(404)으로 떨어뜨린다 — 미선언 컬럼이 200과 함께 드롭되는 것과 같은 계열의 침묵이다.
+# ⚠️ `bands`가 여기서 빠진 것이 이 변경의 핵심이다. 그 컬럼은 폐기됐고 writer가 없으므로
+#    **필수 역할일 수 없다.** 다만 실계획이 아직 그 컬럼에 남아 있으므로 아래
+#    REGISTRY_LEGACY_ROLE로 **선택 역할**로 계속 읽는다(선언돼 있으면 읽고, 없으면 없는 대로).
+REGISTRY_ROLES = ("ref_table", "map_key", "value", "stack", "mat_1h", "mat_mid", "mat_top")
+
+# 폐기 모델의 읽기 전용 역할. 필수가 아니라서 미선언 사이트도 404가 되지 않는다.
+REGISTRY_LEGACY_ROLE = "bands"
 
 # validate 경고 타입 (계약)
 WARN_QTY_SHORTAGE = "qty_shortage"
-# [M2.6 repurposed] Band-structure defect. It used to mean "the free-text `stack_band`
-# label parsed to a reversed range"; labels are gone and bands are integers now, so it
-# means "this band's structure cannot yield a layer count" and carries a `reason`:
-#   unreadable     — the row's `bands` column is not a readable band array
-#   incomplete     — `to` is still blank (mid-edit; 0 layers, demand not counted)
-#   not_increasing — `to` is <= the preceding band's `to` (empty or reversed band)
-# All three mean the same thing to a consumer: that band was NOT verified.
-# `layer_coverage_gap` was REMOVED, not renamed — with `from(i) = prevTo(i) + 1` the
-# coverage is contiguous by construction, so a gap is no longer expressible.
+# [zone 모델] 그 값의 **층 구조를 읽지 못했다**. 이제 이 경고는 폐기 모델(`bands`)에서만
+# 나온다 — zone 컬럼은 세 칸이 각각 자기 자재를 지고 있어 "구조를 못 읽는" 상태가 없다.
+# `reason`:
+#   unreadable      — `bands` blob이 배열로 읽히지 않는다
+#   not_a_band      — 배열 안에 구간이 아닌 원소가 섞였다
+#   not_convertible — 읽히긴 하는데 **세 구역으로 표현할 수 없다**(구간 4개, `to` 불량,
+#                     역전, 첫 구간이 1층에서 시작하지 않음). `detail`이 어느 쪽인지 말한다.
+# 🔴 `not_convertible`은 **접어서 통과시키지 않는다.** 4구간을 3구역으로 뭉갠 뒤 그 뭉갠
+#    결과를 `replace_map`으로 되쓰면 서버의 진짜 계획이 우리 손실 읽기로 덮인다 — 이 영역이
+#    존재하는 이유가 정확히 그 결함이다(`contracts/doe_band_rules` legacy_band_cases).
+# 구 reason `incomplete`/`not_increasing`은 **거부로 승격**됐다: 편집 중인 패널에는 "보여
+# 주고 표시하고 계속"이 옳았지만, 마이그레이션에서 건너뛰면 스택이 조용히 짧아진다.
+# `layer_coverage_gap`은 이름이 바뀐 것이 아니라 **삭제**됐다 — 세 구역이 `1..STACK`을
+# 구성적으로 덮으므로 구멍은 말할 수 없는 상태다.
 WARN_LAYER_RANGE_INVALID = "layer_range_invalid"
+# [zone 모델] V1~V5 차단 규칙 위반. `rule` 필드가 어느 규칙인지 말한다.
+# 클라 `doe_bands.validateZonePlan`의 blocks와 **같은 판정**이며 정본은 공유 벡터 파일이다.
+WARN_ZONE_RULE_VIOLATION = "zone_rule_violation"
+# [zone 모델] 차단은 아니지만 파생 수치를 움직이는 것(W-DUP-MAT: 한 구역 안 자재 중복은
+# `ceil(total / n)`의 분모를 이유 없이 바꾼다).
+WARN_ZONE_RULE_ADVISORY = "zone_rule_advisory"
+# [zone 모델] 토큰은 문법상 정상인데(`MID1` = 로트 전체) 이 엔드포인트가 **가용을 확정
+# 숫자로 낼 수 없다**. `scope=lot` 응답에는 `chips`가 없다 — 로트 전체의 `remaining` 하나를
+# 지어내지 않겠다는 `get_lot_bin_summary`의 결정 때문이다. 그래서 "해석 실패"가 아니라
+# "판정 안 함"으로 이름 붙여 내보낸다. 0으로 접으면 "다 썼다"로 읽힌다.
+WARN_SOURCE_SCOPE_UNPRICED = "source_scope_unpriced"
 WARN_UNDEFINED_DOE_VALUE = "undefined_doe_value"
 # [B2] 페인팅 분포를 못 읽었거나 절단됐다. 수량이 **저장이 아니라 painted에서 유도**되므로
 # 이 읽기가 실패하면 모든 required가 0이 되어 부족이 영원히 발화하지 않는다. 구 모델은
@@ -273,7 +312,11 @@ def _plan_store_statuses(cfg: dict) -> dict:
     `(ref_table, map_key)`이고 페인팅 결과가 곧 대상 맵 자신의 셀이라 사본이 존재할
     이유가 없다.
     [M2.6] `doe`·`doe_source` 역할도 폐기됐다 — legend 행 하나가 곧 DOE 조건 하나이고
-    구간·자재는 그 행의 `bands` JSON에 있다. 남는 역할은 레지스트리 하나뿐이다.
+    층 구조는 그 행의 zone 컬럼(`stack`·`mat_1h`·`mat_mid`·`mat_top`)에 있다. 남는 역할은
+    레지스트리 하나뿐이다.
+    [zone] `bands`는 **필수 역할에서 빠졌다** — 폐기됐고 writer가 없으므로 필수일 수 없다.
+    선언돼 있으면 폐기 계획을 읽는 데 계속 쓰고(REGISTRY_LEGACY_ROLE), 없으면 없는 대로
+    간다. 그 컬럼 하나 때문에 전 사이트가 404가 되던 상태가 여기서 끝난다.
 
     `material_identity`는 테이블 바인딩이 아니라 문자열 해석 규칙이라 별도로 판정한다.
     미선언이면 **모든** 자재가 해석 불가가 되어 계획 전체가 unverified로 떨어지므로,
@@ -1859,6 +1902,529 @@ def _prev_to(bands, i):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# ZONE 모델 — STACK + 세 구역
+#
+# 아래 함수들은 `client2/src/doe_bands.js`의 **미러**이며, 양쪽이 같은 파일
+# (`contracts/doe_band_rules/vectors.json`)로 고정된다. 한 언어에만 사는 규칙은 흘러간다.
+# 미러의 짝: stackState·midZone·zoneLayers·zoneDemand·parseMaterialToken·materialPoolKey·
+# validateZonePlan·materialRollupRows·remainingState·bandsToZones·parseMaterialList.
+# ---------------------------------------------------------------------------
+
+def parse_material_list(raw):
+    """자재 목록 하나 → 원문 토큰 리스트 (공백 제거, 첫 등장 순 중복 제거).
+
+    클라 `parseMaterialList`의 미러. 리스트면 그대로, 문자열이면 **줄바꿈과 쉼표**로 나눈다
+    — 엑셀이 따옴표 친 셀 안에 넣는 것이 정확히 줄바꿈이라, 그 원문과 클립보드의 바이트가
+    같아 왕복에 변환이 없다.
+    ⚠️ 이 함수는 **저장 컬럼을 직접 받지 않는다.** 컬럼은 `JSON.stringify([...])`이라
+    `'["MID1","MID3"]'` 형태이고, 여기에 쉼표 분해를 걸면 `'["MID1"'`이 나온다.
+    컬럼에서 읽을 때는 반드시 `_zone_tokens`를 거친다(JSON 먼저).
+    """
+    if isinstance(raw, list):
+        out = []
+        for v in raw:
+            s = str("" if v is None else v).strip()
+            if s and s not in out:
+                out.append(s)
+        return out
+    s = str("" if raw is None else raw)
+    out = []
+    for part in re.split(r"[\n,]", s):
+        t = part.strip()
+        if t and t not in out:
+            out.append(t)
+    return out
+
+
+def _zone_tokens(raw):
+    """저장된 zone 컬럼 → `(토큰 리스트, 거부된 원소 리스트)`.
+
+    writer(`map_editor.js legendRowPayload`)는 항상 JSON 배열을 쓴다. 그래서 JSON을 **먼저**
+    시도하고, 배열이면 그것이 정답이다. JSON이 아니면 사람이 제네릭 그리드로 손입력한
+    텍스트이므로 클라와 같은 줄바꿈/쉼표 분해로 물러선다.
+
+    [문자열이 아닌 원소는 **거부**한다 — `_band_materials`와 같은 규율]
+    숫자·bool·객체는 문자열화하지 않는다. 패널은 문자열만 쓰므로 그런 값은 그리드로만 들어올
+    수 있고, 그리드 입력에 대한 옳은 답은 "클라와 같은 방식으로 잘못 읽기"가 아니라
+    **"읽을 수 없다"**이다(양쪽 문자열화가 `True`/`true`, `42.0`/`42`로 갈린다).
+    """
+    if raw is None:
+        return [], []
+    if isinstance(raw, list):
+        parsed = raw
+    else:
+        s = str(raw)
+        if not s.strip():
+            return [], []
+        parsed = None
+        if s.lstrip()[:1] == "[":
+            if len(s) > MAX_BANDS_BLOB_BYTES:
+                logger.warning("[TransferPlan] zone column exceeds %d bytes — refused before parse",
+                               MAX_BANDS_BLOB_BYTES)
+                return [], [s[:40]]
+            try:
+                parsed = json.loads(s)
+            except Exception:
+                parsed = None
+        if not isinstance(parsed, list):
+            return parse_material_list(s), []
+    out, refused = [], []
+    for m in parsed:
+        if m is None:
+            continue                       # 자재 없음 — 손상이 아니다
+        if not isinstance(m, str):
+            refused.append(m)
+            continue
+        t = m.strip()
+        if t and t not in out:
+            out.append(t)
+    return out, refused
+
+
+def _zone_row_get(row, key):
+    """zone 행(dict)의 필드. 벡터와 DB 읽기가 같은 접근자를 쓴다."""
+    return row.get(key) if isinstance(row, dict) else None
+
+
+def stack_state(row):
+    """행의 STACK → `(값|None, 상태)`. 클라 `stackState`의 미러.
+
+    🔴 **판정기는 `_int_state` 하나다.** 두 번째 숫자 파서가 생기는 순간 `'0x10'`이 한쪽에서
+    16, 다른 쪽에서 0이 된다 — 실제로 그렇게 16이 DB에 쓰인 적이 있다.
+    `blank`는 오류가 **아니다**(아직 안 적은 값). 다만 저장·검증 시점에는 V5로 차단된다:
+    계획이 반쯤 적힌 채 나갈 수는 없다.
+    0과 음수는 높이가 아니므로 `invalid`이며, **그 값을 그대로 돌려준다**(사용자에게 무엇을
+    고치라고 말할 근거가 남아야 한다).
+    """
+    val, st = _int_state(_zone_row_get(row, "stack"))
+    if st != BAND_TO_OK:
+        return None, st
+    if val < 1:
+        return val, BAND_TO_INVALID
+    return val, BAND_TO_OK
+
+
+def mid_zone(row):
+    """MID 구역의 범위 — STACK과 **나머지 두 구역의 존재 여부**에서 유도된다.
+
+    반환 `{from, to, size, known}`. `known=False`는 STACK을 못 읽었다는 뜻이고, 그때는
+    아무것도 층 수를 계산하면 안 된다.
+    🔴 `size 0` + `known True`는 "층이 없다"이고 **정상**이다(STACK 2에 1H·TOP만 있는 행).
+    `known False`와 절대 같은 것으로 접지 말 것 — 접는 순간 읽지 못한 높이가 조용히 0층을
+    기여하고, 16층 스택이 15층이 된다.
+    """
+    val, st = stack_state(row)
+    has_1h = len(parse_material_list(_zone_row_get(row, "mat_1h"))) > 0
+    has_top = len(parse_material_list(_zone_row_get(row, "mat_top"))) > 0
+    if st != BAND_TO_OK:
+        return {"from": None, "to": None, "size": 0, "known": False}
+    frm = 2 if has_1h else 1
+    to = (val - 1) if has_top else val
+    return {"from": frm, "to": to, "size": max(0, to - frm + 1), "known": True}
+
+
+def zone_layers(row, zone):
+    """한 구역이 덮는 층 목록, 또는 계산 불가면 **None**.
+
+    🔴 불가일 때 `[]`가 아니라 `None`인 것이 규칙이다. `[]`는 "0층"이라는 **정상 상태**와
+    구별되지 않고, 읽지 못한 높이가 0층으로 합류하는 것이 V5가 존재하는 이유 그 자체다.
+    """
+    val, st = stack_state(row)
+    if st != BAND_TO_OK:
+        return None
+    present = len(parse_material_list(_zone_row_get(row, zone))) > 0
+    if zone == "mat_1h":
+        return [1] if present else []
+    if zone == "mat_top":
+        return [val] if present else []
+    z = mid_zone(row)
+    return list(range(z["from"], z["to"] + 1))
+
+
+def zone_demand(row, zone, painted):
+    """한 구역의 소요 — `{layers, total, share}`. 클라 `zoneDemand`의 미러.
+
+        총 소요 = (그 값으로 칠한 셀 수) × (그 구역의 층 수)
+        자재당  = ceil(총 소요 / 그 구역의 자재 수)
+
+    ⚠️ **올림은 분배되지 않는다** — `ceil(3/2)+ceil(3/2)=4` 이지만 `ceil(6/2)=3`. 그래서
+    합을 먼저 내고 나서 나눈다. 한 구역은 **하나의 수요**이며, 이 수를 두 번째로 계산하는
+    곳이 생기면 그 자체가 결함이다(저장은 ceil, 표시는 round여서 DB 34 / 화면 33이었던 건).
+    """
+    span = zone_layers(row, zone)
+    if span is None:
+        return {"layers": 0, "total": 0, "share": 0}
+    layers = len(span)
+    total = int(painted or 0) * layers
+    mats = parse_material_list(_zone_row_get(row, zone))
+    share = (-(-total // len(mats))) if mats else 0
+    return {"layers": layers, "total": total, "share": share}
+
+
+def parse_material_token(raw):
+    """자재 토큰 → `{ok, lot, slot, bin, scope, raw, reason}`. 클라 `parseMaterialToken` 미러.
+
+        토큰 ::= 식별자 [ ":" BIN ] · 식별자 ::= lot "_" slot | lot · BIN 생략 → 1
+
+    ⚠️ **`_split_material`과 다른 함수이며, 의도적으로 다르다.** 저쪽은 선언된
+    `plan_store.material_identity` 규칙이고 분리자 없는 `ABC`를 거부한다. 이 문법에서
+    분리자 없는 `MID1`은 해석 불가가 아니라 **"그 로트 전체"라는 뜻**이다. "추측하지
+    않는다"는 원칙은 그대로다 — 진짜 malformed한 토큰(`ABC_`·`_01`·`_`·BIN 실패)은 전부
+    여전히 거부한다. 정확히 한 경우만 뜻이 바뀐다(공유 벡터 material_token_cases).
+
+    BIN은 층 경계와 **같은 정수 판정기**(`_int_state`)로 읽는다. 두 번째 숫자 파서가
+    `'0x10'`을 한쪽에서 16으로 만들었던 그 자리다.
+    """
+    def bad(reason):
+        return {"ok": False, "lot": None, "slot": None, "bin": None,
+                "scope": None, "raw": str(raw if raw is not None else ""), "reason": reason}
+
+    s = str("" if raw is None else raw).strip()
+    if s == "":
+        return bad("빈 값입니다.")
+
+    # `:`는 **오른쪽에서** 자른다 — 로트 이름에 콜론이 들어갈 수 있다.
+    id_part, bin_val = s, 1
+    ci = s.rfind(":")
+    if ci >= 0:
+        id_part = s[:ci].strip()
+        bin_part = s[ci + 1:].strip()
+        if bin_part == "":
+            return bad("':' 뒤에 BIN이 없습니다.")
+        v, st = _int_state(bin_part)
+        if st != BAND_TO_OK:
+            return bad(f"BIN '{bin_part}'을(를) 정수로 읽을 수 없습니다.")
+        if v < 1:
+            return bad(f"BIN은 1 이상이어야 합니다 (지금 {v}).")
+        bin_val = v
+    if id_part == "":
+        return bad("자재 식별자가 비어 있습니다.")
+
+    # `_`도 오른쪽에서 자르므로 **앞 필드가 나머지를 흡수**한다: LOT_A_01 → LOT_A + 01.
+    ui = id_part.rfind("_")
+    if ui < 0:
+        return {"ok": True, "lot": id_part, "slot": None, "bin": bin_val,
+                "scope": "lot", "raw": s, "reason": ""}
+    lot, slot = id_part[:ui].strip(), id_part[ui + 1:].strip()
+    # 매달린 분리자는 스코프가 아니라 오타다. `ABC_`를 "로트 ABC 전체"로 읽는 것이 이 문법이
+    # 여전히 거부하는 그 추측이다.
+    if not lot or not slot:
+        return bad(f"'{id_part}'을(를) lot_slot으로 나눌 수 없습니다.")
+    return {"ok": True, "lot": lot, "slot": slot, "bin": bin_val,
+            "scope": "slot", "raw": s, "reason": ""}
+
+
+def material_pool_key(tok):
+    """롤업 행 하나의 안정된 정체 = 풀 `(lot, slot, BIN)`.
+
+    🔴 **`json.dumps`로 만든다. 분리자로 잇지 않는다.** 이어붙이려면 로트 이름에 나올 수 없는
+    문자가 필요한데, 후보는 로트 이름에 합법이거나(`|`·`_`·`:`) 도구가 조용히 삭제하는 제어
+    문자다. 실제로 U+001F로 이었던 판이 있었고, 문자가 쓰기 과정에서 사라져 `MID1_12:3`과
+    `MID11_2:3`이 둘 다 "MID1123"이 됐다 — 무관한 두 풀이 한 행으로 합쳐지고 사용량이
+    더해졌다. JSON은 구성요소를 스스로 이스케이프하고, `null`(로트 전체)이 문자열 `"null"`
+    (그렇게 이름 붙은 슬롯)과 **구조적으로** 구별된다.
+    구분자를 고르고 있다면 그 자체가 이 함수를 쓰라는 신호다.
+    """
+    if not tok or not tok.get("ok"):
+        return None
+    slot = None if tok.get("scope") == "lot" else tok.get("slot")
+    return json.dumps([tok.get("lot"), slot, tok.get("bin")],
+                      separators=(",", ":"), ensure_ascii=False)
+
+
+def _zone_raw_items(raw):
+    """중복 판정용 **원문 그대로의** 항목 목록(중복 제거 없음)."""
+    if isinstance(raw, list):
+        items = raw
+    else:
+        s = str("" if raw is None else raw)
+        if s.lstrip()[:1] == "[":
+            try:
+                parsed = json.loads(s)
+                items = parsed if isinstance(parsed, list) else re.split(r"[\n,]", s)
+            except Exception:
+                items = re.split(r"[\n,]", s)
+        else:
+            items = re.split(r"[\n,]", s)
+    return [t for t in (str("" if x is None else x).strip() for x in items) if t]
+
+
+def validate_zone_plan(rows):
+    """V1~V5 + W-DUP-MAT. 반환 `{ok, blocks[], warns[]}` — 클라 `validateZonePlan`의 미러.
+
+      V5  STACK을 양의 정수로 읽을 수 없다      ← **가장 먼저** 판정한다
+      V2  STACK 1인데 1H·TOP이 둘 다 있다       ← 두 자재가 같은 1층을 잡는다
+      V1  MID 구역이 비어 있지 않은데 MID가 없다 ← 조건부. 구역이 0층이면 발동하지 않는다
+      V4  자재 토큰을 읽을 수 없다
+      V3  로트 전체와 그 로트의 슬롯이 같은 BIN에 함께 지정됐다  ← **계획 전체**의 성질
+
+    🔴 V5가 먼저인 이유. 구 모델은 값의 높이를 **덮인 층에서 유도**해서, 배정되지 않은 위쪽
+       구간이 그냥 max를 낮췄고 다른 규칙은 전부 통과했다 — 16층 스택이 조용히 15층이 됐다.
+       zone은 높이를 유도하지 않고 STACK이 **말한다**. 그 구멍이 닫히는 것은 STACK을 읽을 수
+       있는 동안뿐이다. 읽지 못한 STACK을 0으로 보거나 건너뛰면 동일한 결함이 멀쩡해 보이는
+       화면 뒤에서 재현된다. 그래서 차단이고, 가장 먼저 차단한다.
+
+    구 B1·B2(FROM>TO, FROM<1)·B5(겹침)·B6(구멍)·B4/B9(값 집합 참조)는 **없다.** 완화가
+    아니라 세 구역이 `1..STACK`을 구성적으로 덮어 그 상태를 말할 수 없기 때문이다.
+    """
+    blocks, warns = [], []
+    rows = rows or []
+
+    def add(lst, rule, message, **extra):
+        entry = {"rule": rule, "message": message}
+        entry.update(extra)
+        lst.append(entry)
+
+    def zone_label(row, zone):
+        v = _zone_row_get(row, "value")
+        return f"값 '{'' if v is None else v}'의 {ZONE_LABEL[zone]}"
+
+    for row in rows:
+        raw_v = _zone_row_get(row, "value")
+        v = str("" if raw_v is None else raw_v)
+        val, st = stack_state(row)
+        mats = {z: parse_material_list(_zone_row_get(row, z)) for z in ZONES}
+
+        if st != BAND_TO_OK:
+            shown = "(비어 있음)" if st == BAND_TO_BLANK else json.dumps(
+                _zone_row_get(row, "stack"), ensure_ascii=False)
+            add(blocks, "V5",
+                f"값 '{v}'의 STACK {shown}을(를) 1 이상의 정수로 읽을 수 없습니다 — "
+                f"층 구조를 계산할 수 없습니다.", value=v)
+        elif val == 1 and mats["mat_1h"] and mats["mat_top"]:
+            # V2. STACK 1이면 층은 하나뿐인데 두 구역이 그 층을 함께 잡는다.
+            # MID 문제로 보고하지 **않는다** — 여기서 MID 구역은 0층이고, MID를 탓하면
+            # 사용자를 유일하게 결백한 칸으로 보내게 된다.
+            add(blocks, "V2",
+                f"값 '{v}'은(는) STACK 1인데 1H와 TOP이 모두 있습니다 — "
+                f"'{mats['mat_1h'][0]}'와(과) '{mats['mat_top'][0]}'이(가) 같은 1층을 잡습니다.",
+                value=v, zone="mat_1h")
+
+        # V1 — 조건부이고 그 조건이 전부다. STACK 1 MID단독은 통과(구역 1–1층, MID 있음),
+        # STACK 2 + 1H·TOP + MID없음도 통과(구역 0층). 높이를 읽을 수 있을 때만 계산한다:
+        # V5가 이미 보고된 행에서 구역을 추측하면 같은 행에 모순된 두 메시지가 나간다.
+        # ⚠️ 이 `st == ok` 가드는 지금 **중복이다**(뮤테이션으로 확인: 제거해도 벡터가 전부
+        #    통과한다). `mid_zone`이 known=False일 때 size 0을 돌려주므로 아래 조건이 이미
+        #    거짓이기 때문이다. 그래도 남긴다 — 억제는 `mid_zone`의 부수효과가 아니라
+        #    **이 규칙의 성질**이고, 저쪽이 언젠가 unknown에 다른 size를 돌려주는 순간
+        #    이 한 줄이 유일한 방어가 된다. 클라 `validateZonePlan`도 같은 이중 가드다.
+        if st == BAND_TO_OK:
+            z = mid_zone(row)
+            if z["size"] > 0 and not mats["mat_mid"]:
+                add(blocks, "V1",
+                    f"{zone_label(row, 'mat_mid')} 구역이 "
+                    f"{_format_layer_runs(zone_layers(row, 'mat_mid'))}({z['size']}층)인데 "
+                    f"비어 있습니다 — 구역이 있으면 MID는 반드시 있어야 합니다.",
+                    value=v, zone="mat_mid")
+
+        for z in ZONES:
+            # V4 — 못 읽는 토큰은 차단한다. 조회할 수 없으니 그 가용은 영원히 0으로만 보고될
+            # 수 있는데, `0`은 "다 썼다"로 읽힌다. 진실은 "해석한 적이 없다"이다.
+            for token in mats[z]:
+                t = parse_material_token(token)
+                if not t["ok"]:
+                    add(blocks, "V4",
+                        f"{zone_label(row, z)}의 자재 '{token}'을(를) 읽을 수 없습니다 — {t['reason']}",
+                        value=v, zone=z)
+            # 한 구역 **안**의 중복은 `share`의 분모를 이유 없이 바꾼다. 구역을 가로지르는
+            # 중복은 정당하다(같은 로트가 바닥에도 중간에도 들어가는 것은 다른 층의 수요다).
+            raw_items = _zone_raw_items(_zone_row_get(row, z))
+            dup = [m for i, m in enumerate(raw_items) if raw_items.index(m) != i]
+            if dup:
+                seen, uniq = set(), []
+                for m in dup:
+                    if m not in seen:
+                        seen.add(m)
+                        uniq.append(m)
+                add(warns, "W-DUP-MAT",
+                    f"{zone_label(row, z)}에 같은 자재가 중복 지정됐습니다: {', '.join(uniq)}",
+                    value=v, zone=z)
+
+    # ---- V3: 로트 전체와 그 로트의 슬롯이 같은 BIN에 ----
+    # `MID1:2`는 MID1의 모든 슬롯 BIN 2를 덮고 `MID1_03:2`는 슬롯 03 BIN 2를 덮는다. 함께
+    # 지정되면 슬롯 03이 두 번 계산되고, 부풀린 수요는 가장 나쁜 순간에 부족으로 나타난다.
+    # 같은 로트라도 BIN이 다르면 다른 풀이므로 정상이다.
+    #
+    # 🔴 이것은 **행 쌍이 아니라 계획 전체의 성질**이다. 두 토큰은 보통 서로 다른 값에 있어서,
+    #    행 단위 구현은 이 계획을 통과시키고 이중 계산된 웨이퍼가 나중에 부족으로 튀어나온다.
+    # 키는 `json.dumps([lot, bin])` — 로트 이름에 나올 수 없는 문자가 없고, 보이지 않는
+    # 분리자는 합법인 것보다 **더 나쁘다**(도구가 지운다). `MID1`+bin`12`와 `MID11`+bin`2`를
+    # 지워진 분리자로 이으면 둘 다 "MID112"가 되어, 맞는 계획을 막고 진짜 이중 계산은 놓친다.
+    lot_scoped, slot_scoped = {}, {}
+    for row in rows:
+        raw_v = _zone_row_get(row, "value")
+        v = str("" if raw_v is None else raw_v)
+        for z in ZONES:
+            for token in parse_material_list(_zone_row_get(row, z)):
+                t = parse_material_token(token)
+                if not t["ok"]:
+                    continue                 # V4가 보고한다 — 여기서 이중 보고하지 않는다
+                key = json.dumps([t["lot"], t["bin"]], separators=(",", ":"), ensure_ascii=False)
+                target = lot_scoped if t["scope"] == "lot" else slot_scoped
+                target[key] = {"raw": t["raw"], "value": v, "zone": z}
+    for key in sorted(lot_scoped.keys()):
+        slot_hit = slot_scoped.get(key)
+        if not slot_hit:
+            continue
+        lot_hit = lot_scoped[key]
+        add(blocks, "V3",
+            f"자재 '{lot_hit['raw']}'(로트 전체 · 값 '{lot_hit['value']}')와 "
+            f"'{slot_hit['raw']}'(그 로트의 슬롯 · 값 '{slot_hit['value']}')이 같은 BIN에 "
+            f"함께 지정됐습니다 — 그 슬롯이 두 번 계산됩니다.",
+            value=slot_hit["value"], zone=slot_hit["zone"])
+
+    return {"ok": len(blocks) == 0, "blocks": blocks, "warns": warns}
+
+
+def _format_layer_runs(layers):
+    """[13,14,15,19] → "13–15층, 19층". 클라 `formatLayerRuns` 미러."""
+    xs = sorted(set(layers or []))
+    runs, i = [], 0
+    while i < len(xs):
+        j = i
+        while j + 1 < len(xs) and xs[j + 1] == xs[j] + 1:
+            j += 1
+        runs.append(f"{xs[i]}층" if xs[i] == xs[j] else f"{xs[i]}–{xs[j]}층")
+        i = j + 1
+    return ", ".join(runs)
+
+
+def material_rollup_rows(rows, painted_of):
+    """② 자재 롤업 — **파생 전용**. 클라 `materialRollupRows` 미러.
+
+    행의 정체는 **풀 `(lot, slot, BIN)`**이지 자재 이름이 아니다. 서로 다른 값의 서로 다른
+    구역이 한 풀에 합쳐지며, 그것이 이 표가 존재하는 이유다.
+
+    ⚠️ `used`는 **충분성 판정이지 배분이 아니다.** 웨이퍼는 한 장씩 소진되고 그 순서를 아무도
+       기록하지 않는다 — 균등 분할은 "이 풀 전체에 충분한가"만 답하며 "이 웨이퍼가 정확히
+       N장을 댄다"로 읽혀서는 안 된다.
+    구역별 올림 때문에 한 구역의 share 합은 그 구역의 total보다 크다. 의도된 것이다:
+    내림·반올림은 부족을 숨기고, 조용히 적게 주문하는 계획이 더 비싸다.
+    """
+    by_pool = {}
+    for row in rows or []:
+        raw_v = _zone_row_get(row, "value")
+        v = str("" if raw_v is None else raw_v)
+        painted = int(painted_of(v) or 0) if callable(painted_of) else int((painted_of or {}).get(v, 0))
+        for z in ZONES:
+            d = zone_demand(row, z, painted)
+            for token in parse_material_list(_zone_row_get(row, z)):
+                tok = parse_material_token(token)
+                key = material_pool_key(tok)
+                if key is None:
+                    continue                  # V4가 저장을 막는다 — 여기서 행이 되지는 않는다
+                e = by_pool.get(key)
+                if e is None:
+                    e = by_pool[key] = {"key": key, "lot": tok["lot"],
+                                        "slot": None if tok["scope"] == "lot" else tok["slot"],
+                                        "bin": tok["bin"], "scope": tok["scope"],
+                                        "raw": tok["raw"], "used": 0, "uses": []}
+                e["used"] += d["share"]
+                # 구역을 use에 남긴다 — 패널이 수요의 출처를 다시 계산하지 않고 말할 수 있다.
+                e["uses"].append({"value": v, "zone": z, "layers": d["layers"], "qty": d["share"]})
+    return sorted(by_pool.values(),
+                  key=lambda e: (str(e["lot"]), str(e["slot"] or ""), e["bin"]))
+
+
+# 가용을 신뢰할 수 없을 때의 기본 사유. `availabilityOf`가 정확한 사유를 갖고 있으면 그쪽이
+# 이긴다 — "이 BIN이 없다"·"서버가 답을 못 준다"·"아직 안 물어봤다"는 서로 다른 상황이고
+# 사용자의 행동이 다르다. 하나의 「미상」으로 접으면 숨기는 행위가 무의미해진다.
+REMAINING_UNKNOWN_REASON = {
+    "bin_absent": "이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.",
+    "loading": "가용을 조회하는 중입니다.",
+    "not_queried": "가용을 아직 조회하지 않았습니다.",
+}
+
+
+def remaining_state(availability, used):
+    """잔여 = 가용 − 사용, **가용의 신뢰도를 함께 들고** 간다. 클라 `remainingState` 미러.
+
+    🔴 가용을 믿을 수 없으면 잔여는 **절대 숫자가 아니다.** 믿을 수 없는 입력에서 나온 확신에
+       찬 수치는 수치가 없는 것보다 나쁘다 — `0`은 "다 썼다"로 읽히지만 진실은 "이 맵에 그
+       BIN이 없다"거나 "물어볼 수 없었다"일 수 있다.
+    """
+    a = availability or {}
+    status = a.get("status")
+
+    def unknown(reason):
+        return {"value": None, "reliable": False, "reason": reason}
+
+    if status == "bin_absent":
+        return unknown(REMAINING_UNKNOWN_REASON["bin_absent"])
+    if status is None:
+        return unknown(a.get("reason") or REMAINING_UNKNOWN_REASON["not_queried"])
+    if status == "loading":
+        return unknown(a.get("reason") or REMAINING_UNKNOWN_REASON["loading"])
+    if a.get("reliable") is not True or a.get("value") is None:
+        return unknown(a.get("reason") or "가용을 신뢰할 수 없습니다.")
+    return {"value": int(a["value"]) - int(used or 0), "reliable": True, "reason": ""}
+
+
+def bands_to_zones(bands):
+    """폐기 모델 읽기: `bands` → zone 행. 클라 `bandsToZones` 미러.
+
+    🔴 **왜 존재하는가.** `map_split_registry.bands`에는 band 모델이 쓴 실계획이 들어 있다.
+       zone 리더가 그 컬럼을 그냥 무시하면 그 맵을 여는 순간 계획이 비어 보이고, legend
+       저장은 `replace_map`이라 그 다음 편집 한 번이 계획을 **빈 집합으로 지운다.** 이
+       마이그레이션은 호의가 아니라 불변식이다.
+
+    🔴 **그리고 추측하는 대신 거부한다.** 모든 band 배치가 세 구역으로 표현되지는 않는다
+       (구간 4개, 1층에서 시작하지 않는 첫 구간, 읽을 수 없는 `to`, 역전된 `to`). 그런
+       경우 `{ok: False}`이며 호출자는 그 값을 "읽을 수 없음"으로 표면화하고 저장을 막아야
+       한다 — 4구간을 3구역으로 뭉갠 뒤 그 뭉갠 결과를 서버의 진실 위에 `replace_map`으로
+       되쓰는 것이 정확히 "화면은 멀쩡, 값은 틀림" 결함이다.
+
+    사상 규칙:
+      n = 1        → MID 단독. 스택 전체를 덮는 한 구간이 곧 "그 사이 전부"이며 1H·TOP은
+                     거기서 도려낸 예외다.
+      n > 1        1H  = band[0]   (정확히 1층만 덮을 때)
+                   TOP = band[n-1] (정확히 STACK층만 덮을 때)
+                   MID = 남은 것. 남은 것이 **하나 이하**여야 한다.
+    """
+    src = bands if isinstance(bands, list) else []
+    if not src:
+        return {"ok": True, "stack": "", "mat_1h": [], "mat_mid": [], "mat_top": []}
+    if len(src) > MAX_BANDS_PER_PLAN:
+        # 손상된 blob의 폭주 차단. 이 크기는 어차피 표현 불가이며(구간 4개부터 거부),
+        # 여기서 막지 않으면 거부를 결정하기 위해 배열 전체를 걷게 된다.
+        return {"ok": False, "reason": f"구간이 상한({MAX_BANDS_PER_PLAN})을 넘습니다."}
+    spans = []
+    refused_all = []      # 자재로 읽을 수 없는 원소 — 호출자가 표면화한다(조용히 버리지 않는다)
+    for i, b in enumerate(src):
+        val, st = _band_to(b)
+        # 읽을 수 없는 `to`는 **거부**이지 건너뛰기가 아니다. `prevTo`는 건너뛴다 — band를
+        # 편집 중인 패널에서는 그게 옳았다(보여 주고, 표시하고, 계속). 여기서 건너뛰면
+        # 스택이 조용히 짧아지는데, 마이그레이션이 절대 내면 안 되는 유일한 결과다.
+        if st != BAND_TO_OK:
+            return {"ok": False, "reason": f"{i + 1}번째 구간의 끝 층을 읽을 수 없습니다."}
+        prev = _prev_to(src, i)
+        if val <= prev:
+            return {"ok": False,
+                    "reason": f"{i + 1}번째 구간의 끝 층 {val}이(가) 앞 구간({prev})보다 크지 않습니다."}
+        mats, refused = _zone_tokens((b or {}).get("materials"))
+        refused_all.extend(refused)
+        spans.append({"from": prev + 1, "to": val, "materials": mats})
+
+    stack = spans[-1]["to"]
+    if len(spans) == 1:
+        return {"ok": True, "stack": stack, "mat_1h": [],
+                "mat_mid": spans[0]["materials"], "mat_top": [], "refused": refused_all}
+    rest = list(spans)
+    h1, top = [], []
+    if rest[0]["from"] == 1 and rest[0]["to"] == 1:
+        h1 = rest.pop(0)["materials"]
+    if rest and rest[-1]["from"] == stack and rest[-1]["to"] == stack:
+        top = rest.pop()["materials"]
+    if len(rest) > 1:
+        return {"ok": False,
+                "reason": (f"구간 {len(src)}개는 1H·MID·TOP 세 구역으로 표현할 수 없습니다 — "
+                           f"중간 구간이 {len(rest)}개입니다.")}
+    return {"ok": True, "stack": stack, "mat_1h": h1,
+            "mat_mid": rest[0]["materials"] if rest else [], "mat_top": top,
+            "refused": refused_all}
+
+
 def _material_identity_rule(cfg: dict):
     """자재 ID 문자열을 소스 `(lot, slot)`으로 푸는 **선언된** 규칙. 미선언이면 None.
 
@@ -1967,9 +2533,11 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
     [정체성] 계획은 `(ref_table, map_key)` — 지금 열어 편집 중인 그 맵 자체다. `plan_id`도
     계획 헤더 테이블도 없다. stage는 `stages.*.target_map.table` 역인덱스로 유도한다.
-    [M2.6 DOE 단위] **레지스트리 행 1개 = legend 값 1개 = DOE 조건 1개.** 구간과 자재는 그
-    행의 `bands` JSON 배열 안에 있고, 수량은 **저장되지 않고 유도된다**:
-    `layers = to − prevTo`, `total = painted(값) × layers`, `share = ceil(total / 자재수)`.
+    [DOE 단위] **레지스트리 행 1개 = legend 값 1개 = DOE 조건 1개.**
+    [zone 모델] 층 구조는 `stack` 하나와 세 구역(`mat_1h`/`mat_mid`/`mat_top`)이며, 수량은
+    **저장되지 않고 유도된다**: `layers = 그 구역이 덮는 층 수`,
+    `total = painted(값) × layers`, `share = ceil(total / 그 구역의 자재 수)`.
+    폐기된 `bands` 행은 `bands_to_zones`로 **읽되 표현 불가하면 거부**한다.
 
     LookupError: plan_store.registry 미구성 (라우트가 404로 변환).
     """
@@ -2014,30 +2582,95 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         name = (reg_src.get("columns") or {}).get(role_key)
         return getattr(row, name, None) if name else None
 
-    plan = []          # [(값, 구간 배열)] — 구간을 읽어낸 행만
-    unreadable = []    # `bands` blob을 읽지 못한 값 (= "구간 없음"이 아니다)
-    # [구조 거부] 우리가 정한 형태가 아닌 것을 만났다는 뜻. `to`가 비었거나 역전된 것과 달리
-    # 저장된 blob이 계약의 모양이 아니라는 신호라, 나머지를 읽은 방식도 믿을 근거가 없다 →
-    # 계획 전체를 unverified로 내린다(아래 availability_checked).
+    plan = []          # zone 행 dict 목록 — 층 구조를 읽어낸 행만
+    unreadable = []    # 구조를 읽지 못한 값 (= "구간 없음"이 아니다)
+    # [구조 거부] 우리가 정한 형태가 아닌 것을 만났다는 뜻. 저장된 값이 계약의 모양이 아니면
+    # 나머지를 읽은 방식도 믿을 근거가 없다 → 계획 전체를 unverified로 내린다
+    # (아래 availability_checked).
     structural_refusal = False
     for row in reg_rows:
         v = _reg_get(row, "value")
         if v is None or str(v).strip() == "":
             continue
-        bands, readable, dropped = _parse_bands(_reg_get(row, "bands"))
-        if not readable:
-            unreadable.append(str(v))
-            continue
-        if dropped:
+        v = str(v)
+        # zone 컬럼이 이 배포의 정본이다. 세 구역과 STACK을 먼저 읽고, **하나라도 값이
+        # 있으면** 그것이 그 행의 계획이다 — 클라 `map_editor.js`의 `hasZone` 판정과 같은
+        # 규칙이라 화면과 이 검증기가 같은 행을 같은 모양으로 본다.
+        zone_row = {"value": v, "stack": _reg_get(row, "stack")}
+        refused_items = []
+        for z in ZONES:
+            toks, refused = _zone_tokens(_reg_get(row, z))
+            zone_row[z] = toks
+            refused_items.extend(refused)
+        if refused_items:
+            # 자재로 읽을 수 없는 원소가 섞였다. 남은 것만으로 배분하면 **분모가 틀린 채**
+            # 그럴듯한 수가 나오므로 이 행은 통째로 검증하지 않는다.
             structural_refusal = True
+            shown = ", ".join(repr(x) for x in refused_items[:3])
             warnings_out.append({
-                "type": WARN_LAYER_RANGE_INVALID, "value": str(v),
-                "reason": "not_a_band", "dropped": dropped,
-                "detail": (f"DOE '{v}'의 구간 목록에 구간이 아닌 원소 {dropped}개가 있어 "
-                           f"거부했다 — 배열 길이가 바뀌면 뒤 구간의 시작 층이 함께 밀리므로 "
-                           f"이 값의 수치는 검증하지 않았다"),
+                "type": WARN_SOURCE_UNRESOLVED, "value": v,
+                "refused": len(refused_items),
+                "detail": (f"DOE '{v}'의 자재 목록에 문자열이 아닌 원소가 "
+                           f"{len(refused_items)}개 있다({shown}) — 자재 ID는 적은 그대로의 "
+                           f"문자열이어야 한다. 숫자로 읽어 넘기지 않고 거부했으므로 "
+                           f"이 값의 수량은 검증되지 않았다"),
             })
-        plan.append((str(v), bands))
+        has_zone = (str(zone_row["stack"] or "").strip() != ""
+                    or any(zone_row[z] for z in ZONES))
+
+        if not has_zone:
+            # ---- 폐기 모델 읽기 (`bands`) ----
+            # 🔴 무시하면 그 맵을 여는 순간 계획이 비어 보이고, legend 저장은 `replace_map`
+            #    이라 다음 편집 한 번이 계획을 빈 집합으로 지운다. 읽는 것은 호의가 아니다.
+            legacy_col = (reg_src.get("columns") or {}).get(REGISTRY_LEGACY_ROLE)
+            bands, readable, dropped = _parse_bands(
+                getattr(row, legacy_col, None) if legacy_col else None)
+            if not readable:
+                unreadable.append(v)
+                continue
+            if dropped:
+                structural_refusal = True
+                warnings_out.append({
+                    "type": WARN_LAYER_RANGE_INVALID, "value": v,
+                    "reason": "not_a_band", "dropped": dropped,
+                    "detail": (f"DOE '{v}'의 폐기 구간 목록에 구간이 아닌 원소 {dropped}개가 "
+                               f"있어 거부했다 — 배열 길이가 바뀌면 뒤 구간의 시작 층이 함께 "
+                               f"밀리므로 이 값의 수치는 검증하지 않았다"),
+                })
+                continue
+            if bands:
+                conv = bands_to_zones(bands)
+                if not conv.get("ok"):
+                    # 🔴 접어서 통과시키지 않는다. 뭉갠 읽기를 저장하면 `replace_map`이
+                    #    서버의 진짜 계획을 그 손실 읽기로 덮는다.
+                    # ⚠️ 이것은 `structural_refusal`이 **아니다.** 그 플래그는 "우리가 나머지를
+                    #    읽은 방식도 믿을 수 없다"는 뜻인데, 여기서 거부되는 것은 이 행 하나이고
+                    #    다른 값은 각자의 컬럼에 있어 영향을 받지 않는다. 한 값의 손상으로 계획
+                    #    전체의 검증을 죽이면 사용자는 고칠 곳을 한 번에 하나씩만 알게 된다.
+                    warnings_out.append({
+                        "type": WARN_LAYER_RANGE_INVALID, "value": v,
+                        "reason": "not_convertible",
+                        "detail": (f"DOE '{v}'의 폐기 구간 정의를 1H·MID·TOP 세 구역으로 "
+                                   f"표현할 수 없어 거부했다: {conv.get('reason')} — "
+                                   f"접어서 저장하면 계획이 바뀌므로 이 값은 검증하지 않았다"),
+                    })
+                    continue
+                zone_row["stack"] = conv["stack"]
+                for z in ZONES:
+                    zone_row[z] = conv[z]
+                if conv.get("refused"):
+                    # 폐기 blob의 자재 목록에 문자열이 아닌 원소가 있었다. 버리되 조용히
+                    # 버리지 않는다 — 남은 것만으로 배분하면 분모가 틀린다.
+                    structural_refusal = True
+                    shown = ", ".join(repr(x) for x in conv["refused"][:3])
+                    warnings_out.append({
+                        "type": WARN_SOURCE_UNRESOLVED, "value": v,
+                        "refused": len(conv["refused"]),
+                        "detail": (f"DOE '{v}'의 폐기 구간 자재 목록에 문자열이 아닌 원소가 "
+                                   f"{len(conv['refused'])}개 있다({shown}) — 거부했으므로 "
+                                   f"이 값의 수량은 검증되지 않았다"),
+                    })
+        plan.append(zone_row)
 
     # ---- 페인팅 값 분포 — **대상 맵 자신**에서 (계획 맵 사본 폐기) ----
     painted, painted_status, painted_truncated = _painted_values(
@@ -2047,16 +2680,43 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     # qty_total을 저장에서 읽어 이 실패에 면역이었다 — 유도로 바꾸며 생긴 새 의존이다.
     painted_reliable = (painted_status == "connected") and not painted_truncated
 
-    # DOE로 취급되는 값 = **구간이 하나라도 있는** 행. 색만 지정된 legend 행은 아직 DOE가
-    # 아니므로 unpainted 경고로 사용자를 괴롭히지 않는다.
-    doe_value_set = {v for (v, bands) in plan if bands}
+    # DOE로 취급되는 값 = **층 구조를 하나라도 적은** 행(STACK이 비어 있지 않거나 자재가
+    # 있는 행). 색만 지정된 legend 행은 아직 DOE가 아니므로 경고로 사용자를 괴롭히지 않는다.
+    #
+    # 🔴 **이것이 V1~V5를 적용하는 범위이기도 하다 — 클라 호출자와 여기서 갈린다.**
+    #    패널(`transfer_plan.js`)은 화면에 있는 legend 행 전부를 `validateZonePlan`에 넘긴다.
+    #    이 엔드포인트가 같은 짓을 하면, 계획을 세운 적도 없는 맵의 순수 legend 값마다 V5
+    #    (STACK 비어 있음)가 하나씩 나가 진짜 신호를 덮는다 — 자기 자신을 무시하도록 가르치는
+    #    검증기가 정확히 이 계약이 막으려는 것이다. **규칙은 바뀌지 않는다**(`validate_zone_plan`
+    #    은 벡터 파일 그대로의 미러다). 바뀌는 것은 무엇을 계획으로 볼 것인가이고, 그 판정은
+    #    클라의 `hasZone`과 같다.
+    plan_rows = [r for r in plan
+                 if str(r["stack"] or "").strip() != "" or any(r[z] for z in ZONES)]
+    doe_value_set = {r["value"] for r in plan_rows}
     unreadable_set = set(unreadable)
 
     for v in sorted(unreadable_set):
         warnings_out.append({
             "type": WARN_LAYER_RANGE_INVALID, "value": v, "reason": "unreadable",
-            "detail": f"DOE '{v}'의 구간 정의(bands)를 읽을 수 없음 — 이 값은 검증에서 제외됐다",
+            "detail": f"DOE '{v}'의 층 구조를 읽을 수 없음 — 이 값은 검증에서 제외됐다",
         })
+
+    # ---- V1~V5 + W-DUP-MAT (공유 벡터 계약) ----
+    # 차단 규칙은 계획 자체의 성질이라 stage·painted와 무관하게 판정한다: 소스를 못 물어봐서
+    # 수량을 검증하지 못한 계획도 STACK이 비었는지는 말할 수 있어야 한다.
+    zone_verdict = validate_zone_plan(plan_rows)
+    for blk in zone_verdict["blocks"]:
+        entry = {"type": WARN_ZONE_RULE_VIOLATION, "rule": blk["rule"],
+                 "value": blk.get("value"), "detail": blk["message"]}
+        if blk.get("zone"):
+            entry["zone"] = blk["zone"]
+        warnings_out.append(entry)
+    for wrn in zone_verdict["warns"]:
+        entry = {"type": WARN_ZONE_RULE_ADVISORY, "rule": wrn["rule"],
+                 "value": wrn.get("value"), "detail": wrn["message"]}
+        if wrn.get("zone"):
+            entry["zone"] = wrn["zone"]
+        warnings_out.append(entry)
 
     if not painted_reliable:
         warnings_out.append({
@@ -2121,107 +2781,95 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     truncations = []    # [(role, cap)] — 어떤 상한에 걸렸는지 각각 보고한다
 
     if stage_cfg is not None and painted_reliable:
-        # [M2.6] 구간 → 수요(demand) 전개. 수량은 **저장돼 있지 않고 여기서 유도된다**:
-        #   layers = to − prevTo · total = painted(값) × layers · share = ceil(total / 자재수)
-        # 구현은 `client2/src/transfer_plan.js`의 미러다 — 같은 수를 두 번 정의하지 않는다.
-        # 같은 자재가 여러 구간·여러 값에 걸쳐 있으면 아래 source_alloc이 자연히 합산한다.
-        material_rule = _material_identity_rule(cfg)
+        # [zone] 구역 → 수요(demand) 전개. 수량은 **저장돼 있지 않고 여기서 유도된다**:
+        #   layers = 그 구역이 덮는 층 수 · total = painted(값) × layers
+        #   share  = ceil(total / 그 구역의 자재 수)
+        # 산술은 `zone_demand` **하나**가 한다 — 이 루프가 자기 나름의 곱셈을 다시 쓰면
+        # 저장은 ceil, 표시는 round여서 DB 34 / 화면 33이었던 그 자리가 다시 열린다.
+        # 같은 자재가 여러 구역·여러 값에 걸쳐 있으면 아래 source_alloc이 자연히 합산한다.
         demands = []   # (값, source_lot, source_slot, required, label, 자재 원문)
-        bands_seen = 0
         stop = False
-        for (v, bands) in plan:
+        # [자재 정체] 분해는 **공유 계약의 토큰 문법**(`parse_material_token`)이 한다:
+        #   토큰 ::= lot["_"slot][":"BIN]
+        # ⚠️ `plan_store.material_identity`는 **게이트로 남고 파서로는 쓰이지 않는다.** 이유:
+        #    ① 클라는 config를 읽지 못하므로 그 규칙은 한쪽에만 사는 규칙이고, 한쪽에만 사는
+        #       규칙은 흘러간다 — 그리고 갈리는 순간 한 화면에 두 개의 가용치가 생긴다.
+        #    ② `_split_material`(마지막 `_` 기준)은 `ADFE1H_01:3`을 슬롯 `01:3`으로 읽어
+        #       존재하지 않는 슬롯을 물어보고 **멀쩡한 자재에 대해 확신에 찬 0**을 낸다.
+        #    선언 자체는 여전히 필요하다: 미선언이면 이 배포의 자재 문자열이 lot/slot 모양
+        #    이라는 근거가 없으므로 아무것도 조회하지 않고 그렇게 말한다(아래).
+        #    ↪ 후속 판단 필요: `separator`/`compose` 값이 이제 파싱에 쓰이지 않으므로,
+        #      이 키를 은퇴시킬지 재정의할지는 총괄 결정 사항이다(경계 계약 — /stages 노출).
+        material_rule = _material_identity_rule(cfg)
+        # 구역은 행당 정확히 셋이라 `MAX_BANDS_PER_PLAN` 계열의 폭주가 구조적으로 없다
+        # (행 수는 이미 MAX_DOE_PER_PLAN으로 묶여 있다). 남는 팬아웃 축은 **자재 수**뿐이다.
+        for zone_row in plan_rows:
             if stop:
                 break
+            v = zone_row["value"]
             painted_cells = int(painted.get(v, 0))
-            for i, band in enumerate(bands):
-                if bands_seen >= MAX_BANDS_PER_PLAN:
-                    truncations.append(("bands", MAX_BANDS_PER_PLAN))
-                    stop = True
+            for z in ZONES:
+                if stop:
                     break
-                if len(demands) >= MAX_DEMANDS_PER_PLAN:
-                    truncations.append(("demands", MAX_DEMANDS_PER_PLAN))
-                    stop = True
-                    break
-                bands_seen += 1
-                # `seq`는 `_assign_band_seqs`가 이미 계획 안에서 유일하게 만들었다.
-                seq = band.get("seq")
-                label_prefix = f"{v}[#{seq}]"
-                prev = _prev_to(bands, i)
-                to, state = _band_to(band)
-                if state != BAND_TO_OK:
-                    blank = (state == BAND_TO_BLANK)
-                    warnings_out.append({
-                        "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": seq,
-                        "reason": "incomplete" if blank else "unreadable",
-                        "detail": (f"DOE '{label_prefix}'의 끝 층이 "
-                                   + ("비어 있음 — 편집 중" if blank
-                                      else "숫자가 아님 — 값이 손상됐다")
-                                   + ". 층 수 0이라 이 구간의 소요는 검증되지 않았다"),
-                    })
-                    continue
-                if to <= prev:
-                    warnings_out.append({
-                        "type": WARN_LAYER_RANGE_INVALID, "value": v, "band": seq,
-                        "reason": "not_increasing", "to": to, "prev_to": prev,
-                        "detail": (f"DOE '{label_prefix}'의 끝 층 {to}이(가) 앞 구간의 끝 층 "
-                                   f"{prev}보다 크지 않음 — 이 구간 자체는 빈 구간이라 소요가 "
-                                   f"없지만, **다음 구간이 {to}층부터 세므로 그쪽 소요가 "
-                                   f"과다 계상된다**(스택 총 층수를 넘을 수 있다)"),
-                    })
-                    continue
-                layers = to - prev
-                materials, refused = _band_materials(band)
-                if refused:
-                    # 자재로 읽을 수 없는 원소가 섞였다. 남은 것만으로 배분하면 분모가
-                    # 틀린 채 그럴듯한 수가 나오므로 이 구간은 통째로 검증하지 않는다.
-                    structural_refusal = True
-                    shown = ", ".join(repr(x) for x in refused[:3])
-                    warnings_out.append({
-                        "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": seq,
-                        "refused": len(refused),
-                        "detail": (f"DOE '{label_prefix}'의 자재 목록에 문자열이 아닌 원소가 "
-                                   f"{len(refused)}개 있다({shown}) — 자재 ID는 적은 그대로의 "
-                                   f"문자열이어야 한다. 숫자로 읽어 넘기지 않고 거부했으므로 "
-                                   f"이 구간의 수량은 검증되지 않았다"),
-                    })
-                    continue
+                materials = list(zone_row[z])
                 if not materials:
-                    warnings_out.append({
-                        "type": WARN_SOURCE_UNRESOLVED, "value": v, "band": seq,
-                        "detail": f"DOE '{label_prefix}'에 사용 자재가 선언되지 않음 — "
-                                  f"수량 검증 불가",
-                    })
+                    continue        # 그 구역에 자재가 없다 — V1이 필요하면 이미 말했다
+                d = zone_demand(zone_row, z, painted_cells)
+                label_prefix = f"{v}[{ZONE_LABEL[z]}]"
+                if d["layers"] == 0:
+                    # 층이 0이면 소요도 0이다. STACK을 못 읽어서 0인 경우는 V5가 이미
+                    # 차단했고, 구역이 진짜 0층인 경우(STACK 2 + 1H·TOP의 MID)는 정상이라
+                    # 경고할 것이 없다 — 어느 쪽이든 여기서 지어낼 수요가 없다.
                     continue
                 if len(materials) > MAX_SOURCES_PER_DOE:
                     materials = materials[:MAX_SOURCES_PER_DOE]
                     truncations.append(("materials", MAX_SOURCES_PER_DOE))
-                total = painted_cells * layers
-                share = -(-total // len(materials))   # 올림 배분 (부족 과소평가 방지)
-                # 수요 상한은 **자재 전개 안에서도** 걸려야 한다 — 구간 단위로만 보면
-                # 구간 하나가 자재 상한만큼(64) 한 번에 넘겨 상한을 넘긴다.
+                    # 절단하면 분모가 달라져 share가 틀리므로 다시 계산한다.
+                    d = zone_demand(dict(zone_row, **{z: materials}), z, painted_cells)
                 for mat in materials:
                     if len(demands) >= MAX_DEMANDS_PER_PLAN:
                         truncations.append(("demands", MAX_DEMANDS_PER_PLAN))
                         stop = True
                         break
-                    s_lot, s_slot = _split_material(mat, material_rule)
-                    demands.append((v, s_lot, s_slot, share,
+                    if material_rule is None:
+                        # 미선언 = 이 배포의 자재 문자열을 소스로 볼 근거가 없다. 추측해서
+                        # 조회하지 않고, 검증하지 않았다고 말한다(구 동작과 동일한 취지).
+                        warnings_out.append({
+                            "type": WARN_SOURCE_UNRESOLVED, "value": v, "material": mat,
+                            "detail": (f"DOE '{label_prefix}@{mat}'의 자재를 소스(lot/slot)로 "
+                                       f"해석할 수 없음 — plan_store.material_identity 규칙이 "
+                                       f"선언되지 않았다 — 수량 검증 불가"),
+                        })
+                        continue
+                    tok = parse_material_token(mat)
+                    if not tok["ok"]:
+                        # V4가 이미 차단 사유로 보고했다. 여기서는 **수요로 세지 않는다** —
+                        # 조회할 수 없는 자재의 가용은 0으로만 보고될 수 있고, 0은
+                        # "다 썼다"로 읽힌다.
+                        continue
+                    if tok["scope"] == "lot":
+                        # 문법상 정상이다(= 그 로트 전체). 다만 `scope=lot` 가용 응답에는
+                        # `chips`가 없다 — 로트 하나의 `remaining` 숫자를 지어내지 않겠다는
+                        # `get_lot_bin_summary`의 결정이다. 그래서 확정 판정을 하지 않고
+                        # **판정하지 않았다고 말한다.**
+                        warnings_out.append({
+                            "type": WARN_SOURCE_SCOPE_UNPRICED, "value": v,
+                            "material": mat, "scope": "lot", "zone": z,
+                            "required": d["share"],
+                            "detail": (f"DOE '{label_prefix}@{mat}'는 로트 전체를 가리킨다 — "
+                                       f"이 엔드포인트는 로트 전체의 가용을 확정 숫자로 내지 "
+                                       f"않으므로(슬롯 합산은 배분이 아니라 충분성 판정이다) "
+                                       f"필요 {d['share']}에 대한 부족 판정을 수행하지 않았다"),
+                        })
+                        continue
+                    demands.append((v, tok["lot"], tok["slot"], d["share"],
                                     f"{label_prefix}@{mat}", mat))
-                if stop:
-                    break
 
         # [팬아웃] 조회 비용은 수요 수가 아니라 **서로 다른 소스 수**를 따라 자란다.
         # 여기서 묶지 않으면 손상된 blob 하나가 수만 건의 소스 요약을 유발한다.
         for (v, s_lot, s_slot, required, label, mat) in demands:
-            if not s_lot or not s_slot:
-                warnings_out.append({
-                    "type": WARN_SOURCE_UNRESOLVED, "value": v, "material": mat,
-                    "detail": (f"DOE '{label}'의 자재 '{mat}'를 소스(lot/slot)로 해석할 수 없음"
-                               + ("" if material_rule
-                                  else " — plan_store.material_identity 규칙이 선언되지 않았다")
-                               + " — 수량 검증 불가"),
-                })
-                continue
+            # `parse_material_token`이 scope=slot으로 통과시킨 것만 여기 온다 — lot·slot이
+            # 둘 다 비어 있지 않음은 그 문법이 이미 보장한다(빈 쪽은 거기서 거부됐다).
             if ((s_lot, s_slot) not in summary_cache
                     and len(summary_cache) >= MAX_SOURCES_PER_PLAN):
                 truncations.append(("distinct_sources", MAX_SOURCES_PER_PLAN))

@@ -143,684 +143,272 @@
   border-color: var(--info);
 }
 
-/* ── DOE LIST (= legend) ───────────────────────────────── */
-.tp-doe-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
+/* ============================================================
+   ① 값 정의 · ② 자재 롤업 — 두 표, 반반, 각자 스크롤
+   ============================================================ */
 
-.tp-doe {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-surface);
-  overflow: hidden;
-  transition: var(--transition-smooth);
-}
-.tp-doe:hover { border-color: var(--border-strong); }
-.tp-doe.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-.tp-doe-row {
-  display: grid;
-  grid-template-columns: 12px 34px 1fr;
-  gap: 9px;
-  align-items: center;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-.tp-doe-row:hover { background: var(--surface-hover); }
-
-.tp-caret {
-  color: var(--text-dim);
-  font-size: 0.68rem;
-  transition: transform 0.15s ease;
-}
-.tp-doe.open .tp-caret { transform: rotate(90deg); }
-
-.tp-sw {
-  width: 34px;
-  height: 26px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.73rem;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-}
-
-.tp-doe-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tp-doe-l1 {
-  font-size: 0.79rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tp-doe-l2 {
-  font-size: 0.7rem;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tp-brush-tag {
-  margin-left: 6px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--accent);
-  background: var(--accent-weak);
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  padding: 1px 6px;
-}
-
-/* ── DOE 상세 (아코디언 — 한 번에 하나만 펼침) ────────── */
-.tp-doe-detail {
-  border-top: 1px solid var(--border);
-  background: var(--bg-inset);
-  padding: 11px;
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-}
-
-.tp-sec {
+/* 🔴 `flex: 1 1 0` + `min-height: 0`가 이 파일에서 가장 중요한 두 줄이다.
+   카드에 이것이 없으면 내용이 길어질 때 pane이 **스크롤되지 않고 찌그러진다** —
+   이전 시안에서 696px가 211px로 눌리는 것이 실측됐다. `min-height:0`이 필요한 이유는
+   flex 항목의 기본 `min-height:auto`가 콘텐츠 높이를 축소 바닥으로 삼기 때문이다. */
+.tp-split {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 0 8px 8px;
 }
-
-.tp-sec-h {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 0.71rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.tp-asg-l1 {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.tp-fld {
+.tp-pane {
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.tp-fld label {
-  font-size: 0.66rem;
-  color: var(--text-dim);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.tp-fld .glass-input { padding: 5px 8px; font-size: 0.78rem; width: 100%; }
-
-.tp-d-color {
-  width: 42px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--bg-surface);
-  cursor: pointer;
-}
-
-.tp-d-desc { resize: vertical; min-height: 44px; font-size: 0.78rem; width: 100%; }
-
-.tp-doe-del {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-dim);
-  border-radius: 5px;
-  padding: 2px 6px;
-  cursor: pointer;
-  font-size: 0.75rem;
-  transition: var(--transition-smooth);
-}
-.tp-doe-del:hover { background: var(--danger-weak); color: var(--danger); }
-
-/* ── 밴드(STACK 구간) 카드 ─────────────────────────────
-   연속 스택의 한 마디. 사용자가 입력하는 값은 **끝 층 하나**뿐이고,
-   시작 층·층 수·소요는 전부 파생이라 읽기 전용 텍스트로 붙는다. */
-.tp-band {
-  background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.tp-band + .tp-band { margin-top: 2px; }
-
-/* 유도값(범위) → 입력(끝 층) → 삭제. 입력이 하나뿐이라 폭을 고정한다. */
-.tp-band-l1 {
-  display: grid;
-  grid-template-columns: 1fr 74px auto;
-  gap: 8px;
-  align-items: end;
-}
-.tp-band-range {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  padding-bottom: 5px;
-  white-space: nowrap;
+  border-radius: 9px;
+  background: var(--bg-panel);
   overflow: hidden;
-  text-overflow: ellipsis;
 }
-.tp-band-range b { color: var(--accent-2); font-weight: 600; }
-
-/* 파생 소요 — 사용자가 머릿속으로 곱하던 것을 식 그대로 보여주는 자리 */
-.tp-band-calc {
-  font-size: 0.71rem;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  border-top: 1px dashed var(--border);
-  padding-top: 5px;
-}
-
-.tp-band-del {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-dim);
-  border-radius: 5px;
-  padding: 3px 5px;
-  cursor: pointer;
-  font-size: 0.74rem;
-  align-self: end;
-  transition: var(--transition-smooth);
-}
-.tp-band-del:hover { background: var(--danger-weak); color: var(--danger); }
-
-.tp-band-add { font-size: 0.7rem; padding: 2px 9px; }
-
-/* ── 자재 칩 (DOE 펼침 안 — "무엇을 쓴다"만 선언) ─────── */
-.tp-matchips {
+.tp-pane-h {
+  flex: none;
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
   align-items: center;
-}
-
-.tp-matchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.71rem;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 2px 4px 2px 8px;
-}
-.tp-matchip button {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.66rem;
-  padding: 1px 4px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.tp-matchip button:hover { background: var(--danger-weak); color: var(--danger); }
-.tp-matchip.add {
-  border-style: dashed;
-  color: var(--accent);
-  border-color: var(--accent);
-  padding: 3px 9px;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-.tp-matchip.add:hover { background: var(--accent-weak); transform: translateY(-1px); }
-
-.tp-mat-addbox {
-  display: flex;
   gap: 6px;
-  align-items: center;
-}
-.tp-mat-addbox .bp-ac-wrap { flex: 1; min-width: 0; }
-.tp-mat-input { width: 100%; padding: 5px 8px; font-size: 0.76rem; }
-
-/* ── knob ─────────────────────────────────────────────── */
-.tp-knobs {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.tp-knob {
-  display: inline-flex;
-  gap: 3px;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 0.71rem;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 2px 5px 2px 7px;
-}
-.tp-knob input {
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.71rem;
-  width: 62px;
-  outline: none;
-  padding: 1px 2px;
-}
-.tp-knob input:focus { border-bottom: 1px solid var(--accent); }
-.tp-knob-k { color: var(--accent-2) !important; font-weight: 600; }
-.tp-knob-del {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.65rem;
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 1px 3px;
-}
-.tp-knob-del:hover { background: var(--danger-weak); color: var(--danger); }
-
-/* ── 사용 자재 리스트 (DOE별 그룹 · 이동 허브) ────────── */
-.tp-mat-pane {
-  height: 250px;
-  min-height: 250px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-inset);
-  display: flex;
-  flex-direction: column;
-}
-
-.tp-mat-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
+  padding: 5px 8px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-header);
+  background: var(--bg-inset);
+  font-size: .72rem;
 }
-.tp-mat-head b { font-size: 0.82rem; }
-
-.tp-mat-scroll {
-  flex: 1;
+.tp-pane-h .no { font-weight: 700; color: var(--accent); }
+.tp-pane-h .nm { font-weight: 600; }
+.tp-pane-h .sub,
+.tp-pane-h .tp-cnt { font-size: .62rem; color: var(--text-dim); }
+.tp-pane-h .sp { flex: 1 1 auto; }
+.tp-pane-b {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 6px 8px;
 }
-
-.tp-mat-body {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  overflow-y: auto;
-}
-
-.tp-ov-suggest {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* 행 하나 = 자재 하나. 1행: 자재 ID · 가용/사용 · 맵 유무, 2행: 어디에 몇 개씩. */
-.tp-mat-row {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 7px 11px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.73rem;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-.tp-mat-row:hover { background: var(--surface-hover); }
-/* 선택된 DOE를 쓰는 자재는 강조만 — 숨김(필터) 없음 */
-.tp-mat-row.on { box-shadow: inset 3px 0 0 var(--accent); }
-
-.tp-mat-l1 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.tp-mat-id { font-weight: 600; }
-.tp-mat-qty {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-}
-.tp-mat-qty b { color: var(--text); }
-
-/* 사용처 칩 — (DOE 값 · STACK 구간) 에 몇 개. 읽기 전용, 접힘 없음(무마찰). */
-.tp-uses {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.tp-use {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 0.665rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.tp-use i {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
+.tp-btn {
   flex: none;
-}
-.tp-use b { color: var(--text); }
-.tp-use.on {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-  color: var(--text);
-}
-
-/* 복귀 시 1회성 하이라이트 — opacity만 애니메이트(배경 트랜지션은 페인트 유발) */
-.tp-flash {
-  position: absolute;
-  inset: 0;
-  background: var(--success-weak);
-  pointer-events: none;
-  opacity: 0;
-  border-radius: 4px;
-}
-.tp-flash.go { animation: tp-fade 1.1s ease-out forwards; }
-@keyframes tp-fade { from { opacity: 1; } to { opacity: 0; } }
-
-.tp-mat-hint {
-  padding: 7px 12px;
-  font-size: 0.68rem;
-  color: var(--text-dim);
-  border-top: 1px dashed var(--border);
-  line-height: 1.45;
-}
-.tp-mat-nosrc { color: var(--warning); }
-
-/* 오버레이 → 실맵 가져오기 버튼 (목록 행) */
-.ov-import { color: var(--accent-2); font-weight: 700; }
-.ov-import:hover { background: var(--accent-2-weak); color: var(--accent-2); }
-
-/* ── 브레드크럼 (자재 맵을 연 동안에만 등장) ──────────── */
-.map-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  background: var(--accent-2-weak);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.78rem;
-  flex-wrap: wrap;
-}
-
-.bc-back {
-  background: var(--bg-surface);
-  border: 1px solid var(--accent-2);
-  color: var(--accent-2);
-  border-radius: 7px;
-  padding: 3px 11px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-.bc-back:hover { transform: translateX(-2px); }
-
-.bc-up { color: var(--text-muted); font-family: var(--font-mono); }
-.bc-sep { color: var(--text-dim); }
-.bc-cur { font-family: var(--font-mono); font-weight: 600; }
-.bc-why { color: var(--text-muted); margin-left: auto; font-size: 0.72rem; }
-
-/* ── [M2] 페인트 잠금 상태 칩 (툴바) ──────────────────── */
-.plock-chip {
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-surface);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-/* "확인 못 함"은 반드시 눈에 띄어야 한다 — 조용한 fail-open이 이 결함의 본질이었다 */
-.plock-chip.stale {
-  border-color: var(--warning);
-  background: var(--warning-weak);
-  color: var(--warning);
-  font-weight: 600;
-}
-
-/* ── 그래프 노드 자동완성 ─────────────────────────────── */
-.bp-ac-wrap { position: relative; display: block; }
-
-.bp-ac-list {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0;
-  right: 0;
-  max-height: 190px;
-  overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: var(--shadow-pop);
-  z-index: 60;
-}
-
-.bp-ac-item {
-  padding: 5px 9px;
-  font-size: 0.75rem;
-  font-family: var(--font-mono);
-  cursor: pointer;
-}
-.bp-ac-item:hover { background: var(--accent-weak); color: var(--accent); }
-
-.bp-ac-empty {
-  padding: 6px 9px;
-  font-size: 0.7rem;
-  color: var(--text-dim);
-}
-
-/* ── 오버레이 전용 블록 (메인 Load와 분리) ────────────── */
-/* 메인 [📂 Load] = 항상 교체 / 여기 [＋ 겹치기] = 항상 겹치기. 모드 상태 없음. */
-.overlay-box {
-  border: 1px dashed var(--border-strong);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--bg-inset);
-}
-
-.overlay-box-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-.overlay-box-head::-webkit-details-marker { display: none; }
-.overlay-box-head::before {
-  content: '▸';
-  color: var(--text-dim);
-  font-size: 0.7rem;
-  transition: transform 0.15s ease;
-}
-.overlay-box[open] > .overlay-box-head::before { transform: rotate(90deg); }
-
-.ov-count {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--text-dim);
+  padding: 2px 8px;
+  font-size: .66rem;
   border: 1px solid var(--border);
-  background: var(--bg-surface);
-  border-radius: 20px;
-  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: pointer;
 }
+.tp-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-.ov-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 8px;
+/* 「⇄ 엑셀」은 **버튼이 아니라 표시**다 — 클릭 핸들러가 없다.
+   navigator.clipboard는 평문 HTTP LAN(비보안 컨텍스트)에서 undefined이므로 클립보드를
+   호출하는 컨트롤을 만들 수 없고, 만들 필요도 없다(Ctrl+C/V가 네이티브 이벤트로 온다). */
+.tp-xl {
+  flex: none;
+  font-size: .62rem;
+  color: var(--text-dim);
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  cursor: help;
 }
+.tp-xl b { color: var(--accent); }
 
-/* 소스 선택기 2칸 + 추가 버튼 1개 — 그 이상 두지 않는다 */
-.ov-add {
+/* ── 머리줄 ─────────────────────────────────────────── */
+.tp-ch-row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 5px;
-}
-.ov-add .glass-input { padding: 5px 8px; font-size: 0.74rem; width: 100%; }
-.ov-key-input { font-family: var(--font-mono); grid-column: 1; }
-.ov-add-btn {
-  grid-column: 2;
-  grid-row: 2;
-  white-space: nowrap;
-  font-size: 0.72rem;
-  padding: 4px 10px;
-  color: var(--accent-2);
-  border-color: var(--accent-2);
-}
-#overlay-src-table { grid-column: 1 / -1; }
-
-.ov-note {
-  margin: 0;
-  font-size: 0.66rem;
-  color: var(--text-dim);
-  line-height: 1.45;
-}
-
-.ov-clear {
-  align-self: flex-start;
-  font-size: 0.68rem;
-  padding: 2px 9px;
-}
-
-.ov-empty {
-  font-size: 0.68rem;
-  color: var(--text-dim);
-  line-height: 1.45;
-}
-
-#overlay-list:empty { display: none; }
-#overlay-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.ov-row {
-  display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 5px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--bg-surface);
-}
-.ov-row.off { opacity: 0.5; }
-/* 실패한 오버레이도 목록에 남는다 — 토스트로 흘리면 사유가 화면에서 증발한다 */
-.ov-row.err { border-color: var(--danger); background: var(--danger-weak); }
-
-.ov-chip {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  padding: 0 5px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
+  gap: 4px;
+  padding: 2px 4px;
+  font-size: .58rem;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: .04em;
   color: var(--text-dim);
-  white-space: nowrap;
-  margin-left: 3px;
 }
-.ov-chip.ok   { color: var(--success); border-color: var(--success); background: var(--success-weak); }
-.ov-chip.warn { color: var(--warning); border-color: var(--warning); background: var(--warning-weak); }
-.ov-chip.bad  { color: var(--danger);  border-color: var(--danger);  background: var(--danger-weak); }
-.ov-chip.dim  { border-style: dashed; }
+.tp-ch-row.l1,
+.tp-v-l1 { grid-template-columns: 22px 44px 38px 1fr 30px 18px; }
+.tp-ch-row.l2,
+.tp-v-l2 { grid-template-columns: 1fr 1.6fr 1fr; }
+.tp-ch-row.l2 { padding-bottom: 3px; letter-spacing: 0; }
+.tp-ch-row .r { text-align: right; }
+.tp-ch-row .c { text-align: center; }
+/* 계약 밖 열은 별표로 표시한다 — 붙여넣기·복사 양쪽에서 빠지는 열이 어느 것인지 화면이
+   스스로 말해야, 엑셀 표에 색 열이 있어도 사람이 안심하고 그대로 붙여넣는다. */
+.tp-ch-row .drv { opacity: .55; cursor: help; }
 
-.ov-btns { display: flex; gap: 2px; flex-shrink: 0; }
-
-.ov-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  flex-shrink: 0;
+/* ── 값 행: 한 행 = 두 줄 ───────────────────────────── */
+.tp-vrow {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 2px 2px 3px;
+  margin-bottom: 2px;
 }
+.tp-vrow:focus-within { border-color: var(--accent); background: var(--bg-inset); }
+.tp-vrow.bad { border-color: var(--danger); }
+.tp-v-l1, .tp-v-l2 { display: grid; gap: 4px; align-items: center; }
+.tp-v-l2 { margin-top: 2px; align-items: stretch; }
 
-.ov-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.68rem;
-  line-height: 1.25;
+.tp-sw {
+  width: 22px; height: 20px; padding: 0;
+  border: 1px solid var(--border); border-radius: 4px; background: none; cursor: pointer;
+}
+.tp-gi {
+  min-width: 0; width: 100%; height: 20px;
+  padding: 0 4px;
+  font-size: .68rem;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-inset); color: var(--text);
+}
+.tp-gi.stk { text-align: right; font-family: var(--font-mono, monospace); }
+.tp-gi.bad { border-color: var(--danger); }
+.tp-pnt { font-size: .62rem; text-align: right; color: var(--text-dim); font-family: var(--font-mono, monospace); }
+.tp-del {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-size: .68rem; color: var(--text-dim); line-height: 1;
+}
+.tp-del:hover { color: var(--danger); }
+
+/* ── 구역 칸: 칩 ↔ 원문을 JS 없이 바꾼다 ──────────────
+   textarea가 실제 입력이고 칩은 그 위에 겹친 그림이다. `:focus-within`으로 둘을 맞바꾸므로
+   **DOM을 갈아끼우지 않는다** — 갈아끼우면 캐럿과 선택이 날아가고, 층 구조는 STACK을 한 글자
+   칠 때마다 다시 계산되므로 그 일이 매 타건마다 벌어진다. */
+.tp-zc {
+  position: relative;
+  display: block;
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-inset);
   overflow: hidden;
 }
-
-.ov-key {
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-  font-size: 0.64rem;
+.tp-zc.empty { border-style: dashed; }          /* 점선 = 채울 수 있다는 초대 */
+.tp-zc.bad { border-color: var(--danger); }
+.tp-zc-raw {
+  width: 100%; height: 100%; min-height: 20px;
+  border: 0; outline: 0; resize: none; padding: 1px 4px;
+  font-size: .62rem; line-height: 1.5;
+  font-family: var(--font-mono, monospace);
+  background: transparent; color: transparent; caret-color: var(--accent);
 }
+.tp-zc-raw::placeholder { color: transparent; }
+.tp-zc-chips {
+  position: absolute; inset: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  padding: 1px 4px;
+  pointer-events: none;
+  overflow: hidden;
+}
+.tp-zc:focus-within .tp-zc-raw { color: var(--text); }
+.tp-zc:focus-within .tp-zc-raw::placeholder { color: var(--text-dim); }
+.tp-zc:focus-within .tp-zc-chips { display: none; }
 
-.ov-meta {
-  font-size: 0.63rem;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
+/* 🔴 「해당 없음」 — 구조상 존재하지 않는 칸.
+   신호를 세 채널로 겹친다: **테두리**(점선 vs 실선) · **바탕**(민무늬 vs 빗금) ·
+   **조작 가능성**(캐럿이 생기나). 마지막 것이 제일 세다 — 클릭해 보면 즉시 안다.
+   `disabled`가 캐럿·포커스 링·탭 순서를 한 번에 없애면서 노드는 유지한다.
+   그리고 이유를 **보이는 글자로** 말한다. title은 터치·키보드 사용자에게 보이지 않고,
+   못 치는 칸에서 막다른 길에 몰리는 사람이 바로 그들이다. */
+.tp-zc.na {
+  border-style: solid;
+  background: repeating-linear-gradient(
+    45deg, transparent, transparent 3px,
+    var(--border) 3px, var(--border) 4px);
+  opacity: .8;
+}
+.tp-zc.na .tp-zc-raw { cursor: not-allowed; }
+.tp-na-t { font-size: .58rem; color: var(--text-dim); }
+.tp-emp { font-size: .58rem; color: var(--text-dim); }
+.tp-emp.bad { color: var(--danger); }
+
+/* 계산된 층 범위 — 입력이 아니라 파생값이라 조용히 앞에 붙는다(세로 비용 0px). */
+.tp-lr {
+  flex: none;
+  font-size: .55rem; font-family: var(--font-mono, monospace);
+  padding: 0 3px; border-radius: 3px;
+  background: var(--border); color: var(--text-muted);
+}
+.tp-lr.zero { background: transparent; color: var(--text-dim); }
+
+/* ── 자재 칩 — 그림이다. 저장·복사되는 것은 원문 토큰뿐. ── */
+.tp-mc {
+  flex: none;
+  font-size: .58rem; font-family: var(--font-mono, monospace);
+  padding: 0 3px; border-radius: 3px;
+  border: 1px solid var(--border); background: var(--bg-panel);
   white-space: nowrap;
 }
+.tp-mc .lot { color: var(--text); }
+/* `_✱`가 슬롯이 있었을 자리에 들어가므로 세로로 훑을 때 같은 글자 위치에서 갈린다. */
+.tp-mc .st { color: var(--accent); }
+/* BIN은 기본값 1도 찍는다 — 말 안 한 기본값이 화면에서 사라지지 않게. */
+.tp-mc .bn { color: var(--text-dim); }
+.tp-mc .bn.hi { color: var(--warning); }
+.tp-mc.lotwide { border-style: dashed; }
+.tp-mc.bad { border-color: var(--danger); color: var(--danger); }
+.tp-mc.warn { border-color: var(--warning); }
 
-.ov-trunc { color: var(--warning); }
-
-.ov-btn {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 0.72rem;
-  padding: 2px 4px;
-  border-radius: 5px;
-  color: var(--text-dim);
+/* ── 차단 사유는 **고치는 자리**에 붙는다 (별도 목록 패널 없음).
+   통과 상태의 세로 비용은 0px다. ── */
+.tp-blk {
+  display: flex; gap: 5px; align-items: flex-start;
+  margin: 2px 2px 0;
+  padding: 2px 5px;
+  border-left: 2px solid var(--danger);
+  font-size: .6rem; line-height: 1.5;
+  color: var(--text-muted);
+}
+.tp-blk .rid {
+  flex: none; font-family: var(--font-mono, monospace); font-weight: 700;
+  color: var(--danger);
 }
 
-.ov-btn:hover { background: var(--surface-hover); color: var(--text); }
-.ov-del:hover { color: var(--danger); background: var(--danger-weak); }
+.tp-foot-note {
+  margin-top: 5px; padding-top: 4px;
+  border-top: 1px dashed var(--border);
+  font-size: .56rem; line-height: 1.6; color: var(--text-dim);
+}
+
+/* ── ② 자재 롤업 ───────────────────────────────────── */
+.tp-pane.t2 .tp-ch-row,
+.tp-r2 { grid-template-columns: 1fr 22px 52px 52px 52px; }
+.tp-pool { border-radius: 6px; margin-bottom: 2px; }
+.tp-pool:hover { background: var(--bg-inset); }
+.tp-pool.clash { outline: 1px solid var(--danger); }
+.tp-r2 {
+  display: grid; gap: 4px; align-items: center;
+  padding: 2px 4px; cursor: pointer; font-size: .62rem;
+}
+.tp-matcell { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.tp-matcell .go { color: var(--text-dim); font-size: .6rem; }
+.tp-mapb { text-align: center; font-family: var(--font-mono, monospace); font-size: .6rem; }
+.tp-mapb.ok { color: var(--success); }
+.tp-mapb.no { color: var(--warning); }
+.tp-mapb.unk { color: var(--text-dim); }
+.tp-num { text-align: right; font-family: var(--font-mono, monospace); }
+/* `≈`는 6px짜리 상시 선언이다 — 이 열에 정확한 숫자는 없다. 사용은 실제 소비가 아니라
+   이 풀의 총 소요를 자재 수로 균등 분배한 **가정값**이고, 잔여도 그 가정에서 나온다. */
+.tp-num .ap, .ap { color: var(--text-dim); }
+.tp-num.left.neg { color: var(--danger); font-weight: 600; }
+/* 미상은 0이 아니다. 숫자를 보이지 않고 이유를 title로 단다. */
+.tp-unk {
+  font-size: .58rem; color: var(--text-dim);
+  border-bottom: 1px dotted var(--text-dim); cursor: help;
+}
+.tp-unk.w { color: var(--warning); border-color: var(--warning); }
+/* knob은 값 층위에 저장돼 있고 여기서는 **모아 보여줄 뿐** 편집하지 않는다 —
+   저장할 자리가 선언되지 않은 입력 칸은 사용자의 타이핑을 조용히 버린다. */
+.tp-knob {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  padding: 0 4px 3px 15px;
+}
+.tp-kc {
+  font-size: .55rem; font-family: var(--font-mono, monospace);
+  padding: 0 3px; border-radius: 3px;
+  background: var(--bg-inset); color: var(--text-dim);
+}
+.tp-kc .h { opacity: .6; }
+.tp-mat-nosrc { color: var(--warning); }
+.tp-ov-suggest { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 6px; }

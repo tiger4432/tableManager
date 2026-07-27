@@ -65,17 +65,54 @@ OUTBOX_AGE_UNHEALTHY_SEC = 900.0
 # Counting the backlog is capped so the query cost cannot grow with the table.
 OUTBOX_COUNT_CAP = 10000
 
+# The config-backup probe is re-read at most this often. /health is designed to be
+# polled continuously, and the answer changes at most once a week.
+BACKUP_PROBE_CACHE_SEC = 60.0
+
+# Sentinel: "the caller said nothing, so run the probe". Distinct from None, which
+# means "explicitly do not check" - that is what the unit tests pass to keep the
+# decision table free of I/O.
+_PROBE = object()
+
+_backup_cache = {"at": 0.0, "value": None}
+
+
+def probe_config_backups(now=None):
+    """Age of the newest ``server/config/`` snapshot. Never raises.
+
+    Unlike the database probe this is not injected from the route. The database
+    probe has to be, because it can hang and therefore needs the route's
+    ``wait_for`` around it; this is a ``listdir`` of a local directory, which
+    cannot hang in any way worth defending against, and it is cached for
+    ``BACKUP_PROBE_CACHE_SEC`` on top of that.
+    """
+    wall = time.time()
+    if (_backup_cache["value"] is not None
+            and wall - _backup_cache["at"] < BACKUP_PROBE_CACHE_SEC):
+        return _backup_cache["value"]
+    try:
+        import config_backup
+        value = config_backup.probe(now=now)
+    except Exception as e:
+        value = {"status": "unknown", "error": f"{type(e).__name__}: {e}"}
+    _backup_cache["at"] = wall
+    _backup_cache["value"] = value
+    return value
+
 
 def _iso(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().isoformat()
 
 
 def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
-                   stale_after, now=None):
+                   stale_after, now=None, backup_result=_PROBE):
     """Pure status computation. Returns ``(payload, http_status)``.
 
     Kept free of I/O so the decision table can be tested directly, without a
-    database, a supervisor, or a running worker.
+    database, a supervisor, or a running worker. ``backup_result`` is the one
+    argument that defaults to running its own probe when the caller omits it
+    (see ``probe_config_backups``); pass ``None`` to skip the check entirely,
+    which is what the tests do to keep this function pure.
     """
     now = time.time() if now is None else now
     problems = []
@@ -276,6 +313,29 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                 f"outbox backlog draining slowly: oldest unprocessed event is "
                 f"{oldest:.0f}s old")
 
+    # ----------------------------------------------------------- config backup
+    # A weekly job that silently stopped three weeks ago is worse than no job at
+    # all, because the rollback procedure will claim a backup exists. This is the
+    # place that says otherwise, and it reads the snapshot files themselves rather
+    # than any "last run" status the job wrote about itself.
+    #
+    # DEGRADED, never UNHEALTHY: a missing backup means the *next* incident will
+    # be harder, not that this system is failing now. Returning 503 for it would
+    # tell a monitor to restart a perfectly healthy stack.
+    if backup_result is _PROBE:
+        backup_result = probe_config_backups(now=None)
+    backup_check = {}
+    if backup_result is not None:
+        backup_check = dict(backup_result)
+        # "unknown" escalates too: could-not-check must never be reported as
+        # nothing-is-wrong, which is the same contract the collectors follow.
+        if backup_check.get("status") in ("missing", "stale", "unknown"):
+            escalate(STATUS_DEGRADED)
+            problems.append(
+                "config backup: " + str(backup_check.get("detail")
+                                        or backup_check.get("error")
+                                        or backup_check.get("status")))
+
     payload = {
         "status": worst,
         "checked_at": _iso(now),
@@ -285,6 +345,7 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             "workers": workers,
             "outbox": outbox_check,
             "supervisor": sup_check,
+            "config_backup": backup_check,
         },
     }
     return payload, (HTTP_OK if worst != STATUS_UNHEALTHY else HTTP_UNHEALTHY)

@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`90e284f` — **§1.12/§2.16 접근 통제 신설**: 어드민 공유 토큰 게이트 · `/internal/events/*` 게이트 · 정적 폴백 traversal 봉쇄. 앞선 `512dca7`의 auto-update·Ctrl+C 항목은 §2.6/§2.3에 반영됨) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (§2.15에 **C3 config 백업·복원 점검 4건 추가** — 신선도·멈춤 가시성·복원 왕복·1초 디바운스 함정. 직전: `90e284f` §1.12/§2.16 접근 통제 신설) | **Owner:** Integrity/QA (유지: doc-keeper) | **Source-of-truth:** [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) · [CODE_MAP](../architecture/CODE_MAP.md)
 >
 > **유지 규율:** 새 기능이 병합·커밋되면 총괄이 doc-keeper에 위임하는 **코드맵 갱신과 같은 사이클**로 이 문서에도 해당 기능 행(§1)과 점검 항목(§2)을 추가한다. 구현 에이전트는 이 문서를 직접 수정하지 않는다.
 > **사용법:** §1은 "무엇이 있는가"(기능 지도), §2는 "어떻게 확인하는가"(릴리스 전/회귀 수동 점검). 체크박스는 점검 회차마다 복사해 사용하고 이 원본은 비워 둔다.
@@ -354,6 +354,10 @@
 - [ ] **적체는 나이로 본다**: 대형 파일(수만 행) 적재 중 `/health`가 `ok`를 유지하는지. 건수가 많다는 이유만으로 경보가 뜨면 회귀다.
 - [ ] **격리 워처 관문**: `DATABASE_URL`을 운영으로 둔 채 `devenv.py watcher-up` → **REFUSED로 기동 거부**(워처 프로세스가 뜨지 않음). 로그 파일이 새로 생기지 않는 것까지 확인.
 - [ ] **격리 로그 누수 없음**: 격리 스택을 돌린 전후로 `server/*.log` 5종의 크기·mtime이 불변인지.
+- [ ] **config 백업이 살아 있다**(C3, 2026-07-28): `backup_config.py check` → `ok`. `/health`의 `checks.config_backup.status`도 `ok`이고 `problems`에 백업 줄이 없다.
+- [ ] 🎯 **멈춘 백업이 보인다**: 최신 스냅샷을 잠시 다른 이름으로 옮긴다 → `/health`가 **`degraded`(HTTP는 200 유지)** + `problems`에 `config backup: ...` 한 줄. 되돌리면 사라진다(캐시 60초). ⚠️ **503이 되면 회귀다** — 백업 부재로 멀쩡한 스택을 재기동시키면 안 된다.
+- [ ] 🎯 **복원이 실제로 된다**(격리 환경에서만): 스냅샷을 뜬 뒤 `transfer_plan_config.json`을 깨뜨리고 → `restore <파일> --yes` → `GET /api/transfer-plan/stages`의 `target_map.table`이 **되돌아오는지**. 실측 0.17초. *(파일이 바뀐 것은 증거가 아니다 — 도메인 응답으로 판정한다)*
+- [ ] **1초 디바운스 함정**: `table_config.json`을 고친 직후(1초 이내) 곧바로 복원하면 **watcher가 두 번째 쓰기를 버려** 파일은 옳은데 시스템은 옛 선언을 서빙한다. 1초 이상 띄우고 다시 `restore`하면 반영되는지 확인.
 - [ ] **설치 스크립트 안전성**: `install_product_tables.py`(인자 없음) → **아무것도 쓰지 않고** 할 일만 출력. `--apply` 후 현장 항목의 키 순서·들여쓰기가 그대로인지.
 
 ### 2.16 접근 통제 🎯 — 2026-07-27 신설 (`90e284f`)

@@ -73,6 +73,10 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - **감시자 자신의 상태값은 별개 어휘다** — `absent` · `ok` · `stale` · `correlated_failure` · `failed_children` 5종. 워커 상태값과 섞어 쓰지 말 것(`stale`만 두 어휘에 모두 존재하며 뜻이 다르다).
 - **outbox 적체는 크기가 아니라 나이로 판정한다** — 정상적인 10만 행 적재 하나가 outbox 약 11.6만 행을 만들기 때문에, 멈춘 워커를 잡을 만큼 낮은 크기 임계는 큰 파일마다 오경보한다. 가장 오래된 미처리 행이 5분 초과 `degraded` / 15분 초과 `unhealthy`, 건수는 참고값(1만 캡). 두 질의 모두 부분 인덱스 `idx_outbox_unprocessed` 위 O(1).
 - 감시자 상태 파일이 없으면 `supervisor: absent`(bare uvicorn·격리 스택) — 디스크의 박동만 참고 판정한다.
+- **`config_backup`은 프로세스가 아니라 *산출물*을 본다** (2026-07-28, C3). 주간 config 스냅샷의 최신 파일이 없으면 `missing`, 10일 초과면 `stale`, 읽지 못하면 `unknown` — 셋 다 **`degraded`(HTTP 200 유지)**다. 백업 부재는 *다음* 사고를 어렵게 만들 뿐 지금 스택이 죽은 것이 아니므로, 503을 내면 멀쩡한 스택을 재기동하라고 모니터에 지시하는 꼴이 된다.
+  - 판정 근거가 **디스크의 스냅샷 파일**이지 작업이 스스로 기록한 "마지막 실행" 필드가 아니라는 점이 핵심이다. 3주 전에 조용히 죽은 작업은 자기 성공 기록을 그대로 들고 있다.
+  - `unknown`(읽기 실패)도 `degraded`로 올린다 — **"확인 못 했다"를 "이상 없다"로 보고하지 않는다**(수집기 실패 판정과 같은 계약).
+  - 이 프로브만 **라우트에서 주입하지 않고 `compute_health`가 직접 호출**한다. DB 프로브가 주입되는 이유는 *멈출 수 있어서* 라우트의 `wait_for`가 필요하기 때문인데, 이쪽은 로컬 `listdir`이라 그 위험이 없고 60초 캐시까지 걸려 있다. 단위 테스트는 `backup_result=`를 명시 주입해 결정표를 순수하게 유지한다.
 
 ---
 
@@ -127,7 +131,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 ### 인제션 / 어드민 / 내부 / 맵 / WS
 | 경로 | 용도 |
 |---|---|
-| `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor}}`. DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
+| `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor, config_backup}}`. DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
 | `POST /tables/{t}/upload` | 클라이언트 파일을 `raws/`로 업로드 |
 | `POST /api/graph/sync` | GraphSync 워커(:8090)로 프록시 — **백필/복구 도구**(주 경로는 materializer 자동 승격, [event_driven_backend §4](./event_driven_backend.md)) |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |

@@ -5,13 +5,23 @@
  * `replace_map` payload built from it - contains ONLY values that this map vouches for.
  *
  * Why this file exists. `map_split_registry` rows are keyed (ref_table, map_key, value).
- * The map editor seeds the legend with a TABLE-WIDE read (no map_key filter, deduped by
- * value across every map key in the table) so the user has the table's value vocabulary
- * as brushes before any map is chosen. That is a feature. The defect was that nothing
- * downstream could tell a vocabulary row from a row this map actually owns, so opening a
- * map and saving wrote another map's values into it - a `replace_map` write, so it also
- * became that map's whole plan. One value ("elle", defined in bonding_map|TEST_MAP_01)
- * had spread to four bonding_map keys in production by the time it was reported.
+ * The map editor USED TO seed the legend with a TABLE-WIDE read (no map_key filter, deduped
+ * by value across every map key in the table), so the user had the table's value vocabulary
+ * as brushes before any map was chosen. Nothing downstream could tell such a row from a row
+ * this map actually owns, so opening a map and saving wrote another map's values into it -
+ * a `replace_map` write, so they became that map's whole plan. One value ("elle", defined in
+ * bonding_map|TEST_MAP_01) had spread to four bonding_map keys in production.
+ *
+ * THE SEED IS GONE (2026-07-28, 사용자 지시). Opening the panel now has exactly two
+ * branches: this map's registry rows if it has any, one empty DOE row (`VALUE 1`) if it
+ * does not. A panel that opens with values nobody entered is indistinguishable from a
+ * defect, and it was reported as one twice.
+ *
+ * THIS FILE DID NOT BECOME REDUNDANT. The placeholder row is still marked `vocab: true`
+ * (an untouched placeholder must not create a registry row), the map-scoped read still has
+ * to carry its `map_key` filter, and the DERIVED claim still has to catch an edit path that
+ * forgot the gate - which now matters more, not less, because the zone redesign added four
+ * persisted columns and a whole second table of edit paths.
  *
  * Read-only: it never writes to client2/. The functions under test are module-private,
  * and this harness must not change that, so it slices the named function declarations out
@@ -74,14 +84,17 @@ const planSrc = readFileSync(SRC_PLAN, 'utf8');
 const editorSrc = readFileSync(SRC_EDITOR, 'utf8');
 
 const NEEDED_EDITOR = [
-  'parseJsonCol', 'normalizeKnobs', 'knobsToObject', 'serializeBands', 'serializeKnobs',
+  'parseJsonCol', 'normalizeKnobs', 'knobsToObject', 'serializeKnobs',
+  'serializeStack', 'serializeMaterials',   // zone 저장 정규형 (`serializeBands`를 대체)
+  'legendRowPayload',                       // 저장 컬럼의 단일 투영 — 아래 §5h가 이것을 건다
+  'probeZoneColumns',                       // 물리 zone 컬럼 게이트 (저장 파괴 방지)
   'normalizeLegendItem', 'cloneLegend', 'normalizeBands',
-  'parseLegendRegistryRows',        // GET response -> registry rows (dedupe flag = table-wide mode)
+  'parseLegendRegistryRows',        // GET response -> registry rows
   'legendRowSignature',             // the one normal form the derived claim compares
-  'reconcileVocabClaims',           // claim = painted OR differs from the borrowed seed
-  'fetchRegistryRows',              // the two named scopes - the request itself is asserted
+  'reconcileVocabClaims',           // claim = painted OR differs from what was seeded
+  'fetchRegistryRows',              // the named scope - the request itself is asserted
   'readRegistryScope',              // map scope wrapper (load + save both go through it)
-  'loadLegendVocabulary',           // the table-wide seed - must mark everything it seeds
+  'seedEmptyDoe',                   // the ONLY answer to "this map has no registry rows"
   'applyRegistryRowsToLegend',      // this map's rows -> on-screen legend
   'buildLegendRegistryUpdates',     // on-screen legend -> `replace_map` payload
   'saveLegendToServer',             // the real write path: scope + authority + fingerprint
@@ -101,14 +114,26 @@ function extractDefaultLegend(source) {
   die("unbalanced brackets while extracting 'DEFAULT_LEGEND'");
 }
 
+const zoneSrc = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
+
 const pieces = [
   extractConst(editorSrc, 'SPLIT_KEY_SEP', 'map_editor.js'),
   extractConst(editorSrc, 'FP_UNIT', 'map_editor.js'),
   extractConst(editorSrc, 'FP_ROW', 'map_editor.js'),
   extractConst(editorSrc, 'SPLIT_REGISTRY_TABLE', 'map_editor.js'),
   extractConst(editorSrc, 'REGISTRY_SCOPES', 'map_editor.js'),
+  extractConst(editorSrc, 'ZONE_COLUMNS', 'map_editor.js'),
+  extractConst(editorSrc, 'LEGEND_PAYLOAD_COLUMNS', 'map_editor.js'),
   extractDefaultLegend(editorSrc),
   extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),   // normalizeBands calls it
+  extractFunction(planSrc, 'prevTo', 'transfer_plan.js'),        // bandsToZones walks with it
+  // map_editor imports these from doe_bands.js. Extracted from THAT file rather than
+  // re-typed: `parseMaterialList` is the single material-list normalizer shared by the
+  // panel's input parsing and the storage layer, and a harness copy would let the two
+  // drift while this file stayed green.
+  extractFunction(zoneSrc, 'boundState', 'doe_bands.js'),
+  extractFunction(zoneSrc, 'parseMaterialList', 'doe_bands.js'),
+  extractFunction(zoneSrc, 'bandsToZones', 'doe_bands.js'),
   ...NEEDED_EDITOR.map(n => extractFunction(editorSrc, n, 'map_editor.js')),
 ];
 
@@ -120,22 +145,31 @@ try {
   // The real `fetchRegistryRows` runs: only the socket underneath it is stubbed. That way
   // the URL it builds - specifically whether it carries a `map_key` filter - is evidence,
   // not an assumption. `STUB.urls` is the request list this harness reports on.
-  // `saveLegendToStorage` / `loadLegendFromStorage` are localStorage and are stubbed.
+  // `saveLegendToStorage` / `saveDoeDraft` are localStorage and are stubbed.
+  //
+  // `probeZoneColumns` is NOT stubbed - it is the real function, answered by the same GET
+  // stub, because it is a guard on the destructive write path and a harness that mocked it
+  // would be asserting the guard exists rather than that it works. `STUB.zoneBody` is the
+  // one-row probe response; scenarios flip it to test both answers.
   vm.runInContext(
     'var API_BASE = "http://harness";\n'
     + 'var CURRENT_USER = "tester";\n'
     + 'var selectedTable = "bonding_map";\n'
     + 'var legendReplaceScope = null, legendConflict = null;\n'
     + 'var legendSaveState = { status: "idle", at: "", error: "" };\n'
-    + 'var STUB = { urls: [], writes: [], body: { total: 0, data: [] }, httpOk: true, mapKey: null };\n'
+    + 'var zoneColumnsPresent = null, draftBase = null;\n'
+    + 'var STUB = { urls: [], writes: [], body: { total: 0, data: [] }, httpOk: true, mapKey: null, zoneBody: null };\n'
     + 'async function fetch(url, init){ const m = ((init && init.method) || "GET").toUpperCase();\n'
-    + '  if (m === "GET") { STUB.urls.push(String(url)); return { ok: STUB.httpOk, status: STUB.httpOk ? 200 : 500, json: async () => STUB.body }; }\n'
+    + '  if (m === "GET") { STUB.urls.push(String(url));\n'
+    + '    const isProbe = String(url).indexOf("limit=1") >= 0 && String(url).indexOf("filters=") < 0;\n'
+    + '    const body = (isProbe && STUB.zoneBody) ? STUB.zoneBody : STUB.body;\n'
+    + '    return { ok: STUB.httpOk, status: STUB.httpOk ? 200 : 500, json: async () => body }; }\n'
     + '  STUB.writes.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({}) }; }\n'
     + 'function getCurrentMapKey(){ return STUB.mapKey; }\n'
     + 'function getLocalTimeString(){ return "2026-07-27 21:00:00"; }\n'
     + 'function renderLegendTable(){} function renderGridCanvas(){} function renderLegendMetaOnly(){}\n'
-    + 'function saveLegendToStorage(){}\n'
-    + 'function loadLegendFromStorage(){ legend = cloneLegend(DEFAULT_LEGEND); activeBrush = legend.length ? legend[0].value : ""; }\n'
+    + 'function saveLegendToStorage(){} function saveDoeDraft(){} function clearDoeDraft(){}\n'
+    + 'function cellsDigest(){ return "0:0"; }\n'
     + pieces.join('\n'), sandbox);
 } catch (e) {
   die(`extracted sources did not evaluate: ${e && e.message}`);
@@ -145,33 +179,68 @@ for (const fn of ['bandToState', ...NEEDED_EDITOR]) {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture. Two map keys in ONE table with OVERLAPPING and DISJOINT values, and an
-// updated_at ordering that makes MAPA win every collision - so the table-wide dedupe
-// hands MAPA's desc/color/bands to a shared value and hands over MAPA's exclusive
-// values wholesale. A fixture where the two maps share a value set, or where MAPB is
-// the newest everywhere, cannot show this defect at all.
+// Fixture. Two map keys in ONE table with OVERLAPPING and DISJOINT values. The rows carry
+// ZONE columns (`stack`/`mat_1h`/`mat_mid`/`mat_top`) - the retired `bands` column is read
+// only by the migration and is exercised in contracts/doe_band_rules.
+//
+// ⚠️ WHAT CHANGED ON 2026-07-28, and why several scenarios below are GONE rather than
+//    rewritten. The table-wide 'vocabulary' read is deleted: the panel no longer borrows
+//    the table's value vocabulary as a brush palette, because a screen that opens with
+//    values nobody entered is indistinguishable from a defect (reported twice). The rule
+//    is two branches with no third - this map's registry rows if it has any, one empty DOE
+//    row if it does not.
+//
+//    DELETED, with reasons:
+//      §0  the table-wide dedupe (`parseLegendRegistryRows(_, true)`) - no caller can ask
+//          for it any more; `fetchRegistryRows` passes `false` unconditionally and §0c
+//          asserts the map scope never collapses duplicates, which is the property that
+//          actually protects a broken `map_key` filter from looking plausible.
+//      §0b the vocabulary seed request - the request does not exist.
+//      §3  "a fresh key must not inherit the vocabulary" - there is no vocabulary to
+//          inherit. Its successor is §3z: a fresh key inherits the EMPTY DOE and writes
+//          nothing, which is the same guarantee against the one seed that remains.
+//
+//    KEPT AND STILL LOAD-BEARING: everything about the map-scoped read, the `vocab`
+//    payload filter, and the DERIVED claim. The placeholder row `seedEmptyDoe` puts on
+//    screen is marked `vocab: true`, so an untouched placeholder still must not create a
+//    registry row, and a forgotten edit gate still must be caught by signature.
 // ---------------------------------------------------------------------------
 const cell = v => (v === undefined ? undefined : { value: v, is_overwrite: false, priority_source: 'user', updated_by: 'tester' });
-const row = (mapKey, value, desc, color, bands, updatedAt) => ({
+const row = (mapKey, value, desc, color, zone, updatedAt) => ({
   data: {
     map_key: cell(mapKey), value: cell(value), split_desc: cell(desc), color: cell(color),
-    knobs: cell('{}'), bands: cell(JSON.stringify(bands || [])),
+    knobs: cell('{}'),
+    stack: cell(zone ? String(zone.stack) : ''),
+    mat_1h: cell(JSON.stringify((zone && zone.mat_1h) || [])),
+    mat_mid: cell(JSON.stringify((zone && zone.mat_mid) || [])),
+    mat_top: cell(JSON.stringify((zone && zone.mat_top) || [])),
     eventtime: cell(updatedAt), updated_at: cell(updatedAt),
   },
 });
 
 const MAPA_ROWS = [
-  row('MAPA', '1', 'A: thickness down', '#10b981', [{ seq: 1, to: 3, materials: ['LOT_A1'] }], '2026-07-27 20:57:03'),
-  row('MAPA', '2', 'A: POR',            '#ef4444', [{ seq: 1, to: 5, materials: ['LOT_A2'] }], '2026-07-27 20:57:03'),
-  row('MAPA', 'A_ONLY',  'A exclusive split',  '#3b82f6', [{ seq: 1, to: 9, materials: ['LOT_A3'] }], '2026-07-27 20:57:03'),
-  row('MAPA', 'A_ONLY2', 'A exclusive split 2', '#ec4899', [], '2026-07-27 20:57:03'),
+  row('MAPA', '1', 'A: thickness down', '#10b981', { stack: 3, mat_mid: ['LOT_A1'] }, '2026-07-27 20:57:03'),
+  row('MAPA', '2', 'A: POR',            '#ef4444', { stack: 5, mat_mid: ['LOT_A2'] }, '2026-07-27 20:57:03'),
+  row('MAPA', 'A_ONLY',  'A exclusive split',  '#3b82f6', { stack: 9, mat_mid: ['LOT_A3'] }, '2026-07-27 20:57:03'),
+  row('MAPA', 'A_ONLY2', 'A exclusive split 2', '#ec4899', null, '2026-07-27 20:57:03'),
 ];
 const MAPB_ROWS = [
-  row('MAPB', '1',      'B: thickness x2', '#f59e0b', [{ seq: 1, to: 7, materials: ['LOT_B1'] }], '2026-07-26 09:00:00'),
-  row('MAPB', 'B_ONLY', 'B exclusive split', '#8b5cf6', [{ seq: 1, to: 2, materials: ['LOT_B2'] }], '2026-07-26 09:00:00'),
+  row('MAPB', '1',      'B: thickness x2', '#f59e0b', { stack: 7, mat_mid: ['LOT_B1'] }, '2026-07-26 09:00:00'),
+  row('MAPB', 'B_ONLY', 'B exclusive split', '#8b5cf6', { stack: 2, mat_1h: ['LOT_B2'], mat_top: ['LOT_B3'] }, '2026-07-26 09:00:00'),
 ];
 const TABLE_WIDE = { total: 6, data: [...MAPA_ROWS, ...MAPB_ROWS] };
 const SCOPED_B   = { total: 2, data: MAPB_ROWS };
+
+// The one-row probe response that says the zone columns physically exist.
+const ZONE_PROBE_OK = { total: 1, data: [{ data: {
+  value: cell('x'), split_desc: cell(''), color: cell('#000'), knobs: cell('{}'),
+  stack: cell(''), mat_1h: cell('[]'), mat_mid: cell('[]'), mat_top: cell('[]'), eventtime: cell(''),
+} }] };
+// ...and one that says they do not (the pre-migration server).
+const ZONE_PROBE_MISSING = { total: 1, data: [{ data: {
+  value: cell('x'), split_desc: cell(''), color: cell('#000'), knobs: cell('{}'),
+  bands: cell('[]'), eventtime: cell(''),
+} }] };
 
 const REF_TABLE = 'bonding_map';
 const failures = [];
@@ -183,59 +252,31 @@ const rec = (scenario, field, expected, actual) => {
 const values = arr => arr.map(l => String(l.value)).sort();
 const payloadValues = ups => ups.map(u => String(u.updates.value)).sort();
 
-// Seed the legend the way switchTable does: the deliberate table-wide vocabulary read.
-// `vocab: true` is the provenance marker the fix introduces; on the defective version the
-// field simply does not exist, which is exactly why nothing downstream could filter.
-// Seed through the PRODUCT's loader, never by hand. Hand-marking rows here would fake the
+// Seed the legend the way switchTable does now: ONE empty DOE row, marked and snapshotted.
+// Seeded through the PRODUCT's function, never by hand - hand-marking would fake the
 // `vocab` flag and the seed snapshot together, and the derived-claim machinery below would
-// be tested against a fixture instead of against the app.
-async function seedVocabulary(painted) {
-  sandbox.STUB.body = TABLE_WIDE;
-  sandbox.STUB.httpOk = true;
-  await sandbox.loadLegendVocabulary(REF_TABLE);
-  // the map's painted cells - the other way a map claims a value
+// then be tested against a fixture instead of against the app.
+function seedEmpty(painted) {
+  sandbox.seedEmptyDoe();
   sandbox.gridData = {};
   (painted || []).forEach((v, i) => { sandbox.gridData[`${i}_0`] = v; });
 }
 
-// --- 0. the dedupe itself: MAPA must win every collision (fixture is live) ------------
-{
-  const vocab = sandbox.parseLegendRegistryRows(TABLE_WIDE, true);
-  rec('vocabulary-read', 'values', ['1', '2', 'A_ONLY', 'A_ONLY2', 'B_ONLY'], values(vocab));
-  const one = vocab.find(r => r.value === '1');
-  rec('vocabulary-read', 'shared value "1" resolves to the newest map key', 'MAPA', one && one.map_key);
-  rec('vocabulary-read', 'shared value "1" carries the OTHER map\'s desc', 'A: thickness down', one && one.desc);
-  if (values(vocab).length === values(sandbox.parseLegendRegistryRows(SCOPED_B, false)).length) {
-    die('fixture is inert: the table-wide read and the map-scoped read produce the same number of values, so no scope defect could ever show.');
-  }
-}
-
-// --- 0b. THE SEED ITSELF. The product's table-wide loader must (a) ask for the
-//         'vocabulary' scope by name and (b) mark every row it puts on screen. If it
-//         marks nothing, every filter downstream is a no-op and this whole file is
-//         theatre - so this is asserted against the real function, not assumed.
-const filterOf = url => JSON.parse(decodeURIComponent(String(url).split('filters=')[1] || '%7B%7D'));
 const REQUESTS = [];   // the request list this harness reports as evidence
+const filterOf = url => JSON.parse(decodeURIComponent(String(url).split('filters=')[1] || '%7B%7D'));
+
+// --- 0. THE EMPTY DOE. Two branches, no third. -----------------------------------------
 {
-  sandbox.STUB.body = TABLE_WIDE;
-  sandbox.STUB.urls = [];
-  const src = await sandbox.loadLegendVocabulary(REF_TABLE);
-  REQUESTS.push(['loadLegendVocabulary', filterOf(sandbox.STUB.urls[0])]);
-  rec('vocabulary-seed', 'source', 'server', src);
-  rec('vocabulary-seed', 'request carries NO map_key filter', ['ref_table'], Object.keys(filterOf(sandbox.STUB.urls[0])).sort());
-  rec('vocabulary-seed', 'every seeded row is marked unclaimed', true, sandbox.legend.every(l => l.vocab === true));
-  rec('vocabulary-seed', 'seeded values', ['1', '2', 'A_ONLY', 'A_ONLY2', 'B_ONLY'], values(sandbox.legend));
-  rec('vocabulary-seed', 'nothing seeded is writable', [],
+  seedEmpty();
+  rec('empty-doe', 'exactly one row', 1, sandbox.legend.length);
+  rec('empty-doe', 'the row is VALUE 1', '1', String(sandbox.legend[0].value));
+  rec('empty-doe', 'nothing is prefilled', ['', '', [], [], []],
+    [String(sandbox.legend[0].stack), sandbox.legend[0].desc,
+     sandbox.legend[0].mat_1h, sandbox.legend[0].mat_mid, sandbox.legend[0].mat_top]);
+  rec('empty-doe', 'the placeholder is marked unclaimed', true, sandbox.legend[0].vocab === true);
+  rec('empty-doe', 'an untouched placeholder writes NOTHING', [],
     payloadValues(sandbox.buildLegendRegistryUpdates(REF_TABLE, 'ANY', sandbox.legend, 'tester', 'now')));
-  // the offline fallback is table-scoped too, so it must be marked as well
-  // (the product warns to console on this path by design; muted so a green run is quiet)
-  sandbox.STUB.httpOk = false;
-  const realWarn = sandbox.console.warn; sandbox.console.warn = () => {};
-  const src2 = await sandbox.loadLegendVocabulary(REF_TABLE);
-  sandbox.console.warn = realWarn;
-  rec('vocabulary-seed', 'offline fallback source', 'offline', src2);
-  rec('vocabulary-seed', 'cache/DEFAULT fallback is marked too', true, sandbox.legend.every(l => l.vocab === true));
-  sandbox.STUB.httpOk = true;
+  rec('empty-doe', 'the brush is usable immediately', '1', sandbox.activeBrush);
 }
 
 // --- 0c. THE MAP-SCOPED READ. It must actually filter by map_key, and the scope name
@@ -249,7 +290,10 @@ const REQUESTS = [];   // the request list this harness reports as evidence
   rec('map-scoped-read', 'request carries a map_key filter', ['map_key', 'ref_table'], Object.keys(filterOf(sandbox.STUB.urls[0])).sort());
   rec('map-scoped-read', 'filtered on the right key', 'MAPB', filterOf(sandbox.STUB.urls[0]).map_key.filter);
   rec('map-scoped-read', 'rows', ['1', 'B_ONLY'], values(r.rows));
-  // The map scope must NOT dedupe. Dedupe is the vocabulary mode's collapse across map
+  rec('map-scoped-read', 'zone columns survive the read', [7, ['LOT_B1']],
+    [Number(r.rows.find(x => x.value === '1').stack), r.rows.find(x => x.value === '1').mat_mid]);
+
+  // The map scope must NOT dedupe. Dedupe was the vocabulary mode's collapse across map
   // keys; doing it here would MASK a broken map_key filter - a widened read would come
   // back as a plausible one-row-per-value legend instead of an obviously wrong pile.
   sandbox.STUB.body = TABLE_WIDE;
@@ -265,6 +309,10 @@ const REQUESTS = [];   // the request list this harness reports as evidence
   let threw = '';
   try { await sandbox.fetchRegistryRows('whatever', REF_TABLE, 'MAPB'); } catch (e) { threw = e.message; }
   rec('map-scoped-read', 'an unnamed scope is refused', "unknown registry scope 'whatever'", threw);
+  // ...including the one that used to exist. A retired scope must not still answer.
+  let threwVocab = '';
+  try { await sandbox.fetchRegistryRows('vocabulary', REF_TABLE, null); } catch (e) { threwVocab = e.message; }
+  rec('map-scoped-read', "the retired 'vocabulary' scope is refused", "unknown registry scope 'vocabulary'", threwVocab);
 
   // truncation stays a failure, not a smaller answer (a partial read backing replace_map deletes)
   sandbox.STUB.body = { total: 99, data: MAPB_ROWS };
@@ -272,171 +320,228 @@ const REQUESTS = [];   // the request list this harness reports as evidence
   rec('map-scoped-read', 'truncated response is a failure', false, trunc.ok);
 }
 
-// --- 1. SCREEN. Open MAPB after a vocabulary seed -> only MAPB's values --------------
+// --- 1. SCREEN. Open MAPB -> only MAPB's values, and the placeholder is evicted ---------
 {
-  await seedVocabulary();
-  const before = values(sandbox.legend);
+  seedEmpty();
   sandbox.applyRegistryRowsToLegend(sandbox.parseLegendRegistryRows(SCOPED_B, false));
   rec('open-mapB/screen', 'legend values', ['1', 'B_ONLY'], values(sandbox.legend));
   const one = sandbox.legend.find(l => String(l.value) === '1');
   rec('open-mapB/screen', 'shared value desc comes from MAPB', 'B: thickness x2', one && one.desc);
-  rec('open-mapB/screen', 'shared value bands come from MAPB', [{ seq: 1, to: 7, materials: ['LOT_B1'] }], one && one.bands);
-  // The blast radius number: how many legend entries differ between the two readings.
-  // If this is 0 the fixture proved nothing.
-  const foreign = before.filter(v => !['1', 'B_ONLY'].includes(v));
-  if (foreign.length === 0) die('fixture is inert: the vocabulary seed carried no foreign values.');
+  rec('open-mapB/screen', "shared value's zones come from MAPB", [7, ['LOT_B1'], [], []],
+    one && [Number(one.stack), one.mat_mid, one.mat_1h, one.mat_top]);
+  // 🔴 THE PLACEHOLDER IS VALUE '1' AND SO IS ONE OF MAPB'S ROWS. That collision is
+  //    deliberate: it is the only shape in which an unclaimed placeholder could survive
+  //    into a payload by being mistaken for a real row.
+  rec('open-mapB/screen', 'the placeholder is claimed by the registry row', false, one && one.vocab);
 }
 
-// --- 2. WRITE. The `replace_map` payload for MAPB must not carry MAPA's values --------
+// --- 2. WRITE. The `replace_map` payload for MAPB must not carry MAPA's values ----------
 {
-  await seedVocabulary();
+  seedEmpty();
   sandbox.applyRegistryRowsToLegend(sandbox.parseLegendRegistryRows(SCOPED_B, false));
   const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'MAPB', sandbox.legend, 'tester', '2026-07-27 21:00:00');
   rec('open-mapB/write', 'replace_map payload values', ['1', 'B_ONLY'], payloadValues(ups));
   rec('open-mapB/write', 'every row is scoped to MAPB', true, ups.every(u => u.updates.map_key === 'MAPB'));
   rec('open-mapB/write', 'split_key set', ['bonding_map|MAPB|1', 'bonding_map|MAPB|B_ONLY'],
     ups.map(u => u.business_key_val).sort());
+  // 🔴 THE RETIRED COLUMN IS NOT WRITTEN. `bands` is read-only now; a second writer would
+  //    put the plan in two places and `replace_map` would let them erase each other.
+  rec('open-mapB/write', 'no payload carries `bands`', [], ups.filter(u => 'bands' in u.updates).map(u => u.updates.value));
+  // 🔴 THE LITERAL MUST BE COMPLETE. `buildLegendRegistryUpdates` spells its column names
+  //    out so `server/tests/test_install_product_tables.py` can read them statically and
+  //    prove each one is declared. That leaves exactly one gap - adding a column to
+  //    `legendRowPayload` and forgetting it in the literal - and this closes it. A column
+  //    that is signed and fingerprinted but never actually written would make an edit look
+  //    saved on screen and be absent from the server.
+  {
+    const cols = vm.runInContext('LEGEND_PAYLOAD_COLUMNS', sandbox);
+    const written = Object.keys((ups[0] || { updates: {} }).updates);
+    rec('open-mapB/write', 'every LEGEND_PAYLOAD_COLUMNS entry is actually written', [],
+      cols.filter(c => written.indexOf(c) < 0));
+  }
+  const b = ups.find(u => u.updates.value === 'B_ONLY');
+  rec('open-mapB/write', 'zone columns are what goes out',
+    ['2', '["LOT_B2"]', '[]', '["LOT_B3"]'],
+    b && [b.updates.stack, b.updates.mat_1h, b.updates.mat_mid, b.updates.mat_top]);
 }
 
-// --- 3. WRITE, no map ever opened. A fresh key must not inherit the vocabulary --------
-// This is the path that created bonding_map|A23, |b1, |aa123_a in production: pick a
-// table, type a NEW map key, edit anything, and the debounced save fires with the
-// vocabulary as its payload. `replace_map` on an empty scope deletes nothing, so the
-// truncation/authority guards all pass - and a whole plan appears out of nowhere.
+// --- 3z. A fresh key inherits the EMPTY DOE and writes nothing --------------------------
+// The successor to the deleted "must not inherit the vocabulary". The hazard is the same
+// and it is the one that created bonding_map|A23, |b1, |aa123_a in production: pick a
+// table, type a NEW map key, and the debounced save fires. `replace_map` on an empty scope
+// deletes nothing, so every other guard passes - and a plan appears out of nowhere.
 {
-  await seedVocabulary();
+  seedEmpty();
   const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'NEWKEY', sandbox.legend, 'tester', '2026-07-27 21:00:00');
   rec('fresh-key/write', 'replace_map payload values', [], payloadValues(ups));
 }
 
-// --- 4. NO REGRESSION. Everything the map actually vouches for is still written -------
-// (a) rows from this map's own registry; (b) a value the user explicitly edited;
-// (c) a value the map's own cells carry (the caller clears `vocab` for painted values).
+// --- 4. NO REGRESSION. Everything the map actually vouches for is still written ---------
+// (a) rows from this map's own registry; (b) a value the user explicitly added.
+//
+// The old third case - "a value the map's cells carry but its registry does not" - was
+// about a VOCABULARY row that painting rescued. With no vocabulary seed the only unclaimed
+// row that can exist is the placeholder, and §5 asserts that painting claims it directly.
+// A value the loader adds from the map's own cells arrives WITHOUT the mark, so it is
+// written by construction rather than by rescue; asserting it here would test
+// `normalizeLegendItem`'s default, not the scope rule this file is about.
 {
-  // (c) MAPB's own cells carry '2' - a value MAPB's registry does not have. The map itself
-  //     vouches for it, so it must survive the open AND be written.
-  await seedVocabulary(['1', '2']);
+  seedEmpty();
   sandbox.applyRegistryRowsToLegend(sandbox.parseLegendRegistryRows(SCOPED_B, false));
-  rec('vouched/screen', 'a painted-but-unregistered value stays on screen', true,
-    sandbox.legend.some(l => String(l.value) === '2'));
-  // (b) user adds a value in the panel - addLegendRowForPanel builds it without `vocab`
   sandbox.legend.push(sandbox.normalizeLegendItem({ value: 'D1', desc: 'typed by user', color: '#14b8a6' }));
   const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'MAPB', sandbox.legend, 'tester', '2026-07-27 21:00:00');
-  rec('vouched/write', 'payload values', ['1', '2', 'B_ONLY', 'D1'], payloadValues(ups));
+  rec('vouched/write', 'payload values', ['1', 'B_ONLY', 'D1'], payloadValues(ups));
   const b = ups.find(u => u.updates.value === 'B_ONLY');
-  rec('vouched/write', 'B_ONLY bands survive the round trip',
-    JSON.stringify([{ seq: 1, to: 2, materials: ['LOT_B2'] }]), b && b.updates.bands);
-  // the painted-but-unregistered value must NOT carry the other map's DOE
-  const two = ups.find(u => u.updates.value === '2');
-  rec('vouched/write', 'painted value does not inherit MAPA\'s bands', '[]', two && two.updates.bands);
+  rec('vouched/write', "B_ONLY's zones survive the round trip", ['2', '["LOT_B2"]', '[]', '["LOT_B3"]'],
+    b && [b.updates.stack, b.updates.mat_1h, b.updates.mat_mid, b.updates.mat_top]);
+  // a value the user just added carries NO borrowed layer structure
+  const d1 = ups.find(u => u.updates.value === 'D1');
+  rec('vouched/write', 'a new value has no borrowed layer structure', ['', '[]', '[]', '[]'],
+    d1 && [d1.updates.stack, d1.updates.mat_1h, d1.updates.mat_mid, d1.updates.mat_top]);
 }
 
-// --- 5. A painted vocabulary value IS written (fresh key, nothing opened) -------------
-// saveLegendToServer calls reconcileVocabClaims before building the payload.
+// --- 5. A painted placeholder IS written -----------------------------------------------
 {
-  await seedVocabulary(['2']);                                // user painted cells with brush '2'
+  seedEmpty(['1']);                                // user painted cells with the placeholder
   sandbox.reconcileVocabClaims();
-  const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'NEWKEY', sandbox.legend, 'tester', '2026-07-27 21:00:00');
-  rec('fresh-key/painted', 'only the painted value is written', ['2'], payloadValues(ups));
+  rec('fresh-key/painted', 'the painted placeholder is written', ['1'],
+    payloadValues(sandbox.buildLegendRegistryUpdates(REF_TABLE, 'NEWKEY', sandbox.legend, 'tester', 'now')));
 }
 
-// --- 5b. Opening a map that claims NOTHING leaves a paintable palette -----------------
-// Eviction must not hand the user an empty brush list; the generic defaults come back,
-// still unclaimed so still unwritten.
+// --- 5b. Opening a map that claims NOTHING leaves a paintable palette -------------------
 {
-  await seedVocabulary();
+  seedEmpty();
   sandbox.applyRegistryRowsToLegend([]);                // empty map, empty registry scope
   rec('empty-map/screen', 'palette is not empty', true, sandbox.legend.length > 0);
-  rec('empty-map/screen', 'no foreign value survived', [],
-    sandbox.legend.map(l => String(l.value)).filter(v => ['A_ONLY', 'A_ONLY2', 'B_ONLY'].includes(v)));
-  const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'EMPTYKEY', sandbox.legend, 'tester', '2026-07-27 21:00:00');
+  rec('empty-map/screen', 'and it is exactly the one empty row', 1, sandbox.legend.length);
+  const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'EMPTYKEY', sandbox.legend, 'tester', 'now');
   rec('empty-map/write', 'nothing is written', [], payloadValues(ups));
 }
 
-// --- 5c. FRAME ROUND TRIP. Provenance must survive cloneLegend -----------------------
-// snapshotEditorState stores `legend: cloneLegend(legend)` and restoreEditorState puts it
-// back, so opening a material map in a sub-frame and coming back runs every legend row
-// through the normal form. If the mark does not survive that, the parent map's borrowed
-// brushes silently become writable again - contamination one round trip later.
+// --- 5c. FRAME ROUND TRIP. Provenance must survive cloneLegend --------------------------
 {
-  await seedVocabulary();
+  seedEmpty();
   const restored = sandbox.cloneLegend(sandbox.legend);
-  rec('frame-round-trip', 'every row is still unclaimed after clone', true, restored.every(l => l.vocab === true));
+  rec('frame-round-trip', 'still unclaimed after clone', true, restored.every(l => l.vocab === true));
   rec('frame-round-trip', 'nothing became writable', [],
     payloadValues(sandbox.buildLegendRegistryUpdates(REF_TABLE, 'ANY', restored, 'tester', 'now')));
-  // and a claimed row must stay claimed across the same trip
-  await seedVocabulary(['2']);
+  seedEmpty(['1']);
   sandbox.reconcileVocabClaims();
-  rec('frame-round-trip', 'a claimed row survives the clone as claimed', ['2'],
+  rec('frame-round-trip', 'a claimed row survives the clone as claimed', ['1'],
     payloadValues(sandbox.buildLegendRegistryUpdates(REF_TABLE, 'ANY', sandbox.cloneLegend(sandbox.legend), 'tester', 'now')));
+  // and the zones survive a deep copy rather than being shared with the snapshot
+  seedEmpty();
+  sandbox.legend[0].mat_mid = ['M_01'];
+  const clone = sandbox.cloneLegend(sandbox.legend);
+  clone[0].mat_mid.push('M_02');
+  rec('frame-round-trip', 'clone does not share the zone arrays', ['M_01'], sandbox.legend[0].mat_mid);
 }
 
-// --- 5d. THE BYPASSED GATE. This is the one that decides whether the fix survives the
-//         DOE redesign. `vocab` is cleared explicitly by updateLegendRowForPanel, but the
-//         redesign adds a second table of edit paths. If the mark were the ONLY mechanism,
-//         any new path that forgot it would leave the user's typing on screen and drop it
-//         from the save - visible, plausible, wrong. So the claim is also DERIVED: a row
-//         that no longer matches the vocabulary row it was borrowed from is claimed,
+// --- 5d. THE BYPASSED GATE. The redesign added a whole second table of edit paths.
+//         `vocab` is cleared explicitly by updateLegendRowForPanel, but if the mark were
+//         the ONLY mechanism, any new path that forgot it would leave the user's typing on
+//         screen and drop it from the save - visible, plausible, wrong. So the claim is
+//         also DERIVED: a row that no longer matches what it was seeded as is claimed,
 //         whether or not anybody said so.
 {
-  await seedVocabulary();
-  const before = sandbox.legend.filter(l => l.vocab).length;
-  rec('bypassed-gate', 'everything starts unclaimed', 5, before);
-
-  // an edit path that FORGOT the gate: mutate the row, never touch `vocab`
-  const row = sandbox.legend.find(l => String(l.value) === 'A_ONLY');
-  row.desc = 'user typed this and the gate did not fire';
-  rec('bypassed-gate', 'mark is still (wrongly) set', true, row.vocab === true);
-
+  seedEmpty();
+  rec('bypassed-gate', 'starts unclaimed', 1, sandbox.legend.filter(l => l.vocab).length);
+  const r = sandbox.legend[0];
+  r.desc = 'user typed this and the gate did not fire';
+  rec('bypassed-gate', 'mark is still (wrongly) set', true, r.vocab === true);
   sandbox.reconcileVocabClaims();
-  rec('bypassed-gate', 'the edit is detected anyway', false, row.vocab);
-  rec('bypassed-gate', 'and it reaches the payload', ['A_ONLY'],
+  rec('bypassed-gate', 'the edit is detected anyway', false, r.vocab);
+  rec('bypassed-gate', 'and it reaches the payload', ['1'],
     payloadValues(sandbox.buildLegendRegistryUpdates(REF_TABLE, 'K', sandbox.legend, 'tester', 'now')));
-
-  // and the rows nobody touched are NOT swept up with it
-  rec('bypassed-gate', 'untouched rows stay unclaimed', 4, sandbox.legend.filter(l => l.vocab).length);
 }
 
-// --- 5e. Every editable field counts as an edit, not just desc. A signature that ignored
-//         bands would miss exactly the field this whole DOE panel exists to edit.
+// --- 5e. EVERY PERSISTED FIELD COUNTS AS AN EDIT. 🔴 This is the group the zone rewrite
+//         made critical: the new model added four columns (`stack`, `mat_1h`, `mat_mid`,
+//         `mat_top`), and a signature that covered only the old ones would make an edit to
+//         a LAYER STRUCTURE invisible to the derived claim - which is the single field
+//         this whole panel exists to edit.
+//
+//         The field list is taken from the PRODUCT's `LEGEND_PAYLOAD_COLUMNS`, not typed
+//         here, so adding a column without a mutation for it fails this file rather than
+//         passing it silently.
 {
-  for (const [field, mutate] of [
-    ['desc', r => { r.desc = 'x'; }],
-    ['color', r => { r.color = '#123456'; }],
-    ['bands', r => { r.bands = [{ seq: 1, to: 4, materials: ['M9'] }]; }],
-    ['knobs', r => { r.knobs = [{ k: 'temp', v: '200' }]; }],
-    ['value', r => { r.value = 'RENAMED'; }],
-  ]) {
-    await seedVocabulary();
-    const row = sandbox.legend.find(l => String(l.value) === 'A_ONLY2');
-    mutate(row);
-    sandbox.reconcileVocabClaims();
-    rec('bypassed-gate/fields', `editing ${field} claims the row`, false, row.vocab);
+  const MUTATE = {
+    value: r => { r.value = 'RENAMED'; },
+    split_desc: r => { r.desc = 'x'; },
+    color: r => { r.color = '#123456'; },
+    knobs: r => { r.knobs = [{ k: 'temp', v: '200' }]; },
+    stack: r => { r.stack = 16; },
+    mat_1h: r => { r.mat_1h = ['H_01']; },
+    mat_mid: r => { r.mat_mid = ['M_01']; },
+    mat_top: r => { r.mat_top = ['T_01']; },
+  };
+  const cols = vm.runInContext('LEGEND_PAYLOAD_COLUMNS', sandbox);
+  const uncovered = cols.filter(c => !MUTATE[c]);
+  if (uncovered.length > 0) {
+    die(`LEGEND_PAYLOAD_COLUMNS gained ${uncovered.join(', ')} with no mutation here. A persisted column that this file cannot mutate is a column whose edit the derived claim may not detect - and an undetected edit is shown on screen and dropped from the save.`);
   }
-  // control: touching nothing must NOT claim
-  await seedVocabulary();
+  for (const c of cols) {
+    seedEmpty();
+    const r = sandbox.legend[0];
+    MUTATE[c](r);
+    sandbox.reconcileVocabClaims();
+    rec('bypassed-gate/fields', `editing ${c} claims the row`, false, r.vocab);
+  }
+  seedEmpty();
   sandbox.reconcileVocabClaims();
-  rec('bypassed-gate/fields', 'no edit -> nothing claimed', 5, sandbox.legend.filter(l => l.vocab).length);
+  rec('bypassed-gate/fields', 'no edit -> nothing claimed', 1, sandbox.legend.filter(l => l.vocab).length);
 }
 
-// --- 5f. The seed must survive a frame round trip alongside the legend it describes.
-//         If it did not, coming back from a material map would leave marked rows with no
-//         seed - and a marked row with no seed reads as edited, claiming everything.
+// --- 5f. The seed snapshot must survive a frame round trip alongside the legend ----------
 {
-  await seedVocabulary();
+  seedEmpty();
   const framedLegend = sandbox.cloneLegend(sandbox.legend);
-  const framedSeed = new Map(sandbox.legendVocabularySeed);   // what snapshotEditorState stores
+  const framedSeed = new Map(sandbox.legendVocabularySeed);
   sandbox.legend = framedLegend;
-  sandbox.legendVocabularySeed = framedSeed;                  // what restoreEditorState puts back
+  sandbox.legendVocabularySeed = framedSeed;
   sandbox.reconcileVocabClaims();
-  rec('frame-round-trip', 'seed survives, so nothing is falsely claimed', 5, sandbox.legend.filter(l => l.vocab).length);
-  // ...and detection still works on the far side
-  sandbox.legend.find(l => String(l.value) === 'B_ONLY').desc = 'edited after the round trip';
+  rec('frame-round-trip', 'seed survives, so nothing is falsely claimed', 1, sandbox.legend.filter(l => l.vocab).length);
+  sandbox.legend[0].mat_mid = ['edited after the round trip'];
   sandbox.reconcileVocabClaims();
-  rec('frame-round-trip', 'edits are still detected after restore', 4, sandbox.legend.filter(l => l.vocab).length);
+  rec('frame-round-trip', 'edits are still detected after restore', 0, sandbox.legend.filter(l => l.vocab).length);
 }
 
-// --- 5g. THE REAL WRITE PATH, end to end. Everything above tests pieces; this runs
+// --- 5g. THE ZONE COLUMN GATE. 🔴 The most destructive path in this file.
+//
+//   `stack`/`mat_*` are DECLARED in product_tables.py but the physical ALTER is a separate
+//   step. If they are not there yet, crud.py drops them from the payload - and this write
+//   is `replace_map`, so the scope is replaced by rows carrying desc/color/knobs and NO
+//   LAYER STRUCTURE. The screen still looks right until the next load. That is the whole
+//   plan, deleted, under a green "자동 저장" chip.
+{
+  seedEmpty();
+  sandbox.zoneColumnsPresent = null;
+  sandbox.STUB.zoneBody = ZONE_PROBE_MISSING;
+  sandbox.STUB.mapKey = 'FRESHKEY';
+  sandbox.STUB.body = { total: 0, data: [] };
+  sandbox.STUB.writes = [];
+  sandbox.legendReplaceScope = null;
+  sandbox.legendConflict = null;
+  sandbox.legend[0].desc = 'typed';
+
+  // the product warns to console on this path by design; muted so a green run is quiet
+  const realWarn = sandbox.console.warn; sandbox.console.warn = () => {};
+  const blocked = await sandbox.saveLegendToServer('FRESHKEY');
+  sandbox.console.warn = realWarn;
+  rec('zone-gate', 'the save is refused', false, blocked.ok);
+  rec('zone-gate', 'and says which guard fired', 'zone-columns-missing', blocked.reason);
+  rec('zone-gate', '🔴 NOTHING was written', 0, sandbox.STUB.writes.length);
+
+  // The guard must not be permanent: the moment the column appears, saving resumes on its
+  // own. A guard that never releases is an outage.
+  sandbox.zoneColumnsPresent = null;
+  sandbox.STUB.zoneBody = ZONE_PROBE_OK;
+  const ok = await sandbox.saveLegendToServer('FRESHKEY');
+  rec('zone-gate', 'it releases once the columns exist', true, ok.ok);
+  rec('zone-gate', 'and then exactly one PUT goes out', 1, sandbox.STUB.writes.length);
+}
+
+// --- 5h. THE REAL WRITE PATH, end to end. Everything above tests pieces; this runs
 //         `saveLegendToServer` itself, so the placement of reconcileVocabClaims and the
 //         fingerprint that becomes the next save's baseline are asserted rather than
 //         mirrored. Mirroring is what let a fingerprint mutation pass unnoticed.
@@ -445,33 +550,39 @@ const REQUESTS = [];   // the request list this harness reports as evidence
 //         number - it is that the NEXT save reports "다른 사람이 이 계획을 변경했습니다"
 //         with nobody else there. So that is what this asserts.
 {
-  // one registry row per written value, in the shape a read-back would return
   const asReadBack = updates => ({
     total: updates.length,
     data: updates.map(u => ({ data: {
       map_key: cell(u.updates.map_key), value: cell(u.updates.value),
       split_desc: cell(u.updates.split_desc), color: cell(u.updates.color),
-      knobs: cell(u.updates.knobs), bands: cell(u.updates.bands),
+      knobs: cell(u.updates.knobs), stack: cell(u.updates.stack),
+      mat_1h: cell(u.updates.mat_1h), mat_mid: cell(u.updates.mat_mid), mat_top: cell(u.updates.mat_top),
       eventtime: cell(u.updates.eventtime), updated_at: cell(u.updates.eventtime),
     } })),
   });
 
-  await seedVocabulary();
+  seedEmpty();
+  sandbox.zoneColumnsPresent = true;
+  sandbox.STUB.zoneBody = ZONE_PROBE_OK;
   sandbox.STUB.mapKey = 'FRESHKEY';
-  sandbox.STUB.body = { total: 0, data: [] };     // FRESHKEY has no rows yet
+  sandbox.STUB.body = { total: 0, data: [] };
   sandbox.STUB.writes = [];
   sandbox.legendReplaceScope = null;
   sandbox.legendConflict = null;
 
-  // an edit path that forgot the gate, again - but this time we let the PRODUCT save.
-  sandbox.legend.find(l => String(l.value) === 'A_ONLY').desc = 'typed, gate not fired';
+  // 🔴 an edit path that forgot the gate, and it edits a ZONE - the field the redesign
+  //    added. Under a signature that still only covered desc/color/bands this row would be
+  //    shown as edited and silently left out of the save.
+  sandbox.legend[0].mat_mid = ['M_01'];
 
   const r1 = await sandbox.saveLegendToServer('FRESHKEY');
   rec('write-path', 'first save succeeds', true, r1.ok);
   rec('write-path', 'exactly one PUT', 1, sandbox.STUB.writes.length);
   const put = sandbox.STUB.writes[0] || { updates: [] };
   rec('write-path', 'replace_map is set', true, put.replace_map === true);
-  rec('write-path', 'payload carries ONLY the edited row', ['A_ONLY'], payloadValues(put.updates));
+  rec('write-path', 'payload carries the zone-edited row', ['1'], payloadValues(put.updates));
+  rec('write-path', 'and the zone edit itself is in it', '["M_01"]',
+    (put.updates[0] || { updates: {} }).updates.mat_mid);
   rec('write-path', 'reported count matches the payload', 1, r1.count);
 
   // Now the second save. The server holds exactly what we just sent.
@@ -480,17 +591,14 @@ const REQUESTS = [];   // the request list this harness reports as evidence
   const r2 = await sandbox.saveLegendToServer('FRESHKEY');
   rec('write-path', 'second save is NOT a phantom conflict', undefined, r2.reason === 'conflict' ? 'conflict' : undefined);
   rec('write-path', 'second save succeeds', true, r2.ok);
-  rec('write-path', 'and still writes only the claimed row', ['A_ONLY'],
+  rec('write-path', 'and still writes only the claimed row', ['1'],
     payloadValues((sandbox.STUB.writes[0] || { updates: [] }).updates));
   sandbox.STUB.mapKey = null;
 }
 
-// --- 6. FINGERPRINT. The post-save baseline must cover the SAME set that was written ---
-// saveLegendToServer rebuilds a fingerprint from the legend after a successful write. If
-// it fingerprints rows the payload filtered out, the next save sees a phantom conflict and
-// refuses - "someone else changed this plan" with nobody else there.
+// --- 6. FINGERPRINT. The post-save baseline must cover the SAME set that was written -----
 {
-  await seedVocabulary();
+  seedEmpty();
   sandbox.applyRegistryRowsToLegend(sandbox.parseLegendRegistryRows(SCOPED_B, false));
   const nowStr = '2026-07-27 21:00:00';
   const ups = sandbox.buildLegendRegistryUpdates(REF_TABLE, 'MAPB', sandbox.legend, 'tester', nowStr);
@@ -498,25 +606,23 @@ const REQUESTS = [];   // the request list this harness reports as evidence
   const readBack = ups.map(u => ({
     value: u.updates.value, desc: u.updates.split_desc, color: u.updates.color,
     knobs: sandbox.normalizeKnobs(JSON.parse(u.updates.knobs)),
-    bands: sandbox.normalizeBands(JSON.parse(u.updates.bands)),
+    stack: u.updates.stack,
+    mat_1h: JSON.parse(u.updates.mat_1h), mat_mid: JSON.parse(u.updates.mat_mid), mat_top: JSON.parse(u.updates.mat_top),
     eventtime: nowStr,
   }));
-  // what saveLegendToServer must fingerprint: only the values it actually sent
   const sent = sandbox.legend
     .filter(item => ups.some(u => String(u.updates.value) === String(item.value)))
-    .map(item => ({ value: item.value, desc: (item.desc || '').trim(), color: item.color,
-                    knobs: item.knobs, bands: item.bands, eventtime: nowStr }));
+    .map(item => ({ ...item, eventtime: nowStr }));
   rec('fingerprint', 'baseline equals what the server holds',
     sandbox.registryFingerprint(readBack), sandbox.registryFingerprint(sent));
-  // and it must NOT equal a fingerprint taken over the unfiltered legend
-  const unfiltered = sandbox.legend.map(item => ({ value: item.value, desc: (item.desc || '').trim(),
-    color: item.color, knobs: item.knobs, bands: item.bands, eventtime: nowStr }));
-  if (sandbox.registryFingerprint(unfiltered) === sandbox.registryFingerprint(readBack)
-      && sandbox.legend.length !== ups.length) {
-    failures.push({ scenario: 'fingerprint', field: 'discrimination',
-      expected: 'unfiltered fingerprint differs from server state', actual: 'identical' });
-    compared++;
-  }
+  // 🔴 AND IT MUST DISCRIMINATE ON A ZONE. A fingerprint blind to the layer structure would
+  //    make two different plans look identical and let a concurrent overwrite through.
+  const moved = readBack.map(r => ({ ...r, mat_mid: r.mat_mid.concat(['EXTRA']) }));
+  rec('fingerprint', 'a changed MID changes the fingerprint', true,
+    sandbox.registryFingerprint(moved) !== sandbox.registryFingerprint(readBack));
+  const restacked = readBack.map(r => ({ ...r, stack: String(Number(r.stack || 0) + 1) }));
+  rec('fingerprint', 'a changed STACK changes the fingerprint', true,
+    sandbox.registryFingerprint(restacked) !== sandbox.registryFingerprint(readBack));
 }
 
 // ---------------------------------------------------------------------------

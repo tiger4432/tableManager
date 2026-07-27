@@ -1,64 +1,78 @@
-// ── DOE band model (M3) — value-set bands with typed FROM ──────────────────────
+// ── DOE zone model — STACK + three fixed zones ────────────────────────────────
 //
-// THE INVERSION. A band no longer belongs to a value; a band REFERENCES A SET of
-// values. `ALL 1→1`, `A 2→15`, `B,C 2→15` are three rows, and the last two are not an
-// overlap because they apply to different dies.
+// WHAT REPLACED WHAT. The band model (rows with FROM→TO, value-set scope, `seq` identity)
+// is retired. A value's layer structure is now ONE number and THREE zones:
 //
-// THE CONSEQUENCE, and the rule everything else depends on:
+//     STACK = 그 값의 총 층수
+//     1H    = 1층        — 비면 MID가 1층부터
+//     MID   = 그 사이 전부
+//     TOP   = STACK층    — 비면 MID가 STACK까지
 //
-//     EVERY RULE IS EVALUATED PER VALUE, NEVER PER ROW.
+//   MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)
 //
-// A row is expanded to its values first, and each value gets its own coverage map.
-// Skip that expansion and `A 2→15` beside `B,C 2→15` reads as a double-covered layer -
-// the validator would block a correct plan, and (worse, the same mistake in the other
-// direction) a genuine overlap inside one value would slip through.
+// `dt_map` is the DEGENERATE case, not an incomplete one: STACK = 1, MID only, no 1H, no
+// TOP. It must pass in silence. A model that nags at its own degenerate case teaches people
+// to ignore the validator, and then they ignore the one that matters.
 //
-// TYPED FROM. `from = prevTo + 1` is dead: two bands legitimately share `2→15`, so
-// position in an array no longer means anything and there is nothing to walk. What the
-// derivation used to GUARANTEE is now CHECKED instead - B5+B6 together say the bands
-// covering a value partition `1 … max` exactly once each, which is precisely the
-// contiguity the walk produced by construction. The strictness did not change; it moved
-// from derivation to validation.
+// ── WHY FIVE BLOCKING RULES REPLACED TEN ─────────────────────────────────────
+//
+// The zones TILE `1 … STACK` BY CONSTRUCTION. There is no arrangement of 1H/MID/TOP that
+// covers a layer twice or leaves one uncovered, so the old B5 (overlap) and B6 (gap) were
+// not moved or relaxed - THEY BECAME UNSTATEABLE. Same for B1/B2 (FROM>TO, FROM<1: there
+// is no FROM) and B4/B9 (a band naming values it does not define / naming none: a zone
+// belongs to exactly one value, by position).
+//
+// 🔴 THE ONE HAZARD THAT SURVIVED THE TRANSLATION, and the reason V5 exists.
+//    DOE_BAND_MODEL §3 records why B9 was needed: `max(V)` was derived from COVERED layers,
+//    so an unassigned top range simply LOWERED max and all the other rules passed - a
+//    16-layer stack silently became 15. Zones do not derive the height from coverage;
+//    STACK states it. That is what closes the hole - but only while STACK is READABLE.
+//    An unreadable STACK read as 0 (or skipped) reproduces the identical defect: the
+//    screen is fine and the number is short. So V5 blocks, and it blocks FIRST, before
+//    anything downstream can compute a zone from a height nobody could read.
 //
 // This module is pure: no DOM, no fetch, no module state. Declarations first with the
 // export list at the bottom, because the contract harness slices `function NAME(` bodies
 // out of this file's TEXT - an `export` prefix on the declaration breaks extraction and
 // the harness exits 2 rather than silently passing.
 //   → contracts/doe_band_rules/{vectors.json,client_harness.mjs}
-//   → docs/spec/DOE_BAND_MODEL.md is the authority for the rule numbers below.
+//   → docs/spec/DOE_ZONE_MODEL.md is the authority for the rule numbers below.
 
-import { bandToState } from './transfer_plan.js';
+// `prevTo` is imported rather than re-derived: it is the retired band model's backward
+// walk, it is still pinned by contracts/band_arithmetic (the SERVER still runs it), and
+// `bandsToZones` below is now its only client caller. Re-typing "the previous band's to"
+// here would be a second implementation of a rule a contract file already fixes.
+import { bandToState, prevTo } from './transfer_plan.js';
 
-// The scope token that means "every value defined in table ①".
-const SCOPE_ALL = 'ALL';
+// The three zones, in layer order. An array rather than three named branches: every
+// consumer that walks zones walks THIS, so a fourth zone (or a reorder) cannot be added
+// in one place and missed in five.
+const ZONES = ['mat_1h', 'mat_mid', 'mat_top'];
 
-// A boundary (`from` or `to`) is classified by the SAME judge as `to` always was.
-// A second classifier here would let a value be readable in one column and not the
-// other, and coverage would be computed from a number the panel never displayed.
+// Zone id -> the header word the user types in Excel. These strings are the paste
+// contract AND the on-screen column headings - deliberately the same strings, because
+// name-matching only works if the word the screen shows is the word the parser looks for.
+const ZONE_LABEL = { mat_1h: '1H', mat_mid: 'MID', mat_top: 'TOP' };
+
+// A number is classified by the SAME judge the layer boundaries always used. A second
+// classifier here would let STACK be readable in one place and not another, and a zone
+// would be computed from a height the panel never displayed.
 function boundState(raw) {
   return bandToState({ to: raw });
 }
 
-// Row -> the values it actually applies to. `ALL` expands to every defined value, so a
-// plan built entirely from `ALL` rows still validates per value like any other.
-// Unknown names are RETURNED, not dropped: B4 has to be able to name them.
-function expandBandValues(band, definedValues) {
-  const defined = (definedValues || []).map(String);
-  const raw = (band && band.values) || [];
-  const list = Array.isArray(raw) ? raw : String(raw).split(',');
-  const out = [];
-  let sawAll = false;
-  list.forEach(v => {
-    const s = String(v === null || v === undefined ? '' : v).trim();
-    if (s === '') return;
-    if (s.toUpperCase() === SCOPE_ALL) { sawAll = true; return; }
-    if (out.indexOf(s) < 0) out.push(s);
-  });
-  if (sawAll) defined.forEach(v => { if (out.indexOf(v) < 0) out.push(v); });
-  return out;
+// STACK — 3-state, and `blank` is NOT an error. A value being typed has no STACK yet;
+// only a value that is being SAVED needs one. Callers distinguish: the renderer shows
+// blank as "미정", the validator blocks it (V5) because a plan cannot go out half-typed.
+function stackState(row) {
+  const st = boundState(row && row.stack);
+  if (st.state !== 'ok') return { value: null, state: st.state };
+  if (st.value < 1) return { value: st.value, state: 'invalid' };   // 0 and negatives are not heights
+  return { value: st.value, state: 'ok' };
 }
 
-// [13,14,15,19] -> "13–15층, 19층". The user is told WHICH layers, never just "gap".
+// [13,14,15,19] -> "13–15층, 19층". Kept from the band model unchanged: the gap message it
+// was written for is gone, but "which layers does this zone cover" is asked on every row.
 function formatLayerRuns(layers) {
   const xs = [...new Set(layers)].sort((a, b) => a - b);
   const runs = [];
@@ -72,12 +86,37 @@ function formatLayerRuns(layers) {
   return runs.join(', ');
 }
 
-function bandLabel(band, idx) {
-  const scope = (band && Array.isArray(band.values) && band.values.length)
-    ? band.values.join(',') : SCOPE_ALL;
-  const f = band ? band.from : '';
-  const t = band ? band.to : '';
-  return `${idx + 1}행 [${scope} ${f}→${t}]`;
+// ── 자재 목록 (한 구역의 칸 하나) ──────────────────────────────────────────────
+//
+// 줄바꿈으로 나눈다 - that is exactly what Excel puts inside a quoted cell, so the raw text
+// of this field and the clipboard's are the same bytes and the round trip has nothing to
+// convert. 쉼표도 받는다 (총괄 결정): Alt+Enter in Excel is painful, and comma is already
+// the separator for tags elsewhere in this design. Accepting both costs one character
+// class; refusing one of them costs the user a trip back to Excel.
+function parseMaterialList(raw) {
+  if (Array.isArray(raw)) {
+    const out = [];
+    raw.forEach(v => {
+      const s = String(v === null || v === undefined ? '' : v).trim();
+      if (s && out.indexOf(s) < 0) out.push(s);
+    });
+    return out;
+  }
+  const s = String(raw === null || raw === undefined ? '' : raw);
+  const out = [];
+  s.split(/[\n,]/).forEach(part => {
+    const t = part.trim();
+    if (t && out.indexOf(t) < 0) out.push(t);
+  });
+  return out;
+}
+
+// The canonical text of a zone cell. Newline-joined, never comma-joined: comma is an
+// ACCEPTED input, newline is the EMITTED one, and Excel round-trips newline-in-a-quoted-
+// cell losslessly. Emitting commas would make `MID1, MID3` come back as one token the day
+// somebody's lot name legitimately contains a comma.
+function serializeMaterialList(tokens) {
+  return parseMaterialList(tokens).join('\n');
 }
 
 // ── 자재 토큰 (BIN 차원) ────────────────────────────────────────────────────────
@@ -90,7 +129,7 @@ function bandLabel(band, idx) {
 // BINs from the same map without competing. So the rollup's row identity is
 // (lot, slot, bin) - collapse BIN and 잔여 comes out low with no visible cause.
 //
-// ⚠️ THIS REVERSES A RULE SETTLED EARLIER TODAY. `splitMaterialId` refuses an id with no
+// ⚠️ THIS REVERSES A RULE SETTLED EARLIER. `splitMaterialId` refuses an id with no
 //    separator ("never guess"), and contracts/band_arithmetic pins that refusal. Under
 //    this grammar a bare `MID1` is not unresolvable - it MEANS the whole lot. The
 //    never-guess principle is untouched and still applies to every genuinely malformed
@@ -98,9 +137,9 @@ function bandLabel(band, idx) {
 //    all still refuse. Exactly one legacy case changes meaning; see
 //    contracts/doe_band_rules/vectors.json → material_token_cases.
 //
-// ⚠️ `parseMaterialToken` SUPERSEDES `splitMaterialId`. When the model lands, the old one
-//    is DELETED, not left beside it - two readers of material identity is precisely the
-//    "한 화면에 두 개의 가용치" defect that function's own comment warns about.
+// ⚠️ UNCHANGED BY THE ZONE REWRITE, deliberately. The token grammar was settled with the
+//    user and pinned; the layer model moving from bands to zones says nothing about how a
+//    material is named. Every material_token_case below is carried over byte for byte.
 //
 // Returns {ok, lot, slot, bin, scope, raw, reason}. On failure every field is null (not
 // '') so a caller cannot forget to check, and `reason` is user-facing Korean.
@@ -117,7 +156,7 @@ function parseMaterialToken(raw) {
     idPart = s.slice(0, ci).trim();
     const binPart = s.slice(ci + 1).trim();
     if (binPart === '') return bad("':' 뒤에 BIN이 없습니다.");
-    // Same integer reader as the layer boundaries. A second number parser here is how
+    // Same integer reader as the layer heights. A second number parser here is how
     // '0x10' became 16 on one side and 0 on the other.
     const st = boundState(binPart);
     if (st.state !== 'ok') return bad(`BIN '${binPart}'을(를) 정수로 읽을 수 없습니다.`);
@@ -157,205 +196,216 @@ function materialPoolKey(tok) {
   return JSON.stringify([tok.lot, tok.scope === 'lot' ? null : tok.slot, tok.bin]);
 }
 
-// Layers a band covers, or null when either boundary is unreadable. Callers must treat
-// null as "cannot be computed" and never as an empty range - an unreadable boundary that
-// silently contributed zero layers is how a 16-layer stack becomes a 15-layer stack.
-function bandLayerSpan(band) {
-  const f = boundState(band && band.from);
-  const t = boundState(band && band.to);
-  if (f.state !== 'ok' || t.state !== 'ok') return null;
-  if (f.value < 1) return null;
-  if (f.value > t.value) return null;
+// ── 구역 산술 ──────────────────────────────────────────────────────────────────
+
+// The MID zone's extent, derived from STACK and the presence of the other two.
+// Returns { from, to, size, known }. `known:false` means STACK is unreadable and NOTHING
+// downstream may compute a layer count - callers must not treat size 0 as "no layers",
+// because "0 layers" is a legitimate structure (E-row) and "unknown" is not.
+function midZone(row) {
+  const st = stackState(row);
+  const has1h = parseMaterialList(row && row.mat_1h).length > 0;
+  const hasTop = parseMaterialList(row && row.mat_top).length > 0;
+  if (st.state !== 'ok') return { from: null, to: null, size: 0, known: false };
+  const from = has1h ? 2 : 1;
+  const to = hasTop ? st.value - 1 : st.value;
+  return { from, to, size: Math.max(0, to - from + 1), known: true };
+}
+
+// The layers ONE zone covers, or null when it cannot be computed. Never an empty array
+// for "unreadable" - an unreadable height that silently contributed zero layers is how a
+// 16-layer stack becomes 15, which is the whole reason V5 exists.
+function zoneLayers(row, zone) {
+  const st = stackState(row);
+  if (st.state !== 'ok') return null;
+  const present = parseMaterialList(row && row[zone]).length > 0;
+  if (zone === 'mat_1h') return present ? [1] : [];
+  if (zone === 'mat_top') return present ? [st.value] : [];
+  const z = midZone(row);
   const out = [];
-  for (let L = f.value; L <= t.value; L++) out.push(L);
+  for (let L = z.from; L <= z.to; L++) out.push(L);
   return out;
 }
 
-// Per value -> per layer -> how many bands cover it. The single structure B5, B6 and B8
-// all read, so "covered" cannot mean two different things in two rules.
-function buildCoverage(plan) {
-  const defined = ((plan && plan.values) || []).map(v => String(v && v.value !== undefined ? v.value : v));
-  const bands = (plan && plan.bands) || [];
-  const cover = new Map();               // value -> Map(layer -> [band indexes])
-  defined.forEach(v => cover.set(v, new Map()));
-  bands.forEach((band, idx) => {
-    const span = bandLayerSpan(band);
-    if (span === null) return;           // B1/B2/B3 report it; it contributes nothing
-    expandBandValues(band, defined).forEach(v => {
-      if (!cover.has(v)) return;         // B4 reports it; it covers no defined value
-      const byLayer = cover.get(v);
-      span.forEach(L => {
-        if (!byLayer.has(L)) byLayer.set(L, []);
-        byLayer.get(L).push(idx);
-      });
-    });
-  });
-  return cover;
+// Human label for one row+zone, used in every rule message. A message that says only
+// "MID가 비어 있습니다" makes the user hunt for the row.
+function zoneLabel(row, zone) {
+  const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
+  return `값 '${v}'의 ${ZONE_LABEL[zone]}`;
 }
 
-// The whole rule set. Returns { ok, blocks[], warns[] }; `ok` is false iff blocks exist.
-// Each entry carries { rule, message, value?, band? } so the panel can name the reason
-// on screen instead of saying "저장 실패".
+// ── 차단 규칙 ─────────────────────────────────────────────────────────────────
 //
-// plan = { values: [{value, desc, color}], bands: [{seq, values[], from, to, materials[], knobs[]}] }
-function validateBandPlan(plan) {
+// Returns { ok, blocks[], warns[] }; `ok` is false iff blocks exist. Each entry carries
+// { rule, message, value?, zone? } so the panel can name the reason ON THE ROW instead of
+// saying "저장 실패" somewhere else.
+//
+//   V5  STACK을 양의 정수로 읽을 수 없다        ← evaluated FIRST; nothing else is computable
+//   V2  STACK 1인데 1H·TOP이 둘 다 있다         ← 두 자재가 같은 1층을 잡는다
+//   V1  MID 구역이 비어 있지 않은데 MID가 없다   ← 조건부. 구역이 0층이면 발동하지 않는다
+//   V4  자재 토큰을 읽을 수 없다
+//   V3  로트 전체와 그 로트의 슬롯이 같은 BIN에 함께 지정됐다   ← 계획 전체의 성질
+//
+// plan = { values: [{ value, desc, color, stack, mat_1h[], mat_mid[], mat_top[] }] }
+function validateZonePlan(plan) {
   const blocks = [];
   const warns = [];
-  const valueRows = (plan && plan.values) || [];
-  const bands = (plan && plan.bands) || [];
-  const defined = valueRows.map(v => String(v && v.value !== undefined ? v.value : v));
-  const definedSet = new Set(defined);
+  const rows = (plan && plan.values) || [];
   const add = (list, rule, message, extra) => list.push({ rule, message, ...(extra || {}) });
 
-  // ── row-level rules ─────────────────────────────────────────────────────────
-  bands.forEach((band, idx) => {
-    const label = bandLabel(band, idx);
-    const f = boundState(band && band.from);
-    const t = boundState(band && band.to);
+  rows.forEach(row => {
+    const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
+    const st = stackState(row);
+    const mats = {};
+    ZONES.forEach(z => { mats[z] = parseMaterialList(row && row[z]); });
 
-    // B3 first: with an unreadable boundary nothing downstream can be computed at all.
-    // blank and invalid are ONE case here on purpose - both mean "no number".
-    if (f.state !== 'ok' || t.state !== 'ok') {
-      const which = f.state !== 'ok' ? 'FROM' : 'TO';
-      add(blocks, 'B3', `${label} ${which} 값을 정수로 읽을 수 없습니다 — 층 범위를 계산할 수 없습니다.`, { band: idx });
-    } else {
-      if (f.value < 1) add(blocks, 'B2', `${label} FROM은 1 이상이어야 합니다 (지금 ${f.value}).`, { band: idx });
-      if (f.value > t.value) add(blocks, 'B1', `${label} FROM ${f.value}이(가) TO ${t.value}보다 큽니다.`, { band: idx });
+    // V5 FIRST. With an unreadable height every zone extent is a guess, and a guessed
+    // extent is precisely the "screen is fine, number is short" defect this rule exists
+    // to prevent. blank and invalid are ONE case here on purpose - both mean "no height".
+    if (st.state !== 'ok') {
+      const shown = st.state === 'blank' ? '(비어 있음)' : JSON.stringify(row && row.stack);
+      add(blocks, 'V5', `값 '${v}'의 STACK ${shown}을(를) 1 이상의 정수로 읽을 수 없습니다 — 층 구조를 계산할 수 없습니다.`,
+        { value: v });
+    } else if (st.value === 1 && mats.mat_1h.length > 0 && mats.mat_top.length > 0) {
+      // V2. At STACK 1 there is exactly one layer and both zones claim it. Note this is
+      // NOT reported as a MID problem: MID's zone is 0층 here and blaming MID would send
+      // the user to the one cell that is innocent.
+      add(blocks, 'V2', `값 '${v}'은(는) STACK 1인데 1H와 TOP이 모두 있습니다 — `
+        + `'${mats.mat_1h[0]}'와(과) '${mats.mat_top[0]}'이(가) 같은 1층을 잡습니다.`, { value: v, zone: 'mat_1h' });
     }
 
-    // B4 - a reference to a value table ① does not define
-    const named = expandBandValues(band, defined).filter(v => !definedSet.has(v));
-    if (named.length > 0) {
-      add(blocks, 'B4', `${label} 값 정의에 없는 값을 참조합니다: ${named.join(', ')}`, { band: idx });
+    // V1 — conditional, and the condition is the whole point. `STACK=1` MID-only passes
+    // (구역 1–1층, MID 있음); `STACK=2` with 1H+TOP and no MID passes (구역 0층).
+    // Only computed when the height is readable: with V5 already reported, guessing an
+    // extent here would produce a second, contradictory message about the same row.
+    if (st.state === 'ok') {
+      const z = midZone(row);
+      if (z.size > 0 && mats.mat_mid.length === 0) {
+        add(blocks, 'V1', `${zoneLabel(row, 'mat_mid')} 구역이 ${formatLayerRuns(zoneLayers(row, 'mat_mid'))}`
+          + `(${z.size}층)인데 비어 있습니다 — 구역이 있으면 MID는 반드시 있어야 합니다.`,
+          { value: v, zone: 'mat_mid' });
+      }
     }
 
-    // B7 - a band with no material
-    const mats = (band && Array.isArray(band.materials)) ? band.materials.map(m => String(m).trim()).filter(Boolean) : [];
-    if (mats.length === 0) {
-      add(blocks, 'B7', `${label} 자재가 없습니다.`, { band: idx });
-    } else {
-      const dup = mats.filter((m, i) => mats.indexOf(m) !== i);
-      if (dup.length > 0) add(warns, 'W-DUP-MAT', `${label} 같은 자재가 중복 지정됐습니다: ${[...new Set(dup)].join(', ')}`, { band: idx });
-      // An unparseable material token blocks. It cannot be looked up, so its 가용 could
-      // only ever be reported as 0 - and 0 reads as "all consumed" when the truth is
-      // "we never resolved it". Refuse rather than guess.
-      mats.forEach(raw => {
+    // V4 — an unparseable token blocks. It cannot be looked up, so its 가용 could only
+    // ever be reported as 0 - and 0 reads as "all consumed" when the truth is "we never
+    // resolved it". Refuse rather than guess.
+    ZONES.forEach(z => {
+      mats[z].forEach(raw => {
         const t = parseMaterialToken(raw);
-        if (!t.ok) add(blocks, 'B7', `${label} 자재 '${raw}'을(를) 읽을 수 없습니다 — ${t.reason}`, { band: idx });
+        if (!t.ok) {
+          add(blocks, 'V4', `${zoneLabel(row, z)}의 자재 '${raw}'을(를) 읽을 수 없습니다 — ${t.reason}`,
+            { value: v, zone: z });
+        }
       });
-    }
-
-    // B9 - a band that scopes to nothing covers nothing. It has to block, because B6
-    // cannot see it when it is the TOP range: max(V) is derived from COVERED layers, so
-    // an unassigned top range simply lowers max and all eight other rules pass. The same
-    // mistake one row lower IS caught. That position-dependent asymmetry is how a
-    // 16-layer stack silently becomes 15.
-    if (expandBandValues(band, defined).length === 0) {
-      add(blocks, 'B9', `${label} 적용할 값이 없습니다 — 이 층 범위는 어떤 값에도 반영되지 않습니다.`, { band: idx });
-    }
+      // A duplicate WITHIN one zone changes the denominator of `share` for no reason.
+      // Across zones it is legitimate (the same lot at the bottom and in the middle).
+      const seen = new Set();
+      const dup = [];
+      parseMaterialList(row && row[z]).forEach(m => { if (seen.has(m)) dup.push(m); seen.add(m); });
+      const rawList = Array.isArray(row && row[z]) ? row[z] : String((row && row[z]) || '').split(/[\n,]/);
+      const trimmed = rawList.map(x => String(x).trim()).filter(Boolean);
+      const dupRaw = trimmed.filter((m, i) => trimmed.indexOf(m) !== i);
+      if (dup.length > 0 || dupRaw.length > 0) {
+        add(warns, 'W-DUP-MAT', `${zoneLabel(row, z)}에 같은 자재가 중복 지정됐습니다: `
+          + `${[...new Set(dup.concat(dupRaw))].join(', ')}`, { value: v, zone: z });
+      }
+    });
   });
 
-  // ── B10: a whole lot and one of its own slots, in the same BIN ──────────────
+  // ── V3: a whole lot and one of its own slots, in the same BIN ───────────────
   // `MID1:2` covers every slot of MID1 at BIN 2; `MID1_03:2` covers slot 03 at BIN 2.
   // Together they count slot 03 twice, and inflated demand shows up as a shortage at the
   // worst moment. Same lot at a DIFFERENT bin is a different pool and is fine.
+  //
+  // This is a property of the WHOLE PLAN, not of a row pair - the two tokens are usually
+  // on different values, which is why the message lands in table ② where both are visible
+  // at once. Reporting it on one of the two rows would make it half a message.
   {
-    const lotScoped = new Map();     // "lotbin" -> raw token
+    // Keyed by JSON.stringify([lot, bin]), for the reason `materialPoolKey` records: there
+    // is no character that cannot occur in a lot name, and an invisible separator is WORSE
+    // than a legal one because tooling strips it. Join `MID1` + bin `12` and `MID11` + bin
+    // `2` on a stripped separator and both give "MID112" - V3 would then pair two unrelated
+    // pools, blocking a correct plan while missing the real double-count.
+    const lotScoped = new Map();     // JSON [lot, bin] -> where it was named
     const slotScoped = new Map();
-    bands.forEach((band, idx) => {
-      ((band && band.materials) || []).forEach(raw => {
-        const t = parseMaterialToken(raw);
-        if (!t.ok) return;           // B7/W-MAT report it; do not double-report here
-        const key = `${t.lot}${t.bin}`;
-        (t.scope === 'lot' ? lotScoped : slotScoped).set(key, { raw: t.raw, band: idx });
+    rows.forEach(row => {
+      const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
+      ZONES.forEach(z => {
+        parseMaterialList(row && row[z]).forEach(raw => {
+          const t = parseMaterialToken(raw);
+          if (!t.ok) return;           // V4 reports it; do not double-report here
+          const key = JSON.stringify([t.lot, t.bin]);
+          (t.scope === 'lot' ? lotScoped : slotScoped).set(key, { raw: t.raw, value: v, zone: z });
+        });
       });
     });
     lotScoped.forEach((lotHit, key) => {
       const slotHit = slotScoped.get(key);
       if (!slotHit) return;
-      add(blocks, 'B10', `자재 '${lotHit.raw}'(로트 전체)와 '${slotHit.raw}'(그 로트의 슬롯)이 같은 BIN에 함께 지정됐습니다 — 그 슬롯이 두 번 계산됩니다.`,
-        { band: slotHit.band });
+      add(blocks, 'V3', `자재 '${lotHit.raw}'(로트 전체 · 값 '${lotHit.value}')와 `
+        + `'${slotHit.raw}'(그 로트의 슬롯 · 값 '${slotHit.value}')이 같은 BIN에 함께 지정됐습니다 — `
+        + `그 슬롯이 두 번 계산됩니다.`, { value: slotHit.value, zone: slotHit.zone });
     });
   }
-
-  // ── per-value rules. Everything below reads ONE coverage structure. ──────────
-  const cover = buildCoverage(plan);
-  defined.forEach(v => {
-    const byLayer = cover.get(v) || new Map();
-    const layers = [...byLayer.keys()];
-
-    // B8 - defined in ① and covered by nothing
-    if (layers.length === 0) {
-      add(blocks, 'B8', `값 '${v}'을(를) 덮는 구간이 없습니다.`, { value: v });
-      return;                       // max is undefined; B5/B6 have nothing to say
-    }
-
-    // B5 - overlap, per (value, layer)
-    const doubled = layers.filter(L => byLayer.get(L).length > 1).sort((a, b) => a - b);
-    if (doubled.length > 0) {
-      const rows = [...new Set(doubled.flatMap(L => byLayer.get(L)))].map(i => i + 1).sort((a, b) => a - b);
-      add(blocks, 'B5', `값 '${v}'의 ${formatLayerRuns(doubled)}이(가) 두 번 이상 덮였습니다 (${rows.join('·')}행).`, { value: v });
-    }
-
-    // B6 - gap inside 1 … max(V). NOTE: max is the highest COVERED layer for this value,
-    // so a range above it that nobody assigned is invisible here. That is the hole the
-    // W-NO-SCOPE warning above exists to surface.
-    const max = Math.max(...layers);
-    const missing = [];
-    for (let L = 1; L <= max; L++) if (!byLayer.has(L)) missing.push(L);
-    if (missing.length > 0) {
-      add(blocks, 'B6', `값 '${v}'의 ${formatLayerRuns(missing)}이(가) 비어 있습니다 (1–${max}층 중).`, { value: v });
-    }
-  });
 
   return { ok: blocks.length === 0, blocks, warns };
 }
 
-// Total demand of ONE band = (sum of painted cells over the values it covers) × layers.
-// Per material = ceil(total / material count).
+// ── 소요 ──────────────────────────────────────────────────────────────────────
 //
-// ⚠️ THE CEILING DOES NOT DISTRIBUTE. Computing a per-value share and adding them up
-//    gives a different, larger number than one ceiling over the summed total:
+// 한 구역의 총 소요 = (그 값으로 칠한 셀 수) × (그 구역의 층 수)
+// 자재당           = ceil(총 소요 / 그 구역의 자재 수)
+//
+// ⚠️ THE CEILING DOES NOT DISTRIBUTE, and that is why the sum happens before it:
 //        ceil(3/2) + ceil(3/2) = 4     but     ceil(6/2) = 3
-//    A `B,C` band is ONE demand on ONE material set, so the sum happens first and the
-//    ceiling exactly once, here. Any second place that computes this is a defect by
-//    construction - see the `saveLegendToServer` ceil/round incident.
-function bandDemand(band, paintedOf, definedValues) {
-  const span = bandLayerSpan(band);
+//    One zone is ONE demand on ONE material set. Any second place that computes this is a
+//    defect by construction - see the `saveLegendToServer` ceil/round incident, where
+//    saving used ceil and display used round and the DB held 34 while the screen said 33.
+function zoneDemand(row, zone, painted) {
+  const span = zoneLayers(row, zone);
   if (span === null) return { layers: 0, total: 0, share: 0 };
   const layers = span.length;
-  const values = expandBandValues(band, definedValues);
-  const painted = values.reduce((sum, v) => sum + Number(paintedOf(v) || 0), 0);
-  const total = painted * layers;
-  const mats = (band && Array.isArray(band.materials)) ? band.materials.filter(m => String(m).trim() !== '') : [];
+  const total = Number(painted || 0) * layers;
+  const mats = parseMaterialList(row && row[zone]);
   const share = mats.length > 0 ? Math.ceil(total / mats.length) : 0;
   return { layers, total, share };
 }
 
-// ── ③ 자재 롤업 — 파생 전용 ───────────────────────────────────────────────────
+// ── ② 자재 롤업 — 파생 전용 ───────────────────────────────────────────────────
 //
 // Row identity is the POOL (lot, slot, bin), not the material name.
-//   사용 = Σ over bands  ceil(층수 × 그 구간 값들로 칠한 셀 수 ÷ 자재 수)
+//   사용 = Σ over (값, 구역)  ceil(층수 × 그 값으로 칠한 셀 수 ÷ 그 구역의 자재 수)
 //
-// The per-material ceiling means the shares of one band sum to MORE than that band's
+// The per-material ceiling means the shares of one zone sum to MORE than that zone's
 // total. That is deliberate and long-standing: rounding down or to nearest hides a
 // shortfall, and a plan that quietly under-orders is worse than one that over-orders.
+//
+// ⚠️ `used` IS A SUFFICIENCY CHECK, NOT AN ALLOCATION. Wafers are consumed one at a time
+//    in an order nobody records, so an even split answers exactly one question - "is there
+//    enough across this pool" - and answers nothing about which wafer goes where.
 function materialRollupRows(plan, paintedOf) {
-  const defined = ((plan && plan.values) || []).map(v => String(v && v.value !== undefined ? v.value : v));
+  const rows = (plan && plan.values) || [];
   const byPool = new Map();
-  ((plan && plan.bands) || []).forEach((band, idx) => {
-    const d = bandDemand(band, paintedOf, defined);
-    if (d.share === 0) return;
-    ((band && band.materials) || []).forEach(raw => {
-      const tok = parseMaterialToken(raw);
-      const key = materialPoolKey(tok);
-      if (key === null) return;                 // B7 blocks the save; it is not a row here
-      if (!byPool.has(key)) {
-        byPool.set(key, { key, lot: tok.lot, slot: tok.slot, bin: tok.bin, scope: tok.scope, raw: tok.raw, used: 0, uses: [] });
-      }
-      const e = byPool.get(key);
-      e.used += d.share;
-      e.uses.push({ band: idx, seq: band.seq, from: band.from, to: band.to, qty: d.share });
+  rows.forEach(row => {
+    const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
+    const painted = Number((paintedOf && paintedOf(v)) || 0);
+    ZONES.forEach(z => {
+      const d = zoneDemand(row, z, painted);
+      const mats = parseMaterialList(row && row[z]);
+      mats.forEach(raw => {
+        const tok = parseMaterialToken(raw);
+        const key = materialPoolKey(tok);
+        if (key === null) return;                 // V4 blocks the save; it is not a row here
+        if (!byPool.has(key)) {
+          byPool.set(key, { key, lot: tok.lot, slot: tok.slot, bin: tok.bin, scope: tok.scope, raw: tok.raw, used: 0, uses: [] });
+        }
+        const e = byPool.get(key);
+        e.used += d.share;
+        // The zone is kept on the use so the panel can say WHERE the demand came from
+        // without recomputing it - one implementation of the number, one of its provenance.
+        e.uses.push({ value: v, zone: z, layers: d.layers, qty: d.share });
+      });
     });
   });
   return [...byPool.values()].sort((a, b) =>
@@ -392,26 +442,235 @@ function remainingState(availability, used) {
   return { value: Number(a.value) - Number(used || 0), reliable: true, reason: '' };
 }
 
-// Renaming a value must follow it into every band that references it. In the old model
-// `bands` lived INSIDE the value's row, so a rename carried them along for free; with the
-// inversion the reference is by NAME and a rename orphans it. Call this at the same site
-// that already remaps the grid cells (`updateLegendRowForPanel` -> `remapGridValues`).
-function remapBandValues(bands, oldVal, newVal) {
-  const from = String(oldVal), to = String(newVal);
-  return (bands || []).map(b => {
-    const vals = Array.isArray(b && b.values) ? b.values : [];
-    const next = [];
-    vals.forEach(v => {
-      const s = String(v);
-      const mapped = (s === from) ? to : s;
-      if (next.indexOf(mapped) < 0) next.push(mapped);   // renaming onto a sibling merges
+// ── 엑셀 계약 ─────────────────────────────────────────────────────────────────
+//
+// SIX LOGICAL COLUMNS, in this order. These header words are what the panel PRINTS and
+// what the parser LOOKS FOR - one list, so column drift cannot happen between them.
+const DOE_COLUMNS = [
+  { id: 'value',   header: 'VALUE' },
+  { id: 'stack',   header: 'STACK' },
+  { id: 'desc',    header: 'DESC' },
+  { id: 'mat_1h',  header: '1H' },
+  { id: 'mat_mid', header: 'MID' },
+  { id: 'mat_top', header: 'TOP' },
+];
+
+// 계약 밖이지만 **머리줄에서는 알아본다.** 화면에 열로 보이는 것들이라 사람은 머리줄을 통째로
+// 긁는다 - 이 단어들을 모르는 척하면 그 머리줄이 머리줄로 인식되지 않고 **데이터 행으로**
+// 들어가, 값 이름이 "COLOR"인 행이 생긴다.
+//
+//   COLOR — 앱이 소유한다. 엑셀의 셀 채우기는 `text/plain`으로 이동하지 않으므로 붙여넣어도
+//           빈 칸이나 잡음으로 도착한다. 새 값에는 앱이 색을 배정하고, 기존 값은 자기 색을
+//           그대로 갖는다 (사용자 지시 2026-07-28).
+//   칠함  — 칠해진 셀 수. 파생값이라 어느 방향에도 속하지 않는다.
+const IGNORED_HEADERS = ['COLOR', '칠함', '칠함*'];
+
+function columnIdByHeader(word) {
+  const w = String(word === null || word === undefined ? '' : word).trim().toUpperCase();
+  if (w === '') return null;
+  if (IGNORED_HEADERS.some(h => h.toUpperCase() === w)) return 'IGNORE';
+  const hit = DOE_COLUMNS.find(c => c.header === w);
+  return hit ? hit.id : null;
+}
+
+// Is this record a header? Every non-empty cell must name a DISTINCT known column, and
+// there must be at least two of them. The two-cell floor is what keeps a one-column paste
+// of the literal text `MID` (a perfectly legal lot name) from being eaten as a heading.
+function looksLikeHeader(record) {
+  const cells = (record || []).map(c => String(c === null || c === undefined ? '' : c).trim());
+  const named = cells.filter(c => c !== '');
+  if (named.length < 2) return false;
+  const ids = named.map(columnIdByHeader);
+  if (ids.some(id => id === null)) return false;
+  // `IGNORE` may repeat (COLOR and 칠함 are two of them); contract columns may not.
+  const real = ids.filter(id => id !== 'IGNORE');
+  return new Set(real).size === real.length;
+}
+
+// ── 머리줄 없는 붙여넣기의 선행 빈 열 ────────────────────────────────────────
+//
+// 엑셀에서 표를 만든 사람은 **색 열을 그대로 갖고 있을 가능성이 높다** — 글자 없이 칠해진
+// 칸들. 그 블록은 `text/plain`으로 **첫 칸이 빈 일곱 필드**로 도착하고, 곧이곧대로 받으면
+// 모든 열이 한 칸씩 밀려 VALUE가 STACK으로 들어간다.
+//
+// 머리줄이 있으면 이름 매칭이 이걸 통째로 해결한다(COLOR는 위에서 무시된다). 없을 때의
+// 규칙은 **추측이 아니라 배울 수 있는 규칙**이어야 하므로, 네 조건을 전부 만족할 때만
+// 첫 열을 버린다:
+//
+//   ① 머리줄이 없다
+//   ② 시작 열이 VALUE다 (계약의 첫 열)
+//   ③ 첫 필드가 **모든 행에서** 비어 있다 — 한 행의 성질이 아니라 **열의 성질**이다
+//   ④ 버리지 않으면 블록이 계약보다 **넓다** (7 > 6)
+//
+// ④가 밀림을 막는다. 정확히 6칸인데 첫 칸이 비어 있으면 버리지 않는다 — 그때의 정직한
+// 읽기는 "VALUE가 비었다"이고, 이름 없는 값은 존재할 수 없으므로 그 행은 화면에서 즉시
+// 눈에 띈다. 어느 쪽이든 **조용히 밀리지는 않는다.**
+function leadingBlankColumnDropped(body, startColId) {
+  if (startColId !== DOE_COLUMNS[0].id) return false;
+  if (!Array.isArray(body) || body.length === 0) return false;
+  const room = DOE_COLUMNS.length;
+  const widest = body.reduce((m, r) => Math.max(m, (r || []).length), 0);
+  if (widest <= room) return false;
+  return body.every(r => String(((r || [])[0]) ?? '').trim() === '');
+}
+
+/**
+ * A pasted TSV grid -> per-row patches keyed by LOGICAL COLUMN ID.
+ *
+ * ㉠ HEADER PRESENT -> map by name. Any order, any subset. This is what kills the real
+ *    accident: pasting `VALUE STACK 1H MID TOP` without a header puts MID into DESC and
+ *    nothing on screen looks wrong.
+ * ㉡ NO HEADER -> fill from `startCol` (the focused field's logical index) rightwards.
+ *    NEVER "the cell to the right on screen" - a row renders as two lines and those two
+ *    orders differ. The contract is the index, and the layout is free to change.
+ * ㉢ NEVER REFUSED. A partial paste is accepted as a partial paste. Bouncing a 3-column
+ *    block back with "7 columns required" sends the user to Excel to rebuild the table,
+ *    and at that moment this screen has no reason to exist.
+ *
+ * Returns { rows: [{colId: text}], header, columns, wide } - `wide` counts cells that fell
+ * off the right edge, so the caller can say how many were ignored instead of pretending
+ * the paste was clean.
+ */
+function mapPastedGrid(grid, startColId) {
+  const src = Array.isArray(grid) ? grid : [];
+  const startIdx = Math.max(0, DOE_COLUMNS.findIndex(c => c.id === startColId));
+  const header = src.length > 0 && looksLikeHeader(src[0]);
+  let columns;
+  let body;
+  let droppedLeading = false;
+  if (header) {
+    columns = src[0].map(columnIdByHeader);
+    body = src.slice(1);
+  } else {
+    body = src;
+    droppedLeading = leadingBlankColumnDropped(body, startColId);
+    if (droppedLeading) body = body.map(r => (r || []).slice(1));
+    columns = [];
+    for (let i = startIdx; i < DOE_COLUMNS.length; i++) columns.push(DOE_COLUMNS[i].id);
+  }
+  let wide = 0;
+  const rows = body.map(record => {
+    const patch = {};
+    (record || []).forEach((cell, i) => {
+      const colId = columns[i];
+      if (colId === 'IGNORE') return;          // 계약 밖 열(COLOR·칠함) — 무시는 손실이 아니다
+      if (!colId) { if (String(cell || '').trim() !== '') wide++; return; }
+      patch[colId] = String(cell === null || cell === undefined ? '' : cell);
     });
-    return { ...b, values: next };
+    return patch;
+  });
+  return { rows, header, columns, wide, droppedLeading };
+}
+
+// One legend row -> one TSV record, RAW TOKENS ONLY.
+//
+// `MID1`, never the rendered `MID1_✱:1`; `_✱` is a drawing that says "every slot of this
+// lot" and pasting a drawing back produces a lot literally named `MID1_✱`. Same for `≈`,
+// 「미상」 and 「해당 없음」 - all of those are how the screen says something, not what the
+// user typed. An inapplicable zone exports as an EMPTY cell, because that is exactly what
+// it is: no material, for a layer that does not exist.
+//
+// COLOR and 칠함 are not here: `DOE_COLUMNS` is the whole contract in both directions, so
+// a column that is not in it cannot be emitted OR read, and the two can never disagree.
+function planRowToRecord(row) {
+  return DOE_COLUMNS.map(c => {
+    if (c.id === 'stack') {
+      const st = stackState(row);
+      // An unreadable STACK exports its RAW text, not a repaired number. The point of a
+      // round trip is to hand back what is there so the user can fix it in Excel.
+      return st.state === 'ok' ? String(st.value)
+        : String((row && row.stack) === null || (row && row.stack) === undefined ? '' : row.stack);
+    }
+    if (ZONES.indexOf(c.id) >= 0) return serializeMaterialList(row && row[c.id]);
+    const v = row && row[c.id];
+    return String(v === null || v === undefined ? '' : v);
   });
 }
 
+// The whole of ① as a grid, header first. The header always goes out: it is what makes the
+// block re-pasteable in any column order, and it costs one line.
+function planToGrid(rows) {
+  return [DOE_COLUMNS.map(c => c.header)].concat((rows || []).map(planRowToRecord));
+}
+
+// ② as a grid. 「미상」 GOES OUT AS THE WORD. Exporting it as 0 puts a number Excel will
+// happily sum into a column that means "we could not find out" - the single most expensive
+// way to lose the distinction this whole screen defends.
+const ROLLUP_COLUMNS = ['MAT', 'BIN', 'MAP', '가용', '사용', '잔여'];
+const ROLLUP_UNKNOWN = '미상';
+function rollupToGrid(rollupRows) {
+  const num = s => (s && s.reliable === true && s.value !== null && s.value !== undefined)
+    ? String(s.value) : ROLLUP_UNKNOWN;
+  return [ROLLUP_COLUMNS.slice()].concat((rollupRows || []).map(r => [
+    // The MAT cell is the raw token the user typed, so a copied ② can be pasted into ①.
+    String(r.raw === null || r.raw === undefined ? '' : r.raw),
+    String(r.bin),
+    r.mapExists === true ? 'O' : (r.mapExists === false ? 'X' : ROLLUP_UNKNOWN),
+    num(r.availability),
+    String(r.used),
+    num(r.remaining),
+  ]));
+}
+
+// ── 폐기 모델 읽기 (bands -> zones) ───────────────────────────────────────────
+//
+// WHY THIS EXISTS AT ALL. `map_split_registry.bands` holds real plans written by the band
+// model. If the zone reader simply ignored that column, opening one of those maps would
+// show an EMPTY plan - and the legend save is a `replace_map` write, so the first
+// keystroke afterwards would delete the plan that was on screen a moment ago as an empty
+// set. Reading the old shape is not a courtesy; it is what keeps invariant ④ true.
+//
+// AND IT REFUSES RATHER THAN GUESSES. Not every band arrangement is expressible as three
+// zones (four bands, a band that does not start at layer 1, an unreadable `to`). For those
+// it returns `{ ok:false }`, and the caller must show the row as unreadable and BLOCK the
+// save - collapsing a 4-band stack into 3 zones and then replace_map-ing the collapse over
+// the server's truth is exactly the "screen is fine, value is wrong" defect.
+//
+// The mapping, stated once:
+//   n = 1              -> MID only. One band covering the whole stack IS "everything
+//                        between", and 1H/TOP are the exceptions carved out of it.
+//   n > 1  1H  = band[0]   iff band[0] covers exactly layer 1
+//          TOP = band[n-1] iff band[n-1] covers exactly layer STACK
+//          MID = whatever is left, and there must be at most one of it
+function bandsToZones(bands) {
+  const src = Array.isArray(bands) ? bands : [];
+  if (src.length === 0) return { ok: true, stack: '', mat_1h: [], mat_mid: [], mat_top: [] };
+  const spans = [];
+  for (let i = 0; i < src.length; i++) {
+    const st = boundState(src[i] && src[i].to);
+    // An unreadable `to` is refused, NOT skipped. `prevTo` skips it (that was the right
+    // answer while the panel was still editing bands: show it, mark it, keep going). Here
+    // skipping would silently shorten the stack, which is the one outcome a migration is
+    // never allowed to produce.
+    if (st.state !== 'ok') return { ok: false, reason: `${i + 1}번째 구간의 끝 층을 읽을 수 없습니다.` };
+    const prev = prevTo(src, i);
+    if (st.value <= prev) return { ok: false, reason: `${i + 1}번째 구간의 끝 층 ${st.value}이(가) 앞 구간(${prev})보다 크지 않습니다.` };
+    spans.push({ from: prev + 1, to: st.value, materials: parseMaterialList(src[i] && src[i].materials) });
+  }
+  const stack = spans[spans.length - 1].to;
+  if (spans.length === 1) {
+    return { ok: true, stack, mat_1h: [], mat_mid: spans[0].materials, mat_top: [] };
+  }
+  const rest = spans.slice();
+  let h1 = [];
+  let top = [];
+  if (rest[0].from === 1 && rest[0].to === 1) h1 = rest.shift().materials;
+  if (rest.length > 0 && rest[rest.length - 1].from === stack && rest[rest.length - 1].to === stack) {
+    top = rest.pop().materials;
+  }
+  if (rest.length > 1) {
+    return { ok: false, reason: `구간 ${src.length}개는 1H·MID·TOP 세 구역으로 표현할 수 없습니다 — 중간 구간이 ${rest.length}개입니다.` };
+  }
+  return { ok: true, stack, mat_1h: h1, mat_mid: rest.length ? rest[0].materials : [], mat_top: top };
+}
+
 export {
-  SCOPE_ALL, boundState, expandBandValues, bandLayerSpan, buildCoverage,
-  validateBandPlan, bandDemand, formatLayerRuns,
-  parseMaterialToken, materialPoolKey, materialRollupRows, remainingState, remapBandValues,
+  ZONES, ZONE_LABEL, DOE_COLUMNS, ROLLUP_COLUMNS, ROLLUP_UNKNOWN,
+  boundState, stackState, midZone, zoneLayers, zoneLabel, formatLayerRuns,
+  parseMaterialList, serializeMaterialList,
+  parseMaterialToken, materialPoolKey,
+  validateZonePlan, zoneDemand, materialRollupRows, remainingState,
+  IGNORED_HEADERS, columnIdByHeader, looksLikeHeader, leadingBlankColumnDropped,
+  mapPastedGrid, planRowToRecord, planToGrid, rollupToGrid,
+  bandsToZones,
 };

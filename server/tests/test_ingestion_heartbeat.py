@@ -255,7 +255,10 @@ def test_a_watcher_wedged_inside_ingestion_goes_unhealthy(hb_dir, handler,
                "events": []}
         return health_mod.compute_health(
             {"status": "ok", "latency_ms": 1.0}, hbs, sup,
-            {"pending": 0, "oldest_age_seconds": None}, 60.0)
+            {"pending": 0, "oldest_age_seconds": None}, 60.0,
+            # This case is about a wedged watcher; skip the config-backup probe so
+            # the verdict cannot depend on what is on this machine's disk.
+            backup_result=None)
 
     try:
         # Control first: with a generous threshold this is a legitimately slow

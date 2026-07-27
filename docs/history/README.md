@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **224개** 이력. (거버넌스 규칙 #4)
+> 총 **225개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-28 07:15** — [Doe Zone Model Server Half](./20260728_071500_doe_zone_model_server_half.md)
 - **2026-07-27 20:03** — [Admin Token Gate And Static Path Traversal](./20260727_200325_admin_token_gate_and_static_path_traversal.md)
 - **2026-07-27 18:19** — [Silent Success Exec Scoping And Clipboard Precedence](./20260727_181910_silent_success_exec_scoping_and_clipboard_precedence.md)
 - **2026-07-27 13:19** — [Doc Archive Health Vocabularies And Charter Ownership](./20260727_131905_doc_archive_health_vocabularies_and_charter_ownership.md)
@@ -242,4 +243,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-07-27 by gen_index.py*
+*Last generated: 2026-07-28 by gen_index.py*

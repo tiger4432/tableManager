@@ -23,6 +23,24 @@ from utils import heartbeat
 
 DB_OK = {"status": "ok", "latency_ms": 1.0}
 OUTBOX_OK = {"pending": 0, "pending_capped": False, "oldest_age_seconds": None}
+
+
+@pytest.fixture(autouse=True)
+def no_live_config_backup_probe(monkeypatch):
+    """Keep the live config-backup probe out of this file's verdicts.
+
+    Same class of leak as conftest's DATABASE_URL pin. The `/health` route does
+    not take a backup argument, so `compute_health` runs its own probe against
+    the real `server/config/` - which means `test_health_route_returns_200_...`
+    would assert `ok` or `degraded` depending on whether THIS MACHINE happens to
+    have a snapshot less than 10 days old. That is a suite whose result depends
+    on whose laptop it runs on, and it was observed failing exactly that way.
+
+    Returning None makes compute_health skip the check (see its docstring). The
+    config-backup rows of the decision table are covered in test_config_backup.py,
+    which injects explicit values instead.
+    """
+    monkeypatch.setattr(health_mod, "probe_config_backups", lambda now=None: None)
 STALE_AFTER = 60.0
 
 
@@ -53,8 +71,14 @@ def stale(age=180.0):
             "stale_after_seconds": STALE_AFTER}
 
 
-def run(db=DB_OK, hbs=None, sup=None, outbox=OUTBOX_OK):
-    return compute_health(db, hbs if hbs is not None else {}, sup, outbox, STALE_AFTER)
+def run(db=DB_OK, hbs=None, sup=None, outbox=OUTBOX_OK, backup=None):
+    # backup=None means "do not check config backups here". These cases are about
+    # the database/worker/outbox decision table, and letting compute_health run its
+    # own filesystem probe would make every one of them depend on whether the
+    # machine happens to have a recent snapshot on disk. The config-backup rows of
+    # the table are exercised explicitly in test_config_backup.py.
+    return compute_health(db, hbs if hbs is not None else {}, sup, outbox,
+                          STALE_AFTER, backup_result=backup)
 
 
 # ------------------------------------------------------- the healthy baseline
