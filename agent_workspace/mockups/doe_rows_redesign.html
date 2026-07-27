@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>DOE 편집 행 재설계 — 시안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════
+   tokens.css 사본 (시안 자립용 — 값은 client2/src/tokens.css 그대로)
+   ══════════════════════════════════════════════════════════════ */
+:root, :root[data-theme="light"] {
+  --bg-app:#eef0f4; --bg-header:#f7f8fa; --bg-surface:#ffffff; --bg-inset:#f3f5f8;
+  --border:#d7dce4; --border-strong:#b9c2cf;
+  --text:#1f2733; --text-muted:#47536b; --text-dim:#5b6779;
+  --accent:#1a66d0; --accent-weak:#e8f0fc; --accent-contrast:#ffffff;
+  --accent-2:#6d28d9; --accent-2-weak:#f0e9fb;
+  --success:#177245; --success-weak:#e6f4ec;
+  --warning:#8a5a00; --warning-weak:#fdf3dd;
+  --danger:#c22f2f;  --danger-weak:#fdecec;
+  --info:#0e7490;    --info-weak:#e3f3f7;
+  --shadow-card:0 1px 3px rgba(30,41,59,.08),0 1px 2px rgba(30,41,59,.05);
+  --shadow-pop:0 10px 30px rgba(30,41,59,.18);
+  --row-stripe:#f7f9fb; --focus-ring:rgba(26,102,208,.15);
+  --surface-hover:rgba(31,39,51,.05); --surface-active:rgba(31,39,51,.09);
+}
+:root[data-theme="dark"] {
+  --bg-app:#121a29; --bg-header:#182134; --bg-surface:#1b2537; --bg-inset:#141c2c;
+  --border:#36425f; --border-strong:#4a5980;
+  --text:#e9edf4; --text-muted:#a8b5c9; --text-dim:#8b99ae;
+  --accent:#54c2f5; --accent-weak:rgba(84,194,245,.14); --accent-contrast:#0c1926;
+  --accent-2:#b39cf7; --accent-2-weak:rgba(179,156,247,.14);
+  --success:#33d68f; --success-weak:rgba(51,214,143,.14);
+  --warning:#f6bd35; --warning-weak:rgba(246,189,53,.14);
+  --danger:#f87e7e;  --danger-weak:rgba(248,126,126,.14);
+  --info:#4ed3ec;    --info-weak:rgba(78,211,236,.14);
+  --shadow-card:0 2px 8px rgba(0,0,0,.35); --shadow-pop:0 10px 30px rgba(0,0,0,.6);
+  --row-stripe:rgba(255,255,255,.03); --focus-ring:rgba(84,194,245,.22);
+  --surface-hover:rgba(255,255,255,.06); --surface-active:rgba(255,255,255,.10);
+}
+:root {
+  --font-sans:'Outfit',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',Consolas,monospace;
+  --transition-smooth:all .3s cubic-bezier(.4,0,.2,1);
+  --plan-sidebar-w:430px;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg-app); color:var(--text);
+  font-family:var(--font-sans); font-size:14px;
+  padding:26px 30px 60px;
+  transition:background-color .25s ease,color .25s ease;
+}
+.mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+
+/* ── 시안 페이지 크롬 (앱 아님) ───────────────────────── */
+.pg-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+.pg-head h1{font-size:1.15rem;font-weight:600;margin:0;letter-spacing:-.2px;}
+.pg-sub{color:var(--text-dim);font-size:.8rem;line-height:1.65;max-width:1000px;margin:0 0 22px;}
+.pg-sub b{color:var(--text-muted);font-weight:600;}
+.tgl{
+  margin-left:auto;display:inline-flex;align-items:center;gap:7px;
+  background:var(--bg-surface);border:1px solid var(--border-strong);
+  color:var(--text-muted);border-radius:8px;padding:7px 13px;cursor:pointer;
+  font-family:var(--font-sans);font-size:.78rem;font-weight:500;
+  transition:border-color .15s ease,color .15s ease,transform .15s ease;
+}
+.tgl:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.stage{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap;}
+.col{display:flex;flex-direction:column;gap:9px;}
+.col-cap{display:flex;align-items:baseline;gap:9px;}
+.col-cap h2{margin:0;font-size:.82rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;}
+.col-cap .why{font-size:.72rem;color:var(--text-dim);}
+.tag{font-size:.63rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid currentColor;}
+.tag.now{color:var(--text-dim);}
+.tag.new{color:var(--accent);background:var(--accent-weak);}
+
+/* 실제 사이드바 폭·높이 그대로 (430px, 맵 에디터 우측) */
+.sidebar{
+  width:var(--plan-sidebar-w); min-width:var(--plan-sidebar-w);
+  height:742px; background:var(--bg-app);
+  border:1px solid var(--border-strong); border-radius:12px;
+  box-shadow:var(--shadow-card);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.sb-head{
+  padding:9px 13px;border-bottom:1px solid var(--border);background:var(--bg-header);
+  font-size:.74rem;font-weight:600;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;
+}
+.tp-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:13px 13px 6px;}
+.tp-scroll::-webkit-scrollbar{width:7px;}
+.tp-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;}
+.tp-scroll::-webkit-scrollbar-track{background:transparent;}
+
+/* 「사용 자재」 pane — 요청대로 250px → 125px. 세로 예산이 줄어든 상태를 그대로 본다. */
+.tp-mat-pane{height:125px;min-height:125px;flex:none;border-top:1px solid var(--border);background:var(--bg-inset);display:flex;flex-direction:column;}
+.tp-mat-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--bg-header);font-size:.72rem;color:var(--text-muted);}
+.tp-mat-head b{font-size:.78rem;color:var(--text);}
+.tp-mat-scroll{flex:1;min-height:0;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:4px;}
+.tp-mat-scroll::-webkit-scrollbar{width:7px;}
+.tp-mat-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;}
+.tp-mat-row{display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:.7rem;padding:3px 7px;border-radius:6px;background:var(--bg-surface);border:1px solid var(--border);}
+.tp-mat-row .id{font-weight:600;}
+.tp-mat-row .qty{color:var(--text-dim);margin-left:auto;}
+.tp-mat-row .qty b{color:var(--text);}
+
+/* ── 공통: 접힌 DOE 행 (두 시안 동일 — 여기는 바꾸지 않는다) ── */
+.tp-doe{border:1px solid var(--border);border-radius:10px;background:var(--bg-surface);overflow:hidden;transition:border-color .15s ease;}
+.tp-doe:hover{border-color:var(--border-strong);}
+.tp-doe.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--focus-ring);}
+.tp-doe-row{display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;}
+.tp-doe-row:hover{background:var(--surface-hover);}
+.tp-caret{font-size:.6rem;color:var(--text-dim);transition:transform .18s ease;}
+.tp-doe.open .tp-caret{transform:rotate(90deg);}
+.tp-sw{width:34px;flex:none;text-align:center;border-radius:6px;padding:2px 0;font-family:var(--font-mono);font-size:.74rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);}
+.tp-doe-body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
+.tp-doe-l1{font-size:.79rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tp-doe-l2{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.67rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tp-brush-tag{margin-left:6px;font-size:.6rem;font-family:var(--font-sans);font-weight:600;color:var(--accent);background:var(--accent-weak);border-radius:20px;padding:1px 7px;}
+.tp-doe-detail{border-top:1px solid var(--border);background:var(--bg-inset);padding:11px;display:flex;flex-direction:column;gap:11px;}
+.tp-sec{display:flex;flex-direction:column;gap:6px;}
+.tp-sec-h{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:.71rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;}
+.tp-hint{font-size:.7rem;color:var(--text-dim);line-height:1.5;}
+.tp-hint b{color:var(--text-muted);}
+.glass-input{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:var(--font-sans);outline:none;transition:border-color .15s ease,box-shadow .15s ease;}
+.glass-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring);}
+.glass-page-btn{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:7px;color:var(--text-muted);font-family:var(--font-sans);font-size:.72rem;font-weight:500;padding:4px 10px;cursor:pointer;transition:border-color .15s ease,color .15s ease,transform .15s ease;}
+.glass-page-btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.tp-doe-del,.tp-band-del{border:1px solid transparent;background:transparent;color:var(--text-dim);border-radius:5px;padding:2px 6px;cursor:pointer;font-size:.75rem;transition:var(--transition-smooth);}
+.tp-doe-del:hover,.tp-band-del:hover{background:var(--danger-weak);color:var(--danger);}
+
+/* ══════════════════════════════════════════════════════════════
+   A. 현재 (as-is) — transfer_plan.css 재현
+   ══════════════════════════════════════════════════════════════ */
+.as-is .tp-fld{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.as-is .tp-fld label{font-size:.66rem;color:var(--text-dim);font-weight:500;text-transform:uppercase;letter-spacing:.4px;}
+.as-is .tp-fld .glass-input{padding:5px 8px;font-size:.78rem;width:100%;}
+.as-is .tp-asg-l1{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;}
+.as-is .tp-d-color{width:42px;height:30px;padding:0;border:1px solid var(--border-strong);border-radius:7px;background:var(--bg-surface);cursor:pointer;}
+.as-is .tp-band{background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:7px;}
+.as-is .tp-band+.tp-band{margin-top:2px;}
+.as-is .tp-band.bad{border-color:var(--danger);}
+.as-is .tp-band-l1{display:grid;grid-template-columns:1fr 74px auto;gap:8px;align-items:end;}
+.as-is .tp-band-range{font-family:var(--font-mono);font-size:.78rem;color:var(--text-muted);padding-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.as-is .tp-band-range b{color:var(--accent-2);font-weight:600;}
+.as-is .tp-band-calc{font-size:.71rem;color:var(--text-dim);font-family:var(--font-mono);border-top:1px dashed var(--border);padding-top:5px;line-height:1.45;}
+.as-is .tp-unknown-val{color:var(--text-dim);border-bottom:1px dashed var(--text-dim);cursor:help;}
+.as-is .tp-unknown-val.bad{color:var(--danger);border-bottom-color:var(--danger);}
+.as-is .tp-matchips{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+.as-is .tp-matchip{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:.71rem;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:2px 4px 2px 8px;}
+.as-is .tp-matchip button{background:transparent;border:none;color:var(--text-dim);font-size:.66rem;padding:1px 4px;border-radius:4px;cursor:pointer;}
+.as-is .tp-matchip button:hover{background:var(--danger-weak);color:var(--danger);}
+.as-is .tp-matchip.add{border-style:dashed;color:var(--accent);border-color:var(--accent);padding:3px 9px;cursor:pointer;transition:var(--transition-smooth);}
+.as-is .tp-mat-addbox{display:flex;gap:6px;align-items:center;}
+.as-is .tp-mat-input{width:100%;padding:5px 8px;font-size:.76rem;font-family:var(--font-mono);}
+.as-is .tp-knobs{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+.as-is .tp-knob{display:inline-flex;gap:3px;align-items:center;font-family:var(--font-mono);font-size:.71rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:2px 5px 2px 7px;}
+.as-is .tp-knob input{border:none;background:transparent;color:var(--text);font-family:var(--font-mono);font-size:.71rem;width:62px;outline:none;padding:1px 2px;}
+.as-is .tp-knob-k{color:var(--accent-2)!important;font-weight:600;}
+.as-is .tp-knob-del{background:transparent;border:none;color:var(--text-dim);font-size:.65rem;cursor:pointer;border-radius:4px;padding:1px 3px;}
+.as-is .tp-d-desc{resize:vertical;min-height:44px;font-size:.78rem;width:100%;padding:5px 8px;font-family:var(--font-sans);}
+/* 마찰점 번호표 — 사이드바 안에 머무르도록 요소 경계 안쪽에 붙인다 */
+.hot{outline:1px dashed var(--danger);outline-offset:2px;border-radius:6px;position:relative;}
+.hot::after{
+  content:attr(data-n);position:absolute;z-index:4;top:-7px;right:-7px;
+  width:16px;height:16px;display:flex;align-items:center;justify-content:center;
+  background:var(--danger);color:#fff;font-family:var(--font-sans);
+  font-size:.6rem;font-weight:700;border-radius:50%;box-shadow:var(--shadow-card);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   B. 제안 (to-be)
+   행 = 레코드. 모음(자재·태그)은 전부 같은 필드 하나.
+   ══════════════════════════════════════════════════════════════ */
+.to-be .doe-grid{display:flex;flex-direction:column;}
+.to-be .gh{
+  display:grid;gap:6px;align-items:end;padding:0 0 4px;
+  font-size:.6rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim);
+}
+.to-be .gh .sub{font-size:.57rem;font-weight:500;letter-spacing:.2px;text-transform:none;opacity:.85;}
+.to-be .gh-doe{grid-template-columns:42px 1fr 146px;}
+.to-be .gh-band{grid-template-columns:42px 78px 1fr 24px;padding-top:9px;}
+
+.to-be .row-doe{display:grid;grid-template-columns:42px 1fr 146px;gap:6px;align-items:start;padding:0 0 9px;border-bottom:1px solid var(--border);}
+.to-be .val-cell{display:flex;flex-direction:column;gap:4px;}
+.to-be .val-in{width:100%;padding:5px 3px;font-size:.8rem;font-weight:600;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+.to-be .sw-in{width:100%;height:15px;padding:0;border:1px solid var(--border-strong);border-radius:5px;background:var(--bg-surface);cursor:pointer;}
+.to-be .desc-in{width:100%;resize:none;padding:5px 7px;font-size:.76rem;line-height:1.5;font-family:var(--font-sans);height:52px;}
+
+.to-be .row-band{display:grid;grid-template-columns:42px 78px 1fr 24px;gap:6px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border);transition:background-color .15s ease;}
+.to-be .row-band:hover{background:var(--surface-hover);}
+.to-be .row-band.bad{box-shadow:inset 3px 0 0 var(--danger);padding-left:6px;margin-left:-6px;}
+
+/* FROM — 입력이 아니다. 테두리가 없다는 것이 그 신호다. */
+.to-be .from-cell{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.82rem;color:var(--text-muted);text-align:right;padding:5px 2px 0 0;cursor:help;}
+.to-be .from-cell .u{font-size:.62rem;color:var(--text-dim);margin-left:1px;}
+
+/* TO — 이 화면에서 층을 타이핑하는 유일한 칸. 스피너 없음(type=text). */
+.to-be .to-cell{display:flex;flex-direction:column;gap:3px;}
+.to-be .to-in{width:100%;padding:5px 7px;font-size:.84rem;font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;}
+.to-be .to-in::placeholder{color:var(--text-dim);font-style:italic;font-size:.72rem;}
+.to-be .to-in.bad{border-color:var(--danger);color:var(--danger);background:var(--danger-weak);text-align:left;}
+.to-be .drv{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.63rem;color:var(--text-dim);line-height:1.5;text-align:right;}
+.to-be .drv b{color:var(--accent-2);font-weight:600;}
+.to-be .drv .tot{color:var(--text-muted);}
+.to-be .drv.blank{font-style:italic;}
+.to-be .drv.bad{color:var(--danger);}
+
+/* ── 모음 필드 (자재 · 태그 공용) ──────────────────────
+   같은 상자 두 가지 렌더. 평소엔 칩(빽빽하게 읽힌다),
+   포커스가 들어오면 원문 텍스트(한 줄에 하나).
+   전환은 :focus-within + opacity 뿐 — JS 재렌더가 없어서
+   포커스가 풀릴 수 없고, 애니메이션도 opacity만 쓴다. */
+.to-be .tf{position:relative;display:block;}
+.to-be .tf-raw{
+  width:100%;resize:none;padding:5px 7px;
+  font-family:var(--font-mono);font-size:.71rem;line-height:1.6;
+  overflow-y:auto;display:block;
+}
+.to-be .tf-raw::placeholder{color:var(--text-dim);font-style:italic;}
+.to-be .tf-chips{
+  position:absolute;inset:0;pointer-events:none;
+  background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:7px;
+  padding:4px 6px;display:flex;flex-wrap:wrap;gap:3px;align-content:flex-start;
+  overflow:hidden;transition:opacity .12s ease;
+}
+.to-be .tf:focus-within .tf-chips{opacity:0;}
+.to-be .tf:hover .tf-chips{border-color:var(--accent);}
+/* 넘칠 때 아래를 흐리게 — 더 있다는 신호 */
+.to-be .tf-chips.over::after{
+  content:'';position:absolute;left:1px;right:1px;bottom:1px;height:16px;border-radius:0 0 6px 6px;
+  background:linear-gradient(transparent,var(--bg-surface));
+}
+.to-be .ch{
+  display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.65rem;
+  line-height:1.35;padding:1px 6px;border-radius:20px;
+  border:1px solid var(--border);background:var(--bg-inset);color:var(--text-muted);white-space:nowrap;
+}
+.to-be .ch.ok{color:var(--success);border-color:var(--success);background:var(--success-weak);}
+.to-be .ch.warn{color:var(--warning);border-color:var(--warning);background:var(--warning-weak);}
+.to-be .ch.empty{border-style:dashed;color:var(--text-dim);background:transparent;font-style:italic;font-family:var(--font-sans);}
+/* 필드 아래 한 줄 — 파생값·보고 */
+.to-be .under{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);padding-top:3px;line-height:1.4;}
+.to-be .under .warnrep{color:var(--warning);}
+.to-be .under .share{margin-left:auto;white-space:nowrap;}
+.to-be .under .share b{color:var(--accent-2);}
+.to-be .list-cell{display:flex;flex-direction:column;min-width:0;}
+.to-be .row-band .tp-band-del{align-self:start;margin-top:4px;}
+.to-be .foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:9px;}
+.to-be .band-empty{
+  font-size:.71rem;color:var(--text-dim);line-height:1.55;padding:12px 10px;
+  border:1px dashed var(--border);border-radius:8px;background:var(--bg-surface);text-align:center;
+}
+.to-be .band-empty b{color:var(--text-muted);}
+.to-be .rule{font-size:.65rem;color:var(--text-dim);line-height:1.55;}
+.to-be .rule code{font-family:var(--font-mono);font-size:.63rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+
+/* ── 주석 패널 (앱 아님 — 리뷰용) ─────────────────────── */
+.notes{width:404px;display:flex;flex-direction:column;gap:11px;}
+.note{background:var(--bg-surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:9px;padding:12px 14px;}
+.note h3{margin:0 0 7px;font-size:.76rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text-muted);}
+.note p{margin:0 0 7px;font-size:.75rem;line-height:1.65;color:var(--text-dim);}
+.note p:last-child{margin-bottom:0;}
+.note b{color:var(--text);font-weight:600;}
+.note code{font-family:var(--font-mono);font-size:.7rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.note.warn{border-left-color:var(--warning);}
+.note.danger{border-left-color:var(--danger);}
+.note.ok{border-left-color:var(--success);}
+.note ul{margin:0;padding-left:17px;}
+.note li{font-size:.75rem;line-height:1.7;color:var(--text-dim);margin-bottom:3px;}
+.note li b{color:var(--text);}
+.strike{text-decoration:line-through;color:var(--text-dim);opacity:.7;}
+.num{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;background:var(--danger);color:#fff;font-size:.58rem;font-weight:700;border-radius:50%;margin-right:5px;vertical-align:1px;}
+.legend-3{display:flex;flex-direction:column;gap:7px;margin-top:5px;}
+.l3{display:flex;align-items:center;gap:9px;font-size:.71rem;color:var(--text-dim);}
+.l3 .cb{width:76px;flex:none;text-align:right;padding:3px 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-surface);font-family:var(--font-mono);font-size:.72rem;color:var(--text);}
+.l3 .cb.blank{color:var(--text-dim);font-style:italic;text-align:left;font-size:.65rem;}
+.l3 .cb.bad{border-color:var(--danger);color:var(--danger);background:var(--danger-weak);text-align:left;}
+.demo{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 2px;}
+</style>
+</head>
+<body>
+
+<div class="pg-head">
+  <h1>DOE 편집 행 재설계 — 시안</h1>
+  <span class="tag new">DRAFT · 코드 미반영</span>
+  <button class="tgl" id="tgl">라이트 / 다크 전환</button>
+</div>
+<p class="pg-sub">
+  실제 사이드바 폭 <b>430px</b> 그대로입니다. 「사용 자재」 pane은 요청대로 <b>250px → 125px</b>로 줄인 상태이고,
+  두 시안 모두 같은 세로 예산에서 비교합니다. 데이터는 동일 — 구간 3개(<b>정상 1 · 미정 1 · 읽을 수 없음 1</b>),
+  자재 6개(그중 1개는 자재 맵에 없음), 공정 조건 태그, 그리고 <b>구간이 없는 두 번째 DOE</b>(태그 9개 — 나중에 자동으로 붙는 경우를 미리 본다).
+  <b>제안 쪽의 자재·태그 칸은 실제로 눌러 보세요</b> — 칩이 원문 텍스트로 바뀝니다.
+</p>
+
+<div class="stage">
+
+  <!-- ══════════ A. 현재 ══════════ -->
+  <div class="col as-is">
+    <div class="col-cap"><h2>현재</h2><span class="tag now">as-is</span>
+      <span class="why">모음 하나당 [버튼]+[인풋] 한 벌</span></div>
+
+    <div class="sidebar">
+      <div class="sb-head"><span>2. Legend &amp; DOE</span><span class="mono" style="font-size:.68rem;opacity:.7;">M12_STACK</span></div>
+      <div class="tp-scroll">
+        <div class="tp-doe open on">
+          <div class="tp-doe-row">
+            <span class="tp-caret">▶</span>
+            <span class="tp-sw" style="background:#2f7d63">A2</span>
+            <span class="tp-doe-body">
+              <span class="tp-doe-l1">게이트 산화 · 430°C 습식<span class="tp-brush-tag">브러시</span></span>
+              <span class="tp-doe-l2">칠함 96 · 구간 3개 (1–15층) · 자재 6매 · 소요 1440</span>
+            </span>
+          </div>
+          <div class="tp-doe-detail">
+            <div class="tp-sec">
+              <div class="tp-asg-l1">
+                <span class="tp-fld"><label>VALUE (페인팅 값)</label><input class="glass-input mono" value="A2" /></span>
+                <span class="tp-fld"><label>색</label><input type="color" class="tp-d-color" value="#2f7d63" /></span>
+              </div>
+            </div>
+
+            <div class="tp-sec">
+              <div class="tp-sec-h"><span>STACK 구간 · 자재</span>
+                <button class="glass-page-btn" style="font-size:.7rem;padding:2px 9px;">+ 구간</button></div>
+
+              <div class="tp-band">
+                <div class="tp-band-l1">
+                  <span class="tp-band-range">1–15층 <b>15층</b></span>
+                  <span class="tp-fld hot" data-n="1"><label>끝 층</label><input class="glass-input mono" type="number" value="15" /></span>
+                  <button class="tp-band-del">🗑</button>
+                </div>
+                <div class="tp-matchips">
+                  <span class="tp-matchip">SLT-2201-A<button>✕</button></span>
+                  <span class="tp-matchip">SLT-2201-B<button>✕</button></span>
+                  <span class="tp-matchip">SLT-9931-Z<button>✕</button></span>
+                  <span class="tp-matchip add hot" data-n="2">＋ 자재</span>
+                </div>
+                <div class="tp-band-calc">칠함 96 × 15층 = 소요 1440 · 자재 3매 → 매당 480</div>
+              </div>
+
+              <div class="tp-band">
+                <div class="tp-band-l1">
+                  <span class="tp-band-range">16층 ~ <span class="tp-unknown-val">미정</span></span>
+                  <span class="tp-fld"><label>끝 층</label><input class="glass-input mono" type="number" value="" /></span>
+                  <button class="tp-band-del">🗑</button>
+                </div>
+                <div class="tp-matchips">
+                  <span class="tp-matchip">SLT-4410-A<button>✕</button></span>
+                  <span class="tp-matchip add">＋ 자재</span>
+                </div>
+                <div class="tp-band-calc">끝 층을 입력하면 소요가 계산됩니다.</div>
+              </div>
+
+              <div class="tp-band bad">
+                <div class="tp-band-l1">
+                  <span class="tp-band-range">16층 ~ <span class="tp-unknown-val bad">읽을 수 없는 값 "0x10"</span></span>
+                  <span class="tp-fld"><label>끝 층</label><input class="glass-input mono" type="number" value="" /></span>
+                  <button class="tp-band-del">🗑</button>
+                </div>
+                <div class="tp-matchips">
+                  <span class="tp-matchip">SLT-2318-C<button>✕</button></span>
+                  <span class="tp-matchip">SLT-2318-D<button>✕</button></span>
+                  <span class="tp-matchip add">＋ 자재</span>
+                </div>
+                <div class="tp-mat-addbox hot" data-n="3">
+                  <span style="flex:1;min-width:0;"><input class="glass-input tp-mat-input" placeholder="자재 ID (적은 그대로 저장됩니다)" /></span>
+                  <button class="glass-page-btn">추가</button>
+                </div>
+                <div class="tp-band-calc">끝 층을 숫자로 읽을 수 없어 이 구간은 0층으로 셉니다 — 끝 층을 다시 입력하세요.</div>
+              </div>
+
+              <span class="tp-hint">스택은 <b>끊는 지점 목록</b>입니다. 구간마다 <b>끝 층</b>만 적으면 시작 층·층 수·소요는 자동으로 나옵니다.</span>
+            </div>
+
+            <div class="tp-sec">
+              <div class="tp-sec-h"><span>knob (이 값의 DOE 조건)</span>
+                <button class="glass-page-btn hot" data-n="4">+ knob</button></div>
+              <div class="tp-knobs">
+                <span class="tp-knob"><input class="tp-knob-k" value="TEMP" /><span>=</span><input value="430" /><button class="tp-knob-del">✕</button></span>
+                <span class="tp-knob"><input class="tp-knob-k" value="TIME" /><span>=</span><input value="90s" /><button class="tp-knob-del">✕</button></span>
+              </div>
+            </div>
+
+            <div class="tp-sec">
+              <div class="tp-sec-h"><span>설명 (split registry 서술과 동일 필드)</span><button class="tp-doe-del">🗑</button></div>
+              <textarea class="glass-input tp-d-desc" rows="2">게이트 산화 · 430°C 습식</textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="tp-doe">
+          <div class="tp-doe-row">
+            <span class="tp-caret">▶</span>
+            <span class="tp-sw" style="background:#8a4fbf">B1</span>
+            <span class="tp-doe-body">
+              <span class="tp-doe-l1">질화막 라이너 — 저압 CVD</span>
+              <span class="tp-doe-l2">칠함 42 · 구간 없음</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tp-mat-pane">
+        <div class="tp-mat-head"><b>📦 사용 자재</b><span>6종 · 이동 허브</span></div>
+        <div class="tp-mat-scroll">
+          <div class="tp-mat-row"><span class="id">SLT-2201-A</span><span class="qty">A2 · <b>480</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-2201-B</span><span class="qty">A2 · <b>480</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-9931-Z</span><span class="qty">A2 · <b>480</b></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ B. 제안 ══════════ -->
+  <div class="col to-be">
+    <div class="col-cap"><h2>제안</h2><span class="tag new">to-be</span>
+      <span class="why">모음 = 같은 필드 하나. 버튼 없음.</span></div>
+
+    <div class="sidebar">
+      <div class="sb-head"><span>2. Legend &amp; DOE</span><span class="mono" style="font-size:.68rem;opacity:.7;">M12_STACK</span></div>
+
+      <div class="tp-scroll">
+        <div class="tp-doe open on">
+          <div class="tp-doe-row">
+            <span class="tp-caret">▶</span>
+            <span class="tp-sw" style="background:#2f7d63">A2</span>
+            <span class="tp-doe-body">
+              <span class="tp-doe-l1">게이트 산화 · 430°C 습식<span class="tp-brush-tag">브러시</span></span>
+              <span class="tp-doe-l2">칠함 96 · 구간 3개 (1–15층) · 자재 6매 · 소요 1440</span>
+            </span>
+          </div>
+
+          <div class="tp-doe-detail">
+            <div class="doe-grid">
+
+              <!-- ── 첫째 행: DOE 자신 ── -->
+              <div class="gh gh-doe">
+                <span>VALUE</span><span>DESCRIPTION</span>
+                <span>KNOB <span class="sub">공정 조건 태그</span></span>
+              </div>
+              <div class="row-doe">
+                <span class="val-cell">
+                  <input class="glass-input val-in" value="A2" />
+                  <input type="color" class="sw-in" value="#2f7d63" />
+                </span>
+                <textarea class="glass-input desc-in">게이트 산화 · 430°C 습식</textarea>
+                <span class="tf" style="height:52px;">
+                  <textarea class="glass-input tf-raw" style="height:52px;">430C
+습식
+90s
+H2O</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="ch">430C</span><span class="ch">습식</span>
+                    <span class="ch">90s</span><span class="ch">H2O</span>
+                  </span>
+                </span>
+              </div>
+
+              <!-- ── 둘째 행부터: 구간 ── -->
+              <div class="gh gh-band">
+                <span>FROM <span class="sub">자동</span></span><span>TO</span>
+                <span>자재 <span class="sub">한 줄에 하나</span></span><span></span>
+              </div>
+
+              <!-- 구간 1 : 정상 -->
+              <div class="row-band">
+                <span class="from-cell" title="시작 층 = 앞 구간의 끝 + 1. 자동으로 정해지며 편집할 수 없습니다.">1<span class="u">층</span></span>
+                <span class="to-cell">
+                  <input class="glass-input to-in" value="15" inputmode="numeric" />
+                  <span class="drv"><b>15층</b><br><span class="tot">소요 1,440</span></span>
+                </span>
+                <span class="list-cell">
+                  <span class="tf" style="height:44px;">
+                    <textarea class="glass-input tf-raw" style="height:44px;">SLT-2201-A
+SLT-2201-B
+SLT-9931-Z</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="ch ok">SLT-2201-A</span><span class="ch ok">SLT-2201-B</span>
+                      <span class="ch warn">SLT-9931-Z</span>
+                    </span>
+                  </span>
+                  <span class="under">
+                    <span class="warnrep" title="자재 맵 테이블에서 찾지 못했습니다. 저장은 되지만 확인이 필요합니다.">⚠ 1개 맵 없음</span>
+                    <span class="share">3매 → 매당 <b>480</b></span>
+                  </span>
+                </span>
+                <button class="tp-band-del" title="이 구간 삭제 (seq는 재번호하지 않습니다)">🗑</button>
+              </div>
+
+              <!-- 구간 2 : 미정 (blank) -->
+              <div class="row-band">
+                <span class="from-cell" title="시작 층 = 앞 구간의 끝 + 1.">16<span class="u">층</span></span>
+                <span class="to-cell">
+                  <input class="glass-input to-in" value="" placeholder="미정" inputmode="numeric" />
+                  <span class="drv blank">아직 정하지 않음<br>0층</span>
+                </span>
+                <span class="list-cell">
+                  <span class="tf" style="height:28px;">
+                    <textarea class="glass-input tf-raw" style="height:28px;">SLT-4410-A</textarea>
+                    <span class="tf-chips" aria-hidden="true"><span class="ch ok">SLT-4410-A</span></span>
+                  </span>
+                  <span class="under"><span class="share">끝 층을 넣으면 계산</span></span>
+                </span>
+                <button class="tp-band-del">🗑</button>
+              </div>
+
+              <!-- 구간 3 : 읽을 수 없음 (invalid) -->
+              <div class="row-band bad">
+                <span class="from-cell" title="앞 구간이 0층이라 시작 층이 같습니다.">16<span class="u">층</span></span>
+                <span class="to-cell">
+                  <input class="glass-input to-in bad" value="0x10" inputmode="numeric"
+                    title="저장된 값 0x10 을 숫자로 읽을 수 없습니다. 이 구간은 0층으로 세고, 다음 구간은 이 구간을 건너뜁니다." />
+                  <span class="drv bad">읽을 수 없음<br>0층</span>
+                </span>
+                <span class="list-cell">
+                  <span class="tf" style="height:28px;">
+                    <textarea class="glass-input tf-raw" style="height:28px;">SLT-2318-C
+SLT-2318-D</textarea>
+                    <span class="tf-chips" aria-hidden="true"><span class="ch ok">SLT-2318-C</span><span class="ch ok">SLT-2318-D</span></span>
+                  </span>
+                  <span class="under"><span class="share">끝 층을 고치면 계산</span></span>
+                </span>
+                <button class="tp-band-del">🗑</button>
+              </div>
+
+              <div class="foot">
+                <span class="rule">칸 안은 <code>줄바꿈</code>으로 나눕니다. 한 줄로 붙여 쓸 땐 <code>,</code>도 됩니다.</span>
+                <button class="glass-page-btn">+ 구간</button>
+              </div>
+            </div>
+
+            <div class="tp-sec" style="border-top:1px solid var(--border);padding-top:9px;">
+              <div class="tp-sec-h"><span>이 DOE 삭제</span><button class="tp-doe-del">🗑</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 두 번째 DOE — 구간 없음(빈 상태) + 태그 9개(자동 부착 이후 모습) -->
+        <div class="tp-doe open">
+          <div class="tp-doe-row">
+            <span class="tp-caret">▶</span>
+            <span class="tp-sw" style="background:#8a4fbf">B1</span>
+            <span class="tp-doe-body">
+              <span class="tp-doe-l1">질화막 라이너 — 저압 CVD</span>
+              <span class="tp-doe-l2">칠함 42 · 구간 없음</span>
+            </span>
+          </div>
+          <div class="tp-doe-detail">
+            <div class="doe-grid">
+              <div class="gh gh-doe">
+                <span>VALUE</span><span>DESCRIPTION</span>
+                <span>KNOB <span class="sub">공정 조건 태그</span></span>
+              </div>
+              <div class="row-doe">
+                <span class="val-cell">
+                  <input class="glass-input val-in" value="B1" />
+                  <input type="color" class="sw-in" value="#8a4fbf" />
+                </span>
+                <textarea class="glass-input desc-in">질화막 라이너 — 저압 CVD, 두께 검증 대기</textarea>
+                <span class="tf" style="height:52px;">
+                  <textarea class="glass-input tf-raw" style="height:52px;">LP-CVD
+1200mTorr
+650C
+SiH2Cl2
+NH3
+두께검증대기
+Lot-A
+재작업
+2nd-pass</textarea>
+                  <span class="tf-chips over" aria-hidden="true">
+                    <span class="ch">LP-CVD</span><span class="ch">1200mTorr</span><span class="ch">650C</span>
+                    <span class="ch">SiH2Cl2</span><span class="ch">NH3</span><span class="ch">두께검증대기</span>
+                    <span class="ch">Lot-A</span><span class="ch">재작업</span><span class="ch">2nd-pass</span>
+                  </span>
+                </span>
+              </div>
+
+              <div class="gh gh-band">
+                <span>FROM <span class="sub">자동</span></span><span>TO</span>
+                <span>자재 <span class="sub">한 줄에 하나</span></span><span></span>
+              </div>
+              <div class="band-empty">
+                구간이 없습니다. <b>[+ 구간]</b>으로 만드세요 — 첫 구간은 <b>1층</b>에서 시작합니다.
+              </div>
+              <div class="foot">
+                <span class="rule">칠함 <b class="mono">42</b>칸 · 구간을 만들면 소요가 계산됩니다.</span>
+                <button class="glass-page-btn">+ 구간</button>
+              </div>
+            </div>
+            <div class="tp-sec" style="border-top:1px solid var(--border);padding-top:9px;">
+              <div class="tp-sec-h"><span>이 DOE 삭제</span><button class="tp-doe-del">🗑</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tp-mat-pane">
+        <div class="tp-mat-head"><b>📦 사용 자재</b><span>6종 · 이동 허브</span></div>
+        <div class="tp-mat-scroll">
+          <div class="tp-mat-row"><span class="id">SLT-2201-A</span><span class="qty">A2 · <b>480</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-2201-B</span><span class="qty">A2 · <b>480</b></span></div>
+          <div class="tp-mat-row" style="border-color:var(--warning);"><span class="id" style="color:var(--warning);">SLT-9931-Z</span><span class="qty">A2 · <b>480</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-2318-C</span><span class="qty">A2 · <b>0</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-2318-D</span><span class="qty">A2 · <b>0</b></span></div>
+          <div class="tp-mat-row"><span class="id">SLT-4410-A</span><span class="qty">A2 · <b>0</b></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 주석 ══════════ -->
+  <div class="notes">
+    <div class="note danger">
+      <h3>현재 쪽 빨간 번호 = 사용자가 지목한 곳</h3>
+      <ul>
+        <li><span class="num">1</span><b>끝 층 칸이 작다</b> — 74px인데 그중 <b>17px을 숫자 스피너</b>가 먹습니다.</li>
+        <li><span class="num">2</span><b>자재 추가 버튼</b> — 누르면 아래에 인풋이 열립니다.</li>
+        <li><span class="num">3</span><b>그 인풋 + [추가]</b> — 자재 <b>1개당</b> 이 왕복을 반복합니다.</li>
+        <li><span class="num">4</span><b>knob 추가 버튼</b> — 누르면 빈 칸 <b>2개</b>가 생깁니다.</li>
+      </ul>
+      <p style="margin-top:8px;"><b>포커스가 풀리는 것</b>은 이 넷의 결과입니다 — 아래 마지막 카드 참조.</p>
+    </div>
+
+    <div class="note">
+      <h3>없앤 것</h3>
+      <ul>
+        <li><b class="strike">＋ 자재</b> 버튼 + 인풋 상자 + <b class="strike">추가</b> 버튼 — 구간마다 3개</li>
+        <li><b class="strike">✕</b> 자재 칩 삭제 버튼 — 자재 <b>1개당 1개</b></li>
+        <li><b class="strike">+ knob</b> 버튼과 knob마다 인풋 2개 + <b class="strike">✕</b></li>
+        <li><b class="strike">k / v 쌍</b> 자체 — 태그 한 줄로</li>
+        <li>구간 아래 별도 <b class="strike">계산 줄</b> — 파생값을 각자 출처 칸 밑으로</li>
+        <li>TO의 <b class="strike">숫자 스피너</b> — 화살표가 먹던 폭을 타이핑에</li>
+      </ul>
+      <p style="margin-top:8px;">구간 3개 · 자재 6개 · 태그 4개 기준 <b>클릭 대상 22개 → 5개</b>.</p>
+    </div>
+
+    <div class="note ok">
+      <h3>모음 필드 하나 — 자재와 태그가 같은 물건</h3>
+      <p>둘 다 <b>정체 없는 문자열 목록</b>이라 칸도 똑같이 만들었습니다. 사용자는 <b>한 가지 조작만</b> 배웁니다.</p>
+      <p>평소엔 <b>칩</b>으로 빽빽하게 읽히고, <b>누르면 원문 텍스트</b>(한 줄에 하나)로 바뀝니다.
+      전환은 <code>:focus-within</code> + <code>opacity</code>뿐 — <b>JS 재렌더가 없어서 포커스가 풀릴 수가 없습니다.</b>
+      상자 높이는 고정이라 태그가 4개든 12개든 <b>행 높이가 변하지 않습니다</b>.</p>
+      <p>칩이라서 <b>가로로 채워집니다</b>. 같은 폭에 줄글이면 9개가 9줄이지만 칩은 3줄입니다 —
+      나중에 공정 추적이 태그를 자동으로 달아도 <b>모양이 무너지지 않습니다</b>(B1 참고).</p>
+      <p>자재 칩은 색이 곧 보고입니다: <span class="ch ok" style="font-family:var(--font-mono);font-size:.65rem;padding:1px 6px;border-radius:20px;border:1px solid var(--success);color:var(--success);">맵 있음</span>
+      <span class="ch warn" style="font-family:var(--font-mono);font-size:.65rem;padding:1px 6px;border-radius:20px;border:1px solid var(--warning);color:var(--warning);">맵 없음</span>
+      — 기존 자재 pane의 <b>맵 ✓ / 맵 없음</b> 어휘 그대로입니다. 못 찾은 ID는 <b>이름을 대서 보고</b>하고 <b>고쳐 주지 않습니다.</b></p>
+    </div>
+
+    <div class="note">
+      <h3>TO 세 상태</h3>
+      <div class="legend-3">
+        <div class="l3"><span class="cb">15</span><span><b style="color:var(--text);">정상</b> — 숫자 + 아래 <b style="color:var(--accent-2);">15층</b>·소요</span></div>
+        <div class="l3"><span class="cb blank">미정</span><span><b style="color:var(--text);">미정</b> — 빈 칸 + 회색 이탤릭. <b>오류 아님</b></span></div>
+        <div class="l3"><span class="cb bad">0x10</span><span><b style="color:var(--text);">읽을 수 없음</b> — 원문 그대로 + 빨강 + 행 왼쪽 띠</span></div>
+      </div>
+      <p style="margin-top:9px;">차이가 <b>세 채널</b>로 동시에 옵니다 — 칸 내용(숫자 / 빈칸 / 원문), 색(기본 / 회색 / 빨강),
+      아래 파생줄(<span class="mono">15층·소요</span> / <span class="mono">아직 정하지 않음</span> / <span class="mono">읽을 수 없음</span>).
+      <b>미정도 읽을 수 없음도 절대 0으로 보이지 않습니다.</b></p>
+      <p><b>type=number를 버리는 것이 핵심입니다.</b> 지금은 <code>0x10</code>을 숫자 칸에 못 넣어
+      화면에 <b>빈 칸</b>으로 나옵니다 — 미정과 구분이 안 됩니다. <code>type=text</code>여야 원문이 보입니다.</p>
+      <p><b>FROM</b>은 칸을 안 씁니다. 테두리 있는 것은 입력, 맨 글자는 계산값 — 아이콘보다 강한 신호입니다.
+      구간 2·3이 <b>둘 다 16층</b>인 것은 정상입니다: 가운데가 0층이라 다음 구간이 같은 자리에서 시작합니다.</p>
+    </div>
+
+    <div class="note warn">
+      <h3>가장 약한 곳 ① 태그 칸이 146px</h3>
+      <p>사용자가 <b>"첫째 행은 VALUE · DESCRIPTION · KNOB"</b>이라 했는데, 380px 안에 셋을 넣으면
+      설명이 180px, 태그가 <b>146px</b>밖에 안 됩니다. 태그 4개까지는 좋지만
+      <b>9개면 B1처럼 아래가 잘립니다</b>(흐림 처리로 더 있다고만 말합니다).
+      자동 부착이 12개를 달면 <b>절반은 눌러야 보입니다</b> — 읽기 무마찰이 깨집니다.</p>
+      <p>대안은 하나뿐입니다: <b>태그를 VALUE·DESCRIPTION 아래 전폭 한 줄로</b> 내리는 것.
+      380px이면 같은 높이에 <b>9개가 다 보입니다.</b> 새 영역이 생기는 게 아니라
+      첫째 행이 <b>두 줄짜리 한 덩어리</b>가 됩니다. 다만 사용자가 말한 "한 행"과는 어긋납니다.
+      <b>태그가 보통 몇 개나 붙을지</b>를 사용자에게 물어보고 정하는 게 맞습니다 — 3~5개면 지금 그대로 두면 됩니다.</p>
+    </div>
+
+    <div class="note warn">
+      <h3>가장 약한 곳 ② 자재 자동완성이 사라짐</h3>
+      <p>텍스트 칸으로 접으면 <b>자동완성이 없어집니다.</b> 자재 ID는 불투명 문자열이라
+      지금은 그게 사실상 <b>유일한 탐색 수단</b>인데, 하필 「사용 자재」 pane도 절반이 됩니다 —
+      <b>발견 수단 둘이 동시에 얇아집니다.</b></p>
+      <p>칩 색깔이 <b>사후 확인</b>은 해 주지만 <b>사전 탐색은 아닙니다.</b>
+      엑셀에서 8개를 붙여넣는 건 확실히 빨라지고, 맨손으로 ID를 떠올려 치는 사용자에게는 <b>느려집니다.</b>
+      사용자에게 물어볼 것: <b>자재 ID를 보통 어디서 가져오는가</b> — 외워서 치는가, 어디선가 복사하는가.</p>
+    </div>
+
+    <div class="note danger">
+      <h3>포커스는 표현이 아니라 로직 (Client PM 이관)</h3>
+      <p>원인은 칸 모양이 아닙니다. 값 하나를 고칠 때마다
+      <code>commitBands/commitKnobs → updateLegendRow → renderDoeList()</code>가 돌고
+      그 안에서 <code>box.innerHTML = …</code>로 <b>목록 전체를 다시 그립니다.</b>
+      포커스를 쥔 DOM 노드가 통째로 사라지니 포커스가 풀립니다.</p>
+      <p>이 시안이 그 문제를 <b>구조적으로</b> 줄입니다 — 모음이 필드 하나라
+      자재·태그 편집이 더 이상 <b>노드를 추가·삭제하지 않기</b> 때문입니다.
+      확정을 <code>change</code>(칸을 떠날 때)로 두면 타이핑 중 재렌더가 아예 없습니다.
+      다만 <b>재렌더를 건너뛰는 것 자체는 코드 변경</b>이라 디자인 범위 밖입니다.</p>
+      <p><b>구간(band)은 텍스트로 접지 않았습니다.</b> 구간은 <code>seq</code>라는 정체를 들고 있고
+      자재가 거기 매달려 있습니다. 텍스트는 정체를 실을 수 없어서, 다시 파싱할 때마다 seq를 새로 매기게 되고
+      <b>자재가 남의 구간으로 따라갑니다.</b> 모음을 필드로 접는 규칙은 <b>정체 없는 값</b>에만 적용했습니다.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('tgl').addEventListener('click', function () {
+    var r = document.documentElement;
+    r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>

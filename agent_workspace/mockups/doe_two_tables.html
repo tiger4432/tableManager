@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>DOE 두 표 — ① 값 정의(STACK) · ② 자재 롤업(슬롯 전개) — 시안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   tokens.css 사본 (시안 자립용 — 값은 client2/src/tokens.css 그대로)
+   새 색은 만들지 않았습니다. 아래 변수 밖의 색은 DOE 스와치(사용자 데이터)뿐입니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root, :root[data-theme="light"] {
+  --bg-app:#eef0f4; --bg-header:#f7f8fa; --bg-surface:#ffffff; --bg-inset:#f3f5f8;
+  --border:#d7dce4; --border-strong:#b9c2cf;
+  --text:#1f2733; --text-muted:#47536b; --text-dim:#5b6779;
+  --accent:#1a66d0; --accent-weak:#e8f0fc; --accent-contrast:#ffffff;
+  --accent-2:#6d28d9; --accent-2-weak:#f0e9fb;
+  --success:#177245; --success-weak:#e6f4ec;
+  --warning:#8a5a00; --warning-weak:#fdf3dd;
+  --danger:#c22f2f;  --danger-weak:#fdecec;
+  --info:#0e7490;    --info-weak:#e3f3f7;
+  --shadow-card:0 1px 3px rgba(30,41,59,.08),0 1px 2px rgba(30,41,59,.05);
+  --shadow-pop:0 10px 30px rgba(30,41,59,.18);
+  --row-stripe:#f7f9fb; --focus-ring:rgba(26,102,208,.15);
+  --surface-hover:rgba(31,39,51,.05); --surface-active:rgba(31,39,51,.09);
+}
+:root[data-theme="dark"] {
+  --bg-app:#121a29; --bg-header:#182134; --bg-surface:#1b2537; --bg-inset:#141c2c;
+  --border:#36425f; --border-strong:#4a5980;
+  --text:#e9edf4; --text-muted:#a8b5c9; --text-dim:#8b99ae;
+  --accent:#54c2f5; --accent-weak:rgba(84,194,245,.14); --accent-contrast:#0c1926;
+  --accent-2:#b39cf7; --accent-2-weak:rgba(179,156,247,.14);
+  --success:#33d68f; --success-weak:rgba(51,214,143,.14);
+  --warning:#f6bd35; --warning-weak:rgba(246,189,53,.14);
+  --danger:#f87e7e;  --danger-weak:rgba(248,126,126,.14);
+  --info:#4ed3ec;    --info-weak:rgba(78,211,236,.14);
+  --shadow-card:0 2px 8px rgba(0,0,0,.35); --shadow-pop:0 10px 30px rgba(0,0,0,.6);
+  --row-stripe:rgba(255,255,255,.03); --focus-ring:rgba(84,194,245,.22);
+  --surface-hover:rgba(255,255,255,.06); --surface-active:rgba(255,255,255,.10);
+}
+:root{
+  --font-sans:'Outfit',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',Consolas,monospace;
+  --transition-smooth:all .3s cubic-bezier(.4,0,.2,1);
+  --plan-sidebar-w:430px;                 /* transfer_plan.css:16 실측값 */
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg-app);color:var(--text);font-family:var(--font-sans);font-size:14px;
+     padding:22px 26px 56px;transition:background-color .25s ease,color .25s ease;}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+
+/* ── 시안 페이지 크롬 (앱 아님) ─────────────────────────────────────────── */
+.pg-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:6px;}
+.pg-head h1{font-size:1.1rem;font-weight:600;margin:0;letter-spacing:-.2px;}
+.pg-sub{color:var(--text-dim);font-size:.79rem;line-height:1.72;max-width:1150px;margin:0 0 18px;}
+.pg-sub b{color:var(--text-muted);font-weight:600;}
+.pg-sub code{font-family:var(--font-mono);font-size:.72rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.tgl{display:inline-flex;align-items:center;gap:7px;background:var(--bg-surface);border:1px solid var(--border-strong);
+     color:var(--text-muted);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:var(--font-sans);
+     font-size:.75rem;font-weight:500;transition:border-color .15s ease,color .15s ease,transform .15s ease;}
+.tgl:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.tgl.on{border-color:var(--accent);color:var(--accent);background:var(--accent-weak);}
+.tag{font-size:.62rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid currentColor;}
+.tag.new{color:var(--accent);background:var(--accent-weak);}
+.stage{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;}
+.col{display:flex;flex-direction:column;gap:9px;}
+.col-cap{display:flex;align-items:baseline;gap:9px;}
+.col-cap h2{margin:0;font-size:.8rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;}
+.col-cap .why{font-size:.71rem;color:var(--text-dim);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   사이드바 셸 — 실제 폭 430px, 실제 높이 742px. 반반 분할.
+   ══════════════════════════════════════════════════════════════════════════ */
+.sidebar{width:var(--plan-sidebar-w);min-width:var(--plan-sidebar-w);height:742px;
+  background:var(--bg-app);border:1px solid var(--border-strong);border-radius:12px;
+  box-shadow:var(--shadow-card);display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-header);
+  font-size:.73rem;font-weight:600;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;}
+/* 반반: 두 pane이 각자 flex:1 1 0 + 자기 스크롤. 세로 예산이 정확히 절반씩. */
+.split{flex:1;min-height:0;display:flex;flex-direction:column;}
+.pane{flex:1 1 0;min-height:0;display:flex;flex-direction:column;background:var(--bg-surface);}
+.pane + .pane{border-top:1px solid var(--border-strong);background:var(--bg-inset);}
+.pane-h{display:flex;align-items:center;gap:7px;padding:5px 10px;background:var(--bg-header);
+  border-bottom:1px solid var(--border);flex:none;}
+.pane-h .no{font-family:var(--font-mono);font-size:.72rem;font-weight:700;color:var(--accent);}
+.pane-h .nm{font-size:.73rem;font-weight:600;color:var(--text);letter-spacing:.2px;}
+.pane-h .sub{font-size:.62rem;color:var(--text-dim);}
+.pane-h .sp{margin-left:auto;}
+.pane-b{flex:1;min-height:0;overflow-y:auto;padding:3px 8px 7px;}
+.pane-b::-webkit-scrollbar{width:7px;}
+.pane-b::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;}
+.pane-b::-webkit-scrollbar-track{background:transparent;}
+
+.ch-row{display:grid;gap:4px;font-size:.555rem;font-weight:600;letter-spacing:.5px;line-height:1.4;
+  text-transform:uppercase;color:var(--text-dim);padding:1px 0;}
+.ch-row .r{text-align:right;}
+.ch-row .c{text-align:center;}
+
+/* ── 입력 기본 ─────────────────────────────────────────────────────────── */
+.gi{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);
+  font-family:var(--font-sans);outline:none;transition:border-color .15s ease,box-shadow .15s ease;}
+.gi:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring);}
+.btn{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;color:var(--text-muted);
+  font-family:var(--font-sans);font-size:.68rem;font-weight:500;padding:2px 8px;cursor:pointer;
+  transition:border-color .15s ease,color .15s ease,transform .15s ease;}
+.btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.del{border:1px solid transparent;background:transparent;color:var(--text-dim);border-radius:5px;
+  padding:1px 3px;cursor:pointer;font-size:.66rem;line-height:1;transition:var(--transition-smooth);}
+.del:hover{background:var(--danger-weak);color:var(--danger);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ① 값 정의 — 한 값 = 두 줄.
+     줄1  COLOR · VALUE · STACK · DESC · 칠함 · 삭제
+     줄2  1H · MID · TOP  (층 구조 세 구역 — 이것이 없어진 구간표 전부입니다)
+   430px에서 일곱 칸을 한 줄에 놓으면 DESC에 14px밖에 안 남습니다(실측). 그래서 두 줄.
+   ══════════════════════════════════════════════════════════════════════════ */
+.vrow{border-radius:7px;padding:2px 4px 3px;transition:background-color .15s ease;}
+.vrow:hover{background:var(--surface-hover);}
+.vrow + .vrow{border-top:1px solid var(--border);}
+.vrow.bad{box-shadow:inset 2px 0 0 var(--danger);}
+/* 선택 — 새 컨트롤 없이 **포커스를 따라갑니다.** Shift+↑↓로 늘리고 Ctrl+C로 TSV가 나갑니다.
+   아무것도 선택 안 한 채 Ctrl+C면 **표 전체**(머리줄 포함)입니다 — 90%가 원하는 것. */
+.vrow.sel{background:var(--accent-weak);box-shadow:inset 2px 0 0 var(--accent);}
+.vrow.sel:hover{background:var(--accent-weak);}
+
+/* 엑셀 왕복 표시 — ①의 머리줄 컨트롤 하나. 자기 영역을 갖지 않습니다. */
+.xl{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border-strong);border-radius:6px;
+  padding:1px 6px;background:var(--bg-surface);cursor:help;font-family:var(--font-mono);font-size:.6rem;
+  color:var(--text-muted);transition:border-color .15s ease,color .15s ease;}
+.xl:hover{border-color:var(--accent);color:var(--accent);}
+.xl b{color:var(--accent);font-weight:700;}
+.v-l1{display:grid;grid-template-columns:22px 40px 34px 1fr 26px 16px;gap:4px;align-items:center;}
+.v-l2{display:grid;grid-template-columns:104px 1fr 104px;gap:4px;align-items:start;padding-top:2px;}
+.ch-l1{grid-template-columns:22px 40px 34px 1fr 26px 16px;}
+.ch-l2{grid-template-columns:104px 1fr 104px;padding-top:0;}
+.sw{width:22px;height:20px;padding:0;border:1px solid var(--border-strong);border-radius:5px;
+  background:var(--bg-surface);cursor:pointer;}
+.vin{width:100%;padding:2px 3px;font-size:.74rem;font-weight:700;text-align:center;font-family:var(--font-mono);}
+/* STACK — 이 한 칸이 층 구조 전체입니다. type=number 아님(저장된 쓰레기가 빈칸으로 위장하는 걸 막음). */
+.stk{width:100%;padding:2px 4px;font-size:.74rem;font-weight:700;text-align:right;font-family:var(--font-mono);
+  font-variant-numeric:tabular-nums;color:var(--accent-2);}
+.stk.bad{border-color:var(--danger);color:var(--danger);background:var(--danger-weak);}
+.din{width:100%;padding:2px 6px;font-size:.71rem;font-family:var(--font-sans);}
+.pnt{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.62rem;
+  color:var(--text-dim);text-align:right;padding-right:2px;cursor:help;}
+
+/* ── 모음 필드: 칩(idle) / 원문(focus). :focus-within + opacity 뿐 — JS 없음. ──
+   이전 시안에서 살아남은 발견. 재렌더가 없으므로 포커스를 잃을 수 없습니다. */
+.tf{position:relative;display:block;}
+.tf-raw{width:100%;resize:none;padding:2px 5px;font-family:var(--font-mono);font-size:.645rem;
+  line-height:1.5;overflow-y:auto;display:block;background:var(--bg-surface);
+  border:1px solid var(--border-strong);border-radius:6px;color:var(--text);outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease;}
+.tf-raw:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring);}
+.tf-raw::placeholder{color:var(--text-dim);font-style:italic;}
+.tf-chips{position:absolute;inset:0;pointer-events:none;background:var(--bg-surface);
+  border:1px solid var(--border-strong);border-radius:6px;padding:2px 4px;display:flex;flex-wrap:wrap;
+  gap:3px;align-items:center;align-content:center;overflow:hidden;transition:opacity .12s ease;}
+.tf:focus-within .tf-chips{opacity:0;}
+.tf:hover .tf-chips{border-color:var(--accent);}
+.tf-chips.over::after{content:'';position:absolute;left:1px;right:1px;bottom:1px;height:12px;
+  border-radius:0 0 5px 5px;background:linear-gradient(transparent,var(--bg-surface));}
+.tf-more{position:absolute;right:3px;bottom:0;font-family:var(--font-mono);font-size:.55rem;
+  font-weight:700;color:var(--accent);background:var(--accent-weak);border-radius:8px;padding:0 4px;line-height:1.5;}
+.tf.empty .tf-chips{border-style:dashed;}
+.tf.bad .tf-chips,.tf.bad .tf-raw{border-color:var(--danger);}
+.tf.bad .tf-chips{background:var(--danger-weak);}
+.tf.warnf .tf-chips{border-color:var(--warning);}
+
+/* 층 범위 — 파생값입니다. 필드 맨 앞에 조용히 서서 "이 자재들이 몇 층인지"를 말합니다.
+   없어진 구간표(FROM/TO)가 여기 한 토큰으로 압축되었습니다. 포커스하면 칩과 함께 사라집니다. */
+.lr{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.575rem;font-weight:700;
+  color:var(--accent-2);background:var(--accent-2-weak);border-radius:3px;padding:0 3px;line-height:1.5;flex:none;}
+.lr.none{color:var(--text-dim);background:transparent;font-weight:400;font-style:italic;}
+.lr.bad{color:var(--danger);background:var(--danger-weak);}
+.emp{font-size:.6rem;color:var(--text-dim);font-style:italic;}
+
+/* ── 칸의 세 상태 ────────────────────────────────────────────────────────
+   ① 채움          — 칩
+   ② 비움(채울 수 있음) — 점선 테두리. 점선 = "여기 쳐도 된다"는 초대.
+   ③ 해당 없음(구조상 없음) — 아래 .na. **input이 아예 없습니다.**
+      포커스도 캐럿도 탭 순서도 없고, 실선 + 빗금이라 "채울 곳"으로 안 읽힙니다.
+      ②와 ③이 같아 보이면 사람이 의미 없는 칸에 타이핑합니다. */
+.na{display:flex;align-items:center;gap:5px;height:20px;padding:0 5px;border-radius:6px;
+  border:1px solid var(--border);color:var(--text-dim);cursor:help;overflow:hidden;
+  background-color:var(--bg-inset);
+  background-image:repeating-linear-gradient(-45deg,transparent 0 3px,var(--surface-hover) 3px 6px);}
+.na .t{font-size:.595rem;font-style:italic;white-space:nowrap;letter-spacing:.2px;}
+.na .lr{opacity:.55;font-style:normal;}
+/* 예고 — 편집은 되지만 넣으면 차단되는 칸(STACK 1에서 1H가 이미 잡은 TOP). */
+.tf.fore .tf-chips{border-style:dashed;border-color:var(--warning);}
+.tf.fore .emp{color:var(--warning);opacity:.85;}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   자재 칩 — 한 칩이 넷을 동시에 말합니다: 이름 · 로트전체/단일슬롯 · BIN · 해석 상태.
+   슬롯 자리에 표식을 넣습니다. `_01`(슬롯) vs `_✱`(로트 전체) — 같은 글자 위치에서 갈립니다.
+   BIN은 언제나 씁니다. 기본값 1은 흐리게, 그 외는 accent-2로 세게.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mc{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.615rem;
+  line-height:1.45;padding:0 4px;border-radius:4px;border:1px solid var(--border);
+  background:var(--bg-inset);color:var(--text-muted);white-space:nowrap;}
+.mc .lot{color:var(--text);font-weight:500;}
+.mc .st{color:var(--accent-2);font-weight:700;}                       /* _✱ 로트 전체 */
+.mc .bn{color:var(--text-dim);opacity:.75;}                           /* :1 기본 BIN  */
+.mc .bn.hi{color:var(--accent-2);opacity:1;font-weight:700;}          /* :2, :3       */
+.mc.warn{border-color:var(--warning);background:var(--warning-weak);}
+.mc.warn .lot{color:var(--warning);}
+.mc.bad{border-color:var(--danger);background:var(--danger-weak);color:var(--danger);}
+.mc.bad .lot{color:var(--danger);}
+.mc.lotwide{border-left:2px solid var(--accent-2);}                   /* 로트 전체 = 집계 */
+
+/* Knob 칩 — 자동 부착 12개를 견뎌야 합니다. 가장 작고 가장 조용하게. */
+.kc{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.575rem;line-height:1.45;
+  padding:0 4px;border-radius:8px;border:1px solid var(--border);background:transparent;
+  color:var(--text-dim);white-space:nowrap;}
+.kc .h{color:var(--accent-2);opacity:.7;}
+.kc.auto{border-style:dashed;}
+.kc.sig{border-color:var(--warning);color:var(--warning);}            /* 사람이 봐야 하는 이력 */
+
+/* ── 차단 메시지 — 고치는 자리에 붙습니다. 별도 면을 만들지 않습니다. ─────── */
+.blk{display:flex;align-items:flex-start;gap:5px;font-size:.615rem;line-height:1.45;color:var(--danger);
+  background:var(--danger-weak);border-radius:5px;padding:2px 6px;margin-top:2px;}
+.blk .rid{font-family:var(--font-mono);font-size:.545rem;font-weight:700;border:1px solid var(--danger);
+  border-radius:3px;padding:0 3px;flex:none;margin-top:1px;letter-spacing:.3px;}
+.blk b{font-weight:700;}
+.blk .mono{font-weight:700;}
+:root.clean .blk{display:none;}
+:root.clean .bad{box-shadow:none!important;}
+:root.clean .tf.bad .tf-chips{border-color:var(--border-strong);background:var(--bg-surface);}
+:root.clean .r2.clash{background:transparent;box-shadow:none;}
+
+.foot-note{font-size:.555rem;color:var(--text-dim);line-height:1.5;padding:4px 3px 0;
+  border-top:1px solid var(--border);margin-top:3px;}
+.foot-note code{font-family:var(--font-mono);font-size:.56rem;color:var(--accent-2);}
+.foot-note b{color:var(--text-muted);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ② 자재 롤업 — 파생 + Knob(입력).
+   행 정체 = (자재, BIN). 로트만 지정한 토큰은 **그 로트의 슬롯 수만큼 전개**됩니다.
+   전개는 목록이 아니라 진단입니다 — 전산에 기록된 그대로를 보여야 사람이 GRID에서 고칩니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+.t2 .ch-row,.r2{grid-template-columns:1fr 20px 50px 50px 54px;}
+.r2{display:grid;gap:4px;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;
+  transition:background-color .15s ease,transform .12s ease;}
+.r2:hover{background:var(--surface-hover);transform:translateX(1px);}
+.r2:hover .go{opacity:1;}
+.go{font-family:var(--font-mono);font-size:.6rem;color:var(--accent);opacity:0;transition:opacity .12s ease;
+  margin-left:3px;}
+.pool + .pool{border-top:1px solid var(--border);}
+.pool{padding:1px 0 2px;}
+.matcell{display:flex;align-items:center;gap:4px;min-width:0;}
+.cv{border:none;background:transparent;color:var(--text-dim);font-family:var(--font-mono);font-size:.6rem;
+  cursor:pointer;padding:0;width:11px;flex:none;line-height:1;transition:transform .15s ease,color .15s ease;}
+.cv:hover{color:var(--accent);}
+.pool[data-open="0"] .cv{transform:rotate(-90deg);}
+.pool[data-open="0"] .kids{display:none;}
+.cv.void{visibility:hidden;}
+/* 슬롯 수 — 진단의 핵심 숫자. 표준 카세트(25)를 넘으면 색이 바뀝니다(단정하지 않고 표시만). */
+.cnt{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.575rem;color:var(--text-dim);
+  border:1px solid var(--border);border-radius:8px;padding:0 4px;line-height:1.5;flex:none;cursor:help;}
+.cnt.over{color:var(--warning);border-color:var(--warning);background:var(--warning-weak);font-weight:700;}
+.cnt.unk{color:var(--warning);border-color:var(--warning);border-style:dashed;}
+
+/* Knob 줄 — MAT 아래 한 줄. 행 폭 전체를 씁니다(200px에는 태그 2개도 안 들어갑니다). */
+.knob{padding:2px 0 1px 15px;}
+.knob .tf-raw{font-size:.6rem;padding:1px 4px;}
+.knob .tf-chips{padding:1px 3px;gap:2px;}
+
+.kids{padding-left:0;}
+.r2.kid{padding:1px 4px 1px 4px;}
+.r2.kid .matcell{padding-left:15px;position:relative;}
+.r2.kid .matcell::before{content:'';position:absolute;left:5px;top:-3px;bottom:-3px;width:1px;
+  background:var(--border);}
+.r2.kid .mc{font-size:.585rem;border-color:transparent;background:transparent;}
+.r2.kid .mc .lot{color:var(--text-muted);font-weight:400;}
+.r2.kid.warnk .mc{border-color:var(--warning);background:var(--warning-weak);}
+.r2.kid.warnk .mc .lot{color:var(--warning);}
+.r2.clash{background:var(--danger-weak);box-shadow:inset 2px 0 0 var(--danger);}
+.r2.clash .mc{border-color:var(--danger);background:var(--danger-weak);}
+.r2.clash .mc .lot{color:var(--danger);}
+
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.635rem;text-align:right;}
+.num .ap{color:var(--text-dim);opacity:.8;font-weight:400;margin-right:1px;}   /* ≈ 균등가정 표시 */
+.num.avail{color:var(--text-muted);}
+.num.share{color:var(--text-muted);}
+.num.left{color:var(--accent-2);font-weight:600;}
+.num.left.neg{color:var(--danger);font-weight:700;}
+.num.faint{color:var(--text-dim);opacity:.55;}
+.mapb{font-size:.6rem;text-align:center;line-height:1;font-family:var(--font-mono);font-weight:700;}
+.mapb.ok{color:var(--text-dim);opacity:.55;}                          /* 정상은 무채색 */
+.mapb.no{color:var(--warning);cursor:help;}
+/* 미상 — 기존 어휘 그대로(.tp-unknown-val). 가용이 미상이면 잔여도 같은 글자입니다. */
+.unk{font-family:var(--font-sans);font-size:.59rem;color:var(--text-dim);
+  border-bottom:1px dashed var(--text-dim);cursor:help;text-align:right;display:inline-block;
+  width:100%;text-align:right;}
+.unk.w{color:var(--warning);border-bottom-color:var(--warning);}
+.unk.d{color:var(--danger);border-bottom-color:var(--danger);}
+/* 구성 미상 — 절대로 빈 목록으로 그리지 않습니다. 빈 목록은 "깨끗함"으로 읽힙니다. */
+.memb{display:flex;align-items:center;gap:5px;font-size:.6rem;color:var(--warning);padding:1px 0 1px 15px;
+  line-height:1.5;}
+.memb b{font-weight:700;}
+.memb .r{margin-left:auto;font-size:.565rem;color:var(--text-dim);}
+
+/* ── 저장 줄 ──────────────────────────────────────────────────────────── */
+.savebar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 11px;
+  border-top:1px solid var(--border-strong);background:var(--bg-header);}
+.save-msg{font-size:.66rem;color:var(--danger);font-weight:600;display:flex;align-items:center;gap:5px;}
+.save-msg .c{font-family:var(--font-mono);border:1px solid var(--danger);border-radius:9px;padding:0 5px;font-size:.6rem;}
+:root.clean .save-msg{color:var(--text-dim);font-weight:500;}
+:root.clean .save-msg .c{border-color:var(--border-strong);color:var(--text-dim);}
+.save-btn{margin-left:auto;border-radius:6px;padding:4px 14px;font-size:.72rem;font-weight:600;
+  font-family:var(--font-sans);cursor:not-allowed;border:1px solid var(--border);
+  background:var(--bg-inset);color:var(--text-dim);transition:var(--transition-smooth);}
+:root.clean .save-btn{cursor:pointer;border-color:var(--accent);background:var(--accent-weak);color:var(--accent);}
+:root.clean .save-btn:hover{transform:translateY(-1px);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   확대 판 · 노트 (앱 아님)
+   ══════════════════════════════════════════════════════════════════════════ */
+.plates{width:344px;display:flex;flex-direction:column;gap:11px;}
+.plate{background:var(--bg-surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px;}
+.plate h3{margin:0 0 8px;font-size:.72rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text-muted);}
+.plate p{margin:0 0 7px;font-size:.715rem;line-height:1.65;color:var(--text-dim);}
+.plate p:last-child{margin-bottom:0;}
+.plate b{color:var(--text);font-weight:600;}
+.plate code{font-family:var(--font-mono);font-size:.67rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.gr{font-family:var(--font-mono);font-size:.67rem;line-height:1.85;color:var(--text-muted);
+  background:var(--bg-inset);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:9px;}
+.gr .k{color:var(--accent-2);font-weight:700;}
+.gr .c{color:var(--text-dim);}
+.tx{display:flex;flex-direction:column;gap:6px;}
+.tx-r{display:flex;align-items:center;gap:9px;font-size:.675rem;color:var(--text-dim);line-height:1.5;}
+.tx-r .big{flex:none;width:96px;}
+.tx-r .big .mc{font-size:.7rem;padding:1px 5px;}
+.tx-r em{font-style:normal;color:var(--text);font-weight:600;}
+.notes{width:400px;display:flex;flex-direction:column;gap:11px;}
+.note{background:var(--bg-surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:9px;padding:11px 13px;}
+.note h3{margin:0 0 7px;font-size:.72rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text-muted);}
+.note p{margin:0 0 7px;font-size:.715rem;line-height:1.68;color:var(--text-dim);}
+.note p:last-child{margin-bottom:0;}
+.note b{color:var(--text);font-weight:600;}
+.note code{font-family:var(--font-mono);font-size:.66rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.note.warn{border-left-color:var(--warning);}
+.note.danger{border-left-color:var(--danger);}
+.note.ok{border-left-color:var(--success);}
+.note ul{margin:0;padding-left:16px;}
+.note li{font-size:.715rem;line-height:1.7;color:var(--text-dim);margin-bottom:4px;}
+.note li b{color:var(--text);}
+.strike{text-decoration:line-through;color:var(--text-dim);opacity:.7;}
+.mnum{font-family:var(--font-mono);color:var(--accent);font-weight:700;}
+</style>
+</head>
+<body>
+
+<div class="pg-head">
+  <h1>DOE 두 표 — ① 값 정의(STACK) · ② 자재 롤업(슬롯 전개)</h1>
+  <span class="tag new">시안 · 코드 미반영</span>
+  <button class="tgl" id="t-theme">라이트 / 다크</button>
+  <button class="tgl on" id="t-block">검증: <b id="t-block-l">차단 3건</b> ↔ 통과</button>
+</div>
+<p class="pg-sub">
+  실제 사이드바 폭 <b>430px</b>(<code>--plan-sidebar-w</code>), 높이 <b>742px</b>.
+  <b>①·②를 정확히 반반</b>으로 나눴습니다 — 각 pane <b>339px</b>, 각자 스크롤합니다.
+  <b>구간표는 없습니다.</b> 층 구조는 <code>STACK</code> 한 칸 + <code>1H·MID·TOP</code> 세 구역뿐이라
+  겹침·구멍이 <b>구조적으로 불가능</b>합니다.<br>
+  데이터 — 값 6개: <b>A</b>=1H 비움 + MID에 자재 둘(V3 충돌), <b>B</b>=세 구역 전부,
+  <b>C</b>=MID 구역이 1–15층인데 비어 있음(<b style="color:var(--danger);">V1 차단</b>),
+  <b style="color:var(--accent);">DT</b>=<code>dt_map</code> 계획 — <b>STACK 1 · MID만 · 정상</b>,
+  <b>E</b>=STACK 2에 1H·TOP뿐 — <b>MID 구역 0층이라 비어도 정상</b>,
+  <b>D</b>=STACK 1인데 1H·TOP 둘 다(<b style="color:var(--danger);">V2 차단</b>).<br>
+  <b>DT·E·D행의 <span style="color:var(--text-dim);">「해당 없음」</span>과 A·C행의 점선 <span style="color:var(--text-dim);">「— 비움」</span>을 나란히 보십시오</b> —
+  <b>채울 수 있는 칸</b>과 <b>구조상 없는 칸</b>은 같아 보이면 안 됩니다.
+  ②에는 <b>로트 전체 <code>MID1</code>이 슬롯 27개로 전개</b>되어 있고(카세트 25 초과 — 스플릿 미정리 의심),
+  <b>구성을 알 수 없는 로트</b>, <b>신뢰 불가 가용</b>, <b>BIN 없음</b>, <b>맵에 없는 자재</b>가 각각 하나씩 있습니다.
+  <b>자재·Knob 칸을 눌러 보세요</b> — 칩이 원문으로 바뀝니다(JS 없음). <b>▾</b>로 전개를 접습니다.
+</p>
+
+<div class="stage">
+
+  <!-- ══════════════════ 사이드바 ══════════════════ -->
+  <div class="col">
+    <div class="col-cap"><h2>계획 사이드바</h2><span class="why">430 × 742 · 실제 크기 · 반반</span></div>
+
+    <div class="sidebar">
+      <div class="sb-head"><span>2. Legend &amp; DOE</span>
+        <span class="mono" style="font-size:.66rem;opacity:.7;">M12_STACK</span></div>
+
+      <div class="split">
+
+        <!-- ═══════════════ ① 값 정의 ═══════════════ -->
+        <div class="pane" id="pane1">
+          <div class="pane-h">
+            <span class="no">①</span><span class="nm">값 정의</span>
+            <span class="sp"></span>
+            <!-- 붙여넣기는 Ctrl+V입니다. 버튼이 아니라 **표시**입니다 — 새 영역을 만들지 않습니다.
+                 navigator.clipboard는 쓰지 않습니다(HTTP LAN = 비보안 컨텍스트에서 undefined). -->
+            <span class="xl" title="엑셀 표를 그대로 붙여넣습니다 (Ctrl+V).
+열 순서 — COLOR · VALUE · STACK · DESC · 1H · MID · TOP
+머리줄을 같이 복사하면 **이름으로 맞춥니다** — 열 순서가 달라도, 일부만 복사해도 됩니다.
+Ctrl+C — 선택한 값(없으면 전체)이 같은 형태의 TSV로 나갑니다.">
+              <b>⇄</b> 엑셀
+            </span>
+            <button class="btn">+ 값</button>
+          </div>
+          <div class="pane-b">
+            <!-- 머리줄 글자 = **엑셀에 적을 열 이름 그대로**입니다. 이름으로 맞추기가 되려면
+                 화면이 보여 주는 단어와 파서가 찾는 단어가 같아야 합니다.
+                 「칠함」만 파생이라 계약에 없습니다 — 붙여넣기·복사 양쪽에서 제외됩니다. -->
+            <div class="ch-row ch-l1"><span>COLOR</span><span>VALUE</span><span class="r">STACK</span>
+              <span>DESC</span><span class="r" style="opacity:.55;" title="파생값입니다 — 엑셀 열 계약에 포함되지 않습니다(붙여넣기·복사 모두 제외).">칠함*</span><span></span></div>
+            <!-- 층 구역 설명이 머리줄에 있습니다 — 꼬리 각주로 중복하지 않습니다(50px). -->
+            <div class="ch-row ch-l2" style="padding-bottom:2px;">
+              <span title="비우면 MID가 1층부터 시작합니다">1H — 1층</span>
+              <span title="MID 구역의 크기가 0층이면 MID는 필요하지 않습니다">MID — 그 사이 (구역 있으면 필수)</span>
+              <span title="비우면 MID가 STACK층까지 갑니다">TOP — STACK층</span></div>
+
+            <!-- ── A : 1H 없음 → MID가 1층부터 ───────────────────────────── -->
+            <div class="vrow">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#c0392b" />
+                <input class="gi vin" value="A" />
+                <input class="gi stk" value="8" inputmode="numeric" />
+                <input class="gi din" value="게이트 산화 · 430°C 습식" />
+                <span class="pnt" title="맵에서 값 A로 칠해진 셀 수">96</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <!-- ② 비움(채울 수 있음). 점선 = 초대. 아래 DT행의 「해당 없음」과 비교해 보십시오. -->
+                <span class="tf empty" style="height:20px;" title="비어 있습니다. 여기에 자재를 넣으면 MID가 2층부터 시작합니다.">
+                  <textarea class="tf-raw" style="height:20px;" placeholder="비우면 MID가 1층부터"></textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="emp">— 비움</span></span>
+                </span>
+                <!-- 충돌의 절반(V3). 메시지는 ②에 있고 여기는 "고칠 자리" 표시만. -->
+                <span class="tf bad" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">MID1_03
+MID2</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="STACK 8, 1H 비움, TOP 있음 → MID는 1–7층">1–7</span>
+                    <span class="mc bad" title="②에서 로트 전체 MID1:1과 충돌합니다."><span class="lot">MID1_03</span><span class="bn">:1</span></span>
+                    <span class="mc lotwide" title="MID2 — 로트 전체(모든 슬롯), BIN 1"><span class="lot">MID2</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">TOP1</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="STACK 8 → TOP은 8층">8</span>
+                    <span class="mc lotwide"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── B : 세 구역 전부 + MID에 자재 둘 ────────────────────────
+                 **선택된 상태**로 그렸습니다(Ctrl+C 대상). 선택은 포커스를 따라가므로
+                 새 컨트롤도, 체크박스 열도 없습니다. -->
+            <div class="vrow sel">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#2f7d63" />
+                <input class="gi vin" value="B" />
+                <input class="gi stk" value="16" inputmode="numeric" />
+                <input class="gi din" value="질화막 라이너 · LP-CVD" />
+                <span class="pnt" title="맵에서 값 B로 칠해진 셀 수">64</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">ADFE1H_01</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="1H는 언제나 1층">1</span>
+                    <span class="mc" title="ADFE1H_01 — 슬롯 하나, BIN 1"><span class="lot">ADFE1H_01</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">MID1
+MID3</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="STACK 16, 1H·TOP 모두 있음 → MID는 2–15층">2–15</span>
+                    <span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                    <span class="mc lotwide"><span class="lot">MID3</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">TOP1</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="STACK 16 → TOP은 16층">16</span>
+                    <span class="mc lotwide"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── C : MID 구역이 1–15층인데 MID가 비어 있음 → V1 차단 ────── -->
+            <div class="vrow bad">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#c98a2e" />
+                <input class="gi vin" value="C" />
+                <input class="gi stk" value="16" inputmode="numeric" />
+                <input class="gi din" value="스페이서 식각" />
+                <span class="pnt" title="맵에서 값 C로 칠해진 셀 수">48</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <span class="tf empty" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;" placeholder="비우면 MID가 1층부터"></textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="emp">— 비움</span></span>
+                </span>
+                <!-- 비어 있는데 **구역이 있습니다**(1–15층) → 그래서 차단입니다.
+                     아래 DT·E행의 「해당 없음」은 구역이 0층이라 차단이 아닙니다. -->
+                <span class="tf empty bad" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;" placeholder="자재"></textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr bad" title="STACK 16, 1H 비움, TOP 있음 → MID 구역은 1–15층(15층)">1–15</span>
+                    <span class="emp" style="color:var(--danger);">— 비어 있음</span>
+                  </span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">TOP1:2</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr">16</span>
+                    <span class="mc lotwide"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn hi">:2</span></span>
+                  </span>
+                </span>
+              </div>
+              <div class="blk">
+                <span class="rid">V1</span>
+                <span><b>MID</b> 구역이 <b class="mono">1–15층</b>(15층)인데 <b>비어 있습니다</b> —
+                  <b>구역이 있으면 MID는 반드시 있어야 합니다.</b></span>
+              </div>
+            </div>
+
+            <!-- ── DT : dt_map 계획. STACK 1 · MID만. **정상입니다 — 잔소리 없음.** ──
+                 1H·TOP은 비어 있는 게 아니라 **구조상 존재하지 않습니다**(MID가 유일한 1층을 잡음).
+                 위 A행의 점선 「— 비움」과 나란히 놓고 보십시오. 같아 보이면 안 됩니다. -->
+            <div class="vrow">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#3f7fa8" />
+                <input class="gi vin" value="DT" />
+                <input class="gi stk" value="1" inputmode="numeric" />
+                <input class="gi din" value="DT 맵 · 단층" />
+                <span class="pnt" title="맵에서 값 DT로 칠해진 셀 수">24</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <span class="na" title="STACK 1이고 MID가 1층을 잡았습니다 — 1H가 들어갈 층이 없습니다. 입력할 수 없습니다(구조상 존재하지 않는 칸). STACK을 늘리면 살아납니다.">
+                  <span class="t">해당 없음</span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">DTM4_11</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr" title="STACK 1, 1H·TOP 없음 → MID 구역은 1–1층">1</span>
+                    <span class="mc"><span class="lot">DTM4_11</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="na" title="STACK 1이고 MID가 1층을 잡았습니다 — TOP이 들어갈 층이 없습니다. 입력할 수 없습니다(구조상 존재하지 않는 칸). STACK을 늘리면 살아납니다.">
+                  <span class="t">해당 없음</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── E : STACK 2 · 1H와 TOP이 두 층을 다 가짐 → MID 구역 0층.
+                 **MID가 비어도 정상입니다.** 조건부 규칙이 있어야 하는 이유가 이 행입니다. -->
+            <div class="vrow">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#8a4fbf" />
+                <input class="gi vin" value="E" />
+                <input class="gi stk" value="2" inputmode="numeric" />
+                <input class="gi din" value="이중 캡 · 상하만" />
+                <span class="pnt" title="맵에서 값 E로 칠해진 셀 수">40</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">ADFE1H_01</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr">1</span>
+                    <span class="mc"><span class="lot">ADFE1H_01</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="na" title="STACK 2에서 1H가 1층, TOP이 2층을 가져갔습니다 — MID 구역이 0층입니다. 비어 있는 것이 아니라 존재하지 않습니다. 차단이 아닙니다.">
+                  <span class="lr" style="background:transparent;color:var(--text-dim);font-weight:400;">0층</span>
+                  <span class="t">해당 없음</span>
+                </span>
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">TOP1</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr">2</span>
+                    <span class="mc lotwide"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── D : STACK 1인데 1H·TOP 둘 다 → V2 차단.
+                 MID는 여기서도 「해당 없음」입니다 — 비어 있다고 차단하지 않습니다(E행과 같은 이유).
+                 차단은 오직 **두 자재가 같은 1층을 잡는 것** 하나뿐입니다. -->
+
+            <div class="vrow bad">
+              <div class="v-l1">
+                <input type="color" class="sw" value="#6d7a90" />
+                <input class="gi vin" value="D" />
+                <input class="gi stk bad" value="1" inputmode="numeric" />
+                <input class="gi din" value="캡 어닐 · 재작업분" />
+                <span class="pnt" title="맵에서 값 D로 칠해진 셀 수">32</span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="v-l2">
+                <span class="tf bad" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">3AB77_04</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr bad">1</span>
+                    <span class="mc warn" title="문법은 맞지만 자재 맵에서 찾지 못했습니다 — ② MAT 참조."><span class="lot">3AB77_04</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+                <span class="na" title="STACK 1에서 1H와 TOP이 유일한 1층을 두고 다툽니다 — MID 구역은 0층입니다. 비어 있는 것이 아니라 존재하지 않으므로, MID는 차단 사유가 아닙니다.">
+                  <span class="lr" style="background:transparent;color:var(--text-dim);font-weight:400;">0층</span>
+                  <span class="t">해당 없음</span>
+                </span>
+                <span class="tf bad" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">TOP1</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="lr bad">1</span>
+                    <span class="mc lotwide"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  </span>
+                </span>
+              </div>
+              <div class="blk">
+                <span class="rid">V2</span>
+                <span><b class="mono">STACK 1</b>인데 1H·TOP이 모두 있습니다 —
+                  <b class="mono">3AB77_04</b>와 <b class="mono">TOP1</b>이 <b>같은 1층</b>을 잡습니다.</span>
+              </div>
+            </div>
+
+            <div class="foot-note">
+              <b>STACK</b>=총 층수 · <b>MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)</b> ·
+              <b>구역이 0층이면 MID는 필요 없습니다</b><br>
+              자재는 줄바꿈으로 나눔 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════════════ ② 자재 롤업 ═══════════════ -->
+        <div class="pane t2" id="pane2">
+          <div class="pane-h">
+            <span class="no">②</span><span class="nm">자재 롤업</span>
+            <span class="sub">행 클릭 → 그 자재의 맵</span>
+            <span class="sp"></span>
+            <span class="mono" style="font-size:.61rem;color:var(--text-dim);">9 풀</span>
+            <button class="btn" style="padding:2px 7px;">↻ 가용</button>
+          </div>
+          <div class="pane-b">
+            <div class="ch-row"><span>MAT</span><span class="c">MAP</span>
+              <span class="r">가용</span><span class="r">사용<span style="opacity:.7;">≈</span></span><span class="r">잔여<span style="opacity:.7;">≈</span></span></div>
+
+            <!-- ── 1. 단일 슬롯 · 정상 ─────────────────────────────────── -->
+            <div class="pool" data-open="1">
+              <div class="r2" title="클릭 → ADFE1H_01의 맵">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc" tabindex="0"><span class="lot">ADFE1H_01</span><span class="bn">:1</span></span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok" title="자재 맵 있음">O</span>
+                <span class="num avail">1,200</span>
+                <span class="num share" title="B의 1H(64) + E의 1H(40)">≈104</span>
+                <span class="num left"><span class="ap">≈</span>1,096</span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;">#WET #430C</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc"><span class="h">#</span>WET</span><span class="kc"><span class="h">#</span>430C</span>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── 1b. dt_map 계획의 자재 — 단일 슬롯, 평범합니다. ────────── -->
+            <div class="pool" data-open="1">
+              <div class="r2" title="클릭 → DTM4_11의 맵">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc" tabindex="0"><span class="lot">DTM4_11</span><span class="bn">:1</span></span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok" title="자재 맵 있음">O</span>
+                <span class="num avail">600</span>
+                <span class="num share"><span class="ap">≈</span>24</span>
+                <span class="num left"><span class="ap">≈</span>576</span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;">#DTMAP #SORT2</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc auto"><span class="h">#</span>DTMAP</span><span class="kc auto"><span class="h">#</span>SORT2</span>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- ── 2. 로트 전체 → 슬롯 27개 전개 (진단) ──────────────── -->
+            <div class="pool" data-open="1" id="pool-mid1">
+              <div class="r2" title="클릭 → MID1의 맵">
+                <span class="matcell"><button class="cv" data-t>▾</button>
+                  <span class="mc lotwide" tabindex="0"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  <span class="cnt over" title="전산에 슬롯 27개가 이 로트로 기록되어 있습니다. 표준 카세트는 25매입니다 — 스플릿 후 정리되지 않았을 수 있습니다. 행을 눌러 맵으로, 또는 GRID에서 LOT을 수정하십시오.">27 슬롯</span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok">O</span>
+                <span class="num avail">1,296</span>
+                <span class="num share"><span class="ap">≈</span>448</span>
+                <span class="num left"><span class="ap">≈</span>848</span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;">#LPCVD #650C #SiH2Cl2 #LOTSPLIT #QT4H #RCA1 #DHF #FURN3 #BOAT-A #2ND #RWK #90s</textarea>
+                  <span class="tf-chips over" aria-hidden="true">
+                    <span class="kc auto"><span class="h">#</span>LPCVD</span><span class="kc auto"><span class="h">#</span>650C</span>
+                    <span class="kc auto"><span class="h">#</span>SiH2Cl2</span><span class="kc auto sig" title="이 로트는 스플릿 이력이 있습니다."><span class="h">#</span>LOTSPLIT</span>
+                    <span class="kc auto"><span class="h">#</span>QT4H</span><span class="kc auto"><span class="h">#</span>RCA1</span>
+                    <span class="tf-more">+6</span>
+                  </span>
+                </span>
+              </div>
+              <div class="kids" id="kids-mid1"><!-- JS 렌더 --></div>
+            </div>
+
+            <!-- ── 3. 그 로트의 슬롯을 따로 지정 → 충돌 (차단) ──────────── -->
+            <div class="pool" data-open="1">
+              <div class="r2 clash" title="클릭 → MID1_03의 맵">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc bad" tabindex="0"><span class="lot">MID1_03</span><span class="bn">:1</span></span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok">O</span>
+                <span class="num avail">48</span>
+                <span class="num share"><span class="ap">≈</span>336</span>
+                <span class="num left neg" title="이 풀의 소요가 가용을 넘습니다."><span class="ap">≈</span>−288</span>
+              </div>
+              <div class="blk" style="margin:2px 4px 2px 15px;">
+                <span class="rid">V3</span>
+                <span>값 <b>B</b>의 MID가 로트 전체 <b class="mono">MID1:1</b>을 잡고,
+                  값 <b>A</b>의 MID가 그 안의 <b class="mono">MID1_03:1</b>을 잡습니다 —
+                  <b>같은 웨이퍼를 두 번</b> 씁니다. 둘 중 하나를 지우십시오.
+                  (①에서 두 칸이 빨갛게 표시되어 있습니다.)</span>
+              </div>
+            </div>
+
+            <!-- ── 4. 로트 전체 · 접힌 상태 (기본은 펼침) ───────────────── -->
+            <div class="pool" data-open="0">
+              <div class="r2" title="클릭 → MID2의 맵">
+                <span class="matcell"><button class="cv" data-t>▾</button>
+                  <span class="mc lotwide" tabindex="0"><span class="lot">MID2</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  <span class="cnt" title="전산에 슬롯 25개가 이 로트로 기록되어 있습니다.">25 슬롯</span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok">O</span>
+                <span class="num avail">1,200</span>
+                <span class="num share"><span class="ap">≈</span>336</span>
+                <span class="num left"><span class="ap">≈</span>864</span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;">#WET #430C #90s</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc auto"><span class="h">#</span>WET</span><span class="kc auto"><span class="h">#</span>430C</span>
+                    <span class="kc auto"><span class="h">#</span>90s</span>
+                  </span>
+                </span>
+              </div>
+              <div class="kids" id="kids-mid2"><!-- JS 렌더 --></div>
+            </div>
+
+            <!-- ── 5. 구성을 알 수 없는 로트 — 빈 목록으로 그리지 않습니다 ── -->
+            <div class="pool" data-open="1">
+              <div class="r2" title="클릭 → MID3의 맵">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc lotwide warn" tabindex="0"><span class="lot">MID3</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  <span class="cnt unk" title="이 로트에 속한 슬롯 목록을 읽지 못했습니다.">? 슬롯</span>
+                  <span class="go">→</span></span>
+                <span class="mapb no" title="로트 구성을 읽지 못해 맵 유무를 판정할 수 없습니다">X</span>
+                <span><span class="unk w" title="로트 구성을 알 수 없어 가용을 합산할 수 없습니다.">미상</span></span>
+                <span class="num share"><span class="ap">≈</span>448</span>
+                <span><span class="unk w" title="가용이 미상이라 잔여를 계산하지 않습니다. 0이 아닙니다.">미상</span></span>
+              </div>
+              <div class="memb">
+                <span>⚠</span><b>구성을 알 수 없음</b>
+                <span style="color:var(--text-dim);">— 이 로트의 슬롯 목록을 읽지 못했습니다.</span>
+                <span class="r">비어 있는 것이 아닙니다</span>
+              </div>
+            </div>
+
+            <!-- ── 6. 신뢰 불가 가용 → 잔여 미상 ───────────────────────── -->
+            <div class="pool" data-open="0">
+              <div class="r2" title="클릭 → TOP1의 맵">
+                <span class="matcell"><button class="cv" data-t>▾</button>
+                  <span class="mc lotwide" tabindex="0"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                  <span class="cnt" title="전산에 슬롯 25개가 이 로트로 기록되어 있습니다.">25 슬롯</span>
+                  <span class="go">→</span></span>
+                <span class="mapb ok">O</span>
+                <span><span class="unk w" title="서버: source_degraded — 집계 원본이 최신이 아닙니다. [↻ 가용]으로 다시 시도하십시오.">미상</span></span>
+                <span class="num share" title="A의 TOP(96) + B의 TOP(64) + E의 TOP(40) + D의 TOP(32)"><span class="ap">≈</span>232</span>
+                <span><span class="unk w" title="가용이 신뢰 불가라 잔여는 숫자를 보이지 않습니다 — 미지를 전파합니다.">미상</span></span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;">#CAP #TOP</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc auto"><span class="h">#</span>CAP</span><span class="kc auto"><span class="h">#</span>TOP</span>
+                  </span>
+                </span>
+              </div>
+              <div class="kids" id="kids-top1"><!-- JS 렌더 --></div>
+            </div>
+
+            <!-- ── 7. 이 맵에 해당 BIN이 없음 — 0이 아닙니다 ───────────── -->
+            <div class="pool" data-open="1">
+              <div class="r2" title="클릭 → TOP1의 맵">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc lotwide warn" tabindex="0"><span class="lot">TOP1</span><span class="st">_✱</span><span class="bn hi">:2</span></span>
+                  <span class="go">→</span></span>
+                <span class="mapb no" title="이 맵에 BIN 2가 없습니다">X</span>
+                <span><span class="unk w" title="이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.">BIN 없음</span></span>
+                <span class="num share"><span class="ap">≈</span>48</span>
+                <span><span class="unk w" title="이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다. 잔여를 계산하지 않습니다.">미상</span></span>
+              </div>
+            </div>
+
+            <!-- ── 8. 맵에서 찾지 못한 자재 — 경고, 저장은 나갑니다 ────── -->
+            <div class="pool" data-open="1">
+              <div class="r2" title="클릭 → 3AB77_04의 맵(없음)">
+                <span class="matcell"><button class="cv void">▾</button>
+                  <span class="mc warn" tabindex="0"><span class="lot">3AB77_04</span><span class="bn">:1</span></span>
+                  <span class="go">→</span></span>
+                <span class="mapb no" title="자재 맵 테이블에서 찾지 못했습니다">X</span>
+                <span><span class="unk w" title="자재 맵을 찾지 못해 가용을 조회할 수 없습니다.">미상</span></span>
+                <span class="num share"><span class="ap">≈</span>32</span>
+                <span><span class="unk w" title="가용이 미상이라 잔여를 계산하지 않습니다.">미상</span></span>
+              </div>
+              <div class="knob">
+                <span class="tf" style="height:17px;">
+                  <textarea class="tf-raw" style="height:17px;" placeholder="#태그 — 추적이 붙이거나 직접 입력"></textarea>
+                  <span class="tf-chips" aria-hidden="true"></span>
+                </span>
+              </div>
+            </div>
+
+            <div class="foot-note">
+              <b>사용<span style="color:var(--text-dim);">≈</span></b>은 실제 소비가 아닙니다 —
+              이 풀의 총 소요를 자재 수로 <b>균등 분배한 가정값</b>입니다.
+              <b>충분한지</b> 보는 용도이며, 어느 매를 먼저 쓰는지는 이 화면이 말하지 않습니다.
+              전개된 슬롯 행은 <b>가용만</b> 보여줍니다(배분은 계산하지 않습니다).<br>
+              <b>미상</b>은 <b>0이 아닙니다.</b> 가용이 미상·신뢰 불가면 <b>잔여도 미상</b>입니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 저장 줄 -->
+      <div class="savebar">
+        <span class="save-msg" id="sm">
+          <span class="c" id="sm-c">3</span><span id="sm-t">건 차단 — 위 빨간 줄이 사유입니다</span>
+        </span>
+        <button class="save-btn" id="sb">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ 확대 판 ══════════════════ -->
+  <div class="col plates">
+    <div class="col-cap"><h2>확대</h2><span class="why">앱에는 없는 판</span></div>
+
+    <div class="plate">
+      <h3>층 구조 — 표 하나가 사라진 자리</h3>
+      <div class="gr">
+STACK <span class="c">=</span> 그 값의 총 층수<br>
+1H&nbsp;&nbsp;&nbsp; <span class="c">=</span> 1층 <span class="c">— 비면 MID가 1층부터</span><br>
+MID&nbsp;&nbsp; <span class="c">=</span> 그 사이 전부 <span class="c">— 필수</span><br>
+TOP&nbsp;&nbsp; <span class="c">=</span> STACK층 <span class="c">— 비면 MID가 STACK까지</span>
+      </div>
+      <div class="gr" style="margin-top:-2px;">
+MID 구역 <span class="c">=</span> (1H 있으면 <span class="k">2</span>, 없으면 <span class="k">1</span>)
+&nbsp;…&nbsp; (TOP 있으면 <span class="k">STACK−1</span>, 없으면 <span class="k">STACK</span>)<br>
+<span class="c">MID 필수 ⟺ 구역 크기 &gt; 0</span>
+      </div>
+      <p><b>FROM·TO가 없으므로 겹침도 구멍도 만들 수 없습니다.</b> 이전 시안의 차단 규칙 8개 중
+        <b>5개가 사라졌습니다</b> — 규칙을 지운 게 아니라 <b>어길 방법이 없어졌습니다.</b></p>
+      <p>대신 <b>계산된 층 범위</b>를 자재 칸 맨 앞에 조용히 붙였습니다 —
+        <span class="lr">2–15</span> <span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn">:1</span></span>.
+        세로 비용은 <b>0px</b>이고, 포커스하면 칩과 함께 사라집니다(파생값이지 입력이 아니므로).</p>
+    </div>
+
+    <div class="plate">
+      <h3>칸의 세 상태 — 가장 중요한 판</h3>
+      <div class="tx" style="margin-bottom:9px;">
+        <div class="tx-r"><span class="big">
+          <span class="tf empty" style="height:20px;width:92px;display:block;position:relative;">
+            <span class="tf-chips" style="position:static;height:100%;"><span class="emp">— 비움</span></span>
+          </span></span>
+          <span><em>비움 · 채울 수 있음</em> — <b>점선</b>은 초대입니다. 치면 층 구조가 바뀝니다.</span></div>
+        <div class="tx-r"><span class="big">
+          <span class="na" style="width:92px;"><span class="t">해당 없음</span></span></span>
+          <span><em>구조상 없음</em> — <b>실선 + 빗금.</b> <b>input이 아예 없습니다</b> —
+            캐럿도, 포커스 링도, 탭 순서도 없습니다.</span></div>
+        <div class="tx-r"><span class="big">
+          <span class="tf" style="height:20px;width:92px;display:block;position:relative;">
+            <span class="tf-chips" style="position:static;height:100%;">
+              <span class="lr">1</span><span class="mc"><span class="lot">DTM4_11</span><span class="bn">:1</span></span></span>
+          </span></span>
+          <span><em>채움</em> — 앞의 <span class="lr">1</span>은 <b>계산된 층 범위</b>(입력 아님)</span></div>
+      </div>
+      <p><b>둘이 같아 보이면 사람이 의미 없는 칸에 타이핑합니다.</b>
+        그래서 신호를 <b>세 채널</b>로 겹쳤습니다 — <b>테두리</b>(점선 vs 실선),
+        <b>바탕</b>(민무늬 vs 빗금), <b>조작 가능성</b>(캐럿이 생기나 안 생기나).
+        마지막 것이 제일 셉니다: <b>클릭해 보면 즉시 알 수 있습니다.</b></p>
+      <p><b>이건 파생 상태입니다.</b> <code>STACK</code>·<code>1H</code>·<code>TOP</code>을 고치면
+        <b>MID 칸이 실시간으로 살아나거나 죽습니다.</b> DT행에서 STACK을 2로 바꾸면
+        1H·TOP 칸이 즉시 <b>점선</b>으로 돌아옵니다 — 그게 규칙이 조건부라는 것을
+        말로 설명하지 않고 <b>보여주는</b> 방법입니다.</p>
+    </div>
+
+    <div class="plate">
+      <h3>자재 칩 문법 (그대로)</h3>
+      <div class="gr">
+자재토큰 ::= <span class="k">식별자</span> [ ":" <span class="k">BIN</span> ]<br>
+식별자   ::= lot "_" slot <span class="c">|</span> lot &nbsp;<span class="c">← lot 단독 = 로트 전체</span><br>
+BIN 생략 → 1
+      </div>
+      <div class="tx">
+        <div class="tx-r"><span class="big"><span class="mc"><span class="lot">MID1_01</span><span class="bn">:1</span></span></span>
+          <span><em>슬롯 하나</em> · 친 것 <code style="font-size:.62rem;">MID1_01</code></span></div>
+        <div class="tx-r"><span class="big"><span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn">:1</span></span></span>
+          <span><em>로트 전체</em> · 친 것 <code style="font-size:.62rem;">MID1</code> → <b>②에서 전개</b></span></div>
+        <div class="tx-r"><span class="big"><span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn hi">:2</span></span></span>
+          <span><em>로트 전체</em> · BIN 2 · 친 것 <code style="font-size:.62rem;">MID1:2</code></span></div>
+        <div class="tx-r"><span class="big"><span class="mc bad"><span class="lot">MID2_07:</span></span></span>
+          <span><em>읽을 수 없음</em> — 칩 문법 <b>안 입힙니다</b>(원문 그대로)</span></div>
+      </div>
+      <p style="margin-top:9px;"><code>_✱</code>가 <b>슬롯이 있었을 자리</b>에 들어가므로 세로로 훑을 때
+        같은 글자 위치에서 갈립니다. <b>BIN은 생략하지 않습니다</b> — 기본값 1도 흐리게 찍습니다.
+        <b>말 안 한 기본값이 화면에서 사라지지 않게.</b></p>
+    </div>
+
+    <div class="plate">
+      <h3>전개는 목록이 아니라 진단입니다</h3>
+      <p><b>정리한 뷰를 보여주면 안 됩니다.</b> 전산에 기록된 그대로 —
+        슬롯 27개면 27줄, 맵 없는 슬롯은 <span style="color:var(--warning);font-weight:600;">X</span> 그대로,
+        같은 로트를 두 번 잡으면 <b style="color:var(--danger);">빨갛게</b>.</p>
+      <p><b>빈 목록은 절대 그리지 않습니다.</b> 구성을 읽지 못하면
+        <b style="color:var(--warning);">"구성을 알 수 없음"</b>이라고 씁니다 —
+        빈 목록은 <b>"깨끗함"</b>으로 읽히기 때문입니다.</p>
+      <p>슬롯 수 뱃지가 <b>25(표준 카세트)</b>를 넘으면 색이 바뀝니다.
+        <b>단정하지 않습니다</b> — <code>#LOTSPLIT</code> 태그와 나란히 놓아 사람이 판단하게 합니다.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════ 노트 ══════════════════ -->
+  <div class="col notes">
+    <div class="col-cap"><h2>판단이 필요한 곳</h2><span class="why">읽고 반려해 주세요</span></div>
+
+    <div class="note ok">
+      <h3>반반, 이번엔 맞습니다 (실측)</h3>
+      <p>사이드바 742px − 머리줄 <span class="mnum">30</span> − 저장줄 <span class="mnum">33</span>
+        = <span class="mnum">679</span>, 반반이면 각 <span class="mnum">339px</span>.</p>
+      <p>실측: ①의 고정 비용(머리 두 줄 + 꼬리 + 여백) <b id="mch" class="mnum">—</b>,
+        <b>값 한 개당 <span id="mrow" class="mnum">—</span></b>. 창은 <b id="mwin" class="mnum">—</b>.</p>
+      <div id="mtab" style="font-family:var(--font-mono);font-size:.66rem;line-height:1.75;
+        background:var(--bg-inset);border:1px solid var(--border);border-radius:7px;padding:6px 9px;margin-bottom:7px;"></div>
+      <p><b>사용자 그림(값 3개)은 64px 남기고 들어갑니다. 4개까지 스크롤이 없습니다.</b>
+        이 시안은 예외를 전부 몰아넣은 <b>값 6개 스트레스 세트</b>라 넘칩니다 — 그건 설계가 아니라 데이터입니다.</p>
+      <p><b>②는 전개 때문에 언제나 스크롤입니다</b> — 이건 결함이 아니라 전개의 뜻입니다.
+        현재 내용 <b id="m2" class="mnum">—</b>, 창 <b id="mwin2" class="mnum">—</b>.
+        <b>전부 접으면 <span id="m2c" class="mnum">—</span></b>(풀 9개 머리줄만).</p>
+      <p>표 하나가 없어져서 생긴 여유입니다 — 이전 3표 시안에서 ②(구간)에 남던 세로가 <b>44px</b>,
+        <b>구간이 화면에 0.5개</b> 보였습니다. 지금은 <b>값 4개가 통째로</b> 보입니다.</p>
+    </div>
+
+    <div class="note danger">
+      <h3>가장 약한 곳 — 전개가 화면을 채웁니다</h3>
+      <p>사용자 그림의 자재는 <b>거의 전부 로트 단위</b>입니다
+        (<code>MID1</code>·<code>MID2</code>·<code>TOP1</code>은 슬롯이 없으므로 문법상 <b>로트 전체</b>).
+        즉 <b>실제 계획은 풀 5~8개 × 슬롯 25개 = 행 125~200개</b>가 됩니다.
+        지금 시안은 그 중 <b>MID1 하나만</b> 펼쳐도 <b id="m3" class="mnum">—</b>입니다.</p>
+      <p><b>제안 A(지금 시안):</b> 기본 펼침. 지시대로 "눈으로 볼 수 있게"가 최대치이지만,
+        <b>다른 풀을 보려면 매번 27줄을 지나가야 합니다.</b></p>
+      <p><b>제안 B(권장):</b> <b>기본 접힘 + 이상 신호는 머리줄에.</b>
+        슬롯 수 뱃지(<span class="cnt over">27 슬롯</span>)·<code>#LOTSPLIT</code>·자식의 X 개수를
+        접힌 머리줄이 이미 다 말합니다. 이상한 것만 펼쳐 보면 됩니다.
+        <b>펼침/접힘은 모드가 아니라 행 하나의 상태</b>라 "복잡하면 안 된다"에 걸리지 않습니다.</p>
+      <p>어느 쪽이든 <b>구현은 같습니다</b> — 기본값 한 줄 차이입니다. 골라 주십시오.</p>
+    </div>
+
+    <div class="note warn">
+      <h3><span class="mono">사용</span>을 배분으로 읽히지 않게 한 세 가지</h3>
+      <p>"균등배분은 아님 · 충분한지 확인용"을 화면이 <b>스스로 말하게</b> 했습니다. 세로 비용은 한 줄입니다.</p>
+      <ul>
+        <li><b>모든 숫자 앞에 <span class="mono" style="color:var(--text-dim);">≈</span></b> —
+          6px짜리 상시 선언. 머리줄에도 붙습니다. <b>이 열에 정확한 숫자는 없습니다.</b></li>
+        <li><b>잔여에도 <span class="mono" style="color:var(--text-dim);">≈</span></b> — 가정에서 나온 값이 정확한 척하면 안 됩니다.</li>
+        <li><b>전개된 슬롯 행은 사용·잔여가 아예 없습니다</b>(가용만). 슬롯별 배분을 그리는 순간
+          <b>화면이 매 단위 할당을 주장하게 됩니다.</b> 배분은 풀 단위로만 존재합니다.</li>
+      </ul>
+      <p><b>다만 열 이름 <span class="mono">사용</span>은 그대로 두었습니다</b> — 사용자 어휘라서요.
+        뜻으로는 <b><span class="mono">소요</span></b>(앞으로 필요한 양)가 정확합니다.
+        <span class="mono">사용</span>은 <b>이미 쓴 양</b>으로 읽힙니다.
+        <b>바꿀지 결정해 주십시오</b> — 바꾸면 <span class="mono">≈</span> 없이도 절반은 해결됩니다.</p>
+    </div>
+
+    <div class="note ok">
+      <h3><code>dt_map</code> 계획은 잔소리를 한 번도 안 듣습니다</h3>
+      <p><b>DT행</b>: <code>STACK 1</code> · 1H <b>해당 없음</b> · MID <code>DTM4_11:1</code> · TOP <b>해당 없음</b>.
+        <b>경고도, 빈칸 표시도, 회색 물음표도 없습니다.</b> 퇴화형이지 미완성이 아니기 때문입니다 —
+        여기서 잔소리를 하면 <b>사람이 진짜 중요한 검증까지 무시하기 시작합니다.</b></p>
+      <p><b>E행</b>은 조건부 규칙이 왜 필요한지를 혼자 증명합니다 —
+        <code>STACK 2</code>에 1H·TOP뿐이라 MID 구역이 <b>0층</b>인데, <b>차단이 아닙니다.</b>
+        <b>D행</b>은 같은 모양인데 <code>STACK 1</code>이라 <b>차단</b>입니다.
+        <b>두 행을 세로로 붙여 놓았습니다</b> — 한 층 차이로 통과와 차단이 갈리는 걸
+        각주가 아니라 <b>화면에서</b> 봐야 합니다.</p>
+      <p>D행에서도 MID는 <b>해당 없음</b>입니다. 차단 사유는 오직
+        <b>두 자재가 같은 1층을 잡는 것</b> 하나이고, <b>MID는 사유에 없습니다</b> —
+        메시지가 그렇게 쓰여 있습니다.</p>
+    </div>
+
+    <div class="note warn">
+      <h3>충돌(V3) 메시지만 ②에 있습니다</h3>
+      <p>규칙 셋 중 <b>V1·V2는 ①</b>(값 한 행 안에서 고칩니다), <b>V3만 ②</b>입니다 —
+        <b>로트 전체와 그 슬롯이 한 화면에 같이 보이는 곳이 ②뿐</b>이기 때문입니다.
+        ①에서는 두 칸(<b>B의 MID</b>, <b>C의 MID</b>)이 서로 다른 행이라
+        <b>메시지를 어디 붙여도 반쪽</b>이 됩니다.</p>
+      <p>이건 이전 시안에서 <b>해결하지 못했다고 보고한 것</b>(㉡)인데,
+        <b>전개가 우연히 풀었습니다</b> — <code>MID1</code>을 펼치면 그 안의 <code>MID1_03</code>과
+        따로 잡은 <code>MID1_03</code>이 <b>세로로 인접</b>합니다.
+        ①에는 <b>빨간 테두리만</b> 달아 "여기서 고친다"를 표시합니다.</p>
+    </div>
+
+    <div class="note danger">
+      <h3>「해당 없음」의 위험 — 지금 시안의 약점</h3>
+      <p><b>못 치게 막는 칸은 사람을 막다른 길에 넣을 수 있습니다.</b>
+        DT행에 TOP을 넣고 싶으면 먼저 <b>STACK을 2로 올려야</b> 합니다.
+        그런데 화면은 "STACK을 올리세요"라고 <b>말하지 않습니다</b> —
+        <code>title</code>에만 있고, <b>title은 터치·키보드 사용자에게 안 보입니다.</b></p>
+      <p><b>대안 두 개, 골라 주십시오.</b> ㉠ 지금대로(막고 tooltip). 조용하지만 발견성이 낮습니다.
+        ㉡ 칸은 열어 두되 <b>치는 순간 STACK을 자동으로 늘립니다</b>(그리고 그 사실을 한 줄로 알립니다).
+        <b>㉡가 훨씬 친절하지만 화면이 사용자 대신 숫자를 고칩니다</b> —
+        이 프로젝트에서 그건 무거운 결정이라 제가 혼자 정하지 않았습니다.</p>
+    </div>
+
+    <div class="note">
+      <h3>없앤 것</h3>
+      <ul>
+        <li><b class="strike">구간표 전체</b> — FROM·TO·구간 행·값집합 범위. <b>STACK 한 칸</b>이 대신합니다.</li>
+        <li><b class="strike">PRESET</b> — 채울 구간 행이 없습니다. 층 프리셋의 유일한 잔재는 STACK 숫자인데,
+          그건 <b>그냥 타이핑</b>이 빠릅니다.</li>
+        <li><b class="strike">차단 규칙 5개</b> — 겹침·구멍·범위 역전·TO 읽기 실패·값집합 불일치.
+          <b>어길 방법이 없어져서</b> 사라졌습니다.</li>
+        <li><b class="strike">값별 KNOB</b> — 자재로 이사했습니다. <b>"랏이 공정을 탄 것이지 DOE 조건이 탄 게 아님"</b>이
+          모델상 맞고, 화면에서도 <b>②의 행 하나당 한 줄</b>로 정리됩니다.</li>
+        <li><b class="strike">별도 차단 목록 패널</b> — 메시지는 고치는 자리에 붙습니다.
+          <b>통과 상태의 세로 비용은 0px</b>입니다(위 <b>[검증]</b> 토글로 확인).</li>
+      </ul>
+    </div>
+
+    <div class="note warn">
+      <h3>사용자 그림에서 바꾼 것 (승인 필요)</h3>
+      <ul>
+        <li><b>①이 한 행 = 두 줄입니다.</b> 430px에 일곱 칸을 한 줄로 놓으면
+          DESC에 <b>14px</b>만 남습니다(실측). 줄1 = 정체(COLOR·VALUE·STACK·DESC),
+          줄2 = 층 구조(1H·MID·TOP). <b>이 시안이 그림을 깬 유일한 곳입니다.</b></li>
+        <li><b>KNOB이 ②의 열이 아니라 MAT 밑 한 줄입니다.</b> 200px짜리 열에는 태그가 <b>2개</b> 들어갑니다.
+          행 폭 전체를 쓰면 <b>6개</b>(자동 12개 중) — 나머지는 <span class="mono" style="color:var(--accent);">+6</span> 뱃지,
+          <b>누르면 원문 전체</b>입니다.</li>
+        <li><b>「칠함」열을 ①에 넣었습니다</b>(그림에 없음). ②의 소요 숫자가 어디서 나왔는지
+          <b>추적할 수 없으면 검증이 불가능</b>합니다. 26px입니다.</li>
+      </ul>
+    </div>
+
+    <div class="note danger">
+      <h3>구현할 때 걸릴 것 (Client PM 이관)</h3>
+      <ul>
+        <li><b>파생 3열은 <code>{value, reliable, reason}</code>을 그대로 받아야 합니다.</b>
+          숫자만 넘기면 <b>미상이 0으로 붕괴</b>합니다. <code>reason</code>이 <code>title</code>이 됩니다.
+          <b>이번엔 로트 구성도 같은 3상태입니다</b> — <code>{slots, readable, reason}</code>.
+          읽지 못하면 <b>빈 배열이 아니라 미상</b>으로 와야 합니다(빈 배열 = "깨끗함"으로 렌더됨).</li>
+        <li><b>「해당 없음」은 <code>STACK</code>·<code>1H</code>·<code>TOP</code>의 <u>파생 상태</u>입니다.</b>
+          세 입력 중 하나가 바뀌면 <b>같은 행의 다른 칸이 input ↔ 비-input으로 바뀝니다.</b>
+          수동 반응성이라 <b>갱신을 빠뜨리면 못 치는 칸이 남습니다.</b>
+          <b>DOM을 갈아끼우지 말고</b> 클래스 토글 + <code>disabled</code>로 하십시오 —
+          갈아끼우면 <b>포커스가 날아갑니다</b>(칩↔원문 장치를 JS 없이 만든 이유와 같은 계열).
+          <code>_✱</code>와 마찬가지로 <b>「해당 없음」은 저장 대상이 아닙니다</b> — 그냥 빈 값입니다.</li>
+        <li><b><code>_✱</code>는 렌더링이지 데이터가 아닙니다.</b> 원문은 <code>MID1</code>입니다 —
+          <b>절대 이 문자열을 저장하지 마십시오.</b> 전개된 슬롯 행도 마찬가지로
+          <b>저장 대상이 아닙니다</b>(계획에 남는 토큰은 <code>MID1</code> 하나).</li>
+        <li><b>행 클릭 → 맵 라우팅이 KNOB 입력과 충돌합니다.</b> KNOB은 편집 필드인데
+          행 전체가 클릭 타깃입니다. <b>필드 안에서 시작된 이벤트는 라우팅하지 않아야</b> 합니다.</li>
+        <li><b>전개 행 수가 100을 넘습니다.</b> 풀 8개 × 슬롯 25개 기준.
+          per-row 스타일 계산 금지 — <b>파싱·칩 렌더는 한 번 만들어 재사용</b>하고,
+          접힘은 <code>display:none</code>(DOM 유지)이 아니라
+          <b>필요하면 지연 렌더</b>를 검토하십시오.</li>
+        <li><b>표 카드에 <code>flex:none</code>이 필요합니다.</b> 이번 시안은 pane 두 개를
+          <code>flex:1 1 0</code>로 나눴으므로 이 함정을 피했지만,
+          현행 <code>.tp-doe</code>·<code>.tp-doe-list</code>에는 <code>flex:none</code>이 없습니다 —
+          내용이 길어지면 <b>스크롤되지 않고 찌그러집니다</b>(이전 시안에서 696px→211px로 실측).</li>
+        <li><b>슬롯 수 &gt; 25 경고는 제가 넣은 규칙입니다.</b> 표준 카세트 25매를 근거로 했고
+          <b>단정하지 않고 색만</b> 바꿉니다. 근거가 다르면 임계값을 알려 주십시오.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── 시안 전용 스크립트 (앱 로직 아님) ─────────────────────────────────── */
+document.getElementById('t-theme').addEventListener('click', function () {
+  var r = document.documentElement;
+  r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+document.getElementById('t-block').addEventListener('click', function () {
+  var r = document.documentElement, clean = r.classList.toggle('clean');
+  this.classList.toggle('on', !clean);
+  document.getElementById('t-block-l').textContent = clean ? '통과' : '차단 3건';
+  document.getElementById('sm-c').textContent = clean ? '0' : '3';
+  document.getElementById('sm-t').textContent = clean
+    ? '건 차단 — 저장할 수 있습니다'
+    : '건 차단 — 위 빨간 줄이 사유입니다';
+  measure();
+});
+
+/* 전개/접기 — 모드가 아니라 행 하나의 상태 */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.cv[data-t]'); if (!b) return;
+  e.stopPropagation();
+  var p = b.closest('.pool');
+  p.setAttribute('data-open', p.getAttribute('data-open') === '1' ? '0' : '1');
+  measure();
+});
+
+/* 슬롯 전개 렌더 — 전산에 기록된 그대로. 정리하지 않습니다. */
+function slots(lot, bin, n, marks) {
+  var out = '';
+  for (var i = 1; i <= n; i++) {
+    var s = (i < 10 ? '0' : '') + i, m = marks[s] || {};
+    var cls = 'r2 kid' + (m.clash ? ' clash' : (m.warn ? ' warnk' : ''));
+    var av = m.av === undefined ? 48 : m.av;
+    out += '<div class="' + cls + '" title="클릭 → ' + lot + '_' + s + '의 맵">'
+      + '<span class="matcell"><span class="mc' + (m.clash ? ' bad' : (m.warn ? ' warn' : '')) + '" tabindex="0">'
+      + '<span class="lot">' + lot + '_' + s + '</span><span class="bn">:' + bin + '</span></span>'
+      + (m.note ? '<span class="cnt ' + (m.over ? 'over' : 'unk') + '" title="' + m.note + '">' + m.badge + '</span>' : '')
+      + '<span class="go">→</span></span>'
+      + '<span class="mapb ' + (m.nomap ? 'no" title="이 슬롯의 자재 맵을 찾지 못했습니다">X' : 'ok">O') + '</span>'
+      + (m.nomap
+        ? '<span><span class="unk w" title="자재 맵을 찾지 못해 가용을 조회할 수 없습니다.">미상</span></span>'
+        : '<span class="num avail">' + av + '</span>')
+      + '<span class="num faint" title="배분은 풀 단위로만 계산합니다 — 슬롯별 소비 순서는 알 수 없습니다.">·</span>'
+      + '<span class="num faint" title="배분은 풀 단위로만 계산합니다 — 슬롯별 소비 순서는 알 수 없습니다.">·</span>'
+      + '</div>';
+  }
+  return out;
+}
+document.getElementById('kids-mid1').innerHTML = slots('MID1', 1, 27, {
+  '03': { clash: true },
+  '11': { nomap: true },
+  '19': { av: 40 },
+  '26': { over: true, badge: '25↑', note: '표준 카세트(25매)를 넘는 슬롯입니다. 스플릿 후 정리되지 않았을 수 있습니다 — GRID에서 LOT을 확인하십시오.' },
+  '27': { over: true, badge: '25↑', note: '표준 카세트(25매)를 넘는 슬롯입니다. 스플릿 후 정리되지 않았을 수 있습니다 — GRID에서 LOT을 확인하십시오.' }
+});
+document.getElementById('kids-mid2').innerHTML = slots('MID2', 1, 25, {});
+document.getElementById('kids-top1').innerHTML = slots('TOP1', 1, 25, {});
+
+/* 실측 — 노트의 숫자를 브라우저가 채웁니다(제가 쓰지 않습니다) */
+function measure() {
+  var p1 = document.getElementById('pane1'), p2 = document.getElementById('pane2');
+  var b1 = p1.querySelector('.pane-b'), b2 = p2.querySelector('.pane-b');
+  var h1 = b1.scrollHeight, w1 = b1.clientHeight, h2 = b2.scrollHeight, w2 = b2.clientHeight;
+  /* ①의 세로 예산을 값 개수의 함수로 잽니다 — 차단 줄은 빼고(정상 계획 기준). */
+  var was = document.documentElement.classList.contains('clean');
+  document.documentElement.classList.add('clean');
+  var rows = [].slice.call(document.querySelectorAll('#pane1 .vrow')).map(function (r) { return r.offsetHeight; });
+  var sum = rows.reduce(function (a, b) { return a + b; }, 0);
+  var chrome = b1.scrollHeight - sum, per = Math.round(sum / rows.length);
+  if (!was) document.documentElement.classList.remove('clean');
+  w1 = b1.clientHeight;
+  document.getElementById('mch').textContent = chrome + 'px';
+  document.getElementById('mrow').textContent = per + 'px';
+  document.getElementById('mwin').textContent = w1 + 'px';
+  var t = '';
+  for (var n = 3; n <= 6; n++) {
+    var hh = chrome + per * n, ok = hh <= w1;
+    t += '값 ' + n + '개 &nbsp;<b style="color:var(--' + (ok ? 'accent' : 'warning') + ');">' + hh + 'px</b>'
+      + ' &nbsp;<span style="color:var(--text-dim);">' + (ok ? '여유 ' + (w1 - hh) + 'px' : (hh - w1) + 'px 스크롤') + '</span>'
+      + (n === 3 ? ' <span style="color:var(--text-dim);">← 사용자 그림</span>' : '') + '<br>';
+  }
+  document.getElementById('mtab').innerHTML = t;
+  document.getElementById('m2').textContent = h2 + 'px';
+  document.getElementById('mwin2').textContent = w2 + 'px';
+  document.getElementById('m3').textContent = h2 + 'px (창의 ' + (h2 / w2).toFixed(1) + '배)';
+  var kh = 0; document.querySelectorAll('.pool[data-open="1"] .kids').forEach(fu

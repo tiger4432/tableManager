@@ -179,6 +179,61 @@ export function getCleanFilename(filename) {
 }
 
 // Floating Ingestion Progress Widget Helper
+// 좌측 진행 카드는 (테이블, 파일)마다 하나씩 생기고 상한이 없었다 — 파일 여러 개를
+// 한 번에 넣으면 화면 왼쪽이 카드로 덮인다. 우측 토스트에서 같은 문제를 `dedupeKey`
+// 집계(④)로 풀었으므로 여기도 같은 취지로 **상한 + 나머지 한 줄 집계**를 쓴다.
+// 진행률은 개별 파일마다 의미가 있으므로 합치지 않고 **가리기만** 한다 — 가려진 카드도
+// 갱신은 계속 받고, 완료되면 스스로 사라지며 뒤 카드가 올라온다(대기열처럼 보인다).
+const MAX_VISIBLE_PROGRESS_CARDS = 3;
+const PROGRESS_OVERFLOW_ID = 'progress-overflow';
+
+function progressCards(container) {
+  return Array.from(container.children).filter(el => el.id !== PROGRESS_OVERFLOW_ID);
+}
+
+function collapseProgressOverflow(container) {
+  if (!container) return;
+  const cards = progressCards(container);
+  cards.forEach((el, i) => {
+    el.style.display = i < MAX_VISIBLE_PROGRESS_CARDS ? '' : 'none';
+  });
+
+  const hidden = cards.length - MAX_VISIBLE_PROGRESS_CARDS;
+  let overflow = document.getElementById(PROGRESS_OVERFLOW_ID);
+  if (hidden <= 0) {
+    if (overflow) overflow.remove();
+    return;
+  }
+  if (!overflow) {
+    overflow = document.createElement('div');
+    overflow.id = PROGRESS_OVERFLOW_ID;
+    overflow.className = 'progress-card';
+  }
+  overflow.innerHTML =
+    `<div class="progress-header"><span class="progress-title">📤 그 외 ${hidden}건 적재 중</span></div>`;
+  container.appendChild(overflow);   // 항상 맨 아래
+}
+
+// 카드 제거는 두 경로(자동 완료 / finish 호출)에서 같은 일을 했다. 한 곳으로 모은 이유는
+// 빈 컨테이너 판정 때문이다 — 집계 카드를 자식으로 세면 컨테이너가 영원히 안 지워진다.
+function dismissProgressCard(card) {
+  card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+  card.style.animation = 'none';
+  card.style.opacity = '0';
+  card.style.transform = 'translateY(20px) scale(0.9)';
+
+  setTimeout(() => {
+    const container = card.parentElement;
+    card.remove();
+    if (!container) return;
+    if (progressCards(container).length === 0) {
+      container.remove();
+    } else {
+      collapseProgressOverflow(container);
+    }
+  }, 400);
+}
+
 export function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
   let container = document.getElementById('ingestion-progress-container');
   if (!container) {
@@ -197,6 +252,7 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
     card.id = cardId;
     card.className = 'progress-card';
     container.appendChild(card);
+    collapseProgressOverflow(container);
   }
 
   if (card.classList.contains('status-success') ||
@@ -235,20 +291,7 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
     const stats = card.querySelector('.progress-stats');
     if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
 
-    setTimeout(() => {
-      card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
-      card.style.animation = 'none';
-      card.style.opacity = '0';
-      card.style.transform = 'translateY(20px) scale(0.9)';
-
-      setTimeout(() => {
-        card.remove();
-        const container = document.getElementById('ingestion-progress-container');
-        if (container && container.children.length === 0) {
-          container.remove();
-        }
-      }, 400);
-    }, 2500);
+    setTimeout(() => dismissProgressCard(card), 2500);
   }
 }
 
@@ -287,20 +330,7 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
     if (stats) stats.textContent = errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생';
   }
 
-  setTimeout(() => {
-    card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
-    card.style.animation = 'none';
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px) scale(0.9)';
-
-    setTimeout(() => {
-      card.remove();
-      const container = document.getElementById('ingestion-progress-container');
-      if (container && container.children.length === 0) {
-        container.remove();
-      }
-    }, 400);
-  }, 2500);
+  setTimeout(() => dismissProgressCard(card), 2500);
 }
 
 // Expose on window object dynamically for any non-ESM environment components if needed

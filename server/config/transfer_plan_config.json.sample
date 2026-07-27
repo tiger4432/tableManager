@@ -61,7 +61,10 @@
             "fail_values": ["F"]
           }
         },
-        "warnings": { "result_fail_values": ["FAIL"] }
+        "warnings": { "result_fail_values": ["FAIL"] },
+        "__bin_map_comment": "[BIN 축 — 선택, 일부러 미선언] DOE 자재 토큰은 `lot[_slot][:BIN]` 형태이고 BIN을 주면 `GET /api/transfer-plan/source-summary?bins=1,2`가 BIN별 가용을 돌려준다. 선언하려면 이 자리에 `\"bin_map\": {\"table\": \"<BIN을 지는 맵 테이블>\", \"columns\": {\"lot\":..., \"slot\":..., \"x\":..., \"y\":..., \"bin\":\"<BIN 컬럼>\"}}`을 넣어라. ⚠️ **위 origin_area_map의 `dt_map.val`을 그대로 재사용하지 마라.** 이 배포에서 그 컬럼은 출신 코어 식별자(`CORE-A_01`)이며 BIN이 아니다 — 그대로 쓰면 코어 이름이 BIN 자리에 들어가거나 전부 `unbinned_cells`로 접힌다. 그래서 서버는 컬럼을 **추측하지 않고**, 미선언이면 `bins.axis: \"unavailable\"` + `bin_axis_unavailable` 경고로 못 한다고 말한다(미선언은 결함이 아니다 — source_region과 같은 취급). BIN 값은 층 경계와 **같은 정수 판정기**로 읽으므로 `'1'`·`'01'`·`' 1 '`은 한 BIN이고 `'0x10'`·문자열 라벨은 BIN이 아니다(정수가 아닌 셀은 버리지 않고 `unbinned_cells`로 센다).",
+        "__lot_membership_comment": "[로트 전개 — 선택, 일부러 미선언] 자재 토큰이 슬롯 없이 로트만 적으면(`MID1`) 롤업은 그 로트를 **슬롯 한 줄씩 펼친다**. 이건 표시 편의가 아니라 **로트 데이터 품질의 진단면**이다: 랏이 스플릿됐는데 전산에 자재가 그대로 남아 있으면 사람이 그 어긋남을 이 목록에서 보고 그리드에서 로트를 고친 뒤 다시 불러온다(핵심가치 ① 교정면). 선언 형태: `\"lot_membership\": {\"table\": \"<자재 대장>\", \"columns\": {\"lot\":..., \"slot\":...}}`. ⚠️ **맵에서 슬롯을 세면 안 되는 이유가 바로 그 진단이다** — 맵이 없는 슬롯이야말로 봐야 하는 행인데 맵 기준으로 세면 그 행이 사라져 화면이 조용히 '깨끗함'을 보고한다. 미선언이면 서버는 BIN 축 맵의 distinct 슬롯으로 **강등 폴백**하되 `slots_origin: \"map\"` + `lot_membership_degraded` 경고로 한계를 말한다(by_core_origin과 같은 규율). 둘 다 없으면 빈 목록이 아니라 `slots: null` + `slots_status: \"unknown\"`이다.",
+        "__bin_scale_comment": "[비용] BIN 분포는 group-by 1회(값당 1행)이고, 감산항(fail ∪ 전사) 교차에 필요한 좌표만 추가로 페치한다(`bins=`를 지정하면 그 BIN들로 IN 필터가 걸려 큰 맵에서도 싸다). 상한: distinct BIN 200(MAX_BIN_VALUES) · 좌표 200,000(MAX_BIN_CELLS) · `scope=lot` 슬롯 팬아웃 50(MAX_LOT_SLOTS). 절단되면 부재를 증명할 수 없으므로 `bin_absent` 대신 `unknown`이 나가고 숫자는 실리지 않는다. ⚠️ `scope=lot`의 합계는 **배분이 아니라 풀 충분성 판정**이다(`basis: \"pool_sufficiency\"`) — 웨이퍼는 기록되지 않은 순서로 한 장씩 소진되므로 균등배분 수치가 답할 수 있는 것은 '충분한가'(양수면 가능) 뿐이다."
       },
       "target_map": {
         "preset": "BASE",

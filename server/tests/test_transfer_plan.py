@@ -96,6 +96,26 @@ TP_TABLES = {
             "knobs": "string", "bands": "string",
         },
     },
+    # [BIN 축] BIN을 지는 맵. **`tp_test_dt_map`과 별개의 테이블인 것이 요점이다** —
+    # 그쪽 `val`은 이 시나리오에서 이미 출신 코어 식별자(`CORE-A_01`)이고, 그래서
+    # "맵의 val이 곧 BIN"으로 박은 구현은 이 픽스처에서 즉시 틀린다.
+    "tp_test_bin_map": {
+        "business_key": "cell_key",
+        "column_types": {
+            "cell_key": "string", "lot": "string", "slot": "string",
+            "x": "number", "y": "number", "bin": "string",
+        },
+        "map_key_columns": ["lot", "slot"],
+    },
+    # [로트 전개] 자재 대장 — 로트에 **전산상** 속한 슬롯. 맵과 별개인 것이 요점이다:
+    # 맵이 없는 슬롯이야말로 사용자가 봐야 하는 행이라(랏 스플릿 후 정리 누락) 맵에서
+    # 슬롯을 세면 진단이 조용히 "깨끗함"을 보고한다.
+    "tp_test_lot_wafers": {
+        "business_key": "wafer_key",
+        "column_types": {
+            "wafer_key": "string", "lot": "string", "slot": "string",
+        },
+    },
     "tp_test_plan_region": {   # ② — 소스 사용 영역 (자유 페인팅 셀 집합, 휴면)
         "business_key": "region_key",
         "column_types": {
@@ -207,6 +227,15 @@ def _tp_config():
                         },
                     },
                     "warnings": {"result_fail_values": ["FAIL"]},
+                    "bin_map": {
+                        "table": "tp_test_bin_map",
+                        "columns": {"lot": "lot", "slot": "slot",
+                                    "x": "x", "y": "y", "bin": "bin"},
+                    },
+                    "lot_membership": {
+                        "table": "tp_test_lot_wafers",
+                        "columns": {"lot": "lot", "slot": "slot"},
+                    },
                 },
                 "target_map": {"preset": "BASE", "table": "tp_test_bonding_map"},
             },
@@ -333,6 +362,30 @@ def _seed_scenario(db):
          step="DT", eqp_id="DT-01", start_time="2026-07-26 08:00", result="FAIL",
          recipe_id="R-DT-01", knobs=json.dumps({"tension": 1.1}))
     db.commit()
+
+
+def _seed_bins(db, cells=None, commit=True):
+    """[BIN 축] TAPE-X/01 위에 BIN을 칠한다 — y=1행이 BIN 1, y=2행이 BIN 2.
+
+    _seed_scenario의 8칩 배치 위에 얹으면 기대치는 이렇게 나온다:
+      fail∪ = {(1,1),(2,1),(1,2),(2,2)}  ·  기전사 = {(3,1),(4,2),(2,1)}
+      BIN 1 = y=1행 {(1,1),(2,1),(3,1),(4,1)} → blocked {(1,1),(2,1),(3,1)} → 가용 1
+      BIN 2 = y=2행 {(1,2),(2,2),(3,2),(4,2)} → blocked {(1,2),(2,2),(4,2)} → 가용 1
+    **(2,1)이 fail이면서 동시에 기전사**라는 것이 이 픽스처의 결함 축이다: 합집합이 아니라
+    `total − fail − used`로 빼면 BIN 1이 0이 되어, 남아 있는 다이 한 칸을 "다 썼다"로
+    보고한다. 정확히 이 모듈이 막으려는 실패다.
+
+    BIN 1의 절반은 `'1'`, 절반은 `'01'`로 칠한다 — 문자열로 직접 비교하는 구현이라면
+    `'01'` 두 칸이 사라져 BIN 1의 셀 수가 4가 아니라 2로 나온다.
+    """
+    if cells is None:
+        cells = ([((x, 1), "1" if x <= 2 else "01") for x in range(1, 5)]
+                 + [((x, 2), "2") for x in range(1, 5)])
+    for ((x, y), b) in cells:
+        _add(db, "tp_test_bin_map", cell_key=f"BM_{x}_{y}",
+             lot="TAPE-X", slot="01", x=x, y=y, bin=b)
+    if commit:
+        db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1890,3 +1943,352 @@ def test_m1_core_summary_contract_unchanged(tp_env, client):
     assert body["chips"] == {"total": 36, "defect": 2, "eds_fail": 1,
                              "used": 0, "remaining": 33}
     assert set(body["sources"]) == set(bonding_plan.ROLES)
+
+
+# ---------------------------------------------------------------------------
+# 6. BIN 축 — `(자재, BIN)` 단위 가용 (DOE_BAND_MODEL §4-bis)
+#
+# 이 절이 고정하는 것은 숫자 하나가 아니라 **`0`을 쓰지 않는다**는 규칙이다. `0`은
+# "다 썼다"로 읽히고, 없는 BIN을 `0`으로 돌려주면 클라가 아무리 조심해도
+# "신뢰할 수 없는 `가용`에서 확정 `잔여`를 만들지 않는다"는 계약을 지킬 수 없다.
+# ---------------------------------------------------------------------------
+
+def _bins(client, **params):
+    p = {"stage": "bonding", "lot": "TAPE-X", "slot": "01"}
+    p.update(params)
+    res = client.get("/api/transfer-plan/source-summary", params=p)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def _entry(body, b):
+    got = [e for e in (body["bins"]["entries"] or []) if e["bin"] == b]
+    assert len(got) == 1, f"BIN {b} 항목이 {len(got)}개다: {body['bins']['entries']}"
+    return got[0]
+
+
+def test_bins_are_absent_from_the_response_until_asked(tp_env, client):
+    """`bins` 파라미터가 없으면 블록도 없다 — 기존 소비자의 응답이 커지지 않는다."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client)
+    assert "bins" not in body
+    assert body["chips"]["remaining"] == 2      # 기존 계약 그대로
+
+
+def test_bin_availability_uses_union_semantics_not_subtraction(tp_env, client):
+    """[결함 축] BIN 1의 (2,1)은 fail이면서 동시에 기전사다.
+
+    합집합이면 가용 1, `total − fail − used`면 0 — 그리고 0은 "다 썼다"로 읽힌다.
+    이 픽스처가 아니면(중복이 없으면) 두 식이 같은 답을 내서 아무것도 증명하지 못한다.
+    """
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="")
+    assert body["bins"]["axis"] == "connected"
+
+    b1 = _entry(body, 1)
+    assert b1["status"] == "ok" and b1["reliable"] is True
+    assert b1["cells"] == 4                       # '1' 2칸 + '01' 2칸이 한 BIN으로 접힌다
+    assert b1["total"] == 4
+    assert b1["fail_breakdown"]["all_fail"] == 2  # (1,1),(2,1)
+    assert b1["transferred"] == 2                 # (3,1),(2,1)
+    assert b1["remaining"] == 1, "감산식이면 0 — 남은 다이를 '다 썼다'로 보고한다"
+
+    b2 = _entry(body, 2)
+    assert (b2["cells"], b2["total"], b2["remaining"]) == (4, 4, 1)
+
+    # BIN별 가용의 합은 헤드라인 잔여와 일치한다 (두 숫자가 갈리지 않는다)
+    assert b1["remaining"] + b2["remaining"] == body["chips"]["remaining"]
+
+
+def test_missing_bin_is_bin_absent_and_never_zero(tp_env, client):
+    """🔴 이 스펙에서 타협 불가능한 한 줄."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    e = _entry(_bins(client, bins="3"), 3)
+    assert e["status"] == "bin_absent"
+    assert e["remaining"] is None and e["total"] is None
+    assert e["reliable"] is False
+    assert "3" in e["reason"]          # BIN을 **이름으로** 말한다
+    assert e["cells"] == 0             # 맵이 그 BIN을 한 칸도 칠하지 않았다는 사실 자체는 0
+
+
+def test_bin_that_exists_but_is_fully_consumed_is_a_real_zero(tp_env, client):
+    """부재와 소진은 **서로 다른 답**이다 — 소진은 진짜 `0`이고 `reliable`이다."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env, cells=[((1, 1), "5"), ((2, 1), "5")])   # 둘 다 blocked
+    e = _entry(_bins(client, bins="5"), 5)
+    assert e["status"] == "ok" and e["reliable"] is True
+    assert e["cells"] == 2 and e["total"] == 2 and e["remaining"] == 0
+
+
+def test_bin_spelling_is_normalised_through_the_shared_integer_reader(tp_env, client):
+    """`'01'`과 `'1'`은 같은 BIN이다 — 그리고 `'0x10'`은 BIN이 아니다.
+
+    문자열 비교 구현이라면 `'01'` 칸이 통째로 사라지고, 두 번째 숫자 파서를 들이면
+    `'0x10'`이 BIN 16이 된다(스펙 §4-bis가 이름으로 지목한 사고).
+    """
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env, cells=[((1, 1), " 7 "), ((2, 1), "07"),
+                              ((3, 1), "0x10"), ((4, 1), "CORE-A_01")])
+    body = _bins(client, bins="")
+    assert _entry(body, 7)["cells"] == 2, "' 7 '과 '07'이 한 BIN으로 접히지 않았다"
+    assert [e["bin"] for e in body["bins"]["entries"]] == [7]
+    assert body["bins"]["unbinned_cells"] == 2      # '0x10'·'CORE-A_01' — 조용히 버리지 않는다
+    assert body["bins"]["cells_total"] == 4
+
+
+def test_requested_bins_are_all_answered_even_when_absent(tp_env, client):
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="1,3,2")
+    assert [e["bin"] for e in body["bins"]["entries"]] == [1, 3, 2]   # 요청 순서 보존
+    assert body["bins"]["requested"] == [1, 3, 2]
+    assert _entry(body, 3)["status"] == "bin_absent"
+
+
+def test_unreadable_bin_request_is_refused_not_folded_to_one(tp_env, client):
+    """`:abc`가 BIN 1로 폴백하면 사용자는 엉뚱한 풀의 수를 본다 (클라 규칙과 같다)."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="1,abc,0,-2")
+    assert [e["bin"] for e in body["bins"]["entries"]] == [1]
+    assert set(body["bins"]["refused"]) == {"abc", "0", "-2"}
+
+
+def test_bin_axis_is_declared_not_guessed(tp_env, client, tmp_path, monkeypatch):
+    """선언이 없으면 **못 한다고 말한다** — 아무 val 컬럼이나 BIN으로 추측하지 않는다.
+
+    이 시나리오의 `tp_test_dt_map.val`은 출신 코어 식별자(`CORE-A_01`)다. "맵의 val이
+    곧 BIN"으로 박은 구현은 여기서 코어 이름을 BIN으로 세거나 전부 `unbinned`로 접는다.
+    """
+    cfg = _tp_config()
+    del cfg["stages"]["bonding"]["source"]["bin_map"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="1")
+    assert body["bins"]["axis"] == "unavailable"
+    assert body["bins"]["entries"] is None, "빈 배열은 'BIN이 하나도 없다'로 읽힌다"
+    assert any(w["type"] == transfer_plan.WARN_BIN_AXIS_UNAVAILABLE
+               for w in body["warnings"])
+
+
+def test_core_kind_stage_says_it_cannot_build_the_axis(tp_env, client):
+    """M1 위임 경로는 좌표 집합이 없다 — 감산 없는 셀 수를 `가용`으로 둔갑시키지 않는다."""
+    _seed_scenario(tp_env)
+    body = client.get("/api/transfer-plan/source-summary",
+                      params={"stage": "dt", "lot": "CORE-A", "slot": "01",
+                              "bins": "1"}).json()
+    assert body["bins"]["axis"] == "unavailable"
+    assert body["chips"]["remaining"] == 33          # 기존 계약은 그대로
+    assert any(w["type"] == transfer_plan.WARN_BIN_AXIS_UNAVAILABLE
+               for w in body["warnings"])
+
+
+def test_degraded_source_makes_every_bin_unreliable_with_no_number(tp_env, client,
+                                                                   tmp_path, monkeypatch):
+    """🔴 `가용`을 신뢰할 수 없으면 숫자를 내보내지 않는다 — 플래그로 취소하지 않는다."""
+    cfg = _tp_config()
+    cfg["stages"]["bonding"]["source"]["transfer_log"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="1")
+    assert body["chips"]["remaining_reliable"] is False
+    e = _entry(body, 1)
+    assert e["reliable"] is False and e["remaining"] is None
+    assert e["status"] == "unknown"          # 부재도 0도 아니다
+    assert e["reason"]
+
+
+def test_bin_population_mismatch_is_named_not_silent(tp_env, client):
+    """맵이 칩 하나를 칠하지 않으면 `Σ BIN 총계 < 총칩`이 된다 — 조용히 넘어가지 않는다."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env, cells=[((x, 1), "1") for x in range(1, 5)]
+                             + [((x, 2), "2") for x in range(1, 4)])   # (4,2) 미도색
+    body = _bins(client, bins="")
+    assert any(w["type"] == transfer_plan.WARN_BIN_POPULATION_MISMATCH
+               for w in body["warnings"])
+
+
+def test_partial_bin_request_does_not_report_a_population_mismatch(tp_env, client):
+    """요청한 BIN만 물으면 부분합이 작은 게 당연하다 — 그걸 불일치라 부르면 늑대다."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    body = _bins(client, bins="1")
+    assert not any(w["type"] == transfer_plan.WARN_BIN_POPULATION_MISMATCH
+                   for w in body["warnings"])
+
+
+# ---- 로트 전체 (`scope=lot`) — 토큰 `MID1:2`의 정의된 뜻 ----
+
+def _seed_second_slot(db):
+    """TAPE-X/**02** — CORE-A 출신 2칩. (3,3)은 defect라 tape (1,1)에 투영된다.
+
+    슬롯 01과 달리 BIN 2가 **없다** — 한 슬롯에만 있는 BIN이 로트 수준에서 '부재'로
+    접히지 않는지를 이 비대칭이 검사한다.
+    """
+    for i, (cx, cy, tx, ty) in enumerate([(3, 3, 1, 1), (4, 4, 2, 1)]):
+        _add(db, "tp_test_dt_log", dt_id=f"DT2-{i}", tape_lot="TAPE-X", tape_slot="02",
+             tx=tx, ty=ty, core_lot="CORE-A", core_slot="01", cx=cx, cy=cy)
+        _add(db, "tp_test_bin_map", cell_key=f"BM2_{tx}_{ty}",
+             lot="TAPE-X", slot="02", x=tx, y=ty, bin="1")
+    for s in ("01", "02"):
+        _add(db, "tp_test_lot_wafers", wafer_key=f"TAPE-X_{s}", lot="TAPE-X", slot=s)
+    db.commit()
+
+
+def test_whole_lot_sums_every_slot(tp_env, client):
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    res = client.get("/api/transfer-plan/source-summary",
+                     params={"stage": "bonding", "lot": "TAPE-X",
+                             "scope": "lot", "bins": ""})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["identity"] == {"lot": "TAPE-X", "slot": None}
+    assert body["slots"] == ["01", "02"]
+    # 로트 단위 헤드라인 잔여는 아무도 요청하지 않은 숫자다 — 만들지 않는다.
+    assert "chips" not in body
+
+    b1 = _entry(body, 1)
+    assert b1["cells"] == 4 + 2
+    assert b1["remaining"] == 1 + 1, "슬롯 02의 (2,1) 한 칸이 더해져야 한다"
+    # BIN 2는 슬롯 01에만 있다 — 로트 수준에서는 **존재**한다
+    b2 = _entry(body, 2)
+    assert b2["status"] == "ok" and b2["remaining"] == 1
+
+
+def test_whole_lot_absence_requires_absence_in_every_slot(tp_env, client):
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    body = client.get("/api/transfer-plan/source-summary",
+                      params={"stage": "bonding", "lot": "TAPE-X",
+                              "scope": "lot", "bins": "9"}).json()
+    e = _entry(body, 9)
+    assert e["status"] == "bin_absent" and e["remaining"] is None
+
+
+def test_whole_lot_and_a_slot_together_is_refused(tp_env, client):
+    """B10과 같은 규율 — 두 형태를 한 질의로 섞으면 그 슬롯이 두 번 계산된다."""
+    _seed_scenario(tp_env)
+    res = client.get("/api/transfer-plan/source-summary",
+                     params={"stage": "bonding", "lot": "TAPE-X", "slot": "01",
+                             "scope": "lot", "bins": ""})
+    assert res.status_code == 400
+
+
+def test_whole_lot_refuses_to_sum_when_one_slot_is_unreliable(tp_env, client,
+                                                              tmp_path, monkeypatch):
+    """신뢰 가능한 슬롯만 더한 부분합은 **잔여 과소 → 부풀린 소요**다."""
+    cfg = _tp_config()
+    cfg["stages"]["bonding"]["source"]["transfer_log"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    body = client.get("/api/transfer-plan/source-summary",
+                      params={"stage": "bonding", "lot": "TAPE-X",
+                              "scope": "lot", "bins": "1"}).json()
+    e = _entry(body, 1)
+    assert e["status"] == "unknown" and e["remaining"] is None and e["reliable"] is False
+
+
+def test_bad_scope_is_refused(tp_env, client):
+    res = client.get("/api/transfer-plan/source-summary",
+                     params={"stage": "bonding", "lot": "TAPE-X", "scope": "wafer"})
+    assert res.status_code == 400
+
+
+# ---- 로트 전개 — 자재 리스트가 슬롯 단위로 펼쳐진다 (사용자 확정 2026-07-27) ----
+#
+# 이것은 표시 편의가 아니라 **로트 데이터 품질의 진단면**이다. 랏이 스플릿됐는데 전산에
+# 자재가 그대로 남아 있으면 사람이 그 어긋남을 여기서 보고 그리드에서 고친다(핵심가치 ①).
+# 그래서 전개 목록은 **실제로 기록된 것**을 보여야 한다 — 맵이 있는 것만 세면 안 된다.
+
+def _lot(client, **params):
+    p = {"stage": "bonding", "lot": "TAPE-X", "scope": "lot", "bins": ""}
+    p.update(params)
+    res = client.get("/api/transfer-plan/source-summary", params=p)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def test_lot_expands_to_one_row_per_slot(tp_env, client):
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    body = _lot(client)
+    assert body["slots_origin"] == "membership"
+    assert [e["slot"] for e in body["by_slot"]] == ["01", "02"]
+    assert all(e["map_exists"] for e in body["by_slot"])
+    # 슬롯 행마다 자기 BIN 수치를 든다 (로트 합계 하나로 접히지 않는다)
+    s1 = {e["bin"]: e for e in body["by_slot"][0]["bins"]}
+    assert s1[1]["remaining"] == 1 and s1[2]["remaining"] == 1
+
+
+def test_slot_recorded_without_a_map_is_shown_not_dropped(tp_env, client):
+    """🔴 진단의 핵심 행 — 전산에는 있는데 맵이 없는 슬롯.
+
+    맵에서 슬롯을 세면 이 행이 **아예 없어져** 화면이 조용히 '깨끗함'을 보고한다.
+    그것이 정확히 사용자가 잡고 싶어하는 상태(랏 스플릿 후 자재가 OVER하게 남음)다.
+    """
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    # 03은 대장에만 있고 맵이 없다 — 랏 스플릿 뒤 정리되지 않은 자재
+    _add(tp_env, "tp_test_lot_wafers", wafer_key="TAPE-X_03", lot="TAPE-X", slot="03")
+    tp_env.commit()
+
+    body = _lot(client)
+    slots = {e["slot"]: e for e in body["by_slot"]}
+    assert "03" in slots, "대장에 있는 슬롯이 전개에서 사라졌다 — 진단이 죽는다"
+    assert slots["03"]["map_exists"] is False
+    warn = [w for w in body["warnings"]
+            if w["type"] == transfer_plan.WARN_LOT_SLOT_MAP_MISSING]
+    assert warn and warn[0]["slots"] == ["03"]
+
+
+def test_membership_falls_back_to_the_map_and_says_so(tp_env, client, tmp_path, monkeypatch):
+    """대장 미선언은 조용한 폴백이 아니다 — 한계를 이름으로 말한다."""
+    cfg = _tp_config()
+    del cfg["stages"]["bonding"]["source"]["lot_membership"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    _add(tp_env, "tp_test_lot_wafers", wafer_key="TAPE-X_03", lot="TAPE-X", slot="03")
+    tp_env.commit()
+
+    body = _lot(client)
+    assert body["slots_origin"] == "map"
+    assert [e["slot"] for e in body["by_slot"]] == ["01", "02"]   # 03은 맵이 없어 안 보인다
+    assert any(w["type"] == transfer_plan.WARN_LOT_MEMBERSHIP_DEGRADED
+               for w in body["warnings"]), "강등을 말하지 않으면 진단이 거짓 음성이 된다"
+
+
+def test_unenumerable_lot_is_unknown_never_an_empty_list(tp_env, client,
+                                                         tmp_path, monkeypatch):
+    """🔴 빈 목록은 '자재가 없다'로 읽힌다 — 알 수 없으면 알 수 없다고 해야 한다."""
+    cfg = _tp_config()
+    del cfg["stages"]["bonding"]["source"]["lot_membership"]
+    del cfg["stages"]["bonding"]["source"]["bin_map"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(tp_env)
+    body = _lot(client)
+    assert body["slots"] is None and body["by_slot"] is None
+    assert body["slots_status"] == "unknown"
+    assert any(w["type"] == transfer_plan.WARN_LOT_MEMBERSHIP_UNKNOWN
+               for w in body["warnings"])
+
+
+def test_pooled_figure_is_labelled_a_sufficiency_check_not_an_allocation(tp_env, client):
+    """균등배분처럼 보이는 수를 배분이라 부르면, 아무도 지키지 않는 배분을 지킨다고 믿는다."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _seed_second_slot(tp_env)
+    assert _lot(client)["bins"]["basis"] == "pool_sufficiency"

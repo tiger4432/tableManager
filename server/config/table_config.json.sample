@@ -307,7 +307,7 @@
     ]
   },
   "map_split_registry": {
-    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 값(legend)의 정본 레지스트리이자 **DOE 그 자체**(M2.6). 값 하나 = 행 하나 = DOE 조건 하나다. bk = ref_table|map_key|value 이고 구분자는 반드시 '|' 다 — map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔해 '_'로는 키가 모호해진다(client2/src/map_editor.js의 SPLIT_KEY_SEP와 일치해야 함). | M2.6 consolidation: map_doe and map_doe_source collapsed INTO this row. `split_desc` and `knobs` stay FLAT columns on purpose - they are what the ontology/LLM consumes, and nesting them would put the ontology's input inside a JSON blob. Only band structure nests, in `bands`. | `bands` CONTRACT (read this before writing a consumer): a JSON array, ordered, each element {\"seq\": int, \"to\": int, \"materials\": [str, ...]}. `seq` is the band's IDENTITY (materials belong to it; never renumber on reorder or delete). Array POSITION is the stack order: band[0] starts at layer 1, band[i] starts at band[i-1].to + 1, so only `to` is stored and `from` is derived. Layer count of band[i] = to[i] - to[i-1] with to[-1] = 0. `materials` holds the raw ID string exactly as typed - the string IS the identity, lot/slot parsing comes later and must not move the key. NOTHING derived is stored: band total = painted cells of that value * layer count, per-material share = ceil(band total / len(materials)). Compute them, never persist them - a stored total silently drifts from the map the moment someone paints another cell. | NO `updated_by` COLUMN, deliberately: crud.py lists updated_by in its `system_cols` and skips it in the column loop, so a declared updated_by can never be written through the generic table API - it would sit NULL forever and invite a join that returns nothing. map_doe/map_doe_source proved it: every row's updated_by is NULL. The 'who' is already carried per cell by cell_sources/cell_overwrites.updated_by, which is what the editor's legend meta line shows. | map_key_columns = (ref_table, map_key): a legend is saved as a whole set for one map, so removing a value has to fall out of the write. Without this declaration `replace_map` has no scope to delete by and the client is forced to compute the difference itself - which is how deleted DOE values used to come back on the next load.",
+    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 값(legend)의 정본 레지스트리이자 **DOE 그 자체**. 값 하나 = 행 하나 = DOE 조건 하나다. bk = ref_table|map_key|value 이고 구분자는 반드시 '|' 다 — map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔해 '_'로는 키가 모호해진다(client2/src/map_editor.js의 SPLIT_KEY_SEP와 일치해야 함). | `split_desc` and `knobs` stay FLAT columns on purpose - they are what the ontology/LLM consumes, and nesting them would put the ontology's input inside a JSON blob. | ZONE MODEL (2026-07-27, supersedes bands): the layer structure of a value is THREE FIXED ZONES implied by one number. `stack` = that value's total layer count; `mat_1h` = layer 1; `mat_top` = layer `stack`; `mat_mid` = everything between. An empty `mat_1h` means MID starts at layer 1; an empty `mat_top` means MID runs to `stack`. There is no FROM, no TO, no band row and no value-set scope - the zones tile `1..stack` BY CONSTRUCTION, which is why overlap and gap checks disappeared rather than moved. `mat_mid` is MANDATORY: an empty MID with a real `stack` leaves layers uncovered. | THE THREE mat_* COLUMNS ARE JSON ARRAYS of raw tokens (`[\"MID1:1\", \"MID3:1\"]`), not a separator-joined string. A lot name may legally contain `:`, `_`, and there is no character that is safely outside it - the `materialPoolKey` comment in doe_bands.js records what happened the last time a separator was assumed (two unrelated pools merged into one row and their quantities were summed). The token text IS the identity; `lot[_slot][:BIN]` parsing is a later, DECLARED step and must never move the stored string. | NOTHING DERIVED IS STORED. In particular the per-material figure is a SUFFICIENCY CHECK, NOT AN ALLOCATION - wafers are consumed one at a time in an order nobody records, so an even split answers only \"is there enough across this pool\" (positive remainder = feasible). Never store it and never name it as \"this wafer contributes exactly N\". | `bands` IS RETIRED (2026-07-27) but STILL DECLARED, deliberately: `transfer_plan.REGISTRY_ROLES` requires the `bands` role, so removing this column alone turns GET /api/transfer-plan/validate into a 404 for every site. The column comes out in the SAME change that rewrites that reader for the zone model - not before. Do not add a new writer. | NO `updated_by` COLUMN, deliberately: crud.py lists updated_by in its `system_cols` and skips it in the column loop, so a declared updated_by can never be written through the generic table API - it would sit NULL forever and invite a join that returns nothing. map_doe/map_doe_source proved it: every row's updated_by is NULL. The 'who' is already carried per cell by cell_sources/cell_overwrites.updated_by. | map_key_columns = (ref_table, map_key): a legend is saved as a whole set for one map, so removing a value has to fall out of the write. Without this declaration `replace_map` has no scope to delete by, returns 200 and deletes NOTHING - which is how deleted DOE values used to come back on the next load.",
     "business_key": "split_key",
     "composite_key_source": [
       "ref_table",
@@ -323,6 +323,10 @@
       "split_desc": "string",
       "color": "string",
       "knobs": "string",
+      "stack": "number",
+      "mat_1h": "string",
+      "mat_mid": "string",
+      "mat_top": "string",
       "bands": "string",
       "eventtime": "string"
     },
@@ -334,6 +338,10 @@
       "split_desc",
       "color",
       "knobs",
+      "stack",
+      "mat_1h",
+      "mat_mid",
+      "mat_top",
       "bands",
       "eventtime"
     ],

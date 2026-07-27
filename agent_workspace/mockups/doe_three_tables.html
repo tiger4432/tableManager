@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>DOE 세 표 — 값 정의 · 구간 · 자재 롤업 (시안)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   tokens.css 사본 (시안 자립용 — 값은 client2/src/tokens.css 그대로)
+   새 색을 만들지 않았습니다. 아래 변수 밖의 색은 DOE 스와치(데이터 색)뿐입니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root, :root[data-theme="light"] {
+  --bg-app:#eef0f4; --bg-header:#f7f8fa; --bg-surface:#ffffff; --bg-inset:#f3f5f8;
+  --border:#d7dce4; --border-strong:#b9c2cf;
+  --text:#1f2733; --text-muted:#47536b; --text-dim:#5b6779;
+  --accent:#1a66d0; --accent-weak:#e8f0fc; --accent-contrast:#ffffff;
+  --accent-2:#6d28d9; --accent-2-weak:#f0e9fb;
+  --success:#177245; --success-weak:#e6f4ec;
+  --warning:#8a5a00; --warning-weak:#fdf3dd;
+  --danger:#c22f2f;  --danger-weak:#fdecec;
+  --info:#0e7490;    --info-weak:#e3f3f7;
+  --shadow-card:0 1px 3px rgba(30,41,59,.08),0 1px 2px rgba(30,41,59,.05);
+  --shadow-pop:0 10px 30px rgba(30,41,59,.18);
+  --row-stripe:#f7f9fb; --focus-ring:rgba(26,102,208,.15);
+  --surface-hover:rgba(31,39,51,.05); --surface-active:rgba(31,39,51,.09);
+}
+:root[data-theme="dark"] {
+  --bg-app:#121a29; --bg-header:#182134; --bg-surface:#1b2537; --bg-inset:#141c2c;
+  --border:#36425f; --border-strong:#4a5980;
+  --text:#e9edf4; --text-muted:#a8b5c9; --text-dim:#8b99ae;
+  --accent:#54c2f5; --accent-weak:rgba(84,194,245,.14); --accent-contrast:#0c1926;
+  --accent-2:#b39cf7; --accent-2-weak:rgba(179,156,247,.14);
+  --success:#33d68f; --success-weak:rgba(51,214,143,.14);
+  --warning:#f6bd35; --warning-weak:rgba(246,189,53,.14);
+  --danger:#f87e7e;  --danger-weak:rgba(248,126,126,.14);
+  --info:#4ed3ec;    --info-weak:rgba(78,211,236,.14);
+  --shadow-card:0 2px 8px rgba(0,0,0,.35); --shadow-pop:0 10px 30px rgba(0,0,0,.6);
+  --row-stripe:rgba(255,255,255,.03); --focus-ring:rgba(84,194,245,.22);
+  --surface-hover:rgba(255,255,255,.06); --surface-active:rgba(255,255,255,.10);
+}
+:root{
+  --font-sans:'Outfit',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',Consolas,monospace;
+  --transition-smooth:all .3s cubic-bezier(.4,0,.2,1);
+  --plan-sidebar-w:430px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg-app);color:var(--text);font-family:var(--font-sans);font-size:14px;
+     padding:24px 28px 60px;transition:background-color .25s ease,color .25s ease;}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+
+/* ── 시안 페이지 크롬 (앱 아님) ─────────────────────────────────────────── */
+.pg-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
+.pg-head h1{font-size:1.12rem;font-weight:600;margin:0;letter-spacing:-.2px;}
+.pg-sub{color:var(--text-dim);font-size:.79rem;line-height:1.7;max-width:1180px;margin:0 0 20px;}
+.pg-sub b{color:var(--text-muted);font-weight:600;}
+.pg-sub code{font-family:var(--font-mono);font-size:.72rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.tgl{display:inline-flex;align-items:center;gap:7px;background:var(--bg-surface);border:1px solid var(--border-strong);
+     color:var(--text-muted);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:var(--font-sans);
+     font-size:.75rem;font-weight:500;transition:border-color .15s ease,color .15s ease,transform .15s ease;}
+.tgl:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.tgl.on{border-color:var(--accent);color:var(--accent);background:var(--accent-weak);}
+.tag{font-size:.62rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid currentColor;}
+.tag.new{color:var(--accent);background:var(--accent-weak);}
+.stage{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;}
+.col{display:flex;flex-direction:column;gap:9px;}
+.col-cap{display:flex;align-items:baseline;gap:9px;}
+.col-cap h2{margin:0;font-size:.8rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;}
+.col-cap .why{font-size:.71rem;color:var(--text-dim);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   사이드바 셸 — 실제 폭 430px. 자재 pane(③)이 절반 높이로 올라간 상태.
+   ══════════════════════════════════════════════════════════════════════════ */
+.sidebar{width:var(--plan-sidebar-w);min-width:var(--plan-sidebar-w);height:742px;
+  background:var(--bg-app);border:1px solid var(--border-strong);border-radius:12px;
+  box-shadow:var(--shadow-card);display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-header);
+  font-size:.73rem;font-weight:600;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;}
+.tp-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:10px 11px 8px;}
+.tp-scroll::-webkit-scrollbar{width:7px;}
+.tp-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;}
+.tp-scroll::-webkit-scrollbar-track{background:transparent;}
+
+/* ── 표 공통 껍데기 ─────────────────────────────────────────────────────
+   flex:none이 필수다. .tp-scroll은 column flex인데, 기본 flex-shrink:1이라
+   내용이 넘치면 카드가 **스크롤되지 않고 찌그러진다**(측정으로 확인).
+   현행 transfer_plan.css의 .tp-doe / .tp-doe-list에도 flex:none이 없다 — 노트 참조. */
+.tbl{border:1px solid var(--border);border-radius:9px;background:var(--bg-surface);overflow:hidden;flex:none;}
+.tbl-h{display:flex;align-items:center;gap:7px;padding:5px 8px;background:var(--bg-header);
+  border-bottom:1px solid var(--border);}
+.tbl-h .no{font-family:var(--font-mono);font-size:.72rem;font-weight:700;color:var(--accent);}
+.tbl-h .nm{font-size:.73rem;font-weight:600;color:var(--text);letter-spacing:.2px;}
+.tbl-h .sub{font-size:.63rem;color:var(--text-dim);}
+.tbl-h .sp{margin-left:auto;}
+.tbl-b{padding:5px 7px 7px;display:flex;flex-direction:column;gap:2px;}
+.ch-row{display:grid;gap:4px;font-size:.575rem;font-weight:600;letter-spacing:.55px;
+  text-transform:uppercase;color:var(--text-dim);padding:1px 0 3px;}
+.ch-row .r{text-align:right;}
+
+/* ── 입력 기본 ─────────────────────────────────────────────────────────── */
+.gi{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);
+  font-family:var(--font-sans);outline:none;transition:border-color .15s ease,box-shadow .15s ease;}
+.gi:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring);}
+.btn{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;color:var(--text-muted);
+  font-family:var(--font-sans);font-size:.69rem;font-weight:500;padding:3px 9px;cursor:pointer;
+  transition:border-color .15s ease,color .15s ease,transform .15s ease;}
+.btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.del{border:1px solid transparent;background:transparent;color:var(--text-dim);border-radius:5px;
+  padding:1px 3px;cursor:pointer;font-size:.68rem;line-height:1;transition:var(--transition-smooth);}
+.del:hover{background:var(--danger-weak);color:var(--danger);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ① 값 정의 — Color · Value · Description. 한 줄 = 한 값.
+   ══════════════════════════════════════════════════════════════════════════ */
+.t1 .ch-row,.t1 .r1{grid-template-columns:22px 46px 1fr 30px 16px;}
+.t1 .r1{display:grid;gap:4px;align-items:center;padding:2px 0;border-radius:5px;
+  transition:background-color .15s ease;}
+.t1 .r1:hover{background:var(--surface-hover);}
+.t1 .sw{width:22px;height:20px;padding:0;border:1px solid var(--border-strong);border-radius:5px;
+  background:var(--bg-surface);cursor:pointer;}
+.t1 .vin{width:100%;padding:2px 3px;font-size:.74rem;font-weight:700;text-align:center;
+  font-family:var(--font-mono);}
+.t1 .din{width:100%;padding:2px 6px;font-size:.72rem;font-family:var(--font-sans);}
+.t1 .pnt{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.65rem;
+  color:var(--text-dim);text-align:right;padding-right:2px;cursor:help;}
+.t1 .r1.bad{box-shadow:inset 2px 0 0 var(--danger);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ② 구간 — VALUE · FROM · TO · MAT · Knob
+   한 구간 = 두 줄. 1줄에 숫자 척추 + 자재, 2줄에 Knob + 파생값.
+   Knob만 열을 벗어난 이유는 노트 참조(자동 부착 12개를 90px에 담을 수 없다).
+   ══════════════════════════════════════════════════════════════════════════ */
+.t2 .ch-row{grid-template-columns:78px 32px 10px 32px 1fr 14px;}
+.bd{border-radius:7px;padding:3px 3px 4px;transition:background-color .15s ease;}
+.bd:hover{background:var(--surface-hover);}
+.bd + .bd{border-top:1px solid var(--border);}
+.bd.bad{box-shadow:inset 2px 0 0 var(--danger);}
+.bd-l1{display:grid;grid-template-columns:78px 32px 10px 32px 1fr 14px;gap:4px;align-items:start;}
+.bd-l2{display:grid;grid-template-columns:1fr 118px;gap:5px;align-items:start;padding-top:3px;}
+.arw{font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);text-align:center;padding-top:4px;}
+
+/* FROM · TO — 둘 다 입력이다(유도 폐기). type=text + inputmode=numeric, 스피너 없음. */
+.bin{width:100%;padding:3px 5px;font-size:.76rem;font-family:var(--font-mono);
+  font-variant-numeric:tabular-nums;text-align:right;}
+.bin::placeholder{color:var(--text-dim);font-style:italic;font-size:.62rem;}
+.bin.bad{border-color:var(--danger);color:var(--danger);background:var(--danger-weak);text-align:left;font-size:.68rem;}
+.bin.blank{border-style:dashed;}
+
+/* 파생 — 절대 입력이 아니다. 테두리 없음 + accent-2.
+   한 구간의 파생값은 **전부 여기 한 자리**에 모은다(층 수 · 칠함 · 소요 · 매당).
+   자재 칸 밑에 따로 두던 줄을 없앴다 — 같은 성격의 수가 두 곳에 흩어져 있었다. */
+.drv{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.565rem;
+  line-height:1.42;color:var(--text-dim);text-align:right;padding-top:1px;}
+.drv b{color:var(--accent-2);font-weight:600;}
+.drv .no{color:var(--text-dim);font-style:italic;}
+.drv .no.bad{color:var(--danger);font-style:normal;}
+.drv .w{color:var(--warning);cursor:help;}
+
+/* ── 모음 필드: 칩(idle) / 원문(focus). :focus-within + opacity 뿐 — JS 없음. ──
+   이전 시안에서 살아남은 발견 ②. 재렌더가 없으므로 포커스를 잃을 수 없다. */
+.tf{position:relative;display:block;}
+.tf-raw{width:100%;resize:none;padding:3px 5px;font-family:var(--font-mono);font-size:.645rem;
+  line-height:1.5;overflow-y:auto;display:block;background:var(--bg-surface);
+  border:1px solid var(--border-strong);border-radius:6px;color:var(--text);outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease;}
+.tf-raw:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring);}
+.tf-raw::placeholder{color:var(--text-dim);font-style:italic;}
+.tf-chips{position:absolute;inset:0;pointer-events:none;background:var(--bg-surface);
+  border:1px solid var(--border-strong);border-radius:6px;padding:2px 4px;display:flex;flex-wrap:wrap;
+  gap:2px;align-content:flex-start;overflow:hidden;transition:opacity .12s ease;}
+.tf:focus-within .tf-chips{opacity:0;}
+.tf:hover .tf-chips{border-color:var(--accent);}
+.tf-chips.over::after{content:'';position:absolute;left:1px;right:1px;bottom:1px;height:13px;
+  border-radius:0 0 5px 5px;background:linear-gradient(transparent,var(--bg-surface));}
+.tf-more{position:absolute;right:3px;bottom:1px;font-family:var(--font-mono);font-size:.55rem;
+  font-weight:700;color:var(--accent);background:var(--accent-weak);border-radius:8px;padding:0 4px;
+  line-height:1.5;}
+
+/* ── 값 칩 (VALUE 열) — ①의 색을 그대로 데려온다. ─────────────────────── */
+.vc{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.6rem;font-weight:700;
+  line-height:1.4;padding:0 5px;border-radius:4px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);white-space:nowrap;}
+.vc.all{color:var(--accent);background:transparent;border:1px dashed var(--accent);text-shadow:none;
+  letter-spacing:.5px;}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   자재 칩 — 이 시안에서 가장 어려운 물건.
+   한 칩이 네 가지를 동시에 말해야 한다: 이름 · 로트전체/단일슬롯 · BIN · 해석 상태.
+   해법: 슬롯 자리에 표식을 넣는다. `_01`(슬롯) vs `_✱`(로트 전체) —
+         같은 글자 위치에서 갈리므로 세로로 훑을 때 놓칠 수 없다.
+   BIN은 언제나 표기한다(생략하지 않는다). 기본값 1은 흐리게, 그 외는 accent-2로 세게.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mc{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.615rem;
+  line-height:1.45;padding:0 4px;border-radius:4px;border:1px solid var(--border);
+  background:var(--bg-inset);color:var(--text-muted);white-space:nowrap;}
+.mc .lot{color:var(--text);font-weight:500;}
+.mc .st{color:var(--accent-2);font-weight:700;}                       /* _✱ 로트 전체 */
+.mc .bn{color:var(--text-dim);opacity:.75;}                           /* :1 기본 BIN  */
+.mc .bn.hi{color:var(--accent-2);opacity:1;font-weight:700;}          /* :2, :3       */
+.mc.warn{border-color:var(--warning);background:var(--warning-weak);}
+.mc.warn .lot{color:var(--warning);}
+.mc.bad{border-color:var(--danger);background:var(--danger-weak);color:var(--danger);}
+.mc.bad .lot{color:var(--danger);}
+.mc.lotwide{border-left:2px solid var(--accent-2);}                   /* 로트 전체 = 집계 */
+
+/* Knob 칩 — 자동 부착을 견뎌야 한다. 가장 작고 가장 조용하게. */
+.kc{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:.58rem;line-height:1.45;
+  padding:0 4px;border-radius:8px;border:1px solid var(--border);background:transparent;
+  color:var(--text-dim);white-space:nowrap;}
+.kc .h{color:var(--accent-2);opacity:.7;}
+.kc.auto{border-style:dashed;}
+
+/* ── 차단 메시지 — 고치는 자리에 붙는다. 별도 면을 만들지 않는다. ─────── */
+.blk{display:flex;align-items:flex-start;gap:5px;font-size:.63rem;line-height:1.5;color:var(--danger);
+  background:var(--danger-weak);border-radius:5px;padding:3px 6px;margin-top:3px;}
+.blk .rid{font-family:var(--font-mono);font-size:.55rem;font-weight:700;border:1px solid var(--danger);
+  border-radius:3px;padding:0 3px;flex:none;margin-top:1px;letter-spacing:.3px;}
+.blk b{font-weight:700;}
+.blk .mono{font-weight:700;}
+:root.clean .blk{display:none;}
+:root.clean .bad{box-shadow:none!important;}
+
+/* ── PRESET — 자기 영역을 갖지 않는다. ②의 머리줄 오른쪽에 산다. ───────── */
+.pre{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border-strong);
+  border-radius:6px;padding:1px 3px 1px 6px;background:var(--bg-surface);cursor:pointer;
+  font-family:var(--font-mono);font-size:.615rem;color:var(--text-muted);
+  transition:border-color .15s ease,color .15s ease;}
+.pre:hover{border-color:var(--accent);color:var(--accent);}
+.pre .g{color:var(--accent);font-weight:700;}
+.pre .cv{font-size:.5rem;opacity:.6;}
+.seed{font-size:.6rem;color:var(--text-dim);line-height:1.5;padding:2px 0 0;}
+.seed b{color:var(--accent-2);font-weight:600;}
+
+/* ② 꼬리 */
+.t2-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:5px;
+  border-top:1px solid var(--border);margin-top:3px;}
+.gram{font-size:.575rem;color:var(--text-dim);line-height:1.5;}
+.gram code{font-family:var(--font-mono);font-size:.56rem;color:var(--accent-2);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ③ 자재 롤업 — 파생 전용. 절반 높이로 올라온 pane 그 자체.
+   행 정체 = (자재, BIN). 같은 로트의 다른 BIN은 인접하고, 두 번째부터 들여쓴다.
+   ══════════════════════════════════════════════════════════════════════════ */
+.t3{height:371px;min-height:371px;flex:none;border-top:1px solid var(--border);
+  background:var(--bg-inset);display:flex;flex-direction:column;}
+.t3-h{display:flex;align-items:center;gap:7px;padding:5px 11px;border-bottom:1px solid var(--border);
+  background:var(--bg-header);flex:none;}
+.t3-scroll{flex:1;min-height:0;overflow-y:auto;padding:4px 9px 8px;}
+.t3-scroll::-webkit-scrollbar{width:7px;}
+.t3-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;}
+.t3 .ch-row,.t3 .r3{grid-template-columns:1fr 26px 52px 46px 52px;}
+.t3 .r3{display:grid;gap:4px;align-items:center;padding:3px 4px;border-radius:5px;
+  transition:background-color .15s ease;}
+.t3 .r3:hover{background:var(--surface-hover);}
+.t3 .r3 + .r3{border-top:1px solid var(--border);}
+.t3 .r3.sub .matcell{padding-left:9px;position:relative;}
+.t3 .r3.sub .matcell::before{content:'└';position:absolute;left:0;color:var(--text-dim);
+  font-family:var(--font-mono);font-size:.6rem;opacity:.55;}
+.t3 .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:.65rem;text-align:right;}
+.t3 .num.want{color:var(--text-muted);}
+.t3 .num.left{color:var(--accent-2);font-weight:600;}
+.t3 .mapb{font-size:.6rem;text-align:center;line-height:1;}
+.t3 .mapb.ok{color:var(--text-dim);opacity:.6;}
+.t3 .mapb.no{color:var(--warning);}
+/* 미상 — 기존 어휘 그대로(.tp-unknown-val). 가용이 미상이면 잔여도 같은 글자다. */
+.unk{font-family:var(--font-sans);font-size:.6rem;color:var(--text-dim);
+  border-bottom:1px dashed var(--text-dim);cursor:help;text-align:right;display:inline-block;}
+.unk.w{color:var(--warning);border-bottom-color:var(--warning);}
+.unk.d{color:var(--danger);border-bottom-color:var(--danger);}
+.t3 .r3.unrel{background:var(--warning-weak);}
+.t3-note{font-size:.585rem;color:var(--text-dim);line-height:1.55;padding:5px 2px 0;}
+.t3-note b{color:var(--warning);}
+
+/* ── 저장 줄 (사이드바 꼬리) ──────────────────────────────────────────── */
+.savebar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 11px;
+  border-top:1px solid var(--border);background:var(--bg-header);}
+.save-msg{font-size:.66rem;color:var(--danger);font-weight:600;display:flex;align-items:center;gap:5px;}
+.save-msg .cnt{font-family:var(--font-mono);border:1px solid var(--danger);border-radius:9px;
+  padding:0 5px;font-size:.6rem;}
+:root.clean .save-msg{color:var(--text-dim);font-weight:500;}
+:root.clean .save-msg .cnt{border-color:var(--border-strong);color:var(--text-dim);}
+.save-btn{margin-left:auto;border-radius:6px;padding:4px 14px;font-size:.72rem;font-weight:600;
+  font-family:var(--font-sans);cursor:not-allowed;border:1px solid var(--border);
+  background:var(--bg-inset);color:var(--text-dim);transition:var(--transition-smooth);}
+:root.clean .save-btn{cursor:pointer;border-color:var(--accent);background:var(--accent-weak);color:var(--accent);}
+:root.clean .save-btn:hover{transform:translateY(-1px);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   확대 판 (앱 아님 — 칩 문법을 크게 본다)
+   ══════════════════════════════════════════════════════════════════════════ */
+.plates{width:360px;display:flex;flex-direction:column;gap:11px;}
+.plate{background:var(--bg-surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px;}
+.plate h3{margin:0 0 8px;font-size:.73rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text-muted);}
+.plate p{margin:0 0 7px;font-size:.72rem;line-height:1.65;color:var(--text-dim);}
+.plate p:last-child{margin-bottom:0;}
+.plate b{color:var(--text);font-weight:600;}
+.plate code{font-family:var(--font-mono);font-size:.68rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.gr{font-family:var(--font-mono);font-size:.68rem;line-height:1.85;color:var(--text-muted);
+  background:var(--bg-inset);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:9px;}
+.gr .k{color:var(--accent-2);font-weight:700;}
+.gr .c{color:var(--text-dim);}
+.tx{display:flex;flex-direction:column;gap:6px;}
+.tx-r{display:flex;align-items:center;gap:9px;font-size:.68rem;color:var(--text-dim);line-height:1.5;}
+.tx-r .big{flex:none;width:104px;text-align:left;}
+.tx-r .big .mc{font-size:.72rem;padding:1px 6px;}
+.tx-r em{font-style:normal;color:var(--text);font-weight:600;}
+.rej{display:flex;flex-direction:column;gap:4px;}
+.rej-r{display:flex;align-items:baseline;gap:8px;font-size:.66rem;line-height:1.55;}
+.rej-r .t{font-family:var(--font-mono);font-size:.66rem;color:var(--danger);background:var(--danger-weak);
+  border:1px solid var(--danger);border-radius:4px;padding:0 5px;flex:none;min-width:74px;text-align:center;}
+.rej-r .r{color:var(--text-dim);}
+/* PRESET 팝업 확대 (사이드바 안에서는 overflow에 잘려서 여기에 그린다) */
+.pop{width:216px;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:8px;
+  box-shadow:var(--shadow-pop);overflow:hidden;}
+.pop-h{padding:5px 9px;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--text-dim);background:var(--bg-header);border-bottom:1px solid var(--border);}
+.pop-i{display:flex;align-items:center;gap:6px;padding:5px 9px;font-family:var(--font-mono);font-size:.64rem;
+  color:var(--text-muted);cursor:pointer;}
+.pop-i:hover{background:var(--surface-hover);}
+.pop-i.sel{background:var(--accent-weak);color:var(--accent);}
+.pop-i .rng{margin-left:auto;font-size:.58rem;color:var(--text-dim);}
+.pop-i.sel .rng{color:var(--accent);}
+.pop-i .act{display:flex;gap:3px;opacity:0;transition:opacity .12s ease;}
+.pop-i:hover .act{opacity:1;}
+.pop-f{padding:4px 9px;border-top:1px solid var(--border);font-size:.62rem;color:var(--accent);cursor:pointer;}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   노트
+   ══════════════════════════════════════════════════════════════════════════ */
+.notes{width:392px;display:flex;flex-direction:column;gap:11px;}
+.note{background:var(--bg-surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:9px;padding:11px 13px;}
+.note h3{margin:0 0 7px;font-size:.73rem;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text-muted);}
+.note p{margin:0 0 7px;font-size:.72rem;line-height:1.68;color:var(--text-dim);}
+.note p:last-child{margin-bottom:0;}
+.note b{color:var(--text);font-weight:600;}
+.note code{font-family:var(--font-mono);font-size:.67rem;color:var(--accent);background:var(--accent-weak);border-radius:4px;padding:1px 5px;}
+.note.warn{border-left-color:var(--warning);}
+.note.danger{border-left-color:var(--danger);}
+.note.ok{border-left-color:var(--success);}
+.note ul{margin:0;padding-left:16px;}
+.note li{font-size:.72rem;line-height:1.7;color:var(--text-dim);margin-bottom:3px;}
+.note li b{color:var(--text);}
+.strike{text-decoration:line-through;color:var(--text-dim);opacity:.7;}
+</style>
+</head>
+<body>
+
+<div class="pg-head">
+  <h1>DOE 세 표 — ① 값 정의 · ② 구간 · ③ 자재 롤업</h1>
+  <span class="tag new">시안 · 코드 미반영</span>
+  <button class="tgl" id="t-theme">라이트 / 다크</button>
+  <button class="tgl on" id="t-block">검증: <b id="t-block-l">차단 4건</b> ↔ 통과</button>
+</div>
+<p class="pg-sub">
+  실제 사이드바 폭 <b>430px</b> 그대로입니다. <b>③ 자재 롤업 pane은 절반 높이(371px)</b>로 올라가 있고,
+  ①·②는 남은 절반을 나눠 씁니다 — 세로 예산이 줄어든 상태를 그대로 보고 있습니다.
+  데이터: 프리셋 <code>16LAYER_STD</code> 적용 후 <b>2행을 2–15에서 2–12로 줄이고 잊은</b> 계획입니다.
+  구간 6개 — <b>범위가 두 값 범위로 갈린 것</b>, <b>로트 전체 자재</b>, <b>BIN 지정 자재</b>, <b>해석 불가 자재</b>,
+  <b>빈 TO</b>, <b>읽을 수 없는 TO</b>, 그리고 ③에 <b>신뢰 불가 가용</b>.
+  <b>자재·Knob·VALUE 칸을 눌러 보세요</b> — 칩이 원문으로 바뀝니다(JS 없음).<br>
+  <b style="color:var(--danger);">먼저 볼 것:</b> ③을 절반으로 올리면 ①+②에 <b>298px</b>만 남습니다 —
+  ②의 실제 높이는 <b>685px</b>이고 <b>구간이 화면에 0.5개</b> 보입니다(브라우저 실측).
+  오른쪽 첫 노트를 먼저 읽어 주세요.
+</p>
+
+<div class="stage">
+
+  <!-- ══════════════════ 사이드바 ══════════════════ -->
+  <div class="col">
+    <div class="col-cap"><h2>계획 사이드바</h2><span class="why">430px · 실제 크기</span></div>
+
+    <div class="sidebar">
+      <div class="sb-head"><span>2. Legend &amp; DOE</span>
+        <span class="mono" style="font-size:.66rem;opacity:.7;">M12_STACK · 16층</span></div>
+
+      <div class="tp-scroll">
+
+        <!-- ═══════ ① 값 정의 ═══════ -->
+        <div class="tbl t1">
+          <div class="tbl-h">
+            <span class="no">①</span><span class="nm">값 정의</span>
+            <span class="sub">맵이 쓰는 색 어휘</span>
+            <span class="sp"></span><button class="btn">+ 값</button>
+          </div>
+          <div class="tbl-b">
+            <div class="ch-row"><span></span><span>Value</span><span>Description</span><span class="r">칠함</span><span></span></div>
+
+            <div class="r1 bad">
+              <input type="color" class="sw" value="#2f7d63" />
+              <input class="gi vin" value="A" />
+              <input class="gi din" value="게이트 산화 · 430°C 습식" />
+              <span class="pnt" title="맵에서 값 A로 칠해진 셀 수">96</span>
+              <button class="del">🗑</button>
+            </div>
+            <!-- 값 단위 규칙(B5·B6·B8)은 지목할 구간 행이 없다. 값 행에 붙인다. -->
+            <div class="blk">
+              <span class="rid">B6</span>
+              <span>값 <b>'A'</b>의 <b class="mono">13–15층</b>이 비어 있습니다 (1–16층 중).
+                2행을 <span class="mono">2–12</span>로 줄이면서 <span class="mono">13–15</span>를 덮는 구간이 없어졌습니다.</span>
+            </div>
+
+            <div class="r1">
+              <input type="color" class="sw" value="#8a4fbf" />
+              <input class="gi vin" value="B" />
+              <input class="gi din" value="질화막 라이너 · LP-CVD" />
+              <span class="pnt">64</span>
+              <button class="del">🗑</button>
+            </div>
+            <div class="r1">
+              <input type="color" class="sw" value="#c98a2e" />
+              <input class="gi vin" value="C" />
+              <input class="gi din" value="스페이서 식각" />
+              <span class="pnt">48</span>
+              <button class="del">🗑</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ② 구간 ═══════ -->
+        <div class="tbl t2">
+          <div class="tbl-h">
+            <span class="no">②</span><span class="nm">구간</span>
+            <span class="sp"></span>
+            <!-- PRESET은 자기 영역을 갖지 않는다. ②의 머리줄에 산다. -->
+            <span class="pre" title="층 프리셋 — 적용하면 구간 행이 이 범위로 채워집니다. 채워진 뒤에도 수정할 수 있습니다.">
+              <span class="g">⌗</span> 16LAYER_STD <span class="cv">▾</span>
+            </span>
+            <button class="btn">+ 구간</button>
+          </div>
+          <div class="tbl-b">
+            <div class="ch-row">
+              <span>Value</span><span class="r">From</span><span></span><span class="r">To</span>
+              <span>MAT</span><span></span>
+            </div>
+
+            <!-- 구간 1 — ALL · 1→1 · 슬롯 자재 둘 -->
+            <div class="bd">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">ALL</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="vc all">ALL</span></span>
+                </span>
+                <input class="gi bin" value="1" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin" value="1" inputmode="numeric" />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">3AB201_02
+3AB01_03</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc"><span class="lot">3AB201_02</span><span class="bn">:1</span></span>
+                      <span class="mc"><span class="lot">3AB01_03</span><span class="bn">:1</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;">#WET #430C</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc"><span class="h">#</span>WET</span><span class="kc"><span class="h">#</span>430C</span>
+                  </span>
+                </span>
+                <span class="drv"><b>1층</b> · ALL 208칸<br>소요 <b>208</b><br>2매 → 매당 <b>104</b></span>
+              </div>
+            </div>
+
+            <!-- 구간 2 — A · 2→12 (사용자가 줄이고 잊은 행) · 로트 전체 BIN 2 -->
+            <div class="bd">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">A</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="vc" style="background:#2f7d63">A</span></span>
+                </span>
+                <input class="gi bin" value="2" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin" value="12" inputmode="numeric" />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">MID1:2</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc lotwide" title="MID1 — 로트 전체(모든 슬롯), BIN 2"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn hi">:2</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <!-- 자동 부착 12개가 도착한 뒤의 모습 -->
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;">#WET #430C #90s #H2O #RCA1 #DHF #QT4H #LOTSPLIT #RWK #2ND #FURN3 #BOAT-A</textarea>
+                  <span class="tf-chips over" aria-hidden="true">
+                    <span class="kc auto"><span class="h">#</span>WET</span><span class="kc auto"><span class="h">#</span>430C</span>
+                    <span class="kc auto"><span class="h">#</span>90s</span><span class="kc auto"><span class="h">#</span>H2O</span>
+                    <span class="kc auto"><span class="h">#</span>RCA1</span><span class="kc auto"><span class="h">#</span>DHF</span>
+                    <span class="kc auto"><span class="h">#</span>QT4H</span><span class="kc auto"><span class="h">#</span>LOTSPLIT</span>
+                    <span class="kc auto"><span class="h">#</span>RWK</span><span class="kc auto"><span class="h">#</span>2ND</span>
+                    <span class="kc auto"><span class="h">#</span>FURN3</span><span class="kc auto"><span class="h">#</span>BOAT-A</span>
+                    <span class="tf-more">+6</span>
+                  </span>
+                </span>
+                <span class="drv"><b>11층</b> · A 96칸<br>소요 <b>1,056</b><br>1매 → 매당 <b>1,056</b></span>
+              </div>
+            </div>
+
+            <!-- 구간 3 — B,C · 2→15 (2행과 같은 범위, 정상) · 로트 전체 + 다른 BIN 슬롯 -->
+            <div class="bd">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">B,C</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="vc" style="background:#8a4fbf">B</span><span class="vc" style="background:#c98a2e">C</span>
+                  </span>
+                </span>
+                <input class="gi bin" value="2" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin" value="15" inputmode="numeric" />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">MID2
+MID2_07:3</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc lotwide" title="MID2 — 로트 전체, BIN 1(생략값)"><span class="lot">MID2</span><span class="st">_✱</span><span class="bn">:1</span></span>
+                      <span class="mc warn" title="MID2_07 — 단일 슬롯, BIN 3. 이 맵에 BIN 3이 없습니다."><span class="lot">MID2_07</span><span class="bn hi">:3</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;">#LPCVD #650C #SiH2Cl2</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc"><span class="h">#</span>LPCVD</span><span class="kc"><span class="h">#</span>650C</span>
+                    <span class="kc"><span class="h">#</span>SiH2Cl2</span>
+                  </span>
+                </span>
+                <!-- 올림은 한 번만. B+C를 값별로 나눠 올리면 안 된다 (스펙 §4). -->
+                <span class="drv"><b>14층</b> · B+C 112칸<br>소요 <b>1,568</b><br>2매 → 매당 <b>784</b></span>
+              </div>
+            </div>
+
+            <!-- 구간 4 — A · 16→16 · 맵에 없는 자재 (보고만, 0으로 만들지 않는다) -->
+            <div class="bd">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">A</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="vc" style="background:#2f7d63">A</span></span>
+                </span>
+                <input class="gi bin" value="16" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin" value="16" inputmode="numeric" />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">3AB77_04</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc warn" title="3AB77_04 — 문법은 맞지만 자재 맵 테이블에서 찾지 못했습니다. 저장은 됩니다."><span class="lot">3AB77_04</span><span class="bn">:1</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;">#TOP #CAP</textarea>
+                  <span class="tf-chips" aria-hidden="true">
+                    <span class="kc"><span class="h">#</span>TOP</span><span class="kc"><span class="h">#</span>CAP</span>
+                  </span>
+                </span>
+                <span class="drv"><b>1층</b> · A 96칸<br>소요 <b>96</b><br>1매 → 매당 <b>96</b></span>
+              </div>
+            </div>
+
+            <!-- 구간 5 — B · 16→(빈칸) -->
+            <div class="bd bad">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">B</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="vc" style="background:#8a4fbf">B</span></span>
+                </span>
+                <input class="gi bin" value="16" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin blank" value="" placeholder="미정" inputmode="numeric" />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">MID9_01</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc"><span class="lot">MID9_01</span><span class="bn">:1</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;" placeholder="#태그"></textarea>
+                  <span class="tf-chips" aria-hidden="true"></span>
+                </span>
+                <!-- 소요를 0으로 쓰지 않는다. 0은 "필요 없음"으로 읽힌다. -->
+                <span class="drv"><span class="no">층 수 미상</span><br><span class="no">소요 계산 불가</span></span>
+              </div>
+              <div class="blk">
+                <span class="rid">B3</span>
+                <span><b>5행</b> <b class="mono">TO</b>가 비어 있습니다 — 층 범위를 계산할 수 없습니다.
+                  값 <b>'B'</b>의 16층을 덮을 구간입니다.</span>
+              </div>
+            </div>
+
+            <!-- 구간 6 — C · 16→"1O" (읽을 수 없음) · 해석 불가 자재 토큰 -->
+            <div class="bd bad">
+              <div class="bd-l1">
+                <span class="tf" style="height:20px;">
+                  <textarea class="tf-raw" style="height:20px;">C</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="vc" style="background:#c98a2e">C</span></span>
+                </span>
+                <input class="gi bin" value="16" inputmode="numeric" />
+                <span class="arw">→</span>
+                <input class="gi bin bad" value="1O" inputmode="numeric"
+                  title="저장된 값 &quot;1O&quot;을(를) 정수로 읽을 수 없습니다. type=number였다면 이 칸은 빈칸으로 보였을 것입니다." />
+                <span>
+                  <span class="tf" style="height:32px;">
+                    <textarea class="tf-raw" style="height:32px;">MID2_07:</textarea>
+                    <span class="tf-chips" aria-hidden="true">
+                      <span class="mc bad" title="':' 뒤에 BIN이 없습니다."><span class="lot">MID2_07:</span></span>
+                    </span>
+                  </span>
+                </span>
+                <button class="del">🗑</button>
+              </div>
+              <div class="bd-l2">
+                <span class="tf" style="height:30px;">
+                  <textarea class="tf-raw" style="height:30px;">#CMP</textarea>
+                  <span class="tf-chips" aria-hidden="true"><span class="kc"><span class="h">#</span>CMP</span></span>
+                </span>
+                <span class="drv"><span class="no bad">TO 읽을 수 없음</span><br><span class="no bad">자재 1개 해석 불가</span></span>
+              </div>
+              <div class="blk">
+                <span class="rid">B3</span>
+                <span><b>6행</b> <b class="mono">TO</b> 값 <b class="mono">"1O"</b>을(를) 정수로 읽을 수 없습니다
+                  — <b>1</b>과 알파벳 <b>O</b>입니다.</span>
+              </div>
+              <div class="blk">
+                <span class="rid">B7</span>
+                <span><b>6행</b> 자재 <b class="mono">'MID2_07:'</b>을(를) 읽을 수 없습니다 —
+                  <b class="mono">':'</b> 뒤에 BIN이 없습니다.</span>
+              </div>
+            </div>
+
+            <div class="t2-foot">
+              <span class="gram">
+                줄바꿈으로 나눕니다 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
+              </span>
+            </div>
+            <div class="seed">
+              <b>16LAYER_STD</b> 적용됨 — 만들어진 행은 <b>수정할 수 있습니다</b> (씨앗이지 자물쇠가 아닙니다).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ ③ 자재 롤업 — 절반 높이 ═══════ -->
+      <div class="t3">
+        <div class="t3-h">
+          <span class="no" style="font-family:var(--font-mono);font-size:.72rem;font-weight:700;color:var(--accent);">③</span>
+          <span class="nm" style="font-size:.73rem;font-weight:600;">자재 롤업</span>
+          <span class="sub" style="font-size:.63rem;color:var(--text-dim);">파생 · 입력받지 않음</span>
+          <span class="sp" style="margin-left:auto;"></span>
+          <span class="mono" style="font-size:.62rem;color:var(--text-dim);">7 풀 · (자재,BIN)</span>
+          <button class="btn" style="padding:2px 7px;">↻ 가용</button>
+        </div>
+        <div class="t3-scroll">
+          <div class="ch-row"><span>MAT</span><span style="text-align:center;">MAP</span>
+            <span class="r">가용</span><span class="r">사용</span><span class="r">잔여</span></div>
+
+          <div class="r3">
+            <span class="matcell"><span class="mc"><span class="lot">3AB01_03</span><span class="bn">:1</span></span></span>
+            <span class="mapb ok" title="자재 맵 있음">✓</span>
+            <span class="num">1,200</span><span class="num want">104</span><span class="num left">1,096</span>
+          </div>
+          <div class="r3">
+            <span class="matcell"><span class="mc"><span class="lot">3AB201_02</span><span class="bn">:1</span></span></span>
+            <span class="mapb ok">✓</span>
+            <span class="num">1,200</span><span class="num want">104</span><span class="num left">1,096</span>
+          </div>
+          <div class="r3">
+            <span class="matcell"><span class="mc warn"><span class="lot">3AB77_04</span><span class="bn">:1</span></span></span>
+            <span class="mapb no" title="자재 맵 테이블에서 찾지 못했습니다">⚠</span>
+            <span><span class="unk w" title="자재 맵을 찾지 못해 가용을 조회할 수 없습니다.">미상</span></span>
+            <span class="num want">96</span>
+            <span><span class="unk w" title="가용이 미상이라 잔여를 계산하지 않습니다. 0이 아닙니다.">미상</span></span>
+          </div>
+
+          <!-- 신뢰 불가 가용 → 잔여도 미상. 계산하지 않는다. -->
+          <div class="r3 unrel">
+            <span class="matcell"><span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn hi">:2</span></span></span>
+            <span class="mapb ok">✓</span>
+            <span><span class="unk w" title="서버: source_degraded — 집계 원본이 최신이 아닙니다. [↻ 가용]으로 다시 시도하십시오.">미상</span></span>
+            <span class="num want">1,056</span>
+            <span><span class="unk w" title="가용이 신뢰 불가라 잔여는 숫자를 보이지 않습니다 — 미지를 전파합니다.">미상</span></span>
+          </div>
+
+          <div class="r3">
+            <span class="matcell"><span class="mc lotwide"><span class="lot">MID2</span><span class="st">_✱</span><span class="bn">:1</span></span></span>
+            <span class="mapb ok">✓</span>
+            <span class="num">2,400</span><span class="num want">784</span><span class="num left">1,616</span>
+          </div>
+          <!-- 같은 로트의 다른 BIN — 인접 + 들여쓰기. 다른 풀이지 같은 줄이 아니다. -->
+          <div class="r3 sub">
+            <span class="matcell"><span class="mc warn"><span class="lot">MID2_07</span><span class="bn hi">:3</span></span></span>
+            <span class="mapb no" title="이 맵에 BIN 3이 없습니다">⚠</span>
+            <span><span class="unk w" title="이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.">미상</span></span>
+            <span class="num want">784</span>
+            <span><span class="unk w" title="이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.">미상</span></span>
+          </div>
+
+          <div class="r3">
+            <span class="matcell"><span class="mc"><span class="lot">MID9_01</span><span class="bn">:1</span></span></span>
+            <span class="mapb ok">✓</span>
+            <span class="num">3,600</span>
+            <span><span class="unk d" title="5행의 TO가 비어 있어 이 자재의 소요를 계산할 수 없습니다.">계산 불가</span></span>
+            <span><span class="unk d" title="사용을 계산할 수 없어 잔여도 계산하지 않습니다.">계산 불가</span></span>
+          </div>
+
+          <div class="t3-note">
+            <b>미상</b>은 0이 아닙니다. <span class="mono" style="font-size:.57rem;">MID2_07:3</span>은
+            이 맵에 <b>BIN 3이 없다</b>는 뜻이지 <b>소진</b>이 아닙니다 —
+            가용이 미상이면 <b>잔여도 미상</b>입니다(계산하지 않습니다).
+          </div>
+        </div>
+      </div>
+
+      <!-- 저장 줄 -->
+      <div class="savebar">
+        <span class="save-msg" id="sm">
+          <span class="cnt" id="sm-c">4</span><span id="sm-t">건 차단 — 위 빨간 줄이 사유입니다</span>
+        </span>
+        <button class="save-btn" id="sb">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ 확대 판 ══════════════════ -->
+  <div class="col plates">
+    <div class="col-cap"><h2>자재 칩 문법</h2><span class="why">확대 — 앱에는 없는 판</span></div>
+
+    <div class="plate">
+      <div class="gr">
+자재토큰 ::= <span class="k">식별자</span> [ ":" <span class="k">BIN</span> ]<br>
+식별자   ::= lot "_" slot <span class="c">|</span> lot &nbsp;<span class="c">← lot 단독 = 로트 전체</span><br>
+BIN 생략 → 1
+      </div>
+      <div class="tx">
+        <div class="tx-r"><span class="big"><span class="mc"><span class="lot">MID1_01</span><span class="bn">:1</span></span></span>
+          <span><em>슬롯 하나</em> · BIN 1 &nbsp;<span style="opacity:.65;">친 것: <code style="font-size:.62rem;">MID1_01</code></span></span></div>
+        <div class="tx-r"><span class="big"><span class="mc"><span class="lot">MID1_01</span><span class="bn hi">:2</span></span></span>
+          <span><em>슬롯 하나</em> · BIN 2 &nbsp;<span style="opacity:.65;">친 것: <code style="font-size:.62rem;">MID1_01:2</code></span></span></div>
+        <div class="tx-r"><span class="big"><span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn">:1</span></span></span>
+          <span><em>로트 전체</em> · BIN 1 &nbsp;<span style="opacity:.65;">친 것: <code style="font-size:.62rem;">MID1</code></span></span></div>
+        <div class="tx-r"><span class="big"><span class="mc lotwide"><span class="lot">MID1</span><span class="st">_✱</span><span class="bn hi">:2</span></span></span>
+          <span><em>로트 전체</em> · BIN 2 &nbsp;<span style="opacity:.65;">친 것: <code style="font-size:.62rem;">MID1:2</code></span></span></div>
+      </div>
+      <p style="margin-top:9px;">세 가지가 <b>서로 다른 채널</b>로 옵니다 —
+        <b>슬롯 자리</b>(<span class="mono" style="color:var(--accent-2);font-weight:700;">_✱</span> vs <span class="mono">_01</span>),
+        <b>왼쪽 세로선</b>(로트 전체만), <b>BIN 색</b>(1은 흐리게, 그 외는 보라).
+        <code>_✱</code>가 <b>슬롯이 있었을 자리</b>에 들어가므로 세로로 훑을 때 같은 글자 위치에서 갈립니다.</p>
+      <p><b>BIN은 생략하지 않고 항상 씁니다.</b> 기본값 1도 흐리게 찍습니다 —
+        칩당 14px을 더 쓰는 대신 "말 안 한 기본값"이 화면에서 사라지지 않게 합니다.</p>
+    </div>
+
+    <div class="plate">
+      <h3>해석 상태 3단</h3>
+      <div class="tx" style="margin-bottom:9px;">
+        <div class="tx-r"><span class="big"><span class="mc"><span class="lot">MID2_07</span><span class="bn hi">:3</span></span></span>
+          <span><em>해석됨</em> — 풀을 찾았습니다</span></div>
+        <div class="tx-r"><span class="big"><span class="mc warn"><span class="lot">3AB77_04</span><span class="bn">:1</span></span></span>
+          <span><em>해석 불가</em> — 문법은 맞고 맵에 없습니다. <b>경고</b>, 저장은 나갑니다</span></div>
+        <div class="tx-r"><span class="big"><span class="mc bad"><span class="lot">MID2_07:</span></span></span>
+          <span><em>읽을 수 없음</em> — <b>차단</b>. 칩이 <b>원문 그대로</b>입니다</span></div>
+      </div>
+      <p><b>읽을 수 없는 토큰은 예쁘게 그리지 않습니다.</b> BIN도, <code>_✱</code>도 붙이지 않습니다 —
+        칩 문법을 입히는 순간 화면이 해석에 성공한 척을 하게 됩니다.</p>
+      <h3 style="margin-top:11px;">거절 사유 (이름을 댑니다)</h3>
+      <div class="rej">
+        <div class="rej-r"><span class="t">MID1:</span><span class="r">':' 뒤에 BIN이 없습니다.</span></div>
+        <div class="rej-r"><span class="t">MID1:abc</span><span class="r">BIN 'abc'를 정수로 읽을 수 없습니다.</span></div>
+        <div class="rej-r"><span class="t">MID1:0</span><span class="r">BIN은 1 이상이어야 합니다 (지금 0).</span></div>
+        <div class="rej-r"><span class="t">MID1:-2</span><span class="r">BIN은 1 이상이어야 합니다 (지금 -2).</span></div>
+        <div class="rej-r"><span class="t">ABC_</span><span class="r">'ABC_'를 lot_slot으로 나눌 수 없습니다.</span></div>
+      </div>
+    </div>
+
+    <div class="plate">
+      <h3>PRESET — ②의 머리줄에서 열립니다</h3>
+      <div style="display:flex;gap:11px;align-items:flex-start;">
+        <span class="pre" style="flex:none;margin-top:2px;"><span class="g">⌗</span> 16LAYER_STD <span class="cv">▾</span></span>
+        <div class="pop">
+          <div class="pop-h">층 프리셋</div>
+          <div class="pop-i sel"><span>16LAYER_STD</span><span class="rng">1-1 · 2-15 · 16-16</span></div>
+          <div class="pop-i"><span>24LAYER_HB</span><span class="rng">1-2 · 3-22 · 23-24</span></div>
+          <div class="pop-i"><span>FLAT_8</span><span class="rng">1-8</span>
+            <span class="act"><button class="del">✎</button><button class="del">🗑</button></span></div>
+          <div class="pop-f">＋ 현재 구간을 프리셋으로 저장</div>
+        </div>
+      </div>
+      <p style="margin-top:9px;">새 영역이 아닙니다 — <b>②의 제목줄 오른쪽 컨트롤 하나</b>입니다.
+        적용·편집·삭제·신규가 전부 이 팝업 안에 있고, 팝업이 닫히면 흔적은
+        제목줄의 <b>현재 프리셋 이름</b> 하나뿐입니다.</p>
+      <p><b>적용은 복사입니다.</b> 씨앗을 뿌린 뒤 ② 아래에 한 줄이 남습니다 —
+        <span style="color:var(--text-dim);">"16LAYER_STD 적용됨 — 만들어진 행은 수정할 수 있습니다."</span>
+        자물쇠 아이콘도, 잠긴 칸도 없습니다. 프리셋 행과 손으로 만든 행은 <b>화면에서 구분되지 않습니다</b> —
+        구분하면 "이건 못 고치나?"를 만들기 때문입니다.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════ 노트 ══════════════════ -->
+  <div class="col notes">
+    <div class="col-cap"><h2>판단이 필요한 곳</h2><span class="why">읽고 반려해 주세요</span></div>
+
+    <div class="note danger">
+      <h3>가장 약한 곳 ① — ③이 절반이면 ②가 못 씁니다 (실측)</h3>
+      <p>브라우저에서 잰 숫자입니다. ③이 <b>371px</b>, 머리줄 30px, 저장줄 33px을 떼면
+        ①+②에 남는 것은 <b>298px</b>입니다. ①이 <b>192px</b>(값 3개 + B6 메시지),
+        ②의 머리·꼬리가 62px — <b>구간에 남는 건 44px</b>입니다.</p>
+      <p>구간 한 개가 <b>83px</b>(차단되면 112~123px)입니다. 즉 <b>화면에 구간이 0.5개</b> 보입니다.
+        ② 전체 높이는 <b>685px</b>인데 창은 298px입니다. <b>계획을 세우는 표가 항상 스크롤 밖에 있습니다.</b></p>
+      <p>이건 이 시안의 결함이 아니라 <b>"③을 절반으로"라는 지시의 결과</b>입니다.
+        ③은 <b>파생 표</b>라 확인용으로 잠깐 보고, ②는 <b>타이핑하는 표</b>입니다 —
+        지금 배분은 그 반대로 되어 있습니다. ③의 실제 내용은 <b>337px</b>이라 절반을 다 쓰지도 않습니다.</p>
+      <p><b>제안:</b> 절반을 <b>고정이 아니라 기본값</b>으로 두고 그 사이에 드래그 분할을 넣습니다.
+        프로젝트에 이미 <code>.split-resizer</code>(z:100)가 있습니다 — 새로 만들 게 없습니다.
+        받아들이지 않으신다면 ③을 <b>250px 그대로</b> 두는 쪽이 낫습니다(그때 구간 1.9개).</p>
+    </div>
+
+    <div class="note warn">
+      <h3>가장 약한 곳 ② Knob이 열을 벗어났고, 그래도 12개가 안 보입니다</h3>
+      <p>사용자가 그린 ②는 <b>한 행에 다섯 칸</b>입니다. 430px에서 다섯을 한 줄에 놓으면
+        Knob에 <b>90px</b>밖에 못 갑니다 — 자동 부착 12개 중 <b>2개</b>만 보입니다.
+        그래서 <b>Knob만 두 번째 줄로 내렸습니다.</b> <b>이 시안이 사용자 그림을 깬 유일한 곳입니다.</b></p>
+      <p>내려도 완전히 해결되지 않습니다. 254×30px에 <b>12개 중 6개</b>가 들어갑니다(2행에서 실측 —
+        나머지는 <span class="mono" style="color:var(--accent);">+6</span> 배지).
+        3행으로 늘리면 9개가 보이지만 구간당 14px, 6구간이면 <b>84px</b>을 더 씁니다 —
+        위 ①번 문제 때문에 <b>낼 수 없는 값</b>입니다.</p>
+      <p>즉 <b>Knob 전체 읽기는 "눌러서 원문 보기"로 넘어갑니다.</b> 칩은 <b>몇 개인지와 앞머리</b>만 말합니다.
+        추적이 태그를 자동으로 단다면 <b>사람이 그걸 매번 다 읽을 필요가 있는지</b>가 진짜 질문입니다 —
+        없다면 지금이 맞고, 있다면 Knob은 ②의 열이 아니라 <b>다른 자리</b>에 있어야 합니다.</p>
+    </div>
+
+    <div class="note ok">
+      <h3>차단 메시지를 별도 목록으로 만들지 않았습니다</h3>
+      <p>차단 4건을 아래에 <b>목록으로 모으면</b> 읽고 → 어느 행인지 찾고 → 고치는
+        <b>왕복이 생깁니다.</b> 그리고 그 목록이 62px을 더 먹습니다.</p>
+      <p>대신 <b>메시지를 고칠 자리에 붙였습니다.</b> 행 규칙(B1·B2·B3·B7)은 그 구간 아래,
+        <b>값 규칙(B5·B6·B8)은 ①의 값 행 아래</b>입니다 — 값 규칙은 지목할 구간이 없기 때문입니다.
+        B6가 <b>"값 A의 13–15층"</b>이라고 말하면서 <b>A 행 바로 밑</b>에 서 있는 것이 요점입니다.</p>
+      <p>꼬리에는 <b>개수 하나</b>만 남습니다. 통과하면 그 줄이 조용해지고 저장이 켜집니다
+        (위 <b>[검증]</b> 토글로 확인해 보세요). 차단 상태의 세로 비용은 <b>깨진 행에만</b> 붙습니다 —
+        정상 계획은 한 픽셀도 내지 않습니다.</p>
+    </div>
+
+    <div class="note">
+      <h3>이전 시안에서 살린 둘</h3>
+      <ul>
+        <li><b>type=number를 버렸습니다.</b> 6행 TO의 <span class="mono" style="color:var(--danger);">"1O"</span>이
+          <b>화면에 보입니다</b> — number였다면 5행(빈칸)과 <b>똑같이</b> 보였을 값입니다.
+          <code>inputmode=numeric</code>, 우측 정렬, 스피너 없음.
+          <b>FROM에도 똑같이 적용했습니다</b> — FROM이 이제 입력값이라 같은 세 상태를 갖습니다.</li>
+        <li><b>칩 ↔ 원문을 <code>:focus-within</code>+<code>opacity</code>로만</b> 바꿉니다.
+          JS 재렌더가 없어 <b>포커스가 풀릴 수 없습니다.</b>
+          <b>이번엔 VALUE 칸에도 썼습니다</b> — <code>B,C</code>도 목록이기 때문입니다.
+          한 가지 조작이 <b>세 칸에 그대로</b> 통합니다.</li>
+      </ul>
+    </div>
+
+    <div class="note">
+      <h3>없앤 것</h3>
+      <ul>
+        <li><b class="strike">FROM 자동 표기</b> — 유도가 폐기됐으니 테두리 없는 계산값 표시도 폐기.
+          <b>FROM·TO가 같은 모양</b>이 된 것이 규칙 변경의 화면상 신호입니다.</li>
+        <li><b class="strike">초록 "맵 있음" 칩</b> — 정상 자재를 전부 초록으로 칠하면
+          수십 개 그리드에서 <b>초록이 배경이 됩니다.</b> 정상은 무채색, <b>예외에만 색</b>.</li>
+        <li><b class="strike">별도 차단 목록 패널</b> — 위 참조.</li>
+        <li><b class="strike">프리셋 영역</b> — ②의 제목줄 컨트롤 하나로.</li>
+        <li><b class="strike">자재 추가 버튼·인풋·✕</b> — 이전 시안대로 필드 하나.</li>
+      </ul>
+    </div>
+
+    <div class="note warn">
+      <h3>모델에서 화면으로 잘 안 내려오는 것</h3>
+      <p><b>㉠ 같은 범위 두 행이 정상이라는 걸 화면이 말해 주지 않습니다.</b>
+        2행 <span class="mono">A 2–12</span>와 3행 <span class="mono">B,C 2–15</span>는
+        <b>세로로 붙어 있으면 겹쳐 보입니다.</b> VALUE 칩 색이 유일한 방어인데,
+        값이 6개쯤 되면 색만으로 부족합니다. 구간을 <b>값별로 묶어 보여주는</b> 방법이 있지만
+        그건 표가 아니라 트리가 되고 — <b>"절대 복잡하면 안 된다"에 걸립니다.</b> 지금은 색만 걸었습니다.</p>
+      <p><b>㉡ B10(로트 전체 + 자기 슬롯, 같은 BIN)은 두 칩이 서로 다른 행에 있을 수 있습니다.</b>
+        3행의 <span class="mono">MID2_✱:1</span>과 다른 행의 <span class="mono">MID2_07:1</span>이 만나면 차단인데,
+        <b>둘 다 화면에 안 보이는 상태로 스크롤 밖에 있을 수 있습니다.</b>
+        메시지를 "고칠 자리에 붙인다"는 원칙이 <b>여기서만 깨집니다</b> — 자리가 둘이라서요.
+        지금은 슬롯 쪽 행에 붙였습니다. 로트 쪽에도 붙이면 같은 말이 두 번 뜹니다.</p>
+      <p><b>㉢ ③의 <span class="mono">사용</span>이 무엇인지 아직 정해지지 않았습니다</b>(스펙 §6ⓑ).
+        시안은 <b>이 계획의 소요(Σ share)</b>로 그렸습니다. 만약 "이미 소비된 실적"이면
+        <b>잔여 = 가용 − 사용</b>의 뜻이 바뀌고 세 열의 색 배정도 바뀝니다. 화면은 멀쩡한데 값이 틀리는 계열입니다.</p>
+    </div>
+
+    <div class="note danger">
+      <h3>구현할 때 걸릴 것 (Client PM 이관)</h3>
+      <ul>
+        <li><b>PRESET 팝업이 잘립니다.</b> <code>.tp-scroll</code>이 <code>overflow-y:auto</code>라
+          팝업이 사이드바 안에서 <b>클리핑</b>됩니다. 헤더 z 사례(2026-07-25)와 같은 계열 —
+          <b>fixed 위치 + 앵커 좌표 계산</b>이 필요하고, 그건 표현이 아니라 로직입니다.</li>
+        <li><b><code>_✱</code>는 렌더링이지 데이터가 아닙니다.</b> 원문은 <code>MID1</code>입니다.
+          칩을 만드는 쪽이 <b>절대 이 문자열을 저장하면 안 됩니다.</b></li>
+        <li><b>파생 3열(가용·사용·잔여)은 3상태를 그대로 받아야 합니다.</b>
+          <code>{value, reliable, reason}</code>이 화면까지 와야 <code>title</code>에 사유를 씁니다.
+          <b>숫자만 넘기면 미상이 0으로 붕괴합니다.</b></li>
+        <li><b>칩 렌더는 행마다 계산하지 않습니다.</b> 구간 6개 × 자재 여러 개는 괜찮지만
+          ③은 풀 수가 늘 수 있습니다 — 파싱 결과를 <b>한 번 만들어 재사용</b>해야 합니다.</li>
+        <li><b>표 카드에 <code>flex:none</code>이 필요합니다 (이 시안에서 실제로 밟았습니다).</b>
+          <code>.tp-scroll</code>은 <code>flex-direction:column</code>인데 자식의 기본
+          <code>flex-shrink</code>가 1입니다 — 내용이 넘치면 카드가 <b>스크롤되지 않고 찌그러집니다.</b>
+          처음 측정에서 ②가 <b>696px→211px</b>로 눌려 있었습니다.
+          현행 <code>.tp-doe</code>·<code>.tp-doe-list</code>에도 <code>flex:none</code>이 없습니다 —
+          지금은 내용이 작아서 안 드러날 뿐이라, ②가 길어지는 순간 같은 증상이 납니다.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('t-theme').addEventListener('click', function () {
+    var r = document.documentElement;
+    r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+  document.getElementById('t-block').addEventListener('click', function () {
+    var r = document.documentElement, clean = r.classList.toggle('clean');
+    this.classList.toggle('on', !clean);
+    document.getElementById('t-block-l').textContent = clean ? '통과' : '차단 4건';
+    document.getElementById('sm-c').textContent = clean ? '0' : '4';
+    document.getElementById('sm-t').textContent = clean
+      ? '건 차단 — 저장할 수 있습니다'
+      : '건 차단 — 위 빨간 줄이 사유입니다';
+  });
+</script>
+</body>
+</html>

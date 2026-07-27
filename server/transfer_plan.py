@@ -44,6 +44,8 @@ in that row's `bands` JSON column. What that buys, and what it costs the reader 
 - GET /api/transfer-plan/source-summary   : 단계별 소스 가용
   `{identity, stage, source_kind, sources, chips{total, fail_breakdown{...}, transferred,
     remaining}, history, warnings}` + tape 소스면 `by_core` 동봉(집계만 — 칩 좌표 목록 금지)
+  `bins=1,2` 지정 시 `bins` 블록 동봉(BIN별 가용 — §BIN 축). `scope=lot`은 슬롯 없이
+  로트 전체를 묻는 형태이며 `chips` 없이 `{slots, bins}`만 답한다.
 - GET /api/transfer-plan/validate?ref_table=&map_key=  : 계획 경고 목록
 - M1 `GET /api/bonding-plan/core-summary`는 외부 계약 불변 — core-kind 소스 가용의
   인스턴스로 내부 통합(본 모듈이 `bonding_plan.get_core_summary`를 어댑터로 감싼다).
@@ -106,6 +108,10 @@ MAX_BANDS_BLOB_BYTES = 256 * 1024  # `bands` 컬럼 1건의 파싱 전 크기 �
 # 막지 않으면 `painted × layers`가 수백 자리 정수가 되어 응답에 실린다.
 MAX_LAYER = 2 ** 53
 MAX_REGION_CELLS = 100_000    # 소스 사용 영역 셀 상한 (내부 연산용 — 응답에 싣지 않는다)
+# ---- BIN 축 (DOE_BAND_MODEL §4-bis) ----
+MAX_BIN_VALUES = 200          # 맵 1장의 distinct BIN 값 상한 (group-by — 값 하나당 1행)
+MAX_BIN_CELLS = 200_000       # BIN 좌표 페치 상한 (맵 1장. 감산항 교차용 — 응답에 싣지 않는다)
+MAX_LOT_SLOTS = 50            # `scope=lot` 팬아웃 상한 (로트 1개 = 보통 25슬롯)
 
 M1_SOURCE_REFS = ("bonding_plan",)   # source_config_ref 허용 값
 
@@ -146,6 +152,27 @@ WARN_RESULT_TRUNCATED = "result_truncated"
 # [QA N1] remaining 음수 = 원천 간 모집단 불일치 (불변식 위반)
 WARN_NEGATIVE_REMAINING = "negative_remaining"
 EFFECT_POPULATION_MISMATCH = "population_mismatch"
+# [BIN 축] BIN 분해를 만들 수 없다 — 클라는 `가용`을 숫자로 그리면 안 된다
+WARN_BIN_AXIS_UNAVAILABLE = "bin_axis_unavailable"
+# [BIN 축] Σ bins.total ≠ chips.total — 두 모집단(맵 셀 / 칩 원천)이 어긋났다
+WARN_BIN_POPULATION_MISMATCH = "bin_population_mismatch"
+EFFECT_BIN_AXIS_UNAVAILABLE = "bin_axis_unavailable"
+# [로트 전개] 슬롯을 세는 원천이 없다 — 빈 목록으로 위장하면 진단면이 "깨끗함"을 보고한다
+WARN_LOT_MEMBERSHIP_UNKNOWN = "lot_membership_unknown"
+# [로트 전개] 대장 미선언 → 맵이 있는 슬롯만 전개됐다(불일치 진단이 성립하지 않는다)
+WARN_LOT_MEMBERSHIP_DEGRADED = "lot_membership_degraded"
+# [로트 전개] 대장에는 있는데 맵이 없는 슬롯 — 사람이 그리드에서 고쳐야 할 어긋남
+WARN_LOT_SLOT_MAP_MISSING = "lot_slot_map_missing"
+EFFECT_LOT_EXPANSION_PARTIAL = "lot_expansion_partial"
+
+# BIN 항목 status (계약). **`0`은 이 셋 중 어느 것도 대신할 수 없다** —
+# `0`은 "다 썼다"로 읽히고 `bin_absent`는 "그 BIN이 여기 없다"이며, 사용자는 두 경우에
+# 서로 다르게 행동해야 한다(DOE_BAND_MODEL §4-bis 🔴).
+BIN_OK = "ok"
+BIN_ABSENT = "bin_absent"
+BIN_UNKNOWN = "unknown"          # 존재는 아는데 수를 신뢰할 수 없다(절단 등)
+BIN_SCOPE_SLOT = "slot"
+BIN_SCOPE_LOT = "lot"
 
 # 강등 효과 분류 (역할별로 remaining에 미치는 방향이 다르다)
 EFFECT_REMAINING_OVERSTATED = "remaining_overstated"   # 감산항(fail/기전사) 과소 → remaining 과대
@@ -527,6 +554,338 @@ def _core_region_counts(db, bp_cfg: dict, lot: str, slot: str, region: set):
     return _region_block(total_pts, fail_sets, used_set, region)
 
 
+# ---------------------------------------------------------------------------
+# BIN 축 — `(자재, BIN)` 단위 가용 (DOE_BAND_MODEL §4-bis)
+#
+# [왜 필요한가] DT 맵은 하나의 풀이 아니다. BIN으로 분할돼 있고 서로 다른 DOE 값이 **같은
+# 맵에서** 다른 BIN을 경쟁 없이 가져간다. BIN을 접으면 `잔여`가 낮게 나오는데 왜인지
+# 화면에 보이지 않는다.
+#
+# [`가용`의 정의 — 확정] `가용(bin)` := **그 BIN 셀들로 스코프한 `remaining`**, 즉
+# `|총 ∩ bin| − |(fail ∪ 전사) ∩ bin|`이다. 사용자가 처음 적은 "그 자재·BIN의 DT 맵 셀 수"
+# (= 아래 `cells`)가 **아니다**. 근거 셋:
+#   ① `잔여 = 가용 − 사용`이 행동 가능하려면 `가용`은 "아직 뽑을 수 있는 좋은 다이 수"여야
+#      한다. 총 셀 수는 이미 불량이거나 이미 전사된 다이를 포함하므로, 그것으로 계산한
+#      `잔여`는 조용히 덜 주문하는 계획을 만든다 — 스펙이 가장 나쁘다고 못박은 결과다.
+#   ② 한 화면에 `가용`이 두 뜻으로 존재할 수 없다. 헤드라인 칩이 이미 `remaining`을 쓴다.
+#   ③ **결정적**: 순수 `COUNT(*)`는 신뢰 불가가 될 수 없다. 지시서 ②가 요구한 "BIN별 신뢰
+#      플래그"는 감산항(fail·전사)의 완전성에 대한 판정이므로, 셀 수 정의에서는 전파할
+#      원천 자체가 존재하지 않는다. 요구 ②가 성립하는 정의는 하나뿐이다.
+# 원래 정의도 버리지 않는다 — `cells`로 함께 싣는다(맵이 그 BIN을 몇 칸 칠했는가).
+#
+# [재사용] 산술은 `_region_block` **그대로**다. BIN은 좌표 부분집합이고 영역도 좌표
+# 부분집합이라 구조적으로 같은 연산이며, fail·전사의 합집합 의미론(이중 감산 없음)이
+# 자동으로 따라온다. 두 번째 산술 구현을 만들지 않는 것이 요점이다.
+# ---------------------------------------------------------------------------
+
+def parse_bin_request(raw):
+    """`bins=1,2,7` → `(요청 BIN 리스트|None, 거부된 토큰 리스트)`.
+
+    `None`(요청 없음)과 `[]`(전부 거부됨)은 **다르다**. 전자는 "맵에 있는 BIN을 다 보여라",
+    후자는 "물어본 BIN이 하나도 읽히지 않았다"이며 후자에서 빈 목록을 내보내면 호출자가
+    "BIN이 없는 맵"으로 오해한다.
+    """
+    if raw is None:
+        return None, []
+    s = str(raw).strip()
+    if s == "":
+        return None, []
+    out, refused = [], []
+    for tok in s.split(","):
+        b = _bin_of(tok)
+        if b is None:
+            refused.append(tok.strip())
+        elif b not in out:
+            out.append(b)
+    return out, refused
+
+
+def _bin_axis_binding(stage_cfg: dict):
+    """stage의 `bin_map` 선언 → `(model, cols)`. 미선언/미해석이면 `(None, None)`.
+
+    **컬럼을 추측하지 않는다.** "맵의 `val`이 곧 BIN"으로 박으면 라이브에서 즉시 틀린다 —
+    같은 `dt_map.val`을 이 config는 이미 `origin_area_map`의 **코어 식별자**로 선언하고
+    있다. 한 컬럼이 두 뜻일 수는 있어도 그건 사이트가 정할 일이지 코드가 정할 일이 아니다.
+    선언이 없으면 축은 `unavailable`이고, 그건 결함이 아니라 **아직 배선되지 않음**이다.
+
+    `bin_map`은 stage 자신의 블록에 둔다(`source_config_ref` 위임 경로에도 붙일 수 있게).
+    """
+    src = (stage_cfg.get("bin_map")
+           if isinstance(stage_cfg.get("bin_map"), dict)
+           else (stage_cfg.get("source") or {}).get("bin_map"))
+    model, cols = _resolve(src, required=("lot", "slot", "x", "y", "bin"))
+    return model, cols
+
+
+def _bins_unavailable(detail: str, scope: str, requested=None) -> dict:
+    """축을 만들 수 없을 때의 블록. **`entries`를 빈 배열로 두지 않는다** —
+    빈 배열은 "BIN이 하나도 없다"로 읽히고, 그건 우리가 아는 사실이 아니다."""
+    return {
+        "axis": "unavailable", "detail": detail, "scope": scope,
+        "requested": list(requested) if requested else None,
+        "entries": None, "truncated": False, "cells_truncated": False,
+    }
+
+
+def _bin_universe(db, cols, filters):
+    """맵의 BIN 분포를 **group-by 한 번**으로 센다 (셀 전량 로드 금지).
+
+    반환: `(cells_by_bin, raws_by_bin, unbinned_cells, cells_total, truncated)`.
+    `truncated`는 distinct 값이 상한을 넘었다는 뜻이며, 그때는 **부재를 증명할 수 없다**
+    (못 본 값 중에 있을 수 있다) — 호출자가 `bin_absent` 대신 `unknown`을 쓴다.
+    [재현성] 절단이 가능하면 어떤 행이 살아남는지가 결정적이어야 한다 → ORDER BY.
+    """
+    from sqlalchemy import func
+    rows = (db.query(cols["bin"], func.count())
+            .filter(*filters)
+            .group_by(cols["bin"])
+            .order_by(cols["bin"])
+            .limit(MAX_BIN_VALUES + 1).all())
+    truncated = len(rows) > MAX_BIN_VALUES
+    if truncated:
+        logger.warning("[TransferPlan] bin universe hit distinct cap (%d) — absence unprovable",
+                       MAX_BIN_VALUES)
+        rows = rows[:MAX_BIN_VALUES]
+
+    cells_by_bin, raws_by_bin = {}, {}
+    unbinned = 0
+    cells_total = 0
+    for (raw, cnt) in rows:
+        cnt = int(cnt or 0)
+        cells_total += cnt
+        b = _bin_of(raw)
+        if b is None:
+            unbinned += cnt          # BIN이 아닌 값 — 조용히 버리지 않고 센다
+            continue
+        cells_by_bin[b] = cells_by_bin.get(b, 0) + cnt
+        raws_by_bin.setdefault(b, []).append(raw)
+    return cells_by_bin, raws_by_bin, unbinned, cells_total, truncated
+
+
+def _bin_cell_sets(db, cols, filters, raws):
+    """필요한 BIN들의 좌표 집합만 페치한다. 반환: `({bin: set[(x,y)]}, truncated)`.
+
+    `raws`는 원시 값 목록이라 `'1'`과 `'01'`이 함께 들어오고 둘 다 BIN 1로 접힌다.
+    [확장성] 요청 BIN이 지정되면 IN 필터가 걸려 조회 비용이 맵 전체가 아니라 그 BIN들에
+    비례한다 — 큰 맵에서 한 BIN만 묻는 것이 싼 질의가 되어야 한다.
+    """
+    if not raws:
+        return {}, False
+    rows = (db.query(cols["x"], cols["y"], cols["bin"])
+            .filter(*filters, cols["bin"].in_(list(raws)))
+            .limit(MAX_BIN_CELLS + 1).all())
+    truncated = len(rows) > MAX_BIN_CELLS
+    if truncated:
+        logger.warning("[TransferPlan] bin cell fetch hit hard cap (%d)", MAX_BIN_CELLS)
+        rows = rows[:MAX_BIN_CELLS]
+    out = {}
+    for (x, y, raw) in rows:
+        if x is None or y is None:
+            continue
+        b = _bin_of(raw)
+        if b is None:
+            continue
+        out.setdefault(b, set()).add((int(x), int(y)))
+    return out, truncated
+
+
+def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
+                requested, refused, base_reliable, chips_total, scope=BIN_SCOPE_SLOT):
+    """`(자재, BIN)` 단위 가용 블록. 산술은 `_region_block` 재사용."""
+    model, cols = _bin_axis_binding(stage_cfg)
+    if model is None:
+        return _bins_unavailable(
+            "이 단계에 BIN 축(`bin_map`)이 선언돼 있지 않습니다 — BIN별 가용을 계산할 수 없습니다.",
+            scope, requested)
+
+    filters = [cols["lot"] == lot, cols["slot"] == slot]
+    try:
+        cells_by_bin, raws_by_bin, unbinned, cells_total, uni_trunc = _bin_universe(
+            db, cols, filters)
+    except Exception as e:
+        logger.warning("[TransferPlan] bin universe query failed (%s/%s): %s", lot, slot, e)
+        return _bins_unavailable(f"BIN 분포 조회에 실패했습니다: {e}", scope, requested)
+
+    # 좌표는 **필요한 BIN만** 가져온다 — 요청이 없으면 맵에 있는 전부.
+    wanted = list(requested) if requested is not None else sorted(cells_by_bin.keys())
+    need_raws = [r for b in wanted for r in raws_by_bin.get(b, ())]
+    try:
+        cell_sets, cell_trunc = _bin_cell_sets(db, cols, filters, need_raws)
+    except Exception as e:
+        logger.warning("[TransferPlan] bin cell query failed (%s/%s): %s", lot, slot, e)
+        return _bins_unavailable(f"BIN 좌표 조회에 실패했습니다: {e}", scope, requested)
+
+    entries = []
+    for b in wanted:
+        cells = cells_by_bin.get(b, 0)
+        if cells == 0:
+            if uni_trunc:
+                # 부재를 **증명할 수 없다** — 못 본 값 중에 있을 수 있다. 0도 부재도 아니다.
+                entries.append({
+                    "bin": b, "status": BIN_UNKNOWN, "cells": None, "total": None,
+                    "fail_breakdown": None, "transferred": None, "remaining": None,
+                    "reliable": False,
+                    "reason": (f"BIN 분포가 상한({MAX_BIN_VALUES})으로 절단돼 BIN {b}의 "
+                               f"존재 여부를 확인할 수 없습니다."),
+                })
+            else:
+                entries.append({
+                    "bin": b, "status": BIN_ABSENT, "cells": 0, "total": None,
+                    "fail_breakdown": None, "transferred": None, "remaining": None,
+                    "reliable": False,
+                    "reason": f"BIN {b}이(가) 이 맵에 없습니다 — 소진된 것이 아닙니다.",
+                })
+            continue
+
+        block = _region_block(total_pts, {"all_fail": fail_union}, used_set,
+                              cell_sets.get(b, set()))
+        reasons = []
+        if not base_reliable:
+            reasons.append("소스 집계가 신뢰 불가로 강등됐습니다")
+        if cell_trunc:
+            reasons.append(f"BIN 좌표가 상한({MAX_BIN_CELLS})으로 절단됐습니다")
+        if total_pts is None:
+            reasons.append("총칩 좌표를 알 수 없어 BIN별 총계를 계산할 수 없습니다")
+        reliable = not reasons
+        entries.append({
+            "bin": b, "status": BIN_OK if reliable else BIN_UNKNOWN,
+            "cells": cells,
+            "total": block["total"],
+            "fail_breakdown": block["fail_breakdown"],
+            "transferred": block["transferred"],
+            # 🔴 신뢰 불가면 숫자를 내보내지 않는다. `remaining_upper_bound`와 같은 규율:
+            #    확정처럼 보이는 수를 준 뒤 플래그로 취소하는 것은 이미 실패한 방식이다.
+            "remaining": block["remaining"] if reliable else None,
+            "reliable": reliable,
+            "reason": " · ".join(reasons),
+        })
+
+    out = {
+        "axis": "connected", "scope": scope,
+        "requested": list(requested) if requested is not None else None,
+        "entries": entries,
+        "truncated": uni_trunc, "cells_truncated": cell_trunc,
+        "unbinned_cells": unbinned, "cells_total": cells_total,
+        "population_ref": chips_total,
+    }
+    if refused:
+        out["refused"] = list(refused)
+    return out
+
+
+def _merge_bins_over_slots(blocks, scope, requested, refused):
+    """`scope=lot` — 슬롯별 BIN 블록을 합산한다.
+
+    > ### ⚠️ 이 수는 **배분이 아니라 충분성 판정**이다 (사용자 확정 2026-07-27)
+    > 실제로는 "첫 장부터 꽉꽉 채워가며" 한 장씩 소진되고 **무엇부터 쓰는지 아무도
+    > 기록하지 않는다.** 그래서 풀 합계가 답할 수 있는 질문은 하나뿐이다 —
+    > *"이 풀 전체에 충분한가"*(양수면 가능). **"이 웨이퍼가 정확히 N장을 댄다"로
+    > 읽히면 안 된다.** 응답의 `basis: "pool_sufficiency"`가 그 해석을 못박는다.
+    > 균등 배분처럼 보이는 수를 배분이라고 이름 붙이는 순간, 아무도 지키지 않는 배분을
+    > 지킨다고 믿는 계획이 만들어진다.
+
+    합산 규칙 (전부 "조용한 오답 금지"의 같은 계열):
+    * `remaining`/`total`/`transferred`는 **모든 기여 슬롯이 신뢰 가능할 때만** 합산한다.
+      하나라도 신뢰 불가면 그 BIN은 `unknown` + `remaining=None`이다. 신뢰 가능한 슬롯만
+      더한 부분합을 총계처럼 내보내면 잔여 과소 → **부풀린 소요**가 된다.
+    * `bin_absent`는 **모든 슬롯에서 없을 때만** 부재다. 한 슬롯에만 있으면 존재한다.
+    """
+    agg = {}
+    for blk in blocks:
+        for e in (blk.get("entries") or []):
+            a = agg.setdefault(e["bin"], {
+                "cells": 0, "total": 0, "transferred": 0, "remaining": 0,
+                "fail": 0, "present": False, "reliable": True, "reasons": [],
+            })
+            if e["status"] != BIN_ABSENT:
+                a["present"] = True
+            if not e.get("reliable"):
+                a["reliable"] = False
+                if e.get("reason") and e["reason"] not in a["reasons"]:
+                    a["reasons"].append(e["reason"])
+                continue
+            a["cells"] += int(e.get("cells") or 0)
+            a["total"] += int(e.get("total") or 0)
+            a["transferred"] += int(e.get("transferred") or 0)
+            a["remaining"] += int(e.get("remaining") or 0)
+            a["fail"] += int((e.get("fail_breakdown") or {}).get("all_fail") or 0)
+
+    entries = []
+    for b in sorted(agg.keys()):
+        a = agg[b]
+        if not a["present"]:
+            entries.append({
+                "bin": b, "status": BIN_ABSENT, "cells": 0, "total": None,
+                "fail_breakdown": None, "transferred": None, "remaining": None,
+                "reliable": False,
+                "reason": f"BIN {b}이(가) 이 로트의 어느 슬롯에도 없습니다 — 소진된 것이 아닙니다.",
+            })
+            continue
+        if not a["reliable"]:
+            entries.append({
+                "bin": b, "status": BIN_UNKNOWN, "cells": None, "total": None,
+                "fail_breakdown": None, "transferred": None, "remaining": None,
+                "reliable": False,
+                "reason": " · ".join(a["reasons"]) or "일부 슬롯의 집계를 신뢰할 수 없습니다",
+            })
+            continue
+        entries.append({
+            "bin": b, "status": BIN_OK, "cells": a["cells"], "total": a["total"],
+            "fail_breakdown": {"all_fail": a["fail"]}, "transferred": a["transferred"],
+            "remaining": a["remaining"], "reliable": True, "reason": "",
+        })
+
+    out = {
+        "axis": "connected", "scope": scope,
+        # 소비자가 이 수를 무엇으로 읽어야 하는지를 **응답 안에** 적는다.
+        "basis": "pool_sufficiency",
+        "requested": list(requested) if requested is not None else None,
+        "entries": entries,
+        "truncated": any(b.get("truncated") for b in blocks),
+        "cells_truncated": any(b.get("cells_truncated") for b in blocks),
+        "unbinned_cells": sum(int(b.get("unbinned_cells") or 0) for b in blocks),
+        "cells_total": sum(int(b.get("cells_total") or 0) for b in blocks),
+        "population_ref": sum(int(b.get("population_ref") or 0) for b in blocks),
+    }
+    if refused:
+        out["refused"] = list(refused)
+    return out
+
+
+def _lot_slots(db, stage_cfg, lot):
+    """로트의 슬롯 목록. 반환: `(슬롯 리스트|None, truncated, origin)`.
+
+    **`origin`이 이 함수에서 가장 중요한 반환값이다.** 로트 전개는 예쁘게 보여주는 기능이
+    아니라 **로트 데이터 품질의 진단면**이다 — "랏이 스플릿됐는데 아직 LOT에 자재가 OVER하게
+    있으면" 사람이 그 어긋남을 여기서 보고 그리드에 가서 고친다(핵심가치 ① 교정면).
+    그래서 슬롯 목록은 **실제로 전산에 기록된 것**에서 와야지, 맵이 있는 것만 세면 안 된다.
+    맵이 없는 슬롯이야말로 봐야 하는 행이기 때문이다.
+
+    | origin | 원천 | 한계 |
+    |---|---|---|
+    | `membership` | 선언된 `source.lot_membership` (자재 대장) | 없음 — 기록된 그대로 |
+    | `map` | BIN 축 맵의 distinct 슬롯 (강등 폴백) | **맵이 있는 슬롯만 보인다** — 진단이 조용히 "깨끗함"으로 보고될 수 있다. 호출자가 경고로 표면화한다 |
+    | `None` | 둘 다 없음 | 빈 목록이 **아니라** "이 로트의 구성을 알 수 없음"이다 |
+
+    `by_core`가 `origin_log`(정확) → `origin_area_map`(강등) + `by_core_origin` 마커로 이미
+    쓰는 패턴과 같다 — 강등 경로를 없애지 않고 **이름 붙여 내보낸다.**
+    """
+    src = (stage_cfg.get("source") or {}).get("lot_membership")
+    model, cols = _resolve(src, required=("lot", "slot"))
+    origin = "membership"
+    if model is None:
+        model, cols = _bin_axis_binding(stage_cfg)
+        origin = "map"
+    if model is None:
+        return None, False, None
+    rows = (db.query(cols["slot"]).filter(cols["lot"] == lot)
+            .distinct().order_by(cols["slot"]).limit(MAX_LOT_SLOTS + 1).all())
+    truncated = len(rows) > MAX_LOT_SLOTS
+    if truncated:
+        rows = rows[:MAX_LOT_SLOTS]
+    return [r[0] for r in rows if r[0] is not None], truncated, origin
+
+
 def _reshape_m1_summary(m1: dict, stage_name: str, stage_cfg: dict) -> dict:
     """M1 core-summary(계약 §C) → M2 공통 형태로 재성형 (core-kind 가용의 내부 통합)."""
     chips = m1.get("chips") or {}
@@ -712,7 +1071,8 @@ def _collect_history(db, source_cfg, lot, slot):
 
 
 def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
-                      region: set = None) -> dict:
+                      region: set = None, want_bins: bool = False,
+                      bin_request=None, bin_refused=None) -> dict:
     """inline source 블록의 일반 가용 집계 (tape-kind의 정본 경로).
 
     의미론(공통 계약):
@@ -1050,9 +1410,9 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     if truncations:
         result["truncated"] = truncations
 
-    # ---- [②] 영역 내 가용 (계획이 이 소스에서 쓰기로 페인팅한 셀 집합으로 스코프) ----
-    if region is not None:
-        total_pts = None
+    # 총칩 **좌표** 집합 — 영역과 BIN이 같은 것을 쓴다(둘 다 좌표 부분집합 교차).
+    total_pts = None
+    if region is not None or want_bins:
         if origin_rows is not None:
             total_pts = {(tx, ty) for (tx, ty, _l, _s, _ox, _oy) in origin_rows}
         else:
@@ -1062,23 +1422,69 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 pts, _tr = _fetch_pairs(db, cols, [cols["lot"] == lot, cols["slot"] == slot],
                                         cap=MAX_REGION_CELLS, tag="region:total")
                 total_pts = set(pts)
+
+    # ---- [②] 영역 내 가용 (계획이 이 소스에서 쓰기로 페인팅한 셀 집합으로 스코프) ----
+    if region is not None:
         # fail은 원천별 집합을 따로 갖고 있지 않으므로 합집합만 신뢰 가능 —
         # breakdown은 원천별 재계산 없이 합집합 기준 단일 항목으로 제공한다.
         result["region_chips"] = _region_block(
             total_pts, {"all_fail": fail_union}, used_set, region)
         result["region_chips"]["reliable"] = remaining_reliable
+
+    # ---- [BIN 축] `(자재, BIN)` 단위 가용 ----
+    if want_bins:
+        bins = _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
+                           bin_request, bin_refused, remaining_reliable,
+                           chips_block.get("total"))
+        result["bins"] = bins
+        result["warnings"] = result["warnings"] + _bin_warnings(bins)
     return result
+
+
+def _bin_warnings(bins: dict) -> list:
+    """BIN 블록에서 파생되는 최상위 경고. 블록 안의 이유와 **중복이 아니라 요약**이다 —
+    기존 소비자는 `warnings`만 보고 강등을 판단하므로 거기에도 나타나야 한다."""
+    out = []
+    if not isinstance(bins, dict):
+        return out
+    if bins.get("axis") != "connected":
+        out.append({
+            "type": WARN_BIN_AXIS_UNAVAILABLE,
+            "effect": EFFECT_BIN_AXIS_UNAVAILABLE,
+            "detail": bins.get("detail") or "BIN별 가용을 계산할 수 없습니다",
+        })
+        return out
+    entries = bins.get("entries") or []
+    binned_total = sum(int(e.get("total") or 0) for e in entries if e.get("reliable"))
+    ref = bins.get("population_ref")
+    # 요청 BIN만 물었으면 부분합이 당연히 작다 — 그건 불일치가 아니다.
+    if (bins.get("requested") is None and isinstance(ref, int)
+            and not bins.get("truncated") and not bins.get("cells_truncated")
+            and all(e.get("reliable") for e in entries) and binned_total != ref):
+        out.append({
+            "type": WARN_BIN_POPULATION_MISMATCH,
+            "effect": EFFECT_POPULATION_MISMATCH,
+            "detail": (f"BIN별 총계의 합({binned_total})이 총칩({ref})과 다릅니다 — "
+                       f"맵 셀과 칩 원천의 모집단이 어긋났습니다"
+                       f"(BIN 없는 셀 {bins.get('unbinned_cells')}칸)"),
+        })
+    return out
 
 
 def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str,
                              bp_config: dict = None,
-                             ref_table: str = None, map_key: str = None) -> dict:
+                             ref_table: str = None, map_key: str = None,
+                             bins: str = None) -> dict:
     """단계별 소스 가용 집계 — 계약 공통 형태를 생성한다.
 
     stage 미선언 시 KeyError (라우트가 404로 변환).
     bp_config: source_config_ref 스테이지용 M1 config 스냅샷(미지정 시 여기서 1회 로드 —
     validate처럼 반복 호출하는 상위는 스냅샷을 주입해 작업 경계 1회 로드 규율을 지킨다).
     ref_table/map_key: 계획 맵 정체성(v2 — 구 plan_id 대체). 소스 영역 스코프에만 쓰인다.
+    bins: `"1,2"` 형태의 BIN 요청(선택). 지정하면 요청한 BIN이 **전부** 답을 받는다 —
+      맵에 없으면 `bin_absent`이며 **절대 `0`이 아니다**(DOE_BAND_MODEL §4-bis 🔴).
+      생략하면 맵에 있는 BIN을 전부 나열한다. `bins`를 아예 주지 않으면 BIN 블록도 없다
+      (기존 소비자의 응답이 커지지 않는다).
     """
     import bonding_plan
 
@@ -1086,6 +1492,9 @@ def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str
     stage_cfg = stages.get(stage_name)
     if not isinstance(stage_cfg, dict):
         raise KeyError(f"stage '{stage_name}' is not declared")
+
+    want_bins = bins is not None
+    bin_request, bin_refused = parse_bin_request(bins)
 
     # [②] 계획이 지정한 소스 사용 영역(자유 페인팅 셀 집합)을 스코프로 소비한다
     region = None
@@ -1101,9 +1510,125 @@ def get_stage_source_summary(db, cfg: dict, stage_name: str, lot: str, slot: str
         if region is not None:
             out["region_chips"] = _core_region_counts(db, bp_cfg, lot, slot, region)
             out["region_chips"]["reliable"] = out["chips"].get("remaining_reliable", True)
+        if want_bins:
+            # M1 위임 경로는 좌표 집합을 만들지 않는다(집계만 넘겨받는다). 축을 흉내 내면
+            # 감산항 없는 셀 수가 `가용`으로 둔갑하므로 **못 한다고 말한다.**
+            out["bins"] = _bins_unavailable(
+                "core-kind(M1 위임) 소스는 BIN별 감산을 계산할 좌표 집합을 갖지 않습니다.",
+                BIN_SCOPE_SLOT, bin_request)
+            out["warnings"] = (out.get("warnings") or []) + _bin_warnings(out["bins"])
         return out
 
-    return _summarize_inline(db, stage_name, stage_cfg, lot, slot, region=region)
+    return _summarize_inline(db, stage_name, stage_cfg, lot, slot, region=region,
+                             want_bins=want_bins, bin_request=bin_request,
+                             bin_refused=bin_refused)
+
+
+def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
+                        bins: str = None, bp_config: dict = None) -> dict:
+    """`scope=lot` — 로트 **전체**(모든 슬롯)의 BIN별 가용.
+
+    토큰 `MID1:2`는 "MID1 로트의 모든 슬롯, BIN 2"라는 정의된 뜻이다(§4-bis). 슬롯별
+    집계를 합산하는 것 말고 더 싼 정직한 답은 없다 — fail 투영이 슬롯마다의 좌표 변환을
+    거치므로 SQL로 밀어넣을 수 없다. 그래서 **팬아웃을 상한으로 묶고 절단을 표면화한다.**
+
+    반환에는 **두 가지가 함께** 실린다:
+    * `by_slot` — 슬롯 **하나당 한 행**. 이것이 사용자가 실제로 보는 전개 목록이며,
+      `map_exists`가 "전산에는 있는데 맵이 없다"를 드러낸다(§로트 전개 진단).
+    * `bins` — 슬롯을 가로질러 합산한 **풀 충분성** 수치.
+
+    ⚠️ **`chips` 블록을 싣지 않는다.** 로트 전체의 `remaining` 하나를 만들어 내보내면
+    아무도 요청하지 않은 숫자가 기존 필드 이름을 달고 화면에 흘러든다.
+
+    ⚠️ **합산치는 배분이 아니라 충분성 판정이다.** 웨이퍼는 실제로 한 장씩 소진되고 그
+    순서를 아무도 기록하지 않는다 — 그래서 이 수는 "이 풀 전체에 충분한가"(양수면 가능)만
+    답하며, **"이 웨이퍼가 정확히 N장을 댄다"로 읽혀서는 안 된다.** `basis` 필드가 그것을
+    응답 안에 못박는다.
+    """
+    stages = get_stages(cfg)
+    stage_cfg = stages.get(stage_name)
+    if not isinstance(stage_cfg, dict):
+        raise KeyError(f"stage '{stage_name}' is not declared")
+
+    bin_request, bin_refused = parse_bin_request(bins)
+    base = {
+        "identity": {"lot": lot, "slot": None},
+        "stage": stage_name,
+        "source_kind": stage_cfg.get("source_kind"),
+        "scope": BIN_SCOPE_LOT,
+    }
+
+    slots, slots_truncated, slots_origin = _lot_slots(db, stage_cfg, lot)
+    if slots is None:
+        # 🔴 빈 목록이 **아니다**. 빈 목록은 "이 로트에 자재가 없다"로 읽히고, 그러면
+        #    진단면이 조용히 "깨끗함"을 보고한다 — 정확히 이 기능이 잡으려는 실패다.
+        bins_block = _bins_unavailable(
+            "이 단계에 BIN 축(`bin_map`)도 자재 대장(`lot_membership`)도 선언돼 있지 "
+            "않습니다 — 로트 전체 가용을 계산할 수 없습니다.", BIN_SCOPE_LOT, bin_request)
+        return dict(base, slots=None, slots_status="unknown", slots_origin=None,
+                    by_slot=None, bins=bins_block,
+                    warnings=[{"type": WARN_LOT_MEMBERSHIP_UNKNOWN,
+                               "effect": EFFECT_BIN_AXIS_UNAVAILABLE,
+                               "detail": f"로트 '{lot}'의 구성을 알 수 없습니다 — "
+                                         f"슬롯을 세는 원천이 선언돼 있지 않습니다"}]
+                             + _bin_warnings(bins_block))
+
+    warnings_out = []
+    if slots_origin == "map":
+        # 강등 경로를 없애지 않고 **이름 붙여 내보낸다** — by_core_origin과 같은 규율.
+        warnings_out.append({
+            "type": WARN_LOT_MEMBERSHIP_DEGRADED,
+            "effect": EFFECT_LOT_EXPANSION_PARTIAL,
+            "detail": ("자재 대장(`lot_membership`)이 선언돼 있지 않아 **맵이 있는 슬롯만** "
+                       "전개했습니다 — 전산에 있는데 맵이 없는 슬롯은 이 목록에 나타나지 "
+                       "않으므로, 로트 구성 불일치를 이 화면으로 진단할 수 없습니다"),
+        })
+    base_out = dict(base, slots=slots, slots_status="connected", slots_origin=slots_origin)
+
+    if slots_truncated:
+        # 신뢰 가능한 슬롯만 더한 부분합을 로트 총계처럼 내보내지 않는다.
+        bins_block = _bins_unavailable(
+            f"로트 '{lot}'의 슬롯이 상한({MAX_LOT_SLOTS})을 넘어 전체를 합산할 수 없습니다.",
+            BIN_SCOPE_LOT, bin_request)
+        return dict(base_out, slots_truncated=True, by_slot=None, bins=bins_block,
+                    warnings=warnings_out + _bin_warnings(bins_block))
+
+    blocks, by_slot = [], []
+    for s in slots:
+        one = get_stage_source_summary(db, cfg, stage_name, lot, s,
+                                       bp_config=bp_config, bins=bins or "")
+        blk = one.get("bins")
+        if not isinstance(blk, dict) or blk.get("axis") != "connected":
+            # 한 슬롯이라도 축이 없으면 로트 합은 성립하지 않는다.
+            bins_block = _bins_unavailable(
+                f"슬롯 '{s}'의 BIN 축을 만들 수 없어 로트 전체를 합산할 수 없습니다: "
+                f"{(blk or {}).get('detail')}", BIN_SCOPE_LOT, bin_request)
+            return dict(base_out, by_slot=None, bins=bins_block,
+                        warnings=warnings_out + _bin_warnings(bins_block))
+        blocks.append(blk)
+        by_slot.append({
+            "slot": s,
+            # 대장에는 있는데 맵이 한 칸도 없다 = 사람이 그리드에서 고쳐야 할 어긋남.
+            # 0으로 접으면 "다 썼다"로 읽히므로 **존재 여부를 따로 말한다.**
+            "map_exists": bool(blk.get("cells_total")),
+            "chips_total": (one.get("chips") or {}).get("total"),
+            "bins": blk.get("entries"),
+        })
+
+    missing_maps = [e["slot"] for e in by_slot if not e["map_exists"]]
+    if missing_maps:
+        warnings_out.append({
+            "type": WARN_LOT_SLOT_MAP_MISSING,
+            "effect": EFFECT_LOT_EXPANSION_PARTIAL,
+            "slots": missing_maps,
+            "detail": (f"로트 '{lot}'의 슬롯 {', '.join(map(str, missing_maps))}에 맵이 "
+                       f"없습니다 — 전산 기록과 맵이 어긋났습니다(그리드에서 로트를 "
+                       f"수정한 뒤 다시 불러오십시오)"),
+        })
+
+    bins_block = _merge_bins_over_slots(blocks, BIN_SCOPE_LOT, bin_request, bin_refused)
+    return dict(base_out, slots_truncated=False, by_slot=by_slot, bins=bins_block,
+                warnings=warnings_out + _bin_warnings(bins_block))
 
 
 # ---------------------------------------------------------------------------
@@ -1250,8 +1775,13 @@ BAND_TO_INVALID = "invalid"
 _INT_STR = re.compile(r"^[+-]?[0-9]+$")
 
 
-def _band_to(band):
-    """구간의 끝 층 → `(값|None, 상태)`.
+def _int_state(raw):
+    """스칼라 하나 → `(정수|None, 상태)`. **이 프로젝트의 유일한 정수 판정기.**
+
+    층 경계(`to`)와 BIN이 **같은 함수**를 쓴다 — DOE_BAND_MODEL §4-bis가 요구하는 바로 그
+    것이다("BIN은 층 경계와 같은 정수 판정기로 읽는다"). 숫자 파서가 둘이면 `'0x10'`이
+    한쪽에서 16, 다른 쪽에서 0이 된다. 클라 쪽 대응은 `transfer_plan.js`의 `bandToState`
+    하나이며 `doe_bands.js`가 그것을 import해서 BIN에 쓴다 — 여기가 그 거울이다.
 
     [계약 — 클라와 **공유하는 좁힌 스펙**이지 JS 강제변환의 이식이 아니다]
       blank   : None / "" / 공백뿐인 문자열 → 오류 아님, 층 수 0
@@ -1265,9 +1795,6 @@ def _band_to(band):
     동일하게 취급하는 것이 그 분기 계열 전체를 없애는 방법이다.
     정본 벡터: `contracts/band_arithmetic/vectors.json` (양쪽이 같은 파일로 고정된다).
     """
-    if not isinstance(band, dict):
-        return None, BAND_TO_INVALID
-    raw = band.get("to")
     if raw is None:
         return None, BAND_TO_BLANK
     if isinstance(raw, bool):
@@ -1288,6 +1815,35 @@ def _band_to(band):
             return None, BAND_TO_INVALID      # 1e300 등 — 301자리 정수를 required에 넣지 않는다
         return int(raw), BAND_TO_OK           # trunc toward zero
     return None, BAND_TO_INVALID              # list·dict 등
+
+
+def _band_to(band):
+    """구간의 끝 층 → `(값|None, 상태)`. 판정은 전부 `_int_state`가 한다.
+
+    구간이 dict가 아니면 `to`를 꺼낼 수조차 없으므로 invalid다(blank가 아니다 — 손상이다).
+    """
+    if not isinstance(band, dict):
+        return None, BAND_TO_INVALID
+    return _int_state(band.get("to"))
+
+
+def _bin_of(raw):
+    """맵 셀의 값 → 정규화된 BIN(양의 정수) 또는 None(= 이 셀은 BIN을 지지 않는다).
+
+    **정규화가 필수인 이유**: 맵의 값 컬럼은 문자열이라 같은 BIN이 `'1'`·`'01'`·`' 1 '`로
+    저장될 수 있는데 토큰의 BIN은 정수 `1`이다. 문자열끼리 직접 비교하면 `'01'`로 칠해진
+    맵에서 `:1`이 **영원히 `bin_absent`** 가 되고, 그건 "다 썼다"보다 더 나쁜 거짓말이다
+    (존재하는 자재를 없다고 한다).
+
+    `< 1`을 버리는 것은 클라 `parseMaterialToken`이 `BIN은 1 이상`을 거부하는 것과 같은
+    규칙이다. 정수로 읽히지 않는 값(`'CORE_A'` 등)은 BIN이 아니라 **다른 용도로 칠해진
+    셀**이며, 조용히 버리지 않고 `unbinned_cells`로 세어 응답에 싣는다 — 그래야
+    `Σ bins.cells < cells_total`이 왜인지 화면에서 설명된다.
+    """
+    val, state = _int_state(raw)
+    if state != BAND_TO_OK or val is None or val < 1:
+        return None
+    return val
 
 
 def _prev_to(bands, i):

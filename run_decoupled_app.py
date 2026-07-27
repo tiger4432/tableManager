@@ -41,7 +41,16 @@ def main():
     print(f" Python Executable: {python_exe}")
     print("=" * 60)
 
-    server_cmd = [python_exe, "-m", "uvicorn", "main:app", "--port", api_port]
+    # uvicorn defaults to 127.0.0.1, which made the launcher reachable only from the
+    # server box - while SERVER_STARTUP_GUIDE documented --host 0.0.0.0 and the team
+    # actually reaches this over the LAN. The two disagreed, and the launcher was the
+    # side that was wrong: it could not produce the deployment everyone was using.
+    # Override with ASSY_API_HOST when a narrower bind is wanted (e.g. 127.0.0.1 on a
+    # dev box). Exposure is gated by the admin token and the static-path containment
+    # check, not by the bind address - see docs/guide/DEPLOY_SETUP.md.
+    api_host = os.environ.get("ASSY_API_HOST", "0.0.0.0")
+    server_cmd = [python_exe, "-m", "uvicorn", "main:app",
+                  "--host", api_host, "--port", api_port]
     if "--reload" in sys.argv:
         server_cmd.append("--reload")
 

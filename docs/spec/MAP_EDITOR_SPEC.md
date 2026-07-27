@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 일원화 · §6 M2.6 1테이블 계획 저장소 `0f8d35f`) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (정렬 일원화 · §6 M2.6 1테이블 계획 저장소 · §6.1-bis BIN 축) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -433,6 +433,23 @@ sequenceDiagram
 ```
 
 `origin_log`가 연결되지 않으면 M1식 단순 감산으로 폴백합니다. tape 계층의 fail은 코어 fail을 `dt_log` 조인으로 투영해 내립니다.
+
+#### 6.1-bis BIN 축 (2026-07-27) — **DT 맵은 하나의 풀이 아니다**
+
+DOE 자재 토큰은 `lot[_slot][:BIN]`이고 서로 다른 값이 **같은 맵에서** 다른 BIN을 경쟁 없이 가져갑니다. 그래서 `GET /api/transfer-plan/source-summary?bins=1,2`가 BIN별 분해를 동봉합니다. 정본은 [spec/DOE_BAND_MODEL §6-bis](DOE_BAND_MODEL.md).
+
+```
+가용(자재, BIN) = |총 ∩ BIN셀| − |(fail ∪ transferred) ∩ BIN셀|
+```
+
+**위 6.1과 같은 양을 BIN 부분집합으로 좁힌 것입니다** — "그 BIN의 맵 셀 수"가 아닙니다(그 수는 `cells` 필드로 따로 실립니다). 셀 수로 빼면 이미 불량이거나 이미 전사된 다이가 잔여에 섞여 **조용히 덜 주문하는 계획**이 됩니다. 산술은 `_region_block` 재사용이라 합집합 의미론(이중 감산 없음)이 자동으로 따라옵니다.
+
+* 항목 `status`는 `ok` / `bin_absent` / `unknown` **3종이며 `0`이 어느 것도 대신하지 않습니다.** `0`은 "다 썼다"로 읽히므로 없는 BIN을 `0`으로 돌려주면 §6.2의 방어가 클라 쪽에서 물리적으로 성립할 수 없습니다. 진짜 소진(맵에 그 BIN이 있고 전부 막힘)은 `ok` + `remaining: 0`으로, 부재와 **다른 답**입니다.
+* BIN 축은 `source.bin_map` **선언**으로만 성립합니다. 미선언은 결함이 아니라 `axis:"unavailable"`이며, 컬럼을 추측하지 않습니다 — 라이브 `dt_map.val`은 이미 `origin_area_map`의 **출신 코어 식별자**라 그대로 재사용하면 코어 이름이 BIN 자리에 들어갑니다.
+* BIN은 층 경계와 **같은 정수 판정기**로 읽습니다(`'1'`=`'01'`=`' 1 '`, `'0x10'`은 BIN이 아님). 정수가 아닌 셀은 버리지 않고 `unbinned_cells`로 셉니다.
+* `scope=lot`은 토큰의 로트 전체 형태이며 `slot` 동반 시 **400**입니다(같이 세면 그 슬롯이 두 번 계산됩니다 — B10과 같은 규율).
+* **로트 전개(2026-07-27)** — `scope=lot`은 `by_slot`(슬롯 한 줄씩, `map_exists` 포함)과 합산 `bins`를 함께 싣습니다. 전개는 표시 편의가 아니라 **로트 데이터 품질의 진단면**입니다: 랏 스플릿 후 전산에 자재가 남아 있으면 사람이 그 어긋남을 보고 그리드에서 고칩니다(핵심가치 ①). 그래서 슬롯 목록은 **선언된 자재 대장**(`source.lot_membership`)에서 오고, 맵 기준 폴백은 `slots_origin:"map"` + `lot_membership_degraded`로 한계를 말합니다 — 맵으로 세면 *맵이 없는 슬롯*이 사라져 진단이 조용히 '깨끗함'을 보고하기 때문입니다. 열거 불가는 빈 목록이 아니라 `slots: null` + `slots_status:"unknown"`입니다.
+* ⚠️ **합산치는 배분이 아니라 충분성 판정입니다**(`bins.basis: "pool_sufficiency"`). 웨이퍼는 기록되지 않은 순서로 한 장씩 소진되므로, 균등배분처럼 보이는 수가 답할 수 있는 것은 *"이 풀 전체에 충분한가"*(양수면 가능)뿐입니다. **"이 웨이퍼가 정확히 N장을 댄다"로 이름 붙이면 안 됩니다.**
 
 ### 6.2 신뢰 표기 3층 방어 — 이 스펙에서 가장 중요한 계약
 

@@ -181,6 +181,10 @@ let legendServerSaveTimer = null;
 // Cleared whenever the claim stops being true (table switch, failed/truncated read,
 // map unloaded).
 let legendReplaceScope = null;
+// value -> legendRowSignature at the moment the table-wide vocabulary seeded it. Lets
+// `reconcileVocabClaims` DERIVE "the user changed this row" instead of trusting every
+// edit path to say so. Rebuilt on each vocabulary load; empty means nothing was borrowed.
+let legendVocabularySeed = new Map();
 // { table, mapKey } | null - another session changed this plan under us. Blocks every
 // registry write for that map until a reload puts the screen back on server state.
 // Degrading to an upsert instead would push our stale bands over theirs.
@@ -272,6 +276,15 @@ function serializeBands(bands) {
 function serializeKnobs(knobs) { return JSON.stringify(knobsToObject(normalizeKnobs(knobs))); }
 
 // legend 항목의 정규형 (DOE 필드 포함). 로드 경로가 여러 갈래라 한 곳에서만 만든다.
+//
+// `vocab` = PROVENANCE. true means "this row is a brush SUGGESTION borrowed from the
+// table's shared value vocabulary - no map has claimed it". It exists because the two
+// registry reads produce rows that look identical on screen but mean opposite things:
+// a map-scoped read returns rows this map owns, a table-wide read returns rows that
+// belong to OTHER map keys. Without the mark, a legend seeded table-wide flowed into a
+// `replace_map` write and became the opened map's whole plan (see fetchRegistryRows).
+// It is cleared the moment the map vouches for the value - its registry row, its painted
+// cells, or the user editing the row - and it is never persisted to the server.
 function normalizeLegendItem(item) {
   const it = item || {};
   return {
@@ -280,6 +293,7 @@ function normalizeLegendItem(item) {
     color: (it.color !== null && it.color !== undefined && String(it.color) !== '') ? String(it.color) : '#6b7280',
     knobs: normalizeKnobs(it.knobs),
     bands: normalizeBands(it.bands),
+    vocab: it.vocab === true,
   };
 }
 
@@ -320,9 +334,16 @@ function registryFingerprint(rows) {
 }
 
 // PUT /tables/map_split_registry/data/updates 페이로드 빌더 (순수 함수 — 하니스 검증 대상)
+//
+// ⚠️ This payload is written with `replace_map`, so it IS the map's whole plan. A row here
+//    that belongs to another map key does not merely appear in the wrong place - it becomes
+//    this map's DOE. Hence the `vocab` filter: an unclaimed vocabulary brush is never
+//    written. This is the last line of defence and it is a pure function on purpose
+//    (contracts/legend_map_scope/client_harness.mjs asserts it).
 function buildLegendRegistryUpdates(refTable, mapKey, legendArr, user, nowStr) {
   if (!refTable || !mapKey || !Array.isArray(legendArr)) return [];
   return legendArr
+    .filter(item => item && item.vocab !== true)
     .filter(item => item && item.value !== undefined && item.value !== null && String(item.value).trim() !== '')
     .map(item => {
       const value = String(item.value).trim();
@@ -957,9 +978,11 @@ async function switchTable(tableName) {
     const hadWorkingMap = gridData && Object.keys(gridData).length > 0;
 
     // 대상 테이블의 legend 로드 후 격자 초기화.
-    // 서버 split registry(테이블 단위, value별 최신) 우선 → localStorage 캐시 → DEFAULT.
-    // 메타 미입력 시점이라 map_key는 없음 — 정확한 맵 단위 legend는 Load Existing Map에서 재적용.
-    await loadLegend(tableName, null);
+    // 이 시점에는 **맵이 없다** — 메타 입력 전이라 map_key가 존재하지 않는다. 그래서 맵 단위
+    // 조회가 원리적으로 불가능하고, 테이블의 값 어휘(vocabulary)를 브러시로 깔아주는 것이
+    // 맞다. 그 행들은 남의 맵 것이므로 `vocab`으로 표시되어 **저장되지 않는다**.
+    // 맵 단위 legend는 맵을 실제로 여는 loadExistingMap에서 재적용된다.
+    await loadLegendVocabulary(tableName);
     renderLegendTable();
     gridData = {};
     loadedFCells.clear();
@@ -2230,9 +2253,26 @@ function getCurrentMapKey() {
   return (mapKey && mapKey !== 'default_map') ? mapKey : null;
 }
 
-async function fetchLegendFromServer(refTable, mapKey) {
+// The registry is keyed (ref_table, map_key, value). There are exactly TWO legitimate
+// reads of it and they are NOT interchangeable:
+//
+//   'map'        - one map's own rows. The ONLY read that may back a `replace_map` write.
+//   'vocabulary' - every map key in the table, deduped by value (newest updated_at wins).
+//                  A brush palette for when no map is open yet. Its rows belong to OTHER
+//                  maps BY DEFINITION, so the caller marks what it puts on screen
+//                  `vocab: true` and nothing here is ever written back.
+//
+// The mode is SPELLED, not inferred from `mapKey == null`. That inference is the whole
+// defect: two call sites passed null for a reason that was true where they stood (no map
+// chosen yet), the read silently became table-wide, and the resulting legend then sat
+// under an opened map indistinguishable from that map's own rows. Saving it wrote another
+// map's values in - and because the write is `replace_map`, they became this map's plan.
+const REGISTRY_SCOPES = ['map', 'vocabulary'];
+async function fetchRegistryRows(scope, refTable, mapKey) {
+  if (REGISTRY_SCOPES.indexOf(scope) < 0) throw new Error(`unknown registry scope '${scope}'`);
+  if (scope === 'map' && !mapKey) throw new Error('registry scope "map" requires a map key');
   const filters = { ref_table: { filterType: 'text', type: 'equals', filter: refTable } };
-  if (mapKey) filters.map_key = { filterType: 'text', type: 'equals', filter: mapKey };
+  if (scope === 'map') filters.map_key = { filterType: 'text', type: 'equals', filter: mapKey };
   const url = `${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=500&filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`split registry fetch failed (HTTP ${res.status})`);
@@ -2244,26 +2284,71 @@ async function fetchLegendFromServer(refTable, mapKey) {
   if (result && typeof result.total === 'number' && result.total > (Array.isArray(result.data) ? result.data.length : 0)) {
     throw new Error(`split registry response truncated (${result.total} > ${(result.data || []).length})`);
   }
-  return parseLegendRegistryRows(result, !mapKey);
+  return parseLegendRegistryRows(result, scope === 'vocabulary');
 }
 
 // 같은 조회를 예외 없이 쓰는 형태. 로드·저장 양쪽이 이 한 함수만 쓴다 —
 // 조회 규율(절단 = 실패)의 구현이 둘로 갈리면 한쪽만 방어된다.
 async function readRegistryScope(refTable, mapKey) {
   try {
-    return { ok: true, rows: await fetchLegendFromServer(refTable, mapKey) };
+    return { ok: true, rows: await fetchRegistryRows('map', refTable, mapKey) };
   } catch (e) {
     return { ok: false, rows: [], error: e && e.message ? e.message : String(e) };
   }
+}
+
+// What a legend row LOOKS like, ignoring who last wrote it. `canonRegistryRow` is the
+// one normal form in this file; `eventtime` is dropped because it is server bookkeeping,
+// not something the user typed - comparing it would make every row look edited.
+function legendRowSignature(item) {
+  const c = canonRegistryRow(item);
+  return [c.value, c.desc, c.color, c.knobs, c.bands].join(FP_UNIT);
+}
+
+// A CLAIM IS DERIVED, NOT ONLY DECLARED.
+//
+// `vocab` is cleared explicitly at three intent points (registry match, painted cell,
+// panel edit). That was one gate away from a silent data-loss bug: any NEW edit path that
+// forgets to clear the mark leaves the user's typing on screen and drops it from the save
+// - visible, plausible, and wrong. The DOE redesign adds a whole second table of edit
+// paths, so the mark cannot be the only mechanism.
+//
+// So the claim is also RECOMPUTED from facts no edit path can avoid producing:
+//   * the value is painted on this map's grid, or
+//   * the row no longer matches the vocabulary row it was borrowed from.
+// A forgotten gate is now harmless: the moment the row differs from its seed, it is
+// claimed. `reconcileVocabClaims` runs at both points that matter (opening a map, and
+// immediately before building the write payload), so nothing can slip between them.
+function reconcileVocabClaims() {
+  const painted = new Set();
+  Object.keys(gridData).forEach(k => {
+    const v = String(gridData[k] === null || gridData[k] === undefined ? '' : gridData[k]).trim();
+    if (v) painted.add(v);
+  });
+  legend.forEach(item => {
+    if (!item.vocab) return;
+    if (painted.has(String(item.value))) { item.vocab = false; return; }
+    // Marked rows always have a seed - `mark()` writes both together and the frame
+    // snapshot carries both. So a marked row with NO seed means its value was renamed
+    // away from the key it was borrowed under, which is an edit; and a seed that no
+    // longer matches means the row was edited in place. Either way it is this map's now.
+    const seed = legendVocabularySeed.get(String(item.value));
+    if (seed === undefined || seed !== legendRowSignature(item)) item.vocab = false;
+  });
 }
 
 // 서버 registry 행을 화면 legend에 반영한다 (로드·저장중 채택 공용).
 // ⚠️ registry에 없는 값의 DOE 필드는 **비운다**. knobs/bands는 (테이블, 맵 키) 하나의
 //    것이라, 같은 테이블의 다른 맵을 열었을 때 앞 맵의 스택이 남아 있으면
 //    화면은 멀쩡한데 값이 틀린다.
+// ⚠️ 그리고 **이 맵이 보증하지 않는 vocabulary 행은 화면에서 내린다.** 맵이 열려 있는 동안
+//    legend는 "이 맵의 registry 행 ∪ 이 맵이 칠한 값"과 정확히 같아야 한다 — 남의 맵에서
+//    온 브러시가 남아 있으면 화면은 멀쩡한데 저장이 그 값을 이 맵의 계획으로 만든다.
 function applyRegistryRowsToLegend(rows) {
   const byValue = new Map((rows || []).map(r => [String(r.value), r]));
   legendMeta = {};
+  reconcileVocabClaims();
+  const kept = [];
   legend.forEach(item => {
     const r = byValue.get(String(item.value));
     if (r) {
@@ -2271,39 +2356,64 @@ function applyRegistryRowsToLegend(rows) {
       if (r.color) item.color = r.color;
       item.knobs = normalizeKnobs(r.knobs);
       item.bands = normalizeBands(r.bands);
+      item.vocab = false;   // this map's own registry row - it is claimed now
       legendMeta[item.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
       byValue.delete(String(item.value));
     } else {
+      if (item.vocab) return;   // borrowed from another map key, unclaimed here - drop it
       item.knobs = [];
       item.bands = [];
     }
+    kept.push(item);
   });
+  legend = kept;
   byValue.forEach(r => {
-    legend.push(normalizeLegendItem(r));
+    legend.push(normalizeLegendItem({ ...r, vocab: false }));
     legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at };
   });
+  // An empty palette cannot be painted with. Fall back to the generic defaults, still
+  // marked `vocab` so they are shown but not written until the map claims them.
+  if (legend.length === 0) {
+    legend = cloneLegend(DEFAULT_LEGEND).map(l => ({ ...l, vocab: true }));
+  }
   if (legend.length > 0 && !legend.some(l => l.value === activeBrush)) {
     activeBrush = legend[0].value;
   }
 }
 
-// legend 로드 오케스트레이터: 서버 registry 우선 → localStorage 캐시 폴백 → DEFAULT
-async function loadLegend(refTable, mapKey) {
+// Seed the legend with the TABLE's value vocabulary - every map key in the table, deduped
+// by value. This is the deliberate no-map-open mode, and the only caller of the
+// 'vocabulary' scope. Everything it puts on screen is marked `vocab: true`: it is a brush
+// palette borrowed from other maps, never this map's plan. All three sources are
+// table-scoped (server registry, the `map_legend_<table>` cache, DEFAULT_LEGEND), so all
+// three are marked.
+// 정확한 맵 단위 legend는 맵을 실제로 여는 지점(loadExistingMap)에서 재적용된다.
+async function loadLegendVocabulary(refTable) {
   legendMeta = {};
+  // Mark every seeded row AND record what it looked like when seeded. The snapshot is
+  // what makes the claim derivable later (reconcileVocabClaims) instead of depending on
+  // every future edit path remembering to clear the mark.
+  const mark = () => {
+    legendVocabularySeed = new Map();
+    legend.forEach(l => { l.vocab = true; legendVocabularySeed.set(String(l.value), legendRowSignature(l)); });
+  };
   try {
-    const rows = await fetchLegendFromServer(refTable, mapKey);
+    const rows = await fetchRegistryRows('vocabulary', refTable, null);
     if (rows.length > 0) {
       legend = rows.map(normalizeLegendItem);
+      mark();
       rows.forEach(r => { legendMeta[r.value] = { updated_by: r.updated_by, updated_at: r.updated_at }; });
       activeBrush = legend[0].value;
       saveLegendToStorage(); // 서버 로드 성공 시 오프라인 캐시 동기화
       return 'server';
     }
     loadLegendFromStorage(); // 서버 접근 성공, 등록 행 없음 → 캐시 폴백
+    mark();
     return 'local';
   } catch (e) {
     console.warn('[Map Editor] split registry load failed — localStorage fallback:', e);
     loadLegendFromStorage();
+    mark();
     return 'offline';
   }
 }
@@ -2317,10 +2427,17 @@ async function loadLegend(refTable, mapKey) {
 //
 // Three things gate it, and each one exists because losing them cost real data:
 //
+//  0. SCOPE (`vocab`) - only values THIS map vouches for are in the payload at all.
+//     `legendReplaceScope` below is a claim about the READ ("we saw this map's rows"),
+//     not about the payload, so it cannot see a legend row borrowed from another map
+//     key: the read is correctly scoped and the authority correctly granted while the
+//     screen still carries someone else's values. That gap is what spread one map's
+//     DOE across ten bonding_map keys. buildLegendRegistryUpdates drops `vocab` rows,
+//     and the map's own painted cells clear the mark first.
 //  1. AUTHORITY (`legendReplaceScope`) - only a legend that came from THIS map's own
 //     registry rows may replace them. Replacing with a screen that never read the map
 //     would delete rows we never saw.
-//  2. TRUNCATION - a partial read is not a read (fetchLegendFromServer throws), and a
+//  2. TRUNCATION - a partial read is not a read (fetchRegistryRows throws), and a
 //     failed read blocks the write instead of downgrading it. Downgrading to an upsert
 //     used to be safe when the row held only desc/color; now the row holds the plan,
 //     so an upsert from an unverified screen would overwrite bands we never saw.
@@ -2365,8 +2482,17 @@ async function saveLegendToServer(mapKeyOverride) {
   }
 
   const nowStr = getLocalTimeString();
+  // Last chance to notice a claim before the payload is built. Deliberately AFTER every
+  // possible edit path and immediately BEFORE buildLegendRegistryUpdates, so a row the
+  // user changed through a path that forgot the gate is still saved.
+  reconcileVocabClaims();
   const updates = buildLegendRegistryUpdates(selectedTable, mapKey, legend, CURRENT_USER, nowStr);
   if (updates.length === 0) return { ok: false, reason: 'empty' };
+  // The rows that are actually going. Derived from `updates`, not recomputed from
+  // `legend`, so the baseline fingerprint below cannot cover a row the payload filtered
+  // out - that mismatch would make the very next save report a conflict with nobody there.
+  const sentValues = new Set(updates.map(u => String(u.updates.value)));
+  const sent = legend.filter(item => sentValues.has(String(item.value)));
   try {
     const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data/updates`, {
       method: 'PUT',
@@ -2380,16 +2506,16 @@ async function saveLegendToServer(mapKeyOverride) {
     // same normal form and a second save in a row cannot see a phantom conflict.
     legendReplaceScope = {
       table: selectedTable, mapKey,
-      fingerprint: registryFingerprint(legend.map(item => ({
+      fingerprint: registryFingerprint(sent.map(item => ({
         value: item.value, desc: (item.desc || '').trim(), color: item.color,
         knobs: item.knobs, bands: item.bands, eventtime: nowStr,
       }))),
     };
-    legend.forEach(item => {
+    sent.forEach(item => {
       legendMeta[item.value] = { updated_by: CURRENT_USER, updated_at: nowStr };
     });
     renderLegendMetaOnly();
-    return { ok: true, at: nowStr };
+    return { ok: true, at: nowStr, count: updates.length };
   } catch (e) {
     console.warn('[Map Editor] split registry save skipped (offline?):', e);
     return { ok: false, reason: 'error', error: e && e.message ? e.message : String(e) };
@@ -2715,6 +2841,10 @@ function updateLegendRowForPanel(value, patch) {
   }
   if (patch.desc !== undefined) item.desc = String(patch.desc);
   if (patch.color !== undefined) item.color = String(patch.color);
+  // The user typed into this row, so it is this map's - even if it arrived as a borrowed
+  // vocabulary brush. Without this, an edit to such a row would be shown and silently
+  // never saved.
+  item.vocab = false;
   // DOE 필드는 패널이 만든 새 배열로 통째 교체한다 (제자리 수정 금지 — getLegend가 복사본이다)
   if (patch.bands !== undefined) item.bands = normalizeBands(patch.bands);
   if (patch.knobs !== undefined) item.knobs = normalizeKnobs(patch.knobs);
@@ -3093,6 +3223,9 @@ async function loadExistingMap(opts = {}) {
       uniqueVals.forEach(v => {
         const existingItem = legend.find(item => item.value === v);
         if (existingItem) {
+          // This map's own cells carry the value, so it is no longer a borrowed
+          // vocabulary brush - it is part of this map and must be saved with it.
+          existingItem.vocab = false;
           newLegend.push(existingItem);
           usedColors.add(existingItem.color);
         }
@@ -3437,7 +3570,9 @@ async function pushMapData() {
       const legendSaved = await saveLegendToServer(mapIdStr);
       applyLegendSaveResult(legendSaved);
       if (legendSaved.ok) {
-        showToast(`DOE·split 서술 registry 저장 완료 (${legend.length}건)`, 'success');
+        // 저장된 행 수는 저장한 쪽이 센다 — legend.length로 다시 세면 아직 이 맵의 것이 아닌
+        // vocabulary 브러시까지 포함해 **DB에 없는 수를 보고**하게 된다.
+        showToast(`DOE·split 서술 registry 저장 완료 (${legendSaved.count}건)`, 'success');
       } else if (legendSaved.reason !== 'adopted' && legendSaved.reason !== 'conflict'
                  && legendSaved.reason !== 'unknown-server-state') {
         // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
@@ -3866,6 +4001,11 @@ function snapshotEditorState() {
     gridData: { ...gridData },
     loadedFCells: new Set(loadedFCells),
     legend: cloneLegend(legend),
+    // The seed travels with the legend it describes. Without it, coming back from a
+    // material-map frame would leave marked rows with no seed to compare against, and
+    // `reconcileVocabClaims` would read every one of them as edited - re-opening the
+    // contamination path one round trip later.
+    legendVocabularySeed: new Map(legendVocabularySeed),
     legendMeta: { ...legendMeta },
     activeBrush,
     metaValues,
@@ -3924,6 +4064,7 @@ function restoreEditorState(s) {
   gridData = { ...s.gridData };
   loadedFCells = new Set(s.loadedFCells);
   legend = cloneLegend(s.legend);
+  legendVocabularySeed = new Map(s.legendVocabularySeed || []);
   legendMeta = { ...s.legendMeta };
   activeBrush = s.activeBrush;
 
@@ -4100,7 +4241,10 @@ async function switchTableQuiet(tableName) {
   tableSchema = await res.json();
   fillColumnDropdowns();
   renderMetadataInputs();
-  await loadLegend(tableName, null);
+  // Vocabulary, not the map's legend - and this is not a shortcut. openMapFrame fills the
+  // meta inputs AFTER this returns, so no map key exists yet at this line; the map-scoped
+  // legend arrives with the loadExistingMap that follows.
+  await loadLegendVocabulary(tableName);
   renderLegendTable();
   gridData = {};
   loadedFCells.clear();

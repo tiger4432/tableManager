@@ -3197,12 +3197,14 @@ def get_transfer_plan_stages():
 def get_transfer_plan_source_summary(
     stage: str,
     lot: str,
-    slot: str,
+    slot: Optional[str] = None,
     ref_table: Optional[str] = None,
     map_key: Optional[str] = None,
+    bins: Optional[str] = None,
+    scope: str = "slot",
     db: Session = Depends(get_db),
 ):
-    """단계별 소스 (lot, slot) 가용 집계.
+    """단계별 소스 가용 집계 — `(lot, slot)` 또는 `(lot 전체)`, 선택적으로 BIN별 분해.
 
     - 공통 형태: {identity, stage, source_kind, sources, chips{total, fail_breakdown,
       transferred, remaining}, history, warnings}
@@ -3212,11 +3214,36 @@ def get_transfer_plan_source_summary(
       스코프로 `region_chips`(영역 내 가용)를 동봉한다. 영역 미저장/바인딩 미선언이면 생략.
       (v2 모델: 구 `plan_id` 파라미터 대체 — 계획 정체성이 곧 맵 정체성이다)
     - 칩 좌표 목록은 반환하지 않는다(집계만 — 페이로드 상한 규율).
+
+    [BIN 축 — DOE_BAND_MODEL §4-bis]
+    - `bins=1,2` 를 주면 `bins` 블록이 동봉된다. 요청한 BIN은 **전부** 답을 받으며,
+      맵에 없는 BIN은 `status: "bin_absent"`다 — **절대 `0`이 아니다.** `0`은 "다 썼다"로
+      읽히고 그러면 신뢰 불가한 `가용`에서 확정 `잔여`가 나온다.
+    - `bins=` (빈 값)이면 맵에 있는 BIN을 전부 나열한다. 파라미터를 아예 생략하면 블록도
+      없다 — 기존 소비자의 응답 크기가 변하지 않는다.
+    - `scope=lot`은 자재 토큰의 **로트 전체**(`MID1:2` = 모든 슬롯) 형태다. 이때 `slot`은
+      비어 있어야 하며, 응답은 `{identity{lot, slot:null}, scope, slots, bins, warnings}`로
+      **`chips`를 싣지 않는다**(로트 단위 헤드라인 잔여는 아무도 요청하지 않은 숫자다).
+      `scope=lot`에 `slot`을 함께 주면 400 — 두 형태는 겹쳐 답하지 않는다(B10 참조).
     """
     config = transfer_plan_module.load_transfer_plan_config()
+    if scope not in (transfer_plan_module.BIN_SCOPE_SLOT, transfer_plan_module.BIN_SCOPE_LOT):
+        raise HTTPException(status_code=400, detail=f"scope must be 'slot' or 'lot' (got '{scope}')")
     try:
+        if scope == transfer_plan_module.BIN_SCOPE_LOT:
+            if slot:
+                # 로트 전체와 그 로트의 슬롯을 한 질의로 섞지 않는다. 섞으면 슬롯이 두 번
+                # 계산되고, 부풀린 소요는 가장 나쁜 순간에 부족으로 나타난다(B10과 같은 규율).
+                raise HTTPException(
+                    status_code=400,
+                    detail="scope=lot with a slot is ambiguous — omit slot for the whole lot")
+            return transfer_plan_module.get_lot_bin_summary(db, config, stage, lot, bins=bins)
+        if slot is None:
+            raise HTTPException(status_code=400, detail="slot is required when scope=slot")
         return transfer_plan_module.get_stage_source_summary(
-            db, config, stage, lot, slot, ref_table=ref_table, map_key=map_key)
+            db, config, stage, lot, slot, ref_table=ref_table, map_key=map_key, bins=bins)
+    except HTTPException:
+        raise
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
