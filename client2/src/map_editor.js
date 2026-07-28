@@ -2482,6 +2482,14 @@ function applyDoeDraftRecord(draft) {
   legend.forEach(l => {
       const d = doe[l.value];
       if (!d) return;
+      // "applied" must mean "this draft CHANGED the screen", not "this draft had content".
+      // A draft is re-saved right after a successful registry save (saveLegendToServer),
+      // so after Push + refresh the draft is identical to the server rows - reporting that
+      // as a restored edit would resurrect a phantom "unsaved" chip and toast on every
+      // reload of a map that has a plan. Legend rows here are already normalized
+      // (applyRegistryRowsToLegend / normalizeLegendItem), so the projection compares
+      // like with like.
+      const before = JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]);
       l.knobs = normalizeKnobs(d.knobs);
       // A draft written by the retired band model is migrated on read, exactly like the
       // server column - and refused the same way if it cannot be expressed. A draft is a
@@ -2493,8 +2501,7 @@ function applyDoeDraftRecord(draft) {
       l.mat_mid = parseMaterialList(src.mat_mid);
       l.mat_top = parseMaterialList(src.mat_top);
       if (z && !z.ok) { l.legacyBands = normalizeBands(d.bands); l.legacyReason = z.reason; }
-      if (l.knobs.length || String(l.stack).trim() !== ''
-        || l.mat_1h.length || l.mat_mid.length || l.mat_top.length) applied = true;
+      if (JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]) !== before) applied = true;
   });
   // 값 자체가 초안에만 있는 경우 — 사용자가 [+ 값]으로 만들고 아직 저장이 안 나갔다.
   Object.keys(doe).forEach(v => {
@@ -3651,10 +3658,14 @@ async function loadExistingMap(opts = {}) {
         }
       });
 
-      // Update legend array, save to localStorage and rebuild legend table
+      // Update legend array and rebuild the legend table. Deliberately NOT persisted here:
+      // saveLegendToStorage() -> saveDoeDraft() at this point would overwrite this map's
+      // draft with the just-loaded SERVER state (cells included, base fingerprints not yet
+      // established) BEFORE the draft-precedence block below has read it - that destroyed
+      // every painted-cell draft on reload (H1, 2026-07-28). The load path persists once,
+      // inside the registry block below, after the draft has been read and applied.
       legend = newLegend;
-      saveLegendToStorage();
-      
+
       // Auto select the first legend item as the active brush
       if (legend.length > 0) {
         activeBrush = legend[0].value;
@@ -3696,6 +3707,10 @@ async function loadExistingMap(opts = {}) {
           const restoredDoe = doeFresh ? applyDoeDraftRecord(draft) : false;
           const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
           if (restoredDoe || restoredCells > 0) {
+            // Restored edits are still unsaved edits - they exist only in this browser
+            // until [⚡ Push]. Without this the chip reads "saved" after the very refresh
+            // the draft just survived.
+            legendDirty = true;
             showToast(`저장되지 않은 편집을 복구했습니다 — ${restoredDoe ? 'DOE' : ''}`
               + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
               + ' (이 브라우저의 초안). 아직 서버에 반영되지 않았습니다.', 'warning',
@@ -3894,6 +3909,30 @@ async function pushMapData() {
         updates.push(updateItem);
       });
     });
+  }
+
+  // [Data-protection gate - contrast guard] Non-empty cells the loop above skipped
+  // (outside the wafer circle, or at coordinates the current grid does not even contain)
+  // would not merely be missing from this push: replace_map deletes every row of this map
+  // key first, so a payload that covers less than the screen DESTROYS the remainder.
+  // Metadata-less maps opened under a guessed default frame are the known case (H2,
+  // 2026-07-28: 1293 rows -> 379). Refuse instead of destroying - third member of the
+  // gate family (zone-columns-missing / legacy-unreadable): each blocks a write that
+  // would delete data it never serialized. Counted with the loop's own emptiness
+  // predicate ((v || '') !== ''), so cells the user deliberately erased ('') are not
+  // "dropped" and an identical-count push passes with zero friction.
+  const nonEmptyOnGrid = Object.keys(gridData).filter(k => (gridData[k] || '') !== '').length;
+  const droppedNonEmpty = nonEmptyOnGrid - updates.length;
+  if (droppedNonEmpty > 0) {
+    console.warn(`[Map Editor] push refused - frame covers ${updates.length}/${nonEmptyOnGrid} non-empty cells (${droppedNonEmpty} would be deleted by replace_map)`);
+    alert(
+      `적재를 중단했습니다 — 현재 프레임이 맵 전체를 덮지 못합니다.\n\n`
+      + `값이 있는 셀 ${nonEmptyOnGrid}개 중 ${droppedNonEmpty}개가 현재 격자 범위·웨이퍼 영역 밖에 있어 `
+      + `이번 적재에 담기지 않습니다. 이대로 적재하면 덮어쓰기(Clean Replace) 과정에서 `
+      + `해당 ${droppedNonEmpty}개 셀이 서버에서 삭제됩니다.\n\n`
+      + `격자 크기·시작 좌표·회전·물리 규격을 맵 전체가 보이도록 맞춘 뒤 다시 시도하십시오.`
+    );
+    return;
   }
 
   if (updates.length === 0) {
