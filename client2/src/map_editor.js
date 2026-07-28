@@ -1281,9 +1281,13 @@ function fillColumnDropdowns() {
   // `value_column_candidates`, candidate order = priority — same convention as the
   // overlay binding and the server's derive_table_binding). No client copy: without a
   // served list there is no auto-detect and the first column stays selected.
-  const colByLower = new Map(cols.map(c => [String(c).toLowerCase(), c]));
+  // [fix D] EXACT match, mirroring the server and deriveMapBinding below. This spot
+  // alone matched case-insensitively, so a table could auto-select a column here that
+  // the other two matchers (and the server) would never pick — same list, different
+  // answers. A table that relied on a case-mismatched candidate no longer auto-selects;
+  // that is the honest reading of "no candidate matched".
   const cands = overlayContract ? overlayContract.valueColumnCandidates : [];
-  const matchedVal = cands.map(c => colByLower.get(c.toLowerCase())).find(Boolean);
+  const matchedVal = cands.find(c => cols.includes(c));
   populate(el.colMapVal, matchedVal || cols[0]);
 }
 
@@ -3001,6 +3005,7 @@ function getPlanSaveState() {
 //    편집의 수명이 1초 미만이었지만 이제는 계획 하나를 짓는 시간 전체다.
 function persistLegend() {
   legendDirty = true;
+  frameTouched = true;   // [fix E] a legend commit is an edit of this frame
   saveLegendToStorage();
 }
 
@@ -3022,6 +3027,7 @@ function persistLegend() {
 let cellDraftTimer = null;
 function scheduleCellDraft() {
   legendDirty = true;
+  frameTouched = true;   // [fix E] a grid-cell write is an edit of this frame
   clearTimeout(cellDraftTimer);
   cellDraftTimer = setTimeout(() => { saveDoeDraft(); notifyLegendChanged(); }, 400);
 }
@@ -3551,6 +3557,10 @@ async function loadExistingMap(opts = {}) {
     if (!loadedGridMeta && minX !== 9999) {
       // Choice modal triggers for maps with no grid metadata records
       userChoice = await new Promise((resolve) => {
+        // [fix C] The default's behavior changed (data bounding box, no mask in
+        // effect) — keep the highlighted button honest. Label set here in JS because
+        // the semantics it describes are decided in this branch (JS-only fix batch).
+        el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 (마스크 없음, Rot 0°)';
         el.choiceModal.style.display = 'flex';
         
         const onStandard = () => {
@@ -3600,6 +3610,26 @@ async function loadExistingMap(opts = {}) {
       invertY = false;
       rotation = 0;
       side = 'front';
+      // [fix C — lead design 2026-07-28] No default choice may produce an un-pushable
+      // map. The default frame for a metadata-less map is the rectangular bounding box
+      // of the data with NO circle mask in effect: previously the left panel's physical
+      // spec (wafer circle) stayed live under this choice, its mask marked corner cells
+      // inside:false, and the contrast guard in pushMapData then refused every push
+      // (H2 repro: 1293 rows -> 379 covered). The mask predicate has no off switch, so
+      // "no mask" is expressed in its own vocabulary: chip 1x1 / offset 0 / margin 3
+      // (the panel defaults for offset/margin) and a wafer diameter whose effective
+      // radius circumscribes the grid's half-diagonal — every cell corner is then
+      // strictly inside the ellipse, so all cells are pushable. applyPresetObject is
+      // the existing spec-writer (it owns the dia <select>'s custom-option handling);
+      // the bbox cols/rows set below overwrite its derived grid dims. Circle-mask
+      // presets remain available through the "current left panel settings" choice.
+      const halfDiag = Math.sqrt(cols * cols + rows * rows) / 2;   // mm == cell units at chip 1x1
+      applyPresetObject({
+        phys_wafer_dia: Math.max(300, Math.ceil(2 * (halfDiag + 4))),
+        phys_chip_x: 1, phys_chip_y: 1,
+        phys_offset_x: 0, phys_offset_y: 0,
+        phys_edge_margin: 3,
+      });
     } else if (userChoice === 'meta') {
       cols = loadedGridMeta.grid_cols;
       rows = loadedGridMeta.grid_rows;
@@ -3752,6 +3782,12 @@ async function loadExistingMap(opts = {}) {
       renderLegendTable();
     }
 
+    // [fix B] The unsaved-edit flag is per-map state: a successful load re-establishes
+    // it from scratch. Without this reset, map A's flag survived into map B and the
+    // header chip read "● 저장 안 됨" on a map with zero edits. Order matters: the
+    // draft restores below (both registry branches) re-mark it AFTER this line, so a
+    // restored draft still shows as unsaved — exactly the H1 guarantee.
+    legendDirty = false;
     // [Split Registry] 서버에 기록된 이 맵의 split 서술·색을 최우선 적용.
     // 값 일치 항목은 override, 그리드에 없지만 registry에 정의된 값은 브러시로 추가 노출.
     legendReplaceScope = null;   // the claim below is about to be re-established, or lost
@@ -3787,6 +3823,7 @@ async function loadExistingMap(opts = {}) {
         // 기반 지문이 그대로면 그 사이 아무도 쓰지 않았으므로 초안이 더 새 것이다.
         // 어긋나면 **누가 썼다** — 적용하면 남의 저장을 지운다. 적용하지 않고, 버리지도 않고,
         // 사실을 드러낸다.
+        let staleDraftKept = false;   // [fix A] see the persist below
         const draft = readDoeDraft(selectedTable, loadedMapKey);
         if (draft) {
           const doeFresh = draft.registryFp !== null && draft.registryFp === serverFp;
@@ -3807,13 +3844,22 @@ async function loadExistingMap(opts = {}) {
           // 신호가 죽는다.
           const hasDoe = draft.doe && Object.keys(draft.doe).length > 0;
           const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
-          if ((!doeFresh && hasDoe) || (!cellsFresh && hasCells)) {
+          staleDraftKept = (!doeFresh && hasDoe) || (!cellsFresh && hasCells);
+          if (staleDraftKept) {
             showToast('이 맵이 이 브라우저의 초안 이후에 변경됐습니다 — 초안을 적용하지 않고 '
               + '서버본을 표시합니다. 초안은 지우지 않았습니다.', 'warning',
               { dedupeKey: 'draft_stale' });
           }
         }
-        saveLegendToStorage();
+        // [fix A] This persist re-baselines the draft slot to the just-loaded server
+        // state. In the stale-mismatch case that overwrote the very draft the toast
+        // above had just promised to keep ("초안은 지우지 않았습니다") — and the
+        // priority contract at saveDoeDraft (지문 불일치 → 적용하지 않되 버리지도
+        // 않는다) says the draft stays in storage, where the registry-read-failure
+        // path below can still surface it. Keep the promise: skip the persist while a
+        // stale draft is being preserved. (The user's next edit legitimately
+        // overwrites the slot — a single draft slot protects the newest edits.)
+        if (!staleDraftKept) saveLegendToStorage();
         renderLegendTable();
       } else {
         // Read failed or was truncated -> the on-screen legend is NOT this map's
@@ -3827,7 +3873,10 @@ async function loadExistingMap(opts = {}) {
         draftBase = null;
         const draft = readDoeDraft(selectedTable, loadedMapKey);
         const hadDraft = draft ? applyDoeDraftRecord(draft) : false;
-        if (draft && draft.cells) applyDraftCells(draft.cells);
+        const hadDraftCells = (draft && draft.cells) ? applyDraftCells(draft.cells) > 0 : false;
+        // [fix B] the reset above must not leave the chip claiming "saved" for draft
+        // content the server never received — same honesty as the read-ok branch.
+        if (hadDraft || hadDraftCells) legendDirty = true;
         legendSaveState = { status: 'unknown-server-state', at: '', error: read.error || '' };
         renderLegendTable();
         console.warn('[Map Editor] split registry apply skipped:', read.error);
@@ -4542,6 +4591,14 @@ async function copyGridToExcel() {
 let editorFrames = [];       // 편집 프레임 스택 (깊이 N)
 let loadedIdentity = null;   // { table, mapKey } — 로드 순간 고정되는 정체성 핀
 let framePushed = false;     // 현재 프레임에서 Push 했는가 (뒤로가기 경고용)
+// [fix E] Edited since this frame's map was opened (grid-cell write or legend commit).
+// framePushed starts false at frame open, so `!framePushed && cells>0` alone made
+// merely VIEWING a non-empty material map prompt on back. The back-confirm now
+// requires an actual edit. Set by the two persistence gateways every editing path
+// already funnels through (persistLegend / scheduleCellDraft); reset alongside
+// framePushed in setLoadedIdentity. Draft restores deliberately do NOT set it: the
+// restored content survives in the draft slot, so backing out loses nothing.
+let frameTouched = false;
 
 function snapshotEditorState() {
   const metaValues = {};
@@ -4566,6 +4623,11 @@ function snapshotEditorState() {
     // we are entering. Dropping it here would let a round trip clear the refusal.
     legendConflict: legendConflict ? { ...legendConflict } : null,
     legendSaveState: { ...legendSaveState },
+    // [fix B/E] Per-frame edit state must survive the round trip: without these a
+    // material-map detour cleared the parent's unsaved-edit chip (legendDirty) and
+    // its back-guard baseline (frameTouched) on return.
+    legendDirty,
+    frameTouched,
     framePushed,
     tableSelectValue: el.tableSelect ? el.tableSelect.value : '',
     gridData: { ...gridData },
@@ -4649,6 +4711,8 @@ function restoreEditorState(s) {
   legendReplaceScope = s.legendReplaceScope ? { ...s.legendReplaceScope } : null;
   legendConflict = s.legendConflict ? { ...s.legendConflict } : null;
   legendSaveState = s.legendSaveState ? { ...s.legendSaveState } : { status: 'idle', at: '', error: '' };
+  legendDirty = !!s.legendDirty;     // [fix B/E] restored with the frame they describe
+  frameTouched = !!s.frameTouched;
   framePushed = !!s.framePushed;
 
   renderLegendTable();
@@ -4775,6 +4839,7 @@ function setLoadedIdentity(table, mapKey) {
     legendReplaceScope = null;
   }
   framePushed = false;
+  frameTouched = false;   // [fix E] a (re)load starts a clean edit baseline for the frame
 }
 
 // ── 편집 프레임 스택 (자재 맵 왕복) ──────────────────────────
@@ -4855,6 +4920,18 @@ async function openMapFrame(spec) {
     });
 
     const r = await loadExistingMap({ quiet: true, allowEmpty: true });
+    if (r && r.cancelled) {
+      // [fix G] The user dismissed the load (frame-choice modal / empty map key).
+      // This used to fall through as "map not built yet" — a frame opened on an EMPTY
+      // grid with a false "맵이 아직 없습니다" toast, or rolled back with no feedback
+      // at all. Roll the frame back exactly like a failed entry, and SAY so once.
+      const f = editorFrames.pop();
+      if (f) restoreEditorState(f);
+      renderBreadcrumb();
+      notifyMapContext();
+      showToast('맵 열기를 취소했습니다 — 이전 화면으로 돌아갑니다.', 'info');
+      return { ok: false, cancelled: true };
+    }
     if (!r || r.count === 0) {
       // 미구축 자재 — 빈 격자 + 규격 프리셋
       const preset = findPresetByKind(spec.presetKind);
@@ -4879,7 +4956,9 @@ async function openMapFrame(spec) {
 
 function popMapFrame() {
   if (editorFrames.length === 0) return false;
-  const dirty = !framePushed && gridData && Object.keys(gridData).length > 0;
+  // [fix E] Prompt only when this frame was actually edited since it opened AND the
+  // edits were not pushed. A merely-viewed non-empty material map goes back silently.
+  const dirty = !framePushed && frameTouched && gridData && Object.keys(gridData).length > 0;
   if (dirty && !confirm(
     `이 맵을 [⚡ Push]로 저장하지 않았습니다.\n\n` +
     `[확인] 저장하지 않고 돌아가기\n[취소] 이 화면에 남기`

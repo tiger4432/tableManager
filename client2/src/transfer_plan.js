@@ -1112,7 +1112,9 @@ async function openMaterial(id) {
       table, metaValues,
       presetKind: st.sourceKind === 'core' ? 'core' : 'tape',
     });
-    if (!r || !r.ok) showToast(`자재 맵 열기 실패: ${(r && r.error) || '알 수 없음'}`, 'error');
+    // [fix G] A user-cancelled frame open is not a failure — the editor already
+    // toasted the cancellation; an extra "열기 실패" here would call it an error.
+    if (!r || (!r.ok && !r.cancelled)) showToast(`자재 맵 열기 실패: ${(r && r.error) || '알 수 없음'}`, 'error');
   } finally {
     S.navBusy = false;
   }

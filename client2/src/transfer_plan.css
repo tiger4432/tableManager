@@ -15,6 +15,21 @@
    Animations use transform/opacity only — no reflow-triggering properties.
    ============================================================ */
 
+/* ── Page shell: honest horizontal scroll below natural min width ── */
+/* The editor row (330px config sidebar + toolbar min-content ≈780px + 430px
+   plan sidebar) has a natural min width around 1540px. style.css keeps the
+   app-shell convention `body { overflow: hidden }` (panes own their own
+   scrolling), which on 1366/1440-wide viewports silently CLIPPED this plan
+   sidebar — unreachable, no scrollbar. Never hide content: when the row
+   genuinely exceeds the viewport, let .main-layout itself scroll sideways.
+   Scoped here because this stylesheet loads only on the map editor page
+   (via transfer_plan.js ← map_editor.js) — index.html is unaffected.
+   Toasts are position:fixed (tokens.css), so they stay centered on the
+   VISIBLE viewport regardless of this scroll offset. */
+.main-layout {
+  overflow-x: auto;
+}
+
 /* ── Sidebar shell ─────────────────────────────────────── */
 :root {
   /* Single source of the plan sidebar width. Replaces the inline width in
