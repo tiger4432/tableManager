@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**U6 `95bf072`**: **§5.6 서버 선언 맵 기본값 신설** — paint-rules가 `value_column_candidates`(RESOLVED)·`default_legend`(선언 그대로/null)를 서빙, 클라 하드코딩 6종 삭제(후보 2사본·builtin stage·팔레트 3사본·E1/E2 색), §6에 stage 선언 단일 소스(`/api/transfer-plan/stages`, builtin 폴백 삭제)·§4-bis.1에 U6-1 시드 갈래(0셀+행 0개 = 시드, 읽기 실패 = 행 보존). 직전 같은 날: **H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -214,8 +214,8 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 #### 34) `selectBrush(val)`
 * **용도**: 사용자가 범례 행을 마우스로 클릭했을 때 해당 값(Value)을 브러시 모드로 선택하고 시각적 선택 효과를 부여합니다.
 
-#### 35) `addNewLegendRow()`
-* **용도**: 범례 리스트 하단에 새로운 커스텀 분류 bin을 추가하고 화면을 리렌더링합니다.
+#### 35) `addLegendRowForPanel()` *(구명 `addNewLegendRow`)*
+* **용도**: 범례 리스트 하단에 새로운 커스텀 분류 bin(`D<n>`)을 추가하고 화면을 리렌더링합니다. [U6] 색·설명은 공용 자동 추가 경로 `autoAddLegendValue`(§5.6 — 선언 행 우선, 다음 팔레트 규칙)를 탑니다.
 
 #### 36) `remapGridValues(oldVal, newVal)`
 * **용도**: 맵 데이터 내의 기존 범례 문자열 `oldVal`을 새 문자열 `newVal`로 전역 일괄 치환(Mapping)합니다.
@@ -299,6 +299,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 **로드 경로는 정확히 한 번, 초안 우선순위가 끝난 뒤에 영속합니다**(`6db517d` H1). 종전에는 `loadExistingMap`의 legend 자동 감지 블록이 방금 로드한 **서버 상태를 초안이 읽히기도 전에** 초안으로 되저장해, 비어 있지 않은 모든 맵에서 칠한 셀 초안이 새로고침을 넘지 못했습니다(`280ebf0` 회귀). 지금 로드 중의 영속 지점은 registry 블록 안 — 초안 적용이 끝난 뒤 — 하나뿐입니다. 부속 규칙 둘:
 - **「복구했습니다」의 기준은 "초안에 내용이 있었다"가 아니라 "화면이 실제로 바뀌었다"입니다.** Push 성공 직후 초안이 서버본과 동일하게 재저장되므로, 내용 기준이면 계획이 있는 맵을 열 때마다 유령 복구 토스트가 뜹니다.
 - **실제 복구는 미저장 상태로 표시됩니다**(`legendDirty`). 복구된 편집은 여전히 이 브라우저에만 있는 편집이라, 표시하지 않으면 초안이 살아남은 바로 그 새로고침 뒤에 칩이 "저장됨"으로 읽힙니다.
+- **[U6-1] 0셀 맵 + 레지스트리 행 0개 = 시드 갈래** — 같은 테이블에서 연속 로드해도(테이블 전환 없이도) `seedEmptyDoe()`를 먼저 타고, 그 뒤에 레지스트리 답을 병합합니다. 이 리셋이 없으면 이전 맵의 legend가 화면에 남아 새 맵의 계획으로 상속됩니다. 레지스트리 **읽기 실패는 반대로 행 보존**입니다(unknown-server-state — §5.6).
 
 ### 4-bis.2 최근 열람 — 부팅 복원은 수동 경로의 재연이다 (`map_editor_last_open` · `280ebf0`)
 
@@ -371,7 +372,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 | `GET /api/maps/overlay` (`main.py`) | `map_overlay.get_overlay` — 정렬 좌표 `overlays[]` 전체 |
 | **`server/bonding_plan.py`** | `map_overlay.resolve_map_transform` / `align_status_label` — **가용량 산출의 정렬**(2026-07-27 배선) |
 | **`server/transfer_plan.py`** | 같은 두 함수 + `resolve_binding` / `build_key_filters` / `load_overlay_config` |
-| `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.4) |
+| `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.5) + **[U6] 서빙되는 맵 기본값**(`value_column_candidates`·`default_legend`, §5.6) |
 | `server/tests/test_map_overlay.py` | 엔드포인트 계약 회귀 |
 
 > ℹ️ **맵 에디터 클라는 이 엔드포인트를 더 이상 호출하지 않습니다.** 좌표를 안 쓰게 된 뒤로 남아 있던 `limit=1` probe(계측 보정 선언 유무 확인)마저 선언 레이어와 함께 제거됐습니다(§5.1).
@@ -434,11 +435,29 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 > - **C5 legend 저장 오탐** — `saveLegendToServer`가 *실패*와 *보낼 것 없음*을 같은 `false`로 반환해, 마지막 값 삭제 시 근거 없는 경고 토스트가 뜹니다.
 > - **C8 `sticky` 토스트** — 상한 초과 퇴거에서 보호되지 않습니다. 현재 프로덕션 호출부가 없어 영향 0.
 
+### 5.6 서버 선언 맵 기본값 (U6 · `95bf072`) — 클라 하드코딩의 선언 이관
+
+`GET /api/maps/paint-rules` 응답이 잠금 규칙에 더해 **config 수준 맵 기본값 둘**을 싣습니다(`map_overlay_config.json` 선언, 요청마다 재읽기 — 테이블과 무관하게 동일):
+
+| 필드 | 의미 | 서버 해석 |
+|---|---|---|
+| `value_column_candidates` | 값 컬럼 자동 탐지의 **순서 있는** 후보 목록(앞선 것 우선) | 항상 **RESOLVED 값**을 서빙합니다 — 선언이 있으면 선언이 기본을 **통째로 대체**하고, 없으면 문서화 기본 `[val, value, leg, grade, result, code, split, doe]`(`resolve_value_column_candidates`). 서버 자신의 바인딩 유도(`derive_table_binding`)도 **같은 resolved 목록**을 따릅니다 |
+| `default_legend` | 레지스트리(`map_split_registry`) 행이 없는 맵이 받는 legend 행 `{value, desc, color, locked}` | **선언한 배열 그대로**(서버가 행을 지어내지 않음). 미선언 = `null` = 기본 의미론 없음(`get_default_legend`) |
+
+**클라는 두 목록의 사본을 갖지 않습니다**(U6에서 삭제: 값 컬럼 후보 2사본 · builtin stage 목록 · 팔레트 3사본 · E1/E2 고정 색). 캐시는 `overlayContract` 하나이고 규율은 잠금(§5.5)과 같은 **unknown-server-state**입니다 — `value_column_candidates`를 실은 응답만 캐시를 갱신하고, 실패·구버전 서버는 마지막으로 아는 값을 유지합니다.
+
+- **값 컬럼 자동 탐지**(`fillColumnDropdowns` · 오버레이 `deriveMapBinding`)는 서빙된 목록만 씁니다. 목록이 없으면(미조회·도달 불가) 자동 탐지는 없고 첫 컬럼/일반 폴백으로 갑니다 — **builtin 목록으로 돌아가지 않습니다.** *(잔여 이슈 Low: 후보 매칭의 대소문자 규약이 소비처마다 다릅니다 — 클라 컬럼 드롭다운은 case-insensitive, 클라 오버레이 유도·서버 유도는 정확 일치. QA 대기열)*
+- **빈 맵 legend 시드 = 서빙된 `default_legend`.** `null`(또는 빈 배열)이면 **VALUE 1 하나짜리 빈 행**(`EMPTY_DOE_SEED`)입니다. 세 번째 갈래가 아닙니다 — "registry 행 있음 → 그 행 / 없음 → 시드"라는 기존 두 갈래 규칙에서 **시드의 어휘가 선언 가능해진 것**뿐이고, 현행 라이브 선언도 VALUE 1 한 행이라 사용자 관찰 동작은 동일합니다.
+- **값이 legend에 자동 추가되는 경로는 `autoAddLegendValue` 하나입니다**(E1/E2 자동 페인팅 · 붙여넣기/가져오기의 미지 값 · 맵 로드 legend 구성 · 패널 [+ 값]). 선언된 `default_legend` 행이 있으면 그 색·설명이 이기고, 없으면 단일 팔레트(`LEGEND_PALETTE` — 사본 하나) 규칙입니다. E1/E2의 고정 hex는 삭제됐습니다.
+- **[U6-1] 같은 테이블 연속 로드의 시드 갈래**: 0셀 맵을 로드했는데 레지스트리가 **행 0개로 답하면**, 테이블 전환이 없었어도 `seedEmptyDoe()`로 시드 갈래를 탑니다 — 이전 맵의 legend가 화면에 남아 새 맵의 계획으로 상속되던 결함의 수리(QA 라이브 재현). 단 **레지스트리 읽기 실패는 행 보존**입니다(read.ok 아래에서만 시드 — unknown-server-state는 "비어 있음"이 아닙니다).
+
 ---
 
 ## 6. 전사 계획 (Transfer Plan) — 「계획 = 그 맵 자체」
 
 **계획은 별도 개체가 아니라 지금 열어 편집 중인 그 맵입니다.** `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획이며, stage는 열린 테이블에서 `stages.*.target_map.table` 역인덱스로 유도합니다. 별도 stage 선택 UI·타깃 입력창·`plan_id`·계획 맵 사본은 **없습니다**.
+
+**[U6 `95bf072`] stage 선언의 소스는 `GET /api/transfer-plan/stages`(서버 `transfer_plan_config.json`) 하나뿐입니다** — 클라 builtin stage 목록(`BUILTIN_STAGES`)은 삭제됐습니다. 404/405·빈 선언은 "선언 없음"(확정 답, stages = `[]`)이고, 그 외 실패는 "확인 못 함"으로 **마지막으로 아는 선언을 유지**한 채 다음 맵 전환에서 재시도합니다 — 어느 쪽도 클라가 계획 테이블을 추측하지 않으며, stage가 없는 테이블은 기존 강등 상태(`일반 맵 (legend)` 배지 — 조회 실패 시 툴팁이 그 사실을 말함)로 렌더됩니다. 에디터의 **초기 테이블 선택**도 같은 선언을 소비합니다(`stageTargetTables` — 선언된 stage 타깃 중 첫 맵 테이블, 없으면 첫 맵 테이블. 종전 `bonding_map` 하드코딩 대체).
 
 | 개념 | 정의 |
 |---|---|

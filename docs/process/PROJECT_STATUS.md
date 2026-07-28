@@ -36,9 +36,8 @@
 | 5b | **맵 에디터 소형 묶음** (라운드 인접 발견, 전부 기존 결함): ⓐ 지문 불일치 토스트 문구 vs 직후 persist 모순 ⓑ `legendDirty` 맵 전환 시 미리셋 ⓒ **메타 없는 맵 프레임 사상 근본 수리** — 기본 프레임 전 선택지가 원형 마스크로 373/1293만 담아 가드 발화로 Push 불가 + 로드 후 격자 입력 readOnly라 UI 조정 불가 ⓓ 후보 목록 매칭 대소문자 분기(`map_editor.js:1285` 무시 vs `:5097`·서버 정확일치) ⓔ 안 고친 자재 프레임에서 뒤로가기 confirm 발화(`framePushed` 초기 false) ⓕ **~1540px 미만 창에서 계획 사이드바 도달 불가**(`overflow-x: hidden` + 최소폭 — 1366/1440 화면 사용자는 계획 패널을 못 씀) | map-pm(ⓐ~ⓔ)·ui-designer(ⓕ) | T2/T3 | 대기 |
 | — | ~~U8·U9~~ ✅ **완료** (`2baf9ff`, QA GO) — 마커 값·V6 양측, 가용 사유 노출, bin_map 선언 경로 E2E 증명. 잔여 LOW 2건: JSON 숫자 `0.5`→marker 승격(양측 일치라 비긴급, 다음 계약 라운드에 동승) · M1 위임 stage에서 bin_map 무효(라이브 dt 점등 시 inline 전환 필요 — 현장 결정) | — | — | ✅ |
 | — | ~~U6~~ ✅ **완료** (`95bf072`, QA 2레인 GO — 분할 구조 첫 실전) — `default_legend`·`value_column_candidates` 선언 신설(paint-rules 서빙 단일 소스), 클라 하드코딩 6종 삭제(후보 목록 2사본·builtin stage·팔레트 3사본·E1/E2 색). 라운드 내 High 1건(같은 테이블 연속 로드 legend 유출) 발견·수리 완료. 브라우저 레인이 낡은 결함 2건 추가 검출 → 5b 편입 | — | — | ✅ |
-| 3 | **U7 — 뒤로가기 바 CSS 깨짐** (버튼·브레드크럼·힌트 겹침, 좁은 폭 flex 추정). U1·U3과 시각 배치로 묶음 | ui-designer | T3 | 대기 |
-| 3 | **U1 — 사용 자재 패널 반반** (`tp-mat-pane` 고정 250px → DOE와 flex 반반, 레이아웃 주석 동반 갱신) | ui-designer | T3 | 대기 |
-| 3 | **U3 — 토스트 하단 중앙 배너** (우하단·상승 모션 제거). U1과 함께 — `--toast-inset-right` 회피 장치가 죽은 코드가 됨 | ui-designer | T3 | 대기 |
+| — | ~~U7·U1·U3~~ ✅ **완료** (`a98dc72`, CSS-only) — U7 원인은 `b35bc9f` CSS 재작성의 3·4번째 희생(`.map-breadcrumb`·`.plock-chip` 무스타일) → 복원+보강. U1은 규칙이 이미 반반이었고 **주석이 거짓말** → 주석 정정+죽은 `.tp-scroll` 삭제. U3 하단 중앙 배너 + `--toast-inset-right` 참조 0 증명 삭제. 부수 관찰: 메타 모달 취소 시 `openMapFrame`이 조용히 롤백(토스트 없음) → 5b-ⓖ | — | — | ✅ |
+| 4 | **5c — `transfer_log` x/y 미바인딩 시 잔여 과대 보고 후보** (역할 사전 작성 중 발견, 2026-07-28). `transfer_plan.py:1177-1185` vs `:1312-1315`: x/y 없이 바인딩하면 전사 **개수**는 화면에 뜨는데 정확 경로의 `used_set`이 비어 **기전사 차감이 조용히 빠진다** — 상태는 `connected`라 상태 코드로는 안 보임. 방향 후보: ⓐ 그 조합을 `unavailable` 강등(추측 금지 규율) ⓑ 개수 경로 차감. **qa-reviewer 트리아지 먼저** — 산술 분기·상태 분기를 따로 추적할 것. 가이드에는 함정으로 기록됨 | server-pm | T2 | 대기 (트리아지 선행) |
 | 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
 | 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
 | 6 | **`replace_map` 빈 집합** — 서버 scope 필드 | server-pm | — | 대기 |

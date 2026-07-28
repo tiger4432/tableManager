@@ -3,13 +3,17 @@
 > **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · **의미론(zone 모델·`stack` string·`bin_map`·`bands` 폐기)의 정본은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)** · 동작 계약은 [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)
 
-<!-- Loader evidence (2026-07-28):
+<!-- Loader evidence (2026-07-28, role dictionary pass):
   load: server/transfer_plan.py:232 load_transfer_plan_config (missing/corrupt -> {})
-  per-request snapshot: server/main.py:3189
-  registry required roles: transfer_plan.py:146 REGISTRY_ROLES = (ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top)
+  per-request snapshot: server/main.py:3200/:3240/:3283
+  registry required roles: transfer_plan.py:146 REGISTRY_ROLES = (ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top) / legacy: :149 bands
   source_config_ref allowed: transfer_plan.py:127 M1_SOURCE_REFS = ("bonding_plan",)
   stage role resolution: transfer_plan.py:282 / bin_map lookup: :661 / lot_membership: :921
-  material_identity gate: transfer_plan.py:2486 / source_region (dormant): :487
+  degradation engine: :393 _degradation_effect / :407 assess_degradation / chips gate: :446 build_chips_block
+  inline summary (role consumption): :1121 _summarize_inline / history: :1074 / bins: :740 / lot rollup: :1575
+  M1 delegation reshape: :937 / M1 bins refusal: :1561 / stage reverse index: :342 stage_of_table
+  validate: :2588 validate_plan (LookupError->404 :2604) / painted: :2538 / material gate: :2486 / _split_material: :2505
+  source_region (dormant): :487 / frame meta: :995 _canonical_origin_meta, map_overlay.py:354 resolve_align (both-None -> identity)
 -->
 
 ## 1. 언제 이 파일을 만지는가
@@ -73,17 +77,123 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 
 요청마다 재읽으므로 복원 즉시 반영. 단 **`table_config`·물리 컬럼과 얽힌 문제**(zone 컬럼 미선언으로 저장이 드롭된 경우 등)는 config 복원만으로 안 돌아옵니다 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
 
-## 5. 키 참조
+## 5. 역할 사전 (키 참조)
 
-**`stages.<stage명>`**: `description`(필수) · `source_kind`/`target_kind` · `source_config_ref`(`"bonding_plan"`) 또는 `source` · `target_map: {preset, table}`(stage 유도의 역인덱스) · `bin_map`(선택)
+각 역할이 **어떤 숫자를 만들고, 안 이으면 정확히 무엇이 죽는지**의 사전입니다. 화면 용어 ↔ API ↔ 역할 대응부터:
 
-**`stages.<stage>.source` 역할**: `identity.compose` · `map_metadata` · `total_chips` · `transfer_log` · `origin_log` · `origin_area_map` · `process_history` · `fail_sources.<name>{frame: "origin"|"self", table, columns, fail_values}` · `warnings` · `bin_map`(선택) · `lot_membership`(선택 — 미선언 시 BIN 맵 슬롯으로 강등 폴백 + `lot_membership_degraded`) — 각 바인딩은 `{table, columns}` 형태, 위반 시 그 역할 `missing`.
+| 화면에서 보는 것 | API 필드 (`GET /api/transfer-plan/source-summary`) | 만드는 역할 |
+|---|---|---|
+| 자재 카드의 **가용/잔여** | `chips.remaining` = total − \|fail합집합 ∪ 기전사\| | `total_chips` − `fail_sources.*` − `transfer_log` (정확 감산은 `origin_log`가 있을 때) |
+| 총 칩 수 (가용의 분모) | `chips.total` | `total_chips` |
+| fail 차감 내역 | `chips.fail_breakdown.<name>` | `fail_sources.<name>` |
+| 기전사 차감 | `chips.transferred` | `transfer_log` |
+| **BIN별 가용** (`?bins=1,2`) | `bins.entries[]` | `bin_map` |
+| 코어별 분해 | `by_core` (+`by_core_origin` 마커) | `origin_log`(정확) / `origin_area_map`(강등) |
+| 이력 타임라인 | `history` | `process_history` (+`warnings.result_fail_values`) |
+| 로트 전개 (`scope=lot`) | `by_slot`·`slots_origin` | `lot_membership` (폴백: `bin_map`) |
+| 부족·초과배정 경고 (`/validate`) | `qty_shortage`·`source_overallocated`·`status` | `plan_store.registry` + `material_identity` |
 
-**`plan_store`**: `registry`(필수 역할키 7종 `ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`, 🗄️ `bands`는 선택·읽기 전용) · `material_identity{compose, separator}`(게이트 전용 — 미선언 시 전 자재 `source_unresolved`) · `source_region`(선택·휴면).
+**공통 규율**: 모든 바인딩은 `{table, columns}` 형태이고, 테이블이 `table_config` 미선언이거나 필수 컬럼이 빠지면 그 역할은 통째로 `missing`입니다(부분 해석 없음). 역할 강등은 조용히 지나가지 않습니다 — `warnings[].type: "source_degraded"`로 표면화되고, 감산항(fail·기전사)이 강등되면 `chips.remaining`이 **`null`로 내려갑니다**(`remaining_reliable: false`, total이 살아 있으면 `remaining_upper_bound`만 제공). validate는 강등된 소스에 대해 부족 판정을 **하지 않고** `availability_unreliable`을 냅니다("검사 안 함" ≠ "이상 없음").
 
-주의 —
+### 5.1 stage 키 (`stages.<이름>`)
 
-- `map_split_registry.stack`은 `table_config`에서 **`"string"`** 선언(“number”로 바꾸면 저장 실패/조용한 변조).
-- `fail_sources[].align`은 폐지 — 무시됨. 변환은 `wafer_map_metadata` 델타에서 유도.
-- `origin_area_map`의 `val`을 `bin_map`에 재사용 금지 — 출신 코어 식별자일 수 있어 서버는 BIN 컬럼을 추측하지 않습니다.
-- zone·마커 0·V1~V6·`bands` 이관의 전체 의미론은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)이 정본.
+**`description`** (필수) · **`source_kind`/`target_kind`**
+- 역할: `/stages` 응답과 소스 요약에 그대로 실리는 **표시 라벨**입니다.
+- 함정: `source_kind`를 바꿔도 **계산 경로는 안 바뀝니다** — core-kind(M1 위임) 여부는 `source_config_ref` 유무가 정합니다.
+
+**`target_map: {preset, table}`**
+- 만드는 판정: **맵 테이블 → stage 역인덱스**. 맵 에디터에서 `table`의 맵을 열면 stage가 유도되고, `/validate`도 이걸로 stage를 찾습니다. `preset`은 에디터 표시용.
+- 미선언/오타: 그 테이블은 어느 stage에도 안 속함 → validate가 `stage_unknown` 경고 + **수량·가용·fail 검증 전부 생략**(status `unverified` — 404 아님. "경고 없음 = 이상 없음"이 아닙니다).
+- 함정: 두 stage가 같은 `table`을 선언하면 **먼저 선언된 stage가 이깁니다**(첫 매치).
+
+**`source_config_ref: "bonding_plan"`** (유일 허용값)
+- 만드는 숫자: 소스 가용을 **M1 `bonding_plan_config`의 바인딩으로 위임** — `chips`는 M1 core-summary(코어 total − defect − eds_fail − 기전사)를 재성형한 것이고, `/stages`의 역할 상태도 M1의 `total_chips`·`used_chips`(→`transfer_log`로 개명)·`process_history`·`defect`·`eds_fail`로 표시됩니다.
+- 미연결: ref도 inline `source`도 없으면 전 역할 `missing` → `chips.total=0`·`remaining=null`.
+- 함정: **이 경로에서 `bin_map`은 선언해도 무효** — 좌표 집합을 넘겨받지 않아 `bins.axis: "unavailable"` 고정. BIN이 필요하면 inline `source`로 전환.
+
+**`bin_map`** (선택 — stage 블록 또는 `source` 블록, stage 쪽 우선)
+- 만드는 숫자: `?bins=` 요청 시 `bins.entries[]` — BIN별 **가용**(= 그 BIN 셀들로 스코프한 remaining)·`cells`·`bin_absent`/`unknown` 판정. `lot_membership` 미선언 시 로트 전개의 강등 슬롯 원천이기도 합니다.
+- 바인딩: `{"table": "<BIN을 지는 맵>", "columns": {"lot", "slot", "x", "y", "bin"}}`
+- 미선언: `bins.axis: "unavailable"` + `bin_axis_unavailable` 경고. `bins=`를 안 붙인 기본 응답은 **아무 영향 없음**.
+- 함정: ① `origin_area_map`의 `val` 재사용 금지(출신 코어 식별자일 수 있음 — 서버는 BIN 컬럼을 추측하지 않습니다). ② BIN 값은 층 경계와 같은 정수 판정기 — `'1'`·`'01'`·`' 1 '`은 한 BIN, 비정수 셀은 버리지 않고 `unbinned_cells`로 계수. ③ 소스 집계가 강등이면(예: `origin_log` 미연결) **BIN 전부 `unknown` + `remaining=null`로 강등**됩니다 — BIN 축만 이어도 소용없습니다.
+
+### 5.2 inline `source` 역할
+
+**`identity: {compose}`** (기본 `["lot","slot"]`)
+- 역할: 출신(core) 맵 ID 합성 규칙 — `compose`를 `_`로 이어 `wafer_map_metadata.map_id`를 조회하는 키.
+- 미선언: 기본값 사용, 죽는 것 없음.
+- 함정: 메타의 `map_id` 합성 관례와 어긋나면 메타 조회가 빗나가 frame=`origin` fail이 `align_unavailable`로 강등됩니다.
+
+**`map_metadata`**
+- 만드는 판정: 프레임 정렬(회전·면·y반전·start)의 유도 원천 — 출신 코어 fail 좌표를 canonical 프레임으로 옮기는 근거. 정렬이 적용되면 `sources`에 `connected(aligned:180)` 마커.
+- 바인딩: `{"table": "wafer_map_metadata", "columns": {"target_table", "map_id", "grid_metadata"}}`
+- 미연결: **소스 맵만** 메타가 있으면 그 fail 원천이 `connected(align_unavailable)`(fail=0 + remaining 신뢰 불가 — 비대칭 지식은 identity로 가정하지 않음). **양쪽 다** 메타가 없으면 identity로 간주해 그대로 붙습니다(실패 아님 — 단 회전 미보정 위험은 남습니다).
+- 함정: 메타를 한쪽 맵에만 등록하면 등록 안 한 것보다 오히려 강등됩니다(위 비대칭 규칙).
+
+**`total_chips`**
+- 만드는 숫자: `chips.total` — **가용의 분모**. `(lot, slot)` 행 수 count.
+- 바인딩: `{"table": "dt_log", "columns": {"lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty"}}` — `x`/`y`는 선택이지만 `origin_log`가 없을 때 영역·BIN 집계의 총칩 좌표에 필요.
+- 미연결: **분모 자체가 불명** — `total_unknown` 강등으로 `remaining=null`(상한도 없음), validate는 그 소스의 모든 수요를 `availability_unreliable`로 내림(부족 판정 전면 생략). 이 역할이 죽으면 화면의 가용은 전부 미상입니다.
+- 함정: "행 수 = 칩 수"(칩당 1행 유일)를 가정합니다 — 중복 행이면 total이 과대인데 **현재 미표면화**(알려진 한계).
+
+**`transfer_log`**
+- 만드는 숫자: `chips.transferred` — **기전사 차감**. `x`/`y`가 있으면 distinct `(x,y)` 칩 수, 없으면 행 count.
+- 바인딩: `{"table": "bonding_log", "columns": {"lot", "slot", "x", "y"}}`
+- 미연결: `transferred=0`으로 감산이 빠져 remaining 과대 위험 → `remaining=null` + `remaining_upper_bound`(total 정상일 때) + `source_degraded(remaining_overstated)`. total·이력은 안 죽습니다.
+- 함정: **`x`/`y`까지 바인딩하십시오** — 좌표 없이 count만 되면 `origin_log` 정확 경로(합집합 감산)에서 기전사가 remaining 차감에 들어가지 않습니다(표시 `transferred`만 잡힘).
+
+**`origin_log`**
+- 만드는 숫자 셋: ① **정확 remaining**(합집합 감산 — fail·기전사 이중 차감 없음) ② `by_core` 분해(fail 포함, `by_core_origin: "log"`) ③ frame=`origin` fail을 타깃 좌표로 투영하는 다리.
+- 바인딩: `columns` 8종 전부 필수 — `{lot, slot, x, y, origin_lot, origin_slot, origin_x, origin_y}`.
+- 미연결: frame=`origin` fail 전부 `unavailable(origin_missing)`(fail=0), remaining은 M1식 감산 폴백이지만 강등 자체가 `remaining_overstated`라 **`remaining=null`**(상한만). `by_core`는 `origin_area_map` 강등 경로로. `?bins=` 요청 시 **전 BIN `unknown` 강등**. 안 죽는 것: total·transferred·frame=`self` fail·이력.
+- 함정: 컬럼 하나만 빠져도 역할 전체가 `missing`입니다.
+
+**`origin_area_map`** (선택)
+- 만드는 숫자: `origin_log` 미연결 시의 `by_core` **강등 경로** — 영역 귀속 분해(total/used만, **fail은 null** — 좌표 대응이 없어 0으로 위장하지 않음). `by_core_origin: "area_map"`, 상태 `connected(area_only)`. remaining에는 영향 없음(`by_core_degraded`).
+- 바인딩: `{"table": "dt_map", "columns": {"lot", "slot", "x", "y", "val"}}` — `val` = 코어 식별자.
+- 미선언: `origin_log`가 살아 있으면 아예 소비되지 않음(영향 0). 둘 다 죽으면 `by_core` 필드 자체가 응답에서 빠집니다.
+- 함정: `core_id`는 영역 맵의 원시 값(불투명) — `core_lot`/`core_slot`은 null이고 log 경로의 `core_id`와 문자열 일치를 가정하면 안 됩니다.
+
+**`process_history`**
+- 만드는 것: `history` 배열(최근 50건, 시간 오름차순) — 이력 타임라인. `warnings.result_fail_values`에 걸리는 result는 `result_fail` 경고(validate에서는 `source_history_fail`로 승격).
+- 바인딩: `columns {lot, slot, step, eqp, result, time, recipe, knobs}`.
+- 미연결: `history` 빈 배열 + `source_degraded(history_incomplete)` — **가용 숫자는 안 죽습니다**.
+- 함정: `time`을 안 바인딩하면 정렬 없는 임의 50건이 됩니다. `knobs`는 JSON 파싱 실패 시 raw 문자열 폴백(에러 아님).
+
+**`fail_sources.<name>`** (이름 자유 — 응답 키·경고에 그대로 노출)
+- 만드는 숫자: `chips.fail_breakdown.<name>` — **fail 차감 축**. `frame: "origin"`은 출신 코어 fail을 `origin_log` 조인 + 메타 정렬로 타깃 좌표에 투영, `frame: "self"`는 자기 좌표 직접 카운트.
+- 바인딩: `{"frame": "origin"|"self", "table", "columns": {lot, slot, x, y, val}, "fail_values": ["D"]}`
+- 미연결: 그 이름의 fail=0 → 감산 과소 → `remaining=null`(+상한) + `source_degraded`. `frame: "origin"`인데 `origin_log`가 없으면 `unavailable(origin_missing)`.
+- 함정: ① `fail_values` 미선언(또는 `val` 미바인딩)이면 **그 테이블 전 행이 fail로 계산**됩니다. ② `frame` 생략 시 기본값이 고정이 아닙니다 — `origin_log` 연결 여부에 따라 `"origin"`/`"self"`로 바뀌므로 **명시하십시오**. ③ 구 `align` 선언은 폐지 — 무시되며, 변환은 `wafer_map_metadata` 델타에서 유도.
+
+**`warnings: {result_fail_values}`**
+- 역할: 이력 result가 이 목록(문자열 완전 일치)에 있으면 `result_fail` 경고 발화.
+- 미선언: 이력 fail 경고만 침묵 — 다른 것은 안 죽습니다.
+
+**`lot_membership`** (선택)
+- 만드는 것: `scope=lot`(자재 토큰이 로트만 적을 때) 전개의 **슬롯 대장** — `by_slot` 목록과 `map_exists` 진단("전산에는 있는데 맵이 없는 슬롯" = `lot_slot_map_missing`)의 원천. 이 진단이 이 역할의 존재 이유입니다(로트 스플릿 후 잔재 교정면).
+- 바인딩: `{"table": "<자재 대장>", "columns": {"lot", "slot"}}`
+- 미선언: `bin_map`의 distinct 슬롯으로 강등 폴백(`slots_origin: "map"` + `lot_membership_degraded`) — **맵 없는 슬롯이 안 보여 진단이 성립하지 않습니다**. `bin_map`도 없으면 `slots: null`·`slots_status: "unknown"` + `lot_membership_unknown`, bins도 `unavailable`.
+- 함정: 로트의 슬롯이 50(`MAX_LOT_SLOTS`) 초과면 부분합을 지어내지 않고 합산 전체를 거부합니다.
+
+### 5.3 `plan_store` 역할
+
+**`registry`** (필수)
+- 만드는 판정: **계획(legend/DOE) 저장소** — `/validate`가 `(ref_table, map_key)`로 행을 읽어 zone 컬럼(`stack`·`mat_1h`·`mat_mid`·`mat_top`)에서 수요를 **유도**합니다(`total = painted(값) × layers`, `share = ceil(total / 자재 수)`). `doe_count`·`qty_shortage`·`source_overallocated`·V1~V5 판정 전부 이 행들에서 나옵니다.
+- 바인딩: 필수 역할키 7종(`ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`) — §2의 스니펫 참조. 🗄️ `bands`는 선택·읽기 전용.
+- 미연결(역할키 하나만 빠져도): **`/validate` 404**. `/stages`에 `plan_store.registry: "missing"`. `source-summary`는 registry를 안 읽으므로 영향 없음.
+- 함정: ① `map_split_registry.stack`은 `table_config`에서 **`"string"`**(“number”로 바꾸면 저장 실패/조용한 변조). ② 폐기 계획(`bands` blob)이 남은 사이트는 `bands` 역할키를 **유지**하십시오 — 빼면 그 행들이 "계획 없음"으로 보이고, 다음 legend 저장(replace_map)이 옛 계획을 빈 집합으로 덮을 수 있습니다. 표현 불가한 옛 배치는 접지 않고 거부됩니다(`not_convertible`).
+
+**`material_identity: {compose, separator}`**
+- 만드는 판정: **게이트 전용** — "이 배포의 자재 문자열이 lot/slot 모양"이라는 선언. 실제 분해는 config가 아니라 공유 토큰 문법(`lot[_slot][:BIN]`, `parse_material_token`)이 합니다 — 클라는 config를 못 읽으므로 파싱 규칙을 여기 두면 양쪽이 갈립니다.
+- 바인딩: `{"compose": ["lot", "slot"], "separator": "_"}` — `compose`에 `lot`·`slot`이 둘 다 없으면 미선언 취급.
+- 미선언: **모든 자재가 `source_unresolved`** → 수량 검증 전면 생략 → 계획 status `unverified`. `/stages`에 `material_identity: "missing"`.
+- 함정: `separator`/`compose` 값을 바꿔도 파싱은 안 바뀝니다(게이트일 뿐) — 이 키의 은퇴/재정의는 총괄 결정 대기.
+
+**`source_region`** (선택 · ⚠️ 휴면 — 총괄 지시로 보류)
+- 만드는 숫자(활성화 시): 자재별 "쓰기로 한 사용 영역" 셀 집합 → `region_chips`(영역 내 가용).
+- 바인딩: `columns {ref_table, map_key, source_lot, source_slot, x, y}`.
+- 미선언: `region_chips`가 응답에 없을 뿐 — 결함 아님(라이브 config가 일부러 미선언).
+- 함정: 선언만 하고 테이블이 없으면 `/stages`에 `missing` 소음만 만듭니다.
+
+zone·마커 0·V1~V6·`bands` 이관의 전체 의미론은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)이 정본.
