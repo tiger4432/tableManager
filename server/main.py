@@ -3169,11 +3169,20 @@ def get_map_overlay(
 
 @app.get("/api/maps/paint-rules")
 def get_map_paint_rules(table: Optional[str] = None):
-    """맵 페인트 잠금 선언(정본은 서버 config — 클라는 읽어서 적용, 하드코딩 금지)."""
+    """맵 페인트 잠금 선언(정본은 서버 config — 클라는 읽어서 적용, 하드코딩 금지).
+
+    [U6] Also serves the two map defaults so the client keeps no copy of its own:
+    - value_column_candidates: RESOLVED ordered list (declared beats documented
+      default — always present).
+    - default_legend: declared legend rows for maps without registry rows,
+      verbatim; null when undeclared (honest absence — no default semantics).
+    """
     config = map_overlay_module.load_overlay_config()
     return {
         "table": table,
         "rules": map_overlay_module.get_paint_rules(config, table),
+        "default_legend": map_overlay_module.get_default_legend(config),
+        "value_column_candidates": map_overlay_module.resolve_value_column_candidates(config),
     }
 
 # -----------------------------------------------------------------------------

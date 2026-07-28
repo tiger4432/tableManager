@@ -3,7 +3,7 @@ import './style.css';
 import { API_BASE, CURRENT_USER } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
-import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, bandToState } from './transfer_plan.js';
+import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, bandToState, stageTargetTables } from './transfer_plan.js';
 // The ONE material-list normalizer. The panel parses what the user types with it and the
 // storage layer normalizes with it, so the material COUNT on screen and the denominator of
 // `ceil(total / n)` in the save can never be two different numbers.
@@ -83,6 +83,13 @@ function applyPaintLockConfig(payload) {
   return true;
 }
 
+// [U6] Served map defaults, riding on the same paint-rules response (config-level —
+// identical for every table): the RESOLVED value-column candidate list and the declared
+// default legend. null until the first successful fetch. The client keeps NO copy of the
+// server defaults, so "not fetched yet / unreachable" must behave as "cannot
+// auto-detect" and "one empty seed row" — never as a builtin list.
+let overlayContract = null; // { valueColumnCandidates: string[], defaultLegend: array|null }
+
 // GET /api/maps/paint-rules?table= — 잠금 선언의 정본.
 //
 // 🔴 [M2 수정] 종전에는 **모든 실패**(네트워크 끊김·500·타임아웃)에서 잠금을 통째로 비웠다.
@@ -115,6 +122,16 @@ async function fetchPaintRules(table) {
     }
     if (!res.ok) { degrade(`HTTP ${res.status}`); return; }
     const cfg = await res.json();
+    // [U6] Cache the served defaults for every consumer (value-column auto-detect,
+    // empty-map seed, auto-added legend colors). Only a response that actually carries
+    // the candidate list updates the cache — an older server leaves it as it was.
+    if (Array.isArray(cfg.value_column_candidates)) {
+      overlayContract = {
+        valueColumnCandidates: cfg.value_column_candidates.filter(
+          c => typeof c === 'string' && c.trim() !== ''),
+        defaultLegend: Array.isArray(cfg.default_legend) ? cfg.default_legend : null,
+      };
+    }
     if (applyPaintLockConfig(cfg)) {
       // 잠금 값이 바뀌었으므로 현재 맵의 잠금 셀 집합을 다시 계산한다
       recomputeLockedCells();
@@ -163,9 +180,29 @@ function recomputeLockedCells() {
 //
 // STACK·자재는 비워 둔다. 사용자가 치기 전에 층 구조를 지어내면 그것이 곧 "사용자가 만든 적
 // 없는 계획"이 되고, 이 도메인이 없애려는 결함 그 자체다. 비어 있으면 V5가 그 사실을 말한다.
-const DEFAULT_LEGEND = [
+// [U6] The "no registry rows" seed is SERVED now: paint-rules carries the site's declared
+// `default_legend` (map_overlay_config.json), and that declaration is what an empty map
+// opens with. Undeclared/unreachable → the one empty row below. That is not a third
+// branch — it is the "nothing declared" arm of the same two-branch rule, and it happens
+// to coincide with the current live declaration. The client never invents richer rows.
+const EMPTY_DOE_SEED = [
   { value: '1', desc: '', color: '#10b981' }
 ];
+
+function defaultLegendRows() {
+  const declared = (overlayContract && Array.isArray(overlayContract.defaultLegend))
+    ? overlayContract.defaultLegend : null;
+  return (declared && declared.length > 0) ? declared : EMPTY_DOE_SEED;
+}
+
+// [U6] Declared default_legend row for one value — the lookup dictionary consulted when
+// a value is AUTO-added to the legend (autopaint E1/E2, unknown pasted/imported values,
+// map-load legend build). Declared row wins color/desc; else the palette rule.
+function declaredLegendRow(value) {
+  const rows = (overlayContract && Array.isArray(overlayContract.defaultLegend))
+    ? overlayContract.defaultLegend : [];
+  return rows.find(r => r && String(r.value) === String(value)) || null;
+}
 
 // ----------------------------------------------------
 // Split Registry (map_split_registry) — legend의 서버 영속화
@@ -215,7 +252,7 @@ function buildSplitKey(refTable, mapKey, value) {
 // zone 계약 (server/product_tables.py의 map_split_registry.__comment와 같은 글):
 //   * `stack` = 그 값의 총 층수. `mat_1h` = 1층, `mat_top` = stack층, `mat_mid` = 그 사이 전부.
 //     세 구역이 `1..stack`을 **구성적으로** 덮으므로 겹침·구멍 검사가 사라졌다 — 옮긴 게
-//     아니라 어길 방법이 없어졌다. 자세한 것은 docs/spec/DOE_ZONE_MODEL.md.
+//     아니라 어길 방법이 없어졌다. 자세한 것은 docs/spec/MAP_EDITOR_SPEC.md §6.0-bis.
 //   * **세 mat_* 컬럼은 원문 토큰의 JSON 배열**이다. 분리자로 이어붙이지 않는다: lot 이름에
 //     ':' 도 '_' 도 합법이라 안전한 문자가 없고, 한 번 가정했다가 서로 다른 두 풀이 한 행으로
 //     합쳐져 수량이 더해진 적이 있다(doe_bands.js의 `materialPoolKey` 주석).
@@ -1064,9 +1101,12 @@ async function loadTablesList() {
             el.overlaySrcTable.appendChild(o);
           });
         }
-        // Auto select bonding_map if available, otherwise first map table
-        const hasBondingMap = mapTables.includes('bonding_map');
-        const startTable = hasBondingMap ? 'bonding_map' : mapTables[0];
+        // [U6] Auto select the first map table that is a declared stage TARGET
+        // (GET /api/transfer-plan/stages — the same declaration the plan panel derives
+        // its stages from), otherwise the first map table. No builtin table-name list:
+        // an unreachable stages endpoint just means no plan-table preference.
+        const stageTables = await stageTargetTables();
+        const startTable = mapTables.find(t => stageTables.includes(t)) || mapTables[0];
         el.tableSelect.value = startTable;
         await switchTable(startTable);
       } else {
@@ -1084,11 +1124,17 @@ async function loadTablesList() {
 // Switch current working table & load schema
 async function switchTable(tableName) {
   selectedTable = tableName;
-  fetchPaintRules(tableName); // 잠금 선언은 맵 테이블별 — 전환 시 재조회
+  const paintRulesReady = fetchPaintRules(tableName); // 잠금 선언은 맵 테이블별 — 전환 시 재조회
   try {
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
     tableSchema = await res.json();
-    
+
+    // [U6] Value-column auto-detect and the empty-map seed both consume the served
+    // defaults that ride on the paint-rules response, so wait for that round-trip
+    // (runs in parallel with the schema fetch above; fetchPaintRules never throws —
+    // on failure the cached contract simply stays as it was).
+    await paintRulesReady;
+
     // Fill advanced column selectors
     fillColumnDropdowns();
 
@@ -1231,9 +1277,13 @@ function fillColumnDropdowns() {
 
   populate(el.colMapX, 'x');
   populate(el.colMapY, 'y');
-  // bonding_map has 'leg' as value column. Fallback to common value column names
-  const valMatches = ['leg', 'status', 'value', 'val', 'bin'];
-  const matchedVal = cols.find(c => valMatches.includes(c.toLowerCase()));
+  // [U6] Value-column auto-detect uses the SERVED candidate list (paint-rules
+  // `value_column_candidates`, candidate order = priority — same convention as the
+  // overlay binding and the server's derive_table_binding). No client copy: without a
+  // served list there is no auto-detect and the first column stays selected.
+  const colByLower = new Map(cols.map(c => [String(c).toLowerCase(), c]));
+  const cands = overlayContract ? overlayContract.valueColumnCandidates : [];
+  const matchedVal = cands.map(c => colByLower.get(c.toLowerCase())).find(Boolean);
   populate(el.colMapVal, matchedVal || cols[0]);
 }
 
@@ -2299,6 +2349,33 @@ function updateNotchPosition() {
 // ----------------------------------------------------
 // Legend / Palette Management
 // ----------------------------------------------------
+// [U6] THE palette, in one place. It used to be written out three times (panel [+ 값],
+// unknown imported values, map-load legend build) — three copies of the same twelve
+// colors is how they drift. Colors are a client styling choice, not server data; only
+// per-VALUE colors/descs come from the served default_legend (declaredLegendRow).
+const LEGEND_PALETTE = ['#10b981', '#ef4444', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6',
+  '#14b8a6', '#f43f5e', '#06b6d4', '#84cc16', '#a855f7', '#6b7280'];
+
+function pickUnusedColor() {
+  const used = new Set(legend.map(l => l.color));
+  return LEGEND_PALETTE.find(c => !used.has(c))
+    || '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+}
+
+// [U6] The ONE way a value gets auto-added to the legend. Declared default_legend row
+// wins (its color/desc); else fallbackDesc + the palette rule. Returns true only when a
+// row was actually added — callers decide how to persist/render.
+function autoAddLegendValue(value, fallbackDesc) {
+  const v = String(value);
+  if (legend.some(item => String(item.value) === v)) return false;
+  const dr = declaredLegendRow(v);
+  legend.push(normalizeLegendItem({
+    value: v,
+    desc: dr ? String(dr.desc || '') : String(fallbackDesc || ''),
+    color: (dr && dr.color) ? String(dr.color) : pickUnusedColor(),
+  }));
+  return true;
+}
 // 빈 DOE 한 줄. **"registry 행이 없다"의 유일한 답**이고, 그 답의 구현도 여기 하나뿐이다.
 //
 // `vocab: true`로 표시하고 서명을 남기는 것은 여전히 의미가 있다 — 어휘 시딩이 사라져도 이
@@ -2307,7 +2384,7 @@ function updateNotchPosition() {
 // 순간 `reconcileVocabClaims`가 그것을 이 맵의 것으로 판정해 저장한다.
 function seedEmptyDoe() {
   legendMeta = {};
-  legend = cloneLegend(DEFAULT_LEGEND);
+  legend = cloneLegend(defaultLegendRows());
   legendVocabularySeed = new Map();
   legend.forEach(l => { l.vocab = true; legendVocabularySeed.set(String(l.value), legendRowSignature(l)); });
   activeBrush = legend.length > 0 ? legend[0].value : '';
@@ -2681,7 +2758,7 @@ function applyRegistryRowsToLegend(rows) {
   // An empty palette cannot be painted with. Fall back to the generic defaults, still
   // marked `vocab` so they are shown but not written until the map claims them.
   if (legend.length === 0) {
-    legend = cloneLegend(DEFAULT_LEGEND).map(l => ({ ...l, vocab: true }));
+    legend = cloneLegend(defaultLegendRows()).map(l => ({ ...l, vocab: true }));
   }
   if (legend.length > 0 && !legend.some(l => l.value === activeBrush)) {
     activeBrush = legend[0].value;
@@ -3194,11 +3271,9 @@ function selectBrush(val) {
 function addLegendRowForPanel() {
   let nextVal = 1;
   while (legend.some(item => String(item.value) === `D${nextVal}`)) nextVal++;
-  const colors = ['#10b981', '#ef4444', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#14b8a6', '#f43f5e', '#06b6d4', '#84cc16', '#a855f7', '#6b7280'];
-  const used = new Set(legend.map(l => l.color));
-  const color = colors.find(c => !used.has(c)) || colors[legend.length % colors.length];
   const value = `D${nextVal}`;
-  legend.push(normalizeLegendItem({ value, desc: '', color }));
+  // [U6] Same auto-add path as every other new value (declared row → palette rule).
+  autoAddLegendValue(value, '');
   persistLegend();
   renderLegendTable();
   return value;
@@ -3614,7 +3689,7 @@ async function loadExistingMap(opts = {}) {
 
     // Auto detect legend from unique values
     if (uniqueVals.size > 0) {
-      const predefinedColors = ['#10b981', '#ef4444', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#14b8a6', '#f43f5e', '#06b6d4', '#84cc16', '#a855f7', '#6b7280'];
+      const predefinedColors = LEGEND_PALETTE; // [U6] the one palette — no second copy
       const newLegend = [];
       const usedColors = new Set();
 
@@ -3630,29 +3705,31 @@ async function loadExistingMap(opts = {}) {
         }
       });
 
-      // For new unique values, assign description and unique color
+      // For new unique values, assign description and unique color.
+      // [U6] A declared default_legend row wins its color/desc; only undeclared values
+      // walk the palette and get the generic BIN-style description.
       let colorIdx = 0;
       uniqueVals.forEach(v => {
         const exists = newLegend.some(item => item.value === v);
         if (!exists) {
+          const dr = declaredLegendRow(v);
+          let chosenColor = (dr && dr.color) ? String(dr.color) : '';
           // Find next unused color from predefined colors list
-          let chosenColor = '';
-          while (colorIdx < predefinedColors.length) {
+          while (!chosenColor && colorIdx < predefinedColors.length) {
             const candidate = predefinedColors[colorIdx++];
             if (!usedColors.has(candidate)) {
               chosenColor = candidate;
-              break;
             }
           }
           if (!chosenColor) {
             // Fallback to random color if all predefined are used
             chosenColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
           }
-          
+
           usedColors.add(chosenColor);
           newLegend.push(normalizeLegendItem({
             value: v,
-            desc: v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`),
+            desc: dr ? String(dr.desc || '') : (v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`)),
             color: chosenColor
           }));
         }
@@ -3686,6 +3763,16 @@ async function loadExistingMap(opts = {}) {
         // what we just read is the baseline the concurrency check compares against.
         // 값·색뿐 아니라 **이 맵에 없는 값의 knobs/bands를 비우는 것**까지
         // applyRegistryRowsToLegend 한 곳에서 한다 (앞 맵의 스택 잔재 차단).
+        //
+        // [U6-1] A 0-cell load on the SAME table skips the paint-derived legend rebuild
+        // above (`uniqueVals.size > 0` guard), so the previous map's non-vocab rows are
+        // still on screen here and apply() would keep them — the new map inherited the
+        // old plan (QA repro: AAA's F/2/D1/D2 shown for QA_EMPTY_U6). Reset to the seed
+        // arm first, exactly what the table-switch flow does; apply() then merges the
+        // registry answer into THIS map's baseline. Only here, under read.ok: a FAILED
+        // read must keep the screen as-is (unknown-server-state is not "empty"), and
+        // the draft-precedence block below still runs after and wins as before.
+        if (uniqueVals.size === 0) seedEmptyDoe();
         applyRegistryRowsToLegend(read.rows);
         const serverFp = registryFingerprint(read.rows);
         const serverCellsFp = cellsDigest(gridData);
@@ -4198,15 +4285,11 @@ function selectEdgeCells(target) {
 }
 
 function autoPaintE1E2() {
+  // [U6] No hardcoded E1/E2 colors: declared default_legend row first, else the shared
+  // palette rule — the same path every auto-added value takes (autoAddLegendValue).
   let legendUpdated = false;
-  if (!legend.some(item => item.value === 'E1')) {
-    legend.push(normalizeLegendItem({ value: 'E1', desc: 'Edge 1 (Outermost)', color: '#8b5cf6' }));
-    legendUpdated = true;
-  }
-  if (!legend.some(item => item.value === 'E2')) {
-    legend.push(normalizeLegendItem({ value: 'E2', desc: 'Edge 2 (Inner Outer)', color: '#ec4899' }));
-    legendUpdated = true;
-  }
+  if (autoAddLegendValue('E1', 'Edge 1 (Outermost)')) legendUpdated = true;
+  if (autoAddLegendValue('E2', 'Edge 2 (Inner Outer)')) legendUpdated = true;
   if (legendUpdated) {
     persistLegend();
     renderLegendTable();
@@ -4993,7 +5076,6 @@ async function fetchTableSchemaCached(table) {
 
 const OVERLAY_SYSTEM_COLS = ['row_id', 'business_key_val', 'created_at', 'updated_at',
   'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at', 'grid_metadata'];
-const OVERLAY_VAL_CANDIDATES = ['val', 'value', 'leg', 'grade', 'result', 'code', 'split', 'doe'];
 
 // 테이블 스키마에서 맵 좌표 바인딩을 유도한다(서버 derive_table_binding과 같은 규약).
 // 유도 불가면 null — 관례로 조용히 추측하지 않는다.
@@ -5008,7 +5090,11 @@ function deriveMapBinding(schema) {
   }
   if (keyCols.length === 0) return null;
   const excluded = new Set([...keyCols, 'x', 'y', schema.business_key, ...OVERLAY_SYSTEM_COLS]);
-  const val = OVERLAY_VAL_CANDIDATES.find(c => cols.includes(c) && !excluded.has(c))
+  // [U6] Candidate list is SERVED (paint-rules `value_column_candidates`) — no client
+  // copy. Unavailable ⇒ skip straight to the generic first-non-excluded fallback, the
+  // same convention the server applies when no candidate matches.
+  const cands = overlayContract ? overlayContract.valueColumnCandidates : [];
+  const val = cands.find(c => cols.includes(c) && !excluded.has(c))
     || cols.find(c => !excluded.has(c)) || null;
   return { x: 'x', y: 'y', val, keyColumns: keyCols };
 }
@@ -5386,17 +5472,12 @@ function importOverlayToGrid(id) {
   showToast(`${o.sourceTable} · ${o.sourceKey} → ${parts.join(' · ')} — 아직 서버에 저장되지 않았습니다. [⚡ Push]로 적재하십시오.`, 'success');
 }
 
-// legend에 없는 값들을 추가하고 추가된 값 배열을 반환 (색은 기존 팔레트 규칙 재사용)
+// legend에 없는 값들을 추가하고 추가된 값 배열을 반환
+// ([U6] declared default_legend 우선, 다음은 공용 팔레트 규칙 — autoAddLegendValue 하나로 간다)
 function ensureLegendValues(values) {
-  const palette = ['#10b981', '#ef4444', '#3b82f6', '#ec4899', '#f59e0b', '#8b5cf6', '#14b8a6', '#f43f5e', '#06b6d4', '#84cc16', '#a855f7', '#6b7280'];
   const added = [];
   values.forEach(v => {
-    if (legend.some(l => String(l.value) === String(v))) return;
-    const used = new Set(legend.map(l => l.color));
-    const color = palette.find(c => !used.has(c))
-      || '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-    legend.push(normalizeLegendItem({ value: String(v), desc: '', color }));
-    added.push(String(v));
+    if (autoAddLegendValue(v, '')) added.push(String(v));
   });
   if (added.length > 0) saveLegendToStorage(); // 로컬 캐시만 — 서버 registry는 Push 시점에
   return added;

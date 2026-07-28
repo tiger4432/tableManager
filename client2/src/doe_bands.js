@@ -36,7 +36,7 @@
 // out of this file's TEXT - an `export` prefix on the declaration breaks extraction and
 // the harness exits 2 rather than silently passing.
 //   → contracts/doe_band_rules/{vectors.json,client_harness.mjs}
-//   → docs/spec/DOE_ZONE_MODEL.md is the authority for the rule numbers below.
+//   → docs/spec/MAP_EDITOR_SPEC.md §6.0-bis is the authority for the rule numbers below.
 
 // `prevTo` is imported rather than re-derived: it is the retired band model's backward
 // walk, it is still pinned by contracts/band_arithmetic (the SERVER still runs it), and

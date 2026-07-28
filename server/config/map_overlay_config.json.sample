@@ -33,6 +33,25 @@
       }
     }
   },
+  "__defaults_comment": "default_legend: registry 행이 없는 맵의 시작 legend + 자동 추가 값(E1/E2 등)의 색/설명 조회 사전. 사용자 규칙(2026-07-28): 빈 맵은 VALUE 1 한 행으로 시작한다. 4행 팔레트를 원하는 현장 선언 예: [{\"value\":\"1\",\"desc\":\"GOOD\",\"color\":\"#10b981\"},{\"value\":\"0\",\"desc\":\"FAIL\",\"color\":\"#ef4444\"},{\"value\":\"E1\",\"desc\":\"Edge 1\",\"color\":\"#8b5cf6\"},{\"value\":\"E2\",\"desc\":\"Edge 2\",\"color\":\"#ec4899\"}] | value_column_candidates: 값 컬럼 자동 감지 순서 - 선언하면 서버 기본값을 통째로 대체(부분 적용 없음)",
+  "default_legend": [
+    {
+      "value": "1",
+      "desc": "",
+      "color": "#10b981",
+      "locked": false
+    }
+  ],
+  "value_column_candidates": [
+    "val",
+    "value",
+    "leg",
+    "grade",
+    "result",
+    "code",
+    "split",
+    "doe"
+  ],
   "paint_lock": {
     "*": {
       "enabled": true,

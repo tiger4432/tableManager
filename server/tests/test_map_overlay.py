@@ -45,6 +45,13 @@ MOV_TABLES = {
                          "x": "number", "y": "number", "leg": "string"},
         "map_key_columns": ["base"],
     },
+    # value_column_candidates 검증용: 후보 컬럼이 **둘**(val·leg) 있어 탐지 순서가 결과를 가른다
+    "mov_test_dual_map": {
+        "business_key": "cell_key",
+        "column_types": {"cell_key": "string", "base": "string",
+                         "x": "number", "y": "number", "val": "string", "leg": "string"},
+        "map_key_columns": ["base"],
+    },
     # 맵으로 해석 불가(좌표 컬럼 없음) — 명시 실패 검증용
     "mov_test_notamap": {
         "business_key": "row_key",
@@ -1021,3 +1028,69 @@ def test_paint_rules_merge_wildcard_and_table(mov_env, client, tmp_path, monkeyp
     assert specific["blocking_values"] == ["F", "D"]
     assert specific["from_overlay"] == ["mov_test_eds_map"]
     assert specific["message"] == "기본"     # 와일드카드 값 승계
+
+
+# ---------------------------------------------------------------------------
+# 5. default_legend / value_column_candidates (U6) — no client-side hardcoding:
+#    the paint-rules response is the single source for both map defaults.
+# ---------------------------------------------------------------------------
+
+def test_resolve_candidates_precedence_unit():
+    """Declared list wins; absent/empty/non-list declarations fall back to the default."""
+    default = list(map_overlay.DEFAULT_VAL_CANDIDATES)
+    assert map_overlay.resolve_value_column_candidates({}) == default
+    assert map_overlay.resolve_value_column_candidates(
+        {"value_column_candidates": ["grade", "val"]}) == ["grade", "val"]
+    # Honest fallback: an unusable declaration must not half-apply
+    assert map_overlay.resolve_value_column_candidates(
+        {"value_column_candidates": []}) == default
+    assert map_overlay.resolve_value_column_candidates(
+        {"value_column_candidates": "val"}) == default
+    assert map_overlay.resolve_value_column_candidates(
+        {"value_column_candidates": [42, "  "]}) == default
+
+
+def test_paint_rules_response_shape_and_resolved_defaults(mov_env, client):
+    """Response always carries the RESOLVED candidates; default_legend is null when
+    undeclared (honest absence — the server never invents legend rows)."""
+    body = client.get("/api/maps/paint-rules", params={"table": "anything"}).json()
+    assert set(body.keys()) == {"table", "rules", "default_legend", "value_column_candidates"}
+    assert body["value_column_candidates"] == list(map_overlay.DEFAULT_VAL_CANDIDATES)
+    assert body["default_legend"] is None
+    assert set(body["rules"].keys()) == {"enabled", "blocking_values", "from_overlay", "message"}
+
+
+def test_paint_rules_serves_declared_legend_and_candidates(mov_env, client,
+                                                          tmp_path, monkeypatch):
+    """Declared values are served verbatim (legend rows untouched, declared order kept)."""
+    rows = [{"value": "1", "desc": "GOOD", "color": "#10b981", "locked": False},
+            {"value": "0", "desc": "FAIL", "color": "#ef4444", "locked": True}]
+    _write_cfg(tmp_path, monkeypatch, {"default_legend": rows,
+                                       "value_column_candidates": ["leg", "grade"]})
+    body = client.get("/api/maps/paint-rules").json()
+    assert body["default_legend"] == rows
+    assert body["value_column_candidates"] == ["leg", "grade"]
+
+
+def test_value_column_follows_declared_candidate_order(mov_env, client,
+                                                       tmp_path, monkeypatch):
+    """[mutation guard] Reordering the declared candidates flips which column is
+    detected — proves derive_table_binding consumes the resolved list, not its own
+    hardcode. The fixture has BOTH 'val' and 'leg' so the order axis is live: the
+    two halves of this test must return different values."""
+    db = mov_env
+    _seed(db)
+    _add(db, "mov_test_dual_map", cell_key="D1", base="BASE-9", x=4, y=4,
+         val="FROM_VAL", leg="FROM_LEG")
+    db.commit()
+    params = {"target_table": "mov_test_base_map", "target_key": "L1_01",
+              "sources": "mov_test_dual_map:BASE-9"}
+
+    # Default order: 'val' precedes 'leg'
+    body = client.get("/api/maps/overlay", params=params).json()
+    assert body["overlays"][0]["cells"] == [{"x": 4, "y": 4, "val": "FROM_VAL"}]
+
+    # Declared order reverses precedence -> detection must follow the declaration
+    _write_cfg(tmp_path, monkeypatch, {"value_column_candidates": ["leg", "val"]})
+    body = client.get("/api/maps/overlay", params=params).json()
+    assert body["overlays"][0]["cells"] == [{"x": 4, "y": 4, "val": "FROM_LEG"}]

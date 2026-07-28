@@ -52,11 +52,11 @@ import {
 } from './doe_bands.js';
 import './transfer_plan.css';
 
-// stage 미선언 서버(구버전) 폴백 — target_map.table 역인덱스의 최소 형태
-const BUILTIN_STAGES = [
-  { id: 'dt', name: 'DT PLAN', targetTable: 'dt_map', targetKind: 'tape', sourceKind: 'core', builtin: true },
-  { id: 'bonding', name: 'BONDING PLAN', targetTable: 'bonding_map', targetKind: 'base', sourceKind: 'tape', builtin: true },
-];
+// [U6] The builtin stage list is DELETED. Stage declarations have exactly ONE source:
+// GET /api/transfer-plan/stages (server config/transfer_plan_config.json). An
+// unreachable/undeclaring server leaves S.stages empty and every table renders through
+// the panel's existing degraded state ("일반 맵 (legend)") — never a client-side guess
+// about which tables are plans.
 
 // 소스 종류 → 자재 맵 테이블 폴백 (stage 역인덱스가 비었을 때만)
 const SOURCE_TABLE_FALLBACK = { core: 'core_defect_map', tape: 'dt_map' };
@@ -68,7 +68,7 @@ const SOURCE_OVERLAY_SUGGESTIONS = [
 ];
 
 const S = {
-  stages: BUILTIN_STAGES,
+  stages: [],          // [U6] served declarations only — empty until fetchStages answers
   stagesStatus: null,
   ctx: { table: '', mapKey: '', loaded: null, depth: 0, parent: null },
   // legend 미러 = DOE 그 자체
@@ -157,26 +157,45 @@ function sourceTableOf(stage) {
 // 테이블만 필요한 호출부용 얇은 래퍼
 function sourceTableOfStage(stage) { return sourceTableOf(stage).table; }
 
+// [U6] Two different absences (same discipline as the paint-rules fetch):
+//   · 404/405 or an empty declaration → "no stages declared" — definite answer, stages = [].
+//   · any other failure → "could not confirm" — keep the last KNOWN declaration (initially
+//     empty) and retry on the next map-context change. Never a builtin list.
+let stagesPromise = null;
+
 async function fetchStages() {
   S.stagesStatus = 'loading';
   try {
     const res = await fetch(`${API_BASE}/api/transfer-plan/stages`);
     if (res.status === 404 || res.status === 405) {
-      S.stages = BUILTIN_STAGES; S.stagesStatus = 'unsupported';
+      S.stages = []; S.stagesStatus = 'unsupported';
     } else if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     } else {
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (Array.isArray(data.stages) ? data.stages : []);
       const stages = arr.map(normalizeStage).filter(Boolean);
-      if (stages.length > 0) { S.stages = stages; S.stagesStatus = 'ok'; }
-      else { S.stages = BUILTIN_STAGES; S.stagesStatus = 'unsupported'; }
+      S.stages = stages;
+      S.stagesStatus = stages.length > 0 ? 'ok' : 'unsupported';
     }
   } catch (e) {
-    console.warn('[Legend & DOE] stages fetch failed — builtin fallback:', e);
-    S.stages = BUILTIN_STAGES; S.stagesStatus = 'error';
+    console.warn('[Legend & DOE] stages fetch failed — keeping last known declaration, will retry on next map switch:', e);
+    S.stagesStatus = 'error';
   }
   renderAll();
+}
+
+function ensureStages() {
+  if (!stagesPromise) stagesPromise = fetchStages();
+  return stagesPromise;
+}
+
+// [U6] The declared stage TARGET tables, declaration order. map_editor's initial table
+// pick consumes this instead of a builtin table-name list; waits for the one in-flight
+// stages fetch. Unreachable endpoint ⇒ [] (no plan-table preference — honest absence).
+export async function stageTargetTables() {
+  await ensureStages();
+  return S.stages.map(st => st.targetTable).filter(Boolean);
 }
 
 // ============================================================
@@ -455,10 +474,15 @@ function renderPlanHead() {
   if (!box) return;
   const st = stageOfTable(S.ctx.table);
   const child = S.ctx.depth > 0;
+  // [U6] "일반 맵" can also mean "stage declarations were unreachable" — say so in the
+  // tooltip instead of silently degrading (no new control; retried on next map switch).
+  const noStageTitle = S.stagesStatus === 'error'
+    ? ' title="전사 stage 선언을 조회하지 못했습니다 — 계획 기능이 잠시 비활성일 수 있습니다 (맵 전환 시 재시도)."'
+    : '';
   const stageBadge = child
     ? '<span class="tp-stage-badge material">자재 맵</span>'
     : (st ? `<span class="tp-stage-badge">${esc(st.name)}</span>`
-          : '<span class="tp-stage-badge none">일반 맵 (legend)</span>');
+          : `<span class="tp-stage-badge none"${noStageTitle}>일반 맵 (legend)</span>`);
 
   // ── 저장 상태. 자동 저장이 없으므로 화면이 이것을 말해야 한다. ───────────────
   //
@@ -1217,6 +1241,9 @@ export function notifyMapContext(info = {}) {
   if (controller.getLegend) S.legendRows = controller.getLegend();
   renderAll();
   if (changed) {
+    // [U6] A transient stages failure must not degrade the whole session — retry until
+    // a definite answer (declaration or 404/405) arrives.
+    if (S.stagesStatus === 'error') stagesPromise = fetchStages();
     refreshMaterials();
     // ★ 왕복 보상 — 복귀 직후 그 자재만 재조회
     if (info.returnedFrom) rewardAfterReturn(info.returnedFrom);
@@ -1268,7 +1295,7 @@ export function initTransferPlan(paintController) {
   if (!root) { console.warn('[Legend & DOE] mount point missing (#transfer-plan-root)'); return; }
   buildWorkspace(root);
   renderAll();
-  fetchStages();
+  ensureStages(); // may already be in flight via stageTargetTables() — one fetch, not two
 }
 
 // ============================================================

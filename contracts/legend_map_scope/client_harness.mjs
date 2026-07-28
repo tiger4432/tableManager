@@ -101,17 +101,20 @@ const NEEDED_EDITOR = [
   'buildSplitKey', 'canonRegistryRow', 'registryFingerprint',
 ];
 
-// DEFAULT_LEGEND is a multi-line const; take it from source too - applyRegistryRowsToLegend
-// falls back to it when a map claims nothing, and a re-typed copy would test a fiction.
-function extractDefaultLegend(source) {
-  const m = /(^|\n)\s*const\s+DEFAULT_LEGEND\s*=\s*\[/.exec(source);
-  if (!m) die("could not extract const 'DEFAULT_LEGEND' from map_editor.js");
+// [U6] The empty-map seed is served now (paint-rules `default_legend`); the client keeps
+// only the "nothing declared" arm as EMPTY_DOE_SEED, resolved through defaultLegendRows().
+// Both are taken from source - a re-typed copy would test a fiction. This harness runs
+// with `overlayContract = null` (see preamble), i.e. the no-served-declaration arm, which
+// is the branch the two-branch seeding contract here is about.
+function extractEmptyDoeSeed(source) {
+  const m = /(^|\n)\s*const\s+EMPTY_DOE_SEED\s*=\s*\[/.exec(source);
+  if (!m) die("could not extract const 'EMPTY_DOE_SEED' from map_editor.js");
   let i = source.indexOf('[', m.index), depth = 0;
   for (; i < source.length; i++) {
     if (source[i] === '[') depth++;
-    else if (source[i] === ']') { depth--; if (depth === 0) return `const DEFAULT_LEGEND = ${source.slice(source.indexOf('[', m.index), i + 1)};`; }
+    else if (source[i] === ']') { depth--; if (depth === 0) return `const EMPTY_DOE_SEED = ${source.slice(source.indexOf('[', m.index), i + 1)};`; }
   }
-  die("unbalanced brackets while extracting 'DEFAULT_LEGEND'");
+  die("unbalanced brackets while extracting 'EMPTY_DOE_SEED'");
 }
 
 const zoneSrc = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
@@ -124,7 +127,8 @@ const pieces = [
   extractConst(editorSrc, 'REGISTRY_SCOPES', 'map_editor.js'),
   extractConst(editorSrc, 'ZONE_COLUMNS', 'map_editor.js'),
   extractConst(editorSrc, 'LEGEND_PAYLOAD_COLUMNS', 'map_editor.js'),
-  extractDefaultLegend(editorSrc),
+  extractEmptyDoeSeed(editorSrc),
+  extractFunction(editorSrc, 'defaultLegendRows', 'map_editor.js'),
   extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),   // normalizeBands calls it
   extractFunction(planSrc, 'prevTo', 'transfer_plan.js'),        // bandsToZones walks with it
   // map_editor imports these from doe_bands.js. Extracted from THAT file rather than
@@ -156,6 +160,8 @@ try {
     + 'var CURRENT_USER = "tester";\n'
     + 'var selectedTable = "bonding_map";\n'
     + 'var legendReplaceScope = null, legendConflict = null;\n'
+    + 'var overlayContract = null;\n'  // [U6] no served default_legend -> EMPTY_DOE_SEED arm
+
     + 'var legendSaveState = { status: "idle", at: "", error: "" };\n'
     + 'var zoneColumnsPresent = null, draftBase = null;\n'
     + 'var STUB = { urls: [], writes: [], body: { total: 0, data: [] }, httpOk: true, mapKey: null, zoneBody: null };\n'

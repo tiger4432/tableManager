@@ -471,8 +471,42 @@ def parse_sources(spec: str) -> list:
     return out
 
 
-# 값 컬럼 후보 (앞선 것 우선). 어느 것도 없으면 좌표·키가 아닌 첫 컬럼으로 폴백.
-VAL_CANDIDATES = ("val", "value", "leg", "grade", "result", "code", "split", "doe")
+# Value-column candidates (earlier wins) — DOCUMENTED DEFAULT only.
+# `map_overlay_config.value_column_candidates` overrides this when declared, so every
+# consumer must go through resolve_value_column_candidates(cfg); reading this tuple
+# directly re-creates the hardcode this default exists to replace. When none of the
+# candidates match, the first non-key/non-coordinate/non-system column is the fallback.
+DEFAULT_VAL_CANDIDATES = ("val", "value", "leg", "grade", "result", "code", "split", "doe")
+
+
+def resolve_value_column_candidates(cfg: dict) -> list:
+    """Ordered value-column candidate list — declared beats default.
+
+    `value_column_candidates` in map_overlay_config.json is an ordered array of
+    column names used to auto-detect which column carries a map's value. Absent
+    (or not a usable list of non-empty strings) -> DEFAULT_VAL_CANDIDATES, the
+    documented default. GET /api/maps/paint-rules serves this RESOLVED list so
+    the client keeps no candidate list of its own.
+    """
+    declared = (cfg or {}).get("value_column_candidates")
+    if isinstance(declared, list):
+        names = [c for c in declared if isinstance(c, str) and c.strip()]
+        if names:
+            return names
+    return list(DEFAULT_VAL_CANDIDATES)
+
+
+def get_default_legend(cfg: dict):
+    """Declared default legend rows (verbatim) or None — honest absence.
+
+    `default_legend` in map_overlay_config.json declares the legend rows a map
+    gets when the server has no registry rows for it
+    (row shape: {"value", "desc", "color", "locked"}). Absent -> None: no default
+    semantics exist and the client renders bare values with palette colors — the
+    server never invents rows the user did not declare.
+    """
+    legend = (cfg or {}).get("default_legend")
+    return legend if isinstance(legend, list) else None
 
 # 레이어링/시스템 컬럼 — val 후보에서 제외한다
 _SYSTEM_COLUMNS = frozenset({
@@ -481,7 +515,7 @@ _SYSTEM_COLUMNS = frozenset({
 })
 
 
-def derive_table_binding(table: str) -> dict | None:
+def derive_table_binding(table: str, val_candidates=None) -> dict | None:
     """`table_config` 선언에서 맵 좌표 바인딩을 **자동 유도**한다. 불가하면 None.
 
     [왜 유도가 정본인가] `map_overlay_config.table_bindings`에 선언된 맵만 겹칠 수 있으면
@@ -492,9 +526,13 @@ def derive_table_binding(table: str) -> dict | None:
 
     - key_columns: `map_key_columns` 정본. 미선언이면 lot/slot 둘 다 있을 때만 관례 폴백.
     - x/y: 리터럴 `x`/`y` 컬럼. 없으면 유도 실패(관례 밖 이름은 선언으로 보정).
-    - val: `VAL_CANDIDATES` 우선, 없으면 키·좌표·시스템이 아닌 첫 컬럼.
+    - val: resolved candidates first (val_candidates arg; None -> DEFAULT_VAL_CANDIDATES —
+      callers holding a cfg must pass resolve_value_column_candidates(cfg)), then the
+      first non-key/non-coordinate/non-system column.
     """
     from database import crud
+
+    candidates = DEFAULT_VAL_CANDIDATES if val_candidates is None else val_candidates
 
     tcfg = (crud.TABLE_CONFIG or {}).get(table)
     if not isinstance(tcfg, dict):
@@ -512,7 +550,7 @@ def derive_table_binding(table: str) -> dict | None:
         return None
 
     excluded = set(key_cols) | {"x", "y", tcfg.get("business_key")} | _SYSTEM_COLUMNS
-    val = next((c for c in VAL_CANDIDATES if c in types and c not in excluded), None)
+    val = next((c for c in candidates if c in types and c not in excluded), None)
     if val is None:
         val = next((c for c in types if c not in excluded), None)
 
@@ -528,7 +566,7 @@ def resolve_binding(cfg: dict, table: str) -> dict | None:
     b = bindings.get(table)
     if isinstance(b, dict) and b.get("columns"):
         return dict(b["columns"])
-    return derive_table_binding(table)
+    return derive_table_binding(table, resolve_value_column_candidates(cfg))
 
 
 def build_key_filters(model, binding: dict, map_key: str):
