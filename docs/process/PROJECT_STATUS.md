@@ -41,7 +41,11 @@
 | — | ~~소급 백필 + 빈 키 큐 필터~~ ✅ **완료** (`1fefd12`) — `backfill_enrichment.py`(dry-run 기본·기존 행 불가침·멱등·실 mapper 경로·루프 가드 라이브 검증) + 큐 판정식 서버 단일화(`queue_filters` — 클라 3사본 소멸, 빈 키 제외). 빈 키 출처 = 그리드 빈 행 추가·부분 편집(레거시 mapper 무죄) | — | — | ✅ |
 | — | ~~raws 폴더 평탄화~~ ✅ **완료** (`0c6ac1a`, 퀵 QA 5/5) — 중첩 폴더 투하 → 정온 대기 → 파일 승격 → `rmdir`-only 폐기. 충돌 `~` 접두(`__force__` 위조 차단), 핫 토글 | — | — | ✅ |
 | — | ~~오버레이 F1~F5~~ ✅ **완료** (`17f65bd`, 원 진단 QA 재판정 5/5 FIXED — 결함 번들이 미끼 4칩을 그리는 것까지 실측한 판별 검증). paint-rules `binding` 단일 소스, 클라 유도 사본 ~40줄 삭제, 추측은 데이터 경로 거부·Load 사전선택만 경고. **table_bindings 선언만으로 tx/ty·대문자 테이블이 로드·겹치기 동작** | — | — | ✅ |
-| 3.8 | **파괴 방지 게이트 4호 — 로그형 테이블 Push 차단** (사용자 승인 2026-07-28 "다음에"): Push 대상 테이블에 맵 계약 컬럼(키+좌표+값) 외 데이터 컬럼이 있으면(=로그형) 차단 + "적재하면 N개 컬럼 소실" 사유. 배경: dt_log를 맵으로 열어 Push하면 그 스코프의 실로그 행이 맵 셀로 강등되며 dt_job_id 등 전 컬럼 소실. NULL 서브키 행은 등호 스코프라 원래 안전 | map-pm | T2 | 대기 (오버레이 라운드 다음) |
+| — | ~~게이트 4호 + map_push_ok~~ ✅ **완료** (`deed6d2`, QA 4/4 + 하네스 15/15) — 판별자 = "payload/서버가 그 컬럼을 재구성할 수 있는가"(조합키 pkg_id 생존, 행 고유 dt_id 차단, config 불필요). R&D 수동 계측용 `map_push_ok: true` 선언 시 차단→소실 인지 1회 확인(JSON boolean만, `is True` 엄격) | — | — | ✅ |
+| — | ~~self-frame fail count_only~~ ✅ **완료** (`deed6d2`) — 유령 계급 소탕 종결: 좌표 없는 fail 소스가 전 칩을 fail로 세며 remaining reliable:true 서빙하던 것 → count_only 강등+진짜 상한. fallback 경로는 의도적 무변경(개수 감산이 옳은 곳). 잔여 엣지 1건(fallback+region 부분집합 신뢰도) 트리아지 대기 | — | — | ✅ |
+| — | ~~#6 replace_map scope~~ ✅ **완료** (`deed6d2`) — 무동작 200 → 400 사유, 응답 `scope:{filters,deleted,inserted}` 단일 해석기, 명시 scope로 의도적 전체 삭제 표현 가능. **후속 등재**: 교체 삭제 행 WS 미방송(유령 행) — 경계 계약 건 | server-pm | — | 후속 대기 |
+| — | ~~D1 헌장 공백~~ ✅ **완료** (`deed6d2`) — 4문서를 server/client PM 헌장에 도메인별 의무와 함께 등재 | — | — | ✅ |
+| — | ~~DB 쓰기 2건~~ ✅ **완료** (로컬 라이브 적용 — 인덱스 6종+정리 4종+재교정 인덱스, CONCURRENTLY 무중단. 운영 실행 가이드 전달) | — | — | ✅ |
 | 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
 | 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
 | 6 | **`replace_map` 빈 집합** — 서버 scope 필드 | server-pm | — | 대기 |
