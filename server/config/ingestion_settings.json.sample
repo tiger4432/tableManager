@@ -5,5 +5,7 @@
   "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
   "dedup_by_signature": true,
   "_resume_from_checkpoint_doc": "[P2] 중단된 파일 적재를 마지막으로 커밋된 오프셋부터 재개합니다(기본 true). 재개 불가(시그니처/총행수/파서 불일치, 오프셋 손상) 시에는 처음부터 재처리하고 그 사유를 로그와 FileIngestionLog에 명시합니다. false로 두면 항상 처음부터 적재합니다.",
-  "resume_from_checkpoint": true
+  "resume_from_checkpoint": true,
+  "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
+  "flatten_nested_dirs": true
 }

@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **238개** 이력. (거버넌스 규칙 #4)
+> 총 **239개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-28 17:15** — [Raws Folder Drop Flatten](./20260728_171500_raws_folder_drop_flatten.md)
 - **2026-07-28 17:00** — [Enrichment Queue Blank Key Filter](./20260728_170000_enrichment_queue_blank_key_filter.md)
 - **2026-07-28 16:30** — [Enrichment Backfill Script](./20260728_163000_enrichment_backfill_script.md)
 - **2026-07-28 13:33** — [Css Rewrite Victims Three Four And The Toast That Moved Center](./20260728_133347_css_rewrite_victims_three_four_and_the_toast_that_moved_center.md)

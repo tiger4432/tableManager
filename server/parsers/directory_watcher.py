@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import queue
 import shutil
@@ -214,6 +215,41 @@ def dedup_by_signature_enabled() -> bool:
 def resume_from_checkpoint_enabled() -> bool:
     """오프셋 체크포인트 재개 활성 여부 (기본 True). False면 항상 처음부터 적재한다."""
     return _bool_setting("resume_from_checkpoint", DEFAULT_RESUME_FROM_CHECKPOINT)
+
+
+# ── [Flatten] nested directory flatten (raws/ 하위 폴더 트리 → 파일만 승격) ──
+# A directory dropped into raws/ (arbitrarily nested) is NOT watched as permanent
+# structure. Once the tree is quiescent, every regular file is moved up to the
+# raws/ root (name collisions get a relative-subpath prefix, never overwrite) and
+# the emptied directory tree is removed. Files then flow through the unchanged
+# existing pipeline (event/sweep pickup, lane routing, parser, checkpoint/dedup,
+# archives/, err/).
+DEFAULT_FLATTEN_NESTED_DIRS = True
+
+# Collision-prefix separator. Deliberately NOT "__": a subfolder literally named
+# "force" joined with "__" would fabricate the `__force__` force-reingest token
+# (ingestion_checkpoint.FORCE_REINGEST_TOKEN) in the new filename. "~" cannot
+# form that token at component junctions and is legal on Windows and POSIX.
+FLATTEN_SEP = "~"
+
+# Tree-quiescence poll. Generalizes the existing per-file stability primitive
+# (the 1s pre-processing debounce + the sweep's (mtime, size) signature) over a
+# directory tree: two consecutive identical snapshots of {relpath: (size, mtime)}
+# taken FLATTEN_STABILITY_INTERVAL_SECONDS apart mean the copy has finished.
+FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
+# Give up waiting after this long; the directory is left untouched and the
+# periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers the flatten later.
+FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
+
+# OS junk files discarded together with the folder (never ingested, never kept).
+# Exact names, case-insensitive, plus macOS AppleDouble "._*" sidecar files.
+FLATTEN_DISCARD_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
+
+
+def flatten_nested_dirs_enabled() -> bool:
+    """폴더 평탄화 활성 여부 (기본 True). 트리거(디렉토리 이벤트/스윕)당 1회 읽음 —
+    핫리로드는 '다음 폴더부터' 반영(파일 경계 스냅샷 규율과 동일 의미론)."""
+    return _bool_setting("flatten_nested_dirs", DEFAULT_FLATTEN_NESTED_DIRS)
 
 
 # ── [Heavy Lane P1] 워크스페이스 단위 직렬화 락 레지스트리 ─────────────────
@@ -481,6 +517,10 @@ class IngestionHandler(FileSystemEventHandler):
         self._heavy_backlog = 0
         # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
         self._legacy_config_cache = None
+        # [Flatten] normcase abs paths of directories currently being flattened.
+        # Guarded by _processing_lock; makes flatten triggers idempotent and
+        # re-entrant (event + sweep firing on the same tree never race).
+        self._flattening_dirs = set()
 
     def _load_legacy_config(self) -> dict:
         """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
@@ -566,13 +606,19 @@ class IngestionHandler(FileSystemEventHandler):
         return os.path.join(self.workspace_path, "err")
 
     def on_created(self, event):
-        if not event.is_directory:
+        if event.is_directory:
+            # [Flatten] A folder landed in raws/ (observer is recursive=False, so
+            # only direct children fire). Flatten it once the tree is quiescent.
+            self.request_flatten(event.src_path)
+        else:
             self._handle_event(event.src_path)
 
     def on_moved(self, event):
-        if not event.is_directory:
+        if event.is_directory:
+            self.request_flatten(event.dest_path)
+        else:
             self._handle_event(event.dest_path)
-            
+
     # Agent D v7: Removed on_modified as it causes too many duplicates on Windows
 
     def _handle_event(self, file_path: str):
@@ -602,6 +648,272 @@ class IngestionHandler(FileSystemEventHandler):
             if not routed_heavy:
                 with self._processing_lock:
                     self.processing_files.discard(abs_path)
+
+    # ── [Flatten] raws/ 하위 폴더 트리 평탄화 ────────────────────────────
+
+    @property
+    def raws_path(self):
+        return os.path.join(self.workspace_path, "raws")
+
+    def request_flatten(self, dir_path: str):
+        """Request flattening of a directory that is a direct child of raws/.
+
+        Idempotent and re-entrant: a second trigger (watchdog event + sweep, or
+        two events) on the same tree is a no-op while a flatten is in flight.
+        Runs in a short-lived daemon thread so the observer dispatch thread is
+        never blocked by the quiescence wait (same HOL discipline as P1).
+
+        Returns the worker Thread when a flatten was started, else None.
+        """
+        abs_dir = os.path.abspath(dir_path)
+        raws_root = os.path.abspath(self.raws_path)
+        # Result-based scope check (lesson file): only direct children of raws/.
+        if os.path.normcase(os.path.dirname(abs_dir)) != os.path.normcase(raws_root):
+            return None
+        if not os.path.isdir(abs_dir):
+            return None
+        if not flatten_nested_dirs_enabled():
+            logger.info(
+                f"[{self.table_name}] Flatten disabled (flatten_nested_dirs=false) — "
+                f"leaving directory untouched: {os.path.basename(abs_dir)}"
+            )
+            return None
+        key = os.path.normcase(abs_dir)
+        with self._processing_lock:
+            if key in self._flattening_dirs:
+                return None
+            self._flattening_dirs.add(key)
+        t = threading.Thread(
+            target=self._flatten_worker, args=(abs_dir, key),
+            name=f"flatten-{os.path.basename(abs_dir)}", daemon=True,
+        )
+        t.start()
+        return t
+
+    def _flatten_worker(self, abs_dir: str, key: str):
+        try:
+            self._flatten_directory(abs_dir)
+        except Exception:
+            import traceback
+            logger.error(
+                f"[{self.table_name}] Flatten failed for {abs_dir} "
+                f"(directory left in place; periodic sweep will retry):\n{traceback.format_exc()}"
+            )
+        finally:
+            with self._processing_lock:
+                self._flattening_dirs.discard(key)
+
+    @staticmethod
+    def _snapshot_tree(abs_dir: str):
+        """Comparable snapshot of a directory tree: {(kind, relpath): (size, mtime)}.
+
+        Generalizes the sweep's per-file (mtime, size) signature over a tree.
+        Returns None when the directory vanished. A file that cannot be stat'ed
+        mid-walk gets a never-equal marker so the tree keeps reading as unstable.
+        """
+        if not os.path.isdir(abs_dir):
+            return None
+        snap = {}
+        try:
+            for dirpath, dirnames, filenames in os.walk(abs_dir):
+                snap[("d", os.path.relpath(dirpath, abs_dir))] = True
+                for fn in filenames:
+                    fp = os.path.join(dirpath, fn)
+                    rel = os.path.relpath(fp, abs_dir)
+                    try:
+                        st = os.stat(fp)
+                        snap[("f", rel)] = (st.st_size, st.st_mtime)
+                    except OSError:
+                        snap[("f", rel)] = ("unstable", time.monotonic())
+        except OSError:
+            return None
+        return snap
+
+    def _wait_tree_quiescent(self, abs_dir: str) -> bool:
+        """Wait until the tree stops changing (total content stable across one
+        poll interval — a folder mid-copy must not be flattened half-full).
+
+        True  → tree is quiescent, safe to flatten.
+        False → directory vanished, or still changing after the max wait
+                (left untouched; the periodic sweep re-triggers later).
+        """
+        deadline = time.monotonic() + FLATTEN_STABILITY_MAX_WAIT_SECONDS
+        prev = self._snapshot_tree(abs_dir)
+        while prev is not None:
+            time.sleep(FLATTEN_STABILITY_INTERVAL_SECONDS)
+            cur = self._snapshot_tree(abs_dir)
+            if cur is None:
+                return False
+            if cur == prev:
+                return True
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    f"[{self.table_name}] Flatten deferred — tree still changing after "
+                    f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s: {abs_dir} (periodic sweep will retry)"
+                )
+                return False
+            prev = cur
+        return False
+
+    @staticmethod
+    def _is_discardable_system_file(name: str) -> bool:
+        """OS junk files (Thumbs.db / desktop.ini / .DS_Store / AppleDouble ._*)
+        are discarded together with the folder — never ingested, never kept."""
+        low = name.lower()
+        return low in FLATTEN_DISCARD_NAMES or low.startswith("._")
+
+    @staticmethod
+    def _sanitize_flatten_component(comp: str) -> str:
+        """Sanitize one directory-name component for use in a collision prefix.
+
+        - Path-hostile characters are replaced (defense in depth; os.walk names
+          cannot normally contain separators).
+        - The `__force__` force-reingest token is neutralized so a directory name
+          can never fabricate forced reingestion on the flattened filename
+          (loop: replacement can re-form the token from surrounding underscores).
+        """
+        comp = re.sub(r'[\\/:*?"<>|]', "_", comp)
+        while "__force__" in comp.lower():
+            comp = re.sub("__force__", "force", comp, flags=re.IGNORECASE)
+        return comp or "_"
+
+    def _build_collision_name(self, comps: list, basename: str) -> str:
+        """Collision name = flattened relative subpath prefix + original name.
+
+        The `user(<name>)` uploader token (keyed via startswith by
+        `_extract_user_from_filename`) is hoisted back to the front so uploader
+        attribution survives the prefix. Example:
+        batchA/sub2/user(kim)x.csv → user(kim)batchA~sub2~x.csv
+        """
+        user_prefix, rest = "", basename
+        if basename.startswith("user("):
+            end = basename.find(")")
+            if end != -1:
+                user_prefix, rest = basename[:end + 1], basename[end + 1:]
+        parts = [self._sanitize_flatten_component(c) for c in comps]
+        return user_prefix + FLATTEN_SEP.join(parts + [rest])
+
+    def _resolve_flatten_dest(self, raws_root: str, comps: list, basename: str, claimed: set):
+        """Pick a destination path in raws/ that never overwrites anything.
+
+        Order: plain basename → subpath-prefixed name → prefixed name + ~2..~999.
+        `claimed` holds normcased basenames already used by this flatten batch —
+        required because an earlier moved file may already have been processed
+        and archived away (its raws/ path no longer exists) by the time a
+        same-named sibling is placed.
+        """
+        candidates = [basename, self._build_collision_name(comps, basename)]
+        stem, ext = os.path.splitext(candidates[1])
+        candidates.extend(f"{stem}{FLATTEN_SEP}{n}{ext}" for n in range(2, 1000))
+        norm_root = os.path.normpath(raws_root)
+        for name in candidates:
+            dest = os.path.normpath(os.path.join(raws_root, name))
+            # Result-based validation (lesson file): must be a direct child.
+            if os.path.dirname(dest) != norm_root or os.path.basename(dest) != name:
+                continue
+            if os.path.normcase(name) in claimed or os.path.exists(dest):
+                continue
+            return dest
+        return None
+
+    def _flatten_directory(self, abs_dir: str):
+        """Move every regular file of a quiescent tree up to the raws/ root,
+        then remove ONLY the emptied directories (os.rmdir — a directory still
+        containing anything is never deleted). Files that cannot be moved
+        (locked, error) are left in place with a warning; the periodic sweep
+        retries the remainder later. Moved files are dispatched through the
+        unchanged existing event path (_handle_event → lane routing → parser)."""
+        t_name = self.table_name  # display only; processing snapshots per file
+        dir_label = os.path.basename(abs_dir)
+        raws_root = os.path.abspath(self.raws_path)
+        if not self._wait_tree_quiescent(abs_dir):
+            return
+
+        # Collect regular files (mtime ascending — same ordering rule as the sweep)
+        # and junk files to discard.
+        to_move, junk = [], []
+        for dirpath, _dirnames, filenames in os.walk(abs_dir):
+            for fn in filenames:
+                fp = os.path.join(dirpath, fn)
+                if self._is_discardable_system_file(fn):
+                    junk.append(fp)
+                    continue
+                try:
+                    mtime = os.stat(fp).st_mtime
+                except OSError:
+                    continue  # vanished between snapshot and walk
+                rel_dir = os.path.relpath(dirpath, raws_root)
+                comps = [] if rel_dir == "." else rel_dir.split(os.sep)
+                to_move.append((mtime, fp, comps))
+        to_move.sort(key=lambda x: x[0])
+
+        moved, failed = [], 0
+        claimed = set()
+        for mtime, fp, comps in to_move:
+            basename = os.path.basename(fp)
+            dest = self._resolve_flatten_dest(raws_root, comps, basename, claimed)
+            if dest is None:
+                logger.warning(
+                    f"[{t_name}] Flatten: no collision-free destination for "
+                    f"{os.path.relpath(fp, raws_root)} — leaving in place."
+                )
+                failed += 1
+                continue
+            try:
+                # os.rename, not os.replace/shutil.move — never overwrites on
+                # Windows, and dest existence was checked above (claimed set
+                # covers already-archived batch members).
+                os.rename(fp, dest)
+            except OSError as e:
+                logger.warning(
+                    f"[{t_name}] Flatten: cannot move {os.path.relpath(fp, raws_root)} "
+                    f"({e}) — leaving file and its directory in place; periodic sweep will retry."
+                )
+                failed += 1
+                continue
+            dest_name = os.path.basename(dest)
+            claimed.add(os.path.normcase(dest_name))
+            if dest_name != basename:
+                logger.info(
+                    f"[{t_name}] 📂 Flatten rename (collision): "
+                    f"{os.path.relpath(fp, raws_root)} -> {dest_name}"
+                )
+            moved.append((mtime, dest))
+
+        for fp in junk:
+            try:
+                os.remove(fp)
+                logger.info(f"[{t_name}] 📂 Flatten: discarded system file {os.path.relpath(fp, raws_root)}")
+            except OSError as e:
+                logger.warning(f"[{t_name}] Flatten: could not discard system file {fp}: {e}")
+
+        # Remove emptied directories bottom-up. os.rmdir fails on non-empty
+        # directories by design — that failure IS the "never delete a directory
+        # containing anything" guarantee (failed moves, junk that would not
+        # delete, or late-arriving files all keep their directory alive).
+        removed_all = True
+        for dirpath, _dirnames, _filenames in os.walk(abs_dir, topdown=False):
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                removed_all = False
+        if failed or not removed_all:
+            logger.warning(
+                f"[{t_name}] 📂 Flatten incomplete for '{dir_label}': moved {len(moved)} file(s), "
+                f"{failed} left behind — directory preserved; periodic sweep will retry."
+            )
+        else:
+            logger.info(
+                f"[{t_name}] 📂 Flattened '{dir_label}': {len(moved)} file(s) moved to raws/ root, "
+                f"directory tree removed."
+            )
+
+        # Dispatch through the unchanged pipeline. watchdog usually also fires
+        # for the renames into the watched root; the processing_files guard and
+        # the exists() check in _handle_event make double dispatch harmless, and
+        # this explicit pass makes pickup deterministic (same as the sweep).
+        for _mtime, dest in moved:
+            self._handle_event(dest)
 
     # ── [Heavy Lane P1] 레인 라우팅 ──────────────────────────────────────
 
@@ -1624,8 +1936,9 @@ class WorkspaceWatcher:
         기존 watchdog 이벤트 처리 경로(IngestionHandler._handle_event)와 동일하게 처리한다.
 
         - watchdog 이벤트 전용이던 워처가 다운타임(재기동 등) 중 도착한 파일을 영영
-          방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니고,
-          raws/ 내부 하위 디렉토리도 제외한다(observer의 recursive=False와 동일 범위).
+          방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니다.
+          raws/ 직속 하위 디렉토리는 스윕 후보가 아니라 [Flatten] 트리거다 —
+          request_flatten(비동기·멱등·정온 게이트)으로 파일만 승격되고 폴더는 제거된다.
         - 동일 (mtime, size) 시그니처로 이미 시도한 파일은 재시도하지 않는다 — 처리 실패로
           raws/에 잔류한 파일이 주기 스윕마다 무한 재시도되는 루프 방지. 파일이 갱신되어
           시그니처가 바뀌면 다시 시도한다.
@@ -1652,6 +1965,15 @@ class WorkspaceWatcher:
                 for name in names:
                     fp = os.path.join(raw_path, name)
                     try:
+                        if os.path.isdir(fp):
+                            # [Flatten] A directory sitting in raws/ (dropped while
+                            # the server was down, or whose event was lost/deferred)
+                            # is flattened, not swept. request_flatten is async,
+                            # idempotent and quiescence-gated; the flattened files
+                            # are dispatched by the flatten worker itself and by
+                            # later sweeps.
+                            handler.request_flatten(fp)
+                            continue
                         if not os.path.isfile(fp):
                             continue
                         st = os.stat(fp)
