@@ -1,0 +1,80 @@
+# `map_overlay_config.json` 세팅 — 맵 오버레이 바인딩 + 페인트 잠금
+
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Backend / UI-Map
+> 상위: [폴더 인덱스](./README.md) · 정렬 계약의 정본은 [MAP_EDITOR_SPEC §5](../../spec/MAP_EDITOR_SPEC.md)
+
+<!-- Loader evidence (2026-07-28):
+  load: server/map_overlay.py:85 load_overlay_config (missing -> {} = full default operation)
+  per-request read (no module cache)
+  binding auto-derivation rationale: map_overlay.py:487 / undeclared-table error: :594
+  paint_lock consumer: GET /api/maps/paint-rules (client applies, no hardcoding)
+-->
+
+## 1. 언제 이 파일을 만지는가
+
+- **컬럼명이 관례 밖인 테이블을 오버레이에 올릴 때** (예: `dt_log`의 `tx/ty`) — **관례 안이면 만질 필요 없습니다.** 선언 없이도 오버레이는 동작합니다(`table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도)
+- **페인트 잠금 규칙을 바꿀 때** — 어떤 값 위에 칠할 수 없는지, 잠금 판정을 어느 오버레이 소스에서 가져올지
+
+## 2. 세팅 절차
+
+1. **스냅샷**: `conda run -n assy_manager python server/scripts/backup_config.py snapshot`
+2. **전제 확인**: `table_bindings`·`paint_lock`의 키는 전부 `table_config.json`에 선언된 테이블명이어야 합니다.
+3. 파일이 없으면 `map_overlay_config.json.sample` 복사. 관례 밖 컬럼 테이블만 바인딩 선언:
+
+   ```json
+   "table_bindings": {
+     "dt_log": {
+       "columns": { "x": "tx", "y": "ty", "val": "core_lot", "key_columns": ["tape_lot", "tape_slot"] }
+     }
+   }
+   ```
+4. 페인트 잠금은 `"*"` 기본 선언 + 테이블별 오버라이드가 **머지**됩니다(기본값은 `F` 잠금):
+
+   ```json
+   "paint_lock": {
+     "*": { "enabled": true, "blocking_values": ["F"], "from_overlay": [], "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다." },
+     "bonding_map": {
+       "enabled": true, "blocking_values": ["F"],
+       "from_overlay": ["core_defect_map", "eds_fail_map"],
+       "message": "불량 칩 위치라 배정할 수 없습니다 (오버레이 기준)."
+     }
+   }
+   ```
+5. **정렬(align)은 이 파일에서 세팅하지 않습니다** — `align_overrides`는 폐지(2026-07-27)됐고 남아 있어도 무시됩니다(테스트로 고정). 정렬을 켜는 방법은 소스·타깃 맵의 **`wafer_map_metadata` 메타 등록**입니다.
+6. 저장 — 반영은 자동(**요청마다 재읽기**).
+
+## 3. 반영 확인
+
+1. `GET /api/maps/paint-rules?table=<t>` — 머지된 잠금 규칙이 기대대로인지.
+2. `GET /api/maps/overlay?target_table=<t>&target_key=<k>&sources=<src>:<key>` — `overlays[].status`가 `ok`인지, `align_applied.origin`이 `derived`(메타 유도)인지 `identity`(메타 부재)인지.
+   - `identity`는 실패가 아니지만 **메타 미등록 신호**입니다 — 정렬이 필요하면 메타부터 등록.
+   - `source_missing` = 테이블 미선언/바인딩 해석 실패.
+3. 맵 에디터 화면에서 잠긴 셀에 페인팅 시 선언한 `message`가 뜨는지.
+
+## 4. 잘못됐을 때
+
+```bash
+conda run -n assy_manager python server/scripts/backup_config.py restore map_overlay_config_<yymmdd>.json.bak --yes
+```
+
+요청마다 재읽으므로 복원 즉시 반영 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
+
+## 5. 키 참조
+
+```
+table_bindings.<table>.columns.{x, y, val, key_columns[]}
+paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
+paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
+```
+
+| 키 | 의미 |
+|---|---|
+| `table_bindings.<table>.columns` | 그 테이블을 맵으로 읽을 때의 좌표/값 컬럼. `key_columns`는 맵 인스턴스 식별 컬럼 |
+| `paint_lock.<t>.enabled` / `blocking_values[]` | 잠금 on/off · 이 값이 있는 셀은 페인팅 불가 |
+| `paint_lock.<t>.from_overlay[]` | 잠금 판정을 자기 셀이 아니라 나열된 오버레이 소스의 셀에서 가져옴 |
+| `paint_lock.<t>.message` | 차단 시 사용자 문구 |
+| ~~`align_overrides`~~ | 🗑️ 폐지 — 무시됨 |
+
+- 계획 맵 사본(`transfer_plan_map`)은 폐기 — 계획 캔버스의 잠금은 그 stage의 `target_map` 테이블에 직접 선언.
+- `GET /api/maps/overlay`의 `eqp` 파라미터는 no-op 존치.
+- 맵 에디터 클라는 `7d931dc` 이후 서버 오버레이 좌표를 소비하지 않고 변환을 자체 수행 — 서버 응답으로 클라 화면을 검증하지 마십시오.

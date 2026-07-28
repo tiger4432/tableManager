@@ -1,8 +1,9 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
+**파일 하나를 실제로 세팅하는 절차·키 사전은 [config/ 폴더](./config/README.md)** (파일당 가이드 1개)로,
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
 
 ---
@@ -316,150 +317,43 @@ psql -U postgres -d assy_manager -c "\d <table>"
 
 ---
 
-## 5. 최소 예시 스니펫
+## 5. 파일별 상세 → `config/` 폴더
 
-모두 실제 `.sample` / 실 config에서 발췌한 것입니다. **허구 필드 없음.**
+> **[2026-07-28 이관]** 파일별 **세팅 절차·키 사전·반영 확인 방법**은 [**config/ 폴더**](./config/README.md)로 옮겼습니다(파일당 가이드 1개). 아래 §5.x는 링크 스텁이며, **§5.8(전사 계획 의미론)과 §5.8-ter(기능별 테이블 체크리스트)만 이 문서가 정본**으로 남습니다.
 
-### 5.1 `table_config.json` — 테이블 1개
+### 5.1 `table_config.json`
 
-```json
-{
-  "bonding_map": {
-    "business_key": "pkg_id",
-    "composite_key_source": ["base", "x", "y"],
-    "composite_key_separator": "_",
-    "column_types": {
-      "pkg_id": "string",
-      "base": "string",
-      "x": "number",
-      "y": "number",
-      "leg": "string"
-    },
-    "display_columns": ["pkg_id", "base", "x", "y", "leg"],
-    "map_key_columns": ["base"]
-  }
-}
-```
+세팅 절차(스냅샷→in-place 저장→watcher 로그·`information_schema` 확인)와 키 사전(`business_key`·`composite_key_*`·`column_types`·`display_columns`·`map_key_columns`·`workspace_name`·`std_parse`·`source_priority`)은 → [**config/table_config.md**](./config/table_config.md)
 
-| 키 | 의미 |
-|---|---|
-| `business_key` | 사용자 관점 키 컬럼명(필수) |
-| `composite_key_source` | 복합 bk를 구성할 컬럼 목록. 지정 시 `business_key` 값이 이들의 조합으로 자동 생성됨 |
-| `composite_key_separator` | 조합 구분자 — **기본 `"_"`** |
-| `column_types` | `"string"` / `"number"` / `"datetime"` — 그 외 값은 전부 `String`으로 처리. `created_at`·`updated_at`·`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`는 시스템 컬럼이라 여기 쓰지 않음 |
-| `display_columns` | 그리드 표시 순서 + **표준 파서의 헤더 검증·적재 대상 집합**. 생략 시 ORM 컬럼 introspection 폴백 |
-| `map_key_columns` | 맵 replace 시 삭제 범위 한정 키(맵 테이블 전용) |
-| `workspace_name` | 폴더명 ≠ 테이블명일 때의 폴더 별칭 |
-| `std_parse` | 표준 파서 폴백 on/off. **JSON boolean만 유효** — 문자열 `"false"`는 무시+경고 |
-| `source_priority` | (선택) 전역 소스 우선순위 맵의 테이블별 오버라이드 |
+### 5.2 `ontology_mapping.json`
 
-### 5.2 `ontology_mapping.json` — 테이블 1개
+세팅 절차(리로드 필수·재동기화)와 키 사전(`description` 필수·`node`·`edges`·spatial props) → [**config/ontology_mapping.md**](./config/ontology_mapping.md)
 
-```json
-{
-  "wafer_slot_history": {
-    "description": "wafer가 공정 step을 통과한 이력 (wafer_id 기준 실개체 노드의 소스)",
-    "node": {
-      "label": "Wafer",
-      "identity": "wafer_id",
-      "props": ["lot", "slot"]
-    },
-    "edges": [
-      {
-        "type": "WENT_THROUGH",
-        "target_label": "Step",
-        "target_identity_from": ["step"],
-        "props": ["event_time", "lot", "slot"],
-        "description": "wafer가 이 공정 step을 통과한 이벤트"
-      }
-    ]
-  }
-}
-```
+### 5.3 `enrichment_rules.json`
 
-`identity`는 단일 컬럼명(`"wafer_id"`) 또는 복합(`["core_lot","core_slot"]`) 모두 가능합니다. `props` 항목은 문자열이거나 `{"col": "bx", "spatial": {"coord_system": "base_grid", "axis": "x"}}` 형태의 객체일 수 있습니다.
-
-### 5.3 `enrichment_rules.json` — 규칙 1개
-
-```json
-{
-  "core_wafer_attribution": {
-    "source_table": "bonding_log",
-    "derived_table": "core_wafer_map",
-    "decision_key": ["core_lot", "core_slot"],
-    "target_fields": ["wafer_id"],
-    "list_columns": ["chip_count", "eventtime"],
-    "aggregations": { "chip_count": "count" },
-    "enabled": true,
-    "reference_views": [
-      {
-        "label": "lot-slot 웨이퍼 이력",
-        "query": "SELECT step, lot, slot, wafer_id, event_time FROM wafer_slot_history WHERE lot = :core_lot AND slot = :core_slot ORDER BY event_time DESC",
-        "limit": 200
-      }
-    ]
-  }
-}
-```
+세팅 절차(키 계약·리로드 두 갈래)와 키 사전(`decision_key`·`target_fields`·`reference_views` 등) → [**config/enrichment_rules.md**](./config/enrichment_rules.md)
 
 ### 5.4 `chain_rules.json`
 
-```json
-{
-  "rules": [
-    {
-      "name": "production_to_inventory_reservation_batch",
-      "trigger_table": "production_plan",
-      "target_table": "inventory_master",
-      "mapper_module": "mappers.production_mapper",
-      "mapper_function": "reserve_materials_batch_df",
-      "is_batch": true,
-      "enabled": true
-    }
-  ]
-}
-```
+세팅 절차(맵퍼 배치→룰 선언→리로드)와 키 사전 → [**config/chain_rules.md**](./config/chain_rules.md)
 
 ### 5.5 `auto_update_control.json`
 
-```json
-{ "disabled": ["bonding_map/fetch_data.py"] }
-```
+**API 전용 쓰기** — 토글·run-now 절차 → [**config/auto_update_control.md**](./config/auto_update_control.md)
 
 ### 5.6 `ingestion_settings.json`
 
-```json
-{ "heavy_file_mb": 10 }
-```
+heavy 임계·dedup·체크포인트 재개 노브 3종 → [**config/ingestion_settings.md**](./config/ingestion_settings.md)
 
-### 5.7 `bonding_plan_config.json` — 발췌
+### 5.7 `bonding_plan_config.json`
 
-```json
-{
-  "core_identity": { "compose": ["lot", "slot"] },
-  "map_metadata": {
-    "table": "wafer_map_metadata",
-    "columns": { "target_table": "target_table", "map_id": "map_id", "grid_metadata": "grid_metadata" }
-  },
-  "sources": {
-    "used_chips": {
-      "table": "bonding_log",
-      "columns": { "lot": "core_lot", "slot": "core_slot", "x": "cx", "y": "cy" }
-    },
-    "eds_fail": {
-      "mode": "map",
-      "table": "eds_fail_map",
-      "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
-      "fail_values": ["F"]
-    }
-  },
-  "warnings": { "result_fail_values": ["FAIL"] }
-}
-```
+역할 바인딩 교체 절차·키 사전·`align` 폐지 경위 → [**config/bonding_plan_config.md**](./config/bonding_plan_config.md)
 
-> **`sources[].align`이 사라진 자리** — canonical 프레임은 메타가 등록된 **첫 맵 모드 역할**(`total_chips` → `defect` → `eds_fail` 순)이고, 나머지 맵은 자기 메타와의 델타로 그 프레임에 투영됩니다. 실제로 위 예시의 `eds_fail`에 선언돼 있던 `rotation: 180`은 `eds_fail_map` 메타의 rotation과 **정확히 같은 값**이었습니다 — 선언이 메타의 손수 관리하는 복사본이었다는 뜻입니다. 복사본이 정본과 어긋나면 어느 쪽이 참인지 알 방법이 없어 폐지했습니다.
+> **`sources[].align`이 사라진 자리** — canonical 프레임은 메타가 등록된 **첫 맵 모드 역할**(`total_chips` → `defect` → `eds_fail` 순)이고, 나머지 맵은 자기 메타와의 델타로 그 프레임에 투영됩니다. 실제로 라이브 `eds_fail`에 선언돼 있던 `rotation: 180`은 `eds_fail_map` 메타의 rotation과 **정확히 같은 값**이었습니다 — 선언이 메타의 손수 관리하는 복사본이었다는 뜻입니다. 복사본이 정본과 어긋나면 어느 쪽이 참인지 알 방법이 없어 폐지했습니다.
 
 ### 5.8 `transfer_plan_config.json` — stage 선언 발췌
+
+> 운영 서버 **세팅 절차·반영 확인·키 사전**은 [**config/transfer_plan_config.md**](./config/transfer_plan_config.md). **이 절은 의미론(zone 모델·마커 0·`stack` string·`bin_map`·`bands` 폐기)의 정본**으로 남습니다.
 
 ```json
 {
@@ -530,34 +424,13 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > **`source_region`(자재별 사용 영역 스코프)은 휴면이라 `.sample`에 넣지 않았습니다.** 미선언은 결함이 아니며(`plan_store`에 키 자체가 안 나옵니다), 선언만 하고 테이블이 없으면 도리어 `missing` 소음이 됩니다. 켜려면 `plan_store.source_region`에 `(ref_table, map_key, source_lot, source_slot, x, y)` 바인딩을 추가하고 그 테이블을 `table_config.json`에 선언하십시오.
 
-### 5.8-bis `map_overlay_config.json` — 키 구조
+### 5.8-bis `map_overlay_config.json`
 
-> 실값은 각 환경의 로컬 자산이므로 **키 구조만** 수록합니다.
+세팅 절차(선언 없이도 동작·페인트 잠금 머지)와 키 구조·검증 방법 → [**config/map_overlay_config.md**](./config/map_overlay_config.md)
 
-```
-table_bindings.<table>.columns.{x, y, val, key_columns[]}
-paint_lock."*".{enabled, blocking_values[], from_overlay[], message}
-paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
-```
+> 🗑️ **[폐지 2026-07-27] `align_overrides`** — 남아 있어도 서버가 무시합니다(테스트로 고정). 정렬의 유일한 근거는 **`wafer_map_metadata`**이며, 정렬을 켜는 올바른 방법은 오버라이드 선언이 아니라 **소스·타깃 맵의 메타 등록**입니다 → [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md).
 
-> 🗑️ **[폐지 2026-07-27] `align_overrides`** (`<table>.default` · `<table>.by_eqp.<eqp_id>`)
-> 정렬의 유일한 근거는 **`wafer_map_metadata`**입니다. 계측으로 잰 어긋남도 별도 선언이 아니라 **그 맵의 메타에 기록**합니다.
-> - 파일에 키가 남아 있어도 **서버는 무시합니다** — 지우십시오(무시된다는 사실이 테스트로 고정돼 있습니다).
-> - 왜 지웠나: 근거가 둘이면 메타와 선언이 어긋났을 때 **어느 쪽이 참인지 알 수 없습니다.** 라이브 선언 하나는 실제로 해당 맵 메타의 rotation과 값이 같은 **손수 관리하는 복사본**이었습니다.
-> - **정렬을 켜는 올바른 방법은 오버라이드 선언이 아니라 소스·타깃 맵의 메타 등록입니다** → [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md).
-
-| # | 할 일 |
-|---|---|
-| 1 | **아무것도 선언하지 않아도 오버레이는 동작합니다** — `table_bindings`는 `table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도되고, align은 `wafer_map_metadata` 델타(rotation·side·y반전·start·치수·phys)에서 유도됩니다 |
-| 2 | 컬럼명이 관례 밖일 때만(`dt_log`의 `tx/ty` 등) `table_bindings`를 선언합니다 |
-| 3 | `paint_lock`은 **`"*"` 기본 선언 + 테이블별 오버라이드**가 머지됩니다. 기본값은 `F` 잠금 |
-| 4 | 검증: `GET /api/maps/paint-rules?table=<t>` → `GET /api/maps/overlay?target_table=&target_key=&sources=<t>:<key>` 응답의 `overlays[].status`와 `align_applied.origin`(`derived`/`identity`) 확인 |
-
-> **`align_unavailable`은 "선언이 없다"가 아니라 "변환을 계산할 근거가 없다"입니다.** 메타 부재는 실패가 아니며 identity로 붙습니다(다만 **미등록은 정상이 아니라 누락 신호**입니다). 자세한 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
-
-> ⚠️ **위 표는 서버 엔드포인트(`/api/maps/overlay`) 기준입니다.** `7d931dc` 이후 **맵 에디터 클라는 이 좌표를 소비하지 않고 변환을 자체 수행**합니다. 선언 레이어가 사라지면서 클라의 선언 probe 관문(`probeAlignDeclaration`)과 그 산물인 실패 status 2종(`align_unconfirmed`·`align_override_declared`)도 함께 삭제됐습니다 — 오버레이 추가의 REST 왕복이 하나 줄었습니다.
->
-> `GET /api/maps/overlay`의 `eqp` 쿼리 파라미터는 **no-op으로 존치**돼 있습니다(`by_eqp` 전용이었음). 넘겨도 아무 일도 일어나지 않습니다.
+> ⚠️ `7d931dc` 이후 **맵 에디터 클라는 서버 오버레이 좌표를 소비하지 않고 변환을 자체 수행**합니다(선언 probe 관문 `probeAlignDeclaration`과 실패 status 2종 `align_unconfirmed`·`align_override_declared`도 함께 삭제 — REST 왕복 1회 감소).
 
 ### 5.8-ter 기능별 필요 테이블 체크리스트
 
@@ -619,26 +492,9 @@ paint_lock.<table>.{enabled, blocking_values[], from_overlay[], message}
 
 > 검증: `GET /api/transfer-plan/stages`의 `roles`·`plan_store` / `GET /api/bonding-plan/core-summary`의 role 상태가 `connected`인지 확인하십시오. `missing`이면 ①테이블 미선언 ②바인딩의 컬럼명 오타 ③필수 역할키 누락 순으로 의심하십시오.
 
-### 5.9 `maps.json` — 프리셋 1개 (**UI로 관리 권장**)
+### 5.9 `maps.json` (**UI/API로 관리 권장**)
 
-```json
-{
-  "presets": {
-    "core_std": {
-      "name": "CORE",
-      "phys_wafer_dia": 300.0,
-      "phys_chip_x": 7.0,
-      "phys_chip_y": 7.0,
-      "phys_offset_x": 0.0,
-      "phys_offset_y": 0.0,
-      "phys_edge_margin": 3.0,
-      "rotation": 0,
-      "side": "front",
-      "is_custom": true
-    }
-  }
-}
-```
+프리셋 등록 절차(API 경로·손편집 주의)와 키 사전 → [**config/maps.md**](./config/maps.md)
 
 ---
 

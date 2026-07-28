@@ -1,6 +1,6 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**config 백업 행 추가** — `config_backup.py` + `backup_config.py`, C3의 복원 원본. 직전: 롤백 서브시스템 행 — `ROLLBACK_PROCEDURE` + `list_undeclared_tables.py`) | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**설정 전반 행에 guide/config/ 폴더 반영** — 파일별 세팅 가이드 신설. 직전: **config 백업 행 추가** — `config_backup.py` + `backup_config.py`, C3의 복원 원본. 직전: 롤백 서브시스템 행 — `ROLLBACK_PROCEDURE` + `list_undeclared_tables.py`) | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
 각 서브시스템을 **어느 코드가 구현하고, 어느 문서가 설명하는지** 매핑합니다. 코드를 바꾸면 "문서" 열의 리빙 문서를 함께 갱신합니다([docs-as-code](./CONTRIBUTING.md#2-docs-as-code-갱신-규율)).
@@ -35,7 +35,7 @@
 | HTML 토폴로지 파서 | `parsers/html_topology_parser.py` | [guide/HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | Ingester |
 | 어드민(파이프라인 5탭 + 코드 에디터) | `client2/src/admin.js`, `main.py /admin/*` | [architecture/frontend §5](../architecture/frontend.md) | UI/Panel |
 | 설정 주도 스키마 | `config/table_config.json`, `database/config_watcher.py` | [architecture/data_model §5](../architecture/data_model.md) | Backend |
-| **설정 전반(온보딩 지도)** | `server/config/*` 전체, `.gitignore` config 규칙 | [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md) — **config 파일 추가/폐지·리로드 경로 변경 시 필수 갱신**. 상세 동작은 각 서브시스템 가이드로 링크(중복 서술 금지) | Lead / Backend |
+| **설정 전반(온보딩 지도 + 파일별 세팅)** | `server/config/*` 전체, `.gitignore` config 규칙 | [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)(지도·시나리오·함정) + [guide/config/](../guide/config/README.md)(**파일별 세팅 절차·키 사전** — 2026-07-28 신설, config 파일당 가이드 1개) — **config 파일 추가/폐지·리로드 경로·키 변경 시 두 곳 모두 필수 갱신**. 상세 동작은 각 서브시스템 가이드로 링크(중복 서술 금지) | Lead / Backend |
 | **범용 맵 오버레이(맵 인프라)** | `client2/src/map_editor.js`(오버레이 레이어 — **좌표 변환의 정본**), `server/map_overlay.py`, `config/map_overlay_config.json` | [spec/MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md)(정렬 계약 — 도메인 규칙 §5.0 / 클라 파이프라인 §5.1 / 서버 계약 §5.2) · [guide/CONFIG_GUIDE §5.8-bis](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |
 | 맵 정렬 메타(`wafer_map_metadata`) | `server/map_overlay.load_map_meta`, `client2/src/map_editor.js`(`fetchGridMetaFor`/`frameFromMeta`), `config/table_config.json` | [spec/MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)(정렬의 유일한 기준) · [map_editor/architecture_and_management §2](../map_editor/architecture_and_management.md)(스키마·필드 규격) | Backend / UI-Map |
 | 본딩·전사 계획 엔진(역할 바인딩) | `server/bonding_plan.py`, `server/transfer_plan.py`, `client2/src/transfer_plan.js`, `config/bonding_plan_config.json`, `config/transfer_plan_config.json` | [spec/MAP_EDITOR_SPEC §6](../spec/MAP_EDITOR_SPEC.md)(엔진·클라 계약) · [guide/CONFIG_GUIDE §3-S6](../guide/CONFIG_GUIDE.md)(설정 관점) | Backend / UI-Map |

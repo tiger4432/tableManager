@@ -60,6 +60,7 @@
 | 🟢 [ROLLBACK_PROCEDURE.md](./guide/ROLLBACK_PROCEDURE.md) | **배포를 되돌리는 법** — 코드·config·스키마의 반영 시점이 다르다는 전제 위의 절차. 순서(`config → 코드 → 재기동`)·재기동 대상 5개·`/health`의 사각·**남는 물리 스키마**. 2026-07-28 격리 스택 드릴 실측 포함 |
 | 🟢 [process/PRODUCTION_READINESS.md](./process/PRODUCTION_READINESS.md) | **프로덕션 게이트** — 무엇이 아직 막고 있는가(차단/조건부/통과 + 근거). 배포 판단은 여기서 |
 | 🟢 [CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **설정 전수 지도** — `server/config/*` 파일별 목적·소유·리로드 방식, 시나리오별 온보딩 체크리스트, 핫리로드/검증 규율, 함정 모음 |
+| 🟢 [config/](./guide/config/README.md) | **파일별 세팅 절차** — config 파일당 가이드 1개(언제 만지나·세팅 절차·반영 확인·복구·키 사전). 운영 서버에서 실제로 세팅할 때는 여기부터 |
 | 🟢 [CONDA_SETUP_GUIDE.md](./guide/CONDA_SETUP_GUIDE.md) | Conda 환경 구성 |
 | 🟢 [NATIVE_POSTGRES_SETUP_GUIDE.md](./guide/NATIVE_POSTGRES_SETUP_GUIDE.md) | PostgreSQL 설치 |
 | 🟢 [POSTGRES_OPERATIONS_GUIDE.md](./guide/POSTGRES_OPERATIONS_GUIDE.md) | DB 운영 |
