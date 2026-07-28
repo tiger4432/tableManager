@@ -57,6 +57,18 @@ MOV_TABLES = {
         "business_key": "row_key",
         "column_types": {"row_key": "string", "memo": "string"},
     },
+    # [F2] 값 컬럼이 후보 밖(UPPERCASE) — 유도는 거부, 서빙 바인딩만 fallback_guess 표기
+    "mov_test_upper_map": {
+        "business_key": "cell_key",
+        "column_types": {"cell_key": "string", "lot": "string", "slot": "string",
+                         "x": "number", "y": "number", "VAL": "string"},
+    },
+    # [F2] 추측할 데이터 컬럼조차 없음 — binding null 검증용
+    "mov_test_bare_map": {
+        "business_key": "cell_key",
+        "column_types": {"cell_key": "string", "lot": "string", "slot": "string",
+                         "x": "number", "y": "number"},
+    },
 }
 
 # phys 규격은 **필수**다 — 셀 좌표가 웨이퍼 원으로 자른 바운딩박스 상대값이라
@@ -1002,6 +1014,37 @@ def test_underivable_table_fails_explicitly(mov_env, client):
     assert "map_key_columns" in (o["detail"] or "")
 
 
+def test_fallback_guess_refused_in_data_path(mov_env, client):
+    """[F2] 후보 밖 값 컬럼(UPPERCASE 등)은 데이터 경로에서 **조용히 추측하지 않는다**.
+
+    과거: 후보가 안 맞으면 첫 데이터 컬럼을 잡아 그 컬럼 값으로 셀을 내보냈다 — 클라는
+    엉뚱한 컬럼을 진짜인 양 렌더했다. 지금: 유도는 x/y 부재와 같은 명시 거부(None)이고
+    오버레이는 source_missing으로 표면화한다. 추측은 paint-rules의 `binding` 필드에서만
+    `fallback_guess`로 표기되어 나간다(별도 테스트)."""
+    db = mov_env
+    _seed(db)
+    _add(db, "mov_test_upper_map", cell_key="U1", lot="L1", slot="01",
+         x=2, y=2, VAL="DECOY")
+    db.commit()
+
+    assert map_overlay.derive_table_binding("mov_test_upper_map") is None
+    assert map_overlay.resolve_binding({}, "mov_test_upper_map") is None
+
+    body = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "L1_01",
+        "sources": "mov_test_upper_map",
+    }).json()
+    o = body["overlays"][0]
+    assert o["status"] == "source_missing", "추측 렌더 대신 명시 거부여야 한다"
+    assert o["cells"] == []
+    assert "value_column_candidates" in (o["detail"] or "")
+
+    # 선언으로 구제하면 그대로 동작한다 (거부는 추측에만 적용, 선언 경로 무손상)
+    declared = {"table_bindings": {"mov_test_upper_map": {"columns": {
+        "x": "x", "y": "y", "val": "VAL", "key_columns": ["lot", "slot"]}}}}
+    assert map_overlay.resolve_binding(declared, "mov_test_upper_map")["val"] == "VAL"
+
+
 # ---------------------------------------------------------------------------
 # 4. 페인트 잠금 선언 (S2)
 # ---------------------------------------------------------------------------
@@ -1054,9 +1097,11 @@ def test_paint_rules_response_shape_and_resolved_defaults(mov_env, client):
     """Response always carries the RESOLVED candidates; default_legend is null when
     undeclared (honest absence — the server never invents legend rows)."""
     body = client.get("/api/maps/paint-rules", params={"table": "anything"}).json()
-    assert set(body.keys()) == {"table", "rules", "default_legend", "value_column_candidates"}
+    assert set(body.keys()) == {"table", "rules", "binding", "default_legend",
+                                "value_column_candidates"}
     assert body["value_column_candidates"] == list(map_overlay.DEFAULT_VAL_CANDIDATES)
     assert body["default_legend"] is None
+    assert body["binding"] is None, "미지 테이블은 바인딩 해석 불가 — 정직한 null"
     assert set(body["rules"].keys()) == {"enabled", "blocking_values", "from_overlay", "message"}
 
 
@@ -1070,6 +1115,60 @@ def test_paint_rules_serves_declared_legend_and_candidates(mov_env, client,
     body = client.get("/api/maps/paint-rules").json()
     assert body["default_legend"] == rows
     assert body["value_column_candidates"] == ["leg", "grade"]
+
+
+def test_paint_rules_serves_resolved_binding_declared_wins(mov_env, client,
+                                                           tmp_path, monkeypatch):
+    """[F1] paint-rules가 RESOLVED 바인딩을 서빙한다 — 선언 > 유도, 출처 표기.
+
+    에디터가 자기 나름의 재유도(첫 데이터 컬럼 추측) 대신 이 필드 하나만 소비하게 하는
+    단일 소스다 (U6 candidates와 같은 패턴)."""
+    _seed(mov_env)
+
+    # 유도 경로: table_config에서 유도 + source=derived
+    body = client.get("/api/maps/paint-rules",
+                      params={"table": "mov_test_derived_map"}).json()
+    assert body["binding"] == {"x": "x", "y": "y", "val": "leg",
+                               "key_columns": ["base"], "source": "derived"}
+
+    # 선언 경로: 관례 밖 이름(tx/ty)의 선언이 유도를 이긴다 + source=declared
+    _write_cfg(tmp_path, monkeypatch, ODD_BINDING)
+    body = client.get("/api/maps/paint-rules",
+                      params={"table": "mov_test_odd_map"}).json()
+    assert body["binding"] == {"x": "tx", "y": "ty", "val": "core_lot",
+                               "key_columns": ["tape_lot", "tape_slot"],
+                               "source": "declared"}
+
+    # 해석 불가(좌표 컬럼 없음) → null · table 파라미터 부재 → null
+    assert client.get("/api/maps/paint-rules",
+                      params={"table": "mov_test_notamap"}).json()["binding"] is None
+    assert client.get("/api/maps/paint-rules").json()["binding"] is None
+
+
+def test_resolve_binding_info_normalizes_partial_declaration_unit():
+    """선언 바인딩의 누락 키는 데이터 경로의 실효 기본값으로 채워 서빙한다
+    (get_overlay는 binding.get("x", "x") 식 기본값, build_key_filters는 lot/slot 기본 —
+    서빙 값이 실제 효력과 다르면 이 필드는 단일 소스가 못 된다)."""
+    cfg = {"table_bindings": {"some_map": {"columns": {"val": "leg"}}}}
+    assert map_overlay.resolve_binding_info(cfg, "some_map") == {
+        "x": "x", "y": "y", "val": "leg",
+        "key_columns": ["lot", "slot"], "source": "declared"}
+
+
+def test_paint_rules_marks_fallback_guess_explicitly(mov_env, client):
+    """[F2] 후보 밖 값 컬럼의 추측은 서빙되되 **반드시** fallback_guess로 표기된다.
+
+    데이터 경로는 이 추측을 거부하므로(test_fallback_guess_refused_in_data_path),
+    이 표지는 클라가 '조용한 미끼 렌더' 대신 경고를 띄울 유일한 근거다."""
+    _seed(mov_env)
+    body = client.get("/api/maps/paint-rules",
+                      params={"table": "mov_test_upper_map"}).json()
+    assert body["binding"] == {"x": "x", "y": "y", "val": "VAL",
+                               "key_columns": ["lot", "slot"],
+                               "source": "fallback_guess"}
+    # 추측할 데이터 컬럼조차 없으면 표기할 것도 없다 — null
+    assert client.get("/api/maps/paint-rules",
+                      params={"table": "mov_test_bare_map"}).json()["binding"] is None
 
 
 def test_value_column_follows_declared_candidate_order(mov_env, client,

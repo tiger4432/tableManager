@@ -90,6 +90,45 @@ function applyPaintLockConfig(payload) {
 // auto-detect" and "one empty seed row" — never as a builtin list.
 let overlayContract = null; // { valueColumnCandidates: string[], defaultLegend: array|null }
 
+// [F1] Served coordinate binding, PER TABLE — the paint-rules response now carries the
+// server-RESOLVED binding for its `table` param (declared table_bindings win, else
+// table_config derivation): {x, y, val, key_columns[], source}. This cache is the single
+// client-side source for "which columns are the map coordinates" — both the load-path
+// dropdown preselect and the overlay path read it. The client keeps NO derivation copy
+// (the old local deriveMapBinding and the case-insensitive x/y matcher are gone): one
+// matcher, server-side, same answer everywhere.
+//   value: normalized binding object, or null = server says unresolvable (honest refusal).
+//   absent key: never asked / fetch failed — consumers must not guess.
+const servedBindingCache = new Map();
+
+// Normalize the served shape (snake_case key_columns -> keyColumns) and refuse malformed
+// payloads. `source` outside the known vocabulary degrades to 'derived' (no special UI).
+function normalizeServedBinding(b) {
+  if (!b || typeof b !== 'object') return null;
+  const kc = Array.isArray(b.key_columns)
+    ? b.key_columns.filter(c => typeof c === 'string' && c !== '') : [];
+  if (typeof b.x !== 'string' || typeof b.y !== 'string'
+      || typeof b.val !== 'string' || kc.length === 0) return null;
+  return {
+    x: b.x, y: b.y, val: b.val, keyColumns: kc,
+    source: (b.source === 'declared' || b.source === 'fallback_guess') ? b.source : 'derived',
+  };
+}
+
+// [F1] Fetch the served binding for an arbitrary table (overlay sources are not the
+// selected table, so this cannot ride on fetchPaintRules). Same endpoint; the paint-rule
+// part of the response is deliberately ignored here — locks belong to the selected table
+// only. Success (including "server says null") is cached; failures throw and cache nothing.
+async function fetchServedBinding(table) {
+  if (servedBindingCache.has(table)) return servedBindingCache.get(table);
+  const res = await fetch(`${API_BASE}/api/maps/paint-rules?table=${encodeURIComponent(table)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const cfg = await res.json();
+  const b = normalizeServedBinding(cfg.binding);
+  servedBindingCache.set(table, b);
+  return b;
+}
+
 // GET /api/maps/paint-rules?table= — 잠금 선언의 정본.
 //
 // 🔴 [M2 수정] 종전에는 **모든 실패**(네트워크 끊김·500·타임아웃)에서 잠금을 통째로 비웠다.
@@ -132,6 +171,11 @@ async function fetchPaintRules(table) {
         defaultLegend: Array.isArray(cfg.default_legend) ? cfg.default_legend : null,
       };
     }
+    // [F1] The same response carries the resolved binding for this table — cache it for
+    // the dropdown preselect (fillColumnDropdowns reads the cache synchronously after
+    // switchTable awaits this round-trip). Only a response that actually has the field
+    // updates the cache: an older server must not erase a previously served answer.
+    if ('binding' in cfg) servedBindingCache.set(t, normalizeServedBinding(cfg.binding));
     if (applyPaintLockConfig(cfg)) {
       // 잠금 값이 바뀌었으므로 현재 맵의 잠금 셀 집합을 다시 계산한다
       recomputeLockedCells();
@@ -1261,7 +1305,7 @@ function fillColumnDropdowns() {
   if (!tableSchema) return;
   const cols = tableSchema.columns || [];
   
-  const populate = (dropdown, defaultPattern) => {
+  const populate = (dropdown) => {
     dropdown.innerHTML = '';
     cols.forEach(col => {
       if (col === 'created_at' || col === 'updated_at') return;
@@ -1270,25 +1314,41 @@ function fillColumnDropdowns() {
       option.textContent = col;
       dropdown.appendChild(option);
     });
-    // Auto select based on name matching
-    const matched = cols.find(c => c.toLowerCase() === defaultPattern.toLowerCase());
-    if (matched) dropdown.value = matched;
   };
 
-  populate(el.colMapX, 'x');
-  populate(el.colMapY, 'y');
-  // [U6] Value-column auto-detect uses the SERVED candidate list (paint-rules
-  // `value_column_candidates`, candidate order = priority — same convention as the
-  // overlay binding and the server's derive_table_binding). No client copy: without a
-  // served list there is no auto-detect and the first column stays selected.
-  // [fix D] EXACT match, mirroring the server and deriveMapBinding below. This spot
-  // alone matched case-insensitively, so a table could auto-select a column here that
-  // the other two matchers (and the server) would never pick — same list, different
-  // answers. A table that relied on a case-mismatched candidate no longer auto-selects;
-  // that is the honest reading of "no candidate matched".
-  const cands = overlayContract ? overlayContract.valueColumnCandidates : [];
-  const matchedVal = cands.find(c => cols.includes(c));
-  populate(el.colMapVal, matchedVal || cols[0]);
+  populate(el.colMapX);
+  populate(el.colMapY);
+  populate(el.colMapVal);
+
+  // [F1/F3] Preselect all three from the SERVED binding (paint-rules `binding`,
+  // cached by fetchPaintRules — switchTable awaits that round-trip before calling here).
+  // Column matching happens server-side ONCE (declared table_bindings win, else
+  // table_config derivation); the former client matchers — a case-insensitive x/y name
+  // matcher plus a candidate-list val matcher — are gone. They were second and third
+  // matchers over the same question and could disagree with the server (F3). Declared
+  // bindings (tx/ty, UPPERCASE columns) now preselect too, which no client convention
+  // matcher could do. No served binding -> no auto-select, first column stays: the
+  // dropdowns themselves remain the manual escape hatch.
+  const served = servedBindingCache.get(selectedTable) || null;
+  const pick = (dropdown, col) => { if (col && cols.includes(col)) dropdown.value = col; };
+  if (served) {
+    pick(el.colMapX, served.x);
+    pick(el.colMapY, served.y);
+    pick(el.colMapVal, served.val);
+  }
+  // [F2] "fallback_guess" = the server could not match any value-column candidate and
+  // guessed the first data column. The data paths refuse to use a guess, so the user
+  // must not trust it silently either — warning-tone hint on the existing control
+  // (dropdown title) + a toast. No new control.
+  if (served && served.source === 'fallback_guess') {
+    el.colMapVal.title = `값 컬럼 '${served.val}'은(는) 추측입니다 — map_overlay_config.table_bindings에 선언하십시오.`;
+    showToast(
+      `${selectedTable}: 값 컬럼 '${served.val}'은(는) 후보에 없어 추측으로 선택했습니다 — `
+      + `map_overlay_config.table_bindings에 선언을 권장합니다.`,
+      'warning', { dedupeKey: `binding_guess_${selectedTable}` });
+  } else {
+    el.colMapVal.title = '';
+  }
 }
 
 // ----------------------------------------------------
@@ -3479,6 +3539,12 @@ async function loadExistingMap(opts = {}) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('API fetch failed');
     const result = await res.json();
+    // [F4] Rows fetched vs cells parsed are different numbers: rows whose x/y are not
+    // numeric under the SELECTED columns fall through the NaN filters below. When that
+    // gap is total (N rows, 0 cells) the load must not read as a success — the almost
+    // certain cause is a wrong x/y dropdown selection, and a green "0셀 로드 완료"
+    // hides it.
+    const fetchedRows = (result && Array.isArray(result.data)) ? result.data.length : 0;
 
     // Reset local cache & loaded F cells protection set
     gridData = {};
@@ -3551,6 +3617,14 @@ async function loadExistingMap(opts = {}) {
     // 자동 로드(프레임 진입)에서 조회 결과가 0건이면 좌표계 선택 모달을 띄우지 않는다 —
     // 아직 만들지 않은 자재 맵이므로 물어볼 좌표가 없다.
     if (opts.allowEmpty && minX === 9999 && !loadedGridMeta) {
+      // [F4] "not built yet" is only true when the table really had no rows. Rows that
+      // exist but yielded no parseable coordinate are a column-selection problem and
+      // must be said out loud, not folded into "empty map".
+      if (fetchedRows > 0) {
+        showToast(
+          `${selectedTable}: ${fetchedRows}행을 받았지만 좌표로 해석된 셀이 0개입니다. x/y 컬럼 선택을 확인하세요.`,
+          'warning');
+      }
       return { count: 0, empty: true };
     }
 
@@ -3891,7 +3965,13 @@ async function loadExistingMap(opts = {}) {
     setLoadedIdentity(selectedTable, loadedMapKey || getCurrentMapKey());
     notifyMapContext();
     recordLastOpenMap();   // refresh returns here (no-op inside a material frame)
-    if (quiet) showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드`, 'success');
+    // [F4] N rows fetched but 0 cells parsed = the NaN filter dropped everything —
+    // warn with the likely cause instead of a green success naming "0셀".
+    if (fetchedRows > 0 && count === 0) {
+      showToast(
+        `${selectedTable} · ${loadedMapKey || ''} — ${fetchedRows}행을 받았지만 좌표로 해석된 셀이 0개입니다. `
+        + `x/y 컬럼 선택을 확인하세요.`, 'warning');
+    } else if (quiet) showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드`, 'success');
     else showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드 완료`, 'success');
     return { count, mapKey: loadedMapKey };
   } catch (err) {
@@ -4871,9 +4951,14 @@ function renderBreadcrumb() {
 // 프레임 진입은 사용자가 이미 "그 자재 맵을 열겠다"고 명시한 동작이다).
 async function switchTableQuiet(tableName) {
   selectedTable = tableName;
-  fetchPaintRules(tableName);
+  const paintRulesReady = fetchPaintRules(tableName);
   const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
   tableSchema = await res.json();
+  // [F1] The dropdown preselect reads the served-binding cache that this round-trip
+  // fills. Fire-and-forget here would let the frame's auto-load run with the FIRST
+  // column selected as x/y — a silent 0-cell (or wrong-column) load. Runs in parallel
+  // with the schema fetch above; fetchPaintRules never throws.
+  await paintRulesReady;
   fillColumnDropdowns();
   renderMetadataInputs();
   // An empty DOE, not the map's legend - and this is not a shortcut. openMapFrame fills the
@@ -5141,42 +5226,11 @@ function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverrid
 // ── 소스 맵 읽기 (메인 로드와 같은 REST 경로) ──────────────────────
 // 메인 로드는 `/tables/{t}/data` + `wafer_map_metadata`를 (target_table, map_id) 쌍으로 읽는다.
 // 오버레이도 정확히 그 두 경로만 쓴다 — 좌표는 **원본 그대로** 받아 클라가 변환한다.
+// [F1] 좌표 바인딩(어느 컬럼이 x/y/val/key인가)은 서버가 해석해 서빙한다
+// (paint-rules `binding` — fetchServedBinding). 종전의 클라 로컬 유도(deriveMapBinding
+// + 스키마 조회)는 삭제됐다: 서버 매처의 복사본이라 답이 어긋날 수 있었고(F3),
+// 선언 바인딩(tx/ty·대문자 등 관례 밖 컬럼)을 아예 볼 수 없었다.
 const OVERLAY_CELL_LIMIT = 2000;   // 메인 로드(loadExistingMap)와 같은 상한
-const overlaySchemaCache = new Map();
-
-async function fetchTableSchemaCached(table) {
-  if (overlaySchemaCache.has(table)) return overlaySchemaCache.get(table);
-  const res = await fetch(`${API_BASE}/tables/${table}/schema`);
-  if (!res.ok) throw new Error(`스키마 조회 실패 (HTTP ${res.status})`);
-  const schema = await res.json();
-  overlaySchemaCache.set(table, schema);   // 성공만 캐시 (실패 캐시는 M5 함정)
-  return schema;
-}
-
-const OVERLAY_SYSTEM_COLS = ['row_id', 'business_key_val', 'created_at', 'updated_at',
-  'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at', 'grid_metadata'];
-
-// 테이블 스키마에서 맵 좌표 바인딩을 유도한다(서버 derive_table_binding과 같은 규약).
-// 유도 불가면 null — 관례로 조용히 추측하지 않는다.
-function deriveMapBinding(schema) {
-  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];
-  if (!cols.includes('x') || !cols.includes('y')) return null;
-  let keyCols = Array.isArray(schema.map_key_columns) ? schema.map_key_columns.slice() : [];
-  if (keyCols.length === 0 && cols.includes('lot') && cols.includes('slot')) keyCols = ['lot', 'slot'];
-  if (keyCols.length === 0 && Array.isArray(schema.composite_key_source)) {
-    keyCols = schema.composite_key_source.filter(c =>
-      !['x', 'y', 'val', 'die_id', 'code', 'grid_metadata'].includes(String(c).toLowerCase()));
-  }
-  if (keyCols.length === 0) return null;
-  const excluded = new Set([...keyCols, 'x', 'y', schema.business_key, ...OVERLAY_SYSTEM_COLS]);
-  // [U6] Candidate list is SERVED (paint-rules `value_column_candidates`) — no client
-  // copy. Unavailable ⇒ skip straight to the generic first-non-excluded fallback, the
-  // same convention the server applies when no candidate matches.
-  const cands = overlayContract ? overlayContract.valueColumnCandidates : [];
-  const val = cands.find(c => cols.includes(c) && !excluded.has(c))
-    || cols.find(c => !excluded.has(c)) || null;
-  return { x: 'x', y: 'y', val, keyColumns: keyCols };
-}
 
 // map_key('_' 조인)를 key_columns에 분해 — 마지막 컬럼이 나머지를 흡수(랏 이름의 '_' 방어).
 function buildKeyFilters(keyColumns, mapKey) {
@@ -5222,21 +5276,37 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   };
   const errText = (e) => (e && e.message ? e.message : String(e));
 
-  // ① 소스 테이블의 좌표 바인딩 (스키마에서 유도 — 메인 로드의 컬럼 드롭다운과 같은 관례)
+  // ① 소스 테이블의 좌표 바인딩 — 서버 해석본을 서빙받는다 ([F1] paint-rules `binding`,
+  //    선언 table_bindings > table_config 유도, 클라 복사본 없음. 메인 로드의 드롭다운
+  //    프리셀렉트와 같은 캐시·같은 답이다).
   //
   // 여기가 예전에는 ②였다. 앞에 있던 "서버에 계측 보정(align override)이 선언돼 있는지"
   // probe 관문은 서버의 선언 레이어와 함께 제거됐다 — 정렬의 근거가 메타 하나로 좁혀져
   // 보정이 소스 메타에 이미 들어 있으므로, 따로 물어볼 선언이 존재하지 않는다.
   let binding;
   try {
-    binding = deriveMapBinding(await fetchTableSchemaCached(sourceTable));
+    binding = await fetchServedBinding(sourceTable);
   } catch (e) {
-    return fail(`${sourceTable}: 스키마를 읽지 못했습니다 — ${errText(e)}`, 'error');
+    return fail(`${sourceTable}: 좌표 바인딩 조회 실패 — ${errText(e)}`, 'error');
   }
   if (!binding) {
     return fail(
-      `${sourceTable}: 맵 좌표 바인딩을 유도할 수 없습니다 (x/y 컬럼 + map_key_columns 필요). ` +
-      `좌표 컬럼명이 관례와 다른 테이블(dt_log 등)은 서버 선언에만 있어 Phase 1에서는 겹칠 수 없습니다.`,
+      `${sourceTable}: 맵 좌표 바인딩을 해석할 수 없습니다 — table_config에 x/y 컬럼, ` +
+      `map_key_columns(또는 lot/slot), 값 컬럼 후보가 있어야 합니다. 컬럼명이 관례와 다르면 ` +
+      `map_overlay_config.table_bindings에 선언하십시오.`,
+      'binding_unavailable');
+  }
+  // [F2] A guessed value column never reaches this data path — same discipline as the
+  // server, whose data paths refuse what resolve_binding_info marks "fallback_guess".
+  // Overlaying a guess paints a decoy: the canvas looks right while the values come
+  // from an arbitrary column. Refuse loudly with the remedy. (The LOAD path may still
+  // preselect a guess — there the user sees and confirms the dropdown; here nobody
+  // would.)
+  if (binding.source === 'fallback_guess') {
+    return fail(
+      `${sourceTable}: 값 컬럼을 확정할 수 없습니다 — 후보에 없는 '${binding.val}' 추측뿐입니다. ` +
+      `엉뚱한 값이 겹쳐 보이는 것을 막기 위해 겹치지 않습니다. map_overlay_config.table_bindings에 ` +
+      `값 컬럼을 선언하십시오.`,
       'binding_unavailable');
   }
 

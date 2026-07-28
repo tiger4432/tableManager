@@ -120,6 +120,13 @@ TP_TABLES = {
             "wafer_key": "string", "lot": "string", "slot": "string",
         },
     },
+    # [F2] 값 컬럼이 후보 밖(UPPERCASE) — 바인딩 유도가 (과거처럼 추측하는 대신)
+    # 거부하는 맵. `_painted_values`의 정직한 강등 검증용 (qa_ovl_valcase류 재현).
+    "tp_test_valless_map": {
+        "business_key": "cell_key",
+        "column_types": {"cell_key": "string", "lot": "string", "slot": "string",
+                         "x": "number", "y": "number", "VALCASE": "string"},
+    },
     "tp_test_plan_region": {   # ② — 소스 사용 영역 (자유 페인팅 셀 집합, 휴면)
         "business_key": "region_key",
         "column_types": {
@@ -2142,6 +2149,19 @@ def test_validate_unresolvable_map_binding_is_surfaced(tp_env, client, tmp_path,
     body = _validate(client, "BASE-X", ref_table="tp_test_bonding_log")
     assert body["map_status"] == "missing"
     assert body["painted_values"] == {}
+
+
+def test_painted_values_degrades_honestly_when_derivation_refuses(tp_env):
+    """[F2] 값 컬럼이 후보 밖이라 유도가 **거부**하는 맵 — 과거에는 첫 데이터 컬럼을
+    추측해 그 분포를 'connected'로 보고했다(미끼 수량). 지금은 x/y 부재와 동일하게
+    ({}, 'missing', False)로 강등한다 — crash도, 조용한 추측도 아니다. 'missing'의
+    하류 효과(WARN_PAINTED_UNAVAILABLE, unverified)는 위 테스트들이 이미 고정한다."""
+    _add(tp_env, "tp_test_valless_map", cell_key="V1", lot="L1", slot="01",
+         x=1, y=1, VALCASE="A")
+    tp_env.commit()
+    painted, status, truncated = transfer_plan._painted_values(
+        tp_env, "tp_test_valless_map", "L1_01", {})
+    assert (painted, status, truncated) == ({}, "missing", False)
 
 
 # ---------------------------------------------------------------------------

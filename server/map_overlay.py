@@ -515,6 +515,46 @@ _SYSTEM_COLUMNS = frozenset({
 })
 
 
+def _derive_table_binding_full(table: str, val_candidates=None):
+    """유도 코어 — `(binding|None, guessed)`를 반환한다.
+
+    `guessed=True`는 값 컬럼이 **후보 매칭이 아니라 추측**이라는 뜻이다(첫 비-키/비-좌표/
+    비-시스템 컬럼). [F2] 이 추측은 데이터 경로에는 절대 나가지 않는다 — 공개
+    `derive_table_binding`은 이 경우 None(명시 거부)이고, 추측은 클라 전달용
+    `resolve_binding_info`에서만 `"source": "fallback_guess"`로 **표기되어** 나간다
+    (클라가 엉뚱한 컬럼을 조용히 렌더하는 대신 경고할 수 있게).
+    """
+    from database import crud
+
+    candidates = DEFAULT_VAL_CANDIDATES if val_candidates is None else val_candidates
+
+    tcfg = (crud.TABLE_CONFIG or {}).get(table)
+    if not isinstance(tcfg, dict):
+        return None, False
+    types = tcfg.get("column_types") or {}
+    if "x" not in types or "y" not in types:
+        return None, False
+
+    key_cols = tcfg.get("map_key_columns")
+    if isinstance(key_cols, str):
+        key_cols = [key_cols]
+    if not (isinstance(key_cols, list) and key_cols):
+        key_cols = ["lot", "slot"] if ("lot" in types and "slot" in types) else None
+    if not key_cols:
+        return None, False
+
+    excluded = set(key_cols) | {"x", "y", tcfg.get("business_key")} | _SYSTEM_COLUMNS
+    val = next((c for c in candidates if c in types and c not in excluded), None)
+    guessed = False
+    if val is None:
+        val = next((c for c in types if c not in excluded), None)
+        if val is None:
+            return None, False
+        guessed = True
+
+    return {"x": "x", "y": "y", "val": val, "key_columns": list(key_cols)}, guessed
+
+
 def derive_table_binding(table: str, val_candidates=None) -> dict | None:
     """`table_config` 선언에서 맵 좌표 바인딩을 **자동 유도**한다. 불가하면 None.
 
@@ -526,35 +566,16 @@ def derive_table_binding(table: str, val_candidates=None) -> dict | None:
 
     - key_columns: `map_key_columns` 정본. 미선언이면 lot/slot 둘 다 있을 때만 관례 폴백.
     - x/y: 리터럴 `x`/`y` 컬럼. 없으면 유도 실패(관례 밖 이름은 선언으로 보정).
-    - val: resolved candidates first (val_candidates arg; None -> DEFAULT_VAL_CANDIDATES —
-      callers holding a cfg must pass resolve_value_column_candidates(cfg)), then the
-      first non-key/non-coordinate/non-system column.
+    - val: resolved candidates only (val_candidates arg; None -> DEFAULT_VAL_CANDIDATES —
+      callers holding a cfg must pass resolve_value_column_candidates(cfg)). [F2] 후보가
+      하나도 안 맞으면 **유도 실패(None)**다 — x/y 부재와 같은 명시 거부. 과거의 "첫
+      데이터 컬럼 추측"은 데이터 경로에서 제거됐고, `resolve_binding_info`가
+      `"source": "fallback_guess"`로 표기해 서빙할 때만 존재한다.
     """
-    from database import crud
-
-    candidates = DEFAULT_VAL_CANDIDATES if val_candidates is None else val_candidates
-
-    tcfg = (crud.TABLE_CONFIG or {}).get(table)
-    if not isinstance(tcfg, dict):
+    binding, guessed = _derive_table_binding_full(table, val_candidates)
+    if binding is None or guessed:
         return None
-    types = tcfg.get("column_types") or {}
-    if "x" not in types or "y" not in types:
-        return None
-
-    key_cols = tcfg.get("map_key_columns")
-    if isinstance(key_cols, str):
-        key_cols = [key_cols]
-    if not (isinstance(key_cols, list) and key_cols):
-        key_cols = ["lot", "slot"] if ("lot" in types and "slot" in types) else None
-    if not key_cols:
-        return None
-
-    excluded = set(key_cols) | {"x", "y", tcfg.get("business_key")} | _SYSTEM_COLUMNS
-    val = next((c for c in candidates if c in types and c not in excluded), None)
-    if val is None:
-        val = next((c for c in types if c not in excluded), None)
-
-    return {"x": "x", "y": "y", "val": val, "key_columns": list(key_cols)}
+    return binding
 
 
 def resolve_binding(cfg: dict, table: str) -> dict | None:
@@ -567,6 +588,35 @@ def resolve_binding(cfg: dict, table: str) -> dict | None:
     if isinstance(b, dict) and b.get("columns"):
         return dict(b["columns"])
     return derive_table_binding(table, resolve_value_column_candidates(cfg))
+
+
+def resolve_binding_info(cfg: dict, table: str) -> dict | None:
+    """[F1] 클라 전달용 RESOLVED 바인딩 + 출처 — `GET /api/maps/paint-rules`가 서빙한다.
+
+    우선순위는 데이터 경로(`resolve_binding`)와 동일: **선언 > 유도**. 반환 형태는
+    `{"x", "y", "val", "key_columns": [...], "source": "declared"|"derived"|"fallback_guess"}`,
+    해석 불가면 None. 선언 바인딩의 누락 키는 데이터 경로가 실제로 쓰는 기본값
+    (x/y/val 리터럴, key_columns=[lot, slot])으로 채워 **효력 그대로**를 서빙한다.
+
+    [F2] 데이터 경로와 유일하게 다른 점: 후보 밖 값 컬럼 추측이 여기서는 나가되 **반드시**
+    `"source": "fallback_guess"`로 표기된다 — 클라는 이 표지를 보고 경고해야 하며,
+    선언/유도 바인딩처럼 신뢰하고 조용히 렌더하면 안 된다(데이터 경로는 이 경우 거부).
+    """
+    b = (cfg.get("table_bindings") or {}).get(table)
+    if isinstance(b, dict) and b.get("columns"):
+        cols = dict(b["columns"])
+        key_cols = cols.get("key_columns") or ["lot", "slot"]
+        if isinstance(key_cols, str):
+            key_cols = [key_cols]
+        return {"x": cols.get("x", "x"), "y": cols.get("y", "y"),
+                "val": cols.get("val", "val"),
+                "key_columns": list(key_cols), "source": "declared"}
+    binding, guessed = _derive_table_binding_full(
+        table, resolve_value_column_candidates(cfg))
+    if binding is None:
+        return None
+    binding["source"] = "fallback_guess" if guessed else "derived"
+    return binding
 
 
 def build_key_filters(model, binding: dict, map_key: str):
@@ -627,8 +677,9 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
         if binding is None:
             entry["status"] = STATUS_SOURCE_MISSING
             entry["detail"] = (
-                f"'{s_table}'의 맵 좌표 바인딩을 유도할 수 없음 — table_config에 x/y 컬럼과 "
-                f"map_key_columns(또는 lot/slot)가 있어야 하며, 컬럼명이 관례와 다르면 "
+                f"'{s_table}'의 맵 좌표 바인딩을 유도할 수 없음 — table_config에 x/y 컬럼, "
+                f"map_key_columns(또는 lot/slot), 그리고 값 컬럼 후보"
+                f"(value_column_candidates 중 하나)가 있어야 하며, 컬럼명이 관례와 다르면 "
                 f"map_overlay_config.table_bindings에 선언해야 한다")
             entry["align_applied"] = align_applied_payload(None, ALIGN_ORIGIN_IDENTITY)
             overlays.append(entry)

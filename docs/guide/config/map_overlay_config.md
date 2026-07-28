@@ -6,15 +6,18 @@
 <!-- Loader evidence (2026-07-28):
   load: server/map_overlay.py:85 load_overlay_config (missing -> {} = full default operation)
   per-request read (no module cache)
-  binding auto-derivation rationale: map_overlay.py:487 / undeclared-table error: :594
+  binding auto-derivation rationale: map_overlay.py:561 / underivable-table error: :680
   paint_lock consumer: GET /api/maps/paint-rules (client applies, no hardcoding)
   [U6] default_legend / value_column_candidates: resolvers map_overlay.py
   resolve_value_column_candidates / get_default_legend, served via same paint-rules endpoint
+  [F1/F2 2026-07-28] resolved binding served: resolve_binding_info map_overlay.py:593
+  (source: declared|derived|fallback_guess); candidate-miss guess refused in data paths
 -->
 
 ## 1. 언제 이 파일을 만지는가
 
 - **컬럼명이 관례 밖인 테이블을 오버레이에 올릴 때** (예: `dt_log`의 `tx/ty`) — **관례 안이면 만질 필요 없습니다.** 선언 없이도 오버레이는 동작합니다(`table_config`의 `map_key_columns` + x/y/val 후보에서 자동 유도)
+  - ⚠️ **값 컬럼도 후보 매칭이 필수**입니다(F2, 2026-07-28): `value_column_candidates`에 하나도 안 맞으면 유도는 **거부**합니다(과거의 "첫 데이터 컬럼 추측"은 데이터 경로에서 제거 — 오버레이는 `source_missing`, 수량 유도는 `missing`으로 정직하게 강등). 값 컬럼명이 후보 밖(대문자 `VAL` 등)이면 `table_bindings`에 선언하십시오.
 - **페인트 잠금 규칙을 바꿀 때** — 어떤 값 위에 칠할 수 없는지, 잠금 판정을 어느 오버레이 소스에서 가져올지
 - **[U6] 레지스트리 행이 없는 맵의 기본 legend를 선언할 때** (`default_legend`) — 미선언이면 기본 의미론 없음(클라는 bare 값을 팔레트 색으로 렌더)
 - **[U6] 값 컬럼 자동 탐지 순서를 바꿀 때** (`value_column_candidates`) — 미선언이면 서버 문서화 기본 적용
@@ -62,6 +65,7 @@
 ## 3. 반영 확인
 
 1. `GET /api/maps/paint-rules?table=<t>` — 머지된 잠금 규칙이 기대대로인지. **[U6]** 같은 응답의 `value_column_candidates`가 선언(또는 기본) 순서 그대로인지, `default_legend`가 선언 배열 그대로(미선언이면 `null`)인지.
+   - **[F1]** 같은 응답의 `binding`이 그 테이블의 RESOLVED 바인딩인지: `{x, y, val, key_columns[], source}`. `source`는 `declared`(table_bindings 선언) > `derived`(table_config 유도), 해석 불가면 `null`. `fallback_guess`는 **값 컬럼이 후보 밖이라 추측만 남은 상태**라는 경고 표지입니다 — 데이터 경로는 이 추측을 거부하므로, 이게 보이면 선언을 추가하십시오. (이 필드는 서빙 중이며 에디터의 클라 측 소비는 다음 착륙분 — 그 전까지 에디터는 자체 유도를 씁니다.)
 2. `GET /api/maps/overlay?target_table=<t>&target_key=<k>&sources=<src>:<key>` — `overlays[].status`가 `ok`인지, `align_applied.origin`이 `derived`(메타 유도)인지 `identity`(메타 부재)인지.
    - `identity`는 실패가 아니지만 **메타 미등록 신호**입니다 — 정렬이 필요하면 메타부터 등록.
    - `source_missing` = 테이블 미선언/바인딩 해석 실패.

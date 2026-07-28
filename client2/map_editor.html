@@ -72,7 +72,7 @@
                 <input type="text" id="overlay-src-key" class="glass-input ov-key-input" placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
                 <button type="button" id="btn-add-overlay" class="glass-page-btn ov-add-btn">＋ 겹치기</button>
               </div>
-              <p class="ov-note">서버가 좌표를 <b>현재 캔버스 프레임에 맞춰 정렬</b>합니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에 남깁니다.</p>
+              <p class="ov-note">오버레이는 소스 맵의 등록 규격(메타)으로 좌표를 읽어 <b>현재 캔버스 프레임으로 변환</b>해 겹칩니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에 남깁니다.</p>
               <div id="overlay-list"></div>
               <button type="button" id="btn-clear-overlays" class="glass-page-btn ov-clear">모두 해제</button>
             </div>

@@ -3176,11 +3176,20 @@ def get_map_paint_rules(table: Optional[str] = None):
       default — always present).
     - default_legend: declared legend rows for maps without registry rows,
       verbatim; null when undeclared (honest absence — no default semantics).
+    [F1] binding: the RESOLVED coordinate binding for `table` (declared
+      table_bindings win, else table_config derivation), shape
+      {x, y, val, key_columns[], source: "declared"|"derived"|"fallback_guess"};
+      null when unresolvable or when no table param. This response is the single
+      client-facing source for the binding — the editor must consume it instead
+      of re-deriving. [F2] "fallback_guess" means the value column is a guess the
+      data paths refuse to use — the client must warn, not silently render it.
     """
     config = map_overlay_module.load_overlay_config()
     return {
         "table": table,
         "rules": map_overlay_module.get_paint_rules(config, table),
+        "binding": (map_overlay_module.resolve_binding_info(config, table)
+                    if table else None),
         "default_legend": map_overlay_module.get_default_legend(config),
         "value_column_candidates": map_overlay_module.resolve_value_column_candidates(config),
     }
