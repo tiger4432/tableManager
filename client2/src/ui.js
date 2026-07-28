@@ -346,8 +346,9 @@ export async function updateEnrichmentBadge(options = {}) {
     if (!options.force && cached && (Date.now() - cached.ts) < ENRICHMENT_COUNT_TTL) {
       total = cached.total;
     } else {
-      const filters = {};
-      (rule.target_fields || []).forEach(f => { filters[f] = { type: 'blank' }; });
+      // 큐 진입 조건은 서버 단일 조성(queue_filters) — 워크리스트/어드민 카운트와 동일 수치 보장
+      const filters = rule.queue_filters
+        || Object.fromEntries((rule.target_fields || []).map(f => [f, { type: 'blank' }]));
       const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
         `?skip=0&limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`;
       const res = await fetch(url);

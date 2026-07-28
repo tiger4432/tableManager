@@ -105,12 +105,38 @@
    curl -X POST "http://<host>:8080/admin/reload-configs" -H "X-Admin-Token: <토큰>"
    ```
 
+## 3-bis. 큐 진입 조건 — 빈 판단키 행은 큐에 노출되지 않는다
+
+워크리스트·어드민 결손 카운트·메인 그리드 배지는 모두 서버가 `/enrichment/rules` 응답에 조성해 주는 **`queue_filters`**(모든 `target_fields` blank **AND** 모든 `decision_key` notBlank) 하나를 사용합니다 (`enrichment_config.to_public_rule`). 판단키가 빈 행은 사람이 해소할 수 없으므로 큐에서 제외됩니다 — 세 소비처의 수치가 항상 일치합니다. 체인 mapper와 백필은 빈 판단키 조합을 애초에 만들지 않지만(스킵·집계), 그리드 빈 행 추가나 판단키 없는 직접 편집으로 생긴 행은 이 필터가 표시에서 걸러냅니다(데이터는 삭제하지 않음 — 테이블 원본 그리드에서는 그대로 보입니다).
+
 ## 4. 반영 확인
 
 1. `GET /enrichment/rules` — 규칙이 공개 메타에 뜨는지 (여긴 **요청마다 재읽기**라 리로드 전에도 보입니다 — 이것만 보고 파생까지 됐다고 판단하지 마십시오).
 2. **체인 워커 로그**에서 파생 확인: `[Enrichment] Synthesized N dedup chain rule(s) from enrichment_rules.json` — 리로드 후 N이 기대만큼 늘었는지.
 3. 참조뷰 실행: `GET /enrichment/rules/{name}/references/{index}?params=...`.
 4. 원본 테이블에 새 행을 넣어 `derived_table`에 판단키당 1행이 생기는지 왕복 확인.
+
+## 4-bis. 소급 적용 (백필) — 규칙보다 먼저 들어온 원본 행
+
+인리치먼트는 **증분(outbox) 구동**입니다. 규칙을 선언하기 **전에** 인제션된 원본 행은 이벤트가 다시 발생하지 않는 한 파생 행을 만들지 않습니다 — 워크리스트에는 영원히 안 잡힙니다. 역할 분담은 이렇습니다:
+
+- **값 결손**(파생 행은 있는데 target이 빈 것) → **큐(워크리스트)** 의 일. 백필은 절대 기존 파생 행을 건드리지 않습니다.
+- **행 부재**(판단키 조합 자체가 파생에 없는 것) → **백필 스크립트**의 일.
+
+```bash
+# 1) 반드시 dry-run 먼저 — 아무것도 쓰지 않고 수치만 보고
+conda run -n assy_manager python server/scripts/backfill_enrichment.py <규칙명>
+
+# 2) 보고 수치(new)가 기대와 맞으면 적용. 첫 운영 실행은 --limit로 소량 검증 권장
+conda run -n assy_manager python server/scripts/backfill_enrichment.py <규칙명> --apply --limit 100
+conda run -n assy_manager python server/scripts/backfill_enrichment.py <규칙명> --apply
+```
+
+- dry-run 보고: 스캔 행수 · blank 판단키 스킵수 · 유니크 조합수 · 기존 파생(불가침) · 신규(생성 예정).
+- 실행 경로는 체인과 **완전히 동일**합니다(실제 mapper `map_enrichment_dedup` + `crud.apply_batch_updates`) — 그룹핑/집계/키 조립의 별도 구현이 없습니다. `target_fields`는 절대 쓰지 않고 빈 채로 생성되어 워크리스트에 잡힙니다.
+- 생성 셀의 소스명은 `enrichment_backfill`(우선순위 99) — 사용자 편집(0)을 절대 이길 수 없고, 이후 체인 증분(`chain_ingestion`, 4)이 집계·단서를 자연히 갱신합니다.
+- outbox를 정상 경로로 발화하므로 그래프 워커가 새 행을 그대로 승격합니다. 파생 테이블 이벤트는 규칙의 트리거(소스 테이블)와 다르므로 같은 규칙을 재점화하지 않습니다.
+- 멱등: 적용 후 재실행하면 `new 0`. 비활성(`enabled: false`) 규칙은 `--force-disabled` 없이 거부되고, 로더가 거부한 규칙은 그 사유와 함께 즉시 실패합니다.
 
 ## 5. 잘못됐을 때
 

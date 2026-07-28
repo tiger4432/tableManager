@@ -2505,3 +2505,134 @@ def test_pooled_figure_is_labelled_a_sufficiency_check_not_an_allocation(tp_env,
     _seed_bins(tp_env)
     _seed_second_slot(tp_env)
     assert _lot(client)["bins"]["basis"] == "pool_sufficiency"
+
+
+# ---------------------------------------------------------------------------
+# 16. count-only transfer_log + declared-but-unresolved columns (FIX 2026-07-28)
+# ---------------------------------------------------------------------------
+# Bug pinned here: transfer_log bound WITHOUT usable x/y on the origin_log-connected
+# path left used_set empty while `transferred` displayed the count, so
+# remaining = total - |fail ∪ used_set| never subtracted the transferred chips
+# (phantom remaining, remaining_reliable true, by_core.used serving a fake 0).
+
+def _summary(client, **params):
+    res = client.get("/api/transfer-plan/source-summary", params=params)
+    assert res.status_code == 200
+    return res.json()
+
+
+def test_count_only_transfer_log_demotes_and_serves_upper_bound(tp_env, client,
+                                                                tmp_path, monkeypatch):
+    _seed_scenario(tp_env)
+    # Control first: fully bound -> plain connected, exact union remaining.
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["transfer_log"] == "connected"
+    assert body["chips"]["remaining"] == 2 and body["chips"]["remaining_reliable"] is True
+
+    # Drop x/y from transfer_log (count survives, chip identity does not).
+    cfg = _tp_config()
+    for k in ("x", "y"):
+        del cfg["stages"]["bonding"]["source"]["transfer_log"]["columns"][k]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["transfer_log"] == "connected(count_only)"
+    chips = body["chips"]
+    assert chips["transferred"] == 4          # row count is real and stays displayed
+    assert chips["remaining"] is None         # never the phantom 4
+    assert chips["remaining_reliable"] is False
+    # Upper bound is genuine: total - |fail_union| = 8 - 4 = 4 >= true remaining 2.
+    assert chips["remaining_upper_bound"] == 4
+    warns = [w for w in body["warnings"]
+             if w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED
+             and w.get("role") == "transfer_log"]
+    assert warns and warns[0]["effect"] == transfer_plan.EFFECT_REMAINING_OVERSTATED
+
+    # by_core (log path): per-core used is unknowable -> null, never a fake 0,
+    # and the remaining derived from it is null too (a bare total-fail number
+    # would be the same phantom at per-core level, with no unreliable label).
+    assert body["by_core_origin"] == "log"
+    by_core = {(r["core_lot"], r["core_slot"]): r for r in body["by_core"]}
+    for core in (("CORE-A", "01"), ("CORE-B", "02")):
+        assert by_core[core]["used"] is None
+        assert by_core[core]["remaining"] is None
+        assert by_core[core]["fail"] == 2     # fail projection is unaffected
+
+
+def test_count_only_by_core_area_map_used_is_null_too(tp_env, client, tmp_path,
+                                                      monkeypatch):
+    """Fallback by_core (area_map) derives used/remaining from used_set as well —
+    in count-only state both must be null, not 0/total."""
+    _seed_scenario(tp_env)
+    cfg = _tp_config()
+    for k in ("x", "y"):
+        del cfg["stages"]["bonding"]["source"]["transfer_log"]["columns"][k]
+    cfg["stages"]["bonding"]["source"]["origin_log"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["transfer_log"] == "connected(count_only)"
+    assert body["by_core_origin"] == "area_map"
+    for row in body["by_core"]:
+        assert row["used"] is None and row["remaining"] is None
+
+
+def test_typo_transfer_log_column_carries_both_markers(tp_env, client, tmp_path,
+                                                       monkeypatch):
+    """Declared "x": "cxx" (typo) is not an omission: the status must name the
+    unresolved column on top of the count-only demotion, and /stages must show it."""
+    _seed_scenario(tp_env)
+    cfg = _tp_config()
+    cfg["stages"]["bonding"]["source"]["transfer_log"]["columns"]["x"] = "cxx"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["transfer_log"] == "connected(count_only,column_unresolved:x)"
+    assert body["chips"]["remaining"] is None
+    assert body["chips"]["remaining_upper_bound"] == 4
+    assert body["chips"]["transferred"] == 4
+
+    stages = client.get("/api/transfer-plan/stages").json()["stages"]
+    bd = next(s for s in stages if s["name"] == "bonding")
+    assert bd["roles"]["transfer_log"] == "connected(column_unresolved:x)"
+
+
+def test_typo_fail_val_column_refuses_the_unfiltered_count(tp_env, client, tmp_path,
+                                                           monkeypatch):
+    """defect "val": "vall" with fail_values declared: projecting without the filter
+    would mark every origin chip as fail (remaining understated — would break the
+    upper-bound invariant in the other direction). Must serve 0 + demoted status."""
+    _seed_scenario(tp_env)
+    cfg = _tp_config()
+    cfg["stages"]["bonding"]["source"]["fail_sources"]["defect"]["columns"]["val"] = "vall"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["defect"] == "connected(column_unresolved:val)"
+    assert body["chips"]["fail_breakdown"]["defect"] == 0
+    assert body["chips"]["remaining"] is None
+    # eds ∪ used = {(1,1),(2,2)} ∪ {(3,1),(4,2),(2,1)} = 5 -> upper bound 8-5 = 3 >= true 2
+    assert body["chips"]["remaining_upper_bound"] == 3
+
+
+def test_dt_reshape_carries_the_unresolved_demotion(tp_env, client, tmp_path,
+                                                    monkeypatch):
+    """M1-delegated (dt) path: a typo in the bonding_plan config must surface through
+    the reshape with the same reliability consequences."""
+    _seed_scenario(tp_env)
+    bp = _bp_config()
+    bp["sources"]["defect"]["columns"]["val"] = "vall"
+    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    body = _summary(client, stage="dt", lot="CORE-A", slot="01")
+    assert body["sources"]["defect"] == "connected(column_unresolved:val)"
+    assert body["chips"]["fail_breakdown"]["defect"] == 0
+    assert body["chips"]["remaining"] is None
+    # M1 subtraction with the corrupted term zeroed: 36 - 0 - 1 - 0 = 35 (upper bound)
+    assert body["chips"]["remaining_upper_bound"] == 35
+
+
+def test_omitted_optional_columns_still_plain_connected(tp_env, client):
+    """Regression guard for the ⓑ boundary: bindings that never declare optional
+    columns keep their exact statuses (no column_unresolved noise anywhere)."""
+    _seed_scenario(tp_env)
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert "column_unresolved" not in json.dumps(body["sources"])
+    assert body["chips"]["remaining"] == 2

@@ -179,7 +179,11 @@ function rebuildGrid(rule) {
 }
 
 // ── 워크리스트 청크 페칭 (항상 skip=0: 완료 행은 blank 필터에서 자동 이탈) ──
+// 큐 진입 조건은 서버가 단일 조성(rule.queue_filters: target blank AND
+// decision key notBlank — 빈 판단키 행은 사람이 해소할 수 없으므로 큐에서 제외).
 function buildBlankFilters(rule) {
+  if (rule.queue_filters) return rule.queue_filters;
+  // fallback (구버전 서버): target blank만
   const filters = {};
   (rule.target_fields || []).forEach(f => {
     filters[f] = { type: 'blank' };

@@ -194,23 +194,70 @@ def load_grid_meta(db, config: dict, target_table: str, map_id: str,
 # 집계 코어
 # ---------------------------------------------------------------------------
 
+class _ResolvedColumns(dict):
+    """role-key -> ORM column map, plus `unresolved`: role keys that were DECLARED
+    in the config but whose column name does not exist on the model.
+
+    [FIX 2026-07-28] A declared-then-missing optional column used to be silently
+    skipped, turning a config typo (e.g. "x": "cxx") into silent aggregate
+    corruption. The resolver cannot demote a status itself (it does not know the
+    role), so it carries the evidence and each status-setting site composes it via
+    `_demote_for_unresolved`. Omitting an optional column entirely is still fine —
+    only declared-but-unresolved lands here.
+    """
+    __slots__ = ("unresolved",)
+
+    def __init__(self, mapping=(), unresolved=()):
+        super().__init__(mapping)
+        self.unresolved = tuple(unresolved)
+
+
+def _unresolved_roles(cols) -> tuple:
+    """Declared-but-unresolved role keys of a resolved binding ('()' when clean)."""
+    return tuple(getattr(cols, "unresolved", ()) or ())
+
+
+def _demote_for_unresolved(status, cols):
+    """Compose the `column_unresolved:<roles>` marker into a connected-status.
+
+    Follows the existing demotion vocabulary (`connected(area_only)`,
+    `connected(align_unavailable)`): the binding still answers, but a declared
+    column vanished, so the status must say so instead of reading `connected`.
+    Already-degraded statuses (missing/unavailable) are left as-is.
+    """
+    unres = _unresolved_roles(cols)
+    if not unres or not isinstance(status, str) or not status.startswith("connected"):
+        return status
+    marker = "column_unresolved:" + ",".join(sorted(str(r) for r in unres))
+    if status == "connected":
+        return f"connected({marker})"
+    if status.startswith("connected(") and status.endswith(")"):
+        return status[:-1] + "," + marker + ")"
+    return status
+
+
 def _resolve_model_columns(source_cfg: dict, required: tuple):
-    """소스 config → (model, {역할키: ORM 컬럼}) 해석. 실패 시 (None, None) → missing."""
+    """소스 config → (model, {역할키: ORM 컬럼}) 해석. 실패 시 (None, None) → missing.
+
+    반환 cols는 `_ResolvedColumns` — 선언됐으나 미해석된 옵션 컬럼을 `.unresolved`로
+    실어 나른다(required 미해석은 종전대로 바인딩 전체 실패)."""
     from database import models
     model = models.DYNAMIC_TABLES.get(source_cfg["table"])
     if model is None:
         return None, None
     resolved = {}
+    unresolved = []
     for role_key, col_name in source_cfg["columns"].items():
         col = getattr(model, col_name, None)
         if col is None:
             if role_key in required:
                 return None, None
+            unresolved.append(str(role_key))
             continue
         resolved[role_key] = col
     if any(k not in resolved for k in required):
         return None, None
-    return model, resolved
+    return model, _ResolvedColumns(resolved, unresolved)
 
 
 def _fetch_points(db, cols, filters, distinct_pairs=False):
@@ -311,6 +358,16 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         fail_values = src.get("fail_values")
         if fail_values and "val" in cols:
             filters.append(cols["val"].in_([str(v) for v in fail_values]))
+        if fail_values and "val" in _unresolved_roles(cols):
+            # [FIX 2026-07-28] Declared `val` column failed to resolve: counting
+            # without the fail-value filter would count EVERY row as fail (silent
+            # corruption in the opposite direction of the other degradations).
+            # Same discipline as align_unavailable — refuse and serve 0.
+            statuses[role] = _demote_for_unresolved(status, cols)
+            counts[count_key] = 0
+            if region_counts is not None:
+                region_counts[count_key] = 0
+            continue
 
         try:
             counts[count_key] = int(db.query(model).filter(*filters).count())
@@ -341,7 +398,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                 region_counts[count_key] = 0
             continue
 
-        statuses[role] = status
+        statuses[role] = _demote_for_unresolved(status, cols)
 
     # ---- used_chips (본딩 로그 — 좌표 있으면 distinct 칩, 없으면 행 수) ----
     src = sources_cfg.get("used_chips")
@@ -366,7 +423,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                     counts["used"] = int(db.query(model).filter(*filters).count())
                     if region_counts is not None:
                         region_counts["used"] = 0
-                statuses["used_chips"] = "connected"
+                statuses["used_chips"] = _demote_for_unresolved("connected", cols)
             except Exception as e:
                 logger.warning("[BondingPlan] role 'used_chips' query failed: %s", e)
                 statuses["used_chips"] = "missing"
@@ -418,7 +475,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                             "type": "result_fail",
                             "detail": f"{entry['step']} {entry['result']} @{entry['eqp']} {entry['time']}",
                         })
-                statuses["process_history"] = "connected"
+                statuses["process_history"] = _demote_for_unresolved("connected", cols)
             except Exception as e:
                 logger.warning("[BondingPlan] role 'process_history' query failed: %s", e)
                 statuses["process_history"] = "missing"

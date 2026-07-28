@@ -359,12 +359,18 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
     rule = body["rules"][0]
     assert set(rule.keys()) == {
         "name", "source_table", "derived_table", "decision_key",
-        "target_fields", "list_columns", "reference_views",
+        "target_fields", "list_columns", "reference_views", "queue_filters",
     }
     assert rule["name"] == "bonding_wafer_attribution"
     assert rule["derived_table"] == "enrich_test_derived"
     assert rule["decision_key"] == ["equipment", "event_time"]
     assert rule["target_fields"] == ["wafer_id"]
+    # 큐 진입 조건의 단일 조성: target blank AND decision key notBlank
+    assert rule["queue_filters"] == {
+        "equipment": {"type": "notBlank"},
+        "event_time": {"type": "notBlank"},
+        "wafer_id": {"type": "blank"},
+    }
     # 참조뷰는 label만 노출 — 쿼리 본문/limit 절대 노출 금지
     assert rule["reference_views"] == [{"label": "chips on equipment"}]
     assert "query" not in res.text and "SELECT" not in res.text
@@ -463,3 +469,47 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
     res = client.get("/tables/enrich_test_derived/data", params={"order_by": "row_id"})
     filled = next(r for r in res.json()["data"] if r["row_id"] == target_row_id)
     assert filled["data"]["wafer_id"]["value"] == "W777"
+
+
+def test_worklist_excludes_blank_decision_key_rows(client, enrich_env):
+    """빈 판단키 행은 큐에 절대 노출되지 않는다 (사용자 지시 2026-07-28).
+
+    mapper는 blank 판단키를 스킵하므로 정상 체인 경로로는 생기지 않지만,
+    그리드 빈 행 추가(create_empty_rows_batch)나 target만 채우는 직접 편집은
+    판단키 없는 파생 행을 만들 수 있다. 큐 쿼리는 서버가 조성한
+    rule.queue_filters(decision key notBlank AND target blank)로 이를 걸러낸다.
+    """
+    db = enrich_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed_source(db, [
+        {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
+    ], tx)
+    _run_chain_for_tx(db, tx)
+
+    # 판단키 없는 파생 행 2종: 그리드 빈 행 + target 인접 셀만 채운 행
+    crud.create_empty_rows_batch(db, "enrich_test_derived", 1)
+    crud.apply_batch_updates(db, "enrich_test_derived", schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(business_key_val="orphan_1",
+                                  updates={"job_id": "orphan_1", "lot_hint": "LOT_X"},
+                                  source_name="user", updated_by="tester")
+    ], silent=True))
+
+    import main
+    main.TABLE_COUNT_CACHE.clear()
+
+    # 서버가 공개 규칙에 실어준 queue_filters를 그대로 사용 (클라이언트 소비 경로 동일)
+    rule = client.get("/enrichment/rules").json()["rules"][0]
+    res = client.get("/tables/enrich_test_derived/data",
+                     params={"filters": json.dumps(rule["queue_filters"]),
+                             "order_by": "row_id"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 1 and len(body["data"]) == 1
+    assert body["data"][0]["data"]["equipment"]["value"] == "EQP1"
+
+    # 구식 필터(target blank만)였다면 빈 판단키 행 2건이 그대로 노출됐을 것
+    legacy = {"wafer_id": {"type": "blank"}}
+    main.TABLE_COUNT_CACHE.clear()
+    res = client.get("/tables/enrich_test_derived/data",
+                     params={"filters": json.dumps(legacy), "order_by": "row_id"})
+    assert res.json()["total"] == 3

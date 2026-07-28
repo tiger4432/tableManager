@@ -287,7 +287,17 @@ def to_public_rule(rule: dict) -> dict:
     """경계 계약(총괄 확정)에 따른 클라이언트 노출 형태.
 
     참조뷰의 쿼리 본문·limit은 절대 노출하지 않는다 — label과 (암묵적) 인덱스만.
+
+    queue_filters: the ONE server-composed definition of "a queue entry" for
+    the generic /tables/{t}/data filter DSL - every target field blank AND
+    every decision key non-blank. A row without its decision keys cannot be
+    resolved by a human, so it must never surface in the worklist (worklist,
+    admin missing-count, and main-grid badge all consume this same object -
+    one blank rule, not three hand-built copies).
     """
+    queue_filters = {k: {"type": "notBlank"} for k in rule["decision_key"]}
+    for t in rule["target_fields"]:
+        queue_filters[t] = {"type": "blank"}
     return {
         "name": rule["name"],
         "source_table": rule["source_table"],
@@ -296,4 +306,5 @@ def to_public_rule(rule: dict) -> dict:
         "target_fields": list(rule["target_fields"]),
         "list_columns": list(rule["list_columns"]),
         "reference_views": [{"label": v["label"]} for v in rule.get("reference_views", [])],
+        "queue_filters": queue_filters,
     }

@@ -567,3 +567,72 @@ def test_clamp_rects_respects_grid_and_drops_empty():
     assert bonding_plan.clamp_rects([(-5, 0, 99, 99)], grid) == [(1, 1, 6, 6)]
     assert bonding_plan.clamp_rects([(10, 10, 20, 20)], grid) == []  # 완전 범위 밖 → 제거
     assert bonding_plan.clamp_rects([(2, 2, 3, 3)], None) == [(2, 2, 3, 3)]  # 메타 없으면 원본
+
+
+# ---------------------------------------------------------------------------
+# 6. declared-but-unresolved columns must not vanish silently (FIX 2026-07-28)
+# ---------------------------------------------------------------------------
+
+def _cfg_to(tmp_path, monkeypatch, cfg, name):
+    cfg_path = tmp_path / name
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(cfg_path))
+
+
+def test_declared_typo_coordinate_column_demotes_not_silent(bdp_env, client, tmp_path,
+                                                            monkeypatch):
+    """used_chips "x": "cxx" (config typo) -> demoted status, count kept (row count)."""
+    _seed_core(bdp_env)
+    cfg = _bdp_config()
+    cfg["sources"]["used_chips"]["columns"]["x"] = "cxx"   # no such model column
+    _cfg_to(tmp_path, monkeypatch, cfg, "typo_x.json")
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["sources"]["used_chips"] == "connected(column_unresolved:x)"
+    # Coordinate dedup is lost -> row count (3 rows, distinct would be 2). The count
+    # is still served; the demoted status is what says "do not trust the refinement".
+    assert body["chips"]["used"] == 3
+
+
+def test_declared_typo_val_column_zeroes_the_fail_count(bdp_env, client, tmp_path,
+                                                        monkeypatch):
+    """defect "val": "vall" with fail_values declared -> counting without the filter
+    would report EVERY chip (36) as fail. Must serve 0 + demoted status instead."""
+    _seed_core(bdp_env)
+    cfg = _bdp_config()
+    cfg["sources"]["defect"]["columns"]["val"] = "vall"
+    _cfg_to(tmp_path, monkeypatch, cfg, "typo_val.json")
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["sources"]["defect"] == "connected(column_unresolved:val)"
+    assert body["chips"]["defect"] == 0          # never 36 (unfiltered count)
+    # remaining follows the M1 missing-role convention (degraded term counts as 0)
+    assert body["chips"]["remaining"] == 36 - 0 - 2 - 2
+
+
+def test_omitted_optional_columns_stay_connected(bdp_env, client, tmp_path, monkeypatch):
+    """Absence of a declaration is NOT a typo — used_chips without x/y at all keeps
+    the row-count semantic and the plain connected status (regression guard)."""
+    _seed_core(bdp_env)
+    cfg = _bdp_config()
+    del cfg["sources"]["used_chips"]["columns"]["x"]
+    del cfg["sources"]["used_chips"]["columns"]["y"]
+    _cfg_to(tmp_path, monkeypatch, cfg, "omitted.json")
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["sources"]["used_chips"] == "connected"
+    assert body["chips"]["used"] == 3            # row count (no dedup without coords)
+
+
+def test_declared_typo_history_column_demotes_but_rows_survive(bdp_env, client, tmp_path,
+                                                               monkeypatch):
+    """process_history "time": typo -> ordering refinement lost; rows still served,
+    status carries the marker."""
+    _seed_core(bdp_env)
+    cfg = _bdp_config()
+    cfg["sources"]["process_history"]["columns"]["time"] = "start_timee"
+    _cfg_to(tmp_path, monkeypatch, cfg, "typo_hist.json")
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["sources"]["process_history"] == "connected(column_unresolved:time)"
+    assert len(body["history"]) == 3

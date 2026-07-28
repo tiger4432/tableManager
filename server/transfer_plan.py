@@ -268,6 +268,20 @@ def _resolve(src_cfg: dict, required: tuple):
     return bonding_plan._resolve_model_columns(src_cfg, required=required)
 
 
+def _demote_unresolved(status, cols):
+    """[FIX 2026-07-28] Declared-but-unresolved columns must not vanish silently —
+    compose the `column_unresolved:<roles>` marker into a connected-status
+    (shared mechanics live in bonding_plan next to the resolver)."""
+    import bonding_plan
+    return bonding_plan._demote_for_unresolved(status, cols)
+
+
+def _unresolved_of(cols) -> tuple:
+    """Declared-but-unresolved role keys of a resolved binding."""
+    import bonding_plan
+    return bonding_plan._unresolved_roles(cols)
+
+
 # ---------------------------------------------------------------------------
 # stage 목록 + 역할 연결 상태 (데이터 쿼리 없음 — 바인딩 해석만)
 # ---------------------------------------------------------------------------
@@ -276,7 +290,7 @@ def _binding_status(src_cfg, required=("lot", "slot")) -> str:
     if not _valid_binding(src_cfg):
         return "missing"
     model, cols = _resolve(src_cfg, required)
-    return "missing" if model is None else "connected"
+    return "missing" if model is None else _demote_unresolved("connected", cols)
 
 
 def _stage_role_statuses(stage_cfg: dict) -> dict:
@@ -381,12 +395,15 @@ def _status_is_degraded(status) -> bool:
     """역할 상태 문자열이 '강등'인가.
 
     정상: "connected", "connected(aligned:180)" 등 align 마커만 붙은 경우.
-    강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)".
+    강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)",
+          "connected(count_only)"(transfer_log가 좌표 없이 카운트만 제공 — 집합 감산 불가),
+          "connected(column_unresolved:...)"(선언된 컬럼이 모델에 없음 — config 오타 축).
     """
     if not status or status == "connected":
         return False
     if status.startswith("connected("):
-        return ("align_unavailable" in status) or ("area_only" in status)
+        return (("align_unavailable" in status) or ("area_only" in status)
+                or ("count_only" in status) or ("column_unresolved" in status))
     return True   # missing / unavailable(...) 등
 
 
@@ -1112,7 +1129,7 @@ def _collect_history(db, source_cfg, lot, slot):
                     "type": "result_fail",
                     "detail": f"{entry['step']} {entry['result']} @{entry['eqp']} {entry['time']}",
                 })
-        return "connected", history, warnings_out
+        return _demote_unresolved("connected", cols), history, warnings_out
     except Exception as e:
         logger.warning("[TransferPlan] role 'process_history' query failed: %s", e)
         return "missing", [], []
@@ -1159,7 +1176,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     else:
         try:
             total = int(db.query(model).filter(cols["lot"] == lot, cols["slot"] == slot).count())
-            statuses["total_chips"] = "connected"
+            statuses["total_chips"] = _demote_unresolved("connected", cols)
         except Exception as e:
             logger.warning("[TransferPlan] role 'total_chips' query failed: %s", e)
             statuses["total_chips"] = "missing"
@@ -1167,6 +1184,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # ---- transfer_log (기전사 — distinct 칩) ----
     used_set = set()
     used_count = 0
+    used_count_only = False
     src = source_cfg.get("transfer_log")
     model, cols = _resolve(src, required=("lot", "slot"))
     if model is None:
@@ -1181,9 +1199,17 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 used_count = len(used_set)
                 if trunc:
                     truncations.append({"role": "transfer_log", "cap": MAX_ORIGIN_POINTS})
+                status = "connected"
             else:
+                # [FIX 2026-07-28] Bound without usable x/y: the count is real but
+                # chip identity is unknown, so the set-based remaining below cannot
+                # subtract these chips (used_set stays empty while `transferred`
+                # displays the count — the phantom-remaining bug). Demote so the
+                # degradation engine nulls remaining and serves the upper bound.
                 used_count = int(db.query(model).filter(*filters).count())
-            statuses["transfer_log"] = "connected"
+                used_count_only = True
+                status = "connected(count_only)"
+            statuses["transfer_log"] = _demote_unresolved(status, cols)
         except Exception as e:
             logger.warning("[TransferPlan] role 'transfer_log' query failed: %s", e)
             statuses["transfer_log"] = "missing"
@@ -1209,7 +1235,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 for (tx, ty, ol, os_, ox, oy) in raw
                 if tx is not None and ty is not None and ox is not None and oy is not None
             ]
-            statuses["origin_log"] = "connected"
+            statuses["origin_log"] = _demote_unresolved("connected", cols)
         except Exception as e:
             logger.warning("[TransferPlan] role 'origin_log' query failed: %s", e)
             origin_rows = None
@@ -1251,9 +1277,17 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 fail_values = fs.get("fail_values")
                 if fail_values and "val" in cols:
                     filters.append(cols["val"].in_([str(v) for v in fail_values]))
+                if fail_values and "val" in _unresolved_of(cols):
+                    # [FIX 2026-07-28] Declared `val` failed to resolve: counting
+                    # without the fail filter would count EVERY row as fail —
+                    # overstating the subtraction (breaks the upper-bound
+                    # invariant). Same discipline as align_unavailable: 0 + demote.
+                    statuses[name] = _demote_unresolved("connected", cols)
+                    fail_breakdown[name] = 0
+                    continue
                 cnt = int(db.query(model).filter(*filters).count())
                 fail_breakdown[name] = cnt
-                statuses[name] = "connected"
+                statuses[name] = _demote_unresolved("connected", cols)
                 if "x" in cols and "y" in cols:
                     pts, trunc = _fetch_pairs(db, cols, filters, cap=MAX_FAIL_POINTS,
                                               tag=f"fail:{name}")
@@ -1272,7 +1306,17 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             fail_breakdown[name] = 0
             continue
         if "x" not in cols or "y" not in cols:
-            statuses[name] = "missing"
+            # [FIX 2026-07-28] Declared-but-typo x/y gets the honest marker instead
+            # of a generic "missing" (both are degraded — the marker names the typo).
+            unres_xy = {"x", "y"} & set(_unresolved_of(cols))
+            statuses[name] = (_demote_unresolved("connected", cols)
+                              if unres_xy else "missing")
+            fail_breakdown[name] = 0
+            continue
+        if fs.get("fail_values") and "val" in _unresolved_of(cols):
+            # Declared `val` failed to resolve — projecting without the fail filter
+            # would mark every origin chip as fail. Refuse: 0 + demote.
+            statuses[name] = _demote_unresolved("connected", cols)
             fail_breakdown[name] = 0
             continue
         try:
@@ -1297,7 +1341,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                         projected.add((tx, ty))
             if status == "connected" and marker:
                 status = f"connected({marker})"
-            statuses[name] = status
+            statuses[name] = _demote_unresolved(status, cols)
             if status == "connected(align_unavailable)":
                 fail_breakdown[name] = 0
             else:
@@ -1345,8 +1389,15 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             by_core.append({
                 "core_id": f"{ol}{CORE_ID_SEP}{os_}",
                 "core_lot": ol, "core_slot": os_,
-                "total": a["total"], "fail": a["fail"], "used": a["used"],
-                "remaining": a["total"] - a["blocked"],
+                # [FIX 2026-07-28] count_only transfer_log: chip-level used is
+                # unknowable (used_set is empty), so serve null like the fail:null
+                # convention of the area_map path — never a fake 0. The remaining
+                # derived from it is nulled too (blocked misses the used term, so
+                # a bare number here would be the same phantom at per-core level).
+                "total": a["total"], "fail": a["fail"],
+                "used": None if used_count_only else a["used"],
+                "remaining": (None if used_count_only
+                              else a["total"] - a["blocked"]),
             })
         if len(by_core) > MAX_BY_CORE:
             logger.warning("[TransferPlan] by_core truncated to %d entries", MAX_BY_CORE)
@@ -1386,15 +1437,20 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                     by_core.append({
                         # core_id는 영역 맵의 원시 값(config가 정하는 불투명 식별자) —
                         # lot/slot으로 분해할 근거가 없으므로 null(추측 파싱 금지).
+                        # [FIX 2026-07-28] count_only transfer_log: used_set is
+                        # empty so per-core used (and the remaining derived from
+                        # it) is unknowable — null, never a fake 0/total.
                         "core_id": val, "core_lot": None, "core_slot": None,
-                        "total": a["total"], "fail": None, "used": a["used"],
-                        "remaining": a["total"] - a["used"],
+                        "total": a["total"], "fail": None,
+                        "used": None if used_count_only else a["used"],
+                        "remaining": (None if used_count_only
+                                      else a["total"] - a["used"]),
                     })
                 if len(by_core) > MAX_BY_CORE:
                     by_core = by_core[:MAX_BY_CORE]
                     by_core_truncated = True
                 by_core_origin = "area_map"
-                statuses["origin_area_map"] = "connected(area_only)"
+                statuses["origin_area_map"] = _demote_unresolved("connected(area_only)", cols)
             except Exception as e:
                 logger.warning("[TransferPlan] origin_area_map query failed: %s", e)
                 statuses["origin_area_map"] = "missing"

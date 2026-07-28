@@ -2637,8 +2637,9 @@ async function fetchEnrichmentStatus(force = false) {
   const perRule = [];
   let totalMissing = 0;
   for (const rule of rules) {
-    const filters = {};
-    (rule.target_fields || []).forEach(f => { filters[f] = { type: 'blank' }; });
+    // 큐 진입 조건은 서버 단일 조성(queue_filters) — 워크리스트/배지와 동일 수치 보장
+    const filters = rule.queue_filters
+      || Object.fromEntries((rule.target_fields || []).map(f => [f, { type: 'blank' }]));
     let missing = null;
     try {
       const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
