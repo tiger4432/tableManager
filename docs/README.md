@@ -35,7 +35,9 @@
 | 파일 인제션 파이프라인 | 🟢 [guide/INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md) |
 | 체인 인제션(DB세션 맵퍼) | 🟢 [guide/chain_ingestion_guide.md](./guide/chain_ingestion_guide.md) |
 | Auto-Update 스케줄러 | 🟢 [guide/AUTO_UPDATE_GUIDE.md](./guide/AUTO_UPDATE_GUIDE.md) |
-| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어 · **M2.6부터 저장소는 `map_split_registry` 한 테이블, 구간·자재는 `bands` JSON**) |
+| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어 · 저장소는 `map_split_registry` 한 테이블 · **층 구조는 zone 모델**(STACK+1H/MID/TOP, STACK 0=마커) — 🗄️ `bands` JSON은 폐기·읽기 전용 · 저장을 막는 **데이터 보호 게이트 3종은 §6.0-ter**) |
+| DOE 작성 가이드(사용자) | 🟢 [guide/DOE_GUIDE.md](./guide/DOE_GUIDE.md) — 색칠=계획 · STACK 0=상태 표시 · 저장은 ⚡ Push 하나 · 검수는 보고만(막는 건 게이트 3종) |
+| DOE 구간 모델(부분 폐기) | 🟠 [spec/DOE_BAND_MODEL.md](./spec/DOE_BAND_MODEL.md) — 구간(band) 모델 본문은 zone 모델로 대체(🗄️), **§4-bis BIN 축·§6-bis BIN별 분해는 계속 정본** |
 | DOE 영역 저장 지도 | 🗄️ [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — **본문은 폐기된 3테이블 모델**이며 기존 데이터 해석용으로만 보존합니다. M2.6이 양쪽 다 착지해(`cdcddee`+`0f8d35f`) 지금은 `map_split_registry` **한 테이블**입니다 → 현행 계약은 [MAP_EDITOR_SPEC §6](./spec/MAP_EDITOR_SPEC.md)·[CONFIG_GUIDE §5.8](./guide/CONFIG_GUIDE.md) |
 | HTML 토폴로지 파서 | 🟢 [guide/HTML_TOPOLOGY_PARSER_GUIDE.md](./guide/HTML_TOPOLOGY_PARSER_GUIDE.md) |
 | 배치 업서트 | 🟠 [spec/batch_update_technical_specification.md](./spec/batch_update_technical_specification.md) |

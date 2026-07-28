@@ -27,6 +27,7 @@ server/database/virtual_graph.json
 | 파일 (`server/config/`) | 목적 | 소유 | git | 적용 방법 | 소비 프로세스 |
 |---|---|---|---|---|---|
 | **`table_config.json`** | 동적 테이블 스키마 **SSOT** — 모든 테이블의 컬럼/키/표시 정의 | 사용자 | ignored (`.sample` 有) | 신규 테이블·컬럼 = 핫(§4) / 컬럼 삭제·타입 변경 = **재기동** | 전 프로세스(web·watcher·chain·graph) |
+| **`database.json`** | DB 접속 정보(이름·비번·호스트) — 우선순위: 환경변수 `DATABASE_URL` > 이 파일 > 코드 기본값 | 사용자 | ignored (`.sample` 有) | **재기동**(핫리로드 없음 — 커넥션 문자열) | 전 프로세스 + 런처(DB 도달성 프로브) |
 | **`ontology_mapping.json`** | 그래프 노드/엣지 매핑 v2 (`description` 필수) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` (웹서버 캐시 무효화) | web, graph_sync_worker |
 | **`enrichment_rules.json`** | 결손 보정 워크리스트 규칙(`decision_key`/`target_fields`/`reference_views`) | 사용자 | ignored (`.sample` 有) | 조회 API는 즉시 / 체인 파생 룰은 `reload-configs` | web, chain_ingestion_worker |
 | **`chain_rules.json`** | 체인 인제션 룰(trigger→target→mapper) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` | chain_ingestion_worker, web(조회) |

@@ -78,6 +78,7 @@
 * **맵 에디터 조회 제한**: 맵 에디터의 Target Table 목록은 `map_key_columns` 속성이 설정된 맵 전용 테이블들만 엄격히 필터링되어 조회/선택이 가능합니다.
 * **클린 삭제 덮어쓰기 파이프라인 (`replace_map: true`)**:  
   맵 저장 시 오리진(ORIGIN)이나 규격이 변경되었을 때, `map_key_columns` 조건에 해당하는 기존 DB 맵 행과 셀 소스(`CellSource`, `CellOverwrite`)들을 백엔드에서 먼저 bulk purge(SQL Delete)한 후 신규 활성 칩만 재적재하여 유령 셀(Ghost Chips) 잔존을 100% 원천 차단합니다.
+  > ⚠️ **적재 대조 게이트 (2026-07-28 · `6db517d`)** — 교체 의미론에서는 페이로드에 담기지 않은 셀이 곧 삭제입니다. 그래서 `pushMapData`는 직렬화된 non-empty 셀 수가 화면의 non-empty 셀 수보다 **적으면 confirm 이전에 적재를 거부**하고 삭제될 셀 수를 메시지에 명시합니다(메타 미등록 맵을 기본 프레임으로 열어 격자·원 밖 셀이 잘리는 경우가 대표 사례). 게이트 3종의 정본은 [MAP_EDITOR_SPEC §6.0-ter](../spec/MAP_EDITOR_SPEC.md)입니다.
 
 ---
 

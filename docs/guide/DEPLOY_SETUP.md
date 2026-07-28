@@ -29,11 +29,16 @@ for f in *.sample; do cp "$f" "${f%.sample}"; done
 ### 1-1. 데이터베이스
 
 `server/database/database.py`의 기본값은 `postgresql://postgres:admin@localhost:5432/assy_manager`다.
-운영에서는 **환경변수로 덮는다** — 소스를 고치지 마라.
+운영 DB의 이름·비밀번호가 다르면 **`server/config/database.json`으로 관리한다** — 소스를 고치지 마라.
+`.sample`을 복사해 `url` 하나 또는 분리 필드(`host`/`port`/`database`/`user`/`password`)로 적고 **전 프로세스 재기동**(핫리로드 없음). 적용 확인은 기동 로그의 `[db] url source=config file target=...(비번 마스킹)` 줄 → 절차 상세는 [config/database.md](./config/database.md).
+
+환경변수 `DATABASE_URL`은 **파일보다 우선하는 오버라이드**다:
 
 ```bash
 DATABASE_URL=postgresql://<user>:<pw>@<host>:5432/<db>
 ```
+
+우선순위(변경 금지): **환경변수 > `database.json` > 코드 기본값.** 격리 개발 환경이 이 환경변수로 DB를 갈아타므로, `devenv.py bootstrap`이 config 트리를 복사하면서 `database.json`이 격리 루트에 딸려 가도 환경변수가 이겨서 무해하다 — 순서가 뒤집히면 격리 스택이 운영 DB에 쓴다.
 
 > 같은 변수로 검증 환경을 분리한다 → [개발 환경 격리](#5-검증개발-환경-선택)
 

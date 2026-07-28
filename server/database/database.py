@@ -4,10 +4,23 @@ import os
 import uuid
 from datetime import datetime
 
-# 데이터베이스 연결 URL (환경 변수가 있으면 사용, 없으면 PostgreSQL 기본값, 최종적으로 SQLite)
-# 형식: postgresql://[사용자]:[비밀번호]@[호스트]:[포트]/[DB명]
+# Database connection URL. Precedence (pinned by test_database_url_config.py):
+#   env DATABASE_URL  >  <config dir>/database.json  >  DEFAULT_PG_URL
+# Resolution logic lives in server/paths.py (stdlib-only, shared with the
+# process supervisor's reachability probe). Read ONCE at import - a connection
+# string is not hot-swappable, so there is deliberately no hot reload;
+# changing database.json requires a full restart of every process.
+# URL format: postgresql://[user]:[password]@[host]:[port]/[dbname]
+try:
+    import paths as _paths
+except ImportError:  # imported without server/ on sys.path (same guard as crud.py)
+    import sys as _sys
+    _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    import paths as _paths
+
 DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_PG_URL)
+# DB_URL_SOURCE: "env" | "config file" | "default" - logged (masked) at boot by main.py.
+SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE = _paths.resolve_database_url(DEFAULT_PG_URL)
 
 # SQLite 호환성을 위해 체크 (SQLite 파일이 존재하고 URL에 sqlite가 포함된 경우)
 is_sqlite = "sqlite" in SQLALCHEMY_DATABASE_URL

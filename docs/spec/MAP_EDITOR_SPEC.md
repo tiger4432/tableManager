@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -237,6 +237,7 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 
 #### 40) `pushMapData()` (async)
 * **용도**: 현재 에디터에서 완성된 시각 2D 맵 데이터 및 메타데이터, 그리고 저장 당시의 격자 설정 스냅샷(`grid_metadata`)을 하나의 트랜잭션 페이로드로 구성하여 assyManager 백엔드 서버에 일괄 영속 적재합니다.
+* **적재 대조 게이트(`6db517d` H2)**: 직렬화된 non-empty 셀 수가 화면의 non-empty 셀 수보다 **적으면 confirm 이전에 거부**합니다 — replace 의미론에서 빠진 셀은 곧 삭제이기 때문입니다. §6.0-ter 참조.
 
 #### 41) `getEdgeClassification()`
 * **용도**: 100% 프론트엔드 공간 위상 판별 알고리즘. 웨이퍼 내부에 존재하는 셀 중 E1(가장 외곽 1줄) 및 E2(외곽에서 2번째 줄)의 경계 격자 셀 세트를 추출합니다.
@@ -294,6 +295,10 @@ sequenceDiagram
 DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습니다. 자동 저장이 삭제되고 `pushMapData`가 유일한 서버 기록자가 된 뒤로, **Push 전의 모든 편집은 이 초안에만 존재합니다.** 페인팅·드래그·fill·paste·legend 개명 전 편집 경로가 디바운스 writer(`scheduleCellDraft`, 400ms)를 태웁니다.
 
 핵심 규율은 **기반 지문(fingerprint) 우선순위**입니다 — 초안은 뜰 때 기반이 된 서버 상태의 지문(registry FNV-1a + 셀 digest)을 함께 저장하고, 다시 열 때: **일치 → 초안 적용**(내 편집이 엄격히 더 새 것) · **불일치 → 적용하지 않되 버리지도 않음**(화면은 서버본, 사실은 토스트) · **서버 조회 실패 → 초안 표시 + 저장 보류** · **저장 성공 → 초안 삭제**. 재사용 관점 정리는 [PRIMITIVES §1](../architecture/PRIMITIVES.md)에 있습니다.
+
+**로드 경로는 정확히 한 번, 초안 우선순위가 끝난 뒤에 영속합니다**(`6db517d` H1). 종전에는 `loadExistingMap`의 legend 자동 감지 블록이 방금 로드한 **서버 상태를 초안이 읽히기도 전에** 초안으로 되저장해, 비어 있지 않은 모든 맵에서 칠한 셀 초안이 새로고침을 넘지 못했습니다(`280ebf0` 회귀). 지금 로드 중의 영속 지점은 registry 블록 안 — 초안 적용이 끝난 뒤 — 하나뿐입니다. 부속 규칙 둘:
+- **「복구했습니다」의 기준은 "초안에 내용이 있었다"가 아니라 "화면이 실제로 바뀌었다"입니다.** Push 성공 직후 초안이 서버본과 동일하게 재저장되므로, 내용 기준이면 계획이 있는 맵을 열 때마다 유령 복구 토스트가 뜹니다.
+- **실제 복구는 미저장 상태로 표시됩니다**(`legendDirty`). 복구된 편집은 여전히 이 브라우저에만 있는 편집이라, 표시하지 않으면 초안이 살아남은 바로 그 새로고침 뒤에 칩이 "저장됨"으로 읽힙니다.
 
 ### 4-bis.2 최근 열람 — 부팅 복원은 수동 경로의 재연이다 (`map_editor_last_open` · `280ebf0`)
 
@@ -463,6 +468,18 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 경고(차단 아님): `W-DUP-MAT` — 한 구역 **안**의 자재 중복(`ceil(총/n)`의 분모를 이유 없이 바꿉니다). 구역을 **가로지르는** 중복은 정당합니다(바닥과 중간은 다른 층의 수요).
 
 > 🗄️ **폐기된 `bands` 행은 읽되 표현 불가하면 거부합니다.** 실계획이 아직 그 컬럼에 있고 legend 저장이 `replace_map`이라, 읽지 못하면 그 맵을 여는 순간 화면이 비고 **다음 편집 한 번이 계획을 빈 집합으로 지웁니다.** 마이그레이션 규칙: 구간 1개 → MID 단독 / 구간 n>1 → 첫 구간이 정확히 1층이면 1H, 마지막이 정확히 STACK층이면 TOP, 남은 것은 **하나 이하**여야 합니다. 구간 4개·읽을 수 없는 `to`·역전된 `to`·1층에서 시작하지 않는 첫 구간은 **접지 않고 거부**합니다 — 접은 결과를 되쓰면 서버의 진짜 계획이 그 손실 읽기로 덮입니다. 클라·서버가 같은 벡터(`legacy_band_cases`)로 고정돼 있습니다.
+
+#### 6.0-ter 데이터 보호 게이트 — 저장을 실제로 막는 3종 (`6db517d`)
+
+V1~V6은 검증 **보고 등급**입니다(`blocks` = 행 옆 차단 표기 / `warns` = 경고) — **저장(Push)을 막지는 않으며**, 불완전한 계획도 Push됩니다. 쓰기를 실제로 거부하는 것은 아래 3종뿐이고, 셋 모두 같은 형태입니다: **직렬화하지 않은 것을 replace가 삭제하게 될 쓰기**를 막습니다.
+
+| 게이트 | 경로 | 언제 거부하나 |
+|---|---|---|
+| `zone-columns-missing` | legend/registry 저장 preflight | 서버 저장소에 zone 컬럼(`stack`·`mat_1h`·`mat_mid`·`mat_top`)이 없다 — 지금 저장하면 층 구조가 버려진 행으로 계획 전체가 교체된다. 서버가 갱신되면 자동 재시도 |
+| `legacy-unreadable` | legend/registry 저장 preflight | 3구역으로 표현할 수 없는 폐기 `bands` 행이 남아 있다(위 🗄️ 블록) — 접어 되쓰면 서버 원본이 손실 읽기로 덮인다. 해당 값의 STACK·구역을 직접 채우면 풀린다 |
+| **적재 대조 게이트(contrast guard)** (`6db517d` H2) | `pushMapData` — **confirm·쓰기 이전** | **직렬화된 non-empty 셀 수 < 화면의 non-empty 셀 수**면 거부하고, **삭제될 셀 수를 메시지에 명시**한다. 메타 미등록 맵을 기본 프레임으로 열면 원 마스크·격자 범위 밖 셀이 페이로드에서 빠지는데, replace_map은 맵 키 범위 전량을 지우고 다시 쓰므로 빠진 만큼 서버에서 삭제된다(QA 실측 1293→379). 좌표 diff가 아니라 **수 대조**라 좁아진 격자가 아예 순회하지 않는 좌표까지 잡히고, 비어 있음 판정이 직렬화 루프와 같은 술어(`(v \|\| '') !== ''`)라 사용자가 지운 셀은 양쪽에서 같이 빠져 **동수 Push는 무마찰 통과**한다 |
+
+패턴 정리는 [PRIMITIVES §7](../architecture/PRIMITIVES.md)(교체 쓰기 전 수 대조 게이트).
 
 ### 6.1 가용량 계약
 

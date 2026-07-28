@@ -1,0 +1,13 @@
+{
+  "_comment": "DB 접속 정보. 실제 적용하려면 이 파일을 database.json으로 복사하세요. 환경변수 DATABASE_URL이 설정돼 있으면 이 파일은 무시됩니다(격리 환경 보호 — 우선순위: 환경변수 > 이 파일 > 코드 기본값). 반영은 전 프로세스 재기동 필수(핫리로드 없음).",
+  "_url_doc": "완성된 접속 URL. 이 키가 있으면 아래 분리 필드보다 우선합니다. 형식: postgresql://<user>:<password>@<host>:<port>/<db명>",
+  "url": "postgresql://postgres:admin@localhost:5432/assy_manager",
+  "_split_doc": "url 키를 지우고 아래처럼 분리 필드로 써도 됩니다. user/password의 특수문자(@, :, % 등)는 자동으로 URL 인코딩되므로 그대로 적으면 됩니다. 생략 시 기본값: host=localhost, port=5432, database=assy_manager, user=postgres, password 없음.",
+  "_split_example": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "assy_manager",
+    "user": "postgres",
+    "password": "admin"
+  }
+}

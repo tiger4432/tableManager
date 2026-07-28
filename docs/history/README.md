@@ -1,14 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **230개** 이력. (거버넌스 규칙 #4)
+> 총 **233개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-28 11:07** — [Load Path Draft Destruction And Truncating Push Gate](./20260728_110721_load_path_draft_destruction_and_truncating_push_gate.md)
+- **2026-07-28 10:12** — [U9 Client Half Marker Contract U8 Refresh Feedback Qa](./20260728_101201_u9_client_half_marker_contract_u8_refresh_feedback_qa.md)
 - **2026-07-28 09:15** — [U9 Stack0 Marker V6 Server U8 Binmap E2e](./20260728_091500_u9_stack0_marker_v6_server_u8_binmap_e2e.md)
+- **2026-07-28 08:51** — [Qa Tiers Codified Pre Dispatch Summary Queue Format](./20260728_085120_qa_tiers_codified_pre_dispatch_summary_queue_format.md)
 - **2026-07-28 07:49** — [Map Editor Five Fixes Lag Overlay Reopen](./20260728_074941_map_editor_five_fixes_lag_overlay_reopen.md)
 - **2026-07-28 07:23** — [Doe Zone Client Half Config Backup And Two Traps](./20260728_072317_doe_zone_client_half_config_backup_and_two_traps.md)
 - **2026-07-28 07:15** — [Doe Zone Model Server Half](./20260728_071500_doe_zone_model_server_half.md)

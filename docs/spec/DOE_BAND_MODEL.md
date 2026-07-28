@@ -1,6 +1,9 @@
 # 🧱 DOE 구간 모델 (M3) — 값 집합 구간 · 입력 FROM · BIN · 검증 규칙
 
-> **상태:** 규칙 확정(B1–B10), 구현 대기 (사용자 확정 2026-07-27)
+> 🗄️➕🟢 **부분 폐기 (2026-07-28 doc-keeper):** 이 문서의 **구간(band) 모델 본문(B1–B10)은 구현 후 zone 모델로 대체**됐습니다 — 현행 층 구조·검증 규칙(V1~V6·STACK 0 마커)의 정본은 [MAP_EDITOR_SPEC §6](MAP_EDITOR_SPEC.md) + `contracts/doe_band_rules/vectors.json`이며, `bands` 컬럼은 폐기·읽기 전용입니다. 단 **§4-bis(BIN 축)·§6-bis(BIN별 분해)는 계속 정본**입니다(서버 `transfer_plan.py`·`main.py`·스펙 §6.1-bis가 인용) — 그래서 문서 전체를 아카이브하지 않습니다.
+> ※ 일부 코드 주석(`doe_bands.js:39`·`map_editor.js:218`)이 인용하는 `docs/spec/DOE_ZONE_MODEL.md`는 **존재한 적 없는 경로**입니다 — zone 모델 규칙 번호의 정본 문서는 위 MAP_EDITOR_SPEC §6.0-bis입니다(주석 리포인트는 코드 라운드 대기).
+
+> **상태:** 규칙 확정(B1–B10), 구현 후 zone 모델로 대체(위 배너) — 원문은 히스토리 추적용 보존
 > **정본 구현:** `client2/src/doe_bands.js` (순수 모델 — DOM·IO 없음)
 > **실행 가능한 형태:** `contracts/doe_band_rules/vectors.json` · `client_harness.mjs`
 > **관련:** [DOE_STORAGE_MAP](DOE_STORAGE_MAP.md)(무엇이 어디 저장되는가) · [MAP_EDITOR_SPEC §6](MAP_EDITOR_SPEC.md)(전사 계획)

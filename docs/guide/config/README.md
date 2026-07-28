@@ -15,6 +15,7 @@
 | 파일 (`server/config/`) | 켜는 기능 | 반영 시점 | 반영 확인 | 가이드 |
 |---|---|---|---|---|
 | `table_config.json` | 모든 동적 테이블 스키마 **SSOT** — 다른 config의 전제 | 신규/컬럼추가 = watcher 핫(**in-place 저장만**) · 삭제/타입변경 = **재기동** | watcher 로그 + `information_schema` | [table_config.md](./table_config.md) |
+| `database.json` | DB 접속 정보(이름·비번·호스트) — 환경변수 `DATABASE_URL` 미설정 시 | **재기동**(전 프로세스, 핫리로드 없음) | 기동 로그 `[db] url source=config file` | [database.md](./database.md) |
 | `transfer_plan_config.json` | M2 전사 계획 — stage 선언 + 계획 저장소 | 요청마다 재읽기 | `GET /api/transfer-plan/stages` | [transfer_plan_config.md](./transfer_plan_config.md) |
 | `bonding_plan_config.json` | M1 본딩 계획 — role→실테이블 바인딩 | 요청마다 재읽기 | `GET /api/bonding-plan/core-summary` | [bonding_plan_config.md](./bonding_plan_config.md) |
 | `map_overlay_config.json` | 맵 오버레이 바인딩 + 페인트 잠금 정본 | 요청마다 재읽기 | `GET /api/maps/paint-rules` | [map_overlay_config.md](./map_overlay_config.md) |

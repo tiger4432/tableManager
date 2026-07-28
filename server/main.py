@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from database.database import SessionLocal, engine, get_db
+from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE
 from database import models, schemas, crud
 import uuid 
 import os
@@ -40,6 +40,8 @@ import admin_auth
 script_dir = os.path.dirname(os.path.abspath(__file__))
 config_path = paths.config_path("table_config.json")
 logger.info(f"[paths] {paths.describe()}")
+# Which DB URL source won (env / config file / default) - password masked, never raw.
+logger.info(f"[db] url source={DB_URL_SOURCE} target={paths.mask_db_password(SQLALCHEMY_DATABASE_URL)}")
 try:
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)

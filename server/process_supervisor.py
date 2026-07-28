@@ -147,7 +147,16 @@ def _database_endpoint(url=None):
     launcher, and one of the shared causes it has to survive is *sqlalchemy
     itself being unimportable* after a bad deploy.
     """
-    url = url if url is not None else os.environ.get("DATABASE_URL", "")
+    if url is None:
+        # Same precedence as database/database.py (env > config/database.json),
+        # resolved through paths (stdlib-only) so this keeps working when
+        # sqlalchemy is broken. No built-in default here: the probe has always
+        # treated "nothing configured" as nothing to probe.
+        try:
+            url, _src = paths.resolve_database_url()
+        except Exception:
+            url = os.environ.get("DATABASE_URL", "")
+        url = url or ""
     if not url or url.startswith("sqlite"):
         return None
     try:
