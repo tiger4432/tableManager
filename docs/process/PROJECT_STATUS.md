@@ -49,6 +49,7 @@
 | 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
 | 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
 | 7b | 🔴 **맵 키 값 정규화 일원화** (운영 실증 2026-07-28 밤): slot이 number 선언이면 저장은 `1`인데 자재 토큰 `LOT_01`이 map_id를 `LOT_01`로 조합 → 메타 `LOT_1` 미스. **데이터는 열리고 메타만 없는 것처럼** 보임(셀은 캐스팅 필터, 메타는 문자열 map_id). 수리: map_id 조합·메타 조회·토큰 분해가 **선언 타입 기준 canonical화 공유 함수 하나**를 타게(R4 함정 계급, "같은 정수 판정기" 규율의 확장). 우회 안내됨(토큰을 저장 형식으로). **M3와 같은 메타 영역 — 한 라운드로 묶기** | map-pm+server-pm | T2 | 내일 1순위 (M3 동반) |
+| 7c | **`transfer_log: "none"` 선언 — 소비 기록 없는 현장 지원** (사용자 요청 2026-07-28 밤 "기록 없이도 되게"): 선언 시 `connected(untracked)` 상태로 잔량을 **상한 표시(`≤N` = 총량−fail)** + 툴팁 "기전사 미차감". 사고성 missing은 미상 유지 — 선언=인지 패턴(map_push_ok와 동형). 서버 upper_bound 배관 기존재, 선언 파싱+클라 표시만. 가용 풀 바인딩 canonical화(7b)와 같은 파일권 — 동반 가능 | server-pm+map-pm | T2 | 내일 (7b와 동반) |
 | 7 | **M3 맵 메타 자동 등록** (ingestion 체인) — `bonding_map` 맵 키 39만 vs 메타 9건 해소 경로 | server-pm | — | 대기 |
 | 8 | **P3 대형 파일** (backpressure·COPY·상한) | server-pm | — | 대기 |
 | 9 | **온톨로지 — 장기 트랙** (전략: [보고서](../../agent_workspace/reports/ONTOLOGY_STRATEGY_20260728.md) §7 순서) | ontology-pm | — | 별도 |
