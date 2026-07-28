@@ -8,9 +8,9 @@ contract file, so deleting a case from the contract removes coverage LOUDLY (see
 `test_every_vector_group_is_consumed_or_declared_client_only`).
 
 WHAT THIS PINS (and what it deliberately does not):
-  * stack_cases        → `stack_state`      3-state height reader
+  * stack_cases        → `stack_state`      4-state height reader (ok/blank/invalid/marker)
   * zone_extent_cases  → `mid_zone`/`zone_layers`   the geometry itself
-  * plan_cases         → `validate_zone_plan`  V1-V5 + W-DUP-MAT, as SETS of rule ids
+  * plan_cases         → `validate_zone_plan`  V1-V6 + W-DUP-MAT, as SETS of rule ids
   * material_token_cases → `parse_material_token`/`material_pool_key`
   * demand_cases       → `zone_demand`
   * rollup_cases       → `material_rollup_rows`
@@ -23,6 +23,11 @@ THERE ARE NO OVERLAP OR GAP TESTS, and their absence is a result rather than an 
 The three zones tile `1..STACK` by construction, so a layer covered twice or left uncovered
 is not a state this geometry can reach. The band model's B1/B2/B5/B6/B4/B9 became
 UNSTATEABLE, not relaxed — B9's hazard is the one that survived, and it is V5.
+
+STACK 0 = MARKER (U9, vectors version 3). An explicit 0 declares a 상태 표시 값: known-empty
+zones ([]/known:true — distinct from unreadable's None/known:false), zero demand however
+much is painted, absent from the rollup, and V6 is the ONLY message on such a row (V4/V3/
+W-DUP suppressed). Blank is unchanged — absence still blocks (V5); 0 is a declaration.
 """
 import json
 import pathlib
@@ -55,6 +60,9 @@ _CLIENT_ONLY = {"tsv_cases", "paste_cases", "roundtrip_cases"}
 
 
 def test_every_vector_group_is_consumed_or_declared_client_only():
+    # v3 = the marker (STACK 0) contract. Scoring an older snapshot would pass while
+    # missing the U9 semantics entirely — the version is part of what "consumed" means.
+    assert _vectors()["version"] >= 3, "계약 벡터가 v3(marker 의미론) 이전 스냅숏이다"
     present = {k for k in _vectors() if k.endswith("_cases")}
     assert present == (_SERVER_CONSUMED | _CLIENT_ONLY), (
         "벡터 그룹 구성이 바뀌었다. 새 그룹을 추가했다면 그것을 소비하는 서버 테스트를 쓰고 "
@@ -73,7 +81,7 @@ def test_stack_state_matches_the_shared_contract():
         val, st = transfer_plan.stack_state({"stack": c["stack"]})
         assert st == c["state"], f"{c['name']}: state {st!r} != {c['state']!r}"
         assert val == c["value"], f"{c['name']}: value {val!r} != {c['value']!r}"
-    assert seen >= 10, "stack 벡터가 사라졌다"
+    assert seen >= 12, "stack 벡터가 사라졌다 (v3: marker 케이스 포함 12개)"
 
 
 def test_the_single_integer_reader_is_shared_with_bin():
@@ -113,7 +121,7 @@ def test_zone_extents_match_the_shared_contract():
             got_layers = _encode_layers(transfer_plan.zone_layers(row, zone))
             assert got_layers == exp_layers, (
                 f"{c['name']}/{zone}: layers {got_layers} != {exp_layers}")
-    assert seen >= 5, "zone_extent 벡터가 사라졌다"
+    assert seen >= 7, "zone_extent 벡터가 사라졌다 (v3: marker 케이스 포함 7개)"
 
 
 def test_unreadable_height_yields_none_never_an_empty_list():
@@ -150,7 +158,7 @@ def test_zone_plan_verdicts_match_the_shared_contract():
         assert warns == set(c["expect_warns"]), (
             f"{c['name']}: warns {sorted(warns)} != {sorted(c['expect_warns'])}")
         assert out["ok"] is (len(c["expect_blocks"]) == 0), f"{c['name']}: ok flag"
-    assert seen >= 10, "plan 벡터가 사라졌다"
+    assert seen >= 15, "plan 벡터가 사라졌다 (v3: marker 케이스 포함 15개+)"
 
 
 def test_every_blocking_rule_id_is_exercised_by_the_contract():
@@ -164,7 +172,7 @@ def test_every_blocking_rule_id_is_exercised_by_the_contract():
         out = transfer_plan.validate_zone_plan(c["values"])
         fired |= {b["rule"] for b in out["blocks"]}
         fired |= {w["rule"] for w in out["warns"]}
-    assert fired == {"V1", "V2", "V3", "V4", "V5", "W-DUP-MAT"}, sorted(fired)
+    assert fired == {"V1", "V2", "V3", "V4", "V5", "V6", "W-DUP-MAT"}, sorted(fired)
 
 
 def test_v5_blocks_first_and_suppresses_the_extent_rules():
@@ -187,6 +195,98 @@ def test_v3_is_a_property_of_the_whole_plan_not_of_one_row():
     # 행 하나씩 보면 어느 쪽도 걸리지 않는다 = 이 테스트가 실제로 전체 성질을 재고 있다.
     for r in rows:
         assert transfer_plan.validate_zone_plan([r])["blocks"] == []
+
+
+# ---------------------------------------------------------------------------
+# STACK 0 = MARKER (U9) — the vectors score the outcomes; these pin the AXES.
+# ---------------------------------------------------------------------------
+
+def test_marker_is_a_declaration_and_blank_is_absence():
+    """🔴 The two must not merge in either direction.
+
+    Folding 0 into blank turns a declared marker into "not typed yet" (V5 nags at a legal
+    row); folding blank into 0 turns every half-typed row into a marker (V5 never fires and
+    a plan goes out half-written). `Number('  ') === 0` on the client side is exactly the
+    accident the whitespace case guards against.
+    """
+    assert transfer_plan.stack_state({"stack": 0}) == (0, transfer_plan.STACK_MARKER)
+    assert transfer_plan.stack_state({"stack": "0"}) == (0, transfer_plan.STACK_MARKER)
+    assert transfer_plan.stack_state({"stack": ""})[1] == transfer_plan.BAND_TO_BLANK
+    assert transfer_plan.stack_state({"stack": "   "})[1] == transfer_plan.BAND_TO_BLANK
+    # Only EXACTLY 0 — a negative is still a typo, and it keeps its value for the message.
+    assert transfer_plan.stack_state({"stack": -3}) == (-3, transfer_plan.BAND_TO_INVALID)
+    # `_int_state` itself is untouched: layer bounds and BINs still refuse 0. The promotion
+    # lives in `stack_state` ALONE — a second reader that learned "0 is fine" would let
+    # `MID1:0` through as a BIN.
+    assert transfer_plan._int_state(0) == (0, transfer_plan.BAND_TO_OK)
+    assert transfer_plan.parse_material_token("MID1:0")["ok"] is False
+
+
+def test_marker_extents_are_known_empty_not_unknowable():
+    """🔴 Mirror of `test_unreadable_height_yields_none_never_an_empty_list`, other side.
+
+    marker = []/known:true (a real zero, like the E-row's 0-layer MID) while unreadable =
+    None/known:false. Fold marker into unreadable and V5 nags at a legal row; fold
+    unreadable into marker and a typo'd height silently demands nothing behind a clean
+    screen. The MID content on the marker row is deliberate: the extent stays [] anyway —
+    the contradiction is V6's to report, not the geometry's to legitimize.
+    """
+    marker = {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []}
+    broken = {"value": "X", "stack": "0x10", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []}
+    assert transfer_plan.mid_zone(marker) == {"from": None, "to": None, "size": 0, "known": True}
+    assert transfer_plan.mid_zone(broken)["known"] is False
+    for z in ("mat_1h", "mat_mid", "mat_top"):
+        assert transfer_plan.zone_layers(marker, z) == []
+    assert transfer_plan.zone_layers(broken, "mat_mid") is None
+    # And demand is zero HOWEVER much is painted — painted cells are the message
+    # (96 cells are in that state), not a multiplier.
+    assert transfer_plan.zone_demand(marker, "mat_mid", 9999) == {
+        "layers": 0, "total": 0, "share": 0}
+
+
+def test_v6_is_the_only_message_on_a_marker_row():
+    """🔴 Suppression scope. The row below trips, on a non-marker row, V4 (dangling '_'),
+    W-DUP-MAT (duplicate in one zone) — and V5 would fire were 0 still invalid. On a marker
+    row ALL of them stay silent and V6 alone reports; two contradictory instructions about
+    one row (fix the token vs remove the materials) is worse than one.
+    """
+    row = {"value": "F", "stack": 0,
+           "mat_1h": ["ABC_", "ABC_"], "mat_mid": ["M_01"], "mat_top": []}
+    out = transfer_plan.validate_zone_plan([row])
+    assert {b["rule"] for b in out["blocks"]} == {"V6"}
+    assert out["warns"] == []
+    # And a clean marker row is SILENT — a validator that nags at a declared marker
+    # teaches people to ignore it.
+    clean = {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": [], "mat_top": []}
+    assert transfer_plan.validate_zone_plan([clean]) == {"ok": True, "blocks": [], "warns": []}
+
+
+def test_v3_exclusion_is_the_marker_state_not_the_token():
+    """Fixture-activation proof: the SAME token pair does block V3 once the marker row's
+    stack becomes a real height. Without this control, an implementation that never fed
+    any second row into the V3 scan would pass the vector's marker case too.
+    """
+    real = {"value": "A", "stack": 8, "mat_1h": [], "mat_mid": ["MID1_03"], "mat_top": []}
+    marker = {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["MID1"], "mat_top": []}
+    out = transfer_plan.validate_zone_plan([real, marker])
+    assert {b["rule"] for b in out["blocks"]} == {"V6"}   # not V3 — demandless token
+    unmarked = dict(marker, stack=8)
+    out2 = transfer_plan.validate_zone_plan([real, unmarked])
+    assert {b["rule"] for b in out2["blocks"]} == {"V3"}  # the axis is alive
+
+
+def test_marker_row_is_absent_from_the_rollup_not_present_with_zero():
+    """Beyond the vector: assert the marker's pool key NEVER appears, even as used 0 —
+    a 'MID9 · 사용 0' row would read as "planned, costs nothing" and invite an
+    availability query for material nobody is demanding.
+    """
+    rows = [
+        {"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+        {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["MID9"], "mat_top": []},
+    ]
+    got = transfer_plan.material_rollup_rows(rows, lambda v: {"A": 6, "F": 50}[v])
+    assert [r["lot"] for r in got] == ["M"]
+    assert all("MID9" not in json.dumps(r) for r in got)
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +348,7 @@ def test_zone_demand_matches_the_shared_contract():
         for wrong_key in ("wrong_if_rounded", "wrong_if_floored"):
             if wrong_key in c:
                 assert got["share"] != c[wrong_key], f"{c['name']}: {wrong_key}"
-    assert seen >= 6, "demand 벡터가 사라졌다"
+    assert seen >= 8, "demand 벡터가 사라졌다 (v3: marker 케이스 포함 8개)"
 
 
 def test_rollup_rows_match_the_shared_contract():
@@ -259,7 +359,7 @@ def test_rollup_rows_match_the_shared_contract():
         rows = transfer_plan.material_rollup_rows(c["values"], lambda v: painted.get(v, 0))
         got = [{"pool": [r["lot"], r["slot"], r["bin"]], "used": r["used"]} for r in rows]
         assert got == c["expect"], f"{c['name']}: {got} != {c['expect']}"
-    assert seen >= 4, "rollup 벡터가 사라졌다"
+    assert seen >= 5, "rollup 벡터가 사라졌다 (v3: marker 케이스 포함 5개)"
 
 
 def test_remaining_state_matches_the_shared_contract():

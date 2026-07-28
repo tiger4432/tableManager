@@ -12,20 +12,25 @@
 //   ⭐ [M2.6] **이 파일은 서버에 쓰지 않는다.** 값 하나 = `map_split_registry` 행 하나 =
 //      DOE 하나이고, 그 행의 유일한 기록자는 map_editor다(legend 저장 경로 그대로).
 //      map_doe / map_doe_source는 폐기됐다. 이 파일은 `controller.getLegend()`로 읽고
-//      `controller.updateLegendRow(value, { bands, knobs })`로만 쓴다 — 저장·삭제·동시성
-//      가드는 전부 그 한 경로에 있다(구현이 둘이면 반드시 갈라진다).
+//      `controller.updateLegendRow(value, patch)`로만 쓴다 — patch keys are the zone-model
+//      row fields (`value`·`desc`·`color`·`stack`·`mat_1h`·`mat_mid`·`mat_top`·`knobs`).
+//      저장·삭제·동시성 가드는 전부 그 한 경로에 있다(구현이 둘이면 반드시 갈라진다).
 //
-//   ⭐ 구간(band) 모델 — **연속 스택, 구간당 숫자 하나.**
-//      · 첫 구간은 무조건 1층에서 시작한다.
-//      · 이후 구간의 시작은 **앞 구간의 끝 + 1**이고 편집할 수 없다.
-//      · 그래서 사용자가 입력하는 값은 구간당 **끝 층(`to`) 하나**뿐이다 —
-//        스택 전체가 *끊는 지점 목록*이다. `1, 2-15, 16`은 **구간 3개**다.
-//      · 층 수 = `to_i − to_(i−1)` (뺄셈 한 번, 라벨 파싱 없음).
-//      · **순서 = 배열 위치 · 정체 = `seq`.** `to`를 고치면 위치가 따라 움직이지만 `seq`는
-//        절대 바뀌지 않는다 — seq를 재번호하면 자재가 조용히 남의 구간으로 따라간다.
+//   ⭐ ZONE MODEL — one number, three zones. (The band model — FROM→TO rows, `seq`
+//      identity — is retired; `prevTo`/`bandsToZones` below only READ what it wrote.)
+//      · STACK = the value's total layer count, stated by the user, never derived.
+//      · 1H = layer 1 exactly · TOP = layer STACK exactly · MID = everything between:
+//        (1H present ? 2 : 1) … (TOP present ? STACK−1 : STACK). The zones tile 1…STACK
+//        by construction — overlap and gap are unstateable.
+//      · STACK 0 = MARKER value (상태 표시 값, e.g. BASE FAIL): painted cells state a
+//        condition, not a layer assignment. No zones (all render 해당 없음), zero demand,
+//        absent from rollup ②; zone content on such a row is the V6 contradiction.
+//        Blank STACK is different — blank means "not typed yet" and blocks via V5.
+//      · The pure model lives in doe_bands.js; contracts/doe_band_rules pins it on both
+//        sides (client harness now, server against the same vectors).
 //
 //   ⭐ 파생값은 저장하지 않는다.
-//      구간 총 소요 = **칠한 셀 수 × 층 수** · 자재당 = **ceil(총 소요 / 자재 수)**.
+//      구역 총 소요 = **칠한 셀 수 × 층 수** · 자재당 = **ceil(총 소요 / 자재 수)**.
 //      저장하면 누가 한 칸 더 칠하는 순간 어긋난 채 남고 아무도 모른다. 그리고 식의 구현은
 //      각각 **하나뿐**이다(저장 `ceil` / 표시 `round`로 갈려 DB 34 · 화면 33이던 결함).
 //
@@ -575,6 +580,10 @@ const ZONE_PLACEHOLDER = {
 // Returns { inapplicable, layers, fix } - `fix` is the visible instruction.
 function zoneIsInapplicable(row, zone) {
   const st = stackState(row);
+  // A marker row (STACK 0 = 상태 표시 값) has no layers at all, so every zone renders as
+  // 해당 없음 — same treatment as a structurally absent layer, because that is what it is.
+  // The fix text names the precondition, visibly, like the other na cells.
+  if (st.state === 'marker') return { inapplicable: true, layers: null, fix: 'STACK 0 = 상태 표시 값 (층 없음)' };
   if (st.state !== 'ok') return { inapplicable: false, layers: null, fix: '' };
   const has = z => parseMaterialList(row[z]).length > 0;
   if (zone === 'mat_mid') {
@@ -670,7 +679,7 @@ function renderDoeList() {
       <div class="tp-v-l1">
         <input type="color" class="tp-sw" data-f="color" value="${esc(row.color || '#6b7280')}" />
         <input class="tp-gi vin" data-f="value" value="${esc(val)}" />
-        ${planMode ? `<input class="tp-gi stk${stSt.state === 'ok' ? '' : ' bad'}" data-f="stack" inputmode="numeric"
+        ${planMode ? `<input class="tp-gi stk${(stSt.state === 'ok' || stSt.state === 'marker') ? '' : ' bad'}" data-f="stack" inputmode="numeric"
           value="${esc(row.stack === null || row.stack === undefined ? '' : String(row.stack))}" placeholder="총 층수" />` : ''}
         <input class="tp-gi din" data-f="desc" value="${esc(row.desc || '')}" placeholder="이 값이 무슨 조건인지" />
         <span class="tp-pnt" data-count-for="${esc(val)}">${paintedOf(val)}</span>
@@ -680,7 +689,8 @@ function renderDoeList() {
     </div>`;
   }).join('') + (planMode ? `
     <div class="tp-foot-note">
-      <b>STACK</b>=총 층수 · <b>MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)</b> ·
+      <b>STACK</b>=총 층수 · <b>STACK 0 = 상태 표시 값</b>(예: BASE FAIL — 층·자재·소요 없음) ·
+      <b>MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)</b> ·
       <b>구역이 0층이면 MID는 필요 없습니다</b><br>
       자재는 줄바꿈 또는 쉼표로 나눔 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
     </div>` : '');
@@ -784,7 +794,8 @@ function bindDoeList(box, planMode) {
       // never persists and the persisting one never runs per keystroke.
       stk.addEventListener('input', () => {
         const draft = { ...rowOf(v), stack: stk.value };
-        stk.classList.toggle('bad', stackState(draft).state !== 'ok');
+        const s = stackState(draft).state;
+        stk.classList.toggle('bad', s !== 'ok' && s !== 'marker');   // 0 = marker, not an error
         refreshRowZones(node, draft);
       });
       stk.addEventListener('change', () => {
@@ -1105,6 +1116,12 @@ async function rewardAfterReturn(from) {
 }
 
 // 자재 목록의 가용·맵 유무 일괄 갱신.
+//
+// `force` is true on exactly one path: the [↻ 가용] button. That press must produce
+// visible feedback even when every number stays 미상 — before this toast, a refresh whose
+// answer was "the server refuses BIN-scoped availability" repainted the same 미상 cells
+// and the button read as dead (U8, user: "가용 버튼 눌러도 업데이트 안됨"). The per-cell
+// reason still lives in the 미상 tooltip; the toast names the dominant one out loud.
 async function refreshMaterials(force = false) {
   const seq = ++S.matSeq;
   const st = stageOfTable(S.ctx.table);
@@ -1116,8 +1133,26 @@ async function refreshMaterials(force = false) {
     await getPoolSummary(p, force);
     if (table) await probeMaterialMap(table, poolCacheId(p), force);
   }));
-  if (seq !== S.matSeq) return;
+  if (seq !== S.matSeq) return;   // a newer refresh superseded this one — its toast too
   renderMaterialPane();
+  if (force) {
+    const unknownReasons = [];
+    pools.forEach(p => {
+      const av = availabilityOfPool(p);
+      if (!(av.reliable === true && av.value !== null && av.value !== undefined)) {
+        unknownReasons.push(av.reason || '이유 미상');
+      }
+    });
+    if (unknownReasons.length === 0) {
+      showToast(`가용 조회 완료 — ${pools.length}개 풀`, 'info');
+    } else {
+      // One line, the most common reason. The full per-pool reason is on each 미상 cell.
+      const tally = new Map();
+      unknownReasons.forEach(r => tally.set(r, (tally.get(r) || 0) + 1));
+      const dominant = [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      showToast(`가용 조회 완료 — ${pools.length}개 풀 중 ${unknownReasons.length}개 미상: ${dominant}`, 'warning');
+    }
+  }
 }
 
 // ── 골격 ────────────────────────────────────────────────

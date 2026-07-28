@@ -36,8 +36,13 @@ value = one DOE condition**, bk = `ref_table|map_key|value`.
 - **자재 문자열은 적은 그대로가 정체다.** 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**
   (`contracts/doe_band_rules/vectors.json`)이며 `parse_material_token`이 유일한 구현이다.
   분리자 없는 `MID1`은 해석 실패가 아니라 **로트 전체**를 뜻한다.
-- **차단 규칙은 V1~V5 다섯 개**이고 `validate_zone_plan`이 판정한다. V5(STACK 판독 불가)가
+- **차단 규칙은 V1~V6 여섯 개**이고 `validate_zone_plan`이 판정한다. V5(STACK 판독 불가)가
   **가장 먼저**다 — 다른 모든 판정이 계산할 수 없는 층 수에서 유도되기 때문이다.
+- **STACK 0 is a MARKER, not a height** (U9, user 2026-07-28). An explicit 0 declares a
+  상태 표시 값 (e.g. BASE FAIL): painted cells state a condition, not a layer assignment.
+  No zones, zero demand, absent from the rollup; V6 reports the one contradiction (a marker
+  with zone content) and is the ONLY rule a marker row answers to. Blank stays blank (V5) —
+  absence is not a declaration.
 - **폐기된 `bands` 컬럼은 읽되 쓰지 않는다.** `bands_to_zones`가 세 구역으로 옮기고,
   옮길 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는
   **접지 않고 거부**한다. 접은 뒤 저장하면 `replace_map`이 서버의 진짜 계획을 그 손실
@@ -1814,6 +1819,10 @@ def _assign_band_seqs(bands):
 BAND_TO_OK = "ok"
 BAND_TO_BLANK = "blank"
 BAND_TO_INVALID = "invalid"
+# STACK-only fourth state (U9): an EXPLICIT 0 declares a marker value (상태 표시 값).
+# It never comes out of `_int_state` — layer bounds and BINs still refuse 0 — only
+# `stack_state` promotes it. Mirror of client `stackState`'s 'marker'.
+STACK_MARKER = "marker"
 
 _INT_STR = re.compile(r"^[+-]?[0-9]+$")
 
@@ -1994,13 +2003,19 @@ def stack_state(row):
     16, 다른 쪽에서 0이 된다 — 실제로 그렇게 16이 DB에 쓰인 적이 있다.
     `blank`는 오류가 **아니다**(아직 안 적은 값). 다만 저장·검증 시점에는 V5로 차단된다:
     계획이 반쯤 적힌 채 나갈 수는 없다.
-    0과 음수는 높이가 아니므로 `invalid`이며, **그 값을 그대로 돌려준다**(사용자에게 무엇을
-    고치라고 말할 근거가 남아야 한다).
+
+    `marker` (U9, user 2026-07-28): an EXPLICIT 0 is a fourth state — the value paints a
+    CONDITION (e.g. BASE FAIL), not a layer assignment. No zones, no demand, no rollup row;
+    V6 reports the one contradiction (a marker with zone content). Blank is NOT folded into
+    it — blank is absence, 0 is a declaration. Only exactly 0: negatives stay `invalid`
+    **and keep their value** (the user must be told what to fix).
     """
     val, st = _int_state(_zone_row_get(row, "stack"))
     if st != BAND_TO_OK:
         return None, st
-    if val < 1:
+    if val == 0:
+        return 0, STACK_MARKER
+    if val < 0:
         return val, BAND_TO_INVALID
     return val, BAND_TO_OK
 
@@ -2017,6 +2032,11 @@ def mid_zone(row):
     val, st = stack_state(row)
     has_1h = len(parse_material_list(_zone_row_get(row, "mat_1h"))) > 0
     has_top = len(parse_material_list(_zone_row_get(row, "mat_top"))) > 0
+    # A marker's extent is KNOWN and EMPTY — like the E-row's 0-layer MID, a real zero,
+    # NOT unknowable. Folding the two either makes V5 nag at a declared marker or lets a
+    # typo'd height demand nothing behind a clean screen (vectors pin both directions).
+    if st == STACK_MARKER:
+        return {"from": None, "to": None, "size": 0, "known": True}
     if st != BAND_TO_OK:
         return {"from": None, "to": None, "size": 0, "known": False}
     frm = 2 if has_1h else 1
@@ -2031,6 +2051,11 @@ def zone_layers(row, zone):
     구별되지 않고, 읽지 못한 높이가 0층으로 합류하는 것이 V5가 존재하는 이유 그 자체다.
     """
     val, st = stack_state(row)
+    # Marker: every zone is empty BY CONSTRUCTION ([], not None — a real, known zero),
+    # however much content was typed. The content is V6's contradiction to report, not
+    # the geometry's to legitimize. `zone_demand` then derives 0 from this for free.
+    if st == STACK_MARKER:
+        return []
     if st != BAND_TO_OK:
         return None
     present = len(parse_material_list(_zone_row_get(row, zone))) > 0
@@ -2151,13 +2176,18 @@ def _zone_raw_items(raw):
 
 
 def validate_zone_plan(rows):
-    """V1~V5 + W-DUP-MAT. 반환 `{ok, blocks[], warns[]}` — 클라 `validateZonePlan`의 미러.
+    """V1~V6 + W-DUP-MAT. 반환 `{ok, blocks[], warns[]}` — 클라 `validateZonePlan`의 미러.
 
       V5  STACK을 양의 정수로 읽을 수 없다      ← **가장 먼저** 판정한다
       V2  STACK 1인데 1H·TOP이 둘 다 있다       ← 두 자재가 같은 1층을 잡는다
       V1  MID 구역이 비어 있지 않은데 MID가 없다 ← 조건부. 구역이 0층이면 발동하지 않는다
       V4  자재 토큰을 읽을 수 없다
       V3  로트 전체와 그 로트의 슬롯이 같은 BIN에 함께 지정됐다  ← **계획 전체**의 성질
+      V6  STACK 0(상태 표시 값)인데 구역에 자재가 있다  ← marker rows answer to V6 ALONE.
+          A marker's materials are never looked up or demanded, so V4 on them would give a
+          second, contradictory instruction (fix the token vs remove the materials) — same
+          suppression pattern as V5-suppresses-V1. They are also absent from V3's pool
+          scan: a demandless token cannot double-count anything.
 
     🔴 V5가 먼저인 이유. 구 모델은 값의 높이를 **덮인 층에서 유도**해서, 배정되지 않은 위쪽
        구간이 그냥 max를 낮췄고 다른 규칙은 전부 통과했다 — 16층 스택이 조용히 15층이 됐다.
@@ -2185,6 +2215,23 @@ def validate_zone_plan(rows):
         v = str("" if raw_v is None else raw_v)
         val, st = stack_state(row)
         mats = {z: parse_material_list(_zone_row_get(row, z)) for z in ZONES}
+
+        # V6 — the marker contradiction, and the ONLY rule a marker row answers to. Zone
+        # content on a 0-stack row means one of the two statements is wrong, and only the
+        # user knows which — report it, never silently drop the materials (they may be the
+        # half the user meant to keep). The materials are named in the message because the
+        # zone cells render disabled (해당 없음) on a marker row client-side, which would
+        # otherwise make the offending content invisible.
+        if st == STACK_MARKER:
+            with_content = [z for z in ZONES if mats[z]]
+            if with_content:
+                add(blocks, "V6",
+                    f"값 '{v}'은(는) STACK 0(상태 표시 값)인데 구역에 자재가 있습니다 — "
+                    + " · ".join(f"{ZONE_LABEL[z]}: {', '.join(mats[z])}" for z in with_content)
+                    + " — 층이 없는 값은 자재를 가질 수 없습니다. "
+                      "STACK을 채우거나 자재를 지우십시오.",
+                    value=v, zone=with_content[0])
+            continue   # V5/V2/V1/V4/W-DUP-MAT do not fire on a marker row
 
         if st != BAND_TO_OK:
             shown = "(비어 있음)" if st == BAND_TO_BLANK else json.dumps(
@@ -2253,6 +2300,11 @@ def validate_zone_plan(rows):
     # 지워진 분리자로 이으면 둘 다 "MID112"가 되어, 맞는 계획을 막고 진짜 이중 계산은 놓친다.
     lot_scoped, slot_scoped = {}, {}
     for row in rows:
+        # Marker rows are not in this scan: their tokens demand nothing, so pairing one
+        # with a real row's slot would block a correct plan over wafers nobody asked for.
+        # The content itself is already V6's report.
+        if stack_state(row)[1] == STACK_MARKER:
+            continue
         raw_v = _zone_row_get(row, "value")
         v = str("" if raw_v is None else raw_v)
         for z in ZONES:
@@ -2304,6 +2356,12 @@ def material_rollup_rows(rows, painted_of):
     """
     by_pool = {}
     for row in rows or []:
+        # A marker row (STACK 0) is ABSENT from the rollup, not present-with-zero: a
+        # "사용 0" row would read as "planned, costs nothing" and invite an availability
+        # query for material nobody is demanding. Its painted count is a message, not a
+        # multiplier, and its zone content (if any) is V6's contradiction — not inventory.
+        if stack_state(row)[1] == STACK_MARKER:
+            continue
         raw_v = _zone_row_get(row, "value")
         v = str("" if raw_v is None else raw_v)
         painted = int(painted_of(v) or 0) if callable(painted_of) else int((painted_of or {}).get(v, 0))
@@ -2820,6 +2878,9 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
                     # 층이 0이면 소요도 0이다. STACK을 못 읽어서 0인 경우는 V5가 이미
                     # 차단했고, 구역이 진짜 0층인 경우(STACK 2 + 1H·TOP의 MID)는 정상이라
                     # 경고할 것이 없다 — 어느 쪽이든 여기서 지어낼 수요가 없다.
+                    # Marker rows (STACK 0) land here too: `zone_layers` returns [] for
+                    # every zone by construction, so a marker's materials are never
+                    # resolved, queried, or demanded — V6 already named the contradiction.
                     continue
                 if len(materials) > MAX_SOURCES_PER_DOE:
                     materials = materials[:MAX_SOURCES_PER_DOE]

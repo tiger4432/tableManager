@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (§5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 각 서브시스템의 **동작 원리·내부 구조는 여기 쓰지 않고** 해당 리빙 가이드로 링크합니다 → [INGESTION_GUIDE](./INGESTION_GUIDE.md) · [AUTO_UPDATE_GUIDE](./AUTO_UPDATE_GUIDE.md) · [chain_ingestion_guide](./chain_ingestion_guide.md) · [ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md) · [ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
@@ -495,7 +495,7 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > | 컬럼 | 뜻 |
 > |---|---|
-> | `stack` | 그 값의 **총 층수** |
+> | `stack` | 그 값의 **총 층수**. **[U9 2026-07-28] `0`(또는 `"0"`)은 높이가 아니라 마커 선언**입니다 — 그 값은 층 배정이 아닌 **상태 표시 값**(예: BASE FAIL)이며, 구역이 구성적으로 없고 얼마를 칠해도 소요가 0이고 롤업에 행 자체가 없습니다(0이 아니라 **부재**). 공백은 마커로 접히지 않습니다 — 공백은 「아직 안 적음」(V5 차단), 0은 선언입니다. 음수는 여전히 invalid |
 > | `mat_1h` | **1층** |
 > | `mat_top` | **STACK층** |
 > | `mat_mid` | **그 사이 전부** — 1H가 비면 1층부터, TOP이 비면 STACK층까지 |
@@ -508,11 +508,11 @@ psql -U postgres -d assy_manager -c "\d <table>"
 >
 > **파생값은 저장하지 않습니다** — 구역 소요 = `칠한 셀 수 × 그 구역의 층 수`, 매당 소요 = `ceil(구역 소요 / 자재 수)`를 매번 계산합니다. 저장된 총량은 누군가 셀을 하나 더 칠하는 순간 조용히 어긋납니다.
 >
-> **차단 규칙은 V1~V5 다섯 개**이고 정본은 `contracts/doe_band_rules/vectors.json`(클라 하네스와 서버 테스트가 **같은 파일**을 채점)입니다. V5(STACK 판독 불가)가 **가장 먼저** 판정됩니다 — 다른 모든 판정이 계산할 수 없는 층 수에서 유도되기 때문입니다.
+> **차단 규칙은 V1~V6 여섯 개**이고 정본은 `contracts/doe_band_rules/vectors.json` v3(클라 하네스와 서버 테스트가 **같은 파일**을 채점)입니다. V5(STACK 판독 불가)가 **가장 먼저** 판정됩니다 — 다른 모든 판정이 계산할 수 없는 층 수에서 유도되기 때문입니다. **V6은 마커 모순**(STACK 0인데 구역에 자재가 있음)이며, **마커 행이 답하는 유일한 규칙**입니다 — 마커의 자재는 조회도 소요도 되지 않으므로 V4를 함께 내면 한 행에 모순된 두 지시(토큰을 고쳐라 vs 자재를 지워라)가 되고, V3의 풀 스캔에도 참여하지 않습니다(소요 없는 토큰은 아무것도 이중 계산할 수 없습니다). 모든 규칙과 같이 **권고이지 저장 게이트가 아닙니다**.
 >
 > **자재 ID는 사용자가 입력한 원문 그대로가 정체입니다.** 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**이고 구현은 `transfer_plan.parse_material_token` 하나입니다. 분리자 없는 `MID1`은 해석 실패가 아니라 **그 로트 전체**를 뜻하며, 진짜 malformed한 토큰(`ABC_`·`_01`·`_`·BIN 실패)만 거부합니다(V4). ⚠️ `material_identity`는 이제 **게이트로만** 씁니다 — 클라는 config를 읽지 못하므로 파싱 규칙이 config에 살면 양쪽이 갈리고, 갈리는 순간 한 화면에 두 개의 가용치가 생깁니다. 미선언이면 아무것도 조회하지 않고 `source_unresolved`로 보고합니다.
 >
-> **BIN 축은 `bin_map` 선언으로만 켜집니다 — 미선언은 결함이 아니라 「아직 배선되지 않음」입니다.** `lot_slot:BIN` 토큰의 BIN별 가용을 세려면 stage 블록(또는 그 `source` 블록)에 `bin_map: {table, columns: {lot, slot, x, y, bin}}`을 선언해야 합니다. 선언이 없으면 서버는 **BIN 컬럼을 추측하지 않고**(`transfer_plan._bin_axis_binding` — 같은 `dt_map.val`이 이미 `origin_area_map`의 **출신 코어 식별자**로 선언돼 있어, "맵의 val이 곧 BIN"으로 박으면 라이브에서 즉시 틀립니다) 축을 `axis: "unavailable"`로 보고하며, 클라 롤업의 해당 칸은 `미상`으로 남습니다(`0`이 아닙니다). 동작 계약은 [MAP_EDITOR_SPEC §6.1-bis](../spec/MAP_EDITOR_SPEC.md)가 정본입니다.
+> **BIN 축은 `bin_map` 선언으로만 켜집니다 — 미선언은 결함이 아니라 「아직 배선되지 않음」입니다.** 🚨 **단, `source_config_ref`(M1 위임) stage에는 `bin_map`을 선언해도 축이 켜지지 않습니다** — 위임 경로는 좌표 집합을 만들지 않아 `get_stage_source_summary`가 bins 요청에 무조건 `unavailable`("core-kind(M1 위임) 소스는 …")로 답합니다(2026-07-28 격리 환경 E2E로 확인). BIN 축이 필요한 stage는 **inline `source` 블록으로 선언**해야 하며, 이때 신뢰 가능한 잔여를 얻으려면 `origin_log`까지 connected여야 합니다(미선언 = missing 강등 → 전 BIN unknown·remaining null. 루트 소스는 자기 자신으로의 self-join 선언이 성립합니다). 선언 형태 `bin_map: {table, columns: {lot, slot, x, y, bin}}` 자체는 격리 스택(:8081)에서 실측 검증됐습니다 — 선언 즉시 `axis:"connected"` + BIN별 `{cells, total, fail_breakdown, transferred, remaining}`이 독립 대조 계산과 일치했습니다. `lot_slot:BIN` 토큰의 BIN별 가용을 세려면 stage 블록(또는 그 `source` 블록)에 `bin_map: {table, columns: {lot, slot, x, y, bin}}`을 선언해야 합니다. 선언이 없으면 서버는 **BIN 컬럼을 추측하지 않고**(`transfer_plan._bin_axis_binding` — 같은 `dt_map.val`이 이미 `origin_area_map`의 **출신 코어 식별자**로 선언돼 있어, "맵의 val이 곧 BIN"으로 박으면 라이브에서 즉시 틀립니다) 축을 `axis: "unavailable"`로 보고하며, 클라 롤업의 해당 칸은 `미상`으로 남습니다(`0`이 아닙니다). 동작 계약은 [MAP_EDITOR_SPEC §6.1-bis](../spec/MAP_EDITOR_SPEC.md)가 정본입니다.
 >
 > ℹ️ **로트 전체 토큰은 `validate`가 값을 매기지 않습니다**(`source_scope_unpriced`). `scope=lot` 응답에 `chips`가 없는 것과 같은 이유입니다 — 로트 하나의 `remaining` 숫자를 지어내지 않습니다. "조회 못 함"도 "이상 없음"도 아닌 **"판정하지 않았다"**로 나갑니다.
 >

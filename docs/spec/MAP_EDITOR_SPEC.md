@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -439,7 +439,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 |---|---|
 | 계획 정체성 | `(ref_table, map_key)` — 맵 정체성과 동일 |
 | 관리 단위 | **DOE = value** — 맵에 칠한 값 하나가 조건군 하나 |
-| 층 구조(STACK) | **[ZONE 2026-07-28 — band 모델을 대체]** 숫자 하나(`stack`)와 **고정된 세 구역**입니다: `mat_1h`=1층 · `mat_top`=STACK층 · `mat_mid`=그 사이 전부. **1H가 비면 MID가 1층부터, TOP이 비면 MID가 STACK층까지**입니다. FROM도 TO도 band 행도 `seq`도 값 집합 스코프도 **없습니다** |
+| 층 구조(STACK) | **[ZONE 2026-07-28 — band 모델을 대체]** 숫자 하나(`stack`)와 **고정된 세 구역**입니다: `mat_1h`=1층 · `mat_top`=STACK층 · `mat_mid`=그 사이 전부. **1H가 비면 MID가 1층부터, TOP이 비면 MID가 STACK층까지**입니다. FROM도 TO도 band 행도 `seq`도 값 집합 스코프도 **없습니다**. **[U9 2026-07-28] STACK `0`은 높이가 아니라 마커 선언**입니다 — 상태 표시 값(예: BASE FAIL)으로, 구역·소요·롤업 행이 구성적으로 없고(부재이지 0이 아님) 칠한 셀 수는 곱수가 아니라 메시지입니다. 공백은 마커가 아닙니다(공백=미기입=V5 차단, 0=선언, 음수=여전히 invalid) |
 | 영역 지정 | **값 페인팅이 정본**(rect 영역 선택 모드는 폐기됨) |
 | 수량 | **저장하지 않고 파생합니다.** 구역 소요 = `칠한 셀 수 × 그 구역의 층 수`, 매당 소요 = `ceil(구역 소요 / 자재 수)`. 저장된 총량은 누가 셀을 하나 더 칠하는 순간 어긋납니다. ⚠️ **올림은 분배되지 않습니다**(`ceil(3/2)+ceil(3/2)=4` vs `ceil(6/2)=3`) — 합을 먼저 내고 나눕니다. 클라·서버가 **같은 벡터 파일**(`contracts/doe_band_rules/vectors.json`)에 대조돼 있습니다 |
 | 자재 | 세 `mat_*` 컬럼에 **원문 토큰의 JSON 배열**로. 토큰 문법 `lot["_"slot][":"BIN]`은 **공유 계약**이며, 분리자 없는 `MID1`은 **로트 전체**를 뜻합니다(해석 실패가 아닙니다). 롤업 행의 정체는 **풀 `(lot, slot, BIN)`**이고 키는 `JSON.stringify([...])`입니다 — 분리자로 이으면 안 됩니다 |
@@ -449,7 +449,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 >
 > 🔴 **살아남은 하나가 V5입니다.** 구 모델은 값의 높이를 **덮인 층에서 유도**해서, 배정되지 않은 위쪽 구간이 그냥 max를 낮추고 다른 규칙은 전부 통과했습니다 — **16층 스택이 조용히 15층이 됐습니다.** zone은 높이를 유도하지 않고 STACK이 말합니다. 그 구멍이 닫히는 것은 STACK을 **읽을 수 있는 동안뿐**이므로, 읽을 수 없는 STACK은 **가장 먼저** 차단합니다.
 
-#### 6.0-bis 차단 규칙 V1~V5 (정본: `contracts/doe_band_rules/vectors.json`)
+#### 6.0-bis 차단 규칙 V1~V6 (정본: `contracts/doe_band_rules/vectors.json` v3)
 
 | # | 규칙 | 왜 |
 |---|---|---|
@@ -458,6 +458,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 | **V1** | MID 구역이 비어 있지 않은데 MID가 없다 | **조건부입니다.** `STACK=2` + 1H·TOP만(구역 0층)은 **통과**하고, `STACK=1` MID단독도 통과합니다. 무조건 요구하면 정상 계획을 막습니다 |
 | **V4** | 자재 토큰을 읽을 수 없다 | 조회할 수 없으니 가용이 영원히 `0`으로만 보고될 수 있는데, `0`은 "다 썼다"로 읽힙니다. 진실은 "해석한 적이 없다"입니다 |
 | **V3** | 로트 전체와 그 로트의 슬롯이 **같은 BIN**에 함께 지정됐다 | **계획 전체의 성질**입니다 — 두 토큰은 보통 서로 다른 값에 있어서, 행 단위 구현은 통과시키고 이중 계산된 웨이퍼가 나중에 부족으로 튀어나옵니다. 같은 로트라도 **BIN이 다르면 다른 풀**이라 정상입니다 |
+| **V6** | STACK 0(**마커**)인데 구역에 자재가 있다 | **마커 행이 답하는 유일한 규칙**입니다. 층이 없는 값은 자재를 가질 수 없으며, 둘 중 무엇이 틀렸는지는 사용자만 압니다 — 보고하되 자재를 조용히 버리지 않습니다. 마커 행에서 V4·W-DUP은 **함께 내지 않고**(한 행에 모순된 두 지시 금지 — V5가 V1을 억제하는 것과 같은 패턴) 마커의 토큰은 **V3 풀 스캔에도 불참**합니다(소요 없는 토큰은 이중 계산할 것이 없습니다). 마커 행은 소요 0·롤업 **부재**입니다 |
 
 경고(차단 아님): `W-DUP-MAT` — 한 구역 **안**의 자재 중복(`ceil(총/n)`의 분모를 이유 없이 바꿉니다). 구역을 **가로지르는** 중복은 정당합니다(바닥과 중간은 다른 층의 수요).
 
@@ -482,7 +483,7 @@ DOE 자재 토큰은 `lot[_slot][:BIN]`이고 서로 다른 값이 **같은 맵�
 **위 6.1과 같은 양을 BIN 부분집합으로 좁힌 것입니다** — "그 BIN의 맵 셀 수"가 아닙니다(그 수는 `cells` 필드로 따로 실립니다). 셀 수로 빼면 이미 불량이거나 이미 전사된 다이가 잔여에 섞여 **조용히 덜 주문하는 계획**이 됩니다. 산술은 `_region_block` 재사용이라 합집합 의미론(이중 감산 없음)이 자동으로 따라옵니다.
 
 * 항목 `status`는 `ok` / `bin_absent` / `unknown` **3종이며 `0`이 어느 것도 대신하지 않습니다.** `0`은 "다 썼다"로 읽히므로 없는 BIN을 `0`으로 돌려주면 §6.2의 방어가 클라 쪽에서 물리적으로 성립할 수 없습니다. 진짜 소진(맵에 그 BIN이 있고 전부 막힘)은 `ok` + `remaining: 0`으로, 부재와 **다른 답**입니다.
-* BIN 축은 `source.bin_map` **선언**으로만 성립합니다. 미선언은 결함이 아니라 `axis:"unavailable"`이며, 컬럼을 추측하지 않습니다 — 라이브 `dt_map.val`은 이미 `origin_area_map`의 **출신 코어 식별자**라 그대로 재사용하면 코어 이름이 BIN 자리에 들어갑니다.
+* BIN 축은 `source.bin_map` **선언**으로만 성립합니다. 미선언은 결함이 아니라 `axis:"unavailable"`이며, 컬럼을 추측하지 않습니다. 🚨 **`source_config_ref`(M1 위임) stage는 `bin_map`을 선언해도 축이 켜지지 않습니다** — 위임 경로는 좌표 집합을 만들지 않으므로 무조건 `unavailable`입니다. BIN 축이 필요하면 inline `source`로 선언하십시오(격리 :8081 E2E로 확인, CONFIG_GUIDE §5.8) — 라이브 `dt_map.val`은 이미 `origin_area_map`의 **출신 코어 식별자**라 그대로 재사용하면 코어 이름이 BIN 자리에 들어갑니다.
 * BIN은 층 경계와 **같은 정수 판정기**로 읽습니다(`'1'`=`'01'`=`' 1 '`, `'0x10'`은 BIN이 아님). 정수가 아닌 셀은 버리지 않고 `unbinned_cells`로 셉니다.
 * `scope=lot`은 토큰의 로트 전체 형태이며 `slot` 동반 시 **400**입니다(같이 세면 그 슬롯이 두 번 계산됩니다 — B10과 같은 규율).
 * **로트 전개(2026-07-27)** — `scope=lot`은 `by_slot`(슬롯 한 줄씩, `map_exists` 포함)과 합산 `bins`를 함께 싣습니다. 전개는 표시 편의가 아니라 **로트 데이터 품질의 진단면**입니다: 랏 스플릿 후 전산에 자재가 남아 있으면 사람이 그 어긋남을 보고 그리드에서 고칩니다(핵심가치 ①). 그래서 슬롯 목록은 **선언된 자재 대장**(`source.lot_membership`)에서 오고, 맵 기준 폴백은 `slots_origin:"map"` + `lot_membership_degraded`로 한계를 말합니다 — 맵으로 세면 *맵이 없는 슬롯*이 사라져 진단이 조용히 '깨끗함'을 보고하기 때문입니다. 열거 불가는 빈 목록이 아니라 `slots: null` + `slots_status:"unknown"`입니다.

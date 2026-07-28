@@ -61,13 +61,20 @@ function boundState(raw) {
   return bandToState({ to: raw });
 }
 
-// STACK — 3-state, and `blank` is NOT an error. A value being typed has no STACK yet;
+// STACK — 4-state, and `blank` is NOT an error. A value being typed has no STACK yet;
 // only a value that is being SAVED needs one. Callers distinguish: the renderer shows
 // blank as "미정", the validator blocks it (V5) because a plan cannot go out half-typed.
+//
+// `marker` (U9, user 2026-07-28): an EXPLICIT 0 declares a MARKER value (상태 표시 값) —
+// its painted cells state a condition (e.g. BASE FAIL), not a layer assignment. No zones,
+// no demand, no rollup row; V6 reports the one contradiction (a marker with zone content).
+// Blank is NOT folded into it: blank is absence, 0 is a declaration. Only exactly 0 —
+// negatives stay invalid.
 function stackState(row) {
   const st = boundState(row && row.stack);
   if (st.state !== 'ok') return { value: null, state: st.state };
-  if (st.value < 1) return { value: st.value, state: 'invalid' };   // 0 and negatives are not heights
+  if (st.value === 0) return { value: 0, state: 'marker' };
+  if (st.value < 0) return { value: st.value, state: 'invalid' };   // negatives are not heights
   return { value: st.value, state: 'ok' };
 }
 
@@ -206,6 +213,10 @@ function midZone(row) {
   const st = stackState(row);
   const has1h = parseMaterialList(row && row.mat_1h).length > 0;
   const hasTop = parseMaterialList(row && row.mat_top).length > 0;
+  // A marker's extent is KNOWN and EMPTY — like the E-row's 0-layer MID, a real zero,
+  // NOT the unknowable `known:false` of an unreadable height. Folding the two together
+  // would either make V5 nag at a declared marker or let a typo'd height demand nothing.
+  if (st.state === 'marker') return { from: null, to: null, size: 0, known: true };
   if (st.state !== 'ok') return { from: null, to: null, size: 0, known: false };
   const from = has1h ? 2 : 1;
   const to = hasTop ? st.value - 1 : st.value;
@@ -217,6 +228,10 @@ function midZone(row) {
 // 16-layer stack becomes 15, which is the whole reason V5 exists.
 function zoneLayers(row, zone) {
   const st = stackState(row);
+  // Marker: [] for every zone, even one with content typed in — the extent is genuinely
+  // empty (zero demand by construction), and the content is V6's contradiction to report,
+  // not the geometry's to legitimize. Distinct from `null` below, which means UNKNOWABLE.
+  if (st.state === 'marker') return [];
   if (st.state !== 'ok') return null;
   const present = parseMaterialList(row && row[zone]).length > 0;
   if (zone === 'mat_1h') return present ? [1] : [];
@@ -245,6 +260,11 @@ function zoneLabel(row, zone) {
 //   V1  MID 구역이 비어 있지 않은데 MID가 없다   ← 조건부. 구역이 0층이면 발동하지 않는다
 //   V4  자재 토큰을 읽을 수 없다
 //   V3  로트 전체와 그 로트의 슬롯이 같은 BIN에 함께 지정됐다   ← 계획 전체의 성질
+//   V6  STACK 0(상태 표시 값)인데 구역에 자재가 있다   ← marker rows answer to V6 ALONE.
+//       A marker's materials are never looked up or demanded, so V4 on them would give a
+//       second, contradictory instruction (fix the token vs remove the materials) — same
+//       suppression pattern as V5-suppresses-V1. They are also absent from V3's pool scan:
+//       a demandless token cannot double-count anything.
 //
 // plan = { values: [{ value, desc, color, stack, mat_1h[], mat_mid[], mat_top[] }] }
 function validateZonePlan(plan) {
@@ -258,6 +278,22 @@ function validateZonePlan(plan) {
     const st = stackState(row);
     const mats = {};
     ZONES.forEach(z => { mats[z] = parseMaterialList(row && row[z]); });
+
+    // V6 — the marker contradiction, and the ONLY rule a marker row answers to. Zone
+    // content on a 0-stack row means one of the two statements is wrong, and only the
+    // user knows which — so it is reported, not silently dropped. The materials are named
+    // in the message because the zone cells render disabled (해당 없음) on a marker row,
+    // which would otherwise make the offending content invisible.
+    if (st.state === 'marker') {
+      const withContent = ZONES.filter(z => mats[z].length > 0);
+      if (withContent.length > 0) {
+        add(blocks, 'V6', `값 '${v}'은(는) STACK 0(상태 표시 값)인데 구역에 자재가 있습니다 — `
+          + withContent.map(z => `${ZONE_LABEL[z]}: ${mats[z].join(', ')}`).join(' · ')
+          + ` — 층이 없는 값은 자재를 가질 수 없습니다. STACK을 채우거나 자재를 지우십시오.`,
+          { value: v, zone: withContent[0] });
+      }
+      return;   // V5/V2/V1/V4/W-DUP-MAT do not fire on a marker row
+    }
 
     // V5 FIRST. With an unreadable height every zone extent is a guess, and a guessed
     // extent is precisely the "screen is fine, number is short" defect this rule exists
@@ -330,6 +366,10 @@ function validateZonePlan(plan) {
     const lotScoped = new Map();     // JSON [lot, bin] -> where it was named
     const slotScoped = new Map();
     rows.forEach(row => {
+      // Marker rows are not in this scan: their tokens demand nothing, so pairing one
+      // with a real row's slot would block a correct plan over wafers nobody asked for.
+      // The content itself is already V6's report.
+      if (stackState(row).state === 'marker') return;
       const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
       ZONES.forEach(z => {
         parseMaterialList(row && row[z]).forEach(raw => {
@@ -388,6 +428,11 @@ function materialRollupRows(plan, paintedOf) {
   const rows = (plan && plan.values) || [];
   const byPool = new Map();
   rows.forEach(row => {
+    // A marker row (STACK 0) is ABSENT from the rollup, not present-with-zero: a
+    // "사용 0" row would read as "planned, costs nothing" and invite an availability
+    // query for material nobody is demanding. Its painted count is a message, not a
+    // multiplier, and its zone content (if any) is V6's contradiction — not inventory.
+    if (stackState(row).state === 'marker') return;
     const v = String((row && row.value) !== undefined && row.value !== null ? row.value : '');
     const painted = Number((paintedOf && paintedOf(v)) || 0);
     ZONES.forEach(z => {
@@ -578,7 +623,8 @@ function planRowToRecord(row) {
       const st = stackState(row);
       // An unreadable STACK exports its RAW text, not a repaired number. The point of a
       // round trip is to hand back what is there so the user can fix it in Excel.
-      return st.state === 'ok' ? String(st.value)
+      // A marker is READABLE and exports its canonical '0'.
+      return (st.state === 'ok' || st.state === 'marker') ? String(st.value)
         : String((row && row.stack) === null || (row && row.stack) === undefined ? '' : row.stack);
     }
     if (ZONES.indexOf(c.id) >= 0) return serializeMaterialList(row && row[c.id]);

@@ -32,20 +32,24 @@
     "",
     "`expect_blocks` / `expect_warns` are SETS of rule ids (order-independent)."
   ],
-  "version": 2,
+  "version": 3,
 
   "stack_cases": [
-    {"$why": "🔴 THE RULE THAT CARRIES B9's HAZARD ACROSS THE REWRITE. The band model derived a value's height from its COVERED layers, so an unassigned top range simply LOWERED max and every other rule passed - a 16-layer stack silently became 15. Zones do not derive the height; STACK states it. That closes the hole only while STACK is READABLE: an unreadable STACK treated as 0, or skipped, reproduces the identical defect behind a screen that looks fine. So it is invalid, it blocks, and it blocks FIRST."},
+    {"$why": "🔴 THE RULE THAT CARRIES B9's HAZARD ACROSS THE REWRITE. The band model derived a value's height from its COVERED layers, so an unassigned top range simply LOWERED max and every other rule passed - a 16-layer stack silently became 15. Zones do not derive the height; STACK states it. That closes the hole only while STACK is READABLE: an unreadable STACK treated as 0, or skipped, reproduces the identical defect behind a screen that looks fine. So it is invalid, it blocks, and it blocks FIRST. STACK 0 (2026-07-28, user): an EXPLICIT 0 is a fourth state, `marker` - the value paints a CONDITION (e.g. BASE FAIL), not a layer assignment. It has no zones, no demand, no rollup row, and the V-rules leave it alone (V6 reports the one contradiction: a marker with zone content). Blank is NOT merged into it - blank is absence, 0 is a declaration."},
     {"name": "plain_integer", "stack": 16, "state": "ok", "value": 16},
     {"name": "integer_string", "stack": "16", "state": "ok", "value": 16},
     {"name": "one_is_a_legal_height", "stack": 1, "state": "ok", "value": 1,
      "$why": "dt_map. The degenerate case is not the invalid case."},
     {"name": "blank_is_not_yet_typed", "stack": "", "state": "blank", "value": null},
     {"name": "whitespace_is_blank_not_zero", "stack": "   ", "state": "blank", "value": null,
-     "$why": "`Number('  ')` is 0. A height of 0 makes every zone empty and every other rule pass."},
+     "$why": "`Number('  ')` is 0. A height of 0 makes every zone empty and every other rule pass. Under the marker semantics this matters MORE, not less: coercing whitespace to 0 would silently turn a half-typed row into a declared marker."},
     {"name": "missing_is_blank", "stack": null, "state": "blank", "value": null},
-    {"name": "zero_is_not_a_height", "stack": 0, "state": "invalid", "value": 0},
-    {"name": "negative_is_not_a_height", "stack": -3, "state": "invalid", "value": -3},
+    {"name": "zero_is_a_marker_not_a_height", "stack": 0, "state": "marker", "value": 0,
+     "$why": "🔴 THE U9 RULE. 0 is not invalid and not blank - it is the user saying 'this value marks a state'. An implementation that keeps refusing 0, or that folds it into blank, fails here."},
+    {"name": "zero_string_is_a_marker_too", "stack": "0", "state": "marker", "value": 0,
+     "$why": "Excel delivers text. The same judge that reads '16' as 16 must read '0' as the marker."},
+    {"name": "negative_is_not_a_height", "stack": -3, "state": "invalid", "value": -3,
+     "$why": "Only EXACTLY 0 is the marker. -3 is still a typo, not a declaration."},
     {"name": "hex_string_is_not_16", "stack": "0x10", "state": "invalid", "value": null,
      "$why": "`Number('0x10')` is 16. Reading it that way once wrote 16 into the DB for text the user had typed."},
     {"name": "decimal_is_refused_not_truncated", "stack": "7.5", "state": "invalid", "value": null},
@@ -86,11 +90,17 @@
      "row": {"value": "X", "stack": "0x10", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
      "mid": {"from": null, "to": null, "size": 0, "known": false},
      "layers": {"mat_1h": null, "mat_mid": null, "mat_top": null},
-     "$why": "🔴 `zoneLayers` returns null, never []. An unreadable height that silently contributed zero layers is how a 16-layer stack becomes 15 - `[]` here would be indistinguishable from the legitimate E-row above."}
+     "$why": "🔴 `zoneLayers` returns null, never []. An unreadable height that silently contributed zero layers is how a 16-layer stack becomes 15 - `[]` here would be indistinguishable from the legitimate E-row above."},
+
+    {"name": "marker_stack_zero_has_no_zones_by_construction",
+     "row": {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+     "mid": {"from": null, "to": null, "size": 0, "known": true},
+     "layers": {"mat_1h": [], "mat_mid": [], "mat_top": []},
+     "$why": "🔴 THE MIRROR OF THE ROW ABOVE, AND THE TWO MUST NOT COLLAPSE. A marker's extents are KNOWN and EMPTY ([] / known:true - like the E-row, a real zero), while an unreadable height is UNKNOWABLE (null / known:false). Fold marker into unreadable and V5 nags at a legal row; fold unreadable into marker and a typo'd height silently demands nothing behind a clean screen. The MID material here is deliberate: even with content typed in, the extent stays [] - the contradiction is V6's to report, not the geometry's to legitimize."}
   ],
 
   "plan_cases": [
-    {"$why": "Five blocking rules replaced ten. V5 STACK unreadable | V2 STACK 1 with both ends | V1 MID missing while its zone is non-empty | V4 unreadable material token | V3 whole lot + one of its own slots in one BIN."},
+    {"$why": "Five blocking rules replaced ten, plus V6 for markers. V5 STACK unreadable | V2 STACK 1 with both ends | V1 MID missing while its zone is non-empty | V4 unreadable material token | V3 whole lot + one of its own slots in one BIN | V6 marker (STACK 0) with zone content. All are advisory in the same way: they land next to the row, they do not gate the save."},
 
     {"name": "dt_map_plan_is_silent",
      "values": [{"value": "DT", "stack": 1, "mat_1h": [], "mat_mid": ["DTM4_11"], "mat_top": []}],
@@ -119,7 +129,31 @@
 
     {"name": "blank_stack_blocks_too",
      "values": [{"value": "N", "stack": "", "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []}],
-     "expect_blocks": ["V5"], "expect_warns": []},
+     "expect_blocks": ["V5"], "expect_warns": [],
+     "$why": "🔴 UNCHANGED BY U9, AND THAT IS THE POINT. Blank is 'not typed yet' and still blocks; 0 is a declaration and passes. An implementation that reads blank as 0 turns every half-typed row into a marker and this case is the only one that catches it."},
+
+    {"name": "marker_row_alone_is_silent",
+     "values": [{"value": "F", "stack": 0, "mat_1h": [], "mat_mid": [], "mat_top": []}],
+     "expect_blocks": [], "expect_warns": [],
+     "$why": "🔴 THE U9 CONTRACT. STACK 0 = 상태 표시 값 (e.g. BASE FAIL): painted cells state a condition, not a layer assignment. V5 must NOT fire - a validator that nags at a declared marker teaches people to ignore it. And V1 must not fire either: a marker has no MID zone to be missing."},
+
+    {"name": "marker_with_zone_content_reports_the_contradiction",
+     "values": [{"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []}],
+     "expect_blocks": ["V6"], "expect_warns": [],
+     "$why": "A value with no layers cannot carry materials - one of the two statements is wrong, and only the user knows which. V6 REPORTS (advisory, like every rule since the save stopped gating on validation); it does not silently drop the materials, because they may be the half the user meant to keep."},
+
+    {"name": "marker_contradiction_is_the_only_message_on_that_row",
+     "values": [{"value": "F", "stack": 0, "mat_1h": ["ABC_"], "mat_mid": ["M_01"], "mat_top": []}],
+     "expect_blocks": ["V6"], "expect_warns": [],
+     "$why": "🔴 V4 MUST NOT ALSO FIRE. The token 'ABC_' is unreadable, but on a marker row no token will ever be looked up or demanded - reporting V4 next to V6 gives two contradictory instructions about one row (fix the token vs remove the materials). Same suppression pattern as V5-suppresses-V1."},
+
+    {"name": "marker_materials_do_not_participate_in_V3",
+     "values": [
+       {"value": "A", "stack": 8, "mat_1h": [], "mat_mid": ["MID1_03"], "mat_top": []},
+       {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["MID1"], "mat_top": []}
+     ],
+     "expect_blocks": ["V6"], "expect_warns": [],
+     "$why": "🔴 THE CONTROL FOR V6's EXEMPTION SCOPE. Without the marker row this plan is clean; the marker's 'MID1' demands nothing, so pairing it with A's 'MID1_03' as a V3 double-count would block a plan over wafers nobody is asking for. V6 already names the real problem."},
 
     {"name": "unreadable_material_token_blocks",
      "values": [{"value": "A", "stack": 4, "mat_1h": [], "mat_mid": ["MID2_07:"], "mat_top": []}],
@@ -235,7 +269,13 @@
      "row": {"value": "A", "stack": 16, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
      "zone": "mat_mid", "painted": 0,
      "expect": {"layers": 16, "total": 0, "share": 0},
-     "$why": "층 수는 그대로 16이다 — 구조는 있고 그림이 없을 뿐이다."}
+     "$why": "층 수는 그대로 16이다 — 구조는 있고 그림이 없을 뿐이다."},
+
+    {"name": "marker_value_demands_nothing_however_much_is_painted",
+     "row": {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+     "zone": "mat_mid", "painted": 96,
+     "expect": {"layers": 0, "total": 0, "share": 0},
+     "$why": "🔴 The painted count is the MESSAGE (96 cells are in that state), not a multiplier. A marker whose painted cells produced demand would order material for a condition - and 96 cells x anything is exactly the plausible-looking wrong number this file exists to forbid."}
   ],
 
   "rollup_cases": [
@@ -278,7 +318,16 @@
      "values": [{"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["M_01", "ABC_"], "mat_top": []}],
      "painted": {"A": 5},
      "expect": [{"pool": ["M", "01", 1], "used": 5}],
-     "$why": "V4 blocks the save. Here it must not become a row with a fabricated identity - but the DENOMINATOR still counts it (10/2 = 5), because the user typed two materials and silently re-dividing by one would change a number they can see."}
+     "$why": "V4 blocks the save. Here it must not become a row with a fabricated identity - but the DENOMINATOR still counts it (10/2 = 5), because the user typed two materials and silently re-dividing by one would change a number they can see."},
+
+    {"name": "marker_row_is_absent_from_the_rollup_entirely",
+     "values": [
+       {"value": "A", "stack": 2, "mat_1h": [], "mat_mid": ["M_01"], "mat_top": []},
+       {"value": "F", "stack": 0, "mat_1h": [], "mat_mid": ["MID9"], "mat_top": []}
+     ],
+     "painted": {"A": 6, "F": 50},
+     "expect": [{"pool": ["M", "01", 1], "used": 12}],
+     "$why": "🔴 ABSENT, not present-with-zero. A 'MID9 · 사용 0' row would read as 'this material is planned and costs nothing', invite an availability query for it, and grow the rollup by one row per marker. The marker's materials are a V6 contradiction, not a demand - table ② must not launder them into inventory. F's painted 50 is deliberately larger than A's 6 so a rollup that counts the marker cannot hide."}
   ],
 
   "remaining_cases": [
@@ -452,7 +501,11 @@
 
     {"name": "a_desc_containing_a_tab_is_quoted_and_comes_back_whole",
      "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nB\t4\t\"a\tb\"\t\tM_01\t",
-     "$why": "종전 직렬화기는 탭을 공백으로 **바꿔** 내보냈다 — 조용한 데이터 손실이고, 복사한 칸을 다시 붙여넣어도 같은 칸이 나오지 않던 이유다."}
+     "$why": "종전 직렬화기는 탭을 공백으로 **바꿔** 내보냈다 — 조용한 데이터 손실이고, 복사한 칸을 다시 붙여넣어도 같은 칸이 나오지 않던 이유다."},
+
+    {"name": "marker_zero_stack_round_trips_as_typed",
+     "tsv": "VALUE\tSTACK\tDESC\t1H\tMID\tTOP\nF\t0\tBASE FAIL 표시\t\t\t\nB\t16\t라이너\tADFE1H_01\tMID1\tTOP1",
+     "$why": "🔴 U9 IN THE USER'S OWN MEDIUM. A '0' typed in Excel must come back as '0' - not blanked (marker folded into absence), not refused (marker still treated as invalid), not 'repaired'. The normal B row rides along so a serializer that special-cased markers by dropping columns would misalign it."}
   ],
 
   "legacy_band_cases": [

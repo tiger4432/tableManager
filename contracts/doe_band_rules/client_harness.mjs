@@ -223,6 +223,12 @@ CONSUMED.add('plan_cases');
   if (!pass || !block) die('fixture is inert: V1 needs BOTH an empty-MID-zone pass and a non-empty-MID-zone block. With only one of them an unconditional rule passes every case.');
   const dt = spec.plan_cases.some(c => c.name === 'dt_map_plan_is_silent');
   if (!dt) die('fixture is inert: the dt_map degenerate case (STACK 1, MID only) must be pinned as SILENT, or a validator that nags at it would pass.');
+  // The marker (STACK 0) axis needs the same pair: a bare marker pinned SILENT and a
+  // marker-with-content pinned V6. With only one half, either "0 is still invalid" or
+  // "V6 never fires" passes every remaining case.
+  const markerPass = spec.plan_cases.some(c => c.name === 'marker_row_alone_is_silent');
+  const markerV6 = spec.plan_cases.some(c => c.name === 'marker_with_zone_content_reports_the_contradiction');
+  if (!markerPass || !markerV6) die('fixture is inert: the marker axis needs BOTH a silent bare-marker case and a V6 contradiction case.');
 }
 for (const c of spec.plan_cases) {
   if (!c.values) continue;
@@ -429,7 +435,8 @@ if (JSON_OUT) {
   console.log('  vectors : contracts/doe_band_rules/vectors.json');
   console.log('  rules   : V1 MID required when its zone is non-empty · V2 STACK 1 with both ends ·');
   console.log('            V3 whole lot + its own slot in one BIN · V4 unreadable material token ·');
-  console.log('            V5 STACK not a positive integer (carries the retired B9 hazard)');
+  console.log('            V5 STACK not a positive integer (carries the retired B9 hazard) ·');
+  console.log('            V6 marker (STACK 0) with zone content — markers answer to V6 alone');
   console.log('  excel   : VALUE·STACK·DESC·1H·MID·TOP — COLOR and 칠함 are outside the contract');
 } else {
   console.log(`DOE zone rules: ${failures.length} DIVERGENCE(S) of ${compared} assertions\n`);
