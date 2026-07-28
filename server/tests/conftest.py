@@ -104,6 +104,22 @@ def db_session():
                 "target_qty": "number",
                 "due_date": "string"
             }
+        },
+        # [U6] Map-shaped table WITH a declared map_key_columns contract - exercises the
+        # declared replace_map scope path (raw_table_1 above exercises the legacy
+        # fallback). Name prefixed 'rmscope_test_' so it can never collide with a real
+        # table in the user's gitignored config (see server-pm memory: bonding_log trap).
+        "rmscope_test_map": {
+            "business_key": "die_key",
+            "map_key_columns": ["ref_table", "map_key"],
+            "column_types": {
+                "die_key": "string",
+                "ref_table": "string",
+                "map_key": "string",
+                "x": "number",
+                "y": "number",
+                "val": "string"
+            }
         }
     }
     from database import models, crud

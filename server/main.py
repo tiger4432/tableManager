@@ -1698,7 +1698,14 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         "column_types": col_types,
         "business_key": config.get("business_key", ""),
         "composite_key_source": config.get("composite_key_source", []),
-        "map_key_columns": config.get("map_key_columns", [])
+        "map_key_columns": config.get("map_key_columns", []),
+        # Site declaration for the log-shaped push gate (map editor Gate 4): true means
+        # "this table has data columns outside the map contract, but an editor push is a
+        # KNOWN flow here (e.g. R&D manual-measurement overwrite) - downgrade the hard
+        # refusal to a one-shot loss-acknowledging confirm". Absent/false keeps the block.
+        # Strict `is True`: a config typo ("true"/"false" strings, 1) must not unlock
+        # destruction - only the JSON boolean true counts, same as the client's `=== true`.
+        "map_push_ok": config.get("map_push_ok") is True
     }
 
 
@@ -1862,12 +1869,30 @@ async def apply_batch_updates_endpoint(
 ):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
+    # [U6] replace_map honesty contract: crud fills this with the EXACT purge filters and
+    # the purged row count (same resolver that built the DELETE), and it is echoed back
+    # as response.scope. No derivable scope raises ValueError in crud -> 400 here, never
+    # the historical silent 200-noop.
+    replace_report = {} if batch.replace_map else None
     try:
-        results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(crud.apply_batch_updates, db, table_name, batch)
+        results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
+            crud.apply_batch_updates, db, table_name, batch, replace_report
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-    if results:
+
+    replace_scope = None
+    if replace_report is not None:
+        replace_scope = {
+            "filters": replace_report.get("filters"),
+            "deleted": replace_report.get("deleted", 0),
+            # Rows newly created by this payload (a scope wipe with an empty payload
+            # legitimately reports inserted: 0 - the caller must surface that).
+            "inserted": sum(1 for _, is_new in results if is_new),
+        }
+
+    # A pure scope wipe (deleted > 0, no upserts) must still invalidate the count cache.
+    if results or (replace_scope and replace_scope["deleted"] > 0):
         invalidate_table_cache(table_name)
     
     cfg = crud.TABLE_CONFIG.get(table_name, {})
@@ -1938,11 +1963,14 @@ async def apply_batch_updates_endpoint(
         background_tasks.add_task(async_broadcast)
     
     return {
-        "status": "success", 
-        "updated_count": len(results), 
-        "change_count": len(changed_cells), 
+        "status": "success",
+        "updated_count": len(results),
+        "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
-        "created_logs": created_logs
+        "created_logs": created_logs,
+        # [U6] null unless replace_map; otherwise {filters, deleted, inserted} - the exact
+        # purge scope used, so a caller can detect "deleted 0 while expecting replacement".
+        "scope": replace_scope
     }
 
 

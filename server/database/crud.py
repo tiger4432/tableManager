@@ -1124,8 +1124,88 @@ def apply_row_update_internal(
     return row, is_new, changed_cols
 
 
-def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
-    """통합 업데이트를 배치로 처리합니다."""
+def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch) -> Optional[dict]:
+    """Resolve the exact {column: value} filters a replace_map purge will DELETE by.
+
+    Single source of truth for the purge scope: apply_batch_updates deletes with the
+    returned filters and the API layer echoes the same dict to the caller, so what the
+    client is told IS what was deleted (both sides call this pure function - no drift).
+
+    Resolution order:
+      1. batch.scope (explicit) - validated strictly: every key must be a declared
+         column, inside the table's map-key contract, physically on the model, and
+         carry a non-empty value. Any violation raises ValueError - a dropped filter
+         would WIDEN a DELETE, so nothing is silently skipped on this path.
+      2. batch.updates[0] (derived) - map_key_columns when declared, else the legacy
+         fallback (every non-coordinate column that the first payload row carries).
+
+    Returns None when no filter can be resolved. Callers MUST treat None as a refusal:
+    an empty filter set would either delete the whole table or (the historical bug)
+    delete nothing while still answering 200 - rows then accumulate silently.
+    """
+    config = TABLE_CONFIG.get(table_name, {})
+    col_types = config.get("column_types", {})
+    map_key_cols = config.get("map_key_columns", [])
+    col_types_lower = {k.lower(): k for k in col_types.keys()}
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+
+    if map_key_cols and isinstance(map_key_cols, list) and len(map_key_cols) > 0:
+        target_cols = [str(c) for c in map_key_cols]
+    else:
+        skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata", "leg"}
+        target_cols = [c for c in col_types.keys() if c.lower() not in skip_cols]
+    allowed_lower = {c.lower() for c in target_cols}
+
+    if batch.scope is not None:
+        resolved = {}
+        for c_name, c_val in batch.scope.items():
+            real_col_name = col_types_lower.get(str(c_name).lower())
+            if real_col_name is None:
+                raise ValueError(
+                    f"replace_map scope column '{c_name}' is not a declared column of '{table_name}'"
+                )
+            if str(c_name).lower() not in allowed_lower:
+                raise ValueError(
+                    f"replace_map scope column '{c_name}' is outside the map-key contract of "
+                    f"'{table_name}' (allowed: {sorted(target_cols)})"
+                )
+            if c_val is None or str(c_val).strip() == "":
+                raise ValueError(f"replace_map scope column '{c_name}' has an empty value")
+            if table_model is not None and getattr(table_model, real_col_name, None) is None:
+                raise ValueError(
+                    f"replace_map scope column '{real_col_name}' does not physically exist on '{table_name}'"
+                )
+            resolved[real_col_name] = c_val
+        return resolved or None
+
+    if not batch.updates:
+        return None
+    sample_item = batch.updates[0]
+    resolved = {}
+    for target_col in target_cols:
+        real_col_name = col_types_lower.get(target_col.lower())
+        if not real_col_name:
+            continue
+        # Mirrors the historical derived-path behaviour: a config column missing on the
+        # model is skipped (config/model mismatch is transient during schema rollout).
+        if table_model is not None and getattr(table_model, real_col_name, None) is None:
+            continue
+        for c_name, c_val in sample_item.updates.items():
+            if c_name.lower() == real_col_name.lower() and c_val is not None and str(c_val).strip() != "":
+                resolved[real_col_name] = c_val
+                break
+    return resolved or None
+
+
+def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
+                        replace_report: Optional[dict] = None):
+    """통합 업데이트를 배치로 처리합니다.
+
+    replace_report: optional out-param (dict). When batch.replace_map is set and a dict
+    is passed, it is filled with {"filters": <scope dict>, "deleted": <purged row count>}
+    so the API layer can report the exact purge honestly without changing this
+    function's widely-unpacked 4-tuple return signature (worker/parser/test call sites).
+    """
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     
     user_val = batch.updates[0].updated_by if batch.updates else "system"
@@ -1139,65 +1219,58 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         target_ids = [u.row_id for u in batch.updates if u.row_id]
         target_bks = [str(u.business_key_val).strip() for u in batch.updates if u.business_key_val]
 
-        deleted_row_ids = []
-        if batch.replace_map and batch.updates:
-            sample_item = batch.updates[0]
-            config = TABLE_CONFIG.get(table_name, {})
-            col_types = config.get("column_types", {})
-            map_key_cols = config.get("map_key_columns", [])
-            
-            meta_conditions = []
-            meta_dict_log = {}
-            col_types_lower = {k.lower(): k for k in col_types.keys()}
-            
-            # Unconditionally restrict filter columns strictly to map_key_columns
-            if map_key_cols and isinstance(map_key_cols, list) and len(map_key_cols) > 0:
-                target_cols = [c for c in map_key_cols]
-            else:
-                skip_cols = {"x", "y", "col_x", "col_y", "val", "code", "die_id", "grid_metadata", "leg"}
-                target_cols = [c for c in col_types.keys() if c.lower() not in skip_cols]
-
-            for target_col in target_cols:
-                real_col_name = col_types_lower.get(target_col.lower())
-                if not real_col_name:
-                    continue
-                for c_name, c_val in sample_item.updates.items():
-                    if c_name.lower() == real_col_name.lower() and c_val is not None and str(c_val).strip() != "":
-                        attr = getattr(table_model, real_col_name, None)
-                        if attr is not None:
-                            meta_conditions.append(attr == c_val)
-                            meta_dict_log[real_col_name] = c_val
-                        break
-            
-            if meta_conditions:
-                from sqlalchemy import and_
-                matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
-                deleted_row_ids = [r[0] for r in matching_rows if r[0]]
-                
-                if deleted_row_ids:
-                    # 1. Purge cell sources & overwrites for old map rows
-                    db.query(models.CellSource).filter(
-                        models.CellSource.table_name == table_name,
-                        models.CellSource.row_id.in_(deleted_row_ids)
-                    ).delete(synchronize_session=False)
-
-                    db.query(models.CellOverwrite).filter(
-                        models.CellOverwrite.table_name == table_name,
-                        models.CellOverwrite.row_id.in_(deleted_row_ids)
-                    ).delete(synchronize_session=False)
-
-                    # 2. Purge main dynamic table rows
-                    db.query(table_model).filter(
-                        table_model.row_id.in_(deleted_row_ids)
-                    ).delete(synchronize_session=False)
-                    
-                    db.flush()
-                
-                logger.info(
-                    f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
-                    f"Filters: {meta_dict_log} | Purged Old Rows: {len(deleted_row_ids)} | "
-                    f"Incoming Active Cells: {len(batch.updates)}"
+        if batch.replace_map:
+            # [U6] The purge scope comes from ONE shared resolver (also called by the API
+            # layer to echo the scope in the response). No resolvable scope = honest 4xx
+            # refusal instead of the historical silent 200-noop that deleted nothing and
+            # let map rows accumulate. An explicit batch.scope with an empty payload is
+            # the legitimate erase-all of that scope.
+            scope_filters = derive_replace_map_scope(table_name, batch)
+            if not scope_filters:
+                raise ValueError(
+                    f"replace_map on '{table_name}' could not derive a purge scope: "
+                    f"declare 'map_key_columns' in table_config and send their values in the "
+                    f"payload (or pass an explicit 'scope' object). Refusing instead of "
+                    f"silently replacing nothing."
                 )
+
+            meta_conditions = [
+                getattr(table_model, col_name) == col_val
+                for col_name, col_val in scope_filters.items()
+            ]
+
+            from sqlalchemy import and_
+            matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
+            purged_row_ids = [r[0] for r in matching_rows if r[0]]
+
+            if purged_row_ids:
+                # 1. Purge cell sources & overwrites for old map rows
+                db.query(models.CellSource).filter(
+                    models.CellSource.table_name == table_name,
+                    models.CellSource.row_id.in_(purged_row_ids)
+                ).delete(synchronize_session=False)
+
+                db.query(models.CellOverwrite).filter(
+                    models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id.in_(purged_row_ids)
+                ).delete(synchronize_session=False)
+
+                # 2. Purge main dynamic table rows
+                db.query(table_model).filter(
+                    table_model.row_id.in_(purged_row_ids)
+                ).delete(synchronize_session=False)
+
+                db.flush()
+
+            if replace_report is not None:
+                replace_report["filters"] = scope_filters
+                replace_report["deleted"] = len(purged_row_ids)
+
+            logger.info(
+                f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
+                f"Filters: {scope_filters} | Purged Old Rows: {len(purged_row_ids)} | "
+                f"Incoming Active Cells: {len(batch.updates)}"
+            )
 
         from sqlalchemy import or_
         existing_rows_list = db.query(table_model).filter(

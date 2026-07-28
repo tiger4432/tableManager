@@ -1253,14 +1253,10 @@ function renderMetadataInputs() {
     }
   }
 
-  // Fallback: system cols filter
+  // Fallback: system cols filter (same classification the push gate uses -
+  // one list, one answer; see PUSH_SYSTEM_COLUMNS)
   if (!searchCols || searchCols.length === 0) {
-    const systemCols = [
-      'created_at', 'updated_at', 'row_id', 'business_key_val',
-      'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
-      'grid_metadata'
-    ];
-    searchCols = cols.filter(col => !systemCols.includes(col) && col !== xCol && col !== yCol && col !== valCol);
+    searchCols = cols.filter(col => !PUSH_SYSTEM_COLUMNS.includes(col) && col !== xCol && col !== yCol && col !== valCol);
   }
 
   searchCols.forEach(col => {
@@ -4022,7 +4018,106 @@ function fillGrid() {
 // ----------------------------------------------------
 // PUSH Map Data to Backend
 // ----------------------------------------------------
+
+// [Gate 4 - log-shaped push target] Columns the push payload can NEVER carry or
+// that the server manages itself. Union of the two existing classifications:
+// the schema endpoint's appended system tail + row identity (main.py:get_table_schema)
+// and the write path's skip list (crud.py apply_row_update_internal system_cols,
+// which also skips id/updated_by). grid_metadata is included because pushMapData
+// serializes it explicitly whenever the column exists.
+const PUSH_SYSTEM_COLUMNS = [
+  'created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'business_key_val',
+  'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
+  'grid_metadata'
+];
+
+// [Gate 4] Which of the target table's declared columns would a map push DESTROY?
+// A ⚡ Push is `replace_map`: every row in the map-key scope is deleted, then rewritten
+// from rows that carry only (map keys, x, y, val). Any other data column on the target
+// (a log table's business key, timestamps-as-data, second coordinate pairs, equipment
+// columns ...) comes back NULL on every row - viewing such a table as a map is fine,
+// pushing into it is destruction.
+//
+// A column is COVERED (survives the push) iff it is:
+//   - a map_key_column (written as the constant map scope),
+//   - the currently bound x / y / val column,
+//   - a system column the server manages (PUSH_SYSTEM_COLUMNS),
+//   - the business_key WHEN it is composite-derived from covered columns only -
+//     crud.apply_row_update_internal recomputes it from composite_key_source on
+//     write, so e.g. bonding_map's pkg_id (base_x_y) survives even though the
+//     payload never carries it. dt_log's dt_id has no composite source: not covered.
+// Everything else in schema.columns is an unprotected data column -> refuse.
+function getUnprotectedPushColumns(schema, xCol, yCol, valCol) {
+  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];
+  const covered = new Set([
+    ...(Array.isArray(schema && schema.map_key_columns) ? schema.map_key_columns : []),
+    xCol, yCol, valCol,
+    ...PUSH_SYSTEM_COLUMNS
+  ]);
+  const bk = schema && schema.business_key;
+  const src = Array.isArray(schema && schema.composite_key_source) ? schema.composite_key_source : [];
+  if (bk && src.length > 0 && src.every(c => covered.has(c))) covered.add(bk);
+  return cols.filter(c => !covered.has(c));
+}
+
+// [Gate 4] Full gate decision for one push target. One function so the harness
+// executes the same branch pushMapData acts on:
+//   'clean'   - no data columns outside the map contract: no gate friction at all.
+//   'confirm' - extras exist BUT the site declared `map_push_ok: true` on the table
+//               (table_config -> /schema): one loss-acknowledging confirm, then proceed.
+//   'block'   - extras exist and no declaration: hard refusal.
+function logShapedPushDecision(schema, xCol, yCol, valCol) {
+  const extras = getUnprotectedPushColumns(schema, xCol, yCol, valCol);
+  if (extras.length === 0) return { mode: 'clean', extras };
+  return { mode: (schema && schema.map_push_ok === true) ? 'confirm' : 'block', extras };
+}
+
 async function pushMapData() {
+  // [Data-protection gate 4 - log-shaped target] Fourth member of the gate family
+  // (zone-columns-missing / legacy-unreadable / frame-contrast): refuse, don't confirm.
+  // Placed before every dialog - the user should not answer a single question on a
+  // push that cannot be allowed. Near-miss 2026-07-28: dt_log opened as a map (works
+  // for viewing), ⚡ Push would have replace_map'ed the scoped REAL log rows into
+  // editor-fabricated (key, x, y, val) cells - dt_id, eventtime, core lot/slot, cx/cy,
+  // dt_eqp all gone.
+  //
+  // ONE declared exception (`map_push_ok: true` in the table's table_config entry,
+  // served via /schema): sites with a real editor-overwrite flow into such tables
+  // (R&D manual measurements into eds_fail_map / core_defect_map) get a single
+  // loss-acknowledging confirm instead of the block. The declaration is the site
+  // saying "the loss is understood and intended here" - absent, the hard refusal
+  // stands. Removing the declaration re-locks the table (production cutover).
+  const gate4 = logShapedPushDecision(
+    tableSchema, el.colMapX.value, el.colMapY.value, el.colMapVal.value);
+  if (gate4.mode !== 'clean') {
+    const extraDataCols = gate4.extras;
+    const shown = extraDataCols.slice(0, 8).join(', ')
+      + (extraDataCols.length > 8 ? ` 외 ${extraDataCols.length - 8}개` : '');
+    if (gate4.mode === 'confirm') {
+      console.warn(`[Map Editor] push into '${selectedTable}' with map_push_ok declared - `
+        + `${extraDataCols.length} data column(s) outside the map contract will be lost on `
+        + `replaced rows: ${extraDataCols.join(', ')}`);
+      if (!confirm(
+        `이 테이블('${selectedTable}')은 맵 계약 외 컬럼(${extraDataCols.length}개: ${shown})을 갖고 있습니다.\n\n`
+        + `이 Push로 교체되는 행들의 그 컬럼 값이 소실됩니다. 계속하시겠습니까?`
+      )) {
+        return;
+      }
+    } else {
+      console.warn(`[Map Editor] push refused - '${selectedTable}' is log-shaped: `
+        + `${extraDataCols.length} data column(s) outside the map contract would be `
+        + `destroyed by replace_map: ${extraDataCols.join(', ')}`);
+      alert(
+        `적재를 중단했습니다 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형 구조).\n\n`
+        + `이 테이블에는 맵 계약(맵 키 + X/Y/값) 밖의 데이터 컬럼이 ${extraDataCols.length}개 있습니다:\n`
+        + `· ${shown}\n\n`
+        + `덮어쓰기 적재(Clean Replace)는 대상 범위의 실제 행을 전부 삭제한 뒤 격자 셀(키·좌표·값)만으로 `
+        + `다시 쓰므로, 위 컬럼의 값이 전부 파괴됩니다.\n`
+        + `이 테이블은 맵 조회(오버레이 소스)로만 사용하십시오. 적재가 필요하면 전용 맵 테이블을 만들어 사용해야 합니다.`
+      );
+      return;
+    }
+  }
   // [Push 가드 — 유일하게 남긴 정체성 마찰] 로드한 맵과 적재 대상이 **실제로 어긋났을 때만** 1회 묻는다.
   // replace_map은 맵 키 일치 행을 전량 삭제 후 재기록하므로, 키가 어긋난 채 적재하면
   // 남의 실맵이 통째로 사라진다(이슈 #14ⓐ와 뿌리 동일).

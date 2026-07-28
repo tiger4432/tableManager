@@ -164,11 +164,11 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 모든 데이터 변경(수동 편집·파일 인제션·체인·맵 저장)이 이 함수 하나로 수렴합니다. (함수 위치는 [CODE_MAP §2](./CODE_MAP.md#2-serverdatabasecrudpy--레이어링-코어))
 
 1. `transaction_context`(user/tx/source ContextVar)로 래핑.
-2. **replace_map 모드** — 맵 저장 시 `map_key_columns` 기준으로 기존 행·`CellSource`·`CellOverwrite`를 bulk purge 후 신규 활성 칩만 재적재(유령 셀 0%). `deleted_row_ids` 반환.
+2. **replace_map 모드** — 맵 저장 시 `map_key_columns` 기준으로 기존 행·`CellSource`·`CellOverwrite`를 bulk purge 후 신규 활성 칩만 재적재(유령 셀 0%). purge 범위는 `derive_replace_map_scope()` 단일 리졸버가 결정한다(요청의 명시적 `scope` 필드 우선, 없으면 `updates[0]`에서 파생). **범위를 못 잡으면 `ValueError` → 라우터 400** — 과거의 "아무것도 안 지우고 200" 무음 no-op은 폐기됐다(2026-07-28 U6). 명시적 `scope` + 빈 `updates`는 합법적 전량 소거이며, 응답 `scope: {filters, deleted, inserted}`로 실제 사용된 필터와 건수를 정직하게 알린다(라우터가 같은 리졸버로 echo).
 3. 기존 행을 `row_id`/`business_key_val`로 `row_cache`에 적재하고 소스·오버라이트를 bulk 프리로드.
 4. 셀별 `apply_row_update_internal` → `CellSource`에 값 기록 → `compute_priority_value`로 승자 재계산 → 네이티브 컬럼 + `CellOverwrite` 갱신. dialect별 `ON CONFLICT` upsert로 flush.
 5. **collision_merge** — 비즈니스 키 변경 충돌 시 사용자 오버라이트 보존·병합, `manual_priority_source="collision_merge"` 태깅. → [data_preservation 규율](../guide/data_preservation_and_signature_change.md)
-6. 반환: `(results[(row,is_new)], changed_cells, created_logs, deleted_row_ids)`.
+6. 반환: `(results[(row,is_new)], changed_cells, created_logs, deleted_row_ids)`. — replace_map의 purge 범위·건수는 선택적 out-param `replace_report`(dict)로 전달된다(4-튜플 언패킹 호출부를 깨지 않기 위한 하위 호환 채널; 라우터만 넘긴다).
 
 > ⚠️ 이 반환 시그니처를 바꾸면 `main.py` 라우터·`chain_ingestion_worker.py`·`server/tests/` 언패킹을 **전수 연쇄 갱신**해야 합니다. → [시그니처 변경 규율](../guide/data_preservation_and_signature_change.md)
 

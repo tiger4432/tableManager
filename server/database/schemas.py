@@ -85,6 +85,11 @@ class GeneralUpdateBatch(BaseModel):
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
     silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략
     replace_map: bool = False            # True일 경우 동일 맵의 기존 레코드를 클린 삭제 후 재기록
+    # [U6] Explicit replace_map purge scope: {column: value}. When present it is used
+    # verbatim for the purge DELETE (validated against the table's map-key contract);
+    # when absent the scope is derived from updates[0] as before. An explicit scope
+    # with an empty `updates` list is the intentional erase-all of that scope.
+    scope: Optional[Dict[str, Any]] = None
 
 class RowDeleteBatch(BaseModel):
     row_ids: list[str]

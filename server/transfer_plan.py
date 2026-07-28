@@ -396,7 +396,8 @@ def _status_is_degraded(status) -> bool:
 
     정상: "connected", "connected(aligned:180)" 등 align 마커만 붙은 경우.
     강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)",
-          "connected(count_only)"(transfer_log가 좌표 없이 카운트만 제공 — 집합 감산 불가),
+          "connected(count_only)"(transfer_log 또는 self-frame fail 원천이 좌표 없이
+          카운트만 제공 — 집합 감산 불가),
           "connected(column_unresolved:...)"(선언된 컬럼이 모델에 없음 — config 오타 축).
     """
     if not status or status == "connected":
@@ -1244,6 +1245,11 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # ---- fail_sources ----
     fail_breakdown = {}
     fail_union = set()               # 타깃 좌표 기준 fail 칩 합집합
+    # [FIX 2026-07-28] Sibling of used_count_only: a self-frame fail source bound
+    # without usable x/y on the origin_rows path contributes a count but no set —
+    # flag it so by_core stops deriving per-core fail/remaining from a union that
+    # is missing those chips.
+    fail_count_only = False
     fail_sources = source_cfg.get("fail_sources") or {}
     # [확장성] 코어별 칩 인덱스를 1회 구축해 투영을 선형화한다
     # (코어마다 origin_rows 전체를 훑으면 O(코어수 × 칩수) — 테이프당 수백 코어에서 폭발)
@@ -1287,13 +1293,36 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                     continue
                 cnt = int(db.query(model).filter(*filters).count())
                 fail_breakdown[name] = cnt
-                statuses[name] = _demote_unresolved("connected", cols)
+                status = "connected"
                 if "x" in cols and "y" in cols:
                     pts, trunc = _fetch_pairs(db, cols, filters, cap=MAX_FAIL_POINTS,
                                               tag=f"fail:{name}")
                     fail_union.update(pts)
                     if trunc:
                         truncations.append({"role": name, "cap": MAX_FAIL_POINTS})
+                elif origin_rows is not None:
+                    # [FIX 2026-07-28] Sibling of the count_only transfer_log fix:
+                    # on the origin_rows path remaining is SET-based
+                    # (total − |fail_union ∪ used_set|), so a self-frame fail
+                    # source without usable x/y feeds fail_breakdown but nothing
+                    # into fail_union — the subtraction silently misses these
+                    # chips and remaining over-reports (same phantom class).
+                    # Demote so the degradation engine nulls remaining.
+                    # Upper-bound invariant: the missing points can only SHRINK
+                    # the union, and dropping a subtraction term only raises the
+                    # computed value, so total − |union| ≥ true remaining — the
+                    # served upper bound stays genuine. We deliberately do NOT
+                    # subtract cnt instead: chip identity is unknown, so it may
+                    # overlap used_set/other fail sources and over-subtract,
+                    # which would break the bound downward. The count itself is
+                    # real and stays in fail_breakdown (mirror of `transferred`
+                    # staying under a count_only transfer_log).
+                    fail_count_only = True
+                    status = "connected(count_only)"
+                # else: fallback path (origin_rows is None) — remaining is the
+                # count-based total − Σfail − used, so cnt subtracts correctly
+                # without coordinates: stays plain connected, no demotion.
+                statuses[name] = _demote_unresolved(status, cols)
             except Exception as e:
                 logger.warning("[TransferPlan] fail source '%s' query failed: %s", name, e)
                 statuses[name] = "missing"
@@ -1394,9 +1423,14 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 # convention of the area_map path — never a fake 0. The remaining
                 # derived from it is nulled too (blocked misses the used term, so
                 # a bare number here would be the same phantom at per-core level).
-                "total": a["total"], "fail": a["fail"],
+                # Sibling: a count_only self-frame fail source leaves its chips
+                # out of fail_union, so per-core fail would under-report and the
+                # remaining derived from `blocked` would over-report — null both;
+                # `used` stays real (it comes from used_set, unaffected).
+                "total": a["total"],
+                "fail": None if fail_count_only else a["fail"],
                 "used": None if used_count_only else a["used"],
-                "remaining": (None if used_count_only
+                "remaining": (None if (used_count_only or fail_count_only)
                               else a["total"] - a["blocked"]),
             })
         if len(by_core) > MAX_BY_CORE:

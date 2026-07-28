@@ -24,6 +24,7 @@
 
 - **리빙 문서**: [architecture/backend.md](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/backend.md) · [data_model.md](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/data_model.md) · [event_driven_backend.md](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/event_driven_backend.md)
 - **가이드**: INGESTION · chain_ingestion · AUTO_UPDATE · HTML_TOPOLOGY · POSTGRES_OPERATIONS · SERVER_STARTUP · data_preservation
+- **운영·설정 문서 (2026-07-28 헌장 등재 — 감사가 지적한 공백)**: [guide/CONFIG_GUIDE.md](file:///c:/Users/kk980/Developments/assyManager/docs/guide/CONFIG_GUIDE.md)(설정 온보딩 지도 + [guide/config/](file:///c:/Users/kk980/Developments/assyManager/docs/guide/config/README.md) 파일별 세팅 절차) · [guide/DEPLOY_SETUP.md](file:///c:/Users/kk980/Developments/assyManager/docs/guide/DEPLOY_SETUP.md)(배포·환경변수·재기동 단위) · [process/PRODUCTION_READINESS.md](file:///c:/Users/kk980/Developments/assyManager/docs/process/PRODUCTION_READINESS.md)(게이트 판정) · [qa/FEATURE_CHECKLIST.md](file:///c:/Users/kk980/Developments/assyManager/docs/qa/FEATURE_CHECKLIST.md)(사용자 관점 기능 점검 — 기능 변경 시 갱신 대상인지 확인). config 파일·리로드 경로·키를 바꾸면 CONFIG_GUIDE와 guide/config/ **양쪽** 갱신이 의무다.
 - **스킬**: `DataIngester`, `WebSocketExpert`(서버측 브로드캐스트), `IntegrityAndQAExpert`, `GitManagement`
 
 ## 3. 도메인 핵심 규칙

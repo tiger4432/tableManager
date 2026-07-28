@@ -2656,3 +2656,111 @@ def test_omitted_optional_columns_still_plain_connected(tp_env, client):
     body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
     assert "column_unresolved" not in json.dumps(body["sources"])
     assert body["chips"]["remaining"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 17. count-only SELF-FRAME fail source (FIX 2026-07-28 — sibling of §16)
+# ---------------------------------------------------------------------------
+# Bug pinned here: on the origin_rows path remaining is SET-based
+# (total − |fail_union ∪ used_set|), so a self-frame fail source bound WITHOUT
+# usable x/y fed fail_breakdown (count) but nothing into fail_union — remaining
+# over-reported while every status read "connected" (the §16 phantom, on the
+# fail axis).
+
+def _cfg_with_self_fail(with_xy: bool):
+    """bonding stage + a tape-frame (self) fail source over the bin map.
+
+    `bin == "2"` marks the y=2 row (4 cells) as tape-frame defects on top of
+    the base scenario's projected fails."""
+    cfg = _tp_config()
+    src = {
+        "frame": "self", "table": "tp_test_bin_map",
+        "columns": {"lot": "lot", "slot": "slot", "val": "bin"},
+        "fail_values": ["2"],
+    }
+    if with_xy:
+        src["columns"].update({"x": "x", "y": "y"})
+    cfg["stages"]["bonding"]["source"]["fail_sources"]["tape_defect"] = src
+    return cfg
+
+
+def test_self_frame_fail_source_fully_bound_stays_exact(tp_env, client, tmp_path,
+                                                        monkeypatch):
+    """Control: with x/y the source joins fail_union and remaining stays exact."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_cfg_with_self_fail(with_xy=True))
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["tape_defect"] == "connected"
+    chips = body["chips"]
+    assert chips["fail_breakdown"]["tape_defect"] == 4
+    # fail∪ = {(2,1),(1,2)} ∪ {(1,1),(2,2)} ∪ {(1,2),(2,2),(3,2),(4,2)} = 6 pts;
+    # ∪ used {(3,1),(4,2),(2,1)} = 7 → remaining 8 − 7 = 1, exact.
+    assert chips["remaining"] == 1 and chips["remaining_reliable"] is True
+
+
+def test_count_only_self_fail_source_demotes_and_serves_upper_bound(
+        tp_env, client, tmp_path, monkeypatch):
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_cfg_with_self_fail(with_xy=False))
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["tape_defect"] == "connected(count_only)"
+    chips = body["chips"]
+    assert chips["fail_breakdown"]["tape_defect"] == 4   # count is real — stays
+    assert chips["remaining"] is None                    # never the phantom 2
+    assert chips["remaining_reliable"] is False
+    # Upper bound is genuine: 8 − |{4 projected fail pts} ∪ {3 used}| = 8 − 6 = 2
+    # ≥ true remaining 1 (the missing points only shrink the union).
+    assert chips["remaining_upper_bound"] == 2
+    warns = [w for w in body["warnings"]
+             if w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED
+             and w.get("role") == "tape_defect"]
+    assert warns and warns[0]["effect"] == transfer_plan.EFFECT_REMAINING_OVERSTATED
+
+    # by_core (log path): per-core fail/remaining derive from the union that is
+    # missing these chips → null, never a bare under/over-reported number.
+    # `used` comes from used_set (unaffected) and stays real.
+    assert body["by_core_origin"] == "log"
+    by_core = {(r["core_lot"], r["core_slot"]): r for r in body["by_core"]}
+    assert by_core[("CORE-A", "01")]["used"] == 2
+    assert by_core[("CORE-B", "02")]["used"] == 1
+    for core in (("CORE-A", "01"), ("CORE-B", "02")):
+        assert by_core[core]["fail"] is None
+        assert by_core[core]["remaining"] is None
+
+
+def test_count_only_self_fail_source_degrades_bins_too(tp_env, client, tmp_path,
+                                                       monkeypatch):
+    """_bins_block consumes the same fail_union — entries must refuse numbers."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_cfg_with_self_fail(with_xy=False))
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01", bins="")
+    for e in body["bins"]["entries"]:
+        assert e["reliable"] is False
+        assert e["remaining"] is None
+
+
+def test_count_only_self_fail_source_fallback_subtraction_unchanged(
+        tp_env, client, tmp_path, monkeypatch):
+    """Fallback path (no origin_rows): remaining is count-based
+    (total − Σfail − used), so the coordinate-less count subtracts correctly —
+    the source must stay plain connected (demotion is scoped to the set path)."""
+    _seed_scenario(tp_env)
+    _seed_bins(tp_env)
+    cfg = _cfg_with_self_fail(with_xy=False)
+    cfg["stages"]["bonding"]["source"]["origin_log"]["table"] = "tp_test_no_such"
+    # Origin-frame sources are unavailable without origin_log — drop them so the
+    # count-based subtraction is the only term in play.
+    del cfg["stages"]["bonding"]["source"]["fail_sources"]["defect"]
+    del cfg["stages"]["bonding"]["source"]["fail_sources"]["eds_fail"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    body = _summary(client, stage="bonding", lot="TAPE-X", slot="01")
+    assert body["sources"]["tape_defect"] == "connected"   # no count_only here
+    chips = body["chips"]
+    assert chips["fail_breakdown"]["tape_defect"] == 4
+    # origin_log itself is degraded (missing) → remaining nulls, but the served
+    # upper bound proves the count DID enter the subtraction: 8 − 4 − 3 = 1.
+    assert chips["remaining"] is None
+    assert chips["remaining_upper_bound"] == 1

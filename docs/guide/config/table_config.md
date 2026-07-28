@@ -79,6 +79,7 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 | `column_types` | {컬럼: 타입} | `"string"`/`"number"`/`"datetime"` — 그 외는 String 처리. 시스템 컬럼(`created_at` 등 5종)은 쓰지 않음 |
 | `display_columns` | string[] | 그리드 표시 순서 + **표준 파서의 헤더 검증·적재 대상 집합** |
 | `map_key_columns` | string[] | 맵 replace 시 삭제 범위 한정 키(맵 테이블 전용) |
+| `map_push_ok` | boolean, 기본 `false` | **로그형 테이블에 대한 에디터 Push 허용 선언.** 맵 에디터는 대상 테이블에 맵 계약(맵 키 + X/Y/값 + 시스템 컬럼, 합성 bk는 서버 재생성이라 제외) 밖의 데이터 컬럼이 있으면 Push를 **차단**한다 — replace 적재가 그 컬럼 값을 전부 소실시키기 때문. `true` 선언 = "이 테이블로의 에디터 덮어쓰기는 알려진 흐름(R&D 수동 계측 등)이고 **소실을 인지하고 진행한다**" — 차단 대신 소실 컬럼명을 명시한 확인창 1회로 완화된다. 양산 전환 시 선언을 **제거**하면 다시 잠긴다. `std_parse`와 같은 규율: **JSON boolean `true`만 유효**, 문자열 `"true"` 등 오타는 false로 서빙 |
 | `workspace_name` | string | 폴더 별칭 — 섀도잉·중복은 무시 + ERROR 로그 |
 | `std_parse` | boolean, 기본 `true` | **JSON boolean만 유효** — 문자열 `"false"`는 무시 + 경고 |
 | `source_priority` | {소스: 정수} | 소스 서열 맵의 테이블별 오버라이드 |

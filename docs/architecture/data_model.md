@@ -112,4 +112,4 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 > ⚠️ **선언되지 않은 컬럼은 저장에서 조용히 드롭되고 HTTP는 200입니다.** `column_types` 게이트가 미선언 컬럼을 버린 뒤 성공을 반환하므로, **컬럼 오타·config 누락이 저장 성공처럼 보입니다**(실제로 `map_doe`가 이 경로로 `eventtime`을 잃었습니다). 2026-07-27부터 `crud`가 **`(테이블, 컬럼)`당 1회** `[Schema]` 경고를 남깁니다(핫패스라 반복은 접고, 테이블당 예산을 넘기면 포화 사실도 1회 알립니다).
 
-> ⚠️ **`map_key_columns` 미선언은 기능 누락처럼 보입니다.** `replace_map` 쓰기가 지울 **범위**를 이 선언에서 잡으므로, 선언이 없으면 아무것도 지우지 않으면서 **똑같이 200을 냅니다**. 맵·계획 저장 테이블에는 반드시 선언하십시오 → [PRIMITIVES](./PRIMITIVES.md) `replace_map`.
+> ⚠️ **`map_key_columns`는 `replace_map`이 지울 범위의 정본입니다.** 과거에는 미선언 시 아무것도 지우지 않으면서 200을 내는 무음 no-op이었으나, **2026-07-28(U6)부터 범위를 못 잡으면 400으로 정직하게 거부**합니다(요청에 명시적 `scope` 필드를 실어 범위를 직접 지정할 수도 있고, 응답 `scope: {filters, deleted, inserted}`가 실제 삭제 범위·건수를 알립니다). 맵·계획 저장 테이블에는 반드시 선언하십시오 → [PRIMITIVES](./PRIMITIVES.md) `replace_map`.

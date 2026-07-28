@@ -25,6 +25,7 @@
 
 - **리빙 문서**: [architecture/frontend.md](file:///c:/Users/kk980/Developments/assyManager/docs/architecture/frontend.md) · [map_editor/](file:///c:/Users/kk980/Developments/assyManager/docs/map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](file:///c:/Users/kk980/Developments/assyManager/docs/spec/MAP_EDITOR_SPEC.md)
 - **스킬**: `ExcelInteractionExpert`, `PanelUIExpert`, `WebSocketExpert`(클라이언트측 수신), `IntegrityAndQAExpert`, `GitManagement`
+- **운영·설정 문서 (2026-07-28 헌장 등재 — 감사가 지적한 공백)**: [guide/CONFIG_GUIDE.md](file:///c:/Users/kk980/Developments/assyManager/docs/guide/CONFIG_GUIDE.md)(클라가 소비하는 선언 — stages·paint-rules·binding·default_legend의 원천) · [guide/DEPLOY_SETUP.md](file:///c:/Users/kk980/Developments/assyManager/docs/guide/DEPLOY_SETUP.md)(번들 재빌드·커밋 의무 등 배포 함정) · [process/PRODUCTION_READINESS.md](file:///c:/Users/kk980/Developments/assyManager/docs/process/PRODUCTION_READINESS.md)(게이트 판정) · [qa/FEATURE_CHECKLIST.md](file:///c:/Users/kk980/Developments/assyManager/docs/qa/FEATURE_CHECKLIST.md)(기능 변경 시 점검 항목 갱신 대상인지 확인)
 
 ## 3. 도메인 핵심 규칙
 
