@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **241개** 이력. (거버넌스 규칙 #4)
+> 총 **245개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-28 21:41** — [Pm Charters Gain Ops Docs](./20260728_214100_pm_charters_gain_ops_docs.md)
+- **2026-07-28 21:39** — [Replace Map Honest Scope 400 Over Noop](./20260728_213900_replace_map_honest_scope_400_over_noop.md)
+- **2026-07-28 21:37** — [Self Frame Fail Count Only Sibling](./20260728_213700_self_frame_fail_count_only_sibling.md)
+- **2026-07-28 21:34** — [Gate4 Log Shaped Push Structural Discriminator](./20260728_213436_gate4_log_shaped_push_structural_discriminator.md)
 - **2026-07-28 17:15** — [Raws Folder Drop Flatten](./20260728_171500_raws_folder_drop_flatten.md)
 - **2026-07-28 17:00** — [Enrichment Queue Blank Key Filter](./20260728_170000_enrichment_queue_blank_key_filter.md)
 - **2026-07-28 16:38** — [Phantom Remaining Count Only Demotion](./20260728_163810_phantom_remaining_count_only_demotion.md)

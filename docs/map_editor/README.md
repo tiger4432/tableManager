@@ -29,5 +29,5 @@
 ## 🚀 빠른 요약 (Quick Architectural Summary)
 
 * **Physical Geometry vs. Grid Topology**: 실물 웨이퍼 직경/오프셋(Physical)과 화면 격자 회전/반전(Topology)의 명확한 도메인 분리
-* **Clean Replacement**: 맵 저장 시 `map_key_columns` 기준 기존 DB 행 SQL Bulk Purge 후 신규 활성 칩만 재적재 — 직렬화가 화면보다 적게 담기면 Push 자체를 거부(적재 대조 게이트, [MAP_EDITOR_SPEC §6.0-ter](../spec/MAP_EDITOR_SPEC.md))
+* **Clean Replacement**: 맵 저장 시 `map_key_columns` 기준 기존 DB 행 SQL Bulk Purge 후 신규 활성 칩만 재적재 — 직렬화가 화면보다 적게 담기면 Push 자체를 거부(적재 대조 게이트)하고, 대상 테이블에 맵 계약(맵 키 + X/Y/값 + 시스템 컬럼) 밖의 데이터 컬럼이 있으면 **로그형 테이블로 판정해 Push를 거부**합니다(로그형 대상 게이트 — 맵으로 조회만 가능. 사이트가 table_config에 `map_push_ok: true`를 선언한 테이블만 소실 확인 confirm 1회로 완화). 응답 `scope: {filters, deleted, inserted}`가 실제 purge 범위를 알리고, 범위를 못 잡으면 400입니다. [MAP_EDITOR_SPEC §6.0-ter](../spec/MAP_EDITOR_SPEC.md)
 * **Zero Ghost Cells**: 오리진/규격 변경 시 잔존 데이터 유동 문제를 100% 차단

@@ -1,6 +1,6 @@
 # `transfer_plan_config.json` 세팅 — M2 Universal Transfer Plan
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`1fefd12`: `transfer_log` count_only 강등·`column_unresolved` 명명 강등·fail_values val-오타 거부를 역할 사전에 반영) | **Owner:** Backend / UI-Map
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`deed6d2`: self-frame fail 원천의 좌표 없는 바인딩도 `connected(count_only)` 강등 — fail_sources 함정 ⑤. 직전 `1fefd12`: `transfer_log` count_only 강등·`column_unresolved` 명명 강등·fail_values val-오타 거부를 역할 사전에 반영) | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · **의미론(zone 모델·`stack` string·`bin_map`·`bands` 폐기)의 정본은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)** · 동작 계약은 [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)
 
 <!-- Loader evidence (2026-07-28, role dictionary pass):
@@ -164,7 +164,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 - 만드는 숫자: `chips.fail_breakdown.<name>` — **fail 차감 축**. `frame: "origin"`은 출신 코어 fail을 `origin_log` 조인 + 메타 정렬로 타깃 좌표에 투영, `frame: "self"`는 자기 좌표 직접 카운트.
 - 바인딩: `{"frame": "origin"|"self", "table", "columns": {lot, slot, x, y, val}, "fail_values": ["D"]}`
 - 미연결: 그 이름의 fail=0 → 감산 과소 → `remaining=null`(+상한) + `source_degraded`. `frame: "origin"`인데 `origin_log`가 없으면 `unavailable(origin_missing)`.
-- 함정: ① `fail_values` 미선언(또는 `val` 미바인딩)이면 **그 테이블 전 행이 fail로 계산**됩니다. ② **[2026-07-28 `1fefd12`] `fail_values`를 선언했는데 `val` 컬럼명이 오타면**(모델에서 미해석) 필터 없는 전 행 count를 **거부하고 fail=0 + `connected(column_unresolved:val)` 강등**합니다 — 상한 불변식(강등된 항은 과소 기여만 허용) 때문에 과대 계상 대신 0을 택합니다. self·origin 양 경로 동일. 선언한 `x`/`y`가 오타일 때도 일반 `missing`이 아니라 `connected(column_unresolved:x,y)`로 오타를 지목합니다. ③ `frame` 생략 시 기본값이 고정이 아닙니다 — `origin_log` 연결 여부에 따라 `"origin"`/`"self"`로 바뀌므로 **명시하십시오**. ④ 구 `align` 선언은 폐지 — 무시되며, 변환은 `wafer_map_metadata` 델타에서 유도.
+- 함정: ① `fail_values` 미선언(또는 `val` 미바인딩)이면 **그 테이블 전 행이 fail로 계산**됩니다. ② **[2026-07-28 `1fefd12`] `fail_values`를 선언했는데 `val` 컬럼명이 오타면**(모델에서 미해석) 필터 없는 전 행 count를 **거부하고 fail=0 + `connected(column_unresolved:val)` 강등**합니다 — 상한 불변식(강등된 항은 과소 기여만 허용) 때문에 과대 계상 대신 0을 택합니다. self·origin 양 경로 동일. 선언한 `x`/`y`가 오타일 때도 일반 `missing`이 아니라 `connected(column_unresolved:x,y)`로 오타를 지목합니다. ③ `frame` 생략 시 기본값이 고정이 아닙니다 — `origin_log` 연결 여부에 따라 `"origin"`/`"self"`로 바뀌므로 **명시하십시오**. ④ 구 `align` 선언은 폐지 — 무시되며, 변환은 `wafer_map_metadata` 델타에서 유도. ⑤ **[2026-07-28 `deed6d2`] `frame: "self"` 원천도 `x`/`y`까지 바인딩하십시오** — `origin_log`가 connected인 집합 감산 경로에서 self fail 원천이 좌표 없이 count만 제공하면 `transfer_log`와 같은 **`connected(count_only)` 강등**입니다: count는 `fail_breakdown`에 진짜라 유지되지만 fail 합집합에 칩을 못 넣어(종전에는 이 상태가 `connected`로 통과해 remaining이 과대 표시 — 256/256 fail인데 remaining 209 `reliable: true` 재현) `remaining=null` + 진짜 상한, `by_core`의 fail·remaining도 null(used는 유지)입니다. count를 대신 감산하지 않는 이유는 상한 불변식(겹침을 모르는 감산은 과대 감산 위험) 때문이고, `origin_log` 없는 폴백 감산 경로에서는 count 감산이 정확해 강등하지 않습니다.
 
 **`warnings: {result_fail_values}`**
 - 역할: 이력 result가 이 목록(문자열 완전 일치)에 있으면 `result_fail` 경고 발화.
