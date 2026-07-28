@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 **파일 하나를 실제로 세팅하는 절차·키 사전은 [config/ 폴더](./config/README.md)** (파일당 가이드 1개)로,
@@ -228,7 +228,7 @@ S1을 전부 수행한 뒤 추가로:
 > **stage는 고르는 것이 아니라 유도됩니다(v2).** `stages.*.target_map.table`의 역인덱스이므로 `bonding_map`을 열면 `bonding`, `dt_map`을 열면 `dt`입니다. 어느 stage의 `target_map.table`도 아닌 맵은 `stage_unknown` 경고 + `status: unverified`로 표면화되며 **404가 아닙니다**(임의의 맵도 편집 대상으로 열 수 있어야 하므로).
 
 > **align 실패는 M1·M2 모두 "명시 실패"입니다.** 격자 규격(`wafer_map_metadata`)을 못 찾아 변환을 만들 수 없으면, **raw 좌표로 조용히 계산하지 않고** 해당 role 상태를 `connected(align_unavailable)`로 바꾸고 **카운트를 0으로** 둡니다. (2026-07-27부터 `align` **선언 자체가 없으므로**, 이 상태의 원인은 항상 "메타 미등록/조회 실패" 한 가지입니다.)
-> 따라서 상태별 해석은 이렇습니다 — `missing` = 바인딩 선언/테이블 없음 · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · `connected` = 정상.
+> 따라서 상태별 해석은 이렇습니다 — `missing` = 바인딩 선언/테이블 없음(필수 컬럼 결측 포함) · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · **`connected(count_only)`** = `transfer_log`에 쓸 만한 x/y가 없어 카운트만(→ x/y 컬럼 바인딩 확인) · **`connected(column_unresolved:<roles>)`** = 선언한 컬럼이 모델에 없음(→ config의 컬럼명 오타 확인. 2026-07-28 신설, §5.8) · `connected` = 정상.
 
 ### S7. 결손 보정(enrichment) 규칙 추가할 때
 
@@ -411,6 +411,12 @@ heavy 임계·dedup·체크포인트 재개 노브 3종 → [**config/ingestion_
 >
 > ℹ️ **로트 전체 토큰은 `validate`가 값을 매기지 않습니다**(`source_scope_unpriced`). `scope=lot` 응답에 `chips`가 없는 것과 같은 이유입니다 — 로트 하나의 `remaining` 숫자를 지어내지 않습니다. "조회 못 함"도 "이상 없음"도 아닌 **"판정하지 않았다"**로 나갑니다.
 >
+> **[2026-07-28 `1fefd12`] 강등 status 어휘 둘 추가 — config 문제가 사라지는 대신 이름을 얻습니다.**
+> - **`connected(count_only)`** — `transfer_log`가 바인딩은 됐는데 **쓸 만한 x/y가 없어** 칩 정체 없이 행 count만 제공하는 상태. `transferred` 카운트는 진짜라 유지되지만, 집합 감산이 불가능하므로 **`remaining`은 `null` + 진짜 상한(`remaining_upper_bound`)**으로 내려가고 `by_core`의 used/remaining도 log·area_map 양 경로 모두 `null`입니다. 종전에는 이 상태가 `connected`로 통과해 **기전사 차감이 빠진 remaining이 정상처럼 표시**됐습니다(유령 잔여 — +101 재현으로 실증된 결함).
+> - **`connected(column_unresolved:<roles>)`** — **선언한 컬럼이 모델에 없는**(config 오타) 상태. 종전에는 선언이 조용히 사라져 역할이 멀쩡해 보였는데, 지금은 어느 역할키가 안 풀렸는지 이름을 붙여 강등합니다. 특히 `fail_sources`의 `fail_values`가 선언됐는데 `val`이 안 풀리면 **필터 없는 전 행 count를 거부하고 0 + 강등**합니다 — **상한 불변식**(강등된 항은 과소 기여만 허용 — fail을 과대 계상하면 `remaining_upper_bound`가 상한이 아니게 됨) 때문입니다. `align_unavailable`의 "0 + 강등"과 같은 규율입니다.
+>
+> 두 status 모두 강등 판정(`_status_is_degraded`)에 들어가므로 신뢰 표기 3층 방어(remaining null·validate 생략·`unverified` — [MAP_EDITOR_SPEC §6.2](../spec/MAP_EDITOR_SPEC.md))가 그대로 작동합니다. 역할별 발화 조건은 [config/transfer_plan_config.md §5](./config/transfer_plan_config.md)의 사전 참조.
+>
 > 🗄️ **폐기된 `bands`는 필수 역할이 아니지만 계속 읽습니다.** 실계획이 아직 그 컬럼에 남아 있고, legend 저장은 `replace_map`이라 **읽지 못하면 그 맵을 여는 순간 화면이 비고 다음 편집 한 번이 계획을 빈 집합으로 지웁니다.** 서버는 `bands_to_zones`로 옮기며, 세 구역으로 표현할 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는 **접지 않고 거부**합니다(`layer_range_invalid` / `reason: not_convertible`). 접은 결과를 되쓰면 서버의 진짜 계획이 그 손실 읽기로 덮입니다. 새 writer를 만들지 마십시오.
 
 > **`.sample`은 위 발췌와 일치합니다(2026-07-28 zone 모델 반영).** `transfer_plan_config.json.sample`의 `plan_store`에서 폐기된 `doe`·`doe_source` 역할과 그 컬럼(`doe_value`·`band_seq`·`stack_band`·`qty_total`·`qty`)을 제거하고, 코드가 실제로 요구하는 `registry`(**필수** `ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`, **선택** `bands`) + `material_identity` 선언으로 교체했습니다. 🚨 **기존 환경은 라이브 파일에 zone 역할 넷을 손으로 더해야 합니다** — 하나라도 없으면 `validate`가 404입니다. 반대로 `bands`는 이제 없어도 200입니다(폐기 계획을 못 읽을 뿐). `registry`가 가리키는 `map_split_registry`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
@@ -528,7 +534,7 @@ JSON boolean `false`만 유효합니다. 문자열은 무시 + 경고 후 기본
 `ontology_mapping` / `enrichment_rules`는 미등록 참조를 만나면 해당 항목을 **통째로 스킵**합니다 — 조용히 그래프 노드가 안 생기거나 워크리스트가 비는 형태로 드러납니다.
 
 **I. 계획 config는 "부분 가동"이 정상 동작입니다.**
-role이 빠지거나 테이블이 없으면 **에러가 아니라 `missing`** 이고, HTTP는 200으로 나옵니다. **숫자가 0인데 에러가 없다면 응답의 `sources` 상태부터 확인**하십시오 — `missing`(바인딩 문제)인지 `connected(align_unavailable)`(격자 규격 없음)인지에 따라 고칠 곳이 다릅니다.
+role이 빠지거나 테이블이 없으면 **에러가 아니라 `missing`** 이고, HTTP는 200으로 나옵니다. **숫자가 0인데 에러가 없다면 응답의 `sources` 상태부터 확인**하십시오 — `missing`(바인딩 문제)인지 `connected(align_unavailable)`(격자 규격 없음)인지 `connected(count_only)`/`connected(column_unresolved:...)`(좌표 없는 로그 / 컬럼명 오타 — §5.8)인지에 따라 고칠 곳이 다릅니다.
 
 **J. `.sample`을 편집해도 아무 일도 일어나지 않습니다.**
 코드는 확장자 없는 정확한 파일명만 읽습니다. `.bak` / `.v1.bak`도 마찬가지입니다.

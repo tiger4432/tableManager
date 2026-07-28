@@ -39,6 +39,8 @@
 | — | ~~U7·U1·U3~~ ✅ **완료** (`a98dc72`, CSS-only) — U7 원인은 `b35bc9f` CSS 재작성의 3·4번째 희생(`.map-breadcrumb`·`.plock-chip` 무스타일) → 복원+보강. U1은 규칙이 이미 반반이었고 **주석이 거짓말** → 주석 정정+죽은 `.tp-scroll` 삭제. U3 하단 중앙 배너 + `--toast-inset-right` 참조 0 증명 삭제. 부수 관찰: 메타 모달 취소 시 `openMapFrame`이 조용히 롤백(토스트 없음) → 5b-ⓖ | — | — | ✅ |
 | — | ~~5c~~ ✅ **완료** (`1fefd12`) — 트리아지 REAL(+101 유령 실측) → `connected(count_only)` 강등(remaining null+진짜 상한, per-core 양 경로 null — 퀵 QA가 log 경로 맨 숫자 잔재를 잡아 마감) + 선언 컬럼 오타 `column_unresolved` 강등 + val 오타 fail 카운트 거부(상한 불변식). 테스트 21, 뮤테이션 전멸. **형제 결함 제안 중**: self-frame fail 소스 x/y 미바인딩 — 같은 유령 계급, 승인 대기 | — | — | ✅ |
 | — | ~~소급 백필 + 빈 키 큐 필터~~ ✅ **완료** (`1fefd12`) — `backfill_enrichment.py`(dry-run 기본·기존 행 불가침·멱등·실 mapper 경로·루프 가드 라이브 검증) + 큐 판정식 서버 단일화(`queue_filters` — 클라 3사본 소멸, 빈 키 제외). 빈 키 출처 = 그리드 빈 행 추가·부분 편집(레거시 mapper 무죄) | — | — | ✅ |
+| — | ~~raws 폴더 평탄화~~ ✅ **완료** (`0c6ac1a`, 퀵 QA 5/5) — 중첩 폴더 투하 → 정온 대기 → 파일 승격 → `rmdir`-only 폐기. 충돌 `~` 접두(`__force__` 위조 차단), 핫 토글 | — | — | ✅ |
+| 3.5 | 🔵 **오버레이 컬럼명 수리 F1~F5** (진단 QA 2026-07-28 확정): F1 `table_bindings`를 에디터가 소비 안 함(서버는 전 이름 강건) → paint-rules에 해석 바인딩 실어 소비 · F2 자동 유도 폴백이 첫 데이터 컬럼을 조용히 추측(`DECOY` 실측) → 거부/표식 · F3 매칭 규칙 3벌 → 1벌 · F4 조회 N>파싱 0 무경고 · F5 낡은 문구. dt_log 좌표 선언 기능의 실측 근거 | server-pm → map-pm | T2 | ⏸️ **승인 대기** |
 | 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
 | 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
 | 6 | **`replace_map` 빈 집합** — 서버 scope 필드 | server-pm | — | 대기 |

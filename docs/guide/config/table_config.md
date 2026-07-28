@@ -1,6 +1,6 @@
 # `table_config.json` 세팅 — 동적 테이블 스키마 SSOT
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (§6 대소문자 전환 절차 신설 — 운영 테이블 소문자 개명 체크리스트) | **Owner:** Lead / Backend
 > 상위: [폴더 인덱스](./README.md) · [CONFIG_GUIDE](../CONFIG_GUIDE.md)(시나리오 S1/S2·리로드 규율 §4·함정 §6의 **정본**)
 
 <!-- Loader evidence (2026-07-28):
@@ -20,6 +20,7 @@
 - **맵 테이블을 등록할 때** (`map_key_columns` + 좌표 컬럼 `number` 선언)
 - 워크스페이스 폴더명이 테이블명과 다를 때 (`workspace_name`), 표준 파서를 끌 때 (`std_parse`)
 - **제품 소유 테이블(`map_split_registry` 등) 설치/업그레이드** — 이때는 손편집이 아니라 `install_product_tables.py`를 씁니다 ([CONFIG_GUIDE §5.8-ter](../CONFIG_GUIDE.md))
+- **대문자 이름의 운영 테이블을 소문자로 개명할 때** (§6 — config만이 아니라 물리·데이터·폴더까지 걸린 절차)
 
 ## 2. 세팅 절차
 
@@ -84,3 +85,38 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 | `__comment` | string | 운영자 주석 — 코드 미소비, `install_product_tables.py`가 드리프트로 세지 않는 유일한 부분 |
 
 추가 함정(미선언 컬럼 200 드롭·별칭 섀도잉 등)은 [CONFIG_GUIDE §6](../CONFIG_GUIDE.md).
+
+## 6. 대소문자 전환 절차 — 운영 테이블을 소문자로 개명할 때 (2026-07-28)
+
+> **왜 이 절차가 필요한가.** PostgreSQL은 **따옴표 없는 식별자를 소문자로 접습니다**(fold — SQL 표준의 대문자 접기와 반대 방향인 PG 고유 규칙). 즉 `SELECT * FROM MyTable`은 `mytable`을 찾고, 대문자 이름의 테이블은 처음에 `CREATE TABLE "MyTable"`처럼 **따옴표로 만들었을 때만** 존재할 수 있습니다. 그 순간부터 그 테이블은 **모든 참조에 따옴표를 요구**하고, 동적 SQL·수기 쿼리·외부 도구 어느 하나라도 따옴표를 빼먹으면 "없는 테이블"이 됩니다. 전부 소문자로 통일하는 것이 유일하게 마찰 없는 상태이고, 이 절차는 그 전환을 **선언·데이터·물리를 한 번에** 옮기는 체크리스트입니다.
+
+**절차 (순서 엄수):**
+
+1. **스냅샷** — config 전체 + DB 백업:
+   ```bash
+   conda run -n assy_manager python server/scripts/backup_config.py snapshot
+   ```
+2. **콜드 스톱** — 5프로세스 전부 정지(`run_decoupled_app.py` 포함, 워처 필수). **watcher가 절반만 고친 선언을 봐서는 안 됩니다** — 살아 있으면 개명 도중의 config 저장이 발화해, 옛 이름의 물리 테이블을 새 이름으로 **다시 CREATE**합니다(한 방향 DDL — 잔여물이 됩니다).
+3. **물리 개명** — 대문자 테이블마다:
+   ```sql
+   ALTER TABLE "UPPER_NAME" RENAME TO upper_name;   -- 새 이름은 따옴표 없이 = 소문자로 접힘
+   ```
+4. **테이블명을 담는 config 전수 소문자화** — 한 곳이라도 남으면 그 서브시스템만 조용히 죽습니다(대부분 `missing`/스킵으로 표면화):
+   - `table_config.json` — **테이블 키** 자체
+   - 계획 config 역할 바인딩 — `bonding_plan_config.json`·`transfer_plan_config.json`의 모든 `"table":` 값(`plan_store.registry` 포함)
+   - `map_overlay_config.json` — `table_bindings`·`paint_lock` 등 테이블 키
+   - `chain_rules.json` — `trigger_table`·`target_table` / `enrichment_rules.json` — `source_table`·`derived_table`
+   - `ontology_mapping.json` — 테이블 키
+   - **`ingestion_workspace/` 폴더명** — 폴더명=테이블명 규약이므로 폴더도 개명(또는 `workspace_name` 별칭 선언). Windows는 대소문자 비구분이라 폴더는 멀쩡해 보여도, 워처의 테이블 매칭은 문자열 비교입니다
+5. **테이블명을 값으로 담는 DATA 두 곳 UPDATE** — config가 아니라 **행 데이터**라 4에서 안 잡힙니다:
+   ```sql
+   UPDATE wafer_map_metadata SET target_table = lower(target_table) WHERE target_table <> lower(target_table);
+   UPDATE map_split_registry SET ref_table   = lower(ref_table)   WHERE ref_table   <> lower(ref_table);
+   ```
+   (전자를 빼먹으면 개명된 맵이 전부 "메타 미등록"으로 강등되고, 후자를 빼먹으면 계획이 "없음"으로 보이다가 **다음 legend 저장이 새 이름 범위를 빈 계획으로 교체**할 수 있습니다 — replace 의미론.)
+6. **기동** 후 검증:
+   - `conda run -n assy_manager python server/scripts/list_undeclared_tables.py` — 옛 이름 잔여물이 검출되면 3~4 어딘가가 빠진 것
+   - `GET /tables` — 새 소문자 이름으로 목록 확인
+   - **맵 로드 1회**(메타가 있던 맵이 모달 없이 열리는가 = 5의 `wafer_map_metadata` 확인) + **인제션 1회**(해당 워크스페이스 드롭 → 적재 = 4의 폴더명 확인)
+
+> ⚠️ 이 절차는 **개명이지 롤백이 아닙니다** — 되돌리려면 같은 절차를 역방향으로 다시 밟아야 하며, 중간 상태(물리만 개명·config 미반영)로 기동하면 watcher가 옛 이름 테이블을 새로 만들어 **양쪽 이름의 테이블이 공존**하게 됩니다. 의심스러우면 [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md)의 스냅샷 복원부터.

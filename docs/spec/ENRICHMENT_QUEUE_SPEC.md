@@ -1,6 +1,6 @@
 # 🧩 Enrichment Queue (결손 보정 워크리스트) — 리빙 스펙
 
-> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
+> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters` 신설 — 큐 술어 서버 단일 조성) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성:** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(`enrichment.html` 컨베이어 + 참조뷰 탭 + 메인 그리드 결손 배지). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 
@@ -70,10 +70,23 @@
 ```
 
 **클라이언트 소비 계약(확정 방향, 상세는 Server PM 위임 시 명세):**
-- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비.
-- ♻️ 워크리스트/결손 카운트 — 기존 `GET /tables/{derived}/data` + blank 필터 재사용(신규 없음).
+- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비. **[2026-07-28 `1fefd12` 추가 필드] `queue_filters`** — 아래 참조.
+- ♻️ 워크리스트/결손 카운트 — 기존 `GET /tables/{derived}/data` + **서버가 조성한 `queue_filters`** 재사용(신규 엔드포인트 없음).
 - 🆕 `GET /enrichment/rules/{rule}/references/{i}?params=...` — 참조뷰 조회(서버측 쿼리 정의·LIMIT).
 - ♻️ 입력 저장 — 기존 `PUT /tables/{derived}/data/updates`(셀 계약 불변).
+
+### 5.1 `queue_filters` — "큐 항목"의 단일 술어는 서버가 조성한다 (2026-07-28 · `1fefd12`)
+
+`GET /enrichment/rules`의 각 규칙에 **추가 응답 필드 `queue_filters`**가 실립니다 — 범용 `/tables/{t}/data` 필터 DSL 객체로, **"큐에 들어오는 행"의 유일한 정의**입니다:
+
+```
+queue_filters = { <모든 decision_key 컬럼>: {type: "notBlank"} } ∪ { <모든 target 필드>: {type: "blank"} }
+```
+
+- **왜 key notBlank가 붙었나**: 판단키가 빈 행(그리드 빈 행 추가·부분 편집의 산물)은 **사람이 해소할 수 없는 항목**이라 워크리스트에 떠서는 안 됩니다. 맵퍼는 결백했고, 결손 판정 술어가 클라 세 곳(워크리스트 `enrichment.buildBlankFilters` · 어드민 카운트 `admin.fetchEnrichmentStatus` · 메인 배지 `ui.updateEnrichmentBadge`)에 **손으로 각각 조립**돼 있었는데 셋 다 키를 검사하지 않던 것이 원인입니다.
+- **조성 지점은 서버 `enrichment_config.to_public_rule` 하나**이고, 세 클라 소비처는 전부 이 객체를 그대로 씁니다 — **워크리스트·카운트·배지가 서로 다른 수를 말할 수 없습니다.** (구버전 서버 폴백: 필드 부재 시 클라는 종전 target-blank-only로 동작.)
+- **데이터는 지우지 않습니다** — 빈 키 행은 큐에서만 빠지고 일반 그리드에는 그대로 보입니다.
+- 참고: 같은 커밋의 소급 backfill 스크립트(`server/scripts/backfill_enrichment.py` — 파생 **행 부재**만 생성, 값 결손은 큐 소관, dry-run 기본·`--apply`·provenance `enrichment_backfill` priority 99)는 운영 도구이며 이 계약의 일부가 아닙니다.
 
 ## 6. 기존 시스템 통합
 

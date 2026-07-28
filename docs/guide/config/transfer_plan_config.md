@@ -1,6 +1,6 @@
 # `transfer_plan_config.json` 세팅 — M2 Universal Transfer Plan
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Backend / UI-Map
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`1fefd12`: `transfer_log` count_only 강등·`column_unresolved` 명명 강등·fail_values val-오타 거부를 역할 사전에 반영) | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · **의미론(zone 모델·`stack` string·`bin_map`·`bands` 폐기)의 정본은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)** · 동작 계약은 [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)
 
 <!-- Loader evidence (2026-07-28, role dictionary pass):
@@ -93,7 +93,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 | 로트 전개 (`scope=lot`) | `by_slot`·`slots_origin` | `lot_membership` (폴백: `bin_map`) |
 | 부족·초과배정 경고 (`/validate`) | `qty_shortage`·`source_overallocated`·`status` | `plan_store.registry` + `material_identity` |
 
-**공통 규율**: 모든 바인딩은 `{table, columns}` 형태이고, 테이블이 `table_config` 미선언이거나 필수 컬럼이 빠지면 그 역할은 통째로 `missing`입니다(부분 해석 없음). 역할 강등은 조용히 지나가지 않습니다 — `warnings[].type: "source_degraded"`로 표면화되고, 감산항(fail·기전사)이 강등되면 `chips.remaining`이 **`null`로 내려갑니다**(`remaining_reliable: false`, total이 살아 있으면 `remaining_upper_bound`만 제공). validate는 강등된 소스에 대해 부족 판정을 **하지 않고** `availability_unreliable`을 냅니다("검사 안 함" ≠ "이상 없음").
+**공통 규율**: 모든 바인딩은 `{table, columns}` 형태이고, 테이블이 `table_config` 미선언이거나 **필수** 컬럼이 빠지면 그 역할은 통째로 `missing`입니다(부분 해석 없음). **[2026-07-28] 선언했는데 모델에 없는(오타) 비필수 컬럼은 사라지는 대신 `connected(column_unresolved:<역할키들>)`로 강등 표시됩니다** — 전 역할 공통(`bonding_plan._demote_for_unresolved` 공유). 역할 강등은 조용히 지나가지 않습니다 — `warnings[].type: "source_degraded"`로 표면화되고, 감산항(fail·기전사)이 강등되면 `chips.remaining`이 **`null`로 내려갑니다**(`remaining_reliable: false`, total이 살아 있으면 `remaining_upper_bound`만 제공). validate는 강등된 소스에 대해 부족 판정을 **하지 않고** `availability_unreliable`을 냅니다("검사 안 함" ≠ "이상 없음"). 강등 status의 의미 사전은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)이 정본입니다.
 
 ### 5.1 stage 키 (`stages.<이름>`)
 
@@ -140,7 +140,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 - 만드는 숫자: `chips.transferred` — **기전사 차감**. `x`/`y`가 있으면 distinct `(x,y)` 칩 수, 없으면 행 count.
 - 바인딩: `{"table": "bonding_log", "columns": {"lot", "slot", "x", "y"}}`
 - 미연결: `transferred=0`으로 감산이 빠져 remaining 과대 위험 → `remaining=null` + `remaining_upper_bound`(total 정상일 때) + `source_degraded(remaining_overstated)`. total·이력은 안 죽습니다.
-- 함정: **`x`/`y`까지 바인딩하십시오** — 좌표 없이 count만 되면 `origin_log` 정확 경로(합집합 감산)에서 기전사가 remaining 차감에 들어가지 않습니다(표시 `transferred`만 잡힘).
+- 함정: **`x`/`y`까지 바인딩하십시오** — 좌표 없이 count만 되면 **[2026-07-28 `1fefd12`] `connected(count_only)`로 강등**됩니다: `transferred` 카운트는 진짜라 유지되지만 칩 정체를 몰라 집합 감산이 불가능하므로 `remaining=null` + 진짜 상한만 제공되고, `by_core`의 used/remaining도 log·area_map **양 경로 모두 `null`**입니다(가짜 0 금지). 종전에는 이 상태가 `connected`로 통과해 기전사 차감이 빠진 remaining이 정상처럼 표시됐습니다(유령 잔여 — +101 재현 실증). 화면에서 잔여가 `미상`이고 기전사 숫자만 보이면 이 강등부터 의심하십시오.
 
 **`origin_log`**
 - 만드는 숫자 셋: ① **정확 remaining**(합집합 감산 — fail·기전사 이중 차감 없음) ② `by_core` 분해(fail 포함, `by_core_origin: "log"`) ③ frame=`origin` fail을 타깃 좌표로 투영하는 다리.
@@ -164,7 +164,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 - 만드는 숫자: `chips.fail_breakdown.<name>` — **fail 차감 축**. `frame: "origin"`은 출신 코어 fail을 `origin_log` 조인 + 메타 정렬로 타깃 좌표에 투영, `frame: "self"`는 자기 좌표 직접 카운트.
 - 바인딩: `{"frame": "origin"|"self", "table", "columns": {lot, slot, x, y, val}, "fail_values": ["D"]}`
 - 미연결: 그 이름의 fail=0 → 감산 과소 → `remaining=null`(+상한) + `source_degraded`. `frame: "origin"`인데 `origin_log`가 없으면 `unavailable(origin_missing)`.
-- 함정: ① `fail_values` 미선언(또는 `val` 미바인딩)이면 **그 테이블 전 행이 fail로 계산**됩니다. ② `frame` 생략 시 기본값이 고정이 아닙니다 — `origin_log` 연결 여부에 따라 `"origin"`/`"self"`로 바뀌므로 **명시하십시오**. ③ 구 `align` 선언은 폐지 — 무시되며, 변환은 `wafer_map_metadata` 델타에서 유도.
+- 함정: ① `fail_values` 미선언(또는 `val` 미바인딩)이면 **그 테이블 전 행이 fail로 계산**됩니다. ② **[2026-07-28 `1fefd12`] `fail_values`를 선언했는데 `val` 컬럼명이 오타면**(모델에서 미해석) 필터 없는 전 행 count를 **거부하고 fail=0 + `connected(column_unresolved:val)` 강등**합니다 — 상한 불변식(강등된 항은 과소 기여만 허용) 때문에 과대 계상 대신 0을 택합니다. self·origin 양 경로 동일. 선언한 `x`/`y`가 오타일 때도 일반 `missing`이 아니라 `connected(column_unresolved:x,y)`로 오타를 지목합니다. ③ `frame` 생략 시 기본값이 고정이 아닙니다 — `origin_log` 연결 여부에 따라 `"origin"`/`"self"`로 바뀌므로 **명시하십시오**. ④ 구 `align` 선언은 폐지 — 무시되며, 변환은 `wafer_map_metadata` 델타에서 유도.
 
 **`warnings: {result_fail_values}`**
 - 역할: 이력 result가 이 목록(문자열 완전 일치)에 있으면 `result_fail` 경고 발화.

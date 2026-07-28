@@ -1,6 +1,7 @@
 # 인리치먼트 큐 빈 판단키 행 노출 차단 — 서버 조성 queue_filters 단일화
 
 **일시**: 2026-07-28
+**커밋**: `1fefd12` (동반: [소급 백필](./20260728_163000_enrichment_backfill_script.md) · [유령 remaining 5c](./20260728_163810_phantom_remaining_count_only_demotion.md))
 **작업자**: Server PM
 **분류**: fix (사용자 지시: "enrich에 빈 디시전 키는 그냥 넣지마 지금 빈칸도 다 올라오네")
 

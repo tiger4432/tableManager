@@ -1,6 +1,7 @@
 # 인리치먼트 소급 적용(백필) 스크립트 — 규칙 이전 원본 행의 파생 행 생성
 
 **일시**: 2026-07-28
+**커밋**: `1fefd12` (동반: [빈 판단키 큐 필터](./20260728_170000_enrichment_queue_blank_key_filter.md) · [유령 remaining 5c](./20260728_163810_phantom_remaining_count_only_demotion.md))
 **작업자**: Server PM (backfill_enrichment)
 **분류**: feat (운영 도구)
 

@@ -1,7 +1,7 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **239개** 이력. (거버넌스 규칙 #4)
+> 총 **241개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
@@ -10,7 +10,9 @@
 
 - **2026-07-28 17:15** — [Raws Folder Drop Flatten](./20260728_171500_raws_folder_drop_flatten.md)
 - **2026-07-28 17:00** — [Enrichment Queue Blank Key Filter](./20260728_170000_enrichment_queue_blank_key_filter.md)
+- **2026-07-28 16:38** — [Phantom Remaining Count Only Demotion](./20260728_163810_phantom_remaining_count_only_demotion.md)
 - **2026-07-28 16:30** — [Enrichment Backfill Script](./20260728_163000_enrichment_backfill_script.md)
+- **2026-07-28 16:13** — [Map Editor Six Fixes And Sub1540 Sidebar](./20260728_161335_map_editor_six_fixes_and_sub1540_sidebar.md)
 - **2026-07-28 13:33** — [Css Rewrite Victims Three Four And The Toast That Moved Center](./20260728_133347_css_rewrite_victims_three_four_and_the_toast_that_moved_center.md)
 - **2026-07-28 13:15** — [U6 Config Over Hardcode And The First Two Lane Qa](./20260728_131530_u6_config_over_hardcode_and_the_first_two_lane_qa.md)
 - **2026-07-28 11:22** — [Db Config File And The Precedence That Protects Production](./20260728_112202_db_config_file_and_the_precedence_that_protects_production.md)
