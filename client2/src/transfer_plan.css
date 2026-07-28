@@ -1,22 +1,27 @@
 /* ============================================================
-   transfer_plan.css — 「2. Legend & DOE」 패널 (재설계 v2)
+   transfer_plan.css — "2. Legend & DOE" panel (redesign v2)
 
-   구조: 우측 사이드바(--plan-sidebar-w) 안의 **세로 두 목록 + 이중 스크롤**
-     ┌ tp-scroll   (계획 헤더 + DOE LIST)   — flex:1, 자체 스크롤
-     └ tp-mat-pane (사용 자재, 자재 ID 기준) — 고정 250px, 자체 스크롤
-       (자재 목록은 이동 허브이므로 DOE를 아무리 스크롤해도 화면에 남아야 한다)
+   Structure: inside the right sidebar (--plan-sidebar-w),
+     tp-plan-head (derived plan facts, fixed height)
+     tp-split     (fills the rest) — a vertical flex column holding TWO
+       tp-pane cards that split the height 50/50 (`flex: 1 1 0` each):
+         ① #tp-pane1   value definitions (DOE list), own scroll
+         ② #tp-mat-pane material rollup / travel hub,  own scroll
+       (the material list is the travel hub, so it must stay on screen
+        no matter how far the DOE list scrolls)
 
-   색은 tokens.css 변수만 쓴다. 하드코딩 색은 DOE 스와치(데이터 색)뿐이며 인라인이다.
-   애니메이션은 transform/opacity만 — 리플로 유발 속성은 쓰지 않는다.
+   Colors come from tokens.css variables only. The only hardcoded colors are
+   the DOE swatches (data colors), inlined by JS.
+   Animations use transform/opacity only — no reflow-triggering properties.
    ============================================================ */
 
-/* ── 사이드바 셸 ───────────────────────────────────────── */
+/* ── Sidebar shell ─────────────────────────────────────── */
 :root {
-  /* 계획 사이드바 폭의 단일 출처. map_editor.html의 인라인 width를 대체한다. */
+  /* Single source of the plan sidebar width. Replaces the inline width in
+     map_editor.html. (The toast inset variable that lived here is gone:
+     toasts are bottom-center banners now — tokens.css — and no longer
+     overlap this sidebar's material list.) */
   --plan-sidebar-w: 430px;
-  /* 토스트를 이 사이드바 왼쪽으로 비켜 세운다 — 종전에는 토스트가 화면 우하단에 떠서
-     사이드바 하단의 「사용 자재」 목록(이동 허브)을 그대로 덮었다. tokens.css가 소비한다. */
-  --toast-inset-right: calc(var(--plan-sidebar-w) + 24px);
 }
 
 #plan-sidebar {
@@ -27,16 +32,6 @@
 #transfer-plan-root {
   height: 100%;
   min-height: 0;
-}
-
-.tp-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 13px 13px 6px;
 }
 
 .tp-empty {
@@ -147,10 +142,8 @@
    ① 값 정의 · ② 자재 롤업 — 두 표, 반반, 각자 스크롤
    ============================================================ */
 
-/* 🔴 `flex: 1 1 0` + `min-height: 0`가 이 파일에서 가장 중요한 두 줄이다.
-   카드에 이것이 없으면 내용이 길어질 때 pane이 **스크롤되지 않고 찌그러진다** —
-   이전 시안에서 696px가 211px로 눌리는 것이 실측됐다. `min-height:0`이 필요한 이유는
-   flex 항목의 기본 `min-height:auto`가 콘텐츠 높이를 축소 바닥으로 삼기 때문이다. */
+/* tp-split fills everything under the plan header and hands its height to the
+   two tp-pane cards below (see the .tp-pane comment for the 50/50 mechanics). */
 .tp-split {
   flex: 1 1 auto;
   min-height: 0;
@@ -160,8 +153,13 @@
   padding: 0 8px 8px;
 }
 .tp-pane {
+  /* `flex-basis: 0` is what makes the two panes split 50/50 regardless of
+     content length. The positive min-height is a floor so neither pane can
+     collapse to nothing on a very short window — it still overrides the
+     flex default `min-height: auto`, so long content scrolls instead of
+     stretching the pane (the 696px→211px squash measured in the old draft). */
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 110px;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -591,3 +589,84 @@
 /* 오버레이 → 실맵 가져오기 버튼 (목록 행) */
 .ov-import { color: var(--accent-2); font-weight: 700; }
 .ov-import:hover { background: var(--accent-2-weak); color: var(--accent-2); }
+
+/* ============================================================
+   Frame-stack breadcrumb bar + paint-lock chip. RESTORED: the b35bc9f rewrite
+   of this file also dropped these rules (same casualty as the overlay block
+   above) while map_editor.js renderBreadcrumb() / updatePaintLockIndicator()
+   and map_editor.html kept the classes — the bar rendered as bare unstyled
+   inline text, crushed and overlapping. Base rules are the da65a87 originals;
+   the breadcrumb gets three narrow-width hardenings on top (U7):
+     · .bc-back is flex:none so the button never squashes,
+     · crumbs ellipsize instead of overflowing (min-width:0 + text-overflow),
+     · the hint keeps margin-left:auto and, with flex-wrap on the bar, drops
+       to its own line when the bar gets narrow (no JS, no media query).
+   ============================================================ */
+.map-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 18px;
+  background: var(--accent-2-weak);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  min-width: 0;
+}
+
+.bc-back {
+  flex: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  border-radius: 7px;
+  padding: 3px 11px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+.bc-back:hover { transform: translateX(-2px); }
+
+.bc-up, .bc-cur {
+  font-family: var(--font-mono);
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-up { color: var(--text-muted); }
+.bc-cur { font-weight: 600; }
+.bc-sep { flex: none; color: var(--text-dim); }
+.bc-why {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── [M2] paint-lock status chip (toolbar) ─────────────── */
+.plock-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* "could not verify" must stay visible — silent fail-open was the original defect */
+.plock-chip.stale {
+  border-color: var(--warning);
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-weight: 600;
+}

@@ -205,12 +205,16 @@ body {
         admin.js showToast → .toast.success / .toast.error (하위 호환 병기)
    ============================================================ */
 #toast-container {
+  /* Bottom-center banner. Toasts used to sit bottom-right, where they covered
+     the map editor's material list (travel hub) and needed a per-page inset
+     variable to dodge it — centering makes both the occlusion and the offset
+     mechanism moot. Newest toast is nearest the bottom edge; older ones stack
+     upward. Motion is opacity-only (no rise). */
   position: fixed;
   bottom: 24px;
-  /* 우측에 고정 패널이 있는 페이지는 --toast-inset-right로 토스트를 비켜 세운다
-     (맵 에디터의 「사용 자재」 목록이 토스트에 가려지던 문제 — transfer_plan.css가 값을 준다).
-     min()은 좁은 화면에서 토스트가 뷰포트 밖으로 밀려 나가는 것을 막는다. */
-  right: min(var(--toast-inset-right, 24px), calc(100vw - 300px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -224,17 +228,16 @@ body {
   box-shadow: var(--shadow-pop);
   color: var(--text);
   padding: 12px 20px;
-  min-width: 260px;
+  width: 100%;
   border-radius: 8px;
   font-family: var(--font-sans);
   font-size: 0.85rem;
   display: flex;
   align-items: center;
   gap: 10px;
-  transform: translateY(20px);
   opacity: 0;
   animation: toastFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  transition: opacity 0.3s, transform 0.3s;
+  transition: opacity 0.3s;
 }
 
 .toast.toast-success, .toast.success { border-left-color: var(--success); }
@@ -244,13 +247,11 @@ body {
 
 .toast.hide {
   animation: none !important;
-  transform: translateY(-20px) scale(0.9) !important;
   opacity: 0 !important;
 }
 
 @keyframes toastFadeIn {
   to {
-    transform: translateY(0);
     opacity: 1;
   }
 }
@@ -258,7 +259,6 @@ body {
 /* admin.js 구 버전이 참조하던 keyframe 이름 호환 */
 @keyframes toastIn {
   to {
-    transform: translateY(0);
     opacity: 1;
   }
 }
