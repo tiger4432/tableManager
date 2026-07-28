@@ -25,6 +25,7 @@
           "table": "dt_log",
           "columns": { "lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty" }
         },
+        "__transfer_log_none_comment": "[7c · 2026-07-29] 사이트에 전사(소모) 기록이 아예 없으면 바인딩 대신 정확히 문자열 \"none\"을 선언하라: \"transfer_log\": \"none\". 그러면 강등(missing/source_degraded)이 아니라 선언된 상태 connected(untracked)가 되고, transferred=null(미상 — 0 아님), remaining=null + remaining_upper_bound(= total − fail)와 전용 경고 transfer_untracked가 나가 클라가 '≤N'으로 표시할 수 있다. BIN 항목도 같은 상한 처리. ⚠️ JSON null·키 삭제·\"None\" 등 다른 형태는 전부 종전 그대로 missing이다(null은 실수 삭제와 구분할 수 없어 선언으로 인정하지 않는다).",
         "transfer_log": {
           "table": "bonding_log",
           "columns": { "lot": "core_lot", "slot": "core_slot", "x": "cx", "y": "cy" }

@@ -123,6 +123,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 - 역할: 출신(core) 맵 ID 합성 규칙 — `compose`를 `_`로 이어 `wafer_map_metadata.map_id`를 조회하는 키.
 - 미선언: 기본값 사용, 죽는 것 없음.
 - 함정: 메타의 `map_id` 합성 관례와 어긋나면 메타 조회가 빗나가 frame=`origin` fail이 `align_unavailable`로 강등됩니다.
+- **[2026-07-29 7b] 합성·바인드 값은 선언 타입으로 캐노니컬화됩니다** — 조회 대상 테이블의 `table_config` 선언 타입이 `number`인 컬럼은 `'01'`·`' 1 '`·`1.0`이 전부 `'1'`로 합성/바인드되고(단일 정수 판정기 의미론 — 운영 실증: number 선언 slot이 `1`을 저장해 메타가 `LOT_1`로 등록됐는데 토큰 `LOT_01`이 빗나가던 결함), `string` 선언은 공백만 제거하고 원문 유지(패딩이 유의미). 구현은 `map_overlay.canonical_key_value` **하나**이며 모든 pool lot/slot 바인드(총칩·기전사·origin_log·fail·이력·bin_map·lot_membership·source_region)와 `map_id` 합성(`_origin_map_id`·M1 `get_core_summary`)·`map_key` 분해(`build_key_filters`)가 이것을 경유합니다. 읽을 수 없는 값은 지어내지 않고 원문(트림)으로 조회가 정직하게 빗나갑니다.
 
 **`map_metadata`**
 - 만드는 판정: 프레임 정렬(회전·면·y반전·start)의 유도 원천 — 출신 코어 fail 좌표를 canonical 프레임으로 옮기는 근거. 정렬이 적용되면 `sources`에 `connected(aligned:180)` 마커.
@@ -139,6 +140,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore transfe
 **`transfer_log`**
 - 만드는 숫자: `chips.transferred` — **기전사 차감**. `x`/`y`가 있으면 distinct `(x,y)` 칩 수, 없으면 행 count.
 - 바인딩: `{"table": "bonding_log", "columns": {"lot", "slot", "x", "y"}}`
+- **[2026-07-29 7c] `"transfer_log": "none"` — 소모 기록이 없다는 선언**: 사이트에 전사(소모) 로그 자체가 없으면 정확히 문자열 `"none"`을 선언하십시오. 상태는 `connected(untracked)`(강등 아님 — `source_degraded` 없음), `transferred=null`(0 아님 — 미상), `remaining=null` + `remaining_upper_bound`(= total − fail) + **전용 경고 `transfer_untracked`**(effect `remaining_upper_bound`) — 클라는 미상 대신 `≤N`으로 표시할 수 있습니다. `by_core`의 used/remaining은 null, `?bins=`의 각 항목도 `transfer_untracked: true` + `remaining_upper_bound`(= bin∩총 − bin∩fail)로 나갑니다. **JSON `null`·키 부재·`"None"` 등 다른 형태는 전부 종전 그대로 `missing`**입니다(null은 실수 삭제와 구분 불가 — 의도는 문자열로만 선언).
 - 미연결: `transferred=0`으로 감산이 빠져 remaining 과대 위험 → `remaining=null` + `remaining_upper_bound`(total 정상일 때) + `source_degraded(remaining_overstated)`. total·이력은 안 죽습니다.
 - 함정: **`x`/`y`까지 바인딩하십시오** — 좌표 없이 count만 되면 **[2026-07-28 `1fefd12`] `connected(count_only)`로 강등**됩니다: `transferred` 카운트는 진짜라 유지되지만 칩 정체를 몰라 집합 감산이 불가능하므로 `remaining=null` + 진짜 상한만 제공되고, `by_core`의 used/remaining도 log·area_map **양 경로 모두 `null`**입니다(가짜 0 금지). 종전에는 이 상태가 `connected`로 통과해 기전사 차감이 빠진 remaining이 정상처럼 표시됐습니다(유령 잔여 — +101 재현 실증). 화면에서 잔여가 `미상`이고 기전사 숫자만 보이면 이 강등부터 의심하십시오.
 

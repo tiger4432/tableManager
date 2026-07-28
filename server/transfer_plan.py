@@ -209,6 +209,19 @@ WARN_LOT_MEMBERSHIP_DEGRADED = "lot_membership_degraded"
 WARN_LOT_SLOT_MAP_MISSING = "lot_slot_map_missing"
 EFFECT_LOT_EXPANSION_PARTIAL = "lot_expansion_partial"
 
+# [7c] `"transfer_log": "none"` — the site DECLARES that consumption is not
+# recorded (e.g. no bonding-consumption log exists at all). This is a stated
+# fact, not a broken binding: status is `connected(untracked)` (NOT degraded),
+# remaining stays null but `remaining_upper_bound` (= total − fail) is served
+# with its own warning so the client can render "≤N" instead of 미상.
+# ONLY the exact string "none" declares this — JSON null stays "missing"
+# (null is indistinguishable from an accidental absent-key edit), and every
+# other accidental-missing shape behaves exactly as before.
+TRANSFER_LOG_NONE = "none"
+STATUS_TRANSFER_UNTRACKED = "connected(untracked)"
+WARN_TRANSFER_UNTRACKED = "transfer_untracked"
+EFFECT_REMAINING_UPPER_BOUND = "remaining_upper_bound"
+
 # BIN 항목 status (계약). **`0`은 이 셋 중 어느 것도 대신할 수 없다** —
 # `0`은 "다 썼다"로 읽히고 `bin_absent`는 "그 BIN이 여기 없다"이며, 사용자는 두 경우에
 # 서로 다르게 행동해야 한다(DOE_BAND_MODEL §4-bis 🔴).
@@ -282,6 +295,17 @@ def _unresolved_of(cols) -> tuple:
     return bonding_plan._unresolved_roles(cols)
 
 
+def _identity_filters(src_cfg, cols, lot, slot):
+    """[7b] The (lot, slot) pool bind used by every role query — each value is
+    canonicalized by the DECLARED type of the bound column
+    (`map_overlay.canonical_key_value` is THE implementation — do not fork it).
+    A parsed token '01' must find a number-declared pool storing 1; cell-data
+    filters already cast by declared type, this is the same discipline here."""
+    import map_overlay
+    return [cols["lot"] == map_overlay.canonical_role_value(src_cfg, "lot", lot),
+            cols["slot"] == map_overlay.canonical_role_value(src_cfg, "slot", slot)]
+
+
 # ---------------------------------------------------------------------------
 # stage 목록 + 역할 연결 상태 (데이터 쿼리 없음 — 바인딩 해석만)
 # ---------------------------------------------------------------------------
@@ -311,7 +335,10 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
     source = stage_cfg.get("source") or {}
     out = {
         "total_chips": _binding_status(source.get("total_chips")),
-        "transfer_log": _binding_status(source.get("transfer_log")),
+        # [7c] the exact string "none" is a declared state, not a missing binding
+        "transfer_log": (STATUS_TRANSFER_UNTRACKED
+                         if source.get("transfer_log") == TRANSFER_LOG_NONE
+                         else _binding_status(source.get("transfer_log"))),
         "process_history": _binding_status(source.get("process_history")),
         "origin_log": _binding_status(source.get("origin_log")),
     }
@@ -395,6 +422,9 @@ def _status_is_degraded(status) -> bool:
     """역할 상태 문자열이 '강등'인가.
 
     정상: "connected", "connected(aligned:180)" 등 align 마커만 붙은 경우.
+          [7c] "connected(untracked)"도 강등이 **아니다** — 선언된 상태다(전사 기록이
+          없다고 사이트가 명시). remaining 처리는 `_summarize_inline`이 별도 규율
+          (`WARN_TRANSFER_UNTRACKED` + 상한 제공)로 한다.
     강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)",
           "connected(count_only)"(transfer_log 또는 self-frame fail 원천이 좌표 없이
           카운트만 제공 — 집합 감산 불가),
@@ -520,12 +550,16 @@ def load_source_region(db, cfg: dict, ref_table: str, map_key: str,
                                             "source_lot", "source_slot", "x", "y"))
     if model is None:
         return None
+    import map_overlay
     try:
         rows = (db.query(cols["x"], cols["y"])
                 .filter(cols["ref_table"] == ref_table,
                         cols["map_key"] == map_key,
-                        cols["source_lot"] == source_lot,
-                        cols["source_slot"] == source_slot)
+                        # [7b] source identity comes from parsed tokens — canonical bind
+                        cols["source_lot"] == map_overlay.canonical_role_value(
+                            store, "source_lot", source_lot),
+                        cols["source_slot"] == map_overlay.canonical_role_value(
+                            store, "source_slot", source_slot))
                 .limit(MAX_REGION_CELLS).all())
     except Exception as e:
         logger.warning("[TransferPlan] source_region query failed (%s/%s/%s/%s): %s",
@@ -593,7 +627,7 @@ def _core_region_counts(db, bp_cfg: dict, lot: str, slot: str, region: set):
     src = sources.get("total_chips")
     model, cols = _resolve(src, required=("lot", "slot"))
     if model is not None and "x" in cols and "y" in cols:
-        pts, _tr = _fetch_pairs(db, cols, [cols["lot"] == lot, cols["slot"] == slot],
+        pts, _tr = _fetch_pairs(db, cols, _identity_filters(src, cols, lot, slot),
                                 cap=MAX_REGION_CELLS, tag="region:total")
         total_pts = set(pts)
 
@@ -613,7 +647,7 @@ def _core_region_counts(db, bp_cfg: dict, lot: str, slot: str, region: set):
     src = sources.get("used_chips")
     model, cols = _resolve(src, required=("lot", "slot"))
     if model is not None and "x" in cols and "y" in cols:
-        pts, _tr = _fetch_pairs(db, cols, [cols["lot"] == lot, cols["slot"] == slot],
+        pts, _tr = _fetch_pairs(db, cols, _identity_filters(src, cols, lot, slot),
                                 distinct=True, cap=MAX_REGION_CELLS, tag="region:used")
         used_set = set(pts)
 
@@ -667,7 +701,8 @@ def parse_bin_request(raw):
 
 
 def _bin_axis_binding(stage_cfg: dict):
-    """stage의 `bin_map` 선언 → `(model, cols)`. 미선언/미해석이면 `(None, None)`.
+    """stage의 `bin_map` 선언 → `(model, cols, src_cfg)`. 미선언/미해석이면
+    `(None, None, None)`. src_cfg는 [7b] 캐노니컬 바인드가 선언 타입을 찾는 근거다.
 
     **컬럼을 추측하지 않는다.** "맵의 `val`이 곧 BIN"으로 박으면 라이브에서 즉시 틀린다 —
     같은 `dt_map.val`을 이 config는 이미 `origin_area_map`의 **코어 식별자**로 선언하고
@@ -680,7 +715,7 @@ def _bin_axis_binding(stage_cfg: dict):
            if isinstance(stage_cfg.get("bin_map"), dict)
            else (stage_cfg.get("source") or {}).get("bin_map"))
     model, cols = _resolve(src, required=("lot", "slot", "x", "y", "bin"))
-    return model, cols
+    return model, cols, (src if model is not None else None)
 
 
 def _bins_unavailable(detail: str, scope: str, requested=None) -> dict:
@@ -756,15 +791,23 @@ def _bin_cell_sets(db, cols, filters, raws):
 
 
 def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
-                requested, refused, base_reliable, chips_total, scope=BIN_SCOPE_SLOT):
-    """`(자재, BIN)` 단위 가용 블록. 산술은 `_region_block` 재사용."""
-    model, cols = _bin_axis_binding(stage_cfg)
+                requested, refused, base_reliable, chips_total, scope=BIN_SCOPE_SLOT,
+                untracked=False):
+    """`(자재, BIN)` 단위 가용 블록. 산술은 `_region_block` 재사용.
+
+    [7c] `untracked=True` = transfer_log가 "none"으로 **선언**됐다. used_set은 빈
+    집합이므로 `|bin∩총| − |bin∩fail|`은 진짜 상한이다(감산항이 빠지면 값은 커질
+    수만 있다) — 확정 `remaining`으로는 내보내지 않고 `remaining_upper_bound` +
+    `transfer_untracked` 플래그로 내보낸다. `transferred`는 가짜 0이 아니라 null.
+    `base_reliable`은 **untracked 원인을 제외한** 신뢰도다 — 다른 강등이 겹치면
+    상한도 성립을 주장하지 않고 기존 unknown 처리로 떨어진다."""
+    model, cols, bin_src = _bin_axis_binding(stage_cfg)
     if model is None:
         return _bins_unavailable(
             "이 단계에 BIN 축(`bin_map`)이 선언돼 있지 않습니다 — BIN별 가용을 계산할 수 없습니다.",
             scope, requested)
 
-    filters = [cols["lot"] == lot, cols["slot"] == slot]
+    filters = _identity_filters(bin_src, cols, lot, slot)
     try:
         cells_by_bin, raws_by_bin, unbinned, cells_total, uni_trunc = _bin_universe(
             db, cols, filters)
@@ -813,18 +856,29 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
         if total_pts is None:
             reasons.append("총칩 좌표를 알 수 없어 BIN별 총계를 계산할 수 없습니다")
         reliable = not reasons
-        entries.append({
+        entry = {
             "bin": b, "status": BIN_OK if reliable else BIN_UNKNOWN,
             "cells": cells,
             "total": block["total"],
             "fail_breakdown": block["fail_breakdown"],
-            "transferred": block["transferred"],
+            # [7c] untracked면 transferred는 미상이다 — used_set이 비어 있어 0이
+            # 나오는데 그건 "한 칩도 안 썼다"가 아니라 "기록이 없다"다.
+            "transferred": None if untracked else block["transferred"],
             # 🔴 신뢰 불가면 숫자를 내보내지 않는다. `remaining_upper_bound`와 같은 규율:
             #    확정처럼 보이는 수를 준 뒤 플래그로 취소하는 것은 이미 실패한 방식이다.
-            "remaining": block["remaining"] if reliable else None,
-            "reliable": reliable,
+            "remaining": block["remaining"] if reliable and not untracked else None,
+            "reliable": reliable and not untracked,
             "reason": " · ".join(reasons),
-        })
+        }
+        if untracked:
+            # [7c] chips 블록과 같은 형태: remaining은 null로 두고 상한을 제 이름으로.
+            entry["transfer_untracked"] = True
+            if reliable:
+                entry["remaining_upper_bound"] = block["remaining"]
+                entry["reason"] = ("전사 기록이 '없음'으로 선언됨(transfer_log: none) — "
+                                   "잔여는 상한(≤)만 제공")
+            # else: 다른 강등이 겹쳤다 — 상한의 성립도 주장하지 않는다(기존 사유가 말한다)
+        entries.append(entry)
 
     out = {
         "axis": "connected", "scope": scope,
@@ -936,15 +990,17 @@ def _lot_slots(db, stage_cfg, lot):
     `by_core`가 `origin_log`(정확) → `origin_area_map`(강등) + `by_core_origin` 마커로 이미
     쓰는 패턴과 같다 — 강등 경로를 없애지 않고 **이름 붙여 내보낸다.**
     """
+    import map_overlay
     src = (stage_cfg.get("source") or {}).get("lot_membership")
     model, cols = _resolve(src, required=("lot", "slot"))
     origin = "membership"
     if model is None:
-        model, cols = _bin_axis_binding(stage_cfg)
+        model, cols, src = _bin_axis_binding(stage_cfg)
         origin = "map"
     if model is None:
         return None, False, None
-    rows = (db.query(cols["slot"]).filter(cols["lot"] == lot)
+    rows = (db.query(cols["slot"])
+            .filter(cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot))
             .distinct().order_by(cols["slot"]).limit(MAX_LOT_SLOTS + 1).all())
     truncated = len(rows) > MAX_LOT_SLOTS
     if truncated:
@@ -1004,10 +1060,16 @@ def _fetch_pairs(db, cols, filters, distinct=False, cap=MAX_FAIL_POINTS, tag="")
     return [(int(x), int(y)) for (x, y) in pts if x is not None and y is not None], truncated
 
 
-def _origin_map_id(source_cfg, origin_lot, origin_slot) -> str:
+def _origin_map_id(source_cfg, origin_lot, origin_slot, binding=None) -> str:
+    """[7b] Origin map identity, canonicalized per the DECLARED column types of
+    the table whose meta is being looked up (`binding` = that source's
+    {table, columns}) — the meta row was registered from that table's stored
+    values, so 'LOT'/'01' must compose as 'LOT_1' when slot is number-declared.
+    THE composer is `map_overlay.compose_map_id` — do not fork it."""
+    import map_overlay
     identity_cols = (source_cfg.get("identity") or {}).get("compose") or ["lot", "slot"]
-    vals = {"lot": origin_lot, "slot": origin_slot}
-    return "_".join(str(vals.get(k, "")) for k in identity_cols)
+    return map_overlay.compose_map_id(
+        identity_cols, {"lot": origin_lot, "slot": origin_slot}, binding)
 
 
 def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
@@ -1030,7 +1092,6 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
         return cache[(origin_lot, origin_slot)]
 
     import bonding_plan
-    map_id = _origin_map_id(source_cfg, origin_lot, origin_slot)
     meta = None
     for fs in (source_cfg.get("fail_sources") or {}).values():
         if not _valid_binding(fs):
@@ -1040,6 +1101,8 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
         cols = fs.get("columns") or {}
         if "x" not in cols or "y" not in cols:
             continue      # 좌표가 없는 원천은 프레임을 정의할 수 없다
+        # [7b] identity canonicalized per the frame-defining table's declared types
+        map_id = _origin_map_id(source_cfg, origin_lot, origin_slot, binding=fs)
         meta = bonding_plan.load_map_meta(db, source_cfg, fs["table"], map_id, meta_cache)
         break
     if cache is not None:
@@ -1057,12 +1120,13 @@ def _canonical_fail_set(db, source_cfg, fail_cfg, cols, origin_lot, origin_slot,
     import bonding_plan
     import map_overlay
 
-    filters = [cols["lot"] == origin_lot, cols["slot"] == origin_slot]
+    filters = _identity_filters(fail_cfg, cols, origin_lot, origin_slot)
     fail_values = fail_cfg.get("fail_values")
     if fail_values and "val" in cols:
         filters.append(cols["val"].in_([str(v) for v in fail_values]))
 
-    map_id = _origin_map_id(source_cfg, origin_lot, origin_slot)
+    # [7b] identity canonicalized per the fail table's declared types
+    map_id = _origin_map_id(source_cfg, origin_lot, origin_slot, binding=fail_cfg)
     src_meta = bonding_plan.load_map_meta(db, source_cfg, fail_cfg["table"], map_id, meta_cache)
     dst_meta = _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
                                       grid_cache, meta_cache)
@@ -1101,7 +1165,7 @@ def _collect_history(db, source_cfg, lot, slot):
     if model is None:
         return "missing", history, warnings_out
     try:
-        q = db.query(model).filter(cols["lot"] == lot, cols["slot"] == slot)
+        q = db.query(model).filter(*_identity_filters(src, cols, lot, slot))
         if "time" in cols:
             q = q.order_by(cols["time"].desc())
         rows = q.limit(bonding_plan.HISTORY_LIMIT).all()
@@ -1176,7 +1240,8 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         statuses["total_chips"] = "missing"
     else:
         try:
-            total = int(db.query(model).filter(cols["lot"] == lot, cols["slot"] == slot).count())
+            total = int(db.query(model)
+                        .filter(*_identity_filters(src, cols, lot, slot)).count())
             statuses["total_chips"] = _demote_unresolved("connected", cols)
         except Exception as e:
             logger.warning("[TransferPlan] role 'total_chips' query failed: %s", e)
@@ -1186,34 +1251,46 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     used_set = set()
     used_count = 0
     used_count_only = False
+    used_untracked = False
     src = source_cfg.get("transfer_log")
-    model, cols = _resolve(src, required=("lot", "slot"))
-    if model is None:
-        statuses["transfer_log"] = "missing"
+    if src == TRANSFER_LOG_NONE:
+        # [7c] Consumption is DECLARED unrecorded ("none" — the exact string; JSON
+        # null stays "missing" because null cannot be told apart from an accidental
+        # absent key). Not a degradation: the binding did not break, the site
+        # stated a fact. used_set stays empty and used_count 0, so the computed
+        # remaining below is a genuine UPPER BOUND (dropping a subtraction term can
+        # only raise the value) — served as remaining_upper_bound, never as an
+        # exact remaining. transferred is unknown, not 0.
+        used_untracked = True
+        statuses["transfer_log"] = STATUS_TRANSFER_UNTRACKED
     else:
-        try:
-            filters = [cols["lot"] == lot, cols["slot"] == slot]
-            if "x" in cols and "y" in cols:
-                pts, trunc = _fetch_pairs(db, cols, filters, distinct=True,
-                                          cap=MAX_ORIGIN_POINTS, tag="transfer_log")
-                used_set = set(pts)
-                used_count = len(used_set)
-                if trunc:
-                    truncations.append({"role": "transfer_log", "cap": MAX_ORIGIN_POINTS})
-                status = "connected"
-            else:
-                # [FIX 2026-07-28] Bound without usable x/y: the count is real but
-                # chip identity is unknown, so the set-based remaining below cannot
-                # subtract these chips (used_set stays empty while `transferred`
-                # displays the count — the phantom-remaining bug). Demote so the
-                # degradation engine nulls remaining and serves the upper bound.
-                used_count = int(db.query(model).filter(*filters).count())
-                used_count_only = True
-                status = "connected(count_only)"
-            statuses["transfer_log"] = _demote_unresolved(status, cols)
-        except Exception as e:
-            logger.warning("[TransferPlan] role 'transfer_log' query failed: %s", e)
+        model, cols = _resolve(src, required=("lot", "slot"))
+        if model is None:
             statuses["transfer_log"] = "missing"
+        else:
+            try:
+                filters = _identity_filters(src, cols, lot, slot)
+                if "x" in cols and "y" in cols:
+                    pts, trunc = _fetch_pairs(db, cols, filters, distinct=True,
+                                              cap=MAX_ORIGIN_POINTS, tag="transfer_log")
+                    used_set = set(pts)
+                    used_count = len(used_set)
+                    if trunc:
+                        truncations.append({"role": "transfer_log", "cap": MAX_ORIGIN_POINTS})
+                    status = "connected"
+                else:
+                    # [FIX 2026-07-28] Bound without usable x/y: the count is real but
+                    # chip identity is unknown, so the set-based remaining below cannot
+                    # subtract these chips (used_set stays empty while `transferred`
+                    # displays the count — the phantom-remaining bug). Demote so the
+                    # degradation engine nulls remaining and serves the upper bound.
+                    used_count = int(db.query(model).filter(*filters).count())
+                    used_count_only = True
+                    status = "connected(count_only)"
+                statuses["transfer_log"] = _demote_unresolved(status, cols)
+            except Exception as e:
+                logger.warning("[TransferPlan] role 'transfer_log' query failed: %s", e)
+                statuses["transfer_log"] = "missing"
 
     # ---- origin_log (칩 단위 출신 귀속 — by_core·fail 투영의 다리) ----
     origin_rows = None   # [(tx, ty, origin_lot, origin_slot, ox, oy)]
@@ -1226,7 +1303,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         try:
             q = db.query(cols["x"], cols["y"], cols["origin_lot"], cols["origin_slot"],
                          cols["origin_x"], cols["origin_y"]) \
-                 .filter(cols["lot"] == lot, cols["slot"] == slot)
+                 .filter(*_identity_filters(src, cols, lot, slot))
             raw = q.limit(MAX_ORIGIN_POINTS).all()
             if len(raw) >= MAX_ORIGIN_POINTS:
                 logger.warning("[TransferPlan] origin_log fetch hit hard cap (%d)", MAX_ORIGIN_POINTS)
@@ -1279,7 +1356,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         if frame == "self":
             # 자기 identity 직접 카운트 (M1 맵 모드와 동일 — align은 카운트 불변)
             try:
-                filters = [cols["lot"] == lot, cols["slot"] == slot]
+                filters = _identity_filters(fs, cols, lot, slot)
                 fail_values = fs.get("fail_values")
                 if fail_values and "val" in cols:
                     filters.append(cols["val"].in_([str(v) for v in fail_values]))
@@ -1427,10 +1504,13 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 # out of fail_union, so per-core fail would under-report and the
                 # remaining derived from `blocked` would over-report — null both;
                 # `used` stays real (it comes from used_set, unaffected).
+                # [7c] untracked transfer_log is the declared sibling of
+                # count_only: chip-level used is unknowable either way.
                 "total": a["total"],
                 "fail": None if fail_count_only else a["fail"],
-                "used": None if used_count_only else a["used"],
-                "remaining": (None if (used_count_only or fail_count_only)
+                "used": None if (used_count_only or used_untracked) else a["used"],
+                "remaining": (None if (used_count_only or used_untracked
+                                       or fail_count_only)
                               else a["total"] - a["blocked"]),
             })
         if len(by_core) > MAX_BY_CORE:
@@ -1449,7 +1529,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         else:
             try:
                 raw = (db.query(cols["x"], cols["y"], cols["val"])
-                       .filter(cols["lot"] == lot, cols["slot"] == slot)
+                       .filter(*_identity_filters(area_src, cols, lot, slot))
                        .limit(MAX_ORIGIN_POINTS).all())
                 if len(raw) >= MAX_ORIGIN_POINTS:
                     logger.warning("[TransferPlan] origin_area_map fetch hit hard cap (%d)",
@@ -1474,10 +1554,11 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                         # [FIX 2026-07-28] count_only transfer_log: used_set is
                         # empty so per-core used (and the remaining derived from
                         # it) is unknowable — null, never a fake 0/total.
+                        # [7c] untracked: same nulls as count_only — used_set is empty.
                         "core_id": val, "core_lot": None, "core_slot": None,
                         "total": a["total"], "fail": None,
-                        "used": None if used_count_only else a["used"],
-                        "remaining": (None if used_count_only
+                        "used": None if (used_count_only or used_untracked) else a["used"],
+                        "remaining": (None if (used_count_only or used_untracked)
                                       else a["total"] - a["used"]),
                     })
                 if len(by_core) > MAX_BY_CORE:
@@ -1520,16 +1601,34 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                       f"sum(by_core.total)이 chips.total과 일치하지 않는다",
         })
 
+    # [7c] Declared-untracked consumption — applied AFTER the degradation/cap
+    # machinery so `bins_base_reliable` captures every OTHER cause: the bins
+    # block serves per-bin upper bounds only when untracked is the sole reason.
+    bins_base_reliable = remaining_reliable
+    if used_untracked:
+        remaining_reliable = False   # build_chips_block nulls remaining + serves the bound
+        deg_warnings.append({
+            "type": WARN_TRANSFER_UNTRACKED,
+            "role": "transfer_log",
+            "status": STATUS_TRANSFER_UNTRACKED,
+            "effect": EFFECT_REMAINING_UPPER_BOUND,
+            "detail": ("전사(소모) 기록이 '없음'으로 선언됨(transfer_log: \"none\") — "
+                       "잔여는 확정치가 아니라 상한이다. remaining_upper_bound를 "
+                       "'≤N'으로 표시하라(미상이 아니다)"),
+        })
+
     chips_block, inv_warnings = build_chips_block(
         total=total,
         fail_breakdown=fail_breakdown,
-        transferred=used_count,
+        # [7c] transferred is unknown under untracked — 0 would read as "none used"
+        transferred=None if used_untracked else used_count,
         remaining=remaining,
         remaining_reliable=remaining_reliable,
         total_reliable=total_reliable,
     )
     if inv_warnings:
         remaining_reliable = False   # region_chips.reliable에도 전파
+        bins_base_reliable = False   # 모집단 불일치는 untracked와 무관한 실 강등이다
 
     result = {
         "identity": {"lot": lot, "slot": slot},
@@ -1557,7 +1656,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             src = source_cfg.get("total_chips")
             model, cols = _resolve(src, required=("lot", "slot"))
             if model is not None and "x" in cols and "y" in cols:
-                pts, _tr = _fetch_pairs(db, cols, [cols["lot"] == lot, cols["slot"] == slot],
+                pts, _tr = _fetch_pairs(db, cols, _identity_filters(src, cols, lot, slot),
                                         cap=MAX_REGION_CELLS, tag="region:total")
                 total_pts = set(pts)
 
@@ -1568,12 +1667,16 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         result["region_chips"] = _region_block(
             total_pts, {"all_fail": fail_union}, used_set, region)
         result["region_chips"]["reliable"] = remaining_reliable
+        if used_untracked:
+            # [7c] used_set is empty by declaration — the region transferred would
+            # be a fake 0 (unknown, not zero).
+            result["region_chips"]["transferred"] = None
 
     # ---- [BIN 축] `(자재, BIN)` 단위 가용 ----
     if want_bins:
         bins = _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
-                           bin_request, bin_refused, remaining_reliable,
-                           chips_block.get("total"))
+                           bin_request, bin_refused, bins_base_reliable,
+                           chips_block.get("total"), untracked=used_untracked)
         result["bins"] = bins
         result["warnings"] = result["warnings"] + _bin_warnings(bins)
     return result
@@ -3039,9 +3142,11 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
             # 과대이므로 qty_shortage가 발화하지 않아 안전망이 조용히 무너진다.
             if not chips_block.get("remaining_reliable", True):
                 degraded_roles = [w.get("role") for w in (summary.get("warnings") or [])
-                                  if w.get("type") == WARN_SOURCE_DEGRADED
-                                  and w.get("effect") in (EFFECT_REMAINING_OVERSTATED,
-                                                          EFFECT_TOTAL_UNKNOWN)]
+                                  if (w.get("type") == WARN_SOURCE_DEGRADED
+                                      and w.get("effect") in (EFFECT_REMAINING_OVERSTATED,
+                                                              EFFECT_TOTAL_UNKNOWN))
+                                  # [7c] untracked도 판정 불가 사유를 이름으로 말한다
+                                  or w.get("type") == WARN_TRANSFER_UNTRACKED]
                 ub = chips_block.get("remaining_upper_bound")
                 warnings_out.append({
                     "type": WARN_AVAILABILITY_UNRELIABLE, "value": v,
@@ -3091,8 +3196,9 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
                               f"({', '.join(f'{k}:{n}' for k, n in fb.items())})",
                 })
             for w in (summary.get("warnings") or []):
-                if w.get("type") in (WARN_SOURCE_DEGRADED, WARN_RESULT_TRUNCATED):
-                    continue   # 강등/절단은 availability_unreliable로 이미 다뤘다(중복 방지)
+                if w.get("type") in (WARN_SOURCE_DEGRADED, WARN_RESULT_TRUNCATED,
+                                     WARN_TRANSFER_UNTRACKED):
+                    continue   # 강등/절단/untracked는 availability_unreliable로 이미 다뤘다
                 entry = {
                     "type": WARN_SOURCE_HISTORY_FAIL, "value": v,
                     "source": f"{s_lot}|{s_slot}",

@@ -22,6 +22,10 @@ from utils import heartbeat
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
 
+# [M3] Auto-registration of wafer_map_metadata for chain-ingested maps — shared
+# with the file watcher (absent-only; knob `auto_register_map_meta`).
+import map_meta_registrar
+
 logger = get_process_logger("Chain", "chain_worker.log")
 
 class OutboxListener:
@@ -428,7 +432,25 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 
                 # Apply updates
                 results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, target_table, batch_data)
-                
+
+                # [M3] Absent-only wafer_map_metadata auto-registration for
+                # chain-created maps. Uses the VALIDATED batch items (same
+                # column names the upsert wrote). One existence check per
+                # distinct map key per tx group; a failure here must never fail
+                # the (already committed) chain write — log and continue.
+                # Recursion-safe: the registrar refuses META_TABLE and the meta
+                # table declares no map_key_columns, so meta creation can never
+                # re-trigger itself.
+                try:
+                    meta_collector = map_meta_registrar.MapMetaCollector(target_table)
+                    if meta_collector.active:
+                        meta_collector.collect(item.updates for item in batch_data.updates)
+                        created_meta = meta_collector.flush(db)
+                        if created_meta:
+                            logger.info(f"[M3] Auto-registered {created_meta} wafer_map_metadata row(s) for chain target '{target_table}'")
+                except Exception as meta_err:
+                    logger.error(f"[M3] Map-meta auto-registration failed for '{target_table}' (chain write unaffected): {meta_err}")
+
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
                 try:

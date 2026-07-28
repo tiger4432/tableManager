@@ -61,6 +61,7 @@
 import json
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,109 @@ def load_overlay_config(path: str = None) -> dict:
     except Exception as e:
         logger.warning("[MapOverlay] failed to load config %s: %s", p, e)
         return {}
+
+
+# ---------------------------------------------------------------------------
+# [7b] Canonical key values — THE one canonicalization for map identity
+# composition and pool (lot/slot) binds.
+#
+# Production defect (2026-07-28): a `number`-declared slot column stores 1, so
+# the map identity registered in wafer_map_metadata reads 'LOT_1' — while a
+# parsed material token supplies '01' (and a Float column round-trips '1.0').
+# Composing or binding with the raw value then misses silently: the meta lookup
+# returns None (align degradation) and the availability pool binds count 0.
+# Cell-data filters survive because crud casts them by declared column type —
+# identity composition and pool binds must go through here for the same reason.
+# Do NOT write a second implementation.
+# ---------------------------------------------------------------------------
+
+_CANON_INT_RE = re.compile(r"^[+-]?[0-9]+$")
+
+
+def canonical_key_value(value, col_type):
+    """Value + DECLARED column type -> canonical key string.
+
+    - "number": integer-parse -> str, honoring the project's single-integer-judge
+      semantics ('01' / '1' / ' 1 ' are the same key; 1.0 -> '1'). A non-integral
+      numeric keeps its repr ('7.5'); an unreadable value keeps its trimmed
+      original — the lookup misses honestly instead of inventing a key.
+    - anything else (string / undeclared): trimmed as-is.
+    - None stays None (composition sites decide their own placeholder).
+    """
+    if value is None:
+        return None
+    if col_type == "number" and not isinstance(value, bool):
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            if value == value and value not in (float("inf"), float("-inf")) \
+                    and value.is_integer():
+                return str(int(value))
+            return str(value).strip()
+        s = str(value).strip()
+        if _CANON_INT_RE.match(s):
+            return str(int(s))
+        try:
+            f = float(s)
+        except (TypeError, ValueError):
+            return s
+        if f == f and f not in (float("inf"), float("-inf")) and f.is_integer():
+            return str(int(f))
+        return s
+    if isinstance(value, float):
+        # A float VALUE is numeric regardless of the declared type — '3.0' is a
+        # repr artifact, not data (mirrors crud.clean_str_value, which the
+        # registration path pinned before this function existed).
+        if value == value and value not in (float("inf"), float("-inf")) \
+                and value.is_integer():
+            return str(int(value))
+    return str(value).strip()
+
+
+def declared_column_type(table, column):
+    """Declared type of `table.column` from the live table_config singleton.
+
+    crud.TABLE_CONFIG is mutated in place on hot reload — always read through
+    the module attribute, never a snapshot. None when table/column undeclared
+    (canonical_key_value then applies string semantics: trim only)."""
+    if not table or not column:
+        return None
+    from database import crud
+    return ((crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {}).get(column)
+
+
+def canonical_bind_value(table, column, value):
+    """`canonical_key_value` with the declared type looked up — the form every
+    pool-bind / composition site uses."""
+    return canonical_key_value(value, declared_column_type(table, column))
+
+
+def canonical_role_value(src_cfg, role, value):
+    """Pool-bind convenience: role key -> bound column of `src_cfg`
+    ({table, columns role-map}) -> canonical by its declared type."""
+    if not isinstance(src_cfg, dict):
+        return value
+    col = (src_cfg.get("columns") or {}).get(role, role)
+    return canonical_bind_value(src_cfg.get("table"), col, value)
+
+
+def compose_map_id(identity_cols, values, binding=None):
+    """Join identity components with '_' into a map identity string.
+
+    Each component is canonicalized by the declared type of the corresponding
+    column of `binding` ({table, columns role-map}) — the meta row being looked
+    up was registered from THAT table's stored values, so the composition must
+    canonicalize the same way ('LOT_01' -> 'LOT_1' when slot is number-declared).
+    With no binding, components pass through `str()` untouched (no declared type
+    to canonicalize against)."""
+    parts = []
+    for k in identity_cols:
+        v = values.get(k, "")
+        if isinstance(binding, dict) and isinstance(binding.get("table"), str):
+            col = (binding.get("columns") or {}).get(k, k)
+            v = canonical_bind_value(binding["table"], col, v)
+        parts.append("" if v is None else str(v))
+    return "_".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -620,17 +724,24 @@ def resolve_binding_info(cfg: dict, table: str) -> dict | None:
 
 
 def build_key_filters(model, binding: dict, map_key: str):
-    """map_key(관례상 `_`로 조인된 복합 키)를 key_columns에 분해해 필터를 만든다."""
+    """map_key(관례상 `_`로 조인된 복합 키)를 key_columns에 분해해 필터를 만든다.
+
+    [7b] Each decomposed part is a parsed token: it binds through
+    `canonical_bind_value` so a padded '01' still finds a number-declared
+    column storing 1 (cell-data filters already cast by declared type — this
+    is the same discipline for map-key binds)."""
     key_cols = binding.get("key_columns") or ["lot", "slot"]
     if isinstance(key_cols, str):
         key_cols = [key_cols]
+    table_name = getattr(model, "__tablename__", None) \
+        or getattr(getattr(model, "__table__", None), "name", None)
     parts = str(map_key).split("_")
     if len(parts) < len(key_cols):
         # 분해 불가 — 단일 컬럼으로 통째 매칭 시도
         col = getattr(model, key_cols[0], None)
         if col is None:
             return None
-        return [col == map_key]
+        return [col == canonical_bind_value(table_name, key_cols[0], map_key)]
     # 마지막 컬럼이 나머지를 흡수(랏 이름에 '_'가 있는 경우 방어)
     head = parts[:len(key_cols) - 1]
     tail = "_".join(parts[len(key_cols) - 1:])
@@ -640,7 +751,7 @@ def build_key_filters(model, binding: dict, map_key: str):
         col = getattr(model, name, None)
         if col is None:
             return None
-        filters.append(col == val)
+        filters.append(col == canonical_bind_value(table_name, name, val))
     return filters
 
 

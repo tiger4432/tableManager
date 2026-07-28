@@ -114,6 +114,22 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 �
 
 > **⚠️ 개명된 파일과 커스텀 파서**: 충돌 개명은 파일명을 바꾸므로, 파일명 패턴에 의존하는 커스텀 파서 `match()`에 걸리지 않을 수 있습니다(std 폴백 또는 err/). dedup·체크포인트는 내용 sha256 기준이라 개명의 영향을 받지 않습니다.
 
+## 1.10 맵 메타 자동 등록 (M3, 2026-07-29)
+
+인제션(파일 워처 **및** 체인 워커)이 `map_key_columns`가 선언된 테이블에 맵 셀을 적재하면, 배치가 건드린 **각 distinct 맵 키**에 대해 `wafer_map_metadata` 행의 존재를 보장합니다. 미등록 맵이 화면에 '화면기준' 칩으로 열화되는 공백(수동 에디터 push만 메타를 등록하던 문제)을 닫는 기능입니다. 구현: `server/map_meta_registrar.py`의 `MapMetaCollector` (워처 훅 `directory_watcher._send_to_upsert`, 체인 훅 `chain_ingestion_worker.process_chain_transaction_group`).
+
+| 항목 | 동작 |
+|---|---|
+| 발동 조건 | 대상 테이블에 `map_key_columns` 선언 **그리고** 좌표 바인딩 해석 가능(`map_overlay.resolve_binding` — 선언 > 유도). 좌표 없는 registry형 테이블(`map_split_registry` 등)은 자연 제외 |
+| 등록 내용 | **정직한 최소치** — 배치 x/y 범위(bbox) 격자(`grid_cols/rows`, `grid_start_x/y` = 데이터 최소 좌표), 회전 0, front, 마스크 중립 물리 어휘(chip 1×1 / offset 0 / margin 3 / 격자 반대각선 외접 dia) = 에디터 '표준' 선택과 동일한 합성 규격. 실제 웨이퍼 지오메트리(원)는 **추측하지 않습니다**. `auto_registered: true` 필드로 출처 표기 |
+| 절대 불변식 | **absent-only** — 이미 존재하는 메타 행은 어떤 경우에도 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 생성 행의 소스는 `auto_map_meta`(최하위 우선순위)라 이후 사용자 편집이 항상 이깁니다 |
+| 확장성 | 존재 확인은 행이 아니라 **distinct 키당 1회**, 인덱스 컬럼(`business_key_val`) IN 조회(1000키 청킹). 프로세스 수명 내 확인-완료 키 캐시로 동일 맵 재적재는 추가 쿼리 0회 |
+| 이벤트 | 메타 행은 `crud.apply_batch_updates`(정상 쓰기 경로)로 생성 — outbox 이벤트가 흐르고 워커 스윕이 클라 갱신을 전달합니다. 재귀 가드: `wafer_map_metadata` 자신은 명시 거부(+ 메타 테이블엔 `map_key_columns`도 없음) |
+| 끄는 법 | `ingestion_settings.json`에 `"auto_register_map_meta": false` (기본 true, 핫리로드 — 다음 파일/체인 트랜잭션 그룹부터) |
+| 실패 격리 | 메타 등록 실패는 로그만 남기고 **파일/체인 적재는 정상 완료**됩니다(데이터가 먼저 커밋됨) |
+
+> **맵 키 조합 규약**: map_id는 `map_key_columns` 값의 `'_'` 조인(에디터 `getMapIdFromMeta`와 동일, 값 정규화는 crud `clean_str_value`)입니다. 키 컬럼이 하나라도 비면 그 행은 등록에 기여하지 않습니다(부분 정체성 추측 금지). 조합 구현은 `map_meta_registrar.compose_map_id`에 있으며 공용 정규화 함수(7b)로의 일원화가 예정되어 있습니다 — `TODO(7b)` 마커 및 `test_map_id_composition_pinned_for_7b` 고정 테스트 참조.
+
 ---
 
 ## 2. 파이프라인(Pipeline) 구성 방법

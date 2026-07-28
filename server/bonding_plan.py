@@ -284,7 +284,13 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
 
     identity_cols = (cfg.get("core_identity") or {}).get("compose") or ["lot", "slot"]
     identity_vals = {"lot": lot, "slot": slot}
-    map_id = "_".join(str(identity_vals.get(k, "")) for k in identity_cols)
+
+    def _map_id_for(src):
+        # [7b] Map identity canonicalized per the looked-up table's DECLARED
+        # column types — meta was registered from that table's stored values, so
+        # a parsed token '01' must compose as '1' when slot is number-declared.
+        # THE composer is map_overlay.compose_map_id (no second implementation).
+        return map_overlay.compose_map_id(identity_cols, identity_vals, src)
 
     statuses = {}
     counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0}
@@ -304,7 +310,8 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     for role in CANONICAL_FRAME_ROLES:
         src = sources_cfg.get(role)
         if _valid_source(src) and "x" in src["columns"] and "y" in src["columns"]:
-            canonical_meta = load_map_meta(db, cfg, src["table"], map_id, meta_cache)
+            canonical_meta = load_map_meta(db, cfg, src["table"], _map_id_for(src),
+                                           meta_cache)
             break
     canonical_grid = map_overlay._grid_of(canonical_meta)
 
@@ -325,6 +332,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         # [정렬] 소스 메타 ↔ canonical 메타의 델타에서 유도한다(선언 레이어 없음).
         # 변환을 만들 수 없으면(치수 비호환·phys 미등록) 조용히 raw 좌표로 계산하지 않고
         # align_unavailable로 표면화한다.
+        map_id = _map_id_for(src)          # [7b] per-table canonical identity
         src_meta = load_map_meta(db, cfg, src["table"], map_id, meta_cache)
         transform = None
         align, align_ok = None, True
@@ -354,7 +362,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
             if marker:
                 status = f"connected({marker})"
 
-        filters = [cols["lot"] == lot, cols["slot"] == slot]
+        # [7b] pool binds canonicalized by the bound column's declared type
+        filters = [cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
+                   cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot)]
         fail_values = src.get("fail_values")
         if fail_values and "val" in cols:
             filters.append(cols["val"].in_([str(v) for v in fail_values]))
@@ -409,7 +419,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         if model is None:
             statuses["used_chips"] = "missing"
         else:
-            filters = [cols["lot"] == lot, cols["slot"] == slot]
+            # [7b] canonical pool bind
+            filters = [cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
+                       cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot)]
             try:
                 if "x" in cols and "y" in cols:
                     pts = _fetch_points(db, cols, filters, distinct_pairs=True)
@@ -439,7 +451,10 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
             statuses["process_history"] = "missing"
         else:
             try:
-                q = db.query(model).filter(cols["lot"] == lot, cols["slot"] == slot)
+                # [7b] canonical pool bind
+                q = db.query(model).filter(
+                    cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
+                    cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot))
                 if "time" in cols:
                     q = q.order_by(cols["time"].desc())
                 rows = q.limit(HISTORY_LIMIT).all()

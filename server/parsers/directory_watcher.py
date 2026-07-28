@@ -50,6 +50,10 @@ logger = logging.getLogger("Watcher.DirectoryWatcher")
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
 
+# [M3] Auto-registration of wafer_map_metadata for ingested maps — absent-only,
+# batched per file; knob `auto_register_map_meta` in ingestion_settings.json.
+import map_meta_registrar
+
 # [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
 import ingestion_checkpoint
 from ingestion_checkpoint import (
@@ -1675,6 +1679,12 @@ class IngestionHandler(FileSystemEventHandler):
                 )
         chunk_index = (processed_rows // batch_size) if batch_size else 0
 
+        # [M3] Map-meta auto-registration collector. Constructed HERE so the
+        # enable-knob snapshot shares the file-boundary discipline (D1) with the
+        # table-config snapshot above. Inert unless t_name declares
+        # map_key_columns AND resolves a coordinate binding.
+        meta_collector = map_meta_registrar.MapMetaCollector(t_name, table_info)
+
         try:
             while True:
                 chunk = list(islice(row_iter, batch_size))
@@ -1708,6 +1718,10 @@ class IngestionHandler(FileSystemEventHandler):
                 if not items:
                     processed_rows += len(chunk)
                     continue
+
+                # [M3] O(rows) bbox accumulation on the NORMALIZED updates —
+                # same column names the upsert writes. No DB work here.
+                meta_collector.collect(it.updates for it in items)
 
                 # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
                 db = SessionLocal()
@@ -1762,6 +1776,22 @@ class IngestionHandler(FileSystemEventHandler):
                     except Exception as pe:
                         logger.warning(f"Progress callback failed: {pe}")
                     
+            # [M3] Absent-only meta registration AFTER the data committed — one
+            # existence check per distinct map key per file (indexed bk column).
+            # A failure here must never fail the ingestion (data is already in);
+            # it is logged and the file completes normally.
+            if meta_collector.pending():
+                meta_db = SessionLocal()
+                try:
+                    created_meta = meta_collector.flush(meta_db)
+                    if created_meta:
+                        logger.info(f"[{t_name}] 🗺️ Auto-registered {created_meta} wafer_map_metadata row(s) for {filename or '?'}")
+                except Exception as meta_err:
+                    meta_db.rollback()
+                    logger.error(f"[{t_name}] Map-meta auto-registration failed (ingestion unaffected): {meta_err}")
+                finally:
+                    meta_db.close()
+
             if self.on_refresh_callback and total_changed > 0:
                 self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)
                 
