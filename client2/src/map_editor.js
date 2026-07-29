@@ -7,7 +7,11 @@ import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCou
 // The ONE material-list normalizer. The panel parses what the user types with it and the
 // storage layer normalizes with it, so the material COUNT on screen and the denominator of
 // `ceil(total / n)` in the save can never be two different numbers.
-import { parseMaterialList, bandsToZones } from './doe_bands.js';
+// `ZONES`/`ZONE_LABEL` come with it because COPY HEADER MODE prints the zone group names
+// (1H · MID · TOP) into the exported header. INV-ⓐ-4: the words on screen and the words in
+// the export are ONE list — a second hardcoded copy here is how "MID" on screen becomes
+// "MIDDLE" in the file the factory actually reads.
+import { parseMaterialList, bandsToZones, ZONES, ZONE_LABEL, DOE_COLUMNS } from './doe_bands.js';
 // [V1 effort instrument] The ONE collector (client2/src/effort_meter.js, owned by Lead PM).
 // This file counts NOTHING on its own: no local counters, no second session id, no copy of
 // the 1/3/5 weights (those live server-side and are applied at query time). Keystrokes and
@@ -904,6 +908,7 @@ function initDOMElements() {
   el.opsMenuDropdown = document.getElementById('ops-menu-dropdown');
   el.selectionActionsContainer = document.getElementById('selection-actions-container');
   el.btnCopyExcel = document.getElementById('btn-copy-excel');
+  el.copyHeaderToggle = document.getElementById('map-copy-header-toggle');
 
   el.choiceModal = document.getElementById('choice-modal');
   el.btnChoiceStandard = document.getElementById('btn-choice-standard');
@@ -1055,6 +1060,21 @@ function initDOMElements() {
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
+
+  // [F1ⓐ] 체크박스 상태의 영속화. **새 저장 기계장치를 만들지 않는다** — 그리드 화면의
+  // `Copy Header` 토글이 이미 `localStorage['copyHeader']`에 같은 방식으로 붙어 있고
+  // (`main.js:90` 읽기 / `main.js:528` 쓰기), 이건 그 프리미티브의 맵 화면 사본이다.
+  // 초안(`saveDoeDraft`)에 얹지 않은 이유는 두 가지다: 초안은 지문이 어긋나면 **적용되지
+  // 않고**, ⚡ Push 성공 시 `clearDoeDraft`가 지운다 — 사용자 설정이 저장 한 번에
+  // 조용히 꺼지는 동작이 된다.
+  if (el.copyHeaderToggle) {
+    try { el.copyHeaderToggle.checked = localStorage.getItem(COPY_HEADER_KEY) === 'true'; }
+    catch (e) { /* 저장소를 못 읽어도 기본값(꺼짐)으로 동작한다 */ }
+    el.copyHeaderToggle.addEventListener('change', () => {
+      try { localStorage.setItem(COPY_HEADER_KEY, String(el.copyHeaderToggle.checked)); }
+      catch (e) { /* 기억하지 못할 뿐, 이번 복사는 체크 상태대로 나간다 */ }
+    });
+  }
   if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
   
   // Physical input triggers: use change event for typing completion and scheduleRenderGridCanvas for rAF throttling
@@ -2473,13 +2493,46 @@ async function deleteCustomPreset() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [F2] 저장될 셀의 **유일한 정의**. 화면 수량과 저장 수량이 갈리던 자리가 여기다.
+//
+// 🔴 THE DEFECT. `computeLegendCounts` walked `gridData` — a flat physical-key map that
+//    knows nothing about `inside`. `🎨 Fill All` painted the whole rectangle, so on a
+//    circle-based map ~21%의 셀이 원 밖에 칠해졌고 화면 수량이 그것까지 셌다. 그 셀들은
+//    ① 캔버스에 색이 나오지도 않고(`cellFillColor`가 `!inside`면 outBg를 돌려준다)
+//    ② `pushMapData`가 직렬화하지도 않는다. 즉 **보이지도 않고 저장되지도 않는 셀이
+//    DOE 산술의 입력이 되고 있었다.**
+//
+// 🔴 그래서 술어는 하나다: `pushMapData`가 `updates`를 만드는 그 순회를 여기로 옮기고
+//    Push·범례 뱃지·DOE 패널·COPY HEADER MODE의 COUNT가 **모두 이 함수를 통과한다**.
+//    두 곳에서 각자 세면 저장이 `ceil`, 표시가 `round`였던 그 계급이 다시 생긴다.
+//
+// ⚠️ `gridCells2D`가 정의역이라는 것이 규칙의 일부다. 렌더가 만들지 않은 셀은 Push도
+//    직렬화하지 않으므로(그 상태는 대비 관문이 잡는다), 세지 않는 것이 정확하다.
+//    빈 값 판정은 Push가 쓰던 식(`(v || '') !== ''`)을 **글자 그대로** 옮겼다 — 여기서
+//    표현을 "개선"하면 그 개선분만큼 화면과 저장이 갈린다.
+// ═══════════════════════════════════════════════════════════════════════════════
+function eachSavableCell(fn) {
+  if (!gridCells2D) return;
+  Object.keys(gridCells2D).forEach(rStr => {
+    const r = parseInt(rStr, 10);
+    if (!gridCells2D[r]) return;
+    Object.keys(gridCells2D[r]).forEach(cStr => {
+      const c = parseInt(cStr, 10);
+      const cellObj = gridCells2D[r][c];
+      if (!cellObj || !cellObj.inside) return;   // Skip blocked outside-wafer cells
+      const val = gridData[cellObj.key] || '';
+      if (val === '') return;                    // replace_map cleans the map: empty carries nothing
+      fn(cellObj, val);
+    });
+  });
+}
+
 // 격자의 value별 셀 수. legend에 없는 값도 세어 "정의되지 않은 value"를 드러낸다.
 function computeLegendCounts() {
   const counts = {};
   legend.forEach(item => { counts[item.value] = 0; });
-  Object.values(gridData).forEach(val => {
-    if (val !== undefined && val !== '') counts[val] = (counts[val] || 0) + 1;
-  });
+  eachSavableCell((cellObj, val) => { counts[val] = (counts[val] || 0) + 1; });
   return counts;
 }
 
@@ -4641,17 +4694,49 @@ function fillGrid() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
+  // [F2] 유효 다이 **밖은 칠하지 않는다.** 종전에는 사각 전체를 칠했고 그 셀들은
+  //   ① 캔버스에 색이 나오지 않으며(`cellFillColor`가 `!inside`면 outBg)
+  //   ② `pushMapData`가 직렬화하지 않고
+  //   ③ 그런데도 대비 관문의 분모(`nonEmptyOnGrid`)에는 들어간다
+  // 즉 원 기반 맵에서 Fill All 한 번이 그 맵의 Push를 **영구 거절 상태로 만들었다**
+  // (값 있는 셀 N개 중 21%가 "밖" → droppedNonEmpty > 0 → 적재 중단). 격자 크기를 아무리
+  // 맞춰도 풀리지 않는다 — 셀이 격자 밖이 아니라 원 밖이기 때문이다.
+  //
+  // 🔴 판정은 새로 만들지 않는다. 렌더가 만든 셀 객체가 있으면 그것을 읽고, 없으면
+  //    `getGridCellObject`가 쓰는 것과 **같은 두 함수**(`isValidDieAt`·`isCellInsideWafer`)를
+  //    같은 순서로 부른다. 세 번째 기하식은 한 줄도 없다.
+  //    저작 캔버스(`basis === 'template'`)에서는 마스크가 격자 전체이므로 이 필터가
+  //    아무것도 걸러내지 않는다 — M4② 저작 동선은 글자 하나 바뀌지 않는다.
+  let filled = 0;
+  let skippedOutside = 0;
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
       const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
       const key = `${physical.x}_${physical.y}`;
+      const rendered = gridCells2D && gridCells2D[r] ? gridCells2D[r][c] : null;
+      const inside = rendered
+        ? rendered.inside
+        : isValidDieAt(physical.x, physical.y, isCellInsideWafer(c, r, visualCols, visualRows));
+      if (!inside) { skippedOutside++; continue; }
       if (isProtectedFCell(key)) continue;
       gridData[key] = activeBrush;
+      filled++;
     }
   }
 
   renderGridCanvas();
   scheduleCellDraft();
+
+  // 정직한 결과 보고. 새 컨트롤도 확인창도 아니고, 이미 있는 토스트 한 줄이다.
+  // 0칸은 반드시 말해야 한다 — 아무 일도 일어나지 않은 것과 구별되지 않으면 사용자는
+  // 같은 버튼을 계속 누른다(규격이 없는 맵에서는 원 판정이 전부 false다).
+  if (filled === 0) {
+    showToast(`칠할 수 있는 셀이 없습니다 — ${skippedOutside}칸이 모두 유효 다이 밖입니다. `
+      + `물리 규격(직경·칩 크기)이나 유효 다이 맵을 먼저 확인하십시오.`, 'warning');
+  } else if (skippedOutside > 0) {
+    showToast(`${filled}칸을 '${activeBrush}'로 칠했습니다 `
+      + `(유효 다이 밖 ${skippedOutside}칸 제외 — 저장되지 않는 셀입니다).`, 'success');
+  }
 }
 
 // ----------------------------------------------------
@@ -4834,43 +4919,32 @@ async function pushMapData() {
 
   const updates = [];
 
-  if (gridCells2D) {
-    Object.keys(gridCells2D).forEach(rStr => {
-      const r = parseInt(rStr, 10);
-      if (!gridCells2D[r]) return;
-      Object.keys(gridCells2D[r]).forEach(cStr => {
-        const c = parseInt(cStr, 10);
-        const cellObj = gridCells2D[r][c];
-        if (!cellObj || !cellObj.inside) return; // Skip blocked outside-wafer cells
+  // [F2] 이 순회의 술어(`inside` && 값 있음)는 `eachSavableCell` 하나뿐이고, 화면의 수량도
+  // 같은 함수를 지난다. 여기에 술어를 다시 쓰면 "화면 34 · DB 33"이 되돌아온다.
+  eachSavableCell((cellObj, val) => {
+    let valParsed = valType === 'number' ? Number(val) : val;
 
-        const val = gridData[cellObj.key] || '';
-        if (val === '' || val === null || val === undefined) return; // Skip empty/NULL cells since replace_map=true cleans existing map
+    let xParsed = xType === 'number' ? parseInt(cellObj.x, 10) : String(cellObj.x);
+    let yParsed = yType === 'number' ? parseInt(cellObj.y, 10) : String(cellObj.y);
 
-        let valParsed = valType === 'number' ? Number(val) : val;
+    const rowUpdates = {
+      [xCol]: xParsed,
+      [yCol]: yParsed,
+      [valCol]: valParsed,
+      ...metaValues
+    };
 
-        let xParsed = xType === 'number' ? parseInt(cellObj.x, 10) : String(cellObj.x);
-        let yParsed = yType === 'number' ? parseInt(cellObj.y, 10) : String(cellObj.y);
+    if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
+      rowUpdates['grid_metadata'] = gridMetaStr;
+    }
 
-        const rowUpdates = {
-          [xCol]: xParsed,
-          [yCol]: yParsed,
-          [valCol]: valParsed,
-          ...metaValues
-        };
-
-        if (tableSchema.column_types && tableSchema.column_types['grid_metadata']) {
-          rowUpdates['grid_metadata'] = gridMetaStr;
-        }
-
-        const updateItem = {
-          updates: rowUpdates,
-          source_name: 'user',
-          updated_by: CURRENT_USER
-        };
-        updates.push(updateItem);
-      });
-    });
-  }
+    const updateItem = {
+      updates: rowUpdates,
+      source_name: 'user',
+      updated_by: CURRENT_USER
+    };
+    updates.push(updateItem);
+  });
 
   // [Data-protection gate - contrast guard] Non-empty cells the loop above skipped
   // (outside the wafer circle, or at coordinates the current grid does not even contain)
@@ -5357,6 +5431,65 @@ function writeClipboardRich(html, text) {
   return fired && served;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [F1ⓐ] COPY HEADER MODE — 사용자 회사의 실제 본딩맵 양식
+//
+// 켜면 `📋 Copy to Excel`이 격자와 함께 두 블록을 더 싣는다:
+//   상단 헤더  TITLE + 열 그룹 (Base · 1H · MID · TOP)
+//   우측 보조표 VALUE | COUNT | STACK | DESC
+//
+// 🔴 **보조표의 출처가 둘이다.** COUNT는 격자 **집계**이고 STACK·DESC는 표①(DOE)의
+//    **선언**이다. 집계 쪽은 `computeLegendCounts` — 범례 뱃지·DOE 패널·Push가 쓰는 그
+//    함수 그대로다. 여기서 따로 세면 한 화면에 두 개의 수량이 생긴다(F2가 바로 그 결함).
+// 🔴 **열 그룹 이름은 DOE 선언에서 나온다**(INV-ⓐ-4): `ZONE_LABEL`·`DOE_COLUMNS`.
+//    화면이 "MID"라 쓰는데 내보내기가 다른 단어를 쓰면 공장이 읽는 파일이 갈라진다.
+// 🔴 **끄면 가산성이 성립한다**(INV-ⓐ-1): 아래 격자 루프는 `headerOn`이 거짓일 때
+//    종전과 **같은 문자열을 같은 순서로** 이어 붙인다. 하네스가 HEAD 출력과 바이트 비교한다.
+// ═══════════════════════════════════════════════════════════════════════════════
+const COPY_HEADER_KEY = 'mapCopyHeader';
+
+// 보조표 머리글. `DOE_COLUMNS`가 정본이므로 DOE 패널이 쓰는 단어와 **같은 단어**가 나간다
+// (INV-ⓐ-4). transfer_plan의 `colHeader`와 같은 한 줄이고, 같은 배열을 읽는다.
+function colHeaderWord(id) {
+  const c = DOE_COLUMNS.find(x => x.id === id);
+  return c ? c.header : id;
+}
+
+function copyHeaderEnabled() {
+  return !!(el.copyHeaderToggle && el.copyHeaderToggle.checked);
+}
+
+// 상단 헤더의 열 그룹. Base는 이 맵의 정체(7b canonical 맵 키)이고, 나머지 셋은 DOE가
+// 선언한 구역별 자재다. 자재 토큰은 **원문 그대로** 나간다 — `lot_slot:BIN`이 정체이고,
+// 화면 칩이 보기 좋게 접어 보여주는 것은 그림일 뿐이다(transfer_plan §materialChipHtml).
+function copyHeaderGroups() {
+  const groups = [{ label: 'Base', value: getCurrentMapKey() || '' }];
+  ZONES.forEach(z => {
+    const seen = [];
+    legend.forEach(item => {
+      parseMaterialList(item[z]).forEach(tok => { if (seen.indexOf(tok) < 0) seen.push(tok); });
+    });
+    groups.push({ label: ZONE_LABEL[z], value: seen.join(', ') });
+  });
+  return groups;
+}
+
+// 우측 보조표의 행. 선언(legend)이 순서를 정하고, 거기에 없는데 **칠해진** 값은 뒤에 붙인다 —
+// 화면에 색이 있는데 표에는 없는 값은 "보이는 대로"를 깨고, 그 셀들은 실제로 저장된다.
+function copyHeaderAuxRows(counts) {
+  const rows = legend.map(item => ({
+    value: String(item.value),
+    count: counts[item.value] || 0,
+    stack: (item.stack === null || item.stack === undefined) ? '' : String(item.stack),
+    desc: item.desc || '',
+  }));
+  const declared = new Set(rows.map(r => r.value));
+  Object.keys(counts).forEach(v => {
+    if (!declared.has(v) && counts[v] > 0) rows.push({ value: v, count: counts[v], stack: '', desc: '' });
+  });
+  return rows;
+}
+
 function copyGridToExcel() {
   // 🔴 종전 가드 `if (!gridCells2D)`는 **한 번도 발화하지 않는 죽은 코드**였다:
   //    `gridCells2D`는 `{}`로 초기화되고 `{}`는 truthy다. 격자가 없어도 통과해서 빈 표를
@@ -5386,8 +5519,68 @@ function copyGridToExcel() {
   const lineHex = toExcelHex(C.waferEdge, surface, '#222222');
   const lineWeakHex = toExcelHex(C.line, surface, '#d1d5db');
 
+  // ── COPY HEADER MODE 준비 ────────────────────────────────────────────────────
+  // 꺼져 있으면 아래 세 값은 어디에도 쓰이지 않고, 문자열 조립 경로는 종전 그대로다.
+  const headerOn = copyHeaderEnabled();
+  //  COUNT의 출처. 화면 뱃지·DOE 패널·⚡ Push와 **같은 함수**다(F2 수렴점).
+  const auxRows = headerOn ? copyHeaderAuxRows(computeLegendCounts()) : [];
+  const groups = headerOn ? copyHeaderGroups() : [];
+  const AUX_W = 4;                                   // VALUE · COUNT · STACK · DESC
+  const GAP_W = 1;                                   // 격자와 보조표 사이 한 칸
+  const auxHead = [colHeaderWord('value'), 'COUNT', colHeaderWord('stack'), colHeaderWord('desc')];
+  const totalCols = headerOn ? Math.max(visualCols + GAP_W + AUX_W, groups.length * 2) : visualCols;
+
+  const headCellStyle = `border: 1px solid ${lineHex}; background-color: ${outHex}; color: ${textEmptyHex};`
+    + ' font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle; padding: 2px 6px;';
+  const headValStyle = `border: 1px solid ${lineHex}; background-color: ${surface};`
+    + ' font-size: 10pt; text-align: center; vertical-align: middle; padding: 2px 6px;';
+  const gapStyle = 'border: none;';
+
+  // 보조표 r번째 줄(0 = 머리줄)의 4칸 + 앞의 빈 칸. 없으면 빈 칸만.
+  const auxCells = (i) => {
+    let cells = `<td style="${gapStyle}"></td>`;
+    const fields = (i === 0)
+      ? auxHead
+      : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
+    for (let k = 0; k < AUX_W; k++) {
+      if (!fields) { cells += `<td style="${gapStyle}"></td>`; continue; }
+      const style = (i === 0) ? headCellStyle : headValStyle;
+      cells += `<td style="${style}">${escapeHtmlAttr(fields[k])}</td>`;
+    }
+    return cells;
+  };
+  const auxTsv = (i) => {
+    const fields = (i === 0)
+      ? auxHead
+      : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
+    return fields ? ['', ...fields] : ['', '', '', '', ''];
+  };
+  const auxLines = headerOn ? auxRows.length + 1 : 0;   // 머리줄 포함
+
   // HTML table for rich formatting in Excel (Border + Fill Colors)
   let html = '<table style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif;">';
+
+  if (headerOn) {
+    // TITLE = 이 복사본이 **어느 맵인지**. 앱이 이미 로드 토스트에서 쓰는 표기와 같은 식이다
+    // (`${selectedTable} · ${mapKey}`) — 인쇄물에 붙는 이름과 화면이 부르는 이름을 갈라 놓지
+    // 않기 위해서다. 맵 키는 `getCurrentMapKey`(7b canonical)에서만 나온다.
+    const titleKey = getCurrentMapKey() || '';
+    const title = [selectedTable || '', titleKey].filter(Boolean).join(' · ');
+    html += `<tr><td colspan="${totalCols}" style="border: none; font-size: 13pt; font-weight: bold;`
+      + ` text-align: left; padding: 4px 2px;">${escapeHtmlAttr(title)}</td></tr>`;
+    let groupRow = '<tr>';
+    groups.forEach(g => {
+      groupRow += `<td style="${headCellStyle}">${escapeHtmlAttr(g.label)}</td>`;
+      groupRow += `<td style="${headValStyle}">${escapeHtmlAttr(g.value)}</td>`;
+    });
+    for (let k = groups.length * 2; k < totalCols; k++) groupRow += `<td style="${gapStyle}"></td>`;
+    html += `${groupRow}</tr>`;
+    matrix.push([title].concat(new Array(Math.max(0, totalCols - 1)).fill('')).join('\t'));
+    const groupCells = [];
+    groups.forEach(g => { groupCells.push(g.label, g.value); });
+    while (groupCells.length < totalCols) groupCells.push('');
+    matrix.push(groupCells.join('\t'));
+  }
 
   // Helper for text color contrast
   const getContrastColor = (hexcolor) => {
@@ -5480,7 +5673,27 @@ function copyGridToExcel() {
         html += `<td style="${style}">${val}</td>`;
       }
     }
+    // [F1ⓐ] 우측 보조표. 끄면 이 두 줄은 실행되지 않고 출력은 종전과 바이트로 같다.
+    if (headerOn && r < auxLines) {
+      html += auxCells(r);
+      auxTsv(r).forEach(f => rowCells.push(f));
+    }
     html += '</tr>';
+    matrix.push(rowCells.join('\t'));
+  }
+
+  // 보조표가 격자보다 길면(값 수 > 행 수) 남는 줄을 격자 아래로 흘린다 — 잘라내면
+  // 표에서 값이 조용히 사라진다.
+  for (let i = visualRows; i < auxLines; i++) {
+    let rowHtml = '<tr>';
+    const rowCells = [];
+    for (let c = 0; c < visualCols; c++) {
+      rowHtml += `<td style="${gapStyle}"></td>`;
+      rowCells.push('');
+    }
+    rowHtml += auxCells(i);
+    auxTsv(i).forEach(f => rowCells.push(f));
+    html += `${rowHtml}</tr>`;
     matrix.push(rowCells.join('\t'));
   }
 
@@ -5743,25 +5956,15 @@ function applyCellsToGrid(cells) {
 }
 
 // 현재 격자에서 계획 셀 수집 (pushMapData와 동일 기준: inside && 값 있는 셀, visual 좌표)
+// [F2] 기준을 다시 쓰지 않는다 — `eachSavableCell`이 그 기준의 유일한 구현이다. 종전의
+// 손으로 옮겨 적은 사본은 빈 값 판정이 Push와 미묘하게 달랐다(숫자 0의 처리).
 function collectPlanCells() {
   const cells = [];
   const counts = {};
-  if (gridCells2D) {
-    Object.keys(gridCells2D).forEach(rStr => {
-      const r = parseInt(rStr, 10);
-      if (!gridCells2D[r]) return;
-      Object.keys(gridCells2D[r]).forEach(cStr => {
-        const c = parseInt(cStr, 10);
-        const cellObj = gridCells2D[r][c];
-        if (!cellObj || !cellObj.inside) return;
-        const val = gridData[cellObj.key];
-        if (val === '' || val === null || val === undefined) return;
-        const sv = String(val);
-        cells.push({ x: cellObj.x, y: cellObj.y, val: sv });
-        counts[sv] = (counts[sv] || 0) + 1;
-      });
-    });
-  }
+  eachSavableCell((cellObj, val) => {
+    cells.push({ x: cellObj.x, y: cellObj.y, val });
+    counts[val] = (counts[val] || 0) + 1;
+  });
   return { cells, counts };
 }
 

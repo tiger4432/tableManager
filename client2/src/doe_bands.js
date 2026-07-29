@@ -508,7 +508,12 @@ const DOE_COLUMNS = [
 //           빈 칸이나 잡음으로 도착한다. 새 값에는 앱이 색을 배정하고, 기존 값은 자기 색을
 //           그대로 갖는다 (사용자 지시 2026-07-28).
 //   칠함  — 칠해진 셀 수. 파생값이라 어느 방향에도 속하지 않는다.
-const IGNORED_HEADERS = ['COLOR', '칠함', '칠함*'];
+//   COUNT — 같은 파생값의 **내보내기 이름**. map_editor의 COPY HEADER MODE가 우측 보조표를
+//           `VALUE | COUNT | STACK | DESC`로 싣는다(사용자 회사 양식). 이 단어를 모르면 그
+//           머리줄이 머리줄로 인식되지 않아, 사용자가 자기 양식을 그대로 되붙일 때 값 이름이
+//           "VALUE"이고 STACK이 "COUNT"인 행이 생긴다. 알아보되 **버린다** — 칠한 셀 수는
+//           격자에서 세는 것이지 붙여넣기로 정하는 것이 아니다.
+const IGNORED_HEADERS = ['COLOR', '칠함', '칠함*', 'COUNT'];
 
 function columnIdByHeader(word) {
   const w = String(word === null || word === undefined ? '' : word).trim().toUpperCase();

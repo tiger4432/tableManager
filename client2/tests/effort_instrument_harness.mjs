@@ -178,6 +178,11 @@ function makeCtx(src, opts = {}) {
     extractFunction(src, 'validDieRefPayload'),
     extractFunction(src, 'applyValidDieRef'),
     extractFunction(src, 'validDieBasis'),
+    // [F2] the ONE savable-cell predicate. `pushMapData` no longer restates the
+    // `inside` + non-empty walk - it calls this, and so do the on-screen counters, so
+    // "화면 수량 == 저장 수량" cannot drift. Same reason as validDieRefPayload above:
+    // extracted so it can be scored, therefore it must be in this sandbox.
+    extractFunction(src, 'eachSavableCell'),
     extractFunction(src, 'pushMapData'),
     extractFunction(src, 'openMapFrame'),
     extractFunction(src, 'popMapFrame'),

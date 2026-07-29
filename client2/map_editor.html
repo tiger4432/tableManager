@@ -276,6 +276,13 @@
                 <button id="btn-fill-grid" class="dropdown-item">🎨 Fill All</button>
                 <button id="btn-clear-grid" class="dropdown-item hover-danger" style="color: var(--color-danger);">🧹 Clear Grid</button>
                 <button id="btn-copy-excel" class="dropdown-item" style="border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px; color: var(--color-primary);">📋 Copy to Excel</button>
+                <!-- COPY HEADER MODE — 새 패널이 아니라 이 메뉴의 한 줄. 켜면 [📋 Copy to Excel]이
+                     상단 헤더(TITLE + Base/1H/MID/TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를
+                     격자와 함께 싣는다. 끄면 출력이 종전과 완전히 동일하다. -->
+                <div class="dropdown-item checkbox-item">
+                  <input type="checkbox" id="map-copy-header-toggle" class="glass-checkbox" />
+                  <label for="map-copy-header-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;" title="복사에 상단 헤더(Base·1H·MID·TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를 함께 싣습니다. COUNT는 실제로 저장되는 셀만 셉니다.">헤더 포함 (회사 양식)</label>
+                </div>
               </div>
             </div>
 
