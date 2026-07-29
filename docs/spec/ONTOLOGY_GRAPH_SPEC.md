@@ -59,6 +59,8 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **enrichment rule 자동 승격**: rule의 `decision_key → target` 정의는 매핑 항목으로 자동 변환(`RESOLVED_AS`) — rule 추가 = 온톨로지 확장.
 - `description`은 장식이 아니라 **LLM이 스키마를 읽고 스스로 질의를 구성하는 근거**. 매핑 검증 시 필수 필드.
 - 핫리로드 대상(이슈 #7 해소된 `refresh_dynamic_models` 패턴 준용, 이슈 #8 동승).
+  ⚠️ **단, 현재 리로드 트리거는 `SYSTEM_RELOAD` outbox 이벤트뿐이다** — 이 파일을 디스크에서 직접 고쳐도 실행 중인 materializer 루프는 구 선언으로 계속 물화한다(라이브 실측 2026-07-30, 열린 결함). 편집 후 `POST /admin/reload-configs`가 필수.
+- **`spatial`은 노드 props 전용이다**(2026-07-30 판정). 엣지 props에 선언하면 로더가 **사유와 함께 그 테이블 매핑을 거부**한다 — materializer가 노드 props에서만 `_spatial`을 만들기 때문에 받아주면 "검증은 통과, 반영은 안 됨"이 되고, 이는 미선언 키 거부 규율이 막으려는 무음 사망과 같은 계급이다. 엣지 좌표가 실제로 필요해지면 그때 구현하고 이 거부를 같은 변경에서 지운다.
 
 ## 4. 저장소: PG 엣지 스토어 — Neo4j 이관 안전성
 
@@ -156,6 +158,28 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **EqpState 허브앤스포크 (§7.5b와 접합)**: 동적 Run이 정적 Eqp 마스터에 직결되지 않고 `[Run] →(1:1) [EqpState(시간 슬롯)] →(N:1) [Eqp]`로 잇는다. 효과 — ① 시간 비교 연산 없이 topology만으로 시간대 격리(다른 시각의 wafer는 다른 State 노드에 연결) ② **동시성 판별 = State 노드의 in-bound Run 수 ≥ 2** ③ `NEXT_STATE` 체인으로 직전 슬롯 오염 역추적. EqpState는 L2 파생 계층(재파생 규율 동일).
 - **슈퍼 허브 실링(pruning)**: degree가 임계(예: 1,000)를 넘는 노드로의 진입은 쿼리 계층에서 잘라내고 개수만 보고(현행 500-노드 cap의 일반화) — 유래 속성(롤업 카운트)으로 대체 서술.
 - **LLM 가드레일 (G2.5 전제)**: `schema_card()`에 label별 `node_class`와 4대 정책을 명시 포함 — LLM이 생성하는 질의가 정책 위에서만 구성되게 하여 쿼리 폭탄(S→D 무한 확장)을 구조적으로 차단.
+
+## 7.5d 칩 추적 API — 웨이퍼 스코프 고정 형상 (사용자 확정 2026-07-30)
+
+> "wafer 컨텍스트 지정해서 추적해. 모든 노드를 하지말고" — **웨이퍼는 확장할 허브가 아니라 스코프다.**
+
+`GET /graph/chip-trace?identity=<CoreCell identity>` — 칩 1개의 이력. **BFS가 아니다.**
+
+**BFS로는 도달할 수 없음을 실측으로 확인**: 엣지 타입 필터로 `Core -FROM_CORE->`를 막으면 홍수가 **더 커진다**(1,341 → 11,549 노드) — Eqp(degree 10,284)·Wafer로 우회하기 때문. 기존 `POST /graph/trace`는 같은 시드에서 **depth 2에 이미 1,000 노드 캡을 태우고 그중 994개가 형제 CoreCell**이다(라이브 실측 2026-07-30). 그래서 답은 **경계가 정해진 타입 질의 2개**이고, depth 파라미터는 **노출하지 않는다**.
+
+**형상 (3개 다리)**
+
+| 다리 | 경로 | 규율 |
+|---|---|---|
+| ① 칩 자신 | `CoreCell -BONDED_TO-> BaseCell` · `-TRANSFERRED_TO-> DtCell` | 스코프를 벗어나는 **유일한** 자리 — 시드 셀의 직접 목적지가 곧 그 칩의 이력이다. **형제 셀은 절대 포함하지 않는다** |
+| ② 웨이퍼 | `CoreCell -FROM_CORE-> Core` ← `ProcessEvent -PERFORMED_ON-` | 스코프 확정은 **DISTINCT**로 — `LIMIT 1`은 조용한 승자 선택이다 |
+| ③ 잎 | `ProcessEvent -USED_KNOB/USED_RECIPE/EXECUTED_BY->` | **되확장 금지**(결정 ②·정책 4). 정책 엔진(G2.5)이 없으므로 **질의 형상이 강제**한다 |
+
+**상태 어휘 (홉마다 하나, 빈 홉 금지)** — `recorded` / `none_recorded`(선언은 있고 행이 없음) / `not_declared`(매핑이 그 (type,target)을 더는 선언하지 않음 — config 이동을 `none_recorded`로 위장하지 않기 위한 별도 이름) / `scope_unresolved`(Core 주장이 0개 또는 2개 이상 — 추측하지 않고 칩 절반만 답하고 후보를 보고). 잘림은 상태가 아니라 다리별 `truncated`+`capped_at` 플래그.
+
+**모든 홉이 사건 속성을 들고 온다**(`edges[].props`) — `eventtime`·`dt_eqp`·`log_id`. 한 칩의 `BONDED_TO` 팬아웃(최대 6)은 **결함이 아니라 시간에 걸친 rework**이므로(실측 `LOT-A|05|13|5` = 07-25 / 07-27 / 07-29) 접지 않고 전부 돌려주며, 시각 없이는 그 순서가 읽히지 않는다. `count`(주장 수)와 `node_ids`(개체 수)는 **의도적으로 다르다** — 라이브 2,687개 셀이 같은 Core에 대해 복수 `FROM_CORE` 엣지(소스 파일별)를 갖는다.
+
+**실측 (라이브, 2026-07-30)** — 시드 `LOT-A|05|13|5`: **234 노드 / 694 엣지, 57 ms**(핸들러), 무관 노드 0. 대조: 같은 시드의 `/graph/trace` depth 2 = 1,000 노드(캡 잘림) 중 994개가 남의 칩.
 
 ## 7.6 그래프 보조 교정 (inference-assisted enrichment) — 가치사슬의 순환 완성
 

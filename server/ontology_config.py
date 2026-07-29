@@ -28,6 +28,9 @@ v2 파일 스키마 (table_name -> mapping):
 }
 
 - 검증 실패 시 **해당 테이블만 스킵 + 명시 로그** (전체 기동 실패 금지).
+- `spatial`은 **노드 props 전용**이다. 엣지 props에 선언하면 사유와 함께 거부한다
+  (2026-07-30 판정) — materializer가 노드 props에서만 _spatial을 만들기 때문에,
+  받아주면 검증은 통과하고 반영은 안 되는 무음 사망이 된다(_EDGE_SPATIAL_REFUSAL).
 - **선언되지 않은 키는 거부한다** (2026-07-29). 이전에는 모르는 키를 조용히 버렸기 때문에
   `node_class`/`event_time_column` 같은 신규 선언을 JSON에 써 넣어도 **아무 일도 일어나지
   않았다** — 선언이 무음으로 죽는 결함 계급. 이제 미선언 키는 해당 테이블 매핑을 사유와 함께
@@ -71,6 +74,24 @@ _ALLOWED_SPATIAL_KEYS = {"coord_system", "axis"}
 # 스펙 §3 예시를 그대로 따라 쓴 config가 미선언 키로 거부되지 않게 하기 위함이다.
 _NODE_CLASSES = {"static", "dynamic"}
 
+# §7.5 spatial on an EDGE prop is refused at load, by ruling (2026-07-30).
+# It was previously accepted by this validator and then silently dropped by the
+# materialiser: graph_materializer.extract_graph_items builds `spatial_meta` from
+# node_cfg["props"] ONLY, and the edge loop reads nothing but p["col"]. So the
+# declaration was written, validated, stored, and had no effect anywhere - the
+# declaration-dies-quietly class this validator's unknown-key rejection exists to
+# close. A named refusal costs one branch; making it work costs an edge-props
+# spatial channel nobody has asked for. If edge coordinates are genuinely wanted
+# later, implement them then and delete this refusal in the same change.
+_EDGE_SPATIAL_REFUSAL = (
+    "{where}: props[{i}].spatial is not supported on an EDGE property "
+    "(unsupported combination: spatial + edge props). The materialiser only "
+    "carries spatial declarations for NODE props (graph_materializer builds "
+    "_spatial from node props alone), so an edge-level spatial declaration would "
+    "be accepted here and discarded there. Declare the coordinate columns as node "
+    "props on the table that owns the node, or drop the 'spatial' key."
+)
+
 
 def _unknown_keys(raw: dict, allowed: set, where: str):
     """선언되지 않은 키를 사유 문자열로 돌려준다(없으면 None). `__` 접두는 주석으로 허용."""
@@ -98,11 +119,14 @@ def _as_col_list(value):
     return None
 
 
-def _normalize_props(raw_props, where: str):
+def _normalize_props(raw_props, where: str, allow_spatial: bool = True):
     """props 선언을 [{"col": str, "spatial": dict|None}] 형태로 정규화한다.
 
     반환: (normalized_list, error|None). 항목 하나라도 무효면 에러(테이블 스킵 사유).
     공간 속성(spatial)은 §7.5 — G1은 저장 스키마까지: coord_system/axis 선언을 그대로 보존.
+
+    allow_spatial=False (엣지 props): `spatial`을 **이름 있는 거부**로 처리한다 —
+    이유는 아래 _EDGE_SPATIAL_REFUSAL 참조.
     """
     props = []
     if raw_props is None:
@@ -121,6 +145,8 @@ def _normalize_props(raw_props, where: str):
             if not isinstance(col, str) or not col.strip():
                 return None, f"{where}: props[{i}] requires non-empty 'col'"
             spatial = raw.get("spatial")
+            if spatial is not None and not allow_spatial:
+                return None, _EDGE_SPATIAL_REFUSAL.format(where=where, i=i)
             if spatial is not None:
                 if not isinstance(spatial, dict):
                     return None, f"{where}: props[{i}].spatial must be an object"
@@ -209,7 +235,9 @@ def _validate_table_mapping(table_name: str, raw: dict, known_tables: dict):
         e_desc = e.get("description")
         if not isinstance(e_desc, str) or not e_desc.strip():
             return None, f"edges[{i}] ('{e_type}') requires 'description' (spec §3)"
-        e_props, err = _normalize_props(e.get("props"), f"edges[{i}]")
+        e_props, err = _normalize_props(
+            e.get("props"), f"edges[{i}]", allow_spatial=False
+        )
         if err is not None:
             return None, err
         edge = {

@@ -2338,6 +2338,50 @@ GRAPH_TRACE_NODE_CAP = 1000          # [G2] trace 노드 하드캡 (경계 계�
 GRAPH_TRACE_DEPTH_CAP = 3            # [G2] trace depth 하드캡
 GRAPH_TRACE_DEFAULT_LIMIT = 500
 
+# ----------------- chip trace: the declared walk (see get_chip_trace) -----------------
+# This is a SHAPE, not a BFS. The wafer is a hard scope, and the shape is what
+# enforces decision (2) - "Knob/Recipe/Eqp are leaves" - because the mapping
+# config has no channel to declare a class on a stub label (that channel is
+# G2.5). Measured grounds for refusing to reach this with a filtered BFS:
+# blocking `Core -FROM_CORE->` made the flood WORSE (1,341 -> 11,549 nodes)
+# because it reroutes through Eqp (degree 10,284) and Wafer.
+#
+# Every (edge type, target label) pair below is ALSO declared in
+# ontology_mapping.json. `_chip_trace_declared_pairs` cross-checks them per
+# request so that a config rename surfaces as `not_declared` instead of masquerading
+# as `none_recorded` - conflating "the ontology moved" with "this chip has no dt
+# event" is the same declaration-dies-quietly class as spatial-on-an-edge-prop.
+GRAPH_CHIP_TRACE_SEED_LABEL = "CoreCell"          # the chip identity ledger
+GRAPH_CHIP_TRACE_SCOPE_EDGE = ("FROM_CORE", "Core")     # seed -> its wafer (the scope)
+# Leg 1 - the chip itself: destinations of the SEED CELL ONLY. These are the one
+# place the answer is allowed to leave the wafer scope, because they ARE the
+# chip's own history. Sibling cells of the same core are never included.
+GRAPH_CHIP_TRACE_CHIP_LEGS = (
+    ("BONDED_TO", "BaseCell"),
+    ("TRANSFERRED_TO", "DtCell"),
+)
+# Leg 2 - the wafer: events performed on the scope core. The edge runs
+# ProcessEvent -> Core, so this leg is traversed INBOUND, and what the mapping
+# declares is (PERFORMED_ON, Core) - the anchor's label, not the collected one.
+GRAPH_CHIP_TRACE_EVENT_EDGE = ("PERFORMED_ON", "ProcessEvent")
+GRAPH_CHIP_TRACE_EVENT_DECLARED = ("PERFORMED_ON", "Core")
+# Leg 3 - terminals: reached FROM the core's events and never expanded from.
+GRAPH_CHIP_TRACE_TERMINAL_LEGS = (
+    ("USED_KNOB", "Knob"),
+    ("USED_RECIPE", "Recipe"),
+    ("EXECUTED_BY", "Eqp"),
+)
+GRAPH_CHIP_TRACE_EVENT_CAP = 500     # live max ProcessEvents on one core = 206 (LOT-A|05)
+GRAPH_CHIP_TRACE_TARGET_CAP = 200    # per CHIP leg; live max BONDED_TO on one cell = 6
+# A terminal leg is anchored on EVERY event of the core, so its claim count scales
+# with the event count, not with the number of terminal entities: LOT-A|05 yields
+# 206 EXECUTED_BY claims that resolve to 8 Eqp. Sharing TARGET_CAP=200 truncated
+# that 8-entity answer - found by the loud-truncation flag on the first live run,
+# which is the argument for having the flag. Sized off EVENT_CAP because that is
+# what actually bounds it (one edge per event per source claim).
+GRAPH_CHIP_TRACE_TERMINAL_CAP = 4 * GRAPH_CHIP_TRACE_EVENT_CAP
+GRAPH_CHIP_TRACE_ID_CHUNK = 500      # IN-list chunk (idx_graph_edges_from_type lookup)
+
 
 # [F3] `_escape_like_term` is GONE. Its only caller was the graph node prefix
 # search, which no longer uses LIKE at all: `value_suggest.prefix_conditions`
@@ -2425,18 +2469,32 @@ def _expand_graph_subgraph(
 
     node_ids = set(nodes.keys())
     edges_out = [
-        {
-            "from": e.from_node,
-            "to": e.to_node,
-            "type": e.type,
-            "source_name": e.source_name,
-            "updated_by": e.updated_by,
-            "event_time": e.event_time.isoformat() if e.event_time else None,
-        }
+        _serialize_graph_edge(e)
         for e in collected_edges
         if e.from_node in node_ids and e.to_node in node_ids   # 캡으로 잘린 노드의 엣지 제외
     ]
     return nodes, edges_out, truncated
+
+
+def _serialize_graph_edge(e, include_props: bool = False) -> dict:
+    """Single definition of the edge shape shared by viewer / trace / chip trace.
+
+    `include_props` is additive - the same keys are always present, chip trace
+    just adds one. It needs the props because the event properties ARE the answer
+    there (eventtime, dt_eqp): without them the three BONDED_TO dates on one chip
+    are an unordered set instead of a rework sequence.
+    """
+    out = {
+        "from": e.from_node,
+        "to": e.to_node,
+        "type": e.type,
+        "source_name": e.source_name,
+        "updated_by": e.updated_by,
+        "event_time": e.event_time.isoformat() if e.event_time else None,
+    }
+    if include_props:
+        out["props"] = e.props or {}
+    return out
 
 
 def _serialize_graph_nodes(nodes: dict) -> list:
@@ -2672,6 +2730,229 @@ def post_graph_trace(req: GraphTraceRequest, db: Session = Depends(get_db)):
         "edges": edges_out,
         "seed_ids": [n.id for n in seed_nodes],
         "missing_seeds": missing_seeds,
+        "truncated": truncated,
+    }
+
+
+# ----------------- chip trace — wafer-scoped, shape-bounded (경계 계약) -----------------
+
+# Closed status vocabulary. Every leg reports exactly one of these, and a reader
+# can tell "the source says nothing" from "the ontology moved" from "we refused to
+# guess". A silently empty hop is the failure mode this endpoint exists to close.
+CHIP_TRACE_RECORDED = "recorded"                # declared, rows found
+CHIP_TRACE_NONE = "none_recorded"               # declared, zero rows (the 8,493 bonding-only chips)
+CHIP_TRACE_NOT_DECLARED = "not_declared"        # the mapping no longer declares this (type, target)
+CHIP_TRACE_SCOPE_UNRESOLVED = "scope_unresolved"  # 0 or >1 distinct Core claimed - we do not pick
+
+
+def _chip_trace_declared_pairs() -> set:
+    """(edge type, target label) pairs the CURRENT ontology mapping declares.
+
+    Read from disk per request, the same way /graph/mapping-summary does it: the
+    file is small, and a cached copy would report a stale shape after a hot reload.
+    """
+    import ontology_config
+    known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
+    mappings = ontology_config.load_ontology_mappings(known_tables=known)
+    return {
+        (e["type"], e["target_label"])
+        for m in mappings.values()
+        for e in m.get("edges", [])
+    }
+
+
+def _chip_trace_sort_key(pair):
+    """Time order for readability; NULL event_time last, then identity, then edge id.
+
+    Sorted in Python rather than SQL because `NULLS LAST` is not portable to the
+    SQLite path the suite runs on, and the caps make the cost nil.
+    """
+    edge, node = pair
+    return (edge.event_time is None, edge.event_time, node.identity_key, edge.id)
+
+
+def _chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declared,
+                    declared_pair=None):
+    """One typed leg of the walk. Returns a (leg dict, [(edge, node)]) pair.
+
+    `declared_pair` is the (type, target_label) the ontology mapping declares, which
+    differs from (type, other_label) on an INBOUND leg: PERFORMED_ON is declared as
+    (PERFORMED_ON, Core) but collects ProcessEvent nodes.
+
+    Index path only: idx_graph_edges_from_type (outbound) / idx_graph_edges_to_type
+    (inbound), anchor ids chunked. No recursive CTE and no unindexed edge access -
+    a set join per leg is the right primitive on a relational edge store.
+
+    Truncation is by (identity_key, edge id) order and is always reported; `cap+1`
+    is fetched so that "exactly at the cap" is not mistaken for truncated.
+    """
+    leg = {
+        "edge_type": edge_type,
+        "target_label": other_label,
+        "status": CHIP_TRACE_RECORDED,
+        "count": 0,
+        "node_ids": [],
+        "truncated": False,
+        "capped_at": cap,
+    }
+    if (declared_pair or (edge_type, other_label)) not in declared:
+        leg["status"] = CHIP_TRACE_NOT_DECLARED
+        return leg, []
+    if not anchor_ids:
+        leg["status"] = CHIP_TRACE_NONE
+        return leg, []
+
+    Edge, Node = models.GraphEdge, models.GraphNode
+    anchor_col = Edge.to_node if inbound else Edge.from_node
+    other_col = Edge.from_node if inbound else Edge.to_node
+
+    collected = []
+    ids = list(anchor_ids)
+    for i in range(0, len(ids), GRAPH_CHIP_TRACE_ID_CHUNK):
+        remaining = (cap + 1) - len(collected)
+        if remaining <= 0:
+            break
+        chunk = ids[i:i + GRAPH_CHIP_TRACE_ID_CHUNK]
+        collected.extend(
+            db.query(Edge, Node)
+            .join(Node, Node.id == other_col)
+            .filter(
+                anchor_col.in_(chunk),
+                Edge.type == edge_type,
+                Node.label == other_label,
+            )
+            .order_by(Node.identity_key.asc(), Edge.id.asc())
+            .limit(remaining)
+            .all()
+        )
+
+    if len(collected) > cap:
+        leg["truncated"] = True
+        collected = collected[:cap]
+    collected.sort(key=_chip_trace_sort_key)
+
+    # count counts EDGE claims, node_ids counts distinct entities. They differ on
+    # purpose: 2,687 cells carry more than one FROM_CORE edge (one per source
+    # file) for a single Core, and the three BONDED_TO edges of a reworked chip
+    # are three separate events. Collapsing either would hide a fact.
+    seen = set()
+    for _e, n in collected:
+        if n.id not in seen:
+            seen.add(n.id)
+            leg["node_ids"].append(n.id)
+    leg["count"] = len(collected)
+    if not collected:
+        leg["status"] = CHIP_TRACE_NONE
+    return leg, collected
+
+
+@app.get("/graph/chip-trace")
+def get_chip_trace(identity: str, db: Session = Depends(get_db)):
+    """한 칩(CoreCell)의 이력을 **웨이퍼 스코프**로 추적한다 — BFS가 아니라 고정 형상 질의.
+
+    - 파라미터는 `identity` 하나. **depth는 없다** — 형상이 알려져 있고, depth를 노출하면
+      홍수가 되돌아온다(실측: BFS depth 3 = 2,142노드 중 1,763개가 남의 칩).
+    - 스코프는 웨이퍼(Core). 스코프 밖 노드는 **시드 셀 자신의 직접 목적지**(BaseCell·DtCell)
+      로만 도달한다. 같은 코어의 형제 셀은 포함하지 않는다 — 칩의 이력에 형제는 없다.
+    - Knob·Recipe·Eqp는 **잎**이다. 코어의 ProcessEvent에서 도달하고 되확장하지 않는다
+      (결정 ② — 정책 엔진 G2.5가 없으므로 질의 형상이 강제한다).
+    - 빈 홉은 없다. 모든 홉이 recorded / none_recorded / not_declared 중 하나를 말한다.
+    """
+    seed = (
+        db.query(models.GraphNode)
+        .filter(
+            models.GraphNode.label == GRAPH_CHIP_TRACE_SEED_LABEL,
+            models.GraphNode.identity_key == identity,
+        )
+        .first()
+    )
+    if seed is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"칩 노드를 찾을 수 없습니다: ({GRAPH_CHIP_TRACE_SEED_LABEL}, {identity})",
+        )
+
+    declared = _chip_trace_declared_pairs()
+    nodes = {seed.id: seed}
+    edges_out = []
+    truncated = False
+
+    def _absorb(pairs):
+        for e, n in pairs:
+            nodes.setdefault(n.id, n)
+            edges_out.append(_serialize_graph_edge(e, include_props=True))
+
+    # --- leg 1: the chip itself - where this die went ---
+    chip_legs = {}
+    for edge_type, target_label in GRAPH_CHIP_TRACE_CHIP_LEGS:
+        leg, pairs = _chip_trace_leg(
+            db, [seed.id], edge_type, target_label,
+            GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
+        )
+        _absorb(pairs)
+        truncated = truncated or leg["truncated"]
+        chip_legs[edge_type] = leg
+
+    # --- the scope: this die's wafer. Resolved, never guessed. ---
+    scope_type, scope_label = GRAPH_CHIP_TRACE_SCOPE_EDGE
+    scope_leg, scope_pairs = _chip_trace_leg(
+        db, [seed.id], scope_type, scope_label,
+        GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
+    )
+    _absorb(scope_pairs)
+    truncated = truncated or scope_leg["truncated"]
+
+    wafer = {"scope_edge": scope_leg}
+    scope_node = None
+    if len(scope_leg["node_ids"]) == 1:
+        scope_node = nodes[scope_leg["node_ids"][0]]
+    else:
+        # 0 -> the cell claims no wafer; >1 -> it claims two, and a chip has one
+        # core. Either way the wafer half is unanswerable and we say so rather
+        # than take the first row (a LIMIT 1 here is a silent winner-pick, and
+        # "the count was right but it pointed at another node" is a defect this
+        # repository has actually shipped).
+        wafer["status"] = CHIP_TRACE_SCOPE_UNRESOLVED
+        wafer["scope_candidates"] = [
+            {"label": nodes[i].label, "identity": nodes[i].identity_key, "id": i}
+            for i in scope_leg["node_ids"]
+        ]
+
+    # --- leg 2/3: what the wafer went through, and the terminals it used ---
+    if scope_node is not None:
+        event_type, event_label = GRAPH_CHIP_TRACE_EVENT_EDGE
+        event_leg, event_pairs = _chip_trace_leg(
+            db, [scope_node.id], event_type, event_label,
+            GRAPH_CHIP_TRACE_EVENT_CAP, inbound=True, declared=declared,
+            declared_pair=GRAPH_CHIP_TRACE_EVENT_DECLARED,
+        )
+        _absorb(event_pairs)
+        truncated = truncated or event_leg["truncated"]
+        wafer["status"] = event_leg["status"]
+        wafer["events"] = event_leg
+
+        terminals = {}
+        for edge_type, target_label in GRAPH_CHIP_TRACE_TERMINAL_LEGS:
+            leg, pairs = _chip_trace_leg(
+                db, event_leg["node_ids"], edge_type, target_label,
+                GRAPH_CHIP_TRACE_TERMINAL_CAP, inbound=False, declared=declared,
+            )
+            _absorb(pairs)
+            truncated = truncated or leg["truncated"]
+            terminals[edge_type] = leg
+        wafer["terminals"] = terminals
+
+    return {
+        "seed": {"label": seed.label, "identity": seed.identity_key, "id": seed.id},
+        "scope": (
+            {"label": scope_node.label, "identity": scope_node.identity_key,
+             "id": scope_node.id}
+            if scope_node is not None else None
+        ),
+        "walk": {"chip": chip_legs, "wafer": wafer},
+        "nodes": _serialize_graph_nodes(nodes),
+        "edges": edges_out,
+        "counts": {"nodes": len(nodes), "edges": len(edges_out)},
         "truncated": truncated,
     }
 
