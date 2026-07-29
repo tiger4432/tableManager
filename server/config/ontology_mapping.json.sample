@@ -1,50 +1,100 @@
 {
   "__comment": "Ontology 매핑 v2 (docs/spec/ONTOLOGY_GRAPH_SPEC.md §3). 테이블별 노드/엣지 선언 — description은 LLM 그라운딩용 필수 필드. enrichment_rules.json의 rule은 RESOLVED_AS 엣지로 자동 승격되므로 여기 선언하지 않아도 된다. 구 v1 형식(default/tables 래퍼)은 레거시 Neo4j 경로 전용이며 v2 로더는 무시한다.",
   "__comment_keys": "선언 가능한 키는 로더가 강제한다 — 미선언 키를 쓰면 그 테이블 매핑이 사유와 함께 스킵된다(오타가 조용히 무시되지 않게). 테이블: description·event_time_column·node·edges / node: label·identity·node_class·props / edge: type·target_label·target_identity_from·props·description·source_override. __ 접두 키는 어디서든 주석으로 허용.",
-  "__comment_event_time": "event_time_column(선택)은 엣지 event_time에 쓸 **실 사건 시각** 컬럼이다. 미선언이면 인제션 시각이 들어가는데, 그것은 '언제 적재됐나'이지 '언제 일어났나'가 아니다(라이브 실측 최대 +89.6h 어긋남). 선언한 테이블만 교정되므로 가산적이며, 선언된 컬럼이 해석 안 되면 인제션 시각으로 되돌리지 않고 NULL(=시각 미상)이 된다.",
-  "__comment_node_class": "node_class(선택, static|dynamic — §7.5c)는 현재 **파싱·보존만** 되고 탐색 정책은 강제되지 않는다(정책 엔진은 G2.5). 선언해도 순회 동작은 바뀌지 않는다.",
+  "__comment_event_time": "event_time_column(선택)은 엣지 event_time에 쓸 **실 사건 시각** 컬럼이다. 미선언이면 인제션 시각이 들어가는데, 그것은 '언제 적재됐나'이지 '언제 일어났나'가 아니다(라이브 실측 최대 +89.6h 어긋남). 선언한 테이블만 교정되므로 가산적이며, 선언된 컬럼이 해석 안 되면 인제션 시각으로 되돌리지 않고 NULL(=시각 미상)이 된다. 원시 문자열을 엣지 props에도 남기는 이유는 파싱 실패 시 증거를 잃지 않기 위함이다(props.eventtime = 원문, edge.event_time = 파싱값).",
 
-  "__comment_identity_labels": "정체 스킴은 label 하나에 하나다(열린 문제 #15). 이 파일이 쓰는 세 가지: Wafer=wafer_id(예 WF-A-05, 원장은 wafer_slot_history) / Core=core_lot|core_slot(예 LOT-A|05) / Tape=tape_lot|tape_slot(예 TAPE-A|01, 원장은 dt_log). 셋은 서로 다른 값 공간이며 섞으면 조인되지 않는다.",
+  "__comment_cell_chain": "⭐ 칩 추적 스키마 = **셀 정체의 사슬** (2026-07-30, 사용자 정정). 노드는 추상 Chip 하나가 아니라 맵 에디터가 다루는 것과 같은 **셀 정체 3종**이다: BaseCell(base_id|bx|by) — CoreCell(core_lot|core_slot|cx|cy) — DtCell(tape_lot|tape_slot|tx|ty). CoreCell이 칩의 정체 원장이고, bonding_log와 dt_log가 **둘 다 그 네 컬럼을 그대로** 들고 있어 두 로그가 같은 CoreCell로 수렴한다. 격리 실측 노드 수 — CoreCell 4,414(bonding 3,845 ∪ dt 768) · BaseCell 733 · DtCell 768 · Core 84.",
+  "__comment_edge_direction": "🔴 **엣지 방향이 브리프와 반대인 이유 — 기계장치의 한계이고, 위상은 같다.** materializer는 엣지를 **그 로우 자신의 노드에서만** 낼 수 있다(graph_materializer.extract_graph_items — from_node는 항상 node_cfg의 노드). 따라서 `BaseCell -FROM_CORE_CELL-> CoreCell`은 bonding_log에서 만들 수 없고, 만들려면 bonding_log의 노드가 BaseCell이어야 한다. 그러면 **CoreCell은 소유 테이블이 없는 스텁**이 되고 `CoreCell -FROM_CORE-> Core`를 낼 수 있는 테이블은 core_defect_map 하나뿐인데 — ① 커버리지가 3,656/4,414(83%)라 나머지 758개 셀의 Core 홉이 통째로 끊기고 ② 그 테이블을 매핑하면 CoreCell 노드가 **96,600개** 생겨 결정 ①이 금지한 폭발이 된다. 그래서 로우 노드를 CoreCell로 두고 방향을 뒤집었다: FROM_CORE 커버리지 **4,414/4,414(100%)**, 신규 코드 0줄. 조회 측 영향 없음 — `_expand_graph_subgraph`는 from_node·to_node 양방향을 조회하므로 **탐색은 무방향**이고, 방향이 실제로 의미를 갖는 것은 §7.5c 정책 엔진(D→S / S→D)뿐이며 그것은 아직 없다.",
+  "__comment_base_dt_derived": "`base ← dt`는 **저장하지 않고 파생**이다 — BaseCell -[BONDED_TO]- CoreCell -[TRANSFERRED_TO]- DtCell 2홉. bonding_log에 테이프 컬럼이 아예 없어(log_id·eventtime·base_id·bx·by·core_lot·core_slot·cx·cy) 직접 엣지를 낼 원천이 없고, 코어 셀 경유로 실제로 해결된다(격리 실측 base↔dt 쌍 234, 그중 distinct base 셀 207). ⚠️ **1칩 1경로가 성립하지 않는다** — 한 코어 셀이 최대 **4개**(라이브 6개)의 서로 다른 base 셀로 가고 그런 셀이 512개다. 반대 방향은 최대 1개(코어 셀 → dt 셀). 따라서 코어 셀에서 앞으로 갈 때는 **하나로 접지 말고 전부 돌려줘야** 한다 — 접으면 추적이 조용히 승자를 고른다.",
+  "__comment_coordinates": "결정 ①(좌표는 엣지 속성이지 노드가 아니다)의 셀 모델 해석: 좌표는 **셀 정체의 구성요소**이고, 금지되는 것은 **dense 맵의 셀마다 노드를 만드는 것**이다. 로그에서 나오는 셀 노드는 5,915개(733+768+4,414)뿐이지만 core_defect_map을 노드로 승격하면 그것만으로 96,600개다. 그래서 bonding_map·core_defect_map·dt_map·eds_fail_map은 **매핑하지 않는다** — 'which chip went where'는 그래프가, 'what value that cell holds'는 맵/오버레이 질의가 답한다. ⚠️ 그리고 이 모델의 부작용: cx/cy가 identity로 올라가면서 §7.5 공간 선언(spatial)을 걸 자리가 없어졌다(spatial은 props에만 붙는다). CoreCell은 cx/cy를 props에 **중복 선언**해 좌표계를 명시했지만 BaseCell·DtCell은 소유 테이블이 없어 그것도 못 한다 — 아래 __comment_label_channel 참조.",
+  "__comment_bonding_map_is_not_a_base_map": "🔴 **bonding_map을 base 맵으로 매핑하지 마라.** 실측 — bonding_log.base_id는 94개 distinct('BASE-01' 형태, bx 1..5 · by 1..2)인데 bonding_map.base는 완전히 다른 이름공간이고(격리 스냅샷: 'QQ'·'AAA'·'EXP1'·'QALB01', 라이브: UUID 397,605개) **교집합이 0**이다. 좌표 범위도 어긋난다(라이브 x -4..20000, y -9..13,123,121). BaseCell 정체는 **bonding_log에서** 잡는다. (사용자 정리 예정 테이블이므로 손대지 않는다.)",
+  "__comment_wafer_id_is_not_an_identity": "🔴 **wafer_id는 정체가 될 수 없다** — knob 경로는 (lot, slot)으로 돈다. 실측: core_wafer_map.wafer_id ↔ wafer_process.wafer_id는 **8/80**, core_wafer_map(core_lot,core_slot) ↔ wafer_process(lot,slot)는 **80/80**(격리 스냅샷 8 / 75of84). 게다가 core_wafer_map.wafer_id에는 깨진 문자열이 들어 있다(LOT-C|15 = 'd?꽩?꽮?꽩?뀋') — 그것이 노드 정체가 되면 조인되지 않는 유령 노드가 된다. 그래서 **Core=(core_lot,core_slot)가 노드이고 wafer_id는 속성(props)으로 강등**, ProcessEvent는 (lot,slot)으로 Core에 붙인다. 이것은 사용자의 보류 편집 'Wafer→Core 재라벨'과 같은 결론이며 이제 수치가 있다. ⚠️ 단 **Wafer 노드는 이 파일에서 없앨 수 없다** — enrichment_rules.json의 core_wafer_attribution rule이 wafer_id를 RESOLVED_AS 엣지로 **자동 승격**하고(ontology_config.synthesize_enrichment_mappings) 매핑 config에는 그것을 끄는 선언이 없다. 현재 Core -[RESOLVED_AS]-> Wafer 노드 11개(깨진 것 1개 포함)가 생기며, 추적 경로로 쓰지 않는다.",
+  "__comment_coverage": "커버리지는 **보고하고 추론하지 않는다**(미상 ≠ 0). 라이브 실측 — bonding 칩 8,891개 중 dt 이벤트가 있는 것은 **419개**뿐이다(격리 스냅샷 3,845 중 199). 나머지의 추적은 'base→core는 있고 **dt 이벤트 기록 없음**'이어야 하며, 빈 dt 홉('DT를 안 거쳤다'로 읽힘)이면 안 된다. 같은 규율이 걸리는 자리 둘 더 — ① knobs가 wafer_process 3,107행 중 980행에서 NULL이라 USED_KNOB은 2,127개만 성립한다 ② wafer_process 행이 아예 없는 코어가 있다(격리: LOT-C|18) — 그 코어 셀의 공정 홉은 '공정 기록 없음'이라고 말해야 한다.",
+  "__comment_identity_labels": "정체 스킴은 label 하나에 하나다(열린 문제 #15). 이 파일이 쓰는 다섯: CoreCell=core_lot|core_slot|cx|cy(예 LOT-A|07|25|3) / BaseCell=base_id|bx|by(예 BASE-53|2|2) / DtCell=tape_lot|tape_slot|tx|ty(예 TAPE-A|01|8|2) / Core=core_lot|core_slot(예 LOT-A|05) / Wafer=wafer_id. ⚠️ **셀 정체를 테이블의 business key 문자열로 조립하지 마라.** core_defect_map.chip_key·dt_map.cell_key는 같은 4-튜플을 쓰지만 구분자가 `_`이고(table_config.composite_key_separator) 그래프 identity는 `|`다. lot 이름에 `_`가 섞이면 갈린다 — PRIMITIVES §2의 '`_`를 나눠 쓰는 관례가 셋' 함정. 조립은 항상 컬럼 튜플에서, graph_materializer.compose_identity로만 한다.",
+  "__comment_label_channel": "⚠️ node_class(§7.5c, static|dynamic)는 현재 **파싱·보존만** 되고 탐색 정책은 강제되지 않는다(정책 엔진은 G2.5). 그리고 선언 채널이 **테이블당 1개(자기 노드)**뿐이라, 정책이 막으려는 슈퍼 허브 라벨은 **애초에 선언할 자리가 없다** — BaseCell·DtCell·Base·Eqp·Knob·Recipe·Step·Tape은 소유 테이블 없는 스텁 타깃이다. 같은 이유로 spatial(§7.5)도 그 라벨에는 걸 수 없다. **라벨 단위 선언 채널**(예: 최상위 `node_classes: {label: class}`)이 둘을 한 번에 푼다 — G2.5 선행 과제. 실측 허브 degree: Knob 최대 302 · Eqp 최대 427 · Base 최대 102 · Tape 256 · Core 540(코어당 칩) — 정책 4(S→D 금지)와 허브 실링이 없으면 칩 하나에서 출발한 depth-3 탐색이 hop 2에서 코어 형제 칩 540개를 끌고 와 1,000노드 캡을 즉시 태운다.",
+  "__comment_retired_types": "이 개정으로 사라지는 것 — 라벨 Chip·DTEvent, 엣지 BONDED_FROM·PLACED_ON·ONTO_TAPE·TRANSFERRED_FROM. resync하면 같은 원본 로우가 낸 구 주장은 _retarget_stale_edges가 row-ref 스코프로 삭제하므로 엣지는 깨끗이 교체되지만, **구 노드(Chip/DTEvent)는 엣지 0개인 고아로 남는다** — scripts/graph_orphan_sweep.py로 정리한다(라벨 인구의 50% 초과 삭제는 기본 거부이므로 --max-fraction 조정이 필요할 수 있다).",
+  "__comment_reuse": "이름은 **이미 있는 것을 재사용**했다(만들기 전에 있는지 먼저 본다). ① `Core -WENT_THROUGH-> ProcessEvent`로 요청된 홉은 기존 **PERFORMED_ON**(ProcessEvent → Core, (lot,slot))과 구조가 같아 그대로 쓴다 — 새 선언 0개(그리고 WENT_THROUGH는 wafer_slot_history → Step이 이미 쓰고 있어 이름 충돌이다). ② `IS_WAFER`는 enrichment 자동 승격 **RESOLVED_AS**가 이미 계산한다(ontology_config.synthesize_enrichment_mappings — enrichment_rules.json의 core_wafer_attribution rule에서). ③ 체인(chain_rules.json)·enrichment는 셀 사슬 엣지(BONDED_TO·TRANSFERRED_TO·FROM_CORE)를 계산하지 않는다 — 확인 결과 재사용할 기존 연산이 없어 새로 선언한 것은 이 셋뿐이다.",
 
-  "__comment_bonding_lot_is_core_here": "⚠️ 되돌릴 수 있게 남기는 결정 기록 (2026-07-29). 운영 현장에서는 bonding_log의 lot/slot이 **테이프**의 것이다(스펙 §7.5b, 사용자 확인). 그런데 이 저장소의 로컬 데이터는 시뮬레이터 산출물(BL-AUTO-*)이고 **테이프 계층을 만들지 않아서**, 그 컬럼에 코어 값이 들어 있다. 실측: bonding_log의 distinct 80쌍이 dt_log.tape_lot|tape_slot과 0/80, dt_map.lot|slot과 0/80으로 전혀 겹치지 않고, core_wafer_map·wafer_process(lot,slot)·core_defect_map과는 80/80 전부 겹친다. 그래서 여기서는 BONDED_FROM의 target_label을 **Core로 선언**한다 — Tape로 선언하면 어느 테이프 테이블에도 없는 정체를 향하는 엣지 11,000여 개를 만들게 되고, DT 조인은 0건을 돌려주면서 권위 있어 보인다(추측 엣지 금지).",
-  "__comment_how_to_revert_to_tape": "되돌리는 조건과 방법: ① 판정 기준 — bonding_log의 (core_lot, core_slot) distinct 값이 dt_log.tape_lot|tape_slot 또는 dt_map.lot|slot과 **실제로 겹치기 시작**하면(TAPE-* 접두가 보이면) 그때가 전환 시점이다. ② 바꿀 것 — bonding_log.edges[BONDED_FROM].target_label을 \"Core\" → \"Tape\" **한 문자열**. ③ 그다음 — 그 테이블을 resync(POST /api/graph/sync)하면 엣지가 재타깃되고, 남는 고아 Core 노드는 scripts/graph_orphan_sweep.py로 정리한다. 코드 변경·마이그레이션 없음.",
+  "__comment_bonding_lot_is_core_here": "⚠️ 되돌릴 수 있게 남기는 결정 기록 (2026-07-29, 2026-07-30 유지). 운영 현장에서는 bonding_log의 lot/slot이 **테이프**의 것이다(스펙 §7.5b, 사용자 확인). 그런데 이 저장소의 로컬 데이터는 시뮬레이터 산출물(BL-AUTO-*)이고 **테이프 계층을 만들지 않아서**, 그 컬럼에 코어 값이 들어 있다. 실측: bonding_log의 distinct lot|slot 쌍이 dt_log.tape_lot|tape_slot과 0/76, dt_map.lot|slot과 0/76으로 전혀 겹치지 않고, core_wafer_map·wafer_process(lot,slot)와는 전부 겹친다. 그래서 bonding_log의 노드를 **CoreCell로 선언**한다 — 테이프로 해석하면 어느 테이프 테이블에도 없는 정체를 향하는 노드 수천 개가 생기고, DT 조인은 0건을 돌려주면서 권위 있어 보인다(추측 엣지 금지).",
+  "__comment_how_to_revert_to_tape": "되돌리는 조건: bonding_log의 (core_lot, core_slot) distinct 값이 dt_log.tape_lot|tape_slot 또는 dt_map.lot|slot과 **실제로 겹치기 시작**하면(TAPE-* 접두가 보이면) 그때가 전환 시점이다. ⚠️ 이 개정 이후로는 **문자열 하나로 끝나지 않는다** — bonding_log의 4-튜플이 테이프 좌표계를 뜻하게 되므로 dt_log와의 CoreCell 조인이 깨지고, bonding_log의 노드를 DtCell로 돌리고 base 사슬을 다시 잇는 identity 재설계가 동반된다. 전환 시 그 테이블을 resync(POST /api/graph/sync)한 뒤 scripts/graph_orphan_sweep.py로 고아를 정리한다.",
 
   "bonding_log": {
-    "description": "본딩 설비가 wafer에서 잘려 나온 chip 1개를 base(지그)에 실장한 이벤트 로그",
+    "description": "본딩 설비가 코어 셀 1개의 칩을 base(지그) 셀에 실장한 이벤트 로그 — 칩 정체(코어 셀)의 원천 둘 중 하나이며 base 셀 정체(base_id|bx|by)를 공급하는 유일한 원천이다(bonding_map은 다른 이름공간이므로 쓰지 않는다)",
     "event_time_column": "eventtime",
     "node": {
-      "label": "Chip",
-      "identity": "log_id",
+      "label": "CoreCell",
+      "identity": ["core_lot", "core_slot", "cx", "cy"],
+      "node_class": "dynamic",
       "props": [
-        { "col": "bx", "spatial": { "coord_system": "base_grid", "axis": "x" } },
-        { "col": "by", "spatial": { "coord_system": "base_grid", "axis": "y" } },
         { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },
         { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }
       ]
     },
     "edges": [
       {
-        "type": "BONDED_FROM",
-        "target_label": "Core",
-        "target_identity_from": ["core_lot", "core_slot"],
-        "description": "이 chip을 집어온 출처 개체 (lot|slot 표기 — 실 wafer_id로는 Core -[RESOLVED_AS]-> Wafer로 이어진다). 운영 의미론상 이 자리는 테이프이나 로컬 시뮬레이터 데이터는 코어 값을 담고 있어 Core로 선언했다 — __comment_bonding_lot_is_core_here 참조"
+        "type": "BONDED_TO",
+        "target_label": "BaseCell",
+        "target_identity_from": ["base_id", "bx", "by"],
+        "props": ["eventtime", "log_id"],
+        "description": "이 코어 셀의 칩이 실장된 base 셀 (base_id|bx|by — 좌표는 셀 정체의 일부다). ⚠️ 한 코어 셀이 서로 다른 base 셀 최대 4개(라이브 6개)로 가므로 이 엣지는 **여러 개가 정상**이다 — 하나로 접지 마라. log_id는 이 주장을 낸 원본 로우"
       },
       {
-        "type": "PLACED_ON",
-        "target_label": "Base",
-        "target_identity_from": ["base_id"],
-        "props": ["eventtime"],
-        "description": "chip이 실장된 대상 base 지그/설비"
+        "type": "FROM_CORE",
+        "target_label": "Core",
+        "target_identity_from": ["core_lot", "core_slot"],
+        "description": "이 셀이 속한 코어 웨이퍼. dt_log가 같은 타입으로 같은 주장을 하므로 본딩 기록만 있는 셀도, DT 기록만 있는 셀도 코어에 붙는다(커버리지 4,414/4,414)"
       }
     ]
   },
 
+  "dt_log": {
+    "description": "DT(Die Transfer) 공정 로그 — 코어 셀의 칩을 테이프 셀로 옮긴 칩 단위 대응 기록. 코어 프레임과 테이프 프레임을 잇는 유일한 다리이며, 프레임 간 이동은 좌표 변환이 아니라 이 로그의 조인으로만 성립한다(스펙 §7.5b). 칩 정체의 두 번째 원천 — bonding_log와 같은 4-튜플을 들고 있어 같은 CoreCell 노드로 수렴한다",
+    "event_time_column": "eventtime",
+    "node": {
+      "label": "CoreCell",
+      "identity": ["core_lot", "core_slot", "cx", "cy"],
+      "node_class": "dynamic",
+      "props": [
+        { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },
+        { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }
+      ]
+    },
+    "edges": [
+      {
+        "type": "TRANSFERRED_TO",
+        "target_label": "DtCell",
+        "target_identity_from": ["tape_lot", "tape_slot", "tx", "ty"],
+        "props": ["eventtime", "dt_eqp", "dt_id"],
+        "description": "칩이 옮겨진 테이프 셀 (tape_lot|tape_slot|tx|ty). 실측 코어 셀 하나당 최대 1개. dt_eqp는 **엣지 속성이고 Eqp 노드로 승격하지 않는다** — 768행 전부가 단일 값이라 노드로 만들면 degree 768 허브 하나가 생기고, 정책 엔진(§7.5c) 없이는 그 허브가 무관한 칩 768개로 되확장된다(결정 ②: 잎으로만). dt_id는 이 주장을 낸 원본 로우"
+      },
+      {
+        "type": "FROM_CORE",
+        "target_label": "Core",
+        "target_identity_from": ["core_lot", "core_slot"],
+        "description": "이 셀이 속한 코어 웨이퍼 — bonding_log와 동일 타입/동일 주장(본딩 기록이 없는 셀도 코어에 붙는다)"
+      }
+    ]
+  },
+
+  "core_wafer_map": {
+    "description": "코어 웨이퍼 원장 + (core_lot, core_slot) 표기를 wafer_id로 해석한 사람 교정 결과(enrichment 파생 테이블). 노드 정체는 **(core_lot, core_slot)**이고 wafer_id는 신뢰할 수 없는 속성으로 강등된다 — 실측 wafer_process와 8/80만 겹치고 깨진 문자열이 섞여 있다(__comment_wafer_id_is_not_an_identity 참조). RESOLVED_AS 엣지는 enrichment_rules.json에서 자동 승격되며 여기서 끌 수 없다",
+    "event_time_column": "eventtime",
+    "node": {
+      "label": "Core",
+      "identity": ["core_lot", "core_slot"],
+      "node_class": "dynamic",
+      "props": ["wafer_id", "chip_count"]
+    },
+    "edges": []
+  },
+
   "wafer_slot_history": {
-    "description": "wafer가 공정 step을 통과한 이력 (wafer_id 기준 실개체 노드의 소스)",
+    "description": "wafer가 공정 step을 통과한 이력 (wafer_id 기준 실개체 노드의 소스). ⚠️ 이 테이블의 wafer_id 집단은 wafer_process·core_wafer_map의 wafer_id와 거의 겹치지 않는다(격리 실측 wsh∩wp=0, wsh∩cwm=1) — 같은 스킴이 조인된다는 뜻은 아니다",
     "event_time_column": "event_time",
     "node": {
       "label": "Wafer",
       "identity": "wafer_id",
+      "node_class": "dynamic",
       "props": ["lot", "slot"]
     },
     "edges": [
@@ -53,89 +103,44 @@
         "target_label": "Step",
         "target_identity_from": ["step"],
         "props": ["event_time", "lot", "slot"],
-        "description": "wafer가 이 공정 step을 통과한 이벤트"
+        "description": "wafer가 이 공정 step을 통과한 이벤트 (Step은 정적 마스터 — 실측 4개 값에 전 이력이 수렴하는 슈퍼 허브)"
       }
     ]
   },
 
-  "core_wafer_map": {
-    "description": "bonding_log의 (core_lot, core_slot) 표기를 실제 wafer_id로 해석한 사람 교정 결과(enrichment 파생 테이블). RESOLVED_AS 엣지는 enrichment_rules.json에서 자동 승격되며 target label은 필드명 wafer_id에서 Wafer로 유도된다 — 즉 이 노드를 Core로 선언하면 자기 자신을 가리키던 Wafer→Wafer 자기 엣지가 올바른 Core→Wafer 교차 링크가 된다(코드 변경 없음).",
-    "event_time_column": "eventtime",
-    "node": {
-      "label": "Core",
-      "identity": ["core_lot", "core_slot"],
-      "props": ["chip_count"]
-    },
-    "edges": []
-  },
-
   "wafer_process": {
-    "description": "wafer가 전공정 설비에서 단위 공정(step)을 수행한 이벤트 로그 — bonding 이전 단계의 공정 이력",
+    "description": "wafer가 전공정 설비에서 단위 공정(step)을 수행한 이벤트 로그 — knob/recipe 추적의 시드이며 (lot, slot)으로 Core에 붙는다",
     "event_time_column": "start_time",
     "node": {
       "label": "ProcessEvent",
       "identity": "proc_id",
-      "props": ["step", "eqp_id", "lot_id", "slot_no", "result", "start_time", "end_time", "recipe_id", "knobs"]
+      "node_class": "dynamic",
+      "props": ["step", "eqp_id", "wafer_id", "lot_id", "slot_no", "result", "start_time", "end_time", "recipe_id", "knobs"]
     },
     "edges": [
       {
         "type": "PERFORMED_ON",
         "target_label": "Core",
         "target_identity_from": ["lot", "slot"],
-        "description": "이 공정 이벤트가 수행된 대상 개체 (lot|slot 표기 — core_wafer_map의 Core identity와 동일 값 공간)"
+        "description": "이 공정 이벤트가 수행된 코어 (lot|slot). 브리프의 `Core -WENT_THROUGH-> ProcessEvent`와 **구조가 같은 기존 엣지**라 재사용한다 — 방향만 반대이고 탐색은 무방향이다. wafer_id 경유(8/80)가 아니라 이 경로(80/80)가 knob 추적의 유일한 실사용 경로다. props의 wafer_id로 그 행이 주장하는 웨이퍼를 읽을 수 있다"
       },
       {
         "type": "EXECUTED_BY",
         "target_label": "Eqp",
         "target_identity_from": ["eqp_id"],
-        "description": "이 공정 이벤트를 실행한 설비(equipment)"
+        "description": "이 공정 이벤트를 실행한 설비(equipment) — 정적 마스터, 실측 최대 degree 427. 칩 추적에서는 **잎(leaf)으로만** 쓴다(D→S 1홉 도달만 허용, S→D 되확장 금지 — §7.5c 정책 4)"
       },
       {
         "type": "USED_KNOB",
         "target_label": "Knob",
         "target_identity_from": ["knobs"],
-        "description": "이 공정 이벤트가 사용한 knob 조건 묶음 — 같은 조건으로 처리된 이벤트들이 이 노드로 수렴한다(추적 시드)"
+        "description": "이 공정 이벤트가 사용한 knob 조건 묶음 — 같은 조건으로 처리된 이벤트들이 이 노드로 수렴한다(추적 시드). 정적 허브, 실측 최대 degree 302. 3,107행 중 980행이 knobs NULL이라 이 엣지는 2,127개만 성립한다(미상 ≠ 0 — 없는 것을 0으로 채우지 않는다)"
       },
       {
         "type": "USED_RECIPE",
         "target_label": "Recipe",
         "target_identity_from": ["recipe_id"],
-        "description": "이 공정 이벤트가 사용한 레시피"
-      }
-    ]
-  },
-
-  "dt_log": {
-    "description": "DT(Die Transfer) 공정 로그 — 코어 웨이퍼의 칩을 테이프 위로 옮긴 칩 단위 대응 기록. 코어 프레임과 테이프 프레임을 잇는 유일한 다리이며, 프레임 간 이동은 좌표 변환이 아니라 이 로그의 조인으로만 성립한다(스펙 §7.5b)",
-    "event_time_column": "eventtime",
-    "node": {
-      "label": "DTEvent",
-      "identity": "dt_id",
-      "props": [
-        { "col": "tx", "spatial": { "coord_system": "tape_grid", "axis": "x" } },
-        { "col": "ty", "spatial": { "coord_system": "tape_grid", "axis": "y" } },
-        { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },
-        { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }
-      ]
-    },
-    "edges": [
-      {
-        "type": "ONTO_TAPE",
-        "target_label": "Tape",
-        "target_identity_from": ["tape_lot", "tape_slot"],
-        "description": "칩이 옮겨진 대상 테이프 (tape_lot|tape_slot — 테이프 정체의 원장)"
-      },
-      {
-        "type": "TRANSFERRED_FROM",
-        "target_label": "Core",
-        "target_identity_from": ["core_lot", "core_slot"],
-        "description": "칩이 잘려 나온 원판 코어 웨이퍼 (core_lot|core_slot)"
-      },
-      {
-        "type": "EXECUTED_BY",
-        "target_label": "Eqp",
-        "target_identity_from": ["dt_eqp"],
-        "description": "이 DT 이벤트를 실행한 설비 — 전공정 설비와 같은 Eqp 마스터를 공유한다"
+        "description": "이 공정 이벤트가 사용한 레시피 — 정적 마스터, 잎으로만 사용"
       }
     ]
   }
