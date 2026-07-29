@@ -3,11 +3,19 @@
 > **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`deed6d2`: §5 키 표에 `map_push_ok` 행 — 로그형 테이블 에디터 Push 허용 선언, JSON boolean만 유효. 직전: §6 대소문자 전환 절차 신설 — 운영 테이블 소문자 개명 체크리스트) | **Owner:** Lead / Backend
 > 상위: [폴더 인덱스](./README.md) · [CONFIG_GUIDE](../CONFIG_GUIDE.md)(시나리오 S1/S2·리로드 규율 §4·함정 §6의 **정본**)
 
-<!-- Loader evidence (2026-07-28):
-  load: server/database/crud.py:172 load_table_config (parse failure -> silent {})
-  hot-swap: server/database/config_watcher.py:19 (basename == "table_config.json", on_modified only, 1s debounce)
-  watcher log lines: config_watcher.py:29,46,48,50
-  refresh entrypoint: server/database/models.py:524 refresh_dynamic_models (empty config -> keep existing singleton)
+<!-- Loader evidence (2026-07-29):
+  load: server/database/crud.py load_table_config (parse failure -> logged ERROR + {}) /
+        load_table_config_or_raise (parse failure -> TableConfigError; boot path uses this)
+        parse failure = undecodable OR bad JSON OR top level is not an object (H5).
+        _decode_config_text honours UTF-8/UTF-16/UTF-32 BOMs (H1); no BOM -> strict utf-8.
+  boot: server/main.py fail-fast on crud.TableConfigError; schema DDL moved out of module
+        import into main.bootstrap_database_schema(), called from startup_event (#16a)
+  hot-swap: server/database/config_watcher.py (basename == "table_config.json",
+        on_modified + on_moved(dest_path) + on_created since 2026-07-29 #9/H3,
+        TRAILING-edge 1s debounce - every event re-arms, fires after the last (H2))
+  watcher: _maybe_reload/_fire/_reload; empty config -> ERROR "Config reload ABORTED", no silent skip
+  refresh entrypoint: server/database/models.py refresh_dynamic_models (empty config -> keep existing singleton)
+  tests: server/tests/test_config_reload_integrity.py
   key consumers: crud.py (business_key/composite_key_*/column_types), models.py:287 (dynamic Table build),
     parsers/directory_watcher.py:96 (workspace_name/std_parse), crud.py:247 (source_priority)
   restore in-place on purpose: server/scripts/backup_config.py:122-131
@@ -37,8 +45,12 @@
    }
    ```
 
-   비-ASCII/공백 컬럼명은 피하고, 저장 전에 **유효한 JSON인지 확인**하십시오 — 파싱 실패는 로그 없이 `{}`가 되어 재기동 시 전 테이블이 사라집니다.
-3. **제자리(in-place) 쓰기로 저장**합니다. watcher는 `on_modified`만 봅니다(1초 디바운스) — **temp 파일에 쓰고 rename하는 "원자적 저장" 도구는 watcher를 발화시키지 못해 ALTER가 조용히 누락됩니다** (이슈 #9). 에디터가 어느 쪽인지 모르면 저장 후 §3으로 확인하고, 미발화면 파일을 다시 열어 공백 하나 넣고 지운 뒤 재저장(in-place)하십시오.
+   비-ASCII/공백 컬럼명은 피하고, 저장 전에 **유효한 JSON인지 확인**하십시오 — 파싱 실패 시 **웹서버가 뜨지 않습니다**(2026-07-29 #13, fail-fast). 로그에 `[Boot] Refusing to start - ... line N column M`이 남으니 그 위치를 고치고 재기동하십시오. 가동 중이라면 서버는 살아 있고 기존 스키마를 유지한 채 `[Config] ...` ERROR만 남습니다(편집은 반영되지 않음).
+
+   여기서 "파싱 실패"는 셋입니다 — ①디코딩 불가 ②JSON 문법 오류 ③**최상위가 객체가 아님**(`[]`·`null`·빈 파일). ③은 예전에 게이트를 통과해 **동적 모델 0개로 부팅**했습니다(UI 빈 화면 + 거의 깨끗한 로그).
+   **BOM은 파싱 실패가 아닙니다**(2026-07-29 H1). PowerShell 5.1의 `Set-Content -Encoding utf8`·`Out-File`(UTF-8 BOM)과 `>` 리다이렉트(UTF-16 LE), 메모장의 "UTF-8 with BOM"으로 저장해도 정상 로드됩니다. 예전에는 이것들이 전부 기동 차단 사유였습니다 — 파일은 어느 에디터에서 열어도 완벽해 보이는데 서버만 안 떴습니다.
+3. **저장 방식은 자유입니다** (2026-07-29 #9/H2/H3). watcher는 `on_modified`(제자리 쓰기) · `on_moved`(같은 디렉터리 temp + rename) · `on_created`(**다른** 디렉터리 temp + rename — 이때는 `moved`가 아예 없습니다)를 모두 처리하고, 디바운스는 **트레일링 엣지**라 **연속 저장 중 어느 것도 버려지지 않습니다.** 반영은 **마지막 쓰기로부터 약 1초 뒤**이니, 저장 직후 즉시 확인하면 아직 안 보일 수 있습니다 — 1초 기다린 뒤 §3으로 확인하십시오.
+   > 이 항목은 2026-07-29 이전에 **"in-place로 저장하라, 원자적 저장은 조용히 누락된다"** 였습니다. 그 시절 절차서를 기억하고 계신다면 더 이상 그럴 필요가 없습니다.
 4. 반영 경로는 변경 종류에 따라 다릅니다:
    - **신규 테이블**: watcher 자동, 또는 `POST /admin/reload-configs` (`-H "X-Admin-Token: <토큰>"` — 토큰 설정 서버는 전 `/admin/*`에 필요)
    - **컬럼 추가(ALTER)**: **watcher 경로만** — reload-configs는 ALTER를 하지 않습니다

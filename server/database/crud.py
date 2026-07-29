@@ -18,6 +18,7 @@ def transaction_context(user: str, tx_id: str, source: str):
         request_source.reset(token_src)
 import uuid
 import uuid6
+import codecs
 import json
 import os
 import logging
@@ -169,13 +170,124 @@ def sanitize_to_utf8(data: Any) -> Any:
     else:
         return data
 
-def load_table_config():
+class TableConfigError(RuntimeError):
+    """table_config.json exists but cannot be read as a table map.
+
+    Two causes, both parse-level: the bytes are not decodable/parsable JSON, or
+    they parse into something that is not a JSON object. Raised only by
+    `load_table_config_or_raise`. Deliberately narrow: see the scope note on
+    that function for what does NOT raise.
+    """
+
+
+def _parse_position(exc) -> str:
+    """Where the parse gave up, in a form an operator can act on."""
+    if isinstance(exc, json.JSONDecodeError):
+        return f"line {exc.lineno} column {exc.colno} (char {exc.pos}): {exc.msg}"
+    if isinstance(exc, UnicodeDecodeError):
+        return f"byte offset {exc.start}: not valid UTF-8 ({exc.reason})"
+    return str(exc)
+
+
+def _decode_config_text(raw: bytes) -> str:
+    """Decode config bytes, honouring whatever BOM the operator's editor wrote.
+
+    On Windows a BOM is the DEFAULT, not an exotic case. PowerShell 5.1 writes a
+    UTF-8 BOM from `Set-Content -Encoding utf8` and `Out-File`, a bare `>`
+    redirect writes UTF-16 LE with a BOM, and Notepad offers "UTF-8 with BOM"
+    outright. A plain `raw.decode("utf-8")` turns every one of those into a
+    UnicodeDecodeError - and because boot is fail-fast on decode/parse failures,
+    an operator who added one column with the wrong editor would get a file that
+    looks perfect in every editor and a web server that never starts again.
+
+    A BOM is an encoding marker, not content: stripping it is not leniency about
+    corrupt input, it is reading the file in the encoding it was written in.
+    Bytes with no BOM are still strict UTF-8, so genuinely mis-encoded files
+    (e.g. cp949 Korean saved without a BOM) still raise.
+    """
+    # UTF-32 LE (ff fe 00 00) must be tested BEFORE UTF-16 LE (ff fe), which is
+    # its prefix - otherwise every UTF-32 LE file decodes as UTF-16 garbage.
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw.decode("utf-8-sig")
+    if raw.startswith(codecs.BOM_UTF32_LE) or raw.startswith(codecs.BOM_UTF32_BE):
+        return raw.decode("utf-32")
+    if raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8")
+
+
+def load_table_config_or_raise():
+    """Boot-time loader. Raises TableConfigError when the file cannot be parsed.
+
+    [#13] Coming up "successfully" with zero tables is the worst outcome
+    available on a restart: the UI looks wiped, the log is clean, and nobody has
+    a thread to pull. Callers on the boot path use this one so the process dies
+    with the reason attached.
+
+    SCOPE - what raises and what deliberately does not:
+      raises : the file is present and is not JSON, or its bytes cannot be
+               decoded. A leading BOM is read as the encoding marker it is
+               (see _decode_config_text), so BOM-prefixed files are NOT failures.
+      returns: the file is absent (a fresh install has no config yet).
+      returns: the file cannot be read (OSError - a lock, a permission blip).
+               An unreadable file is not a corrupt one, and refusing to boot on
+               a transient read failure trades one outage for another.
+      returns: the file parses but declares something odd. Semantic complaints
+               must never keep a production server down.
+      raises : the file parses but is not a JSON object. That is not a semantic
+               complaint - `[]` or `null` cannot be a table map at all, and
+               every consumer here treats the result as a mapping. Letting one
+               through produces exactly the failure #13 exists to abolish: a
+               server that boots with zero dynamic models and a near-clean log.
+    """
     if not os.path.exists(CONFIG_PATH):
         return {}
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+        with open(CONFIG_PATH, "rb") as f:
+            raw = f.read()
+    except OSError as exc:
+        # Not a parse failure -> loud, but not fatal (see scope note above).
+        logger.error(
+            f"[Config] Could not read table_config.json at '{CONFIG_PATH}' "
+            f"([{type(exc).__name__}] {exc}). Continuing with an EMPTY table config."
+        )
+        return {}
+    try:
+        parsed = json.loads(_decode_config_text(raw))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TableConfigError(
+            f"table_config.json is not valid JSON: '{CONFIG_PATH}' -> {_parse_position(exc)}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        # Measured: `[]` reached models.init_dynamic_models(), died on
+        # AttributeError, was caught by main's broad `except Exception`, and the
+        # server came up with ZERO dynamic models behind a single ERROR line -
+        # the UI looks wiped, the log looks fine. `null` was worse: TABLE_CONFIG
+        # stayed None for the whole process lifetime.
+        raise TableConfigError(
+            f"table_config.json must be a JSON object mapping table name -> "
+            f"declaration, but its top level is {type(parsed).__name__}: '{CONFIG_PATH}'"
+        )
+    return parsed
+
+
+def load_table_config():
+    """Runtime-safe loader: returns {} on failure, but never silently.
+
+    [#13] The old body was `except Exception: return {}` with no log. Live, the
+    empty-config guard in models.refresh_dynamic_models absorbed it, so the only
+    visible symptom was a schema change that never arrived; on a restart it was
+    every table disappearing at once. Returning {} is still right here - it is
+    what stops a bad read from wiping the live singleton - but the log line is
+    what turns "everything vanished" into "line 3, column 5 of this file".
+    """
+    try:
+        return load_table_config_or_raise()
+    except TableConfigError as exc:
+        logger.error(
+            f"[Config] {exc}. Returning an EMPTY table config - the in-memory "
+            f"config and the physical schema are left UNCHANGED."
+        )
         return {}
 
 def update_table_config(new_config: dict):

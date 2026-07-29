@@ -1,6 +1,6 @@
 # ⏪ 롤백 절차 — 배포가 잘못됐을 때 되돌리는 법
 
-> **Status:** 🟢 Living | **작성:** 2026-07-28 · Server PM | **Last-verified:** 2026-07-28 (**C3 주간 config 스냅샷 신설 + 복원 드릴 실행** — 단계 2가 이제 실재하는 원본을 가리킨다. §3.1-bis 신설, 단계 2 재작성, 1초 디바운스 함정 추가. 직전: 격리 스택 전 구간 드릴 — §7 타임라인)
+> **Status:** 🟢 Living | **작성:** 2026-07-28 · Server PM | **Last-verified:** 2026-07-29 (**1초 디바운스 함정 해소** — 트레일링 엣지 디바운스로 연속 저장이 더는 버려지지 않는다(단계 2). 복사 방식 제약(`cp` 강제)도 해제. 직전 2026-07-28 **C3 주간 config 스냅샷 신설 + 복원 드릴 실행** — 단계 2가 이제 실재하는 원본을 가리킨다. §3.1-bis 신설, 단계 2 재작성, 1초 디바운스 함정 추가. 직전: 격리 스택 전 구간 드릴 — §7 타임라인)
 > **대상:** 새벽 2시에 이 문서를 여는 운영자.
 > **먼저 알아야 할 것:** 이 시스템은 **코드와 config가 서로 다른 시점에 반영된다.** 그 사실 하나가 이 문서 전체의 이유다.
 > **관련:** 배포는 [DEPLOY_SETUP](DEPLOY_SETUP.md) · 설정 키는 [CONFIG_GUIDE](CONFIG_GUIDE.md) · 게이트 판정은 [PRODUCTION_READINESS](../process/PRODUCTION_READINESS.md)
@@ -146,7 +146,7 @@ cp server/config/transfer_plan_config.json  server/config/transfer_plan_config.j
 
 **이유**: 롤백이 실패하면 되돌아올 곳이 필요하다. 그리고 사후에 "무엇이 문제였나"를 보려면 **깨진 config 자체가 증거**다. 되돌리면서 지우지 마라.
 
-> 복사는 **제자리 덮어쓰기**(`cp`)로 한다. `mv`·`os.replace` 같은 **원자적 rename은 config watcher의 `on_modified`를 발화시키지 못해** `table_config.json`의 반영이 조용히 누락된다(이슈 #9).
+> 복사 방식은 무관하다(2026-07-29 #9/H3). watcher가 `on_modified`·`on_moved`·`on_created`를 모두 처리하므로 `cp`든 `mv`든 `os.replace`든 반영된다. 2026-07-28 드릴 시점에는 `on_modified`만 처리해서 **원자적 rename이 조용히 누락**됐고, 그래서 이 문서가 `cp`를 지정했다.
 
 ---
 
@@ -201,7 +201,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore table_c
 conda run -n assy_manager python server/scripts/backup_config.py restore table_config_260728.json.bak --yes
 ```
 
-> 손으로 할 거라면 반드시 **제자리 덮어쓰기**(`cp`)다. `mv`·`os.replace` 같은 원자적 rename은 watcher의 `on_modified`를 발화시키지 못해 `table_config.json`이 **디스크에는 옳고 시스템은 옛 상태인 채로** 남는다(이슈 #9). `restore`가 제자리 쓰기를 하는 이유가 이것이다.
+> 손으로 할 때 저장 방식은 이제 상관없다(2026-07-29 #9/H3) — `cp`·`mv`·`os.replace` 전부 watcher를 발화시킨다. 2026-07-28 드릴 시점에는 원자적 rename이 누락돼 `table_config.json`이 **디스크에는 옳고 시스템은 옛 상태인 채로** 남았고, `restore`가 제자리 쓰기를 하는 이유가 그것이었다(그 선택 자체는 여전히 무해하다).
 
 **실측**(2026-07-28 격리 스택 드릴, §8):
 
@@ -212,22 +212,22 @@ conda run -n assy_manager python server/scripts/backup_config.py restore table_c
 
 `table_config.json`은 watcher가 **선언만** 핫스왑한다 — **물리 스키마는 따라오지 않는다**(§5).
 
-#### ⚠️ 되돌렸는데 안 바뀌면 — 1초 디바운스를 의심하라
+#### ✅ 1초 디바운스 함정 — 해소 (2026-07-29, H2)
 
-드릴에서 실제로 걸렸다. **파일은 옳은데 시스템이 옛 선언을 계속 서빙했고, 로그에는 아무 줄도 남지 않았다.**
-
-원인은 `config_watcher.py`의 디바운스다:
+2026-07-28 드릴이 찾아낸 함정이다. **파일은 옳은데 시스템이 옛 선언을 계속 서빙했고, 로그에는 아무 줄도 남지 않았다.** 원인은 `config_watcher.py`의 **리딩 엣지** 디바운스였다:
 
 ```python
 if now - self.last_triggered < 1.0:
     return          # 1초 안에 들어온 두 번째 쓰기는 통째로 버려진다
 ```
 
-배포(쓰기 1)와 롤백(쓰기 2)이 **1초 안에** 일어나면 두 번째가 삼켜진다. 실무에서 배포와 롤백이 1초 간격일 일은 없지만, **연달아 두 번 되돌리는 경우**(잘못 골라서 다시 고름)에는 그대로 재현된다.
+배포(쓰기 1)와 롤백(쓰기 2)이 1초 안에 일어나거나, **연달아 두 번 되돌리면**(잘못 골라서 다시 고름) 두 번째가 삼켜졌다.
 
-**증상 구분법** — `restore`가 `the snapshot is byte-identical to the current file`이라고 말하는데도 동작이 안 돌아왔다면, 파일은 이미 옳다. 즉 **복원 실패가 아니라 재읽기 실패**다.
+지금은 **트레일링 엣지**다 — 이벤트마다 타이머를 재무장하고 **마지막 이벤트 후 1초**에 1회 발화한다. 연속 쓰기 중 버려지는 것이 없고, 여러 번 써도 리로드는 마지막 상태 기준 1회다. 느린 비원자적 쓰기(첫 이벤트가 잘린 파일을 보는 경우)도 같은 수정으로 닫혔다.
 
-**대응**: 1초 이상 띄우고 `restore`를 한 번 더 실행하면 watcher가 발화한다. 그래도 안 되면 `POST /admin/reload-configs`(신규 CREATE 전용) 또는 재기동.
+**남은 것은 지연뿐이다**: 반영은 **마지막 쓰기로부터 약 1초 뒤**다. 되돌린 직후 즉시 확인하면 아직 옛 값일 수 있으니 1초 기다렸다가 다시 본다.
+
+**그래도 안 바뀌면** — `restore`가 `the snapshot is byte-identical to the current file`이라고 말하는데 동작이 안 돌아왔다면 파일은 이미 옳다. 즉 **복원 실패가 아니라 재읽기 실패**이고, 이제는 그 경우 **watcher 로그에 줄이 남는다**(`Configuration change detected ...` 또는 `Config reload ABORTED: ...`). 로그가 완전히 비어 있다면 watcher 프로세스 자체를 의심하고, `POST /admin/reload-configs`(신규 CREATE 전용) 또는 재기동으로 간다.
 
 ### 단계 3 — 코드 되돌리기 (아직 실행 중 프로세스에는 영향 없음)
 

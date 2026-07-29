@@ -1,10 +1,14 @@
 import os
 os.environ["TESTING"] = "True"
 
-# [Isolation, board issue #16a] main.py runs `Base.metadata.create_all(bind=engine)`
-# at *module import* against whatever DATABASE_URL resolves to. With DATABASE_URL
-# unset that default is the live production database (database.py DEFAULT_PG_URL),
-# so merely collecting this suite issued DDL to production.
+# [Isolation, board issue #16a] main.py USED TO run
+# `Base.metadata.create_all(bind=engine)` at *module import* against whatever
+# DATABASE_URL resolved to. With DATABASE_URL unset that default is the live
+# production database (database.py DEFAULT_PG_URL), so merely collecting this
+# suite issued DDL to production. That DDL now lives in
+# main.bootstrap_database_schema() and this file calls it explicitly below - but
+# the pin stays, and stays FIRST, because it is the thing that made the old leak
+# harmless and the thing that keeps every later import honest.
 #
 # Pin the suite to an isolated database BEFORE `from main import app` below.
 # This is a hard assignment, not setdefault: an ambient DATABASE_URL in the shell
@@ -36,6 +40,19 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from main import app
 from database.database import Base, get_db
+
+# [Isolation, board issue #16a] The DDL that used to run at `import main` now
+# runs at boot (main.bootstrap_database_schema, called from the startup event).
+# The suite still needs it, and needs it HERE rather than from TestClient:
+# startup runs on a worker thread, and for `sqlite:///:memory:` SQLAlchemy hands
+# every thread its own separate database, so tables created during startup are
+# invisible to a test that opens `database.SessionLocal` on the main thread.
+# test_api.py::test_file_ingestion_callback_direct does exactly that (it drives
+# the real directory_watcher) and had been relying on the import-time DDL.
+# Running it explicitly here keeps that dependency visible instead of accidental,
+# and it is safe because DATABASE_URL was pinned to an isolated database above.
+import main as _main
+_main.bootstrap_database_schema()
 
 from sqlalchemy.pool import StaticPool
 

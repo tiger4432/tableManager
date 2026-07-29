@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -34,6 +34,7 @@
 - 그래프 동기화 플래그: `is_graph_synced`, `needs_graph_rollback`, `graph_synced_at`.
 - 신규 컬럼은 이미 매핑된 클래스에 핫스왑되며, `sync_dynamic_tables_schema`가 누락 컬럼에 `ALTER TABLE ADD COLUMN` 발행(기존 테이블 전용).
 - **신규 테이블의 물리 CREATE**는 `create_missing_dynamic_tables`(이슈 #7)가 담당하며, 공용 진입점 `refresh_dynamic_models(engine)`가 리로드 3경로(웹서버 reload-configs / config_watcher / 워커 SYSTEM_RELOAD) 전부에 배선되어 있습니다. (함수 앵커: [CODE_MAP §5](./CODE_MAP.md#5-소형-서버-모듈))
+- **부팅 시 물리 스키마 구축은 `main.bootstrap_database_schema()`** — `create_all` + `sync_dynamic_tables_schema`를 묶은 **명시적 기동 단계**이며 `startup_event`가 호출합니다. (2026-07-29 #16ⓐ: 예전에는 `main.py` **모듈 import 시점**에 실행돼, 앱을 import하기만 해도 그때 해석된 `DATABASE_URL`—미설정이면 **운영 DB**—로 DDL이 나갔습니다. 삭제가 아니라 **이동**입니다. 신규 설치가 "config에 테이블 추가 → 기동 → 즉시 사용"으로 테이블을 얻는 경로는 그대로 살아 있어야 하기 때문입니다.)
 
 ---
 
@@ -144,6 +145,20 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 ## 5. 설정 주도 스키마
 
 `table_config.json`(테이블별): `business_key`, `column_types`, `display_columns`, `composite_key_source`/`separator`, `map_key_columns`, 선택적 `source_priority`. 변경은 `config_watcher.py` + `SYSTEM_RELOAD`로 무중단 반영.
+
+> **watcher가 처리하는 저장 형태는 셋입니다** (2026-07-29 #9/H2/H3). `on_modified`(제자리 쓰기) · `on_moved`(같은 디렉터리 temp + rename) · `on_created`(**다른** 디렉터리 temp + rename — 이 경우 `moved`가 아예 없고 `deleted`+`created`만 옵니다. `tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리라 흔한 형태입니다). 측정 기준 watchdog 6.0.0/Windows.
+>
+> 그리고 디바운스는 **트레일링 엣지**입니다 — 이벤트마다 타이머를 재무장하고 **마지막 이벤트 후 1초**에 1회 발화합니다. 예전 리딩 엣지(창 안 첫 이벤트만 처리)는 ⓐ **0.3초 간격의 두 번째 저장을 통째로 버렸고**(디스크는 3컬럼, 물리 테이블은 2컬럼, 로그는 성공) ⓑ 느린 비원자적 쓰기의 **완료 이벤트**를 버렸습니다(첫 이벤트가 잘린 파일을 읽고 abort). ⓑ는 `crud.update_table_config`가 평범한 `open(w)`이라 **제품 자신의 쓰기 경로**였습니다.
+>
+> ⚠️ **여전히 참인 것**: 반영은 마지막 쓰기로부터 약 1초 뒤이고, **물리 반영의 증거는 `information_schema`뿐**입니다(`GET /tables/{t}/schema`는 config 싱글턴을 읽습니다). 반영이 불가능하면 `Config reload ABORTED: ...` ERROR를 남기고 기존 상태를 유지합니다 — 조용히 넘어가지 않습니다. 컬럼 삭제·타입 변경은 어느 경로도 반영하지 않습니다.
+
+> **파싱 실패는 기동을 막습니다** (2026-07-29 #13). `crud.load_table_config()`는 예전에 파싱 실패 시 **로그 없이 `{}`** 를 반환했고, 가동 중에는 `refresh_dynamic_models`의 빈-config 가드가 막아줬지만 **손상 상태로 재기동하면 전 테이블이 사라졌습니다**. 지금은 로더가 둘로 나뉩니다 — `load_table_config()`(런타임: ERROR 로그 + `{}` 유지)와 `load_table_config_or_raise()`(기동: `TableConfigError`).
+>
+> **"파싱 실패"의 범위는 정확히 셋입니다** (2026-07-29 H1/H5): ① 디코딩 불가 ② JSON 문법 오류 ③ **최상위가 객체가 아님**(`[]`·`null`·문자열·숫자). ③이 포함되는 이유는 측정 때문입니다 — `[]`는 게이트를 통과해 `init_dynamic_models`에서 `AttributeError`로 죽고, main의 광범위 `except`가 잡아 **동적 모델 0개로 부팅**했습니다(ERROR 한 줄, UI는 빈 화면). #13이 없애려던 실패 그 자체입니다.
+>
+> **BOM은 손상이 아닙니다** (H1). 로더는 UTF-8 BOM · UTF-16 LE/BE · UTF-32 BOM을 인식해 그 인코딩으로 읽습니다. Windows에서 BOM은 예외가 아니라 **기본값**입니다 — PowerShell 5.1의 `Set-Content -Encoding utf8`·`Out-File`이 UTF-8 BOM을, `>` 리다이렉트가 UTF-16 LE를 씁니다. 예전 엄격 `utf-8` 디코드는 이것들을 전부 파싱 실패로 만들었고, fail-fast와 곱해져 **모든 에디터에서 멀쩡해 보이는 파일로 웹서버가 영영 안 뜨는** 상태를 만들었습니다. BOM 없는 잘못된 인코딩(BOM 없는 cp949 등)은 그대로 거부합니다 — 관용이 아니라 **쓰인 인코딩으로 읽는 것**입니다.
+>
+> ⚠️ fail-fast는 위 **파싱 실패에 한정**합니다. 파일 부재·읽기 실패(OSError)·의미 수준 이상(이상한 선언)은 기동을 막지 않습니다.
 
 **어떤 테이블이 있는지는 환경마다 다릅니다** — 이 파일은 gitignored인 현장 자산입니다. 갈리는 기준은 *누가 스키마를 정하는가*입니다.
 

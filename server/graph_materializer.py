@@ -112,6 +112,13 @@ def extract_graph_items(table_name: str, rows: list, mapping: dict,
     무관 컬럼의 user 편집이 엣지에 user를 위조 날인하는 경로가 구조적으로 없고,
     증분(materialize_events)·재동기화(resync_table) 두 경로가 동일 입력에 대해
     동일 (from, type, to, source_name) 레코드를 산출한다(경로 동등성).
+
+    [INV-O-2] 엣지 event_time도 같은 이유로 **여기 한 곳**에서 결정된다. 매핑이
+    `event_time_column`을 선언하면 그 컬럼의 값(= 실 사건 시각)을 쓰고, 미선언이면
+    호출자가 넘긴 인제션 시각을 그대로 쓴다. 두 호출자(materialize_events는 outbox
+    payload의 timestamp, resync_table은 로우의 updated_at)가 서로 다른 인제션 시각을
+    넘기더라도 선언된 테이블에서는 **양쪽이 같은 값**을 산출한다 — 경로 동등성이
+    provenance에 이어 시간축까지 확장된다.
     """
     node_map = node_map if node_map is not None else {}
     edges = edges if edges is not None else {}
@@ -123,12 +130,24 @@ def extract_graph_items(table_name: str, rows: list, mapping: dict,
     spatial_meta = {
         p["col"]: p["spatial"] for p in prop_decls if p.get("spatial")
     }
+    event_time_col = mapping.get("event_time_column")
+    unresolved_event_times = 0
 
     for row in rows:
         values = row["values"]
         identity_key = compose_identity([values.get(c) for c in identity_cols])
         if identity_key is None:
             continue  # identity 해석 불가 로우는 스킵(§2: 정확 일치 MERGE 전제)
+
+        if event_time_col:
+            # 선언된 컬럼이 해석되지 않으면 인제션 시각으로 **되돌리지 않는다** — 한 필드에
+            # 두 시간 의미론을 섞으면 "언제 일어났나"와 "언제 적재됐나"가 구분 불가해진다.
+            # NULL은 "시각 미상"이며 시간 필터를 항상 통과한다(경계 계약 — 구조 엣지와 동일).
+            row_event_time = _parse_event_time(values.get(event_time_col))
+            if row_event_time is None:
+                unresolved_event_times += 1
+        else:
+            row_event_time = _parse_event_time(row.get("event_time"))
 
         node_key = (label, identity_key)
         props = {}
@@ -180,8 +199,16 @@ def extract_graph_items(table_name: str, rows: list, mapping: dict,
                 "source_name": source_name,
                 "source_row_ref": f"{table_name}:{row.get('row_id')}",
                 "updated_by": row.get("updated_by"),
-                "event_time": _parse_event_time(row.get("event_time")),
+                "event_time": row_event_time,
             }
+
+    if unresolved_event_times:
+        # 조용히 NULL을 내보내지 않는다 — 선언은 있는데 값이 안 잡히는 것은 데이터 문제이므로
+        # 운영자가 알아야 한다(선언 자체가 죽는 것보다 낫지만, 무음이면 안 된다).
+        logger.warning(
+            f"[Graph] '{table_name}': event_time_column '{event_time_col}' unresolved on "
+            f"{unresolved_event_times}/{len(rows)} row(s) — those edges carry event_time=NULL"
+        )
     return node_map, edges
 
 

@@ -38,23 +38,60 @@ import paths  # single override point for config/ + ingestion_workspace/ (ASSY_D
 from admin_auth import require_admin_token, require_admin_token_strict
 import admin_auth
 script_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = paths.config_path("table_config.json")
 logger.info(f"[paths] {paths.describe()}")
 # Which DB URL source won (env / config file / default) - password masked, never raw.
 logger.info(f"[db] url source={DB_URL_SOURCE} target={paths.mask_db_password(SQLALCHEMY_DATABASE_URL)}")
+# [#13] Boot is FAIL-FAST on a config that is not JSON.
+#
+# This block used to open the file itself and swallow every exception with a
+# single ERROR line, while crud.load_table_config() swallowed the same failure
+# with no line at all. A restart on a corrupt table_config.json therefore came up
+# "successfully" with every table missing - the UI looked wiped, the log looked
+# clean, and the operator had no thread to pull. Refusing to start is strictly
+# better than serving an empty system that looks like data loss.
+#
+# The fail-fast is limited to PARSE failures on purpose (see the scope note on
+# load_table_config_or_raise). A file that parses but declares something odd
+# still boots: a production server that will not start over a semantic complaint
+# is a bigger accident than the complaint.
 try:
-    with open(config_path, "r", encoding="utf-8") as f:
-        table_config = json.load(f)
+    table_config = crud.load_table_config_or_raise()
+except crud.TableConfigError as e:
+    logger.critical(f"[Boot] Refusing to start - {e}")
+    raise
+try:
     models.init_dynamic_models(table_config)
 except Exception as e:
-    logger.error(f"Failed to load table_config or init dynamic models: {e}")
+    logger.error(f"Failed to init dynamic models: {e}")
 
-# Create tables if not exists
-models.Base.metadata.create_all(bind=engine)
-try:
-    models.sync_dynamic_tables_schema(engine)
-except Exception as e:
-    logger.error(f"Failed to sync dynamic tables schema: {e}")
+
+def bootstrap_database_schema():
+    """[#16a] Build/patch the physical schema. Called from startup, NOT at import.
+
+    Why it moved: these two statements used to run at module import, so anything
+    that merely imported the app - pytest collecting this suite, a script poking
+    at a router - issued DDL against whatever DATABASE_URL resolved to. With the
+    variable unset that default is the production database, and it happened.
+
+    Why it did NOT just get deleted: a fresh install starts with an empty
+    database, and the whole onboarding story is "add a table to
+    table_config.json -> boot -> use it". Removing this path would break every
+    new install while every existing one kept working, which is the quietest
+    possible regression. So it is still automatic - it just needs someone to
+    actually start the server first.
+
+    `create_all` stays unguarded so an unreachable database fails startup loudly
+    (uvicorn aborts) instead of serving a schema-less app, which is exactly the
+    behaviour the old import-time statement had.
+
+    This function always does the work; deciding WHEN to run it belongs to the
+    caller (see the guard at the call site in `startup_event`).
+    """
+    models.Base.metadata.create_all(bind=engine)
+    try:
+        models.sync_dynamic_tables_schema(engine)
+    except Exception as e:
+        logger.error(f"Failed to sync dynamic tables schema: {e}")
 
 app = FastAPI(title="AssyManager Table Server")
 
@@ -200,6 +237,23 @@ async def startup_event():
         _lvl, _msg = admin_auth.startup_banner()
         getattr(logger, _lvl)(_msg)
 
+    # [#16a] Physical schema first: it used to run at import, so it completed
+    # before anything else in the process. Keep that ordering - the config
+    # watcher below can fire an ALTER, and it must not race a table that does
+    # not exist yet.
+    #
+    # Skipped under TESTING, and for a concrete reason rather than tidiness:
+    # conftest.py runs this same step once on the MAIN thread. Running it again
+    # here would open a new connection on every TestClient's startup thread, and
+    # SQLAlchemy's pool for `sqlite:///:memory:` (SingletonThreadPool) closes
+    # older connections once more than five exist - taking the main thread's
+    # database, tables and all, with it. That is measured, not theoretical: it
+    # broke test_api.py::test_file_ingestion_callback_direct, which drives the
+    # real watcher through `database.SessionLocal` on the main thread.
+    if os.getenv("TESTING") == "True":
+        logger.info("[Schema] TESTING mode - conftest owns the boot-time schema step.")
+    else:
+        bootstrap_database_schema()
 
     # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작
     try:
@@ -371,6 +425,11 @@ async def shutdown_event():
     global global_watcher, global_config_watcher
     if global_config_watcher:
         logger.info("Stopping Config Watcher...")
+        # The reload debounce runs on its own timer thread; observer.stop() does
+        # not reach it, so an armed reload would fire DDL after shutdown.
+        handler = getattr(global_config_watcher, "config_handler", None)
+        if handler is not None:
+            handler.cancel_pending()
         global_config_watcher.stop()
         global_config_watcher.join()
         logger.info("Config Watcher stopped.")
@@ -468,20 +527,14 @@ def invalidate_table_cache(table_name: str):
 
 
 from datetime import timezone, datetime
-import datetime as dt_pkg
 
-# [성능 최적화] 타임존 객체 캐싱 (astimezone()의 시스템 호출 비용 절감)
-LOCAL_TIMEZONE = dt_pkg.datetime.now(dt_pkg.timezone.utc).astimezone().tzinfo
-
-def to_local_str(dt):
-    """UTC 데이트타임을 현지 시간(Local) 문자열로 변환합니다."""
-    if not dt: return ""
-    ts_fmt = "%Y-%m-%d %H:%M:%S"
-    # SQLite naive datetime assumes UTC. Force UTC if naive before conversion.
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    # [최적화] 캐시된 타임존 사용
-    return dt.astimezone(LOCAL_TIMEZONE).strftime(ts_fmt)
+# `to_local_str`/`LOCAL_TIMEZONE` now live in utils.time_format so the background
+# workers can format timestamps without importing this module. Importing `main`
+# runs the #13 boot fail-fast, and a worker that only wanted a timestamp helper
+# would lose its WebSocket notification whenever the config was corrupt - see the
+# module docstring there. Re-exported here so `main.to_local_str` keeps working
+# for every existing caller.
+from utils.time_format import LOCAL_TIMEZONE, to_local_str
 
 def inject_system_columns(row):
     """

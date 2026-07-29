@@ -392,7 +392,9 @@
 - [ ] **config 백업이 살아 있다**(C3, 2026-07-28): `backup_config.py check` → `ok`. `/health`의 `checks.config_backup.status`도 `ok`이고 `problems`에 백업 줄이 없다.
 - [ ] 🎯 **멈춘 백업이 보인다**: 최신 스냅샷을 잠시 다른 이름으로 옮긴다 → `/health`가 **`degraded`(HTTP는 200 유지)** + `problems`에 `config backup: ...` 한 줄. 되돌리면 사라진다(캐시 60초). ⚠️ **503이 되면 회귀다** — 백업 부재로 멀쩡한 스택을 재기동시키면 안 된다.
 - [ ] 🎯 **복원이 실제로 된다**(격리 환경에서만): 스냅샷을 뜬 뒤 `transfer_plan_config.json`을 깨뜨리고 → `restore <파일> --yes` → `GET /api/transfer-plan/stages`의 `target_map.table`이 **되돌아오는지**. 실측 0.17초. *(파일이 바뀐 것은 증거가 아니다 — 도메인 응답으로 판정한다)*
-- [ ] **1초 디바운스 함정**: `table_config.json`을 고친 직후(1초 이내) 곧바로 복원하면 **watcher가 두 번째 쓰기를 버려** 파일은 옳은데 시스템은 옛 선언을 서빙한다. 1초 이상 띄우고 다시 `restore`하면 반영되는지 확인.
+- [ ] **연속 저장이 버려지지 않는지**(2026-07-29 H2로 해소된 함정의 회귀 점검): `table_config.json`을 고친 직후(1초 이내) 곧바로 복원한 뒤, **`information_schema`의 물리 컬럼이 최종 디스크 선언과 일치**하는지 확인. 예전에는 두 번째 쓰기가 통째로 버려져 파일은 옳은데 시스템이 옛 선언을 서빙했다. 반영은 **마지막 쓰기 후 약 1초**이므로 즉시 확인하지 말고 1초 기다린다.
+- [ ] **저장 방식 무관**(#9/H3): 제자리 저장 · 같은 폴더 temp+rename · **다른 폴더 temp+rename** 세 가지 모두에서 ALTER가 반영되는지. 세 번째는 `moved` 이벤트가 아예 없어 예전에는 무음 누락이었다.
+- [ ] **BOM 붙은 config로 재기동**(H1): PowerShell `Set-Content -Encoding utf8`(UTF-8 BOM) 또는 `>` 리다이렉트(UTF-16)로 저장한 `table_config.json`으로 웹서버가 **정상 기동**하는지. 예전에는 이 상태로 영영 안 떴다.
 - [ ] **설치 스크립트 안전성**: `install_product_tables.py`(인자 없음) → **아무것도 쓰지 않고** 할 일만 출력. `--apply` 후 현장 항목의 키 순서·들여쓰기가 그대로인지.
 
 ### 2.16 접근 통제 🎯 — 2026-07-27 신설 (`90e284f`)

@@ -51,6 +51,11 @@ async def main():
         logger.error(f"Exception occurred: {e}")
     finally:
         if config_watcher:
+            # The reload debounce lives on its own timer thread, out of reach of
+            # observer.stop(). Cancel it before tearing the observer down.
+            handler = getattr(config_watcher, "config_handler", None)
+            if handler is not None:
+                handler.cancel_pending()
             config_watcher.stop()
             config_watcher.join()
         logger.info("Process stopped.")

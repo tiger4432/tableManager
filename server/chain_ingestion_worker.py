@@ -18,6 +18,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
 from utils import heartbeat
+# [H4] Module-level, and deliberately NOT a lazy import of the web application
+# module. That lazy import sat inside the notification try/except; importing
+# `main` runs the #13 boot fail-fast, so a config that broke while the system was
+# running made this worker COMMIT its rows and then silently drop the WebSocket
+# notification, with the log line blaming "Failed to build chained update
+# notification". Nothing in this worker may reach into `main`.
+from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
@@ -454,8 +461,6 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
                 try:
-                    from main import to_local_str
-                    
                     cfg = crud.TABLE_CONFIG.get(target_table, {})
                     col_types = cfg.get("column_types", {})
                     user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
@@ -531,7 +536,15 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                     broadcast_messages.append(msg)
                 except Exception as ws_err:
                     # 통지 메시지 구성 실패는 로깅만 하고 그룹 처리(성공/커밋)에는 영향 주지 않는다.
-                    logger.error(f"Failed to build chained update notification: {ws_err}")
+                    # [H4] 다만 **결과를 숨기지 않는다** — 여기서 떨어지면 행은 이미 커밋됐는데
+                    # 어떤 클라이언트도 그 사실을 모른다(핵심가치 #3, 실시간 신뢰 전파).
+                    # 예외 타입과 스택을 남기지 않으면 이 한 줄이 엉뚱한 원인을 가리킨다.
+                    logger.error(
+                        f"Failed to build chained update notification for '{target_table}' "
+                        f"(tx {chain_tx_id}) - rows are COMMITTED but clients will NOT be "
+                        f"notified: [{type(ws_err).__name__}] {ws_err}",
+                        exc_info=True,
+                    )
                     
         except Exception as e:
             import traceback

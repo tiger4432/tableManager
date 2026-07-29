@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**정본 계기 수리 라운드** — `PUT /data/updates` 응답에 `effort_recorded`/`effort_error` 신설, 잘못된 `effort`는 **교정을 막지 않고** 폐기·보고, 최상위 오타 키 보고, `unavailable_reason` 실제 원인 지목. 직전: **정본 계기 서버 구현 착지** — `PUT /data/updates`의 선택 필드 `effort` + `GET /api/effort/config` + `/dashboard/summary` → `effort` 신설, 재교정률은 **보조 계기**로 정정. 직전 2026-07-27: C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**부팅 경로 조용한 실패 수리(#13/#16ⓐ)** — §1에 ⓐ DDL이 **import 시점 → `bootstrap_database_schema()` 기동 단계**로 이동(테스트 수집이 운영 DB에 DDL을 내던 경로 차단, 신규 설치 자동 생성은 유지), ⓑ 손상 `table_config.json`에 대한 **기동 fail-fast** 등재. 직전 **정본 계기 수리 라운드** — `PUT /data/updates` 응답에 `effort_recorded`/`effort_error` 신설, 잘못된 `effort`는 **교정을 막지 않고** 폐기·보고, 최상위 오타 키 보고, `unavailable_reason` 실제 원인 지목. 직전: **정본 계기 서버 구현 착지** — `PUT /data/updates`의 선택 필드 `effort` + `GET /api/effort/config` + `/dashboard/summary` → `effort` 신설, 재교정률은 **보조 계기**로 정정. 직전 2026-07-27: C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -18,6 +18,8 @@ FastAPI 웹서버(`main.py`)는 API + WebSocket 허브이고, 무거운 작업�
 - `main.py`의 `startup_event`는 `DECOUPLED=True`가 아니면 워처·체인 워커를 인라인 기동. 운영에서는 `run_decoupled_app.py`가 `DECOUPLED=True`로 완전 분리.
 - **런처는 감시자다** — 자식을 띄우고 자는 것이 아니라 생존을 감시하고 재시작한다(§1.3). API 포트는 `ASSY_API_PORT`(기본 8080)로 덮을 수 있어, 감시 정책 자체를 격리 스택(:8081)에서 재구현 없이 그대로 검증할 수 있다.
 - **데이터 루트는 `ASSY_DATA_ROOT` 하나로 옮긴다**(`server/paths.py`) — `config/`·`ingestion_workspace/`·프로세스 로그가 모두 여기서 유도된다. 미설정이면 `server/` 그대로. 새 경로를 `__file__`에서 다시 조립하면 격리가 샌다.
+- **DDL은 import가 아니라 기동에서 한다** (2026-07-29, #16ⓐ). `main.py`는 모듈 레벨에서 `Base.metadata.create_all`을 돌렸고, 그래서 **앱을 import하기만 해도**(pytest 수집 포함) 그 시점에 해석된 `DATABASE_URL`—미설정이면 운영 DB—로 DDL이 나갔다. 지금은 `bootstrap_database_schema()`로 묶여 `startup_event`가 호출한다. **삭제가 아니라 이동이다** — 신규 설치의 온보딩("config에 테이블 추가 → 기동 → 즉시 사용")이 이 경로를 타기 때문이다. DB 불통 시 `create_all`이 startup에서 던져 **`Application startup failed. Exiting.`(exit 3)** 으로 죽는 동작은 종전과 같고, 감시자는 종료 코드를 구분하지 않으므로 §1.3의 동료실패 판정도 그대로다.
+- **기동은 손상된 `table_config.json`에 대해 fail-fast다** (2026-07-29, #13). 파싱 실패 시 `[Boot] Refusing to start - ...`(파일 경로 + line/column)를 남기고 프로세스가 죽는다. 빈 화면으로 뜨는 것이 더 나쁘다 — 데이터 유실처럼 보이는데 로그가 깨끗하다. **파싱 실패에 한정**하며, 의미 수준 문제는 기동을 막지 않는다.
 
 미들웨어 `db_context_middleware`가 `X-User`/`X-Transaction-ID`/`X-Source` 헤더를 ContextVar로 읽어 감사 추적에 사용. CORS는 `localhost:5173`으로 제한.
 

@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**함정 A·B 정정 라운드(H1~H5)** — ⓐ BOM 붙은 config가 기동을 막던 결함 수리(§6-A2), ⓑ 최상위가 객체가 아닌 JSON(`[]`·`null`)의 무음 통과 차단(§6-A3), ⓒ 리딩 엣지 디바운스가 연속 저장을 버리던 결함을 **트레일링 엣지**로 수리(§4.4·§6-B2), ⓓ 타 디렉터리 rename(`moved` 없음) 무음 누락에 `on_created` 추가(§4.4·§6-B). 직전 **함정 A·B 해소 등재(#9/#13)** — ⓐ config watcher가 `on_moved`도 처리하므로 **원자적 저장(temp+rename)도 ALTER를 발화**시킵니다(§4.4·§6-B·S1 표 2행), ⓑ `table_config.json` 파싱 실패는 **로그로 드러나고 기동을 막습니다**(§6-A) — fail-fast는 파싱 실패에 한정. 직전 **`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 **파일 하나를 실제로 세팅하는 절차·키 사전은 [config/ 폴더](./config/README.md)** (파일당 가이드 1개)로,
@@ -132,8 +132,8 @@ table_config.json  ← 모든 것의 뿌리 (테이블/컬럼이 여기 없으�
 
 | # | 할 일 | 검증 |
 |---|---|---|
-| 1 | `server/config/table_config.json`에 테이블 항목 추가(§5.1 스니펫). **비-ASCII/공백 컬럼명은 피할 것** | JSON 파싱 확인 — 파싱 실패 시 **로그 없이 조용히 `{}`가 되어 전 테이블이 사라집니다**(§6-A) |
-| 2 | 저장은 **in-place 쓰기**로 (에디터의 원자적 temp+rename은 watcher를 발화시키지 않음 → §6-B) | — |
+| 1 | `server/config/table_config.json`에 테이블 항목 추가(§5.1 스니펫). **비-ASCII/공백 컬럼명은 피할 것** | JSON 파싱 확인 — 파싱 실패는 이제 **로그로 드러나고 기동을 막습니다**(§6-A) |
+| 2 | 저장 방식은 무관 (in-place / 같은 폴더 temp+rename / **다른 폴더** temp+rename 모두 watcher가 발화. 연속 저장도 버려지지 않음 — 반영은 마지막 쓰기 후 약 1초 → §4.4·§6-B) | — |
 | 3 | 물리 테이블 생성 확인 | `psql -U postgres -d assy_manager -c "\d <table>"` 또는 `SELECT column_name FROM information_schema.columns WHERE table_name='<table>'` |
 | 4 | 안 만들어졌으면 `POST /admin/reload-configs` (신규 CREATE 전용) | 다시 3번 |
 | 5 | 워크스페이스 자동 생성 확인 — `server/ingestion_workspace/<table>/{raws,archives,err,auto_update,scripts,config}` | `GET /admin/file-ingestion/workspaces` |
@@ -263,8 +263,8 @@ S1을 전부 수행한 뒤 추가로:
 
 | 변경 | 반영 방법 | 재기동? |
 |---|---|---|
-| `table_config` — **신규 테이블 추가** | config watcher(on_modified) 또는 `POST /admin/reload-configs` | 불필요 |
-| `table_config` — **기존 테이블에 컬럼 추가(ALTER)** | **config watcher 경로만** (`sync_dynamic_tables_schema`) | 불필요 — 단, watcher 미발화면 재기동 |
+| `table_config` — **신규 테이블 추가** | config watcher(저장 방식 무관, §4.4) 또는 `POST /admin/reload-configs` | 불필요 |
+| `table_config` — **기존 테이블에 컬럼 추가(ALTER)** | **config watcher 경로만** (`sync_dynamic_tables_schema`) | 불필요 — 마지막 쓰기 후 약 1초 |
 | `table_config` — **컬럼 삭제 / 타입 변경** | 어떤 리로드 경로도 하지 않음 | **재기동 필요**(+ 필요 시 수동 마이그레이션) |
 | `ontology_mapping` / `chain_rules` / `enrichment_rules` | `POST /admin/reload-configs` | 불필요 |
 | `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` | 없음 — **요청마다 디스크 재읽기** | 불필요 |
@@ -315,7 +315,10 @@ psql -U postgres -d assy_manager -c "\d <table>"
 
 - 감시 대상은 `server/config/` 디렉터리, **비재귀**.
 - **파일명이 정확히 `table_config.json`인 경우에만** 동작합니다. 다른 config 파일은 아무 것도 트리거하지 않습니다.
-- **`on_modified` 이벤트만** 처리합니다(`on_created`/`on_moved` 핸들러 없음). 1초 디바운스.
+- **`on_modified` + `on_moved` + `on_created`** 를 처리합니다(2026-07-29, #9/H3). 저장 형태에 따라 오는 이벤트가 다르기 때문입니다 — ①제자리 쓰기 → `modified` ②**같은** 디렉터리 temp + rename → `deleted`+`moved`(`dest_path`로 판정) ③**다른** 디렉터리 temp + rename → `deleted`+`created`, **`moved`가 아예 없음**. `tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리라 ③은 드문 경우가 아닙니다. (`on_deleted`는 처리하지 않습니다 — ②③의 `deleted`는 뒤따르는 이벤트가 대신 받고, 진짜 삭제에 대해 빈 config로 리로드를 시도할 이유가 없습니다.)
+- **디바운스는 트레일링 엣지(재무장)입니다** — 이벤트마다 타이머를 리셋하고 **마지막 이벤트 후 1초**에 1회 발화합니다. 즉 저장 1회가 여러 이벤트로 쪼개져도 리로드는 1회이고, **저장 2회는 어느 것도 버려지지 않습니다.** 2026-07-29 이전의 리딩 엣지(창 안 첫 이벤트만 처리, 나머지 폐기)는 0.3초 간격 저장 2회에서 **두 번째를 통째로 버렸고**, 느린 비원자적 쓰기에서는 **잘린 파일을 읽고 abort한 뒤 완료 이벤트를 버렸습니다.**
+- 반영이 불가능하면(파싱 실패·읽기 실패로 빈 config) **조용히 넘어가지 않고** `Config reload ABORTED: ...` ERROR를 남기고 기존 상태를 그대로 둡니다.
+- ⚠️ **그래도 물리 반영의 증거는 §4.3의 `information_schema`입니다.** watcher가 발화했다는 것과 DDL이 성공했다는 것은 다릅니다.
 - 프로세스별로 동작이 다릅니다: 웹서버는 engine을 갖고 시작하므로 **CREATE + ALTER**를 수행하지만, watcher/chain 워커 프로세스는 `engine=None`으로 시작해 **ORM만 갱신하고 물리 DDL은 하지 않습니다.**
 
 ---
@@ -515,13 +518,28 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 
 ## 6. 함정 모음 ★
 
-**A. `table_config.json` JSON 문법 오류는 조용히 전 테이블을 날립니다.**
-로더는 파싱 실패 시 **로그 없이 `{}`** 를 반환합니다. 저장 직후 반드시 유효 JSON인지 확인하십시오.
-(다행히 `refresh_dynamic_models`는 빈 config면 기존 싱글턴을 유지하므로 가동 중 서버는 즉사하지 않지만, **재기동하면 모든 테이블이 사라집니다.**)
+**A. `table_config.json` JSON 문법 오류** — ✅ **2026-07-29 수정됨(#13). 이제 조용하지 않습니다.**
+예전에는 로더가 파싱 실패 시 **로그 없이 `{}`** 를 반환했고, 그래서 손상된 config로 **재기동하면 모든 테이블이 조용히 사라졌습니다**. 지금은 두 갈래로 나뉩니다.
 
-**B. 에디터의 "원자적 저장"(temp + rename)은 config watcher를 발화시키지 않습니다.**
-watcher는 `on_modified`만 처리합니다. temp 파일에 쓰고 rename하는 도구(일부 에디터·에이전트 Edit 도구)로 `table_config.json`을 고치면 **ALTER가 조용히 누락**됩니다.
-→ 저장 후 §4.3의 `information_schema` 확인을 습관화하고, 미발화 시 **in-place 재기록**으로 발화시키십시오.
+- **기동 시점**: 웹서버가 **뜨지 않습니다**(fail-fast). `[Boot] Refusing to start - table_config.json is not valid JSON: '<경로>' -> line N column M ...` 를 남기고 종료합니다. 빈 화면으로 뜨는 것보다 안 뜨는 편이 낫습니다 — 빈 화면은 데이터 유실처럼 보이는데 로그가 깨끗해서 실마리가 없습니다.
+- **가동 중(핫리로드)**: 종전처럼 `{}`를 반환해 **기존 싱글턴을 지키되**, `[Config] table_config.json is not valid JSON: '<경로>' -> line N column M ...` ERROR를 남깁니다. 스키마 편집이 반영되지 않았다는 사실이 로그에 드러납니다.
+
+> ⚠️ fail-fast는 **파싱 실패에만** 적용됩니다. 파일이 없거나(신규 설치), 읽기에 실패했거나(락·권한), JSON으로는 유효한데 선언이 이상한 경우에는 **기동을 막지 않습니다.** 의미 수준 불만으로 운영 서버가 안 뜨는 것은 그 불만보다 큰 사고입니다.
+
+**A-2. BOM은 손상이 아닙니다 — 그런데 예전엔 손상 취급이었습니다** — ✅ **2026-07-29 수정됨(H1).**
+로더가 엄격한 `utf-8`로 디코딩해서, **BOM이 붙은 멀쩡한 config가 파싱 실패가 되고 위 A의 fail-fast와 곱해져 웹서버가 영영 안 뜨는** 상태를 만들었습니다. Windows에서 BOM은 예외가 아니라 **기본값**입니다 — PowerShell 5.1의 `Set-Content -Encoding utf8`·`Out-File`이 UTF-8 BOM을, `>` 리다이렉트가 UTF-16 LE를 씁니다. 메모장에도 "UTF-8 with BOM"이 있습니다. **파일은 모든 에디터에서 완벽해 보이는데 다음 재기동에 서버가 안 뜹니다.**
+지금은 UTF-8 BOM · UTF-16 LE/BE · UTF-32 BOM을 인식해 **쓰인 인코딩으로 읽습니다.** 관용이 아닙니다 — **BOM 없는 잘못된 인코딩(BOM 없는 cp949 등)은 그대로 거부**합니다.
+
+**A-3. 최상위가 객체가 아닌 JSON(`[]`·`null`)** — ✅ **2026-07-29 수정됨(H5).**
+게이트가 `json.loads` 결과를 검사 없이 통과시켰습니다. 측정: `[]` → `init_dynamic_models`가 `AttributeError` → main의 광범위 `except`가 잡음 → **동적 모델 0개로 부팅, ERROR 한 줄.** UI는 비어 보이고 로그는 거의 깨끗합니다 — **A의 fail-fast가 없애려던 실패 그 자체**입니다. `null`은 더 나빴습니다(프로세스 수명 내내 `TABLE_CONFIG`가 `None`). 최상위 타입 검사는 의미 수준 트집이 아니라 **"이 문서는 테이블 맵이 아니다"** 이므로 파싱 실패와 같은 급으로 다룹니다. 빈 파일도 같습니다(잘림과 구분할 수 없습니다).
+
+**B. 에디터의 "원자적 저장"(temp + rename)** — ✅ **2026-07-29 수정됨(#9 + H3).**
+예전 watcher는 `on_modified`만 처리해서, temp 파일에 쓰고 rename하는 도구(일부 에디터·에이전트 Edit 도구)로 `table_config.json`을 고치면 **ALTER가 조용히 누락**됐습니다. 2026-07-29 1차 수정이 `on_moved`를 넣었지만 **그것으로 계급이 닫히지 않았습니다** — rename의 원본 temp가 **다른 디렉터리**에 있으면 `moved`가 아예 없고 `deleted`+`created`만 옵니다(`tempfile.mkstemp()`의 기본이 시스템 temp 디렉터리입니다). `on_created`까지 넣은 지금 세 형태 모두 반영됩니다(§4.4).
+→ 그래도 **확인 자체는 여전히 §4.3의 `information_schema`로** 하십시오. 아래 D가 그대로 유효하기 때문입니다.
+
+**B-2. 연속 저장 / 느린 저장** — ✅ **2026-07-29 수정됨(H2).**
+디바운스가 **리딩 엣지**(창 안 첫 이벤트만 처리, 나머지 폐기)였습니다. 측정된 결과 두 가지 — ⓐ **0.3초 간격 저장 2회에서 두 번째가 통째로 소실**(디스크는 3컬럼, 물리 테이블은 2컬럼, 로그에는 성공 줄만) ⓑ **느린 비원자적 쓰기**에서 잘린 파일을 읽고 abort한 뒤, 1초 안에 들어온 **완료 이벤트를 버림**(`crud.update_table_config`가 평범한 `open(w)`이라 제품 자신의 쓰기 경로였습니다). 지금은 **트레일링 엣지**라 이벤트마다 재무장하고 마지막 이벤트 후 1초에 발화합니다 — 버려지는 저장이 없습니다.
+→ 반영은 **마지막 쓰기로부터 약 1초 뒤**입니다. 저장 직후 즉시 확인하면 아직 안 보일 수 있습니다.
 
 **C. `/admin/reload-configs`는 ALTER를 하지 않습니다.**
 "리로드했는데 컬럼이 안 생겼다"의 대부분이 이것입니다. 신규 테이블 CREATE는 되고, 기존 테이블 컬럼 추가는 **config watcher 경로**입니다.

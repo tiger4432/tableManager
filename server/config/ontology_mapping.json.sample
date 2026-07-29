@@ -1,8 +1,17 @@
 {
   "__comment": "Ontology 매핑 v2 (docs/spec/ONTOLOGY_GRAPH_SPEC.md §3). 테이블별 노드/엣지 선언 — description은 LLM 그라운딩용 필수 필드. enrichment_rules.json의 rule은 RESOLVED_AS 엣지로 자동 승격되므로 여기 선언하지 않아도 된다. 구 v1 형식(default/tables 래퍼)은 레거시 Neo4j 경로 전용이며 v2 로더는 무시한다.",
+  "__comment_keys": "선언 가능한 키는 로더가 강제한다 — 미선언 키를 쓰면 그 테이블 매핑이 사유와 함께 스킵된다(오타가 조용히 무시되지 않게). 테이블: description·event_time_column·node·edges / node: label·identity·node_class·props / edge: type·target_label·target_identity_from·props·description·source_override. __ 접두 키는 어디서든 주석으로 허용.",
+  "__comment_event_time": "event_time_column(선택)은 엣지 event_time에 쓸 **실 사건 시각** 컬럼이다. 미선언이면 인제션 시각이 들어가는데, 그것은 '언제 적재됐나'이지 '언제 일어났나'가 아니다(라이브 실측 최대 +89.6h 어긋남). 선언한 테이블만 교정되므로 가산적이며, 선언된 컬럼이 해석 안 되면 인제션 시각으로 되돌리지 않고 NULL(=시각 미상)이 된다.",
+  "__comment_node_class": "node_class(선택, static|dynamic — §7.5c)는 현재 **파싱·보존만** 되고 탐색 정책은 강제되지 않는다(정책 엔진은 G2.5). 선언해도 순회 동작은 바뀌지 않는다.",
+
+  "__comment_identity_labels": "정체 스킴은 label 하나에 하나다(열린 문제 #15). 이 파일이 쓰는 세 가지: Wafer=wafer_id(예 WF-A-05, 원장은 wafer_slot_history) / Core=core_lot|core_slot(예 LOT-A|05) / Tape=tape_lot|tape_slot(예 TAPE-A|01, 원장은 dt_log). 셋은 서로 다른 값 공간이며 섞으면 조인되지 않는다.",
+
+  "__comment_bonding_lot_is_core_here": "⚠️ 되돌릴 수 있게 남기는 결정 기록 (2026-07-29). 운영 현장에서는 bonding_log의 lot/slot이 **테이프**의 것이다(스펙 §7.5b, 사용자 확인). 그런데 이 저장소의 로컬 데이터는 시뮬레이터 산출물(BL-AUTO-*)이고 **테이프 계층을 만들지 않아서**, 그 컬럼에 코어 값이 들어 있다. 실측: bonding_log의 distinct 80쌍이 dt_log.tape_lot|tape_slot과 0/80, dt_map.lot|slot과 0/80으로 전혀 겹치지 않고, core_wafer_map·wafer_process(lot,slot)·core_defect_map과는 80/80 전부 겹친다. 그래서 여기서는 BONDED_FROM의 target_label을 **Core로 선언**한다 — Tape로 선언하면 어느 테이프 테이블에도 없는 정체를 향하는 엣지 11,000여 개를 만들게 되고, DT 조인은 0건을 돌려주면서 권위 있어 보인다(추측 엣지 금지).",
+  "__comment_how_to_revert_to_tape": "되돌리는 조건과 방법: ① 판정 기준 — bonding_log의 (core_lot, core_slot) distinct 값이 dt_log.tape_lot|tape_slot 또는 dt_map.lot|slot과 **실제로 겹치기 시작**하면(TAPE-* 접두가 보이면) 그때가 전환 시점이다. ② 바꿀 것 — bonding_log.edges[BONDED_FROM].target_label을 \"Core\" → \"Tape\" **한 문자열**. ③ 그다음 — 그 테이블을 resync(POST /api/graph/sync)하면 엣지가 재타깃되고, 남는 고아 Core 노드는 scripts/graph_orphan_sweep.py로 정리한다. 코드 변경·마이그레이션 없음.",
 
   "bonding_log": {
     "description": "본딩 설비가 wafer에서 잘려 나온 chip 1개를 base(지그)에 실장한 이벤트 로그",
+    "event_time_column": "eventtime",
     "node": {
       "label": "Chip",
       "identity": "log_id",
@@ -16,9 +25,9 @@
     "edges": [
       {
         "type": "BONDED_FROM",
-        "target_label": "Wafer",
+        "target_label": "Core",
         "target_identity_from": ["core_lot", "core_slot"],
-        "description": "이 chip이 잘려 나온 원판 wafer (lot|slot 표기 기준 — RESOLVED_AS로 실제 wafer_id에 연결됨)"
+        "description": "이 chip을 집어온 출처 개체 (lot|slot 표기 — 실 wafer_id로는 Core -[RESOLVED_AS]-> Wafer로 이어진다). 운영 의미론상 이 자리는 테이프이나 로컬 시뮬레이터 데이터는 코어 값을 담고 있어 Core로 선언했다 — __comment_bonding_lot_is_core_here 참조"
       },
       {
         "type": "PLACED_ON",
@@ -32,6 +41,7 @@
 
   "wafer_slot_history": {
     "description": "wafer가 공정 step을 통과한 이력 (wafer_id 기준 실개체 노드의 소스)",
+    "event_time_column": "event_time",
     "node": {
       "label": "Wafer",
       "identity": "wafer_id",
@@ -49,12 +59,84 @@
   },
 
   "core_wafer_map": {
-    "description": "bonding_log의 (core_lot, core_slot) 표기를 실제 wafer_id로 해석한 사람 교정 결과(enrichment 파생 테이블). RESOLVED_AS 엣지는 enrichment_rules.json에서 자동 승격된다.",
+    "description": "bonding_log의 (core_lot, core_slot) 표기를 실제 wafer_id로 해석한 사람 교정 결과(enrichment 파생 테이블). RESOLVED_AS 엣지는 enrichment_rules.json에서 자동 승격되며 target label은 필드명 wafer_id에서 Wafer로 유도된다 — 즉 이 노드를 Core로 선언하면 자기 자신을 가리키던 Wafer→Wafer 자기 엣지가 올바른 Core→Wafer 교차 링크가 된다(코드 변경 없음).",
+    "event_time_column": "eventtime",
     "node": {
-      "label": "Wafer",
+      "label": "Core",
       "identity": ["core_lot", "core_slot"],
       "props": ["chip_count"]
     },
     "edges": []
+  },
+
+  "wafer_process": {
+    "description": "wafer가 전공정 설비에서 단위 공정(step)을 수행한 이벤트 로그 — bonding 이전 단계의 공정 이력",
+    "event_time_column": "start_time",
+    "node": {
+      "label": "ProcessEvent",
+      "identity": "proc_id",
+      "props": ["step", "eqp_id", "lot_id", "slot_no", "result", "start_time", "end_time", "recipe_id", "knobs"]
+    },
+    "edges": [
+      {
+        "type": "PERFORMED_ON",
+        "target_label": "Core",
+        "target_identity_from": ["lot", "slot"],
+        "description": "이 공정 이벤트가 수행된 대상 개체 (lot|slot 표기 — core_wafer_map의 Core identity와 동일 값 공간)"
+      },
+      {
+        "type": "EXECUTED_BY",
+        "target_label": "Eqp",
+        "target_identity_from": ["eqp_id"],
+        "description": "이 공정 이벤트를 실행한 설비(equipment)"
+      },
+      {
+        "type": "USED_KNOB",
+        "target_label": "Knob",
+        "target_identity_from": ["knobs"],
+        "description": "이 공정 이벤트가 사용한 knob 조건 묶음 — 같은 조건으로 처리된 이벤트들이 이 노드로 수렴한다(추적 시드)"
+      },
+      {
+        "type": "USED_RECIPE",
+        "target_label": "Recipe",
+        "target_identity_from": ["recipe_id"],
+        "description": "이 공정 이벤트가 사용한 레시피"
+      }
+    ]
+  },
+
+  "dt_log": {
+    "description": "DT(Die Transfer) 공정 로그 — 코어 웨이퍼의 칩을 테이프 위로 옮긴 칩 단위 대응 기록. 코어 프레임과 테이프 프레임을 잇는 유일한 다리이며, 프레임 간 이동은 좌표 변환이 아니라 이 로그의 조인으로만 성립한다(스펙 §7.5b)",
+    "event_time_column": "eventtime",
+    "node": {
+      "label": "DTEvent",
+      "identity": "dt_id",
+      "props": [
+        { "col": "tx", "spatial": { "coord_system": "tape_grid", "axis": "x" } },
+        { "col": "ty", "spatial": { "coord_system": "tape_grid", "axis": "y" } },
+        { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },
+        { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }
+      ]
+    },
+    "edges": [
+      {
+        "type": "ONTO_TAPE",
+        "target_label": "Tape",
+        "target_identity_from": ["tape_lot", "tape_slot"],
+        "description": "칩이 옮겨진 대상 테이프 (tape_lot|tape_slot — 테이프 정체의 원장)"
+      },
+      {
+        "type": "TRANSFERRED_FROM",
+        "target_label": "Core",
+        "target_identity_from": ["core_lot", "core_slot"],
+        "description": "칩이 잘려 나온 원판 코어 웨이퍼 (core_lot|core_slot)"
+      },
+      {
+        "type": "EXECUTED_BY",
+        "target_label": "Eqp",
+        "target_identity_from": ["dt_eqp"],
+        "description": "이 DT 이벤트를 실행한 설비 — 전공정 설비와 같은 Eqp 마스터를 공유한다"
+      }
+    ]
   }
 }
