@@ -4,6 +4,7 @@ import { elements } from './dom.js';
 import { switchTable, fetchData } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
+import { countNav, ROUTES } from './effort_meter.js';
 
 // Feature 3: Load audit log history from API
 export async function loadHistory() {
@@ -511,6 +512,9 @@ export async function navigateToLog(log) {
   }
 
   state.isNavigating = true;
+  // V1 instrument: the deepest in-page jump on the grid page — it can change table, set a
+  // transaction filter and scroll to another row, so the prior working context is gone.
+  countNav(ROUTES.GRID, 'grid:log_jump');
   elements.performanceLog.textContent = `🔍 Navigating to ${log.table_name}:${log.row_id} in Transaction ${log.transaction_id}...`;
 
   // Set 5s watchdog safety net (mimics PyQt 10s guard timer)

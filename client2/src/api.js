@@ -7,6 +7,7 @@ import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI,
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
 import { refreshTraceEntry } from './trace_launch.js';
+import { snapshot, commitIfRecorded } from './effort_meter.js';
 
 // Check backend server status
 export async function checkServerHealth() {
@@ -301,7 +302,9 @@ export async function handleCellEdit(event) {
         updated_by: CURRENT_USER
       }
     ],
-    silent: false
+    silent: false,
+    // V1 instrument: optional field. Raw counts only — the server weights at query time.
+    effort: snapshot()
   };
 
   try {
@@ -316,6 +319,10 @@ export async function handleCellEdit(event) {
     if (res.ok) {
       state.pageCache.clear();
       const result = await res.json();
+      // V1 instrument: reset ONLY when the server confirms it recorded the effort. A 200 is
+      // not proof of a correction — a no-op save writes nothing, and resetting there would
+      // erase the effort the attempt cost. Read AFTER res.json() for that reason.
+      commitIfRecorded(result);
       const saveTime = (performance.now() - editStartTime).toFixed(1);
       elements.performanceLog.textContent = `Saved in ${saveTime}ms (${result.change_count} cell updated)`;
 

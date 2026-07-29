@@ -1,6 +1,6 @@
 # 📁 config/ — 운영 서버 config 파일 세팅 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (신설 — 파일별 세팅 절차. CONFIG_GUIDE §5의 키 상세를 이 폴더로 이관) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (`effort_metric.json` 추가 — V1 정본 계기 배점. 직전 2026-07-28 신설 — 파일별 세팅 절차. CONFIG_GUIDE §5의 키 상세를 이 폴더로 이관) | **Owner:** Lead / Backend
 > 상위: [CONFIG_GUIDE](../CONFIG_GUIDE.md) — **온보딩 지도의 정본.** 시나리오 체크리스트(§3)·리로드 규율(§4)·함정 모음(§6)은 거기서 봅니다. 이 폴더는 **운영 서버에서 각 파일을 실제로 세팅하는 절차**입니다.
 
 ## 시작하기 전에 (전 파일 공통)
@@ -25,6 +25,7 @@
 | `chain_rules.json` | 체인 인제션 룰 | `POST /admin/reload-configs` | `GET /admin/chain/rules` | [chain_rules.md](./chain_rules.md) |
 | `auto_update_control.json` | 수집기 on/off (**API로만 쓰기**) | 즉시(매 사이클·매 요청 재계산) | `GET /admin/auto-update/status` | [auto_update_control.md](./auto_update_control.md) |
 | `ingestion_settings.json` | 인제션 노브 — heavy 임계·dedup·재개 | 즉시(**다음 파일부터**) | watcher 로그의 heavy 라우팅 줄 | [ingestion_settings.md](./ingestion_settings.md) |
+| `effort_metric.json` | V1 계기 — 상호작용 점수 배점 + 컨텍스트 유지 전이 | 즉시(다음 조회부터) | `GET /api/effort/config` | [effort_metric.md](./effort_metric.md) |
 
 ## 잘못됐을 때 (전 파일 공통)
 

@@ -17,6 +17,14 @@ import './tokens.css';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { showToast } from './utils.js';
 import { initTheme } from './theme.js';
+// [V1 effort instrument] The ONE collector (effort_meter.js). This file keeps no counters
+// of its own. The conveyor is a correction write path, so it must be measured — it is
+// plausibly the LOWEST-effort correction surface in the product, and unmeasured we cannot
+// support that claim with anything.
+import {
+  ROUTES, startSession, installGlobalListeners, installNavLinkCounting, countNav,
+  snapshot as effortSnapshot, commitIfRecorded as effortCommitIfRecorded
+} from './effort_meter.js';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -463,6 +471,8 @@ async function saveCurrent() {
       updated_by: CURRENT_USER,
     }],
     silent: false,
+    // [V1 effort instrument] Optional field. Raw counts only — weighted at query time.
+    effort: effortSnapshot(),
   };
 
   try {
@@ -476,6 +486,14 @@ async function saveCurrent() {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
+
+    // [V1 effort instrument] Reset ONLY when the server confirms it recorded the effort.
+    // `res.ok` alone is not enough: a value that already matches storage returns 200 and
+    // writes no effort row, and committing there erases the effort that attempt cost.
+    // Still placed BEFORE the stale guard below: the server committed either way, so the
+    // effort was genuinely spent and has already been reported.
+    const result = await res.json().catch(() => null);
+    effortCommitIfRecorded(result);
 
     if (token !== S.sessionToken) return; // 저장 중 규칙 전환 → UI 반영 생략
 
@@ -728,9 +746,21 @@ function showRefError(status, detail) {
 // ── 초기화 ─────────────────────────────────────────────────
 async function init() {
   initTheme();
+  // [V1 effort instrument] Start counting before any listener can fire. Invisible: no UI.
+  // installNavLinkCounting covers the two "메인으로" anchors -> `enrichment > grid`.
+  startSession();
+  installGlobalListeners();
+  installNavLinkCounting(ROUTES.ENRICHMENT);
   el('rule-select').addEventListener('change', (e) => {
     const rule = S.rules.find(r => r.name === e.target.value);
-    if (rule) selectRule(rule);
+    // [V1 effort instrument] Counted on the USER's handler, not inside selectRule():
+    // start() calls it on boot with the ?rule= deep link, which is not a move the user made.
+    // The refresh button also calls it, but re-selecting the SAME rule is a refetch of the
+    // same work stream, not a screen move — deliberately not counted.
+    if (rule) {
+      countNav(ROUTES.ENRICHMENT, ROUTES.ENRICHMENT);
+      selectRule(rule);
+    }
   });
   el('refresh-btn').addEventListener('click', () => {
     if (S.rule) selectRule(S.rule);

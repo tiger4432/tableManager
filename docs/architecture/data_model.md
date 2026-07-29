@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (`0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -21,6 +21,7 @@
 | `GraphNode` | `graph_nodes` | `label`, `identity_key`, `props`(JSONB) | **온톨로지 그래프 노드**. (label,identity_key) UNIQUE — 정확 일치 MERGE |
 | `GraphEdge` | `graph_edges` | `type`, `from_node`, `to_node`, `props`, `source_name`, `source_row_ref`, `event_time` | **온톨로지 그래프 엣지**(provenance 포함). (from,type)/(to,type) 인덱스 + (from,type,to,source_name) UNIQUE + `source_row_ref` 인덱스(retarget용) |
 | `GraphSyncState` | `graph_sync_state` | `last_outbox_id` | materializer의 outbox 소비 커서(단일 행) |
+| `InteractionEffortLog` | `interaction_effort_logs` | `transaction_id`(unique), `session_id`, `key_count`, `mouse_count`, `nav_count`, `nav_preserved_count`, `timestamp` | **V1 정본 계기** — tx당 1행, **원시 카운트만**(점수는 조회 시점 계산). 상세 §2.4 |
 
 그래프 3테이블은 `ensure_graph_tables(engine)`(#7 패턴: info_schema 게이트+checkfirst)로 생성되며 `refresh_dynamic_models`에 동승합니다. 승격 흐름은 [event_driven_backend §4](./event_driven_backend.md).
 
@@ -61,9 +62,13 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - `CellOverwrite.is_overwrite=True` → 그리드에서 강조(수동 수정 표시).
 - `manual_priority_source="collision_merge"` → 충돌 병합 흔적(빨간색 렌더).
 
-### 2.3 재교정률 (`crud.get_recorrection_stats`)
+### 2.3 재교정률 (`crud.get_recorrection_stats`) — **보조 계기**
 
-핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 계기. **창 안에서 사람이 쓴 셀 중, 사람이 두 번 이상 쓴 셀의 비율**(낮을수록 좋음). 셀 = `(table_name, row_id, column_name)`. 소비 지점은 `GET /dashboard/summary``recorrection`([backend](./backend.md#재교정률-dashboardsummary--recorrection)).
+> **⚠️ 2026-07-29 강등: 핵심가치 #1의 계기 자리에서 내려왔습니다.** 정본 계기는 이제 **완료까지의 상호작용**입니다(사용자 확정 — 가치 서술의 정본은 [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md), 데이터 모델 관점은 **아래 §2.4**). 재교정률은 그 옆의 **간접 증거**로 남습니다.
+> **강등 사유 둘** — ① **원인을 분리하지 못한다.** 같은 셀을 두 번 고친 이유가 *화면이 불편해서*(UI 공수)인지 *원본이 틀려서*(데이터 품질)인지 이 지표는 말하지 못합니다. 핵심가치 #1이 재려던 것은 앞쪽인데 지표는 둘을 합쳐 놓습니다. ② **분모 정책 하나로 6.5배 희석된다.** 대량 트랜잭션을 세느냐 접느냐에 따라 **2.01% ↔ 13.13%**로 갈립니다(아래 *행위 단위* 결정이 다루는 것과 같은 축입니다) — 단독으로 회귀를 판단할 근거가 되지 못합니다.
+> **아래 정의·계약·함정은 그대로 유효합니다.** 바뀐 것은 지표의 **지위**뿐이고, 집계·응답·표시 계약은 변경 없이 계속 살아 있습니다.
+
+**창 안에서 사람이 쓴 셀 중, 사람이 두 번 이상 쓴 셀의 비율**(낮을수록 좋음). 셀 = `(table_name, row_id, column_name)`. 소비 지점은 `GET /dashboard/summary``recorrection`([backend](./backend.md#재교정률-dashboardsummary--recorrection)).
 
 정의를 지탱하는 4개 결정 — **하나라도 어기면 숫자가 조용히 틀린다**:
 
@@ -77,6 +82,41 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 **분모(`measured_cells`)는 항상 함께 반환·표시한다.** 표본 8개짜리 "12%"와 5만개짜리 "12%"를 구분할 수 없으면 지표가 아니다.
 
 **스케일**: 전용 부분 커버링 인덱스 `idx_audit_user_recorrection`(`models.AuditLog.__table_args__` + `scripts/setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**)이 없으면 병렬 Seq Scan으로 떨어진다(2026-07-27 실측 2,628,453행/1.6GB에서 512ms·128,523블록). 부분 술어(`WHERE source_name='user'`)가 planner에 매칭되는 근거는 드라이버가 psycopg2(클라이언트측 파라미터 보간)라 리터럴이 서버에 도달하기 때문이다.
+
+### 2.4 완료까지의 상호작용 점수 (`crud.get_effort_stats`) — 핵심가치 #1의 **정본 계기**
+
+핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 정본 계기(사용자 2026-07-29 교체). **한 교정 트랜잭션을 완료하는 데 사람이 쓴 손의 양**(낮을수록 좋음). 위 §2.3 재교정률은 보조로 강등됐다 — 같은 셀을 두 번 고쳤다는 사실만으로는 원인이 UI 공수인지 데이터 품질인지 갈라지지 않기 때문이다. 이 계기는 그 중간 추론을 건너뛰고 공수를 직접 잰다.
+
+```
+점수(tx) = key×w_key + mouse×w_mouse + nav×w_nav + nav_preserved×w_nav_preserved
+                                          (기본 배점 1 / 3 / 5 / 0)
+```
+
+`nav`는 컨텍스트를 **잃는** 전이, `nav_preserved`는 **유지하는** 전이다. 후자의 기본 배점이 0이므로 **오늘의 점수는 이 항이 없던 때와 완전히 동일**하다 — 그런데도 카운트를 따로 보관하는 이유는 아래 §"분류는 조회 시점 해석"에 있다.
+
+저장은 `models.InteractionEffortLog`(`interaction_effort_logs`), 소비 지점은 `GET /dashboard/summary` → `effort`([backend](./backend.md#상호작용-점수-dashboardsummary--effort)), 배점 선언은 `config/effort_metric.json`([세팅 절차](../guide/config/effort_metric.md)).
+
+⚠️ **이 값은 소급 산출이 불가능하다** — 과거 세션에는 클릭 로그가 없다. 계측이 붙은 시점부터의 데이터만 존재하므로, **교정 표면(UI)을 고치기 전에 확보한 기간이 유일한 "before"다.**
+
+정의를 지탱하는 5개 결정 — **하나라도 어기면 숫자가 조용히 틀린다**:
+
+| 결정 | 규칙 | 근거 |
+|---|---|---|
+| 측정 단위 | **한 tx 묶음 교정 완료** = `AuditLog.transaction_id` 1건. 새 상관관계 개념을 만들지 않고 서버가 이미 긋고 있는 경계를 재사용 | tx는 이미 "사람의 한 행위"의 경계다(§2.3 재교정률도 같은 경계로 접는다). 별도 단위를 만들면 두 계기가 다른 것을 세게 된다 |
+| 미계측 ≠ 0 | `effort`는 **선택 필드**. 없으면 **행 자체를 남기지 않는다**. 절대 0으로 채우지 않음 | 워커·인제션·체인은 같은 엔드포인트를 쓰지만 키보드 앞에 사람이 없다. 0으로 적으면 "공수 0의 완벽한 교정"이 집계에 섞여, **교정 표면이 나빠지는 동안 평균이 0으로 끌려간다** |
+| 집계 단위 | **세션별 평균 → 세션 간 평균**(사용자 지정 "세션별 평균") | tx를 통째로 평균하면 한 세션이 500건 처리한 날 그 세션이 전체를 지배한다 — 대량 편집이 UI 개선처럼 보인다. 세션을 먼저 접으면 각 작업 세션이 같은 무게를 갖는다 |
+| 원시 카운트만 저장 | 점수 컬럼 없음. 가중치는 **조회 시점**에 곱한다 | 점수를 굳혀 저장하면 배점을 재조정하는 순간 과거가 옛 배점에 갇혀 before/after 비교가 불가능해진다 — 이 계기의 존재 이유가 바로 그 비교다 |
+| 화면 이동 판정 | **기본은 상실(5점)**, `context_preserving_transitions`에 **선언된 전이만** 유지로 분류 | 낙관 편향 방지. "웬만한 이동은 컨텍스트가 유지된다"를 기본값으로 잡으면 계기가 공수를 실제보다 낮게 보고하고, 그 편향은 계기를 소유한 쪽에 유리한 방향으로만 작동한다. 목록은 **비어서 출발**하고 항목은 제안·승인으로만 늘어난다. **와일드카드(`*`)는 거절**한다 — 정확 일치로만 판정하므로 무엇도 매칭하지 못하면서 선언한 것처럼 보이는 무력 리터럴이 된다 |
+| 분류는 **조회 시점 해석** | 면제된 전이도 **버리지 않고** `nav_preserved_count`로 따로 센다(총괄 addendum 2026-07-29) | 수집 시점에 면제분을 `nav`에서 빼 버리면 그 판단이 저장된 숫자에 **굳어** 되돌릴 수 없다. 이 계기는 소급 산출이 불가능하므로 — 즉 다시 모을 기회가 없으므로 — 분류 오류 하나가 유일한 기준선을 **영구히** 틀리게 만든다. 두 카운트를 다 보관하면 허용목록이 **배점 하나(`nav_preserved`)를 바꾸는 것만으로** 과거까지 재해석된다(가중치 원칙과 동일) |
+
+**`measured_ratio`(계측 tx / 창 안의 전체 사람 tx)는 항상 함께 반환·표시한다.** 계측은 클라이언트가 보내 줄 때만 이뤄지므로 커버리지를 1.0으로 가정할 수 없고, 비율 없는 평균은 **측정되지 않은 범위까지 대표하는 것처럼** 읽힌다(§2.3의 분모와 같은 규율). 분모는 §2.3과 동일하게 `source_name = 'user'` 양성 선택으로 세므로 파서 유입량에 흔들리지 않는다.
+
+- **모집단 정합**: 계측 행은 **그 tx가 사람의 감사 로그를 실제로 남겼을 때만** 기록된다. 그러지 않으면 분자가 분모에 없는 tx를 세어 비율이 1을 넘고, 그 순간 비율은 커버리지가 아니라 잡음이 된다.
+- **알려진 편향(정직한 한계)**: 사람이 손을 썼는데 값이 하나도 바뀌지 않은 tx(전부 `has_changed` 가드에 걸린 no-op)의 공수는 **그 tx에** 기록되지 않는다 — 완료된 교정이 없으므로 "완료까지의 공수"라는 단위가 성립하지 않는다.
+  - 🚨 **그러나 그 공수를 버려서는 안 된다 (2026-07-29 F1, QA 실측).** 서버가 200을 주면 클라가 카운터를 리셋해 **no-op에 쓴 공수가 소멸**했다. 그 결과 "값이 이미 같아 보이는 셀을 20키+5클릭으로 고치려다 실패하고, 3키+1클릭으로 다시 성공"하는 **제품 최고 마찰 사건이 데이터셋 최저 점수(6, 실제 ~40)로** 기록됐다 — 계기가 잡아내야 할 대상과 역상관. 수리는 **기록 조건이 아니라 응답의 정직성**이다: `PUT`이 `effort_recorded: false`를 돌려주고 클라가 그때 리셋하지 않으면, 그 공수는 **다음(성공) tx에 합산**되어 2회 시도 교정 전체가 하나의 완료 단위로 계측된다([backend 수집 계약](./backend.md#상호작용-점수-dashboardsummary--effort)).
+- **재도달 처리**: `transaction_id`는 UNIQUE이며 **첫 기록이 이긴다**. 클라 재시도는 사람이 새로 쓴 공수가 아니다(카운트 필드를 SET 의미론으로 두었다가 마지막 메시지가 총계를 덮어쓴 QA D-1의 재발 방지).
+
+**스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `scripts/setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
 
 ---
 

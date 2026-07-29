@@ -1,6 +1,6 @@
 # `ingestion_settings.json` 세팅 — 인제션 런타임 노브
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**키 2개 누락 보충** — `auto_register_map_meta`(M3 `ab6ac02`)와 `flatten_nested_dirs`(`0c6ac1a`, 직전 사이클 누락분)가 sample·코드에는 있는데 이 표에 없었습니다) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 파이프라인 정본은 [INGESTION_GUIDE §1.8](../INGESTION_GUIDE.md) · 절차 요약은 [CONFIG_GUIDE §3-S5](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -8,6 +8,8 @@
   heavy_file_mb: directory_watcher.py:173 get_heavy_threshold_bytes (read per file event; bool/non-positive -> warn once + default 10)
   dedup_by_signature: directory_watcher.py:206 (default True) / resume_from_checkpoint: :214 (default True)
     both via _bool_setting :191 (non-boolean -> warn once + default)
+  flatten_nested_dirs: directory_watcher.flatten_nested_dirs_enabled (via _bool_setting; read per folder trigger)
+  auto_register_map_meta: map_meta_registrar.auto_register_enabled (own loader, same non-boolean warn-once posture; read per work unit)
   heavy routing proof log: directory_watcher.py:674 "🐘 Routed to heavy lane queue (...)"
 -->
 
@@ -16,6 +18,8 @@
 - **대형 파일이 소형 파일 처리를 막을 때** — heavy 레인 임계(`heavy_file_mb`) 조정
 - **같은 파일을 강제로 전량 재처리해야 할 때** — `dedup_by_signature`를 잠시 `false`로 (개별 파일 1건이면 파일명에 `__force__`를 넣는 편이 낫습니다: `report__force__.csv`)
 - 중단 재개를 끄고 항상 처음부터 적재하게 할 때 — `resume_from_checkpoint`
+- **폴더째 드롭한 것을 그대로 두고 싶을 때** — `flatten_nested_dirs`를 `false`로
+- **인제션이 맵 정렬 메타를 자동으로 만드는 것을 멈추고 싶을 때** — `auto_register_map_meta`를 `false`로(§5의 주의 참조)
 - **파일이 없어도 정상입니다** — 전 항목 기본값으로 동작합니다(현 저장소 상태가 그렇습니다).
 
 ## 2. 세팅 절차
@@ -28,12 +32,14 @@
    {
      "heavy_file_mb": 10,
      "dedup_by_signature": true,
-     "resume_from_checkpoint": true
+     "resume_from_checkpoint": true,
+     "flatten_nested_dirs": true,
+     "auto_register_map_meta": true
    }
    ```
 
-   `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), boolean 두 개는 **JSON boolean만**(문자열 `"false"`는 경고 후 기본값).
-4. 저장 — 반영은 자동입니다: **다음 파일 이벤트부터** 디스크에서 다시 읽습니다(파일 경계 스냅샷 — 한 파일의 처리 도중 값이 갈리지 않음). 재기동·reload 불필요.
+   `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), **나머지 boolean 4개는 JSON boolean만**(문자열 `"false"`는 경고 1회 후 기본값 — 오타가 스위치를 조용히 뒤집지 않습니다).
+4. 저장 — 반영은 자동입니다: **다음 작업 단위부터** 디스크에서 다시 읽습니다(재기동·reload 불필요). 단위는 키마다 다르지만 규율은 같습니다 — **한 작업 단위 안에서는 값이 갈리지 않습니다**: `heavy_file_mb`·`dedup_by_signature`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `auto_register_map_meta`는 **다음 파일 / 다음 체인 트랜잭션 그룹**.
 
 ## 3. 반영 확인
 
@@ -46,7 +52,7 @@
 
 ## 4. 잘못됐을 때
 
-파일을 지우면 **전 항목 기본값**(10 MB / dedup on / resume on)으로 즉시 돌아갑니다 — 이 파일에 한해서는 삭제가 가장 빠른 복구입니다. 스냅샷 복원:
+파일을 지우면 **전 항목 기본값**(10 MB / dedup on / resume on / flatten on / 맵 메타 자동 등록 on)으로 즉시 돌아갑니다 — 이 파일에 한해서는 삭제가 가장 빠른 복구입니다. 스냅샷 복원:
 
 ```bash
 conda run -n assy_manager python server/scripts/backup_config.py restore ingestion_settings_<yymmdd>.json.bak --yes
@@ -61,5 +67,9 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 | `heavy_file_mb` | 양수, 기본 `10` | 이 크기(MB) 이상 파일은 전용 heavy 워커로 격리 라우팅. 단, **같은 워크스페이스에 heavy 백로그가 있으면 소형 파일도 순서 보존을 위해 큐 뒤로** 갑니다 |
 | `dedup_by_signature` | boolean, 기본 `true` | 동일 내용(sha256) 파일 재처리 skip. `false` = 전역 강제 재처리 스위치 |
 | `resume_from_checkpoint` | boolean, 기본 `true` | 중단된 적재를 커밋된 오프셋부터 재개. 재개 불가 시 사유를 남기고 처음부터 |
+| `flatten_nested_dirs` | boolean, 기본 `true` | `raws/`에 폴더(다중 층위)가 들어오면 트리가 정온해진 뒤 **파일만 루트로 승격**하고 빈 폴더를 제거. 충돌은 덮어쓰지 않고 상대경로 `~` 접두로 개명. `false` = 종전 동작(폴더 무시). 반영은 **다음 폴더 트리거부터**. 정본 [INGESTION_GUIDE §1.9](../INGESTION_GUIDE.md) |
+| `auto_register_map_meta` | boolean, 기본 `true` | 인제션(**파일 워처·체인 워커 양쪽**)이 `map_key_columns` 선언 맵 테이블에 적재할 때, 그 맵 키의 `wafer_map_metadata` 행이 **없으면** 자동 생성(있으면 절대 건드리지 않음). `false` = 종전 동작(수동 에디터 push만 메타를 등록 → 미등록 맵이 '화면기준' 폴백으로 열림). 반영은 **다음 파일 / 다음 체인 트랜잭션 그룹부터**. 정본 [INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md) |
 
 (`_`로 시작하는 `_*_doc` 키는 sample의 주석용 — 코드가 읽지 않습니다.)
+
+> **끄기 전에 알아 둘 것 (`auto_register_map_meta`)**: 이 노브를 끄면 새로 적재되는 맵은 정렬 규격 없이 쌓이고, 에디터에서 열 때마다 **좌표계 선택 모달**이 뜹니다(그것이 켜짐/꺼짐을 확인하는 가장 빠른 관찰 지점이기도 합니다). 자동 생성된 메타는 **정직한 최소치**(배치 bbox·회전 0·마스크 중립 기하)이지 계측값이 아니므로, 실제 웨이퍼 규격이 필요한 맵은 에디터에서 사람이 등록하십시오 — 사용자 등록이 항상 이깁니다(생성 소스 `auto_map_meta` = 최하위 우선순위).

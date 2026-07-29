@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (**Gate4/U6 `deed6d2`**: §6.0-ter 게이트 3종→**4종** — **로그형 대상 게이트** 신설(맵 계약 밖 데이터 컬럼 보유 테이블로의 Push를 모든 다이얼로그 이전에 거부, 판별은 구조적 — "페이로드/서버가 재구성하는 컬럼만 살아남는다", 합성 bk는 소스 전부 커버일 때만 생존, `map_push_ok: true` 사이트 선언 시 차단→소실 confirm 1회, JSON boolean만 유효) + **replace_map 응답 `scope: {filters, deleted, inserted}` 정직성 계약**(범위 파생 불가 = 무음 200 no-op 대신 400, 명시적 `scope` + 빈 updates = 합법적 전량 소거), §2 #40에 게이트 항목 추가. 직전 같은 날 **5b `0052d76`**: §4-bis.1 초안 보존 약속의 실체화(불일치 유지 시 로드 경로 영속 게이트) + legendDirty 로드 성공 리셋·프레임 왕복 스냅샷, **§4-bis.3 메타 없는 맵의 기본 프레임 신설**(데이터 bbox + 마스크 중립 기하 — 기본 선택이 Push 불가 맵을 만들지 않음), §6.4-bis 뒤로가기 가드 `frameTouched`·프레임 모달 취소 롤백, §6.0-ter 대조 게이트 행에 기본 프레임 변경 반영, 값 컬럼 후보 매칭 exact 통일(§5.6 잔여 이슈 해소). 직전 같은 날: **U6 `95bf072`**: **§5.6 서버 선언 맵 기본값 신설** — paint-rules가 `value_column_candidates`(RESOLVED)·`default_legend`(선언 그대로/null)를 서빙, 클라 하드코딩 6종 삭제(후보 2사본·builtin stage·팔레트 3사본·E1/E2 색), §6에 stage 선언 단일 소스(`/api/transfer-plan/stages`, builtin 폴백 삭제)·§4-bis.1에 U6-1 시드 갈래(0셀+행 0개 = 시드, 읽기 실패 = 행 보존). 직전 같은 날: **H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**7b/7c/M3 `ab6ac02` + 미반영 F1 `17f65bd`**: **§5.6-bis 서빙되는 좌표 바인딩 신설**(paint-rules `binding` = `{x,y,val,key_columns,source}`, 선언>유도, 클라 유도 ~40줄 삭제 — `fallback_guess`는 데이터 경로 거부·로드 경로 경고·오버레이 경로 **거부**), §5.1 `binding_unavailable` 뜻 정정(클라 유도 실패 → 서버 미해석/추측 거부), §5.2 소비자 표에 `binding` 추가 · **§5.0에 7b 맵 정체성 캐노니컬화 규율 신설**(선언 타입 기준 — `number`면 `'01'`=`'1'`, 구현은 `map_overlay.canonical_key_value` 하나, **등록 측도 경유**) + M3 착지로 열린 격차 🔴→🟠 재기술(인제션 경로는 닫힘·기존 39만 건 백필은 M4) · **§6.2-bis 선언된 미추적 소비 신설**(`transfer_log: "none"` → `connected(untracked)`, transferred null·remaining null + 진짜 상한, `"none"` 문자열만 유효). 직전 **Gate4/U6 `deed6d2`**: §6.0-ter 게이트 3종→**4종** — **로그형 대상 게이트** 신설(맵 계약 밖 데이터 컬럼 보유 테이블로의 Push를 모든 다이얼로그 이전에 거부, 판별은 구조적 — "페이로드/서버가 재구성하는 컬럼만 살아남는다", 합성 bk는 소스 전부 커버일 때만 생존, `map_push_ok: true` 사이트 선언 시 차단→소실 confirm 1회, JSON boolean만 유효) + **replace_map 응답 `scope: {filters, deleted, inserted}` 정직성 계약**(범위 파생 불가 = 무음 200 no-op 대신 400, 명시적 `scope` + 빈 updates = 합법적 전량 소거), §2 #40에 게이트 항목 추가. 직전 같은 날 **5b `0052d76`**: §4-bis.1 초안 보존 약속의 실체화(불일치 유지 시 로드 경로 영속 게이트) + legendDirty 로드 성공 리셋·프레임 왕복 스냅샷, **§4-bis.3 메타 없는 맵의 기본 프레임 신설**(데이터 bbox + 마스크 중립 기하 — 기본 선택이 Push 불가 맵을 만들지 않음), §6.4-bis 뒤로가기 가드 `frameTouched`·프레임 모달 취소 롤백, §6.0-ter 대조 게이트 행에 기본 프레임 변경 반영, 값 컬럼 후보 매칭 exact 통일(§5.6 잔여 이슈 해소). 직전 같은 날: **U6 `95bf072`**: **§5.6 서버 선언 맵 기본값 신설** — paint-rules가 `value_column_candidates`(RESOLVED)·`default_legend`(선언 그대로/null)를 서빙, 클라 하드코딩 6종 삭제(후보 2사본·builtin stage·팔레트 3사본·E1/E2 색), §6에 stage 선언 단일 소스(`/api/transfer-plan/stages`, builtin 폴백 삭제)·§4-bis.1에 U6-1 시드 갈래(0셀+행 0개 = 시드, 읽기 실패 = 행 보존). 직전 같은 날: **H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -342,7 +342,15 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 - **셀 레벨 `grid_metadata` 컬럼은 폐기 스킴입니다** — 정렬 소스로 문서화하지도, 새로 구현하지도 마십시오.
   > ⚠️ 이름이 겹칩니다. 폐기 대상은 **맵 데이터 행마다 붙던 `grid_metadata` 컬럼**이고, `wafer_map_metadata` **테이블의 동명 payload 컬럼은 정본**입니다([architecture_and_management §2](../map_editor/architecture_and_management.md)). `loadExistingMap`에 셀 레벨 폴백 코드가 아직 남아 있으나(`client2/src/map_editor.js:2594-2604`), 어떤 맵 테이블도 `/tables/{t}/schema`에 `grid_metadata`를 노출하지 않아 라이브에서는 **사문**입니다.
 
-> **🔴 열린 격차(규칙과 현실의 충돌)** — `bonding_map`의 distinct 맵 키 **약 39만 개**에 대해 `wafer_map_metadata` 등록은 **9행**입니다. 즉 실사용의 거의 전부가 "규격 미등록 → 현재 화면 규격으로 해석"으로 **조용히** 떨어집니다. 규칙상 이것은 누락이므로, 그 조용함 자체가 계약 위반입니다. 해소 트랙은 보드의 **M3**(맵 메타 자동 등록)에서 추적합니다 — 계획·우선순위는 [PROJECT_STATUS](../process/PROJECT_STATUS.md)가 정본이며 여기서 되풀이하지 않습니다.
+> **🟠 격차의 절반이 닫혔습니다 (M3 `ab6ac02` · 2026-07-29)** — 종전: `bonding_map`의 distinct 맵 키 **약 39만 개**에 `wafer_map_metadata` 등록이 **9행**이었고, 실사용의 거의 전부가 "규격 미등록 → 현재 화면 규격으로 해석"으로 **조용히** 떨어졌습니다. 원인은 **수동 에디터 push만 메타를 등록**했다는 것이었고, M3이 **인제션 쓰기 경로**(파일 워처·체인 워커 양쪽)에 등록을 붙여 그 원인을 제거했습니다.
+> - **앞으로 들어오는 맵**은 적재 시점에 메타를 갖습니다 — 배치 자신의 x/y bbox + 마스크 중립 기하로, **절대 덮어쓰지 않고 부재일 때만**(소스 `auto_map_meta` = 최하위 우선순위라 사용자 편집이 항상 이깁니다). 계약 전문·끄는 법은 [INGESTION_GUIDE §1.10](../guide/INGESTION_GUIDE.md).
+> - **이미 쌓인 메타 없는 키의 소급 등록(백필)은 아직입니다** — M4 결정 사항입니다. 즉 **기존 39만 건에 대해서는 위 폴백이 그대로 살아 있습니다.**
+> - 합성 메타는 **정직한 최소치이지 계측이 아닙니다.** 실제 웨이퍼 원을 추측하지 않으므로(M4 방향 = 맵 기반 유효 다이) 여기서 유도되는 정렬은 "이 격자에서 이 좌표"까지만 말합니다. 계획·우선순위는 [PROJECT_STATUS](../process/PROJECT_STATUS.md)가 정본이며 여기서 되풀이하지 않습니다.
+
+> **🔑 맵 정체성은 *선언 타입으로 캐노니컬화*해 조합·조회한다 (7b `ab6ac02` · 2026-07-29)** — `map_id`는 키 컬럼 값을 `_`로 이은 문자열인데, **그 값을 원문 그대로 이으면 등록된 메타를 빗나갑니다.** 운영 실증: `number` 선언 slot 컬럼은 `1`을 저장하므로 메타가 `LOT_1`로 등록되는데, 파싱된 자재 토큰은 `01`을 주어 `LOT_01`을 조합했습니다(`Float` 컬럼의 `1.0` 왕복도 같은 부류). 셀 데이터 필터만 무사했던 이유는 crud가 **선언 컬럼 타입으로 캐스팅**했기 때문이고, **정체성 조합과 풀 바인드도 같은 이유로 같은 규율을 타야 합니다.**
+> - 규칙: 선언 타입 `number` → 정수 판정(`'01'`·`' 1 '`·`1.0` 전부 `'1'`, 읽을 수 없으면 **원문 트림 보존** — 지어내지 않고 정직하게 빗나갑니다) · 그 외/미선언 → 트림만(패딩이 유의미할 수 있음).
+> - 구현은 `map_overlay.canonical_key_value` **하나**입니다(`canonical_bind_value`/`canonical_role_value`/`compose_map_id`가 그 사용 형태). 조합 사이트와 pool lot/slot 바인드, `map_key` 분해(`build_key_filters`), **그리고 등록 측**(M3 `map_meta_registrar.compose_map_id`)이 전부 이것을 경유합니다 — **등록과 조회가 같은 정체성을 조합하지 않으면 메타는 있는데 아무도 못 찾습니다.** 두 번째 구현을 만들지 마십시오.
+> - 클라가 조합해 보내는 키는 **여전히 불투명하게 도착합니다**(서버가 클라 문자열을 파싱하지 않는다는 기존 불변식) — 클라 측 대응은 별도 착지 예정입니다.
 
 ### 5.1 클라 파이프라인 — 변환은 클라 단일 구현이다 (`7d931dc`)
 
@@ -367,7 +375,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 | status | 뜻 |
 |---|---|
 | `meta_unavailable` | 소스 또는 타깃 **규격 조회 자체가 실패**했다(≠ 미등록). 규격을 모르는 채로 겹치면 좌표가 조용히 어긋남 |
-| `binding_unavailable` | 소스 테이블의 좌표 바인딩을 스키마에서 유도할 수 없다(좌표 컬럼명이 관례 밖 — `dt_log`의 `tx/ty` 등. 선언이 서버 config에만 있음) |
+| `binding_unavailable` | 소스 테이블의 좌표 바인딩을 **서버가 해석해 주지 못했다**(`binding: null`) **또는 `fallback_guess`라 오버레이가 거부했다**(§5.6-bis). ⚠️ 종전 뜻("클라가 스키마에서 유도 못 함 — 관례 밖 컬럼명 `dt_log`의 `tx/ty` 등")은 `17f65bd`에서 **소멸**했습니다: 선언만 되어 있으면 이제 그대로 로드·오버레이됩니다 |
 | `align_unavailable` | 격자 규격 불일치 등 **변환을 계산할 근거가 없다** |
 | `no_data` | 겹칠 셀이 0건 |
 
@@ -386,7 +394,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 | `GET /api/maps/overlay` (`main.py`) | `map_overlay.get_overlay` — 정렬 좌표 `overlays[]` 전체 |
 | **`server/bonding_plan.py`** | `map_overlay.resolve_map_transform` / `align_status_label` — **가용량 산출의 정렬**(2026-07-27 배선) |
 | **`server/transfer_plan.py`** | 같은 두 함수 + `resolve_binding` / `build_key_filters` / `load_overlay_config` |
-| `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.5) + **[U6] 서빙되는 맵 기본값**(`value_column_candidates`·`default_legend`, §5.6) |
+| `GET /api/maps/paint-rules` | `map_overlay.get_paint_rules` — 페인트 잠금 정본(§5.5) + **[U6] 서빙되는 맵 기본값**(`value_column_candidates`·`default_legend`, §5.6) + **[F1 `17f65bd`] 서빙되는 좌표 바인딩**(`binding` — `resolve_binding_info`, §5.6-bis) |
 | `server/tests/test_map_overlay.py` | 엔드포인트 계약 회귀 |
 
 > ℹ️ **맵 에디터 클라는 이 엔드포인트를 더 이상 호출하지 않습니다.** 좌표를 안 쓰게 된 뒤로 남아 있던 `limit=1` probe(계측 보정 선언 유무 확인)마저 선언 레이어와 함께 제거됐습니다(§5.1).
@@ -464,6 +472,23 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 - **빈 맵 legend 시드 = 서빙된 `default_legend`.** `null`(또는 빈 배열)이면 **VALUE 1 하나짜리 빈 행**(`EMPTY_DOE_SEED`)입니다. 세 번째 갈래가 아닙니다 — "registry 행 있음 → 그 행 / 없음 → 시드"라는 기존 두 갈래 규칙에서 **시드의 어휘가 선언 가능해진 것**뿐이고, 현행 라이브 선언도 VALUE 1 한 행이라 사용자 관찰 동작은 동일합니다.
 - **값이 legend에 자동 추가되는 경로는 `autoAddLegendValue` 하나입니다**(E1/E2 자동 페인팅 · 붙여넣기/가져오기의 미지 값 · 맵 로드 legend 구성 · 패널 [+ 값]). 선언된 `default_legend` 행이 있으면 그 색·설명이 이기고, 없으면 단일 팔레트(`LEGEND_PALETTE` — 사본 하나) 규칙입니다. E1/E2의 고정 hex는 삭제됐습니다.
 - **[U6-1] 같은 테이블 연속 로드의 시드 갈래**: 0셀 맵을 로드했는데 레지스트리가 **행 0개로 답하면**, 테이블 전환이 없었어도 `seedEmptyDoe()`로 시드 갈래를 탑니다 — 이전 맵의 legend가 화면에 남아 새 맵의 계획으로 상속되던 결함의 수리(QA 라이브 재현). 단 **레지스트리 읽기 실패는 행 보존**입니다(read.ok 아래에서만 시드 — unknown-server-state는 "비어 있음"이 아닙니다).
+
+#### 5.6-bis 서빙되는 좌표 바인딩 `binding` (F1/F2 · `17f65bd`) — 유도의 두 번째 구현을 삭제한 자리
+
+같은 `GET /api/maps/paint-rules` 응답이 **세 번째 필드**를 싣습니다. 위 둘과 달리 이것은 **테이블 의존**이므로 `?table=`이 있을 때만 나옵니다(없으면 `null`).
+
+```
+binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallback_guess"} | null
+```
+
+- **서버가 해석하고 클라는 소비만 합니다**(`map_overlay.resolve_binding_info` → 클라 `fetchServedBinding`/`servedBindingCache`). 우선순위는 데이터 경로(`resolve_binding`)와 **동일**합니다: `map_overlay_config.table_bindings` **선언 > `table_config` 유도**. 선언 바인딩의 누락 키는 데이터 경로가 실제로 쓰는 기본값(x/y/val 리터럴, `key_columns=[lot, slot]`)으로 채워 **효력 그대로**를 서빙합니다.
+- **왜 생겼나 — 같은 질문에 답하는 유도기가 셋이었습니다.** 서버는 `table_bindings`를 모든 이름 형태(대문자·한글·숫자 시작·`tx`/`ty`)에 대해 정확히 존중했는데, **에디터가 그것을 읽은 적이 없었습니다** — 클라가 자체 유도로 리터럴 소문자 `x`/`y`를 요구했고, `/api/maps/overlay`를 호출하는 클라 코드는 아예 0곳이었습니다. 사용자가 보고한 "오버레이 설정이 안 먹는다"는 문자 그대로였습니다. 클라 유도 ~40줄과 대소문자 무시 x/y 매칭기는 **삭제**됐습니다(§5.1의 "변환은 클라 단일 구현"과 같은 규율 — 유도도 하나여야 합니다).
+- 🔴 **`fallback_guess`는 신뢰하면 안 되는 표지입니다.** 후보 목록에 맞는 값 컬럼이 하나도 없을 때 서버가 "첫 비-키/비-좌표/비-시스템 컬럼"을 고른 **추측**이며, **데이터 경로는 이 추측을 거부합니다**(`derive_table_binding`이 x/y 부재와 똑같이 `None` — 오버레이 엔드포인트는 `source_missing`, `_painted_values`는 `unverified`). 클라 규율은 경로별로 갈립니다:
+  - **로드 경로** — 드롭다운에 미리 선택하되 **추측 경고**를 냅니다(사람이 컬럼을 바꿀 수 있는 자리입니다).
+  - **오버레이 경로** — **거부**합니다. 추측한 컬럼을 칠하면 이 라운드가 없애려던 바로 그 미끼 셀(decoy)이 됩니다(수리 전 번들이 같은 픽스처에 미끼 칩 4개를 칠했고, 수리 후 번들은 거부하는 것이 차등 실증됐습니다).
+- **행은 받았는데 셀이 0개**면 초록 성공 토스트 대신 **원인을 이름 붙인 경고**를 냅니다(종전에는 성공처럼 보였습니다).
+
+> ⚠️ **`declared`/`derived`/`fallback_guess`는 *바인딩*의 출처이지 *정렬*의 출처가 아닙니다.** 정렬 출처(`align.origin`)는 `derived`/`identity`(+서버 내부 `unresolvable`)이고 **`declared`는 그 어휘에 없습니다**(선언 정렬 레이어는 2026-07-27에 삭제됐습니다 §5.0). 두 어휘가 `derived`를 공유해 섞이기 쉽습니다.
 
 ---
 
@@ -553,6 +578,23 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 ```
 
 `validate`는 이 상태에서 부족·fail 판정을 **전부 생략**하고 `availability_unreliable`만 발행합니다. 최종 `status`는 `ok` / `warnings` / **`unverified`** 3값으로, **"검사 안 함"과 "이상 없음"을 절대 같은 값으로 내지 않습니다.**
+
+#### 6.2-bis 선언된 미추적 소비 — `transfer_log: "none"` (7c `ab6ac02` · 2026-07-29)
+
+**바인딩이 깨진 것과 사이트가 "그런 기록이 없다"고 말한 것은 다른 상태입니다.** 전사(소모) 로그 자체가 존재하지 않는 사이트가 `transfer_plan_config.json`의 `stages.*.source.transfer_log`에 **정확히 문자열 `"none"`**을 선언하면:
+
+| 항목 | 값 |
+|---|---|
+| 역할 상태 | **`connected(untracked)`** — **강등이 아닙니다**(`_status_is_degraded` 대상 밖, `source_degraded` 미발행) |
+| `transferred` | **`null`** — 미상입니다. 가짜 `0`("한 칩도 안 썼다")으로 내보내지 않습니다 |
+| `remaining` | `null` + **`remaining_upper_bound`**(= 총 − fail) |
+| 경고 | 전용 `transfer_untracked`(role `transfer_log`, effect `remaining_upper_bound`) — 클라는 `미상` 대신 **`≤N`**을 렌더할 수 있습니다 |
+| `by_core` | `used`·`remaining` 모두 `null`(로그·area_map **양 경로**). `count_only`의 선언판 형제입니다 — 어느 쪽이든 칩 단위 정체를 알 수 없습니다 |
+| `?bins=` 항목 | `transfer_untracked: true` + `remaining_upper_bound`(= `bin∩총` − `bin∩fail`), `remaining`·`reliable`은 죽습니다 |
+
+- **상한 주장이 성립하는 근거**: `used_set`이 빈 집합이므로 감산항 하나가 통째로 빠진 것이고, 감산항이 빠지면 값은 **커질 수만** 있습니다 — 그래서 진짜 상한입니다(§7 [PRIMITIVES](../architecture/PRIMITIVES.md) *강등된 감산항은 과소 기여만 허용*). 단 **다른 강등이 겹치면 상한의 성립도 주장하지 않습니다**: `bins_base_reliable`은 untracked를 **제외한** 다른 모든 원인을 담아 두고, untracked가 유일한 이유일 때만 BIN별 상한이 나갑니다.
+- 🔴 **선언은 정확히 `"none"` 문자열뿐입니다.** JSON `null`·키 삭제·`"None"` 등 다른 형태는 **전부 종전 그대로 `missing`**입니다. `null`은 실수로 지운 것과 구별할 수 없기 때문이고, 이 엄격함 덕분에 **오타 하나가 깨진 바인딩을 자신만만한 숫자로 바꾸는 일이 구조적으로 불가능**합니다.
+- 설정 관점은 [guide/config/transfer_plan_config](../guide/config/transfer_plan_config.md)의 `transfer_log` 항목.
 
 ### 6.3 클라 `replace` 권한 불변식 (C1) — **M2.6에서 자리를 옮겼습니다**
 

@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 (C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**정본 계기 수리 라운드** — `PUT /data/updates` 응답에 `effort_recorded`/`effort_error` 신설, 잘못된 `effort`는 **교정을 막지 않고** 폐기·보고, 최상위 오타 키 보고, `unavailable_reason` 실제 원인 지목. 직전: **정본 계기 서버 구현 착지** — `PUT /data/updates`의 선택 필드 `effort` + `GET /api/effort/config` + `/dashboard/summary` → `effort` 신설, 재교정률은 **보조 계기**로 정정. 직전 2026-07-27: C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
 > **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -102,12 +102,33 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 `GET /audit_logs/recent` · `GET /audit_logs/transaction/{tx_id}` · `GET /tables/{t}/rows/{id}/history` · `GET .../cells/{col}/history` · `GET /dashboard/summary`
 
 #### 재교정률 (`/dashboard/summary` → `recorrection`)
-핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 유일한 계기. 정의·집계는 `crud.get_recorrection_stats`([data_model](./data_model.md#재교정률) 참조), 응답 래핑은 `main._get_recorrection_stat`.
+핵심가치 #1 **최소 공수 교정**([SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md))의 **보조 계기**. 정의·집계는 `crud.get_recorrection_stats`([data_model §2.3](./data_model.md) 참조), 응답 래핑은 `main._get_recorrection_stat`.
+
+> **⚠️ 2026-07-29 — "유일한 계기"가 아닙니다.** 정본 계기는 SSOT §1이 정의하는 **완료까지의 상호작용**으로 교체됐고(사용자 확정), 재교정률은 보조로 강등됐습니다(원인이 UI 공수인지 데이터 품질인지 분리되지 않고, 대량 트랜잭션 포함 여부로 2.01%↔13.13% 6.5배 희석 — 사유 전문은 [data_model §2.3](./data_model.md)). **`/dashboard/summary`의 `recorrection` 필드는 정본 계기가 아닙니다** — 정본 계기는 자기 필드·자기 항목을 갖습니다. 이 항목에 얹지 마십시오(두 값은 뜻도 분모도 달라 한 계약으로 묶을 수 없습니다). 아래 계약은 재교정률의 것이고 강등과 무관하게 그대로 유효합니다.
 
 - **응답 형태**: `{window_days, measured_cells, recorrected_cells, rate_pct, unavailable_reason}`. `rate_pct`는 표본 0 또는 집계 실패 시 `null` — 0%로 위장하지 않는다. 소비자는 **분모(`measured_cells`)를 반드시 함께 표시**한다.
 - **비용 방어 2중화**: ① `RECORRECTION_CACHE` 60초 TTL(대시보드 로드마다 GROUP BY 금지) ② PostgreSQL `SET LOCAL statement_timeout`(`RECORRECTION_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `rate_pct=null` + 사유 — **지표 한 칸이 비는 것이 대시보드 전체가 느려지는 것보다 낫다.**
 - 계산은 엔드포인트 **맨 마지막**에 수행한다(타임아웃 rollback이 앞선 집계를 건드리지 않도록).
 - ⚠️ `/dashboard/summary` 자체가 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(2026-07-27 실측 ~1.5s, `bonding_map` 176만 행 단독 0.5s). **주기 폴링에 얹지 말 것** — 클라이언트는 별도 간격(5분)으로 비차단 조회한다.
+
+#### 상호작용 점수 (`/dashboard/summary` → `effort`) — **정본 계기** (2026-07-29 신설)
+핵심가치 #1 **최소 공수 교정**의 **정본 계기** — 한 교정 tx를 완료하는 데 사람이 쓴 손의 양(낮을수록 좋음). 정의·집계 결정은 [data_model §2.4](./data_model.md)가 정본, 집계는 `crud.get_effort_stats`, 응답 래핑은 `main._get_effort_stat`.
+
+- **수집 계약 (`PUT /tables/{t}/data/updates`의 선택 필드)**: `effort: {session_id, key, mouse, nav, nav_preserved}`.
+  - **선택(OPTIONAL)이 계약의 핵심이다.** 워커·인제션·체인 경로는 같은 엔드포인트를 쓰지만 사람이 없다 — **없음 = 미계측이며 0이 아니다.** 서버는 미계측 tx의 행을 남기지 않는다(0으로 채우면 평균이 조용히 희석된다). 내부 필드도 전부 선택이며 `nav_preserved`를 아직 보내지 않는 클라도 정상이다.
+  - `nav` = 컨텍스트를 **잃는** 전이 / `nav_preserved` = **유지하는** 전이. 둘 다 원시 카운트로 저장하고, 허용목록 판정은 **조회 시점 해석**으로 남긴다([data_model §2.4](./data_model.md)).
+  - 🚨 **계기는 자기가 재는 작업을 절대 파괴하지 않는다 (2026-07-29 F4 — 총괄이 자기 지시를 부분 철회).** 음수·비정수(문자열·소수·boolean 포함)·모르는 키·`session_id` 누락·객체가 아닌 blob — **전부 계측만 폐기하고 교정은 그대로 수행한다.** 종전 계약(쓰기 전에 400으로 거절)은 클라 카운터 버그 하나가 **데이터 입력 전면 중단**으로 번지는 구조였다. 카운터 하나를 잃으면 지표의 한 행이 없어지지만, 쓰기를 거절하면 사람이 자기 교정을 잃는다 — 후자가 핵심가치 #1을 직접 위반한다. (그래서 `EffortReport`의 모든 필드는 `Any`이고 `GeneralUpdateBatch.effort`도 `Any`다 — pydantic이 422로 먼저 쳐내면 그 자체가 쓰기를 막는다.)
+  - **폐기는 조용하지 않다** — 사유는 응답의 `effort_error`(문자열, 정상 시 `null`)와 서버 로그(`logger.error`, `[EffortMetric]`)에 **문제의 키 이름과 함께** 남는다. **조용한 클램프·캐스팅은 여전히 없다**(틀린 값을 그럴듯하게 만드는 것이 계기에는 가장 큰 손해다).
+  - ⚠️ **모르는 키는 무시하지 않는다(키 이름 포함 보고).** pydantic 기본값은 미선언 키를 **조용히 버리는 것**이라, 클라가 새 카운터를 보내도 에러 없이 사라지고 나머지 값이 정상이라 아무것도 고장 나 보이지 않는다(2026-07-29 실측 — `nav_preserved` 도입 직전 그 상태였다). **조용히 버려진 값은 보내지 않은 값과 구별되지 않는다**는 이 프로젝트의 상습 결함 형태이고, 이 계기는 소급 재계산이 불가능해 발견 시점엔 그 기간의 기준선이 이미 없다. **빠진 키는 정상, 모르는 키만 오류.** 같은 규율이 **최상위 키**에도 적용된다(F7): `GeneralUpdateBatch`는 `extra="allow"`로 받아 `{"efort": {...}}` 같은 오타를 `effort_error`로 보고한다 — 종전에는 조용한 200이라 그 페이지의 저장 전부가 **영구 미계측**이 됐다.
+  - 기록은 교정 커밋 **이후** 별도 트랜잭션(`crud.record_interaction_effort`). 실패해도 요청은 200 — **계측이 계측 대상을 깨뜨리지 않는다.**
+  - 🚨 **응답 `effort_recorded`(bool)가 클라 카운터 리셋의 유일한 게이트다 (2026-07-29 F1).** `true` = 이 요청이 공수 행을 실제로 저장했다. `false` = 저장 안 됨(미계측·폐기·**no-op 저장**) → 클라는 카운터를 **리셋하지 않고 다음 시도에 계속 싣는다**. no-op이 왜 치명적이었나: 값이 이미 같은 셀을 고치면(오래된 그리드, 또는 `crud`의 `has_changed` 공백/숫자 정규화) 감사 로그가 없어 공수도 기록되지 않는데, 클라는 `res.ok`만 보고 카운터를 **지웠다**. 20키+5클릭을 날린 뒤 3키+1클릭으로 다시 성공하면 **제품에서 마찰이 가장 큰 2회 시도 교정이 데이터셋에서 가장 낮은 점수(6 vs 실제 ~40)로 기록**된다 — 계기가 핵심가치 #1이 잡아내야 할 바로 그것과 **역상관**이 된다. **기록 조건 자체는 바뀌지 않았다**(no-op은 완료된 교정이 아니고, 기록하면 `measured_ratio` 모집단 정합이 깨진다). 바뀐 것은 **서버가 기록 여부에 대해 진실을 말한다**는 것뿐이다.
+- **응답 형태**: `{window_days, avg_score, tx_count, session_count, weights, measured_ratio, unavailable_reason}`. `avg_score`는 표본 0 또는 집계 실패 시 `null` — 0점으로 위장하지 않는다. 소비자는 **`measured_ratio`(커버리지)를 반드시 함께 표시**한다. `weights`를 동봉하는 이유는 그 숫자가 어떤 배점으로 읽힌 것인지 없이는 해석이 불가능하기 때문이다.
+- **비용 방어 2중화**(재교정률과 동일): ① `EFFORT_CACHE` 60초 TTL ② `SET LOCAL statement_timeout`(`EFFORT_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `avg_score=null` + 사유. 두 계기 모두 엔드포인트 **맨 마지막**에서 각자 rollback하므로 한쪽 실패가 다른 쪽을 오염시키지 않는다.
+- **`unavailable_reason`은 실제 원인을 지목한다 (2026-07-29 F6).** 타임아웃일 때만 시간 초과 + `idx_effort_window`를 말하고, 그 외에는 `집계 실패 — [예외타입] 첫 줄`을 싣는다. 종전에는 어떤 실패든 "집계 시간 초과 또는 실패"라는 고정 문구여서, 컬럼 누락 같은 사고가 **인덱스 문제로 읽히고 당직자가 애초에 원인이 아닌 인덱스를 손보러 갔다.** (⚠️ 재교정률 `_get_recorrection_stat`의 같은 문구는 **아직 고정 문구**다 — 이번 라운드 범위 밖.)
+
+| 경로 | 용도 |
+|---|---|
+| `GET /api/effort/config` | **배점·전이 선언의 유일한 정본**(`config/effort_metric.json`). 응답 `{weights{key,mouse,nav,nav_preserved}, context_preserving_transitions[{from,to}]}`. 라우트는 **정확 일치**로만 판정하며 **와일드카드(`*`)는 거절**된다(무력 리터럴이 선언처럼 보이는 것을 막는다 — 거절은 로그 + 서빙 목록 누락으로 관측 가능). 클라는 자기 사본을 두지 않고 이것을 읽어 적용한다(`/api/maps/paint-rules`가 `binding`을 서빙하는 것과 같은 패턴 — 배점을 클라에 하드코딩하면 서버 집계와 화면이 조용히 갈라진다). `context_preserving_transitions`는 **0점으로 칠 전이의 허용목록**이며 **기본은 상실(선언 없으면 이동 가중치 부과)** · 목록은 비어서 출발하고 항목은 라우팅 소유자 제안 + 총괄 승인으로만 늘어난다 |
 
 ### 소스 / 레이어링
 | 경로 | 용도 |

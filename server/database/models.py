@@ -48,6 +48,73 @@ class AuditLog(Base):
     )
 
 
+class InteractionEffortLog(Base):
+    """[V1 계기] 완료까지의 상호작용 점수 — 한 교정 트랜잭션이 든 **사람의 공수** 원시 카운트.
+
+    SYSTEM_OVERVIEW §1 핵심가치 #1 "최소 공수 교정"의 **정본 계기**(사용자 2026-07-29 교체).
+    재교정률은 원인이 UI 공수인지 데이터 품질인지 분리하지 못해 보조로 강등됐다 — 이 계기는
+    "사람이 손을 몇 번 썼는가"를 에두르지 않고 직접 잰다. 낮을수록 좋다.
+
+    설계 결정 — 왜 이렇게 저장하는가:
+
+    1) **왜 `audit_logs`에 컬럼을 붙이지 않았는가.** `create_all`은 기존 테이블에 컬럼을
+       추가하지 않으므로 운영 DB에서는 ALTER 마이그레이션이 모든 조회 프로세스보다 먼저
+       돌아야 하고, 그 전에 웹서버가 SELECT하면 UndefinedColumn 500으로 죽는다. 또한 공수는
+       **셀당**이 아니라 **tx당** 1건이라 2.6M행짜리 셀 단위 테이블에 얹으면 같은 값이
+       수십 번 중복된다. 신규 테이블은 create_all이 만들어 주므로 순서 의존이 없다.
+
+    2) **왜 점수가 아니라 원시 카운트인가.** 배점(key/mouse/nav 가중치)은 `effort_metric.json`
+       선언이고 조회 시점에 곱해진다. 점수를 굳혀 저장하면 배점을 재조정하는 순간 과거
+       데이터가 옛 배점에 갇혀 before/after 비교가 불가능해진다 — 이 계기의 존재 이유가
+       바로 그 비교다.
+
+    3) **왜 `transaction_id`가 UNIQUE인가.** 단위는 "한 tx 묶음 교정 완료"이고 그 경계는
+       서버가 이미 긋고 있다(`AuditLog.transaction_id`). tx당 1행이 아니면 한 번의 교정이
+       여러 번 계수되어 평균이 왜곡된다. 같은 tx로 요청이 재도달하면(클라 재시도) **첫 기록이
+       이긴다** — 재전송은 새로 쓴 공수가 아니다. (SET 의미론으로 덮어쓰면 마지막 메시지가
+       실제 공수를 대체해 버린다 — QA D-1에서 카운트 필드로 이미 겪은 함정.)
+
+    4) **없음(NOT MEASURED)은 0이 아니다.** 워커·인제션·체인 경로에는 키보드 앞에 사람이
+       없다. 그런 tx는 이 테이블에 **행 자체가 없어야** 하며, 0으로 적으면 평균이 조용히
+       희석된다. 커버리지는 `measured_ratio`로 항상 함께 보고한다.
+    """
+    __tablename__ = "interaction_effort_logs"
+
+    id = Column(Integer, primary_key=True)
+    # AuditLog가 이미 쓰는 그 tx_id — 새 상관관계 개념을 만들지 않는다.
+    transaction_id = Column(String, nullable=False)
+    session_id = Column(String, nullable=False)
+    # 원시 카운트만. 가중치는 조회 시점에 적용된다(위 결정 2).
+    key_count = Column(Integer, nullable=False, default=0)
+    mouse_count = Column(Integer, nullable=False, default=0)
+    # nav_count = 컨텍스트를 **잃는** 전이 / nav_preserved_count = 유지하는 전이.
+    # [총괄 addendum 2026-07-29] 면제된 전이도 **버리지 않고 따로 센다.** 분류를 수집
+    # 시점에 확정해 nav 를 증가시키지 않는 방식은, 면제 판단이 틀린 것으로 밝혀져도
+    # 되돌릴 수 없다 — 이 계기는 소급 산출이 불가능하므로 그 순간 기준선이 영구히
+    # 틀린 채로 남는다. 두 카운트를 다 보관하면 허용목록이 **조회 시점 해석**이 되어
+    # 가중치(nav_preserved, 기본 0)만 바꿔 과거 데이터를 재채점할 수 있다.
+    nav_count = Column(Integer, nullable=False, default=0)
+    nav_preserved_count = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        # tx당 1행 불변식(위 결정 3). 재도달은 IntegrityError로 걸러 첫 기록을 보존한다.
+        Index("uq_effort_transaction", "transaction_id", unique=True),
+
+        # 집계(`crud.get_effort_stats`)는 창(window) 안의 행을 session_id로 묶어 평균한다.
+        # INCLUDE에 GROUP BY 키와 합산 대상 전부를 담아 Index Only Scan으로 끝낸다 —
+        # 이 테이블은 tx당 1행이라 audit_logs보다 훨씬 작지만, 대시보드 경로에 얹히는 이상
+        # 1,000만 tx 시점에도 힙 방문이 없어야 한다.
+        # PostgreSQL 전용 옵션(postgresql_*)은 SQLite에서 무시되어 일반 timestamp 인덱스가 된다.
+        Index(
+            "idx_effort_window",
+            "timestamp",
+            postgresql_include=["session_id", "key_count", "mouse_count",
+                                "nav_count", "nav_preserved_count"],
+        ),
+    )
+
+
 class DatabaseOutbox(Base):
     __tablename__ = "database_outbox"
 

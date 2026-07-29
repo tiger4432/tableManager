@@ -1,13 +1,15 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **250개** 이력. (거버넌스 규칙 #4)
+> 총 **252개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-29 07:54** — [Effort Metric Server Instrument](./20260729_075400_effort_metric_server_instrument.md)
+- **2026-07-29 07:42** — [Effort Meter Client Core](./20260729_074223_effort_meter_client_core.md)
 - **2026-07-29 01:47** — [Core Value 1 Instrument Replaced](./20260729_014707_core_value_1_instrument_replaced.md)
 - **2026-07-29 00:42** — [Ingestion Map Meta Auto Registration](./20260729_004200_ingestion_map_meta_auto_registration.md)
 - **2026-07-29 00:40** — [Transfer Log None Declared Untracked](./20260729_004000_transfer_log_none_declared_untracked.md)

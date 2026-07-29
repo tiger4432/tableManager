@@ -1,1 +1,0 @@
-var e=window.location.port===`5173`,t=e?`http://127.0.0.1:8080`:window.location.origin,n=e?`ws://127.0.0.1:8080/ws`:`${window.location.protocol===`https:`?`wss:`:`ws:`}//${window.location.host}/ws`,r=`kk980`,i=1e3;export{i,r as n,n as r,t};

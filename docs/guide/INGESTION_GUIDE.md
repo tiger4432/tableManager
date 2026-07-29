@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (§1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -128,7 +128,8 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 �
 | 끄는 법 | `ingestion_settings.json`에 `"auto_register_map_meta": false` (기본 true, 핫리로드 — 다음 파일/체인 트랜잭션 그룹부터) |
 | 실패 격리 | 메타 등록 실패는 로그만 남기고 **파일/체인 적재는 정상 완료**됩니다(데이터가 먼저 커밋됨) |
 
-> **맵 키 조합 규약**: map_id는 `map_key_columns` 값의 `'_'` 조인(에디터 `getMapIdFromMeta`와 동일, 값 정규화는 crud `clean_str_value`)입니다. 키 컬럼이 하나라도 비면 그 행은 등록에 기여하지 않습니다(부분 정체성 추측 금지). 조합 구현은 `map_meta_registrar.compose_map_id`에 있으며 공용 정규화 함수(7b)로의 일원화가 예정되어 있습니다 — `TODO(7b)` 마커 및 `test_map_id_composition_pinned_for_7b` 고정 테스트 참조.
+> **맵 키 조합 규약**: map_id는 `map_key_columns` 값의 `'_'` 조인(에디터 `getMapIdFromMeta`와 동일)입니다. 키 컬럼이 하나라도 비면 그 행은 등록에 기여하지 않습니다(부분 정체성 추측 금지 — 에디터는 빈 조각을 버리고 나머지를 잇지만, 인제션은 자기가 메타까지 등록할 정체성을 추측해서는 안 되므로 의도적으로 다릅니다).
+> **[2026-07-29 7b 착지 — 같은 커밋]** 값 정규화는 이제 **선언 타입 기준 공용 캐노니컬라이저**(`map_overlay.canonical_bind_value`)를 경유합니다. 종전 `clean_str_value` 핀은 테이블/컬럼 선언을 못 찾을 때의 동작(트림 + 정수형 float 접기)으로만 남습니다. **등록과 조회가 같은 규칙으로 조합해야** 메타가 실제로 발견됩니다 — `number` 선언 키 컬럼에 pre-cast `'01'`이 오면 등록은 `LOT_01`인데 저장된 셀은 `1`로 캐스팅돼 모든 소비자가 `LOT_1`을 찾던 것이 이 함수가 막는 결함입니다(규율 전문은 [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)). 고정 테스트 `test_map_id_composition_pinned_for_7b`.
 
 ---
 

@@ -65,7 +65,7 @@
 ## 3. 반영 확인
 
 1. `GET /api/maps/paint-rules?table=<t>` — 머지된 잠금 규칙이 기대대로인지. **[U6]** 같은 응답의 `value_column_candidates`가 선언(또는 기본) 순서 그대로인지, `default_legend`가 선언 배열 그대로(미선언이면 `null`)인지.
-   - **[F1]** 같은 응답의 `binding`이 그 테이블의 RESOLVED 바인딩인지: `{x, y, val, key_columns[], source}`. `source`는 `declared`(table_bindings 선언) > `derived`(table_config 유도), 해석 불가면 `null`. `fallback_guess`는 **값 컬럼이 후보 밖이라 추측만 남은 상태**라는 경고 표지입니다 — 데이터 경로는 이 추측을 거부하므로, 이게 보이면 선언을 추가하십시오. (이 필드는 서빙 중이며 에디터의 클라 측 소비는 다음 착륙분 — 그 전까지 에디터는 자체 유도를 씁니다.)
+   - **[F1]** 같은 응답의 `binding`이 그 테이블의 RESOLVED 바인딩인지: `{x, y, val, key_columns[], source}`. `source`는 `declared`(table_bindings 선언) > `derived`(table_config 유도), 해석 불가면 `null`. `fallback_guess`는 **값 컬럼이 후보 밖이라 추측만 남은 상태**라는 경고 표지입니다 — 데이터 경로는 이 추측을 거부하므로, 이게 보이면 선언을 추가하십시오. **에디터도 같은 커밋에서 이 필드를 소비하도록 바뀌었습니다**(클라 자체 유도 삭제): 드롭다운이 이 값으로 미리 선택되고, `fallback_guess`는 **로드 경로에서는 경고 후 진행 / 오버레이 경로에서는 거부**입니다. 즉 **선언만 하면 대문자·한글·숫자 시작 테이블명, `tx`/`ty` 좌표도 그대로 로드·오버레이됩니다** — 종전에 "오버레이 설정이 안 먹던" 원인이 바로 이 클라 측 재유도였습니다.
 2. `GET /api/maps/overlay?target_table=<t>&target_key=<k>&sources=<src>:<key>` — `overlays[].status`가 `ok`인지, `align_applied.origin`이 `derived`(메타 유도)인지 `identity`(메타 부재)인지.
    - `identity`는 실패가 아니지만 **메타 미등록 신호**입니다 — 정렬이 필요하면 메타부터 등록.
    - `source_missing` = 테이블 미선언/바인딩 해석 실패.

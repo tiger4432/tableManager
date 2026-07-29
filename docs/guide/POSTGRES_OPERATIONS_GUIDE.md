@@ -89,6 +89,28 @@ WHERE tablename = 'audit_logs' AND indexname = 'idx_audit_user_recorrection';
 ```
 없으면 `setup_db_performance.py`를 실행한다. 인덱스가 없어도 대시보드가 느려지지는 않는다(1500ms `statement_timeout` + 60초 캐시로 방어) — 대신 그 칸이 `—`로 비고 사유가 표시된다. 즉 **`—`가 계속 보이면 이 인덱스를 의심할 것.**
 
+#### 상호작용 점수 인덱스 (`uq_effort_transaction` · `idx_effort_window`)
+**정본 계기**(완료까지의 상호작용 점수, [data_model §2.4](../architecture/data_model.md))가 쓰는 인덱스 2종. `interaction_effort_logs`는 신규 테이블이므로 **신규 설치에서는 `create_all`이 테이블과 인덱스를 함께 만든다** — 이 절이 필요한 경우는 **테이블만 먼저 생긴 DB**(구버전 기동 이력이 있는 운영 DB)다. 그 경우 `create_all`은 인덱스를 추가하지 않으므로 위 경고가 그대로 적용된다.
+
+```sql
+-- 존재 확인 (2건 모두 나와야 정상)
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'interaction_effort_logs';
+```
+
+| 인덱스 | 없으면 생기는 일 |
+|---|---|
+| `uq_effort_transaction` (UNIQUE) | **tx당 1행 불변식이 깨진다.** 클라 재시도가 같은 공수를 두 번 기록해 그 세션의 평균이 조용히 왜곡된다 — 숫자가 틀렸다는 신호가 어디에도 뜨지 않으므로 가장 위험하다 |
+| `idx_effort_window` (커버링) | 창 집계가 Seq Scan으로 떨어진다. 대시보드는 느려지지 않고(1500ms timeout + 60초 캐시) 그 칸이 `—`로 빈다 |
+
+없으면 `setup_db_performance.py`(Step 3.7)를 실행한다. `uq_effort_transaction` **생성이 실패하면 이미 중복 `transaction_id` 행이 있다는 뜻**이므로, 스크립트 출력의 `Failed to create uq_effort_transaction`을 그냥 넘기지 말 것 — 중복을 먼저 정리해야 한다.
+
+```sql
+-- 중복 확인 (정상이면 0행)
+SELECT transaction_id, count(*) FROM interaction_effort_logs
+GROUP BY transaction_id HAVING count(*) > 1;
+```
+
 ### 3.2 데이터베이스 백업 및 복구 (Command Line)
 pgAdmin의 [Backup/Restore] 메뉴를 사용하거나 아래 커맨드를 활용하십시오.
 

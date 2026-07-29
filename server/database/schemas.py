@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import datetime as dt_pkg
@@ -80,7 +80,58 @@ class GeneralUpdateItem(BaseModel):
     source_name: str = "user"
     updated_by: Optional[str] = "system"
 
+class EffortReport(BaseModel):
+    """[V1 계기] 이 트랜잭션 한 건을 완료하는 데 사람이 쓴 **원시 상호작용 카운트**.
+
+    ⚠️ **이 객체가 없는 것과 0인 것은 다르다.** 워커·인제션·체인은 같은 엔드포인트를
+    쓰지만 키보드 앞에 사람이 없다 — 그런 요청은 이 필드를 **보내지 않아야** 하고,
+    서버는 "미계측"으로 취급해 기록 자체를 남기지 않는다. 0으로 채우면 "공수 0의 완벽한
+    교정"으로 집계에 섞여 평균을 조용히 희석시킨다.
+
+    카운트는 **정수**여야 한다. Validation lives in `main._validate_effort`, which never
+    clamps and never casts (making a wrong value look plausible is the worst thing that
+    can happen to an instrument). EVERY field here is typed `Any` and defaults to None or
+    0 **so that pydantic can never reject the request**: a 422 raised while parsing this
+    optional blob would take the user's correction down with it. A malformed blob is
+    discarded, reported in `effort_error` on the response, and logged - the write always
+    goes through (fix round F4, 2026-07-29).
+
+    `nav`는 컨텍스트를 **잃는** 전이, `nav_preserved`는 **유지하는** 전이의 수다.
+    면제된 전이를 세지 않고 버리면 그 면제가 저장된 숫자에 굳어 되돌릴 수 없다 —
+    소급 산출이 불가능한 계기에서는 그것이 곧 영구히 틀린 기준선이다. 둘 다 원시
+    카운트로 보관하고 배점(`nav_preserved` 기본 0)으로 해석한다.
+    `nav_preserved`도 **선택**이다 — 아직 이 필드를 보내지 않는 클라는 오류가 아니다.
+
+    ⚠️ **모르는 키는 무시하지 않는다** (총괄 지시 2026-07-29, map-pm 실측).
+    pydantic 기본값은 미선언 키를 **조용히 버리는 것**이라, 클라가 `nav_preserved: 5`를
+    보내도 에러 없이 사라졌다 — 다른 값은 정상이라 아무것도 고장 나 보이지 않는다.
+    **조용히 버려진 값은 애초에 보내지 않은 값과 구별되지 않는다**는 것이 이 프로젝트가
+    반복해서 대가를 치른 결함 형태다(유령 수량·절단된 push의 성공 보고·무동작 replace의
+    200). 이 계기는 **소급 재계산이 불가능**하므로 몇 달 뒤에 발견하면 기준선이 이미 없다.
+    클라와 서버가 같은 저장소에서 함께 배포되므로(독립 배포 스큐 없음) 불일치는 곧 실수이고,
+    실수는 시끄러워야 한다. 그래서 `extra="allow"`로 받아 두고 `main._validate_effort`가
+    **문제의 키 이름과 함께** 그 사유를 응답(`effort_error`)과 서버 로그에 남긴다.
+    But loud is not the same as blocking: the unknown key discards the MEASUREMENT, not
+    the correction. `session_id` is likewise `Any` and optional here - an absent one is a
+    broken counter, reported the same way, and it must never become a 422 that refuses
+    the operator's edit.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    session_id: Any = None
+    key: Any = 0
+    mouse: Any = 0
+    nav: Any = 0
+    nav_preserved: Any = 0
+
+
 class GeneralUpdateBatch(BaseModel):
+    # An unknown TOP-LEVEL key is the same defect as an unknown key inside `effort`, at
+    # the opposite end: `{"efort": {...}}` used to return 200 with the whole measurement
+    # silently never happening. Accepted here (`extra="allow"`) so the correction still
+    # lands, then named in `effort_error` + the log by the endpoint (fix round F7).
+    model_config = ConfigDict(extra="allow")
+
     updates: list[GeneralUpdateItem]
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
     silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략
@@ -90,6 +141,16 @@ class GeneralUpdateBatch(BaseModel):
     # when absent the scope is derived from updates[0] as before. An explicit scope
     # with an empty `updates` list is the intentional erase-all of that scope.
     scope: Optional[Dict[str, Any]] = None
+    # [V1 계기] 사람이 이 tx를 완료하는 데 쓴 상호작용 카운트. **선택 필드** —
+    # 없으면 "미계측"이며 0이 아니다(EffortReport 주석 참조). 자동 경로(워처·체인 워커·
+    # 스크립트)는 crud를 직접 호출하므로 애초에 이 필드를 통과하지 않는다.
+    #
+    # Declared `Any`, not `Optional[EffortReport]`, on purpose: a non-object blob
+    # (`"effort": 5`) would otherwise be rejected by pydantic BEFORE the endpoint runs,
+    # and the operator's correction would die with the broken counter. The shape above is
+    # still the contract - `main._validate_effort` parses it there, where a bad blob can
+    # be discarded and reported without touching the write (fix round F4).
+    effort: Optional[Any] = None
 
 class RowDeleteBatch(BaseModel):
     row_ids: list[str]
@@ -159,6 +220,28 @@ class RecorrectionStat(BaseModel):
     unavailable_reason: Optional[str] = None  # 집계 실패/시간초과 시 사유 (정상 시 None)
 
 
+class EffortStat(BaseModel):
+    """[V1 계기] 완료까지의 상호작용 점수 — SYSTEM_OVERVIEW §1 핵심가치 #1의 **정본** 계기.
+
+    한 교정 tx의 점수 = key×w_key + mouse×w_mouse + nav×w_nav (낮을수록 좋음).
+    집계 단위는 **세션별 평균을 낸 뒤 세션 간 평균**(사용자 지정) — 한 사람이 대량 작업한
+    세션이 전체 평균을 지배하지 않도록.
+
+    `avg_score`는 표본이 없거나 집계가 실패/시간 초과하면 None이다. 0으로 위장하지 않는다.
+
+    ⚠️ `measured_ratio`(계측된 tx / 전체 사람 tx)를 **반드시 함께** 표시할 것. 계측은
+    클라이언트가 보내 줄 때만 이뤄지므로 커버리지가 1.0이 아니며, 분모 없는 평균은 실제로
+    측정되지 않은 범위까지 대표하는 것처럼 읽힌다.
+    """
+    window_days: int
+    avg_score: Optional[float] = None   # 세션 평균들의 평균 (표본 0 또는 집계 실패 시 None)
+    tx_count: int = 0                   # 창 안에서 계측된 교정 tx 수
+    session_count: int = 0              # 그 tx들이 속한 서로 다른 세션 수
+    weights: Dict[str, float] = {}      # 이 값을 산출할 때 적용된 배점 (재해석 근거)
+    measured_ratio: Optional[float] = None  # 계측 tx / 전체 사람 tx (커버리지 — 집계 실패 시 None)
+    unavailable_reason: Optional[str] = None  # 집계 실패/시간초과 시 사유 (정상 시 None)
+
+
 class DashboardSummaryResponse(BaseModel):
     total_tables: int
     total_rows: int
@@ -167,3 +250,4 @@ class DashboardSummaryResponse(BaseModel):
     system_health: str = "Excellent"
     # 신규 필드는 Optional — 구 클라이언트 호환(응답 확장은 하위호환이지만 명시적으로 둔다).
     recorrection: Optional[RecorrectionStat] = None
+    effort: Optional[EffortStat] = None

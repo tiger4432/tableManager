@@ -15,6 +15,10 @@ import './tokens.css';
 import { API_BASE } from './config.js';
 import { showToast } from './utils.js';
 import { initTheme } from './theme.js';
+// [V1 effort instrument] The ONE collector (effort_meter.js). No corrections are written
+// here, so nothing carries an `effort` payload — but LEAVING must be counted, or the trip
+// grid -> trace -> grid records only its outbound half and the detour looks free.
+import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } from './effort_meter.js';
 import {
   SEED_CAP,
   TRACE_LIMIT,
@@ -424,6 +428,10 @@ function initControls() {
 
 function init() {
   initTheme();
+  // [V1 effort instrument] Before any listener can fire. Invisible — no UI, no badge.
+  startSession();
+  installGlobalListeners();
+  installNavLinkCounting(ROUTES.TRACE);
   initControls();
 
   // URL 파라미터: seeds(필수) + depth/from/to(재방문 복원)

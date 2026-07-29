@@ -21,7 +21,7 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 **5대 핵심 가치 (우선순위순):**
 
 1. **최소 공수 교정** — 불완전 데이터를 사람이 가장 적은 손으로 진실로 바꾼다. Human-in-the-loop이 설계의 중심.
-   - **계기(정본, 사용자 2026-07-29 교체): 완료까지의 상호작용 횟수** — 한 데이터 단위가 **채워질 때까지 사람이 쓴 클릭·화면 이동 수**. "최소 공수"를 에두르지 않고 직접 재는 유일한 값이므로 낮을수록 좋다. ⚠️ **미구현 — 계측 없이는 V1이 계기판 없이 굴러간다.** 그리고 이 값은 **소급 산출이 불가능**하다(과거 세션에 클릭 로그가 없음). 따라서 **교정 표면을 고치기 전에 계측을 먼저 붙여야** 개선 전/후를 비교할 수 있다.
+   - **계기(정본, 사용자 2026-07-29 교체): 완료까지의 상호작용 점수** — **마지막 성공 저장 이후 누적된** 사람의 키입력·클릭·화면 이동을 배점(**키 1 · 마우스 3 · 화면이동 5**, [설정](../guide/config/effort_metric.md))으로 합산한 값. "최소 공수"를 에두르지 않고 직접 재는 유일한 값이므로 낮을수록 좋다. 집계는 **세션별 평균 → 세션 간 평균**. ✅ **서버 계측 착지(2026-07-29)** — `PUT /tables/{t}/data/updates`의 **선택 필드** `effort:{session_id,key,mouse,nav,nav_preserved}` 수집 → `interaction_effort_logs`(tx당 1행, 원시 카운트만) → `/dashboard/summary` → `effort`. 컨텍스트 유지 전이도 **버리지 않고 따로 센다**(`nav_preserved`, 배점 0) — 소급 재수집이 불가능하므로 버린 값은 영영 못 되살린다. ⚠️ **단, 되돌릴 수 있는 것은 배점뿐이다**(QA 실측 정정): 개별 전이가 어느 버킷에 들어갈지는 **수집 시점에 확정**되므로, 허용목록 자체를 사후에 재해석할 수는 없다. 그래서 **기본은 "센다"**이고 예외만 선언한다 — 빠뜨린 예외는 점수를 나쁘게 만들 뿐이지만 잘못 넣은 예외는 지표를 조용히 미화한다. ⚠️ **무변경(no-op) 저장은 `effort_recorded:false`를 돌려주고 클라는 리셋하지 않는다** — 그 시도에 쓴 공수는 **다음 성공 저장에 합산**된다. 이 게이트가 없으면 두 번 시도한 교정이 **가장 낮은 점수**를 받아 계기가 목적과 정반대로 작동한다(2026-07-29 QA 실측). 정의·결정은 [data_model §2.4](../architecture/data_model.md), 계약은 [backend](../architecture/backend.md#상호작용-점수-dashboardsummary--effort). ⚠️ 이 값은 **소급 산출이 불가능**하므로(과거 세션에 클릭 로그가 없음) **교정 표면을 고치기 전 기간이 유일한 "before"다.** **비율은 반드시 커버리지(`measured_ratio`)와 함께 읽는다** — 자동 경로(워커·인제션)는 계측 대상이 아니며 **미계측은 0이 아니다.**
    - **보조 계기: 재교정률**(`/dashboard/summary` → `recorrection`, 어드민 Overview 한 줄) — 사람이 **같은 셀을 두 번 이상 고친 비율**. 첫 시도가 먹히지 않았다는 간접 증거다. 2026-07-29 정본에서 보조로 강등(원인이 UI 공수인지 데이터 품질인지 분리되지 않고, 대량 트랜잭션 포함 여부로 2.01%↔13.13% **6.5배 희석**되어 단독 판단 근거가 못 된다). 정의·함정은 [data_model §2.3](../architecture/data_model.md), 계약은 [backend](../architecture/backend.md#재교정률-dashboardsummary--recorrection). **비율은 반드시 분모와 함께 읽는다.**
 2. **온톨로지/지식 그래프 기반** — 최종 목적지. 교정된 진실이 그래프에 반영되어, 객체(예: 불량 WF) 선택 시 연관 공정 이력이 전부 추적된다.
 3. **실시간 신뢰 전파** — 교정→그래프 신뢰의 **척추**. 반영이 안 믿기면 교정이 멈추고 온톨로지가 틀린 채 굳는다.
@@ -116,6 +116,7 @@ graph TD
 | `FileIngestionLog` | 파일 적재 로그(FAILED/SUCCESS/PENDING_RETRY) |
 | `GraphNode` / `GraphEdge` / `GraphSyncState` | **온톨로지 그래프 스토어** — 속성 그래프 노드/엣지(provenance 포함) + materializer의 outbox 소비 커서 |
 | `FileIngestionCheckpoint` | 파일 인제션 오프셋 체크포인트 + 해시 dedup(`file_ingestion_checkpoints`, `UNIQUE(table_name, file_signature)`) |
+| `InteractionEffortLog` | **핵심가치 #1 정본 계기** — 교정 tx당 사람의 상호작용 원시 카운트(`interaction_effort_logs`, `UNIQUE(transaction_id)`) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |
 
 **우선순위 결정** (`crud.compute_priority_value`): 수동 핀 우선 → `SOURCE_PRIORITY {user:0, collision_merge:1, pipeline_parser:2, custom_script:3, chain_ingestion:4}`(낮을수록 우선) → 표시값 확정. 테이블별 `source_priority` 오버라이드 지원. 서열의 단일 원천은 `crud.resolve_priority_map`(그래프 엣지 provenance도 동일 서열 사용).

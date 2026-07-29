@@ -512,9 +512,11 @@
       padding: 0 4px;
     }
 
-    /* ── 재교정률 한 줄 (Overview 상단) ──
-       카드도 패널도 아닌 한 줄. 값 옆에 분모를 항상 같이 적는다 —
-       분모 없는 비율은 표본이 8개일 때도 그럴듯해 보인다. */
+    /* ── 핵심가치 #1 계기 두 줄 (Overview 상단) — 재교정률 · 교정 공수 ──
+       카드도 패널도 아닌 한 줄씩. 값 옆에 분모를 항상 같이 적는다 —
+       분모 없는 비율은 표본이 8개일 때도 그럴듯해 보인다.
+       (클래스 이름은 재교정률이 먼저 생겨서 그대로 쓴다. 두 줄이 같은 문법으로 읽혀야
+        해서 스타일을 공유하는 것이지, 교정 공수가 재교정률의 부속이라는 뜻이 아니다.) */
     .recorrection-line {
       display: flex;
       align-items: baseline;
@@ -537,6 +539,10 @@
     .recorrection-line[data-tone="danger"] .rc-value { color: var(--danger); }
     .recorrection-line[data-tone="muted"] .rc-value { color: var(--text-secondary); }
     .recorrection-line .rc-sub { font-size: 0.78rem; }
+    /* 교정 공수 줄에 한해, 위험 상태에서는 값(대시)뿐 아니라 사유 문장도 붉게 한다.
+       이 줄의 존재 이유가 수집 중단 감지라서, 붉은 대시 하나로는 눈에 걸리지 않는다.
+       #effort-line으로 한정 — 재교정률 줄의 표현은 건드리지 않는다. */
+    #effort-line[data-tone="danger"] .rc-sub { color: var(--danger); }
 
     /* ── Overview 탭 (좌패널 전폭 — 4 파이프라인 확장 카드) ── */
     .overview-grid {
@@ -802,9 +808,9 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-CZACOLv3.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/utils-CUmVvWUc.js">
-  <link rel="stylesheet" crossorigin href="/assets/utils-BrCS1MVH.css">
+  <script type="module" crossorigin src="/assets/admin-nUqwrS_g.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/effort_meter-Cr9o-sZP.js">
+  <link rel="stylesheet" crossorigin href="/assets/effort_meter-BrCS1MVH.css">
 </head>
 <body>
   <header>
@@ -874,6 +880,15 @@
             <span class="rc-label">재교정률</span>
             <span class="rc-value" id="recorrection-value">—</span>
             <span class="rc-sub" id="recorrection-sub">불러오는 중…</span>
+          </div>
+          <!-- 교정 공수 한 줄: 한 교정을 끝내기까지의 상호작용 점수 + 계측 커버리지.
+               커버리지(measured_ratio)를 같이 두는 이유는 이것이 수집 중단 감지기이기
+               때문이다 — 화면에 없으면 기준선 창 전체가 조용히 비어도 아무도 모른다. -->
+          <div id="effort-line" class="recorrection-line"
+               title="한 교정을 끝내기까지의 상호작용 점수 (키 1 · 클릭 3 · 컨텍스트를 잃는 화면이동 5). 낮을수록 좋다.">
+            <span class="rc-label">교정 공수</span>
+            <span class="rc-value" id="effort-value">—</span>
+            <span class="rc-sub" id="effort-sub">불러오는 중…</span>
           </div>
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->

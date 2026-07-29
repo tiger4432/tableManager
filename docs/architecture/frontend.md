@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (`b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -72,6 +72,7 @@ npm run build     # dist/ 생성
 | `trace.js` | 454 | trace.html 오케스트레이터(§6): `runTrace`(POST `/graph/trace`, seq 가드) → `renderReport`(그룹+타임라인 청크 렌더), 시드 칩·depth·시간범위, URL 동기화 |
 | `trace_core.js` | 234 | 추적 순수 로직(무의존): `composeIdentity`(서버 G1 미러), `capSeeds`(상한 20), `buildTraceRequest`, `groupNodesByLabel`, `splitTimeline` |
 | `trace_launch.js` | 107 | index 진입점: `initTraceEntry`/`refreshTraceEntry`(mapping-summary 판정), `openTraceForSelection`(선택 행→시드 변환) |
+| `effort_meter.js` | 320 | **상호작용 계측기(§3.2)** — 핵심가치 #1 정본 계기의 **유일한 수집기**. 키·마우스·화면이동(상실/유지 분리) 원시 카운트 + 세션 id(`sessionStorage`), `PUT .../data/updates`에 선택 필드로 편승. 그리드·Enrichment·맵 에디터 3개 진입점이 공유(빌드에서 전용 청크로 분리 — 단일성 실측 가능) |
 
 > `counter.js`는 Vite 템플릿 잔재(미사용).
 > **클립보드는 `document`의 `copy`/`paste` 이벤트 + `e.clipboardData`가 정본이다**(`clipboard.js` `setupClipboardHandlers`). `navigator.clipboard`는 **보안 컨텍스트(HTTPS 또는 localhost/127.0.0.1)에서만 존재**하며, 운영은 사내망 평문 HTTP라 그곳에선 `undefined`다. 과거 `main.js`의 keydown에서 Ctrl+C를 가로채 `navigator.clipboard.writeText`로 복사하던 분기가 있었는데, ① 운영에서 `TypeError`(동기 throw라 `.catch()`도 못 받음)로 죽고 ② `preventDefault()`가 먼저 실행돼 정상 동작하던 `copy` 핸들러까지 굶겼다 → **삭제**(2026-07-27). **Ctrl+C/Ctrl+V를 keydown에서 가로채지 말 것.**
@@ -93,6 +94,52 @@ npm run build     # dist/ 생성
 **문제 ③: `total`이 외부 삭제 후 드리프트한다** — 다른 클라이언트나 인제션이 행을 지우면, 클라가 로컬로 카운트를 가감하는 순간 **현재 필터에 매칭되던 행이었는지**를 알 수 없어 총계가 틀어진다.
 - **올바른 형태**: 총계를 **로컬에서 계산하지 말고**, 현재 필터를 실어 **서버에 다시 묻는다.** 이 값은 클라가 알 수 있는 종류의 값이 아니다.
 - **현행**: 조회 경로(`api.fetchData`)는 매 요청 **서버가 준 `result.total`을 그대로 쓴다**(:200-209 — 올바른 형태). ⚠️ 반면 WS 삭제 수신부(`websocket.js` :236-240)는 `applyTransaction({remove})`만 하고 **`total` 재조회를 하지 않는 것으로 보인다** — 하단 `Matches: N`이 낡은 채 남는 경로다. **미검증 항목**, 위와 같이 doc-auditor 소관.
+
+---
+
+### 3.2 상호작용 계측기 (`effort_meter.js`) — 핵심가치 #1의 정본 계기
+
+SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수집하는 **유일한 수집기**입니다. 점수는 `키 1 · 마우스 3 · 컨텍스트 상실 이동 5`, 낮을수록 좋습니다.
+
+> ⚠️ **이 파일이 클라이언트 유일의 수집기입니다.** 다른 페이지에 카운터·세션 id 생성기·라우트 표를 **복제하지 마십시오.** (중복 상수 목록은 U6 라운드에서 6건을 삭제한 전력이 있는 반복 함정입니다.) 페이지별 번들은 각자 모듈 인스턴스를 갖되 **`sessionStorage`를 통해 같은 세션을 공유**합니다.
+
+| 항목 | 내용 |
+|---|---|
+| 계약 API | `startSession()` · `countKey(n=1)` · `countMouse(n=1)` · `countNav(from,to)` · `snapshot()` · `commit()` · **`commitIfRecorded(응답본문)`**(2026-07-29 수리 라운드) — **총괄 소유**. 이름·형태 변경 금지 |
+| 계약 API (2026-07-29 승격) | `installGlobalListeners()`(페이지 전역 키/마우스 수집, 멱등) · `installNavLinkCounting(from)`(`<a href>` 위임 카운트) · `routeFromHref()`/`currentRoute()`/`ROUTES`/**`ROUTE_IDS`**(경로↔라우트 매핑과 **라우트 id 어휘**의 단일 표) · `getConfig()`(진단). **부가 export가 아니라 계약입니다** — 이것들이 없으면 페이지마다 리스너와 경로표를 손으로 복제하게 되고, 그게 바로 이 모듈이 막으려는 중복입니다 |
+| 저장 | `sessionStorage['assy.effort']` = `{session_id, key, mouse, nav, nav_preserved}`. **원시 카운트만** 저장하고 배점은 서버가 조회 시점에 적용 — 배점을 바꿔도 과거 데이터가 새 배점으로 재해석됩니다 |
+| 전송 | 기존 `PUT /tables/{t}/data/updates`에 **선택 필드** `effort`로 편승. **별도 텔레메트리 요청 없음.** 미계측(필드 없음)은 정상이며 `0`이 아닙니다 — 그래서 **누적이 하나도 없으면 `snapshot()`이 `undefined`를 반환**해 필드가 본문에서 아예 사라집니다(불변식 5) |
+| 선언 원천 | `GET /api/effort/config` → `{weights, context_preserving_transitions}`. 페인트 규칙이 `binding`을 서버에서 받는 것과 같은 규율 — **서버가 유일 원천**. 단 **라우트 id 어휘는 클라 소유**(`ROUTE_IDS`)이므로, 서빙된 항목이 존재하지 않는 라우트를 지목하면 클라가 거절하고 큰 소리로 보고합니다(불변식 6) |
+
+**깨지기 쉬운 불변식 6가지:**
+
+1. **성공에만, 그리고 서버가 기록했을 때만 리셋.** 저장 실패 시 카운터를 유지해 계속 누적합니다 — 재시도 공수도 사람의 진짜 공수이기 때문입니다. 시도 시점에 리셋하면 **실패하는 저장이 싸 보입니다.** 2026-07-29 수리 라운드에서 게이트가 하나 늘었습니다: **200도 교정의 증거가 아닙니다.** 이미 같은 값이 들어 있는 셀에 같은 값을 다시 쓰면 서버는 `200 {change_count: 0}`을 주고 **공수 행을 쓰지 않습니다**. 거기서 리셋하면 그 시도에 든 공수가 지워지고, 화면이 안 바뀌는 걸 본 작업자가 제대로 다시 하면 **두 번 시도한 교정 — 제품에서 마찰이 가장 큰 사건이자 이 계기의 존재 이유 — 이 데이터셋에서 가장 낮은 점수를 기록합니다.** 그래서 `commitIfRecorded(응답본문)`이 서버의 `effort_recorded`를 보고 판단하고, 필드가 없으면(구 서버) 종전 동작으로 되돌아갑니다 — 영영 리셋하지 않으면 카운터가 무한히 자라는 그 자체가 결함이기 때문입니다.
+2. **같은 탭 새로고침에서 생존.** 교정 도중 새로고침이 사람의 작업을 되돌리지는 않으므로 `sessionStorage`를 씁니다(탭이 닫히면 세션 종료).
+3. **기본은 "상실(계산됨)".** 서빙 설정이 없거나·404거나·파싱 불가면 **모든 전이를 계산**합니다. 절대 "0점"으로 fail-open 하지 않습니다 — 목록에서 빠진 전이는 점수를 나쁘게만 만들지만, 잘못 포함된 전이는 **조용히 점수를 미화**합니다. 같은 이유로 **와일드카드(`*`)는 거부**합니다(무해한 리터럴로 남겨두면 설정 작성자가 적용됐다고 오해합니다).
+3-bis. **분류는 절대 버리지 않는다** (2026-07-29 총괄 계약 보정). 면제된 전이도 `nav_preserved`로 **계속 셉니다** — `nav`(상실, 점수 대상)와 `nav_preserved`(유지, 현재 0점) 둘 다 원시 카운트입니다. 이 계기는 소급 산출이 불가능하므로, 수집 시점에 조용히 버린 전이는 나중에 판단이 바뀌어도 **영영 복구할 수 없습니다.**
+   ⚠️ **여기서 정확히 무엇을 얻는지 (2026-07-29 QA 레인 B 정정 — 종전 서술은 과장이었습니다):** 어느 **버킷**에 들어갈지는 **수집 시점에** 그때의 허용목록으로 확정됩니다. 허용목록을 나중에 바꿔도 **이미 기록된 행은 재분류되지 않습니다.** 조회 시점에 재해석되는 것은 **배점뿐**입니다 — 두 버킷 다 원시 카운트이므로 `weights.nav_preserved`를 올려 과거 데이터를 **재채점**할 수 있습니다. 버리지 않는 것이 지키는 것은 그 재채점 가능성이지, 분류의 되돌림이 아닙니다.
+4. **수집은 사용자에게 보이지 않음.** 새 UI·배지·토스트가 없습니다(집계 결과 한 줄은 어드민 Overview에 있습니다 — §5). 리스너는 전부 `capture` + `passive:true`라 **`preventDefault`를 호출할 수 없고**, `stopPropagation`도 하지 않습니다 — 과거 Ctrl+C keydown 분기가 `copy` 핸들러를 굶겼던 사고(§3 주석)를 구조적으로 차단합니다.
+5. **부재는 0이 아니다 (보내는 쪽에서도).** 누적이 하나도 없으면 `snapshot()`이 **`undefined`**를 반환하고, `effort: snapshot()`은 `JSON.stringify`에서 키째 사라집니다. 서버는 명시적 0을 **측정된 0점 교정**으로 받아들이므로(그건 의도된 동작입니다 — 진짜 무공수 교정은 의미가 있습니다), 상호작용 없이 나간 저장은 **진짜 0점으로 기록되어 기준선을 유령으로 끌어내립니다**(실측: 진짜 교정 1건 37점 + 유령 1건 → `avg_score` 18.5). 가드를 7개 호출 지점이 아니라 **수집기 안**에 둔 이유는 여덟 번째 호출 지점이 잊을 수 없게 하기 위해서입니다. 판정은 **원시 4카운트**로 하며 점수로 하지 않습니다 — `nav_preserved`만 있는 세션은 오늘 0점이지만 실제로 일어난 일이고, 그 원시 카운트가 바로 재채점의 근거이기 때문입니다.
+6. **존재하지 않는 라우트를 지목한 허용목록 항목은 조용히 죽지 않는다.** 서버는 항목의 *형태*만 검증하고 라우트 어휘를 모르므로 오타를 그대로 되돌려줍니다. SSOT가 예시로 든 `{"from":"doe","to":"dt_map"}`은 **아무것도 면제하지 못합니다**(실제 id는 `map_editor`·`map_editor:material`). 문제는 그 효과 — "전부 계속 계산됨" — 가 **정상 동작과 똑같이 보인다**는 점입니다. 그래서 클라가 `ROUTE_IDS`로 대조해 **거절 + `console.error` + `getConfig().rejected_transitions` 노출**을 합니다. 거절된 항목은 계산 쪽에 남으므로 편향은 과대계상(안전) 방향입니다. ⚠️ 새 서브컨텍스트로 `countNav`를 부르면 **같은 변경에서 `ROUTE_IDS`에도 등록**해야 합니다.
+   같은 규율로 **항목 형식은 서버가 받는 것만 받습니다** — `{"from":..., "to":...}` 객체뿐이고, `"from>to"` 문자열 축약은 **거절**합니다. 서버(`resolve_context_preserving_transitions`)가 dict만 받고 나머지를 버리므로, 클라만 관대하면 **작성자가 쓴 항목을 한쪽은 지키고 한쪽은 버리면서 아무도 알려주지 않는** 상태가 됩니다. 생산자보다 관대한 소비자는 관용이 아니라 **선언되지 않은 두 번째 계약**입니다.
+7. **관측 가능성은 소스가 아니라 빌드 산출물에 있어야 한다.** `getConfig()`는 `client2/src` 안에 호출자가 없어 번들러가 **트리셰이킹으로 dist에서 지워 버렸습니다**(실측: dist에서 `loaded:` 0건). 그러면 운영 현장에서 "허용목록이 비었다"와 "설정을 못 받았다"를 구별할 수 없는데, 그 구별이야말로 fail-closed 설계가 기대는 유일한 근거입니다. 이제 `startSession()`이 `window.__assyEffort = { getConfig, snapshot, ROUTE_IDS }`를 게시합니다(실제 참조이므로 셰이킹 불가) + 설정 fetch 실패 시 `console.warn` 1줄. 화면 요소는 여전히 0개입니다.
+
+**계측 지점 — 교정 쓰기 경로 전부**에 `effort` 첨부 + **서버가 기록했을 때만** `commitIfRecorded()`:
+
+| 페이지 | 쓰기 경로 |
+|---|---|
+| 메인 그리드 | `api.js`(단건 편집) · `main.js`(Tx 일괄 적용) · `ui.js`(범위 값 채우기) · `clipboard.js`(붙여넣기, 셀 비우기) — **5경로** |
+| Enrichment 컨베이어 | `enrichment.js` `saveCurrent` — **1경로**(2026-07-29 추가. 결손 보정도 교정 쓰기이므로 범위 안이며, 여기가 제품에서 **가장 공수가 적은 교정 표면**일 가능성이 높은데 미계측이면 그걸 증명할 수단이 없습니다) |
+| 맵 에디터 | `map_editor.js` Push — **1경로**(map-pm 소관) |
+| 읽기 전용 화면 (2026-07-29 추가) | `admin.js` · `graph_viewer.js` · `trace.js` — **교정 쓰기 0경로**이므로 `effort` 페이로드를 싣는 곳이 없습니다. 대신 `startSession`+`installGlobalListeners`+`installNavLinkCounting`만 배선합니다. 이유는 **대칭**입니다: 종전에는 `grid → graph`는 세고 `graph → grid`는 안 세서, 읽기 화면으로 나갔다 돌아오는 왕복이 **실제 비용의 절반만** 기록됐습니다(실측: `/graph.html`에서 🏠 Main 클릭 → 카운터 바이트 단위로 동일). 미화 방향이고, 다시 모을 수 없는 기준선에서 그건 불변식 3이 금지하는 방향입니다 |
+
+**이동 계측:** 그리드 — 내비 앵커 4건(위임) + Enrichment 배지 + 테이블 전환 + 뷰모드 전환 + `navigateToLog` + 추적 새 탭. Enrichment — 「메인으로」 앵커 2건(위임) + 규칙 전환. 어드민·그래프·추적 — 내비 앵커(위임) 전량.
+
+> ⚠️ **테이블/규칙 전환은 `switchTable()`·`selectRule()` 안이 아니라 사용자 핸들러에서 셉니다.** 두 함수는 부팅 자동선택·딥링크·`navigateToLog`에서도 호출되는데 그건 사용자가 이동한 것이 아니라서, 함수 안에서 세면 오계수가 납니다. (새로고침 버튼처럼 같은 대상을 다시 읽는 것도 이동이 아니므로 세지 않습니다.)
+
+> 카운트 규칙(둘 다 **미화되지 않는 방향**으로 선택): 마우스는 `click`이 아니라 **`mousedown`**(범위 드래그는 `click`을 발생시키지 않지만 실제 누름 1회입니다), 키는 **자동 반복 포함 전부**이되 **단독 수식키**(Shift/Ctrl/Alt/Meta)는 제외(코드는 비수식키에서 1회 계산).
+>
+> 검증 하니스: `client2/tests/effort_meter_harness.mjs` (vm 샌드박스, node_modules 불필요, **131 단언**). **변이 검사 8종 포함** — ① `snapshot()`이 리셋하도록 ② 설정 실패 시 fail-open 하도록 ③ 면제 전이를 버리도록 ④ 빈 스냅샷을 0으로 실어 보내도록 ⑤ `effort_recorded`를 무시하고 항상 리셋하도록 ⑥ 미지의 라우트 id를 조용히 받아들이도록 ⑦ 문자열 축약을 다시 받아들이도록 ⑧ 진단을 `window`에 게시하지 않도록 일부러 고장 낸 버전을 넣어, 하니스가 **실제로 잡아내는지** 확인합니다. 별도로 **§8b 배선 감사**가 소스 레벨에서 전 페이지를 훑습니다 — 교정 경로가 bare `commit`을 다시 import 하는가, 어떤 페이지가 수집기를 아예 import 하지 않는가(B-F1 재발), 읽기 화면이 자기 라우트가 아닌 id로 세는가. 이 감사도 세 가지 역주입으로 자기 점검합니다. 변이가 소스 드리프트로 적용되지 않으면 **에러를 던집니다** — 조용한 no-op이 되면 "고장 난 버전이 통과"해 검사가 무의미해지기 때문입니다(실제로 한 번 발생해 이 가드를 넣었습니다). 맵 에디터 배선은 `client2/tests/effort_instrument_harness.mjs`(28 검사, 변이 9종 — 실제 `pushMapData` 본문을 소스에서 들어올려 실행).
 
 ---
 
@@ -137,15 +184,18 @@ npm run build     # dist/ 생성
 
 | 탭 | 내용 |
 |---|---|
-| **Overview** (첫 화면) | **재교정률 한 줄** + 헬스 4카드(File/Chain/AutoUpdate/Enrichment — 상세 수치+최근 이벤트+탭 딥링크), 전폭 레이아웃 |
+| **Overview** (첫 화면) | **재교정률 한 줄 + 교정 공수 한 줄** + 헬스 4카드(File/Chain/AutoUpdate/Enrichment — 상세 수치+최근 이벤트+탭 딥링크), 전폭 레이아웃 |
 | **File Ingestion** | 인제션 로그(필터/정렬/페이지) + Workspaces(기본 접힘·요약) + 실패 진단→커스텀 파서 편집 딥링크 |
 | **Chain** | Rules 현황 + **Chain 실패(Outbox Transactions)** 재시도 + Mappers(행별 🛠️ Edit) + 실패 진단→맵퍼 편집 딥링크 |
 | **Auto Update** | 상태/Run Now + **산출물 인제션 실패 연계**(auto-update 대상 ∩ 파일 실패 교집합) |
 | **Enrichment** | 규칙 표 + 결손 카운트 배지 + Queue 딥링크(`enrichment.html?rule=`) — 규칙 편집은 read-only 안내(CRUD API는 백로그) |
 
-- **재교정률 한 줄 (Overview 상단, `renderRecorrection`/`refreshRecorrection`)**: 사람이 같은 셀을 두 번 이상 고친 비율 — 핵심가치 #1의 계기([backend](./backend.md#재교정률-dashboardsummary--recorrection)). **카드도 패널도 모달도 아닌 한 줄**이고, 값 옆에 **분모를 항상 같이 적는다**(표본 100 미만이면 "추세로 읽지 말 것" 문구 + muted 톤). 지켜야 할 두 가지:
-  1. **자동 갱신 루프(`fetchOverview`)에 태우지 않는다.** 출처 `/dashboard/summary`는 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(실측 ~1.5s). `await` 없이 던지고 **5분(`RECORRECTION_MIN_INTERVAL_MS`) 간격**으로만 갱신한다 — 본문 카드 렌더가 이 요청을 기다리지 않는다.
-  2. **`rate_pct=null`은 "0%"가 아니라 "—"로 렌더한다.** 표본 없음과 조회 실패를 정상 0%로 위장하면 지표가 거짓말을 한다.
+- **핵심가치 #1 계기 두 줄 (Overview 상단, `renderRecorrection` + `renderEffort`, 갱신은 `refreshCoreValueLines` 하나)**: 두 줄은 **같은 `/dashboard/summary` 응답 한 번**에서 나온다.
+  - **재교정률**: 사람이 같은 셀을 두 번 이상 고친 비율 — **보조 계기**([backend](./backend.md#재교정률-dashboardsummary--recorrection) · 2026-07-29 강등).
+  - **교정 공수** (2026-07-29 수리 라운드 신설): 한 교정을 끝내기까지의 상호작용 점수 = SSOT §1의 **정본 계기**. `avg_score`와 함께 **커버리지(`measured_ratio`)를 같은 줄에** 적는다 — 이 계기는 클라가 보내 줄 때만 쌓이고 서버는 기록 예외를 삼키므로, **커버리지가 화면에 없으면 수집이 통째로 끊겨도 아무 신호가 없다.** 기준선을 잴 창이 한 번뿐이라 그 신호가 전부다. 상태별 문구가 서로 다른 것이 요점이다: `unavailable_reason`이 오면 **그 사유를 그대로**, `measured_ratio === 0`(사람 교정은 있는데 계측 0건)이면 **수집 중단 경고**(danger — 이 줄에 한해 사유 문장까지 붉게), 응답에 `effort` 필드 자체가 없으면 "**서버가 보고하지 않음**"(구 서버 — "교정이 없었다"고 지어내지 않는다), 표본이 정말 없으면 "교정 없음". 커버리지 50% 미만 또는 미상이면 "대표값으로 읽지 말 것" + warn 톤.
+  - 둘 다 **카드도 패널도 모달도 아닌 한 줄**이고, 값 옆에 **분모를 항상 같이 적는다**(재교정률은 표본 100 미만이면 "추세로 읽지 말 것" + muted 톤). 지켜야 할 두 가지:
+  1. **자동 갱신 루프(`fetchOverview`)에 태우지 않는다.** 출처 `/dashboard/summary`는 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(실측 ~1.5s). `await` 없이 던지고 **5분(`RECORRECTION_MIN_INTERVAL_MS`) 간격**으로만 갱신한다 — 본문 카드 렌더가 이 요청을 기다리지 않는다. 두 줄이 한 요청을 공유하므로 스로틀도 하나다.
+  2. **`rate_pct=null`·`avg_score=null`은 "0"이 아니라 "—"로 렌더한다.** 표본 없음과 조회 실패를 정상 0으로 위장하면 지표가 거짓말을 한다. 그리고 **"—"에는 반드시 사유가 붙는다** — 사유 없는 대시는 정상(표본 없음)과 장애(수집 중단)를 구별하지 못하는데, 이 둘은 정반대 대응을 요구한다.
 - **Code Editor는 독립 탭 폐지** → 편집 딥링크 공용 뷰(Monaco cdnjs, 파일 피커, dirty 가드). `#editor=<encoded path>`로 직접 오픈 가능.
 - **해시 라우터**: `#overview/#file/#chain/#autoupdate/#enrichment` + 구 탭 별칭 호환(`#outbox→Chain`, `#workspace→File`, `#mapper→Chain`).
 - 신규 서버 API 0건 — 기존 `/admin/*`·`/enrichment/rules`만 소비. 함수 목록: [CODE_MAP §7](./CODE_MAP.md#7-client2src--웹-클라이언트).

@@ -440,6 +440,133 @@ def get_recorrection_stats(db: Session, window_days: int = RECORRECTION_WINDOW_D
     }
 
 
+# ── 완료까지의 상호작용 점수 (interaction score to completion) ────────────────
+#
+# SYSTEM_OVERVIEW §1 핵심가치 #1 "최소 공수 교정"의 **정본 계기**(사용자 2026-07-29).
+# 한 교정 tx를 완료하는 데 사람이 쓴 손의 양. 낮을수록 좋다.
+#
+#     점수(tx) = key×w_key + mouse×w_mouse + nav×w_nav
+#
+# 재교정률(위 get_recorrection_stats)은 보조 계기로 강등됐다 — 같은 셀을 두 번 고쳤다는
+# 사실만으로는 UI 공수 탓인지 데이터 품질 탓인지 갈라지지 않기 때문이다. 이 계기는 그
+# 중간 추론을 건너뛰고 공수 자체를 잰다.
+#
+# 이 값은 **소급 산출이 불가능**하다(과거 세션에 클릭 로그가 없다). 계측이 붙은 시점부터의
+# 데이터만 존재하므로, 교정 표면을 고치기 전에 확보한 기준선이 유일한 "before"다.
+
+EFFORT_WINDOW_DAYS = 7
+# 재교정률과 같은 창을 쓴다. 이유도 같다 — 지표가 **현재 마찰**에 반응해야 하고, 전 기간
+# 누적은 어떤 회귀에도 움직이지 않는다. 두 계기가 같은 창을 보면 나란히 읽을 수도 있다.
+
+
+def record_interaction_effort(db: Session, transaction_id: str, session_id: str,
+                              key: int, mouse: int, nav: int,
+                              nav_preserved: int = 0) -> bool:
+    """한 tx의 원시 상호작용 카운트를 기록한다. 기록됐으면 True.
+
+    **계측은 계측 대상을 절대 깨뜨리지 않는다.** 이 함수는 교정이 이미 커밋된 뒤에
+    별도 트랜잭션으로 호출되며, 실패하면 로그만 남기고 False를 돌려준다. 공수 한 건을
+    놓치는 것이 사용자의 교정을 잃는 것보다 언제나 낫다.
+
+    같은 tx가 재도달하면(클라 재시도) **첫 기록이 이긴다** — UNIQUE 제약 위반을 잡아
+    조용히 통과시킨다. 재전송은 사람이 새로 쓴 공수가 아니다.
+    """
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.add(models.InteractionEffortLog(
+            transaction_id=transaction_id,
+            session_id=session_id,
+            key_count=key, mouse_count=mouse, nav_count=nav,
+            nav_preserved_count=nav_preserved,
+        ))
+        db.commit()
+        return True
+    except IntegrityError:
+        # 같은 transaction_id가 이미 있다 = 재시도. 첫 기록 보존.
+        db.rollback()
+        return False
+    except Exception as e:
+        db.rollback()
+        print(f"[EffortMetric] failed to record effort for tx {transaction_id}: {e}")
+        return False
+
+
+def get_effort_stats(db: Session, weights: dict,
+                     window_days: int = EFFORT_WINDOW_DAYS) -> dict:
+    """창 안의 상호작용 점수를 **세션별 평균 → 세션 간 평균**으로 반환한다.
+
+    반환: {window_days, avg_score, tx_count, session_count, weights, measured_ratio}
+
+    집계 단위가 왜 두 단계인가(사용자 지정 "세션별 평균"): tx를 통째로 평균하면 한 세션이
+    500건을 처리한 날 그 세션이 전체 평균을 지배한다. 세션을 먼저 접으면 각 작업 세션이
+    같은 무게를 갖는다 — 재교정률이 transaction_id로 사람 행위를 접는 것과 같은 이유다.
+
+    `measured_ratio`(계측 tx / 전체 사람 tx)는 **필수 동반 값**이다. 계측은 클라이언트가
+    보내 줄 때만 이뤄지므로 커버리지가 절대 1.0이라고 가정할 수 없고, 비율 없이 내보낸
+    평균은 측정되지 않은 범위까지 대표하는 것처럼 읽힌다(재교정률의 분모와 같은 규율).
+    """
+    import sqlalchemy as sa
+    from datetime import timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    EL = models.InteractionEffortLog
+
+    w_key = float(weights.get("key", 1))
+    w_mouse = float(weights.get("mouse", 3))
+    w_nav = float(weights.get("nav", 5))
+    # 컨텍스트 유지 전이의 배점. 기본 0 = 오늘의 점수는 이 항이 없던 때와 **완전히 동일**하다.
+    # 그런데도 카운트를 보관하는 이유: 면제 판단이 틀린 것으로 밝혀졌을 때 이 숫자 하나만
+    # 바꿔 과거 데이터를 재채점할 수 있게 하기 위해서다(수집 시점에 버리면 되돌릴 길이 없다).
+    w_nav_preserved = float(weights.get("nav_preserved", 0))
+
+    # 1단계: tx당 점수 → 세션별 평균.
+    per_session = (
+        db.query(
+            EL.session_id.label("s"),
+            sa.func.avg(
+                EL.key_count * w_key + EL.mouse_count * w_mouse + EL.nav_count * w_nav
+                + EL.nav_preserved_count * w_nav_preserved
+            ).label("avg_score"),
+            sa.func.count().label("txs"),
+        )
+        .filter(EL.timestamp >= cutoff)
+        .group_by(EL.session_id)
+        .subquery()
+    )
+
+    # 2단계: 세션 간 평균. 세션 수·계측 tx 총수를 같은 스캔에서 얻는다.
+    avg_of_avgs, session_count, tx_count = db.query(
+        sa.func.avg(per_session.c.avg_score),
+        sa.func.count(),
+        sa.func.coalesce(sa.func.sum(per_session.c.txs), 0),
+    ).select_from(per_session).one()
+
+    tx_count = int(tx_count or 0)
+    session_count = int(session_count or 0)
+
+    # 분모: 같은 창에서 **사람이 만든 전체 tx** 수. audit_logs의 부분 커버링 인덱스
+    # (idx_audit_user_recorrection: timestamp + INCLUDE transaction_id WHERE source_name='user')가
+    # 그대로 이 쿼리도 커버한다 — 새 인덱스가 필요 없다.
+    AL = models.AuditLog
+    total_user_tx = (
+        db.query(sa.func.count(sa.distinct(AL.transaction_id)))
+        .filter(AL.source_name == USER_SOURCE, AL.timestamp >= cutoff)
+        .scalar()
+    ) or 0
+    total_user_tx = int(total_user_tx)
+
+    return {
+        "window_days": window_days,
+        "avg_score": round(float(avg_of_avgs), 2) if avg_of_avgs is not None else None,
+        "tx_count": tx_count,
+        "session_count": session_count,
+        "weights": {"key": w_key, "mouse": w_mouse, "nav": w_nav,
+                    "nav_preserved": w_nav_preserved},
+        # 표본이 없으면 비율도 없다 — 0.0은 "전부 미계측"과 "측정할 것이 없었다"를 섞어버린다.
+        "measured_ratio": round(tx_count / total_user_tx, 4) if total_user_tx else None,
+    }
+
+
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict]):
     if not mappings:
         return

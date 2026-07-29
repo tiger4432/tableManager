@@ -130,10 +130,65 @@ def setup_performance():
         except Exception as e:
             print(f"   Failed to create {idx_name}: {e}")
 
+        # 3.7 [V1 계기 — 완료까지의 상호작용 점수] interaction_effort_logs 집계/멱등성 인덱스.
+        #   models.py InteractionEffortLog.__table_args__ 와 동일 정의 — **두 곳을 함께 고칠 것**.
+        #   신규 설치에서는 create_all 이 테이블과 함께 만들지만, 테이블이 이미 존재하는 DB에는
+        #   create_all 이 인덱스를 추가하지 않으므로 이 경로가 유일한 반영 수단이다
+        #   (idx_audit_user_recorrection 이 정확히 그 이유로 여기 있다).
+        #
+        #   - uq_effort_transaction : tx당 1행 불변식. 없으면 클라 재시도가 같은 공수를 두 번
+        #     세어 세션 평균이 왜곡된다.
+        #   - idx_effort_window     : 창 집계(timestamp 범위 + session_id GROUP BY)의 커버링
+        #     인덱스. 없으면 대시보드 집계가 Seq Scan 으로 떨어진다.
+        print("\nStep 3.7: Creating interaction_effort_logs indices (V1 effort metric)...")
+        effort_table_exists = conn.execute(text(
+            "SELECT to_regclass('public.interaction_effort_logs')"
+        )).scalar()
+        if not effort_table_exists:
+            # 테이블이 없으면 create_all 이 인덱스까지 함께 만든다 — 여기서 할 일이 없다.
+            print(" - Table not present yet; create_all will build it with its indices. Skipping.")
+        else:
+            # [총괄 addendum 2026-07-29] nav_preserved_count 보정. create_all 은 기존 테이블에
+            #   컬럼을 추가하지 않으므로, 이 컬럼이 생기기 전에 테이블이 만들어진 DB에는
+            #   이 경로로만 반영된다(database_outbox.broadcast_at 과 같은 패턴).
+            #   NOT NULL DEFAULT 0 이므로 기존 행은 0 으로 채워진다 — 그 시점엔 면제 전이를
+            #   세지 않았으니 0 이 정직한 값이다(추정으로 메우지 않는다).
+            col_exists = conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'interaction_effort_logs' "
+                "AND column_name = 'nav_preserved_count'"
+            )).first()
+            if not col_exists:
+                print(" - Adding missing column nav_preserved_count...")
+                conn.execute(text(
+                    "ALTER TABLE interaction_effort_logs "
+                    "ADD COLUMN nav_preserved_count INTEGER NOT NULL DEFAULT 0"))
+                print("   Done.")
+
+            effort_indices = [
+                ("uq_effort_transaction", "interaction_effort_logs", "UNIQUE", "(transaction_id)"),
+                ("idx_effort_window", "interaction_effort_logs", "",
+                 "(timestamp) INCLUDE (session_id, key_count, mouse_count, nav_count, "
+                 "nav_preserved_count)"),
+            ]
+            for idx_name, table, uniq, definition in effort_indices:
+                print(f" - Creating {idx_name} on {table}...")
+                t0 = time.time()
+                try:
+                    conn.execute(text(
+                        f"CREATE {uniq} INDEX CONCURRENTLY IF NOT EXISTS "
+                        f"{idx_name} ON {table} {definition}"))
+                    print(f"   Success ({time.time() - t0:.2f}s)")
+                except Exception as e:
+                    # UNIQUE 생성 실패는 중복 tx 행이 이미 있다는 뜻일 수 있다 — 조용히 넘기지 않는다.
+                    print(f"   Failed to create {idx_name}: {e}")
+
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
         conn.execute(text("ANALYZE audit_logs"))
+        if effort_table_exists:
+            conn.execute(text("ANALYZE interaction_effort_logs"))
         print("Done.")
 
     print("\n✅ All performance optimizations have been applied successfully!")

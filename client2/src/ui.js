@@ -4,6 +4,7 @@ import { elements } from './dom.js';
 import { getLocalTimeString } from './utils.js';
 import { updateGridSortState } from './grid.js';
 import { ensureCellObject } from './grid.js';
+import { snapshot, commitIfRecorded } from './effort_meter.js';
 
 export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
@@ -213,13 +214,18 @@ export async function applyValueToSelectedRange(newValue) {
       },
       body: JSON.stringify({
         updates: updatesArray,
-        silent: false
+        silent: false,
+        // V1 instrument: optional field. Raw counts only — the server weights at query time.
+        effort: snapshot()
       })
     });
 
     if (res.ok) {
       state.pageCache.clear();
       const result = await res.json();
+      // V1 instrument: reset ONLY when the server confirms it recorded the effort — a no-op
+      // save returns 200 and records nothing, so committing there erases real effort.
+      commitIfRecorded(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
       elements.performanceLog.textContent = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
 

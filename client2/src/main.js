@@ -54,6 +54,15 @@ import {
   updatePageCacheOnDelete
 } from './ui.js';
 import { initTraceEntry } from './trace_launch.js';
+import {
+  startSession,
+  installGlobalListeners,
+  installNavLinkCounting,
+  countNav,
+  snapshot,
+  commitIfRecorded,
+  ROUTES
+} from './effort_meter.js';
 
 // Register AG-Grid Community Modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -88,6 +97,11 @@ async function init() {
   }
 
   initTheme();
+  // V1 instrument: start counting human effort before any listener can fire.
+  // Invisible by design — no UI, no badge. See effort_meter.js.
+  startSession();
+  installGlobalListeners();
+  installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
   setupEventListeners();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
@@ -225,6 +239,12 @@ function setupEventListeners() {
   if (elements.enrichmentBadge) {
     elements.enrichmentBadge.addEventListener('click', () => {
       const ruleName = elements.enrichmentBadge.dataset.rule;
+      // V1 instrument: count before navigating — the "from" context is gone afterwards.
+      // Two destinations on purpose (Lead PM 2026-07-29): with a rule the badge lands the
+      // user exactly on the thing they clicked (targeted continuation, exempt); without
+      // one it drops them on the generic queue, which is a real context-losing move.
+      // A single id would force us to be wrong in one direction or the other.
+      countNav(ROUTES.GRID, ruleName ? `${ROUTES.ENRICHMENT}:rule` : ROUTES.ENRICHMENT);
       window.location.href = ruleName
         ? `/enrichment.html?rule=${encodeURIComponent(ruleName)}`
         : '/enrichment.html';
@@ -234,6 +254,9 @@ function setupEventListeners() {
   elements.tableSelect.addEventListener('change', async (e) => {
     const table = e.target.value;
     if (table) {
+      // V1 instrument: counted here, not inside switchTable(), because switchTable is
+      // also called on boot auto-select and by navigateToLog — neither is a user move.
+      countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
     }
   });
@@ -669,6 +692,8 @@ function setupEventListeners() {
   // View Mode Change Handler
   if (elements.viewModeSelect) {
     elements.viewModeSelect.addEventListener('change', (e) => {
+      // V1 instrument: the working surface is rebuilt from skip 0 under a new paging model.
+      countNav(ROUTES.GRID, 'grid:viewmode');
       state.viewMode = e.target.value;
       state.allDataLoaded = false;
       state.hasMoreData = true;
@@ -1706,7 +1731,9 @@ async function applyPendingTxEdits() {
 
   const payload = {
     updates: updates,
-    silent: false
+    silent: false,
+    // V1 instrument: optional field. Raw counts only — the server weights at query time.
+    effort: snapshot()
   };
 
   try {
@@ -1737,6 +1764,11 @@ async function applyPendingTxEdits() {
       });
 
       state.pendingTxEdits = {};
+      // V1 instrument: reset ONLY when the server confirms it recorded the effort. Two
+      // gates, not one: a failed save keeps accumulating because retry effort is real human
+      // effort, and a 200 that changed nothing (every staged edit already matched storage)
+      // records no effort row — resetting there would delete the effort it cost.
+      commitIfRecorded(result);
       state.txModeActive = elements.txModeToggle.checked;
       updateTxModeUI();
       updateGridSortState();

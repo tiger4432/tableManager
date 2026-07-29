@@ -10,6 +10,7 @@ import { API_BASE } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { showToast } from './utils.js';
+import { countNav, ROUTES } from './effort_meter.js';
 import { ensureCellObject } from './grid.js';
 import { composeIdentity, capSeeds, SEED_CAP } from './trace_core.js';
 
@@ -89,6 +90,9 @@ export function openTraceForSelection() {
     showToast(`식별자 결손으로 ${skipped}개 행이 제외되었습니다`, 'info');
   }
 
+  // V1 instrument: new tab, so the destination starts its own session (sessionStorage is
+  // per-tab). The move away from the grid is still counted here, on the origin side.
+  countNav(ROUTES.GRID, ROUTES.TRACE);
   window.open(`trace.html?seeds=${encodeURIComponent(JSON.stringify(seeds))}`, '_blank');
 }
 

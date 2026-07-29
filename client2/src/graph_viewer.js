@@ -17,6 +17,12 @@ import './tokens.css';
 import { API_BASE } from './config.js';
 import { showToast } from './utils.js';
 import { initTheme } from './theme.js';
+// [V1 effort instrument] The ONE collector (effort_meter.js). This page writes no
+// corrections, so nothing carries an `effort` payload here — but LEAVING it must be
+// counted. grid -> graph was already counted while graph -> grid was not, so every round
+// trip out to this read surface recorded half its true cost. Asymmetry flatters, and this
+// baseline cannot be recollected.
+import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } from './effort_meter.js';
 
 const NEIGHBOR_LIMIT = 200;   // 서버 하드캡과 동일 (무제한 로드 금지)
 const SEARCH_LIMIT = 20;
@@ -1196,6 +1202,10 @@ function initSearchBar() {
 // ============================================================
 function init() {
   initTheme();
+  // [V1 effort instrument] Before any listener can fire. Invisible — no UI, no badge.
+  startSession();
+  installGlobalListeners();
+  installNavLinkCounting(ROUTES.GRAPH);
   rebuildThemeColorCache();
   // 테마 전환: 색 캐시 재빌드 + 캔버스 1회 재렌더 (DOM 오버레이는 CSS var라 자동 추종)
   document.addEventListener('themechange', () => {

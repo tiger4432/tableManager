@@ -9,6 +9,7 @@ import { getLocalTimeString } from './utils.js';
 // one. A second clipboard implementation is how this project got a Ctrl+C that did nothing
 // on the intranet, and it cost a day to find.
 import { parseTsv, serializeTsv } from './tsv.js';
+import { snapshot, commitIfRecorded } from './effort_meter.js';
 
 export function isCellInRange(rowIndex, colId) {
   const key = `${rowIndex}_${colId}`;
@@ -517,12 +518,16 @@ export function setupClipboardHandlers() {
         const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates: batchUpdates })
+          // V1 instrument: `effort` is an optional field. Raw counts only.
+          body: JSON.stringify({ updates: batchUpdates, effort: snapshot() })
         });
 
         if (res.ok) {
           state.pageCache.clear();
           const result = await res.json();
+          // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
+          // paste whose values already match storage returns 200 and records nothing.
+          commitIfRecorded(result);
           elements.performanceLog.textContent = `Pasted successfully: ${batchUpdates.length} rows updated`;
 
           // Fast-apply local data values by updating latest node data in-place
@@ -756,13 +761,18 @@ export async function clearSelectedCells() {
       },
       body: JSON.stringify({
         updates: updatesArray,
-        silent: false
+        silent: false,
+        // V1 instrument: optional field. Raw counts only — the server weights at query time.
+        effort: snapshot()
       })
     });
 
     if (res.ok) {
       state.pageCache.clear();
       const result = await res.json();
+      // V1 instrument: reset ONLY when the server confirms it recorded the effort — clearing
+      // cells that are already empty returns 200 and records nothing.
+      commitIfRecorded(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
       elements.performanceLog.textContent = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
 

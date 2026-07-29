@@ -8,6 +8,15 @@ import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCou
 // storage layer normalizes with it, so the material COUNT on screen and the denominator of
 // `ceil(total / n)` in the save can never be two different numbers.
 import { parseMaterialList, bandsToZones } from './doe_bands.js';
+// [V1 effort instrument] The ONE collector (client2/src/effort_meter.js, owned by Lead PM).
+// This file counts NOTHING on its own: no local counters, no second session id, no copy of
+// the 1/3/5 weights (those live server-side and are applied at query time). Keystrokes and
+// mouse presses come from the module's own page-wide listeners; this file only declares the
+// screen transitions it is the only one that can see, and hands the raw counts to the save.
+import {
+  ROUTES, startSession, installGlobalListeners, installNavLinkCounting, countNav,
+  snapshot as effortSnapshot, commitIfRecorded as effortCommitIfRecorded
+} from './effort_meter.js';
 
 let tables = [];
 let selectedTable = '';
@@ -642,6 +651,19 @@ function debounce(func, wait = 200) {
 // Initialize DOM elements when loaded
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
+  // [V1 effort instrument] First, so no press or keystroke on this page is missed. The
+  // module's listeners are capture-phase and passive - they never preventDefault, never
+  // stopPropagation, and therefore cannot reorder or short-circuit anything below.
+  // Counting is page-wide by design: a click that MISSES a tiny control is real wasted
+  // effort and must score, which is precisely the waste the queued DOE round will remove.
+  startSession();
+  installGlobalListeners();
+  // Leaving this page for another screen (「← Back to Grid」) is a full page load - nothing
+  // survives it. The shared helper owns the href -> route-id mapping and skips downloads
+  // and external links, so this file keeps no link table of its own. `from` is the static
+  // page route: leaving the editor is context-losing at any frame depth, so the depth
+  // qualifier would change the analysis label but never the score.
+  installNavLinkCounting(ROUTE_MAIN);
   initDOMElements();
   initMouseDragEvents();
   // [재설계 v2] Legend & DOE 패널 — 컨트롤러 주입 (함수 선언은 호이스팅됨).
@@ -767,7 +789,14 @@ function initDOMElements() {
   updateSideIndicator();
 
   // Bind Events
-  el.tableSelect.addEventListener('change', (e) => switchTable(e.target.value));
+  el.tableSelect.addEventListener('change', (e) => {
+    // [V1 effort instrument] Counted on the USER's handler, not inside switchTable():
+    // the boot paths (loadTablesList's initial pick, restoreLastOpenMap) call that
+    // function directly and must not score - the session has not moved anywhere yet.
+    // switchTable assigns selectedTable before its try block, so the move always happens.
+    countNav(effortRoute(), effortRoute());
+    switchTable(e.target.value);
+  });
 
   if (el.btnSelectMenu && el.selectMenuDropdown) {
     el.btnSelectMenu.addEventListener('click', (e) => {
@@ -838,7 +867,16 @@ function initDOMElements() {
   });
 
   // 메인 Load는 언제나 교체 로드다 (오버레이 분기 없음 — 겹치기는 전용 블록이 담당)
-  el.btnLoadMap.addEventListener('click', () => loadExistingMap());
+  el.btnLoadMap.addEventListener('click', async () => {
+    // [V1 effort instrument] Same reason as the table dropdown: instrument the user's
+    // handler, never loadExistingMap() itself - restoreLastOpenMap (boot) and
+    // openMapFrame (which counts its own frame push) both call it and must not
+    // double-count. Scored AFTER the result because a load the user cancelled or one
+    // that failed moved no screen; the press itself is already counted as a mouse event.
+    const from = effortRoute();
+    const r = await loadExistingMap();
+    if (r && !r.cancelled && !r.error) countNav(from, effortRoute());
+  });
   if (el.btnAddOverlay) el.btnAddOverlay.addEventListener('click', handleAddOverlayClick);
   if (el.overlaySrcKey) el.overlaySrcKey.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); handleAddOverlayClick(); }
@@ -2928,6 +2966,9 @@ async function saveLegendToServer(mapKeyOverride) {
   const sentValues = new Set(updates.map(u => String(u.updates.value)));
   const sent = legend.filter(item => sentValues.has(String(item.value)));
   try {
+    // [V1 effort instrument] No `effort` field: this registry write is the second half of
+    // ONE human action whose counts already rode with the cell push in pushMapData.
+    // Reporting here too would double-bill it. See that call site for the single point.
     const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -4303,6 +4344,9 @@ async function pushMapData() {
         updated_by: CURRENT_USER
       }]
     };
+    // [V1 effort instrument] No `effort` field here on purpose. This is the same batch
+    // endpoint, so adding one would be accepted and would bill the user's clicks a second
+    // time under a different table. The cell push (2/2) is the single reporting point.
     console.log('📤 [API Request 1/2] Header Metadata:', `${API_BASE}/tables/wafer_map_metadata/data/updates`, metaPayload);
     const metaRes = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
       method: 'PUT',
@@ -4322,7 +4366,13 @@ async function pushMapData() {
   const payload = {
     updates: updates,
     silent: false,
-    replace_map: true
+    replace_map: true,
+    // [V1 effort instrument] Raw interaction counts for this correction unit ride the
+    // EXISTING batch update - no extra request, no new endpoint. This is the one place
+    // the map editor reports effort: the wafer_map_metadata PUT above and the split
+    // registry PUT in saveLegendToServer deliberately carry none, or one human action
+    // would be counted three times. snapshot() does not reset; only commit() does.
+    effort: effortSnapshot()
   };
 
   try {
@@ -4339,6 +4389,18 @@ async function pushMapData() {
       const result = await res.json();
       console.log('📥 [API Response 2/2] Success Result:', result);
       console.groupEnd();
+
+      // [V1 effort instrument] The counts above rode WITH this request - reset here and
+      // nowhere else, and ONLY if the server says it actually recorded them. `res.ok` is
+      // not proof: a re-push of an unchanged map returns 200 with change_count 0 and
+      // writes no effort row, so committing on ok alone would delete the effort that push
+      // cost. Every failure path (non-ok status, network throw, and every gate that
+      // returned before the request) likewise leaves the counters untouched, because retry
+      // effort is real human effort and must land on the push that finally succeeds. Also
+      // deliberately BEFORE the legend/registry write below: that write is a separate
+      // request that cannot un-commit these cells, and leaving the counters alive for it
+      // would bill the same clicks to the next push as well.
+      effortCommitIfRecorded(result);
 
       // 새로 만든 맵도 이 시점부터 정체성이 확정된다 → 이후 Push는 가드 아래 놓인다
       // (setLoadedIdentity가 framePushed를 초기화하므로 반드시 먼저 호출한다)
@@ -4764,6 +4826,26 @@ async function copyGridToExcel() {
 //       스크롤은 스냅샷에 아예 없었다 — 두 누락 모두 여기서 해소한다.)
 // ====================================================
 let editorFrames = [];       // 편집 프레임 스택 (깊이 N)
+
+// [V1 effort instrument] Route ids for countNav(). Deliberately TABLE-AGNOSTIC: the served
+// allowlist declares the plan -> material-map detour ONCE instead of once per stage table,
+// and a new stage table needs no config edit to be classified correctly.
+//   `map_editor`           - the main (depth 0) editing surface
+//   `map_editor:material`  - a material-map frame stacked on top of it (depth >= 1)
+// Transitions this file emits, and why each is a screen move at all:
+//   map_editor > map_editor            table switch / map load: grid wiped, DOE reseeded,
+//                                      overlays cleared, identity pin voided
+//   map_editor > map_editor:material   frame push (the user's "DOE -> dt map routing")
+//   map_editor:material > map_editor   frame pop - state restored VERBATIM by
+//                                      snapshotEditorState/restoreEditorState
+//   map_editor > grid                  full page load; nothing survives
+// Classification is NOT decided here. Every one of these defaults to COUNTED; only the
+// served config can declare a transition context-preserving.
+const ROUTE_MAIN = ROUTES.MAP_EDITOR;
+const ROUTE_MATERIAL = `${ROUTES.MAP_EDITOR}:material`;
+function effortRoute() {
+  return editorFrames.length > 0 ? ROUTE_MATERIAL : ROUTE_MAIN;
+}
 let loadedIdentity = null;   // { table, mapKey } — 로드 순간 고정되는 정체성 핀
 let framePushed = false;     // 현재 프레임에서 Push 했는가 (뒤로가기 경고용)
 // [fix E] Edited since this frame's map was opened (grid-cell write or legend commit).
@@ -5071,6 +5153,8 @@ async function switchTableQuiet(tableName) {
 async function openMapFrame(spec) {
   if (!spec || !spec.table) return { ok: false, error: '대상 테이블이 없습니다.' };
   if (editorFrames.length >= 4) return { ok: false, error: '편집 스택이 너무 깊습니다 (최대 4단).' };
+  // [V1 effort instrument] Captured BEFORE the push - effortRoute() reads editorFrames.length.
+  const navFrom = effortRoute();
   const frame = snapshotEditorState();
 
   try {
@@ -5121,6 +5205,11 @@ async function openMapFrame(spec) {
       renderGridCanvas();
       showToast(`${spec.table} · ${key || ''} — 맵이 아직 없습니다. 빈 격자로 열었습니다.`, 'info');
     }
+    // [V1 effort instrument] Only here: both success shapes (map loaded / opened empty)
+    // reach this line, while the cancel branch above and the catch below rolled the frame
+    // back and returned already - a frame that never opened is not a screen move. The
+    // nested loadExistingMap deliberately does NOT count; this ONE call is the transition.
+    countNav(navFrom, ROUTE_MATERIAL);
     renderBreadcrumb();
     notifyMapContext();
     return { ok: true };
@@ -5147,6 +5236,10 @@ function popMapFrame() {
   const from = { table: selectedTable, mapKey: loadedIdentity ? loadedIdentity.mapKey : (getCurrentMapKey() || ''), pushed: framePushed };
   const frame = editorFrames.pop();
   restoreEditorState(frame);
+  // [V1 effort instrument] After the pop, so effortRoute() reports the depth we landed on
+  // (depth 0 -> `map_editor`, a nested frame -> `map_editor:material`). Not reached when
+  // the unsaved-edit confirm above was declined - the user stayed put.
+  countNav(ROUTE_MATERIAL, effortRoute());
   renderBreadcrumb();
   notifyMapContext({ returnedFrom: from });
   return true;

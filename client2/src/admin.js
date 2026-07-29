@@ -7,6 +7,12 @@ import { initTheme, getTheme } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast } from './utils.js';
+// [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
+// surface, not a correction surface, so nothing here carries an `effort` payload. What it
+// must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
+// so every trip through here recorded half its true cost. Under-counting the return leg
+// flatters the score, on a baseline that cannot be collected twice.
+import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } from './effort_meter.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -285,6 +291,10 @@ const splitResizerEl = byId('split-resizer');
 // ── Initialize ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
+  // [V1 effort instrument] Before any listener can fire. Invisible — no UI, no badge.
+  startSession();
+  installGlobalListeners();
+  installNavLinkCounting(ROUTES.ADMIN);
   setupEventListeners();
   initMonacoEditor();
 
@@ -1461,7 +1471,59 @@ function renderRecorrection(stat) {
   line.dataset.tone = cells < 100 ? 'muted' : (rate >= 10 ? 'danger' : (rate >= 5 ? 'warn' : ''));
 }
 
-async function refreshRecorrection(force = false) {
+// ── 교정 공수 한 줄 (재교정률 바로 아래) ────────────────────
+// 한 교정을 끝내기까지의 상호작용 점수(키 1 · 클릭 3 · 화면이동 5). 낮을수록 좋다.
+//
+// 커버리지(measured_ratio)를 값과 **분리하지 않는** 이유: 이 수치는 클라이언트가 보내 줄
+// 때만 쌓인다. 서버는 기록 예외를 삼키므로, 수집이 통째로 죽어도 어디에도 빨간 불이 켜지지
+// 않는다 — 화면에 커버리지가 없으면 "표본이 없다"와 "계기가 죽었다"가 똑같이 대시(—)로
+// 보인다. 그 구별이 전부인 이유는 기준선을 잴 창이 **한 번뿐**이기 때문이다.
+function renderEffort(stat) {
+  const line = byId('effort-line');
+  const valueEl = byId('effort-value');
+  const subEl = byId('effort-sub');
+  if (!line || !valueEl || !subEl) return;
+
+  const days = stat && stat.window_days != null ? stat.window_days : 7;
+  const ratio = stat ? stat.measured_ratio : null;
+  const covText = ratio == null ? '커버리지 미상' : `커버리지 ${(ratio * 100).toFixed(0)}%`;
+
+  if (!stat || stat.avg_score == null) {
+    valueEl.textContent = '—';
+    // 사유가 있으면 사유를 그대로 적는다. 원인 없는 대시는 정상(표본 없음)과 장애(수집
+    // 중단)를 섞어버리고, 이 계기에서 그 둘은 정반대 대응을 요구한다.
+    if (!stat) {
+      // 응답에 effort 필드 자체가 없다 = 구 서버이거나 계약이 어긋난 것. "교정이 없었다"고
+      // 적으면 서버가 말하지 않은 것을 대신 지어내는 것이 된다.
+      line.dataset.tone = 'muted';
+      subEl.textContent = '서버가 이 계기를 보고하지 않음 (/dashboard/summary 응답에 effort 없음)';
+    } else if (stat.unavailable_reason) {
+      line.dataset.tone = 'danger';
+      subEl.textContent = `집계 실패: ${stat.unavailable_reason}`;
+    } else if (ratio === 0) {
+      // 사람이 고친 교정은 있는데 계측된 것이 0건 = 수집 중단. 이 한 줄이 그 감지기다.
+      line.dataset.tone = 'danger';
+      subEl.textContent = `⚠ 최근 ${days}일 사람 교정은 있으나 계측 0건 — 수집이 끊겼는지 확인`;
+    } else {
+      line.dataset.tone = 'muted';
+      subEl.textContent = `최근 ${days}일간 사람이 고친 교정 없음`;
+    }
+    return;
+  }
+
+  const { avg_score: score, tx_count: txs, session_count: sessions } = stat;
+  valueEl.textContent = `${score.toFixed(1)}점`;
+  const lowCoverage = ratio != null && ratio < 0.5;
+  subEl.textContent =
+    `최근 ${days}일 · 세션 ${(sessions || 0).toLocaleString()}개 평균 · 교정 ${(txs || 0).toLocaleString()}건 계측(${covText})`
+    + (ratio == null ? ' · 커버리지를 알 수 없어 대표값으로 읽지 말 것'
+       : lowCoverage ? ' · 커버리지가 낮아 대표값으로 읽지 말 것' : '');
+  line.dataset.tone = (ratio == null || lowCoverage) ? 'warn' : '';
+}
+
+// 두 줄(재교정률 · 교정 공수)은 같은 /dashboard/summary 응답에서 나온다 — 요청은 한 번이고,
+// 위의 스로틀이 두 줄을 함께 덮는다.
+async function refreshCoreValueLines(force = false) {
   const now = Date.now();
   if (!force && now - recorrectionLastAt < RECORRECTION_MIN_INTERVAL_MS) return;
   recorrectionLastAt = now;
@@ -1470,9 +1532,13 @@ async function refreshRecorrection(force = false) {
     if (!res.ok) throw new Error(`dashboard summary ${res.status}`);
     const data = await res.json();
     renderRecorrection(data.recorrection || null);
+    // `effort` 자체가 없으면(구 서버) 사유를 지어내지 않는다 — 서버가 안 준 것과 서버가
+    // "집계 실패"라고 말한 것은 다른 상태다.
+    renderEffort(data.effort || null);
   } catch (e) {
     // 보조 지표다 — 실패해도 Overview 본문 흐름을 방해하지 않는다.
     renderRecorrection({ rate_pct: null, window_days: 7, unavailable_reason: '조회 실패' });
+    renderEffort({ avg_score: null, window_days: 7, unavailable_reason: '조회 실패' });
   }
 }
 
@@ -1480,7 +1546,7 @@ async function refreshRecorrection(force = false) {
 
 async function fetchOverview(isStale) {
   // 의도적으로 await 하지 않는다(위 주석 참조): 본문 카드가 이 요청을 기다리지 않는다.
-  refreshRecorrection();
+  refreshCoreValueLines();
 
   const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),

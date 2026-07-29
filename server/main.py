@@ -943,6 +943,75 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
     return result
 
 
+# [V1 계기] 상호작용 점수도 재교정률과 **완전히 같은 방어**를 쓴다(캐시 + statement_timeout).
+# 두 계기가 같은 무거운 엔드포인트에 얹혀 있으므로, 방어가 하나라도 빠지면 대시보드가
+# 지표 때문에 느려진다 — 그건 지표가 자기 목적을 배신하는 것이다.
+EFFORT_CACHE = {"value": None, "at": 0.0}
+EFFORT_CACHE_TTL = 60.0
+EFFORT_TIMEOUT_MS = 1500
+
+
+def _get_effort_stat(db: Session) -> schemas.EffortStat:
+    """상호작용 점수를 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    import sqlalchemy as sa
+    import effort_metric
+    now = time.time()
+    if EFFORT_CACHE["value"] is not None and (now - EFFORT_CACHE["at"]) < EFFORT_CACHE_TTL:
+        return EFFORT_CACHE["value"]
+
+    # 배점은 캐시하지 않는다 — config 핫리로드가 다음 집계부터 반영되어야 하고,
+    # 파일 읽기 1회는 60초에 한 번뿐이다.
+    weights = effort_metric.resolve_weights(effort_metric.load_config())
+
+    try:
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            db.execute(sa.text(f"SET LOCAL statement_timeout = {EFFORT_TIMEOUT_MS}"))
+        result = schemas.EffortStat(**crud.get_effort_stats(db, weights))
+    except Exception as e:
+        # 타임아웃은 트랜잭션을 오염시킨다 — 즉시 rollback 하지 않으면 이후 쿼리가 전부 실패한다.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print(f"[Dashboard] interaction effort score unavailable: {e}")
+        # F6: name the ACTUAL cause. The old text claimed a timeout unconditionally, so a
+        # missing column or a broken query read as "the index is slow" and sent whoever
+        # was on call to tune an index that was never the problem.
+        detail = (str(e).strip().splitlines() or [""])[0][:200]
+        lowered = detail.lower()
+        if "timeout" in lowered or "canceling statement" in lowered:
+            reason = (f"집계 시간 초과 ({EFFORT_TIMEOUT_MS}ms) — idx_effort_window 인덱스 확인. "
+                      f"[{type(e).__name__}] {detail}")
+        else:
+            reason = f"집계 실패 — [{type(e).__name__}] {detail or '상세 없음'}"
+        result = schemas.EffortStat(
+            window_days=crud.EFFORT_WINDOW_DAYS,
+            avg_score=None, tx_count=0, session_count=0,
+            weights=weights, measured_ratio=None,
+            unavailable_reason=reason,
+        )
+
+    EFFORT_CACHE["value"] = result
+    EFFORT_CACHE["at"] = now
+    return result
+
+
+@app.get("/api/effort/config")
+def get_effort_config():
+    """[V1 계기] 배점과 '컨텍스트 유지 전이' 선언 — 클라이언트의 **유일한** 정본.
+
+    클라는 자기 사본을 두지 않고 여기서 읽어 적용한다(`/api/maps/paint-rules`가 `binding`을
+    서빙하는 것과 같은 패턴). 배점을 클라에 하드코딩하면 서버 집계와 화면 표시가 갈라지고,
+    배점을 조정하는 순간 둘이 조용히 다른 숫자를 말하게 된다.
+
+    `context_preserving_transitions`는 **0점으로 칠 전이의 선언형 허용목록**이다. 기본은
+    "상실(이동 가중치 부과)"이고, 선언된 전이만 면제된다 — 목록은 비어 있는 상태로 출발하며
+    항목은 라우팅 소유자가 제안하고 총괄이 승인한다.
+    """
+    import effort_metric
+    return effort_metric.get_public_config()
+
+
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_db)):
     """
@@ -979,8 +1048,10 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
     today_updates_count = db.query(models.AuditLog).filter(models.AuditLog.timestamp >= today_start).count()
 
-    # 재교정률은 **마지막에** 계산한다 — 타임아웃 시 rollback 이 위쪽 집계를 건드리지 않도록.
+    # 두 계기는 **마지막에** 계산한다 — 타임아웃 시 rollback 이 위쪽 집계를 건드리지 않도록.
+    # (각자 자기 rollback 을 하므로 앞의 실패가 뒤의 집계를 오염시키지 않는다.)
     recorrection = _get_recorrection_stat(db)
+    effort = _get_effort_stat(db)
 
     return schemas.DashboardSummaryResponse(
         total_tables=len(table_names),
@@ -988,7 +1059,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         today_updates=today_updates_count,
         table_stats=table_stats,
         system_health="Excellent",
-        recorrection=recorrection
+        recorrection=recorrection,
+        effort=effort
     )
 
 def get_column_filter_condition(table_model, col_name: str, f_info: dict):
@@ -1860,15 +1932,104 @@ async def create_row(table_name: str, count: int = 1, user_name: str = "system",
     
     return {"status": "success", "count": len(new_rows), "row_ids": [r.row_id for r in new_rows], "created_logs": created_logs}
 
+def _validate_effort(effort):
+    """[V1 instrument] Normalise the interaction counts. NEVER raises, NEVER blocks.
+
+    Returns `(counts, error)`:
+      * `counts` = `(session_id, key, mouse, nav, nav_preserved)`, or None when there is
+        nothing to record (field absent = NOT MEASURED, or the blob was discarded).
+      * `error`  = human-readable reason the blob was DISCARDED, or None.
+
+    **No silent clamping, no silent casting.** A negative or non-integer count is the
+    signature of a broken counter, and swallowing it as 0 or a rounded value puts a wrong
+    number into the baseline wearing a plausible face. So a bad blob is never stored.
+
+    But loudness is paid for in the RESPONSE and the LOG, never with the user's data.
+    This validator used to raise HTTPException before any write (fix round F4,
+    2026-07-29): a client counter bug therefore rejected the operator's correction
+    outright, turning a metric defect into a data-entry outage. Losing a counter costs
+    one row in an instrument; losing a correction costs a human their work and violates
+    core value #1 - the very thing the instrument exists to defend. The correction always
+    goes through.
+    """
+    if effort is None:
+        return None, None
+
+    # The declared shape (schemas.EffortReport) is parsed HERE rather than by FastAPI, so
+    # that a blob which is not even an object is a discard instead of a 422 that would
+    # take the write with it.
+    if isinstance(effort, schemas.EffortReport):
+        report = effort
+    elif isinstance(effort, dict):
+        try:
+            report = schemas.EffortReport.model_validate(effort)
+        except Exception as e:
+            return None, f"effort could not be parsed and was discarded: {e}"
+    else:
+        return None, (f"effort must be an object with "
+                      f"{{session_id, key, mouse, nav, nav_preserved}}, got "
+                      f"{type(effort).__name__} - discarded.")
+
+    # 모르는 키는 **무시하지 않는다.** pydantic 기본 동작(조용히 버리기)에서는
+    # 클라가 새 카운터를 추가해도 서버가 말없이 삼키고, 나머지 값이 멀쩡하니 아무도
+    # 모른다 — 그리고 이 계기는 소급 재계산이 불가능해서, 발견했을 땐 그 기간의 기준선이
+    # 이미 없다. 빠진 키는 정상(미계측)이고, **모르는 키만** 오류다.
+    unknown = sorted((report.model_extra or {}).keys())
+    if unknown:
+        return None, (f"effort has unknown field(s): {', '.join(unknown)} - the whole "
+                      f"effort blob was discarded (the correction was still applied). "
+                      f"Allowed: session_id, key, mouse, nav, nav_preserved.")
+
+    # session_id is what ties the counts to a working session; without it the row cannot
+    # enter the per-session average at all, so a missing one is a discard, not a default.
+    sid = report.session_id
+    if not isinstance(sid, str) or not sid.strip():
+        return None, (f"effort.session_id must be a non-empty string (got "
+                      f"{type(sid).__name__}: {sid!r}) - effort discarded.")
+    session_id = sid.strip()
+
+    counts = {}
+    # nav_preserved 는 나중에 추가된 필드다 — 아직 보내지 않는 클라는 오류가 아니며
+    # 기본 0으로 취급된다(스키마 기본값). 보낸다면 나머지와 똑같이 검증한다.
+    for field in ("key", "mouse", "nav", "nav_preserved"):
+        v = getattr(report, field)
+        # bool 은 파이썬에서 int 의 서브클래스다 — True 가 조용히 1 이 되는 것을 막는다.
+        # 3.0 같은 JSON float 도 거절한다("정수여야 한다"는 계약을 반올림으로 대신하지 않는다).
+        if isinstance(v, bool) or not isinstance(v, int):
+            return None, (f"effort.{field} must be an integer (got "
+                          f"{type(v).__name__}: {v!r}) - effort discarded.")
+        if v < 0:
+            return None, f"effort.{field} must be >= 0 (got {v}) - effort discarded."
+        counts[field] = v
+
+    return (session_id, counts["key"], counts["mouse"],
+            counts["nav"], counts["nav_preserved"]), None
+
+
 @app.put("/tables/{table_name}/data/updates")
 async def apply_batch_updates_endpoint(
-    table_name: str, 
-    batch: schemas.GeneralUpdateBatch, 
+    table_name: str,
+    batch: schemas.GeneralUpdateBatch,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     from fastapi.concurrency import run_in_threadpool
+    # [V1 instrument] The instrument must never be able to destroy the operation it
+    # measures (fix round F4). A malformed `effort` blob is DISCARDED and reported - in
+    # the response (`effort_error`) and in the server log, by the offending key name -
+    # while the correction proceeds untouched. Absent effort stays legal ("not measured").
+    effort_counts, effort_error = _validate_effort(batch.effort)
+    # Same defect one level up (F7): `{"efort": {...}}` parsed fine and the whole
+    # measurement silently never happened. Report the misspelling, never block on it.
+    unknown_top = sorted((batch.model_extra or {}).keys())
+    if unknown_top:
+        top_msg = (f"unknown top-level field(s): {', '.join(unknown_top)} - ignored. "
+                   f"If one of these was meant to be 'effort', this correction was NOT "
+                   f"measured.")
+        effort_error = f"{effort_error} | {top_msg}" if effort_error else top_msg
+    if effort_error:
+        logger.error(f"[EffortMetric] table={table_name} {effort_error}")
     # [U6] replace_map honesty contract: crud fills this with the EXACT purge filters and
     # the purged row count (same resolver that built the DELETE), and it is echoed back
     # as response.scope. No derivable scope raises ValueError in crud -> 400 here, never
@@ -1961,13 +2122,58 @@ async def apply_batch_updates_endpoint(
                     await manager.broadcast(json.dumps(msg))
 
         background_tasks.add_task(async_broadcast)
-    
+
+    # [V1 계기] 교정이 **이미 커밋된 뒤에** 별도 트랜잭션으로 공수를 기록한다.
+    # 계측이 계측 대상을 깨뜨려서는 안 되므로 실패해도 요청은 성공으로 끝난다.
+    #
+    # 기록 조건 = "이 tx 가 사람이 쓴 감사 로그를 실제로 남겼는가". 이유는 커버리지 비율의
+    # 모집단 정합이다 — `measured_ratio` 의 분모는 창 안의 **사람 tx 수**(audit_logs 의
+    # source_name='user' distinct tx)다. 아무것도 바꾸지 않은 tx(has_changed 가드에 전부
+    # 걸린 no-op)나 자동 소스 tx까지 계측 행을 남기면 분자가 분모에 없는 tx를 세어 비율이
+    # 1을 넘고, 그 순간 비율은 커버리지가 아니라 잡음이 된다.
+    #   ⚠️ A NO-OP SAVE COSTS EFFORT THAT IS NOT RECORDED HERE, and the client must not
+    #   throw it away either: it clears its counters only when `effort_recorded` is true
+    #   (F1, 2026-07-29). Measured live: an operator spends 20 keys + 5 clicks correcting
+    #   a cell whose stored value already matches (stale grid, or the whitespace/numeric
+    #   normalisation in crud's has_changed guard), gets no audit log and therefore no
+    #   effort row, then redoes it properly with 3 keys + 1 click. Resetting on `res.ok`
+    #   scored that two-attempt correction 6 against a true cost of ~40 - the highest-
+    #   friction event in the product reporting the LOWEST score in the dataset. The
+    #   recording condition below is still right (a no-op is not a completed correction,
+    #   and recording one would break measured_ratio's population match); what was wrong
+    #   was letting the client believe it had been recorded.
+    #
+    # ⚠️ 위치가 계약이다 — 반드시 `msg_items` 구성이 **끝난 뒤**에 둔다. 여기서 커밋하면
+    # 세션의 ORM 인스턴스가 expire 되므로, 그 이후에 `row.*` 속성을 읽는 코드를 추가하면
+    # 응답 경로에 뜻밖의 리로드 쿼리가 생긴다. msg_items 는 이미 평범한 dict 로 떠 있다.
+    effort_recorded = False
+    if effort_counts is not None:
+        tx_for_effort = next(
+            (l["transaction_id"] for l in created_logs
+             if l.get("source_name") == crud.USER_SOURCE), None)
+        if tx_for_effort:
+            session_id, k, m, n, n_kept = effort_counts
+            # False here also covers "a row for this tx already existed" (client retry,
+            # first write wins). Unreachable through this endpoint today - the tx id is
+            # minted per crud call unless the caller supplies one - and treating it as
+            # not-recorded is the conservative side: the client keeps counting.
+            effort_recorded = bool(await run_in_threadpool(
+                crud.record_interaction_effort, db, tx_for_effort, session_id,
+                k, m, n, n_kept))
+
     return {
         "status": "success",
         "updated_count": len(results),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
         "created_logs": created_logs,
+        # [V1 instrument] Did THIS request durably store the effort it was sent?
+        # The client resets its counters only on true - false means the effort is still
+        # unspent human work and must ride the next attempt (F1).
+        "effort_recorded": effort_recorded,
+        # Why the effort was discarded, if it was. Null on the normal path. Never a
+        # reason to fail the request - the correction above has already been applied.
+        "effort_error": effort_error,
         # [U6] null unless replace_map; otherwise {filters, deleted, inserted} - the exact
         # purge scope used, so a caller can detect "deleted 0 while expecting replacement".
         "scope": replace_scope
