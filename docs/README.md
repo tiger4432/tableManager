@@ -14,7 +14,7 @@
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
 | 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
 | 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **진행 상황·열린 문제 단일 보드** — 여기서 현황 파악 |
-| 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로 |
+| 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로. **§2-bis = 이 저장소가 자기를 검증하는 자리**(pytest = 서버 절반 · `npm run build` = 계약의 클라 절반, 둘 다 돌려야 한다) |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **"무엇을 설정해야 하는가" 단일 참조** — config 전수 지도 + 시나리오별 체크리스트(새 테이블/맵/수집기/그래프 온보딩) |
 
 ## 🏛️ 2. 아키텍처 (architecture/)
@@ -24,7 +24,7 @@
 | 🟢 [PRIMITIVES.md](./architecture/PRIMITIVES.md) | **기능→구현 카탈로그** — *무엇을 할 줄 아나*. CODE_MAP이 *어디에 있나*라면 이쪽은 재사용 가능한 연산·패턴과 그 함정 |
 | 🟢 [CODE_MAP.md](./architecture/CODE_MAP.md) | **압축 구조 지도** — 파일별 시그니처·라인 앵커·호출 흐름. 소스 전량 읽기 전에 여기부터 |
 | 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴, **프로세스 감시·`/health`·진행 박동(§1.3)** |
-| 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 |
+| 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 · **§2.1 빌드 게이트**(`npm run build`의 `prebuild`가 계약 하네스 4종을 돌린다 — 발견식 스캔, **빈 스캔은 실패**) |
 | 🟢 [data_model.md](./architecture/data_model.md) | ORM 모델 + 동적 테이블 + 레이어링/우선순위 |
 | 🟢 [event_driven_backend.md](./architecture/event_driven_backend.md) | Outbox 패턴 · 체인 인제션 · 온톨로지 그래프 승격(materializer) 심화 |
 
@@ -35,8 +35,8 @@
 | 파일 인제션 파이프라인 | 🟢 [guide/INGESTION_GUIDE.md](./guide/INGESTION_GUIDE.md) |
 | 체인 인제션(DB세션 맵퍼) | 🟢 [guide/chain_ingestion_guide.md](./guide/chain_ingestion_guide.md) |
 | Auto-Update 스케줄러 | 🟢 [guide/AUTO_UPDATE_GUIDE.md](./guide/AUTO_UPDATE_GUIDE.md) |
-| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · **좌표 바인딩도 서버가 해석해 서빙**(§5.6-bis — 추측은 `fallback_guess` 표지 없이 나가지 않는다) · 맵 정체성은 **선언 타입으로 캐노니컬화**해 조합(§5.0) · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어 · **선언된 미추적 소비 `transfer_log: "none"`은 §6.2-bis** · 저장소는 `map_split_registry` 한 테이블 · **층 구조는 zone 모델**(STACK+1H/MID/TOP, STACK 0=마커) — 🗄️ `bands` JSON은 폐기·읽기 전용 · 저장을 막는 **데이터 보호 게이트 4종은 §6.0-ter**) |
-| DOE 작성 가이드(사용자) | 🟢 [guide/DOE_GUIDE.md](./guide/DOE_GUIDE.md) — 색칠=계획 · STACK 0=상태 표시 · 저장은 ⚡ Push 하나 · 검수는 보고만(막는 건 **게이트 4종**) · **수량은 「저장되는 셀」만 센다**(2026-07-30 — Fill All을 쓴 맵은 숫자가 내려감, §9에 감소폭 표) · 엑셀 계약 밖 칸은 COLOR·칠함·**COUNT** |
+| 웨이퍼 맵 에디터 | 🟢 [map_editor/](./map_editor/README.md) · [spec/MAP_EDITOR_SPEC.md](./spec/MAP_EDITOR_SPEC.md) — §1~§4 격자 에디터, **§4-ter 회사 양식 왕복**(COPY HEADER MODE ↔ **Ctrl+V** · 왕복 항등 INV-F1ⓑ-1 · 평문을 읽는 대가 = 병합 관례 · 그룹 띠는 **의도적 미판독**이라 자재·COLOR는 왕복 안 함 · **노치 `D`의 세 역할** · 거부 네 갈래 · **붙여넣기는 값을 지우지 않는다** · 로스터 13개와 롤업 8단어의 **예비 지위**), **§5 범용 맵 오버레이**(**`wafer_map_metadata`가 정렬의 유일한 기준** · 변환은 클라 단일 구현 · **좌표 바인딩도 서버가 해석해 서빙**(§5.6-bis — 추측은 `fallback_guess` 표지 없이 나가지 않는다) · 맵 정체성은 **선언 타입으로 캐노니컬화**해 조합(§5.0) · 실패 status **4종** · 선언 오버라이드 레이어는 2026-07-27 폐지 · **§5.8 로드 시 프리셋 라우팅**(F5 서버 절반 — **`wafer_map_metadata` > 라우팅 > 패널**을 서버가 강제, 조회 miss는 **정상 경로**)), **§6 전사 계획**(「계획 = 그 맵 자체」·신뢰 표기 3층 방어 · **선언된 미추적 소비 `transfer_log: "none"`은 §6.2-bis** · 저장소는 `map_split_registry` 한 테이블 · **층 구조는 zone 모델**(STACK+1H/MID/TOP, STACK 0=마커) — 🗄️ `bands` JSON은 폐기·읽기 전용 · 저장을 막는 **데이터 보호 게이트 4종은 §6.0-ter**) |
+| DOE 작성 가이드(사용자) | 🟢 [guide/DOE_GUIDE.md](./guide/DOE_GUIDE.md) — 색칠=계획 · STACK 0=상태 표시 · 저장은 ⚡ Push 하나 · 검수는 보고만(막는 건 **게이트 4종**) · **수량은 「저장되는 셀」만 센다**(2026-07-30 — Fill All을 쓴 맵은 숫자가 내려감, §9에 감소폭 표) · 엑셀 계약 밖 칸은 **13단어**(COLOR·칠함·COUNT + 롤업 8단어는 **예비**) · **§4.2 맵 화면 Ctrl+V로 회사 양식 되붙이기**(VALUE·STACK·DESC만 복원, 자재·COLOR는 왕복 안 함, **값을 지우지 않음**) |
 | 유효 다이 맵 가이드(사용자) | 🟢 [guide/VALID_DIE_MAP_GUIDE.md](./guide/VALID_DIE_MAP_GUIDE.md) — **유효 다이도 맵이다** · 원으로 표현 못 하는 테이프 모양 · 프리셋 목록의 「🧩 템플릿 만들기」로 저작 → ⚡ Push → 다른 맵의 「🎯 유효 다이 맵」 칸에 키 지정 → ⚡ Push · 참조는 1단계 · 키 비우면 원 복귀 · §8 = **Fill All 필터는 착지**, 오염된 초안 정리는 진행 중 |
 | DOE 구간 모델(부분 폐기) | 🟠 [spec/DOE_BAND_MODEL.md](./spec/DOE_BAND_MODEL.md) — 구간(band) 모델 본문은 zone 모델로 대체(🗄️), **§4-bis BIN 축·§6-bis BIN별 분해는 계속 정본** |
 | DOE 영역 저장 지도 | 🗄️ [spec/DOE_STORAGE_MAP.md](./spec/DOE_STORAGE_MAP.md) — **본문은 폐기된 3테이블 모델**이며 기존 데이터 해석용으로만 보존합니다. M2.6이 양쪽 다 착지해(`cdcddee`+`0f8d35f`) 지금은 `map_split_registry` **한 테이블**입니다 → 현행 계약은 [MAP_EDITOR_SPEC §6](./spec/MAP_EDITOR_SPEC.md)·[CONFIG_GUIDE §5.8](./guide/CONFIG_GUIDE.md) |
@@ -53,7 +53,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). **§1.11/§2.15 운영 감시**(감시자·`/health`·격리 환경) 포함. 새 기능 병합 시 doc-keeper가 갱신 |
+| 🟢 [qa/FEATURE_CHECKLIST.md](./qa/FEATURE_CHECKLIST.md) | **기능 인벤토리 + QA 수동 점검 체크리스트** — 서브시스템별 기능 지도·진입 경로·릴리스 전 회귀 점검 절차(SLO·멱등성 포함). **§2.0 자동 게이트**(pytest + `npm run build` — 손으로 점검하기 전에 통과시킬 것) · **§1.11/§2.15 운영 감시**(감시자·`/health`·격리 환경) 포함. 새 기능 병합 시 doc-keeper가 갱신 |
 
 ## 🛠️ 4. 운영 & 셋업 (guide/)
 

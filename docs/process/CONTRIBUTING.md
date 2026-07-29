@@ -1,6 +1,6 @@
 # 🛠️ CONTRIBUTING — 개발·문서 갱신 규율 (Docs-as-Code)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-24 | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2-bis 「이 저장소가 자기를 검증하는 자리」 신설** — `5a14e77` 실측: `client2/package.json`의 `prebuild` = `check:clipboard` + `check:contracts`. 그전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았다**(pytest는 서버 절반만 채점). 러너는 발견식 스캔이고 **빈 스캔은 실패**. 직전 2026-07-24 최초 작성) | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · SOP: [starting_prompt](../prompts/starting_prompt.md)
 
 이 문서는 AssyManager를 **지속 관리 가능한 상태로 유지**하기 위한 최소한의 규율을 정의합니다. 문서 드리프트(코드는 진화하는데 문서는 과거에 멈추는 현상)를 구조적으로 방지하는 것이 목적입니다.
@@ -28,6 +28,23 @@
 | 모든 주요 변경 | `docs/history/YYYYMMDD_HHMMSS_summary.md` 이력 작성(코드 스니펫 포함) |
 
 > **판단 기준:** "다음 사람이 이 변경을 알아야 하는가?" 예이면 리빙 문서를 고칩니다. 히스토리 기록만으로는 부족합니다 — 히스토리는 append-only 로그일 뿐, 리빙 문서가 현재 상태를 말합니다.
+
+## 2-bis. 이 저장소가 자기를 검증하는 자리 (2026-07-30 `5a14e77`)
+
+**채점은 두 갈래이고 둘 다 돌려야 합니다.** 한쪽만으로는 절반만 검증됩니다.
+
+| 게이트 | 명령 | 무엇을 채점하나 |
+|---|---|---|
+| 서버 | `conda run -n assy_manager pytest server/tests/` | 서버 구현 + `contracts/*/vectors.json`의 **서버 절반** |
+| 클라 | `cd client2 && npm run build` (`prebuild`가 선행) | 클립보드 관례 + `contracts/*/client_harness.mjs` **전부** = 계약의 **클라 절반** |
+
+- 🔴 **2026-07-30 이전에는 클라 하네스를 아무것도 실행하지 않았습니다.** `pytest`는 서버 절반만 채점하고 `client2`에는 스크립트가 없었습니다 — 그 조건이 `split_registry_harness.mjs`를 심볼 개명 이후 **몇 주 동안 예외로 죽어 있게** 두었고, 부르는 사람이 없어 아무도 몰랐습니다. **아무도 돌리지 않는 계약은 주석입니다.**
+- **러너는 목록이 아니라 발견식 스캔입니다** — `contracts/*/client_harness.mjs`를 훑습니다. 하드코딩 목록을 만들면 계약 #5가 착지하고 아무도 추가하지 않았을 때 **빌드가 초록인 채 그 계약이 죽습니다.**
+- 🔴 **빈 스캔은 실패입니다.** 하네스가 하나도 안 잡히면 "0개, 전부 초록"이 아니라 `exit 1`입니다. 없는 커버리지를 있다고 보고하는 것은 배선 안 된 상태보다 나쁩니다.
+- 계약이 발산하면 **벡터를 고쳐 통과시키지 마십시오.** 구현을 고치거나, 계약이 바뀐 것이라면 총괄에 가져갑니다.
+- 세부는 [architecture/frontend §2.1](../architecture/frontend.md) · 계약 형식의 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md).
+
+> **테스트 인터프리터 함정:** 시스템 `python`으로 돌리면 `psycopg2` 부재 등으로 **거짓 실패**가 납니다. 파이썬 실행은 전부 conda `assy_manager` 환경으로.
 
 ## 3. 문서 헤더 배지 표준
 

@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.1 빌드 게이트 신설** — `client2/package.json`의 `prebuild` = `check:clipboard` + **`check:contracts`**(`client2/scripts/check_contracts.mjs`) 실측. 2026-07-30 이전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았고**(pytest는 서버 절반만 채점), 그것이 `split_registry_harness.mjs`가 몇 주 동안 죽어 있게 둔 조건이다. 러너는 **목록이 아니라 발견식 스캔**이고 **빈 스캔은 실패**이며 판정은 **종료코드 하나**다. 실측: 4계약 전부 통과. 직전 2026-07-29 **계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -43,8 +43,20 @@
 ```bash
 cd client2
 npm run dev       # :5173 개발서버 (API/WS는 127.0.0.1:8080 자동 타겟)
-npm run build     # dist/ 생성
+npm run build     # prebuild(클립보드 관례 + 계약 하네스 4종) → dist/ 생성
 ```
+
+### 2.1 빌드 게이트 — **클라 절반을 채점하는 유일한 자리** (`5a14e77` · 2026-07-30)
+
+`package.json`의 `prebuild`가 `check:clipboard` → `check:contracts` 순으로 돌고, **하나라도 실패하면 `vite build`에 도달하지 않습니다.**
+
+- **왜 생겼나**: `contracts/<name>/client_harness.mjs`는 이음매(seam)의 **클라 절반**을 `vectors.json`에 채점하는데, 2026-07-30까지 **아무것도 그것들을 실행하지 않았습니다** — `pytest server/tests/`는 **서버 절반만** 채점하고 `client2/package.json`에는 스크립트가 없었습니다. 그 결과 `split_registry_harness.mjs`가 심볼 5개 개명 뒤 추출 단계에서 **몇 주 동안 예외로 죽어 있었고**, 부르는 사람이 없어 실패가 보이지 않았습니다. **아무도 돌리지 않는 계약은 주석입니다.**
+- **발견식이지 목록이 아닙니다**: 러너(`client2/scripts/check_contracts.mjs`)는 `contracts/*/client_harness.mjs`를 **스캔**합니다. 하드코딩 목록은 이 결함을 그대로 재생산합니다 — 계약 #5가 착지하고 아무도 목록에 추가하지 않으면 빌드는 초록인 채 그 계약이 죽어 있습니다.
+- 🔴 **빈 스캔은 실패입니다.** `contracts/`가 사라지거나 하네스가 하나도 안 잡히면 "0개, 전부 초록"이 아니라 **exit 1**입니다 — 없는 커버리지를 있다고 보고하는 것은 배선 안 된 종전 상태보다 나쁩니다.
+- **판정은 종료코드 하나**로 읽습니다. 하네스의 산문을 러너가 재해석하면 채점자가 둘이 됩니다(`map_seam`은 이름 붙은 기대 발산을 출력하면서 exit 0입니다 — contract-keeper 헌장 규칙 5 "익명의 영구 빨강 금지").
+- **현재 상태**(실측 2026-07-30): `band_arithmetic` · `doe_band_rules` · `legend_map_scope` · `map_seam` **4계약 전부 통과**.
+
+> ⚠️ 이 게이트는 **소스**를 채점합니다. 서버가 서빙하는 것은 `dist/` 번들이므로, 소스 변경 후 `npm run build`로 `dist/`를 갱신하고 커밋하는 규율은 그대로입니다([DEPLOY_SETUP](../guide/DEPLOY_SETUP.md) · [FEATURE_CHECKLIST §2.16 A](../qa/FEATURE_CHECKLIST.md)).
 
 ---
 

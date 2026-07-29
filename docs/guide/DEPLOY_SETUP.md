@@ -126,6 +126,8 @@ POST /admin/auto-update/run-now are DISABLED (503) ...
 cd client2 && npm run build      # dist/ 갱신 후 커밋
 ```
 
+> **[2026-07-30 `5a14e77`] `npm run build`는 이제 게이트를 통과해야 진행됩니다.** `prebuild`가 클립보드 관례 검사 + **계약 하네스 4종**(`contracts/*/client_harness.mjs`)을 먼저 돌리고, 하나라도 발산하면 `dist/`가 생성되지 않습니다. **빌드가 실패하면 번들도 갱신되지 않았다는 뜻**이므로 아래 `grep` 확인이 0으로 남습니다 — "빌드했는데 왜 그대로냐"의 첫 번째 원인이 이것입니다. 계약이 실제로 바뀐 것이라면 벡터를 고쳐 통과시키지 말고 총괄에 가져가십시오([frontend §2.1](../architecture/frontend.md)).
+
 **확인 방법 (운영자·리뷰어 모두 이걸로 판정한다 — 0이면 아직 옛 번들이다):**
 
 ```bash

@@ -1,6 +1,6 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**F2 `064550f` — 적재 대조 게이트의 대조축 정정(긴급)**: §6.0-ter·§2 #40의 "직렬화 수 < **화면의** non-empty 수" 서술은 F2 이후 **양변이 같은 술어**(`eachSavableCell`)라 "N < N"으로 읽혀 게이트를 죽은 코드로 오독시켰다 — 실제 분모는 **원시 `gridData`의 non-empty 키 수**라는 세 번째 값이므로 그 이름을 명시. 함께 §2 #39 `fillGrid` 용도를 유효 다이 집합 필터 + 건너뛴 칸 토스트로 갱신(종전 "원 영역 내부" 서술은 실제 동작이 아니었고, 그 격차가 Fill All 영구 거절의 원인). 직전 **M4 phase 1 — §5.7 유효 다이의 근거(`valid_die_ref`) 신설**: 원 기하가 판정자에서 생성기로 강등되는 첫 단계, **가산적 공존**(선언 없는 맵은 `2a9f6c4`와 동일)·참조 실패 시 **원으로 조용히 되돌아가지 않음**·참조 키는 7b 캐노니컬화 경유. 필드 규격 정본은 [architecture_and_management §2.3-bis](../map_editor/architecture_and_management.md), 양측 채점은 `contracts/map_seam/`. 직전 **7b/7c/M3 `ab6ac02` + 미반영 F1 `17f65bd`**: **§5.6-bis 서빙되는 좌표 바인딩 신설**(paint-rules `binding` = `{x,y,val,key_columns,source}`, 선언>유도, 클라 유도 ~40줄 삭제 — `fallback_guess`는 데이터 경로 거부·로드 경로 경고·오버레이 경로 **거부**), §5.1 `binding_unavailable` 뜻 정정(클라 유도 실패 → 서버 미해석/추측 거부), §5.2 소비자 표에 `binding` 추가 · **§5.0에 7b 맵 정체성 캐노니컬화 규율 신설**(선언 타입 기준 — `number`면 `'01'`=`'1'`, 구현은 `map_overlay.canonical_key_value` 하나, **등록 측도 경유**) + M3 착지로 열린 격차 🔴→🟠 재기술(인제션 경로는 닫힘·기존 39만 건 백필은 M4) · **§6.2-bis 선언된 미추적 소비 신설**(`transfer_log: "none"` → `connected(untracked)`, transferred null·remaining null + 진짜 상한, `"none"` 문자열만 유효). 직전 **Gate4/U6 `deed6d2`**: §6.0-ter 게이트 3종→**4종** — **로그형 대상 게이트** 신설(맵 계약 밖 데이터 컬럼 보유 테이블로의 Push를 모든 다이얼로그 이전에 거부, 판별은 구조적 — "페이로드/서버가 재구성하는 컬럼만 살아남는다", 합성 bk는 소스 전부 커버일 때만 생존, `map_push_ok: true` 사이트 선언 시 차단→소실 confirm 1회, JSON boolean만 유효) + **replace_map 응답 `scope: {filters, deleted, inserted}` 정직성 계약**(범위 파생 불가 = 무음 200 no-op 대신 400, 명시적 `scope` + 빈 updates = 합법적 전량 소거), §2 #40에 게이트 항목 추가. 직전 같은 날 **5b `0052d76`**: §4-bis.1 초안 보존 약속의 실체화(불일치 유지 시 로드 경로 영속 게이트) + legendDirty 로드 성공 리셋·프레임 왕복 스냅샷, **§4-bis.3 메타 없는 맵의 기본 프레임 신설**(데이터 bbox + 마스크 중립 기하 — 기본 선택이 Push 불가 맵을 만들지 않음), §6.4-bis 뒤로가기 가드 `frameTouched`·프레임 모달 취소 롤백, §6.0-ter 대조 게이트 행에 기본 프레임 변경 반영, 값 컬럼 후보 매칭 exact 통일(§5.6 잔여 이슈 해소). 직전 같은 날: **U6 `95bf072`**: **§5.6 서버 선언 맵 기본값 신설** — paint-rules가 `value_column_candidates`(RESOLVED)·`default_legend`(선언 그대로/null)를 서빙, 클라 하드코딩 6종 삭제(후보 2사본·builtin stage·팔레트 3사본·E1/E2 색), §6에 stage 선언 단일 소스(`/api/transfer-plan/stages`, builtin 폴백 삭제)·§4-bis.1에 U6-1 시드 갈래(0셀+행 0개 = 시드, 읽기 실패 = 행 보존). 직전 같은 날: **H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§4-ter 회사 양식 왕복 계약 신설 + §5.8 로드 시 프리셋 라우팅 신설** — 코드 대조: `client2/src/map_editor.js`(`copyTitleText`/`computeNotchCell`/`HDR_GAP_COLS`/`readCompanyMapBlock`/`checkPasteAgainstFrame`/`applyPastedGridRows`/`applyPastedAuxRows`/`onMapGridPaste`, paste 리스너 `document` 1개), `client2/src/doe_bands.js`(`IGNORED_HEADERS` **13개 실측**, `rollupToGrid` **importer 0건 실측**), `server/map_preset_routing.py`+`server/main.py`(엔드포인트·status 6종). §4-ter = **왕복 항등(INV-F1ⓑ-1)** · 평문을 읽는 근거 셋 · **병합 관례 INV-F1ⓑ-3** · 그룹 띠 **의도적 미판독**(자재는 왕복하지 않음) · `HDR_GAP_COLS` 단일 상수 · **노치 `D`의 세 역할** · **거부 네 갈래** · 적용 규율(**붙여넣기는 값을 지우지 않는다**·COUNT 폐기·COLOR 미왕복) · **로스터 4→13과 롤업 8단어의 PREPARATORY 지위**. §5.8 = **절대 우선순위 `wafer_map_metadata` > 라우팅 > 패널**(서버 강제)·**조회 miss는 정상 경로**·환경 분기 없음·`business_key_val` 지름길 기각. §3에 함수 #48 추가(47→48). 직전 **F2 `064550f` — 적재 대조 게이트의 대조축 정정(긴급)**: §6.0-ter·§2 #40의 "직렬화 수 < **화면의** non-empty 수" 서술은 F2 이후 **양변이 같은 술어**(`eachSavableCell`)라 "N < N"으로 읽혀 게이트를 죽은 코드로 오독시켰다 — 실제 분모는 **원시 `gridData`의 non-empty 키 수**라는 세 번째 값이므로 그 이름을 명시. 함께 §2 #39 `fillGrid` 용도를 유효 다이 집합 필터 + 건너뛴 칸 토스트로 갱신(종전 "원 영역 내부" 서술은 실제 동작이 아니었고, 그 격차가 Fill All 영구 거절의 원인). 직전 **M4 phase 1 — §5.7 유효 다이의 근거(`valid_die_ref`) 신설**: 원 기하가 판정자에서 생성기로 강등되는 첫 단계, **가산적 공존**(선언 없는 맵은 `2a9f6c4`와 동일)·참조 실패 시 **원으로 조용히 되돌아가지 않음**·참조 키는 7b 캐노니컬화 경유. 필드 규격 정본은 [architecture_and_management §2.3-bis](../map_editor/architecture_and_management.md), 양측 채점은 `contracts/map_seam/`. 직전 **7b/7c/M3 `ab6ac02` + 미반영 F1 `17f65bd`**: **§5.6-bis 서빙되는 좌표 바인딩 신설**(paint-rules `binding` = `{x,y,val,key_columns,source}`, 선언>유도, 클라 유도 ~40줄 삭제 — `fallback_guess`는 데이터 경로 거부·로드 경로 경고·오버레이 경로 **거부**), §5.1 `binding_unavailable` 뜻 정정(클라 유도 실패 → 서버 미해석/추측 거부), §5.2 소비자 표에 `binding` 추가 · **§5.0에 7b 맵 정체성 캐노니컬화 규율 신설**(선언 타입 기준 — `number`면 `'01'`=`'1'`, 구현은 `map_overlay.canonical_key_value` 하나, **등록 측도 경유**) + M3 착지로 열린 격차 🔴→🟠 재기술(인제션 경로는 닫힘·기존 39만 건 백필은 M4) · **§6.2-bis 선언된 미추적 소비 신설**(`transfer_log: "none"` → `connected(untracked)`, transferred null·remaining null + 진짜 상한, `"none"` 문자열만 유효). 직전 **Gate4/U6 `deed6d2`**: §6.0-ter 게이트 3종→**4종** — **로그형 대상 게이트** 신설(맵 계약 밖 데이터 컬럼 보유 테이블로의 Push를 모든 다이얼로그 이전에 거부, 판별은 구조적 — "페이로드/서버가 재구성하는 컬럼만 살아남는다", 합성 bk는 소스 전부 커버일 때만 생존, `map_push_ok: true` 사이트 선언 시 차단→소실 confirm 1회, JSON boolean만 유효) + **replace_map 응답 `scope: {filters, deleted, inserted}` 정직성 계약**(범위 파생 불가 = 무음 200 no-op 대신 400, 명시적 `scope` + 빈 updates = 합법적 전량 소거), §2 #40에 게이트 항목 추가. 직전 같은 날 **5b `0052d76`**: §4-bis.1 초안 보존 약속의 실체화(불일치 유지 시 로드 경로 영속 게이트) + legendDirty 로드 성공 리셋·프레임 왕복 스냅샷, **§4-bis.3 메타 없는 맵의 기본 프레임 신설**(데이터 bbox + 마스크 중립 기하 — 기본 선택이 Push 불가 맵을 만들지 않음), §6.4-bis 뒤로가기 가드 `frameTouched`·프레임 모달 취소 롤백, §6.0-ter 대조 게이트 행에 기본 프레임 변경 반영, 값 컬럼 후보 매칭 exact 통일(§5.6 잔여 이슈 해소). 직전 같은 날: **U6 `95bf072`**: **§5.6 서버 선언 맵 기본값 신설** — paint-rules가 `value_column_candidates`(RESOLVED)·`default_legend`(선언 그대로/null)를 서빙, 클라 하드코딩 6종 삭제(후보 2사본·builtin stage·팔레트 3사본·E1/E2 색), §6에 stage 선언 단일 소스(`/api/transfer-plan/stages`, builtin 폴백 삭제)·§4-bis.1에 U6-1 시드 갈래(0셀+행 0개 = 시드, 읽기 실패 = 행 보존). 직전 같은 날: **H1/H2 `6db517d`**: §4-bis.1 로드 경로 단일 영속·「복구」= 화면 변화 기준·복구는 미저장 표시, **§6.0-ter 데이터 보호 게이트 3종 신설**(적재 대조 게이트 추가). 직전 같은 날: **U9 STACK 0 마커**: §6 층 구조 행에 마커 의미론, §6.0-bis **V1~V6**(V6 = 마커 모순, 마커 행 유일 규칙), §6.1-bis에 **M1 위임 stage의 bin_map 무효** 명기 — 서버·클라 공히 vectors v3 채점. 직전 같은 날: **§4-bis 새로고침 생존 계약 신설**(지문 게이트 초안 + `map_editor_last_open` 재연 복원) · **§6.4 자재 이동 LOAD 동등성**(분해 불가 ID → 첫 키 컬럼 폴백) — `280ebf0`. 직전 같은 날: §6 DOE zone 모델 — STACK + 1H/MID/TOP이 band 모델을 대체, §6.0-bis 차단 규칙 V1~V5 신설, 폐기 `bands` 마이그레이션·거부 규칙) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
 > §1~§4는 격자 에디터 본체(2026-07-24 검증), **§5 범용 맵 오버레이**·**§6 전사 계획**은 M2/M2-v2(`8e34804`/`da65a87`)에서 신설됐습니다. **§5는 `7d931dc`(변환 클라 일원화)+`251dbfd`(테이블 전환 해제·메타 단일 기준 규칙)에 맞춰 전면 재작성됐습니다** — 종전의 "서버가 정렬해서 내려준다" 서술은 더 이상 클라 경로를 설명하지 않습니다.
 
@@ -261,7 +261,17 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 * **용도**: 현재 선택된 멀티 셀 영역의 데이터 값을 완전히 지웁니다.
 
 #### 47) `copyGridToExcel()`
-* **용도**: 현재 격자 맵의 레이아웃 배열 구조 그대로 시각 좌표 인덱스에 맞춰 탭 분리 문자열(TSV) 구조로 클립보드에 가공 기입하여, 사용자가 **엑셀(MS Excel)에 바로 붙여넣기(Ctrl+V)** 할 수 있도록 인터랙션 데이터를 이식합니다.
+* **용도**: 현재 격자 맵의 레이아웃 배열 구조 그대로 시각 좌표 인덱스에 맞춰 클립보드에 기입합니다. **`text/plain`(TSV)과 `text/html`을 둘 다 싣습니다** — 전자가 왕복의 읽기 대상이고 후자가 엑셀에서 보이는 서식입니다.
+* **COPY HEADER MODE(`localStorage['mapCopyHeader']`)를 켜면** 격자에 두 블록이 더 실립니다 — 상단 `TITLE`(= `copyTitleText()` = `테이블 · 맵키`) + 열 그룹 띠(`맵키 그룹 · 1H · MID · TOP`), 우측 보조표 `VALUE | COUNT | STACK | DESC`. `COUNT`는 `copyHeaderAuxRows`가 `eachSavableCell` 계열 집계에서 가져오므로 범례 뱃지·DOE 패널·Push와 **같은 수**입니다(§2 #40).
+* **열 폭은 글자 수에서 나옵니다**(`5a14e77`) — `headerSpanFor`가 필요한 맵 셀 칸 수를 내고 `distributeSpans`가 **최대 잔여법**으로 나눠 **모든 행의 열 합계를 정확히 일치**시킵니다. 종전에는 헤더 칸 하나 = 맵 셀 하나(32px)라 `MIDLOT_01` 같은 라벨이 잘렸고, 균등 분배는 짧은 라벨과 긴 라벨에 같은 폭을 줘 긴 쪽이 다시 잘립니다. 행마다 열 수가 어긋나면 엑셀이 표 전체를 밀어 버리므로 이는 미관이 아니라 산출물 정합성입니다.
+* **노치 `D`는 그림입니다** — 값이 빈 셀에만 찍히며 좌표는 `computeNotchCell(rotation, side)` 하나에서 나옵니다(붙여넣기가 같은 함수를 씁니다 — §4-ter).
+* 왕복의 읽기 절반은 **#48**이며 계약 전문은 **§4-ter**입니다.
+
+#### 48) `onMapGridPaste(e)` *(F1ⓑ · `c9bf2c7`)*
+* **용도**: COPY HEADER MODE로 내보낸 **회사 본딩맵 양식을 격자로 되읽습니다.** 격자 셀 + DOE 행(VALUE·STACK·DESC)을 복원하고, 화면의 프레임에 놓을 수 없으면 **사유를 붙여 거부**합니다.
+* **동선은 Ctrl+V 하나뿐이고 새 컨트롤은 0개입니다** — 선택이 아니라 물리적 제약입니다. 운영은 평문 HTTP라 `navigator.clipboard`가 `undefined`이고 `execCommand('paste')`는 웹 콘텐츠에서 차단되므로, 클립보드 내용을 주는 것은 네이티브 `paste` 이벤트의 `e.clipboardData`뿐입니다. 등록은 `document` 레벨 1개(`map_editor.js:1076`)이고, DOE 패널이 먼저 처리한 이벤트(`defaultPrevented`)와 입력 칸 안의 붙여넣기는 비킵니다.
+* **서버에 아무것도 쓰지 않습니다.** 확인창 **1회**(Clear Grid·Fill All과 같은 급) 후 화면만 바꾸고, 저장은 여전히 `⚡ Push` 하나입니다.
+* 분업: `readCompanyMapBlock`(순수 — 읽기) · `checkPasteAgainstFrame`(순수 — 프레임 대조) · `applyPastedGridRows`/`applyPastedAuxRows`(적용) · `pastedCellCount`(확인창의 수). 계약은 **§4-ter**.
 
 ---
 
@@ -284,7 +294,7 @@ sequenceDiagram
     Canvas->>UI: Die Count 집계 갱신 및 Legend 목록 반영
 ```
 
-본 명세에 수록된 모든 물리 맵 변환 법칙 및 47가지 전원 함수 규격을 바탕으로 코드를 해석 및 유지보수하여 주시기 바랍니다.
+본 명세에 수록된 모든 물리 맵 변환 법칙 및 48가지 전원 함수 규격을 바탕으로 코드를 해석 및 유지보수하여 주시기 바랍니다.
 
 ---
 
@@ -322,6 +332,81 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 - **원 마스크 프리셋은 여전히 선택지입니다** — ⚙️ "현재 좌측 패널 설정" 선택이 그 경로입니다. 기본이 바뀌었을 뿐 원형 규격이 막히지 않았습니다.
 - **합성 규격은 Push 시점에 저장됩니다** — `pushMapData`는 항상 **`wafer_map_metadata` 테이블 레코드**를 함께 밀어 넣으므로(§5.0의 정본 payload — 폐기된 셀 레벨 컬럼이 아님), 이 합성 물리 규격이 그대로 등록되고 한 번 Push하면 다음 로드부터는 메타 있는 맵입니다.
 - H2 적재 대조 게이트(§6.0-ter)는 **2선 방어로 그대로 유지**됩니다 — 기본이 안전해졌다고 게이트를 걷지 않습니다.
+
+---
+
+## 4-ter. 회사 양식 왕복 계약 (F1ⓐ/F1ⓑ · `064550f`+`5a14e77`+`c9bf2c7`)
+
+COPY HEADER MODE는 **내보내기가 아니라 왕복**입니다. 쓰기(#47)는 `064550f`에 착지했고 읽기(#48)는 `c9bf2c7`에 착지했습니다.
+
+> **INV-F1ⓑ-1 (왕복 항등):** COPY HEADER MODE로 복사한 맵을 그대로 되붙이면 격자가 **셀 하나까지 같습니다**(빈 칸 포함). 아래 규칙은 전부 이 한 문장을 정직하게 만들기 위해 있습니다. 실측(`c9bf2c7`): 실맵에서 복사 → Clear → 붙여넣기 → 다시 복사 시 **두 클립보드 플레이버가 바이트 동일**.
+
+### 4-ter.1 읽는 쪽은 `text/plain`이다 — 그리고 그 대가가 계약을 만든다
+
+복사는 `text/html`과 `text/plain`을 둘 다 싣지만 **읽는 것은 평문 하나**입니다. 근거 셋:
+
+1. **이 저장소의 TSV 리더는 `tsv.js`의 `parseTsv` 하나뿐**이고, 엑셀의 인용 규칙(탭·줄바꿈을 품은 셀)을 아는 것도 그것뿐입니다. HTML을 읽으려면 표 파서를 새로 써야 하는데 그것이 곧 **두 번째 격자 파서**입니다(`compose_map_id`가 셋이었던 때와 같은 형태 — [PRIMITIVES §2](../architecture/PRIMITIVES.md)).
+2. **사용자가 실제로 되붙이는 것은 엑셀을 거친 표**입니다. 엑셀이 내보내는 HTML은 mso 조건부 주석·중첩 표·rowspan이 섞인 넓은 표면이고, 우리가 쓴 `colspan`과 같다는 보장이 없습니다.
+3. **대가는 명시합니다.** 평문에는 병합이 없으므로 `colspan` 구조가 **"글자 뒤의 빈 칸"이라는 관례로만** 남습니다 — 그래서 아래 INV-F1ⓑ-3이 부수적 규칙이 아니라 핵심 규칙입니다.
+
+> **INV-F1ⓑ-3 (병합 관례):** **머리 띠 안의 빈 칸은 "왼쪽 칸의 연장"이지 "빈 열"이 아닙니다.** 보조표는 열마다 폭이 달라(`VALUE` 3열 · `COUNT` 2열 · `STACK` 2열 · `DESC` 6열 식) 평문에서 `VALUE ␣ ␣ COUNT ␣ STACK ␣ DESC ␣ …`로 도착하고 데이터 줄도 **같은 자리**에 놓입니다. 그래서 읽기는 **머리줄에서 배운 열 위치**(`aux.positions`)로만 읽습니다. 빈 칸을 걷어내고 압축하면 `['F','12','','FAIL']`이 `['F','12','FAIL']`이 되어 **DESC가 STACK으로 들어갑니다** — 화면은 멀쩡하고 값만 틀리는 그 부류입니다. 이 변이는 하네스에 고정돼 있습니다.
+
+### 4-ter.2 상단 그룹 띠는 **의도적으로 읽지 않는다**
+
+`맵키 그룹 | 4B12 | 1H | … | MID | … | TOP | …` 띠는 그리기 전용입니다. 이유는 순환입니다 — **그룹 칸의 값은 비어 있을 수 있고**(그 구역에 자재가 없는 맵), 평문에서 "빈 칸"과 "병합 연장"은 **같은 문자**입니다. 폭을 복원하려면 글자를 알아야 하고 글자를 읽으려면 폭을 알아야 합니다.
+
+따라서 **정체 확인은 TITLE 한 칸**(항상 0열)이 하고, 그룹 띠는 읽지 않습니다. 읽을 수 없는 것을 읽은 척하지 않습니다. 결과로 **자재(1H/MID/TOP)는 왕복하지 않습니다** — 붙여넣기가 복원하는 DOE 필드는 `VALUE`·`STACK`·`DESC` 셋뿐입니다.
+
+> 보조표 머리줄 판정(`auxHeaderInLine`)이 **`VALUE` 열을 요구**하는 것도 같은 이유입니다. 자재가 없는 맵에서는 그룹 띠의 마지막 비어 있지 않은 칸들이 `1H`·`MID`·`TOP`이고 셋 다 `DOE_COLUMNS`의 헤더 단어라 `looksLikeHeader`를 그대로 통과합니다 — 그러면 격자 폭이 그룹 띠에서 계산돼 표 전체가 어긋납니다.
+
+### 4-ter.3 격자 폭은 상수 하나에서 되찾는다 — `HDR_GAP_COLS`
+
+읽기는 `gridWidth = (보조표 VALUE의 열 위치) − HDR_GAP_COLS`로 격자 폭을 복원합니다. 그래서 **격자와 보조표 사이의 빈 칸 수는 쓰기와 읽기가 같은 상수를 봐야** 합니다. 종전에는 `auxTsv`·`auxCells`가 각각 리터럴 한 칸을 찍고 폭 계산(`totalCols`)만 상수를 썼습니다 — 갈리는 순간 **붙여넣은 격자가 통째로 한 칸 밀립니다.** `c9bf2c7`이 셋을 상수 하나로 모았습니다(재사용 관점은 [PRIMITIVES §4](../architecture/PRIMITIVES.md)).
+
+### 4-ter.4 노치 `D`의 **세 가지 역할**
+
+| 방향 | 역할 |
+|---|---|
+| 나갈 때(#47) | **그림** — 값이 빈 셀에만 찍는 표식. 데이터가 아닙니다 |
+| 돌아올 때(#48 대조) | **프레임 지문** — 자리가 (회전, 면, bbox)의 함수라, **치수가 같은 채로 프레임만 바뀐 경우**(rot 0↔180, front↔back)를 잡는 유일한 신호입니다. 격자 밖으로 나가면 `null` = 지문 **없음**이지 0이 아니며, 그때는 확인창이 "회전·면은 대조하지 못했습니다"라고 말합니다 |
+| 적용할 때(#48 쓰기) | **버립니다** — `COUNT`와 같은 처리 |
+
+세 번째가 없으면 붙여넣기 한 번이 그 맵을 **영구 Push 거절 상태**로 만듭니다: 그 자리는 웨이퍼 bbox 밖이라 `inside`가 거짓 → 캔버스에 색도 안 나오고 Push가 직렬화하지도 않는데 **적재 대조 게이트의 분모(원시 `gridData`)에는 들어갑니다**(§6.0-ter — `Fill All`이 만들던 상태와 같은 계급). 확인창이 말하는 셀 수(`pastedCellCount`)도 이 한 칸을 뺍니다 — 실측 `2026-07-30`, 실맵 4B12에서 "178칸"이라 말하고 177칸을 놓던 어긋남입니다.
+
+### 4-ter.5 거부 사유는 네 갈래이고, 최선 노력 배치를 하지 않는다
+
+`checkPasteAgainstFrame`은 규격이 안 맞으면 **사유를 붙여 거부**합니다 — 밀린 격자도 여전히 유효한 격자로 보이기 때문에 여기서 통과시키면 아무도 못 잡습니다.
+
+| 갈래 | 판정 |
+|---|---|
+| **열 수** | 복사본 `gridWidth ≠` 화면 `visualCols` |
+| **행 수** | 복사본이 화면보다 짧거나(`rows.length < visualRows`), 화면 행 범위 **밖에 값이 있음**(둘 다 이 갈래) |
+| **정체** | TITLE이 현재 화면의 `copyTitleText()`와 다름. **TITLE이 없는 복사본은 "다르다"가 아니라 "미상"**이라 통과시키되 확인창이 그 사실을 말합니다 |
+| **프레임 지문** | 노치가 격자 위에 있는데 그 자리가 `D`가 아님(§4-ter.4) |
+
+읽기 단계(`readCompanyMapBlock`)의 거부는 별개입니다 — 빈 클립보드 · 윗줄(TITLE·그룹 띠) 없음 · 격자 없이 보조표만. 그리고 **격자 모양이 전혀 아닌 클립보드는 조용히 지나갑니다**(토스트 없음) — 아무 붙여넣기에나 경고를 띄우지 않기 위해서입니다.
+
+### 4-ter.6 적용 규율
+
+- **빈 칸도 씁니다.** 왕복 항등은 "값 있는 셀을 옮긴다"가 아니라 "격자가 같아진다"이므로, 복사본에서 비어 있던 셀은 화면에서도 비웁니다. 잠금 셀(`isProtectedFCell` — 페인팅·지우기가 쓰는 그 관문)은 건드리지 않고 **개수를 보고**합니다.
+- **DOE 행의 정체는 `VALUE`입니다.** DOE 패널의 붙여넣기는 "포커스한 행부터 순서대로"라 VALUE가 개명이지만, 이 양식은 **값으로 주소를 매긴 표**라 VALUE가 키입니다 — 그래서 **개명하지 않습니다.**
+- 🔴 **붙여넣기는 값을 지우지 않습니다.** 복사본에 없는 값은 "삭제하라"가 아니라 **"이 복사본이 말하지 않은 것"**입니다. registry 행을 없앨 권한은 DOE 패널의 삭제 버튼에만 있습니다.
+- **`COUNT`는 알아보되 버립니다**(INV-F1ⓑ-2). 칠한 셀 수는 격자에서 세는 값이지 붙여넣기로 정하는 값이 아닙니다 — 열 판정·폐기는 `mapPastedGrid`(DOE 패널이 쓰는 그 경로)에 그대로 위임합니다.
+- **COLOR는 이 양식에 없습니다.** 기존 값은 자기 색을 유지하고 새 값은 공용 팔레트 경로(`autoAddLegendValue`)가 배정합니다. legend 변조는 `updateLegendRowForPanel` 관문을 지납니다 — 이 파일에 legend를 직접 만지는 두 번째 경로를 만들지 않습니다.
+- 적용 뒤 **저장되지 않을 셀을 보고**합니다(`classifyUnsavableCells` — Push 관문이 쓰는 그 분류기). 조용히 버리지도, 조용히 남기지도 않습니다.
+
+### 4-ter.7 머리줄 인식 로스터 `IGNORED_HEADERS` — 4 → 13 (`5a14e77`)
+
+계약 밖이지만 **머리줄에서는 알아보는** 단어들입니다. 모르는 척하면 그 줄이 머리줄로 인식되지 않고 **데이터 행**으로 들어가, 값 이름이 `VALUE`이고 STACK이 `COUNT`인 행이 생깁니다. 정본은 `client2/src/doe_bands.js`이며 **계약이 이 로스터를 집합(set)으로 단언**합니다 — 표본 단언이던 시절 `COUNT` 추가에 331 단언이 전부 초록이었습니다(하네스는 자기가 든 벡터만 채점합니다).
+
+| 묶음 | 단어 | 성격 |
+|---|---|---|
+| 파생 표시 | `COLOR` · `COLOR*` · `칠함` · `칠함*` · `COUNT` | `칠함`/`COUNT`는 같은 값의 화면 이름·내보내기 이름. `*` 붙은 둘은 **하위호환 전용**(앱은 이제 `*`를 어디에서도 렌더하지 않음 — 측정 2026-07-29) |
+| 자재 롤업 ② | `MAT` · `BIN` · `MAP` · `가용` · `사용` · `사용≈` · `잔여` · `잔여≈` | ⚠️ **예비(PREPARATORY)** — 아래 참조 |
+
+> 🔴 **여덟 개의 롤업 단어는 예비입니다 — 로스터에 있다는 사실이 ②→① 경로가 배선됐다는 증거가 아닙니다.** `rollupToGrid`는 export돼 있지만 **importer가 0건**입니다(측정 2026-07-30, 하네스가 매 실행마다 재측정). 즉 자기 주석이 의도로 선언한 ②→① 왕복은 **아직 배선되지 않았고**, 이 단어들은 "그 경로가 생겼을 때 머리줄이 머리줄로 읽히도록" 미리 넣어 둔 것입니다.
+
+`COLOR*`가 뒤늦게 들어온 근거: `칠함*`과 **같은 줄·같은 커밋·같은 별표**(폐기된 `tp-ch-row l1`, `b35bc9f` → `7694b42`에서 그 줄이 통째로 소멸)에서 왔으므로, `칠함*`을 남겨 두는 유일한 근거(옛 내보내기·손으로 만든 시트가 아직 그 단어를 담고 있다)가 `COLOR*`에도 똑같이 성립합니다. 하나만 로스터에 있는 것은 근거 없는 비대칭이었습니다.
 
 ---
 
@@ -512,6 +597,21 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
 | 참조 키 캐노니컬화 | `map_overlay.canonical_map_key`(→ `canonical_key_value`) | `canonicalMapKey` |
 
 > 양쪽은 `contracts/map_seam/`의 **같은 벡터 파일로 채점**됩니다(`valid_die_basis_cases`). INV-M4-1의 기대값은 서술이 아니라 `2a9f6c4`에서 **실측된** 마스크(`mask_baseline_cases`)를 참조합니다.
+
+### 5.8 로드 시 프리셋 라우팅 — 이 맵을 **어떤 규격으로 열 것인가** (F5 서버 절반 · `50bddda` · 2026-07-30)
+
+종전에는 모든 맵이 같은 기본 규격으로 열렸고, 랏 명명이 제품마다 다른 현장에서는 운영자가 **맵마다 손으로 규격을 다시 입력**했습니다. `GET /api/maps/preset-routing?table=&map_key=`(`server/map_preset_routing.py`)가 그 답을 **선언에서** 냅니다. 엔드포인트 계약 전문은 [architecture/backend §2](../architecture/backend.md), 선언 절차·키 사전은 [guide/config/map_overlay_config §2-bis](../guide/config/map_overlay_config.md)입니다. §5가 붙드는 것은 **정렬 계약과의 관계** 넷입니다.
+
+> 🔑 **우선순위는 절대적입니다 — `wafer_map_metadata` > 라우팅 > 패널.**
+> §5.0이 말하는 대로 메타는 그 맵 프레임의 SSOT입니다. 규격이 이미 등록된 맵은 `status: meta_present` + `preset_key: null`로 답하므로 **클라가 저장된 규격을 덮는 것이 구조적으로 불가능**합니다. 이 판정을 클라 규율에 맡기지 않고 **서버가 강제**하는 이유는 규격이 `inside`를 바꾸고 `inside`가 저장 가능 집합을 바꾸기 때문입니다(§6.0-ter 적재 대조 게이트). 라우팅은 **메타가 아직 없는 맵의 첫 열림 기본값**일 뿐이고, 그 맵의 첫 Push가 메타를 등록하면(§4-bis.3) 그때부터 라우팅은 답하지 않습니다.
+
+- **해석 순서가 계약입니다.** ① 선언된 제품코드 조회 테이블 → `product_presets` · ② 순서 있는 텍스트 패턴 규칙(**첫 매치 승리**) · ③ 라우팅 없음. **`status != "ok"`이면 `preset_key`/`preset`은 항상 `null`**이고 호출부는 지금 동작을 그대로 유지합니다 — 그럴듯한 프리셋을 지어내지 않습니다.
+- 🔴 **①의 미선언·조회 miss·테이블 부재는 전부 정상 경로이지 경고가 아닙니다.** 제품코드 조회 테이블은 **운영에만 존재하고, 그마저 불완전**합니다. 그래서 부재는 정상 구성이고 miss는 정상 결과이며, 둘 다 `debug` 위로 올라가지 않고 조용히 ②로 떨어집니다. **코드에는 환경 분기가 없습니다 — 선언만 다릅니다**(운영에서만 도는 가지는 이 환경에서 검증될 수 없기 때문). 결과는 로그가 아니라 응답의 `lookup{declared, status, product_code}`로만 드러납니다 — 그 필드가 **운영 선언을 검증하는 유일한 창**입니다.
+- **키는 7b 캐노니컬화를 그대로 탑니다**(§5.0). `canonical_map_key`/`canonical_bind_value` 경유이고 이 모듈에 **두 번째 정규화는 없습니다.** ⚠️ 인덱스가 붙은 `business_key_val` 미러를 조회 지름길로 쓰는 안은 **기각**됐습니다 — 그쪽은 `str(v).strip()`이라 `canonical_key_value`와 다른 정규화이고, 둘의 불일치가 **없는 miss를 만들어냅니다.** 이 설계는 miss를 의도적으로 조용하게 두므로 그 오답은 영원히 표면화되지 않습니다.
+- **선언 자리는 `map_overlay_config.json`이지 `maps.json`이 아닙니다.** 후자는 `POST/DELETE /api/map-presets`가 통째로 다시 쓰는 API 관리 파일이라, 손으로 쓴 운영 규칙은 나쁜 읽기 한 번에 지워집니다. 프리셋 **본문**은 계속 `maps.json`에서 오고 규칙은 키 또는 `name`으로 그것을 가리킵니다.
+- **비용은 맵 로드당 1회**입니다 — 메타 조회 1건 + 조회 테이블 1건, 둘 다 `LIMIT 1`. 셀 단위 경로가 아닙니다. ⚠️ 동적 테이블은 `business_key_val`/`updated_at`만 인덱싱하므로 선언된 조회 컬럼의 등치 필터는 **순차 스캔**입니다 — 프로세스당 1회 `INFO`로 인덱스 필요를 알립니다(경고 아님).
+
+> ⏳ **클라 절반은 별개 착지입니다.** `50bddda`는 **소비자 없는 가산적 서버 착지**이고, 에디터가 이 답을 실제로 적용하는 라운드는 따로 돕니다 — **HEAD `c9bf2c7` 기준으로 로드 경로의 기본 프레임 규칙은 §4-bis.3 그대로**입니다. 클라 절반이 착지하면 이 문단과 §4-bis.3의 관계(라우팅이 답한 프리셋 vs 좌표계 선택 모달)를 함께 갱신해야 합니다.
 
 ---
 

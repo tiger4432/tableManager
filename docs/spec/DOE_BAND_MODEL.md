@@ -4,6 +4,7 @@
 > ※ 일부 코드 주석(`doe_bands.js:39`·`map_editor.js:218`)이 인용하는 `docs/spec/DOE_ZONE_MODEL.md`는 **존재한 적 없는 경로**입니다 — zone 모델 규칙 번호의 정본 문서는 위 MAP_EDITOR_SPEC §6.0-bis입니다(주석 리포인트는 코드 라운드 대기).
 
 > **상태:** 규칙 확정(B1–B10), 구현 후 zone 모델로 대체(위 배너) — 원문은 히스토리 추적용 보존
+> **Last-verified:** 2026-07-30 (§8 검증 절차만 대조 — 하네스 단언 수 **233 → 396 실측 정정**, 그리고 `5a14e77`부터 `npm run build`의 `prebuild`가 이 하네스를 자동 실행하므로 수동 호출은 디버깅용임을 명기. 본문 B1–B10은 폐기 상태 그대로이며 재검증 대상이 아님)
 > **정본 구현:** `client2/src/doe_bands.js` (순수 모델 — DOM·IO 없음)
 > **실행 가능한 형태:** `contracts/doe_band_rules/vectors.json` · `client_harness.mjs`
 > **관련:** [DOE_STORAGE_MAP](DOE_STORAGE_MAP.md)(무엇이 어디 저장되는가) · [MAP_EDITOR_SPEC §6](MAP_EDITOR_SPEC.md)(전사 계획)
@@ -386,8 +387,13 @@ server-pm이 2026-07-27에 `map_band_registry`(한 행 = 한 구간, bk `ref_tab
 ## 8. 검증
 
 ```
-node contracts/doe_band_rules/client_harness.mjs      # 233 assertions
+node contracts/doe_band_rules/client_harness.mjs      # 396 assertions (실측 2026-07-30)
 ```
+
+> **[2026-07-30 `5a14e77`] 손으로 부를 필요가 없어졌다.** 이 하네스는 이제 `cd client2 && npm run build`의
+> `prebuild`(`scripts/check_contracts.mjs`)가 **다른 계약 셋과 함께** 실행한다 — 그전에는
+> **아무 게이트도 이것을 부르지 않았다.** 위 명령은 단독 디버깅용으로만 남긴다.
+> 단언 수는 v3(marker 축)·`ignored_headers` 집합 단언 도입으로 233 → **396**으로 늘었다.
 
 서버 측 검증기가 생기면 **같은 `vectors.json`을 읽어야 한다.** 두 구현이 다른 벡터를 보면
 같은 계획에 대해 한쪽만 저장을 막는 상태가 조용히 생긴다.
