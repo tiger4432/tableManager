@@ -79,7 +79,7 @@ const S = {
   activeBrush: '',
   summaries: new Map(),      // 풀 키 -> { status, data, error }
   matMapState: new Map(),    // "table|자재ID" -> true | false | null(미상)
-  keyColumns: new Map(),     // table -> map_key_columns
+  keyColumns: new Map(),     // table -> { ok, keyColumns, columnTypes }  ([7b] 선언 타입 동반)
   matSeq: 0,
   flash: new Set(),          // 1회성 하이라이트 대상 자재 ID
   navBusy: false,
@@ -390,11 +390,13 @@ async function getPoolSummary(pool, force = false) {
 //      항목이 없음/축 미구성 -> 미상. **chips.remaining으로 대체하지 않는다** — 그것은 이
 //      자재 전체(모든 BIN)의 수이고, 한 BIN의 가용으로 쓰면 조용히 과대 보고가 된다.
 function availabilityOfPool(pool) {
+  // [7c] 반환 형태에 `bound`가 **항상** 있다(없으면 null). 어떤 갈래에서만 빠지면 소비자가
+  // `undefined`와 "상한 없음"을 구분하려 들게 되고, 그 순간 판정이 둘로 갈린다.
   const entry = S.summaries.get(summaryKeyFor(pool));
-  if (!entry) return { status: null, value: null, reliable: false, reason: '아직 조회하지 않음' };
+  if (!entry) return { status: null, value: null, reliable: false, bound: null, reason: '아직 조회하지 않음' };
   if (entry.status !== 'ok') {
     return {
-      status: entry.status, value: null, reliable: false,
+      status: entry.status, value: null, reliable: false, bound: null,
       reason: entry.status === 'loading' ? '조회 중'
         : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
           : (entry.error || '가용 조회 실패')),
@@ -408,25 +410,59 @@ function availabilityOfPool(pool) {
   const block = data.bins;
   if (!block || typeof block !== 'object' || block.axis !== 'connected' || !Array.isArray(block.entries)) {
     const why = (block && block.detail) ? String(block.detail) : 'BIN별 가용을 서버가 주지 않았습니다';
-    return { status: 'bins_unavailable', value: null, reliable: false, reason: why };
+    return { status: 'bins_unavailable', value: null, reliable: false, bound: null, reason: why };
   }
   const hit = block.entries.find(e => e && Number(e.bin) === Number(pool.bin));
   if (!hit) {
-    return { status: 'bin_absent', value: null, reliable: false, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
   }
   if (hit.status === 'bin_absent') {
-    return { status: 'bin_absent', value: null, reliable: false, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
   }
   const reasons = [];
   if (hit.reliable !== true) reasons.push(hit.reason || '서버 판정: 이 BIN의 잔여 신뢰 불가');
   if (hit.remaining === null || hit.remaining === undefined) reasons.push('서버가 잔여 값을 주지 않았습니다');
   if (degraded.length > 0) reasons.push(`소스 강등(${degraded.join(', ')})`);
+  // [7c] 선언된 미추적 소비 — 사이트가 "전사 기록이 없다"고 선언한 상태(SPEC §6.2-bis).
+  // 미상이 아니라 **상한**을 아는 상태다. 상한이 있으면 아래 reason은 강등 문구가 아니라
+  // 상한의 근거로 읽힌다 — 그래서 문구를 따로 세운다.
+  const bound = untrackedBoundOf(hit);
   return {
     status: 'ok',
     value: (hit.remaining === null || hit.remaining === undefined) ? null : Number(hit.remaining),
     reliable: reasons.length === 0,
-    reason: reasons.join(' · '),
+    bound,
+    reason: bound !== null ? UNTRACKED_REASON : reasons.join(' · '),
   };
+}
+
+// ── [7c] 선언된 미추적 소비 (transfer_log: "none") ───────────────────────────
+//
+// 서버가 `used_set`을 통째로 갖지 못한 **선언된** 상태다. 감산항 하나가 빠졌으므로 값은
+// 커질 수만 있고, 그래서 서버가 주는 `remaining_upper_bound`는 진짜 상한이다(SPEC §6.2-bis).
+//
+// 🔴 **상한은 서버가 계산한다. 여기서 총−fail을 다시 계산하지 않는다** — 같은 수의 구현이
+//    둘이 되면 반드시 갈라진다(저장 `ceil` / 표시 `round`로 DB 34 · 화면 33이던 사건).
+//    이 함수의 유일한 숫자 출처는 `remaining_upper_bound` 필드 그 자체다.
+//
+// 🔴 **선언은 정확히 boolean `true`뿐이다.** `'true'`·`1`·`'none'`·`'None'`·`null`·`''`은
+//    전부 선언이 아니라 사고성 미상으로 남는다. 서버가 config에서 `"none"` **문자열만**
+//    선언으로 받는 것과 같은 규율이고(오타가 지식으로 승격되면 안 된다), 클라가 느슨하게
+//    받으면 그 엄격함이 이 화면에서 무효가 된다.
+const UNTRACKED_REASON = '전사(소모) 기록이 없다고 선언된 사이트입니다 — 기전사 미차감이라 실제 잔여는 이 값 이하입니다.';
+
+function untrackedBoundOf(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (entry.transfer_untracked !== true) return null;
+  const n = entry.remaining_upper_bound;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  return n;
+}
+
+// 상한의 표기. **맨숫자로 찍지 않는다** — 데이터가 갖지 못한 정밀도를 주장하게 된다.
+function boundText(bound) {
+  if (bound === null || bound === undefined || typeof bound !== 'number' || !Number.isFinite(bound)) return '';
+  return `≤${bound}`;
 }
 
 function isPlainNotFound(status, body) {
@@ -436,22 +472,42 @@ function isPlainNotFound(status, body) {
 // ── 자재 맵 존재 여부 ───────────────────────────────────
 function matMapCacheKey(table, id) { return `${table}|${id}`; }
 
-async function materialMetaValues(table, id) {
-  let cols = S.keyColumns.get(table);
-  if (!cols) {
-    cols = controller && controller.fetchMapKeyColumns ? await controller.fetchMapKeyColumns(table) : [];
-    S.keyColumns.set(table, cols || []);
+// [7b] 자재 ID로 맵 키 값을 만든다. 값은 **선언 타입으로 캐노니컬화**해서 내보낸다 —
+// number 선언 slot에 저장된 1을 자재 토큰의 '01'로 조회하면 맵이 있는데도 "맵 없음"이
+// 뜬다(운영 실증). 캐노니컬화 구현은 map_editor 하나뿐이고 여기서는 컨트롤러로 받아
+// 쓴다(이 파일에 사본을 두면 맵 정체성에 대한 의견이 둘이 된다).
+async function materialKeySpec(table) {
+  let spec = S.keyColumns.get(table);
+  if (!spec) {
+    spec = (controller && controller.fetchMapKeySpec)
+      ? await controller.fetchMapKeySpec(table)
+      : { ok: false, keyColumns: [], columnTypes: {} };
+    S.keyColumns.set(table, spec || { ok: false, keyColumns: [], columnTypes: {} });
   }
+  return S.keyColumns.get(table);
+}
+
+function canonKey(value, colType) {
+  const fn = controller && controller.canonicalKeyValue;
+  if (!fn) return (value === null || value === undefined) ? value : String(value).trim();
+  return fn(value, colType);
+}
+
+async function materialMetaValues(table, id) {
+  const spec = await materialKeySpec(table);
+  const cols = (spec && spec.keyColumns) || [];
+  const types = (spec && spec.columnTypes) || {};
   const out = {};
-  if (!cols || cols.length === 0) return out;
-  // 맵 키 컬럼이 하나면 자재 ID **원문이 곧 맵 키**다 — 해석이 끼지 않는다.
-  if (cols.length === 1) { out[cols[0]] = String(id); return out; }
+  if (cols.length === 0) return out;
+  // 맵 키 컬럼이 하나면 자재 ID **원문이 곧 맵 키**다 — 분해 해석이 끼지 않는다.
+  // (캐노니컬화는 해석이 아니라 같은 값의 표기 통일이므로 여기서도 적용한다.)
+  if (cols.length === 1) { out[cols[0]] = String(canonKey(String(id), types[cols[0]]) ?? id); return out; }
   const { lot, slot } = splitMaterialId(id);
   // 해석 실패면 **빈 필터**를 돌려준다 → `probeMapExists`가 null(=미상)을 준다.
   // 여기서 억지로 조회하면 "맵 없음"이 나오는데, 그건 "확인 못 했다"의 위장이다.
   if (lot === null || slot === null) return out;
-  out[cols[0]] = lot;
-  out[cols[1]] = slot;
+  out[cols[0]] = String(canonKey(lot, types[cols[0]]) ?? lot);
+  out[cols[1]] = String(canonKey(slot, types[cols[1]]) ?? slot);
   return out;
 }
 
@@ -871,6 +927,39 @@ function unknownCellHtml(state, extraClass) {
   return `<span class="tp-unk ${extraClass || ''}" title="${esc(state.reason || '')}">미상</span>`;
 }
 
+// [7c] 가용 칸. 확정 수 → 굵은 수 · 선언된 미추적 → `≤N` · 그 외 → 미상.
+// 두 렌더 경로(전체 재렌더 / 카운트 텍스트 패치)가 **이 함수 하나**를 쓴다.
+function availCellHtml(av) {
+  if (av.status === null || av.status === 'loading') return '<span class="tp-unk">…</span>';
+  if (av.bound !== null && av.bound !== undefined) {
+    return `<b class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(av.bound)}</b>`;
+  }
+  return av.reliable ? `<b>${av.value}</b>` : unknownCellHtml(av, 'w');
+}
+
+// [7c] 잔여 칸. 상한 − 확정 사용량은 여전히 진짜 상한이다(알려진 상수를 상한에서 뺀 것).
+// 뺄셈은 `remainingState` **하나**만 쓴다 — 확정 갈래와 상한 갈래가 각자 빼면 그 순간
+// 같은 수의 구현이 둘이 된다. 상한 갈래는 합성 입력을 만들어 같은 함수에 통과시키고,
+// 확정 수처럼 보이지 않도록 표기만 `≤`로 감싼다.
+function remainingCellHtml(av, used) {
+  if (av.bound !== null && av.bound !== undefined) {
+    const b = remainingState({ status: 'ok', value: av.bound, reliable: true }, used);
+    return `<span class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(b.value)}</span>`;
+  }
+  const rem = remainingState(av, used);
+  return rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w');
+}
+
+// 음수 강조는 확정 잔여에만 붙인다 — 상한이 음수라는 것은 "부족이 확정"이 아니라
+// "가장 낙관적으로 봐도 부족"이라는 뜻이므로 같은 빨강을 쓰되 판정 문구는 붙이지 않는다.
+function remainingIsNegative(av, used) {
+  if (av.bound !== null && av.bound !== undefined) {
+    return remainingState({ status: 'ok', value: av.bound, reliable: true }, used).value < 0;
+  }
+  const rem = remainingState(av, used);
+  return rem.reliable && rem.value < 0;
+}
+
 function renderMaterialPane() {
   const box = elp.matPane;
   if (!box) return;
@@ -922,12 +1011,9 @@ function renderMaterialPane() {
 
   const rows = pools.map(p => {
     const av = availabilityOfPool(p);
-    const rem = remainingState(av, p.used);
     const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, poolCacheId(p))) : null;
     const bad = clashes.some(c => c.value && p.uses.some(u => u.value === c.value));
-    const availHtml = (av.status === null || av.status === 'loading')
-      ? '<span class="tp-unk">…</span>'
-      : (av.reliable ? `<b>${av.value}</b>` : unknownCellHtml(av, 'w'));
+    const availHtml = availCellHtml(av);
     // 전개된 슬롯 행은 그리지 않는다: 슬롯별 배분을 그리는 순간 화면이 매 단위 할당을
     // 주장하게 된다. 배분은 풀 단위로만 존재한다.
     const where = p.uses.map(u => `${u.value}·${ZONE_LABEL[u.zone]}`).join(' + ');
@@ -939,8 +1025,8 @@ function renderMaterialPane() {
           exists === true ? 'O' : (exists === false ? 'X' : '?')}</span>
         <span class="tp-num avail">${availHtml}</span>
         <span class="tp-num share" title="${esc(where)}"><span class="ap">≈</span>${p.used}</span>
-        <span class="tp-num left${rem.reliable && rem.value < 0 ? ' neg' : ''}">${
-          rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w')}</span>
+        <span class="tp-num left${remainingIsNegative(av, p.used) ? ' neg' : ''}">${
+          remainingCellHtml(av, p.used)}</span>
       </div>
       <div class="tp-knob" title="이 자재를 쓰는 값들의 knob을 모은 파생 표시입니다 — 여기서는 편집하지 않습니다.">${
         knobChipsFor(p) || '<span class="tp-emp">— knob 없음</span>'}</div>
@@ -1102,11 +1188,14 @@ async function openMaterial(id) {
       // opens as an empty grid (openMapFrame allowEmpty) and is created on ⚡ Push.
       // NOTE: probeMaterialMap keeps returning null (미상) for these ids on purpose -
       // guessing is fine for navigation the user asked for, not for an existence claim.
-      const cols = S.keyColumns.get(table) || [];
+      const spec = await materialKeySpec(table);
+      const cols = (spec && spec.keyColumns) || [];
       if (cols.length === 0) {
         showToast(`${table}의 맵 키 컬럼을 읽지 못했습니다.`, 'error'); return;
       }
-      metaValues = { [cols[0]]: String(id) };
+      // [7b] 라우팅 값도 캐노니컬화한다 — 여기서 원문 '01'을 넣으면 에디터의 메타 입력이
+      // '01'로 채워지고, 그 입력으로 조합된 map_key가 저장본 'LOT_1'을 다시 빗나간다.
+      metaValues = { [cols[0]]: String(canonKey(String(id), (spec.columnTypes || {})[cols[0]]) ?? id) };
     }
     const r = await controller.openMapFrame({
       table, metaValues,
@@ -1281,11 +1370,13 @@ export function notifyPaintCounts(counts) {
       if (!p) return;
       const share = node.querySelector('.tp-num.share');
       if (share) share.innerHTML = `<span class="ap">≈</span>${p.used}`;
-      const rem = remainingState(availabilityOfPool(p), p.used);
+      // [7c] 상한 표기도 이 경로를 지난다 — 두 렌더 경로가 `remainingCellHtml` 하나를
+      // 쓰므로, 셀을 칠하는 도중에만 `≤`가 사라지는 식의 갈림이 생길 수 없다.
+      const av = availabilityOfPool(p);
       const left = node.querySelector('.tp-num.left');
       if (left) {
-        left.classList.toggle('neg', rem.reliable && rem.value < 0);
-        left.innerHTML = rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w');
+        left.classList.toggle('neg', remainingIsNegative(av, p.used));
+        left.innerHTML = remainingCellHtml(av, p.used);
       }
     });
   }

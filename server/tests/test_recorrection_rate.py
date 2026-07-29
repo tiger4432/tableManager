@@ -272,3 +272,43 @@ def test_dashboard_survives_a_failing_recorrection_query(client, db_session, mon
     assert body["recorrection"]["rate_pct"] is None
     assert body["recorrection"]["unavailable_reason"]
     main.RECORRECTION_CACHE["value"] = None
+
+
+def test_the_unavailable_reason_names_the_actual_cause_not_a_canned_timeout(
+        client, db_session, monkeypatch):
+    """TWIN of the effort instrument's F6 fix (test_effort_metric.py).
+
+    This helper used to return one canned string -- "집계 시간 초과 또는 실패
+    (idx_audit_user_recorrection 인덱스 확인)" -- for EVERY failure mode. A missing
+    column or a broken query therefore read as "the index is slow", sending whoever
+    was on call to tune an index that was never the problem.
+    """
+    import main
+
+    def boom(*a, **kw):
+        raise RuntimeError("column audit_logs.source_name does not exist")
+
+    monkeypatch.setattr(crud, "get_recorrection_stats", boom)
+    main.RECORRECTION_CACHE["value"] = None
+
+    reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
+    assert "source_name does not exist" in reason, "name the real failure"
+    assert "RuntimeError" in reason
+    assert "시간 초과" not in reason, "must not claim a timeout that did not happen"
+    main.RECORRECTION_CACHE["value"] = None
+
+
+def test_a_real_recorrection_timeout_is_still_identified_as_one(
+        client, db_session, monkeypatch):
+    import main
+
+    def boom(*a, **kw):
+        raise RuntimeError("canceling statement due to statement timeout")
+
+    monkeypatch.setattr(crud, "get_recorrection_stats", boom)
+    main.RECORRECTION_CACHE["value"] = None
+
+    reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
+    assert "시간 초과" in reason and "idx_audit_user_recorrection" in reason, \
+        "the timeout case must still point at the index that fixes it"
+    main.RECORRECTION_CACHE["value"] = None

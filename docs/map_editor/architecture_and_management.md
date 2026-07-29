@@ -57,6 +57,37 @@
 | `grid_y_invert` | `boolean` | Y축 반전 설정 여부 | `false` |
 | `rotation` | `number` | 맵 회전 각도 (`0`, `90`, `180`, `270`) | `0` |
 | `side` | `string` | 웨이퍼 관찰면 (`'front'`, `'back'`) | `'front'` |
+| `valid_die_ref` | `object`\|`string` | **[M4 phase 1]** 유효 다이 집합을 선언하는 **다른 맵**에 대한 참조. 선택 필드이며 **없으면 종전(원 기하) 동작** | `{"table": "dt_map", "map_id": "TPL_1"}` 또는 `"TPL_1"` |
+| `auto_registered` | `boolean` | 인제션 자동 등록으로 생성된 합성 메타 표지([INGESTION_GUIDE §1.10](../guide/INGESTION_GUIDE.md)) | `true` |
+
+> ℹ️ **선언되지 않은 키는 읽는 쪽이 무시합니다.** 서버(`map_overlay._grid_of`/`_phys_signature`/`frame_axes`)와 클라 모두 **아는 키만** 읽으므로, 위 표에 없는 키를 실어도 기존 경로는 흔들리지 않습니다. `valid_die_ref`·`auto_registered`가 그렇게 들어온 가산 필드입니다.
+
+#### 2.3-bis `valid_die_ref` — 유효 다이도 맵이다 (M4 phase 1 · 2026-07-29)
+
+원 기하는 **판정자에서 생성기로 강등**되는 중입니다. 테이프에 붙은 dt 맵은 300mm 제약이 없어 원으로 표현할 수 없는 유효 다이 형상을 가지는데, phase 1은 그것을 **저장된 맵 하나를 가리키는 선언**으로 표현할 수 있게 합니다. phase 2(프리셋=템플릿 생성기)·phase 3(`inside`에서 원 은퇴 + 기존 메타 이관)은 별개 라운드입니다.
+
+**문법** — 서버 `map_overlay.parse_valid_die_ref`와 클라 `parseValidDieRef`가 문자 그대로 같으며, 정본은 `contracts/map_seam/vectors.json`입니다.
+
+| 선언 | 뜻 |
+| :--- | :--- |
+| 키 없음 / `null` | **선언 없음.** 원 기하 그대로(= 이 필드가 없던 때와 동일) |
+| `"TPL_1"` | 맵 키 문자열. 테이블은 **선언한 맵 자신의 것**을 승계 |
+| `{"table", "map_id"}` | `target_table`/`map_key`도 같은 뜻. `table` 생략 시 승계, **`map_id`는 필수** |
+
+**판정 규율 3종** (서버 단일 분기점 `map_overlay.resolve_valid_die_basis(meta, resolver) → {basis, source, reason}`):
+
+| `source` | 뜻 |
+| :--- | :--- |
+| `circle` | 선언이 없다 — 종전 그대로 |
+| `ref` | 참조가 풀렸다 — 그 맵이 **유일한** 근거이며 **원과 교집합하지 않는다**(교집합은 보수적으로 보이지만 템플릿이 유효라고 선언한 다이를 조용히 떨어뜨린다) |
+| `refused` | 선언은 있는데 풀지 못했다 — `basis` 없음 + 사유. **조용히 원으로 되돌아가지 않는다** |
+
+- ⚠️ **`null`/부재만 "선언 없음"입니다.** 읽을 수 없는 선언(오타·잘못된 타입)을 "선언 없음"으로 접으면 오타 하나가 조용히 원 기하로 되돌아갑니다 — 틀린 답과 맞은 답이 구별되지 않는 상태입니다. 그래서 형태 위반은 **거절**입니다.
+- ⚠️ **참조 맵의 셀이 0건이면 "유효 다이 0개"가 아니라 거절**입니다. 거의 언제나 "아직 적재되지 않았다"이고, 0건을 답으로 삼으면 그 맵 전체가 무효가 됩니다.
+- ⚠️ **참조 맵의 규격(`wafer_map_metadata`)이 미등록이면 거절**입니다. 선언은 메타 안에 사니 선언한 맵의 프레임은 언제나 아는데 참조 맵의 프레임만 모르는 비대칭이라, identity로 가정하면 회전된 템플릿을 무보정으로 받아들이게 됩니다(`bonding_plan`의 canonical 프레임 규율과 같은 판단).
+- **참조 키는 7b 캐노니컬화를 경유합니다**(`map_overlay.canonical_map_key` → `canonical_key_value`). `number` 선언 slot에 저장된 `1`은 메타가 `LOT_1`로 등록되므로, 선언이 `LOT_01`이어도 찾아냅니다. **두 번째 정규화를 만들지 마십시오.**
+- **바운딩 박스는 건드리지 않습니다.** `getWaferBoundingBox`/`get_wafer_bounding_box`는 계속 원으로 계산합니다 — 그것이 **DB에 저장되는 x/y**의 기준이라, 유효 다이 집합을 먹이면 같은 맵의 좌표가 조용히 다른 수로 재해석됩니다. 좌표계는 방향·물리 규격에서만 파생됩니다([MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)).
+- **인제션 자동 등록은 이 선언을 덮지 않습니다** — `map_meta_registrar`는 **부재 시에만** 생성합니다(회귀 시험 2건).
 
 ### 2.4 필수 `map_key_columns` 설정 및 테이블 필터링 규칙
 웨이퍼 맵을 다루는 모든 테이블은 `table_config.json`에 `map_key_columns` 컬럼 목록을 **무조건 필수 명시**해야 합니다:

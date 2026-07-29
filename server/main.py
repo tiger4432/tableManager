@@ -932,10 +932,22 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
         except Exception:
             pass
         print(f"[Dashboard] re-correction rate unavailable: {e}")
+        # F6 (twin of _get_effort_stat): name the ACTUAL cause. The old text claimed
+        # "timeout or failure" and pointed at the index unconditionally, so a missing
+        # column or a broken query read as "the index is slow" and sent whoever was on
+        # call to tune an index that was never the problem.
+        detail = (str(e).strip().splitlines() or [""])[0][:200]
+        lowered = detail.lower()
+        if "timeout" in lowered or "canceling statement" in lowered:
+            reason = (f"집계 시간 초과 ({RECORRECTION_TIMEOUT_MS}ms) — "
+                      f"idx_audit_user_recorrection 인덱스 확인. "
+                      f"[{type(e).__name__}] {detail}")
+        else:
+            reason = f"집계 실패 — [{type(e).__name__}] {detail or '상세 없음'}"
         result = schemas.RecorrectionStat(
             window_days=crud.RECORRECTION_WINDOW_DAYS,
             measured_cells=0, recorrected_cells=0, rate_pct=None,
-            unavailable_reason="집계 시간 초과 또는 실패 (idx_audit_user_recorrection 인덱스 확인)",
+            unavailable_reason=reason,
         )
 
     RECORRECTION_CACHE["value"] = result
@@ -3427,6 +3439,13 @@ def get_map_paint_rules(table: Optional[str] = None):
         "default_legend": map_overlay_module.get_default_legend(config),
         "value_column_candidates": map_overlay_module.resolve_value_column_candidates(config),
     }
+
+# [M4 phase 1] 유효 다이(`valid_die_ref`)에 **새 REST 경로는 추가하지 않았다.**
+# 클라 half는 이미 있는 셋(`/tables/{t}/data` + `/api/maps/paint-rules`의 binding +
+# `/tables/{t}/schema`)으로 참조를 풀고 있으므로 새 경로에 소비자가 없고, REST 시그니처는
+# 총괄 승인이 필요한 경계 계약이다. 서버측 해석기는 `map_overlay.resolve_valid_die_set`
+# (모듈 함수)로 존재하며, 서버가 스스로 유효 다이를 판정해야 하는 phase 2/3에서 그것을
+# 그대로 쓴다. 노출이 필요해지면 그때 승인을 받아 여기 한 곳에 얹는다.
 
 # -----------------------------------------------------------------------------
 # Universal Transfer Plan (M2) — 전사 프레임워크 API (경계 계약 — 총괄 고정)

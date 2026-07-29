@@ -108,6 +108,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 - **응답 형태**: `{window_days, measured_cells, recorrected_cells, rate_pct, unavailable_reason}`. `rate_pct`는 표본 0 또는 집계 실패 시 `null` — 0%로 위장하지 않는다. 소비자는 **분모(`measured_cells`)를 반드시 함께 표시**한다.
 - **비용 방어 2중화**: ① `RECORRECTION_CACHE` 60초 TTL(대시보드 로드마다 GROUP BY 금지) ② PostgreSQL `SET LOCAL statement_timeout`(`RECORRECTION_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `rate_pct=null` + 사유 — **지표 한 칸이 비는 것이 대시보드 전체가 느려지는 것보다 낫다.**
+- **`unavailable_reason`은 실제 원인을 지목한다 (2026-07-29 F6 쌍둥이 — 상호작용 점수와 동일 규율).** 타임아웃일 때만 시간 초과 + `idx_audit_user_recorrection`를 말하고, 그 외에는 `집계 실패 — [예외타입] 첫 줄`을 싣는다. 종전 고정 문구("집계 시간 초과 또는 실패 (idx_audit_user_recorrection 인덱스 확인)")는 어떤 실패든 인덱스를 지목해, 컬럼 누락 같은 사고가 인덱스 문제로 읽혔다.
 - 계산은 엔드포인트 **맨 마지막**에 수행한다(타임아웃 rollback이 앞선 집계를 건드리지 않도록).
 - ⚠️ `/dashboard/summary` 자체가 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(2026-07-27 실측 ~1.5s, `bonding_map` 176만 행 단독 0.5s). **주기 폴링에 얹지 말 것** — 클라이언트는 별도 간격(5분)으로 비차단 조회한다.
 
@@ -124,7 +125,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
   - 🚨 **응답 `effort_recorded`(bool)가 클라 카운터 리셋의 유일한 게이트다 (2026-07-29 F1).** `true` = 이 요청이 공수 행을 실제로 저장했다. `false` = 저장 안 됨(미계측·폐기·**no-op 저장**) → 클라는 카운터를 **리셋하지 않고 다음 시도에 계속 싣는다**. no-op이 왜 치명적이었나: 값이 이미 같은 셀을 고치면(오래된 그리드, 또는 `crud`의 `has_changed` 공백/숫자 정규화) 감사 로그가 없어 공수도 기록되지 않는데, 클라는 `res.ok`만 보고 카운터를 **지웠다**. 20키+5클릭을 날린 뒤 3키+1클릭으로 다시 성공하면 **제품에서 마찰이 가장 큰 2회 시도 교정이 데이터셋에서 가장 낮은 점수(6 vs 실제 ~40)로 기록**된다 — 계기가 핵심가치 #1이 잡아내야 할 바로 그것과 **역상관**이 된다. **기록 조건 자체는 바뀌지 않았다**(no-op은 완료된 교정이 아니고, 기록하면 `measured_ratio` 모집단 정합이 깨진다). 바뀐 것은 **서버가 기록 여부에 대해 진실을 말한다**는 것뿐이다.
 - **응답 형태**: `{window_days, avg_score, tx_count, session_count, weights, measured_ratio, unavailable_reason}`. `avg_score`는 표본 0 또는 집계 실패 시 `null` — 0점으로 위장하지 않는다. 소비자는 **`measured_ratio`(커버리지)를 반드시 함께 표시**한다. `weights`를 동봉하는 이유는 그 숫자가 어떤 배점으로 읽힌 것인지 없이는 해석이 불가능하기 때문이다.
 - **비용 방어 2중화**(재교정률과 동일): ① `EFFORT_CACHE` 60초 TTL ② `SET LOCAL statement_timeout`(`EFFORT_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `avg_score=null` + 사유. 두 계기 모두 엔드포인트 **맨 마지막**에서 각자 rollback하므로 한쪽 실패가 다른 쪽을 오염시키지 않는다.
-- **`unavailable_reason`은 실제 원인을 지목한다 (2026-07-29 F6).** 타임아웃일 때만 시간 초과 + `idx_effort_window`를 말하고, 그 외에는 `집계 실패 — [예외타입] 첫 줄`을 싣는다. 종전에는 어떤 실패든 "집계 시간 초과 또는 실패"라는 고정 문구여서, 컬럼 누락 같은 사고가 **인덱스 문제로 읽히고 당직자가 애초에 원인이 아닌 인덱스를 손보러 갔다.** (⚠️ 재교정률 `_get_recorrection_stat`의 같은 문구는 **아직 고정 문구**다 — 이번 라운드 범위 밖.)
+- **`unavailable_reason`은 실제 원인을 지목한다 (2026-07-29 F6).** 타임아웃일 때만 시간 초과 + `idx_effort_window`를 말하고, 그 외에는 `집계 실패 — [예외타입] 첫 줄`을 싣는다. 종전에는 어떤 실패든 "집계 시간 초과 또는 실패"라는 고정 문구여서, 컬럼 누락 같은 사고가 **인덱스 문제로 읽히고 당직자가 애초에 원인이 아닌 인덱스를 손보러 갔다.** (✅ 재교정률 `_get_recorrection_stat`의 쌍둥이 문구도 **2026-07-29 M4 라운드에서 같은 규율로 수리**됐다 — 위 재교정률 항목 참조.)
 
 | 경로 | 용도 |
 |---|---|

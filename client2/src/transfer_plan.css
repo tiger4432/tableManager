@@ -413,6 +413,16 @@
   border-bottom: 1px dotted var(--text-dim); cursor: help;
 }
 .tp-unk.w { color: var(--warning); border-color: var(--warning); }
+/* [7c] `≤N` — 상한이지 확정치가 아니다. 확정 수와 **같은 크기·같은 자리**로 두되(작은
+   글씨는 없느니만 못하다) 색으로만 갈라, 사람이 옆줄과 나란히 읽으면서도 이 칸이
+   다른 주장을 하고 있다는 걸 알아채게 한다. `≤` 기호 자체가 이미 그 선언이므로
+   배지·아이콘을 더 얹지 않는다. */
+.tp-num .tp-bound {
+  color: var(--accent, var(--color-primary));
+  cursor: help;
+  border-bottom: 1px dotted var(--accent, var(--color-primary));
+}
+.tp-num.left.neg .tp-bound { color: var(--danger); border-bottom-color: var(--danger); }
 /* knob은 값 층위에 저장돼 있고 여기서는 **모아 보여줄 뿐** 편집하지 않는다 —
    저장할 자리가 선언되지 않은 입력 칸은 사용자의 타이핑을 조용히 버린다. */
 .tp-knob {

@@ -273,6 +273,41 @@ def _valid_binding(src) -> bool:
     )
 
 
+def transfer_log_is_declared_none(src) -> bool:
+    """[7c / INV-7c-2] Is this `transfer_log` config value the DECLARATION that
+    consumption is not recorded anywhere?
+
+    ONLY the exact string `"none"` declares it. `"None"`, `"NONE"`, `" none "`,
+    `""`, JSON `null`, an absent key, and a real binding object (even one whose
+    table is literally named "none") are NOT declarations — every one of them
+    stays accidental-missing and renders 미상, exactly as before 7c existed.
+
+    The strictness is the whole point. A declaration means a human knowingly
+    stated "there is no transfer log here", which downgrades the reading to
+    `connected(untracked)` and lets a remaining UPPER BOUND be served instead of
+    nothing. Promoting a typo would convert an accident into a claim of
+    knowledge — a wrong answer indistinguishable from a right one. So: no
+    casefolding, no strip(), no truthiness, no membership test.
+
+    The counterpart of `_valid_binding` at the same config boundary: that one
+    answers "is this a binding", this one answers "is this the stated absence
+    of one". Extracted out of the DB-bound `_summarize_inline` branch so the
+    invariant is scoreable without a live fixture (contracts/map_seam). Reads
+    the module-level constant at call time, so repointing it (mutation twin in
+    server/tests/test_transfer_untracked.py) still disarms every reader.
+
+    🔴 ONE PREDICATE, EVERY READER CALLS IT. Both current readers go through
+    here — `_stage_role_statuses` (the /stages role view) and
+    `_summarize_inline` (the availability engine). A third reader must CALL
+    this, never re-spell `src == TRANSFER_LOG_NONE`: a second spelling is only
+    scored by whichever site the contract happens to point at, and the other
+    one then drifts unwatched. That is the defect shape this project keeps
+    paying for (`bonding_plan`'s private copy of the alignment transform,
+    issue #20) and the seam contract exists to end it.
+    """
+    return isinstance(src, str) and src == TRANSFER_LOG_NONE
+
+
 def _resolve(src_cfg: dict, required: tuple):
     """바인딩 → (model, {역할키: ORM 컬럼}). 실패 시 (None, None) — missing 부분 가동."""
     import bonding_plan
@@ -335,9 +370,10 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
     source = stage_cfg.get("source") or {}
     out = {
         "total_chips": _binding_status(source.get("total_chips")),
-        # [7c] the exact string "none" is a declared state, not a missing binding
+        # [7c] the exact string "none" is a declared state, not a missing binding.
+        # Through the shared predicate — never re-spell the comparison here.
         "transfer_log": (STATUS_TRANSFER_UNTRACKED
-                         if source.get("transfer_log") == TRANSFER_LOG_NONE
+                         if transfer_log_is_declared_none(source.get("transfer_log"))
                          else _binding_status(source.get("transfer_log"))),
         "process_history": _binding_status(source.get("process_history")),
         "origin_log": _binding_status(source.get("origin_log")),
@@ -1253,7 +1289,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     used_count_only = False
     used_untracked = False
     src = source_cfg.get("transfer_log")
-    if src == TRANSFER_LOG_NONE:
+    if transfer_log_is_declared_none(src):
         # [7c] Consumption is DECLARED unrecorded ("none" — the exact string; JSON
         # null stays "missing" because null cannot be told apart from an accidental
         # absent key). Not a degradation: the binding did not break, the site

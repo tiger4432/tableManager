@@ -723,36 +723,63 @@ def resolve_binding_info(cfg: dict, table: str) -> dict | None:
     return binding
 
 
+def map_key_parts(binding: dict, map_key: str):
+    """map_key(관례상 `_`로 조인된 복합 키) → `[(키 컬럼, 원문 조각)]`.
+
+    **분해 규칙의 단일 지점**이다. `build_key_filters`(셀 필터)와 `canonical_map_key`
+    (정체성 문자열)가 이것을 공유한다 — 갈라지면 같은 선언이 셀은 찾고 메타는 못 찾는
+    (또는 그 반대의) 상태가 조용히 생긴다.
+    """
+    key_cols = binding.get("key_columns") or ["lot", "slot"]
+    if isinstance(key_cols, str):
+        key_cols = [key_cols]
+    parts = str(map_key).split("_")
+    if len(parts) < len(key_cols):
+        # 분해 불가 — 단일 컬럼으로 통째 매칭 시도
+        return [(key_cols[0], str(map_key))]
+    # 마지막 컬럼이 나머지를 흡수(랏 이름에 '_'가 있는 경우 방어)
+    head = parts[:len(key_cols) - 1]
+    tail = "_".join(parts[len(key_cols) - 1:])
+    return list(zip(key_cols, head + [tail]))
+
+
 def build_key_filters(model, binding: dict, map_key: str):
-    """map_key(관례상 `_`로 조인된 복합 키)를 key_columns에 분해해 필터를 만든다.
+    """map_key를 key_columns에 분해해(`map_key_parts`) 셀 필터를 만든다.
 
     [7b] Each decomposed part is a parsed token: it binds through
     `canonical_bind_value` so a padded '01' still finds a number-declared
     column storing 1 (cell-data filters already cast by declared type — this
     is the same discipline for map-key binds)."""
-    key_cols = binding.get("key_columns") or ["lot", "slot"]
-    if isinstance(key_cols, str):
-        key_cols = [key_cols]
     table_name = getattr(model, "__tablename__", None) \
         or getattr(getattr(model, "__table__", None), "name", None)
-    parts = str(map_key).split("_")
-    if len(parts) < len(key_cols):
-        # 분해 불가 — 단일 컬럼으로 통째 매칭 시도
-        col = getattr(model, key_cols[0], None)
-        if col is None:
-            return None
-        return [col == canonical_bind_value(table_name, key_cols[0], map_key)]
-    # 마지막 컬럼이 나머지를 흡수(랏 이름에 '_'가 있는 경우 방어)
-    head = parts[:len(key_cols) - 1]
-    tail = "_".join(parts[len(key_cols) - 1:])
-    values = head + [tail]
     filters = []
-    for name, val in zip(key_cols, values):
+    for name, val in map_key_parts(binding, map_key):
         col = getattr(model, name, None)
         if col is None:
             return None
         filters.append(col == canonical_bind_value(table_name, name, val))
     return filters
+
+
+def canonical_map_key(table: str, binding: dict, map_key: str) -> str:
+    """선언·파싱된 map_key → **실제로 저장돼 있는 정체성** 문자열.
+
+    [왜 필요한가 — 7b가 남긴 마지막 구멍] `compose_map_id`는 **조각으로부터** 키를 만들 때
+    캐노니컬화한다. 그런데 이미 조립된 키 문자열이 밖에서 들어오면(선언·파싱 산물) 그
+    문자열은 캐노니컬하지 않을 수 있다 — `number` 선언 slot에 저장된 1은 메타가 `LOT_1`로
+    등록되는데 선언은 `LOT_01`을 준다. 셀 필터는 `build_key_filters`가 컬럼 타입으로
+    캐스팅해 살아남지만, `load_map_meta`는 `map_id` **문자열 정확 일치**라 조용히 빗나간다
+    (= "메타는 있는데 아무도 못 찾는다").
+
+    분해는 `map_key_parts`, 값 정규화는 `canonical_bind_value` → `canonical_key_value`.
+    **두 번째 정규화 구현이 아니다** — 기존 두 함수의 조합일 뿐이다. 읽을 수 없는 조각은
+    트림한 원문을 그대로 두어 조회가 정직하게 빗나간다(키를 지어내지 않는다).
+    """
+    out = []
+    for name, val in map_key_parts(binding, map_key):
+        cv = canonical_bind_value(table, name, val)
+        out.append("" if cv is None else str(cv))
+    return "_".join(out)
 
 
 def get_overlay(db, cfg: dict, target_table: str, target_key: str,
@@ -866,6 +893,392 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
         },
         "overlays": overlays,
         "cell_cap": cell_cap,
+    }
+
+
+# ---------------------------------------------------------------------------
+# [M4 phase 1] valid_die_ref — 유효 다이 집합은 "그 맵 자체"다
+#
+# 원 기하는 판정자에서 **생성기로 강등**된다. 테이프에 붙은 dt 맵은 300mm 제약이 없어
+# 원으로 표현할 수 없는 유효 다이 형상을 가지는데, 지금은 그것을 저장할 자리가 없다.
+# phase 1은 `wafer_map_metadata.grid_metadata`에 **가산적 선언 하나**를 들이고 그것을
+# 소비한다 — 선언이 없는 맵은 이전과 완전히 동일하게 동작한다.
+#
+#     "valid_die_ref": {"table": "<맵 테이블>", "map_id": "<맵 키>"}   (table 생략 가능)
+#     "valid_die_ref": "<맵 키>"                                      (테이블은 승계)
+#
+# 테이블을 생략하면 **선언한 맵 자신의 테이블을 승계**한다(같은 테이블의 다른 맵 —
+# 제품 템플릿 맵 — 을 가리키는 것이 가장 흔한 사용이다). 문법·거절 문구는 클라
+# `parseValidDieRef`와 문자 그대로 같으며 정본은 `contracts/map_seam/vectors.json`이다.
+#
+# [규율 넷 — 하나라도 어기면 조용한 오답이 된다]
+#  ① 선언이 없으면 이 코드는 **아무 일도 하지 않는다.** 판정에 참여하지 않고, 기존 경로가
+#     읽는 어떤 값(`frame_axes`·`_grid_of`·`_phys_signature`)에도 새 키가 섞이지 않는다.
+#  ② 선언이 있으면 **참조 맵이 답의 전부**다. 원 기하는 답에 참여하지 않는다.
+#     (참조 맵을 선언 맵의 프레임으로 옮기는 정렬에는 여전히 프레임 규격이 쓰인다 —
+#      그것은 좌표계 문제이지 유효성 판정이 아니며, 원을 `inside`에서 은퇴시키는 것은
+#      phase 3의 몫이다.)
+#  ③ 참조를 풀 수 없으면 **사유를 붙여 거절**한다. 절대 원 기하로 조용히 되돌아가지
+#     않는다 — 조용한 폴백은 틀린 답을 맞은 답과 구별할 수 없게 만든다.
+#  ④ 참조 키는 7b 캐노니컬화(`canonical_key_value`)를 **경유**한다. 여기서는
+#     `build_key_filters`를 그대로 써서 그 경유를 구조적으로 보장한다 — 두 번째
+#     정규화 구현을 만들지 않는다.
+#
+# [값이 아니라 존재다] 참조 맵에 **행이 있는 셀이 유효 다이**다. 값으로 거르지 않는다
+# (값 기반 필터가 필요해지면 그때 선언을 늘린다 — 지금 지어내지 않는다).
+#
+# [쓰기 경로를 막지 않는다] 선언이 망가져 있어도 메타 행 저장은 거절하지 않는다.
+# 사용자의 교정을 계기가 막아선 안 된다 — 잘못은 **읽는 시점에** 사유와 함께 드러낸다.
+# ---------------------------------------------------------------------------
+
+VALID_DIE_REF_KEY = "valid_die_ref"
+
+# 셀 목록을 만드는 연산이므로 상한이 필수다(MAX_OVERLAY_CELLS와 같은 규율·같은 크기 —
+# 300mm/2.5mm 웨이퍼가 14,400셀이라 실 격자는 여유롭게 들어온다). 초과 시 **자르지 않고
+# 거절**한다: 잘린 유효 다이 집합은 "맞아 보이는 틀린 집합"이라 절단이 곧 오답이다.
+MAX_VALID_DIE_CELLS = 20_000
+
+# 작업 단위 캐시 상한. 넘치면 그냥 비운다 — 최악이 중복 해석 1회이고 오답은 아니다
+# (`_FRAME_TF_CACHE`·`map_meta_registrar._known_present`와 같은 규율).
+_VALID_DIE_CACHE_MAX = 64
+
+STATUS_NOT_DECLARED = "not_declared"      # 선언 자체가 없다 (실패가 아니다)
+STATUS_REF_UNAVAILABLE = "ref_unavailable"  # 참조는 찾았으나 신뢰할 집합을 만들 수 없다
+
+
+def load_map_meta_cached(db, target_table: str, map_id: str, cache=None):
+    """`load_map_meta` + 작업 단위 스냅샷 캐시(`bonding_plan.load_map_meta`와 같은 규율).
+
+    같은 (table, map_id)를 한 작업 안에서 여러 번 조회하면 N+1이 된다. cache는 호출자가
+    작업(요청) 경계에서 하나 만들어 넘긴다. None이면 캐시 없이 매번 조회한다.
+    """
+    if cache is None:
+        return load_map_meta(db, target_table, map_id)
+    k = ("meta", target_table, map_id)
+    if k not in cache:
+        cache[k] = load_map_meta(db, target_table, map_id)
+    return cache[k]
+
+
+def parse_valid_die_ref(meta: dict | None, default_table: str = None):
+    """`grid_metadata`의 valid_die_ref 선언 → `({"table","map_id"}|None, error|None)`.
+
+    반환 조합은 셋뿐이다:
+      (None, None)  — 선언이 없다. 호출자는 **이전과 똑같이** 행동해야 한다.
+      (ref,  None)  — 해석됐다.
+      (None, error) — 선언은 있는데 읽을 수 없다. 호출자는 사유를 붙여 거절한다.
+
+    문법(계약 — `contracts/map_seam/` · 클라 `parseValidDieRef`와 문자 그대로 같다):
+
+        "TPL_1"                         맵 키 문자열. 테이블은 **선언한 맵 자신의 것**을 승계.
+        {"table": t, "map_id": k}       `target_table`/`map_key`도 같은 뜻으로 받는다
+                                        (전자는 wafer_map_metadata의 실제 컬럼명, 후자는 별칭).
+                                        table 생략 시 승계, **map_id는 필수**.
+
+    ⚠️ **`null`/부재만 "선언 없음"이고 그 밖은 전부 선언이다.** 읽을 수 없는 선언을 "선언
+    없음"으로 접으면 오타 하나가 조용히 원 기하로 되돌아간다 — 틀린 답과 맞는 답이 구별되지
+    않는 바로 그 상태다. 그래서 형태 위반은 (None, None)이 아니라 (None, error)다.
+    """
+    raw = (meta or {}).get(VALID_DIE_REF_KEY)
+    if raw is None:
+        return None, None
+
+    home = str(default_table).strip() if default_table else None
+
+    if isinstance(raw, str):
+        map_id = raw.strip()
+        if not map_id:
+            return None, ("valid_die_ref가 비어 있다 — 맵 키가 없으면 유효 다이를 판정할 "
+                          "근거가 없다")
+        return {"table": home, "map_id": map_id}, None
+
+    if not isinstance(raw, dict):
+        return None, (f"valid_die_ref의 형태를 읽을 수 없다({type(raw).__name__}) — "
+                      f'{{"table", "map_id"}} 또는 맵 키 문자열이어야 한다')
+
+    t = raw.get("table", raw.get("target_table"))
+    k = raw.get("map_id", raw.get("map_key"))
+    map_id = "" if k is None else str(k).strip()
+    if not map_id:
+        return None, ("valid_die_ref에 map_id가 없다 — 어느 맵을 가리키는지 알 수 없다")
+    table = str(t).strip() if (t is not None and str(t).strip()) else home
+    return {"table": table, "map_id": map_id}, None
+
+
+# ---------------------------------------------------------------------------
+# 판정 근거의 단일 분기점 (계약 심볼 — `contracts/map_seam/vectors.json`)
+# ---------------------------------------------------------------------------
+
+SOURCE_CIRCLE = "circle"     # 선언 없음 — `2a9f6c4` 그대로
+SOURCE_REF = "ref"           # 참조 맵이 **유일한** 근거
+SOURCE_REFUSED = "refused"   # 선언은 있는데 풀지 못했다 — 원으로 되돌아가지 않는다
+
+_CIRCLE_MASK_CACHE = {}
+_CIRCLE_MASK_CACHE_MAX = 256
+
+
+def circle_die_mask(meta: dict | None):
+    """원 기하가 인정하는 **프레임 셀 인덱스** `(c, r)` 집합 — `2a9f6c4`의 답 그대로.
+
+    좌표계는 `PhysicalWaferEngine.is_cell_inside_wafer(c, r, C, R)`의 것이다(프레임 격자,
+    회전 90/270이면 치수 스왑). 규격이 미등록이라 재현할 수 없으면 None — 지어내지 않는다.
+
+    [스케일] 격자 전 셀 1회 훑기(실 격자는 최대 100×100 안팎)이고 `frame_axes` 단위로
+    캐시된다. 셀 단위 반복 호출로 떨어지는 경로는 없다.
+    """
+    grid = _grid_of(meta)
+    if grid is None or _phys_signature(meta) is None:
+        return None
+
+    key = frame_axes(meta)
+    hit = _CIRCLE_MASK_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    from utils.physical_wafer_engine import PhysicalWaferEngine
+    dia, chip_x, chip_y, off_x, off_y, margin = _frame_phys_params(meta)
+    engine = PhysicalWaferEngine(
+        wafer_diameter_mm=dia, chip_size_x_mm=chip_x, chip_size_y_mm=chip_y,
+        edge_exclusion_mm=margin, offset_x_mm=off_x, offset_y_mm=off_y)
+    rot = _rotation_of(meta)
+    cols, rows = ((grid["rows"], grid["cols"]) if rot in (90, 270)
+                  else (grid["cols"], grid["rows"]))
+    mask = frozenset(
+        (c, r) for r in range(rows) for c in range(cols)
+        if engine.is_cell_inside_wafer(c, r, cols, rows))
+
+    if len(_CIRCLE_MASK_CACHE) >= _CIRCLE_MASK_CACHE_MAX:
+        _CIRCLE_MASK_CACHE.clear()
+    _CIRCLE_MASK_CACHE[key] = mask
+    return mask
+
+
+def _basis_from_resolver(result):
+    """resolver 반환값 → `(cells|None, reason)`. 세 형태를 받는다:
+
+      None                             풀지 못했다
+      {"status", "cells", "detail"}    `resolve_valid_die_set`의 반환(그대로 꽂힌다)
+      [(x, y), ...] / set / frozenset  셀 집합
+
+    **셀 0개는 해석된 것이 아니다** — "온 웨이퍼가 무효"는 답이 아니라 사고다.
+    """
+    if result is None:
+        return None, "참조 맵을 해석하지 못했다"
+    if isinstance(result, dict):
+        if result.get("status") != STATUS_OK:
+            return None, (result.get("detail")
+                          or f"참조 해석 실패 ({result.get('status')})")
+        cells = result.get("cells") or ()
+    else:
+        cells = result
+    try:
+        basis = frozenset((int(x), int(y)) for (x, y) in cells)
+    except (TypeError, ValueError) as e:
+        return None, f"참조 맵의 좌표를 읽을 수 없다: {e}"
+    if not basis:
+        return None, "참조 맵에 셀이 0건 — '유효 다이 0개'가 아니라 '아직 적재되지 않았다'로 읽는다"
+    return basis, ""
+
+
+def resolve_valid_die_basis(meta: dict | None, resolver=None, table: str = None) -> dict:
+    """**유효 다이를 무엇으로 판정할 것인가** — 근거가 갈리는 유일한 지점. 순수 함수(DB 없음).
+
+    반환 `{"basis", "source", "reason"}`:
+
+      source `circle`   선언이 없다 → `2a9f6c4` 그대로. basis는 원 마스크(`circle_die_mask`,
+                        프레임 셀 인덱스)이며 규격 미등록이면 None이다 — 호출자가 이미
+                        자기 원 판정을 갖고 있으므로 열거는 편의일 뿐이다. reason은 "".
+      source `ref`      참조가 풀렸다 → basis = resolver가 준 집합 **그대로**.
+                        🔴 **원과 교집합하지 않는다.** 교집합은 보수적으로 보이지만 템플릿이
+                        유효라고 선언한 다이를 조용히 떨어뜨린다 — 그게 이 라운드가 없애려는
+                        결함이다.
+      source `refused`  선언은 있는데 풀지 못했다 → basis None, reason 비지 않음.
+                        🔴 **원으로 되돌아가지 않는다.** 조용한 폴백은 틀린 답을 맞은 답과
+                        구별할 수 없게 만든다.
+
+    `resolver`: `ref({"table","map_id"})`를 받아 셀 집합(또는 `resolve_valid_die_set`의
+    반환 dict, 또는 풀지 못했으면 None)을 주는 콜러블. 좌표계는 **resolver가 책임진다** —
+    호출자의 좌표계로 이미 옮겨진 집합을 준다는 뜻이다(원 분기가 프레임 인덱스를 주는 것과
+    같은 공간이어야 두 근거가 한 자리에서 교체 가능하다).
+    """
+    ref, err = parse_valid_die_ref(meta, default_table=table)
+    if err is not None:
+        return {"basis": None, "source": SOURCE_REFUSED, "reason": err}
+    if ref is None:
+        return {"basis": circle_die_mask(meta), "source": SOURCE_CIRCLE, "reason": ""}
+    if resolver is None:
+        return {"basis": None, "source": SOURCE_REFUSED,
+                "reason": (f"valid_die_ref '{ref['map_id']}' 선언이 있으나 참조를 풀 "
+                           f"해석기가 주어지지 않았다")}
+    try:
+        result = resolver(ref)
+    except Exception as e:                       # noqa: BLE001 — 해석 실패는 거절이다
+        return {"basis": None, "source": SOURCE_REFUSED,
+                "reason": f"참조 해석 중 오류: [{type(e).__name__}] {e}"}
+    basis, reason = _basis_from_resolver(result)
+    if basis is None:
+        return {"basis": None, "source": SOURCE_REFUSED,
+                "reason": reason or f"참조 맵 '{ref['map_id']}'을 해석하지 못했다"}
+    return {"basis": basis, "source": SOURCE_REF, "reason": ""}
+
+
+def _valid_die_refused(ref, status, detail):
+    """거절 응답. **`cells` 키를 절대 싣지 않는다** — 소비자가 실수로라도 폴백 집합을
+    읽을 수 없게 만드는 것이 규율 ③의 구조적 보장이다."""
+    return {"declared": True, "ref": (dict(ref) if ref else None),
+            "status": status, "detail": detail, "align_applied": None}
+
+
+def resolve_valid_die_set(db, cfg: dict, target_table: str, target_key: str,
+                          target_meta: dict = None, cache: dict = None,
+                          cell_cap: int = MAX_VALID_DIE_CELLS) -> dict:
+    """선언 맵의 유효 다이 집합을 **선언 맵 자신의 프레임 좌표로** 해석한다.
+
+    반환:
+      {"declared": bool, "ref": {...}|None, "status": ..., "detail": str|None,
+       "align_applied": {...}|None, "cells": frozenset[(x,y)], "count": int}
+      — `cells`/`count`는 **status == "ok"일 때만** 존재한다.
+
+    status 어휘(기존 강등 어휘를 그대로 쓴다):
+      `not_declared`      선언 없음 — 실패가 아니다. 호출자는 종전 동작을 유지한다.
+      `ok`                참조 맵이 답이다.
+      `source_missing`    참조를 찾거나 해석할 수 없다(테이블·바인딩·키·선언 형태).
+      `align_unavailable` 참조 맵을 이 맵의 프레임으로 옮길 근거가 없다(규격 미등록·치수 불일치).
+      `ref_unavailable`   참조는 찾았으나 상한 초과로 신뢰할 집합을 만들 수 없다.
+      `no_data`           참조 맵에 셀이 0건 — **"유효 다이가 없다"로 읽지 않는다.**
+                          거의 언제나 "아직 적재되지 않았다"이고, 0건을 답으로 삼으면
+                          사용자의 맵 전체를 무효로 만든다.
+
+    [규격 미등록 참조를 identity로 붙이지 않는 이유] 선언은 메타 안에 살므로 **선언한
+    맵의 프레임은 언제나 안다.** 참조 맵 메타만 없는 비대칭 상태에서 identity를 가정하면
+    180° 돌아간 템플릿을 무보정으로 받아들이게 된다(`bonding_plan`의 canonical 프레임
+    규율과 같은 판단 — 숫자/집합으로 나가는 답에는 "무보정"을 드러낼 자리가 없다).
+
+    [스케일] 참조 1건당 셀 조회 **1회**. cache는 `(참조, 선언 맵 프레임 축)`으로 키를
+    잡으므로 같은 참조를 같은 프레임에 쓰는 맵이 여럿이어도 해석은 한 번이다. 셀 단위
+    조회로 떨어지는 경로는 없다.
+    """
+    if target_meta is None:
+        target_meta = load_map_meta_cached(db, target_table, target_key, cache)
+
+    ref, err = parse_valid_die_ref(target_meta, default_table=target_table)
+    if err is not None:
+        return _valid_die_refused(None, STATUS_SOURCE_MISSING, err)
+    if ref is None:
+        return {"declared": False, "ref": None, "status": STATUS_NOT_DECLARED,
+                "detail": None, "align_applied": None}
+
+    cache_key = ("vdref", ref["table"], ref["map_id"], frame_axes(target_meta))
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
+    out = _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap)
+
+    if cache is not None:
+        if len(cache) >= _VALID_DIE_CACHE_MAX:
+            cache.clear()
+        cache[cache_key] = out
+    return out
+
+
+def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap):
+    from database import models
+
+    ref_table, ref_key = ref["table"], ref["map_id"]
+    if not ref_table:
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING,
+            f"valid_die_ref '{ref_key}'의 대상 테이블을 알 수 없다 — 선언에 table을 넣거나 "
+            f"선언한 맵 자신의 테이블을 승계할 수 있어야 한다")
+
+    model = models.DYNAMIC_TABLES.get(ref_table)
+    if model is None:
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING,
+            f"유효 다이 참조 테이블 '{ref_table}'을 찾을 수 없음")
+
+    # 바인딩 해석은 데이터 경로와 **같은 규칙**을 탄다(선언 > table_config 유도).
+    # 두 번째 유도기를 만들지 않는다(§5.6-bis가 없앤 바로 그 중복).
+    binding = resolve_binding(cfg, ref_table)
+    if binding is None:
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING,
+            f"'{ref_table}'의 맵 좌표 바인딩을 유도할 수 없음 — table_config에 x/y 컬럼, "
+            f"map_key_columns(또는 lot/slot), 값 컬럼 후보가 있어야 하며, 컬럼명이 관례와 "
+            f"다르면 map_overlay_config.table_bindings에 선언해야 한다")
+
+    x_col = getattr(model, binding.get("x", "x"), None)
+    y_col = getattr(model, binding.get("y", "y"), None)
+    if x_col is None or y_col is None:
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING, f"'{ref_table}'에 좌표 컬럼이 없음")
+
+    # [INV-M4-4] 선언 키를 **저장된 정체성으로** 캐노니컬화한다. 셀 필터는
+    # `build_key_filters`가 컬럼 타입 캐스팅으로 살아남지만 `load_map_meta`는 map_id
+    # 문자열 정확 일치라, 이것을 빼면 'LOT_01' 선언이 셀은 찾고 규격은 못 찾아
+    # align_unavailable로 조용히 거절된다. 정규화 구현은 `canonical_key_value` 하나다.
+    ref_key = canonical_map_key(ref_table, binding, ref_key)
+    ref = {"table": ref_table, "map_id": ref_key}
+
+    filters = build_key_filters(model, binding, ref_key)
+    if filters is None:
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING, f"'{ref_table}'의 키 컬럼 바인딩 해석 실패")
+
+    ref_meta = load_map_meta(db, ref_table, ref_key)
+    if ref_meta is None:
+        return _valid_die_refused(
+            ref, STATUS_ALIGN_UNAVAILABLE,
+            f"참조 맵 '{ref_table}/{ref_key}'의 규격이 wafer_map_metadata에 미등록 — "
+            f"선언한 맵의 프레임은 아는데 참조 맵의 프레임을 몰라, 무보정으로 가정하면 "
+            f"회전·반전된 템플릿을 그대로 받아들이게 된다")
+
+    try:
+        transform, align, origin, note = resolve_map_transform(ref_meta, target_meta)
+    except ValueError as ve:
+        return _valid_die_refused(
+            ref, STATUS_ALIGN_UNAVAILABLE,
+            f"참조 맵 '{ref_table}/{ref_key}'을 이 맵의 프레임으로 옮길 수 없음: {ve}")
+
+    try:
+        rows = db.query(x_col, y_col).filter(*filters).limit(cell_cap + 1).all()
+    except Exception as e:
+        logger.warning("[ValidDie] ref cell query failed (%s/%s): %s",
+                       ref_table, ref_key, e)
+        return _valid_die_refused(
+            ref, STATUS_SOURCE_MISSING, f"참조 맵 '{ref_table}/{ref_key}' 셀 조회 실패")
+
+    if len(rows) > cell_cap:
+        logger.warning("[ValidDie] %s/%s exceeds the cell cap (%d) — refused",
+                       ref_table, ref_key, cell_cap)
+        return _valid_die_refused(
+            ref, STATUS_REF_UNAVAILABLE,
+            f"참조 맵 '{ref_table}/{ref_key}'의 셀이 상한({cell_cap})을 초과 — "
+            f"잘라낸 유효 다이 집합은 틀린 집합이므로 답하지 않는다")
+
+    cells = set()
+    for row in rows:
+        rx, ry = row[0], row[1]
+        if rx is None or ry is None:
+            continue
+        cells.add(transform(rx, ry) if transform else (int(rx), int(ry)))
+
+    if not cells:
+        return _valid_die_refused(
+            ref, STATUS_NO_DATA,
+            f"참조 맵 '{ref_table}/{ref_key}'에 셀이 없음 — '유효 다이 0개'가 아니라 "
+            f"'아직 적재되지 않았다'로 읽는다(0건을 답으로 삼으면 이 맵 전체가 무효가 된다)")
+
+    return {
+        "declared": True,
+        "ref": dict(ref),
+        "status": STATUS_OK,
+        "detail": None,
+        "align_applied": align_applied_payload(
+            align, origin, note,
+            translation=_pure_translation(ref_meta, target_meta, origin)),
+        "cells": frozenset(cells),
+        "count": len(cells),
     }
 
 

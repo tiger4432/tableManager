@@ -621,6 +621,121 @@ function formatLegendMetaText(meta) {
   return `${meta.updated_by || 'system'} · ${meta.updated_at || ''}`;
 }
 
+// ---------------------------------------------------------------------------
+// [7b] Canonical key values — THE client-side half of map identity.
+//
+// Production defect (2026-07-28): a `number`-declared slot column stores 1, so the identity
+// registered in wafer_map_metadata reads 'LOT_1' — while a parsed material token supplies
+// '01' (and a Float column round-trips '1.0'). Composing with the raw value then misses
+// silently: the cell data opens (crud casts data filters by declared column type) while the
+// meta lookup returns nothing, so the map "has no spec" and alignment degrades to identity.
+//
+// The server half is live (`map_overlay.canonical_key_value`, `ab6ac02`). THIS IS THE MIRROR
+// OF THAT FUNCTION and the two must agree value-for-value — the whole defect was the two
+// sides disagreeing. Do not fork it, and do not add a second canonicalisation anywhere in
+// the client: `composeMapId` / `decomposeMapKey` / `canonicalMapKey` are its only use forms.
+//
+// Known deliberate deviations from the Python (none of them key-shaped values):
+//   · a JS boolean stringifies 'true', Python 'True'.
+//   · Python accepts underscore digit separators ('1_0' -> '10'); '_' is the key separator
+//     here, so a part can never legitimately contain one and we preserve the original.
+//   · integers beyond Number.MAX_SAFE_INTEGER: the digit walk below is exact for any length,
+//     but a value that arrived as a JS number was already lossy before we saw it.
+// ---------------------------------------------------------------------------
+
+const CANON_INT_RE = /^[+-]?[0-9]+$/;
+// DECIMAL floats only. `Number('0x10')` is 16 while Python's `float('0x10')` raises, so
+// using Number() as the readability test would canonicalise '0x10' to '16' — inventing a
+// value the server never stores. Unreadable must stay unreadable (trimmed original).
+const CANON_FLOAT_RE = /^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+
+// str(int(s)) without parseInt — exact for arbitrarily long digit strings.
+function canonIntString(s) {
+  const neg = s[0] === '-';
+  let d = (s[0] === '+' || s[0] === '-') ? s.slice(1) : s;
+  d = d.replace(/^0+/, '');
+  if (d === '') d = '0';
+  return (neg && d !== '0') ? `-${d}` : d;
+}
+
+// Value + DECLARED column type -> canonical key string.
+//   · "number": integer-parse ('01' / ' 1 ' / '1.0' are the same key). A non-integral numeric
+//     keeps its repr ('7.5'); an UNREADABLE value keeps its trimmed original — the lookup
+//     misses honestly instead of inventing a key.
+//   · anything else (string / undeclared): trimmed as-is. Padding may be meaningful.
+//   · null/undefined stay null (composition sites decide their own placeholder).
+function canonicalKeyValue(value, colType) {
+  if (value === null || value === undefined) return null;
+  if (colType === 'number' && typeof value !== 'boolean') {
+    if (typeof value === 'number') {
+      if (Number.isFinite(value) && Number.isInteger(value)) return String(value);
+      return String(value).trim();
+    }
+    const s = String(value).trim();
+    if (CANON_INT_RE.test(s)) return canonIntString(s);
+    if (CANON_FLOAT_RE.test(s)) {
+      const f = Number(s);
+      if (Number.isFinite(f) && Number.isInteger(f)) return String(f);
+    }
+    return s;
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value)) {
+    // A float VALUE is numeric regardless of the declared type — '3.0' is a repr artifact,
+    // not data (mirrors the server, which pinned this against crud.clean_str_value).
+    return String(value);
+  }
+  return String(value).trim();
+}
+
+// Identity components joined with '_'. Each component is canonicalised by the DECLARED type
+// of its column, because the meta row being looked up was registered from that column's
+// stored value and must be composed the same way.
+function composeMapId(keyColumns, values, columnTypes) {
+  const types = columnTypes || {};
+  const vals = values || {};
+  return (Array.isArray(keyColumns) ? keyColumns : []).map(k => {
+    const v = canonicalKeyValue(vals[k], types[k]);
+    return (v === null || v === undefined) ? '' : String(v);
+  }).join('_');
+}
+
+// The inverse of composeMapId — mirrors the server's `build_key_filters` split exactly:
+// the LAST column absorbs the remainder, so a lot name containing '_' survives.
+function decomposeMapKey(keyColumns, mapKey, columnTypes) {
+  const cols = Array.isArray(keyColumns) ? keyColumns : (keyColumns ? [keyColumns] : []);
+  const types = columnTypes || {};
+  const out = {};
+  if (cols.length === 0) return out;
+  const key = String(mapKey === null || mapKey === undefined ? '' : mapKey);
+  const parts = key.split('_');
+  if (parts.length < cols.length) {
+    // Undecomposable — match the whole key against the first column (server parity).
+    out[cols[0]] = canonicalKeyValue(key, types[cols[0]]);
+    return out;
+  }
+  const head = parts.slice(0, cols.length - 1);
+  const tail = parts.slice(cols.length - 1).join('_');
+  [...head, tail].forEach((v, i) => { out[cols[i]] = canonicalKeyValue(v, types[cols[i]]); });
+  return out;
+}
+
+// A map key string in its canonical spelling. Decompose then recompose — the round-trip
+// identity is exactly what makes this idempotent, so applying it twice cannot drift.
+function canonicalMapKey(keyColumns, mapKey, columnTypes) {
+  const cols = Array.isArray(keyColumns) ? keyColumns : [];
+  const raw = String(mapKey === null || mapKey === undefined ? '' : mapKey);
+  if (cols.length === 0 || raw === '') return raw;
+  const parts = decomposeMapKey(cols, raw, columnTypes);
+  // Undecomposable: decomposeMapKey put the WHOLE key on the first column. Recomposing
+  // would append empty tails and invent a different key, so return that single canonical
+  // form instead — the honest answer for a key that does not fit the declared shape.
+  if (Object.keys(parts).length < cols.length) {
+    const only = parts[cols[0]];
+    return (only === null || only === undefined) ? raw : String(only);
+  }
+  return composeMapId(cols, parts, columnTypes);
+}
+
 function getMapIdFromMeta(metaDict) {
   if (!metaDict) return 'default_map';
 
@@ -631,13 +746,24 @@ function getMapIdFromMeta(metaDict) {
     }
   }
 
+  // [7b] The declared types come from the SAME table whose rows registered the meta row, so
+  // composing here canonicalises identically to the registration side. Columns the user left
+  // blank are dropped before composing (long-standing behaviour — a blank must not become an
+  // empty component), so composeMapId is fed only the columns that are actually present.
+  const colTypes = (tableSchema && tableSchema.column_types) || {};
   if (mapKeyCols && mapKeyCols.length > 0) {
-    const vals = mapKeyCols.map(col => metaDict[col]).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
-    if (vals.length > 0) return vals.join('_');
+    const present = mapKeyCols.filter(col => {
+      const v = metaDict[col];
+      return v !== undefined && v !== null && String(v).trim() !== '';
+    });
+    if (present.length > 0) return composeMapId(present, metaDict, colTypes);
   }
 
-  const allVals = Object.values(metaDict).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
-  return allVals.length > 0 ? allVals.join('_') : 'default_map';
+  const allCols = Object.keys(metaDict).filter(col => {
+    const v = metaDict[col];
+    return v !== undefined && v !== null && String(v).trim() !== '';
+  });
+  return allCols.length > 0 ? composeMapId(allCols, metaDict, colTypes) : 'default_map';
 }
 
 function debounce(func, wait = 200) {
@@ -703,6 +829,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearOverlays: clearOverlayLayers,
     // 자재 맵 조회 헬퍼
     fetchMapKeyColumns,
+    // [7b] The panel composes map keys too (material id -> that material's map). It gets the
+    // key columns AND their declared types from the one cached schema read, plus THE
+    // canonicaliser itself — a second copy over there would be a second opinion about map
+    // identity, which is the defect this round exists to remove.
+    fetchMapKeySpec,
+    canonicalKeyValue,
     probeMapExists,
   });
   await loadTablesList();
@@ -977,7 +1109,10 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
     ? (visual.x === 0 && visual.y === 0) 
     : (visual.x === startX && visual.y === startY);
 
-  const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+  // [M4①] 유효 다이 판정. 참조가 없으면 `isValidDieAt`이 원 판정을 그대로 돌려주므로
+  // 선언 없는 맵의 동작은 `2a9f6c4`와 한 글자도 다르지 않다.
+  const completelyInside = isValidDieAt(physical.x, physical.y,
+    isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
   return {
     c, r, x: visual.x, y: visual.y, px: physical.x, py: physical.y,
@@ -1250,6 +1385,10 @@ async function switchTable(tableName) {
 
     // 테이블이 바뀌면 이전 맵의 정체성 핀은 무효다 (Push 대상이 달라진다)
     setLoadedIdentity(null, null);
+    // [M4①] 유효 다이 마스크도 이전 맵의 것이다 — 위 ⓑ가 오버레이에 적용되는 이유와
+    // 똑같이 적용된다. 남겨 두면 새 테이블의 격자가 남의 마스크로 재단된다.
+    validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+    renderValidDieChip();
     renderGridCanvas();
     notifyMapContext();
     if (hadWorkingMap) {
@@ -1703,6 +1842,103 @@ function isCellInsideWafer(c, r, visualCols, visualRows) {
   return isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [M4 phase 1] 유효 다이의 근거 — `valid_die_ref` 소비
+//
+// 원 기하는 "어느 칸이 실물 다이인가"의 **판정자**였다. M4는 그것을 생성기로 강등하고
+// 판정을 **맵 하나**에 넘긴다: 유효 다이도 맵이며, 마스크 편집이 곧 페인팅이다.
+// 이 단계(①)는 **소비만** 한다 — 프리셋=템플릿 생성기(②)와 `inside`에서 원 은퇴(③)는
+// 별개 라운드다.
+//
+// 🔴 **가산적 공존이 수용 기준이다.** `valid_die_ref`가 없는 맵은 `2a9f6c4`와 완전히 같이
+//    동작해야 한다. 그래서 판정은 `isValidDieAt` 한 곳에서만 갈라지고, 참조가 없으면
+//    호출자가 이미 계산해 둔 원 판정을 **그대로** 돌려준다.
+//
+// 🔴 **바운딩 박스는 건드리지 않는다.** `getWaferBoundingBox`는 유효 셀 집합의 최소 사각형이고
+//    `getVisualCoords`가 그걸로 **DB에 저장되는 x/y**를 만든다. 유효 다이 집합을 bbox에
+//    먹이면 같은 맵의 좌표가 조용히 다른 수로 재해석된다 — 화면은 멀쩡한데 값이 틀리는
+//    그 결함이다. 좌표계는 방향·물리 규격에서만 파생된다(SPEC §5.0 불변식).
+//    그래서 `getWaferBoundingBox`는 계속 `isCellInsideWaferFast`(원)를 직접 부른다.
+//
+// 상태 3종 — 이름은 서버 `map_overlay.resolve_valid_die_basis`의 `source`와 **글자 그대로
+// 같다**(`contracts/map_seam/vectors.json`이 정본). 한 이음매에 두 어휘가 흐르면
+// `declared` vs `derived` 때처럼 어느 쪽이 진짜인지 아무도 모르게 된다:
+//   circle  — 선언이 없다. `2a9f6c4` 그대로.
+//   ref     — 참조가 해석됐다. 그 맵이 **유일한** 근거이고 원은 참여하지 않는다.
+//   refused — 선언은 있는데 해석하지 못했다. 조용히 원으로 되돌아가지 않는다:
+//             이유를 칩·토스트·콘솔 세 곳에 남긴다(§아래 renderValidDieChip).
+// ═══════════════════════════════════════════════════════════════════════════════
+// raw = 메타에 실린 `valid_die_ref` 원문(키 자체가 없으면 undefined). Push 시 그대로 되쓴다.
+let validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+
+// 선언의 해석. **순수 함수** — 네트워크를 타지 않으므로 계약 벡터로 바로 채점된다.
+// 반환: null(선언 없음) | {table, mapKey} | {unreadable: true, reason}
+//
+// 규칙 하나로 말하면: **`null`/부재만 "선언 없음"이고, 그 외에는 전부 선언이다.**
+// 읽을 수 없는 선언을 "선언 없음"으로 접으면 오타 하나가 조용히 원 기하로 되돌아간다 —
+// 틀린 답과 맞는 답이 구별되지 않는 바로 그 상태다.
+function parseValidDieRef(meta, currentTable) {
+  if (!meta || typeof meta !== 'object') return null;
+  if (!('valid_die_ref' in meta)) return null;
+  const raw = meta.valid_die_ref;
+  if (raw === null || raw === undefined) return null;
+  const bad = (reason) => ({ unreadable: true, reason });
+  const home = String(currentTable || '');
+
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (s === '') return bad('valid_die_ref가 비어 있습니다 — 맵 키가 없으면 유효 다이를 판정할 근거가 없습니다.');
+    return { table: home, mapKey: s };
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return bad(`valid_die_ref의 형태를 읽을 수 없습니다 (${typeof raw}) — {table, map_id} 또는 맵 키 문자열이어야 합니다.`);
+  }
+  // `target_table`은 wafer_map_metadata가 실제로 쓰는 컬럼명이고 `table`은 그 짧은 이름이다 —
+  // 같은 한 쌍을 가리키는 두 이름이라 둘 다 받는다. 그 밖의 이름은 추측하지 않는다.
+  const t = raw.table !== undefined ? raw.table : raw.target_table;
+  const k = raw.map_id !== undefined ? raw.map_id : raw.map_key;
+  const key = (k === null || k === undefined) ? '' : String(k).trim();
+  if (key === '') {
+    return bad('valid_die_ref에 map_id가 없습니다 — 어느 맵을 가리키는지 알 수 없습니다.');
+  }
+  const table = (t === null || t === undefined || String(t).trim() === '') ? home : String(t).trim();
+  if (!table) return bad('valid_die_ref의 대상 테이블을 알 수 없습니다.');
+  return { table, mapKey: key };
+}
+
+// 지금 유효 다이를 무엇으로 판정하고 있는가. 셀 0개로 해석된 참조는 **해석된 것이 아니다** —
+// 온 웨이퍼가 무효라는 답은 답이 아니라 사고다.
+//
+// `state`는 선택 인자다. 넘기지 않으면 모듈 상태 `validDie`를 읽고, 넘기면 그것을 읽는다.
+// 분기가 갈라지는 게 아니라 **읽는 지점만** 바뀐다 — `physNum`이 `physFrameOverride`로
+// 규격 출처를 갈아끼우는 것과 같은 형태다(SPEC §5.1). 이 인자 덕분에 이음매 하네스는
+// 모듈 상태를 세팅하지 않고도 INV-M4-1/M4-2를 채점할 수 있다. **읽기만 한다.**
+function validDieBasis(state) {
+  const v = (state === undefined) ? validDie : state;
+  if (!v) return 'circle';
+  if (v.basis === 'ref') {
+    return (v.keys && v.keys.size > 0) ? 'ref' : 'refused';
+  }
+  return v.basis === 'refused' ? 'refused' : 'circle';
+}
+
+// 유효 다이 판정. 호출자가 **이미 계산한** 물리 좌표와 원 판정을 받는다 —
+// 여기서 좌표를 다시 만들면 변환 구현이 둘이 된다(SPEC §5.1 "변환은 클라 단일 구현").
+//
+// `physFrameOverride`가 열려 있으면 마스크를 적용하지 않는다: 프레임 창 안의 계산은
+// **소스 맵의 좌표계**를 푸는 중이고, 거기에 타깃 맵의 유효 다이 집합을 먹이면
+// 조용히 다른 맵의 마스크로 소스를 재단하게 된다.
+//
+// 🔴 `ref`는 원과 **교집합하지 않는다**. 교집합은 보수적으로 보이지만 템플릿이 유효하다고
+//    선언한 다이를 조용히 버린다 — INV-M4-2가 막는 결함이 정확히 그것이다.
+// `state`는 `validDieBasis`와 같은 선택 인자다(읽는 지점만 바뀐다, 쓰지 않는다).
+function isValidDieAt(physX, physY, circleInside, state) {
+  if (physFrameOverride) return circleInside;
+  const v = (state === undefined) ? validDie : state;
+  if (validDieBasis(v) !== 'ref') return circleInside;
+  return v.keys.has(`${physX}_${physY}`);
+}
+
 function applyPhysicalGeometry() {
   const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
   const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
@@ -2130,7 +2366,11 @@ function renderGridCanvas() {
 
       if (x0 + cellW < 0 || x0 > width || y0 + cellH < 0 || y0 > height) continue;
 
-      const completelyInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+      // [M4①] 물리 좌표는 아래에서 어차피 만든다. 판정에 필요하므로 여기로 끌어올렸다 —
+      // 판정용 좌표를 따로 만들면 같은 좌표의 계산이 둘이 된다.
+      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      const completelyInside = isValidDieAt(physical.x, physical.y,
+        isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
       const isMatrixCell = completelyInside || (c >= -visualCols && c < 2 * visualCols && r >= -visualRows && r < 2 * visualRows);
 
       if (!isMatrixCell) {
@@ -2142,7 +2382,6 @@ function renderGridCanvas() {
         continue;
       }
 
-      const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
       const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
       const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
@@ -3448,21 +3687,33 @@ function deleteLegendRowForPanel(value) {
 
 // 자재 맵 조회 헬퍼 (패널이 "맵 ✓ / 맵 없음"과 프레임 진입에 사용)
 const mapKeyColumnCache = new Map();
-async function fetchMapKeyColumns(table) {
+// [7b] The cache now holds the DECLARED COLUMN TYPES alongside the key columns, because a
+// map key cannot be canonicalised without them and both come from the same one request.
+// `ok:false` means "could not confirm" — canonicalisation then degrades to trim-only, which
+// is the pre-7b behaviour: it may miss, but it never invents a key.
+async function fetchMapKeySpec(table) {
   if (mapKeyColumnCache.has(table)) return mapKeyColumnCache.get(table);
   try {
     const res = await fetch(`${API_BASE}/tables/${table}/schema`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const schema = await res.json();
-    const cols = Array.isArray(schema.map_key_columns) ? schema.map_key_columns : [];
-    mapKeyColumnCache.set(table, cols);   // 성공한 결과만 캐시한다
-    return cols;
+    const spec = {
+      ok: true,
+      keyColumns: Array.isArray(schema.map_key_columns) ? schema.map_key_columns : [],
+      columnTypes: (schema.column_types && typeof schema.column_types === 'object') ? schema.column_types : {},
+    };
+    mapKeyColumnCache.set(table, spec);   // 성공한 결과만 캐시한다
+    return spec;
   } catch (e) {
     // [M5] 종전에는 실패 결과 []를 캐시에 박고 무효화하지 않아, 그 세션 내내
     // 해당 자재 맵이 "맵 없음"으로 오표시됐다. 실패는 캐시하지 않는다.
     console.warn(`[Map Editor] ${table} 스키마 조회 실패 — 캐시하지 않고 다음 호출에 재시도:`, e);
-    return [];
+    return { ok: false, keyColumns: [], columnTypes: {} };
   }
+}
+
+async function fetchMapKeyColumns(table) {
+  return (await fetchMapKeySpec(table)).keyColumns;
 }
 
 // 자재 맵 존재 여부. 조회 실패는 null(=미상)로 돌려준다 — "없음"으로 위장하지 않는다.
@@ -3540,6 +3791,11 @@ async function fetchGridMetaFor(table, mapId) {
 // opts.allowEmpty — 0건이어도 실패로 보지 않고 빈 격자로 남긴다 (미구축 자재 맵)
 async function loadExistingMap(opts = {}) {
   const quiet = !!opts.quiet;
+  // [M4①] 이전 맵의 유효 다이 마스크를 먼저 버린다. 이 로드가 어느 경로로 끝나든
+  // — 취소·0건·예외 — 남은 마스크가 **다른 맵**의 유효 다이를 주장하는 일이 없어야 한다.
+  // 성공 경로는 아래에서 이 맵의 선언으로 다시 세운다.
+  validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  renderValidDieChip();
   const filterModel = {};
   const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
   let hasFilter = false;
@@ -3997,6 +4253,12 @@ async function loadExistingMap(opts = {}) {
       }
     }
 
+    // [M4①] 유효 다이의 근거를 이 맵의 메타에서 정한다. 선언이 없으면 `circle`로 돌아가
+    // 종전과 완전히 같이 동작하고, 있으면 참조 맵을 해석해 그것만을 근거로 삼는다.
+    // 렌더보다 **먼저** 놓는다 — 나중에 두면 원 기준으로 한 번 그린 뒤 마스크 기준으로
+    // 다시 그리는 깜빡임이 생기고, 그 사이 프레임은 틀린 유효 다이를 보여준다.
+    await resolveValidDie(loadedGridMeta, selectedTable);
+
     renderGridCanvas();
     // [가드 ①] 로드 순간 편집 정체성을 고정하고 맵 키 입력을 잠근다.
     setLoadedIdentity(selectedTable, loadedMapKey || getCurrentMapKey());
@@ -4221,6 +4483,10 @@ async function pushMapData() {
     phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
     phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
   };
+  // [M4①] 이 객체는 화면 컨트롤에서 **처음부터 다시** 만들어지므로, 화면에 컨트롤이 없는
+  // 선언은 저장 한 번으로 사라진다. `valid_die_ref`를 원문 그대로 되쓴다 — 이 라운드는
+  // 소비만 하고 편집 UI를 만들지 않으므로, Push는 그 선언에 대해 **중립이어야** 한다.
+  if (validDie && validDie.raw !== undefined) gridMeta.valid_die_ref = validDie.raw;
   const gridMetaStr = JSON.stringify(gridMeta);
 
   const updates = [];
@@ -4474,7 +4740,10 @@ function getEdgeClassification() {
   const isInside = Array.from({ length: visualRows }, () => Array(visualCols).fill(false));
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      if (isCellInsideWafer(c, r, visualCols, visualRows)) {
+      // [M4①] E1/E2는 "유효 다이의 외곽"이다 — 원의 외곽이 아니다. 판정 근거가 맵으로
+      // 바뀌면 침식 기준도 같이 바뀌어야 하고, 안 그러면 마스크와 엣지가 어긋난다.
+      const p = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      if (isValidDieAt(p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
         isInside[r][c] = true;
       }
     }
@@ -4915,6 +5184,10 @@ function snapshotEditorState() {
     physEdgeMargin: el.physEdgeMargin ? el.physEdgeMargin.value : '3',
     rotation: currentRotation,
     side: currentSide,
+    // [M4①] 유효 다이의 근거는 **그 맵의** 성질이다. 프레임 왕복에서 들고 다니지 않으면
+    // 자재 맵에서 돌아왔을 때 부모 맵이 자식의 마스크로 재단된다 — 화면은 멀쩡하고
+    // 값만 틀리는 그 결함이다. Set은 얕게 넘겨도 안전하다(해석 이후 불변).
+    validDie: validDie ? { ...validDie } : null,
   };
 }
 
@@ -4971,6 +5244,10 @@ function restoreEditorState(s) {
   legendDirty = !!s.legendDirty;     // [fix B/E] restored with the frame they describe
   frameTouched = !!s.frameTouched;
   framePushed = !!s.framePushed;
+  // [M4①] 마스크도 그 프레임의 것으로 되돌린다. 캡처하지 않은 옛 상태에서 되돌아오는
+  // 경우(`validDie` 부재)는 선언 없음으로 읽어 종전 동작이 된다.
+  validDie = s.validDie ? { ...s.validDie } : { basis: 'circle', keys: null, reason: '', ref: null };
+  renderValidDieChip();
 
   renderLegendTable();
   renderGridCanvas();
@@ -5391,6 +5668,135 @@ function projectCellsToPhys(cells, frame) {
   });
 }
 
+// ── [M4 phase 1] 참조된 유효 다이 맵의 해석 ─────────────────────────────────
+//
+// 새 기하식은 한 줄도 쓰지 않는다. 이미 있는 프리미티브만 순서대로 쓴다:
+//   fetchMapKeySpec(7b 캐노니컬화) → fetchServedBinding(§5.6-bis) → fetchGridMetaFor(§5.0)
+//   → frameFromMeta → projectCellsToPhys(§5.1의 그 두 줄)
+// 오버레이가 하는 일과 구조적으로 같은 연산이며, 다른 점은 **결과를 그리지 않고
+// 마스크로 쓴다**는 것뿐이다.
+//
+// 🔴 해석에 실패하면 조용히 원으로 되돌아가지 않는다. basis를 `refused`로 두고
+//    이유를 남긴다 — 틀린 답과 맞는 답이 구별되지 않는 상태를 만들지 않기 위해서다.
+async function resolveValidDie(meta, targetTable) {
+  // 원문을 그대로 붙든다. Push가 메타를 **처음부터 다시 만들기** 때문에, 여기서 붙들지
+  // 않으면 유효 다이를 선언한 맵을 한 번 저장하는 것만으로 그 선언이 사라진다.
+  // 읽지 못한 선언도 보존한다 — 지워 버리면 사용자는 자기가 무엇을 잘못 썼는지조차
+  // 볼 수 없게 된다(검증 경로가 사용자의 데이터를 파괴해서는 안 된다).
+  const raw = (meta && typeof meta === 'object' && ('valid_die_ref' in meta))
+    ? meta.valid_die_ref : undefined;
+  const set = (basis, keys, reason, ref) => {
+    validDie = { basis, keys, reason: reason || '', ref: ref || null, raw };
+    renderValidDieChip();
+    return validDie;
+  };
+  const refuse = (ref, reason) => {
+    console.warn(`[Map Editor][M4] valid_die_ref 해석 실패 — ${reason}`);
+    showToast(`유효 다이 맵을 해석하지 못했습니다 — ${reason}`, 'error');
+    return set('refused', null, reason, ref);
+  };
+
+  const parsed = parseValidDieRef(meta, targetTable);
+  if (parsed === null) return set('circle', null, '', null);          // 선언 없음 = 종전 그대로
+  if (parsed.unreadable) return refuse(null, parsed.reason);
+
+  const ref = { table: parsed.table, mapKey: parsed.mapKey };
+  try {
+    // [7b] 참조된 맵 키도 캐노니컬화한다 — 여기서만 원문을 쓰면 이 라운드가 고친 그 결함이
+    // 유효 다이 경로로 그대로 재현된다.
+    const spec = await fetchMapKeySpec(ref.table);
+    if (spec.ok && spec.keyColumns.length > 0) {
+      ref.mapKey = canonicalMapKey(spec.keyColumns, ref.mapKey, spec.columnTypes);
+    }
+
+    const binding = await fetchServedBinding(ref.table);
+    if (!binding) {
+      return refuse(ref, `${ref.table}: 좌표 바인딩을 서버가 해석해 주지 못했습니다.`);
+    }
+    if (binding.source === 'fallback_guess') {
+      // 오버레이 경로와 같은 규율(§5.6-bis) — 추측한 컬럼으로 마스크를 만들면 그 마스크는
+      // 미끼다. 그리는 것보다 더 나쁘다: 보이지 않는 채로 페인팅을 막거나 허용한다.
+      return refuse(ref, `${ref.table}: 값/좌표 컬럼이 추측(fallback_guess)뿐입니다.`);
+    }
+
+    const refMeta = await fetchGridMetaFor(ref.table, ref.mapKey);   // 실패는 throw
+    const refFrame = frameFromMeta(refMeta);
+    if (!refFrame) {
+      // 미등록도 여기서는 거절이다. 오버레이는 규격이 없으면 "무보정"이라고 **화면에
+      // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 규격(wafer_map_metadata)이 없습니다.`);
+    }
+
+    const filters = buildKeyFilters(binding.keyColumns, ref.mapKey, spec.columnTypes);
+    const url = `${API_BASE}/tables/${ref.table}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
+      + `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    const res = await fetch(url);
+    if (!res.ok) return refuse(ref, `${ref.table}: 참조 맵 셀 조회 실패 (HTTP ${res.status}).`);
+    const result = await res.json();
+    const rows = Array.isArray(result && result.data) ? result.data : [];
+    // 절단은 실패로 강등한다 — 잘린 집합으로 만든 마스크는 실제보다 **작은** 유효 다이
+    // 집합이고, 그 차이는 화면에 나타나지 않는다.
+    if (rows.length > OVERLAY_CELL_LIMIT) {
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵이 ${OVERLAY_CELL_LIMIT}행을 넘어 절단됐습니다.`);
+    }
+
+    const cells = [];
+    rows.forEach(row => {
+      const d = row.data || {};
+      const xn = parseInt(d[binding.x] ? d[binding.x].value : undefined, 10);
+      const yn = parseInt(d[binding.y] ? d[binding.y].value : undefined, 10);
+      if (Number.isFinite(xn) && Number.isFinite(yn)) cells.push({ x: xn, y: yn });
+    });
+    if (cells.length === 0) {
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵에 좌표로 읽히는 셀이 없습니다.`);
+    }
+
+    // 격자 규격 호환성 — 물리 좌표는 정준 격자의 인덱스다. 치수가 다르면 같은 인덱스가
+    // 같은 다이가 아니므로 겹칠 근거가 없다(§5.1의 그 관문과 같은 판정).
+    const refResolved = resolveFrame(refFrame);
+    const hereResolved = resolveFrame(currentFrame());
+    if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
+      return refuse(ref,
+        `격자 규격이 다릅니다 — 참조 ${refResolved.cols}x${refResolved.rows} vs 현재 ${hereResolved.cols}x${hereResolved.rows}.`);
+    }
+
+    const keys = new Set(projectCellsToPhys(cells, refFrame).keys());
+    if (keys.size === 0) {
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵을 물리 좌표로 투영한 결과가 비었습니다.`);
+    }
+    return set('ref', keys, '', ref);
+  } catch (e) {
+    return refuse(ref, `${ref.table} · ${ref.mapKey}: ${e && e.message ? e.message : String(e)}`);
+  }
+}
+
+// 근거가 원이 아닐 때만 보이는 한 줄. 새 패널·모드·모달이 아니라 이미 있는 상태바
+// 칩(`plock-chip`, 페인트 잠금 표시)과 **같은 형태·같은 자리**다 — 선언 없는 맵에서는
+// 존재조차 하지 않으므로 기존 화면의 복잡도는 0만큼 늘어난다.
+function renderValidDieChip() {
+  const host = document.getElementById('paint-lock-indicator');
+  if (!host || !host.parentNode) return;
+  let chip = document.getElementById('valid-die-indicator');
+  const basis = validDieBasis();
+  if (basis === 'circle') { if (chip) chip.style.display = 'none'; return; }
+  if (!chip) {
+    chip = document.createElement('span');
+    chip.id = 'valid-die-indicator';
+    chip.className = 'plock-chip';
+    host.parentNode.insertBefore(chip, host.nextSibling);
+  }
+  chip.style.display = '';
+  if (basis === 'ref') {
+    const r = validDie.ref || {};
+    chip.textContent = `🎯 유효 다이: ${r.table || ''} · ${r.mapKey || ''} (${validDie.keys.size})`;
+    chip.title = '이 맵의 유효 다이는 참조된 맵이 정합니다 — 웨이퍼 원은 판정에 참여하지 않습니다.';
+  } else {
+    chip.textContent = '⚠️ 유효 다이 맵 미해석';
+    chip.title = `유효 다이 맵을 해석하지 못했습니다: ${validDie.reason}\n`
+      + '판정 근거를 확인하기 전까지 이 맵의 유효 다이 표시를 믿지 마십시오.';
+  }
+}
+
 // 실패한 오버레이도 목록에 **행으로 남긴다**. 토스트만 띄우고 끝내면
 // "왜 안 겹쳤는지"가 화면에서 증발하고, 사용자는 데이터가 없는 것으로 오해한다.
 function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverride) {
@@ -5421,17 +5827,15 @@ function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverrid
 const OVERLAY_CELL_LIMIT = 2000;   // 메인 로드(loadExistingMap)와 같은 상한
 
 // map_key('_' 조인)를 key_columns에 분해 — 마지막 컬럼이 나머지를 흡수(랏 이름의 '_' 방어).
-function buildKeyFilters(keyColumns, mapKey) {
-  const parts = String(mapKey).split('_');
+// [7b] Decomposition is `decomposeMapKey` — the same split the server's `build_key_filters`
+// performs, canonicalised by the same declared types. Cell filters survived the 7b defect
+// only because crud casts them by column type; going through the shared decomposition means
+// the filter and the meta lookup can no longer disagree about what this key means.
+function buildKeyFilters(keyColumns, mapKey, columnTypes) {
+  const parts = decomposeMapKey(keyColumns, mapKey, columnTypes);
   const filters = {};
-  if (parts.length < keyColumns.length) {
-    filters[keyColumns[0]] = { filterType: 'text', type: 'equals', filter: String(mapKey) };
-    return filters;
-  }
-  const head = parts.slice(0, keyColumns.length - 1);
-  const tail = parts.slice(keyColumns.length - 1).join('_');
-  [...head, tail].forEach((v, i) => {
-    filters[keyColumns[i]] = { filterType: 'text', type: 'equals', filter: v };
+  Object.keys(parts).forEach(col => {
+    filters[col] = { filterType: 'text', type: 'equals', filter: String(parts[col] ?? '') };
   });
   return filters;
 }
@@ -5498,12 +5902,24 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
       'binding_unavailable');
   }
 
+  // [7b] ①-bis Canonicalise the source key BEFORE it is used for anything. It is used twice —
+  // the cell filters and the `wafer_map_metadata` lookup — and only the first survived the raw
+  // spelling (crud casts data filters by declared type; `map_id` is a plain string column and
+  // does not). That asymmetry is precisely the reported symptom: **the data opened and the
+  // metadata looked absent.** One normalisation here fixes both uses and keeps them agreeing.
+  // A schema we could not confirm leaves the key untouched — the pre-7b behaviour, which may
+  // miss but never invents a key.
+  const srcSpec = await fetchMapKeySpec(sourceTable);
+  const srcKeyColumns = (srcSpec.keyColumns && srcSpec.keyColumns.length > 0)
+    ? srcSpec.keyColumns : binding.keyColumns;
+  if (srcSpec.ok) sourceKey = canonicalMapKey(srcKeyColumns, sourceKey, srcSpec.columnTypes);
+
   // ② source cells + ③ source/target specs — the same two REST paths the main load uses.
   //    A failed cell fetch and a failed spec fetch are different reasons. Collapsing them into
   //    one catch would report "could not confirm the spec" as "cell fetch failed", so split them
   //    with allSettled. Requests still go out in parallel — no extra round trip.
   let rows, sourceMeta, targetMeta;
-  const filters = buildKeyFilters(binding.keyColumns, sourceKey);
+  const filters = buildKeyFilters(binding.keyColumns, sourceKey, srcSpec.columnTypes);
   const cellUrl = `${API_BASE}/tables/${sourceTable}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
     + `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const [cellR, sMetaR, tMetaR] = await Promise.allSettled([
@@ -5906,7 +6322,22 @@ async function handleAddOverlayClick() {
 const CORE_CANONICAL_TABLE = 'core_defect_map';
 
 async function addOverlayForSource(sourceTable, lot, slot) {
-  const key = slot ? `${lot}_${slot}` : String(lot);
+  // [7b] Compose through the shared canonicaliser instead of raw string interpolation. This
+  // is the exact site the production defect came in through: a material token supplies '01'
+  // for a number-declared slot, and `LOT_01` never matched the stored `LOT_1`.
+  // (`addOverlayLayer` normalises again — the operation is idempotent by INV-7b-4, so the
+  // double application is harmless and each site stays correct on its own.)
+  const spec = await fetchMapKeySpec(sourceTable);
+  const cols = spec.keyColumns || [];
+  let key;
+  if (slot && cols.length >= 2) {
+    key = composeMapId([cols[0], cols[1]], { [cols[0]]: lot, [cols[1]]: slot }, spec.columnTypes);
+  } else if (slot) {
+    key = `${lot}_${slot}`;   // key columns unknown — leave the conventional spelling alone
+  } else {
+    const only = cols.length >= 1 ? canonicalKeyValue(lot, spec.columnTypes[cols[0]]) : null;
+    key = (only === null || only === undefined) ? String(lot) : only;
+  }
   const targetTable = selectedTable || CORE_CANONICAL_TABLE;
   // 타깃 키는 넘기지 않는다 — addOverlayLayer가 loadedIdentity(로드 시점 확정)에서 유도한다.
   // 종전 `getCurrentMapKey() || key`는 미로드 상태에서 **소스 키를 타깃 키로 위조**해,

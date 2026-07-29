@@ -25,9 +25,15 @@
 총괄 PM (Lead / 너)  — 아키텍처 무결성 · 경계 계약 수호 · 작업 분배 · 문서 총괄
 ├── Server PM  →  server/ 전 영역          [헌장: docs/prompts/server_pm.md]
 │     skills: DataIngester, WebSocketExpert(서버측), IntegrityAndQAExpert
-└── Client PM  →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
-      skills: ExcelInteractionExpert, PanelUIExpert, WebSocketExpert(클라측)
+├── Client PM  →  client2/ + desktop_wrapper.py   [헌장: docs/prompts/client_pm.md]
+│     skills: ExcelInteractionExpert, PanelUIExpert, WebSocketExpert(클라측)
+└── contract-keeper  →  contracts/ 전용    [헌장: .claude/agents/contract-keeper.md]
+      이음새(seam) 담당 — 서버·클라가 **같은 답을 내야 하는 자리**를 계약 벡터로 고정하고
+      **양쪽을 같은 기댓값에 채점**한다. 구현자와 **동시에** 투입한다(사후 검수가 아니다).
 ```
+
+> **contract-keeper를 언제 붙이나 (2026-07-29 신설).** 한 라운드가 **서버와 클라 양쪽**에 걸리면 붙인다. 근거: 계측 라운드(`2a9f6c4`)에서 QA가 잡은 HIGH 2건이 **둘 다 이음새**였다 — 무변경 저장에서 서버는 기록하지 않고 클라는 리셋했고, 클라가 보낸 전부-0을 서버가 진짜 측정값으로 받았다. **양쪽 다 자기 절반에서는 정상**이라 단일 도메인 에이전트로는 보이지 않았고, QA까지 가서 수정 라운드 한 번(≈40분)을 유발했다. 다음 라운드([7b+7c]+[M4①])에 시험 투입했더니 계약 벡터가 구현 중에 라이브 불일치를 잡았고 **이음새발 수정 라운드는 0건**이었다.
+> **총괄의 의무**: 지시서에 **불변식(INV-n)을 실패 단언 형태로 먼저** 준다. contract-keeper는 그것을 벡터로 만들고, 구현자는 그것을 통과시킨다. 불일치가 나오면 **누가 맞는지는 총괄이 판정한다** — contract-keeper는 양쪽 답을 가져올 뿐이다.
 
 ### A. 총괄 PM(너)의 책임
 1. **작업 분배**: 요청을 서버/클라이언트/양측으로 분해하여 해당 PM에게 위임한다. 위임은 `agent_workspace/tasks/{Server|Client}_*_task.md`로 지시서를 남긴다.

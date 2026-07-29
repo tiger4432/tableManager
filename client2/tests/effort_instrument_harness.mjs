@@ -85,6 +85,10 @@ function makeCtx(src, opts = {}) {
     currentRotation: 90, currentSide: 'back',
     editorFrames: [],
     overlayLayers: [],
+    // [M4①] pushMapData now carries `valid_die_ref` forward from the loaded meta, so it
+    // reads this state. `null` = the map declared nothing, which is what every assertion
+    // in this file assumes: the pushed payload must stay byte-identical to 2a9f6c4.
+    validDie: null,
 
     document: {
       querySelectorAll: () => [{ id: 'meta-input-map_id', value: 'MAP-1' }],
