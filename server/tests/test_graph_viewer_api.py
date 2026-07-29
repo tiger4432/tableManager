@@ -207,11 +207,47 @@ def test_search_label_filter_and_limit(client, graph_env):
 
 
 def test_search_escapes_like_wildcards(client, graph_env):
-    # '%'가 와일드카드로 새면 전 노드가 매치된다 — 리터럴 취급 확인
+    # '%'가 와일드카드로 새면 전 노드가 매치된다 — 리터럴 취급 확인.
+    # [F3] 이제 LIKE 자체가 없다(바이트 순서 범위 비교) — 이스케이프할 메타문자가
+    # 없는 것이 리터럴성의 근거다. 여기엔 파이썬 측 재검사가 없으므로 이 테스트는
+    # SQL 술어를 직접 겨눈다.
     body = client.get("/graph/nodes/search", params={"q": "%"}).json()
     assert body["results"] == []
     body = client.get("/graph/nodes/search", params={"q": "_"}).json()
     assert body["results"] == []
+
+
+def test_search_prefix_stays_case_insensitive(client, graph_env):
+    """[F3] `ILIKE 'q%'` → 바이트 순서 범위로 교체하면서 **대소문자 무시 의미론은
+    그대로**여야 한다 (저장 키는 전부 대문자다 — 소문자 입력이 안 먹으면 자동완성이
+    죽는다). 범위를 `lower()` 없이 걸면 'lot' >= 'LOT'가 거짓이라 이 테스트가 깨진다.
+    """
+    body = client.get("/graph/nodes/search", params={"q": "lot"}).json()
+    assert [(r["label"], r["identity_key"]) for r in body["results"]] == [("Wafer", "LOTA|3")]
+
+    body = client.get("/graph/nodes/search", params={"q": "log000"}).json()
+    assert {r["identity_key"] for r in body["results"]} == {"LOG0001", "LOG0002"}
+
+
+def test_search_never_degrades_to_everything_from_here_on(client, db_session, graph_env):
+    """[F3] 이 라우트에는 파이썬 재검사가 **없다** — 술어가 곧 답이다. 그래서
+    `prefix_conditions`가 상한을 못 내면 `>= q` 하나만 남고, 질의는 그 지점부터
+    끝까지 전부를 돌려준다. 라이브에서 `q='L\\U0010FFFF'`가 MEAS·PHOTO… 를
+    반환했다(옛 ILIKE는 0행). 상한 계산은 마지막 문자에서 포기하지 말고
+    **자리올림**해야 한다.
+
+    역주입: `prefix_upper_bound`의 carry 루프를 한 글자 증가로 되돌리면 첫 단언이
+    깨진다 — 빈 목록이 아니라 그 지점 이후 전 노드가 온다.
+    """
+    hit = _add_node(db_session, "Wafer", "L\U0010ffffZZ")
+    db_session.commit()
+
+    body = client.get("/graph/nodes/search", params={"q": "M\U0010ffff"}).json()
+    assert body["results"] == [], "접두로 시작하는 노드가 없으면 빈 목록이어야 한다"
+
+    # 그리고 자리올림한 상한이 진짜 일치까지 잘라내면 안 된다.
+    body = client.get("/graph/nodes/search", params={"q": "L\U0010ffff"}).json()
+    assert [r["identity_key"] for r in body["results"]] == [hit.identity_key]
 
 
 def test_search_blank_query_returns_empty(client, graph_env):

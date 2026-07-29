@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**함정 A·B 정정 라운드(H1~H5)** — ⓐ BOM 붙은 config가 기동을 막던 결함 수리(§6-A2), ⓑ 최상위가 객체가 아닌 JSON(`[]`·`null`)의 무음 통과 차단(§6-A3), ⓒ 리딩 엣지 디바운스가 연속 저장을 버리던 결함을 **트레일링 엣지**로 수리(§4.4·§6-B2), ⓓ 타 디렉터리 rename(`moved` 없음) 무음 누락에 `on_created` 추가(§4.4·§6-B). 직전 **함정 A·B 해소 등재(#9/#13)** — ⓐ config watcher가 `on_moved`도 처리하므로 **원자적 저장(temp+rename)도 ALTER를 발화**시킵니다(§4.4·§6-B·S1 표 2행), ⓑ `table_config.json` 파싱 실패는 **로그로 드러나고 기동을 막습니다**(§6-A) — fail-fast는 파싱 실패에 한정. 직전 **`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**`suggest_config.json` 신설 등재** — F3 입력 제안 노브 + 접두 인덱스 대상 선정(§1 표 · §4 리로드 표 **2행** · §5.6-ter · [config/suggest_config.md](./config/suggest_config.md)). ⚠️ `index_*`는 핫리로드 대상이 아니라 **`setup_db_performance.py` 재실행**이 유일한 반영 경로다. 직전 **함정 A·B 정정 라운드(H1~H5)** — ⓐ BOM 붙은 config가 기동을 막던 결함 수리(§6-A2), ⓑ 최상위가 객체가 아닌 JSON(`[]`·`null`)의 무음 통과 차단(§6-A3), ⓒ 리딩 엣지 디바운스가 연속 저장을 버리던 결함을 **트레일링 엣지**로 수리(§4.4·§6-B2), ⓓ 타 디렉터리 rename(`moved` 없음) 무음 누락에 `on_created` 추가(§4.4·§6-B). 직전 **함정 A·B 해소 등재(#9/#13)** — ⓐ config watcher가 `on_moved`도 처리하므로 **원자적 저장(temp+rename)도 ALTER를 발화**시킵니다(§4.4·§6-B·S1 표 2행), ⓑ `table_config.json` 파싱 실패는 **로그로 드러나고 기동을 막습니다**(§6-A) — fail-fast는 파싱 실패에 한정. 직전 **`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 **파일 하나를 실제로 세팅하는 절차·키 사전은 [config/ 폴더](./config/README.md)** (파일당 가이드 1개)로,
@@ -38,6 +38,7 @@ server/database/virtual_graph.json
 | **`bonding_plan_config.json`** | M1 본딩 실험계획 — 역할(role)→실테이블 바인딩 | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`transfer_plan_config.json`** | M2 Universal Transfer Plan — stage 선언 + plan_store | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`effort_metric.json`** | **V1 정본 계기** — 상호작용 점수 배점(`weights.key/mouse/nav/nav_preserved`, 기본 1/3/5/**0**) + `context_preserving_transitions`(유지 전이 허용목록, **기본 빈 배열 = 모든 이동이 상실로 계산됨**, 정확 일치·**와일드카드 거절**). `GET /api/effort/config`로 서빙(클라 하드코딩 금지) | 사용자 | ignored (`.sample` 有) | 즉시(다음 조회부터, 집계는 60초 캐시) | web |
+| **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃 + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동 4종(`watcher`·`chain`·`graph`·`scheduler`) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
@@ -270,6 +271,8 @@ S1을 전부 수행한 뒤 추가로:
 | `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` | 없음 — **요청마다 디스크 재읽기** | 불필요 |
 | `ingestion_settings` | 없음 — **파일 이벤트마다 재읽기** | 불필요 |
 | `effort_metric` | 없음 — 조회마다 재읽기(대시보드 집계는 60초 TTL 캐시 뒤) | 불필요 |
+| `suggest_config` — **조회 노브**(`default_limit`·`min_prefix_length`·`timeout_ms` 등) | 없음 — 요청마다 재읽기(**요청당 1회 스냅샷**) | 불필요 |
+| `suggest_config` — **`index_*` 대상 선정** | 어떤 리로드 경로도 하지 않음 — `python server/scripts/setup_db_performance.py` **재실행이 유일한 반영 경로** | 불필요(단 스크립트 실행 필수) |
 | `auto_update_control` | 없음 — 스케줄러가 매 사이클 재읽기 + API가 실시간 계산 | 불필요 |
 | `maps.json` | 없음 — 요청마다 재읽기 | 불필요 |
 | 워크스페이스 `config.json`(deprecated) | **핸들러 인스턴스 수명 동안 캐시** | 재기동 |
@@ -356,6 +359,12 @@ heavy 임계·dedup·체크포인트 재개 노브 3종 → [**config/ingestion_
 V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./config/effort_metric.md)
 
 > ⚠️ **배점을 바꾸면 과거 데이터까지 새 배점으로 다시 읽힙니다**(원시 카운트만 저장하고 점수는 조회 시점 계산 — 의도된 설계). 뒤집어 말하면 **배점 변경 전후의 숫자는 직접 비교할 수 없습니다.** 기준선 측정 중에는 고정하십시오.
+
+### 5.6-ter `suggest_config.json`
+
+입력 제안(고유값 조회)의 길이·타임아웃 노브 + **접두 인덱스 대상 선정** → [**config/suggest_config.md**](./config/suggest_config.md)
+
+> ⚠️ **이 파일은 인덱스를 만들지 않습니다.** `index_min_rows`/`index_columns`/`index_exclude`는 **선언**이고, 실제 생성은 `server/scripts/setup_db_performance.py`(Step 3.8)가 합니다 — 값을 바꾸고 스크립트를 돌리지 않으면 **아무 일도 일어나지 않습니다.** 반대로 인덱스가 없는 컬럼은 조용히 느려지지 않고 `unavailable_reason`으로 꺼집니다(사유가 인덱스 이름과 실행할 명령을 지목합니다).
 
 ### 5.7 `bonding_plan_config.json`
 

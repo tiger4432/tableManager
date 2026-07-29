@@ -1,0 +1,17 @@
+{
+  "_comment": "F3 value suggestion (unique value lookup) knobs. Every key is optional - delete a key to take its default. See docs/guide/config/suggest_config.md.",
+
+  "default_limit": 50,
+  "max_limit": 200,
+  "min_prefix_length": 0,
+  "max_probe_values": 400,
+  "timeout_ms": 1500,
+
+  "index_min_rows": 10000,
+
+  "_index_columns_comment": "Force EXACTLY these columns for a table (ignores index_min_rows). Omit the table to use the automatic rule.",
+  "index_columns": {},
+
+  "_index_exclude_comment": "Never build a suggestion index for these columns. Always wins.",
+  "index_exclude": {}
+}

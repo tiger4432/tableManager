@@ -32,6 +32,7 @@ for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
 # Load table config and initialize dynamic database models
 import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
+import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
 # enumerates the app's routes and fails if a new one ever misses.
@@ -1846,6 +1847,32 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     }
 
 
+# [F3] Unique value lookup - the primitive every input suggestion sits on.
+#   Registered ABOVE `/tables/{table_name}/{row_id}` deliberately: the literal
+#   segments make it unambiguous, but route order is what guarantees it.
+#   Contract: values + WHETHER THE LIST WAS CUT (`truncated`). A dropdown that
+#   is handed a silently trimmed list tells the user "this is all of them".
+@app.get("/tables/{table_name}/columns/{column_name}/values")
+def get_column_unique_values(
+    table_name: str,
+    column_name: str,
+    prefix: str = "",
+    limit: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """`table.column` 의 prefix 시작 고유값 목록 (+ 잘림 여부).
+
+    - 테이블/컬럼은 `table_config` 선언과 대조한다. 미선언은 400/404이며
+      원문이 SQL 텍스트에 들어가는 경로는 없다.
+    - 조회 불가(인덱스 부재·타임아웃 등)는 빈 목록이 아니라
+      `unavailable_reason` 으로 응답한다.
+    """
+    try:
+        return value_suggest.suggest_values(
+            db, table_name, column_name, prefix=prefix, limit=limit)
+    except value_suggest.SuggestValidationError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
 
 @app.get("/tables/{table_name}/{row_id}", response_model=schemas.DataRowResponse)
 def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
@@ -2312,9 +2339,11 @@ GRAPH_TRACE_DEPTH_CAP = 3            # [G2] trace depth 하드캡
 GRAPH_TRACE_DEFAULT_LIMIT = 500
 
 
-def _escape_like_term(term: str) -> str:
-    """LIKE 패턴 메타문자 이스케이프 (escape='\\'와 짝)."""
-    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+# [F3] `_escape_like_term` is GONE. Its only caller was the graph node prefix
+# search, which no longer uses LIKE at all: `value_suggest.prefix_conditions`
+# expresses a prefix as a byte-order RANGE, where '%' and '_' are ordinary
+# characters and there is nothing to escape. Reintroducing a LIKE escaper would
+# mean reintroducing the un-indexable `ILIKE 'x%'` it was written for.
 
 
 def _expand_graph_subgraph(
@@ -2504,8 +2533,27 @@ def search_graph_nodes(
     if label:
         query = query.filter(models.GraphNode.label == label)
     if term:
+        # [F3] Second consumer of the SAME prefix predicate as the unique-value
+        # lookup. The old `ILIKE 'term%'` could never use an index: this database
+        # is Korean_Korea.949, and outside the C collation a btree does not serve
+        # a LIKE prefix at all - it degrades to a full scan with a Filter.
+        # `lower(col) >= term AND < term+1` in byte order keeps the previous
+        # case-insensitive semantics and becomes a real range on
+        # idx_suggest_graph_nodes_identity_key. LIKE escaping is gone with the
+        # LIKE: '%' and '_' are ordinary characters in a range comparison.
+        #
+        # This route has NO second filter behind the predicate - whatever the
+        # range says IS the answer - so it must fold through `db_fold` like the
+        # other consumer. Folding here with Python's `.lower()` instead would
+        # both miss rows the index holds and (before the upper bound learned to
+        # carry) return everything at or above the term.
+        is_pg = bool(db.bind is not None and db.bind.dialect.name == "postgresql")
         query = query.filter(
-            models.GraphNode.identity_key.ilike(_escape_like_term(term) + "%", escape="\\")
+            *value_suggest.prefix_conditions(
+                models.GraphNode.identity_key,
+                value_suggest.db_fold(db, term),
+                is_pg,
+            )
         )
     rows = (
         query.order_by(models.GraphNode.label.asc(), models.GraphNode.identity_key.asc())

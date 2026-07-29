@@ -111,6 +111,47 @@ SELECT transaction_id, count(*) FROM interaction_effort_logs
 GROUP BY transaction_id HAVING count(*) > 1;
 ```
 
+#### 값 제안 접두 인덱스 (`idx_suggest_<테이블>_<컬럼>`) — F3
+
+입력 제안(`GET /tables/{t}/columns/{c}/values`)이 쓰는 인덱스. **이 계열은 `models.py`에 선언되어 있지 않고, `setup_db_performance.py`(Step 3.8)가 유일한 생성 경로다.** 이유가 둘 겹친다 — ⓐ `create_all`은 기존 테이블에 인덱스를 추가하지 않는다(위 경고), ⓑ 정의에 쓰이는 `COLLATE "C"`가 PostgreSQL 전용이라 테스트 스위트의 sqlite `create_all`이 깨진다.
+
+**왜 일반 btree로는 안 되는가 (이 DB에서 실측):** 이 데이터베이스의 콜레이션은 `Korean_Korea.949`다. **비-C 콜레이션에서 btree는 `LIKE '접두%'`를 범위로 만들지 못한다** — 플래너는 인덱스를 고르고도 전 엔트리를 Filter로 버린다.
+
+```
+-- 기존 idx_bonding_map_base(일반 btree)만 있을 때, base LIKE 'C%'
+Index Only Scan using idx_bonding_map_base
+  Index Cond: (base IS NOT NULL)
+  Filter: ((base)::text ~~ 'C%'::text)
+  Rows Removed by Filter: 1755308        -- 값 3개를 얻는 데 232ms
+```
+
+`(lower(col) COLLATE "C", col COLLATE "C")` 인덱스에서는 같은 질의가 `Index Cond: lower(base) >= 'c' AND < 'd'` / **0.2ms**가 된다. 두 번째 키는 값 1개당 seek 1회로 걷는 커서(`(lower(col), col) > (직전 lower, 직전 값)`)를 인덱스 탐색으로 만든다. `number` 선언 컬럼은 콜레이션이 개입하지 않으므로 **일반 btree `(col)`** 이다.
+
+```sql
+-- 존재 + **유효성** 확인. indisvalid/indisready를 안 보면 죽은 인덱스를 정상으로 읽는다.
+SELECT ci.relname AS indexname,
+       i.indisvalid AND i.indisready AS usable,
+       pg_size_pretty(pg_relation_size(ci.oid)) AS size,
+       pg_get_indexdef(i.indexrelid) AS indexdef
+FROM pg_index i
+JOIN pg_class ci ON ci.oid = i.indexrelid
+JOIN pg_namespace n ON n.oid = ci.relnamespace
+WHERE n.nspname = 'public' AND ci.relname LIKE 'idx_suggest_%'
+ORDER BY usable, indexname;    -- usable=false가 위로 온다
+```
+
+> ⚠️ **`usable = false`(INVALID)는 인덱스가 없는 것보다 나쁘다.** 플래너는 그 인덱스를 절대 쓰지 않는데, 스크립트의 `CREATE INDEX IF NOT EXISTS`는 **이름이 있으므로 건너뛴다** — 몇 번을 재실행해도 안 고쳐지고 그 컬럼의 제안은 영구히 시간 초과다. 아래 ⚠️ CONCURRENTLY 항목이 그 도달 경로다(멈춘 줄 알고 Ctrl+C → INVALID 인덱스 잔존). 복구는 `REINDEX INDEX CONCURRENTLY <이름>;` 또는 `DROP INDEX CONCURRENTLY <이름>;` 후 스크립트 재실행. 스크립트도 Step 3.8 시작에서 이 목록을 먼저 출력한다.
+
+- **대상 선정은 config가 결정한다** — [config/suggest_config](./config/suggest_config.md)의 `index_min_rows`(기본 10,000행 이상 테이블) / `index_columns`(강제 지정) / `index_exclude`(제외). 정책 구현은 `server/value_suggest.py` `index_targets` **한 곳**뿐이다.
+- **없으면 그 컬럼의 제안이 조용히 느려지지 않고 꺼진다** — 응답이 `values: []` + `unavailable_reason`이 된다. 드롭다운이 비면 **먼저 이 사유 문자열을 볼 것.** 사유는 `index_targets` 정책에 직접 물어서 만들어지므로 상황마다 다르다:
+  - 대상인데 없다 → `… server/scripts/setup_db_performance.py 를 실행하세요.`
+  - `index_exclude`에 있다 → 재실행해도 안 만들어진다고 말하고 제외 해제를 지시
+  - `index_columns[테이블]`이 선언돼 있고 이 컬럼이 목록 밖 → 목록 추가를 지시
+  - `index_min_rows` 미만 테이블 → 추정 행 수와 함께 `index_columns`에 명시 선언하라고 지시
+  - 이름은 있는데 INVALID → `REINDEX`/`DROP` 명령을 그대로 제시(위 ⚠️ 참조)
+- 스크립트는 **대상에서 빠진 잔존 인덱스를 삭제하지 않고 DROP 문만 출력**한다(config 로드가 일시 실패한 상태에서 일괄 DROP이 도는 사고 방지). 출력의 `Orphaned suggestion indices` 목록은 사람이 판단해 실행한다.
+- ⚠️ **`CREATE INDEX CONCURRENTLY`는 열려 있는 트랜잭션을 기다린다.** 워커가 `idle in transaction`으로 떠 있으면 이 스텝이 멈춘 것처럼 보인다. `pg_stat_activity`로 확인할 것.
+
 ### 3.2 데이터베이스 백업 및 복구 (Command Line)
 pgAdmin의 [Backup/Restore] 메뉴를 사용하거나 아래 커맨드를 활용하십시오.
 

@@ -1,7 +1,7 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**부팅 경로 조용한 실패 수리(#13/#16ⓐ)** — §1에 ⓐ DDL이 **import 시점 → `bootstrap_database_schema()` 기동 단계**로 이동(테스트 수집이 운영 DB에 DDL을 내던 경로 차단, 신규 설치 자동 생성은 유지), ⓑ 손상 `table_config.json`에 대한 **기동 fail-fast** 등재. 직전 **정본 계기 수리 라운드** — `PUT /data/updates` 응답에 `effort_recorded`/`effort_error` 신설, 잘못된 `effort`는 **교정을 막지 않고** 폐기·보고, 최상위 오타 키 보고, `unavailable_reason` 실제 원인 지목. 직전: **정본 계기 서버 구현 착지** — `PUT /data/updates`의 선택 필드 `effort` + `GET /api/effort/config` + `/dashboard/summary` → `effort` 신설, 재교정률은 **보조 계기**로 정정. 직전 2026-07-27: C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
-> **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**F3 검수 라운드 반영** — §2.1의 실측 수치 정정(`leg` distinct **342**·`base` **397,602**·인덱스 **418MB**·loose scan **~33ms**로 세 문서 단일화; 종전 6/11,058/370MB/19~41ms는 오기였고 첨부 실행계획이 이미 반증하고 있었다), 그리고 규율 3줄 신설 — **대소문자 무시의 기준은 DB의 `lower()`**(`db_fold`로 접두를 같은 함수로 접는다), **술어는 정확한 범위**(상한 자리올림 — 재검사 없는 `/graph/nodes/search`가 두 번째 소비자다), **무효 인덱스는 없는 것보다 나쁘다**(`indisvalid AND indisready`). 직전 **F3 고유값 조회 신설** — §2 표에 `GET /tables/{t}/columns/{c}/values` + **§2.1 신설**(loose index scan·바이트 순서 접두 인덱스·`truncated` 계약·강등 규율). 같은 술어를 `/graph/nodes/search`가 재사용하도록 `ILIKE 'q%'` → 범위 비교로 교체(의미론 불변, 인덱스 사용). 직전 **부팅 경로 조용한 실패 수리(#13/#16ⓐ)** — §1에 ⓐ DDL이 **import 시점 → `bootstrap_database_schema()` 기동 단계**로 이동(테스트 수집이 운영 DB에 DDL을 내던 경로 차단, 신규 설치 자동 생성은 유지), ⓑ 손상 `table_config.json`에 대한 **기동 fail-fast** 등재. 직전 **정본 계기 수리 라운드** — `PUT /data/updates` 응답에 `effort_recorded`/`effort_error` 신설, 잘못된 `effort`는 **교정을 막지 않고** 폐기·보고, 최상위 오타 키 보고, `unavailable_reason` 실제 원인 지목. 직전: **정본 계기 서버 구현 착지** — `PUT /data/updates`의 선택 필드 `effort` + `GET /api/effort/config` + `/dashboard/summary` → `effort` 신설, 재교정률은 **보조 계기**로 정정. 직전 2026-07-27: C1 공유 토큰 게이트 + `/internal` 게이트 + 정적 폴백 containment · `source-summary` BIN 축 신설) | **Owner:** Backend / Sync
+> **Source-of-truth:** `server/main.py`, `server/database/crud.py`, `server/*_worker.py`, `server/run_*.py`, `server/map_overlay.py`, `server/transfer_plan.py`, `server/value_suggest.py`, `server/process_supervisor.py`, `server/health.py`, `server/utils/heartbeat.py`, `server/paths.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -92,6 +92,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `GET /tables` | 구성된 테이블 목록 |
 | `GET /tables/{t}/data` | 페이징/지연 그리드 조회(q 검색, cols, order_by, filters, tx 필터, target_row_id 점프). 카운트 5초 캐시 |
 | `GET /tables/{t}/schema` | columns, column_types, business_key, composite_key_source, map_key_columns |
+| `GET /tables/{t}/columns/{c}/values` | **[F3] 고유값 조회 — 입력 제안(드롭다운)의 전제 프리미티브.** `?prefix=&limit=` → `{table, column, prefix, values[], truncated, limit, unavailable_reason}`. 아래 §2.1 |
 | `GET /tables/{t}/{row_id}` | 단건(전 소스 병합 메타 포함) |
 | `POST /tables/{t}/rows` | 빈 행 N개 생성 |
 | `PUT /tables/{t}/data/updates` | **통합 배치 업서트**(`crud.apply_batch_updates` 위임, 백그라운드 브로드캐스트) |
@@ -148,7 +149,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|
 | `GET /graph/stats` | label/edge_type 카운트 + `last_sync`(graph_sync_state) — 뷰어 첫 화면 |
 | `GET /graph/neighbors` | k-hop(1\|2) 이웃 서브그래프. **노드 limit 하드캡 500, 초과 시 `truncated`**, (from,type)/(to,type) 인덱스 경로만(C-7) |
-| `GET /graph/nodes/search` | identity 시작일치 자동완성(LIKE 메타문자 이스케이프, limit 캡 50). **빈 q + label = 라벨 전체 리스팅**(identity 오름차순, limit/offset, 캡 200 — 뷰어 라벨 노드 리스트용, 전 테이블 덤프 금지 유지) |
+| `GET /graph/nodes/search` | identity 시작일치 자동완성(limit 캡 50). **[F3] `ILIKE 'q%'` → 바이트 순서 범위 술어로 교체**(`value_suggest.prefix_conditions` 공용 — §2.1). 대소문자 무시 의미론은 그대로이고, LIKE가 없어져 이스케이프할 메타문자도 없다. **빈 q + label = 라벨 전체 리스팅**(identity 오름차순, limit/offset, 캡 200 — 뷰어 라벨 노드 리스트용, 전 테이블 덤프 금지 유지) |
 | `POST /graph/trace` | **[G2] 멀티 시드 BFS 합집합** — depth 1..3(기본 2), 시간 필터(NULL event_time 통과)·edge_types 필터, 노드 하드캡 1000, `missing_seeds`/`truncated`. 의미 검증 실패는 400 |
 | `GET /graph/mapping-summary` | 로드된 온톨로지 매핑 요약(enrichment 승격 포함) — 클라이언트 추적 진입점 활성 판정용 |
 
@@ -180,6 +181,48 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `GET /enrichment/rules/{rule}/references/{i}` | 참조뷰 서버측 실행 — `params`는 decision_key 컬럼만 허용(그 외 400), 파라미터 바인딩 전용(주입 불가), 서버 LIMIT 강제(기본 200/최대 1000), 규칙·인덱스 미존재 404 |
 | `WS /ws` | `ConnectionManager` 브로드캐스트 허브 |
 | `GET /`, `/admin`, `/map-editor`, `/enrichment`, `/{file:path}` | SPA 서빙 + fallback(`graph.html`/`trace.html`은 catch-all 경유) |
+
+---
+
+## 2.1 고유값 조회 (`value_suggest.py`) — 입력 제안의 전제 프리미티브 (F3)
+
+`GET /tables/{t}/columns/{c}/values?prefix=&limit=` → `{table, column, prefix, values[], truncated, limit, unavailable_reason}`.
+
+**응답 계약의 핵심은 `truncated`다.** 조용히 자른 목록은 드롭다운에서 "이게 전부"라고 **암시**한다. 잘림은 `limit + 1`번째 값을 실제로 한 번 더 찾아 확인하며, 프로브 예산으로 멈춘 경우도 잘림이다.
+
+### 왜 `SELECT DISTINCT ... LIKE 'p%'`가 아닌가 (1.75M행 `bonding_map` 실측)
+
+두 함정이 독립적으로 있다.
+
+1. **비-C 콜레이션에서 btree는 `LIKE '접두%'`를 못 쓴다.** 이 DB는 `Korean_Korea.949`다 → 인덱스를 고르고도 175만 엔트리를 Filter로 버려 **232ms**. 해법은 인덱스 자체를 바이트 순서로 만드는 것: `(lower(col) COLLATE "C", col COLLATE "C")` → `Index Cond: lower(base) >= 'c' AND < 'd'` / **0.2ms**. 인덱스 운영은 [POSTGRES_OPERATIONS §3.1](../guide/POSTGRES_OPERATIONS_GUIDE.md).
+2. **`DISTINCT`의 비용은 답의 개수가 아니라 "51개를 채울 때까지 걷는 행 수"다.** 올바른 인덱스가 있어도 일치가 **성기면** 그게 테이블 대부분이 된다 — `leg`(175만 행에 distinct **342**)는 **161ms**, `base LIKE 'C%'`(일치 3개)는 **144ms**. 둘 다 드롭다운이 실제로 던지는 질의다.
+
+그래서 이 모듈은 **loose index scan(skip scan)** 을 쓴다 — 첫 값을 찾고, 이후 "직전 값보다 큰 첫 값"을 반복 탐색한다. 커서는 `(lower(col), col) > (직전 lower, 직전 값)`이며 제안 인덱스에서 **인덱스 하강 1회**로 처리된다. 비용은 **반환하는 값 1개당 seek 1회**로, 테이블 크기·카디널리티와 무관하다.
+
+**실측** (`suggest_values` 종단, 51값, 7회 중앙값, `bonding_map` 1,756,794행):
+
+| 컬럼 | distinct | loose scan | `SELECT DISTINCT … LIMIT 51` |
+|---|---|---|---|
+| `leg` | 342 | **33ms** | 161ms |
+| `base` | 397,602 | **32ms** | 0.3ms (빈 접두) · 144ms (`'C%'`) |
+| `pkg_id` | 1,753,841 | **37ms** | 3,364ms |
+
+숫자의 요점은 배율이 아니라 **평탄함**이다. 순진한 질의는 같은 테이블 안에서 0.3ms~3.4s로 네 자릿수 널뛰기를 한다 — 데이터에 따라 비용이 그렇게 흔들리는 프리미티브 위에는 드롭다운을 못 올린다.
+
+### 규율
+
+| 항목 | 규칙 |
+|---|---|
+| **선언이 권위** | `table`·`column`은 `crud.TABLE_CONFIG`의 `column_types`와 대조한다. 물리적으로 존재해도 미선언이면 400(`business_key_val`·`row_id` 등). 호출자 문자열이 SQL 텍스트에 들어가는 경로는 없다(Column 객체로 해석) |
+| **정규화 사본 없음** | 반환값은 `map_overlay.canonical_key_value`를 통과한다 — `number` 선언이면 저장형 `1`(`1.0`이 아니라). **접두도 같은 함수로 정규화**하므로 `01`을 쳐도 `1`을 찾는다 |
+| **대소문자 무시 = DB의 `lower()`** | 라이브 데이터는 대문자 코드다(`CDIE`). 소문자를 무시하는 드롭다운은 아무도 안 쓴다. 다만 **어느 `lower()`인지가 계약의 일부다** — 인덱스 키가 PostgreSQL의 `lower(col)`이므로 접두도 **같은 함수**로 접는다(`db_fold`, ASCII는 왕복 없이 처리). 파이썬 `.lower()`로 접으면 두 함수가 갈린다: 이 DB의 `lower()`는 U+00C4를 그대로 두는데 파이썬은 소문자로 바꾸므로, 저장된 값이 `truncated: false`인 채 조용히 답에서 빠졌다. **따라서 "같은 값"의 정의는 DB가 같다고 접는 범위까지이며 그 이상도 이하도 아니다.** `/graph/nodes/search`가 이 술어를 그대로 재사용한다 |
+| **술어는 지킬 수 있는 것만 준다** | `prefix_conditions`가 내는 범위는 좁히기용 상위집합이 아니라 **정확한 범위**다(`f <= lower(col) < succ(f)` ⟺ 접두 일치). 상한 계산은 마지막 문자에서 포기하지 않고 **자리올림**한다 — 소비자 2(`/graph/nodes/search`)에는 파이썬 재검사가 없어서 술어가 곧 답이기 때문이다. 하한만 남은 필터는 "그 지점 이후 전부"가 된다 |
+| **datetime 거부** | 400. 날짜 정규화를 새로 만드는 것은 "두 번째 정규화"이므로 하지 않는다 |
+| **빈 값 제외** | NULL·빈 문자열·공백만 있는 값은 제안이 아니다. 판정은 canonical이 비었는지로 하며(SQL `col <> ''`는 공백 문자열을 못 본다), 접두 일치도 **파이썬에서 최종 판정**한다 → 범위 산술은 좁히기만 할 뿐 틀린 값을 만들 수 없다 |
+| **못 하면 못 한다고 말한다** | 예외·시간 초과는 `values: []` + `unavailable_reason`. **시간 초과는 잘림이 아니다** — 인덱스가 없으면 seek마다 Seq Scan이 되어 몇 개만 건지고 끝나는데, 그 결과는 "짧지만 완전한 픽 리스트"로 읽힌다. 사유 문자열은 실제 원인을 지목하며 인덱스는 **정말 없을 때만** 이름을 댄다(대시보드 강등 지표 F6과 같은 규율) |
+| **사유는 읽는 사람이 행동할 수 있어야 한다** | "인덱스가 없으니 `setup_db_performance.py`를 실행하세요"는 **빌더가 애초에 그 인덱스를 만들 생각이 없을 때 막다른 길**이다(`index_exclude`에 있음 / `index_columns` 목록 밖 / `index_min_rows` 미만 — 라이브에 임계 미만 테이블이 15개다). 그래서 사유는 정책 소유자인 `index_targets`에게 **직접 물어서** 만든다: 대상이면 재실행을 지시하고, 아니면 어느 노브가 막고 있는지와 무엇을 고쳐야 하는지를 말한다 |
+| **무효 인덱스는 없는 것보다 나쁘다** | `to_regclass`는 INVALID 인덱스도 해석하므로 이름만 보면 "존재합니다"가 된다. 실제로는 플래너가 절대 안 쓰고, 빌더의 `IF NOT EXISTS`가 **그 이름을 영원히 건너뛴다** — 재실행해도 안 고쳐진다. 취소된 `CREATE INDEX CONCURRENTLY`가 남기는 상태이고, 가이드가 경고하는 워커 `idle in transaction` 상황에서 실제로 도달한다. 판정은 `indisvalid AND indisready`로 하고, 사유 문자열이 `REINDEX`/`DROP` 복구 명령을 직접 제시한다 |
+| **노브는 config** | `config/suggest_config.json` — [config/suggest_config](../guide/config/suggest_config.md). 요청당 1회 스냅샷(핫리로드는 다음 요청부터) |
 
 ---
 

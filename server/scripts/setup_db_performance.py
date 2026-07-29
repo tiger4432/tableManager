@@ -183,6 +183,102 @@ def setup_performance():
                     # UNIQUE 생성 실패는 중복 tx 행이 이미 있다는 뜻일 수 있다 — 조용히 넘기지 않는다.
                     print(f"   Failed to create {idx_name}: {e}")
 
+        # 3.8 [F3 값 제안] 접두 조회 인덱스 — `(lower(col) COLLATE "C", col COLLATE "C")`.
+        #   **models.py에 선언하지 않는다.** 두 가지 이유가 겹친다:
+        #     ① create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않는다
+        #        (idx_audit_user_recorrection·idx_effort_window이 여기 있는 바로 그 이유).
+        #     ② `COLLATE "C"`는 PostgreSQL 전용 표현이라 테스트 스위트의 sqlite
+        #        create_all이 깨진다. 따라서 이 경로가 **유일한** 반영 수단이다.
+        #
+        #   왜 이 형태인가: 이 DB의 콜레이션은 Korean_Korea.949다. 비-C 콜레이션에서
+        #   btree는 `LIKE 'p%'`를 **범위로 만들지 못한다** — 플래너는 인덱스를 고르고도
+        #   전 엔트리를 Filter로 버린다(bonding_map 실측: 1,755,308행 폐기 / 232ms).
+        #   같은 질의가 이 인덱스에서는 `Index Cond: lower(base) >= 'c' AND < 'd'` /
+        #   0.2ms가 된다. 두 번째 키는 loose index scan(값 1개당 seek 1회)의 커서
+        #   `(lower(col), col) > (last_lower, last_value)`를 인덱스 탐색으로 만든다.
+        #
+        #   대상 선정 정책은 server/value_suggest.py `index_targets`가 단독 소유하고
+        #   (suggest_config.json의 index_min_rows / index_columns / index_exclude),
+        #   인덱스 이름·정의도 같은 모듈이 한 곳에서 유도한다.
+        print("\nStep 3.8: Creating value-suggestion prefix indices (F3)...")
+        try:
+            import value_suggest
+            from database import crud
+
+            settings = value_suggest.resolve_settings(value_suggest.load_config())
+            table_config = crud.load_table_config() or {}
+            # reltuples는 추정치라 공짜다. 한 번도 ANALYZE되지 않은 테이블(-1)만
+            # 실제 count로 보정한다 — 그렇지 않으면 갓 적재한 대형 테이블이
+            # "작은 테이블"로 잘못 분류되어 인덱스 없이 조용히 남는다.
+            row_counts = {}
+            for name, reltuples in conn.execute(text(
+                "SELECT relname, reltuples FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relkind = 'r'"
+            )).fetchall():
+                row_counts[name] = int(reltuples) if reltuples and reltuples > 0 else -1
+            for name, count in list(row_counts.items()):
+                if count < 0:
+                    row_counts[name] = conn.execute(
+                        text(f'SELECT count(*) FROM "{name}"')).scalar() or 0
+
+            targets = value_suggest.index_targets(table_config, settings, row_counts)
+            if not targets:
+                print(" - No suggestion index targets "
+                      f"(index_min_rows={settings['index_min_rows']}). Skipping.")
+
+            # INVALID indices must be named BEFORE the create loop. A cancelled
+            # CONCURRENTLY build leaves one behind under the wanted name, the
+            # planner never uses it, and `IF NOT EXISTS` below then skips that
+            # name on every future run - so re-running this script silently
+            # fixes nothing while the column stays timed out forever. The
+            # CONCURRENTLY warning in POSTGRES_OPERATIONS §3.1 (a worker sitting
+            # `idle in transaction` makes this step look hung) describes exactly
+            # how an operator arrives here.
+            invalid = [r[0] for r in conn.execute(text(
+                "SELECT ci.relname FROM pg_index i "
+                "JOIN pg_class ci ON ci.oid = i.indexrelid "
+                "JOIN pg_namespace n ON n.oid = ci.relnamespace "
+                "WHERE n.nspname = 'public' AND ci.relname LIKE :p "
+                "AND NOT (i.indisvalid AND i.indisready)"),
+                {"p": value_suggest.INDEX_PREFIX + "%"})]
+            if invalid:
+                print(" - !! INVALID suggestion indices (planner ignores them, and "
+                      "IF NOT EXISTS below will SKIP these names):")
+                for name in invalid:
+                    print(f"     REINDEX INDEX CONCURRENTLY {name};"
+                          f"   -- or DROP INDEX CONCURRENTLY {name}; then re-run")
+
+            for table, column, idx_name, definition in targets:
+                print(f" - Creating {idx_name} on {table} {definition}...")
+                t0 = time.time()
+                try:
+                    conn.execute(text(
+                        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
+                        f'ON "{table}" {definition}'))
+                    size = conn.execute(text(
+                        "SELECT pg_size_pretty(pg_relation_size(:n))"),
+                        {"n": idx_name}).scalar()
+                    print(f"   Success ({time.time() - t0:.2f}s, {size})")
+                except Exception as e:
+                    print(f"   Failed to create {idx_name}: {e}")
+
+            # 대상에서 빠진 잔존 인덱스는 **자동 삭제하지 않고 보고만** 한다.
+            # config 로드가 일시 실패한 상태에서 일괄 DROP이 돌면 조용히 전 인덱스를
+            # 날리게 된다 — 삭제는 사람이 판단할 일이다.
+            wanted = {t[2] for t in targets}  # index names
+            orphans = [r[0] for r in conn.execute(text(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' "
+                "AND indexname LIKE :p"), {"p": value_suggest.INDEX_PREFIX + "%"})
+                if r[0] not in wanted]
+            if orphans:
+                print(" - Orphaned suggestion indices (no longer targets; "
+                      "drop manually if intended):")
+                for o in orphans:
+                    print(f"     DROP INDEX CONCURRENTLY IF EXISTS {o};")
+        except Exception as e:
+            print(f"   Suggestion index step failed: {e}")
+
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
