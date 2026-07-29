@@ -86,6 +86,9 @@ function makeCtx(src, opts = {}) {
     tableSchema: { columns: ['x', 'y', 'val'], column_types: { x: 'number', y: 'number', val: 'string' }, map_key_columns: [] },
     selectedTable: 'bonding_map',
     loadedIdentity: null, framePushed: false, frameTouched: false, legendDirty: false,
+    // [F2b] provenance of the on-screen cells. null = "the server state is unknown", which
+    // is what a never-loaded map looks like and what `serverCellKeySet` must answer with.
+    serverCellKeys: null,
     legendReplaceScope: null, legendConflict: null, legendSaveState: null,
     currentRotation: 90, currentSide: 'back',
     editorFrames: [],
@@ -183,6 +186,13 @@ function makeCtx(src, opts = {}) {
     // "화면 수량 == 저장 수량" cannot drift. Same reason as validDieRefPayload above:
     // extracted so it can be scored, therefore it must be in this sandbox.
     extractFunction(src, 'eachSavableCell'),
+    // [F2b] the complement of that predicate: which non-empty cells will NOT be saved, and
+    // which of those the server demonstrably never sent. `pushMapData`'s data-protection
+    // gate calls it, so it must be here too. Scored in copy_header_count_harness.mjs; here
+    // it just has to be the REAL one, because the effort assertions below depend on the
+    // push actually reaching the request.
+    extractFunction(src, 'classifyUnsavableCells'),
+    extractFunction(src, 'serverCellKeySet'),
     extractFunction(src, 'pushMapData'),
     extractFunction(src, 'openMapFrame'),
     extractFunction(src, 'popMapFrame'),

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "check:clipboard": "node scripts/check_clipboard_convention.mjs",
-    "prebuild": "npm run check:clipboard",
+    "check:contracts": "node scripts/check_contracts.mjs",
+    "prebuild": "npm run check:clipboard && npm run check:contracts",
     "build": "vite build",
     "preview": "vite preview"
   },

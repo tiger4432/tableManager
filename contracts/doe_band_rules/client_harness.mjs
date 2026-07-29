@@ -22,7 +22,7 @@
  *   node contracts/doe_band_rules/client_harness.mjs
  *   node contracts/doe_band_rules/client_harness.mjs --json
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -144,6 +144,7 @@ try {
     extractBracketed(zoneSrc, 'ZONE_LABEL', '{', '}', 'doe_bands.js'),
     extractBracketed(zoneSrc, 'DOE_COLUMNS', '[', ']', 'doe_bands.js'),
     extractBracketed(zoneSrc, 'IGNORED_HEADERS', '[', ']', 'doe_bands.js'),
+    extractBracketed(zoneSrc, 'ROLLUP_COLUMNS', '[', ']', 'doe_bands.js'),
     extractBracketed(zoneSrc, 'REMAINING_UNKNOWN_REASON', '{', '}', 'doe_bands.js'),
     ...NEEDED_ZONES.map(n => extractFunction(zoneSrc, n, 'doe_bands.js')),
   ].join('\n'), sandbox);
@@ -168,6 +169,10 @@ const rec = (group, name, field, expected, actual) => {
 };
 const ruleSet = list => [...new Set((list || []).map(x => x.rule))].sort();
 const CONSUMED = new Set();
+// Contract keys that are NOT `*_cases` groups - the ignore roster is a set, not a case list.
+// Tracked separately because the `*_cases` gate below compares against `_cases` keys only,
+// and a key that neither gate covers is precisely how an axis goes quiet.
+const CONSUMED_OTHER = new Set();
 
 // ── stack: the 3-state height ---------------------------------------------------------
 CONSUMED.add('stack_cases');
@@ -356,6 +361,122 @@ for (const c of spec.paste_cases) {
   }
 }
 
+// ── 🔴 THE IGNORE ROSTER, AS A SET ----------------------------------------------------------
+//
+// The loop above scores WORDS. This scores the SET, and the two are not the same check:
+// `COUNT` was added to `IGNORED_HEADERS` on 2026-07-29 and all 331 assertions stayed green,
+// because a harness only scores the vectors it holds. Membership is the axis that was
+// missing - a word added here silently DROPS a column of the user's paste, and a word
+// removed here silently turns a heading row into a data row. Neither is visible on screen.
+// It has since fired for real: on 2026-07-30 the roster went 4 -> 13 and this was the ONE
+// assertion of 362 that diverged. Nothing else in the contract noticed nine new words.
+//
+// `IGNORED_HEADERS` is lifted from doe_bands.js (see the extract block above), never
+// re-typed: a harness carrying its own roster would agree with itself forever.
+CONSUMED_OTHER.add('ignored_headers');
+{
+  const spec_ = spec.ignored_headers;
+  if (!spec_ || !Array.isArray(spec_.members) || spec_.members.length === 0) {
+    die("vectors.json has no usable `ignored_headers.members`. That key IS the roster assertion - without it the contract is back to scoring three sample words and calling the set covered.");
+  }
+  const LIVE = vm.runInContext('IGNORED_HEADERS', sandbox);
+  if (!Array.isArray(LIVE)) die('IGNORED_HEADERS did not evaluate to an array');
+
+  // Sorted arrays, not Sets: the failure line has to SHOW which word appeared or vanished.
+  rec('ignore-roster', 'IGNORED_HEADERS membership', 'the exact set',
+    [...spec_.members].sort(), [...LIVE].sort());
+  // Set equality hides a duplicated entry; length catches it. A duplicate is harmless today
+  // and is the shape a careless merge leaves behind, so it should be seen, not tolerated.
+  rec('ignore-roster', 'IGNORED_HEADERS', 'has no duplicate entry', LIVE.length, new Set(LIVE).size);
+
+  // Membership is a list; `IGNORE` is a behaviour. Pin both, or a roster could be correct
+  // while the predicate that reads it is not.
+  for (const w of spec_.members) {
+    rec('ignore-roster', `'${w}'`, 'routes to IGNORE', 'IGNORE', sandbox.columnIdByHeader(w));
+  }
+  for (const w of (spec_.also_ignored_after_trim_and_case_fold || [])) {
+    rec('ignore-roster', `'${w}'`, 'still routes to IGNORE after trim + case fold', 'IGNORE', sandbox.columnIdByHeader(w));
+  }
+  // 🔴 The half that stops `() => 'IGNORE'` from passing everything above. An UNKNOWN word
+  //    must answer null, not IGNORE - if it answered IGNORE, `looksLikeHeader` would accept
+  //    any two-column block of ordinary data as a heading and eat the user's first row.
+  for (const w of (spec_.never_ignored || [])) {
+    const got = sandbox.columnIdByHeader(w);
+    rec('ignore-roster', `'${w}'`, 'is not ignored', false, got === 'IGNORE');
+  }
+
+  // A roster entry that shadows a contract column would DELETE that column from every
+  // pasted heading. Both lists come from the source, so this cannot be satisfied by editing
+  // the contract file alone.
+  const DOE = vm.runInContext('DOE_COLUMNS', sandbox);
+  const contractWords = new Set(DOE.map(c => String(c.header).toUpperCase()));
+  const shadowing = LIVE.filter(w => contractWords.has(String(w).trim().toUpperCase()));
+  rec('ignore-roster', 'IGNORED_HEADERS', 'shadows no contract column', [], shadowing);
+
+  // 🔴 CROSS-SOURCE. Both lists are lifted from doe_bands.js, so this cannot be satisfied by
+  //    editing the contract file. `ROLLUP_COLUMNS` is what `rollupToGrid` emits as the ②
+  //    heading; if a rollup column is renamed and the roster is not followed, the ②→① paste
+  //    silently turns that heading into a data row - the COUNT defect, one rename later.
+  const ROLLUP = vm.runInContext('ROLLUP_COLUMNS', sandbox);
+  const upper = new Set(LIVE.map(w => String(w).trim().toUpperCase()));
+  rec('ignore-roster', 'ROLLUP_COLUMNS', 'every emitted ② heading word is on the roster',
+    [], ROLLUP.filter(w => !upper.has(String(w).trim().toUpperCase())));
+
+  // 🔴 THE PREPARATORY TRIPWIRE. The eight ② words are on the roster for a round trip that
+  //    IS NOT WIRED: `rollupToGrid` is exported and imported by nobody (measured 2026-07-30,
+  //    and `ignored_headers.$why` ③ says so in writing). This is not a defect and must not
+  //    read as one - it is a pin on a stated precondition. The day someone wires it, this
+  //    goes red with the note above as the landing spot, and the right response is to update
+  //    that note and this expectation together. Scope is the APP (client2/src + client2/tests);
+  //    a contract harness reading the symbol is not the app using it.
+  {
+    const scan = [join(ROOT, 'client2', 'src'), join(ROOT, 'client2', 'tests')];
+    const stripComments = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    const importers = [];
+    for (const dir of scan) {
+      let names = [];
+      try { names = readdirSync(dir); } catch { die(`cannot read ${dir} while measuring rollupToGrid importers`); }
+      for (const n of names) {
+        if (!/\.(mjs|js)$/.test(n) || n === 'doe_bands.js') continue;
+        if (/\brollupToGrid\b/.test(stripComments(readFileSync(join(dir, n), 'utf8')))) importers.push(n);
+      }
+    }
+    rec('ignore-roster', 'rollupToGrid (the ② → ① round trip)',
+      'importers in client2/src + client2/tests — 0 means DECLARED BUT UNWIRED, which is what the roster note claims',
+      [], importers);
+  }
+
+  // ── The header-row boundary. Membership says which WORDS are ignored; this says which
+  //    ROWS are headings, and that is where a roster entry actually costs something. The
+  //    negative rows die if `looksLikeHeader` is ever loosened from "every cell resolves"
+  //    to "any cell resolves" - the refactor that would turn nine extra words into silent
+  //    data loss. The positive rows are the reason those nine words exist at all.
+  const bounds = (spec_.header_row_boundary || []).filter(c => Array.isArray(c.row));
+  if (bounds.length === 0) {
+    die("`ignored_headers.header_row_boundary` is missing or empty. It is the only place the COST of a roster entry is scored - membership alone cannot tell you whether a widened roster eats a data row.");
+  }
+  if (!bounds.some(c => c.header === true) || !bounds.some(c => c.header === false)) {
+    die('fixture is inert: `header_row_boundary` needs BOTH a heading row and a non-heading row. With one direction only, a predicate that answers the same thing every time passes.');
+  }
+  if (!bounds.some(c => c.header === false && c.row.some(w => LIVE.includes(w)))) {
+    die('fixture is inert: no NEGATIVE `header_row_boundary` row carries a roster word. Without one, nothing scores the bound that keeps the roster cheap - a row containing an ignored word beside real data must still be data.');
+  }
+  for (const c of bounds) {
+    rec('ignore-roster', `row ${JSON.stringify(c.row)}`, 'is a heading row', c.header, sandbox.looksLikeHeader(c.row));
+  }
+
+  // Inertness guards. The negative list proves nothing if it is all contract columns (which
+  // resolve by name anyway) or all unknown words.
+  const neg = spec_.never_ignored || [];
+  const unknownNeg = neg.filter(w => String(w).trim() !== '' && !contractWords.has(String(w).trim().toUpperCase()));
+  if (unknownNeg.length === 0) {
+    die('fixture is inert: `never_ignored` contains no UNRECOGNISED word. Contract columns resolve by name regardless, so without an unknown word this list never tests that an unknown word stays unknown - which is the case that eats the first data row.');
+  }
+  if (!neg.some(w => contractWords.has(String(w).trim().toUpperCase()))) {
+    die('fixture is inert: `never_ignored` contains no CONTRACT column, so it never proves a roster entry cannot swallow one.');
+  }
+}
+
 // ── 🔴 THE EXCEL ROUND TRIP. The user's actual requirement. ---------------------------------
 //
 // This is the group a unit test of the parser alone cannot cover: each half can be correct
@@ -425,6 +546,22 @@ for (const c of spec.legacy_band_cases) {
   }
   const extra = [...CONSUMED].filter(k => !present.has(k));
   if (extra.length > 0) die(`this harness reads group(s) that no longer exist: ${extra.join(', ')}`);
+
+  // 🔴 AND THE SAME GATE FOR EVERYTHING THAT IS NOT A `*_cases` GROUP.
+  //
+  // `ignored_headers` is a SET, not a list of cases, so it cannot be named `*_cases` - the
+  // server half (server/tests/test_doe_zone_model.py) asserts the `*_cases` key set equals
+  // its own registry, and a new group there would turn `pytest server/tests/` red for a
+  // client-only axis the server cannot score. Naming it `ignored_headers` keeps pytest green
+  // AND puts it outside the gate above, so it needs this one. Any future non-case key is
+  // caught the same way: add it here or the harness refuses to report.
+  const others = Object.keys(spec).filter(k => !k.endsWith('_cases') && !k.startsWith('$') && k !== 'version');
+  const unread = others.filter(k => !CONSUMED_OTHER.has(k));
+  if (unread.length > 0) {
+    die(`contract key(s) present but consumed by nothing: ${unread.join(', ')}. A key nobody reads is an axis that quietly stopped being checked - write the comparison or delete the key.`);
+  }
+  const goneOther = [...CONSUMED_OTHER].filter(k => !others.includes(k));
+  if (goneOther.length > 0) die(`this harness reads contract key(s) that no longer exist: ${goneOther.join(', ')}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -437,7 +574,11 @@ if (JSON_OUT) {
   console.log('            V3 whole lot + its own slot in one BIN · V4 unreadable material token ·');
   console.log('            V5 STACK not a positive integer (carries the retired B9 hazard) ·');
   console.log('            V6 marker (STACK 0) with zone content — markers answer to V6 alone');
-  console.log('  excel   : VALUE·STACK·DESC·1H·MID·TOP — COLOR and 칠함 are outside the contract');
+  // The roster is PRINTED FROM THE SOURCE, not spelled out in this string. The previous
+  // banner said "COLOR and 칠함" while the array already held 칠함* and later COUNT - a
+  // hand-written summary of a list is a second copy of that list, and it drifted.
+  console.log('  excel   : VALUE·STACK·DESC·1H·MID·TOP — outside the contract but recognised');
+  console.log(`            in a heading row: ${vm.runInContext('IGNORED_HEADERS', sandbox).join(' · ')} (set pinned by ignored_headers)`);
 } else {
   console.log(`DOE zone rules: ${failures.length} DIVERGENCE(S) of ${compared} assertions\n`);
   for (const f of failures) {

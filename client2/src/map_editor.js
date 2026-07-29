@@ -2528,6 +2528,44 @@ function eachSavableCell(fn) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [F2b] 저장되지 않는 셀의 **분류**. `eachSavableCell`의 여집합이고, 두 모집단은 좌표만으로
+// 정확히 갈린다:
+//
+//   격자 밖 — 그 키에 cellObj 자체가 없다. 현재 프레임이 맵을 덮지 못한다는 뜻이고
+//             `replace_map`이 그 행들을 지운다. **진짜 절단 방어**(H2)이므로 거부는 그대로다.
+//   원  밖 — cellObj는 있는데 `inside`가 거짓이다. 그리지도 세지도 저장하지도 않는 셀이다.
+//             프레임을 아무리 맞춰도 사라지지 않으므로 "격자 크기를 맞추라"는 안내는
+//             **작동할 수 없다** — 그래서 자기 문장이 필요하다.
+//
+// 🔴 원 밖은 다시 둘로 갈린다. 출처를 모르면(`serverCellKeySet() === null`) 전부 남긴다 —
+//    서버 상태를 모르면 지우지 않는다(불변식 ③). 정리 가능한 것은 **서버가 보낸 적 없음이
+//    증명된** 키뿐이다.
+//
+// ⚠️ 판정은 새로 만들지 않는다. 정의역(`gridCells2D`)·`inside`·빈 값 식은 `eachSavableCell`이
+//    쓰는 그것과 글자 그대로 같고, 세 수의 합 + 저장 대상 수 == `nonEmptyOnGrid`가 항등이다.
+// ═══════════════════════════════════════════════════════════════════════════════
+function classifyUnsavableCells() {
+  const insideByKey = new Map();
+  Object.keys(gridCells2D || {}).forEach(rStr => {
+    Object.keys(gridCells2D[rStr] || {}).forEach(cStr => {
+      const co = gridCells2D[rStr][cStr];
+      if (co) insideByKey.set(co.key, !!co.inside);
+    });
+  });
+  const known = serverCellKeySet();
+  const offGrid = [], outsideRetained = [], outsideStray = [];
+  Object.keys(gridData).forEach(k => {
+    if ((gridData[k] || '') === '') return;    // eachSavableCell과 같은 빈 값 식
+    const inside = insideByKey.get(k);
+    if (inside === undefined) { offGrid.push(k); return; }
+    if (inside) return;                        // 저장 대상 — eachSavableCell이 가져간다
+    if (known && !known.has(k)) outsideStray.push(k);
+    else outsideRetained.push(k);
+  });
+  return { offGrid, outsideRetained, outsideStray };
+}
+
 // 격자의 value별 셀 수. legend에 없는 값도 세어 "정의되지 않은 value"를 드러낸다.
 function computeLegendCounts() {
   const counts = {};
@@ -3166,6 +3204,25 @@ function cellsDigest(cells) {
 // 이 맵을 열었을 때 서버가 갖고 있던 것. 초안의 기반 지문이고, 새 초안을 뜰 때마다 여기서
 // 읽어 함께 저장한다. null이면 서버본에서 유래한 화면이 아니다(= 초안의 기반을 증명할 수 없다).
 let draftBase = null;   // { table, mapKey, registryFp, cellsFp } | null
+
+// [F2b] 같은 로드가 돌려준 **셀 키 집합**. `draftBase`의 셀 판(版)이고 같은 규율을 진다:
+// 서버 상태를 모르면 null이며, null이면 아무것도 지우지 않는다(불변식 ③).
+//
+// 🔴 이것이 "정리(cleanup)"의 유일한 근거다. 유효 다이 밖 셀에는 출처가 **두 가지**다 —
+//    ① 옛 `Fill All`이 사각형 전체를 칠하며 남긴 흔적(서버에 없다) ② 파서가 인제션한 맵이
+//    현재 물리 규격의 마스크를 벗어난 경우(서버에 있다). 좌표만 보면 둘은 구별되지 않고,
+//    ②를 지운 뒤 Push하면 `replace_map`이 그 행들을 **서버에서 삭제한다**(불변식 ④, H2와
+//    같은 계급의 파괴). 그래서 정리는 "서버가 보낸 적 없다"가 증명된 키에만 허용한다.
+let serverCellKeys = null;   // { table, mapKey, keys: Set<string> } | null
+
+// 지금 화면의 맵에 대해 서버 셀 집합을 신뢰할 수 있는가. 정체는 `loadedIdentity`가 지고
+// 있으므로(프레임 스택이 스냅샷으로 함께 옮긴다) 여기서 다시 만들지 않고 대조만 한다.
+function serverCellKeySet() {
+  if (!serverCellKeys || !loadedIdentity) return null;
+  if (serverCellKeys.table !== loadedIdentity.table) return null;
+  if (serverCellKeys.mapKey !== loadedIdentity.mapKey) return null;
+  return serverCellKeys.keys;
+}
 
 function saveDoeDraft() {
   const mapKey = getCurrentMapKey();
@@ -4229,6 +4286,10 @@ async function loadExistingMap(opts = {}) {
     // Reset local cache & loaded F cells protection set
     gridData = {};
     loadedFCells.clear();
+    // [F2b] 서버 셀 집합도 함께 버린다. 이 로드가 예외로 끝나면 기록은 null로 남고, null이면
+    // 정리는 제공되지 않는다 — 앞 맵의 집합으로 이 맵의 셀을 "서버에 없다"고 판정하는 것이
+    // 정확히 H2가 저지른 종류의 오답이다.
+    serverCellKeys = null;
     // 기준 맵이 통째로 바뀌므로 이전 맵 기준으로 정렬된 오버레이는 무효다
     if (overlayLayers.length > 0) {
       clearOverlayLayers();
@@ -4471,6 +4532,25 @@ async function loadExistingMap(opts = {}) {
       });
     }
 
+    // [F2b] 서버가 이 맵으로 돌려준 셀 키를 여기서 붙든다 — `gridData`가 **정확히 서버의
+    // 답**인 유일한 지점이다(초안 복원·페인트는 아직 지나지 않았다).
+    // 🔴 절단된 응답은 불완전한 집합이므로 **모른다로 강등한다**(불변식 ④): 상한을 넘긴
+    //    맵에서 "서버에 없다"는 판정은 거짓이 될 수 있고, 그 거짓 위에서 정리하면 실재하는
+    //    행이 다음 Push에서 삭제된다. split registry 조회가 절단을 실패로 강등하는 것과
+    //    같은 규칙이다(readRegistryScope).
+    const cellsTruncated = !!(result && typeof result.total === 'number'
+      && result.total > (Array.isArray(result.data) ? result.data.length : 0));
+    if (cellsTruncated) {
+      console.warn(`[Map Editor] cell load truncated (${result.total} > ${result.data.length}) — `
+        + 'server cell set demoted to unknown; outside-wafer cleanup will not be offered');
+    } else {
+      serverCellKeys = {
+        table: selectedTable,
+        mapKey: loadedMapKey || getCurrentMapKey(),
+        keys: new Set(Object.keys(gridData)),
+      };
+    }
+
     // Auto detect legend from unique values
     if (uniqueVals.size > 0) {
       const predefinedColors = LEGEND_PALETTE; // [U6] the one palette — no second copy
@@ -4677,7 +4757,14 @@ function clearGrid() {
   if (!confirm('격자 내의 모든 입력 값을 삭제하시겠습니까?')) return;
   gridData = {};
   loadedFCells.clear();
+  // 🔴 이 두 줄이 없었다. 편집 경로는 열 곳이 넘는데 **여기만** writer를 부르지 않아
+  //    (PRIMITIVES §1 "모든 편집 경로가 초안 writer를 불러야 한다" 위반):
+  //      ① Clear Grid → 새로고침 → 낡은 초안에서 격자가 통째로 되살아났다
+  //      ② 범례·DOE 뱃지가 지워진 셀을 계속 세고 있었다(화면 수량 ≠ 실제, F2와 같은 계급)
+  //    `deleteLegendValue`(4018)와 같은 순서·같은 세 줄이다.
+  updateLegendCounts();
   renderGridCanvas();
+  scheduleCellDraft();
 }
 
 function fillGrid() {
@@ -4918,10 +5005,12 @@ async function pushMapData() {
   const gridMetaStr = JSON.stringify(gridMetaOut);
 
   const updates = [];
+  const serializedKeys = [];   // [F2b] 실제로 직렬화된 셀의 물리 키 — 성공 시 서버 셀 집합이 된다
 
   // [F2] 이 순회의 술어(`inside` && 값 있음)는 `eachSavableCell` 하나뿐이고, 화면의 수량도
   // 같은 함수를 지난다. 여기에 술어를 다시 쓰면 "화면 34 · DB 33"이 되돌아온다.
   eachSavableCell((cellObj, val) => {
+    serializedKeys.push(cellObj.key);
     let valParsed = valType === 'number' ? Number(val) : val;
 
     let xParsed = xType === 'number' ? parseInt(cellObj.x, 10) : String(cellObj.x);
@@ -4956,17 +5045,56 @@ async function pushMapData() {
   // would delete data it never serialized. Counted with the loop's own emptiness
   // predicate ((v || '') !== ''), so cells the user deliberately erased ('') are not
   // "dropped" and an identical-count push passes with zero friction.
+  //
+  // [F2b] 그 한 수를 **두 모집단으로 쪼갠다.** 합은 종전의 `droppedNonEmpty`와 같고 거부의
+  // 강도도 같지만, 안내가 원인을 가리킬 수 있게 된다. 종전에는 원 밖 셀에도 "격자 크기·
+  // 시작 좌표·회전·물리 규격을 맞추라"고 말했는데 — 그 셀들은 격자 밖이 아니라 원 밖이라
+  // **그 안내대로 해도 절대 풀리지 않는다.** 게다가 F2 이후 범례가 그 셀을 세지 않으므로
+  // 화면에 원인의 흔적이 하나도 남지 않는다. 쪼개는 것이지 무르게 하는 게 아니다.
   const nonEmptyOnGrid = Object.keys(gridData).filter(k => (gridData[k] || '') !== '').length;
-  const droppedNonEmpty = nonEmptyOnGrid - updates.length;
-  if (droppedNonEmpty > 0) {
-    console.warn(`[Map Editor] push refused - frame covers ${updates.length}/${nonEmptyOnGrid} non-empty cells (${droppedNonEmpty} would be deleted by replace_map)`);
+  const unsavable = classifyUnsavableCells();
+  const strayKeys = unsavable.outsideStray;
+  // 서버 데이터를 지울 수 있는 모집단 — 종전과 **같은** 거부.
+  const blocking = unsavable.offGrid.length + unsavable.outsideRetained.length;
+  if (blocking > 0) {
+    console.warn(`[Map Editor] push refused - frame covers ${updates.length}/${nonEmptyOnGrid} non-empty cells `
+      + `(${blocking} would be deleted by replace_map: ${unsavable.offGrid.length} off-grid, `
+      + `${unsavable.outsideRetained.length} outside-wafer of unproven origin; ${strayKeys.length} stray)`);
     alert(
       `적재를 중단했습니다 — 현재 프레임이 맵 전체를 덮지 못합니다.\n\n`
-      + `값이 있는 셀 ${nonEmptyOnGrid}개 중 ${droppedNonEmpty}개가 현재 격자 범위·웨이퍼 영역 밖에 있어 `
+      + `값이 있는 셀 ${nonEmptyOnGrid}개 중 ${blocking}개가 현재 격자 범위·웨이퍼 영역 밖에 있어 `
       + `이번 적재에 담기지 않습니다. 이대로 적재하면 덮어쓰기(Clean Replace) 과정에서 `
-      + `해당 ${droppedNonEmpty}개 셀이 서버에서 삭제됩니다.\n\n`
+      + `해당 ${blocking}개 셀이 서버에서 삭제됩니다.\n\n`
       + `격자 크기·시작 좌표·회전·물리 규격을 맵 전체가 보이도록 맞춘 뒤 다시 시도하십시오.`
+      + (strayKeys.length > 0
+        ? `\n\n(이와 별개로, 서버에 저장된 적 없는 유효 다이 밖 셀 ${strayKeys.length}개도 격자에 남아 있습니다. `
+          + `위를 먼저 해결하면 정리 방법을 안내합니다.)`
+        : '')
     );
+    return;
+  }
+  // 서버가 보낸 적 없음이 증명된 유효 다이 밖 셀만 남았다 — 지워도 서버에서 사라질 것이
+  // 없으므로, 프레임을 고치라는 안내 대신 **한 번 눌러 정리하는 길**을 준다.
+  // 새 패널도 새 모드도 아니다: 이미 있던 거부 대화상자가 쓰기 1회 확인이 될 뿐이다.
+  if (strayKeys.length > 0) {
+    console.warn(`[Map Editor] push blocked by ${strayKeys.length} stray outside-wafer cells `
+      + `(never rendered, never counted, never on the server) - offering cleanup`, strayKeys.slice(0, 20));
+    if (!confirm(
+      `적재를 중단했습니다 — 저장할 수 없는 셀 ${strayKeys.length}개가 격자에 남아 있습니다.\n\n`
+      + `이 셀들은 격자 밖이 아니라 웨이퍼의 유효 다이 밖에 있습니다. 그래서 화면에 색이 나오지 않고 `
+      + `범례·DOE 수량에도 잡히지 않으며, 서버에 저장된 적도 없습니다. `
+      + `격자 크기·시작 좌표·회전을 맞추는 것으로는 사라지지 않습니다 — 가장 흔한 원인은 `
+      + `예전 🎨 Fill All이 격자 사각형 전체를 칠하면서 남긴 흔적입니다.\n\n`
+      + `· 이 좌표들이 원래 유효 다이여야 한다면: [취소] 후 물리 규격(직경·칩 크기·엣지 마진)이나 `
+      + `유효 다이 지정을 넓혀 다시 시도하십시오.\n`
+      + `· 아니라면 [확인]을 눌러 이 ${strayKeys.length}개 셀만 격자에서 지우십시오. `
+      + `유효 다이 안쪽 셀과 서버에 저장된 데이터는 그대로입니다. 정리한 뒤 ⚡ Push를 다시 눌러 주십시오.`
+    )) return;
+    strayKeys.forEach(k => { delete gridData[k]; });
+    renderGridCanvas();
+    scheduleCellDraft();   // 초안에서도 지운다 — 새로고침으로 되살아나면 정리가 아니다
+    showToast(`유효 다이 밖 ${strayKeys.length}칸을 격자에서 정리했습니다 — ⚡ Push를 다시 눌러 주십시오.`,
+      'success');
     return;
   }
 
@@ -5107,6 +5235,14 @@ async function pushMapData() {
       // 새로 만든 맵도 이 시점부터 정체성이 확정된다 → 이후 Push는 가드 아래 놓인다
       // (setLoadedIdentity가 framePushed를 초기화하므로 반드시 먼저 호출한다)
       if (!loadedIdentity) setLoadedIdentity(selectedTable, mapIdStr);
+      // [F2b] 방금 적재한 셀은 이제 **서버에 있다.** 기록을 갱신하지 않으면, 이 다음에
+      // 사용자가 물리 규격을 줄여 그 셀들이 원 밖이 되었을 때 "서버가 보낸 적 없다"로
+      // 오판해 정리 대상이 되고, 그 다음 Push가 실재하는 행을 지운다.
+      serverCellKeys = {
+        table: selectedTable,
+        mapKey: (loadedIdentity && loadedIdentity.mapKey) || mapIdStr,
+        keys: new Set(serializedKeys),   // 직렬화 루프가 실제로 담은 그 키들
+      };
       // [재설계 v2] Push 성공 = 이 프레임의 편집이 서버에 적재됨 (뒤로가기 경고 해제)
       framePushed = true;
       notifyMapContext();
@@ -5459,11 +5595,29 @@ function copyHeaderEnabled() {
   return !!(el.copyHeaderToggle && el.copyHeaderToggle.checked);
 }
 
-// 상단 헤더의 열 그룹. Base는 이 맵의 정체(7b canonical 맵 키)이고, 나머지 셋은 DOE가
+// 첫 열 그룹의 이름. 값이 `getCurrentMapKey()`(= `composeMapId(map_key_columns, …)`)에서
+// 나오므로 **이름도 같은 선언에서 나와야 한다.**
+// 🔴 여기는 `'Base'` 하드코딩이었다. `base`는 `bonding_map`의 컬럼명일 뿐인데 📋 Copy to
+//    Excel은 모든 맵 테이블에 있어서, `dt_map`(map_key_columns = lot·slot)에서 내보내면
+//    헤더가 `Base | LOTID_03` 으로 나왔다 — 이름과 값이 다른 테이블을 가리키는 상태다.
+//    나머지 세 라벨이 `ZONE_LABEL`에서 오는 것과 같은 규율이다(INV-ⓐ-4).
+// 합성 규칙도 값과 맞춘다: `composeMapId`가 '_'로 잇는 복합 키는 이름도 '_'로 잇는다
+// (lot·slot → `Lot_Slot`). 선언이 없으면 컬럼명을 주장하지 않고 역할명으로 물러선다.
+function mapKeyGroupLabel() {
+  const cols = (tableSchema && Array.isArray(tableSchema.map_key_columns))
+    ? tableSchema.map_key_columns.filter(c => c && String(c).trim() !== '') : [];
+  if (cols.length === 0) return 'MAP KEY';
+  return cols.map(c => {
+    const s = String(c).trim();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }).join('_');
+}
+
+// 상단 헤더의 열 그룹. 첫 칸은 이 맵의 정체(7b canonical 맵 키)이고, 나머지 셋은 DOE가
 // 선언한 구역별 자재다. 자재 토큰은 **원문 그대로** 나간다 — `lot_slot:BIN`이 정체이고,
 // 화면 칩이 보기 좋게 접어 보여주는 것은 그림일 뿐이다(transfer_plan §materialChipHtml).
 function copyHeaderGroups() {
-  const groups = [{ label: 'Base', value: getCurrentMapKey() || '' }];
+  const groups = [{ label: mapKeyGroupLabel(), value: getCurrentMapKey() || '' }];
   ZONES.forEach(z => {
     const seen = [];
     legend.forEach(item => {
@@ -5472,6 +5626,62 @@ function copyHeaderGroups() {
     groups.push({ label: ZONE_LABEL[z], value: seen.join(', ') });
   });
   return groups;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 열 폭 정책 — **한 곳**. 상단 헤더와 우측 보조표가 같은 규칙을 쓴다.
+//
+// 🔴 THE DEFECT. 헤더 칸이 맵 셀 하나로 나갔다. 맵 셀은 32px 정사각이라 `MIDLOT_01`은
+//    **글자가 들어갈 자리 자체가 없다** (사용자 2026-07-29: "MAP CELL과 셀 크기 동일").
+//    회사 실제 양식은 각 그룹이 여러 열에 걸쳐 **병합**돼 있고 그래서 긴 라벨이 읽힌다.
+//
+// 🔴 균등 분배는 답이 아니다. 라벨 길이가 제각각이라 `1H`와 `MIDLOT_01`에 같은 폭을 주면
+//    긴 쪽이 다시 잘린다. 폭은 **글자 수에서** 나오고, 남는 열은 그 폭에 **비례해** 나눈다.
+//
+// ⚠️ 어떤 분배를 하든 **모든 행의 열 합계가 정확히 같아야 한다.** 하나라도 어긋나면 엑셀이
+//    표 전체를 밀어 버린다 — 그래서 분배는 최대 잔여법으로 합을 정확히 맞추고, 격자 행도
+//    `totalCols`까지 채운다. 이건 미관이 아니라 산출물의 정합성이다.
+//
+// 픽셀 상수는 **아래 격자 <td>가 실제로 쓰는 수**와 같아야 한다(32px, padding 6px×2).
+// 다르면 이 계산 전체가 조용한 거짓말이 된다.
+// ═══════════════════════════════════════════════════════════════════════════════
+const HDR_COL_PX = 32;     // 격자 셀 한 칸의 폭 — 아래 `width: 32px`와 같은 수
+const HDR_PAD_PX = 12;     // headCellStyle/headValStyle의 좌우 padding 합 (6px × 2)
+const HDR_CHAR_PX = 7;     // 10pt Arial bold 한 글자의 보수적 폭
+const HDR_MIN_SPAN = 2;    // 빈 라벨도 맵 셀 하나로는 내보내지 않는다
+const HDR_MAX_SPAN = 8;    // 문장 길이의 DESC 하나가 표를 인쇄 한 장 밖으로 밀지 않도록
+
+// 이 글자가 잘리지 않으려면 맵 셀 몇 칸이 필요한가.
+function headerSpanFor(text) {
+  const len = String(text === null || text === undefined ? '' : text).length;
+  const span = Math.ceil((len * HDR_CHAR_PX + HDR_PAD_PX) / HDR_COL_PX);
+  return Math.min(HDR_MAX_SPAN, Math.max(HDR_MIN_SPAN, span));
+}
+
+// `total`개의 열을 최소 폭을 보장하며 **길이에 비례해** 나눈다.
+// 🔴 합은 정확히 `total`이다(최대 잔여법). 내림만 하면 몇 열이 증발해 행이 ragged해진다.
+// `total`이 최소 합보다 작으면 최소 폭을 그대로 돌려준다 — 그때는 호출부가 `total`을 그
+// 합으로 올려 **모든 행을 함께** 넓힌다(헤더만 넓히면 제목 행이 데이터 행보다 길어진다).
+function distributeSpans(texts, total) {
+  const mins = texts.map(headerSpanFor);
+  const base = mins.reduce((a, b) => a + b, 0);
+  if (base === 0 || total <= base) return mins;
+  const surplus = total - base;
+  const share = mins.map(m => surplus * m / base);
+  const out = mins.map((m, i) => m + Math.floor(share[i]));
+  const order = share.map((s, i) => ({ i, frac: s - Math.floor(s) }))
+    .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
+  let used = out.reduce((a, b) => a + b, 0);
+  for (let k = 0; used < total; k++) { out[order[k % order.length].i]++; used++; }
+  return out;
+}
+
+// 우측 보조표 4열의 폭. 열마다 **그 열의 가장 긴 내용**에서 나온다 — 머리글만 보면
+// `DESC`(4자)가 4자 폭을 받고 그 아래 문장이 전부 잘린다.
+function auxColumnSpans(auxHead, auxRows) {
+  const col = k => [auxHead[k]].concat(
+    (auxRows || []).map(r => [r.value, String(r.count), r.stack, r.desc][k]));
+  return [0, 1, 2, 3].map(k => col(k).reduce((m, t) => Math.max(m, headerSpanFor(t)), 0));
 }
 
 // 우측 보조표의 행. 선언(legend)이 순서를 정하고, 거기에 없는데 **칠해진** 값은 뒤에 붙인다 —
@@ -5525,10 +5735,20 @@ function copyGridToExcel() {
   //  COUNT의 출처. 화면 뱃지·DOE 패널·⚡ Push와 **같은 함수**다(F2 수렴점).
   const auxRows = headerOn ? copyHeaderAuxRows(computeLegendCounts()) : [];
   const groups = headerOn ? copyHeaderGroups() : [];
-  const AUX_W = 4;                                   // VALUE · COUNT · STACK · DESC
   const GAP_W = 1;                                   // 격자와 보조표 사이 한 칸
   const auxHead = [colHeaderWord('value'), 'COUNT', colHeaderWord('stack'), colHeaderWord('desc')];
-  const totalCols = headerOn ? Math.max(visualCols + GAP_W + AUX_W, groups.length * 2) : visualCols;
+  // VALUE · COUNT · STACK · DESC 는 이제 **각자의 폭**을 갖는다 (종전에는 넷 다 32px 한 칸).
+  const auxColSpans = headerOn ? auxColumnSpans(auxHead, auxRows) : [1, 1, 1, 1];
+  const AUX_W = auxColSpans.reduce((a, b) => a + b, 0);
+  // 상단 헤더 칸들(라벨·값이 번갈아)의 폭. 종전 `groups.length * 2`는 **칸마다 한 열**이라는
+  // 뜻이었고 그것이 바로 이 결함이었다 — 이제 폭은 글자에서 나온다.
+  const groupTexts = [];
+  groups.forEach(g => { groupTexts.push(g.label, g.value); });
+  const groupMinCols = groupTexts.map(headerSpanFor).reduce((a, b) => a + b, 0);
+  // 표 전체의 열 수. 격자+보조표가 넓으면 헤더가 그 폭을 나눠 갖고, 헤더가 더 넓어야 하면
+  // (열 3~5개짜리 좁은 격자) 표 전체가 그만큼 넓어진다. 어느 쪽이든 **모든 행이 이 수와 같다.**
+  const totalCols = headerOn ? Math.max(visualCols + GAP_W + AUX_W, groupMinCols) : visualCols;
+  const groupSpans = headerOn ? distributeSpans(groupTexts, totalCols) : [];
 
   const headCellStyle = `border: 1px solid ${lineHex}; background-color: ${outHex}; color: ${textEmptyHex};`
     + ' font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle; padding: 2px 6px;';
@@ -5537,23 +5757,32 @@ function copyGridToExcel() {
   const gapStyle = 'border: none;';
 
   // 보조표 r번째 줄(0 = 머리줄)의 4칸 + 앞의 빈 칸. 없으면 빈 칸만.
+  // 네 칸은 각자 `auxColSpans[k]`만큼 **병합**된다 — 폭이 열마다 다르므로 빈 줄도 같은
+  // 폭으로 자리를 지켜야 아래위 칸이 어긋나지 않는다.
+  const auxFields = (i) => (i === 0)
+    ? auxHead
+    : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
   const auxCells = (i) => {
     let cells = `<td style="${gapStyle}"></td>`;
-    const fields = (i === 0)
-      ? auxHead
-      : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
-    for (let k = 0; k < AUX_W; k++) {
-      if (!fields) { cells += `<td style="${gapStyle}"></td>`; continue; }
+    const fields = auxFields(i);
+    for (let k = 0; k < 4; k++) {
+      const span = ` colspan="${auxColSpans[k]}"`;
+      if (!fields) { cells += `<td${span} style="${gapStyle}"></td>`; continue; }
       const style = (i === 0) ? headCellStyle : headValStyle;
-      cells += `<td style="${style}">${escapeHtmlAttr(fields[k])}</td>`;
+      cells += `<td${span} style="${style}">${escapeHtmlAttr(fields[k])}</td>`;
     }
     return cells;
   };
+  // 평문에는 병합이 없다 — 글자는 그 칸의 첫 열에 놓고 나머지 열은 빈 칸으로 채운다.
+  // 그래야 TSV의 열 수가 HTML의 colspan 합과 **같아진다**.
   const auxTsv = (i) => {
-    const fields = (i === 0)
-      ? auxHead
-      : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
-    return fields ? ['', ...fields] : ['', '', '', '', ''];
+    const fields = auxFields(i);
+    const out = [''];                                  // 격자와 보조표 사이 한 칸
+    for (let k = 0; k < 4; k++) {
+      out.push(fields ? fields[k] : '');
+      for (let j = 1; j < auxColSpans[k]; j++) out.push('');
+    }
+    return out;
   };
   const auxLines = headerOn ? auxRows.length + 1 : 0;   // 머리줄 포함
 
@@ -5568,17 +5797,22 @@ function copyGridToExcel() {
     const title = [selectedTable || '', titleKey].filter(Boolean).join(' · ');
     html += `<tr><td colspan="${totalCols}" style="border: none; font-size: 13pt; font-weight: bold;`
       + ` text-align: left; padding: 4px 2px;">${escapeHtmlAttr(title)}</td></tr>`;
+    // 🔴 여기가 사용자가 본 그 줄이다. 종전에는 칸마다 `<td>` 하나 = 맵 셀 한 칸(32px)이라
+    //    `MIDLOT_01`이 들어갈 자리가 없었다. 이제 각 칸이 `colspan`으로 병합되고, 폭은
+    //    글자 수에 비례한다. 짝수 칸이 라벨·홀수 칸이 값이라는 순서는 그대로다(INV-ⓐ-4).
     let groupRow = '<tr>';
-    groups.forEach(g => {
-      groupRow += `<td style="${headCellStyle}">${escapeHtmlAttr(g.label)}</td>`;
-      groupRow += `<td style="${headValStyle}">${escapeHtmlAttr(g.value)}</td>`;
+    groupTexts.forEach((t, i) => {
+      const style = (i % 2 === 0) ? headCellStyle : headValStyle;
+      groupRow += `<td colspan="${groupSpans[i]}" style="${style}">${escapeHtmlAttr(t)}</td>`;
     });
-    for (let k = groups.length * 2; k < totalCols; k++) groupRow += `<td style="${gapStyle}"></td>`;
     html += `${groupRow}</tr>`;
     matrix.push([title].concat(new Array(Math.max(0, totalCols - 1)).fill('')).join('\t'));
     const groupCells = [];
-    groups.forEach(g => { groupCells.push(g.label, g.value); });
-    while (groupCells.length < totalCols) groupCells.push('');
+    groupTexts.forEach((t, i) => {
+      groupCells.push(t);
+      for (let k = 1; k < groupSpans[i]; k++) groupCells.push('');
+    });
+    while (groupCells.length < totalCols) groupCells.push('');   // 분배가 정확하면 무동작
     matrix.push(groupCells.join('\t'));
   }
 
@@ -5678,6 +5912,13 @@ function copyGridToExcel() {
       html += auxCells(r);
       auxTsv(r).forEach(f => rowCells.push(f));
     }
+    // 이 행을 `totalCols`까지 채운다. 끄면 `totalCols === visualCols`라 아무 일도 없다
+    // (INV-ⓐ-1 바이트 동일성). 켰을 때 보조표가 끝난 아래쪽 행들은 종전에 **짧은 채로**
+    // 나갔고, ragged한 표는 엑셀에서 열이 밀린다.
+    for (let k = rowCells.length; k < totalCols; k++) {
+      html += `<td style="${gapStyle}"></td>`;
+      rowCells.push('');
+    }
     html += '</tr>';
     matrix.push(rowCells.join('\t'));
   }
@@ -5693,6 +5934,10 @@ function copyGridToExcel() {
     }
     rowHtml += auxCells(i);
     auxTsv(i).forEach(f => rowCells.push(f));
+    for (let k = rowCells.length; k < totalCols; k++) {
+      rowHtml += `<td style="${gapStyle}"></td>`;
+      rowCells.push('');
+    }
     html += `${rowHtml}</tr>`;
     matrix.push(rowCells.join('\t'));
   }
