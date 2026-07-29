@@ -2402,6 +2402,70 @@ function applyPresetObject(preset) {
   updateLegendCounts();
 }
 
+// ── [F5c] 로드 시 기본 규격 라우팅 ─────────────────────────────────────────────
+// "이 맵을 **어떤 물리 규격으로 여는가**"의 선언된 답. 순서를 정하는 것은 서버
+// (`GET /api/maps/preset-routing`, server-pm `50bddda`)이고 클라는 그 답을 **적용만**
+// 한다 — 여기에 두 번째 판정을 쓰면 라우팅 규칙이 두 곳에서 살게 된다.
+//
+// 🔴 **절대 순서: `wafer_map_metadata` > 라우팅 > 패널.** 서버는 규격이 등록된 맵에
+//    `meta_present` + preset null을 답하므로 그것만으로도 안전하지만, 클라는 그보다
+//    앞서 **묻지도 않는다**(호출부의 `!loadedGridMeta` 가드). 저장된 규격을 이미 손에
+//    쥔 상태에서 조회하면 "그 답을 무시한다"는 규율이 코드 한 줄의 성실함에 걸린다 —
+//    조회 자체를 하지 않는 것이 구조적 보증이다(INV-F5c-2).
+// 🔴 **`status !== 'ok'`이면 아무것도 적용하지 않는다**(INV-F5c-1). 서버가 프리셋을
+//    주지 않은 것을 클라가 그럴듯한 것으로 메우면 안 된다 — 틀린 규격은 `inside`를
+//    바꾸고, `inside`는 저장 가능 집합을 바꾼다.
+// 🔴 **빗나감은 정상 경로지 경고가 아니다.** 제품코드 조회 테이블은 운영에만 있고
+//    불완전하다는 것이 이 설계의 전제다. 미선언·불일치·조회 실패는 토스트를 띄우지
+//    않고 `lookup.status`와 함께 콘솔에만 남긴다 — 운영자가 찾아볼 때 보이는 자리다.
+// 🔴 **로드당 1회**(INV-F5c-3). 렌더당도, 셀당도 아니다. 호출부는 `loadExistingMap`
+//    안의 한 곳뿐이다.
+// 라우팅은 **첫 열기의 기본값**이고 진짜로 만드는 것은 첫 ⚡ Push다 — 그래서 끄는
+// 스위치를 만들지 않았다(순 추가 컨트롤 0개). 사용자는 Push 전에 무엇이든 바꿀 수 있다.
+//
+// 반환: 적용한 경우 응답 객체, 그 외 null. (호출부는 성공/실패로 분기하지 않는다.)
+async function applyRoutedPreset(table, mapKey) {
+  const t = String(table || '').trim();
+  const k = (mapKey === null || mapKey === undefined) ? '' : String(mapKey).trim();
+  if (t === '' || k === '') return null;   // 물어볼 정체성이 없다 — 요청도 만들지 않는다
+  let resp = null;
+  try {
+    const res = await fetch(`${API_BASE}/api/maps/preset-routing`
+      + `?table=${encodeURIComponent(t)}&map_key=${encodeURIComponent(k)}`);
+    if (!res.ok) {
+      // 조회 실패는 "선언이 없다"가 아니라 "확인 못 했다"이지만, 라우팅의 부재는 기존
+      // 동작(패널 그대로)과 같으므로 강등할 것이 없다. 조용히 콘솔에만 남긴다.
+      console.info(`[Map Editor][F5c] preset routing unavailable (HTTP ${res.status}) — `
+        + 'opening with the panel spec, as before');
+      return null;
+    }
+    resp = await res.json();
+  } catch (e) {
+    console.info('[Map Editor][F5c] preset routing request failed — opening with the panel spec, '
+      + `as before (${e && e.message ? e.message : String(e)})`);
+    return null;
+  }
+  const status = resp && resp.status ? String(resp.status) : '';
+  const lookup = (resp && resp.lookup) ? resp.lookup : {};
+  if (status !== 'ok' || !resp.preset) {
+    console.info(`[Map Editor][F5c] no routing applied (${status || 'no status'}) — `
+      + `${resp && resp.detail ? resp.detail : ''} `
+      + `[lookup declared=${!!lookup.declared} status=${lookup.status || '-'} `
+      + `product_code=${lookup.product_code || '-'}]`);
+    return null;
+  }
+  // 적용한다 = 화면이 바뀐다. 바뀌는 것은 조용히 넘어가지 않는다.
+  applyPresetObject(resp.preset);
+  const m = resp.matched_by || {};
+  console.info(`[Map Editor][F5c] routed '${t}/${resp.canonical_map_key || k}' -> preset `
+    + `'${resp.preset_key}' by ${m.stage || '?'}:${m.rule || '?'} (lot=${m.lot || '-'}, `
+    + `product_code=${m.product_code || '-'}) [lookup status=${lookup.status || '-'}]`);
+  showToast(`규격을 라우팅했습니다 — '${(resp.preset && resp.preset.name) || resp.preset_key}' `
+    + `(규칙: ${m.rule || resp.preset_key}). 저장된 규격이 없는 맵의 기본값이며, `
+    + `⚡ Push 전에 자유롭게 바꿀 수 있습니다.`, 'info', { dedupeKey: 'preset_routing_applied' });
+  return resp;
+}
+
 function loadSelectedPreset() {
   if (!el.presetSelect) return;
   const val = el.presetSelect.value;
@@ -4365,6 +4429,15 @@ async function loadExistingMap(opts = {}) {
           console.error('Failed to parse fallback grid_metadata:', e);
         }
       }
+    }
+
+    // [F5c] 저장된 규격이 **없을 때만** 라우팅에 묻는다. 절대 순서
+    // `wafer_map_metadata` > 라우팅 > 패널의 첫 번째 부등호가 이 한 줄의 가드다
+    // (INV-F5c-2). 여기가 이 함수의 **유일한** 호출부이므로 로드당 정확히 1회다
+    // (INV-F5c-3). 셀 좌표 해석보다 앞에 두는 이유: 아래 'current'/'standard' 분기가
+    // 좌측 패널을 읽으므로, 라우팅이 패널을 정한 뒤여야 "라우팅 > 패널"이 성립한다.
+    if (!loadedGridMeta) {
+      await applyRoutedPreset(selectedTable, loadedMapKey || getCurrentMapKey());
     }
 
     let userChoice = null; // 'standard' | 'current' | 'meta'
@@ -6865,6 +6938,56 @@ function frameAxesKey(rf) {
           rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
 }
 
+// ── [F6] 프레임 채택 — 편집기 컨트롤로만 ────────────────────────────────────
+// 유효 다이 지정이 **치수만으로** 거절되던 자리를 푼다. 물리 좌표는 캔버스 인덱스
+// 상대라 치수가 다르면 같은 인덱스가 같은 다이가 아니고, 그래서 그 관문 자체는 옳다.
+// 답은 관문을 무르게 하는 것이 아니라 **타깃 격자를 참조 맵 크기로 여는 것**이다.
+//
+// 🔴 **쓰는 곳은 화면 컨트롤뿐이다**(INV-F6-2). `wafer_map_metadata`를 쓰지 않고
+//    서버에 쓰라고 요청하지도 않는다. `gridData`는 물리 좌표 키라 프레임이 바뀌면
+//    셀이 화면에서 함께 움직이고, 다음 ⚡ Push가 새 프레임으로 x/y를 다시 쓴다 —
+//    운영자가 회전 버튼을 누를 때와 **같은 한 번의 행위**다. 위험한 형태는 메타만
+//    바뀌고 저장된 셀은 그대로인 것이고, 그것은 메타를 직접 쓰는 코드에서만 생긴다.
+//    (덮지 못한 셀이 남으면 Push의 수 대조 관문이 삭제될 개수를 세어 거부한다 — 이
+//     채택이 파괴로 이어지는 유일한 경로는 이미 막혀 있고, 여기서 두 번 막지 않는다.)
+// 🔴 **회전·면은 채택하지 않는다**(INV-F6-4). 그 둘은 이미 변환이 처리한다 — 90도로
+//    돌아간 맵에 0도 유효 다이 맵을 지정하면 마스크가 함께 돌아간다(물리 키는 회전
+//    불변인 정준 인덱스이므로 공짜로 성립한다). 그래서 preset 객체에 `rotation`/`side`
+//    키를 **넣지 않는다**: `applyPresetObject`는 없는 키를 건드리지 않는다.
+//    원점(`grid_start_x/y`)·y반전도 같다 — 순수 평행이동이라 애초에 거절 사유가 아니다.
+// 🔴 **채택 경로는 하나다.** 규격은 `applyPresetObject`(프리셋·영역 선택·표준 프레임이
+//    모두 지나는 그 쓰기 지점), 치수는 그것이 파생한 값을 **참조의 저장값**으로 덮는다.
+//    이 두 단계 순서는 새로 만든 것이 아니라 `loadExistingMap`의 'standard' 분기가
+//    이미 쓰는 것이다. 파생값을 그대로 두면 안 되는 이유: 저장된 치수는 파생식과 갈릴
+//    수 있고(데이터 bbox로 연 맵·인제션 자동 등록), 마스크 키는 **저장된 치수**의
+//    인덱스 공간에서 만들어졌다(`projectCellsToPhys(cells, refFrame)`).
+//
+// 인자는 `frameFromMeta`가 낸 프레임 기술자. 물리 항목이 undefined인 축은 화면 값이
+// 그대로 남는다 — `resolveFrame(frame)`이 그 축을 화면 값으로 해석하는 것과 같은 규칙이다.
+function adoptFrameSpec(frame) {
+  if (!frame) return false;
+  const preset = {};
+  const physKeys = {
+    phys_wafer_dia: frame.waferDia,
+    phys_chip_x: frame.chipX,
+    phys_chip_y: frame.chipY,
+    phys_offset_x: frame.offsetX,
+    phys_offset_y: frame.offsetY,
+    phys_edge_margin: frame.edgeMargin,
+  };
+  Object.keys(physKeys).forEach(k => {
+    if (physKeys[k] !== undefined && physKeys[k] !== null) preset[k] = physKeys[k];
+  });
+  applyPresetObject(preset);
+  // 파생 치수를 참조의 저장 치수로 덮는다(위 네 번째 주석). `applyPresetObject`의
+  // 렌더는 rAF로 미뤄지므로 이 두 줄이 먼저 착지한다.
+  if (el.gridCols && frame.cols !== undefined) el.gridCols.value = frame.cols;
+  if (el.gridRows && frame.rows !== undefined) el.gridRows.value = frame.rows;
+  boundingBoxCache = {};
+  updateLegendCounts();
+  return true;
+}
+
 // ── 변환의 전부 ──────────────────────────────────────────────
 // 소스 **원본 셀** → 물리 키 Map.
 // 아래 두 줄은 메인 로드(loadExistingMap의 셀 루프)와 **같은 함수·같은 인자 순서**이며,
@@ -6923,6 +7046,9 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     showToast(`유효 다이 맵을 해석하지 못했습니다 — ${reason}`, 'error');
     return set('refused', null, reason, ref);
   };
+
+  // [F6] 이 해석이 편집기 프레임을 갈아끼웠는가. 세웠으면 마스크가 앉은 뒤에 알린다.
+  let adopted = null;
 
   const parsed = parseValidDieRef(meta, targetTable);
   if (parsed === null) return set('circle', null, '', null);          // 선언 없음 = 종전 그대로
@@ -6994,21 +7120,110 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
 
     // 격자 규격 호환성 — 물리 좌표는 정준 격자의 인덱스다. 치수가 다르면 같은 인덱스가
     // 같은 다이가 아니므로 겹칠 근거가 없다(§5.1의 그 관문과 같은 판정).
+    //
+    // [F6] 그런데 그것은 **거절 사유가 아니라 프레임을 정하라는 요구**였다. 치수가
+    // 다르다는 이유 하나로 거절하면 운영자는 정확히 같은 답을 손으로 입력해야 한다 —
+    // 참조 맵의 규격은 이미 `wafer_map_metadata`에 선언돼 있고 우리는 그것을 방금 읽었다.
+    // 그래서 거절 대신 **격자를 참조 맵 크기로 연다**(`adoptFrameSpec` — 화면 컨트롤만).
+    // 회전·면 차이는 여기 오지도 않는다: 물리 키가 회전 불변이라 변환이 이미 처리한다.
     const refResolved = resolveFrame(refFrame);
-    const hereResolved = resolveFrame(currentFrame());
+    let hereResolved = resolveFrame(currentFrame());
     if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
-      return refuse(ref,
-        `격자 규격이 다릅니다 — 참조 ${refResolved.cols}x${refResolved.rows} vs 현재 ${hereResolved.cols}x${hereResolved.rows}.`);
+      // 🔴 낡은 해석은 화면을 건드리지 않는다. `set`/`refuse`가 세대를 확인하는 것과 같은
+      //    이유이고, 여기서는 더 무겁다 — 지나간 지정이 편집기 프레임을 갈아치우면
+      //    사용자가 보는 격자가 아무도 요청하지 않은 크기가 된다(F3와 같은 계급).
+      if (stale()) return validDie;
+      const before = `${hereResolved.cols}x${hereResolved.rows}`;
+      adoptFrameSpec(refFrame);
+      hereResolved = resolveFrame(currentFrame());
+      // 채택이 실제로 먹었는지 **다시 읽어서** 판정한다. 먹지 않았는데 진행하면
+      // 마스크가 다른 인덱스 공간의 키 집합이 되어 조용히 틀린 유효 다이를 그린다 —
+      // 이 도메인이 막으려는 바로 그 형태다. 못 맞췄으면 종전대로 이유를 대고 거절한다.
+      if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
+        return refuse(ref,
+          `격자 규격을 참조 맵에 맞추지 못했습니다 — 참조 ${refResolved.cols}x${refResolved.rows} `
+          + `vs 현재 ${hereResolved.cols}x${hereResolved.rows}.`);
+      }
+      // 🔴 **여기서 알리지 않는다.** 채택의 대가(격자·유효 다이 밖으로 밀려난 칠한 셀)는
+      //    `classifyUnsavableCells`가 세는데, 그 함수의 정의역은 렌더가 만든 `gridCells2D`이고
+      //    지금은 **새 프레임으로도 새 마스크로도** 그려지지 않았다. 여기서 세면 옛 격자를
+      //    세고, 마스크가 앉기 전에 세면 옛 판정을 센다 — 둘 다 조용히 틀린 수다.
+      //    그래서 알림은 마스크가 앉은 뒤로 미룬다(`announceFrameAdoption`).
+      adopted = { before, after: `${refResolved.cols}x${refResolved.rows}` };
     }
 
     const keys = new Set(projectCellsToPhys(cells, refFrame).keys());
     if (keys.size === 0) {
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵을 물리 좌표로 투영한 결과가 비었습니다.`);
     }
-    return set('ref', keys, '', ref);
+    const out = set('ref', keys, '', ref);
+    // 마스크가 앉은 **뒤에야** 채택의 대가를 정직하게 셀 수 있다(위 adopted 주석).
+    if (adopted && !stale()) announceFrameAdoption(adopted, ref);
+    return out;
   } catch (e) {
-    return refuse(ref, `${ref.table} · ${ref.mapKey}: ${e && e.message ? e.message : String(e)}`);
+    // 🔴 **이 catch는 예상된 실패의 자리가 아니다.** 조회·데이터·계약 실패는 전부 위에서
+    //    저자가 쓴 문구로 이미 거절했다(`refuse`). 여기까지 오는 것은 대개 **프로그래머
+    //    오류**다 — 그리고 그 `e.message`를 그대로 사유로 흘리면 "거절은 사유를 가진다"는
+    //    계약을 **스택 트레이스가 만족시킨다.** 실측(이 라운드): 하네스가 함수 하나를
+    //    추출 목록에서 빠뜨렸을 때 칩의 사유가 `announceFrameAdoption is not defined`가
+    //    됐고, 그것은 형식상 "비지 않은 사유"였다. 운영자에게는 아무것도 설명하지 않고,
+    //    데이터 문제라고 오해할 여지만 준다(그래서 엉뚱한 데이터를 고치러 간다).
+    //    ⚠️ 사유를 **지우지는 않는다** — 원문은 괄호에 남기고 콘솔에 전체 오류를 남긴다
+    //    (§PRIMITIVES "읽을 수 없는 값은 지어내지 말고 원문으로": 증거를 없애면 무엇을
+    //     고쳐야 하는지가 사라진다). 바꾸는 것은 **부류를 이름 붙이는 것**뿐이다.
+    //    판정은 `e.name`으로 한다 — `instanceof`는 realm이 다르면(하네스의 vm 샌드박스,
+    //    iframe) 조용히 거짓이 되어 이 분류 자체가 꺼진다.
+    const detail = (e && e.message) ? e.message : String(e);
+    const internal = !!e && (e.name === 'TypeError' || e.name === 'ReferenceError'
+      || e.name === 'RangeError' || e.name === 'SyntaxError');
+    if (internal) {
+      console.error('[Map Editor][M4] valid_die_ref 해석 중 내부 오류 (프로그램 결함)', e);
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 유효 다이 해석 중 내부 오류가 발생했습니다 `
+        + `— 맵 데이터의 문제가 아니라 프로그램 결함입니다. 데이터를 고치려 하지 마시고 `
+        + `개발자 콘솔의 오류와 함께 알려 주십시오 (${detail}).`);
+    }
+    return refuse(ref, `${ref.table} · ${ref.mapKey}: ${detail}`);
   }
+}
+
+// ── [F6] 채택을 **원인 지점에서** 알린다 — 대가를 함께 세어서 ────────────────────
+//
+// 🔴 이 함수가 있는 이유. 채택은 격자를 참조 맵 크기로 바꾸므로, 이미 칠해져 있던 셀이
+//    새 격자·새 유효 다이 밖으로 밀려날 수 있다. 그 셀들은 **삭제되지 않는다** — Push의
+//    대비 관문이 거절한다(§pushMapData의 `blocking`). 데이터는 안전하다. 그런데 종전
+//    문구는 "⚡ Push가 이 규격과 셀 좌표를 함께 기록합니다"라고 **약속**했고, 그 약속은
+//    지켜질 수 없었다. 그러면 사용자는 원인(지정)에서 멀리 떨어진 곳(Push)에서 거절을
+//    만나고, 무엇을 되돌려야 하는지 알 수 없다. 측정값은 있는데 화면이 말하지 않는 형태 —
+//    이 라운드의 선행 라운드가 막 닫은 `Fill All` 결함과 **같은 계급**이다.
+//
+// 🔴 **두 번째 분류기를 만들지 않는다.** 세는 것은 Push 관문이 쓰는 그 `classifyUnsavableCells`
+//    하나뿐이다. 손으로 "visual 격자 밖" 같은 술어를 다시 쓰면 렌더가 실제로 만드는 정의역
+//    (시야 밖까지 그린다)과 갈려서 "여기선 190, Push에선 27"이 된다. 실제로 하네스의
+//    임시 계산이 정확히 그렇게 갈렸다.
+//
+// ⚠️ **순서가 규칙의 일부다.** `classifyUnsavableCells`의 정의역은 `gridCells2D`이므로
+//    ① 새 프레임으로 ② 새 마스크를 얹어 **한 번 그린 뒤에만** 정확하다. 그래서 렌더를
+//    rAF에 맡기지 않고 여기서 동기로 돌린다(호출부가 뒤에 한 번 더 그리지만 멱등이다).
+//    이 함수는 지정 1회당 1회만 돈다 — 렌더 핫패스가 아니다.
+function announceFrameAdoption(adopted, ref) {
+  renderGridCanvas();
+  const u = classifyUnsavableCells();
+  const stranded = u.offGrid.length + u.outsideRetained.length + u.outsideStray.length;
+  const head = `격자를 참조 맵 규격으로 열었습니다 — ${adopted.before} → ${adopted.after} `
+    + `(${ref.table} · ${ref.mapKey}).`;
+  if (stranded === 0) {
+    showToast(`${head} 아직 저장된 것은 없습니다: ⚡ Push가 이 규격과 셀 좌표를 함께 기록합니다.`,
+      'info', { dedupeKey: 'valid_die_frame_adopted' });
+    return;
+  }
+  console.warn(`[Map Editor][F6] frame adopted (${adopted.before} -> ${adopted.after}) but `
+    + `${stranded} painted cells are now unsavable: ${u.offGrid.length} off-grid, `
+    + `${u.outsideRetained.length} outside valid dies, ${u.outsideStray.length} stray. `
+    + `pushMapData will refuse until this is resolved (nothing is deleted).`);
+  showToast(`${head} 다만 칠해진 셀 ${stranded}개가 이 규격의 격자·유효 다이 밖으로 나갔습니다 — `
+    + `이 상태로는 저장할 수 없어 ⚡ Push가 거절합니다(서버 데이터는 그대로입니다). `
+    + `지정을 비우고 📂 Load로 이 맵의 원래 규격을 되불러오거나, 규격을 맞춘 뒤 저장하십시오.`,
+    'warning', { dedupeKey: 'valid_die_frame_adopted' });
 }
 
 // 근거가 원이 아닐 때만 보이는 한 줄. 새 패널·모드·모달이 아니라 이미 있는 상태바
