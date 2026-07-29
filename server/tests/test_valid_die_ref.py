@@ -30,6 +30,20 @@ The four invariants under test:
             (`map_overlay.canonical_key_value`) — proved with the mutation twin
             pattern of test_key_canonicalization.py, not just a happy path.
 
+Phase 2 adds two more, and both are scored HERE at the caller — the contract
+scores the pure halves and says in as many words that it cannot reach the wiring:
+
+  INV-M4-5  the declaration can be WRITTEN and UNWRITTEN
+            (`map_overlay.apply_valid_die_ref`). The unset direction is the
+            load-bearing one: `valid_die_ref` lives in a JSON payload with no
+            other editor, so a writer that can set but not clear pins the map to
+            a template forever.
+  INV-M4-6  the reference chain is ONE HOP
+            (`map_overlay.valid_die_chain_error`). A valid-die map is a map, so
+            self-reference (a tautology) and a two-level chain (a set nobody
+            declared) are both reachable, and both used to resolve looking
+            healthy.
+
 [Isolation] Table names use the `vdr_test_` prefix so they can never collide
 with a real table in the user's gitignored config (server-pm memory: the
 `bonding_log` trap).
@@ -88,18 +102,28 @@ def _add(db, table, **cols):
                  business_key_val=str(cols.get(bk) or uuid.uuid4()), **cols))
 
 
-def _meta(db, target_table, map_id, rotation=0, valid_die_ref=None, **over):
+def _meta_raw(db, target_table, map_id, **meta_over):
+    """A metadata row whose grid_metadata carries `meta_over` VERBATIM.
+
+    `_meta` cannot express `valid_die_ref: null` — its keyword default is the
+    "no declaration" signal — and an EXPLICIT null is a distinct state from an
+    absent key (M4② `ref_declares_null_is_not_a_chain`).
+    """
     meta = dict(GRID6)
-    meta["rotation"] = rotation
-    meta.update(over)
-    if valid_die_ref is not None:
-        meta["valid_die_ref"] = valid_die_ref
+    meta.update(meta_over)
     model = models.DYNAMIC_TABLES["wafer_map_metadata"]
     db.add(model(row_id=str(uuid.uuid4()),
                  business_key_val=f"{target_table}_{map_id}",
                  map_pk=f"{target_table}_{map_id}", target_table=target_table,
                  map_id=map_id, grid_metadata=json.dumps(meta)))
     return meta
+
+
+def _meta(db, target_table, map_id, rotation=0, valid_die_ref=None, **over):
+    over = dict(over, rotation=rotation)
+    if valid_die_ref is not None:
+        over["valid_die_ref"] = valid_die_ref
+    return _meta_raw(db, target_table, map_id, **over)
 
 
 def _cells(db, table, coords, lot="LOT", slot=1):
@@ -707,3 +731,346 @@ def test_ingestion_auto_registration_never_clobbers_a_declared_ref(vdr_env):
         .filter_by(target_table="vdr_test_target_map", map_id=MAP_KEY)
         .first().grid_metadata)
     assert stored.get("valid_die_ref") == ref
+
+
+# ---------------------------------------------------------------------------
+# M4② INV-M4-6 — the ONE-HOP LIMIT, at the resolver
+#
+# A valid-die map is a map, so it can declare a `valid_die_ref` of its own.
+# `contracts/map_seam/valid_die_chain_cases` scores the PURE predicate
+# (`map_overlay.valid_die_chain_error`) and says in as many words what it cannot
+# reach: the CALLER. That the resolver consults the guard at all, that it hands
+# it CANONICAL identities on both sides, that a refusal arrives as `refused`
+# instead of the middle map's cells, and that the answer is not served out of a
+# cache keyed without the declaring map — all four are DB-bound, and they are
+# what this section owns.
+# ---------------------------------------------------------------------------
+
+# A template that DIFFERS from the circle mask — (1, 1) is outside it (see
+# test_fixture_circle_actually_crops). A chain that silently resolved to these
+# cells would otherwise be indistinguishable from circle geometry.
+_TPL = [(1, 1), (2, 3)]
+
+
+def _declaring_meta(ref):
+    """The DECLARING map's metadata, built in memory so one seeded fixture can be
+    resolved under several declarations without re-writing the row."""
+    return dict(GRID6, valid_die_ref=ref)
+
+
+def _seed_two_templates(db):
+    """Two templates with IDENTICAL cells and IDENTICAL frames. The ONLY
+    difference is that one declares a `valid_die_ref` of its own.
+
+    That is the whole point of the fixture: any assertion below that separates
+    them is separating them on the declaration and nothing else.
+    """
+    _cells(db, "vdr_test_template_map", _TPL)
+    _cells(db, "vdr_test_rot_map", _TPL)
+    _meta(db, "vdr_test_template_map", MAP_KEY)
+    _meta(db, "vdr_test_rot_map", MAP_KEY, valid_die_ref="TPL_X")
+    db.commit()
+
+
+def _ref_to(table):
+    return {"table": table, "map_id": MAP_KEY}
+
+
+def test_only_the_middle_declaration_separates_a_legal_hop_from_a_chain(vdr_env):
+    """⭐ INV-M4-6 with its negative control in the same test.
+
+    A guard that refuses every reference passes every refusal assertion in this
+    section while disabling the feature the round ships — so the legal hop is
+    asserted against the SAME cells, from the SAME frame, in the same breath.
+    """
+    db = vdr_env
+    _seed_two_templates(db)
+
+    legal = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_template_map")))
+    chained = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+
+    assert legal["status"] == map_overlay.STATUS_OK
+    assert set(legal["cells"]) == set(_TPL)
+    _assert_refused(chained, map_overlay.STATUS_REF_UNAVAILABLE)
+
+
+def test_a_two_level_chain_never_serves_the_middle_maps_cells(vdr_env):
+    """The defect verbatim: B's stored cells are served while B has declared that
+    its own valid dies are C's. The operator sees a resolved reference over a set
+    nobody declared."""
+    db = vdr_env
+    _seed_two_templates(db)
+    out = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+    assert out.get("cells") is None and out.get("count") is None
+    assert out["status"] != map_overlay.STATUS_OK
+
+
+def test_a_cycle_is_refused_by_the_one_hop_rule_alone(vdr_env):
+    """A -> B -> A needs no visited set and no recursion depth: B declares,
+    therefore A refuses. A second mechanism here would be a second answer to a
+    question the one-hop rule already answers."""
+    db = vdr_env
+    _cells(db, "vdr_test_template_map", _TPL)
+    _meta(db, "vdr_test_template_map", MAP_KEY, valid_die_ref=MAP_KEY)  # B -> A
+    db.commit()
+    _assert_refused(
+        _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_template_map"))),
+        map_overlay.STATUS_REF_UNAVAILABLE)
+
+
+@pytest.mark.parametrize("declared", ["", 0, False, {"nonsense": True}])
+def test_a_falsy_or_broken_middle_declaration_is_still_a_declaration(vdr_env, declared):
+    """"Declared" means here exactly what it means in the parser: only
+    `null`/absent is absence.
+
+    `if ref_meta["valid_die_ref"]:` is the shortest way to write this guard and it
+    is wrong for `0`, `False` and `""`; `parse(ref_meta)[0] is not None` is the
+    next-shortest and it folds a BROKEN middle declaration into absence — the
+    phase-1 silent fallback, one level down, using the cells of a map whose own
+    validity is refused.
+    """
+    db = vdr_env
+    _cells(db, "vdr_test_template_map", _TPL)
+    _meta(db, "vdr_test_template_map", MAP_KEY, valid_die_ref=declared)
+    db.commit()
+    _assert_refused(
+        _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_template_map"))),
+        map_overlay.STATUS_REF_UNAVAILABLE)
+
+
+def test_an_explicit_null_on_the_middle_map_is_absence_not_a_chain(vdr_env):
+    """INV-M4-6's other direction. A guard testing key PRESENCE rather than value
+    refuses this legitimate reference, and the operator is told their template is
+    a chain when it is not."""
+    db = vdr_env
+    _cells(db, "vdr_test_template_map", _TPL)
+    _meta_raw(db, "vdr_test_template_map", MAP_KEY, valid_die_ref=None)
+    db.commit()
+    out = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_template_map")))
+    assert out["status"] == map_overlay.STATUS_OK
+    assert set(out["cells"]) == set(_TPL)
+
+
+def test_a_self_reference_is_refused_instead_of_resolving_to_a_tautology(vdr_env):
+    """⭐ A -> A. The map's own stored cells become its own validity criterion, so
+    every cell that exists is valid — true by construction, therefore saying
+    nothing, and wearing a resolved reference's chip while it says it."""
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL)
+    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=MAP_KEY)
+    db.commit()
+    out = _resolve(db)
+    _assert_refused(out, map_overlay.STATUS_REF_UNAVAILABLE)
+    assert set(_TPL) != set(), "empty fixture — the tautology would be invisible"
+
+
+def test_the_two_refusals_are_told_apart_at_the_resolver(vdr_env):
+    """Different problems, different fixes — re-point the reference vs. flatten
+    the template. The predicate keeps them apart (contract); this asserts the
+    resolver does not collapse both into one generic 'reference failed'."""
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL)
+    _cells(db, "vdr_test_rot_map", _TPL)
+    _meta(db, "vdr_test_rot_map", MAP_KEY, valid_die_ref="TPL_X")
+    _meta(db, "vdr_test_target_map", MAP_KEY)
+    db.commit()
+
+    mine = _resolve(db, target_meta=_declaring_meta(MAP_KEY))
+    chained = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+    assert mine["detail"] and chained["detail"]
+    assert mine["detail"] != chained["detail"]
+
+
+# --- the identities the guard compares must be CANONICAL (INV-M4-4 reuse) -----
+
+def test_a_padded_self_reference_is_still_a_self_reference(vdr_env):
+    """The declared key rides 7b before the comparison: `slot` is number-declared,
+    so `LOT_01` IS the map `LOT_1`. A guard fed raw declaration text calls this an
+    ordinary reference and resolves the tautology."""
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL)
+    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=MAP_KEY_PADDED)
+    db.commit()
+    _assert_refused(_resolve(db), map_overlay.STATUS_REF_UNAVAILABLE)
+
+
+def test_mutation_raw_key_hides_a_padded_self_reference(vdr_env, monkeypatch):
+    """MUTATION TWIN for the test above. Degrade the ONE canonicalizer to raw
+    `str()` and the padded declaration must stop being reported as a self
+    reference — otherwise the test above is passing on a guard that carries its
+    own normalisation, which INV-M4-4 forbids."""
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL)
+    _meta(db, "vdr_test_target_map", MAP_KEY)
+    db.commit()
+
+    # ORACLE: the verdict the UNPADDED self-reference produces. Comparing against
+    # it (rather than against "some other string") is what stops this twin from
+    # passing on a padded declaration that failed for an unrelated reason.
+    verdict = _resolve(db, target_meta=_declaring_meta(MAP_KEY))["detail"]
+    assert verdict, "the oracle is not a refusal — the twin below would be vacuous"
+    assert _resolve(db, target_meta=_declaring_meta(MAP_KEY_PADDED))["detail"] == verdict
+
+    monkeypatch.setattr(map_overlay, "canonical_key_value",
+                        lambda v, t: None if v is None else str(v))
+    assert _resolve(db, target_meta=_declaring_meta(MAP_KEY_PADDED))["detail"] != verdict, \
+        "the self-reference verdict survived a broken canonicalizer — the guard " \
+        "is normalising on its own instead of riding canonical_key_value"
+
+
+def test_the_declaring_maps_own_key_is_canonicalised_before_the_comparison(vdr_env):
+    """The OTHER side of the same comparison, and it has its own line of code.
+
+    A caller that canonicalises the reference but hands the guard the raw home key
+    misses `LOT_01 -> LOT_1` self-reference whenever the padded spelling is the one
+    the caller was given — and then serves the tautology.
+    """
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL)
+    db.commit()
+    _assert_refused(
+        map_overlay.resolve_valid_die_set(
+            db, {}, "vdr_test_target_map", MAP_KEY_PADDED,
+            target_meta=_declaring_meta(MAP_KEY)),
+        map_overlay.STATUS_REF_UNAVAILABLE)
+
+
+# --- INV-M4-3 at the new refusal route ---------------------------------------
+
+def test_a_chain_refusal_reaches_the_basis_as_refused_with_its_reason(vdr_env):
+    """The branch point must see `refused`, never `circle`. A chain that degraded
+    to circle geometry would be the silent fallback INV-M4-3 forbids, reached
+    through the door M4② opens."""
+    db = vdr_env
+    _seed_two_templates(db)
+    meta = _declaring_meta(_ref_to("vdr_test_rot_map"))
+
+    resolved = _resolve(db, target_meta=meta)
+    out = map_overlay.resolve_valid_die_basis(
+        meta,
+        lambda ref: map_overlay.resolve_valid_die_set(
+            db, {}, "vdr_test_target_map", MAP_KEY, target_meta=meta),
+        table="vdr_test_target_map")
+
+    assert out["source"] == map_overlay.SOURCE_REFUSED
+    assert out["basis"] is None, "a refusal shipped a fallback basis"
+    assert resolved["detail"] in out["reason"], \
+        "the chain reason was replaced by a generic one — the operator is told the " \
+        "reference failed without being told it is a chain"
+
+
+# --- scale and cache scoping --------------------------------------------------
+
+def _select_recorder(db):
+    from sqlalchemy import event
+    seen = []
+
+    def _count(conn, cursor, statement, params, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            seen.append(statement)
+
+    event.listen(db.get_bind(), "before_cursor_execute", _count)
+    return seen, lambda: event.remove(db.get_bind(), "before_cursor_execute", _count)
+
+
+def test_the_chain_guard_reads_no_metadata_of_its_own(vdr_env):
+    """[Scale] `bonding_map` is ~1.7M rows. The guard must ride the metadata the
+    resolver ALREADY loaded — one metadata read per reference per work unit, never
+    a lookup of its own and never anything per cell."""
+    db = vdr_env
+    _seed_two_templates(db)
+    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=_ref_to("vdr_test_rot_map"))
+    db.commit()
+
+    seen, stop = _select_recorder(db)
+    try:
+        cache = {}
+        first = _resolve(db, cache=cache)
+        n_first = len(seen)
+        second = _resolve(db, cache=cache)
+        n_second = len(seen)
+    finally:
+        stop()
+
+    _assert_refused(first, map_overlay.STATUS_REF_UNAVAILABLE)
+    assert second == first
+    assert n_second == n_first, f"the cached refusal still queried: {seen[n_first:]}"
+    meta_reads = [s for s in seen[:n_first] if "wafer_map_metadata" in s]
+    assert len(meta_reads) == 2, \
+        f"expected the declaring map's meta + the referenced map's meta, got " \
+        f"{len(meta_reads)}: {meta_reads}"
+
+
+def test_a_self_refusal_is_never_served_from_cache_to_another_map(vdr_env):
+    """The refusal is a property of the PAIR, the cells are a property of the
+    reference — so one cache entry cannot carry both.
+
+    `LOT_1 -> LOT_1` and `LOT_2 -> LOT_1` share a reference AND a frame, which is
+    exactly the cache key that makes two maps share one resolution. If the self
+    verdict rides in that entry, the second map is refused for a reference it
+    never made.
+
+    The declarations are handed in rather than stored, and that is the only shape
+    in which the two answers can DIFFER: a map whose stored metadata declares
+    itself is also a chain for everyone pointing at it, so both would be refused
+    and the collision would only swap one reason for another.
+    """
+    db = vdr_env
+    _cells(db, "vdr_test_target_map", _TPL, slot=1)      # the map LOT_1
+    _meta(db, "vdr_test_target_map", MAP_KEY)            # ...and it declares nothing
+    db.commit()
+
+    for order in ("self_first", "other_first"):
+        cache = {}
+        calls = [("LOT_2", map_overlay.STATUS_OK), (MAP_KEY, map_overlay.STATUS_REF_UNAVAILABLE)]
+        if order == "self_first":
+            calls.reverse()
+        for key, expect in calls:
+            out = map_overlay.resolve_valid_die_set(
+                db, {}, "vdr_test_target_map", key,
+                target_meta=_declaring_meta(MAP_KEY), cache=cache)
+            assert out["status"] == expect, f"{order}/{key}: {out}"
+            if expect == map_overlay.STATUS_OK:
+                assert set(out["cells"]) == set(_TPL)
+
+
+# ---------------------------------------------------------------------------
+# M4② — the WRITER (`apply_valid_die_ref`), composed with the real resolver
+#
+# `contracts/map_seam/valid_die_authoring_cases` scores the writer through the
+# READER. What no pure vector can show is that what the writer produces is what
+# THIS resolver, against a real row, actually reads.
+# ---------------------------------------------------------------------------
+
+def test_the_writer_and_the_resolver_compose_in_both_directions(vdr_env):
+    db = vdr_env
+    _cells(db, "vdr_test_template_map", _TPL)
+    _meta(db, "vdr_test_template_map", MAP_KEY)
+    db.commit()
+
+    base = dict(GRID6)
+    declared = map_overlay.apply_valid_die_ref(base, _ref_to("vdr_test_template_map"))
+    assert "valid_die_ref" not in base, "the writer mutated its argument"
+
+    out = _resolve(db, target_meta=declared)
+    assert out["status"] == map_overlay.STATUS_OK
+    assert set(out["cells"]) == set(_TPL)
+
+    cleared = map_overlay.apply_valid_die_ref(declared, None)
+    assert _resolve(db, target_meta=cleared)["status"] == map_overlay.STATUS_NOT_DECLARED
+    assert declared.get("valid_die_ref"), "clearing mutated the metadata it was given"
+
+
+def test_a_blank_key_clears_rather_than_pinning_the_map_to_refused(vdr_env):
+    """⭐ The unrecoverable state, proved against the real reader. `valid_die_ref`
+    lives in a JSON payload with no other editor: a cleared form field written
+    through as `""` is a DECLARATION by the phase-1 rule, so the map is refused
+    forever with no UI path back."""
+    db = vdr_env
+    for blank in ("", "   ", {"table": "vdr_test_template_map", "map_id": ""}):
+        meta = map_overlay.apply_valid_die_ref(dict(GRID6, valid_die_ref="TPL_1"), blank)
+        out = _resolve(db, target_meta=meta)
+        assert out["status"] == map_overlay.STATUS_NOT_DECLARED, \
+            f"{blank!r} was written as a declaration: {meta.get('valid_die_ref')!r}"
+        assert map_overlay.resolve_valid_die_basis(
+            meta, table="vdr_test_target_map")["source"] == map_overlay.SOURCE_CIRCLE

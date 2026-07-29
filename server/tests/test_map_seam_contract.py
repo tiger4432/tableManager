@@ -4,7 +4,16 @@ The contract itself is `contracts/map_seam/test_seam_contract.py`, scored agains
 `contracts/map_seam/vectors.json`. This file contains no assertions of its own about the
 seam: it re-exports that module's tests so they run under
 
-    conda run -n assy_manager python -m pytest server/tests/ -q
+    conda run -n assy_manager python -m pytest server/tests/ -q -rs
+
+`-rs` IS PART OF THE COMMAND, NOT AN OPTION
+    Some contract axes are `pending` — vectors authored before the implementation, which are
+    deliberately quiet rather than red (see `symbol_status` in vectors.json). The Lead PM's
+    rule is that pending does not block the SUITE but does block ROUND COMPLETION, and that
+    rule only functions while pending is visible by name and number. Bare `-q` reports
+    "N skipped" — enough to know something is unscored, not enough to know what, whose, or
+    what it blocks. `-rs` prints the reason lines, which carry the symbol, the owner and the
+    blocked invariants.
 
 WHY A SHIM AND NOT `testpaths`
     `testpaths` is only consulted when NO paths are given on the command line

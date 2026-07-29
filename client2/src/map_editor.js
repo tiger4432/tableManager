@@ -892,6 +892,11 @@ function initDOMElements() {
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
   el.btnDeletePreset = document.getElementById('btn-delete-preset');
+  // [M4②] 유효 다이 지정 — 물리 규격 블록의 한 줄. 오버레이 소스 선택기와 같은 이유로
+  // **별도 DOM**이다: 이쪽을 조작해도 switchTable/selectedTable/gridData는 건드리지 않는다.
+  el.validDieRefTable = document.getElementById('valid-die-ref-table');
+  el.validDieRefKey = document.getElementById('valid-die-ref-key');
+  el.validDieRefList = document.getElementById('valid-die-ref-list');
   
   el.btnSelectMenu = document.getElementById('btn-select-menu');
   el.selectMenuDropdown = document.getElementById('select-menu-dropdown');
@@ -972,6 +977,20 @@ function initDOMElements() {
   }
   if (el.btnDeletePreset) {
     el.btnDeletePreset.addEventListener('click', deleteCustomPreset);
+  }
+  // [M4②] 지정 칸. `change`(blur/Enter)에서만 재해석한다 — 타이핑마다 네트워크를 타면
+  // 조회 동선에 마찰이 생긴다. 자동완성 목록은 포커스 시 1회 지연 로드한다.
+  if (el.validDieRefKey) {
+    el.validDieRefKey.addEventListener('change', onValidDieRefChanged);
+    el.validDieRefKey.addEventListener('focus', populateValidDieRefList);
+  }
+  if (el.validDieRefTable) {
+    el.validDieRefTable.addEventListener('change', () => {
+      validDieRefTableTouched = true;   // [F1] 의도는 **오직 여기서만** 세워진다
+      populateValidDieRefList();
+      // 키가 비어 있으면 테이블만 바꾼 것은 아직 선언이 아니다 — 해석하지 않는다.
+      if (el.validDieRefKey && el.validDieRefKey.value.trim() !== '') onValidDieRefChanged();
+    });
   }
   fetchAndRenderPresets();
   
@@ -1318,6 +1337,18 @@ async function loadTablesList() {
             el.overlaySrcTable.appendChild(o);
           });
         }
+        // [M4②] 유효 다이 지정의 테이블 칸도 같은 목록이다. 첫 옵션(값 '')은
+        // "이 맵의 테이블 승계" = 선언을 **문자열 형태**로 저장하는 경로이며,
+        // 이음매 벡터 `string_inherits_home_table`이 그 형태를 고정하고 있다.
+        if (el.validDieRefTable) {
+          el.validDieRefTable.innerHTML = '<option value="">(이 맵의 테이블)</option>';
+          mapTables.forEach(table => {
+            const o = document.createElement('option');
+            o.value = table;
+            o.textContent = table;
+            el.validDieRefTable.appendChild(o);
+          });
+        }
         // [U6] Auto select the first map table that is a declared stage TARGET
         // (GET /api/transfer-plan/stages — the same declaration the plan panel derives
         // its stages from), otherwise the first map table. No builtin table-name list:
@@ -1389,6 +1420,11 @@ async function switchTable(tableName) {
     // 똑같이 적용된다. 남겨 두면 새 테이블의 격자가 남의 마스크로 재단된다.
     validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
     renderValidDieChip();
+    // [M4②] 지정 칸도 이전 맵의 것이다. 남겨 두면 다음 Push가 **남의 선언**을 이 맵에 쓴다.
+    syncValidDieRefControls();
+    // 새 테이블의 자동완성 캐시를 버려 다음 포커스에서 다시 읽게 한다 — 전환 중에 그 테이블에
+    // 맵이 추가됐을 수 있고, 자동완성이 없는 것보다 **없는 맵을 제안하는 것**이 나쁘다.
+    validDieListCache.delete(tableName);
     renderGridCanvas();
     notifyMapContext();
     if (hadWorkingMap) {
@@ -1871,6 +1907,23 @@ function isCellInsideWafer(c, r, visualCols, visualRows) {
 // raw = 메타에 실린 `valid_die_ref` 원문(키 자체가 없으면 undefined). Push 시 그대로 되쓴다.
 let validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
 
+// [M4② F1] 테이블 select의 현재 값이 **사용자의 의도**인가. `change` 리스너에서만 참이 되고
+// `syncValidDieRefControls`(앱이 raw로 되맞추는 자리)에서만 거짓이 된다.
+// 🔴 이 플래그가 필요한 이유: 선언된 테이블이 목록에 없으면(스키마 조회 1회 실패·권한·오타)
+//    sync가 select를 ''로 **강제**한다. 그 ''를 "사용자가 홈 테이블로 바꿨다"로 읽으면
+//    아무것도 건드리지 않은 Push가 선언된 테이블을 조용히 지운다 — 홈 테이블에 같은 키가
+//    있으면 **다른 맵**이 유효 다이 기준이 되고 화면은 정상으로 보인다.
+//    앱이 스스로 강제한 컨트롤 값에서 의도를 유추하지 않는다.
+let validDieRefTableTouched = false;
+
+// [M4② F3] 유효 다이 해석의 **세대 번호**. `overlaySeq`와 같은 프리미티브다(§오버레이).
+// ①에서는 로드가 한 번 await하는 게 전부였지만 ②에서 해석이 **사용자 주도로 반복** 호출되므로
+// 늦게 도착한 해석이 새 상태를 덮는 경로가 생겼다: `TPL_A`(느림) → `TPL_B`(빠름) 순서로
+// 시작하면 A가 나중에 착지해 basis도 입력칸도 A로 되돌리고 Push가 A를 쓴다.
+// 상태를 갈아치우는 쪽(`resolveValidDie` 진입 · 저작 진입)이 이 번호를 올리고,
+// 착지 시점에 자기 번호가 낡았으면 **아무것도 하지 않는다**(last-write-wins가 아니라 최신-승).
+let validDieResolveSeq = 0;
+
 // 선언의 해석. **순수 함수** — 네트워크를 타지 않으므로 계약 벡터로 바로 채점된다.
 // 반환: null(선언 없음) | {table, mapKey} | {unreadable: true, reason}
 //
@@ -1913,11 +1966,16 @@ function parseValidDieRef(meta, currentTable) {
 // 분기가 갈라지는 게 아니라 **읽는 지점만** 바뀐다 — `physNum`이 `physFrameOverride`로
 // 규격 출처를 갈아끼우는 것과 같은 형태다(SPEC §5.1). 이 인자 덕분에 이음매 하네스는
 // 모듈 상태를 세팅하지 않고도 INV-M4-1/M4-2를 채점할 수 있다. **읽기만 한다.**
+// [M4 phase 2] 네 번째 값 `template`이 붙었다 — **저작 중인 캔버스**다.
+// 계약 어휘(`circle`/`ref`/`refused`)는 그대로다: 저 셋은 **저장된 메타에서 유도되는** 값이고
+// `resolveValidDie`는 저 셋 외의 값을 절대 만들지 않는다(하네스가 소스로 단언한다).
+// `template`은 메타에서 나올 수 없는 화면 상태이므로 이음매 벡터(`valid_die_basis_cases`)가
+// 채점하는 집합은 한 글자도 변하지 않는다.
 function validDieBasis(state) {
   const v = (state === undefined) ? validDie : state;
   if (!v) return 'circle';
-  if (v.basis === 'ref') {
-    return (v.keys && v.keys.size > 0) ? 'ref' : 'refused';
+  if (v.basis === 'ref' || v.basis === 'template') {
+    return (v.keys && v.keys.size > 0) ? v.basis : 'refused';
   }
   return v.basis === 'refused' ? 'refused' : 'circle';
 }
@@ -1935,8 +1993,212 @@ function validDieBasis(state) {
 function isValidDieAt(physX, physY, circleInside, state) {
   if (physFrameOverride) return circleInside;
   const v = (state === undefined) ? validDie : state;
-  if (validDieBasis(v) !== 'ref') return circleInside;
+  const b = validDieBasis(v);
+  if (b !== 'ref' && b !== 'template') return circleInside;
   return v.keys.has(`${physX}_${physY}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [M4 phase 2] 유효 다이 맵의 **저작** — 원 기하를 판정자에서 생성기로
+//
+// ①이 소비만 했다면 ②는 그 참조 대상을 **만든다**. 만드는 방법은 새 편집기가 아니라
+// 이미 있는 것 셋을 잇는 것뿐이다:
+//   프리셋 경로(규격) → 이 생성기(마스크 + 초기 채움) → 기존 페인팅 → 기존 ⚡ Push
+//
+// 🔴 **저작 캔버스는 언제나 격자 전체다.** 원 안쪽만 열면 원으로 표현 못 하는 기하를
+//    영원히 만들 수 없고(dt 맵은 테이프 위라 300mm 원 제약이 없다), 저장된 템플릿을
+//    **다시 열어 편집**할 수도 없다(원 밖 셀이 `inside=false`가 되어 Push의 대비 관문이
+//    맵 전체를 거절한다). 그래서 원/사각의 차이는 **무엇을 칠해 두느냐**뿐이다.
+//
+// 🔴 **새 기하식은 한 줄도 없다.** 물리 좌표는 렌더·로드·오버레이가 쓰는 그 `getPhysicalCoords`,
+//    원 판정은 그 `isCellInsideWaferFast`다. 두 번째 구현을 만들면 화면과 저장값이 갈라진다.
+//
+// 🔴 **바운딩 박스는 여전히 원에서 나온다.** 마스크는 `isValidDieAt`(판정)에만 들어가고
+//    `getWaferBoundingBox`(좌표계)에는 들어가지 않는다 — SPEC §5.7의 그 경계 그대로다.
+//    그래서 원 밖 셀의 저장 좌표는 원 기준 bbox로 계산되고(음수가 될 수 있다), 같은 메타로
+//    되읽으면 정확히 같은 물리 키로 돌아온다(INV-3이 키→값으로 대조한다).
+//
+// 반환: { keys: Set<물리키> — 저작 캔버스(격자 전체),
+//         filled: string[]  — 이번 프리셋이 칠할 셀,
+//         outsideCircle: number — 그중 원 밖 개수(정직한 확인문에 쓴다) }
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildValidDieTemplate(shape) {
+  const cols = gridDimNum('cols', el.gridCols, 10);
+  const rows = gridDimNum('rows', el.gridRows, 10);
+  const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+  const visualCols = isRotated90or270 ? rows : cols;
+  const visualRows = isRotated90or270 ? cols : rows;
+
+  const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+  const width = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().width || 700) : 700;
+  const height = el.gridCanvas ? Math.floor(el.gridCanvas.getBoundingClientRect().height || 700) : 700;
+
+  const keys = new Set();
+  const filled = [];
+  let outsideCircle = 0;
+
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const p = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
+      const key = `${p.x}_${p.y}`;
+      keys.add(key);
+      const circleInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+      const wanted = (shape === 'circle') ? circleInside : true;
+      if (!wanted) continue;
+      filled.push(key);
+      if (!circleInside) outsideCircle++;
+    }
+  }
+  return { keys, filled, outsideCircle };
+}
+
+// 선언 원문 → 화면 컨트롤 두 칸. `validDieRefForPush`의 정확한 역함수여야 한다.
+// 읽을 수 없는 선언도 **보여준다** — 지워 버리면 사용자는 자기가 무엇을 잘못 썼는지조차
+// 볼 수 없다(①이 raw를 붙든 이유와 같다).
+function validDieRefDisplay(raw) {
+  if (raw === null || raw === undefined) return { table: '', key: '' };
+  if (typeof raw === 'string') return { table: '', key: raw };
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const t = raw.table !== undefined ? raw.table : raw.target_table;
+    const k = raw.map_id !== undefined ? raw.map_id : raw.map_key;
+    if (k !== undefined && k !== null) {
+      return { table: (t === undefined || t === null) ? '' : String(t), key: String(k) };
+    }
+  }
+  if (typeof raw === 'number' || typeof raw === 'boolean') return { table: '', key: String(raw) };
+  try { return { table: '', key: JSON.stringify(raw) }; } catch (e) { return { table: '', key: String(raw) }; }
+}
+
+// 선언의 **쓰기** — `contracts/map_seam` 역할 `apply_valid_die_ref`. 서버 `apply_valid_die_ref`와
+// 같은 벡터(`valid_die_authoring_cases`)로 채점된다.
+//
+// 순수 함수다. `meta`를 **변형하지 않는다** — 변형하면 편집 취소 경로가 이미 바뀐 메타를
+// 들고 있게 된다.
+// `ref`: `null`(해제) | 맵 키 문자열 | `{table, map_id}`.
+//
+// 🔴 **빈 키는 해제다.** 비운 입력칸을 그대로 흘려보내면 `valid_die_ref: ""`가 저장되고,
+//    파서 규칙상 그것은 **선언**이라 그 맵은 영구히 `refused`가 된다 — 되돌릴 UI가 없다.
+// 🔴 **테이블 없는 객체는 만들지 않는다.** `{map_id: k}`는 서버/클라가 서로 다르게 읽기로
+//    **기록된** 유일한 형태다(`valid_die_ref_home_divergence_cases`). 저작 시점에는 자기
+//    테이블을 알고 있으므로 그런 반쪽 선언을 제조할 이유가 없다 — 문자열 승계형으로 쓴다.
+// 🔴 **나머지 키는 손대지 않는다.** 아는 필드로 메타를 다시 짜면 모르는 키가 사라지고,
+//    `v || dflt`로 베끼면 선언된 `phys_edge_margin: 0`이 3.0이 되어 참조만 지운 맵의
+//    웨이퍼 마스크가 움직인다(D1과 같은 falsy 치환, 한 층 위).
+function applyValidDieRef(meta, ref) {
+  const out = { ...(meta && typeof meta === 'object' ? meta : {}) };
+  const clear = () => { delete out.valid_die_ref; return out; };
+  if (ref === null || ref === undefined) return clear();
+
+  if (typeof ref === 'string') {
+    const k = ref.trim();
+    return k === '' ? clear() : (out.valid_die_ref = k, out);
+  }
+  if (typeof ref === 'object' && !Array.isArray(ref)) {
+    const t = ref.table !== undefined ? ref.table : ref.target_table;
+    const kRaw = ref.map_id !== undefined ? ref.map_id : ref.map_key;
+    const k = (kRaw === null || kRaw === undefined) ? '' : String(kRaw).trim();
+    if (k === '') return clear();
+    const table = (t === null || t === undefined) ? '' : String(t).trim();
+    out.valid_die_ref = (table === '') ? k : { table, map_id: k };
+    return out;
+  }
+  // 우리가 만들지 않은 형태는 만들지 않는다 — 해제로 읽는 편이 조용히 저장하는 것보다 낫다.
+  return clear();
+}
+
+// Push가 선언에 대해 무엇을 하는가 — **이 함수 하나가 정한다.**
+//   { keep: true }               — 화면이 저장된 원문을 그대로 되비춘다 → 원문을 손대지 않는다
+//   { keep: false, ref: ... }    — 사용자가 실제로 바꿨다 → `applyValidDieRef`가 쓴다
+//
+// 🔴 `keep`이 있는 이유: `{target_table, map_key}` 별칭이나 숫자 `5` 같은 **우리가 저작하지
+//    않은 형태**를, 사용자가 손대지도 않았는데 저장 한 번으로 고쳐 쓰지 않기 위해서다.
+//    읽지 못한 선언을 조용히 문자열로 바꾸면 사용자는 자기 오타가 무엇이었는지 볼 수 없다.
+//    (선언 없는 맵은 `keep` + raw 부재 = 페이로드가 `2a9f6c4`와 바이트 단위로 같다.)
+// 🔴 모듈 상태가 아니라 **컨트롤을 읽는** 이유: `change`는 blur에서 나고 그 처리는 비동기다.
+//    상태만 읽으면 "입력하고 곧장 Push"가 직전 값을 저장한다.
+// 화면 컨트롤 두 칸이 **뜻하는** 지정. 읽는 곳이 둘(Push 결정 · 즉시 재해석)이므로
+// 같은 수를 두 곳에서 만들지 않기 위해 여기 하나로 모은다.
+// [F1] 테이블은 사용자가 select를 건드렸을 때만 컨트롤에서 읽는다. 건드리지 않았으면
+//      **저장된 원문이 말하는 테이블**이 여전히 사용자의 지정이다(위 플래그 주석 참조).
+function validDieRefFromControls() {
+  const shown = validDieRefDisplay(validDie ? validDie.raw : undefined);
+  const key = (el.validDieRefKey && el.validDieRefKey.value ? el.validDieRefKey.value : '').trim();
+  const table = validDieRefTableTouched
+    ? (el.validDieRefTable && el.validDieRefTable.value ? el.validDieRefTable.value : '').trim()
+    : shown.table;
+  return { shown, table, key };
+}
+
+function validDieRefForPush() {
+  const raw = validDie ? validDie.raw : undefined;
+  const { shown, table: curTable, key: curKey } = validDieRefFromControls();
+  // [F2] 선언은 **있는데** 표시가 비었다 — `""`·`null`·빈 키 객체. 컨트롤이 변하지 않으니
+  //      비교로는 `keep`이 되고, 그러면 `""`가 그대로 다시 저장돼 그 맵은 파서 규칙상
+  //      영구히 `refused`가 된다. 이 UI가 바로 그것을 되돌리는 유일한 길이므로,
+  //      "표시할 수 없는 선언"은 여기서 **해제**로 읽어 Push가 키를 정규화해 빼내게 한다.
+  //      (입력칸에 무엇이든 쳤다면 그것이 지정이므로 아래 일반 경로가 처리한다.)
+  if (raw !== undefined && shown.key === '' && curKey === '') return { keep: false, ref: null };
+  if (curTable === shown.table && curKey === shown.key) return { keep: true };
+  if (curKey === '') return { keep: false, ref: null };                   // 해제
+  if (curTable === '') return { keep: false, ref: curKey };               // 테이블 승계(문자열)
+  return { keep: false, ref: { table: curTable, map_id: curKey } };
+}
+
+// 결정 → **실제로 저장되는 페이로드**. Push 지점(`pushMapData`)이 이 함수만 부른다.
+//
+// 🔴 여기 있는 이유: 이 두 줄이 DOM에 묶인 함수 안에 살면 채점기가 **같은 두 줄을 다시
+//    타이핑**해야 하고, 그 사본은 불변식이 금지하는 구현에도 통과한다(오늘 아침
+//    `transfer_log_is_declared_none` 추출과 같은 이유). 축을 테스트 가능하게 만드는 것은
+//    테스트가 아니라 추출이다.
+// 🔴 `keep` + raw 부재는 `gridMeta`를 **그대로** 돌려준다 — 복사본이 아니다. 여기서 사본을
+//    만들면 선언 없는 맵의 페이로드가 `2a9f6c4`와 바이트 단위로 같다는 INV-1의 근거가
+//    "같은 키를 같은 순서로 다시 만들었다"로 바뀐다.
+// 인자: gridMeta = 컨트롤에서 재구성된 grid_metadata · decision = `validDieRefForPush()`
+//       raw = `validDie.raw`(선언 원문, 없으면 undefined)
+function validDieRefPayload(gridMeta, decision, raw) {
+  if (decision && decision.keep) {
+    return (raw !== undefined) ? { ...gridMeta, valid_die_ref: raw } : gridMeta;
+  }
+  return applyValidDieRef(gridMeta, decision ? decision.ref : null);
+}
+
+// [INV-6] 참조 체인은 **1홉**이다 — `contracts/map_seam` 역할 `valid_die_chain_error`.
+// 서버 `valid_die_chain_error`와 같은 벡터(`valid_die_chain_cases`)로 채점된다.
+//
+//   자기 참조 A→A  — 그 맵의 저장된 셀이 그 맵의 유효성 기준이 된다. 정의상 항상 참이라
+//                    아무 말도 하지 않는 답이면서, 칩에는 **정상 해석**으로 보인다.
+//   2단계 A→B(→C)  — B의 저장 셀을 쓰지만 B는 자기 유효 다이가 C의 것이라고 선언했다.
+//                    A가 받는 집합은 아무도 선언한 적 없는 집합이다.
+// 순환 A→B→A는 별도 규칙이 필요 없다: B가 선언했으므로 A가 거절한다. 방문 집합도, 재귀
+// 깊이도 만들지 않는다 — 두 번째 답을 만드는 일이기 때문이다.
+//
+// 🔴 "선언"의 뜻은 파서와 **같다**: `null`/부재만 부재이고 나머지는 전부 선언이다.
+//    `if (refMeta.valid_die_ref)`(falsy 검사)는 `0`·`false`·`''`을 부재로 접어 틀린다.
+//    깨진 2단계 선언을 "선언 없음"으로 접는 것도 같은 실수다(INV-5가 금지하는 조용한 폴백).
+// 🔴 **정규화를 여기서 하지 않는다.** `ref.mapKey`/`home.mapKey`는 호출자가 이미
+//    `canonicalMapKey`를 태운 정준 정체성이다. 여기서 다시 다듬으면 정규화가 둘이 되고,
+//    `slot: string`에서 정당한 `LOT_01` 참조가 자기 참조로 오판된다(INV-7).
+// 인자: ref = {table, mapKey}(해석·정준화 완료) · refMeta = 참조 맵의 grid_metadata(미상이면 null)
+//       home = 선언한 맵의 {table, mapKey}
+// 반환: 사유 문자열(위법) | null(적법)
+function validDieChainError(ref, refMeta, home) {
+  const r = ref || {};
+  const h = home || {};
+  if (r.table !== undefined && h.table !== undefined
+      && String(r.table) === String(h.table) && String(r.mapKey) === String(h.mapKey)) {
+    return `자기 자신(${r.table} · ${r.mapKey})을 유효 다이 맵으로 지정했습니다 — `
+      + `맵이 자기 셀로 자기 유효성을 정하면 항상 참이라 아무것도 판정하지 못합니다. `
+      + `다른 맵을 지정하거나 지정을 비우십시오.`;
+  }
+  // 규격을 모르는 것은 체인 문제가 아니다 — 그 실패는 상류(align_unavailable)가 이미 말한다.
+  if (!refMeta || typeof refMeta !== 'object') return null;
+  if (!('valid_die_ref' in refMeta)) return null;
+  const inner = refMeta.valid_die_ref;
+  if (inner === null || inner === undefined) return null;
+  const shown = validDieRefDisplay(inner);
+  return `참조 맵(${r.table} · ${r.mapKey})이 스스로 또 다른 유효 다이 맵`
+    + `(${shown.table || r.table} · ${shown.key})을 참조합니다 — 참조 체인은 1단계까지만 `
+    + `허용합니다. 유효 다이 맵 자신은 valid_die_ref를 갖지 않아야 합니다.`;
 }
 
 function applyPhysicalGeometry() {
@@ -1969,6 +2231,17 @@ function applyPhysicalGeometry() {
 // ----------------------------------------------------
 let serverPresets = {};
 
+// [M4②] 저작 진입점이 규격 프리셋 목록에 얹히므로, 두 종류의 항목이 한 select에 산다.
+// 접두사가 그 둘을 가른다 — 프리셋 키에 이 접두사를 쓰지 않는 한 충돌하지 않는다.
+const VALID_DIE_TEMPLATE_PREFIX = 'valid-die-template:';
+const VALID_DIE_TEMPLATE_OPTIONS = [
+  ['circle', '원 기하로 채우기 (현재 규격)'],
+  ['rect', '격자 전체(사각)로 채우기'],
+  ['open', '채우지 않고 격자 전체 열기 (기존 템플릿 편집)'],
+];
+// 지정 칸 자동완성이 읽을 맵 규격 행 수. 자동완성은 편의이므로 상한이 곧 목록의 끝이다.
+const VALID_DIE_LIST_LIMIT = 500;
+
 function updateOrientationUI() {
   document.querySelectorAll('.btn-rot').forEach(btn => {
     const rotVal = parseInt(btn.dataset.rot, 10);
@@ -1996,11 +2269,14 @@ async function fetchAndRenderPresets() {
     if (res.ok) {
       const data = await res.json();
       serverPresets = data.presets || {};
-      renderPresetDropdown();
     }
   } catch (err) {
     console.error('[Map Presets] Failed to fetch map presets:', err);
   }
+  // [M4②] 렌더는 조회 성공 여부와 **무관하게** 한다. 종전에는 성공 분기 안에 있었는데,
+  // 유효 다이 저작 진입점이 이 목록에 사는 지금 그 배치는 "프리셋 API가 죽으면 저작 경로도
+  // 사라진다"는 뜻이 된다 — 서버 프리셋이 0건이어도 저작은 클라 기하만으로 가능하다.
+  renderPresetDropdown();
 }
 
 function renderPresetDropdown() {
@@ -2041,6 +2317,20 @@ function renderPresetDropdown() {
     });
     el.presetSelect.appendChild(optGroupCustom);
   }
+
+  // [M4②] 저작 진입점은 **이 드롭다운**이다 — 새 버튼도 새 패널도 만들지 않는다.
+  // 프리셋이 규격의 생성기이듯, 여기 세 줄은 유효 다이 집합의 생성기다("원 기하를
+  // 판정자에서 생성기로"의 UI 표현). 선택 하나가 곧 실행이고, 선택 뒤 값은 비워
+  // 남는다 — 규격 프리셋과 달리 이것은 **상태가 아니라 동작**이기 때문이다.
+  const optGroupTpl = document.createElement('optgroup');
+  optGroupTpl.label = '🧩 유효 다이 맵 만들기 (템플릿)';
+  VALID_DIE_TEMPLATE_OPTIONS.forEach(([shape, label]) => {
+    const opt = document.createElement('option');
+    opt.value = `${VALID_DIE_TEMPLATE_PREFIX}${shape}`;
+    opt.textContent = label;
+    optGroupTpl.appendChild(opt);
+  });
+  el.presetSelect.appendChild(optGroupTpl);
 }
 
 // 프리셋 객체를 물리 규격/방향 UI에 적용 (프리셋 셀렉트와 무관하게 재사용 —
@@ -2083,6 +2373,14 @@ function loadSelectedPreset() {
   const val = el.presetSelect.value;
   if (!val) {
     if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
+    return;
+  }
+  // [M4②] 저작 항목은 규격을 적용하지 않는다 — 선택 즉시 실행하고 select를 비운다.
+  if (val.startsWith(VALID_DIE_TEMPLATE_PREFIX)) {
+    const shape = val.slice(VALID_DIE_TEMPLATE_PREFIX.length);
+    el.presetSelect.value = '';
+    if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
+    enterValidDieAuthoring(shape);
     return;
   }
 
@@ -3831,6 +4129,7 @@ async function loadExistingMap(opts = {}) {
   // 성공 경로는 아래에서 이 맵의 선언으로 다시 세운다.
   validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
   renderValidDieChip();
+  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다
   const filterModel = {};
   const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
   let hasFilter = false;
@@ -4292,7 +4591,9 @@ async function loadExistingMap(opts = {}) {
     // 종전과 완전히 같이 동작하고, 있으면 참조 맵을 해석해 그것만을 근거로 삼는다.
     // 렌더보다 **먼저** 놓는다 — 나중에 두면 원 기준으로 한 번 그린 뒤 마스크 기준으로
     // 다시 그리는 깜빡임이 생기고, 그 사이 프레임은 틀린 유효 다이를 보여준다.
-    await resolveValidDie(loadedGridMeta, selectedTable);
+    // [M4②] 홈 키를 함께 넘긴다 — 자기 참조(A→A)를 끊는 데 필요하다. `setLoadedIdentity`가
+    // 아직 호출되지 않은 시점이므로 그 함수가 쓰는 것과 **같은 식**으로 만든다.
+    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
 
     renderGridCanvas();
     // [가드 ①] 로드 순간 편집 정체성을 고정하고 맵 키 입력을 잠근다.
@@ -4518,11 +4819,18 @@ async function pushMapData() {
     phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
     phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
   };
-  // [M4①] 이 객체는 화면 컨트롤에서 **처음부터 다시** 만들어지므로, 화면에 컨트롤이 없는
-  // 선언은 저장 한 번으로 사라진다. `valid_die_ref`를 원문 그대로 되쓴다 — 이 라운드는
-  // 소비만 하고 편집 UI를 만들지 않으므로, Push는 그 선언에 대해 **중립이어야** 한다.
-  if (validDie && validDie.raw !== undefined) gridMeta.valid_die_ref = validDie.raw;
-  const gridMetaStr = JSON.stringify(gridMeta);
+  // [M4①→②] 이 객체는 화면 컨트롤에서 **처음부터 다시** 만들어진다. ①에서는 선언에 대응하는
+  // 컨트롤이 없어 원문(raw)을 그대로 되썼고, ②에서 그 컨트롤이 생겼다 — 이제 파괴적 재구성이
+  // 선언 **옆**이 아니라 선언 **위**를 지나므로, 무엇을 쓸지는 두 함수가 나눠 정한다:
+  //   `validDieRefForPush()`  — 사용자가 바꿨는가(모르면 원문을 손대지 않는다)
+  //   `applyValidDieRef()`    — 바꿨다면 무엇을 쓰는가(이음매가 채점하는 순수 쓰기)
+  // 선언이 없고 사용자가 칸을 건드리지 않은 맵은 `keep` + raw 부재 → 페이로드가 `2a9f6c4`와
+  // **바이트 단위로 같다**(INV-1, effort 하네스가 페이로드로 단언한다).
+  //   `validDieRefPayload()`   — 그 결정을 저장 페이로드로 바꾼다(순수 함수, 계약이 채점한다)
+  const validDieDecision = validDieRefForPush();
+  const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
+    validDie ? validDie.raw : undefined);
+  const gridMetaStr = JSON.stringify(gridMetaOut);
 
   const updates = [];
 
@@ -4609,10 +4917,29 @@ async function pushMapData() {
   // [C5] 덮어쓰기 대상 맵을 확인문에 명시한다. replace_map은 이 맵 키의 기존 행을
   // 전량 삭제 후 재기록하므로, 테이블명만 보여주면 "어느 맵이 지워지는지" 알 수 없다.
   const targetMapId = getMapIdFromMeta(metaValues) || 'default_map';
+  // [M4②] 원 밖으로 나가는 셀은 **말한다**. 새 확인창이 아니라 이미 있는 확인문의 한 줄이며,
+  // 근거가 원인 맵(오늘의 모든 맵)에서는 이 줄이 존재하지 않는다 — 확인문이 글자 하나
+  // 바뀌지 않는다는 뜻이다(INV-1). 유효 다이 저작·참조 중에만, 실제로 나가는 셀이 있을 때만.
+  let outsideNote = '';
+  if (validDieBasis() !== 'circle') {
+    const isRot = (currentRotation === 90 || currentRotation === 270);
+    const visualCols = isRot ? rows : cols;
+    const visualRows = isRot ? cols : rows;
+    let n = 0;
+    Object.keys(gridCells2D).forEach(rStr => {
+      Object.keys(gridCells2D[rStr] || {}).forEach(cStr => {
+        const co = gridCells2D[rStr][cStr];
+        if (!co || !co.inside) return;
+        if ((gridData[co.key] || '') === '') return;
+        if (!isCellInsideWafer(co.c, co.r, visualCols, visualRows)) n++;
+      });
+    });
+    if (n > 0) outsideNote = `· 웨이퍼 원 밖 셀: ${n}건 (유효 다이 근거가 원이 아닙니다)\n`;
+  }
   if (!confirm(
     `총 ${updates.length}건의 활성 맵 데이터를 덮어쓰기 적재(Clean Replace)하시겠습니까?\n\n` +
     `· 대상 테이블: ${selectedTable}\n` +
-    `· 대상 맵 키: ${targetMapId}\n\n` +
+    `· 대상 맵 키: ${targetMapId}\n` + outsideNote + `\n` +
     `⚠️ 이 맵 키의 기존 셀은 전부 삭제된 뒤 현재 격자 내용으로 대체됩니다.`
   )) {
     return;
@@ -4628,7 +4955,7 @@ async function pushMapData() {
   console.log('📌 Target Table:', selectedTable);
   console.log('📌 Map ID:', mapIdStr);
   console.log('📌 Cell Update Count:', updates.length);
-  console.log('📌 Grid Metadata Payload:', gridMeta);
+  console.log('📌 Grid Metadata Payload:', gridMetaOut);   // 실제로 직렬화되는 그 객체
 
   // Always push dedicated wafer_map_metadata record
   try {
@@ -4710,6 +5037,10 @@ async function pushMapData() {
       framePushed = true;
       notifyMapContext();
       recordLastOpenMap();   // a just-created key becomes the refresh target too
+      // [F5] 방금 만든 템플릿이 지정 칸 자동완성에 **없는** 상태를 없앤다. 캐시가
+      // `switchTable`에서만 비워져 있었는데, 템플릿을 만들고 곧바로 다른 맵에서 지정하는
+      // 흐름은 같은 테이블에 머문다(가장 흔한 동선).
+      validDieListCache.delete(selectedTable);
 
       // [Split Registry] 맵과 계획의 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장.
       //
@@ -5334,6 +5665,9 @@ function restoreEditorState(s) {
   // 경우(`validDie` 부재)는 선언 없음으로 읽어 종전 동작이 된다.
   validDie = s.validDie ? { ...s.validDie } : { basis: 'circle', keys: null, reason: '', ref: null };
   renderValidDieChip();
+  // [M4②] 지정 칸은 마스크와 같은 프레임의 것이다 — 되돌리지 않으면 부모 맵으로 돌아온 뒤
+  // Push가 자재 맵의 선언을 부모에 쓴다.
+  syncValidDieRefControls();
 
   renderLegendTable();
   renderGridCanvas();
@@ -5764,19 +6098,27 @@ function projectCellsToPhys(cells, frame) {
 //
 // 🔴 해석에 실패하면 조용히 원으로 되돌아가지 않는다. basis를 `refused`로 두고
 //    이유를 남긴다 — 틀린 답과 맞는 답이 구별되지 않는 상태를 만들지 않기 위해서다.
-async function resolveValidDie(meta, targetTable) {
+// `homeMapKey` — 선언한 맵 자신의 키. [M4② INV-6] 자기 참조 판정에만 쓴다.
+async function resolveValidDie(meta, targetTable, homeMapKey) {
   // 원문을 그대로 붙든다. Push가 메타를 **처음부터 다시 만들기** 때문에, 여기서 붙들지
   // 않으면 유효 다이를 선언한 맵을 한 번 저장하는 것만으로 그 선언이 사라진다.
   // 읽지 못한 선언도 보존한다 — 지워 버리면 사용자는 자기가 무엇을 잘못 썼는지조차
   // 볼 수 없게 된다(검증 경로가 사용자의 데이터를 파괴해서는 안 된다).
   const raw = (meta && typeof meta === 'object' && ('valid_die_ref' in meta))
     ? meta.valid_die_ref : undefined;
+  // [F3] 이 해석의 세대. 착지 시점에 최신이 아니면 화면 상태를 건드리지 않는다 —
+  // 토스트도 띄우지 않는다(이미 지나간 지정에 대한 경고는 지금 화면과 무관하다).
+  const mySeq = ++validDieResolveSeq;
+  const stale = () => mySeq !== validDieResolveSeq;
   const set = (basis, keys, reason, ref) => {
+    if (stale()) return validDie;
     validDie = { basis, keys, reason: reason || '', ref: ref || null, raw };
     renderValidDieChip();
+    syncValidDieRefControls();   // [M4②] 지정 컨트롤은 언제나 raw를 되비춘다
     return validDie;
   };
   const refuse = (ref, reason) => {
+    if (stale()) return validDie;
     console.warn(`[Map Editor][M4] valid_die_ref 해석 실패 — ${reason}`);
     showToast(`유효 다이 맵을 해석하지 못했습니다 — ${reason}`, 'error');
     return set('refused', null, reason, ref);
@@ -5812,6 +6154,19 @@ async function resolveValidDie(meta, targetTable) {
       // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 규격(wafer_map_metadata)이 없습니다.`);
     }
+    // [M4② INV-6] 셀을 한 건도 읽기 전에 체인부터 끊는다. 규격을 받은 직후가 이 판정이
+    // 가능해지는 가장 이른 지점이고, 여기서 막으면 순환 참조가 네트워크를 타지도 못한다.
+    //
+    // 홈 키도 **같은 정규화 한 번**을 태워서 넘긴다(`canonicalMapKey`, 7b). 자기 참조는
+    // 철자가 아니라 정체성의 문제라, `LOT_01`과 `LOT_1`이 같은 맵인지는 선언된 컬럼 타입이
+    // 정한다 — 그 판단을 가드 안에서 다시 하면 정규화가 둘이 된다(INV-7).
+    const homeSpec = (ref.table === targetTable) ? spec : await fetchMapKeySpec(targetTable);
+    let homeKey = homeMapKey === undefined || homeMapKey === null ? '' : String(homeMapKey);
+    if (homeKey !== '' && homeSpec.ok && homeSpec.keyColumns.length > 0) {
+      homeKey = canonicalMapKey(homeSpec.keyColumns, homeKey, homeSpec.columnTypes);
+    }
+    const chain = validDieChainError(ref, refMeta, { table: targetTable, mapKey: homeKey });
+    if (chain) return refuse(ref, chain);
 
     const filters = buildKeyFilters(binding.keyColumns, ref.mapKey, spec.columnTypes);
     const url = `${API_BASE}/tables/${ref.table}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
@@ -5872,7 +6227,13 @@ function renderValidDieChip() {
     host.parentNode.insertBefore(chip, host.nextSibling);
   }
   chip.style.display = '';
-  if (basis === 'ref') {
+  if (basis === 'template') {
+    // [M4②] 저작 중. 새 패널·모드 표시가 아니라 이미 있는 이 칩의 네 번째 문구다.
+    chip.textContent = `🧩 유효 다이 저작 중 — 격자 전체 ${validDie.keys.size}칸`;
+    chip.title = '유효 다이 맵을 만드는 중입니다: 격자 전체가 후보이고, **칠한 셀이 곧 유효 다이**입니다.\n'
+      + '⚡ Push로 저장한 뒤, 다른 맵의 「유효 다이 맵」 칸에 이 맵 키를 넣으면 그 맵의 판정 근거가 됩니다.\n'
+      + '맵을 다시 불러오거나 테이블을 바꾸면 저작 상태는 해제됩니다.';
+  } else if (basis === 'ref') {
     const r = validDie.ref || {};
     chip.textContent = `🎯 유효 다이: ${r.table || ''} · ${r.mapKey || ''} (${validDie.keys.size})`;
     chip.title = '이 맵의 유효 다이는 참조된 맵이 정합니다 — 웨이퍼 원은 판정에 참여하지 않습니다.';
@@ -5881,6 +6242,143 @@ function renderValidDieChip() {
     chip.title = `유효 다이 맵을 해석하지 못했습니다: ${validDie.reason}\n`
       + '판정 근거를 확인하기 전까지 이 맵의 유효 다이 표시를 믿지 마십시오.';
   }
+}
+
+// ── [M4 phase 2] 지정/해제 컨트롤 ────────────────────────────────────────────────
+// 새 패널도 모달도 아니다 — 물리 규격 블록(§2, 원 기하가 사는 자리)에 한 줄이다.
+// **읽기는 무마찰**: 값을 보여 주는 데 확인창이 없다. **쓰기는 1회 확인**: 저장은 기존 ⚡ Push
+// 확인 하나뿐이고 여기서 따로 묻지 않는다.
+function syncValidDieRefControls() {
+  const shown = validDieRefDisplay(validDie ? validDie.raw : undefined);
+  if (el.validDieRefKey && el.validDieRefKey.value !== shown.key) el.validDieRefKey.value = shown.key;
+  if (el.validDieRefTable) {
+    // 선언된 테이블이 목록에 없으면(권한·오타) 옵션을 만들지 않는다 — 없는 것을 있는 것처럼
+    // 보여 주지 않는다. 그 경우 select는 '(이 맵의 테이블)'에 남고 raw는 그대로 보존된다.
+    const has = Array.from(el.validDieRefTable.options).some(o => o.value === shown.table);
+    el.validDieRefTable.value = has ? shown.table : '';
+  }
+  // [F1] 앱이 컨트롤을 raw로 되맞췄다 = 대기 중인 사용자 의도가 없다. 이 한 줄이 없으면
+  //      위 강제값이 다음 Push에서 "사용자가 고른 홈 테이블"로 읽힌다.
+  validDieRefTableTouched = false;
+}
+
+// 지정 칸이 바뀌었다 = 판정 근거가 바뀌었다. 즉시 다시 해석해 **화면에서 확인**할 수 있게 한다.
+// 저장은 아니다 — 저장은 ⚡ Push다. `resolveValidDie`가 `validDie.raw`를 새 값으로 세우므로
+// 이후 Push가 쓰는 값과 화면이 보는 값이 갈라질 수 없다(같은 수를 두 곳에서 만들지 않는다).
+async function onValidDieRefChanged() {
+  // [F1] Push와 **같은 함수**로 컨트롤을 읽는다. 여기서만 select를 직접 읽으면 목록에 없는
+  //      테이블이 키 편집 한 번에 사라져(재해석이 raw를 문자열로 바꿔 놓는다) 같은 결함이
+  //      다른 문으로 되돌아온다.
+  const { table, key } = validDieRefFromControls();
+  const meta = {};
+  if (key !== '') meta.valid_die_ref = (table === '') ? key : { table, map_id: key };
+  await resolveValidDie(meta, selectedTable,
+    (loadedIdentity && loadedIdentity.mapKey) ? loadedIdentity.mapKey : getCurrentMapKey());
+  renderGridCanvas();
+  if (key === '') {
+    showToast('유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. ⚡ Push로 저장하십시오.',
+      'info', { dedupeKey: 'valid_die_cleared' });
+  }
+}
+
+// [목록·재사용] 이 테이블에 규격이 등록된 맵 키를 지정 칸의 자동완성으로 내려 준다.
+// 새 목록 패널을 만들지 않는다 — 이미 있는 입력칸의 `datalist`다. 조회 실패는 조용히 넘어간다
+// (자동완성이 비는 것은 데이터 오답이 아니라 편의 부재이므로 토스트로 방해하지 않는다).
+const validDieListCache = new Map();
+async function populateValidDieRefList() {
+  if (!el.validDieRefList) return;
+  const table = (el.validDieRefTable && el.validDieRefTable.value ? el.validDieRefTable.value : '')
+    .trim() || selectedTable;
+  if (!table) return;
+  let ids = validDieListCache.get(table);
+  if (!ids) {
+    try {
+      const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
+      const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data`
+        + `?limit=${VALID_DIE_LIST_LIMIT}&filters=${encodeURIComponent(JSON.stringify(filters))}`);
+      if (!res.ok) return;
+      const result = await res.json();
+      const rows = (result && Array.isArray(result.data)) ? result.data : [];
+      ids = rows.map(r => (r.data && r.data.map_id ? r.data.map_id.value : null))
+        .filter(v => v !== null && v !== undefined && String(v).trim() !== '')
+        .map(String);
+      validDieListCache.set(table, ids);
+    } catch (e) { return; }
+  }
+  el.validDieRefList.innerHTML = '';
+  ids.forEach(id => {
+    const o = document.createElement('option');
+    o.value = id;
+    el.validDieRefList.appendChild(o);
+  });
+}
+
+// ── [M4 phase 2] 템플릿 생성 = 저작 캔버스를 열고 프리셋 모양을 칠한다 ──────────────
+// 진입점은 **기존 규격 프리셋 드롭다운**이다(새 컨트롤 0개). 선택 하나가 곧 실행이다.
+function enterValidDieAuthoring(shape) {
+  // [INV-6를 저작 쪽에서도] 참조를 가진 맵을 템플릿으로 만들면 그 템플릿을 가리키는 순간
+  // 2단계 체인이 된다. 만들 수 있게 해 두고 나중에 거절하는 것보다, 만들 수 없게 하는 편이
+  // 사용자에게 정직하다.
+  // [F3] 모듈 상태 **와** 입력칸을 둘 다 본다. `validDie.raw`만 보면, blur의 `change`가
+  //      시작한 재해석이 첫 await에서 양보한 사이에 이 가드가 **낡은 상태**를 읽고 통과한다 —
+  //      그 뒤 해석이 착지하면 저작 중인 템플릿 맵에 참조가 남아 2단계 체인이 된다.
+  //      (컨트롤은 아직 해석되지 않은 사용자의 지정이므로 상태보다 새롭다.)
+  const pendingRefKey = (el.validDieRefKey && el.validDieRefKey.value ? el.validDieRefKey.value : '').trim();
+  if (pendingRefKey !== '' || (validDie && validDie.raw !== undefined && validDie.raw !== null)) {
+    showToast('이 맵은 이미 다른 유효 다이 맵을 참조합니다 — 유효 다이 맵 자신은 참조를 가질 수 '
+      + '없습니다(체인 1단계). 「유효 다이 맵」 칸을 비운 뒤 다시 시도하십시오.', 'error');
+    return;
+  }
+  const tpl = buildValidDieTemplate(shape);
+  if (tpl.keys.size === 0) {
+    showToast('격자 규격을 읽지 못해 템플릿을 만들 수 없습니다 — 물리 규격을 먼저 적용하십시오.', 'error');
+    return;
+  }
+  const painted = Object.keys(gridData).filter(k => (gridData[k] || '') !== '').length;
+
+  if (shape === 'open') {
+    // 저장된 템플릿을 **다시 열어 편집**하는 경로. 칠하지 않는다 — 지운 셀이 되살아나면
+    // 편집이 아니라 초기화다.
+    validDieResolveSeq++;   // [F3] 진행 중인 해석은 이제 낡았다 — 착지해도 이 상태를 못 덮는다
+    validDie = { basis: 'template', keys: tpl.keys, reason: '', ref: null, raw: undefined };
+    renderValidDieChip();
+    renderGridCanvas();
+    showToast(`유효 다이 저작을 시작했습니다 — 격자 전체 ${tpl.keys.size}칸이 후보입니다 `
+      + `(현재 칠해진 셀 ${painted}개는 그대로 둡니다).`, 'success');
+    return;
+  }
+
+  if (!activeBrush) {
+    // fillGrid와 **같은 전제, 같은 문구** — 칠하는 연산의 규칙은 하나다.
+    alert('페인팅 브러쉬를 먼저 선택하십시오.');
+    return;
+  }
+  // 쓰기(화면 파괴) 1회 확인 — 지울 것이 있을 때만 묻는다. 빈 격자에서는 무마찰이다.
+  if (painted > 0 && !confirm(
+    `유효 다이 템플릿(${shape === 'circle' ? '원 기하' : '격자 전체'})을 생성하면 `
+    + `현재 칠해진 셀 ${painted}개가 '${activeBrush}'(으)로 덮어써집니다.\n\n`
+    + `이미 만들어 둔 템플릿을 편집하려면 「채우지 않고 격자 전체 열기」를 사용하십시오.\n\n계속하시겠습니까?`
+  )) {
+    return;
+  }
+
+  validDieResolveSeq++;   // [F3] 위와 같다 — 상태를 갈아치우는 쪽이 세대를 올린다
+  validDie = { basis: 'template', keys: tpl.keys, reason: '', ref: null, raw: undefined };
+  // 🔴 `gridData = {}`로 밀지 않는다. 보호 셀(페인트 잠금)은 아래 채움 루프가 건너뛰므로,
+  //    통째로 비우면 그 셀들은 **값을 잃은 채 다시 칠할 수도 없는 상태**가 된다.
+  //    잠금은 저작보다 우선한다 — `fillGrid`가 지키는 규칙과 같다.
+  const nextData = {};
+  Object.keys(gridData).forEach(k => { if (isProtectedFCell(k)) nextData[k] = gridData[k]; });
+  tpl.filled.forEach(k => { if (!isProtectedFCell(k)) nextData[k] = activeBrush; });
+  gridData = nextData;
+
+  renderValidDieChip();
+  updateLegendCounts();
+  renderGridCanvas();
+  scheduleCellDraft();
+  showToast(`유효 다이 템플릿 생성 — ${tpl.filled.length}칸을 '${activeBrush}'로 칠했습니다`
+    + `${tpl.outsideCircle > 0 ? ` (웨이퍼 원 밖 ${tpl.outsideCircle}칸 포함)` : ''}. `
+    + `지울 셀을 우클릭으로 깎아낸 뒤 ⚡ Push로 저장하십시오.`, 'success');
 }
 
 // 실패한 오버레이도 목록에 **행으로 남긴다**. 토스트만 띄우고 끝내면

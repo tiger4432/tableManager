@@ -96,6 +96,26 @@
                 <option value="">-- Select Preset --</option>
               </select>
             </div>
+
+            <!-- [M4②] 유효 다이 맵 — 원 기하의 대체 근거. 새 패널도 모달도 아니고
+                 원 기하가 사는 이 블록의 한 줄이다. 비워 두면 오늘과 완전히 동일(원 기하).
+                 만들기는 위 프리셋 목록의 「🧩 유효 다이 맵 만들기」 항목이 한다. -->
+            <div class="control-group-vertical" style="border: 1px dashed var(--accent); border-radius: 8px; padding: 10px; background: var(--accent-weak);">
+              <label for="valid-die-ref-key" style="color: var(--accent); font-weight: bold;">🎯 유효 다이 맵 (Valid Die)</label>
+              <!-- 두 줄로 쌓는다: 한 줄에 넣으면 셀렉트가 105px로 눌려 「(이 맵의 테이블)」이
+                   잘린다. 잘린 글자는 작은 글자보다 나쁘다 — 무엇이 선택돼 있는지 알 수 없다. -->
+              <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 4px;">
+                <select id="valid-die-ref-table" class="glass-input w-full" title="유효 다이 맵이 저장된 테이블 — 비우면 이 맵과 같은 테이블입니다">
+                  <option value="">(이 맵의 테이블)</option>
+                </select>
+                <input type="text" id="valid-die-ref-key" class="glass-input w-full" list="valid-die-ref-list" placeholder="맵 키 (비우면 원 기하)" autocomplete="off" title="이 맵의 유효 다이를 정하는 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다." />
+                <datalist id="valid-die-ref-list"></datalist>
+              </div>
+              <p style="margin: 6px 0 0; font-size: 0.75rem; color: var(--text-dim); line-height: 1.5;">
+                비워 두면 <b>웨이퍼 원 기하</b>로 판정합니다(기본). 맵 키를 넣으면 <b>그 맵이 유일한 근거</b>가 되고
+                원은 판정에서 빠집니다. 저장은 <b>⚡ Push</b> 한 번입니다.
+              </p>
+            </div>
             <div class="control-group-vertical">
               <label for="phys-wafer-dia">Wafer Diameter (mm)</label>
               <select id="phys-wafer-dia" class="glass-input w-full">

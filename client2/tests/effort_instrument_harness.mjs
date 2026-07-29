@@ -62,6 +62,11 @@ function makeCtx(src, opts = {}) {
     physWaferDia: inputEl(300), physChipX: inputEl(2.5), physChipY: inputEl(3.5),
     physOffsetX: inputEl(0.5), physOffsetY: inputEl(0.25), physEdgeMargin: inputEl(3),
     tableSelect: { value: '', options: [{ value: 'bonding_map' }, { value: 'dt_map' }], appendChild() {} },
+    // [M4②] The designation controls Push now reads. EMPTY on purpose: "nothing declared,
+    // nothing typed" is the state every assertion in this file assumes, and it is what makes
+    // the pushed payload byte-identical to 2a9f6c4 (INV-1). `validDieRefForPush` is extracted
+    // real, not stubbed, so this file actually executes that branch.
+    validDieRefTable: inputEl(''), validDieRefKey: inputEl(''),
   };
 
   // 2 inside non-empty cells -> 2 updates, and nonEmptyOnGrid === 2 so the contrast
@@ -89,6 +94,9 @@ function makeCtx(src, opts = {}) {
     // reads this state. `null` = the map declared nothing, which is what every assertion
     // in this file assumes: the pushed payload must stay byte-identical to 2a9f6c4.
     validDie: null,
+    // [M4② F1] the designation controls only mean "the user chose this" once the change
+    // listener says so; false is the boot state and the state after every app-driven sync.
+    validDieRefTableTouched: false,
 
     document: {
       querySelectorAll: () => [{ id: 'meta-input-map_id', value: 'MAP-1' }],
@@ -159,6 +167,17 @@ function makeCtx(src, opts = {}) {
     `const ROUTE_MAIN = ROUTES.MAP_EDITOR;`,
     `const ROUTE_MATERIAL = \`\${ROUTES.MAP_EDITOR}:material\`;`,
     extractFunction(src, 'effortRoute'),
+    // [M4②] real, not stubbed - the push branch that decides whether `valid_die_ref`
+    // appears in grid_metadata at all
+    extractFunction(src, 'validDieRefDisplay'),
+    extractFunction(src, 'validDieRefFromControls'),
+    extractFunction(src, 'validDieRefForPush'),
+    // the decision -> payload turn. Extracted out of pushMapData so it can be scored
+    // instead of retyped; pushMapData now CALLS it, so it must be here or pushMapData
+    // throws at the push point.
+    extractFunction(src, 'validDieRefPayload'),
+    extractFunction(src, 'applyValidDieRef'),
+    extractFunction(src, 'validDieBasis'),
     extractFunction(src, 'pushMapData'),
     extractFunction(src, 'openMapFrame'),
     extractFunction(src, 'popMapFrame'),

@@ -10,12 +10,12 @@ WHY IT LIVES UNDER contracts/ AND NOT server/tests/
     nothing if landing it costs someone else a round to a merge conflict. The module is
     self-bootstrapping (it puts `server/` on sys.path itself), so it runs standalone:
 
-        conda run -n assy_manager python -m pytest contracts/map_seam/ -q
+        conda run -n assy_manager python -m pytest contracts/map_seam/ -q -rs
 
 HOW IT REACHES THE DEFAULT SUITE  [wired 2026-07-29]
     `server/tests/test_map_seam_contract.py` re-exports every test in this module, so
 
-        conda run -n assy_manager python -m pytest server/tests/ -q
+        conda run -n assy_manager python -m pytest server/tests/ -q -rs
 
     covers this contract. That shim exists instead of a `testpaths` entry for a concrete
     reason: pytest IGNORES testpaths whenever paths are given on the command line, and the
@@ -25,6 +25,22 @@ HOW IT REACHES THE DEFAULT SUITE  [wired 2026-07-29]
     Do not move the assertions into the shim. This file stays the one definition; the shim
     only makes it reachable.
 
+WHY `-rs` IS PART OF THE COMMAND AND NOT AN OPTION  [2026-07-29]
+    The Lead PM's rule is that a `pending` axis does not block the SUITE but does block ROUND
+    COMPLETION. That rule only functions while pending is visible BY NAME AND NUMBER: without
+    it there is no basis on which to judge a round finished, and the rule dies quietly at the
+    exact moment it is supposed to bite.
+
+    Bare `-q` prints only a count — "42 passed, 10 skipped" — which says something is unscored
+    but not what, not whose, and not what it blocks. `-rs` prints the reason line for every
+    skip, and `_server_symbol` builds those reasons to carry the symbol, the owner, and the
+    invariants left unscored. The flag is the difference between a number and an inventory.
+
+    ⚠️ It is still a FLAG, and a flag can be dropped. Anyone running bare `-q` gets the count
+    and no attribution. The robust form would be `addopts = "-rs"` under
+    `[tool.pytest.ini_options]` in pyproject.toml, which cannot be forgotten — that is a
+    repo-wide change and therefore the Lead PM's call, recorded here rather than assumed.
+
 WHAT IS SCORED, AND WHAT IS DECLARED
     7b  canonical_value / compose / decompose / canonical_map_key      — fully scored
         compose_divergence / decompose_lossy                          — scored AS DIVERGENCE
@@ -33,10 +49,31 @@ WHAT IS SCORED, AND WHAT IS DECLARED
                                                                         predicate landed 2026-07-29)
     M4  mask_baseline / valid_die_ref_parse / valid_die_basis         — fully scored
         valid_die_ref_home_divergence                                 — scored AS DIVERGENCE
+    M4② valid_die_authoring / valid_die_chain                         — fully scored, BOTH
+                                                                        sides (both halves
+                                                                        landed 2026-07-29)
+        valid_die_push_decision                                       — CLIENT-ONLY; no server
+                                                                        counterpart exists to
+                                                                        score it against
 
-    A pending group FAILS. It is not skipped and not marked xfail: a contract the code does
-    not meet yet is a red contract, and a comfortable green is how the previous round's two
-    HIGH defects reached review.
+    ⚠️ THIS BLOCK IS PROSE AND PROSE GOES STALE. It said "server half `pending` on two
+    symbols" for part of 2026-07-29 while the run was already 52 passed / 0 skipped — a
+    header claiming a pending axis in a file whose whole argument is that pending must be
+    visible by name AND NUMBER. That is the failure mode this file warns about, committed by
+    this file. The RUN is the authority; when the two disagree, this text is what is wrong.
+    `test_pending_symbols_are_owned_and_never_stale` polices the machine-readable half —
+    nothing polices this paragraph except whoever reads it next.
+
+    A group whose implementation is MISSING is never quietly green. Which noise it makes is
+    the `symbol_status` table's call, and only ONE state is quiet — `pending`, meaning the
+    vectors were written contract-first and there is nothing to score YET. That state is
+    reported by name with an owner, is scored the moment the symbol appears, and turns into a
+    hard STALE PENDING failure if the declaration is not promoted afterwards. Everything else
+    is red: `required` means overdue, `live` means it was here and left.
+
+    Nothing here is ever skipped for convenience and nothing is xfailed. A contract the code
+    is SUPPOSED to meet and does not is a red contract, and a comfortable green is how the
+    previous round's two HIGH defects reached review.
 
     The ONE exception is a NAMED KNOWN DEFECT (`known_defects` in vectors.json), and it is an
     exception in form only: a pin is scored strictly against the recorded wrong value, so it
@@ -88,8 +125,15 @@ _SERVER_CONSUMED = {
     "valid_die_ref_parse_cases", "valid_die_ref_home_divergence_cases",
     "valid_die_basis_cases", "valid_die_ref_canonical_cases",
     "valid_die_refused_render_divergence_cases",
+    "valid_die_authoring_cases", "valid_die_chain_cases",
 }
 _CLIENT_ONLY = {
+    # The Push boundary: `validDieRefForPush` decides whether a stored declaration is
+    # rewritten at all, by comparing a DOM control against the stored value. The server has
+    # no counterpart to a control reflecting a stored value, so there is nothing here to
+    # score it against — NOT an exemption from the invariant. The server's half of the same
+    # invariant is `valid_die_authoring_cases`, which both sides run.
+    "valid_die_push_decision_cases",
     # Rendering has no server counterpart — the server serves numbers and flags, never text.
     "remaining_display_cases",
     # Strictness of the `transfer_untracked` FLAG is a client-side read. The server writes
@@ -125,6 +169,68 @@ def test_every_declared_server_symbol_exists_or_is_declared_pending():
         "contract symbols declared `live` are gone — renamed or removed:\n  "
         + "\n  ".join(missing)
         + "\nUpdate vectors.json server_symbols deliberately; do not delete the check.")
+
+
+_VALID_STATUSES = {"live", "pending", "required"}
+
+
+def test_symbol_statuses_are_from_the_shared_vocabulary():
+    """Both scorers branch on this string. A typo would fall through to whichever arm the
+    implementation happens to end on, and the two scorers might not choose the same one."""
+    assert "symbol_status" in _vectors(), (
+        "the shared status vocabulary block is gone from vectors.json. Both scorers implement "
+        "it; deleting the documentation is how the two implementations drift apart.")
+    bad = []
+    for kind in ("server_symbols", "client_symbols"):
+        for role, m in _vectors()[kind].items():
+            if role == "$comment":
+                continue
+            if m.get("status") not in _VALID_STATUSES:
+                bad.append(f"{kind}.{role}: {m.get('status')!r}")
+    assert not bad, (
+        f"symbol statuses outside the shared vocabulary {sorted(_VALID_STATUSES)}:\n  "
+        + "\n  ".join(bad))
+
+
+def test_pending_symbols_are_owned_and_never_stale():
+    """PENDING expires by itself — properties 2 and 3 of `symbol_status`.
+
+    A `pending` axis is deliberately quiet, and that concession is only safe while two things
+    hold. First it must be OWNED: an anonymous pending axis is a hole with better manners, and
+    `$blocks` is what makes the cost of the wait legible instead of a shrug. Second, and this
+    is the load-bearing half, it must be promoted once the symbol lands.
+
+    Why promotion is not cosmetic: an ABSENT `pending` symbol is forgiven by design. So a
+    symbol left at `pending` after landing could later be renamed or deleted and the contract
+    would forgive THAT too — silently sliding back to 'quiet' with the axis unscored, which is
+    exactly the failure `live` status exists to catch. `pending` is a promise to promote, and
+    this test is what collects on it.
+    """
+    import importlib
+    unowned, stale = [], []
+    groups = {k for k in _vectors() if k.endswith("_cases")}
+    for role, m in _vectors()["server_symbols"].items():
+        if role == "$comment" or m.get("status") != "pending":
+            continue
+        if not m.get("$owner") or not m.get("$blocks"):
+            unowned.append(f"{role} (owner={m.get('$owner')!r} blocks={m.get('$blocks')!r})")
+        elif not any(g in m["$blocks"] for g in groups):
+            unowned.append(
+                f"{role}: $blocks names no vector group in this file — the blast radius of "
+                f"the wait is not checkable, so nobody can see what the pending axis costs")
+        if getattr(importlib.import_module(m["module"]), m["fn"], None) is not None:
+            stale.append(f"{m['module']}.{m['fn']} (role {role})")
+    assert not unowned, (
+        "pending symbols must carry `$owner` AND a `$blocks` that names a real vector "
+        "group:\n  " + "\n  ".join(unowned))
+    assert not stale, (
+        "STALE PENDING — these symbols HAVE LANDED but vectors.json still calls them "
+        "`pending`:\n  " + "\n  ".join(stale)
+        + "\n\nTheir vectors are already being scored (the scorers look the symbol up rather "
+          "than trusting the field), so this is a one-word edit: set `\"status\": \"live\"`.\n"
+          "It is not bookkeeping. While the entry reads `pending`, an ABSENT symbol is "
+          "forgiven — so a later rename of this now-landed function would be silently "
+          "forgiven too and the axis would go unscored with a green suite.")
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +870,396 @@ def test_m4_ref_key_reuses_the_7b_canonicalisation(declare):
         assert mirror["column_types"] == c["column_types"], (
             f"{c['name']} claims to mirror {c['mirrors_case']!r} but declares different "
             f"column types — the mirror is decorative")
+
+
+# ---------------------------------------------------------------------------
+# M4② — authoring the declaration (INV-M4-1 write path / INV-M4-5) and the
+#       one-hop limit (INV-M4-6)
+#
+# Both rest on symbols the contract declares `required`. A missing one is a CONTRACT
+# failure, not a harness failure: the invariant is unscored and the run must say so by
+# name, with an owner. `_server_symbol` is that failure — never a skip, never an xfail.
+# A comfortable green here is precisely how the previous round's two HIGH defects reached
+# review.
+# ---------------------------------------------------------------------------
+
+def _server_symbol(role):
+    """Resolve a contract symbol, honouring the SHARED status vocabulary.
+
+    The table lives in `vectors.json` -> `symbol_status`, and the client harness implements
+    the same three states. Note that the lookup happens FIRST and the declared status is only
+    consulted when the symbol is absent: that is what makes a landed symbol scored
+    automatically, with nobody having to remember to promote it.
+    """
+    import importlib
+    m = _vectors()["server_symbols"][role]
+    fn = getattr(importlib.import_module(m["module"]), m["fn"], None)
+    if fn is not None:
+        return fn
+
+    status = m.get("status")
+    if status == "pending":
+        # QUIET BY DESIGN, and only this one state is. These vectors were written
+        # contract-first, so having nothing to score yet is the intended condition, not a
+        # regression — rendering it red teaches people to ignore a red suite, and a suite
+        # nobody reads is how `split_registry_harness.mjs` stayed dead from U6.
+        # It stops being quiet the moment the symbol appears: see
+        # `test_pending_symbols_are_owned_and_never_stale`.
+        pytest.skip(
+            f"PENDING: {m['module']}.{m['fn']} (contract role {role!r})\n"
+            f"  owner  : {m.get('$owner', 'unassigned')}\n"
+            f"  blocks : {m.get('$blocks', '')}\n"
+            f"  shape  : {m.get('$shape', '')}\n"
+            "Written contract-first; scored automatically the moment the symbol lands.")
+    if status == "live":
+        pytest.fail(
+            f"RENAMED or REMOVED: {m['module']}.{m['fn']} (contract role {role!r})\n"
+            "This symbol was declared `live`, meaning it existed. Its disappearance is a "
+            "regression, NOT a pending axis — do not demote it to `pending` to silence this. "
+            "Update vectors.json server_symbols deliberately if it was renamed.")
+    pytest.fail(
+        f"NOT LANDED: {m['module']}.{m['fn']} (contract role {role!r})\n"
+        f"  owner  : {m.get('$owner', 'unassigned')}\n"
+        f"  blocks : {m.get('$blocks', '')}\n"
+        f"  shape  : {m.get('$shape', '')}\n"
+        "The invariant above is UNSCORED until this lands. `required` means overdue rather "
+        "than unscheduled; if it is merely unscheduled, the Lead PM demotes it to `pending`. "
+        "Do not delete the check and do not xfail it.")
+
+
+def _apply_ops(fn, base_meta, ops, case=None):
+    """Run a case's authoring sequence. `set` may be a bare key string or an object.
+
+    A RAISE is not an error in the test — it is one of the two answers this seam can give,
+    and the case may carry the other side's measured answer in `$client_measured`. Reporting
+    it as a bare traceback would hide a divergence inside a stack trace; reporting BOTH
+    answers is what makes it a contract finding the Lead PM can rule on.
+    """
+    meta = base_meta
+    for op in ops:
+        try:
+            meta = fn(meta, None) if op.get("clear") else fn(meta, op["set"])
+        except Exception as e:                       # noqa: BLE001 — the raise IS the answer
+            measured = (case or {}).get("$client_measured") or {}
+            pytest.fail(
+                f"{(case or {}).get('name', '?')}: the server writer RAISED on {op!r}\n"
+                f"  server : [{type(e).__name__}] {e}\n"
+                f"  client : reads back as {measured.get('reads_back_as', '(not recorded)')!r}"
+                f" — {measured.get('fn', 'the landed client writer')}"
+                f" (measured {measured.get('on', '?')})\n"
+                f"  contract says: {(case or {}).get('expect_read', '?')!r}\n"
+                "TWO WRITERS, TWO ANSWERS, ONE INPUT. This is a seam divergence, not a test "
+                "error: take both answers to the Lead PM rather than editing either side to "
+                "match the other. See the vector's $why for the grounds behind the contract "
+                "value and for the alternative it deliberately did not choose.")
+    return meta
+
+
+def _stored_ref(meta):
+    return meta.get("valid_die_ref") if isinstance(meta, dict) else None
+
+
+def test_authoring_round_trip_matches_the_contract():
+    """INV-M4-5. Scored THROUGH THE READER: the writer's output is handed to the contract's
+    own `parse_valid_die_ref` / `resolve_valid_die_basis` and asked what it means.
+
+    Nothing here asserts the stored shape. The contract does not get to pick between the
+    string form and the object form — only to insist that whichever is written reads back as
+    the thing that was asked for, and that an unset reads back as `circle`.
+    """
+    fn = _server_symbol("apply_valid_die_ref")
+    for c in _cases("valid_die_authoring_cases"):
+        home = c["home_table"]
+        out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
+        kind, ref = _parse_outcome(out, home)
+        assert kind == c["expect_read"], (
+            f"{c['name']}: after {c['ops']!r} the declaration reads {kind!r}, contract says "
+            f"{c['expect_read']!r} (stored: {_stored_ref(out)!r})")
+        if kind == "ref":
+            assert ref.get("table") == c["expect_table"], f"{c['name']} table: {ref!r}"
+            assert ref.get("map_id") == c["expect_key"], f"{c['name']} map_id: {ref!r}"
+        if "expect_source" in c:
+            got = map_overlay.resolve_valid_die_basis(out, None, table=home)
+            assert got["source"] == c["expect_source"], (
+                f"{c['name']}: the branch point says {got['source']!r}, contract says "
+                f"{c['expect_source']!r}. An unset that does not reach `circle` is a map "
+                f"nobody can return to circle geometry — `valid_die_ref` has no other editor.")
+
+
+def test_authoring_never_writes_an_unreadable_declaration():
+    """DERIVED over the whole group, and it is the vector-free half of INV-M4-5.
+
+    `""`, `"   "` and `{map_id: ""}` are all things a cleared form field produces, and the
+    reader calls every one of them an ERROR — which by the phase-1 rule is a DECLARATION, so
+    the map is refused permanently and the metadata has no other editor. No authoring
+    sequence in this contract may produce one.
+    """
+    fn = _server_symbol("apply_valid_die_ref")
+    for c in _cases("valid_die_authoring_cases"):
+        out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
+        kind, _ = _parse_outcome(out, c["home_table"])
+        assert kind != "error", (
+            f"{c['name']}: the writer produced a declaration the reader cannot read "
+            f"({_stored_ref(out)!r}). That map is now `refused` on both sides with no UI path "
+            f"back to circle geometry.")
+
+
+def test_authoring_never_writes_the_shape_the_two_sides_read_differently():
+    """The object form with no table is the ONE declaration recorded as a DIVERGENCE
+    (`valid_die_ref_home_divergence_cases.object_no_table_no_home`: the server resolves it,
+    the client refuses it). Authoring must not manufacture a split-brain declaration — it
+    knows the declaring map's table at write time, which is the whole reason that divergence
+    is unreachable from a correct writer."""
+    fn = _server_symbol("apply_valid_die_ref")
+    diverging = _case("valid_die_ref_home_divergence_cases", "object_no_table_no_home")
+    assert diverging["expect_server"] != diverging["expect_client"], (
+        "this test is anchored to a recorded divergence that is no longer a divergence — "
+        "re-check whether the shape is still dangerous before deleting the assertion")
+    for c in _cases("valid_die_authoring_cases"):
+        out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
+        stored = _stored_ref(out)
+        if isinstance(stored, dict):
+            table = stored.get("table", stored.get("target_table"))
+            assert table is not None and str(table).strip(), (
+                f"{c['name']}: wrote {stored!r} — an object declaration with no table. The "
+                f"server resolves that shape and the client refuses it, so the same map "
+                f"would have a mask on one side and a refusal on the other.")
+
+
+def test_authoring_preserves_every_other_key_including_declared_falsies():
+    """INV-M4-1 at the WRITE path. The declaration is one key in a payload the write path
+    does not own; touching it may not disturb the rest.
+
+    The falsy declarations in the base metas are the point: a writer that rebuilds from the
+    fields it knows drops the ones it does not, and one that copies with `v or default`
+    turns `phys_edge_margin: 0` into 3.0 — moving the wafer mask of a map whose valid-die
+    reference was merely being cleared. That is known defect D1's shape one layer up, and it
+    is silent.
+    """
+    fn = _server_symbol("apply_valid_die_ref")
+    for c in _cases("valid_die_authoring_cases"):
+        base = json.loads(json.dumps(c["base_meta"]))
+        out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
+        before = {k: v for k, v in base.items() if k != "valid_die_ref"}
+        after = {k: v for k, v in out.items() if k != "valid_die_ref"}
+        assert after == before, (
+            f"{c['name']}: authoring changed metadata it does not own\n"
+            f"  lost/changed: { {k: before[k] for k in before if after.get(k, '~') != before[k]} }\n"
+            f"  invented    : { {k: after[k] for k in after if k not in before} }")
+
+
+def test_authoring_does_not_mutate_its_argument():
+    """A mutating writer breaks Cancel: the in-memory metadata already carries the edit the
+    user just abandoned, and nothing on screen says so."""
+    fn = _server_symbol("apply_valid_die_ref")
+    for c in _cases("valid_die_authoring_cases"):
+        arg = json.loads(json.dumps(c["base_meta"]))
+        snapshot = json.loads(json.dumps(c["base_meta"]))
+        _apply_ops(fn, arg, c["ops"], c)
+        assert arg == snapshot, (
+            f"{c['name']}: apply_valid_die_ref MUTATED the metadata it was given\n"
+            f"  before: {snapshot!r}\n  after : {arg!r}")
+
+
+def test_authoring_is_idempotent_in_the_last_operation():
+    """Repeating the last op must change nothing. A clear that appends debris, or a set that
+    accumulates, only shows up on the second application — and in an editor the second
+    application is one extra click."""
+    fn = _server_symbol("apply_valid_die_ref")
+    for c in _cases("valid_die_authoring_cases"):
+        once = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
+        twice = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])),
+                           list(c["ops"]) + [c["ops"][-1]], c)
+        assert twice == once, (
+            f"{c['name']}: repeating {c['ops'][-1]!r} changed the result\n"
+            f"  once : {once!r}\n  twice: {twice!r}")
+
+
+def test_authoring_group_covers_both_directions():
+    """Fixture-inactivity guard. A group that only SETS passes against a writer with no clear
+    path at all, and the round would ship the unrecoverable state INV-M4-5 exists to prevent.
+    """
+    cs = _cases("valid_die_authoring_cases")
+    assert any(any("clear" in op for op in c["ops"]) for c in cs), "no UNSET case"
+    assert any(c["expect_read"] == "none" for c in cs), "no case ends with NO declaration"
+    assert any(c["expect_read"] == "ref" for c in cs), "no case ends with a declaration"
+    assert any(len(c["ops"]) >= 3 for c in cs), (
+        "no set -> clear -> set case. Two operations cannot see a clear that leaves debris "
+        "the next set appends to")
+    assert any(c["base_meta"].get("valid_die_ref") is not None
+               and not isinstance(c["base_meta"]["valid_die_ref"], (str, dict))
+               for c in cs), (
+        "no case clears an UNREADABLE declaration — that is the recovery path, and a writer "
+        "that parses before it writes cannot walk it")
+    assert any(0 in c["base_meta"].values() or False in c["base_meta"].values()
+               or "" in c["base_meta"].values() for c in cs), (
+        "no base metadata declares a falsy value. `0`/`false`/`\"\"` are legitimate "
+        "declarations and they are the ones a rebuild-style writer destroys first")
+
+
+# ---------------------------------------------------------------------------
+# M4② — the one-hop limit (INV-M4-6)
+# ---------------------------------------------------------------------------
+
+def _chain_ref(case, declare):
+    """The case's reference, canonicalised through the ALREADY-SCORED 7b primitive.
+
+    Not through a literal in the vector: `canonical_map_key` is what the resolver uses, so
+    running it here is what makes 'the guard compares canonical identities' an assertion
+    rather than a claim.
+    """
+    key = case["declared_ref_key"]
+    if case.get("key_columns"):
+        declare(case["table"], case["column_types"])
+        key = map_overlay.canonical_map_key(case["table"], _binding(case), key)
+    return {"table": case["ref_table"], "map_id": key}
+
+
+def _chain_home(case):
+    return {"table": case["home"]["table"], "map_id": case["home"]["map_id"]}
+
+
+def test_chain_limit_matches_the_contract(declare):
+    """INV-M4-6. A valid-die map is a map, so it can declare one of its own; the reference
+    is legal for exactly one hop.
+
+    Today NEITHER refusal exists: `resolve_valid_die_set` loads the referenced map's meta and
+    never asks what that map declares, so a two-level chain resolves to the MIDDLE map's
+    stored cells — a set nobody declared, wearing a resolved reference's chip.
+    """
+    fn = _server_symbol("valid_die_chain_error")
+    for c in _cases("valid_die_chain_cases"):
+        err = fn(_chain_ref(c, declare), c["ref_meta"], _chain_home(c))
+        if c["expect"] == "ok":
+            assert err is None, (
+                f"{c['name']}: a LEGAL reference was refused ({err!r}). A guard that refuses "
+                f"too much disables the feature this round ships, and it passes every "
+                f"refusal vector in this group.")
+        else:
+            assert isinstance(err, str) and err.strip(), (
+                f"{c['name']}: expected a refusal ({c['expect_kind']}) and got {err!r}. A "
+                f"refusal with no reason is a silent failure with extra steps — INV-M4-3's "
+                f"rule, one layer down.")
+
+
+def test_chain_and_self_reference_do_not_share_one_reason(declare):
+    """The two refusals are different problems with different fixes — re-point the reference
+    vs. flatten the template. The wording is NOT pinned (that would freeze a user-facing
+    string into a contract); what is pinned is that an operator can tell them apart."""
+    fn = _server_symbol("valid_die_chain_error")
+    reasons = {}
+    for c in _cases("valid_die_chain_cases"):
+        if c["expect"] != "refused":
+            continue
+        reasons.setdefault(c["expect_kind"], set()).add(
+            fn(_chain_ref(c, declare), c["ref_meta"], _chain_home(c)))
+    self_r = reasons.get("self_reference", set())
+    chain_r = reasons.get("chain", set())
+    assert self_r and chain_r, "the group lost one of the two refusal kinds"
+    assert not (self_r & chain_r), (
+        "self-reference and a two-level chain produce the SAME reason, so the operator "
+        f"cannot tell which one they have: {sorted(self_r & chain_r)!r}")
+
+
+def test_chain_self_reference_is_compared_after_7b_canonicalisation(declare):
+    """INV-M4-7 reuse, asserted by RUNNING the pair rather than trusting two literals.
+
+    The same declared text against the same home key must be a self-reference under
+    `slot: number` and a legal reference under `slot: string`. The second polarity is the
+    load-bearing one: it is what a guard carrying its own normalisation fails, and a second
+    normalisation is exactly what INV-M4-4 forbids.
+
+    NOT SCORED HERE, deliberately: that the CALLER canonicalises before consulting the guard.
+    That step is DB-bound and no scorer reaches it — `valid_die_ref_canonical_cases` covers
+    it at the resolver. The canonicalisation performed below is the SCORER'S, and asserting
+    it against itself would be the copy-harness failure this file has been bitten by before.
+    """
+    fn = _server_symbol("valid_die_chain_error")
+    pair = [c for c in _cases("valid_die_chain_cases") if c.get("mirrors_case")]
+    assert len(pair) >= 2, (
+        "the canonicalisation pair is gone. Without it a guard comparing raw declared text "
+        "passes this whole group, and 'LOT_01 vs LOT_1' is the exact defect 7b exists for")
+    keys = {c["declared_ref_key"] for c in pair}
+    homes = {c["home"]["map_id"] for c in pair}
+    assert len(keys) == 1 and len(homes) == 1, (
+        f"the mirrored cases no longer share their declared key/home key ({keys!r} / "
+        f"{homes!r}) — then the differing answer is explained by the input, not by the "
+        f"declared type, and the pair proves nothing")
+    assert {c["expect"] for c in pair} == {"ok", "refused"}, (
+        "the mirrored cases agree; the pair only has teeth when the declared TYPE flips the "
+        "answer")
+    for c in pair:
+        mirror = _case("canonical_map_key_cases", c["mirrors_case"])
+        assert mirror["column_types"] == c["column_types"], (
+            f"{c['name']} claims to mirror {c['mirrors_case']!r} but declares different "
+            f"column types — the mirror is decorative")
+        err = fn(_chain_ref(c, declare), c["ref_meta"], _chain_home(c))
+        assert (err is None) is (c["expect"] == "ok"), (
+            f"{c['name']}: canonicalised key resolves the wrong way (err={err!r})")
+
+
+def test_a_chain_refusal_reaches_the_branch_point_as_refused(declare):
+    """INV-M4-5's other half at the new refusal route: a chain error must arrive at
+    `resolve_valid_die_basis` as `refused` with the reason intact, never as `circle`.
+
+    The resolver return shape used here is the one `resolve_valid_die_basis` documents
+    (`{status, cells, detail}`), so this is the real wiring and not a second answer.
+    """
+    fn = _server_symbol("valid_die_chain_error")
+    c = next(x for x in _cases("valid_die_chain_cases")
+             if x["expect"] == "refused" and x.get("expect_kind") == "chain")
+    reason = fn(_chain_ref(c, declare), c["ref_meta"], _chain_home(c))
+    out = map_overlay.resolve_valid_die_basis(
+        {"valid_die_ref": c["declared_ref_key"]},
+        lambda _ref: {"status": map_overlay.STATUS_REF_UNAVAILABLE, "detail": reason},
+        table=c["home"]["table"])
+    assert out["source"] == "refused", (
+        f"a chain refusal landed on {out['source']!r}. Falling back to circle geometry here "
+        f"is the silent fallback INV-M4-3 forbids, reached through a new door.")
+    assert out.get("basis") is None, "a refusal shipped a fallback basis"
+    assert reason in (out.get("reason") or ""), (
+        f"the chain reason was replaced by a generic one:\n  chain says: {reason!r}\n"
+        f"  branch says: {out.get('reason')!r}\nThe operator is then told the reference "
+        f"failed without being told it is a chain, which is the one fact that says what to "
+        f"fix.")
+
+
+def test_chain_group_covers_every_shape_it_claims(declare):
+    """Fixture-inactivity guard. Each of these is a DIFFERENT wrong guard; losing any one of
+    them leaves that guard passing."""
+    cs = _cases("valid_die_chain_cases")
+    kinds = {c.get("expect_kind") for c in cs if c["expect"] == "refused"}
+    assert kinds == {"self_reference", "chain"}, (
+        f"refusal kinds are {sorted(k for k in kinds if k)!r}; the contract names exactly "
+        f"self_reference and chain, and two vocabularies on one seam is how a mapping table "
+        f"gets written")
+    assert any(c["expect"] == "ok" for c in cs), (
+        "no LEGAL reference — a guard that refuses everything passes")
+    declared = [c["ref_meta"].get("valid_die_ref") for c in cs
+                if c["ref_meta"] and "valid_die_ref" in c["ref_meta"]]
+    assert any(d == 0 or d is False or d == "" for d in declared), (
+        "no case where the MIDDLE map's declaration is falsy. `if ref_meta['valid_die_ref']:` "
+        "is the shortest way to write this guard and it is wrong for exactly those values")
+    assert any(d == "" for d in declared), (
+        "no case where the middle map's declaration is BROKEN. A guard written as "
+        "`parse(ref_meta)[0] is not None` folds an unreadable declaration into absence — the "
+        "phase-1 silent fallback, one layer down")
+    assert any(c["ref_meta"] is not None and "valid_die_ref" in c["ref_meta"]
+               and c["ref_meta"]["valid_die_ref"] is None for c in cs), (
+        "no case where the middle map declares an explicit null — a guard testing key "
+        "PRESENCE rather than value refuses that legal reference")
+    assert any(c["ref_meta"] is None for c in cs), (
+        "no case with unknown referenced metadata; that state is already refused upstream by "
+        "`align_unavailable` and this predicate must not give it a second vocabulary")
+    homes = {(c["home"]["table"], c["home"]["map_id"]) for c in cs}
+    assert any(c["ref_table"] != c["home"]["table"] for c in cs), (
+        "no cross-table case — a guard comparing keys alone refuses the commonest authoring "
+        "shape")
+    assert any(c["ref_table"] == c["home"]["table"]
+               and c["declared_ref_key"] != c["home"]["map_id"] for c in cs), (
+        "no same-table/different-key case — a guard comparing tables alone refuses every "
+        "inherited-table reference")
+    assert homes, "empty group"
 
 
 # ---------------------------------------------------------------------------

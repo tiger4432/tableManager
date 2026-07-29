@@ -911,7 +911,11 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
 # 제품 템플릿 맵 — 을 가리키는 것이 가장 흔한 사용이다). 문법·거절 문구는 클라
 # `parseValidDieRef`와 문자 그대로 같으며 정본은 `contracts/map_seam/vectors.json`이다.
 #
-# [규율 넷 — 하나라도 어기면 조용한 오답이 된다]
+# [phase 2에서 더해진 것] 선언을 **쓰는** 짝(`apply_valid_die_ref`)과 **1홉 제한**
+# (`valid_die_chain_error`, 규율 ⑤). 둘 다 계약 심볼이며 클라의 `applyValidDieRef` ·
+# `validDieChainError`와 같은 벡터로 채점된다.
+#
+# [규율 다섯 — 하나라도 어기면 조용한 오답이 된다]
 #  ① 선언이 없으면 이 코드는 **아무 일도 하지 않는다.** 판정에 참여하지 않고, 기존 경로가
 #     읽는 어떤 값(`frame_axes`·`_grid_of`·`_phys_signature`)에도 새 키가 섞이지 않는다.
 #  ② 선언이 있으면 **참조 맵이 답의 전부**다. 원 기하는 답에 참여하지 않는다.
@@ -923,6 +927,10 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
 #  ④ 참조 키는 7b 캐노니컬화(`canonical_key_value`)를 **경유**한다. 여기서는
 #     `build_key_filters`를 그대로 써서 그 경유를 구조적으로 보장한다 — 두 번째
 #     정규화 구현을 만들지 않는다.
+#  ⑤ [INV-M4-6] 참조 체인은 **1홉**이다. 유효 다이 맵도 맵이라 자기 참조(A→A)와 2단계
+#     (A→B→C)가 구조적으로 가능한데, 전자는 동어반복이고 후자는 **아무도 선언한 적 없는
+#     집합**(B의 저장 셀)을 답으로 내놓는다. 둘 다 정상 해석처럼 보이므로 ③과 같은
+#     규율로 거절한다 — 사유를 붙여 `refused`, 원 기하로 되돌아가지 않는다.
 #
 # [값이 아니라 존재다] 참조 맵에 **행이 있는 셀이 유효 다이**다. 값으로 거르지 않는다
 # (값 기반 필터가 필요해지면 그때 선언을 늘린다 — 지금 지어내지 않는다).
@@ -1003,6 +1011,111 @@ def parse_valid_die_ref(meta: dict | None, default_table: str = None):
         return None, ("valid_die_ref에 map_id가 없다 — 어느 맵을 가리키는지 알 수 없다")
     table = str(t).strip() if (t is not None and str(t).strip()) else home
     return {"table": table, "map_id": map_id}, None
+
+
+def apply_valid_die_ref(meta: dict | None, ref) -> dict:
+    """선언의 **쓰기** — `parse_valid_die_ref`의 짝이자 계약 심볼(`contracts/map_seam`
+    역할 `apply_valid_die_ref`). 클라 `applyValidDieRef`와 **같은 벡터**로 채점된다.
+
+    순수 함수다. `meta`를 **변형하지 않고** 새 dict를 반환한다 — 변형하면 편집 취소 경로가
+    이미 바뀐 메타를 들고 있게 된다.
+    `ref`: None(해제) | 맵 키 문자열 | `{"table","map_id"}`(`target_table`/`map_key` 별칭).
+
+    🔴 **빈 키는 해제다.** 비운 입력칸을 그대로 흘려보내면 `valid_die_ref: ""`가 저장되고,
+       파서 규칙상 그것은 **선언**이라 그 맵은 영구히 `refused`가 된다. `valid_die_ref`는
+       `grid_metadata` JSON 안에 살아 다른 편집기가 없으므로 되돌릴 길이 없다.
+    🔴 **테이블 없는 객체는 만들지 않는다.** `{"map_id": k}`는 서버/클라가 서로 다르게 읽기로
+       **기록된** 유일한 형태다(`valid_die_ref_home_divergence_cases`). 저작 시점에는 자기
+       테이블을 아니까 그런 반쪽 선언을 제조할 이유가 없다 — 문자열 승계형으로 쓴다.
+    🔴 **나머지 키는 손대지 않는다.** 아는 필드로 메타를 다시 짜면 모르는 키(`binding` 등)가
+       사라지고, `v or dflt`로 베끼면 선언된 `phys_edge_margin: 0`이 3.0이 되어 참조만 지운
+       맵의 웨이퍼 마스크가 움직인다.
+    """
+    out = dict(meta) if isinstance(meta, dict) else {}
+
+    def _clear():
+        out.pop(VALID_DIE_REF_KEY, None)
+        return out
+
+    if ref is None:
+        return _clear()
+
+    if isinstance(ref, str):
+        map_id = ref.strip()
+        if not map_id:
+            return _clear()
+        out[VALID_DIE_REF_KEY] = map_id
+        return out
+
+    if isinstance(ref, dict):
+        t = ref.get("table", ref.get("target_table"))
+        k = ref.get("map_id", ref.get("map_key"))
+        map_id = "" if k is None else str(k).strip()
+        if not map_id:
+            return _clear()
+        table = "" if t is None else str(t).strip()
+        out[VALID_DIE_REF_KEY] = map_id if not table else {"table": table,
+                                                           "map_id": map_id}
+        return out
+
+    # 우리가 저작하지 않는 형태(숫자·불리언·리스트)는 만들지 않는다 — 해제로 읽는 편이
+    # 읽을 수 없는 선언을 새로 쓰는 것보다 낫다.
+    return _clear()
+
+
+def valid_die_chain_error(ref, ref_meta, home):
+    """[INV-M4-6] 참조 체인은 **1홉**이다 — 계약 심볼(`contracts/map_seam` 역할
+    `valid_die_chain_error`). 클라 `validDieChainError`와 **같은 벡터**로 채점된다.
+
+    순수 함수다(DB 없음). 거절할 두 형태:
+
+      자기 참조 A→A   그 맵의 저장된 셀이 그 맵의 유효성 기준이 된다. 존재하는 셀은 전부
+                     유효이고 없는 셀은 전부 무효 — 정의상 항상 참이라 아무 판정도 하지
+                     않으면서, 칩에는 **정상 해석**으로 보인다.
+      2단계 A→B(→C)  B의 저장 셀을 쓰지만 B는 자기 유효 다이가 C의 것이라고 선언했다.
+                     A가 받는 집합은 **아무도 선언한 적 없는 집합**이다.
+
+    순환 A→B→A는 별도 규칙이 필요 없다: B가 선언했으므로 A가 거절한다. 방문 집합도 재귀
+    깊이도 만들지 않는다 — 이미 답한 질문에 두 번째 답을 만드는 일이기 때문이다.
+
+    🔴 "선언"의 뜻은 파서와 **같다**: `None`/부재만 부재이고 나머지는 전부 선언이다.
+       `if ref_meta.get(...)` (falsy 검사)는 `0`·`False`·`""`를 부재로 접어 틀리고,
+       `parse(...)[0] is not None`은 **깨진** 2단계 선언을 부재로 접어 틀린다(INV-M4-3이
+       금지하는 조용한 폴백, 한 층 아래).
+    🔴 **정규화를 여기서 하지 않는다.** `ref`/`home`의 키는 호출자가 이미 `canonical_map_key`를
+       태운 정준 정체성이다. 여기서 다시 다듬으면 정규화가 둘이 되고, `slot: string`에서
+       정당한 `LOT_01` 참조가 자기 참조로 오판된다(INV-M4-4가 금지).
+
+    인자: `ref` = 해석·정준화가 끝난 `{"table","map_id"}` · `ref_meta` = 참조 맵의
+          `grid_metadata`(미상이면 None) · `home` = 선언한 맵의 `{"table","map_id"}`
+    반환: 사유 문자열(위법) | None(적법)
+    """
+    r = ref if isinstance(ref, dict) else {}
+    h = home if isinstance(home, dict) else {}
+    r_table, h_table = r.get("table"), h.get("table")
+
+    if (r_table is not None and h_table is not None
+            and str(r_table) == str(h_table)
+            and str(r.get("map_id")) == str(h.get("map_id"))):
+        return (f"자기 자신({r_table} · {r.get('map_id')})을 유효 다이 맵으로 지정했습니다 — "
+                f"맵이 자기 셀로 자기 유효성을 정하면 항상 참이라 아무것도 판정하지 "
+                f"못합니다. 다른 맵을 지정하거나 지정을 비우십시오.")
+
+    # 참조 맵의 규격을 모르는 것은 체인 문제가 아니다 — 그 실패는 상류
+    # (`align_unavailable`)가 이미 말한다. 한 상태에 어휘를 둘 주지 않는다.
+    if not isinstance(ref_meta, dict) or VALID_DIE_REF_KEY not in ref_meta:
+        return None
+    inner = ref_meta[VALID_DIE_REF_KEY]
+    if inner is None:
+        return None
+
+    # 문자열이 아닌 선언은 **원형 그대로**(repr) 보여준다. 예쁘게 다듬으면 `0`이나
+    # `{"nonsense": true}` 같은 **망가진** 2단계 선언이 멀쩡해 보이고, 사용자는 자기가
+    # 무엇을 잘못 썼는지 볼 수 없다(①이 raw를 붙든 이유와 같다).
+    shown = inner if isinstance(inner, str) else repr(inner)
+    return (f"참조 맵({r_table} · {r.get('map_id')})이 스스로 또 다른 유효 다이 맵"
+            f"({shown})을 참조합니다 — 참조 체인은 1단계까지만 허용합니다. "
+            f"유효 다이 맵 자신은 valid_die_ref를 갖지 않아야 합니다.")
 
 
 # ---------------------------------------------------------------------------
@@ -1144,7 +1257,8 @@ def resolve_valid_die_set(db, cfg: dict, target_table: str, target_key: str,
       `ok`                참조 맵이 답이다.
       `source_missing`    참조를 찾거나 해석할 수 없다(테이블·바인딩·키·선언 형태).
       `align_unavailable` 참조 맵을 이 맵의 프레임으로 옮길 근거가 없다(규격 미등록·치수 불일치).
-      `ref_unavailable`   참조는 찾았으나 상한 초과로 신뢰할 집합을 만들 수 없다.
+      `ref_unavailable`   참조는 찾았으나 신뢰할 집합을 만들 수 없다 — 상한 초과, 또는
+                          [INV-M4-6] 자기 참조·2단계 체인(`valid_die_chain_error`).
       `no_data`           참조 맵에 셀이 0건 — **"유효 다이가 없다"로 읽지 않는다.**
                           거의 언제나 "아직 적재되지 않았다"이고, 0건을 답으로 삼으면
                           사용자의 맵 전체를 무효로 만든다.
@@ -1168,11 +1282,20 @@ def resolve_valid_die_set(db, cfg: dict, target_table: str, target_key: str,
         return {"declared": False, "ref": None, "status": STATUS_NOT_DECLARED,
                 "detail": None, "align_applied": None}
 
+    # [INV-M4-6] 자기 참조 판정은 **선언한 맵에 종속**이므로 캐시 키가 그것을 담아야 한다.
+    # 값 자체(참조 맵의 셀)는 `(참조, 프레임)`에만 종속이라 여러 맵이 한 해석을 공유하는데,
+    # 자기 참조 거절이 그 공유 항목에 실리면 같은 프레임에서 같은 맵을 참조한 **다른** 맵이
+    # 하지도 않은 자기 참조로 거절된다. 같은 테이블일 때만 덧붙인다 — 정체성은 (테이블, 키)
+    # 쌍이므로 테이블이 다르면 자기 참조가 성립할 수 없고, 교차 테이블 공유는 그대로 남는다.
     cache_key = ("vdref", ref["table"], ref["map_id"], frame_axes(target_meta))
+    if (ref["table"] or target_table) == target_table:
+        cache_key += (target_key,)
     if cache is not None and cache_key in cache:
         return cache[cache_key]
 
-    out = _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap)
+    out = _resolve_valid_die_uncached(
+        db, cfg, ref, target_meta, cell_cap,
+        home={"table": target_table, "map_id": target_key})
 
     if cache is not None:
         if len(cache) >= _VALID_DIE_CACHE_MAX:
@@ -1181,7 +1304,7 @@ def resolve_valid_die_set(db, cfg: dict, target_table: str, target_key: str,
     return out
 
 
-def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap):
+def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
     from database import models
 
     ref_table, ref_key = ref["table"], ref["map_id"]
@@ -1226,6 +1349,23 @@ def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap):
             ref, STATUS_SOURCE_MISSING, f"'{ref_table}'의 키 컬럼 바인딩 해석 실패")
 
     ref_meta = load_map_meta(db, ref_table, ref_key)
+
+    # [INV-M4-6] 1홉 제한. 판정은 순수 술어 `valid_die_chain_error`가 하고 여기서는
+    # **이미 로드한 메타를 넘겨줄 뿐**이다 — 참조 1건당 추가 조회 0회(셀 단위 경로 없음).
+    # 자기 참조는 참조 맵 메타 유무와 무관하므로 `ref_meta is None` 판정보다 앞에 둔다:
+    # A→A는 "규격 미등록"이 아니라 "자기 자신"이라고 말해야 고칠 데가 보인다.
+    # home 키는 **참조 키와 같은 정준화**(`canonical_map_key`)를 거쳐야 'LOT_01 vs LOT_1'
+    # 자기 참조를 놓치지 않는다. 테이블이 다르면 정체성 쌍이 이미 갈리므로 정준화하지 않는다
+    # (바인딩이 참조 테이블의 것이라 그대로 쓸 수 없기도 하다).
+    home = home if isinstance(home, dict) else {}
+    home_table, home_key = home.get("table"), home.get("map_id")
+    if home_table == ref_table and home_key is not None:
+        home_key = canonical_map_key(ref_table, binding, home_key)
+    chain_error = valid_die_chain_error(
+        ref, ref_meta, {"table": home_table, "map_id": home_key})
+    if chain_error:
+        return _valid_die_refused(ref, STATUS_REF_UNAVAILABLE, chain_error)
+
     if ref_meta is None:
         return _valid_die_refused(
             ref, STATUS_ALIGN_UNAVAILABLE,

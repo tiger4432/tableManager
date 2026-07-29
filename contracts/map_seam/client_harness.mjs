@@ -10,15 +10,23 @@
  * this harness must not change that, so it slices the named declarations out of the source
  * text and evaluates them in a vm sandbox with stubs for the module state they touch.
  *
- * TWO KINDS OF MISSING SYMBOL, AND THEY MEAN DIFFERENT THINGS:
- *   `status: live`     in vectors.client_symbols — exists today. If it cannot be found it
- *                      was RENAMED or reshaped: exit 2, harness failure, nothing compared.
- *   `status: required` — the contract needs it and the client has not landed it. A contract
- *                      failure, not a harness failure: the dependent groups are reported
- *                      NOT LANDED, per invariant, and the run exits 1.
- * Neither is ever green.
+ * MISSING SYMBOLS follow the SHARED status vocabulary in `vectors.json` -> `symbol_status`,
+ * which `test_seam_contract.py::_server_symbol` implements identically. That table is the
+ * definition; this is its client half, and the two must not drift — two scorers with two
+ * vocabularies is a mapping table waiting to be written, and a mapping table is a second
+ * implementation of the answer. (They HAD drifted for part of 2026-07-29: this side treated
+ * `pending` and `required` alike while the server distinguished them.)
+ *   `live`     — existed. Absent means RENAMED or reshaped: exit 2, nothing was compared.
+ *   `pending`  — contract-first; the implementation has not landed yet and is not overdue.
+ *                Reported by name with owner and blocked invariants, and the run stays GREEN.
+ *                It expires by itself: once the symbol appears it is scored automatically,
+ *                and leaving `status: pending` on a landed symbol is then a HARD FAILURE
+ *                (STALE PENDING) — because an absent `pending` symbol is forgiven by design,
+ *                so a stale one would silently forgive a later rename too.
+ *   `required` — the contract needs it and it has not landed. NOT LANDED, exit 1.
  *
- * Exit codes: 0 = client meets the contract | 1 = divergence(s)/not landed | 2 = harness failure.
+ * Exit codes: 0 = client meets the contract | 1 = divergence / not landed / stale pending
+ *             | 2 = harness failure.
  *
  *   node contracts/map_seam/client_harness.mjs
  *   node contracts/map_seam/client_harness.mjs --json
@@ -71,7 +79,16 @@ const spec = JSON.parse(readFileSync(VECTORS, 'utf8'));
 // ── Symbol manifest ────────────────────────────────────────────────────────────────────
 // The manifest lives in the VECTOR file, not here, so renaming a function is a contract
 // edit rather than a quiet harness patch.
-const notLanded = [];
+// The SHARED status vocabulary — `vectors.json` -> `symbol_status` holds the table, and
+// `test_seam_contract.py::_server_symbol` implements the same three states. Two scorers with
+// two vocabularies is a mapping table waiting to be written, and a mapping table is a second
+// implementation of the answer.
+//   live     absent -> RENAMED/REMOVED, exit 2 (nothing compared)   | present -> scored
+//   pending  absent -> PENDING, reported, NOT a failure             | present -> scored + STALE
+//   required absent -> NOT LANDED, exit 1                           | present -> scored
+const notLanded = [];   // `required` and absent — overdue
+const pendingSymbols = []; // `pending` and absent — contract-first, quiet by design
+const stalePending = []; // `pending` but PRESENT — the promise to promote, come due
 const pieces = [];
 const have = new Set();
 for (const c of spec.client_consts || []) {
@@ -86,14 +103,37 @@ for (const [role, m] of Object.entries(spec.client_symbols)) {
   if (role === '$comment') continue;
   const source = SRC[m.file];
   if (source === undefined) die(`client_symbols.${role} names an unknown file: ${m.file}`);
+  const meta = { role, fn: m.fn, file: m.file, why: m.$why || '',
+    owner: m.$owner || 'unassigned', blocks: m.$blocks || '', shape: m.$shape || '' };
   const code = sliceFunction(source, m.fn);
-  if (code) { pieces.push(code); have.add(role); continue; }
+  if (code) {
+    pieces.push(code); have.add(role);
+    // PROPERTY 3 of `symbol_status`: the symbol landed, so the declaration owes a promotion.
+    // Not bookkeeping — while it reads `pending` an ABSENT symbol is forgiven, so a later
+    // rename of this now-landed function would be forgiven too and the axis would go
+    // unscored behind a green run. The vectors are already being scored either way.
+    if (m.status === 'pending') stalePending.push(meta);
+    continue;
+  }
   if (m.status === 'live') {
     die(`'${m.fn}' is gone from ${m.file} — renamed, removed, or reshaped. The contract names `
       + `it in vectors.json client_symbols.${role}. Update that manifest deliberately; do `
-      + `not delete the check.`);
+      + `not delete the check, and do NOT demote it to \`pending\` to silence this: `
+      + `\`pending\` means 'not written yet', not 'was here and left'.`);
   }
-  notLanded.push({ role, fn: m.fn, file: m.file, why: m.$why || '' });
+  if (m.status === 'pending') {
+    // QUIET BY DESIGN, and the only state that is. These vectors were written before the
+    // implementation on purpose, so having nothing to score yet is the intended condition
+    // rather than a regression. Rendering it red teaches people to ignore a red suite.
+    if (!meta.owner || meta.owner === 'unassigned' || !meta.blocks) {
+      die(`client_symbols.${role} is \`pending\` without an $owner and $blocks. A pending `
+        + `axis is allowed to be quiet only because someone owns it and the cost of the wait `
+        + `is written down; without those it is an anonymous hole with better manners.`);
+    }
+    pendingSymbols.push(meta);
+    continue;
+  }
+  notLanded.push(meta);
 }
 
 // Module state the extracted functions read. Everything else is pure.
@@ -109,6 +149,13 @@ const sandbox = {
   // not sliceable — and it should not be: the whole point of scoring the branch is to drive it
   // through the states the contract names.
   validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
+  // The Push boundary's other piece of module state. Like `validDie` it is a `let`, so it is
+  // not sliceable — and it should not be: it records whether the USER opened the table
+  // select, and driving the decision through its two values is the whole point. The app sets
+  // it in exactly one place (the select's `change` listener) and clears it in exactly one
+  // place (`syncValidDieRefControls`), so the harness stands in for the DOM event and lets
+  // the extracted functions do everything else.
+  validDieRefTableTouched: false,
 };
 vm.createContext(sandbox);
 try {
@@ -156,6 +203,13 @@ const rec = (group, name, field, expected, actual) => {
 };
 const cases = (g) => (spec[g] || []).filter(c => 'name' in c);
 const attempt = (f) => { try { return f(); } catch (e) { return `THREW ${e && e.message}`; } };
+// A THROWN extraction is not an answer, and any assertion whose shape can SWALLOW the marker
+// must say so explicitly. Measured 2026-07-29: `validDieChainError` calls a helper that was
+// missing from the manifest, so it threw on every chain refusal — and because the assertion
+// was "a refusal carries a non-empty reason", the exception text WAS a non-empty string and
+// the whole group went green. A defect that gave both refusal kinds the same reason survived
+// that. `threw()` is what makes the marker fatal instead of convenient.
+const threw = (v) => typeof v === 'string' && v.startsWith('THREW ');
 
 // ── Known-defect pins (see vectors.json `known_defects`) ───────────────────────────────
 // STRICT, and the strictness is the point. A pinned assertion is green ONLY while the client
@@ -169,6 +223,21 @@ const pinned = [];
 // checking passes against an implementation that no longer produces it.
 const unscoreable = [];
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
+
+// A group whose SYMBOL has not landed is neither "scored" nor "unwired": it is wired and
+// blocked. Without this distinction the group-completeness check below would exit 2 —
+// HARNESS FAILURE — for a contract failure, which points the reader at the wrong file. The
+// group is marked scored so completeness passes, and the blockage is reported by name.
+const unscoredGroups = [];
+const requireRoles = (group, roles, invariant) => {
+  const missing = roles.filter(r => !have.has(r));
+  if (!missing.length) return true;
+  scored.add(group);
+  unscoredGroups.push({ group, invariant,
+    missing: missing.map(r => `${spec.client_symbols[r].fn} (role ${r})`) });
+  return false;
+};
 
 /** Record an assertion that a named known defect is expected to fail. */
 const recPinned = (group, name, field, contract, actual, pin, pinnedValue) => {
@@ -619,6 +688,314 @@ for (const c of cases('valid_die_ref_canonical_cases')) {
   }
 }
 
+// --- M4② authoring: SET AND UNSET (INV-M4-1 save path / INV-M4-5) ----------------------
+// The client is where this bites hardest. `buildGridMeta` rebuilds the metadata object FROM
+// SCREEN CONTROLS on every Push, so a declaration with no control is destroyed by one save —
+// phase 1 papered over that with a single passthrough line, and phase 2 gives the field a
+// control, which puts the destructive rebuild ON the path instead of beside it.
+//
+// Scored THROUGH THE CLIENT'S OWN READER. The writer's output is handed to
+// `parseValidDieRef` and `validDieBasis` — the same two functions the app consults at
+// map_editor.js:5785 — and the contract asks what the result MEANS, never what shape it has.
+// The contract does not get to pick between the string form and the object form.
+if (requireRoles('valid_die_authoring_cases', ['apply_valid_die_ref'],
+  'INV-M4-1 (save path) / INV-M4-5 — set and unset')) {
+  const G = 'valid_die_authoring_cases';
+  const applyOps = (base, ops) => {
+    let meta = base;
+    for (const op of ops) {
+      meta = ('clear' in op) ? FN.apply_valid_die_ref(meta, null)
+        : FN.apply_valid_die_ref(meta, op.set);
+    }
+    return meta;
+  };
+  // The state is derived through `parseValidDieRef`, which is exactly how the app decides
+  // circle-vs-declared. Nothing here writes a basis the harness invented.
+  const basisState = (meta, home) => {
+    const parsed = FN.parse_valid_die_ref(meta, home);
+    if (parsed === null || parsed === undefined) {
+      return { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+    }
+    if (parsed.unreadable) {
+      return { basis: 'refused', keys: null, reason: parsed.reason, ref: null,
+        raw: meta.valid_die_ref };
+    }
+    return { basis: 'ref', keys: new Set(['0_0']), reason: '',
+      ref: { table: parsed.table, mapKey: parsed.mapKey }, raw: meta.valid_die_ref };
+  };
+
+  for (const c of cases(G)) {
+    const out = attempt(() => applyOps(clone(c.base_meta), c.ops));
+    rec(G, c.name, 'did_not_throw', false, threw(out) ? out : false);
+    // A case carrying `$client_measured` records THIS side's answer so the OTHER scorer can
+    // print both when they disagree. Re-asserting it here would score the fixture, so what is
+    // scored instead is that the recording is still TRUE — a stale record would hand the
+    // server scorer a client answer the client stopped giving, and the divergence report
+    // would name two answers, one of which nobody produces.
+    if (c.$client_measured) {
+      const got = (out && typeof out === 'object')
+        ? attempt(() => parseOutcome(out, c.home_table)) : { kind: `THREW/${out}` };
+      rec(G, c.name, 'recorded_client_answer_is_current',
+        c.$client_measured.reads_back_as, (got || {}).kind);
+    }
+    const got = (out && typeof out === 'object') ? attempt(() => parseOutcome(out, c.home_table)) : { kind: `THREW/${out}` };
+    rec(G, c.name, 'reads_back_as', c.expect_read, (got || {}).kind);
+    if (c.expect_read === 'ref') {
+      rec(G, c.name, 'table', c.expect_table, (got || {}).table);
+      rec(G, c.name, 'key', c.expect_key, (got || {}).key);
+    }
+    if ('expect_source' in c) {
+      rec(G, c.name, 'branch_source', c.expect_source,
+        attempt(() => FN.valid_die_basis(basisState(out, c.home_table))));
+    }
+    // DERIVED, over every case. `""` / `"   "` / `{map_id: ""}` are all things a cleared form
+    // field produces and the reader calls every one a DECLARATION — so the map is refused
+    // permanently, and `valid_die_ref` has no other editor.
+    rec(G, c.name, 'never_writes_an_unreadable_declaration', true,
+      (got || {}).kind !== 'error');
+    // The object form with NO table is the one shape the two sides are RECORDED to read
+    // differently (valid_die_ref_home_divergence_cases.object_no_table_no_home). Authoring
+    // knows the declaring map's table at write time, so it must never manufacture it.
+    const stored = (out && typeof out === 'object') ? out.valid_die_ref : undefined;
+    const tablelessObject = stored !== null && typeof stored === 'object'
+      && !Array.isArray(stored)
+      && !String((stored.table !== undefined ? stored.table : stored.target_table) || '').trim();
+    rec(G, c.name, 'no_tableless_object', false, tablelessObject);
+    // Everything else in the payload is not this writer's to touch. The falsy declarations in
+    // the base metas are the point: `phys_edge_margin: 0` turned into 3.0 by a `v || dflt`
+    // rebuild MOVES THE WAFER MASK of a map that was only having its reference cleared —
+    // known defect D1's shape, one layer up, and just as silent.
+    const strip = (m) => { const o = { ...(m || {}) }; delete o.valid_die_ref; return o; };
+    rec(G, c.name, 'other_keys_preserved', strip(c.base_meta), strip(out));
+    // A mutating writer breaks Cancel: the abandoned edit is already in the in-memory meta.
+    const arg = clone(c.base_meta);
+    attempt(() => applyOps(arg, c.ops));
+    rec(G, c.name, 'input_not_mutated', clone(c.base_meta), arg);
+    // A clear that leaves debris, or a set that accumulates, only shows on the second apply —
+    // and in an editor the second apply is one extra click.
+    rec(G, c.name, 'idempotent_in_last_op',
+      clone(attempt(() => applyOps(clone(c.base_meta), c.ops))),
+      clone(attempt(() => applyOps(clone(c.base_meta), [...c.ops, c.ops[c.ops.length - 1]]))));
+  }
+  // Fixture-inactivity guard. A group that only SETS passes against a writer with no clear
+  // path at all, which is the unrecoverable state INV-M4-5 exists to prevent.
+  const cs = cases(G);
+  rec(G, 'INV-M4-5_fixture_active', 'has_an_unset_case',
+    true, cs.some(c => c.ops.some(op => 'clear' in op)));
+  rec(G, 'INV-M4-5_fixture_active', 'has_a_set_clear_set_case',
+    true, cs.some(c => c.ops.length >= 3));
+  rec(G, 'INV-M4-1_fixture_active', 'base_meta_declares_a_falsy_value',
+    true, cs.some(c => Object.values(c.base_meta).some(v => v === 0 || v === false || v === '')));
+}
+
+// --- M4② the one-hop limit (INV-M4-6) --------------------------------------------------
+if (requireRoles('valid_die_chain_cases', ['valid_die_chain_error', 'valid_die_ref_display'],
+  'INV-M4-6 — self-reference and two-level chains are refusals')) {
+  const G = 'valid_die_chain_cases';
+  // Canonicalised through the ALREADY-SCORED 7b primitive, not through a literal in the
+  // vector: `canonicalMapKey` is what `resolveValidDie` uses, so running it here is what
+  // makes "the guard compares canonical identities" an assertion rather than a claim.
+  const chainRef = (c) => ({
+    table: c.ref_table,
+    mapKey: c.key_columns
+      ? FN.canonical_map_key(c.key_columns, c.declared_ref_key, c.column_types || {})
+      : c.declared_ref_key,
+  });
+  const chainHome = (c) => ({ table: c.home.table, mapKey: c.home.map_id });
+  const errFor = (c) => attempt(() => FN.valid_die_chain_error(chainRef(c), c.ref_meta, chainHome(c)));
+
+  for (const c of cases(G)) {
+    const err = errFor(c);
+    // FIRST, and before anything reads the value: an extraction that THREW is not a refusal.
+    // Without this the two assertions below are satisfied by an exception — measured, see
+    // `threw()` above.
+    rec(G, c.name, 'did_not_throw', false, threw(err) ? err : false);
+    // `null` and `undefined` both mean "no error" in JS; Python has only None, so the two
+    // sides are held to the same MEANING rather than to the same literal.
+    rec(G, c.name, 'is_legal', c.expect === 'ok', err === null || err === undefined);
+    if (c.expect === 'refused') {
+      // A refusal nobody can read is a silent failure with extra steps — INV-M4-3's rule,
+      // one layer down.
+      rec(G, c.name, 'reason_nonempty', true,
+        typeof err === 'string' && !threw(err) && err.trim().length > 0);
+    }
+  }
+  // The two refusals are different problems with different fixes (re-point the reference vs.
+  // flatten the template). The WORDING is deliberately not pinned — that would freeze a
+  // user-facing string into a contract; what is pinned is that they can be told apart.
+  {
+    const byKind = {};
+    for (const c of cases(G)) {
+      if (c.expect !== 'refused') continue;
+      (byKind[c.expect_kind] = byKind[c.expect_kind] || new Set()).add(errFor(c));
+    }
+    const self = [...(byKind.self_reference || [])];
+    const chain = [...(byKind.chain || [])];
+    rec(G, 'reasons', 'both_kinds_present', true, self.length > 0 && chain.length > 0);
+    rec(G, 'reasons', 'kinds_do_not_share_a_reason', [],
+      self.filter(r => chain.includes(r)));
+  }
+  // The mirrored pair, asserted by RUNNING it. The second polarity is the load-bearing one:
+  // a guard carrying its own normalisation reports a self-reference where there is an
+  // ordinary one, and a second normalisation is what INV-M4-4 forbids.
+  for (const c of cases(G)) {
+    if (!c.mirrors_case) continue;
+    const mirror = cases('canonical_map_key_cases').find(m => m.name === c.mirrors_case);
+    rec(G, c.name, 'mirror_exists', true, Boolean(mirror));
+    if (mirror) rec(G, c.name, 'mirror_shares_declaration', mirror.column_types, c.column_types);
+  }
+  {
+    const pair = cases(G).filter(c => c.mirrors_case);
+    rec(G, 'canonicalisation_pair', 'both_polarities_present',
+      ['ok', 'refused'].sort(), [...new Set(pair.map(c => c.expect))].sort());
+    rec(G, 'canonicalisation_pair', 'shares_one_declared_key_and_home',
+      [1, 1], [new Set(pair.map(c => c.declared_ref_key)).size,
+        new Set(pair.map(c => c.home.map_id)).size]);
+  }
+  rec(G, 'one_vocabulary', 'refusal_kinds_are_canonical', [],
+    cases(G).filter(c => c.expect === 'refused')
+      .map(c => c.expect_kind).filter(k => !['self_reference', 'chain'].includes(k)));
+
+  // NOT SCOREABLE HERE, listed rather than counted. Both are real coverage gaps and neither
+  // is a reason to loosen an assertion elsewhere.
+  unscoreable.push({ group: G, name: 'resolveValidDie', field: 'guard_is_consulted_and_refuses',
+    why: 'that `resolveValidDie` actually calls the guard after fetching the referenced meta, '
+      + 'and REFUSES rather than falling back to circle, happens inside an async network walk '
+      + 'no scorer can reach — verify at runtime (the server half of the same wiring IS scored, '
+      + 'by test_a_chain_refusal_reaches_the_branch_point_as_refused).' });
+  unscoreable.push({ group: G, name: 'caller_canonicalisation', field: 'identities_arrive_canonical',
+    why: 'the canonicalisation performed above is the SCORER\'S; that the CALLER does it before '
+      + 'consulting the guard is network-bound. Covered at the resolver by '
+      + 'valid_die_ref_canonical_cases (INV-M4-4) instead of being claimed twice here.' });
+}
+
+// --- M4② THE LAST DECISION BEFORE THE DATABASE (client-only) ---------------------------
+// Added after a QA NO-GO. `valid_die_authoring_cases` scores the PURE WRITER and was read —
+// wrongly, by this harness's author — as scoring the write path. A pure writer only decides
+// WHAT to write once something decided a write should happen, and that decision lives in
+// `validDieRefForPush`, which was in no contract. A HIGH defect lived in the gap: an
+// out-of-list declaration table is forced to `''` by `syncValidDieRefControls`, read as "the
+// user picked the home table" here, and an UNTOUCHED Push silently demoted a cross-table
+// declaration to a bare key.
+//
+// 🔴 THE CONTROLS ARE NEVER SET DIRECTLY. The round harness did `el.validDieRefTable.value =
+// table`, which skips `syncValidDieRefControls` entirely and asserts a state the app cannot
+// produce — green, and blind to the whole contract between the two functions. Here the
+// fixture supplies only what the APP supplies (the stored raw and the option LIST), then
+// calls the app's own sync, then applies a user edit only where a user really would.
+if (requireRoles('valid_die_push_decision_cases',
+  ['valid_die_ref_for_push', 'valid_die_ref_from_controls', 'sync_valid_die_ref_controls',
+    'apply_valid_die_ref'],
+  'INV-M4-1 / INV-M4-5 at the Push boundary — what actually reaches the DB')) {
+  const G = 'valid_die_push_decision_cases';
+  const ABSENT = '$absent';
+
+  for (const c of cases(G)) {
+    const raw = c.raw === ABSENT ? undefined : c.raw;
+    // Module state and the option list — the app's two inputs, and the only two the fixture
+    // is allowed to write.
+    sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw };
+    sandbox.el = {
+      validDieRefTable: { value: '', options: (c.table_options || []).map(v => ({ value: v })) },
+      validDieRefKey: { value: '' },
+    };
+    sandbox.validDieRefTableTouched = true;   // deliberately stale; the sync must clear it
+    // THE APP'S OWN PATH fills the controls. Whatever it puts there is what a user would see,
+    // and it is also what clears the touched flag — starting the flag TRUE here means a sync
+    // that forgets to reset it fails, which is half of the QA finding's fix.
+    const synced = attempt(() => FN.sync_valid_die_ref_controls());
+    rec(G, c.name, 'sync_did_not_throw', false, threw(synced) ? synced : false);
+    rec(G, c.name, 'sync_clears_the_touched_flag', false, sandbox.validDieRefTableTouched);
+    // A user edit is the ONE thing that may write a control value, because that is literally
+    // what a user does. `user_edit: null` means the user touched nothing at all.
+    if (c.user_edit) {
+      // The select fires `change` — and therefore records intent — only when the value it
+      // already shows actually changes. Mirroring that is what keeps this a simulation of the
+      // DOM event rather than a shortcut around the flag the fix turns on.
+      if (c.user_edit.table !== sandbox.el.validDieRefTable.value) {
+        sandbox.el.validDieRefTable.value = c.user_edit.table;
+        sandbox.validDieRefTableTouched = true;
+      }
+      sandbox.el.validDieRefKey.value = c.user_edit.key;
+    }
+
+    const decision = attempt(() => FN.valid_die_ref_for_push());
+    rec(G, c.name, 'decision_did_not_throw', false, threw(decision) ? decision : false);
+    if ('expect_keep' in c) {
+      // Asserted alongside the readback, not instead of it: without this the glue below could
+      // absorb a change in what `keep` means and the group would stay green.
+      rec(G, c.name, 'keep', c.expect_keep, (decision || {}).keep);
+    }
+
+    // The composition is RUN, not re-typed. It used to be three duplicated lines here with a
+    // `pending` symbol asking for the extraction; `validDieRefPayload` landed 2026-07-29 and
+    // the copy was deleted in the same pass. An extraction that lands while the scorer keeps
+    // its copy buys nothing — the copy is the thing that goes stale.
+    const base = { grid_cols: 6, grid_rows: 6, phys_edge_margin: 0 };
+    const payload = attempt(() => FN.valid_die_ref_payload(base, decision, raw));
+
+    const got = (payload && typeof payload === 'object')
+      ? attempt(() => parseOutcome(payload, c.home_table)) : { kind: `THREW/${payload}` };
+    rec(G, c.name, 'saved_reads_as', c.expect_saved_reads_as, (got || {}).kind);
+    if (c.expect_saved_reads_as === 'ref') {
+      rec(G, c.name, 'saved_table', c.expect_table, (got || {}).table);
+      rec(G, c.name, 'saved_key', c.expect_key, (got || {}).key);
+    }
+    if ('expect_payload_has_key' in c) {
+      // The byte-identity half of INV-M4-1: an undeclared map's payload must not GROW a key.
+      rec(G, c.name, 'payload_has_valid_die_ref_key', c.expect_payload_has_key,
+        Boolean(payload && typeof payload === 'object'
+          && Object.prototype.hasOwnProperty.call(payload, 'valid_die_ref')));
+    }
+    if (c.expect_payload_is_the_same_object) {
+      // `===`, NOT a value comparison, and the difference is the whole assertion. INV-M4-1
+      // says an undeclared, untouched map's payload is byte-identical to `2a9f6c4` — that is
+      // a claim about the OBJECT, not about a rebuild that happens to agree. A deep-equal
+      // check passes against an implementation that returns `{ ...gridMeta }`, which turns
+      // "we did not touch it" into "we reconstructed the same keys in the same order" — a
+      // weaker claim wearing the same green.
+      rec(G, c.name, 'payload_is_the_untouched_grid_meta_object', true, payload === base);
+    }
+    // The rest of the payload is not this path's to touch, on any branch.
+    const strip = (m) => { const o = { ...(m || {}) }; delete o.valid_die_ref; return o; };
+    rec(G, c.name, 'other_keys_preserved', base, strip(payload));
+  }
+
+  // Fixture-inactivity guards. Each names a wrong implementation that survives without it.
+  {
+    const cs = cases(G);
+    const untouched = cs.filter(c => !c.user_edit);
+    // THE DEFECT'S OWN AXIS: two cases identical except for whether the declared table is in
+    // the option list. Lose the pair and the option list can silently decide what gets stored
+    // again, which is exactly what shipped.
+    const crossTable = untouched.filter(c => c.raw && typeof c.raw === 'object' && c.raw.table);
+    const listed = crossTable.filter(c => (c.table_options || []).includes(c.raw.table));
+    const unlisted = crossTable.filter(c => !(c.table_options || []).includes(c.raw.table));
+    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_push_with_UNLISTED_declared_table',
+      true, unlisted.length > 0);
+    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_push_with_LISTED_declared_table',
+      true, listed.length > 0);
+    rec(G, 'QA_NO_GO_axis_active', 'the_pair_agrees_on_the_saved_value',
+      [true], [listed.length > 0 && unlisted.length > 0
+        && listed.every(l => unlisted.some(u => u.expect_saved_reads_as === l.expect_saved_reads_as
+          && u.expect_table === l.expect_table && u.expect_key === l.expect_key))]);
+    rec(G, 'fixture_active', 'has_an_untouched_push', true, untouched.length > 0);
+    rec(G, 'fixture_active', 'has_a_user_edit', true, cs.some(c => c.user_edit));
+    rec(G, 'fixture_active', 'has_an_empty_string_raw', true, cs.some(c => c.raw === ''));
+    rec(G, 'fixture_active', 'has_a_null_raw', true, cs.some(c => c.raw === null));
+    rec(G, 'fixture_active', 'has_an_absent_raw', true, cs.some(c => c.raw === ABSENT));
+    rec(G, 'fixture_active', 'has_a_deliberate_home_table_edit',
+      true, cs.some(c => c.user_edit && c.user_edit.table === '' && c.user_edit.key !== ''));
+    // Lose this and the identity claim degrades to deep-equality without anything saying so:
+    // every remaining assertion in the group is satisfied by an implementation that copies.
+    rec(G, 'fixture_active', 'has_an_object_identity_case',
+      true, cs.some(c => c.expect_payload_is_the_same_object));
+  }
+
+  sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  sandbox.el = {};
+}
+
 // ── Group completeness ─────────────────────────────────────────────────────────────────
 // The failure of an individual vector is caught above. This catches a whole GROUP being
 // added and never wired in, which would be silent — and silence is the failure this harness
@@ -646,10 +1023,13 @@ if (unwired.length) {
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────────────────
-const bad = failures.length + notLanded.length;
+// PENDING is deliberately NOT in this sum — that is the whole concession, and the reason it
+// is safe is `stalePending`, which is. See `symbol_status` in vectors.json.
+const bad = failures.length + notLanded.length + stalePending.length;
 if (process.argv.includes('--json')) {
   console.log(JSON.stringify(
-    { compared, failed: failures.length, failures, notLanded, pinned, unscoreable }, null, 2));
+    { compared, failed: failures.length, failures, notLanded, pending: pendingSymbols,
+      stalePending, unscoredGroups, pinned, unscoreable }, null, 2));
 } else {
   console.log('map seam contract — client side');
   console.log(`  vectors : ${VECTORS}`);
@@ -676,11 +1056,53 @@ if (process.argv.includes('--json')) {
       }
     }
   }
+  if (stalePending.length) {
+    console.log(`\n  STALE PENDING — ${stalePending.length} symbol(s) HAVE LANDED but vectors.json`);
+    console.log('  still calls them `pending`. Their vectors are already being scored (the');
+    console.log('  manifest looks the symbol up rather than trusting the field), so this is a');
+    console.log('  one-word edit: set "status": "live".');
+    console.log('  It is not bookkeeping. While the entry reads `pending`, an ABSENT symbol is');
+    console.log('  forgiven — so a later rename of this now-landed function would be forgiven');
+    console.log('  too, and the axis would go unscored behind a green run.');
+    for (const s of stalePending) console.log(`    ${s.fn}  (${s.file})  role ${s.role}`);
+  }
+  if (pendingSymbols.length) {
+    console.log(`\n  PENDING — ${pendingSymbols.length} symbol(s) not written yet. NOT A FAILURE.`);
+    console.log('  These vectors were authored CONTRACT-FIRST, so having nothing to score yet is');
+    console.log('  the intended condition, not a regression: the implementer is scored against a');
+    console.log('  spec nobody reverse-engineered from their own code. They begin scoring the');
+    console.log('  moment the symbol appears — no promotion needed for that to happen.');
+    console.log('  What IS unscored in the meantime is listed under each entry.');
+    for (const n of pendingSymbols) {
+      console.log(`\n    ${n.fn}  (${n.file})`);
+      console.log(`        owner : ${n.owner}`);
+      if (n.blocks) console.log(`        blocks: ${n.blocks}`);
+      if (n.shape) console.log(`        shape : ${n.shape}`);
+    }
+  }
   if (notLanded.length) {
-    console.log(`\n  NOT LANDED — ${notLanded.length} required symbol(s) absent; those invariants are UNSCORED:`);
+    console.log(`\n  NOT LANDED — ${notLanded.length} required symbol(s) absent; those invariants are UNSCORED.`);
+    console.log('  `required` means OVERDUE, not merely unscheduled — an unscheduled axis is');
+    console.log('  declared `pending` by the Lead PM and reported above instead.');
+    console.log('  This is a CONTRACT failure, not a harness failure. It is not skipped and not');
+    console.log('  xfailed: a contract the code does not meet yet is a red contract, and a');
+    console.log('  comfortable green is how the previous round shipped two HIGH defects to review.');
     for (const n of notLanded) {
-      console.log(`    ${n.fn}  (${n.file})`);
-      if (n.why) console.log(`        ${n.why}`);
+      console.log(`\n    ${n.fn}  (${n.file})`);
+      console.log(`        owner : ${n.owner}`);
+      if (n.blocks) console.log(`        blocks: ${n.blocks}`);
+      if (n.shape) console.log(`        shape : ${n.shape}`);
+    }
+  }
+  // Reported at TOP LEVEL, not nested under NOT LANDED. It used to sit inside that block,
+  // which meant a `pending` symbol would populate this list and print nothing — the blast
+  // radius of the wait would have been invisible in exactly the state that is allowed to be
+  // green. Whichever status blocks a group, the cost of the block is stated.
+  if (unscoredGroups.length) {
+    console.log('\n  GROUPS LEFT UNSCORED by the absent symbols above (wired, blocked — NOT unwired):');
+    for (const g of unscoredGroups) {
+      console.log(`    ${g.group}  [${g.invariant}]`);
+      console.log(`        waiting on: ${g.missing.join(', ')}`);
     }
   }
   if (unscoreable.length) {
