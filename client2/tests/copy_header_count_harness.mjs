@@ -120,10 +120,14 @@ const THEME = {
 };
 
 // functions that exist only in the working tree (the pre-fix baseline has none of them)
+// [F1ⓑ 2026-07-30] `copyTitleText`/`computeNotchCell` were lifted OUT of `copyGridToExcel`
+// so the paste path could run the same two computations instead of writing a second copy of
+// them. They are working-tree-only (the pinned baseline has neither), which is why they
+// belong here rather than in SHARED_FNS.
 const WORK_FNS = ['eachSavableCell', 'classifyUnsavableCells', 'serverCellKeySet',
   'headerSpanFor', 'distributeSpans', 'auxColumnSpans',
   'copyHeaderEnabled', 'mapKeyGroupLabel', 'copyHeaderGroups', 'copyHeaderAuxRows',
-  'colHeaderWord', 'collectPlanCells'];
+  'colHeaderWord', 'collectPlanCells', 'copyTitleText', 'computeNotchCell'];
 
 const SHARED_FNS = [
   'physNum', 'gridDimNum',
@@ -160,7 +164,7 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
   parts.push(constFrom(src, label, 'UNLISTED_VALUE_FILL'));
   // 폭 정책 상수는 이번 라운드에 생겼다 — 베이스라인에는 없으므로 있을 때만 싣는다.
   // 없는데 필요하면 copyGridToExcel이 ReferenceError로 죽고 die()가 그것을 잡는다.
-  ['HDR_COL_PX', 'HDR_PAD_PX', 'HDR_CHAR_PX', 'HDR_MIN_SPAN', 'HDR_MAX_SPAN'].forEach(n => {
+  ['HDR_COL_PX', 'HDR_PAD_PX', 'HDR_CHAR_PX', 'HDR_MIN_SPAN', 'HDR_MAX_SPAN', 'HDR_GAP_COLS'].forEach(n => {
     if (new RegExp('const\\s+' + n + '\\s*=').test(src)) parts.push(constFrom(src, label, n));
   });
   // doe_bands pieces the working tree's copy path imports. HEAD's copy path does not use

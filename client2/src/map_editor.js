@@ -11,7 +11,17 @@ import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCou
 // (1H · MID · TOP) into the exported header. INV-ⓐ-4: the words on screen and the words in
 // the export are ONE list — a second hardcoded copy here is how "MID" on screen becomes
 // "MIDDLE" in the file the factory actually reads.
-import { parseMaterialList, bandsToZones, ZONES, ZONE_LABEL, DOE_COLUMNS } from './doe_bands.js';
+// [F1ⓑ] `columnIdByHeader`/`looksLikeHeader`/`mapPastedGrid`은 **붙여넣기 쪽**이 쓴다. 보조표를
+// 되읽을 때 두 번째 열 판정기를 만들지 않기 위해서다 — 로스터(`IGNORED_HEADERS`, COUNT를
+// IGNORE로 보내는 그 목록)와 이름 매칭이 이미 있고, DOE 패널이 그것으로 붙여넣기를 받는다.
+import {
+  parseMaterialList, bandsToZones, ZONES, ZONE_LABEL, DOE_COLUMNS,
+  columnIdByHeader, looksLikeHeader, mapPastedGrid,
+} from './doe_bands.js';
+// THE ONLY TSV reader in this codebase (client2/src/tsv.js). 엑셀의 인용 규칙(탭·줄바꿈을 품은
+// 셀)을 아는 유일한 구현이고, 그리드 화면과 DOE 패널이 이미 이것을 쓴다. 여기서 `split('\t')`을
+// 손으로 쓰면 이 저장소에 **세 번째** 클립보드 파서가 생긴다.
+import { parseTsv } from './tsv.js';
 // [V1 effort instrument] The ONE collector (client2/src/effort_meter.js, owned by Lead PM).
 // This file counts NOTHING on its own: no local counters, no second session id, no copy of
 // the 1/3/5 weights (those live server-side and are applied at query time). Keystrokes and
@@ -1060,6 +1070,10 @@ function initDOMElements() {
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
+  // [F1ⓑ] 되붙이기. 새 버튼도 새 메뉴 항목도 아니다 — 클립보드는 네이티브 `paste` 이벤트에서만
+  // 읽을 수 있으므로(운영은 평문 HTTP = `navigator.clipboard` 부재) 동선은 Ctrl+V 하나뿐이다.
+  // 순 추가 컨트롤 0개. DOE 패널의 붙여넣기가 먼저 처리한 이벤트는 `defaultPrevented`로 비킨다.
+  document.addEventListener('paste', onMapGridPaste);
 
   // [F1ⓐ] 체크박스 상태의 영속화. **새 저장 기계장치를 만들지 않는다** — 그리드 화면의
   // `Copy Header` 토글이 이미 `localStorage['copyHeader']`에 같은 방식으로 붙어 있고
@@ -5650,6 +5664,10 @@ const HDR_PAD_PX = 12;     // headCellStyle/headValStyle의 좌우 padding 합 (
 const HDR_CHAR_PX = 7;     // 10pt Arial bold 한 글자의 보수적 폭
 const HDR_MIN_SPAN = 2;    // 빈 라벨도 맵 셀 하나로는 내보내지 않는다
 const HDR_MAX_SPAN = 8;    // 문장 길이의 DESC 하나가 표를 인쇄 한 장 밖으로 밀지 않도록
+// [F1ⓑ] 격자와 보조표 사이의 빈 칸. **읽기 쪽이 격자 폭을 이 상수로 되찾는다**
+// (`gridWidth = VALUE의 열 위치 − HDR_GAP_COLS`). 쓰기가 2로 늘고 읽기가 1로 남으면 붙여넣은
+// 격자가 통째로 한 칸 밀린다 — 그래서 지역 상수(`GAP_W`)에서 여기로 올라왔다. 하나여야 한다.
+const HDR_GAP_COLS = 1;
 
 // 이 글자가 잘리지 않으려면 맵 셀 몇 칸이 필요한가.
 function headerSpanFor(text) {
@@ -5700,6 +5718,38 @@ function copyHeaderAuxRows(counts) {
   return rows;
 }
 
+// [F1ⓑ] 이 복사본의 TITLE 문자열. **조립기는 하나다** — 복사가 쓰고 붙여넣기가 대조하므로,
+// 두 곳에서 각자 조립하면 "정체가 같은데 글자가 다르다"로 붙여넣기가 거부된다.
+function copyTitleText() {
+  return [selectedTable || '', getCurrentMapKey() || ''].filter(Boolean).join(' · ');
+}
+
+// [F1ⓑ] 노치 'D' 표식이 놓이는 화면 좌표. 종전에는 `copyGridToExcel` 안에 인라인으로 있었고,
+// 붙여넣기가 **같은 수**를 알아야 해서 여기로 올라왔다(오버레이 규율과 같다 — 두 번째 구현 금지).
+//
+// 🔴 이 좌표는 (회전, 면, bbox)의 함수다. 그래서 붙여넣기에서 이것이 **프레임 지문**이 된다:
+//    복사가 rot 0/front에서 나왔는데 화면이 rot 180이면 노치가 반대쪽 행에 있고, 그 불일치가
+//    "치수는 같은데 프레임이 다르다"(rot 0 vs 180, front vs back)를 잡는 유일한 신호다.
+//    격자 밖으로 나가면 `null`을 돌려준다 — 그때는 지문이 없는 것이지 0이 아니다.
+function computeNotchCell(rotation, side) {
+  const box = getWaferBoundingBox(rotation, side);
+  const centerC = Math.floor((box.minC + box.maxC) / 2);
+  const centerR = Math.floor((box.minR + box.maxR) / 2);
+  const dx = (side === 'front') ? 1 : -1;
+  let screenDx = 0;
+  let screenDy = 0;
+  if (rotation === 0) { screenDx = dx; screenDy = 0; }
+  else if (rotation === 90) { screenDx = 0; screenDy = dx; }
+  else if (rotation === 180) { screenDx = -dx; screenDy = 0; }
+  else if (rotation === 270) { screenDx = 0; screenDy = -dx; }
+
+  if (rotation === 0) return { r: box.maxR + 1, c: centerC + screenDx };       // Bottom notch
+  if (rotation === 180) return { r: box.minR - 1, c: centerC + screenDx };     // Top notch
+  if (rotation === 90) return { r: centerR + screenDy, c: box.minC - 1 };      // Left notch
+  if (rotation === 270) return { r: centerR + screenDy, c: box.maxC + 1 };     // Right notch
+  return { r: -1, c: -1 };
+}
+
 function copyGridToExcel() {
   // 🔴 종전 가드 `if (!gridCells2D)`는 **한 번도 발화하지 않는 죽은 코드**였다:
   //    `gridCells2D`는 `{}`로 초기화되고 `{}`는 truthy다. 격자가 없어도 통과해서 빈 표를
@@ -5735,7 +5785,7 @@ function copyGridToExcel() {
   //  COUNT의 출처. 화면 뱃지·DOE 패널·⚡ Push와 **같은 함수**다(F2 수렴점).
   const auxRows = headerOn ? copyHeaderAuxRows(computeLegendCounts()) : [];
   const groups = headerOn ? copyHeaderGroups() : [];
-  const GAP_W = 1;                                   // 격자와 보조표 사이 한 칸
+  const GAP_W = HDR_GAP_COLS;                        // 격자와 보조표 사이 한 칸 (읽기와 공유)
   const auxHead = [colHeaderWord('value'), 'COUNT', colHeaderWord('stack'), colHeaderWord('desc')];
   // VALUE · COUNT · STACK · DESC 는 이제 **각자의 폭**을 갖는다 (종전에는 넷 다 32px 한 칸).
   const auxColSpans = headerOn ? auxColumnSpans(auxHead, auxRows) : [1, 1, 1, 1];
@@ -5763,7 +5813,10 @@ function copyGridToExcel() {
     ? auxHead
     : (auxRows[i - 1] ? [auxRows[i - 1].value, String(auxRows[i - 1].count), auxRows[i - 1].stack, auxRows[i - 1].desc] : null);
   const auxCells = (i) => {
-    let cells = `<td style="${gapStyle}"></td>`;
+    // 간격 칸의 **개수도** `HDR_GAP_COLS`에서 나온다. 종전에는 여기와 `auxTsv`가 각각 리터럴
+    // 한 칸을 찍었고, 폭 계산(`totalCols`)만 상수를 썼다 — 읽기 쪽이 `VALUE 위치 − 간격`으로
+    // 격자 폭을 되찾으므로, 그 리터럴과 상수가 갈리는 순간 붙여넣은 격자가 통째로 밀린다.
+    let cells = new Array(HDR_GAP_COLS).fill(`<td style="${gapStyle}"></td>`).join('');
     const fields = auxFields(i);
     for (let k = 0; k < 4; k++) {
       const span = ` colspan="${auxColSpans[k]}"`;
@@ -5777,7 +5830,7 @@ function copyGridToExcel() {
   // 그래야 TSV의 열 수가 HTML의 colspan 합과 **같아진다**.
   const auxTsv = (i) => {
     const fields = auxFields(i);
-    const out = [''];                                  // 격자와 보조표 사이 한 칸
+    const out = new Array(HDR_GAP_COLS).fill('');      // 격자와 보조표 사이 (읽기와 공유하는 상수)
     for (let k = 0; k < 4; k++) {
       out.push(fields ? fields[k] : '');
       for (let j = 1; j < auxColSpans[k]; j++) out.push('');
@@ -5793,8 +5846,7 @@ function copyGridToExcel() {
     // TITLE = 이 복사본이 **어느 맵인지**. 앱이 이미 로드 토스트에서 쓰는 표기와 같은 식이다
     // (`${selectedTable} · ${mapKey}`) — 인쇄물에 붙는 이름과 화면이 부르는 이름을 갈라 놓지
     // 않기 위해서다. 맵 키는 `getCurrentMapKey`(7b canonical)에서만 나온다.
-    const titleKey = getCurrentMapKey() || '';
-    const title = [selectedTable || '', titleKey].filter(Boolean).join(' · ');
+    const title = copyTitleText();
     html += `<tr><td colspan="${totalCols}" style="border: none; font-size: 13pt; font-weight: bold;`
       + ` text-align: left; padding: 4px 2px;">${escapeHtmlAttr(title)}</td></tr>`;
     // 🔴 여기가 사용자가 본 그 줄이다. 종전에는 칸마다 `<td>` 하나 = 맵 셀 한 칸(32px)이라
@@ -5826,39 +5878,10 @@ function copyGridToExcel() {
     return (yiq >= 128) ? '#000000' : '#ffffff';
   };
 
-  const box = getWaferBoundingBox(currentRotation, currentSide);
-  const centerC = Math.floor((box.minC + box.maxC) / 2);
-  const centerR = Math.floor((box.minR + box.maxR) / 2);
-
-  const dx = (currentSide === 'front') ? 1 : -1;
-  let screenDx = 0;
-  let screenDy = 0;
-
-  if (currentRotation === 0) { screenDx = dx; screenDy = 0; }
-  else if (currentRotation === 90) { screenDx = 0; screenDy = dx; }
-  else if (currentRotation === 180) { screenDx = -dx; screenDy = 0; }
-  else if (currentRotation === 270) { screenDx = 0; screenDy = -dx; }
-
-  let notchR = -1;
-  let notchC = -1;
-
-  if (currentRotation === 0) {
-    // Bottom Notch: 1 row below box.maxR
-    notchR = box.maxR + 1;
-    notchC = centerC + screenDx;
-  } else if (currentRotation === 180) {
-    // Top Notch: 1 row above box.minR
-    notchR = box.minR - 1;
-    notchC = centerC + screenDx;
-  } else if (currentRotation === 90) {
-    // Left Notch: 1 col left of box.minC
-    notchC = box.minC - 1;
-    notchR = centerR + screenDy;
-  } else if (currentRotation === 270) {
-    // Right Notch: 1 col right of box.maxC
-    notchC = box.maxC + 1;
-    notchR = centerR + screenDy;
-  }
+  // 노치 좌표는 `computeNotchCell` 하나에서 나온다 — 붙여넣기가 프레임 지문으로 같은 수를 쓴다.
+  const notch = computeNotchCell(currentRotation, currentSide);
+  const notchR = notch.r;
+  const notchC = notch.c;
 
   for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
@@ -5956,6 +5979,335 @@ function copyGridToExcel() {
   }
   // 정직한 실패. 조용히 성공한 척하면 사용자는 낡은 클립보드 내용을 엑셀에 붙인다.
   showToast('클립보드에 쓰지 못했습니다 — 브라우저가 복사를 막았습니다. 표를 클릭한 뒤 다시 시도하십시오.', 'error');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [F1ⓑ] 회사 양식 되붙이기 — 왕복의 나머지 절반
+//
+// INV-F1ⓑ-1: COPY HEADER MODE로 복사한 맵을 그대로 되붙이면 격자가 **셀 하나까지 같다**
+//             (빈 칸 포함). 아래의 모든 규칙은 이 한 문장을 정직하게 만들기 위해 있다.
+//
+// ── 왜 `text/plain`을 읽는가 (rich vs plain, 명시적 결정) ─────────────────────────
+// 복사는 `text/html`과 `text/plain`을 **둘 다** 싣는다. 읽는 쪽은 **평문**이다:
+//   ① 이 저장소의 TSV 리더는 `tsv.js`의 `parseTsv` **하나뿐**이고 엑셀의 인용 규칙(탭·줄바꿈을
+//      품은 셀)을 아는 것도 그것뿐이다. HTML을 읽으려면 표 파서를 새로 써야 하는데, 그것이
+//      곧 **두 번째 격자 파서**다 — `compose_map_id`가 세 개였을 때와 같은 형태.
+//   ② 사용자가 실제로 되붙이는 것은 **엑셀을 거친 표**다. 엑셀이 내보내는 HTML은 mso 조건부
+//      주석·중첩 표·rowspan이 섞인 넓은 표면이고, 우리가 쓴 colspan과 같다는 보장이 없다.
+//   ③ 대가는 명시한다: 평문에는 병합이 없으므로 **colspan 구조는 "글자 뒤의 빈 칸"이라는
+//      관례로만** 남는다. 그래서 아래 INV-F1ⓑ-3이 부수적 규칙이 아니라 **핵심 규칙**이다.
+//   (`navigator.clipboard`는 운영에서 `undefined`다 — 읽기도 `paste` 이벤트의
+//    `e.clipboardData`뿐이고, 그래서 붙여넣기는 **버튼이 될 수 없다**. Ctrl+V가 유일한 동선이다.)
+//
+// INV-F1ⓑ-3: **머리 띠의 빈 칸은 "왼쪽 칸의 연장"이지 "빈 열"이 아니다.**
+//   보조표는 `VALUE(3열) COUNT(2열) STACK(2열) DESC(6열)`처럼 열마다 폭이 다르고, 평문에서는
+//   `VALUE ␣ ␣ COUNT ␣ STACK ␣ DESC ␣ ␣ ␣ ␣ ␣`로 도착한다. 데이터 줄도 **같은 자리**에 놓인다.
+//   그래서 읽기는 **머리줄에서 배운 열 위치**로만 읽는다. 빈 칸을 걷어내고 압축하면
+//   `['F','12','','FAIL']`이 `['F','12','FAIL']`이 되어 **DESC가 STACK으로 들어간다** — 화면은
+//   멀쩡하고 값만 틀리는, 이 도메인의 그 결함이다.
+//
+// 🔴 상단 그룹 띠(`Base | 4B12 | 1H | ... `)는 **읽지 않는다.** 그룹 칸의 값은 비어 있을 수
+//    있고(그 구역에 자재가 없는 맵), 평문에서 "빈 칸"과 "연장"은 구별되지 않는다 — 폭을 복원하려면
+//    글자를 알아야 하고 글자를 읽으려면 폭을 알아야 하는 순환이다. 그래서 정체 확인은 **TITLE
+//    한 칸**(항상 첫 열)으로 하고, 그룹 띠는 그리기로만 남긴다. 읽을 수 없는 것을 읽은 척하지 않는다.
+//
+// INV-F1ⓑ-4: **서버에 아무것도 쓰지 않는다.** 붙여넣기는 화면을 만들 뿐이고 저장은 ⚡ Push다.
+//    새 쓰기 경로도 자동 저장도 없다(규율: 읽기 무마찰 · 쓰기 1회 확인).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const pasteBlank = (f) => String(f === null || f === undefined ? '' : f).trim() === '';
+const pasteAt = (line, i) => {
+  const v = (line || [])[i];
+  return (v === null || v === undefined) ? '' : String(v);
+};
+
+// 이 줄이 보조표의 **머리줄**인가. 판정기는 새로 만들지 않는다 — `columnIdByHeader`(로스터
+// 포함)와 `looksLikeHeader`가 DOE 패널 붙여넣기에서 쓰는 그 함수들이고, `COUNT`를 `IGNORE`로
+// 보내는 것도 그 로스터다(INV-F1ⓑ-2: COUNT는 알아보되 **버린다** — 칠한 셀 수는 격자에서 센다).
+//
+// 오른쪽에서 왼쪽으로 훑는다: 보조표는 줄의 **꼬리**에 있고, 왼쪽의 격자 셀(`1`·`F` 같은 값)은
+// 아는 열 이름이 아니므로 거기서 멈춘다. 중간의 빈 칸은 병합의 연장이라 건너뛴다.
+function auxHeaderInLine(line) {
+  const width = (line || []).length;
+  const positions = [];
+  for (let i = width - 1; i >= 0; i--) {
+    const f = pasteAt(line, i);
+    if (pasteBlank(f)) continue;                    // 병합 연장 · 꼬리 채움
+    if (columnIdByHeader(f) === null) break;        // 격자 셀 — 보조표는 여기서 끝난다
+    positions.unshift(i);
+  }
+  if (positions.length < 2) return null;
+  const words = positions.map(i => pasteAt(line, i).trim());
+  if (!looksLikeHeader(words)) return null;
+  const ids = words.map(columnIdByHeader);
+  // 🔴 `VALUE`가 없으면 보조표가 아니다. 이 조건이 없으면 **상단 그룹 띠**가 머리줄로 오인된다:
+  //    자재가 없는 맵에서는 그 줄의 마지막 비어 있지 않은 칸들이 라벨 `1H`·`MID`·`TOP`이고,
+  //    셋 다 `DOE_COLUMNS`의 헤더 단어라 `looksLikeHeader`를 그대로 통과한다. 그러면 격자 폭이
+  //    그룹 띠에서 계산돼 **표 전체가 어긋난다**.
+  if (ids.indexOf('value') < 0) return null;
+  return { positions, words, ids };
+}
+
+/**
+ * [F1ⓑ] 회사 양식 블록을 읽는다. **순수 함수** — DOM도 모듈 상태도 읽지 않는다.
+ *
+ * 돌려주는 것:
+ *   ok / reason      읽을 수 있었나, 아니면 왜 못 읽었나
+ *   headerMode       상단 헤더 + 보조표가 실린 복사본인가
+ *   title            `테이블 · 맵키` (헤더가 없으면 null — "미상"이지 빈 문자열이 아니다)
+ *   gridWidth        격자의 열 수. **보조표 `VALUE`의 열 위치에서 간격 한 칸을 뺀 값**이고,
+ *                    이 한 줄이 INV-F1ⓑ-3의 핵심이다 — 병합을 잘못 읽으면 여기가 틀리고
+ *                    격자 전체가 조용히 밀린다.
+ *   rows             격자 영역만 잘라낸 줄들(각 줄은 gridWidth로 패딩). 프레임 대조는 호출부.
+ *   auxWords/auxRecords  보조표 머리줄 단어와 데이터 줄들 — **머리줄에서 배운 열 위치로** 읽는다.
+ */
+function readCompanyMapBlock(text) {
+  // 빈 줄을 버리지 않는다(`dropBlankLines` 없음): 값이 하나도 없는 격자 줄은 **자리를 지키는
+  // 데이터**이고, 버리면 그 아래 줄이 통째로 위로 올라온다.
+  const lines = parseTsv(text, { trimCells: true });
+  if (lines.length === 0) return { ok: false, reason: '클립보드가 비어 있습니다.' };
+
+  let auxLine = -1;
+  let aux = null;
+  for (let i = 0; i < lines.length; i++) {
+    const hit = auxHeaderInLine(lines[i]);
+    if (hit) { auxLine = i; aux = hit; break; }
+  }
+
+  let gridStart = 0;
+  let gridWidth = 0;
+  let title = null;
+  const headerMode = auxLine >= 0;
+
+  if (headerMode) {
+    // 보조표 머리줄은 **격자 0행에 올라탄다**(`auxFields(0) = auxHead`). 그래서 그 줄이 곧
+    // 격자의 첫 줄이고, 그 위 두 줄이 TITLE과 그룹 띠다.
+    if (auxLine < 2) {
+      return { ok: false, reason: '표의 윗줄(제목·그룹 머리)이 없습니다 — 표 전체를 복사해 주십시오.' };
+    }
+    gridStart = auxLine;
+    gridWidth = aux.positions[0] - HDR_GAP_COLS;
+    if (gridWidth <= 0) {
+      return { ok: false, reason: '격자 없이 보조표만 붙여넣었습니다 — DOE 표만 넣으려면 오른쪽 DOE 패널에 붙여넣으십시오.' };
+    }
+    title = pasteAt(lines[auxLine - 2], 0).trim();
+  } else {
+    // 헤더 없이 격자만 복사한 경우. 같은 코드가 그대로 처리하고, **정체는 미상으로 남는다**.
+    gridWidth = lines.reduce((m, l) => Math.max(m, (l || []).length), 0);
+    if (gridWidth <= 0) return { ok: false, reason: '읽을 수 있는 격자가 없습니다.' };
+  }
+
+  const rows = [];
+  for (let i = gridStart; i < lines.length; i++) {
+    const out = [];
+    for (let c = 0; c < gridWidth; c++) out.push(pasteAt(lines[i], c).trim());
+    rows.push(out);
+  }
+
+  let auxRecords = null;
+  if (headerMode) {
+    auxRecords = [];
+    const valueSlot = aux.ids.indexOf('value');
+    for (let i = gridStart + 1; i < lines.length; i++) {
+      // 🔴 **머리줄에서 배운 위치로** 읽는다. 비어 있지 않은 칸을 모으는(압축) 읽기는
+      //    STACK이 빈 줄에서 DESC를 STACK 자리로 밀어 넣는다 — INV-F1ⓑ-3.
+      const rec = aux.positions.map(p => pasteAt(lines[i], p).trim());
+      if (pasteBlank(rec[valueSlot])) break;   // 보조표가 끝났다(그 아래는 빈 칸 채움)
+      auxRecords.push(rec);
+    }
+  }
+
+  return {
+    ok: true, reason: '', headerMode, title, gridWidth, rows,
+    auxWords: aux ? aux.words.slice() : null,
+    auxRecords,
+  };
+}
+
+/**
+ * [F1ⓑ] 읽은 블록이 **지금 이 화면의 프레임**에 놓일 수 있는가. 순수 함수 —
+ * `frame = { visualCols, visualRows, title, notch }`만 받는다.
+ *
+ * 🔴 최선 노력 배치를 하지 않는다. 규격이 안 맞으면 **사유를 붙여 거부**한다. 밀린 격자도
+ *    여전히 유효한 격자로 보이기 때문에, 여기서 통과시키면 아무도 못 잡는다.
+ */
+function checkPasteAgainstFrame(parsed, frame) {
+  if (!parsed || !parsed.ok) return { ok: false, reason: parsed ? parsed.reason : '읽지 못했습니다.' };
+
+  if (parsed.gridWidth !== frame.visualCols) {
+    return { ok: false, reason: `열 수가 다릅니다 — 복사본 ${parsed.gridWidth}열, 현재 화면 ${frame.visualCols}열. `
+      + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.' };
+  }
+  if (parsed.rows.length < frame.visualRows) {
+    return { ok: false, reason: `행 수가 다릅니다 — 복사본 ${parsed.rows.length}행, 현재 화면 ${frame.visualRows}행. `
+      + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.' };
+  }
+  for (let i = frame.visualRows; i < parsed.rows.length; i++) {
+    if (parsed.rows[i].some(f => f !== '')) {
+      return { ok: false, reason: `복사본의 격자가 현재 화면보다 깁니다 — ${i + 1}번째 행에 값이 있는데 `
+        + `현재 격자는 ${frame.visualRows}행뿐입니다.` };
+    }
+  }
+  // 정체. TITLE이 없는 복사본(헤더 미포함)은 "다르다"가 아니라 **미상**이므로 통과시키되,
+  // 호출부가 확인창에서 그 사실을 말한다.
+  if (parsed.title !== null && parsed.title !== '' && frame.title && parsed.title !== frame.title) {
+    return { ok: false, reason: `다른 맵의 복사본입니다 — 복사본 「${parsed.title}」, 현재 화면 「${frame.title}」.` };
+  }
+  // 프레임 지문. 노치 'D'의 자리는 (회전, 면, bbox)의 함수라, 치수가 같은 채로 프레임만 바뀐
+  // 경우(rot 0↔180, front↔back)를 잡는 **유일한** 신호다. 격자 밖이면 지문이 없다 — 미상 ≠ 0.
+  const n = frame.notch;
+  const notchOnGrid = !!n && n.r >= 0 && n.r < frame.visualRows && n.c >= 0 && n.c < parsed.gridWidth;
+  if (notchOnGrid && parsed.rows[n.r][n.c] !== 'D') {
+    return { ok: false, reason: `복사할 때의 회전·면이 지금과 다릅니다 — 노치 표식(D)이 `
+      + `${n.r + 1}행 ${n.c + 1}열에 있어야 하는데 「${parsed.rows[n.r][n.c] || '빈 칸'}」입니다.` };
+  }
+  return { ok: true, reason: '', notchVerified: notchOnGrid };
+}
+
+// [F1ⓑ] 격자 되쓰기. **빈 칸도 쓴다** — 왕복 항등은 "값이 있는 셀을 옮긴다"가 아니라
+// "격자가 같아진다"이므로, 복사본에서 비어 있던 셀은 화면에서도 비워야 한다.
+//
+// 🔴 **노치 'D'는 데이터가 아니라 그림이다.** 복사가 빈 셀에 찍어 넣은 표식이라(`val === ''`일
+//    때만 찍힌다), 그대로 되쓰면 원래 없던 셀 값이 하나 생긴다. 그 자리는 웨이퍼 bbox 밖이라
+//    `inside`가 거짓 → 화면에 색도 안 나오고 Push가 직렬화하지도 않는데 대비 관문의 분모에는
+//    들어간다 = **붙여넣기 한 번이 그 맵의 Push를 영구 거절 상태로 만든다**(Fill All과 같은 계급).
+//    그래서 알아보고 버린다 — `COUNT`와 같은 처리다.
+function applyPastedGridRows(parsed, frame) {
+  const stats = { set: 0, cleared: 0, unchanged: 0, blocked: 0, noCell: 0, notchDropped: 0 };
+  const n = frame.notch;
+  for (let r = 0; r < frame.visualRows; r++) {
+    for (let c = 0; c < frame.visualCols; c++) {
+      const cell = gridCells2D[r] ? gridCells2D[r][c] : null;
+      if (!cell) { stats.noCell++; continue; }      // 렌더가 만들지 않은 셀 — 저장 대상도 아니다
+      let v = parsed.rows[r][c];
+      if (n && r === n.r && c === n.c && v === 'D') { v = ''; stats.notchDropped++; }
+      const cur = gridData[cell.key] || '';
+      if (v === cur) { stats.unchanged++; continue; }
+      // 편집 금지 좌표의 단일 관문. 페인팅·지우기가 쓰는 그것과 같은 함수다.
+      if (isProtectedFCell(cell.key)) { stats.blocked++; continue; }
+      gridData[cell.key] = v;
+      if (v === '') stats.cleared++; else stats.set++;
+    }
+  }
+  return stats;
+}
+
+// [F1ⓑ] 확인창이 말하는 수. **실제로 놓일 셀 수**여야 한다 — 노치 'D'는 그림이라 버려지므로
+// 여기서 빼지 않으면 "178칸"이라 말하고 177칸을 놓는다(실측 2026-07-30, 실맵 4B12). 작지만
+// 확인창의 수를 못 믿게 만드는 종류이고, 「화면 34 · DB 33」과 같은 계급이다.
+function pastedCellCount(parsed, frame) {
+  const n = frame.notch;
+  const drawn = (n && n.r >= 0 && n.r < frame.visualRows && n.c >= 0 && n.c < parsed.gridWidth
+    && parsed.rows[n.r][n.c] === 'D') ? 1 : 0;
+  return parsed.rows.slice(0, frame.visualRows)
+    .reduce((sum, row) => sum + row.filter(v => v !== '').length, 0) - drawn;
+}
+
+// [F1ⓑ] 보조표 → DOE 행. **패치 적용은 legend 변조 관문(`updateLegendRowForPanel`)을 지난다** —
+// 이 파일에 legend를 직접 만지는 두 번째 경로를 만들지 않기 위해서다.
+//
+// 🔴 정체는 **VALUE**다. DOE 패널의 붙여넣기는 "포커스한 행부터 순서대로"라 VALUE가 개명이지만,
+//    이 양식은 **값으로 주소를 매긴 표**라 VALUE가 키다. 그래서 개명은 하지 않는다 —
+//    라벨을 키로 삼으면 한 글자 수정에 하위 데이터가 고아가 된다는 그 규율의 반대 방향이다.
+// 🔴 **지우지 않는다.** 복사본에 없는 값은 "삭제하라"가 아니라 "이 복사본이 말하지 않은 것"이다.
+//    삭제는 DOE 패널의 삭제 버튼이 하고, 그것만이 Push에서 registry 행을 없앨 권한을 갖는다.
+// COLOR는 이 양식에 없다 — 기존 값은 자기 색을 유지하고, 새 값은 공용 팔레트 경로가 배정한다.
+function applyPastedAuxRows(parsed) {
+  const stats = { updated: 0, added: 0, skipped: 0, countsIgnored: 0 };
+  if (!parsed.auxRecords || parsed.auxRecords.length === 0) return stats;
+  // 열 판정·COUNT 폐기는 전부 `mapPastedGrid`가 한다(머리줄이 있으므로 이름 매칭 경로).
+  const grid = [parsed.auxWords.slice()].concat(parsed.auxRecords.map(r => r.slice()));
+  const mapped = mapPastedGrid(grid, 'value');
+  stats.countsIgnored = (parsed.auxWords || []).filter(w => columnIdByHeader(w) === 'IGNORE').length;
+
+  mapped.rows.forEach(patch => {
+    const name = String(patch.value === undefined ? '' : patch.value).trim();
+    if (name === '') { stats.skipped++; return; }
+    if (!legend.some(l => String(l.value) === name)) {
+      // 새 값. 자동 추가 경로는 하나뿐이다(선언된 default_legend 행 → 공용 팔레트 규칙).
+      if (autoAddLegendValue(name, patch.desc !== undefined ? String(patch.desc).trim() : '')) {
+        stats.added++;
+        persistLegend();
+      }
+    }
+    const rest = {};
+    if (patch.desc !== undefined) rest.desc = String(patch.desc).trim();
+    if (patch.stack !== undefined) rest.stack = String(patch.stack).trim();
+    if (Object.keys(rest).length === 0) return;
+    const res = updateLegendRowForPanel(name, rest);
+    if (res && res.ok) stats.updated++; else stats.skipped++;
+  });
+  return stats;
+}
+
+// [F1ⓑ] 붙여넣기 동선. **새 컨트롤은 0개다** — 그리고 그것은 선택이 아니라 물리적 제약이다:
+// 버튼에서는 클립보드를 읽을 수 없고(`navigator.clipboard`가 운영에서 `undefined`,
+// `execCommand('paste')`는 웹 콘텐츠에서 차단), 네이티브 `paste` 이벤트만 내용을 준다.
+function onMapGridPaste(e) {
+  // DOE 패널(`transfer_plan.onPlanPaste`)이 먼저 처리한 붙여넣기는 그쪽 것이다.
+  if (e.defaultPrevented) return;
+  // 입력 칸 안의 붙여넣기는 그 칸의 것이다(그리드 화면의 paste 핸들러와 같은 가드).
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.hasAttribute('contenteditable'))) return;
+
+  const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+  if (!text || text.indexOf('\t') < 0) return;   // 한 칸짜리 붙여넣기는 가로채지 않는다
+
+  const parsed = readCompanyMapBlock(text);
+  const { visualCols, visualRows } = getVisualGridDimensions();
+  const frame = {
+    visualCols, visualRows,
+    title: copyTitleText(),
+    notch: computeNotchCell(currentRotation, currentSide),
+  };
+  const verdict = checkPasteAgainstFrame(parsed, frame);
+  if (!verdict.ok) {
+    // 격자 모양이 전혀 아닌 클립보드(다른 화면에서 긁어온 표)는 조용히 지나간다 —
+    // 여기서 토스트를 띄우면 아무 붙여넣기에나 경고가 뜬다.
+    if (parsed.ok) {
+      e.preventDefault();
+      showToast(`붙여넣기를 취소했습니다 — ${verdict.reason}`, 'error');
+    }
+    return;
+  }
+  e.preventDefault();
+
+  const painted = pastedCellCount(parsed, frame);
+  const auxCount = parsed.auxRecords ? parsed.auxRecords.length : 0;
+  // 쓰기 1회 확인. 화면을 통째로 갈아 끼우므로 [🧹 Clear Grid]·[🎨 Fill All]과 같은 급이고,
+  // 확인창은 **하나**다. 서버에 아무것도 안 나간다는 것을 여기서 말한다(INV-F1ⓑ-4).
+  const lines = [
+    parsed.title ? `「${parsed.title}」 복사본을 붙여넣습니다.` : '표 머리글이 없어 어느 맵의 복사본인지 확인하지 못했습니다.',
+    `격자 ${visualCols}×${visualRows} 전체를 복사본으로 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비웁니다).`,
+    auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용합니다 — COUNT는 격자에서 다시 셉니다.` : '',
+    verdict.notchVerified ? '' : '⚠ 노치 표식이 격자 밖이라 회전·면은 대조하지 못했습니다.',
+    '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
+  ].filter(Boolean);
+  if (!confirm(`${lines.join('\n')}\n\n계속하시겠습니까?`)) return;
+
+  const gridStats = applyPastedGridRows(parsed, frame);
+  const auxStats = applyPastedAuxRows(parsed);
+
+  renderLegendTable();
+  updateLegendCounts();
+  renderGridCanvas();
+  scheduleCellDraft();
+
+  // 저장되지 않을 셀은 **보고한다** — 조용히 버리지도, 조용히 남기지도 않는다(INV-F1ⓑ-5).
+  // 분류기는 새로 만들지 않는다: `classifyUnsavableCells`가 Push 관문이 쓰는 그것이고,
+  // 「서버가 보낸 적 없음이 증명된」 키만 stray로 갈라 준다.
+  const un = classifyUnsavableCells();
+  const notes = [];
+  if (gridStats.blocked > 0) notes.push(`잠금 셀 ${gridStats.blocked}칸은 그대로 두었습니다`);
+  if (un.offGrid.length > 0) notes.push(`격자 밖 ${un.offGrid.length}칸`);
+  if (un.outsideRetained.length > 0) notes.push(`유효 다이 밖 ${un.outsideRetained.length}칸(서버 출처 미확인 — 남겨 둠)`);
+  if (un.outsideStray.length > 0) notes.push(`유효 다이 밖 ${un.outsideStray.length}칸(서버에 없던 셀)`);
+  showToast(`붙여넣기 완료 — ${gridStats.set}칸 입력 · ${gridStats.cleared}칸 비움`
+    + `${auxStats.updated + auxStats.added > 0 ? ` · DOE ${auxStats.updated + auxStats.added}행` : ''}`
+    + `${notes.length ? ` (${notes.join(' · ')})` : ''}`,
+    notes.length ? 'warning' : 'success');
+  console.debug('[map] pasted company block', { gridStats, auxStats, unsavable: {
+    offGrid: un.offGrid.length, outsideRetained: un.outsideRetained.length, outsideStray: un.outsideStray.length } });
 }
 
 // ====================================================
