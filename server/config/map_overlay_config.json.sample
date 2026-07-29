@@ -52,6 +52,35 @@
     "split",
     "doe"
   ],
+  "__preset_routing_comment": "[F5] 맵을 열 때 어떤 물리 규격(프리셋)으로 열지의 선언. 키는 맵 테이블명이고, 아래 __example_ 접두 키는 어떤 테이블에도 매칭되지 않는 예시다 — 당신의 실제 테이블명으로 복사해 쓰라. 해석 순서가 계약이다: ①product_lookup(제품코드 조회 테이블) → product_presets → 프리셋, ②rules(순서 있는 텍스트 패턴, 첫 매치 승리) → 프리셋, ③둘 다 없으면 라우팅 없음(지금 동작 그대로 — 아무 프리셋도 고르지 않는다). product_lookup은 **선택**이며 미선언이 정상 구성이다(조회 테이블은 운영에만 있다). 조회가 빗나가도 정상이며 조용히 ②로 넘어간다. preset 값은 maps.json의 프리셋 키 또는 name(키 우선). rules[].match는 필수이며 equals|prefix|suffix|contains|regex 중 하나(대소문자 구분). lot_key_part 생략 시 이 테이블 맵 키의 첫 키 컬럼을 lot으로 본다. **저장된 규격(wafer_map_metadata) > 라우팅 > 패널**이 절대 순서라, 이미 등록된 맵에는 라우팅이 적용되지 않는다. 절차: docs/guide/config/map_overlay_config.md",
+  "preset_routing": {
+    "__example_dt_map": {
+      "lot_key_part": "lot",
+      "product_lookup": {
+        "table": "product_master",
+        "key_column": "lot",
+        "value_column": "product_code"
+      },
+      "product_presets": {
+        "AB12": "CORE",
+        "CD34": "BASE"
+      },
+      "rules": [
+        {
+          "name": "tape lots",
+          "match": "prefix",
+          "value": "T",
+          "preset": "TAPE"
+        },
+        {
+          "name": "core lots",
+          "match": "regex",
+          "value": "^C[0-9]{2}",
+          "preset": "CORE"
+        }
+      ]
+    }
+  },
   "paint_lock": {
     "*": {
       "enabled": true,

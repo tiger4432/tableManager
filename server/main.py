@@ -3475,6 +3475,7 @@ def get_bonding_plan_core_summary(
 # 범용 맵 오버레이 (S1') — 맵 인프라(계획 전용 아님). 경계 계약 — 총괄 고정
 # -----------------------------------------------------------------------------
 import map_overlay as map_overlay_module
+import map_preset_routing as map_preset_routing_module
 
 @app.get("/api/maps/overlay")
 def get_map_overlay(
@@ -3540,6 +3541,37 @@ def get_map_paint_rules(table: Optional[str] = None):
         "default_legend": map_overlay_module.get_default_legend(config),
         "value_column_candidates": map_overlay_module.resolve_value_column_candidates(config),
     }
+
+@app.get("/api/maps/preset-routing")
+def get_map_preset_routing(
+    table: str,
+    map_key: str,
+    db: Session = Depends(get_db),
+):
+    """[F5] 이 맵을 **어떤 물리 규격(프리셋)으로 열지**의 선언된 답.
+
+    해석 순서가 계약이다 — ①제품코드 조회 테이블 → ②텍스트 패턴 규칙 → ③라우팅 없음.
+    ①의 선언이 없거나 조회가 빗나가는 것은 **정상**이며(운영 테이블은 이 환경에 없고,
+    있어도 불완전하다) 조용히 ②로 넘어간다. 자세한 규율은 `map_preset_routing` 모듈 참조.
+
+    - status: `ok` | `not_declared` | `no_match` | `meta_present` | `unresolvable`
+      | `preset_missing`. **`ok`가 아니면 `preset_key`/`preset`은 항상 null**이고
+      클라는 지금 동작을 그대로 유지한다(추측한 프리셋을 주지 않는다 — 틀린 규격은
+      `inside`를, 따라서 저장 가능 집합을 바꾼다).
+    - `meta_present`: 이 맵은 `wafer_map_metadata`에 규격이 이미 등록돼 있다.
+      **저장된 규격 > 라우팅 > 패널**이 절대 순서이므로 서버가 여기서 거절한다.
+    - `matched_by`: {stage, rule, lot, product_code} — 어느 규칙이 왜 걸렸는지(클라 표시용).
+    - `lookup`: {declared, status, product_code} — ①의 결과. 미선언/빗나감은 경고가
+      아니라 이 필드로만 드러난다(운영 선언을 검증하는 유일한 창).
+    """
+    config = map_overlay_module.load_overlay_config()
+    presets = load_maps_config().get("presets", {})
+    try:
+        return map_preset_routing_module.resolve_preset_routing(
+            db, config, table, map_key, presets)
+    except Exception as e:
+        logger.error(f"[PresetRouting] resolution failed ({table}/{map_key}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to resolve preset routing.")
 
 # [M4 phase 1] 유효 다이(`valid_die_ref`)에 **새 REST 경로는 추가하지 않았다.**
 # 클라 half는 이미 있는 셋(`/tables/{t}/data` + `/api/maps/paint-rules`의 binding +
