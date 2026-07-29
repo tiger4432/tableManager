@@ -65,6 +65,16 @@
   --canvas-wafer-edge: rgba(31, 39, 51, 0.7);
   --canvas-wm-front: rgba(26, 102, 208, 0.09);
   --canvas-wm-back: rgba(138, 90, 0, 0.09);
+  /* Canvas-only danger wash (erase preview / origin highlight). This MUST stay
+     translucent: map_editor.js paints it straight onto the canvas over live map
+     cells, so an opaque value hides the map instead of tinting it. The general
+     --danger-weak cannot be used here — in light it is opaque (#fdecec), which
+     is correct for DOM backgrounds (12+ CSS rules depend on that) but turned the
+     1-day right-drag erase preview into a solid white-pink box that covered the
+     whole map. Dark went unnoticed because its --danger-weak already had alpha.
+     Value = --danger at 0.15 alpha, i.e. identical in meaning to the JS fallback
+     `rgba(194, 47, 47, 0.15)`. */
+  --canvas-danger-fill: rgba(194, 47, 47, 0.15);
 }
 
 /* ── 값 세트 2: Dark (진한 다크 — 지면 L* 9.2, 탈네온 유지) ──
@@ -117,6 +127,9 @@
   --canvas-wafer-edge: rgba(255, 255, 255, 0.85);
   --canvas-wm-front: rgba(84, 194, 245, 0.14);
   --canvas-wm-back: rgba(246, 172, 67, 0.14);
+  /* Same alpha the dark --danger-weak already had, so the dark canvas keeps the
+     exact appearance it has today — only light is being fixed. */
+  --canvas-danger-fill: rgba(248, 126, 126, 0.14);
 }
 
 /* ── 테마 무관 공통 ───────────────────────────────────────── */
@@ -139,6 +152,11 @@
   --color-overwrite: var(--overwrite);
   --color-overwrite-bg: var(--overwrite-weak);
   --glass-shadow: var(--shadow-card);
+  /* transfer_plan.css referenced --bg-panel (never defined anywhere), so
+     `background: var(--bg-panel)` was invalid-at-computed-value-time and the DOE
+     panes / buttons / material chips fell back to transparent. Alias it to the
+     same surface --panel-bg points at. */
+  --bg-panel: var(--bg-surface);
   /* admin 레거시 별칭 */
   --bg-color: var(--bg-app);
   --panel-bg: var(--bg-surface);

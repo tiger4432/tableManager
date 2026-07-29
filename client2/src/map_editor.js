@@ -2228,7 +2228,10 @@ function rebuildThemeColorCache() {
     success: v('--success', '#177245'),
     warning: v('--warning', '#8a5a00'),
     danger: v('--danger', '#c22f2f'),
-    dangerWeak: v('--danger-weak', 'rgba(194, 47, 47, 0.15)'),
+    // 캔버스 전용 반투명 토큰. 범용 `--danger-weak`는 라이트에서 #fdecec(불투명)이라
+    // erase 프리뷰(:2522)와 원점 하이라이트(:2425)가 맵을 흰 박스로 덮었다 — 다크에서만
+    // 반투명이라 여태 안 잡혔다. CSS 배경 16곳이 쓰는 범용 토큰은 건드리지 않는다.
+    dangerWeak: v('--canvas-danger-fill', 'rgba(194, 47, 47, 0.15)'),
     rangeFill: v('--range-fill', 'rgba(26, 102, 208, 0.14)'),
     surface: v('--bg-surface', '#ffffff'),
   };
@@ -2237,6 +2240,43 @@ function rebuildThemeColorCache() {
 function getThemeColors() {
   if (!themeColors) rebuildThemeColorCache();
   return themeColors;
+}
+
+// 범례에 없는 값으로 칠해진 셀의 색. 페인팅은 범례에 없는 값도 받아들이므로(붙여넣기·자동
+// 페인팅·개명 잔여) 이 경우는 실제로 생긴다.
+const UNLISTED_VALUE_FILL = '#10b981';
+
+// 🔴 셀 채움색의 **유일한 판정**. 캔버스와 엑셀 내보내기가 같은 함수를 부른다.
+//    갈라져 있던 동안 화면은 UNLISTED_VALUE_FILL로 칠하고 내보내기는 "빈 셀" 색을 써서,
+//    엑셀 파일이 조용히 다른 내용을 담았다 (INV-1c-3). "보이는 대로"가 요구사항이다.
+function cellFillColor(val, inside, colorMap, C) {
+  if (!inside) return C.outBg;
+  if (val !== '') return colorMap[val] || UNLISTED_VALUE_FILL;
+  return C.insideEmpty;
+}
+
+// ── CSS 색 → 엑셀이 읽는 #rrggbb ────────────────────────────────────────────
+// 테마 토큰의 상당수가 `rgba(...)`다. CF_HTML 경로는 rgba를 이해하지 못해 그 셀이 **하얗게**
+// 나가므로, 알파를 배경색 위에 합성해 불투명 hex로 눌러 준다.
+function parseCssColor(c) {
+  const s = String(c === null || c === undefined ? '' : c).trim();
+  let m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
+  if (m) return { r: parseInt(m[1] + m[1], 16), g: parseInt(m[2] + m[2], 16), b: parseInt(m[3] + m[3], 16), a: 1 };
+  m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(s);
+  if (m) return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16), a: 1 };
+  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i.exec(s);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  return null;
+}
+
+function toExcelHex(color, backdrop, fallback) {
+  const c = parseCssColor(color);
+  if (!c) return fallback;
+  const bg = parseCssColor(backdrop) || { r: 255, g: 255, b: 255, a: 1 };
+  const a = Math.max(0, Math.min(1, c.a));
+  const mix = (x, y) => Math.max(0, Math.min(255, Math.round(x * a + y * (1 - a))));
+  const h = n => n.toString(16).padStart(2, '0');
+  return `#${h(mix(c.r, bg.r))}${h(mix(c.g, bg.g))}${h(mix(c.b, bg.b))}`;
 }
 
 // 테마 전환 시: 색 캐시 재빌드 + 캔버스 1회 재렌더 (theme.js 'themechange' 구독)
@@ -2398,14 +2438,9 @@ function renderGridCanvas() {
       gridCells2D[r][c] = cellObj;
 
       // 1. Fill cell background
-      if (!completelyInside) {
-        ctx.fillStyle = C.outBg;
-      } else if (val !== '') {
-        // 범례 색은 사용자 데이터(테마 불변) — 미등록 값만 기본 범례색 폴백
-        ctx.fillStyle = colorMap[val] || '#10b981';
-      } else {
-        ctx.fillStyle = C.insideEmpty;
-      }
+      // 범례 색은 사용자 데이터(테마 불변) — 미등록 값만 기본 범례색 폴백.
+      // 판정은 `cellFillColor` 하나뿐이다: 엑셀 내보내기가 같은 함수를 부른다.
+      ctx.fillStyle = cellFillColor(val, completelyInside, colorMap, C);
       ctx.fillRect(x0, y0, cellW, cellH);
 
       // 2. Stroke grid border across ALL cells (inside and outside wafer)
@@ -4926,24 +4961,102 @@ function clearSelectedCells() {
   scheduleCellDraft();
 }
 
-async function copyGridToExcel() {
-  if (!gridCells2D) {
-    alert('격자가 생성되어 있지 않습니다.');
+// ── 클립보드 쓰기 — **비보안 컨텍스트에서 동작하는 유일한 경로** ────────────────────
+//
+// 🔴 `navigator.clipboard`는 이 앱에 없다. 운영은 LAN 평문 HTTP = 비보안 컨텍스트라
+//    `navigator.clipboard`가 통째로 `undefined`다. 종전 코드는 그 undefined에 `.writeText`를
+//    부르고, catch가 **같은 식을 한 번 더** 불러 결국 한글 alert로 끝났다 — 사용자가 본
+//    그 팝업이다. 규약은 `clipboard.js`(그리드 복사)가 이미 지키고 있던 것과 같다:
+//    **copy 이벤트의 `e.clipboardData`**.
+//
+//    버튼 클릭에는 사용자의 copy 키 입력이 없으므로 이벤트를 합성한다 — 화면 밖 편집 가능
+//    노드를 선택하고 `document.execCommand('copy')`로 copy 이벤트를 일으킨 뒤, 그 이벤트에서
+//    내용을 갈아끼운다. Windows가 `text/html`을 CF_HTML로 매핑하므로 엑셀이 서식을 읽는다.
+//
+//    사용자의 기존 선택 영역은 복원한다. 복사 한 번이 사용자가 잡아 둔 선택을 날리면 안 된다.
+function writeClipboardRich(html, text) {
+  const sel = window.getSelection ? window.getSelection() : null;
+  const saved = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null;
+  // The hidden holder has to TAKE focus to receive the copy, and removing it drops focus on
+  // <body>. Harmless from the toolbar button (nothing had focus), but a keyboard caller
+  // would come back to a page that lost its focused control, so put it back.
+  const prevActive = document.activeElement;
+
+  const holder = document.createElement('div');
+  holder.setAttribute('contenteditable', 'true');
+  holder.setAttribute('aria-hidden', 'true');
+  holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;overflow:hidden;';
+  holder.textContent = ' ';
+  document.body.appendChild(holder);
+
+  let served = false;
+  const onCopy = (e) => {
+    if (!e.clipboardData) return;      // 갈아끼우지 못하면 served=false로 남아 정직하게 실패한다
+    e.clipboardData.setData('text/html', html);
+    e.clipboardData.setData('text/plain', text);
+    e.preventDefault();
+    served = true;
+  };
+
+  let fired = false;
+  document.addEventListener('copy', onCopy, true);
+  try {
+    if (sel) {
+      const range = document.createRange();
+      range.selectNodeContents(holder);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    holder.focus();
+    fired = document.execCommand('copy');
+  } catch (err) {
+    console.debug('[map] execCommand copy threw', err);
+  } finally {
+    document.removeEventListener('copy', onCopy, true);
+    holder.remove();
+    // 포커스를 먼저 되돌리고 선택을 되돌린다 — 순서가 반대면 포커스 이동이 방금 복원한 선택을 지운다.
+    if (prevActive && prevActive !== document.body && prevActive.focus && document.contains(prevActive)) {
+      try { prevActive.focus({ preventScroll: true }); } catch (_) { /* not focusable anymore */ }
+    }
+    if (sel) {
+      sel.removeAllRanges();
+      if (saved) sel.addRange(saved);
+    }
+  }
+  return fired && served;
+}
+
+function copyGridToExcel() {
+  // 🔴 종전 가드 `if (!gridCells2D)`는 **한 번도 발화하지 않는 죽은 코드**였다:
+  //    `gridCells2D`는 `{}`로 초기화되고 `{}`는 truthy다. 격자가 없어도 통과해서 빈 표를
+  //    조용히 클립보드에 실었다. 조용한 빈 결과보다 사유를 붙인 거부가 낫다.
+  const cellCount = gridCells2D
+    ? Object.keys(gridCells2D).reduce((n, r) => n + Object.keys(gridCells2D[r] || {}).length, 0)
+    : 0;
+  if (cellCount === 0) {
+    showToast('격자가 아직 만들어지지 않았습니다 — 맵을 먼저 불러오거나 격자를 생성하십시오.', 'warning');
     return;
   }
 
   const { visualCols, visualRows } = getVisualGridDimensions();
   const matrix = [];
-  
+
+  // 화면과 같은 색을 쓴다. 내보내기 전용 하드코딩 색(#DAF2D0·#f8fafc)은 다크 테마 화면을
+  // 라이트 색으로 내보내고 있었다 (INV-1c-4).
+  const C = getThemeColors();
+  const surface = C.surface;
+  const colorMap = {};
+  legend.forEach(item => { colorMap[item.value] = item.color; });
+
+  const outHex = toExcelHex(C.outBg, surface, '#f1f3f6');
+  const insideEmptyHex = toExcelHex(C.insideEmpty, surface, surface);
+  const textEmptyHex = toExcelHex(C.textEmpty, insideEmptyHex, '#333333');
+  const textOutHex = toExcelHex(C.textOut, outHex, '#888888');
+  const lineHex = toExcelHex(C.waferEdge, surface, '#222222');
+  const lineWeakHex = toExcelHex(C.line, surface, '#d1d5db');
+
   // HTML table for rich formatting in Excel (Border + Fill Colors)
   let html = '<table style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif;">';
-
-  // Helper to find background color from legend
-  const getColorForValue = (v) => {
-    if (!v) return null;
-    const item = legend.find(l => l.value === String(v));
-    return item ? item.color : null;
-  };
 
   // Helper for text color contrast
   const getContrastColor = (hexcolor) => {
@@ -5006,25 +5119,24 @@ async function copyGridToExcel() {
         }
         rowCells.push(val);
 
-        const bgColor = getColorForValue(val);
-
         let style = 'width: 32px; height: 32px; font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle;';
-        
+
         if (isNotchCell && val === 'D') {
           // Notch D indicator cell 1 row below valid wafer area
-          style += ' border: 2px solid #222222; background-color: #a855f7; color: #ffffff; font-size: 11pt;';
+          style += ` border: 2px solid ${lineHex}; background-color: #a855f7; color: #ffffff; font-size: 11pt;`;
         } else if (isInside) {
-          // 1. Thick border & background color formatting for valid wafer cells
-          style += ' border: 2px solid #222222;';
-          if (bgColor && val !== '') {
-            const textColor = getContrastColor(bgColor);
-            style += ` background-color: ${bgColor}; color: ${textColor};`;
+          // 1. Thick border & background color formatting for valid wafer cells.
+          //    채움색은 **캔버스와 같은 판정기**를 지난다 — 범례에 없는 값이 빈 칸으로 나가던
+          //    결함(INV-1c-3)은 여기서 색을 따로 구하던 데서 나왔다.
+          const bgHex = cellFillColor(val, true, colorMap, C);
+          style += ` border: 2px solid ${lineHex};`;
+          if (val !== '') {
+            style += ` background-color: ${bgHex}; color: ${getContrastColor(bgHex)};`;
           } else {
-            // NULL / Empty area inside valid wafer filled with #DAF2D0
-            style += ' background-color: #DAF2D0; color: #2e7d32;';
+            style += ` background-color: ${insideEmptyHex}; color: ${textEmptyHex};`;
           }
         } else {
-          style += ' border: 1px dashed #d1d5db; background-color: #f8fafc; color: #cbd5e1;';
+          style += ` border: 1px dashed ${lineWeakHex}; background-color: ${outHex}; color: ${textOutHex};`;
         }
 
         html += `<td style="${style}">${val}</td>`;
@@ -5032,8 +5144,8 @@ async function copyGridToExcel() {
         const val = isNotchCell ? 'D' : '';
         rowCells.push(val);
         const style = isNotchCell
-          ? 'border: 2px solid #222222; background-color: #a855f7; color: #ffffff; font-weight: bold; text-align: center; vertical-align: middle;'
-          : 'border: 1px dashed #d1d5db; background-color: #f8fafc;';
+          ? `border: 2px solid ${lineHex}; background-color: #a855f7; color: #ffffff; font-weight: bold; text-align: center; vertical-align: middle;`
+          : `border: 1px dashed ${lineWeakHex}; background-color: ${outHex};`;
         html += `<td style="${style}">${val}</td>`;
       }
     }
@@ -5044,43 +5156,17 @@ async function copyGridToExcel() {
   html += '</table>';
   const tsv = matrix.join('\n');
 
-  try {
-    if (navigator.clipboard && window.ClipboardItem) {
-      const blobText = new Blob([tsv], { type: 'text/plain' });
-      const blobHtml = new Blob([html], { type: 'text/html' });
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/plain': blobText,
-          'text/html': blobHtml
-        })
-      ]);
-    } else {
-      await navigator.clipboard.writeText(tsv);
-    }
-
+  if (writeClipboardRich(html, tsv)) {
     if (el.btnCopyExcel) {
       const originalText = el.btnCopyExcel.textContent;
       el.btnCopyExcel.textContent = '✅ Copied to Excel!';
-      setTimeout(() => {
-        el.btnCopyExcel.textContent = originalText;
-      }, 1500);
+      setTimeout(() => { el.btnCopyExcel.textContent = originalText; }, 1500);
     }
-  } catch (err) {
-    console.warn('Rich clipboard write failed, falling back to plain text:', err);
-    try {
-      await navigator.clipboard.writeText(tsv);
-      if (el.btnCopyExcel) {
-        const originalText = el.btnCopyExcel.textContent;
-        el.btnCopyExcel.textContent = '✅ Copied!';
-        setTimeout(() => {
-          el.btnCopyExcel.textContent = originalText;
-        }, 1500);
-      }
-    } catch (e) {
-      console.error('Failed to copy to clipboard', e);
-      alert('클립보드 복사에 실패했습니다.');
-    }
+    console.debug(`[map] copied ${visualRows}x${visualCols} grid to clipboard (html+plain)`);
+    return;
   }
+  // 정직한 실패. 조용히 성공한 척하면 사용자는 낡은 클립보드 내용을 엑셀에 붙인다.
+  showToast('클립보드에 쓰지 못했습니다 — 브라우저가 복사를 막았습니다. 표를 클릭한 뒤 다시 시도하십시오.', 'error');
 }
 
 // ====================================================

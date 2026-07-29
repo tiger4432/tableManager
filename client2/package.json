@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:clipboard": "node scripts/check_clipboard_convention.mjs",
+    "prebuild": "npm run check:clipboard",
     "build": "vite build",
     "preview": "vite preview"
   },

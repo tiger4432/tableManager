@@ -320,7 +320,19 @@ function rowOf(value) {
 function commitRow(value, patch) {
   const r = controller.updateLegendRow(value, patch);
   if (!r || !r.ok) { showToast((r && r.error) || 'DOE 저장 실패', 'warning'); return false; }
+  // [ⓖ] 자재를 쳐 넣으면 ②에 그 풀의 행은 즉시 생기지만(notifyLegendChanged가 그린다) 가용·맵
+  // 유무는 **조회된 적이 없어** 미상·? 로 남아 있었다. 조회는 맵 전환 때만 돌았기 때문이다.
+  // 새 연산을 만들지 않는다 — `refreshMaterials`가 이미 그 일이고, force가 아니면 캐시된 풀은
+  // 건너뛰므로 실제로 나가는 요청은 방금 생긴 풀 뿐이며 토스트도 뜨지 않는다.
+  if (patch && ZONES.some(z => patch[z] !== undefined)) kickMaterialRefresh();
   return true;
+}
+
+// 붙여넣기 한 번이 여러 행을 쓴다 — 행마다 조회를 띄우지 않도록 한 박자 모은다.
+let matKickTimer = null;
+function kickMaterialRefresh() {
+  if (matKickTimer) clearTimeout(matKickTimer);
+  matKickTimer = setTimeout(() => { matKickTimer = null; refreshMaterials(false); }, 250);
 }
 
 // ── 자재 가용 — 풀 `(lot, slot, BIN)` 단위 ─────────────────────────────
@@ -646,10 +658,13 @@ function zoneCellHtml(row, zone) {
 }
 
 // 비면 어떻게 되는지를 placeholder가 말한다 — 이것도 title이 아니라 보이는 글자다.
+// [ⓐ] 머리줄이 사라졌으므로 **열 이름이 여기 앞에 붙는다**. 이름은 계약(DOE_COLUMNS)에서
+// 오고, 뒤의 짧은 말은 삭제된 머리줄 2행이 하던 설명 그대로다. 자세한 규칙은 표 아래 각주에
+// 그대로 남아 있다 — placeholder는 칸이 비었을 때만 보이므로 규칙을 여기 다 실을 수 없다.
 const ZONE_PLACEHOLDER = {
-  mat_1h: '비우면 MID가 1층부터',
-  mat_mid: '자재',
-  mat_top: '비우면 MID가 STACK까지',
+  mat_1h: '1H · 1층',
+  mat_mid: 'MID · 그 사이',
+  mat_top: 'TOP · STACK층',
 };
 
 // A zone whose layer does not exist. Derived from STACK and the other two zones, so it
@@ -704,6 +719,124 @@ function planOf() {
   return { values: S.legendRows };
 }
 
+// ── ①의 무조건 재생성은 사용자의 타이핑을 죽인다 ──────────────────────────────
+//
+// 🔴 THE DEFECT THIS SOLVES. `commitRow` fires on `change`, i.e. ON BLUR. The blur is
+//    caused by the user clicking the NEXT cell (or pressing Tab). If the commit rebuilds
+//    this list with `innerHTML`, the node the `mousedown` landed on is destroyed before
+//    the `mouseup` arrives, so:
+//      · no `click` event is ever synthesised (down and up have different targets),
+//      · focus falls back to BODY, and
+//      · everything typed afterwards goes nowhere and is silently lost.
+//    Tab breaks the same way: the element the browser had picked as the next focus target
+//    no longer exists by the time the focus transition runs. That makes a keyboard-only
+//    user unable to fill a single row - and lost keystrokes are a DATA defect, not a
+//    cosmetic one.
+//
+// 🔴 THE RULE. The row DOM is replaced ONLY when the row SET changes (add / delete / a
+//    different map's legend). Every other edit patches the mounted nodes in place, the way
+//    `refreshRowZones` already does for the reactive zone cells. This is the same
+//    discipline `selectBrush` in map_editor.js adopted when the first click into a DOE
+//    field died for exactly this reason.
+//
+// Rows are matched to the model BY INDEX, never by value, because a rename must survive
+// the patch (matching by `data-v` could not find a row whose value just changed). That is
+// also why the handlers in `bindDoeList` read `node.dataset.v` at EVENT time instead of
+// closing over it: patching `data-v` is then enough and nothing has to be re-bound (a
+// re-bind would stack duplicate listeners on every keystroke).
+let doeListShape = '';
+
+// A rename moves the row's identity mid-commit. The capture below is taken while the OLD
+// value is still on the node, so restoration needs the mapping.
+let renameHint = null;
+
+function rowNodesOf(box) {
+  return box ? [...box.querySelectorAll('.tp-vrow')] : [];
+}
+
+// What the user is in the middle of doing. `text` is the UNCOMMITTED content of the field:
+// on a full rebuild the model does not have it yet, so without carrying it across it is
+// exactly the "typed characters vanish" defect one level up.
+function captureEditFocus(box) {
+  const a = document.activeElement;
+  if (!a || !box || !box.contains(a)) return null;
+  const row = a.closest('.tp-vrow');
+  if (!row) return null;
+  const editable = (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+  return {
+    v: row.dataset.v,
+    zone: (a.getAttribute && a.getAttribute('data-zone')) || '',
+    f: (a.getAttribute && a.getAttribute('data-f')) || '',
+    text: editable ? a.value : null,
+    s0: editable ? a.selectionStart : null,
+    s1: editable ? a.selectionEnd : null,
+  };
+}
+
+function restoreEditFocus(box, cap) {
+  if (!cap || !box) return;
+  const want = (renameHint && cap.v === renameHint.from) ? renameHint.to : cap.v;
+  const row = rowNodesOf(box).find(n => n.dataset.v === want);
+  if (!row) return;
+  const sel = cap.zone ? `.tp-zc-raw[data-zone="${cap.zone}"]` : (cap.f ? `[data-f="${cap.f}"]` : '');
+  const node = (sel && row.querySelector(sel)) || row;
+  if (cap.text !== null && node.value !== undefined && !node.disabled && node.value !== cap.text) {
+    node.value = cap.text;
+  }
+  if (node.disabled) { row.focus(); return; }
+  node.focus();
+  if (cap.s0 !== null && node.setSelectionRange) {
+    try { node.setSelectionRange(cap.s0, cap.s1); } catch (_) { /* not a text-selectable field */ }
+  }
+}
+
+// 규칙 위반 메시지 — 전체 렌더와 제자리 패치가 **같은 생성기**를 쓴다. 두 벌로 나뉘면
+// 화면 상태가 어느 경로를 지나왔는지에 따라 갈린다.
+function blockMsgsHtml(blocks, row, legacy) {
+  return blocks.map(b => `<div class="tp-blk"><span class="rid">${esc(b.rule)}</span><span>${esc(b.message)}</span></div>`).join('')
+    + (legacy ? `<div class="tp-blk"><span class="rid">폐기</span><span>${esc(row.legacyReason)} — 이 값의 STACK·구역을 직접 채우면 저장이 풀립니다. (원래 구간: ${
+      esc(row.legacyBands.map(b => b.to).join(' / '))})</span></div>` : '');
+}
+
+// 노드를 갈아끼우지 않고 값·클래스·파생 표시만 맞춘다.
+// 포커스를 쥔 요소에는 **쓰지 않는다** — 그 순간의 캐럿과 아직 커밋되지 않은 글자가 사용자의
+// 것이기 때문이다.
+function patchDoeList(box, planMode, byValue) {
+  const active = document.activeElement;
+  const nodes = rowNodesOf(box);
+  const setVal = (node, val) => {
+    if (!node || node === active) return;
+    if (node.value !== val) node.value = val;
+  };
+  S.legendRows.forEach((row, i) => {
+    const node = nodes[i];
+    if (!node) return;
+    const val = String(row.value);
+    node.dataset.v = val;
+    const blocks = byValue.get(val) || [];
+    const legacy = Array.isArray(row.legacyBands) && row.legacyBands.length > 0;
+    node.classList.toggle('bad', blocks.length > 0 || legacy);
+    setVal(node.querySelector('[data-f="color"]'), row.color || '#6b7280');
+    setVal(node.querySelector('[data-f="value"]'), val);
+    setVal(node.querySelector('[data-f="desc"]'), row.desc || '');
+    const cnt = node.querySelector('[data-count-for]');
+    if (cnt) { cnt.setAttribute('data-count-for', val); cnt.textContent = paintedOf(val); }
+    if (planMode) {
+      const stk = node.querySelector('[data-f="stack"]');
+      if (stk) {
+        setVal(stk, (row.stack === null || row.stack === undefined) ? '' : String(row.stack));
+        const s = stackState(row).state;
+        stk.classList.toggle('bad', s !== 'ok' && s !== 'marker');   // 0 = marker, not an error
+      }
+      refreshRowZones(node, row);
+    }
+    // 메시지 블록에는 포커스 가능한 요소가 없으므로 통째 교체해도 입력이 죽지 않는다.
+    node.querySelectorAll(':scope > .tp-blk').forEach(n => n.remove());
+    const msgs = blockMsgsHtml(blocks, row, legacy);
+    if (msgs) node.insertAdjacentHTML('beforeend', msgs);
+  });
+}
+
 function renderDoeList() {
   const box = elp.list;
   if (!box) return;
@@ -711,10 +844,12 @@ function renderDoeList() {
   const planMode = !!st && S.ctx.depth === 0;
 
   if (!S.ctx.table) {
+    doeListShape = '';
     box.innerHTML = '<div class="tp-empty">좌측 「1. Map Search &amp; Load」에서 맵을 열면 그 맵의 legend(= DOE)가 여기 표시됩니다.</div>';
     return;
   }
   if (S.legendRows.length === 0) {
+    doeListShape = '';
     box.innerHTML = '<div class="tp-empty">정의된 값이 없습니다. 우상단 [+ 값]으로 만드세요.</div>';
     return;
   }
@@ -728,22 +863,31 @@ function renderDoeList() {
     byValue.get(b.value).push(b);
   });
 
-  // 머리줄 글자 = **엑셀에 적을 열 이름 그대로**. 이름으로 맞추기가 되려면 화면이 보여 주는
-  // 단어와 파서가 찾는 단어가 같아야 하므로, 둘 다 DOE_COLUMNS에서 나온다.
-  const head = planMode ? `
-    <div class="tp-ch-row l1">
-      <span class="drv" title="색은 앱이 소유합니다 — 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외). 엑셀의 셀 채우기는 클립보드 텍스트로 이동하지 않습니다.">COLOR*</span>
-      <span>${esc(colHeader('value'))}</span>
-      <span class="r">${esc(colHeader('stack'))}</span><span>${esc(colHeader('desc'))}</span>
-      <span class="r drv" title="맵에서 이 값으로 칠해진 셀 수 — 파생값이라 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외).">칠함*</span><span></span>
-    </div>
-    <div class="tp-ch-row l2">
-      <span>${esc(colHeader('mat_1h'))} — 1층</span>
-      <span>${esc(colHeader('mat_mid'))} — 그 사이 (구역 있으면 필수)</span>
-      <span>${esc(colHeader('mat_top'))} — STACK층</span>
-    </div>` : '';
+  // [ⓐ] 머리줄 행은 삭제됐다. 사이드바 폭에서 두 줄의 머리글은 **읽을 수 없는 크기**로
+  // 눌렸고, 읽히지 않는 글씨는 없느니만 못하다(사용자 선언). 열 이름은 각 칸의 placeholder로
+  // 내려갔다 — 빈 칸일 때, 즉 사람이 그 이름을 실제로 필요로 하는 순간에만 뜬다.
+  //
+  // ⚠️ 이름은 여전히 `DOE_COLUMNS`에서 나온다. 엑셀 붙여넣기의 이름 맞추기는 **붙여넣는
+  //    텍스트의** 머리줄을 읽지 이 DOM을 읽지 않으므로 계약은 그대로다. 다만 화면이 보여 주는
+  //    단어와 파서가 찾는 단어는 계속 같아야 하므로 하드코딩하지 않는다.
+  // 계약 밖 두 칸(COLOR·칠함)의 설명은 머리줄과 함께 사라지지 않도록 각 요소의 title로 옮겼다.
+  const phValue = esc(colHeader('value'));
+  const phStack = esc(colHeader('stack'));
+  const phDesc = `${esc(colHeader('desc'))} · 이 값이 무슨 조건인지`;
 
-  box.innerHTML = head + S.legendRows.map(row => {
+  // 🔴 IDENTITY, THEN SHAPE. Row count alone says "the same number of rows", not "the same
+  //    rows". `notifyMapContext` re-renders on a map switch without resetting this key, so a
+  //    map with the same row count at the same mode would take the patch path and leave every
+  //    zone textarea holding the PREVIOUS map's material text under the new map's chips.
+  const shape = `${planMode ? 'P' : 'R'}|${S.ctx.table}|${S.ctx.mapKey}|${S.legendRows.length}`;
+  if (shape === doeListShape && rowNodesOf(box).length === S.legendRows.length) {
+    // 행 집합이 그대로다 — 노드를 죽이지 않고 제자리에서 맞춘다. 여기가 P0의 실제 수리다.
+    patchDoeList(box, planMode, byValue);
+    return;
+  }
+  const cap = captureEditFocus(box);
+
+  box.innerHTML = S.legendRows.map(row => {
     const val = String(row.value);
     const blocks = byValue.get(val) || [];
     const legacy = Array.isArray(row.legacyBands) && row.legacyBands.length > 0;
@@ -751,18 +895,21 @@ function renderDoeList() {
     const l2 = planMode ? `<div class="tp-v-l2">${
       ZONES.map(z => zoneCellHtml(row, z)).join('')
     }</div>` : '';
-    const msgs = blocks.map(b => `<div class="tp-blk"><span class="rid">${esc(b.rule)}</span><span>${esc(b.message)}</span></div>`).join('')
-      + (legacy ? `<div class="tp-blk"><span class="rid">폐기</span><span>${esc(row.legacyReason)} — 이 값의 STACK·구역을 직접 채우면 저장이 풀립니다. (원래 구간: ${
-        esc(row.legacyBands.map(b => b.to).join(' / '))})</span></div>` : '');
+    const msgs = blockMsgsHtml(blocks, row, legacy);
     const stSt = stackState(row);
-    return `<div class="tp-vrow${blocks.length || legacy ? ' bad' : ''}" data-v="${esc(val)}">
+    // tabindex="-1" — 행 자체를 프로그램적으로 포커스할 수 있게 한다(탭 순서에는 들어가지
+    // 않는다). [ⓒ] 영역 아무 데나 클릭하면 이 행이 포커스를 받고, 이미 있는
+    // `.tp-vrow:focus-within` 강조가 그대로 ACTIVE 표시가 된다 — 새 컨트롤도, 새 색도 없다.
+    return `<div class="tp-vrow${blocks.length || legacy ? ' bad' : ''}" data-v="${esc(val)}" tabindex="-1">
       <div class="tp-v-l1">
-        <input type="color" class="tp-sw" data-f="color" value="${esc(row.color || '#6b7280')}" />
-        <input class="tp-gi vin" data-f="value" value="${esc(val)}" />
+        <input type="color" class="tp-sw" data-f="color" value="${esc(row.color || '#6b7280')}"
+          title="색은 앱이 소유합니다 — 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외)." />
+        <input class="tp-gi vin" data-f="value" value="${esc(val)}" placeholder="${phValue}" />
         ${planMode ? `<input class="tp-gi stk${(stSt.state === 'ok' || stSt.state === 'marker') ? '' : ' bad'}" data-f="stack" inputmode="numeric"
-          value="${esc(row.stack === null || row.stack === undefined ? '' : String(row.stack))}" placeholder="총 층수" />` : ''}
-        <input class="tp-gi din" data-f="desc" value="${esc(row.desc || '')}" placeholder="이 값이 무슨 조건인지" />
-        <span class="tp-pnt" data-count-for="${esc(val)}">${paintedOf(val)}</span>
+          value="${esc(row.stack === null || row.stack === undefined ? '' : String(row.stack))}" placeholder="${phStack}" />` : ''}
+        <input class="tp-gi din" data-f="desc" value="${esc(row.desc || '')}" placeholder="${phDesc}" />
+        <span class="tp-pnt" data-count-for="${esc(val)}"
+          title="맵에서 이 값으로 칠해진 셀 수 — 파생값이라 엑셀 열 계약에 없습니다(붙여넣기·복사 모두 제외).">${paintedOf(val)}</span>
         <button type="button" class="tp-del" title="이 값 삭제 (격자에서 이 값이 지워지고 층 구조도 함께 사라집니다)">🗑</button>
       </div>
       ${l2}${msgs}
@@ -775,7 +922,11 @@ function renderDoeList() {
       자재는 줄바꿈 또는 쉼표로 나눔 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
     </div>` : '');
 
+  doeListShape = shape;
   bindDoeList(box, planMode);
+  // 재생성이 불가피했던 경우에만 도달한다. 사용자가 치던 글자와 캐럿을 되돌려 놓지 않으면
+  // 그 입력은 조용히 사라진다 (INV-P0-3).
+  restoreEditFocus(box, cap);
 }
 
 function colHeader(id) {
@@ -801,7 +952,32 @@ function refreshRowZones(node, row) {
     cell.classList.toggle('empty', !na.inapplicable && tokens.length === 0);
     const blocked = tokens.length === 0 && z === 'mat_mid' && st.state === 'ok' && midZone(row).size > 0;
     cell.classList.toggle('bad', blocked);
-    if (ta) ta.disabled = na.inapplicable;
+    // 🔴 THE TEXTAREA IS THE EDIT SURFACE; THE CHIPS ARE A PICTURE OF IT. Patching only the
+    //    chips leaves the field holding whatever it was last rendered with - so a paste that
+    //    lands in the model draws correct chips over an EMPTY field, and the next keystroke
+    //    in that field commits the empty field over the pasted list, silently. So this path
+    //    writes the same text `zoneCellHtml` writes (na cell -> empty, like its markup), and
+    //    it is the ONLY place besides that markup that produces this text.
+    //
+    //    THE GUARD IS NOT "IS IT FOCUSED". `setVal` can use focus because a paste never
+    //    rewrites COLOR/VALUE/DESC under the caret; a zone paste does exactly that - the
+    //    anchor cell of a block paste IS the focused cell, so a focus-only guard leaves the
+    //    one cell the operator is about to type in holding the pre-paste text. The guard is
+    //    **whether this field is the source the model was just derived from**: the `input`
+    //    handler sets `draft[zone] = parseMaterialList(ta.value)`, so on a keystroke the two
+    //    lists are equal by construction and we skip - caret and half-typed token untouched.
+    //    When they differ the model was changed by something other than this field (paste),
+    //    and the field must follow it or the next `change` commits the stale text back.
+    if (ta) {
+      ta.disabled = na.inapplicable;
+      const raw = na.inapplicable ? '' : serializeMaterialList(tokens);
+      if (ta.value !== raw && serializeMaterialList(parseMaterialList(ta.value)) !== raw) {
+        const live = ta === document.activeElement;
+        ta.value = raw;
+        // 갈아치운 것은 클립보드 내용이므로 캐럿은 끝에 둔다 (이어서 치면 뒤에 붙는다).
+        if (live && ta.setSelectionRange) { try { ta.setSelectionRange(raw.length, raw.length); } catch (_) { /* not selectable */ } }
+      }
+    }
     const chips = cell.querySelector('.tp-zc-chips');
     if (!chips) return;
     if (na.inapplicable) {
@@ -836,31 +1012,53 @@ function focusedColumnId() {
 
 function bindDoeList(box, planMode) {
   box.querySelectorAll('.tp-vrow').forEach(node => {
-    const v = node.dataset.v;
+    // 🔴 `node.dataset.v`를 **이벤트 시점에** 읽는다. 바인딩 시점 값을 클로저에 가두면
+    //    개명 후 제자리 패치(patchDoeList)를 지난 행이 옛 이름으로 커밋을 보낸다. 대안인
+    //    "패치할 때마다 다시 바인딩"은 키 입력마다 리스너를 쌓는다.
+    const vOf = () => node.dataset.v;
 
-    // 행을 만지면 곧 브러시. 클릭 = 선택 + 브러시 (펼침은 없다 — 접히는 것이 없다).
-    node.addEventListener('mousedown', () => {
-      if (controller && controller.setBrush) { controller.setBrush(v); S.activeBrush = v; }
+    // [ⓒ] 행을 만지면 곧 브러시. 작은 인풋을 조준할 필요가 없다 — 행 영역 아무 데나면 된다.
+    //
+    // ACTIVE 표시는 새로 만들지 않았다. 행에 `tabindex="-1"`이 있으므로 브라우저는 포커스
+    // 불가능한 자식(칩·규칙 메시지·빈 자리)을 눌렀을 때 **가장 가까운 포커스 가능한 조상**,
+    // 즉 이 행에 포커스를 준다. 그러면 이미 있는 `.tp-vrow:focus-within` 강조가 그대로
+    // ACTIVE 표시가 된다 — 새 색도, 새 배지도, 새 CSS도 없다.
+    //
+    // ⚠️ `preventDefault`를 부르지 않는다. 부르면 ACTIVE는 켜지지만 그 대가로 행 안의
+    //    글자를 마우스로 끌어 선택할 수 없게 된다(자재 칩·규칙 메시지). 기본 동작이 이미
+    //    우리가 원하는 곳에 포커스를 주므로 가로챌 이유가 없다.
+    node.addEventListener('mousedown', e => {
+      if (e.target && e.target.closest && e.target.closest('.tp-del')) return;  // 삭제는 삭제다
+      if (controller && controller.setBrush) { controller.setBrush(vOf()); S.activeBrush = vOf(); }
+    });
+    // 키보드로 행에 들어와도 브러시가 따라온다 — 포커스가 곧 선택이라는 이 패널의 규칙 그대로.
+    node.addEventListener('focusin', () => {
+      if (controller && controller.setBrush) { controller.setBrush(vOf()); S.activeBrush = vOf(); }
     });
 
     node.querySelector('[data-f="color"]').addEventListener('change', e => {
-      commitRow(v, { color: e.target.value });
+      commitRow(vOf(), { color: e.target.value });
     });
     node.querySelector('[data-f="desc"]').addEventListener('change', e => {
-      commitRow(v, { desc: e.target.value.trim() });
+      commitRow(vOf(), { desc: e.target.value.trim() });
     });
 
     const valIn = node.querySelector('[data-f="value"]');
     valIn.addEventListener('change', () => {
+      const v = vOf();
       const nv = valIn.value.trim();
       if (!nv || nv === v) { valIn.value = v; return; }
-      const r = controller.updateLegendRow(v, { value: nv });
+      // 개명은 행의 정체를 바꾼다. 재생성 경로가 포커스를 되찾을 수 있도록 매핑을 남긴다.
+      renameHint = { from: v, to: nv };
+      let r;
+      try { r = controller.updateLegendRow(v, { value: nv }); } finally { renameHint = null; }
       if (!r.ok) { showToast(r.error, 'warning'); valIn.value = v; return; }
       // 값 이름이 바뀌어도 층 구조는 같은 행에 그대로 붙어 있다 — zone 모델에는 값을 이름으로
       // 가리키는 참조가 없으므로(구간 모델의 `values[]`가 사라졌다) 개명 전파가 필요 없다.
     });
 
     node.querySelector('.tp-del').addEventListener('click', () => {
+      const v = vOf();
       if (!confirm(`값 '${v}'을(를) 삭제할까요? (격자에서 이 값이 지워지고 층 구조도 함께 사라집니다)`)) return;
       const r = controller.deleteLegendRow(v);
       if (!r.ok) showToast(r.error, 'warning');
@@ -873,7 +1071,7 @@ function bindDoeList(box, planMode) {
       // `input` -> 화면만 (반응성) · `change` -> 모델. Two events, two jobs: the live one
       // never persists and the persisting one never runs per keystroke.
       stk.addEventListener('input', () => {
-        const draft = { ...rowOf(v), stack: stk.value };
+        const draft = { ...rowOf(vOf()), stack: stk.value };
         const s = stackState(draft).state;
         stk.classList.toggle('bad', s !== 'ok' && s !== 'marker');   // 0 = marker, not an error
         refreshRowZones(node, draft);
@@ -881,14 +1079,14 @@ function bindDoeList(box, planMode) {
       stk.addEventListener('change', () => {
         // 입력도 **같은 판정기**를 통과한다. 읽을 수 없는 값은 거부하지 않고 원문 그대로
         // 저장한다 — 그래야 패널이 무엇을 고치라고 말할 수 있고, V5가 그것을 말한다.
-        commitRow(v, { stack: stk.value.trim() });
+        commitRow(vOf(), { stack: stk.value.trim() });
       });
     }
 
     node.querySelectorAll('.tp-zc-raw').forEach(ta => {
       const zone = ta.dataset.zone;
       ta.addEventListener('input', () => {
-        const draft = { ...rowOf(v) };
+        const draft = { ...rowOf(vOf()) };
         draft[zone] = parseMaterialList(ta.value);
         refreshRowZones(node, draft);
       });
@@ -896,7 +1094,7 @@ function bindDoeList(box, planMode) {
         // `parseMaterialList` accepts newline OR comma and is the SAME function the
         // storage layer normalizes with, so the material count on screen and the
         // denominator of `ceil(total / n)` in the save cannot be two different numbers.
-        commitRow(v, { [zone]: parseMaterialList(ta.value) });
+        commitRow(vOf(), { [zone]: parseMaterialList(ta.value) });
       });
     });
   });
