@@ -406,8 +406,22 @@ async function scoreAll(src, { verbose = false } = {}) {
        { cols: el.gridCols.value, rows: el.gridRows.value,
          chipX: el.physChipX.value, chipY: el.physChipY.value,
          rot: S.currentRotation, side: S.currentSide });
-    // ...and the Push payload is byte-identical, key -> value
-    eq(`F6/${label}/P0-1/push-payload-unchanged`, payloadBefore, pushPayload(S));
+    // ══ [F8] THE WHOLE CONTRACT, IN ONE ASSERTION ═════════════════════════════════════
+    // The user asked for exactly one guarantee: a valid-die designation changes NO DB
+    // coordinate. The payload's key SET may legitimately shrink — a mask is allowed to put
+    // cells outside the valid dies, and `pushMapData`'s `blocking` gate refuses on those
+    // rather than deleting them. What may never happen is a key that survives with a
+    // DIFFERENT x/y, because that is the silent re-coordination this domain exists to stop.
+    // A dimension write sneaking back into `adoptFrameSpec` turns this list non-empty.
+    const payloadAfterF8 = pushPayload(S);
+    const coordDrift = Object.keys(payloadBefore)
+      .filter(k => k in payloadAfterF8 && payloadAfterF8[k] !== payloadBefore[k])
+      .slice(0, 8)
+      .map(k => `${k}: DB(${payloadBefore[k].replace('_', ',')}) -> DB(${payloadAfterF8[k].replace('_', ',')})`);
+    eq(`F6/${label}/F8/no-coordinate-changed`, [], coordDrift);
+    eq(`F6/${label}/F8/domain-is-not-empty`, true,
+       Object.keys(payloadBefore).filter(k => k in payloadAfterF8).length > 0,
+       'if no key survives the mask the assertion above is vacuous');
     // INV-F6-2 still holds: every request was a READ
     eq(`F6/${label}/no-metadata-write`, [],
        log.requests.filter(r => /wafer_map_metadata|updates|replace/i.test(r)));

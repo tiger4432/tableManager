@@ -7613,7 +7613,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   };
 
   // [F6] 이 해석이 편집기 프레임을 갈아끼웠는가. 세웠으면 마스크가 앉은 뒤에 알린다.
-  let adopted = null;
+  // [F8] 치수 차이는 **사실**이지 채택이 아니다. 화면은 그대로 두고 한 번 알린다.
+  let dimsDiffer = null;
 
   const parsed = parseValidDieRef(meta, targetTable);
   if (parsed === null) return set('circle', null, '', null);          // 선언 없음 = 종전 그대로
@@ -7702,91 +7703,31 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // 그래서 거절 대신 **격자를 참조 맵 크기로 연다**(`adoptFrameSpec` — 화면 컨트롤만).
     // 회전·면 차이는 여기 오지도 않는다: 물리 키가 회전 불변이라 변환이 이미 처리한다.
     const refResolved = resolveFrame(refFrame);
-    let hereResolved = resolveFrame(currentFrame());
+    const hereResolved = resolveFrame(currentFrame());
+    // ═══ [F8] 치수가 달라도 **아무것도 채택하지 않는다** — 사용자 지시 2026-07-30 ══════════
+    // 「그리드 크기가 달라도 좌표는 db값 그대로 보존하고 화면 표기 밀리게 그냥 보여주기」.
+    //
+    // 🔴 이 결정의 근거는 데이터 모델이다. 셀에 저장된 좌표라는 것은 **없다** — `gridData`는
+    //    `물리 키 → 값`뿐이고, DB의 x/y는 Push 시점에 `cellObj.x/.y`(= 현재 프레임으로 렌더가
+    //    유도한 좌표)에서 만들어진다(`pushMapData`의 직렬화 루프). 그래서 "좌표를 보존한다"는
+    //    말의 유일한 구현은 **칸을 그대로 두는 것**이고, 격자 치수·원점을 건드리지 않는 것이
+    //    곧 그것이다. 치수를 채택하면 같은 칸이 다른 좌표를 낳는다 — 그것이 F6이 재배치라는
+    //    기계장치를 만들어 막으려던 것이고, 재배치는 새 프레임이 만들지 못하는 좌표 앞에서
+    //    셀을 버리거나(삭제) 번호를 다시 매기는(재좌표화) 수밖에 없었다. 둘 다 금지다.
+    //
+    // 🔴 **마스크는 이것과 무관하게 옳다.** 마스크 키는 `projectCellsToPhys(cells, refFrame)`이
+    //    참조 자신의 프레임으로 만든다(아래) — 화면 컨트롤을 읽지 않는다. 채택이 하던 일은
+    //    타깃의 인덱스 공간을 참조의 것과 **맞춰** 마스크가 겹쳐 보이게 하는 것뿐이었다.
+    //    맞추지 않으면 마스크는 밀려 보인다. 사용자가 요구한 것이 정확히 그 화면이다.
+    //
+    // ⚠️ 그래서 이 분기는 **말만 한다.** 밀림은 원인이 화면에 남지 않는 종류의 차이라
+    //    (격자는 멀쩡해 보이고 마스크만 어긋난다) 조용하면 운영자가 데이터를 의심한다.
+    //    확인창이 아니라 토스트 1회다 — 읽기는 무마찰(UI 규율).
     if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
-      // 🔴 낡은 해석은 화면을 건드리지 않는다. `set`/`refuse`가 세대를 확인하는 것과 같은
-      //    이유이고, 여기서는 더 무겁다 — 지나간 지정이 편집기 프레임을 갈아치우면
-      //    사용자가 보는 격자가 아무도 요청하지 않은 크기가 된다(F3와 같은 계급).
+      // 낡은 해석은 화면을 건드리지 않는다 — 이제 화면을 바꾸지 않으므로 토스트도 내지 않는다.
       if (stale()) return validDie;
-      const before = `${hereResolved.cols}x${hereResolved.rows}`;
-      // 🔴 [clause 3 + 4] 치수는 **참조 맵이 이긴다**. 그리고 기존 셀은 **저장 좌표를 그대로
-      //    둔 채** 새 격자의 원점에 맞춰 옮긴다. 그래서 저장 좌표의 의미가 바뀌지 않고
-      //    (P0-1이 막던 조용한 재좌표화는 원리적으로 일어나지 않는다) 화면 위치만 다시
-      //    유도된다 — `storedCoordRepositionPlan`의 주석이 그 등식이다.
-      //
-      // 🔴 **가드는 남는다 — 기본 답이 아니라 재배치가 표현하지 못하는 것의 폴백으로.**
-      //    표현하지 못하는 경우는 실측으로 존재한다(절단·패리티, 그리고 원래 격자가 저장
-      //    좌표를 원 bbox 밖까지 쓰고 있던 맵). 실데이터: `bonding_map/4MAIN_TRIM`
-      //    (33x25, 449셀)을 29x25 참조로 열면 저장 좌표 11개가, 27x21이면 53개가 새 프레임의
-      //    상에 없다. 근사해서 옮기면 그 셀들이 조용히 남의 좌표를 차지한다.
-      //
-      // ⚠️ 계획은 **채택 전에** 세운다(두 프레임을 인자로 받는 순수 계산이므로 가능하다).
-      //    거절하는 경로에서 화면이 한 글자도 바뀌지 않아야 하기 때문이다.
-      const plan = storedCoordRepositionPlan(currentFrame(), adoptedFrameOf(refFrame));
-      if (plan.unrepresentable.length > 0 || plan.stranded.length > 0 || plan.collision) {
-        const u = plan.unrepresentable;
-        // [H4] 문장 조립은 `repositionRefusalReason` 하나가 한다 — 모집단마다 문장이 다르고,
-        // 여기서 다시 조립하면 collision 단독처럼 셀을 지목할 수 없는 조합에서 옛 모양이 남는다.
-        const r = repositionRefusalReason(plan, refResolved.cols, refResolved.rows);
-        // ⚠️ 채널은 분기로 고른다 — `const log = cond ? console.error : console.warn`처럼 메서드를
-        //    떼어 담지 않는다. 떼어 낸 참조가 어떤 환경에서 `this`를 잃고 던지면 그 예외가
-        //    바로 아래 catch로 떨어져 **거절 사유가 "내부 오류"로 뒤바뀐다**(운영자가 받는 문장이
-        //    통째로 달라진다). 로그 한 줄의 편의로 살 위험이 아니다.
-        const detail = `[Map Editor][clause4] reposition refused — ${before} -> `
-          + `${refResolved.cols}x${refResolved.rows}: ${u.length} stored coordinate(s) are not in the `
-          + `new frame's image, ${plan.stranded.length} already unaddressable`
-          + `${plan.collision ? `, coord collision at ${plan.collision}` : ''}`
-          + `${r.collisionOnly ? ' — COLLISION ONLY, which is unreachable by construction: this is a '
-            + 'program defect, not map data' : ''}; nothing was changed. `
-          + `samples: ${u.slice(0, 5).map(x => `${x.key}@DB(${x.coord.replace('_', ',')})`).join(' ')}`;
-        if (r.collisionOnly) console.error(detail); else console.warn(detail);
-        return refuse(ref, r.reason);
-      }
-      // 같은 수를 **두 방식으로** 구해 서로 대조한다(같은 수를 두 곳에서 계산해 UI에 각각 쓰는
-      // 것과 다르다 — 운영자에게 가는 수는 아래 `plan.rekeyedWithValue` 하나뿐이다).
-      //   plan  — 저장 좌표를 고정하고 물리 키를 되유도했을 때 키가 바뀐 셀
-      //   cost  — 재배치가 없었다면 저장 좌표가 밀렸을(moved) · 새 프레임이 못 덮었을(lost) 셀
-      // ⚠️ 두 수의 항등은 **이 지점 이후에서만** 참이다. 위 가드가 `unrepresentable`·`stranded`를
-      //    이미 걸러 냈으므로 값 있는 셀은 전부 `before`·`after` 양쪽에 상이 있고, `after`가
-      //    단사이므로 `nk !== k ⟺ after(k) !== before(k)`가 된다. (거절되는 조합에서는 갈린다 —
-      //    실측 `4MAIN_TRIM ← 4B13`: plan 0 vs cost 53. 그 조합은 여기 오지 않는다.)
-      //    갈리면 그것 자체가 결함이므로 조용히 넘기지 않고 콘솔에 error로 남긴다.
-      const wouldHaveMoved = adoptionCoordinateCost(refFrame);
-      adoptFrameSpec(refFrame);
-      hereResolved = resolveFrame(currentFrame());
-      // 채택이 실제로 먹었는지 **다시 읽어서** 판정한다. 먹지 않았는데 진행하면
-      // 마스크가 다른 인덱스 공간의 키 집합이 되어 조용히 틀린 유효 다이를 그린다 —
-      // 이 도메인이 막으려는 바로 그 형태다. 못 맞췄으면 종전대로 이유를 대고 거절한다.
-      if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
-        return refuse(ref,
-          `격자 규격을 참조 맵에 맞추지 못했습니다 — 참조 ${refResolved.cols}x${refResolved.rows} `
-          + `vs 현재 ${hereResolved.cols}x${hereResolved.rows}.`);
-      }
-      // [clause 4] 격자가 새 치수로 열린 **뒤에** 셀을 옮긴다. 계획은 이미 세워져 있으므로
-      // 여기서 다시 판정하지 않는다 — 판정과 적용을 나눈 이유가 이것이다(거절 경로에서
-      // 화면이 한 글자도 바뀌지 않아야 한다).
-      applyStoredCoordReposition(plan);
-      const oracle = wouldHaveMoved.moved + wouldHaveMoved.lost;
-      console.info(`[Map Editor][clause4] ${plan.moves.size} key(s) migrated after `
-        + `${before} -> ${refResolved.cols}x${refResolved.rows}: stored coordinates preserved, `
-        + `${plan.rekeyed} physical key(s) re-derived, of which ${plan.rekeyedWithValue} carry a `
-        + `value (the ONE number the operator is told). Independent oracle `
-        + `(adoptionCoordinateCost): ${wouldHaveMoved.moved} would have moved + `
-        + `${wouldHaveMoved.lost} would have been dropped = ${oracle}.`);
-      if (plan.rekeyedWithValue !== oracle) {
-        console.error(`[Map Editor][clause4] INTERNAL: the two derivations of "how many valued `
-          + `cells the reposition saved" disagree — plan=${plan.rekeyedWithValue} vs `
-          + `cost=${oracle}. One of them is wrong; the toast reports the plan's number.`);
-      }
-      // 🔴 **여기서 알리지 않는다.** 채택의 대가(격자·유효 다이 밖으로 밀려난 칠한 셀)는
-      //    `classifyUnsavableCells`가 세는데, 그 함수의 정의역은 렌더가 만든 `gridCells2D`이고
-      //    지금은 **새 프레임으로도 새 마스크로도** 그려지지 않았다. 여기서 세면 옛 격자를
-      //    세고, 마스크가 앉기 전에 세면 옛 판정을 센다 — 둘 다 조용히 틀린 수다.
-      //    그래서 알림은 마스크가 앉은 뒤로 미룬다(`announceFrameAdoption`).
-      // [H2] 알림이 받는 수는 **하나**다. `moves.size`(따져 본 셀)도 `rekeyed`(빈 값·서빙 전용
-      // 포함)도 넘기지 않는다 — 넘기면 다음 사람이 그중 하나를 문장에 쓴다.
-      adopted = { before, after: `${refResolved.cols}x${refResolved.rows}`,
-                  moved: plan.rekeyedWithValue };
+      dimsDiffer = { here: `${hereResolved.cols}x${hereResolved.rows}`,
+                     there: `${refResolved.cols}x${refResolved.rows}` };
     }
 
     const keys = new Set(projectCellsToPhys(cells, refFrame).keys());
@@ -7794,8 +7735,18 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵을 물리 좌표로 투영한 결과가 비었습니다.`);
     }
     const out = set('ref', keys, '', ref);
-    // 마스크가 앉은 **뒤에야** 채택의 대가를 정직하게 셀 수 있다(위 adopted 주석).
-    if (adopted && !stale()) announceFrameAdoption(adopted, ref);
+    // [F8] 밀림을 알린다. 대가를 셀 것이 없으므로(`classifyUnsavableCells`를 부르지 않는다)
+    // 마스크가 앉은 뒤여야 할 이유도 없지만, 지정이 실제로 성립한 뒤에만 말하는 것이 맞다.
+    if (dimsDiffer && !stale()) {
+      console.info(`[Map Editor][F8] valid-die reference grid ${dimsDiffer.there} != editor grid `
+        + `${dimsDiffer.here}; NOTHING adopted — every cell keeps its canvas position and `
+        + `therefore its derived DB coordinate. The mask is drawn in the reference's index `
+        + `space, so it appears offset. 0 coordinates changed, 0 rows dropped.`);
+      showToast(`유효 다이 참조 맵의 격자(${dimsDiffer.there})가 이 맵의 격자(${dimsDiffer.here})와 `
+        + `달라 마스크가 화면에서 밀려 보입니다 — 격자·셀·좌표는 **하나도 바뀌지 않았고** `
+        + `⚡ Push가 기록할 x/y도 그대로입니다.`,
+        'info', { dedupeKey: 'valid_die_dims_differ' });
+    }
     return out;
   } catch (e) {
     // 🔴 **이 catch는 예상된 실패의 자리가 아니다.** 조회·데이터·계약 실패는 전부 위에서
