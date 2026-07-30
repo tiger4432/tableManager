@@ -7271,6 +7271,119 @@ function adoptionCoordinateCost(refFrame) {
   return cost;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [clause 4] 치수 채택 뒤의 **재배치** — 저장 좌표를 보존하고 화면 위치를 다시 유도한다
+//
+// 사용자 결정(2026-07-30): 치수가 다르면 **참조 맵이 이긴다**(clause 3), 그리고 그 다음
+// 기존 셀을 **원점에 맞춰 옮긴다**(clause 4). 즉 불변식은 이렇게 뒤집힌다:
+//
+//     before : 화면 c_old,  저장 x = c_old − minC_old + startX
+//     after  : 저장 x 보존  ⇒  c_new = c_old + (minC_new − minC_old)
+//
+// 🔴 **그래서 저장 좌표의 의미가 바뀌지 않는다.** (5,7)에 있던 셀은 여전히 (5,7)이고,
+//    캔버스가 그 셀 주위로 커졌으니 **화면 위치만** 움직인다. 마이그레이션도 재해석도 없다.
+//    P0-1 가드가 막던 손상(같은 다이가 다른 x/y로 직렬화됨)은 원리적으로 일어날 수 없다 —
+//    그 가드는 **반대 방향**을 지키고 있었다.
+//
+// 🔴 **다이가 보존되는 것은 구조적 이유가 있다.** 저장 좌표는 이미 **웨이퍼 상대**다:
+//    `getVisualCoords`의 `− box.minC` 항이 정확히 그것을 산다. 원이 격자에 온전히 들어가
+//    있으면 `minC == (vC−1)/2 − R/chipX`이므로 저장 x는 "웨이퍼 원 왼쪽 끝에서 몇 칸"이고,
+//    그 값은 격자 치수와 무관하다. bbox 규약이 값을 하는 유일한 자리다.
+//
+// ⚠️ 그 등식이 **깨지는 두 국면**이 있고, 거기서는 근사하지 않고 거절한다:
+//    ① 절단(clipping) — 격자가 원보다 작으면 `minC`가 0으로 clamp되어 웨이퍼 끝이 아니라
+//       **캔버스 끝**을 가리킨다. 그러면 저장 x는 웨이퍼 상대가 아니다.
+//    ② 패리티 — `minC`는 정수인데 `(vC−1)/2 − R/chipX`는 아니어서, 격자 홀짝이 바뀌면
+//       잔차가 반 칸 엇갈린다.
+//    두 국면 모두 **해석식으로 판정하지 않는다.** 판정은 실측이다 — 새 프레임이 그 저장
+//    좌표를 **실제로 만들어 내는가**(`dbCoordsByPhysKey`의 상 안에 있는가)를 키 단위로 묻는다.
+//    근사 재배치는 이 도메인이 존재하는 이유인 '조용히 틀린 값' 그 자체다.
+//
+// 🔴 **새 변환은 한 줄도 없다.** 쓰는 것은 `dbCoordsByPhysKey(frame)` 하나 —
+//    `adoptionCoordinateCost`가 채택 비용을 재는 데 쓰는 그 프리미티브다
+//    (PRIMITIVES "키가 불변이면 안전하다는 축마다 다시 증명해야 한다").
+//    한 프레임에서 `물리 키 → 저장 좌표`를 만들고, 새 프레임의 그 사상을 **뒤집어**
+//    `저장 좌표 → 물리 키`로 쓴다. 재배치는 두 사상의 합성일 뿐이다.
+//
+// 🔴 **관련 캐시는 함께 움직인다** — `gridData`·`serverCellKeys`·`loadedFCells`. 하나만
+//    옮기면 `serverCellKeySet()`이 옛 키로 대조해 서버가 보낸 셀을 '보낸 적 없음'으로
+//    읽고, 정리 제안이 살아 있는 행을 지운다(불변식 ③·④).
+//
+// 반환: { moves: Map<옛 물리 키, 새 물리 키>,
+//         unrepresentable: [{key, coord}] — 새 프레임이 그 저장 좌표를 만들지 못한다(거절 사유),
+//         stranded: string[]  — 지금 프레임이 이미 덮지 못하는 셀(보존할 좌표 자체가 없다),
+//         collision: string   — 새 프레임에서 한 저장 좌표에 두 다이가 걸린다(방어용),
+//         rekeyed: number     — 물리 키가 실제로 바뀌는 셀 수(회전 90/270·back에서 발생) }
+// ═══════════════════════════════════════════════════════════════════════════════
+function storedCoordRepositionPlan(fromFrame, toFrame) {
+  const before = dbCoordsByPhysKey(fromFrame);
+  const after = dbCoordsByPhysKey(toFrame);
+
+  // 새 프레임의 사상을 뒤집는다. `getVisualCoords`는 (c,r)에 대해 아핀 단사이므로 충돌은
+  // 나오지 않아야 한다 — 그래도 조용히 하나를 골라 버리지 않고 거절 사유로 남긴다.
+  const keyByCoord = new Map();
+  let collision = '';
+  after.forEach((coord, key) => {
+    if (keyByCoord.has(coord)) { if (!collision) collision = coord; return; }
+    keyByCoord.set(coord, key);
+  });
+
+  // 서버가 보낸 키는 **실재하는 행**이다. 그 좌표를 새 프레임이 못 만들면 `replace_map`이
+  // 그 행을 지운다(불변식 ④) — 그래서 값이 있는 셀과 같은 등급으로 거절 사유에 넣는다.
+  const served = (serverCellKeys && serverCellKeys.keys) ? serverCellKeys.keys : null;
+  const loadBearing = (k) => (gridData[k] || '') !== '' || loadedFCells.has(k)
+    || (served ? served.has(k) : false);
+
+  // 빈 값 셀도 **옮긴다**(버리지 않는다) — 다만 표현 불가일 때 거절 사유는 되지 않는다.
+  // 빈 값은 아무것도 나르지 않으므로(`eachSavableCell`의 그 식) 잃어도 데이터가 아니다.
+  const all = new Set(Object.keys(gridData));
+  loadedFCells.forEach(k => all.add(k));
+  if (served) served.forEach(k => all.add(k));
+
+  const moves = new Map();
+  const unrepresentable = [];
+  const stranded = [];
+  const targets = new Set();
+  let rekeyed = 0;
+  all.forEach(k => {
+    const coord = before.get(k);
+    if (coord === undefined) { if (loadBearing(k)) stranded.push(k); return; }
+    const nk = keyByCoord.get(coord);
+    if (nk === undefined) { if (loadBearing(k)) unrepresentable.push({ key: k, coord }); return; }
+    if (targets.has(nk)) { if (!collision) collision = coord; return; }
+    targets.add(nk);
+    moves.set(k, nk);
+    if (nk !== k) rekeyed++;
+  });
+  return { moves, unrepresentable, stranded, collision, rekeyed, considered: all.size };
+}
+
+// 계획의 적용. **계획을 세운 뒤·채택이 실제로 먹은 뒤에만** 부른다 — 순서가 규칙의 일부다
+// (`resolveValidDie`의 호출 순서 주석). 여기서 다시 판정하지 않는다: 판정은 계획이 했다.
+function applyStoredCoordReposition(plan) {
+  const nextGrid = {};
+  Object.keys(gridData).forEach(k => {
+    const nk = plan.moves.get(k);
+    if (nk === undefined) return;          // 표현 불가한 빈 값 셀뿐 — 나르는 것이 없다
+    nextGrid[nk] = gridData[k];
+  });
+  gridData = nextGrid;
+
+  const nextF = new Set();
+  loadedFCells.forEach(k => { const nk = plan.moves.get(k); if (nk !== undefined) nextF.add(nk); });
+  loadedFCells = nextF;
+
+  if (serverCellKeys && serverCellKeys.keys) {
+    const nextS = new Set();
+    serverCellKeys.keys.forEach(k => { const nk = plan.moves.get(k); if (nk !== undefined) nextS.add(nk); });
+    // 정체(table·mapKey)는 그대로다 — 옮긴 것은 좌표계이고 맵은 같은 맵이다.
+    serverCellKeys = { ...serverCellKeys, keys: nextS };
+  }
+  // 격자 치수가 이미 바뀌었으므로 bbox 캐시는 무효다. `adoptFrameSpec`도 지우지만,
+  // 이 함수가 단독으로 옳아야 한다(두 곳이 서로의 부수효과에 기대면 순서 결합이 생긴다).
+  boundingBoxCache = {};
+}
+
 // ── [F6] 프레임 채택 — 편집기 컨트롤로만 ────────────────────────────────────
 // 유효 다이 지정이 **치수만으로** 거절되던 자리를 푼다. 물리 좌표는 캔버스 인덱스
 // 상대라 치수가 다르면 같은 인덱스가 같은 다이가 아니고, 그래서 그 관문 자체는 옳다.
@@ -7467,28 +7580,50 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       //    사용자가 보는 격자가 아무도 요청하지 않은 크기가 된다(F3와 같은 계급).
       if (stale()) return validDie;
       const before = `${hereResolved.cols}x${hereResolved.rows}`;
-      // 🔴 [P0-1 GUARD] 이미 셀이 들어 있는 맵에서는 채택하지 않는다.
-      //    채택은 격자 치수를 바꾸고, 치수는 `getVisualCoords`의 bbox 항을 통해 **저장
-      //    좌표**를 바꾼다(위 `dbCoordsByPhysKey` 주석). 화면은 멀쩡하고 대비 관문도 0을
-      //    보고하는데 `replace_map`이 밀린 x/y를 쓴다 — 이 도메인이 막으려는 형태 그 자체다.
-      //    사용자가 물은 상황("기존 프레임이 없으면 어떻게 됨?")은 셀이 없는 맵이고, 거기서는
-      //    움직일 좌표가 없으므로 기능이 그대로 남는다. 좌표가 하나도 움직이지 않는 치수
-      //    변경(bbox 항이 같은 경우)도 통과한다 — 판정은 치수 비교가 아니라 **좌표 비교**다.
-      const cost = adoptionCoordinateCost(refFrame);
-      if (cost.moved > 0 || cost.lost > 0) {
-        const sample = cost.sample ? ` 예: (${cost.sample.from}) → (${cost.sample.to}).` : '';
-        const lostTxt = cost.lost > 0 ? ` ${cost.lost}개는 새 격자가 덮지도 못합니다.` : '';
-        console.warn(`[Map Editor][P0-1] frame adoption refused — ${before} -> `
-          + `${refResolved.cols}x${refResolved.rows} would move ${cost.moved} stored cell(s) `
-          + `and drop ${cost.lost} (kept ${cost.kept}); nothing was changed.`);
+      // 🔴 [clause 3 + 4] 치수는 **참조 맵이 이긴다**. 그리고 기존 셀은 **저장 좌표를 그대로
+      //    둔 채** 새 격자의 원점에 맞춰 옮긴다. 그래서 저장 좌표의 의미가 바뀌지 않고
+      //    (P0-1이 막던 조용한 재좌표화는 원리적으로 일어나지 않는다) 화면 위치만 다시
+      //    유도된다 — `storedCoordRepositionPlan`의 주석이 그 등식이다.
+      //
+      // 🔴 **가드는 남는다 — 기본 답이 아니라 재배치가 표현하지 못하는 것의 폴백으로.**
+      //    표현하지 못하는 경우는 실측으로 존재한다(절단·패리티, 그리고 원래 격자가 저장
+      //    좌표를 원 bbox 밖까지 쓰고 있던 맵). 실데이터: `bonding_map/4MAIN_TRIM`
+      //    (33x25, 449셀)을 29x25 참조로 열면 저장 좌표 11개가, 27x21이면 53개가 새 프레임의
+      //    상에 없다. 근사해서 옮기면 그 셀들이 조용히 남의 좌표를 차지한다.
+      //
+      // ⚠️ 계획은 **채택 전에** 세운다(두 프레임을 인자로 받는 순수 계산이므로 가능하다).
+      //    거절하는 경로에서 화면이 한 글자도 바뀌지 않아야 하기 때문이다.
+      const plan = storedCoordRepositionPlan(currentFrame(), adoptedFrameOf(refFrame));
+      if (plan.unrepresentable.length > 0 || plan.stranded.length > 0 || plan.collision) {
+        const u = plan.unrepresentable;
+        const sample = u.length
+          ? ` 예: 저장 좌표 (${u[0].coord.replace('_', ', ')})에 대응하는 칸이 새 격자에 없습니다.`
+          : '';
+        const strandTxt = plan.stranded.length > 0
+          ? ` 그리고 ${plan.stranded.length}개는 지금 격자도 이미 덮지 못하고 있어 보존할 좌표 자체가 없습니다.`
+          : '';
+        const collideTxt = plan.collision
+          ? ` 새 격자에서 저장 좌표 (${plan.collision.replace('_', ', ')})에 두 칸이 겹칩니다.`
+          : '';
+        console.warn(`[Map Editor][clause4] reposition refused — ${before} -> `
+          + `${refResolved.cols}x${refResolved.rows}: ${u.length} stored coordinate(s) are not in the `
+          + `new frame's image, ${plan.stranded.length} already unaddressable`
+          + `${plan.collision ? `, coord collision at ${plan.collision}` : ''}; nothing was changed. `
+          + `samples: ${u.slice(0, 5).map(x => `${x.key}@DB(${x.coord.replace('_', ',')})`).join(' ')}`);
+        // 머릿수는 **막는 모집단 전체**다. `unrepresentable`만 세면 stranded뿐인 경우에
+        // "셀 0개는 유지할 수 없습니다"가 되어, 거절하면서 아무 셀도 지목하지 않는 문장이 된다.
+        const blockedCells = u.length + plan.stranded.length;
         return refuse(ref,
-          `이 맵에는 이미 값이 있는 셀이 있어 격자를 참조 맵 규격(${refResolved.cols}x${refResolved.rows})으로 `
-          + `열지 않았습니다 — 치수를 바꾸면 그 셀들이 **저장될 좌표가 함께 움직입니다** `
-          + `(${cost.moved}개 이동).${lostTxt}${sample} 화면은 멀쩡해 보이지만 ⚡ Push가 밀린 좌표를 `
-          + `기록하게 되므로 채택을 중단했습니다. 격자 크기를 ${refResolved.cols}x${refResolved.rows}로 `
-          + `맞춘 뒤 📂 Load로 이 맵을 다시 불러오면 셀이 그 규격의 좌표계로 읽히고, 그 상태에서는 `
-          + `채택 없이 그대로 지정됩니다. (빈 맵·새 맵에서는 이 제한이 없습니다.)`);
+          `격자를 참조 맵 규격(${refResolved.cols}x${refResolved.rows})으로 열지 못했습니다 — 이 맵의 `
+          + `셀 ${blockedCells}개는 **저장된 좌표를 그대로 유지할 수 없습니다**`
+          + `(그 좌표를 가리키는 칸이 새 격자에 존재하지 않습니다).${sample}${strandTxt}${collideTxt} `
+          + `대충 옮기면 화면은 멀쩡한데 그 셀들이 다른 좌표로 저장되므로 중단했습니다. `
+          + `격자 크기를 ${refResolved.cols}x${refResolved.rows}로 맞춘 뒤 📂 Load로 이 맵을 다시 `
+          + `불러오면 셀이 그 규격의 좌표계로 읽히고, 그 상태에서는 채택 없이 그대로 지정됩니다.`);
       }
+      // 재배치가 없었다면 저장 좌표가 몇 개 밀렸을지 — 재배치의 효과를 **주장이 아니라
+      // 측정값**으로 남긴다. `adoptionCoordinateCost`가 그 수의 유일한 정의다.
+      const wouldHaveMoved = adoptionCoordinateCost(refFrame);
       adoptFrameSpec(refFrame);
       hereResolved = resolveFrame(currentFrame());
       // 채택이 실제로 먹었는지 **다시 읽어서** 판정한다. 먹지 않았는데 진행하면
@@ -7499,12 +7634,23 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
           `격자 규격을 참조 맵에 맞추지 못했습니다 — 참조 ${refResolved.cols}x${refResolved.rows} `
           + `vs 현재 ${hereResolved.cols}x${hereResolved.rows}.`);
       }
+      // [clause 4] 격자가 새 치수로 열린 **뒤에** 셀을 옮긴다. 계획은 이미 세워져 있으므로
+      // 여기서 다시 판정하지 않는다 — 판정과 적용을 나눈 이유가 이것이다(거절 경로에서
+      // 화면이 한 글자도 바뀌지 않아야 한다).
+      applyStoredCoordReposition(plan);
+      console.info(`[Map Editor][clause4] repositioned ${plan.moves.size} cell(s) after `
+        + `${before} -> ${refResolved.cols}x${refResolved.rows}: stored coordinates preserved, `
+        + `${plan.rekeyed} physical key(s) re-derived. Without the reposition `
+        + `${wouldHaveMoved.moved} stored coordinate(s) would have moved and `
+        + `${wouldHaveMoved.lost} would have been dropped.`);
       // 🔴 **여기서 알리지 않는다.** 채택의 대가(격자·유효 다이 밖으로 밀려난 칠한 셀)는
       //    `classifyUnsavableCells`가 세는데, 그 함수의 정의역은 렌더가 만든 `gridCells2D`이고
       //    지금은 **새 프레임으로도 새 마스크로도** 그려지지 않았다. 여기서 세면 옛 격자를
       //    세고, 마스크가 앉기 전에 세면 옛 판정을 센다 — 둘 다 조용히 틀린 수다.
       //    그래서 알림은 마스크가 앉은 뒤로 미룬다(`announceFrameAdoption`).
-      adopted = { before, after: `${refResolved.cols}x${refResolved.rows}` };
+      adopted = { before, after: `${refResolved.cols}x${refResolved.rows}`,
+                  repositioned: plan.moves.size, rekeyed: plan.rekeyed,
+                  wouldHaveMoved: wouldHaveMoved.moved };
     }
 
     const keys = new Set(projectCellsToPhys(cells, refFrame).keys());
@@ -7570,7 +7716,22 @@ function announceFrameAdoption(adopted, ref) {
   const stray = u.outsideStray.length;
   const head = `격자를 참조 맵 규격으로 열었습니다 — ${adopted.before} → ${adopted.after} `
     + `(${ref.table} · ${ref.mapKey}).`;
+  // [clause 4] 셀을 실제로 옮겼으면 **말한다.** 화면에서 셀이 움직인 이유를 운영자가 알 수
+  // 없으면 그것 자체가 조용한 변경이다. 반대로 옮긴 것이 0개면(빈 맵) 종전 [1e]대로 침묵한다 —
+  // 아무것도 일어나지 않은 일에 토스트를 붙이지 않는다. 확인창은 아니다(읽기는 무마찰).
+  const moved = adopted.repositioned || 0;
+  const repositionSentence = moved > 0
+    ? `기존 셀 ${moved}개는 **저장된 좌표를 그대로 유지한 채** 새 격자의 원점에 맞춰 화면 위치만 `
+      + `옮겼습니다 — DB에 기록될 x/y는 한 개도 바뀌지 않습니다`
+      + `(재배치가 없었다면 ${adopted.wouldHaveMoved || 0}개가 밀렸습니다).`
+    : '';
   if (blocking === 0 && stray === 0) {
+    if (moved > 0) {
+      console.info(`[map] frame adopted ${adopted.before} -> ${adopted.after} `
+        + `(${ref.table} · ${ref.mapKey}); ${moved} cell(s) repositioned, no stranded cells`);
+      showToast(`${head} ${repositionSentence}`, 'info', { dedupeKey: 'valid_die_frame_adopted' });
+      return;
+    }
     // [1e] Zero stranded cells means nothing went wrong. The adopted grid size is visible in
     // the geometry inputs and the valid-die chip, and "not saved yet" is stated permanently by
     // the plan-head chip — repeating it here only adds a toast to the happy path.
@@ -7586,6 +7747,8 @@ function announceFrameAdoption(adopted, ref) {
   // 두 모집단은 **다른 문장**을 받는다. 합쳐 부르면 Push에서 만나는 수와 갈리고(실측 4 vs 2),
   // 안내도 갈린다 — stray는 거절이 아니라 정리 대상이다.
   const parts = [head];
+  // 재배치는 두 분기에서 **같은 문장**이다. 한쪽에만 쓰면 셀이 남은 경우에만 이유를 듣게 된다.
+  if (repositionSentence) parts.push(repositionSentence);
   if (blocking > 0) {
     parts.push(`다만 칠해진 셀 ${blocking}개가 이 규격의 격자·유효 다이 밖으로 나갔습니다 — `
       + `이 상태로는 저장할 수 없어 ⚡ Push가 이 ${blocking}개를 사유로 거절합니다`
