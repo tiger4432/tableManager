@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import requests
 import threading
 
 # Add server and parsers directories to path
@@ -42,7 +41,11 @@ try:
 except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {e}")
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+import internal_event_client
+# Single definition of the web server's address lives in internal_event_client.
+# The module attribute stays: scripts/dev_env/iso_watcher.py reads
+# run_watcher.API_BASE_URL to prove an isolated watcher is not posting to :8080.
+API_BASE_URL = internal_event_client.api_base_url()
 
 # [Std Ingestion] SYSTEM_RELOAD 시 신규 테이블 워크스페이스 자동 생성 + 런타임 감시 등록을 위해
 # 폴러 스레드가 참조하는 WorkspaceWatcher 인스턴스 (main()에서 설정, None 가드 필수)
@@ -53,13 +56,26 @@ def post_event(endpoint: str, payload: dict):
     # inherits ASSY_ADMIN_TOKEN from the launcher's environment. A 401 here means
     # the worker was started without it - the notification is dropped and
     # real-time sync goes quiet, so the status code is logged, not swallowed.
+    # [F8] The session comes from internal_event_client and NOT from a bare
+    # requests.post: `requests` trusts HTTP_PROXY and the Windows proxy registry,
+    # whose `<local>` exemption does not cover a dotted address, so a notification
+    # to 127.0.0.1 was relayed to a corporate proxy and refused with 403.
     import admin_auth
+    import internal_event_client
     url = f"{API_BASE_URL}{endpoint}"
     try:
-        res = requests.post(url, json=payload, timeout=5,
-                            headers=admin_auth.internal_event_headers())
+        res = internal_event_client.internal_event_session().post(
+            url, json=payload, timeout=5,
+            headers=admin_auth.internal_event_headers())
         if not res.ok:
-            logger.warning(f"API notification failed: {url} -> {res.status_code}")
+            # [F8] Third sender, same discriminator. An auth-shaped refusal
+            # escalates to ERROR: a 401/403 here means real-time propagation is
+            # dead for every table this watcher feeds, which is not a warning.
+            note = admin_auth.internal_event_failure_note(res.status_code, res.headers)
+            if note:
+                logger.error(f"API notification failed: {url} -> {res.status_code} | {note}")
+            else:
+                logger.warning(f"API notification failed: {url} -> {res.status_code}")
     except Exception as e:
         logger.error(f"Failed to send API notification: {e}")
 
@@ -266,6 +282,14 @@ def main():
     logger.info(" Starting Standalone File Ingestion Watcher Process...")
     logger.info(f" API Base URL: {API_BASE_URL}")
     logger.info("=" * 60)
+
+    # [F8] Everything about this process's path to /internal/events/*, before any
+    # data is in flight: which token it holds (as a one-way fingerprint the API
+    # server prints too), what proxy configuration exists, and whether /health
+    # answers directly. The 2026-07-30 proxy incident was invisible until the
+    # first correction happened to be made.
+    for _lvl, _msg in internal_event_client.startup_lines("File Ingestion Watcher"):
+        getattr(logger, _lvl)(_msg)
     
     import paths
     workspace_base = paths.WORKSPACE_DIR

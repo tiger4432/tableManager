@@ -6,7 +6,6 @@ import importlib
 import inspect
 import uuid
 import select
-import threading
 import time
 from collections import defaultdict
 
@@ -125,26 +124,16 @@ class OutboxListener:
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+import internal_event_client
 
-# [Warmup #3] 스레드별 requests.Session 저장소 (keep-alive 커넥션 재사용).
-_http_local = threading.local()
+API_BASE_URL = internal_event_client.api_base_url()
 
-def _get_http_session():
-    """[Warmup #3] 호출 스레드 전용 requests.Session을 반환한다(keep-alive 재사용).
-
-    매 호출 `requests.post`는 매번 새 TCP 커넥션을 수립해 첫 통지에 커넥션 비용이 붙는다.
-    requests.Session은 스레드 안전이 보장되지 않으므로(쿠키 저장소 등 내부 상태 변이 레이스),
-    threading.local로 스레드당 1개 세션을 유지한다. post_event_async는 asyncio.to_thread(기본
-    ThreadPoolExecutor)로 실행되고 워커의 통지는 단일 태스크에서 순차 await되므로 실제로는
-    유휴 스레드 1개가 재사용된다 → 스레드당 세션이어도 keep-alive 재사용 이득이 유지된다.
-    """
-    sess = getattr(_http_local, "session", None)
-    if sess is None:
-        import requests
-        sess = requests.Session()
-        _http_local.session = sess
-    return sess
+# [Warmup #3] 스레드별 keep-alive 세션은 internal_event_client가 소유한다.
+#   [F8] 이전에는 이 파일이 `requests.Session()`을 직접 만들었다 — requests의 기본값
+#   trust_env=True가 HTTP_PROXY와 Windows 프록시 레지스트리를 읽고, ProxyOverride의
+#   `<local>`은 점 없는 호스트명만 우회하므로 127.0.0.1은 우회되지 않는다. 그래서
+#   자기 자신에게 보내는 통지가 사내 프록시로 나갔고 403으로 거절됐다(2026-07-30).
+#   세션 생성 지점을 단일화해 새 발신자가 같은 실수를 반복할 수 없게 한다.
 
 async def post_event_async(endpoint: str, payload: dict) -> bool:
     """통지를 fire-and-forget으로 전송하고 전달 확정 여부(bool)를 반환한다.
@@ -161,11 +150,21 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
             # [B5] /internal/events/* carries the admin secret; inherited from
             # the launcher's environment. 401 here = worker started without it.
             import admin_auth
-            res = _get_http_session().post(
+            res = internal_event_client.internal_event_session().post(
                 url, json=payload, timeout=3,
                 headers=admin_auth.internal_event_headers())
             if not res.ok:
-                logger.error(f"[Chain Worker] API notification failed: {url} -> {res.status_code}")
+                # [F8] The status code alone cannot say WHO refused, and the two
+                # answers have unrelated remedies. The response already carries
+                # the discriminator - the gate attaches WWW-Authenticate:
+                # X-Admin-Token to every rejection it produces itself - and this
+                # line used to throw it away, which is how a repeated 403 here
+                # cost an incident's worth of source reading to attribute.
+                note = admin_auth.internal_event_failure_note(res.status_code, res.headers)
+                suffix = f" | {note}" if note else ""
+                logger.error(
+                    f"[Chain Worker] API notification failed: {url} -> "
+                    f"{res.status_code}{suffix}")
                 return False
             return True
         except Exception as e:
@@ -638,7 +637,7 @@ def warmup_worker(rules, db_session_factory=None):
     t2 = time.monotonic()
     # 3) HTTP 클라이언트 준비 — requests 모듈 import(전역 캐시)로 첫 통지의 import 비용 제거.
     try:
-        _get_http_session()
+        internal_event_client.internal_event_session()
     except Exception as e:
         logger.warning(f"[Warmup] HTTP session init failed: {e}")
     t3 = time.monotonic()
@@ -844,6 +843,15 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
 
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
+
+    # [F8] Everything about this process's path to /internal/events/*, before any
+    # data is in flight: which token it holds (as a one-way fingerprint the API
+    # server prints too), what proxy configuration exists, and whether /health
+    # answers directly. This worker is the one that took the 2026-07-30 403s, and
+    # nothing it logged at startup could have told an operator why.
+    for _lvl, _msg in internal_event_client.startup_lines("Chain Worker"):
+        getattr(logger, _lvl)(_msg)
+
     rules = load_chain_rules()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
     

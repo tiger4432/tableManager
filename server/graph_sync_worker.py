@@ -457,18 +457,29 @@ def to_local_str(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 async def post_event_async(endpoint: str, payload: dict):
-    import requests
-    api_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
-    url = f"{api_url}{endpoint}"
+    import internal_event_client
+    url = f"{internal_event_client.api_base_url()}{endpoint}"
     def do_post():
         try:
             # [B5] /internal/events/* carries the admin secret; inherited from
             # the launcher's environment. 401 here = worker started without it.
+            # [F8] The session comes from internal_event_client and NOT from a
+            # bare requests.post, which honours HTTP_PROXY and the Windows proxy
+            # registry - a loopback notification relayed to a corporate proxy is
+            # refused with 403 and reads exactly like a bad token.
             import admin_auth
-            res = requests.post(url, json=payload, timeout=20,
-                                headers=admin_auth.internal_event_headers())
+            res = internal_event_client.internal_event_session().post(
+                url, json=payload, timeout=20,
+                headers=admin_auth.internal_event_headers())
             if not res.ok:
-                logger.error(f"[GraphSync Process] API notification failed: {url} -> {res.status_code}")
+                # [F8] Same discriminator as the chain worker's sender, for the
+                # same reason: a fix applied to one sender only is a defect this
+                # project has already shipped once on this exact endpoint.
+                note = admin_auth.internal_event_failure_note(res.status_code, res.headers)
+                suffix = f" | {note}" if note else ""
+                logger.error(
+                    f"[GraphSync Process] API notification failed: {url} -> "
+                    f"{res.status_code}{suffix}")
         except Exception as e:
             logger.error(f"[GraphSync Process] Failed to send API notification: {e}")
     await asyncio.to_thread(do_post)
@@ -1065,6 +1076,18 @@ async def handle_manual_sync(req: GraphSyncRequest):
 
 @app.on_event("startup")
 async def startup_event():
+    # [F8] Everything about this process's path to /internal/events/* - token
+    # fingerprint, proxy configuration, /health reachability - emitted first and
+    # inside its own try: a process that fails to init its models must still have
+    # said what it would have presented, and a diagnostic must never be the thing
+    # that stops a worker from starting.
+    try:
+        import internal_event_client
+        for _lvl, _msg in internal_event_client.startup_lines("GraphSync Worker"):
+            getattr(logger, _lvl)(_msg)
+    except Exception as e:
+        logger.error(f"[GraphSync Worker Server] internal-events banner failed: {e}")
+
     try:
         from database import crud, models
         new_config = crud.load_table_config()

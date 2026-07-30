@@ -636,6 +636,799 @@ class TestInternalEventsAreGated:
                 "admin header; its notifications will 401 on a locked server")
 
 
+# --------------------------------------------------------------------------
+# [F8] The fingerprint, and the gate signal the senders used to throw away
+# --------------------------------------------------------------------------
+
+OTHER_TOKEN = "a-different-but-equally-correct-horse"
+NON_ASCII_TOKEN = "관리자토큰"
+HEX = set("0123456789abcdef")
+
+#: What the gate attaches to its own rejections, and therefore the only proof a
+#: 4xx came from us rather than from a proxy in front of the app.
+OUR_CHALLENGE = {admin_auth.GATE_CHALLENGE_HEADER: HEADER}
+
+
+def _fingerprint_for(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv(ENV, raising=False)
+    else:
+        monkeypatch.setenv(ENV, value)
+    return admin_auth.token_fingerprint()
+
+
+class TestTokenFingerprint:
+    """Eight hex characters that answer "is it the same token?" without leaking it."""
+
+    def test_it_matches_the_command_the_docstring_tells_operators_to_run(
+            self, monkeypatch):
+        """The oracle is deliberately the operator's own one-liner.
+
+        `token_fingerprint` promises an operator can reproduce it from the value
+        in their password manager with a plain sha256. If this drifts (a salt, a
+        different digest, a different truncation) that promise breaks silently and
+        the operator concludes the two sides differ when they do not.
+        """
+        import hashlib
+        expected = hashlib.sha256(TOKEN.encode("utf-8")).hexdigest()[
+            :admin_auth.TOKEN_FINGERPRINT_CHARS]
+        assert _fingerprint_for(monkeypatch, TOKEN) == expected
+
+    def test_it_is_short_lowercase_hex(self, monkeypatch):
+        fp = _fingerprint_for(monkeypatch, TOKEN)
+        assert len(fp) == admin_auth.TOKEN_FINGERPRINT_CHARS == 8
+        assert set(fp) <= HEX, f"not comparable-by-eye hex: {fp!r}"
+
+    def test_two_different_tokens_do_not_share_a_fingerprint(self, monkeypatch):
+        """The whole diagnostic value: different environments must LOOK different."""
+        assert (_fingerprint_for(monkeypatch, TOKEN)
+                != _fingerprint_for(monkeypatch, OTHER_TOKEN))
+
+    def test_the_same_token_fingerprints_identically_every_time(self, monkeypatch):
+        """It is compared across two processes, so it cannot carry per-call state."""
+        first = _fingerprint_for(monkeypatch, TOKEN)
+        assert _fingerprint_for(monkeypatch, TOKEN) == first
+
+    def test_surrounding_whitespace_does_not_change_it(self, monkeypatch):
+        """`configured_token` strips; the fingerprint must strip identically.
+
+        Otherwise cmd.exe's trailing space produces a different fingerprint from
+        the same token, and an operator chases a divergence that does not exist.
+        """
+        assert (_fingerprint_for(monkeypatch, "  " + TOKEN + "  ")
+                == _fingerprint_for(monkeypatch, TOKEN))
+
+    def test_unset_and_unusable_are_distinct_and_not_mistakable_for_hex(
+            self, monkeypatch):
+        """An operator comparing two logs must never see one side print nothing.
+
+        And the two states need different names because they need different
+        remedies: unset means ADD the variable, unusable means REPLACE it.
+        """
+        none_fp = _fingerprint_for(monkeypatch, None)
+        unusable_fp = _fingerprint_for(monkeypatch, NON_ASCII_TOKEN)
+        assert none_fp == admin_auth.FINGERPRINT_NONE
+        assert unusable_fp == admin_auth.FINGERPRINT_UNUSABLE
+        assert none_fp != unusable_fp
+        for marker in (none_fp, unusable_fp):
+            assert marker, "a state with no digest still has to print something"
+            assert not set(marker) <= HEX, (
+                f"{marker!r} could be read as a real fingerprint")
+
+    def test_a_whitespace_only_value_reads_as_unset_not_as_a_token(self, monkeypatch):
+        """It resolves to None in `configured_token`; the fingerprint must agree."""
+        assert _fingerprint_for(monkeypatch, "   ") == admin_auth.FINGERPRINT_NONE
+
+
+class TestNoOutputCarriesTheRawToken:
+    """The hard constraint: nothing but the truncated digest ever gets out.
+
+    Asserted over every text-producing entry point in `admin_auth`, in all three
+    token states, rather than over the two functions that happened to exist when
+    this was written.
+    """
+
+    #: Public `admin_auth` callables that are NOT operator-facing text, each with
+    #: the reason it is exempt. Two of them return the secret itself - that is
+    #: their job; the leak rule is about what reaches a log or a response body.
+    NOT_TEXT_PRODUCERS = {
+        "configured_token",       # returns the secret, by design
+        "internal_event_headers", # puts the secret in a request header, by design
+        "token_is_unusable",      # bool
+        "require_admin_token",    # raises HTTPException; bodies covered above
+        "require_admin_token_strict",
+    }
+
+    @staticmethod
+    def _emitted_text(label="Some Worker"):
+        """Every operator-facing string `admin_auth` can produce right now."""
+        out = [admin_auth.token_fingerprint(),
+               admin_auth.startup_banner()[1],
+               admin_auth.worker_token_banner(label)[1]]
+        for status in (401, 403, 407, 500):
+            for headers in (None, {}, dict(OUR_CHALLENGE),
+                            {admin_auth.GATE_CHALLENGE_HEADER: "Basic realm=x",
+                             "Server": "nginx/1.24.0", "Via": "1.1 proxy"}):
+                note = admin_auth.internal_event_failure_note(status, headers)
+                if note is not None:
+                    out.append(note)
+        return out
+
+    #: The three states, plus a token whose digest is what gets printed.
+    @pytest.mark.parametrize("env_value", [None, "   ", TOKEN, OTHER_TOKEN,
+                                           NON_ASCII_TOKEN])
+    def test_no_emitted_line_contains_the_configured_token(
+            self, monkeypatch, env_value):
+        if env_value is None:
+            monkeypatch.delenv(ENV, raising=False)
+        else:
+            monkeypatch.setenv(ENV, env_value)
+        for text in self._emitted_text():
+            assert isinstance(text, str)
+            if env_value and env_value.strip():
+                assert env_value.strip() not in text, (
+                    f"the raw token reached operator-facing output: {text!r}")
+                assert env_value not in text
+
+    def test_every_text_producer_is_covered_by_the_leak_check(self):
+        """A new banner must not be addable without a leak check.
+
+        Compares SETS, per this module's own docstring: a producer swapped for
+        another would satisfy any count-based assertion.
+        """
+        import inspect
+
+        public = {name for name, fn in inspect.getmembers(admin_auth, inspect.isfunction)
+                  if not name.startswith("_") and fn.__module__ == "admin_auth"}
+        covered = {"token_fingerprint", "startup_banner", "worker_token_banner",
+                   "internal_event_failure_note"}
+        unaccounted = public - covered - self.NOT_TEXT_PRODUCERS
+        assert not unaccounted, (
+            f"admin_auth gained public function(s) {sorted(unaccounted)} that "
+            "neither _emitted_text() checks for leaks nor NOT_TEXT_PRODUCERS "
+            "exempts with a reason")
+        assert not (covered & self.NOT_TEXT_PRODUCERS)
+
+    def test_the_leak_check_would_actually_catch_a_leak(self, monkeypatch):
+        """Proves the assertion above has teeth rather than passing vacuously.
+
+        A test that never sees a failing case proves nothing about the case it
+        claims to guard, so a leaking producer is injected here and the same
+        comparison the real test makes is asserted to reject it.
+        """
+        monkeypatch.setenv(ENV, TOKEN)
+        monkeypatch.setattr(
+            admin_auth, "startup_banner",
+            lambda: ("info", f"[admin-auth] token is {admin_auth.configured_token()}"))
+        leaked = [t for t in self._emitted_text() if TOKEN in t]
+        assert leaked, "the injected leak was not visible to _emitted_text()"
+
+
+class TestOperatorFacingLinesSurviveTheProductionConsole:
+    """Every emitted line must encode in **cp949**.
+
+    The production console is a Korean Windows console and `run_app.bat` sets no
+    `PYTHONIOENCODING`, so a character outside cp949 makes the logging handler
+    raise and **drop the line**. This is not theoretical: the first draft of the
+    proxy diagnosis used an em dash (U+2014, absent from cp949 - unlike the
+    visually identical U+2015), which would have silently deleted the one
+    sentence that names a proxy during a proxy incident.
+    """
+
+    @staticmethod
+    def _all_operator_lines(monkeypatch):
+        import internal_event_client
+
+        class _Refused:
+            status_code = 403
+            headers = {"Server": "squid/5.7", "Via": "1.1 corp"}
+
+        monkeypatch.setattr(internal_event_client, "internal_event_session",
+                            lambda: type("S", (), {
+                                "get": staticmethod(lambda url, **kw: _Refused())})())
+        monkeypatch.setattr("urllib.request.getproxies",
+                            lambda: {"http": "http://proxy.corp:8080"})
+
+        lines = list(TestNoOutputCarriesTheRawToken._emitted_text())
+        lines.append(internal_event_client.check_api_reachable("http://127.0.0.1:8080")[1])
+        lines.append(internal_event_client.proxy_environment_summary())
+        lines.extend(m for _, m in internal_event_client.startup_lines(
+            "W", "http://elsewhere:8080"))
+        return lines
+
+    @pytest.mark.parametrize("env_value", [None, TOKEN, NON_ASCII_TOKEN])
+    def test_every_emitted_line_encodes_in_cp949(self, monkeypatch, env_value):
+        if env_value is None:
+            monkeypatch.delenv(ENV, raising=False)
+        else:
+            monkeypatch.setenv(ENV, env_value)
+        for line in self._all_operator_lines(monkeypatch):
+            try:
+                line.encode("cp949")
+            except UnicodeEncodeError as e:
+                pytest.fail(
+                    f"character {e.object[e.start:e.end]!r} (U+{ord(e.object[e.start]):04X}) "
+                    f"cannot be printed on the production console, so this line is "
+                    f"DROPPED there: {line[:120]!r}")
+
+
+class TestGateStatusSemanticsAreUnchanged:
+    """401 = no header, 403 = mismatch, 503 = unset on a code-execution route.
+
+    Pinned as one block because an operator runbook and an incident diagnosis
+    both read this mapping backwards from the status code alone. In particular a
+    missing header must NEVER answer 403: that is what made a production 403
+    provably not ours, and re-mapping it would erase the distinction.
+    """
+
+    def test_the_three_way_mapping(self, client, monkeypatch):
+        monkeypatch.setenv(ENV, TOKEN)
+        assert client.get("/admin/chain/rules").status_code == 401
+        assert client.get("/admin/chain/rules",
+                          headers={HEADER: "not-the-token"}).status_code == 403
+        monkeypatch.delenv(ENV, raising=False)
+        assert client.post("/admin/auto-update/run-now",
+                           json={"table_name": "t", "script_name": "s"}
+                           ).status_code == 503
+
+    def test_an_absent_header_is_401_on_the_internal_events_too(
+            self, client, token_set):
+        """The endpoint the incident was reported on, asserted directly."""
+        res = client.post("/internal/events/broadcast",
+                          json={"event": "x", "table_name": "t"})
+        assert res.status_code == 401, (
+            "a no-header internal event must answer 401; if this is ever 403 the "
+            "diagnosis 'a 403 with no header cannot be us' stops being true")
+        assert res.headers.get(admin_auth.GATE_CHALLENGE_HEADER) == HEADER
+
+
+class TestTheFailureNoteNamesWhoRefusedAndWhatToDo:
+    """[F8-b] The single most useful line in the incident, and it was discarded."""
+
+    def test_our_gate_403_says_the_tokens_differ_and_names_the_remedy(
+            self, monkeypatch):
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(403, dict(OUR_CHALLENGE))
+        assert "admin-gate=yes" in note
+        assert admin_auth.token_fingerprint() in note   # comparable with the server
+        assert "DIFFERENT" in note
+        assert "WHOLE launcher tree" in note, "the remedy must be stated, not implied"
+
+    def test_a_403_without_our_challenge_says_it_is_not_us(self, monkeypatch):
+        """The production case: a no-token probe answered 403, which we cannot do."""
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(
+            403, {"Server": "nginx/1.24.0", "Via": "1.1 corp-proxy"})
+        assert "admin-gate=no" in note
+        assert "NOT AN ADMIN-TOKEN FAILURE" in note
+        assert "nginx/1.24.0" in note, "whoever answered must be named if it says so"
+        assert "1.1 corp-proxy" in note
+        assert "proxy" in note.lower()
+        assert admin_auth.token_fingerprint() not in note, (
+            "an upstream refusal must not invite a token comparison; that is the "
+            "hour of restarts this note exists to prevent")
+
+    def test_a_foreign_www_authenticate_does_not_count_as_ours(self, monkeypatch):
+        """A proxy's own Basic challenge must not be read as the admin gate."""
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(
+            403, {admin_auth.GATE_CHALLENGE_HEADER: 'Basic realm="corp"'})
+        assert "admin-gate=no" in note
+        assert "Basic" in note
+
+    def test_it_reads_the_challenge_case_insensitively_like_requests_does(
+            self, monkeypatch):
+        """Real responses arrive in a CaseInsensitiveDict with arbitrary casing.
+
+        Our own gate would otherwise be misattributed to a proxy purely because
+        the header came back lowercased - inverting the conclusion.
+        """
+        from requests.structures import CaseInsensitiveDict
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(
+            403, CaseInsensitiveDict({"www-authenticate": "x-admin-token"}))
+        assert "admin-gate=yes" in note
+
+    def test_401_with_no_token_here_tells_the_operator_to_set_it(self, monkeypatch):
+        monkeypatch.delenv(ENV, raising=False)
+        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        assert admin_auth.FINGERPRINT_NONE in note
+        assert ENV in note
+        assert "run_decoupled_app.py" in note
+
+    def test_401_with_a_non_ascii_token_says_replace_not_add(self, monkeypatch):
+        """Reporting this as "unset" sends the operator to add what is already there."""
+        monkeypatch.setenv(ENV, NON_ASCII_TOKEN)
+        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        assert admin_auth.FINGERPRINT_UNUSABLE in note
+        assert "ASCII" in note
+        assert "do not just add it" in note
+
+    def test_401_while_holding_a_usable_token_means_the_header_was_stripped(
+            self, monkeypatch):
+        """The gate saw nothing although we sent something - a third remedy."""
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(401, dict(OUR_CHALLENGE))
+        assert "stripped in transit" in note
+
+    @pytest.mark.parametrize("status", [200, 404, 422, 500, 502, 503])
+    def test_non_auth_statuses_get_no_auth_paragraph(self, monkeypatch, status):
+        monkeypatch.setenv(ENV, TOKEN)
+        assert admin_auth.internal_event_failure_note(status, {}) is None
+
+    def test_a_hostile_upstream_cannot_forge_log_lines_through_its_headers(
+            self, monkeypatch):
+        """The echoed value is not our secret, but it is not our data either."""
+        monkeypatch.setenv(ENV, TOKEN)
+        note = admin_auth.internal_event_failure_note(
+            403, {"Server": "evil\r\n[admin-auth] ALL CLEAR, token fingerprint deadbeef"})
+        assert "\n" not in note and "\r" not in note
+        assert "ALL CLEAR" not in note or len(note.splitlines()) == 1
+        assert len(note.splitlines()) == 1, "a note must stay one line"
+
+    def test_it_survives_a_response_with_no_usable_headers(self, monkeypatch):
+        """Never raise inside a failure handler - that converts a log line into a
+        swallowed exception and loses the original status too."""
+        monkeypatch.setenv(ENV, TOKEN)
+
+        class Hostile:
+            def get(self, name):
+                raise RuntimeError("no headers for you")
+
+        assert "admin-gate=no" in admin_auth.internal_event_failure_note(403, Hostile())
+        assert "admin-gate=no" in admin_auth.internal_event_failure_note(403, None)
+
+
+# --------------------------------------------------------------------------
+# [F8] ...and every sender actually logs it
+# --------------------------------------------------------------------------
+
+class _CapturingLogger:
+    """Stands in for a process logger.
+
+    Substituted for the module's `logger` rather than captured with `caplog`
+    because `get_process_logger` strips and re-adds root handlers on import, so
+    capture through the logging tree depends on module import order.
+    """
+
+    def __init__(self):
+        self.lines = []
+
+    def _record(self, level):
+        def emit(msg, *args, **kwargs):
+            self.lines.append((level, str(msg)))
+        return emit
+
+    def __getattr__(self, name):
+        if name in ("debug", "info", "warning", "error", "critical", "exception"):
+            return self._record(name)
+        raise AttributeError(name)
+
+    def text(self):
+        return "\n".join(m for _, m in self.lines)
+
+
+class _FakeResponse:
+    def __init__(self, status_code, headers=None):
+        from requests.structures import CaseInsensitiveDict
+        self.status_code = status_code
+        self.headers = CaseInsensitiveDict(headers or {})
+        self.ok = 200 <= status_code < 300
+
+
+def _drive_sender(monkeypatch, module_name, response):
+    """POST one internal event through a real sender, with the socket faked.
+
+    Returns the capturing logger. The point is that the *production* function
+    runs: a test that reimplemented the log line would pass against a sender that
+    never calls the note at all.
+
+    Only ONE thing is faked for all three senders - the shared session factory -
+    which is itself the assertion that all three route through it. Before this
+    round each sender built its own client and this helper needed three different
+    patches.
+    """
+    import asyncio
+    import importlib
+
+    import internal_event_client
+
+    mod = importlib.import_module(module_name)
+    cap = _CapturingLogger()
+    monkeypatch.setattr(mod, "logger", cap)
+
+    class _Sess:
+        @staticmethod
+        def post(url, **kwargs):
+            return response
+
+    monkeypatch.setattr(internal_event_client, "internal_event_session",
+                        lambda: _Sess())
+
+    if module_name == "run_watcher":
+        mod.post_event("/internal/events/broadcast", {"event": "x"})
+    else:
+        asyncio.run(mod.post_event_async("/internal/events/broadcast", {"event": "x"}))
+    return cap
+
+
+#: All three daemons that POST to /internal/events/*. A fix applied to one sender
+#: only is a defect this repo has already shipped on this exact endpoint, which is
+#: why every case below is parametrized across all three rather than spot-checked.
+SENDERS = ["run_watcher", "chain_ingestion_worker", "graph_sync_worker"]
+
+
+class TestEverySenderLogsWhoRefused:
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_our_gate_403_is_attributed_to_the_gate_with_a_fingerprint(
+            self, monkeypatch, module_name):
+        monkeypatch.setenv(ENV, TOKEN)
+        cap = _drive_sender(monkeypatch, module_name,
+                            _FakeResponse(403, dict(OUR_CHALLENGE)))
+        text = cap.text()
+        assert "403" in text
+        assert "admin-gate=yes" in text, f"{module_name} discarded the gate signal"
+        assert admin_auth.token_fingerprint() in text
+        assert TOKEN not in text, f"{module_name} logged the raw token"
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_an_upstream_403_is_not_blamed_on_the_token(
+            self, monkeypatch, module_name):
+        """The production shape: 403 with no challenge header of ours."""
+        monkeypatch.setenv(ENV, TOKEN)
+        cap = _drive_sender(monkeypatch, module_name,
+                            _FakeResponse(403, {"Server": "nginx/1.24.0"}))
+        text = cap.text()
+        assert "admin-gate=no" in text, f"{module_name} discarded the gate signal"
+        assert "NOT AN ADMIN-TOKEN FAILURE" in text
+        assert "nginx/1.24.0" in text
+        assert admin_auth.token_fingerprint() not in text
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_a_401_names_the_missing_variable(self, monkeypatch, module_name):
+        monkeypatch.delenv(ENV, raising=False)
+        cap = _drive_sender(monkeypatch, module_name,
+                            _FakeResponse(401, dict(OUR_CHALLENGE)))
+        text = cap.text()
+        assert "admin-gate=yes" in text
+        assert ENV in text
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_an_ordinary_500_is_logged_without_an_auth_paragraph(
+            self, monkeypatch, module_name):
+        monkeypatch.setenv(ENV, TOKEN)
+        cap = _drive_sender(monkeypatch, module_name, _FakeResponse(500))
+        text = cap.text()
+        assert "500" in text
+        assert "admin-gate" not in text, "a 500 must not read as an auth problem"
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_a_success_logs_nothing_about_tokens(self, monkeypatch, module_name):
+        """The note is a failure-path diagnostic, not per-call noise."""
+        monkeypatch.setenv(ENV, TOKEN)
+        cap = _drive_sender(monkeypatch, module_name, _FakeResponse(200))
+        assert "admin-gate" not in cap.text()
+        assert TOKEN not in cap.text()
+
+    def test_the_chain_sender_still_reports_delivery_as_a_bool(self, monkeypatch):
+        """`broadcast_at` stamping keys off this return value.
+
+        A row stamped as delivered when it was not is permanently stale - the
+        undelivered-broadcast sweep only re-fires rows whose `broadcast_at` is
+        still NULL - so the new logging branch must not disturb the contract.
+        """
+        monkeypatch.setenv(ENV, TOKEN)
+        import asyncio
+        import chain_ingestion_worker as ciw
+
+        cap = _drive_sender(monkeypatch, "chain_ingestion_worker",
+                            _FakeResponse(403, dict(OUR_CHALLENGE)))
+        assert "admin-gate=yes" in cap.text()  # the new branch really ran
+
+        import internal_event_client
+
+        class _Sess:
+            @staticmethod
+            def post(url, **kwargs):
+                return _FakeResponse(403, dict(OUR_CHALLENGE))
+
+        monkeypatch.setattr(internal_event_client, "internal_event_session",
+                            lambda: _Sess())
+        monkeypatch.setattr(ciw, "logger", _CapturingLogger())
+        assert asyncio.run(
+            ciw.post_event_async("/internal/events/broadcast", {})) is False
+        monkeypatch.setattr(internal_event_client, "internal_event_session",
+                            lambda: type("S", (), {
+                                "post": staticmethod(lambda url, **kw: _FakeResponse(200))})())
+        assert asyncio.run(
+            ciw.post_event_async("/internal/events/broadcast", {})) is True
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_the_sender_source_references_the_shared_note(self, module_name):
+        """Textual, alongside the behavioural cases above, so a FOURTH daemon
+        copying an old sender is caught here rather than during an incident."""
+        import importlib
+        import inspect
+
+        mod = importlib.import_module(module_name)
+        fn = "post_event" if module_name == "run_watcher" else "post_event_async"
+        src = inspect.getsource(getattr(mod, fn))
+        assert "internal_event_failure_note" in src, (
+            f"{module_name}.{fn} logs a bare status code; a 401, a 403 from our "
+            "gate and a 403 from a proxy are indistinguishable in its log")
+
+
+class TestEveryDaemonAnnouncesItsFingerprintAtStartup:
+    """One fingerprint is not a comparison; the pair is the diagnosis."""
+
+    def test_the_server_banner_carries_it_in_every_state(self, monkeypatch):
+        monkeypatch.setenv(ENV, TOKEN)
+        assert admin_auth.token_fingerprint() in admin_auth.startup_banner()[1]
+        monkeypatch.delenv(ENV, raising=False)
+        assert admin_auth.FINGERPRINT_NONE in admin_auth.startup_banner()[1]
+        monkeypatch.setenv(ENV, NON_ASCII_TOKEN)
+        assert admin_auth.FINGERPRINT_UNUSABLE in admin_auth.startup_banner()[1]
+
+    @pytest.mark.parametrize("env_value,level", [
+        (TOKEN, "info"),
+        (None, "warning"),          # the silent state: 200s while nothing is locked
+        (NON_ASCII_TOKEN, "error"),
+    ])
+    def test_the_worker_banner_levels_match_the_servers(
+            self, monkeypatch, env_value, level):
+        if env_value is None:
+            monkeypatch.delenv(ENV, raising=False)
+        else:
+            monkeypatch.setenv(ENV, env_value)
+        got_level, msg = admin_auth.worker_token_banner("Some Worker")
+        assert got_level == level
+        assert admin_auth.token_fingerprint() in msg
+        assert "Some Worker" in msg, "the line must say which process it describes"
+
+    @pytest.mark.parametrize("module_name,func_name", [
+        ("run_watcher", "main"),
+        ("chain_ingestion_worker", "start_chain_ingestion_worker"),
+        ("graph_sync_worker", "startup_event"),
+    ])
+    def test_each_daemon_startup_path_logs_the_banner(self, module_name, func_name):
+        import importlib
+        import inspect
+
+        mod = importlib.import_module(module_name)
+        src = inspect.getsource(getattr(mod, func_name))
+        assert "startup_lines" in src, (
+            f"{module_name}.{func_name} starts a process that presents the admin "
+            "token without ever saying which token it holds")
+
+
+# --------------------------------------------------------------------------
+# [F8] The root cause: a loopback call that consulted proxy configuration
+# --------------------------------------------------------------------------
+
+class TestInternalCallsNeverConsultProxyConfiguration:
+    """2026-07-30: a corporate proxy answered 403 for POSTs to 127.0.0.1.
+
+    `requests` defaults `trust_env=True`, so a bare Session reads HTTP_PROXY and
+    the Windows proxy registry, and ProxyOverride's `<local>` token exempts only
+    dotless hostnames - `localhost` is bypassed, `127.0.0.1` is not. The worker's
+    notification left the machine, and the proxy refused to relay to a private
+    address. Every symptom followed: 403 rather than 401, ungated paths refusing
+    too, immunity to restarts, and invisibility on a dev box with no proxy.
+    """
+
+    def test_the_shared_session_does_not_trust_the_environment(self):
+        import internal_event_client
+
+        sess = internal_event_client.internal_event_session()
+        assert sess.trust_env is False, (
+            "the session honours HTTP_PROXY and the Windows proxy registry; "
+            "loopback notifications can be relayed off-box and refused")
+
+    def test_the_session_is_reused_per_thread(self):
+        """Keep-alive was the reason a session existed at all; do not lose it."""
+        import internal_event_client
+
+        assert (internal_event_client.internal_event_session()
+                is internal_event_client.internal_event_session())
+
+    def test_each_thread_gets_its_own_session(self):
+        """`requests.Session` is not thread-safe and run_watcher posts from two."""
+        import threading
+
+        import internal_event_client
+
+        seen = []
+        main_session = internal_event_client.internal_event_session()
+
+        def grab():
+            seen.append(internal_event_client.internal_event_session())
+
+        t = threading.Thread(target=grab)
+        t.start()
+        t.join()
+        assert seen and seen[0] is not main_session
+
+    @pytest.mark.parametrize("module_name", SENDERS)
+    def test_no_sender_builds_its_own_client(self, module_name):
+        """The enforcement that replaces a comment saying "remember to".
+
+        This exact defect has been fixed sender-by-sender three times on this one
+        endpoint. A fourth sender that calls `requests.post` directly re-opens it,
+        so the bypass is what fails here - not the absence of a fix.
+        """
+        import importlib
+        import inspect
+
+        mod = importlib.import_module(module_name)
+        fn = "post_event" if module_name == "run_watcher" else "post_event_async"
+        src = inspect.getsource(getattr(mod, fn))
+        assert "internal_event_session" in src, (
+            f"{module_name}.{fn} does not use the shared session factory")
+        for banned in ("requests.post(", "requests.Session("):
+            assert banned not in src, (
+                f"{module_name}.{fn} builds its own HTTP client ({banned}), which "
+                "defaults to trusting proxy environment variables")
+
+    def test_the_web_servers_own_loopback_hop_is_covered_too(self):
+        """`/api/graph/sync` forwards to 127.0.0.1:8090 with httpx.
+
+        Same shape, same defect: httpx also honours HTTP_PROXY by default. Fixing
+        only the three worker senders would have left a fourth loopback hop that
+        fails identically and surfaces as a graph-sync error with a healthy worker.
+        """
+        import inspect
+
+        import main
+
+        src = inspect.getsource(main.manual_graph_sync)
+        assert "trust_env=False" in src, (
+            "the graph-sync forward trusts proxy environment variables")
+
+    def test_a_proxy_url_with_credentials_is_not_logged(self, monkeypatch):
+        """The summary goes into a log file; proxy URLs routinely carry passwords."""
+        import internal_event_client
+
+        redacted = internal_event_client._redact_proxy(
+            "http://svc_account:s3cr3t@proxy.corp:8080")
+        assert "s3cr3t" not in redacted
+        assert "svc_account" not in redacted
+        assert "proxy.corp:8080" in redacted, "the diagnostic value must survive"
+
+    def test_the_proxy_summary_names_a_configured_proxy(self, monkeypatch):
+        """The fact whose absence from every log made this invisible for hours."""
+        import internal_event_client
+
+        monkeypatch.setattr("urllib.request.getproxies",
+                            lambda: {"http": "http://proxy.corp:8080"})
+        summary = internal_event_client.proxy_environment_summary()
+        assert "proxy.corp:8080" in summary
+        assert summary != "none"
+
+    def test_the_proxy_summary_says_none_when_there_is_none(self, monkeypatch):
+        import internal_event_client
+
+        monkeypatch.setattr("urllib.request.getproxies", lambda: {})
+        assert internal_event_client.proxy_environment_summary() == "none"
+
+    def test_the_summary_never_raises_out_of_a_startup_path(self, monkeypatch):
+        import internal_event_client
+
+        def boom():
+            raise RuntimeError("registry unavailable")
+
+        monkeypatch.setattr("urllib.request.getproxies", boom)
+        assert isinstance(internal_event_client.proxy_environment_summary(), str)
+
+    @pytest.mark.parametrize("url,expected", [
+        ("http://127.0.0.1:8080", True),
+        ("http://localhost:8081", True),
+        ("http://api.corp.example:8080", False),
+        ("not a url at all", False),
+    ])
+    def test_loopback_detection(self, url, expected):
+        import internal_event_client
+
+        assert internal_event_client.is_loopback(url) is expected
+
+    def test_one_place_defines_the_web_servers_address(self):
+        """Three modules previously repeated the literal independently."""
+        import chain_ingestion_worker
+        import internal_event_client
+        import run_watcher
+
+        assert (internal_event_client.DEFAULT_API_BASE_URL
+                == "http://127.0.0.1:8080")
+        for mod in (chain_ingestion_worker, run_watcher):
+            assert mod.API_BASE_URL == internal_event_client.api_base_url(), (
+                f"{mod.__name__} resolves the API address by itself")
+
+
+class TestTheStartupCheckSaysWhatAFirstBroadcastWouldHaveDiscovered:
+    """/health is ungated, which is what makes it a decisive probe."""
+
+    @staticmethod
+    def _probe(monkeypatch, response=None, exc=None):
+        import internal_event_client
+
+        class _Sess:
+            @staticmethod
+            def get(url, **kwargs):
+                if exc is not None:
+                    raise exc
+                return response
+
+        monkeypatch.setattr(internal_event_client, "internal_event_session",
+                            lambda: _Sess())
+        monkeypatch.setattr("urllib.request.getproxies", lambda: {})
+        return internal_event_client.check_api_reachable("http://127.0.0.1:8080")
+
+    def test_a_200_is_reported_as_direct(self, monkeypatch):
+        level, msg = self._probe(monkeypatch, _FakeResponse(200))
+        assert level == "info"
+        assert "200" in msg
+
+    def test_a_refused_connection_at_boot_is_not_an_alarm(self, monkeypatch):
+        """The launcher starts the API and the workers seconds apart.
+
+        An ERROR on every normal startup is an ERROR nobody reads, which would
+        destroy the value of the one that matters.
+        """
+        import requests
+
+        level, msg = self._probe(
+            monkeypatch, exc=requests.exceptions.ConnectionError("refused"))
+        assert level == "info"
+        assert "normal during startup" in msg
+
+    def test_any_http_status_on_health_is_an_error_that_names_the_proxy(
+            self, monkeypatch):
+        """The incident, caught at startup instead of at the first correction."""
+        level, msg = self._probe(
+            monkeypatch, _FakeResponse(403, {"Server": "squid/5.7"}))
+        assert level == "error"
+        assert "403" in msg
+        assert "squid/5.7" in msg, "whoever answered must be named"
+        assert "NO admin gate" in msg
+        assert "NO_PROXY" in msg, "the remedy must be in the line, not in a doc"
+        assert "프록시" in msg
+
+    def test_the_probe_never_raises(self, monkeypatch):
+        level, msg = self._probe(monkeypatch, exc=RuntimeError("anything"))
+        assert level == "info" and isinstance(msg, str)
+
+    def test_startup_lines_pair_the_token_with_the_reachability(self, monkeypatch):
+        import internal_event_client
+
+        monkeypatch.setenv(ENV, TOKEN)
+        monkeypatch.setattr(internal_event_client, "check_api_reachable",
+                            lambda base, **kw: ("info", "[internal-events] probed"))
+        lines = internal_event_client.startup_lines("Some Worker",
+                                                    "http://127.0.0.1:8080")
+        text = "\n".join(m for _, m in lines)
+        assert admin_auth.token_fingerprint() in text
+        assert "Some Worker" in text
+        assert "probed" in text
+        assert TOKEN not in text
+
+    def test_an_off_box_api_url_warns_but_does_not_refuse(self, monkeypatch):
+        """A worker that refuses to start stops ingestion; a warned worker does not.
+
+        The admin gate makes the same trade in the same direction - fail closed
+        only where the harm is code execution.
+        """
+        import internal_event_client
+
+        monkeypatch.delenv(ENV, raising=False)
+        monkeypatch.setattr(internal_event_client, "check_api_reachable",
+                            lambda base, **kw: ("info", "probed"))
+        lines = internal_event_client.startup_lines("W", "http://elsewhere:8080")
+        levels = [lvl for lvl, _ in lines]
+        assert "warning" in levels
+        assert "critical" not in levels
+        assert any("not this machine" in m for _, m in lines)
+
+
 def test_conftest_pins_the_variable_away_from_the_ambient_shell():
     """The suite's behaviour must not depend on whose machine it runs on.
 

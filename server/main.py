@@ -2293,7 +2293,14 @@ async def manual_graph_sync(req: Optional[GraphSyncRequest] = None, db: Session 
     
     logger.info(f"[GraphSync Routing] Forwarding sync request to worker service at {url}")
     
-    async with httpx.AsyncClient() as client:
+    # [F8] trust_env=False for the same reason the workers' session sets it: this
+    # is a loopback hop between two of our own processes, and httpx honours
+    # HTTP_PROXY / ALL_PROXY by default. On 2026-07-30 that default sent the chain
+    # worker's 127.0.0.1 notifications to the corporate proxy, which refused them
+    # with 403; this call has the identical shape and would fail the identical way,
+    # surfacing to the operator as "그래프 동기화 서버 에러" with a healthy worker.
+    # A proxy can never be a legitimate hop between two processes on one machine.
+    async with httpx.AsyncClient(trust_env=False) as client:
         try:
             res = await client.post(
                 url,
