@@ -13,9 +13,9 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <script type="module" crossorigin src="/assets/main-CNTK_kRj.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/effort_meter-BW7JX9uS.js">
-  <link rel="modulepreload" crossorigin href="/assets/admin-4W5HTMH1.js">
+  <script type="module" crossorigin src="/assets/main-BRuJ-TYj.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/effort_meter-DRcLN4HE.js">
+  <link rel="modulepreload" crossorigin href="/assets/admin-DM-CQyMo.js">
   <link rel="modulepreload" crossorigin href="/assets/ag-theme-quartz-D1qBHEfr.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-C-525QI4.js">
   <link rel="modulepreload" crossorigin href="/assets/trace_core-CpTaLBRA.js">
@@ -191,7 +191,9 @@
       <ul>
         <li id="menu-sources">📚 데이터 원천(Sources) 관리</li>
         <li id="menu-delete">🗑️ 선택된 행 삭제</li>
-        <li id="menu-smart-paste">📋 파서로 붙여넣기 (Smart Paste)</li>
+        <!-- 키를 라벨에 적어둔다: 평문 HTTP에서는 클릭만으로 클립보드를 읽을 수 없어
+             이 항목은 다음 붙여넣기를 예약할 뿐이다. 단축키가 곧 본동선이다. -->
+        <li id="menu-smart-paste">📋 파서로 붙여넣기 (Smart Paste) &nbsp;<span style="opacity:.6">Ctrl+Shift+V</span></li>
         <li id="menu-trace" style="display: none;">🕸️ 선택 행 추적 (Trace)</li>
       </ul>
     </div>

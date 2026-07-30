@@ -1153,10 +1153,10 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
-  const box = getWaferBoundingBox(currentRotation, currentSide);
-  const c_zero = box.minC - startX;
-  const r_zero = !invertY ? (box.minR - startY) : (box.maxR + startY);
-  const hasZeroZero = (c_zero >= 0 && c_zero < visualCols) && (r_zero >= 0 && r_zero < visualRows);
+  // 🔴 (0,0)이 어느 칸인가는 **좌표 함수의 역함수가** 답한다. 여기서 다시 유도하면 같은 수를
+  //    두 곳에서 계산하게 되고, 실제로 그렇게 갈려 있었다(§renderGridCanvas의 사본 참조).
+  const zero = getCellFromVisualCoords(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
   const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
@@ -1837,7 +1837,45 @@ function getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, st
 
 let boundingBoxCache = {};
 
-function getWaferBoundingBox(rotation, side) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// 좌표계의 **원점 상자**. `getVisualCoords`가 `xv = c − box.minC + startX`로 화면 표기이자
+// DB에 저장되는 x/y를 만들고, `getCellFromVisualCoords`가 그 정확한 역함수로 로드 배치를 한다.
+// 그래서 이 상자 하나가 "start_x/start_y가 어느 칸에 놓이는가"를 정한다.
+//
+// 🔴 **기준은 유효 다이 영역이다** (사용자 확정 2026-07-30, 판정 기준 ③④):
+//    「start_x/start_y = 유효 다이 영역의 최소 열·행」 ·
+//    「오리진 = start_x/y가 놓였을 때 (0,0)으로 읽히는 칸」.
+//    종전에는 원 기하만 훑었다. 원 bbox는 회전·반전에 거의 불변인데 유효 다이 영역은 그렇지
+//    않아서, 회전할 때마다 마스크의 최소 열이 startX가 놓인 칸에서 멀어졌다 — 「회전 할때마다
+//    origin이 틀어지네」의 정체다(실측: DTWWER → BASE_4E에서 (4,3)).
+//
+// 🔴 **판정을 새로 쓰지 않는다.** 원 판정은 `isCellInsideWaferFast`, 마스크 판정은
+//    `isValidDieAt` — 렌더 루프가 부르는 바로 그 두 함수를 같은 인자·같은 순서로 부른다.
+//    순회도 하나뿐이다(원 상자와 마스크 상자를 같은 루프에서 함께 누적한다).
+//
+// 🔴 **프레임 창(`physFrameOverride`) 안에서는 원이다.** `isValidDieAt`이 이미 그렇게 답한다:
+//    창 안의 계산은 **소스 맵의 좌표계**를 푸는 중이고, 거기에 타깃 맵의 마스크를 먹이면
+//    조용히 다른 맵의 마스크로 소스를 재단하게 된다. 그래서 오버레이와 유효 다이 참조 해석
+//    (`projectCellsToPhys`)은 이 변경 전과 한 글자도 다르지 않게 동작한다.
+//
+// 🔴 **저작 캔버스(`template`)도 원이다.** 저작 중의 마스크는 격자 전체이므로 상자가 격자
+//    전체가 되고, 그러면 저작 모드에 들어가는 것만으로 화면의 모든 좌표가 다시 매겨진다.
+//    저작은 "무엇을 칠하느냐"이지 좌표계의 선언이 아니다. `refused`도 같다 — 해석하지 못한
+//    선언으로 좌표계를 바꾸지 않는다.
+//
+// ⚠️ 마스크가 이 격자 안에 한 칸도 없으면 원 상자로 돌아간다. 빈 상자는 `{0,0,0,0}`으로
+//    무너져 좌표계 전체를 조용히 옮긴다 — 미상은 0이 아니다.
+//
+// ⚠️ 로드와 렌더가 **같은 상자**를 보는 것이 안전의 근거다. `c − box.minC + startX`(렌더)와
+//    `xv − startX + box.minC`(로드)는 같은 상자에서만 역함수이고, 그때 Push가 쓰는 좌표는
+//    로드가 읽은 좌표와 항등이다. 그래서 `loadExistingMap`은 셀을 놓기 **전에**
+//    `resolveValidDie`를 끝낸다(사용자 지시의 순서: 유효 다이맵 → 오리진 → 셀 위치).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// `opts.circleOnly` — 마스크와 무관하게 **원 기하**의 상자를 묻는다. 유일한 소비자는
+// `computeNotchCell`이다: 노치는 웨이퍼의 물리 특징이자 클립보드 프레임 지문이라, 유효 다이
+// 해석의 성패(네트워크 1회 실패)에 따라 지문이 흔들리면 정상 붙여넣기가 엉뚱한 사유로 거절된다.
+function getWaferBoundingBox(rotation, side, opts) {
   // 프레임 창이 열려 있으면 소스 메타 값이, 아니면 화면 컨트롤 값이 읽힌다.
   // 캐시 키를 해석된 실값으로 만들어야 두 프레임의 바운딩박스가 서로를 덮어쓰지 않는다.
   const dia = physNum('waferDia', el.physWaferDia, 300);
@@ -1853,7 +1891,23 @@ function getWaferBoundingBox(rotation, side) {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const key = `${rotation}_${side}_${visualCols}_${visualRows}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
+  // 이 상자가 어느 근거로 만들어지는가 — 캐시 키의 첫 항이다.
+  // 'C' = 원 기하(circle · refused · template · 프레임 창 안) · 'V<세대>' = 해석된 유효 다이 맵.
+  //
+  // 🔴 **세대 번호**를 쓴다. 셀 **개수**로 태그를 만들면 같은 크기의 다른 참조가 서로의 상자를
+  //    덮어써서, 지정을 바꿔도 좌표계가 이전 참조 그대로 남는다. `ref`를 만드는 유일한 자리가
+  //    `resolveValidDie`이고 그 함수는 진입마다 이 번호를 올린다.
+  // ⚠️ 프레임 창 안은 `isValidDieAt`이 이미 원으로 답하므로 **결과**는 어차피 원이다. 태그가
+  //    실제로 사는 이유는 캐시 **슬롯**이다: 창의 규격이 화면 값으로 폴백하면 키의 나머지가
+  //    마스크 항목과 글자 그대로 같아져, 창이 채운 원 상자를 편집기가 마스크 상자로 받는다.
+  // ⚠️ 별도 함수로 빼지 않는다. 이 함수를 슬라이스해 실행하는 하네스가 넷이고, 모듈 전역
+  //    의존이 하나 늘 때마다 넷이 전부 ReferenceError로 죽는다 — 실측: 이 라운드에서 그렇게
+  //    세 하네스가 죽었고, `loadExistingMap`의 catch가 그것을 "0셀 로드"로 삼켰다.
+  const maskDeclaresTheFrame = !(opts && opts.circleOnly)
+    && !physFrameOverride
+    && validDieBasis() === 'ref';
+  const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : 'C';
+  const key = `${tag}_${rotation}_${side}_${visualCols}_${visualRows}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
   if (boundingBoxCache[key]) {
     return boundingBoxCache[key];
   }
@@ -1862,27 +1916,57 @@ function getWaferBoundingBox(rotation, side) {
   const width = 700;
   const height = 700;
 
+  const useMask = (tag !== 'C');
+
   let minC = 9999, maxC = -9999;
   let minR = 9999, maxR = -9999;
   let insideCount = 0;
+  // 마스크 누적기. 같은 순회 안에서 함께 센다 — 두 번째 전수 순회를 만들지 않기 위해서다.
+  let mMinC = 9999, mMaxC = -9999;
+  let mMinR = 9999, mMaxR = -9999;
+  let maskCount = 0;
 
   for (let r = 0; r < visualRows; r++) {
     for (let c = 0; c < visualCols; c++) {
-      if (isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height)) {
+      const circleInside = isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height);
+      if (circleInside) {
         insideCount++;
         if (c < minC) minC = c;
         if (c > maxC) maxC = c;
         if (r < minR) minR = r;
         if (r > maxR) maxR = r;
       }
+      if (useMask) {
+        // 렌더 루프가 쓰는 것과 **같은 두 줄**이다(§renderGridCanvas 5b 위). 물리 좌표를
+        // 여기서 따로 만들지 않으면 판정할 수 없고, 따로 만드는 식은 그 함수 하나뿐이다.
+        const p = getPhysicalCoords(c, r, cols, rows, rotation, side);
+        if (isValidDieAt(p.x, p.y, circleInside)) {
+          maskCount++;
+          if (c < mMinC) mMinC = c;
+          if (c > mMaxC) mMaxC = c;
+          if (r < mMinR) mMinR = r;
+          if (r > mMaxR) mMaxR = r;
+        }
+      }
     }
   }
 
+  if (useMask && maskCount === 0) {
+    // 마스크가 이 격자 안에 한 칸도 앉지 않았다. 사용자 판정 「밀리게 그냥 보여주기」는
+    // 밀린 마스크를 그대로 보이라는 것이지, 좌표계를 0으로 무너뜨리라는 뜻이 아니다.
+    console.warn('[Map Editor] valid-die mask has no cell inside the current grid — '
+      + 'origin box falls back to the wafer circle (coordinates unchanged)');
+  }
+
+  const src = (useMask && maskCount > 0)
+    ? { minC: mMinC, maxC: mMaxC, minR: mMinR, maxR: mMaxR }
+    : { minC, maxC, minR, maxR };
+
   const box = {
-    minC: minC === 9999 ? 0 : minC,
-    maxC: maxC === -9999 ? 0 : maxC,
-    minR: minR === 9999 ? 0 : minR,
-    maxR: maxR === -9999 ? 0 : maxR
+    minC: src.minC === 9999 ? 0 : src.minC,
+    maxC: src.maxC === -9999 ? 0 : src.maxC,
+    minR: src.minR === 9999 ? 0 : src.minR,
+    maxR: src.maxR === -9999 ? 0 : src.maxR
   };
 
   boundingBoxCache[key] = box;
@@ -2962,18 +3046,13 @@ function renderGridCanvas() {
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
 
-  const box = getWaferBoundingBox(currentRotation, currentSide);
-  const isXMirrored = (currentSide === 'back' && !isRotated90or270);
-  const isYMirrored = (currentSide === 'back' && isRotated90or270);
-
-  const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);
-  let r_zero = 0;
-  if (!invertY) {
-    r_zero = !isYMirrored ? (box.minR - startY) : (box.maxR + startY);
-  } else {
-    r_zero = !isYMirrored ? (box.maxR + startY) : (box.minR - startY);
-  }
-  const hasZeroZero = (c_zero >= 0 && c_zero < visualCols) && (r_zero >= 0 && r_zero < visualRows);
+  // 🔴 **(0,0)이 어느 칸인가는 좌표 함수의 역함수가 답한다.** 종전에는 이 자리가 그 유도를
+  //    손으로 다시 썼고, 그 사본에는 `getVisualCoords`에 **없는** x/y 미러 항이 있었다
+  //    (`isXMirrored`/`isYMirrored`). 원 bbox가 대칭인 동안만 우연히 같은 답이 나왔고,
+  //    마우스 경로(`getGridCellObject`)는 이미 미러 항 없이 계산하고 있어 두 경로가 실제로
+  //    갈려 있었다. 원점 상자가 유효 다이 기준이 되면 그 우연은 성립하지 않는다.
+  const zero = getCellFromVisualCoords(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+  const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
 
   gridCells2D = {};
 
@@ -4771,6 +4850,28 @@ async function loadExistingMap(opts = {}) {
     // (라디오 해제도 하지 않아 이전 선택이 남는 경로도 있었다 — updateOrientationUI가 둘 다 처리한다.)
     updateOrientationUI();
 
+    // ═══ 유효 다이 → 오리진 → 셀 위치. 이 순서가 사용자 지시다(2026-07-30) ═════════════
+    // 「유효 다이맵은 현재 회전 반전 세팅으로 가져오고 거기서 오리진 다시 계산해서 셀 위치 계산」
+    //
+    // 🔴 **셀을 한 칸도 놓기 전에** 끝나야 한다. 아래 루프는 `getCellFromVisualCoords`로 셀을
+    //    배치하고 렌더는 `getVisualCoords`로 좌표를 되만드는데, 그 둘은 **같은 원점 상자에서만**
+    //    역함수다(§getWaferBoundingBox). 마스크가 셀 배치 뒤에 앉으면 배치는 원 기준으로,
+    //    표기와 Push는 유효 다이 기준으로 계산되어 저장 좌표가 조용히 옮겨간다.
+    //    종전에는 이 호출이 렌더 직전(약 200줄 아래)에 있었다 — 마스크가 판정에만 쓰이던
+    //    동안에는 충분했지만, 이제 마스크가 좌표계를 정하므로 그 자리는 늦다.
+    //
+    // 🔴 회전·면·격자 컨트롤이 **위에서 이미 확정된 뒤**여야 한다(바로 위 동기화 블록):
+    //    정렬 경보가 `currentFrame()`을 읽어 참조 프레임과 원점을 비교한다.
+    // 선언이 없으면 `circle`로 돌아가 종전과 완전히 같이 동작한다.
+    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+    // 근거가 바뀌면 원점 상자도 바뀐다 — 위 동기화가 비운 캐시는 원 기준으로 다시 채워졌을
+    // 수 있다. 태그가 키를 갈라 주지만, 여기서 한 번 더 비워 이전 맵의 항목을 남기지 않는다.
+    boundingBoxCache = {};
+    // ⚠️ 여기서 START X,Y를 컨트롤에서 되읽지 **않는다.** 되읽는 줄이 잠시 있었는데, 그것은
+    //    `resolveValidDie`가 START를 덮어쓰던 (B) 안의 잔재였다. 사용자 확정은 (A)다 ―
+    //    「START X,Y는 바뀌면 안됨」. 아무도 덮어쓰지 않으므로 지역 변수 `startX`와 컨트롤은
+    //    이미 같은 값이고, 되읽기는 DOM에서 같은 수를 두 번째로 만들어 내는 일일 뿐이다.
+
     const uniqueVals = new Set();
 
     if (result && result.data) {
@@ -5001,14 +5102,11 @@ async function loadExistingMap(opts = {}) {
       }
     }
 
-    // [M4①] 유효 다이의 근거를 이 맵의 메타에서 정한다. 선언이 없으면 `circle`로 돌아가
-    // 종전과 완전히 같이 동작하고, 있으면 참조 맵을 해석해 그것만을 근거로 삼는다.
-    // 렌더보다 **먼저** 놓는다 — 나중에 두면 원 기준으로 한 번 그린 뒤 마스크 기준으로
-    // 다시 그리는 깜빡임이 생기고, 그 사이 프레임은 틀린 유효 다이를 보여준다.
-    // [M4②] 홈 키를 함께 넘긴다 — 자기 참조(A→A)를 끊는 데 필요하다. `setLoadedIdentity`가
-    // 아직 호출되지 않은 시점이므로 그 함수가 쓰는 것과 **같은 식**으로 만든다.
-    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
-
+    // [M4①] 유효 다이의 근거는 **셀 배치 전에** 이미 정해졌다(위 「유효 다이 → 오리진 →
+    // 셀 위치」 블록). 여기서 다시 부르지 않는다 — 두 번 해석하면 늦게 착지한 쪽이 원점 상자를
+    // 바꿔, 이미 배치된 셀과 다른 좌표계로 렌더가 돌아간다.
+    // [M4②] 홈 키를 함께 넘기는 이유(자기 참조 A→A 차단)와 `setLoadedIdentity`보다 앞선다는
+    // 사실도 그 블록에 적혀 있다.
     renderGridCanvas();
     // [가드 ①] 로드 순간 편집 정체성을 고정하고 맵 키 입력을 잠근다.
     setLoadedIdentity(selectedTable, loadedMapKey || getCurrentMapKey());
@@ -6040,7 +6138,12 @@ function copyTitleText() {
 //    "지문 있음"으로 다룰 수도 있었다. 없는 것을 0으로 읽으면 안 되므로 여기서 `null`로
 //    말한다 — 이 파일의 규율(미상 ≠ 0)이 여기에도 그대로 적용된다.
 function computeNotchCell(rotation, side) {
-  const box = getWaferBoundingBox(rotation, side);
+  // 🔴 **원 상자로 묻는다.** 노치는 웨이퍼의 물리 특징이고, 이 좌표는 클립보드의 프레임
+  //    지문이다. 유효 다이 기준 상자를 쓰면 참조 해석이 한 번 실패한 세션에서 지문이 조용히
+  //    달라져, 정상적인 붙여넣기가 "회전·면이 다릅니다"라는 무관한 사유로 거절된다.
+  //    (지문이 canvas 좌표라는 점은 변하지 않는다 — 원점 상자는 좌표의 **번호 매기기**만
+  //     정하므로 노치 칸의 위치와 서로 간섭하지 않는다.)
+  const box = getWaferBoundingBox(rotation, side, { circleOnly: true });
   const centerC = Math.floor((box.minC + box.maxC) / 2);
   const centerR = Math.floor((box.minR + box.maxR) / 2);
   const dx = (side === 'front') ? 1 : -1;
@@ -6863,6 +6966,9 @@ function restoreEditorState(s) {
   // [M4①] 마스크도 그 프레임의 것으로 되돌린다. 캡처하지 않은 옛 상태에서 되돌아오는
   // 경우(`validDie` 부재)는 선언 없음으로 읽어 종전 동작이 된다.
   validDie = s.validDie ? { ...s.validDie } : { basis: 'circle', keys: null, reason: '', ref: null };
+  // 마스크는 이제 **원점 상자의 근거**이기도 하다(§getWaferBoundingBox). 위쪽의 캐시 비우기는
+  // 이 복원보다 앞이라, 그 사이에 계산된 항목은 떠나는 프레임의 근거로 만들어져 있다.
+  boundingBoxCache = {};
   renderValidDieChip();
   // [M4②] 지정 칸은 마스크와 같은 프레임의 것이다 — 되돌리지 않으면 부모 맵으로 돌아온 뒤
   // Push가 자재 맵의 선언을 부모에 쓴다.
@@ -7333,9 +7439,87 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   // 토스트도 띄우지 않는다(이미 지나간 지정에 대한 경고는 지금 화면과 무관하다).
   const mySeq = ++validDieResolveSeq;
   const stale = () => mySeq !== validDieResolveSeq;
+  // ═══ 셀 위치 계산 ― 붙드는 것은 **저장 좌표**, 움직이는 것은 **캔버스 칸** ═══════════
+  // 사용자 지적: 「캔버스 좌표를 보존하고 있어 셀이」. 그것이 결함이다. 근거가 바뀌면
+  // `box.minC`가 셀 밑에서 움직이는데 셀이 칸을 붙들고 있어서 읽는 번호가 바뀌었다
+  // (bonding_map 4E → DT에서 `5,5`가 `2,3`이 됐다). 붙들 것은 번호이고 칸은 파생이다.
+  //
+  // 🔴 로드 경로에서는 **아무 일도 하지 않는다.** `loadExistingMap`이 `gridData`(:4602)·
+  //    `loadedFCells`(:4603)·`serverCellKeys`(:4607)를 `resolveValidDie`(:4866)보다 먼저
+  //    비우므로 집합이 비어 무비용이고, 로드는 이미 옳다(사용자 QA 통과). 여기가 고치는 것은
+  //    **화면에 이미 앉아 있는 셀** ― 지정/해제/변경뿐이다.
+  let screenShift = null;   // 화면이 실제로 움직인 양. 토스트가 쓰는 수는 이것이다.
+  // 재배치 결과는 담아 두고 **1~6 다음에** 찍는다. `set`은 로그 블록보다 먼저 돌기 때문이다.
+  let placementNote = '';
   const set = (basis, keys, reason, ref) => {
     if (stale()) return validDie;
+    const fc = gridDimNum('cols', el.gridCols, 10);
+    const fr = gridDimNum('rows', el.gridRows, 10);
+    const fsx = parseInt(el.gridStartX.value, 10) || 0;
+    const fsy = parseInt(el.gridStartY.value, 10) || 0;
+    const fiv = !!(el.gridYInvert && el.gridYInvert.checked);
+    // 좌표 (startX,startY)가 앉는 칸 = 마스크의 시작 칸. 이동량의 근거는 이 한 함수다.
+    const seat0 = () => getCellFromVisualCoords(fsx, fsy, fc, fr,
+      currentRotation, currentSide, fiv, fsx, fsy);
+
+    // (1) 근거를 바꾸기 **전에**, 각 셀이 지금 말하는 저장 좌표를 되찾는다.
+    const held = new Map();
+    const touched = new Set([...Object.keys(gridData), ...loadedFCells,
+      ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+    touched.forEach(k => {
+      const [px, py] = String(k).split('_').map(Number);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+      const at = getCellFromPhysicalCoords(px, py, fc, fr, currentRotation, currentSide);
+      held.set(k, getVisualCoords(at.c, at.r, fc, fr, currentRotation, currentSide, fiv, fsx, fsy));
+    });
+    const wasSeat = seat0();
+
     validDie = { basis, keys, reason: reason || '', ref: ref || null, raw };
+
+    // 🔴 **캐시를 반드시 비운다.** `getWaferBoundingBox`의 캐시 태그는 `V<validDieResolveSeq>`
+    //    인데 그 번호는 `resolveValidDie` **진입 시** 한 번 오른다(위 `mySeq`). 그래서 진입과
+    //    이 대입 사이에 상자를 한 번이라도 물으면 **옛 마스크로 만든 상자가 새 번호의 키에**
+    //    실린다. 바로 위 (1)의 되찾기가 그 질문을 하므로, 비우지 않으면 아래 배치와 이후 렌더가
+    //    전부 캐시 적중으로 **옛 마스크의 상자**를 받는다 ― 마스크는 새것을 그리는데 좌표계는
+    //    옛것이라 원점이 어긋나 보인다. 지난 라운드가 정확히 이렇게 무너졌다.
+    boundingBoxCache = {};
+
+    // (2) 각 셀을 **자기 저장 좌표에서** 새 좌표계가 주는 칸으로 앉힌다.
+    if (held.size > 0) {
+      const isRot = (currentRotation === 90 || currentRotation === 270);
+      const visC = isRot ? fr : fc;
+      const visR = isRot ? fc : fr;
+      let offGrid = 0;
+      const seatOf = new Map();
+      held.forEach((v, k) => {
+        const cell = getCellFromVisualCoords(v.x, v.y, fc, fr, currentRotation, currentSide, fiv, fsx, fsy);
+        if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
+        const p = getPhysicalCoords(cell.c, cell.r, fc, fr, currentRotation, currentSide);
+        seatOf.set(k, `${p.x}_${p.y}`);
+      });
+      let moved = 0;
+      seatOf.forEach((to, from) => { if (to !== from) moved++; });
+      if (moved > 0) {
+        const at = (k) => seatOf.get(k) || k;
+        const next = {};
+        Object.keys(gridData).forEach(k => { next[at(k)] = gridData[k]; });
+        gridData = next;
+        loadedFCells = new Set([...loadedFCells].map(at));
+        // 서버 셀 집합도 같이 옮긴다. 옮기지 않으면 서버에서 온 셀이 「보낸 적 없음」으로 읽혀
+        // 정리 경로가 실재하는 행을 지우자고 제안한다(불변식 ③).
+        if (serverCellKeys && serverCellKeys.keys) {
+          serverCellKeys.keys = new Set([...serverCellKeys.keys].map(at));
+        }
+        placementNote = `[유효다이] 7) 셀 재배치 ― ${moved}칸을 저장된 좌표에서 다시 앉힘 `
+          + `(격자 ${visC}x${visR}, 격자 밖으로 나간 셀 ${offGrid}칸). `
+          + `번호는 그대로이고 앉는 칸만 바뀜`;
+        if (basis !== 'ref') console.log(placementNote);   // ref는 1~6 뒤에 찍는다
+      }
+    }
+    const nowSeat = seat0();
+    if (nowSeat.c !== wasSeat.c || nowSeat.r !== wasSeat.r) {
+      screenShift = { dc: nowSeat.c - wasSeat.c, dr: nowSeat.r - wasSeat.r };
+    }
     renderValidDieChip();
     syncValidDieRefControls();   // [M4②] 지정 컨트롤은 언제나 raw를 되비춘다
     return validDie;
@@ -7485,20 +7669,10 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // ⚠️ 치수 비교는 **지우지 않고 남긴다.** 원점이 같아도 격자 범위가 다르면 참조 마스크의
     //    일부가 이 격자 밖에 앉는다 — 밀림과는 다른 사실이고, 운영자가 지금 받고 있는 정보다.
     //    둘 중 어느 쪽이 성립했는지는 문구가 구분해서 말한다.
-    const originPhysOf = (frame) => {
-      const m = projectCellsToPhys([{ x: 0, y: 0 }], frame);
-      const k = [...m.keys()][0];
-      const [px, py] = String(k || '0_0').split('_').map(Number);
-      return { x: px, y: py };
-    };
-    const oHere = originPhysOf(currentFrame());
-    const oThere = originPhysOf(refFrame);
-    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {
-      if (stale()) return validDie;
-      originDiffer = { dx: oThere.x - oHere.x, dy: oThere.y - oHere.y,
-                       here: `${hereResolved.startX},${hereResolved.startY}`,
-                       there: `${refResolved.startX},${refResolved.startY}` };
-    }
+    // ⚠️ 원점 어긋남은 여기서 재지 않는다. 종전에는 `projectCellsToPhys([{x:0,y:0}], frame)`을
+    //    두 프레임으로 돌려 물리 다이를 비교했는데, 그 비교는 **마스크를 격자 중심으로 다시
+    //    앉히기 전**의 인덱스 공간에서 이뤄져 화면과 무관한 수를 냈다(실측: 화면은 중앙에
+    //    맞아 있는데 「31칸·8행 어긋남」을 찍었다). 마스크가 앉은 뒤에 한 번만 잰다(아래).
     if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
       // 낡은 해석은 화면을 건드리지 않는다 — 이제 화면을 바꾸지 않으므로 토스트도 내지 않는다.
       if (stale()) return validDie;
@@ -7506,30 +7680,120 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
                      there: `${refResolved.cols}x${refResolved.rows}` };
     }
 
-    const keys = new Set(projectCellsToPhys(cells, refFrame).keys());
-    if (keys.size === 0) {
+    // ═══ 유효 다이 맵이 좌표계의 중심이다 (사용자 확정 2026-07-30) ═══════════════════
+    // 「유효 다이 로드 시 유효 다이 맵을 중심으로 회전, 반전 적용. Y INVERT 여부 맞추어서
+    //   유효 다이 영역 X,Y 최솟값이 START X,Y가 되게 좌표계 및 ORIGIN CELL 설정.
+    //   유효 다이 맵이 원 기하 중심이 되는 스킴.」
+    //
+    // 🔴 종전에는 `projectCellsToPhys(cells, refFrame)` 하나로 끝냈다. 그 함수가 만드는 물리
+    //    인덱스의 원점은 **격자 중심** `(cols-1)/2`다. 참조 23x23(중심 11)과 이 맵 45x45(중심
+    //    22)는 서로 다른 인덱스 공간이라 같은 키가 같은 다이가 아니었다 ― 마스크가 좌상단으로
+    //    밀려 앉고 오리진 셀만 중앙에 남은 실측 화면의 원인이 이것이다.
+    // 🔴 그래서 회전·반전의 중심을 **마스크 자신**으로 옮긴다: 마스크 집합의 중심이 이 격자의
+    //    중심에 오도록 통째로 평행이동한다. 그러면 두 인덱스 공간이 마스크 위에서 만나고,
+    //    격자 중심을 축으로 도는 기존 회전이 곧 마스크를 축으로 도는 회전이 된다.
+    //    새 기하식은 없다 ― `projectCellsToPhys`의 결과에 정수 평행이동 하나를 얹을 뿐이다.
+    const rawKeys = [...projectCellsToPhys(cells, refFrame).keys()];
+    if (rawKeys.length === 0) {
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵을 물리 좌표로 투영한 결과가 비었습니다.`);
     }
+    const hereCols = gridDimNum('cols', el.gridCols, 10);
+    const hereRows = gridDimNum('rows', el.gridRows, 10);
+    const hereInvertY = !!(el.gridYInvert && el.gridYInvert.checked);
+    const pxs = rawKeys.map(k => Number(String(k).split('_')[0]));
+    const pys = rawKeys.map(k => Number(String(k).split('_')[1]));
+    const maskCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
+    const maskCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+    const gridCx = (hereCols - 1) / 2;
+    const gridCy = (hereRows - 1) / 2;
+    const shiftX = Math.round(gridCx - maskCx);
+    const shiftY = Math.round(gridCy - maskCy);
+    const keys = new Set(rawKeys.map(k => {
+      const [px, py] = String(k).split('_').map(Number);
+      return `${px + shiftX}_${py + shiftY}`;
+    }));
+
+    // 🔴 유효 다이 영역의 X,Y 최솟값이 START X,Y다. 최솟값의 출처는 **참조 맵 자신의 좌표**다 ―
+    //    이 캔버스에서 읽은 좌표를 쓰면 그 좌표가 이미 START로 만들어진 값이라 순환한다.
+    //    Y 반전은 여기서 갈리지 않는다: `getVisualCoords`가 START Y를 반전 시 아래 끝
+    //    (box.maxR), 아닐 때 위 끝(box.minR)에 놓으므로 어느 쪽이든 START Y는 그 영역의
+    //    최소 Y 좌표다. 갈리는 것은 값이 아니라 **어느 행에 놓이는가**이고 그것은 이미 하나의
+    //    함수가 정한다(로그 4·6이 어느 행인지 찍는다).
+    const refMinX = Math.min(...cells.map(c => c.x));
+    const refMinY = Math.min(...cells.map(c => c.y));
+
     const out = set('ref', keys, '', ref);
+
+    // ── 사용자 QA용 6점 로그. cp949로 인코딩 불가한 문자가 하나라도 들어가면 한국어 콘솔의
+    //    로깅 핸들러가 줄 전체를 버리므로 em dash(U+2014)·이모지를 쓰지 않는다(U+2015 사용).
+    if (!stale()) {
+      const box = getWaferBoundingBox(currentRotation, currentSide);
+      // 🔴 **선언된 START로 푼다.** START X,Y는 운영자의 선언이고 편집기가 바꾸지 않는다
+      //    (사용자 확정 2026-07-30: 「START X,Y는 바뀌면 안됨」). 그래서 마스크의 최소 열이
+      //    읽는 값은 참조의 최솟값이 아니라 **이 맵이 선언한 START**이고, 오리진 셀은
+      //    `box.minC - startX`에 선다.
+      const sx = hereResolved.startX, sy = hereResolved.startY;
+      const zero = getCellFromVisualCoords(0, 0, hereCols, hereRows,
+        currentRotation, currentSide, hereInvertY, sx, sy);
+      const startRow = hereInvertY ? box.maxR : box.minR;
+      // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를
+      // (refMinX,refMinY)로 부르고 이 맵은 같은 칸을 (sx,sy)로 부른다 ― 그 차이가 어긋남이다.
+      if (sx !== refMinX || sy !== refMinY) {
+        originDiffer = { dx: sx - refMinX, dy: sy - refMinY,
+                         there: `${refMinX},${refMinY}`, here: `${sx},${sy}` };
+      }
+      console.log(`[유효다이] 1) 유효 다이맵 ― 참조 ${ref.table} / ${ref.mapKey}, 셀 ${cells.length}칸, `
+        + `참조 프레임 ${refFrame.cols}x${refFrame.rows} start(${refFrame.startX},${refFrame.startY}) `
+        + `rot=${refFrame.rotation} ${refFrame.side} yInvert=${refFrame.invertY}`);
+      console.log(`[유효다이] 2) 현재 메타값 ― 이 맵 ${hereCols}x${hereRows} `
+        + `start(${hereResolved.startX},${hereResolved.startY}) rot=${currentRotation} ${currentSide} `
+        + `yInvert=${hereInvertY}`);
+      console.log(`[유효다이] 3) 회전 중심 좌표 ― 마스크 중심 (${maskCx},${maskCy}), `
+        + `격자 중심 (${gridCx},${gridCy}), 마스크 평행이동 (${shiftX},${shiftY})`);
+      console.log(`[유효다이] 4) 반전 중심 축 ― X 미러 ${currentSide === 'back'
+        ? `있음 (물리 x = ${gridCx} 기준)` : '없음 (front)'}, `
+        + `Y 반전 ${hereInvertY ? '있음 (아래 끝이 START Y)' : '없음 (위 끝이 START Y)'}`);
+      console.log(`[유효다이] 5) 캔버스 내 유효 다이 범위 ― 열 ${box.minC}~${box.maxC}, `
+        + `행 ${box.minR}~${box.maxR}, ${keys.size}칸`);
+      console.log(`[유효다이] 6) 오리진 캔버스 좌표 ― 열 ${zero.c}, 행 ${zero.r}. `
+        + `선언된 START(${sx},${sy}) 는 열 ${box.minC} / 행 ${startRow} 에 놓임 `
+        + `(참조 맵이 부르는 최솟값 ${refMinX},${refMinY})`);
+      if (placementNote) console.log(placementNote);
+    }
     // [F8] 밀림을 알린다. 대가를 셀 것이 없으므로(`classifyUnsavableCells`를 부르지 않는다)
     // 마스크가 앉은 뒤여야 할 이유도 없지만, 지정이 실제로 성립한 뒤에만 말하는 것이 맞다.
     if ((originDiffer || dimsDiffer) && !stale()) {
-      // 사유는 성립한 것만 말한다 — 원점과 치수는 서로 독립이고, 둘 다 어긋날 수도 있다.
+      // 사유는 성립한 것만 말한다 ― 원점과 치수는 서로 독립이고, 둘 다 어긋날 수도 있다.
+      // ⚠️ **cp949를 벗어나는 문자를 쓰지 않는다.** 운영 콘솔이 한국어 Windows 콘솔이라
+      //    em dash(U+2014) 한 글자에 로깅 핸들러가 **줄 전체를 버린다** ― 이 진단은 그동안
+      //    사용자 화면에 한 번도 도착하지 않았다. U+2015(―)를 쓴다.
+      // 🔴 문구가 말하는 두 절반을 구분한다: **좌표는 바뀌지 않는다**(START X,Y는 운영자의
+      //    선언이고 편집기가 건드리지 않는다), 그러나 **표시는 움직인다**(마스크가 참조의
+      //    원점 기준으로 다시 앉으므로 셀과 마스크가 화면에서 함께 이동한다).
+      // 🔴 **두 수는 다른 것을 잰다. 섞어 쓰면 안 된다.**
+      //    `originDiffer` ― 참조가 자기 최소 다이를 뭐라 부르는가 vs 이 맵의 선언된 START.
+      //                     프레임 정렬의 사실이고, 데이터를 움직이는 양이 **아니다**.
+      //    `screenShift`  ― 이번 지정으로 셀과 마스크가 화면에서 실제로 움직인 칸 수.
+      //    실측 사례(4E → DT)에서 전자는 (1,1)인데 후자는 (-3,-2)였다. 종전 문구는 전자를
+      //    「어긋남」으로 내놓아 사용자가 본 이동량과 맞지 않았다.
       const why = [
-        originDiffer ? `원점(맵 좌표 0,0)이 ${Math.abs(originDiffer.dx)}칸·`
-          + `${Math.abs(originDiffer.dy)}행 어긋납니다 (참조 시작 ${originDiffer.there} · `
-          + `이 맵 ${originDiffer.here})` : '',
+        originDiffer ? `참조가 부르는 최솟값 ${originDiffer.there} 과 이 맵의 선언된 START `
+          + `${originDiffer.here} 이 다릅니다` : '',
         dimsDiffer ? `격자 치수가 다릅니다 (참조 ${dimsDiffer.there} · 이 맵 ${dimsDiffer.here})` : '',
       ].filter(Boolean).join(' · ');
-      console.info('[Map Editor][F8] valid-die reference is not aligned with the editor frame — '
-        + (originDiffer ? `origin cell differs by (${originDiffer.dx},${originDiffer.dy}) in `
-            + `physical index space (ref grid_start ${originDiffer.there}, here ${originDiffer.here}); ` : '')
+      console.info('[Map Editor][F8] valid-die reference is not aligned with the editor frame ― '
+        + (originDiffer ? `the reference calls its minimum die (${originDiffer.there}) while this map's `
+            + `declared START is (${originDiffer.here}), a gap of (${originDiffer.dx},${originDiffer.dy}); ` : '')
         + (dimsDiffer ? `grid ${dimsDiffer.there} != ${dimsDiffer.here}; ` : '')
-        + 'NOTHING adopted — every cell keeps its canvas position and therefore its derived DB '
-        + 'coordinate. The mask is drawn in the reference\'s index space, so it appears offset. '
-        + '0 coordinates changed, 0 rows dropped.');
-      showToast(`유효 다이 참조 맵이 이 맵과 정렬되지 않아 마스크가 화면에서 밀려 보입니다 — `
-        + `${why}. 격자·셀·좌표는 **하나도 바뀌지 않았고** ⚡ Push가 기록할 x/y도 그대로입니다.`,
+        + 'NOTHING adopted and NO coordinate changed ― grid_start_x/y stay as declared, so the x/y '
+        + 'Push writes are untouched. The mask is re-centred on this grid, so cells and mask moved '
+        + 'together on SCREEN only.');
+      showToast(`유효 다이 참조 맵이 이 맵과 정렬되지 않아 마스크가 밀려 있습니다 ― `
+        + `${why}. 좌표는 하나도 바뀌지 않았고 ⚡ Push가 기록할 x/y도 그대로입니다. `
+        + (screenShift
+          ? `셀과 마스크는 화면에서 ${Math.abs(screenShift.dc)}칸·${Math.abs(screenShift.dr)}행 `
+            + `함께 이동했습니다 ― 각 셀은 자기 좌표가 가리키는 칸으로 다시 앉았습니다.`
+          : `셀이 앉는 칸은 이번에 바뀌지 않았습니다.`),
         'info', { dedupeKey: 'valid_die_frame_differs' });
     }
     return out;
