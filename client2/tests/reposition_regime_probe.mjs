@@ -35,10 +35,38 @@ function sliceFunction(source, name) {
   throw new Error(`unbalanced braces in '${name}'`);
 }
 
+// ⚠️ `dbCoordsByPhysKey` WAS SLICED HERE AND IS NOW DELETED FROM THE SOURCE (`61440e6` removed
+//    frame adoption; the function existed only to price it, and had no other caller). Leaving
+//    it in this list would have made the probe throw `'dbCoordsByPhysKey' not found` on every
+//    run — a tool that dies at startup, which is the exact failure this repository has already
+//    had three times. Questions 1 and 2 never touched it, so the probe is retargeted rather
+//    than retired: `coordsByPhysKey` below is the same two-line composition, built from the two
+//    shipped PER-CELL primitives that remain.
 const SYMBOLS = ['physNum', 'gridDimNum', 'withPhysFrame', 'getPhysicalCoords',
   'getCellFromPhysicalCoords', 'getCellFromVisualCoords', 'getTransformedPhysicalConfig',
   'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox', 'getVisualCoords',
-  'frameFromMeta', 'currentFrame', 'resolveFrame', 'dbCoordsByPhysKey', 'projectCellsToPhys'];
+  'frameFromMeta', 'currentFrame', 'resolveFrame', 'projectCellsToPhys'];
+
+// `physical key -> stored (DB) coordinate` under an arbitrary frame. Identical in behaviour to
+// the deleted `dbCoordsByPhysKey`, and to `coordMapOracle` in
+// valid_die_frame_adoption_harness.mjs — the renderer's own two lines, run inside a frame window.
+function coordsByPhysKey(S, frame) {
+  const rf = S.resolveFrame(frame);
+  const isRot = (rf.rotation === 90 || rf.rotation === 270);
+  const vC = isRot ? rf.rows : rf.cols, vR = isRot ? rf.cols : rf.rows;
+  return S.withPhysFrame(rf, () => {
+    const out = new Map();
+    for (let r = 0; r < vR; r++) {
+      for (let c = 0; c < vC; c++) {
+        const p = S.getPhysicalCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+        const v = S.getVisualCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+          rf.invertY, rf.startX, rf.startY);
+        out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
+      }
+    }
+    return out;
+  });
+}
 
 function makeInput(v) { return { value: String(v), checked: false }; }
 
@@ -93,12 +121,15 @@ for (const [name, f] of Object.entries(frames)) {
     + `${px.padStart(7)}       ${py.padStart(7)}`);
 }
 
-// ── 3: the reposition plan on real cells, for every real pair with differing dims ───────
-// This is the SAME composition the shipped reposition uses: dbCoordsByPhysKey(from) gives
-// physKey -> stored coord; the inverse of dbCoordsByPhysKey(to) gives stored coord -> physKey.
+// ── 3: what a frame change WOULD cost, on real cells, for every real pair with differing dims ──
+// ⚠️ THIS IS NOW A COUNTERFACTUAL, NOT A MODEL OF SHIPPED BEHAVIOUR. Nothing repositions any
+//    more — a valid-die designation adopts nothing (F8), so no stored coordinate moves. What
+//    this section measures is the cost that decision AVOIDS on the real declared maps, which is
+//    still the number that justifies it: `coordsByPhysKey(from)` gives physKey -> stored coord,
+//    and the inverse of `coordsByPhysKey(to)` gives stored coord -> physKey.
 function plan(S, fromFrame, toFrame, physKeys) {
-  const before = S.dbCoordsByPhysKey(fromFrame);
-  const after = S.dbCoordsByPhysKey(toFrame);
+  const before = coordsByPhysKey(S, fromFrame);
+  const after = coordsByPhysKey(S, toFrame);
   const byCoord = new Map(); let dup = 0;
   after.forEach((v, k) => { if (byCoord.has(v)) dup++; else byCoord.set(v, k); });
   let same = 0, movedKey = 0; const unrepresentable = [], stranded = [], newKeys = [];
