@@ -7326,9 +7326,12 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 규격(wafer_map_metadata)이 없습니다.`);
     }
-    // [H5] 치수를 **셀을 한 건도 읽기 전에** 검사한다. 이 프레임이 지나가면 그 뒤로 격자 전수
-    // 순회가 4회(계획 2 + 비용 2) 돌고 동기 렌더가 1회 돈다 — 네 자리 치수 하나면 탭이 굳고
-    // 취소 수단이 없다. clamp하지 않고 사유를 대고 거절한다(`frameDimError` 주석).
+    // [H5] 치수를 **셀을 한 건도 읽기 전에** 검사한다. 근거는 `frameDimBounds` 위 주석에
+    // 정본이 있다 — 여기 있던 「전수 순회 4회(계획 2 + 비용 2)」는 채택·재배치 기계장치의
+    // 비용이었고 그 기계장치는 삭제됐다(61440e6 + 94b9baa). 남은 근거 둘: `projectCellsToPhys`가
+    // **참조 치수**로 프레임 창을 열고 그 안에서 `getWaferBoundingBox`가 전수 순회하므로 네 자리
+    // 치수 하나로 탭이 굳는 것은 그대로이고, 0·음수·비정수는 `gridDimNum`/`parseInt`가
+    // **참조가 선언한 적 없는 인덱스 공간**으로 읽어 마스크가 조용히 틀린다. clamp하지 않는다.
     const dimErr = frameDimError(refFrame);
     if (dimErr) {
       return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵이 선언한 격자 치수가 편집기가 다룰 수 `

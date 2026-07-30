@@ -191,9 +191,13 @@ def check_api_reachable(base_url=None, timeout=3.0):
         f"[internal-events] {url} -> {res.status_code}.{server_header} /health "
         "carries NO admin gate, so a status like this cannot come from this "
         "application - something in front of it answered. Internal notifications "
-        f"will fail the same way. proxy-env={proxy_env}. 내부 통지가 프록시를 "
-        "경유했을 수 있습니다. 런처를 띄우는 셸에 NO_PROXY=127.0.0.1,localhost 를 "
-        "설정하고 전체 트리를 재기동하세요."
+        f"will fail the same way. proxy-env={proxy_env}. 이 세션은 이미 "
+        "trust_env=False 라 프록시 환경변수를 보지 않습니다. 따라서 이것은 "
+        "환경변수 문제가 아니라 포트 앞단(리버스 프록시/필터)의 문제입니다. "
+        "확인: 그 포트를 소유한 프로세스, 그리고 위 'answered by' 값. "
+        "[금지] NO_PROXY 를 설정하지 마세요 - 프로세스 전역이라 인제션 스크립트까지 "
+        "물려받고, no_proxy 하나만 있어도 urllib 이 프록시 레지스트리를 통째로 "
+        "무시합니다(2026-07-30 실제로 오토업데이트가 이렇게 멈췄습니다)."
     )
     # NOTE: keep every character in this module's log lines encodable in cp949.
     # The production console is a Korean Windows console (run_app.bat sets no
