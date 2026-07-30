@@ -284,11 +284,35 @@ def _validate_table_mapping(table_name: str, raw: dict, known_tables: dict):
     }, None
 
 
-def validate_ontology_mapping(raw_config, known_tables: dict = None) -> dict:
-    """설정 dict 전체를 검증한다. {table_name: normalized} 반환(무효 테이블은 로깅 후 스킵)."""
+def _record(rejections, scope: str, table, reason: str):
+    """무효 선언 1건을 수집기에 남긴다(수집기 미제공 시 로그만 — 기존 동작).
+
+    A skip that only exists in a log line is a skip nobody sees. Column validation
+    below is the sharpest case: rename a column and that table's ontology
+    disappears **wholesale**, with one WARNING and no number anywhere - the
+    successful-mapping count simply stops growing, which is indistinguishable from
+    "nothing changed". The collector is optional so that every existing caller
+    (materializer, resync, orphan sweep) keeps its exact signature and cost, and
+    the one caller that has a surface (`/graph/mapping-summary`) passes a list.
+    """
+    if rejections is None:
+        return
+    rejections.append({"scope": scope, "table": table, "reason": reason})
+
+
+def validate_ontology_mapping(raw_config, known_tables: dict = None,
+                              rejections: list = None) -> dict:
+    """설정 dict 전체를 검증한다. {table_name: normalized} 반환(무효 테이블은 로깅 후 스킵).
+
+    rejections: 선택 수집기 리스트 — 스킵된 선언을 `{scope, table, reason}`으로 누적한다
+    (`_record` 참조). 반환값 형태는 수집기 유무와 무관하게 동일하다.
+    """
     mappings = {}
     if not isinstance(raw_config, dict):
         logger.error("ontology_mapping.json must be an object {table_name: mapping}")
+        _record(rejections, "file", None,
+                "ontology_mapping.json must be an object {table_name: mapping} — "
+                "the whole file was ignored")
         return mappings
     # v1 형식(구 Neo4j 경로) 감지 — v2 항목이 아니므로 로더 대상에서 제외
     v1_keys = {"tables", "default"}
@@ -300,13 +324,22 @@ def validate_ontology_mapping(raw_config, known_tables: dict = None) -> dict:
                 f"[Ontology] v1-format key '{table_name}' ignored by v2 loader "
                 "(legacy Neo4j path only)"
             )
+            # Reported, not silent: a file still in v1 shape yields ZERO v2
+            # mappings, which on a surface that only counts successes looks
+            # identical to an empty file.
+            _record(rejections, "file", table_name,
+                    f"v1-format key '{table_name}' is ignored by the v2 loader "
+                    "(legacy Neo4j path only) — no v2 mapping is taken from it")
             continue
         if not isinstance(table_name, str) or not table_name.strip():
             logger.warning("[Ontology] mapping with empty table name skipped")
+            _record(rejections, "table", table_name,
+                    "mapping with an empty table name skipped")
             continue
         normalized, err = _validate_table_mapping(table_name, raw, known_tables)
         if err is not None:
             logger.warning(f"[Ontology:{table_name}] mapping skipped: {err}")
+            _record(rejections, "table", table_name, err)
             continue
         mappings[table_name] = normalized
     return mappings
@@ -391,10 +424,14 @@ def synthesize_enrichment_mappings(mappings: dict, enrichment_rules: list) -> di
 
 
 def load_ontology_mappings(path: str = None, known_tables: dict = None,
-                           include_enrichment: bool = True) -> dict:
+                           include_enrichment: bool = True,
+                           rejections: list = None) -> dict:
     """ontology_mapping.json(v2)을 읽어 검증·정규화하고 enrichment 승격 매핑을 병합한다.
 
     반환: {table_name: normalized_mapping}. 파일 없음/손상 → (승격분만 있는) 부분 결과.
+    rejections: 선택 수집기 리스트 — 스킵된 선언을 `{scope, table, reason}`으로 누적한다.
+    파일 자체가 안 읽히는 경우와 enrichment 승격이 죽은 경우도 같은 수집기에 들어간다;
+    둘 다 "매핑이 통째로 사라지는데 성공 카운트만 보면 알 수 없는" 같은 계급이다.
     """
     mapping_path = path or ONTOLOGY_PATH
     raw_config = {}
@@ -404,8 +441,13 @@ def load_ontology_mappings(path: str = None, known_tables: dict = None,
                 raw_config = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load ontology mapping from {mapping_path}: {e}")
+            _record(rejections, "file", None,
+                    f"could not read '{mapping_path}': {e} — EVERY table mapping in "
+                    "that file is absent (enrichment-promoted mappings still apply)")
             raw_config = {}
-    mappings = validate_ontology_mapping(raw_config, known_tables=known_tables)
+    mappings = validate_ontology_mapping(
+        raw_config, known_tables=known_tables, rejections=rejections
+    )
 
     if include_enrichment:
         try:
@@ -413,6 +455,9 @@ def load_ontology_mappings(path: str = None, known_tables: dict = None,
             rules = load_enrichment_rules(known_tables=known_tables)
         except Exception as e:
             logger.error(f"[Ontology] enrichment promotion skipped (rule load failed): {e}")
+            _record(rejections, "enrichment", None,
+                    f"enrichment rule load failed ({e}) — RESOLVED_AS promotion did "
+                    "not run, so every auto-promoted edge is absent")
             rules = []
         mappings = synthesize_enrichment_mappings(mappings, rules)
     return mappings

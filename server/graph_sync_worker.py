@@ -552,6 +552,79 @@ def _reload_graph_worker_configs():
     return mappings
 
 
+def publish_system_reload(reason: str) -> bool:
+    """Announce that the ontology declaration on disk may have changed.
+
+    WHY A RESYNC PUBLISHES THIS
+        `execute_manual_sync` re-reads `ontology_mapping.json` from disk on every
+        call, but `run_graph_materializer_loop` holds its own in-memory copy which
+        is replaced only when a SYSTEM_RELOAD event turns up inside an outbox
+        batch (issue #8). So "I edited the mapping, then resynced" left the two
+        disagreeing: the resync wrote the graph under the NEW declaration while
+        the loop kept materialising incoming rows under the OLD one. Measured on
+        live 2026-07-30: 40 minutes, and edges of a retired type minted after the
+        type was already gone from the file. An operator who has just resynced has
+        already told us the declaration changed; nothing else should have to be
+        pressed for that to be true.
+
+    WHY THIS LEVER AND NOT A GRAPH-ONLY ONE
+        Every daemon already subscribes to SYSTEM_RELOAD (materializer loop, chain
+        worker, run_watcher, auto-update scheduler) and `/admin/reload-configs`
+        publishes exactly this row - which is what the operator had to press by
+        hand. Reusing it means the resync path and the admin path converge on one
+        mechanism instead of two that can drift.
+
+    NOTIFY goes out INSIDE the insert's transaction, the way
+    `database.create_outbox_event` does it: a NOTIFY issued after the commit sits
+    in a fresh transaction that `Session.close()` rolls back, so it is never
+    delivered and the pollers' 2 s fallback silently becomes the only path.
+    Failure to publish is logged and returns False - it must not fail the resync
+    that has already been written.
+    """
+    import uuid
+    from sqlalchemy import text
+    from database.database import SessionLocal
+    from database.models import DatabaseOutbox
+
+    db = SessionLocal()
+    try:
+        db.add(DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            event_type="SYSTEM_RELOAD",
+            table_name="system",
+            payload={
+                "transaction_id": f"graph_resync_{uuid.uuid4().hex[:8]}",
+                "timestamp": datetime.now().isoformat(),
+                "msg": reason,
+                "trigger": "graph_resync",
+            },
+            status="PENDING",
+        ))
+        try:
+            bind = db.bind or db.get_bind()
+            if bind and bind.dialect.name == "postgresql":
+                db.execute(text("NOTIFY outbox_event;"))
+        except Exception:
+            pass  # pollers still see the row; only the low-latency wake is lost
+        db.commit()
+        logger.info(
+            f"[GraphSync Server] published SYSTEM_RELOAD after resync ({reason}) — "
+            "materializer loop and the other daemons re-read their configs"
+        )
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"[GraphSync Server] FAILED to publish SYSTEM_RELOAD after resync: {e}. "
+            "The graph was resynced under the current declaration, but the "
+            "materializer loop may still be running the previous one — press "
+            "/admin/reload-configs."
+        )
+        return False
+    finally:
+        db.close()
+
+
 async def run_graph_materializer_loop():
     """outbox 증분 소비 메인 루프 (chain_ingestion_worker의 소비 골격 준용).
 
@@ -881,10 +954,21 @@ async def execute_manual_sync(table_name: str, row_ids: list[str]) -> dict:
 
     mappings = _load_graph_mappings()
 
+    # Reading the file is the moment at which "what is declared" and "what the loop
+    # believes" can differ, so every path that got this far announces the reload -
+    # including the two no_mapping returns below. Deleting or renaming a table's
+    # mapping and then resyncing that table lands on exactly those returns, and it
+    # is the same staleness: the loop would keep minting the removed declaration.
+    async def _announce(reason: str):
+        await asyncio.to_thread(publish_system_reload, reason)
+
     if table_name and table_name != "all":
         if table_name not in DYNAMIC_TABLES:
+            # Not a resync at all - the caller named a table that does not exist.
+            # Nothing was read into effect, so there is nothing to announce.
             raise HTTPException(status_code=400, detail=f"유효하지 않은 테이블 이름입니다: {table_name}")
         if table_name not in mappings:
+            await _announce(f"graph resync requested for unmapped table '{table_name}'")
             return {
                 "status": "success", "mode": "no_mapping", "synced_count": 0, "deleted_count": 0,
                 "message": f"'{table_name}' 테이블에 온톨로지 매핑이 없어 동기화할 대상이 없습니다.",
@@ -893,6 +977,7 @@ async def execute_manual_sync(table_name: str, row_ids: list[str]) -> dict:
     else:
         targets = [t for t in sorted(mappings.keys()) if t in DYNAMIC_TABLES]
         if not targets:
+            await _announce("graph resync requested with no mapped tables declared")
             return {
                 "status": "success", "mode": "no_mapping", "synced_count": 0, "deleted_count": 0,
                 "message": "온톨로지 매핑이 선언된 테이블이 없습니다.",
@@ -926,6 +1011,11 @@ async def execute_manual_sync(table_name: str, row_ids: list[str]) -> dict:
     except Exception as e:
         logger.error(f"[GraphSync Server] Background manual sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Published BEFORE the per-table broadcasts: the reload is what makes the loop
+    # agree with the declaration this resync just used, and a client refreshing
+    # against a loop that is still stale is the state we are trying to end.
+    await _announce(f"graph resync completed for {targets}")
 
     total_rows = 0
     for t, stats in results.items():

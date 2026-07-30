@@ -357,4 +357,10 @@ def test_mapping_summary_empty_when_no_mapping(client, db_session, tmp_path, mon
     monkeypatch.setattr(ontology_config, "ONTOLOGY_PATH", str(tmp_path / "none.json"))
     monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(tmp_path / "none2.json"))
     body = client.get("/graph/mapping-summary").json()
-    assert body == {"tables": []}
+    assert body["tables"] == []
+    # 2026-07-30: 응답에 rejected/source가 추가됐다(거부된 매핑을 표면에 올림). 선언 파일이
+    # 아예 없는 상태는 **거부가 아니라 부재**이므로 rejected는 비어야 한다 — 정상 상태에서
+    # 비어있지 않은 사유 목록은 곧 무시당한다. 상세 검증은
+    # test_ontology_reload_and_sweep.py의 §7.
+    assert body["rejected"] == [] and body["rejected_count"] == 0
+    assert body["source"]["exists"] is False

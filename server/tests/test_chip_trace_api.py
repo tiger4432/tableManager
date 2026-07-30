@@ -442,16 +442,28 @@ def test_terminal_cap_is_sized_off_the_event_count_not_the_chip_leg_cap(
 ):
     """A terminal leg's claim count scales with the EVENT count, not with the number
     of terminal entities. Live: 206 EXECUTED_BY claims resolving to 8 Eqp. Sharing
-    the chip-leg cap of 200 truncated that 8-entity answer on the first live run."""
+    the chip-leg cap of 200 truncated that 8-entity answer on the first live run.
+
+    [2026-07-30] The lever changed. This used to shrink TARGET_CAP to 1, which is no
+    longer usable: the seed carries 2 FROM_CORE claims, so a cap of 1 now truncates
+    the SCOPE leg and the wafer half is (correctly) not computed at all - see
+    test_a_truncated_scope_leg_refuses_to_resolve. The claim under test is that the
+    two caps are separate values and that the terminal leg is bounded by its own, so
+    it is asserted on the terminal cap directly.
+    """
     assert main.GRAPH_CHIP_TRACE_TERMINAL_CAP >= main.GRAPH_CHIP_TRACE_EVENT_CAP
-    monkeypatch.setattr(main, "GRAPH_CHIP_TRACE_TARGET_CAP", 1)
     body = _trace(client, "CORE-A|05|13|5").json()
-    # both PE-1 and PE-2 claim EQP-01: 2 claims, 1 entity, and the chip-leg cap of
-    # 1 must not be what bounds it
+    # both PE-1 and PE-2 claim EQP-01: 2 claims, 1 entity
     eqp = body["walk"]["wafer"]["terminals"]["EXECUTED_BY"]
     assert eqp["count"] == 2 and eqp["node_ids"] == [chip_env["eqp1"].id]
     assert eqp["truncated"] is False
     assert eqp["capped_at"] == main.GRAPH_CHIP_TRACE_TERMINAL_CAP
+    assert body["walk"]["chip"]["BONDED_TO"]["capped_at"] == main.GRAPH_CHIP_TRACE_TARGET_CAP
+
+    # ... and the terminal leg really is bounded by the terminal cap
+    monkeypatch.setattr(main, "GRAPH_CHIP_TRACE_TERMINAL_CAP", 1)
+    eqp = _trace(client, "CORE-A|05|13|5").json()["walk"]["wafer"]["terminals"]["EXECUTED_BY"]
+    assert eqp["count"] == 1 and eqp["truncated"] is True and eqp["capped_at"] == 1
 
 
 def test_target_cap_truncates_loudly(client, chip_env, monkeypatch):
@@ -532,3 +544,167 @@ def test_plain_edge_props_are_untouched_by_the_refusal():
     assert mappings["ct_test_bonding"]["edges"][0]["props"] == [
         {"col": "bx", "spatial": None}, {"col": "by", "spatial": None}
     ]
+
+
+# ---------------------------------------------------------------------------
+# 8) [QA 2026-07-30] "we could not read the declaration" is not "it moved"
+# ---------------------------------------------------------------------------
+
+def test_unreadable_mapping_says_mapping_unavailable_not_not_declared(
+    client, chip_env, tmp_path, monkeypatch, caplog
+):
+    """The measured failure: a request landing in the config write window.
+
+    `json.load` raises -> `raw_config = {}` -> the declared-pair set collapses to
+    the enrichment-promoted pairs, and the endpoint asserted `not_declared` for a
+    chip whose BONDED_TO edges are in `graph_edges` right now.
+
+    Defect injection: revert `_chip_trace_leg`'s degraded branch and every leg here
+    reads `not_declared` again.
+    """
+    broken = tmp_path / "mid_save.json"
+    broken.write_text('{"ct_test_bonding": {"desc', encoding="utf-8")
+    monkeypatch.setattr(ontology_config, "ONTOLOGY_PATH", str(broken))
+
+    with caplog.at_level("WARNING"):
+        body = _trace(client, "CORE-A|05|13|5").json()
+
+    assert body["declaration"]["status"] == "degraded"
+    assert body["declaration"]["exists"] is True
+    assert [r["scope"] for r in body["declaration"]["rejected"]] == ["file"]
+    for leg_type in ("BONDED_TO", "TRANSFERRED_TO"):
+        assert body["walk"]["chip"][leg_type]["status"] == "mapping_unavailable", leg_type
+    assert body["walk"]["wafer"]["scope_edge"]["status"] == "mapping_unavailable"
+    assert "did not load cleanly" in caplog.text
+
+
+def test_absent_mapping_file_is_degraded_and_logged(
+    client, chip_env, tmp_path, monkeypatch, caplog
+):
+    """The branch QA found silent: `os.path.exists() is False` logged nothing."""
+    monkeypatch.setattr(ontology_config, "ONTOLOGY_PATH", str(tmp_path / "gone.json"))
+
+    with caplog.at_level("WARNING"):
+        body = _trace(client, "CORE-A|05|13|5").json()
+
+    assert body["declaration"] == {
+        "status": "degraded",
+        "path": str(tmp_path / "gone.json"),
+        "exists": False,
+        "rejected": [],
+    }
+    assert body["walk"]["chip"]["BONDED_TO"]["status"] == "mapping_unavailable"
+    assert "file absent at" in caplog.text
+
+
+def test_a_rejected_table_degrades_only_the_negative_statuses(
+    client, chip_env, tmp_path, monkeypatch
+):
+    """A renamed column drops that table's whole mapping - the same conflation one
+    notch down. `recorded` is a conclusion from rows we read and must NOT degrade."""
+    broken = json.loads(json.dumps(CT_MAPPING))
+    broken["ct_test_dt"]["node"]["identity"] = ["core_lot", "core_slot", "cx", "cy_renamed"]
+    d = tmp_path / "rejected_table"
+    d.mkdir()
+    _write_mapping(d, monkeypatch, broken)
+
+    body = _trace(client, "CORE-A|05|13|5").json()
+    assert body["declaration"]["status"] == "degraded"
+    assert [r["table"] for r in body["declaration"]["rejected"]] == ["ct_test_dt"]
+    # TRANSFERRED_TO came from the rejected table -> unknown, not absent
+    assert body["walk"]["chip"]["TRANSFERRED_TO"]["status"] == "mapping_unavailable"
+    # ... while a leg whose rows we actually read still reports the evidence
+    assert body["walk"]["chip"]["BONDED_TO"]["status"] == "recorded"
+    assert body["walk"]["chip"]["BONDED_TO"]["count"] == 2
+
+
+def test_a_clean_declaration_still_reports_not_declared(client, chip_env, tmp_path, monkeypatch):
+    """The distinction is only worth anything if the clean case keeps saying
+    `not_declared` — otherwise the new status just swallows the old one."""
+    trimmed = json.loads(json.dumps(CT_MAPPING))
+    trimmed["ct_test_dt"]["edges"] = [
+        e for e in trimmed["ct_test_dt"]["edges"] if e["type"] != "TRANSFERRED_TO"
+    ]
+    d = tmp_path / "clean_trim"
+    d.mkdir()
+    _write_mapping(d, monkeypatch, trimmed)
+
+    body = _trace(client, "CORE-A|05|13|5").json()
+    assert body["declaration"]["status"] == "ok"
+    assert body["walk"]["chip"]["TRANSFERRED_TO"]["status"] == "not_declared"
+
+
+# ---------------------------------------------------------------------------
+# 9) [QA 2026-07-30] terminals must not assert "no knobs" behind a dead anchor
+# ---------------------------------------------------------------------------
+
+def test_renaming_performed_on_makes_terminals_not_reached(
+    client, chip_env, tmp_path, monkeypatch
+):
+    """`events` correctly says not_declared, but the terminals used to report
+    `USED_KNOB: none_recorded, count 0` - "this wafer used no knobs" when no knob
+    query ran. The wafer HAS knob edges; they were simply never asked for.
+
+    Defect injection: drop the `anchor_leg` argument at the terminal call site and
+    every terminal reads `none_recorded` again.
+    """
+    renamed = json.loads(json.dumps(CT_MAPPING))
+    for e in renamed["ct_test_process"]["edges"]:
+        if e["type"] == "PERFORMED_ON":
+            e["type"] = "PERFORMED_UPON"
+    d = tmp_path / "renamed_performed_on"
+    d.mkdir()
+    _write_mapping(d, monkeypatch, renamed)
+
+    body = _trace(client, "CORE-A|05|13|5").json()
+    wafer = body["walk"]["wafer"]
+    assert wafer["events"]["status"] == "not_declared"
+    for t in ("USED_KNOB", "USED_RECIPE", "EXECUTED_BY"):
+        leg = wafer["terminals"][t]
+        assert leg["status"] == "not_reached", t
+        assert leg["count"] == 0
+        assert leg["blocked_by"] == {"edge_type": "PERFORMED_ON", "status": "not_declared"}
+
+
+def test_a_wafer_with_no_events_still_says_none_recorded_on_terminals(client, chip_env):
+    """The sound inference stays: zero events genuinely implies zero knobs REACHED
+    THROUGH events. Only an undeclared/unreadable anchor is `not_reached`."""
+    body = _trace(client, "CORE-C|18|2|2").json()
+    wafer = body["walk"]["wafer"]
+    assert wafer["events"]["status"] == "none_recorded"
+    for t in ("USED_KNOB", "USED_RECIPE", "EXECUTED_BY"):
+        assert wafer["terminals"][t]["status"] == "none_recorded", t
+        assert "blocked_by" not in wafer["terminals"][t]
+
+
+# ---------------------------------------------------------------------------
+# 10) [QA 2026-07-30] a truncated scope leg must not resolve a wafer
+# ---------------------------------------------------------------------------
+
+def test_a_truncated_scope_leg_refuses_to_resolve(client, chip_env, monkeypatch):
+    """201 claims to one core fill the cap+1 buffer before a claim to a second core
+    is read: length 1, scope 'resolved', wafer half computed for the WRONG core.
+
+    Driven by shrinking the cap to 1 rather than by seeding 201 edges - the seed
+    already carries 2 FROM_CORE claims to ONE core, so with cap=1 the leg fetches
+    cap+1=2, truncates to 1, and yields exactly one node_id. Before the fix that
+    resolved the scope off a truncated set.
+
+    Defect injection: remove `and not scope_leg["truncated"]` and this fails with
+    scope resolved to CORE-A|05.
+    """
+    monkeypatch.setattr(main, "GRAPH_CHIP_TRACE_TARGET_CAP", 1)
+
+    body = _trace(client, "CORE-A|05|13|5").json()
+    assert body["walk"]["wafer"]["scope_edge"]["truncated"] is True
+    assert len(body["walk"]["wafer"]["scope_edge"]["node_ids"]) == 1
+    assert body["walk"]["wafer"]["status"] == "scope_unresolved"
+    assert body["scope"] is None
+    assert body["truncated"] is True
+
+
+def test_the_event_cap_must_fit_in_one_id_chunk():
+    """Two constants that read as independent are load-bearing on each other: the
+    leg applies limit() per anchor chunk, so the documented truncation order only
+    holds while an anchor set fits in one chunk."""
+    assert main.GRAPH_CHIP_TRACE_EVENT_CAP <= main.GRAPH_CHIP_TRACE_ID_CHUNK

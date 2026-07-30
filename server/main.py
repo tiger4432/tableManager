@@ -2381,6 +2381,17 @@ GRAPH_CHIP_TRACE_TARGET_CAP = 200    # per CHIP leg; live max BONDED_TO on one c
 # what actually bounds it (one edge per event per source claim).
 GRAPH_CHIP_TRACE_TERMINAL_CAP = 4 * GRAPH_CHIP_TRACE_EVENT_CAP
 GRAPH_CHIP_TRACE_ID_CHUNK = 500      # IN-list chunk (idx_graph_edges_from_type lookup)
+# [QA 2026-07-30, LOW] These two are NOT independent, and nothing said so. The
+# leg applies `limit(remaining)` PER ANCHOR CHUNK and then slices, so the
+# documented "truncated by (identity_key, edge id) order" only holds while every
+# anchor set fits in one chunk. Raise EVENT_CAP above ID_CHUNK and the terminal
+# legs would truncate by chunk-arrival order instead, which is not a stated order
+# at all. Asserted at import rather than commented, so the coupling cannot be
+# broken by editing one number.
+assert GRAPH_CHIP_TRACE_EVENT_CAP <= GRAPH_CHIP_TRACE_ID_CHUNK, (
+    "chip-trace anchor sets must fit in one IN-list chunk, or the leg's truncation "
+    "order is no longer (identity_key, edge id) - see _chip_trace_leg"
+)
 
 
 # [F3] `_escape_like_term` is GONE. Its only caller was the graph node prefix
@@ -2743,22 +2754,76 @@ CHIP_TRACE_RECORDED = "recorded"                # declared, rows found
 CHIP_TRACE_NONE = "none_recorded"               # declared, zero rows (the 8,493 bonding-only chips)
 CHIP_TRACE_NOT_DECLARED = "not_declared"        # the mapping no longer declares this (type, target)
 CHIP_TRACE_SCOPE_UNRESOLVED = "scope_unresolved"  # 0 or >1 distinct Core claimed - we do not pick
+# [QA 2026-07-30, HIGH] "we could not read the declaration" is NOT "the ontology
+# moved". Measured: with the mapping file mid-save (`json.load` raises ->
+# `raw_config = {}`) the declared-pair set collapses to the enrichment-promoted
+# pairs alone, and the endpoint answered 200 with every leg `not_declared` - i.e.
+# it asserted that BONDED_TO->BaseCell is no longer declared for a chip whose
+# three BONDED_TO edges are sitting in `graph_edges`. That window is reachable:
+# main.py's config writers use a plain `open(..., "w")`, not temp+rename.
+CHIP_TRACE_MAPPING_UNAVAILABLE = "mapping_unavailable"
+# [QA 2026-07-30, MEDIUM] A leg anchored on a leg that never ran must not report
+# `none_recorded` ("declared, zero rows"). Nothing was asked.
+CHIP_TRACE_NOT_REACHED = "not_reached"
 
 
-def _chip_trace_declared_pairs() -> set:
-    """(edge type, target label) pairs the CURRENT ontology mapping declares.
+def _chip_trace_declaration():
+    """-> (declared pairs, report). The report says whether the set can be trusted.
 
-    Read from disk per request, the same way /graph/mapping-summary does it: the
-    file is small, and a cached copy would report a stale shape after a hot reload.
+    WHY NOT 503 (the alternative QA offered, and why this instead)
+        Refusing the request would discard the half of the answer that is still
+        true: the edges are in `graph_edges` and the walk is computable - only the
+        question "is this shape currently declared?" is unanswerable. This endpoint's
+        premise is a CLOSED PER-LEG VOCABULARY, so the honest place for "unknown" is
+        inside that vocabulary, where the client's existing per-leg rendering shows
+        it; a transport-level 503 moves it into HTTP where nothing displays it, on a
+        read-only idempotent request the caller has nothing to retry *for*.
+
+    WHAT DEGRADES, AND WHY ONLY THAT
+        `degraded` replaces exactly one status: `not_declared`. It is the only status
+        that makes a claim ABOUT THE DECLARATION'S ABSENCE. `recorded` and
+        `none_recorded` are conclusions from rows we actually read and stay true
+        whatever the config file is doing.
+
+        Degraded when the file is unreadable (a `file`-scope rejection), when a table
+        mapping was rejected (a renamed column silently drops that table's whole
+        mapping - the same conflation one notch down), or when the file is ABSENT.
+        Absence is the case QA measured, and it logged nothing at all: a system whose
+        graph holds BONDED_TO edges and whose mapping file has vanished is a config
+        accident, not an ontology decision.
+
+        Same rule as `graph_orphans.declaration_blockers`: a declaration that did not
+        load cleanly does not get to be the authority on what is declared.
     """
     import ontology_config
     known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
-    mappings = ontology_config.load_ontology_mappings(known_tables=known)
-    return {
+    rejections = []
+    mappings = ontology_config.load_ontology_mappings(
+        known_tables=known, rejections=rejections
+    )
+    path = ontology_config.ONTOLOGY_PATH
+    exists = os.path.exists(path)
+    degraded = bool(rejections) or not exists
+    if degraded:
+        # Previously silent. The absent-file branch in particular logged nothing.
+        logger.warning(
+            "[ChipTrace] the ontology declaration did not load cleanly "
+            f"(exists={exists}, rejections={len(rejections)}) — legs that would "
+            "have said 'not_declared' will say 'mapping_unavailable' instead: "
+            f"{rejections or 'file absent at ' + path}"
+        )
+    pairs = {
         (e["type"], e["target_label"])
         for m in mappings.values()
         for e in m.get("edges", [])
     }
+    report = {
+        "status": "degraded" if degraded else "ok",
+        "path": path,
+        "exists": exists,
+        "rejected": rejections,
+    }
+    return pairs, report
 
 
 def _chip_trace_sort_key(pair):
@@ -2772,12 +2837,20 @@ def _chip_trace_sort_key(pair):
 
 
 def _chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declared,
-                    declared_pair=None):
+                    declared_pair=None, declaration_degraded=False,
+                    anchor_leg=None):
     """One typed leg of the walk. Returns a (leg dict, [(edge, node)]) pair.
 
     `declared_pair` is the (type, target_label) the ontology mapping declares, which
     differs from (type, other_label) on an INBOUND leg: PERFORMED_ON is declared as
     (PERFORMED_ON, Core) but collects ProcessEvent nodes.
+
+    `anchor_leg` is the leg this one hangs off, when there is one. An empty anchor
+    means two different things and they must not share a status:
+      * the anchor was `none_recorded` -> zero events genuinely implies zero knobs
+        REACHED THROUGH events, so `none_recorded` here is a sound inference.
+      * the anchor was `not_declared` / `mapping_unavailable` -> no query ran, and
+        "this wafer used no knobs" would be a fabrication. -> `not_reached`.
 
     Index path only: idx_graph_edges_from_type (outbound) / idx_graph_edges_to_type
     (inbound), anchor ids chunked. No recursive CTE and no unindexed edge access -
@@ -2796,7 +2869,15 @@ def _chip_trace_leg(db, anchor_ids, edge_type, other_label, cap, inbound, declar
         "capped_at": cap,
     }
     if (declared_pair or (edge_type, other_label)) not in declared:
-        leg["status"] = CHIP_TRACE_NOT_DECLARED
+        # The negative assertion is only safe when the declaration loaded cleanly.
+        leg["status"] = (CHIP_TRACE_MAPPING_UNAVAILABLE if declaration_degraded
+                         else CHIP_TRACE_NOT_DECLARED)
+        return leg, []
+    if anchor_leg is not None and anchor_leg["status"] in (
+            CHIP_TRACE_NOT_DECLARED, CHIP_TRACE_MAPPING_UNAVAILABLE):
+        leg["status"] = CHIP_TRACE_NOT_REACHED
+        leg["blocked_by"] = {"edge_type": anchor_leg["edge_type"],
+                             "status": anchor_leg["status"]}
         return leg, []
     if not anchor_ids:
         leg["status"] = CHIP_TRACE_NONE
@@ -2872,7 +2953,8 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
             detail=f"칩 노드를 찾을 수 없습니다: ({GRAPH_CHIP_TRACE_SEED_LABEL}, {identity})",
         )
 
-    declared = _chip_trace_declared_pairs()
+    declared, declaration = _chip_trace_declaration()
+    degraded = declaration["status"] == "degraded"
     nodes = {seed.id: seed}
     edges_out = []
     truncated = False
@@ -2888,6 +2970,7 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
         leg, pairs = _chip_trace_leg(
             db, [seed.id], edge_type, target_label,
             GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
+            declaration_degraded=degraded,
         )
         _absorb(pairs)
         truncated = truncated or leg["truncated"]
@@ -2898,20 +2981,26 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
     scope_leg, scope_pairs = _chip_trace_leg(
         db, [seed.id], scope_type, scope_label,
         GRAPH_CHIP_TRACE_TARGET_CAP, inbound=False, declared=declared,
+        declaration_degraded=degraded,
     )
     _absorb(scope_pairs)
     truncated = truncated or scope_leg["truncated"]
 
     wafer = {"scope_edge": scope_leg}
     scope_node = None
-    if len(scope_leg["node_ids"]) == 1:
+    # [QA 2026-07-30] `not truncated` is a required conjunct, not a nicety. The leg
+    # fetches cap+1 in (identity_key, edge id) order, so 201 claims to LOT-A|05 fill
+    # the buffer before a single claim to LOT-Z|01 is read: length 1, scope
+    # "resolved", and the entire wafer half computed for the WRONG core. That is the
+    # LIMIT 1 winner-pick this design refuses, reached by a different road.
+    if len(scope_leg["node_ids"]) == 1 and not scope_leg["truncated"]:
         scope_node = nodes[scope_leg["node_ids"][0]]
     else:
         # 0 -> the cell claims no wafer; >1 -> it claims two, and a chip has one
-        # core. Either way the wafer half is unanswerable and we say so rather
-        # than take the first row (a LIMIT 1 here is a silent winner-pick, and
-        # "the count was right but it pointed at another node" is a defect this
-        # repository has actually shipped).
+        # core; truncated -> the set we can see is not the set that exists. In every
+        # case the wafer half is unanswerable and we say so rather than take the
+        # first row ("the count was right but it pointed at another node" is a defect
+        # this repository has actually shipped).
         wafer["status"] = CHIP_TRACE_SCOPE_UNRESOLVED
         wafer["scope_candidates"] = [
             {"label": nodes[i].label, "identity": nodes[i].identity_key, "id": i}
@@ -2925,6 +3014,7 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
             db, [scope_node.id], event_type, event_label,
             GRAPH_CHIP_TRACE_EVENT_CAP, inbound=True, declared=declared,
             declared_pair=GRAPH_CHIP_TRACE_EVENT_DECLARED,
+            declaration_degraded=degraded,
         )
         _absorb(event_pairs)
         truncated = truncated or event_leg["truncated"]
@@ -2933,9 +3023,14 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
 
         terminals = {}
         for edge_type, target_label in GRAPH_CHIP_TRACE_TERMINAL_LEGS:
+            # anchor_leg: rename PERFORMED_ON and `events` correctly says
+            # `not_declared`, but every terminal used to report `USED_KNOB:
+            # none_recorded, count 0` - "this wafer used no knobs" when no knob
+            # query ran (QA 2026-07-30).
             leg, pairs = _chip_trace_leg(
                 db, event_leg["node_ids"], edge_type, target_label,
                 GRAPH_CHIP_TRACE_TERMINAL_CAP, inbound=False, declared=declared,
+                declaration_degraded=degraded, anchor_leg=event_leg,
             )
             _absorb(pairs)
             truncated = truncated or leg["truncated"]
@@ -2949,6 +3044,9 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
              "id": scope_node.id}
             if scope_node is not None else None
         ),
+        # What the leg statuses were judged against. Without this a reader cannot
+        # tell a `mapping_unavailable` leg's cause from the outside.
+        "declaration": declaration,
         "walk": {"chip": chip_legs, "wafer": wafer},
         "nodes": _serialize_graph_nodes(nodes),
         "edges": edges_out,
@@ -2959,16 +3057,26 @@ def get_chip_trace(identity: str, db: Session = Depends(get_db)):
 
 @app.get("/graph/mapping-summary")
 def get_graph_mapping_summary():
-    """현재 로드된 온톨로지 매핑(enrichment RESOLVED_AS 자동 승격 포함) 요약.
+    """현재 로드된 온톨로지 매핑(enrichment RESOLVED_AS 자동 승격 포함) 요약 + **거부된 매핑**.
 
     클라이언트가 그리드 선택 행 → trace 시드 변환에 사용한다(경계 계약).
     materializer(_load_graph_mappings)와 같은 로더를 태워 같은 신호원을 보장하고,
     config 파일이 작으므로 요청 시마다 디스크에서 읽는다(무중단 반영 — enrichment 패턴).
-    매핑 없는 테이블은 포함하지 않는다.
+
+    `rejected`는 로드되지 **않은** 선언과 그 사유다. 로더의 계약은 "무효 테이블은 로깅 후
+    스킵"인데, 그 스킵이 로그에만 있으면 **컬럼 하나를 rename한 순간 그 테이블의 온톨로지가
+    통째로 사라지고 표면에는 아무 것도 안 나온다** — 성공 개수만 보면 "안 늘었다"와
+    "죽었다"가 구별되지 않는다. 그래서 성공 목록과 **같은 응답**에 실어 보낸다: 이것은 새
+    엔드포인트를 만들 자리가 아니라 이미 조회하는 응답에 태울 자리다(PRIMITIVES §3).
+    `tables`의 형태는 바뀌지 않았다 — 추가 필드이므로 기존 클라 계약은 그대로다.
     """
     import ontology_config
     known = crud.TABLE_CONFIG if crud.TABLE_CONFIG else None
-    mappings = ontology_config.load_ontology_mappings(known_tables=known)
+    rejections = []
+    mappings = ontology_config.load_ontology_mappings(
+        known_tables=known, rejections=rejections
+    )
+    mapping_path = ontology_config.ONTOLOGY_PATH
     return {
         "tables": [
             {
@@ -2977,7 +3085,17 @@ def get_graph_mapping_summary():
                 "identity_columns": list(m["node"]["identity"]),
             }
             for table_name, m in sorted(mappings.items())
-        ]
+        ],
+        # scope: "table" (그 테이블만 스킵) | "file" (파일 전체가 안 읽힘/v1 형식)
+        #      | "enrichment" (RESOLVED_AS 자동 승격이 죽음)
+        "rejected": rejections,
+        "rejected_count": len(rejections),
+        "source": {
+            "path": mapping_path,
+            # 파일 부재는 "거부"가 아니라 "선언이 없다"다 — 둘을 섞으면 사유 목록이
+            # 정상 상태에서도 비어있지 않게 되어 곧 무시당한다.
+            "exists": os.path.exists(mapping_path),
+        },
     }
 
 
