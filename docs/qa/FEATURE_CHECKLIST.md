@@ -211,12 +211,13 @@
 > 수동 점검은 자동 게이트가 초록일 때만 의미가 있습니다. **채점은 두 갈래이고, 한쪽만 돌리면 절반만 검증됩니다.**
 
 - [ ] 🎯 **서버 절반**: `conda run -n assy_manager pytest server/tests/` 통과. ⚠️ **시스템 `python`으로 돌리지 말 것** — `psycopg2` 부재 등으로 거짓 실패가 납니다.
-- [ ] 🎯 **클라 절반 = 빌드 게이트**(`5a14e77` 2026-07-30 신설 · `77a2c15`에서 **3행으로 늘었습니다**): `cd client2 && npm run build` 성공. `prebuild`가 `check:clipboard && check:contracts && check:suggest-keys`를 먼저 돌리고, 하나라도 발산하면 **`dist/`가 생성되지 않습니다.**
+- [ ] 🎯 **클라 절반 = 빌드 게이트**(`5a14e77` 2026-07-30 신설 · `77a2c15`에서 **3행으로 늘었습니다**): `cd client2 && npm run build` 성공. `prebuild`가 `check:clipboard && check:contracts && check:harnesses`를 먼저 돌리고, 하나라도 발산하면 **`dist/`가 생성되지 않습니다.** (2026-07-30 밤 — `check:suggest-keys`가 목록에서 빠졌지만 **약해진 게 아닙니다**: 그 하네스가 `client2/tests/` 안에 있어 신설 `check:harnesses`의 발견식 스캔에 잡힙니다.)
   ```bash
   cd client2 && npm run check:contracts       # ✓ 5 contracts, no divergence.
   cd client2 && npm run check:suggest-keys    # 값 제안 키보드 계약 + 변이 스윕
   ```
-  - ⚠️ **게이트 목록의 정본은 `client2/package.json`의 `prebuild` 한 줄입니다.** 이 체크리스트의 목록은 사본이고, 실제로 한 번 낡았습니다(2행이라고 적힌 채 3행이 됐습니다). 항목 수가 늘었는지는 `prebuild`를 보고 확인하십시오.
+  - ⚠️ **게이트 목록의 정본은 `client2/package.json`의 `prebuild` 한 줄입니다.** 이 체크리스트의 목록은 사본이고, 실제로 **두 번** 낡았습니다(2행이라고 적힌 채 3행이 됐고, 그다음엔 3행의 **구성이 바뀌었습니다**). 항목 수만 세지 말고 `prebuild` 한 줄을 그대로 읽으십시오.
+- [ ] 🎯 **하네스 게이트**(`check:harnesses` 2026-07-30 밤 신설): 출력의 **강제 수와 부채 수**를 눈으로 확인하십시오(현재 **15개 중 10 강제 · 5 부채**). 🔴 **부채 목록은 스크립트 안에 사유와 함께 적혀 있습니다** — 조용한 skip이 아니라 드러난 빚입니다. 부채 항목이 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력하므로, 그 줄이 보이면 **그때 빼는 것이 절차입니다.** 이 게이트가 없던 동안 15개 중 14개를 아무도 부르지 않았고, `split_registry_harness.mjs`는 몇 주, `company_roundtrip`/`copy_header_count`는 한 커밋 동안 죽은 채였습니다.
   - 🔴 **`check:suggest-keys`의 판정은 "통과"가 아니라 "APPLIED == CAUGHT"입니다.** 모든 점검에 변이(mutation)가 짝지어져 있는데, **변이가 소스 드리프트로 적용되지 않으면 조용한 무장 해제**입니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다). 출력의 APPLIED와 CAUGHT 수를 **둘 다** 확인하십시오.
   - ⚠️ 이 하네스는 AG-Grid 키보드 파이프라인의 **모델** 위에서 돕니다. AG-Grid가 호출 순서를 바꾸면 하네스는 초록인 채 제품이 깨지므로, **브라우저 실측 키스트로크 수가 1차 증거**이고 이것은 그 아래의 회귀 그물입니다(§2.1의 F3 항목).
   - **2026-07-30 이전에는 계약 클라 하네스를 아무것도 실행하지 않았습니다** — `pytest`는 서버 절반만 채점하고 `client2`에 스크립트가 없었습니다. 그 조건이 `split_registry_harness.mjs`를 심볼 개명 이후 **몇 주 동안 예외로 죽어 있게** 두었습니다(부르는 사람이 없어 실패가 보이지 않음).

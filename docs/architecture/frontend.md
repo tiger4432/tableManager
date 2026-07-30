@@ -70,7 +70,9 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 
 ### 2.1 빌드 게이트 — **클라 절반을 채점하는 유일한 자리** (`5a14e77` → `77a2c15`/`d5f75a8` · 2026-07-30)
 
-`package.json`의 `prebuild`가 `check:clipboard && check:contracts && check:suggest-keys` 순으로 돌고, **하나라도 실패하면 `vite build`에 도달하지 않습니다.**
+`package.json`의 `prebuild`가 `check:clipboard && check:contracts && check:harnesses` 순으로 돌고, **하나라도 실패하면 `vite build`에 도달하지 않습니다.**
+
+> 🔴 **2026-07-30 밤 — `check:suggest-keys`가 `prebuild`에서 빠졌습니다. 약해진 게 아니라 흡수된 것입니다.** 그 하네스는 `client2/tests/` 안에 있고 신설 `check:harnesses`가 그 디렉터리를 **발견식으로** 훑으므로 여전히 매 빌드마다 돕니다. 스크립트 자체는 남아 있어 단독 실행이 됩니다. **이 문단이 세 번째로 낡은 자리이므로 다시 적습니다 — 정본은 `package.json`의 `prebuild` 한 줄입니다.**
 
 > 📌 **이 절이 스스로 경고한 결함에 이 절이 걸렸습니다.** 아래 「하드코딩 목록은 이 결함을 그대로 재생산합니다」가 계약 러너에 대한 경고인데, **게이트 목록 자체를 산문으로 하드코딩한 이 문단**이 `check:suggest-keys` 착지 후 **하루도 안 돼 낡았습니다**(2행이라고 적혀 있었고 실제는 3행). 조용히 고치지 않고 남겨 두는 이유는 이것이 규율의 예시이기 때문입니다 — **게이트의 정본은 `package.json`의 `prebuild` 한 줄이고, 이 문단은 그것의 사본입니다.** 사본을 읽지 말고 그 줄을 읽으십시오.
 
@@ -81,7 +83,8 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 - **게이트는 계약 하네스만이 아닙니다**(2026-07-30 정정). 종전 이 줄은 *"4계약 전부 통과"*로 끝났는데, 그것은 **`check:contracts`의 상태일 뿐 게이트 전체의 상태가 아닙니다.** 지금 세 채점자가 있습니다:
   - `check:clipboard` — 클립보드 관례(`scripts/check_clipboard_convention.mjs`).
   - `check:contracts` — `contracts/*/client_harness.mjs` **발견식 스캔**. 실측 2026-07-30(F9 착지 후 재계수): `band_arithmetic` · **`config_resolve_report`** · `doe_band_rules` · `legend_map_scope` · `map_seam` **5계약**(직전 4는 F9 이전 수). ⚠️ `config_resolve_report`는 **렌더러가 없는 지금도 채점합니다** — 금지 단언(INV-F9-7)은 초록이고 나머지 절반(INV-F9-4)은 **`PENDING`으로 이름 붙여** 보고합니다(통과로 세지 않습니다). 목록이 하드코딩이 아니라 **발견식**이라 신설 계약이 규약대로 놓이면 러너를 안 고쳐도 잡힙니다.
-  - `check:suggest-keys` — 값 제안 셀 에디터의 **키보드 계약**(`tests/value_suggest_keys_harness.mjs`, §3.3). 계약 벡터가 아니라 **AG-Grid 키보드 파이프라인 모델** 위에서 실제 `SuggestCellEditor`+`suppressKeyboardEvent`를 돌리고, 판정을 「핸들러가 옳은 문자열을 돌려줬나」가 아니라 **키스트로크 수**로 씁니다(`effort_meter`와 같은 계수 규칙). 모든 점검에 **변이(mutation)가 짝지어져** 있고 변이가 잡히지 않으면 실패합니다 — ⚠️ 변이는 **APPLIED와 CAUGHT를 따로** 보고합니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다. 검색 문자열이 안 맞는 변이는 **조용한 무장 해제**입니다).
+  - `check:harnesses` — **`client2/tests/*.mjs` 발견식 스캔**(2026-07-30 밤 신설, `scripts/check_harnesses.mjs`). 계약 러너와 같은 모양이고 **빈 스캔은 실패**입니다. 실측 **15개 중 10개 강제 · 5개는 스크립트 안에 사유가 적힌 부채 목록**이며, 부채 항목이 초록으로 돌아오면 「목록에서 빼라」는 줄을 출력합니다. 🔴 **이 게이트가 생긴 이유**: 직전까지 15개 중 **14개를 아무도 부르지 않았고**, 그 조건이 `split_registry_harness.mjs`를 몇 주 죽어 있게 뒀으며 `da8f390`이 두 개를 더 죽인 채 푸시되게 했습니다. **조용히 skip하면 게이트가 없는 것과 같으므로** 부채는 목록으로 드러냅니다.
+  - `check:suggest-keys` — 값 제안 셀 에디터의 **키보드 계약**(`tests/value_suggest_keys_harness.mjs`, §3.3). ⚠️ `prebuild`에서는 빠졌지만 `check:harnesses`가 같은 파일을 발견해 돌리므로 **매 빌드에 여전히 채점됩니다**. 계약 벡터가 아니라 **AG-Grid 키보드 파이프라인 모델** 위에서 실제 `SuggestCellEditor`+`suppressKeyboardEvent`를 돌리고, 판정을 「핸들러가 옳은 문자열을 돌려줬나」가 아니라 **키스트로크 수**로 씁니다(`effort_meter`와 같은 계수 규칙). 모든 점검에 **변이(mutation)가 짝지어져** 있고 변이가 잡히지 않으면 실패합니다 — ⚠️ 변이는 **APPLIED와 CAUGHT를 따로** 보고합니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다. 검색 문자열이 안 맞는 변이는 **조용한 무장 해제**입니다).
   - ⚠️ 이 하네스가 통과해도 **브라우저 실측이 1차 증거**입니다. AG-Grid가 호출 순서를 바꾸면 모델은 통과하고 제품은 깨집니다.
 
 > ⚠️ 이 게이트는 **소스**를 채점합니다. 서버가 서빙하는 것은 `dist/` 번들이므로, 소스 변경 후 `npm run build`로 `dist/`를 갱신하고 커밋하는 규율은 그대로입니다([DEPLOY_SETUP](../guide/DEPLOY_SETUP.md) · [FEATURE_CHECKLIST §2.16 A](../qa/FEATURE_CHECKLIST.md)).
