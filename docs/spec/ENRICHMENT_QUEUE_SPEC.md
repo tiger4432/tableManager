@@ -1,6 +1,6 @@
 # 🧩 Enrichment Queue (결손 보정 워크리스트) — 리빙 스펙
 
-> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-30 (§5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류 — 셋 다 서버측, 경계 계약 무변경) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
+> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-30 ([F9] **§5.2-bis 신설** — 선언의 효과를 어드민에 노출(`/admin/config/resolve`·드라이런), 후보 프로브가 뷰 `limit`에 잘리던 결함 수리(`probe_truncated` 신설), **경계 계약 1건 변경**: `GET /enrichment/rules`에 가산 필드 `candidate_for`(총괄 승인). 직전: §5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성:** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(`enrichment.html` 컨베이어 + 참조뷰 탭 + 메인 그리드 결손 배지). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 
@@ -99,13 +99,34 @@ queue_filters = { <모든 decision_key 컬럼>: {type: "notBlank"} } ∪ { <모�
 
 **M3 `auto_register_map_meta`와 같은 형태** — 부재 시에만, 소스 `enrichment_auto_confirm`은 `SOURCE_PRIORITY` 미등재 = 최하위(99)이므로 `user`(0)가 항상 이긴다. 노브는 작업 단위 경계에서 1회 읽고, 비-boolean은 경고 1회 후 기본값. **다른 점은 기본값뿐이며 근거는 두 가지다**: ⓐ 이 필드의 blank가 **큐 소속을 정의**하므로(§5.1) 오확정은 항목을 워크리스트에서 빼 재검토를 막는다 ⓑ 철회가 부분적이다(R2로 레이어는 되돌리지만 그 셀은 provenance가 남아 재확정되지 않는다).
 
-**거절은 전부 이름이 있다** — `not_declared` · `no_candidate` · `ambiguous`(= 바로 그 사람의 판단) · `view_error` · `missing_bind` · `candidate_column_missing` · `cell_has_provenance` · `over_cap`. 그리고 **평가 못 한 뷰는 "값 없음"이 아니라 "모름"** 이므로, 선언된 뷰 중 하나라도 실패하면 살아남은 뷰가 값 1개를 냈어도 거절한다.
+**거절은 전부 이름이 있다** — `not_declared` · `no_candidate` · `ambiguous`(= 바로 그 사람의 판단) · `view_error` · `missing_bind` · `candidate_column_missing` · `cell_has_provenance` · `over_cap` · **`probe_truncated`**(2026-07-30 신설, 아래). 그리고 **평가 못 한 뷰는 "값 없음"이 아니라 "모름"** 이므로, 선언된 뷰 중 하나라도 실패하면 살아남은 뷰가 값 1개를 냈어도 거절한다.
+
+**🔴 후보 프로브는 뷰의 `limit`에 잘리지 않는다 (2026-07-30 [F9] 수리).** 종전에는 서버가 행을 자른 **뒤** 파이썬에서 distinct를 셌다. 실측: 라이브 참조뷰 `공정 이력(wafer_process)`는 `limit: 50`인데 (lot,slot) 하나당 행이 최소 69 · 평균 135.4 · 최대 217로 **80개 키 전부가 상한을 넘는다** — 51번째 행이 다른 `wafer_id`를 나르고 있어도 `ambiguous`는 영영 발화하지 않았고, `single` 판정은 "매핑이 우연히 정상"이라는 아무도 검사하지 않는 가정 위에 있었다. 수리는 뷰가 아니라 **실행 형태**를 갈랐다(그 뷰에는 사람의 표시라는 두 번째 소비자가 있고 그쪽은 시간순 **행**이 필요하다):
+
+- 표시: `REFERENCE_LIMIT_WRAP_SQL` (행 LIMIT, 종전 그대로)
+- 후보: `CANDIDATE_GROUP_WRAP_SQL` — 결과 **전체**에 `GROUP BY`, distinct 상한은 `limit + 1`(절단의 증거). `support`는 이제 전 결과에 대한 참 건수다.
+- 스캔 상한 `CANDIDATE_PROBE_MAX_ROWS`(5000, 운영 노브 아님)에 닿으면 **잘린 읽기**이므로 `single`을 주장하지 않고 `probe_truncated`로 거절한다. GROUP BY는 상위 LIMIT으로 조기 종료할 수 없어, 바인드 없는 선언 뷰가 키마다 전 테이블을 훑는 것을 막는 유일한 방어선이다.
+- 컬럼명은 바인딩할 수 없는 **식별자**라 보간된다 → 형태 검증(`_CANDIDATE_COLUMN_RE`)이 **실행보다 먼저** 오고, 참조는 반드시 별칭으로 한정한다(`__enrichment_ref."col"`). ⚠️ SQLite는 해석되지 않는 큰따옴표 이름을 **문자열 리터럴로 강등**하므로, 한정하지 않으면 존재하지 않는 컬럼이 「후보 1개 = 컬럼명 그 자체」로 읽혀 자동 확정된다(2026-07-30 실측).
 
 **확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
 
 **구현**: `server/enrichment_candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
 
-> 🚧 **1클릭 확정(클라 절반)은 미착지 — 총괄 승인 대기.** 필요한 것은 ⓐ `GET /enrichment/rules` 응답의 **가산 필드**(어느 뷰가 어느 target의 후보 원천인지) ⓑ "이 키에 후보가 1개인가"를 묻는 엔드포인트. 둘 다 `server/main.py`(동시 라운드 점유) + **경계 계약**이다. 술어는 서버에 완성돼 있으므로 클라가 재구현할 필요는 없다.
+### 5.2-bis 선언의 효과를 눈으로 본다 (2026-07-30 [F9] · 서버 착지)
+
+「config가 먹었는가」를 제품이 답하지 못했다. 이 절의 결함 계급이 그 공백에 그대로 살아 있었다 — `auto_confirm: true`를 `candidate_for` 없이 켜면 컬렉터는 경고 한 줄 남기고 조용히 비활성이고, **라이브가 정확히 그 상태였다**(선언 0건). 두 표면이 그것을 말한다:
+
+| 라우트 | 답하는 질문 | 비용 |
+|---|---|---|
+| `GET /admin/config/resolve` | 어떤 선언이 효과가 있고 · 없고(사유 포함) · 거부됐나. 전역 스위치와 캡의 **실효값과 그 값이 온 파일**. 어느 뷰가 어느 target의 후보를 나르나 | **DB 질의 0건**(config만) |
+| `GET /admin/enrichment/auto-confirm/dry-run?rule=…` | 「사람 없이 몇 건이 확정 가능한가」 | 큐 표본 walk (`limit` 기본 200 · 최대 2000) |
+
+- 서버가 세 모집단을 **이름으로** 반환한다: `effective` · `ineffective`(+ 명명된 사유) · `rejected`(+ 사유). 🔴 **클라는 사유를 유도하지 않고 서버가 만든 `detail` 문자열을 그대로 렌더한다.**
+- 어휘는 런타임 열화 어휘를 **그대로 재사용**한다(새 단어 0): `not_declared` · `mapping_unavailable` · `scope_unresolved` · `not_reached`. 계약 벡터 `contracts/config_resolve_report/`가 pytest와 node 하네스를 같은 기댓값에 채점하고, 서버 어휘가 `main.CHIP_TRACE_*`의 부분집합인지까지 검사한다.
+- **켜기 전에 함정이 보인다**: 선언 뷰의 `required_binds`가 `decision_key`의 진부분집합이면 `scope_unresolved` 경고가 붙는다. 실 config의 `같은 lot 전체 슬롯`이 그 모양이고, 여기에 선언하면 결과는 `ambiguous`가 **아니라** `single`이다(그 lot의 `wafer_slot_history` 행이 하나라서) — 하나의 `wafer_id`가 23개 슬롯에 쓰인다. 런타임은 이것을 경고할 수 없다(거짓말을 하고 있지 않다). **선언에서만 보이므로 선언을 보여주는 자리에서 말해야 한다.**
+- 드라이런은 HTTP에 `apply`를 노출하지 않는다(쓰기는 CLI 전용). 대신 `ignore_knob=True`로 **꺼진 규칙도 측정**한다 — 「켜면 무슨 일이 일어나는가」는 켜기 전에 답해야 하고, `run_auto_confirm_sweep`이 그 플래그와 `apply`의 결합을 스스로 거부한다.
+
+> ✅ **1클릭 확정(클라 절반)의 서버 전제 중 ⓐ가 착지했다** — `GET /enrichment/rules`의 `reference_views[]`에 **가산 필드 `candidate_for`**(총괄 승인 2026-07-30). 노출되는 것은 컬럼명이고 그 컬럼명은 참조뷰 결과 헤더에 이미 나타난다 → 신규 노출 0. 쿼리 본문·limit은 그대로 비노출. 남은 것은 ⓑ "이 키에 후보가 1개인가" 엔드포인트다.
 
 ## 5.3 ② 반복된 판단을 룰로 승격 — 제안만 (2026-07-30)
 

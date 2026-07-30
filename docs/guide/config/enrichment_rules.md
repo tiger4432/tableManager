@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**①** `candidate_for` + `auto_confirm` 신설 — §7) | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**[F9]** §7.2-bis 후보 판정은 뷰 `limit`에 잘리지 않는다 · **§7.3-bis 「내가 켠 게 먹었나」를 어드민에서 확인**(`/admin/config/resolve` + 드라이런). 직전: **①** `candidate_for` + `auto_confirm` 신설 — §7) | **Owner:** 총괄
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -194,8 +194,19 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `view_error` · `missing_bind` · `candidate_column_missing` | 선언된 뷰를 **평가하지 못했다** | 큐에 남음 |
 | `cell_has_provenance` | 그 셀에 이미 어떤 소스든 기록이 있다 | 건드리지 않음 |
 | `over_cap` | 작업 단위 상한 초과 | 큐에 남음(다음 인제션이 처리) |
+| `probe_truncated` | 후보 조회가 스캔 상한(5,000행)에 닿아 **읽기가 잘렸다** | 큐에 남음 |
 
 ⚠️ **평가하지 못한 뷰는 "값 없음"이 아니라 "모름"입니다.** 선언된 뷰 중 하나라도 실패하면, 살아남은 뷰가 값 1개를 냈더라도 **거절**합니다(실패한 뷰가 모순값을 갖고 있었을 수 있음). 미해결 행은 **눈에 보이게 미해결로 남습니다.**
+
+### 7.2-bis 뷰의 `limit`은 후보 판정을 자르지 않습니다 (2026-07-30 수리)
+
+`limit`은 **사람이 볼 행 수**이지 후보 판정의 범위가 아닙니다. 종전에는 서버가 행을 자른 뒤 distinct를 세서, 상한 밖의 다른 값이 보이지 않았습니다 — 실측: `공정 이력(wafer_process)`는 `limit: 50`인데 (lot,slot) 하나당 행이 **최소 69 · 평균 135.4 · 최대 217**로 80개 키 전부가 상한을 넘었고, 51번째 행이 다른 `wafer_id`를 나르고 있어도 `ambiguous`가 발화하지 않았습니다.
+
+지금은 후보 조회가 **결과 전체를 집계**합니다(표시 경로는 그대로 행 LIMIT — 두 소비자의 질문이 다르기 때문입니다). 그래서:
+
+- `limit`을 후보 판정 때문에 올릴 필요가 **없습니다.** 표시에 필요한 만큼만 두십시오.
+- `candidate_for`를 선언하는 뷰는 **반드시 `:판단키`로 좁히십시오.** 바인드가 없는 뷰는 키마다 테이블 전체를 집계하게 되고, 5,000행 상한에 닿으면 `probe_truncated`로 거절됩니다(잘린 읽기로는 「후보가 1개」를 증명할 수 없습니다).
+- `candidate_for`의 컬럼명은 **평범한 식별자**여야 합니다(`[A-Za-z_][A-Za-z0-9_]*`). 그 외는 로드 시점에 거부되고 그 뷰는 표시 전용으로 남습니다.
 
 ### 7.3 `auto_confirm`을 켜기 전에 (기본이 OFF인 이유)
 
@@ -207,6 +218,34 @@ M3의 `auto_register_map_meta`와 **같은 형태**입니다 — 부재 시에�
 그래서 켜는 것은 **명시적 옵트인**입니다. 켠 뒤 무엇이 자동 확정됐는지는 셀의 `priority_source`(= `enrichment_auto_confirm`)와 AuditLog로 확인합니다.
 
 ⚠️ **표기 통일을 먼저 확인하십시오.** 여러 뷰를 선언하면 자동 확정은 **데이터가 있는 뷰의 표기를 그대로 채택**합니다. 2026-07-30 실측: `wafer_slot_history`는 `WF-C-21`(단축형) 7행, `wafer_process`는 `WF-LOT-C-21`(전체형) 10,372행으로 **같은 (lot, slot)에 두 표기가 공존**하고, 사람이 채운 `core_wafer_map` 11행에도 두 표기가 섞여 있었습니다. 표기가 섞인 상태로 켜면 자동 확정이 한쪽 표기를 조용히 표준화합니다.
+
+### 7.3-bis 「내가 켠 게 먹었나」 — 어드민에서 확인 (2026-07-30, [F9])
+
+설정 파일을 고치고 `POST /admin/reload-configs`를 누르면 캐시는 갱신되지만 **무엇이 먹었는지는 아무것도 돌아오지 않았습니다.** 지금은 두 라우트가 답합니다(둘 다 어드민 토큰 필요).
+
+```bash
+# ① 선언의 효과 — DB를 건드리지 않는 값싼 조회
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" localhost:8000/admin/config/resolve
+
+# ② 「사람 없이 몇 건이 확정 가능한가」 — 읽기 전용, 쓰기 없음
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" \
+  "localhost:8000/admin/enrichment/auto-confirm/dry-run?rule=core_wafer_attribution"
+```
+
+①이 돌려주는 것은 세 모집단입니다 — `effective`(효과 있음) · `ineffective`(선언은 있는데 **효과 없음 + 사유**) · `rejected`(파싱/검증 실패 + 사유). 그리고 `settings`가 **전역 스위치와 캡의 실효값 + 그 값이 온 파일**을 말합니다.
+
+가장 흔한 함정이 여기서 바로 보입니다:
+
+| 화면에 나오는 사유 | 뜻 | 할 일 |
+|---|---|---|
+| `not_declared` | `auto_confirm: true`인데 **어떤 뷰도 `candidate_for`를 선언하지 않았다** — 노브는 켜진 것처럼 읽히고 아무 일도 안 한다 | §7의 `candidate_for`를 선언 |
+| `not_reached` | 규칙 선언은 옳은데 전역 스위치 `enrichment_auto_confirm_enabled`가 false | `ingestion_settings.json` 확인 |
+| `mapping_unavailable` | 선언이 파싱/검증에 실패해 아예 반영되지 않았다 (`auto_confirm: "true"` 같은 문자열 포함) | `detail`이 지목한 자리를 수정 |
+| ⚠️ `scope_unresolved` (경고) | 선언한 뷰가 **판단키의 일부만으로** 조회한다 | 아래 |
+
+⚠️ **`scope_unresolved`는 켜기 전에 반드시 보십시오.** 실 config의 `같은 lot 전체 슬롯`은 lot 하나로만 조회합니다. 여기에 `candidate_for`를 선언하면 결과는 `ambiguous`가 **아니라 `single`** 입니다 — `wafer_slot_history`가 그 lot에 대해 행 하나만 갖고 있기 때문이고, 그 하나의 `wafer_id`가 **23개 슬롯 전부에** 쓰입니다. 실행 중에는 이것이 보이지 않습니다(시스템은 거짓말을 하고 있지 않습니다). **선언에서만 보이므로 선언을 보는 자리에서 확인해야 합니다.**
+
+②는 노브가 **꺼져 있어도** 측정합니다(`ignore_knob`) — 「켜면 무슨 일이 일어나는가」는 켜기 전에 답해야 할 질문이기 때문입니다. HTTP로는 **절대 쓰지 않습니다**(`apply` 파라미터가 없습니다). 쓰기는 §7.4의 CLI뿐입니다.
 
 ### 7.4 켜기 전에 재보기 — 쓰지 않고 측정
 

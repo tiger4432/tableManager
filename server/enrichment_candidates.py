@@ -130,6 +130,11 @@ REASON_MISSING_BIND = "missing_bind"
 REASON_CANDIDATE_COLUMN_MISSING = "candidate_column_missing"
 REASON_CELL_HAS_PROVENANCE = "cell_has_provenance"
 REASON_OVER_CAP = "over_cap"
+# The probe hit `enrichment_config.CANDIDATE_PROBE_MAX_ROWS`, so the read is
+# TRUNCATED. "Exactly one candidate" is not provable from a truncated read - the
+# unread remainder may hold the contradiction. Same posture as `view_error`: an
+# incompletely evaluated view is UNKNOWN, not empty.
+REASON_PROBE_TRUNCATED = "probe_truncated"
 
 _warned_once = set()
 
@@ -231,6 +236,29 @@ def _refused(target_field, reason, **extra):
     return out
 
 
+def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> str:
+    """Why did the grouped probe fail - a missing COLUMN, or a broken VIEW?
+
+    The old row-based path could tell these apart for free (it read the result's
+    column list, then looked the name up). The grouped probe interpolates the
+    column INTO the SQL, so a name that is not in the result is a driver error
+    indistinguishable from any other. Collapsing both into `view_error` would
+    delete the one refusal reason that tells an operator their `candidate_for`
+    declaration names a column the view does not return - which is precisely the
+    "declared but the shape is wrong" case this round exists to surface.
+
+    So: on failure only, run the ordinary DISPLAY wrap (cheap - it carries the
+    view's own row limit) and ask whether the column is there. The happy path
+    still costs exactly one query.
+    """
+    import enrichment_config
+    try:
+        columns, _ = enrichment_config.execute_reference_view(db, view, key_values)
+    except enrichment_config.ReferenceViewError:
+        return REASON_VIEW_ERROR      # the view itself does not execute
+    return REASON_VIEW_ERROR if column in columns else REASON_CANDIDATE_COLUMN_MISSING
+
+
 def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str) -> dict:
     """THE predicate: does exactly one candidate exist for this (key, field)?
 
@@ -243,6 +271,15 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     normalization (trim + integral-float folding), so 'WF01 ' and 'WF01', or 1.0
     and 1, are ONE candidate rather than two - otherwise a trailing space would
     manufacture an `ambiguous` refusal out of agreement.
+
+    THE PROBE IS GROUPED, THE DISPLAY IS NOT  [2026-07-30, F9]
+    Counting distinct values in Python over rows the server already truncated
+    made `support` a count over the first `limit` rows and made `ambiguous`
+    unreachable past that boundary - measured live: the `wafer_process` view
+    declares `limit: 50` while every one of 80 keys returns 69..217 rows. The
+    probe therefore runs `execute_candidate_probe` (GROUP BY over the WHOLE
+    result), while the human-facing display path keeps the row-limited wrap.
+    One declaration, two execution shapes, because they ask different questions.
     """
     import enrichment_config
     from database import crud
@@ -265,23 +302,29 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
             errors.append({"label": label, "reason": REASON_MISSING_BIND, "detail": missing})
             continue
         try:
-            columns, rows = enrichment_config.execute_reference_view(db, view, key_values)
+            probe = enrichment_config.execute_candidate_probe(db, view, column, key_values)
         except enrichment_config.ReferenceViewError as e:
-            errors.append({"label": label, "reason": REASON_VIEW_ERROR, "detail": str(e)})
+            errors.append({"label": label,
+                           "reason": _diagnose_probe_failure(db, view, column, key_values),
+                           "detail": str(e)})
             continue
-        if column not in columns:
-            errors.append({"label": label, "reason": REASON_CANDIDATE_COLUMN_MISSING,
-                           "detail": column})
-            continue
-        idx = columns.index(column)
         hits = 0
-        for row in rows:
-            val = crud.clean_str_value(row[idx])
+        for raw, count in probe["pairs"]:
+            val = crud.clean_str_value(raw)
             if val == "":
                 continue
-            values[val] = values.get(val, 0) + 1
-            hits += 1
-        evidence.append({"label": label, "rows": len(rows), "candidate_rows": hits})
+            values[val] = values.get(val, 0) + count
+            hits += count
+        evidence.append({"label": label, "rows": probe["scanned"],
+                         "distinct_values": len(probe["pairs"]),
+                         "candidate_rows": hits,
+                         "distinct_truncated": probe["distinct_truncated"]})
+        if probe["row_truncated"]:
+            # A truncated read cannot prove "exactly one". `distinct_truncated`
+            # needs no error: >limit distinct values is >=2, which the ambiguous
+            # branch below already names correctly.
+            errors.append({"label": label, "reason": REASON_PROBE_TRUNCATED,
+                           "detail": probe["scanned"]})
 
     distinct = sorted(values)
 

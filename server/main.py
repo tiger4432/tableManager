@@ -4277,9 +4277,13 @@ import enrichment_config
 def get_enrichment_rules():
     """활성 enrichment 규칙 메타를 반환합니다.
 
-    응답 계약(변경 금지): {"rules": [{name, source_table, derived_table, decision_key[],
-    target_fields[], list_columns[], reference_views: [{label}]}]}
-    참조뷰의 쿼리 본문은 서버 config에만 존재하며 클라이언트에 절대 노출하지 않습니다.
+    응답 계약: {"rules": [{name, source_table, derived_table, decision_key[],
+    target_fields[], list_columns[], reference_views: [{label, candidate_for}]}]}
+    참조뷰의 쿼리 본문·limit은 서버 config에만 존재하며 클라이언트에 절대 노출하지 않습니다.
+
+    `candidate_for`는 2026-07-30 [F9]에서 총괄 승인으로 추가된 **가산적** 필드입니다
+    (어느 뷰가 어느 target_field의 후보 원천인지 — 클라가 유도하지 않게 하는 유일한 길).
+    형태 근거는 `enrichment_config.to_public_rule` 참조. 기존 필드는 그대로입니다.
     """
     rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     return {"rules": [enrichment_config.to_public_rule(r) for r in rules]}
@@ -4294,8 +4298,6 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
     - LIMIT은 서버가 강제합니다(뷰별 설정, 기본 200 / 최대 1000).
     - 규칙/인덱스 미존재 404.
     """
-    from sqlalchemy import text
-
     rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     rule = next((r for r in rules if r["name"] == rule_name), None)
     if rule is None:
@@ -4322,24 +4324,106 @@ def get_enrichment_reference(rule_name: str, index: int, params: str = None, db:
             )
         bind_params = parsed
 
-    # 서버 LIMIT 강제: 사용자 쿼리를 서브쿼리로 감싸 상한을 바인딩한다(내부 LIMIT이 더 작으면 그 값 유지).
-    wrapped_sql = text(
-        f"SELECT * FROM ({view['query']}) AS __enrichment_ref LIMIT :__enrichment_limit"
-    )
-    exec_params = dict(bind_params)
-    exec_params["__enrichment_limit"] = view.get("limit") or enrichment_config.DEFAULT_REFERENCE_LIMIT
+    # 서버 LIMIT 강제 + 필수 바인드 검사는 `execute_reference_view`가 **유일한** 정의다.
+    # (2026-07-30 [F9]) 여기 있던 인라인 사본을 제거했다 — 두 정의가 갈라지면 클라가 보는
+    # 표시 결과와 후보 해석이 다른 행 집합을 보게 된다.
     try:
-        result = db.execute(wrapped_sql, exec_params)
-        columns = list(result.keys())
-        rows = [list(r) for r in result.fetchall()]
-    except Exception as e:
+        columns, rows = enrichment_config.execute_reference_view(db, view, bind_params)
+    except enrichment_config.ReferenceViewError as e:
         # 필수 바인드 누락 등 파라미터/실행 오류 — 쿼리 본문은 응답에 노출하지 않는다.
         logger.warning(f"[Enrichment] reference view '{rule_name}'#{index} execution failed: {e}")
         raise HTTPException(
             status_code=400,
-            detail=f"Reference query execution failed ({e.__class__.__name__}). Check required params."
+            detail=f"Reference query execution failed ({e}). Check required params."
         )
     return {"label": view["label"], "columns": columns, "rows": rows}
+
+
+# -----------------------------------------------------------------------------
+# [F9] 「config가 먹었는가」 — 선언의 효과를 어드민에 노출
+#   `POST /admin/reload-configs`는 캐시를 갱신하고 아무것도 반환하지 않는다. 아래 둘이
+#   그 공백을 메운다: 해석 보고서(설정만 읽는 값싼 질의)와 드라이런(큐를 걷는 계기).
+# -----------------------------------------------------------------------------
+
+@app.get("/admin/config/resolve", dependencies=[Depends(require_admin_token)])
+def get_config_resolve_report(domain: str = None):
+    """등록된 config 도메인의 **해석 보고서**(effective / ineffective / rejected).
+
+    설정 파일만 읽는다 — DB 질의 0건이라 요청 경로에 앉아도 된다. 사유는 닫힌 어휘
+    (`config_resolve_report.REASONS`)이고, 사람이 읽을 문장은 서버가 만든다:
+    클라이언트는 `detail`을 그대로 렌더하고 「효과 없음」을 스스로 판정하지 않는다.
+    """
+    import config_resolve_report
+    domains = [d.strip() for d in domain.split(",")] if domain else None
+    return config_resolve_report.resolve_report(domains)
+
+
+# 드라이런은 큐를 걷는 분석 질의라(키·선언뷰당 SQL 1회) 요청 경로에서 **표본**만 본다.
+# 기본값은 작업 단위 상한과 같은 200 — 「한 작업 단위가 무엇을 했을까」가 그대로 답이 된다.
+ENRICHMENT_DRY_RUN_DEFAULT_LIMIT = 200
+ENRICHMENT_DRY_RUN_MAX_LIMIT = 2000
+
+
+@app.get("/admin/enrichment/auto-confirm/dry-run", dependencies=[Depends(require_admin_token)])
+def get_enrichment_auto_confirm_dry_run(
+    rule: str, limit: int = ENRICHMENT_DRY_RUN_DEFAULT_LIMIT,
+    db: Session = Depends(get_db)
+):
+    """「이 규칙은 사람 없이 몇 건을 확정할 수 있는가」 — 쓰기 없는 계기.
+
+    `enrichment_analysis.run_auto_confirm_sweep(apply=False)`를 그대로 노출한다. 그
+    함수는 이미 읽기 전용이고 끝에서 구조적으로 rollback하므로, 여기서 새로 만드는
+    계기는 없다 — CLI에만 닿아 있던 것을 어드민에서 닿게 할 뿐이다.
+
+    🔴 `apply`는 **이 경로에 존재하지 않는다.** 쓰기는 CLI(`enrichment_insights.py`)에만
+    남는다. 대신 `ignore_knob=True`로 **노브가 꺼진 규칙도 측정**한다 — 「켜면 무슨 일이
+    일어나는가」가 켜기 전에 답해야 하는 질문이고, `run_auto_confirm_sweep`은 그 조합을
+    apply와 결합하는 것을 스스로 거부한다.
+    """
+    import enrichment_analysis
+    import config_resolve_report
+
+    limit = max(1, min(int(limit or ENRICHMENT_DRY_RUN_DEFAULT_LIMIT),
+                       ENRICHMENT_DRY_RUN_MAX_LIMIT))
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    target = next((r for r in rules if r["name"] == rule), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
+
+    try:
+        stats = enrichment_analysis.run_auto_confirm_sweep(
+            db, target, apply=False, limit=limit, ignore_knob=True, log=logger.info)
+    except enrichment_analysis.AnalysisRefused as e:
+        # 선언이 없어 측정 자체가 불가능한 상태 — 라이브가 지금 그 상태다. 500이 아니라
+        # 보고서와 **같은 어휘**로 답한다: 클라가 두 표면에서 같은 단어를 읽는다.
+        db.rollback()
+        return {
+            "rule": rule, "mode": "dry-run", "limit": limit,
+            "refused_reason": config_resolve_report.REASON_NOT_DECLARED,
+            "detail": (f"측정할 수 없습니다 — 어떤 참조뷰도 'candidate_for'를 선언하지 "
+                       f"않았습니다. ({e})"),
+            "queue_size": None, "keys_examined": 0, "confirmed": 0,
+            "written_cells": 0, "refused": {}, "samples": [], "truncated": False,
+        }
+
+    examined = stats.get("queue_size", 0)
+    confirmed = stats.get("confirmed", 0)
+    truncated = examined >= limit
+    detail = (f"큐 {examined}건을 검사해 {confirmed}건이 사람 없이 확정 가능합니다"
+              f"({stats.get('written_cells', 0)}개 셀). 쓰기는 하지 않았습니다.")
+    if truncated:
+        detail += f" ⚠️ 표본 {limit}건까지만 본 결과입니다 — 큐는 더 클 수 있습니다."
+    return {
+        "rule": rule, "mode": "dry-run", "limit": limit,
+        "refused_reason": None, "detail": detail,
+        "queue_size": examined,
+        "keys_examined": stats.get("keys_examined", 0),
+        "confirmed": confirmed,
+        "written_cells": stats.get("written_cells", 0),
+        "refused": stats.get("refused", {}),
+        "samples": stats.get("samples", []),
+        "truncated": truncated,
+    }
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):

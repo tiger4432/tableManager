@@ -59,6 +59,26 @@ MAX_REFERENCE_LIMIT = 1000
 _BIND_PARAM_RE = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
 _QUERY_REF_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
+# `candidate_for`의 뷰 결과 컬럼명. 후보 프로브 SQL에는 이 이름이 **보간**되므로
+# (바인딩 불가 — 식별자다) 로드 시점에 형태를 강제한다. 실행 시 인용부호로 감싸는 것과
+# 이 검증은 **둘 다** 필요하다: 인용부호만으로는 `a" OR "1"="1` 류가 닫히지 않는다.
+_CANDIDATE_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _record(rejections, scope: str, subject, detail: str):
+    """무효 선언 1건을 수집기에 남긴다(수집기 미제공 시 기존 동작 = 로그만).
+
+    `ontology_config._record`와 같은 자세이고 같은 이유다 — 로그에만 있는 스킵은
+    아무도 보지 못하는 스킵이다. 형태는 `{scope, subject, detail}`이며 **명명된 사유는
+    싣지 않는다**: 닫힌 어휘(`config_resolve_report.REASONS`)로의 사상은 보고서 계층의
+    책임이고, 로더는 사람이 읽을 구체적 사유만 만든다.
+    (ontology_config는 같은 자리를 `table`로 부른다 — enrichment의 주체는 규칙/뷰라
+    `subject`로 일반화했다.)
+    """
+    if rejections is None:
+        return
+    rejections.append({"scope": scope, "subject": subject, "detail": detail})
+
 
 def _is_str_list(value) -> bool:
     return isinstance(value, list) and len(value) > 0 and all(
@@ -121,7 +141,8 @@ def required_bind_params(sql: str) -> set:
     return set(_BIND_PARAM_RE.findall((sql or "").strip().rstrip(";")))
 
 
-def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: list) -> dict:
+def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: list,
+                             rejections: list = None) -> dict:
     """참조뷰의 `candidate_for` 선언을 정규화한다: {target_field: 뷰 결과 컬럼명}.
 
     **선언만 인정하고 절대 유도하지 않는다.** 무효 항목은 그 항목만 버리고(뷰 자체는
@@ -129,35 +150,49 @@ def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: lis
     동작은 아니게 되고, 그 불일치를 아무도 말해 주지 않는다(effort_metric의
     와일드카드 거절과 같은 자세).
 
-    뷰 결과 컬럼이 실제로 존재하는지는 SQL을 실행해야 알 수 있으므로 로드 시점에
+    뷰 결과 컬럼이 실제로 **존재**하는지는 SQL을 실행해야 알 수 있으므로 로드 시점에
     검증하지 않는다 — 해석 시점의 이름 있는 거절(`candidate_column_missing`)로 다룬다.
+    다만 **형태**(식별자 문법)는 여기서 강제한다: 이 이름은 후보 프로브 SQL에 보간되므로
+    검증이 실행보다 먼저 와야 한다.
     """
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        logger.warning(
-            f"[Enrichment:{rule_name}] reference view '{label}': 'candidate_for' must be an "
-            f"object {{target_field: view_column}}; ignoring (view stays display-only)")
+        msg = (f"reference view '{label}': 'candidate_for' must be an object "
+               f"{{target_field: view_column}}; ignored (view stays display-only)")
+        logger.warning(f"[Enrichment:{rule_name}] {msg}")
+        _record(rejections, "reference_view", f"{rule_name}/{label}", msg)
         return {}
     allowed = set(target_fields or [])
     out = {}
     for field, column in raw.items():
         if field not in allowed:
-            logger.warning(
-                f"[Enrichment:{rule_name}] reference view '{label}': candidate_for key "
-                f"'{field}' is not a target_field of this rule; REJECTED (not a candidate source)")
+            msg = (f"reference view '{label}': candidate_for key '{field}' is not a "
+                   f"target_field of this rule; REJECTED (not a candidate source)")
+            logger.warning(f"[Enrichment:{rule_name}] {msg}")
+            _record(rejections, "reference_view", f"{rule_name}/{label}", msg)
             continue
         if not isinstance(column, str) or not column.strip():
-            logger.warning(
-                f"[Enrichment:{rule_name}] reference view '{label}': candidate_for['{field}'] "
-                f"must be a non-empty view column name (got {column!r}); REJECTED")
+            msg = (f"reference view '{label}': candidate_for['{field}'] must be a non-empty "
+                   f"view column name (got {column!r}); REJECTED")
+            logger.warning(f"[Enrichment:{rule_name}] {msg}")
+            _record(rejections, "reference_view", f"{rule_name}/{label}", msg)
             continue
-        out[field] = column.strip()
+        name = column.strip()
+        if not _CANDIDATE_COLUMN_RE.match(name):
+            msg = (f"reference view '{label}': candidate_for['{field}'] = {name!r} is not a "
+                   f"plain SQL identifier ([A-Za-z_][A-Za-z0-9_]*); REJECTED. This name is "
+                   f"interpolated into the candidate probe query, so its shape is checked "
+                   f"BEFORE anything runs.")
+            logger.warning(f"[Enrichment:{rule_name}] {msg}")
+            _record(rejections, "reference_view", f"{rule_name}/{label}", msg)
+            continue
+        out[field] = name
     return out
 
 
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
-                               target_fields: list = None) -> list:
+                               target_fields: list = None, rejections: list = None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -168,16 +203,21 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
         return views
     if not isinstance(raw_views, list):
         logger.warning(f"[Enrichment:{rule_name}] 'reference_views' must be a list; ignoring")
+        _record(rejections, "rule", rule_name, "'reference_views' must be a list; ignored")
         return views
     for i, raw in enumerate(raw_views):
         if not isinstance(raw, dict) or not isinstance(raw.get("label"), str) or not raw.get("label").strip():
             logger.warning(f"[Enrichment:{rule_name}] reference view #{i} dropped: missing 'label'")
+            _record(rejections, "reference_view", f"{rule_name}/#{i}",
+                    "reference view dropped: missing 'label'")
             continue
         sql, err = _resolve_view_query(raw)
         if err is None:
             err = _validate_view_sql(sql, decision_key)
         if err is not None:
             logger.warning(f"[Enrichment:{rule_name}] reference view '{raw.get('label')}' dropped: {err}")
+            _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
+                    f"reference view dropped: {err}")
             continue
         limit = raw.get("limit", DEFAULT_REFERENCE_LIMIT)
         try:
@@ -192,13 +232,14 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             "query": body,
             "limit": limit,
             "candidate_for": _normalize_candidate_for(
-                rule_name, label, raw.get("candidate_for"), target_fields),
+                rule_name, label, raw.get("candidate_for"), target_fields,
+                rejections=rejections),
             "required_binds": sorted(required_bind_params(body)),
         })
     return views
 
 
-def _validate_rule(name: str, raw: dict, known_tables: dict) -> tuple:
+def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = None) -> tuple:
     """규칙 1건을 검증·정규화한다. 반환: (normalized|None, 실패사유|None)."""
     if not isinstance(raw, dict):
         return None, "rule must be an object"
@@ -283,6 +324,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict) -> tuple:
         # enrichment_candidates.rule_auto_confirm_enabled can warn-once about a
         # non-boolean instead of silently reading it as truthy.
         "auto_confirm": raw.get("auto_confirm", False),
+        # 「선언이 없다」와 「false로 선언했다」는 다른 사실이고, 위 필드만으로는 구별되지
+        # 않는다. `config_resolve_report`가 그 둘을 다른 문장으로 렌더하려면 존재 여부가
+        # 필요하다 — 값이 아니라 **선언의 유무**를 나르는 필드다(클라 노출 대상 아님).
+        "auto_confirm_declared": isinstance(raw, dict) and "auto_confirm" in raw,
         "source_table": source_table.strip(),
         "derived_table": derived_table.strip(),
         "decision_key": list(decision_key),
@@ -290,32 +335,48 @@ def _validate_rule(name: str, raw: dict, known_tables: dict) -> tuple:
         "list_columns": list(list_columns),
         "aggregations": aggregations,
         "reference_views": _normalize_reference_views(
-            name, raw.get("reference_views"), decision_key, target_fields),
+            name, raw.get("reference_views"), decision_key, target_fields,
+            rejections=rejections),
     }
     return normalized, None
 
 
-def validate_enrichment_rules(raw_config: dict, known_tables: dict = None) -> list:
-    """설정 dict 전체를 검증한다. 유효 규칙의 정규화 리스트를 반환(무효 규칙은 로깅 후 스킵)."""
+def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
+                              rejections: list = None) -> list:
+    """설정 dict 전체를 검증한다. 유효 규칙의 정규화 리스트를 반환(무효 규칙은 로깅 후 스킵).
+
+    rejections: 선택 수집기 리스트 — 스킵된 선언을 `{scope, subject, detail}`로 누적한다
+    (`_record` 참조). 반환값 형태는 수집기 유무와 무관하게 동일하다.
+    """
     rules = []
     if not isinstance(raw_config, dict):
         logger.error("enrichment_rules.json must be an object {rule_name: rule}")
+        _record(rejections, "file", None,
+                "enrichment_rules.json must be an object {rule_name: rule} — "
+                "the whole file was ignored")
         return rules
     for name, raw in raw_config.items():
         if not isinstance(name, str) or not name.strip():
             logger.warning("[Enrichment] rule with empty name skipped")
+            _record(rejections, "rule", name, "rule with an empty name skipped")
             continue
-        normalized, err = _validate_rule(name, raw, known_tables)
+        normalized, err = _validate_rule(name, raw, known_tables, rejections=rejections)
         if err is not None:
             logger.warning(f"[Enrichment:{name}] rule skipped: {err}")
+            _record(rejections, "rule", name, f"rule skipped: {err}")
             continue
         if normalized is not None:
             rules.append(normalized)
     return rules
 
 
-def load_enrichment_rules(path: str = None, known_tables: dict = None) -> list:
-    """enrichment_rules.json을 읽어 검증된 규칙 리스트를 반환한다(파일 없음 → 빈 목록)."""
+def load_enrichment_rules(path: str = None, known_tables: dict = None,
+                          rejections: list = None) -> list:
+    """enrichment_rules.json을 읽어 검증된 규칙 리스트를 반환한다(파일 없음 → 빈 목록).
+
+    파일 **부재**는 거부가 아니다(선언이 없을 뿐) — 수집기에 남기지 않는다.
+    `/graph/mapping-summary`가 `source.exists`로 같은 구분을 하는 것과 같은 규율이다.
+    """
     rules_path = path or ENRICHMENT_RULES_PATH
     if not os.path.exists(rules_path):
         return []
@@ -324,8 +385,12 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None) -> list:
             raw_config = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load enrichment rules from {rules_path}: {e}")
+        _record(rejections, "file", None,
+                f"enrichment_rules.json could not be read ({e.__class__.__name__}) — "
+                f"NO rule is in effect")
         return []
-    return validate_enrichment_rules(raw_config, known_tables=known_tables)
+    return validate_enrichment_rules(raw_config, known_tables=known_tables,
+                                     rejections=rejections)
 
 
 def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:
@@ -350,12 +415,46 @@ def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> 
     return chain_rules
 
 
-# 서버가 강제하는 LIMIT 래핑 — 참조뷰 실행의 **유일한** 형태.
-# main.py `get_enrichment_reference`가 같은 문자열을 인라인으로 갖고 있다(2026-07-30 현재).
-# 그 파일은 다른 라운드가 점유 중이어서 이번에 합치지 못했다 — `test_enrichment_candidates.py`의
-# 이음새 가드가 두 정의의 불일치를 감시한다. main.py를 열 수 있게 되는 즉시
-# 라우트를 `execute_reference_view` 호출로 바꿔 정의를 하나로 만들 것.
+# 서버가 강제하는 LIMIT 래핑 — 참조뷰 **표시** 실행의 유일한 형태.
+# (2026-07-30 [F9]: main.py `get_enrichment_reference`가 갖고 있던 인라인 사본을 제거하고
+#  라우트가 `execute_reference_view`를 호출하도록 합쳤다 — 정의는 이제 하나다.)
 REFERENCE_LIMIT_WRAP_SQL = "SELECT * FROM ({query}) AS __enrichment_ref LIMIT :__enrichment_limit"
+
+# 후보 프로브 래핑 — **표시 경로와 다른 질문**을 던지기 때문에 형제 정의로 존재한다.
+#
+# 왜 필요한가 (2026-07-30 실측): 라이브 참조뷰 `공정 이력(wafer_process)`는 `limit: 50`인데
+# (lot,slot) 하나당 행이 최소 69 · 평균 135.4 · 최대 217이다 — **80개 키 전부가 상한을 넘는다.**
+# distinct 계산은 서버가 행을 잘라낸 **뒤** 파이썬에서 일어나므로(`enrichment_candidates`),
+# 51번째 행이 다른 wafer_id를 나르고 있어도 보이지 않고 `ambiguous`는 영영 발화하지 않는다.
+# 즉 오늘의 `single` 판정은 "매핑이 우연히 정상"이라는 아무도 검사하지 않는 가정 위에 있다.
+#
+# 왜 뷰를 고치지 않는가: 그 뷰에는 두 번째 소비자(사람의 표시 — 시간순 **행**이 필요하다)가
+# 있다. 선언은 하나로 두고 **실행 형태만 질문에 맞춰 갈라진다.**
+#
+# `{column}`은 바인딩할 수 없는 **식별자**라 보간된다 — 그래서 ① 로드 시점
+# `_CANDIDATE_COLUMN_RE` 검증이 실행보다 먼저 오고 ② 여기서 인용부호로 감싼다.
+# 값은 여전히 SQLAlchemy 바인딩으로만 전달된다.
+#
+# 🔴 컬럼 참조는 **반드시 별칭으로 한정한다**(`__enrichment_ref."col"`). SQLite는
+# 큰따옴표 안의 이름이 컬럼으로 해석되지 않으면 **문자열 리터럴로 강등**한다(DQS 호환
+# 동작). 그래서 `SELECT "not_a_column"`은 에러가 아니라 'not_a_column'이라는 값 1개를
+# 돌려주고, 프로브는 그것을 **후보 1개**로 읽어 컬럼명 자체를 자동 확정한다 —
+# 이 모듈이 절대 하지 말아야 할 거짓말이 정확히 그것이다(2026-07-30 실측).
+# 한정된 참조는 문자열 리터럴이 될 수 없으므로 SQLite도 `no such column`으로 실패하고,
+# 호출자의 `candidate_column_missing` 진단으로 흘러간다. Postgres에도 그대로 옳다.
+CANDIDATE_GROUP_WRAP_SQL = (
+    'SELECT __c, COUNT(*) AS __n FROM ('
+    'SELECT __enrichment_ref."{column}" AS __c FROM ({query}) AS __enrichment_ref '
+    'LIMIT :__enrichment_scan_rows'
+    ') AS __enrichment_cand GROUP BY __c LIMIT :__enrichment_limit'
+)
+
+# 프로브가 훑을 **행** 상한. 뷰의 `limit`(표시용)과 별개이고 운영 노브가 아니다.
+# GROUP BY는 상위 LIMIT으로 조기 종료할 수 없으므로, 바인드 없는 뷰
+# (`required_binds == []`)가 선언되면 키마다 전체 테이블을 훑게 된다 — 1,000만 행 규율의
+# 유일한 방어선이다. 상한에 닿으면 결과는 **잘린 읽기**이므로 `single`을 주장하지 않고
+# 이름 있는 거절(`probe_truncated`)이 된다. 실측 최대 217행의 약 23배로 잡았다.
+CANDIDATE_PROBE_MAX_ROWS = 5000
 
 
 class ReferenceViewError(Exception):
@@ -381,8 +480,7 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     if missing:
         raise ReferenceViewError(f"missing required bind param(s): {missing}")
 
-    exec_params = {k: v for k, v in supplied.items() if k in needed}
-    exec_params["__enrichment_limit"] = view.get("limit") or DEFAULT_REFERENCE_LIMIT
+    exec_params = _probe_params(view, supplied, needed)
     stmt = text(REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]))
     try:
         result = db.execute(stmt, exec_params)
@@ -393,10 +491,74 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     return columns, rows
 
 
+def _probe_params(view: dict, supplied: dict, needed: set) -> dict:
+    params = {k: v for k, v in supplied.items() if k in needed}
+    params["__enrichment_limit"] = view.get("limit") or DEFAULT_REFERENCE_LIMIT
+    return params
+
+
+def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = None) -> dict:
+    """후보 프로브 1건 — 뷰 결과 **전체**에 대해 `column`의 distinct 값과 행수를 센다.
+
+    반환: `{"pairs": [(value, count), ...], "scanned": int,
+             "row_truncated": bool, "distinct_truncated": bool}`
+
+    `pairs`는 DB의 GROUP BY 결과(정규화 이전)다 — `clean_str_value` 접기는 호출자가
+    수행하고 count를 합산한다. 'WF01 '과 'WF01'은 DB에선 두 그룹이지만 접은 뒤 하나다.
+
+    두 종류의 절단을 **구분해서** 알린다:
+      - `distinct_truncated`: distinct 값이 `limit`을 넘었다(그래서 limit+1을 요청한다 —
+        `value_suggest`가 truncated를 증명하는 방식과 같다). 이미 2개 이상이므로 호출자의
+        `ambiguous` 판정으로 자연스럽게 흘러간다.
+      - `row_truncated`: 스캔이 `CANDIDATE_PROBE_MAX_ROWS`에 닿았다. 읽기가 잘렸다는 뜻이고
+        잘린 읽기에서 「후보가 정확히 하나」는 **증명할 수 없다** — 호출자는 이름 있는
+        거절로 바꿔야 한다.
+    """
+    from sqlalchemy import text
+
+    if not _CANDIDATE_COLUMN_RE.match(column or ""):
+        # 로더가 이미 막지만, 이 함수는 SQL을 보간하므로 자기 입력을 스스로 검증한다.
+        raise ReferenceViewError("candidate column is not a plain SQL identifier")
+
+    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    supplied = dict(bind_params or {})
+    missing = sorted(needed - set(supplied))
+    if missing:
+        raise ReferenceViewError(f"missing required bind param(s): {missing}")
+
+    limit = view.get("limit") or DEFAULT_REFERENCE_LIMIT
+    exec_params = _probe_params(view, supplied, needed)
+    # limit + 1: (limit+1)번째 distinct 값이 돌아오면 그것이 절단의 증거다.
+    exec_params["__enrichment_limit"] = limit + 1
+    exec_params["__enrichment_scan_rows"] = CANDIDATE_PROBE_MAX_ROWS
+    stmt = text(CANDIDATE_GROUP_WRAP_SQL.format(query=view["query"], column=column))
+    try:
+        result = db.execute(stmt, exec_params)
+        rows = [(r[0], int(r[1] or 0)) for r in result.fetchall()]
+    except Exception as e:
+        raise ReferenceViewError(f"candidate probe execution failed ({e.__class__.__name__})")
+
+    distinct_truncated = len(rows) > limit
+    scanned = sum(n for _, n in rows)
+    return {
+        "pairs": rows,
+        "scanned": scanned,
+        "row_truncated": scanned >= CANDIDATE_PROBE_MAX_ROWS,
+        "distinct_truncated": distinct_truncated,
+    }
+
+
 def to_public_rule(rule: dict) -> dict:
     """경계 계약(총괄 확정)에 따른 클라이언트 노출 형태.
 
-    참조뷰의 쿼리 본문·limit은 절대 노출하지 않는다 — label과 (암묵적) 인덱스만.
+    참조뷰의 쿼리 본문·limit은 절대 노출하지 않는다 — label과 (암묵적) 인덱스,
+    그리고 **`candidate_for`**만.
+
+    `candidate_for` (총괄 승인 2026-07-30, [F9] — 가산적 필드):
+    노출되는 것은 **뷰 결과 컬럼명**이고, 그 컬럼명은 `/enrichment/rules/{r}/references/{i}`가
+    돌려주는 참조뷰 결과에 이미 헤더로 나타난다 → 신규 노출 0. 숨겨야 하는 것(쿼리 본문·limit)은
+    그대로 숨겨져 있다. 이 필드가 없으면 클라이언트는 「어느 뷰가 후보 원천인가」를
+    **스스로 유도**해야 하고, 유도가 왜 위험한지는 이 모듈 상단 주석의 실 config가 보여준다.
 
     queue_filters: the ONE server-composed definition of "a queue entry" for
     the generic /tables/{t}/data filter DSL - every target field blank AND
@@ -415,6 +577,9 @@ def to_public_rule(rule: dict) -> dict:
         "decision_key": list(rule["decision_key"]),
         "target_fields": list(rule["target_fields"]),
         "list_columns": list(rule["list_columns"]),
-        "reference_views": [{"label": v["label"]} for v in rule.get("reference_views", [])],
+        "reference_views": [
+            {"label": v["label"], "candidate_for": dict(v.get("candidate_for") or {})}
+            for v in rule.get("reference_views", [])
+        ],
         "queue_filters": queue_filters,
     }

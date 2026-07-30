@@ -263,12 +263,23 @@ def test_a_failed_view_refuses_even_when_a_surviving_view_agrees(cand_env):
 
 
 def test_declared_column_absent_from_result_is_a_named_refusal(cand_env):
+    """Also the guard on SQLite's double-quoted-string fallback (measured 2026-07-30).
+
+    The grouped probe interpolates the column name, and SQLite DEMOTES a quoted name
+    it cannot resolve into a string literal. With an unqualified reference this
+    returned `single` with the value 'not_a_column' - the probe auto-confirming the
+    column name itself, which is the exact lie this module must never tell. The wrap
+    qualifies the reference (`__enrichment_ref."col"`), which cannot be a literal.
+    """
     rule = _loaded_rule()
     wrong = dict(rule["reference_views"][0], candidate_for={"wafer_id": "not_a_column"})
     injected = dict(rule, reference_views=[wrong])
     res = enrichment_candidates.resolve_target_candidate(
         cand_env, injected, {"lot": "L1", "slot": "S1"}, "wafer_id")
     assert res["reason"] == enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING
+    assert res["value"] != "not_a_column", (
+        "the probe fabricated a candidate out of the column name - the quoted "
+        "identifier was demoted to a string literal")
 
 
 def test_missing_bind_refuses_instead_of_executing_blindly(cand_env):
@@ -422,14 +433,105 @@ def test_per_unit_cap_leaves_the_remainder_in_the_queue(cand_env, tmp_path, monk
 
 
 # ---------------------------------------------------------------------------
+# 5-bis. The probe reads the WHOLE result, not the first `limit` rows
+#        [F9, 2026-07-30] The live `wafer_process` view declares `limit: 50` while
+#        every one of 80 (lot,slot) keys returns 69..217 rows. Counting distinct
+#        values in Python AFTER the server truncated made `ambiguous` unreachable
+#        past row 50 - `single` rested on the mapping happening to be functional,
+#        which nothing checked.
+# ---------------------------------------------------------------------------
+
+def test_a_contradiction_past_the_view_limit_still_makes_it_ambiguous(cand_env):
+    """THE MEASURED DEFECT, as a test. Row 3 of 3 disagrees; the view shows 2.
+
+    With the old row-limited read this returned `single` (WF1, support 2) and would
+    have auto-confirmed a value chosen by where the LIMIT happened to fall.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": "T1", "lot": "LT", "slot": "S1", "wafer_id": "WF1"},
+        {"hist_id": "T2", "lot": "LT", "slot": "S1", "wafer_id": "WF1"},
+        {"hist_id": "T3", "lot": "LT", "slot": "S1", "wafer_id": "WFX"},
+    ])
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=2)   # truncates before WFX
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), {"lot": "LT", "slot": "S1"},
+        "wafer_id")
+    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment_candidates.REASON_AMBIGUOUS
+    assert set(res["candidates"]) == {"WF1", "WFX"}
+
+
+def test_support_counts_every_row_not_just_the_first_limit(cand_env):
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"S{i}", "lot": "LS", "slot": "S1", "wafer_id": "WF1"}
+        for i in range(5)
+    ])
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=2)
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), {"lot": "LS", "slot": "S1"},
+        "wafer_id")
+    assert res["status"] == enrichment_candidates.STATUS_SINGLE
+    assert res["support"] == 5, "support must be a count over the whole result"
+    assert res["evidence"][0]["rows"] == 5
+
+
+def test_a_truncated_probe_refuses_instead_of_claiming_single(cand_env, monkeypatch):
+    """A truncated READ cannot prove 'exactly one' - the unread remainder may hold
+    the contradiction. Same posture as `view_error`: incomplete is UNKNOWN, not empty.
+
+    `CANDIDATE_PROBE_MAX_ROWS` is the only thing bounding a candidate-declaring view
+    with no binds, which would otherwise scan its whole table once per probed key.
+    """
+    monkeypatch.setattr(enrichment_config, "CANDIDATE_PROBE_MAX_ROWS", 2)
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"P{i}", "lot": "LP", "slot": "S1", "wafer_id": "WF1"}
+        for i in range(4)
+    ])
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, _loaded_rule(), {"lot": "LP", "slot": "S1"}, "wafer_id")
+    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment_candidates.REASON_PROBE_TRUNCATED
+    # The partial finding is still reported so a UI can show it; it just cannot gate.
+    assert res["value"] == "WF1"
+
+
+def test_the_display_path_keeps_its_row_limit(cand_env):
+    """One declaration, two execution shapes. The human display still needs ROWS,
+    ordered - grouping it would break the other consumer of the same view."""
+    view = dict(_loaded_rule()["reference_views"][1], limit=1)
+    columns, rows = enrichment_config.execute_reference_view(cand_env, view, {"lot": "L1"})
+    assert len(rows) == 1 and "wafer_id" in columns
+    probe = enrichment_config.execute_candidate_probe(
+        cand_env, view, "wafer_id", {"lot": "L1"})
+    assert probe["scanned"] == 2, "the probe must see both rows the display path hid"
+    assert probe["distinct_truncated"] is True   # 2 distinct > limit 1
+
+
+def test_a_candidate_column_that_is_not_an_identifier_is_rejected_at_load(cand_env):
+    """The column name is INTERPOLATED into the probe SQL, so its shape is checked
+    before anything executes - validation must not sit downstream of the query."""
+    bad = dict(NARROW_VIEW, candidate_for={"wafer_id": 'wafer_id" OR "1"="1'})
+    normalized, err = enrichment_config._validate_rule(
+        "r", _rule(reference_views=[bad]), CAND_TABLES)
+    assert err is None
+    assert normalized["reference_views"][0]["candidate_for"] == {}
+    with pytest.raises(enrichment_config.ReferenceViewError):
+        enrichment_config.execute_candidate_probe(
+            cand_env, dict(NARROW_VIEW, required_binds=["lot", "slot"], limit=200),
+            'wafer_id" OR "1"="1', {"lot": "L1", "slot": "S1"})
+
+
+# ---------------------------------------------------------------------------
 # 6. Seam guard: one definition of the LIMIT wrap
 # ---------------------------------------------------------------------------
 
 def test_reference_view_execution_has_one_definition(cand_env):
-    """`main.get_enrichment_reference` holds an inline copy of the LIMIT wrap
-    because main.py belongs to a concurrent round and could not be edited. This
-    guard fails if the two drift apart, so the duplicate cannot rot silently.
-    Delete this test when the route calls `execute_reference_view`.
+    """The route used to hold an inline copy of the LIMIT wrap because main.py
+    belonged to a concurrent round. [F9, 2026-07-30] it now calls
+    `execute_reference_view`, so this guard flipped from "the two copies agree" to
+    "there is only one copy" - a second inline wrap in main.py fails here.
 
     Reads main.py FROM DISK rather than via `inspect.getsource`: the imported
     module's line numbers go stale the moment anyone edits main.py during a run,
@@ -441,16 +543,15 @@ def test_reference_view_execution_has_one_definition(cand_env):
 
     main_src = open(os.path.abspath(main.__file__.replace(".pyc", ".py")),
                     encoding="utf-8").read()
-    if "execute_reference_view" in main_src:
-        return  # consolidated - guard no longer needed
-
-    # The distinctive parts of the wrap: the subquery alias and the bound limit.
-    for token in ("__enrichment_ref", ":__enrichment_limit"):
-        assert token in enrichment_config.REFERENCE_LIMIT_WRAP_SQL
-        assert token in main_src, (
-            f"main.py no longer contains {token!r} but "
-            f"enrichment_config.REFERENCE_LIMIT_WRAP_SQL still does - the two "
-            f"reference-view execution definitions have drifted")
+    assert "execute_reference_view" in main_src, (
+        "the enrichment reference route no longer calls the shared executor - either "
+        "it grew its own definition again or the call was renamed")
+    for token in ("__enrichment_ref", "__enrichment_cand", ":__enrichment_limit"):
+        assert token in (enrichment_config.REFERENCE_LIMIT_WRAP_SQL
+                         + enrichment_config.CANDIDATE_GROUP_WRAP_SQL)
+        assert token not in main_src, (
+            f"main.py contains {token!r} again - reference-view execution has grown a "
+            f"second definition. The display path and the candidate probe share it.")
 
 
 def test_execute_reference_view_enforces_the_limit(cand_env):

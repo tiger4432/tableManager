@@ -1,6 +1,6 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§1 표 + §5.6 `flatten_nested_dirs` 뜻 정정**(`600b49d`) — 🔴 **키 이름은 그대로인데 동작이 「루트 승격」에서 「제자리 적재」로 바뀌었습니다.** 개명하지 않은 것은 의도(개명하면 운영자가 이미 `false`로 넣어 둔 off 스위치가 조용히 무력화). `false`의 로그 문구도 "그 안의 파일은 적재되지 않는다"로 정정. 함께 §1 표에 누락돼 있던 키 3종(`flatten_nested_dirs`·`auto_register_map_meta`·`enrichment_auto_confirm_*`)을 등재하고, **`filename_rules`는 `server/config/*`의 키가 아니라 워크스페이스별 파서 설정의 키**임을 명시(규격 정본 [INGESTION_GUIDE §1.9-bis](./INGESTION_GUIDE.md) — **우선순위 `filename < header < row`**, 사용자 판정). 직전 **[①] `enrichment_rules`에 `candidate_for`/`auto_confirm` 등재** — 후보 1개 자동 확정 선언(§1 표 · §3-S7 7~8행 · §5.3 · [config/enrichment_rules §7](./config/enrichment_rules.md)), 기본 OFF이므로 미선언이 정상 구성. 같은 날 **[F5] `map_overlay_config.preset_routing` 등재** — 로드 시 프리셋 라우팅(§1 표 · §5.8-bis · §5.9 · 기능별 테이블 체크리스트 · [config/map_overlay_config.md §2-bis](./config/map_overlay_config.md)). 조회 테이블은 운영 전용이라 **미선언이 정상 구성**이고 문서가 유일한 운영 전달 수단이다. 직전: **`suggest_config.json` 신설 등재** — F3 입력 제안 노브 + 접두 인덱스 대상 선정(§1 표 · §4 리로드 표 **2행** · §5.6-ter · [config/suggest_config.md](./config/suggest_config.md)). ⚠️ `index_*`는 핫리로드 대상이 아니라 **`setup_db_performance.py` 재실행**이 유일한 반영 경로다. 직전 **함정 A·B 정정 라운드(H1~H5)** — ⓐ BOM 붙은 config가 기동을 막던 결함 수리(§6-A2), ⓑ 최상위가 객체가 아닌 JSON(`[]`·`null`)의 무음 통과 차단(§6-A3), ⓒ 리딩 엣지 디바운스가 연속 저장을 버리던 결함을 **트레일링 엣지**로 수리(§4.4·§6-B2), ⓓ 타 디렉터리 rename(`moved` 없음) 무음 누락에 `on_created` 추가(§4.4·§6-B). 직전 **함정 A·B 해소 등재(#9/#13)** — ⓐ config watcher가 `on_moved`도 처리하므로 **원자적 저장(temp+rename)도 ALTER를 발화**시킵니다(§4.4·§6-B·S1 표 2행), ⓑ `table_config.json` 파싱 실패는 **로그로 드러나고 기동을 막습니다**(§6-A) — fail-fast는 파싱 실패에 한정. 직전 **`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**[F9] §4.2-bis 신설 — 「내가 쓴 게 먹었나」에 답하는 자리**. `POST /admin/reload-configs`는 캐시를 갱신하고 `{"status":"success"}` 하나만 돌려주며 **무엇이 먹었는지 아무것도 말하지 않는다**는 사실을 §4.2에 명시하고, `GET /admin/config/resolve`(선언 → effective/ineffective/rejected + 닫힌 사유 어휘 + 실효 설정값과 그 출처 파일)를 등재. 현재 등록 도메인은 `enrichment` 하나이고 나머지는 같은 틀로 이어 붙인다. 직전 **§1 표 + §5.6 `flatten_nested_dirs` 뜻 정정**(`600b49d`) — 🔴 **키 이름은 그대로인데 동작이 「루트 승격」에서 「제자리 적재」로 바뀌었습니다.** 개명하지 않은 것은 의도(개명하면 운영자가 이미 `false`로 넣어 둔 off 스위치가 조용히 무력화). `false`의 로그 문구도 "그 안의 파일은 적재되지 않는다"로 정정. 함께 §1 표에 누락돼 있던 키 3종(`flatten_nested_dirs`·`auto_register_map_meta`·`enrichment_auto_confirm_*`)을 등재하고, **`filename_rules`는 `server/config/*`의 키가 아니라 워크스페이스별 파서 설정의 키**임을 명시(규격 정본 [INGESTION_GUIDE §1.9-bis](./INGESTION_GUIDE.md) — **우선순위 `filename < header < row`**, 사용자 판정). 직전 **[①] `enrichment_rules`에 `candidate_for`/`auto_confirm` 등재** — 후보 1개 자동 확정 선언(§1 표 · §3-S7 7~8행 · §5.3 · [config/enrichment_rules §7](./config/enrichment_rules.md)), 기본 OFF이므로 미선언이 정상 구성. 같은 날 **[F5] `map_overlay_config.preset_routing` 등재** — 로드 시 프리셋 라우팅(§1 표 · §5.8-bis · §5.9 · 기능별 테이블 체크리스트 · [config/map_overlay_config.md §2-bis](./config/map_overlay_config.md)). 조회 테이블은 운영 전용이라 **미선언이 정상 구성**이고 문서가 유일한 운영 전달 수단이다. 직전: **`suggest_config.json` 신설 등재** — F3 입력 제안 노브 + 접두 인덱스 대상 선정(§1 표 · §4 리로드 표 **2행** · §5.6-ter · [config/suggest_config.md](./config/suggest_config.md)). ⚠️ `index_*`는 핫리로드 대상이 아니라 **`setup_db_performance.py` 재실행**이 유일한 반영 경로다. 직전 **함정 A·B 정정 라운드(H1~H5)** — ⓐ BOM 붙은 config가 기동을 막던 결함 수리(§6-A2), ⓑ 최상위가 객체가 아닌 JSON(`[]`·`null`)의 무음 통과 차단(§6-A3), ⓒ 리딩 엣지 디바운스가 연속 저장을 버리던 결함을 **트레일링 엣지**로 수리(§4.4·§6-B2), ⓓ 타 디렉터리 rename(`moved` 없음) 무음 누락에 `on_created` 추가(§4.4·§6-B). 직전 **함정 A·B 해소 등재(#9/#13)** — ⓐ config watcher가 `on_moved`도 처리하므로 **원자적 저장(temp+rename)도 ALTER를 발화**시킵니다(§4.4·§6-B·S1 표 2행), ⓑ `table_config.json` 파싱 실패는 **로그로 드러나고 기동을 막습니다**(§6-A) — fail-fast는 파싱 실패에 한정. 직전 **`effort_metric.json` 신설 등재** — V1 정본 계기의 배점·전이 선언(§2 표 · §4 리로드 표 · §5.6-bis · [config/effort_metric.md](./config/effort_metric.md)). 직전 2026-07-28 **self-frame count_only `deed6d2`**: §5.8 `connected(count_only)` 어휘를 self-frame `fail_sources`까지 확장 — 좌표 없는 self fail 원천은 count만 유지·remaining null + 상한(합집합 감산 경로 한정, 폴백 감산 경로는 비강등). 직전 같은 날 **5c `1fefd12`**: §5.8에 강등 status 어휘 둘 추가 — `connected(count_only)`(transfer_log 좌표 부재 → remaining null + 상한, 유령 잔여 수리)·`connected(column_unresolved:<roles>)`(선언 컬럼 오타의 명명 강등, fail_values val 미해석 시 0 + 강등 — 상한 불변식), §3-S6·§6-I 상태 해석표 갱신. 직전 같은 날 **파일별 세팅 가이드 분리**: §5.1~§5.7·§5.8-bis·§5.9의 스니펫·키 표를 [config/ 폴더](./config/README.md)의 파일별 절차 가이드로 이관하고 링크 스텁으로 대체 — §5.8 의미론·§5.8-ter 체크리스트만 이 문서 정본 유지. 직전 같은 날 **U9/U8 서버 착지**: §5.8에 STACK 0 마커 의미론(`zero = 마커 선언, blank ≠ 0`)·**V6** 추가(V1~V6), `bin_map` 문단에 **M1 위임 stage에서는 bin_map이 무효**(inline `source` + `origin_log` 필요 — 격리 :8081 실측) 명기. 직전 같은 날: §5.8에 **`bin_map` 선언 문단 신설**(미선언 = `axis: unavailable`, 컬럼 추측 금지) · **§3-S6 M2 표의 필수 역할을 zone 컬럼으로 정정**(§5.8과 상충하던 `bands` 필수 서술 제거) · "다음 자동 저장" 문구를 Push 유일 기록자에 맞게 정정. 직전 같은 날: §5.8 DOE zone 모델 반영 — 필수 역할 zone 넷 · `bands` 선택 강등 · `stack` string 사유 · §5.8-ter `--overwrite-drift` 경고) | **Owner:** Lead / Backend | **Source-of-truth:** `server/config/*`, `server/product_tables.py`, `server/paths.py`, `server/database/crud.py`, `server/database/config_watcher.py`, `server/parsers/directory_watcher.py`, `server/map_overlay.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 **이 문서의 역할 = "설정 관점의 지도".** "무엇을, 어디에, 어떤 순서로 넣고, 어떻게 검증하는가"에만 답합니다.
 **파일 하나를 실제로 세팅하는 절차·키 사전은 [config/ 폴더](./config/README.md)** (파일당 가이드 1개)로,
@@ -299,6 +299,35 @@ S1을 전부 수행한 뒤 추가로:
 - ❌ `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` / `maps` / `ingestion_settings` / `auto_update_control`은 애초에 캐시가 없어 건드릴 게 없습니다.
 
 **안전장치:** 재로드 시 config가 비었거나 손상됐으면 **기존 싱글턴을 유지**하고 아무것도 바꾸지 않습니다.
+
+> 🔴 **그리고 이 라우트는 무엇이 먹었는지 아무것도 돌려주지 않습니다.** `{"status":"success"}` 하나뿐입니다 — 캐시를 갱신했다는 뜻이지 여러분의 선언이 효과를 냈다는 뜻이 아닙니다. **§4.2-bis가 그 질문에 답하는 자리입니다.**
+
+### 4.2-bis 「내가 쓴 게 먹었나」 — 선언의 효과 조회 (2026-07-30, [F9])
+
+```bash
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" localhost:8000/admin/config/resolve
+```
+
+서버가 선언을 **세 모집단**으로 나눠 돌려줍니다. 사유는 닫힌 어휘이고, 사람이 읽을 문장(`detail`)은 **서버가 만듭니다** — 화면은 그것을 그대로 보여줍니다.
+
+| 모집단 | 뜻 |
+|---|---|
+| `effective` | 선언이 효과를 내고 있다 |
+| `ineffective` | 선언은 있는데 **효과가 없다** + 명명된 사유 |
+| `rejected` | 파싱/검증에 실패해 아예 반영되지 않았다 + 사유 |
+
+| 사유 | 뜻 |
+|---|---|
+| `not_declared` | 효과에 필요한 선언이 없다 (노브가 꺼져 있거나, 짝이 되는 선언이 빠졌다) |
+| `mapping_unavailable` | 선언을 읽지/검증하지 못해 반영하지 않았다 |
+| `not_reached` | 상위 스위치가 꺼져 이 선언까지 도달하지 않는다 |
+| `scope_unresolved` (경고) | 선언은 동작하지만 그 범위가 판단을 고정하지 못한다 |
+
+그리고 `settings`가 **지금 실효 중인 값과 그 값이 온 파일**을 말합니다 — 파일이 없어 기본값인 경우까지 포함해서. (실측 2026-07-30: `ingestion_settings.json`은 **존재하지 않고** `.sample`만 있습니다. 그래서 전역 스위치는 기본값 `true`인데 아무 데서도 그 사실을 말해 주지 않았습니다.)
+
+> **범위:** 2026-07-30 현재 `enrichment` 도메인 하나가 등록돼 있습니다. 나머지 config는 같은 틀(`server/config_resolve_report._RESOLVERS`에 등록기 하나)로 이어 붙입니다 — 응답은 도메인 목록이라 도메인이 늘어도 소비자는 바뀌지 않습니다.
+>
+> ⚠️ 이것은 **선언의 해석**이지 물리 반영의 증거가 아닙니다. 스키마 DDL의 증거는 여전히 §4.3의 `information_schema`입니다.
 
 ### 4.3 물리 반영 검증 — 정확한 방법
 

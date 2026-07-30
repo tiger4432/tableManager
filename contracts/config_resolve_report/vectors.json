@@ -1,0 +1,290 @@
+{
+  "$comment": [
+    "SHARED CONTRACT — the CONFIG RESOLVE REPORT seam ([F9], 2026-07-30).",
+    "",
+    "The question the product could not answer: 「내 config가 먹었는가」. The admin surface",
+    "had exactly one config route, POST /admin/reload-configs, which refreshes caches, fans a",
+    "reload event out to every worker, and returns NOTHING about what any of it did. Ten config",
+    "files, one write-only button.",
+    "",
+    "WHAT THIS FILE PINS, AND WHY IT IS A SEAM AND NOT A UNIT TEST",
+    "  The server sorts declarations into three named populations and NAMES THE REASON. The",
+    "  client renders the server's string. Those are two implementations of one agreement, and",
+    "  the failure mode is not a crash — it is the client quietly growing its own opinion about",
+    "  what counts as ineffective. That is the hardcoded-copy class U6 deleted six instances of,",
+    "  and it passes every server test ever written. Only a seam contract catches it.",
+    "",
+    "  server -> contracts/config_resolve_report/test_report_contract.py",
+    "            (reachable from the default suite via server/tests/test_config_resolve_report_contract.py)",
+    "  client -> node contracts/config_resolve_report/client_harness.mjs",
+    "",
+    "THE VOCABULARY IS CLOSED AND BORROWED, NOT INVENTED",
+    "  All four words already exist in the runtime degradation vocabulary (main.CHIP_TRACE_*).",
+    "  This round moves the same distinctions one layer up — from 'what did this request find'",
+    "  to 'what did this config declare' — so a second vocabulary would be a second dialect for",
+    "  the same idea. `reasons` below is the whole list. A fifth word is a contract change.",
+    "",
+    "WHAT THE CLIENT MAY AND MAY NOT DO",
+    "  MAY  : switch on population (effective/ineffective/rejected) — that is structure, and the",
+    "         server decided it. Render `detail`. Render `fields.*` as literal table cells.",
+    "  MAY  : read `vocabulary.reasons` from the response for filters/labels-by-key.",
+    "  MUST NOT: contain the reason words as literals, or carry its own Korean explanation for",
+    "         any of them. The moment it does, the two sides can disagree about a rule's state",
+    "         and the server's answer stops being the answer. `forbidden_client_literals` is",
+    "         what the node harness greps for, and it is the whole point of this file."
+  ],
+  "version": 1,
+
+  "vocabulary": {
+    "reasons": ["not_declared", "mapping_unavailable", "scope_unresolved", "not_reached"],
+    "populations": ["effective", "ineffective", "rejected"],
+    "scopes": ["file", "setting", "rule", "reference_view"],
+    "origins": ["file", "default"]
+  },
+
+  "reason_meanings": {
+    "$comment": "Prose for humans. The machine check is that server REASONS == vocabulary.reasons.",
+    "not_declared": "a declaration required for the effect is absent (knob off, or zero candidate_for)",
+    "mapping_unavailable": "the declaration failed to parse/validate and is not in effect",
+    "scope_unresolved": "the declaration parses and acts, but its scope does not pin the decision key",
+    "not_reached": "an enclosing switch is off, so this declaration is never consulted"
+  },
+
+  "envelope": {
+    "$comment": "Required keys at each level. Extra keys are allowed (additive change stays cheap).",
+    "top": ["domains", "vocabulary"],
+    "domain": ["domain", "title", "sources", "settings", "effective", "ineffective", "rejected", "counts"],
+    "entry": ["scope", "subject", "detail", "reason", "warnings", "fields"],
+    "source": ["key", "path", "exists", "status", "detail"],
+    "setting": ["key", "value", "origin", "path", "declared", "detail"]
+  },
+
+  "invariants": [
+    {
+      "id": "INV-F9-1",
+      "name": "every ineffective and rejected entry names a reason",
+      "why": "An entry that says 'no effect' without saying why sends the operator back to the daemon log, which is the state this round exists to end."
+    },
+    {
+      "id": "INV-F9-2",
+      "name": "every effective entry has reason == null",
+      "why": "A reason on an effective entry means the two populations are not actually distinguishing anything."
+    },
+    {
+      "id": "INV-F9-3",
+      "name": "every reason and every warning comes from vocabulary.reasons",
+      "why": "The client cannot render a word it has never been told about, and a free-form reason is how a closed vocabulary dies."
+    },
+    {
+      "id": "INV-F9-4",
+      "name": "every entry carries a non-empty detail string",
+      "why": "detail IS the client's rendering. An empty one forces the client to compose its own sentence, which is exactly the derivation this contract forbids."
+    },
+    {
+      "id": "INV-F9-5",
+      "name": "counts equal the population lengths",
+      "why": "A badge computed from a count that disagrees with the list is the cheapest possible lie."
+    },
+    {
+      "id": "INV-F9-6",
+      "name": "a missing config file is `exists: false`, never a rejection",
+      "why": "Same rule as /graph/mapping-summary. Conflating them makes the rejection list non-empty in a healthy system, and a list that cries wolf gets ignored."
+    },
+    {
+      "id": "INV-F9-7",
+      "name": "the client contains none of forbidden_client_literals",
+      "why": "The U6 class. A client that knows the words can decide for itself what they mean."
+    }
+  ],
+
+  "forbidden_client_literals": {
+    "$comment": [
+      "Grepped by client_harness.mjs across client2/src. These are SERVER words: the client",
+      "receives them inside data and must never contain them as source literals.",
+      "",
+      "`vocabulary.reasons` arrives in the response, so a client CAN iterate it — that is the",
+      "point. Writing one of them down is what turns a rendered fact into a client opinion."
+    ],
+    "literals": ["not_declared", "mapping_unavailable", "scope_unresolved", "not_reached"],
+    "allow_paths": []
+  },
+
+  "cases": [
+    {
+      "id": "live_production_state_2026_07_30",
+      "$comment": [
+        "MEASURED, not imagined. The live enrichment_rules.json declares two rules and five",
+        "reference views, and NOT ONE view declares `candidate_for`. So a `auto_confirm: true`",
+        "here would read as ON and do nothing. This case is the reason F9 exists; it is written",
+        "as a vector so that the day someone declares a candidate column, this expectation",
+        "changes DELIBERATELY rather than silently."
+      ],
+      "rules": {
+        "core_wafer_attribution": {
+          "auto_confirm": true,
+          "decision_key": ["core_lot", "core_slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "lot-slot 웨이퍼 이력", "binds": ["core_lot", "core_slot"], "candidate_for": {}},
+            {"label": "같은 lot 전체 슬롯", "binds": ["core_lot"], "candidate_for": {}},
+            {"label": "공정 이력 (wafer_process)", "binds": ["core_lot", "core_slot"], "candidate_for": {}}
+          ]
+        }
+      },
+      "expect": {
+        "population": "ineffective",
+        "reason": "not_declared",
+        "warnings": []
+      }
+    },
+    {
+      "id": "knob_on_and_declared",
+      "$comment": "The narrow view declares its candidate column. This is what 'it worked' looks like.",
+      "rules": {
+        "r": {
+          "auto_confirm": true,
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "effective", "reason": null, "warnings": []}
+    },
+    {
+      "id": "declared_on_a_view_that_cannot_see_the_whole_key",
+      "$comment": [
+        "THE TRAP, measured on the live config. `같은 lot 전체 슬롯` keys on lot alone. Declaring",
+        "candidate_for on it yields `single` — NOT `ambiguous` — because wafer_slot_history holds",
+        "one row for that lot, and that one wafer_id is then written onto 23 different slots.",
+        "",
+        "So the danger is not visible from the refusal vocabulary at runtime: the runtime says",
+        "`single` and is not lying. It is only visible from the DECLARATION — the view binds a",
+        "strict subset of the decision key — which is why it has to be surfaced HERE, before",
+        "anyone turns the knob on, and not in the sweep afterwards."
+      ],
+      "rules": {
+        "r": {
+          "auto_confirm": true,
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "broad", "binds": ["lot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "effective", "reason": null, "warnings": ["scope_unresolved"]}
+    },
+    {
+      "id": "knob_off_is_not_a_failure_but_is_not_effective_either",
+      "rules": {
+        "r": {
+          "auto_confirm": false,
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "ineffective", "reason": "not_declared", "warnings": []}
+    },
+    {
+      "id": "knob_absent_reads_the_same_class_but_not_the_same_sentence",
+      "$comment": "Same reason class, different `detail`. The client renders the sentence, so the two stay distinguishable without the client knowing why.",
+      "rules": {
+        "r": {
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "ineffective", "reason": "not_declared", "warnings": []}
+    },
+    {
+      "id": "non_boolean_knob_is_rejected_not_merely_ignored",
+      "$comment": "`\"true\"` is the spelling an operator reaches for. Today it warns once into a log and falls back to OFF.",
+      "rules": {
+        "r": {
+          "auto_confirm": "true",
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "rejected", "reason": "mapping_unavailable", "warnings": []}
+    },
+    {
+      "id": "global_switch_off_never_reaches_the_rule",
+      "$comment": "The per-rule declaration is correct and complete; it is simply never consulted. `not_declared` would be a lie about the rule.",
+      "settings": {"enrichment_auto_confirm_enabled": false},
+      "rules": {
+        "r": {
+          "auto_confirm": true,
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"wafer_id": "wafer_id"}}
+          ]
+        }
+      },
+      "expect": {"population": "ineffective", "reason": "not_reached", "warnings": []}
+    },
+    {
+      "id": "candidate_for_naming_a_non_target_field_is_rejected",
+      "$comment": "The declaration parses as JSON and is still wrong: `lot` is a decision key, not a target. `valid_die_ref`-style shape drift, one layer down.",
+      "rules": {
+        "r": {
+          "auto_confirm": true,
+          "decision_key": ["lot", "slot"],
+          "target_fields": ["wafer_id"],
+          "reference_views": [
+            {"label": "narrow", "binds": ["lot", "slot"], "candidate_for": {"lot": "wafer_id"}}
+          ]
+        }
+      },
+      "expect_any": {"population": "rejected", "reason": "mapping_unavailable", "scope": "reference_view"}
+    }
+  ],
+
+  "settings_cases": [
+    {
+      "id": "settings_file_absent_is_all_defaults",
+      "$comment": [
+        "MEASURED 2026-07-30: server/config/ingestion_settings.json DOES NOT EXIST — only",
+        ".sample does. The global switch therefore defaults to true and nobody knows it. This",
+        "is precisely the 'where did this value come from' question the settings list answers,",
+        "and it is unanswerable from the populations alone."
+      ],
+      "settings_file_exists": false,
+      "expect": [
+        {"key": "enrichment_auto_confirm_enabled", "value": true, "origin": "default", "declared": null},
+        {"key": "enrichment_auto_confirm_max_keys", "value": 200, "origin": "default", "declared": null}
+      ]
+    },
+    {
+      "id": "settings_declared_in_file",
+      "settings_file_exists": true,
+      "settings": {"enrichment_auto_confirm_enabled": false, "enrichment_auto_confirm_max_keys": 25},
+      "expect": [
+        {"key": "enrichment_auto_confirm_enabled", "value": false, "origin": "file", "declared": false},
+        {"key": "enrichment_auto_confirm_max_keys", "value": 25, "origin": "file", "declared": 25}
+      ]
+    },
+    {
+      "id": "invalid_setting_falls_back_and_says_so",
+      "$comment": "The in-effect value is the default AND the bad declaration appears in `rejected`. Both halves are needed: one says what is running, the other says what was ignored.",
+      "settings_file_exists": true,
+      "settings": {"enrichment_auto_confirm_max_keys": 0},
+      "expect": [
+        {"key": "enrichment_auto_confirm_max_keys", "value": 200, "origin": "default", "declared": 0}
+      ],
+      "expect_rejected_reason": "mapping_unavailable"
+    }
+  ]
+}

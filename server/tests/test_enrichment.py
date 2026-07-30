@@ -371,8 +371,14 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
         "event_time": {"type": "notBlank"},
         "wafer_id": {"type": "blank"},
     }
-    # 참조뷰는 label만 노출 — 쿼리 본문/limit 절대 노출 금지
-    assert rule["reference_views"] == [{"label": "chips on equipment"}]
+    # 참조뷰는 label + candidate_for만 노출 — 쿼리 본문/limit은 절대 노출 금지.
+    # `candidate_for`는 2026-07-30 [F9] 총괄 승인으로 추가된 **가산적** 필드다. 노출되는
+    # 값은 뷰 결과 **컬럼명**이고, 그 컬럼명은 `/references/{i}` 응답의 헤더로 이미
+    # 나타난다 → 신규 노출 0. 이 필드가 없으면 클라이언트는 「어느 뷰가 후보 원천인가」를
+    # 스스로 유도해야 하고, 유도는 맵 오버레이에서 라이브 DECOY를 만들어낸 실패 계급이다.
+    assert rule["reference_views"] == [
+        {"label": "chips on equipment", "candidate_for": {}}
+    ]
     assert "query" not in res.text and "SELECT" not in res.text
 
 
