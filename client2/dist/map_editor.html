@@ -9,12 +9,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-BLTiTjZp.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-C6l6RWXY.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-BW7JX9uS.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-CTWZ7t3S.js">
   <link rel="stylesheet" crossorigin href="/assets/effort_meter-Bzia583p.css">
   <link rel="stylesheet" crossorigin href="/assets/tsv-B_heL3XZ.css">
-  <link rel="stylesheet" crossorigin href="/assets/map_editor-wrL2HHLP.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor-D--MTOvp.css">
 </head>
 <body>
   <div id="app">
@@ -308,6 +308,15 @@
           </div>
         </div>
       </section>
+
+      <!-- [ⓗ] 폭 조절 손잡이. 이 프로젝트의 스플리터를 **그대로** 쓴다: `.split-resizer`
+           클래스(style.css — 8px, cursor:col-resize, hover/dragging 강조)와 드래그 중
+           `body.resizing-active`(선택 방지 + 사이드바 pointer-events 차단)가 이미 있고,
+           그리드 화면의 `#main-split-resizer`가 같은 두 개를 쓴다. 새 스플리터를 만들지
+           않는다. 자리는 패널의 **왼쪽 모서리** — 사람이 실제로 손을 뻗는 곳이다
+           (종전 네이티브 `resize: horizontal` 그립은 우하단 모서리에 있었고, 끌어도
+           폭이 기억되지 않았다). -->
+      <div id="plan-split-resizer" class="split-resizer" title="끌어서 「2. Legend &amp; DOE」 폭 조절 (더블클릭 = 기본 폭). 폭은 이 브라우저에 기억됩니다."></div>
 
       <!-- 우측 패널: legend = DOE 편집기 + DOE별 사용 자재 (이동 허브)
            legend 행 하나가 곧 DOE다 — 별도 「전사 계획」 영역도, 별도 「원시 범례」 details도 없다. -->

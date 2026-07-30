@@ -80,8 +80,10 @@ const COLS = 11, ROWS = 9;
 const ROT = 90, SIDE = 'back';
 
 function inputStub(v) { return { value: String(v) }; }
-function makeEl(headerOn) {
-  return {
+// `over` lets one case swap the physical spec — used by the NO-MASK case below, which is
+// the frame `loadExistingMap`'s 📐 표준 default applies to every metadata-less map.
+function makeEl(headerOn, over) {
+  return Object.assign({
     physWaferDia: inputStub(DIA), physEdgeMargin: inputStub(EM),
     physChipX: inputStub(CHIP_X), physChipY: inputStub(CHIP_Y),
     physOffsetX: inputStub(0), physOffsetY: inputStub(0),
@@ -92,7 +94,7 @@ function makeEl(headerOn) {
     gridCanvas: null,
     btnCopyExcel: null,
     copyHeaderToggle: { checked: !!headerOn },
-  };
+  }, over || {});
 }
 
 const THEME = {
@@ -132,6 +134,9 @@ const MAP_FNS = [
   'headerSpanFor', 'distributeSpans', 'auxColumnSpans',
   'copyHeaderEnabled', 'mapKeyGroupLabel', 'copyHeaderGroups', 'copyHeaderAuxRows',
   'colHeaderWord', 'copyTitleText', 'computeNotchCell', 'copyGridToExcel',
+  // [1d] the aux-header word set shared by writer and reader (MEDIUM-4), and the ONE
+  // notch predicate both sides use (MEDIUM-3 / P0-2).
+  'auxHeadWords', 'notchMarkCell',
   // [F1ⓑ] the paste side
   'auxHeaderInLine', 'readCompanyMapBlock', 'checkPasteAgainstFrame',
   'applyPastedGridRows', 'applyPastedAuxRows', 'pastedCellCount',
@@ -139,13 +144,17 @@ const MAP_FNS = [
 const MAP_CONSTS = ['UNLISTED_VALUE_FILL', 'HDR_COL_PX', 'HDR_PAD_PX', 'HDR_CHAR_PX',
   'HDR_MIN_SPAN', 'HDR_MAX_SPAN', 'HDR_GAP_COLS', 'pasteBlank', 'pasteAt'];
 
-function buildSandbox(src, label, headerOn) {
+function buildSandbox(src, label, headerOn, elOver, ctxOver) {
   const parts = [];
   MAP_FNS.forEach(n => parts.push(fnFrom(src, label, n)));
   MAP_CONSTS.forEach(n => parts.push(constFrom(src, label, n)));
   // The real TSV reader and the real DOE column roster — no second parser, no second roster.
   ['QUOTE', 'TAB'].forEach(n => parts.push(constFrom(WORK_TSV, 'tsv.js', n)));
-  ['normalizeNewlines', 'parseTsv'].forEach(n => parts.push(fnFrom(WORK_TSV, 'tsv.js', n)));
+  // [MEDIUM-2] `serializeTsv`/`quoteField` come from tsv.js too — the copy path now WRITES
+  // with the same module the paste path READS with, so `parseTsv(serializeTsv(g)) === g` is
+  // the property under test rather than an assumption.
+  ['normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField', 'serializeTsv']
+    .forEach(n => parts.push(fnFrom(WORK_TSV, 'tsv.js', n)));
   ['ZONES', 'ZONE_LABEL', 'DOE_COLUMNS', 'IGNORED_HEADERS'].forEach(n => parts.push(constFrom(WORK_DOE, 'doe_bands.js', n)));
   ['parseMaterialList', 'columnIdByHeader', 'looksLikeHeader', 'leadingBlankColumnDropped', 'mapPastedGrid']
     .forEach(n => parts.push(fnFrom(WORK_DOE, 'doe_bands.js', n)));
@@ -159,7 +168,7 @@ function buildSandbox(src, label, headerOn) {
     console: Object.assign(Object.create(console), { debug: () => {} }),
     physFrameOverride: null,
     currentRotation: ROT, currentSide: SIDE,
-    validDie: null, boundingBoxCache: {}, el: makeEl(headerOn),
+    validDie: null, boundingBoxCache: {}, el: makeEl(headerOn, elOver),
     gridData: {}, gridCells2D: {}, legend: [],
     loadedFCells: new Set(),
     selectedTable: 'bonding_map',
@@ -199,14 +208,16 @@ function buildSandbox(src, label, headerOn) {
   ctx.alert = (msg) => { captured.alerts.push(msg); };
   ctx.showToast = (msg, kind) => { captured.toasts.push({ msg, kind }); };
   ctx.writeClipboardRich = (html, text) => { captured.html = html; captured.text = text; return true; };
+  Object.assign(ctx, ctxOver || {});
   vm.createContext(ctx);
   try {
     vm.runInContext(parts.join('\n\n')
       + '\nglobalThis.__h = { getGridCellObject, getTransformedPhysicalConfig, getWaferBoundingBox,'
       + ' getVisualGridDimensions, copyGridToExcel, copyHeaderAuxRows, computeLegendCounts,'
-      + ' computeNotchCell, copyTitleText, classifyUnsavableCells, eachSavableCell,'
+      + ' computeNotchCell, notchMarkCell, auxHeadWords, auxHeaderInLine,'
+      + ' copyTitleText, classifyUnsavableCells, eachSavableCell,'
       + ' readCompanyMapBlock, checkPasteAgainstFrame, applyPastedGridRows, applyPastedAuxRows,'
-      + ' pastedCellCount };', ctx);
+      + ' pastedCellCount, serializeTsv, parseTsv };', ctx);
   } catch (e) {
     die(`sandbox evaluation failed for ${label} — ${e && e.message ? e.message : e}`);
   }
@@ -264,12 +275,16 @@ function paintFixture(sb) {
   return { outside: outsideKeys.length, outsideKeys };
 }
 
+// The frame the paste is checked against — assembled exactly as `onMapGridPaste` does.
+// 🔴 `notchMarkCell`, not `computeNotchCell`: the fingerprint is "where the copy actually
+//    drew the mark", which is on-grid AND empty. Using the raw coordinate here would let the
+//    harness score a fingerprint the artifact does not contain (MEDIUM-3).
 function frameOf(sb) {
   const { visualCols, visualRows } = sb.H.getVisualGridDimensions();
   return {
     visualCols, visualRows,
     title: sb.H.copyTitleText(),
-    notch: sb.H.computeNotchCell(sb.ctx.currentRotation, sb.ctx.currentSide),
+    notch: sb.H.notchMarkCell(sb.ctx.currentRotation, sb.ctx.currentSide),
   };
 }
 
@@ -626,6 +641,211 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// [P0-2] THE FINGERPRINT IS STRUCTURALLY ABSENT ON EVERY NO-MASK MAP — AND ITS
+//        ABSENCE MUST REFUSE, NOT WARN.
+//
+// `loadExistingMap`'s 📐 표준 branch (the highlighted default for a metadata-less map)
+// applies chip 1x1 / offset 0 / margin 3 / a diameter that circumscribes the grid, i.e.
+// NO circle mask. The bbox then spans the whole grid, so rot 0's notch (`box.maxR + 1`)
+// is exactly `visualRows` — off grid. Same for the other three rotations (-1 / -1 / cols).
+// Rotation and side PRESERVE the dimensions, so no other guard fires: copy at 0°, click
+// 180°, Ctrl+V used to be accepted with one warning line among five.
+// ════════════════════════════════════════════════════════════════════════════════
+{
+  const NO_MASK = {
+    physWaferDia: inputStub(300), physChipX: inputStub(1), physChipY: inputStub(1),
+    physOffsetX: inputStub(0), physOffsetY: inputStub(0), physEdgeMargin: inputStub(3),
+  };
+  const mk = (rot) => {
+    const sb = buildSandbox(WORK_MAP, `no-mask rot${rot}`, true, NO_MASK,
+      { currentRotation: rot, currentSide: 'front' });
+    sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+    const vc = (rot === 90 || rot === 270) ? ROWS : COLS;
+    const vr = (rot === 90 || rot === 270) ? COLS : ROWS;
+    const pc = sb.H.getTransformedPhysicalConfig(rot, 'front');
+    sb.ctx.gridCells2D = {};
+    for (let r = 0; r < vr; r++) {
+      for (let c = 0; c < vc; c++) {
+        if (!sb.ctx.gridCells2D[r]) sb.ctx.gridCells2D[r] = {};
+        sb.ctx.gridCells2D[r][c] = sb.H.getGridCellObject(c, r, vc, vr, pc, 700, 700);
+      }
+    }
+    return { sb, vc, vr };
+  };
+
+  // ① the fixture really is a no-mask frame: EVERY cell is inside, so the bbox fills the grid
+  const zero = mk(0);
+  const allInside = Object.keys(zero.sb.ctx.gridCells2D)
+    .every(r => Object.keys(zero.sb.ctx.gridCells2D[r]).every(c => zero.sb.ctx.gridCells2D[r][c].inside));
+  chk('P0-2', 'no-mask fixture: every cell is inside (bbox fills the grid)', allInside, true);
+  const box = zero.sb.H.getWaferBoundingBox(0, 'front');
+  chk('P0-2', 'no-mask fixture: bbox spans the whole grid', [box.minR, box.maxR], [0, zero.vr - 1]);
+
+  // ② the notch is off grid for ALL FOUR rotations -> computeNotchCell must say null
+  const perRot = {};
+  [0, 90, 180, 270].forEach(rot => {
+    const { sb } = mk(rot);
+    perRot[rot] = sb.H.computeNotchCell(rot, 'front');
+  });
+  chk('P0-2', 'no-mask: computeNotchCell is null for every rotation (미상 != 0)',
+    perRot, { 0: null, 90: null, 180: null, 270: null });
+
+  // ③ paint + copy at rot 0, then flip the screen to 180 and offer the artifact back.
+  const src0 = mk(0);
+  let i = 0;
+  Object.keys(src0.sb.ctx.gridCells2D).forEach(r => Object.keys(src0.sb.ctx.gridCells2D[r]).forEach(c => {
+    i++;
+    src0.sb.ctx.gridData[src0.sb.ctx.gridCells2D[r][c].key] = (i % 3 === 0) ? 'F' : '1';
+  }));
+  src0.sb.H.copyGridToExcel();
+  const artifact = src0.sb.captured.text;
+  chk('P0-2', 'the rot-0 copy produced an artifact', typeof artifact === 'string' && artifact.length > 0, true);
+
+  const flipped = mk(180);
+  // the same painted map, on a 180° screen (same dimensions — that is the whole hazard)
+  Object.keys(src0.sb.ctx.gridData).forEach(k => { flipped.sb.ctx.gridData[k] = src0.sb.ctx.gridData[k]; });
+  const parsedFlip = flipped.sb.H.readCompanyMapBlock(artifact);
+  const frameFlip = frameOf(flipped.sb);
+  chk('P0-2', 'the 180° screen has no fingerprint to compare with', frameFlip.notch, null);
+  const vFlip = flipped.sb.H.checkPasteAgainstFrame(parsedFlip, frameFlip);
+  chk('P0-2', 'the block itself is readable (so the refusal is about the fingerprint)', parsedFlip.ok, true);
+  chk('P0-2', 'width/height agree — no other guard would have fired',
+    [parsedFlip.gridWidth, parsedFlip.rows.length >= frameFlip.visualRows],
+    [frameFlip.visualCols, true]);
+  chk('P0-2', 'REFUSED (was: accepted with notchVerified false)', vFlip.ok, false);
+  chk('P0-2', 'the refusal says the rotation/side could not be compared',
+    /회전·면을 대조할 수/.test(vFlip.reason || ''), true);
+
+  // ④ NEGATIVE CONTROL — what the refusal prevents, measured on the shipped applier.
+  //    Bypass the check and apply the rot-0 artifact onto the 180° screen; count the
+  //    physical keys whose value changes. This number is the damage, not a proxy for it.
+  const damageBefore = { ...flipped.sb.ctx.gridData };
+  flipped.sb.H.applyPastedGridRows(parsedFlip, frameFlip);
+  const changed = Object.keys(damageBefore)
+    .filter(k => (damageBefore[k] || '') !== (flipped.sb.ctx.gridData[k] || '')).length;
+  chk('P0-2', 'the prevented damage is non-zero (the axis is live)', changed > 0, true);
+  evidence.p0_2 = {
+    noMaskNotchByRotation: perRot,
+    refused: vFlip.ok === false,
+    reason: (vFlip.reason || '').slice(0, 80),
+    physicalKeysThatWouldChange: changed,
+    ofTotalCells: Object.keys(damageBefore).length,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// [MEDIUM-3] ONE notch predicate. A PAINTED notch cell carries no fingerprint — the copy
+// (correctly) does not overwrite a value with the mark, so the paste must not demand it.
+// Before: copy omitted the D, paste required it -> a rect valid-die template could be
+// copied and NEVER pasted back, refused with "회전·면이 다릅니다" (the wrong cause).
+// Converse: a cell whose real value IS 'D' was silently cleared, one cell per round trip.
+// ════════════════════════════════════════════════════════════════════════════════
+{
+  const sb = buildSandbox(WORK_MAP, 'painted-notch', true);
+  sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+  buildCells(sb);
+  paintFixture(sb);
+  const raw = sb.H.computeNotchCell(ROT, SIDE);
+  chk('MEDIUM-3', 'the fixture notch is on grid to begin with', raw !== null, true);
+  chk('MEDIUM-3', 'and it carries a fingerprint while empty', sb.H.notchMarkCell(ROT, SIDE), raw);
+
+  // paint it — exactly what M4's rect valid-die authoring path produces
+  const cell = sb.ctx.gridCells2D[raw.r] ? sb.ctx.gridCells2D[raw.r][raw.c] : null;
+  chk('MEDIUM-3', 'the notch position is a real rendered cell', cell !== null, true);
+  sb.ctx.gridData[cell.key] = 'D';
+  chk('MEDIUM-3', 'a painted notch cell has NO fingerprint', sb.H.notchMarkCell(ROT, SIDE), null);
+
+  // the round trip on such a map: the value 'D' must SURVIVE, and the refusal (if any) must
+  // not blame rotation. With no fingerprint the paste refuses on P0-2 grounds instead.
+  const before = gridSnapshot(sb);
+  sb.H.copyGridToExcel();
+  const parsed = sb.H.readCompanyMapBlock(sb.captured.text);
+  const frame = frameOf(sb);
+  const v = sb.H.checkPasteAgainstFrame(parsed, frame);
+  chk('MEDIUM-3', 'refusal does NOT blame rotation/side', /회전·면이 지금과 다릅니다/.test(v.reason || ''), false);
+  // and if it is applied anyway (fingerprint absent -> n is null), the real 'D' is kept
+  sb.H.applyPastedGridRows(parsed, frame);
+  chk('MEDIUM-3', "a cell whose real value is 'D' survives the paste", gridSnapshot(sb)[cell.key], 'D');
+  chk('MEDIUM-3', 'no other cell was disturbed', diffKeys(before, gridSnapshot(sb)), []);
+  evidence.medium3 = { notchAt: raw, fingerprintWhenPainted: sb.H.notchMarkCell(ROT, SIDE) };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// [MEDIUM-2] the copy WRITES with the same quoting the paste READS with.
+// ════════════════════════════════════════════════════════════════════════════════
+{
+  const HOSTILE = [
+    { value: 'Q', desc: '"고온" 조건', stack: 3 },
+    { value: 'T', desc: '1H\t비교', stack: 2 },
+    { value: 'N', desc: '두 줄\n설명', stack: 5 },
+  ];
+  const sb = buildSandbox(WORK_MAP, 'hostile-desc', true);
+  sb.ctx.legend = HOSTILE.map(h => ({ ...h, color: '#888', mat_1h: [], mat_mid: [], mat_top: [] }));
+  buildCells(sb);
+  paintFixture(sb);
+  const before = gridSnapshot(sb);
+  const legendBefore = JSON.parse(JSON.stringify(sb.ctx.legend));
+  sb.H.copyGridToExcel();
+  const parsed = sb.H.readCompanyMapBlock(sb.captured.text);
+  const frame = frameOf(sb);
+  const v = sb.H.checkPasteAgainstFrame(parsed, frame);
+  chk('MEDIUM-2', 'a DESC with quote/tab/newline does not break the frame check', v.ok, true);
+  chk('MEDIUM-2', 'grid width still recovered', parsed.gridWidth, frame.visualCols);
+  sb.ctx.legend.forEach(l => { l.desc = ''; l.stack = ''; });
+  if (v.ok) { sb.H.applyPastedGridRows(parsed, frame); sb.H.applyPastedAuxRows(parsed); }
+  const byName = {};
+  sb.recorded.updates.forEach(u => { byName[u.name] = u.patch; });
+  // Only the three hostile rows are asserted: `paintFixture` paints values ('1','F','E1')
+  // that this legend does not declare, and `copyHeaderAuxRows` correctly emits those as
+  // extra rows with empty stack/desc. Asserting the whole map would be asserting that
+  // behaviour, not the quoting.
+  const expect = {};
+  legendBefore.forEach(l => { expect[String(l.value)] = { desc: String(l.desc), stack: String(l.stack) }; });
+  const got = {};
+  Object.keys(expect).forEach(k => { got[k] = byName[k]; });
+  chk('MEDIUM-2', 'every hostile DESC round-trips VERBATIM (key->value)', got, expect);
+  chk('MEDIUM-2', 'and the grid still round-trips', diffKeys(before, gridSnapshot(sb)), []);
+  // the property itself, stated on the artifact
+  chk('MEDIUM-2', 'parseTsv(serializeTsv(g)) === g holds for the emitted artifact',
+    sb.H.serializeTsv(sb.H.parseTsv(sb.captured.text)), sb.captured.text);
+  evidence.medium2 = { hostileDescs: HOSTILE.map(h => h.desc), recovered: byName };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// [MEDIUM-4] the aux-header scan stops on a GRID CELL, even when that cell's value happens
+// to be a roster word the DOE panel's ②→① paste taught the roster (MAT/BIN/MAP/가용/...).
+// ════════════════════════════════════════════════════════════════════════════════
+{
+  const sb = buildSandbox(WORK_MAP, 'roster-collision', true);
+  sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+  buildCells(sb);
+  paintFixture(sb);
+  const frame = frameOf(sb);
+  // paint the LAST grid column of the aux-header row with each roster word in turn, copy,
+  // and require the recovered width to stay correct.
+  const widths = {};
+  ['1', 'BIN', 'MAT', 'MAP', 'COUNT', 'COLOR', '칠함', '가용', '사용', '잔여'].forEach(word => {
+    const s2 = buildSandbox(WORK_MAP, `roster:${word}`, true);
+    s2.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+    buildCells(s2);
+    paintFixture(s2);
+    // row 0 is where the aux header rides; the last grid column is the one adjacent to the gap
+    const cell = s2.ctx.gridCells2D[0] ? s2.ctx.gridCells2D[0][frame.visualCols - 1] : null;
+    if (cell) s2.ctx.gridData[cell.key] = word;
+    s2.H.copyGridToExcel();
+    widths[word] = s2.H.readCompanyMapBlock(s2.captured.text).gridWidth;
+  });
+  const wrong = Object.entries(widths).filter(([, w]) => w !== frame.visualCols);
+  chk('MEDIUM-4', 'grid width is recovered correctly whatever the edge cell says', wrong, []);
+  // the `value` requirement is still load-bearing on its own
+  chk('MEDIUM-4', 'a tail of two OTHER aux words is not read as the aux header',
+    sb.H.auxHeaderInLine(['1', 'F', 'STACK', 'DESC']), null);
+  chk('MEDIUM-4', 'VALUE is the aux header FIRST word (the stop condition premise)',
+    sb.H.auxHeadWords()[0], 'VALUE');
+  evidence.medium4 = { recoveredWidths: widths, expected: frame.visualCols };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // MUTATIONS — prove the check can go red
 // ════════════════════════════════════════════════════════════════════════════════
 const once = (find, repl) => (src) => {
@@ -678,6 +898,21 @@ const MUTATIONS = [
   // the aux header guard that keeps the GROUP BAND from being read as the aux head
   ['aux header no longer requires VALUE (the group band can be mistaken for it)',
     once("if (ids.indexOf('value') < 0) return null;", 'if (false) return null;')],
+  // ── [1d] the four fixes of this round, each put back defective ─────────────────
+  ['P0-2: an absent notch fingerprint warns instead of refusing',
+    once('  if (!notchOnGrid) {\n    return { ok: false, notchVerified: false,', '  if (false) {\n    return { ok: false, notchVerified: false,')],
+  ['P0-2: computeNotchCell hands back an off-grid coordinate instead of null',
+    once('  if (cell.r < 0 || cell.r >= visualRows || cell.c < 0 || cell.c >= visualCols) return null;',
+      '  // mutated: off-grid coordinates returned as if they were a fingerprint')],
+  ['MEDIUM-3: the paste demands D at the notch even when that cell is painted',
+    once("  if (cell && (gridData[cell.key] || '') !== '') return null;",
+      '  // mutated: a painted notch cell still claims a fingerprint')],
+  ['MEDIUM-2: the plain-text side goes back to a raw join (no Excel quoting)',
+    once('  const tsv = serializeTsv(matrix);',
+      "  const tsv = matrix.map(r => r.join('\\t')).join('\\n');")],
+  ['MEDIUM-4: the scan no longer stops at VALUE (a roster word in the grid steals the width)',
+    once("    if (columnIdByHeader(f) === 'value') break;     // VALUE = 보조표의 첫 칸. 왼쪽은 격자다.",
+      '    // mutated: no VALUE stop')],
 ];
 
 // ONE scorer, applied to the working tree and to every mutant. It returns the reasons a
@@ -711,10 +946,78 @@ function redReasons(src, label, variant) {
   const f = m.frame;
   const guards = [
     m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { title: 'bonding_map · 9Z99' })),
-    m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { notch: m.sb.H.computeNotchCell(ROT, 'front') })),
-    m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { visualRows: 3 })),
+    m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { notch: m.sb.H.notchMarkCell(ROT, 'front') })),
+    // 🔴 ONE row shorter, not three. At `visualRows: 3` the notch (row 4) falls off the
+    //    frame, so the P0-2 refusal fires and MASKS the height check — the "height check
+    //    removed" mutation then stayed green. One row shorter keeps the fingerprint on grid,
+    //    so the taller-copy check is the only thing that can refuse.
+    m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { visualRows: f.visualRows - 1 })),
   ];
   if (guards.some(g => g.ok)) why.push('a frame guard stopped refusing');
+
+  // ── [1d] the new guards, scored on every mutant too ────────────────────────────
+  // P0-2: an absent fingerprint must REFUSE. This is the cheapest possible probe of it.
+  if (m.sb.H.checkPasteAgainstFrame(m.parsed, Object.assign({}, f, { notch: null })).ok) {
+    why.push('a missing notch fingerprint no longer refuses');
+  }
+  // The aux header must begin at VALUE — a tail of two OTHER aux words is grid, not a header.
+  if (m.sb.H.auxHeaderInLine(['1', 'F', 'STACK', 'DESC']) !== null) {
+    why.push('aux header accepted without VALUE');
+  }
+  // MEDIUM-3: a PAINTED notch cell carries no fingerprint (the copy cannot draw the mark there).
+  {
+    const raw = m.sb.H.computeNotchCell(ROT, SIDE);
+    const c2 = (raw && m.sb.ctx.gridCells2D[raw.r]) ? m.sb.ctx.gridCells2D[raw.r][raw.c] : null;
+    if (c2) {
+      const save = m.sb.ctx.gridData[c2.key];
+      m.sb.ctx.gridData[c2.key] = 'D';
+      if (m.sb.H.notchMarkCell(ROT, SIDE) !== null) why.push('a painted notch cell still claims a fingerprint');
+      m.sb.ctx.gridData[c2.key] = save;
+    }
+  }
+  if (variant !== 'default') return why;      // the sandbox-building probes run once, not twice
+
+  // P0-2: in a NO-MASK frame (loadExistingMap's 📐 표준 default) the notch is off grid for
+  // every rotation, and `computeNotchCell` must say `null` rather than hand back a coordinate
+  // that reads as a fingerprint. Needs its own sandbox — the round-trip fixture is masked.
+  {
+    const s4 = buildSandbox(src, 'probe:no-mask', true, {
+      physWaferDia: inputStub(300), physChipX: inputStub(1), physChipY: inputStub(1),
+      physOffsetX: inputStub(0), physOffsetY: inputStub(0), physEdgeMargin: inputStub(3),
+    }, { currentRotation: 0, currentSide: 'front' });
+    const offGrid = [0, 90, 180, 270].filter(rot => s4.H.computeNotchCell(rot, 'front') !== null);
+    if (offGrid.length > 0) why.push(`no-mask notch not null at rotation(s) ${offGrid.join(',')}`);
+  }
+
+  // MEDIUM-4: a grid cell whose TEXT is a roster/aux word must not steal the recovered width.
+  ['BIN', 'COUNT'].forEach(word => {
+    const s2 = buildSandbox(src, `probe:${word}`, true);
+    s2.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+    buildCells(s2); paintFixture(s2);
+    const cell = s2.ctx.gridCells2D[0] ? s2.ctx.gridCells2D[0][f.visualCols - 1] : null;
+    if (cell) s2.ctx.gridData[cell.key] = word;
+    s2.H.copyGridToExcel();
+    const w = s2.H.readCompanyMapBlock(s2.captured.text).gridWidth;
+    if (w !== f.visualCols) why.push(`edge cell '${word}' shifts the recovered width (${w} != ${f.visualCols})`);
+  });
+  // MEDIUM-2: a DESC carrying a quote and a tab must survive the artifact verbatim.
+  {
+    const s3 = buildSandbox(src, 'probe:hostile', true);
+    s3.ctx.legend = [{ value: '1', color: '#888', desc: '"고온"\t조건', stack: 3, mat_1h: [], mat_mid: [], mat_top: [] }];
+    buildCells(s3); paintFixture(s3);
+    s3.H.copyGridToExcel();
+    const p3 = s3.H.readCompanyMapBlock(s3.captured.text);
+    const f3 = frameOf(s3);
+    const v3 = s3.H.checkPasteAgainstFrame(p3, f3);
+    if (!v3.ok) why.push(`hostile DESC broke the frame check: ${(v3.reason || '').slice(0, 34)}`);
+    else {
+      s3.H.applyPastedAuxRows(p3);
+      const hit = s3.recorded.updates.find(u => u.name === '1');
+      if (!hit || hit.patch.desc !== '"고온"\t조건') {
+        why.push(`hostile DESC came back as ${JSON.stringify(hit && hit.patch.desc)}`);
+      }
+    }
+  }
   return why;
 }
 

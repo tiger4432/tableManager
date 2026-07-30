@@ -55,6 +55,9 @@ const SYMBOLS = [
   // where the shipped classifier measures 27 — the exact divergence this round forbids.
   'announceFrameAdoption', 'classifyUnsavableCells', 'eachSavableCell', 'serverCellKeySet',
   'renderGridCanvas', 'getVisualCoords', 'cellFillColor', 'isProtectedFCell',
+  // [P0-1] the coordinate-cost measurement the guard is built on, and the ONE definition
+  // of "this many cells make Push refuse" (MEDIUM-1).
+  'dbCoordsByPhysKey', 'adoptedFrameOf', 'adoptionCoordinateCost', 'pushBlockingCount',
 ];
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────────────
@@ -80,6 +83,22 @@ const REF_A = {
 // B — stored dims DIVERGE from the derived value (a bbox-opened or ingestion-registered map).
 //     This is the fixture that makes the explicit dimension write load-bearing.
 const REF_B = { ...REF_A, grid_cols: 41, grid_rows: 51 };
+// C — THE PURE P0-1 SHAPE, and the reason it needs its own fixture. Identical physical spec,
+//     grid ONE larger. Measured on the shipped functions: every stored coordinate moves by one
+//     (`DB(-2,-2) -> DB(-3,-3)`) and NOT ONE CELL IS LOST — so a guard that only counted lost
+//     cells, or one that compared physical keys, would let this through in silence. A and B
+//     both lose cells, which is why they cannot score that axis.
+const REF_C = {
+  grid_cols: 46, grid_rows: 46, grid_start_x: 0, grid_start_y: 0, grid_y_invert: false,
+  rotation: 0, side: 'front',
+  phys_wafer_dia: PANEL_BEFORE.dia, phys_chip_x: PANEL_BEFORE.chipX, phys_chip_y: PANEL_BEFORE.chipY,
+  phys_offset_x: PANEL_BEFORE.offX, phys_offset_y: PANEL_BEFORE.offY,
+  phys_edge_margin: PANEL_BEFORE.margin,
+};
+// D — a dimension change that moves NOTHING (45x45 -> 47x47 with a larger diameter; measured
+//     moved=0 lost=0). The guard must ALLOW it: the judgement is coordinate movement, not
+//     "the dimensions differ". Without this fixture an over-strict guard passes unnoticed.
+const REF_D = { ...REF_C, grid_cols: 47, grid_rows: 47, phys_wafer_dia: 320 };
 
 // ── Sandbox ─────────────────────────────────────────────────────────────────────────────
 function makeInput(v) { return { value: String(v), checked: false, querySelector: () => null, appendChild() {} }; }
@@ -109,7 +128,11 @@ function buildEnv(src, opts = {}) {
     validDieRefKey: makeInput(''), validDieRefTable: makeInput(''), validDieRefList: null,
   };
   const sandbox = {
-    console: { warn() {}, info() {}, error() {}, log() {} },
+    // `debug` was MISSING, and that is not a cosmetic gap: the [1e] zero-stranded path
+    // calls console.debug, so the PRIMARY case (an empty target adopts silently) threw
+    // `console.debug is not a function`, got classified as an internal error, and the three
+    // F6/empty-target assertions have been RED — i.e. unscored — since that path landed.
+    console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
     el,
     physFrameOverride: null,
     boundingBoxCache: {},
@@ -219,7 +242,23 @@ function refCellsFor(ref) {
 async function scoreAll(src, { verbose = false } = {}) {
   failures = []; compared = 0; evidence.length = 0;
 
-  // ══ F6 ══════════════════════════════════════════════════════════════════════════════
+  // The Push payload's own coordinates: physical key -> the `x_y` pair `pushMapData` would
+  // serialize for that cell. `eachSavableCell` IS the payload's iterator and `cellObj.x/.y`
+  // ARE the values it writes, so this is the payload, not a model of it.
+  //
+  // 🔴 THIS UNIT OF COMPARISON IS THE WHOLE POINT. The previous version of this block
+  //    compared PHYSICAL KEYS and required adoption to succeed — and a physical key is
+  //    preserved by construction while the DB coordinate moves. A harness that defines
+  //    "the same die" by physical key cannot see P0-1 at all (QA, 2026-07-30).
+  const pushPayload = (S) => {
+    S.renderGridCanvas();
+    const out = {};
+    S.eachSavableCell((co) => { out[co.key] = `${co.x}_${co.y}`; });
+    return out;
+  };
+
+  // ══ F6 + [P0-1] a target that already holds cells REFUSES the adoption ══════════════
+  let movedSomewhere = 0;
   for (const [label, REF] of [['A(stored==derived)', REF_A], ['B(stored!=derived)', REF_B]]) {
     const cells = refCellsFor(REF);
     const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: cells });
@@ -239,116 +278,198 @@ async function scoreAll(src, { verbose = false } = {}) {
     const beforeReach = targetReachableKeys(S);
     const painted = [...beforeReach.keys()].filter((_, i) => i % 7 === 0);
     painted.forEach(k => { S.gridData[k] = 'A'; });
-    const paintedScreenBefore = new Map(painted.map(k => [k, beforeReach.get(k)]));
 
+    const frameBefore = { cols: el.gridCols.value, rows: el.gridRows.value,
+                          chipX: el.physChipX.value, chipY: el.physChipY.value,
+                          rot: S.currentRotation, side: S.currentSide };
+    const payloadBefore = pushPayload(S);
+
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+
+    // ── THE GUARD ────────────────────────────────────────────────────────────────────
+    eq(`F6/${label}/P0-1/refused`, 'refused', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq(`F6/${label}/P0-1/reason-names-the-coordinates`, true,
+       /저장될 좌표가 함께 움직입니다/.test(res.reason || ''), res.reason);
+    eq(`F6/${label}/P0-1/reason-offers-the-route`, true,
+       /📂 Load/.test(res.reason || ''), res.reason);
+    eq(`F6/${label}/P0-1/no-mask-was-built`, null, res.keys);
+    // nothing on the editor moved — not the dimensions, not the physical spec
+    eq(`F6/${label}/P0-1/frame-untouched`, frameBefore,
+       { cols: el.gridCols.value, rows: el.gridRows.value,
+         chipX: el.physChipX.value, chipY: el.physChipY.value,
+         rot: S.currentRotation, side: S.currentSide });
+    // ...and the Push payload is byte-identical, key -> value
+    eq(`F6/${label}/P0-1/push-payload-unchanged`, payloadBefore, pushPayload(S));
+    // INV-F6-2 still holds: every request was a READ
+    eq(`F6/${label}/no-metadata-write`, [],
+       log.requests.filter(r => /wafer_map_metadata|updates|replace/i.test(r)));
+
+    // ── NEGATIVE CONTROL: what the refusal prevented ─────────────────────────────────
+    // A fresh sandbox, the same paint set, and adoption FORCED through `adoptFrameSpec`.
+    // The damage is counted by the shipped Push iterator — NOT by `adoptionCoordinateCost`,
+    // because scoring the guard against its own arithmetic is self-comparison.
+    const { sandbox: F } = buildEnv(src, { refMeta: REF, refCells: cells });
+    painted.forEach(k => { F.gridData[k] = 'A'; });
+    const fBefore = pushPayload(F);
+    F.adoptFrameSpec(F.frameFromMeta(REF));
+    const fAfter = pushPayload(F);
+    let movedCoords = 0, droppedCoords = 0;
+    const samples = [];
+    Object.keys(fBefore).forEach(k => {
+      if (!(k in fAfter)) { droppedCoords++; return; }
+      if (fAfter[k] !== fBefore[k]) {
+        movedCoords++;
+        if (samples.length < 3) samples.push(`${k}: DB(${fBefore[k].replace('_', ',')}) -> DB(${fAfter[k].replace('_', ',')})`);
+      }
+    });
+    // Both fixtures must lose SOMETHING under forced adoption, or the guard's refusal here is
+    // vacuous. Which axis is live differs and that is worth stating: A only DROPS cells (the
+    // new frame cannot address those dies), B genuinely MOVES 60 Push coordinates while
+    // keeping the die — the silent-corruption shape P0-1 is about. The cross-fixture
+    // assertion below requires the moving axis to be live in at least one.
+    eq(`F6/${label}/P0-1/negative-control-is-live`, true, movedCoords + droppedCoords > 0,
+       'if forced adoption changed no Push coordinate at all, this fixture proves nothing');
+    movedSomewhere += movedCoords;
+    // and the contrast gate really is blind to it — the reason the guard has to exist
+    const uForced = F.classifyUnsavableCells();
+    evidence.push(`[F6/${label}] P0-1 negative control: forcing the adoption moves `
+      + `${movedCoords} Push coordinates and drops ${droppedCoords}; the contrast gate sees `
+      + `blocking=${F.pushBlockingCount(uForced)} `
+      + `(offGrid ${uForced.offGrid.length} / outsideRetained ${uForced.outsideRetained.length}); `
+      + `guard refused, payload unchanged for all ${Object.keys(payloadBefore).length} cells`
+      + (samples.length ? ` | ${samples.join(' ; ')}` : ''));
+  }
+
+  // The MOVING axis — the same die serialized at a different DB coordinate — must be live in
+  // at least one fixture, or this whole block only ever scored the dropping axis (which the
+  // Push contrast gate already caught before this round).
+  eq('F6/P0-1/moving-axis-is-live-somewhere', true, movedSomewhere > 0,
+     `total Push coordinates that forced adoption moves across both fixtures: ${movedSomewhere}`);
+
+  // ══ C — MOVED BUT NOTHING LOST: the axis A and B cannot score ═══════════════════════
+  {
+    const cells = refCellsFor(REF_C);
+    const { sandbox: S, el } = buildEnv(src, { refMeta: REF_C, refCells: cells });
+    const reach = targetReachableKeys(S);
+    [...reach.keys()].forEach(k => { S.gridData[k] = 'A'; });
+    const payloadBefore = pushPayload(S);
+    const dims = [el.gridCols.value, el.gridRows.value];
+
+    // the cost, measured by the shipped Push iterator on a FORCED adoption (independent of
+    // `adoptionCoordinateCost`, which is the thing under test)
+    const { sandbox: F } = buildEnv(src, { refMeta: REF_C, refCells: cells });
+    [...reach.keys()].forEach(k => { F.gridData[k] = 'A'; });
+    const fBefore = pushPayload(F);
+    F.adoptFrameSpec(F.frameFromMeta(REF_C));
+    const fAfter = pushPayload(F);
+    let moved = 0, dropped = 0; const sample = [];
+    Object.keys(fBefore).forEach(k => {
+      if (!(k in fAfter)) { dropped++; return; }
+      if (fAfter[k] !== fBefore[k]) {
+        moved++;
+        if (sample.length < 2) sample.push(`${k}: DB(${fBefore[k].replace('_', ',')}) -> DB(${fAfter[k].replace('_', ',')})`);
+      }
+    });
+    // The axis this fixture exists for: coordinates MOVE. (`dropped` here is a different
+    // population — cells the new PHYSICAL SPEC puts outside the wafer circle, so
+    // `eachSavableCell` stops emitting them. The guard's `lost` term is about grid
+    // REACHABILITY, and that it is 0 here is asserted below through the shipped reason text,
+    // which omits the "덮지도 못합니다" clause exactly when nothing is unreachable.)
+    eq('F6/C/P0-1/fixture-moves-coordinates', true, moved > 0,
+       `moved=${moved} (dropped-from-payload ${dropped}) — this fixture makes the MOVED axis live`);
+
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    eq('F6/C/P0-1/refused', 'refused', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq('F6/C/P0-1/reason-names-the-coordinates', true,
+       /저장될 좌표가 함께 움직입니다/.test(res.reason || ''), res.reason);
+    eq('F6/C/P0-1/reason-does-not-claim-cells-are-unreachable', false,
+       /덮지도 못합니다/.test(res.reason || ''), 'nothing is lost here — the reason must not say so');
+    eq('F6/C/P0-1/frame-untouched', dims, [el.gridCols.value, el.gridRows.value]);
+    eq('F6/C/P0-1/push-payload-unchanged', payloadBefore, pushPayload(S));
+    evidence.push(`[F6/C] 45x45 -> 46x46, identical physical spec: forcing it moves ${moved} `
+      + `Push coordinates and loses ${dropped}${sample.length ? ` | ${sample.join(' ; ')}` : ''}`);
+  }
+
+  // ══ D — a dimension change that MOVES NOTHING must still be allowed ═════════════════
+  // The guard judges coordinate movement, not "the dimensions differ". An over-strict guard
+  // would take the feature away from a case that is provably safe.
+  {
+    const cells = refCellsFor(REF_D);
+    const { sandbox: S, el } = buildEnv(src, { refMeta: REF_D, refCells: cells });
+    const reach = targetReachableKeys(S);
+    [...reach.keys()].forEach(k => { S.gridData[k] = 'A'; });
+    const payloadBefore = pushPayload(S);
+
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    eq('F6/D/dimensions-really-differ', true,
+       String(el.gridCols.value) === String(REF_D.grid_cols) && REF_D.grid_cols !== PANEL_BEFORE.cols,
+       'the adoption must actually have changed the dimensions, or this case is vacuous');
+    eq('F6/D/allowed', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+    // ...and the reason it is safe, stated as a measurement: no cell that is still in the
+    // payload changed its coordinate. (Membership of the payload DOES change — the adopted
+    // diameter moves the circle mask, which is the `outsideRetained` population the
+    // announcement already reports. The guard is about coordinate IDENTITY, not membership.)
+    const after = pushPayload(S);
+    const shared = Object.keys(payloadBefore).filter(k => k in after);
+    const movedAnyway = shared.filter(k => after[k] !== payloadBefore[k]);
+    eq('F6/D/no-shared-cell-changed-its-coordinate', [], movedAnyway.slice(0, 8));
+    eq('F6/D/the-shared-population-is-not-empty', true, shared.length > 0);
+    evidence.push(`[F6/D] 45x45 -> ${REF_D.grid_cols}x${REF_D.grid_rows} (dia 320): adopted; of `
+      + `${Object.keys(payloadBefore).length} payload cells ${shared.length} are still savable and `
+      + `NONE moved — that is why a differing dimension is allowed here`);
+  }
+
+  // ══ THE PRIMARY CASE — an EMPTY target still adopts, with zero friction ═════════════
+  //
+  // This is the user's own scenario ("기존 프레임이 없으면 어떻게 됨?"): a map with no stored
+  // cells has no coordinate to move, so the guard does not fire and the feature is intact.
+  // Every assertion about the ADOPTION ITSELF lives here now — it is the only path on which
+  // adoption still happens.
+  //
+  // ⚠️ These three assertions used to be RED for a reason that had nothing to do with the
+  //    code: the sandbox's console stub had no `debug`, so the [1e] zero-stranded branch threw
+  //    and was reported as an internal error. So "the primary case adopts" was UNVERIFIED at
+  //    HEAD. `debug` is stubbed now, and the expectation is corrected to the shipped [1e]
+  //    contract: zero stranded cells produce NO toast at all (a console.debug line instead).
+  for (const [label, REF] of [['A', REF_A], ['B', REF_B]]) {
+    const cells = refCellsFor(REF);
+    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: cells });
     const orientBefore = { rot: S.currentRotation, side: S.currentSide,
                            sx: el.gridStartX.value, sy: el.gridStartY.value, inv: el.gridYInvert.checked };
+    const wrongFrame = S.currentFrame();
+    const beforeReach = targetReachableKeys(S);
 
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
 
     // INV-F6-1 — the designation resolves instead of refusing on dimensions
-    eq(`F6/${label}/basis`, 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
-    eq(`F6/${label}/grid-opened-at-reference-size`,
-       [REF.grid_cols, REF.grid_rows],
+    eq(`F6/empty-${label}/basis`, 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq(`F6/empty-${label}/grid-opened-at-reference-size`, [REF.grid_cols, REF.grid_rows],
        [parseInt(el.gridCols.value, 10), parseInt(el.gridRows.value, 10)]);
-
     // INV-F6-4 — rotation/side (and origin) are NOT adopted; the transform handles them
-    eq(`F6/${label}/orientation-untouched`, orientBefore,
+    eq(`F6/empty-${label}/orientation-untouched`, orientBefore,
        { rot: S.currentRotation, side: S.currentSide,
          sx: el.gridStartX.value, sy: el.gridStartY.value, inv: el.gridYInvert.checked });
-
     // the physical spec IS adopted (that is what makes the index spaces agree)
-    eq(`F6/${label}/phys-adopted`,
+    eq(`F6/empty-${label}/phys-adopted`,
        [REF.phys_chip_x, REF.phys_chip_y, REF.phys_offset_x, REF.phys_offset_y],
        [parseFloat(el.physChipX.value), parseFloat(el.physChipY.value),
         parseFloat(el.physOffsetX.value), parseFloat(el.physOffsetY.value)]);
+    eq(`F6/empty-${label}/no-metadata-write`, [],
+       log.requests.filter(r => /wafer_map_metadata|updates|replace/i.test(r)));
 
-    // INV-F6-2 — no write left this path. Every request the resolution made is a READ.
-    const writes = log.requests.filter(r => /wafer_map_metadata|updates|replace/i.test(r));
-    eq(`F6/${label}/no-metadata-write`, [], writes);
-
-    // KEY->VALUE: every mask key must be reachable by the target renderer after adoption,
-    // and must NOT have been before. Two different functions, two directions — not a round trip.
+    // KEY->VALUE: every mask key must be reachable by the target renderer after adoption.
     const afterReach = targetReachableKeys(S);
     const unreachableAfter = [...res.keys].filter(k => !afterReach.has(k));
-    eq(`F6/${label}/mask-fully-reachable-after`, 0, unreachableAfter.length,
+    eq(`F6/empty-${label}/mask-fully-reachable-after`, 0, unreachableAfter.length,
        unreachableAfter.slice(0, 6).join(' '));
-
-    // THE MEASURE THIS DOMAIN ACTUALLY NEEDS: if the target had kept its own frame, which
-    // SCREEN CELLS would the mask have marked valid? Physical keys are canvas-index relative,
-    // so the same key names a different die in a different-sized grid — the mask would land
-    // silently on the wrong dies rather than fail. This counts those dies.
+    // and adoption is not a no-op: keeping the old frame would have marked OTHER dies valid
     const screenBefore = new Set([...res.keys].map(k => beforeReach.get(k)).filter(Boolean));
     const screenAfter = new Set([...res.keys].map(k => afterReach.get(k)).filter(Boolean));
     const wrongDies = [...screenAfter].filter(s => !screenBefore.has(s)).length
                     + [...screenBefore].filter(s => !screenAfter.has(s)).length;
-    eq(`F6/${label}/adoption-is-not-a-no-op`, true, wrongDies > 0,
+    eq(`F6/empty-${label}/adoption-is-not-a-no-op`, true, wrongDies > 0,
        `keeping the old frame would have marked ${wrongDies} different screen dies valid`);
-    evidence.push(`[F6/${label}] mask ${res.keys.size} keys — unreachable after adoption `
-      + `${unreachableAfter.length}; keeping the ${wrongWxH(wrongFrame)} frame would have marked `
-      + `${wrongDies} different screen dies valid (silently)`);
-
-    // Trap 3 — painted cells keep their DIE (physical key), and we report where each moved.
-    const keysUnchanged = painted.every(k => S.gridData[k] === 'A');
-    eq(`F6/${label}/painted-keys-are-untouched`, true, keysUnchanged);
-    let moved = 0; const samples = [];
-    for (const k of painted) {
-      const now = afterReach.get(k);
-      if (now !== undefined && now !== paintedScreenBefore.get(k)) {
-        moved++;
-        if (samples.length < 4) samples.push(`${k}: screen ${paintedScreenBefore.get(k)} -> ${now}`);
-      }
-    }
-
-    // ── THE COST OF ADOPTION, AND WHO SAYS IT ────────────────────────────────────────
-    // Adoption can push painted cells outside the reference map's grid / valid dies. They
-    // are NOT deleted — pushMapData's contrast gate refuses. But the operator learns that
-    // at Push, far from the designation that caused it, unless adoption says so. Counted
-    // by the SHIPPED classifier, the same one the Push gate uses: a second count here
-    // would be the very divergence this asserts against.
-    // 🔴 THE EXPECTATION IS INDEPENDENT, NOT THE CLASSIFIER'S OWN ANSWER. Comparing the
-    //    toast against a fresh classifyUnsavableCells() call is SELF-COMPARISON: if the
-    //    announcement counted a stale gridCells2D, so would the check, and both would agree
-    //    on the same wrong number (measured: that mutation stayed green). After adoption the
-    //    basis is 'ref', so `inside` <=> the physical key is in the mask, and every mask key
-    //    is reachable (asserted above). So savable painted cells = |painted ∩ mask|, derived
-    //    from res.keys and the paint set — neither of which touches gridCells2D.
-    const savableExpected = painted.filter(k => res.keys.has(k)).length;
-    const strandedExpected = painted.length - savableExpected;
-    const u = S.classifyUnsavableCells();
-    const stranded = u.offGrid.length + u.outsideRetained.length + u.outsideStray.length;
-    evidence.push(`[F6/${label}] painted ${painted.length} cells — same die (physical key) for all; `
-      + `screen position moved for ${moved}; unsavable after adoption ${stranded} `
-      + `(offGrid ${u.offGrid.length} / outsideRetained ${u.outsideRetained.length} / stray ${u.outsideStray.length}); `
-      + `independent expectation ${strandedExpected}`
-      + (samples.length ? ` | ${samples.join(' ; ')}` : ''));
-
-    // The fixture must actually strand cells, or the warning axis is unscored.
-    eq(`F6/${label}/stranding-axis-is-live`, true, strandedExpected > 0);
-    // The shipped classifier must agree with the independent count — this is what catches an
-    // announcement that measured the wrong frame or the wrong mask.
-    eq(`F6/${label}/classifier-matches-independent-count`, strandedExpected, stranded);
-    // ...and the Push payload must be the complement, by the same arithmetic.
-    let savableSeen = 0;
-    S.eachSavableCell(() => { savableSeen++; });
-    eq(`F6/${label}/push-payload-is-the-complement`, savableExpected, savableSeen);
-
-    const adoptToast = log.toasts.filter(t => /격자를 참조 맵 규격으로 열었습니다/.test(t.msg));
-    eq(`F6/${label}/announced-exactly-once`, 1, adoptToast.length);
-    // It must be a WARNING, not the reassuring info line...
-    eq(`F6/${label}/stranding-is-a-warning`, 'warning', adoptToast[0] && adoptToast[0].kind);
-    // ...and it must NAME THE INDEPENDENTLY EXPECTED NUMBER.
-    eq(`F6/${label}/stranding-count-is-named`, true,
-       new RegExp(`칠해진 셀 ${strandedExpected}개`).test(adoptToast[0] ? adoptToast[0].msg : ''),
-       `expected ${strandedExpected}; toast='${adoptToast[0] ? adoptToast[0].msg : '(none)'}'`);
-    // ...and it must NOT still promise that Push will record these cells.
-    eq(`F6/${label}/no-false-save-promise`, false,
-       /⚡ Push가 이 규격과 셀 좌표를 함께 기록합니다/.test(adoptToast[0] ? adoptToast[0].msg : ''));
-    eq(`F6/${label}/says-push-will-refuse`, true,
-       /⚡ Push가 거절합니다/.test(adoptToast[0] ? adoptToast[0].msg : ''));
-
-    // A: mask keys must be identical whichever way we get there — the reference's projection
-    //    and the target's renderer must agree cell-for-cell (key -> screen cell -> key).
+    // key -> screen cell -> key must close
     let roundTripMismatch = 0;
     const cols = parseInt(el.gridCols.value, 10), rows = parseInt(el.gridRows.value, 10);
     for (const k of res.keys) {
@@ -356,38 +477,94 @@ async function scoreAll(src, { verbose = false } = {}) {
       const p = S.getPhysicalCoords(c, r, cols, rows, S.currentRotation, S.currentSide);
       if (`${p.x}_${p.y}` !== k) roundTripMismatch++;
     }
-    eq(`F6/${label}/key-to-cell-to-key`, 0, roundTripMismatch);
-
-    // isValidDieAt must now answer from the mask, not the circle
+    eq(`F6/empty-${label}/key-to-cell-to-key`, 0, roundTripMismatch);
+    // the mask, not the circle, governs
     const someMask = [...res.keys][0].split('_').map(Number);
-    eq(`F6/${label}/mask-governs-inside`, true,
+    eq(`F6/empty-${label}/mask-governs-inside`, true,
        S.isValidDieAt(someMask[0], someMask[1], false, res), 'a masked die stays valid even off-circle');
-    eq(`F6/${label}/mask-excludes-unlisted`, false,
+    eq(`F6/empty-${label}/mask-excludes-unlisted`, false,
        S.isValidDieAt(9999, 9999, true, res), 'a die outside the mask is invalid even inside the circle');
 
-    // the resize was announced (no new panel/modal — the existing toast channel)
-    eq(`F6/${label}/resize-announced`, true,
-       log.toasts.some(t => /격자를 참조 맵 규격으로 열었습니다/.test(t.msg)));
+    // nothing stranded, and therefore [1e]: no toast at all
+    const u = S.classifyUnsavableCells();
+    eq(`F6/empty-${label}/nothing-stranded`, [0, 0],
+       [S.pushBlockingCount(u), u.outsideStray.length]);
+    eq(`F6/empty-${label}/happy-path-is-silent`, [],
+       log.toasts.filter(x => /격자를 참조 맵 규격으로 열었습니다/.test(x.msg)).map(x => x.kind));
+    evidence.push(`[F6/empty-${label}] adopted ${wrongWxH(wrongFrame)} -> `
+      + `${REF.grid_cols}x${REF.grid_rows}; mask ${res.keys.size} keys, all reachable; `
+      + `${wrongDies} dies would have been marked wrong under the old frame; no toast`);
   }
 
-  // The PRIMARY case from the user's scenario: a map with no painted cells (nothing to
-  // strand) must adopt with ZERO friction — an info line, no warning, no cry-wolf number.
-  // If this ever goes 'warning', the warning above stops meaning anything.
+  // ══ [MEDIUM-1] ONE quantity for "this many cells make Push refuse" ══════════════════
+  //
+  // `announceFrameAdoption` used to sum offGrid + outsideRetained + outsideStray and then say
+  // "Push가 거절합니다" about that total, while `pushMapData` refuses on offGrid +
+  // outsideRetained. Measured: the toast said 4 and the Push alert said 2 for one grid, and
+  // the stray cells went to a DIFFERENT dialog with different guidance.
+  //
+  // 🔴 AND THE STRAY AXIS IS LIVE HERE. Everywhere else in this harness `serverCellKeys` is
+  //    `null`, which forces `stray = 0` by construction — that is exactly why the old
+  //    `classifier-matches-independent-count` assertion could never tell the two sums apart.
+  //    This case declares a served set, so cells outside the circle that the server never
+  //    sent classify as stray and the two sums genuinely differ.
   {
-    const cells = refCellsFor(REF_B);
-    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_B, refCells: cells });
-    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
-    eq('F6/empty-target/basis', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
-    eq('F6/empty-target/grid-opened-at-reference-size', [REF_B.grid_cols, REF_B.grid_rows],
-       [parseInt(el.gridCols.value, 10), parseInt(el.gridRows.value, 10)]);
+    const { sandbox: S, log } = buildEnv(src, { refMeta: REF_B, refCells: refCellsFor(REF_B) });
+    S.renderGridCanvas();
+    const inside = [], outside = [];
+    Object.keys(S.gridCells2D).forEach(r => Object.keys(S.gridCells2D[r]).forEach(c => {
+      const co = S.gridCells2D[r][c];
+      if (!co) return;
+      (co.inside ? inside : outside).push(co.key);
+    }));
+    // three cells the server DID send (one of them off-circle -> outsideRetained) and two
+    // off-circle cells it never sent (-> outsideStray). Both sums are then non-zero AND unequal.
+    const served = new Set([inside[0], inside[1], outside[0]]);
+    [inside[0], inside[1], outside[0], outside[1], outside[2]].forEach(k => { S.gridData[k] = 'A'; });
+    S.serverCellKeys = { table: 'dt_map', mapKey: 'HOME_1', keys: served };
+    S.loadedIdentity = { table: 'dt_map', mapKey: 'HOME_1' };
+    S.selectedTable = 'dt_map';
+
+    // 🔴 THE EXPECTATIONS ARE DERIVED FROM THE FIXTURE, NOT FROM `pushBlockingCount`.
+    //    Asserting the toast against `pushBlockingCount(u)` is self-comparison: fold stray
+    //    into that function and both sides move together (measured — that mutation stayed
+    //    green). The fixture states its own truth: of the five painted cells, two are inside
+    //    (savable), one is outside AND proven served (-> outsideRetained -> blocks), and two
+    //    are outside AND proven never served (-> stray -> does NOT block).
+    const EXPECT_BLOCKING = 1;
+    const EXPECT_STRAY = 2;
     const u = S.classifyUnsavableCells();
-    eq('F6/empty-target/nothing-stranded', 0,
-       u.offGrid.length + u.outsideRetained.length + u.outsideStray.length);
-    const t = log.toasts.filter(x => /격자를 참조 맵 규격으로 열었습니다/.test(x.msg));
-    eq('F6/empty-target/announced-once', 1, t.length);
-    eq('F6/empty-target/is-info-not-warning', 'info', t[0] && t[0].kind);
-    eq('F6/empty-target/no-stranding-number', false, /칠해진 셀/.test(t[0] ? t[0].msg : ''));
-    evidence.push('[F6/empty-target] no painted cells -> info toast, no warning, nothing stranded');
+    eq('MEDIUM-1/classification-matches-the-fixture',
+       { offGrid: 0, retained: EXPECT_BLOCKING, stray: EXPECT_STRAY },
+       { offGrid: u.offGrid.length, retained: u.outsideRetained.length, stray: u.outsideStray.length });
+    eq('MEDIUM-1/blocking-count-excludes-stray', EXPECT_BLOCKING, S.pushBlockingCount(u));
+    const blocking = EXPECT_BLOCKING;
+    eq('MEDIUM-1/stray-axis-is-live', true, EXPECT_STRAY > 0,
+       'everywhere else in this harness serverCellKeys is null, which forces stray to 0');
+
+    log.toasts.length = 0;
+    // 🔴 The domain is WIPED on purpose. `announceFrameAdoption` promises to render before it
+    //    counts (its own comment: the order is part of the rule). With `gridCells2D` empty, an
+    //    announcement that skips that render classifies every painted cell as offGrid and the
+    //    numbers below come out 5/0 instead of 1/2 — so the render is scored independently
+    //    rather than by comparing the toast to a second call of the same classifier.
+    S.gridCells2D = {};
+    S.announceFrameAdoption({ before: '45x45', after: '41x51' }, { table: 'ref_tbl', mapKey: 'TPL_1' });
+    const t = log.toasts.find(x => /격자를 참조 맵 규격으로 열었습니다/.test(x.msg));
+    eq('MEDIUM-1/announced', true, !!t);
+    // the refusal claim names `blocking`, and ONLY blocking
+    eq('MEDIUM-1/refusal-claim-names-blocking', true,
+       new RegExp(`칠해진 셀 ${blocking}개`).test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('MEDIUM-1/refusal-claim-does-not-name-the-total', false,
+       new RegExp(`칠해진 셀 ${EXPECT_BLOCKING + EXPECT_STRAY}개`).test(t ? t.msg : ''));
+    // stray gets its own sentence, and it does NOT claim a refusal
+    eq('MEDIUM-1/stray-has-its-own-sentence', true,
+       new RegExp(`추가로 ${EXPECT_STRAY}개`).test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('MEDIUM-1/stray-sentence-says-it-does-not-block', true,
+       /저장을 막지는/.test(t ? t.msg : ''));
+    evidence.push(`[MEDIUM-1] blocking=${blocking} stray=${u.outsideStray.length} `
+      + `(offGrid ${u.offGrid.length} / outsideRetained ${u.outsideRetained.length}); `
+      + `toast names ${blocking} as the refusal cause and ${u.outsideStray.length} separately`);
   }
 
   // INV-F6-3 — a map with NO valid_die_ref behaves exactly as before: nothing is adopted.
@@ -574,14 +751,33 @@ const MUTATIONS = [
    s => s.replace('      adoptFrameSpec(refFrame);', '      // mutated: no adoption')],
   ['M5 the stale-generation guard before adoption is removed',
    s => s.replace('      if (stale()) return validDie;\n      const before =', '      const before =')],
-  ['M6 the stranded-cell warning is removed (silent adoption, false save promise kept)',
-   s => s.replace(`  if (stranded === 0) {`, '  if (true) {')],
-  ['M7 stranded cells counted by a partial predicate instead of the shipped classifier',
-   s => s.replace('  const stranded = u.offGrid.length + u.outsideRetained.length + u.outsideStray.length;\n  const head =',
-                  '  const stranded = u.offGrid.length;\n  const head =')],
-  ['M8 the announcement runs BEFORE the mask lands (counts against the old valid-die basis)',
-   s => s.replace('    const out = set(\'ref\', keys, \'\', ref);\n    // 마스크가 앉은 **뒤에야**',
-                  '    if (adopted && !stale()) announceFrameAdoption(adopted, ref);\n    const out = set(\'ref\', keys, \'\', ref);\n    // 마스크가 앉은 **뒤에야**')],
+  ['M6 the stranded-cell warning is removed (silent adoption)',
+   s => s.replace('  if (blocking === 0 && stray === 0) {', '  if (true) {')],
+  ['M7 the adoption announcement re-derives the blocking sum instead of sharing it',
+   s => s.replace('  const blocking = pushBlockingCount(u);', '  const blocking = u.offGrid.length;')],
+  ['M7b pushBlockingCount folds stray in (the measured 4-vs-2 divergence, put back)',
+   s => s.replace('  return u.offGrid.length + u.outsideRetained.length;\n}',
+                  '  return u.offGrid.length + u.outsideRetained.length + u.outsideStray.length;\n}')],
+  // ── [P0-1] the guard, put back defective four different ways ─────────────────────────
+  ['P1a the guard is removed entirely (adoption proceeds over stored cells)',
+   s => s.replace('      if (cost.moved > 0 || cost.lost > 0) {', '      if (false) {')],
+  ['P1b the guard looks only at dropped cells, not moved ones (the silent shift survives)',
+   s => s.replace('      if (cost.moved > 0 || cost.lost > 0) {', '      if (cost.lost > 0) {')],
+  ['P1c the guard refuses on any dimension change (an EMPTY map loses the feature)',
+   s => s.replace('      const cost = adoptionCoordinateCost(refFrame);',
+                  '      const cost = { moved: 1, lost: 0, kept: 0, sample: null };')],
+  ['P1d the cost is measured in PHYSICAL KEYS — the unit that cannot see this defect',
+   s => s.replace('        out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);',
+                  '        out.set(`${p.x}_${p.y}`, `${p.x}_${p.y}`);')],
+  // ⚠️ M8 ("the announcement runs BEFORE the mask lands") is DELETED, not silently dropped.
+  //    After the P0-1 guard, every path that both adopts AND strands cells refuses instead, so
+  //    the announcement is only reachable on the empty-target path where nothing is stranded
+  //    either way — the ordering has no observable consequence left to score, and a mutation
+  //    that stays green is a lie about coverage. The ordering RULE still stands in the source
+  //    comment; what changed is that no fixture can put it under load. Recorded in the round
+  //    report so it is a known gap, not a forgotten one.
+  //    (M9 below is still scored: the MEDIUM-1 case wipes `gridCells2D` before calling the
+  //     announcement, so an announcement that skips its own render counts an empty domain.)
   ['M9 announceFrameAdoption skips its synchronous render (counts a stale gridCells2D)',
    s => s.replace('function announceFrameAdoption(adopted, ref) {\n  renderGridCanvas();',
                   'function announceFrameAdoption(adopted, ref) {')],

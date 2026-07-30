@@ -82,7 +82,11 @@ const S = {
   keyColumns: new Map(),     // table -> { ok, keyColumns, columnTypes }  ([7b] 선언 타입 동반)
   matSeq: 0,
   flash: new Set(),          // 1회성 하이라이트 대상 자재 ID
-  navBusy: false,
+  // 🔴 [1d④] 진행 중인 자재 맵 열기의 **대상 id**를 담는다(없으면 null). 예전에는
+  //    boolean이었고, 그래서 잠금이 걸린 채로 남으면 화면이 말할 수 있는 것이 없었다 —
+  //    거절의 사유를 담지 않는 잠금은 거절을 조용하게 만든다. 값을 id로 바꾸는 것이
+  //    사유를 붙이는 가장 짧은 방법이다(새 상태를 하나 더 만들지 않는다).
+  navBusy: null,
 };
 
 const elp = {};
@@ -317,14 +321,44 @@ function rowOf(value) {
 //    `updateLegendRow` is where `vocab` is cleared and the debounced save is scheduled.
 //    `map_editor.reconcileVocabClaims` is the second net under this one - it re-derives
 //    the claim from the row's own signature - but a bypass would still skip persistence.
+// 🔴 [1d①] STACK도 풀을 만들고 없앤다 — 단, **마커 경계를 넘을 때만.**
+//
+// ②의 행 집합은 풀 목록이고, 한 값이 그 목록에 들어가는지는 `materialRollupRows`의
+// **단 하나의 per-row 술어**가 정한다: `stackState(row).state === 'marker'`면 그 행은
+// 통째로 빠진다(doe_bands.js). 그래서 "이 편집이 풀을 만들거나 없애는가"는 그 술어가
+// 뒤집히는가와 **정확히 같은 질문**이고, 롤업을 다시 돌려 비교할 필요가 없다 — 같은
+// 판정기를 ① 편집 전 행 ② 패치된 STACK 에 한 번씩 적용하면 끝이다(O(1) 두 번).
+//
+// 🔴 STACK 3 → 4는 어떤 풀도 만들지 않으므로 **아무것도 발동시키지 않는다.** 조건을
+//    `patch.stack !== undefined`로 두면 타건마다 조회가 나간다 — 타건 비용을 지금 측정
+//    하고 있는 프로젝트에서 자릿수 하나당 요청 하나는 실제 퇴행이다.
+// 🔴 빈칸·읽을 수 없는 STACK도 마커가 **아니다.** 그 행들은 소요 0으로 롤업에 이미
+//    들어가 있으므로(zoneLayers→null→share 0) 풀이 이미 존재한다 — blank → 3 은 경계를
+//    넘지 않고, 넘지 않는 것이 맞다.
+// 대칭으로 판정하는 이유: 방향을 따지면 "어느 방향이 안전한가"라는 두 번째 규칙이 생긴다.
+// 마커로 **들어가는** 방향은 풀이 사라지는 쪽이라 새 요청이 0건이고(캐시된 풀만 남는다)
+// 비용이 `renderMaterialPane` 한 번이므로, 경계 자체를 술어로 두는 편이 더 싸고 더 짧다.
+function isMarkerStack(row) {
+  return stackState(row || {}).state === 'marker';
+}
+
+function stackCrossesMarkerBoundary(wasMarker, patch) {
+  if (!patch || patch.stack === undefined) return false;
+  return isMarkerStack({ stack: patch.stack }) !== wasMarker;
+}
+
 function commitRow(value, patch) {
+  // 쓰기 **전에** 잡는다. `getLegend()`는 복사본을 주고 `renderLegendTable`이 곧
+  // `notifyLegendChanged`로 미러를 갈아치우므로, 커밋 뒤에는 이전 STACK이 남아 있지 않다.
+  const wasMarker = isMarkerStack(rowOf(value));
   const r = controller.updateLegendRow(value, patch);
   if (!r || !r.ok) { showToast((r && r.error) || 'DOE 저장 실패', 'warning'); return false; }
   // [ⓖ] 자재를 쳐 넣으면 ②에 그 풀의 행은 즉시 생기지만(notifyLegendChanged가 그린다) 가용·맵
   // 유무는 **조회된 적이 없어** 미상·? 로 남아 있었다. 조회는 맵 전환 때만 돌았기 때문이다.
   // 새 연산을 만들지 않는다 — `refreshMaterials`가 이미 그 일이고, force가 아니면 캐시된 풀은
   // 건너뛰므로 실제로 나가는 요청은 방금 생긴 풀 뿐이며 토스트도 뜨지 않는다.
-  if (patch && ZONES.some(z => patch[z] !== undefined)) kickMaterialRefresh();
+  if ((patch && ZONES.some(z => patch[z] !== undefined))
+      || stackCrossesMarkerBoundary(wasMarker, patch)) kickMaterialRefresh();
   return true;
 }
 
@@ -913,7 +947,9 @@ function renderDoeList() {
     const val = String(row.value);
     const blocks = byValue.get(val) || [];
     const legacy = Array.isArray(row.legacyBands) && row.legacyBands.length > 0;
-    const zoneBad = new Set(blocks.map(b => b.zone).filter(Boolean));
+    // (`zoneBad` — 규칙이 지목한 zone 집합 — 은 여기서 계산만 되고 아무도 읽지 않았다.
+    //  칸의 danger 바탕은 `zoneCellHtml`이 `midZone`으로 스스로 판정한다(ⓑ). 살아 있는
+    //  것처럼 보이는 죽은 계산은 다음 사람이 "이미 배선돼 있다"고 읽게 만든다.)
     const l2 = planMode ? `<div class="tp-v-l2">${
       ZONES.map(z => zoneCellHtml(row, z)).join('')
     }</div>` : '';
@@ -1394,11 +1430,22 @@ function onPlanCopy(e) {
 
 // ── 자재 맵 왕복 ────────────────────────────────────────
 async function openMaterial(id) {
-  if (S.navBusy) return;
+  // 🔴 [1d④] 아무것도 하지 않는 클릭은 **아무것도 하지 않았다고 말한다.**
+  //    이 잠금은 예전에 조용히 `return`했다. 그래서 이 패널의 유일한 이동 허브가 통째로
+  //    죽은 채로 사유를 한 글자도 내지 않았고, 사용자에게는 "행이 눌리지 않는다"로만
+  //    보였다 — 이 프로젝트가 매 라운드 없애고 있는 결함 부류 그 자체다.
+  //    잠금이 남는 원인은 모달만이 아니다(멈춘 fetch도 같은 결과다). 그래서 모달 쪽을
+  //    고치는 것과 **별도로** 여기서 사유를 말한다: 원인이 무엇이든 이 경로는 침묵하지
+  //    않는다.
+  if (S.navBusy !== null) {
+    showToast(`자재 '${S.navBusy}' 맵을 여는 중입니다 — 그 열기가 끝나거나 취소된 뒤에 다시 눌러 주십시오.`
+      + ' 좌표계 확인 창이 떠 있으면 먼저 답해 주십시오 (Esc = 취소도 답입니다).', 'warning');
+    return;
+  }
   const st = stageOfTable(S.ctx.table);
   const table = sourceTableOfStage(st);
   if (!table) { showToast('자재 맵 테이블을 알 수 없습니다 (stage 선언 확인 필요).', 'warning'); return; }
-  S.navBusy = true;
+  S.navBusy = String(id);
   try {
     let metaValues = await materialMetaValues(table, id);
     if (Object.keys(metaValues).length === 0) {
@@ -1425,7 +1472,7 @@ async function openMaterial(id) {
     // toasted the cancellation; an extra "열기 실패" here would call it an error.
     if (!r || (!r.ok && !r.cancelled)) showToast(`자재 맵 열기 실패: ${(r && r.error) || '알 수 없음'}`, 'error');
   } finally {
-    S.navBusy = false;
+    S.navBusy = null;
   }
 }
 

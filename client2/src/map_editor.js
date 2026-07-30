@@ -21,7 +21,10 @@ import {
 // THE ONLY TSV reader in this codebase (client2/src/tsv.js). 엑셀의 인용 규칙(탭·줄바꿈을 품은
 // 셀)을 아는 유일한 구현이고, 그리드 화면과 DOE 패널이 이미 이것을 쓴다. 여기서 `split('\t')`을
 // 손으로 쓰면 이 저장소에 **세 번째** 클립보드 파서가 생긴다.
-import { parseTsv } from './tsv.js';
+// [MEDIUM-2] `serializeTsv`도 여기서 온다. 복사가 `join('\t')`으로 평문을 만들고 붙여넣기가
+// `parseTsv`로 읽으면 **쓰는 규칙과 읽는 규칙이 다르다** — 그 비대칭이 DESC의 인용부호 하나로
+// 왕복을 깨뜨렸다(아래 copyGridToExcel의 측정 주석). 계약은 `parseTsv(serializeTsv(g)) === g`다.
+import { parseTsv, serializeTsv } from './tsv.js';
 // [V1 effort instrument] The ONE collector (client2/src/effort_meter.js, owned by Lead PM).
 // This file counts NOTHING on its own: no local counters, no second session id, no copy of
 // the 1/3/5 weights (those live server-side and are applied at query time). Keystrokes and
@@ -938,6 +941,7 @@ function initDOMElements() {
   if (window.ResizeObserver && el.mapWorkspace) {
     new ResizeObserver(() => fitGridToWorkspace()).observe(el.mapWorkspace);
   }
+  initPlanSidebarResizer();
   updateSideIndicator();
 
   // Bind Events
@@ -1203,6 +1207,97 @@ function getGridCellFromMouseEvent(e) {
   }
 
   return getGridCellObject(c, r, visualCols, visualRows, physConfig, rect.width, rect.height);
+}
+
+// ── [1dⓗ] 「2. Legend & DOE」 폭 조절 + 폭 기억 ────────────────────────────────
+//
+// 🔴 새 스플리터를 쓰지 않는다. 이 프로젝트의 스플리터는 두 조각으로 이미 존재하고
+//    (`.split-resizer` / `body.resizing-active` — style.css), 그리드 화면의
+//    `#main-split-resizer`가 같은 두 조각을 쓴다. 여기서는 그 **표현 계층을 그대로**
+//    쓰고, 드래그 산술만 이 화면의 것으로 붙인다.
+//    main.js의 드래그 블록 자체를 호출하지 못하는 이유를 밝혀 둔다: 그것은
+//    `initEventListeners` 안의 클로저이고 `#main-split-resizer`·`state.gridApi`(AG-Grid
+//    컬럼 재맞춤)에 묶여 있으며 export되지 않는다. 그 파일은 client-pm 소관이라 이 라운드에
+//    추출 리팩터를 넣지 않았다 — 공용 함수로 승격하는 것은 별건으로 제안한다.
+//
+// 🔴 폭의 저장 위치는 CSS 변수 하나(`--plan-sidebar-w`)다. 요소의 인라인 width로 쓰면
+//    transfer_plan.css가 선언한 "폭의 유일한 출처"가 깨지고, 그 변수를 읽는 다른 규칙이
+//    생기는 순간 화면과 계산이 갈린다.
+// 🔴 하한·상한을 이 파일에 숫자로 적지 않는다. 380/760은 CSS의 min-width/max-width가
+//    소유하고(그 근거 — DESC 85px 가독 하한 — 도 거기 적혀 있다), 여기서는 계산된 값을
+//    읽어 쓴다. 같은 수를 두 곳에서 적으면 반드시 갈라진다.
+const PLAN_SIDEBAR_W_KEY = 'mapPlanSidebarW';
+
+function planSidebarBounds(aside) {
+  const cs = getComputedStyle(aside);
+  const lo = parseFloat(cs.minWidth);
+  const hi = parseFloat(cs.maxWidth);
+  return {
+    lo: Number.isFinite(lo) ? lo : 0,
+    hi: Number.isFinite(hi) ? hi : Infinity,
+  };
+}
+
+function applyPlanSidebarWidth(aside, px) {
+  const { lo, hi } = planSidebarBounds(aside);
+  const w = Math.round(Math.min(hi, Math.max(lo, px)));
+  document.documentElement.style.setProperty('--plan-sidebar-w', `${w}px`);
+  return w;
+}
+
+function initPlanSidebarResizer() {
+  const aside = document.getElementById('plan-sidebar');
+  const grip = document.getElementById('plan-split-resizer');
+  if (!aside || !grip) return;
+
+  // 복원. 저장된 값도 **지금의** 경계로 다시 자른다 — 상한이 줄어든 뒤에도 옛 값이
+  // 그대로 살아나 패널이 화면을 밀어내는 일이 없어야 한다.
+  try {
+    const saved = parseFloat(localStorage.getItem(PLAN_SIDEBAR_W_KEY) || '');
+    if (Number.isFinite(saved) && saved > 0) applyPlanSidebarWidth(aside, saved);
+  } catch (e) { /* 저장소를 못 읽으면 스타일시트 기본 폭으로 뜬다 */ }
+
+  let dragging = false;
+  // 기억할 숫자는 `applyPlanSidebarWidth`가 **이미 계산해서 화면에 쓴** 그 값이다.
+  // 저장 시점에 computed width를 다시 읽으면 같은 수의 출처가 둘이 되고, 그 둘이 갈리는
+  // 것이 이 도메인의 대표 결함이다(저장 ceil / 표시 round로 DB 34 · 화면 33).
+  let appliedW = null;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    // 손잡이가 패널의 **왼쪽** 모서리에 있으므로 폭은 (패널 우측 끝 − 커서)다.
+    // 오른쪽 끝을 기준으로 잡으면 창 폭이나 가로 스크롤 위치에 흔들리지 않는다.
+    appliedW = applyPlanSidebarWidth(aside, aside.getBoundingClientRect().right - e.clientX);
+  };
+
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing-active');
+    grip.classList.remove('dragging');
+    // 드래그가 **끝날 때** 한 번만 기억한다. 매 mousemove마다 쓰면 localStorage 동기
+    // 쓰기가 드래그를 얼어붙게 한다(이 파일이 페인팅에서 같은 함정을 이미 적어 뒀다).
+    if (appliedW === null) return;         // 눌렀다 뗐을 뿐 — 폭이 바뀌지 않았다
+    try { localStorage.setItem(PLAN_SIDEBAR_W_KEY, String(appliedW)); }
+    catch (e) { /* 기억하지 못할 뿐, 이번 세션의 폭은 그대로다 */ }
+  };
+
+  grip.addEventListener('mousedown', (e) => {
+    dragging = true;
+    appliedW = null;
+    document.body.classList.add('resizing-active');
+    grip.classList.add('dragging');
+    e.preventDefault();          // 드래그 중 텍스트 선택 방지
+  });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', stop);
+
+  // 기억된 폭을 되돌리는 유일한 길. 새 컨트롤이 아니라 같은 손잡이의 더블클릭이고,
+  // 손잡이의 title이 그렇게 말한다. 없으면 사용자가 기억을 지울 방법이 없다.
+  grip.addEventListener('dblclick', () => {
+    document.documentElement.style.removeProperty('--plan-sidebar-w');
+    try { localStorage.removeItem(PLAN_SIDEBAR_W_KEY); } catch (e) { /* 무해 */ }
+  });
 }
 
 let currentHoverCell = null;
@@ -2648,6 +2743,18 @@ function classifyUnsavableCells() {
     else outsideRetained.push(k);
   });
   return { offGrid, outsideRetained, outsideStray };
+}
+
+// 🔴 [MEDIUM-1] "이만큼이면 ⚡ Push가 거절한다"의 **정의는 여기 하나뿐이다.**
+//
+// `pushMapData`는 `offGrid + outsideRetained`로 거절을 판정하고, `announceFrameAdoption`은
+// 거기에 `outsideStray`까지 더한 수를 세어 놓고 **같은 문장**("이 상태로는 저장할 수 없어
+// Push가 거절합니다")을 말했다. 실측: 토스트가 4, Push 알림이 2 — 같은 격자에 대해 두 수.
+// 게다가 stray는 거절이 아니라 **정리 제안**이라는 다른 대화상자로 가므로, 큰 수를 보고
+// 겁먹은 사용자가 Push를 눌러 보면 다른 수와 다른 안내가 나온다.
+// 세 모집단을 합치는 식이 둘이면 반드시 갈린다 — 그래서 이름을 붙여 한 곳에 둔다.
+function pushBlockingCount(u) {
+  return u.offGrid.length + u.outsideRetained.length;
 }
 
 // 격자의 value별 셀 수. legend에 없는 값도 세어 "정의되지 않은 value"를 드러낸다.
@@ -4472,7 +4579,7 @@ async function loadExistingMap(opts = {}) {
         // the semantics it describes are decided in this branch (JS-only fix batch).
         el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 (마스크 없음, Rot 0°)';
         el.choiceModal.style.display = 'flex';
-        
+
         const onStandard = () => {
           cleanup();
           resolve('standard');
@@ -4485,17 +4592,36 @@ async function loadExistingMap(opts = {}) {
           cleanup();
           resolve('cancel');
         };
+        // 🔴 [1d④] THIS PROMISE HAD EXACTLY THREE EXITS AND ALL THREE WERE BUTTONS.
+        //    A modal with no dismissal affordance can be left UNANSWERED, and an
+        //    unanswered promise never settles — so every `await openMapFrame(...)`
+        //    above it stays pending forever, along with whatever latch the caller set
+        //    in a `try` whose `finally` can now never run (transfer_plan's `S.navBusy`:
+        //    every material row went dead and said nothing). Escape is the standard
+        //    dismissal for this shape and adds no control to the screen; the point is
+        //    that the promise ALWAYS settles, so "abandoned" collapses into "cancelled"
+        //    and the caller's cleanup runs.
+        //    ⚠️ Backdrop click is deliberately NOT wired: a stray click on the scrim
+        //    while reading the two options would cancel the load mid-decision, and
+        //    Escape already guarantees settlement. One exit is enough to close the hole.
+        const onKeyDown = (ev) => {
+          if (ev.key === 'Escape') { ev.preventDefault(); onCancel(); }
+        };
 
         const cleanup = () => {
           el.choiceModal.style.display = 'none';
           el.btnChoiceStandard.removeEventListener('click', onStandard);
           el.btnChoiceCurrent.removeEventListener('click', onCurrent);
           el.btnChoiceCancel.removeEventListener('click', onCancel);
+          document.removeEventListener('keydown', onKeyDown, true);
         };
 
         el.btnChoiceStandard.addEventListener('click', onStandard);
         el.btnChoiceCurrent.addEventListener('click', onCurrent);
         el.btnChoiceCancel.addEventListener('click', onCancel);
+        // Capture phase: the editor binds plenty of keyboard handlers and this one must
+        // win while the scrim is up (the modal owns the screen at that moment).
+        document.addEventListener('keydown', onKeyDown, true);
       });
 
       if (userChoice === 'cancel') {
@@ -5162,7 +5288,8 @@ async function pushMapData() {
   const unsavable = classifyUnsavableCells();
   const strayKeys = unsavable.outsideStray;
   // 서버 데이터를 지울 수 있는 모집단 — 종전과 **같은** 거부.
-  const blocking = unsavable.offGrid.length + unsavable.outsideRetained.length;
+  // [MEDIUM-1] 합은 `pushBlockingCount` 하나에서만 나온다(채택 알림이 같은 함수를 쓴다).
+  const blocking = pushBlockingCount(unsavable);
   if (blocking > 0) {
     console.warn(`[Map Editor] push refused - frame covers ${updates.length}/${nonEmptyOnGrid} non-empty cells `
       + `(${blocking} would be deleted by replace_map: ${unsavable.offGrid.length} off-grid, `
@@ -5711,6 +5838,12 @@ function colHeaderWord(id) {
   return c ? c.header : id;
 }
 
+// 보조표 머리줄의 네 단어, 순서대로. `copyGridToExcel`이 찍는 그 목록이고, 읽는 쪽의 정지
+// 조건이 "첫 칸은 VALUE다"라는 사실도 여기서 나온다(`auxHeaderInLine` 주석 참조).
+function auxHeadWords() {
+  return [colHeaderWord('value'), 'COUNT', colHeaderWord('stack'), colHeaderWord('desc')];
+}
+
 function copyHeaderEnabled() {
   return !!(el.copyHeaderToggle && el.copyHeaderToggle.checked);
 }
@@ -5836,7 +5969,14 @@ function copyTitleText() {
 // 🔴 이 좌표는 (회전, 면, bbox)의 함수다. 그래서 붙여넣기에서 이것이 **프레임 지문**이 된다:
 //    복사가 rot 0/front에서 나왔는데 화면이 rot 180이면 노치가 반대쪽 행에 있고, 그 불일치가
 //    "치수는 같은데 프레임이 다르다"(rot 0 vs 180, front vs back)를 잡는 유일한 신호다.
-//    격자 밖으로 나가면 `null`을 돌려준다 — 그때는 지문이 없는 것이지 0이 아니다.
+//
+// 🔴 [P0-2] 격자 밖이면 `null`이다 — **주석이 그렇게 약속했고 코드는 그러지 않았다.**
+//    rot 0의 노치는 `box.maxR + 1`이므로 마스크가 없는 프레임(bbox가 격자를 꽉 채우는
+//    경우 = `loadExistingMap`의 📐 표준 기본값이 **모든** 메타 없는 맵에 적용하는 그 프레임)
+//    에서는 `visualRows`와 같아 격자를 벗어난다. 네 회전이 모두 그렇다(180 → -1, 90 → -1,
+//    270 → visualCols). 그런데 종전에는 격자 밖 좌표를 그대로 돌려주었고, 호출부는 그것을
+//    "지문 있음"으로 다룰 수도 있었다. 없는 것을 0으로 읽으면 안 되므로 여기서 `null`로
+//    말한다 — 이 파일의 규율(미상 ≠ 0)이 여기에도 그대로 적용된다.
 function computeNotchCell(rotation, side) {
   const box = getWaferBoundingBox(rotation, side);
   const centerC = Math.floor((box.minC + box.maxC) / 2);
@@ -5849,11 +5989,45 @@ function computeNotchCell(rotation, side) {
   else if (rotation === 180) { screenDx = -dx; screenDy = 0; }
   else if (rotation === 270) { screenDx = 0; screenDy = -dx; }
 
-  if (rotation === 0) return { r: box.maxR + 1, c: centerC + screenDx };       // Bottom notch
-  if (rotation === 180) return { r: box.minR - 1, c: centerC + screenDx };     // Top notch
-  if (rotation === 90) return { r: centerR + screenDy, c: box.minC - 1 };      // Left notch
-  if (rotation === 270) return { r: centerR + screenDy, c: box.maxC + 1 };     // Right notch
-  return { r: -1, c: -1 };
+  let cell = null;
+  if (rotation === 0) cell = { r: box.maxR + 1, c: centerC + screenDx };        // Bottom notch
+  else if (rotation === 180) cell = { r: box.minR - 1, c: centerC + screenDx }; // Top notch
+  else if (rotation === 90) cell = { r: centerR + screenDy, c: box.minC - 1 };  // Left notch
+  else if (rotation === 270) cell = { r: centerR + screenDy, c: box.maxC + 1 }; // Right notch
+  if (!cell) return null;
+  // 격자 범위는 회전이 적용된 **화면** 치수다 — 노치 좌표도 화면 좌표이므로 같은 축으로 잰다.
+  // ⚠️ 축은 **인자 `rotation`**에서 뽑는다. `getVisualGridDimensions()`는 모듈의
+  //    `currentRotation`을 읽으므로, 화면과 다른 회전을 물어보면 좌표는 그 회전으로 계산하고
+  //    경계는 화면 회전으로 재는 자기모순이 생긴다(하네스 실측: rot 270을 rot-0 화면에서
+  //    물었을 때 격자 밖 좌표가 null이 아니라 좌표로 돌아왔다). `getWaferBoundingBox`가
+  //    바로 위에서 쓰는 것과 같은 유도식이다.
+  const cols = gridDimNum('cols', el.gridCols, 10);
+  const rows = gridDimNum('rows', el.gridRows, 10);
+  const isRot = (rotation === 90 || rotation === 270);
+  const visualCols = isRot ? rows : cols;
+  const visualRows = isRot ? cols : rows;
+  if (cell.r < 0 || cell.r >= visualRows || cell.c < 0 || cell.c >= visualCols) return null;
+  return cell;
+}
+
+// 🔴 [MEDIUM-3] 지문이 **실제로 그려지는** 자리. 복사와 붙여넣기가 이 한 함수를 쓴다.
+//
+// 종전에는 두 술어가 갈려 있었다: 복사는 `isNotchCell && val === ''`일 때만 'D'를 찍고
+// (값이 있는 셀을 표식으로 덮지 않는 것은 옳다), 붙여넣기는 노치가 격자 안이면 **무조건**
+// 'D'를 요구했다. 그래서 노치 자리가 칠해진 맵 — M4의 사각 유효 다이 저작 경로가 만드는
+// 바로 그 형태 — 은 복사는 되고 되붙이기는 영구히 거부됐다("회전·면이 다릅니다"라는, 원인과
+// 무관한 사유로). 역방향도 있었다: 값이 진짜 'D'인 셀은 붙여넣기가 표식으로 보고 조용히
+// 비웠다 — 왕복마다 셀 하나 손실.
+//
+// 규칙 한 줄로 통일한다: **지문은 격자 안이고 비어 있는 노치 셀에만 존재한다.**
+// 그래서 값이 있는 노치 셀은 지문 없음(= P0-2의 거부 대상)이 되고, 값 'D'는 데이터로 남는다.
+function notchMarkCell(rotation, side) {
+  const n = computeNotchCell(rotation, side);
+  if (!n) return null;
+  const cell = gridCells2D[n.r] ? gridCells2D[n.r][n.c] : null;
+  // 렌더가 만들지 않은 셀은 복사도 'D'를 찍는다(`copyGridToExcel`의 else 갈래) — 지문이 있다.
+  if (cell && (gridData[cell.key] || '') !== '') return null;
+  return n;
 }
 
 function copyGridToExcel() {
@@ -5869,6 +6043,13 @@ function copyGridToExcel() {
   }
 
   const { visualCols, visualRows } = getVisualGridDimensions();
+  // 🔴 [MEDIUM-2] 이 배열은 **행 배열의 배열**이고, 평문은 마지막에 `serializeTsv` 한 번으로
+  //    만든다. 종전에는 각 행을 `rowCells.join('\t')`으로 즉시 문자열로 만들었고 — 즉 쓰는
+  //    쪽은 인용을 모르고 읽는 쪽(`parseTsv`)은 엑셀 인용 규칙을 아는 상태였다. 실측 왕복:
+  //      · DESC `"고온" 조건`  → 되붙이면 `고온 조건` (인용부호가 사라진 채 legend에 기록됨)
+  //      · DESC `1H<TAB>비교`  → 되붙이면 `1H`로 절단
+  //      · `"` 또는 줄바꿈을 품은 셀 → 열/행 수가 어긋나 「행 수가 다릅니다」·「회전·면이
+  //        다릅니다」로 거부 → 운영자는 원인(DESC 한 글자)과 무관한 격자 크기·회전을 만진다.
   const matrix = [];
 
   // 화면과 같은 색을 쓴다. 내보내기 전용 하드코딩 색(#DAF2D0·#f8fafc)은 다크 테마 화면을
@@ -5892,7 +6073,7 @@ function copyGridToExcel() {
   const auxRows = headerOn ? copyHeaderAuxRows(computeLegendCounts()) : [];
   const groups = headerOn ? copyHeaderGroups() : [];
   const GAP_W = HDR_GAP_COLS;                        // 격자와 보조표 사이 한 칸 (읽기와 공유)
-  const auxHead = [colHeaderWord('value'), 'COUNT', colHeaderWord('stack'), colHeaderWord('desc')];
+  const auxHead = auxHeadWords();
   // VALUE · COUNT · STACK · DESC 는 이제 **각자의 폭**을 갖는다 (종전에는 넷 다 32px 한 칸).
   const auxColSpans = headerOn ? auxColumnSpans(auxHead, auxRows) : [1, 1, 1, 1];
   const AUX_W = auxColSpans.reduce((a, b) => a + b, 0);
@@ -5964,14 +6145,14 @@ function copyGridToExcel() {
       groupRow += `<td colspan="${groupSpans[i]}" style="${style}">${escapeHtmlAttr(t)}</td>`;
     });
     html += `${groupRow}</tr>`;
-    matrix.push([title].concat(new Array(Math.max(0, totalCols - 1)).fill('')).join('\t'));
+    matrix.push([title].concat(new Array(Math.max(0, totalCols - 1)).fill('')));
     const groupCells = [];
     groupTexts.forEach((t, i) => {
       groupCells.push(t);
       for (let k = 1; k < groupSpans[i]; k++) groupCells.push('');
     });
     while (groupCells.length < totalCols) groupCells.push('');   // 분배가 정확하면 무동작
-    matrix.push(groupCells.join('\t'));
+    matrix.push(groupCells);
   }
 
   // Helper for text color contrast
@@ -5984,10 +6165,11 @@ function copyGridToExcel() {
     return (yiq >= 128) ? '#000000' : '#ffffff';
   };
 
-  // 노치 좌표는 `computeNotchCell` 하나에서 나온다 — 붙여넣기가 프레임 지문으로 같은 수를 쓴다.
-  const notch = computeNotchCell(currentRotation, currentSide);
-  const notchR = notch.r;
-  const notchC = notch.c;
+  // 노치 좌표는 `notchMarkCell` 하나에서 나온다 — 붙여넣기가 프레임 지문으로 **같은 함수**를
+  // 쓴다. null이면 이 프레임에는 지문이 없다(격자 밖이거나 그 셀에 값이 있다).
+  const notch = notchMarkCell(currentRotation, currentSide);
+  const notchR = notch ? notch.r : -1;
+  const notchC = notch ? notch.c : -1;
 
   for (let r = 0; r < visualRows; r++) {
     const rowCells = [];
@@ -6049,7 +6231,7 @@ function copyGridToExcel() {
       rowCells.push('');
     }
     html += '</tr>';
-    matrix.push(rowCells.join('\t'));
+    matrix.push(rowCells);
   }
 
   // 보조표가 격자보다 길면(값 수 > 행 수) 남는 줄을 격자 아래로 흘린다 — 잘라내면
@@ -6068,11 +6250,13 @@ function copyGridToExcel() {
       rowCells.push('');
     }
     html += `${rowHtml}</tr>`;
-    matrix.push(rowCells.join('\t'));
+    matrix.push(rowCells);
   }
 
   html += '</table>';
-  const tsv = matrix.join('\n');
+  // [MEDIUM-2] 인용은 여기 한 번. `parseTsv(serializeTsv(g)) === g`가 tsv.js의 선언된 계약이고,
+  // 붙여넣기가 `parseTsv`로 읽으므로 이 한 줄이 왕복 항등의 근거다.
+  const tsv = serializeTsv(matrix);
 
   if (writeClipboardRich(html, tsv)) {
     if (el.btnCopyExcel) {
@@ -6133,6 +6317,18 @@ const pasteAt = (line, i) => {
 //
 // 오른쪽에서 왼쪽으로 훑는다: 보조표는 줄의 **꼬리**에 있고, 왼쪽의 격자 셀(`1`·`F` 같은 값)은
 // 아는 열 이름이 아니므로 거기서 멈춘다. 중간의 빈 칸은 병합의 연장이라 건너뛴다.
+//
+// 🔴 [MEDIUM-4] 그리고 **`VALUE`에서 멈춘다.** 이 한 줄이 이번 라운드의 수리다.
+//    `VALUE`는 보조표의 첫 칸이므로(`auxHeadWords()[0]` — 쓰는 쪽의 배치 그대로) 그 왼쪽은
+//    무조건 격자다. 이 종료 조건이 없으면 `columnIdByHeader(f) === null`만 남는데, `5a14e77`이
+//    ②→① 왕복을 위해 로스터에 `MAT·BIN·MAP·가용·사용·잔여`를 실은 뒤로는 **격자 셀의 값이
+//    그 단어이면 스캔이 멈추지 않았다**: 마지막 격자 열이 `BIN`인 맵에서 `gridWidth`가 9 대신
+//    7로 나오고 붙여넣기가 「열 수가 다릅니다」로 거부됐다(실측 2026-07-30). 사유가 원인을
+//    가리키지 않으므로 운영자는 멀쩡한 격자 크기·회전을 만진다.
+//    ⚠️ 로스터를 좁히는 방식(머리글 네 단어만 통과)도 시도했으나 **버렸다**: `COUNT`는 진짜
+//       머리글 단어여서 그 방식으로는 `COUNT`로 칠한 격자 셀을 막을 수 없고, VALUE 종료가
+//       있으면 나머지 단어도 전부 막힌다. 증명되지 않는 두 번째 가드는 두지 않는다
+//       (하네스: 로스터를 되돌리는 변이가 GREEN으로 남았다 = 그 가드는 채점되지 않는다).
 function auxHeaderInLine(line) {
   const width = (line || []).length;
   const positions = [];
@@ -6141,6 +6337,7 @@ function auxHeaderInLine(line) {
     if (pasteBlank(f)) continue;                    // 병합 연장 · 꼬리 채움
     if (columnIdByHeader(f) === null) break;        // 격자 셀 — 보조표는 여기서 끝난다
     positions.unshift(i);
+    if (columnIdByHeader(f) === 'value') break;     // VALUE = 보조표의 첫 칸. 왼쪽은 격자다.
   }
   if (positions.length < 2) return null;
   const words = positions.map(i => pasteAt(line, i).trim());
@@ -6260,14 +6457,29 @@ function checkPasteAgainstFrame(parsed, frame) {
     return { ok: false, reason: `다른 맵의 복사본입니다 — 복사본 「${parsed.title}」, 현재 화면 「${frame.title}」.` };
   }
   // 프레임 지문. 노치 'D'의 자리는 (회전, 면, bbox)의 함수라, 치수가 같은 채로 프레임만 바뀐
-  // 경우(rot 0↔180, front↔back)를 잡는 **유일한** 신호다. 격자 밖이면 지문이 없다 — 미상 ≠ 0.
+  // 경우(rot 0↔180, front↔back)를 잡는 **유일한** 신호다.
   const n = frame.notch;
   const notchOnGrid = !!n && n.r >= 0 && n.r < frame.visualRows && n.c >= 0 && n.c < parsed.gridWidth;
   if (notchOnGrid && parsed.rows[n.r][n.c] !== 'D') {
     return { ok: false, reason: `복사할 때의 회전·면이 지금과 다릅니다 — 노치 표식(D)이 `
       + `${n.r + 1}행 ${n.c + 1}열에 있어야 하는데 「${parsed.rows[n.r][n.c] || '빈 칸'}」입니다.` };
   }
-  return { ok: true, reason: '', notchVerified: notchOnGrid };
+  // 🔴 [P0-2] 지문이 **없으면 거부한다.** 종전에는 통과시키고 확인창에 경고 한 줄을 넣었는데,
+  //    그 한 줄은 다섯 줄 중 하나였고 회전·면은 치수를 보존하므로 다른 관문이 하나도 걸리지
+  //    않는다. 실측: 12x10 격자(마스크 없음, 노치 r10 = 격자 밖)에서 rot 0 복사본을 rot 180
+  //    화면에 붙여넣으면 ok=true · notchVerified=false로 통과하고 **물리 키 120개 전부의 값이
+  //    바뀐다** — 격자가 통째로 뒤집혀 쓰인다. 복사·회전·Ctrl+V는 전부 평범한 조작이다.
+  //    이 파일의 규율은 확인할 수 없는 배치를 **거부**하는 것이다(위 블록 주석: "최선 노력
+  //    배치를 하지 않는다"). 노치는 치수 보존 프레임 변경의 유일한 신호이므로, 그 부재는
+  //    "괜찮다"가 아니라 "확인할 수 없다"다.
+  if (!notchOnGrid) {
+    return { ok: false, notchVerified: false,
+      reason: '이 화면의 프레임에는 노치 표식(D)이 놓일 자리가 없어 복사본의 회전·면을 대조할 수 '
+        + '없습니다 — 회전·면은 격자 치수를 바꾸지 않으므로, 대조 없이 붙여넣으면 뒤집힌 격자가 '
+        + '그대로 들어갑니다. 웨이퍼 원 규격이 적용된 프레임(노치가 격자 안에 들어오는 규격)으로 '
+        + '맞춘 뒤 다시 붙여넣으십시오.' };
+  }
+  return { ok: true, reason: '', notchVerified: true };
 }
 
 // [F1ⓑ] 격자 되쓰기. **빈 칸도 쓴다** — 왕복 항등은 "값이 있는 셀을 옮긴다"가 아니라
@@ -6364,7 +6576,9 @@ function onMapGridPaste(e) {
   const frame = {
     visualCols, visualRows,
     title: copyTitleText(),
-    notch: computeNotchCell(currentRotation, currentSide),
+    // 복사가 표식을 찍는 그 자리(`notchMarkCell`). 지문이 없으면 null이고, 그때 아래
+    // `checkPasteAgainstFrame`은 **거부**한다 — 확인만 못 한 채 통과시키지 않는다(P0-2).
+    notch: notchMarkCell(currentRotation, currentSide),
   };
   const verdict = checkPasteAgainstFrame(parsed, frame);
   if (!verdict.ok) {
@@ -6386,7 +6600,9 @@ function onMapGridPaste(e) {
     parsed.title ? `「${parsed.title}」 복사본을 붙여넣습니다.` : '표 머리글이 없어 어느 맵의 복사본인지 확인하지 못했습니다.',
     `격자 ${visualCols}×${visualRows} 전체를 복사본으로 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비웁니다).`,
     auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용합니다 — COUNT는 격자에서 다시 셉니다.` : '',
-    verdict.notchVerified ? '' : '⚠ 노치 표식이 격자 밖이라 회전·면은 대조하지 못했습니다.',
+    // [P0-2] 종전의 「⚠ 회전·면은 대조하지 못했습니다」 줄은 **삭제**했다. 지금은 대조하지
+    // 못하면 `checkPasteAgainstFrame`이 거부하므로 여기까지 오는 복사본은 전부 대조를 통과한
+    // 것이고, 그 문구는 절대 뜨지 않는 죽은 줄이 된다(살아 보이는 죽은 코드 금지).
     '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
   ].filter(Boolean);
   if (!confirm(`${lines.join('\n')}\n\n계속하시겠습니까?`)) return;
@@ -6976,6 +7192,85 @@ function frameAxesKey(rf) {
           rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [P0-1] 프레임 변경이 **저장 좌표를 움직이는가.**
+//
+// 🔴 F6이 세운 안전 논거는 틀렸다. 그 주석은 "`gridData`가 물리 좌표 키이므로 프레임이
+//    바뀌면 셀이 화면에서 함께 움직이고 다음 Push가 x/y를 다시 쓴다 — 회전 버튼을 누르는
+//    것과 같은 한 번의 행위"라고 했다. **회전은 키 불변이지만 치수 변경은 아니다.**
+//    Push가 쓰는 DB 좌표는 `getVisualCoords`가 내고, 그 식은 `getWaferBoundingBox`의
+//    `minC`/`minR`/`maxR`을 쓴다. 그 bbox는 `gridDimNum('cols'/'rows')`로 격자를 훑어서
+//    만들어지므로 **치수의 함수**다 — 채택이 바꾸는 바로 그 축이고, 회전 유추가 덮지 못하는
+//    유일한 축이다. 그래서 같은 물리 키가 다른 x/y로 직렬화되고 `replace_map`이 밀린 좌표를
+//    기록한다.
+//    대비 관문(`classifyUnsavableCells`)은 이것을 **볼 수 없다**: 격자·원 **밖으로** 나간
+//    셀만 센다. 격자가 커지는 채택에서는 밖으로 나가는 셀이 0개다(실측 51x51 → 55x55:
+//    offGrid=0 · outsideRetained=0 · stray=0, 그런데 모든 셀이 2다이 이동).
+//
+// ⚠️ 그래서 판정의 단위는 **Push 페이로드의 좌표**다. 물리 키로 "같은 다이인가"를 묻는
+//    검증은 이 결함을 원리적으로 볼 수 없다(QA 교훈 2026-07-30).
+//
+// 새 변환은 한 줄도 없다. 렌더가 셀 하나를 만들 때 쓰는 두 줄(`getPhysicalCoords` /
+// `getVisualCoords`)을 프레임 창 안에서 같은 순서로 실행할 뿐이다 — `projectCellsToPhys`가
+// 하는 그 연산의 반대 방향이다.
+// ═══════════════════════════════════════════════════════════════════════════════
+function dbCoordsByPhysKey(frame) {
+  const rf = resolveFrame(frame);
+  const isRot = (rf.rotation === 90 || rf.rotation === 270);
+  const visualCols = isRot ? rf.rows : rf.cols;
+  const visualRows = isRot ? rf.cols : rf.rows;
+  // `rf`를 그대로 창에 넣는다 — `resolveFrame`의 키 이름이 `physNum`/`gridDimNum`이 찾는
+  // 이름과 같으므로 별도 매핑이 필요 없다(같은 규약을 `projectCellsToPhys`가 이미 쓴다).
+  return withPhysFrame(rf, () => {
+    const out = new Map();
+    for (let r = 0; r < visualRows; r++) {
+      for (let c = 0; c < visualCols; c++) {
+        const p = getPhysicalCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+        const v = getVisualCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+          rf.invertY, rf.startX, rf.startY);
+        out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
+      }
+    }
+    return out;
+  });
+}
+
+// 채택 후의 프레임 = 현재 화면의 배치축(회전·면·원점·y반전) + 참조의 치수·물리 규격.
+// `adoptFrameSpec`이 실제로 쓰는 것과 **같은 집합**이다(INV-F6-4: 회전·면은 채택하지 않고,
+// undefined인 물리 축은 화면 값으로 남는다 — `resolveFrame`이 같은 규칙으로 해석한다).
+function adoptedFrameOf(refFrame) {
+  return {
+    ...currentFrame(),
+    cols: refFrame.cols, rows: refFrame.rows,
+    waferDia: refFrame.waferDia, chipX: refFrame.chipX, chipY: refFrame.chipY,
+    offsetX: refFrame.offsetX, offsetY: refFrame.offsetY, edgeMargin: refFrame.edgeMargin,
+  };
+}
+
+// 값이 있는 셀 중 몇 개가 저장 좌표를 **움직이거나 잃는가**.
+//   moved — 같은 다이가 다른 x/y로 저장된다 (조용한 좌표 이동 — 이 결함 본체)
+//   lost  — 새 프레임이 그 다이를 아예 덮지 못한다 (대비 관문이 이미 잡는 모집단)
+//   kept  — 좌표가 그대로다
+function adoptionCoordinateCost(refFrame) {
+  const before = dbCoordsByPhysKey(currentFrame());
+  const after = dbCoordsByPhysKey(adoptedFrameOf(refFrame));
+  const cost = { moved: 0, lost: 0, kept: 0, sample: null };
+  Object.keys(gridData).forEach(k => {
+    if ((gridData[k] || '') === '') return;
+    const b = before.get(k);
+    if (b === undefined) return;         // 지금 프레임이 이미 덮지 못한다 — 채택 이전의 문제
+    const a = after.get(k);
+    if (a === undefined) { cost.lost++; return; }
+    if (a !== b) {
+      cost.moved++;
+      if (!cost.sample) cost.sample = { from: b.replace('_', ', '), to: a.replace('_', ', ') };
+      return;
+    }
+    cost.kept++;
+  });
+  return cost;
+}
+
 // ── [F6] 프레임 채택 — 편집기 컨트롤로만 ────────────────────────────────────
 // 유효 다이 지정이 **치수만으로** 거절되던 자리를 푼다. 물리 좌표는 캔버스 인덱스
 // 상대라 치수가 다르면 같은 인덱스가 같은 다이가 아니고, 그래서 그 관문 자체는 옳다.
@@ -7172,6 +7467,28 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       //    사용자가 보는 격자가 아무도 요청하지 않은 크기가 된다(F3와 같은 계급).
       if (stale()) return validDie;
       const before = `${hereResolved.cols}x${hereResolved.rows}`;
+      // 🔴 [P0-1 GUARD] 이미 셀이 들어 있는 맵에서는 채택하지 않는다.
+      //    채택은 격자 치수를 바꾸고, 치수는 `getVisualCoords`의 bbox 항을 통해 **저장
+      //    좌표**를 바꾼다(위 `dbCoordsByPhysKey` 주석). 화면은 멀쩡하고 대비 관문도 0을
+      //    보고하는데 `replace_map`이 밀린 x/y를 쓴다 — 이 도메인이 막으려는 형태 그 자체다.
+      //    사용자가 물은 상황("기존 프레임이 없으면 어떻게 됨?")은 셀이 없는 맵이고, 거기서는
+      //    움직일 좌표가 없으므로 기능이 그대로 남는다. 좌표가 하나도 움직이지 않는 치수
+      //    변경(bbox 항이 같은 경우)도 통과한다 — 판정은 치수 비교가 아니라 **좌표 비교**다.
+      const cost = adoptionCoordinateCost(refFrame);
+      if (cost.moved > 0 || cost.lost > 0) {
+        const sample = cost.sample ? ` 예: (${cost.sample.from}) → (${cost.sample.to}).` : '';
+        const lostTxt = cost.lost > 0 ? ` ${cost.lost}개는 새 격자가 덮지도 못합니다.` : '';
+        console.warn(`[Map Editor][P0-1] frame adoption refused — ${before} -> `
+          + `${refResolved.cols}x${refResolved.rows} would move ${cost.moved} stored cell(s) `
+          + `and drop ${cost.lost} (kept ${cost.kept}); nothing was changed.`);
+        return refuse(ref,
+          `이 맵에는 이미 값이 있는 셀이 있어 격자를 참조 맵 규격(${refResolved.cols}x${refResolved.rows})으로 `
+          + `열지 않았습니다 — 치수를 바꾸면 그 셀들이 **저장될 좌표가 함께 움직입니다** `
+          + `(${cost.moved}개 이동).${lostTxt}${sample} 화면은 멀쩡해 보이지만 ⚡ Push가 밀린 좌표를 `
+          + `기록하게 되므로 채택을 중단했습니다. 격자 크기를 ${refResolved.cols}x${refResolved.rows}로 `
+          + `맞춘 뒤 📂 Load로 이 맵을 다시 불러오면 셀이 그 규격의 좌표계로 읽히고, 그 상태에서는 `
+          + `채택 없이 그대로 지정됩니다. (빈 맵·새 맵에서는 이 제한이 없습니다.)`);
+      }
       adoptFrameSpec(refFrame);
       hereResolved = resolveFrame(currentFrame());
       // 채택이 실제로 먹었는지 **다시 읽어서** 판정한다. 먹지 않았는데 진행하면
@@ -7246,10 +7563,14 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
 function announceFrameAdoption(adopted, ref) {
   renderGridCanvas();
   const u = classifyUnsavableCells();
-  const stranded = u.offGrid.length + u.outsideRetained.length + u.outsideStray.length;
+  // [MEDIUM-1] 거절을 만드는 수는 `pushBlockingCount` **하나**에서 온다 — Push 관문이 쓰는
+  // 그 함수다. `outsideStray`는 거절이 아니라 정리 제안 대화상자로 가는 다른 모집단이므로
+  // 이 문장에 합산하지 않고, 있으면 따로 이름을 붙여 말한다.
+  const blocking = pushBlockingCount(u);
+  const stray = u.outsideStray.length;
   const head = `격자를 참조 맵 규격으로 열었습니다 — ${adopted.before} → ${adopted.after} `
     + `(${ref.table} · ${ref.mapKey}).`;
-  if (stranded === 0) {
+  if (blocking === 0 && stray === 0) {
     // [1e] Zero stranded cells means nothing went wrong. The adopted grid size is visible in
     // the geometry inputs and the valid-die chip, and "not saved yet" is stated permanently by
     // the plan-head chip — repeating it here only adds a toast to the happy path.
@@ -7257,14 +7578,25 @@ function announceFrameAdoption(adopted, ref) {
       + `(${ref.table} · ${ref.mapKey}); no stranded cells`);
     return;
   }
-  console.warn(`[Map Editor][F6] frame adopted (${adopted.before} -> ${adopted.after}) but `
-    + `${stranded} painted cells are now unsavable: ${u.offGrid.length} off-grid, `
-    + `${u.outsideRetained.length} outside valid dies, ${u.outsideStray.length} stray. `
-    + `pushMapData will refuse until this is resolved (nothing is deleted).`);
-  showToast(`${head} 다만 칠해진 셀 ${stranded}개가 이 규격의 격자·유효 다이 밖으로 나갔습니다 — `
-    + `이 상태로는 저장할 수 없어 ⚡ Push가 거절합니다(서버 데이터는 그대로입니다). `
-    + `지정을 비우고 📂 Load로 이 맵의 원래 규격을 되불러오거나, 규격을 맞춘 뒤 저장하십시오.`,
-    'warning', { dedupeKey: 'valid_die_frame_adopted' });
+  console.warn(`[Map Editor][F6] frame adopted (${adopted.before} -> ${adopted.after}): `
+    + `blocking=${blocking} (${u.offGrid.length} off-grid, ${u.outsideRetained.length} outside `
+    + `valid dies of unproven origin) — pushMapData refuses exactly this many; `
+    + `stray=${stray} (outside, proven never served — Push offers cleanup, not a refusal). `
+    + `Nothing is deleted either way.`);
+  // 두 모집단은 **다른 문장**을 받는다. 합쳐 부르면 Push에서 만나는 수와 갈리고(실측 4 vs 2),
+  // 안내도 갈린다 — stray는 거절이 아니라 정리 대상이다.
+  const parts = [head];
+  if (blocking > 0) {
+    parts.push(`다만 칠해진 셀 ${blocking}개가 이 규격의 격자·유효 다이 밖으로 나갔습니다 — `
+      + `이 상태로는 저장할 수 없어 ⚡ Push가 이 ${blocking}개를 사유로 거절합니다`
+      + `(서버 데이터는 그대로입니다). 지정을 비우고 📂 Load로 이 맵의 원래 규격을 되불러오거나, `
+      + `규격을 맞춘 뒤 저장하십시오.`);
+  }
+  if (stray > 0) {
+    parts.push(`추가로 ${stray}개는 원 밖이면서 서버가 보낸 적이 없는 셀입니다 — 저장을 막지는 `
+      + `않고, ⚡ Push가 정리할지 따로 묻습니다.`);
+  }
+  showToast(parts.join(' '), 'warning', { dedupeKey: 'valid_die_frame_adopted' });
 }
 
 // 근거가 원이 아닐 때만 보이는 한 줄. 새 패널·모드·모달이 아니라 이미 있는 상태바

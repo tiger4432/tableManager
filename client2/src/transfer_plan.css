@@ -68,14 +68,22 @@
      340px에서 45px). 읽히지 않는 칸을 만들 수 있는 하한은 하한이 아니다. */
   min-width: 380px;
   max-width: 760px;
-  /* [ⓗ] 폭 조절. 새 컨트롤도, 새 JS도 없다 — 네이티브 리사이즈 그립이다.
-     우하단 모서리를 끌면 폭이 바뀌고, map_editor.js가 #map-workspace에 걸어 둔
-     ResizeObserver가 캔버스를 다시 맞춘다(별도 배선 불필요).
-     `resize`는 overflow:visible에서 무시되므로 hidden을 함께 준다 — 안쪽
-     .tp-pane-b가 각자 스크롤하므로 잘리는 내용은 없다. */
+  /* 🔴 [ⓗ] 폭 조절의 구현은 **하나**다 — 왼쪽 모서리의 `#plan-split-resizer`.
+     종전의 네이티브 `resize: horizontal` 그립은 제거했다. 두 경로를 함께 두면 같은
+     값(패널 폭)의 구현이 둘이 되는데, 그립으로 바꾼 폭은 요소의 인라인 height/width로
+     들어가 `--plan-sidebar-w`를 **덮어쓰고 기억되지도 않는다** — 새로고침 한 번에 조용히
+     430px으로 되돌아간다. 스플리터는 변수 하나만 바꾸므로 이 파일의 "폭의 유일한 출처"
+     선언이 계속 성립한다.
+     overflow:hidden은 남는다: 그립 때문이 아니라 안쪽 .tp-pane-b가 각자 스크롤하는
+     구조 때문이고(잘리는 내용 없음), 드래그 중 내용이 삐져나오지 않게 한다.
+     캔버스 재맞춤은 배선이 필요 없다 — map_editor.js가 #map-workspace에 걸어 둔
+     ResizeObserver가 컨테이너 폭 변화를 그대로 받는다. */
   overflow: hidden;
-  resize: horizontal;
 }
+
+/* 스플리터는 style.css의 `.split-resizer`를 그대로 쓴다. 이 파일이 더하는 것은 flex 행에서
+   8px이 눌리지 않게 하는 한 줄뿐이다(`.split-resizer`는 flex를 선언하지 않는다). */
+#plan-split-resizer { flex: 0 0 auto; }
 
 #transfer-plan-root {
   height: 100%;
@@ -273,12 +281,18 @@
 }
 .tp-xl b { color: var(--accent); }
 
-/* ── 머리줄 ─────────────────────────────────────────── */
-/* [ⓘ 그리드 통일] 머리줄과 값 행이 **같은 상자 모형**을 쓴다: 같은 1px 투명 보더 +
-   같은 --tp-rail 좌우 패딩 + 같은 --tp-gap + 같은 template. 예전에는 머리줄이
-   `padding: 2px 4px`(레일 4px), 값 행이 `border 1px + padding 2px`(레일 3px)라
-   트랙 폭 자체가 4px 달랐고, 그래서 열 이름이 자기 입력 위에 서지 못했다.
-   이제 어긋날 수 있는 자유도가 남아 있지 않다. */
+/* ── 머리줄 — 지금은 ② 자재 롤업의 것 하나뿐이다 ───────────────────────
+   [ⓘ 그리드 통일] 머리줄과 데이터 행이 **같은 상자 모형**을 쓴다: 같은 1px 투명 보더 +
+   같은 --tp-rail 좌우 패딩 + 같은 --tp-gap + 같은 template(아래 `.tp-pane.t2 .tp-ch-row`).
+   예전에는 머리줄이 `padding: 2px 4px`(레일 4px), 데이터 행이 `border 1px + padding 2px`
+   (레일 3px)라 트랙 폭 자체가 4px 달랐고, 그래서 열 이름이 자기 입력 위에 서지 못했다.
+
+   🔴 ①의 머리줄 행(`.tp-ch-row.l1` / `.tp-ch-row.l2`)은 7694b42에서 통째로 사라졌다 —
+      사이드바 폭에서 두 줄 머리글이 읽을 수 없는 크기로 눌렸고, 열 이름은 각 칸의
+      placeholder로 내려갔다. 그 자리를 겨냥한 규칙들(`.l1`/`.l2` 트랙, `.l1 > *` nowrap,
+      `.l2` 정렬·패딩, `.drv` 별표 열)은 **선택자가 도달할 DOM이 없다.** 이 파일에서
+      제거했다: 살아 있어 보이는 죽은 규칙은 다음 사람이 "이미 배선돼 있다"고 읽게 만들고,
+      `--danger-weak` 불투명도 결함이 오래 살아남은 방식이 정확히 그것이었다. */
 .tp-ch-row {
   display: grid;
   align-items: center;
@@ -290,35 +304,15 @@
   letter-spacing: .04em;
   color: var(--text-dim);
 }
-/* 트랙 1은 --tp-ctl-h 와 같은 변수를 쓴다 — 스와치가 자기 열보다 크거나 작아지는
-   일이 구조적으로 불가능해진다. 트랙 6(삭제)은 26px = 클릭 표적 하한 24px 충족.
-   고정 트랙 폭은 **placeholder가 잘리지 않는 최소치**로 잡혀 있다(ⓔ):
-     VALUE 58px → 실측 필요폭 38.5px / 여유 42px
-     STACK 58px → 실측 필요폭 36.0px / 여유 42px
-   더 넓히면 그만큼 DESC가 굶는다. DESC(1fr)만 가변이라, 사이드바를 넓히면(ⓗ)
-   늘어난 폭이 전부 설명란으로 간다. */
-.tp-ch-row.l1,
-.tp-v-l1 { grid-template-columns: var(--tp-ctl-h) 58px 58px 1fr 44px 26px; }
-.tp-ch-row.l2,
-.tp-v-l2 { grid-template-columns: 1fr 1.6fr 1fr; }
-.tp-ch-row.l2 { padding-bottom: 3px; letter-spacing: 0; }
-/* 열 이름은 자기 트랙 안에서 끝난다. 「COLOR*」는 30px 스와치 열보다 넓어 옆
-   「VALUE」 위로 넘어가 두 글자가 겹쳐 읽혔다 — 겹친 글자는 둘 다 못 읽는 글자다.
-   잘라 내되 전문은 .drv 에 이미 걸려 있는 title 이 말한다(cursor:help 도 이미 있다). */
+/* 머리줄 이름은 자기 트랙 안에서 끝난다 — 넘치면 옆 이름 위로 올라가 두 글자가 겹쳐
+   읽혔고, 겹친 글자는 둘 다 못 읽는 글자다. */
 .tp-ch-row > * {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tp-ch-row.l1 > * { white-space: nowrap; }
-/* l2 이름은 길어서 두 줄로 접힌다. 접히면 아래쪽 줄이 자기 칸 바로 위에 오도록
-   아래 정렬한다 — 가운데 정렬이면 짧은 이름들이 붕 떠서 어느 칸의 이름인지 흐려진다. */
-.tp-ch-row.l2 { align-items: end; }
 .tp-ch-row .r { text-align: right; }
 .tp-ch-row .c { text-align: center; }
-/* 계약 밖 열은 별표로 표시한다 — 붙여넣기·복사 양쪽에서 빠지는 열이 어느 것인지 화면이
-   스스로 말해야, 엑셀 표에 색 열이 있어도 사람이 안심하고 그대로 붙여넣는다. */
-.tp-ch-row .drv { opacity: .55; cursor: help; }
 
 /* ── 값 행: 한 행 = 두 줄 ───────────────────────────── */
 .tp-vrow {
@@ -332,7 +326,32 @@
    13px 본문으로 말하고, 문제가 있는 칸은 자기 바탕색으로 말한다. 테두리는 정보를
    더하지 않으면서 화면 전체를 붉게 만들었다. 선택자는 남긴다(클래스 인벤토리 보존). */
 .tp-vrow.bad { border-color: transparent; }
-.tp-v-l1, .tp-v-l2 { display: grid; gap: var(--tp-gap); align-items: center; }
+
+/* ── 줄 1 (정체): 각 칸이 **자기 폭을 자기 선택자에서** 선언한다 ─────────────────
+   🔴 예전에는 이 줄이 `grid-template-columns`로 트랙 **6개**를 선언했고, 자식은
+      planMode에서만 6개였다. STACK 칸은 조건부이므로(계획이 아닌 legend 전용 테이블 ·
+      자재 프레임 안 = depth>0) 자식이 **5개**인 경로가 실재하고, 거기서는 DESC가 58px
+      STACK 트랙으로 밀려 이 파일이 스스로 세운 **85px 가독 하한 아래로** 떨어졌다
+      (「작은 글씨는 없느니만 못하다」 — 7694b42가 강제한 핵심가치). 동시에 「칠함」이
+      1fr을 먹고 삭제 버튼이 44px로 부풀었다.
+   트랙 수와 자식 수를 손으로 맞추는 레이아웃은 반드시 다시 어긋난다. 그래서 이제
+   **트랙 수라는 것이 없다**: 그려지지 않는 칸은 자기 폭을 데리고 사라지므로 두 숫자가
+   불일치할 자유도가 남아 있지 않다.
+   고정 폭은 예전 트랙 값 그대로이고 근거도 그대로다(ⓔ, placeholder가 잘리지 않는 최소치):
+     VALUE 58px → 실측 필요폭 38.5px · STACK 58px → 36.0px · 삭제 26px = 클릭 표적 하한 24px.
+   DESC(flex:1 1 0)만 가변이라, 사이드바를 넓히면(ⓗ) 늘어난 폭이 전부 설명란으로 간다. */
+.tp-v-l1 { display: flex; gap: var(--tp-gap); align-items: center; }
+.tp-v-l1 > .tp-sw  { flex: 0 0 var(--tp-ctl-h); }
+.tp-v-l1 > .vin    { flex: 0 0 58px; }
+.tp-v-l1 > .stk    { flex: 0 0 58px; }
+.tp-v-l1 > .din    { flex: 1 1 0; min-width: 0; }
+.tp-v-l1 > .tp-pnt { flex: 0 0 44px; }
+.tp-v-l1 > .tp-del { flex: 0 0 26px; }
+
+/* 줄 2 (구조)는 자식이 **무조건** ZONES.length(3)개다 — 조건부 칸이 없으므로 줄 1의
+   불일치 실패 양식이 성립하지 않는다. 네 번째 구역이 생기는 날은 소스와 이 줄을 같이
+   고쳐야 한다(doe_bands.js의 ZONES 주석이 같은 경고를 담고 있다). */
+.tp-v-l2 { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: var(--tp-gap); }
 .tp-v-l2 { margin-top: 3px; align-items: stretch; }
 
 /* ── 컨트롤 규격은 1종이다 ─────────────────────────────
