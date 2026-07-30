@@ -77,9 +77,9 @@ function sliceFunction(source, name) {
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
-  'getPhysicalCoords', 'getCellFromPhysicalCoords',
+  'getDieIndex', 'getCanvasCellFromDieIndex',
   'validDieBasis', 'isValidDieAt',
-  'getWaferBoundingBox', 'getVisualCoords', 'getCellFromVisualCoords',
+  'getWaferBoundingBox', 'getDbCoords', 'getCanvasCellFromDb',
   'computeNotchCell',
   'cellFillColor', 'isProtectedFCell', 'eachSavableCell', 'classifyUnsavableCells',
   'serverCellKeySet', 'getGridCellObject', 'pushBlockingCount',
@@ -254,7 +254,7 @@ function buildMask(S) {
   for (const { c, r } of circle) {
     if (c < cMin + INSET.left || c > cMax - INSET.right) continue;
     if (r < rMin + INSET.top || r > rMax - INSET.bottom) continue;
-    const p = S.getPhysicalCoords(c, r, COLS, ROWS, 0, 'front');
+    const p = S.getDieIndex(c, r, COLS, ROWS, 0, 'front');
     keys.add(`${p.x}_${p.y}`);
     kept++;
   }
@@ -577,7 +577,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
          'adjusting coordinates on the way out is the defect this round removes');
       eq('structural/render-does-not-re-derive-the-zero-cell', true,
          !/const c_zero = isXMirrored/.test(src),
-         'the (0,0) cell must come from getCellFromVisualCoords, not a hand-written copy');
+         'the (0,0) cell must come from getCanvasCellFromDb, not a hand-written copy');
       eq('structural/notch-still-asks-for-the-circle', true,
          /getWaferBoundingBox\(rotation, side, \{ circleOnly: true \}\)/.test(src),
          'the clipboard frame fingerprint must not follow a mask that a network failure can change');
@@ -601,7 +601,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
 const TAG_LINE = '  const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : \'C\';';
 const TAG_WINDOW = `    && !physFrameOverride
     && validDieBasis() === 'ref';`;
-const ZERO_CELL = `  const zero = getCellFromVisualCoords(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
+const ZERO_CELL = `  const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);`;
 const RESOLVE_FIRST = `    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
     // 근거가 바뀌면 원점 상자도 바뀐다 — 위 동기화가 비운 캐시는 원 기준으로 다시 채워졌을

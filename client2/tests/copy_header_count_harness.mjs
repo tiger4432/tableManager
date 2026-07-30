@@ -66,12 +66,24 @@ function sliceBalanced(src, startIdx, open, close) {
   }
   return null;
 }
+// 🔴 THIS HARNESS SLICES TWO REVISIONS (working tree vs a pinned baseline blob), so one
+//    spelling cannot address both across a rename: the baseline keeps the old name forever.
+//    `name` may therefore be a LIST OF ACCEPTED SPELLINGS, newest first. The first spelling
+//    the revision actually has is sliced, and when that is not the canonical (first) one an
+//    alias is appended so every consumer below — including `globalThis.__h` — keeps naming
+//    the function one way.
+// ⚠️ Do not collapse the lists once the baseline moves. They are what keeps this comparison
+//    alive across the NEXT rename, instead of the harness dying and being waived.
 function fnFrom(src, label, name) {
-  const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in ${label}`);
-  const out = sliceBalanced(src, m.index, '{', '}');
-  if (!out) die(`unbalanced braces for ${name} in ${label}`);
-  return out;
+  const aliases = Array.isArray(name) ? name : [name];
+  for (const n of aliases) {
+    const m = new RegExp(`(?:async\\s+)?function\\s+${n}\\s*\\(`).exec(src);
+    if (!m) continue;
+    const out = sliceBalanced(src, m.index, '{', '}');
+    if (!out) die(`unbalanced braces for ${n} in ${label}`);
+    return (n === aliases[0]) ? out : `${out}\nconst ${aliases[0]} = ${n};`;
+  }
+  die(`none of [${aliases.join(', ')}] found in ${label}`);
 }
 function constFrom(src, label, name) {
   const m = new RegExp(`const\\s+${name}\\s*=`).exec(src);
@@ -137,7 +149,7 @@ const WORK_FNS = ['eachSavableCell', 'classifyUnsavableCells', 'serverCellKeySet
 const SHARED_FNS = [
   'physNum', 'gridDimNum',
   'getScreenShift', 'getTransformedPhysicalConfig',
-  'getPhysicalCoords', 'getVisualCoords',
+  ['getDieIndex', 'getPhysicalCoords'], ['getDbCoords', 'getVisualCoords'],   // renamed 2026-07-31
   'isCellInsideWaferFast', 'isCellInsideWafer', 'getWaferBoundingBox',
   'validDieBasis', 'isValidDieAt', 'getGridCellObject',
   'parseCssColor', 'toExcelHex', 'cellFillColor',
@@ -219,7 +231,7 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
     vm.runInContext(parts.join('\n\n') + '\n' + extraCode
       // The gate, verbatim. `updates` is the caller's; everything else is module state.
       + `\nfunction runPushGate(updates) {\n${gateSlice(src, label)}\n  return 'PROCEED';\n}`
-      + `\nglobalThis.__h = { getPhysicalCoords, getVisualCoords, getWaferBoundingBox,`
+      + `\nglobalThis.__h = { getDieIndex, getDbCoords, getWaferBoundingBox,`
       + ` getTransformedPhysicalConfig, isCellInsideWaferFast, getGridCellObject,`
       + ` computeLegendCounts, fillGrid, copyGridToExcel, runPushGate, getVisualGridDimensions,`
       + ` eachSavableCell: (typeof eachSavableCell === 'function') ? eachSavableCell : null,`

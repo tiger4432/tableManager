@@ -62,7 +62,7 @@ function sliceFunction(source, name) {
 // Every symbol the new branches actually run. A missing one is a rename -> exit 2, never green.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
-  'getPhysicalCoords', 'getCellFromPhysicalCoords', 'getCellFromVisualCoords',
+  'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
   'getTransformedPhysicalConfig', 'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   // [H5] the reference-dimension ceiling and the ONE place its bound is defined
@@ -77,7 +77,7 @@ const SYMBOLS = [
   // that domain is wider than the visual grid (it draws to -1x..2x). A harness that re-derived
   // "off the grid" by hand measured 190 where the shipped classifier measures 27.
   'classifyUnsavableCells', 'eachSavableCell', 'serverCellKeySet',
-  'renderGridCanvas', 'getVisualCoords', 'cellFillColor', 'isProtectedFCell',
+  'renderGridCanvas', 'getDbCoords', 'cellFillColor', 'isProtectedFCell',
   // The ONE definition of "this many cells make Push refuse".
   'pushBlockingCount',
 ];
@@ -94,7 +94,7 @@ const PANEL_BEFORE = {   // the target map's frame as the editor holds it (CORE-
 };
 // A — realistic reference: stored dims EQUAL what applyPhysicalGeometry derives (29x25)
 // Offsets are ONE FULL CHIP PITCH on each axis on purpose: a sub-cell offset rounds away in
-// getPhysicalCoords and the whole offset term would then be unscored (a fixture that kills its
+// getDieIndex and the whole offset term would then be unscored (a fixture that kills its
 // own defect axis — map-pm memory). At one pitch the shift is exactly +-1 cell and shows up.
 const REF_A = {
   grid_cols: 29, grid_rows: 25, grid_start_x: 3, grid_start_y: 2, grid_y_invert: true,
@@ -144,7 +144,7 @@ function buildEnv(src, opts = {}) {
     physEdgeMargin: makeInput(P.margin),
     gridCanvas: { getBoundingClientRect: () => ({ width: 700, height: 700 }) },
     // Paint sink: every 2D-context method is a no-op, every property writable. The render
-    // loop's DECISIONS (getPhysicalCoords / isValidDieAt / isCellInsideWaferFast) are real.
+    // loop's DECISIONS (getDieIndex / isValidDieAt / isCellInsideWaferFast) are real.
     waferCanvas: { width: 0, height: 0, getContext: () => new Proxy({}, {
       get: (t, k) => (k in t ? t[k] : (t[k] = () => {})), set: (t, k, v) => (t[k] = v, true) }) },
     showAnnotations: { checked: false },
@@ -242,8 +242,8 @@ const wrongWxH = (f) => `${f.cols}x${f.rows}`;
 
 // ── An INDEPENDENT oracle: `physical key -> stored (DB) coordinate`, under any frame ───────
 //
-// 🔴 It is built from the two shipped PER-CELL primitives (`getPhysicalCoords` /
-//    `getVisualCoords`) under the frame window. It used to be independent of
+// 🔴 It is built from the two shipped PER-CELL primitives (`getDieIndex` /
+//    `getDbCoords`) under the frame window. It used to be independent of
 //    `dbCoordsByPhysKey`; that function is now DELETED (it existed only for the adoption cost
 //    and the reposition plan), so this is the only implementation left and the harness owns it.
 //    That is the correct ownership: it models what the SOURCE no longer does, which is exactly
@@ -255,8 +255,8 @@ function coordMapOracle(S, frame) {
   return S.withPhysFrame(rf, () => {
     const m = new Map();
     for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-      const p = S.getPhysicalCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
-      const v = S.getVisualCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+      const p = S.getDieIndex(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+      const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
                                   rf.invertY, rf.startX, rf.startY);
       m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
     }
@@ -323,7 +323,7 @@ function targetReachableKeys(S) {
   const vc = r90 ? rows : cols, vr = r90 ? cols : rows;
   const out = new Map();
   for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-    const p = S.getPhysicalCoords(c, r, cols, rows, rot, side);
+    const p = S.getDieIndex(c, r, cols, rows, rot, side);
     out.set(`${p.x}_${p.y}`, `${c},${r}`);
   }
   return out;
@@ -950,7 +950,7 @@ async function scoreAll(src, { verbose = false } = {}) {
       const at = afterReach.get(k);
       if (at === undefined) { roundTripMismatch++; continue; }
       const [c, r] = at.split(',').map(Number);
-      const p = S.getPhysicalCoords(c, r, cols, rows, S.currentRotation, S.currentSide);
+      const p = S.getDieIndex(c, r, cols, rows, S.currentRotation, S.currentSide);
       if (`${p.x}_${p.y}` !== k) roundTripMismatch++;
     }
     eq(`F6/empty-${label}/key-to-cell-to-key`, 0, roundTripMismatch);
@@ -1257,7 +1257,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //
   // I FIRST WROTE THIS BLOCK ASSERTING SILENCE, ON THE REASONING THAT THE PHYSICAL KEY IS
   // ROTATION-INVARIANT SO A ROTATION-ONLY REFERENCE MUST OVERLAP. The harness said otherwise
-  // and the harness was right: `getCellFromVisualCoords` anchors DB coordinates on
+  // and the harness was right: `getCanvasCellFromDb` anchors DB coordinates on
   // `getWaferBoundingBox(rotation, side)`, whose bounding box is itself rotation-dependent, so
   // the DB -> physical mapping is NOT rotation-invariant even though canvas -> physical is.
   // A reference stored at 90 really does name a different die by DB(0,0), and the mask really
@@ -1296,7 +1296,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   //        if (preset.rotation !== undefined) currentRotation = preset.rotation;
   //        if (preset.side !== undefined) currentSide = preset.side;
   //    and ALL FIVE stored presets declare rot 0 / front. Applying any of them to a rotated
-  //    or back-side map reset the orientation, `getPhysicalCoords` reads both, and every
+  //    or back-side map reset the orientation, `getDieIndex` reads both, and every
   //    cell's physical key - hence the coordinate Push writes - changed. Measured on
   //    `aa123_a` + `4A`: byte-identical physical spec, unchanged grid, unchanged bounding
   //    box, 173 of 187 dies renumbered, and Push proceeded, because the contrast gate counts

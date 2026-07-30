@@ -131,7 +131,7 @@ const MAP_FNS = [
   // shared geometry / copy path
   'physNum', 'gridDimNum',
   'getScreenShift', 'getTransformedPhysicalConfig',
-  'getPhysicalCoords', 'getVisualCoords',
+  'getDieIndex', 'getDbCoords',
   'isCellInsideWaferFast', 'isCellInsideWafer', 'getWaferBoundingBox',
   'validDieBasis', 'isValidDieAt', 'getGridCellObject',
   'parseCssColor', 'toExcelHex', 'cellFillColor',
