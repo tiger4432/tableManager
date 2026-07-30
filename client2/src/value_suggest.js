@@ -165,6 +165,25 @@ export function resetSuggestStats() {
 }
 
 /**
+ * Publish the diagnostics on `window` so they SURVIVE THE PRODUCTION BUILD — the same trap,
+ * and the same fix, as `effort_meter.publishDiagnostics`. `getSuggestStats` and
+ * `resetSuggestStats` have no caller inside `client2/src`, so the bundler tree-shakes them
+ * out of the built chunk and the numbers exist only in source. Measured: during this
+ * round's browser E2E `window.__assySuggest` was undefined and the request counts had to be
+ * obtained by wrapping `fetch` by hand. An assignment to `window` is a real reference and
+ * cannot be shaken out.
+ *
+ * Read-only, guarded, no UI. Nothing in the app reads it back — it exists so that "how many
+ * requests did that prefix cost" and "is this column switched off, and at what floor" are
+ * answerable in production instead of only in a test.
+ */
+try {
+  if (typeof window !== 'undefined') {
+    window.__assySuggest = { getSuggestStats, resetSuggestStats };
+  }
+} catch (err) { /* diagnostics must never break the page */ }
+
+/**
  * ASCII-only guard on local narrowing. `db_fold` exists because this database's `lower()`
  * and JavaScript's `toLowerCase()` are DIFFERENT FUNCTIONS outside ASCII — the server
  * module records that `lower()` leaves U+00C4 alone where the host language does not. A-Z
