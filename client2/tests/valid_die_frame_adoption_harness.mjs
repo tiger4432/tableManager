@@ -49,6 +49,9 @@ const SYMBOLS = [
   'getPhysicalCoords', 'getCellFromPhysicalCoords', 'getCellFromVisualCoords',
   'getTransformedPhysicalConfig', 'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
+  // [H5] the reference-dimension ceiling and the ONE place its bound is defined
+  // (`applyPhysicalGeometry` reads the same function, so a mutation there moves both).
+  'frameDimBounds', 'frameDimError',
   'adoptFrameSpec',                       // F6 — the new adoption primitive
   'applyPresetObject', 'applyPhysicalGeometry',
   'applyRoutedPreset',                    // F5c — the new routing consumer
@@ -66,7 +69,9 @@ const SYMBOLS = [
   'dbCoordsByPhysKey', 'adoptedFrameOf', 'adoptionCoordinateCost', 'pushBlockingCount',
   // [clause 4] the reposition — plan and apply are separate so the refusal path can leave the
   // screen untouched. Both are sliced: the plan is the judgement, the apply is the mutation.
-  'storedCoordRepositionPlan', 'applyStoredCoordReposition',
+  // [H4] the refusal wording is a pure function so the COLLISION-ONLY shape can be scored:
+  // it is unreachable by construction, and an unreachable branch is otherwise unscorable.
+  'storedCoordRepositionPlan', 'applyStoredCoordReposition', 'repositionRefusalReason',
 ];
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────────────
@@ -225,6 +230,47 @@ const eq = (name, expected, actual, note) => {
 const evidence = [];
 
 const wrongWxH = (f) => `${f.cols}x${f.rows}`;
+
+// ── [H2] An INDEPENDENT oracle for "how many valued cells must change their physical key" ──
+//
+// 🔴 It is built from the two shipped PER-CELL primitives (`getPhysicalCoords` /
+//    `getVisualCoords`) under the frame window — deliberately NOT from `dbCoordsByPhysKey`,
+//    because that function is itself a mutation target (P1d). Scoring the announced count
+//    against the plan's own arithmetic would be self-comparison: fold the defect into the plan
+//    and both sides move together.
+function coordMapOracle(S, frame) {
+  const rf = S.resolveFrame(frame);
+  const isRot = (rf.rotation === 90 || rf.rotation === 270);
+  const vc = isRot ? rf.rows : rf.cols, vr = isRot ? rf.cols : rf.rows;
+  return S.withPhysFrame(rf, () => {
+    const m = new Map();
+    for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
+      const p = S.getPhysicalCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+      const v = S.getVisualCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+                                  rf.invertY, rf.startX, rf.startY);
+      m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
+    }
+    return m;
+  });
+}
+
+// The number the operator must be told: valued cells whose physical key has to change so that
+// their stored coordinate survives. MUST be called BEFORE the adoption (it reads the DOM frame).
+function oracleValuedRekeyed(S, fromFrame, toFrame) {
+  const b = coordMapOracle(S, fromFrame), a = coordMapOracle(S, toFrame);
+  const inv = new Map();
+  a.forEach((coord, key) => { if (!inv.has(coord)) inv.set(coord, key); });
+  let n = 0;
+  Object.keys(S.gridData).forEach(k => {
+    if ((S.gridData[k] || '') === '') return;          // eachSavableCell's empty test
+    const coord = b.get(k);
+    if (coord === undefined) return;
+    const nk = inv.get(coord);
+    if (nk === undefined || nk === k) return;
+    n++;
+  });
+  return n;
+}
 
 // helper: enumerate every physical key the TARGET renderer will look up, given its frame
 function targetReachableKeys(S) {
@@ -434,6 +480,9 @@ async function scoreAll(src, { verbose = false } = {}) {
     const dataBefore = storedData(S, frameBefore);
     const screenBefore = coordToScreen(S);
     const payloadBefore = pushPayload(S);
+    // [H2] the number the announcement must carry, derived WITHOUT dbCoordsByPhysKey.
+    const oracleMovedC = oracleValuedRekeyed(S, frameBefore,
+      S.adoptedFrameOf(S.frameFromMeta(REF_C)));
 
     // What clause 4 PREVENTS, measured on a separate sandbox by the shipped Push iterator:
     // adopt the frame WITHOUT repositioning and count the coordinates that shift.
@@ -502,8 +551,20 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq('F6/C/clause4/announced', true, !!t, JSON.stringify(log.toasts.map(x => x.msg.slice(0, 40))));
     eq('F6/C/clause4/announcement-says-coordinates-were-kept', true,
        /저장된 좌표를 그대로 유지한 채/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    // [H2] ONE quantity, and it is the INDEPENDENT oracle's number — not the plan's own.
+    eq('F6/C/clause4/announcement-names-the-oracle-count', true,
+       new RegExp(`기존 셀 ${oracleMovedC}개`).test(t ? t.msg : ''),
+       `oracle=${oracleMovedC}; toast="${t ? t.msg : '(none)'}"`);
+    eq('F6/C/clause4/oracle-count-is-not-zero', true, oracleMovedC > 0,
+       'if nothing had to be re-keyed this fixture could not score the announcement at all');
     eq('F6/C/clause4/announcement-carries-the-saved-count', true,
-       /재배치가 없었다면 [1-9]\d*개가 밀렸습니다/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+       /재배치가 없었다면 바로 이 [1-9]\d*개의 저장 좌표가 밀렸을/.test(t ? t.msg : ''),
+       t ? t.msg : '(none)');
+    // ...and the sentence contains NO second number for the same quantity.
+    eq('F6/C/clause4/announcement-has-one-number-for-one-quantity',
+       [`${oracleMovedC}`, `${oracleMovedC}`],
+       (t ? t.msg : '').replace(/[\s\S]*?기존 셀 /, '')
+         .replace(/개는[\s\S]*?바로 이 /, '|').replace(/개의[\s\S]*/, '').split('|'));
     // 🔴 NOT asserted as 'info'. Measured: this fixture adopts an identical physical spec into
     //    a grid one larger, which pushes some painted cells outside the circle, so the
     //    announcement legitimately takes the WARNING branch. Pinning the kind here would make
@@ -580,10 +641,20 @@ async function scoreAll(src, { verbose = false } = {}) {
   // would take the feature away from a case that is provably safe.
   {
     const cells = refCellsFor(REF_D);
-    const { sandbox: S, el } = buildEnv(src, { refMeta: REF_D, refCells: cells });
+    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_D, refCells: cells });
     const reach = targetReachableKeys(S);
     [...reach.keys()].forEach(k => { S.gridData[k] = 'A'; });
     const payloadBefore = pushPayload(S);
+    // [H2] THE ZERO CASE, AND IT IS THE ONE QA MEASURED IN PRODUCTION. Independently: the
+    // 47x47/dia-320 frame produces the same stored coordinate for every physical key, so not one
+    // cell has to be re-keyed. Before this round the toast still said
+    //   `기존 셀 2025개는 … 화면 위치만 옮겼습니다 (재배치가 없었다면 0개가 밀렸습니다)`
+    // — two numbers three orders of magnitude apart in one sentence, asserting an action that did
+    // not happen. (Real pair: `BASE_4E ← 4B13`, 262 vs 0.)
+    const oracleMovedD = oracleValuedRekeyed(S, S.currentFrame(),
+      S.adoptedFrameOf(S.frameFromMeta(REF_D)));
+    eq('F6/D/oracle-says-nothing-is-re-keyed', 0, oracleMovedD,
+       'if this were non-zero the zero-case assertion below would be vacuous');
 
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
     eq('F6/D/dimensions-really-differ', true,
@@ -599,9 +670,238 @@ async function scoreAll(src, { verbose = false } = {}) {
     const movedAnyway = shared.filter(k => after[k] !== payloadBefore[k]);
     eq('F6/D/no-shared-cell-changed-its-coordinate', [], movedAnyway.slice(0, 8));
     eq('F6/D/the-shared-population-is-not-empty', true, shared.length > 0);
+
+    // ── [H2] A NO-OP REPOSITION MUST NOT BE ANNOUNCED AS A REPOSITION ─────────────────
+    // The adoption DOES announce here (the dia-320 circle strands painted cells), so the toast
+    // exists and the only question is whether it claims cells were moved.
+    const tD = log.toasts.find(x => /격자를 참조 맵 규격으로 열었습니다/.test(x.msg));
+    eq('F6/D/announced', true, !!tD, JSON.stringify(log.toasts.map(x => x.msg.slice(0, 40))));
+    eq('F6/D/no-reposition-claim-when-nothing-was-re-keyed', false,
+       /기존 셀 \d+개/.test(tD ? tD.msg : ''), tD ? tD.msg : '(none)');
+    eq('F6/D/no-orphan-saved-count-either', false,
+       /재배치가 없었다면/.test(tD ? tD.msg : ''), tD ? tD.msg : '(none)');
+    // ...and the sentence it DOES need (the stranded cells) is still there, so the omission
+    // above is not "the toast lost its body".
+    eq('F6/D/stranded-sentence-survives', true,
+       /격자·유효 다이 밖으로 나갔습니다|서버가 보낸 적이 없는 셀/.test(tD ? tD.msg : ''),
+       tD ? tD.msg : '(none)');
     evidence.push(`[F6/D] 45x45 -> ${REF_D.grid_cols}x${REF_D.grid_rows} (dia 320): adopted; of `
       + `${Object.keys(payloadBefore).length} payload cells ${shared.length} are still savable and `
-      + `NONE moved — that is why a differing dimension is allowed here`);
+      + `NONE moved — that is why a differing dimension is allowed here. Oracle: `
+      + `${oracleMovedD} valued cells re-keyed, so the announcement carries NO reposition `
+      + `sentence (it used to claim ${Object.keys(S.gridData).length})`);
+  }
+
+  // ══ G1 [H2] — THE POPULATION AXIS: gridData holds BLANK-valued keys and a served set ═══
+  //
+  // 🔴 THIS FIXTURE EXISTS BECAUSE C AND E CANNOT SCORE THE COUNT. Both paint every cell, so
+  //    `moves.size == rekeyed == rekeyedWithValue` and any of the three numbers satisfies the
+  //    assertion. The defect is precisely that they are NOT the same number in production:
+  //    `plan.moves` counts cells whose key does not change, cells whose value is `''`, and
+  //    served-only keys. QA measured `2025개 … (재배치가 없었다면 21개가 밀렸습니다)` — a
+  //    hundredfold gap inside one sentence.
+  //
+  // The blank-value state is REACHABLE, not contrived: deleting a legend value runs
+  // `Object.keys(gridData).forEach(k => { if (gridData[k] === deletedVal) gridData[k] = ''; })`
+  // (map_editor.js `deleteLegendRow`), which blanks every cell that carried it while the server
+  // still holds those rows — so `serverCellKeys` keeps them and `gridData[k]` is `''`.
+  {
+    const cells = refCellsFor(REF_C);
+    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF_C, refCells: cells });
+    const reach = [...targetReachableKeys(S).keys()];
+    const valued = [];
+    reach.forEach((k, i) => {
+      if (i % 100 === 0) { S.gridData[k] = 'A'; valued.push(k); }
+      else S.gridData[k] = '';                       // the legend-deletion state
+    });
+    S.serverCellKeys = { table: 'dt_map', mapKey: 'HOME_1', keys: new Set(reach) };
+    S.loadedIdentity = { table: 'dt_map', mapKey: 'HOME_1' };
+
+    // The fixture states its own truth: the population it declares, not what the plan reports.
+    const CONSIDERED = reach.length;                 // every key migrates -> plan.moves.size
+    const oracleMoved = oracleValuedRekeyed(S, S.currentFrame(),
+      S.adoptedFrameOf(S.frameFromMeta(REF_C)));
+    eq('F6/G1/two-populations-really-differ', true, CONSIDERED > oracleMoved * 10,
+       `considered=${CONSIDERED} vs valued-re-keyed=${oracleMoved}; if these were equal this `
+       + 'fixture could not tell the two counters apart');
+    eq('F6/G1/oracle-matches-the-painted-set', valued.length, oracleMoved,
+       'every cell re-keys in a 45x45 -> 46x46 adoption, so the valued count IS the painted count');
+
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    eq('F6/G1/adopted', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+
+    const t = log.toasts.find(x => /격자를 참조 맵 규격으로 열었습니다/.test(x.msg));
+    eq('F6/G1/announced', true, !!t, JSON.stringify(log.toasts.map(x => x.msg.slice(0, 40))));
+    eq('F6/G1/announcement-names-the-valued-count', true,
+       new RegExp(`기존 셀 ${oracleMoved}개`).test(t ? t.msg : ''),
+       `expected 기존 셀 ${oracleMoved}개; toast="${t ? t.msg : '(none)'}"`);
+    // 🔴 THE DISCRIMINATING ASSERTION: the toast must not name the CONSIDERED population.
+    eq('F6/G1/announcement-does-not-name-the-considered-count', false,
+       new RegExp(`기존 셀 ${CONSIDERED}개`).test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('F6/G1/considered-count-appears-nowhere-in-the-toast', false,
+       new RegExp(`(^|[^0-9])${CONSIDERED}개`).test(t ? t.msg : ''), t ? t.msg : '(none)');
+    // and the blank-valued cells were still MIGRATED (they carry nothing, but dropping them
+    // would leave stale keys behind that the next paint would resurrect at the wrong die)
+    eq('F6/G1/blank-cells-were-migrated-not-dropped', CONSIDERED, Object.keys(S.gridData).length);
+    eq('F6/G1/every-value-survived', valued.length,
+       Object.keys(S.gridData).filter(k => (S.gridData[k] || '') !== '').length);
+    evidence.push(`[F6/G1] 45x45 -> 46x46 with ${CONSIDERED} keys of which only ${valued.length} `
+      + `carry a value (legend-deletion state) + ${CONSIDERED} served rows: announced `
+      + `${oracleMoved}, and ${CONSIDERED} appears nowhere in the sentence`);
+  }
+
+  // ══ G2 [H3] — THE `served` TERM IN `loadBearing`, WITH NOTHING ELSE HOLDING IT UP ══════
+  //
+  // 🔴 `loadBearing` is `(gridData[k]||'') !== '' || loadedFCells.has(k) || served.has(k)`.
+  //    Delete the third term and the same input ADOPTS: the unrepresentable served keys stop
+  //    being a refusal reason, they are simply absent from `plan.moves`, `serverCellKeys` shrinks
+  //    silently, and `replace_map` then deletes those live rows (invariant 4 — the very reason
+  //    the commit migrates served keys at all).
+  //
+  // 🔴 NEITHER EXISTING FIXTURE CAN SEE IT. Fixture C's `servedSample` is `paintedKeys.slice(0,40)`
+  //    — all `'A'`, all representable, so the term is redundant. Fixture E paints every cell `'A'`,
+  //    so the FIRST term is already true for every served key. And P1g mutates *apply*, not *plan*.
+  //    Here every served key's value is `''` and `loadedFCells` is empty, so the third term is the
+  //    ONLY thing that makes those rows load-bearing.
+  {
+    const TGT = { cols: 33, rows: 25, startX: -4, startY: -3, invertY: false,
+                  rotation: 0, side: 'front',
+                  dia: 300, chipX: 9.7, chipY: 13.8, offX: 0.1, offY: 0, margin: 3 };
+    const REF_G = { grid_cols: 29, grid_rows: 25, grid_start_x: 1, grid_start_y: 1,
+                    grid_y_invert: false, rotation: 0, side: 'back',
+                    phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
+                    phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 };
+    const { sandbox: S, el } = buildEnv(src, { refMeta: REF_G, refCells: refCellsFor(REF_G),
+                                              panel: TGT });
+    const reach = [...targetReachableKeys(S).keys()];
+    reach.forEach(k => { S.gridData[k] = ''; });      // every value deleted (legend row removed)
+    const servedSet = new Set(reach);
+    S.serverCellKeys = { table: 'dt_map', mapKey: 'HOME_1', keys: servedSet };
+    S.loadedIdentity = { table: 'dt_map', mapKey: 'HOME_1' };
+    const servedBefore = S.serverCellKeySet().size;
+    const gridKeysBefore = Object.keys(S.gridData).length;
+    const dims = [el.gridCols.value, el.gridRows.value];
+
+    const planG = S.storedCoordRepositionPlan(S.currentFrame(),
+      S.adoptedFrameOf(S.frameFromMeta(REF_G)));
+
+    // ① THE AXIS IS LIVE — served rows really would disappear from the migration.
+    const wouldVanish = [...servedSet].filter(k => !planG.moves.has(k));
+    eq('F6/G2/served-rows-would-vanish', true, wouldVanish.length > 0,
+       `${wouldVanish.length} served keys have no destination; if 0 this fixture proves nothing`);
+    // ② AND NOTHING ELSE HOLDS THEM UP — not a value, not an F-lock.
+    const heldUpByElse = wouldVanish.filter(k => (S.gridData[k] || '') !== '' || S.loadedFCells.has(k));
+    eq('F6/G2/only-the-served-term-holds-them', [], heldUpByElse.slice(0, 6),
+       'if any of these carried a value the first term of loadBearing would already cover it');
+    // ③ THE DETECTOR: every served row that has no destination must be NAMED by the plan.
+    //    Remove the `served` term and this list stops being empty while the plan reports success.
+    const unrepSet = new Set(planG.unrepresentable.map(x => x.key));
+    const strandSet = new Set(planG.stranded);
+    const unaccounted = wouldVanish.filter(k => !unrepSet.has(k) && !strandSet.has(k));
+    eq('F6/G2/plan-accounts-for-every-served-row', [], unaccounted.slice(0, 6),
+       `${unaccounted.length} served rows would be dropped with no counter registering them — `
+       + 'replace_map deletes exactly those rows (invariant 4)');
+
+    // ④ ...and end to end the designation is refused, with nothing touched.
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    eq('F6/G2/refused', 'refused', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq('F6/G2/reason-names-the-count', true,
+       new RegExp(`셀 ${planG.unrepresentable.length}개`).test(res.reason || ''), res.reason);
+    eq('F6/G2/served-set-intact', servedBefore, S.serverCellKeySet().size);
+    eq('F6/G2/gridData-untouched', gridKeysBefore, Object.keys(S.gridData).length);
+    eq('F6/G2/frame-untouched', dims, [el.gridCols.value, el.gridRows.value]);
+    eq('F6/G2/no-mask', null, res.keys);
+    evidence.push(`[F6/G2] 33x25(start -4,-3) <- 29x25, every value blanked, ${servedBefore} served `
+      + `rows: ${wouldVanish.length} of them have no destination in the new frame and ALL `
+      + `${wouldVanish.length} are named by the plan (0 unaccounted). Refused; served set still `
+      + `${S.serverCellKeySet().size}. Drop the \`served\` term and the same input adopts, `
+      + `serverCellKeys goes ${servedBefore} -> ${servedBefore - wouldVanish.length}, and `
+      + `replace_map deletes ${wouldVanish.length} live rows`);
+  }
+
+  // ══ [H4] the three refusal shapes, INCLUDING the one no fixture can reach ══════════════
+  //
+  // `plan.collision` is unreachable by construction — both `(c,r)->phys` and `(c,r)->(xv,yv)`
+  // are injective, so no stored coordinate can carry two physical keys. That is exactly why the
+  // wording is a pure function: an unreachable branch is otherwise unscorable, and the branch
+  // shipped a sentence that could only ever be WRONG (`이 맵의 셀 0개는 …`).
+  {
+    const { sandbox: S } = buildEnv(src, {});
+    const mk = (o) => ({ unrepresentable: [], stranded: [], collision: '',
+                         moves: new Map(), rekeyed: 0, rekeyedWithValue: 0, ...o });
+    const rU = S.repositionRefusalReason(mk({ unrepresentable: [{ key: '3_4', coord: '7_7' }] }), 29, 25);
+    eq('H4/unrepresentable-only/counts-one-cell', true, /셀 1개/.test(rU.reason), rU.reason);
+    eq('H4/unrepresentable-only/shows-the-coordinate', true,
+       /저장 좌표 \(7, 7\)/.test(rU.reason), rU.reason);
+    eq('H4/unrepresentable-only/offers-the-route', true, /📂 Load/.test(rU.reason), rU.reason);
+    eq('H4/unrepresentable-only/not-flagged-internal', false, rU.collisionOnly);
+
+    const rS = S.repositionRefusalReason(mk({ stranded: ['1_1', '2_2'] }), 29, 25);
+    eq('H4/stranded-only/counts-both-cells', true, /셀 2개/.test(rS.reason), rS.reason);
+    eq('H4/stranded-only/never-says-zero-cells', false, /셀 0개/.test(rS.reason), rS.reason);
+
+    // 🔴 THE DEFECT: a collision-only refusal used to say "이 맵의 셀 0개는 …" — it refused while
+    //    pointing at no cell at all, because `blockedCells` omitted the collision population.
+    const rC = S.repositionRefusalReason(mk({ collision: '7_7' }), 29, 25);
+    eq('H4/collision-only/never-says-zero-cells', false, /셀 0개/.test(rC.reason), rC.reason);
+    eq('H4/collision-only/does-not-count-cells-at-all', false, /셀 \d+개/.test(rC.reason), rC.reason);
+    eq('H4/collision-only/names-the-coordinate', true,
+       /저장 좌표 \(7, 7\)/.test(rC.reason), rC.reason);
+    eq('H4/collision-only/named-as-a-program-defect', true,
+       /프로그램 결함/.test(rC.reason) && /데이터를 고치려 하지 마시고/.test(rC.reason), rC.reason);
+    eq('H4/collision-only/routed-to-the-error-channel', true, rC.collisionOnly);
+    eq('H4/collision-only/reason-is-not-empty', true, rC.reason.length > 40, rC.reason);
+
+    // a MIXED plan counts the cell populations and still mentions the collision
+    const rM = S.repositionRefusalReason(
+      mk({ unrepresentable: [{ key: '3_4', coord: '7_7' }], collision: '9_9' }), 29, 25);
+    eq('H4/mixed/counts-cells-and-names-the-collision', true,
+       /셀 1개/.test(rM.reason) && /\(9, 9\)/.test(rM.reason), rM.reason);
+    eq('H4/mixed/not-flagged-internal', false, rM.collisionOnly);
+    evidence.push(`[H4] collision-only reason = "${rC.reason.slice(0, 96)}…" (no cell count, `
+      + `named as a program defect, routed to console.error)`);
+  }
+
+  // ══ [H5] the reference's DIMENSIONS have a ceiling, and it refuses instead of clamping ══
+  {
+    const { sandbox: S } = buildEnv(src, {});
+    const f = (c, r) => ({ cols: c, rows: r });
+    eq('H5/bound-is-the-editors-own-declared-domain', [1, 100],
+       [S.frameDimBounds().min, S.frameDimBounds().max],
+       'map_editor.html declares min="1" max="100" on #grid-cols/#grid-rows');
+    eq('H5/in-range-is-accepted', '', S.frameDimError(f(45, 45)));
+    eq('H5/upper-bound-inclusive', '', S.frameDimError(f(100, 100)));
+    eq('H5/four-digit-cols-rejected', true, /grid_cols=1024/.test(S.frameDimError(f(1024, 25))));
+    eq('H5/four-digit-rows-rejected', true, /grid_rows=2048/.test(S.frameDimError(f(29, 2048))));
+    eq('H5/zero-rejected', true, /grid_cols=0/.test(S.frameDimError(f(0, 25))),
+       'gridDimNum turns 0 into the default 10 while adoptFrameSpec writes 0 — a silent divergence');
+    eq('H5/negative-rejected', true, /grid_rows=-3/.test(S.frameDimError(f(29, -3))));
+    eq('H5/non-integer-rejected', true, /grid_cols=45\.5/.test(S.frameDimError(f(45.5, 45))),
+       'parseInt reads 45 while the DOM gets 45.5');
+    eq('H5/error-names-the-allowed-range', true, /1~100 정수/.test(S.frameDimError(f(1024, 25))));
+  }
+  // ...and end to end: it refuses BEFORE a single reference cell is fetched.
+  {
+    const BIG = { ...REF_C, grid_cols: 1024, grid_rows: 1024 };
+    const { sandbox: S, el, log } = buildEnv(src, { refMeta: BIG, refCells: refCellsFor(REF_C) });
+    [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
+    const before = [el.gridCols.value, el.gridRows.value];
+    const gridBefore = Object.keys(S.gridData).length;
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    eq('H5/resolve/refused', 'refused', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq('H5/resolve/reason-names-the-dimension', true,
+       /grid_cols=1024/.test(res.reason || ''), res.reason);
+    eq('H5/resolve/reason-is-not-an-internal-error', false, /내부 오류/.test(res.reason || ''),
+       'a hostile metadata row is a DATA problem, not a program defect');
+    eq('H5/resolve/nothing-was-clamped', before, [el.gridCols.value, el.gridRows.value]);
+    eq('H5/resolve/gridData-untouched', gridBefore, Object.keys(S.gridData).length);
+    eq('H5/resolve/no-mask', null, res.keys);
+    // 🔴 the guard sits before the CELL fetch — that is what keeps the 4x full-grid traversal
+    //    and the synchronous render from ever starting.
+    eq('H5/resolve/no-reference-cells-were-fetched', [],
+       log.requests.filter(r => /^fetch:/.test(r)));
+    evidence.push(`[H5] a 1024x1024 wafer_map_metadata row is refused by name before any cell is `
+      + `read (requests: ${log.requests.join(', ')}); the editor frame stays ${before.join('x')}`);
   }
 
   // ══ THE PRIMARY CASE — an EMPTY target still adopts, with zero friction ═════════════
@@ -641,6 +941,19 @@ async function scoreAll(src, { verbose = false } = {}) {
         parseFloat(el.physOffsetX.value), parseFloat(el.physOffsetY.value)]);
     eq(`F6/empty-${label}/no-metadata-write`, [],
        log.requests.filter(r => /wafer_map_metadata|updates|replace/i.test(r)));
+
+    // 🔴 A NAMED GATE BEFORE THE KEY-LEVEL BLOCK. Without it, three mutations (M1 / M4 / P1c —
+    //    all of which make this path refuse) were "caught" by the harness THROWING on
+    //    `[...res.keys]` with `res.keys === null`. Red is red, but a crash is a weaker signal
+    //    than a named failure: it stops the whole run, so every later assertion goes unscored and
+    //    the report cannot say WHICH invariant the mutation broke.
+    eq(`F6/empty-${label}/mask-was-built`, true, !!res.keys,
+       `no mask exists, so the key-level assertions below have no domain; reason='${res.reason}'`);
+    if (!res.keys) {
+      evidence.push(`[F6/empty-${label}] no mask was built — key-level assertions skipped `
+        + `(reason: ${res.reason})`);
+      continue;
+    }
 
     // KEY->VALUE: every mask key must be reachable by the target renderer after adoption.
     const afterReach = targetReachableKeys(S);
@@ -953,13 +1266,53 @@ const MUTATIONS = [
   ['P1c the guard refuses on any dimension change (the clause-4 case loses the feature)',
    s => s.replace('      const plan = storedCoordRepositionPlan(currentFrame(), adoptedFrameOf(refFrame));',
                   '      const plan = { unrepresentable: [{ key: "0_0", coord: "0_0" }], stranded: [], '
-                  + 'collision: "", moves: new Map(), rekeyed: 0, considered: 0 };')],
+                  + 'collision: "", moves: new Map(), rekeyed: 0, rekeyedWithValue: 0 };')],
+  ['P1j the `served` term is dropped from loadBearing (blank-valued served rows go unguarded)',
+   s => s.replace(`  const loadBearing = (k) => (gridData[k] || '') !== '' || loadedFCells.has(k)
+    || (served ? served.has(k) : false);`,
+                  `  const loadBearing = (k) => (gridData[k] || '') !== '' || loadedFCells.has(k);`)],
+  // ── [H2] the announced count ──────────────────────────────────────────────────────────
+  ['H2a the announcement reports plan.moves.size (cells CONSIDERED) — the shipped defect',
+   s => s.replace('                  moved: plan.rekeyedWithValue };',
+                  '                  moved: plan.moves.size };')],
+  ['H2b the announcement reports plan.rekeyed (blank + served-only keys folded in)',
+   s => s.replace('                  moved: plan.rekeyedWithValue };',
+                  '                  moved: plan.rekeyed };')],
+  ['H2c rekeyedWithValue drops the empty-value test (blank cells counted as moved)',
+   s => s.replace("      if ((gridData[k] || '') !== '') rekeyedWithValue++;   // eachSavableCell의 빈 값 식",
+                  '      rekeyedWithValue++;')],
+  ['H2d the reposition sentence is emitted even when nothing was re-keyed ("기존 셀 0개")',
+   s => s.replace('  const repositionSentence = moved > 0', '  const repositionSentence = moved >= 0')],
+  // ── [H4] the refusal wording ───────────────────────────────────────────────────────────
+  ['H4a the collision-only refusal falls back to the counted sentence ("이 맵의 셀 0개는 …")',
+   s => s.replace('  if (u.length === 0 && stranded.length === 0) {', '  if (false) {')],
+  ['H4b the head count omits stranded again (a stranded-only refusal says "셀 0개")',
+   s => s.replace('  const blockedCells = u.length + stranded.length;',
+                  '  const blockedCells = u.length;')],
+  // ── [H5] the reference dimension ceiling ───────────────────────────────────────────────
+  ['H5a the ceiling is removed (a four-digit metadata row reaches the full-grid traversals)',
+   s => s.replace('    const dimErr = frameDimError(refFrame);', "    const dimErr = '';")],
+  ['H5b frameDimBounds raises the ceiling past the editor\'s declared domain (input max="100")',
+   s => s.replace('function frameDimBounds() { return { min: 1, max: 100 }; }',
+                  'function frameDimBounds() { return { min: 1, max: 10000 }; }')],
+  ['H5c the ceiling accepts non-integers and 0 (parseInt/DOM divergence returns)',
+   s => s.replace('  const bad = (n, name) => (!Number.isInteger(n) || n < b.min || n > b.max) ? `${name}=${n}` : \'\';',
+                  '  const bad = (n, name) => (n > b.max) ? `${name}=${n}` : \'\';')],
+  // Placement, not presence: the refusal still happens and still names the dimension, but a
+  // hostile metadata row has already made the editor read the reference map's rows.
+  ['H5d the dimension guard is moved AFTER the reference cell fetch (the read happens anyway)',
+   s => s
+     .replace('    const dimErr = frameDimError(refFrame);', "    const dimErr = '';")
+     .replace('    const cells = [];\n    rows.forEach(row => {',
+              '    const lateErr = frameDimError(refFrame);\n'
+              + '    if (lateErr) return refuse(ref, `${ref.table} · ${ref.mapKey}: ${lateErr}`);\n'
+              + '    const cells = [];\n    rows.forEach(row => {')],
   ['P1d the cost is measured in PHYSICAL KEYS — the unit that cannot see this defect',
    s => s.replace('        out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);',
                   '        out.set(`${p.x}_${p.y}`, `${p.x}_${p.y}`);')],
   ['P1e the reposition is planned but never applied (dimensions adopted, cells left behind)',
-   s => s.replace('      applyStoredCoordReposition(plan);\n      console.info(',
-                  '      console.info(')],
+   s => s.replace('      applyStoredCoordReposition(plan);\n      const oracle =',
+                  '      const oracle =')],
   ['P1f the plan compares the adopted frame with itself (a no-op that reports success)',
    s => s.replace('      const plan = storedCoordRepositionPlan(currentFrame(), adoptedFrameOf(refFrame));',
                   '      const plan = storedCoordRepositionPlan(adoptedFrameOf(refFrame), adoptedFrameOf(refFrame));')],
@@ -973,7 +1326,7 @@ const MUTATIONS = [
    s => s.replace('  loadedFCells.forEach(k => { const nk = plan.moves.get(k); if (nk !== undefined) nextF.add(nk); });',
                   '  loadedFCells.forEach(k => nextF.add(k));')],
   ['P1i the reposition happens SILENTLY (cells jump on screen with no explanation)',
-   s => s.replace('  const moved = adopted.repositioned || 0;', '  const moved = 0;')],
+   s => s.replace('  const moved = adopted.moved || 0;', '  const moved = 0;')],
   // ⚠️ M8 ("the announcement runs BEFORE the mask lands") is DELETED, not silently dropped.
   //    After the P0-1 guard, every path that both adopts AND strands cells refuses instead, so
   //    the announcement is only reachable on the empty-target path where nothing is stranded
@@ -1008,17 +1361,44 @@ base.failures.forEach(f => console.log('   ✗ ' + f));
 
 if (process.argv.includes('--mutate')) {
   console.log('\n── MUTATIONS (each must turn the harness RED) ──');
-  let blind = 0;
+  // 🔴 APPLIED IS COUNTED SEPARATELY FROM CAUGHT, AND CAUGHT IS SPLIT BY HOW.
+  //    A mutation that did not apply scores nothing while looking like a passing line, and a
+  //    mutation "caught" by the harness THROWING is a weaker signal than a named assertion: the
+  //    crash aborts the run, so every later assertion in that pass went unscored and the report
+  //    cannot say which invariant broke. Both are reported as their own number so neither hides
+  //    inside a total.
+  let applied = 0, notApplied = 0, byAssertion = 0, byCrash = 0, stillGreen = 0;
+  const crashed = [], green = [], skipped = [];
   for (const [name, apply] of MUTATIONS) {
     const mutated = apply(SRC0);
-    if (mutated === SRC0) { console.log(`  ! ${name}: MUTATION DID NOT APPLY (harness bug)`); blind++; continue; }
+    if (mutated === SRC0) {
+      console.log(`  ! ${name}: MUTATION DID NOT APPLY (harness bug — this axis is unscored)`);
+      notApplied++; skipped.push(name); continue;
+    }
+    applied++;
     let r;
     try { r = await scoreAll(mutated); }
-    catch (e) { console.log(`  ✓ ${name} -> harness threw (${e && e.message})`); continue; }
-    if (r.failures.length === 0) { console.log(`  ✗ ${name} -> STILL GREEN — this axis is unscored`); blind++; }
-    else console.log(`  ✓ ${name} -> ${r.failures.length} failure(s): ${r.failures[0].split(':')[0]}`);
+    catch (e) {
+      console.log(`  ~ ${name} -> harness THREW (${e && e.message}) — red, but unnamed`);
+      byCrash++; crashed.push(name); continue;
+    }
+    if (r.failures.length === 0) {
+      console.log(`  ✗ ${name} -> STILL GREEN — this axis is unscored`);
+      stillGreen++; green.push(name); continue;
+    }
+    byAssertion++;
+    console.log(`  ✓ ${name} -> ${r.failures.length} failure(s): ${r.failures[0].split(':')[0]}`);
   }
-  if (blind > 0) { console.log(`\n✗ ${blind} mutation(s) went undetected.`); process.exit(1); }
+  console.log(`\nmutations: ${MUTATIONS.length} declared · ${applied} applied · ${notApplied} did `
+    + `not apply | caught by a NAMED assertion ${byAssertion} · caught only by a crash ${byCrash} `
+    + `· undetected ${stillGreen}`);
+  if (byCrash > 0) console.log(`  ~ unnamed (crash-only) detection: ${crashed.join(' | ')}`);
+  if (skipped.length) console.log(`  ! did not apply: ${skipped.join(' | ')}`);
+  if (green.length) console.log(`  ✗ undetected: ${green.join(' | ')}`);
+  if (stillGreen > 0 || notApplied > 0) {
+    console.log(`\n✗ ${stillGreen + notApplied} mutation(s) scored nothing.`);
+    process.exit(1);
+  }
 }
 
 process.exit(base.failures.length === 0 ? 0 : 1);
