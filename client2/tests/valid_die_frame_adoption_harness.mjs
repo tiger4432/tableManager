@@ -505,7 +505,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     // An offset mask leaves no visible cause (the grid looks fine, only the mask is wrong), so
     // silence would make the operator suspect the data. One info toast, no dialog: reads stay
     // frictionless (UI discipline).
-    const notices = log.toasts.filter(x => /격자.*와 달라 마스크가 화면에서 밀려 보입니다/.test(x.msg));
+    const notices = log.toasts.filter(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg));
     eq(`F6/${label}/F8/notice-shown-exactly-once`, 1, notices.length,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
     eq(`F6/${label}/F8/notice-is-info-not-error`, ['info'], notices.map(x => x.kind));
@@ -634,7 +634,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     // The toast is no longer an adoption announcement; it is the offset notice. Its kind can
     // now be pinned to 'info' outright — F6 could not, because a stranded population pushed the
     // same sentence onto the warning branch. Nothing is stranded when nothing is adopted.
-    const t = log.toasts.find(x => /격자.*와 달라 마스크가 화면에서 밀려 보입니다/.test(x.msg));
+    const t = log.toasts.find(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg));
     eq('F6/C/F8/offset-notice-announced', true, !!t,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
     eq('F6/C/F8/offset-notice-is-info', 'info', t && t.kind);
@@ -763,7 +763,7 @@ async function scoreAll(src, { verbose = false } = {}) {
        storedData(S, S.currentFrame()));
     eq('F6/E/F8/payload-is-not-empty', true, Object.keys(payloadBefore).length > 0);
     eq('F6/E/F8/notice-shown-exactly-once', 1,
-       log.toasts.filter(x => /격자.*와 달라 마스크가 화면에서 밀려 보입니다/.test(x.msg)).length,
+       log.toasts.filter(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg)).length,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
 
     evidence.push(`[F6/E] 33x25(start -4,-3) panel <- 29x25 reference, the 4MAIN_TRIM shape: `
@@ -1154,6 +1154,142 @@ async function scoreAll(src, { verbose = false } = {}) {
     }
   }
 
+  // == O - THE ALIGNMENT ALARM WATCHES THE ORIGIN CELL, NOT THE GRID SIZE ==============
+  //
+  // SPECIMEN, real data: `MID_01 <- 4MAIN_DT`. Both grids are 23x23 and the physical specs
+  // match, so the OLD guard - which compared dimensions - said nothing at all, while the
+  // starts (1,1) vs (-4,-3) put the mask 5 columns and 4 rows off. Equal size is not equal
+  // alignment; what decides whether the same DB coordinate names the same die is the ORIGIN.
+  //
+  // The predicate is built from `projectCellsToPhys` - the same function that builds the mask
+  // itself - applied to the single cell DB(0,0) under each frame. Physical keys, not canvas
+  // columns: a reference that differs only by ROTATION really does overlap (the physical key
+  // is rotation-invariant) while its canvas column does not, so a canvas comparison would
+  // raise a false alarm. That case is asserted below too.
+  const ALIGN_PANEL = { cols: 23, rows: 23, startX: -4, startY: -3, invertY: false,
+                        rotation: 0, side: 'front',
+                        dia: 300, chipX: 11, chipY: 13, offX: 0, offY: 0, margin: 3 };
+  const ALIGN_META = { grid_cols: 23, grid_rows: 23, grid_y_invert: false,
+                       rotation: 0, side: 'front',
+                       phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
+                       phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 };
+  const alignNotices = (log) => log.toasts.filter(t => /\ub9c8\uc2a4\ud06c\uac00 \ud654\uba74\uc5d0\uc11c \ubc00\ub824 \ubcf4\uc785\ub2c8\ub2e4/.test(t.msg));
+
+  // -- O1: the specimen. Equal dimensions, different origin -> the alarm MUST fire ---------
+  {
+    const REF = { ...ALIGN_META, grid_start_x: 1, grid_start_y: 1 };
+    const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+                                                    panel: ALIGN_PANEL });
+    [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
+    const payloadBefore = pushPayload(S);
+
+    // THE AXIS THE OLD GUARD WATCHED IS DEAD ON THIS FIXTURE - that is the point of it.
+    eq('O/specimen/dimensions-are-EQUAL', true,
+       REF.grid_cols === ALIGN_PANEL.cols && REF.grid_rows === ALIGN_PANEL.rows,
+       'if the dimensions differed the old guard would have fired and this fixture would '
+       + 'score nothing new');
+    // ...and the misalignment is real: the mask lands on different dies than an aligned
+    // reference would. Measured with the shipped projector, both frames.
+    const maskRight = new Set(S.projectCellsToPhys(refCellsFor(REF), S.frameFromMeta(REF)).keys());
+    const maskHere = new Set(S.projectCellsToPhys(refCellsFor(REF), S.currentFrame()).keys());
+    const symDiff = [...maskRight].filter(k => !maskHere.has(k)).length
+                  + [...maskHere].filter(k => !maskRight.has(k)).length;
+    eq('O/specimen/misalignment-is-real', true, symDiff > 0,
+       `the reference read under the two frames differs by ${symDiff} cells`);
+
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } },
+                                        'dt_map', 'HOME_1');
+    eq('O/specimen/still-designated', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+
+    const notes = alignNotices(log);
+    eq('O/specimen/alarm-fired-exactly-once', 1, notes.length,
+       JSON.stringify(log.toasts.map(t => t.msg.slice(0, 60))));
+    eq('O/specimen/alarm-tracks-the-actual-misalignment', symDiff > 0 ? 1 : 0, notes.length);
+    eq('O/specimen/alarm-is-info', ['info'], notes.map(t => t.kind));
+    // The offset is MEASURED and named. 5 columns and 4 rows is the specimen's own number.
+    eq('O/specimen/alarm-names-the-measured-offset', true,
+       /5\uce78\u00b74\ud589 \uc5b4\uae0b\ub0a9\ub2c8\ub2e4/.test(notes[0] ? notes[0].msg : ''),
+       notes[0] && notes[0].msg);
+    eq('O/specimen/alarm-names-both-origins', true,
+       /1,1/.test(notes[0] ? notes[0].msg : '') && /-4,-3/.test(notes[0] ? notes[0].msg : ''),
+       notes[0] && notes[0].msg);
+    // It is an ALARM, not a refusal, and not a screen move (item 4 is a separate round).
+    // Only keys present in BOTH: applying a mask legitimately changes which cells are
+    // savable (the F8 blocks above assert that at length). What may never change is a
+    // surviving key's COORDINATE.
+    const payloadAfterO = pushPayload(S);
+    eq('O/specimen/no-surviving-coordinate-moved', [],
+       Object.keys(payloadBefore)
+         .filter(k => k in payloadAfterO && payloadAfterO[k] !== payloadBefore[k]).slice(0, 6));
+    eq('O/specimen/shared-population-is-not-empty', true,
+       Object.keys(payloadBefore).filter(k => k in payloadAfterO).length > 0);
+    eq('O/specimen/frame-untouched', [String(ALIGN_PANEL.cols), String(ALIGN_PANEL.rows),
+                                      String(ALIGN_PANEL.startX), String(ALIGN_PANEL.startY)],
+       [el.gridCols.value, el.gridRows.value, el.gridStartX.value, el.gridStartY.value].map(String));
+    evidence.push(`[O/specimen] MID_01-shaped 23x23 start(-4,-3) <- 4MAIN_DT-shaped 23x23 `
+      + `start(1,1): dimensions EQUAL so the old guard was silent; the origin cell differs and `
+      + `the alarm names 5\uce78\u00b74\ud589. ${symDiff} mask cells land on a different die; `
+      + `${Object.keys(payloadBefore).length} Push coordinates unmoved`);
+  }
+
+  // -- O2: an ALIGNED reference must stay SILENT (a false alarm is its own defect) ---------
+  {
+    const REF = { ...ALIGN_META, grid_start_x: ALIGN_PANEL.startX, grid_start_y: ALIGN_PANEL.startY };
+    const { sandbox: S, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+                                                panel: ALIGN_PANEL });
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } },
+                                        'dt_map', 'HOME_1');
+    eq('O/aligned/designated', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq('O/aligned/silent', [], alignNotices(log).map(t => t.msg.slice(0, 60)));
+    // ...and silence is CORRECT here, by the same measured property used on the other two.
+    const cellsA = refCellsFor(REF);
+    const symDiffA = (() => {
+      const a = new Set(S.projectCellsToPhys(cellsA, S.frameFromMeta(REF)).keys());
+      const b = new Set(S.projectCellsToPhys(cellsA, S.currentFrame()).keys());
+      return [...a].filter(k => !b.has(k)).length + [...b].filter(k => !a.has(k)).length;
+    })();
+    eq('O/aligned/alarm-tracks-the-actual-misalignment', 0, symDiffA,
+       'an aligned reference must read identically under either frame, or the silence above '
+       + 'is luck rather than correctness');
+  }
+
+  // -- O3: THE ALARM'S GENERAL PROPERTY, on a rotation-only difference -------------------
+  //
+  // I FIRST WROTE THIS BLOCK ASSERTING SILENCE, ON THE REASONING THAT THE PHYSICAL KEY IS
+  // ROTATION-INVARIANT SO A ROTATION-ONLY REFERENCE MUST OVERLAP. The harness said otherwise
+  // and the harness was right: `getCellFromVisualCoords` anchors DB coordinates on
+  // `getWaferBoundingBox(rotation, side)`, whose bounding box is itself rotation-dependent, so
+  // the DB -> physical mapping is NOT rotation-invariant even though canvas -> physical is.
+  // A reference stored at 90 really does name a different die by DB(0,0), and the mask really
+  // does land offset. Measured below rather than assumed.
+  //
+  // So the assertion is the PROPERTY, applied to all three fixtures: the alarm fires exactly
+  // when the reference, read under this map's frame instead of its own, would land on a
+  // different set of dies. That is the definition of "the mask appears offset", it is computed
+  // with the shipped projector, and it makes both a missed alarm and a false one go red.
+  {
+    const REF = { ...ALIGN_META, grid_start_x: ALIGN_PANEL.startX, grid_start_y: ALIGN_PANEL.startY,
+                  rotation: 90 };
+    const { sandbox: S, log } = buildEnv(src, { refMeta: REF, refCells: refCellsFor(REF),
+                                                panel: ALIGN_PANEL });
+    eq('O/rot-only/axis-is-live', true, REF.rotation !== ALIGN_PANEL.rotation);
+    const cells = refCellsFor(REF);
+    const maskRight = new Set(S.projectCellsToPhys(cells, S.frameFromMeta(REF)).keys());
+    const maskHere = new Set(S.projectCellsToPhys(cells, S.currentFrame()).keys());
+    const symDiff = [...maskRight].filter(k => !maskHere.has(k)).length
+                  + [...maskHere].filter(k => !maskRight.has(k)).length;
+    const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } },
+                                        'dt_map', 'HOME_1');
+    eq('O/rot-only/designated', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
+    eq('O/rot-only/alarm-tracks-the-actual-misalignment', symDiff > 0 ? 1 : 0,
+       alignNotices(log).length,
+       `${symDiff} of ${maskRight.size} mask cells land on a different die under this map's frame`);
+    evidence.push(`[O/rot-only] identical origin and spec, reference stored at rot 90: `
+      + `${symDiff} of ${maskRight.size} mask cells land on a different die, and the alarm `
+      + `fired ${alignNotices(log).length} time(s) — DB -> physical is NOT rotation-invariant, `
+      + `because the bounding box that anchors it is not`);
+  }
+
   // == P - A GEOMETRY PRESET DOES NOT MOVE THE SCREEN (specimen: aa123_a + 4A) ========
   //
   // THE DEFECT THIS BLOCK REPLACES. `applyPresetObject` ended with
@@ -1407,7 +1543,7 @@ const MUTATIONS = [
    s => s.replace('    const keys = new Set(projectCellsToPhys(cells, refFrame).keys());',
                   '    const keys = new Set(projectCellsToPhys(cells, currentFrame()).keys());')],
   ['N4 the offset goes UNANNOUNCED (an offset mask with no visible cause)',
-   s => s.replace('    if (dimsDiffer && !stale()) {', '    if (false) {')],
+   s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (false) {')],
   ['N5 a differing grid REFUSES again (the behaviour the user reversed, twice)',
    s => s.replace(`      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,
                      there: \`\${refResolved.cols}x\${refResolved.rows}\` };`,
@@ -1423,9 +1559,12 @@ const MUTATIONS = [
   //    which is worth knowing; what IS scored is the guard, so the mutation removes the guard.
   ['M5 the stale-generation guard is removed (a superseded resolution narrates a screen the user left)',
    s => s
-     .replace('      // 낡은 해석은 화면을 건드리지 않는다 — 이제 화면을 바꾸지 않으므로 토스트도 내지 않는다.\n      if (stale()) return validDie;\n',
+     .replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {\n      if (stale()) return validDie;\n',
+              '    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {\n')
+     .replace('      // \ub0a1\uc740 \ud574\uc11d\uc740 \ud654\uba74\uc744 \uac74\ub4dc\ub9ac\uc9c0 \uc54a\ub294\ub2e4 \u2014 \uc774\uc81c \ud654\uba74\uc744 \ubc14\uafb8\uc9c0 \uc54a\uc73c\ubbc0\ub85c \ud1a0\uc2a4\ud2b8\ub3c4 \ub0b4\uc9c0 \uc54a\ub294\ub2e4.\n      if (stale()) return validDie;\n',
               '')
-     .replace('    if (dimsDiffer && !stale()) {', '    if (dimsDiffer) {')],
+     .replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (originDiffer || dimsDiffer) {')],
+
   // ── [MEDIUM-1] the ONE definition of "this many cells make Push refuse" ────────────────
   ['M7b pushBlockingCount folds stray in (the measured 4-vs-2 divergence, put back)',
    s => s.replace('  return u.offGrid.length + u.outsideRetained.length;\n}',
@@ -1457,6 +1596,21 @@ const MUTATIONS = [
    s => s.replace(`    const internal = !!e && (e.name === 'TypeError' || e.name === 'ReferenceError'
       || e.name === 'RangeError' || e.name === 'SyntaxError');`,
                   '    const internal = true;')],
+  // -- [O] the alignment alarm: the axis it watches, and every way it can go blind ------
+  ['O1 the origin axis is removed (the dimension-only guard, restored)',
+   s => s.replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {', '    if (false) {')],
+  ['O2 the origin difference is computed but never announced (silent again at the toast)',
+   s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {',
+                  '    if (dimsDiffer && !stale()) {')],
+  ['O3 the origins are compared as DECLARED STARTS instead of through the projector',
+   s => s.replace('    const oHere = originPhysOf(currentFrame());\n    const oThere = originPhysOf(refFrame);',
+                  '    const oHere = { x: hereResolved.startX, y: hereResolved.startY };\n'
+                  + '    const oThere = { x: refResolved.startX, y: refResolved.startY };')],
+  ['O4 the dimension axis is dropped when the origin axis is added (one blind spot for another)',
+   s => s.replace('    if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {',
+                  '    if (false) {')],
+  ['O5 the alarm fires on every designation (a false alarm on an aligned reference)',
+   s => s.replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {', '    if (true) {')],
   // -- [P] the two orientation writes, and every way they can come back ----------------
   //
   // The anchor is the line that REPLACED them. If `applyPresetObject` is reshaped so that

@@ -7350,6 +7350,9 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   // [F6] 이 해석이 편집기 프레임을 갈아끼웠는가. 세웠으면 마스크가 앉은 뒤에 알린다.
   // [F8] 치수 차이는 **사실**이지 채택이 아니다. 화면은 그대로 두고 한 번 알린다.
   let dimsDiffer = null;
+  // 정렬의 축. `dimsDiffer`와 **독립**이다 — 같은 크기에서도 원점이 어긋날 수 있고
+  // (`MID_01 ← 4MAIN_DT`가 그 실측 사례다), 그 반대도 성립한다.
+  let originDiffer = null;
 
   const parsed = parseValidDieRef(meta, targetTable);
   if (parsed === null) return set('circle', null, '', null);          // 선언 없음 = 종전 그대로
@@ -7465,6 +7468,37 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // ⚠️ 그래서 이 분기는 **말만 한다.** 밀림은 원인이 화면에 남지 않는 종류의 차이라
     //    (격자는 멀쩡해 보이고 마스크만 어긋난다) 조용하면 운영자가 데이터를 의심한다.
     //    확인창이 아니라 토스트 1회다 — 읽기는 무마찰(UI 규율).
+    // ═══ 정렬의 축은 **원점 셀**이지 격자 크기가 아니다 ════════════════════════════════
+    //
+    // 🔴 종전에는 이 경보가 **치수만** 비교했다. 그래서 `MID_01 ← 4MAIN_DT`(둘 다 23×23,
+    //    시작 좌표 (1,1) 대 (−4,−3))에서 마스크가 5열·4행 밀려 앉는데 **아무 말도 하지
+    //    않았다.** 크기가 같다는 것은 정렬이 같다는 뜻이 아니다 — 같은 DB 좌표가 같은 다이를
+    //    가리키는지를 정하는 것은 **원점**이다.
+    //
+    // 🔴 판정은 **새 기하식 없이** 한다. `projectCellsToPhys`는 마스크 키를 만드는 바로 그
+    //    함수이므로, 셀 하나(DB 0,0)를 두 프레임으로 각각 투영해서 물리 키를 비교하면
+    //    "마스크가 겹치는가"를 마스크와 **같은 규칙으로** 묻게 된다(불변식 ①: 변환 구현은
+    //    하나다. 프레임 창만 갈아끼운다). 캔버스 좌표로 비교하면 안 된다 — 물리 키는 회전
+    //    불변이라 회전만 다른 참조는 실제로 겹치는데 캔버스 열은 다르고, 그러면 **거짓 경보**가
+    //    난다(이 파일이 아래에서 "회전·면 차이는 여기 오지도 않는다"고 적어 둔 그 이유다).
+    //
+    // ⚠️ 치수 비교는 **지우지 않고 남긴다.** 원점이 같아도 격자 범위가 다르면 참조 마스크의
+    //    일부가 이 격자 밖에 앉는다 — 밀림과는 다른 사실이고, 운영자가 지금 받고 있는 정보다.
+    //    둘 중 어느 쪽이 성립했는지는 문구가 구분해서 말한다.
+    const originPhysOf = (frame) => {
+      const m = projectCellsToPhys([{ x: 0, y: 0 }], frame);
+      const k = [...m.keys()][0];
+      const [px, py] = String(k || '0_0').split('_').map(Number);
+      return { x: px, y: py };
+    };
+    const oHere = originPhysOf(currentFrame());
+    const oThere = originPhysOf(refFrame);
+    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {
+      if (stale()) return validDie;
+      originDiffer = { dx: oThere.x - oHere.x, dy: oThere.y - oHere.y,
+                       here: `${hereResolved.startX},${hereResolved.startY}`,
+                       there: `${refResolved.startX},${refResolved.startY}` };
+    }
     if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {
       // 낡은 해석은 화면을 건드리지 않는다 — 이제 화면을 바꾸지 않으므로 토스트도 내지 않는다.
       if (stale()) return validDie;
@@ -7479,15 +7513,24 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     const out = set('ref', keys, '', ref);
     // [F8] 밀림을 알린다. 대가를 셀 것이 없으므로(`classifyUnsavableCells`를 부르지 않는다)
     // 마스크가 앉은 뒤여야 할 이유도 없지만, 지정이 실제로 성립한 뒤에만 말하는 것이 맞다.
-    if (dimsDiffer && !stale()) {
-      console.info(`[Map Editor][F8] valid-die reference grid ${dimsDiffer.there} != editor grid `
-        + `${dimsDiffer.here}; NOTHING adopted — every cell keeps its canvas position and `
-        + `therefore its derived DB coordinate. The mask is drawn in the reference's index `
-        + `space, so it appears offset. 0 coordinates changed, 0 rows dropped.`);
-      showToast(`유효 다이 참조 맵의 격자(${dimsDiffer.there})가 이 맵의 격자(${dimsDiffer.here})와 `
-        + `달라 마스크가 화면에서 밀려 보입니다 — 격자·셀·좌표는 **하나도 바뀌지 않았고** `
-        + `⚡ Push가 기록할 x/y도 그대로입니다.`,
-        'info', { dedupeKey: 'valid_die_dims_differ' });
+    if ((originDiffer || dimsDiffer) && !stale()) {
+      // 사유는 성립한 것만 말한다 — 원점과 치수는 서로 독립이고, 둘 다 어긋날 수도 있다.
+      const why = [
+        originDiffer ? `원점(맵 좌표 0,0)이 ${Math.abs(originDiffer.dx)}칸·`
+          + `${Math.abs(originDiffer.dy)}행 어긋납니다 (참조 시작 ${originDiffer.there} · `
+          + `이 맵 ${originDiffer.here})` : '',
+        dimsDiffer ? `격자 치수가 다릅니다 (참조 ${dimsDiffer.there} · 이 맵 ${dimsDiffer.here})` : '',
+      ].filter(Boolean).join(' · ');
+      console.info('[Map Editor][F8] valid-die reference is not aligned with the editor frame — '
+        + (originDiffer ? `origin cell differs by (${originDiffer.dx},${originDiffer.dy}) in `
+            + `physical index space (ref grid_start ${originDiffer.there}, here ${originDiffer.here}); ` : '')
+        + (dimsDiffer ? `grid ${dimsDiffer.there} != ${dimsDiffer.here}; ` : '')
+        + 'NOTHING adopted — every cell keeps its canvas position and therefore its derived DB '
+        + 'coordinate. The mask is drawn in the reference\'s index space, so it appears offset. '
+        + '0 coordinates changed, 0 rows dropped.');
+      showToast(`유효 다이 참조 맵이 이 맵과 정렬되지 않아 마스크가 화면에서 밀려 보입니다 — `
+        + `${why}. 격자·셀·좌표는 **하나도 바뀌지 않았고** ⚡ Push가 기록할 x/y도 그대로입니다.`,
+        'info', { dedupeKey: 'valid_die_frame_differs' });
     }
     return out;
   } catch (e) {
