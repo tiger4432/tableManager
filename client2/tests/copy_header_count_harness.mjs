@@ -42,6 +42,10 @@ const BASE_REF = process.env.MAP_HARNESS_BASE_REF || '7524d00d43fab05f3221c228fc
 
 const WORK_MAP = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8');
 const WORK_DOE = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
+// [MEDIUM-2] the copy path now WRITES plain text with tsv.js, the same module the paste path
+// READS with, so those symbols are module IMPORTS rather than map_editor locals. Loaded the
+// same way company_roundtrip_harness.mjs loads them.
+const WORK_TSV = readFileSync(join(ROOT, 'client2', 'src', 'tsv.js'), 'utf8');
 let BASE_MAP;
 try {
   BASE_MAP = execFileSync('git', ['show', `${BASE_REF}:client2/src/map_editor.js`],
@@ -127,7 +131,8 @@ const THEME = {
 const WORK_FNS = ['eachSavableCell', 'classifyUnsavableCells', 'serverCellKeySet',
   'headerSpanFor', 'distributeSpans', 'auxColumnSpans',
   'copyHeaderEnabled', 'mapKeyGroupLabel', 'copyHeaderGroups', 'copyHeaderAuxRows',
-  'colHeaderWord', 'collectPlanCells', 'copyTitleText', 'computeNotchCell'];
+  'colHeaderWord', 'auxHeadWords', 'collectPlanCells', 'copyTitleText',
+  'computeNotchCell', 'notchMarkCell', 'pushBlockingCount'];
 
 const SHARED_FNS = [
   'physNum', 'gridDimNum',
@@ -169,6 +174,9 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
   });
   // doe_bands pieces the working tree's copy path imports. HEAD's copy path does not use
   // them, but defining them is harmless and keeps ONE sandbox builder.
+  ['QUOTE', 'TAB'].forEach(n => parts.push(constFrom(WORK_TSV, 'tsv.js', n)));
+  ['normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField', 'serializeTsv']
+    .forEach(n => parts.push(fnFrom(WORK_TSV, 'tsv.js', n)));
   parts.push(constFrom(WORK_DOE, 'doe_bands.js', 'ZONES'));
   parts.push(constFrom(WORK_DOE, 'doe_bands.js', 'ZONE_LABEL'));
   parts.push(constFrom(WORK_DOE, 'doe_bands.js', 'DOE_COLUMNS'));
@@ -930,8 +938,11 @@ const MUTATIONS = [
   ['M7 the gate is NOT split again (one population, the unactionable frame message)',
     s => s.replace(/const strayKeys = unsavable\.outsideStray;/,
       'const strayKeys = []; unsavable.outsideRetained = unsavable.outsideRetained.concat(unsavable.outsideStray);')],
+  // 🔴 이 변이만 두 줄에 걸친다. 리터럴 `\n`으로 적으면 **찾지 못한다** — 이 저장소의
+  //    map_editor.js는 blob 자체가 CRLF이고, 그때 `die("mutation did not apply")`가 난다.
+  //    줄바꿈은 `\r?\n`으로만 적는다.
   ['M8 cleanup ignores provenance (would delete ingested rows outside the mask)',
-    s => s.replace('    if (known && !known.has(k)) outsideStray.push(k);\n    else outsideRetained.push(k);',
+    s => s.replace(/ {4}if \(known && !known\.has\(k\)\) outsideStray\.push\(k\);\r?\n {4}else outsideRetained\.push\(k\);/,
       '    outsideStray.push(k);')],
   ['M9 a truncated cell load is trusted as a complete server set',
     s => s.replace('const cellsTruncated = !!(result && typeof result.total === \'number\'',
@@ -942,8 +953,9 @@ const MUTATIONS = [
   ['M11 the first copy-header group label is hardcoded to Base again',
     s => s.replace('const groups = [{ label: mapKeyGroupLabel(), value: getCurrentMapKey() || \'\' }];',
       "const groups = [{ label: 'Base', value: getCurrentMapKey() || '' }];")],
+  // M8과 같은 이유로 정규식이다 (소스가 CRLF).
   ['M12 clearGrid stops writing the draft again',
-    s => s.replace('  updateLegendCounts();\n  renderGridCanvas();\n  scheduleCellDraft();\n}\n\nfunction fillGrid()',
+    s => s.replace(/ {2}updateLegendCounts\(\);\r?\n {2}renderGridCanvas\(\);\r?\n {2}scheduleCellDraft\(\);\r?\n\}\r?\n\r?\nfunction fillGrid\(\)/,
       '  renderGridCanvas();\n}\n\nfunction fillGrid()')],
 ];
 

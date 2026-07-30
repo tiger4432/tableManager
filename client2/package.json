@@ -8,7 +8,8 @@
     "check:clipboard": "node scripts/check_clipboard_convention.mjs",
     "check:contracts": "node scripts/check_contracts.mjs",
     "check:suggest-keys": "node tests/value_suggest_keys_harness.mjs",
-    "prebuild": "npm run check:clipboard && npm run check:contracts && npm run check:suggest-keys",
+    "check:harnesses": "node scripts/check_harnesses.mjs",
+    "prebuild": "npm run check:clipboard && npm run check:contracts && npm run check:harnesses",
     "build": "vite build",
     "preview": "vite preview"
   },

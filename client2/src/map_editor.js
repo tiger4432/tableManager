@@ -1153,10 +1153,18 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
-  // 🔴 (0,0)이 어느 칸인가는 **좌표 함수의 역함수가** 답한다. 여기서 다시 유도하면 같은 수를
-  //    두 곳에서 계산하게 되고, 실제로 그렇게 갈려 있었다(§renderGridCanvas의 사본 참조).
-  const zero = getCellFromVisualCoords(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
-  const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
+  // 🔴 (0,0)이 어느 칸인가는 **원점 상자**가 답한다 — `getCellFromVisualCoords`의 본문에
+  //    xv=0, yv=0을 대입한 그 식이고, 상자도 같은 `getWaferBoundingBox(회전, 면)` 하나다.
+  //    새 유도가 아니라 **같은 식의 특수값**이므로 두 갈래로 갈릴 수 없다.
+  // ⚠️ 여기서 `getCellFromVisualCoords`를 **부르지 않는다.** 이 함수를 소스 텍스트에서
+  //    슬라이스해 vm 샌드박스로 실행하는 하네스가 둘이고(company_roundtrip ·
+  //    copy_header_count), 모듈 전역 의존이 하나 늘 때마다 그 둘이 ReferenceError로 죽는다 —
+  //    실측: `da8f390`이 이 한 줄로 둘을 죽였고, 같은 커밋의 `getWaferBoundingBox`
+  //    주석(§1903)이 정확히 그 이유로 헬퍼 추출을 거부하고 있었다.
+  const zeroBox = getWaferBoundingBox(currentRotation, currentSide);
+  const zeroC = 0 - startX + zeroBox.minC;
+  const zeroR = invertY ? (zeroBox.maxR - (0 - startY)) : (0 - startY + zeroBox.minR);
+  const hasZeroZero = (zeroC >= 0 && zeroC < visualCols) && (zeroR >= 0 && zeroR < visualRows);
 
   const physical = getPhysicalCoords(c, r, cols, rows, currentRotation, currentSide);
   const visual = getVisualCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
