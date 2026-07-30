@@ -1,9 +1,13 @@
 {
-  "_comment": "Virtual join 선언. 두 테이블을 저장하지 않고 조회 시점에 잇는다. 실제 적용하려면 이 파일을 virtual_join_rules.json으로 복사하세요. 검증기는 server/virtual_join_config.py 이고, 무엇이 통과/거부됐는지는 GET /admin/config/resolve?domain=virtual_join 으로 읽습니다.",
+  "_comment": "Virtual join 선언. 두 테이블을 저장하지 않고 조회 시점에 잇는다. 실제 적용하려면 이 파일을 virtual_join_rules.json으로 복사하세요. 검증기는 server/virtual_join_config.py 이고, 선언의 모양이 유효한지는 GET /admin/config/resolve?domain=virtual_join, 실제로 승인됐는지는 GET /admin/config/virtual-join/verify 로 읽습니다.",
 
-  "_guard_comment": "[가장 중요] 조인 키는 오른쪽 테이블의 행 하나를 지목해야 한다. 지목하지 못하는 선언은 로드 시점에 거부되고 목록에 들어가지 않는다. 판정 기준은 오른쪽 테이블이 table_config에 선언한 행 정체성(composite_key_source, 없으면 business_key)이 조인 키의 부분집합인가이다. 실측 근거(2026-07-31 운영 DB): core_defect_map 을 eds_fail_map 에 (lot,slot,x,y)로 이으면 103,040행 그대로지만 (lot,slot)로 이으면 132,715,520행이 된다 ― 맵 정체성으로 이으면 맵의 셀 수만큼 곱해지기 때문이다.",
+  "_gate_comment": "[승인 조건은 하나다] 조인 키를 덮는 UNIQUE 인덱스가 오른쪽 테이블에 있어야 한다. 없으면 거부된다. 인덱스는 config가 아니라 데이터베이스에 살기 때문에 이후의 어떤 쓰기도 그 성질을 깨지 못한다 ― 그래서 등급도 스냅샷도 유효기간도 없다. 취소된 CREATE INDEX CONCURRENTLY가 남긴 무효 인덱스, 부분 인덱스(WHERE 절이 붙은 것), 표현식 인덱스는 유일성을 강제하지 않으므로 인정하지 않는다.",
 
-  "_uniqueness_comment": "구조 검사(선언 키가 조인 키에 덮이는가)는 필요조건일 뿐 충분조건이 아니다. business_key_val 에는 UNIQUE 제약이 없고 운영 DB에서 실제로 중복이 있다(bonding_map 은 선언 키 base+x+y 로 구조 검사를 통과하지만 중복 그룹이 2,312개다). 영구히 안전하다고 말할 수 있는 유일한 근거는 조인 키를 덮는 UNIQUE 인덱스이며, 그것을 만드는 것은 운영자의 DDL이다.",
+  "_why_comment": "[왜 필요한가 ― 실측 2026-07-31 운영 DB] 오른쪽이 조인 키로 유일하지 않으면 왼쪽 행 하나가 맞는 행 수만큼 불어난다. core_defect_map 을 eds_fail_map 에 (lot,slot,x,y)로 이으면 103,040행 그대로지만 (lot,slot)로 이으면 132,715,520행이 된다. 컬럼 두 개 차이인데 결과는 10만 행과 1억 3천만 행이다.",
+
+  "_left_comment": "[왼쪽의 중복은 팬아웃이 아니다] 검사는 오른쪽에만 건다. dt_log 를 core_wafer_map 에 (core_lot, core_slot)로 이으면 왼쪽이 키당 128행이지만 결과는 768행 → 768행(x1.00)이다. 로그 여러 줄이 같은 웨이퍼를 가리키는 것이 곧 이 기능의 목적이므로, 왼쪽 다중도는 정상이다.",
+
+  "_howto_comment": "[거부됐을 때] verify 라우트가 만들어야 할 인덱스의 DDL을 그대로 돌려준다. 그것을 psql에서 실행하면 된다. 실행 중 중복 오류가 나면 그 값이 실제로 둘 이상 있다는 뜻이고, PostgreSQL이 중복된 키 값을 지목해 주므로 데이터를 먼저 정리한 뒤 다시 만든다. CONCURRENTLY 는 쓰기를 잠그지 않는 대신 취소되면 무효 인덱스를 남기므로, 취소했으면 DROP 후 다시 만들어야 판정이 인정한다.",
 
   "_unresolved_comment": "[미상의 정의] 조인 결과에서 unresolved_label(기본 '미상')은 두 경우를 모두 덮는다. (1) 오른쪽에 맞는 행이 아예 없음. (2) 맞는 행은 있는데 그 값이 비어 있음. LEFT 조인만으로는 (2)가 보이지 않는다 ― 실측으로 bonding_log 를 core_wafer_map 에 이으면 14,436행 전부가 오른쪽 행을 찾지만 3,792행(26.27%)의 wafer_id 가 비어 있다. (2)를 미상에서 빼면 분석가는 값이 있다고 읽는다. INNER 조인은 (1)을 조용히 지우므로 쓰지 않는다.",
 
@@ -21,9 +25,9 @@
     "enabled": true
   },
 
-  "_rejected_example_comment": "아래는 거부되는 선언의 모양이다. 이름이 밑줄로 시작하므로 로더는 이것을 선언이 아니라 주석으로 보고 건너뛴다 ― 밑줄을 떼면 실제로 rejected 목록에 뜬다. eds_fail_map 의 행 정체성은 lot+slot+x+y 인데 조인 키가 x,y 를 고정하지 못하므로 왼쪽 행 하나가 오른쪽 1,288행과 맞는다.",
+  "_rejected_example_comment": "아래는 거부되는 선언의 모양이다. 이름이 밑줄로 시작하므로 로더는 이것을 선언이 아니라 주석으로 보고 건너뛴다 ― 밑줄을 떼면 실제로 rejected 목록에 뜬다. eds_fail_map 에는 (lot,slot)를 덮는 UNIQUE 인덱스가 없고, 만들려 해도 같은 (lot,slot)에 1,288행이 있어 PostgreSQL이 중복으로 거절한다. 그 거절이 곧 이 조인이 1,288배로 불어난다는 증거다.",
 
-  "_example_rejected_map_identity_join": {
+  "_example_rejected_no_unique_index": {
     "left_table": "core_defect_map",
     "right_table": "eds_fail_map",
     "join_key": [

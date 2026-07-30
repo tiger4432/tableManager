@@ -1,16 +1,17 @@
 # `virtual_join_rules.json` 세팅 — 저장하지 않는 조인(virtual join) 선언
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**신설** — 팬아웃 가드 착지. 선언 스키마 + 로드 시점 거부 + `GET /admin/config/resolve?domain=virtual_join`. ⏳ **조인 실행 코드는 아직 없다** — 이 파일은 선언과 그 검증만 다루며, 유효한 선언도 보고서에서 `ineffective`로 나온다) | **Owner:** Backend / 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**신설 + 같은 날 게이트 확정** — 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐다. 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. ⏳ **조인 실행 코드는 아직 없다** — 이 파일은 선언과 그 검증만 다룬다) | **Owner:** Backend / 총괄
 > 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 검증기 정본은 `server/virtual_join_config.py`
 
 <!-- Loader evidence (2026-07-31):
-  load/validate: server/virtual_join_config.py load_virtual_join_rules (missing -> [], no rejection),
-    validate_virtual_join_rules (root must be object), _validate_join (per-declaration),
-    static fan-out guard: key_is_covered + declared_key_columns,
-    live half: unique_index_covering / probe_duplicate / verify_uniqueness / load_verified_rules
-  report: server/config_resolve_report.py _resolve_virtual_join (DOMAIN_VIRTUAL_JOIN), zero DB queries
-  tests: server/tests/test_virtual_join_guard.py (38)
-  measurements behind every number here: read-only against the live DB, 2026-07-31
+  shape only, no DB: virtual_join_config.load_virtual_join_rules / validate_virtual_join_rules / _validate_join
+  the gate:          unique_index_covering (pg_index, excludes indisvalid=false / indpred / indexprs)
+                     verify_uniqueness -> load_verified_rules  (the only accepting path)
+  operator action:   required_index_name / required_index_ddl  (computed from the declaration alone)
+  routes:            GET /admin/config/resolve?domain=virtual_join  (config only, zero DB queries)
+                     GET /admin/config/virtual-join/verify          (catalog read, names the missing index)
+  report:            config_resolve_report._resolve_virtual_join (DOMAIN_VIRTUAL_JOIN)
+  tests:             server/tests/test_virtual_join_guard.py (41)
 -->
 
 ## 1. 무엇인가
@@ -21,28 +22,67 @@
 분석가는 REST API로 두 테이블을 Spotfire에 끌어와 거기서 잇는다. DB 뷰를 만들지 않는
 이유가 그것이다 — 서빙 계층은 API다.
 
-## 2. 가장 중요한 규칙 — 터지는 선언은 로드되지 않는다
+## 2. 승인 조건은 하나다 — 조인 키를 덮는 UNIQUE 인덱스
 
-조인 키가 **오른쪽 테이블의 행 하나를 지목**해야 한다. 지목하지 못하는 선언은 유효 규칙
-목록에 들어가지 않는다. 문법도 맞고 컬럼도 존재하는 선언이라 이 검사가 없으면 거부할
-자리가 없다 — 실행해 봐야 드러난다.
+오른쪽 테이블에 **조인 키를 덮는 유효한 UNIQUE 인덱스**가 있어야 승인된다. 없으면 거부다.
 
-실측 (2026-07-31, 운영 DB read-only):
+> 사용자 판정(2026-07-31): 「인덱스 없으면 거절해」 · 「유니크 INDEX 걸면 그냥 DB 영속
+> 아닌가」
+
+그 지적이 설계를 바꿨다. UNIQUE 인덱스는 **이미 영속**이다 — config가 아니라 데이터베이스에
+살고, 이후의 어떤 쓰기도 그 성질을 깰 수 없다. `pg_index`를 읽는 것은 정책 노브가 아니라
+**살아 있는 사실의 조회**다. 그래서 등급도, 스냅샷도, 유효기간도 없다.
+
+### 왜 필요한가 — 실측 (2026-07-31, 운영 DB read-only)
 
 | 선언 | 왼쪽 행 | 조인 결과 | 배율 |
 |---|---:|---:|---:|
 | `core_defect_map ⋈ eds_fail_map (lot,slot,x,y)` | 103,040 | 103,040 | x1 |
 | `core_defect_map ⋈ eds_fail_map (lot,slot)` | 103,040 | **132,715,520** | **x1288** |
 | `bonding_log ⋈ wafer_process (lot,slot)` | 14,436 | **2,552,624** | **x177** |
-| `bonding_log ⋈ core_wafer_map (core_lot,core_slot)` | 14,436 | 14,436 | x1 |
+| `dt_log ⋈ core_wafer_map (core_lot,core_slot)` | 768 | 768 | x1.00 |
 
-**맵 정체성(lot/slot)으로 이으면 맵의 셀 수만큼 곱해지고, 칩 정체성(lot/slot/x/y)으로
-이으면 곱해지지 않는다.** 두 선언은 컬럼 두 개 차이인데 결과는 10만 행과 1억 3천만 행이다.
+오른쪽이 조인 키로 유일하지 않으면 왼쪽 행 하나가 맞는 행 수만큼 불어난다. 위 2행과 1행은
+컬럼 두 개 차이인데 결과는 10만 행과 1억 3천만 행이다.
 
-판정 기준: 오른쪽 테이블이 `table_config`에 선언한 행 정체성
-(`composite_key_source`, 없으면 `business_key`)이 **조인 키의 부분집합**인가.
+### 인정하지 않는 인덱스 셋
 
-## 3. 「미상」의 정의 — 경계 계약
+셋 다 「UNIQUE 인덱스가 있다」로 읽히지만 유일성을 보장하지 않는다.
+
+| 배제 | 왜 |
+|---|---|
+| `indisvalid = false` | 취소된 `CREATE INDEX CONCURRENTLY`의 잔해. 플래너는 영원히 쓰지 않고 제약도 강제되지 않는다 |
+| `indpred IS NOT NULL` | 부분 인덱스. 술어 안에서만 유일하다 |
+| `indexprs IS NOT NULL` | 표현식 인덱스. 컬럼이 아니라 식에 대한 유일성이다 |
+
+### 왼쪽의 중복은 팬아웃이 아니다
+
+검사는 **오른쪽에만** 건다. `dt_log → core_wafer_map`는 왼쪽이 키당 128행이지만 결과는
+768행 → 768행(x1.00)이다. 로그 여러 줄이 같은 웨이퍼를 가리키는 것이 곧 이 기능의
+목적이므로, 가드가 그 모양을 잡으면 기능 자체를 잡는 것이다.
+
+## 3. 거부됐을 때 무엇을 하는가
+
+거부는 **만들어야 할 인덱스의 DDL을 그대로** 준다. 「UNIQUE 인덱스가 없다」만 말하고
+어느 컬럼인지 말하지 않는 거부는 운영자가 행동할 수 없는 거부다.
+
+```
+CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_core_wafer_map_core_lot_core_slot
+  ON "core_wafer_map" ("core_lot", "core_slot");
+```
+
+- `CONCURRENTLY`는 쓰기를 잠그지 않는다. 대신 **취소되면 무효 인덱스가 남으므로**,
+  취소했다면 `DROP INDEX` 후 다시 만들어야 판정이 인정한다(§2의 배제 1번).
+- 실행 중 **중복 오류**가 나면 그 값이 실제로 둘 이상 있다는 뜻이다. PostgreSQL이
+  중복된 키 값을 지목해 주므로 데이터를 먼저 정리한 뒤 다시 만든다.
+
+> 🔴 **중복 검사를 서버가 따로 하지 않는 이유가 이것이다.** 직전 판에는
+> `GROUP BY … HAVING count(*)>1` 프로브와 시간 예산이 있었지만, 게이트가 UNIQUE
+> 인덱스로 바뀌면서 소비자를 잃었고 **삭제**했다. `CREATE UNIQUE INDEX`가 같은 진단을
+> 더 정확하게(중복된 키 값까지 지목) 행동하는 그 순간에 내놓으며, 스냅샷이 아니라 그
+> 순간의 진실이다. 같은 연산이 이미 있는데 열등한 사본을 두지 않는다.
+
+## 4. 「미상」의 정의 — 경계 계약
 
 조인 결과에서 `unresolved_label`(기본 `미상`)은 **두 경우를 모두 덮는다**:
 
@@ -56,89 +96,56 @@
 
 INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 
-## 4. 키 사전
+## 5. 키 사전
 
 | 키 | 필수 | 뜻 |
 |---|---|---|
 | `left_table` | ✅ | 왼쪽(구동) 테이블. `table_config`에 등록돼 있어야 한다 |
-| `right_table` | ✅ | 오른쪽(참조) 테이블. 등록 + 행 정체성 선언 필요 |
-| `join_key` | ✅ | `{left, right}` 쌍의 목록. 같은 `right` 컬럼을 두 번 묶을 수 없다(키가 넓어 보이지만 고정하는 성분은 하나라 덮임 판정이 거짓 통과한다) |
+| `right_table` | ✅ | 오른쪽(참조) 테이블. 조인 키를 덮는 UNIQUE 인덱스 필요(§2) |
+| `join_key` | ✅ | `{left, right}` 쌍의 목록. 같은 `right` 컬럼을 두 번 묶을 수 없다(키가 넓어 보이지만 고정하는 성분은 하나다) |
 | `expose` | ✅ | 왼쪽에 붙여 보여줄 오른쪽 컬럼들. 왼쪽에 **같은 이름이 있으면 거부** — 어느 쪽 값인지 알 수 없는 표가 된다. 상한 32개 |
-| `unresolved_label` | | 기본 `미상`. §3의 두 경우를 모두 덮는다 |
+| `unresolved_label` | | 기본 `미상`. §4의 두 경우를 모두 덮는다 |
 | `enabled` | | 기본 `true`. `false`는 오류가 아니라 조용한 제외 |
-| `join_cardinality` | | `"one"`만 지원. 집계 형태는 **구현이 없어** 선언하면 거부된다(§6) |
+| `join_cardinality` | | `"one"`만 지원. 집계 형태는 **구현이 없어** 선언하면 거부된다(§7) |
 
-## 5. 유일성의 근거는 두 겹이고, 한 겹은 공짜가 아니다
-
-**① 정적 구조 검사** — 항상 · DB 접근 0회. §2의 부분집합 판정.
-**필요조건이지 충분조건이 아니다.**
-
-**② 라이브 유일성 검증** — 세션이 있을 때만(`load_verified_rules`).
-
-①만으로 부족하다는 것은 실측이 증명한다. `business_key_val`에는 **UNIQUE 제약이 없고**
-(평범한 btree 2개뿐) dedup 업서트는 규약일 뿐 DB가 강제하지 않는다. 운영 DB의 실제 상태:
-
-| 테이블 | 선언 키 | 중복 그룹 | 중복 행 | 최대 행/키 |
-|---|---|---:|---:|---:|
-| `bonding_map` | `base+x+y` | 2,312 | 4,645 | 10 |
-| `inventory_master` | `part_no` | 164 | 427 | 101 |
-| `bonding_log` | `log_id` | 117 | 234 | 2 |
-| `wafer_process` | `proc_id` | 43 | 86 | 2 |
-
-`bonding_map`은 ①을 **통과**하지만 실제로는 10배 팬아웃한다. 그래서 ②가 별도로 있다.
-
-### 증거 등급
-
-| 등급 | 뜻 | 보장 범위 |
-|---|---|---|
-| `unique_index` | UNIQUE 인덱스가 조인 키를 덮는다 | **영구** — 이후 어떤 쓰기도 깨지 못한다 |
-| `probe_clean` | 프로브가 완주했고 중복이 없었다 | **그 시점의 스냅샷** — 나중에 들어온 행이 깨뜨릴 수 있다 |
-| `unverified` | 정적 검사만 통과 | 없음 |
-
-### 프로브에 예산이 붙는 이유
-
-중복을 **찾는** 방향은 첫 중복에서 멈춰 싸다(실측 1.0ms / 2.5ms / 351ms).
-중복이 **없음을 증명하는** 방향은 전수 스캔이다 — 실측 103,040행에 약 120ms(859행/ms).
-같은 속도로 **1,000만 행이면 약 11.6초**이고 정렬이 디스크로 넘친다(337k행에서 이미
-temp write 881블록 관측).
-
-그래서 프로브는 `statement_timeout` 예산(기본 2,000ms) 안에서만 돌고, 예산이 다하면
-「깨끗하다」가 아니라 **「증명하지 못했다」**로 답하며 그것은 거부다.
-
-> 🔴 **큰 테이블에서 영구히 통과시키는 방법은 예산을 올리는 것이 아니라 조인 키에
-> UNIQUE 인덱스를 만드는 것이다.** 예산을 올려도 `probe_clean`은 스냅샷일 뿐이다.
-> 인덱스 생성은 **운영자의 DDL**이며 이 로더의 권한 밖이다.
-
-## 6. 왜 「집계 형태」 스위치가 열려 있지 않은가
-
-x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** 틀렸다. 집계 형태
-(오른쪽을 먼저 접고 잇기)는 정당할 수 있다.
-
-그래도 `join_cardinality: "many"`는 지금 **거부**된다. 유일성 검사를 끄는 스위치는 그것이
-향할 안전한 경로가 생긴 뒤에 열려야 하기 때문이다. 지금 열어 두면 처음 거부를 만난
-운영자가 그 스위치를 켜고 1억 3천만 행 조인을 얻는다. 스위치가 조용히 허용이 아니라
-**이름 있는 거부**인 것은 그래서다.
-
-## 7. 확인하는 법
+## 6. 확인하는 법 — 라우트가 둘인 이유
 
 ```bash
+# ① 선언의 모양이 유효한가 (설정 파일만 읽음 · DB 질의 0건)
 curl -H "X-Admin-Token: <토큰>" "http://localhost:8080/admin/config/resolve?domain=virtual_join"
+
+# ② 실제로 승인됐는가 (pg_index 카탈로그 조회)
+curl -H "X-Admin-Token: <토큰>" "http://localhost:8080/admin/config/virtual-join/verify"
 ```
 
-- `rejected` — 거부된 선언 + 사유. 팬아웃 3종은 `scope_unresolved`(조인 키가 행 하나를
-  고르지 못함), 문법·미구현 형태는 `mapping_unavailable`.
-- `ineffective` — ①을 통과한 선언. ⏳ **조인 실행 코드가 아직 없어 전부 여기 있다**
-  (`not_reached`). 통과를 `effective`로 표기하면 운영자가 조인이 동작한다고 읽는다.
-- `settings` — 프로브 예산과 `미상` 표시의 실효값.
+①은 「DB 질의 0건」이 계약이라 인덱스의 존재를 알지 못한다. 그래서 **어떤 선언도 ①에서
+`effective`가 되지 않는다** — 대신 만들어야 할 인덱스 DDL을 문장에 실어 준다(필요한
+인덱스는 선언 자체로 계산되므로 세션 없이도 말할 수 있다).
 
-> 사유 어휘는 **닫혀 있다**(4단어). 새 단어를 만드는 것은 계약 변경이며
+②는 카탈로그만 읽는다 — **행을 세지 않으므로 비용이 테이블 크기와 무관**하고, 그래서
+요청 경로에 앉을 수 있다(전수 스캔이던 구 프로브는 그럴 수 없었다). 응답의
+`accepted` / `unique_index` / `required_index_ddl`이 선언별 답이다.
+
+- ①의 `rejected` — 사유는 닫힌 어휘 4단어. 유일성 미보장은 `scope_unresolved`,
+  문법·미구현 형태는 `mapping_unavailable`.
+
+> 사유 어휘에 단어를 추가하는 것은 **계약 변경**이며
 > `contracts/config_resolve_report/vectors.json` + node 하네스를 함께 고쳐야 한다.
+
+## 7. 왜 「집계 형태」 스위치가 열려 있지 않은가
+
+x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** 틀렸다. 집계 형태(오른쪽을 먼저
+접고 잇기)는 정당할 수 있다.
+
+그래도 `join_cardinality: "many"`는 지금 **거부**된다. 유일성 요구를 끄는 스위치는 그것이
+향할 안전한 경로가 생긴 뒤에 열려야 하기 때문이다. 지금 열어 두면 처음 거부를 만난
+운영자가 그 스위치를 켜고 1억 3천만 행 조인을 얻는다.
 
 ## 8. 함정
 
-- **선언 키가 없는 테이블은 어떤 조인 키로도 통과하지 못한다.** `composite_key_source`도
-  `business_key`도 없으면 그 테이블은 행 하나를 지목한다고 **주장할 근거**가 없다.
 - **`expose`가 왼쪽 컬럼을 가리면 거부된다.** 이름이 겹치면 표에서 어느 쪽 값을 보고 있는지
   알 수 없다.
 - **밑줄로 시작하는 키는 선언이 아니라 주석이다**(`_comment` 등) — 조용히 건너뛴다.
 - **파일 부재는 거부가 아니다.** 선언이 없을 뿐이며 `sources[].exists: false`로 나온다.
+- **PostgreSQL이 아니면 전부 거부된다.** 카탈로그를 읽을 수 없으면 유일성을 모르고,
+  모르면 통과시키지 않는다.

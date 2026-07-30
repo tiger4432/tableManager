@@ -4376,6 +4376,31 @@ def get_config_resolve_report(domain: str = None):
     return config_resolve_report.resolve_report(domains)
 
 
+@app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])
+def verify_virtual_join_declarations(db: Session = Depends(get_db)):
+    """virtual join 선언이 **승인됐는가**, 아니면 무엇을 만들어야 하는가.
+
+    `/admin/config/resolve`가 답하지 못하는 절반이다. 그 라우트는 「DB 질의 0건」이
+    계약이라 설정 파일만 읽는데, 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는
+    `pg_index`가 아는 사실이라 세션이 필요하다.
+
+    비싸지 않다 ― **행을 세지 않고 카탈로그만 읽는다.** 비용이 테이블 크기와 무관하므로
+    1,000만 행 테이블에서도 요청 경로에 앉을 수 있다(직전 판의 중복 프로브는 전수
+    스캔이라 그럴 수 없었고, 그래서 게이트에서 내려왔다).
+
+    거부된 선언에는 `required_index_ddl`과 **사람이 읽을 `detail` 문장**이 실린다 ―
+    문장은 `/admin/config/resolve`와 **같은 조립기**(`config_resolve_report.
+    virtual_join_detail`)가 만든다. 갈라 두면 같은 거부가 두 화면에서 다른 문장으로
+    나오고, 그 순간 「서버가 문장의 정본」이라는 계약이 깨진다.
+
+    중복이 있으면 PostgreSQL이 그 중복 키 값을 지목하며 인덱스 생성에 실패하므로,
+    데이터 정리가 필요하다는 사실도 같은 자리에서 드러난다.
+    """
+    import virtual_join_config
+    from database import crud
+    return virtual_join_config.verification_report(db, known_tables=crud.TABLE_CONFIG)
+
+
 # 드라이런은 큐를 걷는 분석 질의라(키·선언뷰당 SQL 1회) 요청 경로에서 **표본**만 본다.
 # 기본값은 작업 단위 상한과 같은 200 — 「한 작업 단위가 무엇을 했을까」가 그대로 답이 된다.
 ENRICHMENT_DRY_RUN_DEFAULT_LIMIT = 200
