@@ -892,12 +892,10 @@ class IngestionHandler(FileSystemEventHandler):
                 f"processed in place, directory tree removed."
             )
 
-        # Dispatch through the unchanged pipeline. watchdog usually also fires
-        # for the renames into the watched root; the processing_files guard and
-        # the exists() check in _handle_event make double dispatch harmless, and
-        # this explicit pass makes pickup deterministic (same as the sweep).
-        for _mtime, dest in moved:
-            self._handle_event(dest)
+        # NOTE: the flatten design ended here with a second dispatch pass over the
+        # files it had MOVED into the watched root. In-place ingestion has no move
+        # step — `to_process` is dispatched above at its nested path — so that pass
+        # is gone. Re-adding one over `to_process` would double-process every file.
 
     # ── [Heavy Lane P1] 레인 라우팅 ──────────────────────────────────────
 
