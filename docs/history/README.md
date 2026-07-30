@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **272개** 이력. (거버넌스 규칙 #4)
+> 총 **279개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 13:55** — [Three Of My Own Claims Were Wrong And Measurement Said So](./20260730_135500_three_of_my_own_claims_were_wrong_and_measurement_said_so.md)
+- **2026-07-30 13:50** — [Two Escapes Past One Green Instrument](./20260730_135043_two_escapes_past_one_green_instrument.md)
+- **2026-07-30 13:39** — [Nested Ingestion In Place Path Is The Carrier](./20260730_133956_nested_ingestion_in_place_path_is_the_carrier.md)
+- **2026-07-30 13:27** — [Server Test Swept Up By A Client Commit](./20260730_132737_server_test_swept_up_by_a_client_commit.md)
+- **2026-07-30 13:24** — [F3 Suggestion Client One Enter Is The Commit](./20260730_132426_f3_suggestion_client_one_enter_is_the_commit.md)
+- **2026-07-30 13:23** — [F6 Stored Coordinate Reposition And The Guard That Flipped](./20260730_132323_f6_stored_coordinate_reposition_and_the_guard_that_flipped.md)
+- **2026-07-30 13:19** — [Upload Path Two Client Controlled Values](./20260730_131928_upload_path_two_client_controlled_values.md)
 - **2026-07-30 10:11** — [P0 Adoption Coordinates And Paste Fingerprint](./20260730_101144_p0_adoption_coordinates_and_paste_fingerprint.md)
 - **2026-07-30 09:50** — [Resync Announces Reload And Scheduled Orphan Sweep](./20260730_095034_resync_announces_reload_and_scheduled_orphan_sweep.md)
 - **2026-07-30 09:46** — [Desktop Shell Server Address Resolution](./20260730_094649_desktop_shell_server_address_resolution.md)
