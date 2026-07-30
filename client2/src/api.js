@@ -7,6 +7,7 @@ import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI,
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
 import { refreshTraceEntry } from './trace_launch.js';
+import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 
 // Check backend server status
@@ -99,6 +100,14 @@ export async function switchTable(tableName) {
 
 // Load table column schema
 export async function loadSchema(tableName) {
+  // [F3] Drop the value-suggestion module's learned negative facts (disabled columns, prefix
+  // floors, unavailable cooldowns). They are learned from the server's own refusals, which are
+  // derived from `table_config` — the same declaration this /schema read is about to refresh.
+  // `table_config` is HOT-RELOADED and the server honours a change from the next request, so
+  // without this a column newly declared suggestible stays dead in an already-open tab. Those
+  // latches also expire on their own (LEARNED_TTL_MS); this is what makes the change land at
+  // once on the one path that has a signal.
+  resetSuggestLearning();
   try {
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
     const data = await res.json();

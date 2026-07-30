@@ -1884,7 +1884,10 @@ body.resizing-active .history-sidebar {
   z-index: 1000;
   /* max-height 는 value_suggest.js 가 MAX_VISIBLE_ROWS × ROW_HEIGHT_PX 로 인라인 지정한다
      — 보이는 행 수는 키스트로크 산식(행당 화살표 1타)에 묶인 값이라 CSS 에 숫자를
-     복제하면 둘이 어긋난다. 여기서는 스크롤 동작만 선언. */
+     복제하면 둘이 어긋난다. max-width/left 도 같은 이유로 positionList 가 뷰포트를 보고
+     인라인 지정한다(가로 클램프). 여기서는 스크롤 동작만 선언.
+     overflow-x:hidden 을 유지하는 근거: 가로 클램프 + 행 말줄임이 들어온 뒤로 잘려서
+     못 읽는 글자가 없다 — 예전엔 이 선언이 "읽을 방법이 아예 없음"의 절반이었다. */
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
@@ -1933,6 +1936,20 @@ body.resizing-active .history-sidebar {
   cursor: pointer;
   white-space: nowrap;
   border-left: 3px solid transparent;
+  /* 행 자체도 넘치는 내용을 감싸 둔다 — 안쪽 .value-suggest-text 가 말줄임을 담당한다. */
+  overflow: hidden;
+}
+
+/* 값 한 줄(접두부 <b> + 나머지)을 감싸는 단일 flex 아이템.
+   왜 래퍼가 필요한가: 행이 flex 라서 맨 텍스트 노드는 익명 flex 아이템이 되고 거기엔
+   text-overflow 가 걸리지 않는다. min-width:0 이라야 flex 아이템이 내용보다 작게 줄어들 수
+   있고, 그때 비로소 말줄임(…)이 나온다. 클램프된 목록에서 긴 값이 "글자 중간에서 그냥
+   잘려 끝난 값처럼 보이는" 것과 "잘렸다고 스스로 말하는" 것의 차이 — 가독성=기능. */
+.value-suggest-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .value-suggest-row b {
