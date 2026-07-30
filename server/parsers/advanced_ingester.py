@@ -39,13 +39,17 @@ REASON_CAST_FAILED = "cast_failed"
 # was missing. It means either the file sits in the wrong folder or the pattern
 # matched the wrong token — both worth knowing, neither worth blocking on.
 REASON_FILE_OVERRIDES_PATH = "file_overrides_path"
-# The file's own HEADER carried the column and the path-derived value won,
-# because the merge order is header < filename < row. Reported separately and
-# NOT resolved here: the "file is authoritative" ruling was given for file rows
-# vs path, and whether it extends to header metadata is an open question for the
-# declaration owner. Named so an operator can see it instead of inferring it
-# from dict-merge order.
-REASON_PATH_OVERRIDES_HEADER = "path_overrides_header"
+# A path-derived value was DISCARDED because the file's own header supplied the
+# same column (user ruling 2026-07-30: the ruling extends to the header, and the
+# path is the WEAKER of the two — merge order `filename < header < row`).
+#
+# Why this is the one worth naming, and the reverse is not: the header winning IS
+# the ruling, so it is the normal, expected outcome and warns about nothing. What
+# an operator cannot otherwise see is that the folder rule they declared produced
+# a value and then had no effect — silence would read as "the rule never matched".
+# So the DISCARD is what gets counted. Never blocking: the resolution is settled,
+# only the observation was missing (same shape as REASON_FILE_OVERRIDES_PATH).
+REASON_PATH_VALUE_DISCARDED = "path_value_discarded"
 
 
 class RuleDeclarationError(ValueError):
@@ -207,10 +211,14 @@ class AdvancedIngester:
                 f"Disagreements are counted as '{REASON_FILE_OVERRIDES_PATH}'."
             )
         for col in sorted(self._header_overlap):
-            logger.warning(
+            # INFO, not WARNING: after the 2026-07-30 ruling the header winning is
+            # the DESIGNED outcome, not a surprise. Warning about the normal case
+            # is how a log stops being read.
+            logger.info(
                 f"[{self.source_name}] column '{col}' is declared in BOTH filename_rules and "
-                "header_rules — with the current merge order the PATH value wins over the "
-                f"file's own header. Counted as '{REASON_PATH_OVERRIDES_HEADER}'."
+                "header_rules — the file is authoritative (ruling 2026-07-30 '파일이 정본'), so "
+                "the header wins and the path value fills the column only where the header "
+                f"does not carry one. Discards are counted as '{REASON_PATH_VALUE_DISCARDED}'."
             )
 
     def _load_json(self, path: str) -> Dict:
@@ -359,12 +367,21 @@ class AdvancedIngester:
         PRECEDENCE IS A RULING, NOT AN ARTEFACT OF DICT ORDER (2026-07-30,
         "파일이 정본" — the file is authoritative over the path):
 
-            header_metadata  <  filename_data  <  row_data
+            filename_data  <  header_metadata  <  row_data
 
-        The path-derived value FILLS a column the row does not carry; where the
-        row carries it, the row wins. Do not reorder these three without a new
-        ruling — inverting them would make a file's filing location override the
-        file's own contents.
+        THE PATH IS THE WEAKEST OF THE THREE, and that is the whole ruling. A
+        value written INSIDE the file is what that file itself asserts; a folder
+        name is external context that changes the moment someone moves the file.
+        So "파일이 정본" covers the header too, and between a header and a path the
+        path is the weaker claim. The path-derived value FILLS a column no
+        in-file source carries; wherever the file speaks — header or row — the
+        file wins.
+
+        Do NOT reorder these three without a new ruling. Putting `filename_data`
+        after `header_metadata` again would make a file's filing LOCATION
+        override the file's own contents, which is the inversion this ruling
+        exists to forbid. `test_merge_order_is_the_declared_ruling` pins both
+        directions.
 
         A SOURCE WINS ONLY WHERE IT ACTUALLY CARRIES A VALUE. `parse_line` emits
         EVERY declared column on every row, using `default` (usually None) for the
@@ -378,13 +395,20 @@ class AdvancedIngester:
         one source can produce), which is empty unless the same column is declared
         in two families — so the common path is exactly today's dict merge.
         """
-        merged = {**header_metadata, **filename_data, **row_data}
+        merged = {**filename_data, **header_metadata, **row_data}
         for col in self._fill_merge_cols:
             if merged.get(col) is not None:
                 continue
-            fill = filename_data.get(col)
+            # Fill in DESCENDING precedence — the strongest source that actually
+            # carries a value wins the fill too, or the fill would quietly
+            # contradict the order above. Note this is also what rescues a header
+            # CAST FAILURE: `extract_header_metadata` stores None for a rule whose
+            # cast failed, and that None now sits ABOVE the path value in the dict
+            # merge. Without this pass a bad `type:` on a header rule would blank a
+            # perfectly good path value — a silent loss, not a visible one.
+            fill = header_metadata.get(col)
             if fill is None:
-                fill = header_metadata.get(col)
+                fill = filename_data.get(col)
             if fill is not None:
                 merged[col] = fill
         return merged
@@ -421,15 +445,21 @@ class AdvancedIngester:
             )
             return []
 
-        # Path-vs-header disagreement: decided by the merge order, counted here so
-        # it is visible. Only the overlapping columns are inspected, and the
-        # overlap is empty in the normal case.
+        # The path value was produced and then DISCARDED because the header
+        # supplied the same column. Counted so an operator who declared a folder
+        # rule and sees no effect knows why. Only the overlapping columns are
+        # inspected, and the overlap is empty in the normal case.
+        #
+        # `is not None` on the header side is load-bearing: a header rule whose
+        # cast failed stores None, and `_merge_row`'s fill pass then restores the
+        # PATH value — so recording a discard there would report a loss that did
+        # not happen.
         for col in self._header_overlap:
-            if col in filename_data and col in header_metadata \
+            if col in filename_data and header_metadata.get(col) is not None \
                     and header_metadata[col] != filename_data[col]:
                 self._record(
                     issues, scope="filename_rules", column=col,
-                    reason=REASON_PATH_OVERRIDES_HEADER, filename=filename,
+                    reason=REASON_PATH_VALUE_DISCARDED, filename=filename,
                     path_value=filename_data[col], header_value=header_metadata[col],
                 )
 

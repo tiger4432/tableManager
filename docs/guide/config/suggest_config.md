@@ -33,6 +33,7 @@
      "min_prefix_length": 0,
      "max_probe_values": 400,
      "timeout_ms": 1500,
+     "slow_warn_ms": 200,
 
      "index_min_rows": 10000,
      "index_columns": { "parts": ["maker"] },
@@ -54,7 +55,8 @@
 | `max_limit` | `200` | 호출자가 요청할 수 있는 상한. 초과 요청은 거절이 아니라 **이 값으로 잘리고 `truncated: true`** |
 | `min_prefix_length` | `0` | 이보다 짧은 prefix는 **400으로 거절**하고 사유를 말합니다. 기본 0 = 빈 prefix 허용 — **성능 때문이 아니라 정책용 노브**입니다(빈 prefix도 값 1개당 seek 1회라 안전) |
 | `max_probe_values` | `400` | 요청당 인덱스 seek 상한. 문자열 컬럼에서는 값 개수 + 1을 넘지 않으므로 사실상 **숫자 컬럼 전용 안전장치**입니다. **이 상한에 걸려 멈추면 `truncated: true`** |
-| `timeout_ms` | `1500` | PostgreSQL `statement_timeout` + 루프 전체 마감시각. **초과하면 잘림이 아니라 `unavailable_reason`** (§4) |
+| `timeout_ms` | `1500` | PostgreSQL `statement_timeout` + 루프 전체 마감시각. **초과하면 잘림이 아니라 `unavailable_reason`** (§4). ⚠️ **지연 상한이 아닙니다** — 루프는 프로브를 **발행하기 전에** 시계를 보므로, 마감 직전에 시작된 프로브는 `statement_timeout`만큼 더 돌 수 있습니다. 실제 상한은 `2 × timeout_ms`이고 라이브 실측 최악값은 1500 선언에 1901ms(1.27배)였습니다. 그래서 **실제 비용은 응답의 `elapsed_ms`로 확인**하십시오 |
+| `slow_warn_ms` | `200` | **정답인데 느린 응답**의 경보 기준(2026-07-30 F7). 이 값을 넘으면 `values`는 그대로 주면서 `slow_reason`에 사유를 답니다 — 열화가 아니라 **영수증이 붙은 정상 응답**입니다. 0·음수는 거절(모든 응답이 "느림"이 되면 신호가 아니게 됩니다). 크게 올리면 경보만 꺼지고 `elapsed_ms`는 계속 나옵니다.<br>⚠️ **정밀 탐지기가 아니라 굵은 경보입니다.** 인덱스가 정상인 컬럼도 꼬리에서 148ms까지 튄 실측이 있어(2026-07-30, 21회 반복) 두 분포가 겹칩니다. 그래서 기준은 "평소보다 느림"이 아니라 **"구조적으로 잘못됨"**에 맞춰져 있습니다. 정밀한 판정은 빌더의 계획 형태 검사(§5)가 합니다 |
 | `index_min_rows` | `10000` | 이 행수 이상인 테이블만 자동으로 접두 인덱스 대상이 됩니다. 그 미만은 스캔이 이미 빨라 디스크만 먹습니다 |
 | `index_columns` | `{}` | `{테이블: [컬럼,...]}` — 선언하면 **그 테이블은 정확히 이 목록만**(행수 기준 무시). 작은 테이블에 강제로 넣을 때 씁니다 |
 | `index_exclude` | `{}` | `{테이블: [컬럼,...]}` — **항상 이깁니다.** 값이 사실상 전부 유일해 드롭다운이 무의미한 컬럼(업무키 등)이나, 인덱스가 큰 컬럼을 뺄 때 |
@@ -81,10 +83,13 @@ curl "http://localhost:8080/tables/bonding_map/columns/base/values?prefix=c&limi
 
 ```json
 {"table":"bonding_map","column":"base","prefix":"c","values":["CDIE","CHIP_VAR"],
- "truncated":false,"limit":10,"unavailable_reason":null}
+ "truncated":false,"limit":10,"unavailable_reason":null,
+ "elapsed_ms":21,"slow_reason":null}
 ```
 
 - **`truncated: true`** = 목록이 잘렸다는 뜻이고, 소비자는 이것을 표시해야 합니다. 조용히 자르면 드롭다운이 "이게 전부"라고 암시합니다.
+- **`elapsed_ms`는 항상 있습니다**(실패 응답에도). 이 모듈의 진단은 원래 **실패 경로에서만** 돌았기 때문에, 정답이면서 예산의 20배가 걸리는 응답이 아무 신호 없이 나갔습니다 — `wafer_process.knobs`가 `truncated:false` · `unavailable_reason:null`로 247ms에 답한 게 실제 사례입니다(2026-07-30 F7). 그 한 가지를 메우는 필드입니다.
+- **`slow_reason`이 채워져도 `values`는 유효합니다.** `unavailable_reason`과 정반대 성격이니 같이 취급하지 마십시오 — 소비자는 값을 **그대로 써야** 합니다. 백오프·경고 표시 판단에는 `elapsed_ms`(숫자)를, 사람이 읽을 조치 안내에는 `slow_reason`(문장)을 쓰십시오.
 - **`unavailable_reason`이 채워지면 `values`는 항상 빈 배열입니다.** "결과 없음"과 "조회 실패"를 같은 모양으로 내지 않기 위한 계약입니다. 가장 흔한 사유:
 
   ```
@@ -116,9 +121,42 @@ WHERE n.nspname='public' AND ci.relname LIKE 'idx_suggest_%'
 ORDER BY usable, indexname;
 ```
 
-## 5. 함정
+## 5. 계획 형태 검사 — "인덱스가 있다"는 확인이 아닙니다
+
+스크립트 **Step 3.9**가 인덱스를 만든 뒤 그 인덱스를 **실제로 쓰는 질의의 실행 계획**을 확인합니다. `CREATE INDEX … Success`는 인덱스가 **존재한다**는 증거일 뿐, 플래너가 그것을 **범위(range)로 쓴다**는 증거가 아니기 때문입니다 — 다른 사실입니다.
+
+```
+Step 3.9: Verifying suggestion index PLAN SHAPE (F7)...
+ - Plan shape: 34/34 range-shaped, 0 filter-shaped.
+ - Not applicable (14 number targets, plain btree): bonding_map.x, …
+```
+
+검사가 읽는 것은 **노드 타입이 아닙니다.** `COLLATE "C"` 없는 `bonding_map.base`의 실측 계획이 이유입니다:
+
+```
+Index Only Scan using idx_bonding_map_base        <-- 인덱스를 썼다!
+  Index Cond: (base IS NOT NULL)                  <-- 접두가 여기에 없다
+  Filter: ((base)::text ~~ 'C%'::text)            <-- 여기 있다
+  Rows Removed by Filter: 548300                  <-- 그래서 비용이 O(n), 569ms
+```
+
+노드 타입은 **정상 계획과 똑같습니다.** 「index scan이면 통과」인 검사기는 이걸 그냥 통과시킵니다. 그래서 판정 기준은 세 가지입니다:
+
+| 사유 | 뜻 |
+|---|---|
+| `no_index_cond` | `Index Cond`가 아예 없다 — Seq Scan 등 |
+| `prefix_not_a_range` | 인덱스는 썼지만 접두가 `Index Cond`에 없다(= Filter로 밀렸다) |
+| `filter_discards` | `Rows Removed by Filter`가 허용치(100) 초과 — 테이블 크기에 비례하는 비용 |
+
+**`Filter:` 줄이 있다는 것 자체는 결함이 아닙니다** — 정상 계획에도 `base <> ''`가 있고 버리는 행은 0입니다. 판별하는 것은 **버린 행 수**와 **접두가 `Index Cond`에 있는지**입니다.
+
+`number` 대상은 검사 대상이 아니고(콜레이션 함정이 생길 수 없는 일반 btree), **검증하지 못한 대상은 개수로 뭉치지 않고 이름을 나열**합니다(`!! NOT VERIFIED`). 「34/34 통과」 옆에 「15개 건너뜀」만 적혀 있으면 커버리지가 있는 것처럼 읽히는데, 실제로 그 방식 때문에 `graph_nodes.identity_key`가 한동안 검사되지 않고 있었습니다.
+
+## 6. 함정
 
 - **`index_*`만 바꾸고 스크립트를 안 돌리면 아무 일도 일어나지 않습니다.** 이 파일은 선언이고, 스크립트가 유일한 반영 경로입니다.
+- **테이블이 `index_min_rows`를 넘어간 뒤 스크립트를 다시 안 돌리면 조용히 느려집니다.** 임계를 넘는 순간 그 테이블의 선언 컬럼 전부가 대상이 되지만, 만들어 주는 것은 스크립트뿐입니다. 그때까지 API는 **정답을 · 완전한 모양으로 · 느리게** 답합니다(2026-07-30 `wafer_process` 실제 사례: 10,407행, 14컬럼 전부 인덱스 없음, 최악 302ms). 데이터가 늘어나는 테이블이 있으면 **적재 후 스크립트 재실행을 습관으로** 두십시오. 지금은 `slow_reason`이 이 상태를 말해 줍니다.
+- **`reltuples`는 추정치입니다.** 임계 판정에 쓰이므로, 임계 바로 아래(예: 9,800행)에 있는 테이블은 실제로 넘겼는데도 대상에서 빠질 수 있습니다. 애매하면 `ANALYZE <테이블>` 후 스크립트를 돌리십시오.
 - **대상에서 뺀 컬럼의 인덱스는 자동 삭제되지 않습니다.** 스크립트가 `Orphaned suggestion indices`로 DROP 문을 **출력만** 합니다 — config 로드가 일시 실패한 상태에서 일괄 DROP이 도는 사고를 막기 위한 의도된 설계입니다. 판단은 사람이 하고 명령은 손으로 실행합니다.
 - **`CREATE INDEX CONCURRENTLY`는 열려 있는 트랜잭션을 기다립니다.** 워커가 `idle in transaction`이면 스크립트가 멈춘 것처럼 보입니다 — `pg_stat_activity`를 보십시오. **여기서 Ctrl+C로 끊으면 그 이름으로 INVALID 인덱스가 남고, 이후 스크립트는 이름이 있다는 이유로 영원히 건너뜁니다.** 스크립트가 Step 3.8 시작에 그 목록을 먼저 출력하니 놓치지 마십시오.
 - **`index_columns`에 적었지만 만들어지지 않는 컬럼이 있을 수 있습니다.** 미선언 컬럼이나 `datetime` 선언 컬럼은 애초에 제안 대상이 아니라 조용히 빠집니다 — 스크립트 로그의 `[Suggest] index_columns[...] names ...` 경고를 확인하십시오.

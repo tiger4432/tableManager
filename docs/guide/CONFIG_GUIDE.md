@@ -38,7 +38,7 @@ server/database/virtual_graph.json
 | **`bonding_plan_config.json`** | M1 본딩 실험계획 — 역할(role)→실테이블 바인딩 | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`transfer_plan_config.json`** | M2 Universal Transfer Plan — stage 선언 + plan_store | 사용자 | ignored (`.sample` 有) | 즉시(**요청당 1회 스냅샷**) | web |
 | **`effort_metric.json`** | **V1 정본 계기** — 상호작용 점수 배점(`weights.key/mouse/nav/nav_preserved`, 기본 1/3/5/**0**) + `context_preserving_transitions`(유지 전이 허용목록, **기본 빈 배열 = 모든 이동이 상실로 계산됨**, 정확 일치·**와일드카드 거절**). `GET /api/effort/config`로 서빙(클라 하드코딩 금지) | 사용자 | ignored (`.sample` 有) | 즉시(다음 조회부터, 집계는 60초 캐시) | web |
-| **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃 + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
+| **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃·**느린 응답 경보(`slow_warn_ms`)** + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
 | `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동 4종(`watcher`·`chain`·`graph`·`scheduler`) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
@@ -273,7 +273,7 @@ S1을 전부 수행한 뒤 추가로:
 | `bonding_plan_config` / `transfer_plan_config` / `map_overlay_config` | 없음 — **요청마다 디스크 재읽기** | 불필요 |
 | `ingestion_settings` | 없음 — **파일 이벤트마다 재읽기** | 불필요 |
 | `effort_metric` | 없음 — 조회마다 재읽기(대시보드 집계는 60초 TTL 캐시 뒤) | 불필요 |
-| `suggest_config` — **조회 노브**(`default_limit`·`min_prefix_length`·`timeout_ms` 등) | 없음 — 요청마다 재읽기(**요청당 1회 스냅샷**) | 불필요 |
+| `suggest_config` — **조회 노브**(`default_limit`·`min_prefix_length`·`timeout_ms`·`slow_warn_ms` 등) | 없음 — 요청마다 재읽기(**요청당 1회 스냅샷**) | 불필요 |
 | `suggest_config` — **`index_*` 대상 선정** | 어떤 리로드 경로도 하지 않음 — `python server/scripts/setup_db_performance.py` **재실행이 유일한 반영 경로** | 불필요(단 스크립트 실행 필수) |
 | `auto_update_control` | 없음 — 스케줄러가 매 사이클 재읽기 + API가 실시간 계산 | 불필요 |
 | `maps.json` | 없음 — 요청마다 재읽기 | 불필요 |
@@ -364,7 +364,9 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 
 ### 5.6-ter `suggest_config.json`
 
-입력 제안(고유값 조회)의 길이·타임아웃 노브 + **접두 인덱스 대상 선정** → [**config/suggest_config.md**](./config/suggest_config.md)
+입력 제안(고유값 조회)의 길이·타임아웃 노브 + **접두 인덱스 대상 선정** + **느린 응답 경보(`slow_warn_ms`)·계획 형태 검사** → [**config/suggest_config.md**](./config/suggest_config.md)
+
+⚠️ **운영 수칙(2026-07-30 F7)**: 테이블이 `index_min_rows`(기본 10,000)를 넘어간 뒤 `setup_db_performance.py`를 다시 돌리지 않으면 그 테이블의 제안 조회는 **정답을·완전한 모양으로·느리게** 답합니다. 데이터가 늘어나는 테이블이 있으면 적재 후 스크립트 재실행을 절차에 넣으십시오.
 
 > ⚠️ **이 파일은 인덱스를 만들지 않습니다.** `index_min_rows`/`index_columns`/`index_exclude`는 **선언**이고, 실제 생성은 `server/scripts/setup_db_performance.py`(Step 3.8)가 합니다 — 값을 바꾸고 스크립트를 돌리지 않으면 **아무 일도 일어나지 않습니다.** 반대로 인덱스가 없는 컬럼은 조용히 느려지지 않고 `unavailable_reason`으로 꺼집니다(사유가 인덱스 이름과 실행할 명령을 지목합니다).
 

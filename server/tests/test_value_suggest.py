@@ -710,3 +710,284 @@ def test_index_definition_is_the_byte_order_pair():
     d = value_suggest.suggest_index_definition("base")
     assert 'lower("base") COLLATE "C"' in d
     assert '"base" COLLATE "C"' in d
+
+
+# ---------------------------------------------------------------------------
+# Plan shape (F7 c) — the node type is NOT the property that matters
+# ---------------------------------------------------------------------------
+#
+# Real plans, captured from the live database, kept verbatim as fixtures. The whole
+# point of `classify_seek_plan` being pure text-in is that the 1.7M-row pathological
+# case becomes a regression test instead of something only production can show.
+
+# The one that matters: an index scan whose cost is LINEAR in the table.
+# `bonding_map.base` indexed WITHOUT the `COLLATE "C"` decoration — the planner
+# picked the index and then discarded every entry in a Filter. 569 ms for 3 values.
+PLAN_LINEAR_INDEX_SCAN = """\
+ Limit  (cost=0.43..0.61 rows=1 width=132) (actual time=569.001..569.002 rows=1 loops=1)
+   ->  Index Only Scan using idx_bonding_map_base on bonding_map
+         Index Cond: (base IS NOT NULL)
+         Filter: ((base)::text ~~ 'C%'::text)
+         Rows Removed by Filter: 548300
+         Heap Fetches: 0
+ Execution Time: 569.061 ms"""
+
+# The healthy shape for the SAME column with the right index. Note it also has a
+# `Filter:` line — presence of a filter is not the defect.
+PLAN_RANGE_SHAPED = """\
+ Limit  (cost=0.43..0.61 rows=1 width=132) (actual time=0.044..0.044 rows=1.00 loops=1)
+   Buffers: shared hit=4
+   ->  Index Only Scan using idx_suggest_bonding_map_base on bonding_map  (cost=0.43..19680.09 rows=106889 width=132)
+         Index Cond: (((lower((base)::text)) >= 'c'::text) AND ((lower((base)::text)) < 'd'::text) AND (base IS NOT NULL))
+         Filter: ((base)::text <> ''::text)
+         Heap Fetches: 0
+         Index Searches: 1
+ Execution Time: 0.062 ms"""
+
+# `wafer_process.wafer_id` BEFORE its index existed (F7's live defect, 2026-07-30).
+PLAN_SEQ_SCAN = """\
+ Limit  (cost=943.68..943.68 rows=1 width=108) (actual time=6.503..6.504 rows=0.00 loops=1)
+   ->  Sort  (cost=943.68..943.81 rows=52 width=108)
+         Sort Key: (lower((wafer_id)::text)) COLLATE "C", wafer_id COLLATE "C"
+         ->  Seq Scan on wafer_process  (cost=0.00..943.42 rows=52 width=108)
+               Filter: ((wafer_id IS NOT NULL) AND ((wafer_id)::text <> ''::text) AND ((lower((wafer_id)::text))::text >= '1'::text))
+               Rows Removed by Filter: 10780
+ Execution Time: 6.522 ms"""
+
+# An EMPTY prefix on a healthy index. There is no range to make, so
+# `Index Cond: (col IS NOT NULL)` is the CORRECT plan here.
+PLAN_EMPTY_PREFIX_HEALTHY = """\
+ Limit  (cost=0.43..0.47 rows=1 width=132) (actual time=0.031..0.031 rows=1.00 loops=1)
+   ->  Index Only Scan using idx_suggest_bonding_map_base on bonding_map
+         Index Cond: (base IS NOT NULL)
+         Filter: ((base)::text <> ''::text)
+         Heap Fetches: 0
+ Execution Time: 0.046 ms"""
+
+
+def test_plan_check_rejects_the_linear_index_scan_a_node_type_check_would_pass():
+    """THE hole this check exists to close.
+
+    `Index Only Scan` is the same node type the healthy plan uses, so a checker that
+    recorded "was an index used?" passes a query that reads 548,300 rows to return
+    3 — and reports the index as working while the endpoint stays 569 ms.
+    """
+    # The fixture really does contain the reassuring node type. If this ever stops
+    # being true the test below has stopped proving anything about the hole.
+    assert "Index Only Scan" in PLAN_LINEAR_INDEX_SCAN
+    assert "Seq Scan" not in PLAN_LINEAR_INDEX_SCAN
+
+    verdict, reasons, discarded = value_suggest.classify_seek_plan(
+        PLAN_LINEAR_INDEX_SCAN)
+    assert verdict != value_suggest.PLAN_OK
+    # Both signals fire: the prefix never became a range, AND the walk was long.
+    assert value_suggest.PLAN_PREFIX_NOT_A_RANGE in reasons
+    assert value_suggest.PLAN_FILTER_DISCARDS in reasons
+    assert discarded == 548300
+
+
+def test_plan_check_accepts_a_range_shaped_plan_that_still_has_a_filter():
+    """A `Filter:` line is NOT the defect — the healthy plan has one too
+    (`base <> ''`, discarding nothing). A check that rejected any filter would fail
+    every healthy column and get switched off, which is worse than no check.
+    """
+    assert "Filter:" in PLAN_RANGE_SHAPED
+    verdict, reasons, discarded = value_suggest.classify_seek_plan(PLAN_RANGE_SHAPED)
+    assert verdict == value_suggest.PLAN_OK, reasons
+    assert reasons == [] and discarded == 0
+
+
+def test_plan_check_rejects_a_seq_scan():
+    verdict, reasons, discarded = value_suggest.classify_seek_plan(PLAN_SEQ_SCAN)
+    assert verdict != value_suggest.PLAN_OK
+    assert value_suggest.PLAN_NO_INDEX_COND in reasons
+    assert value_suggest.PLAN_FILTER_DISCARDS in reasons
+    assert discarded == 10780
+
+
+def test_plan_check_does_not_demand_a_range_where_there_is_no_prefix():
+    """The empty-prefix probe has no range to verify, so `IS NOT NULL` alone is
+    correct there. Without `expect_range=False` the check would condemn a perfectly
+    healthy index — and a check that cries wolf is a check nobody runs."""
+    assert value_suggest.classify_seek_plan(
+        PLAN_EMPTY_PREFIX_HEALTHY, expect_range=False)[0] == value_suggest.PLAN_OK
+    # ...and with a range demanded, the very same plan is (correctly) rejected.
+    assert value_suggest.classify_seek_plan(
+        PLAN_EMPTY_PREFIX_HEALTHY, expect_range=True)[1] == [
+            value_suggest.PLAN_PREFIX_NOT_A_RANGE]
+
+
+def test_plan_check_reads_the_discard_count_not_just_its_presence():
+    """A range-shaped seek can discard a handful of blanks; the defect is a LONG
+    walk. The tolerance is what separates them, so it has to be honoured."""
+    small = PLAN_RANGE_SHAPED.replace(
+        "         Heap Fetches: 0", "         Rows Removed by Filter: 7")
+    assert value_suggest.classify_seek_plan(small)[0] == value_suggest.PLAN_OK
+    assert value_suggest.classify_seek_plan(small, max_discarded=3)[1] == [
+        value_suggest.PLAN_FILTER_DISCARDS]
+
+
+def test_the_verified_statement_is_the_statement_the_loop_issues(client, parts_env,
+                                                                monkeypatch):
+    """A plan check that rebuilds the query itself verifies a query nobody runs.
+
+    `text_seek_query` is the single definition precisely so the builder's Step 3.9
+    and the endpoint cannot drift. This pins the seek loop to it: reintroducing an
+    inline `sa.select(...)` in `_text_values` makes the call count 0.
+    """
+    calls = []
+    real = value_suggest.text_seek_query
+
+    def spy(col, folded, is_pg, cursor=None):
+        calls.append((col.name, folded, cursor))
+        return real(col, folded, is_pg, cursor)
+
+    monkeypatch.setattr(value_suggest, "text_seek_query", spy)
+    r = client.get("/tables/inventory_master/columns/category/values?prefix=C")
+    assert r.status_code == 200 and r.json()["values"]
+    assert calls, "_text_values must issue its seek through text_seek_query"
+    assert all(c[0] == "category" and c[1] == "c" for c in calls)
+    # The cursor advances — i.e. this really is the loose scan, not one query.
+    assert calls[0][2] is None and calls[-1][2] is not None
+
+
+# ---------------------------------------------------------------------------
+# F7 b — a CORRECT answer reports what it cost
+# ---------------------------------------------------------------------------
+
+def _slow_runner(monkeypatch, seconds=0.30):
+    """Make the seek loop take real wall-clock time without breaking it.
+
+    0.30 s clears the 200 ms default with margin. The deadline is 1500 ms, so this
+    stays a SUCCESS — which is the whole point of these tests.
+    """
+    import time as _time
+    real = value_suggest._text_values
+
+    def slow(*a, **kw):
+        _time.sleep(seconds)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(value_suggest, "_text_values", slow)
+
+
+def test_a_fast_answer_reports_its_cost_and_claims_nothing_else(client, parts_env):
+    r = client.get("/tables/inventory_master/columns/category/values").json()
+    assert r["values"]
+    assert r["unavailable_reason"] is None
+    # Cost is on EVERY response, not only the interesting ones — a caller that has
+    # to ask "is this field here?" cannot build a policy on it.
+    assert "elapsed_ms" in r and isinstance(r["elapsed_ms"], int)
+    assert r["slow_reason"] is None
+
+
+def test_a_slow_but_correct_answer_keeps_its_values_and_names_the_cost(
+        client, parts_env, monkeypatch):
+    """F7's live defect, as a test: complete, correct, 20x over budget, and until
+    now indistinguishable from a fast answer by anyone who was not reading a plan.
+
+    Counter-injection: deleting the `slow_reason` assignment in `suggest_values`
+    fails the third assert while every other assert still passes — which is exactly
+    the state the endpoint shipped in.
+    """
+    _slow_runner(monkeypatch)
+    r = client.get("/tables/inventory_master/columns/category/values").json()
+    # NOT a degradation: the values are good and the caller must use them.
+    assert r["values"], "느린 응답이라고 값을 버려서는 안 된다"
+    assert r["unavailable_reason"] is None
+    assert r["truncated"] is False
+    # ...but the cost is now part of the answer.
+    assert r["slow_reason"] is not None
+    assert r["elapsed_ms"] >= 300
+    # Machine-readable AND readable: the number and the budget are both named.
+    assert str(r["elapsed_ms"]) in r["slow_reason"]
+    assert "200" in r["slow_reason"]
+
+
+def test_the_slow_threshold_is_configurable_and_zero_is_refused():
+    default = value_suggest.DEFAULTS["slow_warn_ms"]
+    # Pinned against the measurement that chose it: healthy indexed columns spiked
+    # to 148 ms on the live database, so anything at or below that fires on healthy
+    # traffic. Lowering this default is a decision, not a tidy-up.
+    assert default > 148
+    assert value_suggest.resolve_settings({})["slow_warn_ms"] == default
+    assert value_suggest.resolve_settings({"slow_warn_ms": 400})["slow_warn_ms"] == 400
+    # 0 would mark every answer slow, and a reason on every response is not a
+    # signal. `elapsed_ms` is the always-on channel instead.
+    assert value_suggest.resolve_settings({"slow_warn_ms": 0})["slow_warn_ms"] == default
+    assert value_suggest.resolve_settings({"slow_warn_ms": -1})["slow_warn_ms"] == default
+
+
+def test_raising_the_threshold_silences_the_reason_without_hiding_the_cost(
+        client, parts_env, monkeypatch):
+    """An operator who accepts a slower budget must still be able to see cost —
+    otherwise raising the knob recreates the silent band it exists to reveal."""
+    _slow_runner(monkeypatch)
+    monkeypatch.setattr(value_suggest, "DEFAULTS",
+                        dict(value_suggest.DEFAULTS, slow_warn_ms=10_000))
+    r = client.get("/tables/inventory_master/columns/category/values").json()
+    assert r["slow_reason"] is None
+    assert r["elapsed_ms"] >= 300
+
+
+def test_elapsed_ms_survives_the_unavailable_path(client, parts_env, monkeypatch):
+    """A client backing off needs the cost of the answer that FAILED most of all."""
+    def boom(*a, **kw):
+        raise RuntimeError("seek exploded")
+
+    monkeypatch.setattr(value_suggest, "_text_values", boom)
+    r = client.get("/tables/inventory_master/columns/category/values").json()
+    assert r["unavailable_reason"] and r["values"] == []
+    assert "elapsed_ms" in r
+
+
+def test_slow_reason_carries_the_index_advice_on_postgres(db_session, monkeypatch):
+    """The measurement alone leaves the reader nowhere to go. `_slow_reason` reuses
+    the SAME `_index_advice` the timeout path uses, so a slow success names the
+    missing index and the script to run.
+
+    Counter-injection: dropping the `_index_advice` call leaves a bare number.
+    """
+    monkeypatch.setattr(value_suggest, "_index_state",
+                        lambda db, name: value_suggest._INDEX_ABSENT)
+    msg = value_suggest._slow_reason(
+        db_session, "inventory_master", "category", 240, 50, True,
+        value_suggest.resolve_settings({"index_min_rows": 0}))
+    assert "240ms" in msg and "50" in msg
+    assert "idx_suggest_inventory_master_category" in msg
+    assert "setup_db_performance.py" in msg
+    # It must NOT claim a timeout — nothing timed out, the answer arrived.
+    assert "시간 초과" not in msg
+
+
+def test_slow_reason_survives_a_broken_diagnosis(db_session, monkeypatch):
+    """Diagnosis is the bonus; the measurement is the signal. If the catalog read
+    throws, the caller must still get the number it branches on."""
+    def boom(*a, **kw):
+        raise RuntimeError("catalog gone")
+
+    monkeypatch.setattr(value_suggest, "_index_advice", boom)
+    msg = value_suggest._slow_reason(
+        db_session, "inventory_master", "category", 240, 50, True, None)
+    assert "240ms" in msg
+
+
+def test_slow_warning_is_logged_once_per_column_not_once_per_keystroke(
+        db_session, monkeypatch, caplog):
+    """A client types 17 characters and issues 17 requests. Seventeen copies of the
+    same actionable message bury it — the condition is a property of the COLUMN, so
+    it is said once and then counted at DEBUG."""
+    monkeypatch.setattr(value_suggest, "_index_state",
+                        lambda db, name: value_suggest._INDEX_ABSENT)
+    monkeypatch.setattr(value_suggest, "_slow_warned", set())
+    settings = value_suggest.resolve_settings({})
+    with caplog.at_level("WARNING"):
+        for _ in range(5):
+            value_suggest._slow_reason(db_session, "inventory_master", "category",
+                                       240, 50, True, settings)
+    assert len([r for r in caplog.records if "category" in r.message]) == 1
+    # A DIFFERENT column is a different condition and gets its own line.
+    with caplog.at_level("WARNING"):
+        value_suggest._slow_reason(db_session, "inventory_master", "part_no",
+                                   240, 50, True, settings)
+    assert len([r for r in caplog.records if "part_no" in r.message]) == 1

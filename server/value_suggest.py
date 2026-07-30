@@ -71,6 +71,35 @@ TRUNCATION IS ALWAYS SPOKEN (INV-F3-1)
     `truncated`. A path that cannot answer at all sets `unavailable_reason`
     and returns NO values (same shape as the dashboard's degraded stats: an
     empty list that looks normal is a wrong answer, not a missing one).
+
+COST IS ALWAYS SPOKEN TOO (F7, 2026-07-30)
+    Truncation and unavailability were both reported, and a third state was not:
+    an answer that is complete, correct, and far too expensive. Every diagnostic
+    in this module ran on a FAILURE path, so `wafer_process` — 10.4k rows, past
+    `index_min_rows`, builder never re-run — answered `wafer_process.knobs` in
+    247 ms with `truncated: false` and `unavailable_reason: null`. Nothing about
+    that response was false. It simply did not carry the one fact that was wrong.
+
+    So every response now carries:
+        `elapsed_ms`  — measured cost, on every path including the failed ones.
+                        THIS is the signal: precise, always present, comparable.
+        `slow_reason` — None, or a named cause when the cost exceeded
+                        `slow_warn_ms`. The VALUES REMAIN VALID; this is not a
+                        degradation, it is a correct answer with a receipt.
+                        A COARSE ALARM, not a detector — healthy columns spike into
+                        the same range occasionally (see `slow_warn_ms`), so its
+                        threshold is set to "structurally wrong", not "slower than
+                        usual". `classify_seek_plan` is the precise instrument.
+
+    Why a field and not a log line: the caller cannot read logs. A client that
+    wants to back off, or an operator diffing two deployments, needs the number
+    in the response. `slow_reason` is what makes it actionable without one —
+    it names the missing index and what to run, reusing the same
+    `_index_advice` the timeout path uses.
+
+    Running the index builder fixes today's table. It does not fix the CLASS:
+    the next table to cross `index_min_rows` reproduces this exactly, and these
+    two fields are the only reason anyone would notice.
 """
 import json
 import logging
@@ -99,9 +128,45 @@ DEFAULTS = {
     # Hard cap on index seeks per request. Binds only on numeric columns, where
     # a probe can land on a value that fails the exact prefix test.
     "max_probe_values": 400,
-    # Per-request statement_timeout AND the wall-clock deadline of the seek
-    # loop. Exceeding it degrades honestly instead of hanging the dropdown.
+    # Per-request statement_timeout AND the wall-clock deadline of the seek loop.
+    # Exceeding it degrades honestly instead of hanging the dropdown.
+    #
+    # NOT A LATENCY BOUND — see `_stop_reason`. The loop tests the clock BEFORE
+    # issuing a probe, so a probe started just under the deadline may still run for
+    # a full `statement_timeout`. The real bound is `2 * timeout_ms`; measured
+    # worst case on the live database was 1901 ms against 1500 (1.27x). `elapsed_ms`
+    # in every response is what makes the ACTUAL cost knowable rather than assumed.
     "timeout_ms": 1500,
+    # Above this measured cost a SUCCESSFUL answer still reports `slow_reason`.
+    #
+    # This is the knob that closes the silent-slowness band (F7). Everything else
+    # here only fires on the FAILURE path, so a correct-looking, complete-looking
+    # answer that cost 20x its budget reached the caller with no signal at all:
+    # `wafer_process.knobs` answered in 247 ms with `truncated: false` and
+    # `unavailable_reason: null` because the table crossed `index_min_rows` and the
+    # builder had not been re-run. Nothing was wrong with the answer — only with
+    # what it cost, and cost was the one thing the response did not carry.
+    #
+    # 200 ms, and the number is measured — including the part that argues against a
+    # tighter one. Healthy indexed columns (2026-07-30, 21 reps each, live):
+    #     median 17-23 ms, p95 18-26 ms  ...  but MAX 148 ms.
+    # Unindexed columns over `index_min_rows` measured 51.8 ms median, 302 ms worst.
+    # So the two distributions OVERLAP in the tail, and no single latency threshold
+    # separates them: 50 ms was tried first and fired twice on healthy, correctly
+    # indexed columns in one 168-request run.
+    #
+    # 200 ms therefore means "structurally wrong", not "this request was unlucky".
+    # It sits above every healthy sample observed and still caught 6 of the 14
+    # `wafer_process` columns when they had no index — and catching SIX columns of a
+    # broken table is enough, because the repair (`setup_db_performance.py`) fixes
+    # the whole table at once. A threshold that cries wolf gets switched off, which
+    # would cost more than the columns it would have caught.
+    #
+    # The precise instrument is elsewhere and deliberately so: `elapsed_ms` is
+    # always present for anyone who wants the real number, and `classify_seek_plan`
+    # answers the categorical question ("is this index a RANGE?") that latency can
+    # only hint at. This knob is the loud alarm, not the measurement.
+    "slow_warn_ms": 200,
     # A table at least this large gets suggestion indexes built for its
     # string-declared columns (setup_db_performance.py). Smaller tables scan
     # fine without one, and indexing them all would cost disk for nothing.
@@ -180,7 +245,12 @@ def resolve_settings(config: dict = None) -> dict:
         if v < 0:
             logger.warning("[Suggest] '%s' must be >= 0 (got %r); using %s.", k, v, default)
             continue
-        if k in ("default_limit", "max_limit", "max_probe_values", "timeout_ms") and v == 0:
+        # `slow_warn_ms` is here too: 0 would mark EVERY answer slow, and a reason
+        # attached to every response is not a signal. `elapsed_ms` is the always-on
+        # channel for operators who want the cost unconditionally; raise this knob
+        # to effectively disable the named warning instead of zeroing it.
+        if k in ("default_limit", "max_limit", "max_probe_values", "timeout_ms",
+                 "slow_warn_ms") and v == 0:
             logger.warning("[Suggest] '%s' must be > 0 (got 0); using %s.", k, default)
             continue
         resolved[k] = v
@@ -513,11 +583,53 @@ STOP_DEADLINE = "deadline"  # ran out of time - the list would misrepresent
 
 
 def _stop_reason(probes, budget, deadline):
+    """Why the loop should stop, or None to keep going.
+
+    `deadline` IS NOT A LATENCY BOUND, and the name of the knob behind it
+    (`timeout_ms`) reads like one. The clock is tested HERE, before a probe is
+    issued — so a probe that starts one microsecond under the deadline still runs to
+    completion, bounded only by the session `statement_timeout` (also `timeout_ms`).
+    The true worst case is therefore `2 * timeout_ms`; measured 1901 ms against a
+    declared 1500 (1.27x, live, 2026-07-30).
+
+    Left as it is on purpose. Bounding total latency to `timeout_ms` means setting
+    `statement_timeout` to the REMAINING budget before every probe, which is one
+    extra round trip per probe on the hot path — 21 of them in a typical 20-value
+    answer. That taxes every healthy request to tighten a worst case that only
+    occurs when the system is already degraded. The honest fix was to stop implying
+    a bound that does not exist and to report the measured cost instead:
+    `elapsed_ms` is in every response, so a caller never has to trust this number.
+    """
     if time.monotonic() > deadline:
         return STOP_DEADLINE
     if probes >= budget:
         return STOP_BUDGET
     return None
+
+
+def text_seek_query(col, folded: str, is_pg: bool, cursor=None):
+    """THE seek statement — one definition, issued by `_text_values` AND explained
+    by the builder's plan check.
+
+    Public and factored out for exactly one reason: a plan check that rebuilds the
+    query itself is checking a query nobody runs. The `COLLATE "C"` lesson is what
+    that costs — an index can exist, be chosen by the planner, and still be linear
+    in the table size, and the only evidence is the plan of THIS statement. If the
+    two drifted apart, the check would keep passing while the endpoint kept
+    degrading.
+
+    `col != ''` NARROWS the walk; it is not the guarantee. It cannot be:
+    whitespace-only values are non-empty in SQL and still canonicalise to ''.
+    `not canon` in the caller is what actually keeps blanks out of the answer.
+    """
+    lk_expr = byte_order(sa.func.lower(col), is_pg)
+    cv_expr = byte_order(col, is_pg)
+    q = sa.select(sa.func.lower(col).label("lk"), col.label("v")).where(
+        col.isnot(None), col != "", *prefix_conditions(col, folded, is_pg))
+    if cursor is not None:
+        q = q.where(sa.tuple_(lk_expr, cv_expr) >
+                    sa.tuple_(sa.literal(cursor[0]), sa.literal(cursor[1])))
+    return q.order_by(lk_expr, cv_expr).limit(1)
 
 
 def _text_values(db, col, declared, prefix, want, budget, deadline, is_pg):
@@ -526,13 +638,7 @@ def _text_values(db, col, declared, prefix, want, budget, deadline, is_pg):
     One seek per value returned: `(lower(col), col) > (last_lower, last_value)`
     ordered by the same pair is a single index descent on the suggestion index.
     """
-    lk_expr = byte_order(sa.func.lower(col), is_pg)
-    cv_expr = byte_order(col, is_pg)
-    # `col != ''` NARROWS the walk; it is not the guarantee. It cannot be:
-    # whitespace-only values are non-empty in SQL and still canonicalise to ''.
-    # `not canon` below is what actually keeps blanks out of the answer.
     folded = db_fold(db, prefix or "")
-    base = [col.isnot(None), col != ""] + prefix_conditions(col, folded, is_pg)
 
     values, seen = [], set()
     cursor = None
@@ -542,11 +648,7 @@ def _text_values(db, col, declared, prefix, want, budget, deadline, is_pg):
         stop = _stop_reason(probes, budget, deadline)
         if stop:
             break
-        q = sa.select(sa.func.lower(col).label("lk"), col.label("v")).where(*base)
-        if cursor is not None:
-            q = q.where(sa.tuple_(lk_expr, cv_expr) >
-                        sa.tuple_(sa.literal(cursor[0]), sa.literal(cursor[1])))
-        row = db.execute(q.order_by(lk_expr, cv_expr).limit(1)).first()
+        row = db.execute(text_seek_query(col, folded, is_pg, cursor)).first()
         probes += 1
         if row is None:
             break
@@ -641,7 +743,25 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
         "table": table, "column": column, "prefix": prefix,
         "values": [], "truncated": False, "limit": limit,
         "unavailable_reason": None,
+        # THE SUCCESS PATH REPORTS ITS OWN COST (F7). Set on every exit, including
+        # the unavailable ones - a caller that wants to back off needs the number
+        # whether the answer arrived or not.
+        "elapsed_ms": 0,
+        # None = the answer cost what it should. Set = the answer is CORRECT but
+        # cost more than `slow_warn_ms`, and this names why. Deliberately a second
+        # field rather than a flag on `unavailable_reason`: the values are good and
+        # the caller must still use them.
+        "slow_reason": None,
     }
+    # `perf_counter`, NOT `monotonic`, and the two are used side by side on purpose:
+    #   - `deadline` below stays on `monotonic` — it is a wall-clock cut-off, and
+    #     15 ms of coarseness against a 1500 ms budget is 1%.
+    #   - `elapsed_ms` is a MEASUREMENT compared against a 50 ms threshold, and
+    #     `time.monotonic()` on Windows resolves to 15.625 ms (verified via
+    #     `get_clock_info`). Quantising the measurement in 16 ms steps would put
+    #     ~31% noise on the one comparison this field exists to make, so a 60 ms
+    #     answer could report 48 and stay silent. `perf_counter` resolves to 100 ns.
+    started = time.perf_counter()
 
     is_pg = bool(db.bind is not None and db.bind.dialect.name == "postgresql")
     timeout_ms = settings["timeout_ms"]
@@ -669,6 +789,7 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
             db.rollback()
         except Exception:
             pass
+        result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         result["unavailable_reason"] = _diagnose(
             db, table, column, e, timeout_ms, is_pg, settings=settings)
         logger.warning("[Suggest] %s.%s unavailable: %s", table, column, e)
@@ -682,6 +803,7 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
     # hard failure. STOP_BUDGET is different: those values are genuinely the
     # first N, so they are kept and flagged.
     if stop == STOP_DEADLINE:
+        result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         result["unavailable_reason"] = _diagnose(
             db, table, column, TimeoutError("seek loop deadline exceeded"),
             timeout_ms, is_pg, timed_out=True, settings=settings)
@@ -695,7 +817,52 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
         truncated = True
     result["values"] = values
     result["truncated"] = bool(truncated)
+
+    # A CORRECT answer that cost too much is still a defect, and until now it was
+    # the ONE defect this module could not report: every diagnostic above runs on a
+    # failure path. `wafer_process` sat 20x over budget answering
+    # `unavailable_reason: null, truncated: false` for as long as nobody re-ran the
+    # index builder, and the next table to cross `index_min_rows` would have
+    # reproduced it silently. So the success path measures itself.
+    result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+    warn_ms = settings["slow_warn_ms"]
+    if result["elapsed_ms"] > warn_ms:
+        result["slow_reason"] = _slow_reason(
+            db, table, column, result["elapsed_ms"], warn_ms, is_pg, settings)
     return result
+
+
+# One WARNING per (table, column) per process. The condition is a property of the
+# COLUMN, not of the keystroke: a client types 17 characters and issues 17 requests,
+# so per-request warnings would bury the actionable message under 16 copies of
+# itself. Bounded by the number of declared columns (~50 on the live database).
+_slow_warned = set()
+
+
+def _slow_reason(db, table, column, elapsed_ms, warn_ms, is_pg, settings) -> str:
+    """Name the cost of a SUCCESSFUL answer, and what to do about it.
+
+    Runs only when the answer was already slow, so the catalog reads it performs
+    are a small fraction of a cost that has already been paid — the per-request
+    price of the fast path stays exactly zero.
+    """
+    msg = f"응답이 {elapsed_ms}ms 걸렸습니다 (예산 {warn_ms}ms)"
+    if is_pg:
+        try:
+            _, advice = _index_advice(db, table, column, settings)
+            msg = f"{msg} — {advice}"
+        except Exception as e:
+            # Diagnosis is the bonus, not the signal. Losing it must not cost the
+            # measurement, which is the part the caller actually branches on.
+            logger.warning("[Suggest] slow-path diagnosis failed for %s.%s: %s",
+                           table, column, e)
+    key = (table, column)
+    if key in _slow_warned:
+        logger.debug("[Suggest] %s.%s slow again: %s", table, column, msg)
+    else:
+        _slow_warned.add(key)
+        logger.warning("[Suggest] %s.%s %s", table, column, msg)
+    return msg
 
 
 def _diagnose(db, table, column, exc, timeout_ms, is_pg, timed_out=False,
@@ -718,28 +885,43 @@ def _diagnose(db, table, column, exc, timeout_ms, is_pg, timed_out=False,
             # No catalog to consult - do not name an index that may not be the
             # story on this backend.
             return f"조회 시간 초과 ({timeout_ms}ms) — [{type(exc).__name__}] {detail}"
-        idx = suggest_index_name(table, column)
-        state = _index_state(db, idx)
-        if state == _INDEX_INVALID:
-            # to_regclass resolves an INVALID index perfectly well, so a name
-            # check alone reports this one as healthy while the planner refuses
-            # to use it forever. `CREATE INDEX CONCURRENTLY` leaves exactly this
-            # behind when it is cancelled - and the guide warns that a worker
-            # sitting `idle in transaction` makes that step look hung, so it is
-            # the cancel people actually perform. Worse, the builder's
-            # `IF NOT EXISTS` then skips the name, so re-running it fixes
-            # nothing. Say the repair out loud.
-            return (f"조회 시간 초과 ({timeout_ms}ms) — 인덱스 {idx} 가 INVALID 상태입니다"
-                    f"(CONCURRENTLY 생성이 중단된 흔적). 플래너가 사용하지 않으며 "
-                    f"setup_db_performance.py 를 다시 돌려도 이름이 있어 건너뜁니다. "
-                    f"REINDEX INDEX CONCURRENTLY {idx}; 또는 "
-                    f"DROP INDEX CONCURRENTLY {idx}; 후 재실행하세요.")
-        if state == _INDEX_ABSENT:
-            return (f"조회 시간 초과 ({timeout_ms}ms) — 접두 인덱스 {idx} 가 없습니다. "
-                    + _why_not_a_target(db, table, column, settings))
-        return (f"조회 시간 초과 ({timeout_ms}ms) — 인덱스 {idx} 는 존재합니다. "
-                f"[{type(exc).__name__}] {detail}")
+        state, advice = _index_advice(db, table, column, settings)
+        if state == _INDEX_USABLE:
+            # The index is fine, so the exception detail IS the story.
+            return f"조회 시간 초과 ({timeout_ms}ms) — {advice} [{type(exc).__name__}] {detail}"
+        return f"조회 시간 초과 ({timeout_ms}ms) — {advice}"
     return f"값 조회 실패 — [{type(exc).__name__}] {detail or '상세 없음'}"
+
+
+def _index_advice(db, table, column, settings) -> tuple:
+    """(index_state, WHAT TO DO ABOUT IT). PostgreSQL only; catalog reads.
+
+    Split out of `_diagnose` so the SLOW-BUT-SUCCESSFUL path can reach the same
+    advice without borrowing the timeout path's framing. That framing was the
+    reason the advice was unreachable: every sentence here began "조회 시간 초과",
+    which is false for an answer that arrived — so a slow success either had to lie
+    about timing out or say nothing, and it said nothing. Same words, one caller
+    supplying the prefix.
+    """
+    idx = suggest_index_name(table, column)
+    state = _index_state(db, idx)
+    if state == _INDEX_INVALID:
+        # to_regclass resolves an INVALID index perfectly well, so a name check
+        # alone reports this one as healthy while the planner refuses to use it
+        # forever. `CREATE INDEX CONCURRENTLY` leaves exactly this behind when it
+        # is cancelled - and the guide warns that a worker sitting `idle in
+        # transaction` makes that step look hung, so it is the cancel people
+        # actually perform. Worse, the builder's `IF NOT EXISTS` then skips the
+        # name, so re-running it fixes nothing. Say the repair out loud.
+        return state, (
+            f"인덱스 {idx} 가 INVALID 상태입니다(CONCURRENTLY 생성이 중단된 흔적). "
+            f"플래너가 사용하지 않으며 setup_db_performance.py 를 다시 돌려도 이름이 "
+            f"있어 건너뜁니다. REINDEX INDEX CONCURRENTLY {idx}; 또는 "
+            f"DROP INDEX CONCURRENTLY {idx}; 후 재실행하세요.")
+    if state == _INDEX_ABSENT:
+        return state, (f"접두 인덱스 {idx} 가 없습니다. "
+                       + _why_not_a_target(db, table, column, settings))
+    return state, f"인덱스 {idx} 는 존재합니다."
 
 
 def _why_not_a_target(db, table, column, settings) -> str:
@@ -832,6 +1014,76 @@ def _index_state(db, index_name: str):
     if row is None:
         return _INDEX_ABSENT
     return _INDEX_USABLE if row else _INDEX_INVALID
+
+
+# ---------------------------------------------------------------------------
+# Plan shape — "the index exists" is NOT the property that matters
+# ---------------------------------------------------------------------------
+
+# WHY THIS READS `Index Cond` / `Filter` / `Rows Removed by Filter` AND NOT THE
+# NODE TYPE. A checker that records "was it an index scan?" passes the worst plan
+# this module has ever measured. Live `bonding_map.base` WITHOUT the `COLLATE "C"`
+# decoration:
+#
+#     Index Only Scan using idx_bonding_map_base        <-- an index scan!
+#       Index Cond: (base IS NOT NULL)                  <-- the prefix is NOT here
+#       Filter: ((base)::text ~~ 'C%'::text)            <-- it is here instead
+#       Rows Removed by Filter: 548300                  <-- so the cost is O(n)
+#                                                           569 ms for 3 values
+#
+# The planner chose the index and then walked the whole thing. The node type is
+# identical to the healthy plan's; the three lines above are what differ. Note also
+# that a `Filter` line by itself proves NOTHING — the HEALTHY plan has one too
+# (`base <> ''`), discarding 0 rows. It is the DISCARD COUNT and the absence of the
+# prefix bounds from `Index Cond` that separate them.
+PLAN_OK = "ok"
+PLAN_NO_INDEX_COND = "no_index_cond"            # Seq Scan, or a bitmap/sort path
+PLAN_PREFIX_NOT_A_RANGE = "prefix_not_a_range"  # index chosen, prefix left to Filter
+PLAN_FILTER_DISCARDS = "filter_discards"        # cost is linear in the table
+
+_RE_INDEX_COND = re.compile(r"^\s*Index Cond:\s*(.*)$")
+_RE_FILTER = re.compile(r"^\s*(?:Filter|Index Recheck):\s*(.*)$")
+_RE_REMOVED = re.compile(r"Rows Removed by (?:Filter|Index Recheck):\s*(\d+)")
+
+# A range-shaped seek discards O(1) rows. This tolerance is deliberately small: a
+# LIMIT 1 seek can only discard rows it WALKED PAST, so a large count means the walk
+# really was long — which is the defect, not a false positive, even when the index
+# is being used as a range.
+_MAX_DISCARDED = 100
+
+
+def classify_seek_plan(plan_text, expect_range: bool = True,
+                       max_discarded: int = _MAX_DISCARDED) -> tuple:
+    """(verdict, reasons, discarded) for one `EXPLAIN ANALYZE` of `text_seek_query`.
+
+    `plan_text` is the raw EXPLAIN output — a string or an iterable of lines.
+    `expect_range` is False for the empty-prefix probe, where there is no prefix to
+    turn into a range and only the discard count is meaningful.
+
+    Pure text in, verdict out: no database, so the failing plans above are
+    regression fixtures rather than something that needs 1.7M rows to reproduce.
+    """
+    lines = plan_text.splitlines() if isinstance(plan_text, str) else list(plan_text)
+    index_conds, discarded = [], 0
+    for line in lines:
+        m = _RE_INDEX_COND.match(line)
+        if m:
+            index_conds.append(m.group(1))
+        m = _RE_REMOVED.search(line)
+        if m:
+            discarded += int(m.group(1))
+
+    reasons = []
+    if not index_conds:
+        reasons.append(PLAN_NO_INDEX_COND)
+    elif expect_range and not any(">=" in c or "<" in c for c in index_conds):
+        # The index WAS used, but only for `IS NOT NULL` — the prefix comparison got
+        # pushed to a Filter, so every entry is read and thrown away. This is the
+        # missing-`COLLATE "C"` signature, and it is invisible to a node-type check.
+        reasons.append(PLAN_PREFIX_NOT_A_RANGE)
+    if discarded > max_discarded:
+        reasons.append(PLAN_FILTER_DISCARDS)
+    return (PLAN_OK if not reasons else "bad"), reasons, discarded
 
 
 # ---------------------------------------------------------------------------

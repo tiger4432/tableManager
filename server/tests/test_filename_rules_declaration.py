@@ -44,7 +44,7 @@ from advanced_ingester import (
     REASON_CAST_FAILED,
     REASON_FILE_OVERRIDES_PATH,
     REASON_NO_MATCH,
-    REASON_PATH_OVERRIDES_HEADER,
+    REASON_PATH_VALUE_DISCARDED,
 )
 
 # ---------------------------------------------------------------------------
@@ -344,24 +344,95 @@ def test_agreement_costs_nothing_and_reports_nothing(tmp_path):
 
 
 def test_merge_order_is_the_declared_ruling(tmp_path):
-    """header < filename < row. Pinned so a later 'simplification' of the merge
-    cannot invert a ruling without going red."""
+    """`filename < header < row` (user ruling 2026-07-30: the path is the WEAKEST
+    of the three — a value inside the file is what the file asserts, a folder name
+    is external context that changes when someone moves the file).
+
+    Pinned in BOTH directions: each source wins where it should AND loses where it
+    should. A one-directional pin ("row wins") passes under the old order too, so
+    it would not have caught this flip.
+    """
     ing = _conflict_ingester(tmp_path)
-    merged = ing._merge_row({"lot_id": "header"}, {"lot_id": "path"}, {"lot_id": "row"})
-    assert merged["lot_id"] == "row"
-    assert ing._merge_row({"lot_id": "h"}, {"lot_id": "path"}, {})["lot_id"] == "path"
+    # All three speak -> the row wins (unchanged by the flip).
+    assert ing._merge_row({"lot_id": "header"}, {"lot_id": "path"},
+                          {"lot_id": "row"})["lot_id"] == "row"
+    # THE FLIP ITSELF: header vs path, row silent -> the HEADER wins.
+    # Under the previous order (`header < filename < row`) this was "path".
+    assert ing._merge_row({"lot_id": "header"}, {"lot_id": "path"},
+                          {})["lot_id"] == "header"
+    # ...and the losing direction: a header present is what beats the path, so
+    # with NO header the path still fills the column.
+    assert ing._merge_row({}, {"lot_id": "path"}, {})["lot_id"] == "path"
+    # Each source alone still reaches the row.
     assert ing._merge_row({"lot_id": "h"}, {}, {})["lot_id"] == "h"
+    # The row beats the header too, not only the path.
+    assert ing._merge_row({"lot_id": "h"}, {}, {"lot_id": "row"})["lot_id"] == "row"
 
 
-def test_a_silent_row_does_not_null_out_the_path_value(tmp_path):
+def test_restoring_the_old_merge_order_goes_red(tmp_path):
+    """MUTATION: the ruling is pinned by an assertion, not by a comment.
+
+    Re-implements `_merge_row`'s body with the PREVIOUS order
+    (`header < filename < row`) and asserts the pinned expectation fails on it.
+    Without this, `test_merge_order_is_the_declared_ruling` could be passing for a
+    reason unrelated to the order it claims to pin — the same
+    "the test ran but proved nothing" trap that cost two rounds on 2026-07-26.
+    """
+    ing = _conflict_ingester(tmp_path)
+
+    def old_merge_row(header_metadata, filename_data, row_data):
+        merged = {**header_metadata, **filename_data, **row_data}   # OLD ORDER
+        for col in ing._fill_merge_cols:
+            if merged.get(col) is not None:
+                continue
+            fill = filename_data.get(col)          # OLD fill precedence
+            if fill is None:
+                fill = header_metadata.get(col)
+            if fill is not None:
+                merged[col] = fill
+        return merged
+
+    # Sanity: the mutant is reachable — the overlap that makes the fill pass run
+    # is non-empty, so this is not a vacuous comparison.
+    assert "lot_id" in ing._fill_merge_cols
+
+    header, path = {"lot_id": "header"}, {"lot_id": "path"}
+    # The current implementation satisfies the ruling...
+    assert ing._merge_row(header, path, {})["lot_id"] == "header"
+    # ...and the old order does NOT. If this ever stops holding, the two orders
+    # have become indistinguishable and the pin above is decorative.
+    assert old_merge_row(header, path, {})["lot_id"] == "path"
+
+    # The fill half must ALSO flip: a silent row falls back to the header first.
+    silent_row = {"sensor_id": "S-1", "lot_id": None}
+    assert ing._merge_row(header, path, silent_row)["lot_id"] == "header"
+    assert old_merge_row(header, path, silent_row)["lot_id"] == "path"
+
+
+def test_a_silent_row_does_not_null_out_a_supplied_value(tmp_path):
     """`parse_line` emits every declared column on every row, using None for the
     rules that did not match. A plain dict merge therefore let a SILENT row write
-    that None over the path value — the fill half of the ruling never happened."""
+    that None over a supplied value — the fill half of the ruling never happened.
+
+    The fill half holds for EITHER supplier (2026-07-30 flip): the supplier is now
+    a header before it is a path, so both have to be tested, and the header has to
+    win the fill where both are present.
+    """
     ing = _conflict_ingester(tmp_path)
     # This is exactly what parse_line produces for a line with no lot= token.
     row_data = {"sensor_id": "S-1", "lot_id": None}
     assert ing._merge_row({}, {"lot_id": "LOT-A1"}, row_data)["lot_id"] == "LOT-A1"
     assert ing._merge_row({"lot_id": "LOT-H"}, {}, row_data)["lot_id"] == "LOT-H"
+    # Both suppliers present, row silent -> the fill obeys the SAME order as the
+    # merge. A fill pass that kept the old precedence would answer 'LOT-A1' here
+    # while the merge above answers 'header' — two orders in one function.
+    assert ing._merge_row({"lot_id": "LOT-H"}, {"lot_id": "LOT-A1"},
+                          row_data)["lot_id"] == "LOT-H"
+    # A header rule whose CAST FAILED stores None (extract_header_metadata), and
+    # that None now sits ABOVE the path value in the dict merge. The fill pass is
+    # what stops a bad `type:` on a header rule from blanking a good path value.
+    assert ing._merge_row({"lot_id": None}, {"lot_id": "LOT-A1"},
+                          row_data)["lot_id"] == "LOT-A1"
     # A declared non-None `default` IS a value the declaration provides -> it wins.
     ing2 = _ingester(
         tmp_path,
@@ -376,26 +447,61 @@ def test_a_silent_row_does_not_null_out_the_path_value(tmp_path):
     assert plain._merge_row({}, {}, {"c": None}) == {"c": None}
 
 
-def test_path_over_header_overlap_is_named_rather_than_inferred(tmp_path, caplog):
-    """The merge order makes the PATH win over the file's own header. Left as-is
-    (the ruling was given for file ROWS vs path) but surfaced, not inferred from
-    dict order."""
-    with caplog.at_level("WARNING"):
+def test_a_discarded_path_value_is_named_rather_than_silent(tmp_path, caplog):
+    """The HEADER wins over the path (ruling 2026-07-30), so that direction is
+    normal and warns about nothing. What gets counted is the other half: the folder
+    rule DID produce a value and it had no effect. Silence there would read as
+    "the rule never matched", which is a different problem with a different fix.
+    """
+    with caplog.at_level("INFO"):
         ing = _ingester(
             tmp_path,
             filename_rules=[LOT_RULE],
             header_rules=[{"column": "lot_id", "regex": r"Lot: (LOT-[A-Z]\d+)"}],
+            # A row rule is what makes `parse_line` emit anything at all, so the
+            # end-to-end assertion below actually has a row to inspect.
+            rules=[{"column": "sensor_id", "regex": r"ID: (S-\d+)"}],
         )
     assert ing._header_overlap == {"lot_id"}
-    assert any("PATH value wins" in r.message for r in caplog.records)
+    # Declared at INFO, not WARNING: the designed outcome is not a surprise.
+    decl = [r for r in caplog.records if "declared in BOTH" in r.message]
+    assert len(decl) == 1 and decl[0].levelname == "INFO"
 
     src = tmp_path / "m.csv"
     src.write_text("Lot: LOT-B2\nID: S-1\n", encoding="utf-8")
     issues = []
-    ing.process_file(str(src), rel_path="LOT-A1/m.csv", issues=issues)
-    assert [i["reason"] for i in issues] == [REASON_PATH_OVERRIDES_HEADER]
+    rows = ing.process_file(str(src), rel_path="LOT-A1/m.csv", issues=issues)
+    # The header value is what reaches the row — the ruling, end to end, not just
+    # in `_merge_row`. This is the assertion that would have caught the flip if
+    # only one test could exist.
+    assert rows and rows[0]["lot_id"] == "LOT-B2"
+    assert [i["reason"] for i in issues] == [REASON_PATH_VALUE_DISCARDED]
     assert issues[0]["path_value"] == "LOT-A1"
     assert issues[0]["header_value"] == "LOT-B2"
+    # Counted, never blocking: the file was still ingested.
+    assert len(rows) == 1
+
+
+def test_a_header_cast_failure_is_not_reported_as_a_discard(tmp_path):
+    """A header rule whose cast failed stores None, and the fill pass then restores
+    the PATH value — so the path value was NOT discarded and must not be counted as
+    one. Reporting a loss that did not happen is the same class of wrongness as
+    hiding one that did."""
+    ing = _ingester(
+        tmp_path,
+        filename_rules=[LOT_RULE],
+        # 'Lot: LOT-B2' captures 'LOT-B2', which int() cannot represent -> None.
+        header_rules=[{"column": "lot_id", "regex": r"Lot: (LOT-[A-Z]\d+)",
+                       "type": "int"}],
+        rules=[{"column": "sensor_id", "regex": r"ID: (S-\d+)"}],
+    )
+    src = tmp_path / "m.csv"
+    src.write_text("Lot: LOT-B2\nID: S-1\n", encoding="utf-8")
+    issues = []
+    rows = ing.process_file(str(src), rel_path="LOT-A1/m.csv", issues=issues)
+    assert rows and rows[0]["lot_id"] == "LOT-A1"      # path survived
+    assert [i["reason"] for i in issues
+            if i["reason"] == REASON_PATH_VALUE_DISCARDED] == []
 
 
 # ===========================================================================

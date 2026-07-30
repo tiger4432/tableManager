@@ -7,6 +7,82 @@ from sqlalchemy import text
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from database.database import engine
 
+def _verify_plan_shapes(conn, targets):
+    """EXPLAIN ANALYZE one seek per TEXT target and report filter-shaped plans.
+
+    Text targets only: a `number` column walks a plain btree with ordinary numeric
+    comparison, so the collation trap this checks for cannot arise there.
+
+    Probes a one-character prefix ('a'), because an EMPTY prefix has no range to
+    verify — `Index Cond: (col IS NOT NULL)` is the correct plan there, and asking
+    for a range would fail every healthy column. That is why `expect_range` exists.
+    """
+    import value_suggest
+    from database.database import Base
+
+    checked = failed = 0
+    numeric, unresolved = [], []
+    for table, column, idx_name, definition in targets:
+        # `Base.metadata.tables`, NOT `models.DYNAMIC_TABLES`. The dynamic tables are
+        # built against this same metadata (models.py `Table(..., Base.metadata, ...)`)
+        # so it covers them, AND it covers the STATIC models the dynamic dict does
+        # not. That difference was a live hole: `graph_nodes.identity_key` is a text
+        # `COLLATE "C"` target serving the SECOND consumer (`/graph/nodes/search`),
+        # and looking only in DYNAMIC_TABLES skipped the one index whose breakage
+        # nothing else here would notice.
+        tbl = Base.metadata.tables.get(table)
+        col = None if tbl is None else tbl.c.get(column)
+        if "COLLATE" not in definition:
+            # A `number` target is a plain btree with ordinary numeric comparison —
+            # the collation trap cannot arise, so there is nothing to verify.
+            numeric.append(f"{table}.{column}")
+            continue
+        if col is None:
+            unresolved.append(f"{table}.{column}")
+            continue
+        try:
+            q = value_suggest.text_seek_query(col, "a", True)
+            sql = str(q.compile(conn.engine, compile_kwargs={"literal_binds": True}))
+            plan = "\n".join(r[0] for r in conn.execute(
+                text("EXPLAIN (ANALYZE) " + sql)).fetchall())
+        except Exception as e:
+            print(f" - {table}.{column}: could not EXPLAIN ({e})")
+            unresolved.append(f"{table}.{column}")
+            continue
+        checked += 1
+        verdict, reasons, discarded = value_suggest.classify_seek_plan(plan)
+        if verdict != value_suggest.PLAN_OK:
+            failed += 1
+            print(f" - !! {table}.{column} ({idx_name}): {', '.join(reasons)} "
+                  f"[rows discarded by filter: {discarded}]")
+            for line in plan.splitlines():
+                print(f"      {line}")
+    # Skips are ITEMISED, not counted. "33/33 range-shaped" alongside a bare
+    # "15 skipped" reads as full coverage, and that is how `graph_nodes.identity_key`
+    # stayed unverified — the same "looks complete" failure this whole step exists to
+    # catch. A number target skipped is expected; an UNRESOLVED one is a coverage
+    # hole and says so.
+    print(f" - Plan shape: {checked - failed}/{checked} range-shaped, "
+          f"{failed} filter-shaped.")
+    if numeric:
+        print(f" - Not applicable ({len(numeric)} number targets, plain btree): "
+              f"{', '.join(numeric)}")
+    if unresolved:
+        print(f" - !! NOT VERIFIED ({len(unresolved)}) — no column object or EXPLAIN "
+              f"failed, so these indices are UNCHECKED: {', '.join(unresolved)}")
+    if checked == 0:
+        # An empty scan reported green claims coverage that does not exist.
+        print("   !! Zero targets were actually verified. Treat this step as FAILED, "
+              "not as a pass.")
+    if failed:
+        # Loud, but not fatal: the indices themselves were created correctly and
+        # the rest of the script must still finish. A filter-shaped plan means the
+        # DEFINITION is wrong for this collation, which a re-run will not repair.
+        print("   !! A filter-shaped plan means the index exists but is LINEAR in "
+              "table size. Check suggest_index_definition() and the database "
+              "collation — re-running this script will NOT fix it.")
+
+
 def setup_performance():
     print("🚀 AssyManager DB Performance Setup Starting...")
     
@@ -203,10 +279,14 @@ def setup_performance():
         print("\nStep 3.8: Creating value-suggestion prefix indices (F3)...")
         try:
             import value_suggest
-            from database import crud
+            from database import crud, models
 
             settings = value_suggest.resolve_settings(value_suggest.load_config())
             table_config = crud.load_table_config() or {}
+            # Build the dynamic model classes. Pure in-memory (no DB access), and
+            # Step 3.9's plan check needs the real Column objects to compile the
+            # SAME statement the endpoint issues.
+            models.init_dynamic_models(table_config)
             # reltuples는 추정치라 공짜다. 한 번도 ANALYZE되지 않은 테이블(-1)만
             # 실제 count로 보정한다 — 그렇지 않으면 갓 적재한 대형 테이블이
             # "작은 테이블"로 잘못 분류되어 인덱스 없이 조용히 남는다.
@@ -276,6 +356,19 @@ def setup_performance():
                       "drop manually if intended):")
                 for o in orphans:
                     print(f"     DROP INDEX CONCURRENTLY IF EXISTS {o};")
+
+            # 3.9 [F7] VERIFY THE PLAN, not the catalog.
+            #   "CREATE INDEX ... Success" above proves the index EXISTS. It does
+            #   not prove the planner uses it as a RANGE, and those are different
+            #   facts: `bonding_map.base` without `COLLATE "C"` produced an
+            #   `Index Only Scan` that discarded 548,300 rows in a Filter at 569ms.
+            #   A checker that recorded the node type would have passed it, so this
+            #   one reads `Index Cond` vs `Rows Removed by Filter` instead.
+            #   The statement explained here is `value_suggest.text_seek_query` —
+            #   the SAME function the endpoint issues, so the plan verified cannot
+            #   drift from the plan served.
+            print("\nStep 3.9: Verifying suggestion index PLAN SHAPE (F7)...")
+            _verify_plan_shapes(conn, targets)
         except Exception as e:
             print(f"   Suggestion index step failed: {e}")
 
