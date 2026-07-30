@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **279개** 이력. (거버넌스 규칙 #4)
+> 총 **280개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 17:00** — [Escape Means One Thing And Limit 12 Is Why](./20260730_170000_escape_means_one_thing_and_limit_12_is_why.md)
 - **2026-07-30 13:55** — [Three Of My Own Claims Were Wrong And Measurement Said So](./20260730_135500_three_of_my_own_claims_were_wrong_and_measurement_said_so.md)
 - **2026-07-30 13:50** — [Two Escapes Past One Green Instrument](./20260730_135043_two_escapes_past_one_green_instrument.md)
 - **2026-07-30 13:39** — [Nested Ingestion In Place Path Is The Carrier](./20260730_133956_nested_ingestion_in_place_path_is_the_carrier.md)
