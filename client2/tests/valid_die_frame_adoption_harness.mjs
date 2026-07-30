@@ -18,7 +18,13 @@ import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
-const SRC0 = readFileSync(SRC_PATH, 'utf8');
+// 🔴 LINE ENDINGS ARE NORMALISED, AND THAT IS NOT COSMETIC. Every mutation below finds its
+//    target by matching a multi-line source string written with `\n`. The repo stores these
+//    files with CRLF and `core.autocrlf=true`, so on a plain checkout the working copy has
+//    `\r\n` and those matches silently MISS — `mutation did not apply`. Measured 2026-07-30:
+//    8 of 18 mutations went undetected that way while the baseline stayed green, which is the
+//    exact "unscored axis reported as passing" failure this harness exists to prevent.
+const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 

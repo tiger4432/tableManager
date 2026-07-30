@@ -33,9 +33,16 @@ function die(msg) {
   process.exit(2);
 }
 
-const WORK_MAP = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8');
-const WORK_DOE = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
-const WORK_TSV = readFileSync(join(ROOT, 'client2', 'src', 'tsv.js'), 'utf8');
+// 🔴 LINE ENDINGS ARE NORMALISED, AND THAT IS NOT COSMETIC. `once(find, repl)` locates each
+//    mutation by an exact multi-line substring written with `\n`. The repo stores these files
+//    with CRLF and `core.autocrlf=true`, so on a plain checkout the match MISSES and
+//    `die('mutation did not apply')` kills the run with exit 2 — measured 2026-07-30, right
+//    after a `git checkout` of these files. A harness that stops finding the code is worse
+//    than no harness (this file's own header says so), so the read is made ending-agnostic.
+const readSrc = (...p) => readFileSync(join(...p), 'utf8').replace(/\r\n/g, '\n');
+const WORK_MAP = readSrc(ROOT, 'client2', 'src', 'map_editor.js');
+const WORK_DOE = readSrc(ROOT, 'client2', 'src', 'doe_bands.js');
+const WORK_TSV = readSrc(ROOT, 'client2', 'src', 'tsv.js');
 
 function sliceBalanced(src, startIdx, open, close) {
   let i = src.indexOf(open, startIdx);
