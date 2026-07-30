@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.1 빌드 게이트 신설** — `client2/package.json`의 `prebuild` = `check:clipboard` + **`check:contracts`**(`client2/scripts/check_contracts.mjs`) 실측. 2026-07-30 이전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았고**(pytest는 서버 절반만 채점), 그것이 `split_registry_harness.mjs`가 몇 주 동안 죽어 있게 둔 조건이다. 러너는 **목록이 아니라 발견식 스캔**이고 **빈 스캔은 실패**이며 판정은 **종료코드 하나**다. 실측: 4계약 전부 통과. 직전 2026-07-29 **계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§1.1 서버 주소 해석 신설** — 셸의 하드코딩된 두 주소(`:149` `127.0.0.1`, `:254` `localhost` — 서로 달랐다)를 `resolve_server_target()`/`base_url()` 한 곳으로 합침. `--server` > `ASSY_SERVER` > `client_settings.json`(**여태 한 번도 읽히지 않던 파일**) > 기본값. 잘못된 선언은 조용한 강등이 아니라 거절(exit 2). 거짓 로그 `"Vite dev server not detected"`와 호출되지 않던 `is_port_open` 삭제. 직전 **§2.1 빌드 게이트 신설** — `client2/package.json`의 `prebuild` = `check:clipboard` + **`check:contracts`**(`client2/scripts/check_contracts.mjs`) 실측. 2026-07-30 이전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았고**(pytest는 서버 절반만 채점), 그것이 `split_registry_harness.mjs`가 몇 주 동안 죽어 있게 둔 조건이다. 러너는 **목록이 아니라 발견식 스캔**이고 **빈 스캔은 실패**이며 판정은 **종료코드 하나**다. 실측: 4계약 전부 통과. 직전 2026-07-29 **계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -11,17 +11,39 @@
 메인 클라이언트는 **`client2`(웹)**이며, 데스크톱 앱은 이를 감싸는 QtWebEngine 셸입니다.
 
 - **`client2/`** — Vite 멀티페이지 앱(6엔트리), **Vanilla ESM JavaScript(프레임워크 없음)**, JS ~13,000줄. 듀얼 테마(기본 라이트, `tokens.css` 토큰 SSOT + `theme.js` 토글).
-- **`client/desktop_wrapper.py`** — `http://localhost:8080/?client=desktop`를 로드하는 `QWebEngineView`(:64-65, URL :254). `?client=desktop` 플래그로 `state.isDesktop`(state.js:32) 토글.
+- **`client/desktop_wrapper.py`** — `{해석된 서버}/?client=desktop`를 로드하는 `QWebEngineView`(:280-287). `?client=desktop` 플래그로 `state.isDesktop`(state.js:32) 토글. 서버 주소는 하드코딩이 아니라 §1.1의 우선순위로 해석된다.
 
 > ⚠️ 구 PySide6 데스크톱 클라이언트(`client/main.py`, `client/ui/`, `client/models/table_model.py`)는 **제거되었습니다.** 남은 것은 `desktop_wrapper.py`뿐.
 
 ### 데스크톱 셸 네이티브 기능
 | 기능 | 구현 |
 |---|---|
-| OS 드래그앤드롭 업로드 | `DropEventFilter`+`dropEvent`, `window.currentTable` 조회 후 `httpx`로 `/tables/{t}/upload` POST (:129-171) |
-| 네이티브 다운로드 다이얼로그 | `handle_download_request` → `QFileDialog` (:173-191) |
+| OS 드래그앤드롭 업로드 | `DropEventFilter`+`dropEvent`, `window.currentTable` 조회 후 `httpx`로 `{base}/tables/{t}/upload` POST (:357-399) |
+| 네이티브 다운로드 다이얼로그 | `handle_download_request` → `QFileDialog` (:401-419) |
 | DevTools | F12 인스펙터, 원격 디버깅 :9222 |
-| URI 스킴 | `assymanager://` HKCU 등록 (:205-233) |
+| URI 스킴 | `assymanager://` HKCU 등록 (:433-461). 등록 커맨드는 `"{python_exe}" "{wrapper_path}" "%1"` — **서버 주소를 담지 않는다**(핸들러는 주소와 무관) |
+
+### 1.1 서버 주소 해석 — **셸이 어느 서버를 보는지의 유일한 결정 지점** (2026-07-30)
+
+이전에는 두 곳이 각자 주소 문자열을 만들었고 **서로 달랐다**: 업로드는 `http://127.0.0.1:8080/tables/...`, 페이지는 `http://localhost:8080/?client=desktop`. 그리고 `client/client_settings.json`(git 추적 대상, `server_host`/`server_port` 보유)은 **한 번도 읽히지 않았다.**
+
+지금은 `resolve_server_target()`(:183) 하나가 결정하고, `base_url()`(:216)이 **주소를 URL 문자열로 만드는 유일한 자리**다. 소비자는 각자 경로만 붙인다 — 페이지 `?client=desktop`(:287), 네이티브 업로드 `/tables/{t}/upload`(:377). 둘 다 `self.server_base` 하나를 읽는다.
+
+| 순위 | 원천 | 형태 | 이유 |
+|---|---|---|---|
+| 1 | `--server` 인자 | `--server 10.0.0.5:9999` · `--server=host` · `http://host:port` | 한 번 다른 서버에 붙이는 일이 파일 편집을 요구해선 안 된다 |
+| 2 | `ASSY_SERVER` 환경변수 | 위와 동일 | 배포 스크립트·바로가기용. **빈 값은 미선언으로 취급**(`set ASSY_SERVER=`가 Windows의 해제 방식) |
+| 3 | `client_settings.json` | `{"server_host": ..., "server_port": ...}` | 기존 권위이자 사람이 편집하는 자리. 단 **git 추적 대상**이라 운영자가 편집하면 워킹트리가 더러워진다 — 1·2가 앞서는 이유 |
+| 4 | 기본값 | `127.0.0.1:8080` | 파일이 없거나 비어도 **이전 하드코딩과 동일 동작**(무회귀) |
+
+**선언이 있는데 잘못되면 조용히 기본값으로 내려가지 않고 거절한다**(`ServerTargetError` → stderr + `QMessageBox` + `exit 2`). 포트를 잘못 적은 운영자가 아무 통보 없이 다른 서버에 붙는 일을 막는 게 목적이다. 거절 대상: 파싱 불가 JSON · 비숫자/범위 밖 포트(**0 포함 — 미상 ≠ 0**) · 빈 `server_host` · `https` 스킴(조용한 강등 금지). **파일 부재·빈 파일·서버 키 미선언은 정상 설정**이며 조용히 기본값을 쓴다.
+
+- **시작 로그 1줄**: `[Desktop Wrapper] Server target: http://host:port (source: arg|env|client_settings.json|default)`. `source`가 있어야 운영자가 "내 편집이 무시됐다"를 알 수 있다. (이전 줄 `"Vite dev server not detected..."`는 **Vite가 켜져 있어도 무조건 출력되는 거짓말**이었고 짝인 `is_port_open`은 한 번도 호출되지 않았다 — 둘 다 삭제.)
+- **`--print-target`**: 해석·출력 후 종료(GUI·HKCU 미접촉)하는 헤드리스 점검 경로.
+- **`NO_PROXY`**: :9의 기준값은 루프백뿐이므로 해석된 호스트가 LAN 주소면 `extend_no_proxy()`(:227)가 그 호스트를 추가한다. **httpx 업로드 경로에는 유효하지만 QtWebEngine에는 보장되지 않는다** — Windows Chromium은 프록시 설정을 OS에서 읽는다. Qt측 레버는 `QNetworkProxy.setApplicationProxy(NoProxy)`(:510, 주석 처리 유지).
+- **`ASSY_API_HOST`/`ASSY_API_PORT`(`run_decoupled_app.py`)는 재사용하지 않는다**: 그쪽은 서버의 *바인드* 선언이고 `ASSY_API_HOST` 기본값은 `0.0.0.0` — 클라이언트가 다이얼할 수 있는 주소가 아니다.
+- 셸이 로드한 origin은 웹앱 전체로 전파된다: `config.js:2`의 `API_BASE = window.location.origin`(프로덕션 빌드), `WS_URL`도 동일 host 기준. 즉 **REST·WS는 별도 설정 없이 해석된 서버를 따라간다.**
+- ⚠️ **exe 재빌드 필요**: `client/dist/`·`client/build/`·`client/*.spec`은 의도적으로 gitignore(소스만 push). 소스를 바꿨으면 exe는 낡는다. `AssyManagerClient.spec`의 `datas=[]`이므로 `client_settings.json`은 exe에 **번들되지 않는다** — 운영자 사본은 exe 옆에 두며, `settings_file_path()`(:60)가 frozen일 때 `sys.executable` 디렉터리를 먼저 본다.
 
 ---
 
