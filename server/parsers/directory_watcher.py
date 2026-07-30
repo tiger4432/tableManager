@@ -223,18 +223,22 @@ def resume_from_checkpoint_enabled() -> bool:
 
 # ── [Flatten] nested directory flatten (raws/ 하위 폴더 트리 → 파일만 승격) ──
 # A directory dropped into raws/ (arbitrarily nested) is NOT watched as permanent
-# structure. Once the tree is quiescent, every regular file is moved up to the
-# raws/ root (name collisions get a relative-subpath prefix, never overwrite) and
-# the emptied directory tree is removed. Files then flow through the unchanged
-# existing pipeline (event/sweep pickup, lane routing, parser, checkpoint/dedup,
-# archives/, err/).
+# structure, but its STRUCTURE IS THE DATA: the folder names carry information
+# (lot, equipment, date, ...). Once the tree is quiescent, every regular file is
+# dispatched THROUGH THE UNCHANGED PIPELINE AT ITS REAL NESTED LOCATION (event
+# path → lane routing → parser → checkpoint/dedup → archives/, err/) and the
+# directories that end up empty are removed.
+#
+# NOT flattened into raws/ (superseded 2026-07-30). Promoting the files meant
+# encoding the folder names into the filename with a separator and decoding them
+# back out with a regex — a round trip through a string for information the
+# callee already holds, since the parser is handed the full path and only then
+# reduces it (`advanced_ingester.process_file`). Carrying the path directly also
+# removes the separator problem entirely: "/" cannot occur inside a folder name,
+# so the path is inherently unambiguous where an invented separator was not.
+# The knob below keeps its ORIGINAL CONFIG KEY (`flatten_nested_dirs`) so an
+# operator's existing off-switch is not silently disabled by the rename.
 DEFAULT_FLATTEN_NESTED_DIRS = True
-
-# Collision-prefix separator. Deliberately NOT "__": a subfolder literally named
-# "force" joined with "__" would fabricate the `__force__` force-reingest token
-# (ingestion_checkpoint.FORCE_REINGEST_TOKEN) in the new filename. "~" cannot
-# form that token at component junctions and is legal on Windows and POSIX.
-FLATTEN_SEP = "~"
 
 # Tree-quiescence poll. Generalizes the existing per-file stability primitive
 # (the 1s pre-processing debounce + the sweep's (mtime, size) signature) over a
@@ -242,7 +246,7 @@ FLATTEN_SEP = "~"
 # taken FLATTEN_STABILITY_INTERVAL_SECONDS apart mean the copy has finished.
 FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
 # Give up waiting after this long; the directory is left untouched and the
-# periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers the flatten later.
+# periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers the tree later.
 FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
 
 # OS junk files discarded together with the folder (never ingested, never kept).
@@ -250,9 +254,11 @@ FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
 FLATTEN_DISCARD_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
 
 
-def flatten_nested_dirs_enabled() -> bool:
-    """폴더 평탄화 활성 여부 (기본 True). 트리거(디렉토리 이벤트/스윕)당 1회 읽음 —
-    핫리로드는 '다음 폴더부터' 반영(파일 경계 스냅샷 규율과 동일 의미론)."""
+def nested_dirs_enabled() -> bool:
+    """중첩 폴더 인제션 활성 여부 (기본 True). 트리거(디렉토리 이벤트/스윕)당 1회 읽음 —
+    핫리로드는 '다음 폴더부터' 반영(파일 경계 스냅샷 규율과 동일 의미론).
+
+    Config key is still `flatten_nested_dirs` — see DEFAULT_FLATTEN_NESTED_DIRS."""
     return _bool_setting("flatten_nested_dirs", DEFAULT_FLATTEN_NESTED_DIRS)
 
 
@@ -521,10 +527,10 @@ class IngestionHandler(FileSystemEventHandler):
         self._heavy_backlog = 0
         # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
         self._legacy_config_cache = None
-        # [Flatten] normcase abs paths of directories currently being flattened.
-        # Guarded by _processing_lock; makes flatten triggers idempotent and
+        # normcase abs paths of directories currently being tree-ingested.
+        # Guarded by _processing_lock; makes tree triggers idempotent and
         # re-entrant (event + sweep firing on the same tree never race).
-        self._flattening_dirs = set()
+        self._ingesting_dirs = set()
 
     def _load_legacy_config(self) -> dict:
         """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
@@ -611,15 +617,16 @@ class IngestionHandler(FileSystemEventHandler):
 
     def on_created(self, event):
         if event.is_directory:
-            # [Flatten] A folder landed in raws/ (observer is recursive=False, so
-            # only direct children fire). Flatten it once the tree is quiescent.
-            self.request_flatten(event.src_path)
+            # A folder landed in raws/ (observer is recursive=False, so only
+            # direct children fire). Ingest its files IN PLACE once the tree is
+            # quiescent.
+            self.request_tree_ingest(event.src_path)
         else:
             self._handle_event(event.src_path)
 
     def on_moved(self, event):
         if event.is_directory:
-            self.request_flatten(event.dest_path)
+            self.request_tree_ingest(event.dest_path)
         else:
             self._handle_event(event.dest_path)
 
@@ -653,21 +660,21 @@ class IngestionHandler(FileSystemEventHandler):
                 with self._processing_lock:
                     self.processing_files.discard(abs_path)
 
-    # ── [Flatten] raws/ 하위 폴더 트리 평탄화 ────────────────────────────
+    # ── raws/ 하위 폴더 트리 = 제자리(in-place) 인제션 ────────────────────
 
     @property
     def raws_path(self):
         return os.path.join(self.workspace_path, "raws")
 
-    def request_flatten(self, dir_path: str):
-        """Request flattening of a directory that is a direct child of raws/.
+    def request_tree_ingest(self, dir_path: str):
+        """Request in-place ingestion of a directory that is a direct child of raws/.
 
         Idempotent and re-entrant: a second trigger (watchdog event + sweep, or
-        two events) on the same tree is a no-op while a flatten is in flight.
+        two events) on the same tree is a no-op while one is in flight.
         Runs in a short-lived daemon thread so the observer dispatch thread is
         never blocked by the quiescence wait (same HOL discipline as P1).
 
-        Returns the worker Thread when a flatten was started, else None.
+        Returns the worker Thread when ingestion was started, else None.
         """
         abs_dir = os.path.abspath(dir_path)
         raws_root = os.path.abspath(self.raws_path)
@@ -676,36 +683,37 @@ class IngestionHandler(FileSystemEventHandler):
             return None
         if not os.path.isdir(abs_dir):
             return None
-        if not flatten_nested_dirs_enabled():
+        if not nested_dirs_enabled():
             logger.info(
-                f"[{self.table_name}] Flatten disabled (flatten_nested_dirs=false) — "
-                f"leaving directory untouched: {os.path.basename(abs_dir)}"
+                f"[{self.table_name}] Nested-directory ingestion disabled "
+                f"(flatten_nested_dirs=false) — leaving directory untouched (its files "
+                f"are NOT ingested): {os.path.basename(abs_dir)}"
             )
             return None
         key = os.path.normcase(abs_dir)
         with self._processing_lock:
-            if key in self._flattening_dirs:
+            if key in self._ingesting_dirs:
                 return None
-            self._flattening_dirs.add(key)
+            self._ingesting_dirs.add(key)
         t = threading.Thread(
-            target=self._flatten_worker, args=(abs_dir, key),
-            name=f"flatten-{os.path.basename(abs_dir)}", daemon=True,
+            target=self._tree_ingest_worker, args=(abs_dir, key),
+            name=f"tree-ingest-{os.path.basename(abs_dir)}", daemon=True,
         )
         t.start()
         return t
 
-    def _flatten_worker(self, abs_dir: str, key: str):
+    def _tree_ingest_worker(self, abs_dir: str, key: str):
         try:
-            self._flatten_directory(abs_dir)
+            self._ingest_directory_tree(abs_dir)
         except Exception:
             import traceback
             logger.error(
-                f"[{self.table_name}] Flatten failed for {abs_dir} "
+                f"[{self.table_name}] Tree ingestion failed for {abs_dir} "
                 f"(directory left in place; periodic sweep will retry):\n{traceback.format_exc()}"
             )
         finally:
             with self._processing_lock:
-                self._flattening_dirs.discard(key)
+                self._ingesting_dirs.discard(key)
 
     @staticmethod
     def _snapshot_tree(abs_dir: str):
@@ -752,7 +760,7 @@ class IngestionHandler(FileSystemEventHandler):
                 return True
             if time.monotonic() >= deadline:
                 logger.warning(
-                    f"[{self.table_name}] Flatten deferred — tree still changing after "
+                    f"[{self.table_name}] Tree ingestion deferred — tree still changing after "
                     f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s: {abs_dir} (periodic sweep will retry)"
                 )
                 return False
@@ -767,66 +775,51 @@ class IngestionHandler(FileSystemEventHandler):
         return low in FLATTEN_DISCARD_NAMES or low.startswith("._")
 
     @staticmethod
-    def _sanitize_flatten_component(comp: str) -> str:
-        """Sanitize one directory-name component for use in a collision prefix.
+    def relative_source_path(abs_path: str, root: str) -> str | None:
+        """Path of `abs_path` relative to `root`, POSIX-separated. None if outside.
 
-        - Path-hostile characters are replaced (defense in depth; os.walk names
-          cannot normally contain separators).
-        - The `__force__` force-reingest token is neutralized so a directory name
-          can never fabricate forced reingestion on the flattened filename
-          (loop: replacement can re-form the token from surrounding underscores).
+        This is the STRING A DECLARATION SEES (`filename_rules`). Two decisions
+        are baked in, both deliberate:
+
+        - RELATIVE, never absolute. An absolute path drags the machine's
+          directory layout into the declaration ("C:/Users/kk980/..."), so the
+          same rule stops matching between the dev and operating environments.
+        - "/" separators on every platform. On Windows `os.sep` is a backslash,
+          which an operator would have to write as four characters in a JSON
+          regex ("\\\\\\\\"); normalizing removes that footgun and makes the
+          declaration portable. "/" also cannot occur inside a directory name,
+          so it is inherently structural — which is why carrying the path needs
+          no invented separator and no sanitizing.
+
+        Result-based containment (lesson file — a character blacklist misses
+        `C:foo` and over-refuses `..foo`): the answer must rejoin to the same
+        file under `root`, so a ".." component or another drive cannot survive.
         """
-        comp = re.sub(r'[\\/:*?"<>|]', "_", comp)
-        while "__force__" in comp.lower():
-            comp = re.sub("__force__", "force", comp, flags=re.IGNORECASE)
-        return comp or "_"
+        try:
+            rel = os.path.relpath(os.path.abspath(abs_path), os.path.abspath(root))
+        except ValueError:
+            return None  # different drive on Windows
+        if os.path.isabs(rel) or rel == os.pardir or rel.startswith(os.pardir + os.sep):
+            return None
+        rejoined = os.path.normpath(os.path.join(os.path.abspath(root), rel))
+        if os.path.normcase(rejoined) != os.path.normcase(os.path.normpath(os.path.abspath(abs_path))):
+            return None
+        return rel.replace(os.sep, "/")
 
-    def _build_collision_name(self, comps: list, basename: str) -> str:
-        """Collision name = flattened relative subpath prefix + original name.
+    def _ingest_directory_tree(self, abs_dir: str):
+        """Dispatch every regular file of a quiescent tree AT ITS REAL LOCATION,
+        then remove ONLY the directories that ended up empty (os.rmdir — a
+        directory still containing anything is never deleted).
 
-        The `user(<name>)` uploader token (keyed via startswith by
-        `_extract_user_from_filename`) is hoisted back to the front so uploader
-        attribution survives the prefix. Example:
-        batchA/sub2/user(kim)x.csv → user(kim)batchA~sub2~x.csv
-        """
-        user_prefix, rest = "", basename
-        if basename.startswith("user("):
-            end = basename.find(")")
-            if end != -1:
-                user_prefix, rest = basename[:end + 1], basename[end + 1:]
-        parts = [self._sanitize_flatten_component(c) for c in comps]
-        return user_prefix + FLATTEN_SEP.join(parts + [rest])
+        Files are NOT promoted to raws/. They go through the unchanged existing
+        event path (_handle_event → lane routing → parser → checkpoint/dedup →
+        archive), which already takes a path; what changed is that the path handed
+        in is nested, so the folder names reach the parser instead of being
+        encoded into a filename and decoded back out.
 
-    def _resolve_flatten_dest(self, raws_root: str, comps: list, basename: str, claimed: set):
-        """Pick a destination path in raws/ that never overwrites anything.
-
-        Order: plain basename → subpath-prefixed name → prefixed name + ~2..~999.
-        `claimed` holds normcased basenames already used by this flatten batch —
-        required because an earlier moved file may already have been processed
-        and archived away (its raws/ path no longer exists) by the time a
-        same-named sibling is placed.
-        """
-        candidates = [basename, self._build_collision_name(comps, basename)]
-        stem, ext = os.path.splitext(candidates[1])
-        candidates.extend(f"{stem}{FLATTEN_SEP}{n}{ext}" for n in range(2, 1000))
-        norm_root = os.path.normpath(raws_root)
-        for name in candidates:
-            dest = os.path.normpath(os.path.join(raws_root, name))
-            # Result-based validation (lesson file): must be a direct child.
-            if os.path.dirname(dest) != norm_root or os.path.basename(dest) != name:
-                continue
-            if os.path.normcase(name) in claimed or os.path.exists(dest):
-                continue
-            return dest
-        return None
-
-    def _flatten_directory(self, abs_dir: str):
-        """Move every regular file of a quiescent tree up to the raws/ root,
-        then remove ONLY the emptied directories (os.rmdir — a directory still
-        containing anything is never deleted). Files that cannot be moved
-        (locked, error) are left in place with a warning; the periodic sweep
-        retries the remainder later. Moved files are dispatched through the
-        unchanged existing event path (_handle_event → lane routing → parser)."""
+        A workspace file is archived on success as before, which is what empties
+        the tree. A file that cannot be processed keeps its directory alive
+        (os.rmdir fails on non-empty), and the periodic sweep retries later."""
         t_name = self.table_name  # display only; processing snapshots per file
         dir_label = os.path.basename(abs_dir)
         raws_root = os.path.abspath(self.raws_path)
@@ -835,81 +828,68 @@ class IngestionHandler(FileSystemEventHandler):
 
         # Collect regular files (mtime ascending — same ordering rule as the sweep)
         # and junk files to discard.
-        to_move, junk = [], []
+        to_process, junk, refused = [], [], 0
         for dirpath, _dirnames, filenames in os.walk(abs_dir):
             for fn in filenames:
                 fp = os.path.join(dirpath, fn)
                 if self._is_discardable_system_file(fn):
                     junk.append(fp)
                     continue
+                # Refuse anything that does not resolve to a path UNDER raws/ —
+                # a junction or a symlinked branch is how a ".." component would
+                # otherwise reach the parser and the declaration.
+                if self.relative_source_path(fp, raws_root) is None:
+                    logger.warning(
+                        f"[{t_name}] Tree ingestion: refused '{fp}' — it does not resolve to a "
+                        f"path under raws/ (escaping component). Left untouched, not ingested."
+                    )
+                    refused += 1
+                    continue
                 try:
                     mtime = os.stat(fp).st_mtime
                 except OSError:
                     continue  # vanished between snapshot and walk
-                rel_dir = os.path.relpath(dirpath, raws_root)
-                comps = [] if rel_dir == "." else rel_dir.split(os.sep)
-                to_move.append((mtime, fp, comps))
-        to_move.sort(key=lambda x: x[0])
+                to_process.append((mtime, fp))
+        to_process.sort(key=lambda x: x[0])
 
-        moved, failed = [], 0
-        claimed = set()
-        for mtime, fp, comps in to_move:
-            basename = os.path.basename(fp)
-            dest = self._resolve_flatten_dest(raws_root, comps, basename, claimed)
-            if dest is None:
-                logger.warning(
-                    f"[{t_name}] Flatten: no collision-free destination for "
-                    f"{os.path.relpath(fp, raws_root)} — leaving in place."
-                )
-                failed += 1
-                continue
-            try:
-                # os.rename, not os.replace/shutil.move — never overwrites on
-                # Windows, and dest existence was checked above (claimed set
-                # covers already-archived batch members).
-                os.rename(fp, dest)
-            except OSError as e:
-                logger.warning(
-                    f"[{t_name}] Flatten: cannot move {os.path.relpath(fp, raws_root)} "
-                    f"({e}) — leaving file and its directory in place; periodic sweep will retry."
-                )
-                failed += 1
-                continue
-            dest_name = os.path.basename(dest)
-            claimed.add(os.path.normcase(dest_name))
-            if dest_name != basename:
-                logger.info(
-                    f"[{t_name}] 📂 Flatten rename (collision): "
-                    f"{os.path.relpath(fp, raws_root)} -> {dest_name}"
-                )
-            moved.append((mtime, dest))
-
+        # Junk goes first so the rmdir pass below can actually empty a directory
+        # whose only other content was a Thumbs.db.
         for fp in junk:
             try:
                 os.remove(fp)
-                logger.info(f"[{t_name}] 📂 Flatten: discarded system file {os.path.relpath(fp, raws_root)}")
+                logger.info(
+                    f"[{t_name}] 📂 Tree ingestion: discarded system file "
+                    f"{os.path.relpath(fp, raws_root)}"
+                )
             except OSError as e:
-                logger.warning(f"[{t_name}] Flatten: could not discard system file {fp}: {e}")
+                logger.warning(
+                    f"[{t_name}] Tree ingestion: could not discard system file {fp}: {e}"
+                )
+
+        for _mtime, fp in to_process:
+            self._handle_event(fp)
 
         # Remove emptied directories bottom-up. os.rmdir fails on non-empty
         # directories by design — that failure IS the "never delete a directory
-        # containing anything" guarantee (failed moves, junk that would not
-        # delete, or late-arriving files all keep their directory alive).
+        # containing anything" guarantee (files still queued on the heavy lane,
+        # failed processing, junk that would not delete, or late-arriving files
+        # all keep their directory alive).
         removed_all = True
         for dirpath, _dirnames, _filenames in os.walk(abs_dir, topdown=False):
             try:
                 os.rmdir(dirpath)
             except OSError:
                 removed_all = False
-        if failed or not removed_all:
+        if refused or not removed_all:
             logger.warning(
-                f"[{t_name}] 📂 Flatten incomplete for '{dir_label}': moved {len(moved)} file(s), "
-                f"{failed} left behind — directory preserved; periodic sweep will retry."
+                f"[{t_name}] 📂 Tree ingestion incomplete for '{dir_label}': dispatched "
+                f"{len(to_process)} file(s), {refused} refused — directory preserved; "
+                f"periodic sweep will retry."
             )
         else:
             logger.info(
-                f"[{t_name}] 📂 Flattened '{dir_label}': {len(moved)} file(s) moved to raws/ root, "
-                f"directory tree removed."
+                f"[{t_name}] 📂 Tree ingested '{dir_label}': {len(to_process)} file(s) "
+                f"processed in place, directory tree removed."
             )
 
         # Dispatch through the unchanged pipeline. watchdog usually also fires
@@ -1097,8 +1077,14 @@ class IngestionHandler(FileSystemEventHandler):
                 if skipped:
                     return
 
-                # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석
-                parse_meta = {}
+                # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석.
+                # rel_path: the string a declaration sees. Computed ONCE per file,
+                # here, at the same boundary as the config snapshot — one file, one
+                # answer. None when the file is not under raws/ (foreign source in
+                # a later round supplies its own root).
+                parse_meta = {
+                    "rel_path": self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
+                }
                 rows, total_rows, skipped_no_key = self._resolve_rows(
                     file_path, t_name=t_name, table_info=table_info, meta=parse_meta
                 )
@@ -1118,8 +1104,10 @@ class IngestionHandler(FileSystemEventHandler):
                 if has_rows:
                     self._send_to_upsert(rows, uploader=uploader, filename=basename, total_rows=total_rows, t_name=t_name, table_info=table_info, checkpoint=plan)
 
-                # 3. Archive the file
-                dest_path = self._archive_file(file_path)
+                # 3. Archive the file. None = a foreign (read-only) source that
+                #    was deliberately left where it lies; the ingestion record
+                #    then points at the ORIGINAL path, which is the truth for it.
+                dest_path = self._archive_file(file_path) or abs_path
                 # [P2-A] 파일 완결 확정 — 이후 같은 시그니처는 dedup skip 대상이 된다.
                 self._finalize_checkpoint(plan, effective_total)
                 # [F1] 키 결측 스킵은 성공이되 사용자에게 반드시 보여야 하는 정보 —
@@ -1215,6 +1203,15 @@ class IngestionHandler(FileSystemEventHandler):
             f"'{ingestion_checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
             f"ingestion_settings.json의 dedup_by_signature를 false로 두십시오."
         )
+        if not self.is_managed_source(file_path):
+            # A foreign (read-only) source cannot be archived away, so the sweep
+            # WILL re-find it and this skip repeats forever by construction. One
+            # FileIngestionLog row + one callback per sweep per file would bury
+            # every real event under unbounded noise, so the repeat is quiet:
+            # the durable record is the SUCCESS row written by the first
+            # ingestion, keyed by the same content signature this skip matched.
+            logger.debug(f"[{t_name}] ⏭️ {reason} — {basename} (foreign source, repeat skip)")
+            return True
         logger.warning(f"[{t_name}] ⏭️ {reason} — {basename}")
         dest_path = self._archive_file(file_path)
         self._log_ingestion_record(file_path, dest_path or file_path, t_name, "SKIPPED", reason)
@@ -1378,23 +1375,78 @@ class IngestionHandler(FileSystemEventHandler):
                 self.on_file_processed_callback(t_name, os.path.basename(filepath), "FAILED", str(e))
             return False
 
+    @staticmethod
+    def _unique_dest(dest_dir: str, filename: str, limit: int = 1000) -> str | None:
+        """A free path in `dest_dir` for `filename`. None if none is free.
+
+        Order: original name → `name_<epoch>` (the historical form) →
+        `name_<epoch>_2..` . The numeric tail is not cosmetic: in-place nested
+        ingestion routinely archives same-named files from different folders, and
+        the single `_<epoch>` attempt collided for any two files finishing inside
+        the same second — on POSIX `shutil.move` would then OVERWRITE the earlier
+        archive, and on Windows it raises, leaving the file stuck in raws/ where
+        every sweep retries the same doomed move.
+        """
+        base, ext = os.path.splitext(filename)
+        ts = int(time.time())
+        candidates = [filename, f"{base}_{ts}{ext}"]
+        candidates.extend(f"{base}_{ts}_{n}{ext}" for n in range(2, limit))
+        norm_dir = os.path.normpath(dest_dir)
+        for name in candidates:
+            dest = os.path.normpath(os.path.join(dest_dir, name))
+            # Result-based validation (lesson file): must be a direct child.
+            if os.path.dirname(dest) != norm_dir or os.path.basename(dest) != name:
+                continue
+            if not os.path.exists(dest):
+                return dest
+        return None
+
+    def is_managed_source(self, file_path: str) -> bool:
+        """True when this handler OWNS the file and may move it.
+
+        A file under this workspace's raws/ is ours: archive it, or move it to
+        err/, exactly as before. A file anywhere else is a FOREIGN SOURCE — a
+        read-only tree we are only allowed to read (the external-source watcher
+        that reads other people's shares is the reason this predicate exists).
+        We must not archive it, must not move it to err/, and must not delete it.
+
+        The guard lives here, at the two move primitives, and not at their call
+        sites: the same defect otherwise recurs once per caller (success archive,
+        dedup-skip archive, err move, retry paths) — the recurrence trap the
+        lesson file records for /internal/events senders.
+
+        Containment is result-based, not a string prefix (lesson file).
+        """
+        return self.relative_source_path(file_path, os.path.abspath(self.raws_path)) is not None
+
+    def _refuse_move_of_foreign_source(self, file_path: str, action: str) -> bool:
+        """True (and logs plainly) when `file_path` must be left where it lies."""
+        if self.is_managed_source(file_path):
+            return False
+        logger.info(
+            f"[{self.table_name}] 🔒 Source left untouched ({action} skipped) — "
+            f"'{file_path}' lies outside this workspace's raws/ and is read-only. "
+            f"Its content signature is recorded, so dedup still answers "
+            f"'have I seen this' without moving anything."
+        )
+        return True
+
     def _move_to_err_folder(self, file_path: str) -> str:
         if not os.path.exists(file_path):
             logger.debug(f"File already gone, skipping error moving: {file_path}")
+            return None
+        if self._refuse_move_of_foreign_source(file_path, "err-move"):
             return None
 
         err_dir = self.errors_path
         if not os.path.exists(err_dir):
             os.makedirs(err_dir)
             
-        filename = os.path.basename(file_path)
-        dest_path = os.path.join(err_dir, filename)
-        
-        # Handle filename collisions in error directory
-        if os.path.exists(dest_path):
-            base, ext = os.path.splitext(filename)
-            dest_path = os.path.join(err_dir, f"{base}_{int(time.time())}{ext}")
-            
+        dest_path = self._unique_dest(err_dir, os.path.basename(file_path))
+        if dest_path is None:
+            logger.error(f"No free name in err/ for {file_path} — left in place.")
+            return None
+
         try:
             shutil.move(file_path, dest_path)
             logger.info(f"Moved failed file {file_path} to error folder {dest_path}")
@@ -1410,18 +1462,17 @@ class IngestionHandler(FileSystemEventHandler):
         if not os.path.exists(file_path):
             logger.debug(f"File already gone, skipping archive: {file_path}")
             return None
+        if self._refuse_move_of_foreign_source(file_path, "archive"):
+            return None
 
         if not os.path.exists(self.archives_path):
             os.makedirs(self.archives_path)
             
-        filename = os.path.basename(file_path)
-        dest_path = os.path.join(self.archives_path, filename)
-        
-        # Handle filename collisions in archives
-        if os.path.exists(dest_path):
-            base, ext = os.path.splitext(filename)
-            dest_path = os.path.join(self.archives_path, f"{base}_{int(time.time())}{ext}")
-            
+        dest_path = self._unique_dest(self.archives_path, os.path.basename(file_path))
+        if dest_path is None:
+            logger.error(f"No free name in archives/ for {file_path} — left in place.")
+            return None
+
         try:
             shutil.move(file_path, dest_path)
             logger.info(f"Moved {file_path} to {dest_path}")
@@ -1497,6 +1548,17 @@ class IngestionHandler(FileSystemEventHandler):
                             if is_match:
                                 logger.info(f"[{self.table_name}] 🚀 Pipeline Matched: \033[1;36m{obj.__name__}\033[0m in {filename}")
                                 parser_instance = obj()
+                                # The folder names are data, and the parser is the
+                                # thing that turns them into columns. Handed in as
+                                # an ATTRIBUTE, not a parse() argument: parse(path)
+                                # is a contract user scripts already subclass, so
+                                # widening its signature would break every existing
+                                # script. A script that wants the path reads
+                                # `self.rel_path` (POSIX, relative to raws/); one
+                                # that does not is unaffected.
+                                parser_instance.rel_path = (
+                                    meta.get("rel_path") if meta is not None else None
+                                )
                                 # [P2] 파서 정체성 — 체크포인트 재개 가부 판정용(파서가 바뀌면
                                 # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
                                 if meta is not None:
@@ -1967,8 +2029,9 @@ class WorkspaceWatcher:
 
         - watchdog 이벤트 전용이던 워처가 다운타임(재기동 등) 중 도착한 파일을 영영
           방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니다.
-          raws/ 직속 하위 디렉토리는 스윕 후보가 아니라 [Flatten] 트리거다 —
-          request_flatten(비동기·멱등·정온 게이트)으로 파일만 승격되고 폴더는 제거된다.
+          raws/ 직속 하위 디렉토리는 스윕 후보가 아니라 **트리 인제션 트리거**다 —
+          request_tree_ingest(비동기·멱등·정온 게이트)로 파일이 **제자리에서** 처리되고
+          비워진 폴더만 제거된다.
         - 동일 (mtime, size) 시그니처로 이미 시도한 파일은 재시도하지 않는다 — 처리 실패로
           raws/에 잔류한 파일이 주기 스윕마다 무한 재시도되는 루프 방지. 파일이 갱신되어
           시그니처가 바뀌면 다시 시도한다.
@@ -1996,13 +2059,16 @@ class WorkspaceWatcher:
                     fp = os.path.join(raw_path, name)
                     try:
                         if os.path.isdir(fp):
-                            # [Flatten] A directory sitting in raws/ (dropped while
-                            # the server was down, or whose event was lost/deferred)
-                            # is flattened, not swept. request_flatten is async,
-                            # idempotent and quiescence-gated; the flattened files
-                            # are dispatched by the flatten worker itself and by
-                            # later sweeps.
-                            handler.request_flatten(fp)
+                            # A directory sitting in raws/ (dropped while the
+                            # server was down, or whose event was lost/deferred)
+                            # is tree-ingested, not swept. request_tree_ingest is
+                            # async, idempotent and quiescence-gated; its files are
+                            # dispatched in place by that worker and by later
+                            # sweeps. This pairing is also the floor for the
+                            # external-source watcher: a watchdog observer on a
+                            # share can miss events, and the periodic sweep is what
+                            # makes a miss temporary instead of permanent.
+                            handler.request_tree_ingest(fp)
                             continue
                         if not os.path.isfile(fp):
                             continue
