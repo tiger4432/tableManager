@@ -1,6 +1,6 @@
 # 🗺️ Wafer Map Editor Documentation Index
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (`ae2811c` — ① 문서 목록의 `philosophy.md` 항목에 **§2.3**(고정되는 것은 방향이고 원점은 아니다 · 원점 마커는 다이가 아니라 화면 자리) 반영 ② 빠른 요약의 왕복 항목에 **거부 5갈래**와 **179개 중 27개만 지문 보유**를 명기 — 왕복을 일반 기능으로 읽으면 안 됩니다. 직전 `c9bf2c7`) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.3 요약줄 정정** — 「치수 변경이 저장 좌표를 옮긴다 → 그것이 **프레임 채택 거절 규율**의 근거」에서 뒷부분이 가리킬 대상을 잃었다(**프레임 채택은 `61440e6`+`94b9baa`에서 폐기**, 소스에 심볼 0건). 근거는 이제 「셀은 칸이 아니라 **번호**를 붙들고 칸은 파생이다」이고, **유효 다이 근거 변경도** 저장 좌표를 옮긴다(`da8f390` — `box`가 마스크를 근거로 삼는다). 좌표 규약 정본은 [MAP_EDITOR_SPEC §1의 0)](../spec/MAP_EDITOR_SPEC.md). 함께: **`architecture_and_management.md`에 Status 배지 신설**(정본으로 지목되는 문서인데 신선도를 말하는 줄이 없었다). 직전 `ae2811c` — ① 문서 목록의 `philosophy.md` 항목에 **§2.3**(고정되는 것은 방향이고 원점은 아니다 · 원점 마커는 다이가 아니라 화면 자리) 반영 ② 빠른 요약의 왕복 항목에 **거부 5갈래**와 **179개 중 27개만 지문 보유**를 명기 — 왕복을 일반 기능으로 읽으면 안 됩니다. 직전 `c9bf2c7`) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 현행 계약 정본: [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
 
 본 디렉토리는 **AssyManager 2세대 웨이퍼 맵 에디터(Wafer Map Editor)**의 전체 설계 사상, 시스템 아키텍처, 수치해석적 알고리즘, API 규격 및 관리 가이드를 수록한 공식 통합 문서 모음입니다.
@@ -20,7 +20,7 @@
    * WYSIWYG (What You See Is What You Get) 화면 기준 저장 철학
    * 물리 기판 공간 배치(Physical Alignment)와 화면 시각 눈금(Screen Visual)의 이원화 매핑
    * 회전/대칭 상태에서의 공정 데이터 무결성 보증 수식
-   * **§2.3 시각 좌표계가 화면에 고정하는 것과 하지 않는 것** (2026-07-30 정정) — 고정되는 것은 **축의 방향**이고 **원점(anchor)은 아니다**(`box.minC`가 회전·면의 함수). 라이브 모집단은 179개 중 회전 의존 원점 0개이지만 **코드가 그것을 보장하지는 않는다**. 그리고 **원점 마커는 다이가 아니라 화면 자리를 표시한다**(등방 맵에서도 네 회전에서 네 개의 다른 다이 위에 앉는다). 🔴 여기서 **치수 변경이 저장 좌표를 옮긴다**는 성질이 나오고, 그것이 프레임 채택 거절 규율([MAP_EDITOR_SPEC §5.7-bis](../spec/MAP_EDITOR_SPEC.md))의 근거다
+   * **§2.3 시각 좌표계가 화면에 고정하는 것과 하지 않는 것** (2026-07-30 정정) — 고정되는 것은 **축의 방향**이고 **원점(anchor)은 아니다**(`box.minC`가 회전·면의 함수). 라이브 모집단은 179개 중 회전 의존 원점 0개이지만 **코드가 그것을 보장하지는 않는다**. 그리고 **원점 마커는 다이가 아니라 화면 자리를 표시한다**(등방 맵에서도 네 회전에서 네 개의 다른 다이 위에 앉는다). 🔴 여기서 **치수 변경(그리고 유효 다이 근거 변경)이 저장 좌표를 옮긴다**는 성질이 나오고, 그것이 「셀은 칸이 아니라 **번호**를 붙들고 칸은 파생이다」([MAP_EDITOR_SPEC §5.7-bis](../spec/MAP_EDITOR_SPEC.md), 좌표 규약은 같은 문서 **§1의 0)**)의 근거다. ⚠️ 종전 이 줄은 *"프레임 채택 거절 규율의 근거"*라고 적었는데, **프레임 채택은 2026-07-30에 폐기됐다**(`61440e6`+`94b9baa` — 소스에 심볼 0건)
 
 3. **[프론트엔드 함수 & API 규격서 — `spec/MAP_EDITOR_SPEC.md`](../spec/MAP_EDITOR_SPEC.md)**
    * 자바스크립트 모듈 ([`client2/src/map_editor.js`](file:///c:/Users/kk980/Developments/assyManager/client2/src/map_editor.js)) 전체 함수 명세

@@ -1,5 +1,8 @@
 # 🗺️ Wafer Map Management & Architecture Guide (`architecture_and_management.md`)
 
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§3.1 📐 표준 분기 정정 + 배지 신설** — ① 종전 §3.1은 `standard` 선택이 *"`(0,0)` 오리진 최적 격자로 자동 튜닝"*한다고 적었고, 실제 코드가 `startX = 0`을 세운 뒤 **모든 저장 좌표에서 `minX`/`minY`를 뺐습니다**(되더하는 곳도 기록도 없었습니다). `019140c`가 이것을 **원점 선언**(`startX = minX`)으로 뒤집었으므로 그 서술은 **폐기된 동작**입니다. ② **이 문서에 Status 배지가 없었습니다** — [MAP_EDITOR_SPEC §5.7](../spec/MAP_EDITOR_SPEC.md)이 필드 규격의 **정본으로 지목**하는 1차 참조인데 신선도를 말하는 줄이 없어 조용히 낡는 경로에 있었습니다) | **Owner:** UI/Map · 좌표 규약의 정본은 [spec/MAP_EDITOR_SPEC §1의 0)](../spec/MAP_EDITOR_SPEC.md)
+> 상위: [map_editor/](./README.md) · 개발자 계약: [spec/MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md)
+
 본 문서는 **AssyManager**의 웨이퍼 맵 에디터(Map Editor) 및 백엔드 서버 간의 **웨이퍼 맵 데이터 관리 아키텍처, 메타데이터 구조, 좌표 변환 공식, 보호 정책, 클린 덮어쓰기 파이프라인 및 UI 레이아웃**을 상세히 다룹니다.
 
 ---
@@ -118,7 +121,9 @@
 ### 3.1 메타데이터 미존재 시 복원 옵션 팝업
 * **메타데이터 존재하는 맵**: 팝업 없이 이전 저장 당시의 `grid_start_x`, `grid_start_y`, `grid_cols`, `grid_rows`, `rotation`, `side` 규격으로 100% 자동 복원됩니다.
 * **메타데이터 없는 레거시 맵**: 로딩 중 **[맵 좌표계 복원 옵션 팝업]**이 자동으로 표시됩니다:
-  1. 🅰️ **표준 좌표계 자동 맞춤 (`standard`)**: DB `(minX ~ maxX, minY ~ maxY)` 영역을 자동 측정하여 `(0, 0)` 오리진 최적 격자로 자동 튜닝
+  1. 🅰️ **표준 좌표계 자동 맞춤 (`standard`)**: DB `(minX ~ maxX, minY ~ maxY)` 영역을 자동 측정해 그 크기의 격자를 열고, **오리진을 데이터 자신의 최솟값으로 선언**합니다(`startX = minX`, `startY = minY`).
+     > 🔴 **셀 번호를 다시 매기지 않습니다** (`019140c` · 2026-07-30 정정). 종전 이 줄은 *"`(0,0)` 오리진 최적 격자로 자동 튜닝"*이라고 적었고, 실제로 코드가 `startX = 0`을 세운 뒤 **모든 저장 좌표에서 `minX`/`minY`를 뺐습니다** — 되더하는 곳도, 뺐다는 기록도 없었습니다. 표시와 저장은 한 수량이라(`getVisualCoords`가 `getCellFromVisualCoords`의 역함수) **재번호된 좌표가 그대로 `⚡ Push`에 실릴 수 있었습니다.** ⚠️ 커밋 메시지는 *"메타 없는 맵 4개, 그려진 셀 1,923개 중 451개가 Push 도달"*이라고 적었으나, **감사 추적 실측(`source_name='user'` 기준 239 에피소드)에서 그 서명을 가진 Push는 발견되지 않았습니다** — 노출은 실재했고 실현은 미확인입니다(대비의 전문은 [MAP_EDITOR_SPEC §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md)). 지금은 원점을 **선언**하므로 모든 셀이 종전과 같은 캔버스 칸에 앉고, 화면이 말하는 수가 곧 저장된 수입니다. 계약은 [MAP_EDITOR_SPEC §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md), 좌표 규약은 같은 문서 §1의 0).
+     > ⚠️ 물리 기하는 **마스크가 사실상 없는 값**으로 함께 기입됩니다(§4-bis.3 — 원 마스크가 살아 있으면 모서리 셀이 Push 불가가 됩니다).
   2. 🅱️ **현재 UI 설정 유지 (`current`)**: 현재 패널 입력값을 유지한 상태로 로딩
   3. ❌ **취소 (`cancel`)**: 로딩 작업 취소
 

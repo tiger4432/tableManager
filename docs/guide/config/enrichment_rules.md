@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**[F9]** §7.2-bis 후보 판정은 뷰 `limit`에 잘리지 않는다 · **§7.3-bis 「내가 켠 게 먹었나」를 어드민에서 확인**(`/admin/config/resolve` + 드라이런). 직전: **①** `candidate_for` + `auto_confirm` 신설 — §7) | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**정합 정정 2건** — ① **§6 필드 표의 `reference_views[]` 칸이 자기 바로 다음 줄과 모순**이었다: 「클라엔 `label`만」이라고 적어 놓고 다음 행이 `candidate_for`를 선언하고 있었다(그 필드는 [F9]에서 **가산 노출**됐고 [architecture/backend §2](../../architecture/backend.md)도 `{label, candidate_for}`로 문서화한다). 「**`label` + `candidate_for` 둘뿐**」으로 정정. ② **§7.3-bis에 ⏳ 클라 렌더러 미착지 표기** — 사유 표의 열 제목이 「**화면에** 나오는 사유」였는데 그 화면은 아직 없다(실측 소비자 0건). 「응답에 나오는 사유」로 바꾸고 `detail`이 사람이 읽을 문장임을 명시. 직전 **[F9]** §7.2-bis 후보 판정은 뷰 `limit`에 잘리지 않는다 · **§7.3-bis 「내가 켠 게 먹었나」를 어드민에서 확인**(`/admin/config/resolve` + 드라이런). 직전: **①** `candidate_for` + `auto_confirm` 신설 — §7) | **Owner:** 총괄
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -159,7 +159,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `aggregations` | | 서버 전용 집계 — v1은 `"count"`만 |
 | `enabled` | | 기본 `true` |
 | `auto_confirm` | | **기본 `false`** — 후보가 1개일 때 사람 없이 자동 확정(§7) |
-| `reference_views[]` | | `{label, query, limit}` 또는 `{label, query_ref}` — `query`는 서버에만 존재(클라엔 `label`만), `limit` 기본 200 · 최대 1000 |
+| `reference_views[]` | | `{label, query, limit}` 또는 `{label, query_ref}` — `query`·`limit`은 **서버에만 존재**하고 `GET /enrichment/rules`가 클라에 내보내는 것은 **`label`과 아래 `candidate_for` 둘뿐**입니다(2026-07-30 [F9]에서 `candidate_for`가 가산 노출됐습니다 — 종전 이 칸은 「클라엔 `label`만」이었고 바로 다음 줄과 어긋났습니다). `limit` 기본 200 · 최대 1000 |
 | `reference_views[].candidate_for` | | `{target_field: 뷰 결과 컬럼}` — 이 뷰의 어느 컬럼이 어느 target의 **후보값**인지 선언(§7). 없으면 그 뷰는 **표시 전용** |
 
 - 거부는 규칙 단위 + 조용함 — 워크리스트가 조용히 비면 로그의 검증 에러부터.
@@ -238,7 +238,9 @@ curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" \
 
 가장 흔한 함정이 여기서 바로 보입니다:
 
-| 화면에 나오는 사유 | 뜻 | 할 일 |
+> ⏳ **어드민 화면에는 아직 안 나옵니다** (2026-07-30 실측 — 클라 렌더러 미착지). 아래 사유는 위 `curl` 응답의 `reason` 필드에서 읽고, 옆에 딸린 `detail`이 **사람이 읽을 문장**입니다(서버가 만듭니다).
+
+| 응답에 나오는 사유 | 뜻 | 할 일 |
 |---|---|---|
 | `not_declared` | `auto_confirm: true`인데 **어떤 뷰도 `candidate_for`를 선언하지 않았다** — 노브는 켜진 것처럼 읽히고 아무 일도 안 한다 | §7의 `candidate_for`를 선언 |
 | `not_reached` | 규칙 선언은 옳은데 전역 스위치 `enrichment_auto_confirm_enabled`가 false | `ingestion_settings.json` 확인 |

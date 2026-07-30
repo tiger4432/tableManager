@@ -1,6 +1,6 @@
 # 🗺️ Wafer Map Coordinate System Philosophy (`philosophy.md`)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.2의 "완전히 고정된" 주장 정정 + §2.3 신설** — `client2/src/map_editor.js` 실측: `getVisualCoords`의 식은 `xv = colVisual − box.minC + startX`이고 `box`는 `getWaferBoundingBox(rotation, side)`가 낸다. 즉 **방향은 화면에 고정되지만 원점(anchor)은 아니다.** 함께 원점 마커 판정(`isOriginCell` = `visual.x === 0 && visual.y === 0`, 폴백 `startX/startY`)을 대조 — 마커는 **다이가 아니라 화면 자리**를 표시한다. 배지 신설 — 이 파일에는 헤더 배지가 없었다) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`(`getPhysicalCoords`/`getVisualCoords`/`getWaferBoundingBox`)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.3의 결론 정정 — `box`가 언제나 원이라는 전제가 깨졌다** (`da8f390`). `getWaferBoundingBox`는 유효 다이 근거가 `ref`면 **마스크의 최소 사각형**을 원점 상자로 쓰므로, 저장 좌표는 치수 변경뿐 아니라 **근거 변경에도** 민감하다. 그래서 이 절에서 나오는 결론이 하루에 두 번 뒤집혔다 — F6 「참조 크기로 열고 재배치」 → F8 「아무것도 채택 말고 **칸을 그대로 두라**」 → 지금 「**칸을 그대로 두는 것으로는 좌표가 보존되지 않는다**, 각 셀을 자기 저장 좌표가 가리키는 칸에 다시 앉힌다」. 「프레임 채택 거절 규율의 근거」라는 종전 문장은 **채택 자체가 폐기**(`61440e6`+`94b9baa`)돼 가리킬 대상이 없다. 직전 **§2.2의 "완전히 고정된" 주장 정정 + §2.3 신설** — `client2/src/map_editor.js` 실측: `getVisualCoords`의 식은 `xv = colVisual − box.minC + startX`이고 `box`는 `getWaferBoundingBox(rotation, side)`가 낸다. 즉 **방향은 화면에 고정되지만 원점(anchor)은 아니다.** 함께 원점 마커 판정(`isOriginCell` = `visual.x === 0 && visual.y === 0`, 폴백 `startX/startY`)을 대조 — 마커는 **다이가 아니라 화면 자리**를 표시한다. 배지 신설 — 이 파일에는 헤더 배지가 없었다) | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`(`getPhysicalCoords`/`getVisualCoords`/`getWaferBoundingBox`)
 > 상위: [map_editor/README](./README.md) · 개발자용 계약은 [spec/MAP_EDITOR_SPEC §1](../spec/MAP_EDITOR_SPEC.md)(기하 변환 수식 = **저장 좌표 규약의 정본**)
 
 본 문서는 `assyManager` 프로젝트에 구축된 격자 맵 에디터(Grid Map Editor)의 **물리적 공간 표현(Physical Layout)**과 **화면 기준 좌표 매핑(Screen Visual Coordinates)** 설계 철학을 기록합니다. 
@@ -76,7 +76,9 @@ box = getWaferBoundingBox(rotation, side)
 **③ 등방 맵까지 포함해 보편적으로 참인 것 — 원점 마커는 다이가 아니라 화면 자리를 표시합니다.**
 마커 판정은 `isOriginCell = (visual.x === 0 && visual.y === 0)`이고 (0,0)이 격자 밖이면 `startX/startY` 칸으로 폴백합니다. 판정 대상이 **시각 좌표**이므로 마커는 회전과 무관하게 **같은 화면 칸**에 머무르고, 그 아래에서 웨이퍼(=물리 키)가 돌아갑니다. 따라서 **한 마커가 네 회전에서 서로 다른 네 개의 물리 다이 위에 앉습니다.** bbox가 회전에 불변인 등방 맵에서도 그렇습니다 — 마커는 "이 다이가 원점"이 아니라 "여기가 좌표 0,0으로 읽히는 자리"라는 뜻입니다.
 
-> 🔴 **그래서 저장 좌표는 격자 치수에도 민감합니다.** `box`는 격자 치수(`cols`/`rows`)로 유효 셀을 훑어 만들므로, **치수를 바꾸면 물리 키가 그대로여도 저장될 `xv/yv`가 함께 움직입니다.** 회전은 물리 키에 불변이지만 **치수 변경은 불변이 아닙니다.** 이 성질이 프레임 채택(참조 맵 크기로 격자 열기)의 거절 규율의 근거이며, 계약은 [MAP_EDITOR_SPEC §5.7-bis](../spec/MAP_EDITOR_SPEC.md)에 있습니다.
+> 🔴 **그래서 저장 좌표는 격자 치수에도, 유효 다이 근거에도 민감합니다.** `box`는 격자 치수(`cols`/`rows`)로 **유효 셀**을 훑어 만들므로, ① **치수를 바꾸면** 물리 키가 그대로여도 저장될 `xv/yv`가 함께 움직이고, ② **유효 다이 근거가 `ref`로 해석되면 `box` 자체가 마스크의 최소 사각형이 됩니다**(`da8f390` — 종전 이 문단은 `box`가 언제나 원이라고 전제했습니다). 회전은 물리 키에 불변이지만 **치수 변경도 근거 변경도 불변이 아닙니다.**
+>
+> ⚠️ **여기서 나오는 결론이 2026-07-30에 두 번 뒤집혔습니다.** 한때는 「그러니 참조 크기로 격자를 열고(채택) 좌표를 재배치한다」였고(F6), 다음엔 「그러니 아무것도 채택하지 않고 **칸을 그대로 둔다**」였습니다(F8). **지금은 셋째입니다** — 근거가 바뀌면 `box`가 움직이므로 칸을 그대로 두는 것으로는 좌표가 보존되지 않고, **각 셀을 자기 저장 좌표가 가리키는 칸으로 다시 앉힙니다.** 붙드는 것은 번호이고 칸은 파생입니다. 계약은 [MAP_EDITOR_SPEC §5.7/§5.7-bis](../spec/MAP_EDITOR_SPEC.md), 좌표 규약 자체는 같은 문서 **§1의 0)**입니다. 🔴 프레임 채택 기계장치는 **삭제됐습니다**(`61440e6`+`94b9baa`) — 이름을 찾아도 소스에 없습니다.
 
 ---
 
