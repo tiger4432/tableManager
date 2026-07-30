@@ -22,7 +22,9 @@
 
 ---
 
-> 🔴 **라이브 인시던트 진행 중 (2026-07-30, 사용자 신고) — 운영 chain 워커가 `POST /internal/events/broadcast`에서 403, 지속 중**
+> ✅ **인시던트 종결 — 프록시 확정 (2026-07-30). `curl.exe -s --noproxy "*"`로 운영 루프백이 200, 사용자 확인 「된다, 프록시네」.** 서버는 처음부터 정상이었다. 즉효 조치 전달됨(런처 셸 `$env:NO_PROXY = "127.0.0.1,localhost"`) — 밀린 `broadcast_at IS NULL`은 스윕이 사이클당 500건씩 회수하므로 수동 조치 불필요. 코드 수리(`trust_env = False` 3발신자 + 거부 주체를 명명하는 로그)는 라운드 진행 중. 아래는 진단 경과 기록이다.
+>
+> 🔴 **라이브 인시던트 (2026-07-30, 사용자 신고) — 운영 chain 워커가 `POST /internal/events/broadcast`에서 403**
 >
 > ✅ **데이터는 안전하다.** 통지는 fire-and-forget이고 반환값은 `broadcast_at` 스탬프 판정에만 쓰인다(`chain_ingestion_worker.py:152` — *"데이터 처리 성공/재시도 판정에는 절대 반영하지 않는다"*). 체인 쓰기는 커밋돼 있고 실패 행은 `broadcast_at IS NULL`로 DB에 durable하게 남는다. ⚠️ **단 스윕은 이 건을 못 고친다** — `sweep_undelivered_broadcasts`(`:767`)가 같은 `post_event_async`를 타므로 매 사이클 같은 403을 받는다. 스윕은 재시작·타임아웃 같은 **일시적** 유실용이다. 클라는 토큰/경로가 풀릴 때까지 stale이고, 풀리면 `LIMIT 500`씩 회수된다.
 >
