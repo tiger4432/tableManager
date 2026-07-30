@@ -1444,8 +1444,11 @@ async function switchTable(tableName) {
     // the old table's values into this one. Clearing gridData alone did not close
     // that path. Matches what a map load already does.
     if (overlayLayers.length > 0) {
+      // [1e] The overlay list sits in the left block with its own count, so the release is
+      // already on screen and the toast just repeats it. Unlike the grid reset toasted below,
+      // this one is REVERSIBLE — the user can simply overlay again.
+      console.debug(`[map] table switch released ${overlayLayers.length} overlay layer(s)`);
       clearOverlayLayers();
-      showToast('테이블이 바뀌어 오버레이를 해제했습니다.', 'info');
     }
 
     // 테이블이 바뀌면 이전 맵의 정체성 핀은 무효다 (Push 대상이 달라진다)
@@ -2530,7 +2533,9 @@ async function saveCustomPreset() {
         el.presetSelect.value = data.preset_key;
         loadSelectedPreset();
       }
-      showToast(`규격 프리셋 '${presetName}' 저장 완료`, 'success');
+      // [1e] Success confirmation. The dropdown is re-rendered with the just-saved preset
+      // selected, so the result is on screen; failure still speaks via the alert below.
+      console.debug(`[map] preset saved: ${presetName} (${data.preset_key})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
       alert(`Failed to save custom geometry preset: ${errorData.detail || res.statusText}`);
@@ -2560,7 +2565,8 @@ async function deleteCustomPreset() {
       await fetchAndRenderPresets();
       el.presetSelect.value = '';
       if (el.btnDeletePreset) el.btnDeletePreset.style.display = 'none';
-      showToast(`규격 프리셋 '${preset.name}' 삭제 완료`, 'success');
+      // [1e] Success confirmation. Disappearing from the list IS the result.
+      console.debug(`[map] preset deleted: ${preset.name} (${val})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
       alert(`Failed to delete preset from server: ${errorData.detail || res.statusText}`);
@@ -4370,8 +4376,10 @@ async function loadExistingMap(opts = {}) {
     serverCellKeys = null;
     // 기준 맵이 통째로 바뀌므로 이전 맵 기준으로 정렬된 오버레이는 무효다
     if (overlayLayers.length > 0) {
+      // [1e] The load path is a read and reads stay frictionless. The release shows up as
+      // the overlay block's count, and undoing it costs one [＋ 겹치기].
+      console.debug(`[map] map replace released ${overlayLayers.length} overlay layer(s)`);
       clearOverlayLayers();
-      showToast('기준 맵이 교체되어 오버레이를 해제했습니다.', 'info');
     }
     let count = 0;
     
@@ -4818,7 +4826,11 @@ async function loadExistingMap(opts = {}) {
     renderGridCanvas();
     // [가드 ①] 로드 순간 편집 정체성을 고정하고 맵 키 입력을 잠근다.
     setLoadedIdentity(selectedTable, loadedMapKey || getCurrentMapKey());
-    notifyMapContext();
+    // [F4] `serverRead` — this line is where the server was JUST READ. Re-loading the same
+    // map leaves the identity unchanged, so the panel's `changed` test alone never refreshed
+    // its derived columns (material-map presence, availability). Measured: a reload fired 0
+    // existence probes, so a material with 261 rows on the server kept reading `MAP X`.
+    notifyMapContext({ serverRead: true });
     recordLastOpenMap();   // refresh returns here (no-op inside a material frame)
     // [F4] N rows fetched but 0 cells parsed = the NaN filter dropped everything —
     // warn with the likely cause instead of a green success naming "0셀".
@@ -4826,8 +4838,13 @@ async function loadExistingMap(opts = {}) {
       showToast(
         `${selectedTable} · ${loadedMapKey || ''} — ${fetchedRows}행을 받았지만 좌표로 해석된 셀이 0개입니다. `
         + `x/y 컬럼 선택을 확인하세요.`, 'warning');
-    } else if (quiet) showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드`, 'success');
-    else showToast(`${selectedTable} · ${loadedMapKey || ''} — ${count}셀 로드 완료`, 'success');
+    } else {
+      // [1e] A successful load IS the screen: the grid renders, the legend badges and the
+      // DOE 「칠함」 column carry the cell counts, and the identity chip names table + map key.
+      // Nothing to add on a read path. Failure and partial failure are still toasted by the
+      // two branches above and by the catch.
+      console.debug(`[map] loaded ${selectedTable} · ${loadedMapKey || ''} — ${count} cells`);
+    }
     return { count, mapKey: loadedMapKey };
   } catch (err) {
     console.error(err);
@@ -4908,8 +4925,11 @@ function fillGrid() {
     showToast(`칠할 수 있는 셀이 없습니다 — ${skippedOutside}칸이 모두 유효 다이 밖입니다. `
       + `물리 규격(직경·칩 크기)이나 유효 다이 맵을 먼저 확인하십시오.`, 'warning');
   } else if (skippedOutside > 0) {
+    // [1e] This branch is only reached when `skippedOutside > 0`, i.e. the message says
+    // "some cells will not be saved" — yet it rendered as a green success. Tone corrected
+    // to warning (spotted while auditing toasts this round).
     showToast(`${filled}칸을 '${activeBrush}'로 칠했습니다 `
-      + `(유효 다이 밖 ${skippedOutside}칸 제외 — 저장되지 않는 셀입니다).`, 'success');
+      + `(유효 다이 밖 ${skippedOutside}칸 제외 — 저장되지 않는 셀입니다).`, 'warning');
   }
 }
 
@@ -5332,7 +5352,11 @@ async function pushMapData() {
       };
       // [재설계 v2] Push 성공 = 이 프레임의 편집이 서버에 적재됨 (뒤로가기 경고 해제)
       framePushed = true;
-      notifyMapContext();
+      // [F4] `serverRead` — a successful push is FIRST-HAND evidence about server state.
+      // `validDieListCache.delete` just below already drops its cache on exactly this
+      // ground, and `serverCellKeys` above is refreshed on it too. The material-map
+      // presence cache was simply a THIRD cache nobody had wired to that evidence.
+      notifyMapContext({ serverRead: true });
       recordLastOpenMap();   // a just-created key becomes the refresh target too
       // [F5] 방금 만든 템플릿이 지정 칸 자동완성에 **없는** 상태를 없앤다. 캐시가
       // `switchTable`에서만 비워져 있었는데, 템플릿을 만들고 곧바로 다른 맵에서 지정하는
@@ -5358,7 +5382,9 @@ async function pushMapData() {
       if (legendSaved.ok) {
         // 저장된 행 수는 저장한 쪽이 센다 — legend.length로 다시 세면 아직 이 맵의 것이 아닌
         // vocabulary 브러시까지 포함해 **DB에 없는 수를 보고**하게 된다.
-        showToast(`DOE·split 서술 registry 저장 완료 (${legendSaved.count}건)`, 'success');
+        // [1e] Success confirmation. The plan-head chip flips to 「저장됨 HH:MM」 and STAYS
+        // there, which beats a toast that fades. Failure is toasted by the branch below.
+        console.debug(`[map] split registry saved — ${legendSaved.count} rows`);
       } else if (legendSaved.reason !== 'adopted' && legendSaved.reason !== 'conflict'
                  && legendSaved.reason !== 'unknown-server-state') {
         // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
@@ -5538,7 +5564,14 @@ function autoPaintE1E2() {
 
   scheduleRenderGridCanvas();
   scheduleCellDraft();
-  showToast(`E1/E2 자동 페인팅 완료 — E1 ${e1Count}셀 · E2 ${e2Count}셀`, 'success');
+  // [1e] The canvas and the legend badges already carry what was painted, so the success
+  // report goes to the console. But ZERO cells must still be said out loud — the same rule
+  // `fillGrid` keeps: if it looks identical to nothing happening, users keep pressing.
+  if (e1Count === 0 && e2Count === 0) {
+    showToast('E1/E2로 칠할 셀이 없습니다 — 선택 영역이나 유효 다이 범위를 확인하십시오.', 'warning');
+  } else {
+    console.debug(`[map] E1/E2 auto-paint — E1 ${e1Count} cells · E2 ${e2Count} cells`);
+  }
 }
 
 function fillSelectedCells() {
@@ -6375,10 +6408,15 @@ function onMapGridPaste(e) {
   if (un.offGrid.length > 0) notes.push(`격자 밖 ${un.offGrid.length}칸`);
   if (un.outsideRetained.length > 0) notes.push(`유효 다이 밖 ${un.outsideRetained.length}칸(서버 출처 미확인 — 남겨 둠)`);
   if (un.outsideStray.length > 0) notes.push(`유효 다이 밖 ${un.outsideStray.length}칸(서버에 없던 셀)`);
-  showToast(`붙여넣기 완료 — ${gridStats.set}칸 입력 · ${gridStats.cleared}칸 비움`
+  // [1e] Speak only when there is something to say. With `notes` empty this is a pure
+  // success confirmation whose result is already visible in the grid, the legend and the DOE
+  // table (and the paste passed a confirm already). With `notes` present it carries facts
+  // about cells that will NOT be saved, so it stays a toast.
+  const pasteMsg = `붙여넣기 완료 — ${gridStats.set}칸 입력 · ${gridStats.cleared}칸 비움`
     + `${auxStats.updated + auxStats.added > 0 ? ` · DOE ${auxStats.updated + auxStats.added}행` : ''}`
-    + `${notes.length ? ` (${notes.join(' · ')})` : ''}`,
-    notes.length ? 'warning' : 'success');
+    + `${notes.length ? ` (${notes.join(' · ')})` : ''}`;
+  if (notes.length) showToast(pasteMsg, 'warning');
+  else console.debug(`[map] ${pasteMsg}`);
   console.debug('[map] pasted company block', { gridStats, auxStats, unsavable: {
     offGrid: un.offGrid.length, outsideRetained: un.outsideRetained.length, outsideStray: un.outsideStray.length } });
 }
@@ -7212,8 +7250,11 @@ function announceFrameAdoption(adopted, ref) {
   const head = `격자를 참조 맵 규격으로 열었습니다 — ${adopted.before} → ${adopted.after} `
     + `(${ref.table} · ${ref.mapKey}).`;
   if (stranded === 0) {
-    showToast(`${head} 아직 저장된 것은 없습니다: ⚡ Push가 이 규격과 셀 좌표를 함께 기록합니다.`,
-      'info', { dedupeKey: 'valid_die_frame_adopted' });
+    // [1e] Zero stranded cells means nothing went wrong. The adopted grid size is visible in
+    // the geometry inputs and the valid-die chip, and "not saved yet" is stated permanently by
+    // the plan-head chip — repeating it here only adds a toast to the happy path.
+    console.debug(`[map] frame adopted ${adopted.before} -> ${adopted.after} `
+      + `(${ref.table} · ${ref.mapKey}); no stranded cells`);
     return;
   }
   console.warn(`[Map Editor][F6] frame adopted (${adopted.before} -> ${adopted.after}) but `
@@ -7821,7 +7862,15 @@ function importOverlayToGrid(id) {
   if (locked > 0) parts.push(`${locked}셀 건너뜀(잠금)`);
   if (outside > 0) parts.push(`${outside}셀 건너뜀(격자 밖)`);
   if (added.length > 0) parts.push(`legend ${added.length}종 추가`);
-  showToast(`${o.sourceTable} · ${o.sourceKey} → ${parts.join(' · ')} — 아직 서버에 저장되지 않았습니다. [⚡ Push]로 적재하십시오.`, 'success');
+  const msg = `${o.sourceTable} · ${o.sourceKey} → ${parts.join(' · ')}`;
+  // [1e] Speak ONLY when cells were skipped — those are "I pressed import and this did not
+  // arrive", a reason the user needs. If everything landed, the result is on the canvas and
+  // "not saved yet" is already stated by the plan-head chip, so no toast is layered on top.
+  if (locked > 0 || outside > 0) {
+    showToast(`${msg} — 건너뛴 셀은 저장되지 않습니다. [⚡ Push]로 적재하십시오.`, 'warning');
+  } else {
+    console.debug(`[map] overlay imported — ${msg}`);
+  }
 }
 
 // legend에 없는 값들을 추가하고 추가된 값 배열을 반환
@@ -7876,7 +7925,9 @@ function renderOverlayList() {
         btn.disabled = true;
         const r = await addOverlayLayer(o.sourceTable, o.sourceKey, o.targetOverride || undefined);
         if (r && r.error) showToast(r.error, r.unsupported ? 'warning' : 'error');
-        else showToast(`오버레이 재시도 성공: ${o.sourceTable} · ${o.sourceKey}`, 'success');
+        // [1e] Exactly as the comment above states — on success the failed row is REPLACED
+        // by a success row. The result is in the list, so a toast says it twice.
+        else console.debug(`[map] overlay retry ok: ${o.sourceTable} · ${o.sourceKey}`);
       });
     });
   });
@@ -7907,8 +7958,12 @@ async function handleAddOverlayClick() {
     // 실패도 목록에 행으로 남는다 — 토스트로 흘리면 "왜 안 겹쳤는지"가 화면에서 증발한다
     showToast(r.error, r.unsupported ? 'warning' : 'error');
   } else {
-    const t = r.layer.truncated ? ' (일부만 표시 — 서버 절단)' : '';
-    showToast(`오버레이 추가: ${r.layer.sourceTable} · ${r.layer.sourceKey} — ${r.layer.count}칩${t}`, 'success');
+    // [1e] Truncation is a DEGRADATION (§7: with total > rows we cannot claim to know the
+    // server's state), so "you are seeing only part of the source" must be said. A complete
+    // load shows up as a row plus its chip count in the overlay list, so it goes to console.
+    const head = `오버레이 추가: ${r.layer.sourceTable} · ${r.layer.sourceKey} — ${r.layer.count}칩`;
+    if (r.layer.truncated) showToast(`${head} (일부만 표시 — 서버 절단)`, 'warning');
+    else console.debug(`[map] ${head}`);
     if (el.overlaySrcKey) el.overlaySrcKey.value = '';
   }
 }

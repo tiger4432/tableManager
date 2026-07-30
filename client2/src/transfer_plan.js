@@ -523,9 +523,31 @@ async function materialMetaValues(table, id) {
   return out;
 }
 
+// 🔴 [F4] This cache is only valid for AFFIRMATIVE answers — `has(ck)` is the wrong test.
+//
+// The old test was `!force && S.matMapState.has(ck)`, so `false` ("no such map") and
+// `null` ("could not confirm") suppressed the request FOREVER. Those two are exactly the
+// answers a user ACTS ON — they see X and go build that map. Afterwards the only way this
+// screen could ask again was `↻ 가용` (force), so the system went on denying something the
+// operator had just created themselves (core value #3; measured: 261 rows on the server and
+// still X after a reload).
+//
+// The rule is lifted verbatim from the sibling cache in this same file, `getPoolSummary`:
+// it already honours only `status === 'ok' || 'loading'` and re-fetches on `error`. Here the
+// affirmative answer is `true` and nothing else:
+//   · `true`  → do not re-ask. Nothing in this flow deletes a map, and an affirmative does
+//               not drive the user to act, so a stale one causes no harm.
+//   · `false` → re-ask. It is the ONE answer the user may have invalidated meanwhile.
+//   · `null`  → re-ask. Caching "could not confirm" freezes an outage into a fact.
+// Cost is one `limit=1` request per pool, which the sibling cache already pays.
+// This is not polling — the caller below asks only when a READ actually happened.
+function matMapCacheHit(ck) {
+  return S.matMapState.get(ck) === true;
+}
+
 async function probeMaterialMap(table, id, force = false) {
   const ck = matMapCacheKey(table, id);
-  if (!force && S.matMapState.has(ck)) return S.matMapState.get(ck);
+  if (!force && matMapCacheHit(ck)) return S.matMapState.get(ck);
   const metaValues = await materialMetaValues(table, id);
   const exists = (controller && controller.probeMapExists)
     ? await controller.probeMapExists(table, metaValues) : null;
@@ -1517,6 +1539,20 @@ Ctrl+C — 포커스한 값(없으면 전체)이 같은 형태의 TSV로 나갑�
 // 맵 정체성이 바뀌었다 (테이블 전환 / 맵 로드 / 프레임 push·pop / push 성공).
 // ⚠️ [M2.6] 서버 조회는 여기서 하지 않는다 — legend(= DOE) 로드·채택·가드는 전부
 //    map_editor의 registry 경로에 있고, 이 함수는 그 결과를 그리기만 한다.
+//
+// 🔴 [F4] `changed` (identity differs) is the WRONG TEST for when to re-derive the panel.
+//
+// Re-loading the same map is not an identity change, so `changed === false` and the pane ②
+// refresh did not run at all — measured: a reload fires 3 requests (cells, spec, registry)
+// and ZERO map-existence probes. But a reload is the user explicitly asking "show me the
+// server's state now". So there are two distinct questions, not one:
+//   · did the identity change (`changed`)        → things that rebind the screen (flash reset)
+//   · did we just re-read the server (`serverRead`) → things DERIVED from server state
+// A reload makes only the second one true, and that gap is where this defect lived.
+//
+// It is also why there is no polling loop here: a timer would answer "the screen eventually
+// agrees" while leaving "the screen does not ask" in place. Asking on the read event means
+// EXACTLY ONE ask per read.
 export function notifyMapContext(info = {}) {
   if (!controller || !controller.getMapContext) return;
   const c = controller.getMapContext();
@@ -1529,10 +1565,13 @@ export function notifyMapContext(info = {}) {
   if (changed) S.flash.clear();
   if (controller.getLegend) S.legendRows = controller.getLegend();
   renderAll();
-  if (changed) {
+  if (changed || info.serverRead) {
     // [U6] A transient stages failure must not degrade the whole session — retry until
     // a definite answer (declaration or 404/405) arrives.
     if (S.stagesStatus === 'error') stagesPromise = fetchStages();
+    // force=false on purpose: the user did not ask out loud, so no toast (reads stay
+    // frictionless). The request still goes out, because `probeMaterialMap` now honours
+    // only affirmative cache entries. `force` remains exclusive to the [↻ 가용] button.
     refreshMaterials();
     // ★ 왕복 보상 — 복귀 직후 그 자재만 재조회
     if (info.returnedFrom) rewardAfterReturn(info.returnedFrom);
