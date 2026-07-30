@@ -7,7 +7,8 @@
     "dev": "vite",
     "check:clipboard": "node scripts/check_clipboard_convention.mjs",
     "check:contracts": "node scripts/check_contracts.mjs",
-    "prebuild": "npm run check:clipboard && npm run check:contracts",
+    "check:suggest-keys": "node tests/value_suggest_keys_harness.mjs",
+    "prebuild": "npm run check:clipboard && npm run check:contracts && npm run check:suggest-keys",
     "build": "vite build",
     "preview": "vite preview"
   },

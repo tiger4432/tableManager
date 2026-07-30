@@ -1846,3 +1846,118 @@ body.resizing-active .history-sidebar {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* ============================================================
+   [0b-a] 값 제안 셀 에디터 (value_suggest.js)
+   · 목록은 document.body 직속 fixed 요소다 — AG-Grid 셀은 overflow:hidden 이고
+     그리드 루트가 클리핑하므로 셀 안에 그리면 보이지 않는다.
+   · z 스케일 정본(UI_dropdown_zorder_fix_report §2)의 "드롭다운·컨텍스트메뉴" 단계 =
+     1000. #custom-context-menu 와 같은 층이며 모달(2000/3000)·토스트(9998+) 아래.
+   · 색은 전부 시맨틱 토큰 — light/dark 두 테마 자동 대응.
+   ============================================================ */
+.value-suggest-editor {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+}
+
+.value-suggest-input {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  color: var(--text);
+  /* 12.8px — 가독성 하한 12px 준수 (readability=function). 셀 본문과 동일한 모노 +
+     tabular-nums 라야 편집 중과 확정 후의 글자 폭이 흔들리지 않는다. */
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  padding: 0 6px;
+  outline: none;
+}
+
+.value-suggest-list {
+  position: fixed;
+  z-index: 1000;
+  /* max-height 는 value_suggest.js 가 MAX_VISIBLE_ROWS × ROW_HEIGHT_PX 로 인라인 지정한다
+     — 보이는 행 수는 키스트로크 산식(행당 화살표 1타)에 묶인 값이라 CSS 에 숫자를
+     복제하면 둘이 어긋난다. 여기서는 스크롤 동작만 선언. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+  /* 등장만 애니메이션(6px 상승 + 페이드, 120ms). 화살표로 하이라이트를 옮길 때는
+     아무 것도 움직이지 않는다 — 목록이 흔들리면 키보드 이동이 느리게 느껴진다. */
+  animation: valueSuggestIn 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes valueSuggestIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 요청 진행 중 표시 — 헤어라인 하나. 목록이 이미 열려 있을 때만 붙는다(설명은
+   value_suggest.js setPending). 레이아웃을 밀지 않으므로 화살표 이동이 흔들리지 않는다. */
+.value-suggest-list[data-pending]::before {
+  content: '';
+  position: sticky;
+  top: 0;
+  display: block;
+  height: 2px;
+  margin: -4px 0 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: valueSuggestPending 0.9s ease-in-out infinite;
+}
+
+@keyframes valueSuggestPending {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.value-suggest-row {
+  padding: 5px 10px;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  border-left: 3px solid transparent;
+}
+
+.value-suggest-row b {
+  /* 입력한 접두부. 색까지 바꿔 "여기까지가 내가 친 글자"가 한눈에 보이게 한다. */
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.value-suggest-row:hover {
+  background: var(--surface-hover);
+}
+
+/* 하이라이트 = Enter 를 누르면 확정될 값. 마우스 hover 보다 강해야 한다 —
+   두 표시가 비슷하면 어느 쪽이 확정될지 알 수 없다. */
+.value-suggest-row.is-active {
+  background: var(--accent-weak);
+  border-left-color: var(--accent);
+}
+
+.value-suggest-more {
+  padding: 5px 10px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem; /* 12px — 하한 */
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  cursor: default;
+}

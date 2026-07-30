@@ -12,6 +12,7 @@ import {
   clearRangeSelection
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
+import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -309,6 +310,17 @@ export function buildColumnDefs() {
 
     if (colType === 'number') {
       colDef.cellEditor = 'agNumberCellEditor';
+    } else if (!isSystem && colType === 'string') {
+      // [0b-a] Prefix suggestions, on STRING columns only.
+      //
+      // Scoping, deliberately narrow: `number` keeps `agNumberCellEditor` because that
+      // editor carries the numeric validation this grid's `valueSetter` depends on, and
+      // `datetime` is refused by the endpoint itself (`_resolve_target` raises rather than
+      // inventing a datetime canonicalisation). The server DOES support numeric prefixes
+      // (`_numeric_values`), so widening later is a change to this predicate and nothing
+      // else — but it would mean re-implementing number validation inside the editor,
+      // which is a separate round.
+      colDef.cellEditor = SuggestCellEditor;
     }
 
     if (isSystem) {
@@ -377,6 +389,22 @@ export function renderGrid(initialRows) {
       suppressKeyboardEvent: (params) => {
         const event = params.event;
         const key = event.key;
+
+        // ── [0b-a] Suggestion list keys, FIRST and while editing ────────────────
+        // This hook is the deterministic ordering primitive for the one-Enter property.
+        // AG-Grid's `processCellKeyboardEvent` consults `suppressKeyboardEvent` BEFORE it
+        // runs `cellCtrl.onKeyDown`, and `onKeyDown`'s Enter branch is what calls
+        // `stopEditing` -> `cellEditor.getValue()`. So an 'accepted' verdict here means the
+        // candidate is ALREADY in the input by the time the very same event dispatch
+        // commits the cell: accept and commit are one press, not two, and the ordering is
+        // guaranteed by the framework's own sequence rather than by a timer or a
+        // microtask. Returning false is therefore not "giving up" — it is the commit.
+        if (params.editing && isSuggestEditorActive()) {
+          const verdict = handleEditorKey(event);
+          if (verdict === 'suppress') return true;   // the list consumed the key
+          if (verdict === 'accepted') return false;  // let THIS event commit the candidate
+          // 'pass' falls through to the pre-existing branches below, unchanged.
+        }
 
         if (params.editing && event.ctrlKey && key === 'Enter') {
           event.preventDefault();
