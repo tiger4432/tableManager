@@ -1,13 +1,15 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **288개** 이력. (거버넌스 규칙 #4)
+> 총 **290개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 19:56** — [Did The Config Take Effect And A Probe That Confirmed A Column Name](./20260730_195606_did_the_config_take_effect_and_a_probe_that_confirmed_a_column_name.md)
+- **2026-07-30 19:32** — [The Axis Was The Origin Three Silent Screen Moves](./20260730_193220_the_axis_was_the_origin_three_silent_screen_moves.md)
 - **2026-07-30 19:00** — [Smart Paste Latch Plain Http](./20260730_190000_smart_paste_latch_plain_http.md)
 - **2026-07-30 18:10** — [The Board Is Not Evidence](./20260730_181000_the_board_is_not_evidence.md)
 - **2026-07-30 18:00** — [Pushed Meant Two Things](./20260730_180000_pushed_meant_two_things.md)
