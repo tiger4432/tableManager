@@ -840,11 +840,36 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
     second.init({ value: '', eventKey: 'F2', cellStartedEdit: true,
       column: { getColId: () => 'pkg_id' }, colDef: {}, node: {}, data: {}, rowIndex: 0,
       eGridCell: new El('div'), stopEditing() {}, onKeyDown() {}, api: {} });
+    // Give the live successor an OPEN list, so the predecessor's teardown has something to
+    // destroy. `active` was already guarded; the shared floating list and the shared
+    // in-flight request had the same exposure and were not. Driven through `second`'s own
+    // input rather than through the grid model, because a grid keypress would construct a
+    // THIRD editor and `second` would no longer be the live one.
+    second.eInput.value = 'TFBGA';
+    second.eInput.fire('input');
+    await flush();
+
+    // Read the SHARED list element out of the sandbox's document, not the instance flag:
+    // `first.closeList()` blanks the shared DOM while leaving `second.listOpen` true, so an
+    // assertion on the flag cannot see the damage. This is the observable the operator sees.
+    const sharedList = () => mod.sandbox.document.body.children
+      .find(c => String(c.className).includes('value-suggest-list'));
+    const listState = () => {
+      const el = sharedList();
+      return el ? { display: el.style.display, rows: el.children.length } : null;
+    };
+    results.sharedListBefore = listState();
+
     first.destroy(); // the previous editor is torn down AFTER the next one registered
     results.stillActive = mod.sandbox.__mod.isSuggestEditorActive();
+    results.sharedListAfter = listState();
     if (strict) {
       check('tearing down the previous editor leaves the live one registered',
         results.stillActive, true);
+      check('the live successor really had a rendered list', results.sharedListBefore,
+        { display: 'block', rows: 3 });
+      check('and the predecessor\'s teardown did not blank it', results.sharedListAfter,
+        { display: 'block', rows: 3 });
     }
     second.destroy();
   }
@@ -967,7 +992,7 @@ const MUTATIONS = [
   {
     name: 'M13 destroy() unregisters unconditionally',
     file: 'suggest',
-    find: `    if (active === this) active = null;`,
+    find: `    if (wasActive) active = null;`,
     repl: `    active = null;`,
     breaks: 'the live successor editor stays registered'
   },
@@ -996,6 +1021,13 @@ const MUTATIONS = [
     find: `      startValue = eventKey;`,
     repl: `      startValue = '';`,
     breaks: 'every keystroke count (the first character would be lost)'
+  },
+  {
+    name: 'M19 teardown blanks the shared list even when a live successor owns it',
+    file: 'suggest',
+    find: `    if (wasActive) this.closeList();`,
+    repl: `    this.closeList();`,
+    breaks: 'the live successor keeps its open list'
   },
   {
     name: 'M18 the narrowing snapshot outlives the cell edit (the defect E2E found)',

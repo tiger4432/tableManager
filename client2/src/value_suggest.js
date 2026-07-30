@@ -418,24 +418,35 @@ export class SuggestCellEditor {
     return false;
   }
 
+  /**
+   * Teardown splits along ONE line: what this instance owns, and what it merely shares.
+   *
+   * Per-instance state (the debounce timer, its own DOM listeners) is always released.
+   * The SHARED singletons — the one floating list, the `active` registration, the one
+   * in-flight request — are only released if this editor is still the active one. That is
+   * not defensive padding: if the successor editor is constructed before the predecessor is
+   * destroyed, an unconditional teardown blanks a LIVE list, unregisters a LIVE editor and
+   * aborts a LIVE request, and the symptom is a cell whose dropdown never appears again with
+   * nothing in the console. `active === this` was already guarding the registration; the
+   * list and the request had the same exposure and did not have the same guard.
+   */
   destroy() {
     this.destroyed = true;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.closeList();
+    const wasActive = active === this;
+    if (wasActive) this.closeList();
     this.eInput.removeEventListener('input', this.onInput);
     for (const t of this.scrollTargets || []) {
       t.removeEventListener('scroll', this.onViewportScroll);
     }
     window.removeEventListener('resize', this.onViewportScroll);
-    // Identity-checked: a fast Tab through cells constructs the next editor before the
-    // previous one is destroyed, and an unconditional `active = null` would then blank a
-    // LIVE editor's registration and lose the keyboard hook for that cell.
-    if (active === this) active = null;
-    // Drop the narrowing snapshot for this column — see `completeResults`. It has to happen
-    // here rather than on commit, because a cancelled edit leaves the same doubt: the
-    // operator may have typed a value they are about to enter somewhere else.
+    if (wasActive) active = null;
+    // Drop the narrowing snapshot for this column — see `completeResults`. Unconditional,
+    // unlike the singletons above: deleting a cache entry can only cost one extra request,
+    // never correctness, and it has to happen even on a cancelled edit because the operator
+    // may have typed a value they are about to enter somewhere else.
     completeResults.delete(colKey(this.table, this.column));
-    abortInflight();
+    if (wasActive) abortInflight();
   }
 
   // ── Querying ─────────────────────────────────────────────────────────────────
