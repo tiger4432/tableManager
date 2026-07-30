@@ -1154,6 +1154,119 @@ async function scoreAll(src, { verbose = false } = {}) {
     }
   }
 
+  // == P - A GEOMETRY PRESET DOES NOT MOVE THE SCREEN (specimen: aa123_a + 4A) ========
+  //
+  // THE DEFECT THIS BLOCK REPLACES. `applyPresetObject` ended with
+  //        if (preset.rotation !== undefined) currentRotation = preset.rotation;
+  //        if (preset.side !== undefined) currentSide = preset.side;
+  //    and ALL FIVE stored presets declare rot 0 / front. Applying any of them to a rotated
+  //    or back-side map reset the orientation, `getPhysicalCoords` reads both, and every
+  //    cell's physical key - hence the coordinate Push writes - changed. Measured on
+  //    `aa123_a` + `4A`: byte-identical physical spec, unchanged grid, unchanged bounding
+  //    box, 173 of 187 dies renumbered, and Push proceeded, because the contrast gate counts
+  //    only cells that leave the grid or the circle and none did.
+  //
+  // THE FIXTURE'S PANEL ALREADY CARRIES 4A's PHYSICAL SPEC, and that is the whole design.
+  //    If the panel's chip/diameter differed, applying 4A would legitimately move coordinates
+  //    (a different pitch is a different bounding box) and "nothing moved" would be false for
+  //    a reason that has nothing to do with orientation. Identical spec isolates the ONE axis
+  //    under test - which is also exactly the shape the specimen had.
+  {
+    // The real preset, copied from server/config/maps.json (`custom_1784890104442`).
+    const PRESET_4A = { name: '4A', phys_wafer_dia: 300.0, phys_chip_x: 11.0, phys_chip_y: 13.0,
+                        phys_offset_x: 0.0, phys_offset_y: 0.0, phys_edge_margin: 3.0,
+                        rotation: 0, side: 'front', is_custom: true };
+    // 29x25 is what `applyPhysicalGeometry` derives from that spec, so the preset's own call
+    // to it cannot change the dimensions either. rot 90 + back keeps BOTH writes live.
+    const PANEL_4A = { cols: 29, rows: 25, startX: 2, startY: 1, invertY: false,
+                       rotation: 90, side: 'back',
+                       dia: PRESET_4A.phys_wafer_dia, chipX: PRESET_4A.phys_chip_x,
+                       chipY: PRESET_4A.phys_chip_y, offX: 0, offY: 0, margin: 3 };
+    const { sandbox: S, el, log } = buildEnv(src, { panel: PANEL_4A });
+    [...targetReachableKeys(S).keys()].forEach(k => { S.gridData[k] = 'A'; });
+
+    const payloadBefore = pushPayload(S);
+    const dimsBefore = [el.gridCols.value, el.gridRows.value].map(String);
+    const physBefore = [el.physWaferDia.value, el.physChipX.value, el.physChipY.value,
+                        el.physOffsetX.value, el.physOffsetY.value, el.physEdgeMargin.value].map(String);
+
+    // -- THE NEGATIVE CONTROL, run by doing what the deleted lines did ----------------
+    // Not a model: the two writes are literally performed, the REAL renderer re-runs, and the
+    // REAL Push iterator is read. If this number were 0 the fixture would prove nothing.
+    S.currentRotation = PRESET_4A.rotation; S.currentSide = PRESET_4A.side;
+    S.boundingBoxCache = {};
+    const payloadCtl = pushPayload(S);
+    const wouldMove = Object.keys(payloadBefore)
+      .filter(k => k in payloadCtl && payloadCtl[k] !== payloadBefore[k]).length;
+    const wouldLeave = Object.keys(payloadBefore).filter(k => !(k in payloadCtl)).length;
+    eq('P/negative-control-is-live', true, wouldMove + wouldLeave > 0,
+       `writing the preset's orientation moves ${wouldMove} and strands ${wouldLeave} of `
+       + `${Object.keys(payloadBefore).length} Push coordinates; at 0 this fixture is dead`);
+    // put the operator's orientation back and confirm the screen returns to where it was
+    S.currentRotation = PANEL_4A.rotation; S.currentSide = PANEL_4A.side;
+    S.boundingBoxCache = {};
+    eq('P/control-is-reversible', payloadBefore, pushPayload(S),
+       'if restoring the orientation did not restore the payload the comparison below is unsound');
+
+    // -- now the shipped path --------------------------------------------------------
+    S.applyPresetObject(PRESET_4A);
+    const payloadAfter = pushPayload(S);
+
+    eq('P/orientation-untouched', [PANEL_4A.rotation, PANEL_4A.side],
+       [S.currentRotation, S.currentSide]);
+    eq('P/preset-really-declares-a-different-orientation', true,
+       PRESET_4A.rotation !== PANEL_4A.rotation && PRESET_4A.side !== PANEL_4A.side);
+    eq('P/no-coordinate-moved', [],
+       Object.keys(payloadBefore)
+         .filter(k => k in payloadAfter && payloadAfter[k] !== payloadBefore[k])
+         .slice(0, 8)
+         .map(k => `${k}: DB(${payloadBefore[k].replace('_', ',')}) -> DB(${payloadAfter[k].replace('_', ',')})`));
+    eq('P/no-cell-left-the-payload', [],
+       Object.keys(payloadBefore).filter(k => !(k in payloadAfter)).slice(0, 8));
+    eq('P/payload-is-not-empty', true, Object.keys(payloadBefore).length > 0);
+    // the GEOMETRY half did apply - a preset that applies nothing at all would pass the above
+    eq('P/geometry-applied', physBefore,
+       [el.physWaferDia.value, el.physChipX.value, el.physChipY.value,
+        el.physOffsetX.value, el.physOffsetY.value, el.physEdgeMargin.value].map(String));
+    eq('P/dimensions-unchanged', dimsBefore, [el.gridCols.value, el.gridRows.value].map(String));
+
+    // -- the ignored declaration is stated once, and it claims nothing moved ----------
+    const notes = log.toasts.filter(t => /\ubc29\ud5a5\(.*\)\uc740 \uc801\uc6a9\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4/.test(t.msg));
+    eq('P/ignored-orientation-stated-once', 1, notes.length,
+       JSON.stringify(log.toasts.map(t => t.msg.slice(0, 44))));
+    eq('P/notice-is-info', ['info'], notes.map(t => t.kind));
+    eq('P/notice-names-the-screen-orientation', true,
+       /90\u00b0 \u00b7 \ub4b7\uba74/.test(notes[0] ? notes[0].msg : ''), notes[0] && notes[0].msg);
+    eq('P/notice-claims-no-cell-moved', true,
+       /\uc88c\ud45c\ub3c4 \uadf8\ub300\ub85c/.test(notes[0] ? notes[0].msg : ''), notes[0] && notes[0].msg);
+
+    evidence.push(`[P] aa123_a-shaped map (29x25, rot 90 - back, chip 11x13) + preset 4A `
+      + `(rot 0 - front, IDENTICAL physical spec): ${Object.keys(payloadBefore).length} Push `
+      + `coordinates, 0 moved and 0 stranded. Had the two orientation writes stayed, `
+      + `${wouldMove} would have been renumbered and ${wouldLeave} would have left the payload`);
+  }
+
+  // A preset whose declared orientation MATCHES the screen says nothing - the notice is about
+  // a declaration being ignored, and nothing is ignored when the two already agree. Without
+  // this, the toast would fire on the ordinary rot-0 case, which is most of them.
+  {
+    const { sandbox: S, log } = buildEnv(src);          // PANEL_BEFORE is rot 0 / front
+    S.applyPresetObject({ name: 'CORE', phys_chip_x: 7, phys_chip_y: 7, rotation: 0, side: 'front' });
+    eq('P/agreeing-orientation-is-silent', [],
+       log.toasts.filter(t => /\ubc29\ud5a5\(.*\)\uc740 \uc801\uc6a9\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4/.test(t.msg)).map(t => t.msg));
+    eq('P/agreeing-orientation-left-the-screen-alone', [0, 'front'], [S.currentRotation, S.currentSide]);
+  }
+  // A preset that declares NO orientation at all (the standard branch's no-mask spec is one)
+  // is silent too - there is nothing to report.
+  {
+    const { sandbox: S, log } = buildEnv(src, { panel: { ...PANEL_BEFORE, rotation: 270, side: 'back' } });
+    S.applyPresetObject({ phys_wafer_dia: 300, phys_chip_x: 1, phys_chip_y: 1,
+                          phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 });
+    eq('P/undeclared-orientation-is-silent', [],
+       log.toasts.filter(t => /\ubc29\ud5a5\(.*\)\uc740 \uc801\uc6a9\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4/.test(t.msg)).map(t => t.msg));
+    eq('P/undeclared-orientation-left-the-screen-alone', [270, 'back'], [S.currentRotation, S.currentSide]);
+  }
+
   // ══ F5c ═════════════════════════════════════════════════════════════════════════════
   const OK_BODY = {
     table: 'dt_map', map_key: 'L1', canonical_map_key: 'L1', status: 'ok',
@@ -1170,8 +1283,20 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq('F5c/ok/phys-written', [300, 11, 13, 1, 2, 3],
        [parseFloat(el.physWaferDia.value), parseFloat(el.physChipX.value), parseFloat(el.physChipY.value),
         parseFloat(el.physOffsetX.value), parseFloat(el.physOffsetY.value), parseFloat(el.physEdgeMargin.value)]);
-    eq('F5c/ok/orientation-written', [180, 'back'], [S.currentRotation, S.currentSide],
-       'a routed preset declares the whole spec — unlike F6 adoption, rotation/side are part of it');
+    // ── INVERTED. It used to read `orientation-written` and expect [180,'back'] ────────
+    // 🔴 That assertion scored the two writes in `applyPresetObject` that renumbered 173 of
+    //    187 dies on `aa123_a` + preset `4A`. Orientation is the operator's — it belongs to
+    //    the rotate/flip controls — so a preset, routed or chosen, applies GEOMETRY ONLY.
+    //    The inverse is asserted rather than the assertion deleted: the write coming back is
+    //    exactly what has to go red.
+    eq('F5c/ok/orientation-NOT-written', [0, 'front'], [S.currentRotation, S.currentSide],
+       'a geometry preset states geometry; rotation/side stay with the operator');
+    eq('F5c/ok/orientation-axis-is-live', true,
+       OK_BODY.preset.rotation !== 0 || OK_BODY.preset.side !== 'front',
+       'if the routed preset declared the screen orientation the assertion above is vacuous');
+    eq('F5c/ok/ignored-orientation-is-stated-once', 1,
+       log.toasts.filter(t => /방향\(.*\)은 적용하지 않았습니다/.test(t.msg)).length,
+       JSON.stringify(log.toasts.map(t => t.msg.slice(0, 44))));
     eq('F5c/ok/one-request', 1, log.requests.filter(x => /preset-routing/.test(x)).length);
     eq('F5c/ok/announced', true, log.toasts.some(t => /규격을 라우팅했습니다/.test(t.msg)));
   }
@@ -1332,6 +1457,29 @@ const MUTATIONS = [
    s => s.replace(`    const internal = !!e && (e.name === 'TypeError' || e.name === 'ReferenceError'
       || e.name === 'RangeError' || e.name === 'SyntaxError');`,
                   '    const internal = true;')],
+  // -- [P] the two orientation writes, and every way they can come back ----------------
+  //
+  // The anchor is the line that REPLACED them. If `applyPresetObject` is reshaped so that
+  // `const declaredRot` no longer appears verbatim, these report MUTATION DID NOT APPLY
+  // rather than passing silently.
+  ['P1 applyPresetObject writes the preset rotation again (half the aa123_a defect)',
+   s => s.replace('  const declaredRot = (preset.rotation === undefined || preset.rotation === null)',
+                  '  if (preset.rotation !== undefined) currentRotation = preset.rotation;\n'
+                  + '  const declaredRot = (preset.rotation === undefined || preset.rotation === null)')],
+  ['P2 applyPresetObject writes the preset side again (the other half)',
+   s => s.replace('  const declaredRot = (preset.rotation === undefined || preset.rotation === null)',
+                  '  if (preset.side !== undefined) currentSide = preset.side;\n'
+                  + '  const declaredRot = (preset.rotation === undefined || preset.rotation === null)')],
+  ['P3 both writes restored verbatim (the shipped defect, put back)',
+   s => s.replace('  const declaredRot = (preset.rotation === undefined || preset.rotation === null)',
+                  '  if (preset.rotation !== undefined) currentRotation = preset.rotation;\n'
+                  + '  if (preset.side !== undefined) currentSide = preset.side;\n'
+                  + '  const declaredRot = (preset.rotation === undefined || preset.rotation === null)')],
+  ['P4 the ignored declaration goes unstated (a preset silently drops what it declared)',
+   s => s.replace('  if (ignoredRot !== null || ignoredSide !== null) {', '  if (false) {')],
+  ['P5 the notice fires whenever an orientation is declared, agreeing or not (toast on every preset)',
+   s => s.replace('  if (ignoredRot !== null || ignoredSide !== null) {',
+                  '  if (declaredRot !== null || declaredSide !== null) {')],
   // ── F5c ───────────────────────────────────────────────────────────────────────────────
   ['M10 applyRoutedPreset applies on any status',
    s => s.replace("  if (status !== 'ok' || !resp.preset) {", '  if (false) {')],

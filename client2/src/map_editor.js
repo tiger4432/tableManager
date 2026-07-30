@@ -2493,8 +2493,46 @@ function applyPresetObject(preset) {
   if (preset.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = preset.phys_offset_y;
   if (preset.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.phys_edge_margin;
 
-  if (preset.rotation !== undefined) currentRotation = preset.rotation;
-  if (preset.side !== undefined) currentSide = preset.side;
+  // ═══ A GEOMETRY PRESET IS A STATEMENT ABOUT GEOMETRY. ORIENTATION IS THE OPERATOR'S. ═══
+  //
+  // 🔴 THE DEFECT. These two lines used to read
+  //        if (preset.rotation !== undefined) currentRotation = preset.rotation;
+  //        if (preset.side !== undefined) currentSide = preset.side;
+  //    and every stored preset declares rot 0 / front, so applying ANY preset to a rotated or
+  //    back-side map silently reset it. `getPhysicalCoords` reads rotation and side, so the
+  //    physical key of every cell changed and with it the coordinate ⚡ Push writes.
+  //    Specimen `aa123_a` + preset `4A`: byte-identical physical spec, unchanged grid,
+  //    unchanged bounding box, **173 of 187 dies renumbered**, and Push proceeded — the
+  //    contrast gate sees only cells that leave the grid or the circle, and none did.
+  //    The control with exactly these two lines deleted changed nothing else.
+  //
+  // 🔴 THE OPERATOR ALREADY OWNS ORIENTATION, through the rotate buttons and the front/back
+  //    radios. A preset re-asserting it is the screen moving without consent, which is the one
+  //    thing this domain forbids. So it is not moved — not here, and not on any caller's
+  //    behalf (`loadSelectedPreset`, `applyRoutedPreset`, the material-frame empty-map open,
+  //    and the 표준 branch's no-mask spec all reach this one function).
+  //
+  // ⚠️ `maps.json` is operator-editable, so a preset CAN still declare an orientation. It is
+  //    read and ignored — never silently. Announcing after the fact is legitimate precisely
+  //    because nothing changed; it is a report that the screen stayed put, not notice of a
+  //    move. Reads stay frictionless: one info toast, no dialog, no new control.
+  const declaredRot = (preset.rotation === undefined || preset.rotation === null)
+    ? null : (Number(preset.rotation) || 0);
+  const declaredSide = (preset.side === 'back' || preset.side === 'front') ? preset.side : null;
+  const ignoredRot = (declaredRot !== null && declaredRot !== currentRotation) ? declaredRot : null;
+  const ignoredSide = (declaredSide !== null && declaredSide !== currentSide) ? declaredSide : null;
+  if (ignoredRot !== null || ignoredSide !== null) {
+    const sideWord = (s) => (s === 'back' ? '뒷면' : '앞면');
+    const declared = [ignoredRot !== null ? `${ignoredRot}°` : '',
+                      ignoredSide !== null ? sideWord(ignoredSide) : ''].filter(Boolean).join(' · ');
+    console.info(`[Map Editor] preset '${preset.name || ''}' declares orientation `
+      + `(rotation=${declaredRot}, side=${declaredSide}); NOT applied — the screen keeps `
+      + `rotation=${currentRotation}, side=${currentSide}. Orientation belongs to the operator's `
+      + 'rotate/flip controls, and changing it here renumbers every cell.');
+    showToast(`규격만 적용했습니다 — 이 프리셋이 선언한 방향(${declared})은 적용하지 않았습니다. `
+      + `회전·면은 화면의 ${currentRotation}° · ${sideWord(currentSide)} 그대로이고, 셀 좌표도 `
+      + `그대로입니다.`, 'info', { dedupeKey: 'preset_orientation_ignored' });
+  }
 
   boundingBoxCache = {};
   updateOrientationUI();
