@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE
+from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE, DEFAULT_PG_URL
 from database import models, schemas, crud
 import uuid 
 import os
@@ -32,6 +32,7 @@ for uv_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
 # Load table config and initialize dynamic database models
 import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
+import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
@@ -66,7 +67,7 @@ except Exception as e:
     logger.error(f"Failed to init dynamic models: {e}")
 
 
-def bootstrap_database_schema():
+def bootstrap_database_schema(bind=None):
     """[#16a] Build/patch the physical schema. Called from startup, NOT at import.
 
     Why it moved: these two statements used to run at module import, so anything
@@ -87,10 +88,27 @@ def bootstrap_database_schema():
 
     This function always does the work; deciding WHEN to run it belongs to the
     caller (see the guard at the call site in `startup_event`).
+
+    `bind` defaults to the shared engine and exists so this refusal can be
+    exercised against a target that is NOT the process's own engine - both by a
+    caller that builds its own, and by the regression test, which must be able
+    to prove the refusal without ever pointing the real engine at production.
+
+    [#16a] The refusal below is a PURE DECISION - taken before a connection is
+    opened, so a test process is turned away without the database being
+    contacted at all. Outside pytest it returns immediately and this function
+    behaves exactly as it did: `create_all` stays unguarded, and an unreachable
+    database still aborts the boot.
     """
-    models.Base.metadata.create_all(bind=engine)
+    target = engine if bind is None else bind
+    db_safety.require_test_database(
+        str(target.url),
+        context="boot-time DDL (Base.metadata.create_all)",
+        production_url=DEFAULT_PG_URL,
+    )
+    models.Base.metadata.create_all(bind=target)
     try:
-        models.sync_dynamic_tables_schema(engine)
+        models.sync_dynamic_tables_schema(target)
     except Exception as e:
         logger.error(f"Failed to sync dynamic tables schema: {e}")
 

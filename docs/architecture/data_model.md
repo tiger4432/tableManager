@@ -34,7 +34,7 @@
 - 그래프 동기화 플래그: `is_graph_synced`, `needs_graph_rollback`, `graph_synced_at`.
 - 신규 컬럼은 이미 매핑된 클래스에 핫스왑되며, `sync_dynamic_tables_schema`가 누락 컬럼에 `ALTER TABLE ADD COLUMN` 발행(기존 테이블 전용).
 - **신규 테이블의 물리 CREATE**는 `create_missing_dynamic_tables`(이슈 #7)가 담당하며, 공용 진입점 `refresh_dynamic_models(engine)`가 리로드 3경로(웹서버 reload-configs / config_watcher / 워커 SYSTEM_RELOAD) 전부에 배선되어 있습니다. (함수 앵커: [CODE_MAP §5](./CODE_MAP.md#5-소형-서버-모듈))
-- **부팅 시 물리 스키마 구축은 `main.bootstrap_database_schema()`** — `create_all` + `sync_dynamic_tables_schema`를 묶은 **명시적 기동 단계**이며 `startup_event`가 호출합니다. (2026-07-29 #16ⓐ: 예전에는 `main.py` **모듈 import 시점**에 실행돼, 앱을 import하기만 해도 그때 해석된 `DATABASE_URL`—미설정이면 **운영 DB**—로 DDL이 나갔습니다. 삭제가 아니라 **이동**입니다. 신규 설치가 "config에 테이블 추가 → 기동 → 즉시 사용"으로 테이블을 얻는 경로는 그대로 살아 있어야 하기 때문입니다.)
+- **부팅 시 물리 스키마 구축은 `main.bootstrap_database_schema()`** — `create_all` + `sync_dynamic_tables_schema`를 묶은 **명시적 기동 단계**이며 `startup_event`가 호출합니다. (2026-07-29 #16ⓐ: 예전에는 `main.py` **모듈 import 시점**에 실행돼, 앱을 import하기만 해도 그때 해석된 `DATABASE_URL`—미설정이면 **운영 DB**—로 DDL이 나갔습니다. 삭제가 아니라 **이동**입니다. 신규 설치가 "config에 테이블 추가 → 기동 → 즉시 사용"으로 테이블을 얻는 경로는 그대로 살아 있어야 하기 때문입니다.) **2026-07-31 완결**: 이동만으로는 부족했습니다 — 남은 방어가 `conftest.py`의 `DATABASE_URL` 핀 하나였고 그것은 테스트 트리 소유라 지우면 함께 사라졌습니다. 지금은 `server/db_safety.py`가 **운영 코드 쪽에서** 거절하며, pytest 프로세스에서는 sqlite 또는 `ASSY_TEST_DATABASE_URL`이 지목한 대상 외에는 **연결조차** 열리지 않습니다(운영에서는 전부 무동작 — `create_all`은 여전히 무가드). 상세는 [architecture/backend §1](./backend.md).
 
 ---
 

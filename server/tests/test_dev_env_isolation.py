@@ -5,9 +5,15 @@ The isolation rests on two small things that nothing else asserts, and a guard
 nothing exercises is indistinguishable from no guard:
 
   1. conftest.py pins DATABASE_URL before `from main import app`. Without it,
-     main.py's module-level `Base.metadata.create_all(bind=engine)` issues DDL to
+     the boot-time `Base.metadata.create_all(bind=engine)` issues DDL to
      whatever DATABASE_URL resolves to - unset, that is the live production
-     database (board issue #16a).
+     database (board issue #16a). That statement has since moved out of module
+     scope into `main.bootstrap_database_schema()`, and the pin is no longer the
+     only thing standing between the suite and production: see
+     `test_ddl_never_reaches_production.py`, which puts the refusal in the
+     production modules so deleting this pin fails the suite loudly instead of
+     silently removing the protection. The tests below still guard the pin
+     itself, because it is what keeps every later import honest.
   2. server/paths.py is the single override point for config/ and
      ingestion_workspace/. If a module goes back to building those paths from its
      own __file__, an isolated server silently reads and writes production again.

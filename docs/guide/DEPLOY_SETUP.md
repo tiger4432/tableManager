@@ -455,6 +455,25 @@ python server/scripts/dev_env/devenv.py watcher-down
 - 라이브 검사는 방금 읽은 환경변수가 아니라 **실제로 열린 세션에 `SELECT current_database()`를 묻는다.** `assy_qa`라고 적혀 있지만 다른 데로 붙는 URL이 여기서 잡힌다.
 - **증명하지 못하는 것도 거부**다(DB 도달 불가·URL 파싱 실패 = 경고가 아니라 거부).
 
+### 5.2 테스트 스위트는 실제 DB에 닿지 못한다 (2026-07-31, #16ⓐ 완결)
+
+같은 종류의 사고가 워처가 아니라 **pytest**로 한 번 일어났다 — 스위트를 돌린 것만으로 운영 `assy_manager`에 빈 테이블이 생겼다. 방어가 `server/tests/conftest.py`의 `DATABASE_URL` 핀 하나뿐이었고, **핀은 테스트 트리가 하는 일**이라 지우면 방어도 사라졌기 때문이다.
+
+지금 거절은 **운영 코드**(`server/db_safety.py`)에 있고, pytest 프로세스 안에서만 무장한다.
+
+- 통과 조건은 **허용목록**이다 — **sqlite**이거나, **`ASSY_TEST_DATABASE_URL`이 명시적으로 지목한 URL**. 그 외에는 운영 이름이 아니어도 거절한다(차단목록은 운영 DB가 둘이 되는 날 열린다).
+- `ASSY_TEST_DATABASE_URL`에 **운영 DB를 적어도 거절**된다. 선언한다고 테스트 DB가 되지는 않는다.
+- 거절 층이 셋이다 — 공유 엔진은 **소켓이 열리기 전에**(`do_connect`), 테스트가 스스로 만든 엔진은 첫 쿼리 전에(`Engine` 클래스 훅), 부팅 DDL은 **연결을 아예 열지 않고**(순수 판정) 거절한다.
+- **운영에서는 전부 무동작**이다. `create_all`은 여전히 무가드이고, DB 불통이면 웹서버는 종전대로 시끄럽게 부팅에 실패해야 한다.
+
+격리 PostgreSQL(`assy_qa`)에 대고 스위트를 돌리려면 지목이 필요하다.
+
+```bash
+# 이 선언이 없으면 sqlite가 아닌 대상은 전부 거절된다
+ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
+  conda run -n assy_manager python -m pytest server/tests contracts -q
+```
+
 ---
 
 ## 6. 순서 요약

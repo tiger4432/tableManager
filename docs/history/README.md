@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **293개** 이력. (거버넌스 규칙 #4)
+> 총 **294개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-31 06:37** — [The Pin Was In The Test Tree So Deleting It Deleted The Protection](./20260731_063735_the_pin_was_in_the_test_tree_so_deleting_it_deleted_the_protection.md)
 - **2026-07-30 22:06** — [The Origin Is The Masks And A Cell Keeps Its Number](./20260730_220605_the_origin_is_the_masks_and_a_cell_keeps_its_number.md)
 - **2026-07-30 21:09** — [Catching The Error Was Never The Containment](./20260730_210944_catching_the_error_was_never_the_containment.md)
 - **2026-07-30 20:38** — [The Expected Count Was Stale And That Disarms The Check](./20260730_203809_the_expected_count_was_stale_and_that_disarms_the_check.md)
@@ -311,4 +312,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-07-30 by gen_index.py*
+*Last generated: 2026-07-31 by gen_index.py*

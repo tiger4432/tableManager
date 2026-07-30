@@ -13,14 +13,25 @@ from datetime import datetime
 # URL format: postgresql://[user]:[password]@[host]:[port]/[dbname]
 try:
     import paths as _paths
+    import db_safety as _db_safety
 except ImportError:  # imported without server/ on sys.path (same guard as crud.py)
     import sys as _sys
     _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     import paths as _paths
+    import db_safety as _db_safety
 
 DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
 # DB_URL_SOURCE: "env" | "config file" | "default" - logged (masked) at boot by main.py.
 SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE = _paths.resolve_database_url(DEFAULT_PG_URL)
+
+# [#16a] Arm the test-process guard BEFORE any engine exists in this process.
+# Outside pytest this registers a listener that always returns immediately; the
+# production connection path is unchanged. Inside a test process it makes a
+# connection to anything but an isolated database impossible - including from an
+# engine a test builds for itself, which is why it is registered on the Engine
+# CLASS. See server/db_safety.py for why this lives in production code rather
+# than in conftest.py.
+_db_safety.install_global_test_database_guard(production_url=DEFAULT_PG_URL)
 
 # SQLite 호환성을 위해 체크 (SQLite 파일이 존재하고 URL에 sqlite가 포함된 경우)
 is_sqlite = "sqlite" in SQLALCHEMY_DATABASE_URL
@@ -38,6 +49,14 @@ else:
         pool_recycle=3600,      # 커넥션 재사용 시간
         connect_args={"options": "-c client_encoding=utf8"} # [핵심] DB 연결 시 UTF-8 강제
     )
+
+# [#16a] This is the one engine in the process built from the RESOLVED url - i.e.
+# the only one that can be pointed at production by an ambient environment
+# variable rather than by someone typing production's credentials into a test.
+# It gets the stricter hook: `do_connect` refuses before the socket opens, so a
+# test process never contacts a real database at all, not even to be turned away.
+_db_safety.install_test_database_guard(engine, production_url=DEFAULT_PG_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
