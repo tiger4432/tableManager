@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**①** `candidate_for` + `auto_confirm` 신설 — §7) | **Owner:** 총괄
 > 상위: [폴더 인덱스](./README.md) · 스펙 정본은 [ENRICHMENT_QUEUE_SPEC](../../spec/ENRICHMENT_QUEUE_SPEC.md) · 절차 요약은 [CONFIG_GUIDE §3-S7](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -26,6 +26,7 @@
 
 - **대량 원본 테이블의 결손 필드(사람이 판단해 채우는 값)를 워크리스트로 만들 때** — 규칙 하나가 ① 워크리스트/참조뷰 API ② 체인 dedup 투영(판단키당 1행 upsert) ③ 온톨로지 `RESOLVED_AS` 승격을 동시에 켭니다
 - 판단에 참고할 **참조뷰(SQL)** 를 추가/수정할 때
+- **후보가 1개인 항목의 확인 클릭을 없앨 때** — 참조뷰에 `candidate_for`를 선언하고 규칙에 `auto_confirm`을 켭니다(§7)
 
 ## 2. `decision_key` 계약 — source와 derived에서 같아야 하는가?
 
@@ -157,7 +158,65 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `list_columns` | | 워크리스트 표시 단서 |
 | `aggregations` | | 서버 전용 집계 — v1은 `"count"`만 |
 | `enabled` | | 기본 `true` |
+| `auto_confirm` | | **기본 `false`** — 후보가 1개일 때 사람 없이 자동 확정(§7) |
 | `reference_views[]` | | `{label, query, limit}` 또는 `{label, query_ref}` — `query`는 서버에만 존재(클라엔 `label`만), `limit` 기본 200 · 최대 1000 |
+| `reference_views[].candidate_for` | | `{target_field: 뷰 결과 컬럼}` — 이 뷰의 어느 컬럼이 어느 target의 **후보값**인지 선언(§7). 없으면 그 뷰는 **표시 전용** |
 
 - 거부는 규칙 단위 + 조용함 — 워크리스트가 조용히 비면 로그의 검증 에러부터.
 - `RESOLVED_AS`를 온톨로지에 중복 선언하지 마십시오(자동 승격).
+
+## 7. `candidate_for` + `auto_confirm` — 후보가 1개면 판단이 아니라 확인 (2026-07-30, ①)
+
+참조뷰 결과가 **유일한 값 하나**면 사람은 판단하는 게 아니라 **확인**하는 중입니다. 그 확인을 없애는 두 개의 키입니다.
+
+```jsonc
+"reference_views": [
+  { "label": "lot-slot 웨이퍼 이력",
+    "query": "SELECT ... FROM wafer_slot_history WHERE lot = :core_lot AND slot = :core_slot",
+    "candidate_for": { "wafer_id": "wafer_id" } },      // ← 이 뷰의 wafer_id 컬럼이 target wafer_id의 후보
+  { "label": "같은 lot 전체 슬롯",
+    "query": "SELECT ... WHERE lot = :core_lot" }        // ← 선언 없음 = 표시 전용 (후보 아님)
+],
+"auto_confirm": true                                     // ← 없으면 false (제안만, 쓰지 않음)
+```
+
+### 7.1 왜 컬럼명으로 유추하지 않는가 (선언만 인정)
+
+**위 두 뷰는 둘 다 `wafer_id` 컬럼을 가집니다.** 하지만 첫 번째는 lot+slot으로 조회해 후보가 1개, 두 번째는 lot만으로 조회해 **후보가 N개**입니다. 컬럼명이 같다고 후보로 쓰는 구현은 두 번째 뷰까지 후보로 삼아 **그레인 사고로 고른 값을 자동 확정**합니다. 맵 오버레이의 `derive_table_binding`이 첫 데이터 컬럼을 추측해 DECOY를 붙인 것이 라이브에서 실증된 뒤로, 이 시스템에서 바인딩은 **선언만** 인정합니다.
+
+### 7.2 거절은 전부 이름이 있습니다 (무응답 금지)
+
+| 사유 | 뜻 | 결과 |
+|---|---|---|
+| `not_declared` | 그 target에 `candidate_for`를 선언한 뷰가 없다 | 큐에 남음 |
+| `no_candidate` | 선언된 뷰가 돌았지만 비어 있지 않은 값이 없다 | 큐에 남음 |
+| `ambiguous` | 서로 다른 값이 2개 이상 — **이게 바로 사람의 판단** | 큐에 남음 |
+| `view_error` · `missing_bind` · `candidate_column_missing` | 선언된 뷰를 **평가하지 못했다** | 큐에 남음 |
+| `cell_has_provenance` | 그 셀에 이미 어떤 소스든 기록이 있다 | 건드리지 않음 |
+| `over_cap` | 작업 단위 상한 초과 | 큐에 남음(다음 인제션이 처리) |
+
+⚠️ **평가하지 못한 뷰는 "값 없음"이 아니라 "모름"입니다.** 선언된 뷰 중 하나라도 실패하면, 살아남은 뷰가 값 1개를 냈더라도 **거절**합니다(실패한 뷰가 모순값을 갖고 있었을 수 있음). 미해결 행은 **눈에 보이게 미해결로 남습니다.**
+
+### 7.3 `auto_confirm`을 켜기 전에 (기본이 OFF인 이유)
+
+M3의 `auto_register_map_meta`와 **같은 형태**입니다 — 부재 시에만 쓰고, 소스 `enrichment_auto_confirm`은 `SOURCE_PRIORITY` **미등재 = 최하위(99)** 라 사람 편집(priority 0)이 항상 이깁니다. 다른 점은 **기본값뿐**이며, 그 근거는:
+
+- 이 값은 **큐 소속을 정의하는 필드**입니다(`queue_filters`: target blank). 자동 확정이 틀리면 그 항목은 워크리스트에서 **빠져서 다시 검토되지 않습니다.**
+- **철회 경로가 부분적입니다** — R2(stale 소스 철회, 2026-07-30 착지)로 `enrichment_auto_confirm` 레이어를 되돌릴 수 있지만, 되돌린 뒤 그 셀은 provenance가 남아 재확정되지 않습니다.
+
+그래서 켜는 것은 **명시적 옵트인**입니다. 켠 뒤 무엇이 자동 확정됐는지는 셀의 `priority_source`(= `enrichment_auto_confirm`)와 AuditLog로 확인합니다.
+
+⚠️ **표기 통일을 먼저 확인하십시오.** 여러 뷰를 선언하면 자동 확정은 **데이터가 있는 뷰의 표기를 그대로 채택**합니다. 2026-07-30 실측: `wafer_slot_history`는 `WF-C-21`(단축형) 7행, `wafer_process`는 `WF-LOT-C-21`(전체형) 10,372행으로 **같은 (lot, slot)에 두 표기가 공존**하고, 사람이 채운 `core_wafer_map` 11행에도 두 표기가 섞여 있었습니다. 표기가 섞인 상태로 켜면 자동 확정이 한쪽 표기를 조용히 표준화합니다.
+
+### 7.4 켜기 전에 재보기 — 쓰지 않고 측정
+
+```bash
+# 지금 큐에서 몇 건이 사람 없이 해소되는가 (아무것도 쓰지 않음)
+conda run -n assy_manager python server/scripts/enrichment_insights.py confirm <규칙> --ignore-knob
+# 결손의 원인 분류: 파이프라인 버그 / 기계로 해소 가능 / 진짜 사람 일감
+conda run -n assy_manager python server/scripts/enrichment_insights.py classify <규칙>
+# 반복된 사람 판단이 규칙이 됐는지 — 제안만, 절대 config를 쓰지 않음
+conda run -n assy_manager python server/scripts/enrichment_insights.py propose <규칙> --min-support 3
+```
+
+기존 큐(체인 훅은 신규 쓰기만 봅니다)에 소급 적용하려면 `confirm <규칙> --apply` — 단 규칙의 `auto_confirm`이 `true`여야 합니다(노브가 곧 동의입니다).

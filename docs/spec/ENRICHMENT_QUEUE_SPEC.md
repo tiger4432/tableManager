@@ -1,6 +1,6 @@
 # 🧩 Enrichment Queue (결손 보정 워크리스트) — 리빙 스펙
 
-> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters` 신설 — 큐 술어 서버 단일 조성) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
+> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-30 (§5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류 — 셋 다 서버측, 경계 계약 무변경) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성:** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(`enrichment.html` 컨베이어 + 참조뷰 탭 + 메인 그리드 결손 배지). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 
@@ -87,6 +87,49 @@ queue_filters = { <모든 decision_key 컬럼>: {type: "notBlank"} } ∪ { <모�
 - **조성 지점은 서버 `enrichment_config.to_public_rule` 하나**이고, 세 클라 소비처는 전부 이 객체를 그대로 씁니다 — **워크리스트·카운트·배지가 서로 다른 수를 말할 수 없습니다.** (구버전 서버 폴백: 필드 부재 시 클라는 종전 target-blank-only로 동작.)
 - **데이터는 지우지 않습니다** — 빈 키 행은 큐에서만 빠지고 일반 그리드에는 그대로 보입니다.
 - 참고: 같은 커밋의 소급 backfill 스크립트(`server/scripts/backfill_enrichment.py` — 파생 **행 부재**만 생성, 값 결손은 큐 소관, dry-run 기본·`--apply`·provenance `enrichment_backfill` priority 99)는 운영 도구이며 이 계약의 일부가 아닙니다.
+
+## 5.2 ① 후보가 1개면 판단이 아니라 확인 (2026-07-30 · 서버 착지)
+
+`reference_views` 결과가 **유일값 하나**면 사람은 판단이 아니라 확인 중이다. 두 개의 **선언**이 그 확인을 없앤다.
+
+- `reference_views[].candidate_for = {target_field: 뷰_결과_컬럼}` — 어느 뷰의 어느 컬럼이 어느 target의 후보인지. **선언 없는 뷰는 표시 전용**이며 절대 후보가 되지 않는다.
+- 규칙별 `auto_confirm` (**기본 `false`**) — 후보 1개일 때 사람 개입 없이 채운다.
+
+**유도 금지의 근거는 실 config가 증명한다**: `core_wafer_attribution`의 뷰 #0(lot+slot 조회 → 후보 1개)과 뷰 #1(lot만 조회 → 후보 N개)이 **둘 다 `wafer_id` 컬럼을 가진다.** 컬럼명 유도 구현은 #1까지 후보로 삼아 그레인 사고로 고른 값을 자동 확정한다(맵 오버레이 `derive_table_binding` DECOY의 행 버전).
+
+**M3 `auto_register_map_meta`와 같은 형태** — 부재 시에만, 소스 `enrichment_auto_confirm`은 `SOURCE_PRIORITY` 미등재 = 최하위(99)이므로 `user`(0)가 항상 이긴다. 노브는 작업 단위 경계에서 1회 읽고, 비-boolean은 경고 1회 후 기본값. **다른 점은 기본값뿐이며 근거는 두 가지다**: ⓐ 이 필드의 blank가 **큐 소속을 정의**하므로(§5.1) 오확정은 항목을 워크리스트에서 빼 재검토를 막는다 ⓑ 철회가 부분적이다(R2로 레이어는 되돌리지만 그 셀은 provenance가 남아 재확정되지 않는다).
+
+**거절은 전부 이름이 있다** — `not_declared` · `no_candidate` · `ambiguous`(= 바로 그 사람의 판단) · `view_error` · `missing_bind` · `candidate_column_missing` · `cell_has_provenance` · `over_cap`. 그리고 **평가 못 한 뷰는 "값 없음"이 아니라 "모름"** 이므로, 선언된 뷰 중 하나라도 실패하면 살아남은 뷰가 값 1개를 냈어도 거절한다.
+
+**확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
+
+**구현**: `server/enrichment_candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/enrichment_analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
+
+> 🚧 **1클릭 확정(클라 절반)은 미착지 — 총괄 승인 대기.** 필요한 것은 ⓐ `GET /enrichment/rules` 응답의 **가산 필드**(어느 뷰가 어느 target의 후보 원천인지) ⓑ "이 키에 후보가 1개인가"를 묻는 엔드포인트. 둘 다 `server/main.py`(동시 라운드 점유) + **경계 계약**이다. 술어는 서버에 완성돼 있으므로 클라가 재구현할 필요는 없다.
+
+## 5.3 ② 반복된 판단을 룰로 승격 — 제안만 (2026-07-30)
+
+같은 패턴을 N번 풀었으면 그것은 규칙이다. `enrichment_analysis.analyze_promotions`가 **사람이 채운 셀만**(`CellSource.source_name == "user"`) 훑어 함수적 종속을 찾고 **제안**한다.
+
+- **선행부는 `decision_key`의 진부분집합**이다 — 임의 선택이 아니라 기존 계약의 결과다: 승격물은 참조뷰로 표현되고 `_validate_view_sql`이 바인드를 decision_key 컬럼으로 제한하므로, 실행 가능한 형태는 "판단키의 일부가 target을 결정한다"뿐이다. 단일 컬럼 판단키는 진부분집합이 없어 `no_proper_subset`으로 거절한다.
+- **승격물은 이 시스템이 이미 실행하는 것**이다 — `reference_views` 항목 + `candidate_for` 선언. 새 맵퍼도, 새 실행기도 없다. ①이 그것을 실행하므로 다음 동일 선행부 키는 **사람 개입 0**으로 해소된다.
+- **① 의 모호 거절이 사실상의 철회다** — 선행부가 나중에 두 값에 대응하면 뷰가 후보 2개를 내고 ①이 **거절**한다. 항목이 화석화되는 대신 사람의 판단으로 되돌아간다.
+- ⚠️ **자동 적용하지 않는다.** 충돌(같은 선행부 → 서로 다른 target 값)이 하나라도 있으면 그 선행부는 함수가 아니므로 제안 자체를 하지 않고 **거절 이유를 함께 보고**한다. config는 절대 쓰지 않는다.
+
+## 5.4 ④ 결손 원인 분류 (2026-07-30)
+
+큐는 근본적으로 다른 두 가지를 섞어 사람에게 청구하고 있었다. `enrichment_analysis.classify_queue`가 한 번 분류한다(**읽기 전용**).
+
+| 분류 | 뜻 | 성격 |
+|---|---|---|
+| `mapping_gap_same_name` | **소스에 그 값이 있는데** 아무것도 옮기지 않았다 | 🐞 **파이프라인 버그** — 사람이 파서 결함을 대신 갚는 것 |
+| `resolvable_from_reference` | 선언된 참조뷰가 후보 1개를 낸다 | ⚙️ 기계로 해소 가능(= ①) |
+| `ambiguous_reference` | 후보가 2개 이상 | 👤 **진짜 사람의 판단** |
+| `no_evidence` | 소스에 그 컬럼이 없고 후보도 없다 | 👤 진짜 일감("소스에 원래 없다") |
+| `no_source_rows` | 그 판단키의 원본 행이 없다 | 데이터 출처 이상 |
+| `unprobed` | 참조뷰 탐색 예산 초과 | 미판정(다른 분류로 접어 넣지 않는다) |
+
+**정직한 한계 2개를 명시한다**: ⓐ 버그 분류는 **소스 테이블의 같은 컬럼명**으로 판정한다 — 다른 이름으로 값을 나르는 소스 컬럼은 선언 없이는 찾을 수 없고, **추측하지 않는다**(오버레이 DECOY 교훈). ⓑ 참조뷰 탐색은 키당 SQL이므로 `probe_limit`으로 유계이며, 예산 초과분은 `unprobed`로 **따로 보고**한다.
 
 ## 6. 기존 시스템 통합
 

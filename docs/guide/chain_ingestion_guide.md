@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (M3 맵 메타 자동 등록이 체인 워커 경로에도 붙음 — 맵퍼 계약 변화 없음, 포인터 1건 추가) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -191,3 +191,59 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 - **신규 키**: 행 생성, `target_fields`는 NULL(결손) → blank 필터 워크리스트에 잡힘.
 - **기존 키**: 집계·단서 컬럼만 갱신. 맵퍼는 `target_fields`를 updates에 아예 포함하지 않으며(1차 방어), 설령 포함되더라도 source `chain_ingestion`(우선순위 최하)는 user(priority 0)를 이길 수 없습니다(2차 방어 — 레이어링).
 - 규칙 반영: 웹서버는 요청 시마다 재로드(무중단), 워커는 `SYSTEM_RELOAD`(`/admin/reload-configs`) 시 재파생.
+
+### 4.4 후보가 1개면 자동 확정 (① `candidate_for` + `auto_confirm`, 2026-07-30)
+
+참조뷰에 `candidate_for: {target_field: 뷰_결과_컬럼}`을 선언하면, 그 뷰가 판단키에 대해 **유일한 값 하나**를 낼 때 체인 워커가 그 값을 **부재 시에만** 채웁니다(규칙별 `auto_confirm`, 기본 OFF). 소스명은 `enrichment_auto_confirm` = `SOURCE_PRIORITY` 미등재 = **최하위(99)** 이므로 사람 편집이 항상 이깁니다. **맵퍼 코드는 바꿀 것이 없습니다** — 훅은 M3 맵 메타 훅 바로 뒤, 체인 쓰기 이후에 붙고 실패해도 체인 적재는 정상 완료됩니다. 선언·거절 사유·측정 절차의 정본은 [config/enrichment_rules §7](./config/enrichment_rules.md)입니다.
+
+⚠️ **컬럼명으로 유추하지 않습니다.** 같은 규칙의 두 뷰가 모두 `wafer_id` 컬럼을 가질 수 있고(하나는 판단키 전체로, 하나는 일부로 조회), 후자는 후보가 N개입니다. 선언한 뷰만 후보 원천입니다.
+
+## 🔁 5. Chain Replay — 룰을 기존 데이터에 다시 적용하기 (R1) / 낡은 소스 철회 (R2)
+
+체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
+
+```bash
+conda run -n assy_manager python server/scripts/chain_replay_cli.py list          # 룰 + 재적용 순서
+conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>    # dry-run
+conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰> --apply
+conda run -n assy_manager python server/scripts/chain_replay_cli.py replay-all     # 의존 순서대로 각 1회
+```
+
+### 5.1 왜 맵퍼를 그대로 재실행할 수 있는가 (측정된 전제)
+
+맵퍼는 **payload의 순수 함수**입니다 — `mappers/base.py`는 `payloads_to_df`만 제공하고, 실 맵퍼 진입점(`reserve_materials_from_plan(db, payload)` / `reserve_materials_batch_df(db, payloads)`)에 **파일 경로 인자도, `open()`도, `pd.read_*`도 없습니다.** 그래서 원본 파일 없이 재적용이 성립합니다. 새 맵퍼를 쓸 때 이 성질을 깨지 마십시오(payload 밖의 파일·전역 상태를 읽으면 재적용 결과가 라이브와 갈립니다).
+
+### 5.2 세 겹의 루프 가드 (자기 트리거 룰이 있으므로 필수)
+
+현 `chain_rules.json`은 `production_plan → inventory_master`와 **`inventory_master → inventory_master`(트리거 = 타깃)** 를 갖습니다. 자기 트리거가 실재하므로 가드는 선택이 아닙니다.
+
+| 겹 | 무엇 | 어디 |
+|---|---|---|
+| ① | **시작 시점 스냅샷 경계** — 트리거 = 타깃이면 시작 시점 `max(row_id)`까지만 읽어, 스캔이 **자기 산출물을 다시 만나지 않습니다** | `chain_replay.replay_rule` → `keyset_scan.iter_pages(max_row_id=...)` |
+| ② | **룰당 정확히 1회** — `replay-all`은 캐스케이드 재발화를 하지 않습니다 | `chain_replay.replay_all` |
+| ③ | **라이브 워커의 기존 필터** — 재적용 쓰기는 `source_name="chain_ingestion"`이고 워커는 그 이벤트를 이미 버립니다. **새 가드가 아니라 기존 가드의 재사용** | `process_chain_transaction_group` |
+
+**재적용 순서**는 계약입니다: 생산자(`→ inventory_master`)가 소비자보다 먼저 갑니다. 자기 간선은 순서에서 제외하고 ①로 다룹니다. **서로 다른 테이블 사이의 순환**은 올바른 순서가 없으므로 순환 경로를 이름으로 밝히며 **거부**합니다.
+
+### 5.3 R1이 절대 하지 않는 두 가지
+
+- **사람 값을 덮지 않습니다.** 쓰기 소스는 라이브 워커와 같은 `chain_ingestion`(우선순위 4)이고 사람은 `user`(0)입니다 — 레이어링이 이미 처리하므로 R1에 특례 코드가 없습니다. dry-run 보고에 **`cells a human protects`** 수치가 함께 나옵니다(안전성을 말이 아니라 수로 제시).
+- **빈 값을 쓰지 않습니다.** "이 셀에 룰이 더는 값을 만들지 않는다"는 **빈 값과 다른 진술**이고, 그 진술을 할 수 있는 것은 R2뿐입니다. R1은 그런 셀을 **철회 후보**로 보고만 하고 넘어갑니다.
+
+### 5.4 R2 — 낡은 소스 철회 (레이어 단위, 행 단위 아님)
+
+```bash
+conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <테이블> <소스> --columns col1,col2
+conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <테이블> <소스> --columns col1 --apply
+```
+
+`cell_sources` 행 **하나**를 지우고 남은 소스로 `compute_priority_value`를 다시 계산해 표시값을 되돌립니다 — 두 소스가 있었다면 **아래 레이어가 드러나고, 구멍이 남지 않습니다.** 이것이 H2-b(소스가 과거에 주장했으나 더는 주장하지 않는 것은 남겨두지 않고 적극 제거)를 **셀 버전 단위**로 옮긴 것입니다. 행 삭제나 컬럼 NULL 처리는 다른 소스의 기여까지 파괴하므로 하지 않습니다.
+
+🔴 **사람 값을 지울 수 있는 경로가 없습니다 — 두 거절로 보장합니다.**
+
+| 거절 | 이유 |
+|---|---|
+| `user` 소스 철회 요구 | 사람이 입력한 값입니다. 도구가 지우지 않습니다 — 셀을 편집하십시오 |
+| 그 소스를 사람이 **핀**한 셀(`manual_priority_source`) | 핀은 "이 소스를 보여 달라"는 사람의 선택입니다. 조용히 철회하면 그 선택을 뒤집습니다 → `pinned_skipped`로 건너뛰고 이유를 남깁니다 |
+
+**철회는 무음이 아닙니다.** 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new 값이 남습니다. 클라의 **기존 셀 이력 타임라인**이 AuditLog를 읽으므로, 빈칸을 발견한 운영자가 그 셀을 눌러 "어느 소스가 사라졌는지"를 봅니다(신규 이벤트·신규 화면 없음).

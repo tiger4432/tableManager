@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **260개** 이력. (거버넌스 규칙 #4)
+> 총 **261개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 09:30** — [Enrichment 124 And Chain Replay R1 R2](./20260730_093000_enrichment_124_and_chain_replay_r1_r2.md)
 - **2026-07-30 04:37** — [Docs Sync Round Trip Routing Build Gate](./20260730_043738_docs_sync_round_trip_routing_build_gate.md)
 - **2026-07-30 04:16** — [Company Sheet Round Trip Paste](./20260730_041654_company_sheet_round_trip_paste.md)
 - **2026-07-30 04:04** — [Board Restored And The Parity Bias That Did Not Exist](./20260730_040416_board_restored_and_the_parity_bias_that_did_not_exist.md)

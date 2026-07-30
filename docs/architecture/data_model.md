@@ -1,7 +1,7 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
-> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/config/table_config.json`, `server/product_tables.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 ---
@@ -62,6 +62,16 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 - `CellOverwrite.is_overwrite=True` → 그리드에서 강조(수동 수정 표시).
 - `manual_priority_source="collision_merge"` → 충돌 병합 흔적(빨간색 렌더).
+
+### 2.2-bis 레이어 철회 (`chain_replay.withdraw_source`) — 2026-07-30 · R2
+
+지금까지 레이어 스택은 **추가만** 가능했다. R2가 **한 소스의 기여를 되돌리는** 유일한 경로를 추가한다 — 행이 아니라 **셀 레이어** 단위다.
+
+- `cell_sources` 행 **하나**를 삭제하고, 남은 소스로 `compute_priority_value`를 재계산해 표시값을 되쓴다. 소스가 둘이었다면 **아래 레이어가 드러나고 구멍이 남지 않는다.** (행 삭제·컬럼 NULL 처리는 다른 소스의 기여까지 파괴하므로 하지 않는다.)
+- H2-b(그래프의 `_retarget_stale_edges`: 소스가 과거에 주장했으나 더는 주장하지 않는 것은 남겨두지 않고 적극 제거)를 **셀 버전 단위로 옮긴 것**이다.
+- 🔴 **사람 값을 지울 수 있는 경로가 없다 — 두 거절이 그것을 보장한다**: ⓐ `user` 소스 철회는 **거부**(priority 0은 "사람이 입력했다"의 유일한 의미) ⓑ 그 소스를 사람이 핀한 셀(`CellOverwrite.manual_priority_source`)은 **건너뛰고 이유를 남긴다**(핀은 "이 소스를 보여 달라"는 사람의 선택).
+- **무음이 아니다**: 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new가 남는다. 클라의 기존 셀 이력 타임라인이 그것을 읽으므로, 빈칸을 발견한 운영자가 **어느 소스가 사라졌는지** 확인할 수 있다.
+- 절차·CLI 정본은 [guide/chain_ingestion_guide §5.4](../guide/chain_ingestion_guide.md).
 
 ### 2.3 재교정률 (`crud.get_recorrection_stats`) — **보조 계기**
 

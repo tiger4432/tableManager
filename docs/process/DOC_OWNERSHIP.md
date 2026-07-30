@@ -23,6 +23,7 @@
 | 데이터 모델/레이어링 | `server/database/models.py`, `crud.py` | [architecture/data_model](../architecture/data_model.md) | Backend/Integrity |
 | 파일 인제션 파이프라인 | `parsers/directory_watcher.py`, `parsers/pipeline_base.py` | [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) | Ingester |
 | 체인 인제션 | `chain_ingestion_worker.py`, `mappers/` | [guide/chain_ingestion_guide](../guide/chain_ingestion_guide.md) | Ingester |
+| **Chain Replay (R1 재적용 / R2 stale 소스 철회)** | **`server/chain_replay.py`**(2026-07-30 — 룰 재적용 + 셀 레이어 단위 철회), **`server/keyset_scan.py`**(공용 키셋 페이지 순회 — `backfill_enrichment`·`enrichment_analysis`·R1이 공유), `scripts/chain_replay_cli.py`, `config/chain_rules.json` | [guide/chain_ingestion_guide §5](../guide/chain_ingestion_guide.md)(**정본** — 루프 가드 3겹·재적용 순서·사람 값 보호·철회 가시화) · 레이어링 계약은 [architecture/data_model](../architecture/data_model.md) | Backend / Ingester |
 | Auto-Update 스케줄러 | `run_auto_update.py` | [guide/AUTO_UPDATE_GUIDE](../guide/AUTO_UPDATE_GUIDE.md) | Ingester |
 | 웨이퍼 맵 에디터 | `client2/src/map_editor.js`, `utils/physical_wafer_engine.py`, `utils/coordinate_transformer.py` | [map_editor/](../map_editor/README.md), [spec/MAP_EDITOR_SPEC §1~§4](../spec/MAP_EDITOR_SPEC.md) | UI/Map |
 | 파일 인제션 체크포인트·dedup(P2) | `server/ingestion_checkpoint.py`, `models.FileIngestionCheckpoint`, `config/ingestion_settings.json` | [guide/INGESTION_GUIDE §1.8](../guide/INGESTION_GUIDE.md) | Ingester |
@@ -31,7 +32,7 @@
 | 실패 관리/재시도 | `FileIngestionLog`, outbox retry, `admin/*` | [spec/FAILURE_MANAGEMENT_SPEC](../spec/FAILURE_MANAGEMENT_SPEC.md) | Integrity/QA |
 | 온톨로지 그래프(materializer·엣지 스토어) | `graph_sync_worker.py`, `graph_materializer.py`, `ontology_config.py`, `config/ontology_mapping.json` | [architecture/event_driven_backend §4](../architecture/event_driven_backend.md)(승격 흐름), [spec/ONTOLOGY_GRAPH_SPEC](../spec/ONTOLOGY_GRAPH_SPEC.md)(트랙 스펙 — Owner 총괄) | Sync / 총괄 |
 | 그래프 뷰어·추적 리포트 | `main.py /graph/*`, `client2/src/graph_viewer.js`, `trace.js`/`trace_core.js`/`trace_launch.js` | [architecture/frontend §6](../architecture/frontend.md) | UI / Sync |
-| Enrichment Queue | `enrichment_config.py`, `enrichment_mapper.py`, `client2/src/enrichment.js` | [spec/ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md) | 총괄 |
+| Enrichment Queue | `enrichment_config.py`, `enrichment_mapper.py`, **`enrichment_candidates.py`**(2026-07-30 ① 후보 1개 자동 확정 — 노브 `auto_confirm`·선언 `candidate_for`), **`enrichment_analysis.py`**(② 룰 승격 제안 · ④ 결손 원인 분류 · ① 소급 sweep), `scripts/enrichment_insights.py`, `scripts/backfill_enrichment.py`, `client2/src/enrichment.js` | [spec/ENRICHMENT_QUEUE_SPEC](../spec/ENRICHMENT_QUEUE_SPEC.md)(§5.2 ① · §5.3 ② · §5.4 ④) · **설정 절차는 [guide/config/enrichment_rules §7](../guide/config/enrichment_rules.md)** · 체인 훅은 [guide/chain_ingestion_guide §4.4](../guide/chain_ingestion_guide.md) | 총괄 |
 | HTML 토폴로지 파서 | `parsers/html_topology_parser.py` | [guide/HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) | Ingester |
 | 어드민(파이프라인 5탭 + 코드 에디터) | `client2/src/admin.js`, `main.py /admin/*` | [architecture/frontend §5](../architecture/frontend.md) | UI/Panel |
 | 설정 주도 스키마 | `config/table_config.json`, `database/config_watcher.py` | [architecture/data_model §5](../architecture/data_model.md) | Backend |

@@ -21,11 +21,21 @@
     "reference_views": [                        // 선택: 참조뷰 — 쿼리는 서버에만, 클라엔 label만 노출
       { "label": "lot event",
         "query": "SELECT ... WHERE equipment = :equipment",  // 인라인 SQL (:bind는 decision_key만)
-        "limit": 200 },                                       // 선택(기본 200, 최대 1000)
+        "limit": 200,                                         // 선택(기본 200, 최대 1000)
+        "candidate_for": { "wafer_id": "wf_id" } },            // 선택: 후보 선언(target_field -> 뷰 결과 컬럼)
       { "label": "lot-slot history", "query_ref": "lot_slot_history" }  // config/enrichment_queries/<ref>.sql
     ]
   }
 }
+
+`candidate_for` — ①"후보가 1개면 판단이 아니라 확인"의 **선언**(2026-07-30):
+어떤 참조뷰의 어떤 결과 컬럼이 어떤 target_field의 후보값을 나르는지 **사람이 선언**한다.
+선언이 없는 뷰는 표시 전용이며 **절대** 후보 원천이 되지 않는다 — 맵 오버레이의
+`derive_table_binding`이 첫 데이터 컬럼을 추측해 DECOY를 붙인 것이 라이브에서 실증된 뒤로,
+이 시스템에서 바인딩은 선언만 인정한다. 유도가 왜 위험한지는 사용자 실 config가 그대로 보여준다:
+동일 규칙의 뷰 #0("lot-slot 웨이퍼 이력" — lot+slot 조회 → 후보 1개)과
+뷰 #1("같은 lot 전체 슬롯" — lot만 조회 → 후보 N개)이 **둘 다 `wafer_id` 컬럼을 가진다.**
+컬럼명으로 유도하는 구현은 #1까지 후보로 삼아 오답을 자동 확정했을 것이다.
 
 파생 테이블 키 계약(중요): derived_table의 table_config는
 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 한다.
@@ -100,7 +110,54 @@ def _validate_view_sql(sql: str, decision_key: list) -> str:
     return None
 
 
-def _normalize_reference_views(rule_name: str, raw_views, decision_key: list) -> list:
+def required_bind_params(sql: str) -> set:
+    """참조뷰 SQL이 **실제로 요구하는** 바인드 파라미터 이름 집합.
+
+    같은 규칙의 뷰들이 서로 다른 부분집합을 쓴다(뷰 #0은 lot+slot, 뷰 #1은 lot만).
+    호출자가 판단키 전체를 넘기면 남는 값은 무해하지만, "이 뷰를 이 판단키로 실행할 수
+    있는가"를 **실행 전에** 알아야 후보 해석이 `missing_bind`라는 이름 있는 거절을
+    돌려줄 수 있다(추측해서 실행하고 예외를 삼키는 대신).
+    """
+    return set(_BIND_PARAM_RE.findall((sql or "").strip().rstrip(";")))
+
+
+def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: list) -> dict:
+    """참조뷰의 `candidate_for` 선언을 정규화한다: {target_field: 뷰 결과 컬럼명}.
+
+    **선언만 인정하고 절대 유도하지 않는다.** 무효 항목은 그 항목만 버리고(뷰 자체는
+    표시용으로 살린다) 이유를 로그에 남긴다 — 조용히 남겨두면 "선언했다"고 읽히는데
+    동작은 아니게 되고, 그 불일치를 아무도 말해 주지 않는다(effort_metric의
+    와일드카드 거절과 같은 자세).
+
+    뷰 결과 컬럼이 실제로 존재하는지는 SQL을 실행해야 알 수 있으므로 로드 시점에
+    검증하지 않는다 — 해석 시점의 이름 있는 거절(`candidate_column_missing`)로 다룬다.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        logger.warning(
+            f"[Enrichment:{rule_name}] reference view '{label}': 'candidate_for' must be an "
+            f"object {{target_field: view_column}}; ignoring (view stays display-only)")
+        return {}
+    allowed = set(target_fields or [])
+    out = {}
+    for field, column in raw.items():
+        if field not in allowed:
+            logger.warning(
+                f"[Enrichment:{rule_name}] reference view '{label}': candidate_for key "
+                f"'{field}' is not a target_field of this rule; REJECTED (not a candidate source)")
+            continue
+        if not isinstance(column, str) or not column.strip():
+            logger.warning(
+                f"[Enrichment:{rule_name}] reference view '{label}': candidate_for['{field}'] "
+                f"must be a non-empty view column name (got {column!r}); REJECTED")
+            continue
+        out[field] = column.strip()
+    return out
+
+
+def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
+                               target_fields: list = None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -128,10 +185,15 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list) ->
         except (TypeError, ValueError):
             limit = DEFAULT_REFERENCE_LIMIT
         limit = max(1, min(limit, MAX_REFERENCE_LIMIT))
+        label = raw["label"].strip()
+        body = sql.strip().rstrip(";").strip()
         views.append({
-            "label": raw["label"].strip(),
-            "query": sql.strip().rstrip(";").strip(),
+            "label": label,
+            "query": body,
             "limit": limit,
+            "candidate_for": _normalize_candidate_for(
+                rule_name, label, raw.get("candidate_for"), target_fields),
+            "required_binds": sorted(required_bind_params(body)),
         })
     return views
 
@@ -217,13 +279,18 @@ def _validate_rule(name: str, raw: dict, known_tables: dict) -> tuple:
 
     normalized = {
         "name": name,
+        # ① auto-confirm opt-in. Carried through RAW (not coerced) so
+        # enrichment_candidates.rule_auto_confirm_enabled can warn-once about a
+        # non-boolean instead of silently reading it as truthy.
+        "auto_confirm": raw.get("auto_confirm", False),
         "source_table": source_table.strip(),
         "derived_table": derived_table.strip(),
         "decision_key": list(decision_key),
         "target_fields": list(target_fields),
         "list_columns": list(list_columns),
         "aggregations": aggregations,
-        "reference_views": _normalize_reference_views(name, raw.get("reference_views"), decision_key),
+        "reference_views": _normalize_reference_views(
+            name, raw.get("reference_views"), decision_key, target_fields),
     }
     return normalized, None
 
@@ -281,6 +348,49 @@ def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> 
             "enrichment": rule,
         })
     return chain_rules
+
+
+# 서버가 강제하는 LIMIT 래핑 — 참조뷰 실행의 **유일한** 형태.
+# main.py `get_enrichment_reference`가 같은 문자열을 인라인으로 갖고 있다(2026-07-30 현재).
+# 그 파일은 다른 라운드가 점유 중이어서 이번에 합치지 못했다 — `test_enrichment_candidates.py`의
+# 이음새 가드가 두 정의의 불일치를 감시한다. main.py를 열 수 있게 되는 즉시
+# 라우트를 `execute_reference_view` 호출로 바꿔 정의를 하나로 만들 것.
+REFERENCE_LIMIT_WRAP_SQL = "SELECT * FROM ({query}) AS __enrichment_ref LIMIT :__enrichment_limit"
+
+
+class ReferenceViewError(Exception):
+    """참조뷰 실행 실패. 메시지에 쿼리 본문을 절대 담지 않는다(경계 계약: 본문 비노출)."""
+
+
+def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
+    """참조뷰 1건을 서버측 정의로 실행한다. 반환: (columns, rows).
+
+    LIMIT은 서버가 강제한다(뷰 설정값, 내부 LIMIT이 더 작으면 그 값 유지) — 사용자 쿼리를
+    서브쿼리로 감싸 상한을 바인딩한다. 값은 SQLAlchemy 바인딩으로만 전달되어 주입이
+    구조적으로 불가하다.
+
+    바인드는 **SQL이 실제로 요구하는 이름만** 넘긴다: 호출자가 판단키 전체를 넘겨도
+    되고, 요구 바인드가 빠졌으면 실행하지 않고 `ReferenceViewError`를 올린다
+    (드라이버 예외를 삼켜 "후보 없음"으로 위장하지 않는다).
+    """
+    from sqlalchemy import text
+
+    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    supplied = dict(bind_params or {})
+    missing = sorted(needed - set(supplied))
+    if missing:
+        raise ReferenceViewError(f"missing required bind param(s): {missing}")
+
+    exec_params = {k: v for k, v in supplied.items() if k in needed}
+    exec_params["__enrichment_limit"] = view.get("limit") or DEFAULT_REFERENCE_LIMIT
+    stmt = text(REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]))
+    try:
+        result = db.execute(stmt, exec_params)
+        columns = list(result.keys())
+        rows = [list(r) for r in result.fetchall()]
+    except Exception as e:
+        raise ReferenceViewError(f"reference query execution failed ({e.__class__.__name__})")
+    return columns, rows
 
 
 def to_public_rule(rule: dict) -> dict:

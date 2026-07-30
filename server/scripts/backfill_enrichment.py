@@ -117,20 +117,13 @@ def _load_existing_business_keys(db, derived_model) -> set:
     deduplicated side, so its cardinality is the number of decision-key
     identities, not the source row count.
     """
+    import keyset_scan
+
     existing = set()
-    last_row_id = ""
-    while True:
-        rows = (
-            db.query(derived_model.row_id, derived_model.business_key_val)
-            .filter(derived_model.row_id > last_row_id)
-            .order_by(derived_model.row_id.asc())
-            .limit(EXISTING_BK_FETCH_CHUNK)
-            .all()
-        )
-        if not rows:
-            break
-        last_row_id = rows[-1][0]
-        for _, bk in rows:
+    for page in keyset_scan.iter_pages(db, derived_model,
+                                       columns=[derived_model.business_key_val],
+                                       chunk_size=EXISTING_BK_FETCH_CHUNK):
+        for _, bk in page:
             if bk is not None and str(bk).strip() != "":
                 existing.add(str(bk).strip())
     return existing
@@ -206,24 +199,20 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         "sample_new_keys": [],
     }
 
+    import keyset_scan
+
     combos_seen = set()
     already_bks = set()
     new_bks = set()          # dry-run: all new identities / apply: identities allowed in
     limit_skipped_bks = set()
     run_id = uuid.uuid4().hex[:8]
-    last_row_id = ""
 
-    while True:
-        rows = (
-            db.query(src_model.row_id, *[getattr(src_model, c) for c in payload_cols])
-            .filter(src_model.row_id > last_row_id)
-            .order_by(src_model.row_id.asc())
-            .limit(chunk_size)
-            .all()
-        )
-        if not rows:
-            break
-        last_row_id = rows[-1][0]
+    # The shared keyset walk (`keyset_scan.iter_pages`) - one implementation of
+    # "read a whole table in bounded pages", also used by chain_replay (R1) and
+    # enrichment_analysis. It prepends row_id as the cursor.
+    for rows in keyset_scan.iter_pages(
+            db, src_model, columns=[getattr(src_model, c) for c in payload_cols],
+            chunk_size=chunk_size):
         stats["chunks"] += 1
         stats["rows_scanned"] += len(rows)
 

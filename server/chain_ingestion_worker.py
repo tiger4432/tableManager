@@ -33,6 +33,10 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS
 # with the file watcher (absent-only; knob `auto_register_map_meta`).
 import map_meta_registrar
 
+# [Enrichment ①] Absent-only automatic confirmation when the declared reference
+# views leave exactly one candidate (per-rule knob `auto_confirm`, default OFF).
+import enrichment_candidates
+
 logger = get_process_logger("Chain", "chain_worker.log")
 
 class OutboxListener:
@@ -457,6 +461,27 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             logger.info(f"[M3] Auto-registered {created_meta} wafer_map_metadata row(s) for chain target '{target_table}'")
                 except Exception as meta_err:
                     logger.error(f"[M3] Map-meta auto-registration failed for '{target_table}' (chain write unaffected): {meta_err}")
+
+                # [Enrichment ①] Absent-only automatic confirmation of SINGLE
+                # candidates for this rule's target fields. Same posture as the
+                # M3 hook above: runs on the VALIDATED batch items after the
+                # write, per-rule opt-in (default OFF), and a failure here must
+                # never fail the (already committed) chain write.
+                # Not a loop: writes land on the DERIVED table while the
+                # enrichment rule triggers on the SOURCE table, and the
+                # absent-only gate makes a second pass a no-op regardless.
+                try:
+                    ac = enrichment_candidates.AutoConfirmCollector(target_table)
+                    if ac.active:
+                        ac.collect(batch_data.updates)
+                        ac_stats = ac.flush(db)
+                        if ac_stats.get("confirmed"):
+                            logger.info(
+                                f"[Enrichment ①] Auto-confirmed {ac_stats['confirmed']} single "
+                                f"candidate(s) on '{target_table}' (source "
+                                f"'{enrichment_candidates.SOURCE_NAME}', lowest priority)")
+                except Exception as ac_err:
+                    logger.error(f"[Enrichment ①] Auto-confirm failed for '{target_table}' (chain write unaffected): {ac_err}")
 
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.

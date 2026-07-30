@@ -1,4 +1,6 @@
 {
+  "_candidate_for_doc": "reference_views[].candidate_for = {target_field: view_result_column} declares WHICH view column carries a candidate for WHICH target field. A view without it is DISPLAY-ONLY and is never a candidate source - bindings are declared, never inferred (the map-overlay derive_table_binding DECOY was proven live). Two views can both expose a wafer_id column while only the one keyed by the FULL decision key yields a single candidate; a lot-only view yields N.",
+  "_auto_confirm_doc": "auto_confirm (default FALSE) = when the declared views leave EXACTLY ONE candidate, write it with no human interaction. Absent-only; provenance 'enrichment_auto_confirm' is unregistered in SOURCE_PRIORITY so it resolves to the lowest priority (99) and a user edit (priority 0) always wins. Default is OFF - unlike M3's auto_register_map_meta - because this field's blankness DEFINES queue membership: a wrong auto-confirm makes the item leave the worklist. Measure before enabling: server/scripts/enrichment_insights.py confirm <rule> --ignore-knob",
   "bonding_wafer_attribution": {
     "source_table": "bonding_log",
     "derived_table": "bonding_job_inventory",
@@ -7,6 +9,7 @@
     "list_columns": ["chip_count", "lot_hint"],
     "aggregations": { "chip_count": "count" },
     "enabled": true,
+    "auto_confirm": false,
     "reference_views": [
       {
         "label": "lot event",
@@ -15,7 +18,8 @@
       },
       {
         "label": "lot-slot history",
-        "query_ref": "lot_slot_history"
+        "query_ref": "lot_slot_history",
+        "candidate_for": { "wafer_id": "wafer_id" }
       }
     ]
   }
