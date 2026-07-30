@@ -1,6 +1,6 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-28 (§7 롤백 항목을 **드릴 실측**으로 교체 — 재기동 위치·`/health` 사각·스키마 잔여물. 전체 절차는 [ROLLBACK_PROCEDURE](ROLLBACK_PROCEDURE.md)로 분리. 직전: `90e284f` §1-4 `ASSY_ADMIN_TOKEN`) | **대상:** 새 환경에 assyManager를 올리는 사람
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§1-4에 영구 설정 신설 + §1-5 프록시 권장안 철회** — 최근 이틀의 운영자 실패가 **전부 이 파일 하나**에서 나왔다. ① **§1-4 「아래 세 줄은 전부 셸이 닫히면 사라진다」 신설** — `$env:`/`set`/`export`가 모두 프로세스 수명이라는 말이 **어디에도 없었고**, 그래서 운영자는 매 세션 다시 치거나 잊고 **잠기지 않은 서버**를 띄웠다. 답은 `[Environment]::SetEnvironmentVariable(..., "User")`이고, 이것이 `run_app.bat`(**cmd.exe**)가 PowerShell `$env:` 값을 못 보는 국면도 함께 닫는다. `"Machine"`은 금지(비밀을 전 사용자에게 노출). 🔴 **「추가가 아니라 교체」 경고를 명령 바로 옆에** 뒀다 — 실제로 이 형태로 `NO_PROXY`를 세웠다가 **사내 호스트가 든 기존 값을 날려** 자동 업데이트가 전부 403이 됐다. ② 🔴 **§1-5의 `$env:NO_PROXY` 권장 철회**(`94b9baa`) — 이름과 반대로 **그 트리의 모든 요청이 프록시를 안 타게 된다**: `urllib.request.getproxies()`가 `getproxies_environment() or getproxies_registry()`인데 `no_proxy`도 이름이 `_proxy`로 끝나 환경 dict를 비지 않게 만들고 **레지스트리가 조회되지 않는다**(실측: 없으면 `{}`, 있으면 `{'no': ...}`). 런처가 `os.environ.copy()`로 물려주므로 스케줄러의 사용자 스크립트 전부가 사내 API에서 403. 코드의 `trust_env=False`는 **우리 세션 객체에만** 붙어 이 성질이 없다. ⚠️ `internal_event_client.check_api_reachable()`의 ERROR 문구에 **아직 낡은 NO_PROXY 안내가 남아 있음**을 명기(코드 정정은 별건). ③ 지문 검사(`23a346d`)·ASCII 전용 경고는 **이미 §1-4에 있었음을 확인**(중복 추가 안 함). 직전 2026-07-28: §7 롤백 항목을 **드릴 실측**으로 교체 — 재기동 위치·`/health` 사각·스키마 잔여물. 전체 절차는 [ROLLBACK_PROCEDURE](ROLLBACK_PROCEDURE.md)로 분리. 직전: `90e284f` §1-4 `ASSY_ADMIN_TOKEN`) | **대상:** 새 환경에 assyManager를 올리는 사람
 > **상세:** 각 항목의 키·함정·검증 절차는 [CONFIG_GUIDE](CONFIG_GUIDE.md)에 있다. 이 문서는 **"내가 무엇을 채워야 하는가"** 만 담는다.
 > **프로덕션 게이트:** 배포 전 남은 차단 항목은 [PRODUCTION_READINESS](../process/PRODUCTION_READINESS.md).
 
@@ -78,17 +78,40 @@ python server/scripts/install_product_tables.py --apply    # 실제 반영
 
 `/admin/*`은 **인증이 전혀 없었다.** 사내망에 패킷을 보낼 수 있는 누구나 `POST /admin/scripts/code`로 임의의 파이썬 파일을 쓰고 `POST /admin/auto-update/run-now`로 그것을 실행시킬 수 있었다. 이제 **공유 토큰 하나**로 잠근다 — 로그인 화면도, 사용자 계정도 없다(2~5명 사내 공유 환경이라 의도적으로 그렇게 두었다).
 
-**셸마다 문법이 다르다.** 이 프로젝트의 운영 환경은 Windows + PowerShell이다:
+#### 🔑 먼저 읽을 것 — **아래 세 줄은 전부 셸이 닫히면 사라진다**
 
-| 셸 | 명령 |
-|---|---|
-| **PowerShell** (운영 기본) | `$env:ASSY_ADMIN_TOKEN = "<토큰>"` |
-| cmd.exe | `set ASSY_ADMIN_TOKEN=<토큰>` |
-| bash/zsh | `export ASSY_ADMIN_TOKEN=<토큰>` |
+터미널을 닫을 때마다 토큰이 없어지는 것은 결함이 아니라 이 세 명령의 성질이다. 셋 다 **그 프로세스에만** 값을 넣는다. 그래서 운영자는 매 세션 다시 타이핑하거나, 잊고 **잠기지 않은 서버**를 띄우게 된다(2026-07-30 실제로 반복됐다).
+
+**영구 설정(권장) — 사용자 범위 환경변수:**
+
+```powershell
+[Environment]::SetEnvironmentVariable("ASSY_ADMIN_TOKEN", "<토큰>", "User")
+```
+
+- **새로 뜨는 셸부터** 보인다. **이미 열린 창에는 반영되지 않으므로** 설정 후 터미널을 새로 열고 거기서 런처를 띄운다.
+- 셸 종류를 가리지 않는다 — 이것이 두 번째 이유다. `run_app.bat`은 **cmd.exe**라 PowerShell에서 `$env:`로 넣은 값을 **보지 못한다.** 사용자 범위 변수는 어느 셸에서 뜬 프로세스든 상속하므로, "일부만 재기동돼 토큰이 갈리는" 국면 하나가 아예 없어진다.
+- 🚨 **`"Machine"`을 쓰지 마라.** 그 범위는 **이 컴퓨터의 모든 사용자**가 읽을 수 있는 자리이고, 여기 들어가는 것은 어드민 전권 비밀이다.
+
+> 🔴 **이것은 추가가 아니라 교체다 — 세우기 전에 지금 값을 읽어라.** `SetEnvironmentVariable`은 기존 값을 **덮어쓴다.** 2026-07-30에 이 형태로 `NO_PROXY`를 세웠다가 **사내 호스트 목록이 들어 있던 기존 값을 통째로 날려** 자동 업데이트 스크립트 전부가 403으로 죽었다. 어떤 변수든 세우기 전에 **두 범위를 모두** 확인한다:
+>
+> ```powershell
+> [Environment]::GetEnvironmentVariable("ASSY_ADMIN_TOKEN", "User")
+> [Environment]::GetEnvironmentVariable("ASSY_ADMIN_TOKEN", "Machine")
+> ```
+>
+> 값이 이미 있으면 **덮을 값인지 이어붙일 값인지 먼저 판단**한다. 목록형 변수(`NO_PROXY`·`PATH`·`PYTHONPATH`)는 거의 항상 이어붙여야 하는 쪽이다.
+
+**임시 설정(그 창에서만) — 셸마다 문법이 다르다.** 이 프로젝트의 운영 환경은 Windows + PowerShell이다:
+
+| 셸 | 명령 | 수명 |
+|---|---|---|
+| **PowerShell** (운영 기본) | `$env:ASSY_ADMIN_TOKEN = "<토큰>"` | 그 창을 닫으면 소멸 |
+| cmd.exe | `set ASSY_ADMIN_TOKEN=<토큰>` | 그 창을 닫으면 소멸 |
+| bash/zsh | `export ASSY_ADMIN_TOKEN=<토큰>` | 그 셸을 닫으면 소멸 |
 
 > 🚨 **PowerShell에서 `set`을 쓰면 조용히 실패한다.** `set`은 PowerShell에서 `Set-Variable`의 **별칭**이라, `set ASSY_ADMIN_TOKEN=admin`은 `ASSY_ADMIN_TOKEN=admin`이라는 이름의 **PowerShell 변수**를 만들고 끝난다. 환경변수는 건드리지 않으므로 uvicorn·워커 자식 프로세스는 아무것도 못 본다. **에러가 나지 않아 성공한 것처럼 보인다** — 판별법은 기동 로그의 `is NOT set` 경고가 사라졌는지 하나뿐이다(2026-07-28 실제로 여기서 막혔다).
 
-설정한 **바로 그 셸에서** 런처를 띄워야 한다. 자식 프로세스는 기동 시점의 환경을 복사해 가므로, 다른 창에서 설정하면 영원히 반영되지 않는다.
+임시 설정을 쓸 때는 설정한 **바로 그 셸에서** 런처를 띄워야 한다. 자식 프로세스는 기동 시점의 환경을 복사해 가므로, 다른 창에서 설정하면 영원히 반영되지 않는다.
 
 토큰 값은 **길고 추측 불가능한 ASCII 문자열**이어야 한다.
 
@@ -186,11 +209,30 @@ curl.exe -s -o NUL -w "%{http_code}`n" --noproxy "*" http://127.0.0.1:8080/healt
 - 워커 3종(`run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`)은 세션을 직접 만들지 않고 **`server/internal_event_client.internal_event_session()`** 하나에서 받는다(`trust_env=False`). 발신자마다 따로 고치다 같은 결함이 세 번 재발한 이력이 있어, **세션을 직접 만드는 발신자가 생기면 테스트가 실패**하도록 막아 두었다.
 - 웹서버 → GraphSync 워커(`/api/graph/sync` → `127.0.0.1:8090`)의 `httpx`도 `trust_env=False`다. **같은 모양의 네 번째 홉**이라 같이 막았다.
 
-**운영 측 조치 (권장).** 코드가 막고 있어도, 런처 셸에 아래를 넣어 두면 아직 정리되지 않은 다른 도구(`curl`, 수집 스크립트 등)까지 안전해진다:
+**운영 측 조치 — 🔴 `NO_PROXY`는 답이 아니다. 세우지 마라.** (2026-07-30 철회. 종전 이 자리에 `$env:NO_PROXY = "127.0.0.1,localhost"`가 **권장**으로 적혀 있었고, **그 권장이 자동 업데이트를 죽였다.**)
 
-```powershell
-$env:NO_PROXY = "127.0.0.1,localhost"
+무슨 일이 일어나는지 — 이름과 정반대다. **`NO_PROXY`를 세우면 그 프로세스 트리의 모든 요청이 프록시를 안 타게 된다**(loopback뿐 아니라 **사내 API로 나가는 것도**).
+
+- `urllib.request.getproxies()`는 `getproxies_environment() or getproxies_registry()`, 즉 **`or`**다.
+- `getproxies_environment()`는 **이름이 `_proxy`로 끝나는 변수를 전부** 긁어모으는데, `no_proxy`도 `_proxy`로 끝난다.
+- 그래서 `NO_PROXY` **하나만** 세워도 환경 dict가 비지 않게 되고, `or`가 단락되어 **Windows 프록시 레지스트리는 아예 조회되지 않는다.** 결과 dict에 `http`/`https` 항목이 없으니 모든 요청이 직결로 나간다.
+
+실측(2026-07-30, conda `assy_manager`):
+
 ```
+변수 없음   → {}
+NO_PROXY만  → {'no': '127.0.0.1,localhost'}
+```
+
+**왜 이게 사고가 되나:** 런처(`run_decoupled_app.py`)는 자식 환경을 `os.environ.copy()`로 만든다. 그래서 런처 셸에 세운 `NO_PROXY`가 **스케줄러가 돌리는 사용자 스크립트 전부**에 상속됐고, 그 스크립트들은 `urllib.request.urlopen`으로 **사내 API**를 부르는데 그쪽은 프록시가 선택이 아니다. 전부 403을 받기 시작했다(같은 스크립트를 그 환경 밖에서 돌리면 정상 동작하는 것으로 확인).
+
+> **일반 규칙 — 프록시 우회를 프로세스 전역 환경변수로 하지 마라.** 그것은 트리의 모든 자식과 모든 사용자 스크립트에 닿는다. 우회는 **그 호출을 하는 클라이언트 객체에** 붙여야 한다.
+
+**대신 무엇을 하나 — 아무것도 안 해도 된다. 코드가 이미 막고 있다.** 위 「코드 측 조치」의 `trust_env=False`는 **우리 `requests`/`httpx` 세션 객체에만** 붙으므로 `urllib`을 쓰는 사용자 스크립트를 건드리지 않는다. 그 좁은 범위가 의도다.
+
+- 손으로 진단할 때만 **그 명령 하나에** 우회를 붙인다: `curl.exe --noproxy "*" …`(위 「판별」의 그 형태). 환경변수로 승격시키지 않는다.
+- 아직 정리되지 않은 자체 도구가 있다면, 환경변수가 아니라 **그 도구의 HTTP 클라이언트**를 [PRIMITIVES §6 `internal_event_session()`](../architecture/PRIMITIVES.md) 형태로 고친다.
+- ⚠️ **소스에 잔존 안내가 있다.** `internal_event_client.check_api_reachable()`의 ERROR 문구가 아직 *"NO_PROXY=127.0.0.1,localhost 를 설정하고"*라고 말한다(`server/internal_event_client.py`). **그 줄을 따르지 마라** — 코드 정정은 별건이다.
 
 **기동 로그가 이제 미리 말해 준다.** 데몬 3종은 기동 시 `/health`를 한 번 찔러 보고 프록시 환경을 함께 찍는다:
 
