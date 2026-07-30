@@ -94,19 +94,19 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 
 | 파일 | 줄 | 책임 |
 |---|---|---|
-| `main.js` | 1816 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트, Tx 모드 apply/discard |
-| `state.js` | 49 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) |
+| `main.js` | 2023 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트(**§2.1-ter 걸쇠** — `smartPasteFromPasteEvent`(읽기)/`smartPasteViaIngestion`(클릭 진입)/`uploadSmartPastePayload`), Tx 모드 apply/discard |
+| `state.js` | 59 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) |
 | `dom.js` | 57 | `getElementById` 지연 게터 모음(`elements`) |
 | `api.js` | 438 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows. ⚠️ **`switchTable`은 `txModeActive`를 강제로 다시 켭니다**(:70-71 — 대기 편집을 버리는 것과 한 쌍이라 안전한 기본값이지만, **표를 바꾸면 토글이 되살아납니다**. 편집 E2E에서 두 번 새는 자리 — [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md)) |
 | `websocket.js` | 255 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
 | `grid.js` | 671 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택). **`string` 선언 컬럼의 `cellEditor`를 `SuggestCellEditor`로 갈아끼우는 자리**(§3.3)이고, `defaultColDef.suppressKeyboardEvent`의 **첫 분기**가 `handleEditorKey`를 부릅니다 — 그 한 분기가 **`Enter` 한 번 계약이 서는 기반**입니다(AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하므로 `'accepted'` 판정은 "후보가 이미 입력에 들어갔으니 **이 이벤트가 그대로 확정하라**"는 뜻입니다. `false` 반환은 포기가 아니라 **확정**입니다) |
 | `value_suggest.js` | 1003 | **값 제안 셀 에디터(§3.3)** — `SuggestCellEditor` + `handleEditorKey`(순수 키보드 판정 `suppress`/`accepted`/`pass`) + `isSuggestEditorActive`. 디바운스 90ms(트레일링)·요청 한도 12·여는 최소 접두 1·표시 8행. 컬럼별 학습(플로어·4연속 4xx 후 비활성·`unavailable_reason` 쿨다운)은 **전부 TTL 60초로 만료**(핫리로드되는 `table_config`를 클라 래치가 조용히 면제받지 않도록). 진단은 `window.__assySuggest` |
-| `clipboard.js` | 810 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
+| `clipboard.js` | 829 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells`, `registerSmartPasteHandler`(**§2.1-ter** — paste 핸들러의 스마트 페이스트 걸쇠 분기) |
 | `tsv.js` | 121 | TSV 직렬화/파싱 순수 함수 — 클립보드 경로와 회사 양식 왕복이 공유하는 유일한 구현 |
 | `doe_bands.js` | 753 | **DOE zone 모델의 순수 구현**(§4.1) — 구간 소요·자재당 분배 산식의 정본. 계약 벡터 `contracts/doe_band_rules/vectors.json`으로 서버와 같은 기댓값에 채점 |
 | `timeline.js` | 722 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
 | `ui.js` | 415 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`, Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
-| `utils.js` | 337 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) |
+| `utils.js` | 347 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) · `dismissToasts(dedupeKey)`로 **회수**(지시형 토스트는 그 지시가 참이 아니게 된 순간 사라져야 한다 — §2.1-ter) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 5 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
 | `admin.js` | 2872 | 어드민 5탭(§5) |
@@ -133,7 +133,23 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 > ⚠️ **평범한 방향키는 범위를 해제한다**(정리 취향이 아니라 데이터 보호다). 해제하지 않으면 사용자가 방향키로 떠난 사각형이 살아남아 다음 `Ctrl+Enter`가 **본인이 선택했다고 믿지 않는 셀들을 덮어쓴다**. 마우스 경로는 이미 그렇게 동작한다(평범한 mousedown → `clearRangeSelection`) — 키보드가 맞추지 않으면 두 경로가 선택 상태를 두고 서로 다른 말을 한다.
 >
 > **알려진 한계**: 앵커는 사각형이 없을 때만 포커스 셀에서 새로 잡힌다. 사각형이 살아 있는 채 **프로그램적으로**(`element.focus()`) 포커스를 옮기면 재앵커되지 않는다 — 사람 조작(클릭·방향키)은 둘 다 해제 경로를 타므로 실사용에서는 드러나지 않지만, 스크립트 검증에서는 드러난다(2026-07-30 E2E에서 관측).
-> ⚠️ 같은 결함이 남아 있는 곳(평문 HTTP에서 실패): `admin.js`(페이로드/트랜잭션 ID 복사), `map_editor.js` `copyGridToExcel`, `main.js` `smartPasteViaIngestion`(우클릭 Smart Paste).
+> ⚠️ 같은 결함이 남아 있는 곳(평문 HTTP에서 실패): `admin.js`(페이로드/트랜잭션 ID 복사). `map_editor.js` `copyGridToExcel`은 `7694b42`에서, `main.js` Smart Paste는 아래 §2.1-ter에서 해소됐다.
+
+#### §2.1-ter 읽기는 버튼이 될 수 없다 — Smart Paste 걸쇠 (2026-07-30)
+
+> **쓰기와 읽기는 대칭이 아니다.** 쓰기는 `document.execCommand('copy')`로 합성 `copy` 이벤트를 일으켜 `e.clipboardData`를 갈아끼울 수 있다(`map_editor.writeClipboardRich`). 읽기에는 그 수가 없다 — `execCommand('paste')`는 웹 콘텐츠에서 **차단**된다(격리 스택 실측: `false` 반환). 그래서 평문 HTTP에서 클립보드를 읽는 문은 **네이티브 `paste` 이벤트 하나뿐**이고, **버튼은 그 문을 열 수 없다.**
+>
+> 종전 `smartPasteViaIngestion`은 `navigator.clipboard.read`가 없으면 **같은 undefined 객체의 `readText()`를 부르는** 분기로 떨어졌다(`7694b42`가 복사 쪽에서 고친 것과 글자 그대로 같은 결함, 방향만 반대). 운영에서는 `TypeError: Cannot read properties of undefined (reading 'readText')`가 나고 바깥 `catch`가 그걸 「오류가 발생했습니다」로 뭉갰다.
+>
+> **현행 구조 — 걸쇠(latch) 하나로 두 동선을 합류시킨다.**
+> - `state.smartPasteArmedUntil`(만료 타임스탬프) + `state.smartPasteArmedTable`(무장 시점의 테이블).
+> - `clipboard.js`의 `paste` 핸들러가 **입력 필드 가드 직후, `gridApi` 가드보다 먼저** 걸쇠를 확인한다. 걸려 있으면 `registerSmartPasteHandler`로 등록된 `main.smartPasteFromPasteEvent`에 이벤트를 넘기고 종료한다(1회 소비). 걸려 있지 않으면 **평소의 범위 붙여넣기가 그대로 실행된다.**
+> - `Ctrl+Shift+V`가 직행 동선. **`preventDefault()`하지 않는다** — 브라우저 자체 붙여넣기 명령이 `paste` 이벤트를 만들어야 읽을 수 있기 때문이다. 브라우저가 그 조합을 붙여넣기로 번역하지 않으면 600ms 뒤 걸쇠를 15초로 늘리고 「이어서 Ctrl+V」를 안내한다.
+> - 버튼·컨텍스트 메뉴는 **읽지 못한다**. 보안 컨텍스트면 `navigator.clipboard.read()`를 먼저 시도하고, 아니면 걸쇠를 무장하고 **누를 키를 한 줄로 알린다**(새 패널·모드·모달 없음).
+>
+> ⚠️ **다중 포맷은 첫 `await` 이전에 전부 스냅샷한다.** `paste` 이벤트의 `DataTransfer`는 디스패치 중에만 읽히므로, 포맷 선택 모달을 `await`한 뒤 `getData()`를 부르면 **빈 문자열**이 올라간다(초록 토스트가 덮는 조용한 데이터 손실).
+>
+> ⚠️ **`navigator.clipboard`가 없다고 판단한 분기에서 다시 `navigator.clipboard`를 부르지 말 것.** 각 분기는 **자기가 부를 바로 그 메서드**로 가드한다. 이 규약은 `client2/scripts/check_clipboard_convention.mjs`(prebuild 게이트)가 강제하며, `main.js`는 유일하게 허용된 **읽기** 예외다.
 > **상태 관리 주의:** `state.js`는 리액티브 스토어가 아닌 **평범한 싱글턴**. 변조 후 명시적 UI 리프레셔를 호출하는 수동 패턴. `admin.js`/`map_editor.js`는 `state.js`를 임포트하지 않고 자체 모듈 지역 변수를 사용.
 
 ### 3.1 실시간 동기화 무결성 — **되풀이되는 세 문제** (2026-07-27 이관)

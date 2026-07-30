@@ -287,15 +287,34 @@ export function getRangeSelectedTSV() {
   return serializeTsv(tsvMatrix);
 }
 
+// Smart paste (upload the clipboard to the parser) lives in main.js, but the only place the
+// clipboard can actually be READ is the native `paste` event handled here. Rather than have
+// clipboard.js import main.js - a cycle - main.js registers its handler through this hook.
+let smartPasteHandler = null;
+
+export function registerSmartPasteHandler(fn) {
+  smartPasteHandler = fn;
+}
+
 export function setupClipboardHandlers() {
   // 1. Paste handler
   document.addEventListener('paste', async (e) => {
-    if (!state.gridApi) return;
-
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input'))) {
       return;
     }
+
+    // Smart paste gets first refusal, BEFORE the gridApi guard: it uploads to the parser and
+    // needs no target cells, so the normal range-paste preconditions do not apply to it.
+    // The latch is consumed here whether or not the upload succeeds - one arming, one paste.
+    if (smartPasteHandler && state.smartPasteArmedUntil > Date.now()) {
+      state.smartPasteArmedUntil = 0;
+      e.preventDefault();
+      smartPasteHandler(e);
+      return;
+    }
+
+    if (!state.gridApi) return;
 
     // Determine target cells from selection map or drag bounds
     let targetCells = Object.values(state.selectedCellsMap);

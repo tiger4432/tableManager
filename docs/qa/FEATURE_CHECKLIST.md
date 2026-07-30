@@ -25,7 +25,7 @@
 | 소스 삭제 | 셀에서 특정 소스 레이어 제거 → 표시값이 차순위 소스로 재계산 | 소스 모달의 소스 행별 "🗑️ Delete" 버튼 → `confirm()` 확인창 → 삭제. 범위 선택이면 같은 버튼이 선택 셀 전체 배치 삭제 | DELETE `.../sources/{s}` · POST `.../sources/delete/batch` → `crud.delete_cell_source_batch` → `compute_priority_value`(§1.3/§2) |
 | 행 추가/삭제 | 빈 행 N개 생성 / 선택 행 일괄 삭제(감사 로그 포함) | 툴바 `add-row-btn` / `delete-row-btn` | `api.addRows`/`deleteSelectedRows` → POST `rows`·`rows/batch_delete`(§1.2) |
 | 엑셀형 클립보드 | 드래그 범위 선택 → Ctrl+C(TSV 복사)/Ctrl+V(붙여넣기). 헤더 포함 복사 토글 | 그리드 드래그 + Ctrl+C/V, 설정 메뉴 `copy-header-toggle` | `clipboard.setupClipboardHandlers/getRangeSelectedTSV`(§7) |
-| 스마트 페이스트(인제션 경유) | 클립보드 내용을 임시 파일(`web_smart_paste_*.{txt,html,csv,json,rtf}`)로 만들어 파일 인제션 경로로 업로드(파서 처리). 행 수 임계 없음 — 자동 발동 아닌 수동 실행 | 그리드 **우클릭** → 컨텍스트 메뉴 "📋 파서로 붙여넣기 (Smart Paste)". 클립보드에 텍스트 계열 포맷이 2개 이상이면 유형 선택 모달(Plain Text/HTML Table/RTF/CSV/JSON — 전송할 클립보드 포맷 선택), 1개면 즉시 진행 | `main.smartPasteViaIngestion/showClipboardTypeModal`(§7) · POST `/tables/{t}/upload` |
+| 스마트 페이스트(인제션 경유) | 클립보드 내용을 임시 파일(`web_smart_paste_*.{txt,html,csv,json,rtf}`)로 만들어 파일 인제션 경로로 업로드(파서 처리). 행 수 임계 없음 — 자동 발동 아닌 수동 실행 | **`Ctrl+Shift+V`가 본동선**(직행). 우클릭 → "📋 파서로 붙여넣기 (Smart Paste)"는 **클립보드를 읽지 못하고** 다음 붙여넣기를 예약(걸쇠)한 뒤 누를 키를 토스트로 안내한다 — 평문 HTTP에서는 `navigator.clipboard`가 없어 **버튼이 읽는 것 자체가 불가능**하기 때문(`execCommand('paste')`도 차단). 텍스트 계열 포맷이 2개 이상이면 유형 선택 모달(Plain Text/HTML Table/RTF/CSV/JSON), 1개면 즉시 진행. 취소는 Esc | `main.smartPasteFromPasteEvent`(읽기) / `smartPasteViaIngestion`(클릭 진입) / `uploadSmartPastePayload` / `showClipboardTypeModal`(§7) · `clipboard.registerSmartPasteHandler` · `state.smartPasteArmedUntil`/`smartPasteArmedTable` · POST `/tables/{t}/upload` |
 | 파일 업로드 | 브라우저에서 파일 선택 → 해당 테이블 워크스페이스로 투입(이후 인제션 파이프라인) | 툴바 파일 업로드(`toolbar-file-input`) | POST `/tables/{t}/upload`(§1.2) |
 | 컬럼 선택(표시 토글) | 표시할 컬럼 선택/전체/해제. 선택 상태는 AG-Grid 인메모리 컬럼 상태에만 유지(localStorage 미저장) — **새로고침 시 전체 표시로 초기화**, 테이블 전환 시 컬럼 정의 재구축으로 유지 비보장 | 툴바 `column-selector-btn` → 드롭다운 체크리스트(`col-select-all/none-btn`) | `main.setupEventListeners`(§7) — `gridApi.setColumnsVisible` |
 | 페이징/뷰 모드 | 페이지 이동(이전/다음/번호 입력), 뷰 모드 전환, 전체 로드, CSV export. 뷰 모드 2종: `📄 Paging`(pagination — 하단 페이지 컨트롤 표시) / `♾️ Scroll`(infinite — 페이지 컨트롤 숨김, 스크롤 하단 도달 시 다음 청크 자동 로드) | 하단 `prev/next-page-btn`·`page-input`·`view-mode-select`·`load-all-btn`·`load-csv-btn` | `state.currentSkip/pageCache`·`grid.updateViewModeUI`(§7) · GET `/tables/{t}/export`(§1.2) |
@@ -251,8 +251,12 @@
   - ⚠️ **반드시 사내망 평문 HTTP 주소(`http://<사내IP>:8080`)에서 점검**할 것. `localhost`/`127.0.0.1`은 보안 컨텍스트라 `navigator.clipboard`가 살아 있어 **운영 결함이 재현되지 않는다**(2026-07-27 실제 사례).
 - [ ] **행 단위 복사**: 셀 범위 선택을 해제한 상태에서 행 체크박스로 행 선택 → Ctrl+C → 행 전체 TSV. ⚠️ 셀 범위/단일 셀 선택이 남아 있으면 범위 복사가 우선(`clipboard.js:569`)이라 행 복사가 실행되지 않는다.
 - [ ] **클립보드 붙여넣기**: 엑셀에서 복사한 2×2 범위를 그리드에 Ctrl+V → 해당 범위 셀 값 갱신 + 이력 기록.
-- [ ] **스마트 페이스트**: 엑셀에서 표 복사 → 그리드 우클릭 → "📋 파서로 붙여넣기 (Smart Paste)" → (엑셀 복사본은 다중 포맷이므로) 유형 선택 모달에서 포맷 선택 → 업로드 성공 토스트 → 인제션 파이프라인 경유 적재·그리드 반영.
-  - ⚠️ 이 기능만 `navigator.clipboard.readText()`에 의존한다(`main.js:1463`). **평문 HTTP에서는 항상 실패**하고 "❌ 스마트 붙여넣기 중 오류가 발생했습니다." 토스트로 끝난다 — 미해결(2026-07-27 확인). 위 **클립보드 붙여넣기**(Ctrl+V)는 별개 경로이며 평문 HTTP에서도 정상.
+- [ ] **스마트 페이스트 — 단축키(본동선)**: 엑셀에서 표 복사 → 그리드에서 `Ctrl+Shift+V` → (엑셀 복사본은 다중 포맷이므로) 유형 선택 모달에서 포맷 선택 → 업로드 성공 토스트 → 인제션 파이프라인 경유 적재·그리드 반영.
+  - ⚠️ 브라우저가 `Ctrl+Shift+V`를 붙여넣기 명령으로 번역하지 않으면 **아무 일도 안 일어나는 대신** 0.6초 뒤 「이어서 Ctrl+V 를 눌러 주세요」 토스트가 뜬다. **그 상태에서 Ctrl+V를 눌러 완료되는지까지가 이 항목**이다.
+- [ ] **스마트 페이스트 — 우클릭 진입**: 우클릭 → "📋 파서로 붙여넣기 (Smart Paste)" → 「이 환경(평문 HTTP)에서는 버튼이 클립보드를 읽을 수 없습니다. 지금 Ctrl+V 를 눌러 주세요」 토스트 → Ctrl+V → 위와 동일하게 완료. **메뉴 클릭만으로 조용히 끝나면 결함**이다.
+- [ ] **스마트 페이스트 — 걸쇠 회수**: ① 안내 토스트는 붙여넣기가 완료되는 즉시 사라진다(안내가 화면에 남으면 결함). ② Esc를 누르면 예약이 풀리고, 이후 Ctrl+V는 **평범한 범위 붙여넣기**로 동작한다. ③ 예약 후 **테이블을 바꾸고** Ctrl+V를 누르면 업로드하지 않고 「테이블이 [A] → [B] 로 바뀌어 취소했습니다」로 거절한다(**엉뚱한 테이블 적재 방지 — 실패하면 데이터 사고**).
+- [ ] **스마트 페이스트 — 거절 문구**: 이미지만 복사한 상태에서 실행 → 「클립보드에 텍스트 형식이 없습니다. (감지된 형식: …)」. 빈 클립보드 → 「클립보드가 비어 있습니다」. **일반 오류 토스트로 끝나면 결함**(사용자가 스스로 고칠 수 없어 문의가 된다).
+  - ⚠️ **반드시 사내망 평문 HTTP 주소에서 점검**할 것. `localhost`/`127.0.0.1`은 보안 컨텍스트라 `navigator.clipboard`가 살아 있어 버튼이 그냥 읽어버린다 — **운영 동선(걸쇠)이 재현되지 않는다.** 위 **클립보드 붙여넣기**(Ctrl+V)는 별개 경로이며 평문 HTTP에서도 정상.
 - [ ] **컬럼 선택**: `column-selector-btn` → 일부 컬럼 해제 → 그리드에서 숨김. 전체 선택/해제 버튼 동작.
 - [ ] **Tx 모드**: 설정 메뉴 `tx-mode-toggle` ON → 셀 2~3개 편집(서버 미반영 스테이징 표시) → `tx-apply-btn` → 일괄 커밋(단일 트랜잭션 이력). ON 상태에서 `tx-discard-btn` → 편집 전량 원복.
 - [ ] **Tx 모드 에지 — 이탈 경고**: Tx 편집 pending 상태에서 페이지 새로고침 시도 → 이탈 경고(beforeunload) 표시.

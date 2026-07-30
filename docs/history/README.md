@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **287개** 이력. (거버넌스 규칙 #4)
+> 총 **288개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 19:00** — [Smart Paste Latch Plain Http](./20260730_190000_smart_paste_latch_plain_http.md)
 - **2026-07-30 18:10** — [The Board Is Not Evidence](./20260730_181000_the_board_is_not_evidence.md)
 - **2026-07-30 18:00** — [Pushed Meant Two Things](./20260730_180000_pushed_meant_two_things.md)
 - **2026-07-30 17:50** — [Valid Die Adoption Reversed By The Data Model](./20260730_175000_valid_die_adoption_reversed_by_the_data_model.md)

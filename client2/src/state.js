@@ -31,7 +31,17 @@ export const state = {
   allDataLoaded: false,
   isDesktop: new URLSearchParams(window.location.search).get('client') === 'desktop',
   dragRefreshPending: false,
-  visibleColIndexMap: {} // key: colId -> visibleIndex
+  visibleColIndexMap: {}, // key: colId -> visibleIndex
+  // Smart paste latch. `navigator.clipboard` is undefined on the plain-HTTP intranet, so the
+  // ONLY way to read the clipboard is a native `paste` event - which a button click cannot
+  // produce (`document.execCommand('paste')` is blocked in web content). This timestamp is
+  // the window during which the next `paste` event is routed to the parser instead of to the
+  // normal cell-range paste. 0 = not armed. Consumed on use, expires on its own otherwise.
+  smartPasteArmedUntil: 0,
+  // The table that was on screen when the latch was armed. If it changed before the paste
+  // landed the upload is refused - this path INGESTS, and a file in the wrong table is a
+  // data error rather than a cosmetic one.
+  smartPasteArmedTable: ''
 };
 
 export function updateVisibleColIndexMap() {

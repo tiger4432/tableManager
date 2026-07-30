@@ -48,6 +48,16 @@ function toastIcon(type) {
   return 'ℹ️';
 }
 
+// Retract toasts by dedupeKey. A toast that instructs the user to do something ("press
+// Ctrl+V") must disappear the moment that instruction stops being true - otherwise it is
+// telling them to repeat an action that has already run.
+export function dismissToasts(dedupeKey) {
+  if (!dedupeKey) return;
+  for (let i = toastItems.length - 1; i >= 0; i--) {
+    if (toastItems[i].dedupeKey === dedupeKey) removeToast(toastItems[i]);
+  }
+}
+
 function removeToast(item) {
   const i = toastItems.indexOf(item);
   if (i >= 0) toastItems.splice(i, 1);

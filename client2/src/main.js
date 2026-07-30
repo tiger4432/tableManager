@@ -28,6 +28,7 @@ import {
   clearRangeSelection,
   commitDragSelection,
   setupClipboardHandlers,
+  registerSmartPasteHandler,
   clearSelectedCells
 } from './clipboard.js';
 import {
@@ -40,6 +41,7 @@ import {
 } from './grid.js';
 import {
   showToast,
+  dismissToasts,
   showIngestionProgress,
   finishIngestionProgress,
   getLocalTimeString
@@ -105,6 +107,9 @@ async function init() {
   setupEventListeners();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
+  // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;
+  // this hands it the smart-paste reader without clipboard.js having to import main.js.
+  registerSmartPasteHandler(smartPasteFromPasteEvent);
   setupDragAndDrop();
   await checkServerHealth();
   await loadTables();
@@ -431,6 +436,46 @@ function setupEventListeners() {
   // Keyboard shortcuts inside the grid
   document.addEventListener('keydown', (e) => {
     const activeEl = document.activeElement;
+    const isTextField = !!activeEl && (
+      activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' ||
+      activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input')
+    );
+
+    // Smart paste: Ctrl+Shift+V.
+    //   * Ctrl+V is already the grid's cell-range paste (clipboard.js), so smart paste needs
+    //     its own modifier; Ctrl+Shift+V is "paste special" in every spreadsheet an operator
+    //     here has used, and nothing in this client binds it.
+    //   * It is deliberately NOT scoped to #myGrid the way Delete/Ctrl+A are. After closing
+    //     the context menu focus sits on <body>, and a shortcut that quietly does nothing
+    //     there would reproduce the very complaint this fixes.
+    //   * NOTHING is preventDefault()ed. The browser's own paste command is what produces the
+    //     `paste` event carrying `e.clipboardData` - the only readable clipboard on plain
+    //     HTTP. Swallowing the keydown would swallow the read.
+    if (!isTextField && e.shiftKey && (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+      armSmartPaste(SMART_PASTE_KEY_TTL_MS);
+      elements.performanceLog.textContent = `📋 Smart paste (${SMART_PASTE_KEY_LABEL}): waiting for the paste event`;
+      // Whether a browser turns Ctrl+Shift+V into a paste command is the browser's business,
+      // not ours, and it differs between Chrome, Edge and Firefox. So do not BET on it: if no
+      // paste event lands, hold the latch open and name the chord that is guaranteed to
+      // produce one. One keystroke when the shortcut works, two when it does not, and never
+      // the silent nothing that sent this bug to support in the first place.
+      clearTimeout(smartPasteEscalationTimer);
+      smartPasteEscalationTimer = setTimeout(() => {
+        if (state.smartPasteArmedUntil === 0) return; // already consumed - the chord worked
+        armSmartPaste(SMART_PASTE_ARM_TTL_MS);
+        showToast(
+          `스마트 붙여넣기 대기 중 — 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`,
+          'info',
+          { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY }
+        );
+      }, SMART_PASTE_ESCALATE_MS);
+      return;
+    }
+
+    // Escape retracts an armed paste, so the promise made by the toast stays true.
+    if (e.key === 'Escape' && state.smartPasteArmedUntil > Date.now()) {
+      cancelSmartPasteArm('Smart paste cancelled');
+    }
 
     if (activeEl && activeEl.closest('#myGrid')) {
       const isEditing = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input');
@@ -1439,77 +1484,98 @@ async function refreshSourcesList() {
 
 
 
-// Feature 2: Smart Paste Parser via Form Upload
-async function smartPasteViaIngestion() {
+// ── Feature 2: Smart Paste (clipboard ➡️ ingestion parser) ─────────────────────────────
+//
+// `navigator.clipboard` is UNDEFINED in production. The intranet is plain HTTP, a NON-SECURE
+// context, so the whole object is missing - not merely permission-gated. Reading the
+// clipboard therefore has exactly ONE door: `e.clipboardData` on a native `paste` event. A
+// button cannot open that door, because `document.execCommand('paste')` is blocked in web
+// content. This is a browser constraint, not a design choice, and the flow below accepts it:
+//
+//   * Ctrl+Shift+V              - the direct route: it arms and the browser's own paste
+//                                 command lands in the same breath, so it is one keystroke
+//                                 WHEN the browser honours the chord. When it does not, the
+//                                 arming holds and the user is told to press Ctrl+V.
+//   * Button / context menu     - cannot read at all; they ARM the next paste and name the key.
+//   * navigator.clipboard.read  - still PREFERRED where it genuinely exists (localhost dev is
+//                                 a secure context) because a click can drive it.
+//
+// What is deliberately absent is the shape that caused the defect: a fallback for
+// `navigator.clipboard` being absent that then calls `navigator.clipboard`. Every branch below
+// is guarded on the exact method it is about to call.
+
+const SMART_PASTE_KEY_LABEL = 'Ctrl+Shift+V';
+const SMART_PASTE_FALLBACK_KEY_LABEL = 'Ctrl+V';
+// The keystroke and the paste event it triggers are one user action; the latch only has to
+// survive the browser's command dispatch.
+const SMART_PASTE_KEY_TTL_MS = 1500;
+// A click has to wait for the operator to read the toast and reach for the keyboard.
+const SMART_PASTE_ARM_TTL_MS = 15000;
+// Real paste-event latency after a keydown is single-digit milliseconds. If nothing has
+// arrived by here, this browser did not translate the chord into a paste command at all.
+const SMART_PASTE_ESCALATE_MS = 600;
+
+let smartPasteEscalationTimer = null;
+
+function armSmartPaste(ttlMs) {
+  state.smartPasteArmedUntil = Date.now() + ttlMs;
+  // Remember WHICH table was armed. The arming window is long enough for an operator to
+  // change tables in between, and this path ingests a file - landing it in a table the user
+  // was no longer looking at is a data error, not a UI annoyance.
+  state.smartPasteArmedTable = state.currentTable;
+}
+
+// Every arming toast carries this key so it can be retracted the instant the arming ends.
+const SMART_PASTE_ARM_TOAST_KEY = 'smart-paste-arm';
+
+function cancelSmartPasteArm(logText) {
+  state.smartPasteArmedUntil = 0;
+  clearTimeout(smartPasteEscalationTimer);
+  smartPasteEscalationTimer = null;
+  dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
+  if (logText) elements.performanceLog.textContent = logText;
+}
+
+// Text-bearing formats only. An image or a file list has nothing for the parser to read, and
+// naming WHICH formats were present is the difference between a user who can fix it himself
+// and a support question.
+function pickTextTypes(types) {
+  return Array.from(types || []).filter(
+    t => t.startsWith('text/') || t.includes('json') || t.includes('csv')
+  );
+}
+
+function extForMime(mime) {
+  if (mime === 'text/html') return 'html';
+  if (mime === 'text/rtf') return 'rtf';
+  if (mime === 'application/json' || mime === 'text/json') return 'json';
+  if (mime === 'text/csv') return 'csv';
+  return 'txt';
+}
+
+// The half that is identical for every reader: wrap the text as a file and hand it to the
+// ingestion endpoint.
+async function uploadSmartPastePayload(selectedText, selectedType) {
+  if (!state.currentTable) {
+    showToast('테이블이 선택되지 않아 스마트 붙여넣기를 보낼 수 없습니다.', 'error');
+    return;
+  }
+  if (!selectedText || !selectedText.trim()) {
+    elements.performanceLog.textContent = '📋 Smart paste: clipboard held no text';
+    showToast('클립보드가 비어 있습니다. 복사한 뒤 다시 시도해 주세요.', 'error');
+    return;
+  }
+
+  const fileExt = extForMime(selectedType);
+  elements.performanceLog.textContent = `Uploading ${selectedType} clipboard data for parsing...`;
+
+  const blob = new Blob([selectedText], { type: selectedType });
+  const file = new File([blob], `web_smart_paste_${Date.now()}.${fileExt}`, { type: selectedType });
+
+  const formData = new FormData();
+  formData.append('file', file);
+
   try {
-    let selectedText = '';
-    let selectedType = 'text/plain';
-    let fileExt = 'txt';
-
-    // Check if navigator.clipboard.read is supported (for rich types like HTML)
-    if (navigator.clipboard && navigator.clipboard.read) {
-      const items = await navigator.clipboard.read().catch(err => {
-        console.warn('Clipboard read error, falling back to readText()', err);
-        return null;
-      });
-
-      if (items && items.length > 0) {
-        const item = items[0];
-        // Filter readable text-based formats
-        const textTypes = item.types.filter(t => t.startsWith('text/') || t.includes('json') || t.includes('csv'));
-
-        if (textTypes.length === 0) {
-          alert('Clipboard does not contain any readable text format.');
-          return;
-        }
-
-        if (textTypes.length === 1) {
-          selectedType = textTypes[0];
-          const blob = await item.getType(selectedType);
-          selectedText = await blob.text();
-        } else {
-          // Show rich glassmorphic selection modal for multiple formats
-          const chosen = await showClipboardTypeModal(textTypes);
-          if (!chosen) {
-            elements.performanceLog.textContent = 'Smart paste cancelled';
-            return; // Cancelled by user
-          }
-          selectedType = chosen;
-          const blob = await item.getType(selectedType);
-          selectedText = await blob.text();
-        }
-      } else {
-        // Fallback to plain text if read() failed or returned nothing
-        selectedText = await navigator.clipboard.readText();
-        selectedType = 'text/plain';
-      }
-    } else {
-      // Fallback to plain text if navigator.clipboard.read is not supported
-      selectedText = await navigator.clipboard.readText();
-      selectedType = 'text/plain';
-    }
-
-    if (!selectedText.trim()) {
-      alert('Clipboard is empty or does not contain text.');
-      return;
-    }
-
-    // Map mime types to extensions
-    if (selectedType === 'text/html') fileExt = 'html';
-    else if (selectedType === 'text/rtf') fileExt = 'rtf';
-    else if (selectedType === 'application/json' || selectedType === 'text/json') fileExt = 'json';
-    else if (selectedType === 'text/csv') fileExt = 'csv';
-    else fileExt = 'txt';
-
-    elements.performanceLog.textContent = `Uploading ${selectedType} clipboard data for parsing...`;
-
-    // Build log file representation via Blob
-    const blob = new Blob([selectedText], { type: selectedType });
-    const file = new File([blob], `web_smart_paste_${Date.now()}.${fileExt}`, { type: selectedType });
-
-    const formData = new FormData();
-    formData.append('file', file);
-
     const res = await fetch(`${API_BASE}/tables/${state.currentTable}/upload?user=${encodeURIComponent(CURRENT_USER)}`, {
       method: 'POST',
       body: formData
@@ -1520,16 +1586,157 @@ async function smartPasteViaIngestion() {
       const savedPath = resData.path || '';
       const savedFilename = savedPath.split(/[/\\]/).pop() || file.name;
       elements.performanceLog.textContent = '📋 Clipboard uploaded to parser. Automatic reload will trigger soon.';
-      showToast(`📋 스마트 붙여넣기 완료! (포맷: ${selectedType.split('/')[1].toUpperCase()}, 파일: ${savedFilename})`, 'success');
+      showToast(`스마트 붙여넣기 완료! (포맷: ${selectedType.split('/')[1].toUpperCase()}, 파일: ${savedFilename})`, 'success');
     } else {
-      showToast('❌ 스마트 붙여넣기 전송에 실패했습니다.', 'error');
-      throw new Error('Smart paste upload failed');
+      const detail = await res.text().catch(() => '');
+      console.error('Smart paste upload rejected', res.status, detail);
+      elements.performanceLog.textContent = `❌ Smart paste upload rejected (HTTP ${res.status})`;
+      showToast(`서버가 스마트 붙여넣기를 거부했습니다 (HTTP ${res.status}).`, 'error');
     }
   } catch (err) {
-    console.error('Smart paste error', err);
-    elements.performanceLog.textContent = '❌ Failed to upload smart paste data';
-    showToast('❌ 스마트 붙여넣기 중 오류가 발생했습니다.', 'error');
+    // A transport failure, not a clipboard failure - say so, or the user reads it as the
+    // clipboard bug again.
+    console.error('Smart paste upload failed', err);
+    elements.performanceLog.textContent = '❌ Smart paste upload failed to reach the server';
+    showToast('서버에 전송하지 못했습니다. 네트워크를 확인해 주세요.', 'error');
   }
+}
+
+// THE production reader. Runs inside the `paste` event dispatch, where `e.clipboardData` is
+// the only clipboard that exists on plain HTTP.
+async function smartPasteFromPasteEvent(e) {
+  // The latch has just been spent, so retire the "press Ctrl+V" instruction and the pending
+  // escalation with it. A prompt that outlives what it asked for reads as "it did nothing".
+  clearTimeout(smartPasteEscalationTimer);
+  smartPasteEscalationTimer = null;
+  dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
+
+  if (state.smartPasteArmedTable !== state.currentTable) {
+    elements.performanceLog.textContent = '❌ Smart paste: table changed after arming';
+    showToast(
+      `테이블이 [${state.smartPasteArmedTable}] → [${state.currentTable}] 로 바뀌어 취소했습니다. 다시 실행해 주세요.`,
+      'error'
+    );
+    return;
+  }
+
+  const dt = e.clipboardData;
+  if (!dt) {
+    elements.performanceLog.textContent = '❌ Smart paste: paste event carried no clipboardData';
+    showToast('붙여넣기 이벤트에 클립보드 데이터가 없습니다. 다시 시도해 주세요.', 'error');
+    return;
+  }
+
+  const allTypes = Array.from(dt.types || []);
+  const textTypes = pickTextTypes(allTypes);
+  if (textTypes.length === 0) {
+    elements.performanceLog.textContent = '❌ Smart paste: no text-bearing format on the clipboard';
+    showToast(
+      `클립보드에 텍스트 형식이 없습니다. (감지된 형식: ${allTypes.length ? allTypes.join(', ') : '없음'})`,
+      'error'
+    );
+    return;
+  }
+
+  // ⚠️ Read EVERY candidate synchronously, before the first await. A paste event's
+  // DataTransfer is only readable during dispatch; `getData()` after the handler yields
+  // returns an empty string, which would silently turn the format modal into a data-loss bug.
+  const byType = {};
+  textTypes.forEach(t => { byType[t] = dt.getData(t); });
+
+  let selectedType = textTypes[0];
+  if (textTypes.length > 1) {
+    const chosen = await showClipboardTypeModal(textTypes);
+    if (!chosen) {
+      elements.performanceLog.textContent = 'Smart paste cancelled';
+      return;
+    }
+    selectedType = chosen;
+  }
+
+  await uploadSmartPastePayload(byType[selectedType], selectedType);
+}
+
+// Click entry point (toolbar button / context-menu item). Prefers the async Clipboard API
+// where it is really there; otherwise it cannot read at all, and says so while arming the key.
+async function smartPasteViaIngestion() {
+  if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+    let items = null;
+    try {
+      items = await navigator.clipboard.read();
+    } catch (err) {
+      // Denied permission, unfocused document, or an empty clipboard. Do NOT retry through
+      // `readText()` on this same object - it is the same permission and the same gate.
+      console.warn('navigator.clipboard.read() refused', err);
+      items = null;
+    }
+
+    const item = items && items.length > 0 ? items[0] : null;
+    if (item) {
+      const allTypes = Array.from(item.types || []);
+      const textTypes = pickTextTypes(allTypes);
+      if (textTypes.length === 0) {
+        showToast(
+          `클립보드에 텍스트 형식이 없습니다. (감지된 형식: ${allTypes.length ? allTypes.join(', ') : '없음'})`,
+          'error'
+        );
+        return;
+      }
+
+      let selectedType = textTypes[0];
+      if (textTypes.length > 1) {
+        const chosen = await showClipboardTypeModal(textTypes);
+        if (!chosen) {
+          elements.performanceLog.textContent = 'Smart paste cancelled';
+          return;
+        }
+        selectedType = chosen;
+      }
+
+      try {
+        const blob = await item.getType(selectedType);
+        await uploadSmartPastePayload(await blob.text(), selectedType);
+      } catch (err) {
+        console.error('Clipboard blob read failed', err);
+        showToast(`클립보드의 ${selectedType} 형식을 읽지 못했습니다.`, 'error');
+      }
+      return;
+    }
+
+    // The API exists but would not give us anything. Fall through to the key route rather
+    // than dialling the same object again.
+    armSmartPaste(SMART_PASTE_ARM_TTL_MS);
+    showToast(`브라우저가 클립보드 읽기를 거부했습니다. 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
+    elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL}`;
+    return;
+  }
+
+  if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+    // A genuinely different capability (older browsers ship readText without read), guarded
+    // on the exact method being called. Plain text only - that is all this API offers here.
+    try {
+      const text = await navigator.clipboard.readText();
+      await uploadSmartPastePayload(text, 'text/plain');
+    } catch (err) {
+      console.warn('navigator.clipboard.readText() refused', err);
+      armSmartPaste(SMART_PASTE_ARM_TTL_MS);
+      showToast(`브라우저가 클립보드 읽기를 거부했습니다. 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
+    }
+    return;
+  }
+
+  // Production lands here: plain HTTP = non-secure context = no `navigator.clipboard` at all.
+  // Naming the cause and the key is the whole point - the user's bug report was
+  // "무슨 read 막혔다고 작동안하네", which is as far as the old generic toast let them get.
+  armSmartPaste(SMART_PASTE_ARM_TTL_MS);
+  elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL} (clipboard API unavailable on plain HTTP)`;
+  showToast(
+    `이 환경(평문 HTTP)에서는 버튼이 클립보드를 읽을 수 없습니다. 지금 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`,
+    'info',
+    // The toast lives exactly as long as the latch: when the instruction disappears, the
+    // arming really is gone. A prompt that outlives what it promises is its own defect.
+    { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY }
+  );
 }
 
 // Glassmorphism selection modal for clipboard data types
