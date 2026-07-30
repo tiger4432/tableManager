@@ -1,20 +1,30 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **262개** 이력. (거버넌스 규칙 #4)
+> 총 **272개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 10:11** — [P0 Adoption Coordinates And Paste Fingerprint](./20260730_101144_p0_adoption_coordinates_and_paste_fingerprint.md)
+- **2026-07-30 09:50** — [Resync Announces Reload And Scheduled Orphan Sweep](./20260730_095034_resync_announces_reload_and_scheduled_orphan_sweep.md)
 - **2026-07-30 09:46** — [Desktop Shell Server Address Resolution](./20260730_094649_desktop_shell_server_address_resolution.md)
 - **2026-07-30 09:30** — [Enrichment 124 And Chain Replay R1 R2](./20260730_093000_enrichment_124_and_chain_replay_r1_r2.md)
+- **2026-07-30 09:13** — [Board Voc Row Stale And The Misfire It Cost](./20260730_091319_board_voc_row_stale_and_the_misfire_it_cost.md)
+- **2026-07-30 09:10** — [F4 Presence Cache And Toast Cleanup](./20260730_091057_f4_presence_cache_and_toast_cleanup.md)
+- **2026-07-30 09:03** — [Keyboard Range Selection And Three Void Figures](./20260730_090351_keyboard_range_selection_and_three_void_figures.md)
+- **2026-07-30 08:53** — [Chip Trace Api And Edge Spatial Refusal](./20260730_085335_chip_trace_api_and_edge_spatial_refusal.md)
+- **2026-07-30 08:12** — [Cell Chain Ontology Schema](./20260730_081258_cell_chain_ontology_schema.md)
+- **2026-07-30 07:32** — [F6 Frame Adoption And Preset Routing Client](./20260730_073250_f6_frame_adoption_and_preset_routing_client.md)
 - **2026-07-30 04:37** — [Docs Sync Round Trip Routing Build Gate](./20260730_043738_docs_sync_round_trip_routing_build_gate.md)
 - **2026-07-30 04:16** — [Company Sheet Round Trip Paste](./20260730_041654_company_sheet_round_trip_paste.md)
 - **2026-07-30 04:04** — [Board Restored And The Parity Bias That Did Not Exist](./20260730_040416_board_restored_and_the_parity_bias_that_did_not_exist.md)
 - **2026-07-30 03:37** — [Copy Header Widths Ignore Roster As Set Contract Build Gate](./20260730_033749_copy_header_widths_ignore_roster_as_set_contract_build_gate.md)
 - **2026-07-30 03:35** — [Preset Routing Server Half](./20260730_033501_preset_routing_server_half.md)
+- **2026-07-30 02:37** — [Savable Cell Predicate And Copy Header Mode](./20260730_023734_savable_cell_predicate_and_copy_header_mode.md)
+- **2026-07-30 02:26** — [Valid Die Map Operator Guide](./20260730_022657_valid_die_map_operator_guide.md)
 - **2026-07-29 21:30** — [F3 Unique Value Lookup](./20260729_213000_f3_unique_value_lookup.md)
 - **2026-07-29 18:30** — [Silent Failures Config Schema Boot](./20260729_183000_silent_failures_config_schema_boot.md)
 - **2026-07-29 10:15** — [Valid Die Ref Server Half](./20260729_101500_valid_die_ref_server_half.md)
