@@ -1,13 +1,20 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **280개** 이력. (거버넌스 규칙 #4)
+> 총 **287개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-30 18:10** — [The Board Is Not Evidence](./20260730_181000_the_board_is_not_evidence.md)
+- **2026-07-30 18:00** — [Pushed Meant Two Things](./20260730_180000_pushed_meant_two_things.md)
+- **2026-07-30 17:50** — [Valid Die Adoption Reversed By The Data Model](./20260730_175000_valid_die_adoption_reversed_by_the_data_model.md)
+- **2026-07-30 17:40** — [A Log Line That Was False On Both Counts](./20260730_174000_a_log_line_that_was_false_on_both_counts.md)
+- **2026-07-30 17:30** — [A Loopback Call That Left The Box](./20260730_173000_a_loopback_call_that_left_the_box.md)
+- **2026-07-30 17:20** — [The Qa No Go That Did Not Hold And One Quantity One Number](./20260730_172000_the_qa_no_go_that_did_not_hold_and_one_quantity_one_number.md)
+- **2026-07-30 17:10** — [Ingestion Precedence Ruling Under An Unrelated Headline](./20260730_171000_ingestion_precedence_ruling_under_an_unrelated_headline.md)
 - **2026-07-30 17:00** — [Escape Means One Thing And Limit 12 Is Why](./20260730_170000_escape_means_one_thing_and_limit_12_is_why.md)
 - **2026-07-30 13:55** — [Three Of My Own Claims Were Wrong And Measurement Said So](./20260730_135500_three_of_my_own_claims_were_wrong_and_measurement_said_so.md)
 - **2026-07-30 13:50** — [Two Escapes Past One Green Instrument](./20260730_135043_two_escapes_past_one_green_instrument.md)
