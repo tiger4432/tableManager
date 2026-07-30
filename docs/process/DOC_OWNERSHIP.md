@@ -1,6 +1,6 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (**맵 정렬 메타 행에 `map_meta_registrar.py` 추가** — M3로 인제션이 두 번째 쓰기 주체가 됨, 계약 문서는 INGESTION_GUIDE §1.10. 직전: **설정 전반 행에 guide/config/ 폴더 반영** — 파일별 세팅 가이드 신설. 직전: **config 백업 행 추가** — `config_backup.py` + `backup_config.py`, C3의 복원 원본. 직전: 롤백 서브시스템 행 — `ROLLBACK_PROCEDURE` + `list_undeclared_tables.py`) | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**클라 측 2행 신설** — `e9b3a36` 이후 `client/desktop_wrapper.py`가 **경계 계약**(서버 주소 해석)을 갖게 됐고, `client/client_settings.json`은 **행이 아예 없었다**. 실측 확인: 이 파일은 `git ls-files`에 **추적 대상**이고, `server/config_backup.py`는 `_paths.CONFIG_DIR`의 `*.json`만 스냅샷하므로 **`server/config/*` 행들이 이 파일을 덮지 않는다**(리로드 대상도 아님). 직전 **맵 정렬 메타 행에 `map_meta_registrar.py` 추가** — M3로 인제션이 두 번째 쓰기 주체가 됨, 계약 문서는 INGESTION_GUIDE §1.10. 직전: **설정 전반 행에 guide/config/ 폴더 반영** — 파일별 세팅 가이드 신설. 직전: **config 백업 행 추가** — `config_backup.py` + `backup_config.py`, C3의 복원 원본. 직전: 롤백 서브시스템 행 — `ROLLBACK_PROCEDURE` + `list_undeclared_tables.py`) | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
 각 서브시스템을 **어느 코드가 구현하고, 어느 문서가 설명하는지** 매핑합니다. 코드를 바꾸면 "문서" 열의 리빙 문서를 함께 갱신합니다([docs-as-code](./CONTRIBUTING.md#2-docs-as-code-갱신-규율)).
@@ -20,6 +20,8 @@
 | 백엔드 API/워커 | `server/main.py`, `server/*_worker.py`, `server/run_*.py` | [architecture/backend](../architecture/backend.md) | Backend/Sync |
 | 이벤트 기반(Outbox/EDA) | `server/database/database.py`, `chain_ingestion_worker.py`, `graph_sync_worker.py` | [architecture/event_driven_backend](../architecture/event_driven_backend.md) | Backend/Sync |
 | 프론트엔드(웹+셸) | `client2/src/*`, `client/desktop_wrapper.py` | [architecture/frontend](../architecture/frontend.md) | UI/Excel |
+| **데스크톱 셸의 서버 주소 해석(경계 계약)** | **`client/desktop_wrapper.py`**(2026-07-30 `e9b3a36` — `resolve_server_target`/`base_url`/`settings_file_path`. **셸이 어느 서버를 보는지의 유일한 결정 지점**이고 `http://` 조립도 한 곳이다) | [architecture/frontend §1.1](../architecture/frontend.md)(**정본** — 우선순위 4단·거절 대상·`--print-target`·`NO_PROXY`·exe 번들 제외) · 점검 절차는 [qa/FEATURE_CHECKLIST §1.10](../qa/FEATURE_CHECKLIST.md). **우선순위·거절 규칙·시작 로그의 `source` 어휘를 바꾸면 두 곳 모두 필수 갱신** | UI / Ops |
+| **클라 측 설정 파일** | **`client/client_settings.json`**(git **추적** 대상 — `server_host`/`server_port`/`current_user`. 읽는 곳은 `desktop_wrapper.settings_file_path()` 하나이고, frozen exe에서는 `sys.executable` 디렉터리를 먼저 본다) | [architecture/frontend §1.1](../architecture/frontend.md) — **`server/config/*` 행들은 이 파일을 덮지 않는다**(서버 config는 gitignored + `.sample` 관례이고 `config_watcher`·`config_backup`·[CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)의 대상이지만, 이 파일은 **추적되고 리로드 대상이 아니며 백업 스냅샷에도 들어가지 않는다**). 키를 추가/개명하면 frontend §1.1 + FEATURE_CHECKLIST 갱신 | UI / Ops |
 | 데이터 모델/레이어링 | `server/database/models.py`, `crud.py` | [architecture/data_model](../architecture/data_model.md) | Backend/Integrity |
 | 파일 인제션 파이프라인 | `parsers/directory_watcher.py`, `parsers/pipeline_base.py` | [guide/INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) | Ingester |
 | 체인 인제션 | `chain_ingestion_worker.py`, `mappers/` | [guide/chain_ingestion_guide](../guide/chain_ingestion_guide.md) | Ingester |

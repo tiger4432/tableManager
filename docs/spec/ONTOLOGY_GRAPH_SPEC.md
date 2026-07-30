@@ -1,6 +1,6 @@
 # 🕸️ Ontology Knowledge Graph Spec — LLM 백본 지식그래프
 
-> **Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계) | **Last-verified:** 2026-07-25 | **Owner:** 총괄 PM
+> **Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계) | **Last-verified:** 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 대체 완료: [graph_db_integration_plan.md](../_archive/graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체, 2026-07-25 아카이브)
 
 ## 0. 핵심 가치 (사용자 확정 2026-07-25)
@@ -42,19 +42,35 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 ```jsonc
 {
   "bonding_log": {
-    "node": { "label": "Chip", "identity": "log_id", "props": ["bx", "by", "cx", "cy"],
-              "node_class": "dynamic" },                            // ← §7.5c 정적/동적 분류 (필수 예정)
-    "description": "본딩 설비가 chip 1개를 base에 실장한 이벤트",   // ← LLM 그라운딩용 (필수)
+    "description": "본딩 설비가 코어 셀 1개의 칩을 base 셀에 실장한 이벤트 로그", // ← LLM 그라운딩용 (필수)
+    "event_time_column": "eventtime",                        // ← 선택. 엣지 event_time의 실 사건 시각
+    "node": {
+      "label": "CoreCell",                                   // ← 행 노드는 **셀**이다 (아래 규율)
+      "identity": ["core_lot", "core_slot", "cx", "cy"],     // ← 단일 컬럼명 또는 복수 컬럼 리스트
+      "node_class": "dynamic",                               // ← §7.5c 정적/동적 분류 (필수 예정)
+      "props": [
+        { "col": "cx", "spatial": { "coord_system": "wafer_grid", "axis": "x" } },  // ← §7.5 공간 속성
+        { "col": "cy", "spatial": { "coord_system": "wafer_grid", "axis": "y" } }   //    (노드 props 전용)
+      ]
+    },
     "edges": [
-      { "type": "BONDED_FROM", "target_label": "Wafer",
-        "target_identity_from": ["core_lot", "core_slot"],       // 복합 식별 → identity 해석 규칙
-        "description": "이 chip이 잘려 나온 원판 wafer" },
-      { "type": "PLACED_ON", "target_label": "Base", "target_identity_from": ["base_id"],
-        "props": ["eventtime"], "description": "실장된 대상 지그/설비" }
+      { "type": "BONDED_TO", "target_label": "BaseCell",
+        "target_identity_from": ["base_id", "bx", "by"],      // 복합 식별 → "|" 조인 identity
+        "props": ["eventtime", "log_id"],
+        "description": "이 코어 셀의 칩이 실장된 base 셀. 팬아웃 최대 6은 결함이 아니라 rework다" },
+      { "type": "FROM_CORE", "target_label": "Core",
+        "target_identity_from": ["core_lot", "core_slot"],
+        "description": "이 셀이 속한 코어 웨이퍼 — dt_log가 같은 타입으로 같은 주장을 한다" }
     ]
   }
 }
 ```
+
+> 🔴 **행 노드는 추상 칩이 아니라 셀이다 (`aea4700` 2026-07-30 · 실측 근거).** `bonding_log`·`dt_log` 둘 다 `(core_lot, core_slot, cx, cy)`를 그대로 들고 있으므로 **코어 셀이 조인**입니다. 추상 칩 모델(`Chip`/`log_id`)에서는 **본딩 17행이 붕괴하고 그중 15행이 서로 다른 `(bx,by)`로 뭉개져 base 위치가 소실**됐습니다 — 셀로 두면 4,434 중 4,432가 살아남고 **정확한 중복만** 병합됩니다. 그래서 **좌표는 엣지 props가 아니라 identity 안에** 있습니다.
+> - `dt_log`는 같은 `CoreCell` 노드로 수렴하며 `TRANSFERRED_TO → DtCell(tape_lot|tape_slot|tx|ty)` + `FROM_CORE → Core`를 선언합니다. **`base ← dt` 홉은 파생으로 남습니다** — `bonding_log`에 tape 컬럼이 아예 없어 그 홉은 코어 셀을 경유해서만 존재하고, 인덱스 두 홉 1.6ms라 물화할 근거가 없습니다.
+> - `Core`의 정체는 **`(core_lot, core_slot)`이고 `wafer_id`는 속성**입니다. `wafer_id`는 `wafer_process`와 80개 코어 중 8개만 조인되는데 `(lot, slot)`은 80/80이고, 값 하나는 깨진 문자열이며 세 코어에서는 모든 공정 행이 사람이 해석한 것과 다른 wafer를 지목합니다 — **정체로 쓸 수 없습니다.**
+> - `PERFORMED_ON`(`(lot,slot)`)과 `RESOLVED_AS`(enrichment 자동 승격)는 **재선언하지 않고 재사용**합니다. 새로 생긴 타입은 `BONDED_TO`·`TRANSFERRED_TO`·`FROM_CORE` **셋**입니다.
+> - 🗄️ **폐기된 형태**: `Chip`/`identity: "log_id"` · `BONDED_FROM → Wafer` · `PLACED_ON → Base`. `aea4700`이 전부 대체했으나 **그 커밋은 문서를 하나도 고치지 않았고**, 같은 파일을 §7.5d 때문에 다시 편집한 `8670e3b`도 이 예제를 건드리지 않았습니다 — 그래서 이 절이 계속 폐기 형태를 가르치고 있었습니다.
 
 - **enrichment rule 자동 승격**: rule의 `decision_key → target` 정의는 매핑 항목으로 자동 변환(`RESOLVED_AS`) — rule 추가 = 온톨로지 확장.
 - `description`은 장식이 아니라 **LLM이 스키마를 읽고 스스로 질의를 구성하는 근거**. 매핑 검증 시 필수 필드.
@@ -119,7 +135,9 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 **DT(Die Transfer)/Tape 계층 (사용자 도메인 공개 2026-07-26)** — 실제 물류 체인에는 코어와 본딩 사이에 **테이프 계층**이 있다: 여러 코어의 칩을 TAPE 위에 한데 모아두고(DT 공정) 본딩은 테이프에서 집는다. 따라서:
 - **bonding_log의 core_lot/slot은 실제로는 DT(테이프) lot/slot**이다. 칩의 진짜 출신 코어는 `테이프 좌표 × DT 맵(영역→코어)` 또는 칩 단위 DT 로그로 해석한다.
 - 원천 2종: **DT 로그**(칩 단위 — 코어 좌표↔테이프 좌표 대응) + **DT 맵**(테이프 lot|slot 자체 맵 — 영역→코어 귀속).
-- 함수형 온톨로지 확장: `DTEvent: (WaferState_in, TapeState_in) → (WaferState_out, TapeState_out)` — Tape는 동적 노드. 칩 계보는 `Base ← bonding ← TapePos ← DT ← Core`의 2단 전사가 되며, 불량 역추적(가치 ③)·교정(§7.6)이 이 체인을 탄다.
+- 함수형 온톨로지 확장(**G3.5 설계 — 아직 물화되지 않음**): `DTEvent: (WaferState_in, TapeState_in) → (WaferState_out, TapeState_out)` — Tape는 동적 노드. 이 이벤트 노드 형태는 L2 상태 계층과 함께 오는 것이라 **현행 그래프에는 없습니다.**
+  > ✅ **G1에 실제로 착지한 것은 「셀 체인」입니다 (`aea4700` 2026-07-30, §3 참조)** — `BaseCell ←BONDED_TO— CoreCell —TRANSFERRED_TO→ DtCell` + `CoreCell —FROM_CORE→ Core`. 즉 위 서술의 `Base ← bonding ← TapePos ← DT ← Core` 2단 전사는 **`DTEvent` 노드 없이 셀 정체(coordinates-in-identity)만으로** 성립했고, 그것이 §7.5d 칩 추적의 형상입니다. `DTEvent`/`TapeState`는 여전히 G3.5의 상태 물화 설계로 남아 있으며 **셀 체인을 대체하는 것이 아니라 그 위에 얹히는 계층**입니다 — 둘을 같은 것으로 읽지 마십시오.
+  > ⚠️ 그리고 **`dt_eqp`는 엣지 속성이고 `Eqp` 노드로 승격하지 않습니다**(결정 유보) — 768행 전부가 단일 값이라 노드로 만들면 degree 768 허브 하나가 생기고, 정책 엔진(§7.5c)이 없는 상태에서 그 허브는 **무관한 칩 768개로 되확장**됩니다.
 - 좌표 프레임: defect/EDS는 core frame, DT 맵·bonding 좌표는 tape frame — 프레임 간 다리는 변환이 아니라 **DT 로그 조인**(칩 단위 대응이 데이터로 존재).
 
 **2계층 원칙 (확정)** — 파생 그래프에서 "엣지 삭제의 복잡성"을 원천 차단하는 규율:
@@ -141,8 +159,11 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 
 | 분류 | 정의 | 예시 (현행 label) | 특성 |
 |---|---|---|---|
-| **동적(dynamic)** | 타임스탬프를 갖고 특정 개체 컨텍스트에 귀속되는 이벤트/인스턴스 | Chip, Wafer, ProcessEvent, MetroResult, WaferState, EqpState, SplitCondition | 시계열로 꼬리를 무는 Sequence 엣지 형성 |
-| **정적(static)** | 시간이 흘러도 불변에 가까운 공유 기준 정보(마스터) | Eqp, Base, Recipe, DefectCode, Line, Map | 다수 동적 노드의 in-bound 수렴점 = **슈퍼 허브 후보** |
+| **동적(dynamic)** | 타임스탬프를 갖고 특정 개체 컨텍스트에 귀속되는 이벤트/인스턴스 | **CoreCell · BaseCell · DtCell**(라이브 정본 — `aea4700`), Core, Wafer, ProcessEvent, MetroResult, SplitCondition, (설계) WaferState·EqpState | 시계열로 꼬리를 무는 Sequence 엣지 형성 |
+| **정적(static)** | 시간이 흘러도 불변에 가까운 공유 기준 정보(마스터) | Eqp, Recipe, Knob, DefectCode, Line, Map | 다수 동적 노드의 in-bound 수렴점 = **슈퍼 허브 후보** |
+
+> 🗄️ **종전 예시의 `Chip`·`Base`는 라이브에 없습니다.** `aea4700`이 `Chip`(추상 칩)을 **`CoreCell`**로, `Base`(지그 마스터)를 **`BaseCell`**(`base_id|bx|by` — base 상의 자리)로 대체했습니다. `BaseCell`을 정적으로 읽으면 분류가 틀립니다 — 그것은 마스터가 아니라 **좌표를 든 셀**입니다. 폐기된 `Chip` 노드 **12,468개**가 라이브에 잔존하며 §7.5e ②의 스윕 대상입니다.
+> ⚠️ **`node_class`는 아직 강제되지 않습니다** — 로더가 파싱·보존만 하고 탐색 정책은 §7.5d처럼 **질의 형상**이 강제합니다(정책 엔진은 G2.5). 그래서 위 표는 **선언 현황이 아니라 분류 기준**입니다.
 
 **4대 탐색 정책 (쿼리 계층 글로벌 룰)** — §4.3 "쿼리 국소화" 원칙에 따라 저장소가 아니라 **그래프 쿼리 API 계층에서 강제**한다 (neighbors/trace/G2.5 도구/G3 서브그래프 추출 전부 동일 적용):
 
@@ -175,11 +196,50 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 | ② 웨이퍼 | `CoreCell -FROM_CORE-> Core` ← `ProcessEvent -PERFORMED_ON-` | 스코프 확정은 **DISTINCT**로 — `LIMIT 1`은 조용한 승자 선택이다 |
 | ③ 잎 | `ProcessEvent -USED_KNOB/USED_RECIPE/EXECUTED_BY->` | **되확장 금지**(결정 ②·정책 4). 정책 엔진(G2.5)이 없으므로 **질의 형상이 강제**한다 |
 
-**상태 어휘 (홉마다 하나, 빈 홉 금지)** — `recorded` / `none_recorded`(선언은 있고 행이 없음) / `not_declared`(매핑이 그 (type,target)을 더는 선언하지 않음 — config 이동을 `none_recorded`로 위장하지 않기 위한 별도 이름) / `scope_unresolved`(Core 주장이 0개 또는 2개 이상 — 추측하지 않고 칩 절반만 답하고 후보를 보고). 잘림은 상태가 아니라 다리별 `truncated`+`capped_at` 플래그.
+**상태 어휘 (홉마다 하나, 빈 홉 금지)** — `recorded` / `none_recorded`(선언은 있고 행이 없음) / `not_declared`(매핑이 그 (type,target)을 더는 선언하지 않음 — config 이동을 `none_recorded`로 위장하지 않기 위한 별도 이름) / `mapping_unavailable`(**선언을 읽지 못했다** — 아래) / `not_reached`(**묻지 않았다** — 아래) / `scope_unresolved`(Core 주장이 0개 또는 2개 이상, **또는 그 다리가 잘렸다** — 추측하지 않고 칩 절반만 답하고 후보를 보고). 잘림은 상태가 아니라 다리별 `truncated`+`capped_at` 플래그.
+
+**어휘가 둘 늘어난 이유 (2026-07-30 검수 실측)** — 셋 다 "같은 빈칸, 다른 사실"이라는 같은 계급이다.
+
+- **`mapping_unavailable` — "읽지 못했다"는 "옮겨갔다"가 아니다.** 매핑 파일이 저장되는 순간에 요청이 들어오면 `json.load`가 예외를 내고 로더는 `{}`를 돌려주므로, 선언 집합이 enrichment 승격분으로 **쪼그라든 채 200이 나가고 모든 다리가 `not_declared`**를 말한다 — `graph_edges`에 그 칩의 `BONDED_TO` 엣지가 지금 들어 있는데도. 이 창은 실재한다(우리 config writer는 temp+rename이 아니라 평범한 `open(w)`다). 그래서 응답에 **`declaration: {status, path, exists, rejected[]}`**를 싣고, 선언이 깨끗하게 로드되지 않았을 때는 **`not_declared`만** `mapping_unavailable`로 강등한다. `recorded`·`none_recorded`는 실제로 읽은 행에서 나온 결론이라 강등하지 않는다 — 강등 범위를 넓히면 알고 있는 것까지 모른다고 말하게 된다. 파일 **부재**도 degraded다(엣지가 있는 시스템에서 선언 파일이 사라진 것은 온톨로지 결정이 아니라 config 사고다). 503으로 거부하지 않는 이유: 아직 참인 절반(엣지는 있고 걸음은 계산된다)을 함께 버리게 되고, 이 엔드포인트의 전제가 **다리별 닫힌 어휘**이므로 "모른다"의 자리는 그 어휘 안이다.
+- **`not_reached` — 앵커가 죽은 다리 뒤에서 `none_recorded`를 말하면 안 된다.** `PERFORMED_ON`을 rename하면 `events`는 옳게 `not_declared`를 말하지만, 잎 다리들은 앵커가 빈 채 `USED_KNOB: none_recorded, count 0`을 말했다 — knob 질의를 **한 번도 하지 않고** "이 웨이퍼는 knob을 쓰지 않았다"고 주장한 것. 앵커가 `not_declared`/`mapping_unavailable`이면 `not_reached` + `blocked_by`를 말한다. 앵커가 `none_recorded`일 때는 그대로 `none_recorded`다 — **이벤트가 0개면 이벤트 경유 knob도 0개**라는 것은 건전한 추론이다.
+- **잘린 스코프 다리는 웨이퍼를 확정하지 않는다.** 다리는 `cap+1`을 `(identity_key, edge id)` 순으로 가져오므로, 한 Core로 가는 주장 201개가 버퍼를 채우면 다른 Core로 가는 주장은 **한 개도 읽히지 않는다** — 길이 1, 스코프 "확정", 웨이퍼 절반이 **틀린 코어**로 계산된다. 이 설계가 거부하는 `LIMIT 1` 승자 선택이 다른 길로 들어온 것이라, `truncated`가 필수 연접이다.
 
 **모든 홉이 사건 속성을 들고 온다**(`edges[].props`) — `eventtime`·`dt_eqp`·`log_id`. 한 칩의 `BONDED_TO` 팬아웃(최대 6)은 **결함이 아니라 시간에 걸친 rework**이므로(실측 `LOT-A|05|13|5` = 07-25 / 07-27 / 07-29) 접지 않고 전부 돌려주며, 시각 없이는 그 순서가 읽히지 않는다. `count`(주장 수)와 `node_ids`(개체 수)는 **의도적으로 다르다** — 라이브 2,687개 셀이 같은 Core에 대해 복수 `FROM_CORE` 엣지(소스 파일별)를 갖는다.
 
 **실측 (라이브, 2026-07-30)** — 시드 `LOT-A|05|13|5`: **234 노드 / 694 엣지, 57 ms**(핸들러), 무관 노드 0. 대조: 같은 시드의 `/graph/trace` depth 2 = 1,000 노드(캡 잘림) 중 994개가 남의 칩.
+
+## 7.5e 선언 변경의 전파와 잔여물 정리 (2026-07-30 확정)
+
+선언(`ontology_mapping.json`)을 고치는 순간 세 가지가 어긋날 수 있고, 셋은 서로 다른 층에 있다. **하나의 규칙이 셋 모두를 지배한다: 깨끗하게 로드되지 않은 선언은 무엇에 대해서도 권위가 없다.**
+
+### ① 재동기화는 자기가 쓴 선언을 알린다 (`SYSTEM_RELOAD`)
+
+`execute_manual_sync`는 매 호출마다 파일을 다시 읽지만, materializer 루프는 **자기 메모리 사본**을 들고 있고 그 사본은 outbox 배치 안에 `SYSTEM_RELOAD`가 들어올 때만 교체된다(이슈 #8). 그래서 "매핑 고치고 재동기화했다"가 **루프를 옛 선언에 남겨 두었다** — 라이브 실측 2026-07-30: 40분, 그리고 파일에서 사라진 라벨로 노드가 계속 생성됐다(`Chip` 노드 25개, 08:06:02~08:46:03, 파일 mtime 08:05).
+
+그래서 재동기화가 끝나면 `SYSTEM_RELOAD`를 **직접 발행**한다. 새 지레를 만들지 않고 `/admin/reload-configs`가 쓰는 바로 그 행을 쓴다 — 운영자가 손으로 눌러야 했던 것이 그것이고, 두 경로가 하나의 기계장치로 수렴한다. 매핑이 없는 테이블을 재동기화한 경우(선언을 지우고 돌린 경우)에도 발행한다 — 같은 staleness다. 없는 테이블 이름으로 온 400은 발행하지 않는다(읽어서 반영된 것이 없다).
+
+- **남는 창은 "재동기화가 걸리는 시간"이다.** `POST /api/graph/sync`는 즉시 `accepted`를 돌려주고 실제 재동기화는 백그라운드에서 돈다. 알림은 **끝났을 때** 나가므로, 그 사이에 들어온 로우는 여전히 옛 선언으로 물화된다. 격리 실측: bonding_log 전량 재동기화 4초. 40분이 4초가 된 것이고 0초는 아니다.
+- **검증 계기는 노드 라벨이다, 엣지 타입이 아니다.** 폐기된 엣지 타입은 바로 그 재동기화의 `_retarget_stale_edges`가 row-ref 스코프로 지워 버리므로 "mtime 이후에 만들어진 폐기 엣지 타입 없음"은 **결함이 있어도 깨끗하게 나온다**. 폐기된 **노드 라벨**에는 지우는 주체가 아예 없다(그것이 아래 ②의 존재 이유) — 그래서 그것만이 살아남아 측정된다.
+
+### ② 고아 노드 스윕 — 전파는 옳고 정리가 붙어 있지 않았다
+
+`_retarget_stale_edges`는 **엣지**를 지운다. 엣지가 떠난 뒤의 **노드**를 지우는 코드는 어디에도 없었다. 따라서 라벨 폐기만의 문제가 아니라 **정체를 바꾸는 셀 편집마다 노드 한 개가 샌다** — 랏 이름을 `LOT-A`에서 `LOT-B`로 교정하면 엣지는 충실히 재조준되고 `Core(LOT-A|05)`는 영원히 남는다. 라이브 실측 2026-07-30: 재동기화를 반복해도 살아남는 degree-0 노드 12,761개.
+
+**고아의 정의 (두 조건 모두)** ① 엣지가 0개 ② **현재 어떤 매핑도 그 `(label, identity_key)`를 생산할 수 없다.** ②가 안전의 근거다 — "엣지 0개"만으로는 고아가 아니다(`SplitCondition`은 평균 degree 0.2이고, 라이브의 degree-0 135개 중 **124개는 현재 `map_split_registry`가 그대로 생산하는 살아 있는 어휘**다. degree-0 스윕은 DOE 어휘를 통째로 지운다). 생산 가능성은 materializer가 쓰는 것과 **같은 `compose_identity`**로 판정한다 — 정체 구현이 둘로 갈리는 것이 이 저장소가 좌표 변환에서 두 번 치른 값이다.
+
+**안전 4겹** — 생산 가능성 · **라벨별 예산 가드**(인구의 절반 초과를 잃는 라벨은 삭제가 아니라 **거절**, `min_population` 미만 라벨은 비율 검사 면제) · **선언 청결 선행조건**(아래 ③) · 되돌림 가능성(노드는 RDB 파생이므로 재동기화가 있어야 할 것을 되살린다 — 단 무한하지 않다. 어떤 로우도 생산하지 않는 정체는 돌아오지 않고, 그것이 곧 스윕 대상이다).
+
+**전량이 아니라 라벨별로.** 거절된 라벨이 나머지를 인질로 잡으면 안 된다 — 폐기된 `Chip` 12,468개가 편집당 새는 노드를 영구히 막게 된다. 그리고 매 주기 **가져간 것과 거절한 것을 개수와 함께** 로그에 남긴다: 건너뛴 집합이 안 보이는 스윕은 "할 일 없음"으로 읽힌다.
+
+**어디서 도는가**: auto-update 스케줄러 틱(`run_auto_update.maybe_sweep_graph_orphans`) — 수집기가 아니라 **유지보수 작업**이고 근거는 `config_backup`과 같다(수집기는 테이블별로 `raws/`에 CSV를 쓰는 것이고, 아무것도 못 내놓은 수집기는 이제 설계상 FAIL이다). 끄는 노브 `GRAPH_ORPHAN_SWEEP_ENABLED=false`. 운영자 문은 `server/scripts/graph_orphan_sweep.py`(dry run 기본, `--apply`는 격리 밖에서 `--allow-production` 필요, dry run은 읽기 전용이므로 어디서나 허용).
+
+### ③ 거부된 매핑은 표면에 올린다 — 그리고 그것이 ②의 선행조건이다
+
+로더의 계약은 "무효 테이블은 로깅 후 스킵"이다. 그 스킵이 로그에만 있으면 **컬럼 하나를 rename한 순간 그 테이블의 온톨로지가 통째로 사라지고 표면에는 아무 것도 안 나온다** — 성공한 매핑 개수만 보면 "안 늘었다"와 "죽었다"가 구별되지 않는다. 그래서 `GET /graph/mapping-summary`가 **`rejected[{scope, table, reason}]`·`rejected_count`·`source{path, exists}`**를 성공 목록과 **같은 응답**에 싣는다(새 엔드포인트가 아니라 이미 조회하는 응답에 태우는 자리 — PRIMITIVES §3). `scope`는 `table`(그 테이블만 스킵) · `file`(파일이 안 읽힘, 또는 v1 형식이라 v2 매핑이 0개) · `enrichment`(RESOLVED_AS 자동 승격이 죽음).
+
+**정상 상태에서는 반드시 비어 있어야 한다** — 늘 뭔가 들어 있는 사유 목록은 곧 무시당한다. 파일 부재는 거부가 아니라 부재이므로 `source.exists`로만 말한다.
+
+🔴 **그리고 ②는 이것 없이 안전하지 않다.** rename으로 한 테이블 매핑이 죽으면 그 테이블이 생산하던 **모든 라벨이 생산 불가로 보인다.** 예산 가드는 큰 라벨을 막지만 `min_population` 미만 라벨은 **막지 못한다**. 그래서 스윕은 선언에 거부가 하나라도 있으면 **전체를 거절**한다(`graph_orphans.declaration_blockers`). 같은 규칙이 §7.5d의 `mapping_unavailable`에도 걸린다 — **소비자는 둘, 규칙은 하나**다.
 
 ## 7.6 그래프 보조 교정 (inference-assisted enrichment) — 가치사슬의 순환 완성
 
@@ -215,3 +275,7 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - k-hop 추적의 기본 깊이·타입 필터 기본값 (v1 리포트 화면 설계와 함께)
 - 서브그래프 직렬화 포맷 상세 (G2.5 착수 시)
 - **행 삭제 정리 정책 — 방향 확정(§7.5b 전제), 구현 대기**: L1은 DELETE 이벤트에 row-ref 스코프 정리(H2-b와 동일 메커니즘) + 고아 노드 GC(엣지 0 + 원본 로우 부재), L2는 정리 대상 아님(재파생으로 수렴). 신뢰 게이트는 입구(수동 푸시)가 아니라 **provenance 기반 소비 시점 게이트**(자동 materialize + 엣지 출처 표기 — 2026-07-25 사용자 논의로 확정, 구 수동 Graph Sync 버튼은 백필/복구 도구로 존치)
+  - **실증(2026-07-30, 격리)**: bonding_log 로우 8개를 지우자 그 로우들이 주장한 엣지 **16개가 그대로 남았고**, 남은 엣지가 폐기 라벨 노드 8개를 살려 두어 §7.5e ②의 스윕도 손대지 못했다. 가설이 아니라 몇 초 만에 재현되는 상태다.
+- 🔴 **선언에서 빠진 테이블의 엣지는 어떤 경로로도 정리되지 않는다 (신규, 2026-07-30 라이브 실측)**: 매핑에서 테이블을 빼면 `resync_table`이 즉시 반환하므로 `_retarget_stale_edges`가 **영원히 돌지 않고**, 그 엣지들은 노드에 degree를 주므로 고아 스윕도 대상으로 잡지 못한다. 라이브 잔존 — `DEFINED_IN` 14개(transfer_plan_doe) · `PLANS_USE` 8개(transfer_plan_doe) · `ON_TARGET` 5개(transfer_plan), 합 27개가 `Wafer` 노드 8개와 `ExperimentPlan` 라벨 전체(7개)를 붙잡고 있다. 정리하려면 "선언에서 사라진 테이블의 row-ref를 스코프로 잡는" 한 걸음이 필요하고, 그것은 위 삭제 정책과 같은 라운드에 속한다.
+- **엣지 유일 키에 `source_row_ref`를 넣을 것인가 (검수 제안, 2026-07-30 실측 완료 — 마이그레이션 필요)**: 현재 키 `(from_node, type, to_node, source_name)`은 `aea4700` 이후 좌표가 노드 정체로, `eventtime`/`log_id`가 **엣지 props**로 옮겨간 상태를 담지 못한다. 라이브 실측 — 같은 base 셀로 가는 rework 2건이 겹치는 쌍이 **7개** 있고, 그 7개는 **source_name이 다르다는 이유만으로** 살아 있다(같은 CSV에 들어오면 한 건이 사라진다). 새 키의 성장은 BONDED_TO +117 · FROM_CORE +136(전체 66,109 대비 +0.4%)이고, 늘어나는 117건은 **매핑된 모든 컬럼에서 형제와 완전히 동일한 중복 로우**(bonding_log에 business_key가 2번 나오는 로우 117개 — 이 자체가 인제션 층의 별도 결함이다). `event_time`은 대안이 못 된다: 설계상 NULL이 정상 값이고(선언 컬럼 파싱 실패 = 시각 미상) PG 유일 인덱스에서 NULL은 서로 충돌하지 않아 **현재 주석이 `source_name nullable=False`로 막아 둔 바로 그 우회로가 다시 열린다**. 조건 — `source_row_ref`를 같은 마이그레이션에서 `nullable=False`로 승격(라이브 NULL 0건이므로 백필은 비어 있다)하고, `on_conflict_do_update`의 `source_row_ref` set 항목을 제거(충돌 타깃에 들어가므로 no-op).
+- **`source_name`만 다른 중복 엣지**(board 9b): 라이브 잔여 — `FROM_CORE` 2,695 triple / 3,948 surplus · `BONDED_TO` 7 triple / 7 surplus. 위 유일 키 논의와 같은 라운드에서 함께 판정한다.

@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-27 | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -135,7 +135,9 @@ out = build_rows()
 
 ## 🧰 4-bis. 이 프로세스가 하는 "수집기가 아닌 일" — 주간 config 스냅샷 (2026-07-28 추가)
 
-스케줄러 데몬은 수집기 외에 **유지보수 작업 1건**을 함께 돌립니다: `server/config/*.json`의 주 1회 스냅샷(C3 백업). 구현은 `server/config_backup.py`, 호출부는 `MultiDiscoveryScheduler.maybe_backup_configs()`입니다.
+> **⚠️ 2026-07-30: 유지보수 작업은 이제 2건입니다.** 이 절이 첫째(config 스냅샷)이고 **아래 §4-ter**가 둘째(그래프 고아 노드 스윕)입니다. 종전의 "**유지보수 작업 1건**" 서술은 `530fdfd` 이후 거짓이었습니다.
+
+스케줄러 데몬은 수집기 외에 **유지보수 작업**을 함께 돌립니다. 첫째는 `server/config/*.json`의 주 1회 스냅샷(C3 백업)입니다. 구현은 `server/config_backup.py`, 호출부는 `MultiDiscoveryScheduler.maybe_backup_configs()`입니다.
 
 **왜 수집기로 만들지 않았는가** — 수집기는 테이블 단위입니다. 산출물이 `ingestion_workspace/<table>/raws/`로 나가고 디렉터리 워처가 그것을 **그 테이블로 인제션**합니다. config 백업에는 대상 테이블이 없고 인제션되어서도 안 되므로 구조가 맞지 않습니다. 게다가 2026-07-27부터 **아무것도 내놓지 않은 수집기는 FAIL**이므로(§3 실패 판정 규칙), 백업 작업을 수집기로 등록하면 **정상 동작이 고장난 수집기와 구분되지 않습니다.**
 
@@ -146,6 +148,27 @@ out = build_rows()
 * **감시 비용**: 매 틱이 아니라 30분에 한 번만 검사합니다(`CHECK_INTERVAL_SEC`). 첫 틱은 무조건 검사합니다.
 * **실패 격리**: 백업 실패는 로그로만 나가고 수집기 실행을 막지 않습니다. 대신 **`/health`의 `checks.config_backup`**이 `missing`/`stale`을 보고합니다 — 판정 근거가 이 작업이 쓴 상태 파일이 아니라 **스냅샷 파일 자체**라, 이 작업이 죽어도 신호는 살아 있습니다.
 * 규격·보관·복원 절차: [CONFIG_GUIDE §1](CONFIG_GUIDE.md) · [ROLLBACK_PROCEDURE §3.1-bis](ROLLBACK_PROCEDURE.md)
+
+---
+
+## 🧹 4-ter. 두 번째 유지보수 작업 — 그래프 고아 노드 스윕 (2026-07-30 `530fdfd`)
+
+두 번째 유지보수 작업이 같은 틱에 올라탔습니다: **그래프 고아 노드 스윕**. 구현은 `server/graph_orphans.py`, 호출부는 `MultiDiscoveryScheduler.maybe_sweep_graph_orphans()` → `graph_orphans.run_scheduled()`이고, 매 틱 검사가 아니라 **30분에 한 번 "지금 할 때인가"만 묻고**(`CHECK_INTERVAL_SEC`) 주기는 **1일**(`SWEEP_INTERVAL_SEC`)입니다.
+
+**왜 여기인가** — §4-bis와 **정확히 같은 근거**입니다: 시간으로 도는 프로세스가 시스템에 이것 하나이고, 대상 테이블이 없으며 인제션되어서도 안 되고, 2026-07-27부터 **아무것도 내놓지 않은 수집기는 FAIL**이라 정상 동작이 고장과 구별되지 않습니다. 형태를 `config_backup`에서 그대로 베꼈습니다.
+
+**왜 스케줄이 필요했나** — `graph_materializer._retarget_stale_edges`는 **엣지**를 지우고, 엣지가 떠난 뒤의 **노드**를 지우는 코드는 어디에도 없었습니다. 라벨 폐기만의 문제가 아니라 **정체를 바꾸는 셀 편집마다 노드 한 개가 샙니다**(랏을 `LOT-A`→`LOT-B`로 교정하면 엣지는 충실히 재조준되고 `Core(LOT-A|05)`는 영원히 남습니다). 라이브 실측 2026-07-30: 재동기화를 반복해도 살아남는 degree-0 노드 **12,761개**.
+
+> 🔴 **이 작업의 요점은 삭제가 아니라 거절입니다 — 선언이 깨끗하게 로드되지 않으면 스윕은 아무것도 하지 않습니다.**
+> 고아 판정은 *"현재 어떤 매핑도 이 `(label, identity_key)`를 생산할 수 없다"*이므로, **컬럼 하나를 rename해 한 테이블 매핑이 조용히 스킵되면 그 테이블이 생산하던 모든 라벨이 생산 불가로 보입니다.** 라벨별 예산 가드(인구의 절반 초과를 잃는 라벨은 **거절**)는 큰 라벨을 막지만 `min_population`(10) 미만 라벨은 **막지 못합니다.** 그래서 의심스러운 선언은 결론 일부가 아니라 **판단 자격 자체**를 잃습니다 — `declaration_blockers`가 비어 있지 않으면 `status: "refused"`로 **전체를 거절**하고, 로그가 *"거부를 고치면(`GET /graph/mapping-summary`에서 보입니다) 다음 주기가 진행된다"*까지 말합니다. 매핑이 하나도 로드되지 않은 경우도 blocker입니다(빈 선언에서는 정의상 전 노드가 고아).
+> 같은 규칙이 `GET /graph/chip-trace`의 `mapping_unavailable`에도 걸립니다 — **소비자는 둘, 규칙은 하나**입니다([ONTOLOGY_GRAPH_SPEC §7.5e](../spec/ONTOLOGY_GRAPH_SPEC.md)).
+
+* **전량이 아니라 라벨별로.** 거절된 라벨이 나머지를 인질로 잡으면 안 됩니다 — 폐기된 `Chip` 노드 12,468개가 편집당 새는 노드를 영구히 막게 됩니다. 매 주기 **가져간 것과 거절한 것을 개수·비율과 함께** 로그에 남깁니다: 건너뛴 집합이 안 보이는 스윕은 "할 일 없음"으로 읽힙니다.
+* **생산 가능성은 materializer가 쓰는 `compose_identity` 그대로** 판정합니다 — 정체 구현이 둘로 갈리는 것이 이 저장소가 좌표 변환에서 두 번 치른 값입니다. **"엣지 0개"만으로는 고아가 아닙니다**(`SplitCondition`은 평균 degree 0.2 — degree-0 스윕은 DOE 어휘를 통째로 지웁니다).
+* **끄는 노브**: `GRAPH_ORPHAN_SWEEP_ENABLED=false`(형제 `GRAPH_MATERIALIZER_ENABLED`와 같은 표기). `status: "disabled"`로 보고합니다.
+* **실패 격리**: §4-bis와 동일 — 스윕 예외는 로그로만 나가고 수집기 실행을 막지 않습니다.
+* ⚠️ **주기 상태의 출처가 §4-bis와 다릅니다.** config 백업은 "디스크의 최신 스냅샷이 7일보다 오래됐는가"를 **파일에서** 유도하지만, 스윕은 **프로세스 메모리의 monotonic 시각**(`_last_orphan_sweep`)을 봅니다. `0.0`은 "첫 틱에 실행"이므로 **스케줄러 재기동마다 스윕이 한 번 돕니다.** 멱등하고 저렴한 유지보수라 문제가 되지 않지만, "하루 1회"를 재기동과 무관한 보장으로 읽지는 마십시오.
+* 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용).
 
 ---
 
