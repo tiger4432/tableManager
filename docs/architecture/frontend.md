@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§1.1 서버 주소 해석 신설** — 셸의 하드코딩된 두 주소(`:149` `127.0.0.1`, `:254` `localhost` — 서로 달랐다)를 `resolve_server_target()`/`base_url()` 한 곳으로 합침. `--server` > `ASSY_SERVER` > `client_settings.json`(**여태 한 번도 읽히지 않던 파일**) > 기본값. 잘못된 선언은 조용한 강등이 아니라 거절(exit 2). 거짓 로그 `"Vite dev server not detected"`와 호출되지 않던 `is_port_open` 삭제. 직전 **§2.1 빌드 게이트 신설** — `client2/package.json`의 `prebuild` = `check:clipboard` + **`check:contracts`**(`client2/scripts/check_contracts.mjs`) 실측. 2026-07-30 이전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았고**(pytest는 서버 절반만 채점), 그것이 `split_registry_harness.mjs`가 몇 주 동안 죽어 있게 둔 조건이다. 러너는 **목록이 아니라 발견식 스캔**이고 **빈 스캔은 실패**이며 판정은 **종료코드 하나**다. 실측: 4계약 전부 통과. 직전 2026-07-29 **계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§3.3 값 제안 셀 에디터 신설 + §2.1/§3 정정 4건** — 소스 대조: `client2/package.json`(`prebuild`), `client2/src/value_suggest.js`(`SuggestCellEditor`/`handleEditorKey`/`suggestionsEngaged`), `client2/src/grid.js`(`suppressKeyboardEvent` 첫 분기), `client2/src/api.js:70-71`, `wc -l client2/src/*.js`. ① **§2.1 게이트 목록 정정** — `prebuild`는 2행이 아니라 **3행**(`check:clipboard && check:contracts && check:suggest-keys`)이고, *"4계약 전부 통과"*는 `check:contracts`의 상태일 뿐 **게이트 전체의 상태가 아니었다**. ⚠️ 이 절이 스스로 경고한 「하드코딩 목록」 결함에 이 절 자신이 걸렸으므로 조용히 고치지 않고 규율의 예시로 남겼다. ② **§3 모듈 표에 3행 신설** — `value_suggest.js`(1003) · `doe_bands.js`(753) · `tsv.js`(121)가 **행 없이** 굴러가고 있었다(`value_suggest.js`는 `effort_meter.js`의 1.7배). ③ **줄 수 전면 실측** — `map_editor.js` 4209→**8650**, `admin.js` 2437→2872, `graph_viewer.js` 927→1254, `transfer_plan.js` 1405→1772, `effort_meter.js` 320→**580**, `grid.js` 643→671, `trace.js` 454→462, `api.js` 422→438 외 8건. ④ **`grid.js`·`api.js` 책임 칸 보강** — `SuggestCellEditor` 갈아끼우기와 `suppressKeyboardEvent` 분기(한-Enter 계약의 기반), 그리고 **`switchTable`이 `txModeActive`를 강제 복귀**시킨다는 사실(편집 E2E가 두 번 샌 자리). §3.3은 **`d5f75a8` 이후의 Escape 의미론**을 적었다 — 판정 술어는 `suggestionsEngaged`(비행 중 요청이 아니라 **운영자의 타이핑**), 대가는 「취소에 Esc 두 번」, 남은 비균일성 하나도 숨기지 않고 기록. 직전 **§1.1 서버 주소 해석 신설** — 셸의 하드코딩된 두 주소(`:149` `127.0.0.1`, `:254` `localhost` — 서로 달랐다)를 `resolve_server_target()`/`base_url()` 한 곳으로 합침. `--server` > `ASSY_SERVER` > `client_settings.json`(**여태 한 번도 읽히지 않던 파일**) > 기본값. 잘못된 선언은 조용한 강등이 아니라 거절(exit 2). 거짓 로그 `"Vite dev server not detected"`와 호출되지 않던 `is_port_open` 삭제. 직전 **§2.1 빌드 게이트 신설** — `client2/package.json`의 `prebuild` = `check:clipboard` + **`check:contracts`**(`client2/scripts/check_contracts.mjs`) 실측. 2026-07-30 이전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았고**(pytest는 서버 절반만 채점), 그것이 `split_registry_harness.mjs`가 몇 주 동안 죽어 있게 둔 조건이다. 러너는 **목록이 아니라 발견식 스캔**이고 **빈 스캔은 실패**이며 판정은 **종료코드 하나**다. 실측: 4계약 전부 통과. 직전 2026-07-29 **계기 수리 라운드** — 어드민·그래프·추적 **3화면 배선**(왕복 이동의 절반만 세던 비대칭 해소) · 불변식 7 추가(진단이 트리셰이킹으로 dist에서 사라짐 → `window.__assyEffort`) · 허용목록 항목 형식을 **서버가 받는 것만** 수용. 불변식 5·6 추가: *부재는 0이 아니다*(빈 스냅샷은 `undefined` → 필드 생략, 유령 0점 교정 차단) · *존재하지 않는 라우트를 지목한 허용목록 항목은 거절+큰 소리로 보고*(`ROUTE_IDS`). 불변식 1에 **"서버가 기록했을 때만 리셋"** 게이트 추가(`commitIfRecorded` — no-op 저장이 공수를 지우던 결함). **§5 어드민 Overview에 「교정 공수」 한 줄 신설**(정본 계기 + 커버리지 = 수집 중단 감지기). 직전 — **§3.2 상호작용 계측기 신설**: `effort_meter.js` 유일 수집기 + 그리드/Enrichment 배선(교정 쓰기 6경로). **분류는 버리지 않는다**(`nav`/`nav_preserved` 분리 — allowlist가 수집 시점 결정이 아니라 조회 시점 해석). 직전 `b35bc9f`+`280ebf0` — §4.1 **band 서술을 zone 모델로 정정**(stack + 1H/MID/TOP, 자동 저장 삭제·Push 유일 기록자) · `openMaterial` LOAD 동등 라우팅. 직전 `90e284f`: §3.1 실시간 동기화 무결성 3문제 이관 · §5 `adminFetch` 게이트 판정 4규칙) | **Owner:** UI / Excel Interaction
 > **Source-of-truth:** `client2/src/*`, `client2/vite.config.js`, `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -65,18 +65,24 @@
 ```bash
 cd client2
 npm run dev       # :5173 개발서버 (API/WS는 127.0.0.1:8080 자동 타겟)
-npm run build     # prebuild(클립보드 관례 + 계약 하네스 4종) → dist/ 생성
+npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 ```
 
-### 2.1 빌드 게이트 — **클라 절반을 채점하는 유일한 자리** (`5a14e77` · 2026-07-30)
+### 2.1 빌드 게이트 — **클라 절반을 채점하는 유일한 자리** (`5a14e77` → `77a2c15`/`d5f75a8` · 2026-07-30)
 
-`package.json`의 `prebuild`가 `check:clipboard` → `check:contracts` 순으로 돌고, **하나라도 실패하면 `vite build`에 도달하지 않습니다.**
+`package.json`의 `prebuild`가 `check:clipboard && check:contracts && check:suggest-keys` 순으로 돌고, **하나라도 실패하면 `vite build`에 도달하지 않습니다.**
+
+> 📌 **이 절이 스스로 경고한 결함에 이 절이 걸렸습니다.** 아래 「하드코딩 목록은 이 결함을 그대로 재생산합니다」가 계약 러너에 대한 경고인데, **게이트 목록 자체를 산문으로 하드코딩한 이 문단**이 `check:suggest-keys` 착지 후 **하루도 안 돼 낡았습니다**(2행이라고 적혀 있었고 실제는 3행). 조용히 고치지 않고 남겨 두는 이유는 이것이 규율의 예시이기 때문입니다 — **게이트의 정본은 `package.json`의 `prebuild` 한 줄이고, 이 문단은 그것의 사본입니다.** 사본을 읽지 말고 그 줄을 읽으십시오.
 
 - **왜 생겼나**: `contracts/<name>/client_harness.mjs`는 이음매(seam)의 **클라 절반**을 `vectors.json`에 채점하는데, 2026-07-30까지 **아무것도 그것들을 실행하지 않았습니다** — `pytest server/tests/`는 **서버 절반만** 채점하고 `client2/package.json`에는 스크립트가 없었습니다. 그 결과 `split_registry_harness.mjs`가 심볼 5개 개명 뒤 추출 단계에서 **몇 주 동안 예외로 죽어 있었고**, 부르는 사람이 없어 실패가 보이지 않았습니다. **아무도 돌리지 않는 계약은 주석입니다.**
 - **발견식이지 목록이 아닙니다**: 러너(`client2/scripts/check_contracts.mjs`)는 `contracts/*/client_harness.mjs`를 **스캔**합니다. 하드코딩 목록은 이 결함을 그대로 재생산합니다 — 계약 #5가 착지하고 아무도 목록에 추가하지 않으면 빌드는 초록인 채 그 계약이 죽어 있습니다.
 - 🔴 **빈 스캔은 실패입니다.** `contracts/`가 사라지거나 하네스가 하나도 안 잡히면 "0개, 전부 초록"이 아니라 **exit 1**입니다 — 없는 커버리지를 있다고 보고하는 것은 배선 안 된 종전 상태보다 나쁩니다.
 - **판정은 종료코드 하나**로 읽습니다. 하네스의 산문을 러너가 재해석하면 채점자가 둘이 됩니다(`map_seam`은 이름 붙은 기대 발산을 출력하면서 exit 0입니다 — contract-keeper 헌장 규칙 5 "익명의 영구 빨강 금지").
-- **현재 상태**(실측 2026-07-30): `band_arithmetic` · `doe_band_rules` · `legend_map_scope` · `map_seam` **4계약 전부 통과**.
+- **게이트는 계약 하네스만이 아닙니다**(2026-07-30 정정). 종전 이 줄은 *"4계약 전부 통과"*로 끝났는데, 그것은 **`check:contracts`의 상태일 뿐 게이트 전체의 상태가 아닙니다.** 지금 세 채점자가 있습니다:
+  - `check:clipboard` — 클립보드 관례(`scripts/check_clipboard_convention.mjs`).
+  - `check:contracts` — `contracts/*/client_harness.mjs` **발견식 스캔**. 실측 2026-07-30: `band_arithmetic` · `doe_band_rules` · `legend_map_scope` · `map_seam` **4계약 전부 통과**.
+  - `check:suggest-keys` — 값 제안 셀 에디터의 **키보드 계약**(`tests/value_suggest_keys_harness.mjs`, §3.3). 계약 벡터가 아니라 **AG-Grid 키보드 파이프라인 모델** 위에서 실제 `SuggestCellEditor`+`suppressKeyboardEvent`를 돌리고, 판정을 「핸들러가 옳은 문자열을 돌려줬나」가 아니라 **키스트로크 수**로 씁니다(`effort_meter`와 같은 계수 규칙). 모든 점검에 **변이(mutation)가 짝지어져** 있고 변이가 잡히지 않으면 실패합니다 — ⚠️ 변이는 **APPLIED와 CAUGHT를 따로** 보고합니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다. 검색 문자열이 안 맞는 변이는 **조용한 무장 해제**입니다).
+  - ⚠️ 이 하네스가 통과해도 **브라우저 실측이 1차 증거**입니다. AG-Grid가 호출 순서를 바꾸면 모델은 통과하고 제품은 깨집니다.
 
 > ⚠️ 이 게이트는 **소스**를 채점합니다. 서버가 서빙하는 것은 `dist/` 번들이므로, 소스 변경 후 `npm run build`로 `dist/`를 갱신하고 커밋하는 규율은 그대로입니다([DEPLOY_SETUP](../guide/DEPLOY_SETUP.md) · [FEATURE_CHECKLIST §2.16 A](../qa/FEATURE_CHECKLIST.md)).
 
@@ -84,29 +90,34 @@ npm run build     # prebuild(클립보드 관례 + 계약 하네스 4종) → di
 
 ## 3. 모듈 구조 (`client2/src`)
 
-| 파일 | 줄(≈) | 책임 |
+> **줄 수는 `wc -l` 실측(2026-07-30)입니다.** 정확성이 아니라 **상대 규모**를 읽는 열입니다 — 어느 모듈이 이 화면의 무게중심인지 보기 위한 것이므로, 소수점 몇 줄이 어긋나는 것보다 **행이 아예 없는 모듈**이 훨씬 나쁩니다(실제로 `value_suggest.js`·`doe_bands.js`·`tsv.js` 셋이 행 없이 굴러갔습니다).
+
+| 파일 | 줄 | 책임 |
 |---|---|---|
-| `main.js` | 1793 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트, Tx 모드 apply/discard |
+| `main.js` | 1816 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트, Tx 모드 apply/discard |
 | `state.js` | 49 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) |
-| `dom.js` | 55 | `getElementById` 지연 게터 모음(`elements`) |
-| `api.js` | 422 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows |
-| `websocket.js` | 249 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
-| `grid.js` | 643 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택) |
-| `clipboard.js` | 788 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
-| `timeline.js` | 718 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
-| `ui.js` | 408 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`, Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
-| `utils.js` | 307 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) |
+| `dom.js` | 57 | `getElementById` 지연 게터 모음(`elements`) |
+| `api.js` | 438 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows. ⚠️ **`switchTable`은 `txModeActive`를 강제로 다시 켭니다**(:70-71 — 대기 편집을 버리는 것과 한 쌍이라 안전한 기본값이지만, **표를 바꾸면 토글이 되살아납니다**. 편집 E2E에서 두 번 새는 자리 — [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md)) |
+| `websocket.js` | 255 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
+| `grid.js` | 671 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택). **`string` 선언 컬럼의 `cellEditor`를 `SuggestCellEditor`로 갈아끼우는 자리**(§3.3)이고, `defaultColDef.suppressKeyboardEvent`의 **첫 분기**가 `handleEditorKey`를 부릅니다 — 그 한 분기가 **`Enter` 한 번 계약이 서는 기반**입니다(AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하므로 `'accepted'` 판정은 "후보가 이미 입력에 들어갔으니 **이 이벤트가 그대로 확정하라**"는 뜻입니다. `false` 반환은 포기가 아니라 **확정**입니다) |
+| `value_suggest.js` | 1003 | **값 제안 셀 에디터(§3.3)** — `SuggestCellEditor` + `handleEditorKey`(순수 키보드 판정 `suppress`/`accepted`/`pass`) + `isSuggestEditorActive`. 디바운스 90ms(트레일링)·요청 한도 12·여는 최소 접두 1·표시 8행. 컬럼별 학습(플로어·4연속 4xx 후 비활성·`unavailable_reason` 쿨다운)은 **전부 TTL 60초로 만료**(핫리로드되는 `table_config`를 클라 래치가 조용히 면제받지 않도록). 진단은 `window.__assySuggest` |
+| `clipboard.js` | 810 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
+| `tsv.js` | 121 | TSV 직렬화/파싱 순수 함수 — 클립보드 경로와 회사 양식 왕복이 공유하는 유일한 구현 |
+| `doe_bands.js` | 753 | **DOE zone 모델의 순수 구현**(§4.1) — 구간 소요·자재당 분배 산식의 정본. 계약 벡터 `contracts/doe_band_rules/vectors.json`으로 서버와 같은 기댓값에 채점 |
+| `timeline.js` | 722 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
+| `ui.js` | 415 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`, Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
+| `utils.js` | 337 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 5 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
-| `admin.js` | 2437 | 어드민 5탭(§5) |
-| `map_editor.js` | 4209 | 맵 에디터 + 페인트 잠금 + **오버레이 레이어**(§4) |
-| `transfer_plan.js` | 1405 | **전사 계획 사이드바**(§4.1) — map_editor.html에서 소비. 구 `bonding_plan.js`(M1 Info 패널)를 대체·삭제 |
-| `enrichment.js` | 754 | Enrichment 컨베이어: 규칙 선택(`loadRules/selectRule`), 워크리스트(`fetchWorklist`), 입력 흐름(`onInputKeydown/saveCurrent` → PUT `/data/updates`), 참조 패널(`initReferencePanel/loadActiveReference`, stale 가드) |
-| `graph_viewer.js` | 927 | 그래프 서브그래프 뷰어(§6): stats 카드, 자동완성 검색, BFS 동심원 캔버스(무라이브러리), 팬·줌, Node Inspector, `?label=&identity=` 딥링크 |
-| `trace.js` | 454 | trace.html 오케스트레이터(§6): `runTrace`(POST `/graph/trace`, seq 가드) → `renderReport`(그룹+타임라인 청크 렌더), 시드 칩·depth·시간범위, URL 동기화 |
+| `admin.js` | 2872 | 어드민 5탭(§5) |
+| `map_editor.js` | 8650 | 맵 에디터 + 페인트 잠금 + **오버레이 레이어**(§4) + 유효 다이 참조·프레임 채택·저장 좌표 재배치([MAP_EDITOR_SPEC §5.7/§5.7-bis](../spec/MAP_EDITOR_SPEC.md)). **이 저장소에서 가장 큰 클라 모듈**이며, 종전 이 표는 4209로 적고 있었습니다 |
+| `transfer_plan.js` | 1772 | **전사 계획 사이드바**(§4.1) — map_editor.html에서 소비. 구 `bonding_plan.js`(M1 Info 패널)를 대체·삭제 |
+| `enrichment.js` | 788 | Enrichment 컨베이어: 규칙 선택(`loadRules/selectRule`), 워크리스트(`fetchWorklist`), 입력 흐름(`onInputKeydown/saveCurrent` → PUT `/data/updates`), 참조 패널(`initReferencePanel/loadActiveReference`, stale 가드) |
+| `graph_viewer.js` | 1254 | 그래프 서브그래프 뷰어(§6): stats 카드, 자동완성 검색, BFS 동심원 캔버스(무라이브러리), 팬·줌, Node Inspector, `?label=&identity=` 딥링크 |
+| `trace.js` | 462 | trace.html 오케스트레이터(§6): `runTrace`(POST `/graph/trace`, seq 가드) → `renderReport`(그룹+타임라인 청크 렌더), 시드 칩·depth·시간범위, URL 동기화 |
 | `trace_core.js` | 234 | 추적 순수 로직(무의존): `composeIdentity`(서버 G1 미러), `capSeeds`(상한 20), `buildTraceRequest`, `groupNodesByLabel`, `splitTimeline` |
-| `trace_launch.js` | 107 | index 진입점: `initTraceEntry`/`refreshTraceEntry`(mapping-summary 판정), `openTraceForSelection`(선택 행→시드 변환) |
-| `effort_meter.js` | 320 | **상호작용 계측기(§3.2)** — 핵심가치 #1 정본 계기의 **유일한 수집기**. 키·마우스·화면이동(상실/유지 분리) 원시 카운트 + 세션 id(`sessionStorage`), `PUT .../data/updates`에 선택 필드로 편승. 그리드·Enrichment·맵 에디터 3개 진입점이 공유(빌드에서 전용 청크로 분리 — 단일성 실측 가능) |
+| `trace_launch.js` | 111 | index 진입점: `initTraceEntry`/`refreshTraceEntry`(mapping-summary 판정), `openTraceForSelection`(선택 행→시드 변환) |
+| `effort_meter.js` | 580 | **상호작용 계측기(§3.2)** — 핵심가치 #1 정본 계기의 **유일한 수집기**. 키·마우스·화면이동(상실/유지 분리) 원시 카운트 + 세션 id(`sessionStorage`), `PUT .../data/updates`에 선택 필드로 편승. 그리드·Enrichment·맵 에디터 3개 진입점이 공유(빌드에서 전용 청크로 분리 — 단일성 실측 가능) |
 
 > `counter.js`는 Vite 템플릿 잔재(미사용).
 > **클립보드는 `document`의 `copy`/`paste` 이벤트 + `e.clipboardData`가 정본이다**(`clipboard.js` `setupClipboardHandlers`). `navigator.clipboard`는 **보안 컨텍스트(HTTPS 또는 localhost/127.0.0.1)에서만 존재**하며, 운영은 사내망 평문 HTTP라 그곳에선 `undefined`다. 과거 `main.js`의 keydown에서 Ctrl+C를 가로채 `navigator.clipboard.writeText`로 복사하던 분기가 있었는데, ① 운영에서 `TypeError`(동기 throw라 `.catch()`도 못 받음)로 죽고 ② `preventDefault()`가 먼저 실행돼 정상 동작하던 `copy` 핸들러까지 굶겼다 → **삭제**(2026-07-27). **Ctrl+C/Ctrl+V를 keydown에서 가로채지 말 것.**
@@ -187,9 +198,40 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 >
 > 검증 하니스: `client2/tests/effort_meter_harness.mjs` (vm 샌드박스, node_modules 불필요, **131 단언**). **변이 검사 8종 포함** — ① `snapshot()`이 리셋하도록 ② 설정 실패 시 fail-open 하도록 ③ 면제 전이를 버리도록 ④ 빈 스냅샷을 0으로 실어 보내도록 ⑤ `effort_recorded`를 무시하고 항상 리셋하도록 ⑥ 미지의 라우트 id를 조용히 받아들이도록 ⑦ 문자열 축약을 다시 받아들이도록 ⑧ 진단을 `window`에 게시하지 않도록 일부러 고장 낸 버전을 넣어, 하니스가 **실제로 잡아내는지** 확인합니다. 별도로 **§8b 배선 감사**가 소스 레벨에서 전 페이지를 훑습니다 — 교정 경로가 bare `commit`을 다시 import 하는가, 어떤 페이지가 수집기를 아예 import 하지 않는가(B-F1 재발), 읽기 화면이 자기 라우트가 아닌 id로 세는가. 이 감사도 세 가지 역주입으로 자기 점검합니다. 변이가 소스 드리프트로 적용되지 않으면 **에러를 던집니다** — 조용한 no-op이 되면 "고장 난 버전이 통과"해 검사가 무의미해지기 때문입니다(실제로 한 번 발생해 이 가드를 넣었습니다). 맵 에디터 배선은 `client2/tests/effort_instrument_harness.mjs`(28 검사, 변이 9종 — 실제 `pushMapData` 본문을 소스에서 들어올려 실행).
 
+### 3.3 값 제안 셀 에디터 — **`Enter` 한 번이 채택이고 확정이다** (F3 · `77a2c15` → Escape 시정 `d5f75a8` · 2026-07-30)
+
+`value_suggest.js`의 `SuggestCellEditor`가 **`string` 선언 컬럼**의 셀 에디터를 대체합니다(`grid.js:313-323`). 타이핑이 목록을 좁히고, **`Enter` 한 번이 후보 채택과 셀 확정을 동시에** 합니다.
+
+- **왜 한 번으로 끝나는가 — 타이머가 아니라 프레임워크의 호출 순서입니다.** AG-Grid의 `processCellKeyboardEvent`는 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하고, `onKeyDown`의 Enter 갈래가 `stopEditing → cellEditor.getValue()`를 부릅니다. 그래서 `handleEditorKey`가 `'accepted'`를 돌려주면 후보는 **같은 이벤트 디스패치가 확정에 도달하기 전에** 이미 입력에 들어가 있습니다. `grid.js`가 그때 `false`를 돌려주는 것은 포기가 아니라 **확정**입니다. 마이크로태스크도 setTimeout도 개입하지 않습니다.
+- **범위는 의도적으로 좁습니다.** `number`는 `agNumberCellEditor`(그 에디터가 나르는 숫자 검증에 `valueSetter`가 의존), `datetime`은 엔드포인트 자신이 거부합니다. 서버는 숫자 접두도 지원하므로 넓히는 것은 **그 술어 한 줄의 변경**이지만, 에디터 안에 숫자 검증을 다시 구현하는 별개 라운드입니다.
+- **여는 최소 길이는 1**입니다 — 서버 기본 `min_prefix_length: 0`보다 **엄격한 쪽**으로 고정했습니다. 빈 접두에서는 첫 후보가 컬럼 전체 값 집합에서 뽑힌 임의의 `limit`개 창이라 **`Enter`의 의미가 사라집니다**(고른 것이 아니라 표본입니다). 방향은 언제나 서버보다 엄격하게 — 운영자가 `min_prefix_length`를 **올리면** 그 선언은 그대로 존중됩니다(`columnFloor`).
+- **요청 한도는 12**이고 그 수는 두 갈래로 부하가 걸립니다. ① 위치 `k`의 후보를 고르는 비용은 `k`타(화살표 `k-1` + Enter)이므로 **`N-1`번째 뒤의 후보는 접두를 한 글자 더 치는 것보다 항상 비쌉니다**(이 그리드가 담는 12자 부품번호에서는 ~11 이후가 그렇습니다). ② 조회 비용이 `t = 0.84ms + 0.61ms × (limit+1)`로 **테이블 크기가 아니라 요구한 한도의 함수**입니다(측정 2026-07-30 · 0.61ms의 97%가 Python/SQLAlchemy/프로토콜). 한도 20은 중위 15.3ms로 예산 초과, 12는 ~8.7ms입니다. ⚠️ **꼬리는 예산 밖입니다** — p95 예측 ~11.8ms. 중위만 인용하고 꼬리를 빼면 자기에게 유리한 수만 말하는 것입니다.
+- **진단은 `window.__assySuggest`**(`getSuggestStats`/`resetSuggestStats`/`resetSuggestLearning`). 소스에만 있는 계측은 브라우저 E2E에서 존재하지 않는 것과 같습니다(`847ceaf`가 닫은 격차).
+
+#### `Escape`의 뜻은 하나이고, **시계에는 표결권이 없다**
+
+🔴 이 계약이 **먼저 깨진 뒤에 세워졌다는 사실이 계약의 일부입니다.** 원래 `Escape` 갈래는 `listOpen`을 물었고, 누른 순간 목록이 화면에 있었는지는 `DEBOUNCE_MS + 왕복시간`의 함수였습니다. 그래서 **한 키에 정반대 결과 둘**이 붙었습니다 — 목록만 닫고 글자를 남기거나, AG-Grid로 떨어져 **글자를 버리거나**. 화면에는 둘을 구별할 것이 아무것도 없었습니다(스피너가 **의도적으로** 없습니다). 게다가 닫아도 상태를 남기지 않아서, 비행 중이던 답이 도착하면 목록이 첫 행 하이라이트로 되살아나 다음 `Enter`가 **운영자가 고르지 않은 값**을 썼습니다.
+
+**지금의 계약** — 판정하는 술어는 `suggestionsEngaged`(이 에디터가 **자기 입력에 대해** 물어본 적이 있는가. 운영자의 타이핑이 세우고, 한 편집 안에서 **단조**입니다):
+
+| 누름 | 조건 | 결과 |
+|---|---|---|
+| `Esc` #1 | 이 셀에서 제안이 **engaged** | **목록만 닫습니다.** 타이핑한 글자는 남고, 예약된 질의는 취소되고, 비행 중인 요청은 **중단(abort)되고 플래그가 서서** 늦은 답이 목록을 되살리지 못합니다 |
+| `Esc` #2 · 또는 engaged가 없는 셀의 `Esc` #1 | — | `'pass'` = AG-Grid의 평범한 **편집 취소**. 그런 셀은 실제로 평범한 텍스트 필드입니다 |
+
+- **왜 "지금 요청이 떠 있는가"로 판정하지 않는가**: 그 술어 자체가 왕복시간의 함수라, 타이밍 이음매를 **없애는 게 아니라 옮기는 것**입니다("답이 Escape보다 먼저 왔나"로 이름만 바뀝니다).
+- **대가를 정직하게 적습니다**: 제안 가능한 컬럼에서 **편집 취소에 `Esc`가 두 번 필요할 수 있습니다.** 그 키 하나보다 **결정성**이 값어치가 있다고 판단해 그쪽을 골랐습니다.
+- ⚠️ **남아 있는 비균일성 하나** — engaged가 한 번도 없었던 컬럼(미선언·서버 플로어 미달·쿨다운 중)에서는 **첫 `Esc`가 곧 취소**이고, **화면에는 그 차이를 보여 주는 것이 없습니다.** 숨기지 않고 적어 둡니다.
+- `↓`는 `Esc`로 닫은 목록을 **다시 엽니다**(추가 타이핑 없이). `↑`는 열지 않습니다 — 자기가 쓴 글자를 지키려는 운영자에게 **목록을 되살리지 않는 방향**을 하나 남겨 둡니다.
+- **IME가 최우선입니다.** 조합 중(`isComposing` 또는 `keyCode === 229`)의 `Enter`는 IME 것입니다(한글 음절 확정). 이 제품은 한국어로 타이핑되므로, 그 `Enter`를 가로채면 글자를 닫으려던 사람에게 후보를 대입하게 됩니다.
+- `Tab`은 `Enter`와 **같은 경로**(채택 후 이동)이고, `Ctrl+Enter`는 후보를 입력에 채택한 뒤 `'pass'`로 떨어뜨려 `grid.js`의 기존 범위 일괄 채우기가 **채택된 값**을 읽습니다 — 그쪽도 한 번 누름입니다.
+- 제안 불가 컬럼(미선언·`datetime`·부재, 또는 `unavailable_reason`)은 **목록 없이 평범한 텍스트 에디터로** 동작합니다. 토스트도 에러도 없습니다 — 제안할 수 없는 컬럼에서 망가진 드롭다운은 드롭다운이 없는 것보다 나쁩니다.
+
+> 점검 절차는 [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md), 회귀 그물은 §2.1의 `check:suggest-keys`.
+
 ---
 
-## 4. 맵 에디터 (`map_editor.js`, ~4,209줄)
+## 4. 맵 에디터 (`map_editor.js`, ~8,650줄)
 
 | 영역 | 대표 함수 |
 |---|---|
@@ -206,7 +248,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 > **오버레이와 서버의 관계 (2026-07-27 정정)**: 맵 에디터 클라는 `GET /api/maps/overlay`를 **전혀 호출하지 않습니다** — `client2/src/**` 전수 grep 0건(2026-07-27 실측). `7d931dc` 직후 남아 있던 `limit=1` 선언 probe가 **서버 선언 오버레이 레이어와 함께 삭제되면서 마지막 호출처가 없어졌습니다.** 엔드포인트와 `server/map_overlay.py`는 살아 있으나 소비자는 `bonding_plan`/`transfer_plan`의 가용량 산출 쪽입니다.
 > 실패 상태는 **명명된 4종**(`meta_unavailable`·`binding_unavailable`·`align_unavailable`·`no_data`) + IO 실패의 일반 `error`이며, 전부 **그리지 않고 목록에 실패 행으로 남습니다.** *(구 `align_unconfirmed`·`align_override_declared`는 서버·클라 양쪽 어디에도 없습니다 — 선언 레이어와 함께 2026-07-27 삭제.)* 계약은 [MAP_EDITOR_SPEC §5](../spec/MAP_EDITOR_SPEC.md).
 
-### 4.1 전사 계획 사이드바 (`transfer_plan.js`, ~1,405줄)
+### 4.1 전사 계획 사이드바 (`transfer_plan.js`, ~1,772줄)
 
 **「계획 = 지금 열어 편집 중인 그 맵」** — `bonding_map`을 열면 본딩 계획, `dt_map`을 열면 DT 계획. stage는 열린 테이블에서 유도되며 `plan_id`도 계획 맵 사본도 없습니다.
 
@@ -224,7 +266,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 
 ---
 
-## 5. 어드민 (`admin.js`, ~2437줄) — 파이프라인 생애주기 5탭
+## 5. 어드민 (`admin.js`, ~2,872줄) — 파이프라인 생애주기 5탭
 
 2026-07-25 IA 재편: 탭 축이 메커니즘 7탭에서 **파이프라인 생애주기 5탭**으로 바뀌었습니다. 각 탭 본문은 생애 단계(현황 → 오류 → 수정/실행) 접이식 섹션 스택.
 
