@@ -1,0 +1,36 @@
+{
+  "_comment": "Virtual join 선언. 두 테이블을 저장하지 않고 조회 시점에 잇는다. 실제 적용하려면 이 파일을 virtual_join_rules.json으로 복사하세요. 검증기는 server/virtual_join_config.py 이고, 무엇이 통과/거부됐는지는 GET /admin/config/resolve?domain=virtual_join 으로 읽습니다.",
+
+  "_guard_comment": "[가장 중요] 조인 키는 오른쪽 테이블의 행 하나를 지목해야 한다. 지목하지 못하는 선언은 로드 시점에 거부되고 목록에 들어가지 않는다. 판정 기준은 오른쪽 테이블이 table_config에 선언한 행 정체성(composite_key_source, 없으면 business_key)이 조인 키의 부분집합인가이다. 실측 근거(2026-07-31 운영 DB): core_defect_map 을 eds_fail_map 에 (lot,slot,x,y)로 이으면 103,040행 그대로지만 (lot,slot)로 이으면 132,715,520행이 된다 ― 맵 정체성으로 이으면 맵의 셀 수만큼 곱해지기 때문이다.",
+
+  "_uniqueness_comment": "구조 검사(선언 키가 조인 키에 덮이는가)는 필요조건일 뿐 충분조건이 아니다. business_key_val 에는 UNIQUE 제약이 없고 운영 DB에서 실제로 중복이 있다(bonding_map 은 선언 키 base+x+y 로 구조 검사를 통과하지만 중복 그룹이 2,312개다). 영구히 안전하다고 말할 수 있는 유일한 근거는 조인 키를 덮는 UNIQUE 인덱스이며, 그것을 만드는 것은 운영자의 DDL이다.",
+
+  "_unresolved_comment": "[미상의 정의] 조인 결과에서 unresolved_label(기본 '미상')은 두 경우를 모두 덮는다. (1) 오른쪽에 맞는 행이 아예 없음. (2) 맞는 행은 있는데 그 값이 비어 있음. LEFT 조인만으로는 (2)가 보이지 않는다 ― 실측으로 bonding_log 를 core_wafer_map 에 이으면 14,436행 전부가 오른쪽 행을 찾지만 3,792행(26.27%)의 wafer_id 가 비어 있다. (2)를 미상에서 빼면 분석가는 값이 있다고 읽는다. INNER 조인은 (1)을 조용히 지우므로 쓰지 않는다.",
+
+  "_fields_comment": "left_table/right_table: table_config에 등록된 테이블명. join_key: {left, right} 쌍의 목록 ― left는 왼쪽 테이블 컬럼, right는 오른쪽 테이블 컬럼. expose: 왼쪽에 붙여 보여줄 오른쪽 테이블 컬럼들(왼쪽에 같은 이름이 있으면 거부 ― 어느 쪽 값인지 알 수 없어진다). unresolved_label: 선택, 기본 '미상'. enabled: 선택, 기본 true. join_cardinality: 'one'만 지원한다(집계 형태는 아직 구현이 없어서 선언하면 거부된다).",
+
+  "bonding_log_wafer_id": {
+    "left_table": "bonding_log",
+    "right_table": "core_wafer_map",
+    "join_key": [
+      { "left": "core_lot", "right": "core_lot" },
+      { "left": "core_slot", "right": "core_slot" }
+    ],
+    "expose": ["wafer_id"],
+    "unresolved_label": "미상",
+    "enabled": true
+  },
+
+  "_rejected_example_comment": "아래는 거부되는 선언의 모양이다. 이름이 밑줄로 시작하므로 로더는 이것을 선언이 아니라 주석으로 보고 건너뛴다 ― 밑줄을 떼면 실제로 rejected 목록에 뜬다. eds_fail_map 의 행 정체성은 lot+slot+x+y 인데 조인 키가 x,y 를 고정하지 못하므로 왼쪽 행 하나가 오른쪽 1,288행과 맞는다.",
+
+  "_example_rejected_map_identity_join": {
+    "left_table": "core_defect_map",
+    "right_table": "eds_fail_map",
+    "join_key": [
+      { "left": "lot", "right": "lot" },
+      { "left": "slot", "right": "slot" }
+    ],
+    "expose": ["metro_eqp"],
+    "enabled": true
+  }
+}

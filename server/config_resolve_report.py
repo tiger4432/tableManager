@@ -389,9 +389,141 @@ def _resolve_enrichment() -> dict:
                         sources, settings, effective, ineffective, rejected)
 
 
-# 도메인 등록기. 나머지 9개 config는 여기에 한 줄씩 붙는다.
+# ---------------------------------------------------------------------------
+# virtual_join — 두 번째 슬라이스
+# ---------------------------------------------------------------------------
+
+DOMAIN_VIRTUAL_JOIN = "virtual_join"
+
+# 로더의 내부 거부 코드 -> 닫힌 사유 어휘.
+#
+# 팬아웃 3종이 `scope_unresolved`인 것은 편의가 아니라 그 단어의 뜻 그대로다:
+# 런타임 어휘에서 이 단어는 「0개 또는 2개 이상이 주장 ― 고르지 않음」이고,
+# 조인 키가 오른쪽 행 하나를 지목하지 못한다는 것이 정확히 그 상태다.
+# 나머지(문법 오류·미구현 형태)는 「선언이 파싱/검증에 실패해 반영되지 않음」이라
+# `mapping_unavailable`이다. **새 단어를 만들지 않는다** ― 어휘 추가는 계약 변경이다.
+_VJ_CODE_TO_REASON = {
+    "key_not_covered": REASON_SCOPE_UNRESOLVED,
+    "duplicate_found": REASON_SCOPE_UNRESOLVED,
+    "probe_incomplete": REASON_SCOPE_UNRESOLVED,
+    "fanout_declared": REASON_MAPPING_UNAVAILABLE,
+    "shape": REASON_MAPPING_UNAVAILABLE,
+}
+
+# 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
+# 고쳐야 하는지 먼저 말한다(INV-F9-8 ― `detail`은 그가 읽는 최종 문장이다).
+_VJ_CODE_LEAD = {
+    "key_not_covered":
+        "조인 키가 오른쪽 행 하나를 지목하지 못해 선언을 거부했습니다. 이 선언대로 "
+        "이으면 왼쪽 행 하나가 오른쪽에서 맞는 행 수만큼 불어납니다",
+    "duplicate_found":
+        "오른쪽 테이블이 조인 키로 유일하지 않아 선언을 거부했습니다. 실제로 같은 키를 "
+        "가진 행이 둘 이상 있습니다",
+    "probe_incomplete":
+        "오른쪽 테이블이 조인 키로 유일한지 예산 안에 증명하지 못해 선언을 거부했습니다. "
+        "증명하지 못한 것은 통과가 아닙니다",
+    "fanout_declared":
+        "아직 구현되지 않은 조인 형태라 선언을 거부했습니다",
+    "shape":
+        "선언이 반영되지 않았습니다",
+}
+
+
+def _resolve_virtual_join() -> dict:
+    """virtual join 선언의 해석 보고서. **DB를 건드리지 않는다**(config만 읽는다).
+
+    그래서 이 보고서가 보여주는 것은 **정적 검사(①)의 결과뿐이다.** 라이브 유일성(②)은
+    세션이 필요하고, 이 라우트는 「DB 질의 0건」이 계약이라 여기서 돌 수 없다.
+    ①을 통과한 선언을 `effective`로 올리지 않는 이유가 그것이다 ― 통과했다고 표시하면
+    운영자는 조인이 동작한다고 읽는데, ②도 안 돌았고 조인을 실행하는 코드도 아직 없다.
+    """
+    import virtual_join_config as vjc
+    from database import crud
+
+    rules_path = vjc.VIRTUAL_JOIN_RULES_PATH
+    rejections = []
+    rules = vjc.load_virtual_join_rules(
+        known_tables=crud.TABLE_CONFIG, rejections=rejections)
+
+    effective, ineffective, rejected = [], [], []
+
+    for r in rejections:
+        code = r.get("code", "shape")
+        lead = _VJ_CODE_LEAD.get(code, _VJ_CODE_LEAD["shape"])
+        facts = r.get("facts") or {}
+        # 팬아웃 거부는 구조화된 사실이 오므로 **온전한 한국어 문장**을 짓는다. 로더의
+        # `detail`은 영어 로그 문구라, 그것을 이어 붙이면 운영자가 읽는 최종 문장이
+        # 반쯤 영어가 된다(INV-F9-8). 사실이 없는 거부만 영어 사유를 그대로 나른다.
+        if code == "key_not_covered" and facts.get("declared_key"):
+            detail = (
+                f"{lead}. 오른쪽 테이블 {facts['right_table']}은(는) "
+                f"{_names(facts['declared_key'], ' + ')}(으)로 행 하나를 지목하는데, "
+                f"조인 키 {_names(facts.get('join_key'), ', ')}이(가) "
+                f"{_names(facts['uncovered'], ', ')}을(를) 고정하지 못합니다. "
+                f"고정하지 못한 컬럼을 조인 키에 추가하거나, 그 컬럼까지 포함해 행을 "
+                f"지목하는 다른 테이블을 오른쪽으로 쓰세요.")
+        else:
+            detail = f"{lead} ― {r['detail']}"
+        rejected.append(entry(
+            r["scope"] if r["scope"] in SCOPES else SCOPE_RULE,
+            r.get("subject"), detail,
+            reason=_VJ_CODE_TO_REASON.get(code, REASON_MAPPING_UNAVAILABLE)))
+
+    for rule in rules:
+        fields = {
+            "left_table": rule["left_table"],
+            "right_table": rule["right_table"],
+            "join_key": [f"{p['left']} = {p['right']}" for p in rule["join_key"]],
+            "expose": list(rule["expose"]),
+            "unresolved_label": rule["unresolved_label"],
+            "right_declared_key": list(rule["declared_key"]),
+            "uniqueness_evidence": rule["uniqueness_evidence"],
+        }
+        ineffective.append(entry(
+            SCOPE_RULE, rule["name"],
+            f"선언은 유효합니다 ― 오른쪽 테이블 "
+            f"{rule['right_table']}의 행 정체성 "
+            f"{_names(rule['declared_key'], ' + ')}을(를) 조인 키가 모두 고정하므로 "
+            f"구조 검사를 통과했습니다. 다만 조인을 실행하는 코드가 아직 없어 이 선언은 "
+            f"어디에서도 사용되지 않습니다. 라이브 유일성 검사도 아직 돌지 않았습니다 "
+            f"― 구조 검사만으로는 유일성이 증명되지 않습니다.",
+            reason=REASON_NOT_REACHED, fields=fields))
+
+    rules_exists = os.path.exists(rules_path)
+    file_rejected = any(r["scope"] == SCOPE_FILE for r in rejections)
+    sources = [
+        source("rules", rules_path,
+               ("선언 파일이 없습니다 ― virtual join 선언이 하나도 없습니다."
+                if not rules_exists else
+                ("선언 파일을 읽지 못했습니다 ― 어떤 선언도 반영되지 않았습니다."
+                 if file_rejected else
+                 f"선언 {len(rules)}건이 구조 검사를 통과했습니다.")),
+               exists=rules_exists, degraded=file_rejected),
+    ]
+    settings = [
+        setting("probe_budget_ms", vjc.DEFAULT_PROBE_BUDGET_MS, ORIGIN_DEFAULT,
+                rules_path, declared=None,
+                detail=(f"라이브 유일성 프로브의 시간 예산 = "
+                        f"{vjc.DEFAULT_PROBE_BUDGET_MS}ms. 중복을 찾는 방향은 첫 중복에서 "
+                        f"멈춰 싸지만, 중복이 없음을 증명하는 방향은 전수 스캔이라 "
+                        f"약 859행/ms입니다. 예산 안에 증명하지 못하면 통과가 아니라 "
+                        f"거부이며, 큰 테이블에서 영구히 통과시키는 방법은 예산을 "
+                        f"올리는 것이 아니라 조인 키에 UNIQUE 인덱스를 만드는 것입니다.")),
+        setting("unresolved_label", vjc.DEFAULT_UNRESOLVED_LABEL, ORIGIN_DEFAULT,
+                rules_path, declared=None,
+                detail=(f"해소되지 않은 값의 표시 = {vjc.DEFAULT_UNRESOLVED_LABEL}. "
+                        f"오른쪽에 맞는 행이 없는 경우와, 행은 있는데 값이 비어 있는 "
+                        f"경우를 모두 덮습니다. 둘째를 빼면 분석가는 값이 있다고 "
+                        f"읽습니다.")),
+    ]
+    return build_domain(DOMAIN_VIRTUAL_JOIN, "Virtual Join 선언",
+                        sources, settings, effective, ineffective, rejected)
+
+
+# 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
 _RESOLVERS = {
     DOMAIN_ENRICHMENT: _resolve_enrichment,
+    DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
 }
 
 

@@ -27,6 +27,7 @@
 | `ingestion_settings.json` | 인제션 노브 — heavy 임계·dedup·재개 | 즉시(**다음 파일부터**) | watcher 로그의 heavy 라우팅 줄 | [ingestion_settings.md](./ingestion_settings.md) |
 | `effort_metric.json` | V1 계기 — 상호작용 점수 배점 + 컨텍스트 유지 전이 | 즉시(다음 조회부터) | `GET /api/effort/config` | [effort_metric.md](./effort_metric.md) |
 | `suggest_config.json` | 입력 제안(고유값 조회) 노브 + **접두 인덱스 대상 선정** | 조회 노브 = 즉시 / `index_*` = **`setup_db_performance.py` 재실행** | `GET /tables/{t}/columns/{c}/values` | [suggest_config.md](./suggest_config.md) |
+| `virtual_join_rules.json` | 저장하지 않는 조인 선언 + **팬아웃 가드**(터지는 선언은 로드 안 됨) | 조회 즉시 | `GET /admin/config/resolve?domain=virtual_join` | [virtual_join_rules.md](./virtual_join_rules.md) |
 
 ## 잘못됐을 때 (전 파일 공통)
 
