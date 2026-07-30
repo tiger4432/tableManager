@@ -13,6 +13,10 @@ import { showToast } from './utils.js';
 // so every trip through here recorded half its true cost. Under-counting the return leg
 // flatters the score, on a baseline that cannot be collected twice.
 import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } from './effort_meter.js';
+// [F9] 「내 config가 먹었는가」. The view model lives in its own DOM-free module so the
+// contract harness can score it: the server composes the operator-facing sentence and this
+// page renders `detail` VERBATIM. Nothing here decides what counts as ineffective.
+import { buildConfigResolveView, buildDryRunView, CHROME } from './config_resolve_view.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -297,6 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
   installNavLinkCounting(ROUTES.ADMIN);
   setupEventListeners();
   initMonacoEditor();
+  initConfigResolveLine();
 
   // 해시/쿼리 라우팅 적용 (기본 Overview) — switchTab이 fetchData + 스트립 갱신 수행
   applyRoute(true);
@@ -1542,11 +1547,283 @@ async function refreshCoreValueLines(force = false) {
   }
 }
 
+// ── 설정 반영 한 줄 (Overview 상단, 세 번째 줄) — F9 ─────────
+//
+// 「내 config가 먹었는가」에 답하는 자리. `POST /admin/reload-configs`는 캐시를 갈아끼우고
+// **아무것도 반환하지 않는** 쓰기 전용 버튼이었고, 그 공백이 실제 결함을 숨기고 있었다:
+// `candidate_for` 선언 없이 `auto_confirm: true`를 켜면 규칙은 경고 한 줄만 남기고 조용히
+// 비활성이 된다(라이브가 그 상태였다). `GET /admin/config/resolve`가 그 사실을 문장으로
+// 돌려주고, 이 절이 그것을 화면에 옮긴다.
+//
+// 🔴 이 파일은 「효과 없음」을 스스로 판정하지 않는다. 서버가 사유를 명명하고 사람이 읽을
+//    문장을 만들며, 여기서는 `detail`을 **그대로** 렌더한다. 사유별로 문장을 짓기 시작하면
+//    U6에서 6종을 삭제한 하드코딩 사본 계급이 그대로 재발한다. 렌더 규칙과 그 채점은
+//    `config_resolve_view.js` + `contracts/config_resolve_report/client_harness.mjs`.
+//
+// 이 조회는 **DB 질의 0건**(설정 파일만 읽는다)이라 재교정률 두 줄과 달리 비싸지 않다.
+// 그래도 30초 자동 갱신에 매번 태울 이유는 없어서 1분 스로틀을 둔다. 설정이 바뀌는
+// 유일한 계기(Reload Configs)에서는 force로 즉시 다시 읽는다.
+const CONFIG_RESOLVE_MIN_INTERVAL_MS = 60 * 1000;
+let configResolveLastAt = 0;
+let configResolveView = null;
+let configResolveRaw = '';
+// 문제가 있을 때 클릭 없이 보이게 하되 **한 번만** — 운영자가 접은 것을 자동 갱신이
+// 30초마다 다시 펴면 그 펼침은 곧 무시당한다.
+let configResolveAutoOpened = false;
+// 드라이런 결과는 규칙 이름으로 들고 있는다: 자동 갱신이 블록을 다시 그려도 방금 얻은
+// 측정값이 사라지지 않아야 한다. (설정이 바뀌면 낡은 측정이므로 통째로 버린다.)
+const dryRunByRule = new Map();
+
+const cfgText = (node) => (node && typeof node.text === 'string' ? node.text : '');
+
+function cfgEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text != null) el.textContent = text;
+  return el;
+}
+
+function cfgChip(text, tone) {
+  const el = cfgEl('span', 'cfg-chip', text);
+  if (tone) el.dataset.tone = tone;
+  return el;
+}
+
+function initConfigResolveLine() {
+  const hint = byId('config-resolve-hint');
+  if (hint) hint.textContent = CHROME.DETAIL_HINT;
+}
+
+async function refreshConfigResolve(force = false) {
+  const now = Date.now();
+  if (!force && now - configResolveLastAt < CONFIG_RESOLVE_MIN_INTERVAL_MS) return;
+  configResolveLastAt = now;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/config/resolve`);
+    if (!res.ok) throw new Error(`config resolve ${res.status}`);
+    const raw = await res.text();
+    // 바뀐 게 없으면 다시 그리지 않는다. 설정은 거의 안 바뀌는데 갱신 주기는 계속 도므로,
+    // 매번 다시 그리면 운영자가 펼쳐 둔 참조뷰가 읽는 도중에 접힌다.
+    if (raw === configResolveRaw && configResolveView) return;
+    configResolveRaw = raw;
+    // 보고서가 달라졌다 = 방금 얻은 드라이런 수치는 낡은 설정에 대한 측정이다.
+    dryRunByRule.clear();
+    configResolveView = buildConfigResolveView(JSON.parse(raw));
+    renderConfigResolve();
+  } catch (e) {
+    // 조회 실패는 「설정이 멀쩡하다」가 아니다 — 대시와 사유를 남긴다.
+    console.error('[ConfigResolve] resolve report fetch failed', e);
+    configResolveView = null;
+    renderConfigResolveFailure();
+  }
+}
+
+function renderConfigResolveFailure() {
+  const line = byId('config-resolve-summary');
+  const valueEl = byId('config-resolve-value');
+  const subEl = byId('config-resolve-sub');
+  const body = byId('config-resolve-body');
+  if (!line || !valueEl || !subEl) return;
+  valueEl.textContent = '—';
+  subEl.textContent = CHROME.FETCH_FAILED;
+  line.dataset.tone = 'muted';
+  if (body) body.textContent = '';
+}
+
+function renderConfigResolve() {
+  const view = configResolveView;
+  const line = byId('config-resolve-summary');
+  const valueEl = byId('config-resolve-value');
+  const subEl = byId('config-resolve-sub');
+  const body = byId('config-resolve-body');
+  if (!view || !line || !valueEl || !subEl || !body) return;
+
+  // 헤드라인: 모집단 카운트를 **서버 어휘 그대로** 적는다. 비어 있는 모집단은 muted —
+  // 0건인 rejected가 붉게 보이면 그 색은 곧 의미를 잃는다.
+  valueEl.textContent = '';
+  view.totals.forEach((total) => {
+    valueEl.appendChild(cfgChip(`${cfgText(total.label)} ${total.count.text}`,
+      total.count.value > 0 ? total.tone : 'muted'));
+  });
+  subEl.textContent = view.titles.map(cfgText).join(' · ');
+  line.dataset.tone = view.tone;
+
+  body.textContent = '';
+  if (view.empty) {
+    body.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.emptyText)));
+    return;
+  }
+  view.domains.forEach((domain) => body.appendChild(cfgDomainEl(domain)));
+
+  const block = byId('config-resolve');
+  if (block && !configResolveAutoOpened && view.tone) {
+    block.open = true;
+    configResolveAutoOpened = true;
+  }
+}
+
+function cfgDomainEl(domain) {
+  const card = cfgEl('article', 'cfg-domain');
+  card.appendChild(cfgEl('div', 'cfg-domain-title', cfgText(domain.title)));
+
+  if (domain.sources.length) {
+    const group = cfgEl('div');
+    group.appendChild(cfgEl('div', 'cfg-group-label', cfgText(domain.sourcesLabel)));
+    domain.sources.forEach((src) => {
+      const row = cfgEl('div', 'cfg-row');
+      if (src.tone) row.dataset.tone = src.tone;
+      const head = cfgEl('div', 'cfg-row-head');
+      head.appendChild(cfgEl('span', 'cfg-subject', cfgText(src.key)));
+      head.appendChild(cfgEl('span', 'cfg-path', cfgText(src.path)));
+      row.appendChild(head);
+      row.appendChild(cfgEl('div', 'cfg-detail', cfgText(src.detail)));
+      group.appendChild(row);
+    });
+    card.appendChild(group);
+  }
+
+  if (domain.settings.length) {
+    const group = cfgEl('div');
+    group.appendChild(cfgEl('div', 'cfg-group-label', cfgText(domain.settingsLabel)));
+    domain.settings.forEach((setting) => {
+      const row = cfgEl('div', 'cfg-row');
+      const head = cfgEl('div', 'cfg-row-head');
+      head.appendChild(cfgEl('span', 'cfg-subject', cfgText(setting.key)));
+      head.appendChild(cfgEl('span', 'cfg-jsonval', `= ${cfgText(setting.value)}`));
+      head.appendChild(cfgChip(cfgText(setting.origin), 'muted'));
+      if (setting.declared) {
+        head.appendChild(cfgEl('span', 'cfg-path',
+          `${cfgText(setting.declaredLabel)} ${cfgText(setting.declared)}`));
+      }
+      row.appendChild(head);
+      row.appendChild(cfgEl('div', 'cfg-detail', cfgText(setting.detail)));
+      row.appendChild(cfgEl('div', 'cfg-path', cfgText(setting.path)));
+      group.appendChild(row);
+    });
+    card.appendChild(group);
+  }
+
+  domain.populations.forEach((pop) => card.appendChild(cfgPopulationEl(pop)));
+  return card;
+}
+
+function cfgPopulationEl(pop) {
+  const wrap = cfgEl('div', 'cfg-pop');
+  const head = cfgEl('div', 'cfg-pop-head');
+  head.appendChild(cfgChip(`${cfgText(pop.label)} ${pop.count.text}`,
+    pop.count.value > 0 ? pop.tone : 'muted'));
+  wrap.appendChild(head);
+  pop.entries.forEach((entry) => wrap.appendChild(cfgEntryEl(entry, pop.tone)));
+  return wrap;
+}
+
+function cfgEntryEl(entry, tone) {
+  const row = cfgEl('div', 'cfg-row');
+  const head = cfgEl('div', 'cfg-row-head');
+  if (entry.scope) head.appendChild(cfgChip(cfgText(entry.scope), 'muted'));
+  if (entry.subject) head.appendChild(cfgEl('span', 'cfg-subject', cfgText(entry.subject)));
+  // 사유·경고는 서버 어휘를 **데이터로** 받아 그대로 칩에 적는다. 색은 항목이 들어간
+  // 모집단에서 오지 사유 단어에서 오지 않는다 — 사유별 분기는 이 계약이 금지하는 것이다.
+  if (entry.reason) head.appendChild(cfgChip(cfgText(entry.reason), tone));
+  entry.warnings.forEach((w) => head.appendChild(cfgChip(cfgText(w), 'warn')));
+  row.appendChild(head);
+  if (entry.detail) row.appendChild(cfgEl('div', 'cfg-detail', cfgText(entry.detail)));
+  if (entry.views.length) row.appendChild(cfgViewsEl(entry));
+  if (entry.measure) row.appendChild(cfgMeasureEl(entry.measure));
+  return row;
+}
+
+function cfgViewsEl(entry) {
+  const details = document.createElement('details');
+  details.className = 'cfg-views';
+  details.open = entry.viewsOpen;
+  const summary = document.createElement('summary');
+  summary.textContent = `${CHROME.VIEWS} ${entry.views.length} ▾`;
+  details.appendChild(summary);
+  entry.views.forEach((view) => {
+    const box = cfgEl('div', 'cfg-view');
+    if (view.warnings.length || view.narrow) box.dataset.tone = 'warn';
+    const head = cfgEl('div', 'cfg-row-head');
+    head.appendChild(cfgEl('span', 'cfg-subject', cfgText(view.label)));
+    view.warnings.forEach((w) => head.appendChild(cfgChip(cfgText(w), 'warn')));
+    box.appendChild(head);
+    if (view.detail) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.detail)));
+    details.appendChild(box);
+  });
+  return details;
+}
+
+function cfgMeasureEl(rule) {
+  const wrap = cfgEl('div');
+  const btn = cfgEl('button', 'glass-btn cfg-btn', CHROME.MEASURE);
+  btn.type = 'button';
+  btn.title = CHROME.MEASURE_HINT;
+  // 결과는 이 host 안에서만 교체한다 — 블록 전체를 다시 그리면 운영자가 펼쳐 둔 참조뷰가
+  // 자기 클릭 때문에 접힌다.
+  const host = cfgEl('div');
+  btn.addEventListener('click', () => runAutoConfirmDryRun(rule, btn, host));
+  wrap.appendChild(btn);
+  wrap.appendChild(host);
+  const cached = dryRunByRule.get(rule);
+  if (cached) host.appendChild(cfgDryRunEl(cached));
+  return wrap;
+}
+
+function cfgDryRunEl(cached) {
+  const box = cfgEl('div', 'cfg-dryrun');
+  if (!cached.ok) {
+    box.appendChild(cfgEl('div', 'cfg-detail', CHROME.MEASURE_FAILED));
+    return box;
+  }
+  const view = cached.view;
+  if (view.reason) {
+    const head = cfgEl('div', 'cfg-row-head');
+    head.appendChild(cfgChip(cfgText(view.reason), 'warn'));
+    box.appendChild(head);
+  }
+  box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.detail)));
+  if (view.refused.length) {
+    const line = cfgEl('div', 'cfg-dryrun-refused');
+    line.appendChild(cfgEl('span', 'cfg-group-label', cfgText(view.refusedLabel)));
+    view.refused.forEach((item) => {
+      line.appendChild(cfgChip(`${cfgText(item.word)} ${item.count.text}`, 'muted'));
+    });
+    box.appendChild(line);
+  }
+  return box;
+}
+
+// 읽기 전용 계기다 — `apply`는 이 라우트에 존재하지 않고, 서버가 끝에서 구조적으로
+// rollback한다. 그래서 확인 대화상자 없이 클릭 한 번이다(「읽기 무마찰」).
+// 다만 큐를 걷는 분석 질의라 자동으로는 절대 돌리지 않는다: 운영자가 물어볼 때만 센다.
+async function runAutoConfirmDryRun(rule, btn, host) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = CHROME.MEASURING;
+  try {
+    const res = await adminFetch(
+      `${API_BASE}/admin/enrichment/auto-confirm/dry-run?rule=${encodeURIComponent(rule)}`);
+    if (!res.ok) throw new Error(`dry-run ${res.status}`);
+    dryRunByRule.set(rule, { ok: true, view: buildDryRunView(await res.json()) });
+  } catch (e) {
+    console.error('[ConfigResolve] auto-confirm dry-run failed', e);
+    dryRunByRule.set(rule, { ok: false, view: null });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+    host.textContent = '';
+    host.appendChild(cfgDryRunEl(dryRunByRule.get(rule)));
+  }
+}
+
 // ── Overview 탭 (헬스 스트립 확장판 — 첫 화면) ─────────────
 
 async function fetchOverview(isStale) {
   // 의도적으로 await 하지 않는다(위 주석 참조): 본문 카드가 이 요청을 기다리지 않는다.
   refreshCoreValueLines();
+  // 같은 이유로 await 하지 않는다. 이쪽은 DB를 건드리지 않아 값싸지만, 본문 렌더가
+  // 설정 파일 읽기를 기다릴 이유도 없다.
+  refreshConfigResolve();
 
   const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
@@ -2397,6 +2674,12 @@ async function reloadSystemConfigs() {
     showToast('🚀 시스템 설정 및 파이썬 코드가 성공적으로 핫-리로드되었습니다.', 'success');
     enrichmentStatusCache = null; // 규칙이 바뀌었을 수 있음
     scriptsListCache = null;      // 스크립트 목록도 최신화
+    // [F9] 이 버튼이 **처음으로 무언가를 돌려주는** 자리. 리로드는 선언의 효과가 바뀌는
+    // 유일한 계기이므로 스로틀을 무시하고 다시 읽는다. 자동 펼침 1회 권한도 되살린다 —
+    // 방금 누른 리로드의 결과가 접혀 있으면 의미가 없다. (보고서가 실제로 달라졌을 때만
+    // 다시 그려지고, 그때 낡은 드라이런 측정값도 함께 버려진다.)
+    configResolveAutoOpened = false;
+    refreshConfigResolve(true);
     fetchData();
     refreshHealthStrip();
   } catch (err) {

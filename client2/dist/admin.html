@@ -544,6 +544,173 @@
        #effort-line으로 한정 — 재교정률 줄의 표현은 건드리지 않는다. */
     #effort-line[data-tone="danger"] .rc-sub { color: var(--danger); }
 
+    /* ── 설정 반영 한 줄 (Overview 상단, 세 번째 줄) — F9 ──
+       「내 config가 먹었는가」에 답하는 유일한 화면. 위의 두 줄과 같은 문법으로 읽히도록
+       summary가 .recorrection-line을 그대로 입는다(값·사유·톤 규칙 공유).
+       카드도 패널도 모달도 아니다 — 헤드라인은 항상 보이고, 펼침은 제자리에서 일어난다.
+       문장은 전부 서버가 만든 것이고 이 CSS는 위계와 색만 담당한다. */
+    .cfg-block > summary {
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .cfg-block > summary::-webkit-details-marker { display: none; }
+    .cfg-block > summary:hover .rc-sub { color: var(--text-muted); }
+    .cfg-block[open] > summary { padding-bottom: 4px; }
+    .cfg-toggle {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+    .cfg-block > summary:hover .cfg-toggle { color: var(--accent); }
+    .cfg-caret {
+      font-size: 0.7rem;
+      color: inherit;
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+    #config-resolve-value {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cfg-block[open] .cfg-caret { transform: rotate(180deg); }
+
+    /* 모집단 카운트 칩 — 서버 어휘(effective/ineffective/rejected)를 그대로 적는다.
+       한국어 라벨을 지어내면 그 순간 클라가 「효과 없음」의 뜻을 스스로 갖게 된다. */
+    .cfg-chip {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .cfg-chip[data-tone="ok"] { color: var(--success); background: var(--success-weak); border-color: transparent; }
+    .cfg-chip[data-tone="warn"] { color: var(--warning); background: var(--warning-weak); border-color: transparent; }
+    .cfg-chip[data-tone="danger"] { color: var(--danger); background: var(--danger-weak); border-color: transparent; }
+    .cfg-chip[data-tone="muted"] { opacity: 0.62; }
+
+    .cfg-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 6px 20px 4px;
+    }
+    .cfg-domain {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .cfg-domain-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .cfg-group-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .cfg-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 0;
+      border-top: 1px dashed var(--border);
+    }
+    .cfg-row-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cfg-subject {
+      font-family: var(--font-mono);
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .cfg-path {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+    /* 운영자가 편집한 그 파일의 문법(JSON)으로 되읽어 주는 값 — 서버의 `_as_json`과 짝. */
+    .cfg-jsonval {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    /* 서버가 만든 문장 — 이 블록에서 가장 잘 읽혀야 하는 것.
+       「가독성은 기능이다」: 밀도는 작은 글씨가 아니라 접이식으로 해결한다. */
+    .cfg-detail {
+      font-size: 0.88rem;
+      line-height: 1.65;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+    .cfg-row[data-tone="danger"] .cfg-detail { color: var(--danger); }
+    .cfg-row[data-tone="muted"] .cfg-detail { opacity: 0.8; }
+    .cfg-pop + .cfg-pop { margin-top: 10px; }
+    .cfg-pop-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cfg-views { margin-top: 4px; }
+    .cfg-views > summary {
+      cursor: pointer;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      list-style: none;
+    }
+    .cfg-views > summary::-webkit-details-marker { display: none; }
+    .cfg-views > summary:hover { color: var(--accent); }
+    .cfg-view {
+      margin-top: 8px;
+      padding-left: 12px;
+      border-left: 2px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cfg-view[data-tone="warn"] { border-left-color: var(--warning); }
+    .cfg-btn { padding: 3px 12px; font-size: 0.76rem; }
+    .cfg-dryrun {
+      margin-top: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cfg-dryrun-refused {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
     /* ── Overview 탭 (좌패널 전폭 — 4 파이프라인 확장 카드) ── */
     .overview-grid {
       display: grid;
@@ -808,7 +975,7 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-DM-CQyMo.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BUa5eChg.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-DRcLN4HE.js">
   <link rel="stylesheet" crossorigin href="/assets/effort_meter-Bzia583p.css">
 </head>
@@ -890,6 +1057,24 @@
             <span class="rc-value" id="effort-value">—</span>
             <span class="rc-sub" id="effort-sub">불러오는 중…</span>
           </div>
+          <!-- 설정 반영 한 줄 (F9): 「내 config가 먹었는가」.
+               `POST /admin/reload-configs`는 아무것도 반환하지 않는 쓰기 전용 버튼이었다 —
+               이 줄이 그 공백을 메운다. 헤드라인(모집단 카운트)은 클릭 없이 항상 보이고,
+               펼치면 서버가 만든 문장이 제자리에 나온다. 새 페이지도 모드도 모달도 없다.
+               ⚠️ 사유 문장은 전부 서버 소유다 — admin.js는 `detail`을 그대로 렌더한다. -->
+          <details id="config-resolve" class="cfg-block">
+            <summary class="recorrection-line" id="config-resolve-summary">
+              <span class="rc-label">설정 반영</span>
+              <span class="rc-value" id="config-resolve-value">—</span>
+              <span class="rc-sub" id="config-resolve-sub">불러오는 중…</span>
+              <span class="cfg-toggle">
+                <!-- 문구는 admin.js가 config_resolve_view.js의 CHROME에서 채운다 —
+                     클라가 쓰는 문자열의 정본은 그 표 하나다. -->
+                <span id="config-resolve-hint"></span><span class="cfg-caret" aria-hidden="true">▾</span>
+              </span>
+            </summary>
+            <div class="cfg-body" id="config-resolve-body"></div>
+          </details>
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->
           </div>
