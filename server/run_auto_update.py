@@ -21,6 +21,65 @@ import config_backup
 import graph_orphans
 logger = get_process_logger("Scheduler", "auto_update.log")
 
+
+def _apply_proxy_policy():
+    """수집 스크립트가 볼 프록시 환경을 이 프로세스에서 확정한다.
+
+    왜 여기인가 — 수집 스크립트는 사용자가 쓰고 `exec`로 도는 코드라 각자 프록시를
+    다룰 수 없다. 그리고 그 스크립트들이 치는 곳은 **사내 인트라넷**이라 프록시를
+    **우회**해야 한다(2026-07-30 실측: 프록시를 경유하면 403).
+
+    ⚠️ 왜 os.environ 을 지우는가 — `urllib.request.getproxies()`는
+    `getproxies_environment() or getproxies_registry()`이고, `getproxies_environment()`는
+    이름이 `_proxy`로 끝나는 변수를 **값이 있는 것만** 걷는다. `no_proxy`도 `_proxy`로
+    끝나므로 **그것 하나만 남아 있어도** dict가 비지 않아 레지스트리가 통째로 무시된다.
+    그래서 개별 변수를 비우는 것으로는 부족하고 `*_proxy` 계열을 **전부** 걷어야
+    "프록시 설정 없음 = 전부 직결"이 성립한다.
+
+    설정 파일에서 끈다: `auto_update_control.json` 의 `"bypass_proxy": false`.
+    기본값은 **직결(true)** — 이것이 이 배포의 실제 동작이고, 값이 없거나 파일이
+    깨졌을 때 조용히 반대로 도는 것이 더 나쁘다.
+    """
+    import json
+    from utils.auto_update_control import get_control_path
+
+    bypass = True
+    try:
+        with open(get_control_path(), "r", encoding="utf-8") as f:
+            val = json.load(f).get("bypass_proxy", True)
+        if isinstance(val, bool):
+            bypass = val
+        else:
+            logger.warning(
+                "auto_update_control.json 의 'bypass_proxy' 가 boolean 이 아닙니다(%r). "
+                "기본값 true(직결)로 진행합니다.", val)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("auto_update_control.json 을 읽지 못했습니다(%s). "
+                       "기본값 true(직결)로 진행합니다.", e)
+
+    if not bypass:
+        logger.info("[proxy] bypass_proxy=false - 수집 스크립트가 환경의 프록시 설정을 그대로 씁니다.")
+        return
+
+    removed = sorted(k for k in list(os.environ) if k.lower().endswith("_proxy"))
+    for k in removed:
+        os.environ.pop(k, None)
+    # 🔴 지우는 것만으로는 **반대 결과**가 난다. 환경 dict가 비면 위 `or`가 넘어가
+    #    **레지스트리**를 조회하고, 운영 머신의 레지스트리에는 사내 프록시가 있다 —
+    #    즉 전부 지울수록 프록시가 되살아난다. dict를 **비지 않게** 두면서 http/https
+    #    항목만 없애야 "설정 없음 = 직결"이 된다. `no_proxy` 하나가 그 자리를 채운다.
+    #    `requests`도 같은 `urllib.request.getproxies()`를 타므로 두 라이브러리에 동시에 듣는다.
+    os.environ["no_proxy"] = "*"
+    # 값이 아니라 **이름만** 남긴다 - 프록시 URL에 자격증명이 실려 있을 수 있다.
+    logger.info("[proxy] 수집 스크립트는 직결로 돕니다(no_proxy=*). 제거한 변수: %s",
+                ", ".join(removed) if removed else "(없음)")
+
+
+_apply_proxy_policy()
+
+
 class BaseCollector(ABC):
     """
     클래스 상속 기반의 테이블 전용 수집기(Collector)의 공통 규격을 정의하는 베이스 추상 클래스입니다.
