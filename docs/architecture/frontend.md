@@ -69,7 +69,7 @@ npm run build     # prebuild(클립보드 관례 + 계약 하네스 4종) → di
 | `dom.js` | 55 | `getElementById` 지연 게터 모음(`elements`) |
 | `api.js` | 422 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema, fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows |
 | `websocket.js` | 249 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
-| `grid.js` | 526 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화) |
+| `grid.js` | 643 | AG-Grid 설정/렌더: `buildColumnDefs`, `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택) |
 | `clipboard.js` | 788 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells` |
 | `timeline.js` | 718 | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터 |
 | `ui.js` | 408 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`, Enrichment 배지(`updateEnrichmentBadge`), 페이지캐시 유지, unload 경고 |
@@ -88,6 +88,18 @@ npm run build     # prebuild(클립보드 관례 + 계약 하네스 4종) → di
 
 > `counter.js`는 Vite 템플릿 잔재(미사용).
 > **클립보드는 `document`의 `copy`/`paste` 이벤트 + `e.clipboardData`가 정본이다**(`clipboard.js` `setupClipboardHandlers`). `navigator.clipboard`는 **보안 컨텍스트(HTTPS 또는 localhost/127.0.0.1)에서만 존재**하며, 운영은 사내망 평문 HTTP라 그곳에선 `undefined`다. 과거 `main.js`의 keydown에서 Ctrl+C를 가로채 `navigator.clipboard.writeText`로 복사하던 분기가 있었는데, ① 운영에서 `TypeError`(동기 throw라 `.catch()`도 못 받음)로 죽고 ② `preventDefault()`가 먼저 실행돼 정상 동작하던 `copy` 핸들러까지 굶겼다 → **삭제**(2026-07-27). **Ctrl+C/Ctrl+V를 keydown에서 가로채지 말 것.**
+
+#### §2.1-bis 범위 선택은 키보드로도 된다 (`Shift`+방향키, 2026-07-30)
+
+> **원칙: 손이 키보드를 떠나지 않게 한다.** 공수 계기(§계기 절)의 배점은 키 1 / 마우스 3이므로, **범위 드래그가 필요한 일괄 채우기는 이득의 대부분을 반납한다**. 그래서 `Shift`+방향키로 사각형을 잡는 경로를 추가했다(`grid.js` `extendRangeByKeyboard`). 격리 스택 실측: 같은 3셀 교정이 **셀별 개별 저장 4점×3건 = 12점 → 일괄 채우기 1건 6점**, 두 경우 모두 **마우스 0점**. N셀로 확장하면 개별 ≈ 5N, 일괄 ≈ N+3(N=100에서 500점 대 103점).
+>
+> **두 번째 범위 구현을 만들지 않았다.** 앵커는 기존 `state.dragStartCell`, 이동단은 `state.dragEndCell`이고 렌더는 `clipboard.isCellInRange`/`refreshSelectedRangeDiff`가 이미 그 사각형을 그린다. 쓰기 엔진도 기존 `ui.applyValueToSelectedRange`(Ctrl+Enter 경로)를 그대로 쓴다 — 새로 만든 것은 **선택 수단 하나뿐**이다.
+>
+> ⚠️ **`selectedCellsMap`에 확정(commit)하지 않는다** — Shift+클릭도 하지 않는 동작이고, `applyValueToSelectedRange`는 **맵을 먼저** 읽고 사각형은 폴백으로만 읽는다. 방향키마다 맵에 확정하면 낡은 키보드 사각형이 나중의 Shift+클릭 사각형을 **이겨서**, 사용자가 보는 선택과 실제 덮어쓰는 선택이 달라진다.
+>
+> ⚠️ **평범한 방향키는 범위를 해제한다**(정리 취향이 아니라 데이터 보호다). 해제하지 않으면 사용자가 방향키로 떠난 사각형이 살아남아 다음 `Ctrl+Enter`가 **본인이 선택했다고 믿지 않는 셀들을 덮어쓴다**. 마우스 경로는 이미 그렇게 동작한다(평범한 mousedown → `clearRangeSelection`) — 키보드가 맞추지 않으면 두 경로가 선택 상태를 두고 서로 다른 말을 한다.
+>
+> **알려진 한계**: 앵커는 사각형이 없을 때만 포커스 셀에서 새로 잡힌다. 사각형이 살아 있는 채 **프로그램적으로**(`element.focus()`) 포커스를 옮기면 재앵커되지 않는다 — 사람 조작(클릭·방향키)은 둘 다 해제 경로를 타므로 실사용에서는 드러나지 않지만, 스크립트 검증에서는 드러난다(2026-07-30 E2E에서 관측).
 > ⚠️ 같은 결함이 남아 있는 곳(평문 HTTP에서 실패): `admin.js`(페이로드/트랜잭션 ID 복사), `map_editor.js` `copyGridToExcel`, `main.js` `smartPasteViaIngestion`(우클릭 Smart Paste).
 > **상태 관리 주의:** `state.js`는 리액티브 스토어가 아닌 **평범한 싱글턴**. 변조 후 명시적 UI 리프레셔를 호출하는 수동 패턴. `admin.js`/`map_editor.js`는 `state.js`를 임포트하지 않고 자체 모듈 지역 변수를 사용.
 

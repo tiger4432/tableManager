@@ -13,6 +13,96 @@ import {
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 
+// ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
+// The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
+// write, and Ctrl+Enter while editing already routes into it (see suppressKeyboardEvent
+// below). What was missing was a way to SELECT the range without a mouse — and on the
+// interaction-effort metric a mouse press costs 3 points against a keystroke's 1, so a
+// bulk fill that still needs a drag gives most of its saving straight back.
+//
+// This deliberately reuses the EXISTING selection model rather than adding a second one:
+// the anchor lives in `state.dragStartCell`, the moving end in `state.dragEndCell`, and
+// `isCellInRange` / `refreshSelectedRangeDiff` (clipboard.js) already render exactly that
+// rectangle. Nothing here invents a new range representation.
+//
+// Why it does NOT materialise into `state.selectedCellsMap`: that is precisely what
+// Shift+CLICK does not do either (see onCellMouseDown), and `applyValueToSelectedRange`
+// reads the map FIRST and only falls back to the rectangle. Committing on every arrow
+// press would leave a stale keyboard rectangle in the map that then WINS over a later
+// Shift+click rectangle — the user would see one selection and overwrite another.
+// Matching Shift+click keeps one behaviour, not two.
+const RANGE_ARROW_DELTA = Object.freeze({
+  ArrowUp: { r: -1, c: 0 },
+  ArrowDown: { r: 1, c: 0 },
+  ArrowLeft: { r: 0, c: -1 },
+  ArrowRight: { r: 0, c: 1 }
+});
+
+/**
+ * Visible column ids in visible order, '#' (the row-number gutter) excluded.
+ * Ordered by the index map's VALUES rather than trusting key insertion order, so it
+ * cannot silently disagree with `visibleColIndexMap` after a column move.
+ */
+function visibleRangeColIds() {
+  const map = state.visibleColIndexMap || {};
+  const ids = Object.keys(map).filter(id => id !== '#');
+  if (ids.length > 0) return ids.sort((a, b) => map[a] - map[b]);
+  if (!state.gridApi) return [];
+  return (state.gridApi.getColumnState() || [])
+    .filter(c => !c.hide && c.colId !== '#')
+    .map(c => c.colId);
+}
+
+/**
+ * Extend (or seed) the keyboard range rectangle by one cell.
+ * @returns {boolean} true when the event was consumed and AG-Grid must not also act.
+ */
+function extendRangeByKeyboard(api, key) {
+  const delta = RANGE_ARROW_DELTA[key];
+  if (!delta || !api) return false;
+
+  const cols = visibleRangeColIds();
+  if (cols.length === 0) return false;
+
+  // First Shift+Arrow of a selection: the anchor is wherever focus already is, so the
+  // user never has to click to establish a starting point.
+  if (!state.dragStartCell || !state.dragEndCell) {
+    const focused = api.getFocusedCell();
+    if (!focused || !focused.column) return false;
+    const colId = focused.column.getColId();
+    if (colId === '#') return false;
+    state.dragStartCell = { rowIndex: focused.rowIndex, colId };
+    state.dragEndCell = { rowIndex: focused.rowIndex, colId };
+  }
+
+  const prevEnd = { rowIndex: state.dragEndCell.rowIndex, colId: state.dragEndCell.colId };
+
+  const lastRow = Math.max(0, api.getDisplayedRowCount() - 1);
+  const nextRow = Math.min(lastRow, Math.max(0, prevEnd.rowIndex + delta.r));
+
+  const currentColIdx = cols.indexOf(prevEnd.colId);
+  const baseColIdx = currentColIdx === -1 ? 0 : currentColIdx;
+  const nextColId = cols[Math.min(cols.length - 1, Math.max(0, baseColIdx + delta.c))];
+
+  // Clamped against an edge. Consume the event anyway: letting AG-Grid handle it would
+  // move focus out of the rectangle and the anchor would be lost mid-selection.
+  if (nextRow === prevEnd.rowIndex && nextColId === prevEnd.colId) return true;
+
+  state.dragEndCell = { rowIndex: nextRow, colId: nextColId };
+  state.isDraggingRange = false;
+
+  refreshSelectedRangeDiff(api, state.dragStartCell, prevEnd, state.dragEndCell);
+
+  // Follow the growing edge. Convenience only — a scroll failure must never break the
+  // selection that already succeeded.
+  try {
+    api.ensureIndexVisible(nextRow);
+    api.ensureColumnVisible(nextColId);
+  } catch (err) { /* non-fatal */ }
+
+  return true;
+}
+
 // Apply AG-Grid client-side sorting configuration based on Sort Latest toggle
 export function updateGridSortState() {
   if (!state.gridApi) return;
@@ -297,6 +387,33 @@ export function renderGrid(initialRows) {
             applyValueToSelectedRange(editingValue);
           }
           return true;
+        }
+
+        // [0b-c] Shift+Arrow grows the bulk-fill rectangle with no mouse involved.
+        // Ctrl/Alt are excluded so this never shadows a browser or grid chord.
+        if (!params.editing && event.shiftKey && !event.ctrlKey && !event.metaKey
+            && !event.altKey && RANGE_ARROW_DELTA[key]) {
+          event.preventDefault();
+          return extendRangeByKeyboard(params.api, key);
+        }
+
+        // A PLAIN arrow collapses the range, and this is a data-safety guard rather than
+        // tidiness: without it a rectangle selected by Shift+Arrow stays live after the
+        // user has arrowed away from it, and the next Ctrl+Enter writes the typed value
+        // into cells they no longer believe are selected. The mouse path already behaves
+        // this way (a plain mousedown calls clearRangeSelection); the keyboard path has
+        // to match it or the two disagree about what is selected.
+        if (!params.editing && !event.shiftKey && RANGE_ARROW_DELTA[key]
+            && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
+          clearRangeSelection();
+          return false; // AG-Grid still moves focus — only the rectangle is dropped
+        }
+
+        // Escape abandons a keyboard range the same way it abandons an edit.
+        if (!params.editing && key === 'Escape'
+            && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
+          clearRangeSelection();
+          return false;
         }
 
         if (!params.editing && (key === 'Delete' || key === 'Backspace')) {
