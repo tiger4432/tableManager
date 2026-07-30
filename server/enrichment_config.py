@@ -442,8 +442,14 @@ REFERENCE_LIMIT_WRAP_SQL = "SELECT * FROM ({query}) AS __enrichment_ref LIMIT :_
 # 이 모듈이 절대 하지 말아야 할 거짓말이 정확히 그것이다(2026-07-30 실측).
 # 한정된 참조는 문자열 리터럴이 될 수 없으므로 SQLite도 `no such column`으로 실패하고,
 # 호출자의 `candidate_column_missing` 진단으로 흘러간다. Postgres에도 그대로 옳다.
+# 🔴 `SUM(COUNT(*)) OVER ()` — 스캔한 **전체** 행수. 창 함수는 GROUP BY 뒤·LIMIT 앞에
+# 평가되므로, 바깥 LIMIT이 그룹을 잘라내도 이 값은 **잘리기 전 전체 합**이다.
+# (2026-07-30 QA: 종전엔 반환된(=잘린) 그룹의 count만 합산해 `scanned`가 과소 보고됐고,
+#  그 값이 `CANDIDATE_PROBE_MAX_ROWS`와 비교되던 탓에 **진짜로 잘린 읽기가
+#  `row_truncated=False`로 읽힐 수 있었다.** 그룹이 잘렸는지와 행이 잘렸는지는 별개
+#  사실이므로 별개로 세야 한다.) Postgres는 numeric을 돌려주므로 호출부에서 int로 접는다.
 CANDIDATE_GROUP_WRAP_SQL = (
-    'SELECT __c, COUNT(*) AS __n FROM ('
+    'SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM ('
     'SELECT __enrichment_ref."{column}" AS __c FROM ({query}) AS __enrichment_ref '
     'LIMIT :__enrichment_scan_rows'
     ') AS __enrichment_cand GROUP BY __c LIMIT :__enrichment_limit'
@@ -459,6 +465,57 @@ CANDIDATE_PROBE_MAX_ROWS = 5000
 
 class ReferenceViewError(Exception):
     """참조뷰 실행 실패. 메시지에 쿼리 본문을 절대 담지 않는다(경계 계약: 본문 비노출)."""
+
+
+def _isolated_execute(db, stmt, params) -> tuple:
+    """Execute ONE user-authored reference statement inside a SAVEPOINT.
+
+    WHY A SAVEPOINT AND NOT A BARE try/except  [2026-07-30, measured live]
+        On PostgreSQL a failed statement ABORTS the enclosing transaction. Every
+        later statement on that connection then raises InFailedSqlTransaction,
+        and - this is the part that makes it silent - `COMMIT` on an aborted
+        transaction RETURNS NORMALLY while the server converts it to ROLLBACK.
+        Catching the driver error is therefore not containment: the session is
+        already dead and neither the caller nor the log can tell.
+
+        Read-only measurement against the live database:
+            bad SELECT            -> ProgrammingError
+            next SELECT           -> InternalError          (session poisoned)
+            db.commit()           -> returned normally      (server rolled back)
+            same inside SAVEPOINT -> next SELECT succeeds    (session alive)
+
+        Two things depended on that not happening, and both were broken:
+        - `enrichment_candidates._diagnose_probe_failure` re-queries the view on
+          the SAME session to tell `candidate_column_missing` from `view_error`.
+          On an aborted session that re-query can only fail, so
+          `candidate_column_missing` was UNREACHABLE on PostgreSQL - the one
+          refusal the diagnostic exists to produce.
+        - the chain worker swallows any exception out of the auto-confirm hook,
+          so a poisoned session escaped into `process_pending_groups`, whose
+          `db.commit()` of the outbox bookkeeping (`processed_chain=True`) then
+          rolled back. The group was never marked processed, so the batch loop
+          re-ran it forever and the retry quarantine never advanced.
+
+        Cost is two extra round trips (SAVEPOINT + RELEASE) per reference
+        statement - noise next to a GROUP BY over up to CANDIDATE_PROBE_MAX_ROWS
+        rows of a user-authored view, and the alternative price was a stuck
+        worker.
+
+        pysqlite has NO such rule (it does not even open a transaction for a
+        SELECT), which is why the suite could certify a refusal production could
+        not reach. The fault injection that restores the rule for the test suite
+        lives in `tests/test_enrichment_candidates.py` (`pg_abort_semantics`).
+    """
+    nested = db.begin_nested()
+    try:
+        result = db.execute(stmt, params)
+        columns = list(result.keys())
+        rows = result.fetchall()
+    except Exception:
+        nested.rollback()
+        raise
+    nested.commit()
+    return columns, rows
 
 
 def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
@@ -483,12 +540,10 @@ def execute_reference_view(db, view: dict, bind_params: dict = None) -> tuple:
     exec_params = _probe_params(view, supplied, needed)
     stmt = text(REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]))
     try:
-        result = db.execute(stmt, exec_params)
-        columns = list(result.keys())
-        rows = [list(r) for r in result.fetchall()]
+        columns, raw_rows = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
         raise ReferenceViewError(f"reference query execution failed ({e.__class__.__name__})")
-    return columns, rows
+    return columns, [list(r) for r in raw_rows]
 
 
 def _probe_params(view: dict, supplied: dict, needed: set) -> dict:
@@ -506,13 +561,19 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     `pairs`는 DB의 GROUP BY 결과(정규화 이전)다 — `clean_str_value` 접기는 호출자가
     수행하고 count를 합산한다. 'WF01 '과 'WF01'은 DB에선 두 그룹이지만 접은 뒤 하나다.
 
-    두 종류의 절단을 **구분해서** 알린다:
+    두 종류의 절단을 **구분해서** 알린다. **둘 다 「읽기가 잘렸다」는 같은 사실이고,
+    잘린 읽기에서 「후보가 정확히 하나」는 증명할 수 없으므로 호출자는 둘 다 이름 있는
+    거절로 바꿔야 한다**(`probe_truncated` / `distinct_truncated`):
       - `distinct_truncated`: distinct 값이 `limit`을 넘었다(그래서 limit+1을 요청한다 —
-        `value_suggest`가 truncated를 증명하는 방식과 같다). 이미 2개 이상이므로 호출자의
-        `ambiguous` 판정으로 자연스럽게 흘러간다.
-      - `row_truncated`: 스캔이 `CANDIDATE_PROBE_MAX_ROWS`에 닿았다. 읽기가 잘렸다는 뜻이고
-        잘린 읽기에서 「후보가 정확히 하나」는 **증명할 수 없다** — 호출자는 이름 있는
-        거절로 바꿔야 한다.
+        `value_suggest`가 truncated를 증명하는 방식과 같다).
+        🔴 **「>limit이면 어차피 2개 이상이니 `ambiguous`가 알아서 잡는다」는 틀렸다**
+        (2026-07-30 QA 실증). 호출자는 `clean_str_value`로 값을 **접는다** — 잘려 돌아온
+        limit+1개 그룹이 전부 같은 정규값으로 접히면 distinct는 1개가 되고, 판정은
+        보이지 않는 그룹에 진짜 모순이 있는 채로 `single`이 된다. 실증(`limit: 1`):
+        `pairs=[('WF01',1), ('WF01 ',1)]` → 접으면 {WF01} → `single`, 그러나 잘려나간
+        곳에 WF02가 있었다. 그래서 절단은 **접기 이전 사실**로서 그 자체가 거절이다.
+      - `row_truncated`: 스캔이 `CANDIDATE_PROBE_MAX_ROWS`에 닿았다. `scanned`는 그룹이
+        잘리기 전의 전체 행수(`SUM(COUNT(*)) OVER ()`)이므로 그룹 절단과 무관하게 참이다.
     """
     from sqlalchemy import text
 
@@ -533,18 +594,20 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     exec_params["__enrichment_scan_rows"] = CANDIDATE_PROBE_MAX_ROWS
     stmt = text(CANDIDATE_GROUP_WRAP_SQL.format(query=view["query"], column=column))
     try:
-        result = db.execute(stmt, exec_params)
-        rows = [(r[0], int(r[1] or 0)) for r in result.fetchall()]
+        _, raw = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
         raise ReferenceViewError(f"candidate probe execution failed ({e.__class__.__name__})")
 
-    distinct_truncated = len(rows) > limit
-    scanned = sum(n for _, n in rows)
+    rows = [(r[0], int(r[1] or 0)) for r in raw]
+    # `__scanned`는 바깥 LIMIT이 그룹을 자르기 **전**의 전체 행수다. 반환된 그룹의
+    # count 합으로 대신하면, 그룹이 잘린 순간 `scanned`가 과소 보고되고 `row_truncated`가
+    # 진짜 잘린 읽기를 놓친다(2026-07-30 QA). 두 절단은 별개 사실이므로 별개로 센다.
+    scanned = int(raw[0][2] or 0) if raw else 0
     return {
         "pairs": rows,
         "scanned": scanned,
         "row_truncated": scanned >= CANDIDATE_PROBE_MAX_ROWS,
-        "distinct_truncated": distinct_truncated,
+        "distinct_truncated": len(rows) > limit,
     }
 
 

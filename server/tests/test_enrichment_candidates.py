@@ -509,6 +509,88 @@ def test_the_display_path_keeps_its_row_limit(cand_env):
     assert probe["distinct_truncated"] is True   # 2 distinct > limit 1
 
 
+def test_a_clipped_distinct_read_is_refused_even_when_it_folds_to_one_value(cand_env):
+    """[QA 2026-07-30] `distinct_truncated` used to carry NO error, on the
+    reasoning that ">limit distinct values is >=2, so the ambiguous branch names
+    it correctly". That reasoning ignores the caller's own `clean_str_value`
+    folding: the clipped groups can fold back down to ONE canonical value, and
+    the verdict then reads `single` while the real contradiction sits in an
+    invisible clipped group.
+
+    Fixture: three rows for one key -> 'WF01', 'WF01 ' (trailing space) and
+    'WF02'. With `limit: 1` the probe asks for limit+1 = 2 groups, so one group
+    is clipped; the two that come back fold to a single value.
+
+    GROUP BY output order is unspecified in both engines, so the test ASSERTS
+    that the fixture still activates the defect axis (the returned groups fold
+    to one) instead of assuming it - a fixture that quietly stopped clipping
+    'WF02' would otherwise turn this into a test of `ambiguous`.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": "D1", "lot": "LD", "slot": "S1", "wafer_id": "WF01"},
+        {"hist_id": "D2", "lot": "LD", "slot": "S1", "wafer_id": "WF01 "},
+        {"hist_id": "D3", "lot": "LD", "slot": "S1", "wafer_id": "WF02"},
+    ])
+    rule = _loaded_rule()
+    narrow = dict(rule["reference_views"][0], limit=1)
+    keys = {"lot": "LD", "slot": "S1"}
+
+    probe = enrichment_config.execute_candidate_probe(cand_env, narrow, "wafer_id", keys)
+    assert probe["distinct_truncated"] is True
+    folded = {crud.clean_str_value(v) for v, _ in probe["pairs"]} - {""}
+    assert len(folded) == 1, (
+        "fixture no longer activates the defect axis: the CLIPPED groups must fold "
+        f"to a single value (that is what used to read as `single`), got {folded}")
+
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[narrow]), keys, "wafer_id")
+    assert res["status"] == enrichment_candidates.STATUS_REFUSED
+    assert res["reason"] == enrichment_candidates.REASON_DISTINCT_TRUNCATED
+    # The partial finding is still reported so a UI can show it; it just cannot gate.
+    assert res["value"] == "WF01"
+
+
+def test_scanned_counts_every_row_the_probe_read_not_just_the_returned_groups(cand_env):
+    """[QA 2026-07-30, the LOW] `scanned` was `sum(n for _, n in rows)` over the
+    RETURNED groups, but it is compared against the INNER scan bound, which
+    applied to every group. Clipped groups therefore vanished from the count.
+
+    `SUM(COUNT(*)) OVER ()` is evaluated after GROUP BY and before the outer
+    LIMIT, so it counts the whole scan regardless of clipping.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"N{i}", "lot": "LN", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(6)
+    ])
+    view = dict(_loaded_rule()["reference_views"][0], limit=1)
+    probe = enrichment_config.execute_candidate_probe(
+        cand_env, view, "wafer_id", {"lot": "LN", "slot": "S1"})
+    assert probe["distinct_truncated"] is True
+    assert len(probe["pairs"]) == 2, "the outer LIMIT is limit+1, the rest is clipped"
+    assert probe["scanned"] == 6, (
+        "scanned must count every row the probe READ, not only the groups it "
+        "returned - it is the number `row_truncated` is decided from")
+
+
+def test_row_truncation_is_still_detected_when_the_groups_are_also_clipped(cand_env, monkeypatch):
+    """The consequence of the LOW: a genuinely truncated READ used to report
+    `row_truncated: False` whenever the groups were clipped too, because the
+    under-reported `scanned` never reached the bound it is compared against."""
+    monkeypatch.setattr(enrichment_config, "CANDIDATE_PROBE_MAX_ROWS", 3)
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"R{i}", "lot": "LR", "slot": "S1", "wafer_id": f"W{i}"}
+        for i in range(6)
+    ])
+    view = dict(_loaded_rule()["reference_views"][0], limit=1)
+    probe = enrichment_config.execute_candidate_probe(
+        cand_env, view, "wafer_id", {"lot": "LR", "slot": "S1"})
+    assert len(probe["pairs"]) == 2 and probe["distinct_truncated"] is True
+    assert probe["scanned"] == 3, "the inner scan bound was reached"
+    assert probe["row_truncated"] is True, (
+        "the scan hit CANDIDATE_PROBE_MAX_ROWS - clipping the GROUP BY output "
+        "must not hide that")
+
+
 def test_a_candidate_column_that_is_not_an_identifier_is_rejected_at_load(cand_env):
     """The column name is INTERPOLATED into the probe SQL, so its shape is checked
     before anything executes - validation must not sit downstream of the query."""
@@ -521,6 +603,172 @@ def test_a_candidate_column_that_is_not_an_identifier_is_rejected_at_load(cand_e
         enrichment_config.execute_candidate_probe(
             cand_env, dict(NARROW_VIEW, required_binds=["lot", "slot"], limit=200),
             'wafer_id" OR "1"="1', {"lot": "L1", "slot": "S1"})
+
+
+# ---------------------------------------------------------------------------
+# 5-ter. A failed reference query must not poison the caller's transaction
+#        [2026-07-30] The suite runs on SQLite, where a failed statement costs
+#        nothing: pysqlite does not even open a transaction for a SELECT. On
+#        PostgreSQL a failed statement ABORTS the transaction, and every later
+#        statement raises until someone rolls back. So the green
+#        `candidate_column_missing` test above was certifying a refusal
+#        production could not reach - the diagnostic re-query ran on a dead
+#        session and could only ever come back `view_error`.
+# ---------------------------------------------------------------------------
+
+class _AbortedTransaction(Exception):
+    """Stand-in for psycopg2's InFailedSqlTransaction."""
+
+
+@pytest.fixture()
+def pg_abort_semantics(cand_env):
+    """Impose PostgreSQL's transaction-abort rule on the SQLite test engine.
+
+    WHY A FAULT INJECTION RATHER THAN A POSTGRES-BACKED TEST
+        conftest pins the suite to `sqlite:///:memory:` deliberately - a hard
+        assignment, so an ambient DATABASE_URL cannot point the suite at
+        production. A Postgres-backed test would therefore SKIP in the default
+        suite, and a skipped test certifies nothing. What has to be restored is
+        not Postgres, it is one documented RULE that pysqlite does not have:
+
+            after ANY statement fails, every subsequent statement on that
+            connection raises until the transaction is rolled back - to the top,
+            or to a SAVEPOINT.
+
+        Everything else here stays real: the real probe SQL, the real view, the
+        real SAVEPOINT SQLAlchemy emits, the real diagnostic re-query. Only the
+        abort POLICY is injected.
+
+    THE POLICY IS THE MEASURED ONE (live database, read-only, 2026-07-30)
+            bad SELECT                       -> ProgrammingError
+            next SELECT on the same session  -> InternalError  (poisoned)
+            db.commit()                      -> RETURNED NORMALLY
+                                                (the server made it a ROLLBACK)
+            the same bad SELECT in a SAVEPOINT, then rollback to it
+                                             -> next SELECT succeeds
+
+        The third line is what made the failure silent, and it is why catching
+        the driver error is not containment.
+
+    Top-level BEGIN/COMMIT/ROLLBACK are issued through DBAPI methods rather than
+    as SQL, so the flag is cleared from the `rollback` event; SAVEPOINT traffic
+    IS emitted as SQL and is matched on the statement text.
+    """
+    from sqlalchemy import event
+
+    bind = cand_env.get_bind()
+    state = {"aborted": False}
+
+    def _on_error(ctx):
+        state["aborted"] = True
+
+    def _on_rollback(conn):
+        state["aborted"] = False
+
+    def _before(conn, cursor, statement, parameters, context, executemany):
+        head = statement.lstrip().upper()
+        if head.startswith("ROLLBACK"):          # incl. ROLLBACK TO SAVEPOINT
+            state["aborted"] = False
+            return
+        if head.startswith(("SAVEPOINT", "RELEASE", "COMMIT", "BEGIN")):
+            return
+        if state["aborted"]:
+            raise _AbortedTransaction(
+                "current transaction is aborted, commands ignored until end of "
+                "transaction block")
+
+    hooks = (("handle_error", _on_error), ("rollback", _on_rollback),
+             ("before_cursor_execute", _before))
+    for name, fn in hooks:
+        event.listen(bind, name, fn)
+    try:
+        yield state
+    finally:
+        for name, fn in hooks:
+            event.remove(bind, name, fn)
+        cand_env.rollback()
+
+
+def test_the_abort_injection_actually_bites(cand_env, pg_abort_semantics):
+    """Guard on the guard. If the injector silently did nothing, the two tests
+    below would pass on a defect - which is exactly how the suite came to
+    certify `candidate_column_missing` in the first place."""
+    from sqlalchemy import text
+
+    with pytest.raises(Exception):
+        cand_env.execute(text("SELECT nope FROM encand_test_hist")).fetchall()
+    assert pg_abort_semantics["aborted"] is True
+    with pytest.raises(_AbortedTransaction):
+        cand_env.execute(text("SELECT 1")).fetchall()
+    cand_env.rollback()
+    assert cand_env.execute(text("SELECT 1")).scalar() == 1
+
+
+def test_a_failed_probe_does_not_poison_the_callers_transaction(cand_env, pg_abort_semantics):
+    """THE data-integrity assertion, in both halves.
+
+    (a) The diagnostic re-query must run on a LIVE session, or the one refusal
+        that tells an operator "your `candidate_for` names a column this view
+        does not return" degrades into the generic `view_error`.
+    (b) The caller's transaction must SURVIVE. Without this, everything the
+        chain worker does afterwards on the same session is either a hard
+        failure or - worse - a `commit()` the server converts to a rollback.
+    """
+    rule = _loaded_rule()
+    wrong = dict(rule["reference_views"][0], candidate_for={"wafer_id": "not_a_column"})
+
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, dict(rule, reference_views=[wrong]), {"lot": "L1", "slot": "S1"},
+        "wafer_id")
+    assert res["reason"] == enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING, (
+        "the diagnostic ran on an aborted session, so it could only report "
+        "view_error - candidate_column_missing is unreachable on PostgreSQL")
+
+    assert pg_abort_semantics["aborted"] is False, "the savepoint was not rolled back"
+    survivor = enrichment_candidates.resolve_target_candidate(
+        cand_env, rule, {"lot": "L1", "slot": "S1"}, "wafer_id")
+    assert survivor["status"] == enrichment_candidates.STATUS_SINGLE
+    assert survivor["value"] == "WF1", "the session did not survive the failed probe"
+
+
+def test_a_bad_candidate_column_does_not_wedge_the_chain_work_unit(cand_env, pg_abort_semantics,
+                                                                   tmp_path, monkeypatch):
+    """End to end: one typo in `candidate_for` must not take the worker down.
+
+    Production consequence of the poisoning, in order: the chain rows ARE
+    committed (`crud.apply_batch_updates` commits before these hooks run), the
+    auto-confirm hook then fails and is swallowed, and the poisoned session
+    escapes into `process_pending_groups`, whose commit of
+    `processed_chain=True` cannot land. The group is never marked processed, so
+    the batch loop replays it forever while the retry quarantine - which only
+    counts REPORTED failures - never advances.
+
+    `_run_chain_for_tx` performs exactly that bookkeeping commit, so a wedged
+    session fails this test at the commit.
+    """
+    rules_path = tmp_path / "badcol.json"
+    bad_view = dict(NARROW_VIEW, candidate_for={"wafer_id": "not_a_column"})
+    rules_path.write_text(json.dumps({"encand_rule": _rule(reference_views=[bad_view])}),
+                          encoding="utf-8")
+    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+
+    _seed(cand_env, "encand_test_src",
+          [{"log_key": "kb1", "lot": "L1", "slot": "S1", "chip_id": "C1"}], tx_id="tx_badcol")
+    _run_chain_for_tx(cand_env, "tx_badcol")
+
+    row = _derived(cand_env, "L1_S1")
+    assert row is not None, "the chain write must still be there"
+    assert crud.clean_str_value(row.wafer_id) == "", \
+        "a view that cannot answer must leave the key visibly unresolved"
+
+    # The bookkeeping really landed - the group will not be replayed.
+    from database.models import DatabaseOutbox
+    cand_env.expire_all()
+    pending = cand_env.query(DatabaseOutbox).filter(
+        DatabaseOutbox.table_name == "encand_test_src",
+        DatabaseOutbox.processed_chain == False,  # noqa: E712
+    ).count()
+    assert pending == 0, "the outbox bookkeeping commit was rolled back - the group replays"
 
 
 # ---------------------------------------------------------------------------

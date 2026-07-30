@@ -279,6 +279,63 @@ def test_inv_3_and_4_every_entry_is_renderable_and_in_vocabulary(report_env):
                 "The client renders this; an empty one makes it invent its own.")
 
 
+def _sentences(domain):
+    """Every string in this domain that a human is meant to READ."""
+    for s in domain["sources"]:
+        yield f"sources[{s['key']}]", s["detail"]
+    for s in domain["settings"]:
+        yield f"settings[{s['key']}]", s["detail"]
+    for pop, e in _entries(domain):
+        yield f"{pop}/{e['subject']}", e["detail"]
+        for v in (e["fields"].get("reference_views") or []):
+            yield f"{pop}/{e['subject']}/view[{v.get('label')}]", v["detail"]
+
+
+def test_inv_8_no_operator_sentence_leaks_python_spelling_or_raw_markup(report_env):
+    """INV-F9-8. The client renders `detail` VERBATIM and is forbidden from
+    composing its own, so whatever the server emits is literally what the
+    operator reads - there is no downstream pass that could tidy it.
+
+    Both shipped in f3fd785 and are what this guard exists to keep out:
+        「이 뷰는 ['lot'](으)로만 조회하므로 판단키 ['slot']을(를)…」   list reprs
+        「**아무 효과가 없습니다.**」                                    literal markdown
+    The author already joined correctly one line later, which is what makes
+    this a slip rather than a design choice - and a slip is exactly the thing a
+    guard is for.
+    """
+    leaks = {
+        "['": "a Python list repr",
+        "{'": "a Python dict repr",
+        "**": "literal markdown",
+        "!r": "an unformatted repr conversion",
+    }
+    cases = [(c["id"], c["rules"], c.get("settings")) for c in VECTORS["cases"]]
+    # Plus the branches no rule case reaches: invalid settings values, which are
+    # echoed back to the operator.
+    cases.append(("invalid_settings", {}, {"enrichment_auto_confirm_max_keys": "20",
+                                           "enrichment_auto_confirm_enabled": "yes"}))
+    for case_id, rules, settings in cases:
+        domain = report_env(rules=rules, settings=settings)
+        for where, text in _sentences(domain):
+            for frag, what in leaks.items():
+                assert frag not in text, (
+                    f"[{case_id}] {where} ships {what} to the operator: {text!r}")
+
+
+def test_inv_8_echoed_values_are_spelled_in_json_not_python(report_env):
+    """The half a fragment scan cannot see. `repr('20')` is `'20'` - no brackets,
+    no braces, just the wrong quotes - and the operator is being shown a value
+    from a file where single quotes are a syntax error. Say it back in the
+    syntax they typed it in.
+    """
+    domain = report_env(rules={}, settings={"enrichment_auto_confirm_max_keys": "20"})
+    detail = next(e["detail"] for e in domain["rejected"]
+                  if e["subject"] == "enrichment_auto_confirm_max_keys")
+    assert '"20"' in detail, (
+        f"the ignored value must be quoted the way JSON quotes it, so the operator "
+        f"recognises their own file. Got: {detail!r}")
+
+
 def test_inv_5_counts_equal_population_lengths(report_env):
     domain = report_env(rules=_cases()["knob_on_and_declared"]["rules"])
     for pop in crr.POPULATIONS:

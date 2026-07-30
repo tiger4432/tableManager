@@ -46,10 +46,35 @@
     도메인 고유 사실은 `fields`에 담는다. enrichment가 첫 슬라이스이고, 어느 config가
     이 틀에 안 맞는지는 두 번째를 붙일 때 드러난다 — 미리 설계하지 않는다.
 """
+import json
 import logging
 import os
 
 logger = logging.getLogger(__name__)
+
+
+def _names(seq, sep: str = ", ") -> str:
+    """이름 목록을 **문장에 넣을 수 있는** 형태로.
+
+    🔴 `detail`은 클라이언트가 그대로 렌더하는 **사람이 읽을 문장**이다(모듈 상단 계약).
+    f-string에 리스트를 그냥 끼우면 `['slot']`이라는 Python repr이 운영자 화면까지
+    간다 — 대괄호와 따옴표를 먼저 해독해야 문장을 읽을 수 있다.
+    「가독성은 기능이다」(핵심가치)이므로 이건 사소한 미관 문제가 아니라 결함이다.
+    """
+    return sep.join(str(s) for s in (seq or []))
+
+
+def _as_json(value) -> str:
+    """운영자가 **편집한 그 파일의 문법(JSON)**으로 값을 되돌려 보여준다.
+
+    같은 이유로 `!r`도 쓰지 않는다: Python repr은 `"true"`를 `'true'`로 적는데,
+    운영자가 연 파일에 작은따옴표는 없다. 「당신이 쓴 값」을 되읽어 주는 문장에서
+    철자가 다르면 자기 파일을 못 알아본다.
+    """
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(value)
 
 # --- 닫힌 어휘 (contracts/config_resolve_report/vectors.json이 정본을 공유한다) ---
 REASON_NOT_DECLARED = "not_declared"
@@ -178,10 +203,11 @@ def _view_report(rule: dict, view: dict) -> dict:
         else:
             tail = ("여기에 candidate_for를 선언하면 같은 값이 서로 다른 {k}에 그대로 "
                     "확정됩니다 — 후보 원천으로 쓰지 마세요.")
+        unbound_txt = _names(unbound, "/")
+        scope_txt = f"{_names(binds, '/')} 키만으로" if binds else "아무 키도 없이"
         parts.append(
-            f"⚠️ 이 뷰는 {binds or '아무 키도 없이'}(으)로만 조회하므로 판단키 "
-            f"{unbound}을(를) 구별하지 못합니다. "
-            + tail.format(k="/".join(unbound)))
+            f"⚠️ 이 뷰는 {scope_txt} 조회하므로 판단키 {unbound_txt}을(를) 구별하지 "
+            f"못합니다. " + tail.format(k=unbound_txt))
     return {
         "label": label,
         "candidate_for": declared,
@@ -281,13 +307,13 @@ def _resolve_enrichment() -> dict:
     if switch_declared and not switch_valid:
         rejected.append(entry(
             SCOPE_SETTING, ec.GLOBAL_KILL_SWITCH_KEY,
-            f"'{ec.GLOBAL_KILL_SWITCH_KEY}' 값 {switch_raw!r}은(는) JSON boolean이 아니라 "
-            f"무시되었습니다 — 기본값 true(차단하지 않음)로 동작합니다.",
+            f"'{ec.GLOBAL_KILL_SWITCH_KEY}' 값 {_as_json(switch_raw)}은(는) JSON boolean이 "
+            f"아니라 무시되었습니다 — 기본값 true(차단하지 않음)로 동작합니다.",
             reason=REASON_MAPPING_UNAVAILABLE))
     if cap_declared and not cap_valid:
         rejected.append(entry(
             SCOPE_SETTING, ec.MAX_KEYS_SETTINGS_KEY,
-            f"'{ec.MAX_KEYS_SETTINGS_KEY}' 값 {cap_raw!r}은(는) 양의 정수가 아니라 "
+            f"'{ec.MAX_KEYS_SETTINGS_KEY}' 값 {_as_json(cap_raw)}은(는) 양의 정수가 아니라 "
             f"무시되었습니다 — 기본값 {ec.DEFAULT_MAX_KEYS_PER_UNIT}로 동작합니다.",
             reason=REASON_MAPPING_UNAVAILABLE))
 
@@ -306,7 +332,7 @@ def _resolve_enrichment() -> dict:
         if knob_declared and not knob_valid:
             rejected.append(entry(
                 SCOPE_RULE, name,
-                f"'{ec.RULE_KNOB}' 값 {raw_knob!r}은(는) JSON boolean이 아니라 "
+                f"'{ec.RULE_KNOB}' 값 {_as_json(raw_knob)}은(는) JSON boolean이 아니라 "
                 f"무시되었습니다 — 이 규칙은 기본값 OFF로 동작합니다.",
                 reason=REASON_MAPPING_UNAVAILABLE, fields=fields))
             continue
@@ -329,13 +355,13 @@ def _resolve_enrichment() -> dict:
             ineffective.append(entry(
                 SCOPE_RULE, name,
                 f"'{ec.RULE_KNOB}': true 이지만 어떤 참조뷰도 'candidate_for'를 선언하지 "
-                f"않아 **아무 효과가 없습니다.** 자동 확정은 후보 컬럼을 추측하지 않습니다 "
-                f"— 어느 뷰의 어느 결과 컬럼이 {rule.get('target_fields')}의 후보를 "
+                f"않아 아무 효과가 없습니다. 자동 확정은 후보 컬럼을 추측하지 않습니다 — "
+                f"어느 뷰의 어느 결과 컬럼이 {_names(rule.get('target_fields'))}의 후보를 "
                 f"나르는지 선언해야 동작합니다.",
                 reason=REASON_NOT_DECLARED, warnings=warnings, fields=fields))
             continue
 
-        detail = (f"자동 확정 ON — {sorted(declaring)} 필드를 "
+        detail = (f"자동 확정 ON — {_names(sorted(declaring))} 필드를 "
                   f"{sum(len(v) for v in fields['candidate_fields'].values())}개 뷰 선언으로 "
                   f"해석합니다. 후보가 정확히 1개일 때만 쓰고, 이미 값/이력이 있는 셀은 "
                   f"건드리지 않습니다.")

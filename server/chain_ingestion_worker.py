@@ -446,11 +446,24 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
                 # column names the upsert wrote). One existence check per
-                # distinct map key per tx group; a failure here must never fail
-                # the (already committed) chain write — log and continue.
+                # distinct map key per tx group; log and continue on failure.
                 # Recursion-safe: the registrar refuses META_TABLE and the meta
                 # table declares no map_key_columns, so meta creation can never
                 # re-trigger itself.
+                #
+                # 🔴 WHAT `except` DOES AND DOES NOT BUY (corrected 2026-07-30).
+                # `crud.apply_batch_updates` DOES commit (crud.py, end of the
+                # `transaction_context` block), so the chain rows above really
+                # are durable before these hooks run. But catching the exception
+                # is NOT the same as containing the failure: on PostgreSQL a
+                # failed statement aborts the transaction, and everything the
+                # worker does afterwards on this session — including
+                # `process_pending_groups`' commit of `processed_chain=True` —
+                # then fails or silently rolls back, so the group is replayed
+                # forever without the retry quarantine ever advancing.
+                # Containment has to happen where the statement runs, which is
+                # why `enrichment_config._isolated_execute` wraps every
+                # reference query in a SAVEPOINT.
                 try:
                     meta_collector = map_meta_registrar.MapMetaCollector(target_table)
                     if meta_collector.active:
@@ -464,8 +477,9 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # [Enrichment ①] Absent-only automatic confirmation of SINGLE
                 # candidates for this rule's target fields. Same posture as the
                 # M3 hook above: runs on the VALIDATED batch items after the
-                # write, per-rule opt-in (default OFF), and a failure here must
-                # never fail the (already committed) chain write.
+                # committed write, per-rule opt-in (default OFF), and a failure
+                # here is logged rather than propagated. See the M3 note above
+                # for what that `except` does NOT protect against.
                 # Not a loop: writes land on the DERIVED table while the
                 # enrichment rule triggers on the SOURCE table, and the
                 # absent-only gate makes a second pass a no-op regardless.

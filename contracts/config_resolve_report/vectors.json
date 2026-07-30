@@ -94,6 +94,11 @@
       "id": "INV-F9-7",
       "name": "the client contains none of forbidden_client_literals",
       "why": "The U6 class. A client that knows the words can decide for itself what they mean."
+    },
+    {
+      "id": "INV-F9-8",
+      "name": "every detail is a finished sentence — no Python reprs, no literal markup",
+      "why": "INV-F9-4 only asks that `detail` be non-empty, and the first implementation shipped `이 뷰는 ['lot'](으)로만 조회하므로 판단키 ['slot']을(를)…` and `**아무 효과가 없습니다.**` — Python list reprs and raw asterisks, in text the contract says the client renders VERBATIM. Since the client is forbidden from composing its own sentence, whatever the server emits is what the operator reads; a half-formatted string has no second chance to be fixed downstream. Values echoed back to the operator are spelled in JSON, the syntax of the file they edited, not in Python's."
     }
   ],
 

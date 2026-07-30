@@ -38,6 +38,12 @@ ABSENCE IS NOT ZERO (the refusal rules)
       returned exactly one value, because the failed one may have held the
       contradiction. (`resolve_target_candidate` still reports the partial
       finding so a UI can show it; `status` is what gates the write.)
+    - `probe_truncated` / `distinct_truncated` -> the read itself was clipped
+      (by rows, or by distinct groups). Same posture: an incomplete read is
+      UNKNOWN, and "exactly one" is not provable from one. In particular a
+      clipped read can FOLD back down to a single value under
+      `crud.clean_str_value`, so the truncation has to refuse on its own rather
+      than trust the `ambiguous` count.
     - `cell_has_provenance` -> the target cell already has a CellSource row
       from ANY writer. A human who deliberately cleared a value has said "not
       this"; re-confirming over that would erase a judgement. This is stricter
@@ -135,6 +141,19 @@ REASON_OVER_CAP = "over_cap"
 # unread remainder may hold the contradiction. Same posture as `view_error`: an
 # incompletely evaluated view is UNKNOWN, not empty.
 REASON_PROBE_TRUNCATED = "probe_truncated"
+# The probe returned more DISTINCT groups than the view's `limit`, so the GROUP BY
+# result itself was clipped. The same fact as `probe_truncated` one axis over - an
+# incomplete read - and therefore the same named refusal, not a hint.
+#
+# It used to carry no error at all, on the reasoning that ">limit distinct values
+# is >=2, which the ambiguous branch already names correctly". That reasoning
+# ignores this function's OWN `clean_str_value` folding (2026-07-30 QA, at the
+# default CANDIDATE_PROBE_MAX_ROWS with a legal `limit: 1`):
+#     pairs [('WF01', 1), ('WF01 ', 1)] -> folds to {'WF01'} -> verdict `single`
+#     truth: two candidates (WF01, WF02); WF02 sat in the clipped group.
+# So a clipped read could fold back down to one value and be auto-confirmed. That
+# is the same lie the truncation rules exist to prevent, one layer down.
+REASON_DISTINCT_TRUNCATED = "distinct_truncated"
 
 _warned_once = set()
 
@@ -319,13 +338,16 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
                          "distinct_values": len(probe["pairs"]),
                          "candidate_rows": hits,
                          "distinct_truncated": probe["distinct_truncated"]})
+        # Both truncations are the SAME fact - the read is incomplete - so both
+        # are named refusals. Neither can be left to the `ambiguous` branch: the
+        # folding two lines above can collapse a clipped result back to one
+        # value (see REASON_DISTINCT_TRUNCATED).
         if probe["row_truncated"]:
-            # A truncated read cannot prove "exactly one". `distinct_truncated`
-            # needs no error: >limit distinct values is >=2, which the ambiguous
-            # branch below already names correctly.
             errors.append({"label": label, "reason": REASON_PROBE_TRUNCATED,
                            "detail": probe["scanned"]})
-
+        if probe["distinct_truncated"]:
+            errors.append({"label": label, "reason": REASON_DISTINCT_TRUNCATED,
+                           "detail": len(probe["pairs"])})
     distinct = sorted(values)
 
     # An unevaluated view is UNKNOWN, not empty: refuse even when the surviving
