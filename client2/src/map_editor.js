@@ -5295,7 +5295,9 @@ async function pushMapData() {
   const unsavable = classifyUnsavableCells();
   const strayKeys = unsavable.outsideStray;
   // 서버 데이터를 지울 수 있는 모집단 — 종전과 **같은** 거부.
-  // [MEDIUM-1] 합은 `pushBlockingCount` 하나에서만 나온다(채택 알림이 같은 함수를 쓴다).
+  // [MEDIUM-1] 합은 `pushBlockingCount` 하나에서만 나온다. 종전엔 채택 알림이 같은 함수를
+  // 써서 **두 소비자가 갈릴 수 있는 것**이 이 규율의 요지였는데, 그 알림은 삭제됐고(94b9baa)
+  // 지금은 소비자가 하나다 — 규율은 유지한다(두 번째 소비자가 생기면 여기서 갈라진다).
   const blocking = pushBlockingCount(unsavable);
   if (blocking > 0) {
     console.warn(`[Map Editor] push refused - frame covers ${updates.length}/${nonEmptyOnGrid} non-empty cells `
