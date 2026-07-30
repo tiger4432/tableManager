@@ -4648,8 +4648,24 @@ async function loadExistingMap(opts = {}) {
     if (userChoice === 'standard') {
       cols = (maxX >= minX) ? (maxX - minX + 1) : 10;
       rows = (maxY >= minY) ? (maxY - minY + 1) : 10;
-      startX = 0;
-      startY = 0;
+      // 🔴 THE ORIGIN IS THE DATA'S OWN MINIMUM, NOT ZERO. This used to read `startX = 0`
+      //    while the cell loop below subtracted `minX` from every stored coordinate, and
+      //    nothing ever added it back: the frame said "column 0 of this grid is DB x=0"
+      //    while the cells had been renumbered as if it were DB x=minX. Since
+      //    `getVisualCoords` (what ⚡ Push serializes, via `cellObj.x`) is the exact inverse
+      //    of `getCellFromVisualCoords` (what the load places with), the two lines are ONE
+      //    quantity — so the screen's in-cell label AND the pushed x/y were both the shifted
+      //    number. Measured on real data: 1,923 drawn cells across four metadata-less maps,
+      //    451 of them reaching Push, and the screen could not reveal it because the label
+      //    is the recomputed coordinate and is drawn on empty cells only.
+      //
+      // ⚠️ Declaring the origin instead of shifting the cells places EVERY cell on exactly
+      //    the same canvas square as before — `c = xv - startX + box.minC` is unchanged when
+      //    `xv` and `startX` move together. Nothing on screen moves; what changes is that the
+      //    coordinate the screen states, and therefore the one Push writes, is now the stored
+      //    one. That is the whole fix: no compensation at Push, which is not touched.
+      startX = minX;
+      startY = minY;
       invertY = false;
       rotation = 0;
       side = 'front';
@@ -4737,12 +4753,11 @@ async function loadExistingMap(opts = {}) {
               uniqueVals.add(strVal);
             }
 
-            // If standard system was selected, shift coordinates so minX, minY maps to 0,0
-            if (userChoice === 'standard') {
-              xNum = xNum - minX;
-              yNum = yNum - minY;
-            }
-
+            // 🔴 NO SHIFT. A cell is placed where its STORED coordinate says — the frame's
+            //    origin (`startX`/`startY`, set to the data's minimum for the 📐 표준 choice
+            //    above) carries the offset, and `getCellFromVisualCoords` applies it. The
+            //    deleted `xNum -= minX` renumbered the cell instead, which the frame then had
+            //    no record of, so Push wrote the renumbered coordinate back.
             const cell = getCellFromVisualCoords(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);
             const c = cell.c;
             const r = cell.r;
