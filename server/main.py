@@ -3124,10 +3124,40 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
     os.makedirs(target_dir, exist_ok=True)
     
     # 2. 파일명 중복 방지 (기존명_UUID.ext) + 업로더 정보(user) 인코딩
-    orig_name, ext = os.path.splitext(file.filename)
-    unique_name = f"user({user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
+    #
+    # 🔴 [보안] `file.filename`과 `user` 둘 다 **클라이언트가 정한다**. 종전에는 둘을 그대로
+    #    f-string에 넣었고, `os.path.splitext`는 경로 구분자를 보존하므로
+    #    `../../x.csv`가 `user(kim)_../../x_<uuid>.csv`가 되어 성분 중 `..`이 살아남았다.
+    #    접두 성분 하나가 `..` 하나를 흡수하지만 그보다 많으면 raws/ 밖을 가리킨다
+    #    (`open(...,"wb")`은 디렉터리를 만들지 않으므로 실재하는 archives/·err/·config/가
+    #    사거리다). `user`는 쿼리 파라미터라 같은 벡터다.
+    #
+    # 두 겹으로 막는다. **결과 기반 검증이 정본**이다 — 입력 필터만 두면 다음에 구분자를
+    # 하나 놓치는 순간 뚫린다. 같은 규율이 `directory_watcher._resolve_flatten_dest`에도
+    # 있다("must be a direct child").
+    def _safe_component(raw: str) -> str:
+        # 클라가 Windows이고 서버가 POSIX일 수 있으므로 두 구분자를 모두 접는다
+        # (POSIX의 os.path.basename은 역슬래시를 구분자로 보지 않는다).
+        s = str(raw or "").replace("\\", "/")
+        s = os.path.basename(s).strip().strip(".")
+        return s
+
+    orig_name, ext = os.path.splitext(_safe_component(file.filename))
+    safe_user = _safe_component(user) or "Unknown"
+    unique_name = f"user({safe_user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
     file_path = os.path.join(target_dir, unique_name)
-    
+
+    # 결과 검증: 반드시 target_dir의 **직접 자식**이어야 한다.
+    norm_target = os.path.normpath(os.path.abspath(target_dir))
+    norm_dest = os.path.normpath(os.path.abspath(file_path))
+    if (os.path.dirname(norm_dest) != norm_target
+            or os.path.basename(norm_dest) != unique_name):
+        raise HTTPException(
+            status_code=400,
+            detail=("업로드 파일명을 안전한 경로로 정규화하지 못했습니다 — "
+                    f"파일명과 업로더 이름에서 경로 구분자를 제거한 뒤 다시 시도하십시오."),
+        )
+
     # 3. 파일 저장
     try:
         content = await file.read()
