@@ -145,7 +145,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Estimated-Content-Length", "X-Total-Rows"]
+    # 🔴 `WWW-Authenticate`가 여기 없으면 **교차 출처에서 게이트를 식별할 수 없다.**
+    #    클라의 `isGateRejection`은 401/403에 더해 이 헤더가 `X-Admin-Token`을 지목하는지
+    #    본다 — 앞단 프록시가 같은 포트에 자기 `WWW-Authenticate: Basic ...`으로 답하는
+    #    것과 구별하기 위해서다(2026-07-30 loopback 프록시 인시던트가 그 모양이었다).
+    #    노출 안 하면 브라우저가 그 헤더를 지우므로, vite dev(:5173)에서는 **진짜 게이트
+    #    거부가 「앞단이 답했다」로 확신 있게 잘못 표시된다.** 값은 원하는 헤더의 **이름**뿐
+    #    이라 비밀이 없다. 같은 출처(:8080/:8081 직접 서빙)에서는 원래 읽혔다.
+    expose_headers=["Content-Disposition", "X-Estimated-Content-Length", "X-Total-Rows",
+                    "WWW-Authenticate"]
 )
 
 # --- Health endpoint -------------------------------------------------------
