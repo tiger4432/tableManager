@@ -890,6 +890,7 @@ function initDOMElements() {
   // 이쪽을 조작해도 switchTable/selectedTable/gridData는 절대 건드리지 않는다.
   el.overlaySrcTable = document.getElementById('overlay-src-table');
   el.overlaySrcKey = document.getElementById('overlay-src-key');
+  el.overlaySrcKeyList = document.getElementById('overlay-src-key-list');
   el.btnAddOverlay = document.getElementById('btn-add-overlay');
   el.btnAddLegend = document.getElementById('btn-add-legend');
   el.legendList = document.getElementById('legend-list');
@@ -1068,6 +1069,21 @@ function initDOMElements() {
   if (el.overlaySrcKey) el.overlaySrcKey.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); handleAddOverlayClick(); }
   });
+  // [키 자동완성] 유효 다이 지정 칸과 **같은 규칙**이다: 포커스 시 1회 지연 로드, 타이핑마다
+  // 네트워크를 타지 않는다. 소스 테이블을 바꾸면 목록의 모집단이 바뀌므로 다시 읽는다 —
+  // 이전 테이블의 키가 남아 있으면 **낡아 보이지 않는 낡은 목록**이 된다.
+  if (el.overlaySrcKey) el.overlaySrcKey.addEventListener('focus', populateOverlayKeyList);
+  if (el.overlaySrcTable) el.overlaySrcTable.addEventListener('change', populateOverlayKeyList);
+  // [키 자동완성] 메인 로드의 메타 입력칸은 테이블마다 **재생성**된다. 그래서 노드가 아니라
+  // **컨테이너 한 곳**에 위임으로 단다 — 재생성이 몇 번 일어나도 리스너는 이 두 개뿐이고,
+  // 새로 만들어진 입력칸도 별도 배선 없이 그대로 동작한다. (`focus`는 버블링하지 않으므로
+  // `focusin`이다.) `input`은 서버가 목록을 **자른 경우에만** 다시 묻는다 — 완전한 목록의
+  // 좁히기는 브라우저 몫이라 요청이 0회다.
+  if (el.metadataContainer) {
+    el.metadataContainer.addEventListener('focusin', onMetaInputSuggest);
+    el.metadataContainer.addEventListener('input',
+      debounce(onMetaInputSuggest, KEY_SUGGEST_DEBOUNCE_MS));
+  }
   const btnClearOv = document.getElementById('btn-clear-overlays');
   if (btnClearOv) btnClearOv.addEventListener('click', clearOverlayLayers);
   renderOverlayList();
@@ -1592,7 +1608,10 @@ async function switchTable(tableName) {
     syncValidDieRefControls();
     // 새 테이블의 자동완성 캐시를 버려 다음 포커스에서 다시 읽게 한다 — 전환 중에 그 테이블에
     // 맵이 추가됐을 수 있고, 자동완성이 없는 것보다 **없는 맵을 제안하는 것**이 나쁘다.
-    validDieListCache.delete(tableName);
+    mapKeyListCache.delete(tableName);
+    // 메타 입력칸의 컬럼 값 캐시도 같은 이유로 버린다. 입력칸과 datalist 자체는
+    // renderMetadataInputs의 innerHTML=''로 이미 사라지므로, 남는 것은 이 캐시뿐이다.
+    dropColumnValueCache(tableName);
     renderGridCanvas();
     notifyMapContext();
     if (hadWorkingMap) {
@@ -1655,9 +1674,19 @@ function renderMetadataInputs() {
     input.id = `meta-input-${col}`;
     input.className = 'glass-input w-full';
     input.placeholder = `${col} 검색어 입력`;
-    
+    // [키 자동완성] 이 칸이 이미 가진 값을 제안한다. datalist는 **제약하지 않는다** —
+    // 목록에 없는 값을 타이핑해 Load하는 경로는 종전과 완전히 같다.
+    input.setAttribute('list', `meta-list-${col}`);
+    // 목록을 **입력칸과 같은 그룹 안에** 만든다. 이 컨테이너는 위에서 innerHTML=''로 통째
+    // 지워지므로 목록도 함께 사라진다 = 이전 테이블의 값이 살아남을 자리가 없다. 바깥(body
+    // 등)에 두면 id는 살아 있고 내용만 낡는데, **낡은 목록은 낡아 보이지 않아** 없는 것보다
+    // 나쁘다. 배선도 컨테이너 위임이라 재생성에도 리스너가 쌓이지 않는다(initDOMElements).
+    const dataList = document.createElement('datalist');
+    dataList.id = `meta-list-${col}`;
+
     formGroup.appendChild(label);
     formGroup.appendChild(input);
+    formGroup.appendChild(dataList);
     container.appendChild(formGroup);
   });
 
@@ -8256,36 +8285,249 @@ async function onValidDieRefChanged() {
   }
 }
 
-// [목록·재사용] 이 테이블에 규격이 등록된 맵 키를 지정 칸의 자동완성으로 내려 준다.
-// 새 목록 패널을 만들지 않는다 — 이미 있는 입력칸의 `datalist`다. 조회 실패는 조용히 넘어간다
-// (자동완성이 비는 것은 데이터 오답이 아니라 편의 부재이므로 토스트로 방해하지 않는다).
-const validDieListCache = new Map();
+// ══ [키 자동완성] 입력칸이 이미 가진 값을 datalist로 내려 준다 ═══════════════════════
+//
+// 새 패널·모드·모달·토글은 **0개**다. 세 자리 모두 이미 있는 입력칸의 `list=` 하나뿐이고,
+// datalist는 제안만 할 뿐 입력을 제약하지 않는다 — 목록에 없는 키를 타이핑해 여는 경로는
+// 오늘과 문자 하나까지 동일하다. 이 층은 편의이지 검증기가 아니다.
+//
+// ── 모집단이 둘이다. 그 둘은 같은 질문이 아니라서 조회도 둘이다 ────────────────────
+//  ① 맵 키(오버레이 · 유효 다이 지정) = `wafer_map_metadata`에 **규격이 등록된** 맵의 map_id.
+//     메타 없는 키를 제안하면 안 되는 이유가 두 자리에서 **서로 다르다**:
+//       · 유효 다이 지정 — 메타가 없으면 **거절된다**(`:7925`, "참조 맵의 규격이 없습니다").
+//         반드시 실패할 키를 제안하는 목록은 목록이 없는 것보다 나쁘다.
+//       · 오버레이 — 거절되지 **않는다.** 규격이 없으면 `무보정`으로 그려지고 칩이
+//         "소스 맵 규격 미등록 — 현재 화면 규격으로 해석"이라고 적는다(`:8767`,`:8815`).
+//         이쪽이 더 나쁘다: 실패가 아니라 **틀린 정렬을 그려 놓고 그린다**. 제안 목록이
+//         조용한 오정렬로 가는 지름길이 돼선 안 된다.
+//     ⚠️ 종전 주석은 이 둘을 합쳐 오버레이도 "반드시 실패한다"고 적었다 — 오버레이는
+//        실패하지 않는다. 결론(메타 모집단을 쓴다)은 같지만 근거가 달라서 남긴다.
+//  ② 메인 로드의 메타 입력칸 = 대상 테이블 **그 컬럼에 저장된 값**(F3 값 제안 엔드포인트,
+//     `server/value_suggest.py`). 메인 로드는 셀을 컬럼 필터로 여는 것이지 메타 등록을
+//     요구하지 않는다 — 여기서 ①을 쓰면 열 수 있는 맵을 목록에서 빼먹는다.
+//  두 모집단을 하나로 합치면 어느 쪽이든 **없는 것을 있다고 하거나 있는 것을 없다고** 한다.
+//
+// ── 세 가지 상태를 구분한다. 빈 목록 하나로 뭉개지 않는다 ──────────────────────────
+//  complete    → 이 목록이 전부다. 이후 좁히기는 브라우저가 하므로 추가 요청이 0회다.
+//  truncated   → 서버가 자른 목록이다. 자른 목록을 브라우저가 좁히면 "이게 전부"라고
+//                거짓말하게 되므로, 입력할 때마다 접두사로 **서버에 다시 묻는다**.
+//  unavailable → 서버가 **보지 못했다**(인덱스 부재·INVALID·타임아웃, 또는 HTTP 실패).
+//                값을 만들지 않고, 캐시하지 않고(다음 포커스에서 재시도), 사유를 남긴다.
+//                이 셋을 "제안 없음"으로 합치면 운영자는 **데이터가 비었다**고 읽는다.
+// 상태는 입력칸 자신의 `title`과 `data-suggest`에 남긴다 — 새 UI를 만들지 않기 위해서다.
+// 읽기 동선이므로 토스트도 확인창도 없다.
+
+const KEY_SUGGEST_DEBOUNCE_MS = 120;
+// 메타 입력칸 자동완성이 한 번에 받아 오는 값 개수. 서버 기본(default_limit)과 같은 50 —
+// 이 목록은 브라우저가 좁히므로 상한이 곧 후보 집합이고, 잘리면 위 truncated 규칙이 받는다.
+const COLUMN_VALUE_LIST_LIMIT = 50;
+
+// 입력칸의 원래 title을 보존한 채 자동완성 상태만 덧붙인다. title을 통째로 덮으면
+// 원래 설명(무엇을 넣는 칸인지)이 사라진다 — 편의를 얹다가 설명을 지우지 않는다.
+function markSuggestState(input, state, note) {
+  if (!input || !input.dataset) return;
+  if (input.dataset.suggestTitleBase === undefined) {
+    input.dataset.suggestTitleBase = input.title || '';
+  }
+  const base = input.dataset.suggestTitleBase;
+  if (state) input.dataset.suggest = state;
+  else delete input.dataset.suggest;
+  input.title = note ? (base ? `${base}\n${note}` : note) : base;
+}
+
+// 늦게 도착한 답이 **더 새로운 답을 덮지 못하게** 한다. 목록마다 세대를 세고, 자기 세대가
+// 아직 최신일 때만 쓴다 — 오버레이 소스 테이블을 빠르게 두 번 바꾸면 느린 첫 응답이 나중에
+// 착지해 두 번째 테이블의 목록을 **첫 테이블 것으로** 되돌린다. 그 목록은 낡아 보이지 않는다.
+// (`value_suggest.js`가 셀 에디터에서 같은 이유로 시퀀스를 쓴다: abort는 이미 큐에 들어간
+//  마이크로태스크에 대해 동기적이지 않으므로 "누가 마지막으로 물었는가"만이 확실하다.)
+const listFillSeq = new WeakMap();
+function claimListFill(listEl) {
+  const n = (listFillSeq.get(listEl) || 0) + 1;
+  listFillSeq.set(listEl, n);
+  return () => listFillSeq.get(listEl) === n;
+}
+
+function fillDatalist(listEl, values) {
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v;
+    listEl.appendChild(o);
+  });
+}
+
+// ── ① 맵 키 모집단 ──────────────────────────────────────────────────────────────
+// **완전한 목록만** 캐시한다. 잘린 목록을 캐시하면 그 뒤로 영영 잘린 목록을 "전부"로 내민다.
+const mapKeyListCache = new Map();
+
+async function populateMapKeyDatalist(table, listEl, input) {
+  if (!listEl || !table) return;
+  const isCurrent = claimListFill(listEl);
+  const cached = mapKeyListCache.get(table);
+  if (cached) { markSuggestState(input, '', ''); fillDatalist(listEl, cached); return; }
+  let ids, total, rowCount;
+  try {
+    const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
+    const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data`
+      + `?limit=${VALID_DIE_LIST_LIMIT}&filters=${encodeURIComponent(JSON.stringify(filters))}`);
+    if (!res.ok) {
+      if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
+      // 서버가 답을 주지 못했다. 빈 목록으로 남기면 "이 테이블에는 등록된 맵이 없다"로 읽힌다.
+      markSuggestState(input, 'unavailable',
+        `맵 키 목록을 읽지 못했습니다 (HTTP ${res.status}) — 목록이 비어 있는 것은 `
+        + `등록된 맵이 없다는 뜻이 아닙니다. 키를 직접 입력하면 그대로 동작합니다.`);
+      return;
+    }
+    const result = await res.json();
+    if (!isCurrent()) return;   // 이 목록에 대한 더 새로운 질문이 이미 있다
+    const rows = (result && Array.isArray(result.data)) ? result.data : [];
+    rowCount = rows.length;
+    total = Number(result && result.total);
+    ids = rows.map(r => (r.data && r.data.map_id ? r.data.map_id.value : null))
+      .filter(v => v !== null && v !== undefined && String(v).trim() !== '')
+      .map(String);
+  } catch (e) {
+    if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
+    markSuggestState(input, 'unavailable',
+      `맵 키 목록 조회 실패 — ${(e && e.message) ? e.message : e}. 목록이 비어 있는 것은 `
+      + `등록된 맵이 없다는 뜻이 아닙니다.`);
+    return;
+  }
+  if (Number.isFinite(total) && total > rowCount) {
+    // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
+    markSuggestState(input, 'truncated',
+      `등록된 맵 ${total}개 중 ${ids.length}개만 목록에 있습니다 — 없는 키도 직접 입력하면 열립니다.`);
+  } else {
+    markSuggestState(input, '', '');
+    mapKeyListCache.set(table, ids);
+  }
+  fillDatalist(listEl, ids);
+}
+
+// 유효 다이 지정 칸 — 종전과 같은 자리, 같은 동작. 조회 본체만 위 공용 함수로 옮겼다.
 async function populateValidDieRefList() {
-  if (!el.validDieRefList) return;
   const table = (el.validDieRefTable && el.validDieRefTable.value ? el.validDieRefTable.value : '')
     .trim() || selectedTable;
-  if (!table) return;
-  let ids = validDieListCache.get(table);
-  if (!ids) {
-    try {
-      const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
-      const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data`
-        + `?limit=${VALID_DIE_LIST_LIMIT}&filters=${encodeURIComponent(JSON.stringify(filters))}`);
-      if (!res.ok) return;
-      const result = await res.json();
-      const rows = (result && Array.isArray(result.data)) ? result.data : [];
-      ids = rows.map(r => (r.data && r.data.map_id ? r.data.map_id.value : null))
-        .filter(v => v !== null && v !== undefined && String(v).trim() !== '')
-        .map(String);
-      validDieListCache.set(table, ids);
-    } catch (e) { return; }
-  }
-  el.validDieRefList.innerHTML = '';
-  ids.forEach(id => {
-    const o = document.createElement('option');
-    o.value = id;
-    el.validDieRefList.appendChild(o);
+  return populateMapKeyDatalist(table, el.validDieRefList, el.validDieRefKey);
+}
+
+// 오버레이 소스 키 칸 — 모집단이 같으므로 **같은 함수**다. 오버레이 전용 조회를 새로 쓰지 않는다.
+async function populateOverlayKeyList() {
+  const table = el.overlaySrcTable ? el.overlaySrcTable.value : '';
+  return populateMapKeyDatalist(table, el.overlaySrcKeyList, el.overlaySrcKey);
+}
+
+// ── ② 컬럼 값 모집단 (메인 로드의 메타 입력칸) ───────────────────────────────────
+// 캐시는 **완전한 답**만 담는다: `{prefix, values}`. 서버의 긴 접두사 답은 짧은 접두사 답의
+// 부분집합이므로, 캐시된 접두사를 연장하는 입력은 브라우저의 datalist 좁히기로 정확히 답이
+// 된다(요청 0회). 잘린 답은 부분집합 성질이 성립하지 않아 절대 담지 않는다.
+const columnValueComplete = new Map();  // 'table::column' -> { prefix, values }
+const columnValueRefused = new Map();   // 4xx: 제안 대상이 아닌 컬럼 (평범한 입력칸으로 남는다)
+const columnValueTruncated = new Set(); // 잘린 컬럼 — 입력할 때마다 접두사로 다시 묻는다
+
+function colValueKey(table, column) { return `${table}::${column}`; }
+
+// 테이블 전환 시 그 테이블의 학습·캐시를 버린다. 남겨 두면 전환 중에 추가된 값이 영영
+// 제안되지 않고, 무엇보다 **낡은 목록은 낡아 보이지 않는다**.
+function dropColumnValueCache(table) {
+  const prefix = `${table}::`;
+  Array.from(columnValueComplete.keys()).forEach(k => {
+    if (k.startsWith(prefix)) columnValueComplete.delete(k);
   });
+  Array.from(columnValueRefused.keys()).forEach(k => {
+    if (k.startsWith(prefix)) columnValueRefused.delete(k);
+  });
+  Array.from(columnValueTruncated).forEach(k => {
+    if (k.startsWith(prefix)) columnValueTruncated.delete(k);
+  });
+}
+
+// 캐시된 완전한 답을 이 접두사에 그대로 쓸 수 있는가. 클라가 목록을 **거르지는 않는다** —
+// 거르기는 브라우저 datalist가 하고, 여기서는 "그 목록이 여전히 상위집합인가"만 묻는다.
+function canReuseComplete(cachedPrefix, prefix) {
+  return prefix.length >= cachedPrefix.length
+    && prefix.toLowerCase().startsWith(cachedPrefix.toLowerCase());
+}
+
+async function populateColumnValueDatalist(table, column, listEl, input, prefix) {
+  if (!listEl || !table || !column) return;
+  const isCurrent = claimListFill(listEl);
+  const key = colValueKey(table, column);
+  // 제안 대상이 아닌 컬럼(미선언·datetime·물리 부재)은 **오늘과 똑같은** 평범한 입력칸이다.
+  if (columnValueRefused.get(key)) return;
+  const pfx = String(prefix == null ? '' : prefix);
+  const snap = columnValueComplete.get(key);
+  if (snap && canReuseComplete(snap.prefix, pfx)) {
+    markSuggestState(input, '', '');
+    fillDatalist(listEl, snap.values);
+    return;
+  }
+  let body;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${encodeURIComponent(table)}`
+      + `/columns/${encodeURIComponent(column)}/values`
+      + `?prefix=${encodeURIComponent(pfx)}&limit=${COLUMN_VALUE_LIST_LIMIT}`);
+    if (res.status === 400 || res.status === 404) {
+      // "제안 대상이 아니다"는 실패가 아니라 **선언**이다. 조용히 평범한 입력칸으로 남긴다.
+      columnValueRefused.set(key, true);
+      markSuggestState(input, '', '');
+      return;
+    }
+    if (!res.ok) {
+      if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
+      markSuggestState(input, 'unavailable',
+        `값 목록을 읽지 못했습니다 (HTTP ${res.status}) — 목록이 비어 있는 것은 값이 없다는 `
+        + `뜻이 아닙니다. 값을 직접 입력하면 그대로 동작합니다.`);
+      return;
+    }
+    body = await res.json();
+  } catch (e) {
+    if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
+    markSuggestState(input, 'unavailable',
+      `값 목록 조회 실패 — ${(e && e.message) ? e.message : e}. 목록이 비어 있는 것은 `
+      + `값이 없다는 뜻이 아닙니다.`);
+    return;
+  }
+  if (!isCurrent()) return;   // 이 목록에 대한 더 새로운 질문이 이미 있다
+  // 서버가 **답을 못 낸** 경우. `values: []`와 생김새가 같아서, 여기서 합치면 운영자는
+  // "이 컬럼에 값이 없다"로 읽는다 — 서버는 값이 없다고 말한 적이 없다.
+  // 캐시하지 않는다: 인덱스는 나중에 만들어질 수 있고 다음 포커스가 그것을 알아내야 한다.
+  if (body && body.unavailable_reason) {
+    columnValueTruncated.delete(key);
+    columnValueComplete.delete(key);
+    fillDatalist(listEl, []);
+    markSuggestState(input, 'unavailable',
+      `값 제안을 사용할 수 없습니다 — ${body.unavailable_reason} (목록이 비어 있는 것은 `
+      + `값이 없다는 뜻이 아닙니다.)`);
+    console.debug('[map] value suggest unavailable:', table, column, body.unavailable_reason);
+    return;
+  }
+  const values = Array.isArray(body && body.values) ? body.values.map(v => String(v)) : [];
+  if (body && body.truncated) {
+    columnValueTruncated.add(key);
+    columnValueComplete.delete(key);
+    markSuggestState(input, 'truncated',
+      `값이 많아 앞의 ${values.length}개만 내려왔습니다 — 더 입력하면 다시 좁혀 가져옵니다.`);
+  } else {
+    columnValueTruncated.delete(key);
+    columnValueComplete.set(key, { prefix: pfx, values });
+    markSuggestState(input, '', '');
+  }
+  fillDatalist(listEl, values);
+}
+
+// 메타 입력칸의 위임 핸들러. 입력칸이 재생성돼도 이 함수는 컨테이너에 그대로 붙어 있으므로
+// 리스너가 쌓이지 않는다(노드당 배선 0개).
+function onMetaInputSuggest(e) {
+  const input = e && e.target;
+  if (!input || !input.id || input.id.indexOf('meta-input-') !== 0) return;
+  const column = input.id.slice('meta-input-'.length);
+  const listEl = document.getElementById(`meta-list-${column}`);
+  if (!listEl) return;
+  // 완전한 목록을 이미 받은 컬럼은 타이핑에 요청을 만들지 않는다 — 좁히기는 브라우저 몫이다.
+  if (e.type === 'input' && !columnValueTruncated.has(colValueKey(selectedTable, column))) return;
+  populateColumnValueDatalist(selectedTable, column, listEl, input, input.value || '');
 }
 
 // ── [M4 phase 2] 템플릿 생성 = 저작 캔버스를 열고 프리셋 모양을 칠한다 ──────────────

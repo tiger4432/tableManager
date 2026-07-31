@@ -256,6 +256,10 @@ function buildEnv(src, P, opts = {}) {
     // purpose: a rename must be a ReferenceError, not a silent no-op.
     fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
     onValidDieRefChanged() {}, populateValidDieRefList() {}, switchTable() {},
+    // Key-datalist wiring (2026-07-31). `KEY_SUGGEST_DEBOUNCE_MS` is a VALUE, not a stub:
+    // `initDOMElements` passes it to `debounce`, so a missing binding is a ReferenceError
+    // here exactly as a missing function would be.
+    populateOverlayKeyList() {}, onMetaInputSuggest() {}, KEY_SUGGEST_DEBOUNCE_MS: 120,
     renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},
     effortRoute: () => '', handleAddOverlayClick() {}, clearOverlayLayers() {},
     renderOverlayList() {}, addLegendRowForPanel() {}, clearGrid() {}, fillGrid() {},

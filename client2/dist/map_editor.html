@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-BHQq5axa.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-CxOtziEt.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-DRcLN4HE.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-C-525QI4.js">
   <link rel="stylesheet" crossorigin href="/assets/effort_meter-Bzia583p.css">
@@ -75,9 +75,16 @@
             <div class="ov-body">
               <div class="ov-add">
                 <select id="overlay-src-table" class="glass-input" title="겹칠 맵의 테이블"></select>
-                <input type="text" id="overlay-src-key" class="glass-input ov-key-input" placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
+                <input type="text" id="overlay-src-key" class="glass-input ov-key-input" list="overlay-src-key-list" placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
                 <button type="button" id="btn-add-overlay" class="glass-page-btn ov-add-btn">＋ 겹치기</button>
               </div>
+              <!-- [키 자동완성] 유효 다이 지정 칸(#valid-die-ref-list)과 **같은 기계**다 —
+                   새 컨트롤이 아니라 이미 있는 입력칸의 `list=` 하나. 목록은 소스 테이블에
+                   규격이 등록된 맵 키뿐이며(등록 없는 키는 겹쳐도 반드시 실패한다),
+                   목록에 없는 키를 직접 타이핑하는 경로는 오늘과 완전히 동일하다.
+                   `.ov-add`는 grid라 datalist를 그 안에 두지 않는다 — 레이아웃 칸을 먹지
+                   않게 그리드 밖에 둔다(datalist 자체는 display:none이다). -->
+              <datalist id="overlay-src-key-list"></datalist>
               <p class="ov-note">오버레이는 소스 맵의 등록 규격(메타)으로 좌표를 읽어 <b>현재 캔버스 프레임으로 변환</b>해 겹칩니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에 남깁니다.</p>
               <div id="overlay-list"></div>
               <button type="button" id="btn-clear-overlays" class="glass-page-btn ov-clear">모두 해제</button>
