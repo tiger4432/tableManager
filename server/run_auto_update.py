@@ -18,6 +18,7 @@ from utils.auto_update_control import read_disabled_scripts
 from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
 import config_backup
+import event_constants
 import graph_orphans
 logger = get_process_logger("Scheduler", "auto_update.log")
 
@@ -407,6 +408,9 @@ class MultiDiscoveryScheduler:
         # Same convention for the graph orphan sweep (see maybe_sweep_graph_orphans).
         self._last_orphan_check = 0.0
         self._last_orphan_sweep = 0.0
+        # One retroactive run at a time (see start_retroactive_run).
+        self._retroactive_thread = None
+        self._retroactive_last = None
 
     def discover_and_load_collectors(self):
         """
@@ -700,6 +704,54 @@ class MultiDiscoveryScheduler:
             logger.error(f"[GraphOrphans] maintenance cycle raised: {e}")
             return None
 
+    def retroactive_busy(self) -> bool:
+        t = self._retroactive_thread
+        return bool(t and t.is_alive())
+
+    def start_retroactive_run(self, payload: dict) -> bool:
+        """Run one queued retroactive (backfill) operation OFF the tick thread.
+
+        [Why a thread, and why this is not optional]
+        A retroactive run walks a whole table. ``run()`` emits
+        ``heartbeat.beat("scheduler")`` once per tick and
+        ``heartbeat.DEFAULT_STALE_AFTER_SEC`` is 60 s, so executing the run inline -
+        the way ``run_collector_on_demand`` executes a collector - would stop the
+        beat for the entire run and make ``/health`` report this daemon WEDGED.
+        That is not a cosmetic complaint: an operator pressing a button they were
+        offered would take the monitoring surface down as a direct consequence.
+        The cron schedules would stall for the same duration.
+
+        [Why one at a time] Two concurrent replays of the same rule would write the
+        same cells from two sessions, and a replay racing a withdrawal on the same
+        table is the one ordering nobody could reason about afterwards. A second
+        request while one is running is REFUSED and said so, not queued silently -
+        the outbox row is left unprocessed so it is picked up on a later tick.
+
+        Returns True when the run was started (and the event may be marked
+        processed), False when it was refused because one is already in flight.
+        """
+        import retroactive
+
+        if self.retroactive_busy():
+            logger.warning(
+                "[Retroactive] a run is already in flight (%s); leaving run_id=%s "
+                "queued for a later tick",
+                self._retroactive_last, (payload or {}).get("run_id"))
+            return False
+
+        def _worker():
+            try:
+                self._retroactive_last = retroactive.execute(payload, log=logger.info)
+            except Exception as e:
+                # `execute` already swallows; this is the last resort so a thread
+                # death cannot be silent.
+                logger.error("[Retroactive] runner thread raised: %s", e, exc_info=True)
+
+        self._retroactive_thread = threading.Thread(
+            target=_worker, name="retroactive-run", daemon=True)
+        self._retroactive_thread.start()
+        return True
+
     def run(self):
         """
         주기적으로 DB의 SYSTEM_RELOAD 및 SCHEDULER_RUN_NOW 아웃박스 신호를 모니터링하며,
@@ -774,7 +826,36 @@ class MultiDiscoveryScheduler:
                             db.commit()
                         except Exception as trig_err:
                             logger.error(f"Failed to handle SCHEDULER_RUN_NOW trigger: {trig_err}")
-                    
+
+                    # 1-3. RETROACTIVE_RUN 감시 (소급 적용 실행 — server/retroactive.py)
+                    #   The apply half of GET /admin/retroactive/{op}/count. Same outbox
+                    #   mechanism as SCHEDULER_RUN_NOW; unlike it, the work is handed to a
+                    #   thread so this tick keeps beating (see start_retroactive_run).
+                    if not self.retroactive_busy():
+                        retro_trigger = db.query(DatabaseOutbox).filter(
+                            DatabaseOutbox.event_type == event_constants.EVENT_RETROACTIVE_RUN,
+                            DatabaseOutbox.processed_chain == False
+                        ).order_by(DatabaseOutbox.id.asc()).first()
+
+                        if retro_trigger:
+                            try:
+                                retro_payload = (
+                                    json.loads(retro_trigger.payload)
+                                    if isinstance(retro_trigger.payload, str)
+                                    else retro_trigger.payload)
+                                # Marked BEFORE the run starts, not after: the run is on
+                                # another thread and can outlive many ticks, so waiting
+                                # for it would re-read the same row every tick and start
+                                # the job again. At-most-once is the right guarantee here
+                                # - a retroactive run that silently repeats is worse than
+                                # one an operator has to press twice.
+                                if self.start_retroactive_run(retro_payload):
+                                    retro_trigger.processed_chain = True
+                                    db.commit()
+                            except Exception as retro_err:
+                                logger.error(
+                                    f"Failed to handle RETROACTIVE_RUN trigger: {retro_err}")
+
                     db.close()
                 except Exception as e:
                     logger.warning(f"Database outbox polling failed inside scheduler: {e}")

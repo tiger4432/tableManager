@@ -401,6 +401,66 @@ def replay_all(db, apply: bool = False, limit: int = None,
 # R2 — stale source withdrawal
 # ---------------------------------------------------------------------------
 
+def _claimed_filter(table_name: str, source_name: str, columns: list = None):
+    """The predicate for "cells `source_name` claims on `table_name`".
+
+    Extracted so `count_withdrawable` and `withdraw_source` cannot answer
+    different questions: a count that used a slightly different filter from the
+    operation it previews is a count that lies, and it would lie silently.
+    """
+    from database import models
+
+    conds = [models.CellSource.table_name == table_name,
+             models.CellSource.source_name == source_name]
+    if columns:
+        conds.append(models.CellSource.column_name.in_(list(columns)))
+    return conds
+
+
+def count_withdrawable(db, table_name: str, source_name: str, columns: list = None) -> dict:
+    """[R2 preview] How many cells would a withdrawal touch, without touching any.
+
+    Two aggregate queries, no row materialisation, no per-cell recompute - so this
+    is the half of `withdraw_source` that can sit on a request path. Cost is the
+    same index scan `withdraw_source` step 1 pays (see its comment); it does NOT
+    grow with the number of matches, because nothing is loaded.
+
+    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
+    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
+    gaps are worth naming because a surface that reported it as exact would
+    overstate the operation:
+
+      * a `cell_sources` row whose dynamic row no longer exists is counted here and
+        skipped there (`withdraw_source` looks the row up and `continue`s on None),
+      * and `cells_withdrawn` is itself larger than the number of cells whose
+        DISPLAYED value changes, because the revealed source may carry the same
+        value (`value_unchanged`).
+
+    Closing either gap requires the per-cell recompute that is the run itself.
+    """
+    from sqlalchemy import and_, func
+
+    from database import models
+
+    claimed = db.query(func.count()).select_from(models.CellSource).filter(
+        *_claimed_filter(table_name, source_name, columns)).scalar() or 0
+
+    # Cells this source claims AND a human pinned TO this source. Joined rather
+    # than counted separately: a pin naming this source on a cell it does not
+    # claim changes nothing, and counting it would understate the result.
+    pinned = db.query(func.count()).select_from(models.CellSource).join(
+        models.CellOverwrite,
+        and_(models.CellOverwrite.table_name == models.CellSource.table_name,
+             models.CellOverwrite.row_id == models.CellSource.row_id,
+             models.CellOverwrite.column_name == models.CellSource.column_name),
+    ).filter(
+        *_claimed_filter(table_name, source_name, columns),
+        models.CellOverwrite.manual_priority_source == source_name,
+    ).scalar() or 0
+
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
+
+
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info) -> dict:
@@ -440,14 +500,18 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
              "revealed": 0, "emptied": 0, "pinned_skipped": 0,
              "value_unchanged": 0, "samples": []}
 
-    # 1) Cells this source claims. Indexed on (table_name, row_id, column_name,
-    #    source_name); filtered by source first so the scan is over this source's
-    #    rows only, never the whole cell_sources table.
+    # 1) Cells this source claims.
+    #
+    # COST, stated accurately because a count route now shares this predicate:
+    # the composite index is (table_name, row_id, column_name, source_name), so
+    # `source_name` is the LAST column and cannot bound the scan. PostgreSQL
+    # takes `table_name` as the boundary and applies `source_name` as an in-index
+    # filter, which means this reads every index entry belonging to the table -
+    # not the whole `cell_sources` table, but O(rows x columns) of THIS table.
+    # A `(table_name, source_name)` index would make it O(matches); see
+    # `count_withdrawable` below, which pays the same price for the same reason.
     q = (db.query(models.CellSource.row_id, models.CellSource.column_name)
-         .filter(models.CellSource.table_name == table_name,
-                 models.CellSource.source_name == source_name))
-    if columns:
-        q = q.filter(models.CellSource.column_name.in_(list(columns)))
+         .filter(*_claimed_filter(table_name, source_name, columns)))
     if row_ids:
         q = q.filter(models.CellSource.row_id.in_(list(row_ids)))
     claimed = q.all()

@@ -26,6 +26,7 @@ from utils import heartbeat
 from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
+import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS
 
 # [M3] Auto-registration of wafer_map_metadata for chain-ingested maps — shared
@@ -988,17 +989,22 @@ async def start_chain_ingestion_worker(db_session_factory):
 
 
                 # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
-                # 1. First unpack/normalize all payloads in pending_events and mark/filter SCHEDULER_RUN_NOW control events
+                # 1. First unpack/normalize all payloads in pending_events and filter out
+                #    CONTROL events (instructions to another daemon, not data changes).
+                #    Membership in the shared set, not a literal: a second control type was
+                #    added (RETROACTIVE_RUN) and a hardcoded name here would have let it
+                #    fall through into process_chain_transaction_group, where a trigger
+                #    payload would be read as a set of changed rows.
                 normalized_events = []
                 for event in pending_events:
                     payload_data = get_payload_dict(event)
                     event._parsed_payload = payload_data
                     if isinstance(event.payload, str):
                         event.payload = payload_data
-                    
-                    if event.event_type == "SCHEDULER_RUN_NOW":
+
+                    if event.event_type in event_constants.CONTROL_EVENT_TYPES:
                         continue
-                        
+
                     normalized_events.append(event)
 
                 if not normalized_events:

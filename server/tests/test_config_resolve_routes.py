@@ -232,7 +232,16 @@ def test_dry_run_limit_is_capped_and_truncation_is_declared(client, rt_env):
 
 
 def test_the_dry_run_route_offers_no_apply(client):
-    """Writing stays on the CLI. A query parameter is one typo away from a write."""
+    """THIS route stays read-only. A query parameter is one typo away from a write.
+
+    [2026-07-31] The F9 reasoning for this test was "writing stays on the CLI", and
+    that half has been REVERSED: `POST /admin/retroactive/{op}/run` now triggers the
+    same sweep's apply. The test survives the reversal unchanged because its subject
+    was never "admin cannot write" - it is "a GET whose job is measuring must not
+    grow a write flag". The trigger is a separate POST behind the strict token, so
+    both statements are true at once. See the route's own docstring in main.py for
+    which surface answers which question.
+    """
     import main
     from fastapi.routing import APIRoute
 

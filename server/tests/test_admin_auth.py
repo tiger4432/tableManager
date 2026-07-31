@@ -52,11 +52,17 @@ PUBLIC_ADMIN_PATHS = {"/admin", "/admin.html"}
 #: gating read-only admin routes was backwards.
 GATED_PREFIXES = ("/admin", "/internal")
 
-#: Routes that reach code execution and are therefore never open: they refuse
-#: with 503 when no token is configured, rather than falling back to open.
+#: Routes that reach code execution or a bulk write, and are therefore never open:
+#: they refuse with 503 when no token is configured, rather than falling back to
+#: open.
 STRICT_ADMIN_ROUTES = {
     ("POST", "/admin/scripts/code"),          # writes an arbitrary Python file
     ("POST", "/admin/auto-update/run-now"),   # makes the scheduler run it
+    # Queues a retroactive run: rewrites a whole table through a chain rule,
+    # withdraws a source's claim on every cell it holds, or deletes graph nodes.
+    # Not code execution, but the same class of harm from an unauthenticated
+    # caller, and it reaches the same scheduler process by the same outbox.
+    ("POST", "/admin/retroactive/{op}/run"),
 }
 
 
@@ -157,11 +163,11 @@ class TestEveryAdminRouteIsCovered:
                     "a page fetch")
 
     def test_the_code_execution_routes_are_strict(self):
-        """These two must use the fail-closed gate, as a set.
+        """These must use the fail-closed gate, as a set.
 
-        Downgrading either to the ordinary gate would leave an unconfigured
-        server offering remote code execution, which is the exact hole this
-        work closed.
+        Downgrading any of them to the ordinary gate would leave an unconfigured
+        server offering remote code execution (the exact hole this work closed)
+        or an unauthenticated bulk rewrite of a table.
         """
         strict_observed = set()
         for method, path, route in admin_routes():
@@ -307,6 +313,7 @@ class TestUnconfiguredServerFailsClosedOnlyWhereItMatters:
          {"path": "ingestion_workspace/x/scripts/a.py", "code": "# x\n"}),
         ("post", "/admin/auto-update/run-now",
          {"table_name": "t", "script_name": "s.py"}),
+        ("post", "/admin/retroactive/graph_orphans/run", {"params": {}}),
     ]
 
     @pytest.mark.parametrize("verb,path,body", STRICT_CALLS)

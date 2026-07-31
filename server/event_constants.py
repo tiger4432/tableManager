@@ -1,9 +1,31 @@
-"""프로세스 간 내부 이벤트(HTTP POST /internal/events/*) 공용 상수.
+"""프로세스 간 이벤트 공용 상수 — 내부 이벤트(POST /internal/events/*) + 아웃박스 제어 이벤트.
 
 워처(parsers/directory_watcher.py)와 체인 워커(chain_ingestion_worker.py) 등
 발신 측 데몬들이 공유한다. 값 변경 시 두 발신 경로와 수신부(main.py)의
 구버전 호환 절단(500)을 함께 검토할 것.
 """
+
+# ---------------------------------------------------------------------------
+# Outbox CONTROL events - rows in `database_outbox` that are instructions to a
+# daemon, not records of a data change.
+#
+# The chain worker drains the same table looking for data transactions, so every
+# control type MUST be listed here: an unlisted one falls through into
+# `process_chain_transaction_group`, which would read a trigger payload as a set
+# of changed rows. `SCHEDULER_RUN_NOW` was already skipped by a hardcoded literal
+# in one file; the set exists so the second control type could not be added
+# without the skip.
+# ---------------------------------------------------------------------------
+
+#: Published by POST /admin/auto-update/run-now; consumed by run_auto_update.py.
+EVENT_SCHEDULER_RUN_NOW = "SCHEDULER_RUN_NOW"
+
+#: Published by POST /admin/retroactive/{op}/run; consumed by run_auto_update.py.
+#: See server/retroactive.py (`RUN_EVENT_TYPE` is this constant).
+EVENT_RETROACTIVE_RUN = "RETROACTIVE_RUN"
+
+#: Every control type. The chain worker filters on membership, not on a literal.
+CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN})
 
 # [C-5] 인제션/체인 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
 # 웹서버(main.py /internal/events/*)와 audit_cache는 어차피 트랜잭션당 500건만 유지하므로,

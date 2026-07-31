@@ -291,8 +291,9 @@ def startup_banner():
     return "warning", (
         f"[admin-auth] {ADMIN_TOKEN_ENV} is NOT set "
         f"(token fingerprint {FINGERPRINT_NONE}). "
-        "POST /admin/scripts/code and POST /admin/auto-update/run-now are "
-        "DISABLED (503) because they can execute code; the remaining /admin/* "
+        "POST /admin/scripts/code, POST /admin/auto-update/run-now and "
+        "POST /admin/retroactive/{op}/run are DISABLED (503) because they execute "
+        "code or rewrite whole tables; the remaining /admin/* "
         f"routes stay open to anyone on the network. Set the {ADMIN_TOKEN_ENV} "
         "environment variable and restart to lock the admin surface. "
         "See docs/guide/DEPLOY_SETUP.md section 1-4."

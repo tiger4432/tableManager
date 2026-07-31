@@ -4495,10 +4495,29 @@ def get_enrichment_auto_confirm_dry_run(
     함수는 이미 읽기 전용이고 끝에서 구조적으로 rollback하므로, 여기서 새로 만드는
     계기는 없다 — CLI에만 닿아 있던 것을 어드민에서 닿게 할 뿐이다.
 
-    🔴 `apply`는 **이 경로에 존재하지 않는다.** 쓰기는 CLI(`enrichment_insights.py`)에만
-    남는다. 대신 `ignore_knob=True`로 **노브가 꺼진 규칙도 측정**한다 — 「켜면 무슨 일이
-    일어나는가」가 켜기 전에 답해야 하는 질문이고, `run_auto_confirm_sweep`은 그 조합을
-    apply와 결합하는 것을 스스로 거부한다.
+    🔴 `apply`는 **이 경로에 존재하지 않는다.** 이 라우트는 지금도 읽기 전용이고,
+    그 점은 바뀌지 않았다. 대신 `ignore_knob=True`로 **노브가 꺼진 규칙도 측정**한다 —
+    「켜면 무슨 일이 일어나는가」가 켜기 전에 답해야 하는 질문이고,
+    `run_auto_confirm_sweep`은 그 조합을 apply와 결합하는 것을 스스로 거부한다.
+
+    ⚠️ **[2026-07-31 결정 번복 — 이 문단을 지우지 말 것]**
+    F9 당시 이 자리에는 「쓰기는 CLI에만 남는다」고 적혀 있었다. 그 판단의 **전제**는
+    「어드민에서 쓰기를 촉발하는 안전한 형태가 없다」였고, 그 전제는 더 이상 참이 아니다:
+    `POST /admin/auto-update/run-now`가 이미 **아웃박스에 이벤트를 한 줄 쓰고 즉시
+    반환**하는 형태를 확립해 두었다(요청은 쓰기를 기다리지 않고, 실제 실행은 스케줄러
+    워커가 한다). 그래서 사용자가 번복했고, 쓰기 촉발은
+    **`POST /admin/retroactive/{op}/run`**(strict 토큰, 아래)에 생겼다.
+
+    지금 유효한 분업 —
+      · **이 라우트**: 여전히 쓰기 없음. `apply` 파라미터는 여기 생기지 않는다
+        (쿼리 파라미터 하나는 오타 하나 거리에 있는 쓰기다). 노브가 꺼진 규칙까지
+        측정하는 「켜면?」 질문의 답이 여기 있다.
+      · **`GET /admin/retroactive/enrichment_confirm/count`**: 같은 함수를 부르되
+        「지금 버튼을 누르면?」을 답한다 — 노브가 꺼져 있으면 `blocked_reason`을 실어
+        버튼을 막는다.
+      · **CLI(`enrichment_insights.py`)**: 버튼이 덮지 않는 나머지 전부 — 규칙 전체
+        일괄 실행, `--limit`, `--ignore-knob` 측정, classify/propose. 버튼이 생겼다고
+        CLI가 없어진 것이 아니다.
     """
     import enrichment_analysis
     import config_resolve_report
@@ -4544,6 +4563,112 @@ def get_enrichment_auto_confirm_dry_run(
         "samples": stats.get("samples", []),
         "truncated": truncated,
     }
+
+# -----------------------------------------------------------------------------
+# [Queue 25] 소급 적용(retroactive/backfill) 어드민 표면 — 「몇 건인가」와 「실행」
+#
+#   다섯 경로 전부 이미 CLI로 존재하고, 전부 드라이런이 기본이며, 전부 진짜 매퍼·진짜
+#   쓰기 경로를 쓴다. 여기서 새로 구현하는 연산은 **하나도 없다** — 등록부는
+#   `server/retroactive.py`이고 이 라우트들은 그 위의 얇은 껍질이다.
+#
+#   카운트가 값싸지 않다는 사실을 숨기지 않는다: 다섯 중 셋은 「몇 건인가」가 곧
+#   드라이런 자체(테이블 전수 + 매퍼)라서 요청 경로에 앉을 수 없다. 그래서 모든 카운트는
+#   `count_kind`(exact / sample / upper_bound)를 **함께** 반환하고, 표본이면 `truncated`와
+#   `scanned`를 실어 「테이블에 대한 수」가 아니라 「표본에 대한 수」임을 서버가 문장으로
+#   말한다(`detail`). 클라이언트는 그 문장을 그대로 렌더하고 스스로 판정하지 않는다 —
+#   `/admin/config/resolve`·auto-confirm 드라이런과 같은 규율.
+#
+#   ⚠️ 다섯이 **같은 종류의 연산이 아니다.** 넷은 값을 쓰고 청크 단위로 커밋되어 중단돼도
+#   이어서 재실행되지만, `graph_orphans`는 노드를 **삭제**하고 삭제 루프가 끝난 뒤에야
+#   한 번 커밋한다 — 중단되면 이미 지운 청크까지 통째로 롤백된다(2026-07-31 소스 확인:
+#   `graph_orphans.py`의 유일한 commit). 그래서 인벤토리·카운트 응답이 `deletes` ·
+#   `restartable` · `commit_granularity`를 실어 나른다. 확인 문구 하나로 다섯 버튼을
+#   덮으면 그 하나가 틀린다.
+# -----------------------------------------------------------------------------
+
+@app.get("/admin/retroactive/operations", dependencies=[Depends(require_admin_token)])
+def list_retroactive_operations():
+    """실행 가능한 소급 적용 연산 목록과 각각의 파라미터 · CLI 대응.
+
+    설정만 읽는다 — DB 질의 0건이라 `/admin/config/resolve`와 같은 자세로 요청 경로에
+    앉는다. `cli` 필드는 장식이 아니라 계약이다: 버튼은 각 연산의 **흔한 형태**만 덮고,
+    나머지(`replay-all`, `--limit`, `--force-disabled`, 라벨 한정 스윕, 컬럼 한정 회수)는
+    CLI에 남는다.
+    """
+    import retroactive
+    return {"operations": retroactive.inventory()}
+
+
+@app.get("/admin/retroactive/{op}/count", dependencies=[Depends(require_admin_token)])
+def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
+                          db: Session = Depends(get_db)):
+    """「이 연산은 몇 건에 영향을 주는가」 — 쓰기 없는 계기.
+
+    각 연산이 **자기 드라이런**(또는 자기 모듈의 값싼 질의)으로 답한다. 파라미터는
+    쿼리스트링으로 받되 연산이 선언한 이름만 허용하고, 모르는 이름은 400으로 거절한다
+    (오타가 조용히 무시되면 「0건」이 정답처럼 보인다).
+
+    ⚠️ `scan_limit`은 **미리보기의 예산**이지 어떤 CLI의 `--limit`도 아니다. 다섯 CLI에서
+    `--limit`은 서로 다른 세 가지를 뜻한다(훑은 행 수 / 새로 만드는 파생 정체성 수 —
+    이때 소스 스캔은 끝까지 간다 / 검사한 행 수), 그리고 고아 스윕에는 아예 없다.
+    같은 단어로 묶으면 세 계약을 하나처럼 보이게 한다. 응답의 `scan_limit`은 실제로
+    행을 훑은 연산에서만 숫자이고, 나머지는 `null`이다.
+
+    `apply`류 파라미터는 여기 존재하지 않는다 — 이 라우트는 구조적으로 rollback한다.
+    """
+    import retroactive
+
+    params = {k: v for k, v in request.query_params.items() if k != "scan_limit"}
+    try:
+        return retroactive.count(db, op, params,
+                                 scan_limit=retroactive.clamp_scan_limit(scan_limit))
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        # 측정이 불가능한 상태(선언 없음·모델 미초기화 등)는 500이 아니라 이름 있는
+        # 거절로 답한다 — 500은 운영자를 로그로 돌려보낸다.
+        db.rollback()
+        logger.warning(f"[Retroactive] count failed for op={op}: {e}")
+        raise HTTPException(status_code=400,
+                            detail=f"이 연산의 건수를 계산할 수 없습니다: {e}")
+
+
+# [STRICT] 쓰기를 촉발한다. `POST /admin/auto-update/run-now`와 **같은 형태**:
+# 아웃박스 한 줄 + NOTIFY 후 즉시 반환하고, 실제 실행은 auto_update 스케줄러가 자기
+# 스레드에서 한다. 소급 실행은 테이블을 전수로 걷기 때문에 동기 핸들러는 브라우저가
+# 포기할 때까지 요청을 붙잡는다. 토큰 미설정 서버에서는 503으로 거부한다.
+@app.post("/admin/retroactive/{op}/run", dependencies=[Depends(require_admin_token_strict)])
+def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
+                            db: Session = Depends(get_db)):
+    """소급 적용을 **큐에 넣고** 즉시 반환한다. 여기서 실행하지 않는다.
+
+    body: `{"params": {...}}` — 파라미터 검증은 `retroactive.validate` 한 곳에서만
+    한다. 그래서 라우트와 워커가 「무엇이 유효한 요청인가」에 대해 다른 답을 낼 수 없다.
+
+    R2(`withdraw`)의 두 거절 — `user` 소스 거부, 사람이 고정한 소스 건너뛰기 — 은
+    `chain_replay.withdraw_source` 안에 있고 이 경로는 **그 함수로 들어간다**. 즉 어드민을
+    거쳐도 우회되지 않는다. 여기서 다시 확인하는 것은 편의(400을 즉시 돌려주려고)이지
+    안전장치가 아니다.
+    """
+    import retroactive
+
+    body = payload if isinstance(payload, dict) else {}
+    params = body.get("params") if isinstance(body.get("params"), dict) else {}
+    try:
+        return retroactive.publish(db, op, params,
+                                   requested_by=body.get("requested_by") or "admin")
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Retroactive] failed to queue op={op}: {e}")
+        raise HTTPException(status_code=500, detail=f"실행 요청을 큐에 넣지 못했습니다: {e}")
+
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):

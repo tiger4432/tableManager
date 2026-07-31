@@ -163,18 +163,50 @@ def _producing_declarations(mappings):
     return out
 
 
-def _zero_edge_nodes(db, labels=None):
+def _zero_edge_condition(db):
+    """"this node has no edge in either direction" - the ONE definition.
+
+    Extracted so ``count_zero_edge_nodes`` and ``_zero_edge_nodes`` cannot answer
+    different questions; a preview that used a slightly different predicate from
+    the sweep it previews would be wrong in a way nothing would report.
+    """
     from database.models import GraphNode, GraphEdge
     from sqlalchemy import or_
 
+    return ~db.query(GraphEdge.id).filter(
+        or_(GraphEdge.from_node == GraphNode.id, GraphEdge.to_node == GraphNode.id)
+    ).exists()
+
+
+def _zero_edge_nodes(db, labels=None):
+    from database.models import GraphNode
+
     q = db.query(GraphNode.id, GraphNode.label, GraphNode.identity_key).filter(
-        ~db.query(GraphEdge.id).filter(
-            or_(GraphEdge.from_node == GraphNode.id, GraphEdge.to_node == GraphNode.id)
-        ).exists()
-    )
+        _zero_edge_condition(db))
     if labels:
         q = q.filter(GraphNode.label.in_(list(labels)))
     return q.order_by(GraphNode.label.asc(), GraphNode.identity_key.asc()).all()
+
+
+def count_zero_edge_nodes(db, labels=None) -> int:
+    """[sweep preview] Degree-zero nodes, as one aggregate - never materialised.
+
+    This is an UPPER BOUND on what a sweep deletes, and the gap is the whole
+    safety design rather than an approximation error. Condition 1 of the orphan
+    definition (zero edges) is cheap and answered here; condition 2 (no current
+    mapping can produce this identity) requires paging through every mapped table
+    via ``_producible_identities``, and the budget guard on top of it requires the
+    per-label populations. Those are ``plan_sweep``'s expensive half - the module
+    docstring's "SplitCondition legitimately has ~0.2 average degree" is exactly
+    why the cheap half alone must never be presented as the answer.
+    """
+    from database.models import GraphNode
+    from sqlalchemy import func
+
+    q = db.query(func.count()).select_from(GraphNode).filter(_zero_edge_condition(db))
+    if labels:
+        q = q.filter(GraphNode.label.in_(list(labels)))
+    return int(q.scalar() or 0)
 
 
 def _producible_identities(db, table, identity_cols, wanted):

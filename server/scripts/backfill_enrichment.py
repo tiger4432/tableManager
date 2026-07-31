@@ -131,18 +131,29 @@ def _load_existing_business_keys(db, derived_model) -> set:
 
 
 def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
-                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=print) -> dict:
+                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=print,
+                 scan_limit: int = None) -> dict:
     """Scan + diff (+ optionally write). Returns a stats dict.
 
     Dry-run performs reads only. Apply mode commits per chunk (via
     apply_batch_updates' own commit), so a very large backfill is restartable
     and idempotent: re-running diffs against the now-existing derived keys.
+
+    `limit` and `scan_limit` bound DIFFERENT things and only one of them bounds
+    the cost. `limit` caps how many NEW derived identities a run is allowed to
+    create; the source scan continues to the end of the table regardless, counting
+    the rest into `limit_skipped`. `scan_limit` caps how many SOURCE ROWS are read
+    at all, which is the only knob that makes this callable from a request path -
+    the admin count route passes it, the CLI does not. A `scan_limit`ed result is a
+    sample: `rows_scanned` is the denominator the caller must report alongside it.
     """
     from database import crud, models, schemas
     from enrichment_mapper import map_enrichment_dedup, _cell_value
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
+    if scan_limit is not None and scan_limit <= 0:
+        raise BackfillRefused(f"scan_limit must be a positive integer (got {scan_limit})")
 
     source_table = rule["source_table"]
     derived_table = rule["derived_table"]
@@ -213,7 +224,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # enrichment_analysis. It prepends row_id as the cursor.
     for rows in keyset_scan.iter_pages(
             db, src_model, columns=[getattr(src_model, c) for c in payload_cols],
-            chunk_size=chunk_size):
+            chunk_size=chunk_size, limit=scan_limit):
         stats["chunks"] += 1
         stats["rows_scanned"] += len(rows)
 
