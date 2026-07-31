@@ -46,7 +46,8 @@ import os
 import sys
 import uuid
 
-# Standalone bootstrap: make server/ importable (same pattern as reapply_chain.py).
+# Standalone bootstrap: make server/ importable (same pattern every script in this
+# directory uses; `chain_replay_cli.py` is the nearest sibling).
 _SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SERVER_DIR not in sys.path:
     sys.path.insert(0, _SERVER_DIR)
