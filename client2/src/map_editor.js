@@ -1096,10 +1096,21 @@ function initDOMElements() {
   if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
   
   // Physical input triggers: use change event for typing completion and scheduleRenderGridCanvas for rAF throttling
+  //
+  // [규칙 ④] 규격 한 칸을 고치는 것도 원점 상자를 움직인다. 유효 다이 선언이 없는 맵에서
+  // 유효 다이 영역은 곧 웨이퍼 원이므로, 여기서 일어나는 일은 참조를 지정하는 것과 **같은
+  // 연산**이다 — 그래서 같은 함수를 부른다(새 컨트롤 0개, 새 확인창 0개).
+  //
+  // ⚠️ 이 리스너는 변경 **전** 상태를 스스로 잡을 수 없다: `input`/`change`는 DOM 값이 이미
+  //    바뀐 뒤에 뜬다. 그래서 직전 렌더가 남긴 기록(`cellsSeatedUnder`)이 옛 좌표계다.
+  const onPhysicalGeometryEdit = () => {
+    reseatCellsToStoredCoords(cellsSeatedUnder);
+    scheduleRenderGridCanvas();
+  };
   [el.physWaferDia, el.physChipX, el.physChipY, el.physOffsetX, el.physOffsetY, el.physEdgeMargin].forEach(input => {
     if (input) {
-      input.addEventListener('change', () => scheduleRenderGridCanvas());
-      input.addEventListener('input', () => scheduleRenderGridCanvas());
+      input.addEventListener('change', onPhysicalGeometryEdit);
+      input.addEventListener('input', onPhysicalGeometryEdit);
     }
   });
   
@@ -1908,6 +1919,20 @@ let boundingBoxCache = {};
 // `computeNotchCell`이다: 노치는 웨이퍼의 물리 특징이자 클립보드 프레임 지문이라, 유효 다이
 // 해석의 성패(네트워크 1회 실패)에 따라 지문이 흔들리면 정상 붙여넣기가 엉뚱한 사유로 거절된다.
 function getWaferBoundingBox(rotation, side, opts) {
+  // 프레임 창이 **상자까지** 실어 나르면 그것이 이 창의 상자다. 창은 "규격을 어디서 읽는가"를
+  // 갈아끼우는 장치이고(§withPhysFrame), 원점 상자는 그 규격의 산물이므로 같은 창에 실린다.
+  //
+  // 🔴 **두 번째 상자 정의가 아니다.** 창에 실리는 상자는 언제나 이 함수가 앞서 만들어 낸
+  //    바로 그 상자다(§seatingSnapshot이 붙들어 둔 것). 상자가 **무엇인가**는 여전히 이 함수
+  //    하나만 답하고, 창은 "그때 그 답"을 다시 제시할 뿐이다.
+  // 🔴 다시 계산해서 얻을 수 **없는** 이유: 근거가 유효 다이 맵일 때 창 안에서는
+  //    `isValidDieAt`이 원으로 답하므로(§isValidDieAt) 옛 마스크 상자는 원리적으로
+  //    재구성되지 않는다. 그래서 붙들어 두는 것 말고 다른 방법이 없다.
+  // ⚠️ `circleOnly`가 이 창보다 세다. 노치는 마스크와 무관한 물리 특징을 묻는 자리라
+  //    (§computeNotchCell) 마스크에서 유래한 상자를 받으면 지문이 흔들린다.
+  if (physFrameOverride && physFrameOverride.box && !(opts && opts.circleOnly)) {
+    return physFrameOverride.box;
+  }
   // 프레임 창이 열려 있으면 소스 메타 값이, 아니면 화면 컨트롤 값이 읽힌다.
   // 캐시 키를 해석된 실값으로 만들어야 두 프레임의 바운딩박스가 서로를 덮어쓰지 않는다.
   const dia = physNum('waferDia', el.physWaferDia, 300);
@@ -2018,6 +2043,130 @@ function getDbCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, 
   }
 
   return { x: dbX, y: dbY };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 화면의 셀이 **지금 앉아 있는 좌표계**. 상자 하나와 그 상자를 낳은 축 전부다.
+//
+// 🔴 이것은 상자에 대한 **두 번째 진실이 아니다.** 상자가 무엇인가는 `getWaferBoundingBox`
+//    하나만 답한다. 여기 담기는 것은 그 함수가 이미 내놓은 답이고, 뜻은 "무엇이 옳은가"가
+//    아니라 **"셀이 마지막으로 어디에 앉았는가"**다. 둘을 대조해 화해시켜야 하는 상황이
+//    생긴다면 그건 설계가 틀린 것이므로 화해시키지 말고 보고할 것.
+//
+// 🔴 이 기록이 **필요한** 이유는 물리 규격 입력의 리스너가 변경 **전** 상태를 잡을 수 없기
+//    때문이다 — `input`/`change`는 DOM 값이 이미 바뀐 뒤에 뜬다. 유효 다이 지정 경로는
+//    `resolveValidDie`가 스스로 변경 전후를 감싸므로 그 문제가 없었다.
+//
+// ⚠️ 축은 **cols/rows/회전/면/invertY/START + 물리 규격 전부**다. 이 객체를 그대로
+//    `withPhysFrame`에 넘겨 옛 좌표계를 다시 열기 때문에, 키 이름은 `currentFrame`·
+//    `frameFromMeta`가 쓰는 그 이름이어야 한다(`physNum`/`gridDimNum`이 그 이름으로 읽는다).
+// ═══════════════════════════════════════════════════════════════════════════════
+let cellsSeatedUnder = null;
+
+function seatingSnapshot() {
+  if (!el || !el.gridCols || !el.gridRows || !el.gridStartX || !el.gridStartY) return null;
+  // 창 안에서 부르면 소스 맵의 좌석을 이 화면의 좌석으로 기록하게 된다. 그런 호출자는 없지만,
+  // 생기는 날 조용히 틀리는 대신 아무것도 기록하지 않는다.
+  if (physFrameOverride) return null;
+  return {
+    cols: gridDimNum('cols', el.gridCols, 10),
+    rows: gridDimNum('rows', el.gridRows, 10),
+    rotation: currentRotation,
+    side: currentSide,
+    invertY: !!(el.gridYInvert && el.gridYInvert.checked),
+    startX: parseInt(el.gridStartX.value, 10) || 0,
+    startY: parseInt(el.gridStartY.value, 10) || 0,
+    waferDia: physNum('waferDia', el.physWaferDia, 300),
+    chipX: physNum('chipX', el.physChipX, 2.5),
+    chipY: physNum('chipY', el.physChipY, 2.5),
+    offsetX: physNum('offsetX', el.physOffsetX, 0.0),
+    offsetY: physNum('offsetY', el.physOffsetY, 0.0),
+    edgeMargin: physNum('edgeMargin', el.physEdgeMargin, 3.0),
+    box: getWaferBoundingBox(currentRotation, currentSide),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [규칙 ④] **원점 상자가 셀 밑에서 움직였을 때의 유일한 반응.**
+//
+// 붙드는 것은 **저장 좌표**이고 움직이는 것은 **캔버스 칸**이다(사용자 확정:「db 좌표
+// 보존이야」). 셀이 칸을 붙들면 근거가 바뀔 때 읽는 번호가 바뀌고, ⚡ Push가 그 새 번호를
+// 쓴다 — 화면은 한 픽셀도 움직이지 않은 채 DB의 좌표가 갈리는, 이 도메인이 존재하는 그 결함이다.
+//
+// 🔴 **근거가 무엇이든 같은 반응이다.** 유효 다이 선언이 없는 맵에서 유효 다이 영역은 곧
+//    웨이퍼 원이므로(사용자 확정 2026-07-31:「유효 다이 없이 기하 프리셋 변경도 유효 다이
+//    영역을 원 기하 내부로 변경하므로」), 기하 프리셋을 바꾸는 것과 참조를 지정하는 것은
+//    **같은 연산**이지 닮은 연산이 아니다. 그래서 함수도 하나다 — 마스크가 선언된 맵에서
+//    이 함수는 0칸을 옮기는데, 그건 가정이 아니라 **측정된** 0이다(마스크 상자는 셀과 함께
+//    평행이동하므로 저장 좌표가 애초에 변하지 않는다).
+//
+// 🔴 **방향(회전·반전·Y반전)과 START는 반대 연산이다**(규칙 ⑤: 다이를 붙들고 번호를 옮긴다).
+//    그 축이 하나라도 다르면 이 반응은 **아무것도 하지 않는다.** 기하 반응이 회전에서 뜨면
+//    규칙 ④가 규칙 ⑤를 덮어쓴다.
+//
+// 🔴 **새 변환식은 한 줄도 없다.** 옛 좌표계는 `withPhysFrame`으로 다시 열고(불변식 ①:
+//    규격을 읽는 지점만 갈아끼우고 같은 함수를 실행한다), 그 안에서 도는 것은 로드·렌더가
+//    쓰는 `getCanvasCellFromDieIndex`·`getDbCoords`이며, 되앉히는 것은 그 둘의 역함수인
+//    `getCanvasCellFromDb`·`getDieIndex`다.
+//
+// ⚠️ 호출자는 기록을 **캐시하지 않는다.** 반드시 부르는 시점에 `cellsSeatedUnder`를 읽어야
+//    한다 — 이 함수가 끝날 때마다 기록을 갱신하므로, 한 번의 사용자 조작이 이 반응을 두 번
+//    타도(규격 교체 → 파생 치수, 그다음 마스크 적합 확장) 두 걸음이 이어 붙어 저장 좌표가
+//    보존된다. 미리 잡아 둔 옛 기록을 두 번째 걸음에 넘기면 같은 이동을 두 번 적용한다.
+//
+// 반환: null(반응 없음) | { moved, offGrid, visC, visR, held }
+// ═══════════════════════════════════════════════════════════════════════════════
+function reseatCellsToStoredCoords(was) {
+  const now = seatingSnapshot();
+  if (now) cellsSeatedUnder = now;
+  if (!was || !now) return null;
+  if (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY
+      || was.startX !== now.startX || was.startY !== now.startY) return null;
+
+  const touched = new Set([...Object.keys(gridData), ...loadedFCells,
+    ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+  if (touched.size === 0) return null;
+
+  // (1) 각 셀이 **옛 좌표계에서** 말하던 저장 좌표를 되찾는다.
+  const held = new Map();
+  withPhysFrame(was, () => {
+    touched.forEach(k => {
+      const [px, py] = String(k).split('_').map(Number);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+      const at = getCanvasCellFromDieIndex(px, py, was.cols, was.rows, was.rotation, was.side);
+      held.set(k, getDbCoords(at.c, at.r, was.cols, was.rows, was.rotation, was.side,
+                              was.invertY, was.startX, was.startY));
+    });
+  });
+
+  // (2) 그 저장 좌표가 **새 좌표계에서** 가리키는 칸으로 다시 앉힌다.
+  const isRot = (now.rotation === 90 || now.rotation === 270);
+  const visC = isRot ? now.rows : now.cols;
+  const visR = isRot ? now.cols : now.rows;
+  let offGrid = 0;
+  const seatOf = new Map();
+  held.forEach((v, k) => {
+    const cell = getCanvasCellFromDb(v.x, v.y, now.cols, now.rows, now.rotation, now.side,
+                                     now.invertY, now.startX, now.startY);
+    if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
+    const p = getDieIndex(cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
+    seatOf.set(k, `${p.x}_${p.y}`);
+  });
+  let moved = 0;
+  seatOf.forEach((to, from) => { if (to !== from) moved++; });
+  if (moved > 0) {
+    const at = (k) => seatOf.get(k) || k;
+    const next = {};
+    Object.keys(gridData).forEach(k => { next[at(k)] = gridData[k]; });
+    gridData = next;
+    loadedFCells = new Set([...loadedFCells].map(at));
+    // 서버 셀 집합도 같이 옮긴다. 옮기지 않으면 서버에서 온 셀이 「보낸 적 없음」으로 읽혀
+    // 정리 경로가 실재하는 행을 지우자고 제안한다(불변식 ③).
+    if (serverCellKeys && serverCellKeys.keys) {
+      serverCellKeys.keys = new Set([...serverCellKeys.keys].map(at));
+    }
+  }
+  return { moved, offGrid, visC, visR, held: held.size };
 }
 
 function getTransformedPhysicalConfig(currentRotation, currentSide) {
@@ -2473,6 +2622,15 @@ function applyPhysicalGeometry() {
 
   if (el.gridCols) el.gridCols.value = cols;
   if (el.gridRows) el.gridRows.value = rows;
+
+  // [규칙 ④] 파생 치수가 **자리를 잡은 뒤에** 셀을 자기 저장 좌표에서 다시 앉힌다. 순서가
+  // 전부다: 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 조용히 옮겨간다.
+  // 렌더보다도 앞이어야 한다 — 렌더가 기록을 갱신하므로, 그 뒤에 물으면 비교할 옛 좌표계가
+  // 남아 있지 않다.
+  //
+  // 🔴 기록은 **여기서 읽는다.** 호출자(`applyPresetObject`)가 미리 잡아 두면 안 된다
+  //    (§reseatCellsToStoredCoords의 마지막 ⚠️).
+  reseatCellsToStoredCoords(cellsSeatedUnder);
 
   renderGridCanvas();
 }
@@ -3085,6 +3243,12 @@ function renderGridCanvas() {
   //    갈려 있었다. 원점 상자가 유효 다이 기준이 되면 그 우연은 성립하지 않는다.
   const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);
+
+  // 지금 그리는 이 좌표계가 곧 "셀이 앉은 자리"다(§cellsSeatedUnder). 여기 한 줄이 기록의
+  // 유지를 **잊을 수 없게** 만든다: 회전이든 로드든 프레임 복귀든, 좌표계를 바꾸는 모든 경로는
+  // 렌더로 끝나므로 다음 기하 편집은 언제나 직전 화면과 대조된다. 상자는 바로 윗줄이 이미
+  // 물어 캐시에 얹어 둔 그 상자라 추가 순회가 없다.
+  cellsSeatedUnder = seatingSnapshot() || cellsSeatedUnder;
 
   gridCells2D = {};
 
@@ -7524,16 +7688,16 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     const seat0 = (c, r) => getCanvasCellFromDb(fsx, fsy, c, r,
       currentRotation, currentSide, fiv, fsx, fsy);
 
-    // (1) 근거를 바꾸기 **전에**, 각 셀이 지금 말하는 저장 좌표를 되찾는다.
-    const held = new Map();
-    const touched = new Set([...Object.keys(gridData), ...loadedFCells,
+    // (1) 근거를 바꾸기 **전에** 좌석 기록이 옛 좌표계를 가리키고 있어야 한다. 평소에는 직전
+    //     렌더가 이미 남겨 두었고(§cellsSeatedUnder), 한 번도 그리지 않았으면 지금 잡는다.
+    //     되찾기 자체는 이 안에서 하지 않는다 ― 그 구현은 `reseatCellsToStoredCoords` 하나다.
+    // ⚠️ 아래에서 `applyPresetObject`가 규격을 갈아끼우면 그 안의 `applyPhysicalGeometry`가
+    //    **같은 반응을 먼저 한 걸음** 돌린다. 그래서 여기서 기록을 지역 변수에 캐시해 두면
+    //    안 된다 ― 마지막 반응은 반드시 그 시점의 `cellsSeatedUnder`를 읽어야 두 걸음이
+    //    이어 붙는다. 넷 이동량은 아래에서 좌석 집합의 차이로 잰다.
+    const seatsBefore = new Set([...Object.keys(gridData), ...loadedFCells,
       ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
-    touched.forEach(k => {
-      const [px, py] = String(k).split('_').map(Number);
-      if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-      const at = getCanvasCellFromDieIndex(px, py, fc, fr, currentRotation, currentSide);
-      held.set(k, getDbCoords(at.c, at.r, fc, fr, currentRotation, currentSide, fiv, fsx, fsy));
-    });
+    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();
     const wasSeat = seat0(fc, fr);
 
     validDie = { basis, keys, reason: reason || '', ref: ref || null, raw };
@@ -7622,45 +7786,32 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // 🔴 **캐시를 반드시 비운다.** `getWaferBoundingBox`의 캐시 태그는 `V<validDieResolveSeq>`
     //    인데 그 번호는 `resolveValidDie` **진입 시** 한 번 오른다(위 `mySeq`). 그래서 진입과
     //    이 대입 사이에 상자를 한 번이라도 물으면 **옛 마스크로 만든 상자가 새 번호의 키에**
-    //    실린다. 바로 위 (1)의 되찾기가 그 질문을 하므로, 비우지 않으면 아래 배치와 이후 렌더가
+    //    실린다. 바로 위 `wasSeat`가 그 질문을 하므로, 비우지 않으면 아래 배치와 이후 렌더가
     //    전부 캐시 적중으로 **옛 마스크의 상자**를 받는다 ― 마스크는 새것을 그리는데 좌표계는
     //    옛것이라 원점이 어긋나 보인다. 지난 라운드가 정확히 이렇게 무너졌다.
     boundingBoxCache = {};
 
-    // (2) 각 셀을 **자기 저장 좌표에서** 새 좌표계가 주는 칸으로 앉힌다.
-    //     🔴 여기서만 `nc`/`nr`(바뀐 뒤의 치수)를 쓴다. (1)의 포착은 옛 치수로 해야 하고
-    //        (그때가 그 좌표를 낳은 좌표계다) 재배치는 새 치수로 해야 한다 ― 두 곳에 같은
-    //        치수를 쓰면 규칙 ④가 깨지고 좌표가 조용히 옮겨간다.
-    if (held.size > 0) {
-      const isRot = (currentRotation === 90 || currentRotation === 270);
-      const visC = isRot ? nr : nc;
-      const visR = isRot ? nc : nr;
-      let offGrid = 0;
-      const seatOf = new Map();
-      held.forEach((v, k) => {
-        const cell = getCanvasCellFromDb(v.x, v.y, nc, nr, currentRotation, currentSide, fiv, fsx, fsy);
-        if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
-        const p = getDieIndex(cell.c, cell.r, nc, nr, currentRotation, currentSide);
-        seatOf.set(k, `${p.x}_${p.y}`);
-      });
-      let moved = 0;
-      seatOf.forEach((to, from) => { if (to !== from) moved++; });
-      if (moved > 0) {
-        const at = (k) => seatOf.get(k) || k;
-        const next = {};
-        Object.keys(gridData).forEach(k => { next[at(k)] = gridData[k]; });
-        gridData = next;
-        loadedFCells = new Set([...loadedFCells].map(at));
-        // 서버 셀 집합도 같이 옮긴다. 옮기지 않으면 서버에서 온 셀이 「보낸 적 없음」으로 읽혀
-        // 정리 경로가 실재하는 행을 지우자고 제안한다(불변식 ③).
-        if (serverCellKeys && serverCellKeys.keys) {
-          serverCellKeys.keys = new Set([...serverCellKeys.keys].map(at));
-        }
-        placementNote = `[유효다이] 7) 셀 재배치 ― ${moved}칸을 저장된 좌표에서 다시 앉힘 `
-          + `(격자 ${visC}x${visR}, 격자 밖으로 나간 셀 ${offGrid}칸). `
-          + `번호는 그대로이고 앉는 칸만 바뀜`;
-        if (basis !== 'ref') console.log(placementNote);   // ref는 1~6 뒤에 찍는다
-      }
+    // (2) 각 셀을 **자기 저장 좌표에서** 새 좌표계가 주는 칸으로 앉힌다 ― 기하 프리셋 편집이
+    //     타는 것과 **같은 함수**다(§reseatCellsToStoredCoords). 유효 다이 영역이 원에서
+    //     오든 선언된 마스크에서 오든 원점 상자가 움직였다는 사실은 하나이므로 반응도 하나다.
+    //
+    // 🔴 인자는 **지금** 읽는다. 위 `applyPresetObject`가 규격을 갈아끼웠다면 그 안에서 이미
+    //    한 걸음이 돌았고, 이 호출은 그 뒤 격자 확장분만 마저 흡수한다. 미리 잡아 둔 옛 기록을
+    //    넘기면 같은 이동을 두 번 적용한다.
+    const placed = reseatCellsToStoredCoords(cellsSeatedUnder);
+    // 넷 이동량 ― 이 호출 전체에서 자리를 옮긴 셀 수. 걸음마다 세면 서로 상쇄되는 두 걸음이
+    // 「N칸 이동 후 N칸 이동」으로 읽혀 사용자에게 거짓 수를 준다. 좌석은 물리 키이므로
+    // 집합 차이가 곧 이동한 셀이다.
+    const seatsAfter = new Set([...Object.keys(gridData), ...loadedFCells,
+      ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+    let netMoved = 0;
+    seatsBefore.forEach(k => { if (!seatsAfter.has(k)) netMoved++; });
+    if (netMoved > 0) {
+      placementNote = `[유효다이] 7) 셀 재배치 ― ${netMoved}칸을 저장된 좌표에서 다시 앉힘 `
+        + `(격자 ${placed ? placed.visC : nc}x${placed ? placed.visR : nr}, `
+        + `격자 밖으로 나간 셀 ${placed ? placed.offGrid : 0}칸). `
+        + `번호는 그대로이고 앉는 칸만 바뀜`;
+      if (basis !== 'ref') console.log(placementNote);   // ref는 1~6 뒤에 찍는다
     }
     const nowSeat = seat0(nc, nr);
     if (nowSeat.c !== wasSeat.c || nowSeat.r !== wasSeat.r) {
