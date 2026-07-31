@@ -168,7 +168,7 @@ out = build_rows()
 * **끄는 노브**: `GRAPH_ORPHAN_SWEEP_ENABLED=false`(형제 `GRAPH_MATERIALIZER_ENABLED`와 같은 표기). `status: "disabled"`로 보고합니다.
 * **실패 격리**: §4-bis와 동일 — 스윕 예외는 로그로만 나가고 수집기 실행을 막지 않습니다.
 * ⚠️ **주기 상태의 출처가 §4-bis와 다릅니다.** config 백업은 "디스크의 최신 스냅샷이 7일보다 오래됐는가"를 **파일에서** 유도하지만, 스윕은 **프로세스 메모리의 monotonic 시각**(`_last_orphan_sweep`)을 봅니다. `0.0`은 "첫 틱에 실행"이므로 **스케줄러 재기동마다 스윕이 한 번 돕니다.** 멱등하고 저렴한 유지보수라 문제가 되지 않지만, "하루 1회"를 재기동과 무관한 보장으로 읽지는 마십시오.
-* 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용).
+* 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용). 플래그 전수·종료 코드·**⚠️ 이 스윕만 페이지 단위 커밋이 아니라는 사실**은 [BACKFILL_GUIDE §5·§6](./BACKFILL_GUIDE.md)에 있습니다(다른 소급 경로 넷과 나란히 놓은 자리).
 
 ---
 

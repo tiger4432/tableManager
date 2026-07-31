@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -199,6 +199,8 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 ⚠️ **컬럼명으로 유추하지 않습니다.** 같은 규칙의 두 뷰가 모두 `wafer_id` 컬럼을 가질 수 있고(하나는 판단키 전체로, 하나는 일부로 조회), 후자는 후보가 N개입니다. 선언한 뷰만 후보 원천입니다.
 
 ## 🔁 5. Chain Replay — 룰을 기존 데이터에 다시 적용하기 (R1) / 낡은 소스 철회 (R2)
+
+> 🧭 **이 절은 개발자 계약입니다.** 「지금 무엇을 돌려야 하나」가 필요한 운영자는 **[BACKFILL_GUIDE](./BACKFILL_GUIDE.md)**로 가십시오 — R1/R2를 포함한 **소급 경로 다섯 개**를 증상→도구 결정표로 묶어 놓았습니다(인리치먼트 2종·그래프 고아 스윕 포함).
 
 체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
 
