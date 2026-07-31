@@ -263,6 +263,43 @@ function buildCells(sb) {
   return { vc, vr };
 }
 
+// ── 리비전 중립 픽스처 주소: 셀은 (r, c)로 가리키고, 키는 각자에게 물어본다 ──────
+// 🔴 두 리비전은 **같은 셀에 다른 물리 키**를 매긴다. 2026-07-31에 다이 인덱스의 원점이
+//    격자 모서리에서 웨이퍼 중심으로 옮겨졌다(`getPhysicalCoords` → `getDieIndex`). 그래서
+//    베이스라인의 `gridData`를 **키째로** working tree에 건네면 두 소스는 같은 그림을
+//    그리지 않는다 — 실측(11x9 격자, 99셀): 키가 일치한 셀 **0개**, 그럼에도 30개는 키가
+//    우연히 존재해 **엉뚱한 셀**을 가리켰다. 나머지 69개는 아무 셀도 가리키지 못했다.
+//    그 상태의 바이트 비교는 COPY HEADER MODE를 채점한 것이 아니라 픽스처를 채점한 것이다.
+// ⚠️ 그러므로 공유 픽스처는 **두 리비전이 똑같이 부르는 주소**로 적는다 — 시각 셀 (r, c).
+//    심을 때만 각 샌드박스의 **자기 셀 팩토리**가 낸 키를 쓴다. 이 파일의 다른 픽스처
+//    (loaded-map · contaminatedDraftSandbox · layoutProbe)는 이미 전부 이렇게 한다;
+//    키를 리비전 사이로 나르던 곳은 여기와 변이 루프 두 군데뿐이었다.
+// ⚠️ 키를 다시 직접 나르지 마라. 그러면 실패는 코드가 아니라 픽스처가 만든 것이 되고,
+//    다음 사람은 멀쩡한 코드를 고치려 들거나 단언을 무르게 한다.
+function sharedPaintPlan(refSb, fCount) {
+  const plan = [];
+  Object.keys(refSb.ctx.gridCells2D).forEach(rStr => {
+    Object.keys(refSb.ctx.gridCells2D[rStr]).forEach(cStr => { plan.push([rStr, cStr, '1']); });
+  });
+  // 'F'도 섞되 **원 안쪽 셀**에 넣는다. 원 밖에만 넣으면 F의 COUNT가 0이 되어 두 번째 값의
+  // 계수 경로가 죽고, 그 축이 죽은 픽스처는 그 축에 대해 아무것도 검증하지 못한다.
+  plan.filter(([r, c]) => refSb.ctx.gridCells2D[r][c].inside)
+    .slice(0, fCount).forEach(e => { e[2] = 'F'; });
+  return plan;
+}
+function applyPaint(sb, plan) {
+  const d = {};
+  plan.forEach(([r, c, v]) => { d[sb.ctx.gridCells2D[r][c].key] = v; });
+  sb.ctx.gridData = d;
+}
+// (r, c) -> key, 한 샌드박스의 좌표계 안에서만.
+function keyAt(sb, r, c) { return sb.ctx.gridCells2D[r][c].key; }
+function eachCellRC(sb, fn) {
+  Object.keys(sb.ctx.gridCells2D).forEach(rStr => {
+    Object.keys(sb.ctx.gridCells2D[rStr]).forEach(cStr => { fn(rStr, cStr, sb.ctx.gridCells2D[rStr][cStr]); });
+  });
+}
+
 const LEGEND = [
   { value: '1', color: '#facc15', desc: 'POR', stack: 16, mat_1h: 'AF_03', mat_mid: 'MIDLOT_01', mat_top: 'TOP_01' },
   { value: 'F', color: '#ef4444', desc: 'FAIL', stack: 1, mat_1h: '', mat_mid: '', mat_top: '' },
@@ -447,24 +484,32 @@ function nonEmptyOnGrid(sb) {
 }
 
 // ── 좌표 단위 대조: 사라진 셀은 정확히 "원 밖" 집합인가 (키→값) ─────────────────
+// 🔴 대조는 **(r, c)** 로 한다. 종전에는 베이스라인의 키를 working tree의 `insideByKey`에
+//    직접 넣어 찾았는데, 키 원점이 옮겨진 뒤로 그 조회는 대부분 `undefined`를 돌려주었다 —
+//    즉 `wronglyRemoved`가 **구조적으로 빌 수밖에 없어** 이 단언은 아무것도 보지 못했다.
 {
-  const wKeys = new Set(savableSet(work));
-  const bPainted = new Set(Object.keys(base.ctx.gridData).filter(k => base.ctx.gridData[k] !== ''));
-  const removed = [...bPainted].filter(k => !wKeys.has(k));
-  // 제거된 키가 하나도 inside가 아니어야 한다.
-  const insideByKey = new Map();
-  Object.keys(work.ctx.gridCells2D).forEach(rStr => {
-    Object.keys(work.ctx.gridCells2D[rStr]).forEach(cStr => {
-      const co = work.ctx.gridCells2D[rStr][cStr];
-      insideByKey.set(co.key, co.inside);
-    });
+  const wSavableRC = new Set();
+  const wInsideRC = new Map();
+  const wKeyToRC = new Map();
+  eachCellRC(work, (r, c, co) => { wInsideRC.set(`${r}/${c}`, co.inside === true); wKeyToRC.set(co.key, `${r}/${c}`); });
+  savableSet(work).forEach(k => { if (wKeyToRC.has(k)) wSavableRC.add(wKeyToRC.get(k)); });
+
+  const bPaintedRC = [];
+  eachCellRC(base, (r, c, co) => {
+    if ((base.ctx.gridData[co.key] || '') !== '') bPaintedRC.push(`${r}/${c}`);
   });
-  const wronglyRemoved = removed.filter(k => insideByKey.get(k) === true);
-  chk('INV-F2-1', 'every dropped key is OUTSIDE the valid-die set (key->value, not a count)',
+  const removed = bPaintedRC.filter(rc => !wSavableRC.has(rc));
+  // 제거된 셀이 하나도 inside가 아니어야 한다.
+  const wronglyRemoved = removed.filter(rc => wInsideRC.get(rc) === true);
+  chk('INV-F2-1', 'every dropped cell is OUTSIDE the valid-die set (cell->value, not a count)',
     wronglyRemoved, []);
-  const keptOutside = [...wKeys].filter(k => insideByKey.get(k) !== true);
-  chk('INV-F2-1', 'no outside key survived into the savable set', keptOutside, []);
-  evidence.droppedKeys = { total: removed.length, sample: removed.slice(0, 12).sort() };
+  const keptOutside = [...wSavableRC].filter(rc => wInsideRC.get(rc) !== true);
+  chk('INV-F2-1', 'no outside cell survived into the savable set', keptOutside, []);
+  // 이 대조가 **무언가를 봤다**는 증거: 조회가 전부 미스였다면 위 두 단언은 공허하다.
+  chk('INV-F2-1', 'the comparison resolved every cell it looked up (an all-miss lookup proves nothing)',
+    removed.filter(rc => wInsideRC.get(rc) === undefined), []);
+  evidence.droppedKeys = { total: removed.length,
+    sample: removed.slice(0, 12).map(rc => { const [r, c] = rc.split('/'); return keyAt(work, r, c); }).sort() };
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -477,17 +522,28 @@ function runCopy(sb, on) {
   return { html: sb.captured.html, text: sb.captured.text };
 }
 
-// 같은 격자·같은 gridData를 두 소스에 준다. HEAD의 fillGrid가 더 많이 칠했으므로,
-// 비교는 **HEAD가 만든 gridData**를 양쪽에 넣고 한다 — 그래야 차이가 있다면 그 차이는
-// 오직 COPY HEADER MODE 코드에서 온 것이다.
+// 같은 격자에 **같은 셀**을 칠해 두 소스에 준다. 베이스라인의 fillGrid가 격자 전체를
+// 칠했으므로 그 그림(전 셀 + 원 안쪽 7칸은 'F')을 계획으로 삼는다 — 그래야 차이가 있다면
+// 그 차이는 오직 COPY HEADER MODE 코드에서 온 것이다.
+// 계획은 (r, c)로 적혀 있고 키는 각 샌드박스가 낸다 (§sharedPaintPlan).
+const SHARED_PAINT = sharedPaintPlan(work, 7);
 {
-  const sharedData = { ...base.ctx.gridData };
-  // 'F'도 섞되 **원 안쪽 셀**에 넣는다. 원 밖에만 넣으면 F의 COUNT가 0이 되어 두 번째 값의
-  // 계수 경로가 죽고, 그 축이 죽은 픽스처는 그 축에 대해 아무것도 검증하지 못한다.
-  const insideKeys = savableSet(work);
-  insideKeys.slice(0, 7).forEach(k => { sharedData[k] = 'F'; });
-  work.ctx.gridData = { ...sharedData };
-  base.ctx.gridData = { ...sharedData };
+  applyPaint(work, SHARED_PAINT);
+  applyPaint(base, SHARED_PAINT);
+
+  // 이 계획이 정말로 **양쪽에서 같은 셀**을 칠했는가. 키 공간이 갈라진 것이 원인이었으므로,
+  // 그 사실 자체를 계측해 남긴다: 0이 되면 (r, c) 우회는 무의미해진 것이고 그때 이 지표가
+  // 말을 한다 — 아무 말 없이 남아 있는 우회는 메커니즘처럼 보이는 주석일 뿐이다.
+  let sameKey = 0, diffKey = 0;
+  eachCellRC(work, (r, c) => { (keyAt(work, r, c) === keyAt(base, r, c)) ? sameKey++ : diffKey++; });
+  evidence.keyspace = { cells: sameKey + diffKey, sameKeyInBothRevisions: sameKey, differingKeys: diffKey,
+    workSample: [keyAt(work, 0, 0), keyAt(work, 1, 1)], baseSample: [keyAt(base, 0, 0), keyAt(base, 1, 1)] };
+  chk('fixture', 'the shared paint plan lands on the same cell count in both revisions',
+    [Object.keys(work.ctx.gridData).length, Object.keys(base.ctx.gridData).length],
+    [SHARED_PAINT.length, SHARED_PAINT.length]);
+  chk('fixture', 'both revisions agree on WHICH cells are inside (the plan is revision-neutral)',
+    (() => { const bad = []; eachCellRC(work, (r, c, co) => {
+      if (co.inside !== base.ctx.gridCells2D[r][c].inside) bad.push(`${r}/${c}`); }); return bad; })(), []);
 
   const wOff = runCopy(work, false);
   const bOff = runCopy(base, false);
@@ -1056,22 +1112,34 @@ MUTATIONS.forEach(([name, mut]) => {
     // 수량 일치만 보면 이 결함(M2)이 통과한다 — ⓐ와 ⓑ가 서로 다른 증상을 고친다는 증거다.
     if (nonEmptyOnGrid(sb) - save > 0) red = true;
 
-    // OFF byte identity against HEAD, with HEAD's gridData on both sides
-    const shared = { ...base.ctx.gridData };
-    sb.ctx.gridData = { ...shared };
-    base.ctx.gridData = { ...shared };
+    // OFF byte identity against the pinned baseline, with the SAME CELLS painted on both.
+    // 🔴 계획을 (r, c)로 심는다 (§sharedPaintPlan). 종전처럼 키를 그대로 나르면 이 축이
+    //    **모든 변이에서** 빨개져 아무것도 구별하지 못한다 — M6(체크박스 OFF인데 헤더를
+    //    내보낸다)은 오직 이 축만 잡으므로, 그때 M6은 "잡혔다"고 기록되지만 실제로는
+    //    자기 이유로 잡힌 적이 없다. 조용한 무장 해제다.
+    applyPaint(sb, SHARED_PAINT);
+    applyPaint(base, SHARED_PAINT);
     const off = runCopy(sb, false);
     const bOff = runCopy(base, false);
     if (off.html !== bOff.html || off.text !== bOff.text) red = true;
 
+    // 🔴 판독은 **HTML에서** 한다 — INV-ⓐ-4 블록과 같은 이유이고, 같은 파서다.
+    //    헤더 칸이 `colspan`으로 병합된 뒤로 TSV의 `i % 2`·`slice(-4)`는 거짓말을 한다
+    //    (병합된 칸 뒤에 빈 열이 따라온다). 본 검사 블록은 2026-07-29에 HTML로 옮겼는데
+    //    **이 변이 루프만 옛 판독이 남아** 있었고, 그 결과 이 두 축은 변이와 무관하게
+    //    **항상** 빨갰다. 실측: 의미가 동일한 대조군 변이(소스 끝에 주석 한 줄)조차
+    //    "잡혔다"로 기록되었다. 그 상태에서는 아래 `if (!red && f2bMutantIsRed(...))`가
+    //    **한 번도 호출되지 않아** M7~M12의 실제 탐지기가 통째로 죽어 있었다.
+    // ⚠️ 여기를 TSV 판독으로 되돌리지 마라. 12/12라는 숫자만 남고 채점은 사라진다.
     const on = runCopy(sb, true);
-    const l = on.text.split('\n');
-    const labels = (l[1] || '').split('\t').filter((_, i) => i % 2 === 0).slice(0, 4);
+    const rowsOnM = parseHtmlTable(on.html);
+    const VCm = sb.H.getVisualGridDimensions().visualCols;
+    const labels = (rowsOnM[1] || []).filter((_, i) => i % 2 === 0).map(c => c.text).slice(0, 4);
     if (JSON.stringify(labels) !== JSON.stringify(['Base', '1H', 'MID', 'TOP'])) red = true;
     const aux = {};
     const nA = sb.H.copyHeaderAuxRows ? sb.H.copyHeaderAuxRows(sb.H.computeLegendCounts()).length : 0;
-    for (let i = 3; i < 3 + nA; i++) {
-      const f = (l[i] || '').split('\t').slice(-4);
+    for (let i = 1; i <= nA; i++) {
+      const f = (rowsOnM[2 + i] || []).slice(VCm + 1, VCm + 5).map(c => c.text);
       if (f[0]) aux[f[0]] = Number(f[1]);
     }
     const byValue = {};
