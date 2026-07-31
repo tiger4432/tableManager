@@ -276,6 +276,25 @@ class CellSource(Base):
     __table_args__ = (
         Index("idx_sources_lookup", "table_name", "row_id", "column_name"),
         Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True),
+        # [R2 withdraw] The ONLY index that can bound "which cells does this source
+        # claim". `idx_sources_lookup_source` cannot: `source_name` is its LAST key,
+        # so a `(table_name, source_name)` predicate leaves it unusable and the
+        # planner falls back to a full parallel Seq Scan of the WHOLE table --
+        # measured 2026-07-31 on 13,148,355 rows: 861ms, 263,369 buffers, 13.07M
+        # rows discarded by Filter, for 75,000 matches.
+        #
+        # Key order: `column_name` third because `chain_replay._claimed_filter`
+        # takes an optional column list, and third position turns that from an
+        # in-index filter into part of the Index Cond. `row_id` fourth makes the
+        # scan COVERING for `withdraw_source` step 1, which selects exactly
+        # (row_id, column_name) -- without it the planner weighs one heap fetch per
+        # match against a seq scan and can go back to the seq scan.
+        #
+        # ALSO DECLARED in server/scripts/setup_db_performance.py Step 3.10 --
+        # **fix both places**. create_all does not add indices to a table that
+        # already exists, so that script is the only path onto an existing
+        # database (`idx_audit_user_recorrection` is here for the same reason).
+        Index("idx_sources_by_source", "table_name", "source_name", "column_name", "row_id"),
     )
 
 

@@ -58,6 +58,11 @@ if _SERVER_DIR not in sys.path:
 SOURCE_NAME = "enrichment_backfill"
 DEFAULT_CHUNK_SIZE = 1000
 EXISTING_BK_FETCH_CHUNK = 5000
+# IN-list size for the bounded existence probe. Same value the sibling batched
+# existence checks use (`map_meta_registrar`, `enrichment_candidates`); a probe is
+# capped by the sample anyway (retroactive.MAX_SCAN_LIMIT = 2000 source rows), so
+# in practice this is one round trip.
+BK_PROBE_CHUNK = 1000
 PROGRESS_EVERY_CHUNKS = 50
 SAMPLE_NEW_KEYS = 20
 
@@ -130,6 +135,81 @@ def _load_existing_business_keys(db, derived_model) -> set:
     return existing
 
 
+# --- "which of these identities already exist" — two answers, one question -----
+#
+# `run_backfill` asks this once per source chunk. WHICH implementation answers it
+# is the difference between a CLI run and a request-path preview, and the two are
+# not interchangeable:
+#
+#   * A COMPLETE backfill means "new, measured against the whole derived table".
+#     That is the preload, and it stays exactly as it was.
+#   * A SAMPLED preview reads at most `scan_limit` source rows, and a preload
+#     would still walk every derived identity — so `scan_limit` would not
+#     actually bound the request. The probe resolves only the sample's own keys.
+#
+# Both memo their answers for the life of a run, so a key created by an early
+# chunk is never re-classified as pre-existing by a later one. That invariant is
+# load-bearing: `run_backfill` refines rows it created in earlier chunks (display
+# hints, counts), and treating one as pre-existing would silently drop that write.
+
+class _PreloadedKeys:
+    """Every existing identity, snapshotted before the scan. The CLI's answer."""
+
+    kind = "preload"
+
+    def __init__(self, db, derived_model, log=print):
+        self._keys = _load_existing_business_keys(db, derived_model)
+        log(f"[backfill] derived '{derived_model.__table__.name}': "
+            f"{len(self._keys)} existing identities loaded")
+
+    def existing(self, bks) -> set:
+        return {bk for bk in bks if bk in self._keys}
+
+
+class _ProbedKeys:
+    """Only the sample's identities, resolved by indexed IN. The preview's answer.
+
+    Rides `business_key_val`, which every dynamic table indexes twice
+    (`models.py`: the column's own `index=True` plus the composite
+    `idx_<table>_bk`) — verified against the live catalogue, not assumed.
+
+    Same shape as `map_meta_registrar`'s batched existence check: chunked IN plus
+    a memo of what has already been answered. It is not a general replacement for
+    the preload — on a full scan it would issue a probe per chunk for the whole
+    table — which is why the caller picks by `scan_limit`, not by preference.
+
+    One deliberate difference from the preload: it matches the STORED key exactly,
+    where the preload compares `str(bk).strip()`. Exact is the truer answer here,
+    because `crud.apply_batch_updates` also matches rows with a raw
+    `business_key_val.in_(...)` — so on a key that only agrees after stripping,
+    the probe predicts what a write would actually do and the preload does not.
+    """
+
+    kind = "probe"
+
+    def __init__(self, db, derived_model, log=print):
+        self._db = db
+        self._model = derived_model
+        self._present = set()
+        self._absent = set()
+        log(f"[backfill] derived '{derived_model.__table__.name}': bounded mode — "
+            f"existing identities resolved per chunk (no full read)")
+
+    def existing(self, bks) -> set:
+        unknown = [bk for bk in bks
+                   if bk not in self._present and bk not in self._absent]
+        for i in range(0, len(unknown), BK_PROBE_CHUNK):
+            chunk = unknown[i:i + BK_PROBE_CHUNK]
+            found = {r[0] for r in self._db.query(self._model.business_key_val)
+                     .filter(self._model.business_key_val.in_(chunk)).all()}
+            self._present |= found
+            # Caching ABSENCE is what keeps a key this run created classified as
+            # new for the rest of the run — the same thing the preload's
+            # before-the-scan snapshot does, by never containing it.
+            self._absent |= (set(chunk) - found)
+        return {bk for bk in bks if bk in self._present}
+
+
 def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                  chunk_size: int = DEFAULT_CHUNK_SIZE, log=print,
                  scan_limit: int = None) -> dict:
@@ -146,6 +226,12 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     at all, which is the only knob that makes this callable from a request path -
     the admin count route passes it, the CLI does not. A `scan_limit`ed result is a
     sample: `rows_scanned` is the denominator the caller must report alongside it.
+
+    `scan_limit` also selects HOW existing derived identities are resolved
+    (`_PreloadedKeys` vs `_ProbedKeys` above, reported as `existing_lookup`). A
+    full run keeps the whole-table snapshot, because that is what "complete"
+    means; a sample resolves only its own keys, because otherwise `scan_limit`
+    bounded the source read while the derived read stayed unbounded.
     """
     from database import crud, models, schemas
     from enrichment_mapper import map_enrichment_dedup, _cell_value
@@ -186,8 +272,12 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         decision_key + [c for c in rule.get("list_columns", []) if c in src_cols]
     ))
 
-    existing_bks = _load_existing_business_keys(db, drv_model)
-    log(f"[backfill] derived '{derived_table}': {len(existing_bks)} existing identities loaded")
+    # `scan_limit` picks the resolver, not a preference: it is exactly the signal
+    # "this is a bounded sample". Without this the preload walked every derived
+    # identity even for a 200-row preview, so `scan_limit` bounded the source read
+    # and nothing else.
+    existing_keys = (_ProbedKeys if scan_limit is not None else _PreloadedKeys)(
+        db, drv_model, log=log)
 
     # In dry-run the count aggregations are irrelevant to identity diffing, so
     # strip them to skip the mapper's recount queries. Apply keeps them: counts
@@ -209,6 +299,9 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         "updated_rows": 0,
         "chunks": 0,
         "sample_new_keys": [],
+        # Which of the two answers above was used. Reported rather than inferred:
+        # "already_derived" means a different thing when it came from a sample.
+        "existing_lookup": existing_keys.kind,
     }
 
     import keyset_scan
@@ -245,11 +338,20 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
         items = result.get("updates") or []
 
+        # One existence question per chunk instead of one per item. Keys this run
+        # already claimed are excluded rather than re-asked: with the preload that
+        # was a no-op (`new_bks` and the snapshot are disjoint by construction),
+        # and with the probe it is what stops a row created in chunk 1 from being
+        # read back as pre-existing in chunk 5 and losing its refinement write.
+        chunk_bks = {item.get("business_key_val") for item in items} - new_bks
+        chunk_bks.discard(None)
+        present_bks = existing_keys.existing(chunk_bks) if chunk_bks else set()
+
         batch_items = []
         for item in items:
             combos_seen.add(tuple(item["updates"].get(k) for k in decision_key))
             bk = item.get("business_key_val")
-            if bk in existing_bks:
+            if bk in present_bks:
                 # Pre-existing derived identity: value gaps are the queue's
                 # job - the backfill never touches these rows.
                 already_bks.add(bk)

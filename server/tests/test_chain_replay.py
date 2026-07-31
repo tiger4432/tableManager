@@ -401,3 +401,73 @@ def test_r2_unknown_column_is_refused(rep_env):
     with pytest.raises(chain_replay.ReplayRefused):
         chain_replay.withdraw_source(rep_env, "crep_test_target", "custom_script",
                                      columns=["nope"], log=lambda *_: None)
+
+
+# --------------------------------------------------------------------------
+# R2 cost contract: the index that bounds `_claimed_filter`.
+#
+# The index itself is a PostgreSQL artifact and this suite runs on sqlite, so
+# nothing here can prove a plan - `setup_db_performance.py` Step 3.11 does that,
+# against real data, by EXPLAINing the statement. What CAN drift silently is the
+# pairing, and it drifts in two directions that a comment saying "fix both
+# places" does not catch:
+#   1. the definition exists in models.py AND in the builder script (create_all
+#      never adds an index to an existing table, so both are load-bearing),
+#   2. the predicate `_claimed_filter` builds must stay a PREFIX of that index -
+#      add one more filtered column and the index quietly stops bounding it while
+#      every test still passes.
+# --------------------------------------------------------------------------
+
+WITHDRAW_INDEX = "idx_sources_by_source"
+
+
+def _withdraw_index_columns():
+    idx = [i for i in models.CellSource.__table__.indexes if i.name == WITHDRAW_INDEX]
+    assert idx, f"{WITHDRAW_INDEX} is not declared on models.CellSource"
+    return [c.name for c in idx[0].expressions]
+
+
+def test_withdraw_index_definition_matches_the_builder_script():
+    import os
+    import re
+
+    cols = _withdraw_index_columns()
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "scripts", "setup_db_performance.py")
+    with open(path, "r", encoding="utf-8") as f:
+        src = f.read()
+    m = re.search(r'\("%s",\s*\n?\s*"cell_sources",\s*\n?\s*"\(([^)]*)\)"' % WITHDRAW_INDEX,
+                  src)
+    assert m, (f"{WITHDRAW_INDEX} is declared in models.py but the builder script "
+               f"does not create it - an existing database would never get it, "
+               f"because create_all only builds indices for NEW tables")
+    script_cols = [c.strip() for c in m.group(1).split(",")]
+    assert script_cols == cols, (
+        f"index definition drifted: models.py has {cols}, "
+        f"setup_db_performance.py has {script_cols}")
+
+
+def test_claimed_filter_stays_a_prefix_of_the_withdraw_index():
+    """Every column `_claimed_filter` can filter on must be an index prefix.
+
+    This is the assertion that would have caught the original defect: the
+    predicate was (table_name, source_name) while the only composite index put
+    `source_name` last, so the planner fell back to a Seq Scan of the whole
+    table. Nothing failed - it was just slow.
+    """
+    cols = _withdraw_index_columns()
+
+    def _referenced(conds):
+        names = []
+        for c in conds:
+            col = getattr(c, "left", None)
+            assert col is not None and getattr(col, "name", None), \
+                f"unrecognised predicate shape: {c!r}"
+            names.append(col.name)
+        return names
+
+    # Unscoped: (table_name, source_name) - must be the leading two keys, in order.
+    assert _referenced(chain_replay._claimed_filter("t", "s")) == cols[:2]
+    # Column-scoped: adds column_name - must be the third key, so the IN list is
+    # part of the Index Cond rather than an in-index filter.
+    assert _referenced(chain_replay._claimed_filter("t", "s", ["a", "b"])) == cols[:3]

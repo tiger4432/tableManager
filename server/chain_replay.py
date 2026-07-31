@@ -421,9 +421,10 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
     Two aggregate queries, no row materialisation, no per-cell recompute - so this
-    is the half of `withdraw_source` that can sit on a request path. Cost is the
-    same index scan `withdraw_source` step 1 pays (see its comment); it does NOT
-    grow with the number of matches, because nothing is loaded.
+    is the half of `withdraw_source` that can sit on a request path. The first
+    rides `idx_sources_by_source` (see `withdraw_source` step 1 for the measured
+    before/after); the second is driven from `cell_overwrites` and is therefore
+    bounded by the number of manual pins, not by `cell_sources`.
 
     Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
     BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
@@ -502,14 +503,20 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
 
     # 1) Cells this source claims.
     #
-    # COST, stated accurately because a count route now shares this predicate:
-    # the composite index is (table_name, row_id, column_name, source_name), so
-    # `source_name` is the LAST column and cannot bound the scan. PostgreSQL
-    # takes `table_name` as the boundary and applies `source_name` as an in-index
-    # filter, which means this reads every index entry belonging to the table -
-    # not the whole `cell_sources` table, but O(rows x columns) of THIS table.
-    # A `(table_name, source_name)` index would make it O(matches); see
-    # `count_withdrawable` below, which pays the same price for the same reason.
+    # COST, corrected by measurement 2026-07-31 (the earlier note here guessed,
+    # and guessed generously). `idx_sources_lookup_source` is
+    # (table_name, row_id, column_name, source_name) -- `source_name` LAST -- so
+    # it cannot serve this predicate at all, and PostgreSQL did not fall back to
+    # an in-index filter: it fell back to a full parallel Seq Scan of the WHOLE
+    # `cell_sources` table. On 13,148,355 rows that was 861ms and 263,369 buffers
+    # to return 75,000 matches.
+    #
+    # `idx_sources_by_source` (table_name, source_name, column_name, row_id)
+    # exists for this predicate -- declared in models.py CellSource and built on
+    # existing databases by scripts/setup_db_performance.py Step 3.10, which then
+    # EXPLAINs this exact statement to prove the planner uses it. With it the same
+    # query is an Index Only Scan: 10.9ms, 1,106 buffers, 0 rows discarded.
+    # `count_withdrawable` below rides the same index for the same reason.
     q = (db.query(models.CellSource.row_id, models.CellSource.column_name)
          .filter(*_claimed_filter(table_name, source_name, columns)))
     if row_ids:

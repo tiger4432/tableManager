@@ -417,3 +417,130 @@ def test_uninitialized_table_refused(bkfl_env, monkeypatch):
     monkeypatch.delitem(models.DYNAMIC_TABLES, "bkfl_test_src")
     with pytest.raises(bf.BackfillRefused, match="not initialized"):
         bf.run_backfill(db, rule, log=lambda *_: None)
+
+
+# ---------------------------------------------------------------------------
+# 9. the bounded read: scan_limit must bound the DERIVED read too
+#
+# `scan_limit` caps the source scan, and used to cap nothing else: every call
+# still loaded every existing derived business key into a Python set first. On a
+# request path that is unbounded work behind a bounded-looking knob. The full CLI
+# run keeps the whole-table snapshot, because that is what "complete" means.
+# ---------------------------------------------------------------------------
+
+def _spy_iter_pages(monkeypatch):
+    """Record which tables the shared keyset walk was pointed at.
+
+    Watching `iter_pages` rather than a returned label on purpose: the label is
+    what the code CLAIMS, the walk is the unbounded read itself.
+    """
+    import keyset_scan
+
+    real = keyset_scan.iter_pages
+    seen = []
+
+    def spy(db, model, *a, **kw):
+        seen.append(model.__table__.name)
+        return real(db, model, *a, **kw)
+
+    monkeypatch.setattr(keyset_scan, "iter_pages", spy)
+    return seen
+
+
+def test_sampled_run_never_walks_the_derived_table(bkfl_env, monkeypatch):
+    db = bkfl_env
+    _seed_standard_fixture(db)
+
+    seen = _spy_iter_pages(monkeypatch)
+    stats = bf.run_backfill(db, _rule(), apply=False, scan_limit=2,
+                            log=lambda *_: None)
+
+    assert stats["existing_lookup"] == "probe"
+    assert "bkfl_test_src" in seen, "the source scan must still happen"
+    assert "bkfl_test_derived" not in seen, (
+        "a scan_limit-ed run walked the whole derived table - the preview is "
+        "O(derived identities) no matter how small the sample is")
+    assert stats["rows_scanned"] == 2
+
+
+def test_full_run_still_snapshots_every_existing_identity(bkfl_env, monkeypatch):
+    """The CLI's semantics are unchanged: a complete run diffs against everything."""
+    db = bkfl_env
+    _seed_standard_fixture(db)
+
+    seen = _spy_iter_pages(monkeypatch)
+    stats = bf.run_backfill(db, _rule(), apply=False, log=lambda *_: None)
+
+    assert stats["existing_lookup"] == "preload"
+    assert "bkfl_test_derived" in seen, (
+        "a full backfill stopped reading the whole derived table - 'new' would "
+        "then mean something narrower than 'not present anywhere'")
+
+
+def test_probe_and_preload_agree_when_the_sample_covers_everything(bkfl_env):
+    """The bounded read must be EXACT for its sample, not merely cheaper.
+
+    Sized so the sample IS the whole table: then the two resolvers are answering
+    the identical question and any disagreement is the probe being wrong. The
+    fixture carries a genuinely pre-existing identity (EQP0_T0), so a probe that
+    silently found nothing would show up as already_derived collapsing to 0.
+    """
+    db = bkfl_env
+    _seed_standard_fixture(db)
+
+    full = bf.run_backfill(db, _rule(), apply=False, log=lambda *_: None)
+    sampled = bf.run_backfill(db, _rule(), apply=False, scan_limit=1000,
+                              log=lambda *_: None)
+
+    assert full.pop("existing_lookup") == "preload"
+    assert sampled.pop("existing_lookup") == "probe"
+    assert sampled == full
+    assert full["already_derived"] == 1, "fixture must actually exercise the lookup"
+
+
+def test_probe_keeps_an_identity_this_run_created_out_of_already_derived(bkfl_env):
+    """A row created in chunk 1 must still be refinable in chunk 2.
+
+    This is the whole reason the probe memoises. Apply mode commits per chunk, so
+    the naive implementation - ask the database fresh, every chunk - reads back
+    the row it just wrote, files it under `already_derived`, and drops the later
+    chunk's refinement write. The preload never had this problem because its
+    snapshot predates the run; the probe has to reproduce that on purpose.
+    """
+    db = bkfl_env
+    _seed_source(db, [
+        {"equipment": "EQP7", "event_time": "T7", "chip_id": "C1", "lot_hint": "L"},
+        {"equipment": "EQP7", "event_time": "T7", "chip_id": "C2", "lot_hint": "L"},
+    ])
+
+    stats = bf.run_backfill(db, _rule(), apply=True, scan_limit=2, chunk_size=1,
+                            log=lambda *_: None)
+
+    assert stats["chunks"] == 2, "fixture must actually span two chunks"
+    assert stats["existing_lookup"] == "probe"
+    assert stats["already_derived"] == 0, (
+        "the run's own creation was read back as pre-existing")
+    assert stats["created_rows"] == 1
+    assert stats["updated_rows"] == 1, (
+        "the second chunk's refinement write was dropped")
+
+    rows = _derived_rows(db)
+    assert [r.business_key_val for r in rows] == ["EQP7_T7"]
+    assert float(rows[0].chip_count) == 2.0, (
+        "the count aggregation must see both source rows")
+
+
+def test_probe_reports_a_pre_existing_identity_it_did_not_create(bkfl_env):
+    """The other half: a row that predates the run IS already_derived."""
+    db = bkfl_env
+    tx0 = _seed_source(db, [
+        {"equipment": "EQP8", "event_time": "T8", "chip_id": "C1", "lot_hint": "L"},
+    ])
+    _run_chain_for_tx(db, tx0)
+    assert [r.business_key_val for r in _derived_rows(db)] == ["EQP8_T8"]
+
+    stats = bf.run_backfill(db, _rule(), apply=False, scan_limit=10,
+                            log=lambda *_: None)
+    assert stats["existing_lookup"] == "probe"
+    assert stats["already_derived"] == 1
+    assert stats["new_combinations"] == 0

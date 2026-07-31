@@ -1,7 +1,7 @@
 import sys
 import os
 import time
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 # 프로젝트 루트를 경로에 추가
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -81,6 +81,105 @@ def _verify_plan_shapes(conn, targets):
         print("   !! A filter-shaped plan means the index exists but is LINEAR in "
               "table size. Check suggest_index_definition() and the database "
               "collation — re-running this script will NOT fix it.")
+
+
+# A seq scan of a small `cell_sources` is correct behaviour, not a defect: below
+# roughly this many rows the whole table is a few thousand pages and an index
+# cannot pay for itself, so the planner is RIGHT to ignore it. Verifying the plan
+# there would report a failure that is not one. Stated as a threshold rather than
+# left implicit so the skip is visible in the output instead of silent.
+WITHDRAW_PLAN_MIN_ROWS = 100_000
+
+
+def _verify_withdraw_plan(conn, idx_name):
+    """EXPLAIN the two statements the R2 withdraw path issues; prove the index BOUNDS them.
+
+    Same discipline as Step 3.9 and for the same reason: "CREATE INDEX ...
+    Success" proves the index EXISTS, which is a different fact from the planner
+    choosing it. An index that exists and is not chosen is worse than none,
+    because the next reader sees the DDL and stops looking.
+
+    Reuses `value_suggest.classify_seek_plan` — the same verdict vocabulary —
+    with `expect_range=False`. That flag exists for exactly this distinction:
+    the predicate here is EQUALITY on (table_name, source_name), so an
+    `Index Cond` carrying no range operator is the correct shape, and demanding
+    a range would fail a healthy index.
+
+    The predicate is compiled from `chain_replay._claimed_filter`, the single
+    builder `count_withdrawable` and `withdraw_source` share, so the plan
+    verified cannot drift from the plan served. The probe pair is the LARGEST
+    real (table_name, source_name) in the data — a literal that matches nothing
+    produces a plan that proves nothing, and the worst case is the case worth
+    proving.
+    """
+    import value_suggest
+    import chain_replay
+    from sqlalchemy import func
+    from database import models
+
+    total = conn.execute(text("SELECT count(*) FROM cell_sources")).scalar() or 0
+    if total < WITHDRAW_PLAN_MIN_ROWS:
+        print(f" - NOT VERIFIED: cell_sources has {total} row(s) (< "
+              f"{WITHDRAW_PLAN_MIN_ROWS}). A Seq Scan is the correct plan at this "
+              f"size, so this check would report a failure that is not one. "
+              f"Re-run once the table is large.")
+        return
+
+    pair = conn.execute(text(
+        "SELECT table_name, source_name, count(*) AS n FROM cell_sources "
+        "GROUP BY 1, 2 ORDER BY n DESC LIMIT 1")).first()
+    if pair is None:
+        print(" - !! NOT VERIFIED: no (table_name, source_name) pair found.")
+        return
+    table, source, matches = pair
+    print(f" - Probe: table_name={table!r} source_name={source!r} "
+          f"({matches} of {total} rows)")
+
+    conds = chain_replay._claimed_filter(table, source)
+    # The two shapes the missing index actually cost: the count route's aggregate
+    # and `withdraw_source` step 1's (row_id, column_name) projection. The pinned
+    # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner
+    # drives it from `cell_overwrites` (bounded by the number of manual pins, not
+    # by cell_sources), so it does not exercise this index and its unrelated seq
+    # scan would be miscounted as this index failing.
+    probes = [
+        ("count route / cells_claimed",
+         select(func.count()).select_from(models.CellSource).where(*conds)),
+        ("withdraw_source step 1",
+         select(models.CellSource.row_id, models.CellSource.column_name).where(*conds)),
+    ]
+    ok = 0
+    for label, stmt in probes:
+        sql = str(stmt.compile(conn.engine, compile_kwargs={"literal_binds": True}))
+        t0 = time.time()
+        try:
+            plan = "\n".join(r[0] for r in conn.execute(
+                text("EXPLAIN (ANALYZE) " + sql)).fetchall())
+        except Exception as e:
+            print(f" - !! {label}: could not EXPLAIN ({e}) — UNCHECKED")
+            continue
+        elapsed = time.time() - t0
+        verdict, reasons, discarded = value_suggest.classify_seek_plan(
+            plan, expect_range=False)
+        # classify_seek_plan judges the SHAPE. It cannot tell which index produced
+        # the Index Cond, and a bounded-looking plan from some other index would
+        # still leave this one dead weight, so the name is checked separately.
+        used = idx_name in plan
+        if verdict == value_suggest.PLAN_OK and used:
+            ok += 1
+            print(f"   {label}: bounded by {idx_name} "
+                  f"({discarded} rows discarded, {elapsed:.2f}s)")
+        else:
+            why = list(reasons) + ([] if used else [f"{idx_name}_not_used"])
+            print(f" - !! {label}: {', '.join(why)} "
+                  f"[rows discarded by filter: {discarded}]")
+            for line in plan.splitlines():
+                print(f"      {line}")
+    print(f" - Plan shape: {ok}/{len(probes)} bounded by {idx_name}.")
+    if ok < len(probes):
+        print("   !! A filter-shaped plan here means the withdraw count is LINEAR "
+              "in cell_sources. Re-running this script will NOT fix it — check the "
+              "index definition against chain_replay._claimed_filter.")
 
 
 def setup_performance():
@@ -371,6 +470,55 @@ def setup_performance():
             _verify_plan_shapes(conn, targets)
         except Exception as e:
             print(f"   Suggestion index step failed: {e}")
+
+        # 3.10 [R2 withdraw] The index that bounds "which cells does this source claim".
+        #   `models.py CellSource.__table_args__` carries the SAME definition —
+        #   **fix both places**. create_all builds it on a NEW database; on an
+        #   existing one it never adds an index to a table that is already there,
+        #   so this step is the only path (idx_audit_user_recorrection, Step 3.6,
+        #   is here for that identical reason).
+        #
+        #   Why it is needed: the existing composite is
+        #   (table_name, row_id, column_name, source_name) — `source_name` LAST, so
+        #   it cannot serve a (table_name, source_name) filter at all. Measured on
+        #   this box 2026-07-31, 13,148,355 rows: the count route's aggregate fell
+        #   to a full parallel Seq Scan — 861ms, 263,369 buffers, 13.07M rows thrown
+        #   away by Filter to return 75,000 matches. That cost is O(whole table) and
+        #   sits on a REQUEST path (`GET /admin/retroactive/count?op=withdraw`).
+        #
+        #   This does NOT make the existing composite redundant: that one is UNIQUE
+        #   and is the upsert's conflict target (13.2M scans on this box vs 858 for
+        #   its non-unique prefix). Nothing here drops anything.
+        print("\nStep 3.10: Creating cell_sources withdraw-scope index (R2)...")
+        withdraw_idx = ("idx_sources_by_source", "cell_sources",
+                        "(table_name, source_name, column_name, row_id)")
+        idx_name, table, definition = withdraw_idx
+        print(f" - Creating {idx_name} on {table} {definition}...")
+        t0 = time.time()
+        built = False
+        try:
+            conn.execute(text(
+                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
+                f"ON {table} {definition}"))
+            size = conn.execute(text(
+                "SELECT pg_size_pretty(pg_relation_size(:n))"),
+                {"n": idx_name}).scalar()
+            print(f"   Success ({time.time() - t0:.2f}s, {size})")
+            built = True
+        except Exception as e:
+            print(f"   Failed to create {idx_name}: {e}")
+        if built:
+            # ANALYZE HERE, not in Step 4. Column statistics decide whether the
+            # planner believes the new index is selective, and Step 4 runs AFTER
+            # the verification below — checking the plan on stale statistics would
+            # report a failure the next autovacuum quietly fixes.
+            print(" - ANALYZE cell_sources (before checking the plan)...")
+            conn.execute(text("ANALYZE cell_sources"))
+            print("\nStep 3.11: Verifying withdraw index PLAN SHAPE...")
+            try:
+                _verify_withdraw_plan(conn, idx_name)
+            except Exception as e:
+                print(f" - !! NOT VERIFIED: plan check itself failed ({e})")
 
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
