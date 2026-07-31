@@ -16,7 +16,9 @@ import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } 
 // [F9] 「내 config가 먹었는가」. The view model lives in its own DOM-free module so the
 // contract harness can score it: the server composes the operator-facing sentence and this
 // page renders `detail` VERBATIM. Nothing here decides what counts as ineffective.
-import { buildConfigResolveView, buildDryRunView, CHROME } from './config_resolve_view.js';
+import {
+  buildConfigResolveView, buildDryRunView, CHROME, fetchFailureLine,
+} from './config_resolve_view.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -1564,7 +1566,11 @@ async function refreshCoreValueLines(force = false) {
 // 그래도 30초 자동 갱신에 매번 태울 이유는 없어서 1분 스로틀을 둔다. 설정이 바뀌는
 // 유일한 계기(Reload Configs)에서는 force로 즉시 다시 읽는다.
 const CONFIG_RESOLVE_MIN_INTERVAL_MS = 60 * 1000;
+// Stamped only after a SUCCESSFUL read (see below) - a failed attempt must not buy silence.
 let configResolveLastAt = 0;
+// The token generation the last attempt ran under. When it moves, the token was replaced, and
+// that is a changed cause rather than a timer tick: the next refresh is let through.
+let configResolveTokenGeneration = 0;
 let configResolveView = null;
 let configResolveRaw = '';
 // 문제가 있을 때 클릭 없이 보이게 하되 **한 번만** — 운영자가 접은 것을 자동 갱신이
@@ -1594,14 +1600,42 @@ function initConfigResolveLine() {
   if (hint) hint.textContent = CHROME.DETAIL_HINT;
 }
 
+/** What a failing response says about ITSELF, for `fetchFailureLine`.
+ *
+ * `isGateRejection` is the load-bearing part and it is REUSED, not re-derived: a 401 is only
+ * ours if it carries `WWW-Authenticate: X-Admin-Token`, and a proxy answering the port with its
+ * own `Basic realm=...` must not be reported as a bad token. That test already exists at the
+ * top of this file for the same reason and a second copy of it would drift from the first.
+ */
+function failureFactOf(res) {
+  return {
+    status: res.status,
+    gate: isGateRejection(res),
+    server: (res.headers && res.headers.get ? res.headers.get('Server') : '') || '',
+  };
+}
+
 async function refreshConfigResolve(force = false) {
   const now = Date.now();
-  if (!force && now - configResolveLastAt < CONFIG_RESOLVE_MIN_INTERVAL_MS) return;
-  configResolveLastAt = now;
+  // A token that ARRIVED since the last attempt is a changed cause, not a timer tick. Without
+  // this, the operator does exactly what the failure line told them to do and the line goes on
+  // saying it for the rest of the window - which reads as "it did not work".
+  const tokenChanged = adminTokenGeneration !== configResolveTokenGeneration;
+  if (!force && !tokenChanged
+      && now - configResolveLastAt < CONFIG_RESOLVE_MIN_INTERVAL_MS) return;
+  configResolveTokenGeneration = adminTokenGeneration;
+  // Stays null until a response actually arrives, which is what lets the catch below tell
+  // "nothing is listening" apart from "the server answered, and the answer was 404".
+  let failure = null;
   try {
     const res = await adminFetch(`${API_BASE}/admin/config/resolve`);
+    failure = failureFactOf(res);
     if (!res.ok) throw new Error(`config resolve ${res.status}`);
     const raw = await res.text();
+    // 여기서 시각을 찍는다 — **읽기에 성공한 뒤**. 스로틀은 성공적인 폴링이 화면을 계속
+    // 다시 그리는 것을 막으려고 있는 것이고, 실패는 그 일을 하지 않았다. 실패가 시각을
+    // 찍으면 실패한 시도가 침묵 1분을 사 버려서, 원인이 해소돼도 화면이 그대로다.
+    configResolveLastAt = now;
     // 바뀐 게 없으면 다시 그리지 않는다. 설정은 거의 안 바뀌는데 갱신 주기는 계속 도므로,
     // 매번 다시 그리면 운영자가 펼쳐 둔 참조뷰가 읽는 도중에 접힌다.
     if (raw === configResolveRaw && configResolveView) return;
@@ -1611,21 +1645,27 @@ async function refreshConfigResolve(force = false) {
     configResolveView = buildConfigResolveView(JSON.parse(raw));
     renderConfigResolve();
   } catch (e) {
-    // 조회 실패는 「설정이 멀쩡하다」가 아니다 — 대시와 사유를 남긴다.
-    console.error('[ConfigResolve] resolve report fetch failed', e);
+    // A failed read is NOT "the config is fine" - it leaves a dash and a reason. Which reason
+    // matters: a 404 is not a failure to reach the server, it is the server saying it does not
+    // have this feature, and the hand that fixes that is on a different thing (restart) than
+    // the one that fixes a refused connection, a rejected token, or a proxy that answered
+    // instead of us. `fetchFailureLine` owns that split so the dry-run below gets it from the
+    // same place.
+    console.error('[ConfigResolve] resolve report fetch failed', failure, e);
     configResolveView = null;
-    renderConfigResolveFailure();
+    renderConfigResolveFailure(fetchFailureLine(failure, CHROME.FETCH_FAILED));
   }
 }
 
-function renderConfigResolveFailure() {
+// Stays quiet and muted on failure: no auto-open, no toast, no modal. Only the words change.
+function renderConfigResolveFailure(text) {
   const line = byId('config-resolve-summary');
   const valueEl = byId('config-resolve-value');
   const subEl = byId('config-resolve-sub');
   const body = byId('config-resolve-body');
   if (!line || !valueEl || !subEl) return;
-  valueEl.textContent = '—';
-  subEl.textContent = CHROME.FETCH_FAILED;
+  valueEl.textContent = '―';
+  subEl.textContent = text;
   line.dataset.tone = 'muted';
   if (body) body.textContent = '';
 }
@@ -1772,7 +1812,7 @@ function cfgMeasureEl(rule) {
 function cfgDryRunEl(cached) {
   const box = cfgEl('div', 'cfg-dryrun');
   if (!cached.ok) {
-    box.appendChild(cfgEl('div', 'cfg-detail', CHROME.MEASURE_FAILED));
+    box.appendChild(cfgEl('div', 'cfg-detail', cached.failure || CHROME.MEASURE_FAILED));
     return box;
   }
   const view = cached.view;
@@ -1800,14 +1840,21 @@ async function runAutoConfirmDryRun(rule, btn, host) {
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = CHROME.MEASURING;
+  // Same states as the report above, for the same reason: this route landed in the same commit,
+  // so an old process 404s here too, and the same proxy answers the same port. One classifier,
+  // not two.
+  let failure = null;
   try {
     const res = await adminFetch(
       `${API_BASE}/admin/enrichment/auto-confirm/dry-run?rule=${encodeURIComponent(rule)}`);
+    failure = failureFactOf(res);
     if (!res.ok) throw new Error(`dry-run ${res.status}`);
     dryRunByRule.set(rule, { ok: true, view: buildDryRunView(await res.json()) });
   } catch (e) {
-    console.error('[ConfigResolve] auto-confirm dry-run failed', e);
-    dryRunByRule.set(rule, { ok: false, view: null });
+    console.error('[ConfigResolve] auto-confirm dry-run failed', failure, e);
+    dryRunByRule.set(rule, {
+      ok: false, view: null, failure: fetchFailureLine(failure, CHROME.MEASURE_FAILED),
+    });
   } finally {
     btn.disabled = false;
     btn.textContent = label;

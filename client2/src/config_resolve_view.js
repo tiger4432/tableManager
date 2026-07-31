@@ -36,6 +36,11 @@ export const CHROME = Object.freeze({
   MEASURE_FAILED: '드라이런 요청 실패',
   REFUSED: '보류 사유',
   FETCH_FAILED: '조회 실패',
+  // The four failure sentences. See `fetchFailureText` below for why these are client-owned.
+  FETCH_OLD_SERVER: '실행 중인 서버가 구버전입니다 ― 서버를 재시작하세요',
+  FETCH_UNREACHABLE: '서버에 연결할 수 없습니다 ― 서버가 실행 중인지 확인하세요',
+  FETCH_UNAUTHORIZED: '관리자 토큰이 거부되었습니다 ― 새로고침 후 다시 입력하세요',
+  FETCH_INTERCEPTED: '관리자 게이트가 아닌 응답입니다 ― 프록시 등 앞단에 무엇이 있는지 확인하세요',
   NO_DOMAINS: '서버가 보고한 설정 도메인이 없습니다.',
 });
 
@@ -43,6 +48,83 @@ export const CHROME_STRINGS = Object.freeze(Object.values(CHROME));
 
 /** The four text provenances the harness scores. */
 export const TEXT_SOURCES = Object.freeze(['server', 'value', 'chrome', 'count']);
+
+/** What a failed response said about ITSELF. Built by the caller, which owns the `Response`.
+ *
+ * `gate` must come from the caller's existing `isGateRejection` rather than from a status
+ * comparison here — see `fetchFailureText`.
+ *
+ * @typedef {{status: number, gate: boolean, server: string}} FetchFailure
+ */
+
+/** Why the request failed, said as the thing to DO about it.
+ *
+ * THE ONE EXCEPTION TO "THE SERVER COMPOSES THE SENTENCE", AND IT PROVES THE RULE.
+ *   Everywhere else the client renders `detail` verbatim because the server is the only side
+ *   that knows what happened. Here it is the reverse: a server that predates this route cannot
+ *   compose a sentence about not having the route — a server without the route cannot answer
+ *   at all. The 404 IS the answer, and only the client is positioned to read it.
+ *
+ *   So the words stay in the frozen CHROME table above, tagged as chrome like every other
+ *   client-owned string, and nothing is composed per call: this maps a failure onto one of five
+ *   constants. No interpolation, no per-status sentence building. (The one dynamic fact worth
+ *   showing is separated out into `fetchFailureEvidence` precisely so that stays true.)
+ *
+ * WHY FIVE AND NOT ONE. 「조회 실패」 answered every one of these with the same shrug, and they
+ * put different hands on different things:
+ *
+ *   no response    nothing answered at all      → is the server running
+ *   404            the process is older than the route → RESTART the server
+ *   401/403, gate  our admin gate rejected us    → the token
+ *   401/403, NOT   something else answered       → what is on this port
+ *   anything else  the route is there and it broke → the caller's own failure label
+ *
+ * THE 401 SPLIT IS THE SAME DEFECT ONE LEVEL IN, so it gets the same treatment. A 401 is not
+ * self-evidently OUR gate: a proxy sitting in front of the port answers with its own
+ * `WWW-Authenticate: Basic realm=...`, and a corporate proxy did exactly that to a loopback
+ * call. Sending an operator to the token modal for a proxy costs them the afternoon. The test
+ * for "ours" is a header, not a status, and the caller already owns it (`isGateRejection`) —
+ * this function must not re-derive it, or the two copies will drift.
+ *
+ * @param {FetchFailure|null} failure The response's own account of itself, or null/undefined
+ *   when the request never got a response at all (fetch rejected: refused, DNS, offline).
+ * @param {string} fallback The caller's own label for "it really did fail" — the only branch
+ *   where the surface's own noun belongs, since the others are about who answered.
+ * @returns {string} A CHROME entry. Never a newly composed string.
+ */
+export function fetchFailureText(failure, fallback = CHROME.FETCH_FAILED) {
+  if (!failure) return CHROME.FETCH_UNREACHABLE;
+  if (failure.status === 404) return CHROME.FETCH_OLD_SERVER;
+  if (failure.status === 401 || failure.status === 403) {
+    return failure.gate ? CHROME.FETCH_UNAUTHORIZED : CHROME.FETCH_INTERCEPTED;
+  }
+  return fallback;
+}
+
+/** The responder's own `Server:` header, when naming it tells the operator something.
+ *
+ * Not a sentence and not composed — a value the responder sent, echoed verbatim, the same
+ * provenance rule `val()`/`srv()` follow above. It is separated from the sentence so that
+ * "the text is always a CHROME constant" stays literally true and testable.
+ *
+ * Silent when it says nothing: absent (some deployments strip it), or our own server, in which
+ * case the sentence already covers it. `Server: squid/5.7` next to a failure, on the other
+ * hand, is the single most useful fact on the screen.
+ */
+export function fetchFailureEvidence(failure) {
+  const server = failure && failure.server ? String(failure.server).trim() : '';
+  if (!server || /uvicorn/i.test(server)) return null;
+  // A response header is input from whoever answered, which is exactly the party in question
+  // when this fires. It is a hint on one line, so it is capped at one line's worth.
+  return server.slice(0, 40);
+}
+
+/** The failure line as rendered: the sentence, plus the evidence when there is any. */
+export function fetchFailureLine(failure, fallback = CHROME.FETCH_FAILED) {
+  const text = fetchFailureText(failure, fallback);
+  const evidence = fetchFailureEvidence(failure);
+  return evidence ? `${text} (${evidence})` : text;
+}
 
 /** PRESENTATION ONLY — which colour a bucket is drawn in.
  *
