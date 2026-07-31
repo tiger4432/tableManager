@@ -72,9 +72,14 @@ function sliceFunction(source, name) {
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getScreenShift', 'getTransformedPhysicalConfig',
-  'getDieIndex', 'getCanvasCellFromDb', 'getDbCoords',
+  'getDieIndex', 'getCanvasCellFromDb', 'getCanvasCellFromDieIndex', 'getDbCoords',
   'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameDimBounds', 'applyPhysicalGeometry', 'applyPresetObject',
+  // The ONE reaction to "the origin box moved under the cells", and the record it
+  // compares against. A geometry-preset edit and a valid-die designation reach the SAME
+  // function, so a slice that omits it turns applyPhysicalGeometry into a ReferenceError
+  // that loadExistingMap's catch reports as a 0-cell load.
+  'seatingSnapshot', 'reseatCellsToStoredCoords',
   'validDieBasis', 'isValidDieAt',
   'renderGridCanvas', 'cellFillColor', 'isProtectedFCell',
   'eachSavableCell', 'classifyUnsavableCells', 'serverCellKeySet',
@@ -173,6 +178,9 @@ function buildEnv(src, opts = {}) {
     alert: (m) => log.alerts.push(String(m)),
     physFrameOverride: null,
     boundingBoxCache: {},
+    // Where the cells on screen are currently seated. Module-level in the source; declared
+    // here so a read of it is a value, not a ReferenceError.
+    cellsSeatedUnder: null,
     currentRotation: 0, currentSide: 'front',
     gridData: {}, gridCells2D: {},
     legend: [], activeBrush: '', legendDirty: false,
