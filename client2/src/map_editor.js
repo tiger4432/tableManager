@@ -1028,6 +1028,23 @@ function initDOMElements() {
         if (currentCols * currentRows > 400 && el.showAnnotations) {
           el.showAnnotations.checked = false;
         }
+        // [규칙 ④] 격자 치수도 기하 편집이다 — **물리 규격 한 칸을 고치는 것과 같은 연산**이라
+        // 반응도 같은 함수 하나다(§reseatCellsToStoredCoords · §onPhysicalGeometryEdit).
+        //
+        // 🔴 치수가 바뀌면 두 가지가 함께 움직이고, 저장 좌표가 갈리는 것은 그 **차이**다:
+        //    ① 원점 상자 — 원의 반지름은 칸 수로 고정인데 중심이 `visualCols / 2`라 격자가
+        //       넓어지면 원 전체가 옆으로 미끄러진다.
+        //    ② 다이 인덱스 자체 — `getDieIndex`가 웨이퍼 중심 기준이라
+        //       (`colVisual − (visualCols − 1) / 2` + 짝수 보정) **셀의 키**도 함께 바뀐다.
+        //    둘이 같은 양만큼 움직이면 서로 상쇄돼 아무 일도 없고, 어긋나면 **격자 전체**가
+        //    다시 번호를 받는다. 실측(2026-07-31, 생산 프레임 3개 × 각 축 ±1~±3): 36건 중
+        //    16건이 어긋났고, 어긋난 16건은 예외 없이 셀의 **100%**였다(261/261 · 273/273 ·
+        //    461/461). 나머지 20건에서 이 반응이 옮기는 셀은 **측정된 0**이다.
+        // ⚠️ "상자가 안 움직였으면 반응할 것도 없다"는 참이 아니다 — QERWER 23→22열은
+        //    `box.minC`가 2에서 그대로인데 261칸 전부가 다시 번호를 받았다.
+        // ⚠️ 이 호출은 `#grid-y-invert`·`#grid-start-x/y`(같은 배열에 있는 규칙 ⑤·START)에는
+        //    닿지 않는다. 반응 자신도 그 축이 다르면 거절하지만, 애초에 부르지 않는다.
+        reseatCellsToStoredCoords(cellsSeatedUnder);
       } else if (input === el.gridStartX || input === el.gridStartY) {
         let v = parseInt(input.value, 10);
         if (isNaN(v)) input.value = 0;
@@ -6458,7 +6475,16 @@ function copyGridToExcel() {
   // 표 전체의 열 수. 격자+보조표가 넓으면 헤더가 그 폭을 나눠 갖고, 헤더가 더 넓어야 하면
   // (열 3~5개짜리 좁은 격자) 표 전체가 그만큼 넓어진다. 어느 쪽이든 **모든 행이 이 수와 같다.**
   const totalCols = headerOn ? Math.max(visualCols + GAP_W + AUX_W, groupMinCols) : visualCols;
-  const groupSpans = headerOn ? distributeSpans(groupTexts, totalCols) : [];
+  // 🔴 [상단 병합의 범위] 병합은 **맵 격자에서 끝난다.** 종전에는 TITLE과 그룹 띠가 둘 다
+  //    `totalCols`(= 격자 + 간격 + 보조표)에 걸쳐, 인쇄물에서 제목 줄과 그룹 띠가 **DOE 보조표
+  //    위를 지나갔다** — 실측: 9열 맵에서 병합 18열, 51열 맵에서 병합 60열.
+  //    남는 열은 병합하지 않고 **개별 빈 칸**으로 채우므로 행 폭은 여전히 `totalCols`다
+  //    (위 ⚠️의 "모든 행의 열 합계가 같아야 한다"는 그대로 지켜진다).
+  // ⚠️ 하한은 `groupMinCols`다. 라벨이 들어갈 최소 폭보다 격자가 좁으면(열 3~5개) 띠를 격자에
+  //    맞춰 깎는 것은 `MIDLOT_01`을 다시 자르는 일 — 이 폭 정책이 존재하는 그 결함이다.
+  //    그래서 그때는 종전 폭을 그대로 쓴다(= 이 라운드에서 아무것도 바뀌지 않는다).
+  const headerBandCols = headerOn ? Math.max(visualCols, groupMinCols) : visualCols;
+  const groupSpans = headerOn ? distributeSpans(groupTexts, headerBandCols) : [];
 
   const headCellStyle = `border: 1px solid ${lineHex}; background-color: ${outHex}; color: ${textEmptyHex};`
     + ' font-size: 10pt; font-weight: bold; text-align: center; vertical-align: middle; padding: 2px 6px;';
@@ -6507,8 +6533,12 @@ function copyGridToExcel() {
     // (`${selectedTable} · ${mapKey}`) — 인쇄물에 붙는 이름과 화면이 부르는 이름을 갈라 놓지
     // 않기 위해서다. 맵 키는 `getCurrentMapKey`(7b canonical)에서만 나온다.
     const title = copyTitleText();
-    html += `<tr><td colspan="${totalCols}" style="border: none; font-size: 13pt; font-weight: bold;`
-      + ` text-align: left; padding: 4px 2px;">${escapeHtmlAttr(title)}</td></tr>`;
+    // 병합이 끝난 뒤의 남는 열. 병합이 아니라 **빈 칸 하나씩**이라 행 폭만 맞추고 표식은
+    // 격자 밖으로 나가지 않는다. `gapStyle`은 격자↔보조표 간격 칸이 쓰는 그 스타일이다.
+    const bandPad = new Array(Math.max(0, totalCols - headerBandCols))
+      .fill(`<td style="${gapStyle}"></td>`).join('');
+    html += `<tr><td colspan="${headerBandCols}" style="border: none; font-size: 13pt; font-weight: bold;`
+      + ` text-align: left; padding: 4px 2px;">${escapeHtmlAttr(title)}</td>${bandPad}</tr>`;
     // 🔴 여기가 사용자가 본 그 줄이다. 종전에는 칸마다 `<td>` 하나 = 맵 셀 한 칸(32px)이라
     //    `MIDLOT_01`이 들어갈 자리가 없었다. 이제 각 칸이 `colspan`으로 병합되고, 폭은
     //    글자 수에 비례한다. 짝수 칸이 라벨·홀수 칸이 값이라는 순서는 그대로다(INV-ⓐ-4).
@@ -6517,14 +6547,16 @@ function copyGridToExcel() {
       const style = (i % 2 === 0) ? headCellStyle : headValStyle;
       groupRow += `<td colspan="${groupSpans[i]}" style="${style}">${escapeHtmlAttr(t)}</td>`;
     });
-    html += `${groupRow}</tr>`;
+    html += `${groupRow}${bandPad}</tr>`;
     matrix.push([title].concat(new Array(Math.max(0, totalCols - 1)).fill('')));
     const groupCells = [];
     groupTexts.forEach((t, i) => {
       groupCells.push(t);
       for (let k = 1; k < groupSpans[i]; k++) groupCells.push('');
     });
-    while (groupCells.length < totalCols) groupCells.push('');   // 분배가 정확하면 무동작
+    // 평문에는 병합이 없으므로 `bandPad`의 빈 칸도 여기서는 그냥 빈 열이다. 띠가 격자에서
+    // 끝난 뒤로 이 채움은 실제로 동작한다(종전에는 분배가 `totalCols`를 정확히 채워 무동작).
+    while (groupCells.length < totalCols) groupCells.push('');
     matrix.push(groupCells);
   }
 

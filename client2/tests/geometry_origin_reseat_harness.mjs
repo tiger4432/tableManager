@@ -527,6 +527,112 @@ function run(src) {
     evidence.push(`1c keystrokes ${seen.join(' ')} -> disagree ${d.bad.length}/${d.total}`);
   }
 
+  // ══ 1d. THE GRID DIMENSIONS ARE A GEOMETRY EDIT TOO ══════════════════════════════════
+  //     `COLS`/`ROWS` are the fourth place the origin box moves under the cells, and the one
+  //     nobody had looked at: `map_editor.js` wired them to a clamp and a redraw while the six
+  //     physical-spec inputs went through the reaction.
+  //
+  //     WHY IT DRIFTS — and why it is NOT simply "the box moved". Two things move together
+  //     when a dimension changes, and the drift is their DIFFERENCE:
+  //       · the origin box. `isCellInsideWaferFast` lays the wafer circle over a 700px canvas
+  //         cut into `visualCols` columns, so the circle's radius in CELLS is constant
+  //         (`effectiveRadius / chipX`) while its centre is `visualCols / 2`.
+  //       · the die index itself. `getDieIndex` is wafer-centre relative
+  //         (`colVisual - (visualCols - 1) / 2`, plus a parity term), so the KEY of a cell
+  //         that keeps its canvas square changes too.
+  //     When the two shift by the same amount they cancel and the coordinate holds with no
+  //     reaction at all; when they do not, EVERY cell renumbers.
+  //
+  // 🔴 FIXTURE ACTIVITY, MEASURED (2026-07-31, sweep over the three production frames,
+  //    +-1..+-3 on each axis): 16 of 36 dimension edits drift, and each of those 16 drifts
+  //    100% of the map (261/261, 273/273, 461/461). The other 20 hold on their own, and there
+  //    the reaction moves a MEASURED zero. An earlier draft of this case used COLS 33->35 and
+  //    ROWS 25->27, and both of those are in the second group — the case was green before the
+  //    fix existed. The two edits below are taken from the first group.
+  //    ⚠️ `QERWER cols 23->22` drifts 261/261 with `box.minC` UNCHANGED at 2. "The box did not
+  //       move" is therefore not a proof that there is nothing to react to.
+  {
+    // (i) the ROW axis, on the frame with anisotropic chip, non-zero offset and negative START
+    const { S } = buildEnv(src, F.DTWWER, { table: 'bonding_map' });
+    const painted = paintOracle(S);
+    S.renderGridCanvas();
+    const before = boxOf(S);
+    const seatBefore = seatOfValue(S, '1,1');
+
+    S.el.gridRows.value = '26';                 // 25 -> 26
+    fire(S.el.gridRows, 'change', '#grid-rows');
+
+    const after = boxOf(S);
+    const d = disagreements(S, painted);
+    const seatAfter = seatOfValue(S, '1,1');
+
+    eq('fixture/1d-population', 461, painted, 'the DTWWER frame\'s own painted set');
+    eq('fixture/1d-rows-really-moves-the-origin', true, before.minR !== after.minR,
+       'an edit that leaves the origin box alone cannot score this rule');
+    eq('fixture/1d-box-minR', [2, 3], [before.minR, after.minR]);
+    eq('1d/rows-stored-coordinates-hold', 0, d.bad.length,
+       `${d.bad.length} of ${d.total} cells read a coordinate they were not painted with`);
+    eq('1d/rows-loses-no-cell', 0, d.lost,
+       'two cells re-seated onto one key destroys one, and a survivors-only count reports '
+       + 'that as zero disagreements');
+    eq('1d/the-canvas-square-is-what-moves', true, seatBefore !== seatAfter,
+       'rule 4: the DB coordinate holds and the canvas seat is derived');
+    evidence.push(`1d ROWS 25->26 (DTWWER): box.minR ${before.minR}->${after.minR}, `
+      + `painted ${painted}, disagree ${d.bad.length}/${d.total}, lost ${d.lost}, `
+      + `cell "1,1" canvas seat ${seatBefore} -> ${seatAfter}`);
+  }
+  {
+    // (ii) the COLUMN axis. A separate frame because DTWWER's column edits all fall in the
+    //      self-cancelling group — scoring both axes on one frame would have scored one.
+    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const painted = paintOracle(S);
+    S.renderGridCanvas();
+    const before = boxOf(S);
+    // A value taken from the painted set, so the seat probe can never be null-vs-null (which
+    // would satisfy "the seat moved" trivially in the wrong direction).
+    const probeVal = Object.values(S.gridData)[0];
+    const seatBefore = seatOfValue(S, probeVal);
+
+    S.el.gridCols.value = '24';                 // 23 -> 24
+    fire(S.el.gridCols, 'change', '#grid-cols');
+
+    const after = boxOf(S);
+    const d = disagreements(S, painted);
+    const seatAfter = seatOfValue(S, probeVal);
+
+    eq('fixture/1d2-population', 261, painted);
+    eq('fixture/1d2-cols-really-moves-the-origin', true, before.minC !== after.minC);
+    eq('fixture/1d2-box-minC', [2, 3], [before.minC, after.minC]);
+    eq('fixture/1d2-seat-probe-exists', true, !!seatBefore,
+       'a null-vs-null seat probe would make the seat assertion below meaningless');
+    eq('1d2/cols-stored-coordinates-hold', 0, d.bad.length,
+       `${d.bad.length} of ${d.total} cells read a coordinate they were not painted with`);
+    eq('1d2/cols-loses-no-cell', 0, d.lost);
+    eq('1d2/the-canvas-square-is-what-moves', true, seatBefore !== seatAfter);
+    evidence.push(`1d2 COLS 23->24 (QERWER): box.minC ${before.minC}->${after.minC}, `
+      + `painted ${painted}, disagree ${d.bad.length}/${d.total}, lost ${d.lost}, `
+      + `cell "${probeVal}" canvas seat ${seatBefore} -> ${seatAfter}`);
+  }
+  // ══ 1e. A DIMENSION EDIT IS NOT AN ORIENTATION EDIT (rule 5 must not fire) ════════════
+  //     `#grid-y-invert` sits in the SAME listener array as COLS/ROWS. It is rule 5 — it holds
+  //     the die and moves the number — so the reaction must stay out of its path.
+  {
+    const { S } = buildEnv(src, F.DTWWER, { table: 'bonding_map' });
+    const painted = paintOracle(S);
+    S.renderGridCanvas();
+    const keysBefore = Object.keys(S.gridData).sort().join('|');
+    S.el.gridYInvert.checked = true;
+    fire(S.el.gridYInvert, 'change', '#grid-y-invert');
+    const keysAfter = Object.keys(S.gridData).sort().join('|');
+    const d = disagreements(S, painted);
+    eq('1e/y-invert-holds-the-die', true, keysBefore === keysAfter,
+       'Y-invert must not re-seat: it renumbers, exactly like a rotation');
+    eq('fixture/1e-y-invert-really-renumbers', true, d.bad.length > 0,
+       'if flipping Y renumbered nothing this case would pass for the wrong reason');
+    evidence.push(`1e Y-invert (rule 5, must not re-seat): keys moved `
+      + `${keysBefore === keysAfter ? 0 : 'some'}, renumbered ${d.bad.length}/${d.total}`);
+  }
+
   // ══ 2. THE SAME EDIT UNDER A DECLARED MASK ═══════════════════════════════════════════
   //     One reaction, both bases. Here it must move NOTHING, and that zero is measured, not
   //     assumed: the mask box translates with the cells, so the stored coordinate never moved.
@@ -718,6 +824,17 @@ const MUTANTS = {
     ["      input.addEventListener('change', onPhysicalGeometryEdit);",
      "      input.addEventListener('input', onPhysicalGeometryEdit);"].join('\n'),
     '      // unwired'),
+  // The defect this round closed: COLS/ROWS clamp and redraw, and nothing reacts to the
+  // origin box moving under the cells. 8 spaces of indent is what distinguishes this call
+  // from the three other sites of the same reaction.
+  // 🔴 CONTROL RUN, 2026-07-31. Two semantically identical mutants were put in this map and
+  //    scored: a trailing space at this same call site, and a comment line appended at EOF.
+  //    Both came back NOT CAUGHT (8/10), so the count below is discrimination and not
+  //    decoration. `copy_header_count` was reporting 12/12 while separating 2 of 12, and a
+  //    control mutant returning "CAUGHT" is what exposed it.
+  'grid-dimension-edits-do-not-reseat': (s) => once(s,
+    '        reseatCellsToStoredCoords(cellsSeatedUnder);',
+    '        // no reaction'),
 };
 
 async function scoreMutant(name, src) {

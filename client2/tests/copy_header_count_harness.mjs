@@ -318,13 +318,22 @@ function parseHtmlTable(html) {
     let t;
     while ((t = tdRe.exec(m[1])) !== null) {
       const cs = /colspan="(\d+)"/.exec(t[1]);
-      cells.push({ span: cs ? parseInt(cs[1], 10) : 1, text: t[2] });
+      const sty = /style="([^"]*)"/.exec(t[1]);
+      cells.push({ span: cs ? parseInt(cs[1], 10) : 1, text: t[2], style: sty ? sty[1] : '' });
     }
     rows.push(cells);
   }
   return rows;
 }
-const rowWidth = (cells) => cells.reduce((n, c) => n + c.span, 0);
+const rowWidth = (cells) => (cells || []).reduce((n, c) => n + c.span, 0);
+
+// 🔴 [상단 병합 범위] 이제 머리 두 줄은 "병합된 띠 + 행 폭을 맞추는 빈 칸"이다. 그 빈 칸은
+//    헤더 칸이 아니라 채움이므로 헤더에 대한 단언에 섞이면 안 된다 — 판별은 **산출물의 스타일
+//    문자열**로 한다(`gapStyle`은 정확히 `border: none;` 하나뿐이고, TITLE 칸은 같은 선언에
+//    글꼴·정렬이 더 붙어 있어 문자열이 다르다). 폭 계산식을 다시 타이핑하지 않는 그 규율 그대로다.
+const GAP_TD_STYLE = 'border: none;';
+const bandCells = (cells) => (cells || []).filter(c => c.style !== GAP_TD_STYLE);
+const bandWidth = (cells) => rowWidth(bandCells(cells));
 
 function newRun() {
   const st = { pass: 0, failures: [] };
@@ -570,7 +579,7 @@ const SHARED_PAINT = sharedPaintPlan(work, 7);
   evidence.headerLines = lines.slice(0, 2 + Math.min(4, lines.length));
   const rowsOn = parseHtmlTable(wOn.html);
   const VC = work.H.getVisualGridDimensions().visualCols;
-  const groupCells = rowsOn[1] || [];
+  const groupCells = bandCells(rowsOn[1]);
   const auxAt = (i) => (rowsOn[2 + i] || []).slice(VC + 1, VC + 5).map(c => c.text);
 
   chk('INV-ⓐ-4', 'group row labels come from the DOE declaration',
@@ -585,10 +594,21 @@ const SHARED_PAINT = sharedPaintPlan(work, 7);
   // 지금은 MAP CELL과 셀 크기 동일." 32px 정사각에 `MIDLOT_01`은 들어가지 않는다.
   const widths = rowsOn.map(rowWidth);
   evidence.headerLayout = {
-    totalCols: widths[0], rows: widths.length, distinctRowWidths: [...new Set(widths)],
+    totalCols: widths[0], visualCols: VC, rows: widths.length,
+    titleMergeCols: bandWidth(rowsOn[0]), groupBandCols: bandWidth(rowsOn[1]),
+    distinctRowWidths: [...new Set(widths)],
     groupSpans: groupCells.map(c => ({ text: c.text, span: c.span })),
     auxSpans: (rowsOn[2] || []).slice(VC + 1, VC + 5).map(c => ({ text: c.text, span: c.span })),
   };
+  // ── INV-ⓐ-6  상단 병합은 맵 영역에서 끝난다 ────────────────────────────────
+  // 사용자 확정: 「상단 병합을 맵 영역으로 한정」 = 병합 범위는 맵 격자의 열 수다.
+  // 이 픽스처(11x9 rot90 → 격자 9열)는 라벨 최소 폭(17)보다 **좁아서 하한 구간**에 있으므로,
+  // 여기서 채점할 수 있는 것은 "표 전체 폭까지 늘어나지 않는다"까지다. 격자 열 수와 정확히
+  // 같아지는 축은 아래 layoutProbe의 넓은 프레임(생산 규격)이 채점한다.
+  chk('INV-ⓐ-6', 'the title merge and the group band are the same width (one band, one number)',
+    bandWidth(rowsOn[0]), bandWidth(rowsOn[1]));
+  chk('INV-ⓐ-6', 'the top merge no longer spans the whole table (it stopped covering the aux table)',
+    bandWidth(rowsOn[0]) < widths[0], true);
   chk('INV-ⓐ-5', 'EVERY html row spans the same number of columns (ragged = Excel shifts the table)',
     [...new Set(widths)].length, 1);
   chk('INV-ⓐ-5', 'no header cell is one map cell wide any more (the reported defect)',
@@ -655,8 +675,12 @@ const SHARED_PAINT = sharedPaintPlan(work, 7);
 // 넓어지는 경우(QA가 지적한 상황)는 제목 행이 데이터 행보다 길어지는 모양으로 나타난다 —
 // 해법은 헤더를 줄이는 게 아니라 **모든 행을 함께 넓히는 것**이고, 이 블록이 그것을 잰다.
 // ════════════════════════════════════════════════════════════════════════════════
-function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = LEGEND, schema }) {
-  const sb = buildSandbox(WORK_MAP, `layout/${name}`, WORK_FNS);
+// `src`는 변이 루프도 이 프로브를 쓰게 하려고 있다 — 상단 병합 범위를 채점하려면 격자가
+// 띠의 최소 폭보다 **넓은** 프레임이 필요한데, 이 파일의 기본 픽스처(11x9 rot90 → 9열)는
+// 하한 구간에 있어 그 축을 원리적으로 구별하지 못한다.
+function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = LEGEND, schema },
+                     src = WORK_MAP) {
+  const sb = buildSandbox(src, `layout/${name}`, WORK_FNS);
   sb.ctx.legend = JSON.parse(JSON.stringify(legendRows));
   if (schema !== undefined) sb.ctx.tableSchema = schema;
   sb.ctx.el.gridCols = inputStub(cols);
@@ -683,7 +707,9 @@ function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = L
   const widths = parsed.map(rowWidth);
   const tsvWidths = out.text.split('\n').map(l => l.split('\t').length);
   return { sb, html: out.html, tsv: out.text, parsed, widths, tsvWidths,
-    visualCols: vc, groupCells: parsed[1] || [] };
+    visualCols: vc, groupCells: bandCells(parsed[1]),
+    // 병합된 띠의 폭. 뒤따르는 채움 칸은 헤더가 아니므로 제외한다(§bandCells).
+    bandCols: bandWidth(parsed[0]), groupBandCols: bandWidth(parsed[1]) };
 }
 
 {
@@ -701,11 +727,18 @@ function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = L
     emptyLabels: layoutProbe('emptyLabels', { cols: 9, rows: 9,
       legendRows: [{ value: '1', color: '#facc15', desc: '', stack: '', mat_1h: '', mat_mid: '', mat_top: '' }],
       schema: {} }),
+    // 생산 규격. `wafer_map_metadata`의 실행 (QERWER 23x23 · A2 23x23 · DTWWER 33x25 ·
+    // BASE 29x25)이 전부 이 계급이고, 여기가 상단 병합 범위를 채점할 수 있는 구간이다 —
+    // 격자 열 수가 라벨 최소 폭보다 넓어서 병합이 격자에서 정확히 끝날 수 있다.
+    prod29: layoutProbe('prod29', { cols: 29, rows: 25 }),
+    prod23: layoutProbe('prod23', { cols: 23, rows: 23 }),
   };
   evidence.layoutProbes = {};
   Object.entries(probes).forEach(([name, p]) => {
     evidence.layoutProbes[name] = {
       visualCols: p.visualCols, totalCols: p.widths[0], htmlRows: p.widths.length,
+      titleMergeCols: p.bandCols, groupBandCols: p.groupBandCols,
+      bandOverMapCols: p.bandCols - p.visualCols,
       distinctHtmlWidths: [...new Set(p.widths)], distinctTsvWidths: [...new Set(p.tsvWidths)],
       groupSpans: p.groupCells.map(c => `${c.text || '(empty)'}:${c.span}`).join(' '),
     };
@@ -717,7 +750,30 @@ function layoutProbe(name, { cols, rows, rot = 0, side = 'front', legendRows = L
       p.widths[0] >= p.visualCols, true);
     chk('INV-ⓐ-5', `${name}: no header cell is a bare map cell`,
       p.groupCells.filter(c => c.span < 2).map(c => c.text || '(empty)'), []);
+    // ── INV-ⓐ-6  상단 병합은 맵 영역에서 끝난다 ────────────────────────────────
+    chk('INV-ⓐ-6', `${name}: TITLE and the group band are merged over the SAME width`,
+      p.bandCols, p.groupBandCols);
+    chk('INV-ⓐ-6', `${name}: the merge never reaches past the table`,
+      p.bandCols <= p.widths[0], true);
+    chk('INV-ⓐ-6', `${name}: the merge never crushes below the map area either`,
+      p.bandCols >= p.visualCols, true);
   });
+  // 🔴 여기가 사용자 요구를 직접 채점하는 자리다: 「상단 병합을 맵 영역으로 한정」.
+  //    생산 규격에서는 병합이 **격자 열 수와 정확히 같다.** 종전에는 표 전체 폭이었다
+  //    (측정 2026-07-31: 51열 격자 → 병합 60열, 29열 격자 → 병합 38열).
+  ['wide51', 'rot90', 'prod29', 'prod23'].forEach(n => {
+    chk('INV-ⓐ-6', `${n}: the top merge is EXACTLY the map grid's column count`,
+      probes[n].bandCols, probes[n].visualCols);
+    chk('INV-ⓐ-6', `${n}: and that is strictly narrower than the table (the aux table is no `
+      + 'longer under the band)', probes[n].bandCols < probes[n].widths[0], true);
+  });
+  // 픽스처 활성 축. 넓은 프로브가 하한 구간에 빠져 있으면 위 두 단언은 우연히 통과한다.
+  chk('fixture', 'the wide probes are OUT of the label-floor regime (else INV-ⓐ-6 proves nothing)',
+    ['wide51', 'rot90', 'prod29', 'prod23'].map(n => probes[n].visualCols
+      > rowWidth(probes.narrow3.groupCells)), [true, true, true, true]);
+  // 좁은 격자는 하한 구간이다 — 라벨을 다시 자르지 않으므로 병합이 격자보다 넓게 남는다.
+  chk('INV-ⓐ-6', 'a 3-column grid keeps the label floor instead of crushing the band to 3',
+    probes.narrow3.bandCols > probes.narrow3.visualCols, true);
   // 좁은 격자에서는 표 전체가 헤더 폭까지 넓어져야 한다 (헤더를 깎으면 다시 잘린다).
   chk('INV-ⓐ-5', 'a 3-column grid widens the WHOLE table instead of crushing the header',
     probes.narrow3.widths[0] > probes.narrow3.visualCols + 1 + 4, true);
@@ -1021,6 +1077,15 @@ const MUTATIONS = [
   ['M11 the first copy-header group label is hardcoded to Base again',
     s => s.replace('const groups = [{ label: mapKeyGroupLabel(), value: getCurrentMapKey() || \'\' }];',
       "const groups = [{ label: 'Base', value: getCurrentMapKey() || '' }];")],
+  // ── 상단 병합 범위 축 ────────────────────────────────────────────────────────
+  // 🔴 대조군을 돌렸다(2026-07-31). 의미가 동일한 변이 둘 — ① `headerBandCols` 전면 개명
+  //    ② 파일 끝에 주석 한 줄 — 을 이 목록에 잠시 넣어 돌렸고 **둘 다 MISSED**였다.
+  //    그리고 아래 M13의 탐지기(변이 루프의 생산 규격 프로브) 두 줄을 지우면 M13이 곧바로
+  //    MISSED가 된다(12/15). 즉 이 축은 자기 탐지기로만 잡히고, 아무것이나 잡지 않는다.
+  //    "12/12인데 실제로는 2개만 구별하던" 그 상태를 다시 만들지 않기 위한 기록이다.
+  ['M13 the top merge spans the whole table again (it covers the aux table)',
+    s => s.replace('const headerBandCols = headerOn ? Math.max(visualCols, groupMinCols) : visualCols;',
+      'const headerBandCols = totalCols;')],
   // M8과 같은 이유로 정규식이다 (소스가 CRLF).
   ['M12 clearGrid stops writing the draft again',
     s => s.replace(/ {2}updateLegendCounts\(\);\r?\n {2}renderGridCanvas\(\);\r?\n {2}scheduleCellDraft\(\);\r?\n\}\r?\n\r?\nfunction fillGrid\(\)/,
@@ -1145,6 +1210,14 @@ MUTATIONS.forEach(([name, mut]) => {
     const byValue = {};
     savableSet(sb).forEach(k => { const v = sb.ctx.gridData[k]; byValue[v] = (byValue[v] || 0) + 1; });
     if (aux['1'] !== (byValue['1'] || 0)) red = true;
+
+    // 🔴 [상단 병합 범위] 이 픽스처(11x9 rot90 → 격자 9열)는 라벨 최소 폭(17)보다 좁아
+    //    **하한 구간**에 있고, 거기서는 병합 범위를 바꾼 변이가 1열 차이로만 나타난다.
+    //    그래서 이 축만은 **생산 규격 프레임**에서 다시 잰다 — 격자가 띠보다 넓어야 "병합이
+    //    격자에서 끝난다"가 관측 가능해진다. 이 프로브가 없으면 M13은 픽스처 때문에 통과한다.
+    const wide = layoutProbe('mutant-scope', { cols: 29, rows: 25 }, mutated);
+    if (wide.bandCols !== wide.visualCols) red = true;
+    if (wide.groupBandCols !== wide.visualCols) red = true;
   } catch (e) {
     red = true;   // a mutant that cannot even run is caught
   }

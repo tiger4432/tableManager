@@ -325,7 +325,10 @@ function parseHtmlTable(html) {
     let t;
     while ((t = tdRe.exec(m[1])) !== null) {
       const cs = /colspan="(\d+)"/.exec(t[1]);
-      cells.push({ span: cs ? parseInt(cs[1], 10) : 1, text: t[2] });
+      // `style` distinguishes a merged HEADER cell from the filler that pads the header rows
+      // out to the table width. Only the filler carries the gap style verbatim.
+      const sty = /style="([^"]*)"/.exec(t[1]);
+      cells.push({ span: cs ? parseInt(cs[1], 10) : 1, text: t[2], style: sty ? sty[1] : '' });
     }
     rows.push(cells);
   }
@@ -627,6 +630,73 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   chk('INV-F1ⓑ-3', 'no-materials: the group band ends in DOE header words (the trap is live)',
     groupLine.slice(-3), ['1H', 'MID', 'TOP']);
   evidence.noMaterials = { groupBandTail: groupLine.slice(-3), gridWidth: nm.parsed.gridWidth };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// A PRODUCTION-WIDTH FRAME, because the default fixture cannot see the top merge.
+//
+// 🔴 THE DEFAULT FIXTURE IS 11x9 AT ROT 90, i.e. 9 grid columns — NARROWER than the group
+//    band's minimum legible width (17 columns for this legend). In that regime the band is
+//    held at its floor and scoping it to the map area changes almost nothing, so a
+//    round-trip scored only there says nothing about the change that shipped. Every
+//    production row in `wafer_map_metadata` is 23..51 columns wide.
+//
+// WHAT THIS SCORES: with the top merge now ending at the map grid (29 columns) while the
+// table is still 38 wide, the reader must STILL recover 29 — the aux table's `VALUE` column
+// did not move, and the two header lines above it are still exactly two lines.
+// ════════════════════════════════════════════════════════════════════════════════
+{
+  const WIDE = { gridCols: inputStub(29), gridRows: inputStub(25) };
+  const sb = buildSandbox(WORK_MAP, 'prod-width', true, WIDE);
+  sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
+  // 🔴 The dimensions come from the APP, not from the two numbers typed above. This harness
+  //    runs at rot 90, which swaps them — an earlier draft hardcoded 29x25 and built the cell
+  //    grid transposed against the one `copyGridToExcel` walks.
+  const { visualCols: vc, visualRows: vr } = sb.H.getVisualGridDimensions();
+  const pc = sb.H.getTransformedPhysicalConfig(ROT, SIDE);
+  sb.ctx.gridCells2D = {};
+  sb.ctx.gridData = {};
+  let i = 0;
+  for (let r = 0; r < vr; r++) {
+    sb.ctx.gridCells2D[r] = {};
+    for (let c = 0; c < vc; c++) {
+      const co = sb.H.getGridCellObject(c, r, vc, vr, pc, 700, 700);
+      sb.ctx.gridCells2D[r][c] = co;
+      if (!co.inside) continue;
+      i++;
+      if (i % 7 === 0) continue;                          // holes inside the wafer
+      sb.ctx.gridData[co.key] = (i % 5 === 0) ? 'F' : ((i % 11 === 0) ? 'E1' : '1');
+    }
+  }
+  const before = gridSnapshot(sb);
+  sb.H.copyGridToExcel();
+  const tsv = sb.captured.text;
+  const rows = parseHtmlTable(sb.captured.html);
+  // The merged band, read out of the artifact. Filler cells carry the gap style verbatim.
+  const band = (cells) => (cells || []).filter(c => !/^border:\s*none;$/.test(c.style || ''))
+    .reduce((n, c) => n + c.span, 0);
+  const tableCols = (rows[2] || []).reduce((n, c) => n + c.span, 0);
+
+  Object.keys(sb.ctx.gridData).forEach(k => { sb.ctx.gridData[k] = 'F'; });
+  const parsed = sb.H.readCompanyMapBlock(tsv);
+  const frame = frameOf(sb);
+  const verdict = sb.H.checkPasteAgainstFrame(parsed, frame);
+  if (verdict.ok) sb.H.applyPastedGridRows(parsed, frame);
+
+  chk('fixture', 'prod-width: the table is wider than the map (there IS an aux table to '
+    + 'stop short of, else the scope assertion below is vacuous)', tableCols > vc, true);
+  chk('INV-ⓐ-6', 'prod-width: the merge is strictly narrower than the table',
+    band(rows[0]) < tableCols, true);
+  chk('INV-ⓐ-6', 'prod-width: the top merge stops at the map grid',
+    [band(rows[0]), band(rows[1])], [vc, vc]);
+  chk('INV-F1ⓑ-1', 'prod-width: the reader still recovers the map width',
+    parsed.gridWidth, frame.visualCols);
+  chk('INV-F1ⓑ-1', 'prod-width: the frame check accepted it', verdict.ok, true);
+  chk('INV-F1ⓑ-1', 'prod-width: the fingerprint was verified', verdict.notchVerified, true);
+  chk('INV-F1ⓑ-1', 'prod-width: the grid round-trips cell for cell',
+    diffKeys(before, gridSnapshot(sb)).slice(0, 8), []);
+  evidence.prodWidth = { mapCols: vc, tableCols, titleMerge: band(rows[0]),
+    groupBand: band(rows[1]), recoveredWidth: parsed.gridWidth, painted: Object.keys(before).length };
 }
 
 // ── header-OFF copies round-trip too, and say the identity is unknown ───────────
