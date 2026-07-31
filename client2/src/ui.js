@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state } from './state.js';
+import { state, isVirtualColumn } from './state.js';
 import { elements } from './dom.js';
 import { getLocalTimeString } from './utils.js';
 import { updateGridSortState } from './grid.js';
@@ -23,11 +23,17 @@ export function updateSelectedCellUI() {
   }
 
   const isSystem = ['created_at', 'updated_at', 'row_id', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(state.selectedCell.colId);
+  // [Virtual join] The same read-only slot, filled with the one thing the write refusal
+  // cannot say: WHICH table to go and fix. No new element — this line already existed for
+  // system columns and only ever shows for the one selected cell.
+  const virt = (state.currentVirtualColumns || [])
+    .find(vc => vc && vc.name === state.selectedCell.colId);
   elements.selectedCellInfo.innerHTML = `
     <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${state.selectedCell.rowId}</span></div>
     <div><strong>Column:</strong> <span style="color:var(--color-primary)">${state.selectedCell.colId.toUpperCase()}</span></div>
     <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? state.selectedCell.value : 'NULL'}</code></div>
     ${isSystem ? '<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only System Column</div>' : ''}
+    ${virt ? `<div style="color:var(--text-dim);margin-top:4px;font-style:italic">읽기 전용 조인 컬럼 — 원본 '${virt.right_table}'</div>` : ''}
   `;
 }
 
@@ -138,6 +144,11 @@ export async function applyValueToSelectedRange(newValue) {
     const { rowIndex, colId } = cell;
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
     if (isSystem) return;
+    // [Virtual join] The third write funnel that builds updates from grid column ids
+    // (with the two paste branches and the clear path in clipboard.js). Ctrl+Enter bulk
+    // fill spans whatever rectangle is selected, so it reaches an appended virtual column
+    // the same way an MxN paste does, and the server's refusal is batch-level.
+    if (isVirtualColumn(colId)) return;
 
     const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
     if (!rowNode || !rowNode.data) return;

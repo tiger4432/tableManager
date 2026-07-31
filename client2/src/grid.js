@@ -199,6 +199,38 @@ export function ensureCellObject(dataObj, colId) {
   }
 }
 
+// The raw stored value behind one grid cell, in the shape the row payload uses.
+// Extracted so the stored-column and the virtual-column value getters read a cell the SAME
+// way rather than each carrying its own copy of the unwrap: `attach` (server) fills a joined
+// cell with the identical `{value, is_overwrite, sources, updated_by, priority_source}` keys
+// `fetch_and_merge_metadata` uses, so one reader is correct for both.
+function rawCellValue(rowData, colId) {
+  const cell = (rowData && rowData.data) ? rowData.data[colId] : undefined;
+  if (cell && typeof cell === 'object') {
+    return cell.value !== undefined ? cell.value : '';
+  }
+  return cell !== undefined ? cell : '';
+}
+
+// The ONE numeric-display rule for a `number` column.
+//
+// 🔴 IT DELIBERATELY DOES NOT COERCE. A virtual join column carries its rule's
+// `unresolved_label` ('미상' by default) on every row where the right table had no match or
+// an empty value — so a column whose declared type is `number` genuinely does contain a
+// string, by design. `Number('미상')` is NaN and the guard returns the ORIGINAL value, so the
+// label reaches the cell intact instead of becoming NaN or 0. (`''`/`null`/`undefined` are
+// excluded up front for the same reason: `Number('')` and `Number(null)` are both 0, which
+// would turn an empty cell into a displayed zero.)
+function numericDisplayValue(val) {
+  if (val !== '' && val !== null && val !== undefined) {
+    const parsed = Number(val);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return val;
+}
+
 // Helper to build column definitions dynamically based on schema
 export function buildColumnDefs() {
   const columnDefs = state.currentColumns.map((col, index) => {
@@ -229,13 +261,7 @@ export function buildColumnDefs() {
         if (col === 'created_at') return params.data.created_at;
         if (col === 'updated_at') return params.data.updated_at;
 
-        const cell = params.data.data?.[col];
-        let val = '';
-        if (cell && typeof cell === 'object') {
-          val = cell.value !== undefined ? cell.value : '';
-        } else {
-          val = cell !== undefined ? cell : '';
-        }
+        const val = rawCellValue(params.data, col);
 
         // 그래프 동기화 컬럼 가시성 향상 이모지 매핑
         if (col === 'is_graph_synced') {
@@ -245,13 +271,7 @@ export function buildColumnDefs() {
           return (val === true || String(val).toLowerCase() === 'true') ? '⚠️ Rollback' : '➖';
         }
 
-        if (colType === 'number' && val !== '' && val !== null && val !== undefined) {
-          const parsed = Number(val);
-          if (!isNaN(parsed)) {
-            return parsed;
-          }
-        }
-        return val;
+        return colType === 'number' ? numericDisplayValue(val) : val;
       },
       valueSetter: (params) => {
         if (isSystem) return false;
@@ -328,6 +348,100 @@ export function buildColumnDefs() {
     }
 
     return colDef;
+  });
+
+  // ── [Virtual join] The columns a VERIFIED join ADDS to this table's read payload ──────
+  //
+  // APPENDED, NOT MERGED. These names come from `/schema`'s separate `virtual_columns` key
+  // and stay out of `state.currentColumns` (see the note on that field in state.js). They go
+  // LAST so the stored columns keep their positions and `checkboxSelection: index === 0`
+  // keeps pointing at the same column it always did.
+  //
+  // The payload cell shape is identical to a stored cell — `attach` fills the same keys
+  // `fetch_and_merge_metadata` does — so these defs read cells through the same
+  // `rawCellValue`/`numericDisplayValue` the stored defs use, not through a second reader.
+  //
+  // 🔴 `editable: false` IS NOT THE ENFORCEMENT. The server refuses the write
+  // (`crud.refuse_virtual_join_columns`); this only stops the grid offering an edit that
+  // would come back 400. The paste/clear/bulk-fill funnels do not read `editable` at all,
+  // which is why they carry their own `isVirtualColumn` guard.
+  (Array.isArray(state.currentVirtualColumns) ? state.currentVirtualColumns : []).forEach(vc => {
+    // A malformed entry must not become a def: AG-Grid would take `field: undefined` and
+    // render a permanently empty column with no way to tell what it is.
+    if (!vc || typeof vc.name !== 'string' || vc.name === '') return;
+    const col = vc.name;
+    // The server already filters its announcement against its own final column list, so this
+    // can only fire on a stale/!=-server state. Two defs with the same `field` would give
+    // AG-Grid a duplicate colId, and the STORED one must win — it is the editable, writable,
+    // copyable one.
+    if (state.currentColumns.includes(col)) return;
+
+    const isNumeric = vc.type === 'number';
+    const unresolved = typeof vc.unresolved_label === 'string' ? vc.unresolved_label : '';
+    const rightTable = vc.right_table || '?';
+
+    columnDefs.push({
+      // 🔗 joins the existing header vocabulary (🗝️ business key, * composite source) rather
+      // than adding a second explanation mechanism. The tooltip is where `right_table` and
+      // `rule` land: the server's write refusal says "fix it in the join source" without
+      // naming which table, and this is the only place that answer exists on screen.
+      headerName: `${col.toUpperCase()}🔗`,
+      headerTooltip: `${col.toUpperCase()} — '${rightTable}' 조인 컬럼 (읽기 전용)\n`
+        + `값을 고치려면 '${rightTable}' 테이블에서 수정하세요. 선언: ${vc.rule || '?'}`,
+      field: col,
+      editable: false,
+      sortable: true,
+      // 🔴 NO FILTER AT ALL, and this is the deliberate part.
+      //
+      // Column filters in this grid are SERVER-SIDE: `fetchData` sends
+      // `gridApi.getFilterModel()` as `?filters=`, and `main.get_column_filter_condition`
+      // ends its column resolution with `if not hasattr(table_model, col_name): return None`
+      // — an unknown name contributes NO condition and the page comes back UNFILTERED. The
+      // client-side row model would then filter the rows it already holds, so the visible
+      // rows would look filtered while `Matches:` and the page count stayed at the unfiltered
+      // totals. That is a filter that half-works and says nothing, which is worse than a
+      // column that plainly cannot be filtered — the same call the server made when it chose
+      // to announce nothing rather than announce a phantom.
+      //
+      // (`agNumberColumnFilter` would have been wrong for a second reason on top: the value
+      // domain is the right table's values PLUS `unresolved_label`, so no numeric predicate
+      // can ever match an unresolved row or find one.)
+      filter: false,
+      resizable: true,
+      valueGetter: (params) => {
+        const val = rawCellValue(params.data, col);
+        return isNumeric ? numericDisplayValue(val) : val;
+      },
+      // Sorting a `number` virtual column, where some rows carry the label.
+      //
+      // AG-Grid's default comparator ends in `a > b ? 1 : a < b ? -1 : 0`, and BOTH
+      // comparisons are false for (number, '미상') — JS coerces the string to NaN. So every
+      // unresolved row compares EQUAL to every number and the sort silently scatters them
+      // through the result. This keeps them in one block instead, always at the bottom of an
+      // ascending sort (AG-Grid inverts the result for descending, so they lead there).
+      // Only installed for `number`: on a `string` column the label is just another string
+      // and the default comparator is already right.
+      ...(isNumeric ? {
+        comparator: (a, b) => {
+          const au = (a === unresolved), bu = (b === unresolved);
+          if (au || bu) return (au && bu) ? 0 : (au ? 1 : -1);
+          if (a === b) return 0;
+          return (a < b) ? -1 : ((a > b) ? 1 : 0);
+        }
+      } : {}),
+      // Same grey a system column gets. Reusing the existing class rather than inventing a
+      // "virtual" one: to the operator the fact is identical — this cell cannot be typed in.
+      cellClass: 'cell-system-readonly',
+      cellClassRules: {
+        // The other four stored-column rules are deliberately absent, not forgotten:
+        // `cell-dirty-tx` keys on `pendingTxEdits`, which a column that cannot be edited
+        // never enters; `cell-overwrite`/`cell-collision-merge` test `priority_source`
+        // against 'user'/'collision_merge' and `attach` stamps 'virtual_join', so both would
+        // be permanently false. Range highlighting is the one that still means something —
+        // these cells ARE selectable and copyable.
+        'custom-range-selected': (params) => isCellInRange(params.node.rowIndex, col)
+      }
+    });
   });
 
   columnDefs.unshift({

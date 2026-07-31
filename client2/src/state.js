@@ -5,6 +5,18 @@ export const state = {
   currentColumnTypes: {},
   currentBusinessKey: '',          // 비즈니스 키 컬럼명 (예: 'pkg_id')
   currentCompositeKeySources: [],  // 조합 소스 컬럼 목록 (예: ['base', 'x', 'y'])
+  // [Virtual join] `/schema`'s `virtual_columns`, verbatim. Entries are
+  // `{name, type, editable:false, right_table, rule, unresolved_label}`.
+  //
+  // 🔴 DELIBERATELY NOT MERGED INTO `currentColumns`. That list means "columns this table
+  // STORES", and four consumers read it as exactly that: `api.js`'s search dropdown (the
+  // SQL cannot reach a virtual name), `clipboard.js`'s copy predicates, `grid.js`'s
+  // editability, and — through `/schema.columns` rather than this list —
+  // `map_editor.js:getUnprotectedPushColumns`, which counts unprotected data columns a
+  // ⚡ Push would destroy. A virtual column cannot be lost by a push because it is not
+  // stored, so counting it there would downgrade or block a push for no reason.
+  // Keeping the two lists apart is what makes each of those answers stay right.
+  currentVirtualColumns: [],
   ws: null,
   wsReconnectDelay: 1000,
   selectedCell: null, // { rowId, colId, value, rowIndex }
@@ -43,6 +55,26 @@ export const state = {
   // data error rather than a cosmetic one.
   smartPasteArmedTable: ''
 };
+
+/**
+ * [Virtual join] Is this grid column id a join-attached column rather than a stored one?
+ *
+ * WHY A PREDICATE AND NOT A LIST MEMBERSHIP TEST AT EACH SITE. Every write funnel in this
+ * client answers "may I write this grid column?" with its own hardcoded system-name array
+ * (`clipboard.js` x3, `ui.js`). Those arrays are name lists and a virtual column's name is
+ * site-specific, so it cannot join them. This is the one place that knows the answer.
+ *
+ * 🔴 THIS IS NOT THE ENFORCEMENT. The server refuses a write to a virtual column in
+ * `crud.refuse_virtual_join_columns`, at the single funnel every write path converges on.
+ * This predicate only stops the client OFFERING a write that would come back 400 — and the
+ * refusal is BATCH-LEVEL, so one pasted block overlapping a virtual column would lose the
+ * whole paste, not just the cell it could not have written anyway.
+ */
+export function isVirtualColumn(colId) {
+  const list = state.currentVirtualColumns;
+  if (!Array.isArray(list) || list.length === 0) return false;
+  return list.some(vc => vc && vc.name === colId);
+}
 
 export function updateVisibleColIndexMap() {
   if (!state.gridApi) return;

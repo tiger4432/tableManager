@@ -115,8 +115,19 @@ export async function loadSchema(tableName) {
     state.currentColumnTypes = data.column_types || {};
     state.currentBusinessKey = data.business_key || '';
     state.currentCompositeKeySources = data.composite_key_source || [];
+    // [Virtual join] The route always sends this key (`[]` when no verified join touches the
+    // table), so a missing key means an OLD SERVER — fall back to empty, never to undefined,
+    // because every consumer below treats "no virtual columns" as the normal case.
+    // `Array.isArray` rather than `|| []`: `|| []` still lets a non-array truthy value
+    // through, and `state.currentVirtualColumns.some(...)` on an object would throw inside
+    // the write guards, i.e. exactly where a failure must not happen.
+    state.currentVirtualColumns = Array.isArray(data.virtual_columns) ? data.virtual_columns : [];
 
     // Fill search columns dropdown
+    // 🔴 Iterates `currentColumns`, NOT the virtual list, and that is the point: `?cols=` is
+    // fed to a WHERE clause over the left table's own columns, and a virtual name has no
+    // storage for the SQL to reach. Offering it would produce a search that returns nothing
+    // and says nothing about why.
     if (elements.searchCols) {
       elements.searchCols.innerHTML = '<option value="">All Columns</option>';
       state.currentColumns.forEach(col => {

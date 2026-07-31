@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state } from './state.js';
+import { state, isVirtualColumn } from './state.js';
 import { elements } from './dom.js';
 import { ensureCellObject, updateGridSortState } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
@@ -237,7 +237,14 @@ export function getRangeSelectedTSV() {
   const colsToCopy = visibleCols.filter((colId, idx) => {
     if (idx < minColIdx || idx > maxColIdx) return false;
     if (colId === '#' || /^\d+$/.test(colId)) return false;
-    return state.currentColumns.includes(colId) || ['row_id', 'created_at', 'updated_at'].includes(colId);
+    // [Virtual join] A virtual column is NOT in `currentColumns` (it is not stored), but it
+    // IS on screen — and this filter runs INSIDE a min..max index window, so dropping it
+    // would delete a column from the middle of the copied block and shift everything right
+    // of it one place left. The user would get a rectangle that is not the one they
+    // selected, silently. Copy is a read; the write guards live on the paste path.
+    return state.currentColumns.includes(colId)
+      || isVirtualColumn(colId)
+      || ['row_id', 'created_at', 'updated_at'].includes(colId);
   });
   if (colsToCopy.length === 0) return '';
 
@@ -376,6 +383,14 @@ export function setupClipboardHandlers() {
           const { rowIndex, colId } = cell;
           const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
           if (isSystem) return;
+          // [Virtual join] 🔴 THE GATE HERE IS GRID PRESENCE, NOT `currentColumns`. This
+          // funnel builds its updates from grid column ids and never consults
+          // `state.currentColumns`, so keeping virtual names out of that list does NOT keep
+          // them out of a paste — only this guard does. Without it a 1x1 fill over a
+          // selection that happens to include the column sends it to the server, and the
+          // refusal is BATCH-LEVEL: the whole fill returns 400 and the user loses every
+          // other cell they meant to write.
+          if (isVirtualColumn(colId)) return;
 
           const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
           if (!rowNode || !rowNode.data) return;
@@ -456,6 +471,12 @@ export function setupClipboardHandlers() {
             const colId = visibleCols[targetColIndex];
             const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
             if (isSystem) return;
+            // [Virtual join] Same guard as the 1x1 branch, and this is the branch that
+            // matters most: an MxN paste walks the VISIBLE columns from the anchor, so a
+            // block wide enough to reach the appended virtual column picks it up with no
+            // action from the user at all. Skipping the cell keeps the rest of the batch
+            // writable instead of losing all of it to one 400.
+            if (isVirtualColumn(colId)) return;
 
             if (!updateMapByRow[rowId]) {
               updateMapByRow[rowId] = { rowNode, updates: {} };
@@ -615,7 +636,12 @@ export function setupClipboardHandlers() {
     e.preventDefault();
     const columns = state.gridApi.getColumns().filter(c => c.isVisible()).map(c => c.getColId()).filter(c => {
       if (c === '#' || /^\d+$/.test(c)) return false;
-      return state.currentColumns.includes(c) || ['row_id', 'created_at', 'updated_at'].includes(c);
+      // [Virtual join] Included for the same reason as the range copy above: the row-copy
+      // fallback is what a user gets from a row selection, and a visible column missing from
+      // it is a wrong answer rather than a smaller one.
+      return state.currentColumns.includes(c)
+        || isVirtualColumn(c)
+        || ['row_id', 'created_at', 'updated_at'].includes(c);
     });
 
     // Headers copy setting check
@@ -690,6 +716,9 @@ export async function clearSelectedCells() {
   cellsToClear.forEach(cell => {
     // Skip system columns
     if (systemCols.includes(cell.colId) || /^\d+$/.test(cell.colId)) return;
+    // [Virtual join] Delete-to-clear is a write like any other. A cleared virtual column
+    // would be refused batch-level, taking the rest of the cleared rectangle with it.
+    if (isVirtualColumn(cell.colId)) return;
 
     const rowNode = state.gridApi.getDisplayedRowAtIndex(cell.rowIndex);
     if (!rowNode || !rowNode.data) return;
