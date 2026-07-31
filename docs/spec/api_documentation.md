@@ -1,6 +1,10 @@
 # assyManager Data Update Server API Documentation
 
-This document describes the API endpoints provided by the `assyManager` server to manage rows, modify cell values, control multi-source priority rules (pinning), delete specific data sources, and query cell metadata.
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-07-31 | **Owner:** Backend
+> **범위 주의:** 이 문서는 **행·셀 쓰기 계약**의 상세 레퍼런스이고 **전체 라우트 지도가 아니다.** 엔드포인트 전수는 [architecture/backend §2](../architecture/backend.md)가 정본이다.
+> ⚠️ **본문이 영어인 것은 이 파일의 기존 관례다**(나머지 `docs/`는 한국어). 한 파일 안에서 언어를 섞지 않으려고 신규 절도 영어로 썼다 — 언어 통일은 총괄 판단 대기.
+
+This document describes the API endpoints provided by the `assyManager` server to manage rows, modify cell values, control multi-source priority rules (pinning), delete specific data sources, query cell metadata and table schema, and trigger the retroactive (backfill) operations from the admin surface.
 
 ---
 
@@ -176,6 +180,10 @@ The primary endpoint for modifying cell values. Handles single cell edits, range
   ```
 - **Special Business Logic (Auto-Unpin)**:
   - If `source_name` is `"user"`, the backend automatically clears any existing manual priority constraint (`manual_priority_source = null`) for all updated cells, ensuring the user's manual value becomes active.
+- **Refusal: virtual-join columns (`400`)**:
+  - A column that exists only because a verified virtual join exposes it (`virtual_only`, announced by `/schema` under `virtual_columns` — see §5.2) is **not stored**, so it cannot be written. `crud.refuse_virtual_join_columns` runs as the first statement of `apply_batch_updates` and returns `400` naming the offending column(s).
+  - The refusal is **batch-level**: one overlapping column rejects the whole request, including the rows and columns that were writable. A client that offers such a column as an edit target will lose an entire paste to a single cell it could never have written.
+  - A `collide` column — a real stored column that a join also fills when the stored value is absent — is **deliberately still writable**. That write is the only way a user changes what the joined value shows.
 - **WebSocket Broadcast**:
   - If changes count $\le 100$: Streams detailed `batch_row_upsert` chunks with all cell values.
   - If changes count $> 100$: Streams a lightweight `batch_refresh_required` event containing the change count and the list of audit logs (up to 5,000 logs) to update timelines without reloading grid data.
@@ -362,3 +370,87 @@ Queries comprehensive source information (history values, pinning status) for mu
     }
   ]
   ```
+
+### 5.2 Table Schema
+Returns the column contract a client needs to build a grid for one table.
+
+- **HTTP Method**: `GET`
+- **Route**: `/tables/{table_name}/schema`
+- **Path Parameters**:
+  - `table_name` (string, required): Table name.
+- **Response Format**: `JSON`
+- **Response Example**:
+  ```json
+  {
+    "table_name": "bonding_map",
+    "columns": ["lot", "slot", "x", "y", "val", "created_at", "updated_at"],
+    "column_types": { "x": "number", "y": "number", "val": "string" },
+    "business_key": "pkg_id",
+    "composite_key_source": ["lot", "slot"],
+    "map_key_columns": ["lot", "slot"],
+    "map_push_ok": false,
+    "virtual_columns": [
+      {
+        "name": "product_code",
+        "type": "string",
+        "editable": false,
+        "right_table": "lot_registry",
+        "rule": "lot_product",
+        "unresolved_label": "미상"
+      }
+    ]
+  }
+  ```
+- **`columns` means STORED columns.** `virtual_columns` is a **separate key and is never merged into it**. A client that ignores the key behaves exactly as it did before the key existed — same column list, same paste targets, same "unprotected data column" arithmetic in the map editor's push gate.
+- **`virtual_columns` is always present**, `[]` when no verified virtual join touches this table.
+- **Only `virtual_only` columns are announced.** A `collide` column is a real stored column already listed in `columns`; announcing it twice would give two answers to "is this column stored?". A declaration that only collides therefore leaves this response byte-identical.
+- **`editable: false` is not the enforcement.** The write refusal lives in `crud.apply_batch_updates` (§2.1); this flag only tells a client not to offer an edit that would come back `400`.
+- **`type` is the RIGHT table's declared type, and the value domain is wider than that type.** When the join finds no row, or finds one whose value is empty, the cell carries `unresolved_label` — so a `number` column can legitimately contain a string. The label travels in the response so the client reads it instead of hardcoding `미상`.
+- **On failure the route announces nothing** rather than failing: `virtual_columns` comes back empty and the server logs `[VirtualJoin]`. An unannounced column is a visible absence; a phantom column is a silent wrong answer and a write target that does not exist.
+
+---
+
+## 6. Retroactive (Backfill) Admin Surface
+
+Five retroactive operations that previously existed only as CLIs get an inventory route, a count route and a trigger route. The registry (`server/retroactive.py`) is **pure dispatch** — every count calls the operation's own dry-run and every run calls the same function with `apply=True`, so no operation is reimplemented here.
+
+All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../run` is **strict**: it refuses with `503` when no token is configured, rather than falling back to open.
+
+### 6.1 List Retroactive Operations
+
+- **HTTP Method**: `GET`
+- **Route**: `/admin/retroactive/operations`
+- **Response**: `{"operations": [...]}`, one entry per operation (`chain_replay`, `withdraw`, `enrichment_backfill`, `enrichment_confirm`, `graph_orphans`), each carrying `op`, `label`, `what_is_missing`, `params`, `cli`, `cli_only`, and three facts a client must not guess:
+  - `deletes` — `null`, or a phrase naming what is deleted.
+  - `restartable` — whether an interrupted run resumes from where it stopped.
+  - `commit_granularity` — in words.
+- **Why those three travel in the payload**: one confirmation wording cannot fit five buttons. Four operations write values and commit per chunk; `graph_orphans` deletes rows and issues its single commit **after** the delete loop, so an interrupted run rolls back entirely — including chunks already deleted.
+- Config only, **no DB query**, so it can sit on any request path.
+
+### 6.2 Count (read-only)
+
+- **HTTP Method**: `GET`
+- **Route**: `/admin/retroactive/{op}/count`
+- **Query Parameters**: the operation's own declared parameters, plus `scan_limit` (integer, optional).
+  - Unknown parameter names are refused with `400`. A silently ignored typo makes "0 affected" look like an answer.
+  - `scan_limit` is the **preview budget** and is not any CLI's `--limit` (that spelling means three different things across the five CLIs, and the orphan sweep has none). Default `200`, clamped to `2000` (`retroactive.DEFAULT_SCAN_LIMIT` / `MAX_SCAN_LIMIT`).
+- **Response**: `{op, mode: "dry-run", params, label, cli, deletes, restartable, commit_granularity, affected, affected_label, count_kind, scanned, scan_limit, truncated, detail, blocked_reason, extra}`.
+  - **`count_kind` is part of the answer**, one of:
+    - `exact` — a cheap query answered the whole question.
+    - `sample` — a bounded scan; `scanned` and `truncated` say so, and `detail` states in words that the number is about the sample, not the table.
+    - `upper_bound` — a cheap query answered a superset; `extra.why_upper_bound` names the missing half in words.
+  - Four of the five counts cannot be exact on a request path, and none of them claims to be. An exact R1 count is the operation itself, not a preview of it.
+  - **`scan_limit` is `null` for operations that walk no rows.** Echoing the requested budget there would tell a reader a sample was taken when none was.
+  - `blocked_reason` (e.g. `auto_confirm_off`) is non-null when the run would be refused, so a client disables the button instead of letting the operator discover the refusal by pressing it.
+  - The route is read-only by construction: it rolls back on the way out regardless of which operation ran.
+
+### 6.3 Trigger a Run (strict token)
+
+- **HTTP Method**: `POST`
+- **Route**: `/admin/retroactive/{op}/run`
+- **Request Body (JSON)**: `{"params": {...}, "requested_by": "<optional operator>"}`
+- **Response**: `{"status": "queued", "run_id": "<12 hex>", "op", "params", "label"}`
+- **This route queues; it does not execute.** It writes one `DatabaseOutbox` row (`event_type: "RETROACTIVE_RUN"`, `table_name: "__retroactive__"`) plus `NOTIFY outbox_event` and returns — the same shape as `POST /admin/auto-update/run-now`. The auto-update scheduler picks the row up and runs the operation on a dedicated thread; a retroactive run walks a whole table, so a synchronous handler would hold both the request and a web-server worker until the browser gave up.
+- **One run at a time.** A second trigger while one is in flight is refused by the scheduler and logged, and its outbox row is left unprocessed for a later tick rather than silently queued.
+- **Parameter validation happens in exactly one place** (`retroactive.validate`), so the route and the worker cannot disagree about what a valid request is.
+- **The safety properties live in the operations, not here.** R2's two refusals — the `user` source, and cells a human pinned via `manual_priority_source` — are inside `chain_replay.withdraw_source`, and this path routes *into* that function. The route re-states the first refusal only so the operator gets a `400` instead of a queued job that dies in a worker log.

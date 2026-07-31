@@ -1,6 +1,14 @@
 # 🔁 소급 적용 가이드 — 규칙을 「이미 쌓인 데이터」에 적용하는 다섯 가지 길
 
-> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-07-31 (신설. 다섯 진입점의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain_replay.py` · `server/enrichment_analysis.py` · `server/enrichment_candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
+> **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-07-31
+>
+> **이번 라운드 (2026-07-31 · `fbc1053`·`1948338`·`9c6a1c9`)**
+> - **§7 재작성 — 어드민 API가 착지했습니다**(라우트 3개). 🔴 **화면(버튼)은 아직 없습니다** — 「어드민 화면에는 자리가 없다」는 종전 문장은 절반만 참이 됐습니다. 지금 쓰려면 `curl`입니다.
+> - **§7.2 신설 — 카운트는 「어떤 종류의 수인지」를 함께 답합니다**(`exact`/`sample`/`upper_bound`). 다섯 중 넷은 요청 경로에서 정확할 수 없고, **어느 것도 정확하다고 주장하지 않습니다.**
+> - **§3에 각주 — ⓒ의 구현이 `server/enrichment_backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
+> - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `setup_db_performance.py` 하나입니다.
+>
+> (신설 근거: 다섯 진입점의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain_replay.py` · `server/enrichment_analysis.py` · `server/enrichment_candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
 > **먼저 알아야 할 것:** 이 시스템의 규칙은 **증분(outbox) 구동**이다. 규칙은 **자기가 선언된 이후에 바뀐 행만** 본다. 규칙을 고쳐도 과거는 옛 규칙이 남긴 상태 그대로 있고, 그것을 움직이는 유일한 방법이 이 문서의 다섯 경로다.
 > **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md) · 고아 스윕의 정본은 [AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)
@@ -24,6 +32,8 @@
 잘못 고르면 **에러 없이 아무 일도 안 일어나고**, 운영자는 기능이 고장 났다고 결론짓습니다. 실제로 그렇게 한 번 잃었습니다.
 
 > ⓔ만 성격이 다릅니다. ⓐ~ⓓ가 **만들거나 고치는** 소급이라면 **ⓔ는 지우는 소급**입니다. §5에서 따로 다룹니다.
+
+> 📍 **다섯 전부 어드민 API로도 됩니다**(2026-07-31 `fbc1053` — 건수 조회 + 실행). **화면의 버튼은 `77d27d3` 기준 아직 없어**(작업 진행 중) 지금은 `curl`이고, 절차·주의는 **§7**에 있습니다. 결정표는 도구를 고르는 자리이므로 **어느 표면을 쓰든 위 표가 먼저입니다.**
 
 ---
 
@@ -138,6 +148,8 @@ conda run -n assy_manager python server/scripts/backfill_enrichment.py <룰> --c
 * `--limit N`은 **새로 만들 파생 정체성의 수**를 자릅니다(스캔 행 수가 아닙니다). 잘린 만큼은 `skipped by --limit`로 보고되고 **다시 돌리면 이어서** 갑니다.
 * `--force-disabled`는 `"enabled": false`인 규칙도 돌립니다. 규칙을 아직 켜지 않은 채 규모만 재 보고 싶을 때 씁니다.
 
+> ℹ️ **2026-07-31 `9c6a1c9` — 이 도구의 알맹이는 `server/enrichment_backfill.py`로 옮겨졌고, `scripts/backfill_enrichment.py`는 그 위의 CLI가 됐습니다.** **경로·진입점·플래그는 하나도 바뀌지 않았으므로 위 명령은 전부 그대로 동작합니다.** 옮긴 이유는 어드민 라우트(§7)가 이 로직을 불러야 하는데 **`server/scripts/`는 어느 운영 프로세스의 `sys.path`에도 없어서**입니다 — 그대로 뒀다면 버튼이 초록으로 「queued」를 돌려주고 **아무 행도 쓰이지 않았습니다.** 같은 분리가 이미 셋 있습니다(`graph_orphans` ↔ `graph_orphan_sweep` · `chain_replay` ↔ `chain_replay_cli` · `enrichment_analysis` ↔ `enrichment_insights`).
+
 ---
 
 ## 4. ⓓ enrichment_insights confirm — **행은 있고 타깃 칸이 빌 때**
@@ -242,10 +254,74 @@ conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --ignore-r
 
 옛 문서·옛 메모에서 이 이름을 보면 **따르지 마십시오.** R1과 같은 일을 하면서 `source_name="reapply_chain"`으로 썼는데, 그 이름은 `SOURCE_PRIORITY`에 없어 **99(최하위)**로 떨어졌습니다. **맞는 값을 쓰고도 다른 아무 소스에나 지는** 문이었습니다. 지금 그 자리는 **ⓐ R1**입니다.
 
+### 6.5 ⓒ의 「이미 있는 파생 정체성」 읽기는 **두 갈래**입니다 (2026-07-31 `1948338`)
+
+CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이블 전체에 대해** 판정해야 하므로, 스캔 전에 기존 정체성을 통째로 읽어 둡니다(`derived '<테이블>': N existing identities loaded` 한 줄이 그것입니다). 어드민 **미리보기**(§7.2, `scan_limit`이 있을 때)는 그 읽기를 하지 않고 **표본이 실제로 만난 키만** 인덱스로 되물어봅니다(`bounded mode — existing identities resolved per chunk (no full read)`).
+
+🔴 **하나로 합칠 수 없는 이유가 있습니다.** 전량 읽기는 **스캔 시작 전의 스냅샷**이라 실행 도중 자기가 만든 키를 계속 「새 것」으로 봅니다 — `--apply`가 청크마다 커밋하므로, 순진하게 되물어보면 **자기가 방금 쓴 것을 읽고** 뒤 청크의 보강을 조용히 버립니다. 그래서 되물어보는 쪽은 **없다는 답까지 기억해** 같은 성질을 재현합니다. **CLI의 의미론은 하나도 바뀌지 않았습니다.**
+
+### 6.6 ⓑ R2의 카운트에는 **인덱스가 필요합니다** (2026-07-31 `1948338`)
+
+「이 소스가 이 테이블에서 주장하는 셀은 몇 개인가」는 `cell_sources`를 `(table_name, source_name)`으로 좁히는 질문입니다. 그 술어를 받는 인덱스는 **`idx_sources_by_source`(`table_name, source_name, column_name, row_id`) 하나**입니다 — 기존 `idx_sources_lookup_source`는 `source_name`이 **마지막 키**라 이 술어에 쓸 수 없습니다.
+
+- **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
+- **반영 경로는 하나입니다**: `conda run -n assy_manager python server/scripts/setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
+- 스크립트가 만든 뒤 **플래너가 실제로 그것을 골랐는지까지 검사**합니다(Step 3.11). 표가 작으면(`WITHDRAW_PLAN_MIN_ROWS` 미만) **실패가 아니라 `NOT VERIFIED`**를 찍습니다 — 작은 표에서 Seq Scan은 옳은 계획이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만듭니다.
+- 운영 관점 전문은 [POSTGRES_OPERATIONS §3.1](./POSTGRES_OPERATIONS_GUIDE.md).
+
 ---
 
-## 7. 아직 없는 것 (열린 항목)
+## 7. 어드민 API로도 됩니다 — **화면은 아직 없습니다** (2026-07-31 `fbc1053`)
 
-**어드민 화면에는 이 다섯을 실행할 자리가 아직 없습니다.** 현재 소급 실행 경로는 **CLI뿐**입니다.
+다섯 경로 전부에 **건수 조회 라우트와 실행 라우트**가 생겼습니다. 다만 **어드민 화면의 버튼은 이 커밋 시점(`77d27d3`)에 아직 없습니다** — 착지한 것은 API 세 개이고, 그것을 그리는 클라 코드는 커밋 트리에 없습니다. **지금 눌러서 쓰려면 `curl`입니다.**
 
-소급 항목별 건수 표시 + 실행 버튼을 어드민에 올리는 작업이 **별도 레인에서 진행 중**입니다. 착지 시점·최종 형태는 정해지지 않았으므로 **이 문서는 그것을 약속하지 않습니다.** 진행 상황은 [보드](../process/PROJECT_STATUS.md)를 보십시오. 착지하면 이 절과 §0 결정표를 함께 고쳐야 합니다.
+> ⚠️ **이 문장은 곧 낡습니다** — 화면 작업이 별도 레인에서 **진행 중**입니다. 인용하기 전에 `client2/src`에서 `retroactive`를 grep해 확인하십시오. 착지하면 **§7 서두 · §7.4 · §0 결정표 아래 안내**를 함께 고쳐야 합니다.
+
+| 라우트 | 하는 일 |
+|---|---|
+| `GET /admin/retroactive/operations` | 다섯 연산의 목록·파라미터·**대응 CLI**·CLI에만 있는 기능 |
+| `GET /admin/retroactive/{op}/count` | 「몇 건인가」 — 쓰기 없음 |
+| `POST /admin/retroactive/{op}/run` | 실행을 **큐에 넣고 즉시 반환**(실제 실행은 스케줄러) |
+
+```bash
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" http://127.0.0.1:8080/admin/retroactive/operations
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" "http://127.0.0.1:8080/admin/retroactive/withdraw/count?table=bonding_map&source=chain_ingestion"
+curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application/json" \
+     -d '{"params": {"table": "bonding_map", "source": "chain_ingestion"}}' \
+     http://127.0.0.1:8080/admin/retroactive/withdraw/run
+```
+
+### 7.1 CLI가 없어진 것이 아닙니다 — 버튼은 **흔한 형태**만 덮습니다
+
+라우트는 각 연산의 **파라미터 필수분**만 받습니다. 나머지는 CLI에 남아 있고, 그 목록을 `operations` 응답의 **`cli_only`**가 직접 들고 있습니다 — `replay-all` · `--limit` · `--chunk-size` · `--force-disabled` · `--ignore-knob` · `classify`/`propose` · `--label` · `--max-fraction` · `--min-population` · `--ignore-rejected` · `--allow-production`.
+
+🔴 **`--allow-production`은 CLI에만 있고, 그 사실이 중요합니다.** 격리 관문(§5)은 `scripts/graph_orphan_sweep.py` 안에 있지 `graph_orphans.run_scheduled` 안에 있지 않습니다. 어드민 버튼과 **매일 도는 스케줄러가 부르는 것은 후자**이므로, 이 라우트는 데몬이 이미 하고 있는 것 이상의 권한을 주지 않습니다 — 다만 **CLI가 묻는 확인을 재현하지도 않습니다.** CLI를 아는 운영자는 물어볼 것을 기대합니다.
+
+### 7.2 카운트는 **어떤 종류의 수인지 함께 말합니다**
+
+「몇 건인가」는 다섯 중 셋에서 **드라이런 그 자체**(테이블 전수 + 매퍼)라 요청 경로에 앉을 수 없습니다. 그래서 응답은 수 하나가 아니라 **수 + 그 수의 종류(`count_kind`)**입니다.
+
+| `count_kind` | 뜻 | 함께 오는 것 |
+|---|---|---|
+| `exact` | 값싼 질의가 전부를 답했다 | — |
+| `sample` | 앞에서 `scan_limit`행까지만 봤다 | `scanned` · `truncated` |
+| `upper_bound` | 값싼 질의가 **상위집합**을 답했다 | `extra.why_upper_bound`(부족분을 **말로**) |
+
+🔴 **`sample`의 수는 테이블에 대한 수가 아니라 표본에 대한 수입니다.** 응답의 `detail` 문장이 그렇게 말하도록 서버가 씁니다 — 그 문장을 그대로 읽으십시오.
+🔴 **`upper_bound`를 「이만큼 바뀐다」로 읽지 마십시오.** ⓑ R2에서 그 수는 「이 소스가 주장하는 셀 − 사람이 핀한 셀」이고, **실제로 표시값이 바뀌는 셀은 그보다 적습니다**(아래 층에 같은 값이 있으면 화면은 그대로입니다).
+
+⚠️ **`scan_limit`은 §6.1의 어떤 `--limit`도 아닙니다** — **미리보기의 예산**입니다(기본 200 / 최대 2000). 행을 실제로 훑지 않은 연산은 응답의 `scan_limit`이 **`null`**로 옵니다: 하지 않은 표본을 했다고 말하지 않기 위해서입니다.
+
+### 7.3 실행은 **즉시 반환**이고, 결과는 그 응답에 없습니다
+
+`run`은 아웃박스에 한 줄 쓰고 `{"status": "queued", "run_id": …}`를 돌려줍니다. 진행과 결과는 **auto-update 스케줄러 로그**(`[Retroactive] run_id=…`)에 있습니다. `POST /admin/auto-update/run-now`와 같은 형태입니다.
+
+- **동시 1건입니다.** 실행 중에 또 요청하면 조용히 줄 세우지 않고 **거절 + 로그**하며, 아웃박스 행은 미처리로 남아 다음 틱이 집습니다.
+- **토큰이 설정돼 있지 않으면 이 라우트만 503입니다**(조회 라우트 둘은 열립니다). 코드 실행 라우트와 같은 취급인데, 코드 실행이라서가 아니라 **테이블 전체 재작성·소스 회수·노드 삭제**라는 피해 계급이 같기 때문입니다.
+- **사람 값 보호는 라우트가 아니라 연산 안에 있습니다**(§2.4) — 어드민을 거쳐도 우회되지 않습니다.
+
+### 7.4 아직 없는 것 (`77d27d3` 기준)
+
+- **어드민 화면의 버튼**(위 API를 그리는 클라 코드) — **별도 레인에서 진행 중**입니다. 착지하면 §7 서두·이 절·§0 결정표 아래 안내를 함께 고쳐야 합니다.
+- **실행 이력 화면**도 없습니다. 완료 여부와 결과는 **스케줄러 로그**에서만 읽습니다.
+- 진행 상황은 [보드](../process/PROJECT_STATUS.md)를 보십시오.

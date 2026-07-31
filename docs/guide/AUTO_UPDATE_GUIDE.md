@@ -1,6 +1,6 @@
 # 📅 AssyManager Ingestion Auto Update & Scheduler 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**§4-quater 신설 — 소급 적용 실행**(`fbc1053`). 이 데몬이 하는 「수집기가 아닌 일」이 **셋**이 됐습니다. 🔴 앞의 둘과 달리 **전용 스레드**에서 도는데, 인라인이면 실행 내내 박동이 멈춰 `/health`가 이 데몬을 `wedged`로 보고하기 때문입니다. 동시 1건이고 두 번째 요청은 조용히 큐잉하지 않고 **거절 + 아웃박스 행 미처리 유지**입니다. 직전 2026-07-30: **§4-ter 신설 + §4-bis의 "유지보수 작업 1건" 정정** — `server/run_auto_update.py`(`maybe_sweep_graph_orphans`·`run()`의 틱 4번 항목)·`server/graph_orphans.py`(`due`/`declaration_blockers`/`run_scheduled`·`CHECK_INTERVAL_SEC`·`SWEEP_INTERVAL_SEC`·`ENABLE_ENV`) 실측. `530fdfd`가 그래프 고아 노드 스윕을 이 데몬의 틱에 올렸으므로 유지보수 작업은 **2건**이다. 요점은 삭제가 아니라 **거절**(선언에 거부가 하나라도 있으면 `status: refused`로 전체 거절 — `min_population` 미만 라벨은 예산 가드가 못 막기 때문). 주기 상태의 출처가 config 백업과 다르다는 것(파일 vs 프로세스 monotonic → **재기동마다 1회 실행**)도 등재. 직전 2026-07-27) | **Owner:** Ingester | **Source-of-truth:** `server/run_auto_update.py` · `server/utils/auto_update_control.py` · `server/graph_orphans.py`(§4-ter) · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 디렉토리는 각 테이블별 실시간 인제션 파일 수집 및 백업 스케줄링을 독립적이고 완벽하게 관리할 수 있는 **하이브리드 동적 다중 감지 수집 시스템**입니다.
 
@@ -169,6 +169,22 @@ out = build_rows()
 * **실패 격리**: §4-bis와 동일 — 스윕 예외는 로그로만 나가고 수집기 실행을 막지 않습니다.
 * ⚠️ **주기 상태의 출처가 §4-bis와 다릅니다.** config 백업은 "디스크의 최신 스냅샷이 7일보다 오래됐는가"를 **파일에서** 유도하지만, 스윕은 **프로세스 메모리의 monotonic 시각**(`_last_orphan_sweep`)을 봅니다. `0.0`은 "첫 틱에 실행"이므로 **스케줄러 재기동마다 스윕이 한 번 돕니다.** 멱등하고 저렴한 유지보수라 문제가 되지 않지만, "하루 1회"를 재기동과 무관한 보장으로 읽지는 마십시오.
 * 운영자 문(수동): `server/scripts/graph_orphan_sweep.py` — **dry run 기본**, `--apply`는 격리 밖에서 `--allow-production` 필요(dry run은 읽기 전용이라 어디서나 허용). 플래그 전수·종료 코드·**⚠️ 이 스윕만 페이지 단위 커밋이 아니라는 사실**은 [BACKFILL_GUIDE §5·§6](./BACKFILL_GUIDE.md)에 있습니다(다른 소급 경로 넷과 나란히 놓은 자리).
+
+---
+
+## 🔁 4-quater. 세 번째 「수집기가 아닌 일」 — 소급 적용 실행 (2026-07-31 `fbc1053`)
+
+`POST /admin/retroactive/{op}/run`이 아웃박스에 쓴 `RETROACTIVE_RUN` 행을 **이 데몬이 집어 실행**합니다. 소비 지점은 틱 루프이고 실행은 `retroactive.execute`, 운영자 관점 절차는 [BACKFILL_GUIDE §7](./BACKFILL_GUIDE.md)에 있습니다(**이 절은 「왜 여기서 도는가」만** 다룹니다).
+
+**왜 여기인가** — §4-bis·§4-ter와 같은 근거에 하나가 더 붙습니다: `SCHEDULER_RUN_NOW`를 이미 이 루프가 보고 있고, 소급 실행은 **그 이벤트와 정확히 같은 모양**입니다(라우트는 아웃박스 한 줄을 쓰고 즉시 반환, 실제 실행은 데몬).
+
+> 🔴 **다른 둘과 달리 틱 스레드에서 돌리지 않습니다 — 전용 스레드입니다.**
+> 소급 실행은 **테이블을 전수로 걷습니다.** 인라인으로 돌리면 실행 내내 `heartbeat.beat("scheduler")`가 멈추고, 정체 임계가 **60초**이므로 `/health`가 이 데몬을 **`wedged`로 보고**합니다([backend §1.3](../architecture/backend.md)). 제품이 제안한 버튼을 누른 운영자가 **그 결과로 감시 표면을 죽이는** 형태이고, 같은 시간 동안 크론도 멈춥니다. 그래서 `start_retroactive_run`이 `retroactive-run` 스레드를 띄우고 **틱은 계속 박동합니다.**
+
+* **동시 1건입니다.** 같은 룰의 재적용 둘이 같은 셀을 두 세션에서 쓰는 것, 그리고 같은 테이블에서 재적용과 회수가 경합하는 것은 **사후에 아무도 추론할 수 없는 순서**입니다. 실행 중 두 번째 요청은 **조용히 큐잉하지 않고 거절 + 로그**하며, 아웃박스 행을 **미처리로 남겨** 다음 틱이 집습니다.
+* **실패해도 데몬은 죽지 않습니다** — `retroactive.execute`는 예외를 삼키고 결과 dict로 답합니다(`config_backup.run_scheduled`·`graph_orphans.run_scheduled`와 같은 규칙). 스레드 자체가 던지는 경우까지 러너가 한 겹 더 잡아 **조용한 스레드 죽음**을 막습니다.
+* **결과는 이 데몬의 로그에 있습니다**(`[Retroactive] run_id=…`). 트리거 응답에는 `run_id`만 있고 결과가 없습니다.
+* ⚠️ **이 이벤트는 체인 워커가 건드리면 안 됩니다.** 제어 이벤트가 체인의 그룹핑 로직에 닿으면 **데이터 트랜잭션으로 읽힙니다.** 그래서 타입 상수는 `server/event_constants.py`의 `CONTROL_EVENT_TYPES`에 있고(`SCHEDULER_RUN_NOW`와 나란히), 체인 워커는 **이름을 하드코딩하지 않고 그 집합을** 봅니다.
 
 ---
 

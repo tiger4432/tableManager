@@ -4,7 +4,14 @@
 >
 > 🔴 **§2.0 자동 게이트의 정본은 `client2/package.json`의 `prebuild` 한 줄이고 이 문서는 사본입니다** — 계약을 추가·삭제하는 커밋은 §2.0의 **산문과 코드 샘플을 함께** 고쳐야 합니다(독자가 자기 출력과 대조하는 것은 샘플입니다). 그리고 **사용자 눈에 보이는 기능이 착지하면 §1의 인벤토리 행이 먼저 필요합니다** — 행이 없으면 그 기능은 회귀 점검에서 구조적으로 빠집니다.
 >
-> **이번 라운드 (2026-07-31 · `d70a33d` · `9d7d9a4`)**
+> **이번 라운드 (2026-07-31 · `9200f20`·`4b50135`·`fbc1053`·`1948338`·`9c6a1c9`)**
+> - **§1.1 가상 조인 행 갱신 + §2.2-bis 전면 개정 — 가상 전용 컬럼이 화면에 떴습니다.** 「겹친 컬럼만 눈에 보인다」는 **거짓이 됐습니다.** 🔴 점검자에게 가장 중요한 세 줄: **복사한 직사각형이 선택한 그것과 같아야** 하고(거르면 가운데가 빠져 오른쪽이 밀립니다), **가상 컬럼에 걸친 붙여넣기·delete·Ctrl+Enter는 400이 아니라 「그 컬럼만 조용히 빠지고 나머지는 저장」**이어야 하며, **`미상` 섞인 숫자 컬럼 정렬에서 미해결 행이 흩어지면 결함**입니다.
+> - **§1.1·§2.2-bis에 미해결 2건 명시** — **CSV 추출에 가상 컬럼이 없고**, **`미상` 행을 찾을 방법이 없습니다**(필터 없음). 「나중에 될 것」이 아니라 **지금의 한계**로 적었습니다.
+> - **§1.8 신규 행 + §2.8-quinquies 신설 — 소급 적용 어드민 API 3라우트**(`fbc1053`). ⚠️ **화면(버튼)은 `77d27d3` 기준 없습니다**(작업 진행 중) — 지금의 점검은 `curl`입니다. 🔴 가장 중요한 한 줄: **`count`가 수만 주고 `count_kind`를 안 주면 결함**입니다(다섯 중 넷은 요청 경로에서 정확할 수 없고, 정확한 척하는 수가 이 라운드가 막는 대상입니다).
+> - **§1.12 라우트 수 정정 「16개」→ 22개**, strict 2 → **3**(`POST /admin/retroactive/{op}/run` 추가). §2.16의 strict 점검 항목도 셋으로 늘렸습니다.
+> - **§2.0 하네스 게이트 수 정정 16/11 → 18/13.** 🔴 **종전 「16」은 적힌 시점에 이미 틀린 수**였습니다(`dde342c`가 하나를 더한 것을 아무도 안 셌습니다) — **인용하지 말고 러너 출력을 읽으십시오.**
+>
+> **직전 라운드 (2026-07-31 · `d70a33d` · `9d7d9a4`)**
 > - **§1.1 신규 행 + §2.2-bis 신설 — 가상 조인 컬럼** (`d70a33d`). 선언만 검증하던 기능이 **실제로 실행**되면서 그리드에 값이 나타났는데 §1에 행이 없어 회귀 점검에서 통째로 빠져 있었습니다. 🔴 점검자에게 가장 중요한 두 줄: **왼쪽 값이 있는 셀은 손대지 않아야** 하고(있는데 조인 값으로 바뀌면 결함), **가상 전용 컬럼 쓰기의 200 + 무변화는 실패**입니다(그 침묵이 이 검사가 막는 대상). 겹친 컬럼만 눈에 보이는 상태라는 것도 함께 적었습니다(`/schema` 미구현).
 > - **§1.7 신규 행 — 「기하 편집은 저장 좌표를 지킨다」.** 반응은 함수 하나이고 **부르는 자리가 넷**(규격 6칸 · 파생 직후 · 유효 다이 지정 · **격자 `COLS`/`ROWS`**)입니다. 행이 없어 이 축 전체가 §1 인벤토리에서 빠져 있었습니다.
 > - **§2.9 신규 2항 — 치수 편집의 좌표 보존 / 치수가 규칙 ⑤를 덮지 않을 것.** 🔴 점검자에게 가장 중요한 한 줄: **실측 36건 중 20건은 원래 아무 일도 일어나지 않으므로 초록이 통과의 증거가 아닙니다**(이 라운드의 첫 픽스처가 그 20건에 앉아 수리 전에 이미 초록이었습니다).
@@ -33,7 +40,8 @@
 | 범위 일괄 적용 | 범위 선택 후 값 1개를 범위 전체에 적용 | 범위 선택(**마우스 드래그 / Shift+클릭 / `Shift`+방향키** — 2026-07-30 키보드 경로 추가) → 셀 편집 시작(더블클릭/타이핑) → **Ctrl+Enter** 로 편집값을 범위 전체에 적용(시스템 컬럼 제외, Tx 모드면 스테이징) | `ui.applyValueToSelectedRange`(§7) · `grid.js` `defaultColDef.suppressKeyboardEvent` · `grid.js` `extendRangeByKeyboard` |
 | 키보드 범위 선택 (2026-07-30) | **손이 키보드를 떠나지 않고** 범위를 잡는다 — 마우스 누름은 공수 계기에서 키 1점 대비 3점이라, 드래그가 필요한 일괄 채우기는 이득 대부분을 반납한다 | 셀에 포커스 → `Shift`+방향키로 사각형 확장(앵커는 포커스 셀, 가장자리에서 클램프) → 값 타이핑 → **Ctrl+Enter**. **평범한 방향키는 범위를 해제**(해제하지 않으면 사용자가 떠난 사각형이 다음 Ctrl+Enter를 받아 의도 밖 셀을 덮어쓴다) · `Esc`도 해제 | `grid.js` `extendRangeByKeyboard`/`visibleRangeColIds` — 선택 모델은 기존 `state.dragStartCell`/`dragEndCell` 재사용(두 번째 범위 구현을 만들지 않음), 렌더는 `clipboard.isCellInRange`/`refreshSelectedRangeDiff` |
 | **값 제안 셀 에디터** (F3 · `77a2c15` → Escape 시정 `d5f75a8` · 2026-07-30) | `string` 선언 컬럼의 셀 에디터가 **접두 제안 목록**을 띄우고 **`Enter` 한 번이 후보 채택과 셀 확정을 동시에** 한다(타이머 아님 — AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 먼저 부르므로 **같은 이벤트가 확정까지** 수행). 여는 최소 접두 **1**(서버 기본 `min_prefix_length: 0`보다 엄격 — 빈 접두의 첫 후보는 임의 표본이라 `Enter`의 뜻이 사라진다), 요청 한도 **12**, 표시 8행, 디바운스 90ms 트레일링. 컬럼별 학습(플로어·4연속 4xx 비활성·쿨다운)은 **TTL 60초로 만료**(핫리로드되는 `table_config`를 클라 래치가 면제받지 않게) | 그리드 셀 편집 시작 → 1글자 이상 타이핑 | `value_suggest.SuggestCellEditor`/`handleEditorKey` · `grid.buildColumnDefs`(`cellEditor` 갈아끼움) + `defaultColDef.suppressKeyboardEvent` 첫 분기 · `server/value_suggest.py` · [frontend §3.3](../architecture/frontend.md) |
-| **가상 조인 컬럼 (2026-07-31 `d70a33d`)** | 선언된 다른 테이블의 컬럼을 **저장하지 않고 조회 시점에** 이 표에 붙인다. 승인된 선언(오른쪽에 조인 키 UNIQUE 인덱스)만 실행된다. **왼쪽에 같은 이름의 컬럼이 있으면 부재일 때만 채운다** — 왼쪽 값 있음 → 그대로 · 비었음 → 조인 값 · 둘 다 없음 → `unresolved_label`(기본 `미상`). 조인이 만든 셀에만 `sources.virtual_join`이 붙어 기존 소스 표시로 어느 쪽 값인지 읽힌다(새 UI 0). ⚠️ **지금 눈에 보이는 것은 겹친 컬럼뿐이다** — `/schema`가 가상 전용 컬럼을 알리지 않아 그리드가 그 컬럼을 만들지 못한다(미해결, [config/virtual_join_rules §9](../guide/config/virtual_join_rules.md)) | (자동) 테이블 조회 시 — 선언은 `server/config/virtual_join_rules.json` | `virtual_join_executor.attach`(읽기 경로 `fetch_and_merge_metadata`) · `crud.refuse_virtual_join_columns`(쓰기 거부) · [config/virtual_join_rules §4-bis](../guide/config/virtual_join_rules.md) |
+| **가상 조인 컬럼 (2026-07-31 `d70a33d`)** | 선언된 다른 테이블의 컬럼을 **저장하지 않고 조회 시점에** 이 표에 붙인다. 승인된 선언(오른쪽에 조인 키 UNIQUE 인덱스)만 실행된다. **왼쪽에 같은 이름의 컬럼이 있으면 부재일 때만 채운다** — 왼쪽 값 있음 → 그대로 · 비었음 → 조인 값 · 둘 다 없음 → `unresolved_label`(기본 `미상`). 조인이 만든 셀에만 `sources.virtual_join`이 붙어 기존 소스 표시로 어느 쪽 값인지 읽힌다(새 UI 0) | (자동) 테이블 조회 시 — 선언은 `server/config/virtual_join_rules.json` | `virtual_join_executor.attach`(읽기 경로 `fetch_and_merge_metadata`) · `crud.refuse_virtual_join_columns`(쓰기 거부) · [config/virtual_join_rules §4-bis](../guide/config/virtual_join_rules.md) |
+| **가상 조인 컬럼이 화면에 뜬다 (2026-07-31 `9200f20`+`4b50135`)** | 왼쪽에 **실재하지 않는** 노출 컬럼(`virtual_only`)이 그리드 **맨 뒤에 덧붙어** 그려진다. 헤더 `🔗`, 색은 시스템 컬럼과 같은 회색, 툴팁이 **오른쪽 테이블과 선언 이름**을 말한다(서버의 쓰기 거부 문구는 「조인 원본에서 고치라」고만 하고 어느 테이블인지 지목하지 못하므로 그 답이 있는 자리는 여기뿐). `/schema`가 **`columns`가 아니라 별도 키 `virtual_columns`로** 알리므로, 이 키를 무시하는 소비자는 **키가 없던 때와 글자 그대로 같게** 동작한다(맵 push 게이트의 「보호 없는 데이터 컬럼」 계수 불변). 🔴 **읽기 전용을 지키는 것은 여전히 쓰기 깔때기 하나**이고 화면의 회색·`editable:false`·`isVirtualColumn` 술어는 **되돌아올 400을 제안하지 않기 위한 것**이다 — 붙여넣기·delete 비우기·Ctrl+Enter 일괄이 각각 가드를 갖는 이유는 **그 셋이 컬럼 목록이 아니라 그리드 컬럼 id로 배치를 만들기** 때문. **복사는 반대**로 가상 이름을 받아들인다(거르면 블록 가운데가 빠져 오른쪽이 한 칸 밀린 직사각형을 돌려준다). 정렬은 전용 비교기(숫자 컬럼에 `미상`이 섞이면 기본 비교가 전부 동률로 만들어 흩어진다). ⏳ **현재 한계 2**(커밋 트리 `77d27d3` 기준 · ⚠️ 둘 다 작업 진행 중이니 점검 전 소스 확인): **CSV 추출(`/tables/{t}/export`)에 실리지 않는다**(그 경로는 조인을 부르지 않는다 — 화면에 보이는 컬럼이 추출물에 없다) · **필터가 없어 `미상` 행을 찾을 방법이 없다**(서버측 필터인데 서버가 그 컬럼을 모른다 → 켜면 페이지가 필터 없이 돌아오고 화면만 걸러진 것처럼 보인다) → [config/virtual_join_rules §9](../guide/config/virtual_join_rules.md) | (자동) 테이블 조회 시 | `main.get_table_schema`(`virtual_columns`) · `virtual_join_executor.announced_columns` · `grid.buildColumnDefs`(append) · `state.isVirtualColumn` · `clipboard.js` 5경로 · `ui.applyValueToSelectedRange` · [backend §2.2](../architecture/backend.md) · [frontend §3.4](../architecture/frontend.md) · 하네스 `client2/tests/virtual_column_render_harness.mjs` |
 | 셀 소스 레이어링 조회 | 한 셀에 겹친 소스(파일명·user·collision_merge 등) 목록 확인 | 셀(또는 드래그 범위) **우클릭** → 컨텍스트 메뉴 "📚 데이터 원천(Sources) 관리" — 단일 셀은 소스별 값/타임스탬프, 범위는 배치 모드(소스별 통합 뷰) | `main.openSourcesModal/refreshSourcesList`(§7) · GET `/tables/{t}/{r}/{c}/sources`(§1.3) |
 | 수동 우선순위 핀(Pin) | 특정 소스를 표시값으로 강제 고정(우선순위 무시) | 소스 모달의 소스 행별 "📍 Pin" 버튼 — 클릭 시 핀("📌 Pinned" 표시), 핀 상태에서 재클릭 시 해제(토글). 범위 선택이면 선택 셀 전체 일괄 핀 | PUT `.../priority`(단일/배치) → `crud.set_cell_manual_priority_batch`(§1.3/§2) |
 | 소스 삭제 | 셀에서 특정 소스 레이어 제거 → 표시값이 차순위 소스로 재계산 | 소스 모달의 소스 행별 "🗑️ Delete" 버튼 → `confirm()` 확인창 → 삭제. 범위 선택이면 같은 버튼이 선택 셀 전체 배치 삭제 | DELETE `.../sources/{s}` · POST `.../sources/delete/batch` → `crud.delete_cell_source_batch` → `compute_priority_value`(§1.3/§2) |
@@ -134,7 +142,9 @@
 
 > 🔒 **2026-07-27(`90e284f`)부터 아래 탭이 부르는 `/admin/*` API는 전부 공유 토큰 게이트 뒤에 있다.** 페이지(`GET /admin.html`) 자체는 열려 있으므로 화면은 뜨지만, 토큰이 없으면 **모든 표가 비어 있고** 클라가 토큰을 한 번 묻는다. 게이트 자체와 점검 절차는 **§1.12 / §2.16**에 있고, 이 절은 게이트를 통과한 뒤의 기능만 다룬다.
 
-| 탭/기능 | 설명 | 코드 |
+> ⚠️ **아래 표는 3열이다. 네 번째 셀을 쓰면 렌더러가 그것을 조용히 버린다** — 2026-07-31 이전 F9 행이 정확히 그 상태였고 **「코드」 칸이 화면에서 통째로 사라져 있었다.** 진입 경로와 코드는 **마지막 칸 안에서** `·`로 나눠 쓴다.
+
+| 탭/기능 | 설명 | 진입 경로 · 코드 |
 |---|---|---|
 | Overview | 파이프라인 4카드(File/Chain/AutoUpdate/Enrichment) 헬스 요약 + 최근 이벤트 + 각 탭 딥링크. 상단 파이프라인 헬스 스트립 공용 | `fetchOverview/renderOverview` · `parseRoute/applyRoute/switchTab`(§7) |
 | Overview 상단 **핵심가치 #1 두 줄** | **재교정률**(사람이 같은 셀을 두 번 이상 고친 비율 — 보조 계기) + **교정 공수**(한 교정 완료까지의 상호작용 점수 = 정본 계기, 2026-07-29 신설). 두 줄이 `/dashboard/summary` **한 응답**을 공유하고 5분 스로틀 하나를 쓴다(무거운 엔드포인트라 Overview 자동 갱신 루프에 태우지 않음). 점검 시 확인할 것: ① 값 옆에 **분모/커버리지가 항상 함께** 있는가 ② 값이 없을 때 `0`이 아니라 **`—` + 사유**인가 — 특히 `measured_ratio === 0`(사람 교정은 있는데 계측 0건 = **수집 중단**)이 danger 톤 경고로 뜨는가, 응답에 `effort` 필드가 아예 없을 때 "교정 없음"이 아니라 "**서버가 보고하지 않음**"이라고 하는가 ③ 카드·패널·차트·새 탭이 생기지 않았는가(한 줄 유지) | `renderRecorrection`/`renderEffort`/`refreshCoreValueLines`(§7) · [frontend §5](../architecture/frontend.md) |
@@ -144,7 +154,8 @@
 | Enrichment | 규칙별 결손 현황(15s TTL 캐시 — 스트립·탭·Overview 공용) + 컨베이어 딥링크 | `renderEnrichmentTable/fetchEnrichmentStatus` · `/enrichment/rules` |
 | Code Editor(공용 뷰) | Monaco(CDN) 파일 피커 + 스크립트 편집·저장(인라인 폴백, dirty confirm) — 각 탭에서 `#editor=<path>` 딥링크 진입 | `initMonacoEditor/populateEditorPicker/selectEditorFile/saveScriptCode` · `/admin/scripts/*` |
 | Config Reload | `table_config.json` 등 핫리로드(+SYSTEM_RELOAD 전파로 워커도 리로드, 신규 테이블 물리 CREATE 포함). 🔴 **이 버튼은 쓰기 전용이다** — 캐시를 갱신하고 워커에 이벤트를 뿌린 뒤 **무엇이 먹었는지 아무것도 돌려주지 않는다.** 그 공백을 메우는 것이 아래 행이므로 **둘은 짝으로 읽는다** | `reloadSystemConfigs` → POST `/admin/reload-configs`(§1.4) |
-| **config 선언의 효과 조회 (F9, 2026-07-30 서버 · **2026-07-31 화면 착지** `93610cb`)** | 「내가 쓴 config가 먹었나」에 제품이 답한다. `GET /admin/config/resolve`가 선언을 **세 모집단**으로 나눠 돌려준다 — `effective` · `ineffective`(+ **명명된 사유**) · `rejected`(+ 사유) + `settings`(실효값과 **그 값이 온 파일**, 파일 부재로 기본값인 경우 포함). ✅ **진입은 어드민 Overview 탭의 세 번째 계기 줄**이다(`admin.js`의 `refreshConfigResolve` → 뷰 모델 `config_resolve_view.js`). 1분 스로틀 · `Reload Configs`를 누르면 force로 즉시 다시 읽는다. 🔴 사람이 읽을 문장(`detail`)은 **서버가 만들고 클라는 그대로 렌더해야 한다**(계약) — 클라가 「효과 없음」을 자기 규칙으로 판정하면 하드코딩 사본 계급이 재발한다. 사유 어휘는 닫혀 있고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — 새 단어 0). ⚠️ **`scope_unresolved`는 켜기 전 경고**: 선언 뷰가 판단키의 일부만으로 조회하면 런타임은 `ambiguous`가 아니라 `single`을 내므로 실행 중에는 보이지 않는다. DB 질의 0건(config만). 드라이런은 별도 라우트이고 **HTTP에 쓰기 경로가 없다**. ⚠️ **도메인은 `enrichment` 하나가 등록돼 있고 나머지는 같은 틀로 붙는다** — 도메인을 추가하면 [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 해당 행과 이 행을 함께 고친다 | `GET /admin/config/resolve` · `GET /admin/enrichment/auto-confirm/dry-run?rule=` (어드민 토큰) | `config_resolve_report.resolve_report` · 점검 §2.8-ter · [ENRICHMENT_QUEUE_SPEC §5.2-bis](../spec/ENRICHMENT_QUEUE_SPEC.md) · [CONFIG_GUIDE §4.2-bis](../guide/CONFIG_GUIDE.md) · [config/enrichment_rules §7.3-bis](../guide/config/enrichment_rules.md) · 계약 `contracts/config_resolve_report/` |
+| **config 선언의 효과 조회 (F9, 2026-07-30 서버 · **2026-07-31 화면 착지** `93610cb`)** | 「내가 쓴 config가 먹었나」에 제품이 답한다. `GET /admin/config/resolve`가 선언을 **세 모집단**으로 나눠 돌려준다 — `effective` · `ineffective`(+ **명명된 사유**) · `rejected`(+ 사유) + `settings`(실효값과 **그 값이 온 파일**, 파일 부재로 기본값인 경우 포함). ✅ **진입은 어드민 Overview 탭의 세 번째 계기 줄**이다(`admin.js`의 `refreshConfigResolve` → 뷰 모델 `config_resolve_view.js`). 1분 스로틀 · `Reload Configs`를 누르면 force로 즉시 다시 읽는다. 🔴 사람이 읽을 문장(`detail`)은 **서버가 만들고 클라는 그대로 렌더해야 한다**(계약) — 클라가 「효과 없음」을 자기 규칙으로 판정하면 하드코딩 사본 계급이 재발한다. 사유 어휘는 닫혀 있고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — 새 단어 0). ⚠️ **`scope_unresolved`는 켜기 전 경고**: 선언 뷰가 판단키의 일부만으로 조회하면 런타임은 `ambiguous`가 아니라 `single`을 내므로 실행 중에는 보이지 않는다. DB 질의 0건(config만). 드라이런은 별도 라우트이고 **HTTP에 쓰기 경로가 없다**. ⚠️ **등록된 도메인은 2026-07-31 실측 `enrichment` · `virtual_join` 둘**이고 나머지는 같은 틀로 붙는다 — 도메인을 추가하면 [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 해당 행과 이 행을 함께 고친다 | 진입: `GET /admin/config/resolve` · `GET /admin/enrichment/auto-confirm/dry-run?rule=`(어드민 토큰) — 코드: `config_resolve_report.resolve_report` · 점검 §2.8-ter · [ENRICHMENT_QUEUE_SPEC §5.2-bis](../spec/ENRICHMENT_QUEUE_SPEC.md) · [CONFIG_GUIDE §4.2-bis](../guide/CONFIG_GUIDE.md) · [config/enrichment_rules §7.3-bis](../guide/config/enrichment_rules.md) · 계약 `contracts/config_resolve_report/` |
+| **소급 적용(backfill) 어드민 API — ⚠️ 화면은 아직 없다 (2026-07-31 `fbc1053`)** | CLI에만 있던 **소급 5종**(R1 재적용 · R2 소스 회수 · enrichment 파생행 생성 · 단일 후보 자동 확정 · 그래프 고아 스윕)에 **인벤토리·건수·실행** 라우트가 생겼다. ⚠️ **어드민 화면의 버튼은 `77d27d3` 기준 아직 없다**(그리는 클라 코드가 커밋 트리에 없다 — **다만 화면 작업이 진행 중이므로 인용 전 `client2/src`에서 grep할 것**) — **지금의 점검은 `curl`이다.** 🔴 **인벤토리·건수 응답이 `deletes`·`restartable`·`commit_granularity`를 실어 나른다**: 확인 문구 하나로 다섯 버튼을 덮으면 그 하나가 틀리기 때문이다(넷은 청크 커밋이라 이어서 재실행되지만 **고아 스윕만 삭제 루프가 끝난 뒤 한 번 커밋**해 중단 시 전부 롤백). 🔴 **모든 건수가 `count_kind`를 함께 답한다**(`exact`/`sample`/`upper_bound`) — 다섯 중 넷은 요청 경로에서 정확할 수 없고 **어느 것도 정확한 척하지 않는다**. 실행은 **아웃박스 한 줄 + 즉시 반환**이고 실제 실행은 스케줄러 전용 스레드(동시 1건). **새 연산은 하나도 구현하지 않았다** — 카운트는 각 연산 자신의 dry-run, 실행은 같은 함수의 `apply=True` | 진입: `curl -H "X-Admin-Token: …"` → `GET /admin/retroactive/operations` · `.../{op}/count` · `POST .../{op}/run`(**strict 토큰**) — 코드: `server/retroactive.py`(등록부) · `run_auto_update.start_retroactive_run` · 점검 §2.8-quinquies · [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md) · [backend §2](../architecture/backend.md) · [AUTO_UPDATE_GUIDE §4-quater](../guide/AUTO_UPDATE_GUIDE.md) |
 
 ### 1.9 온톨로지 그래프 (승격·뷰어·추적)
 
@@ -190,9 +201,9 @@
 
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
-| 어드민 공유 토큰 게이트 | `/admin/*` **API 16개 전부**가 `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더 필요(비교 `secrets.compare_digest`). **조회도 포함** — 소스 코드 반환·파이프라인 열거도 유출이다. 미제시 **401**, 불일치 **403**. 예외는 페이지 서빙 `GET /admin`·`/admin.html` 2개(브라우저 내비게이션이라 헤더를 붙일 수 없고, 표시 데이터는 전부 게이트된 JSON에서 온다) | 서버 환경변수 | `server/admin_auth.py` · [backend §API](../architecture/backend.md) · [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md) |
-| 미설정 시 **부분** fail-closed | 토큰이 없으면 코드 실행 2라우트(`POST /admin/scripts/code`·`POST /admin/auto-update/run-now`)만 **503**, 나머지는 **열린 채 동작**. 전부 잠그면 운영자가 **고치러 들어갈 페이지에서 잠긴다** — 의도된 비대칭이다 | (자동) 기동 시 | `require_admin_token{,_strict}` |
-| 비-ASCII 토큰 거부 | HTTP 헤더는 latin-1 디코딩이라 **한글·이모지 토큰은 구조적으로 인증 불가**. 서버가 기동 시 **거부하고 미설정 상태로 취급**하며 배너를 `ERROR`로 남긴다. 조용히 16라우트를 죽이고 "토큰이 틀렸다"고 답하는 **복구 불능 상태**를 만들지 않기 위함 | 기동 로그 `[admin-auth]` | `token_is_unusable`/`startup_banner` |
+| 어드민 공유 토큰 게이트 | `/admin/*` **API 라우트 전부**(2026-07-31 실측 **22개** — `@app.<verb>("/admin` 세기, 페이지 서빙 2개 제외)가 `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더 필요(비교 `secrets.compare_digest`). ⚠️ **이 수는 admin 라우트가 추가되는 커밋마다 낡는다** — 커버리지 판정의 정본은 수가 아니라 **`test_admin_auth.py`가 FastAPI 라우트 테이블을 열거하는 단언**이다. **조회도 포함** — 소스 코드 반환·파이프라인 열거도 유출이다. 미제시 **401**, 불일치 **403**. 예외는 페이지 서빙 `GET /admin`·`/admin.html` 2개(브라우저 내비게이션이라 헤더를 붙일 수 없고, 표시 데이터는 전부 게이트된 JSON에서 온다) | 서버 환경변수 | `server/admin_auth.py` · [backend §API](../architecture/backend.md) · [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md) |
+| 미설정 시 **부분** fail-closed | 토큰이 없으면 **strict 3라우트**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now` · **`POST /admin/retroactive/{op}/run`** — 2026-07-31 추가)만 **503**, 나머지는 **열린 채 동작**. 전부 잠그면 운영자가 **고치러 들어갈 페이지에서 잠긴다** — 의도된 비대칭이다. 🔴 **소급 실행이 strict인 이유는 코드 실행이라서가 아니다** — 테이블 전체 재작성·소스 주장 회수·노드 삭제이고 **같은 아웃박스로 같은 스케줄러 프로세스에 닿는다**(피해 계급이 같다). 목록의 정본은 `test_admin_auth.STRICT_ADMIN_ROUTES` | (자동) 기동 시 | `require_admin_token{,_strict}` |
+| 비-ASCII 토큰 거부 | HTTP 헤더는 latin-1 디코딩이라 **한글·이모지 토큰은 구조적으로 인증 불가**. 서버가 기동 시 **거부하고 미설정 상태로 취급**하며 배너를 `ERROR`로 남긴다. 조용히 admin 라우트 전부를 죽이고 "토큰이 틀렸다"고 답하는 **복구 불능 상태**를 만들지 않기 위함 | 기동 로그 `[admin-auth]` | `token_is_unusable`/`startup_banner` |
 | `/internal/events/*` 게이트 | 워커→웹서버 IPC 4개도 **같은 토큰**. `broadcast`는 임의 dict를 **접속 중인 전 클라이언트 그리드에 중계**하고 `audit_cache`에 주입하므로, 조회 admin만 잠그는 것은 거꾸로였다. 워커 3종은 **런처 환경을 상속**해 자동으로 헤더를 붙인다 | (자동) 워커 기동 | `internal_event_headers()` · `run_watcher`/`chain_ingestion_worker`/`graph_sync_worker` |
 | **통지 4xx가 누가 거절했는지 말한다** (2026-07-30 `23a346d`) | `/internal/events/*`의 401/403 로그에 **`admin-gate=yes\|no`**가 붙는다. 판정은 게이트가 **자기 거부에만** 다는 `WWW-Authenticate: X-Admin-Token` 헤더 하나이고(대소문자 무시 **정확 일치** — 프록시의 `WWW-Authenticate: Basic realm=…`이 우리 것으로 읽히면 안 된다), `admin-gate=yes`면 **토큰 지문**과 모집단별 REMEDY가 함께 나온다(403 = 양쪽 토큰 다름 / 401+지문 있음 = 전송 중 탈락 / 401+`none` = 이 프로세스에 변수 없음 / 401+`unusable-non-ascii` = 비-ASCII라 헤더를 못 만듦). 🔴 **`admin-gate=no`면 토큰을 아무리 만져도 안 고쳐진다** — 앞단(프록시·방화벽·포트를 뺏은 다른 프로세스)이 답한 것이다. 2026-07-30 인시던트의 3시간이 이 한 줄이 없어서 들었다 | 워커 로그 | `admin_auth.internal_event_failure_note` · [DEPLOY_SETUP §1-4/§1-5](../guide/DEPLOY_SETUP.md) |
 | **loopback HTTP는 프록시를 참조하지 않는다** (2026-07-30 `23a346d`) | 워커→웹서버 호출의 세션은 **`internal_event_client.internal_event_session()` 하나**에서만 나오고 `trust_env=False`다(환경변수·Windows 프록시 레지스트리 **둘 다** 차단, 스레드 로컬). 웹서버→GraphSync의 `httpx`도 같다. 원 사고: 레지스트리 `ProxyOverride`의 `<local>`은 **점 없는 호스트명만** 우회시켜 `localhost`는 통과하고 **`127.0.0.1`은 프록시로 나갔다** → 사설 주소 중계 거부 403(게이트 없는 `/health`까지). 🔴 **네 번째 발신자가 기억해야 하는 규칙이 아니라 테스트다** — 같은 결함이 발신자별로 세 번 재발해, 이제 발신자가 세션을 직접 만들면 `test_admin_auth.py`가 실패한다. 기동 시 데몬 3종이 `/health` 프로브 + `proxy-env` 요약을 찍는다 | (자동) 데몬 기동 로그 `[internal-events]` | `server/internal_event_client.py` · `test_admin_auth.py::test_no_sender_builds_its_own_client` · [PRIMITIVES §6](../architecture/PRIMITIVES.md) |
@@ -219,7 +230,7 @@
   cd client2 && npm run check:suggest-keys    # 값 제안 키보드 계약 + 변이 스윕
   ```
   - ⚠️ **게이트 목록의 정본은 `client2/package.json`의 `prebuild` 한 줄입니다.** 이 체크리스트의 목록은 사본이고, 실제로 **두 번** 낡았습니다(2행이라고 적힌 채 3행이 됐고, 그다음엔 3행의 **구성이 바뀌었습니다**). 항목 수만 세지 말고 `prebuild` 한 줄을 그대로 읽으십시오.
-- [ ] 🎯 **하네스 게이트**(`check:harnesses` 2026-07-30 밤 신설): 출력의 **강제 수와 부채 수**를 눈으로 확인하십시오(2026-07-31 실측 **16개 중 11 강제 · 5 부채**). ⚠️ 수는 `client2/tests/*.mjs` − `KNOWN_RED`이고, 같은 디렉터리의 **`seam_7b_oracle.py`는 파이썬이라 스캔되지 않습니다**(파일 17개 ≠ 하네스 17개). ⚠️ **부채 항목에 적힌 「N개 실패」는 정적 문자열이지 실측 점수가 아닙니다** — 인용할 일이 있으면 돌려서 세십시오. 🔴 **부채 목록은 스크립트 안에 사유와 함께 적혀 있습니다** — 조용한 skip이 아니라 드러난 빚입니다. 부채 항목이 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력하므로, 그 줄이 보이면 **그때 빼는 것이 절차입니다.** 이 게이트가 없던 동안 15개 중 14개를 아무도 부르지 않았고, `split_registry_harness.mjs`는 몇 주, `company_roundtrip`/`copy_header_count`는 한 커밋 동안 죽은 채였습니다.
+- [ ] 🎯 **하네스 게이트**(`check:harnesses` 2026-07-30 밤 신설): 출력의 **강제 수와 부채 수**를 눈으로 확인하십시오(커밋 트리 `77d27d3` 실측 **18개 중 13 강제 · 5 부채**). ⚠️ 수는 `client2/tests/*.mjs` − `KNOWN_RED`이고, 같은 디렉터리의 **`seam_7b_oracle.py`는 파이썬이라 스캔되지 않습니다**(파일 19개 ≠ 하네스 19개). 🔴 **여기 적힌 수를 믿지 말고 러너 출력을 읽으십시오** — 직전 「16개 중 11」은 **적힌 그 시점에 이미 틀린 수**였습니다(`dde342c`가 하네스를 하나 더한 것을 아무도 세지 않았습니다). 이 줄은 하네스가 추가되는 커밋마다 낡습니다. ⚠️ **부채 항목에 적힌 「N개 실패」는 정적 문자열이지 실측 점수가 아닙니다** — 인용할 일이 있으면 돌려서 세십시오. 🔴 **부채 목록은 스크립트 안에 사유와 함께 적혀 있습니다** — 조용한 skip이 아니라 드러난 빚입니다. 부채 항목이 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력하므로, 그 줄이 보이면 **그때 빼는 것이 절차입니다.** 이 게이트가 없던 동안 15개 중 14개를 아무도 부르지 않았고, `split_registry_harness.mjs`는 몇 주, `company_roundtrip`/`copy_header_count`는 한 커밋 동안 죽은 채였습니다.
   - 🔴 **`check:suggest-keys`의 판정은 "통과"가 아니라 "APPLIED == CAUGHT"입니다.** 모든 점검에 변이(mutation)가 짝지어져 있는데, **변이가 소스 드리프트로 적용되지 않으면 조용한 무장 해제**입니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다). 출력의 APPLIED와 CAUGHT 수를 **둘 다** 확인하십시오.
   - ⚠️ 이 하네스는 AG-Grid 키보드 파이프라인의 **모델** 위에서 돕니다. AG-Grid가 호출 순서를 바꾸면 하네스는 초록인 채 제품이 깨지므로, **브라우저 실측 키스트로크 수가 1차 증거**이고 이것은 그 아래의 회귀 그물입니다(§2.1의 F3 항목).
   - **2026-07-30 이전에는 계약 클라 하네스를 아무것도 실행하지 않았습니다** — `pytest`는 서버 절반만 채점하고 `client2`에 스크립트가 없었습니다. 그 조건이 `split_registry_harness.mjs`를 심볼 개명 이후 **몇 주 동안 예외로 죽어 있게** 두었습니다(부르는 사람이 없어 실패가 보이지 않음).
@@ -262,11 +273,13 @@
 - [ ] **핀 설정**: 하위 우선순위 소스의 "📍 Pin" 클릭 → 표시값이 핀 소스 값으로 전환("📌 Pinned" 활성 표시). 재클릭으로 핀 해제 → 기본 우선순위 규칙으로 복귀.
 - [ ] **핀 이력**: 핀 설정/해제가 History 패널과 셀 이력에 기록됨(서버 재시작 후에도 조회됨 — 이슈 #6 회귀 확인).
 
-### 2.2-bis 가상 조인 컬럼 🎯 (2026-07-31 `d70a33d`)
+### 2.2-bis 가상 조인 컬럼 🎯 (2026-07-31 `d70a33d` → 화면 착지 `9200f20`+`4b50135`)
 
 > **준비**: `virtual_join_rules.json`에 선언 1건 + 오른쪽 테이블에 조인 키 UNIQUE 인덱스.
 > `GET /admin/config/virtual-join/verify`가 `accepted`여야 아래가 성립한다(거부면 아무것도 붙지 않는 것이 정상).
-> **지금 눈으로 확인 가능한 것은 겹친 컬럼(`collide`)뿐이다** — 가상 전용 컬럼은 `/schema` 미구현으로 그리드에 열이 없다(§9).
+> **선언 하나에 `collide` 컬럼과 `virtual_only` 컬럼을 둘 다 노출해 두면** A(값 병합)와 B(화면·쓰기 노출)를 한 번에 본다.
+
+**A. 값 병합 — 서버 계약**
 
 - [ ] 🎯 **부재일 때만 채운다**: 왼쪽에 **값이 있는** 행 → 그 값이 **그대로** 보인다(조인 값으로 바뀌지 않는다). 왼쪽이 **빈** 행 → 조인 값이 보인다. 오른쪽 행이 없거나 그 값이 비어 있으면 **`미상`**.
 - [ ] 🎯 **`미상`은 두 경우를 덮는다**: 오른쪽 행 자체가 없는 행과, **오른쪽 행은 있는데 값이 빈** 행이 **둘 다** `미상`이어야 한다. 후자가 빈칸으로 보이면 ②가 새고 있는 것이다.
@@ -276,6 +289,22 @@
 - [ ] **가상 전용 컬럼 쓰기는 400**: 왼쪽에 실재하지 않는 `expose` 컬럼을 페이로드에 넣어 `PUT /tables/{t}/data/updates` → **400**, 메시지가 그 컬럼명을 지목한다. 🔴 **200 + 무변화는 실패다**(그것이 이 검사가 막는 바로 그 침묵이다).
 - [ ] **선언을 고치면 다음 조회에 반영**: 선언 수정 → `POST /admin/reload-configs` → 다음 조회에 즉시 반영. 승인되지 않은(인덱스 없는) 선언은 **아무것도 붙이지 않는다**.
 - [ ] **조인이 죽어도 그리드는 산다**: 선언 파일을 일부러 깨뜨려도 그리드는 정상 조회되고 조인 컬럼만 빠진다(서버 로그에 `[VirtualJoin]`).
+
+**B. 화면과 쓰기 노출 — 클라 계약** (`9200f20`+`4b50135`)
+
+- [ ] **`/schema`가 별도 키로 알린다**: `curl .../tables/{t}/schema` → **`columns`에는 가상 컬럼 이름이 없고** `virtual_columns[]`에 `{name, type, editable:false, right_table, rule, unresolved_label}`이 있다. 🔴 **`columns`에 섞여 있으면 결함**이다(그 배열의 뜻이 「저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댄다). 승인된 조인이 없는 테이블에서도 **키는 있고 `[]`**여야 한다.
+- [ ] **`collide`만 있는 선언은 스키마 응답을 바꾸지 않는다**: 겹친 컬럼만 노출하는 선언으로 바꾸고 `/schema`를 다시 받으면 **본문이 선언 전과 동일**하다(가상 컬럼 알림 0건). 같은 컬럼이 두 번 알려지면 「이 컬럼은 저장되는가」에 두 답이 생긴다.
+- [ ] 🎯 **그리드 맨 뒤에 뜨고, 앞 컬럼은 자리가 안 바뀐다**: 가상 전용 컬럼이 **저장 컬럼들 뒤에** 헤더 `🔗` + 회색으로 나타난다. **첫 컬럼의 체크박스가 그대로**인지 확인(중간에 끼면 체크박스가 다른 컬럼으로 옮겨간다). 툴팁에 **오른쪽 테이블 이름과 선언 이름**이 있다.
+- [ ] **편집이 제안되지 않는다**: 그 셀을 더블클릭해도 에디터가 열리지 않는다.
+- [ ] 🎯 **붙여넣기가 통째로 죽지 않는다**: 저장 컬럼 2개 + 가상 컬럼 1개에 **걸치는** 범위를 잡고 Ctrl+V → **저장 컬럼은 저장되고 가상 컬럼만 빠진다.** 🔴 **전체가 400으로 실패하면 결함**이다(서버 거부는 배치 단위라, 클라가 미리 빼지 않으면 **한 셀 때문에 붙여넣기 전체를 잃는다**).
+- [ ] 🎯 **delete 비우기와 Ctrl+Enter 일괄도 같다**: 같은 걸친 범위에서 ⓐ Delete로 비우기 ⓑ 값 타이핑 후 Ctrl+Enter → 둘 다 **저장 컬럼만 반영되고 가상 컬럼은 무변화**. 🔴 이 셋은 `editable`을 읽지 않고 **그리드 컬럼 id로 배치를 만들므로** 각자 가드를 갖는다 — 하나만 고쳐져 있으면 나머지가 샌다.
+- [ ] 🎯 **복사한 직사각형이 선택한 그것과 같다**: 가상 컬럼을 **가운데에 포함**하도록 범위를 잡고 Ctrl+C → 엑셀에 붙여넣어 **열 개수와 열 순서가 화면과 일치**하는지 본다. 🔴 **가상 컬럼이 빠지고 오른쪽이 한 칸씩 밀려 오면 결함**이다(선택하지 않은 직사각형을 돌려준 것 — 조용한 데이터 오독). 복사는 읽기이므로 가상 컬럼도 **포함되는 것이 정답**이다.
+- [ ] **`미상`이 숫자 컬럼에서 살아남는다**: `type`이 `number`인 가상 컬럼에서 미해결 행의 셀이 **`미상` 그대로** 보인다(`NaN`·`0`·빈칸이면 결함).
+- [ ] 🎯 **정렬에서 미해결 행이 뭉친다**: 그 숫자 컬럼을 오름차순 정렬 → **`미상` 행이 한 덩어리로 맨 아래**에 모인다. 🔴 **숫자들 사이에 흩어지면 결함**이다(기본 비교로는 `미상`이 모든 숫자와 동률이 된다). 내림차순에서는 맨 위로 온다.
+- [ ] **필터 UI가 없다**: 그 컬럼 헤더에 필터 입력이 **없다**. ⏳ 이것은 **의도된 현재 한계**다 — 서버측 필터라 그 이름으로는 조건이 하나도 성립하지 않아 **페이지가 필터 없이 돌아오고 화면만 걸러진 것처럼 보인다**. 대신 **`미상` 행을 찾을 방법이 지금 없다**(§9 미해결).
+- [ ] ⏳ **CSV 추출에는 없다 — 확인하고 넘어간다**: `load-csv-btn`으로 받은 CSV에 **가상 컬럼 열이 없다.** 🔴 이것은 **현재의 한계이지 나중에 알아서 되는 것이 아니다** — 추출 라우트는 조인을 부르지 않는다. 운영자에게 **조인 컬럼을 보고서 재료로 쓰지 말라**고 안내할 것(§9).
+- [ ] **검색 드롭다운에 안 뜬다**: 툴바 검색의 컬럼 목록에 가상 컬럼이 **없다**. 🔴 있으면 결함이다 — 그 이름은 SQL이 닿지 못해 **조건이 하나도 안 걸리고 전체 테이블이 「검색됐다」며 돌아온다.**
+- [ ] **맵 push 게이트 산술이 그대로다**: `map_push_ok`가 false인 맵 테이블에 가상 컬럼을 붙여도 ⚡ Push의 거절/확인 동작이 **선언 전과 같다**(가상 컬럼은 저장되지 않으므로 push가 파괴할 수 있는 컬럼이 아니다).
 
 ### 2.3 데이터 그리드 — 행/클립보드/컬럼/Tx 모드
 
@@ -432,6 +461,31 @@
 - [ ] **`Server:` 헤더는 증거이지 문장이 아니다**: 앞단이 자기 이름을 대면 사유 문장 **옆에** 붙어 나온다(문장 자체는 고정 `CHROME` 항목 그대로). ⚠️ **`uvicorn`이면 표시되지 않는다** — 우리 서버가 자기 이름을 대는 것은 운영자에게 아무것도 알려 주지 않는다. 길이도 잘린다(의심받는 쪽이 준 입력이므로).
 - [ ] 🎯 **실패한 조회는 다시 시도한다**: 서버를 내린 채 화면을 열어 실패를 만들고, 토큰을 새로 넣는다 → **스로틀 창을 기다리지 않고** 즉시 다시 읽는다(토큰 세대가 바뀐 것은 **시계가 아니라 원인**이 바뀐 것). 이어서 서버를 올린다 → 0s/30s/60s로 재시도해 복구된다.
   - 🔴 **회귀 형태**: 실패가 성공과 같은 침묵을 사면(시각을 **읽기 전에** 찍으면) 운영자가 시킨 대로 토큰을 넣고도 화면이 그대로여서 **「해도 안 된다」로 읽힙니다** — 실제로 그렇게 신고됐습니다.
+
+### 2.8-quinquies 소급 적용 어드민 API 🎯 (2026-07-31 `fbc1053`)
+
+> ⚠️ **`77d27d3` 기준 화면이 없습니다 — 이 절은 전부 `curl`입니다.** 라우트 셋이 착지했고 그것을 그리는 클라 코드는 커밋 트리에 없습니다(**화면 작업 진행 중** — 착지하면 이 서두와 §1.8 행을 함께 고치고 화면 항목을 여기 추가합니다).
+> **사전 조건**: `ASSY_ADMIN_TOKEN` 설정 + 전체 스택 기동(실행 라우트는 **스케줄러 데몬**이 있어야 실제로 돕니다).
+> **점검은 격리 환경(:8081)에서 하십시오** — 이 절의 실행 항목은 **진짜 쓰기**입니다.
+> 운영자 절차 전문은 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md).
+
+- [ ] **인벤토리에 다섯이 다 있다**: `GET /admin/retroactive/operations` → `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans`. 각 항목에 `params`·`cli`·`cli_only`가 있다.
+- [ ] 🎯 **다섯이 같은 종류가 아니라고 응답이 말한다**: 각 항목에 **`deletes`·`restartable`·`commit_granularity`** 셋이 있고, **`graph_orphans`만 `restartable: false`**이며 그 `commit_granularity`가 「삭제 루프가 끝난 뒤 한 번」이라고 말한다. 🔴 **다섯이 전부 같은 값이면 결함**이다 — 확인 문구 하나로 다섯 버튼을 덮게 되고, 그 하나가 틀리는 쪽은 **되돌릴 수 없는 삭제**다.
+- [ ] **DB를 건드리지 않는다**: 인벤토리 호출은 config만 읽는다(DB를 내려도 200이면 정상).
+- [ ] 🎯 **모든 카운트가 `count_kind`를 함께 준다**: 다섯 각각 `GET /admin/retroactive/{op}/count` → 응답에 `count_kind`가 있고 값이 `exact`/`sample`/`upper_bound` 중 하나다. 🔴 **수만 있고 종류가 없으면 결함**이다.
+  - `sample`이면 `scanned`·`truncated`가 함께 있고, **`detail` 문장이 「표본에 대한 수」라고 말한다.**
+  - `upper_bound`면 `extra.why_upper_bound`가 **무엇이 빠졌는지를 말로** 설명한다.
+- [ ] **`scan_limit`은 안 훑은 연산에서 `null`이다**: `withdraw`와 `graph_orphans`의 응답 `scan_limit`이 **`null`**이다(요청에 `?scan_limit=500`을 줘도). 🔴 요청한 예산을 그대로 되돌려주면 **하지 않은 표본을 했다고 말하는 것**이다.
+- [ ] 🎯 **카운트는 쓰지 않는다**: 다섯 전부 카운트를 두 번씩 돌린 뒤 대상 테이블의 행 수·값·`cell_sources` 건수가 **불변**이다. 🔴 **표시값만 보고 판정하지 마십시오** — R1은 레이어를 쓰고도 사람 값이 이겨 화면이 그대로일 수 있습니다. **`cell_sources`를 보십시오**(이 결함이 실제로 두 테스트를 초록으로 통과했습니다).
+- [ ] **오타는 조용히 무시되지 않는다**: `?rul=foo`처럼 **없는 파라미터 이름**을 주면 **400**이고 메시지가 허용 이름을 말한다. 🔴 조용히 무시되면 「0건」이 정답처럼 보인다.
+- [ ] **노브가 꺼진 규칙은 수를 주되 막는다**: `auto_confirm`이 꺼진 규칙으로 `enrichment_confirm/count` → 수는 나오고(**「켜면 무슨 일이 일어나는가」**) `blocked_reason: "auto_confirm_off"`가 함께 온다.
+- [ ] 🎯 **실행은 즉시 반환한다**: `POST /admin/retroactive/{op}/run` → **바로** `{"status":"queued","run_id":…}`. 응답이 실행이 끝날 때까지 붙잡혀 있으면 결함이다.
+- [ ] 🎯 **실행 중에도 스케줄러가 살아 있다**: 큰 테이블에 실행을 걸고 그동안 `GET /health` → 스케줄러 워커가 **`ok`**다. 🔴 **`wedged`로 떨어지면 결함**이다(실행을 틱 스레드에서 돌린 것 — 버튼 한 번이 감시 표면을 죽인다). 크론 수집기도 그동안 정상 실행된다.
+- [ ] **동시 실행은 거절이다**: 하나가 도는 중에 또 `run` → 데몬 로그에 **이미 실행 중이라는 경고**가 남고, 그 아웃박스 행은 **미처리로 남아 다음 틱에 집힌다**(조용히 사라지지 않는다).
+- [ ] 🎯 **R2는 어드민을 거쳐도 사람 값을 못 지운다**: `POST .../withdraw/run`에 `{"params":{"table":"…","source":"user"}}` → **400**이고 메시지가 이유를 말한다. 사람이 핀한 셀도 건너뛴다(안전장치는 **라우트가 아니라 `withdraw_source` 안**에 있다).
+- [ ] **토큰 미설정이면 실행만 503이다**: `ASSY_ADMIN_TOKEN`을 지우고 재기동 → `operations`·`count`는 **동작**하고 `run`만 **503**.
+- [ ] **결과는 데몬 로그에 있다**: 실행 후 스케줄러 로그에 `[Retroactive] run_id=…`가 남고 완료/거절이 구별된다. **트리거 응답에는 결과가 없다**(그 응답만 보고 「됐다」고 결론짓지 말 것).
+- [ ] 🔴 **CLI가 없어지지 않았다**: `operations` 응답의 `cli_only`에 `replay-all`·`--limit`·`--force-disabled`·`--label`·`--allow-production` 등이 나온다. 특히 **`--allow-production`은 CLI에만 있고**, 어드민 버튼과 매일 도는 스케줄러가 부르는 경로에는 그 관문이 **없다**(데몬이 이미 하는 일 이상은 아니지만 **CLI가 묻는 확인을 재현하지도 않는다**).
 
 ### 2.9 맵 에디터
 
@@ -599,7 +653,7 @@
 **B. 토큰 미설정 상태 (`ASSY_ADMIN_TOKEN` 없이 기동)**
 
 - [ ] **배너가 상태를 말한다**: 기동 로그 첫머리에 `[admin-auth] ... is NOT set`이 **WARNING**으로, 무엇이 꺼졌고 어떤 변수를 설정해야 하는지 담겨 있다.
-- [ ] 🎯 **위험한 둘만 막힌다**: 어드민 코드 에디터 저장(`POST /admin/scripts/code`)·AutoUpdate Run Now → **503**, 본문에 "환경변수를 설정하고 재시작하라"는 문장. **그 문장이 화면 토스트로 보이는지** 확인(삼키면 "저장 중 오류"만 남아 503 분기의 존재 이유가 사라진다).
+- [ ] 🎯 **위험한 셋만 막힌다**(2026-07-31 — 종전 「둘」에 하나 추가): 어드민 코드 에디터 저장(`POST /admin/scripts/code`) · AutoUpdate Run Now · **소급 실행(`POST /admin/retroactive/{op}/run`)** → **503**, 본문에 "환경변수를 설정하고 재시작하라"는 문장. **그 문장이 화면 토스트로 보이는지** 확인(삼키면 "저장 중 오류"만 남아 503 분기의 존재 이유가 사라진다).
 - [ ] **나머지는 열려 있다**: 5탭 전부 정상 렌더 + 토큰 프롬프트가 **뜨지 않음**. (첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 한 의도된 상태다.)
 
 **C. 토큰 설정 상태 (스택 전체 재기동 후)**
@@ -607,7 +661,7 @@
 - [ ] **배너 `INFO`**: `[admin-auth] ... is set`.
 - [ ] 🎯 **헤더 없이는 안 된다**: `curl -si http://<사내IP>:8080/admin/chain/rules | head -1` → **401**, 응답에 `WWW-Authenticate: X-Admin-Token`. 틀린 토큰 → **403** + 같은 헤더. 올바른 토큰(`-H "X-Admin-Token: <값>"`) → 200.
 - [ ] **`/health`는 계속 무인증**: 헤더 없이 `curl -i .../health` → **JSON 200**. 401이 오면 회귀다(잠그면 감시가 무의미해진다).
-- [ ] 🎯 **비-ASCII 토큰은 잠그지 않고 거부된다**: `ASSY_ADMIN_TOKEN=관리자토큰` 으로 기동 → 배너가 **`ERROR`**, 그리고 상태는 **미설정과 동일**(코드 실행 2개 503, 나머지 열림). **"is set"이라고 안심시켜 놓고 올바른 토큰에 403을 돌려주면 실패** — 이게 복구 불능 상태를 만드는 경로다.
+- [ ] 🎯 **비-ASCII 토큰은 잠그지 않고 거부된다**: `ASSY_ADMIN_TOKEN=관리자토큰` 으로 기동 → 배너가 **`ERROR`**, 그리고 상태는 **미설정과 동일**(strict 3개 503, 나머지 열림). **"is set"이라고 안심시켜 놓고 올바른 토큰에 403을 돌려주면 실패** — 이게 복구 불능 상태를 만드는 경로다.
 - [ ] 🎯 **워커가 토큰을 못 받으면 조용히 멈춘다**: 워커를 런처 밖에서 **변수 없는 셸**로 띄우고 파일 드롭 → 워커 로그에 `API notification failed: ... -> 401`이 쌓이고 **그리드가 갱신되지 않는다**. 런처(`run_decoupled_app.py`)로 정상 기동하면 워커가 환경을 상속해 별도 설정 없이 동작.
 - [ ] **어드민 프롬프트 1회**: 어드민 페이지 최초 진입 → 프롬프트 1회 → 붙여넣기 → 5탭 정상. 새로고침해도 다시 묻지 않음(`localStorage`).
 - [ ] 🎯 **정상 토큰이 파괴되지 않는다**(가장 비싸게 산 항목): 격리 서버(`devenv.py up`)에서 **라이브 트리로 쓰기**를 시도해 `_resolve_admin_script_path`의 **격리 403**을 유발 → 토큰 프롬프트가 **뜨면 안 된다**(그 403에는 `WWW-Authenticate`가 없다). 뜬 뒤 아무거나 입력하면 **멀쩡한 토큰이 덮어써진다.**
