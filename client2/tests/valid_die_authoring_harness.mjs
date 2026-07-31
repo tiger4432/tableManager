@@ -79,7 +79,7 @@ function buildSandbox(mutator) {
   const parts = [
     fn('physNum'), fn('gridDimNum'), fn('withPhysFrame'),
     fn('getScreenShift'), fn('getTransformedPhysicalConfig'),
-    fn('getPhysicalCoords'), fn('getCellFromVisualCoords'), fn('getVisualCoords'),
+    fn('getDieIndex'), fn('getCanvasCellFromDb'), fn('getDbCoords'),
     fn('isCellInsideWaferFast'), fn('getWaferBoundingBox'),
     fn('canonIntString'), fn('canonicalKeyValue'), fn('composeMapId'),
     fn('decomposeMapKey'), fn('canonicalMapKey'),
@@ -119,7 +119,7 @@ function buildSandbox(mutator) {
       `const CANON_INT_RE = ${reSrc('CANON_INT_RE')};\n`
       + `const CANON_FLOAT_RE = ${reSrc('CANON_FLOAT_RE')};\n`
       + code
-      + `\nglobalThis.__h = { getPhysicalCoords, getVisualCoords, getCellFromVisualCoords,`
+      + `\nglobalThis.__h = { getDieIndex, getDbCoords, getCanvasCellFromDb,`
       + ` isCellInsideWaferFast, getTransformedPhysicalConfig, getWaferBoundingBox,`
       + ` parseValidDieRef, validDieBasis, isValidDieAt, buildValidDieTemplate,`
       + ` validDieRefDisplay, validDieRefForPush, applyValidDieRef, validDieChainError,`
@@ -167,7 +167,7 @@ function runSuite(sb, st) {
     const s = new Set();
     cells.forEach(([c, r]) => {
       if (H.isCellInsideWaferFast(c, r, vc, vr, pc, 700, 700)) {
-        const p = H.getPhysicalCoords(c, r, COLS, ROWS, ctx.currentRotation, ctx.currentSide);
+        const p = H.getDieIndex(c, r, COLS, ROWS, ctx.currentRotation, ctx.currentSide);
         s.add(`${p.x}_${p.y}`);
       }
     });
@@ -284,8 +284,8 @@ function runSuite(sb, st) {
     const { vc, vr, cells } = visualRect();
     if (vc * vr !== COLS * ROWS) die('visual rect size mismatch in fixture');
     cells.forEach(([c, r]) => {
-      const v = H.getVisualCoords(c, r, COLS, ROWS, 90, 'back', false, 1, 1);
-      const p = H.getPhysicalCoords(c, r, COLS, ROWS, 90, 'back');
+      const v = H.getDbCoords(c, r, COLS, ROWS, 90, 'back', false, 1, 1);
+      const p = H.getDieIndex(c, r, COLS, ROWS, 90, 'back');
       authoredCells.push({ x: v.x, y: v.y, val: `${p.x}_${p.y}` });
       expectedPhys.set(`${v.x},${v.y}`, `${p.x}_${p.y}`);
     });

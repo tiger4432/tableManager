@@ -8,8 +8,8 @@
  *
  * THE DEFECT IT REPLACES. `loadExistingMap`'s `standard` branch set `startX = startY = 0`
  * and then subtracted `minX`/`minY` from every stored coordinate in the cell loop. Nothing
- * re-added them. Because `getVisualCoords` (which produces `cellObj.x`, the value ⚡ Push
- * serializes) is the exact inverse of `getCellFromVisualCoords` (which the load places
+ * re-added them. Because `getDbCoords` (which produces `cellObj.x`, the value ⚡ Push
+ * serializes) is the exact inverse of `getCanvasCellFromDb` (which the load places
  * with), the shifted number was BOTH what the screen stated and what Push wrote.
  *
  * 🔴 THE ORACLE IS NOT THE TRANSFORM. Every fixture row carries a value that ENCODES its own
@@ -72,7 +72,7 @@ function sliceFunction(source, name) {
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getScreenShift', 'getTransformedPhysicalConfig',
-  'getPhysicalCoords', 'getCellFromVisualCoords', 'getVisualCoords',
+  'getDieIndex', 'getCanvasCellFromDb', 'getDbCoords',
   'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameDimBounds', 'applyPhysicalGeometry', 'applyPresetObject',
   'validDieBasis', 'isValidDieAt',
@@ -385,7 +385,7 @@ async function scoreAll(src, { verbose = false } = {}) {
 // ── Mutations ──────────────────────────────────────────────────────────────────────────
 const FIXED_ORIGIN = `      startX = minX;
       startY = minY;`;
-const OLD_SHIFT = `            const cell = getCellFromVisualCoords(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
+const OLD_SHIFT = `            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
 
 const MUTATIONS = [
   // 🔴 THE DEFECT ITSELF, put back verbatim — the only self-check that is worth anything.
@@ -414,9 +414,9 @@ const MUTATIONS = [
    s => s.replace(FIXED_ORIGIN, '      startX = maxX;\n      startY = maxY;')],
   // Placement is derived from the frame in ONE function; a second implementation is the
   // invariant-① violation this domain exists to stop.
-  ['D6 the load stops applying the frame origin (getCellFromVisualCoords called with 0,0)',
+  ['D6 the load stops applying the frame origin (getCanvasCellFromDb called with 0,0)',
    s => s.replace(OLD_SHIFT,
-                  '            const cell = getCellFromVisualCoords(xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
+                  '            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
 ];
 
 const base = await scoreAll(SRC0, { verbose: true });

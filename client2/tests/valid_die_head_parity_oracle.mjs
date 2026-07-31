@@ -41,19 +41,43 @@ function sliceBalanced(src, startIdx) {
 }
 
 // The verdict path, exactly as `getGridCellObject` composes it:
-//   isValidDieAt(phys.x, phys.y, isCellInsideWaferFast(...))
-const NEEDED = ['physNum', 'gridDimNum', 'withPhysFrame', 'getScreenShift',
-  'getTransformedPhysicalConfig', 'getPhysicalCoords', 'isCellInsideWaferFast',
-  'getWaferBoundingBox', 'validDieBasis', 'isValidDieAt'];
+//   isValidDieAt(die.x, die.y, isCellInsideWaferFast(...))
+//
+// 🔴 THIS ORACLE SLICES TWO DIFFERENT REVISIONS, so a single name list cannot address both:
+//    the moment a function is renamed, the baseline blob still carries the old name and the
+//    working copy carries the new one. That is not a defect in either revision — it is the
+//    one place in this directory where a rename is legitimately NOT mechanical, and the fix
+//    belongs here, at the slicing boundary, not in a score waiver.
+//    An entry is therefore a list of ACCEPTED SPELLINGS, newest first. Each side takes the
+//    first spelling it actually has; the probe below then calls a stable alias, so the two
+//    sandboxes stay comparable without either revision being restated.
+// ⚠️ Do NOT collapse this back to a single name once HEAD carries the new one. The list is
+//    what lets this oracle keep working across the NEXT rename too, and an oracle that dies
+//    on a rename gets waived rather than fixed.
+const NEEDED = [
+  ['physNum'], ['gridDimNum'], ['withPhysFrame'], ['getScreenShift'],
+  ['getTransformedPhysicalConfig'],
+  ['getDieIndex', 'getPhysicalCoords'],          // renamed 2026-07-31
+  ['isCellInsideWaferFast'], ['getWaferBoundingBox'], ['validDieBasis'], ['isValidDieAt'],
+];
+// The alias the probe calls, and the entry it resolves through.
+const DIE_INDEX_ALIAS = '__dieIndexFn';
 
 function buildVerdictFn(src, label) {
-  const parts = NEEDED.map(name => {
-    const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-    if (!m) die(`function ${name} not found in ${label}`);
-    const out = sliceBalanced(src, m.index);
-    if (!out) die(`unbalanced braces for ${name} in ${label}`);
-    return out;
-  });
+  const parts = [];
+  const chosen = {};
+  for (const aliases of NEEDED) {
+    let hit = null;
+    for (const name of aliases) {
+      const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
+      if (m) { hit = { name, index: m.index }; break; }
+    }
+    if (!hit) die(`none of [${aliases.join(', ')}] found in ${label}`);
+    const out = sliceBalanced(src, hit.index);
+    if (!out) die(`unbalanced braces for ${hit.name} in ${label}`);
+    chosen[aliases[0]] = hit.name;
+    parts.push(out);
+  }
   const ctx = {
     console, physFrameOverride: null, currentRotation: 0, currentSide: 'front',
     validDie: null, boundingBoxCache: {}, el: {},
@@ -62,6 +86,8 @@ function buildVerdictFn(src, label) {
   try { vm.runInContext(parts.join('\n\n'), ctx); } catch (e) {
     die(`sandbox evaluation failed for ${label} - ${e && e.message ? e.message : e}`);
   }
+  // Bind the alias to whichever spelling this revision actually shipped.
+  vm.runInContext(`globalThis.${DIE_INDEX_ALIAS} = ${chosen.getDieIndex};`, ctx);
   return ctx;
 }
 
@@ -91,7 +117,7 @@ function verdicts(ctx, f, validDieState) {
     const pc = getTransformedPhysicalConfig(rot, side);
     const out = [];
     for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-      const p = getPhysicalCoords(c, r, cols, rows, rot, side);
+      const p = ${DIE_INDEX_ALIAS}(c, r, cols, rows, rot, side);
       const circle = isCellInsideWaferFast(c, r, vc, vr, pc, 700, 700);
       out.push(isValidDieAt(p.x, p.y, circle) ? 1 : 0);
     }

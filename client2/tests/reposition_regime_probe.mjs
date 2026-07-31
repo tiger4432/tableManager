@@ -42,9 +42,9 @@ function sliceFunction(source, name) {
 //    had three times. Questions 1 and 2 never touched it, so the probe is retargeted rather
 //    than retired: `coordsByPhysKey` below is the same two-line composition, built from the two
 //    shipped PER-CELL primitives that remain.
-const SYMBOLS = ['physNum', 'gridDimNum', 'withPhysFrame', 'getPhysicalCoords',
-  'getCellFromPhysicalCoords', 'getCellFromVisualCoords', 'getTransformedPhysicalConfig',
-  'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox', 'getVisualCoords',
+const SYMBOLS = ['physNum', 'gridDimNum', 'withPhysFrame', 'getDieIndex',
+  'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getTransformedPhysicalConfig',
+  'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox', 'getDbCoords',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'projectCellsToPhys'];
 
 // `physical key -> stored (DB) coordinate` under an arbitrary frame. Identical in behaviour to
@@ -58,8 +58,8 @@ function coordsByPhysKey(S, frame) {
     const out = new Map();
     for (let r = 0; r < vR; r++) {
       for (let c = 0; c < vC; c++) {
-        const p = S.getPhysicalCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
-        const v = S.getVisualCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+        const p = S.getDieIndex(c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+        const v = S.getDbCoords(c, r, rf.cols, rf.rows, rf.rotation, rf.side,
           rf.invertY, rf.startX, rf.startY);
         out.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
       }
@@ -178,7 +178,7 @@ for (const tgt of names) {
       const pc = S.getTransformedPhysicalConfig(rot, side);
       const cellOf = new Map();
       for (let r = 0; r < vR; r++) for (let c = 0; c < vC; c++) {
-        const pk = S.getPhysicalCoords(c, r, adopted.cols, adopted.rows, rot, side);
+        const pk = S.getDieIndex(c, r, adopted.cols, adopted.rows, rot, side);
         cellOf.set(`${pk.x}_${pk.y}`, [c, r]);
       }
       p.newKeys.forEach(nk => {
