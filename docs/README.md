@@ -22,6 +22,7 @@
 | 문서 | 내용 |
 |---|---|
 | 🟢 [PRIMITIVES.md](./architecture/PRIMITIVES.md) | **기능→구현 카탈로그** — *무엇을 할 줄 아나*. CODE_MAP이 *어디에 있나*라면 이쪽은 재사용 가능한 연산·패턴과 그 함정 |
+| 🟢 [DUPLICATION_LEDGER.md](./architecture/DUPLICATION_LEDGER.md) | **알려진 중복 원장** — *이미 두 번 이상 만들어져 있는 것*. PRIMITIVES의 짝 문서로, 저쪽은 만들기 **전에** 읽고 이쪽은 목록의 연산을 **건드리기 직전에** 읽는다. 항목마다 **몇 곳(실측) · 정본 · 왜 아직 안 합쳤나 · 합칠 때의 함정** — 「왜 안 합쳤나」가 순진한 통합이 무엇을 깨뜨리는지 말한다 |
 | 🟢 [CODE_MAP.md](./architecture/CODE_MAP.md) | **압축 구조 지도** — 파일별 시그니처·라인 앵커·호출 흐름. 소스 전량 읽기 전에 여기부터 |
 | 🟢 [backend.md](./architecture/backend.md) | 5-프로세스 토폴로지, API 엔드포인트, outbox 패턴, **프로세스 감시·`/health`·진행 박동(§1.3)** · **그래프 조회 표에 `GET /graph/chip-trace` 등재**(2026-07-30 — depth 없는 고정 형상 · 다리별 닫힌 어휘 5종 + `scope_unresolved` · 절단은 상태가 아니라 플래그) |
 | 🟢 [frontend.md](./architecture/frontend.md) | client2 웹(AG-Grid) + QtWebEngine 데스크톱 셸 · **§2.1 빌드 게이트**(`prebuild`의 **세 채점자** — 클립보드 관례 + `contracts/*` **5계약** 발견식 스캔 + `client2/tests/*.mjs` **16개 중 11 강제·5 부채**. **빈 스캔은 실패**이고 목록의 정본은 `package.json`) · **§3.3 값 제안 셀 에디터**(`Enter` 한 번이 채택이고 확정 · `Escape`는 시계가 아니라 `suggestionsEngaged`가 판정) · **§5 config 해석 한 줄**(F9 — 문장은 서버가 만들고 클라는 그대로 렌더 · **읽기 실패 다섯 갈래는 상태코드가 아니라 `WWW-Authenticate` 헤더로 갈린다**) |
