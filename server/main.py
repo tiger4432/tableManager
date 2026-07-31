@@ -1872,7 +1872,47 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     col_types["is_graph_synced"] = "boolean"
     col_types["needs_graph_rollback"] = "boolean"
     col_types["graph_synced_at"] = "datetime"
-            
+
+    # [Virtual join] Announce the columns a VERIFIED join ADDS to this table's read
+    # payload. The payload has carried them since `d70a33d`; without this key the grid
+    # never heard of a `virtual_only` column, so an operator who declared an expose got
+    # neither the column nor a reason - the same defect class as a config that takes
+    # effect silently, which is what the F9 surface exists to end.
+    #
+    # STRICTLY ADDITIVE. `columns`/`column_types` above describe STORED columns and are
+    # untouched, so a client that ignores this key behaves exactly as it did before the
+    # key existed - no new entry in the column list, no change in the push gate's
+    # "unprotected data column" arithmetic, no new paste target.
+    #
+    # `virtual_only` columns only. A `collide` column is a real stored column that a join
+    # also fills; it is already in `columns` and announcing it again would give two
+    # answers to "is this column stored?". A collide-only declaration therefore leaves
+    # this response BYTE-IDENTICAL (test_schema_virtual_columns proves it on res.text).
+    #
+    # 🔴 Read-only is NOT enforced here. `crud.refuse_virtual_join_columns` refuses the
+    # write at the single funnel every write path converges on; `editable: False` only
+    # stops the client OFFERING an edit that would come back 400.
+    #
+    # A failure must not take the schema route down, and the safe direction is the read
+    # path's: announce NOTHING. An unannounced column is a visible absence; a phantom
+    # column is a silent wrong answer (and a write target that does not exist).
+    virtual_columns = []
+    try:
+        import virtual_join_executor
+        announced = virtual_join_executor.announced_columns(db, table_name)
+        # 🔴 A name already in `columns` is never announced again. The executor drops
+        # `collide` names, but `collide` is computed against `column_types` and that is
+        # NOT the whole of `columns`: the system tail above is appended unconditionally
+        # and belongs to no config. A right table declaring `created_at` would therefore
+        # reach `virtual_only` and be announced twice. Only this function knows the final
+        # list, so the de-duplication belongs here - and it only ever REMOVES, so a stored
+        # column keeps its stored identity and its editability.
+        known = set(columns)
+        virtual_columns = [c for c in announced if c["name"] not in known]
+    except Exception as e:
+        logger.error(f"[VirtualJoin] schema announcement failed on '{table_name}', "
+                     f"virtual columns omitted: {e}")
+
     return {
         "table_name": table_name,
         "columns": columns,
@@ -1886,7 +1926,10 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         # refusal to a one-shot loss-acknowledging confirm". Absent/false keeps the block.
         # Strict `is True`: a config typo ("true"/"false" strings, 1) must not unlock
         # destruction - only the JSON boolean true counts, same as the client's `=== true`.
-        "map_push_ok": config.get("map_push_ok") is True
+        "map_push_ok": config.get("map_push_ok") is True,
+        # Always present, `[]` when no verified join touches this table: a stable shape
+        # is what lets a client read it without asking whether the key exists.
+        "virtual_columns": virtual_columns
     }
 
 

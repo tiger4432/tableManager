@@ -145,6 +145,78 @@ def virtual_only_columns(db, left_table: str) -> set:
     return out
 
 
+def announced_columns(db, left_table: str) -> list:
+    """`/schema`가 이 테이블에 **덧붙여 알리는** 컬럼들. 항목 하나가 컬럼 하나다:
+    `{"name", "type", "editable": False, "right_table", "rule", "unresolved_label"}`.
+
+    [왜 있는가 ― 알리지 않은 컬럼은 그리드가 그리지 못한다]
+    페이로드는 이미 조인 컬럼을 싣고 있었지만 `/schema`가 그것을 말하지 않아
+    `virtual_only` 컬럼은 **화면에 나타나지 않았다**. 노출을 선언한 운영자에게 컬럼도
+    사유도 주지 않는 것은 「효력 없이 조용한 설정」과 같은 종류의 결함이다.
+
+    [`virtual_only`만 알린다 ― `collide`는 이미 스키마에 있다]
+    `collide` 컬럼은 왼쪽의 **실재하는 저장 컬럼**이다. 조인이 부재일 때만 채울 뿐,
+    컬럼 자체는 `table_config`가 선언했고 `/schema`가 이미 싣는다. 여기서 한 번 더
+    실으면 같은 컬럼이 두 번 알려지고, "이 컬럼은 저장되는가"를 스키마로 판정하는
+    소비자가 한 응답에서 두 답을 받는다. 그래서 **collide만 있는 선언은 스키마 응답을
+    한 바이트도 바꾸지 않는다**(`test_schema_virtual_columns`가 본문을 통째로 비교한다).
+
+    [`attach`가 만드는 집합과 같아야 한다 ― 둘의 유일한 출처가 `rules_for`인 이유]
+    이 목록은 "행 페이로드에 새로 생길 컬럼"의 **선언**이다. `attach`가 만드는 집합과
+    어긋나면 지금 고치는 그 결함이 방향만 바꿔 되돌아온다(알렸는데 값이 없는 컬럼 /
+    값이 있는데 안 알린 컬럼). 그래서 둘 다 `rules_for` 하나에서 파생되고, 같은 이름을
+    두 선언이 노출할 때의 라벨도 `attach`의 `labels.setdefault`와 같이 **먼저 온 선언이
+    이긴다** ― 알리는 라벨과 실제로 셀에 앉는 라벨이 달라선 안 된다.
+
+    [`virtual_only`가 None이면 아무것도 알리지 않는다 ― 쓰기 거부와 **반대 방향**이다]
+    None은 "어느 expose가 왼쪽에 실재하는지 모른다"는 뜻이다. 쓰기 거부는 그때 expose
+    전체를 막는다(모르면 막는다 ― 없는 컬럼에 쓰기가 가는 것이 더 나쁘다). 알림에서
+    같은 자세를 취하면 실재하는 collide 컬럼을 **두 번 알리게** 되므로 안전한 방향이
+    반대다: 모르면 알리지 않는다. 잃는 것은 알림뿐이고(눈에 보이는 부재), 그때도 쓰기는
+    여전히 막혀 있다.
+
+    🔴 **이 목록은 쓰기를 막지 않는다.** 막는 것은 `crud.refuse_virtual_join_columns`
+    하나이고 그것이 모든 쓰기 경로가 수렴하는 깔때기에 앉아 있다. `editable: False`는
+    클라이언트가 **편집을 제안하지 않게** 하는 표시일 뿐이라, 그 표시를 지워도 쓰기는
+    여전히 400이다(테스트가 그 독립성을 따로 고정한다).
+    """
+    from database import crud
+
+    out, seen = [], set()
+    for rule in rules_for(db, left_table):
+        vo = rule.get("virtual_only")
+        if vo is None:
+            continue
+        right_types = (crud.TABLE_CONFIG.get(rule["right_table"]) or {}).get("column_types") or {}
+        for col in vo:                      # `expose` 순서를 그대로 물려받은 목록이다
+            if col in seen:
+                continue                    # 먼저 온 선언이 이긴다 ― `attach`와 같은 규칙
+            seen.add(col)
+            out.append({
+                "name": col,
+                # 타입은 **오른쪽 테이블의 선언**이다. 값이 거기서 오기 때문이다.
+                # ⚠️ 값의 정의역에는 `unresolved_label`(문자열)도 들어간다 ― 그래서
+                # 숫자 컬럼이 숫자가 아닌 값을 실을 수 있고, 그 사실을 클라이언트가 알 수
+                # 있도록 라벨을 같이 싣는다.
+                "type": right_types.get(col, "string"),
+                # 이 표시는 **편집을 제안하지 말라**는 뜻이지 금지의 근거가 아니다
+                # (금지는 `crud.refuse_virtual_join_columns`). 항상 False인 이유는
+                # 이 목록이 저장 컬럼이 아닌 것만 담기 때문이다 ― True가 될 수 있는
+                # 항목은 애초에 이 목록에 들어오지 못한다.
+                "editable": False,
+                # 「고치려면 어디로 가야 하는가」의 답. 쓰기 거부 메시지는 "조인 원본
+                # 테이블에서 수정하세요"라고만 말하고 그 테이블을 지목하지 못한다.
+                "right_table": rule["right_table"],
+                # 「이 컬럼은 어느 선언이 만들었는가」 ― `/admin/config/virtual-join/verify`가
+                # 선언 이름으로 답을 들고 있으므로, 이 이름이 그 화면으로 가는 다리다.
+                "rule": rule["name"],
+                # 라벨은 선언마다 다르다. 클라이언트가 「미상」을 하드코딩하지 않고
+                # 이 값을 읽어야 설정이 실제로 효력을 갖는다.
+                "unresolved_label": rule["unresolved_label"],
+            })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 실행 ― LEFT 조인 한 방
 # ---------------------------------------------------------------------------
