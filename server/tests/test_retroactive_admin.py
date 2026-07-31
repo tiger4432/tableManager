@@ -346,6 +346,337 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         assert "nope" in r.json()["detail"]
 
 
+# ===========================================================================
+# `enrichment_backfill` - the operation whose route NOTHING above reaches
+# ===========================================================================
+#
+# Every test in this file used `chain_replay`, `withdraw` or `graph_orphans`, and
+# that gap is not a coverage statistic - it is why a broken route shipped. Both of
+# `enrichment_backfill`'s halves did `import backfill_enrichment`, naming a module
+# in `server/scripts`, which is on no runtime process's `sys.path`. The count route
+# answered 400 "이 연산의 건수를 계산할 수 없습니다: No module named
+# 'backfill_enrichment'" and the trigger answered 200 "queued" and then died in the
+# scheduler's log. The suite was green because `test_backfill_enrichment.py` had
+# put `server/scripts` on `sys.path` for its own import.
+#
+# So these tests drive the op through the ROUTE and through `retroactive.execute`,
+# and the environment those imports resolve in is proved separately, in a child
+# interpreter, by `test_prod_import_env.py` - an in-process test cannot prove it.
+
+ENRICH_TABLES = {
+    "retro_enrich_src": {
+        "business_key": "log_key",
+        "composite_key_source": ["equipment", "event_time", "chip_id"],
+        "composite_key_separator": "_",
+        "column_types": {"log_key": "string", "equipment": "string",
+                         "event_time": "string", "chip_id": "string",
+                         "lot_hint": "string"},
+    },
+    "retro_enrich_derived": {
+        "business_key": "job_id",
+        "composite_key_source": ["equipment", "event_time"],
+        "composite_key_separator": "_",
+        "column_types": {"job_id": "string", "equipment": "string",
+                         "event_time": "string", "wafer_id": "string",
+                         "chip_count": "number", "lot_hint": "string"},
+    },
+}
+
+ENRICH_RULES = {
+    "retro_enrich_rule": {
+        "source_table": "retro_enrich_src",
+        "derived_table": "retro_enrich_derived",
+        "decision_key": ["equipment", "event_time"],
+        "target_fields": ["wafer_id"],
+        "list_columns": ["chip_count", "lot_hint"],
+        "aggregations": {"chip_count": "count"},
+    },
+}
+
+
+@pytest.fixture()
+def retro_enrich_env(db_session, tmp_path, monkeypatch):
+    """Source rows that predate the rule - the condition the backfill exists for.
+
+    `retro_enrich_*` cannot collide with the user's gitignored table_config
+    (server-pm memory: the `bonding_log` trap), and is distinct from
+    `test_backfill_enrichment.py`'s `bkfl_test_*` so the two files cannot share
+    state through the module-level `DYNAMIC_TABLES` registry.
+    """
+    import enrichment_config
+
+    models.init_dynamic_models(ENRICH_TABLES)
+    saved = dict(crud.TABLE_CONFIG)
+    crud.TABLE_CONFIG.update(ENRICH_TABLES)
+    from database.database import Base
+    Base.metadata.create_all(bind=db_session.get_bind())
+
+    rules_path = tmp_path / "enrichment_rules.json"
+    rules_path.write_text(json.dumps(ENRICH_RULES), encoding="utf-8")
+    monkeypatch.setattr(enrichment_config, "ENRICHMENT_RULES_PATH", str(rules_path))
+    monkeypatch.setattr("database.database.SessionLocal",
+                        lambda: _NoCloseSession(db_session))
+    yield db_session
+    crud.TABLE_CONFIG.clear()
+    crud.TABLE_CONFIG.update(saved)
+
+
+def _seed_enrich_source(db, rows):
+    _seed(db, "retro_enrich_src", rows, tx_id="retro_enrich_seed")
+
+
+def _seed_already_derived(db, equipment, event_time):
+    """A derived identity that exists BEFORE the backfill runs.
+
+    The backfill must count it as `already_derived` and never touch it - value
+    gaps on an existing derived row are the worklist's job. Seeding it is what
+    makes `distinct_combinations` and `new_combinations` different numbers, which
+    is the only condition under which a test can tell them apart.
+    """
+    _seed(db, "retro_enrich_derived",
+          [{"equipment": equipment, "event_time": event_time, "chip_count": 1}],
+          tx_id="retro_enrich_pre")
+
+
+def _derived_rows(db):
+    m = models.DYNAMIC_TABLES["retro_enrich_derived"]
+    return db.query(m).order_by(m.business_key_val.asc()).all()
+
+
+def _backfill_layer_rows(db):
+    """`cell_sources` rows the backfill holds. The witness for "did it write?".
+
+    Not the materialised column, and not even the derived row count on its own -
+    the file's closing note generalises it: the displayed value is not a witness
+    for a write, only the layer is.
+    """
+    import enrichment_backfill
+
+    return db.query(models.CellSource).filter(
+        models.CellSource.table_name == "retro_enrich_derived",
+        models.CellSource.source_name == enrichment_backfill.SOURCE_NAME).all()
+
+
+class TestTheEnrichmentBackfillRouteIsReachable:
+
+    def test_the_count_route_answers_instead_of_failing_to_import(self, client,
+                                                                  retro_enrich_env):
+        """THE REGRESSION TEST. This is the request that raised in production.
+
+        The route catches every exception and answers 400 with the message inside,
+        so the broken version was not a 500 - it was a 400 whose `detail` read
+        "No module named 'backfill_enrichment'". A test that only asserted
+        `status_code == 200` would be enough to catch it, but asserting the shape of
+        the old failure as well makes the next reader understand what broke.
+        """
+        db = retro_enrich_env
+        # THE FIXTURE ACTIVATES THE AXIS ON PURPOSE. One decision-key combination
+        # is ALREADY derived and two are not, so `distinct_combinations` (3) and
+        # `new_combinations` (2) differ. Without the pre-existing row the two are
+        # equal and this test cannot tell "would create" from "exists at all" - a
+        # count that reported every combination in the table would pass. Injection
+        # found exactly that: the first version of this test seeded no derived row
+        # and stayed green against `affected = distinct_combinations`.
+        _seed_already_derived(db, "EQP0", "T0")
+        _seed_enrich_source(db, [
+            {"equipment": "EQP0", "event_time": "T0", "chip_id": "C0"},
+            {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1",
+             "lot_hint": "LOT_A"},
+            {"equipment": "EQP1", "event_time": "T1", "chip_id": "C2",
+             "lot_hint": "LOT_A"},
+            {"equipment": "EQP2", "event_time": "T2", "chip_id": "C3",
+             "lot_hint": "LOT_B"},
+        ])
+
+        r = client.get("/admin/retroactive/enrichment_backfill/count"
+                       "?rule=retro_enrich_rule")
+
+        assert r.status_code == 200, (
+            f"the count route failed: {r.status_code} {r.text}")
+        body = r.json()
+        assert body["extra"]["already_derived"] == 1, (
+            "fixture is inert: nothing is pre-existing, so 'new' and 'distinct' "
+            "cannot be told apart")
+        assert body["extra"]["distinct_combinations"] == 3
+        assert body["affected"] == 2, (
+            "`affected` must be the rows the backfill WOULD CREATE, not every "
+            "combination it saw")
+        assert body["affected"] != body["extra"]["distinct_combinations"]
+        assert body["extra"]["source_table"] == "retro_enrich_src"
+        assert body["extra"]["derived_table"] == "retro_enrich_derived"
+        assert body["count_kind"] == retroactive.COUNT_SAMPLE
+        assert body["scanned"] == 4
+
+    def test_the_old_failure_shape_is_gone(self, client, retro_enrich_env):
+        """Named separately because it is the only assertion that would have been
+        red before the fix, and it must not be diluted by the fixture assertions
+        above (any of which could break for an unrelated reason)."""
+        db = retro_enrich_env
+        _seed_enrich_source(db, [{"equipment": "E", "event_time": "T",
+                                  "chip_id": "C"}])
+        r = client.get("/admin/retroactive/enrichment_backfill/count"
+                       "?rule=retro_enrich_rule")
+        assert "No module named" not in r.text, (
+            "the route still imports a module that is not on the runtime path")
+
+    def test_the_count_is_a_bounded_sample_and_says_so(self, client,
+                                                       retro_enrich_env):
+        """`scan_limit` for THIS op, which no existing scan_limit test covered.
+
+        It matters more here than anywhere else: `enrichment_backfill`'s CLI
+        `--limit` means something completely different (new derived identities,
+        while the source scan runs to the end of the table), and `scan_limit` is the
+        only knob that actually bounds a request.
+        """
+        db = retro_enrich_env
+        _seed_enrich_source(db, [
+            {"equipment": f"EQP{i}", "event_time": f"T{i}", "chip_id": f"C{i}"}
+            for i in range(6)])
+
+        body = client.get("/admin/retroactive/enrichment_backfill/count"
+                          "?rule=retro_enrich_rule&scan_limit=2").json()
+
+        assert body["scanned"] == 2, "scan_limit did not bound the source read"
+        assert body["scan_limit"] == 2
+        assert body["truncated"] is True
+        assert body["affected"] == 2, (
+            "the sample must report what the sample found, not the table")
+        # Non-vacuous: an unbounded read would have found all six.
+        unbounded = client.get("/admin/retroactive/enrichment_backfill/count"
+                               "?rule=retro_enrich_rule&scan_limit=100").json()
+        assert unbounded["scanned"] == 6 and unbounded["affected"] == 6
+        assert unbounded["truncated"] is False
+
+    def test_the_bounded_count_does_not_walk_the_derived_table(self, client,
+                                                               retro_enrich_env,
+                                                               monkeypatch):
+        """`1948338`'s bounded read, asserted through the ROUTE.
+
+        A preview that resolved existing identities by preloading the whole derived
+        table would let `scan_limit` bound the source read while the derived read
+        stayed unbounded - which is the same request-path cost the sample was
+        introduced to avoid.
+        """
+        import enrichment_backfill
+
+        def _refuse(*a, **k):
+            raise AssertionError(
+                "the count preloaded every derived identity; at 10M rows that is "
+                "the unbounded read scan_limit exists to prevent")
+
+        monkeypatch.setattr(enrichment_backfill, "_load_existing_business_keys",
+                            _refuse)
+        _seed_enrich_source(retro_enrich_env,
+                            [{"equipment": "E", "event_time": "T", "chip_id": "C"}])
+
+        body = client.get("/admin/retroactive/enrichment_backfill/count"
+                          "?rule=retro_enrich_rule").json()
+        assert body["extra"].get("source_table") == "retro_enrich_src"
+
+    def test_the_count_writes_nothing(self, client, retro_enrich_env):
+        """A GET beside a POST that creates rows. The failure is silent."""
+        db = retro_enrich_env
+        _seed_enrich_source(db, [{"equipment": "EQP1", "event_time": "T1",
+                                  "chip_id": "C1"}])
+        assert _derived_rows(db) == [], "fixture is inert: derived rows already exist"
+
+        body = client.get("/admin/retroactive/enrichment_backfill/count"
+                          "?rule=retro_enrich_rule").json()
+        assert body["affected"] >= 1, "non-vacuous: the count must have found work"
+
+        db.expire_all()
+        assert _derived_rows(db) == [], "the count route created derived rows"
+        assert _backfill_layer_rows(db) == [], (
+            "the count route wrote an enrichment_backfill layer")
+
+    def test_an_unknown_rule_is_refused_by_name(self, client, retro_enrich_env):
+        r = client.get("/admin/retroactive/enrichment_backfill/count?rule=nope")
+        assert r.status_code == 400
+        # The loader's own reason, surfaced - not a generic failure.
+        assert "nope" in r.json()["detail"]
+
+    def test_the_trigger_queues_this_op_and_executes_nothing(self, client,
+                                                             retro_enrich_env,
+                                                             admin_token):
+        db = retro_enrich_env
+        _seed_enrich_source(db, [{"equipment": "EQP1", "event_time": "T1",
+                                  "chip_id": "C1"}])
+
+        r = client.post("/admin/retroactive/enrichment_backfill/run",
+                        json={"params": {"rule": "retro_enrich_rule"}},
+                        headers=admin_token)
+        assert r.status_code == 200 and r.json()["status"] == "queued"
+
+        rows = _outbox_rows(db)
+        assert len(rows) == 1
+        payload = json.loads(rows[0].payload) if isinstance(rows[0].payload, str) \
+            else rows[0].payload
+        assert payload["op"] == "enrichment_backfill"
+        assert payload["params"] == {"rule": "retro_enrich_rule"}
+
+        db.expire_all()
+        assert _derived_rows(db) == [], (
+            "the trigger route ran the backfill inline instead of queueing it")
+
+    def test_the_worker_half_runs_and_creates_the_rows(self, retro_enrich_env):
+        """The SECOND broken import site.
+
+        `_run_enrichment_backfill` had the same `import backfill_enrichment`, and it
+        failed further from the operator than the count did: the trigger answered
+        200 "queued", and the run then failed inside the scheduler thread, where
+        `execute` catches everything and returns `status="error"` to a log nobody was
+        watching. A green button and no rows.
+        """
+        db = retro_enrich_env
+        _seed_enrich_source(db, [
+            {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
+            {"equipment": "EQP1", "event_time": "T1", "chip_id": "C2"},
+            {"equipment": "EQP2", "event_time": "T2", "chip_id": "C3"},
+        ])
+
+        out = retroactive.execute(
+            {"run_id": "bkfl", "op": "enrichment_backfill",
+             "params": {"rule": "retro_enrich_rule"}}, log=lambda m: None)
+
+        assert out["status"] == "ok", f"the worker path failed: {out['error']}"
+        assert out["result"]["created_rows"] == 2
+        assert out["result"]["rows_scanned"] == 3
+
+        db.expire_all()
+        assert len(_derived_rows(db)) == 2
+        assert _backfill_layer_rows(db), (
+            "rows exist but carry no enrichment_backfill layer")
+
+    def test_the_backfill_layer_can_never_outrank_a_human(self, retro_enrich_env):
+        """Provenance, asserted on the ADMIN path rather than only the CLI's.
+
+        `enrichment_backfill` is deliberately absent from `SOURCE_PRIORITY`, so it
+        resolves to 99 and loses to `user` (0). Routing the operation through an
+        admin button must not change that - the button is a new caller, not a new
+        privilege.
+        """
+        import enrichment_backfill
+
+        db = retro_enrich_env
+        _seed_enrich_source(db, [{"equipment": "EQP1", "event_time": "T1",
+                                  "chip_id": "C1"}])
+        retroactive.execute({"run_id": "prov", "op": "enrichment_backfill",
+                             "params": {"rule": "retro_enrich_rule"}},
+                            log=lambda m: None)
+
+        layer = _backfill_layer_rows(db)
+        assert layer, "non-vacuous: the run wrote no layer at all"
+        assert {s.source_name for s in layer} == {enrichment_backfill.SOURCE_NAME}
+        assert crud.get_source_priority(enrichment_backfill.SOURCE_NAME) == 99
+        assert crud.get_source_priority("user") == 0
+
+    def test_a_failed_backfill_does_not_kill_the_scheduler(self, retro_enrich_env):
+        out = retroactive.execute({"run_id": "x", "op": "enrichment_backfill",
+                                   "params": {"rule": "does_not_exist"}},
+                                  log=lambda m: None)
+        assert out["status"] in ("error", "refused") and out["error"]
+
+
 class TestTheWithdrawalPreviewMatchesTheOperationItPreviews:
     """A preview computed from a different predicate than the run is a preview
     that lies, and it would lie silently."""

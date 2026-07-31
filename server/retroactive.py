@@ -13,7 +13,7 @@ answers).
     ---------------------- ------------------------------- --------------------------
     chain_replay      (R1)  chain_replay.replay_rule        same, apply=True
     withdraw          (R2)  chain_replay.count_withdrawable chain_replay.withdraw_source
-    enrichment_backfill     backfill_enrichment.run_backfill same, apply=True
+    enrichment_backfill     enrichment_backfill.run_backfill same, apply=True
     enrichment_confirm      enrichment_analysis.run_auto_confirm_sweep  same, apply=True
     graph_orphans           graph_orphans.count_zero_edge_nodes  graph_orphans.run_scheduled
 
@@ -55,7 +55,7 @@ buttons:
 
 "LIMIT" MEANS THREE DIFFERENT THINGS IN THE FIVE CLIs, SO THIS SURFACE AVOIDS THE WORD
 ---------------------------------------------------------------------------------------
-``chain_replay_cli --limit`` bounds rows scanned. ``backfill_enrichment --limit``
+``chain_replay_cli --limit`` bounds rows scanned. ``backfill_enrichment.py --limit``
 bounds NEW derived identities created while the source scan runs to the end of the
 table regardless. ``enrichment_insights --limit`` bounds rows examined.
 ``graph_orphan_sweep`` has no ``--limit`` at all (``--limit-print`` is output
@@ -225,11 +225,14 @@ def _count_withdraw(db, params, scan_limit):
 
 
 def _count_enrichment_backfill(db, params, scan_limit):
-    import backfill_enrichment
+    # `enrichment_backfill`, NOT `scripts/backfill_enrichment`: the CLI is not
+    # importable from a runtime process (server/scripts is on nobody's sys.path),
+    # and importing it here is what made this route raise ModuleNotFoundError.
+    import enrichment_backfill
     from database import crud
 
-    rule = backfill_enrichment.load_rule(params["rule"], crud.TABLE_CONFIG)
-    s = backfill_enrichment.run_backfill(db, rule, apply=False, scan_limit=scan_limit,
+    rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
+    s = enrichment_backfill.run_backfill(db, rule, apply=False, scan_limit=scan_limit,
                                          log=lambda m: logger.debug(m))
     truncated = s["rows_scanned"] >= scan_limit
     return {
@@ -349,11 +352,11 @@ def _run_withdraw(db, params, log):
 
 
 def _run_enrichment_backfill(db, params, log):
-    import backfill_enrichment
+    import enrichment_backfill
     from database import crud
 
-    rule = backfill_enrichment.load_rule(params["rule"], crud.TABLE_CONFIG)
-    s = backfill_enrichment.run_backfill(db, rule, apply=True, log=log)
+    rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
+    s = enrichment_backfill.run_backfill(db, rule, apply=True, log=log)
     return {"created_rows": s["created_rows"], "updated_rows": s["updated_rows"],
             "rows_scanned": s["rows_scanned"]}
 

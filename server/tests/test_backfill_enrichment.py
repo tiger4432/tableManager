@@ -1,5 +1,16 @@
-"""Retroactive enrichment backfill script verification
-(server/scripts/backfill_enrichment.py).
+"""Retroactive enrichment backfill verification (server/enrichment_backfill.py).
+
+The operator CLI over this module is `server/scripts/backfill_enrichment.py`
+(unchanged path and flags); the admin count/run routes reach the same functions
+through `retroactive.py`. This file tests the module, so both callers are covered
+at the one place the semantics live.
+
+⚠️ This file used to `sys.path.insert(0, SCRIPTS_DIR)` and import the CLI directly.
+That insertion is why a broken route shipped under a green suite: pytest shares one
+interpreter, so after this module was collected `import backfill_enrichment`
+succeeded for every later test - including any test written to prove that the
+runtime could not import it. Do not reintroduce it. The import environment is
+proved in a child process by `test_prod_import_env.py`.
 
 Covers:
 - dry-run counts on a seeded fixture (scanned / distinct / already / new / blank)
@@ -21,21 +32,14 @@ Covers:
 with the user's real table_config (see server-pm memory: bonding_log case).
 """
 import json
-import os
-import sys
 import uuid
 
 import anyio
 import pytest
 
+import enrichment_backfill as bf
 import enrichment_config
 from database import crud, models, schemas
-
-SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
-if SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, SCRIPTS_DIR)
-
-import backfill_enrichment as bf  # noqa: E402
 
 BKFL_TABLES = {
     "bkfl_test_src": {
