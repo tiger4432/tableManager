@@ -37,8 +37,12 @@ import virtual_join_config as vjc            # noqa: E402
 # ---------------------------------------------------------------------------
 
 # 컬럼 집합은 운영 table_config 그대로다 ― `metro_eqp`는 eds_fail_map 에만 있고
-# core_defect_map 에는 없다. 양쪽에 다 넣으면 shadow 가드가 먼저 걸려 유일성 가드가
-# 한 번도 실행되지 않는다(그 상태로 통과하는 테스트는 아무것도 증명하지 않는다).
+# core_defect_map 에는 없다. 그래서 이 선언은 `virtual_only` 쪽이고, 유일성 가드가
+# 실제로 실행되는 것이 이 픽스처로 보장된다.
+# (2026-07-31 이전에는 여기에 "양쪽에 다 넣으면 shadow 가드가 먼저 걸린다"는 주의가
+#  붙어 있었다. 그 거부는 없어졌지만 ― 이름 충돌은 이제 정상이다 ― 컬럼을 한쪽에만
+#  두는 이 배치는 그대로 둔다: `virtual_only`와 `collide`를 **다른 선언으로** 갈라
+#  둬야 둘 중 하나만 도는 실행기 결함이 테스트에 보인다.)
 MAP_COLS = {"lot": "string", "slot": "string", "x": "number", "y": "number",
             "val": "string", "chip_key": "string"}
 
@@ -357,12 +361,39 @@ def test_shape_errors_are_rejected(decl, why):
     assert len(rej) == 1 and rej[0]["code"] == vjc.CODE_SHAPE, why
 
 
-def test_expose_cannot_shadow_a_left_column():
-    rules, rej = _load({"shadow": _decl("vjoin_log", "vjoin_wafer_map",
-                                        [("lot", "lot"), ("slot", "slot")],
-                                        ["slot"])})
-    assert rules == []
-    assert _codes(rej) == [vjc.CODE_SHAPE] and "slot" in rej[0]["detail"]
+def test_expose_may_collide_with_a_left_column_and_is_reported_as_such():
+    """[사용자 확정 2026-07-31] 이름 충돌은 **정상이며 기대되는 경우**다.
+
+    운영 `dt_log`는 lot/slot 대신 `wafer_id`를 직접 실어 오는 행이 섞여 있어서, 조인이
+    채우려는 바로 그 컬럼이 왼쪽에 이미 있다. 여기 있던 shadow 거부는 그 시나리오를
+    통째로 막고 있었다.
+
+    거부의 근거("어느 쪽 값을 보고 있는지 알 수 없는 표")는 두 가지가 대신한다 ―
+    **absent-only 채움**(왼쪽 값이 있으면 손대지 않는다)과 **셀 단위 provenance**
+    (`sources`의 `virtual_join`). 로더의 몫은 그 둘을 실행기가 할 수 있게 **어느 컬럼이
+    충돌인지 갈라서 실어 보내는 것**이다.
+    """
+    rules, rej = _load({"collide": _decl("vjoin_log", "vjoin_wafer_map",
+                                         [("lot", "lot"), ("slot", "slot")],
+                                         ["slot", "wafer_id"])})
+    assert rej == [], "이름 충돌은 더 이상 거부가 아니다"
+    assert len(rules) == 1
+    # `slot`은 vjoin_log 에 실재하고 `wafer_id`는 없다 ― 실행기가 그 둘을 다르게 다룬다.
+    assert rules[0]["collide"] == ["slot"]
+    assert rules[0]["virtual_only"] == ["wafer_id"]
+
+
+def test_collision_split_is_unknown_without_a_table_config():
+    """table_config 없이 검증하면 어느 쪽이 충돌인지 **알 수 없다** ― 빈 목록이 아니다.
+
+    빈 목록으로 돌려주면 실행기가 "충돌 없음"으로 읽고 모든 expose를 쓰기 금지 대상으로
+    만들거나(편집 불가) 전부 덮어쓰게 된다. `None`이라야 모른다는 사실이 전달된다.
+    """
+    rules = vjc.validate_virtual_join_rules(
+        {"c": _decl("vjoin_log", "vjoin_wafer_map", [("lot", "lot")], ["wafer_id"])},
+        known_tables=None)
+    assert len(rules) == 1
+    assert rules[0]["collide"] is None and rules[0]["virtual_only"] is None
 
 
 def test_sql_identifier_shape_is_enforced_before_the_ddl_is_assembled():

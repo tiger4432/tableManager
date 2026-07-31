@@ -64,6 +64,23 @@ LEFT 조인만으로는 ②가 보이지 않는다. 실측(2026-07-31)이 그 �
 103,040행 전부가 행을 찾지만 88,872행(86.25%)이 비어 있다. ②를 `미상`에서 빼면
 분석가는 「값이 있다」고 읽는다. INNER 조인은 ①을 조용히 지우므로 금지다.
 
+[이름 충돌의 정의 ― 경계 계약, 사용자 확정 2026-07-31]
+expose 컬럼 이름이 **왼쪽에 이미 있어도 된다**(운영 `dt_log`가 lot/slot 대신 `wafer_id`를
+직접 실어 오는 행을 섞어 두기 때문이다). 합치는 규칙은 하나다 ― **부재일 때만 채운다**:
+    왼쪽 값 있음  → 왼쪽 값을 **그대로 둔다**(조인 값은 버린다)
+    왼쪽 값 비었음 → 조인 값을 쓴다
+    둘 다 없음    → `unresolved_label`
+"비었음"의 정의는 `crud.clean_str_value(v) == ""`로, 시스템의 나머지와 **같은 것을 뜻해야
+한다**(꼬리 공백이 여기서는 값이고 저기서는 공백이면 안 된다). 이 연산은
+`enrichment_candidates`의 absent-only 관문과 **구조적으로 같다** ― 같은 어휘를 쓴다.
+
+여기서 `2026-07-31 이전의 shadow 거부`가 사라졌다. 그 거부의 근거("어느 쪽 값을 보고
+있는지 알 수 없는 표")는 absent-only 하나로는 해소되지 않는다 ― 합쳐진 컬럼은 셀마다
+출처가 달라지기 때문이다. 그래서 실행기가 **셀 단위 provenance**(`sources`에
+`virtual_join`)를 함께 싣는 것이 이 완화의 조건이며, 그것 없이 이 검사만 빼면 원래의
+걱정이 그대로 돌아온다. 정규화된 선언은 `collide`(왼쪽에도 있는 것) / `virtual_only`
+(조인만이 만들어 내는 것)로 그 둘을 갈라 실어 보낸다.
+
 [이 파일이 보장하는 것]
 `load_verified_rules`가 돌려준 선언은 **오른쪽이 조인 키로 유일함이 데이터베이스에 의해
 강제된다.** 스냅샷이 아니라 제약이므로 이후의 쓰기가 깰 수 없다. 세션 없이 부르는
@@ -238,6 +255,11 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
 
     right_join_cols = [p["right"] for p in join_key]
 
+    # 왼쪽에도 같은 이름이 있는 expose 컬럼. `known_tables` 없이 부르면 **알 수 없다**
+    # ― 그때는 빈 목록이 아니라 `None`이라 실행기가 "충돌 없음"으로 오독할 수 없다.
+    # (실행기의 유일한 입구인 `load_verified_rules`는 항상 table_config를 받는다.)
+    collide = None
+
     # --- 테이블/컬럼 존재 검증 (table_config가 주어진 경우에만) ---
     if known_tables is not None:
         left_cfg = known_tables.get(left_table)
@@ -263,12 +285,21 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         if missing:
             return None, (f"expose column(s) missing in '{right_table}': "
                           f"{', '.join(missing)}"), CODE_SHAPE, None
-        # 왼쪽에 같은 이름이 이미 있으면 조인 컬럼이 그것을 가린다 ― 어느 쪽 값을 보고
-        # 있는지 알 수 없는 표가 만들어진다.
-        shadowed = [c for c in expose if c in left_cols]
-        if shadowed:
-            return None, (f"expose column(s) {', '.join(shadowed)} already exist on "
-                          f"'{left_table}'; the joined value would shadow the left one"), CODE_SHAPE, None
+        # 이름 충돌은 **정상이며 기대되는 경우**다(사용자 확정 2026-07-31). 운영
+        # `dt_log`는 lot/slot 대신 `wafer_id`를 직접 실어 오는 행이 섞여 있어서, 조인이
+        # 채우려는 바로 그 컬럼이 왼쪽에 이미 있다.
+        #
+        # 이 자리에는 「왼쪽에 같은 이름이 있으면 거부」가 있었다. 근거는 "어느 쪽 값을
+        # 보고 있는지 알 수 없는 표가 만들어진다"였고 그 걱정 자체는 옳았다 ― 다만
+        # 거부가 그 답이 아니다. 답은 두 개이고 **둘 다 갖춘 뒤에** 이 검사를 뺐다:
+        #   ① **부재일 때만 채운다**(absent-only). 왼쪽 값이 있으면 손대지 않으므로
+        #      기존 값이 조인 값으로 바뀌는 일이 없다. `enrichment_candidates`의
+        #      absent-only 관문과 **구조적으로 같은 연산**이라 같은 어휘를 쓴다.
+        #   ② **셀마다 출처를 싣는다.** 합쳐진 컬럼의 각 셀이 `sources`에
+        #      `virtual_join`을 달고 오므로 "어느 쪽 값인가"를 셀 단위로 읽을 수 있다.
+        #      기존 셀 소스 표시가 그대로 보여 준다(새 UI 없음).
+        # 그래서 `collide`는 오류가 아니라 **실행기가 알아야 하는 사실**로 내려간다.
+        collide = [c for c in expose if c in left_cols]
 
     normalized = {
         "name": name,
@@ -278,6 +309,12 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         "left_columns": [p["left"] for p in join_key],
         "right_columns": right_join_cols,
         "expose": expose,
+        # expose 중 왼쪽에도 같은 이름이 있는 것들(absent-only로 합쳐질 컬럼) /
+        # 왼쪽에 없어 조인만이 만들어 내는 것들. 실행기가 이 둘을 다르게 다루고,
+        # **쓰기 거부는 `virtual_only`에만 건다** ― `collide` 쪽은 실재하는 저장
+        # 컬럼이라 편집이 정상이고, 그 편집이 곧 absent-only 규칙의 "왼쪽 값 있음"이다.
+        "collide": collide,
+        "virtual_only": None if collide is None else [c for c in expose if c not in collide],
         "unresolved_label": label,
         "join_cardinality": "one",
         # 운영자가 만들어야 하는 인덱스. 선언만으로 계산되므로 세션 없이도 말할 수 있고,

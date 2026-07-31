@@ -766,7 +766,24 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             "created_at": c_at_str,
             "updated_at": u_at_str
         })
-        
+
+    # [Virtual join] Attach the declared `expose` columns of every VERIFIED join whose
+    # left table is this one. Here and only here: this is the single serialization point
+    # for row payloads (grid page, single-row read, batch-update response, WS items), so
+    # a joined column cannot be present on one of those and absent on another.
+    #
+    # Cost is one LEFT JOIN per rule per CALL, not per row - the page's row_ids are
+    # already in hand and the right side rides the UNIQUE index that approved the rule.
+    #
+    # A failure here must not take the grid down. The safe direction is the ABSENT
+    # column: an unattached column is a visible absence, a wrongly attached one is a
+    # silent wrong answer.
+    try:
+        import virtual_join_executor
+        virtual_join_executor.attach(db, table_name, data_list)
+    except Exception as e:
+        logger.error(f"[VirtualJoin] attach failed on '{table_name}', columns omitted: {e}")
+
     return data_list
 
 @app.get("/tables")
@@ -3740,6 +3757,15 @@ def reload_local_process_cache():
     # [Ontology G1] 온톨로지 매핑 캐시 무효화(핫리로드 대상 — check_needs_rollback 판정용)
     try:
         crud._ontology_cache = None
+    except Exception:
+        pass
+
+    # [Virtual join] Verified-declaration cache. It carries a TTL of its own for worker
+    # processes that never reach this hook, but the web server must not wait it out:
+    # a declaration edited in the admin UI has to take effect on the next read.
+    try:
+        import virtual_join_executor
+        virtual_join_executor.reset_cache()
     except Exception:
         pass
 

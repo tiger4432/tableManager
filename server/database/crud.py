@@ -1436,6 +1436,54 @@ def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch)
     return resolved or None
 
 
+def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch):
+    """A write aimed at a virtual-join column is REFUSED here, for every write path.
+
+    A `virtual_only` column is not stored on the left table - it exists only in the read
+    payload, computed from a verified join. A write targeting it would target a column
+    that does not exist, and the pre-existing undeclared-column gate in
+    `apply_row_update_internal` would DROP it silently: the API answers 200, the client
+    re-renders from the joined value, and the user's edit vanishes with no explanation.
+    Silence is the defect; the drop was always correct.
+
+    This lives in `apply_batch_updates` because that is the single funnel every write
+    converges on - the grid edit and paste and the map/DOE Push (all `PUT
+    /tables/{t}/data/updates`), file ingestion, the chain worker, enrichment
+    auto-confirm, replay, map-meta registration. `apply_row_update_internal` has exactly
+    one caller (this function), so there is no write that can reach a column while
+    bypassing this check, and a new call site cannot forget it.
+
+    `collide` columns are deliberately NOT refused. They are ordinary stored columns that
+    a join also feeds; writing one is how a user overrides the joined value, and that
+    write is precisely the "left value present" arm of the absent-only rule. Refusing it
+    would leave the user no way to correct a joined cell.
+
+    Raises ValueError, which the API layer already maps to 400 (same as the replace_map
+    scope refusal). Batch-level, so one message names every offending column at once.
+    """
+    if not batch.updates:
+        return
+    try:
+        import virtual_join_executor
+        virtual_cols = virtual_join_executor.virtual_only_columns(db, table_name)
+    except Exception as e:
+        # Unreadable declarations mean NO join is in effect (the executor logs it and
+        # attaches nothing), so there is no virtual column to protect and nothing to
+        # refuse. Failing the write here would turn a config problem into an outage.
+        logger.error(f"[VirtualJoin] write guard could not load declarations for "
+                     f"'{table_name}', no column is refused: {e}")
+        return
+    if not virtual_cols:
+        return
+    offending = sorted({c for u in batch.updates for c in (u.updates or {}) if c in virtual_cols})
+    if offending:
+        raise ValueError(
+            f"'{table_name}' 테이블의 컬럼 {', '.join(offending)}은(는) 가상 조인으로 "
+            f"조회 시점에 계산되는 값이라 저장할 수 없습니다. 이 테이블에는 그 컬럼이 "
+            f"실제로 존재하지 않습니다. 값을 고치려면 조인 원본 테이블에서 수정하세요."
+        )
+
+
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None):
     """통합 업데이트를 배치로 처리합니다.
@@ -1445,6 +1493,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     so the API layer can report the exact purge honestly without changing this
     function's widely-unpacked 4-tuple return signature (worker/parser/test call sites).
     """
+    # Before anything is opened or purged: a batch aimed at a virtual-join column is
+    # refused whole. Placed ahead of transaction_context so the refusal cannot leave a
+    # half-applied transaction, and ahead of the replace_map purge so a bad payload
+    # cannot delete rows on its way to being rejected.
+    refuse_virtual_join_columns(db, table_name, batch)
+
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     
     user_val = batch.updates[0].updated_by if batch.updates else "system"
