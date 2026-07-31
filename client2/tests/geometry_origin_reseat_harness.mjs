@@ -73,6 +73,8 @@ const SYMBOLS = [
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   'frameDimBounds', 'frameDimError',
   'applyPresetObject', 'applyPhysicalGeometry',
+  // The dropdown's registered handler, and the function that registers it.
+  'loadSelectedPreset', 'initDOMElements',
   'parseValidDieRef', 'validDieChainError', 'validDieRefDisplay', 'projectCellsToPhys',
   'resolveValidDie',
   // The real renderer runs; only the pixels are stubbed. It is what seeds the seating record,
@@ -157,6 +159,80 @@ function makeInput(v) {
            addEventListener() {}, removeEventListener() {} };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// A DOM stub with REAL event dispatch, because the fixture has to start where the operator
+// starts.
+//
+// 🔴 WHY THIS EXISTS. The first version of this harness called `applyPresetObject(...)` and
+//    `reseatCellsToStoredCoords(...)` directly — both real, both downstream of the operator's
+//    gesture, and both reachable whether or not anything is still WIRED to them. That scores
+//    the plumbing and not the tap: delete `presetSelect.addEventListener('change', ...)` and
+//    every assertion stays green while the product does nothing. It is the same shape as the
+//    breakages `copy_header_count` and `company_roundtrip` sat in this week — a harness
+//    reporting green about code it had stopped reaching.
+//
+// 🔴 SO `initDOMElements` IS SLICED AND RUN. It is the function that owns every listener
+//    registration in this screen (`map_editor.js` :866-:1147), so running it is the only way
+//    a fixture can dispatch `change` on `#preset-select` and have the shipped handler answer.
+//    Elements are created on demand by id and remember their listeners.
+// ⚠️ Unknown globals are NOT swallowed. `initDOMElements` names ~25 other functions; each is
+//    stubbed EXPLICITLY below, so a rename still throws instead of quietly no-op'ing.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+function makeDom(P) {
+  const nodes = new Map();
+  const paintSink = () => new Proxy({}, {
+    get: (t, k) => (k in t ? t[k] : (t[k] = () => {})), set: (t, k, v) => (t[k] = v, true) });
+  const make = (id) => {
+    const listeners = new Map();
+    return {
+      id, value: '', checked: false, textContent: '', disabled: false, innerHTML: '',
+      style: {}, dataset: {}, width: 0, height: 0,
+      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+      addEventListener(type, fn) {
+        if (!listeners.has(type)) listeners.set(type, []);
+        listeners.get(type).push(fn);
+      },
+      removeEventListener(type, fn) {
+        const a = listeners.get(type) || [];
+        const i = a.indexOf(fn);
+        if (i >= 0) a.splice(i, 1);
+      },
+      // The fixture's only way in. Returns how many handlers ran, so a case can assert that
+      // the gesture actually reached something.
+      dispatchEvent(ev) {
+        const a = (listeners.get(ev && ev.type) || []).slice();
+        a.forEach(fn => fn(Object.assign({ target: this, preventDefault() {},
+                                           stopPropagation() {} }, ev)));
+        return a.length;
+      },
+      listenerCount(type) { return (listeners.get(type) || []).length; },
+      querySelector: () => null, appendChild() {}, focus() {}, blur() {},
+      getBoundingClientRect: () => ({ width: 700, height: 700, left: 0, top: 0 }),
+      getContext: () => paintSink(),
+    };
+  };
+  const byId = (id) => {
+    if (!nodes.has(id)) nodes.set(id, make(id));
+    return nodes.get(id);
+  };
+  // The panel's declared frame, written onto the real nodes before the wiring reads them.
+  const seed = {
+    'grid-cols': P.cols, 'grid-rows': P.rows,
+    'grid-start-x': P.startX, 'grid-start-y': P.startY,
+    'phys-wafer-dia': P.dia, 'phys-chip-x': P.chipX, 'phys-chip-y': P.chipY,
+    'phys-offset-x': P.offX, 'phys-offset-y': P.offY, 'phys-edge-margin': P.margin,
+  };
+  Object.entries(seed).forEach(([id, v]) => { byId(id).value = String(v); });
+  byId('grid-y-invert').checked = !!P.invertY;
+  byId('show-annotations').checked = false;
+  const document = {
+    getElementById: byId,
+    querySelectorAll: () => [],
+    addEventListener() {}, removeEventListener() {},
+  };
+  return { document, byId };
+}
+
 function buildEnv(src, P, opts = {}) {
   const pieces = [];
   for (const name of SYMBOLS) {
@@ -167,23 +243,25 @@ function buildEnv(src, P, opts = {}) {
     pieces.push(code);
   }
   const log = { toasts: [], requests: [], warns: [] };
-  const el = {
-    gridCols: makeInput(P.cols), gridRows: makeInput(P.rows),
-    gridStartX: makeInput(P.startX), gridStartY: makeInput(P.startY),
-    gridYInvert: { checked: !!P.invertY },
-    physWaferDia: { value: String(P.dia), querySelector: () => ({}), appendChild() {} },
-    physChipX: makeInput(P.chipX), physChipY: makeInput(P.chipY),
-    physOffsetX: makeInput(P.offX), physOffsetY: makeInput(P.offY),
-    physEdgeMargin: makeInput(P.margin),
-    showAnnotations: { checked: false },
-    validDieRefKey: makeInput(''), validDieRefTable: makeInput(''), validDieRefList: null,
-    gridCanvas: { getBoundingClientRect: () => ({ width: 700, height: 700 }) },
-    waferCanvas: { width: 0, height: 0, getContext: () => new Proxy({}, {
-      get: (t, k) => (k in t ? t[k] : (t[k] = () => {})), set: (t, k, v) => (t[k] = v, true) }) },
-  };
+  const dom = makeDom(P);
+  const el = {};
   const sandbox = {
     console: { warn: (m) => log.warns.push(String(m)), info() {}, error() {}, log() {}, debug() {} },
     el,
+    document: dom.document,
+    localStorage: { getItem: () => null, setItem() {} },
+    COPY_HEADER_KEY: 'copyHeader',
+    isOriginMode: false,
+    // Everything `initDOMElements` names but this harness never fires. Listed one by one on
+    // purpose: a rename must be a ReferenceError, not a silent no-op.
+    fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
+    onValidDieRefChanged() {}, populateValidDieRefList() {}, switchTable() {},
+    renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},
+    effortRoute: () => '', handleAddOverlayClick() {}, clearOverlayLayers() {},
+    renderOverlayList() {}, addLegendRowForPanel() {}, clearGrid() {}, fillGrid() {},
+    pushMapData() {}, copyGridToExcel() {}, onMapGridPaste() {}, selectEdgeCells() {},
+    autoPaintE1E2() {}, fillSelectedCells() {}, clearSelectedCells() {},
+    fitGridToWorkspace() {}, initPlanSidebarResizer() {}, debounce: (f) => f,
     physFrameOverride: null,
     boundingBoxCache: {},
     cellsSeatedUnder: null,
@@ -208,7 +286,8 @@ function buildEnv(src, P, opts = {}) {
     getThemeColors: () => ({ outBg: '#eee', line: '#ccc', text: '#000', inBg: '#fff',
                              origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' }),
     performance: { now: () => 0 },
-    window: { devicePixelRatio: 1 },
+    // No ResizeObserver: `initDOMElements` guards on `window.ResizeObserver` being truthy.
+    window: { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} },
     updateOrientationUI() {}, updateSideIndicator() {},
     scheduleRenderGridCanvas() {},
     updateLegendCounts() {},
@@ -232,11 +311,27 @@ function buildEnv(src, P, opts = {}) {
       return { ok: true, status: 200, json: async () => ({ data: rows }) };
     },
   };
+  sandbox.serverPresets = opts.serverPresets || {};
+  sandbox.VALID_DIE_TEMPLATE_PREFIX = 'valid-die-template:';
+  sandbox.enterValidDieAuthoring = () => die('the authoring branch must not be reached');
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   try { vm.runInContext(pieces.join('\n'), sandbox); }
   catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  return { S: sandbox, el, log };
+  // THE WIRING RUNS. From here on `el.*` are the same node objects `document.getElementById`
+  // hands out, so dispatching on a node reaches the shipped handler.
+  try { sandbox.initDOMElements(); }
+  catch (e) { die(`initDOMElements threw — the wiring could not be executed: ${e && e.message}`); }
+  return { S: sandbox, el, log, byId: dom.byId };
+}
+
+// The operator's gesture. Fails loudly when nothing is listening, which is the whole point of
+// entering here rather than at the function the listener happens to call.
+function fire(node, type, what) {
+  const n = node.dispatchEvent({ type });
+  if (n === 0) throw new Error(`nothing is listening for '${type}' on ${what} — the wiring is `
+    + 'gone, and a fixture that called the handler directly would still have been green');
+  return n;
 }
 
 // ── The value-encoded oracle ────────────────────────────────────────────────────────────
@@ -279,11 +374,15 @@ function readBack(S) {
   return out;
 }
 
-function disagreements(S) {
+// 🔴 A SURVIVORS-ONLY COUNT CANNOT SEE A DESTROYED CELL. `gridData` is keyed by physical key,
+//    so a re-seat that maps two cells onto one key does not produce a disagreement — it
+//    produces one FEWER cell, and iterating what is left reports that as 0/N. Every case hands
+//    in the population it started with, and losing one is a failure on its own axis.
+function disagreements(S, expected) {
   const rb = readBack(S);
   const bad = [];
   rb.forEach((v) => { if (v.was !== v.now) bad.push(`${v.was} -> ${v.now}`); });
-  return { total: rb.size, bad };
+  return { total: rb.size, bad, lost: (expected === undefined) ? 0 : expected - rb.size };
 }
 
 // Where on the canvas does the cell PAINTED with `value` sit right now?
@@ -323,11 +422,10 @@ function run(src) {
     // is why the record exists at all.
     S.el.physChipX.value = '12';
     S.el.physChipY.value = '12';
-    if (typeof S.reseatCellsToStoredCoords === 'function') {
-      S.reseatCellsToStoredCoords(S.cellsSeatedUnder);
-    }
+    fire(S.el.physChipX, 'input', '#phys-chip-x');
+    fire(S.el.physChipY, 'input', '#phys-chip-y');
     const after = boxOf(S);
-    const d = disagreements(S);
+    const d = disagreements(S, painted);
     const seatAfter = seatOfValue(S, '9,1');
 
     eq('fixture/1a-population', 261, painted, 'the painted set is what the acceptance counted');
@@ -343,26 +441,61 @@ function run(src) {
       + `disagree ${d.bad.length}/${d.total}, cell "9,1" canvas seat ${seatBefore} -> ${seatAfter}`);
   }
 
-  // ══ 1b. THE GEOMETRY PRESET ITSELF (dropdown -> applyPresetObject) ════════════════════
-  //     Same operation through the path the user named. The grid is re-derived here, so the
-  //     re-placement has to run AFTER the derived dimensions are in force.
+  // ══ 1b. THE GEOMETRY PRESET, FROM THE DROPDOWN ═══════════════════════════════════════
+  //     The operator's whole gesture is: pick an entry, the select fires `change`. Everything
+  //     after that is the product's business —
+  //       #preset-select change -> loadSelectedPreset -> applyPresetObject
+  //         -> (writes the six phys inputs; reads and IGNORES the preset's rotation/side)
+  //         -> applyPhysicalGeometry -> derives cols/rows -> reseatCellsToStoredCoords
+  //         -> renderGridCanvas
+  //     so the fixture sets the select's value and fires the event, and asserts nothing about
+  //     which of those functions did the work.
+  //
+  //     The preset is a REAL row out of `server/config/maps.json`: `BASE_OFFSET` carries
+  //     `phys_offset_x/y: 10` and `rotation: 270`. Both matter. Offsets feed `getScreenShift`
+  //     and every earlier geometry fixture here used 0 -> 0, which killed that axis outright;
+  //     the declared rotation is the case that would make the reaction REFUSE by design if
+  //     `applyPresetObject` ever started applying orientation.
   {
-    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const PRESETS = {
+      base_std: { name: 'BASE', phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
+                  phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3,
+                  rotation: 0, side: 'front', is_custom: true },
+      custom_1785446867113: { name: 'BASE_OFFSET', phys_wafer_dia: 300, phys_chip_x: 11,
+                  phys_chip_y: 13, phys_offset_x: 10, phys_offset_y: 10, phys_edge_margin: 3,
+                  rotation: 270, side: 'front', is_custom: true },
+    };
+    const BASE = { cols: 29, rows: 25, startX: 1, startY: 1, invertY: false,
+                   rotation: 0, side: 'front', dia: 300, chipX: 11, chipY: 13,
+                   offX: 0, offY: 0, margin: 3 };
+    const { S } = buildEnv(src, BASE, { table: 'bonding_map', serverPresets: PRESETS });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const dimsBefore = `${S.el.gridCols.value}x${S.el.gridRows.value}`;
     const before = boxOf(S);
-    S.applyPresetObject({ name: 'test', phys_wafer_dia: 300, phys_chip_x: 12, phys_chip_y: 12,
-                          phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 });
-    const dimsAfter = `${S.el.gridCols.value}x${S.el.gridRows.value}`;
-    const d = disagreements(S);
-    eq('fixture/1b-grid-really-re-derives', true, dimsBefore !== dimsAfter,
-       'a preset that does not move the grid cannot score the ordering of derive vs re-seat');
-    eq('fixture/1b-population', 261, painted);
+    const rotBefore = S.currentRotation;
+
+    S.el.presetSelect.value = 'custom_1785446867113';
+    fire(S.el.presetSelect, 'change', '#preset-select');
+
+    const after = boxOf(S);
+    const d = disagreements(S, painted);
+    eq('fixture/1b-the-preset-really-moved-the-origin', true,
+       before.minC !== after.minC || before.minR !== after.minR,
+       'a preset that leaves the origin box where it was cannot score this rule at all');
+    eq('fixture/1b-preset-declared-rotation-was-ignored', rotBefore, S.currentRotation,
+       'BASE_OFFSET declares rotation 270. If it were applied, the reaction would refuse by '
+       + 'design (rule 5) and this case would be asserting the wrong thing');
     eq('1b/stored-coordinates-hold', 0, d.bad.length,
        `${d.bad.length} of ${d.total} cells moved coordinate on a preset change`);
-    evidence.push(`1b preset chip 15->12: grid ${dimsBefore} -> ${dimsAfter}, `
-      + `box.minC ${before.minC}->${boxOf(S).minC}, disagree ${d.bad.length}/${d.total}`);
+    eq('1b/preset-loses-no-cell', 0, d.lost,
+       'a re-seat that maps two cells onto one key DESTROYS one, and a survivors-only count '
+       + 'would report that as zero disagreements');
+    evidence.push(`1b dropdown change -> BASE_OFFSET (offset 0,0 -> 10,10, rot 270 declared): `
+      + `grid ${dimsBefore} -> ${S.el.gridCols.value}x${S.el.gridRows.value}, `
+      + `box minC/minR ${before.minC}/${before.minR} -> ${after.minC}/${after.minR}, `
+      + `rotation ${rotBefore} -> ${S.currentRotation}, painted ${painted}, `
+      + `disagree ${d.bad.length}/${d.total}, lost ${d.lost}`);
   }
 
   // ══ 1c. TYPING IS NOT ONE EVENT ══════════════════════════════════════════════════════
@@ -373,7 +506,7 @@ function run(src) {
   //     a record two states old, the coordinate would drift and never come back.
   {
     const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
-    paintOracle(S);
+    const painted = paintOracle(S);
     S.renderGridCanvas();
     const seen = [];
     // '20' pushes the box OUT and '1'/'' pull it all the way in, so the steps do not all move
@@ -382,12 +515,11 @@ function run(src) {
     for (const keystroke of ['20', '', '1', '12']) {
       S.el.physChipX.value = keystroke;
       S.el.physChipY.value = keystroke;
-      if (typeof S.reseatCellsToStoredCoords === 'function') {
-        S.reseatCellsToStoredCoords(S.cellsSeatedUnder);
-      }
+      fire(S.el.physChipX, 'input', '#phys-chip-x');
+      fire(S.el.physChipY, 'input', '#phys-chip-y');
       seen.push(`${keystroke || '(empty)'}:minC${boxOf(S).minC}`);
     }
-    const d = disagreements(S);
+    const d = disagreements(S, painted);
     eq('fixture/1c-intermediates-differ', true, new Set(seen.map(s => s.split(':')[1])).size > 1,
        'every intermediate box was the same, so the steps composed trivially');
     eq('1c/every-keystroke-composes', 0, d.bad.length,
@@ -410,10 +542,8 @@ function run(src) {
     const keysBefore = Object.keys(S.gridData).sort().join('|');
 
     S.el.physChipX.value = '8';
-    if (typeof S.reseatCellsToStoredCoords === 'function') {
-      S.reseatCellsToStoredCoords(S.cellsSeatedUnder);
-    }
-    const d = disagreements(S);
+    fire(S.el.physChipX, 'input', '#phys-chip-x');
+    const d = disagreements(S, painted);
     const keysAfter = Object.keys(S.gridData).sort().join('|');
 
     eq('fixture/2-mask-is-live', true, keys.size > 100 && S.validDieBasis() === 'ref');
@@ -436,7 +566,7 @@ function run(src) {
     const counts = {};
     for (const rot of [90, 180, 270]) {
       const { S: T } = buildEnv(src, F.QERWER, { table: 'dt_map' });
-      paintOracle(T);
+      const painted = paintOracle(T);
       T.renderGridCanvas();
       const keysBefore = Object.keys(T.gridData).sort().join('|');
       T.currentRotation = rot;
@@ -444,12 +574,14 @@ function run(src) {
       // A rotation goes straight to the renderer — no geometry reaction anywhere on the path.
       // The guard inside the reaction is scored directly, so a future caller cannot smuggle
       // rule 4 onto rule 5's path.
-      if (typeof T.reseatCellsToStoredCoords === 'function') {
-        T.reseatCellsToStoredCoords(T.cellsSeatedUnder);
-      }
+      // Deliberately still a DIRECT call: no listener anywhere reaches the reaction on a
+      // rotation, so there is no event to fire. Calling it by hand is the stronger test —
+      // it asks the guard itself to refuse, so a future caller cannot smuggle rule 4 onto
+      // rule 5's path.
+      T.reseatCellsToStoredCoords(T.cellsSeatedUnder);
       T.renderGridCanvas();
       const keysAfter = Object.keys(T.gridData).sort().join('|');
-      const d = disagreements(T);
+      const d = disagreements(T, painted);
       counts[rot] = d.bad.length;
       eq(`5/rot${rot}-holds-the-die`, true, keysBefore === keysAfter,
          'rotation must not re-seat: the die stays and the number moves');
@@ -503,7 +635,7 @@ async function runDesignation(src) {
     await S.resolveValidDie(c.meta, 'bonding_map', c.home);
 
     const dimsAfter = `${S.el.gridCols.value}x${S.el.gridRows.value}`;
-    const d = disagreements(S);
+    const d = disagreements(S, painted);
     const keysAfter = Object.keys(S.gridData).sort().join('|');
     const before = new Set(keysBefore.split('|'));
     let reseated = 0;
@@ -576,6 +708,16 @@ const MUTANTS = {
       '    if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();\n    const staleRecord = cellsSeatedUnder;'),
     '    const placed = reseatCellsToStoredCoords(cellsSeatedUnder);',
     '    const placed = reseatCellsToStoredCoords(staleRecord);'),
+  // ── THE WIRING ITSELF. These two are the reason the fixtures moved up to the event: with
+  //    the listener gone the product does nothing at all, and a fixture that called
+  //    `applyPresetObject` / `reseatCellsToStoredCoords` by hand stays green through both.
+  'preset-dropdown-is-not-wired': (s) => once(s,
+    "    el.presetSelect.addEventListener('change', loadSelectedPreset);",
+    '    // unwired'),
+  'physical-inputs-are-not-wired': (s) => once(s,
+    ["      input.addEventListener('change', onPhysicalGeometryEdit);",
+     "      input.addEventListener('input', onPhysicalGeometryEdit);"].join('\n'),
+    '      // unwired'),
 };
 
 async function scoreMutant(name, src) {
