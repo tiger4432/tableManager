@@ -83,7 +83,7 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 - **게이트는 계약 하네스만이 아닙니다**(2026-07-30 정정). 종전 이 줄은 *"4계약 전부 통과"*로 끝났는데, 그것은 **`check:contracts`의 상태일 뿐 게이트 전체의 상태가 아닙니다.** 지금 세 채점자가 있습니다:
   - `check:clipboard` — 클립보드 관례(`scripts/check_clipboard_convention.mjs`).
   - `check:contracts` — `contracts/*/client_harness.mjs` **발견식 스캔**. 실측 2026-07-30(F9 착지 후 재계수): `band_arithmetic` · **`config_resolve_report`** · `doe_band_rules` · `legend_map_scope` · `map_seam` **5계약**(직전 4는 F9 이전 수). ⚠️ `config_resolve_report`는 **렌더러가 없는 지금도 채점합니다** — 금지 단언(INV-F9-7)은 초록이고 나머지 절반(INV-F9-4)은 **`PENDING`으로 이름 붙여** 보고합니다(통과로 세지 않습니다). 목록이 하드코딩이 아니라 **발견식**이라 신설 계약이 규약대로 놓이면 러너를 안 고쳐도 잡힙니다.
-  - `check:harnesses` — **`client2/tests/*.mjs` 발견식 스캔**(2026-07-30 밤 신설, `scripts/check_harnesses.mjs`). 계약 러너와 같은 모양이고 **빈 스캔은 실패**입니다. 실측 **15개 중 10개 강제 · 5개는 스크립트 안에 사유가 적힌 부채 목록**이며, 부채 항목이 초록으로 돌아오면 「목록에서 빼라」는 줄을 출력합니다. 🔴 **이 게이트가 생긴 이유**: 직전까지 15개 중 **14개를 아무도 부르지 않았고**, 그 조건이 `split_registry_harness.mjs`를 몇 주 죽어 있게 뒀으며 `da8f390`이 두 개를 더 죽인 채 푸시되게 했습니다. **조용히 skip하면 게이트가 없는 것과 같으므로** 부채는 목록으로 드러냅니다.
+  - `check:harnesses` — **`client2/tests/*.mjs` 발견식 스캔**(2026-07-30 밤 신설, `scripts/check_harnesses.mjs`). 계약 러너와 같은 모양이고 **빈 스캔은 실패**입니다. 실측 2026-07-31 **16개 중 11개 강제 · 5개는 스크립트 안에 사유가 적힌 부채 목록**이며, 부채 항목이 초록으로 돌아오면 「목록에서 빼라」는 줄을 출력합니다. ⚠️ **수는 `client2/tests/*.mjs` − `KNOWN_RED` 하나로 나옵니다**(직전 15/10은 `geometry_origin_reseat_harness.mjs` 착지 전 수 — `4761a3a`). 그 디렉터리에는 **`seam_7b_oracle.py`도 있는데 파이썬이라 스캔 대상이 아닙니다** — 파일 17개 ≠ 하네스 17개입니다. 🔴 **이 게이트가 생긴 이유**: 직전까지 15개 중 **14개를 아무도 부르지 않았고**, 그 조건이 `split_registry_harness.mjs`를 몇 주 죽어 있게 뒀으며 `da8f390`이 두 개를 더 죽인 채 푸시되게 했습니다. **조용히 skip하면 게이트가 없는 것과 같으므로** 부채는 목록으로 드러냅니다.
   - `check:suggest-keys` — 값 제안 셀 에디터의 **키보드 계약**(`tests/value_suggest_keys_harness.mjs`, §3.3). ⚠️ `prebuild`에서는 빠졌지만 `check:harnesses`가 같은 파일을 발견해 돌리므로 **매 빌드에 여전히 채점됩니다**. 계약 벡터가 아니라 **AG-Grid 키보드 파이프라인 모델** 위에서 실제 `SuggestCellEditor`+`suppressKeyboardEvent`를 돌리고, 판정을 「핸들러가 옳은 문자열을 돌려줬나」가 아니라 **키스트로크 수**로 씁니다(`effort_meter`와 같은 계수 규칙). 모든 점검에 **변이(mutation)가 짝지어져** 있고 변이가 잡히지 않으면 실패합니다 — ⚠️ 변이는 **APPLIED와 CAUGHT를 따로** 보고합니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다. 검색 문자열이 안 맞는 변이는 **조용한 무장 해제**입니다).
   - ⚠️ 이 하네스가 통과해도 **브라우저 실측이 1차 증거**입니다. AG-Grid가 호출 순서를 바꾸면 모델은 통과하고 제품은 깨집니다.
 
@@ -256,7 +256,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | 영역 | 대표 함수 |
 |---|---|
 | 렌더링 | `renderGridCanvas`/`scheduleRenderGridCanvas`, `updateCellStyles`, `renderLegendTable`, `updateNotchPosition` |
-| 좌표 변환 | `getPhysicalCoords`/`getCellFromPhysicalCoords`, `getVisualCoords`, `getWaferBoundingBox`, `getTransformedPhysicalConfig`, `isCellInsideWafer{,Fast}` |
+| 좌표 변환 | `getDieIndex`/`getCanvasCellFromDieIndex`, `getDbCoords`/`getCanvasCellFromDb`, `getWaferBoundingBox`, `getTransformedPhysicalConfig`, `isCellInsideWafer{,Fast}` · **재배치 반응 `reseatCellsToStoredCoords`**(기록 `cellsSeatedUnder`/`seatingSnapshot`) <br>⚠️ **2026-07-31 개명**(`35e84c3`, 전 호출 지점): 구 `getPhysicalCoords`는 mm가 아니라 **칸 번호**를 돌려주고 구 `getVisualCoords`는 **저장 좌표**를 돌려줬다. 대응표는 [MAP_EDITOR_SPEC §1-bis](../spec/MAP_EDITOR_SPEC.md). **`mm`은 일부러 비어 있다** |
 | 드래그 선택/페인팅 | `initMouseDragEvents`, `handleCellClick`, `fillSelectedCells`, `remapGridValues`, `autoPaintE1E2` |
 | 엑셀 복사 | `copyGridToExcel()` — TSV 클립보드 |
 | 메타/레전드 | `renderMetadataInputs`, 프리셋 `/api/map-presets`, 레전드 `localStorage`(`map_legend_{table}`) |

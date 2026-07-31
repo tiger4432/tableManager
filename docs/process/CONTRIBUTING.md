@@ -1,6 +1,8 @@
 # 🛠️ CONTRIBUTING — 개발·문서 갱신 규율 (Docs-as-Code)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2-bis 「이 저장소가 자기를 검증하는 자리」 신설** — `5a14e77` 실측: `client2/package.json`의 `prebuild` = `check:clipboard` + `check:contracts`. 그전에는 **계약 클라 하네스 4개를 아무것도 실행하지 않았다**(pytest는 서버 절반만 채점). 러너는 발견식 스캔이고 **빈 스캔은 실패**. 직전 2026-07-24 최초 작성) | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** Lead / PM
+>
+> **이번 라운드 (2026-07-31)**: §2-bis의 클라 게이트 행에 **`check:harnesses`**를 추가했습니다(`5656fa7` — `client2/tests/*.mjs` 발견식 스캔. 그전까지 **15개 중 14개를 아무도 부르지 않았습니다**). 게이트 목록의 정본이 `package.json`의 `prebuild` 한 줄임을 못박고, **`KNOWN_RED`가 skip 목록이 아니라 부채 목록**이라는 규율을 명기했습니다.
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · SOP: [starting_prompt](../prompts/starting_prompt.md)
 
 이 문서는 AssyManager를 **지속 관리 가능한 상태로 유지**하기 위한 최소한의 규율을 정의합니다. 문서 드리프트(코드는 진화하는데 문서는 과거에 멈추는 현상)를 구조적으로 방지하는 것이 목적입니다.
@@ -36,7 +38,10 @@
 | 게이트 | 명령 | 무엇을 채점하나 |
 |---|---|---|
 | 서버 | `conda run -n assy_manager pytest server/tests/` | 서버 구현 + `contracts/*/vectors.json`의 **서버 절반** |
-| 클라 | `cd client2 && npm run build` (`prebuild`가 선행) | 클립보드 관례 + `contracts/*/client_harness.mjs` **전부** = 계약의 **클라 절반** |
+| 클라 | `cd client2 && npm run build` (`prebuild`가 선행) | 클립보드 관례 + `contracts/*/client_harness.mjs` **전부**(계약의 **클라 절반**) + **`client2/tests/*.mjs` 전부**(`check:harnesses`, 2026-07-30 밤 신설) |
+
+> 🔴 **게이트 목록의 정본은 `client2/package.json`의 `prebuild` 한 줄이고 위 표는 사본입니다** — 이 문단은 이미 **세 번** 낡았습니다. 2026-07-31 실측: `check:clipboard && check:contracts && check:harnesses`. `check:suggest-keys`는 목록에서 빠졌지만 **약해진 것이 아니라 흡수된 것**입니다(그 하네스가 `client2/tests/` 안에 있어 발견식 스캔에 잡힙니다).
+> 🔴 **`check:harnesses`의 부채 목록(`KNOWN_RED`)은 skip 목록이 아닙니다.** 빨간 하네스도 **실행되고 보고되며**, 다만 빌드를 막지 않습니다. 항목마다 사유가 스크립트에 적혀 있고, 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력합니다 — **그때 빼는 것까지가 절차입니다.** 초록 빌드를 얻으려고 `KNOWN_RED`에 추가하는 것은 이 게이트가 생기기 전 상태(15개 중 14개 미실행)로 되돌아가는 일입니다.
 
 - 🔴 **2026-07-30 이전에는 클라 하네스를 아무것도 실행하지 않았습니다.** `pytest`는 서버 절반만 채점하고 `client2`에는 스크립트가 없었습니다 — 그 조건이 `split_registry_harness.mjs`를 심볼 개명 이후 **몇 주 동안 예외로 죽어 있게** 두었고, 부르는 사람이 없어 아무도 몰랐습니다. **아무도 돌리지 않는 계약은 주석입니다.**
 - **러너는 목록이 아니라 발견식 스캔입니다** — `contracts/*/client_harness.mjs`를 훑습니다. 하드코딩 목록을 만들면 계약 #5가 착지하고 아무도 추가하지 않았을 때 **빌드가 초록인 채 그 계약이 죽습니다.**

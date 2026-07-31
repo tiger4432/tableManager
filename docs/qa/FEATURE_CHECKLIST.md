@@ -1,17 +1,13 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 | **Owner:** Integrity/QA | 갱신 **doc-keeper 전담** · 정합 감사 **doc-auditor**
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** Integrity/QA | 갱신 **doc-keeper 전담** · 정합 감사 **doc-auditor**
 >
 > 🔴 **§2.0 자동 게이트의 정본은 `client2/package.json`의 `prebuild` 한 줄이고 이 문서는 사본입니다** — 계약을 추가·삭제하는 커밋은 §2.0의 **산문과 코드 샘플을 함께** 고쳐야 합니다(독자가 자기 출력과 대조하는 것은 샘플입니다). 그리고 **사용자 눈에 보이는 기능이 착지하면 §1의 인벤토리 행이 먼저 필요합니다** — 행이 없으면 그 기능은 회귀 점검에서 구조적으로 빠집니다.
 >
-> **이번 라운드 (2026-07-30)**
-> - **§1.7 기능 행 2건 신설** — 「프리셋은 기하만 말한다」(`02a72c6`) · 「좌표 규약 — 화면이 기준, 저장 좌표는 칸수」(사용자 확정 + `019140c`).
-> - **§1.7 M4 행 정정** — 종전 점검 ②가 *"칠한 셀 위치가 한 픽셀도 안 움직이는가"*였는데 `da8f390` 이후 **거짓**입니다(셀은 자기 저장 좌표가 가리키는 칸으로 다시 앉습니다 — 안 움직이면 오히려 좌표가 깨진 것). 알람 축 **치수 → 원점** 점검 신설(`7a9c2b0`).
-> - **§2.9 수동 점검 5건 신설** — 프리셋 방향 · 📐 표준 재번호 · 유효 다이 좌표 고정/칸 추종 · 원점 알람 · `[유효다이]` 콘솔 7줄.
-> - **§2.8-ter 구조 수리** — `####`(h4)가 `###`(h3)인 §2.8-bis **앞에** 있어 계층이 뒤집혀 있었고, 그 안에 **§2.8 소속 점검 2건**(④ classify · ② propose)이 섞여 있었습니다. 둘을 §2.8로 되돌리고 절을 §2.8-bis 뒤로 옮겨 `###`로 승격했습니다.
-> - **F9 기능 행을 §1.6 → §1.8 어드민으로 이동** — `/admin/config/resolve`는 config 도메인 일반이지 Enrichment 전용이 아닙니다. `Config Reload` 행에 **「쓰기 전용 버튼」**을 명기해 둘을 짝으로 읽게 했습니다. ⏳ **클라 렌더러 미착지 표기 추가**(실측 `client2/src` 소비자 0건).
-> - **§2.8 / §2.8-ter 점검 3건 신설** — SAVEPOINT 격리 · `distinct_truncated` 거절(`f9289f6`) · INV-F9-8(`detail`에 repr·마크다운 금지).
-> - **§2.0 계약 수 4 → 5 정정** — 게이트 실행 실측(`✓ 5 contracts`)이고 **코드 샘플이 4로 남아 있었습니다**(산문만 고친 직전 수리가 load-bearing 쪽을 놓쳤습니다). 근거 없던 「24시간」 노출 구간 서술은 **삭제**하고 규칙을 일반형으로 다시 썼습니다.
+> **이번 라운드 (2026-07-31)**
+> - **§2.0 하네스 게이트 수 정정 — 15/10 → 16/11.** 수는 `client2/tests/*.mjs` − `KNOWN_RED`이고, 같은 디렉터리의 `seam_7b_oracle.py`는 파이썬이라 **스캔되지 않습니다**(파일 17개 ≠ 하네스 17개). 부채 항목의 「N개 실패」는 **정적 문자열**이라 실측과 이미 갈렸다는 경고를 함께 적었습니다.
+> - **F9 ⏳ 표기 해제 (`93610cb`)** — §1.8 기능 행과 §2.8-ter 진입 문단. 진입은 **어드민 Overview 탭의 세 번째 계기 줄**이고, `curl`은 이제 「화면이 지어낸 문장인가」를 가르는 **대조용**입니다. INV-F9-4가 `PENDING`에서 **실행 채점**으로 바뀐 것도 반영.
+> - **§2.8-quater 신설 — 조회 실패의 다섯 갈래** (`1dc761b`+`cde3398`). 🔴 **401은 `WWW-Authenticate: X-Admin-Token`이 붙어 있을 때만 우리 게이트**이고, 그 구별이 없어 2026-07-30에 오후 하나를 썼습니다. **교차 출처에서는 CORS `expose_headers`가 없으면 브라우저가 그 헤더를 지우므로** vite dev 오리진에서만 나타나는 오표시가 생깁니다 — 두 오리진에서 각각 점검하도록 항목을 나눴습니다.
 >
 > **이전 라운드 기록은 [`docs/history/`](../history/)에 있습니다** — 🔴 이 헤더에 쌓지 마십시오(2026-07-30에 7,068자까지 자랐습니다). `Last-verified`는 **날짜 · 이번 라운드에 바뀐 것**까지입니다.
 >
@@ -114,7 +110,7 @@
 | **프리셋은 기하만 말한다 — 방향은 운영자의 것** (`02a72c6`, 2026-07-30) | `maps.json`은 운영자가 편집하므로 프리셋이 `rotation`/`side`를 **선언할 수는** 있다. **읽되 적용하지 않는다** — 회전 버튼과 front/back 라디오로 운영자가 이미 방향을 소유하고 있고, 프리셋이 그것을 다시 주장하는 것은 **동의 없이 화면이 움직이는 것**이며 방향이 바뀌면 **모든 셀 번호가 다시 매겨진다**. 선언값이 현재 화면과 **다를 때만** info 토스트 1회로 알린다(확인창·새 컨트롤 0). 확인할 것: ① `rotation`을 선언한 프리셋을 골라도 **화면 회전이 그대로인가** ② 그때 **토스트가 뜨는가**(조용히 무시하면 회귀 — 「무시했다」는 말해야 한다) ③ 선언이 현재 화면과 **같으면 토스트가 안 뜨는가** ④ 적용 지점이 `applyPresetObject` **하나인가**(프리셋 UI·라우팅·자재 프레임·📐 표준 네 호출자 전부 같은 동작) | 규격 프리셋 드롭다운 · 로드 시 라우팅 · 자재 프레임 빈 맵 열기 | `applyPresetObject`(§7) · 토스트 `dedupeKey: 'preset_orientation_ignored'` · [MAP_EDITOR_SPEC §4-bis.4](../spec/MAP_EDITOR_SPEC.md) |
 | **좌표 규약 — 화면이 기준, 저장 좌표는 칸수** (사용자 확정 2026-07-30 · `019140c`) | 🔴 **이 표의 다른 모든 맵 행이 이 다섯 줄 위에 서 있다**: ① 화면이 기준(저장은 화면을 따라간다 — **결함은 화면이 *말없이* 움직이는 것**) ② 표시 = 오리진 + DB 값(**한 수량**이다) ③ `start_x/start_y` = **유효 다이 영역**의 최소 열·행이자 **운영자의 선언**(편집기가 자동으로 쓰지 않는다) ④ 오리진 = start가 (0,0)으로 읽히는 칸 ⑤ **저장 좌표 = 오리진 기준 칸수, mm 아님**(칸수에 피치를 곱해 mm로 읽으면 **없는 결함이 만들어진다** — 그렇게 추론한 라운드가 기각됐다). **메타 없는 맵의 📐 표준 분기 회귀 점검**: 로드된 셀의 칸 안 번호가 **DB에 저장된 x/y와 같은가**(달라지면 `019140c`가 고친 결함의 재발 — 종전에는 `startX=0`을 세우고 모든 좌표에서 `minX`를 빼면서 **되더하지 않았고**, 표시와 저장이 한 수량이라 화면이 그것을 드러내지 못했다). ⚠️ **피해 규모는 커밋 메시지의 수를 믿지 말 것** — *"맵 4개 · 셀 1,923 중 451이 Push 도달"*은 감사 추적 실측(`source_name='user'` 239 에피소드)에서 **재현되지 않았다**. **노출은 실재, 실현은 미확인**이고 대비의 전문은 [MAP_EDITOR_SPEC §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md)에 있다. 만약 손상이 있었다면 `replace_map`이 이력째 하드 삭제하므로 **행 상태로는 판정할 수 없다** | 📂 Load → 📐 표준(메타 없는 맵) | `loadExistingMap`의 `standard` 분기 · `getVisualCoords`/`getCellFromVisualCoords`(§7) · 회귀 그물 `client2/tests/standard_frame_origin_harness.mjs`(19단언 · 변이 7/7) · [MAP_EDITOR_SPEC §1의 0) / §4-bis.3-bis](../spec/MAP_EDITOR_SPEC.md) |
 | 브러시 페인팅/레전드 | 셀 값 브러시 페인팅, 레전드 편집(localStorage `map_legend_{table}` 유지). **[U6 `95bf072`] 빈 맵 시드·자동 추가 값의 색/설명·값 컬럼 자동 탐지 목록이 전부 서버 선언**(paint-rules의 `default_legend`/`value_column_candidates` — [MAP_EDITOR_SPEC §5.6](../spec/MAP_EDITOR_SPEC.md)) — 클라 builtin 목록·고정 E1/E2 색 삭제 | 레전드 테이블·브러시 선택 | `selectBrush/renderLegendTable/load·saveLegendToStorage/autoAddLegendValue`(§7) |
-| 좌표 변환(회전/면반전) | FRONT/BACK 전환·회전 시 물리 좌표 불변(칩 스탬프, 워터마크 표시) | FRONT/BACK 툴바 칩·회전 컨트롤 | `getPhysicalCoords` 계열(§7) · [MAP_EDITOR_SPEC](../spec/MAP_EDITOR_SPEC.md) 불변식 |
+| 좌표 변환(회전/면반전) | FRONT/BACK 전환·회전 시 **다이 인덱스** 불변(칩 스탬프, 워터마크 표시) | FRONT/BACK 툴바 칩·회전 컨트롤 | `getDieIndex` 계열(구 `getPhysicalCoords` — 2026-07-31 개명, [MAP_EDITOR_SPEC §1-bis](../spec/MAP_EDITOR_SPEC.md)) · 같은 문서 불변식 |
 | 엣지 자동 페인팅 | 엣지 셀 분류·선택·E1/E2 자동 페인팅 | 작업영역 툴바 "🔍 Select Tools" 드롭다운 → "✔️ Select E1" / "✔️ Select E2" / "⚡ Auto-Paint E1/E2" (같은 드롭다운에 "📍 Set Origin (0,0)") | `getEdgeClassification/selectEdgeCells/autoPaintE1E2`(§7) |
 | 엑셀 복사 (+ **COPY HEADER MODE**) | 그리드를 클립보드로 복사 — `text/plain`(TSV)과 `text/html`(서식) **둘 다** 싣는다. **COPY HEADER MODE 토글**(`localStorage['mapCopyHeader']`)을 켜면 사용자 회사 본딩맵 양식으로 나간다: 상단 `TITLE`(`테이블 · 맵키`) + 열 그룹 띠(맵키 그룹·1H·MID·TOP) + 우측 보조표 `VALUE \| COUNT \| STACK \| DESC`. `COUNT`는 범례 뱃지·DOE 패널·Push와 **같은 집계**(`eachSavableCell`). **[`5a14e77`] 열 폭은 글자 수 비례 병합**(`headerSpanFor`+`distributeSpans`, 최대 잔여법으로 모든 행의 열 합계 일치) — 종전에는 헤더 칸 = 맵 셀 하나(32px)라 `MIDLOT_01`이 잘렸다 | 작업영역 툴바 "🛠️ Edit Grid" 드롭다운 → "📋 Copy to Excel" (+ COPY HEADER 체크박스) | `copyGridToExcel`(§7) · [MAP_EDITOR_SPEC §4-ter](../spec/MAP_EDITOR_SPEC.md) |
 | **회사 양식 되붙이기 (Ctrl+V)** (F1ⓑ, `c9bf2c7` 2026-07-30) | 위 양식을 **격자로 되읽는다** — 왕복의 나머지 절반. 격자는 **빈 칸까지** 복원, DOE는 `VALUE`·`STACK`·`DESC`만 복원. **`COUNT`는 알아보되 버리고**(칠한 셀 수는 격자에서 센다), **자재(1H/MID/TOP)·COLOR는 왕복하지 않는다**(상단 그룹 띠는 의도적으로 읽지 않음 — 평문에서 "빈 그룹"과 "병합 연장"이 같은 문자라 구별 불가). 🔴 **붙여넣기는 값을 지우지 않는다**(복사본에 없는 값 = "말하지 않은 것"). 거부 **다섯** 갈래: 열 수 · 행 수 · 정체(TITLE) · **프레임 지문 불일치** · **프레임 지문 부재**(`ae2811c` 신설) — 노치 `D`는 치수가 같은 채 회전/면만 바뀐 경우를 잡는 유일한 신호이고, **자리가 격자 밖이면 대조 자체가 불가능하므로 거부한다**(종전에는 통과 후 확인창 경고 한 줄이었고, 실측 12×10 마스크 없는 격자에서 rot 0 복사본을 rot 180에 붙여 **물리 키 120개 전부의 값이 바뀌었다**). 🔴 **점검 시 반드시 확인**: 선언 맵 **179개 중 노치 on-grid는 27개** — **나머지 152개에서 붙여넣기는 정상적으로 거부되는 것이 맞다**(고장 아님). 지문 술어는 복사·붙여넣기 공유(`notchMarkCell` — **칠해진 노치 셀은 지문 없음**이라 "회전·면이 다릅니다"가 아니라 부재 사유로 거부되고, 값이 진짜 `D`인 셀은 **비워지지 않는다**). 노치는 적용 시 **버려진다**(안 그러면 저장 불가 셀이 생겨 적재 대조 게이트가 그 맵을 영구 거절) | **Ctrl+V** — 새 버튼·메뉴 **0개**(운영은 평문 HTTP라 `navigator.clipboard` 부재, `execCommand('paste')` 차단 → 네이티브 `paste` 이벤트가 유일). 확인창 **1회**, **서버 쓰기 0** | `onMapGridPaste`/`readCompanyMapBlock`/`checkPasteAgainstFrame`/`applyPastedGridRows`/`applyPastedAuxRows`(§7) · [MAP_EDITOR_SPEC §4-ter](../spec/MAP_EDITOR_SPEC.md) · 사용자 안내 [DOE_GUIDE §4.2](../guide/DOE_GUIDE.md) |
@@ -142,7 +138,7 @@
 | Enrichment | 규칙별 결손 현황(15s TTL 캐시 — 스트립·탭·Overview 공용) + 컨베이어 딥링크 | `renderEnrichmentTable/fetchEnrichmentStatus` · `/enrichment/rules` |
 | Code Editor(공용 뷰) | Monaco(CDN) 파일 피커 + 스크립트 편집·저장(인라인 폴백, dirty confirm) — 각 탭에서 `#editor=<path>` 딥링크 진입 | `initMonacoEditor/populateEditorPicker/selectEditorFile/saveScriptCode` · `/admin/scripts/*` |
 | Config Reload | `table_config.json` 등 핫리로드(+SYSTEM_RELOAD 전파로 워커도 리로드, 신규 테이블 물리 CREATE 포함). 🔴 **이 버튼은 쓰기 전용이다** — 캐시를 갱신하고 워커에 이벤트를 뿌린 뒤 **무엇이 먹었는지 아무것도 돌려주지 않는다.** 그 공백을 메우는 것이 아래 행이므로 **둘은 짝으로 읽는다** | `reloadSystemConfigs` → POST `/admin/reload-configs`(§1.4) |
-| **config 선언의 효과 조회 (F9, 2026-07-30, 읽기 전용)** — ⏳ **화면 미착지** | 「내가 쓴 config가 먹었나」에 제품이 답한다. `GET /admin/config/resolve`가 선언을 **세 모집단**으로 나눠 돌려준다 — `effective` · `ineffective`(+ **명명된 사유**) · `rejected`(+ 사유) + `settings`(실효값과 **그 값이 온 파일**, 파일 부재로 기본값인 경우 포함). ⏳ **클라 렌더러는 아직 없다**(2026-07-30 실측 — `client2/src`에 소비자 0건). 지금 진입은 `curl` + 어드민 토큰이고, 이 행이 §1.8에 있는 것은 **도착지가 여기이기 때문**이다. 🔴 사람이 읽을 문장(`detail`)은 **서버가 만들고 클라는 그대로 렌더해야 한다**(계약) — 클라가 「효과 없음」을 자기 규칙으로 판정하면 하드코딩 사본 계급이 재발한다. 사유 어휘는 닫혀 있고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — 새 단어 0). ⚠️ **`scope_unresolved`는 켜기 전 경고**: 선언 뷰가 판단키의 일부만으로 조회하면 런타임은 `ambiguous`가 아니라 `single`을 내므로 실행 중에는 보이지 않는다. DB 질의 0건(config만). 드라이런은 별도 라우트이고 **HTTP에 쓰기 경로가 없다**. ⚠️ **도메인은 `enrichment` 하나가 등록돼 있고 나머지는 같은 틀로 붙는다** — 도메인을 추가하면 [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 해당 행과 이 행을 함께 고친다 | `GET /admin/config/resolve` · `GET /admin/enrichment/auto-confirm/dry-run?rule=` (어드민 토큰) | `config_resolve_report.resolve_report` · 점검 §2.8-ter · [ENRICHMENT_QUEUE_SPEC §5.2-bis](../spec/ENRICHMENT_QUEUE_SPEC.md) · [CONFIG_GUIDE §4.2-bis](../guide/CONFIG_GUIDE.md) · [config/enrichment_rules §7.3-bis](../guide/config/enrichment_rules.md) · 계약 `contracts/config_resolve_report/` |
+| **config 선언의 효과 조회 (F9, 2026-07-30 서버 · **2026-07-31 화면 착지** `93610cb`)** | 「내가 쓴 config가 먹었나」에 제품이 답한다. `GET /admin/config/resolve`가 선언을 **세 모집단**으로 나눠 돌려준다 — `effective` · `ineffective`(+ **명명된 사유**) · `rejected`(+ 사유) + `settings`(실효값과 **그 값이 온 파일**, 파일 부재로 기본값인 경우 포함). ✅ **진입은 어드민 Overview 탭의 세 번째 계기 줄**이다(`admin.js`의 `refreshConfigResolve` → 뷰 모델 `config_resolve_view.js`). 1분 스로틀 · `Reload Configs`를 누르면 force로 즉시 다시 읽는다. 🔴 사람이 읽을 문장(`detail`)은 **서버가 만들고 클라는 그대로 렌더해야 한다**(계약) — 클라가 「효과 없음」을 자기 규칙으로 판정하면 하드코딩 사본 계급이 재발한다. 사유 어휘는 닫혀 있고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — 새 단어 0). ⚠️ **`scope_unresolved`는 켜기 전 경고**: 선언 뷰가 판단키의 일부만으로 조회하면 런타임은 `ambiguous`가 아니라 `single`을 내므로 실행 중에는 보이지 않는다. DB 질의 0건(config만). 드라이런은 별도 라우트이고 **HTTP에 쓰기 경로가 없다**. ⚠️ **도메인은 `enrichment` 하나가 등록돼 있고 나머지는 같은 틀로 붙는다** — 도메인을 추가하면 [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 해당 행과 이 행을 함께 고친다 | `GET /admin/config/resolve` · `GET /admin/enrichment/auto-confirm/dry-run?rule=` (어드민 토큰) | `config_resolve_report.resolve_report` · 점검 §2.8-ter · [ENRICHMENT_QUEUE_SPEC §5.2-bis](../spec/ENRICHMENT_QUEUE_SPEC.md) · [CONFIG_GUIDE §4.2-bis](../guide/CONFIG_GUIDE.md) · [config/enrichment_rules §7.3-bis](../guide/config/enrichment_rules.md) · 계약 `contracts/config_resolve_report/` |
 
 ### 1.9 온톨로지 그래프 (승격·뷰어·추적)
 
@@ -217,7 +213,7 @@
   cd client2 && npm run check:suggest-keys    # 값 제안 키보드 계약 + 변이 스윕
   ```
   - ⚠️ **게이트 목록의 정본은 `client2/package.json`의 `prebuild` 한 줄입니다.** 이 체크리스트의 목록은 사본이고, 실제로 **두 번** 낡았습니다(2행이라고 적힌 채 3행이 됐고, 그다음엔 3행의 **구성이 바뀌었습니다**). 항목 수만 세지 말고 `prebuild` 한 줄을 그대로 읽으십시오.
-- [ ] 🎯 **하네스 게이트**(`check:harnesses` 2026-07-30 밤 신설): 출력의 **강제 수와 부채 수**를 눈으로 확인하십시오(현재 **15개 중 10 강제 · 5 부채**). 🔴 **부채 목록은 스크립트 안에 사유와 함께 적혀 있습니다** — 조용한 skip이 아니라 드러난 빚입니다. 부채 항목이 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력하므로, 그 줄이 보이면 **그때 빼는 것이 절차입니다.** 이 게이트가 없던 동안 15개 중 14개를 아무도 부르지 않았고, `split_registry_harness.mjs`는 몇 주, `company_roundtrip`/`copy_header_count`는 한 커밋 동안 죽은 채였습니다.
+- [ ] 🎯 **하네스 게이트**(`check:harnesses` 2026-07-30 밤 신설): 출력의 **강제 수와 부채 수**를 눈으로 확인하십시오(2026-07-31 실측 **16개 중 11 강제 · 5 부채**). ⚠️ 수는 `client2/tests/*.mjs` − `KNOWN_RED`이고, 같은 디렉터리의 **`seam_7b_oracle.py`는 파이썬이라 스캔되지 않습니다**(파일 17개 ≠ 하네스 17개). ⚠️ **부채 항목에 적힌 「N개 실패」는 정적 문자열이지 실측 점수가 아닙니다** — 인용할 일이 있으면 돌려서 세십시오. 🔴 **부채 목록은 스크립트 안에 사유와 함께 적혀 있습니다** — 조용한 skip이 아니라 드러난 빚입니다. 부채 항목이 초록으로 돌아오면 러너가 「목록에서 빼라」를 출력하므로, 그 줄이 보이면 **그때 빼는 것이 절차입니다.** 이 게이트가 없던 동안 15개 중 14개를 아무도 부르지 않았고, `split_registry_harness.mjs`는 몇 주, `company_roundtrip`/`copy_header_count`는 한 커밋 동안 죽은 채였습니다.
   - 🔴 **`check:suggest-keys`의 판정은 "통과"가 아니라 "APPLIED == CAUGHT"입니다.** 모든 점검에 변이(mutation)가 짝지어져 있는데, **변이가 소스 드리프트로 적용되지 않으면 조용한 무장 해제**입니다(`cb8f01a`: 18개 중 8개가 적용조차 안 되면서 베이스라인은 초록이었습니다). 출력의 APPLIED와 CAUGHT 수를 **둘 다** 확인하십시오.
   - ⚠️ 이 하네스는 AG-Grid 키보드 파이프라인의 **모델** 위에서 돕니다. AG-Grid가 호출 순서를 바꾸면 하네스는 초록인 채 제품이 깨지므로, **브라우저 실측 키스트로크 수가 1차 증거**이고 이것은 그 아래의 회귀 그물입니다(§2.1의 F3 항목).
   - **2026-07-30 이전에는 계약 클라 하네스를 아무것도 실행하지 않았습니다** — `pytest`는 서버 절반만 채점하고 `client2`에 스크립트가 없었습니다. 그 조건이 `split_registry_harness.mjs`를 심볼 개명 이후 **몇 주 동안 예외로 죽어 있게** 두었습니다(부르는 사람이 없어 실패가 보이지 않음).
@@ -377,7 +373,9 @@
 
 ### 2.8-ter 「내가 켠 config가 먹었나」 — 선언의 효과 조회 (F9, 2026-07-30)
 
-> ⏳ **어드민 화면이 아니라 `curl` + 어드민 토큰으로 점검합니다** — 클라 렌더러는 아직 없습니다(2026-07-30 실측: `client2/src`에 이 두 라우트의 소비자 0건). 아래 「나온다」는 **응답 JSON에** 나온다는 뜻입니다.
+> ✅ **화면이 착지했습니다**(2026-07-31 `93610cb` — 어드민 **Overview 탭의 세 번째 계기 줄**). 아래 「나온다」는 **응답 JSON과 그 화면 둘 다에** 나온다는 뜻이고, 둘이 갈리면 그것 자체가 결함입니다(계약: **문장은 서버가 만들고 클라는 그대로 렌더**).
+> - **화면으로 점검하는 것이 1차**입니다. `curl`은 「화면이 지어낸 문장인가」를 가르는 대조용으로만 쓰십시오 — 화면에 있는 문장은 `curl` 응답의 `detail`에 **글자 그대로** 있어야 합니다.
+> - ⚠️ **읽기 실패는 「설정이 멀쩡하다」가 아닙니다** — 대시(―)와 사유가 남습니다. 그 사유 다섯 갈래는 **§2.8-quater**에서 따로 점검합니다.
 > 📍 이 절은 `enrichment` 도메인을 재료로 쓰지만 **점검 대상은 config 도메인 일반의 틀**입니다(도메인이 늘어도 응답 모양과 어휘는 그대로). 그래서 §2.8 안이 아니라 여기에 있습니다.
 
 - [ ] 🎯 **켰는데 아무 일도 안 하는 상태가 응답에 나온다**: 규칙에 `auto_confirm: true`만 켜고 **`candidate_for`는 선언하지 않은 채** `GET /admin/config/resolve` → 그 규칙이 **`ineffective`**에 사유 **`not_declared`**로 나오고, 설명 문장이 「어떤 참조뷰도 candidate_for를 선언하지 않아 아무 효과가 없습니다」라고 말한다. (수리 전에는 데몬 로그 한 줄이 유일한 목격자였고, **라이브가 정확히 이 상태였다**.)
@@ -390,7 +388,29 @@
 - [ ] **드라이런이 숫자를 준다**: `GET /admin/enrichment/auto-confirm/dry-run?rule=<규칙>` → 「큐 N건 중 M건 확정 가능」. **쓰기는 일어나지 않는다**(실행 전후 DB 비교). 노브가 꺼져 있어도 측정된다.
 - [ ] **드라이런에 쓰기 경로가 없다**: URL에 `apply=true`를 붙여도 아무 것도 쓰이지 않는다(파라미터 자체가 없다 — 쓰기는 CLI뿐).
 - [ ] **선언이 없으면 500이 아니다**: `candidate_for` 없는 규칙에 드라이런 → 200 + `refused_reason: "not_declared"` (해석 보고서와 **같은 단어**).
-- [ ] **클라가 사유 단어를 적어 두지 않는다**: `node contracts/config_resolve_report/client_harness.mjs` → INV-F9-7 초록(`client2/src` 전역에 사유 4단어가 **소스 리터럴로** 0건). ⚠️ INV-F9-4는 렌더러가 없어 **`PENDING`으로 보고**되며 **통과가 아니다** — 렌더러가 착지하면 이 항목을 통과 판정으로 바꾼다.
+- [ ] **클라가 사유 단어를 적어 두지 않는다**: `node contracts/config_resolve_report/client_harness.mjs` → INV-F9-7 초록(`client2/src` 전역에 사유 4단어가 **소스 리터럴로** 0건).
+- [ ] 🎯 **INV-F9-4가 이제 실행 채점된다**(2026-07-31 — 종전 `PENDING`): 같은 하네스가 `config_resolve_view.js`를 **임포트해** 벡터 페이로드를 먹이고, 나오는 문자열 전부를 출처(`server`/`value`/`chrome`/`count`)로 채점한다. **`PENDING` 표기가 다시 나타나면 뷰 모델이 DOM 빌더 안으로 되돌아간 것**이다.
+
+### 2.8-quater 조회가 실패했을 때 화면이 무엇을 말하는가 (F9 후속 · `1dc761b` + `cde3398` · 2026-07-31)
+
+> 🔴 **점검 이유:** 종전에는 무엇이 잘못됐든 `조회 실패` 한 마디였습니다. 그 다섯 갈래는 **운영자의 손을 서로 다른 곳으로 보냅니다** — 뭉개면 엉뚱한 것을 고치러 갑니다.
+> ⚠️ **이 절은 「설정이 멀쩡한가」를 묻지 않습니다.** 실패는 대시(―)와 사유를 남기고 **자동으로 펼치지 않습니다**(muted 톤 · 토스트·모달 없음). 화면이 침묵하면 그것이 회귀입니다.
+
+| 상황 | 화면이 말해야 하는 것 | 운영자의 손이 가야 할 곳 |
+|---|---|---|
+| 응답 자체가 없음 | `서버에 연결할 수 없습니다 ― 서버가 실행 중인지 확인하세요` | 서버 프로세스 |
+| `404` | `실행 중인 서버가 구버전입니다 ― 서버를 재시작하세요` | **배포** (서버가 「나에게 그 라우트가 없다」고 답한 것) |
+| `401`·`403` **+ `WWW-Authenticate: X-Admin-Token`** | `관리자 토큰이 거부되었습니다 ― 새로고침 후 다시 입력하세요` | 토큰 |
+| `401`·`403` **그 헤더 없이** | `관리자 게이트가 아닌 응답입니다 ― 프록시 등 앞단에 …` | **이 포트에 무엇이 답하는가** |
+| 그 외(5xx 등) | `조회 실패` | 라우트는 있고 깨진 것 — **이것만이 진짜 조회 실패** |
+
+- [ ] 🎯 **401 갈래가 상태코드가 아니라 헤더로 갈린다**: 토큰을 틀리게 넣어 게이트 401을 받는다 → 「관리자 토큰이 거부되었습니다」. 🔴 **`WWW-Authenticate` 없이 401을 내는 것을 앞단에 두고** 같은 조회를 한다 → 「관리자 게이트가 아닌 응답입니다」로 **갈려야 한다.**
+  - **왜 이것이 가장 비싼 항목인가**: 포트 앞의 프록시는 **자기** `WWW-Authenticate: Basic realm=…`으로 답하고, 2026-07-30에 정확히 그것이 **인증 실패로 읽혀 오후 하나를 썼습니다**. 판정은 `admin.js`의 `isGateRejection`이고 **재사용이지 재유도가 아닙니다** — 사본이 생기면 두 판정이 갈립니다.
+- [ ] 🎯 **vite dev 오리진(`:5173`)에서도 갈린다** (`cde3398`): 🔴 **브라우저는 노출되지 않은 응답 헤더를 교차 출처에서 지웁니다.** `WWW-Authenticate`가 CORS `expose_headers`에 없으면 **진짜 게이트 거부가 「앞단이 답했다」로 확신 있게 잘못 표시**됩니다. `:8080`/`:8081` 직접 서빙(같은 출처)에서는 원래 읽혔으므로 **이 결함은 dev 오리진에서만 보입니다** — 두 오리진에서 각각 확인하십시오.
+  - 값에 비밀이 없습니다(원하는 헤더의 **이름**뿐). 노출 목록은 `server/main.py`의 `CORSMiddleware` 한 줄이 정본입니다.
+- [ ] **`Server:` 헤더는 증거이지 문장이 아니다**: 앞단이 자기 이름을 대면 사유 문장 **옆에** 붙어 나온다(문장 자체는 고정 `CHROME` 항목 그대로). ⚠️ **`uvicorn`이면 표시되지 않는다** — 우리 서버가 자기 이름을 대는 것은 운영자에게 아무것도 알려 주지 않는다. 길이도 잘린다(의심받는 쪽이 준 입력이므로).
+- [ ] 🎯 **실패한 조회는 다시 시도한다**: 서버를 내린 채 화면을 열어 실패를 만들고, 토큰을 새로 넣는다 → **스로틀 창을 기다리지 않고** 즉시 다시 읽는다(토큰 세대가 바뀐 것은 **시계가 아니라 원인**이 바뀐 것). 이어서 서버를 올린다 → 0s/30s/60s로 재시도해 복구된다.
+  - 🔴 **회귀 형태**: 실패가 성공과 같은 침묵을 사면(시각을 **읽기 전에** 찍으면) 운영자가 시킨 대로 토큰을 넣고도 화면이 그대로여서 **「해도 안 된다」로 읽힙니다** — 실제로 그렇게 신고됐습니다.
 
 ### 2.9 맵 에디터
 

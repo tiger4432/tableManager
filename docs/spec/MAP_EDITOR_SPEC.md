@@ -1,20 +1,25 @@
 # Map Editor Specifications & Function Reference (MAP_EDITOR_SPEC.md)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** UI/Map | **Source-of-truth:** `client2/src/map_editor.js`, `client2/src/transfer_plan.js`, `server/map_overlay.py`, `server/bonding_plan.py`, `server/transfer_plan.py`, `server/utils/coordinate_transformer.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 >
-> ### 🔴 읽기 전에 — 라운드가 지나도 이 자리에서 내리지 않는 두 줄
-> 1. **저장 좌표 = 오리진 기준 칸수, mm 아님.** 칸수에 피치를 곱해 mm로 읽으면 **없는 결함이 만들어집니다** — 그렇게 추론한 라운드가 실제로 기각됐고 두 라운드를 소모했습니다. 규약 전문(화면이 기준 · 표시 = 오리진 + DB 값 · `start_x/y` = 유효 다이 영역의 최소 열·행이자 **운영자의 선언** · 오리진 = start가 (0,0)으로 읽히는 칸 · **칸수, mm 아님**)은 이 문서 **§1의 0)**입니다.
-> 2. **「같은 날 아침 쓴 §5.7-bis가 같은 날 오후에 통째로 거짓이 됐다」** — 이 문서, 특히 §5.7-bis는 **기본적으로 불신받습니다**(2026-07-30 하루에 네 번 뒤집혔습니다: 거절 → F6 채택·재배치 → F8 전량 철회 → 원점 축 + 좌표 추종). 🔴 **인용하기 전에 문자열을 소스에서 grep하십시오** — 제품에 없는 토스트 문구를 인용한 코드 블록이 실제로 두 번 남았습니다.
+> ### 🔴 읽기 전에 — 라운드가 지나도 이 자리에서 내리지 않는 세 줄
+> 1. **맵 기준 가치 여섯 줄이 좌표 규약보다 위에 있습니다**(사용자 확정 2026-07-31 · §1의 0-요약, 정본은 보드). 축은 **실제 물리 환경**이고, 핵심은 **4)와 5)의 구분**입니다 — 기하를 바꾸는 것과 방향을 바꾸는 것은 좌표에 대해 **다른 일**입니다.
+> 2. **저장 좌표 = 오리진 기준 칸수, mm 아님.** 칸수에 피치를 곱해 mm로 읽으면 **없는 결함이 만들어집니다** — 그렇게 추론한 라운드가 실제로 기각됐고 두 라운드를 소모했습니다. 규약 전문(화면이 기준 · 표시 = 오리진 + DB 값 · `start_x/y` = 유효 다이 영역의 최소 열·행이자 **운영자의 선언** · 오리진 = start가 (0,0)으로 읽히는 칸 · **칸수, mm 아님**)은 이 문서 **§1의 0)**입니다.
+> 3. **「같은 날 아침 쓴 §5.7-bis가 같은 날 오후에 통째로 거짓이 됐다」** — 이 문서, 특히 §5.7-bis는 **기본적으로 불신받습니다**(2026-07-30 하루에 네 번, 2026-07-31에 다시 한 번 뒤집혔습니다). 🔴 **인용하기 전에 문자열을 소스에서 grep하십시오** — 제품에 없는 토스트 문구를 인용한 코드 블록이 실제로 두 번 남았습니다.
 >
-> ### 이번 라운드 (2026-07-30 · `019140c` · `02a72c6` · `7a9c2b0` · `da8f390`)
-> 🔴 **이 넷은 어떤 리빙 문서에도 도달하지 않았던 커밋들입니다.**
-> - **§1의 0) 신설** — 사용자 확정 좌표 규약 5줄. 좌표 관련 판정·설계는 전부 여기서 출발합니다.
-> - **§1의 🟠 미해결 블록 절반 해소** (`da8f390`) — `c_zero`/`r_zero`의 미러 항 사본이 삭제되고 두 자리 모두 역함수 하나(`getCellFromVisualCoords(0,0,…)`)를 부릅니다. QA 실측: 두 식은 **선언된 프레임의 bbox가 대칭인 동안만 우연히 같았고 출하값은 이미 틀려 있었습니다**(`bonding_map/4B13` 옳은 값 1 vs 출하값 25). 남은 미해결은 `getVisualCoords`의 X back 미러 갈래와 `isYMirrored` 두 행뿐입니다.
-> - **§5.7 바운딩 박스 서술 반전** (`da8f390`) — 종전 *"이 기능의 영향권 밖이고 계속 원으로 계산한다"*가 **거짓이 됐습니다**: 근거가 `ref`면 `getWaferBoundingBox`가 **유효 다이 마스크의 최소 사각형**을 원점 상자로 씁니다. 서버 `get_wafer_bounding_box`는 불변.
-> - **§5.7-bis 재개정** (`7a9c2b0`+`da8f390`) — 직전 판의 *"화면은 아무것도 안 바뀐다"*가 거짓이 됐습니다. **셀이 붙드는 것은 칸이 아니라 번호**이고 칸은 파생입니다. 알람 축이 **치수 → 원점**으로 바뀌었고 `dedupeKey`가 `valid_die_dims_differ` → **`valid_die_frame_differs`**입니다.
-> - **§4-bis.3-bis 신설** (`019140c`) — 📐 표준 분기가 원점을 **선언**합니다(종전엔 `startX=0` + 좌표에서 `minX` 감산, 되더하는 곳 없음). ⚠️ **피해 규모는 커밋 메시지의 수를 믿지 마십시오** — 감사 추적에서 재현되지 않았습니다(그 절에 대비 전문).
-> - **§4-bis.4 신설** (`02a72c6`) — 규격 프리셋은 **방향을 이식하지 않습니다**(읽고 무시 + info 토스트 1회).
-> - §3 #12 시그니처에 `opts` 추가 · #22에 방향 미이식 명기.
+> ### 이번 라운드 (2026-07-31 · `35e84c3`/`1e4f23c` · `4761a3a`/`39eebe1`)
+> - **§1의 0-요약 신설 — 맵 기준 가치 6줄**(사용자 확정). 좌표 규약의 **상위**이고 정본은 [보드](../process/PROJECT_STATUS.md)입니다. 여기 있는 것은 사본이며 고칠 권한은 총괄에게 있습니다.
+> - **§1-bis 신설 — 좌표 공간 개명**(`35e84c3`, 전 호출 지점 + 하네스 `SYMBOLS` 목록 8개). `getVisualCoords`→**`getDbCoords`**(저장 좌표를 돌려주는데 "visual"이었음) · `getPhysicalCoords`→**`getDieIndex`**(mm가 아니라 **칸 번호**) · `getCellFromVisualCoords`→`getCanvasCellFromDb` · `getCellFromPhysicalCoords`→`getCanvasCellFromDieIndex` · `xv`/`yv`→`dbX`/`dbY`. §1의 수식과 §3의 함수 표를 함께 고쳤습니다. 🔴 **`mm`은 일부러 비워 뒀습니다** — 가치 6)과 defect 표기가 쓸 진짜 밀리미터 공간이고 클라에는 아직 없습니다.
+> - **§5.7-bis 정정 — 「어떤 축도 채택하지 않는다」가 두 축에서 거짓**(`35e84c3`). 가치 1)에 따라 **물리 규격은 갈아끼우고 격자 치수는 그 규격에서 파생**합니다(참조가 선언한 수를 베끼는 `94b9baa`의 그 동작이 **아닙니다**). 마스크를 담지 못할 때만 넓히는 **적합 가드**를 함께 기록.
+> - **§5.7-ter 신설 — 참조가 *없는* 맵에서도 같은 일이 일어난다**(`4761a3a`). 유효 다이 선언이 없으면 유효 다이 영역이 곧 웨이퍼 원이므로 **기하 프리셋 변경 = 참조 지정**이고, 반응이 `reseatCellsToStoredCoords` **하나**로 수렴했습니다. 거절 축은 가치 5).
+> - **§5.1 — 프레임 창이 자기 상자를 실어 나른다**(`physFrameOverride.box`). 두 번째 상자 정의가 아니라 **읽는 지점의 교체**이고, 창 안에서 `isValidDieAt`이 원으로 답하므로 **재계산이 불가능해서** 실어 나릅니다.
+> - **§3의 18) `applyPhysicalGeometry`** — 파생과 재배치가 한 쌍임을 명기.
+> - §5.7-bis 회귀 그물 행에서 **하네스 점수를 삭제**했습니다(부채 목록에 올랐고, 러너의 사유 문자열은 정적 라벨이라 실측과 이미 갈렸습니다).
+>
+> ### 직전 라운드 (2026-07-30 · `019140c` · `02a72c6` · `7a9c2b0` · `da8f390`)
+> - **§1의 0) 신설** — 사용자 확정 좌표 규약 5줄.
+> - **§1의 🟠 미해결 블록 절반 해소** (`da8f390`) — `c_zero`/`r_zero`의 미러 항 사본 삭제, 두 자리 모두 역함수 하나를 부릅니다. QA 실측: 두 식은 **bbox가 대칭인 동안만 우연히 같았고 출하값은 이미 틀려 있었습니다**(`bonding_map/4B13` 옳은 값 1 vs 출하값 25). 남은 미해결은 X back 미러 갈래와 `isYMirrored` 두 행뿐입니다.
+> - **§5.7 바운딩 박스 서술 반전** · **§5.7-bis 재개정**(알람 축 치수 → 원점, `dedupeKey` `valid_die_frame_differs`) · **§4-bis.3-bis**(📐 표준 분기가 원점을 선언) · **§4-bis.4**(규격 프리셋은 방향을 이식하지 않음).
 >
 > ### 이전 라운드
 > **[`docs/history/`](../history/)에 있습니다.** 🔴 **이 헤더에 다시 쌓지 마십시오** — 2026-07-30에 이 줄 하나가 **9,402자(UTF-8 15,248바이트)**까지 자랐고, *문서가 현재인지 알려 주는 자리*가 그 자체로 읽을 수 없는 changelog가 돼 있었습니다. `Last-verified`는 **날짜 · 이번 라운드에 바뀐 것**까지입니다. 위 「내리지 않는 두 줄」만 예외이고, 그 자격은 **잃으면 하루를 다시 쓰는 것**입니다.
@@ -27,9 +32,26 @@
 
 ## 1. 격자 및 좌표계 아키텍처 (Coordinate System Architecture)
 
-격자 맵 에디터는 **물리(Physical) 좌표계**, **화면 격자 셀 인덱스(Grid Cell Index)**, **시각(Visual/Standard) 좌표계**의 삼원화된 구조를 사용하여 웨이퍼 기판의 3D 공간적 물리 거동(회전, 면 반사)과 화면상의 2D 공간 표시를 매끄럽게 처리합니다.
+격자 맵 에디터는 **다이 인덱스(die index)**, **캔버스 셀 인덱스(canvas cell)**, **저장 좌표(DB coordinates)**의 삼원화된 구조를 사용하여 웨이퍼 기판의 3D 공간적 물리 거동(회전, 면 반사)과 화면상의 2D 공간 표시를 매끄럽게 처리합니다. **세 공간의 함수 이름은 §1-bis의 표가 정본입니다**(2026-07-31 개명 — 옛 이름 둘은 자기가 돌려주는 것의 반대를 말하고 있었습니다).
 
-### 0) 좌표 규약 — **사용자 확정 (2026-07-30)**
+### 0-요약) 맵 기준 가치 — **사용자 확정 2026-07-31 · 아래 좌표 규약의 *상위*** {#map-founding-values}
+
+🔴 **축은 실제 물리 환경입니다.** 여섯 줄이 좌표 규약보다 위에 있고, 상충하면 이쪽이 이깁니다.
+
+> **정본은 [process/PROJECT_STATUS](../process/PROJECT_STATUS.md)의 「맵 기준 가치」 블록**(총괄 소유)이고 아래는 그 사본입니다. **인용해야 할 일이 있으면 보드를 읽으십시오** — 이 절을 고칠 권한은 총괄에게 있습니다.
+
+| # | 가치 | 이 문서에서 그것이 사는 자리 |
+|---|---|---|
+| **1)** | 유효 다이 영역은 항상 **물리 WF 내 상대 위치를 보존**한다 → 유효 다이 영역은 **맵 기하 메타와 한 몸**이다. 🔴 회전 중심은 **맵 기하 메타에만** 의존하고 유효 다이와 무관하다. **유효 다이 영역을 불러올 때는 기존 맵 기하 메타를 유효 다이의 것으로 갈아끼운다** | §5.7-bis(기하 교체 + 치수 파생) |
+| **2)** | **회전·반전은 물리 WF 중심을 기준**으로 한다 | §1의 1) 변환 수식 |
+| **3)** | **`START X,Y`는 현재 표기된 셀에 좌표를 매길 「기준」**이고, 그 기준은 **유효 다이 영역의 최소 X,Y를 START로 잡는 것에서 시작**한다 | 아래 0)의 ③ |
+| **4)** | **유효 영역 및 맵 기하를 바꾸는 행위는 기존 셀 좌표를 변경하지 않는다** | §5.7-bis · §5.7-ter (`reseatCellsToStoredCoords`) |
+| **5)** | **회전·반전·Y축 반전은 셀 좌표를 변경한다** | §5.7-bis의 거절 축 |
+| **6)** | 서로 다른 메타를 가진 맵을 오버레이할 때는 각자의 회전·반전·셀 크기를 모두 고려한 **WF 내 물리(mm) 좌표**로 오버레이한다 | §5.1 · ⏳ **클라에 mm 공간이 아직 없습니다**(§1-bis) |
+
+⚖️ **4)와 5)의 구분이 이 규약의 핵심입니다** — 기하를 바꾸는 것과 방향을 바꾸는 것은 좌표에 대해 **다른 일**입니다. 종전에는 이 둘을 구분하지 않아 「무엇이 좌표를 움직여도 되는가」에 답이 없었습니다.
+
+### 0) 좌표 규약 — **사용자 확정 (2026-07-30, 위 가치의 하위 세부)**
 
 🔴 **아래 다섯 줄이 이 문서 전체의 전제입니다.** 좌표 관련 결함 판정·수리 설계는 여기서 출발하고, 여기와 어긋나는 서술은 이 절이 이깁니다.
 
@@ -49,38 +71,54 @@
 
 사용자가 설정한 `X Start`, `Y Start` 좌표는 **화면상에 보여지는 격자 내 유효 웨이퍼 영역 Bounding Box의 최소값(`box.minC`, `box.minR`)**의 좌표를 지칭합니다.
 
-> 🟠 **미해결 불일치 — 아래 미러링 분기는 `getVisualCoords`에 구현돼 있지 않습니다 (doc-keeper 실측 2026-07-30, 총괄 판단 대기).**
-> `client2/src/map_editor.js:1892-1905`의 `getVisualCoords`는 X를 **분기 없이** `xv = colVisual − box.minC + startX` 하나로 계산하고, Y는 **`invertY`만** 봅니다(`isYMirrored` 항 없음). 실측: `box.maxC`는 이 함수에서 **한 번도 참조되지 않으며**, 파일 전체에서 `box.maxC + startX` 형태는 `renderGridCanvas`의 `c_zero`(:2924) 한 곳뿐입니다.
-> 따라서 아래 표에서 **① X축 back 미러 갈래(`xv = box.maxC − c + startX`)와 ② `isYMirrored = true` 두 행은 현재 코드에 대응물이 없습니다.**
-> - **왜 눈에 띄지 않았나**: 역변환 `getCellFromVisualCoords`(:1823)도 **같은 무-미러 식**이라 왕복(`cell → visual → cell`)은 성립합니다. 즉 자기 일관성은 있고, 어긋나는 것은 **문서와 코드** 사이입니다.
-> - ✅ **절반은 해소됐습니다 (`da8f390` · 2026-07-30).** 종전 이 자리는 *"같은 파일 안에서도 두 식이 갈린다"* — (0,0)이 격자 위에 있는지 판정하는 `c_zero`/`r_zero`가 `getGridCellObject`에서는 **미러 없이**, `renderGridCanvas`에서는 **`isXMirrored`/`isYMirrored`를 적용해** 계산된다 — 고 기록했습니다. **미러 항을 가진 사본이 삭제됐고 두 자리 모두 역함수 하나를 부릅니다**(`getCellFromVisualCoords(0, 0, …)` — `client2/src/map_editor.js:1158`·`:3054`, 실측 `c_zero`/`r_zero`·`isXMirrored` 소스 히트 0건).
+> 🟠 **미해결 불일치 — 아래 미러링 분기는 `getDbCoords`에 구현돼 있지 않습니다 (doc-keeper 실측 2026-07-30, **2026-07-31 재확인**, 총괄 판단 대기).**
+> `client2/src/map_editor.js:2033`의 `getDbCoords`(구 `getVisualCoords` — `35e84c3`에서 개명)는 X를 **분기 없이** `dbX = colVisual − box.minC + startX` 하나로 계산하고, Y는 **`invertY`만** 봅니다(`isYMirrored` 항 없음). 실측 2026-07-31: `box.maxC`는 이 함수에서 **한 번도 참조되지 않으며**, 파일 전체에서 `box.maxC + startX` 형태는 **0건**입니다(노치 계산과 콘솔 로그의 `box.maxC`만 남아 있습니다).
+> 따라서 아래 표에서 **① X축 back 미러 갈래(`dbX = box.maxC − c + startX`)와 ② `isYMirrored = true` 두 행은 현재 코드에 대응물이 없습니다.**
+> - **왜 눈에 띄지 않았나**: 역변환 `getCanvasCellFromDb`(구 `getCellFromVisualCoords`, :1866)도 **같은 무-미러 식**이라 왕복(`cell → db → cell`)은 성립합니다. 즉 자기 일관성은 있고, 어긋나는 것은 **문서와 코드** 사이입니다.
+> - ✅ **절반은 해소됐습니다 (`da8f390` · 2026-07-30).** 종전 이 자리는 *"같은 파일 안에서도 두 식이 갈린다"* — (0,0)이 격자 위에 있는지 판정하는 `c_zero`/`r_zero`가 `getGridCellObject`에서는 **미러 없이**, `renderGridCanvas`에서는 **`isXMirrored`/`isYMirrored`를 적용해** 계산된다 — 고 기록했습니다. **미러 항을 가진 사본이 삭제됐고 두 자리 모두 역함수 하나를 부릅니다**(`getCanvasCellFromDb(0, 0, …)` — `client2/src/map_editor.js:1175`·`:3244`, 실측 `c_zero`/`isXMirrored`는 주석 1줄을 빼면 소스 히트 0건).
 >   - 🔴 **QA 실측 — 두 식은 "둘 다 맞았다"가 아니라 "우연히 같았다"였습니다.** 선언된 모든 프레임의 bbox가 대칭인 동안만 답이 일치했고, **출하되던 값은 이미 틀린 채 범위 안에 있었을 뿐**입니다(`bonding_map/4B13`: 옳은 값 **1** vs 출하값 **25**). 원점 상자가 유효 다이 기준이 되면(§5.7) 그 우연은 성립하지 않으므로, 이 사본 삭제는 정리가 아니라 **수리**였습니다.
->   - ⚠️ **남은 미해결은 위의 두 행뿐입니다** — `getVisualCoords`의 X back 미러 갈래와 `isYMirrored` 행에 코드 대응물이 없다는 것. 판정은 여전히 총괄·QA 소관입니다.
+>   - ⚠️ **남은 미해결은 위의 두 행뿐입니다** — `getDbCoords`의 X back 미러 갈래와 `isYMirrored` 행에 코드 대응물이 없다는 것. 판정은 여전히 총괄·QA 소관입니다.
 > - 🔴 **doc-keeper는 이 표를 고치지 않았습니다.** 셋 중 어느 것이 의도인지(문서가 옳고 구현이 빠진 것인가 · 구현이 옳고 문서가 폐기 설계인가 · `c_zero` 둘 중 하나가 결함인가)는 **저장 좌표 규약의 판정**이므로 총괄·QA 소관입니다. 표는 **원문 그대로 보존**하고 이 사실만 기록합니다(§1의 규율 — 읽을 수 없는 값은 지우지 않고 원문을 남긴다).
 
 #### 화면 기준 웨이퍼 유효 셀 경계 상자 (Wafer Bounding Box)
 격자 내부 영역($c \in [0, \text{visualCols}-1]$, $r \in [0, \text{visualRows}-1]$)에 속하는 셀 중, 물리 엔진 상 웨이퍼 유효 반경 내부인 셀들의 스크린 인덱스 최댓값/최소값 범위를 계산합니다.
 $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 
-#### 시각 좌표 (Visual / Standard Coordinates) 계산
-화면의 셀 눈금 `(c, r)`로부터 데이터베이스에 기록할 직교 좌표 `(xv, yv)`를 도출하는 수식입니다. 백면(Back Side) 미러링 반사 상태에 따른 X/Y축 축반전을 완벽히 보정합니다.
+#### 저장 좌표 (DB Coordinates) 계산
+화면의 셀 눈금 `(c, r)`로부터 데이터베이스에 기록할 직교 좌표 `(dbX, dbY)`를 도출하는 수식입니다. 백면(Back Side) 미러링 반사 상태에 따른 X/Y축 축반전을 완벽히 보정합니다.
 
 * **수평(X) 축 변환**:
   * X축이 좌우 반전되는 조건 ($\text{side} = \text{back}$ 이며 90°/270° 회전이 아닐 때):
-    $$xv = \text{box.maxC} - c + \text{startX}$$
+    $$dbX = \text{box.maxC} - c + \text{startX}$$
   * 그 외의 모든 경우 (일반 방향):
-    $$xv = c - \text{box.minC} + \text{startX}$$
+    $$dbX = c - \text{box.minC} + \text{startX}$$
 
 * **수직(Y) 축 변환**:
   * Y축이 상하 반전되는 물리적 조건 ($\text{side} = \text{back}$ 이며 90°/270° 회전일 때 Y축이 물리적으로 미러링):
     $$\text{isYMirrored} = (\text{side} = \text{back} \land \text{rotation} \in \{90, 270\})$$
   * `invertY` (Y축 방향 역전 옵션)와 `isYMirrored` 상태의 조합에 따라 분기:
     * **`invertY`가 `false` (상->하 증가) 일 때**:
-      * $\text{isYMirrored} = \text{false}$: $yv = r - \text{box.minR} + \text{startY}$
-      * $\text{isYMirrored} = \text{true}$: $yv = \text{box.maxR} - r + \text{startY}$
+      * $\text{isYMirrored} = \text{false}$: $dbY = r - \text{box.minR} + \text{startY}$
+      * $\text{isYMirrored} = \text{true}$: $dbY = \text{box.maxR} - r + \text{startY}$
     * **`invertY`가 `true` (하->상 증가) 일 때**:
-      * $\text{isYMirrored} = \text{false}$: $yv = \text{box.maxR} - r + \text{startY}$
-      * $\text{isYMirrored} = \text{true}$: $yv = r - \text{box.minR} + \text{startY}$
+      * $\text{isYMirrored} = \text{false}$: $dbY = \text{box.maxR} - r + \text{startY}$
+      * $\text{isYMirrored} = \text{true}$: $dbY = r - \text{box.minR} + \text{startY}$
+
+### 1-bis) 좌표 공간의 이름 — **개명 2026-07-31 (`35e84c3`)**
+
+두 이름이 자기가 돌려주는 것의 **반대**를 말하고 있어서 전 호출 지점을 함께 고쳤습니다. 옛 이름을 쓰는 서술은 전부 낡은 것입니다.
+
+> **실측(2026-07-31)**: `client2/src`에 옛 이름 **0건**. 새 이름 4종이 `map_editor.js`에 **55회**(정의 4 + 호출 51), `dbX`/`dbY` 17회. ⚠️ **커밋 메시지의 「67 renames」와 보드의 「46개 호출 지점」은 서로 다른 세는 규칙**이므로 어느 쪽도 이 자리에 옮겨 적지 않았습니다 — 필요하면 위 grep으로 다시 세십시오.
+
+| 지금 | 그전 | 돌려주는 것 |
+|---|---|---|
+| `getDbCoords(c, r, …)` | `getVisualCoords` | **저장 좌표**(`⚡ Push`가 쓰는 x/y). "visual"이라 불렸지만 화면 인덱스가 아니라 **DB에 들어가는 수**였습니다 |
+| `getCanvasCellFromDb(dbX, dbY, …)` | `getCellFromVisualCoords` | 위의 역함수 — 저장 좌표가 가리키는 **캔버스 칸** |
+| `getDieIndex(c, r, …)` | `getPhysicalCoords` | **다이 인덱스**(`gridData`의 물리 키 `"${x}_${y}"`). **밀리미터가 아닙니다** |
+| `getCanvasCellFromDieIndex(x, y, …)` | `getCellFromPhysicalCoords` | 위의 역함수 |
+| `dbX` / `dbY` | `xv` / `yv` | 저장 좌표의 두 성분 |
+
+🔴 **`mm`은 일부러 비워 뒀습니다.** 기준 가치 6)의 오버레이와 앞으로의 defect 표기는 **진짜 밀리미터 공간**을 필요로 하는데 클라에는 그것이 없습니다 — `isCellInsideWaferFast`는 700×700 **픽셀** 안에서 원을 판정합니다(`client2/src/map_editor.js:2233`). 그 이름을 지금 다른 뜻으로 쓰면 밀리미터가 착지할 때 같은 사고를 반복합니다. 서버 쪽 mm은 `PhysicalWaferEngine`에 이미 있습니다.
 
 ---
 
@@ -148,16 +186,17 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 
 ### Category 3: Geometry & Coordinate Conversion (기하학 및 좌표 변환식)
 
-#### 9) `getPhysicalCoords(colVisual, rowVisual, cols, rows, rotation, side)`
-* **용도**: 화면상의 격자 인덱스 `(colVisual, rowVisual)`를 물리 기판 기준 정렬 좌표인 `(xp, yp)`로 일대일 변환합니다. 회전각과 단면 상태에 따른 기판의 이동각을 2D Matrix 변환식으로 모사합니다.
-* **반환값**: `{ x: xp, y: yp }`
+#### 9) `getDieIndex(colVisual, rowVisual, cols, rows, rotation, side)` *(구 `getPhysicalCoords`)*
+* **용도**: 화면상의 격자 인덱스 `(colVisual, rowVisual)`를 기판 기준 정렬된 **다이 인덱스** `(x, y)`로 일대일 변환합니다. 회전각과 단면 상태에 따른 기판의 이동각을 2D Matrix 변환식으로 모사합니다. `gridData`의 물리 키 `"${x}_${y}"`가 이것입니다.
+* 🔴 **밀리미터가 아니라 칸 번호입니다** — 옛 이름 `getPhysicalCoords`가 mm처럼 읽혀 이번 주 오독 여러 건의 원인이 됐고, 그래서 `35e84c3`에서 개명했습니다(§1-bis).
+* **반환값**: `{ x, y }`
 
-#### 10) `getCellFromPhysicalCoords(xp, yp, cols, rows, rotation, side)`
-* **용도**: `getPhysicalCoords`의 역함수. 물리 좌표 `(xp, yp)`를 현재 회전/단면 설정 상태 하의 시각적 셀 인덱스 `(c, r)`로 역산합니다.
+#### 10) `getCanvasCellFromDieIndex(x, y, cols, rows, rotation, side)` *(구 `getCellFromPhysicalCoords`)*
+* **용도**: `getDieIndex`의 역함수. 다이 인덱스 `(x, y)`를 현재 회전/단면 설정 상태 하의 캔버스 셀 인덱스 `(c, r)`로 역산합니다.
 * **반환값**: `{ c, r }`
 
-#### 11) `getCellFromVisualCoords(xv, yv, cols, rows, rotation, side, invertY, startX, startY)`
-* **용도**: 데이터베이스 등에 저장되어 있는 시각 좌표 `(xv, yv)`를 입력받아 현재 화면의 격자 셀 인덱스 `(c, r)`로 역변환합니다. (X/Y 미러링 역산 및 Y-Invert 오프셋 제거 적용)
+#### 11) `getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY)` *(구 `getCellFromVisualCoords`)*
+* **용도**: 데이터베이스에 저장되어 있는 좌표 `(dbX, dbY)`를 입력받아 현재 화면의 격자 셀 인덱스 `(c, r)`로 역변환합니다. (X/Y 미러링 역산 및 Y-Invert 오프셋 제거 적용)
 * **반환값**: `{ c, r }`
 
 #### 12) `getWaferBoundingBox(rotation, side, opts)`
@@ -166,9 +205,9 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 * `opts.circleOnly` — 마스크와 무관하게 **원 기하**의 상자를 묻습니다. 유일한 소비자는 `computeNotchCell`입니다: 노치는 클립보드 프레임 지문이라, 유효 다이 해석의 성패(네트워크 1회 실패)에 지문이 흔들리면 정상 붙여넣기가 엉뚱한 사유로 거절됩니다(§4-ter.4).
 * **반환값**: `{ minC, maxC, minR, maxR }` (완전 격자 내부로 클리핑 됨). 마스크 근거인데 이 격자 안에 마스크 셀이 **0개**면 `console.warn` 후 원 상자로 폴백합니다 — 빈 상자 `{0,0,0,0}`은 좌표계 전체를 조용히 옮깁니다.
 
-#### 13) `getVisualCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY)`
-* **용도**: 화면의 셀 인덱스 `(colVisual, rowVisual)`를 받아서 화면상의 시각 2D 직교 좌표 `(xv, yv)`로 실시간 변환합니다. (공식 단원 **1. 기하 변환 수식** 참조)
-* **반환값**: `{ x: xv, y: yv }`
+#### 13) `getDbCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY)` *(구 `getVisualCoords`)*
+* **용도**: 화면의 셀 인덱스 `(colVisual, rowVisual)`를 받아서 **DB에 기록될 좌표** `(dbX, dbY)`로 실시간 변환합니다. (공식 단원 **1. 기하 변환 수식** 참조)
+* **반환값**: `{ x: dbX, y: dbY }`
 
 #### 14) `getTransformedPhysicalConfig(currentRotation, currentSide)`
 * **용도**: 사용자가 입력한 물리 오프셋(`offsetX`, `offsetY`) 및 칩 크기(`chipX`, `chipY`) 정보를 회전각과 뒤집힘 방향에 맞춰 좌표축을 재배치한 물리 설정 구조체를 반환합니다.
@@ -186,7 +225,9 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 * **용도**: 전역 UI 설정 노드들의 최신 값을 직접 긁어와 `isCellInsideWaferFast`를 호출해주는 간이 헬퍼 함수.
 
 #### 18) `applyPhysicalGeometry()`
-* **용도**: 물리 형상 설정 필드의 변경값을 감지하여 그리드의 Col, Row 크기를 자동 재조정 및 업데이트합니다.
+* **용도**: 물리 규격에서 격자 치수를 **파생**시켜 Col/Row에 써넣고, 그 뒤 **같은 호출 안에서** `reseatCellsToStoredCoords`를 돌린 다음 렌더합니다.
+* 🔴 **파생과 재배치는 한 쌍입니다** (`4761a3a`). 치수가 바뀌면 같은 칸이 다른 저장 좌표를 낳으므로, 파생만 하고 끝내면 그것이 `94b9baa`에서 거절당한 동작(273칸 전부의 좌표가 움직임)입니다. 순서도 계약입니다 — 옛 치수로 앉히면 렌더가 새 치수로 좌표를 되만들어 저장 좌표가 조용히 옮겨갑니다.
+* ⚠️ **치수 하한 5는 파생값의 최소치**이고, 상한은 `frameDimBounds().max`(H5) 하나에서 옵니다.
 
 #### 19) `updateOrientationUI()`
 * **용도**: 회전(0°, 90°, 180°, 270°) 및 단면(FRONT, BACK) 상태가 변경되었을 때 화면 오른쪽 상단의 시각 버튼 클래스 활성화 상태 및 그리드 눈금 정보를 갱신합니다.
@@ -382,7 +423,7 @@ DOE 편집 **과 맵 셀**(v3부터)이 localStorage 초안으로 살아남습�
 
 종전 📐 표준 분기는 `startX = startY = 0`을 세우고 **셀 루프에서 모든 저장 좌표에서 `minX`/`minY`를 뺐습니다.** 아무도 그것을 되더하지 않았고 프레임에도 뺐다는 기록이 남지 않았으므로, **셀의 정체가 이동했습니다.**
 
-🔴 **이것이 §1의 0) ①·②가 말하는 결함의 교과서적 사례입니다.** `getVisualCoords`(= `cellObj.x`의 출처이자 `pushMapData`가 x/y 컬럼에 쓰는 값)는 `getCellFromVisualCoords`(로드가 셀을 놓는 식)의 **정확한 역함수**이므로 표시와 저장은 **한 수량**입니다 — 재번호된 좌표가 화면이 말하는 값이자 `⚡ Push`가 쓰는 값이었습니다. **화면은 이것을 드러낼 수 없었습니다**: 칸 안 라벨이 곧 그 재계산된 좌표이고, 그나마 **빈 셀에만** 그려집니다.
+🔴 **이것이 §1의 0) ①·②가 말하는 결함의 교과서적 사례입니다.** `getDbCoords`(= `cellObj.x`의 출처이자 `pushMapData`가 x/y 컬럼에 쓰는 값)는 `getCanvasCellFromDb`(로드가 셀을 놓는 식)의 **정확한 역함수**이므로 표시와 저장은 **한 수량**입니다 — 재번호된 좌표가 화면이 말하는 값이자 `⚡ Push`가 쓰는 값이었습니다. **화면은 이것을 드러낼 수 없었습니다**: 칸 안 라벨이 곧 그 재계산된 좌표이고, 그나마 **빈 셀에만** 그려집니다.
 
 - **수리**: `startX = minX`, `startY = minY`로 **프레임에 원점을 선언**하고 셀 루프의 감산을 삭제했습니다. `c = xv − startX + box.minC`에서 `xv`와 `startX`가 함께 움직이므로 **모든 셀이 종전과 정확히 같은 캔버스 칸에 앉습니다** — 화면은 한 픽셀도 안 움직이고, 바뀌는 것은 **화면이 말하는 수(그리고 Push가 쓰는 수)가 이제 저장된 그 수라는 것**뿐입니다. 저장 경로는 손대지 않았습니다(Push 시점 보정 **없음**).
 - **손상은 1회성이고 누적이 아닙니다** — 첫 통과 뒤 저장된 최솟값이 0이라 다음 감산은 0의 감산입니다(결함 복원 상태에서 2차 Push→reload 실측: 94좌표 중 0 이동).
@@ -528,8 +569,14 @@ COPY HEADER MODE는 **내보내기가 아니라 왕복**입니다. 쓰기(#47)�
 **메인 맵 로드는 이 파이프라인의 특수 케이스**입니다(소스 메타 == 현재 화면 컨트롤). 그래서 **오버레이 전용 변환 코드는 존재하지 않습니다.**
 
 - **프레임 창(frame window)** — 변환 함수들이 규격을 DOM에서 읽는 지점은 `getTransformedPhysicalConfig`·`getWaferBoundingBox` **두 곳뿐**이며, 이 두 곳이 `physNum`/`gridDimNum`을 경유합니다. `withPhysFrame(frame, fn)`이 `physFrameOverride`를 잠깐 갈아끼운 채 콜백을 돌립니다. **동기 전용**입니다(내부 `await` 금지 — `try/finally` 복원이 프레임 경계를 넘어 새면 조용한 오답이 됩니다).
-- **투영은 메인 로드와 같은 두 줄**입니다 — `projectCellsToPhys`는 `getCellFromVisualCoords` → `getPhysicalCoords`를 소스 프레임을 씌운 채 호출할 뿐, 새 기하식을 쓰지 않습니다.
-- **물리 키는 화면 조작에 불변**입니다. `gridData`가 이미 물리 키(`${px}_${py}`)로 저장되고 렌더가 매 프레임 `(c,r) → getPhysicalCoords → coordKey`로 되짚으므로, 사용자가 회전·면·치수를 어떻게 돌리든 **메인 맵과 오버레이가 같은 규칙으로 함께 움직입니다**.
+- **[2026-07-31 `4761a3a`] 프레임 창은 이제 자기 상자를 실어 나를 수 있습니다** — `physFrameOverride.box`가 있으면 `getWaferBoundingBox`가 그것을 돌려줍니다.
+  - 🔴 **두 번째 상자 정의가 아닙니다.** 창에 실리는 값은 언제나 **같은 함수가 앞서 만들어 낸 상자**이고(`seatingSnapshot`이 붙들어 둔 것), "상자가 무엇인가"는 여전히 `getWaferBoundingBox` 하나만 답합니다. 창은 "그때 그 답"을 다시 제시할 뿐입니다.
+  - 🔴 **다시 계산해서 얻을 수 없기 때문에** 실어 나릅니다 — 창 안에서는 `isValidDieAt`이 **원으로** 답하므로(바로 아래 문단) 근거가 유효 다이 맵이었을 때의 **옛 마스크 상자는 원리적으로 재구성되지 않습니다.**
+  - ⚠️ **`circleOnly`가 이 창보다 셉니다.** 노치는 마스크와 무관한 물리 특징을 묻는 자리라(§4-ter.4의 클립보드 프레임 지문) 마스크에서 유래한 상자를 받으면 지문이 흔들립니다.
+  - ⚠️ **오버레이 경로는 이 변경에 영향받지 않습니다** — 기존 프레임 생산자 중 `box`를 실어 보내는 것이 하나도 없으므로 구성상 종전과 동일합니다.
+- **창 안에서 유효 다이는 원입니다.** `isValidDieAt`이 `physFrameOverride`가 열려 있으면 마스크를 적용하지 않습니다 — 창 안의 계산은 **소스 맵의 좌표계**를 푸는 중이고, 거기에 타깃 맵의 마스크를 먹이면 조용히 다른 맵의 마스크로 소스를 재단하게 됩니다.
+- **투영은 메인 로드와 같은 두 줄**입니다 — `projectCellsToPhys`는 `getCanvasCellFromDb` → `getDieIndex`를 소스 프레임을 씌운 채 호출할 뿐, 새 기하식을 쓰지 않습니다.
+- **물리 키(다이 인덱스)는 화면 조작에 불변**입니다. `gridData`가 이미 다이 인덱스 키(`${x}_${y}`)로 저장되고 렌더가 매 프레임 `(c,r) → getDieIndex → coordKey`로 되짚으므로, 사용자가 회전·면·치수를 어떻게 돌리든 **메인 맵과 오버레이가 같은 규칙으로 함께 움직입니다**.
 - **재투영 규율** — 레이어는 `rawCells`(소스 원본 좌표) + `frame`(그 좌표가 사는 프레임)을 동반 보관하고, `currentGeomSignature`가 바뀌면 `syncOverlayGeometry`가 원본에서 다시 투영합니다. 서명에는 **물리 파라미터 6종(`phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin`)이 반드시 포함**됩니다 — 소스 메타에 물리 항목이 빠져 현재 화면 값으로 폴백하는 경로에서는 이 재투영이 실제로 일해야 하기 때문입니다(이전 C7 결함 해소).
 - **정렬 여부 판정은 `align.origin`으로만** 합니다. `origin`은 `frameAxesKey`(회전·면·y반전·START·치수·물리 6종 = **축 전부**) 비교로 산출합니다. `rotation`/`flip`/`offset` 값으로 판단하면 y반전·START만 다른 정상 보정을 "무보정"으로 오표시합니다.
 - **격자 규격 호환성 관문** — 소스·타깃의 `cols×rows`가 다르면 `align_unavailable`로 **명시 거절**합니다(물리 좌표는 정준 격자의 인덱스라, 치수가 다르면 같은 인덱스가 같은 다이가 아닙니다).
@@ -692,10 +739,18 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
 >
 > ⚠️ **직전 판의 「화면은 아무것도 안 바뀐다」는 거짓입니다**(§5.7의 원점 상자가 마스크를 근거로 삼게 되면서 그 문장이 성립하지 않게 됐습니다). 지금 붙드는 불변식은 하나입니다 — **좌표는 안 움직이고, 칸은 좌표를 따라간다.**
 
-- **유효 다이 지정은 어떤 축도 채택하지 않습니다** — 격자 치수도, 물리 규격(직경·칩 피치·offset·margin)도, 회전·면도, **`grid_start_x/y`도**. 그 지정은 마스크 하나만 만들고 **화면 컨트롤을 한 글자도 건드리지 않습니다**.
+- 🔴 **[2026-07-31 `35e84c3` 정정] 기하는 이제 참조를 따라갑니다 — 「어떤 축도 채택하지 않는다」는 두 축에 대해 거짓이 됐습니다.** [기준 가치 1)](#map-founding-values)이 그렇게 정했습니다: *「유효 다이 영역을 불러올 때는 기존 맵 기하 메타를 유효 다이의 것으로 갈아끼운다」*.
+  - ✅ **갈아끼웁니다**: **물리 규격**(참조 프리셋 → `applyPresetObject`) · **격자 치수**(그 규격에서 `applyPhysicalGeometry`가 **파생**).
+  - ❌ **여전히 채택하지 않습니다**: 회전·면·`invertY`·**`grid_start_x/y`**.
+  - 🔴 **파생이지 베끼기가 아닙니다.** `94b9baa`가 지운 것은 참조가 **선언한** `cols/rows`를 그대로 기입하는 동작이었고, 지금 하는 것은 갈아끼운 규격에서 치수를 **유도**하는 것입니다(§3의 18) `applyPhysicalGeometry` — 「격자 크기는 방향·물리 규격에서 파생되며 데이터 좌표 범위에서 역산하지 않는다」는 §5.0의 규칙 그대로). 그리고 **파생과 재배치는 반드시 같은 호출 안에 있습니다** — 파생만 하면 그것이 거절당한 그 동작입니다.
+  - 🔴 **적합 가드는 파생 다음에만, 담지 못할 때만 넓힙니다** — 「유효 다이가 온전히 보이게」(사용자). 마스크 키를 `getCanvasCellFromDieIndex`로 칸에 되돌려 축별 위반 수를 세고, 위반이 난 축만 한 칸씩 늘립니다. 담고 있으면 **한 칸도 늘리지 않습니다.** 상한은 `frameDimBounds().max` 하나이고, 상한에 닿으면 **더 넓히지 않고 멈추고 `console.warn`으로 사유를 남깁니다** — 조용히 자라지도, 잘라 내지도 않습니다.
+  - ⚠️ **한 번의 조작이 반응을 두 걸음 태웁니다**(규격 교체 → 파생 치수, 그다음 마스크 적합 확장). 두 걸음은 **그 시점의 `cellsSeatedUnder`를 각각 읽어야** 이어 붙습니다 — 미리 잡아 둔 옛 기록을 두 번째 걸음에 넘기면 같은 이동을 두 번 적용합니다.
   - 🔴 **`START X,Y`는 운영자의 선언이고 편집기가 쓰지 않습니다**(사용자 확정 2026-07-30: 「START X,Y는 바뀌면 안됨」). 참조가 자기 최소 다이를 다른 번호로 부르더라도 이 맵의 START는 그대로이고, 그 차이는 **알리기만 합니다**(아래). 편집기가 START를 쓰는 유일한 자리는 **📍 Set Origin 모드의 클릭**(`handleCellClick`의 `isOriginMode` 분기)과 **로드 시 메타/초안 복원**뿐입니다 — 유효 다이 경로에는 없습니다.
 - **참조가 이 맵과 정렬되지 않으면 마스크가 밀려 보이고, 셀도 함께 움직입니다** (**정정 `da8f390`** — 종전 이 자리는 *"화면은 아무것도 안 바뀐다"*였고 거짓이 됐습니다). 마스크 키는 `projectCellsToPhys(cells, refFrame)`가 **참조 자신의 프레임**으로 만들고(화면 컨트롤을 읽지 않습니다), 그 마스크가 §5.7의 원점 상자를 다시 정의하므로 `box.minC/minR`이 움직입니다.
-- 🔴 **셀이 붙드는 것은 칸이 아니라 번호입니다 — 칸은 파생입니다** (`da8f390` · `resolveValidDie`의 `set()`). 근거를 갈아끼우기 **전에** 각 셀이 지금 말하는 저장 좌표를 `getVisualCoords`로 되찾고, 갈아끼운 **뒤** 그 좌표가 새 좌표계에서 가리키는 칸(`getCellFromVisualCoords` → `getPhysicalCoords`)에 다시 앉힙니다. `gridData`·`loadedFCells`·`serverCellKeys.keys` **세 집합이 같은 사상으로 함께** 이주합니다 — 서버 집합을 빼먹으면 서버에서 온 셀이 「보낸 적 없음」으로 읽혀 정리 경로가 실재하는 행을 지우자고 제안합니다.
+- 🔴 **셀이 붙드는 것은 칸이 아니라 번호입니다 — 칸은 파생입니다** (`da8f390` · **2026-07-31 `4761a3a`에서 단일 함수 `reseatCellsToStoredCoords`로 수렴**). 근거를 갈아끼우기 **전에** 각 셀이 지금 말하는 저장 좌표를 `getDbCoords`로 되찾고, 갈아끼운 **뒤** 그 좌표가 새 좌표계에서 가리키는 칸(`getCanvasCellFromDb` → `getDieIndex`)에 다시 앉힙니다. `gridData`·`loadedFCells`·`serverCellKeys.keys` **세 집합이 같은 사상으로 함께** 이주합니다 — 서버 집합을 빼먹으면 서버에서 온 셀이 「보낸 적 없음」으로 읽혀 정리 경로가 실재하는 행을 지우자고 제안합니다.
+  - 🔴 **근거가 무엇이든 반응은 하나입니다** (사용자 확정 2026-07-31). **유효 다이 선언이 없는 맵에서 유효 다이 영역은 곧 웨이퍼 원이므로**, 기하 프리셋이나 칩 피치를 고치는 것은 참조를 지정하는 것과 **닮은 연산이 아니라 같은 연산**입니다. 그래서 `set()`이 자기 사본을 갖지 않고 **물리 규격 입력의 리스너와 같은 함수**를 부릅니다(§5.7-ter).
+  - 🔴 **반대 연산에서는 아무것도 하지 않습니다.** `rotation`/`side`/`invertY`/`startX`/`startY` 중 하나라도 다르면 이 반응은 **거절**합니다 — 그것이 [기준 가치 5)](#map-founding-values)의 연산이기 때문입니다. **방향은 다이를 붙들고 번호를 옮기고, 기하는 번호를 붙들고 자리를 옮깁니다.** 기하 반응이 회전에서 뜨면 규칙 ④가 규칙 ⑤를 덮어씁니다.
+  - **`cellsSeatedUnder`는 「셀이 마지막으로 어디에 *앉았는가*」이지 「상자가 무엇인가」가 아닙니다.** 상자의 유일한 권위는 `getWaferBoundingBox`이고, 이 기록에 담기는 것은 그 함수가 **이미 내놓은 답**입니다(그래서 프레임 창이 실어 나를 수 있습니다 — §5.1). 쓰는 자리는 **정확히 두 곳**이고 그중 하나가 `renderGridCanvas`의 맨 위라, 좌표계를 움직이는 모든 경로가 렌더로 끝나므로 **기록 갱신을 잊을 수 있는 상태 변경이 없습니다**. `seatingSnapshot()`은 프레임 창 안에서는 `null`을 돌려줍니다 — 창 안에서 기록하면 **소스 맵의 좌석**을 이 화면의 좌석으로 적게 됩니다.
   - ⚠️ **캐시를 반드시 비웁니다**(`boundingBoxCache = {}`, 대입 직후). 캐시 태그는 `V<validDieResolveSeq>`인데 그 번호는 `resolveValidDie` **진입 시** 오르므로, 진입과 대입 사이의 되찾기 질문이 **옛 마스크로 만든 상자를 새 번호의 키에** 실어 버립니다. 지난 라운드가 정확히 이렇게 무너졌습니다.
   - ⚠️ **로드 경로에서는 아무 일도 하지 않습니다.** `loadExistingMap`이 세 집합을 `resolveValidDie`보다 **먼저** 비우므로 무비용이고, 로드는 이미 옳습니다. 여기가 고치는 것은 **화면에 이미 앉아 있는 셀**(지정/해제/변경)뿐입니다.
 - **저장 좌표는 하나도 움직이지 않습니다.** 셀에 저장된 좌표라는 것은 **없습니다** — `gridData`는 `물리 키 → 값`뿐이고, DB의 x/y는 Push 시점에 `pushMapData`의 직렬화 루프가 `cellObj.x/.y`(= 현재 프레임으로 **렌더가 유도한** 좌표)에서 만듭니다. **그래서 좌표를 보존하는 유일한 방법은 칸을 좌표가 가리키는 자리로 다시 앉히는 것입니다**(F8 초판은 이것을 「칸을 그대로 두는 것」으로 적었는데, 원점 상자가 마스크를 근거로 삼는 순간 같은 칸이 다른 번호를 읽으므로 그 문장은 성립하지 않게 됐습니다). 치수 채택을 되살리면 안 되는 이유는 그대로입니다 — 채택은 새 프레임이 만들지 못하는 좌표 앞에서 셀을 버리거나(삭제) 번호를 다시 매기는(재좌표화) 수밖에 없었고, **둘 다 금지입니다.**
@@ -707,9 +762,11 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
 - **사용자 QA용 `[유효다이]` 콘솔 7줄**(`da8f390`) — `1)` 참조 정체·셀 수·참조 프레임 / `2)` 이 맵의 현재 값 / `3)` 마스크 평행이동 / `4)` 반전 중심 축 / `5)` 캔버스 내 마스크 범위 / `6)` 오리진 칸 + **선언된 START가 놓인 열·행** + 참조가 부르는 최솟값 / `7)` 셀 재배치 결과(움직인 셀이 0이면 없음). **사용자가 실제로 이 줄을 읽어 QA합니다** — 번호·순서를 바꾸면 [VALID_DIE_MAP_GUIDE §4-bis.3](../guide/VALID_DIE_MAP_GUIDE.md)을 함께 고칩니다. `7)`은 `set()`이 로그 블록보다 먼저 도는 탓에 `placementNote`로 담아 두었다가 1~6 **뒤에** 찍습니다.
 - ⚠️ **다음 라운드에 대한 경고.** "참조 규격이 이미 `wafer_map_metadata`에 있으니 그대로 열어 주면 되지 않나"는 재유도하기 쉽고, **실제로 F6이 그렇게 만들어졌다가 되돌려졌습니다.** 근거는 위의 데이터 모델입니다. 소스에도 같은 이력이 `resolveValidDie` 안 「① 종전 거절 → ② F6 채택 → ③ F8 아무것도 채택 안 함」 주석 블록으로 남아 있습니다 — 지우지 마십시오.
 - ✅ **살아 있는 거절은 치수 정의역뿐**(H5 · `frameDimBounds`/`frameDimError`) — 참조의 `grid_cols`/`grid_rows`가 `1~100` 정수 밖이면 **참조 셀을 한 건도 읽기 전에** 거절합니다. clamp하지 않습니다. 근거가 F8에서 **바뀌었지만 둘 다 살아 있습니다**: ① **비용** — 채택이 없어도 `projectCellsToPhys(cells, refFrame)`가 참조 치수로 프레임 창을 열고 그 안에서 `getWaferBoundingBox`가 `visualCols × visualRows`를 전수 순회합니다(1024×1024 메타 행 하나면 그 자리에서 104만 칸의 동기 루프이고 취소 수단이 없습니다. 참조 **셀**은 `OVERLAY_CELL_LIMIT` 2,000이 막고 있었고 참조 **치수**는 아무도 막지 않았습니다). ② **정확성** — 이쪽이 이제 더 무겁습니다. `0`·비정수를 통과시키면 `gridDimNum`의 `ov || dflt`가 0을 10으로 읽고 `parseInt`가 `45.5`를 45로 읽어, 마스크가 **참조가 선언한 적 없는 인덱스 공간**에서 만들어집니다.
-- 회귀 그물: `client2/tests/valid_die_frame_adoption_harness.mjs` **192 단언 · 변이 16/16 명명 포착**(2026-07-30 실행 실측). 파일명은 역사적입니다 — F6용으로 쓰였고 F8 계약을 채점하도록 다시 쓰였습니다. 채택을 되살리는 변이 3종(`N1` 치수 재채택 · `N2` 물리 규격만 채택 · `N5` 치수 다르면 재거절)이 각각 14·18·27 단언을 빨갛게 만듭니다.
+- 회귀 그물: `client2/tests/valid_die_frame_adoption_harness.mjs`. 파일명은 역사적입니다 — F6용으로 쓰였고 F8 계약을 채점하도록 다시 쓰였습니다.
+  - 🔴 **이 하네스는 2026-07-31 현재 부분 빨강이고 `check_harnesses.mjs`의 부채 목록에 있습니다.** 빨간 단언 대부분이 **`da8f390` 이전 계약을 붙들고 있는 픽스처**(격자 치수 불변)인데, 그 계약은 기준 가치 1)이 뒤집었습니다. **좌표 보존 부분집합은 개명 전후로 바이트 단위 동일**했습니다(`35e84c3` 실측 — 전 8 실패, 후 같은 8 실패).
+  - ⚠️ **러너의 부채 사유 문자열은 정적 라벨이지 실측 점수가 아닙니다** — 스크립트에 적힌 수와 실제 실행 수가 이미 갈렸습니다. **점수를 인용해야 하면 돌려 보고 인용하십시오.** 이 자리에 수를 다시 적지 않는 이유가 그것입니다(종전 「192 단언 · 변이 16/16」은 두 라운드 만에 낡았습니다).
 
-> 🗄️ **아래는 F6이 무엇을 만들었다가 왜 지워졌는지의 기록입니다.** 계약이 아니라 이력이며, `61440e6`+`94b9baa`로 소스에서 사라진 것들을 가리킵니다(`adoptFrameSpec`·`storedCoordRepositionPlan`·`applyStoredCoordReposition`·`repositionRefusalReason`·`adoptionCoordinateCost`·`adoptedFrameOf`·`dbCoordsByPhysKey`·`announceFrameAdoption` — `client2/src/`에 **0건**). 재사용하려 하지 마십시오. 남는 교훈은 [PRIMITIVES §4](../architecture/PRIMITIVES.md)에 있습니다.
+> 🗄️ **아래는 F6이 무엇을 만들었다가 왜 지워졌는지의 기록입니다.** ⚠️ **본문의 함수 이름은 개명 전 철자입니다**(`getVisualCoords`/`getPhysicalCoords` 등 — 대응은 §1-bis의 표). 이력 문서라 원문 그대로 보존합니다. 계약이 아니라 이력이며, `61440e6`+`94b9baa`로 소스에서 사라진 것들을 가리킵니다(`adoptFrameSpec`·`storedCoordRepositionPlan`·`applyStoredCoordReposition`·`repositionRefusalReason`·`adoptionCoordinateCost`·`adoptedFrameOf`·`dbCoordsByPhysKey`·`announceFrameAdoption` — `client2/src/`에 **0건**). 재사용하려 하지 마십시오. 남는 교훈은 [PRIMITIVES §4](../architecture/PRIMITIVES.md)에 있습니다.
 
 <details>
 <summary>F6 채택·재배치 라운드의 기록 (폐기 2026-07-30)</summary>
@@ -748,6 +805,28 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
 > 🗄️ 여기까지가 F6의 기록입니다. **`pushBlockingCount`/`classifyUnsavableCells`/`eachSavableCell`은 살아 있습니다**(Push 관문이 계속 씁니다 — §6.0-ter). 사라진 것은 채택·재배치 쪽뿐입니다.
 
 </details>
+
+### 5.7-ter 참조가 **없는** 맵에서도 같은 일이 일어난다 — 원점 상자가 움직였을 때의 유일한 반응 (`4761a3a` · 2026-07-31)
+
+사용자의 한 문장이 두 결함을 하나로 접었습니다: **유효 다이 선언이 없는 맵에서 유효 다이 영역은 곧 웨이퍼 원이다.** 그러면 기하 프리셋을 바꾸는 것은 그 영역을 바꾸는 것이고, **참조를 지정하는 것과 같은 연산**입니다. 원-근거 경로를 별개 결함으로 다루던 세 라운드가 그 오해 위에서 지나갔습니다.
+
+- **반응은 함수 하나입니다 — `reseatCellsToStoredCoords(was)`.** `resolveValidDie`의 `set()`이 갖고 있던 사본이 삭제됐고, **지정과 기하 편집이 같은 함수를 부릅니다.**
+  - 부르는 자리는 둘입니다: **물리 규격 6칸의 `input`/`change` 리스너**(직경·칩 X/Y·offset X/Y·edge margin)와 **`applyPhysicalGeometry`의 파생 직후**. 프리셋 드롭다운은 `applyPresetObject` → `applyPhysicalGeometry`로 후자를 탑니다. **새 컨트롤 0개, 새 확인창 0개.**
+  - ⚠️ **리스너는 변경 *전* 상태를 스스로 잡을 수 없습니다** — `input`/`change`는 DOM 값이 **이미 바뀐 뒤**에 뜹니다. 그래서 직전 렌더가 남긴 `cellsSeatedUnder`가 옛 좌표계입니다(§5.7-bis의 그 기록).
+  - ⚠️ **격자 `cols`/`rows`를 손으로 고치는 것은 이 경로가 아닙니다.** 그 입력의 리스너는 정의역 검증 + 재렌더뿐이고 재배치를 부르지 않습니다 — 손으로 치수를 맞춘 뒤에는 `📂 Load`로 다시 읽는 것이 안전합니다([VALID_DIE_MAP_GUIDE §4-bis.5](../guide/VALID_DIE_MAP_GUIDE.md)).
+- **거절 축은 [기준 가치 5)](#map-founding-values)입니다.** `rotation`·`side`·`invertY`·`startX`·`startY` 중 하나라도 다르면 **아무것도 하지 않습니다.**
+- **마스크가 선언된 맵에서는 0칸을 옮깁니다 — 가정이 아니라 측정된 0**입니다. 마스크 상자가 셀과 함께 평행이동하므로 저장 좌표가 애초에 변하지 않습니다.
+- **실측**(HEAD `1e4f23c` 대조, 결함 판을 대조군으로):
+
+  | 조작 | 좌표가 바뀐 셀 (결함판 → 지금) |
+  |---|---|
+  | 칩 피치 15 → 12 타이핑 | 261/261 → **0/261** |
+  | 같은 변경을 기하 프리셋으로 | 261/261 → **0/261** |
+  | 키스트로크 연속 입력 `20,,1,12` | 261/261 → **0/261** |
+  | 선언된 마스크 `DTWWER` | 0/262 → **0/262** (키 이동 0) |
+  | 회전 90/180/270 | HEAD와 동일 |
+
+- 회귀 그물 `client2/tests/geometry_origin_reseat_harness.mjs` — **DOM 이벤트에서 출발**합니다(`initDOMElements`를 슬라이스해 리스너 레지스트리를 가진 스텁에 실행). 그전 픽스처는 두세 단계 아래의 함수를 직접 불러 **배선이 끊겨도 초록**이었습니다(`5441706`: 「수도꼭지가 아니라 배관을 채점하고 있었다」).
 
 ### 5.8 로드 시 프리셋 라우팅 — 이 맵을 **어떤 규격으로 열 것인가** (F5 서버 절반 · `50bddda` · 2026-07-30)
 
