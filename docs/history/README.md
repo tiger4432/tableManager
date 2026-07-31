@@ -1,13 +1,18 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **294개** 이력. (거버넌스 규칙 #4)
+> 총 **299개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-07 (July 2026)
 
+- **2026-07-31 14:22** — [The Server Composes The Sentence The Client Renders It](./20260731_142216_the_server_composes_the_sentence_the_client_renders_it.md)
+- **2026-07-31 14:13** — [Twelve Of Twelve While Discriminating Two](./20260731_141302_twelve_of_twelve_while_discriminating_two.md)
+- **2026-07-31 12:51** — [With No Reference The Circle Is The Region So One Reaction](./20260731_125114_with_no_reference_the_circle_is_the_region_so_one_reaction.md)
+- **2026-07-31 09:09** — [Two Function Names Meant The Opposite Of What They Said](./20260731_090919_two_function_names_meant_the_opposite_of_what_they_said.md)
+- **2026-07-31 08:20** — [A Unique Index Says It Better Than The Probe I Just Built](./20260731_082052_a_unique_index_says_it_better_than_the_probe_i_just_built.md)
 - **2026-07-31 06:37** — [The Pin Was In The Test Tree So Deleting It Deleted The Protection](./20260731_063735_the_pin_was_in_the_test_tree_so_deleting_it_deleted_the_protection.md)
 - **2026-07-30 22:06** — [The Origin Is The Masks And A Cell Keeps Its Number](./20260730_220605_the_origin_is_the_masks_and_a_cell_keeps_its_number.md)
 - **2026-07-30 21:09** — [Catching The Error Was Never The Containment](./20260730_210944_catching_the_error_was_never_the_containment.md)
