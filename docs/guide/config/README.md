@@ -1,6 +1,6 @@
 # 📁 config/ — 운영 서버 config 파일 세팅 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-29 (`suggest_config.json` 추가 — F3 입력 제안 노브 + 접두 인덱스 대상 선정. 직전 `effort_metric.json` 추가 — V1 정본 계기 배점. 직전 2026-07-28 신설 — 파일별 세팅 절차. CONFIG_GUIDE §5의 키 상세를 이 폴더로 이관) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (`virtual_join_rules.json` 행이 **실행 착지**(`d70a33d`)를 반영 — 선언만 검증하던 기능이 읽기 경로에서 실제로 조인한다. ⚠️ 그 행은 2026-07-31에 추가됐는데 이 헤더는 07-29에 멈춰 있었다 — **행을 더하면 여기도 함께 고친다**. 직전 `suggest_config.json`·`effort_metric.json` 추가, 2026-07-28 신설) | **Owner:** Lead / Backend
 > 상위: [CONFIG_GUIDE](../CONFIG_GUIDE.md) — **온보딩 지도의 정본.** 시나리오 체크리스트(§3)·리로드 규율(§4)·함정 모음(§6)은 거기서 봅니다. 이 폴더는 **운영 서버에서 각 파일을 실제로 세팅하는 절차**입니다.
 
 ## 시작하기 전에 (전 파일 공통)
@@ -27,7 +27,7 @@
 | `ingestion_settings.json` | 인제션 노브 — heavy 임계·dedup·재개 | 즉시(**다음 파일부터**) | watcher 로그의 heavy 라우팅 줄 | [ingestion_settings.md](./ingestion_settings.md) |
 | `effort_metric.json` | V1 계기 — 상호작용 점수 배점 + 컨텍스트 유지 전이 | 즉시(다음 조회부터) | `GET /api/effort/config` | [effort_metric.md](./effort_metric.md) |
 | `suggest_config.json` | 입력 제안(고유값 조회) 노브 + **접두 인덱스 대상 선정** | 조회 노브 = 즉시 / `index_*` = **`setup_db_performance.py` 재실행** | `GET /tables/{t}/columns/{c}/values` | [suggest_config.md](./suggest_config.md) |
-| `virtual_join_rules.json` | 저장하지 않는 조인 선언 + **팬아웃 가드**(승인 조건 = 조인 키를 덮는 UNIQUE 인덱스) | 조회 즉시 | 모양은 `GET /admin/config/resolve?domain=virtual_join` · 승인 여부는 `GET /admin/config/virtual-join/verify` | [virtual_join_rules.md](./virtual_join_rules.md) |
+| `virtual_join_rules.json` | 저장하지 않는 조인 선언 + **팬아웃 가드**(승인 조건 = 조인 키를 덮는 UNIQUE 인덱스). **읽기 경로가 실제로 실행**해 `expose` 컬럼을 붙인다(`d70a33d`) — 왼쪽과 이름이 겹치면 **부재일 때만 채운다** | 조회 즉시 | 모양은 `GET /admin/config/resolve?domain=virtual_join` · 승인 여부는 `GET /admin/config/virtual-join/verify` | [virtual_join_rules.md](./virtual_join_rules.md) |
 
 ## 잘못됐을 때 (전 파일 공통)
 

@@ -1,17 +1,24 @@
 # `virtual_join_rules.json` 세팅 — 저장하지 않는 조인(virtual join) 선언
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**신설 + 같은 날 게이트 확정** — 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐다. 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. ⏳ **조인 실행 코드는 아직 없다** — 이 파일은 선언과 그 검증만 다룬다) | **Owner:** Backend / 총괄
-> 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 검증기 정본은 `server/virtual_join_config.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 (**신설 → 같은 날 게이트 확정 → 같은 날 실행기 착지 `d70a33d`**. 사용자 판정 「인덱스 없으면 거절해」로 **승인 근거가 UNIQUE 인덱스 하나**가 됐고, 직전 판의 3등급 모델(`unique_index`/`probe_clean`/`unverified`)과 중복 프로브·예산·`incomplete` 상태는 **삭제**됐다. **조인은 이제 실제로 실행된다** — `server/virtual_join_executor.py`가 읽기 경로에서 `expose` 컬럼을 붙이고, **이름 충돌 거부는 해제**돼 「부재일 때만 채운다」가 됐다(§4-bis)) | **Owner:** Backend / 총괄
+> 상위: [폴더 인덱스](./README.md) · 절차 요약은 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 선언·검증 정본은 `server/virtual_join_config.py` · **실행 정본은 `server/virtual_join_executor.py`**
 
-<!-- Loader evidence (2026-07-31):
+<!-- Loader evidence (2026-07-31, 실행기 착지 후 재확인 · d70a33d):
   shape only, no DB: virtual_join_config.load_virtual_join_rules / validate_virtual_join_rules / _validate_join
   the gate:          unique_index_covering (pg_index, excludes indisvalid=false / indpred / indexprs)
                      verify_uniqueness -> load_verified_rules  (the only accepting path)
   operator action:   required_index_name / required_index_ddl  (computed from the declaration alone)
+  execution:         virtual_join_executor.rules_for / execute_rule / _resolve_one / attach
+                     (load_verified_rules is its ONLY entry - a shape-only rule never executes)
+  read path:         main.fetch_and_merge_metadata -> virtual_join_executor.attach
+                     (the single serialization point for row payloads)
+  write refusal:     crud.refuse_virtual_join_columns, first statement of crud.apply_batch_updates
+                     (virtual_only columns only; collide columns stay writable)
+  cache invalidation: main.reload_local_process_cache -> virtual_join_executor.reset_cache
   routes:            GET /admin/config/resolve?domain=virtual_join  (config only, zero DB queries)
                      GET /admin/config/virtual-join/verify          (catalog read, names the missing index)
   report:            config_resolve_report._resolve_virtual_join (DOMAIN_VIRTUAL_JOIN)
-  tests:             server/tests/test_virtual_join_guard.py (41)
+  tests:             server/tests/test_virtual_join_guard.py + server/tests/test_virtual_join_executor.py
 -->
 
 ## 1. 무엇인가
@@ -96,6 +103,69 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_core_wafer_map_core_lot_core_slot
 
 INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 
+> **②가 사는 곳은 SQL이 아니라 파이썬이다.** LEFT 조인은 ①만 준다 — 오른쪽 행이 있으면
+> 빈 값을 그대로 돌려주기 때문이다. `virtual_join_executor._resolve_one`이 조인 값을
+> **행의 유무가 아니라 비어 있는지**로 판정하는 것이 ②를 덮는 유일한 이유다. 빈 판정은
+> `crud.clean_str_value(v) == ""` — 시스템의 나머지와 **같은 뜻**이라야 한다.
+> 실행기는 오른쪽 행의 유무(`matched`)를 따로 들고 다니는데, 표시용이 아니라 **①과 ②가
+> 같은 `미상`으로 접힌 뒤에도 두 분기를 관측할 수 있게** 하기 위한 것이다.
+
+## 4-bis. 이름 충돌 — 거부가 아니라 「부재일 때만 채운다」 (2026-07-31 `d70a33d`)
+
+`expose` 컬럼 이름이 **왼쪽 테이블에 이미 있어도 된다.** 운영 `dt_log`는 lot/slot 대신
+`wafer_id`가 직접 꽂힌 행이 섞여 있어서, 조인이 채우려는 바로 그 컬럼이 왼쪽에 이미 있다.
+**거부는 이 커밋에서 해제됐다** — 그 자리를 대신하는 것이 아래 규칙이다.
+
+| 왼쪽 값 | 조인 값 | 셀에 남는 것 | 출처 표시 |
+|---|---|---|---|
+| 있음 | (무엇이든) | **왼쪽 값 그대로** — 조인 값은 버린다 | **없음**(셀을 한 바이트도 건드리지 않는다) |
+| 비었음 | 있음 | 조인 값 | `virtual_join` |
+| 비었음 | 비었음/없음 | `unresolved_label`(기본 `미상`) | `virtual_join` |
+
+- **「비었음」의 정의는 `crud.clean_str_value(v) == ""` 하나다.** 꼬리 공백이 여기서는 값이고
+  저기서는 공백이면 안 되므로 두 번째 철자를 만들지 않는다.
+- 🎯 **이 연산은 enrichment의 빈칸 전용(absent-only) 관문과 구조적으로 같다.** 새 개념이
+  아니라 같은 연산의 두 번째 자리이며, 그래서 같은 어휘를 쓴다 →
+  [PRIMITIVES §1](../../architecture/PRIMITIVES.md).
+- **왼쪽 값이 이긴 셀에는 흔적을 남기지 않는다.** 조인이 참여했다가 진 것은 출처가 아니다 —
+  `sources`에 표식을 달면 「이 값은 조인이 만들었다」는 거짓말이 된다.
+
+### 왜 거부를 뺄 수 있었나 — 조건 둘을 갖춘 뒤에 뺐다
+
+거부의 근거였던 걱정(**「어느 쪽 값을 보고 있는지 알 수 없는 표가 된다」**)은 옳았다. 다만
+거부가 그 답이 아니었고, 답 두 개를 **함께** 갖춘 뒤에 뺐다.
+
+1. **부재일 때만 채운다** — 왼쪽 값이 있으면 손대지 않으므로 기존 값이 조인 값으로 바뀌는
+   일이 구조적으로 없다.
+2. **셀마다 출처를 싣는다** — 조인이 만든 셀은 `sources`에 `virtual_join`이 붙고
+   `priority_source`가 그것으로 선다. `cell_sources`가 쓰는 것과 **같은 어휘**라 기존 셀
+   소스 표시가 그대로 읽는다(새 화면 0).
+
+🔴 **둘 중 하나만 빼면 원래의 걱정이 그대로 돌아온다.**
+
+> **가상 조인은 `cell_sources`에 쓰지 않는다.** 조회 시점 계산이라 영속 흔적이 없고, 그래서
+> 조인이 만든 셀에는 `CellSource` 행이 **존재할 수 없다**. `crud.SOURCE_PRIORITY`에도
+> 등록하지 않는다 — 등록하지 않으면 최하위라 `user`를 이길 수 없고, 애초에 이 이름으로는
+> 우선순위 계산에 도달할 경로가 없다.
+
+### 쓰기 — 거부는 `virtual_only`에만, 깔때기 하나에서
+
+정규화된 선언은 `expose`를 둘로 갈라 싣는다.
+
+| | 무엇 | 쓰기 |
+|---|---|---|
+| `collide` | 왼쪽에도 **실재하는** 저장 컬럼 | **된다(의도적)** — 그 쓰기가 곧 위 표의 「왼쪽 값 있음」이고, **사용자가 조인 값을 고치는 유일한 방법**이다 |
+| `virtual_only` | 조인만이 만들어 내는 컬럼 | **거부**(400) — 왼쪽에 그 컬럼이 실재하지 않으므로 저장할 곳이 없다 |
+
+거부는 `crud.apply_batch_updates`의 **첫 문장** 한 곳이다(호출부마다 검사하지 않는다).
+편집·붙여넣기·Push·인제션·체인·enrichment·재생이 전부 그 함수로 수렴하므로 **새 호출부가
+검사를 잊을 자리가 없다.** 트랜잭션을 열기 **전**이고 `replace_map` 소거보다 **앞**이라,
+거부가 반쯤 적용된 트랜잭션이나 「거절당하러 가는 길에 행을 지운 페이로드」를 남기지 않는다.
+
+> 🔴 **막지 않으면 조용히 사라진다.** 없는 컬럼을 겨냥한 쓰기는 기존 미선언 컬럼 게이트가
+> **드롭하고 200을 낸다** — 화면은 조인 값으로 다시 그려지고 사용자의 편집만 이유 없이
+> 증발한다. 드롭 자체는 늘 옳았고, 결함은 침묵이었다.
+
 ## 5. 키 사전
 
 | 키 | 필수 | 뜻 |
@@ -103,7 +173,7 @@ INNER 조인은 ①을 조용히 지우므로 쓰지 않는다.
 | `left_table` | ✅ | 왼쪽(구동) 테이블. `table_config`에 등록돼 있어야 한다 |
 | `right_table` | ✅ | 오른쪽(참조) 테이블. 조인 키를 덮는 UNIQUE 인덱스 필요(§2) |
 | `join_key` | ✅ | `{left, right}` 쌍의 목록. 같은 `right` 컬럼을 두 번 묶을 수 없다(키가 넓어 보이지만 고정하는 성분은 하나다) |
-| `expose` | ✅ | 왼쪽에 붙여 보여줄 오른쪽 컬럼들. 왼쪽에 **같은 이름이 있으면 거부** — 어느 쪽 값인지 알 수 없는 표가 된다. 상한 32개 |
+| `expose` | ✅ | 왼쪽에 붙여 보여줄 오른쪽 컬럼들. **왼쪽에 같은 이름이 있어도 된다** — 거부가 아니라 §4-bis의 「부재일 때만 채운다」로 합쳐지고, 셀마다 출처가 실린다. 상한 32개 |
 | `unresolved_label` | | 기본 `미상`. §4의 두 경우를 모두 덮는다 |
 | `enabled` | | 기본 `true`. `false`는 오류가 아니라 조용한 제외 |
 | `join_cardinality` | | `"one"`만 지원. 집계 형태는 **구현이 없어** 선언하면 거부된다(§7) |
@@ -143,9 +213,33 @@ x1288 조인이 언제나 틀린 것은 아니다 — **행 조인으로서** �
 
 ## 8. 함정
 
-- **`expose`가 왼쪽 컬럼을 가리면 거부된다.** 이름이 겹치면 표에서 어느 쪽 값을 보고 있는지
-  알 수 없다.
+- **`expose`가 왼쪽 컬럼과 겹치는 것은 정상이며 기대되는 경우다**(2026-07-31 `d70a33d`에서
+  거부 해제). 겹치면 §4-bis의 「부재일 때만 채운다」가 돌고, 셀마다 출처가 실려 어느 쪽 값을
+  보고 있는지 읽을 수 있다. 🔴 **그 두 가지가 이 완화의 조건이다** — 하나라도 빼면 거부를
+  되살려야 한다.
+- **선언을 고쳤는데 안 먹으면 캐시를 의심하기 전에 승인부터 보라.** 승인된 선언은 웹서버에서
+  짧은 TTL 캐시로 들고 있고 `POST /admin/reload-configs`가 즉시 무효화한다. 워커 프로세스는
+  그 훅이 없어 TTL이 지나야 바뀐다.
+- **선언을 읽지 못하면 「조인 없음」으로 간다.** 붙지 않은 컬럼은 눈에 보이는 부재이고,
+  잘못 붙은 컬럼은 조용한 오답이기 때문이다. 조인이 통째로 안 보이면 서버 로그의
+  `[VirtualJoin]`을 먼저 본다 — 그리드는 죽지 않는다.
 - **밑줄로 시작하는 키는 선언이 아니라 주석이다**(`_comment` 등) — 조용히 건너뛴다.
 - **파일 부재는 거부가 아니다.** 선언이 없을 뿐이며 `sources[].exists: false`로 나온다.
 - **PostgreSQL이 아니면 전부 거부된다.** 카탈로그를 읽을 수 없으면 유일성을 모르고,
   모르면 통과시키지 않는다.
+
+## 9. 아직 열려 있는 것 (`d70a33d` 시점)
+
+**이 절이 미해결 항목의 단독 소유자다.** 다른 문서는 여기를 링크한다.
+
+> 🔴 **첫 항목이 해소되면 함께 걷어야 하는 곳은 셋이다** — 이 절 · [CONFIG_GUIDE §1](../CONFIG_GUIDE.md)의
+> `virtual_join_rules.json` 행 ⏳ · [FEATURE_CHECKLIST](../../qa/FEATURE_CHECKLIST.md) §1.1 행과
+> §2.2-bis 서두. **목록은 여기에만 둔다** — 두 곳에 적으면 반드시 갈린다(직전 라운드 실증).
+
+- ⏳ **`virtual_only` 컬럼은 아직 그리드에 뜨지 않는다.** `/schema`가 가상 컬럼을 알리지
+  않아 클라가 컬럼을 만들 근거가 없다 — 값은 페이로드에 실려 오지만 그릴 자리가 없는
+  상태다. `collide` 컬럼(왼쪽에 실재하는 것)은 **끝에서 끝까지 동작한다.**
+- ⏳ **사용자가 일부러 비운 셀은 조인 값을 보여 준다.** 「비었음」의 정의가 `clean_str_value`
+  하나이므로 「원래 비어 있음」과 「사람이 지워서 비어 있음」이 구별되지 않는다. 사용자는
+  **비운 것은 빈 것이 맞다**고 판정했고, 그래서 이것은 결함이 아니라 **기록된 성질**이다.
+  다만 뒤집으려면 셀 단위 「사람이 지웠음」 표식이 필요하므로 여기 남긴다.
