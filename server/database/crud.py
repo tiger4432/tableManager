@@ -20,6 +20,7 @@ import uuid
 import uuid6
 import codecs
 import json
+import math
 import os
 import logging
 from datetime import datetime
@@ -306,11 +307,46 @@ if not hasattr(sys, "_table_config_singleton"):
 TABLE_CONFIG = sys._table_config_singleton
 
 
+def normalize_stored_text(value: Any) -> Any:
+    """THE write-boundary normalizer for text. Strips a string; leaves anything else alone.
+
+    [Why storage, and not a cleverer comparison]
+    `clean_str_value` (the read/compare spelling) strips with Python's `str.strip()`,
+    which removes ALL Unicode whitespace - tab, newline, CR, FF, VT, NBSP (U+00A0),
+    ideographic space (U+3000), the U+2000-200A range: 29 codepoints. Postgres
+    `btrim(x)` with no second argument strips exactly ONE of them, U+0020.
+
+    So if storage were allowed to hold `"\t"`, Python would call it empty and SQL would
+    call it non-empty, and any pushed-down predicate would disagree with the payload the
+    user is looking at. The fix is NOT to teach SQL Python's whitespace table - that is a
+    second spelling that drifts. The fix is that the divergent input never reaches
+    storage, after which `col IS NULL OR col = ''` and `clean_str_value(v) == ""` are the
+    same predicate BY CONSTRUCTION.
+
+    This is not a new policy; it is the layer that was never told. `clean_str_value`
+    already strips on every read and compare, `_update_row_business_key` already strips
+    `business_key_val`, and the line below already mapped a whitespace-only value to NULL.
+    Only the non-empty case still let surrounding whitespace through.
+
+    Only `str` is stripped. A list/dict (the JSON columns - `map_doe.mat_*` carries raw
+    material tokens where "the token text IS the identity") is returned untouched: those
+    are containers, not text, and their elements are not this boundary's business.
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
 def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
-    """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다."""
+    """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.
+
+    This is the write boundary: `apply_row_update_internal` runs EVERY value through it,
+    and that function's only caller is `apply_batch_updates` - the funnel every write
+    path converges on. Normalizing here rather than at each call site is the same
+    reasoning `refuse_virtual_join_columns` records: a per-call-site rule is one the next
+    author has to remember.
+    """
     if value is None or str(value).strip() == "":
         return None
-        
+
     if col_type == "number":
         val_str = str(value).strip()
         try:
@@ -319,12 +355,50 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
             else:
                 return int(val_str)
         except ValueError:
+            # [NUM1, found by contracts/blank_predicate 2026-07-31] The branch above
+            # decides int-vs-float by asking whether the REPR contains a '.'. `str(1e16)`
+            # is `'1e+16'` and `str(1e-05)` is `'1e-05'` - neither has one - so both went
+            # to `int()` and were REFUSED, for values that are ordinary doubles the column
+            # (`double precision`) holds exactly. Decide from the VALUE, not from its repr.
+            #
+            # Strictly additive: every input that already parsed still takes the branch
+            # above and returns the same type it always did. This arm only converts a
+            # refusal into a value.
+            #
+            # nan/inf stay REFUSED. They parse as floats but are not data - letting them
+            # through would put a NaN in a numeric column, where every comparison against
+            # it is false and no filter can ever find the row again.
+            try:
+                parsed = float(val_str)
+            except ValueError:
+                parsed = None
+            if parsed is not None and math.isfinite(parsed):
+                return parsed
             raise ValueError(f"컬럼 '{col_name}'의 값 '{value}'은(는) 올바른 숫자 형식이 아닙니다.")
-            
-    return sanitize_to_utf8(value)
+
+    # Strip BEFORE sanitizing: the UTF-8 scrub can only remove bytes, so it can turn
+    # `"abc\udcff"` into `"abc"` but never introduces whitespace - order is not
+    # load-bearing today, and doing it first keeps "normalize, then sanitize" readable.
+    return sanitize_to_utf8(normalize_stored_text(value))
 
 def clean_str_value(val: Any) -> str:
-    """값을 깔끔하게 문자열로 변환합니다. float인 경우 소수점 이하가 .0이면 정수로 처리합니다."""
+    """값을 깔끔하게 문자열로 변환합니다. float인 경우 소수점 이하가 .0이면 정수로 처리합니다.
+
+    ⚠️ **The `7.0` -> `'7'` fold does NOT diverge from PostgreSQL, and a green SQLite test
+    is what makes people think it does.** (Recorded 2026-07-31 because it was got wrong
+    once already, in a task brief.) `number` maps to `Float` maps to `double precision`,
+    and Postgres renders `cast(col AS varchar)` of 7.0 as `'7'` - agreeing with this
+    function. It is the SQLite TEST dialect that renders `'7.0'`. So a suite run on SQLite
+    shows a divergence that production does not have, and reasoning from it produces a fix
+    for a bug that is not there.
+    `contracts/blank_predicate` scores the production dialect as an opt-in axis
+    (`ASSY_CONTRACT_PG_URL`); `dialect_facts` in its vectors.json holds the measurement.
+
+    The one float case that DOES diverge is exponent notation - `str(1e16)` is
+    `'10000000000000000'` here and `'1e+16'` in Postgres. That is
+    `declared_divergences.FLOAT_EXPONENT`, deliberately not chased (Lead PM, 2026-07-31),
+    and it is out of reach of every production column measured that day.
+    """
     if val is None:
         return ""
     if isinstance(val, float):
@@ -332,6 +406,74 @@ def clean_str_value(val: Any) -> str:
             return str(int(val))
         return str(val)
     return str(val).strip()
+
+
+def is_blank_value(val: Any) -> bool:
+    """THE emptiness predicate, Python side. Its SQL twin is `blank_sql_condition`.
+
+    One name for what was previously written out as `clean_str_value(x) == ""` in
+    `virtual_join_executor._resolve_one`, `AutoConfirmCollector.flush` and
+    `enrichment_candidates`. Same meaning, so those keep working unchanged; having a
+    name is what lets the SQL spelling below point at something instead of re-deriving
+    the rule from a comment.
+    """
+    return clean_str_value(val) == ""
+
+
+def blank_sql_condition(col_expr):
+    """THE emptiness predicate, SQL side. Must answer exactly like `is_blank_value`.
+
+    🔴 **This is only correct because `normalize_stored_text` makes storage canonical.**
+    It tests NULL-or-empty and nothing else - deliberately no `btrim`, because `btrim`
+    would be an incomplete imitation of `str.strip()` (1 codepoint of 29) and a complete
+    one would be a 29-character class that the next schema change silently invalidates.
+    Storage carries the invariant instead, so the SQL stays this short.
+
+    If you are tempted to add trimming here, the actual bug is upstream: something wrote
+    a value that did not pass through `cast_value_by_type`.
+
+    ⚠️ **PRECONDITION: `col_expr` must be text-typed.** This compares against `''`, and
+    PostgreSQL rejects `double precision = ''` outright. Casting inside instead was
+    considered and rejected - a `CAST` wrapped around an already-varchar column can cost
+    the planner an index. Every caller therefore passes a cast expression:
+    `main.get_column_filter_condition` (`col_expr` is already `cast(raw_col, String)` on
+    the blank path) and `enrichment_analysis._human_resolved_cells`
+    (`cast(tgt, String)`).
+
+    🔴 **Callers, so a future reader can check that this is still the only spelling:**
+    `blank_to_null` · `not_blank_sql_condition` · `main.get_column_filter_condition`
+    (`blank`/`notBlank`) · `enrichment_analysis._human_resolved_cells`. The 2026-07-31
+    contract counts these by AST; a new inline `or_(x.is_(None), x == "")` is a finding,
+    not a style preference.
+    """
+    from sqlalchemy import or_
+    return or_(col_expr.is_(None), col_expr == "")
+
+
+def blank_to_null(col_expr):
+    """`col_expr`, or SQL NULL wherever `blank_sql_condition` calls it blank.
+
+    The COALESCE-shaped building block the virtual-join resolved value is made of.
+    Written as a CASE over `blank_sql_condition` rather than as `NULLIF(col, '')` on
+    purpose: NULLIF would be a THIRD spelling of "blank", indistinguishable today and
+    free to drift tomorrow. Deriving it means the resolved value cannot disagree with
+    the emptiness test it is built on.
+    """
+    from sqlalchemy import case
+    return case((blank_sql_condition(col_expr), None), else_=col_expr)
+
+
+def not_blank_sql_condition(col_expr):
+    """Negation of `blank_sql_condition`, spelled so NULL never leaks through.
+
+    `~blank_sql_condition(c)` would be `NOT (c IS NULL OR c = '')`, which is correct in
+    SQL's three-valued logic, but this form is the one that reads the same as the
+    `notBlank` filter already in `main.get_column_filter_condition`.
+
+    Same text-typed precondition as `blank_sql_condition`; see there.
+    """
+    from sqlalchemy import and_
+    return and_(col_expr.isnot(None), col_expr != "")
 
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""

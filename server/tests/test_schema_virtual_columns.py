@@ -178,11 +178,16 @@ def test_a_virtual_only_column_is_announced(join_env, approved, client, tmp_path
 
 def test_the_stored_column_contract_is_untouched(join_env, approved, client, tmp_path,
                                                  monkeypatch):
-    """Everything except the new key is identical with the join on and off.
+    """Everything except the announcement keys is identical with the join on and off.
 
-    A client that ignores `virtual_columns` must behave EXACTLY as it did before the key
-    existed - same grid columns, same push-gate arithmetic, same paste targets. That is
-    only true if `columns`/`column_types` describe stored columns and nothing else.
+    A client that ignores them must behave EXACTLY as it did before they existed - same
+    grid columns, same push-gate arithmetic, same paste targets. That is only true if
+    `columns`/`column_types` describe stored columns and nothing else.
+
+    ⚠️ **`join_resolved_columns` joined `virtual_columns` in the exempt set on
+    2026-07-31.** Both are additive announcements; neither may move a stored-column fact.
+    The assertion below is stated as "the ONLY differing keys are these two", which is
+    stronger than popping them: it also catches a third key appearing.
     """
     _write_rules(monkeypatch, tmp_path, {"vjs_rule": _decl(["fab_site", "die_count"])})
     with _join_off():
@@ -190,8 +195,11 @@ def test_the_stored_column_contract_is_untouched(join_env, approved, client, tmp
     after = _schema(client).json()
 
     assert after["virtual_columns"], "the join must actually be in effect here"
-    before.pop("virtual_columns"), after.pop("virtual_columns")
-    assert before == after
+    assert after["join_resolved_columns"], "the join must actually be in effect here"
+    differing = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert differing == {"virtual_columns", "join_resolved_columns"}, (
+        f"turning the join on moved something other than the announcements: "
+        f"{differing - {'virtual_columns', 'join_resolved_columns'}}")
 
 
 def test_the_announced_type_comes_from_the_right_table_declaration(join_env, approved,
@@ -210,29 +218,113 @@ def test_the_announced_type_comes_from_the_right_table_declaration(join_env, app
 # Collide - the response must not move by one byte
 # ---------------------------------------------------------------------------
 
-def test_a_collide_only_declaration_leaves_the_response_byte_identical(join_env, approved,
-                                                                       client, tmp_path,
-                                                                       monkeypatch):
-    """🔴 **Drop the `virtual_only` filter and this goes red.**
-
-    `wafer_id` exists on the left. It is a real stored column that the join happens to
+def test_a_collide_only_declaration_adds_only_the_join_resolved_entry(join_env, approved,
+                                                                      client, tmp_path,
+                                                                      monkeypatch):
+    """`wafer_id` exists on the left. It is a real stored column that the join happens to
     fill, already described by `columns`/`column_types`, and still writable. Announcing it
-    would make one response give two answers about the same column.
+    in `virtual_columns` would make one response give two answers to "is this stored?".
 
-    The comparison is the whole body text, not a field: a second announcement anywhere in
-    the response is a change, wherever it lands.
+    ⚠️ **CORRECTION 2026-07-31 - the previous docstring's injection claim was FALSE.**
+    It said "drop the `virtual_only` filter and this goes red". Measured: it does NOT.
+    TWO independent layers each suppress a collide announcement, and removing either one
+    alone leaves this green:
+      1. `virtual_join_executor.announced_columns` iterates `rule["virtual_only"]`;
+      2. `get_table_schema` filters the announced list against `known = set(columns)`.
+    Injected each separately - green both times (a different test caught each). Injected
+    BOTH together - red, with the message below. Defence in depth is a good property, but
+    a docstring that names one falsifier when there are two teaches the next reader that
+    removing that one layer is safe.
+    See `Contract_join_resolved_columns.md` §6, which predicted exactly this for its S7.
+    `test_the_schema_route_still_dedupes_against_columns` below pins layer 2 structurally,
+    since no behavioural test can reach it while layer 1 stands.
 
-    Injection check (ran it): announcing `rule["expose"]` instead of
-    `rule["virtual_only"]` makes this fail with `wafer_id` in `virtual_columns`.
+    ⚠️ **THIS TEST WAS NARROWED ON 2026-07-31, and that is a deliberate contract change,
+    not a test bent to fit code.** It used to assert the whole body was BYTE-IDENTICAL for
+    a collide-only declaration. The `join_resolved_columns` round supersedes that: a
+    collide column IS resolved through a join, the client cannot know it without being
+    told, and the consequence of not telling it was measured - AG-Grid `Blank` matched 0
+    rows on a column where the operator saw values, because the displayed value COALESCEs
+    to a non-empty label.
+
+    What the original assertion was PROTECTING is kept intact and is still asserted below:
+      - `virtual_columns` must stay EMPTY (that is the "two answers" defect), and
+      - `columns`/`column_types` must not move.
+    What changed is only that the response is now allowed to differ in exactly one key.
+    `join_resolved_columns` cannot reintroduce the ambiguity because it carries NO
+    writability field - editability still lives only in `columns[].editable` and
+    `virtual_columns[].editable`.
+
     """
     _write_rules(monkeypatch, tmp_path, {"vjs_rule": _decl(["wafer_id"])})
     with _join_off():
-        before = _schema(client).text
-    after = _schema(client).text
+        before = _schema(client).json()
+    after = _schema(client).json()
 
-    assert after == before, "a collide-only declaration adds nothing to the schema"
+    # The defect the original test existed to catch, asserted directly.
+    assert after["virtual_columns"] == [], (
+        "a collide column was announced as virtual - one response now gives two answers "
+        "about whether it is stored")
+    # ...and nothing else moved except the one new key.
+    differing = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert differing == {"join_resolved_columns"}, (
+        f"a collide-only declaration moved more than the join announcement: {differing}")
+    assert [e["name"] for e in after["join_resolved_columns"]] == ["wafer_id"]
+    assert after["join_resolved_columns"][0]["kind"] == "collide"
     # ...and the declaration really was in force - it is filling the collide column.
     assert vjx.rules_for(join_env, "vjs_test_log"), "the rule must be verified here"
+
+
+def test_the_schema_route_still_dedupes_against_columns():
+    """Layer 2 of the collide defence, pinned STRUCTURALLY because behaviour cannot reach it.
+
+    While `announced_columns` filters to `virtual_only` (layer 1), no fixture can make the
+    route's `known = set(columns)` filter matter - so a purely behavioural suite would let
+    someone delete it and stay green, leaving one layer where the comment above promises
+    two. That filter is also the ONLY thing stopping a right table that declares a system
+    tail name (`created_at`, the graph flags) from being announced on top of a column that
+    is already there: those names are in `columns` but belong to no config, so `collide`
+    never sees them.
+
+    An AST walk, not a substring search: `known` could be renamed and the intent kept.
+    What is asserted is that the comprehension iterating **`announced`** carries an
+    `if ... not in ...` test.
+
+    ⚠️ The first version of this assertion accepted ANY list comprehension with a
+    `not in` test, and `get_table_schema` contains others (the `columns` fallback filters
+    system names the same way). It therefore passed with the filter deleted - a test
+    asserting its own powerlessness. Injected the deletion, saw it stay green, and
+    tightened it to name the iterable. It goes red now.
+    """
+    import ast
+    import inspect
+    import main
+
+    src = inspect.getsource(main.get_table_schema)
+    tree = ast.parse(src.lstrip())
+
+    def _iterates_announced(comp):
+        return any(isinstance(g.iter, ast.Name) and g.iter.id == "announced"
+                   for g in comp.generators)
+
+    over_announced = [n for n in ast.walk(tree)
+                      if isinstance(n, ast.ListComp) and _iterates_announced(n)]
+    assert over_announced, (
+        "no list comprehension in `get_table_schema` iterates `announced` any more - "
+        "this test can no longer see the filter it exists to pin. Re-point it.")
+
+    guarded = [
+        n for n in over_announced
+        if any(g.ifs and any(isinstance(t, ast.Compare)
+                             and any(isinstance(op, ast.NotIn) for op in t.ops)
+                             for t in g.ifs)
+               for g in n.generators)
+    ]
+    assert guarded, (
+        "`get_table_schema` no longer filters the announced columns against the names "
+        "already in `columns`. A right table declaring `created_at` - or any collide name "
+        "that reaches `virtual_only` - would now be announced on top of a stored column, "
+        "and one response would give two answers about whether it is stored.")
 
 
 def test_a_system_tail_name_is_not_announced_either(join_env, approved, client, tmp_path,

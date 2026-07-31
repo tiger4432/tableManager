@@ -1172,34 +1172,51 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         effort=effort
     )
 
-def get_column_filter_condition(table_model, col_name: str, f_info: dict):
+def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_expr_override=None):
+    """AG-Grid filter spec -> SQLAlchemy condition.
+
+    `col_expr_override`: evaluate the filter against THIS expression instead of looking
+    `col_name` up on the model. A virtual-join column has no stored column to look up -
+    its displayed value is a COALESCE over the left column and the joined right columns
+    (`virtual_join_executor.resolved_expression`). Passing the expression in reuses this
+    entire operator vocabulary (contains / equals / startsWith / inRange / ...) rather
+    than growing a second, thinner filter translator beside it.
+
+    An override is always treated as text: the resolved value's domain includes
+    `unresolved_label` ("미상"), so it is a string expression even when the underlying
+    right column is declared numeric.
+    """
     from sqlalchemy.dialects.postgresql import JSONB
     from sqlalchemy import cast, String, func, or_, and_
-    
+
     # 1. Handle compound filter conditions (AND / OR)
     if "operator" in f_info:
         operator = f_info.get("operator")
         conditions = f_info.get("conditions", [])
         sqlalchemy_conds = []
         for cond_info in conditions:
-            sub_cond = get_column_filter_condition(table_model, col_name, cond_info)
+            sub_cond = get_column_filter_condition(table_model, col_name, cond_info,
+                                                  col_expr_override=col_expr_override)
             if sub_cond is not None:
                 sqlalchemy_conds.append(sub_cond)
         if not sqlalchemy_conds:
             return None
         return and_(*sqlalchemy_conds) if operator == "AND" else or_(*sqlalchemy_conds)
-        
+
     # 2. Handle simple filter condition
     f_val = f_info.get("filter")
     f_type = f_info.get("type", "contains")
-    
+
     # Allow blank/notBlank even if f_val is not present
     if f_type not in ["blank", "notBlank"] and f_val is None:
         return None
-        
+
     # Column path resolution and numeric check
     is_numeric = False
-    if col_name in ["created_at", "updated_at"]:
+    if col_expr_override is not None:
+        # No model lookup: this column is computed, not stored.
+        col_expr = cast(col_expr_override, String)
+    elif col_name in ["created_at", "updated_at"]:
         target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
         col_expr = cast(target_col, String)
     elif col_name in ["row_id", "id"]:
@@ -1220,17 +1237,35 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict):
             col_expr = cast(raw_col, String)
             
     # Condition mapping based on type
+    #
+    # NOTE on an override (virtual-join column): the resolved expression COALESCEs to
+    # `unresolved_label`, which `virtual_join_config` guarantees is a non-empty string.
+    # So `blank` matches nothing and `notBlank` matches everything - and that is the
+    # honest answer, because no cell in that column ever DISPLAYS as blank. "Show me the
+    # rows the join could not resolve" is `equals <unresolved_label>`, not `blank`.
+    #
+    # 🔴 THE OPERATOR'S "Blank" FILTER RUNS THROUGH HERE, and it must be the SAME
+    # predicate as everywhere else. It used to be an inline copy, and contract-keeper
+    # proved what that costs: patching `crud.blank_sql_condition` changed nothing in the
+    # AG-Grid blank filter, because this - the busiest caller of the rule - was running
+    # its own spelling. The funnel existed and the one path an operator actually touches
+    # walked around it.
+    #
+    # The `is_numeric` special-case that used to live here is GONE, not moved: for
+    # `blank`/`notBlank` these operators are deliberately absent from `numeric_operators`
+    # above, so `col_expr` is ALWAYS already `cast(raw_col, String)`. A cast numeric is
+    # never the empty string when it is non-NULL, so `IS NULL OR = ''` and the old
+    # `IS NULL` return the same rows - one redundant disjunct, one fewer spelling.
+    #
+    # That pre-cast is also the precondition `crud.blank_sql_condition` documents: it
+    # compares against `''`, so the caller owns making the expression text-typed. Every
+    # caller here does.
     if f_type == "blank":
-        if is_numeric:
-            return col_expr.is_(None)
-        else:
-            return or_(col_expr.is_(None), col_expr == "")
+        return crud.blank_sql_condition(col_expr)
     elif f_type == "notBlank":
-        if is_numeric:
-            return col_expr.isnot(None)
-        else:
-            return and_(col_expr.isnot(None), col_expr != "")
-            
+        return crud.not_blank_sql_condition(col_expr)
+
+
     if is_numeric and f_type in ["equals", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"]:
         if f_type == "inRange":
             try:
@@ -1274,6 +1309,160 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict):
         else:
             return col_expr.ilike(f"%{f_val}%")
 
+# ---------------------------------------------------------------------------
+# Shared query construction for the two routes that read a table with the same
+# `?q=` / `?cols=` / `?filters=` vocabulary: the grid (`/tables/{t}/data`) and the
+# CSV extract (`/tables/{t}/export`).
+#
+# 🔴 These were two VERBATIM COPIES - the export's own comment said
+# "get_table_data와 검색 로직 동기화", which is a promise a comment cannot keep. The
+# 2026-07-31 round proved the cost: the `?cols=` whole-table defect was fixed in the
+# grid copy and stayed live in the export copy, so for a few hours the two routes
+# disagreed about what "search this column" means. One implementation, two callers.
+# ---------------------------------------------------------------------------
+
+class VirtualColumnBinder:
+    """Binds virtual-join columns into ONE query, adding each column's LEFT JOIN once.
+
+    A route holds one of these for its lifetime. `?filters=`, `?q=` and (in the export)
+    the SELECT list can all name the same virtual column; without the memo each mention
+    would add its own join. Duplicate joins are still CORRECT here - the right side is
+    unique on the join key, so they cannot fan out - but they are paid for.
+    """
+
+    def __init__(self, db, table_model, table_name):
+        self.db = db
+        self.table_model = table_model
+        self.table_name = table_name
+        self.columns = set()
+        self._cache = {}
+        self._vjx = None
+        try:
+            import virtual_join_executor
+            self._vjx = virtual_join_executor
+            # collide AND virtual_only - see `exposed_columns` for why this is wider
+            # than what `/schema` announces.
+            self.columns = virtual_join_executor.exposed_columns(db, table_name)
+        except Exception as e:
+            # Same safe direction as the read path: unreadable declarations mean NO join
+            # is in effect, so no column is virtual and every caller falls through to the
+            # ordinary stored-column path.
+            logger.error(f"[VirtualJoin] search columns unavailable on '{table_name}': {e}")
+
+    def __contains__(self, col):
+        return col in self.columns
+
+    def expr(self, query, col):
+        """`(query_with_join, expr)`. `expr` is None when no expression could be built."""
+        if col not in self._cache:
+            query, e, _label = self._vjx.resolved_expression(
+                self.db, self.table_model, self.table_name, col, query)
+            self._cache[col] = e
+        return query, self._cache[col]
+
+
+def apply_column_filters(query, table_model, table_name, filters, binder):
+    """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
+    if not filters:
+        return query
+    try:
+        import json
+        filter_dict = json.loads(filters)
+        for col_name, f_info in filter_dict.items():
+            override = None
+            if col_name in binder:
+                # The filter must run against the value the user SEES. For a virtual_only
+                # column there is no stored column at all; for a collide column the stored
+                # one is only half the answer (the join fills it where it is blank).
+                query, override = binder.expr(query, col_name)
+                if override is None:
+                    # We know this column is virtual and we FAILED to build its
+                    # expression. Falling through would drop the condition and answer with
+                    # MORE rows than were asked for, while the response still implies the
+                    # column was filtered. Refuse, for the same reason the `?cols=` path
+                    # refuses.
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(f"'{table_name}'의 가상 조인 컬럼 '{col_name}'에 대한 "
+                                f"필터를 만들 수 없습니다(조인 대상 테이블이 로드되지 "
+                                f"않았습니다). 필터 없이 전체를 돌려주지 않습니다."))
+            cond = get_column_filter_condition(table_model, col_name, f_info,
+                                               col_expr_override=override)
+            if cond is not None:
+                query = query.filter(cond)
+    except HTTPException:
+        # A deliberate refusal must not be swallowed by the catch-all below and turned
+        # back into the silent 200 it exists to prevent.
+        raise
+    except Exception as e:
+        print(f"[Server] Failed to apply column filters on '{table_name}': {e}")
+    return query
+
+
+def apply_search_filter(query, table_model, table_name, q, cols, binder):
+    """`?q=` (+ optional `?cols=` scope) -> query. Shared by the grid and the export.
+
+    🔴 The `?cols=` refusal is the reason this is one function. A column named in the
+    scope that builds NO condition used to be dropped silently, and because the filter is
+    only applied when at least one condition survives, a scope consisting ENTIRELY of such
+    columns skipped filtering and returned the WHOLE TABLE with 200 - while the response
+    implied that column had been searched.
+    """
+    if not q:
+        return query
+    from sqlalchemy import cast, String, or_
+    safe_q = q.replace("%", "\\%").replace("_", "\\_")
+
+    col_types = (crud.TABLE_CONFIG.get(table_name, {}) or {}).get("column_types", {})
+
+    if cols:
+        col_list = [c.strip() for c in cols.split(",") if c.strip()]
+    else:
+        # A virtual_only column is not in `column_types` (it is not stored), so an
+        # unscoped search would skip it while the grid shows it. Union it in.
+        col_list = (["row_id", "business_key_val"]
+                    + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
+                    + sorted(binder.columns - set(col_types.keys())))
+
+    conditions = []
+    unsearchable = []
+    for col in col_list:
+        if col in binder:
+            query, expr = binder.expr(query, col)
+            if expr is None:
+                unsearchable.append(col)
+            else:
+                conditions.append(cast(expr, String).ilike(f"%{safe_q}%", escape="\\"))
+        elif col in ["created_at", "updated_at"]:
+            target_col = table_model.created_at if col == "created_at" else table_model.updated_at
+            conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+        elif col in ["row_id", "id"]:
+            conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
+        elif col == "business_key_val":
+            conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
+        elif hasattr(table_model, col):
+            conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
+        else:
+            unsearchable.append(col)
+
+    # Only when the caller SCOPED the search (`?cols=`) and nothing in that scope is
+    # searchable. The unscoped path cannot reach here (it always contributes row_id and
+    # business_key_val).
+    if unsearchable and not conditions:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"'{table_name}' 테이블에서 검색할 수 없는 컬럼입니다: "
+                    f"{', '.join(unsearchable)}. 이 컬럼들은 이 테이블에 존재하지 "
+                    f"않습니다. 전체를 돌려주면 검색한 것처럼 보이므로 거부합니다."))
+    if unsearchable:
+        logger.warning("[Search] '%s': ignoring unsearchable column(s) %s in ?cols=",
+                       table_name, ", ".join(unsearchable))
+
+    if conditions:
+        query = query.filter(or_(*conditions))
+    return query
+
+
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
 def get_table_data(
@@ -1311,46 +1500,15 @@ def get_table_data(
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
+    # Virtual-join binder for this request. Shared with the CSV export - see the block
+    # above `get_table_data` for why these two routes must not hold separate copies.
+    binder = VirtualColumnBinder(db, table_model, table_name)
+
     # [NEW] AG-Grid 컬럼 필터링
-    if filters:
-        try:
-            import json
-            filter_dict = json.loads(filters)
-            for col_name, f_info in filter_dict.items():
-                cond = get_column_filter_condition(table_model, col_name, f_info)
-                if cond is not None:
-                    query = query.filter(cond)
-        except Exception as e:
-            print(f"[Server] Failed to apply column filters: {e}")
-    
+    query = apply_column_filters(query, table_model, table_name, filters, binder)
+
     # ── [Step 0] 검색 필터 구성 (실제 컬럼 기준 ilike 다중 OR 검색) ──
-    if q:
-        from sqlalchemy import cast, String, or_, and_, func
-        safe_q = q.replace("%", "\\%").replace("_", "\\_")
-        
-        cfg = crud.TABLE_CONFIG.get(table_name, {})
-        col_types = cfg.get("column_types", {})
-        
-        if cols:
-            col_list = [c.strip() for c in cols.split(",") if c.strip()]
-        else:
-            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-            
-        conditions = []
-        for col in col_list:
-            if col in ["created_at", "updated_at"]:
-                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
-                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-            elif col in ["row_id", "id"]:
-                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
-            elif col == "business_key_val":
-                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
-            else:
-                if hasattr(table_model, col):
-                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
-        
-        if conditions:
-            query = query.filter(or_(*conditions))
+    query = apply_search_filter(query, table_model, table_name, q, cols, binder)
 
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
@@ -1441,9 +1599,15 @@ def get_table_data(
         final_sort = [table_model.row_id.asc()]
     
     # ── [Step 2.5] Session Memory Optimization (Search Only) ──
-    if q:
-        # [Optimization] 검색 결과 정렬 시 External Merge Sort(디스크)를 방지하기 위해 
+    if q and db.get_bind().dialect.name == "postgresql":
+        # [Optimization] 검색 결과 정렬 시 External Merge Sort(디스크)를 방지하기 위해
         # 현재 트랜잭션의 정렬 메모리(work_mem)를 일시적으로 크게 할당합니다.
+        #
+        # Dialect-guarded: `SET LOCAL` is Postgres-only and raises
+        # `OperationalError: near "SET": syntax error` on SQLite, which made the ENTIRE
+        # `?q=` path unreachable from the test suite - no test could reach a search, so
+        # nothing about search behaviour was pinned. Production is unaffected either way
+        # (it is always Postgres); what changes is that the path can now be tested.
         from sqlalchemy import text
         db.execute(text("SET LOCAL work_mem = '64MB'"))
     
@@ -1679,46 +1843,15 @@ def export_table_csv(
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
+    # Virtual-join binder for this request. THE SAME implementation the grid route uses -
+    # these two blocks were verbatim copies and drifted the moment one was fixed.
+    binder = VirtualColumnBinder(db, table_model, table_name)
+
     # [NEW] AG-Grid 컬럼 필터링
-    if filters:
-        try:
-            import json
-            filter_dict = json.loads(filters)
-            for col_name, f_info in filter_dict.items():
-                cond = get_column_filter_condition(table_model, col_name, f_info)
-                if cond is not None:
-                    query = query.filter(cond)
-        except Exception as e:
-            print(f"[Server] Failed to apply column filters in export: {e}")
-    
-    # [Filter] get_table_data와 검색 로직 동기화
-    if q:
-        from sqlalchemy import cast, String, or_, and_, func
-        safe_q = q.replace("%", "\\%").replace("_", "\\_")
-        
-        cfg = crud.TABLE_CONFIG.get(table_name, {})
-        col_types = cfg.get("column_types", {})
-        
-        if cols:
-            col_list = [c.strip() for c in cols.split(",") if c.strip()]
-        else:
-            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-            
-        conditions = []
-        for col in col_list:
-            if col in ["created_at", "updated_at"]:
-                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
-                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-            elif col in ["row_id", "id"]:
-                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
-            elif col == "business_key_val":
-                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
-            else:
-                if hasattr(table_model, col):
-                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
-        
-        if conditions:
-            query = query.filter(or_(*conditions))
+    query = apply_column_filters(query, table_model, table_name, filters, binder)
+
+    # [Filter] get_table_data와 검색 로직 동기화 - 이제 주석이 아니라 같은 함수가 보장한다
+    query = apply_search_filter(query, table_model, table_name, q, cols, binder)
 
     # [Sort] 정렬 조건 동기화
     from sqlalchemy.sql import func
@@ -1737,18 +1870,90 @@ def export_table_csv(
     cfg = crud.TABLE_CONFIG.get(table_name, {})
     col_types = cfg.get("column_types", {})
     business_cols = [c for c in sorted(col_types.keys()) if c not in ["created_at", "updated_at"]]
-    header = business_cols + ["created_at", "updated_at"]
+
+    # [Virtual join] The extract must carry what the screen carries. There are TWO shapes
+    # and only handling one of them would have shipped nothing for the live declaration:
+    #
+    #   collide      - the name is ALREADY a stored column and already in `business_cols`.
+    #                  The header does not change; what changes is WHICH EXPRESSION fills
+    #                  it. Selecting the raw stored column here is precisely the
+    #                  "empty cell in the CSV where the screen said 미상" lie, and it is
+    #                  the ONLY shape the production declaration has today
+    #                  (`bonding_log.wafer_id`), so an append-only fix would have been a
+    #                  no-op in production while looking complete.
+    #   virtual_only - the name is not stored at all, so it is a NEW column and needs a
+    #                  header slot.
+    #
+    # `announced_columns` is the virtual_only list and is the SAME source `/schema` gives
+    # the grid, in the same order, so the extract's virtual columns appear in the order
+    # the operator saw them. They go after the business columns and BEFORE the system
+    # pair, which keeps "created_at/updated_at last" - an invariant the row writer below
+    # depends on positionally (`row[-2]`, `row[-1]`).
+    virtual_only_cols = []
+    try:
+        import virtual_join_executor
+        virtual_only_cols = [c["name"] for c in
+                             virtual_join_executor.announced_columns(db, table_name)
+                             if c["name"] not in business_cols
+                             and c["name"] not in ("created_at", "updated_at")]
+    except Exception as e:
+        # Safe direction, same as every other virtual-join call site: the ABSENT column.
+        # A missing column is a visible absence; a wrong one is a silent wrong answer.
+        logger.error(f"[VirtualJoin] export could not announce columns on "
+                     f"'{table_name}', extract omits them: {e}")
+
+    header = business_cols + virtual_only_cols + ["created_at", "updated_at"]
 
     # [정규화 스키마] native 컬럼을 직접 SELECT하여 JSONB 파싱 부하 완전 제거
+    #
+    # 🔴 The join goes in THIS statement, not in a per-chunk attach. The stream below runs
+    # on ONE server-side cursor inside a StreamingResponse: by the time it is producing
+    # rows, 200 OK and the headers are already on the wire. An extra query per chunk means
+    # a mid-stream failure arrives after that point and the user receives a TRUNCATED CSV
+    # THAT LOOKS COMPLETE, with nothing in the file saying otherwise. Folding the join into
+    # the one statement costs zero extra queries and keeps memory constant.
     select_entities = []
     for col in business_cols:
-        select_entities.append(getattr(table_model, col).label(col))
-    
+        entity = None
+        if col in binder:
+            query, expr = binder.expr(query, col)
+            if expr is not None:
+                entity = expr.label(col)
+        select_entities.append(entity if entity is not None
+                               else getattr(table_model, col).label(col))
+
+    for col in virtual_only_cols:
+        query, expr = binder.expr(query, col)
+        if expr is None:
+            # Cannot happen while `announced_columns` and `exposed_columns` come from the
+            # same `rules_for`, but a header slot with no expression would shift every
+            # column after it. Fail loudly rather than emit a misaligned extract.
+            raise HTTPException(
+                status_code=500,
+                detail=(f"'{table_name}'의 가상 조인 컬럼 '{col}'을(를) 추출 쿼리에 실을 수 "
+                        f"없습니다. 컬럼이 밀린 CSV를 내보내지 않습니다."))
+        select_entities.append(expr.label(col))
+
     select_entities.append(table_model.created_at)
     select_entities.append(table_model.updated_at)
 
+    # The one invariant that keeps a CSV honest: a header cell per selected value. Any
+    # future edit that adds to one list and forgets the other shifts every column after
+    # the mistake, and a shifted extract is READABLE - it opens fine, the numbers are just
+    # under the wrong headings. Cheap check, catastrophic failure mode.
+    if len(header) != len(select_entities):
+        raise HTTPException(
+            status_code=500,
+            detail=(f"'{table_name}' 추출 헤더({len(header)})와 컬럼({len(select_entities)}) "
+                    f"수가 다릅니다. 컬럼이 밀린 CSV를 내보내지 않습니다."))
+
     # 2. 크기 샘플링 예측 (초기 10행 기반 정밀 추산)
     # [Performance Optimization] 전체 테이블을 읽지 않고 limit(10)만 지정하여 메모리 로드 비용 격감
+    #
+    # 🔴 Built from the SAME `select_entities` as the stream, on the SAME joined `query`.
+    # If the sample ever diverged from the streamed statement, `avg_row_size` - and so
+    # `X-Estimated-Content-Length` - would silently under-report by exactly the width of
+    # the columns the sample missed, and the client's progress bar would run past 100%.
     sample_query = query.with_entities(*select_entities).limit(10)
     sample_rows = db.execute(sample_query.statement).fetchall()
     
@@ -1897,8 +2102,28 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # path's: announce NOTHING. An unannounced column is a visible absence; a phantom
     # column is a silent wrong answer (and a write target that does not exist).
     virtual_columns = []
+    # [Virtual join] The columns whose displayed value the server RESOLVES THROUGH A JOIN -
+    # collide AND virtual_only. A collide column is a real stored column that a join also
+    # fills, so it is already in `columns` and looks perfectly ordinary; its AG-Grid Blank
+    # filter then matches nothing, because the value the operator sees COALESCEs to a
+    # non-empty label. This key is the only way a client can know that, and it must not be
+    # deduced by differencing `columns` against `virtual_columns` - that arithmetic is
+    # wrong for the collide case by construction.
+    #
+    # 🔴 NOT the write guard. `crud.refuse_virtual_join_columns` refuses the write at the
+    # funnel; this only stops the UI proposing an edit that would come back 400.
+    join_resolved_columns = []
     try:
         import virtual_join_executor
+        join_resolved_columns = virtual_join_executor.resolved_column_announcements(
+            db, table_name)
+    except Exception as e:
+        # Safe direction, same as every other virtual-join call site: announce NOTHING.
+        # A missing announcement costs the client a greyed cell; a phantom one names a
+        # column that does not resolve.
+        logger.error(f"[VirtualJoin] join_resolved_columns unavailable on '{table_name}': {e}")
+
+    try:
         announced = virtual_join_executor.announced_columns(db, table_name)
         # 🔴 A name already in `columns` is never announced again. The executor drops
         # `collide` names, but `collide` is computed against `column_types` and that is
@@ -1929,7 +2154,12 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         "map_push_ok": config.get("map_push_ok") is True,
         # Always present, `[]` when no verified join touches this table: a stable shape
         # is what lets a client read it without asking whether the key exists.
-        "virtual_columns": virtual_columns
+        "virtual_columns": virtual_columns,
+        # Same rule, and for the same reason: ALWAYS PRESENT, `[]` when there is no join.
+        # An absent key would force a client to tell "no joins on this table" apart from
+        # "this server predates the key" - a version check wearing a data field, and the
+        # seed of a fallback that outlives the server it was written for.
+        "join_resolved_columns": join_resolved_columns
     }
 
 

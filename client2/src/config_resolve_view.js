@@ -144,22 +144,29 @@ const POPULATION_TONE = { effective: 'ok', ineffective: 'warn', rejected: 'dange
 const MEASURABLE_DOMAIN = 'enrichment';
 const MEASURABLE_FIELD = 'auto_confirm';
 
+// THE FOUR TAGGERS ARE EXPORTED, NOT COPIED.
+//   They were private while this was the only surface with the discipline. `retroactive_view.js`
+//   is the second one, and the alternative to exporting them was four three-line functions
+//   duplicated into it — which is how `DUPLICATION_LEDGER.md` entries start. The tag vocabulary
+//   (`TEXT_SOURCES`) already lives here and both harnesses read it from here, so the taggers that
+//   produce those tags belong in the same place. Nothing about the config-resolve view changed.
+
 /** A string the SERVER wrote. Rendered verbatim, never reworded. */
-function srv(value) {
+export function srv(value) {
   return { src: 'server', text: String(value) };
 }
 
 /** A payload VALUE, spelled in JSON — the syntax of the file the operator edited.
  *  (`_as_json` on the server side does the same thing for the same reason.) */
-function val(value) {
+export function val(value) {
   return { src: 'value', text: JSON.stringify(value), raw: value };
 }
 
-function chrome(text) {
+export function chrome(text) {
   return { src: 'chrome', text };
 }
 
-function count(n) {
+export function count(n) {
   return { src: 'count', text: String(n), value: n };
 }
 

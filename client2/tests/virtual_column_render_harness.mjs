@@ -1,5 +1,13 @@
-// Harness — rendering `/schema`'s `virtual_columns` in the grid, and the four write funnels
-// that must NOT offer them.
+// Harness — rendering `/schema`'s `virtual_columns` in the grid, the four write funnels that
+// must NOT offer them, and (2026-07-31) which columns `/schema`'s `join_resolved_columns`
+// takes `Blank`/`Not blank` away from.
+//
+// TWO ANNOUNCEMENTS, TWO QUESTIONS, AND THE SECOND IS WIDER. `virtual_columns` says "add this
+// column"; `join_resolved_columns` says "the server resolves this column's value through a
+// join". They differ on `kind: 'collide'` — a STORED, editable column that `isVirtualColumn`
+// answers NO for and whose filter the server nonetheless evaluates against the joined
+// COALESCE. Both kinds are fixtured below, because a client that keys the filter off the
+// first announcement is silently wrong about every collide column.
 // Run: node client2/tests/virtual_column_render_harness.mjs   (no node_modules — vm sandbox)
 //
 // WHAT IT SCORES. The REAL `loadSchema` (api.js), the REAL `buildColumnDefs` (grid.js), the
@@ -116,6 +124,32 @@ const VC_YIELD = {
   right_table: 'core_wafer_map', rule: 'bonding_log_yield', unresolved_label: '미상'
 };
 
+// `join_resolved_columns` — the WIDER announcement: which columns the SERVER resolves
+// through a join. It covers BOTH kinds, and covering both here is the point:
+//
+//   `virtual_only`  wafer_id, yield_pct — also in `virtual_columns`, built by the appended
+//                   loop, read-only.
+//   `collide`       core_lot, core_slot — STORED columns, in `currentColumns`, built by the
+//                   ordinary loop, fully editable and writable, and NOT in
+//                   `virtual_columns` at all. `isVirtualColumn` says no to these, which is
+//                   exactly why the filter cannot be keyed off it.
+//
+// 🔴 THREE DIFFERENT LABELS ON PURPOSE. `unresolved_label` rides per declaration. If any
+// site reads the first entry's label, or hardcodes '미상', the per-entry checks below go red.
+const JRC_WAFER = { name: 'wafer_id', kind: 'virtual_only', rule: 'bonding_log_wafer_id',
+  right_table: 'core_wafer_map', unresolved_label: '미상' };
+const JRC_YIELD = { name: 'yield_pct', kind: 'virtual_only', rule: 'bonding_log_yield',
+  right_table: 'core_wafer_map', unresolved_label: '미상' };
+const JRC_LOT = { name: 'core_lot', kind: 'collide', rule: 'bonding_log_lot',
+  right_table: 'core_wafer_map', unresolved_label: 'NO-LOT' };
+const JRC_SLOT = { name: 'core_slot', kind: 'collide', rule: 'bonding_log_slot',
+  right_table: 'core_wafer_map', unresolved_label: '슬롯미정' };
+
+// The six AG-Grid text options that survive on a join-resolved column. Written out rather
+// than imported: this file is the independent oracle, so deriving it from the constant under
+// test would make it agree with itself.
+const TRIMMED = ['contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith'];
+
 const SCHEMA = {
   table_name: 'bonding_log',
   columns: STORED.slice(),
@@ -124,7 +158,8 @@ const SCHEMA = {
   composite_key_source: [],
   map_key_columns: [],
   map_push_ok: false,
-  virtual_columns: [VC_WAFER, VC_YIELD]
+  virtual_columns: [VC_WAFER, VC_YIELD],
+  join_resolved_columns: [JRC_WAFER, JRC_YIELD, JRC_LOT, JRC_SLOT]
 };
 
 const cell = v => ({
@@ -193,13 +228,18 @@ function runBuildColumnDefs(sources, schema) {
     currentBusinessKey: schema.business_key,
     currentCompositeKeySources: schema.composite_key_source,
     currentVirtualColumns: schema.virtual_columns,
+    currentJoinResolvedColumns: schema.join_resolved_columns || [],
     viewMode: 'pagination', allDataLoaded: true, currentSkip: 0, pendingTxEdits: {}
   });
   s.sandbox.isCellInRange = () => false;
   s.sandbox.SuggestCellEditor = function () {};
+  // `joinResolvedColumn` is NOT lifted here — it comes from the real state.js that
+  // `withState` already ran, so the predicate under test is the shipped one.
   vm.runInContext([
     fnFrom(sources.grid, 'grid.js', 'rawCellValue'),
     fnFrom(sources.grid, 'grid.js', 'numericDisplayValue'),
+    constFrom(sources.grid, 'grid.js', 'JOIN_RESOLVED_FILTER_OPTIONS'),
+    fnFrom(sources.grid, 'grid.js', 'joinResolvedFilterDef'),
     fnFrom(sources.grid, 'grid.js', 'buildColumnDefs'),
     'globalThis.__defs = buildColumnDefs();'
   ].join('\n\n'), s.ctx, { filename: 'grid.js#buildColumnDefs' });
@@ -216,6 +256,11 @@ function runWriteFunnels(sources, schema) {
     currentColumns: schema.columns.slice(),
     currentColumnTypes: schema.column_types,
     currentVirtualColumns: schema.virtual_columns,
+    // Set so the funnels run with the announcement PRESENT. `core_lot` is announced
+    // `collide` and must still be written: if anyone ever wires this list into a write
+    // guard, 9a-9d go red here instead of in production. (`crud.refuse_virtual_join_columns`
+    // is the refusal; this list is a UI marker and must never become a second one.)
+    currentJoinResolvedColumns: schema.join_resolved_columns || [],
     txModeActive: false, pendingTxEdits: {}, selectedCellsMap: {}, visibleColIndexMap: {}
   });
   s.state.gridApi = {
@@ -310,6 +355,11 @@ function makeScorer() {
 }
 
 const defOf = (defs, field) => defs.find(d => d.field === field);
+// Safe: a def with NO filterParams is a real, expected answer (an unannounced column), so
+// reaching through it must report a comparison rather than throw. A mutant that removes the
+// options should be caught by a named check, not by an exception whose message says nothing
+// about which decision broke.
+const optsOf = def => (def && def.filterParams && def.filterParams.filterOptions) || null;
 const getVal = (def, data) => def.valueGetter({ data, node: { rowIndex: 0 } });
 
 async function suite(sources) {
@@ -336,6 +386,19 @@ async function suite(sources) {
   // the write guards, where a throw is the one thing that must not happen.
   const bogus = await runLoadSchema(sources, { ...SCHEMA, virtual_columns: { a: 1 } });
   check('2b non-array key -> []', bogus.state.currentVirtualColumns, []);
+  // Same discipline on the second announcement, and it matters MORE here: `[]` is what makes
+  // the client fall back to the pre-change behaviour instead of enabling a filter against a
+  // server that cannot honour it.
+  check('2c join_resolved_columns is kept verbatim',
+    ls.state.currentJoinResolvedColumns.map(e => `${e.name}:${e.kind}`),
+    ['wafer_id:virtual_only', 'yield_pct:virtual_only', 'core_lot:collide', 'core_slot:collide']);
+  const noJrc = { ...SCHEMA };
+  delete noJrc.join_resolved_columns;
+  check('2d absent join_resolved_columns -> []',
+    (await runLoadSchema(sources, noJrc)).state.currentJoinResolvedColumns, []);
+  check('2e non-array join_resolved_columns -> []',
+    (await runLoadSchema(sources, { ...SCHEMA, join_resolved_columns: { a: 1 } }))
+      .state.currentJoinResolvedColumns, []);
 
   // [3] the defs: stored ones first and unchanged, virtual ones appended
   const defs = runBuildColumnDefs(sources, SCHEMA);
@@ -353,14 +416,85 @@ async function suite(sources) {
     [undefined, undefined]);
   check('3g virtual defs get the existing read-only class',
     defOf(defs, 'wafer_id').cellClass, 'cell-system-readonly');
-  // Filters are SERVER-side here (`fetchData` sends `getFilterModel()` as `?filters=`) and
-  // the server drops a condition for a column its model has not got. A filter UI on a virtual
-  // column would therefore leave the page unfiltered while the on-screen rows looked filtered.
-  check('3h virtual columns offer no filter at all',
-    [defOf(defs, 'wafer_id').filter, defOf(defs, 'yield_pct').filter], [false, false]);
-  check('3i stored columns keep the filters they had',
+  // ── [3h-3n] THE FILTER, which is what `join_resolved_columns` exists to decide ──────
+  //
+  // Filters here are SERVER-side (`fetchData` sends `getFilterModel()` as `?filters=`). The
+  // server now resolves an announced column through `resolved_expression` and passes it as
+  // `col_expr_override`, so a filter on one of these names genuinely narrows the query.
+  check('3h announced virtual columns are FILTERABLE, as text',
+    [defOf(defs, 'wafer_id').filter, defOf(defs, 'yield_pct').filter],
+    ['agTextColumnFilter', 'agTextColumnFilter']);
+  // `yield_pct` is declared `number`. It still gets the TEXT filter, because the server
+  // documents that an override "is always treated as text" and casts it to String — a
+  // numeric filter would send `greaterThan`/`inRange` and get lexical string comparison back.
+  check('3h2 a number-declared virtual column gets text, NOT agNumberColumnFilter',
+    defOf(defs, 'yield_pct').filter !== 'agNumberColumnFilter', true);
+  check('3h3 blank/notBlank are gone from an announced virtual column',
+    [optsOf(defOf(defs, 'wafer_id')), optsOf(defOf(defs, 'yield_pct'))], [TRIMMED, TRIMMED]);
+
+  // The other half, and the failure mode worth naming: removing them from the WRONG set.
+  // An unannounced stored column keeps AG-Grid's full default option list, which includes
+  // Blank / Not blank — there it is a real question with a real answer.
+  check('3i unannounced stored columns keep the filters they had',
     [defOf(defs, 'bond_count').filter, defOf(defs, 'pkg_id').filter],
     ['agNumberColumnFilter', 'agTextColumnFilter']);
+  check('3i2 and keep the FULL option set (no filterParams -> AG-Grid defaults)',
+    [defOf(defs, 'bond_count').filterParams, defOf(defs, 'pkg_id').filterParams],
+    [undefined, undefined]);
+
+  // [3j-3k] THE COLLIDE KIND. These are STORED columns: `isVirtualColumn` says no, they are
+  // absent from `virtual_columns` entirely, and the ordinary column loop builds them. Only
+  // the filter changes — a client that keys this off `isVirtualColumn` misses them silently.
+  check('3j a collide column gets the trimmed text filter',
+    [defOf(defs, 'core_lot').filter, optsOf(defOf(defs, 'core_lot'))],
+    ['agTextColumnFilter', TRIMMED]);
+  check('3j2 and is NOT in virtual_columns, so isVirtualColumn cannot reach it',
+    SCHEMA.virtual_columns.some(v => v.name === 'core_lot'), false);
+  // 🔴 The announcement is a UI marker, never a write guard. A collide column's value really
+  // is stored, so it stays editable and keeps its numeric editor and its validation.
+  check('3k a collide column stays EDITABLE',
+    [defOf(defs, 'core_lot').editable, defOf(defs, 'core_slot').editable], [true, true]);
+  check('3k2 a number collide column keeps its numeric CELL EDITOR while its filter is text',
+    [defOf(defs, 'core_slot').cellEditor, defOf(defs, 'core_slot').filter],
+    ['agNumberCellEditor', 'agTextColumnFilter']);
+
+  // [3l] OLD SERVER. `virtual_columns` present, `join_resolved_columns` absent — a
+  // pre-change server, which drops the condition and answers with an UNFILTERED page. The
+  // old `filter: false` is the only honest answer there and must come back on its own.
+  const oldServer = { ...SCHEMA };
+  delete oldServer.join_resolved_columns;
+  const oldDefs = runBuildColumnDefs(sources, oldServer);
+  check('3l no announcement -> virtual columns go back to no filter at all',
+    [defOf(oldDefs, 'wafer_id').filter, defOf(oldDefs, 'yield_pct').filter], [false, false]);
+  check('3l2 and a stored column is untouched by the absence',
+    [defOf(oldDefs, 'core_lot').filter, defOf(oldDefs, 'core_lot').filterParams],
+    ['agTextColumnFilter', undefined]);
+
+  // [3m-3n] THE LABEL IS PER DECLARATION. A site that renames it in config must see the new
+  // name on screen, so nothing may hardcode '미상' or reuse the first entry's label.
+  const tipOf = (d, f) => defOf(d, f).headerTooltip;
+  check('3m each column carries ITS OWN label, not the first entry\'s',
+    [tipOf(defs, 'wafer_id').includes('미상'), tipOf(defs, 'core_lot').includes('NO-LOT'),
+     tipOf(defs, 'core_slot').includes('슬롯미정'), tipOf(defs, 'core_lot').includes('미상')],
+    [true, true, true, false]);
+  // The behavioural anti-hardcode test: change the labels in the fixture and the screen has
+  // to follow. A literal '미상' in the source passes 3m and fails this.
+  const renamedLabels = { ...SCHEMA, join_resolved_columns: SCHEMA.join_resolved_columns
+    .map(e => ({ ...e, unresolved_label: `LBL-${e.name}` })) };
+  const renamedDefs = runBuildColumnDefs(sources, renamedLabels);
+  check('3n renaming the label in config moves it on screen',
+    [tipOf(renamedDefs, 'wafer_id').includes('LBL-wafer_id'),
+     tipOf(renamedDefs, 'core_lot').includes('LBL-core_lot'),
+     tipOf(renamedDefs, 'wafer_id').includes('미상')],
+    [true, true, false]);
+  // A malformed/missing label must not print 'undefined' at the operator.
+  const noLabel = { ...SCHEMA,
+    join_resolved_columns: [{ name: 'wafer_id', kind: 'virtual_only' }] };
+  const noLabelDefs = runBuildColumnDefs(sources, noLabel);
+  check('3n2 a label-less entry still filters, and says nothing rather than "undefined"',
+    [defOf(noLabelDefs, 'wafer_id').filter,
+     tipOf(noLabelDefs, 'wafer_id').includes('undefined')],
+    ['agTextColumnFilter', false]);
 
   // [4] THE VALUE DOMAIN: a `number` virtual column carrying the unresolved label
   const yieldDef = defOf(defs, 'yield_pct');
@@ -498,10 +632,42 @@ const DEFECTS = [
       `  if (val !== null && val !== undefined) {`, 'empty-guard') })],
   ['fall back to the default sort comparator', s => ({ ...s,
     grid: sub(s.grid, `      ...(isNumeric ? {`, `      ...(false ? {`, 'comparator') })],
-  ['offer a filter the server will silently ignore', s => ({ ...s,
-    grid: sub(s.grid, `      filter: false,\n      resizable: true,`,
-      `      filter: isNumeric ? 'agNumberColumnFilter' : 'agTextColumnFilter',\n      resizable: true,`,
-      'filter') })],
+  // ── the 2026-07-31 round: which columns lose blank/notBlank, and on whose say-so ──────
+  ['leave blank/notBlank on a join-resolved column', s => ({ ...s,
+    grid: sub(s.grid, `    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },\n`, ``,
+      'keep-blank') })],
+  // Both kinds, because the numeric hazard is identical on each: the server casts the
+  // override to String, so a numeric predicate would be answered lexically.
+  ['use a number filter on a numeric join-resolved column', s => ({ ...s,
+    grid: sub(sub(s.grid,
+      `      ...filterDef,\n      resizable: true,`,
+      `      ...filterDef,\n      ...(isNumeric ? { filter: 'agNumberColumnFilter' } : {}),\n      resizable: true,`,
+      'number-filter-virtual'),
+      `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));`,
+      `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));\n`
+      + `      if (colType === 'number') colDef.filter = 'agNumberColumnFilter';`,
+      'number-filter-stored') })],
+  // The exact error the brief warned about: `isVirtualColumn` cannot see a collide column.
+  ['key the filter off isVirtualColumn instead of the announcement', s => ({ ...s,
+    grid: sub(s.grid, `    const resolvedEntry = joinResolvedColumn(col);\n\n    const colDef = {`,
+      `    const resolvedEntry = null;\n\n    const colDef = {`, 'wrong-predicate') })],
+  ['enable the filter even when the server never announced it', s => ({ ...s,
+    grid: sub(s.grid, `    const filterDef = resolvedEntry\n      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)\n      : { filter: false, headerTooltip: baseTooltip };`,
+      `    const filterDef = joinResolvedFilterDef(resolvedEntry || vc, baseTooltip);`,
+      'old-server') })],
+  ['hardcode the unresolved label instead of reading the entry', s => ({ ...s,
+    grid: sub(s.grid, `    ? entry.unresolved_label : '';`, `    ? '미상' : '미상';`, 'hardcode') })],
+  // 🔴 The design line the brief drew: this marker must never become a write guard.
+  ['make the announcement decide editability', s => ({ ...s,
+    grid: sub(s.grid, `      editable: !isSystem,`,
+      `      editable: !isSystem && !resolvedEntry,`, 'write-guard') })],
+  ['let the announcement replace the numeric cell editor', s => ({ ...s,
+    grid: sub(s.grid, `    if (colType === 'number') {\n      colDef.cellEditor = 'agNumberCellEditor';`,
+      `    if (colType === 'number' && !resolvedEntry) {\n      colDef.cellEditor = 'agNumberCellEditor';`,
+      'editor') })],
+  ['accept a non-array join_resolved_columns straight into state', s => ({ ...s,
+    api: sub(s.api, `Array.isArray(data.join_resolved_columns)\n      ? data.join_resolved_columns : []`,
+      `data.join_resolved_columns || []`, 'non-array-jrc') })],
   ['let a colliding name produce a second def', s => ({ ...s,
     grid: sub(s.grid, `    if (state.currentColumns.includes(col)) return;`, ``, 'collide') })],
   ['accept a malformed announcement entry', s => ({ ...s,

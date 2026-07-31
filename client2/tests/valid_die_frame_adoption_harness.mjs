@@ -76,7 +76,10 @@ const SYMBOLS = [
   'seatingSnapshot', 'reseatCellsToStoredCoords',
   'applyRoutedPreset',                    // F5c — the routing consumer
   'parseValidDieRef', 'validDieBasis', 'isValidDieAt', 'validDieChainError', 'validDieRefDisplay',
-  'projectCellsToPhys', 'resolveValidDie',
+  // [rule 6] projectCellsToPhys is now STATED IN TERMS OF the mm projection -- both or neither.
+  // Omitting the sibling throws before assertion one, and a runner that only knows red/green
+  // reports that as "still red" while ~200 assertions run zero times.
+  'projectCellsToWaferMm', 'projectCellsToPhys', 'resolveValidDie',
   // The Push-gate classifier. `renderGridCanvas` is sliced too, NOT modelled:
   // `classifyUnsavableCells`'s domain is whatever the real renderer put in `gridCells2D`, and
   // that domain is wider than the visual grid (it draws to -1x..2x). A harness that re-derived

@@ -172,7 +172,11 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
 
     cols = [getattr(model, k) for k in rule["decision_key"]]
     tgt = getattr(model, target_field)
-    non_blank = and_(tgt.isnot(None), cast(tgt, String) != "")
+    # THE shared notBlank spelling, not a third copy. `cast(..., String)` stays because
+    # `target_field` can name a numeric column and `crud.not_blank_sql_condition` compares
+    # against `''` - the caller owns making the expression text-typed (documented on that
+    # helper). This is byte-for-byte the predicate that used to be written out here.
+    non_blank = crud.not_blank_sql_condition(cast(tgt, String))
 
     out = {}
     items = list(key_raw_values.items())

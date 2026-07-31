@@ -573,7 +573,8 @@
       transition: transform 0.15s ease;
       display: inline-block;
     }
-    #config-resolve-value {
+    #config-resolve-value,
+    #retroactive-value {
       display: inline-flex;
       align-items: baseline;
       gap: 6px;
@@ -709,6 +710,118 @@
       gap: 6px;
       flex-wrap: wrap;
       align-items: center;
+    }
+    /* 카운트/큐잉 결과 상자의 톤. 색만 바꾼다 — 문장은 서버 것이다.
+       warn = 표본이 예산에서 잘렸다(수가 하한이다) · ok = 큐에 들어갔다. */
+    .cfg-dryrun[data-tone="warn"] { border-color: var(--warning); }
+    .cfg-dryrun[data-tone="ok"] { border-color: var(--success); }
+    /* 측정 이후 입력이 바뀐 상자 — 지우지 않고 「지금 요청의 것이 아님」으로 낮춘다.
+       확인 대화상자에는 애초에 실리지 않는다(뷰 모델이 구조적으로 막는다). */
+    .cfg-dryrun[data-tone="stale"] {
+      border-style: dashed;
+      border-color: var(--border);
+      opacity: 0.72;
+    }
+    .retro-stale { color: var(--warning); font-weight: 600; }
+
+    /* ── 소급 적용 한 줄 (Overview 상단, 네 번째 줄) — Queue 25 ──
+       위 F9 블록의 cfg-* 어휘를 그대로 입는다. 여기 있는 규칙은 그 어휘에 없는 것
+       ― 파라미터 입력칸과 버튼 줄 ― 뿐이다. 연산 카드의 테두리 색은 「이 연산이 지우는가 ·
+       중단하면 이어서 되는가」에서 오고, 그 두 사실을 설명하는 **문장은 서버가 보낸다**. */
+    .retro-op { gap: 10px; }
+    .retro-op[data-tone="warn"] { border-color: var(--warning); }
+    .retro-op[data-tone="danger"] { border-color: var(--danger); }
+    .retro-fact {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .retro-params {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--border);
+    }
+    .retro-field {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    /* help 문구는 입력칸 안이 아니라 **다음 줄 전체**를 쓴다. placeholder에 넣으면 폭에 잘리고
+       타이핑하는 순간 사라진다 — 잘린 설명은 없느니만 못하다. */
+    .retro-help { flex-basis: 100%; }
+    /* 「가독성은 기능이다」 — 입력칸은 이 블록의 본문(`.cfg-detail` 0.88rem)보다 작지 않다.
+       앞선 판본은 0.86rem을 적어 두고 주석으로는 「본문 크기」라고 주장했다. 주석이 규칙보다
+       관대하면 그 주석은 규칙을 지키지 않아도 되는 허가로 읽힌다. */
+    .retro-input {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      padding: 6px 10px;
+      min-width: 260px;
+      color: var(--text);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .retro-input:focus { border-color: var(--accent); }
+    .retro-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    /* 이 줄에는 **쓰기 촉발**이 있다. 위 드라이런 버튼보다 크게 둔다 — 누르기 전에 읽히는
+       것이 이 표면의 요점이고, 작은 글씨는 없느니만 못하다. */
+    .retro-actions .cfg-btn { padding: 6px 16px; font-size: 0.84rem; }
+    .retro-actions .glass-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* 🔴 이 화면의 목적은 「이 쓰기가 몇 행을 건드리며 그 수를 얼마나 믿을 수 있는가」다.
+       그런데 앞선 판본은 그 **두 사실을 상자 안에서 가장 작은 글씨**로 뒀다 — 숫자가
+       `.cfg-jsonval`(0.82rem, 원래 JSON 설정값 되읽기용 클래스)에, 정확도 선언이
+       `.cfg-chip`(0.74rem)에 들어가 주변 산문(0.88rem)보다 작았다. 아무것도 줄이지 않고
+       이 둘만 키운다. */
+    .retro-count-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .retro-count-label {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .retro-count-value {
+      font-family: var(--font-mono);
+      font-size: 1.45rem;
+      font-weight: 800;
+      line-height: 1.15;
+      color: var(--accent);
+    }
+    /* 정확도 선언은 숫자와 같이 읽혀야 하므로 산문보다 작지 않다. */
+    .cfg-chip.retro-kind { font-size: 0.9rem; padding: 2px 10px; }
+
+    /* 서버가 라벨을 붙여 준 두 번째 숫자들 · 큐에 들어간 파라미터.
+       쌍마다 자기 상자를 갖는다 — 구분자 없는 한 줄에서는 값이 다음 라벨에 붙어 읽힌다. */
+    .retro-extras {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .retro-extra {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-inset);
     }
 
     /* ── Overview 탭 (좌패널 전폭 — 4 파이프라인 확장 카드) ── */
@@ -1071,6 +1184,24 @@
               </span>
             </summary>
             <div class="cfg-body" id="config-resolve-body"></div>
+          </details>
+          <!-- 소급 적용 한 줄 (Queue 25): 「규칙보다 오래된 데이터에 지금 적용하면 몇 건인가」.
+               다섯 연산 전부 CLI로만 존재했고 어드민에는 화면이 없었다. 위의 「설정 반영」과
+               **같은 문법**으로 읽히도록 details/summary 구조를 그대로 쓴다 — 새 페이지도
+               모드도 모달도 없다. 연산당 표면은 「건수 하나 · 버튼 하나」가 전부다.
+               ⚠️ 숫자·문장·한정어는 전부 서버 소유다. admin.js는 서버가 라벨을 붙여 준
+               숫자만 그리고, 어떤 수가 근사인지 스스로 판정하지 않는다. -->
+          <details id="retroactive" class="cfg-block">
+            <summary class="recorrection-line" id="retroactive-summary">
+              <span class="rc-label">소급 적용</span>
+              <span class="rc-value" id="retroactive-value">—</span>
+              <span class="rc-sub" id="retroactive-sub">불러오는 중…</span>
+              <span class="cfg-toggle">
+                <!-- 문구는 admin.js가 retroactive_view.js의 RETRO_CHROME에서 채운다. -->
+                <span id="retroactive-hint"></span><span class="cfg-caret" aria-hidden="true">▾</span>
+              </span>
+            </summary>
+            <div class="cfg-body" id="retroactive-body"></div>
           </details>
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->

@@ -88,7 +88,8 @@ function buildSandbox(mutator) {
     fn('buildValidDieTemplate'), fn('validDieRefDisplay'), fn('validDieRefForPush'),
     fn('validDieRefFromControls'), fn('syncValidDieRefControls'), fn('validDieRefPayload'),
     fn('applyValidDieRef'), fn('validDieChainError'),
-    fn('projectCellsToPhys'), fn('currentFrame'), fn('resolveFrame'),
+    // [rule 6] projectCellsToPhys is stated in terms of the mm projection -- both or neither.
+    fn('projectCellsToWaferMm'), fn('projectCellsToPhys'), fn('currentFrame'), fn('resolveFrame'),
   ];
   let code = parts.join('\n\n');
   if (mutator) {

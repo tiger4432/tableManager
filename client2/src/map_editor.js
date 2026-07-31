@@ -1789,6 +1789,34 @@ function gridDimNum(key, domEl, dflt) {
   return v || dflt;
 }
 
+// `physNum`의 쌍둥이 — **같은 조회 순서를 돌지만 찾은 것을 그대로 보고한다.**
+//
+// 🔴 **기본값 뒤에 선 관문은 원리적으로 작동하지 않는다.** `physNum`은 `return v || dflt`로
+//    끝나므로 그 출력만 보는 검사는 「선언 없음」·「파싱 불가」·「0으로 선언」·「진짜 그 값」을
+//    구별할 수 없다 — 넷이 전부 같은 수로 도착한다. 실측(QA): 소스 메타에 `phys_chip_x`가
+//    없거나 `""`/`"abc"`면 **타깃의 화면 피치**로 접혀서 600칸 중 570칸이 틀린 칸에 앉는데
+//    `chipX > 0` 검사는 그대로 통과했다. 음수만 걸렸다.
+// 🔴 그래서 이 함수는 **수를 돌려주지 않고 사실을 돌려준다.** 관문은 값이 아니라 `source`를
+//    읽는다. `physNum` 자체는 손대지 않는다 — 그 폴백 규약에 모듈 전체가 얹혀 있다.
+//
+// 반환 `{ value, source }`:
+//   'frame'      — 프레임 창(소스 메타)이 쓸 수 있는 수를 선언했다
+//   'screen'     — 프레임은 말이 없고 화면 컨트롤이 값을 냈다  ← 규칙 6에서 이것이 위험이다
+//   'unparsable' — 값은 있는데 수가 아니다 (value = null)
+//   'absent'     — 어느 쪽도 값을 내놓지 않는다 (value = null)
+function physDeclaration(key, domEl) {
+  const read = (raw, source) => {
+    if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? { value: n, source } : { value: null, source: 'unparsable' };
+  };
+  if (physFrameOverride && Object.prototype.hasOwnProperty.call(physFrameOverride, key)) {
+    const fromFrame = read(physFrameOverride[key], 'frame');
+    if (fromFrame) return fromFrame;
+  }
+  return read(domEl ? domEl.value : null, 'screen') || { value: null, source: 'absent' };
+}
+
 function withPhysFrame(frame, fn) {
   const prev = physFrameOverride;
   physFrameOverride = frame || null;
@@ -1865,7 +1893,15 @@ function getDieIndex(colVisual, rowVisual, cols, rows, rotation, side) {
   const xp = Math.round(xRot + (Math.abs(Math.round(cols)) % 2 === 0 ? 0.5 : 0));
   const yp = Math.round(yRot + (Math.abs(Math.round(rows)) % 2 === 0 ? 0.5 : 0));
 
-  return { x: xp, y: yp };
+  // 🔴 [규칙 6] `xCells`/`yCells`는 **반올림 직전의 그 값**이다 — 웨이퍼 중심에서 몇 칸인지,
+  //    소수점까지. 밀리미터가 아니다(§묘비 ⑫): 여기에 `chipX`/`chipY`를 곱한 것이 mm다.
+  //    새 유도가 아니라 **이 함수가 이미 계산해 놓고 버리던 조각**이며, 이것을 돌려주는 것이
+  //    오버레이 전용 변환식을 쓰지 않고 규칙 6을 얻는 유일한 방법이다:
+  //    반올림된 `xp`만으로는 mm를 되만들 수 없다. 오프셋의 **칸 미만 잔여**(칩 피치로 나눈
+  //    나머지)가 반올림에 삼켜져 있고, 그 잔여를 다시 세우려면 회전·면 부호표를 두 번째로
+  //    쓰게 된다 — 이 도메인에서 그 표는 이미 여러 번 틀렸다.
+  // ⚠️ 소비자는 `.x`/`.y`만 읽으면 종전과 완전히 같다(가산 필드).
+  return { x: xp, y: yp, xCells: xRot, yCells: yRot };
 }
 
 function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
@@ -1907,6 +1943,72 @@ function getCanvasCellFromDieIndex(xp, yp, cols, rows, rotation, side) {
   const rowVisual = yScreenWafer + (visualRows - 1) / 2.0 - shiftY;
 
   return { c: Math.round(colVisual), r: Math.round(rowVisual) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [규칙 6] **웨이퍼 중심 기준 물리 밀리미터.** 다이 인덱스와 길이 사이의 유일한 다리다.
+//
+// 🔴 **이것은 §0 규약 ⑤가 금지한 그 곱셈이 아니다.** 금지된 것은 `dbX * 피치`다 —
+//    저장 좌표는 `c − box.minC + startX`, 즉 **오리진(START) 기준 칸수**라 원점이 웨이퍼
+//    중심이 아니고 bbox·START에 실려 있다. 거기에 피치를 곱하면 없는 결함이 만들어진다
+//    (그렇게 추론한 라운드가 실제로 기각됐다).
+//    다이 인덱스는 **다른 양**이다: `getDieIndex`가 만드는 수는 이미 「웨이퍼 중심에서 몇
+//    칸」이고 그 칸의 크기가 곧 칩 피치다(`35e84c3`가 원점을 격자 중심에서 웨이퍼 중심으로
+//    옮긴 이유가 이것이다). 렌더가 웨이퍼 원을 `effectiveRadius / chipX` 칸으로 그리는 그
+//    환산과 **같은 환산**이고, 새 유도가 아니다.
+//
+// 🔴 **패리티는 `getDieIndex`의 그 항이다.** 격자 칸 수가 짝수면 웨이퍼 중심이 칸 경계에
+//    앉으므로 인덱스 0의 다이는 중심에서 반 칸 떨어져 있다. 이 반 칸을 빼지 않으면 짝수
+//    격자와 홀수 격자를 겹칠 때 **모든 셀이 반 칸씩** 밀린다(실측 축: 소스 rows=59(홀),
+//    타깃 rows=30(짝)). 두 함수가 같은 식을 인라인으로 갖는 이유는 §getDieIndex와 같다 —
+//    이 둘을 슬라이스해 실행하는 하네스가 모듈 전역 의존 하나에 죽는다.
+//
+// ⚠️ 곱하는 피치는 **선언된(회전 전) 물리 피치**다. `getTransformedPhysicalConfig`가
+//    90/270에서 스왑한 화면 피치가 아니다 — `getDieIndex`가 이미 화면을 물리 축으로
+//    되돌려 놓았고, 그 결과 x는 `chipX`의 격자에, y는 `chipY`의 격자에 산다.
+//
+// 🔴 **격자의 기준점은 `getDieIndex`에게 묻는다 — 다시 유도하지 않는다.** 아래 `L`은 캔버스
+//    칸 (0,0) 하나를 그 함수에 넣어 얻은 답이고(`ix0`는 반올림된 인덱스, `ux0`는 반올림 전
+//    연속값), 다이 격자는 간격 1의 정수 격자이므로 이 기준점 **하나가 격자 전체를 정한다**.
+//    패리티·회전 부호표·오프셋 부호표가 여기에 한 줄도 없는 이유가 이것이다: 전부
+//    `getDieIndex` 안에 있고, 이 모듈에는 그 함수가 하나뿐이다.
+// ═══════════════════════════════════════════════════════════════════════════════
+function frameDieLattice(frame) {
+  const f = frame || currentFrame();
+  return withPhysFrame(f, () => {
+    const p = getDieIndex(0, 0, f.cols, f.rows, f.rotation, f.side);
+    return {
+      ix0: p.x, iy0: p.y, ux0: p.xCells, uy0: p.yCells,
+      chipX: physNum('chipX', el.physChipX, 2.5),
+      chipY: physNum('chipY', el.physChipY, 2.5),
+    };
+  });
+}
+
+// 다이 인덱스 → 그 다이 **중심**의 절대 웨이퍼 mm.
+function dieIndexToWaferMm(ix, iy, L) {
+  if (!L || !(L.chipX > 0) || !(L.chipY > 0)) return null;
+  return { mmX: (L.ux0 + (ix - L.ix0)) * L.chipX, mmY: (L.uy0 + (iy - L.iy0)) * L.chipY };
+}
+
+// 위의 역함수 — 단 **나머지를 버리지 않는다.**
+//   몫  = 그 점을 담는 다이 인덱스 (`getDieIndex`가 그 칸에 매기는 바로 그 번호)
+//   나머지 = 그 다이 **안에서의** 위치, `[0, 피치)` 밀리미터.
+//
+// 🔴 나머지는 **절대 길이라서 피치에 의존한다.** 7mm 칩 안의 3mm와 15mm 칩 안의 3mm는 다른
+//    자리다. 그래서 칩 내 좌표는 맵 사이에서 그대로 옮길 수 없고 **반드시 절대 mm를 거쳐
+//    다시 나눠야** 한다. 지금 그리는 것은 없지만(결함 in-chip 표기가 앞으로 온다) 여기서
+//    버리면 그 경로를 나중에 통째로 다시 열어야 한다.
+function waferMmToDieCell(mmX, mmY, L) {
+  if (!L || !(L.chipX > 0) || !(L.chipY > 0)) return null;
+  const dx = mmX / L.chipX - L.ux0;
+  const dy = mmY / L.chipY - L.uy0;
+  const nx = Math.round(dx);
+  const ny = Math.round(dy);
+  return {
+    ix: L.ix0 + nx, iy: L.iy0 + ny,
+    rx: (dx - nx + 0.5) * L.chipX, ry: (dy - ny + 0.5) * L.chipY,
+  };
 }
 
 function getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
@@ -5894,7 +5996,7 @@ async function pushMapData() {
       // [재설계 v2] Push 성공 = 이 프레임의 편집이 서버에 적재됨 (뒤로가기 경고 해제)
       framePushed = true;
       // [F4] `serverRead` — a successful push is FIRST-HAND evidence about server state.
-      // `validDieListCache.delete` just below already drops its cache on exactly this
+      // `mapKeyListCache.delete` just below already drops its cache on exactly this
       // ground, and `serverCellKeys` above is refreshed on it too. The material-map
       // presence cache was simply a THIRD cache nobody had wired to that evidence.
       notifyMapContext({ serverRead: true });
@@ -5902,7 +6004,12 @@ async function pushMapData() {
       // [F5] 방금 만든 템플릿이 지정 칸 자동완성에 **없는** 상태를 없앤다. 캐시가
       // `switchTable`에서만 비워져 있었는데, 템플릿을 만들고 곧바로 다른 맵에서 지정하는
       // 흐름은 같은 테이블에 머문다(가장 흔한 동선).
-      validDieListCache.delete(selectedTable);
+      // ⚠️ `dde342c` folded this cache into `populateMapKeyDatalist` and renamed it, but
+      // missed this call site — `validDieListCache` was never declared, so every
+      // successful Push threw a ReferenceError here and everything below (including the
+      // Split Registry legend save) never ran. Found by the user on 2026-07-31, in the
+      // live editor; no harness could see it because they slice functions, not the module.
+      mapKeyListCache.delete(selectedTable);
 
       // [Split Registry] 맵과 계획의 동행 — push 성공 시 legend(=DOE) 일괄 서버 저장.
       //
@@ -7534,7 +7641,12 @@ function popMapFrame() {
 // probe 관문(`probeAlignDeclaration`)도 함께 사라졌다 — 물어볼 대상이 없어졌기 때문이다.
 // ====================================================
 const OVERLAY_COLORS = ['#ef4444', '#3b82f6', '#f59e0b', '#a855f7', '#14b8a6', '#ec4899'];
-let overlayLayers = [];        // { id, sourceTable, sourceKey, cells:Map(physKey->val), count, color, visible, status, alignApplied, truncated }
+// { id, sourceTable, sourceKey, rawCells, frame, mmItems, color, visible, status, align,
+//   alignApplied, truncated, cap,
+//   ── 좌석(§reseatOverlayLayer, 화면 프레임의 함수) ──
+//   items:Map(dieKey -> [{val, rx, ry, mmX, mmY, srcX, srcY}]) · cells:Map(dieKey -> val|null)
+//   count(칩) · cellCount(칸) · fanout · multiCells · outside · seatNote · seatAxes · seatChip }
+let overlayLayers = [];
 let activeOverlayLayers = [];  // 그리기 대상(visible)만 추린 캐시 — 렌더 루프에서 재계산 금지
 let overlaySeq = 1;
 
@@ -7543,12 +7655,49 @@ function recomputeActiveOverlays() {
 }
 
 // 셀 하나에 대한 오버레이 마커 — 레이어별 색 점을 우상단에 나란히 찍는다.
+//
+// 🔴 [규칙 6] **1:1이면 종전과 한 픽셀도 다르지 않다.** 한 칸이 소스 여러 칸을 받을 때만
+//    (타깃 셀이 더 굵을 때) 점을 **하나로 합치지 않고 각자의 칩 내 위치에 따로** 찍는다.
+//    합쳐 버리면 6칩을 받은 칸과 1칩을 받은 칸이 화면에서 구별되지 않는다 — 값 하나를
+//    자신 있게 보여 주면서 나머지를 버리는 그 상태다.
+// ⚠️ 새 UI 영역·모드·모달이 아니다. 이미 있는 마커 레이어에 **점의 수와 자리**만 늘어난다.
 function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
   const r = Math.max(1.5, Math.min(cellW, cellH) * 0.13);
   let idx = 0;
   for (let i = 0; i < activeOverlayLayers.length; i++) {
     const layer = activeOverlayLayers[i];
-    if (!layer.cells.has(coordKey)) continue;
+    const list = layer.items ? layer.items.get(coordKey) : null;
+    if (!list || list.length === 0) continue;
+
+    // 칸 안에 여럿 — 각자의 나머지(칩 내 mm)가 그대로 자리가 된다.
+    // 칸이 점 여럿을 담기에 너무 작으면 대표를 고르는 대신 **종전 한 점**으로 물러난다
+    // (자리를 지어내지 않는다 — 목록은 레이어 행의 수가 계속 말한다).
+    const roomy = list.length > 1 && cellW >= 10 && cellH >= 10 && layer.seatAxes && layer.seatChip;
+    if (roomy) {
+      const rr = Math.max(1.2, Math.min(cellW, cellH) * 0.10);
+      const A = layer.seatAxes;
+      for (let k = 0; k < list.length; k++) {
+        const it = list[k];
+        // 물리 축 기준 칸 중심으로부터의 비율 → 화면 축 비율.
+        // 🔴 회전식을 여기에 다시 쓰지 않는다. `A`는 `getCanvasCellFromDieIndex`가
+        //    (0,0)/(1,0)/(0,1)에 대해 내놓은 답의 차분이다(§reseatOverlayLayer).
+        const fx = it.rx / layer.seatChip.x - 0.5;
+        const fy = it.ry / layer.seatChip.y - 0.5;
+        const sx = fx * A.xc + fy * A.yc;
+        const sy = fx * A.xr + fy * A.yr;
+        const cx = x0 + (0.5 + sx) * cellW;
+        const cy = y0 + (0.5 + sy) * cellH;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, 0, 2 * Math.PI);
+        ctx.fillStyle = layer.color;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+      }
+      continue;
+    }
+
     const cx = x0 + cellW - r - 1.5 - idx * (r * 2 + 1.5);
     const cy = y0 + r + 1.5;
     if (cx < x0) break; // 셀이 너무 작아 더 못 찍음
@@ -7664,26 +7813,133 @@ function frameAxesKey(rf) {
 }
 
 // ── 변환의 전부 ──────────────────────────────────────────────
-// 소스 **원본 셀** → 물리 키 Map.
+// 소스 **원본 셀** → 다이 인덱스 + 물리 mm 항목 배열.
 // 아래 두 줄은 메인 로드(loadExistingMap의 셀 루프)와 **같은 함수·같은 인자 순서**이며,
 // 다른 점은 단 하나 — 규격을 소스 자신의 프레임에서 읽는다는 것뿐이다.
-// 결과인 물리 키는 화면 컨트롤에 불변이므로, 이후 사용자가 무엇을 돌리든
-// 렌더가 메인 맵과 오버레이를 **같은 규칙으로 함께** 움직인다.
-function projectCellsToPhys(cells, frame) {
+//
+// 🔴 mm는 **세 번째 변환이 아니다.** 회전·반전·오프셋은 전부 `getDieIndex` 안에서 끝나고,
+//    여기서 더하는 것은 「그 칸 번호가 몇 mm인가」라는 **단위 환산 하나**뿐이다
+//    (§dieIndexToWaferMm). 오버레이 전용 변환식을 쓰지 않는다는 계약이 이 구조다.
+// ⚠️ 피치가 없으면 `mm`이 null인 항목이 나온다 — 여기서 거절하지 않는다. 거절 문구를 쓰는
+//    자리는 호출자(오버레이)이고, 유효 다이 해석은 mm를 아예 보지 않기 때문이다.
+function projectCellsToWaferMm(cells, frame) {
   const f = frame || currentFrame();
   const { cols, rows, rotation, side, invertY, startX, startY } = f;
   return withPhysFrame(f, () => {
-    const map = new Map();
+    const chipX = physNum('chipX', el.physChipX, 2.5);
+    const chipY = physNum('chipY', el.physChipY, 2.5);
+    const out = [];
     (Array.isArray(cells) ? cells : []).forEach(c => {
       const xn = Number(c.x);
       const yn = Number(c.y);
       if (!Number.isFinite(xn) || !Number.isFinite(yn)) return;
       const cell = getCanvasCellFromDb(xn, yn, cols, rows, rotation, side, invertY, startX, startY);
       const p = getDieIndex(cell.c, cell.r, cols, rows, rotation, side);
-      map.set(`${p.x}_${p.y}`, (c.val === undefined || c.val === null) ? '' : String(c.val));
+      out.push({
+        srcX: xn, srcY: yn,
+        ix: p.x, iy: p.y,
+        // 🔴 mm는 **반올림 전** 연속값에서 만든다(`p.xCells`). 반올림된 `p.x`에서 되만들면
+        //    오프셋의 칸 미만 잔여가 빠져 모든 셀이 그만큼 밀린다 — 실측: 이 fixture에서
+        //    1836칸 중 1789칸이 틀린 타깃 칸에 앉았다.
+        mm: (chipX > 0 && chipY > 0) ? { mmX: p.xCells * chipX, mmY: p.yCells * chipY } : null,
+        val: (c.val === undefined || c.val === null) ? '' : String(c.val),
+      });
     });
-    return map;
+    return out;
   });
+}
+
+// 소스 **원본 셀** → 물리 키 Map. 시그니처도 의미도 종전 그대로다(유효 다이 해석의 입력).
+// 🔴 **같은 수를 두 번 계산하지 않는다** — 위 함수가 이미 만든 인덱스를 키로 옮길 뿐이다.
+//    마지막 값이 이긴다는 충돌 규약도 배열 순서가 곧 삽입 순서라 종전과 같다.
+function projectCellsToPhys(cells, frame) {
+  const map = new Map();
+  projectCellsToWaferMm(cells, frame).forEach(it => { map.set(`${it.ix}_${it.iy}`, it.val); });
+  return map;
+}
+
+// ── [규칙 6] 물리 mm 항목을 **타깃 프레임의 칸에 앉힌다** ─────────────────────────
+// 반환 `Map(다이키 → 항목 배열)`. 🔴 **대표값을 고르지 않는다**(사용자 확정 ⓒ「전부 나열」):
+// 타깃 피치가 소스보다 굵으면 한 칸이 소스 여러 칸을 받는데(실측 최대 6), 대표를 고르면
+// 나머지를 조용히 버리면서 **한 값을 자신 있게** 보여 준다.
+// 항목에 실리는 `rx`/`ry`는 그 칸 **안에서의** mm 위치다(§waferMmToDieCell).
+//
+// ⚠️ 앉히는 기준은 **지금 화면의 프레임**이다. 렌더 루프가 읽는 좌표계가 그것이기 때문이고,
+//    그래서 화면 규격이 바뀌면 `syncOverlayGeometry`가 이 함수를 다시 돌려야 한다
+//    (종전 다이 인덱스 키는 화면에 불변이었지만 **mm 좌석은 피치의 함수다**).
+function seatWaferMmInFrame(items, frame) {
+  const f = frame || currentFrame();
+  const seated = new Map();
+  const L = frameDieLattice(f);
+  let duplicates = 0;
+  (Array.isArray(items) ? items : []).forEach(it => {
+    if (!it.mm) return;
+    const t = waferMmToDieCell(it.mm.mmX, it.mm.mmY, L);
+    if (!t) return;
+    const key = `${t.ix}_${t.iy}`;
+    const list = seated.get(key);
+    const entry = { val: it.val, rx: t.rx, ry: t.ry, mmX: it.mm.mmX, mmY: it.mm.mmY,
+                    srcX: it.srcX, srcY: it.srcY };
+    if (!list) { seated.set(key, [entry]); return; }
+    // 🔴 **같은 물리 위치의 같은 값은 정보가 아니다** — 소스에 같은 행이 두 번 있을 뿐이다.
+    //    접어 넣지 않으면 피치가 **같은** 맵도 fanout 2가 되어 「여러 값」으로 가져오기에서
+    //    제외된다(종전 코드는 마지막 값을 그대로 썼다). 위치가 같은데 값이 다르면 그것은
+    //    중복이 아니라 **충돌**이므로 둘 다 남긴다 — 그때 고르는 것이 곧 버리는 것이다.
+    const twin = list.find(e => e.mmX === entry.mmX && e.mmY === entry.mmY);
+    if (twin && twin.val === entry.val) { duplicates++; return; }
+    list.push(entry);
+  });
+  return { seated, duplicates };
+}
+
+// 지금 화면의 캔버스가 만들어 내는 다이 키 — `all`(격자의 모든 칸)과 `inside`(웨이퍼/유효
+// 다이 안쪽 칸). 🔴 **「격자 밖」의 유일한 근거이고, 그 근거는 `inside`다.**
+//
+// 🔴 종전 판정 `0 <= px < cols`는 다이 인덱스의 원점이 격자 중심이던 시절의 술어이고
+//    `35e84c3` 이후로 거짓이다 — 실측: 소스와 타깃 프레임이 **완전히 같은** 오버레이에서
+//    402칩 중 277칩을 「격자 밖」으로 보고했다(진실은 0).
+// 🔴 **세는 집합과 문장이 같은 인구를 가리켜야 한다.** 「가져오기에서 제외됩니다」라고 말하려면
+//    [↓ 가져오기]가 실제로 거르는 집합을 세야 한다. 그 집합은 `gridCells2D[].inside`,
+//    즉 `isValidDieAt(…, isCellInsideWaferFast(…))`이다. 격자 안이지만 원 밖인 칸이 있으므로
+//    `all`로 세면 0을 보고하면서 가져오기는 조용히 건너뛴다(QA 실측: 297칸 중 36칸).
+// 🔴 **프레임 창을 열지 않는다.** 창 안에서는 `isValidDieAt`이 원으로 답하므로(§isValidDieAt)
+//    타깃 **자신의** 마스크가 빠져 버린다 — 그러면 이 집합은 가져오기가 쓰는 그 집합이 아니다.
+//    좌석 프레임은 언제나 화면이고 화면 값은 창 없이 그대로 읽힌다.
+// ⚠️ 판정 좌표계는 700x700 픽셀인데(§isCellInsideWaferFast) **그 술어는 크기 불변**이다:
+//    `cellW`가 분자·분모에서 상쇄된다. 실측(캔버스 200/431/700/1024/1600 정사각 + 900x380
+//    비정사각) 600칸 전부 판정이 같다. 그래서 여기서 센 수는 렌더가 볼 수와 같다.
+// ⚠️ 격자 전수 순회다(실측 40x40 = 13ms, 100x100 = 59ms). 레이어마다 다시 돌면 규격 입력
+//    한 타에 6배가 붙으므로 캐시한다. 키는 **해석된 축 전부 + 마스크 세대**다 — 마스크는
+//    프레임과 따로 바뀌므로 축만으로는 무효화되지 않는다.
+// ⚠️ 저작 중(`template`)에는 캐시하지 않는다. 붓질은 세대 번호를 올리지 않아 **어떤 키로도**
+//    무효화되지 않기 때문이다.
+let seatKeyCache = { key: '', sets: null };
+function canvasSeatKeys() {
+  const f = resolveFrame(currentFrame());
+  const basis = validDieBasis();
+  const ck = `${frameAxesKey(f)}|${basis}|${validDieResolveSeq}`;
+  const cacheable = (basis !== 'template');
+  if (cacheable && seatKeyCache.sets && seatKeyCache.key === ck) return seatKeyCache.sets;
+
+  const rot90 = (f.rotation === 90 || f.rotation === 270);
+  const visualCols = rot90 ? f.rows : f.cols;
+  const visualRows = rot90 ? f.cols : f.rows;
+  const physConfig = getTransformedPhysicalConfig(f.rotation, f.side);
+  const all = new Set();
+  const inside = new Set();
+  for (let r = 0; r < visualRows; r++) {
+    for (let c = 0; c < visualCols; c++) {
+      const p = getDieIndex(c, r, f.cols, f.rows, f.rotation, f.side);
+      const k = `${p.x}_${p.y}`;
+      all.add(k);
+      if (isValidDieAt(p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
+        inside.add(k);
+      }
+    }
+  }
+  const sets = { all, inside };
+  if (cacheable) seatKeyCache = { key: ck, sets };
+  return sets;
 }
 
 // ── [M4 phase 1] 참조된 유효 다이 맵의 해석 ─────────────────────────────────
@@ -8773,19 +9029,66 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    서버 규율 3과 동일(선언 부재는 실패가 아니다). 대신 칩에 "무보정"으로 드러난다.
   //    타깃도 같은 규칙이다. 타깃 규격이 없으면(미로드이거나 미등록) 프레임은 **화면 컨트롤**이
   //    되며, 그 사실은 아래 targetBasis로 칩에 드러난다 — 등록 규격과 섞어 보이면 안 된다.
-  const srcFrame = frameFromMeta(sourceMeta) || currentFrame();
+  const srcMetaFrame = frameFromMeta(sourceMeta);
+  const srcFrame = srcMetaFrame || currentFrame();
   const tgtMetaFrame = frameFromMeta(targetMeta);
   const tgtFrame = tgtMetaFrame || currentFrame();
   const srcResolved = resolveFrame(srcFrame);
   const tgtResolved = resolveFrame(tgtFrame);
+  // 🔴 **앉히는 프레임은 지금 화면이다** — 마커를 그리는 렌더 루프가 읽는 좌표계가 그것이기
+  //    때문이다. `tgtResolved`(등록 규격)는 아래 ⑦의 **보고**에만 쓴다. 둘이 다르면 그 사실은
+  //    이미 `targetBasis` 칩이 말한다.
+  const seatFrame = resolveFrame(currentFrame());
 
-  // ⑥ 웨이퍼 격자 규격 호환성. 물리 좌표는 cols×rows 정준 격자의 인덱스라
-  //    치수가 다르면 같은 인덱스가 같은 다이를 가리키지 않는다 (서버와 같은 명시 거절).
-  if (srcResolved.cols !== tgtResolved.cols || srcResolved.rows !== tgtResolved.rows) {
+  // ⑤-bis [H5] 격자 치수의 **정의역**. 규칙 6이 없앤 것은 「치수가 같아야 한다」는 *규격* 관문이지
+  //    이 *온전성* 관문이 아니다. `projectCellsToWaferMm`은 소스 치수로 프레임 창을 열고 그 안에서
+  //    `getWaferBoundingBox`가 격자를 전수 순회하므로, `grid_cols/rows = 1024`인 메타 행 하나면
+  //    취소 수단 없는 동기 루프가 104만 칸을 돈다. 셀 수는 `OVERLAY_CELL_LIMIT`이 막는데 **치수는
+  //    아무도 막지 않는다** — 종전에는 치수 일치 관문이 우연히 이것까지 막고 있었다.
+  const srcDimErr = frameDimError(srcResolved);
+  const seatDimErr = frameDimError(seatFrame);
+  if (srcDimErr || seatDimErr) {
     return fail(
-      `${sourceTable}: 웨이퍼 격자 규격이 다릅니다 — 소스 ${srcResolved.cols}x${srcResolved.rows} vs `
-      + `타깃 ${tgtResolved.cols}x${tgtResolved.rows}. 같은 웨이퍼 규격이 아니면 물리 좌표를 맞출 근거가 없습니다.`,
+      `${sourceTable}: 격자 치수가 편집기의 정의역 밖입니다 — `
+      + [srcDimErr ? `소스 ${srcDimErr}` : '', seatDimErr ? `타깃 ${seatDimErr}` : ''].filter(Boolean).join(' · '),
       'align_unavailable');
+  }
+
+  // ⑥ [규칙 6] 물리 좌표를 세울 수 있는가. **치수가 다른 것은 더 이상 거절 사유가 아니다** —
+  //    셀 크기가 다르면 격자 치수도 당연히 다르고, 그 둘을 겹치는 것이 이 규칙이다.
+  //    남는 전제는 **칩 피치를 알 수 있는가** 하나다: 피치가 없으면 칸 번호를 길이로 바꿀 수
+  //    없고, 그러면 「WF 내 물리 좌표」라는 기준 자체가 없다.
+  //
+  // 🔴 **판정은 `resolveFrame`의 출력을 보지 않는다.** 그 값은 `physNum`이 이미 기본값으로
+  //    접어 놓은 뒤라 「선언 없음」이 관측 불가능하다(§physDeclaration). 여기서 읽는 것은
+  //    **어디서 온 값인가**라는 사실이다.
+  const pitchFacts = (frame) => withPhysFrame(frame, () => ({
+    x: physDeclaration('chipX', el.physChipX),
+    y: physDeclaration('chipY', el.physChipY),
+  }));
+  const srcPitch = pitchFacts(srcFrame);
+  const seatPitch = pitchFacts(null);          // null = 화면 컨트롤 그대로
+  const unusable = (p) => !(p.x.value > 0) || !(p.y.value > 0);
+  if (unusable(srcPitch) || unusable(seatPitch)) {
+    const say = (p) => `${p.x.value === null ? p.x.source : p.x.value}x${p.y.value === null ? p.y.source : p.y.value}`;
+    return fail(
+      `${sourceTable}: 칩 크기(phys_chip_x/phys_chip_y)를 확정할 수 없습니다 — `
+      + `소스 ${say(srcPitch)} · 타깃 ${say(seatPitch)}. `
+      + `셀 크기를 모르면 웨이퍼 내 물리 위치를 맞출 근거가 없으므로 겹치지 않습니다.`,
+      'align_unavailable');
+  }
+  // 🔴 **프레임을 선언한 소스는 그 프레임의 피치도 선언해야 한다.** 소스 메타가 격자를
+  //    선언했는데 칩 크기만 비어 있으면 `physNum`이 **타깃의 화면 피치**로 메꾼다 — 그러면
+  //    두 맵이 같은 칸 크기라고 주장하는 셈이라 화면은 완벽히 정렬돼 보이고 값은 전부 틀린다
+  //    (실측 570/600). 소스 메타가 아예 없는 경우는 다르다: 그때 프레임은 **화면으로
+  //    해석하겠다는 명시적 선택**이고(위 ④) 칩에 그렇게 적힌다.
+  if (srcMetaFrame && (srcPitch.x.source !== 'frame' || srcPitch.y.source !== 'frame')) {
+    return fail(
+      `${sourceTable}: 소스 맵이 격자(${srcResolved.cols}x${srcResolved.rows})는 선언했는데 `
+      + `칩 크기를 선언하지 않았습니다(phys_chip_x=${srcPitch.x.source}, phys_chip_y=${srcPitch.y.source}). `
+      + `그대로 겹치면 타깃의 셀 크기를 소스의 것으로 가정하게 되어 화면은 맞아 보이고 좌표가 전부 `
+      + `어긋납니다. wafer_map_metadata에 셀 크기를 등록하십시오.`,
+      'meta_unavailable');
   }
 
   // ⑦ 정렬 요약(표시용). **모든 축**을 비교해 identity/derived를 가른다 —
@@ -8798,28 +9101,18 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   if (srcResolved.startX !== tgtResolved.startX || srcResolved.startY !== tgtResolved.startY) {
     diffs.push(`시작좌표(${srcResolved.startX},${srcResolved.startY})→(${tgtResolved.startX},${tgtResolved.startY})`);
   }
-  if (srcResolved.chipX !== tgtResolved.chipX || srcResolved.chipY !== tgtResolved.chipY
-      || srcResolved.offsetX !== tgtResolved.offsetX || srcResolved.offsetY !== tgtResolved.offsetY
+  // [규칙 6] 셀 크기는 **따로 말한다** — 겹치기의 근거를 정하는 축이라 「물리 규격 상이」라는
+  // 뭉뚱그린 문구에 섞이면 조작자가 실제 값을 못 본다. 나머지 물리 항목은 바운딩박스에만
+  // 영향을 주므로 종전 문구 그대로다.
+  if (srcResolved.chipX !== seatFrame.chipX || srcResolved.chipY !== seatFrame.chipY) {
+    diffs.push(`셀 크기(${srcResolved.chipX}x${srcResolved.chipY}mm→${seatFrame.chipX}x${seatFrame.chipY}mm)`);
+  }
+  if (srcResolved.offsetX !== tgtResolved.offsetX || srcResolved.offsetY !== tgtResolved.offsetY
       || srcResolved.waferDia !== tgtResolved.waferDia || srcResolved.edgeMargin !== tgtResolved.edgeMargin) {
     diffs.push('웨이퍼 물리 규격 상이(바운딩박스 재계산)');
   }
-  // [F4] Cells whose projected physical coordinate falls outside the canonical wafer grid
-  //      [0,cols) x [0,rows). Reporting the raw source row count as "N chips" hides them:
-  //      they are excluded from import (importOverlayToGrid rule 3) and are not push targets.
-  //      NOTE: this is deliberately NOT "will not be painted". The render loop sweeps a 3x3
-  //      tile window (:1658-1671), so an out-of-grid cell may still be painted in the margin
-  //      depending on canvas size — that is viewport-dependent and not a stable thing to claim.
-  //      Grid membership is frame-defined and stable, so that is what we report.
-  const projected = projectCellsToPhys(cells, srcFrame);
-  let outside = 0;
-  projected.forEach((_v, k) => {
-    const i = k.indexOf('_');
-    const px = Number(k.slice(0, i));
-    const py = Number(k.slice(i + 1));
-    if (!(px >= 0 && px < tgtResolved.cols && py >= 0 && py < tgtResolved.rows)) outside++;
-  });
   const missingPhys = !sourceMeta ? '소스 맵 규격 미등록 — 현재 화면 규격으로 해석'
-    : (frameFromMeta(sourceMeta) && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
+    : (srcMetaFrame && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
         srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
       ? '소스 물리 규격 일부 미등록 — 현재 화면 값으로 대체' : '');
   // 타깃 프레임의 근거가 **등록 규격**인지 **지금 화면**인지. 두 상태를 같은 칩으로 보이면
@@ -8834,8 +9127,11 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     rotation: ((srcResolved.rotation - tgtResolved.rotation) % 360 + 360) % 360,
     flip: srcResolved.side !== tgtResolved.side ? 'x' : 'none',
     offset: { x: 0, y: 0 },
-    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys, targetNote,
-      outside ? `격자 밖 ${outside}칩 — 웨이퍼 격자를 벗어나 가져오기에서 제외됩니다` : ''].filter(Boolean).join(' · ')
+    // 🔴 좌석에 딸린 수(격자 밖·n:1)는 여기 넣지 않는다 — 그 수들은 화면 규격이 바뀔 때마다
+    //    달라지는데 이 문자열은 추가 시점에 한 번만 만들어져 조용히 낡는다. 좌석 쪽 문구는
+    //    `seatNote`가 재좌석마다 다시 쓴다.
+    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys, targetNote]
+      .filter(Boolean).join(' · ')
       || (identical ? '소스와 타깃의 좌표계가 완전히 같습니다 (변환 없음)' : ''),
   };
 
@@ -8845,9 +9141,8 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     sourceKey: String(sourceKey),
     rawCells: cells,      // **소스 원본 좌표** — 재투영의 유일한 원천
     frame: srcFrame,      // 그 좌표가 사는 프레임 (소스 자신의 메타)
-    cells: projected,
-    count: projected.size,   // physical keys actually placed — not the raw row count, which over-reports on key collision
-    outside,
+    // [규칙 6] 웨이퍼 내 절대 mm 항목. 화면 규격에 **불변**이므로 여기서 한 번만 만든다.
+    mmItems: projectCellsToWaferMm(cells, srcFrame),
     color: OVERLAY_COLORS[(overlayLayers.length) % OVERLAY_COLORS.length],
     visible: true,
     status: 'ok',
@@ -8859,6 +9154,9 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     truncated,
     cap: truncated ? OVERLAY_CELL_LIMIT : null,
   };
+  // 좌석(cells/items/count/outside/fanout)은 **화면 프레임**의 함수다 — 여기서도, 규격이
+  // 바뀔 때도 같은 함수 하나가 만든다.
+  reseatOverlayLayer(layer);
   // 같은 소스의 실패 잔존 행이 있으면 성공 행으로 교체한다 (재시도 성공)
   overlayLayers = overlayLayers.filter(o => !(o.failed && o.sourceTable === layer.sourceTable && o.sourceKey === layer.sourceKey));
   overlayLayers.push(layer);
@@ -8891,12 +9189,75 @@ function clearOverlayLayers() {
   scheduleRenderGridCanvas();
 }
 
-// 규격이 바뀌면 원본(rawCells)을 **소스 프레임으로** 재투영한다.
+// ── [규칙 6] 레이어를 **지금 화면의 칸에 앉힌다** ────────────────────────────────
+// 추가 시점과 규격 변경 시점이 **같은 함수 하나**를 부른다. 둘로 나뉘어 있던 종전 구조에서는
+// 추가 때 센 수(격자 밖 N칩)가 규격 변경 뒤에도 그대로 남아 화면과 어긋났다.
 //
-// 소스 메타가 완전하면 재투영은 항등이다(물리 키는 화면 조작에 불변). 그러나 소스 메타에
-// 물리 항목이 빠져 있으면 그 항목은 **현재 화면 값으로 폴백**하므로 결과가 화면에 의존한다.
-// [C7] 그래서 시그니처에 **물리 파라미터를 반드시 포함**한다 — 빠뜨리면 chip_x/offset 등을
-// 바꿨을 때 재투영이 일어나지 않아 오버레이가 조용히 어긋난 자리를 가리킨다.
+// 🔴 **대표값을 고르지 않는다.** 한 칸이 소스 여러 칸을 받으면 `cells`의 값은 `null`이고
+//    항목 전부는 `items`에 남는다. 대표를 고르면 나머지를 조용히 버리면서 한 값을 자신
+//    있게 보여 주게 된다(사용자 확정 ⓒ「전부 나열」).
+function reseatOverlayLayer(o) {
+  if (!o || o.failed) return;
+  const seat = resolveFrame(currentFrame());
+  const { seated, duplicates } = seatWaferMmInFrame(o.mmItems, seat);
+  const seatKeys = canvasSeatKeys();
+
+  const cells = new Map();
+  let chips = 0, outside = 0, fanout = 1, multiCells = 0, fanCells = 0, conflictCells = 0;
+  seated.forEach((list, key) => {
+    chips += list.length;
+    if (list.length > fanout) fanout = list.length;
+    // 🔴 「여럿」에는 **두 가지 다른 사연**이 있고 문구가 그것을 구별해야 한다:
+    //    자리가 서로 다르면 → 타깃 셀이 굵어서 생긴 진짜 n:1 (규칙 6)
+    //    자리가 같은데 값이 다르면 → 소스에 같은 좌표가 두 번 (중복 행 충돌, 피치와 무관)
+    if (list.length > 1) {
+      multiCells++;
+      const spots = new Set(list.map(e => `${e.mmX}_${e.mmY}`));
+      if (spots.size > 1) fanCells++;
+      if (spots.size < list.length) conflictCells++;
+    }
+    // 🔴 `inside`로 센다 — [↓ 가져오기]가 거르는 그 집합이다(§canvasSeatKeys).
+    if (!seatKeys.inside.has(key)) outside += list.length;
+    cells.set(key, list.length === 1 ? list[0].val : null);
+  });
+
+  // 물리 축 → 화면 축의 2x2 변환. 🔴 **회전식을 새로 쓰지 않는다** — 이미 있는
+  // `getCanvasCellFromDieIndex`에 (0,0)/(1,0)/(0,1)을 넣고 그 답의 차분을 읽을 뿐이다.
+  // 정수 격자 사상이라 성분은 0/±1이고 패리티 항은 차분에서 상쇄된다.
+  o.seatAxes = withPhysFrame(seat, () => {
+    const o0 = getCanvasCellFromDieIndex(0, 0, seat.cols, seat.rows, seat.rotation, seat.side);
+    const oX = getCanvasCellFromDieIndex(1, 0, seat.cols, seat.rows, seat.rotation, seat.side);
+    const oY = getCanvasCellFromDieIndex(0, 1, seat.cols, seat.rows, seat.rotation, seat.side);
+    return { xc: oX.c - o0.c, xr: oX.r - o0.r, yc: oY.c - o0.c, yr: oY.r - o0.r };
+  });
+  o.seatChip = { x: seat.chipX, y: seat.chipY };
+
+  o.items = seated;
+  o.cells = cells;          // 값 조회용(1:1일 때만 값, 여럿이면 null) — 존재 판정은 종전 그대로
+  o.count = chips;          // **칩 수**(소스 다이 수). 칸 수는 cellCount다
+  o.cellCount = seated.size;
+  o.fanout = fanout;
+  o.multiCells = multiCells;
+  o.fanCells = fanCells;
+  o.conflictCells = conflictCells;
+  o.dupCollapsed = duplicates;
+  o.outside = outside;
+  o.seatNote = [
+    outside ? `격자 밖 ${outside}칩 — 웨이퍼/유효 다이 영역 밖이라 [↓ 가져오기]에서 제외됩니다` : '',
+    fanCells ? `타깃 셀이 더 굵어 한 칸이 최대 ${fanout}칩을 받습니다 — ${fanCells}칸이 서로 다른 다이의 값을 받았습니다` : '',
+    conflictCells ? `같은 좌표에 서로 다른 값이 있습니다 — ${conflictCells}칸(소스 중복 행, 셀 크기와 무관)` : '',
+    duplicates ? `완전히 같은 행 ${duplicates}건은 합쳤습니다(버린 값 없음)` : '',
+    multiCells ? `여러 값을 받은 ${multiCells}칸은 대표값을 고르지 않으므로 [↓ 가져오기]에서 제외됩니다 — 값은 화면의 점으로 전부 남아 있습니다` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+// 규격이 바뀌면 레이어를 **다시 앉힌다**.
+//
+// 🔴 [규칙 6] 종전에는 소스 프레임으로 재투영만 했다. 다이 인덱스 키는 화면에 불변이었기
+//    때문인데, **mm 좌석은 화면 피치의 함수다** — chip_x를 바꾸면 같은 mm가 다른 칸에
+//    앉는다. 그래서 재좌석은 선택이 아니라 필수다.
+// [C7] 시그니처에 **물리 파라미터가 반드시 들어간다** — 빠뜨리면 chip_x/offset 등을 바꿨을
+// 때 재좌석이 일어나지 않아 오버레이가 조용히 어긋난 자리를 가리킨다.
 let overlayGeomSig = '';
 
 function currentGeomSignature() {
@@ -8923,9 +9284,10 @@ function syncOverlayGeometry() {
   overlayGeomSig = sig;
   overlayLayers.forEach(o => {
     if (o.failed) return;
-    o.cells = projectCellsToPhys(o.rawCells, o.frame);
+    reseatOverlayLayer(o);
   });
   recomputeActiveOverlays();
+  renderOverlayList();
 }
 
 // ── 오버레이 목록 UI (메인 로드와 분리된 전용 블록) ──
@@ -8945,7 +9307,9 @@ function overlayAlignChip(o) {
   }
   if (!o.align) return '<span class="ov-chip dim" title="정렬 정보가 없습니다">align 미상</span>';
   const origin = String(o.align.origin || '');
-  const note = String(o.align.note || '');
+  // 🔴 좌석 쪽 문구(`seatNote`)는 **재좌석마다 다시 쓰인 것**이고 프레임 비교 문구(`note`)는
+  //    추가 시점의 것이다. 둘을 합쳐야 칩의 설명이 지금 화면과 어긋나지 않는다.
+  const note = [String(o.align.note || ''), String(o.seatNote || '')].filter(Boolean).join(' · ');
   const rot = Number(o.align.rotation) || 0;
   // 무엇에 맞춰 정렬했는가 — 등록 규격(wafer_map_metadata)인가, 지금 화면의 격자 설정인가.
   // 후자를 전자처럼 보여주면 "규격대로 맞췄다"는 거짓 진술이 된다(빈 맵 오버레이의 기본 상태).
@@ -8958,6 +9322,15 @@ function overlayAlignChip(o) {
   // derived(및 그 외 비-identity) = 보정 적용됨. 회전은 0일 수 있으므로 있을 때만 덧붙인다.
   const label = rot ? `정렬됨 ${rot}°` : '정렬됨';
   return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 맵의 좌표계가 달라 소스 메타 프레임으로 해석해 물리 좌표에 맞췄습니다')}">${escapeHtmlAttr(label)}</span>${basis}`;
+}
+
+// 한 칸이 값을 여럿 받았을 때의 상태 칩. 🔴 **라벨이 사연을 구별한다** — 소스에 같은 좌표가
+// 두 번 있어서 생긴 「여럿」에 「타깃 셀이 더 굵어」라고 적으면 그것은 거짓이고, 조작자는 셀
+// 크기를 의심하며 엉뚱한 곳을 고치게 된다. 상세는 `seatNote`가 재좌석마다 다시 쓴다.
+function overlayFanChip(o) {
+  if (o.failed || !(o.multiCells > 0)) return '';
+  const label = o.fanCells > 0 ? `최대 ${o.fanout}:1` : '중복 좌표';
+  return `<span class="ov-chip warn" title="${escapeHtmlAttr(o.seatNote || '')}">${escapeHtmlAttr(label)}</span>`;
 }
 
 // ── [신규] 오버레이 → 실맵 가져오기 ────────────────────────
@@ -8990,10 +9363,15 @@ function importOverlayToGrid(id) {
     });
   }
 
-  let applied = 0, locked = 0, outside = 0, blank = 0;
+  let applied = 0, locked = 0, outside = 0, blank = 0, multi = 0;
   const values = new Set();
   o.cells.forEach((val, key) => {
-    const sv = (val === null || val === undefined) ? '' : String(val).trim();
+    // ⑤ [규칙 6] 한 칸이 소스 여러 칸을 받았으면 **가져오지 않는다.** `gridData`는 칸당 값
+    //    하나이므로 여기서 무언가를 쓰려면 대표를 골라야 하는데, 그것이 사용자가 거절한
+    //    바로 그 동작이다(나머지를 조용히 버리면서 한 값을 자신 있게 쓴다). 값은 `o.items`에
+    //    전부 남아 있고, 건너뛴 수는 아래 토스트가 말한다.
+    if (val === null) { multi++; return; }
+    const sv = (val === undefined) ? '' : String(val).trim();
     if (sv === '') { blank++; return; }
     if (!insideKeys.has(key)) { outside++; return; }
     if (isProtectedFCell(key)) { locked++; return; }   // ② 잠금 셀은 덮지 않는다
@@ -9003,7 +9381,8 @@ function importOverlayToGrid(id) {
   });
 
   if (applied === 0) {
-    showToast(`가져온 셀이 없습니다 (잠금 ${locked} · 격자 밖 ${outside} · 빈 값 ${blank}).`, 'warning');
+    showToast(`가져온 셀이 없습니다 (잠금 ${locked} · 격자 밖 ${outside} · 빈 값 ${blank}`
+      + (multi ? ` · 여러 값 ${multi}` : '') + ').', 'warning');
     return;
   }
 
@@ -9022,6 +9401,7 @@ function importOverlayToGrid(id) {
   const parts = [`${applied}셀 반영`];
   if (locked > 0) parts.push(`${locked}셀 건너뜀(잠금)`);
   if (outside > 0) parts.push(`${outside}셀 건너뜀(격자 밖)`);
+  if (multi > 0) parts.push(`${multi}셀 건너뜀(한 칸에 여러 값)`);
   if (added.length > 0) parts.push(`legend ${added.length}종 추가`);
   const msg = `${o.sourceTable} · ${o.sourceKey} → ${parts.join(' · ')}`;
   // [1e] Speak ONLY when cells were skipped — those are "I pressed import and this did not
@@ -9064,7 +9444,7 @@ function renderOverlayList() {
       <span class="ov-name" title="${escapeHtmlAttr(o.sourceTable + ' · ' + o.sourceKey + (o.reason ? ' — ' + o.reason : ''))}">
         <b>${escapeHtmlAttr(o.sourceTable)}</b><br><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
       </span>
-      <span class="ov-meta">${o.failed ? '' : `${o.count}칩 `}${overlayAlignChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
+      <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
       <span class="ov-btns">
         ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="이 오버레이의 셀을 현재 편집 맵으로 가져옵니다 (잠금 셀 제외 · Push 전까지 서버 반영 없음)">↓</button>`}
         <button type="button" class="ov-btn" data-act="${o.failed ? 'retry' : 'toggle'}" title="${o.failed ? '다시 시도' : '표시/숨김'}">${o.failed ? '↻' : (o.visible ? '👁' : '🚫')}</button>

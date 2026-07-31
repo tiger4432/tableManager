@@ -217,6 +217,151 @@ def announced_columns(db, left_table: str) -> list:
     return out
 
 
+KIND_COLLIDE = "collide"
+KIND_VIRTUAL_ONLY = "virtual_only"
+
+
+def resolved_column_announcements(db, left_table: str) -> list:
+    """Every column whose displayed value this server RESOLVES THROUGH A JOIN, with the
+    facts a client needs to act on it. `/schema` publishes this as `join_resolved_columns`.
+
+    Entry: `{"name", "kind", "rule", "right_table", "unresolved_label"}`.
+
+    [Why this exists next to `announced_columns` rather than inside it]
+    They answer different questions and the difference is the whole defect:
+      `announced_columns`  - "what columns must /schema ADD to the column list?"
+                             virtual_only ONLY. A collide column is already in `columns`,
+                             and announcing it twice would give two answers to
+                             "is this column stored?".
+      this function        - "which columns' values come from a join?"
+                             collide AND virtual_only.
+    A collide column is a REAL stored column that a join also fills, so it looks perfectly
+    ordinary to the grid - and then its Blank filter matches nothing, because the value the
+    operator sees COALESCEs to a non-empty label. The client cannot know that without being
+    told, and it must not deduce it by differencing `columns` against `virtual_columns`:
+    that set arithmetic is wrong for the collide case BY CONSTRUCTION.
+
+    🔴 **`kind` is STATED, never derived.** The client asking "not in virtual_columns,
+    therefore stored-and-plain" is exactly the inference this key exists to replace.
+
+    🔴 **`unresolved_label` rides PER ENTRY** because it is per declaration. Two rules on
+    one table legitimately carry different labels, so a client that hardcodes `미상` must
+    be provably wrong - and `virtual_join_config.DEFAULT_UNRESOLVED_LABEL` is only a
+    default, not the value.
+
+    🔴 **THIS IS NOT THE WRITE GUARD, and it must never become one.** The refusal is
+    `crud.refuse_virtual_join_columns`, on the funnel every write path converges on. This
+    key only stops the UI PROPOSING an edit that would come back 400. A defence living in
+    a READ response is no defence at all - any client that never calls `/schema` would
+    write freely. `test_join_resolved_columns.py` asserts, structurally and behaviourally,
+    that suppressing this announcement does not make a write succeed.
+
+    Note there is no writability field: editability already lives in `columns[].editable`
+    (collide) and `virtual_columns[].editable: false` (virtual_only). Repeating it here
+    would be a second source of truth for one fact, and the two would drift.
+
+    Verified declarations only (`rules_for`), never `load_virtual_join_rules` - announcing
+    an unverified declaration would promise a join the guard refuses to run.
+    """
+    out, seen = [], set()
+    for rule in rules_for(db, left_table):
+        # `virtual_only` is None only when the rule was validated without table_config,
+        # which `rules_for` never does. If it ever happens, treat every exposed column as
+        # virtual_only rather than guessing it is stored.
+        vo = rule.get("virtual_only")
+        virtual_only = set(rule["expose"] if vo is None else vo)
+        for col in rule["expose"]:
+            if col in seen:
+                continue        # first declaration wins - same rule as `attach`'s labels
+            seen.add(col)
+            out.append({
+                "name": col,
+                "kind": KIND_VIRTUAL_ONLY if col in virtual_only else KIND_COLLIDE,
+                "rule": rule["name"],
+                "right_table": rule["right_table"],
+                "unresolved_label": rule["unresolved_label"],
+            })
+    return out
+
+
+def exposed_columns(db, left_table: str) -> set:
+    """Every column name a verified join contributes to this table - collide AND
+    virtual_only.
+
+    Derived from `resolved_column_announcements` ON PURPOSE, so `/schema`'s
+    `join_resolved_columns` and the set the search path actually resolves cannot disagree.
+    If a client greys a column the server will not resolve - or resolves one it never
+    announced - the two have drifted, and deriving one from the other removes the place
+    that drift could live.
+    """
+    return {e["name"] for e in resolved_column_announcements(db, left_table)}
+
+
+def resolved_expression(db, left_model, left_table: str, col_name: str, query):
+    """SQL for the value a user SEES in `col_name`, plus the query that can evaluate it.
+
+    Returns `(query, expr, label)`; `(query, None, None)` when no verified join exposes
+    this column. `query` comes back with one LEFT OUTER JOIN added per contributing rule.
+
+    [Why a join and not a correlated subquery]
+    This expression goes in WHERE, so it is evaluated against the whole left table, not
+    against one page. A correlated scalar subquery would be one index probe PER LEFT ROW
+    - 10 million of them on a 10-million-row table. A LEFT JOIN lets the planner choose a
+    hash or merge join and read the right side once.
+
+    🔴 **The join cannot change the row count, and that is not an assumption.** The right
+    side is unique on the join key because `virtual_join_config` refuses to verify a
+    declaration that lacks a UNIQUE index covering it. That is what keeps `query.count()`
+    honest and keyset pagination undisturbed - and it is why this may only ever be built
+    from `rules_for` (verified), never from `load_virtual_join_rules` (shape only).
+
+    [The expression is `attach`'s rule, translated - not a second rule]
+    `attach` takes the left value if non-empty, else the first non-empty joined value in
+    rule order, else the label. `COALESCE` is that same "first non-null wins", and
+    `crud.blank_to_null` is what turns "non-empty" into "non-null" using the ONE
+    emptiness declaration both sides share. The label comes from the first rule exposing
+    the column, matching `attach`'s `labels.setdefault` and `announced_columns`.
+
+    🔴 **No `trim()` appears here.** It does not need to: `crud.normalize_stored_text`
+    makes storage canonical at the write boundary, so blank-in-SQL and blank-in-Python
+    are the same set. Adding a trim here would silently re-introduce the second spelling.
+    """
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import and_, func
+    from database import crud, models
+
+    rules = [r for r in rules_for(db, left_table) if col_name in r["expose"]]
+    if not rules:
+        return query, None, None
+
+    parts = []
+    # The left column participates only when it actually exists on the left table -
+    # i.e. a `collide` column. For a `virtual_only` column there is nothing to prefer.
+    left_cols = (crud.TABLE_CONFIG.get(left_table) or {}).get("column_types") or {}
+    if col_name in left_cols and hasattr(left_model, col_name):
+        parts.append(crud.blank_to_null(getattr(left_model, col_name)))
+
+    for rule in rules:
+        right_model = models.DYNAMIC_TABLES.get(rule["right_table"])
+        if right_model is None:
+            continue
+        # Aliased per rule: two declarations may name the same right table, and an
+        # unaliased second join would collide on the table name.
+        right = aliased(right_model)
+        onclause = and_(*[getattr(left_model, p["left"]) == getattr(right, p["right"])
+                          for p in rule["join_key"]])
+        # 🔴 outerjoin, never inner - an inner join here would DELETE left rows that have
+        # no right match from the result, which is the population capability (1) is for.
+        query = query.outerjoin(right, onclause)
+        parts.append(crud.blank_to_null(getattr(right, col_name)))
+
+    if not parts:
+        return query, None, None
+
+    label = rules[0]["unresolved_label"]
+    return query, func.coalesce(*parts, label), label
+
+
 # ---------------------------------------------------------------------------
 # 실행 ― LEFT 조인 한 방
 # ---------------------------------------------------------------------------

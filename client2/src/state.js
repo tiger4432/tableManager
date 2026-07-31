@@ -17,6 +17,22 @@ export const state = {
   // stored, so counting it there would downgrade or block a push for no reason.
   // Keeping the two lists apart is what makes each of those answers stay right.
   currentVirtualColumns: [],
+  // [Virtual join] `/schema`'s `join_resolved_columns`, verbatim. Entries are
+  // `{name, kind: 'collide'|'virtual_only', rule, right_table, unresolved_label}`.
+  //
+  // 🔴 A DIFFERENT QUESTION FROM `currentVirtualColumns`, which is why it is a second list
+  // and not a flag on the first. `virtual_columns` answers "which columns must the grid
+  // ADD"; this answers "which columns does the SERVER resolve through a join, and what
+  // does it call the unresolved case". The two sets differ exactly on `kind: 'collide'` —
+  // a column that IS stored (so it is in `currentColumns`, editable, writable) and whose
+  // filter the server nonetheless evaluates against the joined COALESCE rather than
+  // against storage. Reading `virtual_columns` to answer the second question silently
+  // misses every collide column.
+  //
+  // 🔴 NOT A WRITE GUARD. Editability is `currentColumns` vs `currentVirtualColumns`, and
+  // the enforcement is `crud.refuse_virtual_join_columns` on the server. This list carries
+  // no writability field on purpose: a collide column is join-resolved AND writable.
+  currentJoinResolvedColumns: [],
   ws: null,
   wsReconnectDelay: 1000,
   selectedCell: null, // { rowId, colId, value, rowIndex }
@@ -74,6 +90,26 @@ export function isVirtualColumn(colId) {
   const list = state.currentVirtualColumns;
   if (!Array.isArray(list) || list.length === 0) return false;
   return list.some(vc => vc && vc.name === colId);
+}
+
+/**
+ * [Virtual join] The `join_resolved_columns` entry for this grid column, or `null`.
+ *
+ * Returns the ENTRY rather than a boolean because every caller needs the payload: the
+ * `unresolved_label` is per declaration, so a client that answers "yes/no" here has to go
+ * looking for the label a second time — and the site that goes looking is the site that
+ * ends up hardcoding '미상'. A configured site that changes the label must see the change.
+ *
+ * 🔴 SEPARATE FROM `isVirtualColumn`, DELIBERATELY. `isVirtualColumn` asks "did /schema ADD
+ * this column" and is the right question for the write funnels (`clipboard.js`, `ui.js`),
+ * which must not offer an edit the server will refuse. This asks "does the server resolve
+ * this column through a join", which is the right question for FILTERING — and a collide
+ * column answers no to the first and yes to the second.
+ */
+export function joinResolvedColumn(colId) {
+  const list = state.currentJoinResolvedColumns;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return list.find(e => e && e.name === colId) || null;
 }
 
 export function updateVisibleColIndexMap() {

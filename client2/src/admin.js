@@ -19,6 +19,13 @@ import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } 
 import {
   buildConfigResolveView, buildDryRunView, CHROME, fetchFailureLine,
 } from './config_resolve_view.js';
+// [Queue 25] 소급 적용(retroactive/backfill). 같은 규율의 두 번째 표면 — 서버가 문장을 만들고
+// 여기서는 그대로 렌더한다. 특히 **숫자는 서버가 붙인 라벨과 함께가 아니면 화면에 나오지
+// 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
+import {
+  buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
+  resolveCount, paramEntries, paramsKey, RETRO_CHROME,
+} from './retroactive_view.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -304,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   initMonacoEditor();
   initConfigResolveLine();
+  initRetroactiveLine();
 
   // 해시/쿼리 라우팅 적용 (기본 Overview) — switchTab이 fetchData + 스트립 갱신 수행
   applyRoute(true);
@@ -1863,6 +1871,493 @@ async function runAutoConfirmDryRun(rule, btn, host) {
   }
 }
 
+// ── 소급 적용 한 줄 (Overview 상단, 네 번째 줄) — [Queue 25] ──────────────────────────
+//
+// 「규칙보다 오래된 데이터에 그 규칙을 지금 적용하면 몇 건인가, 그리고 실행」. 다섯 연산 전부
+// 이미 CLI로 존재했고 어드민에는 **화면이 없었다**. 새 페이지도 새 탭도 새 모달도 만들지
+// 않는다 — F9의 「설정 반영」 줄이 자리잡은 그 방식 그대로 Overview 상단의 한 줄이고, 펼치면
+// 제자리에서 열린다.
+//
+// 🔴 이 절은 「몇 건인가」의 뜻을 스스로 판정하지 않는다. 다섯 중 넷은 요청 경로에서 정확한
+//    수를 낼 수 없고(그게 곧 드라이런 전수 스캔이다), 서버가 그 사실을 `count_kind`(exact /
+//    sample / upper_bound)와 **라벨 자체**("회수할 셀 (최대)")와 `detail` 문장 셋으로 말한다.
+//    그래서 렌더 규칙은 기계적이다: **숫자는 서버가 붙인 라벨과 함께가 아니면 그리지 않는다.**
+//    판정과 채점은 `retroactive_view.js` + `client2/tests/retroactive_view_harness.mjs`.
+//
+// 목록 조회(`/admin/retroactive/operations`)는 **DB 질의 0건**(설정만 읽는다)이고 서버 재시작
+// 전까지 바뀌지 않는다. 그래서 30초 폴링에 태우지 않는다 — 페이지당 한 번, 그리고 **원인이
+// 바뀌었을 때** 다시 읽는다(토큰이 새로 들어왔다 · Reload Configs를 눌렀다). 타이머보다 이쪽이
+// 싸고, 「왜 지금 다시 읽었나」에 답할 수 있다.
+let retroactiveView = null;
+let retroactiveLoaded = false;
+let retroactiveInFlight = false;
+// The token generation the last attempt ran under. A token that ARRIVED since then is a changed
+// cause, not a retry — without this the operator does what the failure line told them to do and
+// the line goes on saying it. (Same reason `configResolveTokenGeneration` exists.)
+let retroactiveTokenGeneration = -1;
+// 목록 원문. F9의 `configResolveRaw`와 **같은 이유**로 들고 있는다(`:1648` 참조): 내용이 그대로면
+// 다시 그리지 않는다. 안 그러면 운영자가 펼쳐 둔 「버튼이 덮지 않는 것」이 읽는 도중에 접힌다.
+let retroactiveRaw = '';
+// 🔴 연산당 **레코드 하나**. 카운트·파라미터·큐 응답·진행 중 여부가 전부 여기 있고, 화면은
+//    이 레코드의 순수 함수다. 앞선 판본은 카운트를 연산 id로만 캐시하고 파라미터를 **다른 맵**에
+//    뒀으며 「실행 중」은 DOM 노드에만 있었다 — 그래서 ① 측정한 파라미터와 보낼 파라미터가 어긋나도
+//    아무도 몰랐고 ② 버튼 줄을 다시 만드는 코드 경로가 진행 중이라는 사실을 잊었다. 두 결함은
+//    같은 실수의 두 얼굴이라 치료도 하나다: **상태는 레코드에만 있고 렌더는 그것을 읽기만 한다.**
+//    판정 함수는 `retroactive_view.js`의 `resolveCount`/`buildActionsView`이고 node에서 채점된다.
+const retroStateByOp = new Map();
+
+function retroState(op) {
+  let state = retroStateByOp.get(op);
+  if (!state) {
+    state = { params: {}, count: null, run: null, runFailure: null, busy: null, cliOpen: false };
+    retroStateByOp.set(op, state);
+  }
+  return state;
+}
+
+function initRetroactiveLine() {
+  const hint = byId('retroactive-hint');
+  if (hint) hint.textContent = RETRO_CHROME.HINT;
+}
+
+/** 이 연산이 **선언한** 파라미터만, 비어 있지 않은 것만. 판정은 뷰 모델이 소유한다 —
+ *  서버가 재시작하며 파라미터를 개명·삭제하면 맵에 남은 옛 키가 400을 부르는데, 그 필드는
+ *  이미 화면에 없어서 운영자는 이유를 알 수 없다. 선언에서 유도하면 그 경로가 사라진다. */
+function retroParamEntries(op, opView) {
+  return paramEntries(retroState(op), opView);
+}
+
+async function refreshRetroactiveOperations(force = false) {
+  const tokenChanged = adminTokenGeneration !== retroactiveTokenGeneration;
+  if (retroactiveInFlight) return;
+  if (!force && !tokenChanged && retroactiveLoaded) return;
+  retroactiveInFlight = true;
+  retroactiveTokenGeneration = adminTokenGeneration;
+  let failure = null;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/retroactive/operations`);
+    failure = failureFactOf(res);
+    if (!res.ok) throw new Error(`retroactive operations ${res.status}`);
+    const raw = await res.text();
+    retroactiveLoaded = true;
+    // 목록이 **달라졌을 때만** 다시 그린다 — F9가 `:1648`에서 같은 이유로 하는 것과 같은 가드다
+    // (그쪽 주석: 「매번 다시 그리면 운영자가 펼쳐 둔 참조뷰가 읽는 도중에 접힌다」). 이 목록은
+    // 서버 재시작 전까지 바뀌지 않으므로 사실상 매번 같은 원문이 온다.
+    if (raw === retroactiveRaw && retroactiveView) return;
+    retroactiveRaw = raw;
+    retroactiveView = buildOperationsView(JSON.parse(raw));
+    // 목록이 실제로 달라졌다 = 설정이 바뀌었다 = 들고 있던 측정은 낡은 선언에 대한 것이다.
+    // 큐 응답(run_id)은 남긴다: 그것은 선언이 아니라 **일어난 일**이고, 설정이 바뀌었다고
+    // 방금 큐에 들어간 실행이 없던 일이 되지 않는다.
+    retroStateByOp.forEach((state) => { state.count = null; });
+    renderRetroactive();
+  } catch (e) {
+    // 실패는 「연산이 없다」가 아니다 — 대시와 사유를 남긴다. 어느 사유인지가 중요하고,
+    // 그 가름(응답 없음 / 404=구버전 프로세스 / 게이트 거부 / 앞단이 대신 응답)은 F9가 이미
+    // 소유하고 있다. 여기서 두 번째 분류기를 쓰지 않는다.
+    console.error('[Retroactive] operations fetch failed', failure, e);
+    retroactiveView = null;
+    retroactiveLoaded = false;
+    renderRetroactiveFailure(fetchFailureLine(failure, RETRO_CHROME.LIST_FAILED));
+  } finally {
+    retroactiveInFlight = false;
+  }
+}
+
+// 실패해도 조용하다: 자동 펼침 없음, 토스트 없음, 모달 없음. 문구만 바뀐다.
+function renderRetroactiveFailure(text) {
+  const line = byId('retroactive-summary');
+  const valueEl = byId('retroactive-value');
+  const subEl = byId('retroactive-sub');
+  const body = byId('retroactive-body');
+  if (!line || !valueEl || !subEl) return;
+  valueEl.textContent = '―';
+  subEl.textContent = text;
+  line.dataset.tone = 'muted';
+  if (body) body.textContent = '';
+}
+
+function renderRetroactive() {
+  const view = retroactiveView;
+  const valueEl = byId('retroactive-value');
+  const subEl = byId('retroactive-sub');
+  const body = byId('retroactive-body');
+  if (!view || !valueEl || !subEl || !body) return;
+
+  valueEl.textContent = '';
+  valueEl.appendChild(cfgChip(`${cfgText(view.operationsLabel)} ${view.total.text}`,
+    view.total.value > 0 ? '' : 'muted'));
+  // 헤드라인은 연산 이름을 그대로 나열한다. 이 줄에는 요약할 「상태」가 없다 — 도구함에
+  // 없는 판정을 지어내는 것이 목록보다 나쁘다.
+  subEl.textContent = view.titles.map(cfgText).join(' · ');
+
+  body.textContent = '';
+  if (view.empty) {
+    body.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.emptyText)));
+    return;
+  }
+  view.operations.forEach((op) => body.appendChild(retroOperationEl(op)));
+}
+
+/** 한 연산 카드만 제자리에서 갈아 끼운다.
+ *
+ * 🔴 비동기 핸들러가 **DOM 참조를 await 너머로 들고 가지 않게** 하는 것이 요점이다. 앞선 판본은
+ *    `btn`과 `host`를 클로저에 담아 갔고, 그 사이 목록이 다시 그려지면 둘 다 문서에서 떨어져
+ *    나간 노드가 됐다 — 큐 응답이 아무 데도 안 붙고 화면의 버튼은 활성으로 되살아났다.
+ *    이제 핸들러는 레코드만 고치고 이 함수를 부른다. 화면은 레코드에서 다시 유도된다.
+ */
+function renderRetroOperation(opId) {
+  const view = retroactiveView;
+  const body = byId('retroactive-body');
+  if (!view || !body) return;
+  const opView = view.operations.find((o) => o.op === opId);
+  const card = body.querySelector(`article.retro-op[data-op="${CSS.escape(opId)}"]`);
+  if (!opView || !card) return;
+  card.parentElement.replaceChild(retroOperationEl(opView), card);
+}
+
+function retroOperationEl(op) {
+  const card = cfgEl('article', 'cfg-domain retro-op');
+  card.dataset.op = op.op;
+  if (op.tone) card.dataset.tone = op.tone;
+
+  const head = cfgEl('div', 'cfg-row-head');
+  head.appendChild(cfgEl('span', 'cfg-domain-title', cfgText(op.label)));
+  card.appendChild(head);
+  // 「무엇이 빠져 있는가」 — 이 문장이 없으면 버튼 다섯 개는 지시 대상 없는 동사 다섯 개다.
+  if (op.whatIsMissing) card.appendChild(cfgEl('div', 'cfg-detail', cfgText(op.whatIsMissing)));
+
+  // 이 연산이 무엇을 지우고 어떤 단위로 커밋되는가 — 둘 다 서버 문자열이고 그대로 적는다.
+  // 다섯 중 하나(고아 스윕)만 삭제이고 중단 시 통째로 롤백된다. 확인 문구 하나로 다섯을
+  // 덮으면 그 하나가 틀리므로, 사실은 각 행이 자기 것을 들고 있는다.
+  if (op.deletes) card.appendChild(retroFactEl(op.deletesLabel, op.deletes, 'danger'));
+  if (op.commit) card.appendChild(retroFactEl(op.commitLabel, op.commit, ''));
+
+  if (op.params.length) card.appendChild(retroParamsEl(op));
+
+  card.appendChild(retroActionsEl(op));
+
+  // 결과 영역은 레코드에서 유도된다 — 두 버튼이 같은 host를 서로 지우던 자리가 없어졌다.
+  // 측정과 큐 응답은 **다른 사실**이라 둘 다 남는다: 하나는 증거고 하나는 일어난 일이다.
+  const state = retroState(op.op);
+  const resolved = resolveCount(state, op);
+  if (resolved.count) card.appendChild(retroCountEl(resolved.count, resolved.stale));
+  if (state.run) card.appendChild(retroQueuedEl(state.run));
+  if (state.runFailure) card.appendChild(cfgEl('div', 'cfg-dryrun', state.runFailure));
+
+  card.appendChild(retroCliEl(op));
+  return card;
+}
+
+function retroFactEl(label, value, tone) {
+  const row = cfgEl('div', 'retro-fact');
+  row.appendChild(cfgChip(cfgText(label), tone || 'muted'));
+  row.appendChild(cfgEl('span', 'cfg-path', cfgText(value)));
+  return row;
+}
+
+function retroParamsEl(op) {
+  const wrap = cfgEl('div', 'retro-params');
+  wrap.appendChild(cfgEl('div', 'cfg-group-label', cfgText(op.paramsLabel)));
+  const state = retroState(op.op);
+  op.params.forEach((param) => {
+    const field = cfgEl('label', 'retro-field');
+    const name = cfgEl('span', 'cfg-subject', cfgText(param.name));
+    field.appendChild(name);
+    if (param.required) field.appendChild(cfgChip(cfgText(param.requiredLabel), 'muted'));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'retro-input';
+    input.dataset.param = param.key;
+    input.value = state.params[param.key] || '';
+    input.addEventListener('input', () => {
+      const wasStale = resolveCount(state, op).stale;
+      state.params[param.key] = input.value;
+      // 카드를 통째로 다시 그리면 타이핑 중에 포커스가 날아가므로, **측정의 유효성이 실제로
+      // 뒤집힌 타이핑에서만** 다시 그린다 — 한 글자 고쳤다 되돌리면 측정은 다시 유효해지고
+      // 그 전이도 화면에 나와야 한다. 판정은 `resolveCount` 하나가 한다.
+      if (!state.count || resolveCount(state, op).stale === wasStale) return;
+      const caret = input.selectionStart;
+      renderRetroOperation(op.op);
+      retroFocusParam(op.op, param.key, caret);
+    });
+    field.appendChild(input);
+    // 서버가 준 help는 **입력칸 안(placeholder)이 아니라 아래 줄**에 둔다. placeholder는
+    // 폭에 잘리고 타이핑을 시작하면 사라진다 — 「자르지 말고 줄을 하나 더 써라」.
+    // 없으면 비워 둔다: 여기서 지어내면 그 순간 클라가 파라미터의 뜻을 자기가 정한다.
+    if (param.help) field.appendChild(cfgEl('span', 'retro-help cfg-path', cfgText(param.help)));
+    wrap.appendChild(field);
+  });
+  return wrap;
+}
+
+/** 재렌더 뒤 커서를 원래 칸으로 돌려놓는다. 입력칸은 `data-param`으로 자기를 밝힌다. */
+function retroFocusParam(opId, paramKey, caret) {
+  const target = document.querySelector(
+    `article.retro-op[data-op="${CSS.escape(opId)}"] input[data-param="${CSS.escape(paramKey)}"]`);
+  if (!target) return;
+  target.focus();
+  try { target.setSelectionRange(caret, caret); } catch (e) { /* not a text input */ }
+}
+
+/** 🔴 두 버튼의 상태는 **레코드에서 유도**된다. 이 함수는 그 결과를 DOM에 옮기기만 한다 —
+ *  판정(진행 중인가 · 낡은 측정인가 · 거부 상태인가)은 전부 `buildActionsView`에 있고 node에서
+ *  채점된다. 어떤 재렌더 경로를 타든 같은 레코드에서 같은 답이 나오므로, 다시 그리는 코드가
+ *  「실행 중이었다」를 잊을 방법이 없다. */
+function retroActionsEl(op) {
+  const wrap = cfgEl('div', 'retro-actions');
+  const actions = buildActionsView(op, retroState(op.op));
+
+  const countBtn = cfgEl('button', 'glass-btn cfg-btn', cfgText(actions.count.label));
+  countBtn.type = 'button';
+  countBtn.disabled = actions.count.disabled;
+  countBtn.addEventListener('click', () => runRetroactiveCount(op));
+  wrap.appendChild(countBtn);
+
+  const runBtn = cfgEl('button', 'glass-btn btn-primary cfg-btn', cfgText(actions.run.label));
+  runBtn.type = 'button';
+  runBtn.disabled = actions.run.disabled;
+  // 서버가 `blocked_reason`을 카운트와 **따로** 실어 보내는 이유가 이것이다 — 눌러 보고 워커
+  // 로그에서 거절을 발견하는 것이 아니라, 누르기 전에 알 수 있어야 한다.
+  if (actions.run.blocked) {
+    runBtn.title = `${cfgText(actions.run.blockedLabel)}: ${cfgText(actions.run.blocked)}`;
+  }
+  runBtn.addEventListener('click', () => runRetroactiveRun(op));
+  wrap.appendChild(runBtn);
+  return wrap;
+}
+
+function retroCliEl(op) {
+  const state = retroState(op.op);
+  const details = document.createElement('details');
+  details.className = 'cfg-views';
+  // 펼침 상태도 레코드에 있다 — 카드를 다시 그린다고 운영자가 열어 둔 것이 접히면 안 된다.
+  details.open = state.cliOpen;
+  details.addEventListener('toggle', () => { state.cliOpen = details.open; });
+  const summary = document.createElement('summary');
+  summary.textContent = `${cfgText(op.cliOnlyLabel)} ${op.cliOnly.length} ▾`;
+  details.appendChild(summary);
+  const box = cfgEl('div', 'cfg-view');
+  const head = cfgEl('div', 'cfg-row-head');
+  head.appendChild(cfgChip(cfgText(op.cliLabel), 'muted'));
+  head.appendChild(cfgEl('span', 'cfg-path', cfgText(op.cli)));
+  box.appendChild(head);
+  // 버튼은 각 연산의 흔한 형태만 덮는다. 나머지가 무엇인지는 서버가 목록으로 말해 주고,
+  // 그것을 감추면 이 다섯 줄이 전부인 것처럼 읽힌다.
+  op.cliOnly.forEach((item) => box.appendChild(cfgEl('div', 'cfg-detail', cfgText(item))));
+  details.appendChild(box);
+  return details;
+}
+
+function retroCountEl(cached, stale) {
+  const box = cfgEl('div', 'cfg-dryrun');
+  if (!cached.ok) {
+    box.appendChild(cfgEl('div', 'cfg-detail', cached.failure || RETRO_CHROME.COUNT_FAILED));
+    return box;
+  }
+  const view = cached.view;
+  // 🔴 입력이 바뀌었으면 이 상자는 **지금 보낼 요청의 것이 아니다.** 지우지 않고 그렇게 적는다 —
+  // 「inv를 재보니 594였고 지금은 lot_alias를 묻고 있다」가 운영자가 잃지 말아야 할 맥락이다.
+  // 확인 대화상자에는 애초에 실리지 않는다(`buildConfirmLines`가 구조적으로 막는다).
+  if (stale) {
+    box.dataset.tone = 'stale';
+    box.appendChild(cfgEl('div', 'cfg-detail retro-stale', RETRO_CHROME.STALE));
+  } else if (view.truncated) {
+    box.dataset.tone = 'warn';
+  }
+
+  const head = cfgEl('div', 'retro-count-head');
+  // 🔴 숫자는 서버 라벨과 한 쌍으로만 나온다. 라벨이 없으면 숫자도 없다 — 맨숫자는 「답」으로
+  // 읽히고, 다섯 중 넷에서 그것은 답이 아니다(`detail` 문장 안에 여전히 들어 있다).
+  // 그리고 이 두 가지가 **쓰기 결정이 딛고 있는 사실**이므로 주변 산문보다 작아서는 안 된다.
+  if (view.affectedLabel && view.affected) {
+    head.appendChild(cfgEl('span', 'retro-count-label', cfgText(view.affectedLabel)));
+    head.appendChild(cfgEl('span', 'retro-count-value', view.affected.text));
+  }
+  // 「이 수는 어떤 종류의 수인가」 — 서버 어휘 그대로. 색은 종류에서 오지 값에서 오지 않는다.
+  if (view.kind) {
+    const kindChip = cfgChip(cfgText(view.kind), view.kindTone);
+    kindChip.classList.add('retro-kind');
+    kindChip.title = cfgText(view.kindLabel);
+    head.appendChild(kindChip);
+  }
+  // 표본이 예산까지 찼는가 — 테두리 색 하나에만 맡기지 않는다. 색은 확인 대화상자에 못 간다.
+  if (view.truncatedLabel && view.truncatedValue) {
+    head.appendChild(cfgEl('span', 'cfg-path', cfgText(view.truncatedLabel)));
+    head.appendChild(cfgEl('span', 'cfg-jsonval', cfgText(view.truncatedValue)));
+  }
+  if (view.blocked) {
+    head.appendChild(cfgChip(cfgText(view.blockedLabel), 'danger'));
+    head.appendChild(cfgChip(cfgText(view.blocked), 'danger'));
+  }
+  if (head.childNodes.length) box.appendChild(head);
+
+  if (view.detail) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.detail)));
+  if (view.why) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.why)));
+  // 서버가 **라벨을 붙여 준** 두 번째 숫자만 나온다(R1의 회수 후보처럼). `affected`에 더하지
+  // 않는 것이 핵심이다 — 더하면 「쓰기 연산」의 수에 「절대 쓰지 않는 것」의 수가 섞인다.
+  // 쌍마다 자기 상자를 갖는다: 구분자 없는 한 줄에서는 값이 다음 라벨에 붙어 읽힌다.
+  if (view.extras.length) {
+    const line = cfgEl('div', 'retro-extras');
+    view.extras.forEach((extra) => {
+      const pairEl = cfgEl('span', 'retro-extra');
+      pairEl.appendChild(cfgEl('span', 'cfg-path', cfgText(extra.label)));
+      pairEl.appendChild(cfgChip(extra.count.text, 'muted'));
+      line.appendChild(pairEl);
+    });
+    box.appendChild(line);
+  }
+  return box;
+}
+
+function retroQueuedEl(view) {
+  const box = cfgEl('div', 'cfg-dryrun');
+  box.dataset.tone = 'ok';
+  const head = cfgEl('div', 'cfg-row-head');
+  head.appendChild(cfgChip(cfgText(view.queuedLabel), 'ok'));
+  if (view.statusWord) head.appendChild(cfgChip(cfgText(view.statusWord), 'muted'));
+  head.appendChild(cfgEl('span', 'cfg-path',
+    `${cfgText(view.runIdLabel)} ${cfgText(view.runId)}`));
+  box.appendChild(head);
+  if (view.label) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.label)));
+  // 🔴 **무엇이** 큐에 들어갔는지 — 서버가 되돌려준 echo다. 이것이 없으면 이 상자는 「실행됐다」만
+  // 말하고 「무엇이」를 말하지 않는다. 파라미터가 어긋난 채 확정된 실행을 사후에 알아볼 수 있는
+  // 유일한 자리이기도 하다.
+  if (view.params.length) {
+    const line = cfgEl('div', 'retro-extras');
+    line.appendChild(cfgEl('span', 'cfg-group-label', cfgText(view.paramsLabel)));
+    view.params.forEach((param) => {
+      const pairEl = cfgEl('span', 'retro-extra');
+      pairEl.appendChild(cfgEl('span', 'cfg-subject', cfgText(param.name)));
+      pairEl.appendChild(cfgEl('span', 'cfg-jsonval',
+        param.values.map(cfgText).join(', ')));
+      line.appendChild(pairEl);
+    });
+    box.appendChild(line);
+  }
+  return box;
+}
+
+/** 실패 응답의 문장은 **서버 것을 먼저 쓴다.**
+ *
+ * 400 거절(알 수 없는 연산·파라미터 누락·보호된 소스 회수 시도·계산 불가)에는 서버가 이유를
+ * 문장으로 담아 보낸다. 그것을 버리고 「조회 실패」로 뭉개면 운영자를 로그로 돌려보내는 것이다.
+ * 반대로 404·401/403·무응답은 서버가 자기에 대해 말할 수 없는 상태라 클라의 다섯 상수가 답이다
+ * — 그 가름은 `fetchFailureText`가 이미 소유하고 있으므로, 서버 문장을 **fallback으로 넘기는
+ * 것만으로** 두 규칙이 하나의 분류기 안에서 만난다. 새 분기를 만들지 않는다.
+ */
+async function retroFailureLine(res, failure, fallback) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && typeof body.detail === 'string') detail = body.detail;
+  } catch (e) { /* 본문 없는 실패 응답 — 클라 상수로 답한다 */ }
+  return fetchFailureLine(failure, detail || fallback);
+}
+
+// 읽기 전용 계기다 — `apply`류 파라미터는 이 라우트에 존재하지 않고 서버가 구조적으로
+// rollback한다. 그래서 확인 없이 클릭 한 번(「읽기 무마찰」). 다만 다섯 중 셋은 이 수를 얻는
+// 것이 곧 표본 드라이런이라 자동으로는 절대 돌리지 않는다: 운영자가 물어볼 때만 센다.
+async function runRetroactiveCount(op) {
+  const state = retroState(op.op);
+  if (state.busy) return;
+  const entries = retroParamEntries(op.op, op);
+  // 🔴 이 측정이 **어느 파라미터의 것인지**를 결과와 함께 적어 둔다. 이것이 없으면 측정은
+  // 연산에 대한 사실인 척하고, `_count_chain_replay`의 `detail`은 규칙 이름을 말하지 않으므로
+  // 어긋난 채로 확인 대화상자까지 따라가도 화면 어디에도 표가 나지 않는다.
+  const measuredKey = paramsKey(entries);
+  state.busy = 'count';
+  renderRetroOperation(op.op);
+  let failure = null;
+  try {
+    const query = entries
+      .map((e) => `${encodeURIComponent(e.key)}=${encodeURIComponent(e.value)}`).join('&');
+    const res = await adminFetch(
+      `${API_BASE}/admin/retroactive/${encodeURIComponent(op.op)}/count${query ? `?${query}` : ''}`);
+    failure = failureFactOf(res);
+    if (!res.ok) {
+      state.count = {
+        ok: false, view: null, paramsKey: measuredKey,
+        failure: await retroFailureLine(res, failure, RETRO_CHROME.COUNT_FAILED),
+      };
+    } else {
+      state.count = { ok: true, view: buildCountView(await res.json()), paramsKey: measuredKey };
+    }
+  } catch (e) {
+    console.error('[Retroactive] count failed', op.op, failure, e);
+    state.count = {
+      ok: false, view: null, paramsKey: measuredKey,
+      failure: fetchFailureLine(failure, RETRO_CHROME.COUNT_FAILED),
+    };
+  } finally {
+    state.busy = null;
+    // 화면은 레코드에서 다시 유도된다. 여기서 DOM을 손으로 깁지 않으므로, 이 경로가 실행 버튼의
+    // 진행 중 상태를 되살릴 방법이 없다 — 그것이 두 번째 아웃박스 행을 만들던 자리였다.
+    renderRetroOperation(op.op);
+  }
+}
+
+// 🔴 쓰기 촉발이다. 확인은 **정확히 한 번**이고 마법사는 없다.
+// 대화상자에 들어가는 사실은 전부 서버 문자열(라벨 · 무엇을 지우는가 · 커밋 단위 · 방금 센
+// 문장)이고, 운영자가 타이핑한 파라미터가 그대로 되읽힌다. 클라가 짓는 문장은 마지막 질문
+// 한 줄뿐이다 — 위험을 클라가 요약하기 시작하면 다섯 중 넷과 다른 하나를 같은 말로 덮게 된다.
+async function runRetroactiveRun(op) {
+  const state = retroState(op.op);
+  // 🔴 확인창을 **열기 전에** 막는다. 더블클릭이나 Enter 키 반복이 대화상자를 닫자마자 두 번째
+  // 클릭을 흘려보내는 경로가 여기 하나뿐이고, 브라우저의 모달 동작에 기대는 것은 계약이 아니다.
+  if (state.busy) return;
+  const params = retroParamEntries(op.op, op);
+  // 레코드를 통째로 넘긴다. 뷰 모델이 「이 측정이 이 파라미터의 것인가」를 스스로 판정하므로,
+  // 어긋난 측정을 실어 보낼 수 있는 인자 모양 자체가 존재하지 않는다.
+  const lines = buildConfirmLines(op, state, params);
+  // 🔴 플래그를 **확인창을 열기 전에** 세운다. 「confirm()이 탭 모달이라 두 번째 클릭은 페이지에
+  // 닿지 않는다」는 참이지만 그건 **브라우저 동작**이지 이 코드가 보장하는 성질이 아니다(키 반복이
+  // 대화상자를 닫으면서 클릭을 흘리는 경로가 실제로 있다). 여기서 세우면 모달 의미론에 기대지
+  // 않고도 두 번째 진입이 위 `if (state.busy) return;`에 걸린다. 취소하면 되돌린다.
+  state.busy = 'run';
+  if (!confirm(lines.map((node) => node.text).join('\n'))) {
+    state.busy = null;
+    return;
+  }
+  renderRetroOperation(op.op);
+  let failure = null;
+  let failureText = null;
+  try {
+    const body = {};
+    params.forEach((entry) => { body[entry.key] = entry.value; });
+    const res = await adminFetch(`${API_BASE}/admin/retroactive/${encodeURIComponent(op.op)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ params: body }),
+    });
+    failure = failureFactOf(res);
+    if (!res.ok) {
+      failureText = await retroFailureLine(res, failure, RETRO_CHROME.RUN_FAILED);
+      // 503(토큰 미설정으로 이 라우트가 닫혀 있음)은 `adminFetch`가 **이미** 서버 본문을
+      // 토스트로 띄운다. 여기서 또 띄우면 같은 문장이 두 번 뜬다(실측 확인). 두 번째 분류기를
+      // 만들지 않고 그 하나에 양보한다 — 줄은 남긴다, 토스트는 사라지고 줄은 남으니까.
+      if (res.status !== 503) showToast(failureText, 'error', { ttl: 12000 });
+    } else {
+      // 큐 응답은 **레코드에 남는다.** 앞선 판본은 이것만 DOM에 직접 붙여서, 다음 재렌더가
+      // run_id를 영구히 지웠다 — 토스트는 이미 사라진 뒤였고, 무언가 실행됐다는 증거가 화면에서
+      // 완전히 없어졌다. 카운트와 파라미터는 살아남는데 그것만 못 살아남을 이유가 없다.
+      state.run = buildRunView(await res.json());
+      showToast(`${cfgText(state.run.queuedLabel)} — `
+        + `${cfgText(state.run.runIdLabel)} ${cfgText(state.run.runId)}`, 'success');
+    }
+  } catch (e) {
+    console.error('[Retroactive] run request failed', op.op, failure, e);
+    failureText = fetchFailureLine(failure, RETRO_CHROME.RUN_FAILED);
+    showToast(failureText, 'error', { ttl: 12000 });
+  } finally {
+    state.busy = null;
+    // 실패 문장도 레코드에 있다 — 토스트는 사라지고 줄은 남아야 하며, 남는 것은 재렌더를
+    // 견뎌야 한다. 성공하면 지운다: 지난 실패가 이번 큐 응답 옆에 남아 있으면 안 된다.
+    state.runFailure = failureText;
+    renderRetroOperation(op.op);
+  }
+}
+
 // ── Overview 탭 (헬스 스트립 확장판 — 첫 화면) ─────────────
 
 async function fetchOverview(isStale) {
@@ -1871,6 +2366,9 @@ async function fetchOverview(isStale) {
   // 같은 이유로 await 하지 않는다. 이쪽은 DB를 건드리지 않아 값싸지만, 본문 렌더가
   // 설정 파일 읽기를 기다릴 이유도 없다.
   refreshConfigResolve();
+  // 같은 이유로 await 하지 않는다. 목록은 설정만 읽고(DB 질의 0건) 페이지당 한 번만
+  // 읽히므로 30초 폴링에 아무 비용도 더하지 않는다 — 카운트는 여기서 돌지 않는다.
+  refreshRetroactiveOperations();
 
   const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
@@ -2727,6 +3225,10 @@ async function reloadSystemConfigs() {
     // 다시 그려지고, 그때 낡은 드라이런 측정값도 함께 버려진다.)
     configResolveAutoOpened = false;
     refreshConfigResolve(true);
+    // 소급 적용 목록도 규칙 이름(체인·Enrichment)에서 나오므로 리로드가 그 유일한 변경
+    // 계기다. force로 스로틀을 건너뛰되, **버리는 판정은 내용 비교가 한다** — 목록이 실제로
+    // 달라졌을 때만 측정을 버리고 다시 그린다. 눌렀는데 아무것도 안 바뀌었으면 화면도 그대로다.
+    refreshRetroactiveOperations(true);
     fetchData();
     refreshHealthStrip();
   } catch (err) {

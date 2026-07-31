@@ -114,6 +114,29 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="seed", silent=T
         updates=items, transaction_id=tx_id, silent=silent))
 
 
+def _seed_raw(db, table, rows):
+    """Insert into the model DIRECTLY, bypassing `crud.apply_batch_updates`.
+
+    [Why a probe fixture is allowed to bypass the write boundary]
+    `crud.cast_value_by_type` normalizes on write (`normalize_stored_text`), so a value
+    like `'WF01 '` cannot land in one of THIS system's tables any more. But this module
+    does not probe this system's storage - it probes a USER-DECLARED reference VIEW,
+    which is arbitrary SQL and can synthesize a value that never passed through that
+    boundary (a concatenation, a CAST, a join against a table nobody here manages).
+
+    So `enrichment_candidates` must not lean on an upstream normalization invariant it
+    does not own, and a fixture that can only produce canonical bytes cannot test that.
+    Same reasoning, same shape as `test_virtual_join_executor._seed_raw`.
+    """
+    import uuid6
+    model = models.DYNAMIC_TABLES[table]
+    bk = crud.TABLE_CONFIG[table].get("business_key")
+    for r in rows:
+        db.add(model(row_id=str(uuid6.uuid7()),
+                     business_key_val=str(r.get(bk, "")).strip() or None, **r))
+    db.flush()
+
+
 def _loaded_rule(name="encand_rule"):
     rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
@@ -525,8 +548,15 @@ def test_a_clipped_distinct_read_is_refused_even_when_it_folds_to_one_value(cand
     that the fixture still activates the defect axis (the returned groups fold
     to one) instead of assuming it - a fixture that quietly stopped clipping
     'WF02' would otherwise turn this into a test of `ambiguous`.
+
+    🔴 **That self-guard earned its keep on 2026-07-31.** The write boundary became
+    canonical (`crud.normalize_stored_text`), `'WF01 '` started landing as `'WF01'`, the
+    two clipped groups became {'WF01','WF02'} - and this test failed with its own
+    "fixture no longer activates the defect axis" message instead of quietly becoming a
+    test of `ambiguous`. `_seed_raw` restores the axis; see its docstring for why a probe
+    fixture is entitled to bypass that boundary (the view is arbitrary user SQL).
     """
-    _seed(cand_env, "encand_test_hist", [
+    _seed_raw(cand_env, "encand_test_hist", [
         {"hist_id": "D1", "lot": "LD", "slot": "S1", "wafer_id": "WF01"},
         {"hist_id": "D2", "lot": "LD", "slot": "S1", "wafer_id": "WF01 "},
         {"hist_id": "D3", "lot": "LD", "slot": "S1", "wafer_id": "WF02"},

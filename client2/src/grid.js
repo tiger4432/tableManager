@@ -1,6 +1,6 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
-import { state, updateVisibleColIndexMap } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn } from './state.js';
 import { elements } from './dom.js';
 import { handleCellEdit, fetchData } from './api.js';
 import { loadHistory } from './timeline.js';
@@ -231,6 +231,53 @@ function numericDisplayValue(val) {
   return val;
 }
 
+// ── [Virtual join] The filter a JOIN-RESOLVED column gets ───────────────────────────────
+//
+// ONE helper for BOTH shapes `/schema.join_resolved_columns` announces: `virtual_only`
+// (nothing stored at all) and `collide` (stored and editable, but whose filter the server
+// still evaluates against the joined value). They need the identical answer, and a second
+// copy of it is a second thing to forget when one of them moves.
+//
+// 🔴 ALWAYS TEXT, even for a column declared `number`. Not a preference — the server's
+// contract: `main.get_column_filter_condition` states "an override is always treated as
+// text" and does `cast(col_expr_override, String)` with `is_numeric = False`. An
+// `agNumberColumnFilter` would send `greaterThan`/`inRange`, the server would evaluate them
+// as STRING comparisons on that cast, and `'10' > '9'` is false lexically — a wrong answer
+// wearing the costume of a working filter. Text is also what keeps the one query that
+// matters expressible: the resolved value's domain is the right table's values PLUS
+// `unresolved_label`, so `equals <label>` is the only way to ask for the unresolved rows,
+// and no numeric predicate can express it.
+//
+// 🔴 `blank`/`notBlank` REMOVED. The resolved value is a COALESCE whose last arm is
+// `unresolved_label`, which `virtual_join_config` guarantees is a non-empty string. So no
+// row in such a column is ever blank: `blank` matches NOTHING and `notBlank` matches
+// EVERYTHING, on every row, forever. Offering them is the UI making a claim it cannot keep
+// — an operator reads `Matches: 0` as "there are none" rather than "this control does
+// nothing". Measured on the live table before removal: blank -> 0 of 15,489, notBlank ->
+// 15,489 of 15,489, while `equals` on the label returned the 4,052 unresolved rows.
+//
+// The six that remain are AG-Grid 35's `DEFAULT_TEXT_FILTER_OPTIONS` minus those two,
+// written out rather than derived because AG-Grid does not export the default list.
+const JOIN_RESOLVED_FILTER_OPTIONS = [
+  'contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith'
+];
+
+function joinResolvedFilterDef(entry, baseTooltip) {
+  // 🔴 The label is READ OFF THE ENTRY and never written into this file. It rides per
+  // declaration (`virtual_join_rules.json`), so a site that renames it must see the new
+  // name here on the next /schema — a hardcoded '미상' would be provably wrong there.
+  const label = (entry && typeof entry.unresolved_label === 'string' && entry.unresolved_label)
+    ? entry.unresolved_label : '';
+  // Removing `Blank` without saying what replaced it just moves the dead end. This rides
+  // the header tooltip that already exists on both paths rather than adding any control.
+  const hint = label ? `\n미해결 행 보기: 필터를 Equals로 두고 '${label}' 입력` : '';
+  return {
+    filter: 'agTextColumnFilter',
+    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },
+    headerTooltip: `${baseTooltip}${hint}`
+  };
+}
+
 // Helper to build column definitions dynamically based on schema
 export function buildColumnDefs() {
   const columnDefs = state.currentColumns.map((col, index) => {
@@ -245,6 +292,14 @@ export function buildColumnDefs() {
     } else if (state.currentCompositeKeySources.includes(col)) {
       headerLabel = `${headerLabel}*`;
     }
+
+    // [Virtual join] A STORED column can still be join-resolved — `kind: 'collide'`, where
+    // the same name exists on both sides and the server fills it from the right table
+    // wherever the stored value is blank. It is NOT in `currentVirtualColumns` (that list
+    // answers "which columns must the grid ADD"), so `isVirtualColumn` says no here and
+    // would miss it. Only its FILTER changes; it stays editable, writable and copyable,
+    // because the value really is stored.
+    const resolvedEntry = joinResolvedColumn(col);
 
     const colDef = {
       headerName: headerLabel,
@@ -328,6 +383,15 @@ export function buildColumnDefs() {
       }
     };
 
+    // Applied AFTER the literal so it overrides `filter`/`headerTooltip`, and BEFORE the
+    // editor selection below so it cannot touch it: a collide column's storage is still
+    // numeric when it is declared `number`, so it keeps `agNumberCellEditor` and its
+    // numeric write validation. Only the filter becomes text, because only the filter is
+    // evaluated against the joined value.
+    if (resolvedEntry) {
+      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));
+    }
+
     if (colType === 'number') {
       colDef.cellEditor = 'agNumberCellEditor';
     } else if (!isSystem && colType === 'string') {
@@ -379,6 +443,20 @@ export function buildColumnDefs() {
     const isNumeric = vc.type === 'number';
     const unresolved = typeof vc.unresolved_label === 'string' ? vc.unresolved_label : '';
     const rightTable = vc.right_table || '?';
+    const baseTooltip = `${col.toUpperCase()} — '${rightTable}' 조인 컬럼 (읽기 전용)\n`
+      + `값을 고치려면 '${rightTable}' 테이블에서 수정하세요. 선언: ${vc.rule || '?'}`;
+
+    // 🔴 KEYED OFF `join_resolved_columns`, NOT off `vc` — even though `vc` carries an
+    // `unresolved_label` too and would have been the convenient read. The announcement is
+    // the server saying "I can resolve and filter this name"; `virtual_columns` only says
+    // "add this column". A server that announces the second and not the first is a
+    // PRE-CHANGE server, and on that server a filter on this name contributes no condition
+    // and the page comes back unfiltered — the exact defect `filter: false` existed to
+    // prevent. So when the announcement is absent we keep the old, safe behaviour.
+    const resolvedEntry = joinResolvedColumn(col);
+    const filterDef = resolvedEntry
+      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)
+      : { filter: false, headerTooltip: baseTooltip };
 
     columnDefs.push({
       // 🔗 joins the existing header vocabulary (🗝️ business key, * composite source) rather
@@ -386,27 +464,33 @@ export function buildColumnDefs() {
       // `rule` land: the server's write refusal says "fix it in the join source" without
       // naming which table, and this is the only place that answer exists on screen.
       headerName: `${col.toUpperCase()}🔗`,
-      headerTooltip: `${col.toUpperCase()} — '${rightTable}' 조인 컬럼 (읽기 전용)\n`
-        + `값을 고치려면 '${rightTable}' 테이블에서 수정하세요. 선언: ${vc.rule || '?'}`,
       field: col,
       editable: false,
       sortable: true,
-      // 🔴 NO FILTER AT ALL, and this is the deliberate part.
+      // ✅ FILTERABLE. This column carried `filter: false` until 2026-07-31, on the grounds
+      // that `main.get_column_filter_condition` ended its resolution with
+      // `if not hasattr(table_model, col_name): return None` — an unknown name contributed
+      // no condition, the page came back UNFILTERED, and only the client-side row model
+      // trimmed what was on screen, so the rows looked filtered while `Matches:` and the
+      // page count stayed at the unfiltered totals.
       //
-      // Column filters in this grid are SERVER-SIDE: `fetchData` sends
-      // `gridApi.getFilterModel()` as `?filters=`, and `main.get_column_filter_condition`
-      // ends its column resolution with `if not hasattr(table_model, col_name): return None`
-      // — an unknown name contributes NO condition and the page comes back UNFILTERED. The
-      // client-side row model would then filter the rows it already holds, so the visible
-      // rows would look filtered while `Matches:` and the page count stayed at the unfiltered
-      // totals. That is a filter that half-works and says nothing, which is worse than a
-      // column that plainly cannot be filtered — the same call the server made when it chose
-      // to announce nothing rather than announce a phantom.
+      // 🔴 THAT JUSTIFICATION IS GONE, not weakened. The server now resolves these columns
+      // itself: `apply_column_filters` binds the column to `resolved_expression` and passes
+      // it as `col_expr_override`, and a column it knows is virtual but cannot build an
+      // expression for is now a 400 rather than a silent unfiltered 200. So `?filters=` on
+      // this name genuinely narrows the query, and `Matches:` is the count of the narrowed
+      // query. Leaving `filter: false` here would have kept a working server capability
+      // unreachable from the UI, which is its own kind of lie.
       //
-      // (`agNumberColumnFilter` would have been wrong for a second reason on top: the value
-      // domain is the right table's values PLUS `unresolved_label`, so no numeric predicate
-      // can ever match an unresolved row or find one.)
-      filter: false,
+      // The client-side row model still re-filters the page it holds, and that stays
+      // correct: `valueGetter` reads the cell the SERVER attached — already COALESCEd,
+      // label included — so both sides evaluate the same displayed value and the second
+      // pass is idempotent.
+      //
+      // `headerTooltip` rides in here too: it is where the `equals <label>` hint lands, and
+      // composing it in one place keeps the hint from drifting from the option list it
+      // exists to explain.
+      ...filterDef,
       resizable: true,
       valueGetter: (params) => {
         const val = rawCellValue(params.data, col);

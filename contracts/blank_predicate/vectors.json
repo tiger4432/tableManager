@@ -1,0 +1,894 @@
+{
+  "$comment": [
+    "SHARED CONTRACT -- the BLANK PREDICATE seam (virtual-column search/filter round, 2026-07-31).",
+    "",
+    "THE QUESTION THIS SEAM ASKS: 'is this cell empty?' -- and it now has to be answered TWICE,",
+    "once in Python and once in SQL, about the same cell.",
+    "",
+    "  Python : `crud.is_blank_value(v)`      (== `crud.clean_str_value(v) == \"\"`)",
+    "  SQL    : `crud.blank_sql_condition(c)` (== `c IS NULL OR c = ''`)",
+    "",
+    "They do not agree by construction. `str.strip()` removes 29 codepoints; `=` removes none and",
+    "`btrim(c)` would remove exactly one (U+0020). A cell holding a bare TAB is empty to Python and",
+    "non-empty to SQL, so a row the grid PAINTS as the unresolved label would be MISSING from a",
+    "search for that label -- a silent under-report, which is the failure class this file exists to",
+    "make loud.",
+    "",
+    "WHAT MAKES THE PAIR AGREE ANYWAY -- AND WHY THAT IS NOT ENOUGH",
+    "  The 2026-07-31 user ruling was to block the divergent input at the write boundary rather than",
+    "  teach SQL Python's whitespace table. `crud.normalize_stored_text` + `crud.cast_value_by_type`",
+    "  do that, and AFTER them the two spellings are the same predicate BY CONSTRUCTION.",
+    "",
+    "  This contract deliberately does NOT assume that normalization ran. It scores three things:",
+    "    (W) the write boundary really does remove every divergent input        -- INV-BP-W*",
+    "    (E) the two spellings agree on every value that CAN be stored          -- INV-BP-E*",
+    "    (X) on values that BYPASS the boundary the two spellings disagree,",
+    "        exactly as recorded, so the exposure has a number instead of a hope -- INV-BP-X1",
+    "  A vector that assumed normalization always ran would assert its own powerlessness: legacy",
+    "  rows predate it, and any writer that does not funnel through `apply_batch_updates` reopens it.",
+    "",
+    "HOW TO RUN",
+    "  server (all axes except the Postgres dialect):",
+    "      conda run -n assy_manager python -m pytest contracts/blank_predicate/ -q -rs",
+    "      (reaches the default suite via server/tests/test_blank_predicate_contract.py)",
+    "  server, Postgres dialect axis (opt-in, READ-ONLY, scalar SELECTs, no table touched):",
+    "      ASSY_CONTRACT_PG_URL=postgresql://... conda run -n assy_manager python -m pytest contracts/blank_predicate/ -q -rs",
+    "  client:",
+    "      node contracts/blank_predicate/client_harness.mjs",
+    "",
+    "THE DIALECT TRAP, AND WHY IT IS PINNED RATHER THAN IGNORED",
+    "  `pytest server/tests/` runs on sqlite:///:memory:. Production is PostgreSQL 18.3. The two",
+    "  dialects DO NOT RENDER NUMBERS THE SAME WAY: `cast(7.0 as varchar)` is '7.0' on SQLite and",
+    "  '7' on Postgres. So a render axis scored only on the suite's dialect would bless a divergence",
+    "  that does not exist in production and miss one that does. `dialect_facts` records both,",
+    "  measured, and `test_the_suite_dialect_is_not_production` fails if anyone forgets."
+  ],
+  "version": 1,
+  "seam": "blank_predicate",
+  "expectation_sources": {
+    "$comment": [
+      "Rule 1 of the contract-keeper charter: every expected answer says where it came from, and",
+      "NONE of them may be 'whatever the implementation returned'. Four sources are used here."
+    ],
+    "spec": "A stated rule of the system, quoted at the case. Chiefly `server/virtual_join_executor.py` module docstring: the empty test 'must mean the same thing as the rest of the system', and `_resolve_one`'s three-way rule (left value / joined value / unresolved label).",
+    "declared_type": "What the declared type of the column means. A `number` column holds a NUMBER, so 7.0 and 7 are the same value and must render alike; a `string` column holds TEXT, so '0.0' is three characters and is not a number at all.",
+    "identity_rule": "The system's own value-identity rule, which predates this round and is not part of the implementation under test: `crud.get_row_by_business_key` compares `str(key_value).strip()`, and composite business keys are joined from `clean_str_value` parts. Surrounding whitespace is therefore already NOT part of a value's identity anywhere in this system.",
+    "measured": "An observed answer, recorded with the date and the engine version. Used ONLY for dialect facts and for `known_defects` pins -- never as the contract value for an axis."
+  },
+  "whitespace_class": {
+    "$comment": [
+      "The 29 codepoints Python's `str.strip()` removes -- i.e. every `chr(cp).isspace()`.",
+      "DERIVED, NOT TRANSCRIBED: the scorer recomputes this set from the running interpreter and",
+      "fails if it differs. A hand-typed list would be a 30th thing to keep in sync, and it would",
+      "silently drift on a Python upgrade.",
+      "",
+      "Four of them surprise people and are in the corpus for that reason: U+001C..U+001F are the",
+      "ASCII file/group/record/unit separators. They are NOT Unicode White_Space, but Python strips",
+      "them. Anyone writing a SQL character class 'covering Unicode whitespace' would omit all four."
+    ],
+    "expected_size": 29,
+    "codepoints": [
+      9,
+      10,
+      11,
+      12,
+      13,
+      28,
+      29,
+      30,
+      31,
+      32,
+      133,
+      160,
+      5760,
+      8192,
+      8193,
+      8194,
+      8195,
+      8196,
+      8197,
+      8198,
+      8199,
+      8200,
+      8201,
+      8202,
+      8232,
+      8233,
+      8239,
+      8287,
+      12288
+    ],
+    "postgres_btrim_default_strips": [
+      32
+    ],
+    "$why_that_gap_matters": "btrim(c) covers 1 of 29. A SQL spelling built on it would be RIGHT for a leading space and WRONG for a tab, which is the worst shape a predicate can have: it looks tested."
+  },
+  "server_symbols": {
+    "$comment": [
+      "role -> {file, fn, status}. The NAME is part of the contract. A rename must break the scorer",
+      "loudly rather than quietly stop covering an axis -- `client2/tests/split_registry_harness.mjs`",
+      "died in its extraction step for weeks because nothing asserted the symbols still existed.",
+      "status: `live` = must exist now. `pending` = authored ahead of the implementation, quiet, and",
+      "must carry $owner and $blocks."
+    ],
+    "python_predicate": {
+      "file": "server/database/crud.py",
+      "fn": "is_blank_value",
+      "status": "live"
+    },
+    "sql_predicate": {
+      "file": "server/database/crud.py",
+      "fn": "blank_sql_condition",
+      "status": "live"
+    },
+    "sql_not_predicate": {
+      "file": "server/database/crud.py",
+      "fn": "not_blank_sql_condition",
+      "status": "live"
+    },
+    "write_normalizer": {
+      "file": "server/database/crud.py",
+      "fn": "normalize_stored_text",
+      "status": "live"
+    },
+    "write_boundary": {
+      "file": "server/database/crud.py",
+      "fn": "cast_value_by_type",
+      "status": "live"
+    },
+    "write_funnel": {
+      "file": "server/database/crud.py",
+      "fn": "apply_batch_updates",
+      "status": "live"
+    },
+    "python_render": {
+      "file": "server/database/crud.py",
+      "fn": "clean_str_value",
+      "status": "live"
+    }
+  },
+  "invariants": [
+    {
+      "id": "INV-BP-E1",
+      "name": "the two spellings agree on every value the write boundary can leave in storage",
+      "why": "This is the seam. If they disagree on a storable value, a row that displays the unresolved label is missing from a search for it.",
+      "kills": "any SQL spelling that tests `c = ''` alone while Python strips -- and equally any Python spelling that stops stripping while SQL does not."
+    },
+    {
+      "id": "INV-BP-E2",
+      "name": "NULL is blank in BOTH spellings, and the SQL one answers TRUE, never UNKNOWN",
+      "why": "`_resolve_one` case (1) -- no right row -- arrives as NULL and must fold into the unresolved label. In SQL three-valued logic `btrim(c) = ''` on a NULL column evaluates to UNKNOWN, which a WHERE clause treats as NOT MATCHED. That single omission makes a blank filter miss EVERY unmatched row, which is the largest possible under-report on this seam.",
+      "kills": "`btrim(c) = ''`, `c = ''`, `length(trim(c)) = 0` -- every spelling that forgets the NULL arm. All three look correct in a unit test seeded with non-NULL rows."
+    },
+    {
+      "id": "INV-BP-E3",
+      "name": "0 and '0' and '0.0' and ' 0 ' are NOT blank in either spelling",
+      "why": "A declared zero is a value. `v || dflt` and `if not v` are the standing trap in this codebase (map_seam known_defect D1 destroys a declared `phys_edge_margin: 0`), and an emptiness predicate is exactly where it comes back.",
+      "kills": "`not v`, `if not str(v).strip()` used as a truthiness test on a numeric zero; `coalesce(nullif(c,''),'0') = '0'`-style folding."
+    },
+    {
+      "id": "INV-BP-R1",
+      "name": "blank(v) is TRUE if and only if render(v) is the empty string, in each spelling separately",
+      "why": "This is the coupling the seam actually needs and it is checkable without deciding whose trailing-whitespace answer is right. A spelling where `blank('\\t')` is true but `render('\\t')` is '\\t' contradicts itself: the row is counted as unresolved by the filter and painted as non-empty by the grid.",
+      "kills": "the natural half-fix -- adding a trim to the emptiness test and leaving the value/render path untrimmed."
+    },
+    {
+      "id": "INV-BP-R2",
+      "name": "the two spellings render the same text for every storable value",
+      "why": "A search compares TEXT. If Python compares 'A' and SQL compares 'A\\t', a filter written from what the operator sees returns nothing.",
+      "kills": "`cast(col as String)` paired with a Python side that strips -- the exact pair in `main.get_column_filter_condition` today."
+    },
+    {
+      "id": "INV-BP-W1",
+      "name": "no divergent value survives the write boundary",
+      "why": "The 2026-07-31 user ruling: block the input rather than teach SQL Python's whitespace table. Stated as a POST-CONDITION, not a mechanism -- refusing the write and normalizing the value both satisfy it, and the contract has no business picking.",
+      "kills": "a normalizer that handles `''` and `' '` (the two everyone thinks of) and lets `'\\t'` through."
+    },
+    {
+      "id": "INV-BP-W2",
+      "name": "after a write through the funnel, the two spellings agree about that stored row",
+      "why": "The round trip, end to end, through the real `apply_batch_updates`. It is the one assertion here that cannot be satisfied by a coincidence in either half.",
+      "kills": "any future writer added to `apply_row_update_internal` that sets a column without going through `cast_value_by_type`."
+    },
+    {
+      "id": "INV-BP-X1",
+      "name": "on a value that BYPASSED the boundary, the two spellings disagree exactly as recorded",
+      "why": "The safety of the short SQL spelling rests entirely on the storage invariant. This pins the size of what that invariant is holding back, so the day someone proposes a bulk loader or a snapshot restore the cost is written down instead of rediscovered. It is red in the OTHER direction if the disagreement ever narrows -- e.g. if a trim is quietly added to the SQL side, which would mean the two halves are no longer the pair this file describes.",
+      "kills": "a silent unilateral change to either spelling."
+    },
+    {
+      "id": "INV-BP-D1",
+      "name": "exactly ONE SQL spelling of blank exists in server/",
+      "why": "Duplication guard, counted by AST. `crud.blank_sql_condition` was extracted precisely so the rule has one home; a second copy re-creates the state it was extracted from, and the copy is what goes stale. The third copy always arrives during review, not before it.",
+      "kills": "a second `or_(c.is_(None), c == '')` written inline at a new filter site."
+    },
+    {
+      "id": "INV-BP-D2",
+      "name": "the client does not carry its own unresolved-label literal",
+      "why": "The label is a per-declaration server value (`unresolved_label`). A client that writes it down can disagree with the server about what text a row even displays -- and then 'search for what you see' has two answers.",
+      "kills": "`const UNRESOLVED = '...'` appearing in the grid path."
+    }
+  ],
+  "known_defects": {
+    "$comment": [
+      "NAMED, ATTRIBUTED, SELF-CANCELLING pins -- same semantics as contracts/map_seam/vectors.json.",
+      "PINNED (recorded value observed)  -> reported under its id, green.",
+      "STALE  (contract value observed)  -> RED IN THE OTHER DIRECTION; the defect was fixed and the",
+      "                                     pin has silently stopped asserting anything.",
+      "CHANGED SHAPE (neither)           -> red, louder.",
+      "A pin may never agree with the contract value it stands in for.",
+      "",
+      "EMPTY as of 2026-07-31: DUP1 and NUM1 were both CLEARED in the CSV-export round,",
+      "each per its own `clears_when`.",
+      "  DUP1 - main.get_column_filter_condition (blank AND notBlank) and",
+      "         enrichment_analysis._human_resolved_cells (notBlank) now delegate to",
+      "         crud.blank_sql_condition / crud.not_blank_sql_condition. Counts went 2->1",
+      "         and 3->1. Verified by re-running the contract's own fault injection:",
+      "         patching crud.blank_sql_condition NOW turns the AG-Grid blank-filter tests",
+      "         red, which is exactly what it failed to do when DUP1 was written.",
+      "  NUM1 - cast_value_by_type falls back to float() when the int() branch rejects a",
+      "         repr with no '.', so 1e+16 and 1e-05 store instead of being refused.",
+      "         nan/inf stay refused on purpose. `float_1e16.stored_as` now stands.",
+      "FLOAT_EXPONENT was deliberately NOT chased (Lead PM ruling 2026-07-31) and stays",
+      "in declared_divergences below, where it keeps asserting that both sides still give",
+      "the recorded answers - so it cannot rot into a green that means nothing."
+    ]
+  },
+  "declared_divergences": {
+    "$comment": [
+      "NOT agreement. Each side keeps its own recorded answer ON PURPOSE or PENDING A RULING, and",
+      "the contract asserts each side still gives the answer recorded here. Neither is called wrong."
+    ],
+    "FLOAT_EXPONENT": {
+      "title": "a float large enough to reach exponent notation renders differently on the two sides",
+      "case": "float_1e16",
+      "python": "10000000000000000",
+      "postgres": "1e+16",
+      "why": "`clean_str_value` folds any integral float through `str(int(v))`, which never uses exponent notation. Postgres float8 output uses shortest-round-trip, which does. Both are lossless; they are simply different spellings of one number, and a text comparison sees two different strings.",
+      "reach": "only a `number` column whose magnitude reaches 1e16. No production column measured on 2026-07-31 holds one. Recorded so the seam is not later assumed total.",
+      "decision": "Lead PM. Not resolved by this contract."
+    }
+  },
+  "dialect_facts": {
+    "$comment": [
+      "MEASURED, with provenance. These are not contract values -- they are the reason the render",
+      "axis cannot be scored on the suite's dialect alone."
+    ],
+    "$measured_at": "2026-07-31",
+    "$production": "PostgreSQL 18.3 on x86_64-windows, server_encoding UTF8, extra_float_digits=1",
+    "$suite": "sqlite:///:memory: (server/tests/conftest.py pins DATABASE_URL to it)",
+    "render_of_float_7_0": {
+      "python": "7",
+      "postgres": "7",
+      "sqlite": "7.0"
+    },
+    "render_of_float_0_0": {
+      "python": "0",
+      "postgres": "0",
+      "sqlite": "0.0"
+    },
+    "render_of_float_7_5": {
+      "python": "7.5",
+      "postgres": "7.5",
+      "sqlite": "7.5"
+    },
+    "$why_it_is_pinned": "The dispatch that opened this round expected `col::text` to render 7.0 as '7.0'. That is TRUE on SQLite and FALSE on Postgres, because a `number` column materializes as `double precision` (models.init_dynamic_models maps 'number' -> Float). Scoring the render axis on the suite's dialect would therefore have reported a divergence production does not have."
+  },
+  "production_scan": {
+    "$comment": [
+      "READ-ONLY, statement-timeout-bounded scan of the live database, 2026-07-31. Recorded because",
+      "INV-BP-X1 is about EXPOSURE and exposure without a number is a feeling. Not a contract value.",
+      "Re-measure rather than quote: this block goes stale by the day."
+    ],
+    "$measured_at": "2026-07-31",
+    "tables_in_public": 37,
+    "tables_scanned": 36,
+    "tables_timed_out": 0,
+    "rows_whitespace_only_but_not_empty": 0,
+    "rows_with_leading_or_trailing_whitespace": 13,
+    "where": "all 13 are in `file_ingestion_logs` (an operations log, not a grid-backed data table)",
+    "reading": "The emptiness half of the divergence is LATENT in stored data, not active. That is a reason the seam is safe today, and NOT a reason the pair may stay unequal: nothing in the schema prevents the next bulk path from putting one there."
+  },
+  "corpus": {
+    "$comment": [
+      "One expected verdict per input per axis, each with its source. Inputs are given as CODEPOINT",
+      "ARRAYS, never as literal characters: U+00A0 and U+3000 are invisible in an editor and a",
+      "well-meaning save can turn either into U+0020 without a visible diff.",
+      "",
+      "  blank      -- expected answer of BOTH spellings to 'is this empty?'",
+      "  render     -- expected canonical comparison text, the thing a search matches against",
+      "  stored_as  -- what the write boundary must leave in the column, as a codepoint array,",
+      "                or null for SQL NULL. INV-BP-W1 is scored against this.",
+      "",
+      "`stored_as: null` does NOT mean 'refused'. The ruling was that the divergent value must not be",
+      "STORABLE; mapping it to NULL satisfies that, and so would a 400. The contract scores the",
+      "post-condition."
+    ],
+    "cases": [
+      {
+        "id": "null",
+        "input": {
+          "type": "null"
+        },
+        "blank": true,
+        "$blank_source": "spec",
+        "$why": "`_resolve_one` case (1): the LEFT OUTER JOIN found no right row, so every exposed column arrives NULL and must fold into the unresolved label. If SQL answers UNKNOWN here instead of TRUE, a blank filter loses every unmatched row.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "spec",
+        "stored_as": null
+      },
+      {
+        "id": "empty_string",
+        "input": {
+          "type": "text",
+          "cp": []
+        },
+        "blank": true,
+        "$blank_source": "spec",
+        "$why": "`_resolve_one` case (2): the right row exists and its value is empty. The virtual_join_executor docstring measures this at 26.27% of bonding_log -> core_wafer_map. Dropping it reads a quarter of the table as 'has a value'.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "spec",
+        "stored_as": null
+      },
+      {
+        "id": "space",
+        "input": {
+          "type": "text",
+          "cp": [
+            32
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "단일 스페이스 -- 두 철자가 우연히 일치하는 유일한 공백. btrim의 기본 문자집합이 딱 이 한 글자라서, 이 케이스만 보고 SQL이 맞다고 결론내면 나머지 28개를 놓친다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "tab",
+        "input": {
+          "type": "text",
+          "cp": [
+            9
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "이 라운드를 연 바로 그 입력. Python은 비었다고, 순진한 SQL은 안 비었다고 답한다. 사용자 판정(2026-07-31) 「그냥 \\t 같은데 안들어가게 막아」의 대상이기도 하다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "lf",
+        "input": {
+          "type": "text",
+          "cp": [
+            10
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "엑셀 붙여넣기의 실제 산물. 셀 안의 줄바꿈이 단독으로 남으면 이 값이 된다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "crlf",
+        "input": {
+          "type": "text",
+          "cp": [
+            13,
+            10
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "Windows 클립보드 경로. 두 글자라서 '길이가 0인가'로 판정하는 구현을 잡는다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "nbsp",
+        "input": {
+          "type": "text",
+          "cp": [
+            160
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "U+00A0. 웹에서 복사한 값에 흔하고 화면에서는 스페이스와 구별되지 않는다. Postgres의 `[[:space:]]` 클래스에도 들어가지 않아 정규식으로 고치려는 시도까지 같이 잡는다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "ideographic_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            12288
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "U+3000. 한글 IME에서 한자 모드일 때 스페이스가 이 글자로 들어간다 -- 이 시스템의 운영 환경에서 가장 현실적인 비-U+0020 공백이다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "unit_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            31
+          ]
+        },
+        "blank": true,
+        "$blank_source": "declared_type",
+        "$why": "U+001F. Python이 strip하지만 Unicode White_Space가 아니다. 「유니코드 공백을 다 덮었다」고 쓴 SQL 문자 클래스는 U+001C..U+001F 네 개를 반드시 빠뜨린다 -- 그 구현을 떨어뜨리려고 코퍼스에 있다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "declared_type",
+        "stored_as": null
+      },
+      {
+        "id": "mixed_whitespace",
+        "input": {
+          "type": "text",
+          "cp": [
+            32,
+            9,
+            10,
+            12288,
+            32
+          ]
+        },
+        "blank": true,
+        "$blank_source": "identity_rule",
+        "$why": "섞인 공백. 바깥쪽이 U+0020이라 btrim이 양끝을 벗겨내고도 가운데가 남는다 -- 「btrim 붙였으니 됐다」를 정확히 이 케이스가 반증한다.",
+        "render": {
+          "type": "text",
+          "cp": []
+        },
+        "$render_source": "identity_rule",
+        "stored_as": null
+      },
+      {
+        "id": "zero_string",
+        "input": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "선언된 0. `v || dflt` 계열이 값을 기본값으로 바꾸는 함정(map_seam D1)이 공백 판정에서 되돌아오는 자리다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        }
+      },
+      {
+        "id": "zero_point_zero_string",
+        "input": {
+          "type": "text",
+          "cp": [
+            48,
+            46,
+            48
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "string 컬럼의 '0.0'은 숫자가 아니라 세 글자다. float 접기(7.0 -> '7')를 문자열에까지 적용하는 구현이면 여기서 '0'이 되어 떨어진다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            48,
+            46,
+            48
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            48,
+            46,
+            48
+          ]
+        }
+      },
+      {
+        "id": "padded_zero",
+        "input": {
+          "type": "text",
+          "cp": [
+            32,
+            48,
+            32
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "0과 공백을 한 케이스에 넣는다. 「전부 공백이면 빈 값」과 「공백은 값의 일부가 아니다」가 서로 다른 규칙임을 강제한다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        },
+        "$render_source": "identity_rule",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        }
+      },
+      {
+        "id": "plain_string",
+        "input": {
+          "type": "text",
+          "cp": [
+            76,
+            79,
+            84,
+            95,
+            48,
+            49
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "평범한 비어있지 않은 값. 이게 통과하지 않으면 나머지 채점은 의미가 없다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            76,
+            79,
+            84,
+            95,
+            48,
+            49
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            76,
+            79,
+            84,
+            95,
+            48,
+            49
+          ]
+        }
+      },
+      {
+        "id": "content_trailing_tab",
+        "input": {
+          "type": "text",
+          "cp": [
+            65,
+            9
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "공백 판정은 두 철자가 일치한다(둘 다 비어있지 않다). 갈라지는 것은 RENDER다 -- Python은 'A', 순진한 SQL은 'A\\t'. 검색이 실제로 비교하는 것이 render이므로, 공백 축만 본 계약은 이 결함을 통째로 놓친다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        },
+        "$render_source": "identity_rule",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        }
+      },
+      {
+        "id": "content_trailing_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            65,
+            32
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "위와 같은 축이되 U+0020이라 btrim 한 줄로 고쳐진다. 둘을 같이 두면 '고쳤다'가 어느 범위까지인지가 드러난다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        },
+        "$render_source": "identity_rule",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        }
+      },
+      {
+        "id": "content_leading_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            32,
+            65
+          ]
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "앞쪽 공백. ltrim만 있는/rtrim만 있는 구현을 가른다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        },
+        "$render_source": "identity_rule",
+        "stored_as": {
+          "type": "text",
+          "cp": [
+            65
+          ]
+        }
+      },
+      {
+        "id": "float_7_0",
+        "input": {
+          "type": "number",
+          "value": 7.0
+        },
+        "blank": false,
+        "$blank_source": "declared_type",
+        "$why": "number 컬럼의 7.0과 7은 같은 수다. 두 철자가 같은 텍스트를 내야 한다는 요구는 구현이 아니라 선언 타입에서 나온다. (실측: Postgres float8은 '7', SQLite는 '7.0' -- dialect_facts 참조.)",
+        "render": {
+          "type": "text",
+          "cp": [
+            55
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "number",
+          "value": 7.0
+        }
+      },
+      {
+        "id": "float_7_5",
+        "input": {
+          "type": "number",
+          "value": 7.5
+        },
+        "blank": false,
+        "$blank_source": "declared_type",
+        "$why": "정수가 아닌 float. 7.0 접기를 모든 float에 적용하는 구현이면 7이 되어 떨어진다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            55,
+            46,
+            53
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "number",
+          "value": 7.5
+        }
+      },
+      {
+        "id": "float_0_0",
+        "input": {
+          "type": "number",
+          "value": 0.0
+        },
+        "blank": false,
+        "$blank_source": "spec",
+        "$why": "선언된 숫자 0. `if not value` 한 줄이면 여기서 빈 값이 된다 -- 헌장이 코퍼스에 0을 반드시 넣으라고 하는 이유가 이 케이스다.",
+        "render": {
+          "type": "text",
+          "cp": [
+            48
+          ]
+        },
+        "$render_source": "declared_type",
+        "stored_as": {
+          "type": "number",
+          "value": 0.0
+        }
+      },
+      {
+        "id": "float_1e16",
+        "input": {
+          "type": "number",
+          "value": 1e+16
+        },
+        "blank": false,
+        "$blank_source": "declared_type",
+        "$why": "선언된 발산 케이스. render는 계약이 정하지 않는다 -- `declared_divergences.FLOAT_EXPONENT`가 양쪽 답을 기록하고, 각 철자가 기록된 답을 계속 내는지만 채점한다. 총괄 판정 대상이다.",
+        "render": null,
+        "$render_source": "declared_divergence:FLOAT_EXPONENT",
+        "stored_as": {
+          "type": "number",
+          "value": 1e+16
+        }
+      }
+    ]
+  },
+  "client": {
+    "$comment": [
+      "The client half of THIS seam is small and it is not the emptiness rule -- that rule lives",
+      "entirely on the server. What the client owns is (a) keying its FILTER behaviour off the",
+      "server's announcement rather than off its own guess, and (b) not writing down the label the",
+      "server sends.",
+      "",
+      "RE-POINTED 2026-07-31 (second time today). The user ordered virtual-join columns to become",
+      "searchable, so `filter: false` is no longer the right answer and `virtual_columns` is no",
+      "longer where the label comes from. TWO PINS MOVED, NEITHER WAS DROPPED -- what they assert",
+      "is now the DISTINCTION rather than the old value:",
+      "",
+      "  was: 'the virtual columnDef declares filter: false'",
+      "  now: 'the filter def is chosen by the ANNOUNCEMENT (`join_resolved_columns`), with",
+      "        `filter: false` kept as the absent-announcement fallback'",
+      "",
+      "  was: 'the columnDef reads vc.unresolved_label' (positional -- literal within 4000 chars",
+      "        of the first `unresolved_label`)",
+      "  now: 'the label reaching the filter def is read off the SERVER ENTRY'",
+      "",
+      "THE POSITIONAL ANCHOR WAS THE WEAK PART AND IT IS GONE. Proximity is not a property of the",
+      "code, it is a property of the file layout, and it broke the moment the label moved. Every",
+      "check below now anchors on a NAMED symbol extracted by name, so a rename is exit 2 (could",
+      "not score) rather than a false verdict in either direction.",
+      "",
+      "WHY `join_resolved_columns` AND NOT `isVirtualColumn`: `virtual_columns` answers 'which",
+      "columns must the grid ADD', which OMITS `collide` -- a column stored on the left that the",
+      "server still resolves through the join. Keying filter behaviour off `isVirtualColumn` misses",
+      "every collide column silently. That is the whole reason the new key exists.",
+      "",
+      "🔴 `collide` IS NOT LIVE ANYWHERE right now (`bonding_log.wafer_id` became `virtual_only`",
+      "when the user edited table_config), so it exists only in fixtures and in these assertions.",
+      "The fixture IS the only thing protecting it."
+    ],
+    "client_symbols": {
+      "$comment": "role -> {file, fn}. Extracted BY NAME. Missing symbol = EXIT 2 (could not score), never exit 0 and never a false pass -- the positional anchor this replaced produced exactly that.",
+      "filter_def_builder": {
+        "file": "client2/src/grid.js",
+        "fn": "joinResolvedFilterDef"
+      },
+      "announcement_lookup": {
+        "file": "client2/src/state.js",
+        "fn": "joinResolvedColumn"
+      },
+      "column_builder": {
+        "file": "client2/src/grid.js",
+        "fn": "buildColumnDefs"
+      },
+      "numeric_display": {
+        "file": "client2/src/grid.js",
+        "fn": "numericDisplayValue"
+      },
+      "cell_unwrap": {
+        "file": "client2/src/grid.js",
+        "fn": "rawCellValue"
+      }
+    },
+    "virtual_column_filter": {
+      "file": "client2/src/grid.js",
+      "reads_label_from_server": "vc.unresolved_label",
+      "$why": "the label is per-declaration server data; the client must READ it, and a filter on a virtual column must not be declared until the server can answer one"
+    },
+    "forbidden_client_literals": {
+      "literals": [
+        "미상"
+      ],
+      "$note": "the default `unresolved_label`. STILL GREEN and must stay green -- nothing hardcodes it.",
+      "scope": [
+        "client2/src/grid.js",
+        "client2/src/api.js",
+        "client2/src/clipboard.js"
+      ],
+      "$why_scoped": "`doe_bands.js` legitimately owns its OWN rollup word for a different domain (ROLLUP_UNKNOWN) and `map_editor.js` uses it in prose comments. Scoping to the grid/read path is what keeps this check about THIS seam instead of about the character."
+    },
+    "filter_behaviour": {
+      "$comment": [
+        "What the client must key its filter off, and what it must fall back to. Scored against",
+        "`buildColumnDefs`, extracted by name -- BOTH arms of the choice, in both column paths."
+      ],
+      "file": "client2/src/grid.js",
+      "keyed_off": "joinResolvedColumn",
+      "forbidden_key": "isVirtualColumn",
+      "$why_forbidden": "`isVirtualColumn` answers 'did /schema ADD this column', which omits every `collide` column. Keying the filter off it misses them silently -- the exact mistake this key exists to prevent.",
+      "absent_announcement_fallback": "filter: false",
+      "$why_fallback": "A server that announces `virtual_columns` but NOT `join_resolved_columns` is a PRE-CHANGE server: it contributes no condition for that name and returns the page UNFILTERED, while the client-side row model trims what is on screen. The rows then look filtered while `Matches:` stays at the unfiltered total. `filter: false` is the honest-degradation arm and must survive.",
+      "paths_that_must_consult_the_announcement": [
+        {
+          "path": "virtual_only",
+          "$why": "the column exists only in the read payload"
+        },
+        {
+          "path": "collide",
+          "$why": "a STORED column whose filter the server evaluates against the joined value. It is NOT in `virtual_columns`, so only the announcement can find it."
+        }
+      ]
+    },
+    "filter_options": {
+      "$comment": [
+        "Blank/NotBlank must be ABSENT on a join-resolved column and PRESENT on an ordinary stored",
+        "one. Scored in BOTH directions -- removing them from the wrong set is a real failure that",
+        "already happened once on 2026-07-31."
+      ],
+      "join_resolved_option_list": "JOIN_RESOLVED_FILTER_OPTIONS",
+      "must_not_offer": [
+        "blank",
+        "notBlank"
+      ],
+      "$why_absent": "The resolved value is a COALESCE whose last arm is `unresolved_label`, which `virtual_join_config` guarantees is a non-empty string. No row in such a column is EVER blank: `blank` matches nothing and `notBlank` matches everything, on every row, forever. Offering them is the UI making a claim it cannot keep. Measured before removal: blank -> 0 of 15,489, notBlank -> 15,489 of 15,489, while `equals <label>` returned 4,052.",
+      "$why_present_on_stored": "An ordinary stored column really can be NULL or empty, and its blank filter is answered by `crud.blank_sql_condition` -- the very predicate the SERVER half of this contract scores. Restricting the stored list too would delete a working control and silently narrow the seam this contract exists to pin."
+    },
+    "editability": {
+      "$comment": "The announcement must NOT decide editability -- the same line the server half holds at `refuse_virtual_join_columns`, held independently here so neither side can move alone.",
+      "collide_stays_editable": true,
+      "$why": "A collide column is a real stored column; writing it is how an operator overrides the joined value (the absent-only rule's 'left has a value' arm). Only its FILTER changes. And `editable` is not enforcement in either direction -- the server refuses the write; this flag only stops the grid offering an edit that would come back 400."
+    },
+    "label_source": {
+      "$comment": "Re-pointed away from a positional anchor. The question is not 'are these two strings near each other' but 'where does the label reaching the filter def come from'.",
+      "read_from": "entry.unresolved_label",
+      "scored_in": "joinResolvedFilterDef",
+      "$why": "The label rides per declaration in `virtual_join_rules.json`. A site that renames it must see the new name on the next /schema. A constant, or a read from the wrong object, makes that declaration dead config."
+    }
+  }
+}

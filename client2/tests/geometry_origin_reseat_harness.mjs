@@ -75,7 +75,10 @@ const SYMBOLS = [
   'applyPresetObject', 'applyPhysicalGeometry',
   // The dropdown's registered handler, and the function that registers it.
   'loadSelectedPreset', 'initDOMElements',
-  'parseValidDieRef', 'validDieChainError', 'validDieRefDisplay', 'projectCellsToPhys',
+  'parseValidDieRef', 'validDieChainError', 'validDieRefDisplay',
+  // [rule 6] projectCellsToPhys now states its result in terms of the mm projection, so the
+  // slice needs both. It died with a ReferenceError rather than going quietly green.
+  'projectCellsToWaferMm', 'projectCellsToPhys',
   'resolveValidDie',
   // The real renderer runs; only the pixels are stubbed. It is what seeds the seating record,
   // so a harness that stubbed it could not score that the record is maintained at all.

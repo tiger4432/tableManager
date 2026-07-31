@@ -122,6 +122,13 @@ export async function loadSchema(tableName) {
     // through, and `state.currentVirtualColumns.some(...)` on an object would throw inside
     // the write guards, i.e. exactly where a failure must not happen.
     state.currentVirtualColumns = Array.isArray(data.virtual_columns) ? data.virtual_columns : [];
+    // [Virtual join] Which columns the SERVER resolves through a join (collide AND
+    // virtual_only) — a WIDER set than `virtual_columns`, which announces only the ones the
+    // grid must add. Same `Array.isArray` discipline and the same reason: a missing key
+    // means an OLD SERVER, and `[]` is the correct reading of "this server resolves nothing
+    // through a join", which is exactly how every pre-change server behaved.
+    state.currentJoinResolvedColumns = Array.isArray(data.join_resolved_columns)
+      ? data.join_resolved_columns : [];
 
     // Fill search columns dropdown
     // 🔴 Iterates `currentColumns`, NOT the virtual list, and that is the point: `?cols=` is
