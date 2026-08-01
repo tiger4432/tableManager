@@ -1,0 +1,78 @@
+{
+  "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지).",
+  "__table_bindings_comment": "좌표 바인딩도 '예외 보정용'이다 — 기본적으로 table_config의 map_key_columns + x/y 컬럼 + val 후보에서 자동 유도된다(선언 없는 맵도 겹칠 수 있어야 한다). 여기에는 좌표 컬럼명이 관례(x/y)와 다른 로그성 테이블만 남긴다.",
+  "table_bindings": {
+    "__derived_note": "Declare a binding ONLY where the coordinate columns depart from the x/y/val convention -- every fixture table does, because its columns are namespaced (core_x, dt_x, bond_x). bonding_map / core_defect_map / eds_fail_map are omitted on purpose: table_config derives the identical binding for them, and a duplicate declaration only hides whether the derivation path still works.",
+    "core_wafer_map": {
+      "columns": {
+        "x": "core_x",
+        "y": "core_y",
+        "val": "c_bn",
+        "key_columns": [
+          "core_lot",
+          "core_slot"
+        ]
+      }
+    },
+    "dt_map": {
+      "columns": {
+        "x": "dt_x",
+        "y": "dt_y",
+        "val": "c_bn",
+        "key_columns": [
+          "dt_job"
+        ]
+      }
+    },
+    "dt_log": {
+      "columns": {
+        "x": "dt_x",
+        "y": "dt_y",
+        "val": "c_bn",
+        "key_columns": [
+          "dt_job"
+        ]
+      }
+    },
+    "bonding_log": {
+      "columns": {
+        "x": "bond_x",
+        "y": "bond_y",
+        "val": "b_bn",
+        "key_columns": [
+          "bond_lot",
+          "bond_slot"
+        ]
+      }
+    }
+  },
+  "__defaults_comment": "default_legend: registry 행이 없는 맵의 시작 legend + 자동 추가 값(E1/E2 등)의 색/설명 조회 사전. 사용자 규칙(2026-07-28): 빈 맵은 VALUE 1 한 행으로 시작한다. 4행 팔레트를 원하는 현장 선언 예: [{\"value\":\"1\",\"desc\":\"GOOD\",\"color\":\"#10b981\"},{\"value\":\"0\",\"desc\":\"FAIL\",\"color\":\"#ef4444\"},{\"value\":\"E1\",\"desc\":\"Edge 1\",\"color\":\"#8b5cf6\"},{\"value\":\"E2\",\"desc\":\"Edge 2\",\"color\":\"#ec4899\"}] | value_column_candidates: 값 컬럼 자동 감지 순서 - 선언하면 서버 기본값을 통째로 대체(부분 적용 없음)",
+  "default_legend": [
+    {
+      "value": "1",
+      "desc": "",
+      "color": "#10b981",
+      "locked": false
+    }
+  ],
+  "value_column_candidates": [
+    "val",
+    "value",
+    "leg",
+    "grade",
+    "result",
+    "code",
+    "split",
+    "doe"
+  ],
+  "paint_lock": {
+    "*": {
+      "enabled": true,
+      "blocking_values": [
+        "F"
+      ],
+      "from_overlay": [],
+      "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
+    }
+  }
+}

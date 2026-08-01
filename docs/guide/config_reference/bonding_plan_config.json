@@ -1,0 +1,83 @@
+{
+  "core_identity": {
+    "compose": [
+      "lot",
+      "slot"
+    ]
+  },
+  "map_metadata": {
+    "table": "wafer_map_metadata",
+    "columns": {
+      "target_table": "target_table",
+      "map_id": "map_id",
+      "grid_metadata": "grid_metadata"
+    }
+  },
+  "sources": {
+    "process_history": {
+      "table": "wafer_process",
+      "columns": {
+        "step": "step",
+        "eqp": "eqp_id",
+        "result": "result",
+        "time": "start_time",
+        "recipe": "recipe_id",
+        "knobs": "knobs",
+        "lot": "lot",
+        "slot": "slot"
+      }
+    },
+    "defect": {
+      "mode": "map",
+      "table": "core_defect_map",
+      "columns": {
+        "lot": "lot",
+        "slot": "slot",
+        "x": "x",
+        "y": "y",
+        "val": "val"
+      },
+      "fail_values": [
+        "D"
+      ]
+    },
+    "eds_fail": {
+      "mode": "map",
+      "table": "eds_fail_map",
+      "columns": {
+        "lot": "lot",
+        "slot": "slot",
+        "x": "x",
+        "y": "y",
+        "val": "val"
+      },
+      "fail_values": [
+        "F"
+      ]
+    },
+    "used_chips": {
+      "table": "bonding_log",
+      "columns": {
+        "lot": "core_lot",
+        "slot": "core_slot",
+        "x": "cx",
+        "y": "cy"
+      }
+    },
+    "total_chips": {
+      "mode": "map",
+      "table": "core_defect_map",
+      "columns": {
+        "lot": "lot",
+        "slot": "slot",
+        "x": "x",
+        "y": "y"
+      }
+    }
+  },
+  "warnings": {
+    "result_fail_values": [
+      "FAIL"
+    ]
+  }
+}

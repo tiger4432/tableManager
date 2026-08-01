@@ -1,0 +1,88 @@
+{
+  "presets": {
+    "custom_1784890104442": {
+      "name": "4A",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "core_std": {
+      "name": "CORE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 7.0,
+      "phys_chip_y": 7.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "base_std": {
+      "name": "BASE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "tape_std": {
+      "name": "TAPE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 15.0,
+      "phys_chip_y": 15.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "custom_1785345776310": {
+      "name": "TEST",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 9.7,
+      "phys_chip_y": 13.8,
+      "phys_offset_x": 0.1,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "custom_1785446789091": {
+      "name": "BASE_OFFSET",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 5.0,
+      "phys_offset_y": 5.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "custom_1785446867113": {
+      "name": "BASE_OFFSET",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 10.0,
+      "phys_offset_y": 10.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 270,
+      "side": "front",
+      "is_custom": true
+    }
+  }
+}

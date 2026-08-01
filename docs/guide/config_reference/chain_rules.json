@@ -1,0 +1,25 @@
+{
+  "__comment": "Chain ingestion rules. A chain reacts to a committed write on trigger_table and projects it onto target_table through a mapper. | The production->inventory rule was removed with the demo tables it referenced (2026-08-01 fixture reset).",
+  "rules": [
+    {
+      "__comment": "dt_log -> dt_map: the DT map is DERIVED. dt_log is the record; the map is a projection of it, so nothing should ever write dt_map by hand -- a replay would then silently disagree with the hand-written rows. | SHIPS DISABLED and stays disabled this round by instruction. What was measured (2026-08-01): a chain CAN address a single map cell -- crud.apply_batch_updates composes the composite business key from the update payload itself (crud.py:1051-1059) when the caller omits business_key_val and supplies every composite_key_source column, and dt_map's composite key includes dt_x/dt_y, so one business key = one cell. What a chain CANNOT do is PURGE: replace_map lives on the batch (schemas.py:138) and chain_ingestion_worker.py:437-441 constructs the batch itself and never sets it, so a chain can only upsert cells and never delete stale ones. That is the open question, and it is why this stays off.",
+      "name": "dt_log_to_dt_map",
+      "trigger_table": "dt_log",
+      "target_table": "dt_map",
+      "mapper_module": "mappers.dt_map_mapper",
+      "mapper_function": "build_dt_map_batch_df",
+      "is_batch": true,
+      "enabled": false
+    },
+    {
+      "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows. | The rule stays ENABLED so the test exercises the real worker path rather than a mock.",
+      "name": "production_to_inventory_reservation_batch",
+      "trigger_table": "production_plan",
+      "target_table": "inventory_master",
+      "mapper_module": "mappers.production_mapper",
+      "mapper_function": "reserve_materials_batch_df",
+      "is_batch": true,
+      "enabled": true
+    }
+  ]
+}

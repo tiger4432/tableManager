@@ -1,0 +1,152 @@
+{
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
+  "stages": {
+    "dt": {
+      "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",
+      "source_kind": "core",
+      "target_kind": "tape",
+      "source_config_ref": "bonding_plan",
+      "target_map": {
+        "preset": "TAPE",
+        "table": "dt_map"
+      }
+    },
+    "bonding": {
+      "description": "Bonding: 테이프 위의 칩을 base에 본딩하는 단계. 테이프에는 여러 코어 칩이 혼재하고 불량도 섞여 있다 — 코어 fail은 dt_log 조인으로 테이프 좌표에 투영된다.",
+      "source_kind": "tape",
+      "target_kind": "base",
+      "bin_map": {
+        "table": "dt_map",
+        "columns": {
+          "lot": "lot",
+          "slot": "slot",
+          "x": "x",
+          "y": "y",
+          "bin": "val"
+        }
+      },
+      "source": {
+        "identity": {
+          "compose": [
+            "lot",
+            "slot"
+          ]
+        },
+        "map_metadata": {
+          "table": "wafer_map_metadata",
+          "columns": {
+            "target_table": "target_table",
+            "map_id": "map_id",
+            "grid_metadata": "grid_metadata"
+          }
+        },
+        "total_chips": {
+          "table": "dt_map",
+          "columns": {
+            "lot": "lot",
+            "slot": "slot",
+            "x": "x",
+            "y": "y"
+          }
+        },
+        "transfer_log": {
+          "table": "bonding_log",
+          "columns": {
+            "lot": "core_lot",
+            "slot": "core_slot",
+            "x": "cx",
+            "y": "cy"
+          }
+        },
+        "origin_log": {
+          "table": "dt_log",
+          "columns": {
+            "lot": "tape_lot",
+            "slot": "tape_slot",
+            "x": "tx",
+            "y": "ty",
+            "origin_lot": "core_lot",
+            "origin_slot": "core_slot",
+            "origin_x": "cx",
+            "origin_y": "cy"
+          }
+        },
+        "process_history": {
+          "table": "wafer_process",
+          "columns": {
+            "step": "step",
+            "eqp": "eqp_id",
+            "result": "result",
+            "time": "start_time",
+            "recipe": "recipe_id",
+            "knobs": "knobs",
+            "lot": "lot",
+            "slot": "slot"
+          }
+        },
+        "fail_sources": {
+          "defect": {
+            "frame": "origin",
+            "table": "core_defect_map",
+            "columns": {
+              "lot": "lot",
+              "slot": "slot",
+              "x": "x",
+              "y": "y",
+              "val": "val"
+            },
+            "fail_values": [
+              "D"
+            ]
+          },
+          "eds_fail": {
+            "frame": "origin",
+            "table": "eds_fail_map",
+            "columns": {
+              "lot": "lot",
+              "slot": "slot",
+              "x": "x",
+              "y": "y",
+              "val": "val"
+            },
+            "fail_values": [
+              "F"
+            ]
+          }
+        },
+        "warnings": {
+          "result_fail_values": [
+            "FAIL"
+          ]
+        }
+      },
+      "target_map": {
+        "preset": "BASE",
+        "table": "bonding_map"
+      }
+    }
+  },
+  "__plan_store_comment": "계획 모델 v2 — 계획 정체성은 (ref_table, map_key), 즉 '지금 열어 편집 중인 그 맵'이다. 계획 헤더(transfer_plan)와 계획 맵 사본(transfer_plan_map) 역할은 폐기됐다: 페인팅 결과가 곧 대상 맵 자신의 셀이므로 사본이 존재할 이유가 없고, stage는 stages.*.target_map.table 역인덱스로 유도된다. [M2.6] doe·doe_source 역할도 폐기됐다 — legend 행 하나가 곧 DOE 조건 하나다. [ZONE 2026-07-28] 층 구조는 그 행의 zone 컬럼 넷(stack·mat_1h·mat_mid·mat_top)이다: STACK = 총 층수, 1H = 1층, TOP = STACK층, MID = 그 사이 전부. 세 구역이 1..STACK을 구성적으로 덮으므로 겹침·구멍 검사는 사라진 것이 아니라 말할 수 없는 상태가 됐다. 필수 역할키: registry=(ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top) — 하나라도 빠지면 validate가 404다(조용히 '구조 없음'으로 통과시키지 않는다). bands는 필수에서 빠졌다: 폐기됐고 writer가 없으므로 필수일 수 없다. 다만 실계획이 아직 그 컬럼에 있으므로 선언돼 있으면 계속 읽어 zone으로 옮기며(bands_to_zones), 세 구역으로 표현할 수 없는 배치는 접지 않고 거부한다. material_identity는 이제 게이트로만 쓴다 — 토큰 문법 lot[_slot][:BIN]은 contracts/doe_band_rules의 공유 계약이고 parse_material_token이 유일한 구현이다(클라는 config를 읽지 못하므로 파싱 규칙이 config에 살면 양쪽이 갈린다). 미선언이면 모든 자재가 source_unresolved가 되고 계획은 unverified로 남는다.",
+  "plan_store": {
+    "registry": {
+      "table": "map_split_registry",
+      "columns": {
+        "ref_table": "ref_table",
+        "map_key": "map_key",
+        "value": "value",
+        "stack": "stack",
+        "mat_1h": "mat_1h",
+        "mat_mid": "mat_mid",
+        "mat_top": "mat_top",
+        "bands": "bands"
+      }
+    },
+    "material_identity": {
+      "compose": [
+        "lot",
+        "slot"
+      ],
+      "separator": "_"
+    }
+  }
+}

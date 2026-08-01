@@ -1,0 +1,369 @@
+{
+  "__comment": "Ontology mapping for the trace fixture (2026-08-01). Top-level key = source table; the row's own node is node.*, and every edge runs from that node to target_label. Unknown keys reject the whole table mapping, so nothing here is decorative.",
+  "__comment_identity": "IDENTITY FOLLOWS THE USER'S RULE (spec section 1): a wafer's identity is wafer_id, and (lot, slot) is a STATE the wafer is in, not what it is -- split and merge move wafers between slots and a merge keeps the surviving lot's name (A+B=A). So CoreSlot is a POSITION node and Wafer is the identity node, and the link between them is an edge that carries a time, never a fused key. Fusing them is how a previous iteration ended up with tape position baked into a Wafer label.",
+  "__comment_blank_is_no_edge": "A blank identity part makes compose_identity return None and the edge is SKIPPED (graph_materializer.py:171-172). That is load-bearing here in two directions. (1) lot_event's parent_lot/child_lot are blank on the side of the pair that has no such lot; a placeholder token like '-' would instead mint one Lot('-') node wired to every split and merge in the fixture, a hub that makes any two unrelated lots look two hops apart. (2) The attribution tables' targets are blank until a human confirms them, so the RESOLVED_* edges below simply do not exist yet -- confirmation is what creates them. Arrow 4 is therefore visible as an edge appearing, not as a value changing.",
+  "__comment_claim_not_link": "bonding_log points at DtCellClaim, NOT at DtCell, and the difference is the entire scenario. bonding_log records (dt_lot, dt_slot) as of BONDING time; dt_log's DtCell is keyed on dt_job because its own dt_lot/dt_slot are the thing being inferred. Pointing the bonding edge at DtCell would assert a resolved link that nobody has established, and it would look right on screen. A separate label keeps the gap structural: resolving DtCellClaim -> DtCell IS the traversal problem, and a graph that already shows it solved cannot pose it.",
+  "lot_event": {
+    "description": "랏 분할·병합·track-in 이벤트 로그 — 계보의 유일한 원천. 분할·병합 1건은 모랏/자랏 각각 1행씩 총 2행으로 남고(사용자 2026-08-01), 짝은 (parent, child) id 쌍으로 맞춘다. 계보가 이름 규칙에서 유추한 것이 아니라 기록된 사실이므로 그래프 엣지가 이 행에서 직접 나온다.",
+    "event_time_column": "event_time",
+    "node": {
+      "label": "LotEvent",
+      "identity": [
+        "lot",
+        "event_type",
+        "event_time"
+      ],
+      "node_class": "dynamic",
+      "props": [
+        "event_type",
+        "slot_numbers",
+        "wafer_ids",
+        "equipment"
+      ]
+    },
+    "edges": [
+      {
+        "type": "EVENT_ON_LOT",
+        "target_label": "Lot",
+        "target_identity_from": [
+          "lot"
+        ],
+        "description": "이 이벤트의 주체 랏. split이면 모랏 행과 자랏 행이 각각 자기 랏을 가리킨다"
+      },
+      {
+        "type": "NAMES_PARENT_LOT",
+        "target_label": "Lot",
+        "target_identity_from": [
+          "parent_lot"
+        ],
+        "props": [
+          "event_type",
+          "event_time"
+        ],
+        "description": "이 행이 모랏으로 지목한 랏 (자랏 행에만 있다). split인지 merge인지는 event_type prop이 말한다 — 엣지 타입에 넣으면 같은 컬럼 쌍에 대해 타입이 둘로 갈려 계보 탐색이 두 벌이 된다"
+      },
+      {
+        "type": "NAMES_CHILD_LOT",
+        "target_label": "Lot",
+        "target_identity_from": [
+          "child_lot"
+        ],
+        "props": [
+          "event_type",
+          "event_time"
+        ],
+        "description": "이 행이 자랏으로 지목한 랏 (모랏 행에만 있다)"
+      },
+      {
+        "type": "TRACKED_IN_AT",
+        "target_label": "Equipment",
+        "target_identity_from": [
+          "equipment"
+        ],
+        "props": [
+          "event_time"
+        ],
+        "description": "track_in 이벤트의 설비. 이 엣지가 DT job의 랏 귀속을 푸는 근거다 — 추론 ①의 후보는 여기서 나온다"
+      }
+    ]
+  },
+  "core_wafer_map": {
+    "description": "코어 웨이퍼 다이 맵 — 다이 1개 = 행 1개. 추적의 종착점이며 §0 질문의 답이 앉는 자리다",
+    "event_time_column": "event_time",
+    "node": {
+      "label": "CoreCell",
+      "identity": [
+        "core_lot",
+        "core_slot",
+        "core_x",
+        "core_y"
+      ],
+      "node_class": "dynamic",
+      "props": [
+        {
+          "col": "core_x",
+          "spatial": {
+            "coord_system": "wafer_grid",
+            "axis": "x"
+          }
+        },
+        {
+          "col": "core_y",
+          "spatial": {
+            "coord_system": "wafer_grid",
+            "axis": "y"
+          }
+        },
+        "c_bn"
+      ]
+    },
+    "edges": [
+      {
+        "type": "ON_CORE_SLOT",
+        "target_label": "CoreSlot",
+        "target_identity_from": [
+          "core_lot",
+          "core_slot"
+        ],
+        "description": "이 다이가 놓인 코어 랏/슬롯 — 웨이퍼가 아니라 위치다"
+      },
+      {
+        "type": "RECORDED_AS_WAFER",
+        "target_label": "Wafer",
+        "target_identity_from": [
+          "wafer_id"
+        ],
+        "description": "이 셀이 어느 웨이퍼 소속으로 기록됐는가. wafer_id는 일부러 성기므로 이 엣지가 없는 셀이 정상이고, 없음이 곧 enrichment 일감이다"
+      }
+    ]
+  },
+  "dt_log": {
+    "description": "DT 이관 기록 — 코어 다이 1개가 테이프 셀 1개로 옮겨간 이벤트. 코어 좌표와 DT 좌표를 함께 들지만 두 좌표는 서로 독립인 미지 프레임에 있다",
+    "event_time_column": "event_time",
+    "node": {
+      "label": "DtCell",
+      "identity": [
+        "dt_job",
+        "dt_x",
+        "dt_y"
+      ],
+      "node_class": "dynamic",
+      "props": [
+        {
+          "col": "dt_x",
+          "spatial": {
+            "coord_system": "tape_grid",
+            "axis": "x"
+          }
+        },
+        {
+          "col": "dt_y",
+          "spatial": {
+            "coord_system": "tape_grid",
+            "axis": "y"
+          }
+        },
+        "c_bn",
+        "dt_lot",
+        "dt_slot"
+      ]
+    },
+    "edges": [
+      {
+        "type": "FROM_CORE_CELL",
+        "target_label": "CoreCell",
+        "target_identity_from": [
+          "core_lot",
+          "core_slot",
+          "core_x",
+          "core_y"
+        ],
+        "props": [
+          "event_time",
+          "dt_job"
+        ],
+        "description": "이 테이프 셀에 앉은 다이의 출신 코어 셀. 한 DT 웨이퍼에 여러 코어 웨이퍼의 다이가 섞이므로(사용자 2026-08-01) 이 엣지는 job당 여러 코어 웨이퍼로 뻗는 것이 정상이다"
+      },
+      {
+        "type": "FROM_WAFER",
+        "target_label": "Wafer",
+        "target_identity_from": [
+          "core_wafer"
+        ],
+        "description": "core_wafer가 적힌 행의 앵커 엣지. 앵커 밀도는 job마다 高/中/無로 갈리고, 단조 배정이 풀리는 job과 진짜로 안 풀리는 job을 나누는 것이 이 밀도다"
+      },
+      {
+        "type": "IN_DT_JOB",
+        "target_label": "DtJob",
+        "target_identity_from": [
+          "dt_job"
+        ],
+        "description": "이 셀이 속한 DT 작업 단위. dt_job은 설비_시간_tapeslot이며 확실한 값이다"
+      },
+      {
+        "type": "TRANSFERRED_AT",
+        "target_label": "Equipment",
+        "target_identity_from": [
+          "dt_eqp"
+        ],
+        "description": "이관을 수행한 설비. 좌표 규약(추론 ②)은 설비×제품 단위로 고정된다"
+      }
+    ]
+  },
+  "bonding_log": {
+    "description": "본딩 기록 — 불량이 발견되는 지점이자 §0 질문이 출발하는 자리. 본딩 시점의 dt_lot/dt_slot만 들고 있고 이는 DT 시점의 값과 다르다",
+    "event_time_column": "event_time",
+    "node": {
+      "label": "BondCell",
+      "identity": [
+        "bond_lot",
+        "bond_slot",
+        "bond_x",
+        "bond_y"
+      ],
+      "node_class": "dynamic",
+      "props": [
+        {
+          "col": "bond_x",
+          "spatial": {
+            "coord_system": "base_grid",
+            "axis": "x"
+          }
+        },
+        {
+          "col": "bond_y",
+          "spatial": {
+            "coord_system": "base_grid",
+            "axis": "y"
+          }
+        },
+        "b_bn",
+        "stack_height"
+      ]
+    },
+    "edges": [
+      {
+        "type": "CLAIMS_DT_CELL",
+        "target_label": "DtCellClaim",
+        "target_identity_from": [
+          "dt_lot",
+          "dt_slot",
+          "dt_x",
+          "dt_y"
+        ],
+        "props": [
+          "event_time"
+        ],
+        "description": "🔴 이것은 해석된 링크가 아니라 주장이다. 본딩 로그가 적어 둔 (dt_lot, dt_slot)은 본딩 시점 값이고 그 사이 split·merge가 랏과 슬롯을 바꿨다. DtCell로 곧장 이으면 아무도 확인하지 않은 연결을 확정처럼 그리게 되고, 화면에서는 멀쩡해 보인다. DtCellClaim -> DtCell 해석이 곧 탐색 과제다"
+      },
+      {
+        "type": "BONDED_AT",
+        "target_label": "Equipment",
+        "target_identity_from": [
+          "bond_eqp"
+        ],
+        "description": "본딩 설비. 본딩 좌표도 자기 8지 프레임을 가지므로 같은 프리미티브가 여기에도 한 번 더 적용된다"
+      }
+    ]
+  },
+  "wafer_id_status": {
+    "description": "코어 랏/슬롯별 wafer_id 스냅샷 — 일부러 성기다. 델타는 lot_event에 있고 이 테이블은 방증일 뿐 원천이 아니다",
+    "event_time_column": "valid_from",
+    "node": {
+      "label": "WaferIdSnapshot",
+      "identity": [
+        "core_lot",
+        "core_slot",
+        "valid_from"
+      ],
+      "node_class": "dynamic",
+      "props": [
+        "wafer_id"
+      ]
+    },
+    "edges": [
+      {
+        "type": "SNAPSHOT_OF_SLOT",
+        "target_label": "CoreSlot",
+        "target_identity_from": [
+          "core_lot",
+          "core_slot"
+        ],
+        "description": "이 스냅샷이 관찰한 위치"
+      },
+      {
+        "type": "ASSERTS_WAFER",
+        "target_label": "Wafer",
+        "target_identity_from": [
+          "wafer_id"
+        ],
+        "description": "그 시점 그 위치에 있었다고 이 스냅샷이 주장하는 웨이퍼"
+      }
+    ]
+  },
+  "dt_job_attribution": {
+    "description": "추론 ①의 판정 결과. 사람이 확정하기 전에는 타깃이 비어 있고, 빈 identity는 엣지를 만들지 않으므로 아래 RESOLVED_* 엣지는 확정과 함께 비로소 생겨난다 — 보드 ④번 화살표가 값 변화가 아니라 엣지 출현으로 보이는 자리다",
+    "node": {
+      "label": "DtJob",
+      "identity": [
+        "dt_job"
+      ],
+      "node_class": "static",
+      "props": [
+        "cell_count"
+      ]
+    },
+    "edges": [
+      {
+        "type": "RESOLVED_TO_LOT",
+        "target_label": "Lot",
+        "target_identity_from": [
+          "dt_lot_confirmed"
+        ],
+        "description": "확정된 DT 랏. 미확정이면 엣지 없음 — 「아직 모른다」가 「없다」로 둔갑하지 않도록 빈 값에 노드를 만들지 않는다"
+      },
+      {
+        "type": "RESOLVED_TO_DT_SLOT",
+        "target_label": "DtSlot",
+        "target_identity_from": [
+          "dt_lot_confirmed",
+          "dt_slot_confirmed"
+        ],
+        "description": "확정된 DT 랏/슬롯 위치. 둘 중 하나라도 비면 엣지 없음"
+      }
+    ]
+  },
+  "eqp_frame_attribution": {
+    "description": "추론 ②의 판정 결과 — 설비×제품이 어느 좌표 규약으로 기록하는가. core_frame과 dt_frame은 독립이므로 엣지도 둘이다",
+    "node": {
+      "label": "EquipmentProduct",
+      "identity": [
+        "dt_eqp",
+        "product"
+      ],
+      "node_class": "static",
+      "props": [
+        "cell_count"
+      ]
+    },
+    "edges": [
+      {
+        "type": "AT_EQUIPMENT",
+        "target_label": "Equipment",
+        "target_identity_from": [
+          "dt_eqp"
+        ],
+        "description": "이 판정이 걸리는 설비"
+      },
+      {
+        "type": "USES_DT_FRAME",
+        "target_label": "CoordFrame",
+        "target_identity_from": [
+          "dt_frame"
+        ],
+        "description": "확정된 DT 좌표 규약(rot<각도>_<front|back>). 대칭 부분집합이라 진짜로 안 갈리는 케이스는 미확정으로 남고 엣지도 생기지 않는다 — 정직한 열화가 그래프에서도 정직하게 보여야 한다"
+      },
+      {
+        "type": "USES_CORE_FRAME",
+        "target_label": "CoordFrame",
+        "target_identity_from": [
+          "core_frame"
+        ],
+        "description": "확정된 코어 좌표 규약. dt_frame과 독립으로 뽑히므로 하나가 확정돼도 다른 하나가 따라오지 않는다"
+      }
+    ]
+  },
+  "map_split_registry": {
+    "description": "웨이퍼 맵 value별 실험 split 조건의 자연어 기록 (맵 에디터 legend의 서버 영속화 — value가 어떤 실험 조건 분기인지 사람이 서술)",
+    "node": {
+      "label": "SplitCondition",
+      "identity": "split_key",
+      "props": [
+        "split_desc",
+        "color",
+        "value"
+      ]
+    },
+    "edges": []
+  }
+}

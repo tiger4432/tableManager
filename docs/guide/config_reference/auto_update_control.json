@@ -1,0 +1,14 @@
+{
+  "disabled": [
+    "bonding_map/fetch_data copy.py",
+    "bonding_map/fetch_data.py",
+    "inventory_master/fetch_inventory.py",
+    "bonding_log/generate_bonding.py",
+    "core_defect_map/generate_core_defect.py",
+    "dt_log/generate_dt_log.py",
+    "dt_map/generate_dt_map.py",
+    "eds_fail_map/generate_eds_fail.py",
+    "wafer_process/generate_wafer_process.py",
+    "lot_event/generate_trace_fixture.py"
+  ]
+}

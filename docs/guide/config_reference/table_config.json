@@ -1,0 +1,393 @@
+{
+  "lot_event": {
+    "__comment": "[TRACE FIXTURE] Lot split/merge/track_in event log -- the ONLY source of lineage. One SPLIT or MERGE writes TWO rows (user 2026-08-01): the parent row carries child_lot with parent_lot BLANK, the child row carries parent_lot with child_lot BLANK; the pair is matched by the (parent, child) id pair, there is no event_id on the source. | The user sketched the absent side as '-'; it is stored BLANK instead, and that is not cosmetic. graph_materializer.compose_identity returns None for a blank part and the edge is skipped (graph_materializer.py:171-172), whereas a literal '-' is a perfectly good identity -- it would mint one Lot('-') node and wire EVERY split and merge in the fixture to it, producing a hub that makes any two unrelated lots look two hops apart. | slot_numbers and wafer_ids are colon-delimited and CORRESPOND POSITIONALLY with equal length; the generator asserts this itself rather than leaving it to the oracle, because a length mismatch does not fail loudly -- it silently reattributes wafers to the wrong slots. | event_time is 'string', not a date type: ISO 'YYYY-MM-DD HH:MM:SS' sorts correctly lexicographically, and a date cast that raises would drop the row that carries the ordering. The ORDER is what makes a reconstruction a finding rather than a guess.",
+    "business_key": "event_id",
+    "composite_key_source": [
+      "lot",
+      "event_type",
+      "event_time"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "event_id": "string",
+      "lot": "string",
+      "event_type": "string",
+      "parent_lot": "string",
+      "child_lot": "string",
+      "slot_numbers": "string",
+      "wafer_ids": "string",
+      "equipment": "string",
+      "event_time": "string"
+    },
+    "display_columns": [
+      "event_id",
+      "lot",
+      "event_type",
+      "parent_lot",
+      "child_lot",
+      "slot_numbers",
+      "wafer_ids",
+      "equipment",
+      "event_time"
+    ]
+  },
+  "core_wafer_map": {
+    "__comment": "[TRACE FIXTURE] Core wafer die map -- one row per die. c_bn is the bin (real column name, user 2026-08-01). | core_slot is 'string' ON PURPOSE: a 'number' declaration stores '07' as 7 and the leading zero is meaningful here (some sources emit '7'; that notation drift is deliberate fixture content, and it can only be studied if the storage preserves what arrived). | core_x/core_y are recorded in an UNKNOWN one of 8 frames (4 rotations x 2 flips), drawn independently of dt_x/dt_y. They are not the same unknown -- a row holding both couples them without fixing either. | wafer_id is deliberately sparse: absence is the enrichment work item.",
+    "business_key": "core_cell_key",
+    "composite_key_source": [
+      "core_lot",
+      "core_slot",
+      "core_x",
+      "core_y"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "core_cell_key": "string",
+      "core_lot": "string",
+      "core_slot": "string",
+      "core_x": "number",
+      "core_y": "number",
+      "c_bn": "string",
+      "wafer_id": "string",
+      "event_time": "string"
+    },
+    "display_columns": [
+      "core_cell_key",
+      "core_lot",
+      "core_slot",
+      "core_x",
+      "core_y",
+      "c_bn",
+      "wafer_id",
+      "event_time"
+    ],
+    "map_key_columns": [
+      "core_lot",
+      "core_slot"
+    ]
+  },
+  "dt_log": {
+    "__comment": "[TRACE FIXTURE -- the centre of the scenario] One row = one die transferred into a DT tape cell. | BUSINESS KEY IS (dt_job, dt_x, dt_y), NOT the spec draft's (dt_job, core_x, core_y). A single DT wafer mixes dies from SEVERAL core wafers (user 2026-08-01), so two different core wafers can each hold a die at core (5,5) and the draft key COLLIDES -- the second row would overwrite the first and the loss would be silent. (dt_job, dt_x, dt_y) is a physical destination cell and is unique by construction. Frame ambiguity does not threaten this: whichever of the 8 frames dt_x/dt_y are in, two dies still cannot occupy one cell. | dt_lot/dt_slot are the INFERENCE TARGETS -- 40% absent, and 10% PRESENT BUT WRONG, which is worse than absent because a wrong value makes a join succeed quietly. They are kept out of the key for that reason: a guess must never sit inside an identity. | dt_job is '<equipment>_<time>_<tapeslot>' and is certain. Tape slot != DT slot (the operator moves wafers by hand) but the tape->DT slot mapping PRESERVES MONOTONIC ORDER -- that constraint is what turns this inference from impossible into 'generate candidates, confirm once'. | core_lot/core_slot or core_wafer: at least one is always present. core_wafer, where present, is an ANCHOR.",
+    "business_key": "dt_cell_key",
+    "composite_key_source": [
+      "dt_job",
+      "dt_x",
+      "dt_y"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "dt_cell_key": "string",
+      "dt_job": "string",
+      "dt_eqp": "string",
+      "product": "string",
+      "dt_lot": "string",
+      "dt_slot": "string",
+      "dt_x": "number",
+      "dt_y": "number",
+      "core_lot": "string",
+      "core_slot": "string",
+      "core_wafer": "string",
+      "core_x": "number",
+      "core_y": "number",
+      "c_bn": "string",
+      "event_time": "string"
+    },
+    "display_columns": [
+      "dt_cell_key",
+      "dt_job",
+      "dt_eqp",
+      "product",
+      "dt_lot",
+      "dt_slot",
+      "dt_x",
+      "dt_y",
+      "core_lot",
+      "core_slot",
+      "core_wafer",
+      "core_x",
+      "core_y",
+      "c_bn",
+      "event_time"
+    ]
+  },
+  "dt_map": {
+    "__comment": "[TRACE FIXTURE -- DERIVED, do not write by hand] Projection of dt_log produced by the dt_log_to_dt_map chain rule. A hand-written row here silently disagrees with the next replay. | MAP KEY IS dt_job, not dt_lot/dt_slot: those two are still being inferred, and keying a map on a value under inference makes every consumer bind to a key that CHANGES WHEN THE GUESS IS CORRECTED -- the correction would then read as 'the map moved'. | Each cell carries its origin (core_wafer/core_lot/core_slot/core_x/core_y) because one DT wafer mixes dies from several core wafers, so the map's own key cannot recover where a die came from. That provenance is the difference between a map you can draw and a map you can trace.",
+    "business_key": "cell_key",
+    "composite_key_source": [
+      "dt_job",
+      "dt_x",
+      "dt_y"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "cell_key": "string",
+      "dt_job": "string",
+      "dt_x": "number",
+      "dt_y": "number",
+      "c_bn": "string",
+      "core_wafer": "string",
+      "core_lot": "string",
+      "core_slot": "string",
+      "core_x": "number",
+      "core_y": "number"
+    },
+    "display_columns": [
+      "cell_key",
+      "dt_job",
+      "dt_x",
+      "dt_y",
+      "c_bn",
+      "core_wafer",
+      "core_lot",
+      "core_slot",
+      "core_x",
+      "core_y"
+    ],
+    "map_key_columns": [
+      "dt_job"
+    ]
+  },
+  "bonding_log": {
+    "__comment": "[TRACE FIXTURE] Bonding record. b_bn is the bonding bin -- the DEFECT this whole fixture exists to trace back to a core die. | dt_lot/dt_slot here are the values AS OF BONDING TIME and they differ from the ones dt_log recorded at DT time, because split/merge moved the wafer in between. THIS IS WHY A SQL JOIN CANNOT SOLVE IT: joining bonding_log.dt_lot to dt_log.dt_lot does not error, it matches the WRONG wafer plausibly. The join has to be (key + as-of when) and then walk the lot_event chain. | bond_x/bond_y carry a third independent 8-way frame ambiguity -- the same primitive applies here as at core->dt, which is what 'universal' means (one primitive, N applications), NOT a third spelling of the same code.",
+    "business_key": "bond_cell_key",
+    "composite_key_source": [
+      "bond_lot",
+      "bond_slot",
+      "bond_x",
+      "bond_y"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "bond_cell_key": "string",
+      "bond_lot": "string",
+      "bond_slot": "string",
+      "bond_x": "number",
+      "bond_y": "number",
+      "b_bn": "string",
+      "stack_height": "number",
+      "dt_lot": "string",
+      "dt_slot": "string",
+      "dt_x": "number",
+      "dt_y": "number",
+      "bond_eqp": "string",
+      "event_time": "string"
+    },
+    "display_columns": [
+      "bond_cell_key",
+      "bond_lot",
+      "bond_slot",
+      "bond_x",
+      "bond_y",
+      "b_bn",
+      "stack_height",
+      "dt_lot",
+      "dt_slot",
+      "dt_x",
+      "dt_y",
+      "bond_eqp",
+      "event_time"
+    ],
+    "map_key_columns": [
+      "bond_lot",
+      "bond_slot"
+    ]
+  },
+  "wafer_id_status": {
+    "__comment": "[TRACE FIXTURE] Per (lot, slot) wafer-id snapshots. DELIBERATELY SPARSE -- it records only a fraction of the real state changes (user: 'SPARSE 함'). The deltas live in lot_event; this table is a corroborating witness, never the primary source. Treating it as complete is precisely the mistake the fixture is built to catch.",
+    "business_key": "wid_key",
+    "composite_key_source": [
+      "core_lot",
+      "core_slot",
+      "valid_from"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "wid_key": "string",
+      "core_lot": "string",
+      "core_slot": "string",
+      "wafer_id": "string",
+      "valid_from": "string"
+    },
+    "display_columns": [
+      "wid_key",
+      "core_lot",
+      "core_slot",
+      "wafer_id",
+      "valid_from"
+    ]
+  },
+  "dt_job_attribution": {
+    "__comment": "[TRACE FIXTURE -- enrichment DERIVED table] One row per DT job; the worklist for inference #1 (confirm dt_lot/dt_slot). Rows are produced by the synthesized enrichment dedup chain from dt_log -- nothing ingests this table directly. | business_key is dt_job and decision_key is [dt_job], which satisfies the loader's contract (business_key IN decision_key). | THE TARGET COLUMNS ARE SUFFIXED '_confirmed' RATHER THAN REUSING dt_lot/dt_slot. A virtual join exposes them back onto dt_log, and a virtual column that COLLIDES with a real one merges absent-only -- so on the 10% of rows carrying a WRONG dt_lot the recorded wrong value would win and the confirmation would be invisible. Under distinct names the two sit side by side and the disagreement is on screen, which is the whole point of seeding wrong values. | A row is IN THE QUEUE while both target columns are blank. cell_count is a count aggregation ('count' is the only aggregation the v1 loader supports).",
+    "business_key": "dt_job",
+    "column_types": {
+      "dt_job": "string",
+      "dt_lot_confirmed": "string",
+      "dt_slot_confirmed": "string",
+      "cell_count": "number"
+    },
+    "display_columns": [
+      "dt_job",
+      "dt_lot_confirmed",
+      "dt_slot_confirmed",
+      "cell_count"
+    ]
+  },
+  "eqp_frame_attribution": {
+    "__comment": "[TRACE FIXTURE -- enrichment DERIVED table] One row per (equipment, product); the worklist for inference #2 (which of the 8 frames were these coordinates recorded in). The frame is fixed per equipment and product in principle, but the declaration never reaches us, so a human confirms it (user 2026-08-01). | TWO target fields, not one: core_frame and dt_frame are INDEPENDENT unknowns. Collapsing them into a single 'frame' column would encode the exact misreading corrected in the spec -- knowing the pair narrows 64 candidates to 8, it does not pick one. | Frame values are spelled 'rot<0|90|180|270>_<front|back>'. A genuinely undeterminable case must come back UNRESOLVED, not confidently wrong: the symmetric subsets in truth_ambiguous.csv are scored correct only when the answer is 'unknown'.",
+    "business_key": "frame_key",
+    "composite_key_source": [
+      "dt_eqp",
+      "product"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "frame_key": "string",
+      "dt_eqp": "string",
+      "product": "string",
+      "core_frame": "string",
+      "dt_frame": "string",
+      "cell_count": "number"
+    },
+    "display_columns": [
+      "frame_key",
+      "dt_eqp",
+      "product",
+      "core_frame",
+      "dt_frame",
+      "cell_count"
+    ]
+  },
+  "bonding_map": {
+    "business_key": "pkg_id",
+    "composite_key_source": [
+      "base",
+      "x",
+      "y"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "pkg_id": "string",
+      "base": "string",
+      "x": "number",
+      "y": "number",
+      "leg": "string"
+    },
+    "display_columns": [
+      "pkg_id",
+      "base",
+      "x",
+      "y",
+      "leg"
+    ],
+    "map_key_columns": [
+      "base"
+    ]
+  },
+  "wafer_map_metadata": {
+    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 격자 규격(grid_metadata)의 정본. 맵을 담는 모든 테이블(defect·EDS·DT·bonding·core)이 여기에 등록돼야 정렬이 성립한다 — 미등록은 정상 상태가 아니라 누락이며, 화면에는 '화면기준' 칩으로 표면화된다. bk = target_table_map_id.",
+    "business_key": "map_pk",
+    "composite_key_source": [
+      "target_table",
+      "map_id"
+    ],
+    "composite_key_separator": "_",
+    "column_types": {
+      "map_pk": "string",
+      "target_table": "string",
+      "map_id": "string",
+      "grid_metadata": "string"
+    },
+    "display_columns": [
+      "map_pk",
+      "target_table",
+      "map_id",
+      "grid_metadata"
+    ]
+  },
+  "map_split_registry": {
+    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] 맵 값(legend)의 정본 레지스트리이자 **DOE 그 자체**. 값 하나 = 행 하나 = DOE 조건 하나다. bk = ref_table|map_key|value 이고 구분자는 반드시 '|' 다 — map_key 자체가 '_' 조인 문자열이고 테이블명에도 '_'가 흔해 '_'로는 키가 모호해진다(client2/src/map_editor.js의 SPLIT_KEY_SEP와 일치해야 함). | `split_desc` and `knobs` stay FLAT columns on purpose - they are what the ontology/LLM consumes, and nesting them would put the ontology's input inside a JSON blob. | ZONE MODEL (2026-07-27, supersedes bands): the layer structure of a value is THREE FIXED ZONES implied by one number. `stack` = that value's total layer count; `mat_1h` = layer 1; `mat_top` = layer `stack`; `mat_mid` = everything between. An empty `mat_1h` means MID starts at layer 1; an empty `mat_top` means MID runs to `stack`. There is no FROM, no TO, no band row and no value-set scope - the zones tile `1..stack` BY CONSTRUCTION, which is why overlap and gap checks disappeared rather than moved. `mat_mid` is MANDATORY: an empty MID with a real `stack` leaves layers uncovered. | `stack` IS DECLARED `string`, NOT `number`, AND THAT IS LOAD-BEARING. It was `number` for one commit and the physical column came out `double precision`; `crud.cast_value_by_type` then RAISED on `'0x10'`/`'nope'` (so a plan carrying one unreadable height could not be saved at all) and silently repaired `'7.5'` to `7.5` (so the next read truncated it to 7 - the 'screen is fine, number is short' defect this whole zone model exists to close). An unreadable STACK has to SURVIVE the round trip: V5 blocks on it, the panel shows the user their own text, and `planRowToRecord` exports the raw string back to Excel. A numeric column cannot hold any of that. The single integer reader (`transfer_plan._int_state` / `bandToState`) is what decides readability - never the column type. | THE THREE mat_* COLUMNS ARE JSON ARRAYS of raw tokens (`[\"MID1:1\", \"MID3:1\"]`), not a separator-joined string. A lot name may legally contain `:`, `_`, and there is no character that is safely outside it - the `materialPoolKey` comment in doe_bands.js records what happened the last time a separator was assumed (two unrelated pools merged into one row and their quantities were summed). The token text IS the identity; `lot[_slot][:BIN]` parsing is a later, DECLARED step and must never move the stored string. | NOTHING DERIVED IS STORED. In particular the per-material figure is a SUFFICIENCY CHECK, NOT AN ALLOCATION - wafers are consumed one at a time in an order nobody records, so an even split answers only \"is there enough across this pool\" (positive remainder = feasible). Never store it and never name it as \"this wafer contributes exactly N\". | `bands` IS RETIRED (2026-07-27) but STILL DECLARED, deliberately: `transfer_plan.REGISTRY_ROLES` requires the `bands` role, so removing this column alone turns GET /api/transfer-plan/validate into a 404 for every site. The column comes out in the SAME change that rewrites that reader for the zone model - not before. Do not add a new writer. | NO `updated_by` COLUMN, deliberately: crud.py lists updated_by in its `system_cols` and skips it in the column loop, so a declared updated_by can never be written through the generic table API - it would sit NULL forever and invite a join that returns nothing. map_doe/map_doe_source proved it: every row's updated_by is NULL. The 'who' is already carried per cell by cell_sources/cell_overwrites.updated_by. | map_key_columns = (ref_table, map_key): a legend is saved as a whole set for one map, so removing a value has to fall out of the write. Without this declaration `replace_map` has no scope to delete by, returns 200 and deletes NOTHING - which is how deleted DOE values used to come back on the next load.",
+    "business_key": "split_key",
+    "composite_key_source": [
+      "ref_table",
+      "map_key",
+      "value"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "split_key": "string",
+      "ref_table": "string",
+      "map_key": "string",
+      "value": "string",
+      "split_desc": "string",
+      "color": "string",
+      "knobs": "string",
+      "stack": "string",
+      "mat_1h": "string",
+      "mat_mid": "string",
+      "mat_top": "string",
+      "bands": "string",
+      "eventtime": "string"
+    },
+    "display_columns": [
+      "split_key",
+      "ref_table",
+      "map_key",
+      "value",
+      "split_desc",
+      "color",
+      "knobs",
+      "stack",
+      "mat_1h",
+      "mat_mid",
+      "mat_top",
+      "bands",
+      "eventtime"
+    ],
+    "map_key_columns": [
+      "ref_table",
+      "map_key"
+    ]
+  },
+  "production_plan": {
+    "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows.",
+    "business_key": "plan_id",
+    "column_types": {
+      "plan_id": "string",
+      "prod_line": "string",
+      "model_name": "string",
+      "target_qty": "number",
+      "due_date": "string",
+      "created_at": "datetime",
+      "updated_at": "datetime"
+    },
+    "display_columns": [
+      "plan_id",
+      "prod_line",
+      "model_name",
+      "target_qty",
+      "due_date",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "inventory_master": {
+    "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows.",
+    "business_key": "part_no",
+    "column_types": {
+      "part_no": "string",
+      "category": "string",
+      "stock_qty": "number",
+      "unit_price": "number",
+      "MAX": "number",
+      "MIN": "number"
+    },
+    "display_columns": [
+      "part_no",
+      "category",
+      "stock_qty",
+      "unit_price",
+      "MAX",
+      "MIN"
+    ]
+  }
+}

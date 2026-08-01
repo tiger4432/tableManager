@@ -1,0 +1,61 @@
+{
+  "_comment": "Virtual joins announce a right-table column on a left table WITHOUT copying it. Approval requires a UNIQUE index on the right table covering the join key (virtual_join_config.required_index_ddl prints the exact DDL); until that index exists the rule is REJECTED with code no_unique_index and reports itself as such in GET /admin/config/resolve -- it does not fail silently.",
+  "_why_comment": "Both rules exist so a CONFIRMED value shows up next to the RECORDED one. dt_log carries dt_lot/dt_slot that are absent 40% of the time and WRONG 10% of the time; the confirmed columns are named dt_lot_confirmed/dt_slot_confirmed precisely so they do NOT collide -- a colliding virtual column merges absent-only, so on exactly the wrong-value rows the wrong value would win and the correction would be invisible.",
+  "dt_log_confirmed_attribution": {
+    "left_table": "dt_log",
+    "right_table": "dt_job_attribution",
+    "join_key": [
+      {
+        "left": "dt_job",
+        "right": "dt_job"
+      }
+    ],
+    "expose": [
+      "dt_lot_confirmed",
+      "dt_slot_confirmed"
+    ],
+    "unresolved_label": "미상",
+    "join_cardinality": "one",
+    "enabled": true
+  },
+  "dt_log_frame_attribution": {
+    "left_table": "dt_log",
+    "right_table": "eqp_frame_attribution",
+    "join_key": [
+      {
+        "left": "dt_eqp",
+        "right": "dt_eqp"
+      },
+      {
+        "left": "product",
+        "right": "product"
+      }
+    ],
+    "expose": [
+      "core_frame",
+      "dt_frame"
+    ],
+    "unresolved_label": "미상",
+    "join_cardinality": "one",
+    "enabled": true
+  },
+  "_rejected_example_comment": "아래는 거부되는 선언의 모양이다. 이름이 밑줄로 시작하므로 로더는 이것을 선언이 아니라 주석으로 보고 건너뛴다 ― 밑줄을 떼면 실제로 rejected 목록에 뜬다. eds_fail_map 에는 (lot,slot)를 덮는 UNIQUE 인덱스가 없고, 만들려 해도 같은 (lot,slot)에 여러 행이 있어 PostgreSQL이 중복으로 거절한다. 그 거절이 곧 이 조인이 그 배수만큼 불어난다는 증거다. | 2026-08-02: core_defect_map / eds_fail_map 선언은 레거시 정리로 제거됐다. 이 항목은 밑줄 접두라 로더가 건너뛰는 **주석**이고 활성 규칙이 될 수 없으므로, 없어진 테이블을 가리켜도 조용히 망가질 것이 없다 ― 거부되는 선언의 '모양'을 보여 주는 예시로만 남긴다.",
+  "_example_rejected_no_unique_index": {
+    "left_table": "core_defect_map",
+    "right_table": "eds_fail_map",
+    "join_key": [
+      {
+        "left": "lot",
+        "right": "lot"
+      },
+      {
+        "left": "slot",
+        "right": "slot"
+      }
+    ],
+    "expose": [
+      "metro_eqp"
+    ],
+    "enabled": true
+  }
+}
