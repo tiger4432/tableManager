@@ -1,5 +1,5 @@
 {
-  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다. [v2 · 2026-07-26] fail_sources[].align 선언은 **제거됐다** — 소스 프레임→canonical(core) 프레임 변환은 두 맵의 wafer_map_metadata 델타에서 유도된다. canonical 프레임은 frame='origin' 원천 중 메타가 등록된 첫 번째(선언 순서)다. 계측으로 잰 어긋남도 별도 선언이 아니라 그 맵의 메타에 기록하라 — 이 파일에 align이 남아 있어도 서버는 무시한다. [전제 테이블] 여기의 모든 table 값은 table_config.json에 선언돼 있어야 해석된다(미선언 = 그 역할 'missing'). ①제품 소유(이름 고정, table_config.json.sample에 이미 있음): wafer_map_metadata, map_split_registry. (구 map_doe/map_doe_source는 [M2.6]에서 폐기 — 아래 plan_store.__comment 참조. 코드가 더 이상 읽지 않으므로 전제 테이블이 아니다.) ②현장 소유(당신의 실제 테이블명·컬럼명으로 교체하고 table_config.json에 직접 선언할 것 — 표준 스키마가 아니다): dt_map, dt_log, bonding_map, core_defect_map, eds_fail_map, wafer_process. 체크리스트는 docs/guide/CONFIG_GUIDE.md의 '기능별 필요 테이블 체크리스트' 참조.",
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
   "stages": {
     "dt": {
       "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",
@@ -15,57 +15,110 @@
       "description": "Bonding: 테이프 위의 칩을 base에 본딩하는 단계. 테이프에는 여러 코어 칩이 혼재하고 불량도 섞여 있다 — 코어 fail은 dt_log 조인으로 테이프 좌표에 투영된다.",
       "source_kind": "tape",
       "target_kind": "base",
+      "bin_map": {
+        "table": "dt_map",
+        "columns": {
+          "lot": "lot",
+          "slot": "slot",
+          "x": "x",
+          "y": "y",
+          "bin": "val"
+        }
+      },
       "source": {
-        "identity": { "compose": ["lot", "slot"] },
+        "identity": {
+          "compose": [
+            "lot",
+            "slot"
+          ]
+        },
         "map_metadata": {
           "table": "wafer_map_metadata",
-          "columns": { "target_table": "target_table", "map_id": "map_id", "grid_metadata": "grid_metadata" }
+          "columns": {
+            "target_table": "target_table",
+            "map_id": "map_id",
+            "grid_metadata": "grid_metadata"
+          }
         },
         "total_chips": {
-          "table": "dt_log",
-          "columns": { "lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty" }
+          "table": "dt_map",
+          "columns": {
+            "lot": "lot",
+            "slot": "slot",
+            "x": "x",
+            "y": "y"
+          }
         },
-        "__transfer_log_none_comment": "[7c · 2026-07-29] 사이트에 전사(소모) 기록이 아예 없으면 바인딩 대신 정확히 문자열 \"none\"을 선언하라: \"transfer_log\": \"none\". 그러면 강등(missing/source_degraded)이 아니라 선언된 상태 connected(untracked)가 되고, transferred=null(미상 — 0 아님), remaining=null + remaining_upper_bound(= total − fail)와 전용 경고 transfer_untracked가 나가 클라가 '≤N'으로 표시할 수 있다. BIN 항목도 같은 상한 처리. ⚠️ JSON null·키 삭제·\"None\" 등 다른 형태는 전부 종전 그대로 missing이다(null은 실수 삭제와 구분할 수 없어 선언으로 인정하지 않는다).",
         "transfer_log": {
           "table": "bonding_log",
-          "columns": { "lot": "core_lot", "slot": "core_slot", "x": "cx", "y": "cy" }
+          "columns": {
+            "lot": "core_lot",
+            "slot": "core_slot",
+            "x": "cx",
+            "y": "cy"
+          }
         },
         "origin_log": {
           "table": "dt_log",
           "columns": {
-            "lot": "tape_lot", "slot": "tape_slot", "x": "tx", "y": "ty",
-            "origin_lot": "core_lot", "origin_slot": "core_slot", "origin_x": "cx", "origin_y": "cy"
+            "lot": "tape_lot",
+            "slot": "tape_slot",
+            "x": "tx",
+            "y": "ty",
+            "origin_lot": "core_lot",
+            "origin_slot": "core_slot",
+            "origin_x": "cx",
+            "origin_y": "cy"
           }
-        },
-        "origin_area_map": {
-          "table": "dt_map",
-          "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" }
         },
         "process_history": {
           "table": "wafer_process",
           "columns": {
-            "step": "step", "eqp": "eqp_id", "result": "result", "time": "start_time",
-            "recipe": "recipe_id", "knobs": "knobs", "lot": "lot", "slot": "slot"
+            "step": "step",
+            "eqp": "eqp_id",
+            "result": "result",
+            "time": "start_time",
+            "recipe": "recipe_id",
+            "knobs": "knobs",
+            "lot": "lot",
+            "slot": "slot"
           }
         },
         "fail_sources": {
           "defect": {
             "frame": "origin",
             "table": "core_defect_map",
-            "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
-            "fail_values": ["D"]
+            "columns": {
+              "lot": "lot",
+              "slot": "slot",
+              "x": "x",
+              "y": "y",
+              "val": "val"
+            },
+            "fail_values": [
+              "D"
+            ]
           },
           "eds_fail": {
             "frame": "origin",
             "table": "eds_fail_map",
-            "columns": { "lot": "lot", "slot": "slot", "x": "x", "y": "y", "val": "val" },
-            "fail_values": ["F"]
+            "columns": {
+              "lot": "lot",
+              "slot": "slot",
+              "x": "x",
+              "y": "y",
+              "val": "val"
+            },
+            "fail_values": [
+              "F"
+            ]
           }
         },
-        "warnings": { "result_fail_values": ["FAIL"] },
-        "__bin_map_comment": "[BIN 축 — 선택, 일부러 미선언] DOE 자재 토큰은 `lot[_slot][:BIN]` 형태이고 BIN을 주면 `GET /api/transfer-plan/source-summary?bins=1,2`가 BIN별 가용을 돌려준다. 선언하려면 이 자리에 `\"bin_map\": {\"table\": \"<BIN을 지는 맵 테이블>\", \"columns\": {\"lot\":..., \"slot\":..., \"x\":..., \"y\":..., \"bin\":\"<BIN 컬럼>\"}}`을 넣어라. ⚠️ **위 origin_area_map의 `dt_map.val`을 그대로 재사용하지 마라.** 이 배포에서 그 컬럼은 출신 코어 식별자(`CORE-A_01`)이며 BIN이 아니다 — 그대로 쓰면 코어 이름이 BIN 자리에 들어가거나 전부 `unbinned_cells`로 접힌다. 그래서 서버는 컬럼을 **추측하지 않고**, 미선언이면 `bins.axis: \"unavailable\"` + `bin_axis_unavailable` 경고로 못 한다고 말한다(미선언은 결함이 아니다 — source_region과 같은 취급). BIN 값은 층 경계와 **같은 정수 판정기**로 읽으므로 `'1'`·`'01'`·`' 1 '`은 한 BIN이고 `'0x10'`·문자열 라벨은 BIN이 아니다(정수가 아닌 셀은 버리지 않고 `unbinned_cells`로 센다).",
-        "__lot_membership_comment": "[로트 전개 — 선택, 일부러 미선언] 자재 토큰이 슬롯 없이 로트만 적으면(`MID1`) 롤업은 그 로트를 **슬롯 한 줄씩 펼친다**. 이건 표시 편의가 아니라 **로트 데이터 품질의 진단면**이다: 랏이 스플릿됐는데 전산에 자재가 그대로 남아 있으면 사람이 그 어긋남을 이 목록에서 보고 그리드에서 로트를 고친 뒤 다시 불러온다(핵심가치 ① 교정면). 선언 형태: `\"lot_membership\": {\"table\": \"<자재 대장>\", \"columns\": {\"lot\":..., \"slot\":...}}`. ⚠️ **맵에서 슬롯을 세면 안 되는 이유가 바로 그 진단이다** — 맵이 없는 슬롯이야말로 봐야 하는 행인데 맵 기준으로 세면 그 행이 사라져 화면이 조용히 '깨끗함'을 보고한다. 미선언이면 서버는 BIN 축 맵의 distinct 슬롯으로 **강등 폴백**하되 `slots_origin: \"map\"` + `lot_membership_degraded` 경고로 한계를 말한다(by_core_origin과 같은 규율). 둘 다 없으면 빈 목록이 아니라 `slots: null` + `slots_status: \"unknown\"`이다.",
-        "__bin_scale_comment": "[비용] BIN 분포는 group-by 1회(값당 1행)이고, 감산항(fail ∪ 전사) 교차에 필요한 좌표만 추가로 페치한다(`bins=`를 지정하면 그 BIN들로 IN 필터가 걸려 큰 맵에서도 싸다). 상한: distinct BIN 200(MAX_BIN_VALUES) · 좌표 200,000(MAX_BIN_CELLS) · `scope=lot` 슬롯 팬아웃 50(MAX_LOT_SLOTS). 절단되면 부재를 증명할 수 없으므로 `bin_absent` 대신 `unknown`이 나가고 숫자는 실리지 않는다. ⚠️ `scope=lot`의 합계는 **배분이 아니라 풀 충분성 판정**이다(`basis: \"pool_sufficiency\"`) — 웨이퍼는 기록되지 않은 순서로 한 장씩 소진되므로 균등배분 수치가 답할 수 있는 것은 '충분한가'(양수면 가능) 뿐이다."
+        "warnings": {
+          "result_fail_values": [
+            "FAIL"
+          ]
+        }
       },
       "target_map": {
         "preset": "BASE",
@@ -73,18 +126,26 @@
       }
     }
   },
+  "__plan_store_comment": "계획 모델 v2 — 계획 정체성은 (ref_table, map_key), 즉 '지금 열어 편집 중인 그 맵'이다. 계획 헤더(transfer_plan)와 계획 맵 사본(transfer_plan_map) 역할은 폐기됐다: 페인팅 결과가 곧 대상 맵 자신의 셀이므로 사본이 존재할 이유가 없고, stage는 stages.*.target_map.table 역인덱스로 유도된다. [M2.6] doe·doe_source 역할도 폐기됐다 — legend 행 하나가 곧 DOE 조건 하나다. [ZONE 2026-07-28] 층 구조는 그 행의 zone 컬럼 넷(stack·mat_1h·mat_mid·mat_top)이다: STACK = 총 층수, 1H = 1층, TOP = STACK층, MID = 그 사이 전부. 세 구역이 1..STACK을 구성적으로 덮으므로 겹침·구멍 검사는 사라진 것이 아니라 말할 수 없는 상태가 됐다. 필수 역할키: registry=(ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top) — 하나라도 빠지면 validate가 404다(조용히 '구조 없음'으로 통과시키지 않는다). bands는 필수에서 빠졌다: 폐기됐고 writer가 없으므로 필수일 수 없다. 다만 실계획이 아직 그 컬럼에 있으므로 선언돼 있으면 계속 읽어 zone으로 옮기며(bands_to_zones), 세 구역으로 표현할 수 없는 배치는 접지 않고 거부한다. material_identity는 이제 게이트로만 쓴다 — 토큰 문법 lot[_slot][:BIN]은 contracts/doe_band_rules의 공유 계약이고 parse_material_token이 유일한 구현이다(클라는 config를 읽지 못하므로 파싱 규칙이 config에 살면 양쪽이 갈린다). 미선언이면 모든 자재가 source_unresolved가 되고 계획은 unverified로 남는다.",
   "plan_store": {
-    "__comment": "[v2] 계획은 별도 개체가 아니라 '지금 열어 편집 중인 그 맵' 자신이다 — 정체성 = (ref_table, map_key). v1 역할 plan(계획 헤더)·map(계획 맵 사본)·doe_layer는 폐기됐다. [M2.6] doe·doe_source 역할도 폐기됐다: legend 행 하나가 곧 DOE 조건 하나다. 구 테이블(map_doe / map_doe_source)과 구 키(plan_id, band_seq, qty_total, qty)는 코드가 더 이상 읽지 않는다 — 남겨둬도 무시되지만 지우는 편이 낫다. [ZONE 2026-07-28] 층 구조는 그 행의 zone 컬럼 넷이다: stack(총 층수) · mat_1h(1층) · mat_top(stack층) · mat_mid(그 사이 전부). 1H가 비면 MID가 1층부터, TOP이 비면 MID가 stack층까지다 — 세 구역이 1..stack을 구성적으로 덮으므로 겹침·구멍은 표현 불가능한 상태다. 필수 역할키: registry=(ref_table, map_key, value, stack, mat_1h, mat_mid, mat_top). 하나라도 빠지면 GET /api/transfer-plan/validate가 404가 된다(조용히 '구조 없음'으로 통과시키지 않는다). bands는 필수가 아니다 — 폐기된 읽기 전용 역할이며, 선언돼 있으면 옛 계획을 zone으로 옮겨 읽고(표현 불가한 배치는 접지 않고 거부한다) 없으면 없는 대로 간다. [material_identity] 자재 토큰 문법 lot[_slot][:BIN]은 contracts/doe_band_rules/vectors.json의 공유 계약이고 서버 구현은 parse_material_token 하나다 — 클라는 config를 읽을 수 없으므로 파싱 규칙을 여기에 두면 양쪽이 갈리고, 갈리는 순간 한 화면에 두 개의 가용치가 생긴다. 이 선언은 이제 게이트로만 쓴다: 있으면 이 배포의 자재 문자열이 lot/slot 모양이라는 뜻이고, 미선언이면 모든 자재가 source_unresolved가 되어 계획은 unverified로 남는다. [선택 역할] source_region — 자재별 '쓰기로 한 사용 영역'을 셀 집합으로 저장하는 역할이며 현재 휴면이라 일부러 선언하지 않았다(미선언은 결함이 아니다 — 선언만 하고 테이블이 없으면 도리어 missing 소음이 된다). 활성화하려면 (ref_table, map_key, source_lot, source_slot, x, y) 바인딩을 여기 추가하고 그 테이블을 table_config.json에 선언하라.",
     "registry": {
       "table": "map_split_registry",
       "columns": {
-        "ref_table": "ref_table", "map_key": "map_key", "value": "value",
-        "stack": "stack", "mat_1h": "mat_1h", "mat_mid": "mat_mid", "mat_top": "mat_top",
+        "ref_table": "ref_table",
+        "map_key": "map_key",
+        "value": "value",
+        "stack": "stack",
+        "mat_1h": "mat_1h",
+        "mat_mid": "mat_mid",
+        "mat_top": "mat_top",
         "bands": "bands"
       }
     },
     "material_identity": {
-      "compose": ["lot", "slot"],
+      "compose": [
+        "lot",
+        "slot"
+      ],
       "separator": "_"
     }
   }

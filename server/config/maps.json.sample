@@ -1,74 +1,86 @@
 {
   "presets": {
-    "std_300_12x13": {
-      "name": "300mm Standard (12 x 13 mm)",
-      "phys_wafer_dia": 300,
-      "phys_chip_x": 12.0,
-      "phys_chip_y": 13.0,
-      "phys_offset_x": 0.0,
-      "phys_offset_y": 0.0,
-      "phys_edge_margin": 3.0,
-      "rotation": 0,
-      "side": "front",
-      "is_custom": false
-    },
-    "std_300_hd_2_5": {
-      "name": "300mm High-Density (2.5 x 2.5 mm)",
-      "phys_wafer_dia": 300,
-      "phys_chip_x": 2.5,
-      "phys_chip_y": 2.5,
-      "phys_offset_x": 0.0,
-      "phys_offset_y": 0.0,
-      "phys_edge_margin": 3.0,
-      "rotation": 0,
-      "side": "front",
-      "is_custom": false
-    },
-    "std_300_offset": {
-      "name": "300mm Offset Shift (+1.5, -2.0 mm)",
-      "phys_wafer_dia": 300,
-      "phys_chip_x": 10.0,
-      "phys_chip_y": 10.0,
-      "phys_offset_x": 1.5,
-      "phys_offset_y": -2.0,
-      "phys_edge_margin": 3.0,
-      "rotation": 0,
-      "side": "front",
-      "is_custom": false
-    },
-    "std_200_5x5": {
-      "name": "200mm Standard (5 x 5 mm)",
-      "phys_wafer_dia": 200,
-      "phys_chip_x": 5.0,
-      "phys_chip_y": 5.0,
-      "phys_offset_x": 0.0,
-      "phys_offset_y": 0.0,
-      "phys_edge_margin": 3.0,
-      "rotation": 0,
-      "side": "front",
-      "is_custom": false
-    },
-    "custom_1784809751189": {
+    "custom_1784890104442": {
       "name": "4A",
       "phys_wafer_dia": 300.0,
       "phys_chip_x": 11.0,
       "phys_chip_y": 13.0,
-      "phys_offset_x": 4.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "core_std": {
+      "name": "CORE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 7.0,
+      "phys_chip_y": 7.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "base_std": {
+      "name": "BASE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "tape_std": {
+      "name": "TAPE",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 15.0,
+      "phys_chip_y": 15.0,
+      "phys_offset_x": 0.0,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "custom_1785345776310": {
+      "name": "TEST",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 9.7,
+      "phys_chip_y": 13.8,
+      "phys_offset_x": 0.1,
+      "phys_offset_y": 0.0,
+      "phys_edge_margin": 3.0,
+      "rotation": 0,
+      "side": "front",
+      "is_custom": true
+    },
+    "custom_1785446789091": {
+      "name": "BASE_OFFSET",
+      "phys_wafer_dia": 300.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 5.0,
       "phys_offset_y": 5.0,
       "phys_edge_margin": 3.0,
       "rotation": 0,
       "side": "front",
       "is_custom": true
     },
-    "custom_1784810573003": {
-      "name": "4B",
+    "custom_1785446867113": {
+      "name": "BASE_OFFSET",
       "phys_wafer_dia": 300.0,
-      "phys_chip_x": 12.0,
-      "phys_chip_y": 16.0,
-      "phys_offset_x": 0.1,
-      "phys_offset_y": 0.0,
+      "phys_chip_x": 11.0,
+      "phys_chip_y": 13.0,
+      "phys_offset_x": 10.0,
+      "phys_offset_y": 10.0,
       "phys_edge_margin": 3.0,
-      "rotation": 0,
+      "rotation": 270,
       "side": "front",
       "is_custom": true
     }

@@ -1,8 +1,14 @@
 {
   "disabled": [
-    "example_table/example_collector.py"
-  ],
-
-  "_bypass_proxy": "수집 스크립트가 프록시를 우회할지. 기본 true(직결). 이 배포의 수집 대상은 사내 인트라넷이라 프록시를 경유하면 403이 난다(2026-07-30 실측). 사외 호스트를 치는 스크립트가 생겨 프록시가 필요해지면 false. ⚠️ 개별 *_proxy 변수를 지우는 것만으로는 반대 결과가 난다 — 환경이 비면 urllib이 Windows 프록시 레지스트리를 조회해 프록시가 되살아난다. run_auto_update.py 의 _apply_proxy_policy 주석 참조.",
-  "bypass_proxy": true
+    "bonding_map/fetch_data copy.py",
+    "bonding_map/fetch_data.py",
+    "inventory_master/fetch_inventory.py",
+    "bonding_log/generate_bonding.py",
+    "core_defect_map/generate_core_defect.py",
+    "dt_log/generate_dt_log.py",
+    "dt_map/generate_dt_map.py",
+    "eds_fail_map/generate_eds_fail.py",
+    "wafer_process/generate_wafer_process.py",
+    "lot_event/generate_trace_fixture.py"
+  ]
 }
