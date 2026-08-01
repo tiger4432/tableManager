@@ -448,7 +448,11 @@ grep -n "<지울테이블>" server/config/*.json
 
 ## 6. ⏳ 아직 못 쓴 네 절 (샘플이 실 파일보다 낡아 있다)
 
-> 🔴 **이 문서가 인용하는 모양의 출처는 `server/config/*.json.sample` 하나입니다.** 실 config는 gitignored이므로, 샘플에 없는 모양을 적으면 **독자가 대조할 수 없는 가이드**가 됩니다. 2026-08-02 실측 결과 아래 넷은 **샘플이 실 파일보다 낡아** 그 상태로는 옮겨 적을 수 없습니다. 샘플이 갱신되면 이 절이 §3의 형식(최소 선언 · 반영 확인 · 실패 모양)으로 채워집니다.
+> 🔴 **이 문서가 인용하는 모양의 출처는 `server/config/*.json.sample` 하나입니다.** 실 config는 gitignored이므로, 샘플에 없는 모양을 적으면 **독자가 대조할 수 없는 가이드**가 됩니다. 2026-08-02 실측 결과 아래 넷은 **샘플이 실 파일보다 낡아** 그 상태로는 옮겨 적을 수 없습니다.
+>
+> ✅ **다만 선언 자체는 이제 저장소 안에서 읽을 수 있습니다** ― [`guide/config_reference/`](./config_reference/README.md)가 이 환경의 실 config를 **있는 그대로 복사**해 두었습니다(자격증명·호스트·절대경로는 복사 전에 걸러졌습니다). **넷 중 무엇이 어떻게 선언돼 있는지 지금 당장 보고 싶다면 그쪽입니다.** 이 §3 형식의 절(최소 선언 · 반영 확인 · 실패 모양)이 아직 없을 뿐입니다.
+>
+> 🔴 **그리고 그 폴더는 배포물이 아닙니다** ― 현장마다 테이블·컬럼·설비 이름이 다릅니다. **복사해 덮으면 그쪽 선언이 사라집니다.**
 
 | 파일 | 이 문서에 왜 필요한가 | 상태 |
 |---|---|---|
@@ -473,4 +477,5 @@ grep -n "<지울테이블>" server/config/*.json
 | 이미 쌓인 데이터에 규칙을 소급 적용 | [BACKFILL_GUIDE](./BACKFILL_GUIDE.md) |
 | 되돌리기(config → 코드 → 재기동) | [ROLLBACK_PROCEDURE](./ROLLBACK_PROCEDURE.md) |
 | 새 환경 배포 전반 | [DEPLOY_SETUP](./DEPLOY_SETUP.md) |
+| **이 환경이 실제로 무엇을 선언했나**(실 config 사본) | [guide/config_reference/](./config_reference/README.md) |
 | 이 선언 한 벌이 **무엇을 위한 것인가** | [spec/TRACE_FIXTURE_SPEC](../spec/TRACE_FIXTURE_SPEC.md) |
