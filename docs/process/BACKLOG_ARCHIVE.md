@@ -1,0 +1,200 @@
+# 🗂️ 대기열·백로그 아카이브
+
+> 보드에서 분리(2026-08-01). **옛 개발 대기열·현재 초점·완료 롤업·장기 백로그**를 담는다.
+> 🔴 **다음 이어서 할 일의 정본은 [`PROJECT_STATUS.md`](PROJECT_STATUS.md)다.** 여기 표의 미완 항목은 그쪽으로 승격되었거나, 아직 트리아지되지 않은 것이다.
+
+## 📋 개발 대기열 (Queue) — 사용자 지시 2026-07-27
+
+> **규율:** 새 요청은 **즉시 착수하지 않고 이 대기열에 넣는다.** 위에서부터 순차 처리하며, 파일이 겹치지 않을 때만 병렬로 돌린다.
+> **이유:** 대기열 항목은 **고쳐도 공짜**지만 이미 던진 항목을 고치면 에이전트-시간이 날아간다. M2.6은 착수 전 5회 수정돼 비용이 0이었고, 좌표 건은 착수 후라 2라운드를 잃었다.
+> **예외:** 사용자 작업을 지금 막고 있거나 프로덕션이 깨진 건은 앞으로 당긴다 — 단 **당긴다고 말하고** 당긴다.
+> **순서 변경은 사용자 권한.** 총괄은 제안만 한다.
+
+> **포맷 (2026-07-28 통일):** 한 항목 = **제목 한 줄 + 착수에 필요한 핵심 1~3문장**. 경과·근거·수치는 히스토리/보고서에 있다 — 여기 쌓지 않는다. 완료 항목은 표에서 내리고 아래 「종결」 한 줄로 압축한다.
+> **열:** 순번(처리 순서) · 항목 · 담당 · 등급([[review-tiers]] T1/T2/T3) · 상태
+
+> ⏱️ **2026-07-29 확정 순서 (사용자 지시, 마감 12:00)**: 계측(진행중) → **[7b+7c]+[M4①] 병합 라운드** → **1c Copy to Excel** → **1·1b·1d·1e UI 개편** → 0b 공수절감 → 슬라이스 1호.
+> R2+R5를 묶은 이유: 둘 다 map-pm+server-pm의 **메타/기하 선언 영역**이고(7b는 `map_id` 조회 키, M4①은 그 메타가 참조하는 `valid_die_ref`) 같은 코드 경로를 두 번 열 이유가 없다 — QA·병합 사이클 각 1회 절감.
+> ⚠️ **직렬 제약**: 이 라운드들은 전부 `map_editor.js`다. 병렬로 쪼개면 병합 충돌로 라운드를 잃는다. 1c의 **원인 규명만은 읽기 전용**이라 계측 라운드와 병행 착수됨(커밋 블롭 기준).
+
+| 순번 | 항목 | 담당 | 등급 | 상태 |
+|---|---|---|---|---|
+| — | ~~H1·H2~~ ✅ **완료** (`6db517d`, 퀵 QA FIXED×2) — H1: 로드 경로가 초안을 덮기 전에 읽도록 + "복구=화면 변화"로 정정. H2: 대조 가드(화면 비어있지 않은 셀 − 직렬화 셀, 0 오탐)가 파괴 방지 게이트 3호로. **잔여 소형 3건 대기열 편입** ↓ | — | — | ✅ |
+| 5b | ✅ **완료** (`0052d76`) — 맵 에디터 소형 7건(ⓐ~ⓖ). 퀵 QA 6/6 FIXED + ⓕ 실측 3폭 | map-pm·ui-designer | T2/T3 | ✅ |
+| — | ~~U8·U9~~ ✅ **완료** (`2baf9ff`, QA GO) — 마커 값·V6 양측, 가용 사유 노출, bin_map 선언 경로 E2E 증명. 잔여 LOW 2건: JSON 숫자 `0.5`→marker 승격(양측 일치라 비긴급, 다음 계약 라운드에 동승) · M1 위임 stage에서 bin_map 무효(라이브 dt 점등 시 inline 전환 필요 — 현장 결정) | — | — | ✅ |
+| — | ~~U6~~ ✅ **완료** (`95bf072`, QA 2레인 GO — 분할 구조 첫 실전) — `default_legend`·`value_column_candidates` 선언 신설(paint-rules 서빙 단일 소스), 클라 하드코딩 6종 삭제(후보 목록 2사본·builtin stage·팔레트 3사본·E1/E2 색). 라운드 내 High 1건(같은 테이블 연속 로드 legend 유출) 발견·수리 완료. 브라우저 레인이 낡은 결함 2건 추가 검출 → 5b 편입 | — | — | ✅ |
+| — | ~~U7·U1·U3~~ ✅ **완료** (`a98dc72`, CSS-only) — U7 원인은 `b35bc9f` CSS 재작성의 3·4번째 희생(`.map-breadcrumb`·`.plock-chip` 무스타일) → 복원+보강. U1은 규칙이 이미 반반이었고 **주석이 거짓말** → 주석 정정+죽은 `.tp-scroll` 삭제. U3 하단 중앙 배너 + `--toast-inset-right` 참조 0 증명 삭제. 부수 관찰: 메타 모달 취소 시 `openMapFrame`이 조용히 롤백(토스트 없음) → 5b-ⓖ | — | — | ✅ |
+| — | ~~5c~~ ✅ **완료** (`1fefd12`) — 트리아지 REAL(+101 유령 실측) → `connected(count_only)` 강등(remaining null+진짜 상한, per-core 양 경로 null — 퀵 QA가 log 경로 맨 숫자 잔재를 잡아 마감) + 선언 컬럼 오타 `column_unresolved` 강등 + val 오타 fail 카운트 거부(상한 불변식). 테스트 21, 뮤테이션 전멸. **형제 결함 제안 중**: self-frame fail 소스 x/y 미바인딩 — 같은 유령 계급, 승인 대기 | — | — | ✅ |
+| — | ~~소급 백필 + 빈 키 큐 필터~~ ✅ **완료** (`1fefd12`) — `backfill_enrichment.py`(dry-run 기본·기존 행 불가침·멱등·실 mapper 경로·루프 가드 라이브 검증) + 큐 판정식 서버 단일화(`queue_filters` — 클라 3사본 소멸, 빈 키 제외). 빈 키 출처 = 그리드 빈 행 추가·부분 편집(레거시 mapper 무죄) | — | — | ✅ |
+| — | ~~raws 폴더 평탄화~~ ✅ **완료** (`0c6ac1a`, 퀵 QA 5/5) — 중첩 폴더 투하 → 정온 대기 → 파일 승격 → `rmdir`-only 폐기. 충돌 `~` 접두(`__force__` 위조 차단), 핫 토글 | — | — | ✅ |
+| — | ~~오버레이 F1~F5~~ ✅ **완료** (`17f65bd`, 원 진단 QA 재판정 5/5 FIXED — 결함 번들이 미끼 4칩을 그리는 것까지 실측한 판별 검증). paint-rules `binding` 단일 소스, 클라 유도 사본 ~40줄 삭제, 추측은 데이터 경로 거부·Load 사전선택만 경고. **table_bindings 선언만으로 tx/ty·대문자 테이블이 로드·겹치기 동작** | — | — | ✅ |
+| — | ~~게이트 4호 + map_push_ok~~ ✅ **완료** (`deed6d2`, QA 4/4 + 하네스 15/15) — 판별자 = "payload/서버가 그 컬럼을 재구성할 수 있는가"(조합키 pkg_id 생존, 행 고유 dt_id 차단, config 불필요). R&D 수동 계측용 `map_push_ok: true` 선언 시 차단→소실 인지 1회 확인(JSON boolean만, `is True` 엄격) | — | — | ✅ |
+| — | ~~self-frame fail count_only~~ ✅ **완료** (`deed6d2`) — 유령 계급 소탕 종결: 좌표 없는 fail 소스가 전 칩을 fail로 세며 remaining reliable:true 서빙하던 것 → count_only 강등+진짜 상한. fallback 경로는 의도적 무변경(개수 감산이 옳은 곳). 잔여 엣지 1건(fallback+region 부분집합 신뢰도) 트리아지 대기 | — | — | ✅ |
+| — | ~~#6 replace_map scope~~ ✅ **완료** (`deed6d2`) — 무동작 200 → 400 사유, 응답 `scope:{filters,deleted,inserted}` 단일 해석기, 명시 scope로 의도적 전체 삭제 표현 가능. **후속 등재**: 교체 삭제 행 WS 미방송(유령 행) — 경계 계약 건 | server-pm | — | 후속 대기 |
+| — | ~~D1 헌장 공백~~ ✅ **완료** (`deed6d2`) — 4문서를 server/client PM 헌장에 도메인별 의무와 함께 등재 | — | — | ✅ |
+| — | ~~DB 쓰기 2건~~ ✅ **완료** (로컬 라이브 적용 — 인덱스 6종+정리 4종+재교정 인덱스, CONCURRENTLY 무중단. 운영 실행 가이드 전달) | — | — | ✅ |
+| 2 | 🟠 **죽은 계약 하네스 + 그걸 놓친 가드의 범위 구멍** (2026-07-29, map-pm·code-mapper가 **서로 다른 경로로 독립 도달** — 확증). `client2/tests/split_registry_harness.mjs`(272줄)가 `loadLegend`·`fetchLegendFromServer`·`maybeOfferLegendMigration`·`loadLegendFromStorage`·`DEFAULT_LEGEND`를 **이름으로 추출**하는데 5개 전부 CODE_MAP §0 tombstone(삭제됨) → **추출 단계에서 throw**. 클린 트리에서도 재현되므로 이번 라운드 무관. **더 중요한 건 왜 안 걸렸나**: 심볼 개명을 exit 2로 잡아주는 §0 체크 ②-b가 `client2/src contracts`만 스코프해서 **`client2/tests`를 안 본다**. ⓐ 하네스 처분(개명 대응 복구 vs 폐기 — U6에서 하드코딩 기본값을 `default_legend` 선언으로 옮긴 뒤 계약 자체가 유효한지 판정 필요) ⓑ **체크 스코프에 `client2/tests` 편입** | client-pm+map-pm | T2 | 대기 |
+| 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
+| 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
+| **0** | 🔴 **V1 계기 계측 — 완료까지의 상호작용 점수** (사용자 2026-07-29 사양 확정). **단위 = 한 tx 묶음 교정 완료**(서버가 이미 긋는 경계 — `PUT /tables/{t}/data/updates` + `AuditLog.tx_id` 재사용, 새 개념 신설 없음). **배점: 키입력 1 · 마우스 3 · 화면이동 5, 낮을수록 좋음.** ⚠️ **컨텍스트를 유지한 자연스러운 리다이렉트는 0점**(예: DOE → dt map 라우팅) — 판정은 **config 선언형**, 기본은 "상실(5점)"이고 유지 전이만 선언한다(낙관 편향 방지). 집계 = **세션별 평균**. 계약: `effort:{session_id,key,mouse,nav}`는 **선택 필드** — 워커·인제션 경로는 미계측이 정상이며 **0이 아니라 없음**이어야 평균이 조용히 희석되지 않는다. 원시 카운트를 저장하고 합산은 조회 시점(배점 변경 시 과거 데이터 재해석). **R1보다 먼저 머지** — 소급 산출 불가라 UI를 먼저 고치면 "before"를 영영 못 얻는다 | client-pm+map-pm+server-pm | T2 | **승인됨 — 투입 대기** |
+| **0b** | 🟡 **공수 절감 기능군** (계기에서 파생, 사용자 방향 제시 2026-07-29). 배점이 마우스 3·이동 5이므로 **손을 줄이는 기능이 곧 지표 개선**이다: ⓐ **드롭다운·입력 추천** 적극 활용 ⓑ **최대한 미리 값이 채워지게**(prefill) ⓒ **범위 묶어 Ctrl+Enter 일괄 채우기**. ⚠️ 착수 전 필수 확인: 그리드에 **이미 있는 범위·클립보드 프리미티브**(`clipboard.js`)와 겹치는지 — 없는 것만 만든다([[check-existing-primitives-first]]) | client-pm | T2 | 🟡 **ⓐ 완료 · ⓒ 이미 존재 · ⓑ만 남음** — ⓐ는 F3 클라 절반으로 착지하고 **계기가 92% 절감을 실측**(위 F3). ⓒ는 만들 것이 없었다: 기존 `Ctrl+Enter` 일괄 채우기가 그대로 살아 있고 **제안값과 합성된다**(25자 값 3칸 = 5타 vs 78타) — [[check-existing-primitives-first]]가 두 번째로 값을 했다. 남은 ⓑ prefill은 별 라운드 |
+| **1** | ✅ **전건 완료** — DOE UI 개편 사용자 VOC ⓐ~ⓘ 9건. 8건 `7694b42`, ⓗ splitter `ae2811c` | ui-designer+map-pm | T2 | ✅ |
+| **1b** | ✅ **완료** (`7694b42`) — P0 입력 연속성. blur 커밋이 표①을 무조건 재생성해 mousedown~mouseup 사이 행 DOM을 파괴하던 것 → 행 집합이 바뀔 때만 재생성 | map-pm | T2 | ✅ |
+| **1c** | ✅ **완료** (`7694b42`) — Copy to Excel. 원인은 **평문 HTTP라 `navigator.clipboard` 미정의**였고 폴백이 같은 객체를 다시 불렀다. 합성 copy 이벤트로 대체, 규약은 `prebuild` 검사로 강제 | map-pm | T2 | ✅ |
+| **1d** | ✅ **완료** (`7694b42`) — 삭제 프리뷰가 주간 테마에서 맵을 가리던 것. 캔버스 전용 반투명 토큰 신설, 범용 `--danger-weak`는 무손상 | ui-designer | T3 | ✅ |
+| **1e** | ✅ **완료** (`c24d47b`) — 토스트 62→53, 깨끗한 경로 발화 13건 감소. 규칙: **성공 토스트는 그 효과가 화면에 없을 때만 살아남는다** | map-pm | T2 | ✅ |
+| 7b·7c | ✅ **완료** (`91386f0`, 2026-07-29) — 맵 키 canonical화 세 자리(`composeMapId`·`decomposeMapKey`·`canonicalMapKey`)가 한 함수. `parseInt` 아닌 엄격 정규식. 🔴 **남은 구멍: 계약 벡터가 없다** — pytest와 node가 각자 자기 기댓값을 본다(이 버그를 만든 바로 그 실패 모드) → contract-keeper 별건 | map-pm | T2 | ✅ (벡터는 별건) |
+| 7c | **`transfer_log: "none"` 선언 — 소비 기록 없는 현장 지원** (사용자 요청 2026-07-28 밤 "기록 없이도 되게"): 선언 시 `connected(untracked)` 상태로 잔량을 **상한 표시(`≤N` = 총량−fail)** + 툴팁 "기전사 미차감". 사고성 missing은 미상 유지 — 선언=인지 패턴(map_push_ok와 동형). 서버 upper_bound 배관 기존재, 선언 파싱+클라 표시만. 가용 풀 바인딩 canonical화(7b)와 같은 파일권 — 동반 가능 | map-pm | T2 | ✅ **완료 — `91386f0`** (`transfer_plan.js:485-503`, 상한 표시 `≤N`) |
+| 7 | **M3 맵 메타 자동 등록** (ingestion 체인) — `bonding_map` 맵 키 39만 vs 메타 9건 해소 경로 | server-pm | — | 대기 |
+| 8 | **P3 대형 파일** (backpressure·COPY·상한) | server-pm | — | 대기 |
+| **F3** | 🟠 **unique values 조회 API — UI 전영역 입력 제안의 전제 프리미티브** (사용자 요청 2026-07-29). 인자 `(table, column, prefix)` → **prefix로 시작하는 unique 값 목록**. 목적: 전 UI의 필드 입력 드롭다운 제안. **0b 공수절감의 전제**이므로 0b보다 먼저.
+  - ⚠️ **확장성이 이 건의 전부다**. `bonding_map` ~1.7M 행에서 `SELECT DISTINCT col WHERE col LIKE 'p%'`는 인덱스 없이는 재앙이다. **btree는 비-C 콜레이션에서 `LIKE 'prefix%'`에 안 걸린다 — `text_pattern_ops`가 필요**하다. 이 함정은 이미 보드에 있다(그래프 search ILIKE 프리픽스 항목) — **같은 미해결 문제의 두 번째 소비자**이므로 한 번에 푼다. `LIMIT` 필수(드롭다운은 20~50개면 된다), **빈 prefix는 전량 DISTINCT 스캔**이므로 최소 길이 요구나 하드 캡 중 택.
+  - 🔒 **table·column 이름이 클라에서 온다** — `table_config` 선언과 대조해 검증하고 **원문을 SQL에 보간 금지**. F1의 "요청은 테이블을 지목하지 스크립트를 지목하지 않는다"와 같은 원칙.
+  - **정직한 열화**: `LIMIT`으로 잘렸으면 **잘렸다고 말해야** 한다(`truncated`). 안 그러면 드롭다운이 "이게 전부"라고 암시한다.
+  - **7b 정합**: number 선언 컬럼이면 저장형(`1`)이 제안돼야 한다 — 토큰형(`01`)이 아니라.
+  - null·빈 문자열 제외. 타이핑 중 반복 호출이므로 클라 디바운스 필수.
+  - 📏 **V1 계기 실측**: 25자 값에서 타이핑 26타/가중 29 → 접두+Enter **2타/가중 5 (92% 절감)**. 「짧은 값에선 드롭다운이 더 비쌀 수 있다」는 우려는 산술로 상한이 잡힌다 — 후보 k번째는 k타가 드므로 목록 길이를 넘겨 얻을 이득이 없다 |
+| **F3-fix** | ✅ **완료** (`d5f75a8`) — 제안 입력 `Esc`가 타이밍으로 갈리던 것(친 글자 소실 / 틀린 값 저장). 판정 항을 **「이 편집기가 스스로 물어본 적이 있는가」**로 바꿔 타이머·RTT와 무관하게 만듦. MEDIUM 4건 동반(백오프·floor 비가역·공유 DOM·가로 클램프) | client-pm | T2 | ✅ |
+| **F8** | 🟠 **R0 업로드 경로 정화에 테스트가 0건** (doc-historian 대조 2026-07-30). `0d4798a`가 경로 탈출 2벡터(`file.filename`·`user` 쿼리 파라미터)를 막고 결과 기반 검증(destination이 `target_dir`의 **직접 자식**인지)까지 넣었는데, `server/tests/` 어디에도 `upload_file`을 태우는 케이스가 **하나도 없다**. 내 검증은 정화 함수를 직접 부른 10케이스뿐이라 **핸들러 배선은 무보증**이고, 400 분기는 「도달 불가」가 아니라 **「어떤 샘플도 도달하지 않았다」**까지만 측정됐다. 폴더 단위 업로드는 이 가드 위에 얹히므로 그 전에 필요 | server-pm | T3 | 대기 (F7 다음) |
+| **F12** | ✅ **완료** (`61440e6`) — 유효 다이 채택 차단 제거(사용자 재확인 「그냥 틀어지는대로」). 후속 정합은 오리진 라운드가 흡수 | map-pm | T2 | ✅ |
+| **F13** | ✅ **완료** (`4e23a9f`+`0da44e4`) — `DEPLOY_SETUP §1-4/§1-5`에 영구 설정 형태 · **`SetEnvironmentVariable`은 replace라는 경고** · 지문 대조 · 증상 기준 재구성. 🔴 **핵심 블록**: 「프로세스는 태어날 때의 환경을 들고 있다」 — 변수를 바꿔도 이미 도는 프로세스엔 안 닿고 새 터미널이 더 오래된 것의 자식이면 소용없다(오늘 하루를 먹은 사실) | doc-keeper | T3 | ✅ |
+| **F10** | 🔴 **하네스 13개 중 3 적색 · 배선 1 · 미배선 12** (code-mapper 전수 실행). ⓐ `copy_header_count_harness` ⓑ **`effort_instrument_harness` — 첫 그룹에서 죽어 채점 0. 이번 분기 UI 작업의 성패를 재는 계기가 아무것도 보고하지 않고 있었다** ⓒ `split_registry_harness`. ⓐⓑ 둘 다 `ae2811c`가 헬퍼를 추출하며 다른 하네스 2개만 갱신한 결과 — 어느 하네스가 어느 함수를 슬라이스하는지 알려주는 장치가 없다. <br>**구멍**: `check_contracts.mjs`가 `contracts/*/client_harness.mjs` 한 패턴만 봐 `client2/tests/**`가 구조적으로 밖. 그런데 `package.json`의 `check:suggest-keys`는 이름을 박아 넣었다(총괄이 넣었고, 그 러너 헤더에 「DISCOVERY, NOT A LIST」라고 쓴 것도 총괄). <br>⚠️ **구현 주의**: 세 실패는 `die()` exit 2가 아니라 **exit 1**(추출 가드 통과 후 실행 중 사망)이고, `reposition_regime_probe.mjs`는 인자를 받는 프로브라 순진한 `*.mjs` 규칙은 **없던 적색을 만든다**. 대기열 2번과 같은 구멍 — 한 라운드로. <br>🔴 **동반**: 형제 하네스 전부에 **슬라이서 버그** — 함수 본문을 `(` 뒤 `indexOf('{')`로 찾아 `f(opts = {})` 같은 기본값 객체에서 깨진다 | client-pm | T2 | 🔴 **다음 클라 라운드 1순위** |
+| **F11** | 🔵 **`c_zero`가 두 방식으로 계산되고 `side==='back'`에서 갈린다** (사용자 질문에서 발견 2026-07-30). `:1157` `getGridCellObject`는 `box.minC − startX`로 **거울 분기가 없고**, `:2924`는 `isXMirrored ? (box.maxC + startX) : (box.minC − startX)`로 있다. `MAP_EDITOR_SPEC §1`이 문서화한 미러 분기가 코드 한쪽에만 있다. ✅ **QA 실측으로 등급 하향**: 두 곳 다 원점 마커 지역 변수이고(`hasZeroZero` → `isOriginCell` `:3009`) **저장 경로에 닿지 않는다** — 재배치 경로는 `getPhysicalCoords`/`getVisualCoords`/`getWaferBoundingBox`만 탄다. 즉 back 면에서 **원점 표시만** 틀릴 수 있다. 수리는 한 정의를 공유하게 하는 것 | map-pm | T3 | 대기 (표시 전용, 비긴급) |
+| **F9** | 🔴 **config가 먹었는지 확인할 방법이 전무** (사용자 2026-07-30). 어드민의 config 라우트는 `POST /admin/reload-configs` 하나뿐이고 **무엇이 먹었는지 아무것도 반환하지 않는다**. 서버가 읽는 config는 10개. 실증: `auto_confirm: true`를 `candidate_for` 없이 켜면 경고 한 줄 남기고 조용히 비활성 — **지금 운영이 그 상태**. <br>**계약(확정)**: 서버가 `effective` / `ineffective`(+명명된 이유) / `rejected`(+이유) 세 모집단을 반환하고 **클라는 서버 문자열을 그대로 렌더**(유도 금지). 어휘는 런타임 열화어 재사용, `contracts/config_resolve_report/` 벡터로 고정(**착지함**). <br>**범위**: enrichment 먼저(사용자 확정) → 나머지 9개는 같은 틀 <br>**서버 착지 `f3fd785`**: `GET /admin/config/resolve`(**`db` 인자가 없어** 질의 0건이 서명으로 보장) + `GET /admin/enrichment/auto-confirm/dry-run`(`apply` 파라미터 부재를 라우트 서명에서 테스트가 검사). 도중 결함 2건: ⓐ **SQLite가 해석 안 되는 큰따옴표 식별자를 문자열 리터럴로 강등** → 없는 컬럼 조회가 「그 이름을 값으로 갖는 행 1개」로 돌아와 **컬럼명 자체를 자동확정**할 뻔했다(별칭 한정으로 수리) ⓑ 서버가 자른 행을 파이썬에서 세다 보니 뷰의 `limit` 너머로 `ambiguous`가 **도달 불가** — 실측 `wafer_process`는 `limit: 50`인데 80키 전부 69~217행. 후보 탐침만 GROUP BY로, 표시 경로는 행 제한 유지 | server-pm+client-pm | T2 | 🟡 **서버 착지·QA 중 · 클라 대기** |
+| **F7** | ✅ **완료** (`a5eb934`) — `wafer_process`가 인덱스 없이 217ms를 「정답·완전」처럼 답하던 것. 임계 넘긴 테이블 전수 점검(이 하나만 누락, 14개 생성) + **성공 경로가 자기 비용을 보고**(`elapsed_ms`) + 계획 형태 검사기(`Index Cond` vs `Rows Removed by Filter`). 302→21ms | server-pm | T2 | ✅ |
+| **F6** | ✅ **완료** — 유효 다이 지정 시 「grid x,y 안 맞다」 거절. 최종 설계는 **아무것도 채택하지 않는 것**(`61440e6`+`94b9baa`): 크기가 달라도 마스크만 화면에서 밀려 보이고 **저장 좌표는 한 개도 안 움직인다**. 사용자 판정 「그리드 크기가 달라도 좌표는 db값 그대로 보존하고 화면 표기 밀리게 그냥 보여주기」. 정본 서술 [SPEC §5.7-bis](../spec/MAP_EDITOR_SPEC.md) · 경과와 정정 이력은 [히스토리](../history/README.md) | map-pm | T2 | ✅ |
+| **F4** | 🟠 **방금 만든 맵이 다음 화면에서 「없음」으로 읽힌다** (표준 시나리오 실측 2026-07-30, **기존 결함**). dt map을 315행으로 저장하고 본딩맵을 **다시 로드**해도 롤업이 `MAP X`를 유지한다 — **`↻ 가용`을 눌러야** `O`로 바뀐다. 네트워크 로그상 재로드 시 맵 존재 확인 요청이 **아예 나가지 않는다**. `transfer_plan.js`는 그 라운드 diff에 없으므로 기존 결함. ⚠️ **핵심가치 #3(실시간 신뢰 전파)** 위반 — SSOT가 *"반영이 안 믿기면 교정이 멈추고 온톨로지가 틀린 채 굳는다"*고 쓴 지점이고, 사용자가 **방금 자기가 만든 것**을 시스템이 부정하는 형태라 신뢰 손상이 특히 크다 | map-pm | T2 | 대기 |
+| **F2** | 🔴 **화면의 DOE 수량이 저장 불가능한 셀을 포함한다** (기존 결함). `🎨 Fill All`이 `inside`와 무관하게 사각 전체를 칠하고 `updateLegendCounts`가 그것까지 세므로, 화면 숫자가 실제 저장 가능량보다 **35~51%** 많다(프리셋별 CORE 35/BASE 41/TEST 44/TAPE 51). `pushMapData`는 `!inside`를 떨구므로 **화면과 저장이 갈린다**. ⚠️ 셀 카운트는 DOE 산술이라 영향 범위 확인 선행. F1ⓐ와 같은 축 | map-pm | T2 | 대기 |
+| **F1** | 🟠 **회사 본딩맵 포맷 왕복 — COPY HEADER MODE + 파서 붙여넣기** (사용자 요청 2026-07-29, 스크린샷). **둘은 한 쌍이다**: 내보내기만 만들면 "쓸 줄은 아는데 읽을 줄 모르는" 포맷이 생긴다. 묶으면 **INV가 자명해진다 — 복사한 것을 그대로 붙여넣으면 격자가 동일하다**(한 줄로 양쪽 동시 채점). ⓐ **COPY HEADER MODE 체크박스**: 헤더(`TITLE` + 구역/자재 열 그룹 `Base(map id)·4B12·1H·AF_03·MID·MIDLOT_01·TOP·TOP_01`)와 보조표(`VALUE·COUNT·STACK·DESC`)를 함께 복사. **COUNT는 격자 집계**(실측: 노랑 18·빨강 129), **STACK·DESC는 표①(DOE) 선언** — 즉 집계와 선언의 결합이다. ✅ **확정(사용자 2026-07-29): COUNT는 원 안(inside)만 센다** — M4 유효 다이 맵이 들어오면 "원 안"의 정의가 원 기하→유효 다이 맵으로 바뀌므로 COUNT가 자동으로 따라간다. ⓑ **파서 붙여넣기**: 인제션의 파서(`parsers/`·`html_topology_parser`·std 폴백)를 **에디터의 새 진입점**으로 노출 — 새 파서를 만들지 않는다. 사용자는 실포맷을 HTML로 파싱하도록 인제션을 이미 세팅해 둔 상태. ⚠️ **인제션 경로는 DB에 쓰지만 에디터 경로는 파싱 결과만 돌려줘야 한다** — 붙여넣기가 곧 저장이 되면 게이트 4종을 우회하고 「쓰기 1회 확인」이 깨진다. 현재 에디터 붙여넣기는 6칼럼 TSV 계약이라 **헤더·열그룹이 있는 실포맷을 못 읽는 것**이 이 요청의 배경.
+  ✅ **설계 확정 (사용자 2026-07-29)**: 파서는 **사용자가 커스텀해 등록**하고 **서버가 등록된 파서를 실행해 결과만 반환**한다. **기존 인제션 스크립트 재활용**, **config로 맵 테이블별 바인딩**.
+  - **재활용 방법(스크립트 무수정)**: 붙여넣기 내용 → 서버가 **임시 파일로 기록** → **기존 인제션 스크립트를 그대로 호출** → 셀 반환 → 임시 파일 폐기. 스크립트를 한 줄도 안 고치고 인제션·붙여넣기가 같은 파서를 탄다. 사용자가 파서를 커스텀하면 양쪽에 자동 반영. ⚠️ **선행 확인**: 스크립트가 파싱만 하고 쓰기는 파이프라인이 하는가 — 스크립트가 직접 DB에 쓰면 그 경계부터 갈라야 한다.
+  - 🔒 **요청은 「테이블」을 지목하지 「스크립트」를 지목하지 않는다.** 클라가 스크립트를 지명할 수 있으면 **등록된 아무 코드나 실행하는 통로**가 된다. 요청은 테이블만, 파서 선택은 서버가 config에서.
+  - **선언은 하나.** 인제션용/붙여넣기용을 따로 두면 갈라진다 — 한 선언을 양쪽이 읽는다([[check-existing-primitives-first]]) | map-pm+server-pm+contract-keeper | T2 | 대기 (ⓐ→ⓑ 순, M4② 다음 map_editor 라운드) |
+| **M4②** | 🔴 **유효 다이 맵 저작·등록 — 운영 차단 해소 (사용자 2026-07-29 "지금 운영해야 해서")**. ①(`valid_die_ref` 소비)이 착지했으므로 그 위에 **저작 경로만 가산적으로** 얹는다: 프리셋(원/사각)에서 **템플릿 생성** → 맵으로 편집(페인팅) → 저장 → 메타에서 `valid_die_ref` 지정 → 목록·재사용. **등급 T1→T2 강등, 근거 명시**: ②를 "프리셋 동작 자체를 바꾸는 것"으로 잡으면 T1이지만 **"새 저작 경로 추가"로 자르면 기존 맵 영향이 0**이다. 수용 기준 = **`valid_die_ref` 없는 맵은 오늘과 완전히 동일**. 원 기하 은퇴·메타 188건 이관은 ③(T1 유지)에 남긴다 | map-pm+server-pm | **T2** | **DOE 종료 즉시 착수** |
+| 8.5 | **M4 — 유효 다이 맵 기반 전환 트랙** (사용자 승인 2026-07-28 밤, **mm 정렬 미사용 확인** — 손실 0 확정). 원 기하를 판정자에서 **생성기로 강등**: ①`valid_die_ref`(템플릿 맵 참조) 소비 — 가산적 공존 ②프리셋=템플릿 생성기 + E1/E2 침식(이웃) 기반 ③inside에서 원 은퇴 + 기존 메타 188건 이관 스크립트. 결함 계급 #11·#18·#20·마스크 트릭의 근원 제거. "유효 다이도 맵이다 — 마스크 편집이 곧 페인팅" | map-pm+server-pm | ①T2 ②③T1 | ①은 7b·7c·M3 묶음과 동반 |
+| 9 | 🔵 **온톨로지 슬라이스 1호 — 자재 knob tag 추적** (사용자 로드맵 모델 2026-07-29). "자재의 knob tag를 잡으면 **공정 이력과 DT 이력이 엣지 트레이스만으로** 따라 나온다". 기계는 이미 있다(G1 materializer·`POST /graph/trace` 멀티시드 BFS·`trace.html`) — **비어 있는 건 매핑과 label 정합**이다. 슬라이스 범위: ⓐ knob tag 노드 승격 선언 ⓑ **테이프 label 분리**(lot=테이프 확정으로 지금 가능, #15 해소) ⓒ 슬라이스 테이블 `event_time` 교정 ⓓ dt_log 매핑 ⓔ trace 결과 검수. **전면 §7.5c·정책 엔진·M3 39만은 이 슬라이스에 불필요** — 다음 use case가 요구할 때 당긴다 | ontology-pm | T2 | 대기 (범위 확정 후) |
+| 9b | **온톨로지 잔여 기반** (슬라이스가 요구할 때 당김): §7.5c node_class 전면 · 4대 탐색 정책 엔진(G2.5 전제) · DELETE 시 그래프 정리 정책(stale 엣지) · M3 맵 메타 39만 · G3 불량추론(PPR·heat propagation) | ontology-pm | — | 대기 |
+
+**종결 (2026-07-25~28)**: 운영 강화 2차 `d56e7e2` · M2.6 DOE 통합 `cdcddee` · 문서 4분할 `52a668b` · 수집기 exec 스코프+`out=None` FAIL · 그리드 Ctrl+C 중복 분기 삭제 · C1 접근 통제(+경로 탈출·낡은 번들) `90e284f` · 재교정률 계기 `ec75d4c` · B4 롤백 드릴(30초 실측) · C3 백업(복원 드릴 2회) `b35bc9f` · U2 없는 키 라우팅 `280ebf0` · 문서 감사 후속(아카이브 7건·헬스 어휘) — 상세는 [히스토리](../history/README.md).
+
+**✅ 사용자 결정 (2026-07-29) — 대기 4건 전부 해소**:
+- **V1 계기 교체** — 재교정률이 아니라 **완료까지의 상호작용 횟수**(클릭·화면 이동)가 정본. 재교정률은 보조로 강등. SSOT §1 갱신 완료. **미구현이고 소급 불가** → 계측이 R1 UI 라운드보다 **먼저** 머지돼야 전/후 비교가 성립
+- **`bonding_log` lot/slot = 테이프** — 코어 아님. 스펙 §7.5b DT/Tape 계층 확정. 파생: `Wafer` label에 섞인 `core_lot|core_slot`은 **테이프 위치**이므로 별도 label로 분리(#15), 해당 엣지는 DT 계층으로 retarget
+- **재교정 인덱스 승인** — `python server/scripts/setup_db_performance.py` (CONCURRENTLY·멱등·무중단). 절차는 [POSTGRES_OPERATIONS §3.1](../guide/POSTGRES_OPERATIONS_GUIDE.md)
+- **선언 없는 테이블 처분 허용** — 총괄은 **선언 제거만**(워처 부활 차단) 수행하고 물리 `DROP`은 사용자가 직접 실행(기존 규율 유지)
+
+**🔁 로드맵 모델 (사용자 2026-07-29) — 얇은 수직 슬라이스 루프**:
+> 온톨로지를 **작게 활성화** → 작은 use case 완성 → 그 use case로 온톨로지 **강화** → use case 추가 → 반복.
+> **1호 use case = 자재 knob tag 추적** (공정 이력·DT 이력을 온톨로지 **엣지 트레이스만으로** 소환).
+> 이 모델의 값: 기반 공사(§7.5c 전면·정책 엔진·M3 39만)를 **뒤로 미룰 수 있다**. 단 **두 가지는 슬라이스 안으로 딸려 들어온다** — ⓐ 테이프 label 분리(안 하면 trace가 엉뚱한 개체를 지목) ⓑ **슬라이스에 포함된 테이블의 `event_time`**(공정 이력의 *순서*가 틀리면 use case가 능동적으로 오도한다). 전면 교정은 불필요.
+
+> 🧭 **핵심 가치 추가 (사용자 2026-07-29)**: **"작은 글씨는 없느니만 못하다."** 읽히지 않는 정보는 정보가 아니라 잡음이다 — 크기·대비·정렬이 안 맞으면 그 요소는 있으나 마나이므로, UI 판정에서 **가독성은 기능과 동급**으로 다룬다. 야간 감사가 측정한 10.9px 메시지·20×13px 버튼·placeholder 정렬 불일치가 모두 이 기준 위반이다.
+
+> 🧪 **진행중 실험 — 선(先)계약 방식 (2026-07-29, 사용자: "효과 확인 후 헌장에 쓴다")**
+> **동기**: 계측 라운드에서 QA가 HIGH 2·MED 3을 잡아 **수정 라운드 1회(≈40분)**가 발생했다. 귀속을 따져보니 HIGH·MED 5건 중 **3건이 이음새**(각 도메인은 자기 절반에서 정상), **2건이 총괄 지시 결함**(메커니즘만 주고 가치 순위 미제시 / 스코프 과다 절단)이었고 **구현 에이전트의 순수 누락은 LOW 3건뿐**이었다. 즉 "꼼꼼히"의 문제가 아니라 **아무도 왕복을 시험하지 않는 구조**의 문제다.
+> **적용(다음 라운드 [7b+7c]+[M4①]부터)**: ① 지시서에 **실패하는 왕복 단언(INV-n)을 먼저** 준다 — `contracts/` 벡터 프리미티브를 쓴다(이번 라운드엔 있는데 안 썼다) ② 양 도메인 라운드는 **이음새 담당 1명** 별도 지정 ③ 지시서에 메커니즘이 아니라 **가치 순위**를 쓴다 ④ **이번에 뺀 스코프**를 QA 브리프에도 넣어 구현 전에 반박받는다.
+> **성공 판정(사전 선언)**: 다음 라운드에서 **수정 라운드를 유발하는 이음새·불변식 계열 결함 0건**. 적대적 엣지·라이브 프로브 발견은 **실패로 치지 않는다**(QA 고유 영역이며, 이번 F1도 no-op PUT 실제 응답을 찍어야 보였다). n=1이라 방향 판단까지만.
+
+## 🎯 현재 초점 (Current Focus)
+
+> 완료된 트랙은 여기서 내리고 §최근 완료로 옮긴다. **지금 손이 가 있는 것과 바로 다음 관문만** 남긴다.
+> 항목 형식은 **목표 / 할 일 / 문제** 세 줄. 경과는 히스토리와 보고서에 있다.
+
+1. **🟢 DOE 존 모델(M3) — 양측 착지, 라이브 동작 중** (`b35bc9f`+`280ebf0`, 2026-07-28)
+   - **모델**: 표① 값 정의(`COLOR·VALUE·STACK·DESC·1H·MID·TOP`) + 표② 자재 롤업(`MAT·MAP·KNOB·가용·사용·잔여`). `STACK` 숫자 하나가 층 구조 전부, 세 구역이 `1..STACK`을 구조적으로 채움. `dt_map`은 `STACK=1`·MID만. 자재 토큰 `lot[_slot][:BIN]`. 엑셀 6칼럼 TSV 계약(`tsv.js`).
+   - **저장**: `pushMapData` 유일 기록자(참조 정의 1 + 호출 1). 검수는 보고만. 존 컬럼 4종 **물리 설치 완료**(`stack`은 **string** — number였으면 `'7.5'→7` 조용한 절단). 실 `replace_map` 저장 E2E 통과, `'0x10'` 원문 왕복 확인. 스위트 815.
+   - **새로고침 생존**: 초안(DOE+셀) 10개 편집 경로 전부 + **마지막 맵 자동 재열기**(`map_editor_last_open`, 부팅 시 기존 LOAD 경로 재사용).
+   - **할 일**: ⓐ 사용자 DOE 실입력(이관 없음 — 확정) ⓑ **U8** 가용 버튼(대기열, `bin_map` 선언 대기) ⓒ `map_doe`·`map_doe_source` 처분(승인 대기 — 부활 사건 포함).
+   - **파생 계약**: `contracts/` 3종(304/71/82)을 pytest + node 하네스 양쪽이 읽는다. 계약 변경 = 두 구현 동시 이동.
+
+2. **🟢 프로덕션 게이트 — 차단 4건 전부 해소** (2026-07-28)
+   - **해소**: B1 프로세스 감시 · B2 헬스 라우트 · B3 워커 로그 배선 · **B4 롤백 절차(드릴 실측 30초)**.
+   - **조건부도 착지**: C1 접근 통제(운영에서 401/403 발효, 워커 토큰 상속 실측) · **C3 백업(복원 드릴 2회 실행)** · C2는 M2.6 재읽기·거부로 완화(재등급 대기).
+   - **남은 것**: `check` §의 config 트리 외 대상 — **PostgreSQL 덤프·`ingestion_workspace/`**(실제 복구불능 손실이 났던 곳)가 다음 백업 대상으로 명명됨.
+
+3. **🔑 도메인 규칙 — `wafer_map_metadata`가 정렬의 유일한 기준**
+   - 맵을 담는 모든 테이블은 **메타 등록이 전제**. 미등록은 정상이 아니라 **누락**. 정렬은 소스·타깃 메타 델타에서 유도하고 계측 결과도 메타에 기록한다. 셀 레벨 `grid_metadata`는 **폐기 스킴**.
+   - **문제**: `bonding_map` 맵 키 **약 39만 vs 메타 9건** — 정렬이 사실상 9개 맵에서만 일한다. 나머지는 `화면기준` 칩으로 노출된다. → 대기열 7번(M3)에서 해소.
+
+4. **⚪ 대기 트랙** — ⓐ **G2.5** §7.5c 탐색 정책 엔진 → LLM 도구 API ⓑ **enrichment 실전 규칙**(사용자 실 스키마 확보가 조건) ⓒ **Chain Replay R1**.
+
+## ✅ 최근 완료 (Recently Done) — 2026-07-25~27 롤업
+
+| 영역 | 요약 | 근거 |
+|---|---|---|
+| 문서 | **문서 관리 4분할 첫 실행** — historian(히스토리)·mapper(CODE_MAP)·keeper(리빙 문서) 동시 실행 후 auditor 적대 검수. 분리가 첫 회부터 값을 했다: mapper가 "해제 지점 3곳"(실제 2)·`WARN_*` 12(실제 14) 같은 **개수 주장의 오류**를, auditor가 `PRIMITIVES.md`가 **폐기된 재시작 설계를 가르치던 것**(매 착수 로드 문서라 심각)을 잡았다. 읽기 트리거 측정으로 49개 중 18개만 실제로 읽힌다는 사실도 확인 | `d411386`·`87cbf35`·`e6a0f44`·`52a668b` |
+| 서버+클라/맵 | **오버레이 변환 일원화** — 정렬을 서버에서 받지 않고 클라가 `소스 메타 프레임 → 물리 → 타깃 현재 컨트롤`로 배치. 오버레이 전용 변환 코드 0줄(메인 로드와 같은 함수). 화면에서 변환을 바꾸면 오버레이가 따라온다. 검수 A(기하) 15개 공격 전패, 검수 B가 잡은 fail-open 2종 수정. UI 순증 0. 이슈 #18 종결 | `7d931dc`+`251dbfd` · [검수 A](../../agent_workspace/reports/QA_overlay_unify_geometry.md) · [검수 B](../../agent_workspace/reports/QA_overlay_unify_behavior.md) |
+| 서버+클라/계획 | **M2-v2 「계획 = 그 맵 자체」** — `bonding_map` 열면 본딩 계획, stage는 열린 테이블에서 유도. `plan_id`·별도 계획 테이블 폐기, 정체성은 `(ref_table, map_key)`. 병렬 QA 첫 적용(A·B 동시) → 양쪽 NO-GO → A1(프레임 규격 좌표)·C1(DOE 전량 삭제) 수정 후 병합 | `da65a87` · [히스토리](../history/20260726_204344_m2_v2_plan_as_map_redesign.md) |
+| 인프라/테스트 | **스위트에서 허용 실패 제거 — 414 passed / 0 failed** — 라이브 사용자 자산에 쓰던 테스트 2종 격리(`maps.json`, 워크스페이스 `config.json`). `.sample` config가 v1 잔재라 신규 환경이 안 뜨던 문제 수정 | `9a8ede8` |
+| 서버/인제션 | **대형 파일 P1 — heavy 레인 분리 + 진행 가시화 + 재기동 경고, 라이브 드릴 PASS** — 크기 임계(기본 10MB, `ingestion_settings.json` 핫리로드) 라우팅·워크스페이스 FIFO 3중 보존·스윕 경로 포함, push 진행 스냅샷(`/admin/file-ingestion/active`)+admin File 탭 HEAVY 배지/경고 배너. 드릴 실측: **비차단 180배(2.3s vs 415s)·10만 행 유실 0·bk 중복 0·created_logs 정확 500건 절단·이벤트 루프 p50 3.5ms**. QUEUED 통지 역전·total_log_count 비대칭 후속 수정 완료. 테스트 278 passed(+27) | `4fd8ac9`+`8b0fd03` · [히스토리](../history/20260726_093100_large_file_p1_heavy_lane_and_live_drill.md) · [드릴 보고서](../../agent_workspace/reports/QA_p1_live_drill_report.md) |
+| 서버+클라/맵 | **본딩 실험계획 M1(조회 전용)** — 역할 바인딩 config + `GET /api/bonding-plan/core-summary`(`server/bonding_plan.py` — align은 cell_to_physical 순수 인덱스 변환만, QA F1/F2 결함 지점 무참여) + map editor Info 패널(`bonding_plan.js` — 층 배정·수량/FAIL/조건 이탈 경고 3종·knob 비교·localStorage 초안) + fake 원천 2종(eds 180° align 실증). **rect 영역 선택 모드는 개발 중 폐기**(M2 값 페인팅 정본). 테스트 275 passed(+18) | `e6eabe4`+`24753d3` · [히스토리](../history/20260726_093200_bonding_plan_m1_info_panel_and_core_summary.md) |
+| 설계/온톨로지 | **DT/Tape 계층 편입(스펙 §7.5b) + Universal Transfer Plan/DOE 관리 단위 확정** — bonding의 core lot/slot=실제 DT lot/slot, 전사 프리미티브 일반화, value=DOE 조건군 | `63ac0c3`·`437d6d5` · [히스토리](../history/20260726_093300_dt_tape_layer_universal_transfer_plan_design.md) |
+| 클라/그래프 | **뷰어 stats 라벨 카드 클릭 → 노드 리스트**(빈 q+label 서버 리스팅 캡 200, 행 클릭 explore 연동) | `df63f3a` · [히스토리](../history/20260726_093400_graph_viewer_label_node_list.md) |
+| 클라/그래프 | **뷰어 Connections 테이블 + 검색 시드 연동** — 노드 클릭=선택+관계 테이블(비중심은 depth-1 보강, 80행 페이지), 행 클릭 → 중심 재조회+URL push/popstate+검색바 반영, 패널 접기. ⚠️ 중심 이동이 클릭→**더블클릭**으로 변경(사용자 공지 권장) | `18218da` · [히스토리](../history/20260725_222215_graph_viewer_connections_table.md) |
+| 스펙/그래프 | **§7.5c 정적/동적 노드 분류 + 4대 탐색 정책** 수렴(S→D 기본 금지·2단계 백본→ROI·EqpState 허브앤스포크) — 정책 엔진이 **G2.5 전제 조건**으로 승격 | `99c4cb6` · [히스토리](../history/20260725_222347_ontology_spec_static_dynamic_traversal_policy.md) |
+| 서버/인제션 | **워크스페이스 config.json 폐지** — `table_name`/`std_parse`를 글로벌 table_config의 `workspace_name`/`std_parse`로 흡수(옵트아웃 핫리로드화 → F4 자연 해소), 신규 생성 중단+하위호환 읽기, QA 6건 반영(파일당 config 스냅샷·별칭 섀도잉/경로탈출 방어)·테스트 21건(스위트 229 passed) | `5fac5f0`+`20d6898` · [히스토리](../history/20260725_220619_workspace_config_deprecation.md) |
+| 서버/그래프 | **온톨로지 G1** — graph_nodes/edges/graph_sync_state + 매핑 v2(description 필수, enrichment `RESOLVED_AS` 자동 승격) + materializer(증분 소비·QA H1/H2 provenance·retarget) | `6da2276`→`7c40a33`→`d130c65` |
+| 서버/그래프 | **조회 API 5종** — stats/neighbors/search(뷰어) + trace/mapping-summary(G2, 공용 BFS 추출) | `c63b881`, `d8d109d` |
+| 클라/그래프 | **그래프 뷰어 + 추적 리포트** — graph.html(BFS 동심원 캔버스)·trace.html(그룹+타임라인) + index 「🕸️ 추적」 진입점, 양방향 크로스링크 | `eea929d`/`f41ca3e`, `6c0a722`/`83507aa` |
+| 클라/admin | **파이프라인 생애주기 5탭 IA 재편**(Overview/File/Chain/AutoUpdate/Enrichment, Code Editor 딥링크 공용 뷰, 구 해시 별칭 호환) — 라이브 검증 통과 | `7d02989`(소안), `3e599d2`/`387d987`(중안) |
+| 서버/인제션 | **온보딩 완결** — std parser 폴백 + 워크스페이스 자동생성(`f90717f`) + 런타임 테이블 CREATE(#7, `6c447ee`) → "config 추가→리로드→즉시 사용" | [20260725_113212](../history/20260725_113212_std_parser_fallback_and_workspace_autoprovision.md), [20260725_170000](../history/20260725_170000_issue7_runtime_table_create.md) |
+| 클라/테마 | **듀얼 테마(기본 라이트)** tokens.css SSOT + 다크 심화, 헤더 드롭다운 z-order 수정 | `765c7e5`~`cd3f90c`, `4229d9f`, `d48f25b` |
+| 서버/체인 | 이슈 #0 종결 — outbox 지연·신뢰성(F1~F5·인라인 발사·웜업), 정상 31ms(SLO 100ms) | [task/chain_outbox_latency.md](../../task/chain_outbox_latency.md) |
+| 서버 | 경합 수정 배치 1(C-1/C-2/C-3/C-5) + 감사 로그 미저장 수정(#6) | `4329c29`, `5fd8d24` |
+| 전체 | **Enrichment Queue v1**(서버 dedup mapper + 컨베이어 + 참조뷰 + 결손 배지) — 스펙 Living 승격 | [20260725_130000](../history/20260725_130000_enrichment_queue_v1_complete.md) |
+| 프로세스 | 코드맵+교훈 파일 체계(유지보수 doc-keeper 전담) · 기능 체크리스트 초판 · 에이전트 로스터 확장(qa-reviewer/doc-keeper/ui-designer) | `de79c50`, `d0c14a5`, `cbdc1e2` |
+| 서버/체인 | **인시던트(21:29) 수정** — 체인 워커 created_logs 무절단(~50MB/6.5만 건) 전송 → :8080 이벤트 루프 GIL 동결 → 알림 타임아웃 연쇄. 발신측 500건 절단+`total_log_count`(C-5 계약 확장, `event_constants.py` 공용 상수). QA GO-WITH-FIXES(D-2 편승 적용) | [히스토리](../history/20260725_215500_chain_created_logs_truncation_incident.md) · [QA 리뷰](../../agent_workspace/reports/QA_chain_created_logs_truncation_review.md) |
+| 서버/온톨로지 | **wafer_process lot/slot 확장**(사용자 config·핫리로드) — 수집기 lot_id/slot_no 기록, ProcessEvent props, enrichment 공정 이력 뷰 노출. 라이브 검증 통과(LOT-E\|25 분기 발화) | [보고서](../../agent_workspace/reports/Server_wafer_process_lot_slot_report.md) |
+
+2026-07-24 이전 완료분은 [history/README.md](../history/README.md)와 [RELEASE_LOG](./RELEASE_LOG.md) 참조.
+
+## ⏭️ 다음 단계 / 백로그 (Next / Backlog)
+
+> 가동 중 트랙은 §현재 초점에 있다. 여기는 **대기열**이다.
+
+**우선 순위 높음 (현재 초점 연동)**
+- **대형 파일 인제션 — P1·P2 완료, P2 드릴 미실행, P3 미착수**
+  - **P1** heavy 레인 ✅ 병합·드릴 PASS(비차단 180배, 유실 0). **P2** 체크포인트 재개 + sha256 dedup + #10 ✅ 병합·라이브 가동(`file_ingestion_checkpoints` 643행 실적재 확인).
+  - **✅ P2 드릴 3종 PASS** (격리 환경 첫 사용, 2026-07-27). **D1 재개**: 30,000/100,000 지점에서 `taskkill /F` — 커밋 오프셋과 실제 행수가 정확히 일치(주입 예외가 아닌 실제 강제 종료에서 원자성 관측), 재개 후 10만 행·10만 고유키·**기대 키 누락 0**(`generate_series` 안티조인으로 "10만 행인데 다른 10만"까지 차단), 건너뛰기 **275ms** vs 재적재 ~219초. **D2 dedup**: 동일 재투입 1.22초 `SKIPPED` vs `__force__` 1,687초 `SUCCESS` — **1,383배** 분리. **D3 #10**: 비대칭 5+2로 총계 7(구 SET 의미론이면 2), 단일 타깃 대조군 1. **회귀 없음**: 이벤트 루프 11,371 샘플 p50 5.1ms·250ms 초과 0건, 체크포인트 UPDATE는 청크의 **0.0097%**. 보고서 `agent_workspace/reports/QA_p2_drills_isolated.md`.
+  - **P3(미착수)**: 후단 backpressure(outbox 파일 단위 집계, 경합 배치 2·C-4와 통합) · PG COPY 벌크 경로(프로파일링 선행) · `batch_row_upsert` items 행 데이터 상한 · audit `old/new_value` 길이 상한(`crud.py:224-236` — 대형 텍스트 셀이면 500건 절단으로도 수십 MB 재발) · heavy 워커 수 설정화(heavy 간 직렬 해소, outbox 파도 증폭 주의).
+  - 잔여 QA 후속: F2 라우팅 원자화 · F4 공유 큐 대기 · F5~F7. 운영 수칙: AUTO_UPDATE_GUIDE에 증분(delta) 산출 가이드.
+- G2.5 서브그래프 직렬화 → G3(그래프 시각화 고도화, Neo4j 병행 타깃). 시간 범위 스캔용 엣지 인덱스(event_time)는 G2.5 쿼리 설계와 함께.
+- **[신규 2026-07-26] Chain Replay(룰 재적용)** — 룰 변경 시 기존 데이터 재적용. 설계: 원천 keyset 재계산(그래프 resync 패턴) + 레이어링의 user 보호 + stale 소스 철회(H2-b 패턴 셀 버전) + dry-run 우선. 단계 R1(dry-run+적용)→R2(stale 철회)→R3(admin 위저드). 착수 전 확정: 매퍼 파일 컨텍스트 의존성·다중 룰 의존·enrichment dedup 별도 취급. P1 병합 후 R1 권장.
+- map_split_registry(현재 초점 #2) — client-pm 착수.
+- **[본딩 실험계획 — ✅ M1 완료(2026-07-26), 다음은 M2 = Universal Transfer Plan]** M1 산출물(Info 패널·역할 바인딩 config·core-summary·align 서버 단독 변환·rect 모드 폐기)은 [히스토리](../history/20260726_093200_bonding_plan_m1_info_panel_and_core_summary.md), 설계 확정(DT/Tape·전사 프리미티브·DOE)은 [히스토리](../history/20260726_093300_dt_tape_layer_universal_transfer_plan_design.md) 참조. **M2 골자 — Universal Transfer Plan 프레임워크**(사용자 확정): 모든 단계=전사 프리미티브 `(stage, target 맵 페인팅, assignments[소스, 소스 영역, 타깃 값(층/코어), 수량])`, 가용=총−fail류(역할 바인딩)−기전사(단계 전사 로그), 테이프 가용은 코어 fail의 DT-조인 투영으로 제외, 신규 단계=config stage 선언만(코드 불변). **영역 지정 정본 = 값 페인팅**(base 맵 값=층 번호, 코어 맵=사용 영역 — rect 모드는 폐기됨, 서버 region 계약은 M2 cells 모드용 존치). **관리 단위 = value(DOE)**: value ↦ {소스, knob/조건, 수량, 자연어 설명} — map_split_registry 직계 확장, SplitCondition=DOE로 온톨로지 정합(G3 "어느 DOE에서 불량 군집" 질의). M2 작업 항목: 역할 바인딩에 dt_log/dt_map 추가 + 잔여 계산 2단계(코어 잔여 vs 테이프 위 가용) + 계획 페인팅은 DT 테이프 맵 위 + 관리 테이블 2종(`bonding_experiment_plan`/`bonding_plan_layer` — localStorage 초안 승격) + 온톨로지 ExperimentPlan·PlanLayer·TransferEvent 일반화 + **by_eqp 장비별 align 적용·align 보정 모드**(시험 align 서버 변환 오버레이 + 확정 시 config 원자 저장 — `make_align_transform` 주입형이라 재사용 가능) → M3(실적 대조·중복 배정 감지·EDS 연동). M1 이월 잔재: total_chips는 실 운영에서 칩 레벨 total 테이블로 재바인딩 필요(현 config는 core_defect_map 풀맵 겸용 — escalation 승인분), 기존 bonding fake의 마스크 밖 (cx,cy) 미세 왜곡(미접촉). 착수 전 사용자 확인(잔여 2건): ①defect/EDS 원천 위치 ②실로그의 knob 형태.
+- enrichment 실전 규칙(현재 초점 #3).
+
+**[신규 2026-07-29] Enrichment 강화 3안 + 조인 vs 비정규화 검토**
+- **①후보 1개면 판단이 아니라 확인** — `reference_views` 결과가 유일값이면 사람은 판단이 아니라 확인 중이다. 1클릭 확정, 또는 config 노브로 **최저 우선순위 자동 확정**(M3 `auto_register_map_meta`와 동형 — absent-only, 사람이 언제든 덮음). V1 점수로 `키n+마우스3` → `마우스3` → `0`. **오늘 착지한 계기로 효과가 바로 증명된다.**
+- **②반복 판단을 룰로 승격** — 같은 패턴을 N번 풀었으면 체인 룰을 제안한다. ①③이 건당 공수를 낮추는 반면 **②는 큐 자체를 줄인다** — 시간이 갈수록 일이 줄어드는 유일한 방향이고, SSOT의 "사람이 푼 판단이 기계 규칙이 된다"가 실제로 성립하는 지점.
+- **③-bis 【유력안, 사용자 제안 2026-07-29】 가상 조인 — 저장하지 않고 조회 시점에 붙인다.** 이건 **오버레이의 행(row) 버전**이다 — `/api/maps/overlay`가 이미 "다른 테이블 값을 저장 없이 선언된 바인딩으로 끌어와 현재 프레임에 투영"한다. 맵은 좌표로, 이건 `decision_key`로 조인할 뿐 **구조가 같다**([[check-existing-primitives-first]]). 오버레이의 교훈 3개를 그대로 승계할 것: **①선언만·유도 금지**(`derive_table_binding`이 첫 데이터 컬럼을 추측해 DECOY를 붙이는 것이 라이브 실증됨) **②바인딩 미해결 시 데이터 경로에선 거부**(상태값만) **③서버가 푼 결과를 서빙**(클라 재유도 금지 = 두 구현 방지).
+  - ⚠️ **확장성 타협 불가**: 조인은 **SQL 안**에서. 파이썬 사후 결합은 뷰포트 가상로딩·키셋 페이지네이션을 깬다. 조인 컬럼 **필터·정렬도 푸시다운** 필수.
+  - **가장 큰 파생 효과**: 미해결 행이 **분석가가 일하는 화면에 `미상`으로 그대로 보인다.** 여기서 **「읽기는 조인, 쓰기는 원본 테이블로」**까지 가면, 그 셀을 그리드에서 고치는 순간 `core_wafer_map`에 쓰이고 **같은 키 N행이 한 번에 해결**된다 → **자동 join과 Enrichment 컨베이어가 한 화면으로 합쳐지고 별도 페이지가 없어진다**(새 영역이 생기는 게 아니라 하나 사라짐 — [[ui-simplicity-first]]와 정합). ①(후보 1개 자동제안)이 얹히면 **클릭 1회**가 된다.
+  - 🚧 **설계 미결**: 셀 하나에 **읽는 곳과 쓰는 곳이 다른 전례가 이 시스템에 없다.** 레이어링 계약(`{value,is_overwrite,priority_source}`)에서 어떻게 표현할지 + **그 컬럼이 남의 테이블 것임이 화면에 보여야** 한다(안 그러면 사용자가 어디에 쓰는지 모르고 쓴다).
+  - ✅ **확인 완료 (사용자 2026-07-29)**: 분석가는 **Spotfire에서 REST API로 테이블 둘을 땡겨 직접 조인**한다. psql 직결 소비자가 없으므로 **DB 뷰 불필요 — API 라이브 조인이 정답**이고, API가 곧 서빙 계층이다.
+  - 🔴 **이 확인에서 파생된 위험 2건 (측정 필요, 단정 아님)**: ⓐ **Spotfire 조인은 원문자열 비교라 7b 정규화를 모른다.** slot이 `number` 선언이면 저장은 `1`인데 토큰은 `LOT_01`로 들어오고, 이건 운영에서 실제로 메타 조회를 빗나가게 했던 사건이다(`canonical_key_value`가 그래서 생겼다). **분석가들의 조인이 지금 조용히 덜 매칭하고 있을 수 있다** — 조인이 덜 맞으면 에러가 아니라 결과가 그냥 적게 나오므로 아무도 모른다. → 실제로 표기가 섞여 있는지 측정할 것. ⓑ **inner join이면 미해결 행이 분석에서 조용히 사라진다.** 서버 조인은 **무조건 LEFT**, 미해결은 `미상`(행 소실 금지 — 정직한 열화 규율).
+  - **설계 방향**: 새 엔드포인트 없이 **선언된 조인 컬럼이 `GET /tables/{t}/data`에 컬럼으로 딸려 나온다**(Spotfire는 테이블 하나만 땡기면 됨). 단 **경계 계약 변경**이므로 `/schema`도 같은 컬럼을 선언해야 하고(그리드가 `/schema`로 컬럼 구성), **읽기 전용·타 테이블 소유**임이 드러나야 한다.
+- **③해결값 자동 join(물리 복제) — 검토 완료, 결론은 「보류」** (사용자 문의: 분석가들이 이미 수동 조인 중, 정규화 원칙과 충돌 우려). **증상 3개(조인 키 발견성·내보내기 누락·속도) 중 저장 구조를 바꿔야 풀리는 것은 없다.** 이 시스템은 `CellSource`+우선순위 서열이 있어 **갱신 이상 위험의 절반이 구조적으로 이미 없다**(복제가 사본이 아니라 레이어). 그러나 나머지 절반인 **철회(Chain Replay R2 stale 소스 철회)가 미착수**라, 물리 복제 시 틀린 판단 하나가 N행에 화석화된다. → **기록계는 정규화 유지, 비정규화는 서빙 계층에서**: **B(뷰)로 시작 → 느리면 C(materialized view)로 승격 → D(물리 컬럼)는 R2 착지 전까지 금지.** 착수 전 측정 2건: ⓐ `(core_lot, core_slot)` 인덱스 유무와 실제 조인 비용 ⓑ 동적 테이블 체계(`table_config` 런타임 CREATE)가 뷰 선언을 다루는가.
+- **④결손 원인 분류** — "소스에 원래 없다"(진짜 일감) vs "소스엔 있는데 매핑이 떨궜다"(**일감이 아니라 버그**)가 한 큐에 섞여 있다. 후자를 손으로 메우면 파서 버그를 사람이 대신 갚는 것이다. 한 번 분류하면 그쪽은 영구 소멸.
+- 우선순위 제안: **①②** > ③ > ④ (①②는 판단을 없애고, ③은 판단을 싸게 만든다)
+
+**그래프 트랙 미결 정책**
+- 행 DELETE 시 그래프 정리 정책(스펙 §8 — materializer는 DELETE 스킵, stale 엣지 잔존). `idx_graph_edges_row_ref`가 구현 기반.
+- 운영 수칙: outbox 7일 purge보다 materializer 장기 정지 시 증분 유실 → `/api/graph/sync {"table_name":"all"}` 복구(문서화됨 — [event_driven_backend §4.3](../architecture/event_driven_backend.md)).
+- search ILIKE 프리픽스 인덱스 한계(pg_trgm/text_pattern_ops 검토) · stats GROUP BY 캐시 — 그래프 대형화 시.
+
+**admin 이관 목록** ([중안 보고서 §E](../../agent_workspace/reports/Client_admin_ux_mid_report.md))
+- Enrichment 규칙 CRUD API · Chain rule CRUD API · 워크스페이스 생성/검증 API · 파이프라인별 "신규 추가" 위저드 UI · 헬스 시간창 집계 API(+파일 로그 서버 검색/정렬).
+
+**관찰/저순위**
+- [드릴 2026-07-26] :8080 이벤트 루프 지터 0.68%(100~846ms 단발, 동결 아님) 발생원 미규명 — 장기 프로파일링은 별도 태스크(qa-reviewer 위임 후보).
+- [드릴 2026-07-26] 드릴 생성물 정리 대기(총괄 수행) — config 항목·물리 테이블 `hvy_drill_big`(100,008행)/`hvy_drill_small`·워크스페이스 2식·FileIngestionLog 5행: [드릴 보고서 §7](../../agent_workspace/reports/QA_p1_live_drill_report.md) 목록 참조.
+- 워크스페이스 레거시 config.json **읽기 경로의 최종 제거 시점** — 총괄 결정 대기(현재는 하위호환 읽기 + deprecation 경고 가동, 실 워크스페이스 14곳 전수 무영향 확인).
+- 레이어링 표시 정합 의심 1건: `priority_source: chain_ingestion`인데 표시 값은 system 소스 값(38320 vs 3832) — chain_ingestion 서열 등재(#5 배치에 동승 가능) 후 재확인.
+- 재생성 소스 삭제 시 경고 표시 UX(파이프라인이 소스를 재생성하는 것은 레이어링 설계상 정상 — 비이슈 종결됨).
+- main.py 셀 히스토리 라우트 이중 정의(~2020 사장) · `client2/src/counter.js` 템플릿 잔재 — 소규모 정리 후보.
+- 재기동 첫 체인 579ms(수용) — 잔여 mapper 첫 쿼리 웜업.
+- [라이브 검증 PASS 관찰 3건, 다음 서버 배치 동승 후보] ① pytest가 라이브 로그 파일 오염 → 테스트 로거 분리 ② created_logs 절단 발동 시 무음 → `truncated N→500` 1줄 로그 ③ wafer_process lot_id UndefinedColumn 1회(21:48, 컬럼 핫추가 과도기 — #9와 같은 뿌리 추정).
+- wafer_process에 `lot`/`slot`(기존)과 `lot_id`/`slot_no`(신규)가 중복 공존 — 데모 테이블이라 수용, 실전화 시 하나로 통일 필요. Lot 노드 label 신설 여부도 미결(현재 props까지만).
+- 루트 `task/` 대기: `cursor_based_pagination_pending.md`, `total_count_sync_pending.md`, `desktop_hybrid_wrapper_plan.md`.
+

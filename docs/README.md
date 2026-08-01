@@ -13,7 +13,10 @@
 |---|---|
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
 | 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
-| 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **진행 상황·열린 문제 단일 보드** — 여기서 현황 파악 |
+| 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **「지금 무엇이 열려 있나」 단일 보드** — 다음 할 일과 살아 있는 결함. 🔴 **2026-08-01에 679줄에서 쪼갰다**(낡은 한 줄이 총괄의 위험 판정을 반대로 뒤집은 사고가 실제로 났다). 아래 셋이 그 분가다 |
+| 🟢 [process/DESIGN_TRACKS.md](./process/DESIGN_TRACKS.md) | **진행 중인 설계와 그 근거** — 모호값 사전화 + 결측 온톨로지 · 쓰기 리디렉션 · 목적별 작은 온톨로지 · `map_editor.js` 리팩토링 계획. 대화에서 확정된 것이라 **다시 걸어오지 말 것** |
+| 🟢 [process/INCIDENTS_2026-07.md](./process/INCIDENTS_2026-07.md) | **무슨 일이 있었나** — 프록시·체크포인트 경합·고아 워커·`dist` 오염 등 인시던트 경과와 총괄 정정 이력. 라운드별 상세는 [history/](./history/README.md) |
+| 🟢 [process/BACKLOG_ARCHIVE.md](./process/BACKLOG_ARCHIVE.md) | **옛 대기열·현재 초점·완료 롤업·장기 백로그** — 미완 항목의 정본은 보드로 승격되었다 |
 | 🟢 [process/CONTRIBUTING.md](./process/CONTRIBUTING.md) | **개발·문서 갱신 규율(docs-as-code)** — 코드 바꾸면 여기 규칙대로. **§2-bis = 이 저장소가 자기를 검증하는 자리**(pytest = 서버 절반 · `npm run build` = 클라 절반 **세 채점자**, 둘 다 돌려야 한다. 목록의 정본은 `package.json`의 `prebuild` 한 줄) |
 | 🟢 [guide/CONFIG_GUIDE.md](./guide/CONFIG_GUIDE.md) | **"무엇을 설정해야 하는가" 단일 참조** — config 전수 지도 + 시나리오별 체크리스트(새 테이블/맵/수집기/그래프 온보딩) |
 
