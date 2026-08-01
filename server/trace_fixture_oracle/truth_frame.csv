@@ -1,0 +1,11 @@
+space,scope,true_frame,declared_frame,declaration_is_honest
+core,DT-EQP-01|PRD-A,rot180_front,rot180_front,Y
+dt,DT-EQP-01|PRD-A,rot90_front,rot90_front,Y
+core,DT-EQP-01|PRD-B,rot90_back,rot90_back,Y
+dt,DT-EQP-01|PRD-B,rot180_front,rot180_front,Y
+core,DT-EQP-02|PRD-A,rot0_front,rot0_front,Y
+dt,DT-EQP-02|PRD-A,rot0_back,rot0_back,Y
+core,DT-EQP-02|PRD-B,rot270_back,rot0_front,N
+dt,DT-EQP-02|PRD-B,rot90_front,rot0_front,N
+bond,BD-EQP-01,rot180_front,rot0_front,N
+core_map,core_wafer_map,rot0_front,rot0_front,Y

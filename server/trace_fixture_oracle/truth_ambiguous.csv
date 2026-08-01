@@ -1,0 +1,63 @@
+case,subject,question,expected_answer,why,candidates
+coordinate_frame,DT-EQP-01_20260511T0000_T01,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260511T0000_T09,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260511T0000_T12,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T01,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T02,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T03,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T07,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T08,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T13,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T14,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T19,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260512T0000_T20,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260513T0000_T01,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260513T0000_T07,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260513T0000_T08,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260513T0000_T13,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260513T0000_T17,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T01,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T02,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T03,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T04,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T05,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T06,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T07,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T08,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T09,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T10,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T11,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T12,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T13,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T14,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T15,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T16,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T17,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T18,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T19,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260514T0000_T20,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02|PRD-B,dt_frame,미상,이 설비/제품의 job이 전부 대칭 부분집합이라 어느 job을 봐도 회전이 갈리지 않는다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260515T0000_T01,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-01_20260515T0000_T06,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+dt_lot_attribution,DT-EQP-02_20260516T0000_T01,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T02,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T03,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T04,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T05,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T06,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T07,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T08,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T09,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T10,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T11,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T12,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T13,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T14,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T15,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T16,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T17,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T18,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T19,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+dt_lot_attribution,DT-EQP-02_20260516T0000_T20,dt_lot,미상,설비 track-in 기록이 없어 이 job이 어느 DT 랏에 속했는지 근거가 남지 않았다,DT-2601-006
+coordinate_frame,DT-EQP-02_20260516T0000_T11,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
+coordinate_frame,DT-EQP-02_20260516T0000_T19,dt_frame,미상,이 job의 점유 셀 집합이 8지 전부에 대해 대칭이라 회전을 구별할 신호가 데이터 안에 없다,rot0_front:rot0_back:rot90_front:rot90_back:rot180_front:rot180_back:rot270_front:rot270_back
