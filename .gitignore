@@ -53,3 +53,6 @@ server/database/virtual_graph.json
 # 반드시 루트 고정(/) — 앵커가 없으면 같은 이름의 하위 디렉터리(server/scripts/dev_env/,
 # 즉 도구 소스 자체)까지 조용히 무시된다.
 /dev_env/
+
+# config 백업 스냅샷 — server/config/가 일부러 git 밖인데 그 사본이 들어오면 같은 이유가 무너진다
+server/config_backup_*/

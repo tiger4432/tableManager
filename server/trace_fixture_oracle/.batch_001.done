@@ -1,0 +1,25 @@
+{
+  "batch": 1,
+  "rows": {
+    "lot_event": 43,
+    "core_wafer_map": 24200,
+    "dt_log": 8700,
+    "bonding_log": 5296,
+    "wafer_id_status": 59,
+    "wafer_map_metadata": 320
+  },
+  "oracle": {
+    "truth_wafer_position": 473,
+    "truth_die_lineage": 5296,
+    "truth_frame": 10,
+    "truth_ambiguous": 62,
+    "truth_missing": 16005
+  },
+  "jobs": 120,
+  "jobs_symmetric": 41,
+  "anchor_bands": {
+    "high": 40,
+    "mid": 40,
+    "none": 40
+  }
+}

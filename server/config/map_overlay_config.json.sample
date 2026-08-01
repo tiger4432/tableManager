@@ -1,34 +1,47 @@
 {
-  "__comment": "범용 맵 오버레이 config (S1'/S2). [v3 · 2026-07-26] align_overrides 키는 **제거됐다** — 정렬의 유일한 근거는 wafer_map_metadata다. 소스·타깃 메타(rotation/side/grid_y_invert/grid_start/치수/phys 6종)의 델타에서 변환이 유도되며, 계측으로 잰 어긋남도 별도 오버라이드가 아니라 그 맵의 메타에 기록한다. 선언 레이어를 남겨두면 정렬의 근거가 둘이 되어 메타와 선언이 어긋났을 때 어느 쪽이 참인지 알 수 없다(장비별 by_eqp 분기도 같은 이유로 폐기). 이 파일에 align_overrides가 남아 있어도 서버는 무시한다 — 삭제하라. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지). [v2] 계획 맵 사본(transfer_plan_map) 테이블이 폐기돼(계획 = 편집 중인 그 맵 자신) 해당 table_bindings·paint_lock 항목을 제거했다 — 계획 캔버스의 잠금은 그 stage의 target_map 테이블(bonding_map / dt_map 등)에 직접 선언한다(아래 __example_* 키는 예시일 뿐 어떤 테이블에도 매칭되지 않는다). [전제 테이블] table_bindings·paint_lock의 키는 전부 table_config.json에 선언된 테이블명이어야 한다. 여기 쓰인 dt_log·bonding_log·bonding_map·core_defect_map·eds_fail_map은 모두 현장 소유(고객 공장 데이터)라 표준 이름이 아니다 — 당신의 실제 테이블명으로 바꿔라. 애초에 이 파일은 선언이 없어도 동작한다(table_config의 map_key_columns + x/y/val 후보에서 자동 유도). 체크리스트는 docs/guide/CONFIG_GUIDE.md의 '기능별 필요 테이블 체크리스트' 참조.",
+  "__comment": "범용 맵 오버레이 config (S1'/S2). align은 기본적으로 각 맵의 wafer_map_metadata(rotation/side) 차이에서 자동 유도되므로 여기 선언은 '예외 보정용'이다 — 메타로 표현 못 하는 offset이나 장비별 편차만 적는다. paint_lock은 어떤 값이 페인팅을 막는지의 정본 선언이며 클라는 GET /api/maps/paint-rules로 읽어 적용한다(하드코딩 금지).",
+  "__table_bindings_comment": "좌표 바인딩도 '예외 보정용'이다 — 기본적으로 table_config의 map_key_columns + x/y 컬럼 + val 후보에서 자동 유도된다(선언 없는 맵도 겹칠 수 있어야 한다). 여기에는 좌표 컬럼명이 관례(x/y)와 다른 로그성 테이블만 남긴다.",
   "table_bindings": {
+    "__derived_note": "Declare a binding ONLY where the coordinate columns depart from the x/y/val convention -- every fixture table does, because its columns are namespaced (core_x, dt_x, bond_x). bonding_map / core_defect_map / eds_fail_map are omitted on purpose: table_config derives the identical binding for them, and a duplicate declaration only hides whether the derivation path still works.",
+    "core_wafer_map": {
+      "columns": {
+        "x": "core_x",
+        "y": "core_y",
+        "val": "c_bn",
+        "key_columns": [
+          "core_lot",
+          "core_slot"
+        ]
+      }
+    },
+    "dt_map": {
+      "columns": {
+        "x": "dt_x",
+        "y": "dt_y",
+        "val": "c_bn",
+        "key_columns": [
+          "dt_job"
+        ]
+      }
+    },
     "dt_log": {
       "columns": {
-        "x": "tx",
-        "y": "ty",
-        "val": "core_lot",
+        "x": "dt_x",
+        "y": "dt_y",
+        "val": "c_bn",
         "key_columns": [
-          "tape_lot",
-          "tape_slot"
+          "dt_job"
         ]
       }
     },
     "bonding_log": {
       "columns": {
-        "x": "bx",
-        "y": "by",
-        "val": "core_lot",
+        "x": "bond_x",
+        "y": "bond_y",
+        "val": "b_bn",
         "key_columns": [
-          "base_id"
-        ]
-      }
-    },
-    "bonding_map": {
-      "columns": {
-        "x": "x",
-        "y": "y",
-        "val": "leg",
-        "key_columns": [
-          "base"
+          "bond_lot",
+          "bond_slot"
         ]
       }
     }
@@ -52,35 +65,6 @@
     "split",
     "doe"
   ],
-  "__preset_routing_comment": "[F5] 맵을 열 때 어떤 물리 규격(프리셋)으로 열지의 선언. 키는 맵 테이블명이고, 아래 __example_ 접두 키는 어떤 테이블에도 매칭되지 않는 예시다 — 당신의 실제 테이블명으로 복사해 쓰라. 해석 순서가 계약이다: ①product_lookup(제품코드 조회 테이블) → product_presets → 프리셋, ②rules(순서 있는 텍스트 패턴, 첫 매치 승리) → 프리셋, ③둘 다 없으면 라우팅 없음(지금 동작 그대로 — 아무 프리셋도 고르지 않는다). product_lookup은 **선택**이며 미선언이 정상 구성이다(조회 테이블은 운영에만 있다). 조회가 빗나가도 정상이며 조용히 ②로 넘어간다. preset 값은 maps.json의 프리셋 키 또는 name(키 우선). rules[].match는 필수이며 equals|prefix|suffix|contains|regex 중 하나(대소문자 구분). lot_key_part 생략 시 이 테이블 맵 키의 첫 키 컬럼을 lot으로 본다. **저장된 규격(wafer_map_metadata) > 라우팅 > 패널**이 절대 순서라, 이미 등록된 맵에는 라우팅이 적용되지 않는다. 절차: docs/guide/config/map_overlay_config.md",
-  "preset_routing": {
-    "__example_dt_map": {
-      "lot_key_part": "lot",
-      "product_lookup": {
-        "table": "product_master",
-        "key_column": "lot",
-        "value_column": "product_code"
-      },
-      "product_presets": {
-        "AB12": "CORE",
-        "CD34": "BASE"
-      },
-      "rules": [
-        {
-          "name": "tape lots",
-          "match": "prefix",
-          "value": "T",
-          "preset": "TAPE"
-        },
-        {
-          "name": "core lots",
-          "match": "regex",
-          "value": "^C[0-9]{2}",
-          "preset": "CORE"
-        }
-      ]
-    }
-  },
   "paint_lock": {
     "*": {
       "enabled": true,
@@ -89,17 +73,6 @@
       ],
       "from_overlay": [],
       "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다."
-    },
-    "__example_bonding_map": {
-      "enabled": true,
-      "blocking_values": [
-        "F"
-      ],
-      "from_overlay": [
-        "core_defect_map",
-        "eds_fail_map"
-      ],
-      "message": "불량 칩 위치라 배정할 수 없습니다 (오버레이 기준)."
     }
   }
 }

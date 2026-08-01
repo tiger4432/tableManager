@@ -17,6 +17,35 @@ Every consumer would then bind to a key that changes when the guess is corrected
 correcting it would look like the map moved. So the map is keyed on what is known, and
 the lot/slot attribution rides on top as ordinary enrichment.
 
+[RESOLVED 2026-08-01 -- how a chain addresses a single map cell]
+
+The earlier draft of this file asked the question and got the answer wrong in code.
+What was measured:
+
+  * A map table does NOT hold many rows per `business_key_val`. `dt_map` declares
+    `composite_key_source = [dt_job, dt_x, dt_y]`, so one business key IS one cell.
+    The "437 rows under one key" reading confused the MAP key (`map_key_columns`,
+    which scopes a whole map) with the ROW key.
+  * `crud.apply_batch_updates` composes that composite key FOR you
+    (crud.py:1051-1059) -- but only when the item omits `business_key_val` AND
+    supplies every composite source column in `updates`. Supplying
+    `business_key_val = dt_job` instead, as the draft did, addresses ONE row per job
+    and collapses every cell of that job onto it.
+  * So this mapper deliberately does NOT set `business_key_val`. Letting crud compose
+    the key also guarantees the mapper cannot disagree with the recomposition crud
+    performs after the write (crud.py:1237-1265).
+
+[The remaining limitation -- why this rule still ships disabled]
+
+A chain can UPSERT map cells. It cannot PURGE them. `replace_map` lives on the batch
+(schemas.py:138) and `chain_ingestion_worker.py:437-441` builds that batch itself and
+never sets it, so a chain has no way to express "this map is now exactly these cells".
+Cells from a superseded version of a job would survive forever alongside the new ones.
+
+That is tolerable only if a `dt_job`'s cell set never shrinks. Confirm that before
+enabling, or drive the map through the map path (`PUT /tables/dt_map/data/updates`
+with `replace_map: true`, scoped by `map_key_columns`), which does purge.
+
 [What this deliberately does NOT do]
 
 - It does not write `dt_lot`/`dt_slot` into the map. Those arrive later, confirmed.
@@ -25,14 +54,8 @@ the lot/slot attribution rides on top as ordinary enrichment.
   which of the 8 frames they are in is a separate, declared answer (see
   `docs/spec/TRACE_FIXTURE_SPEC.md` section 4-0-quater). Guessing it here would bake an
   unverified rotation into stored data.
-
-[OPEN -- verify before enabling]
-
-Map tables in this system hold MANY rows per `business_key_val` (one per cell), so a
-generic business-key upsert does not identify a single cell on its own. Confirm how
-`apply_batch_updates` addresses a map cell -- and whether a map should be written
-through the map path (`replace_map` scope) instead of a chain rule -- BEFORE turning
-`enabled` on. The rule ships disabled for exactly this reason.
+- It says nothing at all when a required column is missing. A partial map is not a
+  smaller claim, it is a DIFFERENT claim -- "these dies were not transferred".
 """
 
 from typing import Any, Dict, List
@@ -41,8 +64,12 @@ from sqlalchemy.orm import Session
 
 from mappers.base import BaseMapper
 
-# Columns copied verbatim from the log onto the map cell.
-CELL_COLUMNS = ("dt_x", "dt_y", "c_bn")
+# The cell's own address. These are exactly `dt_map`'s composite_key_source, and every
+# one must be present or crud cannot compose the key and mints an orphan row instead.
+KEY_COLUMNS = ("dt_job", "dt_x", "dt_y")
+
+# The cell's value.
+VALUE_COLUMNS = ("c_bn",)
 
 # Provenance carried so a cell can name the core die it came from. This is what makes
 # the map traceable rather than merely drawable -- one DT wafer mixes dies from several
@@ -57,20 +84,19 @@ def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> Dict[s
 
     df = BaseMapper.payloads_to_df(payloads)
 
-    required = ("dt_job", "dt_x", "dt_y")
-    if any(col not in df.columns for col in required):
-        # Say nothing rather than write a partial map: a map that is quietly missing
-        # cells reads as "these dies were not transferred", which is a different claim.
+    if any(col not in df.columns for col in KEY_COLUMNS):
         return {"updates": []}
 
-    df = df.dropna(subset=list(required))
+    df = df.dropna(subset=list(KEY_COLUMNS))
+
+    carried = [c for c in (KEY_COLUMNS + VALUE_COLUMNS + ORIGIN_COLUMNS)
+               if c in df.columns]
 
     updates = []
     for _, row in df.iterrows():
-        cell = {col: row.get(col) for col in CELL_COLUMNS if col in df.columns}
-        cell.update({col: row.get(col) for col in ORIGIN_COLUMNS if col in df.columns})
+        cell = {col: row.get(col) for col in carried}
         updates.append({
-            "business_key_val": str(row.get("dt_job")),
+            # No business_key_val on purpose -- see the module docstring.
             "updates": cell,
             "source_name": "chain_ingestion",
             "updated_by": "chain_worker",
