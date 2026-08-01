@@ -1,0 +1,79 @@
+"""dt_log -> dt_map chain mapper (SAMPLE).
+
+Builds the DT map from the DT transfer log so a bonding plan can be drawn on it.
+The map is DERIVED: `dt_log` is the record, `dt_map` is a projection of it. Nothing
+should ever write `dt_map` by hand -- if it does, a replay of this rule silently
+disagrees with it.
+
+[Why the map key is `dt_job` and not `dt_lot`/`dt_slot`]
+
+`dt_lot` and `dt_slot` are the AMBIGUOUS columns in `dt_log` -- they are the thing
+enrichment has to infer (the operator moves wafers between tape slot and DT slot by
+hand, and split/merge renames lots underneath). `dt_job` is certain: it is the DT work
+unit, recorded as `<equipment>_<time>_<tapeslot>`.
+
+Keying a map on a value we are still inferring would put a guess inside an identity.
+Every consumer would then bind to a key that changes when the guess is corrected, and
+correcting it would look like the map moved. So the map is keyed on what is known, and
+the lot/slot attribution rides on top as ordinary enrichment.
+
+[What this deliberately does NOT do]
+
+- It does not write `dt_lot`/`dt_slot` into the map. Those arrive later, confirmed.
+- It does not fill absent `c_bn`. A cell with no bin is absent, not "good".
+- It does not resolve the coordinate frame. `dt_x`/`dt_y` are copied as recorded;
+  which of the 8 frames they are in is a separate, declared answer (see
+  `docs/spec/TRACE_FIXTURE_SPEC.md` section 4-0-quater). Guessing it here would bake an
+  unverified rotation into stored data.
+
+[OPEN -- verify before enabling]
+
+Map tables in this system hold MANY rows per `business_key_val` (one per cell), so a
+generic business-key upsert does not identify a single cell on its own. Confirm how
+`apply_batch_updates` addresses a map cell -- and whether a map should be written
+through the map path (`replace_map` scope) instead of a chain rule -- BEFORE turning
+`enabled` on. The rule ships disabled for exactly this reason.
+"""
+
+from typing import Any, Dict, List
+
+from sqlalchemy.orm import Session
+
+from mappers.base import BaseMapper
+
+# Columns copied verbatim from the log onto the map cell.
+CELL_COLUMNS = ("dt_x", "dt_y", "c_bn")
+
+# Provenance carried so a cell can name the core die it came from. This is what makes
+# the map traceable rather than merely drawable -- one DT wafer mixes dies from several
+# core wafers, so the origin cannot be recovered from the map's own key.
+ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core_y")
+
+
+def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """One `dt_log` row becomes one `dt_map` cell."""
+    if not payloads:
+        return {"updates": []}
+
+    df = BaseMapper.payloads_to_df(payloads)
+
+    required = ("dt_job", "dt_x", "dt_y")
+    if any(col not in df.columns for col in required):
+        # Say nothing rather than write a partial map: a map that is quietly missing
+        # cells reads as "these dies were not transferred", which is a different claim.
+        return {"updates": []}
+
+    df = df.dropna(subset=list(required))
+
+    updates = []
+    for _, row in df.iterrows():
+        cell = {col: row.get(col) for col in CELL_COLUMNS if col in df.columns}
+        cell.update({col: row.get(col) for col in ORIGIN_COLUMNS if col in df.columns})
+        updates.append({
+            "business_key_val": str(row.get("dt_job")),
+            "updates": cell,
+            "source_name": "chain_ingestion",
+            "updated_by": "chain_worker",
+        })
+
+    return {"updates": updates, "silent": False}

@@ -8,6 +8,15 @@
       "mapper_function": "reserve_materials_batch_df",
       "is_batch": true,
       "enabled": true
+    },
+    {
+      "name": "dt_log_to_dt_map",
+      "trigger_table": "dt_log",
+      "target_table": "dt_map",
+      "mapper_module": "mappers.dt_map_mapper",
+      "mapper_function": "build_dt_map_batch_df",
+      "is_batch": true,
+      "enabled": false
     }
   ]
 }
