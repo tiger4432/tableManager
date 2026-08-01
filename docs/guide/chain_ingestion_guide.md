@@ -21,7 +21,9 @@
 
 ### `calculate_shortage.py` (예제 — 저장소에 없는 파일입니다)
 
-> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `production_mapper.py.sample` 하나뿐이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample` 둘뿐(`production_mapper.py.sample` · `dt_map_mapper.py.sample`)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+>
+> 🔴 **`.sample`은 씨앗이지 거울이 아니다 — 그리고 룰이 가리키는 모듈이 없어도 아무도 말해 주지 않는다.** `chain_rules.json`의 `mapper_module`은 **로드 시점에 검증되지 않는다**. 유일하게 import를 시도하는 곳은 워커 웜업(`chain_ingestion_worker.py:630-639`)인데 ⓐ `enabled:false` 룰은 **건너뛰고** ⓑ 실패해도 `[Warmup] Mapper pre-import failed` **경고 한 줄 뒤 계속 기동**한다. 그래서 룰이 존재하지 않는 모듈을 가리켜도 활성화 전까지는 완전히 조용하고, 활성화하면 그때부터 해당 트랜잭션 그룹이 통째로 실패한다. 2026-08-02에 `mappers.dt_map_mapper`가 실제로 그 상태였다(`.sample`만 있고 `.py`가 없었다). 그리고 라이브와 `.sample`을 동기화하는 장치는 **없다** — `production_mapper.py`와 그 `.sample`은 이미 서로 다른 파일이다(함수 구성도 다름). 라이브를 고칠 때 샘플을 따라 고칠지는 **사람이 결정**해야 합니다.
 ```python
 import logging
 from sqlalchemy.orm import Session

@@ -90,7 +90,7 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 | `composite_key_separator` | string, 기본 `"_"` | 조합 구분자. 계획/맵 계열 제품 테이블은 `\|` — **바꾸지 말 것** |
 | `column_types` | {컬럼: 타입} | `"string"`/`"number"`/`"datetime"` — 그 외는 String 처리. 시스템 컬럼(`created_at` 등 5종)은 쓰지 않음 |
 | `display_columns` | string[] | 그리드 표시 순서 + **표준 파서의 헤더 검증·적재 대상 집합** |
-| `map_key_columns` | string[] | 맵 replace 시 삭제 범위 한정 키(맵 테이블 전용) |
+| `map_key_columns` | string[] | 🔴 **「이 테이블은 맵이다」 선언 그 자체다 — 삭제 범위 한정은 그중 하나일 뿐.** 세 가지가 이 한 줄에 달려 있다: ① 맵 replace 시 **삭제 범위 한정 키** ② **맵 에디터 테이블 목록에 뜨는 조건**(`map_editor.js`가 `/tables` 전 테이블의 `/schema`를 훑어 이 배열이 **비어 있지 않은** 것만 남긴다 — 미선언이면 그 테이블은 에디터에 **아예 없다**) ③ **인제션의 `wafer_map_metadata` 자동 등록 조건**(`map_meta_registrar`가 이 선언 **AND** 좌표 바인딩 해석을 둘 다 요구 — 미선언이면 메타가 0행이라 맵이 '화면기준'으로만 열린다). 🔴 **`map_overlay_config.table_bindings`에 좌표를 선언해도 이 줄을 대신하지 못한다** — 바인딩은 좌표만 말하고 「맵인가」는 여기서만 말한다(2026-08-02 실측: `dt_log`는 바인딩이 있는데 이 선언이 없어 에디터 목록에서 사라져 있었다). 값은 바인딩의 `key_columns`와 **같아야** 한다 |
 | `map_push_ok` | boolean, 기본 `false` | **로그형 테이블에 대한 에디터 Push 허용 선언.** 맵 에디터는 대상 테이블에 맵 계약(맵 키 + X/Y/값 + 시스템 컬럼, 합성 bk는 `composite_key_source`가 전부 계약 내 컬럼일 때만 서버 재생성이라 제외) 밖의 데이터 컬럼이 있으면 Push를 **차단**한다 — replace 적재가 그 컬럼 값을 전부 소실시키기 때문. `true` 선언 = "이 테이블로의 에디터 덮어쓰기는 알려진 흐름(R&D 수동 계측 등)이고 **소실을 인지하고 진행한다**" — 차단 대신 소실 컬럼명을 명시한 확인창 1회로 완화된다. 양산 전환 시 선언을 **제거**하면 다시 잠긴다. `std_parse`와 같은 규율: **JSON boolean `true`만 유효**, 문자열 `"true"` 등 오타는 false로 서빙 |
 | `workspace_name` | string | 폴더 별칭 — 섀도잉·중복은 무시 + ERROR 로그 |
 | `std_parse` | boolean, 기본 `true` | **JSON boolean만 유효** — 문자열 `"false"`는 무시 + 경고 |

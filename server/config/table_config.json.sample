@@ -108,6 +108,9 @@
       "core_y",
       "c_bn",
       "event_time"
+    ],
+    "map_key_columns": [
+      "dt_job"
     ]
   },
   "dt_map": {
