@@ -4989,7 +4989,27 @@ async function loadExistingMap(opts = {}) {
     let loadedGridMeta = null;
     let loadedMapKey = null; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
 
+    // 🔴 **"확인 못 했다"는 "선언이 없다"가 아니다.** `fetchGridMetaFor`는 404/405만 "선언
+    //    없음"(null)으로 답하고 나머지는 **던진다** — 그 규율이 여기서 끝나면 안 된다. 아래
+    //    한 자리로 모아 두는 이유는, 읽지 못한 선언이 흘러가 닿는 곳이 하나이기 때문이다:
+    //    `loadedGridMeta = null` → 「선언 없는 맵」 → 좌표계 선택 모달 → 📐 표준이 START와
+    //    격자를 **데이터 bbox로 재선언**하고, `pushMapData`가 그 값을 `grid_start_x/y`에
+    //    **영속화**한다(:5721·:5729). 표시만 틀리는 것이 아니라 저장된 정렬 기준이 바뀐다.
+    //    실측(HTTP 500을 정확히 1회 주입): 선언 (1,-6)·21x21 맵이 (5,-1)·8x7이 되고 46셀 중
+    //    **41셀이 다른 물리 다이**에 앉았으며 토스트는 **0건**이었다.
+    const refuseUnconfirmedMeta = (reason, err) => {
+      console.error(`[Map Editor] wafer_map_metadata could not be confirmed for `
+        + `${selectedTable} · ${loadedMapKey || ''} (${reason}) — refusing the load. An `
+        + 'unconfirmed declaration must NOT be read as an absent one: the 📐 표준 branch '
+        + 'would re-declare grid_start_x/y to the data bounding box and ⚡ Push would '
+        + 'persist it.', err || '');
+      showToast(`맵 규격을 확인하지 못해 로드를 중단했습니다 — ${reason}. `
+        + `잠시 후 다시 시도하십시오.`, 'error');
+      return { count: 0, error: true, metaUnconfirmed: true };
+    };
+
     // 1. Try fetching from dedicated wafer_map_metadata table
+    let metaReadError = null;
     try {
       const filterMetaDict = {};
       Object.keys(filterModel).forEach(col => {
@@ -5000,10 +5020,26 @@ async function loadExistingMap(opts = {}) {
       const mapIdStr = getMapIdFromMeta(filterMetaDict);
       if (mapIdStr && mapIdStr !== 'default_map') {
         loadedMapKey = mapIdStr;
-        loadedGridMeta = await fetchGridMetaFor(selectedTable, mapIdStr);
+        // ⚠️ 조회의 실패만 여기서 붙든다. 바깥 catch는 `getMapIdFromMeta`처럼 조회가 **아닌**
+        //    것의 실패를 위한 자리이고, 그것은 종전대로 "선언 없음"으로 흘러간다.
+        try {
+          loadedGridMeta = await fetchGridMetaFor(selectedTable, mapIdStr);
+        } catch (e) {
+          metaReadError = e;
+        }
       }
     } catch (e) {
       console.warn('[Map Editor] Dedicated wafer_map_metadata table fetch skipped:', e);
+    }
+
+    // 🔴 셀 레벨 폴백보다 **앞이다.** 조회 1회 실패를 폐기 스킴(`grid_metadata`)으로 메우는
+    //    것도 "확인 못 한 것을 확인한 것처럼 쓰는" 같은 동작이다(불변식 ②).
+    if (metaReadError) {
+      // ⚠️ 사유는 `fetchGridMetaFor`가 던진 문구를 **그대로** 쓴다. 여기서 한 겹 더 감싸면
+      //    「규격 조회 실패 (맵 규격 조회 실패 (HTTP 500))」처럼 같은 말이 두 번 나온다.
+      return refuseUnconfirmedMeta(
+        (metaReadError && metaReadError.message) ? metaReadError.message : '맵 규격 조회 실패',
+        metaReadError);
     }
 
     // 2. Fallback to cell-level grid_metadata
@@ -5016,6 +5052,28 @@ async function loadExistingMap(opts = {}) {
           console.error('Failed to parse fallback grid_metadata:', e);
         }
       }
+    }
+
+    // 🔴 **선언이 있는데 START를 읽을 수 없다** — 이것도 「확인 못 했다」이지 「선언 없음」이
+    //    아니다. 바로 아래 `meta` 분기의 `rotation || 0` · `side || 'front'`과 달리 START에는
+    //    기본값이 **있을 수 없다**: 좌표계의 원점이라 "모르면 0"이 곧 좌표계 이동이다.
+    //    종전에는 `startX = loadedGridMeta.grid_start_x`가 undefined를 그대로 받아
+    //    `getCanvasCellFromDb`에 넘겼고 — 실측: 46셀 전부가 `NaN_NaN` 한 칸으로 접혔다 —
+    //    그 뒤 Push는 `parseInt('') || 0`으로 **0을 영속화**했다. 위와 같은 자리로 보낸다.
+    // ⚠️ `null`·`''`은 0이 아니다(`Number(null) === 0`). 값의 **부재**와 0을 가르는 것이
+    //    이 술어의 전부이므로 `Number()` 하나로 판정하지 않는다.
+    if (loadedGridMeta) {
+      const declaredNum = (v) => (v === null || v === undefined || v === ''
+        ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+      const sx = declaredNum(loadedGridMeta.grid_start_x);
+      const sy = declaredNum(loadedGridMeta.grid_start_y);
+      if (sx === null || sy === null) {
+        return refuseUnconfirmedMeta(
+          `규격에 START X,Y가 없습니다 (grid_start_x=${JSON.stringify(loadedGridMeta.grid_start_x)}, `
+          + `grid_start_y=${JSON.stringify(loadedGridMeta.grid_start_y)})`);
+      }
+      loadedGridMeta.grid_start_x = sx;
+      loadedGridMeta.grid_start_y = sy;
     }
 
     // [F5c] 저장된 규격이 **없을 때만** 라우팅에 묻는다. 절대 순서
@@ -5049,7 +5107,11 @@ async function loadExistingMap(opts = {}) {
         // [fix C] The default's behavior changed (data bounding box, no mask in
         // effect) — keep the highlighted button honest. Label set here in JS because
         // the semantics it describes are decided in this branch (JS-only fix batch).
-        el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 (마스크 없음, Rot 0°)';
+        // 🔴 이 버튼은 좌측 패널의 START X,Y를 **버린다**(`startX = minX`, 아래). 그것이
+        //    이 선택지의 요점이지 부작용이 아니므로 라벨이 말하게 한다 — 운영자의 선언이
+        //    사라지는 유일한 자리이고, 새 컨트롤도 확인창도 늘리지 않는 방법이다.
+        el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 '
+          + '(START를 데이터 최소값으로 재선언, 마스크 없음, Rot 0°)';
         el.choiceModal.style.display = 'flex';
 
         const onStandard = () => {
