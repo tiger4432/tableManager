@@ -865,6 +865,8 @@ async function scoreMutant(name, src) {
   }
   console.log(`${failures.length === 0 ? '✓' : '✗'} baseline: ${compared} assertions, `
     + `${failures.length} failure(s)`);
+  // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+  console.log(`ASSERTIONS ${compared} ${failures.length}`);
   failures.forEach(f => console.log(`   ✗ ${f}`));
 
   let caught = 0;

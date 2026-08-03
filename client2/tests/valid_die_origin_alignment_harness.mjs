@@ -691,6 +691,8 @@ const doMutate = process.argv.includes('--mutate');
     + `blocked (${gateNew.offGrid} off-grid, ${gateNew.outside} outside the mask)`);
 
   console.log(`\nBASELINE: ${base.failures.length} failure(s) over ${base.compared} comparisons`);
+  // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+  console.log(`ASSERTIONS ${base.compared} ${base.failures.length}`);
   base.failures.forEach(f => console.log('  ✗ ' + f));
   if (base.failures.length > 0) process.exit(1);
   console.log('  ✓ shipped source is coherent');

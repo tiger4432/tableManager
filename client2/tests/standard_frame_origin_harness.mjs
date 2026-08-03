@@ -430,6 +430,8 @@ const MUTATIONS = [
 const base = await scoreAll(SRC0, { verbose: true });
 console.log(`\n${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
   + `${base.failures.length} failure(s)`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${base.compared} ${base.failures.length}`);
 base.failures.forEach(f => console.log('   ✗ ' + f));
 
 if (process.argv.includes('--mutate')) {

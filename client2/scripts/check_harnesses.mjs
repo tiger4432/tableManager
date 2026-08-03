@@ -23,8 +23,19 @@
 // removed the moment it goes green (the runner says so out loud when that happens). A silent
 // skip would be the same defect as no gate at all.
 //
-// EXIT CODE IS THE ONLY VERDICT this runner reads. A harness that prints prose and exits 0 has
-// said it is green; interpreting its prose here would put a second scorer in the pipeline.
+// EXIT CODE IS THE VERDICT; `ASSERTIONS <ran> <failed>` IS THE EVIDENCE. Exit code alone
+// cannot tell "red with N assertions" from "red with 0 assertions": a harness that crashes
+// before asserting anything looks exactly like one that ran and failed, and this week that
+// disguise hid 3 dead harnesses as known debt. So every harness prints one machine line,
+// `ASSERTIONS <ran> <failed>`, sourced from ITS OWN counters (this runner never counts
+// check marks or re-scores prose -- the harness's summary is the only scorer). The runner
+// reads that line and blocks when:
+//   - a harness exits 0 without the line, or with ran=0, or with failed>0 (a green verdict
+//     that measured nothing, or that contradicts its own count, proves nothing);
+//   - a KNOWN_RED harness runs fewer assertions than its recorded expectation (it stopped
+//     asserting -- that is death, not debt), or fails more than recorded (the debt grew).
+// A missing line on a KNOWN_RED entry recorded as ran: 0 is tolerated: that entry already
+// says out loud that the harness dies before measuring anything.
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync, existsSync } from 'node:fs';
@@ -40,17 +51,21 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // ── the debt list ───────────────────────────────────────────────────────────────
 // Red as of 2026-07-30. Each is RUN and REPORTED; none of them blocks the build yet.
 // Delete an entry the moment its harness goes green ― the runner tells you when.
+// Each entry records the ASSERTIONS expectation as last measured: `ran` is the floor the
+// harness must never sink under, `failed` the ceiling it must never exceed. `ran: 0` is an
+// honest confession that the harness dies before measuring anything -- three of these were
+// exactly the dead-harness class H1 exists to expose.
 const KNOWN_RED = new Map([
-  ['effort_instrument_harness.mjs',
-    'throws during setup (sandbox build) ― never reached its assertions'],
-  ['reposition_regime_probe.mjs',
-    'throws with ERR_INVALID_ARG_TYPE ― a path/arg it reads has moved'],
-  ['split_registry_harness.mjs',
-    'throws at its extraction step ― symbols it slices were renamed (known since 2026-07-30)'],
-  ['valid_die_authoring_harness.mjs',
-    '98 passed / 1 failed ― one assertion, not a crash'],
-  ['valid_die_frame_adoption_harness.mjs',
-    '28 of 228 assertions fail ― most are fixtures holding the pre-da8f390 contract; under triage'],
+  ['effort_instrument_harness.mjs', { ran: 0, failed: 0,
+    why: 'sandbox build crashes (pushBlockingCount is not sliced into the vm context) ― DEAD: never reaches its assertions' }],
+  ['reposition_regime_probe.mjs', { ran: 0, failed: 0,
+    why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
+  ['split_registry_harness.mjs', { ran: 0, failed: 0,
+    why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
+  ['valid_die_authoring_harness.mjs', { ran: 99, failed: 1,
+    why: '98 passed / 1 failed ― one assertion, not a crash' }],
+  ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 42,
+    why: 'fixtures holding the pre-da8f390 contract; under triage (measured 42 failing on the 2026-08-04 working tree; the debt-list prose used to say 28 ― the count line does not lie)' }],
 ]);
 
 if (!existsSync(TESTS_DIR)) {
@@ -76,19 +91,41 @@ for (const name of harnesses) {
   const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name)],
     { cwd: REPO_ROOT, encoding: 'utf8' });
   const ok = run.status === 0;
-  const known = KNOWN_RED.has(name);
+  const known = KNOWN_RED.get(name);
 
-  if (ok && known) {
+  // The harness's own count line; last occurrence wins. Never counted here, only read.
+  let counts = null;
+  for (const m of (run.stdout || '').matchAll(/^ASSERTIONS (\d+) (\d+)\s*$/gm))
+    counts = { ran: +m[1], failed: +m[2] };
+  const said = counts ? `ran ${counts.ran}, failed ${counts.failed}` : 'no ASSERTIONS line';
+
+  if (ok && (!counts || counts.ran === 0 || counts.failed > 0)) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] exit 0 but ${said} ― a green verdict that measured `
+      + `nothing (or contradicts its own count) proves nothing`);
+  } else if (known && counts && counts.ran < known.ran) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded expectation is ran >= `
+      + `${known.ran} ― it stopped asserting, which is death, not debt`);
+  } else if (!ok && known && counts && counts.failed > known.failed) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded debt is failed <= `
+      + `${known.failed} ― the debt grew; fix the regression or re-triage the entry`);
+  } else if (!ok && known && !counts && known.ran > 0) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded expectation is ran >= `
+      + `${known.ran} ― it used to assert and now crashes before measuring anything`);
+  } else if (ok && known) {
     recovered.push(name);
-    console.log(`✓ ${name}  (was on the known-red list ― remove it)`);
+    console.log(`✓ ${name}  (${said}; was on the known-red list ― remove it)`);
   } else if (ok) {
-    console.log(`✓ ${name}`);
+    console.log(`✓ ${name}  (${said})`);
   } else if (known) {
     stillRed.push(name);
-    console.log(`✗ ${name}  [known red] ${KNOWN_RED.get(name)}`);
+    console.log(`✗ ${name}  [known red] (${said}) ${known.why}`);
   } else {
     blocking.push({ name, run });
-    console.log(`✗ ${name}  [BLOCKING]`);
+    console.log(`✗ ${name}  [BLOCKING] (${said})`);
   }
 }
 

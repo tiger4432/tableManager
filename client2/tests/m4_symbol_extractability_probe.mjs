@@ -205,6 +205,8 @@ console.log('M4 client-only surface (the seam contract scores INV-M4-1/M4-2 — 
 console.log(`  slicer : lifted from ${HARNESS}`);
 console.log(`  vocab  : ${VOCAB.join('|')}   (read from vectors.valid_die_basis_cases)`);
 console.log(`  checks : ${results.length}, ${bad.length} failed\n`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${results.length} ${bad.length}`);
 for (const r of results) {
   console.log(`  ${r.ok ? 'ok  ' : 'FAIL'} ${r.name}${r.note ? `   (${r.note})` : ''}`);
   if (!r.ok) {

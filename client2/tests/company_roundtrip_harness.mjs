@@ -1131,5 +1131,7 @@ else {
   mutNotes.forEach(m => console.log(`  ${m.caught ? 'RED ' : 'MISS'}  ${m.mutation}${m.caught ? `  <- ${m.by.join(', ')}` : ''}`));
   console.log(`\n--- ${st.pass} passed, ${st.failures.length} failed ---`);
   console.log(`--- mutation check: ${mutCaught}/${MUTATIONS.length} defects caught ---`);
+  // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+  console.log(`ASSERTIONS ${st.pass + st.failures.length} ${st.failures.length}`);
 }
 process.exit((st.failures.length === 0 && mutMissed.length === 0) ? 0 : 1);

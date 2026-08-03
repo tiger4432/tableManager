@@ -265,7 +265,8 @@ function targetKeyIndex(ctx, f) {
 // ── Assertions ─────────────────────────────────────────────────────────────────────────
 function runAll(src) {
   const fails = [];
-  const ok = (cond, name, detail) => { if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
+  let ran = 0;   // H1 protocol: how many assertions actually executed, crash-distinguishable
+  const ok = (cond, name, detail) => { ran++; if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
   const ctx = makeSandbox(src);
 
   // A1 -- the oracle is anchored to a quantity that predates this round.
@@ -649,7 +650,7 @@ function runAll(src) {
     ok(ctx.physFrameOverride === null, 'A10d frame window closed', 'physFrameOverride leaked');
   }
 
-  return { fails, stats: { rows: rows.length, cells: layer.cellCount, maxFan, dSrcPitch, dSwap, dParity } };
+  return { fails, ran, stats: { rows: rows.length, cells: layer.cellCount, maxFan, dSrcPitch, dSwap, dParity } };
 }
 
 // ── Baseline ───────────────────────────────────────────────────────────────────────────
@@ -657,6 +658,8 @@ const base = runAll(SRC0);
 console.log('― rule 6 overlay by physical position ―');
 console.log(`fixture: ${base.stats.rows} source cells -> ${base.stats.cells} target cells, max fan-in ${base.stats.maxFan}`);
 console.log(`discrimination: wrong pitch moves ${base.stats.dSrcPitch} cells; axis swap ${base.stats.dSwap}; parity flip ${base.stats.dParity}`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${base.ran} ${base.fails.length}`);
 if (base.fails.length) {
   console.error(`BASELINE RED -- ${base.fails.length} failed:`);
   base.fails.forEach(f => console.error(`  x ${f}`));

@@ -144,4 +144,6 @@ check('declared bonding_map stays clean',
   logShapedPushDecision({ ...bondingMap, map_push_ok: true }, 'x', 'y', 'leg').mode, 'clean');
 
 console.log(`\n${pass} passed, ${fail} failed`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${pass + fail} ${fail}`);
 process.exit(fail ? 1 : 0);

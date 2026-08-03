@@ -1018,6 +1018,8 @@ const ctl = await sweep(CONTROLS, false, 'CONTROL SWEEP (these must ESCAPE)');
 
 console.log('\n=== SUMMARY ===');
 console.log(`  baseline assertions : ${pass} passed, ${fail} failed`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${pass + fail} ${fail}`);
 console.log(`  mutations declared  : ${mut.declared}`);
 console.log(`  mutations APPLIED   : ${mut.applied}`);
 console.log(`  mutations CAUGHT    : ${mut.caught}`);

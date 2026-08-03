@@ -203,6 +203,9 @@ diffFrames.forEach(l => console.log(`   ${l}`));
 console.log(`negative control (a declared mask MUST differ): ${controlDiff} cells`);
 console.log(`red-proof (a defect in the circle path MUST differ): ${redProof} cells`);
 
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+// ran = per-cell parity comparisons + the two self-vacuity controls; failed mirrors `ok`.
+console.log(`ASSERTIONS ${cells + 2} ${diffs + (controlDiff > 0 ? 0 : 1) + (redProof > 0 ? 0 : 1)}`);
 const ok = diffs === 0 && controlDiff > 0 && redProof > 0;
 console.log(ok
   ? `\nPASS - with no declaration the working copy reproduces ${BASE} cell for cell, `

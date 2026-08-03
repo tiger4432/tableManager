@@ -1888,6 +1888,8 @@ for (const m of MUTATIONS) {
 // ── Verdict ─────────────────────────────────────────────────────────────────────
 console.log('\n=== SUMMARY ===');
 console.log(`  baseline assertions : ${pass} passed, ${fail} failed`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${pass + fail} ${fail}`);
 console.log(`  mutations declared  : ${MUTATIONS.length}`);
 console.log(`  mutations APPLIED   : ${applied}`);
 console.log(`  mutations CAUGHT    : ${caught}`);

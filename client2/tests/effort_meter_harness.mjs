@@ -754,4 +754,6 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 }
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${pass + fail} ${fail}`);
 if (fail) { console.log('failed: ' + failures.join(', ')); process.exit(1); }

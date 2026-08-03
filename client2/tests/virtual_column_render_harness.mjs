@@ -764,4 +764,6 @@ const bad = base.fail + escaped + controlsCaught;
 console.log(`\n${base.pass} passed, ${base.fail} failed; `
   + `${caught}/${DEFECTS.length} defects caught, ${escaped} escaped; `
   + `${CONTROLS.length - controlsCaught}/${CONTROLS.length} controls escaped.`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${base.pass + base.fail} ${base.fail}`);
 process.exit(bad ? 1 : 0);

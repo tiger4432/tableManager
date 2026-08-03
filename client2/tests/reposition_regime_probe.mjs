@@ -203,3 +203,8 @@ for (const tgt of names) {
       + (p.unrepresentable.length ? `  e.g. ${p.unrepresentable.slice(0, 3).join(' ')}` : ''));
   }
 }
+
+// H1 protocol. This probe MEASURES and asserts nothing -- 0 ran is the honest count. If it
+// ever exits 0 again, the runner will refuse the green until someone gives it real
+// assertions: a 0-assertion green gate is a comment, not a gate. That refusal is by design.
+console.log('ASSERTIONS 0 0');

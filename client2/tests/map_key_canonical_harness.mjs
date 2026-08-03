@@ -421,5 +421,7 @@ if (JSON_OUT) {
   console.log(JSON.stringify({ pass, fail: failures.length, failures }, null, 2));
 } else {
   console.log(`\n${failures.length ? 'FAIL' : 'PASS'} — ${pass} passed, ${failures.length} failed`);
+  // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+  console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 }
 process.exit(failures.length ? 1 : 0);

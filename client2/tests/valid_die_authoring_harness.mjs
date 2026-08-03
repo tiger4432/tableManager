@@ -678,5 +678,7 @@ else {
   console.log(`\n--- ${main.pass} passed, ${main.failures.length} failed ---`);
   console.log(`--- mutation check: ${mutCaught}/${MUTATIONS.length} defects caught ---`);
   mutMissed.forEach(m => console.log(`    MISSED: ${m}`));
+  // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+  console.log(`ASSERTIONS ${main.pass + main.failures.length} ${main.failures.length}`);
 }
 process.exit((main.failures.length === 0 && mutMissed.length === 0) ? 0 : 1);

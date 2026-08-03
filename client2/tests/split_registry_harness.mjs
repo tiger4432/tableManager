@@ -269,4 +269,6 @@ console.log('\n[T7] maybeOfferLegendMigration');
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${fail} failed ════`);
+// H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
+console.log(`ASSERTIONS ${pass + fail} ${fail}`);
 process.exit(fail === 0 ? 0 : 1);
