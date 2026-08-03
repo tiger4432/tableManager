@@ -21,6 +21,10 @@ import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_MAP = join(HERE, '..', 'src', 'map_editor.js');
+// 7b lives in its own module since the map-key extraction round; the slices below are
+// unchanged, only the file they are cut from moved. Slicing map_editor.js for them now
+// dies loudly (`function ... not found`) rather than going quietly uncovered.
+const SRC_KEY = join(HERE, '..', 'src', 'map_key.js');
 const SRC_PLAN = join(HERE, '..', 'src', 'transfer_plan.js');
 const JSON_OUT = process.argv.includes('--json');
 const EMIT_7B = process.argv.includes('--emit-7b');
@@ -70,6 +74,7 @@ function makeExtractor(path) {
 }
 
 const M = makeExtractor(SRC_MAP);
+const K = makeExtractor(SRC_KEY);
 const P = makeExtractor(SRC_PLAN);
 
 // ── sandbox ────────────────────────────────────────────────────────────────────
@@ -87,14 +92,14 @@ vm.createContext(ctx);
 
 try {
   vm.runInContext([
-    // 7b - the one canonicalisation and its two users
-    M.konst('CANON_INT_RE'),
-    M.fn('canonicalKeyValue'),
-    M.fn('composeMapId'),
-    M.fn('canonIntString'),
-    M.konst('CANON_FLOAT_RE'),
-    M.fn('decomposeMapKey'),
-    M.fn('canonicalMapKey'),
+    // 7b - the one canonicalisation and its two users (client2/src/map_key.js)
+    K.konst('CANON_INT_RE'),
+    K.fn('canonicalKeyValue'),
+    K.fn('composeMapId'),
+    K.fn('canonIntString'),
+    K.konst('CANON_FLOAT_RE'),
+    K.fn('decomposeMapKey'),
+    K.fn('canonicalMapKey'),
     // M4 phase 1
     M.fn('parseValidDieRef'),
     M.fn('validDieBasis'),

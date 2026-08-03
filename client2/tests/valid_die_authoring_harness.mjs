@@ -40,13 +40,22 @@ function sliceBalanced(src, startIdx, open, close) {
 }
 
 const SRC = readFileSync(SRC_MAP, 'utf8');
-function fn(name) {
-  const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(SRC);
-  if (!m) die(`function ${name} not found in ${SRC_MAP}`);
-  const out = sliceBalanced(SRC, m.index, '{', '}');
+// The 7b canonicalisation (canonIntString / canonicalKeyValue / composeMapId /
+// decomposeMapKey / canonicalMapKey + the two regexes) lives in its own module since the
+// map-key extraction round. It is sliced from THERE now; the slices and everything scored
+// with them are unchanged. `keyFn` dies just as loudly as `fn` if a name goes missing.
+const SRC_KEY_PATH = join(HERE, '..', 'src', 'map_key.js');
+const SRC_KEY = readFileSync(SRC_KEY_PATH, 'utf8');
+
+function sliceFn(src, path, name) {
+  const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
+  if (!m) die(`function ${name} not found in ${path}`);
+  const out = sliceBalanced(src, m.index, '{', '}');
   if (!out) die(`unbalanced braces for ${name}`);
   return out;
 }
+function fn(name) { return sliceFn(SRC, SRC_MAP, name); }
+function keyFn(name) { return sliceFn(SRC_KEY, SRC_KEY_PATH, name); }
 
 // ── the fixture: every defect axis ACTIVE ───────────────────────────────────────
 // chipX != chipY  (a pitch swap under rot 90/270 shows up)
@@ -81,8 +90,8 @@ function buildSandbox(mutator) {
     fn('getScreenShift'), fn('getTransformedPhysicalConfig'),
     fn('getDieIndex'), fn('getCanvasCellFromDb'), fn('getDbCoords'),
     fn('isCellInsideWaferFast'), fn('getWaferBoundingBox'),
-    fn('canonIntString'), fn('canonicalKeyValue'), fn('composeMapId'),
-    fn('decomposeMapKey'), fn('canonicalMapKey'),
+    keyFn('canonIntString'), keyFn('canonicalKeyValue'), keyFn('composeMapId'),
+    keyFn('decomposeMapKey'), keyFn('canonicalMapKey'),
     fn('parseValidDieRef'), fn('validDieBasis'), fn('isValidDieAt'),
     // M4 phase 2
     fn('buildValidDieTemplate'), fn('validDieRefDisplay'), fn('validDieRefForPush'),
@@ -110,8 +119,8 @@ function buildSandbox(mutator) {
   // The two regexes above are read from the source, not restated, so a change to either
   // reaches this harness instead of being shadowed by a stale copy.
   const reSrc = (name) => {
-    const m = new RegExp(`const\\s+${name}\\s*=\\s*(\\/[^\\n]*\\/[a-z]*)\\s*;`).exec(SRC);
-    if (!m) die(`const ${name} (regex) not found`);
+    const m = new RegExp(`const\\s+${name}\\s*=\\s*(\\/[^\\n]*\\/[a-z]*)\\s*;`).exec(SRC_KEY);
+    if (!m) die(`const ${name} (regex) not found in ${SRC_KEY_PATH}`);
     return m[1];
   };
   vm.createContext(ctx);

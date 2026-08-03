@@ -27,7 +27,9 @@ sys.path.insert(0, os.path.join(ROOT, "server"))
 # not evidence. Unset (the normal case) = the working tree.
 CLIENT_ROOT = os.environ.get("SEAM_CLIENT_ROOT") or ROOT
 CLIENT_HARNESS = os.path.join(CLIENT_ROOT, "client2", "tests", "map_key_canonical_harness.mjs")
-CLIENT_SRC = os.path.join(CLIENT_ROOT, "client2", "src", "map_editor.js")
+# 7b lives in its own module since the map-key extraction round. Pointing this at
+# map_editor.js now exits 3 with "missing canonicalKeyValue" — loud, not silently green.
+CLIENT_SRC = os.path.join(CLIENT_ROOT, "client2", "src", "map_key.js")
 
 try:
     import map_overlay

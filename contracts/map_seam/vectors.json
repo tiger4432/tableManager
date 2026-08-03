@@ -218,14 +218,14 @@
   "client_symbols": {
     "$comment": "role -> {file, fn, status}. The name is part of the contract: a rename must break the harness loudly rather than silently stop covering an axis.",
 
-    "canonical_key_value": {"file": "client2/src/map_editor.js", "fn": "canonicalKeyValue", "status": "live"},
-    "canon_int_string":    {"file": "client2/src/map_editor.js", "fn": "canonIntString", "status": "live",
+    "canonical_key_value": {"file": "client2/src/map_key.js", "fn": "canonicalKeyValue", "status": "live"},
+    "canon_int_string":    {"file": "client2/src/map_key.js", "fn": "canonIntString", "status": "live",
       "$why": "Helper of canonicalKeyValue; extracted so the canonicalizer evaluates, not scored on its own."},
-    "compose_primitive":   {"file": "client2/src/map_editor.js", "fn": "composeMapId", "status": "live"},
-    "decompose_primitive": {"file": "client2/src/map_editor.js", "fn": "decomposeMapKey", "status": "live"},
-    "canonical_map_key":   {"file": "client2/src/map_editor.js", "fn": "canonicalMapKey", "status": "live"},
-    "compose_from_meta":   {"file": "client2/src/map_editor.js", "fn": "getMapIdFromMeta", "status": "live",
-      "$why": "The APPLICATION-level composer — what the editor actually calls. Reads the module-global `tableSchema`, which is exactly what GET /schema/{table} serves (map_key_columns + column_types), so the harness supplies that and nothing else."},
+    "compose_primitive":   {"file": "client2/src/map_key.js", "fn": "composeMapId", "status": "live"},
+    "decompose_primitive": {"file": "client2/src/map_key.js", "fn": "decomposeMapKey", "status": "live"},
+    "canonical_map_key":   {"file": "client2/src/map_key.js", "fn": "canonicalMapKey", "status": "live"},
+    "compose_from_meta":   {"file": "client2/src/map_key.js", "fn": "getMapIdFromMeta", "status": "live",
+      "$why": "The APPLICATION-level composer — what the editor actually calls. TAKES the table schema as its second argument (it read map_editor's module-global `tableSchema` until 7b moved to client2/src/map_key.js); that schema is exactly what GET /schema/{table} serves (map_key_columns + column_types), so the harness supplies that and nothing else."},
     "decompose_filters":   {"file": "client2/src/map_editor.js", "fn": "buildKeyFilters", "status": "live",
       "$why": "The cell-filter consumer of the decomposition. Scored alongside the primitive because a map key that finds the CELLS but not the META is the 7b defect's exact shape."},
 
@@ -289,8 +289,8 @@
   },
 
   "client_consts": [
-    {"file": "client2/src/map_editor.js", "name": "CANON_INT_RE"},
-    {"file": "client2/src/map_editor.js", "name": "CANON_FLOAT_RE"},
+    {"file": "client2/src/map_key.js", "name": "CANON_INT_RE"},
+    {"file": "client2/src/map_key.js", "name": "CANON_FLOAT_RE"},
     {"file": "client2/src/transfer_plan.js", "name": "UNTRACKED_REASON"}
   ],
 

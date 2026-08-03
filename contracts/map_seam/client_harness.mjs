@@ -41,6 +41,11 @@ const ROOT = join(HERE, '..', '..');
 const VECTORS = join(HERE, 'vectors.json');
 const SRC = {
   'client2/src/map_editor.js': readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8'),
+  // The 7b canonicalisation moved out of map_editor.js into its own module (map-key
+  // extraction round). vectors.json names the file per symbol, so a symbol that moves
+  // again is a one-line vectors edit — but it MUST be edited: `client_symbols.<role> names
+  // an unknown file` and `sliceFunction -> null` both die here rather than skip the axis.
+  'client2/src/map_key.js': readFileSync(join(ROOT, 'client2', 'src', 'map_key.js'), 'utf8'),
   'client2/src/transfer_plan.js': readFileSync(join(ROOT, 'client2', 'src', 'transfer_plan.js'), 'utf8'),
 };
 
@@ -50,13 +55,17 @@ function die(msg) {
   process.exit(2);
 }
 
-/** Slice `function NAME(...) { ... }` out of source by brace matching. Null if absent. */
+/** Slice `function NAME(...) { ... }` out of source by brace matching. Null if absent.
+ *  A leading `export ` is accepted and EXCLUDED from the slice — the pieces are evaluated
+ *  inside a vm script, where an export statement is a SyntaxError. Extracted modules
+ *  (client2/src/map_key.js) export their symbols; map_editor.js keeps them module-private,
+ *  and this contract must be able to slice either spelling. */
 function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*function\\s+${name}\\s*\\(`);
+  const decl = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(function\\s+${name}\\s*\\()`);
   const m = decl.exec(source);
   if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = source.indexOf('{', m.index + m[0].length - 1);
+  const start = m.index + m[0].length - m[1].length;
+  let i = source.indexOf('{', start + m[1].length - 1);
   if (i < 0) return null;
   let depth = 0;
   for (; i < source.length; i++) {
@@ -312,7 +321,11 @@ const withSchema = (c, fn) => {
   };
   return fn();
 };
-const composeApp = (c, values) => withSchema(c, () => FN.compose_from_meta(values));
+// `getMapIdFromMeta` takes the schema as its second argument since 7b moved to its own
+// module (it used to read map_editor's module-global `tableSchema`). `withSchema` still
+// builds the SAME object on the sandbox and it is handed straight in, so what is scored
+// here — the schema the editor holds when it composes — is unchanged.
+const composeApp = (c, values) => withSchema(c, () => FN.compose_from_meta(values, sandbox.tableSchema));
 const composePrim = (c, values) => FN.compose_primitive(c.key_columns, values, c.column_types || {});
 
 for (const c of cases('compose_cases')) {
