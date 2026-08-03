@@ -55,6 +55,15 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // harness must never sink under, `failed` the ceiling it must never exceed. `ran: 0` is an
 // honest confession that the harness dies before measuring anything -- three of these were
 // exactly the dead-harness class H1 exists to expose.
+//
+// `why` CARRIES ONLY WHAT THE MACHINE CANNOT KNOW -- the reason and the triage state, never
+// a count. The runner prints the live measurement immediately before it on every run
+// (`[known red] (ran N, failed M) <why>`), so a count restated here is duplication of a
+// number that is already on screen, and duplication is how it goes stale unnoticed: this
+// list said "28 of 228" while the harness had been reporting 42, and the board separately
+// printed 41. Whether a harness crashed or merely failed is machine-visible too (`ran > 0`),
+// so it does not belong here either. If you want to record how a figure moved, that is what
+// git and the round's report are for.
 const KNOWN_RED = new Map([
   ['effort_instrument_harness.mjs', { ran: 0, failed: 0,
     why: 'sandbox build crashes (pushBlockingCount is not sliced into the vm context) ― DEAD: never reaches its assertions' }],
@@ -63,9 +72,9 @@ const KNOWN_RED = new Map([
   ['split_registry_harness.mjs', { ran: 0, failed: 0,
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
   ['valid_die_authoring_harness.mjs', { ran: 99, failed: 1,
-    why: '98 passed / 1 failed ― one assertion, not a crash' }],
+    why: 'cause not yet triaged ― the failing assertion has never been attributed' }],
   ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 42,
-    why: 'fixtures holding the pre-da8f390 contract; under triage (measured 42 failing on the 2026-08-04 working tree; the debt-list prose used to say 28 ― the count line does not lie)' }],
+    why: 'fixtures holding the pre-da8f390 contract; under triage' }],
 ]);
 
 if (!existsSync(TESTS_DIR)) {
