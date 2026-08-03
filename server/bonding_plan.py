@@ -267,6 +267,131 @@ def _demote_for_unresolved(status, cols):
     return status
 
 
+# --- binding refusal vocabulary (borrowed, not invented) -------------------
+# The words are the project's existing honest-degradation vocabulary, reused so
+# a reader of one refusal already knows what the word means elsewhere:
+#   `not_declared`            = config_resolve_report.REASON_NOT_DECLARED
+#   `mapping_unavailable`     = config_resolve_report.REASON_MAPPING_UNAVAILABLE
+#   `candidate_column_missing`= enrichment_candidates.REASON_CANDIDATE_COLUMN_MISSING
+# They are spelled here rather than imported so this module keeps no dependency
+# on the admin-report or enrichment stacks; `test_binding_refusal.py` pins each
+# one equal to its canonical definition, so an upstream rename cannot leave a
+# second spelling behind (the defect shape issue #20 keeps producing).
+BINDING_NOT_DECLARED = "not_declared"
+BINDING_MAPPING_UNAVAILABLE = "mapping_unavailable"
+BINDING_COLUMN_MISSING = "candidate_column_missing"
+BINDING_REFUSALS = (BINDING_NOT_DECLARED, BINDING_MAPPING_UNAVAILABLE,
+                    BINDING_COLUMN_MISSING)
+
+# How many of the table's real column names to offer back. The point is "did you
+# mean one of these", not a schema dump - a 60-column table would bury the
+# sentence that matters.
+_REFUSAL_COLUMN_HINTS = 24
+
+
+def _model_column_names(model) -> list:
+    """Real ORM attribute names of a dynamic model, sorted."""
+    try:
+        return sorted(c.key for c in model.__table__.columns)
+    except Exception:            # pragma: no cover - defensive
+        return []
+
+
+def explain_binding_refusal(src_cfg, required: tuple, label: str,
+                            where: str = None) -> tuple:
+    """왜 이 `{table, columns}` 선언이 해석되지 않았는가 ― `(reason, 한국어 문장)`.
+
+    해석에 성공하면 `(None, None)`.
+
+    WHY THIS EXISTS. `_resolve_model_columns` answers yes/no, and every caller
+    used to turn that `no` into one generic sentence ("...가 선언돼 있지 않습니다").
+    That sentence is a lie in the most common case: the declaration IS there and
+    one column name inside it is wrong. Three times in two weeks a valid-looking
+    declaration silently did not take (board O4, board O7, and the 2026-08-04
+    live report where `bin_map.columns.x = "x"` named a column `dt_log` does not
+    have). A refusal that cannot name its own cause makes every one of those a
+    manual bisect. So the refusal names the check that failed, what it looked
+    for, and what it found instead.
+
+    THE PREDICATE IS NOT DUPLICATED HERE. The accept/reject decision stays in
+    `_resolve_model_columns`; this function only re-walks the same inputs to
+    describe the first failing check. If the two ever disagree the sentence is
+    wrong but the behaviour is not - and `test_binding_refusal.py` scores them
+    against each other so the disagreement cannot go unseen.
+
+    cp949: the console is the delivery path for half of these, so the sentences
+    carry no emoji and no U+2014 em dash (U+2015 `―` is safe).
+    """
+    from database import models
+
+    at = f" (읽는 자리: {where})" if where else ""
+
+    # 1) 선언 자체가 없다. 이것은 결함이 아니라 "이 축을 안 쓴다"는 상태다.
+    if src_cfg is None:
+        return (BINDING_NOT_DECLARED,
+                f"`{label}` 선언이 없습니다{at}. "
+                f"이 축을 쓰려면 `table`과 `columns`("
+                f"{', '.join(str(r) for r in required)})를 선언해야 합니다.")
+
+    # 2) 선언은 있는데 읽을 수 있는 형태가 아니다.
+    if not isinstance(src_cfg, dict):
+        return (BINDING_MAPPING_UNAVAILABLE,
+                f"`{label}` 선언이 객체가 아닙니다{at}: 읽힌 값은 "
+                f"{json.dumps(src_cfg, ensure_ascii=False, default=str)}입니다. "
+                f"`{{\"table\": ..., \"columns\": {{...}}}}` 형태여야 합니다.")
+    table = src_cfg.get("table")
+    columns = src_cfg.get("columns")
+    if not (isinstance(table, str) and table):
+        return (BINDING_MAPPING_UNAVAILABLE,
+                f"`{label}` 선언에 `table`(비어 있지 않은 문자열)이 없습니다{at}: "
+                f"읽힌 값은 {json.dumps(table, ensure_ascii=False, default=str)}입니다.")
+    if not isinstance(columns, dict):
+        return (BINDING_MAPPING_UNAVAILABLE,
+                f"`{label}` 선언의 `columns`가 객체가 아닙니다{at}: 읽힌 값은 "
+                f"{json.dumps(columns, ensure_ascii=False, default=str)}입니다. "
+                f"`{{역할: 실제컬럼명}}` 형태여야 합니다.")
+
+    # 3) 테이블이 table_config.json에 없다 ― "테이블 먼저, 규칙은 그 다음" 함정.
+    model = models.DYNAMIC_TABLES.get(table)
+    if model is None:
+        known = sorted(models.DYNAMIC_TABLES.keys())
+        return (BINDING_MAPPING_UNAVAILABLE,
+                f"`{label}`이(가) 가리키는 테이블 `{table}`이(가) table_config.json에 "
+                f"선언돼 있지 않습니다{at}. 선언된 테이블: "
+                f"{', '.join(known) if known else '(없음 ― 아직 로드되지 않았습니다)'}.")
+
+    # 4) 필수 역할 키 자체가 columns에 없다.
+    absent_roles = [r for r in required if r not in columns]
+    if absent_roles:
+        return (BINDING_NOT_DECLARED,
+                f"`{label}`의 `columns`에 필수 역할 "
+                f"{', '.join(str(r) for r in absent_roles)}이(가) 없습니다{at}. "
+                f"선언된 역할: "
+                f"{', '.join(str(k) for k in columns) if columns else '(없음)'} / "
+                f"필요한 역할: {', '.join(str(r) for r in required)}.")
+
+    # 5) 역할은 선언됐는데 그 이름의 컬럼이 테이블에 없다 ― 라이브에서 가장 흔한 원인.
+    bad = [(r, columns[r]) for r in required
+           if getattr(model, str(columns[r]), None) is None]
+    if bad:
+        real = _model_column_names(model)
+        shown = real[:_REFUSAL_COLUMN_HINTS]
+        more = "" if len(real) <= _REFUSAL_COLUMN_HINTS else f" 외 {len(real) - len(shown)}개"
+        pairs = ", ".join(
+            f"{r} → `{c}`" for r, c in bad)
+        return (BINDING_COLUMN_MISSING,
+                f"`{label}`의 필수 역할이 가리키는 컬럼이 테이블 `{table}`에 없습니다{at}: "
+                f"{pairs}. `{table}`의 실제 컬럼: {', '.join(shown)}{more}.")
+
+    # 6) 여기까지 왔는데 해석이 실패했다면 규칙이 갈라진 것이다.
+    model2, cols = _resolve_model_columns(src_cfg, required=required)
+    if model2 is None:
+        return (BINDING_MAPPING_UNAVAILABLE,
+                f"`{label}` 선언을 해석하지 못했습니다{at}: 개별 검사는 모두 통과했으므로 "
+                f"바인딩 규칙이 갈라졌습니다. 서버 로그를 확인하세요.")
+    return (None, None)
+
+
 def _resolve_model_columns(source_cfg: dict, required: tuple):
     """소스 config → (model, {역할키: ORM 컬럼}) 해석. 실패 시 (None, None) → missing.
 

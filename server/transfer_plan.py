@@ -770,6 +770,21 @@ def parse_bin_request(raw):
     return out, refused
 
 
+# `bin_map`이 놓일 수 있는 두 자리 + 그 축이 요구하는 역할 ― 판정과 거절 문장이 **같은
+# 입력**을 보게 하려고 한 곳에 둔다. 두 자리를 각자 다시 적으면 문장이 실제로 읽힌
+# 선언과 다른 것을 설명하게 된다.
+BIN_AXIS_ROLES = ("lot", "slot", "x", "y", "bin")
+BIN_AXIS_WHERE = "stages.<stage>.bin_map 또는 stages.<stage>.source.bin_map"
+
+
+def _bin_axis_source(stage_cfg: dict):
+    """이 stage가 제시하는 `bin_map` 선언(둘 중 먼저 읽히는 자리). 없으면 None."""
+    stage_cfg = stage_cfg if isinstance(stage_cfg, dict) else {}
+    return (stage_cfg.get("bin_map")
+            if isinstance(stage_cfg.get("bin_map"), dict)
+            else (stage_cfg.get("source") or {}).get("bin_map"))
+
+
 def _bin_axis_binding(stage_cfg: dict):
     """stage의 `bin_map` 선언 → `(model, cols, src_cfg)`. 미선언/미해석이면
     `(None, None, None)`. src_cfg는 [7b] 캐노니컬 바인드가 선언 타입을 찾는 근거다.
@@ -780,19 +795,57 @@ def _bin_axis_binding(stage_cfg: dict):
     선언이 없으면 축은 `unavailable`이고, 그건 결함이 아니라 **아직 배선되지 않음**이다.
 
     `bin_map`은 stage 자신의 블록에 둔다(`source_config_ref` 위임 경로에도 붙일 수 있게).
+
+    **왜 거절이 여기서 끝나지 않는가**: 이 함수는 여전히 yes/no만 답한다. 사유는
+    `_bin_axis_refusal`이 같은 입력으로 만든다 ― 판정 경로에 문장 생성을 섞으면
+    정상 경로가 매번 컬럼 목록을 만들게 된다.
     """
-    src = (stage_cfg.get("bin_map")
-           if isinstance(stage_cfg.get("bin_map"), dict)
-           else (stage_cfg.get("source") or {}).get("bin_map"))
-    model, cols = _resolve(src, required=("lot", "slot", "x", "y", "bin"))
+    src = _bin_axis_source(stage_cfg)
+    model, cols = _resolve(src, required=BIN_AXIS_ROLES)
     return model, cols, (src if model is not None else None)
 
 
-def _bins_unavailable(detail: str, scope: str, requested=None) -> dict:
+def _refusal(src, roles, label, where) -> tuple:
+    """`explain_binding_refusal`의 얇은 래퍼 ― 문장이 **비어서 나가는 일은 없다**.
+
+    진단기는 성공 시 `(None, None)`을 돌려준다(그 계약을 테스트가 채점한다). 거절
+    경로에서 그 값을 그대로 문장에 끼우면 화면에 `None`이 뜬다 ― 사유를 이름 붙이려고
+    한 일이 정확히 반대 결과를 낸다. 그래서 정규화는 한 곳에서만 한다.
+    """
+    import bonding_plan
+    why, detail = bonding_plan.explain_binding_refusal(src, roles, label=label, where=where)
+    if detail is None:
+        return (None, f"`{label}` 바인딩은 해석됐는데 축을 만들지 못했습니다 "
+                      f"― 서버 로그를 확인하세요.")
+    return why, detail
+
+
+def _bin_axis_refusal(stage_cfg: dict) -> tuple:
+    """왜 이 stage의 BIN 축을 만들지 못했는가 ― `(reason, 한국어 문장)`.
+
+    거절이 자기 사유를 말하지 못하면 운영자에게 남는 일은 이분 탐색뿐이다. 2주 사이
+    세 번(보드 O4·O7, 2026-08-04 라이브 `bin_map.columns.x`) 「디스크에는 멀쩡한 선언」이
+    조용히 먹지 않았고, 그때마다 화면에 뜬 문장은 똑같이 "선언돼 있지 않습니다"였다 ―
+    선언은 있었는데도. 판정은 `bonding_plan`의 리졸버가 그대로 하고, 여기서는 같은
+    입력을 다시 걸어 **첫 번째로 실패한 검사**를 문장으로 만든다.
+    """
+    return _refusal(_bin_axis_source(stage_cfg), BIN_AXIS_ROLES,
+                    "bin_map", BIN_AXIS_WHERE)
+
+
+def _bins_unavailable(detail: str, scope: str, requested=None,
+                      reason: str = None) -> dict:
     """축을 만들 수 없을 때의 블록. **`entries`를 빈 배열로 두지 않는다** —
-    빈 배열은 "BIN이 하나도 없다"로 읽히고, 그건 우리가 아는 사실이 아니다."""
+    빈 배열은 "BIN이 하나도 없다"로 읽히고, 그건 우리가 아는 사실이 아니다.
+
+    `detail`은 클라이언트가 **그대로 렌더**하는 사람이 읽을 문장이고(client2
+    `transfer_plan.js`의 `bins_unavailable` 경로), `reason`은 그 문장을 분류하는 닫힌
+    어휘(`bonding_plan.BINDING_REFUSALS`)다. 선언이 원인이 아닌 거절(질의 실패·상한
+    절단 등)에는 `reason`이 없다 ― 어휘 밖 사유에 억지로 단어를 붙이지 않는다.
+    """
     return {
         "axis": "unavailable", "detail": detail, "scope": scope,
+        "reason": reason,
         "requested": list(requested) if requested else None,
         "entries": None, "truncated": False, "cells_truncated": False,
     }
@@ -873,9 +926,11 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
     상한도 성립을 주장하지 않고 기존 unknown 처리로 떨어진다."""
     model, cols, bin_src = _bin_axis_binding(stage_cfg)
     if model is None:
+        # 사유를 이름으로 말한다. 예전 문장은 원인과 무관하게 "선언돼 있지 않습니다"
+        # 하나였고, 선언이 **있는데** 컬럼명이 틀린 가장 흔한 경우에 그 문장은 거짓이다.
+        why, detail = _bin_axis_refusal(stage_cfg)
         return _bins_unavailable(
-            "이 단계에 BIN 축(`bin_map`)이 선언돼 있지 않습니다 — BIN별 가용을 계산할 수 없습니다.",
-            scope, requested)
+            f"BIN별 가용을 계산할 수 없습니다 ― {detail}", scope, requested, reason=why)
 
     filters = _identity_filters(bin_src, cols, lot, slot)
     try:
@@ -1051,6 +1106,21 @@ def _merge_bins_over_slots(blocks, scope, requested, refused):
     return out
 
 
+LOT_MEMBERSHIP_ROLES = ("lot", "slot")
+LOT_MEMBERSHIP_WHERE = "stages.<stage>.source.lot_membership"
+
+
+def _lot_membership_refusal(stage_cfg: dict) -> tuple:
+    """왜 자재 대장(`lot_membership`)을 읽지 못했는가 ― `(reason, 한국어 문장)`.
+
+    `bin_map`과 **같은 진단기**를 쓴다. 두 원천이 각자의 문장 규칙을 가지면 운영자가
+    두 어휘를 배워야 하고, 하나만 개선되는 순간 나머지가 옛 문장에 남는다.
+    """
+    stage_cfg = stage_cfg if isinstance(stage_cfg, dict) else {}
+    return _refusal((stage_cfg.get("source") or {}).get("lot_membership"),
+                    LOT_MEMBERSHIP_ROLES, "lot_membership", LOT_MEMBERSHIP_WHERE)
+
+
 def _lot_slots(db, stage_cfg, lot):
     """로트의 슬롯 목록. 반환: `(슬롯 리스트|None, truncated, origin)`.
 
@@ -1071,7 +1141,7 @@ def _lot_slots(db, stage_cfg, lot):
     """
     import map_overlay
     src = (stage_cfg.get("source") or {}).get("lot_membership")
-    model, cols = _resolve(src, required=("lot", "slot"))
+    model, cols = _resolve(src, required=LOT_MEMBERSHIP_ROLES)
     origin = "membership"
     if model is None:
         model, cols, src = _bin_axis_binding(stage_cfg)
@@ -1953,15 +2023,20 @@ def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
     if slots is None:
         # 🔴 빈 목록이 **아니다**. 빈 목록은 "이 로트에 자재가 없다"로 읽히고, 그러면
         #    진단면이 조용히 "깨끗함"을 보고한다 — 정확히 이 기능이 잡으려는 실패다.
+        #    두 원천이 **각각 왜** 거절됐는지 말한다. 하나로 뭉친 예전 문장은 자재 대장을
+        #    안 쓰는 사이트(정상)와 `bin_map` 컬럼명 오타(결함)를 같은 글자로 보고했다.
+        mem_why, mem_detail = _lot_membership_refusal(stage_cfg)
+        bin_why, bin_detail = _bin_axis_refusal(stage_cfg)
         bins_block = _bins_unavailable(
-            "이 단계에 BIN 축(`bin_map`)도 자재 대장(`lot_membership`)도 선언돼 있지 "
-            "않습니다 — 로트 전체 가용을 계산할 수 없습니다.", BIN_SCOPE_LOT, bin_request)
+            f"로트 전체 가용을 계산할 수 없습니다 ― 슬롯을 셀 원천이 둘 다 없습니다. "
+            f"① {mem_detail} ② {bin_detail}",
+            BIN_SCOPE_LOT, bin_request, reason=(bin_why or mem_why))
         return dict(base, slots=None, slots_status="unknown", slots_origin=None,
                     by_slot=None, bins=bins_block,
                     warnings=[{"type": WARN_LOT_MEMBERSHIP_UNKNOWN,
                                "effect": EFFECT_BIN_AXIS_UNAVAILABLE,
-                               "detail": f"로트 '{lot}'의 구성을 알 수 없습니다 — "
-                                         f"슬롯을 세는 원천이 선언돼 있지 않습니다"}]
+                               "detail": f"로트 '{lot}'의 구성을 알 수 없습니다 ― "
+                                         f"{mem_detail}"}]
                              + _bin_warnings(bins_block))
 
     warnings_out = []
