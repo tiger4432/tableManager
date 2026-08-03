@@ -599,12 +599,15 @@ VJ_TABLES = {
     VJ_LEFT: {"business_key": "lk",
               "column_types": {"lk": "string", "jk": "string", "wafer_id": "string"}},
     VJ_RIGHT: {"business_key": "rk",
+               # `slot_no` is the NUMERIC expose axis (board item N7, 2026-08-02). It did
+               # not exist when the numeric read path shipped broken - "0 numeric expose
+               # columns in this environment" - so nothing here went red. Now it exists.
                "column_types": {"rk": "string", "jk": "string", "wafer_id": "string",
-                                "fab_site": "string"}},
+                                "fab_site": "string", "slot_no": "number"}},
 }
 VJ_DECL = {"bpx_rule": {"left_table": VJ_LEFT, "right_table": VJ_RIGHT,
                         "join_key": [{"left": "jk", "right": "jk"}],
-                        "expose": ["fab_site"]}}
+                        "expose": ["fab_site", "slot_no"]}}
 
 
 @pytest.fixture()
@@ -650,42 +653,42 @@ def vj_db(tmp_path, monkeypatch):
         _unregister(VJ_TABLES)
 
 
-def _vj_seed(db, cid, right_value, through_funnel):
-    """One left row and its matching right row, with `fab_site` carrying a corpus value."""
+def _vj_seed(db, cid, right_value, through_funnel, column="fab_site"):
+    """One left row and its matching right row, with `column` carrying a corpus value."""
     crud.apply_batch_updates(db, VJ_LEFT, schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(updates={"lk": cid, "jk": cid},
                                   source_name="contract", updated_by="contract-keeper")
     ], silent=True))
     if through_funnel:
         crud.apply_batch_updates(db, VJ_RIGHT, schemas.GeneralUpdateBatch(updates=[
-            schemas.GeneralUpdateItem(updates={"rk": cid, "jk": cid, "fab_site": right_value},
+            schemas.GeneralUpdateItem(updates={"rk": cid, "jk": cid, column: right_value},
                                       source_name="contract", updated_by="contract-keeper")
         ], silent=True))
     else:
         m = models.DYNAMIC_TABLES[VJ_RIGHT]
         row = m(row_id=f"raw_{cid}", rk=cid, jk=cid, business_key_val=cid)
-        setattr(row, "fab_site", right_value)
+        setattr(row, column, right_value)
         db.add(row)
     db.commit()
 
 
-def _vj_python(db, cid):
+def _vj_python(db, cid, column="fab_site"):
     """What `virtual_join_executor.attach` puts in the payload cell -- the value the grid paints."""
     import virtual_join_executor as vjx
     m = models.DYNAMIC_TABLES[VJ_LEFT]
     row = db.query(m).filter(m.lk == cid).first()
     payload = [{"row_id": row.row_id, "data": {}}]
     vjx.attach(db, VJ_LEFT, payload)
-    cell = payload[0]["data"].get("fab_site")
+    cell = payload[0]["data"].get(column)
     return cell["value"] if isinstance(cell, dict) else None
 
 
-def _vj_sql(db, cid):
+def _vj_sql(db, cid, column="fab_site"):
     """What `resolved_expression` evaluates to for the same row -- the value SEARCH compares."""
     import virtual_join_executor as vjx
     m = models.DYNAMIC_TABLES[VJ_LEFT]
     q = db.query(m.row_id)
-    q, expr, _label = vjx.resolved_expression(db, m, VJ_LEFT, "fab_site", q)
+    q, expr, _label = vjx.resolved_expression(db, m, VJ_LEFT, column, q)
     assert expr is not None, "resolved_expression produced no expression for an exposed column"
     return q.with_entities(expr).filter(m.lk == cid).scalar()
 
@@ -754,6 +757,70 @@ def test_the_two_resolutions_diverge_on_a_bypassed_row_exactly_as_recorded(vj_db
     print(f"\n  DECLARED DIVERGENCE INV-BP-X1 (resolution) -- {len(expected)} corpus inputs "
           f"resolve differently in Python and SQL when stored WITHOUT the write boundary: "
           f"{expected}")
+
+
+def _number_cases():
+    for c in CASES:
+        if c["input"]["type"] == "number":
+            yield c
+
+
+def test_the_two_resolutions_agree_on_a_numeric_column(vj_db):
+    """INV-BP-E1/R2 on a NUMBER expose column -- the axis N7 shipped without (2026-08-02).
+
+    Pre-fix, the SQL half of this seam could not even RUN on the production dialect for a
+    numeric column (`COALESCE(double precision, text)`; `double precision = ''`), and on
+    this suite's dialect it resolved to the raw float -- '3.0' where the grid says '3'.
+    The fix (`crud.numeric_text_sql` inside `resolved_expression`) renders the number to
+    its canonical comparison text with the INT spelling for integral values, per the user
+    ruling. This scores every number corpus case through BOTH spellings, plus the NULL
+    that a number column folds into the label.
+
+    The payload half carries the RAW number (like every other numeric cell in the
+    system); its comparison text is `clean_str_value` -- the same render the whole
+    Python side already answers with. So the agreement scored here is:
+        clean_str_value(payload value)  ==  SQL resolved text
+    and NEITHER side may ever produce the float spelling ('7.0') the ruling rejected.
+    """
+    db, label = vj_db
+    disagreements = []
+    for through_funnel in (True, False):
+        for c in _number_cases():
+            _consume(c["id"])
+            v = _decode(c["input"])
+            cid = f"vjnum_{'f' if through_funnel else 'b'}_{c['id']}"
+            _vj_seed(db, cid, v, through_funnel=through_funnel, column="slot_no")
+            py = _vj_python(db, cid, "slot_no")
+            sql = _vj_sql(db, cid, "slot_no")
+            py_text = py if py == label else crud.clean_str_value(py)
+            if py_text != sql:
+                disagreements.append(
+                    f"{c['id']:26} stored={v!r:24} funnel={through_funnel} "
+                    f"python_renders={_show(py_text):22} sql={_show(sql)}")
+            # A number is blank only as NULL -- no corpus number is blank, so none may
+            # fold into the label on EITHER side (INV-BP-E3's zero case included).
+            for side, got in (("python", py_text), ("sql", sql)):
+                if (got == label) != c["blank"]:
+                    disagreements.append(
+                        f"{c['id']:26} {side} resolved to {_show(got)}; contract says "
+                        f"blank={c['blank']}")
+
+    # The NULL a number column actually produces: right row exists, value NULL. Both
+    # spellings must fold it into the label -- this is `_resolve_one` case (2) for
+    # numbers, where 'IS NULL alone' must still be a complete blank rule.
+    _vj_seed(db, "vjnum_null", None, through_funnel=False, column="slot_no")
+    py, sql = _vj_python(db, "vjnum_null", "slot_no"), _vj_sql(db, "vjnum_null", "slot_no")
+    if py != label or sql != label:
+        disagreements.append(
+            f"{'numeric NULL':26} python={_show(py)} sql={_show(sql)} -- both must be "
+            f"the label {label!r}")
+
+    assert not disagreements, (
+        "the two resolutions disagree about a NUMERIC column:\n  "
+        + "\n  ".join(disagreements)
+        + "\n\nThis is the N7 seam: the grid paints one spelling and search compares "
+          "another (or, on PostgreSQL, the read fails outright). Report both answers to "
+          "the Lead PM -- do not force one side here.")
 
 
 # ---------------------------------------------------------------------------

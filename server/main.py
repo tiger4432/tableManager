@@ -1207,6 +1207,16 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     f_val = f_info.get("filter")
     f_type = f_info.get("type", "contains")
 
+    # [N7] An override compares TEXT, but a client filtering a NUMERIC virtual column
+    # may send the value as a NUMBER (AG-Grid does for number-typed columns). Comparing
+    # a text expression against a numeric bind is a dialect lottery - Postgres errors,
+    # SQLite silently matches nothing. Render it to the same canonical text the
+    # expression produces: `clean_str_value`, whose int spelling (3.0 -> '3') is the
+    # one the resolved expression spells via `crud.numeric_text_sql`. Strings pass
+    # through untouched - this is a type bridge, not a second trim.
+    if col_expr_override is not None and f_val is not None and not isinstance(f_val, str):
+        f_val = crud.clean_str_value(f_val)
+
     # Allow blank/notBlank even if f_val is not present
     if f_type not in ["blank", "notBlank"] and f_val is None:
         return None

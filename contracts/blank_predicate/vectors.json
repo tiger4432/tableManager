@@ -145,6 +145,12 @@
       "file": "server/database/crud.py",
       "fn": "clean_str_value",
       "status": "live"
+    },
+    "numeric_sql_render": {
+      "$comment": "N7 (2026-08-02): the SQL twin of clean_str_value's numeric branch. Renders a numeric column to comparison text with the INT spelling for integral values, on every dialect, so a numeric expose column can sit in the resolved COALESCE at all. Scored by test_the_two_resolutions_agree_on_a_numeric_column.",
+      "file": "server/database/crud.py",
+      "fn": "numeric_text_sql",
+      "status": "live"
     }
   },
   "invariants": [

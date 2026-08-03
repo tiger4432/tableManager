@@ -325,21 +325,39 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
     🔴 **No `trim()` appears here.** It does not need to: `crud.normalize_stored_text`
     makes storage canonical at the write boundary, so blank-in-SQL and blank-in-Python
     are the same set. Adding a trim here would silently re-introduce the second spelling.
+
+    [Numeric columns render to text BEFORE the COALESCE - board item N7, 2026-08-02]
+    The label is a string, so the whole expression is a TEXT expression - PostgreSQL
+    refuses both `COALESCE(double precision, text)` and `blank_to_null`'s `col = ''`
+    arm on a Float column (the exact SQL failure the user reported). A numeric part
+    therefore goes through `crud.numeric_text_sql`, which renders the canonical
+    comparison text with the INT spelling for integral values (3.0 -> '3', matching
+    `clean_str_value` on the payload side - the value the grid actually displays).
+    It is NOT wrapped in `blank_to_null`: a number is never `''`, its blank arm is
+    IS NULL alone, and `numeric_text_sql` already propagates NULL through every branch.
     """
     from sqlalchemy.orm import aliased
     from sqlalchemy import and_, func
+    from sqlalchemy.sql.sqltypes import Numeric, Float, Integer
     from database import crud, models
 
     rules = [r for r in rules_for(db, left_table) if col_name in r["expose"]]
     if not rules:
         return query, None, None
 
+    def _text_part(col):
+        # Same numeric test as `main.get_column_filter_condition` - the MODEL type,
+        # not table_config, so a column that physically exists decides for itself.
+        if isinstance(col.type, (Numeric, Float, Integer)):
+            return crud.numeric_text_sql(col)
+        return crud.blank_to_null(col)
+
     parts = []
     # The left column participates only when it actually exists on the left table -
     # i.e. a `collide` column. For a `virtual_only` column there is nothing to prefer.
     left_cols = (crud.TABLE_CONFIG.get(left_table) or {}).get("column_types") or {}
     if col_name in left_cols and hasattr(left_model, col_name):
-        parts.append(crud.blank_to_null(getattr(left_model, col_name)))
+        parts.append(_text_part(getattr(left_model, col_name)))
 
     for rule in rules:
         right_model = models.DYNAMIC_TABLES.get(rule["right_table"])
@@ -353,7 +371,7 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
         # 🔴 outerjoin, never inner - an inner join here would DELETE left rows that have
         # no right match from the result, which is the population capability (1) is for.
         query = query.outerjoin(right, onclause)
-        parts.append(crud.blank_to_null(getattr(right, col_name)))
+        parts.append(_text_part(getattr(right, col_name)))
 
     if not parts:
         return query, None, None

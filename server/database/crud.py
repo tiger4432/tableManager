@@ -475,6 +475,65 @@ def not_blank_sql_condition(col_expr):
     from sqlalchemy import and_
     return and_(col_expr.isnot(None), col_expr != "")
 
+
+# The BIGINT-safe magnitude guard in `numeric_text_sql`. Conservative: 9.2e18 < 2**63,
+# so the CAST(... AS BIGINT) arm can never raise "bigint out of range" on PostgreSQL.
+BIGINT_SAFE_NUMERIC_TEXT_BOUND = 9.2e18
+
+
+def numeric_text_sql(col_expr):
+    """A NUMERIC column rendered to its canonical comparison text - the SQL twin of
+    `clean_str_value`'s numeric branch, INT spelling included (7.0 -> '7', 7.5 -> '7.5').
+
+    Exists for `virtual_join_executor.resolved_expression` (board item N7, user report
+    2026-08-02): a numeric expose column cannot sit in `COALESCE(..., '<label>')` as a
+    number. On PostgreSQL the pre-fix expression died twice over - `blank_to_null`'s
+    `col = ''` arm violates `blank_sql_condition`'s stated text-typed precondition
+    (`double precision = ''` is refused outright), and `COALESCE(double precision, text)`
+    cannot be matched to one type. The user ruling: cast to STRING for the COALESCE, and
+    spell integral values as INT (a slot comes back as 3, never 3.0).
+
+    Why not a plain `cast(col, String)`: the dialects disagree about it. PostgreSQL
+    renders float8 7.0 as '7' (shortest round-trip - `contracts/blank_predicate`
+    `dialect_facts`, measured 2026-07-31); SQLite renders '7.0'. Python's
+    `clean_str_value` folds integral floats through `str(int(v))`. This expression
+    produces the int spelling ON EVERY DIALECT instead of leaning on the agreement
+    Postgres happens to share with Python:
+
+        CASE WHEN col BETWEEN -9.2e18 AND 9.2e18
+             THEN CASE WHEN CAST(col AS BIGINT) = col
+                       THEN CAST(CAST(col AS BIGINT) AS VARCHAR)
+                       ELSE CAST(col AS VARCHAR) END
+             ELSE CAST(col AS VARCHAR) END
+
+    - NULL needs no arm of its own: every branch propagates NULL (CAST(NULL) is NULL,
+      `NULL = col` is UNKNOWN -> else -> CAST(NULL AS VARCHAR) is NULL). That is also
+      why this does NOT wrap `blank_to_null`: for a number the blank rule genuinely is
+      IS NULL alone - a number is never `''` (the blank-predicate contract's own
+      wording: "numbers are not text; the SQL blank arm is IS NULL"). Adding the text
+      blank test here would be a per-row no-op bought at WHERE-clause cost on a
+      10-million-row scan.
+    - The magnitude guard is what keeps the BIGINT cast from raising on PostgreSQL for
+      |v| >= 2**63. Beyond the bound the plain cast runs and the dialects may reach
+      exponent notation - the same reach as `declared_divergences.FLOAT_EXPONENT`
+      (deliberately not chased, Lead PM 2026-07-31), out of range of every production
+      column measured that day. WITHIN the bound this actually agrees with Python even
+      at 1e16, where the plain Postgres cast does not.
+    - Dialect rounding differences in the BIGINT cast (SQLite truncates 3.7 -> 3,
+      Postgres rounds 3.7 -> 4) cannot change any answer: the folded spelling is used
+      only when the cast round-trips EQUAL to the original value, i.e. only when the
+      value was integral to begin with.
+    """
+    from sqlalchemy import case, cast, String, BigInteger, and_
+    as_big = cast(col_expr, BigInteger)
+    folded = case((as_big == col_expr, cast(as_big, String)),
+                  else_=cast(col_expr, String))
+    return case(
+        (and_(col_expr >= -BIGINT_SAFE_NUMERIC_TEXT_BOUND,
+              col_expr <= BIGINT_SAFE_NUMERIC_TEXT_BOUND), folded),
+        else_=cast(col_expr, String),
+    )
+
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""
     target_val = str(key_value).strip() if key_value is not None else ""

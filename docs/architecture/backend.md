@@ -263,6 +263,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - 🔴 **읽기 전용은 여기서 강제되지 않는다.** 쓰기를 막는 것은 `crud.refuse_virtual_join_columns` 하나이고 그것이 모든 쓰기 경로가 수렴하는 깔때기에 앉아 있다([PRIMITIVES §1](./PRIMITIVES.md)). `editable: false`는 **편집을 제안하지 말라는 표시**일 뿐이라 그 표시를 지워도 쓰기는 여전히 400이다(그 독립성을 테스트가 양방향으로 고정한다 — 깔때기의 거부를 지우면 쓰기 테스트가 빨개지고, 알림을 `editable: true`로 뒤집으면 쓰기 테스트는 전부 초록으로 남는다).
 - **실패하면 아무것도 알리지 않는다.** 조인 알림이 예외를 내도 스키마 라우트는 죽지 않고 `virtual_columns`가 빈 채로 나간다(로그 `[VirtualJoin]`). 읽기 경로와 **같은 방향**이다 — 알리지 않은 컬럼은 **눈에 보이는 부재**이지만, 유령 컬럼은 **조용한 오답이자 존재하지 않는 쓰기 대상**이다.
 - ⚠️ **`type`은 오른쪽 테이블의 선언이고, 값의 정의역은 그것보다 넓다.** 매치가 없거나 오른쪽 값이 비면 셀에 `unresolved_label`(기본 `미상`)이 앉으므로 **`number` 컬럼이 문자열을 실을 수 있다.** 라벨을 함께 싣는 이유가 그것이다 — 클라가 `미상`을 하드코딩하지 않고 이 값을 읽어야 선언이 실제로 효력을 갖는다.
+- **숫자 컬럼의 SQL 비교 철자는 INT 접기다** (2026-08-04 N7). 검색/필터/CSV가 쓰는 해석식(`virtual_join_executor.resolved_expression`)은 라벨 때문에 텍스트 식이고, 숫자 컬럼은 COALESCE 이전에 `crud.numeric_text_sql`로 렌더된다 — 정수값 float은 `3`(화면·`clean_str_value`와 같은 철자), 소수부는 그대로. 이 렌더가 없으면 PostgreSQL이 `COALESCE(double precision, text)`를 거절해 **그 컬럼을 조회하는 모든 읽기가 500**이다(2026-08-02 사용자 보고 — 계약은 [config/virtual_join_rules §4-ter](../guide/config/virtual_join_rules.md), 채점은 `contracts/blank_predicate`의 numeric 해석 테스트와 `server/tests/test_virtual_join_numeric.py`).
 
 선언·승인·실행 계약은 [config/virtual_join_rules](../guide/config/virtual_join_rules.md), 클라 렌더는 [frontend §3.4](./frontend.md).
 
