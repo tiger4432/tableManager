@@ -117,7 +117,7 @@ const FLOORS = new Map([
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
-  ['virtual_column_render_harness.mjs', 59],
+  ['virtual_column_render_harness.mjs', 65],
 ]);
 
 const doubleBooked = [...FLOORS.keys()].filter(n => KNOWN_RED.has(n));

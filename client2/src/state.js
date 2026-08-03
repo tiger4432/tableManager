@@ -9,13 +9,16 @@ export const state = {
   // `{name, type, editable:false, right_table, rule, unresolved_label}`.
   //
   // 🔴 DELIBERATELY NOT MERGED INTO `currentColumns`. That list means "columns this table
-  // STORES", and four consumers read it as exactly that: `api.js`'s search dropdown (the
-  // SQL cannot reach a virtual name), `clipboard.js`'s copy predicates, `grid.js`'s
-  // editability, and — through `/schema.columns` rather than this list —
+  // STORES", and its consumers read it as exactly that: `clipboard.js`'s copy predicates,
+  // `grid.js`'s editability, and — through `/schema.columns` rather than this list —
   // `map_editor.js:getUnprotectedPushColumns`, which counts unprotected data columns a
   // ⚡ Push would destroy. A virtual column cannot be lost by a push because it is not
   // stored, so counting it there would downgrade or block a push for no reason.
   // Keeping the two lists apart is what makes each of those answers stay right.
+  //
+  // `api.js`'s search dropdown USED to be in that list and no longer is: `?cols=` now
+  // reaches join-resolved names, so it unions the WIDER announcement below instead. It is
+  // still not merged here — a searchable name is not a stored one.
   currentVirtualColumns: [],
   // [Virtual join] `/schema`'s `join_resolved_columns`, verbatim. Entries are
   // `{name, kind: 'collide'|'virtual_only', rule, right_table, unresolved_label}`.

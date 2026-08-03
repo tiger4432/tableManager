@@ -130,20 +130,49 @@ export async function loadSchema(tableName) {
     state.currentJoinResolvedColumns = Array.isArray(data.join_resolved_columns)
       ? data.join_resolved_columns : [];
 
-    // Fill search columns dropdown
-    // 🔴 Iterates `currentColumns`, NOT the virtual list, and that is the point: `?cols=` is
-    // fed to a WHERE clause over the left table's own columns, and a virtual name has no
-    // storage for the SQL to reach. Offering it would produce a search that returns nothing
-    // and says nothing about why.
+    // Fill search columns dropdown: stored columns first, then the join-resolved names.
+    //
+    // 🔴 THE LIST IS READ OFF THE ANNOUNCEMENT, NEVER ASSEMBLED HERE. `?cols=` is scoped by
+    // the server's `apply_search_filter`, whose virtual vocabulary is the binder's
+    // `virtual_join_executor.exposed_columns` — the exact set `/schema` publishes as
+    // `join_resolved_columns`. A name this client invented would be one the server has no
+    // expression for, and the server REFUSES such a scope with 400 rather than answering
+    // with the whole table. So an absent or empty announcement offers stored columns only,
+    // which is exactly how every pre-change server behaved.
+    //
+    // 🔴 KEYED OFF `join_resolved_columns`, NOT `virtual_columns` — the same choice
+    // `grid.js` makes for the column filter, and for the same reason. This asks "can the
+    // SERVER search this name", and only the wider announcement answers it; `virtual_columns`
+    // says merely "add this column" and is silent about every `collide` name.
+    //
+    // 🔴 SEARCH ONLY — this element is not a write path. It is read by exactly four sites
+    // (`fetchData` here, the export in `main.js` x2, `timeline.js`), all of which put the
+    // value into `?cols=` of a READ. Editability is decided by `isVirtualColumn` inside the
+    // write funnels, which never look at this select, so widening it cannot make a
+    // read-only column look editable anywhere.
     if (elements.searchCols) {
       elements.searchCols.innerHTML = '<option value="">All Columns</option>';
+      const appendOption = (col, joined) => {
+        const option = document.createElement('option');
+        option.value = col;
+        // 🔗 is the header vocabulary `grid.js` already uses for a join-resolved column,
+        // reused rather than inventing a second way to say the same thing. Only the
+        // LABEL carries it — `option.value` stays the bare name the server is sent.
+        option.textContent = joined ? `${col} 🔗` : col;
+        elements.searchCols.appendChild(option);
+      };
       state.currentColumns.forEach(col => {
-        if (col !== 'created_at' && col !== 'updated_at') {
-          const option = document.createElement('option');
-          option.value = col;
-          option.textContent = col;
-          elements.searchCols.appendChild(option);
-        }
+        if (col !== 'created_at' && col !== 'updated_at') appendOption(col, false);
+      });
+      state.currentJoinResolvedColumns.forEach(entry => {
+        // Malformed entry: skip it rather than offering an option whose value is `undefined`.
+        if (!entry || typeof entry.name !== 'string' || entry.name === '') return;
+        // A `collide` name is a STORED column and the loop above already offered it. Emitting
+        // it twice would put two identical options in the select that build the identical
+        // query — the announcement is wider than what is missing here, so it must be
+        // differenced against what was already offered rather than appended wholesale.
+        if (state.currentColumns.includes(entry.name)) return;
+        appendOption(entry.name, true);
       });
     }
   } catch (err) {

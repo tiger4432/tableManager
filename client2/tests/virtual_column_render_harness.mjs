@@ -200,9 +200,14 @@ function withState(sources, extra = {}) {
   return { ctx, sandbox, state: sandbox.__state, isVirtualColumn: sandbox.__isVirtualColumn };
 }
 
-/** The real `loadSchema`, fed a stubbed `fetch`. Records what the search dropdown was offered. */
+/** The real `loadSchema`, fed a stubbed `fetch`. Records what the search dropdown was offered.
+ *
+ * `offered` is the VALUE (what reaches `?cols=`) and `labels` the visible text, kept apart on
+ * purpose: they are allowed to differ (the 🔗 marker rides the label), and a check that read
+ * only one of them could not tell a decorated label from a corrupted column name. */
 async function runLoadSchema(sources, response) {
   const offered = [];
+  const labels = [];
   const s = withState(sources, {
     API_BASE: '/api',
     resetSuggestLearning: () => {},
@@ -210,13 +215,16 @@ async function runLoadSchema(sources, response) {
   });
   s.sandbox.elements = {
     performanceLog: { textContent: '' },
-    searchCols: { innerHTML: '', appendChild: o => offered.push(o.value) }
+    searchCols: {
+      innerHTML: '',
+      appendChild: o => { offered.push(o.value); labels.push(o.textContent); }
+    }
   };
   s.sandbox.document.createElement = () => ({ value: '', textContent: '' });
   vm.runInContext(fnFrom(sources.api, 'api.js', 'loadSchema')
     + '\n;globalThis.__loadSchema = loadSchema;', s.ctx, { filename: 'api.js#loadSchema' });
   await s.sandbox.__loadSchema('bonding_log');
-  return { state: s.state, offered };
+  return { state: s.state, offered, labels };
 }
 
 /** The real `buildColumnDefs`, with the schema already in state. */
@@ -372,10 +380,42 @@ async function suite(sources) {
     ls.state.currentVirtualColumns.map(v => v.name), ['wafer_id', 'yield_pct']);
   check('1b currentColumns is untouched by the announcement',
     ls.state.currentColumns, STORED);
-  // The search dropdown feeds `?cols=` into SQL over the left table. A virtual name there is
-  // a search that can only return nothing.
-  check('1c search dropdown offers stored columns only',
-    ls.offered, ['pkg_id', 'core_lot', 'core_slot', 'bond_count']);
+  // The search dropdown feeds `?cols=`, which the server scopes with the SAME binder
+  // vocabulary it announces as `join_resolved_columns` — so every announced name is
+  // searchable and belongs here. Stored columns keep their order and lead; the announced
+  // names that are NOT already stored follow.
+  check('1d search dropdown offers stored columns, then the announced ones',
+    ls.offered, ['pkg_id', 'core_lot', 'core_slot', 'bond_count', 'wafer_id', 'yield_pct']);
+  // 🔴 THE DE-DUPLICATION, which is the whole reason the wider announcement cannot be
+  // appended wholesale. `core_lot`/`core_slot` are `collide` — STORED columns that the
+  // announcement also names. Offering them twice would put two identical options in the
+  // select that build the identical query.
+  check('1e no name is offered twice',
+    ls.offered.length, new Set(ls.offered).size);
+  // 🔴 NEVER FABRICATED. An old server that announces nothing must get the pre-change
+  // dropdown, not a client-invented list: a name the server has no expression for is
+  // refused with 400, so inventing one would break search outright rather than widen it.
+  const noJrcOffered = { ...SCHEMA };
+  delete noJrcOffered.join_resolved_columns;
+  check('1f absent announcement -> stored columns only',
+    (await runLoadSchema(sources, noJrcOffered)).offered,
+    ['pkg_id', 'core_lot', 'core_slot', 'bond_count']);
+  check('1g empty announcement -> stored columns only',
+    (await runLoadSchema(sources, { ...SCHEMA, join_resolved_columns: [] })).offered,
+    ['pkg_id', 'core_lot', 'core_slot', 'bond_count']);
+  // A malformed entry must be skipped, not turned into an option whose value is `undefined`.
+  check('1h malformed announcement entries are skipped',
+    (await runLoadSchema(sources, { ...SCHEMA,
+      join_resolved_columns: [null, { kind: 'virtual_only' }, { name: '' }, JRC_WAFER] })).offered,
+    ['pkg_id', 'core_lot', 'core_slot', 'bond_count', 'wafer_id']);
+  // The VALUE is what reaches `?cols=`; the 🔗 marker rides the label only. A marker that
+  // leaked into the value would be sent to the server as part of the column name.
+  check('1i offered values carry no decoration',
+    ls.offered.every(v => typeof v === 'string' && !v.includes('🔗')), true);
+  // And the label DOES mark the joined ones — a stored column must not be dressed as joined,
+  // which would tell an operator a writable column is read-only.
+  check('1j only the join-resolved names are marked 🔗',
+    ls.labels.filter(l => l.includes('🔗')), ['wafer_id 🔗', 'yield_pct 🔗']);
 
   // [2] an old server (no key at all) must land on `[]`, not `undefined`
   const noKey = { ...SCHEMA };
@@ -668,6 +708,29 @@ const DEFECTS = [
   ['accept a non-array join_resolved_columns straight into state', s => ({ ...s,
     api: sub(s.api, `Array.isArray(data.join_resolved_columns)\n      ? data.join_resolved_columns : []`,
       `data.join_resolved_columns || []`, 'non-array-jrc') })],
+  // ── the search dropdown (N4) ──────────────────────────────────────────────────
+  // The regression: back to stored columns only, which is what this file asserted before
+  // the server learned to scope `?cols=` by the announcement.
+  ['drop the announced columns from the search dropdown', s => ({ ...s,
+    api: sub(s.api, `        if (state.currentColumns.includes(entry.name)) return;\n        appendOption(entry.name, true);`,
+      `        return;`, 'dropdown-stored-only') })],
+  // Appending the WIDER announcement wholesale: every `collide` name is offered a second time.
+  ['offer the announcement without differencing it against stored columns', s => ({ ...s,
+    api: sub(s.api, `        if (state.currentColumns.includes(entry.name)) return;\n`, ``,
+      'dropdown-dup') })],
+  // Fabricating the list instead of reading the announcement — the exact thing the brief
+  // forbade. `virtual_columns` is the NARROWER key and is the convenient wrong read.
+  ['build the dropdown from virtual_columns instead of the announcement', s => ({ ...s,
+    api: sub(s.api, `      state.currentJoinResolvedColumns.forEach(entry => {`,
+      `      state.currentVirtualColumns.forEach(entry => {`, 'dropdown-wrong-list') })],
+  // A malformed entry becoming an option whose value is `undefined`.
+  ['let a malformed announcement entry reach the dropdown', s => ({ ...s,
+    api: sub(s.api, `        if (!entry || typeof entry.name !== 'string' || entry.name === '') return;\n`,
+      ``, 'dropdown-malformed') })],
+  // The decoration leaking into the value, i.e. into `?cols=`.
+  ['put the 🔗 marker in the option value rather than the label', s => ({ ...s,
+    api: sub(s.api, `        option.value = col;`, `        option.value = joined ? \`\${col} 🔗\` : col;`,
+      'dropdown-marker-in-value') })],
   ['let a colliding name produce a second def', s => ({ ...s,
     grid: sub(s.grid, `    if (state.currentColumns.includes(col)) return;`, ``, 'collide') })],
   ['accept a malformed announcement entry', s => ({ ...s,
