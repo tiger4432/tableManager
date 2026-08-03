@@ -438,11 +438,12 @@ async function getPoolSummary(pool, force = false) {
 function availabilityOfPool(pool) {
   // [7c] 반환 형태에 `bound`가 **항상** 있다(없으면 null). 어떤 갈래에서만 빠지면 소비자가
   // `undefined`와 "상한 없음"을 구분하려 들게 되고, 그 순간 판정이 둘로 갈린다.
+  // [7d] `inactive`도 같은 규율로 **항상** 배열이다(없으면 빈 배열).
   const entry = S.summaries.get(summaryKeyFor(pool));
-  if (!entry) return { status: null, value: null, reliable: false, bound: null, reason: '아직 조회하지 않음' };
+  if (!entry) return { status: null, value: null, reliable: false, bound: null, inactive: [], reason: '아직 조회하지 않음' };
   if (entry.status !== 'ok') {
     return {
-      status: entry.status, value: null, reliable: false, bound: null,
+      status: entry.status, value: null, reliable: false, bound: null, inactive: [],
       reason: entry.status === 'loading' ? '조회 중'
         : (entry.status === 'unsupported' ? '이 서버는 가용 집계를 제공하지 않습니다'
           : (entry.error || '가용 조회 실패')),
@@ -452,18 +453,19 @@ function availabilityOfPool(pool) {
   const degraded = (Array.isArray(data.warnings) ? data.warnings : [])
     .map(w => String((w && (w.type || w.code)) || w))
     .filter(t => t === 'source_degraded' || t === 'availability_unreliable');
+  const inactive = inactiveSubtractionsOf(data);
 
   const block = data.bins;
   if (!block || typeof block !== 'object' || block.axis !== 'connected' || !Array.isArray(block.entries)) {
     const why = (block && block.detail) ? String(block.detail) : 'BIN별 가용을 서버가 주지 않았습니다';
-    return { status: 'bins_unavailable', value: null, reliable: false, bound: null, reason: why };
+    return { status: 'bins_unavailable', value: null, reliable: false, bound: null, inactive, reason: why };
   }
   const hit = block.entries.find(e => e && Number(e.bin) === Number(pool.bin));
   if (!hit) {
-    return { status: 'bin_absent', value: null, reliable: false, bound: null, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
   }
   if (hit.status === 'bin_absent') {
-    return { status: 'bin_absent', value: null, reliable: false, bound: null, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
   }
   const reasons = [];
   if (hit.reliable !== true) reasons.push(hit.reason || '서버 판정: 이 BIN의 잔여 신뢰 불가');
@@ -473,11 +475,15 @@ function availabilityOfPool(pool) {
   // 미상이 아니라 **상한**을 아는 상태다. 상한이 있으면 아래 reason은 강등 문구가 아니라
   // 상한의 근거로 읽힌다 — 그래서 문구를 따로 세운다.
   const bound = untrackedBoundOf(hit);
+  // [7d] 감산 미적용은 **강등이 아니다** — 서버는 이 값을 신뢰(reliable)한다고 말한다.
+  // 그래서 `reliable`에도 `reasons`에도 섞지 않는다. 섞으면 이 숫자가 미상으로 붕괴하는데,
+  // 사이트는 그 숫자를 쓰기로 결정한 상태다(이번 완화의 목적 그 자체).
   return {
     status: 'ok',
     value: (hit.remaining === null || hit.remaining === undefined) ? null : Number(hit.remaining),
     reliable: reasons.length === 0,
     bound,
+    inactive,
     reason: bound !== null ? UNTRACKED_REASON : reasons.join(' · '),
   };
 }
@@ -509,6 +515,70 @@ function untrackedBoundOf(entry) {
 function boundText(bound) {
   if (bound === null || bound === undefined || typeof bound !== 'number' || !Number.isFinite(bound)) return '';
   return `≤${bound}`;
+}
+
+// ── [7d] 감산 미적용 (`inactive_subtractions`) ───────────────────────────────
+//
+// 사이트가 보조 감산 소스(`transfer_log` · `origin_log` · `fail_sources` ·
+// `process_history`)를 **선언조차 하지 않은** 상태다. 서버는 이제 그 감산을 빼지 않고
+// 수를 계산해 실수로 내보내며(강등하지 않는다), 빠진 종류를 이 필드로 밝힌다.
+// 이 사이트는 그렇게 쓰기로 결정한 상태이므로 이 값은 미상이 아니다 — 다만 **총량이
+// 순량 행세를 하면 안 된다.**
+//
+// 🔴 **`≤`를 빌려 쓰지 않는다.** `≤`는 `remaining_upper_bound`(선언된 미추적) 전용이고,
+//    서버는 이 갈래에서 그 필드를 **의도적으로 세우지 않는다**. 같은 기호를 쓰면 서로
+//    다른 두 상태가 화면에서 같아진다.
+//
+// 🔴 **`reliable`에 묶지 않는다.** 완화 이후 이 갈래의 `remaining_reliable`는 `true`다.
+//    신뢰도 축은 여전히 서버 소관이고, 여기서 다시 판정하지 않는다.
+//
+// 🔴 **서버의 어휘를 그대로 쓴다.** 역할 이름을 한국어로 번역해 두 번째 철자를 만들지
+//    않는다 — 운영자가 config에서 찾아야 하는 토큰이 화면의 토큰과 달라지는 순간
+//    이 표시는 조회 동선을 늘리기만 한다.
+function inactiveSubtractionsOf(data) {
+  const raw = data && data.inactive_subtractions;
+  if (!Array.isArray(raw)) return [];   // 필드 부재 = 전 역할 선언 사이트. 오늘과 같다.
+  return raw.map(r => String(r == null ? '' : r).trim()).filter(r => r !== '');
+}
+
+// 각주 기호. 한 글자다 — 58px 폭의 수 열에 문장이 들어갈 자리는 없고, 그래서 **의미를
+// 기호가 나르지 않는다.** 기호는 같은 화면 안의 각주(②의 `.tp-foot-note`)를 가리키고,
+// 빠진 감산의 이름은 거기와 tooltip에 **본문 크기로** 적힌다. 작은 글씨로 이름을 우겨
+// 넣으면 아무도 못 읽는 표시가 되고, 그건 공시 없는 공시의 외양이다.
+const GROSS_MARK = '*';
+
+function grossReason(inactive) {
+  return `감산을 빼지 않은 수입니다 — 이 사이트가 선언하지 않아 집계에서 빠진 감산: ${
+    inactive.join(', ')}. 실제 잔여는 이 값보다 적을 수 있습니다.`;
+}
+
+function isGross(av) {
+  return !!(av && Array.isArray(av.inactive) && av.inactive.length > 0);
+}
+
+// 이 화면이 밝혀야 할 「빠진 감산」의 합집합. **구현은 하나다** — ②의 각주와 [↻ 가용]
+// 토스트가 각자 모으면 두 곳이 서로 다른 목록을 말하게 된다(저장 `ceil` · 표시 `round`로
+// DB 34 · 화면 33이던 사건과 같은 계열의 결함이다).
+// 서버가 준 순서를 유지한다 — 정렬하면 운영자가 config를 읽는 순서와 어긋난다.
+function grossRolesOf(avs) {
+  const out = [];
+  (avs || []).forEach(av => {
+    if (!isGross(av)) return;
+    av.inactive.forEach(r => { if (!out.includes(r)) out.push(r); });
+  });
+  return out;
+}
+
+// ②의 각주 — 이 표시의 **읽히는 절반**이다. 셀의 `*`는 여기를 가리키는 각주 기호일 뿐이고,
+// 빠진 감산의 이름은 서버 철자 그대로 여기에 **본문 크기로** 적힌다.
+// 역할이 없으면 빈 문자열이다 — 전 역할 선언 사이트의 각주는 오늘과 바이트 단위로 같다.
+function grossNoteHtml(grossRoles) {
+  if (!grossRoles || grossRoles.length === 0) return '';
+  return `<br>
+        <b class="tp-gross">${GROSS_MARK}</b> 표시가 붙은 <b>가용·잔여는 감산을 빼지 않은 수</b>입니다 —
+        이 사이트가 선언하지 않아 집계에서 빠진 감산: ${
+          grossRoles.map(r => `<code class="tp-gross-role">${esc(r)}</code>`).join(' · ')}.
+        <b>실제 잔여는 이 값보다 적을 수 있습니다.</b>`;
 }
 
 function isPlainNotFound(status, body) {
@@ -1184,30 +1254,50 @@ function unknownCellHtml(state, extraClass) {
 }
 
 // [7c] 가용 칸. 확정 수 → 굵은 수 · 선언된 미추적 → `≤N` · 그 외 → 미상.
+// [7d] 감산 미적용이면 어느 갈래든 각주 표시 `*`가 **덧붙는다** — `≤`를 대체하지 않는다.
+//      상한 갈래에도 붙는 이유: 그 상한 역시 다른 감산 없이 계산된 상한이다(두 주장은
+//      서로 다르고 동시에 참일 수 있다).
 // 두 렌더 경로(전체 재렌더 / 카운트 텍스트 패치)가 **이 함수 하나**를 쓴다.
 function availCellHtml(av) {
   if (av.status === null || av.status === 'loading') return '<span class="tp-unk">…</span>';
+  const gross = isGross(av);
+  const mark = gross ? `<span class="tp-gross mk" title="${esc(grossReason(av.inactive))}">${GROSS_MARK}</span>` : '';
   if (av.bound !== null && av.bound !== undefined) {
-    return `<b class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(av.bound)}</b>`;
+    return `<b class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(av.bound)}</b>${mark}`;
   }
-  return av.reliable ? `<b>${av.value}</b>` : unknownCellHtml(av, 'w');
+  if (!av.reliable) return unknownCellHtml(av, 'w');
+  // 미상이 아니다 — 수는 그대로 굵게 둔다. 갈라지는 것은 **색과 각주**뿐이고, 자리·크기는
+  // 옆줄의 확정 수와 같다(작은 글씨는 없느니만 못하다).
+  return gross
+    ? `<b class="tp-gross" title="${esc(grossReason(av.inactive))}">${av.value}</b>${mark}`
+    : `<b>${av.value}</b>`;
 }
 
 // [7c] 잔여 칸. 상한 − 확정 사용량은 여전히 진짜 상한이다(알려진 상수를 상한에서 뺀 것).
 // 뺄셈은 `remainingState` **하나**만 쓴다 — 확정 갈래와 상한 갈래가 각자 빼면 그 순간
 // 같은 수의 구현이 둘이 된다. 상한 갈래는 합성 입력을 만들어 같은 함수에 통과시키고,
 // 확정 수처럼 보이지 않도록 표기만 `≤`로 감싼다.
+// [7d] 잔여는 가용에서 뺀 수이므로 **가용의 총량성을 그대로 물려받는다.** 가용에만 표시를
+//      달고 잔여를 맨숫자로 두면, 부족 판정을 실제로 내리는 칸이 표시 없는 칸이 된다.
 function remainingCellHtml(av, used) {
+  const gross = isGross(av);
+  const mark = gross ? `<span class="tp-gross mk" title="${esc(grossReason(av.inactive))}">${GROSS_MARK}</span>` : '';
   if (av.bound !== null && av.bound !== undefined) {
     const b = remainingState({ status: 'ok', value: av.bound, reliable: true }, used);
-    return `<span class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(b.value)}</span>`;
+    return `<span class="tp-bound" title="${esc(UNTRACKED_REASON)}">${boundText(b.value)}</span>${mark}`;
   }
   const rem = remainingState(av, used);
-  return rem.reliable ? `<span class="ap">≈</span>${rem.value}` : unknownCellHtml(rem, 'w');
+  if (!rem.reliable) return unknownCellHtml(rem, 'w');
+  return gross
+    ? `<span class="ap">≈</span><span class="tp-gross" title="${esc(grossReason(av.inactive))}">${rem.value}</span>${mark}`
+    : `<span class="ap">≈</span>${rem.value}`;
 }
 
 // 음수 강조는 확정 잔여에만 붙인다 — 상한이 음수라는 것은 "부족이 확정"이 아니라
 // "가장 낙관적으로 봐도 부족"이라는 뜻이므로 같은 빨강을 쓰되 판정 문구는 붙이지 않는다.
+// [7d] 감산 미적용 잔여가 **양수**라는 것은 충분하다는 뜻이 아니다(감산을 뺐으면 음수였을
+//      수 있다). 그렇다고 여기서 빨강을 켜면 근거 없는 경보가 된다 — 클라는 빠진 감산의
+//      크기를 알지 못한다. 그 간극을 메우는 것이 `*` 표시와 각주이지 색이 아니다.
 function remainingIsNegative(av, used) {
   if (av.bound !== null && av.bound !== undefined) {
     return remainingState({ status: 'ok', value: av.bound, reliable: true }, used).value < 0;
@@ -1265,6 +1355,9 @@ function renderMaterialPane() {
   const clashTokens = new Set();
   clashes.forEach(b => { if (b.message) clashTokens.add(b.message); });
 
+  // [7d] 이 화면에 보이는 풀들이 밝힌 「빠진 감산」의 합집합 — 토스트와 **같은 함수**로 모은다.
+  const grossRoles = grossRolesOf(pools.map(p => availabilityOfPool(p)));
+
   const rows = pools.map(p => {
     const av = availabilityOfPool(p);
     const exists = srcTable ? S.matMapState.get(matMapCacheKey(srcTable, poolCacheId(p))) : null;
@@ -1306,7 +1399,8 @@ function renderMaterialPane() {
         <b>미상</b>은 <b>0이 아닙니다.</b> 가용이 미상·신뢰 불가면 <b>잔여도 미상</b>입니다.${
         srcTable ? ` · 대상 <b>${esc(srcTable)}</b>${srcDerived === 'fallback'
           ? ' <span class="tp-chip warn" title="stage 선언에서 유도하지 못해 하드코딩 폴백을 씁니다 — 서버에 명시 선언 요청됨">추정</span>' : ''}`
-        : ' · <b class="tp-mat-nosrc">자재 맵 테이블 미상 — stage 선언 확인 필요</b>'}
+        : ' · <b class="tp-mat-nosrc">자재 맵 테이블 미상 — stage 선언 확인 필요</b>'}${
+        grossNoteHtml(grossRoles)}
       </div>
     </div>`;
 
@@ -1519,20 +1613,29 @@ async function refreshMaterials(force = false) {
   renderMaterialPane();
   if (force) {
     const unknownReasons = [];
-    pools.forEach(p => {
-      const av = availabilityOfPool(p);
+    // [7d] 감산 미적용은 미상이 아니라 **수가 나온** 상태다. 그래서 위 tally에 섞지 않고
+    // 따로 센다 — 섞으면 "N개 미상"이 실제 미상 수보다 커져 진단이 흐려진다. 그러나
+    // 조회가 전부 성공했다는 이유로 이 토스트가 무조건 밝은 'info'를 내면, 총량으로
+    // 계산된 화면이 완전 감산 화면과 같은 말을 듣게 된다.
+    const avs = pools.map(p => availabilityOfPool(p));
+    const grossRoles = grossRolesOf(avs);       // ②의 각주와 같은 함수, 같은 목록
+    const grossPools = avs.filter(av => isGross(av)).length;
+    avs.forEach(av => {
       if (!(av.reliable === true && av.value !== null && av.value !== undefined)) {
         unknownReasons.push(av.reason || '이유 미상');
       }
     });
+    const grossClause = grossPools === 0 ? ''
+      : ` · ${grossPools}개는 감산 미적용(${grossRoles.join(', ')})`;
     if (unknownReasons.length === 0) {
-      showToast(`가용 조회 완료 — ${pools.length}개 풀`, 'info');
+      if (grossPools === 0) showToast(`가용 조회 완료 — ${pools.length}개 풀`, 'info');
+      else showToast(`가용 조회 완료 — ${pools.length}개 풀${grossClause}`, 'warning');
     } else {
       // One line, the most common reason. The full per-pool reason is on each 미상 cell.
       const tally = new Map();
       unknownReasons.forEach(r => tally.set(r, (tally.get(r) || 0) + 1));
       const dominant = [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0];
-      showToast(`가용 조회 완료 — ${pools.length}개 풀 중 ${unknownReasons.length}개 미상: ${dominant}`, 'warning');
+      showToast(`가용 조회 완료 — ${pools.length}개 풀 중 ${unknownReasons.length}개 미상: ${dominant}${grossClause}`, 'warning');
     }
   }
 }

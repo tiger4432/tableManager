@@ -97,7 +97,10 @@ const KNOWN_RED = new Map([
 // Measured on db46525 (HEAD), in a tree materialized with `git archive` -- NOT the working
 // tree, which held an in-flight seam extraction whose post-move counts would have been
 // baselined as if they were the historical floor.
+// `availability_gross_marker_harness.mjs` is new here, so its floor is the count it reports
+// on the commit that introduces it -- there is no earlier tree to measure it against.
 const FLOORS = new Map([
+  ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
   ['copy_header_count_harness.mjs', 151],
   ['effort_meter_harness.mjs', 131],

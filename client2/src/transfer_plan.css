@@ -565,6 +565,28 @@
   border-bottom: 1px dotted var(--accent, var(--color-primary));
 }
 .tp-num.left.neg .tp-bound { color: var(--danger); border-bottom-color: var(--danger); }
+/* [7d] 감산 미적용 — 이 수는 총량이다. `.tp-bound`와 **같은 문법**(같은 크기·같은 자리·
+   색으로만 갈라짐)을 쓰되 색을 warning으로 나눠, 「상한(≤, accent)」과 「총량(*, warning)」이
+   화면에서 절대 같아지지 않게 한다. 서버가 두 상태를 다른 필드로 말하기 때문에 화면도
+   달라야 한다 — `≤`를 빌려 쓰면 두 상황이 한 그림이 된다.
+   각주 기호 `*`는 의미를 나르지 않는다. 빠진 감산의 **이름**은 tooltip과 ②의 각주에
+   본문 크기로 적힌다(작은 글씨로 우겨 넣은 이름은 읽히지 않고, 읽히지 않는 공시는
+   공시가 아니다). */
+.tp-num .tp-gross {
+  color: var(--warning);
+  cursor: help;
+  border-bottom: 1px dotted var(--warning);
+}
+.tp-num .tp-gross.mk { border-bottom: 0; font-weight: 700; }
+.tp-num.left.neg .tp-gross { color: var(--danger); border-bottom-color: var(--danger); }
+/* 각주 줄의 기호는 셀의 기호와 **같은 색**이어야 한다 — 다르면 둘을 잇는 것이 사라진다. */
+.tp-foot-note .tp-gross { color: var(--warning); }
+.tp-foot-note .tp-gross-role {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  background: var(--bg-inset);
+  border-radius: 3px; padding: 0 4px;
+}
 /* knob은 값 층위에 저장돼 있고 여기서는 **모아 보여줄 뿐** 편집하지 않는다 —
    저장할 자리가 선언되지 않은 입력 칸은 사용자의 타이핑을 조용히 버린다. */
 .tp-knob {
