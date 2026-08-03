@@ -28,7 +28,8 @@ import transfer_plan
 from database import crud, models
 
 from test_transfer_plan import (TP_TABLES, _tp_config, _bp_config, _write_cfg,
-                                _seed_scenario, _seed_bins, _seed_second_slot)
+                                _seed_scenario, _seed_bins, _seed_second_slot,
+                                _seed_plan, _paint, _validate)
 
 AUX_ROLES = ("transfer_log", "origin_log", "process_history")
 
@@ -218,6 +219,96 @@ def test_lot_scope_carries_the_inactive_kinds(env, client):
     assert b1["status"] == "ok"
     assert b1["remaining"] == 4 + 2         # slot sums, no subtraction terms
     assert b1["transferred"] is None        # pooled sum of unknowns is unknown
+
+
+# ---------------------------------------------------------------------------
+# validate — the surface that hands an operator a go/no-go verdict
+#
+# [QA B1, 2026-08-04] The relaxation makes `remaining_reliable` true for a number
+# computed WITHOUT its subtractions, and `validate_plan` gates on exactly that
+# flag. Nothing else about the verdict changes (the Lead PM ruled the site's
+# declaration IS the site's best knowledge — see the module docstring), so the
+# only thing that must change is that the response SAYS what it did not subtract.
+# The gap this pins is that no test exercised validate on a relaxed config at all.
+# ---------------------------------------------------------------------------
+
+# Every key `validate_plan` returns for a fully declared config. Frozen here so a
+# new field can never appear on the declared path without this test failing.
+VALIDATE_DECLARED_KEYS = {"ref_table", "map_key", "stage", "map_status",
+                          "doe_count", "painted_values", "status",
+                          "availability_checked", "warnings"}
+
+
+def _seed_one_doe_plan(db, map_key, cells):
+    """One DOE ('A') drawing from TAPE-X/01, painted over `cells` chips.
+
+    stack=1 → layers 1 → required == painted count, so the demand is the cell
+    count and nothing else — the numbers below are read, not derived twice.
+    """
+    _seed_plan(db, map_key, "A", stack=1, mat_mid=["TAPE-X_01"])
+    _paint(db, map_key, [(x, 1, "A") for x in range(1, cells + 1)])
+    db.commit()
+
+
+def test_validate_names_the_inactive_subtractions_behind_its_verdict(env, client):
+    """Relaxed path: the verdict rests on a GROSS availability (8, not the
+    fully-subtracted 2), so the response must name the subtractions it skipped —
+    same field name and same shape as the slot / lot / M1 summaries."""
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_relaxed_tp_config())
+    _seed_scenario(db)
+    _seed_one_doe_plan(db, "BASE-RELAXED", 5)      # required 5
+
+    body = _validate(client, "BASE-RELAXED")
+    # The verdict itself is unchanged by design: 5 <= gross 8, no warning, `ok`.
+    assert body["availability_checked"] is True
+    assert body["status"] == "ok"
+    assert body["warnings"] == []
+    # ...and the marker states what that `ok` was computed without.
+    assert body["inactive_subtractions"] == ["transfer_log", "origin_log",
+                                             "fail_sources"]
+
+
+def test_validate_verdict_on_a_declared_config_is_byte_identical(env, client):
+    """Declared path: the SAME plan against a fully declared config keeps every
+    pre-existing judgement (5 > net 2 → shortage) and gains NO new field."""
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch)               # fully declared
+    _seed_scenario(db)
+    _seed_one_doe_plan(db, "BASE-DECLARED", 5)
+
+    body = _validate(client, "BASE-DECLARED")
+    assert "inactive_subtractions" not in body
+    assert set(body) == VALIDATE_DECLARED_KEYS      # byte-identity of the shape
+    shortage = [w for w in body["warnings"]
+                if w["type"] == transfer_plan.WARN_QTY_SHORTAGE]
+    assert len(shortage) == 1
+    # 2 is the net number; the relaxed run above saw 8 for the identical plan.
+    assert shortage[0]["required"] == 5 and shortage[0]["available"] == 2
+    assert body["status"] == "warnings"
+
+
+def test_validate_omits_the_marker_when_the_gross_number_never_judged(env, client):
+    """A source that was skipped as 판정 불가 contributes no verdict, so its
+    inactive kinds are not claimed as the basis of one. Here `fail_sources` is
+    declared but broken (→ demotion → availability_unreliable) while the two log
+    roles are merely absent: the whole source is unjudgeable, so the field is
+    absent even though the summary itself carries inactive kinds."""
+    db, tmp_path, monkeypatch = env
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    del src["transfer_log"]
+    del src["origin_log"]
+    src["fail_sources"]["defect"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(db)
+    _seed_one_doe_plan(db, "BASE-MIXED", 5)
+
+    body = _validate(client, "BASE-MIXED")
+    assert body["status"] in ("unverified", "warnings")
+    assert any(w["type"] == transfer_plan.WARN_AVAILABILITY_UNRELIABLE
+               for w in body["warnings"])
+    assert "inactive_subtractions" not in body
 
 
 # ---------------------------------------------------------------------------

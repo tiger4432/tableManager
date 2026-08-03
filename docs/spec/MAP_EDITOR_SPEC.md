@@ -1011,8 +1011,23 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 | `?bins=` 항목 | `transfer_untracked: true` + `remaining_upper_bound`(= `bin∩총` − `bin∩fail`), `remaining`·`reliable`은 죽습니다 |
 
 - **상한 주장이 성립하는 근거**: `used_set`이 빈 집합이므로 감산항 하나가 통째로 빠진 것이고, 감산항이 빠지면 값은 **커질 수만** 있습니다 — 그래서 진짜 상한입니다(§7 [PRIMITIVES](../architecture/PRIMITIVES.md) *강등된 감산항은 과소 기여만 허용*). 단 **다른 강등이 겹치면 상한의 성립도 주장하지 않습니다**: `bins_base_reliable`은 untracked를 **제외한** 다른 모든 원인을 담아 두고, untracked가 유일한 이유일 때만 BIN별 상한이 나갑니다.
-- 🔴 **선언은 정확히 `"none"` 문자열뿐입니다.** JSON `null`·키 삭제·`"None"` 등 다른 형태는 **전부 종전 그대로 `missing`**입니다. `null`은 실수로 지운 것과 구별할 수 없기 때문이고, 이 엄격함 덕분에 **오타 하나가 깨진 바인딩을 자신만만한 숫자로 바꾸는 일이 구조적으로 불가능**합니다.
+- 🔴 **상한(`≤N`) 선언은 정확히 `"none"` 문자열뿐입니다.** JSON `null`·`"None"` 등 **값이 있는데 그 값이 아닌** 형태는 전부 종전 그대로 `missing`입니다 — `null`은 실수로 지운 것과 구별할 수 없기 때문이고, 이 엄격함 덕분에 **오타 하나가 깨진 바인딩을 자신만만한 숫자로 바꾸는 일이 구조적으로 불가능**합니다. ⚠️ **[2026-08-04 정정] 「키 삭제」는 이제 여기 속하지 않습니다** — 키 부재는 `missing`이 아니라 `not_declared`이고 상한이 아니라 **숫자**가 나갑니다(§6.2-ter). 두 선언은 답이 다릅니다: `"none"`은 「추적하지 않는다 → 상한만 안다」, 키 부재는 「그 표 자체가 없다 → 그 감산 없이 센다」.
 - 설정 관점은 [guide/config/transfer_plan_config](../guide/config/transfer_plan_config.md)의 `transfer_log` 항목.
+
+#### 6.2-ter 미선언 보조 역할 — `not_declared`와 `inactive_subtractions` (2026-08-04 `2c2a777`)
+
+**선언이 깨진 것과 그런 표가 애초에 없는 것은 다른 상태입니다.** 현장은 `transfer_log`·`origin_log`·`fail_sources`·`process_history` 부속 테이블을 두지 않고 **불량 맵을 겹쳐 그려 맵 위에서 차감**합니다(사용자 확정). 종전 엔진은 키 부재를 깨진 바인딩과 같은 `missing`으로 접어 강등시켰고, 그런 사이트에서는 **모든 자재의 가용이 `미상`**이었습니다 — §6.2의 방어가 지켜 줄 값 자체가 없는 상태.
+
+| 상황 | 역할 상태 | `remaining` | 강등인가 |
+|---|---|---|---|
+| 역할 **키 자체가 없음** | **`not_declared`** | **숫자**(그 감산항 없이 계산) | 아니오 — `_status_is_degraded` 대상 밖, `source_degraded` 미발행 |
+| 키는 있는데 깨짐(오타·테이블 부재·`null`) | `missing` 등 | `null` | 예 — §6.2 3층 방어 그대로 |
+| `transfer_log: "none"` | `connected(untracked)` | `null` + 상한 | 아니오(§6.2-bis) |
+
+- **`total_chips`는 예외입니다** — 분모가 없으면 가용이 성립하지 않으므로 부재도 `missing`입니다.
+- `transferred`·`used`는 로그가 없으면 **`null`**입니다(가짜 `0` 금지 — §6.2-bis와 같은 규율). 그런데 `remaining`은 **숫자**입니다: 감산항이 존재하지 않는다고 사이트가 선언했으므로 미지수가 아닙니다.
+- 🔑 **`inactive_subtractions`** — 감산에서 빠진 종류의 이름 목록. **가용 수치를 내는 모든 응답이 같은 이름·같은 모양으로** 싣습니다: 슬롯 요약 · `scope=lot` 요약 · M1 `core-summary` · **그리고 `validate`**. 목록이 비면 필드 자체가 없으므로 전 역할 선언 환경의 응답은 **완화 전과 바이트 단위로 동일**합니다.
+- ⚠️ **`validate`의 판정(`status`)은 이 필드 때문에 바뀌지 않습니다.** 미선언은 결함이 아니라 선언이므로 `ok`는 계속 `ok`이고, `remaining_reliable`도 계속 `true`입니다(신뢰 축을 하나 더 만들지 않았습니다). 서버가 하는 일은 **총량이 순량 행세를 하지 못하게 「무엇을 빼지 않았는지」 말하는 것**이며, 그 `ok`를 어떻게 그릴지는 소비자가 정합니다. 2026-08-04 QA(B1)가 잡은 것이 정확히 이 자리입니다 — 판정을 내는 라우트만 그 필드를 모른 채 숫자를 읽고 있었습니다.
 
 ### 6.3 클라 `replace` 권한 불변식 (C1) — **M2.6에서 자리를 옮겼습니다**
 

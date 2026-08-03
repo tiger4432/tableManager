@@ -243,7 +243,7 @@ S1을 전부 수행한 뒤 추가로:
 > **stage는 고르는 것이 아니라 유도됩니다(v2).** `stages.*.target_map.table`의 역인덱스이므로 `bonding_map`을 열면 `bonding`, `dt_map`을 열면 `dt`입니다. 어느 stage의 `target_map.table`도 아닌 맵은 `stage_unknown` 경고 + `status: unverified`로 표면화되며 **404가 아닙니다**(임의의 맵도 편집 대상으로 열 수 있어야 하므로).
 
 > **align 실패는 M1·M2 모두 "명시 실패"입니다.** 격자 규격(`wafer_map_metadata`)을 못 찾아 변환을 만들 수 없으면, **raw 좌표로 조용히 계산하지 않고** 해당 role 상태를 `connected(align_unavailable)`로 바꾸고 **카운트를 0으로** 둡니다. (2026-07-27부터 `align` **선언 자체가 없으므로**, 이 상태의 원인은 항상 "메타 미등록/조회 실패" 한 가지입니다.)
-> 따라서 상태별 해석은 이렇습니다 — `missing` = 바인딩 선언/테이블 없음(필수 컬럼 결측 포함) · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · **`connected(count_only)`** = `transfer_log` 또는 self-frame fail 원천에 쓸 만한 x/y가 없어 카운트만(→ x/y 컬럼 바인딩 확인) · **`connected(column_unresolved:<roles>)`** = 선언한 컬럼이 모델에 없음(→ config의 컬럼명 오타 확인. 2026-07-28 신설, §5.8) · `connected` = 정상.
+> 따라서 상태별 해석은 이렇습니다 — **`not_declared`** = 그 역할 **키 자체가 없음**(= 「우리 현장엔 그런 표가 없다」는 선언. 강등이 아니며 가용은 그 감산 없이 **숫자로** 나갑니다. 2026-08-04 신설, §5.8) · `missing` = **선언은 있는데** 바인딩이 깨짐(테이블 부재·오타·필수 컬럼 결측) · `connected(align_unavailable)` = 바인딩은 됐는데 격자 규격이 없음(→ `wafer_map_metadata` 행부터 확인) · **`connected(count_only)`** = `transfer_log` 또는 self-frame fail 원천에 쓸 만한 x/y가 없어 카운트만(→ x/y 컬럼 바인딩 확인) · **`connected(column_unresolved:<roles>)`** = 선언한 컬럼이 모델에 없음(→ config의 컬럼명 오타 확인. 2026-07-28 신설, §5.8) · `connected` = 정상.
 
 ### S7. 결손 보정(enrichment) 규칙 추가할 때
 
@@ -493,6 +493,23 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 >
 > 두 status 모두 강등 판정(`_status_is_degraded`)에 들어가므로 신뢰 표기 3층 방어(remaining null·validate 생략·`unverified` — [MAP_EDITOR_SPEC §6.2](../spec/MAP_EDITOR_SPEC.md))가 그대로 작동합니다. 역할별 발화 조건은 [config/transfer_plan_config.md §5](./config/transfer_plan_config.md)의 사전 참조.
 >
+> **[2026-08-04 `2c2a777` 완화] 보조 역할 선언은 선택입니다 — 세 번째 상태 `not_declared`.**
+> 현장은 `transfer_log`·`origin_log`·`fail_sources`·`process_history` 같은 부속 테이블을 두지 않고 **맵 자체에 차감을 표기**합니다(불량 맵을 겹쳐 그린 뒤 그 위에서 뺍니다). 종전 엔진은 **키가 없는 것**과 **선언이 깨진 것**을 같은 `missing`으로 접어 강등시켰고, 그 결과 그런 현장에서는 모든 자재의 가용이 `미상`이 됐습니다. 이제 config 경계에 상태가 **셋**입니다:
+>
+> | 선언 | status | 가용 | 뜻 |
+> |---|---|---|---|
+> | **키 자체가 없음** | `not_declared` | **숫자로 나감**(그 감산항 없이) | 「우리 현장엔 그 표가 없다」는 **사이트의 선언**. 감춰진 데이터가 아니라 그 사이트가 가진 최선의 지식이므로 강등하지 않습니다 |
+> | **키는 있는데 깨짐**(null·오타·테이블 부재) | `missing` 등 종전 강등 | `null` | 완화는 **부재에만** 적용됩니다 — 고칠 수 있는 결함은 계속 결함으로 말합니다 |
+> | `transfer_log: "none"` | 종전 `untracked` | `null` + 상한 | 7c 규약 그대로(「추적하지 않는다」는 명시 선언) |
+>
+> ⚠️ **`total_chips`는 분모라 예외입니다** — 없으면 가용이 성립하지 않으므로 종전대로 `missing`입니다.
+>
+> 🔑 **총량이 순량 행세를 하는 침묵은 필드 하나가 막습니다 — `inactive_subtractions`.** 감산에서 빠진 종류의 이름 목록(예: `["transfer_log", "origin_log", "fail_sources"]`)이며, **가용 수치를 내는 모든 응답에 같은 이름·같은 모양으로** 붙습니다: 슬롯 요약 · `scope=lot` 요약 · M1 `core-summary` · **그리고 그 수치로 판정을 내는 `GET /api/transfer-plan/validate`까지**(2026-08-04 QA B1 — 판정 라우트만 이 필드를 모른 채 숫자를 읽고 있었습니다). **목록이 비면 필드 자체가 없으므로**, 전 역할을 선언한 환경의 응답은 완화 전과 한 바이트도 다르지 않습니다.
+>
+> ℹ️ **`validate`의 판정 문자열(`status`)은 이 필드 때문에 바뀌지 않습니다.** 미선언은 결함이 아니라 선언이므로 `ok`는 계속 `ok`입니다 — 서버가 하는 일은 **무엇을 빼지 않았는지 말하는 것**이고, 그 `ok`를 어떻게 그릴지(단서 뱃지·툴팁 등)는 소비자가 정합니다.
+>
+> ⚠️ **이름 충돌 주의 — §4.2-bis의 `not_declared`와 철자가 같습니다.** 두 곳 모두 술어는 같습니다(**「필요한 선언이 없다」 → 그 효과가 비활성**). 다만 **축이 다릅니다**: §4.2-bis의 것은 `config_resolve_report`의 **사유(reason)**로 `ineffective` 모집단에 붙고, 여기의 것은 계획 소스의 **역할 status**로 `sources.<role>`에 붙습니다. 페이로드 자리가 다르므로 서로 대체할 수 없습니다 — §5.8의 상태를 §4.2-bis 표에서 찾지 마십시오(반대도 마찬가지).
+>
 > 🗄️ **폐기된 `bands`는 필수 역할이 아니지만 계속 읽습니다.** 실계획이 아직 그 컬럼에 남아 있고, legend 저장은 `replace_map`이라 **읽지 못하면 그 맵을 여는 순간 화면이 비고 다음 편집 한 번이 계획을 빈 집합으로 지웁니다.** 서버는 `bands_to_zones`로 옮기며, 세 구역으로 표현할 수 없는 배치(구간 4개·읽을 수 없는 `to`·역전·1층에서 시작하지 않는 첫 구간)는 **접지 않고 거부**합니다(`layer_range_invalid` / `reason: not_convertible`). 접은 결과를 되쓰면 서버의 진짜 계획이 그 손실 읽기로 덮입니다. 새 writer를 만들지 마십시오.
 
 > **`.sample`은 위 발췌와 일치합니다(2026-07-28 zone 모델 반영).** `transfer_plan_config.json.sample`의 `plan_store`에서 폐기된 `doe`·`doe_source` 역할과 그 컬럼(`doe_value`·`band_seq`·`stack_band`·`qty_total`·`qty`)을 제거하고, 코드가 실제로 요구하는 `registry`(**필수** `ref_table`·`map_key`·`value`·`stack`·`mat_1h`·`mat_mid`·`mat_top`, **선택** `bands`) + `material_identity` 선언으로 교체했습니다. 🚨 **기존 환경은 라이브 파일에 zone 역할 넷을 손으로 더해야 합니다** — 하나라도 없으면 `validate`가 404입니다. 반대로 `bands`는 이제 없어도 200입니다(폐기 계획을 못 읽을 뿐). `registry`가 가리키는 `map_split_registry`는 **제품 소유 저장소**라 `table_config.json.sample`에 함께 선언돼 있습니다 — `.sample` 3종(`table_config`·`transfer_plan_config`·`map_overlay_config`)을 복사하면 `plan_store`는 바로 `connected`입니다.
@@ -521,7 +538,7 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 
 ### 5.8-ter 기능별 필요 테이블 체크리스트
 
-> **바인딩 config는 `table_config.json`에 선언된 테이블만 해석합니다.** 미선언 테이블을 가리키는 바인딩은 조용히 죽지 않고 해당 역할이 `missing`으로 표면화됩니다(`bonding_plan._resolve_model_columns`). 그래서 기능을 켜는 순서는 항상 **① `table_config.json`에 테이블 선언 → ② 바인딩 config의 `table`/`columns`를 그 이름에 맞춤**입니다.
+> **바인딩 config는 `table_config.json`에 선언된 테이블만 해석합니다.** 미선언 테이블을 가리키는 **바인딩(= 키는 있고 테이블이 없는 경우)**은 조용히 죽지 않고 해당 역할이 `missing`으로 표면화됩니다(`bonding_plan._resolve_model_columns`). ⚠️ **역할 키가 아예 없는 것은 이것과 다릅니다** — 보조 역할(`transfer_log`·`origin_log`·`fail_sources`·`process_history`)의 키 부재는 `not_declared`이고 강등이 아닙니다(§5.8). 그래서 기능을 켜는 순서는 항상 **① `table_config.json`에 테이블 선언 → ② 바인딩 config의 `table`/`columns`를 그 이름에 맞춤**입니다.
 
 테이블은 **누가 스키마를 정하는가**로 갈립니다.
 
@@ -632,7 +649,7 @@ JSON boolean `false`만 유효합니다. 문자열은 무시 + 경고 후 기본
 `ontology_mapping` / `enrichment_rules`는 미등록 참조를 만나면 해당 항목을 **통째로 스킵**합니다 — 조용히 그래프 노드가 안 생기거나 워크리스트가 비는 형태로 드러납니다.
 
 **I. 계획 config는 "부분 가동"이 정상 동작입니다.**
-role이 빠지거나 테이블이 없으면 **에러가 아니라 `missing`** 이고, HTTP는 200으로 나옵니다. **숫자가 0인데 에러가 없다면 응답의 `sources` 상태부터 확인**하십시오 — `missing`(바인딩 문제)인지 `connected(align_unavailable)`(격자 규격 없음)인지 `connected(count_only)`/`connected(column_unresolved:...)`(좌표 없는 로그·fail 원천 / 컬럼명 오타 — §5.8)인지에 따라 고칠 곳이 다릅니다.
+테이블이 없거나 컬럼명이 틀리면 **에러가 아니라 `missing`** 이고, HTTP는 200으로 나옵니다. **[2026-08-04] 보조 role이 아예 빠진 것은 `missing`이 아니라 `not_declared`입니다** — 그때는 가용이 감춰지지 않고 그 감산 없이 **숫자로** 나오며, 빠진 감산 종류는 응답의 `inactive_subtractions`가 말합니다(§5.8). **숫자가 0인데 에러가 없다면 응답의 `sources` 상태부터 확인**하십시오 — `missing`(바인딩 문제)인지 `connected(align_unavailable)`(격자 규격 없음)인지 `connected(count_only)`/`connected(column_unresolved:...)`(좌표 없는 로그·fail 원천 / 컬럼명 오타 — §5.8)인지에 따라 고칠 곳이 다릅니다.
 
 **J. `.sample`을 편집해도 아무 일도 일어나지 않습니다.**
 코드는 확장자 없는 정확한 파일명만 읽습니다. `.bak` / `.v1.bak`도 마찬가지입니다.

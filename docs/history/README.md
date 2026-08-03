@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **300개** 이력. (거버넌스 규칙 #4)
+> 총 **301개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-04 07:10** — [Absence Is A Declaration And The Verdict Must Say What It Did Not Subtract](./20260804_071048_absence_is_a_declaration_and_the_verdict_must_say_what_it_did_not_subtract.md)
 - **2026-08-04 06:23** — [The Label Is Text So The Number Must Speak Text](./20260804_062339_the_label_is_text_so_the_number_must_speak_text.md)
 
 ## 2026-07 (July 2026)

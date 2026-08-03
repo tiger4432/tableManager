@@ -84,8 +84,11 @@ value = one DOE condition**, bk = `ref_table|map_key|value`.
 상태 `not_declared`(강등 아님)로 두고 그 감산항 없이 가용을 **숫자로** 낸다 — 실 현장은
 소스별 부속 테이블을 유지하지 않고 맵 자체에 차감을 표기한다(사용자 확정). 빠진 감산
 종류는 응답의 선택 필드 `inactive_subtractions`(리스트)가 명시한다 — 총량이 순량 행세를
-하는 침묵이 이 필드가 막는 실패다. **선언돼 있으나 깨진** 바인딩(null·오타·테이블 부재)은
-종전 강등 그대로다 — 완화는 부재에만 적용된다. `total_chips`는 분모라 계속 필수.
+하는 침묵이 이 필드가 막는 실패다. 이 필드는 **가용 수치를 내는 모든 응답에 같은 이름으로**
+붙는다: 슬롯/로트 요약, M1 `core-summary`, 그리고 그 수치로 판정을 내리는 `validate`까지.
+(validate에서도 판정 문자열은 바꾸지 않는다 — 미선언은 사이트의 선언이지 결함이 아니다.)
+**선언돼 있으나 깨진** 바인딩(null·오타·테이블 부재)은 종전 강등 그대로다 — 완화는
+부재에만 적용된다. `total_chips`는 분모라 계속 필수.
 
 [align 규율 — 정렬의 유일한 근거는 `wafer_map_metadata`다 (사용자 확정 2026-07-26)]
 fail 원천의 소스 프레임→canonical(core) 프레임 사상은 **두 맵 메타의 델타에서 유도**한다.
@@ -2936,6 +2939,9 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     **저장되지 않고 유도된다**: `layers = 그 구역이 덮는 층 수`,
     `total = painted(값) × layers`, `share = ceil(total / 그 구역의 자재 수)`.
     폐기된 `bands` 행은 `bands_to_zones`로 **읽되 표현 불가하면 거부**한다.
+    [완화 마커] 판정에 쓰인 가용치가 미선언 감산항(`inactive_subtractions`) 위에서
+    계산됐으면 요약 응답과 **같은 이름의 선택 필드**로 그 사실을 함께 낸다 — 판정
+    (`status`)은 바꾸지 않는다(총량이 순량 행세를 하는 것만 막는다).
 
     LookupError: plan_store.registry 미구성 (라우트가 404로 변환).
     """
@@ -3177,6 +3183,14 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     # 초과배정 검사가 통째로 꺼졌다(required는 이미 합산돼 있는데도 조용히 통과).
     source_alloc = {}
     truncations = []    # [(role, cap)] — 어떤 상한에 걸렸는지 각각 보고한다
+    # [relaxation marker — QA B1] 판정에 실제로 쓰인 가용 수치가 **어떤 감산 없이** 계산됐는지.
+    # 이름·모양은 슬롯/로트/M1 요약과 **동일하다**(역할명 리스트, 비면 필드 자체가 없다) —
+    # 한 어휘를 두 철자로 나누면 소비자가 두 번 배워야 한다.
+    # ⚠️ 이 필드는 판정을 바꾸지 않는다. 미선언은 감춰진 데이터가 아니라 "그 표를 두지
+    #    않는다"는 사이트의 선언이고, 그것이 사이트가 가진 최선의 지식이다(총괄 확정
+    #    2026-08-04). 그래서 `remaining_reliable`도 `status`도 건드리지 않고, 대신
+    #    **무엇을 빼지 않았는지**를 말한다 — 총량이 순량 행세를 하는 침묵만 막는다.
+    inactive_subtractions = []
 
     if stage_cfg is not None and painted_reliable:
         # [zone] 구역 → 수요(demand) 전개. 수량은 **저장돼 있지 않고 여기서 유도된다**:
@@ -3309,6 +3323,13 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
 
             any_doe_checked = True
             available = int(chips_block.get("remaining") or 0)
+            # [QA B1] `available`이 방금 판정에 들어갔다 — 그 수가 어떤 감산 없이 나온
+            # 것이라면 여기서 이름을 모은다. 수집 지점이 **게이트 통과 후**인 것은 의도적이다:
+            # 판정 불가로 건너뛴 소스의 수치는 아무 판정에도 쓰이지 않았으므로 이 목록은
+            # "지금 내가 내는 판정이 딛고 선 수치"만 서술한다.
+            for r in (summary.get("inactive_subtractions") or []):
+                if r not in inactive_subtractions:
+                    inactive_subtractions.append(r)
             # [QA F4] 소스별 합산 누적 — DOE 단독 판정만으로는 분할 초과배정을 못 잡는다.
             # [B1] **건수와 표시 이름을 분리한다.** 합산 판정의 게이트는 `demands`(실제 수요
             # 건수)여야 하며 `labels`(사람이 읽는 목록)의 크기여선 안 된다 — 라벨은 중복될 수
@@ -3409,7 +3430,7 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
     else:
         status_out = "ok"
 
-    return {
+    out = {
         "ref_table": ref_table,
         "map_key": map_key,
         "stage": stage_name,
@@ -3421,3 +3442,9 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
         "availability_checked": availability_checked,
         "warnings": warnings_out,
     }
+    if inactive_subtractions:
+        # [relaxation marker — QA B1] 전 역할이 선언된 config의 응답은 **한 바이트도**
+        # 달라지지 않는다(목록이 비면 필드가 없다). 완화된 사이트에서만, `ok`라는 판정이
+        # 어떤 감산 위에서 내려진 것인지 소비자가 읽을 수 있게 한다.
+        out["inactive_subtractions"] = inactive_subtractions
+    return out
