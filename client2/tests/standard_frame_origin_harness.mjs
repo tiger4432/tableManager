@@ -85,6 +85,14 @@ const SYMBOLS = [
   'eachSavableCell', 'classifyUnsavableCells', 'serverCellKeySet',
   // THE FUNCTION UNDER TEST. Sliced whole and executed — not modelled.
   'loadExistingMap',
+  // ...and the seven named steps it is now written in terms of. They are module-scope
+  // functions in the SAME file, so a slice of `loadExistingMap` alone would ReferenceError
+  // its way into this harness's catch and be reported as a 0-cell load. Each takes what it
+  // needs as an argument and returns a value — none touches module state — so nothing new
+  // has to be declared in the sandbox below.
+  'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
+  'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
+  'restoreDoeDraftWithPrecedence',
 ];
 
 // ── Fixture ────────────────────────────────────────────────────────────────────────────
@@ -391,14 +399,20 @@ async function scoreAll(src, { verbose = false } = {}) {
 }
 
 // ── Mutations ──────────────────────────────────────────────────────────────────────────
-const FIXED_ORIGIN = `      startX = minX;
-      startY = minY;`;
+// ⚠️ ANCHORS ARE INDENTATION-SENSITIVE. `String.replace` with a string literal matches
+//    verbatim, and a mutation that does not apply is reported as "MUTATION DID NOT APPLY"
+//    — an unscored axis, not a failure. `FIXED_ORIGIN` now lives in the module-scope step
+//    `resolveGridFrame` (4-space body indent) instead of inline in `loadExistingMap`
+//    (6 spaces). `OLD_SHIFT` is unchanged: the cell-placement loop stayed inline precisely
+//    so that D0/D2 can keep injecting code that reads `userChoice`, `minX` and `minY`.
+const FIXED_ORIGIN = `    startX = minX;
+    startY = minY;`;
 const OLD_SHIFT = `            const cell = getCanvasCellFromDb(xNum, yNum, cols, rows, rotation, side, invertY, startX, startY);`;
 
 const MUTATIONS = [
   // 🔴 THE DEFECT ITSELF, put back verbatim — the only self-check that is worth anything.
   ['D0 the shipped defect restored in full (startX=0 + the minX/minY subtraction)',
-   s => s.replace(FIXED_ORIGIN, '      startX = 0;\n      startY = 0;')
+   s => s.replace(FIXED_ORIGIN, '    startX = 0;\n    startY = 0;')
          .replace(OLD_SHIFT,
                   `            if (userChoice === 'standard') {
               xNum = xNum - minX;
@@ -406,7 +420,7 @@ const MUTATIONS = [
             }
 ` + OLD_SHIFT)],
   ['D1 the origin goes back to 0 (the frame stops recording where the data starts)',
-   s => s.replace(FIXED_ORIGIN, '      startX = 0;\n      startY = 0;')],
+   s => s.replace(FIXED_ORIGIN, '    startX = 0;\n    startY = 0;')],
   ['D2 the cell-renumbering subtraction comes back on top of the declared origin',
    s => s.replace(OLD_SHIFT,
                   `            if (userChoice === 'standard') {
@@ -415,11 +429,11 @@ const MUTATIONS = [
             }
 ` + OLD_SHIFT)],
   ['D3 the two axes are swapped (startX <- minY, startY <- minX)',
-   s => s.replace(FIXED_ORIGIN, '      startX = minY;\n      startY = minX;')],
+   s => s.replace(FIXED_ORIGIN, '    startX = minY;\n    startY = minX;')],
   ['D4 only the X axis is fixed (Y keeps the old zero origin)',
-   s => s.replace(FIXED_ORIGIN, '      startX = minX;\n      startY = 0;')],
+   s => s.replace(FIXED_ORIGIN, '    startX = minX;\n    startY = 0;')],
   ['D5 the origin is taken from the MAXIMUM instead of the minimum',
-   s => s.replace(FIXED_ORIGIN, '      startX = maxX;\n      startY = maxY;')],
+   s => s.replace(FIXED_ORIGIN, '    startX = maxX;\n    startY = maxY;')],
   // Placement is derived from the frame in ONE function; a second implementation is the
   // invariant-① violation this domain exists to stop.
   ['D6 the load stops applying the frame origin (getCanvasCellFromDb called with 0,0)',

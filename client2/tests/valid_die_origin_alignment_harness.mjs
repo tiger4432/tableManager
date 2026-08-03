@@ -91,6 +91,14 @@ const SYMBOLS = [
   'seatingSnapshot', 'reseatCellsToStoredCoords',
   // THE FUNCTIONS UNDER TEST. Sliced whole and executed — not modelled.
   'renderGridCanvas', 'loadExistingMap',
+  // ...and the seven named steps `loadExistingMap` is now written in terms of. They are
+  // module-scope functions in the SAME file, so slicing the orchestrator alone would
+  // ReferenceError into its own catch and read as a 0-cell load. Each takes what it needs
+  // as an argument and returns a value — none touches module state — so the sandbox below
+  // needs nothing new declared.
+  'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
+  'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
+  'restoreDoeDraftWithPrecedence',
 ];
 
 // ── Fixture constants ──────────────────────────────────────────────────────────────────

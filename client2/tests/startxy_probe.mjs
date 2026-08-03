@@ -73,6 +73,14 @@ const WANTED = [
   ['renderGridCanvas'], ['cellFillColor'], ['isProtectedFCell'],
   ['eachSavableCell'], ['classifyUnsavableCells'], ['serverCellKeySet'],
   ['loadExistingMap'],
+  // The seven named steps `loadExistingMap` is written in terms of as of the R4
+  // decomposition. Absent at older commits — which is exactly what the per-entry `missing`
+  // tolerance above is for, since a pre-R4 `loadExistingMap` is self-contained and runs
+  // without them. Each takes what it needs as an argument and returns a value (no module
+  // state), so nothing new has to be declared in the sandbox.
+  ['collectMapKeyFilterModel'], ['scanCoordinateBounds'], ['resolveDeclaredGridMeta'],
+  ['promptCoordinateChoice'], ['resolveGridFrame'], ['deriveLegendFromCellValues'],
+  ['restoreDoeDraftWithPrecedence'],
 ];
 
 function makeInput(v) {

@@ -4430,6 +4430,20 @@ async function fetchGridMetaFor(table, mapId) {
 }
 // opts.quiet     — 완료/실패 alert 대신 토스트 (프레임 진입 등 자동 로드용)
 // opts.allowEmpty — 0건이어도 실패로 보지 않고 빈 격자로 남긴다 (미구축 자재 맵)
+//
+// ── The steps of a load ────────────────────────────────────────────────────────────────
+// The seven `stepName()` calls below are module-scope functions defined immediately AFTER
+// this one, in call order. Each one takes what it needs as an ARGUMENT and RETURNS a value:
+// none of them reads or writes module state. Every module-state write on the load path is
+// therefore in this function, where the sequence can be read on one screen.
+//   ① collectMapKeyFilterModel       meta input boxes  -> the query filter
+//   ② scanCoordinateBounds           response rows     -> the stored-coordinate bbox
+//   ③ resolveDeclaredGridMeta        wafer_map_metadata -> the spec (unconfirmed = refuse)
+//   ④ promptCoordinateChoice         no declaration    -> which coordinate system to use
+//   ⑤ resolveGridFrame               that choice       -> cols/rows/START/rotation/side
+//   ⑥ deriveLegendFromCellValues     the cells' values -> the legend rows
+//   ⑦ restoreDoeDraftWithPrecedence  server baseline   -> which draft may be applied
+// Three blocks resisted and stayed inline; each says why where it sits.
 async function loadExistingMap(opts = {}) {
   const quiet = !!opts.quiet;
   // [M4①] 이전 맵의 유효 다이 마스크를 먼저 버린다. 이 로드가 어느 경로로 끝나든
@@ -4438,22 +4452,8 @@ async function loadExistingMap(opts = {}) {
   validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
   renderValidDieChip();
   syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다
-  const filterModel = {};
-  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
-  let hasFilter = false;
 
-  metaInputs.forEach(input => {
-    const col = input.id.replace('meta-input-', '');
-    const val = input.value.trim();
-    if (val) {
-      hasFilter = true;
-      filterModel[col] = {
-        filterType: 'text',
-        type: 'equals',
-        filter: val
-      };
-    }
-  });
+  const { filterModel, hasFilter } = collectMapKeyFilterModel();   // ①
 
   if (!hasFilter) {
     if (quiet) showToast('맵 키가 비어 있어 로드할 수 없습니다.', 'warning');
@@ -4497,119 +4497,14 @@ async function loadExistingMap(opts = {}) {
     }
     let count = 0;
 
-    // Pre-calculate coordinate bounds first
-    let maxX = -9999;
-    let maxY = -9999;
-    let minX = 9999;
-    let minY = 9999;
+    const { minX, minY, maxX, maxY } = scanCoordinateBounds(result, xCol, yCol);   // ②
 
-    if (result && result.data) {
-      result.data.forEach(row => {
-        const rowData = row.data || {};
-        const xVal = rowData[xCol]?.value;
-        const yVal = rowData[yCol]?.value;
-        if (xVal !== undefined && yVal !== undefined) {
-          const xNum = parseInt(xVal, 10);
-          const yNum = parseInt(yVal, 10);
-          if (!isNaN(xNum) && !isNaN(yNum)) {
-            if (xNum > maxX) maxX = xNum;
-            if (yNum > maxY) maxY = yNum;
-            if (xNum < minX) minX = xNum;
-            if (yNum < minY) minY = yNum;
-          }
-        }
-      });
-    }
-
-    let loadedGridMeta = null;
-    let loadedMapKey = null; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
-
-    // 🔴 **"확인 못 했다"는 "선언이 없다"가 아니다.** `fetchGridMetaFor`는 404/405만 "선언
-    //    없음"(null)으로 답하고 나머지는 **던진다** — 그 규율이 여기서 끝나면 안 된다. 아래
-    //    한 자리로 모아 두는 이유는, 읽지 못한 선언이 흘러가 닿는 곳이 하나이기 때문이다:
-    //    `loadedGridMeta = null` → 「선언 없는 맵」 → 좌표계 선택 모달 → 📐 표준이 START와
-    //    격자를 **데이터 bbox로 재선언**하고, `pushMapData`가 그 값을 `grid_start_x/y`에
-    //    **영속화**한다(:5721·:5729). 표시만 틀리는 것이 아니라 저장된 정렬 기준이 바뀐다.
-    //    실측(HTTP 500을 정확히 1회 주입): 선언 (1,-6)·21x21 맵이 (5,-1)·8x7이 되고 46셀 중
-    //    **41셀이 다른 물리 다이**에 앉았으며 토스트는 **0건**이었다.
-    const refuseUnconfirmedMeta = (reason, err) => {
-      console.error(`[Map Editor] wafer_map_metadata could not be confirmed for `
-        + `${selectedTable} · ${loadedMapKey || ''} (${reason}) — refusing the load. An `
-        + 'unconfirmed declaration must NOT be read as an absent one: the 📐 표준 branch '
-        + 'would re-declare grid_start_x/y to the data bounding box and ⚡ Push would '
-        + 'persist it.', err || '');
-      showToast(`맵 규격을 확인하지 못해 로드를 중단했습니다 — ${reason}. `
-        + `잠시 후 다시 시도하십시오.`, 'error');
-      return { count: 0, error: true, metaUnconfirmed: true };
-    };
-
-    // 1. Try fetching from dedicated wafer_map_metadata table
-    let metaReadError = null;
-    try {
-      const filterMetaDict = {};
-      Object.keys(filterModel).forEach(col => {
-        if (filterModel[col] && filterModel[col].filter) {
-          filterMetaDict[col] = filterModel[col].filter;
-        }
-      });
-      const mapIdStr = getMapIdFromMeta(filterMetaDict, tableSchema);
-      if (mapIdStr && mapIdStr !== 'default_map') {
-        loadedMapKey = mapIdStr;
-        // ⚠️ 조회의 실패만 여기서 붙든다. 바깥 catch는 `getMapIdFromMeta`처럼 조회가 **아닌**
-        //    것의 실패를 위한 자리이고, 그것은 종전대로 "선언 없음"으로 흘러간다.
-        try {
-          loadedGridMeta = await fetchGridMetaFor(selectedTable, mapIdStr);
-        } catch (e) {
-          metaReadError = e;
-        }
-      }
-    } catch (e) {
-      console.warn('[Map Editor] Dedicated wafer_map_metadata table fetch skipped:', e);
-    }
-
-    // 🔴 셀 레벨 폴백보다 **앞이다.** 조회 1회 실패를 폐기 스킴(`grid_metadata`)으로 메우는
-    //    것도 "확인 못 한 것을 확인한 것처럼 쓰는" 같은 동작이다(불변식 ②).
-    if (metaReadError) {
-      // ⚠️ 사유는 `fetchGridMetaFor`가 던진 문구를 **그대로** 쓴다. 여기서 한 겹 더 감싸면
-      //    「규격 조회 실패 (맵 규격 조회 실패 (HTTP 500))」처럼 같은 말이 두 번 나온다.
-      return refuseUnconfirmedMeta(
-        (metaReadError && metaReadError.message) ? metaReadError.message : '맵 규격 조회 실패',
-        metaReadError);
-    }
-
-    // 2. Fallback to cell-level grid_metadata
-    if (!loadedGridMeta && result && result.data) {
-      const firstWithMeta = result.data.find(row => row.data && row.data['grid_metadata'] && row.data['grid_metadata'].value);
-      if (firstWithMeta) {
-        try {
-          loadedGridMeta = JSON.parse(firstWithMeta.data['grid_metadata'].value);
-        } catch (e) {
-          console.error('Failed to parse fallback grid_metadata:', e);
-        }
-      }
-    }
-
-    // 🔴 **선언이 있는데 START를 읽을 수 없다** — 이것도 「확인 못 했다」이지 「선언 없음」이
-    //    아니다. 바로 아래 `meta` 분기의 `rotation || 0` · `side || 'front'`과 달리 START에는
-    //    기본값이 **있을 수 없다**: 좌표계의 원점이라 "모르면 0"이 곧 좌표계 이동이다.
-    //    종전에는 `startX = loadedGridMeta.grid_start_x`가 undefined를 그대로 받아
-    //    `getCanvasCellFromDb`에 넘겼고 — 실측: 46셀 전부가 `NaN_NaN` 한 칸으로 접혔다 —
-    //    그 뒤 Push는 `parseInt('') || 0`으로 **0을 영속화**했다. 위와 같은 자리로 보낸다.
-    // ⚠️ `null`·`''`은 0이 아니다(`Number(null) === 0`). 값의 **부재**와 0을 가르는 것이
-    //    이 술어의 전부이므로 `Number()` 하나로 판정하지 않는다.
-    if (loadedGridMeta) {
-      const declaredNum = (v) => (v === null || v === undefined || v === ''
-        ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
-      const sx = declaredNum(loadedGridMeta.grid_start_x);
-      const sy = declaredNum(loadedGridMeta.grid_start_y);
-      if (sx === null || sy === null) {
-        return refuseUnconfirmedMeta(
-          `규격에 START X,Y가 없습니다 (grid_start_x=${JSON.stringify(loadedGridMeta.grid_start_x)}, `
-          + `grid_start_y=${JSON.stringify(loadedGridMeta.grid_start_y)})`);
-      }
-      loadedGridMeta.grid_start_x = sx;
-      loadedGridMeta.grid_start_y = sy;
-    }
+    // ③ 선언 해석. **확인 실패는 선언 없음이 아니다** — 그 판정과 두 개의 중단 지점이 모두
+    //   `resolveDeclaredGridMeta` 안에 있고, 여기서는 「중단이면 중단한다」만 읽으면 된다.
+    const declared = await resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result);
+    if (!declared.ok) return declared.refusal;
+    const loadedGridMeta = declared.gridMeta;
+    const loadedMapKey = declared.mapKey; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
 
     // [F5c] 저장된 규격이 **없을 때만** 라우팅에 묻는다. 절대 순서
     // `wafer_map_metadata` > 라우팅 > 패널의 첫 번째 부등호가 이 한 줄의 가드다
@@ -4638,60 +4533,7 @@ async function loadExistingMap(opts = {}) {
 
     if (!loadedGridMeta && minX !== 9999) {
       // Choice modal triggers for maps with no grid metadata records
-      userChoice = await new Promise((resolve) => {
-        // [fix C] The default's behavior changed (data bounding box, no mask in
-        // effect) — keep the highlighted button honest. Label set here in JS because
-        // the semantics it describes are decided in this branch (JS-only fix batch).
-        // 🔴 이 버튼은 좌측 패널의 START X,Y를 **버린다**(`startX = minX`, 아래). 그것이
-        //    이 선택지의 요점이지 부작용이 아니므로 라벨이 말하게 한다 — 운영자의 선언이
-        //    사라지는 유일한 자리이고, 새 컨트롤도 확인창도 늘리지 않는 방법이다.
-        el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 '
-          + '(START를 데이터 최소값으로 재선언, 마스크 없음, Rot 0°)';
-        el.choiceModal.style.display = 'flex';
-
-        const onStandard = () => {
-          cleanup();
-          resolve('standard');
-        };
-        const onCurrent = () => {
-          cleanup();
-          resolve('current');
-        };
-        const onCancel = () => {
-          cleanup();
-          resolve('cancel');
-        };
-        // 🔴 [1d④] THIS PROMISE HAD EXACTLY THREE EXITS AND ALL THREE WERE BUTTONS.
-        //    A modal with no dismissal affordance can be left UNANSWERED, and an
-        //    unanswered promise never settles — so every `await openMapFrame(...)`
-        //    above it stays pending forever, along with whatever latch the caller set
-        //    in a `try` whose `finally` can now never run (transfer_plan's `S.navBusy`:
-        //    every material row went dead and said nothing). Escape is the standard
-        //    dismissal for this shape and adds no control to the screen; the point is
-        //    that the promise ALWAYS settles, so "abandoned" collapses into "cancelled"
-        //    and the caller's cleanup runs.
-        //    ⚠️ Backdrop click is deliberately NOT wired: a stray click on the scrim
-        //    while reading the two options would cancel the load mid-decision, and
-        //    Escape already guarantees settlement. One exit is enough to close the hole.
-        const onKeyDown = (ev) => {
-          if (ev.key === 'Escape') { ev.preventDefault(); onCancel(); }
-        };
-
-        const cleanup = () => {
-          el.choiceModal.style.display = 'none';
-          el.btnChoiceStandard.removeEventListener('click', onStandard);
-          el.btnChoiceCurrent.removeEventListener('click', onCurrent);
-          el.btnChoiceCancel.removeEventListener('click', onCancel);
-          document.removeEventListener('keydown', onKeyDown, true);
-        };
-
-        el.btnChoiceStandard.addEventListener('click', onStandard);
-        el.btnChoiceCurrent.addEventListener('click', onCurrent);
-        el.btnChoiceCancel.addEventListener('click', onCancel);
-        // Capture phase: the editor binds plenty of keyboard handlers and this one must
-        // win while the scrim is up (the modal owns the screen at that moment).
-        document.addEventListener('keydown', onKeyDown, true);
-      });
+      userChoice = await promptCoordinateChoice(el);   // ④
 
       if (userChoice === 'cancel') {
         el.btnLoadMap.textContent = '📂 Load Existing Map';
@@ -4704,80 +4546,13 @@ async function loadExistingMap(opts = {}) {
       userChoice = 'current';
     }
 
-    // Determine grid properties based on choice
-    let cols, rows, startX, startY, invertY, rotation, side;
-
-    if (userChoice === 'standard') {
-      cols = (maxX >= minX) ? (maxX - minX + 1) : 10;
-      rows = (maxY >= minY) ? (maxY - minY + 1) : 10;
-      // 🔴 THE ORIGIN IS THE DATA'S OWN MINIMUM, NOT ZERO. This used to read `startX = 0`
-      //    while the cell loop below subtracted `minX` from every stored coordinate, and
-      //    nothing ever added it back: the frame said "column 0 of this grid is DB x=0"
-      //    while the cells had been renumbered as if it were DB x=minX. Since
-      //    `getDbCoords` (what ⚡ Push serializes, via `cellObj.x`) is the exact inverse
-      //    of `getCanvasCellFromDb` (what the load places with), the two lines are ONE
-      //    quantity — so the screen's in-cell label AND the pushed x/y were both the shifted
-      //    number. Measured on real data: 1,923 drawn cells across four metadata-less maps,
-      //    451 of them reaching Push, and the screen could not reveal it because the label
-      //    is the recomputed coordinate and is drawn on empty cells only.
-      //
-      // ⚠️ Declaring the origin instead of shifting the cells places EVERY cell on exactly
-      //    the same canvas square as before — `c = dbX - startX + box.minC` is unchanged when
-      //    `dbX` and `startX` move together. Nothing on screen moves; what changes is that the
-      //    coordinate the screen states, and therefore the one Push writes, is now the stored
-      //    one. That is the whole fix: no compensation at Push, which is not touched.
-      startX = minX;
-      startY = minY;
-      invertY = false;
-      rotation = 0;
-      side = 'front';
-      // [fix C — lead design 2026-07-28] No default choice may produce an un-pushable
-      // map. The default frame for a metadata-less map is the rectangular bounding box
-      // of the data with NO circle mask in effect: previously the left panel's physical
-      // spec (wafer circle) stayed live under this choice, its mask marked corner cells
-      // inside:false, and the contrast guard in pushMapData then refused every push
-      // (H2 repro: 1293 rows -> 379 covered). The mask predicate has no off switch, so
-      // "no mask" is expressed in its own vocabulary: chip 1x1 / offset 0 / margin 3
-      // (the panel defaults for offset/margin) and a wafer diameter whose effective
-      // radius circumscribes the grid's half-diagonal — every cell corner is then
-      // strictly inside the ellipse, so all cells are pushable. applyPresetObject is
-      // the existing spec-writer (it owns the dia <select>'s custom-option handling);
-      // the bbox cols/rows set below overwrite its derived grid dims. Circle-mask
-      // presets remain available through the "current left panel settings" choice.
-      const halfDiag = Math.sqrt(cols * cols + rows * rows) / 2;   // mm == cell units at chip 1x1
-      applyPresetObject({
-        phys_wafer_dia: Math.max(300, Math.ceil(2 * (halfDiag + 4))),
-        phys_chip_x: 1, phys_chip_y: 1,
-        phys_offset_x: 0, phys_offset_y: 0,
-        phys_edge_margin: 3,
-      });
-    } else if (userChoice === 'meta') {
-      cols = loadedGridMeta.grid_cols;
-      rows = loadedGridMeta.grid_rows;
-      startX = loadedGridMeta.grid_start_x;
-      startY = loadedGridMeta.grid_start_y;
-      invertY = loadedGridMeta.grid_y_invert;
-      rotation = loadedGridMeta.rotation || 0;
-      side = loadedGridMeta.side || 'front';
-
-      if (loadedGridMeta.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = loadedGridMeta.phys_wafer_dia;
-      if (loadedGridMeta.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = loadedGridMeta.phys_chip_x;
-      if (loadedGridMeta.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = loadedGridMeta.phys_chip_y;
-      if (loadedGridMeta.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = loadedGridMeta.phys_offset_x;
-      if (loadedGridMeta.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = loadedGridMeta.phys_offset_y;
-      if (loadedGridMeta.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = loadedGridMeta.phys_edge_margin;
-
-      boundingBoxCache = {};
-    } else {
-      // Use current UI settings
-      cols = parseInt(el.gridCols.value, 10) || 10;
-      rows = parseInt(el.gridRows.value, 10) || 10;
-      startX = parseInt(el.gridStartX.value, 10) || 0;
-      startY = parseInt(el.gridStartY.value, 10) || 0;
-      invertY = el.gridYInvert.checked;
-      rotation = currentRotation;
-      side = currentSide;
-    }
+    // ⑤ Determine grid properties based on choice
+    let { cols, rows, startX, startY, invertY, rotation, side } =
+      resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide);
+    // ⚠️ `resolveGridFrame` owns no module state, so the `meta` branch's cache
+    //    invalidation is issued here — the same statement at the same point in the
+    //    sequence (nothing between here and the unconditional invalidate below reads it).
+    if (userChoice === 'meta') boundingBoxCache = {};
 
     // Sync state variables and input values back to UI panel BEFORE mapping cell coordinates
     el.gridCols.value = cols;
@@ -4888,51 +4663,8 @@ async function loadExistingMap(opts = {}) {
 
     // Auto detect legend from unique values
     if (uniqueVals.size > 0) {
-      const predefinedColors = LEGEND_PALETTE; // [U6] the one palette — no second copy
-      const newLegend = [];
-      const usedColors = new Set();
-
-      // First, try to match and preserve existing legend items
-      uniqueVals.forEach(v => {
-        const existingItem = legend.find(item => item.value === v);
-        if (existingItem) {
-          // This map's own cells carry the value, so it is no longer a borrowed
-          // vocabulary brush - it is part of this map and must be saved with it.
-          existingItem.vocab = false;
-          newLegend.push(existingItem);
-          usedColors.add(existingItem.color);
-        }
-      });
-
-      // For new unique values, assign description and unique color.
-      // [U6] A declared default_legend row wins its color/desc; only undeclared values
-      // walk the palette and get the generic BIN-style description.
-      let colorIdx = 0;
-      uniqueVals.forEach(v => {
-        const exists = newLegend.some(item => item.value === v);
-        if (!exists) {
-          const dr = declaredLegendRow(v);
-          let chosenColor = (dr && dr.color) ? String(dr.color) : '';
-          // Find next unused color from predefined colors list
-          while (!chosenColor && colorIdx < predefinedColors.length) {
-            const candidate = predefinedColors[colorIdx++];
-            if (!usedColors.has(candidate)) {
-              chosenColor = candidate;
-            }
-          }
-          if (!chosenColor) {
-            // Fallback to random color if all predefined are used
-            chosenColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-          }
-
-          usedColors.add(chosenColor);
-          newLegend.push(normalizeLegendItem({
-            value: v,
-            desc: dr ? String(dr.desc || '') : (v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`)),
-            color: chosenColor
-          }));
-        }
-      });
+      // ⑥ [U6] the one palette — no second copy
+      const newLegend = deriveLegendFromCellValues(uniqueVals, legend, LEGEND_PALETTE);
 
       // Update legend array and rebuild the legend table. Deliberately NOT persisted here:
       // saveLegendToStorage() -> saveDoeDraft() at this point would overwrite this map's
@@ -4987,39 +4719,16 @@ async function loadExistingMap(opts = {}) {
         // 이 지점이 초안의 **기반**이다: 지금 서버가 갖고 있는 것.
         draftBase = { table: selectedTable, mapKey: loadedMapKey, registryFp: serverFp, cellsFp: serverCellsFp };
 
-        // ── 초안 우선순위 ────────────────────────────────────────────────────
-        // 저장되지 못한 편집(차단 검증에 걸린 계획이 대표적이다)은 브라우저에만 있다.
-        // 기반 지문이 그대로면 그 사이 아무도 쓰지 않았으므로 초안이 더 새 것이다.
-        // 어긋나면 **누가 썼다** — 적용하면 남의 저장을 지운다. 적용하지 않고, 버리지도 않고,
-        // 사실을 드러낸다.
-        let staleDraftKept = false;   // [fix A] see the persist below
-        const draft = readDoeDraft(selectedTable, loadedMapKey);
-        if (draft) {
-          const doeFresh = draft.registryFp !== null && draft.registryFp === serverFp;
-          const cellsFresh = draft.cellsFp !== null && draft.cellsFp === serverCellsFp;
-          const restoredDoe = doeFresh ? applyDoeDraftRecord(draft) : false;
-          const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
-          if (restoredDoe || restoredCells > 0) {
-            // Restored edits are still unsaved edits - they exist only in this browser
-            // until [⚡ Push]. Without this the chip reads "saved" after the very refresh
-            // the draft just survived.
-            legendDirty = true;
-            showToast(`저장되지 않은 편집을 복구했습니다 — ${restoredDoe ? 'DOE' : ''}`
-              + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
-              + ' (이 브라우저의 초안). 아직 서버에 반영되지 않았습니다.', 'warning',
-              { dedupeKey: 'draft_restored' });
-          }
-          // 기반이 어긋난 초안이 실제로 내용을 갖고 있을 때만 말한다 — 빈 초안까지 알리면
-          // 신호가 죽는다.
-          const hasDoe = draft.doe && Object.keys(draft.doe).length > 0;
-          const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
-          staleDraftKept = (!doeFresh && hasDoe) || (!cellsFresh && hasCells);
-          if (staleDraftKept) {
-            showToast('이 맵이 이 브라우저의 초안 이후에 변경됐습니다 — 초안을 적용하지 않고 '
-              + '서버본을 표시합니다. 초안은 지우지 않았습니다.', 'warning',
-              { dedupeKey: 'draft_stale' });
-          }
-        }
+        // ⑦ 초안 우선순위 — 기반 지문 대조와 두 개의 토스트는
+        //    `restoreDoeDraftWithPrecedence` 안에 있다. 여기서는 그 답이 두 개의
+        //    모듈 상태(legendDirty · 아래 persist)에 어떻게 닿는지만 읽으면 된다.
+        const restored = restoreDoeDraftWithPrecedence(
+          selectedTable, loadedMapKey, serverFp, serverCellsFp);
+        // Restored edits are still unsaved edits - they exist only in this browser
+        // until [⚡ Push]. Without this the chip reads "saved" after the very refresh
+        // the draft just survived.
+        if (restored.restoredUnsavedEdits) legendDirty = true;
+        const staleDraftKept = restored.staleDraftKept;   // [fix A] see the persist below
         // [fix A] This persist re-baselines the draft slot to the just-loaded server
         // state. In the stale-mismatch case that overwrote the very draft the toast
         // above had just promised to keep ("초안은 지우지 않았습니다") — and the
@@ -5092,6 +4801,387 @@ async function loadExistingMap(opts = {}) {
     el.btnLoadMap.textContent = '📂 Load Existing Map';
     el.btnLoadMap.disabled = false;
   }
+}
+
+// ══ The steps of loadExistingMap ═════════════════════════════════════════════════════════
+// In call order. NONE of these reads or writes module state: everything they need arrives as
+// an argument and everything they decide leaves as a return value. That is not decoration —
+// it is what lets the reader of `loadExistingMap` above see every module-state write on the
+// load path without opening any of them, and it is what would let one of them move to its own
+// file later without an accessor pair.
+// ═════════════════════════════════════════════════════════════════════════════════════════
+
+// ① 메타 입력칸 → 조회 필터. 값이 하나도 없으면 `hasFilter === false`이고, 호출부가
+//    「맵 키가 비었다」로 되돌린다 — 여기서는 판정하지 않는다.
+function collectMapKeyFilterModel() {
+  const filterModel = {};
+  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
+  let hasFilter = false;
+
+  metaInputs.forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val) {
+      hasFilter = true;
+      filterModel[col] = {
+        filterType: 'text',
+        type: 'equals',
+        filter: val
+      };
+    }
+  });
+
+  return { filterModel, hasFilter };
+}
+
+// ② 응답 행 → 저장 좌표의 bbox. 파싱되는 셀이 하나도 없으면 초기 센티넬(minX 9999)이 그대로
+//    돌아가고, 호출부는 그 값으로 「해석된 셀 0개」를 가른다. 센티넬은 계약의 일부다.
+function scanCoordinateBounds(result, xCol, yCol) {
+  // Pre-calculate coordinate bounds first
+  let maxX = -9999;
+  let maxY = -9999;
+  let minX = 9999;
+  let minY = 9999;
+
+  if (result && result.data) {
+    result.data.forEach(row => {
+      const rowData = row.data || {};
+      const xVal = rowData[xCol]?.value;
+      const yVal = rowData[yCol]?.value;
+      if (xVal !== undefined && yVal !== undefined) {
+        const xNum = parseInt(xVal, 10);
+        const yNum = parseInt(yVal, 10);
+        if (!isNaN(xNum) && !isNaN(yNum)) {
+          if (xNum > maxX) maxX = xNum;
+          if (yNum > maxY) maxY = yNum;
+          if (xNum < minX) minX = xNum;
+          if (yNum < minY) minY = yNum;
+        }
+      }
+    });
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+// ③ wafer_map_metadata 해석 → `{ ok: true, gridMeta, mapKey }`,
+//    또는 확인 실패 시 `{ ok: false, refusal }` (호출부가 그 값을 그대로 반환한다).
+async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result) {
+  let loadedGridMeta = null;
+  let loadedMapKey = null; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
+
+  // 🔴 **"확인 못 했다"는 "선언이 없다"가 아니다.** `fetchGridMetaFor`는 404/405만 "선언
+  //    없음"(null)으로 답하고 나머지는 **던진다** — 그 규율이 여기서 끝나면 안 된다. 아래
+  //    한 자리로 모아 두는 이유는, 읽지 못한 선언이 흘러가 닿는 곳이 하나이기 때문이다:
+  //    `loadedGridMeta = null` → 「선언 없는 맵」 → 좌표계 선택 모달 → 📐 표준이 START와
+  //    격자를 **데이터 bbox로 재선언**하고, `pushMapData`가 그 값을 `grid_start_x/y`에
+  //    **영속화**한다. 표시만 틀리는 것이 아니라 저장된 정렬 기준이 바뀐다.
+  //    실측(HTTP 500을 정확히 1회 주입): 선언 (1,-6)·21x21 맵이 (5,-1)·8x7이 되고 46셀 중
+  //    **41셀이 다른 물리 다이**에 앉았으며 토스트는 **0건**이었다.
+  const refuseUnconfirmedMeta = (reason, err) => {
+    console.error(`[Map Editor] wafer_map_metadata could not be confirmed for `
+      + `${selectedTable} · ${loadedMapKey || ''} (${reason}) — refusing the load. An `
+      + 'unconfirmed declaration must NOT be read as an absent one: the 📐 표준 branch '
+      + 'would re-declare grid_start_x/y to the data bounding box and ⚡ Push would '
+      + 'persist it.', err || '');
+    showToast(`맵 규격을 확인하지 못해 로드를 중단했습니다 — ${reason}. `
+      + `잠시 후 다시 시도하십시오.`, 'error');
+    return { count: 0, error: true, metaUnconfirmed: true };
+  };
+
+  // 1. Try fetching from dedicated wafer_map_metadata table
+  let metaReadError = null;
+  try {
+    const filterMetaDict = {};
+    Object.keys(filterModel).forEach(col => {
+      if (filterModel[col] && filterModel[col].filter) {
+        filterMetaDict[col] = filterModel[col].filter;
+      }
+    });
+    const mapIdStr = getMapIdFromMeta(filterMetaDict, tableSchema);
+    if (mapIdStr && mapIdStr !== 'default_map') {
+      loadedMapKey = mapIdStr;
+      // ⚠️ 조회의 실패만 여기서 붙든다. 바깥 catch는 `getMapIdFromMeta`처럼 조회가 **아닌**
+      //    것의 실패를 위한 자리이고, 그것은 종전대로 "선언 없음"으로 흘러간다.
+      try {
+        loadedGridMeta = await fetchGridMetaFor(selectedTable, mapIdStr);
+      } catch (e) {
+        metaReadError = e;
+      }
+    }
+  } catch (e) {
+    console.warn('[Map Editor] Dedicated wafer_map_metadata table fetch skipped:', e);
+  }
+
+  // 🔴 셀 레벨 폴백보다 **앞이다.** 조회 1회 실패를 폐기 스킴(`grid_metadata`)으로 메우는
+  //    것도 "확인 못 한 것을 확인한 것처럼 쓰는" 같은 동작이다(불변식 ②).
+  if (metaReadError) {
+    // ⚠️ 사유는 `fetchGridMetaFor`가 던진 문구를 **그대로** 쓴다. 여기서 한 겹 더 감싸면
+    //    「규격 조회 실패 (맵 규격 조회 실패 (HTTP 500))」처럼 같은 말이 두 번 나온다.
+    return { ok: false, refusal: refuseUnconfirmedMeta(
+      (metaReadError && metaReadError.message) ? metaReadError.message : '맵 규격 조회 실패',
+      metaReadError) };
+  }
+
+  // 2. Fallback to cell-level grid_metadata
+  if (!loadedGridMeta && result && result.data) {
+    const firstWithMeta = result.data.find(row => row.data && row.data['grid_metadata'] && row.data['grid_metadata'].value);
+    if (firstWithMeta) {
+      try {
+        loadedGridMeta = JSON.parse(firstWithMeta.data['grid_metadata'].value);
+      } catch (e) {
+        console.error('Failed to parse fallback grid_metadata:', e);
+      }
+    }
+  }
+
+  // 🔴 **선언이 있는데 START를 읽을 수 없다** — 이것도 「확인 못 했다」이지 「선언 없음」이
+  //    아니다. 바로 아래 `meta` 분기의 `rotation || 0` · `side || 'front'`과 달리 START에는
+  //    기본값이 **있을 수 없다**: 좌표계의 원점이라 "모르면 0"이 곧 좌표계 이동이다.
+  //    종전에는 `startX = loadedGridMeta.grid_start_x`가 undefined를 그대로 받아
+  //    `getCanvasCellFromDb`에 넘겼고 — 실측: 46셀 전부가 `NaN_NaN` 한 칸으로 접혔다 —
+  //    그 뒤 Push는 `parseInt('') || 0`으로 **0을 영속화**했다. 위와 같은 자리로 보낸다.
+  // ⚠️ `null`·`''`은 0이 아니다(`Number(null) === 0`). 값의 **부재**와 0을 가르는 것이
+  //    이 술어의 전부이므로 `Number()` 하나로 판정하지 않는다.
+  if (loadedGridMeta) {
+    const declaredNum = (v) => (v === null || v === undefined || v === ''
+      ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+    const sx = declaredNum(loadedGridMeta.grid_start_x);
+    const sy = declaredNum(loadedGridMeta.grid_start_y);
+    if (sx === null || sy === null) {
+      return { ok: false, refusal: refuseUnconfirmedMeta(
+        `규격에 START X,Y가 없습니다 (grid_start_x=${JSON.stringify(loadedGridMeta.grid_start_x)}, `
+        + `grid_start_y=${JSON.stringify(loadedGridMeta.grid_start_y)})`) };
+    }
+    loadedGridMeta.grid_start_x = sx;
+    loadedGridMeta.grid_start_y = sy;
+  }
+
+  return { ok: true, gridMeta: loadedGridMeta, mapKey: loadedMapKey };
+}
+
+// ④ 선언이 없는 맵의 좌표계 선택 모달 → 'standard' | 'current' | 'cancel'.
+//    `el`을 인자로 받는다 — 이 단계가 손대는 유일한 바깥 것이고, 그래서 시그니처가 말한다.
+function promptCoordinateChoice(el) {
+  return new Promise((resolve) => {
+    // [fix C] The default's behavior changed (data bounding box, no mask in
+    // effect) — keep the highlighted button honest. Label set here in JS because
+    // the semantics it describes are decided in this branch (JS-only fix batch).
+    // 🔴 이 버튼은 좌측 패널의 START X,Y를 **버린다**(`startX = minX`, resolveGridFrame).
+    //    그것이 이 선택지의 요점이지 부작용이 아니므로 라벨이 말하게 한다 — 운영자의 선언이
+    //    사라지는 유일한 자리이고, 새 컨트롤도 확인창도 늘리지 않는 방법이다.
+    el.btnChoiceStandard.textContent = '📐 표준 — 데이터 전체 사각 격자 '
+      + '(START를 데이터 최소값으로 재선언, 마스크 없음, Rot 0°)';
+    el.choiceModal.style.display = 'flex';
+
+    const onStandard = () => {
+      cleanup();
+      resolve('standard');
+    };
+    const onCurrent = () => {
+      cleanup();
+      resolve('current');
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve('cancel');
+    };
+    // 🔴 [1d④] THIS PROMISE HAD EXACTLY THREE EXITS AND ALL THREE WERE BUTTONS.
+    //    A modal with no dismissal affordance can be left UNANSWERED, and an
+    //    unanswered promise never settles — so every `await openMapFrame(...)`
+    //    above it stays pending forever, along with whatever latch the caller set
+    //    in a `try` whose `finally` can now never run (transfer_plan's `S.navBusy`:
+    //    every material row went dead and said nothing). Escape is the standard
+    //    dismissal for this shape and adds no control to the screen; the point is
+    //    that the promise ALWAYS settles, so "abandoned" collapses into "cancelled"
+    //    and the caller's cleanup runs.
+    //    ⚠️ Backdrop click is deliberately NOT wired: a stray click on the scrim
+    //    while reading the two options would cancel the load mid-decision, and
+    //    Escape already guarantees settlement. One exit is enough to close the hole.
+    const onKeyDown = (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); onCancel(); }
+    };
+
+    const cleanup = () => {
+      el.choiceModal.style.display = 'none';
+      el.btnChoiceStandard.removeEventListener('click', onStandard);
+      el.btnChoiceCurrent.removeEventListener('click', onCurrent);
+      el.btnChoiceCancel.removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+
+    el.btnChoiceStandard.addEventListener('click', onStandard);
+    el.btnChoiceCurrent.addEventListener('click', onCurrent);
+    el.btnChoiceCancel.addEventListener('click', onCancel);
+    // Capture phase: the editor binds plenty of keyboard handlers and this one must
+    // win while the scrim is up (the modal owns the screen at that moment).
+    document.addEventListener('keydown', onKeyDown, true);
+  });
+}
+
+// ⑤ 선택 → 격자·원점·회전·면. 셋 중 **정확히 하나**가 프레임을 정한다는 사실이 이 함수의
+//    전부다. `boundingBoxCache` 무효화는 호출부가 한다 — 이 단계는 모듈 상태에 쓰지 않는다.
+function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide) {
+  let cols, rows, startX, startY, invertY, rotation, side;
+
+  if (userChoice === 'standard') {
+    cols = (maxX >= minX) ? (maxX - minX + 1) : 10;
+    rows = (maxY >= minY) ? (maxY - minY + 1) : 10;
+    // 🔴 THE ORIGIN IS THE DATA'S OWN MINIMUM, NOT ZERO. This used to read `startX = 0`
+    //    while the cell loop below subtracted `minX` from every stored coordinate, and
+    //    nothing ever added it back: the frame said "column 0 of this grid is DB x=0"
+    //    while the cells had been renumbered as if it were DB x=minX. Since
+    //    `getDbCoords` (what ⚡ Push serializes, via `cellObj.x`) is the exact inverse
+    //    of `getCanvasCellFromDb` (what the load places with), the two lines are ONE
+    //    quantity — so the screen's in-cell label AND the pushed x/y were both the shifted
+    //    number. Measured on real data: 1,923 drawn cells across four metadata-less maps,
+    //    451 of them reaching Push, and the screen could not reveal it because the label
+    //    is the recomputed coordinate and is drawn on empty cells only.
+    //
+    // ⚠️ Declaring the origin instead of shifting the cells places EVERY cell on exactly
+    //    the same canvas square as before — `c = dbX - startX + box.minC` is unchanged when
+    //    `dbX` and `startX` move together. Nothing on screen moves; what changes is that the
+    //    coordinate the screen states, and therefore the one Push writes, is now the stored
+    //    one. That is the whole fix: no compensation at Push, which is not touched.
+    startX = minX;
+    startY = minY;
+    invertY = false;
+    rotation = 0;
+    side = 'front';
+    // [fix C — lead design 2026-07-28] No default choice may produce an un-pushable
+    // map. The default frame for a metadata-less map is the rectangular bounding box
+    // of the data with NO circle mask in effect: previously the left panel's physical
+    // spec (wafer circle) stayed live under this choice, its mask marked corner cells
+    // inside:false, and the contrast guard in pushMapData then refused every push
+    // (H2 repro: 1293 rows -> 379 covered). The mask predicate has no off switch, so
+    // "no mask" is expressed in its own vocabulary: chip 1x1 / offset 0 / margin 3
+    // (the panel defaults for offset/margin) and a wafer diameter whose effective
+    // radius circumscribes the grid's half-diagonal — every cell corner is then
+    // strictly inside the ellipse, so all cells are pushable. applyPresetObject is
+    // the existing spec-writer (it owns the dia <select>'s custom-option handling);
+    // the bbox cols/rows set below overwrite its derived grid dims. Circle-mask
+    // presets remain available through the "current left panel settings" choice.
+    const halfDiag = Math.sqrt(cols * cols + rows * rows) / 2;   // mm == cell units at chip 1x1
+    applyPresetObject({
+      phys_wafer_dia: Math.max(300, Math.ceil(2 * (halfDiag + 4))),
+      phys_chip_x: 1, phys_chip_y: 1,
+      phys_offset_x: 0, phys_offset_y: 0,
+      phys_edge_margin: 3,
+    });
+  } else if (userChoice === 'meta') {
+    cols = loadedGridMeta.grid_cols;
+    rows = loadedGridMeta.grid_rows;
+    startX = loadedGridMeta.grid_start_x;
+    startY = loadedGridMeta.grid_start_y;
+    invertY = loadedGridMeta.grid_y_invert;
+    rotation = loadedGridMeta.rotation || 0;
+    side = loadedGridMeta.side || 'front';
+
+    if (loadedGridMeta.phys_wafer_dia !== undefined && el.physWaferDia) el.physWaferDia.value = loadedGridMeta.phys_wafer_dia;
+    if (loadedGridMeta.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = loadedGridMeta.phys_chip_x;
+    if (loadedGridMeta.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = loadedGridMeta.phys_chip_y;
+    if (loadedGridMeta.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = loadedGridMeta.phys_offset_x;
+    if (loadedGridMeta.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = loadedGridMeta.phys_offset_y;
+    if (loadedGridMeta.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = loadedGridMeta.phys_edge_margin;
+  } else {
+    // Use current UI settings
+    cols = parseInt(el.gridCols.value, 10) || 10;
+    rows = parseInt(el.gridRows.value, 10) || 10;
+    startX = parseInt(el.gridStartX.value, 10) || 0;
+    startY = parseInt(el.gridStartY.value, 10) || 0;
+    invertY = el.gridYInvert.checked;
+    rotation = currentRotation;
+    side = currentSide;
+  }
+
+  return { cols, rows, startX, startY, invertY, rotation, side };
+}
+
+// ⑥ 셀 값 집합 → legend 행 배열. `legend`(현재 화면)와 팔레트를 인자로 받아 **새 배열을
+//    돌려줄 뿐** 대입은 호출부가 한다 — 「어느 시점에 화면의 legend가 바뀌는가」가 한 줄로
+//    읽혀야 하기 때문이다(H1의 자리).
+function deriveLegendFromCellValues(uniqueVals, legend, predefinedColors) {
+  const newLegend = [];
+  const usedColors = new Set();
+
+  // First, try to match and preserve existing legend items
+  uniqueVals.forEach(v => {
+    const existingItem = legend.find(item => item.value === v);
+    if (existingItem) {
+      // This map's own cells carry the value, so it is no longer a borrowed
+      // vocabulary brush - it is part of this map and must be saved with it.
+      existingItem.vocab = false;
+      newLegend.push(existingItem);
+      usedColors.add(existingItem.color);
+    }
+  });
+
+  // For new unique values, assign description and unique color.
+  // [U6] A declared default_legend row wins its color/desc; only undeclared values
+  // walk the palette and get the generic BIN-style description.
+  let colorIdx = 0;
+  uniqueVals.forEach(v => {
+    const exists = newLegend.some(item => item.value === v);
+    if (!exists) {
+      const dr = declaredLegendRow(v);
+      let chosenColor = (dr && dr.color) ? String(dr.color) : '';
+      // Find next unused color from predefined colors list
+      while (!chosenColor && colorIdx < predefinedColors.length) {
+        const candidate = predefinedColors[colorIdx++];
+        if (!usedColors.has(candidate)) {
+          chosenColor = candidate;
+        }
+      }
+      if (!chosenColor) {
+        // Fallback to random color if all predefined are used
+        chosenColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+      }
+
+      usedColors.add(chosenColor);
+      newLegend.push(normalizeLegendItem({
+        value: v,
+        desc: dr ? String(dr.desc || '') : (v === '1' ? 'GOOD' : (v === '0' ? 'FAIL' : `BIN ${v}`)),
+        color: chosenColor
+      }));
+    }
+  });
+
+  return newLegend;
+}
+
+// ⑦ 초안 우선순위 — 저장되지 못한 편집(차단 검증에 걸린 계획이 대표적이다)은 브라우저에만
+//    있다. 기반 지문이 그대로면 그 사이 아무도 쓰지 않았으므로 초안이 더 새 것이다.
+//    어긋나면 **누가 썼다** — 적용하면 남의 저장을 지운다. 적용하지 않고, 버리지도 않고,
+//    사실을 드러낸다.
+//    반환: `restoredUnsavedEdits`(→ legendDirty) · `staleDraftKept`(→ persist 보류).
+function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp) {
+  let staleDraftKept = false;   // [fix A] see the persist at the call site
+  let restoredUnsavedEdits = false;
+  const draft = readDoeDraft(selectedTable, loadedMapKey);
+  if (draft) {
+    const doeFresh = draft.registryFp !== null && draft.registryFp === serverFp;
+    const cellsFresh = draft.cellsFp !== null && draft.cellsFp === serverCellsFp;
+    const restoredDoe = doeFresh ? applyDoeDraftRecord(draft) : false;
+    const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
+    if (restoredDoe || restoredCells > 0) {
+      restoredUnsavedEdits = true;
+      showToast(`저장되지 않은 편집을 복구했습니다 — ${restoredDoe ? 'DOE' : ''}`
+        + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
+        + ' (이 브라우저의 초안). 아직 서버에 반영되지 않았습니다.', 'warning',
+        { dedupeKey: 'draft_restored' });
+    }
+    // 기반이 어긋난 초안이 실제로 내용을 갖고 있을 때만 말한다 — 빈 초안까지 알리면
+    // 신호가 죽는다.
+    const hasDoe = draft.doe && Object.keys(draft.doe).length > 0;
+    const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
+    staleDraftKept = (!doeFresh && hasDoe) || (!cellsFresh && hasCells);
+    if (staleDraftKept) {
+      showToast('이 맵이 이 브라우저의 초안 이후에 변경됐습니다 — 초안을 적용하지 않고 '
+        + '서버본을 표시합니다. 초안은 지우지 않았습니다.', 'warning',
+        { dedupeKey: 'draft_stale' });
+    }
+  }
+  return { restoredUnsavedEdits, staleDraftKept };
 }
 
 function clearGrid() {
