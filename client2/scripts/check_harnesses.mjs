@@ -77,6 +77,54 @@ const KNOWN_RED = new Map([
     why: 'fixtures holding the pre-da8f390 contract; under triage' }],
 ]);
 
+// ── the floors ──────────────────────────────────────────────────────────────────
+// EVERY harness has a floor, not just the red ones. A GREEN harness that quietly runs
+// fewer assertions than it used to is invisible to exit codes AND to the debt list -- it
+// passes, so nothing complains, and the coverage it silently stopped scoring is exactly
+// what a refactor is most likely to take. That is not hypothetical: the R1 seam extraction
+// re-points three harnesses at moved code, `map_key_canonical_harness.mjs` is one of them,
+// and it is green. Without this map it could land scoring half of what it scores today and
+// the build would say "every gated harness is green".
+//
+// FLOORS, NOT EXACT MATCHES. A rising count must never require an edit to pass -- adding
+// assertions is the thing we want people to do, and a gate that punishes it teaches them to
+// stop. Rises are reported (see the re-baseline note at the end of the run) so the numbers
+// here get refreshed eventually, but they never block.
+//
+// KNOWN_RED entries carry their OWN `ran` floor and are deliberately absent here: one
+// harness, one place its floor lives. The runner refuses to start if a name appears in both.
+//
+// Measured on db46525 (HEAD), in a tree materialized with `git archive` -- NOT the working
+// tree, which held an in-flight seam extraction whose post-move counts would have been
+// baselined as if they were the historical floor.
+const FLOORS = new Map([
+  ['company_roundtrip_harness.mjs', 84],
+  ['copy_header_count_harness.mjs', 151],
+  ['effort_meter_harness.mjs', 131],
+  ['geometry_origin_reseat_harness.mjs', 46],
+  ['m4_symbol_extractability_probe.mjs', 15],
+  ['map_key_canonical_harness.mjs', 116],
+  ['map_key_datalist_harness.mjs', 53],
+  ['overlay_wafer_mm_harness.mjs', 69],
+  ['push_gate_harness.mjs', 15],
+  ['retroactive_view_harness.mjs', 263],
+  ['standard_frame_origin_harness.mjs', 19],
+  ['startxy_probe.mjs', 29],
+  ['undeclared_identifier_harness.mjs', 6],
+  ['valid_die_head_parity_oracle.mjs', 17498],
+  ['valid_die_origin_alignment_harness.mjs', 153],
+  ['value_suggest_keys_harness.mjs', 94],
+  ['virtual_column_render_harness.mjs', 59],
+]);
+
+const doubleBooked = [...FLOORS.keys()].filter(n => KNOWN_RED.has(n));
+if (doubleBooked.length > 0) {
+  fail(`${doubleBooked.join(', ')} appear(s) in BOTH \`FLOORS\` and \`KNOWN_RED\`. A harness's `
+     + `floor must live in exactly one place ― two copies drift, and the looser one wins by `
+     + `accident. Keep the floor on the KNOWN_RED entry while it is debt; move it to FLOORS `
+     + `when it goes green.`);
+}
+
 if (!existsSync(TESTS_DIR)) {
   fail(`no \`client2/tests/\` directory at ${TESTS_DIR}. If the harnesses moved, update this `
      + `runner ― an empty scan must never pass as "all harnesses green".`);
@@ -95,6 +143,8 @@ if (harnesses.length === 0) {
 const blocking = [];
 const stillRed = [];
 const recovered = [];
+const rose = [];        // ran above its recorded floor ― re-baseline when convenient
+const unfloored = [];   // discovered but never baselined ― cannot have regressed yet
 
 for (const name of harnesses) {
   const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name)],
@@ -107,11 +157,25 @@ for (const name of harnesses) {
   for (const m of (run.stdout || '').matchAll(/^ASSERTIONS (\d+) (\d+)\s*$/gm))
     counts = { ran: +m[1], failed: +m[2] };
   const said = counts ? `ran ${counts.ran}, failed ${counts.failed}` : 'no ASSERTIONS line';
+  const floor = FLOORS.get(name);
+
+  if (floor === undefined && !known) unfloored.push(name);
+  if (floor !== undefined && counts && counts.ran > floor) rose.push({ name, was: floor, now: counts.ran });
 
   if (ok && (!counts || counts.ran === 0 || counts.failed > 0)) {
     blocking.push({ name, run });
     console.log(`✗ ${name}  [BLOCKING] exit 0 but ${said} ― a green verdict that measured `
       + `nothing (or contradicts its own count) proves nothing`);
+  } else if (floor !== undefined && counts && counts.ran < floor) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded floor is ran >= ${floor} ― it `
+      + `is scoring less than it used to. If assertions were deliberately removed or a `
+      + `re-pointed harness now covers less, say so and lower the floor on purpose; passing `
+      + `while quietly scoring less is the failure this floor exists to make visible`);
+  } else if (floor !== undefined && !counts) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  [BLOCKING] ${said}, but it is baselined at ran >= ${floor} ― it `
+      + `used to assert and now measures nothing`);
   } else if (known && counts && counts.ran < known.ran) {
     blocking.push({ name, run });
     console.log(`✗ ${name}  [BLOCKING] ${said}, but the recorded expectation is ran >= `
@@ -128,7 +192,8 @@ for (const name of harnesses) {
     recovered.push(name);
     console.log(`✓ ${name}  (${said}; was on the known-red list ― remove it)`);
   } else if (ok) {
-    console.log(`✓ ${name}  (${said})`);
+    const up = (floor !== undefined && counts && counts.ran > floor) ? `; floor ${floor}, +${counts.ran - floor}` : '';
+    console.log(`✓ ${name}  (${said}${up})`);
   } else if (known) {
     stillRed.push(name);
     console.log(`✗ ${name}  [known red] (${said}) ${known.why}`);
@@ -146,6 +211,25 @@ if (recovered.length > 0) {
   console.log(`\n! ${recovered.length} harness(es) on the known-red list now PASS. Take them off `
     + `the list in client2/scripts/check_harnesses.mjs so they start gating:\n  `
     + recovered.join('\n  ') + '\n');
+}
+
+// Rises never block ― see the FLOORS note. They are reported so the floors get refreshed
+// eventually: an un-refreshed floor still catches a total collapse, but it stops catching
+// the loss of everything added since it was recorded.
+if (rose.length > 0) {
+  console.log(`\n! ${rose.length} harness(es) now run MORE assertions than their recorded floor. `
+    + `Not a failure ― raise the floors in FLOORS when convenient so the new coverage is also `
+    + `protected:\n  `
+    + rose.map(r => `${r.name}: floor ${r.was} -> ran ${r.now}`).join('\n  ') + '\n');
+}
+
+// A harness with no floor cannot have regressed (there is nothing to compare), so this is a
+// note, not a failure ― making it blocking would mean adding a harness breaks the build,
+// which is how people learn not to add harnesses.
+if (unfloored.length > 0) {
+  console.log(`\n! ${unfloored.length} harness(es) have no recorded floor and are NOT protected `
+    + `against silently scoring less. Add them to FLOORS with the count they report today:\n  `
+    + unfloored.join('\n  ') + '\n');
 }
 
 if (blocking.length > 0) {
