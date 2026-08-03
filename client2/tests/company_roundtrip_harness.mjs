@@ -976,8 +976,13 @@ const MUTATIONS = [
   ['aux header no longer requires VALUE (the group band can be mistaken for it)',
     once("if (ids.indexOf('value') < 0) return null;", 'if (false) return null;')],
   // ── [1d] the four fixes of this round, each put back defective ─────────────────
+  // The tail of the old anchor (`\n    return { ok: false, notchVerified: false,`) only ever
+  // served to disambiguate, and `if (!notchOnGrid) {` is already unique in the file -- so
+  // dropping it costs nothing and makes the anchor immune to how the refusal object below
+  // is wrapped. c0a3715 (formatter reflow) split that object across more lines and killed
+  // this mutant; a single-line anchor cannot be killed that way (and needs no CRLF dance).
   ['P0-2: an absent notch fingerprint warns instead of refusing',
-    once('  if (!notchOnGrid) {\n    return { ok: false, notchVerified: false,', '  if (false) {\n    return { ok: false, notchVerified: false,')],
+    once('if (!notchOnGrid) {', 'if (false) {')],
   ['P0-2: computeNotchCell hands back an off-grid coordinate instead of null',
     once('  if (cell.r < 0 || cell.r >= visualRows || cell.c < 0 || cell.c >= visualCols) return null;',
       '  // mutated: off-grid coordinates returned as if they were a fingerprint')],

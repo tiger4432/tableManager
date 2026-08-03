@@ -793,6 +793,22 @@ function once(src, find, repl) {
   return src.slice(0, i) + repl + src.slice(i + find.length);
 }
 
+// REFLOW-PROOF VARIANT. Same discipline as `once` (must match, must match exactly once --
+// a mutation that silently stops applying is a disarmed check, which is why both cases die
+// loudly), but the anchor is a PATTERN, so a formatter that only moves line breaks and
+// indentation inside the matched span cannot disarm it. Use this where the thing being
+// mutated is a whole multi-line expression: matching its shape is not weaker than matching
+// its exact text, because the replacement still removes precisely that expression. Do NOT
+// use it to match less than the mutation changes -- a weaker mutation is worse than a
+// brittle anchor. c0a3715 (formatter reflow) is why this exists: it re-indented one
+// continuation line by two spaces and killed the orientation-guard mutant below.
+function onceRe(src, re, repl) {
+  const all = src.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'));
+  if (!all || all.length === 0) die(`mutation anchor pattern matched nothing: ${re}`);
+  if (all.length > 1) die(`mutation anchor pattern is not unique (${all.length} matches): ${re}`);
+  return src.replace(new RegExp(re.source, re.flags.replace('g', '')), repl);
+}
+
 const MUTANTS = {
   // The defect exactly as 1e4f23c shipped it: nothing reacts to the origin box moving.
   'reaction-is-a-no-op': (s) => once(s,
@@ -804,9 +820,12 @@ const MUTANTS = {
     '  if (physFrameOverride && physFrameOverride.box && !(opts && opts.circleOnly)) {\n    return physFrameOverride.box;\n  }',
     '  if (false) {\n    return physFrameOverride.box;\n  }'),
   // Rule 4 fires on rule 5's path.
-  'orientation-guard-removed': (s) => once(s,
-    "  if (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY\n      || was.startX !== now.startX || was.startY !== now.startY) return null;",
-    '  if (false) return null;'),
+  // Anchored on the guard's SHAPE (its first term through its `return null;`) rather than
+  // its exact text: the replacement still deletes the entire orientation guard, which is
+  // the whole of what this mutant does.
+  'orientation-guard-removed': (s) => onceRe(s,
+    /if \(was\.rotation[\s\S]*?return null;/,
+    'if (false) return null;'),
   // Deriving the grid from the new spec WITHOUT re-seating is the behaviour 94b9baa was
   // rejected for. Only the preset path (1b) sees it; the typed-pitch path calls the reaction
   // itself, which is exactly why both paths are scored.
