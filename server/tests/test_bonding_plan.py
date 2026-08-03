@@ -376,10 +376,14 @@ def test_align_unavailable_when_phys_spec_missing(bdp_env, client):
 # ---------------------------------------------------------------------------
 
 def test_missing_role_partial_operation(bdp_env, client, tmp_path, monkeypatch):
+    """[relaxation 2026-08-04] Both sides of the absence/breakage boundary at once:
+    an ABSENT declaration is a declared non-use (`not_declared`, subtraction
+    inactive and NAMED), a PRESENT-but-broken one stays `missing`. The counts
+    are identical either way (both contribute 0) — only the honesty differs."""
     _seed_core(bdp_env)
     cfg = _bdp_config()
-    del cfg["sources"]["defect"]
-    cfg["sources"]["used_chips"]["table"] = "bdp_test_no_such_table"  # 모델 부재 → missing
+    del cfg["sources"]["defect"]                                      # 부재 → not_declared
+    cfg["sources"]["used_chips"]["table"] = "bdp_test_no_such_table"  # 파손 → missing
     cfg_path = tmp_path / "partial.json"
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(cfg_path))
@@ -387,20 +391,26 @@ def test_missing_role_partial_operation(bdp_env, client, tmp_path, monkeypatch):
     res = client.get("/api/bonding-plan/core-summary", params={"lot": "LOTX", "slot": "01"})
     assert res.status_code == 200  # 에러 아님 — 부분 가동
     body = res.json()
-    assert body["sources"]["defect"] == "missing"
+    assert body["sources"]["defect"] == "not_declared"
     assert body["sources"]["used_chips"] == "missing"
     assert body["chips"]["defect"] == 0 and body["chips"]["used"] == 0
-    assert body["chips"]["remaining"] == 36 - 0 - 2 - 0  # missing 역할은 0으로 계산
+    assert body["chips"]["remaining"] == 36 - 0 - 2 - 0  # 미참여 역할은 0으로 계산
+    # 감산에서 빠진 종류는 이름으로 말한다 — 파손(used_chips)은 부재가 아니므로 없다
+    assert body["inactive_subtractions"] == ["defect"]
 
 
 def test_empty_config_all_missing(bdp_env, client, tmp_path, monkeypatch):
+    """빈 config: 분모(total_chips)만 missing으로 남고 보조 역할은 전부 not_declared."""
     monkeypatch.setattr(bonding_plan, "CONFIG_PATH", str(tmp_path / "does_not_exist.json"))
     res = client.get("/api/bonding-plan/core-summary", params={"lot": "L", "slot": "1"})
     assert res.status_code == 200
     body = res.json()
     assert set(body["sources"]) == set(bonding_plan.ROLES)
-    assert all(v == "missing" for v in body["sources"].values())
+    assert body["sources"]["total_chips"] == "missing"   # 분모는 계속 필수
+    for role in ("process_history", "defect", "eds_fail", "used_chips"):
+        assert body["sources"][role] == "not_declared"
     assert body["chips"]["remaining"] == 0
+    assert body["inactive_subtractions"] == ["defect", "eds_fail", "used_chips"]
 
 
 def test_unknown_combo_all_connected_zero(bdp_env, client):

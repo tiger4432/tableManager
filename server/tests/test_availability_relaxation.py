@@ -1,0 +1,281 @@
+"""[relaxation 2026-08-04 — board request 2] Optional auxiliary declarations.
+
+Real-fab feedback: sites do NOT keep `fail_sources` / `origin_log` /
+`transfer_log` side tables — deductions are marked on the map object itself.
+The old engine treated an absent declaration as a broken one (`missing` →
+degradation → remaining nulled), which hid availability for every material.
+
+The relaxed semantics, pinned here on BOTH sides of the boundary:
+
+  ABSENT key   → status `not_declared` (NOT a degradation), availability is
+                 computed and served as a real number WITHOUT that subtraction,
+                 and the skipped kinds are NAMED in `inactive_subtractions`
+                 (honest degradation — gross must never silently pose as net).
+  PRESENT key  → every pre-existing judgement unchanged: broken bindings stay
+                 `missing`/demoted, remaining stays nulled, warnings stay.
+                 (`transfer_log: "none"` keeps its 7c upper-bound behavior —
+                 see test_transfer_untracked.py.)
+  total_chips  → still required (the denominator): absent stays `missing`.
+
+Fixtures are the shared tp_test_* scenario (total 8, fail-union 4, used 3,
+true remaining 2) — so a relaxed remaining of 8 proves the subtractions were
+skipped, not silently applied.
+"""
+import pytest
+
+import bonding_plan
+import transfer_plan
+from database import crud, models
+
+from test_transfer_plan import (TP_TABLES, _tp_config, _bp_config, _write_cfg,
+                                _seed_scenario, _seed_bins, _seed_second_slot)
+
+AUX_ROLES = ("transfer_log", "origin_log", "process_history")
+
+
+def _relaxed_tp_config():
+    """bonding stage with every auxiliary source declaration removed."""
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    for key in ("transfer_log", "origin_log", "process_history",
+                "fail_sources", "origin_area_map"):
+        del src[key]
+    return cfg
+
+
+def _broken_tp_config():
+    """Same roles PRESENT but broken — the guard side of the boundary."""
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    src["transfer_log"]["table"] = "tp_test_no_such"
+    src["origin_log"]["table"] = "tp_test_no_such"
+    src["fail_sources"]["defect"]["table"] = "tp_test_no_such"
+    return cfg
+
+
+@pytest.fixture()
+def env(db_session, tmp_path, monkeypatch):
+    models.init_dynamic_models(TP_TABLES)
+    crud.TABLE_CONFIG.update(TP_TABLES)
+    from database.database import Base
+    Base.metadata.create_all(bind=db_session.get_bind())
+    return db_session, tmp_path, monkeypatch
+
+
+def _summary(client, **extra):
+    params = {"stage": "bonding", "lot": "TAPE-X", "slot": "01"}
+    params.update(extra)
+    res = client.get("/api/transfer-plan/source-summary", params=params)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+# ---------------------------------------------------------------------------
+# Inline (tape-kind) path
+# ---------------------------------------------------------------------------
+
+
+def test_absent_declarations_serve_availability(env, client):
+    """The headline of the request: no auxiliary tables declared → the material
+    still shows a computed availability, with the skipped kinds named."""
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_relaxed_tp_config())
+    _seed_scenario(db)
+    body = _summary(client)
+
+    for role in AUX_ROLES:
+        assert body["sources"][role] == "not_declared", role
+    chips = body["chips"]
+    assert chips["total"] == 8
+    assert chips["fail_breakdown"] == {}
+    # remaining is a REAL number — total minus nothing (no subtraction sources).
+    # 8 (not the fully-subtracted 2) proves the terms were skipped, not applied.
+    assert chips["remaining"] == 8
+    assert chips["remaining_reliable"] is True
+    assert "remaining_upper_bound" not in chips
+    # transferred is unknown (no log exists), never a fake 0
+    assert chips["transferred"] is None
+
+    # honest degradation: the payload SAYS which subtraction kinds were inactive
+    assert body["inactive_subtractions"] == ["transfer_log", "origin_log",
+                                             "fail_sources"]
+    # ...and none of it is a degradation
+    assert not any(w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED
+                   for w in body["warnings"])
+    assert not any(w.get("type") == transfer_plan.WARN_TRANSFER_UNTRACKED
+                   for w in body["warnings"])
+
+
+def test_declared_but_broken_still_demotes(env, client):
+    """Guard side: the SAME roles, declared but broken, keep every demotion —
+    the relaxation applies only to absence."""
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_broken_tp_config())
+    _seed_scenario(db)
+    body = _summary(client)
+
+    assert body["sources"]["transfer_log"] == "missing"
+    assert body["sources"]["origin_log"] == "missing"
+    assert body["sources"]["defect"] == "missing"
+    assert body["chips"]["remaining"] is None
+    assert body["chips"]["remaining_reliable"] is False
+    degraded = {w["role"] for w in body["warnings"]
+                if w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED}
+    assert {"transfer_log", "origin_log", "defect"} <= degraded
+    # broken is not absent — nothing is reported as an inactive subtraction
+    assert "inactive_subtractions" not in body
+
+
+def test_fully_declared_config_payload_unchanged(env, client):
+    """Third side: a fully declared, working config keeps the exact numbers and
+    gains NO new field."""
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch)
+    _seed_scenario(db)
+    body = _summary(client)
+    assert body["chips"]["remaining"] == 2
+    assert body["chips"]["remaining_reliable"] is True
+    assert "inactive_subtractions" not in body
+
+
+def test_declared_origin_frame_fail_source_without_origin_log_still_surfaces(env, client):
+    """A DECLARED frame='origin' fail source with an undeclared origin_log is a
+    contradiction between declarations — it must keep the explicit
+    unavailable(origin_missing) demotion, not ride the relaxation."""
+    db, tmp_path, monkeypatch = env
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    del src["origin_log"]          # absent → relaxed on its own axis
+    del src["transfer_log"]
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(db)
+    body = _summary(client)
+    assert body["sources"]["origin_log"] == "not_declared"
+    assert body["sources"]["defect"] == "unavailable(origin_missing)"
+    assert body["chips"]["remaining"] is None            # the declared source is down
+    assert body["chips"]["remaining_reliable"] is False
+    # origin_log absence is still named as inactive; fail_sources is declared so not
+    assert body["inactive_subtractions"] == ["transfer_log", "origin_log"]
+
+
+# ---------------------------------------------------------------------------
+# /stages role view
+# ---------------------------------------------------------------------------
+
+
+def test_stages_distinguish_absent_from_broken(env, client):
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_relaxed_tp_config())
+    body = client.get("/api/transfer-plan/stages").json()
+    bd = next(s for s in body["stages"] if s["name"] == "bonding")
+    for role in AUX_ROLES:
+        assert bd["roles"][role] == "not_declared", role
+    assert bd["roles"]["total_chips"] == "connected"
+
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_broken_tp_config())
+    body = client.get("/api/transfer-plan/stages").json()
+    bd = next(s for s in body["stages"] if s["name"] == "bonding")
+    assert bd["roles"]["transfer_log"] == "missing"
+    assert bd["roles"]["origin_log"] == "missing"
+
+
+# ---------------------------------------------------------------------------
+# BIN axis and lot scope compute without the missing subtractions
+# ---------------------------------------------------------------------------
+
+
+def test_bins_serve_numbers_without_undeclared_subtractions(env, client):
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_relaxed_tp_config())
+    _seed_scenario(db)
+    _seed_bins(db)
+    body = _summary(client, bins="")
+    assert body["bins"]["axis"] == "connected"
+    by_bin = {e["bin"]: e for e in body["bins"]["entries"]}
+    for b in (1, 2):
+        e = by_bin[b]
+        assert e["status"] == "ok" and e["reliable"] is True
+        assert e["total"] == 4
+        assert e["remaining"] == 4          # no fail/consumption terms declared
+        assert e["transferred"] is None     # unknown, never fake 0
+        assert "remaining_upper_bound" not in e
+    assert by_bin[1]["remaining"] + by_bin[2]["remaining"] == body["chips"]["remaining"]
+
+
+def test_lot_scope_carries_the_inactive_kinds(env, client):
+    db, tmp_path, monkeypatch = env
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=_relaxed_tp_config())
+    _seed_scenario(db)
+    _seed_bins(db)
+    _seed_second_slot(db)
+    body = client.get("/api/transfer-plan/source-summary",
+                      params={"stage": "bonding", "lot": "TAPE-X",
+                              "scope": "lot", "bins": ""}).json()
+    assert body["slots"] == ["01", "02"]
+    assert body["inactive_subtractions"] == ["transfer_log", "origin_log",
+                                             "fail_sources"]
+    b1 = next(e for e in body["bins"]["entries"] if e["bin"] == 1)
+    assert b1["status"] == "ok"
+    assert b1["remaining"] == 4 + 2         # slot sums, no subtraction terms
+    assert b1["transferred"] is None        # pooled sum of unknowns is unknown
+
+
+# ---------------------------------------------------------------------------
+# M1 (core-kind) path — bonding_plan config
+# ---------------------------------------------------------------------------
+
+
+def test_m1_absent_used_chips_serves_availability(env, client):
+    db, tmp_path, monkeypatch = env
+    bp = _bp_config()
+    del bp["sources"]["used_chips"]
+    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    _seed_scenario(db)
+
+    # M1's own endpoint: counts unchanged (absent role contributes 0), status
+    # and the inactive list are the only additions.
+    m1 = client.get("/api/bonding-plan/core-summary",
+                    params={"lot": "CORE-A", "slot": "01"}).json()
+    assert m1["sources"]["used_chips"] == "not_declared"
+    assert m1["chips"] == {"total": 36, "defect": 2, "eds_fail": 1,
+                           "used": 0, "remaining": 33}
+    assert m1["inactive_subtractions"] == ["used_chips"]
+
+    # dt reshape: remaining stays a number, kind renamed to the M2 vocabulary.
+    body = _summary(client, stage="dt", lot="CORE-A", slot="01")
+    assert body["sources"]["transfer_log"] == "not_declared"
+    assert body["chips"]["remaining"] == 33
+    assert body["chips"]["remaining_reliable"] is True
+    assert body["chips"]["transferred"] is None
+    assert body["inactive_subtractions"] == ["transfer_log"]
+    assert not any(w.get("type") == transfer_plan.WARN_SOURCE_DEGRADED
+                   for w in body["warnings"])
+
+
+def test_m1_broken_used_chips_still_demotes(env, client):
+    db, tmp_path, monkeypatch = env
+    bp = _bp_config()
+    bp["sources"]["used_chips"]["table"] = "tp_test_no_such"
+    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    _seed_scenario(db)
+    body = _summary(client, stage="dt", lot="CORE-A", slot="01")
+    assert body["sources"]["transfer_log"] == "missing"
+    assert body["chips"]["remaining"] is None
+    assert body["chips"]["remaining_reliable"] is False
+    assert "inactive_subtractions" not in body
+
+
+def test_m1_total_chips_stays_required(env, client):
+    """The denominator is exempt from the relaxation — absent total_chips is
+    still `missing` and availability refuses a number."""
+    db, tmp_path, monkeypatch = env
+    bp = _bp_config()
+    del bp["sources"]["total_chips"]
+    _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
+    _seed_scenario(db)
+    m1 = client.get("/api/bonding-plan/core-summary",
+                    params={"lot": "CORE-A", "slot": "01"}).json()
+    assert m1["sources"]["total_chips"] == "missing"
+    body = _summary(client, stage="dt", lot="CORE-A", slot="01")
+    assert body["chips"]["remaining"] is None
+    assert body["chips"]["remaining_reliable"] is False

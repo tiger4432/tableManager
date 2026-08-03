@@ -791,10 +791,15 @@ def test_normal_path_is_reliable_and_quiet(tp_env, client):
 
 
 def test_dt_stage_degradation_also_surfaced(tp_env, client, tmp_path, monkeypatch):
-    """core-kind(M1 reshape) 경로도 동일 규율 — 여기만 빠지면 우회로가 남는다."""
+    """core-kind(M1 reshape) 경로도 동일 규율 — 여기만 빠지면 우회로가 남는다.
+
+    [relaxation 2026-08-04] 강등을 유발하려면 역할을 **지우면 안 된다** — 부재는 이제
+    not_declared(완화)다. 선언된 채 깨진 바인딩(테이블 부재)이 강등의 재현법이다.
+    부재 측의 완화 동작은 test_availability_relaxation.py가 고정한다.
+    """
     _seed_scenario(tp_env)
     bp = _bp_config()
-    del bp["sources"]["defect"]          # 역할 제거 → missing
+    bp["sources"]["defect"]["table"] = "tp_test_no_such"   # 선언된 채 파손 → missing
     _write_cfg(tmp_path, monkeypatch, bp_cfg=bp)
     body = client.get("/api/transfer-plan/source-summary",
                       params={"stage": "dt", "lot": "CORE-A", "slot": "01"}).json()

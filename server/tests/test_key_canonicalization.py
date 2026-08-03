@@ -251,9 +251,12 @@ def test_float_stored_slot_composes_canonical_map_id_and_meta_is_found(canon_env
     assert out["chips"]["fail_breakdown"] == {"defect": 1, "eds": 1}
     # the 180 alignment actually engaged (not identity-by-accident)
     assert "aligned:180" in out["sources"]["eds"]
-    # transfer_log is undeclared here (missing -> remaining nulled by design):
-    # the served bound is what carries the arithmetic — both chips are blocked
-    assert out["chips"]["remaining_upper_bound"] == 0
+    # transfer_log is undeclared here — since the 2026-08-04 relaxation that is
+    # `not_declared` (no demotion): remaining itself carries the arithmetic and
+    # both chips are blocked by the projected fails.
+    assert out["sources"]["transfer_log"] == "not_declared"
+    assert out["chips"]["remaining"] == 0
+    assert out["chips"]["remaining_reliable"] is True
 
 
 def test_mutation_raw_composition_loses_the_rotated_fail(canon_env, monkeypatch):

@@ -1,5 +1,5 @@
 {
-  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다.",
+  "__comment": "Universal Transfer Plan (M2) stage 선언 config. 모든 전사 단계는 (stage, 타깃 맵 페인팅, assignments) 프리미티브의 인스턴스 — 신규 단계는 여기 선언만으로 추가된다. dt stage의 소스(core) 역할 바인딩은 M1 bonding_plan_config.json을 참조(source_config_ref — 하위호환 단일 원천). fail_sources.frame='origin'은 출신(core) 프레임 fail을 origin_log 조인으로 타깃(tape) 좌표에 투영한다. [2026-08-04 완화] 보조 역할 선언(transfer_log·origin_log·fail_sources·process_history)은 전부 **선택**이다: 그런 테이블이 없는 사이트는 키를 아예 쓰지 마라 — 상태 not_declared로 표기되고 그 감산항 없이 가용이 숫자로 나오며, 빠진 종류는 응답의 inactive_subtractions가 명시한다. 키를 **선언해 놓고 깨뜨리면**(오타·테이블 부재) 종전대로 missing 강등이다. total_chips는 분모라 계속 필수.",
   "stages": {
     "dt": {
       "description": "DT(Die Transfer): 코어 웨이퍼의 칩을 테이프에 전사하는 단계. 소스 가용 = M1 core-summary(코어 total − defect − eds_fail − 기전사).",

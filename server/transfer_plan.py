@@ -79,6 +79,14 @@ value = one DOE condition**, bk = `ref_table|map_key|value`.
      origin_log 조인으로 타깃(tape) 좌표에 투영("테이프에도 불량 섞임" 처리의 핵심),
      `frame: "self"`면 자기 identity 직접 카운트(M1 맵 모드와 동일).
 
+[보조 역할 선언은 선택이다 — relaxation 2026-08-04, 총괄 board request 2]
+`transfer_log`·`origin_log`·`fail_sources`·`process_history`는 **키가 아예 없으면**
+상태 `not_declared`(강등 아님)로 두고 그 감산항 없이 가용을 **숫자로** 낸다 — 실 현장은
+소스별 부속 테이블을 유지하지 않고 맵 자체에 차감을 표기한다(사용자 확정). 빠진 감산
+종류는 응답의 선택 필드 `inactive_subtractions`(리스트)가 명시한다 — 총량이 순량 행세를
+하는 침묵이 이 필드가 막는 실패다. **선언돼 있으나 깨진** 바인딩(null·오타·테이블 부재)은
+종전 강등 그대로다 — 완화는 부재에만 적용된다. `total_chips`는 분모라 계속 필수.
+
 [align 규율 — 정렬의 유일한 근거는 `wafer_map_metadata`다 (사용자 확정 2026-07-26)]
 fail 원천의 소스 프레임→canonical(core) 프레임 사상은 **두 맵 메타의 델타에서 유도**한다.
 config의 `fail_sources[].align` 선언 레이어는 제거됐다 — 계측으로 잰 어긋남도 메타에 적는다.
@@ -98,6 +106,15 @@ import re
 logger = logging.getLogger(__name__)
 
 import paths  # single override point (ASSY_DATA_ROOT)
+
+# [relaxation 2026-08-04 — board request 2] The absent-role vocabulary is shared
+# with M1 and defined ONCE in bonding_plan (same one-predicate discipline as
+# `transfer_log_is_declared_none`): an auxiliary role key ABSENT from the source
+# block is the site stating "no such table here" — status `not_declared`, its
+# subtraction inactive (named in `inactive_subtractions`), NOT a degradation.
+# A PRESENT-but-broken declaration keeps every pre-existing demotion.
+from bonding_plan import STATUS_NOT_DECLARED, role_is_declared
+
 CONFIG_PATH = paths.config_path("transfer_plan_config.json")
 
 # ---- 하드캡 (무제한 로드 금지 — 1,000만 행 규율) ----
@@ -352,6 +369,16 @@ def _binding_status(src_cfg, required=("lot", "slot")) -> str:
     return "missing" if model is None else _demote_unresolved("connected", cols)
 
 
+def _aux_role_status(block, key, required=("lot", "slot")) -> str:
+    """[relaxation] Auxiliary-role status: an ABSENT key is a declared non-use
+    (`not_declared`), a PRESENT value goes through the normal binding judgement
+    and keeps every degradation. total_chips must NOT come through here — the
+    denominator stays required."""
+    if not role_is_declared(block, key):
+        return STATUS_NOT_DECLARED
+    return _binding_status(block.get(key), required)
+
+
 def _stage_role_statuses(stage_cfg: dict) -> dict:
     """stage의 소스 역할별 연결 상태 (모델·컬럼 해석만 — 행 조회 없음)."""
     import bonding_plan
@@ -361,10 +388,10 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
         sources = (bp_cfg.get("sources") or {})
         return {
             "total_chips": _binding_status(sources.get("total_chips")),
-            "transfer_log": _binding_status(sources.get("used_chips")),
-            "process_history": _binding_status(sources.get("process_history")),
-            "defect": _binding_status(sources.get("defect")),
-            "eds_fail": _binding_status(sources.get("eds_fail")),
+            "transfer_log": _aux_role_status(sources, "used_chips"),
+            "process_history": _aux_role_status(sources, "process_history"),
+            "defect": _aux_role_status(sources, "defect"),
+            "eds_fail": _aux_role_status(sources, "eds_fail"),
         }
 
     source = stage_cfg.get("source") or {}
@@ -372,11 +399,12 @@ def _stage_role_statuses(stage_cfg: dict) -> dict:
         "total_chips": _binding_status(source.get("total_chips")),
         # [7c] the exact string "none" is a declared state, not a missing binding.
         # Through the shared predicate — never re-spell the comparison here.
+        # [relaxation] an absent key is a declared non-use — not_declared.
         "transfer_log": (STATUS_TRANSFER_UNTRACKED
                          if transfer_log_is_declared_none(source.get("transfer_log"))
-                         else _binding_status(source.get("transfer_log"))),
-        "process_history": _binding_status(source.get("process_history")),
-        "origin_log": _binding_status(source.get("origin_log")),
+                         else _aux_role_status(source, "transfer_log")),
+        "process_history": _aux_role_status(source, "process_history"),
+        "origin_log": _aux_role_status(source, "origin_log"),
     }
     if _valid_binding(source.get("origin_area_map")):
         out["origin_area_map"] = _binding_status(source.get("origin_area_map"))
@@ -461,12 +489,15 @@ def _status_is_degraded(status) -> bool:
           [7c] "connected(untracked)"도 강등이 **아니다** — 선언된 상태다(전사 기록이
           없다고 사이트가 명시). remaining 처리는 `_summarize_inline`이 별도 규율
           (`WARN_TRANSFER_UNTRACKED` + 상한 제공)로 한다.
+          [relaxation] "not_declared"도 강등이 아니다 — 보조 역할 키의 **부재**는
+          그런 테이블을 안 쓴다는 사이트의 상태다. 감산 없이 집계하며, 빠진 종류는
+          `inactive_subtractions` 필드가 말한다.
     강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)",
           "connected(count_only)"(transfer_log 또는 self-frame fail 원천이 좌표 없이
           카운트만 제공 — 집합 감산 불가),
           "connected(column_unresolved:...)"(선언된 컬럼이 모델에 없음 — config 오타 축).
     """
-    if not status or status == "connected":
+    if not status or status == "connected" or status == STATUS_NOT_DECLARED:
         return False
     if status.startswith("connected("):
         return (("align_unavailable" in status) or ("area_only" in status)
@@ -828,7 +859,7 @@ def _bin_cell_sets(db, cols, filters, raws):
 
 def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
                 requested, refused, base_reliable, chips_total, scope=BIN_SCOPE_SLOT,
-                untracked=False):
+                untracked=False, transfer_inactive=False):
     """`(자재, BIN)` 단위 가용 블록. 산술은 `_region_block` 재사용.
 
     [7c] `untracked=True` = transfer_log가 "none"으로 **선언**됐다. used_set은 빈
@@ -899,7 +930,10 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
             "fail_breakdown": block["fail_breakdown"],
             # [7c] untracked면 transferred는 미상이다 — used_set이 비어 있어 0이
             # 나오는데 그건 "한 칩도 안 썼다"가 아니라 "기록이 없다"다.
-            "transferred": None if untracked else block["transferred"],
+            # [relaxation] transfer_inactive(미선언)도 같은 이유로 미상. 단
+            # remaining은 숫자로 남는다 — 감산 없는 가용이 헤드라인과 같은 의미다.
+            "transferred": (None if (untracked or transfer_inactive)
+                            else block["transferred"]),
             # 🔴 신뢰 불가면 숫자를 내보내지 않는다. `remaining_upper_bound`와 같은 규율:
             #    확정처럼 보이는 수를 준 뒤 플래그로 취소하는 것은 이미 실패한 방식이다.
             "remaining": block["remaining"] if reliable and not untracked else None,
@@ -962,7 +996,13 @@ def _merge_bins_over_slots(blocks, scope, requested, refused):
                 continue
             a["cells"] += int(e.get("cells") or 0)
             a["total"] += int(e.get("total") or 0)
-            a["transferred"] += int(e.get("transferred") or 0)
+            # [relaxation] a reliable entry may carry transferred=None (transfer
+            # log never declared) — the pool sum is then unknown too, never a
+            # fake 0 assembled from Nones.
+            if e.get("transferred") is None:
+                a["transferred"] = None
+            elif a["transferred"] is not None:
+                a["transferred"] += int(e.get("transferred") or 0)
             a["remaining"] += int(e.get("remaining") or 0)
             a["fail"] += int((e.get("fail_breakdown") or {}).get("all_fail") or 0)
 
@@ -1056,20 +1096,24 @@ def _reshape_m1_summary(m1: dict, stage_name: str, stage_cfg: dict) -> dict:
         "eds_fail": src.get("eds_fail", "missing"),
     }
     # [QA F1] core-kind 경로도 동일한 강등 노출을 갖는다 — 같은 규율로 표면화한다.
+    # ([relaxation] `not_declared`는 강등이 아니므로 assess_degradation이 지나친다 —
+    #  M1이 감산항 없이 낸 remaining이 숫자로 그대로 나간다.)
     deg_warnings, remaining_reliable, total_reliable = assess_degradation(
         statuses, fail_roles={"defect", "eds_fail"})
+    used_not_declared = statuses["transfer_log"] == STATUS_NOT_DECLARED
     chips_block, inv_warnings = build_chips_block(
         total=chips.get("total", 0),
         fail_breakdown={
             "defect": chips.get("defect", 0),
             "eds_fail": chips.get("eds_fail", 0),
         },
-        transferred=chips.get("used", 0),
+        # [relaxation] 소모 로그 미선언이면 transferred는 미상(0으로 위장 금지)
+        transferred=None if used_not_declared else chips.get("used", 0),
         remaining=chips.get("remaining", 0),
         remaining_reliable=remaining_reliable,
         total_reliable=total_reliable,
     )
-    return {
+    out = {
         "identity": m1.get("identity"),
         "stage": stage_name,
         "source_kind": stage_cfg.get("source_kind"),
@@ -1078,6 +1122,13 @@ def _reshape_m1_summary(m1: dict, stage_name: str, stage_cfg: dict) -> dict:
         "history": m1.get("history") or [],
         "warnings": deg_warnings + inv_warnings + (m1.get("warnings") or []),
     }
+    # [relaxation] M1이 감산에서 뺀 종류를 M2 어휘로 개명해 그대로 나른다
+    # (used_chips → transfer_log — /stages의 역할 개명과 같은 매핑).
+    inactive = [("transfer_log" if r == "used_chips" else r)
+                for r in (m1.get("inactive_subtractions") or [])]
+    if inactive:
+        out["inactive_subtractions"] = inactive
+    return out
 
 
 def _fetch_pairs(db, cols, filters, distinct=False, cap=MAX_FAIL_POINTS, tag=""):
@@ -1267,6 +1318,10 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     warnings_out = []
 
     truncations = []   # [QA F2] 하드캡 도달 기록 — 응답에 표기하고 신뢰도를 낮춘다
+    # [relaxation] 감산 종류 중 **선언 자체가 없어** 집계에 들어가지 않은 것들.
+    # 응답 필드 `inactive_subtractions`로 표면화한다 — 총량이 순량처럼 조용히
+    # 표시되는 것이 이 필드가 막는 실패다(강등 경고와는 다른 축: 강등 아님).
+    inactive_subtractions = []
 
     # ---- total_chips ----
     total = 0
@@ -1288,8 +1343,20 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     used_count = 0
     used_count_only = False
     used_untracked = False
+    used_not_declared = False
     src = source_cfg.get("transfer_log")
-    if transfer_log_is_declared_none(src):
+    if not role_is_declared(source_cfg, "transfer_log"):
+        # [relaxation 2026-08-04] No transfer_log key at all: the site keeps no
+        # consumption log (bonded material is never reused — real-fab feedback).
+        # NOT a degradation and NOT the 7c "none" declaration either: remaining
+        # is served as a real number computed WITHOUT this subtraction, and the
+        # skipped kind is named in `inactive_subtractions`. transferred stays
+        # null (unknown — a 0 would read "none used"). A present-but-broken
+        # binding (null / typo / missing table) keeps the old `missing` demotion.
+        used_not_declared = True
+        statuses["transfer_log"] = STATUS_NOT_DECLARED
+        inactive_subtractions.append("transfer_log")
+    elif transfer_log_is_declared_none(src):
         # [7c] Consumption is DECLARED unrecorded ("none" — the exact string; JSON
         # null stays "missing" because null cannot be told apart from an accidental
         # absent key). Not a degradation: the binding did not break, the site
@@ -1331,11 +1398,21 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # ---- origin_log (칩 단위 출신 귀속 — by_core·fail 투영의 다리) ----
     origin_rows = None   # [(tx, ty, origin_lot, origin_slot, ox, oy)]
     src = source_cfg.get("origin_log")
-    model, cols = _resolve(src, required=("lot", "slot", "x", "y",
-                                          "origin_lot", "origin_slot", "origin_x", "origin_y"))
-    if model is None:
-        statuses["origin_log"] = "missing"
+    if not role_is_declared(source_cfg, "origin_log"):
+        # [relaxation] 미선언 = 출신 귀속 로그가 없는 사이트. 강등이 아니라 부재다 —
+        # remaining은 감산식 폴백(total − Σfail − used)으로 **숫자로** 나간다.
+        # (frame='origin'으로 **선언된** fail 원천이 있으면 그쪽이 종전대로
+        # unavailable(origin_missing) 강등을 받는다 — 선언 간 모순은 계속 표면화.)
+        statuses["origin_log"] = STATUS_NOT_DECLARED
+        inactive_subtractions.append("origin_log")
+        model = None
     else:
+        model, cols = _resolve(src, required=("lot", "slot", "x", "y",
+                                              "origin_lot", "origin_slot",
+                                              "origin_x", "origin_y"))
+        if model is None:
+            statuses["origin_log"] = "missing"
+    if model is not None:
         try:
             q = db.query(cols["x"], cols["y"], cols["origin_lot"], cols["origin_slot"],
                          cols["origin_x"], cols["origin_y"]) \
@@ -1364,6 +1441,10 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # is missing those chips.
     fail_count_only = False
     fail_sources = source_cfg.get("fail_sources") or {}
+    if not (isinstance(fail_sources, dict) and fail_sources):
+        # [relaxation] fail 원천이 하나도 선언되지 않았다. 종전에도 감산 없이 조용히
+        # 지나갔지만, 이제 그 침묵을 이름으로 바꾼다 — 총량이 순량처럼 보이면 안 된다.
+        inactive_subtractions.append("fail_sources")
     # [확장성] 코어별 칩 인덱스를 1회 구축해 투영을 선형화한다
     # (코어마다 origin_rows 전체를 훑으면 O(코어수 × 칩수) — 테이프당 수백 코어에서 폭발)
     rows_by_core = {}
@@ -1542,9 +1623,13 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 # `used` stays real (it comes from used_set, unaffected).
                 # [7c] untracked transfer_log is the declared sibling of
                 # count_only: chip-level used is unknowable either way.
+                # [relaxation] not_declared nulls `used` too (no log exists), but
+                # remaining STAYS a number — it is the availability computed
+                # without that subtraction, same semantics as the headline chips.
                 "total": a["total"],
                 "fail": None if fail_count_only else a["fail"],
-                "used": None if (used_count_only or used_untracked) else a["used"],
+                "used": (None if (used_count_only or used_untracked
+                                  or used_not_declared) else a["used"]),
                 "remaining": (None if (used_count_only or used_untracked
                                        or fail_count_only)
                               else a["total"] - a["blocked"]),
@@ -1591,9 +1676,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                         # empty so per-core used (and the remaining derived from
                         # it) is unknowable — null, never a fake 0/total.
                         # [7c] untracked: same nulls as count_only — used_set is empty.
+                        # [relaxation] not_declared nulls `used` only; remaining
+                        # stays the no-subtraction number (headline semantics).
                         "core_id": val, "core_lot": None, "core_slot": None,
                         "total": a["total"], "fail": None,
-                        "used": None if (used_count_only or used_untracked) else a["used"],
+                        "used": (None if (used_count_only or used_untracked
+                                          or used_not_declared) else a["used"]),
                         "remaining": (None if (used_count_only or used_untracked)
                                       else a["total"] - a["used"]),
                     })
@@ -1607,7 +1695,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 statuses["origin_area_map"] = "missing"
 
     # ---- history ----
-    hist_status, history, hist_warnings = _collect_history(db, source_cfg, lot, slot)
+    if role_is_declared(source_cfg, "process_history"):
+        hist_status, history, hist_warnings = _collect_history(db, source_cfg, lot, slot)
+    else:
+        # [relaxation] 이력 테이블 미선언 — 감산항은 아니므로 inactive 목록에는 안 싣고,
+        # 강등 경고 없이 not_declared로만 표기한다(부재는 결함이 아니다).
+        hist_status, history, hist_warnings = STATUS_NOT_DECLARED, [], []
     statuses["process_history"] = hist_status
     warnings_out.extend(hist_warnings)
 
@@ -1657,7 +1750,8 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         total=total,
         fail_breakdown=fail_breakdown,
         # [7c] transferred is unknown under untracked — 0 would read as "none used"
-        transferred=None if used_untracked else used_count,
+        # [relaxation] same under a never-declared transfer_log (no log exists)
+        transferred=None if (used_untracked or used_not_declared) else used_count,
         remaining=remaining,
         remaining_reliable=remaining_reliable,
         total_reliable=total_reliable,
@@ -1682,6 +1776,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         result["by_core_truncated"] = by_core_truncated
     if truncations:
         result["truncated"] = truncations
+    if inactive_subtractions:
+        # [relaxation — honest degradation] 선언 자체가 없어 집계에서 빠진 감산
+        # 종류의 목록. 클라는 당장 무시해도 되지만, 이 필드가 없으면 "총량이 순량
+        # 행세"가 침묵이 된다. 전 역할 선언 config의 페이로드는 변하지 않는다
+        # (비어 있으면 필드 자체가 없다).
+        result["inactive_subtractions"] = inactive_subtractions
 
     # 총칩 **좌표** 집합 — 영역과 BIN이 같은 것을 쓴다(둘 다 좌표 부분집합 교차).
     total_pts = None
@@ -1703,16 +1803,18 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         result["region_chips"] = _region_block(
             total_pts, {"all_fail": fail_union}, used_set, region)
         result["region_chips"]["reliable"] = remaining_reliable
-        if used_untracked:
+        if used_untracked or used_not_declared:
             # [7c] used_set is empty by declaration — the region transferred would
-            # be a fake 0 (unknown, not zero).
+            # be a fake 0 (unknown, not zero). [relaxation] same for a
+            # never-declared transfer_log.
             result["region_chips"]["transferred"] = None
 
     # ---- [BIN 축] `(자재, BIN)` 단위 가용 ----
     if want_bins:
         bins = _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
                            bin_request, bin_refused, bins_base_reliable,
-                           chips_block.get("total"), untracked=used_untracked)
+                           chips_block.get("total"), untracked=used_untracked,
+                           transfer_inactive=used_not_declared)
         result["bins"] = bins
         result["warnings"] = result["warnings"] + _bin_warnings(bins)
     return result
@@ -1871,9 +1973,13 @@ def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
                     warnings=warnings_out + _bin_warnings(bins_block))
 
     blocks, by_slot = [], []
+    inactive_union = []   # [relaxation] 슬롯 요약이 밝힌 비활성 감산 종류의 합집합
     for s in slots:
         one = get_stage_source_summary(db, cfg, stage_name, lot, s,
                                        bp_config=bp_config, bins=bins or "")
+        for r in (one.get("inactive_subtractions") or []):
+            if r not in inactive_union:
+                inactive_union.append(r)
         blk = one.get("bins")
         if not isinstance(blk, dict) or blk.get("axis") != "connected":
             # 한 슬롯이라도 축이 없으면 로트 합은 성립하지 않는다.
@@ -1904,8 +2010,13 @@ def get_lot_bin_summary(db, cfg: dict, stage_name: str, lot: str,
         })
 
     bins_block = _merge_bins_over_slots(blocks, BIN_SCOPE_LOT, bin_request, bin_refused)
-    return dict(base_out, slots_truncated=False, by_slot=by_slot, bins=bins_block,
-                warnings=warnings_out + _bin_warnings(bins_block))
+    out = dict(base_out, slots_truncated=False, by_slot=by_slot, bins=bins_block,
+               warnings=warnings_out + _bin_warnings(bins_block))
+    if inactive_union:
+        # [relaxation] 로트 합산 수치도 같은 감산 부재 위에서 계산됐다 — 슬롯 응답과
+        # 같은 이름으로 말한다(없으면 필드도 없다).
+        out["inactive_subtractions"] = inactive_union
+    return out
 
 
 # ---------------------------------------------------------------------------

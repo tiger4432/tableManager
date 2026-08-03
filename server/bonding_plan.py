@@ -7,6 +7,10 @@
 
 [경계 계약 — 총괄 고정] GET /api/bonding-plan/core-summary 응답 형태는 지시서
 Server_bonding_plan_m1_task.md §C. 칩 좌표 목록은 절대 반환하지 않는다(집계만).
+[relaxation 2026-08-04 — 총괄 board request 2] 보조 역할 선언은 **선택**이다:
+config에 키가 아예 없으면 상태 `not_declared`(강등 아님)이고 그 감산항 없이 집계한다.
+감산에서 빠진 종류는 응답의 선택 필드 `inactive_subtractions`(역할명 리스트)가 말한다.
+선언돼 있으나 깨진 바인딩은 종전 그대로 `missing` 강등 — 완화는 부재에만 적용된다.
 
 [align — 정렬의 유일한 근거는 `wafer_map_metadata`다 (사용자 확정 2026-07-26)]
 defect/EDS 계측 맵은 코어 맵과 좌표계가 다를 수 있다(회전·면·start·치수·물리 규격).
@@ -35,6 +39,20 @@ import paths  # single override point (ASSY_DATA_ROOT)
 CONFIG_PATH = paths.config_path("bonding_plan_config.json")
 
 ROLES = ("process_history", "defect", "eds_fail", "used_chips", "total_chips")
+
+# [relaxation 2026-08-04 — board request 2] An auxiliary role key that is ABSENT
+# from the config is a site-level statement "we do not keep such a table", not a
+# broken binding. Real fabs mark deductions on the map itself and never maintain
+# per-lot fail/consumption side tables — forcing those declarations demoted every
+# availability figure to 미상. Absent auxiliary roles now read `not_declared`
+# (NOT a degradation) and their subtraction is simply inactive; the payload names
+# the inactive kinds in `inactive_subtractions` so "gross shown as net" is never
+# silent. A role key that IS present but broken (null, typo, missing table)
+# keeps every pre-existing degradation — the relaxation applies ONLY to absence.
+# `total_chips` is exempt: without the denominator there is no availability.
+STATUS_NOT_DECLARED = "not_declared"
+# M1 subtraction-role kinds (remaining = total − defect − eds_fail − used).
+SUBTRACTION_ROLES = ("defect", "eds_fail", "used_chips")
 HISTORY_LIMIT = 50          # history 최근 N건 상한 (계약)
 MAX_REGION_RECTS = 50       # region 사각형 개수 상한 (페이로드/연산 방어)
 MAX_REGION_POINTS = 100_000  # 영역 교차용 내부 좌표 페치 하드캡 (무제한 로드 금지)
@@ -71,6 +89,19 @@ def _valid_source(src) -> bool:
         and isinstance(src.get("table"), str) and src.get("table")
         and isinstance(src.get("columns"), dict)
     )
+
+
+def role_is_declared(block, key) -> bool:
+    """[relaxation] Did the site declare this role AT ALL?
+
+    ONE PREDICATE, EVERY READER CALLS IT (same discipline as
+    `transfer_log_is_declared_none`): only a key that is truly absent from the
+    block is a non-declaration. A present key with ANY value — null, a garbage
+    string, a binding with a typo — is a declaration, and a broken declaration
+    keeps its pre-existing degradation (`missing` etc.). Absence is the normal
+    state at real sites; presence is a claim that must resolve.
+    """
+    return isinstance(block, dict) and key in block
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +353,12 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     for role, count_key in map_roles.items():
         src = sources_cfg.get(role)
         if not _valid_source(src):
-            statuses[role] = "missing"
+            # [relaxation] absent auxiliary declaration = the site keeps no such
+            # table → not a degradation. total_chips stays required (denominator).
+            statuses[role] = ("missing"
+                              if (role == "total_chips"
+                                  or role_is_declared(sources_cfg, role))
+                              else STATUS_NOT_DECLARED)
             continue
         model, cols = _resolve_model_columns(src, required=("lot", "slot"))
         if model is None:
@@ -413,7 +449,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # ---- used_chips (본딩 로그 — 좌표 있으면 distinct 칩, 없으면 행 수) ----
     src = sources_cfg.get("used_chips")
     if not _valid_source(src):
-        statuses["used_chips"] = "missing"
+        statuses["used_chips"] = ("missing"
+                                  if role_is_declared(sources_cfg, "used_chips")
+                                  else STATUS_NOT_DECLARED)
     else:
         model, cols = _resolve_model_columns(src, required=("lot", "slot"))
         if model is None:
@@ -444,7 +482,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # ---- process_history (최근 50건, 시간 오름차순) + warnings ----
     src = sources_cfg.get("process_history")
     if not _valid_source(src):
-        statuses["process_history"] = "missing"
+        statuses["process_history"] = ("missing"
+                                       if role_is_declared(sources_cfg, "process_history")
+                                       else STATUS_NOT_DECLARED)
     else:
         model, cols = _resolve_model_columns(src, required=("lot", "slot"))
         if model is None:
@@ -505,6 +545,14 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         "history": history,
         "warnings": warnings_out,
     }
+    # [relaxation — honest degradation] subtraction kinds that were never
+    # declared did not enter the remaining arithmetic. Name them instead of
+    # letting a gross figure pose as net. Field is present only when non-empty
+    # (fully-declared configs keep a byte-identical payload).
+    inactive = [r for r in SUBTRACTION_ROLES
+                if statuses.get(r) == STATUS_NOT_DECLARED]
+    if inactive:
+        result["inactive_subtractions"] = inactive
     if region_counts is not None:
         region_counts["remaining"] = (
             region_counts["total"] - region_counts["defect"]

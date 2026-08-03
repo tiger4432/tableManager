@@ -10,8 +10,12 @@ presentation instead of a degradation:
   * a DISTINCT warning `transfer_untracked` (effect remaining_upper_bound) so
     the client can render "≤N" instead of 미상
   * by_core used/remaining = null; bins entries flagged with per-bin bounds
-  * ONLY the exact string "none" declares this — JSON null and an absent key
-    stay exactly the accidental-missing behavior of before.
+  * ONLY the exact string "none" declares this — JSON null and case variants
+    stay exactly the accidental-missing behavior of before. An ABSENT key is a
+    different, third state since the 2026-08-04 relaxation: `not_declared`
+    (no demotion, remaining served as a number, kind listed in
+    `inactive_subtractions`) — pinned in test_availability_relaxation.py and
+    asserted below only insofar as it must NOT look like "none" or missing.
 
 Fixtures are the shared tp_test_* scenario (total 8, fail-union 4, seeded
 bonding_log rows that must be IGNORED once consumption is declared untracked —
@@ -173,10 +177,20 @@ def _assert_accidental_missing(client):
     assert body["chips"]["transferred"] == 0     # count of an unbound role: 0 rows seen
 
 
-def test_absent_key_stays_missing(db_session, tmp_path, monkeypatch, client):
+def test_absent_key_is_not_declared_not_untracked(db_session, tmp_path, monkeypatch,
+                                                  client):
+    """[relaxation 2026-08-04] An absent key is neither the 7c declaration nor an
+    accident: it reads `not_declared`, never emits `transfer_untracked`, and the
+    remaining is a real number (full relaxation behavior lives in
+    test_availability_relaxation.py — here we pin the boundary to 7c)."""
     _env(db_session, tmp_path, monkeypatch, transfer_log=_ABSENT)
     _seed_scenario(db_session)
-    _assert_accidental_missing(client)
+    body = _summary(client)
+    assert body["sources"]["transfer_log"] == "not_declared"
+    assert not any(w.get("type") == "transfer_untracked" for w in body["warnings"])
+    assert not any(w.get("type") == "source_degraded"
+                   and w.get("role") == "transfer_log" for w in body["warnings"])
+    assert body["chips"]["remaining"] is not None
 
 
 def test_json_null_stays_missing_not_untracked(db_session, tmp_path, monkeypatch,
