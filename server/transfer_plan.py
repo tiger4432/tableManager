@@ -168,6 +168,23 @@ REGISTRY_ROLES = ("ref_table", "map_key", "value", "stack", "mat_1h", "mat_mid",
 # 폐기 모델의 읽기 전용 역할. 필수가 아니라서 미선언 사이트도 404가 되지 않는다.
 REGISTRY_LEGACY_ROLE = "bands"
 
+# --- 역할별 필수 키 (한 자리에서 철자한다) ---------------------------------
+# 이 튜플들은 예전에 호출 지점마다 인라인으로 다시 적혀 있었다. dry-run이 「이 선언은
+# 받아들여지는가」를 답하려면 **판정자와 똑같은 required**를 봐야 하므로, 사본이 아니라
+# 같은 상수를 읽는다 ― 두 번째 철자는 곧 두 개의 진실이 된다.
+IDENTITY_ROLES = ("lot", "slot")
+ORIGIN_LOG_ROLES = ("lot", "slot", "x", "y",
+                    "origin_lot", "origin_slot", "origin_x", "origin_y")
+ORIGIN_AREA_MAP_ROLES = ("lot", "slot", "x", "y", "val")
+SOURCE_REGION_ROLES = ("ref_table", "map_key", "source_lot", "source_slot", "x", "y")
+MAP_METADATA_ROLES = ("target_table", "map_id", "grid_metadata")
+BIN_AXIS_ROLES = ("lot", "slot", "x", "y", "bin")
+LOT_MEMBERSHIP_ROLES = IDENTITY_ROLES
+
+# 선언이 놓일 수 있는 자리(거절 문장이 "어디를 봤는지" 말할 때 쓴다).
+BIN_AXIS_WHERE = "stages.<stage>.bin_map 또는 stages.<stage>.source.bin_map"
+LOT_MEMBERSHIP_WHERE = "stages.<stage>.source.lot_membership"
+
 # validate 경고 타입 (계약)
 WARN_QTY_SHORTAGE = "qty_shortage"
 # [zone 모델] 그 값의 **층 구조를 읽지 못했다**. 이제 이 경고는 폐기 모델(`bands`)에서만
@@ -443,7 +460,7 @@ def _plan_store_statuses(cfg: dict) -> dict:
     if _valid_binding(store.get("source_region")):
         out["source_region"] = _binding_status(
             store.get("source_region"),
-            required=("ref_table", "map_key", "source_lot", "source_slot", "x", "y"))
+            required=SOURCE_REGION_ROLES)
     return out
 
 
@@ -479,6 +496,186 @@ def list_stages(cfg: dict) -> dict:
             "roles": _stage_role_statuses(stage_cfg),
         })
     return {"stages": stages_out, "plan_store": _plan_store_statuses(cfg)}
+
+
+# ---------------------------------------------------------------------------
+# dry-run ― 「이 선언은 받아들여지는가, 아니면 왜 거절되는가」
+# ---------------------------------------------------------------------------
+#
+# 왜 유도와 **같은 라운드**에 존재하는가: 유도는 조용히 틀릴 수 있다. 어느 철자가
+# 이겼는지 볼 자리가 없으면, 우리는 「선언이 조용히 먹지 않는」 결함을 「유도가 조용히
+# 엉뚱한 컬럼을 골랐다」로 바꿔 놓았을 뿐이다. 그래서 이 경로는 역할마다
+# **선언인지 유도인지 + 해석된 실제 컬럼명 + 유도 출처**를 함께 낸다. "됩니다"는 답이
+# 아니다.
+#
+# 선례: `GET /admin/enrichment/auto-confirm/dry-run`. 그쪽은 `ignore_knob=True`로 **꺼진**
+# 규칙을 재고, 이쪽은 **아직 안 쓰이는** 선언을 잰다 ― 둘 다 "켜기/쓰기 전에 답해야 하는
+# 질문"이라는 같은 형태다. 데이터는 건드리지 않는다(모델·컬럼 해석만, 행 조회 없음).
+
+# 역할 카탈로그 ― (역할키, 필수 튜플, 자리 표기). dry-run과 판정자가 같은 required를
+# 본다는 것이 이 표의 존재 이유다.
+_STAGE_SOURCE_ROLES = (
+    ("map_metadata", MAP_METADATA_ROLES),
+    ("total_chips", IDENTITY_ROLES),
+    ("transfer_log", IDENTITY_ROLES),
+    ("process_history", IDENTITY_ROLES),
+    ("origin_log", ORIGIN_LOG_ROLES),
+    ("origin_area_map", ORIGIN_AREA_MAP_ROLES),
+    ("lot_membership", LOT_MEMBERSHIP_ROLES),
+)
+
+
+def _role_dry_run(src, required: tuple, label: str, where: str) -> dict:
+    """역할 1건의 dry-run 항목. **행 조회 없음** ― 모델/컬럼 해석만."""
+    import bonding_plan
+    from database import models
+
+    reason, detail = bonding_plan.explain_binding_refusal(
+        src, required, label=label, where=where)
+    declared_cols = (src.get("columns") if isinstance(src, dict) else None) or {}
+    effective, derivation = (bonding_plan.resolve_effective_columns(src, required)
+                             if isinstance(src, dict) else ({}, {}))
+    if not isinstance(effective, dict):
+        effective = {}
+    table = src.get("table") if isinstance(src, dict) else None
+    model = models.DYNAMIC_TABLES.get(table) if isinstance(table, str) else None
+
+    # 필수 역할 ∪ **선언된 역할 전부**. 선택 역할을 빼면 운영자는 자기가 적은 줄의 절반을
+    # 이 화면에서 못 본다 ― 그리고 선택 역할이야말로 **유도되지 않는다**(부재가 곧 정보라
+    # 절대 메우지 않는다). 그러니 "이건 지워도 유도된다"와 "이건 지우면 기능이 사라진다"를
+    # 구별해 보여줘야 한다. `required` 플래그가 그 구별이다.
+    columns = {}
+    for role in list(required) + [r for r in declared_cols if r not in required]:
+        col = effective.get(role, declared_cols.get(role))
+        d = derivation.get(role)
+        if role in declared_cols:
+            origin = "declared"
+        elif d and d.get("column"):
+            origin = "derived"
+        else:
+            origin = "absent"
+        columns[role] = {
+            "column": col,
+            "origin": origin,
+            "required": role in required,
+            # 선택 역할은 유도 대상이 아니다 ― 지우면 그 감산/집계가 조용히 사라진다.
+            "derivable": role in required and role in bonding_plan.DERIVED_ROLE_OF,
+            # 유도 출처 ― 어느 선언에서 왔는지. "됐다"가 아니라 "어디서 왔다"를 낸다.
+            "derived_from": (d or {}).get("source") if origin == "derived" else None,
+            "derived_role": (d or {}).get("from_role") if origin == "derived" else None,
+            "exists_on_table": (None if (model is None or not col)
+                                else getattr(model, str(col), None) is not None),
+        }
+
+    # 「선언이 이긴다」의 뒷면: 틀린 선언은 유도가 있어도 계속 이긴다 → 수리법은 *지우기*.
+    removable = []
+    if model is not None and isinstance(src, dict):
+        broken = [r for r in required
+                  if effective.get(r) and getattr(model, str(effective[r]), None) is None]
+        removable = [{"role": r, "would_derive": c}
+                     for r, c in bonding_plan.deletion_hints(src, broken, model)]
+
+    return {
+        "role": label,
+        "where": where,
+        "declared": src is not None,
+        "table": table,
+        "accepted": reason is None,
+        "reason": reason,
+        "detail": detail,
+        "required": list(required),
+        "columns": columns,
+        "removable_declarations": removable,
+    }
+
+
+def dry_run(cfg: dict) -> dict:
+    """전 역할의 수용/거절 판정 + 어느 철자가 이겼는지. 읽기 전용, 데이터 미조회."""
+    import bonding_plan
+    BINDING_NOT_REACHED = bonding_plan.BINDING_NOT_REACHED
+    stages_out = []
+    for name, stage_cfg in get_stages(cfg).items():
+        if not isinstance(stage_cfg, dict):
+            continue
+        source = stage_cfg.get("source") or {}
+        roles = [_role_dry_run(_bin_axis_source(stage_cfg), BIN_AXIS_ROLES,
+                               "bin_map", f"stages.{name}.bin_map")]
+        ref = stage_cfg.get("source_config_ref")
+        if ref in M1_SOURCE_REFS:
+            # 이 stage는 소스 역할을 M1 config에 위임한다 ― 자기 `source.*`는 **읽히지
+            # 않는다**. 그걸 `not_declared`로 내면 운영자에게 "여기를 채워라"라고 말하는
+            # 셈이고, 채워도 아무 일도 일어나지 않는다. `not_reached`가 정확히 이 뜻이다.
+            import bonding_plan as _bp
+            for role, required in _STAGE_SOURCE_ROLES:
+                roles.append({
+                    "role": role, "where": f"stages.{name}.source.{role}",
+                    "declared": source.get(role) is not None, "table": None,
+                    "accepted": False, "reason": _bp.BINDING_NOT_REACHED,
+                    "detail": (f"이 stage는 소스 역할을 `{ref}` config에 위임합니다"
+                               f"(`source_config_ref`) ― `stages.{name}.source.{role}`은 "
+                               f"읽히지 않습니다. 이 역할은 bonding_plan_config.json에서 "
+                               f"선언하세요."),
+                    "required": list(required), "columns": {},
+                    "removable_declarations": [],
+                })
+            stages_out.append({
+                "name": name, "source_config_ref": ref,
+                "target_map": stage_cfg.get("target_map") or {}, "roles": roles,
+            })
+            continue
+        for role, required in _STAGE_SOURCE_ROLES:
+            if role == "transfer_log" and transfer_log_is_declared_none(source.get(role)):
+                # [7c] 정확한 문자열 "none"은 선언된 상태지 깨진 바인딩이 아니다.
+                roles.append({
+                    "role": role, "where": f"stages.{name}.source.{role}",
+                    "declared": True, "table": None, "accepted": True,
+                    "reason": None,
+                    "detail": "소비를 기록하지 않는다고 **선언**돼 있습니다(`\"none\"`).",
+                    "required": list(required), "columns": {},
+                    "removable_declarations": [],
+                })
+                continue
+            roles.append(_role_dry_run(source.get(role), required, role,
+                                       f"stages.{name}.source.{role}"))
+        for fname, fs in (source.get("fail_sources") or {}).items():
+            roles.append(_role_dry_run(fs, IDENTITY_ROLES, f"fail_sources.{fname}",
+                                       f"stages.{name}.source.fail_sources.{fname}"))
+        stages_out.append({
+            "name": name,
+            "source_config_ref": stage_cfg.get("source_config_ref"),
+            "target_map": stage_cfg.get("target_map") or {},
+            "roles": roles,
+        })
+
+    store = cfg.get("plan_store") or {}
+    store_roles = [
+        _role_dry_run(store.get("registry"), REGISTRY_ROLES,
+                      "registry", "plan_store.registry"),
+        _role_dry_run(store.get("source_region"), SOURCE_REGION_ROLES,
+                      "source_region", "plan_store.source_region"),
+    ]
+
+    every = [r for s in stages_out for r in s["roles"]] + store_roles
+    return {
+        "config_path": CONFIG_PATH,
+        "stages": stages_out,
+        "plan_store": store_roles,
+        "counts": {
+            "total": len(every),
+            "accepted": sum(1 for r in every if r["accepted"]),
+            "rejected": sum(1 for r in every
+                            if not r["accepted"] and r["declared"]
+                            and r["reason"] != BINDING_NOT_REACHED),
+            "not_declared": sum(1 for r in every if not r["declared"]
+                                and r["reason"] != BINDING_NOT_REACHED),
+            "not_reached": sum(1 for r in every if r["reason"] == BINDING_NOT_REACHED),
+            "derived_columns": sum(
+                1 for r in every for c in r["columns"].values()
+                if c.get("origin") == "derived"),
+            "removable_declarations": sum(
+                len(r["removable_declarations"]) for r in every),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -616,8 +813,7 @@ def load_source_region(db, cfg: dict, ref_table: str, map_key: str,
     반환: set[(x, y)] 또는 None(바인딩 미선언/미해석 — 영역 스코프 없음).
     """
     store = (cfg.get("plan_store") or {}).get("source_region")
-    model, cols = _resolve(store, required=("ref_table", "map_key",
-                                            "source_lot", "source_slot", "x", "y"))
+    model, cols = _resolve(store, required=SOURCE_REGION_ROLES)
     if model is None:
         return None
     import map_overlay
@@ -768,13 +964,6 @@ def parse_bin_request(raw):
         elif b not in out:
             out.append(b)
     return out, refused
-
-
-# `bin_map`이 놓일 수 있는 두 자리 + 그 축이 요구하는 역할 ― 판정과 거절 문장이 **같은
-# 입력**을 보게 하려고 한 곳에 둔다. 두 자리를 각자 다시 적으면 문장이 실제로 읽힌
-# 선언과 다른 것을 설명하게 된다.
-BIN_AXIS_ROLES = ("lot", "slot", "x", "y", "bin")
-BIN_AXIS_WHERE = "stages.<stage>.bin_map 또는 stages.<stage>.source.bin_map"
 
 
 def _bin_axis_source(stage_cfg: dict):
@@ -1104,10 +1293,6 @@ def _merge_bins_over_slots(blocks, scope, requested, refused):
     if refused:
         out["refused"] = list(refused)
     return out
-
-
-LOT_MEMBERSHIP_ROLES = ("lot", "slot")
-LOT_MEMBERSHIP_WHERE = "stages.<stage>.source.lot_membership"
 
 
 def _lot_membership_refusal(stage_cfg: dict) -> tuple:
@@ -1480,9 +1665,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         inactive_subtractions.append("origin_log")
         model = None
     else:
-        model, cols = _resolve(src, required=("lot", "slot", "x", "y",
-                                              "origin_lot", "origin_slot",
-                                              "origin_x", "origin_y"))
+        model, cols = _resolve(src, required=ORIGIN_LOG_ROLES)
         if model is None:
             statuses["origin_log"] = "missing"
     if model is not None:
@@ -1725,7 +1908,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         # [강등 경로] origin_log 미해석 — 영역 귀속 맵(dt_map: val=코어 식별)으로 분해만 제공.
         # 좌표 대응이 없어 fail 투영은 불가 → fail은 null(0으로 위장 금지).
         area_src = source_cfg.get("origin_area_map")
-        model, cols = _resolve(area_src, required=("lot", "slot", "x", "y", "val"))
+        model, cols = _resolve(area_src, required=ORIGIN_AREA_MAP_ROLES)
         if model is None:
             if _valid_binding(area_src):
                 statuses["origin_area_map"] = "missing"

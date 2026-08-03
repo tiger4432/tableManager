@@ -46,11 +46,17 @@ GOOD_COLUMNS = {"lot": "dt_lot", "slot": "dt_slot",
 
 
 @pytest.fixture()
-def refusal_env(db_session):
+def refusal_env(db_session, tmp_path, monkeypatch):
     models.init_dynamic_models(REFUSAL_TABLES)
     crud.TABLE_CONFIG.update(REFUSAL_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    # [Isolation] Derivation reads map_overlay_config; point it at a file that
+    # does not exist so these cases test the resolver, not the user's overlay
+    # declarations. `test_transfer_plan_derivation.py` owns the derived cases.
+    import map_overlay
+    monkeypatch.setattr(map_overlay, "CONFIG_PATH", str(tmp_path / "no_overlay.json"))
+    bonding_plan._OVERLAY_MEMO["stamp"] = None
     return db_session
 
 
@@ -143,19 +149,41 @@ def test_table_not_in_table_config_says_which_table(refusal_env):
 
 def test_missing_role_key_is_not_the_same_sentence_as_a_wrong_column(refusal_env):
     """A role never named and a role named at a column that does not exist are
-    two different mistakes with two different fixes."""
+    two different mistakes with two different fixes.
+
+    [derivation] The omitted role here is a KEY (`lot`), which is never derived -
+    keys differ by purpose and inferring them would erase real information. So
+    an omitted key is still plainly `not_declared`. An omitted COORDINATE takes
+    the derivation path instead and is pinned by the next test.
+    """
     src = {"table": "binref_test_map",
-           "columns": {k: v for k, v in GOOD_COLUMNS.items() if k != "bin"}}
+           "columns": {k: v for k, v in GOOD_COLUMNS.items() if k != "lot"}}
     reason, detail = _explain(src)
 
     assert reason == bonding_plan.BINDING_NOT_DECLARED
-    assert "bin" in detail
-    assert "lot" in detail and "slot" in detail   # what IS declared
+    assert "lot" in detail
+    assert "slot" in detail                       # what IS declared
 
     other_reason, other_detail = _explain(
         {"table": "binref_test_map", "columns": dict(GOOD_COLUMNS, bin="nope_col")})
     assert other_reason == bonding_plan.BINDING_COLUMN_MISSING
     assert detail != other_detail
+
+
+def test_an_omitted_derivable_role_reports_the_derivation_failure(refusal_env):
+    """`binref_test_map` has no literal x/y and no map_overlay declaration, so
+    omitting `bin` cannot be filled. The refusal must say the derivation was
+    attempted and failed - not "you did not declare it", which would send the
+    operator to write something the shorter form is meant to let them omit.
+    """
+    src = {"table": "binref_test_map",
+           "columns": {k: v for k, v in GOOD_COLUMNS.items() if k != "bin"}}
+    reason, detail = _explain(src)
+
+    assert reason == bonding_plan.BINDING_MAPPING_UNAVAILABLE
+    assert "bin" in detail
+    assert "유도" in detail
+    assert "binref_test_map" in detail
 
 
 def test_malformed_shape_says_what_it_read(refusal_env):
@@ -184,10 +212,17 @@ def test_every_cause_produces_a_distinct_sentence(refusal_env):
         "column_name_wrong": ({"table": "binref_test_map",
                                "columns": dict(GOOD_COLUMNS, x="x")},
                               bonding_plan.BINDING_COLUMN_MISSING),
-        "role_absent": ({"table": "binref_test_map",
-                         "columns": {k: v for k, v in GOOD_COLUMNS.items()
-                                     if k != "bin"}},
-                        bonding_plan.BINDING_NOT_DECLARED),
+        # an omitted KEY is never derived -> plainly not declared
+        "key_role_absent": ({"table": "binref_test_map",
+                             "columns": {k: v for k, v in GOOD_COLUMNS.items()
+                                         if k != "lot"}},
+                            bonding_plan.BINDING_NOT_DECLARED),
+        # an omitted COORDINATE takes the derivation path, which fails on this
+        # table -> a different word and a different sentence
+        "derivation_failed": ({"table": "binref_test_map",
+                               "columns": {k: v for k, v in GOOD_COLUMNS.items()
+                                           if k != "bin"}},
+                              bonding_plan.BINDING_MAPPING_UNAVAILABLE),
         "malformed": ({"table": "binref_test_map", "columns": "dt_x"},
                       bonding_plan.BINDING_MAPPING_UNAVAILABLE),
     }

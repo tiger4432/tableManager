@@ -280,8 +280,15 @@ def _demote_for_unresolved(status, cols):
 BINDING_NOT_DECLARED = "not_declared"
 BINDING_MAPPING_UNAVAILABLE = "mapping_unavailable"
 BINDING_COLUMN_MISSING = "candidate_column_missing"
+# `not_reached` = config_resolve_report.REASON_NOT_REACHED. A declaration that a
+# switch upstream stops the reader from ever consulting - a stage delegating its
+# source roles via `source_config_ref` never reads its own `source.*` block, so
+# calling those "not declared" would invite an operator to fill in a block that
+# is not consulted. Never produced by `explain_binding_refusal` (which judges one
+# declaration in isolation); it belongs to callers that know the switch.
+BINDING_NOT_REACHED = "not_reached"
 BINDING_REFUSALS = (BINDING_NOT_DECLARED, BINDING_MAPPING_UNAVAILABLE,
-                    BINDING_COLUMN_MISSING)
+                    BINDING_COLUMN_MISSING, BINDING_NOT_REACHED)
 
 # How many of the table's real column names to offer back. The point is "did you
 # mean one of these", not a schema dump - a 60-column table would bury the
@@ -295,6 +302,132 @@ def _model_column_names(model) -> list:
         return sorted(c.key for c in model.__table__.columns)
     except Exception:            # pragma: no cover - defensive
         return []
+
+
+# ---------------------------------------------------------------------------
+# Derivation - the coordinate/value columns are already declared ONCE, elsewhere
+# ---------------------------------------------------------------------------
+#
+# WHY. `transfer_plan_config` asked the operator to retype, role by role, an
+# answer the system already had: `map_overlay_config.json` declares
+#   "dt_log": {"columns": {"x": "dt_x", "y": "dt_y", "val": "c_bn", ...}}
+# and the plan config asked for `x`/`y`/`bin` again. That retyping is precisely
+# where the 2026-08-04 typo landed (`"x": "x"` on a table with `dt_x`). This is
+# a third spelling of one fact, not a missing feature.
+#
+# NO NEW MECHANISM. `map_overlay.resolve_binding_info` already does this job -
+# declaration first, `table_config` derivation second, with the winning source
+# labelled. `map_overlay_config`'s own comment states the rule being implemented
+# here: declare only where columns depart from the convention, because a
+# DUPLICATE declaration hides whether the derivation path still works.
+#
+# WHAT IS NOT DERIVED, on purpose:
+#   * `lot` / `slot` (and every other key role). Overlay keys `dt_log` by
+#     `dt_job`; the plan keys it by `dt_lot`/`dt_slot`. That difference is real
+#     information about purpose, not a convention anyone can infer.
+#   * `origin_x` / `origin_y` - a SECOND coordinate pair on the same table. The
+#     map binding describes one pair and cannot say which.
+#   * ANY role the caller did not mark `required`. This is the load-bearing
+#     restriction. An OPTIONAL x/y that the config omits is already information
+#     every reader acts on: `transfer_plan._summarize_inline` reads a
+#     transfer_log without x/y as `connected(count_only)`, and
+#     `_canonical_frame` skips a role that declares no coordinates. Filling
+#     those would silently convert a count-only site into set subtraction and
+#     change the numbers. Absence is only ever filled where absence would
+#     otherwise be a refusal.
+DERIVED_ROLE_OF = {"x": "x", "y": "y", "val": "val", "bin": "val"}
+
+# Where a filled column came from, for the operator-facing report. Not a new
+# vocabulary - these are `map_overlay.resolve_binding_info`'s own `source`
+# values, passed through rather than renamed.
+DERIVATION_DECLARED = "map_overlay_declared"
+DERIVATION_DERIVED = "map_overlay_derived"
+DERIVATION_UNAVAILABLE = "unavailable"
+
+_OVERLAY_MEMO = {"stamp": None, "cfg": None}
+
+
+def _overlay_config_snapshot() -> dict:
+    """`map_overlay_config.json`, memoized on the file's (mtime_ns, size).
+
+    A resolver runs several times per request, so re-reading the file on each
+    call would be a per-role disk hit exactly in the configs that adopt the
+    shorter form - the ones this change is meant to reward. Keying the memo on
+    the file stamp keeps hot-reload (a saved edit changes mtime) while giving
+    one read per edit instead of one per role.
+    """
+    import map_overlay
+    path = map_overlay.CONFIG_PATH
+    try:
+        st = os.stat(path)
+        stamp = (path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        stamp = (path, None, None)
+    if _OVERLAY_MEMO["stamp"] != stamp:
+        _OVERLAY_MEMO["cfg"] = map_overlay.load_overlay_config(path)
+        _OVERLAY_MEMO["stamp"] = stamp
+    return _OVERLAY_MEMO["cfg"] or {}
+
+
+def _map_binding_for(table: str):
+    """`(binding|None, source)` for a table, via map_overlay's resolver.
+
+    A `fallback_guess` value column is REFUSED for the value role: map_overlay
+    already keeps that guess out of its own data path (`derive_table_binding`
+    returns None when guessed) and serves it only as a labelled hint. Feeding a
+    guessed column into an availability count would produce a number nobody
+    declared - the silent-wrong-answer shape this project keeps paying for. The
+    x/y of a guessed binding are still literal or declared, so they stay usable.
+    """
+    import map_overlay
+    info = map_overlay.resolve_binding_info(_overlay_config_snapshot(), table)
+    if not isinstance(info, dict):
+        return None, DERIVATION_UNAVAILABLE
+    src = info.get("source")
+    if src == "declared":
+        return info, DERIVATION_DECLARED
+    if src == "derived":
+        return info, DERIVATION_DERIVED
+    # fallback_guess: usable for coordinates, never for the value column.
+    return {"x": info.get("x"), "y": info.get("y"), "val": None}, DERIVATION_DERIVED
+
+
+def resolve_effective_columns(source_cfg: dict, required: tuple):
+    """`(columns, derivation)` - declared columns plus fills for ABSENT REQUIRED
+    derivable roles.
+
+    EXPLICIT ALWAYS WINS, and nothing else changes. A config that declares every
+    required role gets its own `columns` mapping back UNCHANGED (same object
+    identity, so iteration order and content are byte-identical downstream) and
+    an empty `derivation`. Operators never have to edit anything; only a config
+    that OMITS a role sees any new behaviour.
+
+    `derivation` is `{role: {"column": str|None, "source": str, "from_role": str,
+    "table": str}}` - kept so the dry-run route can show WHICH spelling won
+    rather than just "it worked".
+    """
+    columns = source_cfg.get("columns")
+    if not isinstance(columns, dict):
+        return columns, {}
+    wanted = [r for r in (required or ())
+              if r in DERIVED_ROLE_OF and r not in columns]
+    if not wanted:
+        return columns, {}          # fully declared -> identical object, no fill
+
+    table = source_cfg.get("table")
+    binding, source = _map_binding_for(table) if isinstance(table, str) else (None,
+                                                                             DERIVATION_UNAVAILABLE)
+    out = dict(columns)
+    derivation = {}
+    for role in wanted:
+        col = (binding or {}).get(DERIVED_ROLE_OF[role])
+        derivation[role] = {"column": col,
+                            "source": source if col else DERIVATION_UNAVAILABLE,
+                            "from_role": DERIVED_ROLE_OF[role],
+                            "table": table}
+        if col:
+            out[role] = col
+    return out, derivation
 
 
 def explain_binding_refusal(src_cfg, required: tuple, label: str,
@@ -361,27 +494,50 @@ def explain_binding_refusal(src_cfg, required: tuple, label: str,
                 f"{', '.join(known) if known else '(없음 ― 아직 로드되지 않았습니다)'}.")
 
     # 4) 필수 역할 키 자체가 columns에 없다.
-    absent_roles = [r for r in required if r not in columns]
+    #    유도가 메운 역할은 여기서 빠진다 ― 생략은 이제 "관례를 쓰겠다"는 뜻이다.
+    #    유도가 **실패한** 역할은 조용히 사라지지 않고 자기 이름으로 거절된다.
+    effective, derivation = resolve_effective_columns(src_cfg, required)
+    absent_roles = [r for r in required if r not in effective]
     if absent_roles:
+        failed = [r for r in absent_roles if r in derivation]
+        if failed:
+            # 생략했는데 유도도 못 했다. 침묵이 최악이므로 무엇을 어디서 찾았는지 말한다.
+            return (BINDING_MAPPING_UNAVAILABLE,
+                    f"`{label}`의 필수 역할 {', '.join(str(r) for r in failed)}이(가) "
+                    f"선언돼 있지 않고 유도도 되지 않았습니다{at}. "
+                    f"`{table}`의 맵 바인딩(map_overlay_config.json의 `table_bindings`, "
+                    f"없으면 table_config.json의 x/y 관례)에서 "
+                    f"{', '.join(DERIVED_ROLE_OF[r] for r in failed)}을(를) 찾지 "
+                    f"못했습니다. 해당 역할을 직접 선언하거나 `{table}`의 맵 바인딩을 "
+                    f"선언하세요.")
         return (BINDING_NOT_DECLARED,
                 f"`{label}`의 `columns`에 필수 역할 "
                 f"{', '.join(str(r) for r in absent_roles)}이(가) 없습니다{at}. "
                 f"선언된 역할: "
                 f"{', '.join(str(k) for k in columns) if columns else '(없음)'} / "
-                f"필요한 역할: {', '.join(str(r) for r in required)}.")
+                f"필요한 역할: {', '.join(str(r) for r in required)}. "
+                f"(유도 대상 역할: {', '.join(sorted(DERIVED_ROLE_OF))})")
 
     # 5) 역할은 선언됐는데 그 이름의 컬럼이 테이블에 없다 ― 라이브에서 가장 흔한 원인.
-    bad = [(r, columns[r]) for r in required
-           if getattr(model, str(columns[r]), None) is None]
+    bad = [(r, effective[r]) for r in required
+           if getattr(model, str(effective[r]), None) is None]
     if bad:
         real = _model_column_names(model)
         shown = real[:_REFUSAL_COLUMN_HINTS]
         more = "" if len(real) <= _REFUSAL_COLUMN_HINTS else f" 외 {len(real) - len(shown)}개"
-        pairs = ", ".join(
-            f"{r} → `{c}`" for r, c in bad)
+        pairs = ", ".join(f"{r} → `{c}`" for r, c in bad)
+        # 「선언이 이기는」 규칙 때문에, 틀린 선언은 유도가 있어도 계속 이긴다.
+        # 그러면 고치는 법이 **지우는 것**이 되는데, 그 말을 안 해주면 운영자는
+        # 막다른 길에 선다. 지웠을 때 무엇이 유도될지까지 같이 말한다.
+        removable = deletion_hints(src_cfg, [r for r, _c in bad], model)
+        tail = ""
+        if removable:
+            tail = (" 이 역할들은 선언을 **지우면** 유도로 해결됩니다: "
+                    + ", ".join(f"{r} → `{c}`" for r, c in removable)
+                    + f" (`{table}`의 맵 바인딩에서 유도).")
         return (BINDING_COLUMN_MISSING,
                 f"`{label}`의 필수 역할이 가리키는 컬럼이 테이블 `{table}`에 없습니다{at}: "
-                f"{pairs}. `{table}`의 실제 컬럼: {', '.join(shown)}{more}.")
+                f"{pairs}. `{table}`의 실제 컬럼: {', '.join(shown)}{more}.{tail}")
 
     # 6) 여기까지 왔는데 해석이 실패했다면 규칙이 갈라진 것이다.
     model2, cols = _resolve_model_columns(src_cfg, required=required)
@@ -392,18 +548,45 @@ def explain_binding_refusal(src_cfg, required: tuple, label: str,
     return (None, None)
 
 
+def deletion_hints(src_cfg: dict, roles, model) -> list:
+    """선언을 지웠을 때 **유도로 해결될** 역할들 ― `[(role, 유도될 컬럼)]`.
+
+    「명시 선언이 항상 이긴다」는 규칙의 뒷면이다. 틀린 철자가 적혀 있으면 유도가 존재해도
+    계속 진다 ― 그래서 이 파일의 올바른 수리는 *고치기*가 아니라 *지우기*다. 그 말을
+    거절 문장과 dry-run 양쪽이 하지 않으면 운영자는 「유도가 있다는데 왜 안 되지」에서
+    멈춘다. 실제로 2026-08-04 라이브 파일이 정확히 그 상태다(`"x": "x"`).
+    """
+    out = []
+    for role in roles:
+        if role not in DERIVED_ROLE_OF:
+            continue
+        probe = {"table": src_cfg.get("table"),
+                 "columns": {k: v for k, v in (src_cfg.get("columns") or {}).items()
+                             if k != role}}
+        eff, _d = resolve_effective_columns(probe, (role,))
+        col = (eff or {}).get(role)
+        if col and getattr(model, str(col), None) is not None:
+            out.append((role, col))
+    return out
+
+
 def _resolve_model_columns(source_cfg: dict, required: tuple):
     """소스 config → (model, {역할키: ORM 컬럼}) 해석. 실패 시 (None, None) → missing.
 
     반환 cols는 `_ResolvedColumns` — 선언됐으나 미해석된 옵션 컬럼을 `.unresolved`로
-    실어 나른다(required 미해석은 종전대로 바인딩 전체 실패)."""
+    실어 나른다(required 미해석은 종전대로 바인딩 전체 실패).
+
+    [derivation] 선언에서 **빠진 필수 역할**만 맵 바인딩으로 메운다
+    (`resolve_effective_columns`). 전부 선언된 config는 같은 dict 객체를 그대로 돌려받아
+    반복 순서까지 동일하다 ― 기존 config의 동작은 바이트 단위로 불변이다."""
     from database import models
     model = models.DYNAMIC_TABLES.get(source_cfg["table"])
     if model is None:
         return None, None
+    columns, _derivation = resolve_effective_columns(source_cfg, required)
     resolved = {}
     unresolved = []
-    for role_key, col_name in source_cfg["columns"].items():
+    for role_key, col_name in columns.items():
         col = getattr(model, col_name, None)
         if col is None:
             if role_key in required:

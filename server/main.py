@@ -1207,15 +1207,17 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     f_val = f_info.get("filter")
     f_type = f_info.get("type", "contains")
 
-    # [N7] An override compares TEXT, but a client filtering a NUMERIC virtual column
-    # may send the value as a NUMBER (AG-Grid does for number-typed columns). Comparing
-    # a text expression against a numeric bind is a dialect lottery - Postgres errors,
-    # SQLite silently matches nothing. Render it to the same canonical text the
-    # expression produces: `clean_str_value`, whose int spelling (3.0 -> '3') is the
-    # one the resolved expression spells via `crud.numeric_text_sql`. Strings pass
-    # through untouched - this is a type bridge, not a second trim.
+    # [N7/N8] An override compares TEXT, but a client filtering a typed virtual column
+    # may send the value as a NUMBER or a BOOLEAN (AG-Grid does for number- and
+    # boolean-typed columns). Comparing a text expression against a typed bind is a
+    # dialect lottery - Postgres errors, SQLite silently matches nothing. Render it to
+    # the same canonical text the expression produces, through the twin of the funnel
+    # that built the expression (`crud.column_text_sql` <-> `crud.comparison_text_value`):
+    # int spelling for numbers (3.0 -> '3'), `'true'`/`'false'` for booleans,
+    # `TEMPORAL_TEXT_FORMAT` for timestamps. Strings pass through untouched - this is a
+    # type bridge, not a second trim.
     if col_expr_override is not None and f_val is not None and not isinstance(f_val, str):
-        f_val = crud.clean_str_value(f_val)
+        f_val = crud.comparison_text_value(f_val)
 
     # Allow blank/notBlank even if f_val is not present
     if f_type not in ["blank", "notBlank"] and f_val is None:
@@ -4369,6 +4371,31 @@ def get_transfer_plan_stages():
     except Exception as e:
         logger.error(f"[TransferPlan] stages listing failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to list transfer plan stages.")
+
+@app.get("/admin/transfer-plan/dry-run", dependencies=[Depends(require_admin_token)])
+def get_transfer_plan_dry_run():
+    """「내가 쓴 이 선언이 받아들여지는가, 아니면 왜 거절되는가」 ― 쓰기 없는 계기.
+
+    `GET /api/transfer-plan/stages`는 역할별로 `connected`/`missing` **한 단어**를 낸다.
+    그 단어로는 config를 고칠 수 없다. 이 경로는 역할마다
+      · 수용 여부와 **이름 붙은 거절 사유**(`bonding_plan.explain_binding_refusal` ―
+        문장 생성기를 두 번 쓰지 않는다),
+      · 각 필수 역할의 **해석된 실제 컬럼명**,
+      · 그 컬럼이 **선언에서 왔는지 유도에서 왔는지**와 유도 출처,
+      · 틀린 선언 때문에 유도가 지고 있다면 **지우면 무엇이 유도되는지**
+    를 함께 낸다. 유도는 조용히 틀릴 수 있으므로 「어느 철자가 이겼는가」를 볼 자리가
+    없으면 유도를 넣는 것 자체가 위험하다 ― 그래서 둘이 한 라운드다.
+
+    [읽기 전용] 이 경로는 읽기 전용이다. 모델·컬럼 해석만 하고 **행을 조회하지 않으며**, 파라미터가 없다
+    (선례 `GET /admin/enrichment/auto-confirm/dry-run`과 같은 자세 ― 쓰기를 촉발하는
+    파라미터는 이 경로에 생기지 않는다). 그래서 strict가 아닌 `require_admin_token`이다.
+    """
+    config = transfer_plan_module.load_transfer_plan_config()
+    try:
+        return transfer_plan_module.dry_run(config)
+    except Exception as e:
+        logger.error(f"[TransferPlan] dry-run failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to evaluate transfer plan config.")
 
 @app.get("/api/transfer-plan/source-summary")
 def get_transfer_plan_source_summary(
