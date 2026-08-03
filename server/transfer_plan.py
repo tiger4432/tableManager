@@ -1444,9 +1444,18 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # is missing those chips.
     fail_count_only = False
     fail_sources = source_cfg.get("fail_sources") or {}
-    if not (isinstance(fail_sources, dict) and fail_sources):
+    if not role_is_declared(source_cfg, "fail_sources"):
         # [relaxation] fail 원천이 하나도 선언되지 않았다. 종전에도 감산 없이 조용히
         # 지나갔지만, 이제 그 침묵을 이름으로 바꾼다 — 총량이 순량처럼 보이면 안 된다.
+        #
+        # [QA B3 fix 2026-08-04] Declaredness goes through the SHARED predicate,
+        # never a second spelling. The hand-rolled `isinstance(...) and truthy`
+        # test that stood here classified a PRESENT-but-malformed value (null,
+        # "None", a wrong-typed value) as absent, collapsing state 2 into state 1:
+        # a misconfigured site silently got the relaxed treatment and the marker
+        # named a role the operator HAD declared. Present + garbage keeps its
+        # pre-relaxation handling — no source resolves, so no fail term enters the
+        # arithmetic, and nothing claims the site failed to declare one.
         inactive_subtractions.append("fail_sources")
     # [확장성] 코어별 칩 인덱스를 1회 구축해 투영을 선형화한다
     # (코어마다 origin_rows 전체를 훑으면 O(코어수 × 칩수) — 테이프당 수백 코어에서 폭발)

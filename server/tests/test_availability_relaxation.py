@@ -127,6 +127,77 @@ def test_declared_but_broken_still_demotes(env, client):
     assert "inactive_subtractions" not in body
 
 
+# ---------------------------------------------------------------------------
+# [QA B3, 2026-08-04] A PRESENT-but-malformed `fail_sources` is state 2, never
+# state 1.
+#
+# The relaxation rests on THREE states: absent (relaxed + named), present-but-
+# broken (pre-existing handling, unchanged), present-and-valid (unchanged).
+# `_summarize_inline` decided declaredness for `fail_sources` with a hand-rolled
+# truthiness-and-shape test instead of the shared `role_is_declared` predicate,
+# which collapsed state 2 into state 1: a garbage value read as an absent key.
+# The visible lie is `inactive_subtractions` naming a role the operator DID
+# declare — the one field whose whole job is to be trustworthy about that.
+#
+# Every other role is left declared AND working here, so the malformed container
+# is the only variable: an honest engine emits no marker at all.
+MALFORMED_FAIL_SOURCES = {
+    "json_null": None,          # `"fail_sources": null`
+    "string_none": "None",      # the 7c "none" spelling, wrong role
+    "wrong_type_list": ["defect"],
+    "wrong_type_int": 7,
+}
+
+
+@pytest.mark.parametrize("shape", sorted(MALFORMED_FAIL_SOURCES))
+def test_malformed_fail_sources_is_declared_not_absent(env, client, shape):
+    """PRESENT + garbage → treated exactly as before the relaxation: no fail
+    subtraction was ever applied for a malformed container, and — the fix — the
+    payload does NOT claim the site failed to declare one."""
+    db, tmp_path, monkeypatch = env
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    src["fail_sources"] = MALFORMED_FAIL_SOURCES[shape]     # present, garbage
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(db)
+    body = _summary(client)
+
+    # 🔴 the defect: a declared role named as an inactive subtraction
+    assert "fail_sources" not in (body.get("inactive_subtractions") or []), shape
+    # nothing else is absent, so the marker field must not appear at all
+    assert "inactive_subtractions" not in body, shape
+
+    # ...and the rest of the verdict is byte-for-byte the pre-relaxation one for
+    # this shape: a malformed container yields no fail source to iterate, so the
+    # fail term is simply absent from the arithmetic (remaining = 8 − used 3).
+    assert body["chips"]["total"] == 8
+    assert body["chips"]["fail_breakdown"] == {}
+    assert body["chips"]["remaining"] == 5
+    assert body["chips"]["remaining_reliable"] is True
+    assert body["chips"]["transferred"] == 3
+    assert body["sources"]["transfer_log"] == "connected"
+    assert body["sources"]["origin_log"] == "connected"
+
+
+def test_validate_never_names_a_declared_role_as_inactive(env, client):
+    """The verdict surface carries the same lie downstream: with a malformed but
+    PRESENT `fail_sources`, `validate` used to hand the operator a list naming a
+    source the site had declared."""
+    db, tmp_path, monkeypatch = env
+    cfg = _tp_config()
+    src = cfg["stages"]["bonding"]["source"]
+    src["fail_sources"] = None
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(db)
+    _seed_one_doe_plan(db, "BASE-MALFORMED", 5)             # required 5 <= 5
+
+    body = _validate(client, "BASE-MALFORMED")
+    assert body["availability_checked"] is True
+    assert "fail_sources" not in (body.get("inactive_subtractions") or [])
+    assert "inactive_subtractions" not in body
+    assert set(body) == VALIDATE_DECLARED_KEYS
+
+
 def test_fully_declared_config_payload_unchanged(env, client):
     """Third side: a fully declared, working config keeps the exact numbers and
     gains NO new field."""
