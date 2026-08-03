@@ -134,7 +134,7 @@ function normalizeServedBinding(b) {
   const kc = Array.isArray(b.key_columns)
     ? b.key_columns.filter(c => typeof c === 'string' && c !== '') : [];
   if (typeof b.x !== 'string' || typeof b.y !== 'string'
-      || typeof b.val !== 'string' || kc.length === 0) return null;
+    || typeof b.val !== 'string' || kc.length === 0) return null;
   return {
     x: b.x, y: b.y, val: b.val, keyColumns: kc,
     source: (b.source === 'declared' || b.source === 'fallback_guess') ? b.source : 'derived',
@@ -377,8 +377,10 @@ function normalizeBands(raw) {
 function normalizeKnobs(raw) {
   if (Array.isArray(raw)) {
     return raw.filter(p => p && typeof p === 'object')
-      .map(p => ({ k: String(p.k === null || p.k === undefined ? '' : p.k),
-                   v: String(p.v === null || p.v === undefined ? '' : p.v) }));
+      .map(p => ({
+        k: String(p.k === null || p.k === undefined ? '' : p.k),
+        v: String(p.v === null || p.v === undefined ? '' : p.v)
+      }));
   }
   if (raw && typeof raw === 'object') {
     return Object.entries(raw).map(([k, v]) => ({ k: String(k), v: (v === null || v === undefined) ? '' : String(v) }));
@@ -785,7 +787,7 @@ function getMapIdFromMeta(metaDict) {
 
 function debounce(func, wait = 200) {
   let timeout;
-  return function(...args) {
+  return function (...args) {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
@@ -872,7 +874,7 @@ function initDOMElements() {
   el.gridStartY = document.getElementById('grid-start-y');
   el.gridYInvert = document.getElementById('grid-y-invert');
   el.showAnnotations = document.getElementById('show-annotations');
-  
+
   el.physWaferDia = document.getElementById('phys-wafer-dia');
   el.physChipX = document.getElementById('phys-chip-x');
   el.physChipY = document.getElementById('phys-chip-y');
@@ -880,11 +882,11 @@ function initDOMElements() {
   el.physOffsetY = document.getElementById('phys-offset-y');
   el.physEdgeMargin = document.getElementById('phys-edge-margin');
   el.btnApplyPhysGeom = document.getElementById('btn-apply-phys-geom');
-  
+
   el.colMapX = document.getElementById('col-map-x');
   el.colMapY = document.getElementById('col-map-y');
   el.colMapVal = document.getElementById('col-map-val');
-  
+
   el.btnLoadMap = document.getElementById('btn-load-map');
   // 오버레이 전용 소스 선택기 — 메인 테이블 셀렉터(el.tableSelect)와 **다른 DOM**이며,
   // 이쪽을 조작해도 switchTable/selectedTable/gridData는 절대 건드리지 않는다.
@@ -894,7 +896,7 @@ function initDOMElements() {
   el.btnAddOverlay = document.getElementById('btn-add-overlay');
   el.btnAddLegend = document.getElementById('btn-add-legend');
   el.legendList = document.getElementById('legend-list');
-  
+
   el.activeBrushVal = document.getElementById('active-brush-val');
   el.gridStatusCoords = document.getElementById('grid-status-coords');
   el.btnSetOrigin = document.getElementById('btn-set-origin');
@@ -906,7 +908,7 @@ function initDOMElements() {
   el.btnClearGrid = document.getElementById('btn-clear-grid');
   el.btnFillGrid = document.getElementById('btn-fill-grid');
   el.btnPushMap = document.getElementById('btn-push-map');
-  
+
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
   el.btnDeletePreset = document.getElementById('btn-delete-preset');
@@ -915,7 +917,7 @@ function initDOMElements() {
   el.validDieRefTable = document.getElementById('valid-die-ref-table');
   el.validDieRefKey = document.getElementById('valid-die-ref-key');
   el.validDieRefList = document.getElementById('valid-die-ref-list');
-  
+
   el.btnSelectMenu = document.getElementById('btn-select-menu');
   el.selectMenuDropdown = document.getElementById('select-menu-dropdown');
   el.btnOpsMenu = document.getElementById('btn-ops-menu');
@@ -988,7 +990,7 @@ function initDOMElements() {
       e.stopPropagation();
     });
   }
-  
+
   if (el.presetSelect) {
     el.presetSelect.addEventListener('change', loadSelectedPreset);
   }
@@ -1013,7 +1015,7 @@ function initDOMElements() {
     });
   }
   fetchAndRenderPresets();
-  
+
   const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert, el.showAnnotations];
   inputsToRedraw.forEach(input => {
     input.addEventListener('change', () => {
@@ -1022,7 +1024,7 @@ function initDOMElements() {
         let v = parseInt(input.value, 10);
         if (isNaN(v) || v < 1) input.value = 1;
         if (v > 100) input.value = 100;
-        
+
         // Auto-disable annotation display on large grids (>400 cells) to prevent rendering bottleneck
         const currentCols = parseInt(el.gridCols.value, 10) || 10;
         const currentRows = parseInt(el.gridRows.value, 10) || 10;
@@ -1127,7 +1129,7 @@ function initDOMElements() {
     });
   }
   if (el.btnApplyPhysGeom) el.btnApplyPhysGeom.addEventListener('click', applyPhysicalGeometry);
-  
+
   // Physical input triggers: use change event for typing completion and scheduleRenderGridCanvas for rAF throttling
   //
   // [규칙 ④] 규격 한 칸을 고치는 것도 원점 상자를 움직인다. 유효 다이 선언이 없는 맵에서
@@ -1146,7 +1148,7 @@ function initDOMElements() {
       input.addEventListener('input', onPhysicalGeometryEdit);
     }
   });
-  
+
   if (el.btnSelectE1) el.btnSelectE1.addEventListener('click', () => selectEdgeCells(1));
   if (el.btnSelectE2) el.btnSelectE2.addEventListener('click', () => selectEdgeCells(2));
   if (el.btnAutoPaintE1E2) el.btnAutoPaintE1E2.addEventListener('click', autoPaintE1E2);
@@ -1214,8 +1216,8 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const coordKey = `${physical.x}_${physical.y}`;
 
-  const isOriginCell = hasZeroZero 
-    ? (visual.x === 0 && visual.y === 0) 
+  const isOriginCell = hasZeroZero
+    ? (visual.x === 0 && visual.y === 0)
     : (visual.x === startX && visual.y === startY);
 
   // [M4①] 유효 다이 판정. 참조가 없으면 `isValidDieAt`이 원 판정을 그대로 돌려주므로
@@ -1411,9 +1413,9 @@ function initMouseDragEvents() {
         const minR = Math.min(r1, r2);
         const maxR = Math.max(r1, r2);
 
-        if (lastSelectionBox && 
-            lastSelectionBox.minC === minC && lastSelectionBox.maxC === maxC &&
-            lastSelectionBox.minR === minR && lastSelectionBox.maxR === maxR) {
+        if (lastSelectionBox &&
+          lastSelectionBox.minC === minC && lastSelectionBox.maxC === maxC &&
+          lastSelectionBox.minR === minR && lastSelectionBox.maxR === maxR) {
           return;
         }
 
@@ -1466,7 +1468,7 @@ function initMouseDragEvents() {
       boxStartCell = null;
       lastSelectionBox = null;
       dragType = null;
-      
+
       updateLegendCounts();
       scheduleRenderGridCanvas();
       scheduleCellDraft();
@@ -1480,7 +1482,7 @@ async function loadTablesList() {
     const res = await fetch(`${API_BASE}/tables`);
     const data = await res.json();
     el.tableSelect.innerHTML = '';
-    
+
     if (data.tables && data.tables.length > 0) {
       // Fetch schema for all tables and filter ONLY map tables that have map_key_columns configured
       const mapTables = [];
@@ -1641,7 +1643,7 @@ function renderMetadataInputs() {
   let searchCols = tableSchema.map_key_columns;
   if (!searchCols || !Array.isArray(searchCols) || searchCols.length === 0) {
     if (tableSchema.composite_key_source && Array.isArray(tableSchema.composite_key_source)) {
-      searchCols = tableSchema.composite_key_source.filter(col => 
+      searchCols = tableSchema.composite_key_source.filter(col =>
         !['x', 'y', 'val', 'die_id', 'code', 'grid_metadata'].includes(col.toLowerCase()) &&
         col !== xCol && col !== yCol && col !== valCol
       );
@@ -1710,7 +1712,7 @@ function getBaseColumnName() {
 function fillColumnDropdowns() {
   if (!tableSchema) return;
   const cols = tableSchema.columns || [];
-  
+
   const populate = (dropdown) => {
     dropdown.innerHTML = '';
     cols.forEach(col => {
@@ -2013,7 +2015,7 @@ function waferMmToDieCell(mmX, mmY, L) {
 
 function getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
   const box = getWaferBoundingBox(rotation, side);
-  
+
   const c = dbX - startX + box.minC;
 
   let r = 0;
@@ -2269,10 +2271,10 @@ function reseatCellsToStoredCoords(was) {
   if (now) cellsSeatedUnder = now;
   if (!was || !now) return null;
   if (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY
-      || was.startX !== now.startX || was.startY !== now.startY) return null;
+    || was.startX !== now.startX || was.startY !== now.startY) return null;
 
   const touched = new Set([...Object.keys(gridData), ...loadedFCells,
-    ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+  ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
   if (touched.size === 0) return null;
 
   // (1) 각 셀이 **옛 좌표계에서** 말하던 저장 좌표를 되찾는다.
@@ -2283,7 +2285,7 @@ function reseatCellsToStoredCoords(was) {
       if (!Number.isFinite(px) || !Number.isFinite(py)) return;
       const at = getCanvasCellFromDieIndex(px, py, was.cols, was.rows, was.rotation, was.side);
       held.set(k, getDbCoords(at.c, at.r, was.cols, was.rows, was.rotation, was.side,
-                              was.invertY, was.startX, was.startY));
+        was.invertY, was.startX, was.startY));
     });
   });
 
@@ -2295,7 +2297,7 @@ function reseatCellsToStoredCoords(was) {
   const seatOf = new Map();
   held.forEach((v, k) => {
     const cell = getCanvasCellFromDb(v.x, v.y, now.cols, now.rows, now.rotation, now.side,
-                                     now.invertY, now.startX, now.startY);
+      now.invertY, now.startX, now.startY);
     if (cell.c < 0 || cell.c >= visC || cell.r < 0 || cell.r >= visR) offGrid++;
     const p = getDieIndex(cell.c, cell.r, now.cols, now.rows, now.rotation, now.side);
     seatOf.set(k, `${p.x}_${p.y}`);
@@ -2730,7 +2732,7 @@ function validDieChainError(ref, refMeta, home) {
   const r = ref || {};
   const h = home || {};
   if (r.table !== undefined && h.table !== undefined
-      && String(r.table) === String(h.table) && String(r.mapKey) === String(h.mapKey)) {
+    && String(r.table) === String(h.table) && String(r.mapKey) === String(h.mapKey)) {
     return `자기 자신(${r.table} · ${r.mapKey})을 유효 다이 맵으로 지정했습니다 — `
       + `맵이 자기 셀로 자기 유효성을 정하면 항상 참이라 아무것도 판정하지 못합니다. `
       + `다른 맵을 지정하거나 지정을 비우십시오.`;
@@ -2946,7 +2948,7 @@ function applyPresetObject(preset) {
   if (ignoredRot !== null || ignoredSide !== null) {
     const sideWord = (s) => (s === 'back' ? '뒷면' : '앞면');
     const declared = [ignoredRot !== null ? `${ignoredRot}°` : '',
-                      ignoredSide !== null ? sideWord(ignoredSide) : ''].filter(Boolean).join(' · ');
+    ignoredSide !== null ? sideWord(ignoredSide) : ''].filter(Boolean).join(' · ');
     console.info(`[Map Editor] preset '${preset.name || ''}' declares orientation `
       + `(rotation=${declaredRot}, side=${declaredSide}); NOT applied — the screen keeps `
       + `rotation=${currentRotation}, side=${currentSide}. Orientation belongs to the operator's `
@@ -3474,8 +3476,8 @@ function renderGridCanvas() {
       const coordKey = `${physical.x}_${physical.y}`;
       const val = gridData[coordKey] || '';
 
-      const isOriginCell = hasZeroZero 
-        ? (visual.x === 0 && visual.y === 0) 
+      const isOriginCell = hasZeroZero
+        ? (visual.x === 0 && visual.y === 0)
         : (visual.x === startX && visual.y === startY);
 
       const cellObj = {
@@ -4000,28 +4002,28 @@ function applyDoeDraftRecord(draft) {
   const doe = (draft && draft.doe) || {};
   let applied = false;
   legend.forEach(l => {
-      const d = doe[l.value];
-      if (!d) return;
-      // "applied" must mean "this draft CHANGED the screen", not "this draft had content".
-      // A draft is re-saved right after a successful registry save (saveLegendToServer),
-      // so after Push + refresh the draft is identical to the server rows - reporting that
-      // as a restored edit would resurrect a phantom "unsaved" chip and toast on every
-      // reload of a map that has a plan. Legend rows here are already normalized
-      // (applyRegistryRowsToLegend / normalizeLegendItem), so the projection compares
-      // like with like.
-      const before = JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]);
-      l.knobs = normalizeKnobs(d.knobs);
-      // A draft written by the retired band model is migrated on read, exactly like the
-      // server column - and refused the same way if it cannot be expressed. A draft is a
-      // recovery path, so it is the last place that may quietly reshape a plan.
-      const z = Array.isArray(d.bands) ? bandsToZones(normalizeBands(d.bands)) : null;
-      const src = (z && z.ok) ? z : d;
-      l.stack = (src.stack === null || src.stack === undefined) ? '' : src.stack;
-      l.mat_1h = parseMaterialList(src.mat_1h);
-      l.mat_mid = parseMaterialList(src.mat_mid);
-      l.mat_top = parseMaterialList(src.mat_top);
-      if (z && !z.ok) { l.legacyBands = normalizeBands(d.bands); l.legacyReason = z.reason; }
-      if (JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]) !== before) applied = true;
+    const d = doe[l.value];
+    if (!d) return;
+    // "applied" must mean "this draft CHANGED the screen", not "this draft had content".
+    // A draft is re-saved right after a successful registry save (saveLegendToServer),
+    // so after Push + refresh the draft is identical to the server rows - reporting that
+    // as a restored edit would resurrect a phantom "unsaved" chip and toast on every
+    // reload of a map that has a plan. Legend rows here are already normalized
+    // (applyRegistryRowsToLegend / normalizeLegendItem), so the projection compares
+    // like with like.
+    const before = JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]);
+    l.knobs = normalizeKnobs(d.knobs);
+    // A draft written by the retired band model is migrated on read, exactly like the
+    // server column - and refused the same way if it cannot be expressed. A draft is a
+    // recovery path, so it is the last place that may quietly reshape a plan.
+    const z = Array.isArray(d.bands) ? bandsToZones(normalizeBands(d.bands)) : null;
+    const src = (z && z.ok) ? z : d;
+    l.stack = (src.stack === null || src.stack === undefined) ? '' : src.stack;
+    l.mat_1h = parseMaterialList(src.mat_1h);
+    l.mat_mid = parseMaterialList(src.mat_mid);
+    l.mat_top = parseMaterialList(src.mat_top);
+    if (z && !z.ok) { l.legacyBands = normalizeBands(d.bands); l.legacyReason = z.reason; }
+    if (JSON.stringify([l.knobs, l.stack, l.mat_1h, l.mat_mid, l.mat_top]) !== before) applied = true;
   });
   // 값 자체가 초안에만 있는 경우 — 사용자가 [+ 값]으로 만들고 아직 저장이 안 나갔다.
   Object.keys(doe).forEach(v => {
@@ -4339,8 +4341,10 @@ async function saveLegendToServer(mapKeyOverride) {
     //    다음 초안이 낡은 지문을 들고 다니게 되고, 그 초안은 다시 열 때 "누가 썼다"로 오판돼
     //    적용되지 않는다 — 있지도 않은 충돌로 사용자의 편집이 버려지는 경로다.
     //    셀 지문은 지금 화면 그대로다: Push 전이라 서버 맵은 움직이지 않았다.
-    draftBase = { table: selectedTable, mapKey, registryFp: legendReplaceScope.fingerprint,
-                  cellsFp: cellsDigest(gridData) };
+    draftBase = {
+      table: selectedTable, mapKey, registryFp: legendReplaceScope.fingerprint,
+      cellsFp: cellsDigest(gridData)
+    };
     // 저장을 넘겨 살아남은 초안은 다음 로드에서 유령 편집이 된다. 지운 뒤 곧바로 현재
     // 상태를 새 기반으로 다시 뜬다(셀은 아직 서버로 나가지 않았으므로 초안이 유일한 사본이다).
     clearDoeDraft(selectedTable, mapKey);
@@ -4607,18 +4611,18 @@ function renderLegendTable() {
     // Color indicator and Picker column
     const tdColor = document.createElement('td');
     tdColor.style.textAlign = 'center';
-    
+
     const colorIndicator = document.createElement('span');
     colorIndicator.className = 'legend-color-indicator';
     colorIndicator.style.backgroundColor = item.color;
-    
+
     // Hidden color picker
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.className = 'legend-color-input';
     colorInput.style.display = 'none';
     colorInput.value = item.color;
-    
+
     colorIndicator.addEventListener('click', () => colorInput.click());
     colorInput.addEventListener('input', (e) => {
       const col = e.target.value;
@@ -4961,7 +4965,7 @@ async function loadExistingMap(opts = {}) {
       clearOverlayLayers();
     }
     let count = 0;
-    
+
     // Pre-calculate coordinate bounds first
     let maxX = -9999;
     let maxY = -9999;
@@ -5387,7 +5391,7 @@ async function loadExistingMap(opts = {}) {
           }
           if (!chosenColor) {
             // Fallback to random color if all predefined are used
-            chosenColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+            chosenColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
           }
 
           usedColors.add(chosenColor);
@@ -5880,7 +5884,7 @@ async function pushMapData() {
       + `격자 크기·시작 좌표·회전·물리 규격을 맵 전체가 보이도록 맞춘 뒤 다시 시도하십시오.`
       + (strayKeys.length > 0
         ? `\n\n(이와 별개로, 서버에 저장된 적 없는 유효 다이 밖 셀 ${strayKeys.length}개도 격자에 남아 있습니다. `
-          + `위를 먼저 해결하면 정리 방법을 안내합니다.)`
+        + `위를 먼저 해결하면 정리 방법을 안내합니다.)`
         : '')
     );
     return;
@@ -6096,7 +6100,7 @@ async function pushMapData() {
         // there, which beats a toast that fades. Failure is toasted by the branch below.
         console.debug(`[map] split registry saved — ${legendSaved.count} rows`);
       } else if (legendSaved.reason !== 'adopted' && legendSaved.reason !== 'conflict'
-                 && legendSaved.reason !== 'unknown-server-state') {
+        && legendSaved.reason !== 'unknown-server-state') {
         // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
         // 여기서 "오프라인 캐시"로 덮어 말하면 원인이 사라진다.
         showToast('DOE·split 서술 registry 저장 실패 — 오프라인 캐시에만 보관됨', 'warning');
@@ -6251,7 +6255,7 @@ function autoPaintE1E2() {
 
   const { isE1, isE2 } = getEdgeClassification();
   const { visualCols, visualRows } = getVisualGridDimensions();
-  
+
   let e1Count = 0;
   let e2Count = 0;
 
@@ -6761,10 +6765,10 @@ function copyGridToExcel() {
   // Helper for text color contrast
   const getContrastColor = (hexcolor) => {
     if (!hexcolor || hexcolor.charAt(0) !== '#') return '#000000';
-    const r = parseInt(hexcolor.substr(1,2),16);
-    const g = parseInt(hexcolor.substr(3,2),16);
-    const b = parseInt(hexcolor.substr(5,2),16);
-    const yiq = ((r*299)+(g*587)+(b*114))/1000;
+    const r = parseInt(hexcolor.substr(1, 2), 16);
+    const g = parseInt(hexcolor.substr(3, 2), 16);
+    const b = parseInt(hexcolor.substr(5, 2), 16);
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
     return (yiq >= 128) ? '#000000' : '#ffffff';
   };
 
@@ -7041,17 +7045,23 @@ function checkPasteAgainstFrame(parsed, frame) {
   if (!parsed || !parsed.ok) return { ok: false, reason: parsed ? parsed.reason : '읽지 못했습니다.' };
 
   if (parsed.gridWidth !== frame.visualCols) {
-    return { ok: false, reason: `열 수가 다릅니다 — 복사본 ${parsed.gridWidth}열, 현재 화면 ${frame.visualCols}열. `
-      + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.' };
+    return {
+      ok: false, reason: `열 수가 다릅니다 — 복사본 ${parsed.gridWidth}열, 현재 화면 ${frame.visualCols}열. `
+        + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.'
+    };
   }
   if (parsed.rows.length < frame.visualRows) {
-    return { ok: false, reason: `행 수가 다릅니다 — 복사본 ${parsed.rows.length}행, 현재 화면 ${frame.visualRows}행. `
-      + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.' };
+    return {
+      ok: false, reason: `행 수가 다릅니다 — 복사본 ${parsed.rows.length}행, 현재 화면 ${frame.visualRows}행. `
+        + '복사할 때의 회전·격자 크기로 되돌린 뒤 다시 붙여넣으십시오.'
+    };
   }
   for (let i = frame.visualRows; i < parsed.rows.length; i++) {
     if (parsed.rows[i].some(f => f !== '')) {
-      return { ok: false, reason: `복사본의 격자가 현재 화면보다 깁니다 — ${i + 1}번째 행에 값이 있는데 `
-        + `현재 격자는 ${frame.visualRows}행뿐입니다.` };
+      return {
+        ok: false, reason: `복사본의 격자가 현재 화면보다 깁니다 — ${i + 1}번째 행에 값이 있는데 `
+          + `현재 격자는 ${frame.visualRows}행뿐입니다.`
+      };
     }
   }
   // 정체. TITLE이 없는 복사본(헤더 미포함)은 "다르다"가 아니라 **미상**이므로 통과시키되,
@@ -7064,8 +7074,10 @@ function checkPasteAgainstFrame(parsed, frame) {
   const n = frame.notch;
   const notchOnGrid = !!n && n.r >= 0 && n.r < frame.visualRows && n.c >= 0 && n.c < parsed.gridWidth;
   if (notchOnGrid && parsed.rows[n.r][n.c] !== 'D') {
-    return { ok: false, reason: `복사할 때의 회전·면이 지금과 다릅니다 — 노치 표식(D)이 `
-      + `${n.r + 1}행 ${n.c + 1}열에 있어야 하는데 「${parsed.rows[n.r][n.c] || '빈 칸'}」입니다.` };
+    return {
+      ok: false, reason: `복사할 때의 회전·면이 지금과 다릅니다 — 노치 표식(D)이 `
+        + `${n.r + 1}행 ${n.c + 1}열에 있어야 하는데 「${parsed.rows[n.r][n.c] || '빈 칸'}」입니다.`
+    };
   }
   // 🔴 [P0-2] 지문이 **없으면 거부한다.** 종전에는 통과시키고 확인창에 경고 한 줄을 넣었는데,
   //    그 한 줄은 다섯 줄 중 하나였고 회전·면은 치수를 보존하므로 다른 관문이 하나도 걸리지
@@ -7076,11 +7088,13 @@ function checkPasteAgainstFrame(parsed, frame) {
   //    배치를 하지 않는다"). 노치는 치수 보존 프레임 변경의 유일한 신호이므로, 그 부재는
   //    "괜찮다"가 아니라 "확인할 수 없다"다.
   if (!notchOnGrid) {
-    return { ok: false, notchVerified: false,
+    return {
+      ok: false, notchVerified: false,
       reason: '이 화면의 프레임에는 노치 표식(D)이 놓일 자리가 없어 복사본의 회전·면을 대조할 수 '
         + '없습니다 — 회전·면은 격자 치수를 바꾸지 않으므로, 대조 없이 붙여넣으면 뒤집힌 격자가 '
         + '그대로 들어갑니다. 웨이퍼 원 규격이 적용된 프레임(노치가 격자 안에 들어오는 규격)으로 '
-        + '맞춘 뒤 다시 붙여넣으십시오.' };
+        + '맞춘 뒤 다시 붙여넣으십시오.'
+    };
   }
   return { ok: true, reason: '', notchVerified: true };
 }
@@ -7236,8 +7250,11 @@ function onMapGridPaste(e) {
     + `${notes.length ? ` (${notes.join(' · ')})` : ''}`;
   if (notes.length) showToast(pasteMsg, 'warning');
   else console.debug(`[map] ${pasteMsg}`);
-  console.debug('[map] pasted company block', { gridStats, auxStats, unsavable: {
-    offGrid: un.offGrid.length, outsideRetained: un.outsideRetained.length, outsideStray: un.outsideStray.length } });
+  console.debug('[map] pasted company block', {
+    gridStats, auxStats, unsavable: {
+      offGrid: un.offGrid.length, outsideRetained: un.outsideRetained.length, outsideStray: un.outsideStray.length
+    }
+  });
 }
 
 // ====================================================
@@ -7521,8 +7538,8 @@ function setLoadedIdentity(table, mapKey) {
   // stale scope would purge another map's rows. A fresh grant survives because
   // loadExistingMap grants it for exactly the identity it then pins here.
   if (!loadedIdentity || !legendReplaceScope
-      || legendReplaceScope.table !== loadedIdentity.table
-      || legendReplaceScope.mapKey !== loadedIdentity.mapKey) {
+    || legendReplaceScope.table !== loadedIdentity.table
+    || legendReplaceScope.mapKey !== loadedIdentity.mapKey) {
     legendReplaceScope = null;
   }
   framePushed = false;
@@ -7871,7 +7888,7 @@ function resolveFrame(frame) {
 
 function frameAxesKey(rf) {
   return [rf.rotation, rf.side, rf.invertY ? 1 : 0, rf.startX, rf.startY, rf.cols, rf.rows,
-          rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
+  rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
 }
 
 // ── 변환의 전부 ──────────────────────────────────────────────
@@ -7940,8 +7957,10 @@ function seatWaferMmInFrame(items, frame) {
     if (!t) return;
     const key = `${t.ix}_${t.iy}`;
     const list = seated.get(key);
-    const entry = { val: it.val, rx: t.rx, ry: t.ry, mmX: it.mm.mmX, mmY: it.mm.mmY,
-                    srcX: it.srcX, srcY: it.srcY };
+    const entry = {
+      val: it.val, rx: t.rx, ry: t.ry, mmX: it.mm.mmX, mmY: it.mm.mmY,
+      srcX: it.srcX, srcY: it.srcY
+    };
     if (!list) { seated.set(key, [entry]); return; }
     // 🔴 **같은 물리 위치의 같은 값은 정보가 아니다** — 소스에 같은 행이 두 번 있을 뿐이다.
     //    접어 넣지 않으면 피치가 **같은** 맵도 fanout 2가 되어 「여러 값」으로 가져오기에서
@@ -8075,7 +8094,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     //    안 된다 ― 마지막 반응은 반드시 그 시점의 `cellsSeatedUnder`를 읽어야 두 걸음이
     //    이어 붙는다. 넷 이동량은 아래에서 좌석 집합의 차이로 잰다.
     const seatsBefore = new Set([...Object.keys(gridData), ...loadedFCells,
-      ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+    ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
     if (!cellsSeatedUnder) cellsSeatedUnder = seatingSnapshot();
     const wasSeat = seat0(fc, fr);
 
@@ -8182,7 +8201,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // 「N칸 이동 후 N칸 이동」으로 읽혀 사용자에게 거짓 수를 준다. 좌석은 물리 키이므로
     // 집합 차이가 곧 이동한 셀이다.
     const seatsAfter = new Set([...Object.keys(gridData), ...loadedFCells,
-      ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+    ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
     let netMoved = 0;
     seatsBefore.forEach(k => { if (!seatsAfter.has(k)) netMoved++; });
     if (netMoved > 0) {
@@ -8242,7 +8261,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     if (!refFrame) {
       // 미등록도 여기서는 거절이다. 오버레이는 규격이 없으면 "무보정"이라고 **화면에
       // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
-      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 규격(wafer_map_metadata)이 없습니다.`);
+      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 메타데이터가 없습니다.`);
     }
     // [H5] 치수를 **셀을 한 건도 읽기 전에** 검사한다. 근거는 `frameDimBounds` 위 주석에
     // 정본이 있다 — 여기 있던 「전수 순회 4회(계획 2 + 비용 2)」는 채택·재배치 기계장치의
@@ -8430,8 +8449,10 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       const gridCy = (Math.abs(Math.round(postRows)) % 2 === 0 ? 0.5 : 0);
       // [F8] 치수 차이는 파생이 끝난 **뒤에** 잰다. 파생으로 같아졌다면 말할 것이 없다.
       if (refResolved.cols !== postCols || refResolved.rows !== postRows) {
-        dimsDiffer = { here: `${postCols}x${postRows}`,
-                       there: `${refResolved.cols}x${refResolved.rows}` };
+        dimsDiffer = {
+          here: `${postCols}x${postRows}`,
+          there: `${refResolved.cols}x${refResolved.rows}`
+        };
       }
       // 🔴 **선언된 START로 푼다.** START X,Y는 운영자의 선언이고 편집기가 바꾸지 않는다
       //    (사용자 확정 2026-07-30: 「START X,Y는 바뀌면 안됨」). 그래서 마스크의 최소 열이
@@ -8444,8 +8465,10 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를
       // (refMinX,refMinY)로 부르고 이 맵은 같은 칸을 (sx,sy)로 부른다 ― 그 차이가 어긋남이다.
       if (sx !== refMinX || sy !== refMinY) {
-        originDiffer = { dx: sx - refMinX, dy: sy - refMinY,
-                         there: `${refMinX},${refMinY}`, here: `${sx},${sy}` };
+        originDiffer = {
+          dx: sx - refMinX, dy: sy - refMinY,
+          there: `${refMinX},${refMinY}`, here: `${sx},${sy}`
+        };
       }
       console.log(`[유효다이] 1) 유효 다이맵 ― 참조 ${ref.table} / ${ref.mapKey}, 셀 ${cells.length}칸, `
         + `참조 프레임 ${refFrame.cols}x${refFrame.rows} start(${refFrame.startX},${refFrame.startY}) `
@@ -8454,9 +8477,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
         + `start(${hereResolved.startX},${hereResolved.startY}) rot=${currentRotation} ${currentSide} `
         + `yInvert=${hereInvertY}`
         + (maskFitNote
-          ? ` / 지정 후 격자 ${maskFitNote.to} (참조 규격에서 파생${
-              maskFitNote.from !== maskFitNote.to ? `, 마스크를 담도록 ${maskFitNote.from}에서 넓힘` : ''}${
-              maskFitNote.off > 0 ? `, 아직 ${maskFitNote.off}칸이 격자 밖` : ''})`
+          ? ` / 지정 후 격자 ${maskFitNote.to} (참조 규격에서 파생${maskFitNote.from !== maskFitNote.to ? `, 마스크를 담도록 ${maskFitNote.from}에서 넓힘` : ''}${maskFitNote.off > 0 ? `, 아직 ${maskFitNote.off}칸이 격자 밖` : ''})`
           : ''));
       console.log(`[유효다이] 3) 회전 중심 좌표 ― 마스크 중심 (${maskCx},${maskCy}), `
         + `격자 중심 (${gridCx},${gridCy}), 마스크 평행이동 (${shiftX},${shiftY})`);
@@ -8493,7 +8514,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       ].filter(Boolean).join(' · ');
       console.info('[Map Editor][F8] valid-die reference is not aligned with the editor frame ― '
         + (originDiffer ? `the reference calls its minimum die (${originDiffer.there}) while this map's `
-            + `declared START is (${originDiffer.here}), a gap of (${originDiffer.dx},${originDiffer.dy}); ` : '')
+          + `declared START is (${originDiffer.here}), a gap of (${originDiffer.dx},${originDiffer.dy}); ` : '')
         + (dimsDiffer ? `grid ${dimsDiffer.there} != ${dimsDiffer.here}; ` : '')
         + 'NOTHING adopted and NO coordinate changed ― grid_start_x/y stay as declared, so the x/y '
         + 'Push writes are untouched. The mask is re-centred on this grid, so cells and mask moved '
@@ -8502,7 +8523,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
         + `${why}. 좌표는 하나도 바뀌지 않았고 ⚡ Push가 기록할 x/y도 그대로입니다. `
         + (screenShift
           ? `셀과 마스크는 화면에서 ${Math.abs(screenShift.dc)}칸·${Math.abs(screenShift.dr)}행 `
-            + `함께 이동했습니다 ― 각 셀은 자기 좌표가 가리키는 칸으로 다시 앉았습니다.`
+          + `함께 이동했습니다 ― 각 셀은 자기 좌표가 가리키는 칸으로 다시 앉았습니다.`
           : `셀이 앉는 칸은 이번에 바뀌지 않았습니다.`),
         'info', { dedupeKey: 'valid_die_frame_differs' });
     }
@@ -9170,19 +9191,19 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     diffs.push(`셀 크기(${srcResolved.chipX}x${srcResolved.chipY}mm→${seatFrame.chipX}x${seatFrame.chipY}mm)`);
   }
   if (srcResolved.offsetX !== tgtResolved.offsetX || srcResolved.offsetY !== tgtResolved.offsetY
-      || srcResolved.waferDia !== tgtResolved.waferDia || srcResolved.edgeMargin !== tgtResolved.edgeMargin) {
+    || srcResolved.waferDia !== tgtResolved.waferDia || srcResolved.edgeMargin !== tgtResolved.edgeMargin) {
     diffs.push('웨이퍼 물리 규격 상이(바운딩박스 재계산)');
   }
   const missingPhys = !sourceMeta ? '소스 맵 규격 미등록 — 현재 화면 규격으로 해석'
     : (srcMetaFrame && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
-        srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
+    srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
       ? '소스 물리 규격 일부 미등록 — 현재 화면 값으로 대체' : '');
   // 타깃 프레임의 근거가 **등록 규격**인지 **지금 화면**인지. 두 상태를 같은 칩으로 보이면
   // "규격에 맞춰 정렬됨"과 "지금 화면에 맞춰 정렬됨"이 구분되지 않는다.
   const targetBasis = tgtMetaFrame ? 'spec' : 'screen';
   const targetNote = tgtMetaFrame ? ''
     : (targetKey ? `타깃 맵 규격 미등록(${targetTable} · ${targetKey}) — 현재 화면 격자 설정 기준`
-                 : '기준 맵 미로드 — 현재 화면 격자 설정 기준');
+      : '기준 맵 미로드 — 현재 화면 격자 설정 기준');
   const align = {
     origin: identical ? 'identity' : 'derived',
     targetBasis,

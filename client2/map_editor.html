@@ -1,15 +1,19 @@
 <!doctype html>
 <html lang="ko" data-theme="light">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
-  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <script>(function () { try { var t = localStorage.getItem('theme'); document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); } })();</script>
   <title>AssyManager - Grid Map Editor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
 </head>
+
 <body>
   <div id="app">
     <!-- 헤더 툴바 -->
@@ -20,8 +24,16 @@
       </div>
       <div class="controls-area">
         <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
-          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
         </button>
         <a href="/index.html" class="glass-btn hover-danger" style="text-decoration: none;">&larr; Back to Grid</a>
       </div>
@@ -33,11 +45,14 @@
         <div class="sidebar-header">
           <h2>Map Configuration</h2>
         </div>
-        <div class="sidebar-content" style="display: flex; flex-direction: column; gap: 15px; padding: 15px; overflow-y: auto;">
-          
+        <div class="sidebar-content"
+          style="display: flex; flex-direction: column; gap: 15px; padding: 15px; overflow-y: auto;">
+
           <!-- 1. Map Search & Load -->
-          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
+          <div
+            style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3
+              style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
               <span>🔍 1. Map Search & Load</span>
             </h3>
             <!-- 대상 테이블 선택 -->
@@ -50,7 +65,9 @@
               <!-- Javascript에 의해 동적 입력 필드들이 생성됩니다. -->
             </div>
             <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
-            <button type="button" id="btn-load-map" class="glass-btn w-full" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂 Load Existing Map</button>
+            <button type="button" id="btn-load-map" class="glass-btn w-full"
+              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂
+              Load Existing Map</button>
 
 
             <p style="margin: 0; font-size: 0.7rem; color: var(--text-dim); line-height: 1.45;">
@@ -69,7 +86,8 @@
             <div class="ov-body">
               <div class="ov-add">
                 <select id="overlay-src-table" class="glass-input" title="겹칠 맵의 테이블"></select>
-                <input type="text" id="overlay-src-key" class="glass-input ov-key-input" list="overlay-src-key-list" placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
+                <input type="text" id="overlay-src-key" class="glass-input ov-key-input" list="overlay-src-key-list"
+                  placeholder="맵 키 (예: LOT-A_05)" autocomplete="off" title="겹칠 맵의 키" />
                 <button type="button" id="btn-add-overlay" class="glass-page-btn ov-add-btn">＋ 겹치기</button>
               </div>
               <!-- [키 자동완성] 유효 다이 지정 칸(#valid-die-ref-list)과 **같은 기계**다 —
@@ -79,24 +97,107 @@
                    `.ov-add`는 grid라 datalist를 그 안에 두지 않는다 — 레이아웃 칸을 먹지
                    않게 그리드 밖에 둔다(datalist 자체는 display:none이다). -->
               <datalist id="overlay-src-key-list"></datalist>
-              <p class="ov-note">오버레이는 소스 맵의 등록 규격(메타)으로 좌표를 읽어 <b>현재 캔버스 프레임으로 변환</b>해 겹칩니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에 남깁니다.</p>
+              <p class="ov-note">오버레이는 소스 맵의 등록 규격(메타)으로 좌표를 읽어 <b>현재 캔버스 프레임으로 변환</b>해 겹칩니다. 정렬 근거가 없으면 겹치지 않고 사유를 목록에
+                남깁니다.</p>
               <div id="overlay-list"></div>
               <button type="button" id="btn-clear-overlays" class="glass-page-btn ov-clear">모두 해제</button>
             </div>
           </details>
 
-          <!-- 2. Physical Wafer Geometry -->
-          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
-              <span>📏 2. Physical Wafer Geometry</span>
+          <!-- 2. Grid & Orientation Settings -->
+          <div
+            style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3
+              style="margin: 0; font-size: 0.95rem; color: var(--color-secondary); display: flex; align-items: center; gap: 6px;">
+              <span>🧩 2. Grid & Orientation Settings</span>
+            </h3>
+            <!-- 격자 크기 (Calculated) -->
+            <div style="display: flex; gap: 10px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-cols">Width (Cols / X)</label>
+                <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly
+                  style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
+              </div>
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-rows">Height (Rows / Y)</label>
+                <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly
+                  style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
+              </div>
+            </div>
+            <!-- X, Y 시작 좌표 설정 -->
+            <div style="display: flex; gap: 10px;">
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-start-x">X Start</label>
+                <input type="number" id="grid-start-x" class="glass-input w-full" value="1" />
+              </div>
+              <div class="control-group-vertical" style="flex: 1;">
+                <label for="grid-start-y">Y Start</label>
+                <input type="number" id="grid-start-y" class="glass-input w-full" value="1" />
+              </div>
+            </div>
+            <!-- 회전 설정 -->
+            <div class="control-group-vertical">
+              <label>Map Rotation (회전)</label>
+              <div style="display: flex; gap: 5px;">
+                <button type="button" class="glass-btn btn-rot active" data-rot="0"
+                  style="flex: 1; padding: 4px; justify-content: center;">0°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="90"
+                  style="flex: 1; padding: 4px; justify-content: center;">90°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="180"
+                  style="flex: 1; padding: 4px; justify-content: center;">180°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="270"
+                  style="flex: 1; padding: 4px; justify-content: center;">270°</button>
+              </div>
+            </div>
+            <!-- 관찰면 설정 -->
+            <div class="control-group-vertical">
+              <label>Wafer Side (앞/뒷면 반전)</label>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+                  <input type="radio" name="wafer-side" value="front" checked
+                    style="accent-color: var(--color-primary);" />
+                  Front (앞면 / 노치 우측 편향)
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+                  <input type="radio" name="wafer-side" value="back" style="accent-color: var(--color-primary);" />
+                  Back (뒷면 / 노치 좌측 편향)
+                </label>
+              </div>
+            </div>
+            <!-- 옵션 체크박스 -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="grid-y-invert" class="glass-checkbox" />
+                <label for="grid-y-invert" class="checkbox-label">Invert Y (Bottom-Up)</label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="show-annotations" class="glass-checkbox" checked />
+                <label for="show-annotations" class="checkbox-label" style="color: var(--color-primary);">Show Cell
+                  Coordinates</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Physical Wafer Geometry -->
+          <div
+            style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+            <h3
+              style="margin: 0; font-size: 0.95rem; color: var(--color-primary); display: flex; align-items: center; gap: 6px;">
+              <span>📏 3. Physical Wafer Geometry</span>
             </h3>
             <!-- Wafer Geometry Presets (Server maps.json) -->
-            <div class="control-group-vertical" style="border: 1px dashed var(--accent-2); border-radius: 8px; padding: 10px; background: var(--accent-2-weak);">
-              <label for="preset-select" style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+            <div class="control-group-vertical"
+              style="border: 1px dashed var(--accent-2); border-radius: 8px; padding: 10px; background: var(--accent-2-weak);">
+              <label for="preset-select"
+                style="color: var(--color-secondary); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
                 <span>⚙️ Geometry Presets</span>
                 <div style="display: flex; gap: 4px;">
-                  <button type="button" id="btn-save-preset" class="glass-page-btn" style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);" title="Save current physical geometry to server maps.json">💾 Save</button>
-                  <button type="button" id="btn-delete-preset" class="glass-page-btn hover-danger" style="padding: 2px 6px; font-size: 0.75rem; display: none;" title="Delete selected custom preset from server">🗑️</button>
+                  <button type="button" id="btn-save-preset" class="glass-page-btn"
+                    style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);"
+                    title="Save current physical geometry to server maps.json">💾 Save</button>
+                  <button type="button" id="btn-delete-preset" class="glass-page-btn hover-danger"
+                    style="padding: 2px 6px; font-size: 0.75rem; display: none;"
+                    title="Delete selected custom preset from server">🗑️</button>
                 </div>
               </label>
               <select id="preset-select" class="glass-input w-full" style="margin-top: 4px;">
@@ -107,15 +208,19 @@
             <!-- [M4②] 유효 다이 맵 — 원 기하의 대체 근거. 새 패널도 모달도 아니고
                  원 기하가 사는 이 블록의 한 줄이다. 비워 두면 오늘과 완전히 동일(원 기하).
                  만들기는 위 프리셋 목록의 「🧩 유효 다이 맵 만들기」 항목이 한다. -->
-            <div class="control-group-vertical" style="border: 1px dashed var(--accent); border-radius: 8px; padding: 10px; background: var(--accent-weak);">
-              <label for="valid-die-ref-key" style="color: var(--accent); font-weight: bold;">🎯 유효 다이 맵 (Valid Die)</label>
+            <div class="control-group-vertical"
+              style="border: 1px dashed var(--accent); border-radius: 8px; padding: 10px; background: var(--accent-weak);">
+              <label for="valid-die-ref-key" style="color: var(--accent); font-weight: bold;">🎯 유효 다이 맵 (Valid
+                Die)</label>
               <!-- 두 줄로 쌓는다: 한 줄에 넣으면 셀렉트가 105px로 눌려 「(이 맵의 테이블)」이
                    잘린다. 잘린 글자는 작은 글자보다 나쁘다 — 무엇이 선택돼 있는지 알 수 없다. -->
               <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 4px;">
-                <select id="valid-die-ref-table" class="glass-input w-full" title="유효 다이 맵이 저장된 테이블 — 비우면 이 맵과 같은 테이블입니다">
+                <select id="valid-die-ref-table" class="glass-input w-full"
+                  title="유효 다이 맵이 저장된 테이블 — 비우면 이 맵과 같은 테이블입니다">
                   <option value="">(이 맵의 테이블)</option>
                 </select>
-                <input type="text" id="valid-die-ref-key" class="glass-input w-full" list="valid-die-ref-list" placeholder="맵 키 (비우면 원 기하)" autocomplete="off" title="이 맵의 유효 다이를 정하는 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다." />
+                <input type="text" id="valid-die-ref-key" class="glass-input w-full" list="valid-die-ref-list"
+                  placeholder="맵 키 (비우면 원 기하)" autocomplete="off" title="이 맵의 유효 다이를 정하는 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다." />
                 <datalist id="valid-die-ref-list"></datalist>
               </div>
               <p style="margin: 6px 0 0; font-size: 0.75rem; color: var(--text-dim); line-height: 1.5;">
@@ -156,72 +261,12 @@
               <label for="phys-edge-margin">Edge Exclusion (mm)</label>
               <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
             </div>
-            <button type="button" id="btn-apply-phys-geom" class="glass-btn" style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡ Apply Physical Geometry</button>
+            <button type="button" id="btn-apply-phys-geom" class="glass-btn"
+              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡
+              Apply Physical Geometry</button>
           </div>
 
-          <!-- 3. Grid & Orientation Settings -->
-          <div style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-            <h3 style="margin: 0; font-size: 0.95rem; color: var(--color-secondary); display: flex; align-items: center; gap: 6px;">
-              <span>🧩 3. Grid & Orientation Settings</span>
-            </h3>
-            <!-- 격자 크기 (Calculated) -->
-            <div style="display: flex; gap: 10px;">
-              <div class="control-group-vertical" style="flex: 1;">
-                <label for="grid-cols">Width (Cols / X)</label>
-                <input type="number" id="grid-cols" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
-              </div>
-              <div class="control-group-vertical" style="flex: 1;">
-                <label for="grid-rows">Height (Rows / Y)</label>
-                <input type="number" id="grid-rows" class="glass-input w-full" min="1" max="100" value="10" readonly style="cursor: not-allowed; opacity: 0.6; background-color: var(--bg-inset);" />
-              </div>
-            </div>
-            <!-- X, Y 시작 좌표 설정 -->
-            <div style="display: flex; gap: 10px;">
-              <div class="control-group-vertical" style="flex: 1;">
-                <label for="grid-start-x">X Start</label>
-                <input type="number" id="grid-start-x" class="glass-input w-full" value="1" />
-              </div>
-              <div class="control-group-vertical" style="flex: 1;">
-                <label for="grid-start-y">Y Start</label>
-                <input type="number" id="grid-start-y" class="glass-input w-full" value="1" />
-              </div>
-            </div>
-            <!-- 회전 설정 -->
-            <div class="control-group-vertical">
-              <label>Map Rotation (회전)</label>
-              <div style="display: flex; gap: 5px;">
-                <button type="button" class="glass-btn btn-rot active" data-rot="0" style="flex: 1; padding: 4px; justify-content: center;">0°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="90" style="flex: 1; padding: 4px; justify-content: center;">90°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="180" style="flex: 1; padding: 4px; justify-content: center;">180°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="270" style="flex: 1; padding: 4px; justify-content: center;">270°</button>
-              </div>
-            </div>
-            <!-- 관찰면 설정 -->
-            <div class="control-group-vertical">
-              <label>Wafer Side (앞/뒷면 반전)</label>
-              <div style="display: flex; flex-direction: column; gap: 6px;">
-                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
-                  <input type="radio" name="wafer-side" value="front" checked style="accent-color: var(--color-primary);" />
-                  Front (앞면 / 노치 우측 편향)
-                </label>
-                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
-                  <input type="radio" name="wafer-side" value="back" style="accent-color: var(--color-primary);" />
-                  Back (뒷면 / 노치 좌측 편향)
-                </label>
-              </div>
-            </div>
-            <!-- 옵션 체크박스 -->
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="grid-y-invert" class="glass-checkbox" />
-                <label for="grid-y-invert" class="checkbox-label">Invert Y (Bottom-Up)</label>
-              </div>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="show-annotations" class="glass-checkbox" checked />
-                <label for="show-annotations" class="checkbox-label" style="color: var(--color-primary);">Show Cell Coordinates</label>
-              </div>
-            </div>
-          </div>
+
 
           <!-- 4. Advanced Column Mapping -->
           <details class="glass-details">
@@ -249,57 +294,75 @@
       <section class="grid-section" style="display: flex; flex-direction: column;">
         <!-- [편집 스택] 자재 맵을 연 동안에만 등장하는 브레드크럼 한 줄 + 뒤로가기 버튼 하나 -->
         <div id="map-breadcrumb" class="map-breadcrumb" style="display: none;"></div>
-        <div class="grid-toolbar" style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: var(--bg-header);">
+        <div class="grid-toolbar"
+          style="display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: var(--bg-header);">
           <div style="display: flex; gap: 15px; align-items: center;">
             <!-- 관찰면(FRONT/BACK) 표기: 그리드 바깥(툴바)에 색상 구분 칩으로 표시 -->
             <div id="side-indicator" class="side-indicator side-front">FRONT · 앞면</div>
-            <span class="glass-log-badge">Active Brush: <strong id="active-brush-val" style="color: var(--color-primary);">None</strong></span>
+            <span class="glass-log-badge">Active Brush: <strong id="active-brush-val"
+                style="color: var(--color-primary);">None</strong></span>
             <span class="glass-log-badge" id="grid-status-coords">Cursor: -</span>
             <!-- [M2] 페인트 잠금 상태 — 특히 "조회 실패로 직전 값 사용 중"을 화면에 남긴다 -->
             <span id="paint-lock-indicator" class="plock-chip" style="display: none;"></span>
-            
+
             <!-- Contextual Selection Actions -->
-            <div id="selection-actions-container" style="display: none; align-items: center; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 15px;">
-              <button id="btn-fill-selected" class="glass-btn success-glow" style="padding: 4px 12px; font-size: 0.8rem;">🎨 Fill Selected</button>
-              <button id="btn-clear-selected" class="glass-btn hover-danger" style="padding: 4px 12px; font-size: 0.8rem;">🧹 Clear Selected</button>
+            <div id="selection-actions-container"
+              style="display: none; align-items: center; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 15px;">
+              <button id="btn-fill-selected" class="glass-btn success-glow"
+                style="padding: 4px 12px; font-size: 0.8rem;">🎨 Fill Selected</button>
+              <button id="btn-clear-selected" class="glass-btn hover-danger"
+                style="padding: 4px 12px; font-size: 0.8rem;">🧹 Clear Selected</button>
             </div>
           </div>
           <div style="display: flex; gap: 10px;">
             <!-- Selection & Edge Tools Dropdown -->
             <div class="control-group relative-menu">
               <button id="btn-select-menu" class="glass-btn">🔍 Select Tools</button>
-              <div id="select-menu-dropdown" class="glass-dropdown-panel" style="display: none; right: 0; min-width: 180px;">
+              <div id="select-menu-dropdown" class="glass-dropdown-panel"
+                style="display: none; right: 0; min-width: 180px;">
                 <button id="btn-set-origin" class="dropdown-item">📍 Set Origin (0,0)</button>
                 <button id="btn-select-e1" class="dropdown-item" style="color: var(--accent-2);">✔️ Select E1</button>
                 <button id="btn-select-e2" class="dropdown-item" style="color: var(--danger);">✔️ Select E2</button>
-                <button id="btn-autopaint-e1e2" class="dropdown-item" style="color: var(--color-success); border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px;">⚡ Auto-Paint E1/E2</button>
+                <button id="btn-autopaint-e1e2" class="dropdown-item"
+                  style="color: var(--color-success); border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px;">⚡
+                  Auto-Paint E1/E2</button>
               </div>
             </div>
 
             <!-- Operations Dropdown -->
             <div class="control-group relative-menu">
               <button id="btn-ops-menu" class="glass-btn">🛠️ Edit Grid</button>
-              <div id="ops-menu-dropdown" class="glass-dropdown-panel" style="display: none; right: 0; min-width: 150px;">
+              <div id="ops-menu-dropdown" class="glass-dropdown-panel"
+                style="display: none; right: 0; min-width: 150px;">
                 <button id="btn-fill-grid" class="dropdown-item">🎨 Fill All</button>
-                <button id="btn-clear-grid" class="dropdown-item hover-danger" style="color: var(--color-danger);">🧹 Clear Grid</button>
-                <button id="btn-copy-excel" class="dropdown-item" style="border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px; color: var(--color-primary);">📋 Copy to Excel</button>
+                <button id="btn-clear-grid" class="dropdown-item hover-danger" style="color: var(--color-danger);">🧹
+                  Clear Grid</button>
+                <button id="btn-copy-excel" class="dropdown-item"
+                  style="border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px; color: var(--color-primary);">📋
+                  Copy to Excel</button>
                 <!-- COPY HEADER MODE — 새 패널이 아니라 이 메뉴의 한 줄. 켜면 [📋 Copy to Excel]이
                      상단 헤더(TITLE + Base/1H/MID/TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를
                      격자와 함께 싣는다. 끄면 출력이 종전과 완전히 동일하다. -->
                 <div class="dropdown-item checkbox-item">
                   <input type="checkbox" id="map-copy-header-toggle" class="glass-checkbox" />
-                  <label for="map-copy-header-toggle" class="checkbox-label" style="text-transform: none; letter-spacing: normal;" title="복사에 상단 헤더(Base·1H·MID·TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를 함께 싣습니다. COUNT는 실제로 저장되는 셀만 셉니다.">헤더 포함 (회사 양식)</label>
+                  <label for="map-copy-header-toggle" class="checkbox-label"
+                    style="text-transform: none; letter-spacing: normal;"
+                    title="복사에 상단 헤더(Base·1H·MID·TOP)와 우측 보조표(VALUE·COUNT·STACK·DESC)를 함께 싣습니다. COUNT는 실제로 저장되는 셀만 셉니다.">헤더
+                    포함 (회사 양식)</label>
                 </div>
               </div>
             </div>
 
             <!-- Primary Save Action -->
-            <button id="btn-push-map" class="glass-btn" style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡ Push Map Data</button>
+            <button id="btn-push-map" class="glass-btn"
+              style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡
+              Push Map Data</button>
           </div>
         </div>
 
         <!-- 2D 캔버스 격자 조작 영역 (노치 표기용 래퍼 컨테이너 추가) -->
-        <div id="map-workspace" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 40px; background: var(--bg-app);">
+        <div id="map-workspace"
+          style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 40px; background: var(--bg-app);">
           <div id="grid-wrapper" class="map-grid-wrapper">
             <!-- V-Notch가 동적으로 이 wrapper의 상/하/좌/우 중 하나로 렌더링되며 D로 표기됩니다. -->
             <div id="grid-notch" class="wafer-notch notch-bottom">D</div>
@@ -317,18 +380,22 @@
            않는다. 자리는 패널의 **왼쪽 모서리** — 사람이 실제로 손을 뻗는 곳이다
            (종전 네이티브 `resize: horizontal` 그립은 우하단 모서리에 있었고, 끌어도
            폭이 기억되지 않았다). -->
-      <div id="plan-split-resizer" class="split-resizer" title="끌어서 「2. Legend &amp; DOE」 폭 조절 (더블클릭 = 기본 폭). 폭은 이 브라우저에 기억됩니다."></div>
+      <div id="plan-split-resizer" class="split-resizer"
+        title="끌어서 「2. Legend &amp; DOE」 폭 조절 (더블클릭 = 기본 폭). 폭은 이 브라우저에 기억됩니다."></div>
 
       <!-- 우측 패널: legend = DOE 편집기 + DOE별 사용 자재 (이동 허브)
            legend 행 하나가 곧 DOE다 — 별도 「전사 계획」 영역도, 별도 「원시 범례」 details도 없다. -->
       <!-- 폭은 transfer_plan.css의 --plan-sidebar-w가 정본이다 (토스트 회피 오프셋이 같은 값을 쓴다) -->
       <aside class="history-sidebar glass-panel" id="plan-sidebar">
-        <div class="sidebar-header" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <div class="sidebar-header"
+          style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
           <h2>🎨 2. Legend &amp; DOE</h2>
-          <button id="btn-add-legend" class="glass-page-btn" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 500;">+ DOE</button>
+          <button id="btn-add-legend" class="glass-page-btn"
+            style="padding: 4px 12px; font-size: 0.78rem; font-weight: 500;">+ DOE</button>
         </div>
         <!-- 이중 스크롤: 위 DOE LIST는 자체 스크롤, 아래 자재 목록은 항상 화면에 남는다(이동 허브) -->
-        <div class="sidebar-content" id="plan-sidebar-content" style="display: flex; flex-direction: column; gap: 0; padding: 0; overflow: hidden;">
+        <div class="sidebar-content" id="plan-sidebar-content"
+          style="display: flex; flex-direction: column; gap: 0; padding: 0; overflow: hidden;">
           <div id="transfer-plan-root" style="display: flex; flex-direction: column; flex: 1; min-height: 0;"></div>
         </div>
       </aside>
@@ -356,4 +423,5 @@
 
   <script type="module" src="/src/map_editor.js"></script>
 </body>
+
 </html>
