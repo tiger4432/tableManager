@@ -46,6 +46,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PLAN = join(ROOT, 'client2', 'src', 'transfer_plan.js');
 const SRC_EDITOR = join(ROOT, 'client2', 'src', 'map_editor.js');
+// The registry ROW normal form (payload/parse/fingerprint/signature) moved out of
+// map_editor.js into its own module; the STATEFUL half (the read/save orchestration and the
+// legend cluster it mutates) stayed. Both halves are sliced, from wherever they now live.
+const SRC_ROW = join(ROOT, 'client2', 'src', 'split_registry_row.js');
 const JSON_OUT = process.argv.includes('--json');
 
 function die(msg) {
@@ -54,13 +58,18 @@ function die(msg) {
   process.exit(2);
 }
 
-/** Slice `[async] function NAME(...) { ... }` out of source by brace matching. */
+/** Slice `[async] function NAME(...) { ... }` out of source by brace matching.
+ *  A leading `export ` is accepted and EXCLUDED from the slice - the pieces are evaluated
+ *  inside a vm script, where an export statement is a SyntaxError. The registry row normal
+ *  form lives in an extracted module (client2/src/split_registry_row.js) and exports its
+ *  symbols; map_editor.js keeps the stateful half module-private. This harness must be able
+ *  to slice either spelling. */
 function extractFunction(source, name, file) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
+  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?((?:async\\s+)?function\\s+${name}\\s*\\()`);
   const m = decl.exec(source);
   if (!m) die(`could not extract function '${name}' from ${file} - it was renamed, removed, or reshaped. Update this harness deliberately; do not delete the check.`);
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = source.indexOf('{', m.index + m[0].length - 1);
+  const start = m.index + m[0].length - m[2].length;
+  let i = source.indexOf('{', start + m[2].length - 1);
   if (i < 0) die(`found '${name}' in ${file} but no body`);
   let depth = 0;
   for (; i < source.length; i++) {
@@ -82,23 +91,30 @@ function extractConst(source, name, file) {
 
 const planSrc = readFileSync(SRC_PLAN, 'utf8');
 const editorSrc = readFileSync(SRC_EDITOR, 'utf8');
+const rowSrc = readFileSync(SRC_ROW, 'utf8');
 
-const NEEDED_EDITOR = [
+// split_registry_row.js — the ROW normal form. Pure functions of their arguments.
+const NEEDED_ROW = [
   'parseJsonCol', 'normalizeKnobs', 'knobsToObject', 'serializeKnobs',
   'serializeStack', 'serializeMaterials',   // zone 저장 정규형 (`serializeBands`를 대체)
   'legendRowPayload',                       // 저장 컬럼의 단일 투영 — 아래 §5h가 이것을 건다
-  'probeZoneColumns',                       // 물리 zone 컬럼 게이트 (저장 파괴 방지)
   'normalizeLegendItem', 'cloneLegend', 'normalizeBands',
   'parseLegendRegistryRows',        // GET response -> registry rows
   'legendRowSignature',             // the one normal form the derived claim compares
+  'buildLegendRegistryUpdates',     // on-screen legend -> `replace_map` payload
+  'buildSplitKey', 'canonRegistryRow', 'registryFingerprint',
+];
+
+// map_editor.js — the STATEFUL half. These read and write the legend cluster, which is why
+// they did not move with the row normal form.
+const NEEDED_EDITOR = [
+  'probeZoneColumns',               // 물리 zone 컬럼 게이트 (저장 파괴 방지)
   'reconcileVocabClaims',           // claim = painted OR differs from what was seeded
   'fetchRegistryRows',              // the named scope - the request itself is asserted
   'readRegistryScope',              // map scope wrapper (load + save both go through it)
   'seedEmptyDoe',                   // the ONLY answer to "this map has no registry rows"
   'applyRegistryRowsToLegend',      // this map's rows -> on-screen legend
-  'buildLegendRegistryUpdates',     // on-screen legend -> `replace_map` payload
   'saveLegendToServer',             // the real write path: scope + authority + fingerprint
-  'buildSplitKey', 'canonRegistryRow', 'registryFingerprint',
 ];
 
 // [U6] The empty-map seed is served now (paint-rules `default_legend`); the client keeps
@@ -120,13 +136,13 @@ function extractEmptyDoeSeed(source) {
 const zoneSrc = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
 
 const pieces = [
-  extractConst(editorSrc, 'SPLIT_KEY_SEP', 'map_editor.js'),
-  extractConst(editorSrc, 'FP_UNIT', 'map_editor.js'),
-  extractConst(editorSrc, 'FP_ROW', 'map_editor.js'),
+  extractConst(rowSrc, 'SPLIT_KEY_SEP', 'split_registry_row.js'),
+  extractConst(rowSrc, 'FP_UNIT', 'split_registry_row.js'),
+  extractConst(rowSrc, 'FP_ROW', 'split_registry_row.js'),
+  extractConst(rowSrc, 'LEGEND_PAYLOAD_COLUMNS', 'split_registry_row.js'),
   extractConst(editorSrc, 'SPLIT_REGISTRY_TABLE', 'map_editor.js'),
   extractConst(editorSrc, 'REGISTRY_SCOPES', 'map_editor.js'),
   extractConst(editorSrc, 'ZONE_COLUMNS', 'map_editor.js'),
-  extractConst(editorSrc, 'LEGEND_PAYLOAD_COLUMNS', 'map_editor.js'),
   extractEmptyDoeSeed(editorSrc),
   extractFunction(editorSrc, 'defaultLegendRows', 'map_editor.js'),
   extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),   // normalizeBands calls it
@@ -138,6 +154,7 @@ const pieces = [
   extractFunction(zoneSrc, 'boundState', 'doe_bands.js'),
   extractFunction(zoneSrc, 'parseMaterialList', 'doe_bands.js'),
   extractFunction(zoneSrc, 'bandsToZones', 'doe_bands.js'),
+  ...NEEDED_ROW.map(n => extractFunction(rowSrc, n, 'split_registry_row.js')),
   ...NEEDED_EDITOR.map(n => extractFunction(editorSrc, n, 'map_editor.js')),
 ];
 
@@ -180,7 +197,7 @@ try {
 } catch (e) {
   die(`extracted sources did not evaluate: ${e && e.message}`);
 }
-for (const fn of ['bandToState', ...NEEDED_EDITOR]) {
+for (const fn of ['bandToState', ...NEEDED_ROW, ...NEEDED_EDITOR]) {
   if (typeof sandbox[fn] !== 'function') die(`'${fn}' did not evaluate to a function`);
 }
 

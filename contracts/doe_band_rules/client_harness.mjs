@@ -111,13 +111,20 @@ if (!/import\s*\{[^}]*\bparseTsv\b[^}]*\}\s*from\s*['"]\.\/tsv\.js['"]/.test(pla
 }
 // 🔴 THE RETIRED WRITER. `bands` is read-only now; a new writer would put the plan in two
 //    places at once and `replace_map` would let them erase each other.
+// The map_split_registry row normal form moved out of map_editor.js into
+// client2/src/split_registry_row.js. BOTH files are scanned for the retired writer: a
+// `serializeBands` would now most naturally be written beside the other serialisers, so
+// scanning only the file it left would leave this guard pointing at empty ground.
 {
+  const rowSrc = readFileSync(join(ROOT, 'client2', 'src', 'split_registry_row.js'), 'utf8');
   const editorSrc = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8');
-  if (/\bfunction\s+serializeBands\s*\(/.test(editorSrc)) {
-    die("map_editor.js has a `serializeBands` again. `map_split_registry.bands` is RETIRED (product_tables.py: 'Do not add a new writer') - it may be read for migration and never written.");
+  for (const [file, s] of [['split_registry_row.js', rowSrc], ['map_editor.js', editorSrc]]) {
+    if (/\bfunction\s+serializeBands\s*\(/.test(s)) {
+      die(`${file} has a \`serializeBands\` again. \`map_split_registry.bands\` is RETIRED (product_tables.py: 'Do not add a new writer') - it may be read for migration and never written.`);
+    }
   }
-  if (!/\bLEGEND_PAYLOAD_COLUMNS\b/.test(editorSrc)) {
-    die("map_editor.js lost `LEGEND_PAYLOAD_COLUMNS`. That one list is what makes the write payload, the concurrency fingerprint and `legendRowSignature` cover the same fields - split them apart and an edit to a column that is saved but not signed is silently dropped from the save that was supposed to carry it.");
+  if (!/\bLEGEND_PAYLOAD_COLUMNS\b/.test(rowSrc)) {
+    die("split_registry_row.js lost `LEGEND_PAYLOAD_COLUMNS`. That one list is what makes the write payload, the concurrency fingerprint and `legendRowSignature` cover the same fields - split them apart and an edit to a column that is saved but not signed is silently dropped from the save that was supposed to carry it.");
   }
 }
 

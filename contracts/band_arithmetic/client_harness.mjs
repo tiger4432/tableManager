@@ -25,7 +25,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const VECTORS = join(HERE, 'vectors.json');
 const SRC_PLAN = join(ROOT, 'client2', 'src', 'transfer_plan.js');
-const SRC_EDITOR = join(ROOT, 'client2', 'src', 'map_editor.js');
+// `normalizeBands` — the surviving READER of the retired `bands` column — moved out of
+// map_editor.js with the rest of the map_split_registry row normal form.
+const SRC_ROW = join(ROOT, 'client2', 'src', 'split_registry_row.js');
 
 function die(msg) {
   console.error(`HARNESS FAILURE: ${msg}`);
@@ -33,13 +35,17 @@ function die(msg) {
   process.exit(2);
 }
 
-/** Slice `function NAME(...) { ... }` out of source by brace matching. */
+/** Slice `function NAME(...) { ... }` out of source by brace matching.
+ *  A leading `export ` is accepted and EXCLUDED from the slice — the pieces are evaluated
+ *  inside a vm script, where an export statement is a SyntaxError. `normalizeBands` now
+ *  lives in an extracted module (client2/src/split_registry_row.js) and is exported;
+ *  transfer_plan.js keeps its functions module-private. Both spellings must slice. */
 function extractFunction(source, name, file) {
-  const decl = new RegExp(`(^|\\n)\\s*function\\s+${name}\\s*\\(`);
+  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(function\\s+${name}\\s*\\()`);
   const m = decl.exec(source);
   if (!m) die(`could not extract function '${name}' from ${file} — it was renamed, removed, or reshaped. Update this harness deliberately; do not delete the check.`);
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = source.indexOf('{', m.index + m[0].length - 1);
+  const start = m.index + m[0].length - m[2].length;
+  let i = source.indexOf('{', start + m[2].length - 1);
   if (i < 0) die(`found '${name}' in ${file} but no body`);
   let depth = 0;
   for (; i < source.length; i++) {
@@ -51,7 +57,7 @@ function extractFunction(source, name, file) {
 }
 
 const planSrc = readFileSync(SRC_PLAN, 'utf8');
-const editorSrc = readFileSync(SRC_EDITOR, 'utf8');
+const rowSrc = readFileSync(SRC_ROW, 'utf8');
 
 // ── THE CLIENT RETIRED THE BAND EDITOR (2026-07-28). This file did not become wrong. ──
 //
@@ -86,7 +92,7 @@ const pieces = [
   extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),
   extractFunction(planSrc, 'prevTo', 'transfer_plan.js'),
   extractFunction(planSrc, 'splitMaterialId', 'transfer_plan.js'),
-  extractFunction(editorSrc, 'normalizeBands', 'map_editor.js'),
+  extractFunction(rowSrc, 'normalizeBands', 'split_registry_row.js'),
 ];
 
 // `paintedOf` reads module state (S.counts); stub it so the arithmetic is testable in

@@ -678,9 +678,16 @@ class TestProductWritePathsAreDeclared:
     # read-only entries, so there is no payload left to check for them. This is
     # the retarget the docstring asks for, NOT a deletion: map_split_registry
     # below now covers every column the product writes for a DOE.
+    #
+    # 2026-08-04: the map_split_registry write payload moved out of map_editor.js
+    # into client2/src/split_registry_row.js (``buildLegendRegistryUpdates``) when
+    # the row normal form was extracted. Nothing about the payload changed -- only
+    # the file it is spelled in. NOTE the ``pytest.skip`` below: a WRONG filename
+    # here makes this test SKIP, which reads exactly like a pass, so the name must
+    # be checked against the tree rather than assumed.
     WRITERS = {
         "wafer_map_metadata": ("map_editor.js", "map_pk"),
-        "map_split_registry": ("map_editor.js", "split_key"),
+        "map_split_registry": ("split_registry_row.js", "split_key"),
     }
 
     @pytest.mark.parametrize("table", sorted(WRITERS))
