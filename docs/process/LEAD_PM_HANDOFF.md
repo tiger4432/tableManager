@@ -115,7 +115,8 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 | `getCellFromPhysicalCoords` | `getCanvasCellFromDieIndex` | |
 | `xv`/`yv` | `dbX`/`dbY` | |
 
-**`mm`은 일부러 비워 뒀다** — 규칙 6과 defect 표기가 진짜 밀리미터 공간을 요구하는데 **클라에는 그 공간이 없다**(원 판정조차 700×700 픽셀). 서버 `PhysicalWaferEngine`만 mm로 일한다.
+🔴 **[2026-08-04 정정 · doc-keeper] 「`mm`은 일부러 비워 뒀다」는 거짓이 됐다.** `cd3e0f4`(2026-07-31)가 규칙 6의 오버레이를 착지시키면서 **클라에 웨이퍼 mm 공간이 생겼다** — `dieIndexToWaferMm`/`waferMmToDieCell`/`projectCellsToWaferMm`/`seatWaferMmInFrame`(정본 [MAP_EDITOR_SPEC §1-bis](../spec/MAP_EDITOR_SPEC.md)). 그 문장은 **최소 7파일에 복사된 채 나흘간** 살아 있었다.
+⚠️ **바뀌지 않은 것 둘**: **저장 좌표는 여전히 오리진 기준 칸수**이고(mm 공간이 생긴 것과 저장 좌표의 뜻은 다른 얘기다 — 섞으면 없는 결함이 만들어진다), **원 판정은 아직 700×700 픽셀**이다. 서버 쪽 mm은 별개로 `PhysicalWaferEngine`에 있다.
 ⚠️ **개명 개수는 인용 금지** — 46 vs 67, 둘 다 재현 안 됨.
 
 ### 3-A-3. 장기 — defect 데이터 모양 (사용자)
