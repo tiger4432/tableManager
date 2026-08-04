@@ -101,6 +101,10 @@ try {
     K.fn('decomposeMapKey'),
     K.fn('canonicalMapKey'),
     // M4 phase 1
+    // [1-a 2026-08-04] `parseValidDieRef` reads the FIXED storage table from this const since
+    // the load path was pinned, so the const must be sliced in ahead of it or the slice throws
+    // ReferenceError. Sliced, not re-typed — same discipline as CANON_INT_RE above.
+    M.konst('VALID_DIE_TABLE'),
     M.fn('parseValidDieRef'),
     M.fn('validDieBasis'),
     M.fn('isValidDieAt'),
@@ -108,7 +112,8 @@ try {
     P.fn('untrackedBoundOf'),
     P.fn('boundText'),
     `globalThis.__h = { canonicalKeyValue, composeMapId, decomposeMapKey, canonicalMapKey,
-       parseValidDieRef, validDieBasis, isValidDieAt, untrackedBoundOf, boundText };`,
+       parseValidDieRef, validDieBasis, isValidDieAt, untrackedBoundOf, boundText,
+       VALID_DIE_TABLE };`,
   ].join('\n\n'), ctx);
 } catch (e) {
   die(`sandbox evaluation failed - ${e && e.message ? e.message : e}`);
@@ -302,19 +307,25 @@ check('7c-3', 'client reads the served bound verbatim (no arithmetic of its own)
 // Everything else IS a declaration, and a declaration that cannot be read is REFUSED.
 // Folding an unreadable declaration back into "not declared" would be the silent fallback
 // to circle geometry that INV-M4-3 exists to forbid.
+// [1-a 2026-08-04] THE LOAD PIN. `table` is now the FIXED storage table on EVERY readable
+// declaration - user ruling "불러오기는 무조건 valid_die_ref 를 이용하게". What the declaration
+// USED to mean is not thrown away: it comes back as `declaredTable`, because the refusal
+// message has to tell "the key is wrong" apart from "the key is fine but not in this table".
+// The fixed value is read from the sandbox const sliced out of the source, never re-typed.
+const VDT = H.VALID_DIE_TABLE;
 const REF_CASES = [
   ['absent -> null', {}, 'bonding_map', null],
   ['null -> null', { valid_die_ref: null }, 'bonding_map', null],
   ['undefined -> null', { valid_die_ref: undefined }, 'bonding_map', null],
   ['empty string -> refusal', { valid_die_ref: '' }, 'bonding_map', 'unreadable'],
-  ['bare string = same table', { valid_die_ref: 'TMPL_1' }, 'bonding_map',
-    { table: 'bonding_map', mapKey: 'TMPL_1' }],
-  ['{table,map_id}', { valid_die_ref: { table: 'die_template_map', map_id: 'T_1' } }, 'bonding_map',
-    { table: 'die_template_map', mapKey: 'T_1' }],
+  ['bare string = pinned table, declaring table remembered', { valid_die_ref: 'TMPL_1' }, 'bonding_map',
+    { table: VDT, mapKey: 'TMPL_1', declaredTable: 'bonding_map' }],
+  ['{table,map_id} - the declared table is REMEMBERED, not obeyed', { valid_die_ref: { table: 'die_template_map', map_id: 'T_1' } }, 'bonding_map',
+    { table: VDT, mapKey: 'T_1', declaredTable: 'die_template_map' }],
   ['{target_table,map_id} names the same pair', { valid_die_ref: { target_table: 'die_template_map', map_id: 'T_1' } }, 'bonding_map',
-    { table: 'die_template_map', mapKey: 'T_1' }],
-  ['{map_id} only = same table', { valid_die_ref: { map_id: 'T_1' } }, 'bonding_map',
-    { table: 'bonding_map', mapKey: 'T_1' }],
+    { table: VDT, mapKey: 'T_1', declaredTable: 'die_template_map' }],
+  ['{map_id} only = pinned table, home remembered', { valid_die_ref: { map_id: 'T_1' } }, 'bonding_map',
+    { table: VDT, mapKey: 'T_1', declaredTable: 'bonding_map' }],
   // Unrecognisable shapes are REFUSED, not guessed into something plausible.
   ['object with no map id -> refusal', { valid_die_ref: { table: 'die_template_map' } }, 'bonding_map', 'unreadable'],
   ['number -> refusal', { valid_die_ref: 7 }, 'bonding_map', 'unreadable'],

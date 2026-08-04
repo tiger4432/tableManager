@@ -2009,7 +2009,23 @@
         "Three outcomes, and the vectors name which: `none` (no declaration) | `ref` (resolved) |",
         "`error` (declared but unreadable). Field names differ across the seam by language",
         "convention (`map_id` server / `mapKey` client); the scorers normalise, and the TABLE and",
-        "KEY values are compared, which is what a lookup actually uses."
+        "KEY values are compared, which is what a lookup actually uses.",
+        "",
+        "TABLE DIVERGENCE, DECLARED 2026-08-04 (map request 1-a, user ruling): the CLIENT load",
+        "path is PINNED — \"불러오기는 무조건 valid_die_ref 를 이용하게\". So on every `ref`",
+        "vector the two sides now answer the table differently and BOTH answers are recorded:",
+        "  `expect_table`        — the server's answer (`server/map_overlay.parse_valid_die_ref`),",
+        "                          which is still the storage format's original meaning: a bare",
+        "                          string is 'a map in MY table'.",
+        "  `expect_client_table` — the client's answer, which is the pinned constant and nothing",
+        "                          else (`client_consts` VALID_DIE_TABLE).",
+        "The KIND and the KEY do NOT diverge, and that is the point: the pin changed WHERE the",
+        "client looks, not what counts as a declaration. Every `ref` vector must carry",
+        "`expect_client_table` — the client scorer FAILS on a ref vector that omits it, so a",
+        "vector added later cannot silently stop covering the pin.",
+        "This divergence is OPEN and belongs to the server lane: until `map_overlay` is pinned",
+        "too, a server-resolved basis and a client-resolved basis for the same legacy row name",
+        "different maps. Recorded here rather than decided here."
       ]
     },
     {
@@ -2037,6 +2053,7 @@
       "home_table": "seam_map",
       "expect": "ref",
       "expect_table": "seam_map",
+      "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant",
       "$why": "The commonest use: another map of the same table. Inheriting the declaring map's table is the same convention overlay `sources` already uses."
@@ -2049,6 +2066,7 @@
       "home_table": "seam_map",
       "expect": "ref",
       "expect_table": "seam_map",
+      "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant"
     },
@@ -2082,8 +2100,10 @@
       "home_table": "seam_map",
       "expect": "ref",
       "expect_table": "tpl_table",
+      "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
-      "$source": "invariant"
+      "$source": "invariant",
+      "$why": "The sharpest case for the pin: the declaration EXPLICITLY names another table and the client still reads valid_die_ref. Nothing is rewritten on disk — the row keeps saying tpl_table (valid_die_push_decision_cases proves that) — but the lookup goes to the fixed table and refuses BY NAME when the key is not there."
     },
     {
       "name": "object_alias_names",
@@ -2096,6 +2116,7 @@
       "home_table": "seam_map",
       "expect": "ref",
       "expect_table": "tpl_table",
+      "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant",
       "$why": "`target_table`/`map_key` are wafer_map_metadata's real column names and `table`/`map_id` the short aliases — one pair, two spellings. Both sides accept both, and NOTHING ELSE: guessing further names would resolve a typo to a real map."
@@ -2110,6 +2131,7 @@
       "home_table": "seam_map",
       "expect": "ref",
       "expect_table": "seam_map",
+      "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant"
     },
@@ -2177,7 +2199,13 @@
         "rather than decided here: a declaration that names NO table when the caller supplied no",
         "home table either. Both sides are internally consistent and they disagree on the answer.",
         "This is a contract question, not a bug report — which is why the resolution is the Lead",
-        "PM's call and this file only records both answers."
+        "PM's call and this file only records both answers.",
+        "",
+        "CLOSED 2026-08-04 on the KIND axis by the load pin (map request 1-a). The client used to",
+        "error here because it had no table to look in; pinned, it always has one, so the branch",
+        "that produced the error no longer exists and both sides now say `ref`. The group is kept",
+        "— not deleted — because the TABLE still diverges (see valid_die_ref_parse_cases) and",
+        "because a group deleted when it goes green stops noticing when it comes back."
       ]
     },
     {
@@ -2189,8 +2217,9 @@
       },
       "home_table": null,
       "expect_server": "ref",
-      "expect_client": "error",
-      "$source": "measurement"
+      "expect_client": "ref",
+      "$source": "measurement",
+      "$why": "WAS `error` on the client until 2026-08-04. The pin removed the 'target table unknown' branch outright — under a fixed table the target cannot become unknown — so this half of the divergence closed as a side effect rather than by a decision about it."
     },
     {
       "name": "string_no_home",

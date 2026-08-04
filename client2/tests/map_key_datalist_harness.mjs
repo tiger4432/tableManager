@@ -99,6 +99,9 @@ function konst(src, name) {
 const FUNCS = [
   'markSuggestState', 'claimListFill', 'fillDatalist',
   'populateMapKeyDatalist', 'populateValidDieRefList', 'populateOverlayKeyList',
+  // [1-a] The control-shape decision. Sliced verbatim so the <select>-vs-<input> choice is
+  // scored as BEHAVIOUR, not read off the markup.
+  'renderValidDieKeyControl',
   'colValueKey', 'dropColumnValueCache', 'canReuseComplete',
   'populateColumnValueDatalist', 'onMetaInputSuggest',
   'renderMetadataInputs',
@@ -121,6 +124,13 @@ function makeNode(tag) {
     id: '', value: '', title: '', className: '', type: '', placeholder: '', textContent: '',
     htmlFor: '',
     dataset: {},
+    // [1-a] `style` and `options` exist because the valid-die key control now CHOOSES between
+    // a <select> and the text input, and it expresses that choice with `style.display` while
+    // reading its option set from the datalist's `.options`. Without both, the choice would be
+    // unobservable here and every assertion about it would be vacuous — the model, not the
+    // code, would be answering. `options` is the live child list on BOTH element kinds in the
+    // browser, so it is modelled as the children rather than as a snapshot.
+    style: {},
     children: [],
     parent: null,
     attrs: {},
@@ -137,6 +147,7 @@ function makeNode(tag) {
         .forEach(f => f(Object.assign({ type: t, target: node }, ev || {})));
     },
   };
+  Object.defineProperty(node, 'options', { get() { return node.children; } });
   Object.defineProperty(node, 'innerHTML', {
     get() { return ''; },
     // The real thing detaches every child. Modelled as detachment, not as "forget the list",
@@ -198,6 +209,9 @@ function build(src, { answers = [], table = 'bonding_map', schema = null } = {})
   validDieKey.title = '이 맵의 유효 다이를 정하는 맵의 키.';
   const validDieTable = makeNode('select'); validDieTable.id = 'valid-die-ref-table';
   validDieTable.value = '';
+  // [1-a] The dropdown form of the key control. Starts hidden, exactly as the markup ships it.
+  const validDieSelect = makeNode('select'); validDieSelect.id = 'valid-die-ref-select';
+  validDieSelect.style.display = 'none';
   const overlayList = makeNode('datalist'); overlayList.id = 'overlay-src-key-list';
   const overlayKey = makeNode('input'); overlayKey.id = 'overlay-src-key';
   overlayKey.title = '겹칠 맵의 키';
@@ -214,6 +228,7 @@ function build(src, { answers = [], table = 'bonding_map', schema = null } = {})
   overlayPanel.appendChild(overlayList);
   const validDiePanel = makeNode('div');
   validDiePanel.appendChild(validDieTable);
+  validDiePanel.appendChild(validDieSelect);
   validDiePanel.appendChild(validDieKey);
   validDiePanel.appendChild(validDieList);
 
@@ -228,6 +243,7 @@ function build(src, { answers = [], table = 'bonding_map', schema = null } = {})
   const el = {
     metadataContainer: container,
     validDieRefList: validDieList, validDieRefKey: validDieKey, validDieRefTable: validDieTable,
+    validDieRefSelect: validDieSelect,
     overlaySrcKeyList: overlayList, overlaySrcKey: overlayKey, overlaySrcTable: overlayTable,
     colMapX: { value: 'x' }, colMapY: { value: 'y' }, colMapVal: { value: 'val' },
   };
@@ -490,6 +506,135 @@ async function runChecks(src, { strict = true } = {}) {
       check('and the title names the real population size', r.vdTruncTitleHasTotal, true);
       check('the field\'s original tooltip survives the status note', r.vdTitleKeptBase, true);
       check('a cut list is NOT cached — the next focus asks again', r.vdTruncRequests, 2);
+    }
+  }
+
+  // ── 1-quinquies. THE KEY CONTROL'S SHAPE — <select> ONLY WHEN THE LIST IS THE WHOLE
+  //   POPULATION (user request 2026-08-04: "valid die 리스트를 datalist 말고 preset과 같은
+  //   형식으로 가능?").
+  //
+  //   The trade-off this scores: a datalist SUGGESTS (an unlisted key can still be typed and
+  //   loaded), a <select> CONSTRAINS (it cannot). So the dropdown is allowed only where the
+  //   list is provably the entire population; otherwise the text input stays and a reachable
+  //   map stays reachable. Three fixtures, one per condition that forfeits the dropdown, and
+  //   each one is scored as a DISCRIMINATION against the complete case — a single observation
+  //   would pass against an implementation that never shows the select at all, which is the
+  //   most natural way to get this wrong while looking safe.
+  {
+    const shape = env => ({
+      select: env.el.validDieRefSelect.style.display === 'none' ? 'hidden' : 'shown',
+      input: env.el.validDieRefKey.style.display === 'none' ? 'hidden' : 'shown',
+    });
+
+    // (a) COMPLETE, and the current key is empty → the dropdown, exactly like the preset one.
+    const envOk = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
+    await envOk.sandbox.populateValidDieRefList();
+    r.vdShapeComplete = shape(envOk);
+    r.vdSelectOptions = envOk.el.validDieRefSelect.children.map(o => o.value);
+    // 🔴 THE EQUIVALENCE THAT MAKES THIS SAFE: the placeholder option's value is the EMPTY
+    //    STRING — byte-identical to what an untouched text input holds — so "고르지 않음"
+    //    and "비워 둠" reach the save/apply path as the same value, which is 원 기하.
+    //    If this option ever carried a sentinel like 'none', an empty selection would be
+    //    written as a DECLARATION and the map would be refused instead of drawn as a circle.
+    r.vdEmptyOptionValue = envOk.el.validDieRefSelect.children[0].value;
+    r.vdEmptyOptionSaysCircle = /원 기하/.test(envOk.el.validDieRefSelect.children[0].textContent);
+
+    // (b) TRUNCATED → the input stays, and a key that is in NO list survives untouched.
+    const envCut = build(src, {
+      table: 'bonding_map', answers: [metaAnswer('valid_die_ref', 900)],
+    });
+    envCut.el.validDieRefKey.value = FREE;
+    await envCut.sandbox.populateValidDieRefList();
+    r.vdShapeTruncated = shape(envCut);
+    r.vdTruncatedKeptFreeKey = envCut.el.validDieRefKey.value;
+    r.vdTruncatedUnconstrained = constraintState(envCut.el.validDieRefKey);
+
+    // (c) UNAVAILABLE (HTTP failure) → the input stays, free key survives.
+    const envDown = build(src, {
+      table: 'bonding_map',
+      answers: [{ match: u => u.includes('/tables/wafer_map_metadata/data'), status: 503, body: {} }],
+    });
+    envDown.el.validDieRefKey.value = FREE;
+    await envDown.sandbox.populateValidDieRefList();
+    r.vdShapeUnavailable = shape(envDown);
+    r.vdUnavailableKeptFreeKey = envDown.el.validDieRefKey.value;
+
+    // (d) COMPLETE, but the CURRENT key is not in the list — the pre-pin declarations are
+    //     exactly this. A <select> could not display that key at all, so the control would
+    //     read "-- 원 기하 --" for a map that HAS a declaration: a designation shown as no
+    //     designation. This is the condition that makes the whole change safe, and without
+    //     it the change is itself the defect it is meant to avoid.
+    const envLegacy = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
+    envLegacy.el.validDieRefKey.value = FREE;
+    await envLegacy.sandbox.populateValidDieRefList();
+    r.vdShapeLegacyKey = shape(envLegacy);
+    r.vdLegacyKeptFreeKey = envLegacy.el.validDieRefKey.value;
+
+    // (e) TRUNCATED with an EMPTY key. Separated from (b) on purpose: in (b) the key is also
+    //     unlisted, so ONE guard failing is enough to keep the input and the other guard is
+    //     never exercised. Here only the truncation can forfeit the dropdown, so this is the
+    //     fixture that can tell "we checked the population" from "we checked the key".
+    const envCutEmpty = build(src, {
+      table: 'bonding_map', answers: [metaAnswer('valid_die_ref', 900)],
+    });
+    await envCutEmpty.sandbox.populateValidDieRefList();
+    r.vdShapeTruncatedEmptyKey = shape(envCutEmpty);
+
+    if (strict) {
+      check('COMPLETE + empty key -> the dropdown is the control',
+        r.vdShapeComplete, { select: 'shown', input: 'hidden' });
+      check('...and it offers the placeholder plus every listed key',
+        r.vdSelectOptions, ['', ...META_ROWS.valid_die_ref]);
+      check('the empty selection is the EMPTY STRING, identical to an empty input (= 원 기하)',
+        r.vdEmptyOptionValue, '');
+      check('...and it says so in words', r.vdEmptyOptionSaysCircle, true);
+      check('TRUNCATED -> the text input stays, so an unlisted key is still reachable',
+        r.vdShapeTruncated, { select: 'hidden', input: 'shown' });
+      check('a truncated list does not eat a hand-typed key', r.vdTruncatedKeptFreeKey, FREE);
+      check('...and does not constrain the input either',
+        r.vdTruncatedUnconstrained, { attrs: [], readOnly: false, disabled: false });
+      check('UNAVAILABLE -> the text input stays',
+        r.vdShapeUnavailable, { select: 'hidden', input: 'shown' });
+      check('an unavailable list does not eat a hand-typed key', r.vdUnavailableKeptFreeKey, FREE);
+      check('TRUNCATED with an EMPTY key -> still the text input (the POPULATION is the reason)',
+        r.vdShapeTruncatedEmptyKey, { select: 'hidden', input: 'shown' });
+      check('a key that is NOT in a COMPLETE list still keeps the text input',
+        r.vdShapeLegacyKey, { select: 'hidden', input: 'shown' });
+      check('...and that key is not silently dropped', r.vdLegacyKeptFreeKey, FREE);
+      // Fixture-inactivity guard. Names the wrong implementation that survives without it:
+      // if the complete case ALSO hid the select, all four shape checks could be satisfied by
+      // an implementation that never shows the dropdown, and the user request would be
+      // unimplemented while the harness stayed green.
+      check('the axis is ACTIVE: the complete case and the three fallbacks DISAGREE',
+        [r.vdShapeComplete.select !== r.vdShapeTruncated.select,
+          r.vdShapeComplete.select !== r.vdShapeUnavailable.select,
+          r.vdShapeComplete.select !== r.vdShapeLegacyKey.select], [true, true, true]);
+    }
+  }
+
+  // ── 1-sexies. A SUCCESSFUL BUT EMPTY LIST GETS ITS OWN WORDS ──────────────────
+  //   Silence is what a broken dropdown looks like. "조회는 됐고 정말로 0건" and "목록을
+  //   못 만들었다" must not arrive as the same empty control with the same empty tooltip.
+  {
+    const env = build(src, {
+      table: 'bonding_map',
+      answers: [{
+        match: u => u.includes('/tables/wafer_map_metadata/data'),
+        body: { data: [], total: 0 },
+      }],
+    });
+    const baseTitle = env.el.validDieRefKey.title;
+    await env.sandbox.populateValidDieRefList();
+    r.vdEmptyMark = env.el.validDieRefKey.dataset.suggest;
+    r.vdEmptyTitleSpeaks = env.el.validDieRefKey.title !== baseTitle;
+    r.vdEmptyTitleKeptBase = env.el.validDieRefKey.title.startsWith(baseTitle);
+    if (strict) {
+      // Still COMPLETE — the query succeeded. The state must not be forged into a failure.
+      check('an empty-but-successful list is still COMPLETE, not unavailable',
+        r.vdEmptyMark, undefined);
+      check('...but it SAYS it is genuinely empty rather than staying silent',
+        r.vdEmptyTitleSpeaks, true);
+      check('...without eating the field\'s own tooltip', r.vdEmptyTitleKeptBase, true);
     }
   }
 
@@ -968,6 +1113,48 @@ const MUTATIONS = [
     repl: `    input.addEventListener('focus', () => {}); /* MUTANT: leaks one per rebuild */
     formGroup.appendChild(input);`,
     breaks: 'regeneration attaches nothing to the nodes it creates',
+  },
+  // ── The key control's shape (1-a, 2026-08-04). Each anchor below is UNIQUE in the file;
+  //    a repeated anchor lands on the first match and scores a different function.
+  {
+    name: 'M16 [HIGH] the dropdown is shown even when the list is NOT the whole population',
+    find: `  const useSelect = listIsWholePopulation && curIsSelectable && keys.length > 0;`,
+    repl: `  const useSelect = curIsSelectable && keys.length > 0;`,
+    breaks: 'a truncated or failed list forfeits the <select>, so an unlisted map stays reachable',
+  },
+  {
+    name: 'M17 [HIGH] the dropdown is shown even when the CURRENT key is not in it',
+    find: `  const curIsSelectable = (cur === '' || keys.indexOf(cur) !== -1);   // ③의 부정`,
+    repl: `  const curIsSelectable = true;   // MUTANT: a declared key it cannot display reads as 원 기하`,
+    breaks: 'a map that HAS a declaration is never shown as having none',
+  },
+  {
+    name: 'M18 [HIGH] the empty selection carries a sentinel instead of the empty string',
+    find: `  none.value = '';
+  // 🔴 빈 선택은 빈 입력칸과 **정확히 같은 뜻**이다`,
+    repl: `  none.value = 'none';
+  // MUTANT: 빈 선택이 선언으로 저장된다
+  // 🔴 빈 선택은 빈 입력칸과 **정확히 같은 뜻**이다`,
+    breaks: '"고르지 않음" reaches the save path as the same value as an empty input (= 원 기하)',
+  },
+  {
+    name: 'M19 [MEDIUM] the dropdown is never shown at all (the request silently unimplemented)',
+    find: `  sel.style.display = useSelect ? '' : 'none';`,
+    repl: `  sel.style.display = 'none';`,
+    breaks: 'a complete population IS offered as a dropdown',
+  },
+  {
+    name: 'M20 [MEDIUM] a successful empty list goes back to silence',
+    // NB the first draft of this mutation was `'' || \`...\`` — which still evaluates to the
+    // message, so it changed the TEXT without changing the BEHAVIOUR and escaped for the
+    // right reason. A mutation that does not mutate proves nothing; this one really silences
+    // the branch and leaves the original call unreachable.
+    find: `    markSuggestState(input, '',
+      \`\${table}에 등록된 맵이 아직 없습니다`,
+    repl: `    markSuggestState(input, '', '');
+    if (false) markSuggestState(input, '',
+      \`\${table}에 등록된 맵이 아직 없습니다`,
+    breaks: '"genuinely zero" is distinguishable from a broken control',
   },
 ];
 
