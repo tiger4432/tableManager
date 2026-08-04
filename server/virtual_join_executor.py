@@ -326,19 +326,22 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
     makes storage canonical at the write boundary, so blank-in-SQL and blank-in-Python
     are the same set. Adding a trim here would silently re-introduce the second spelling.
 
-    [Numeric columns render to text BEFORE the COALESCE - board item N7, 2026-08-02]
-    The label is a string, so the whole expression is a TEXT expression - PostgreSQL
-    refuses both `COALESCE(double precision, text)` and `blank_to_null`'s `col = ''`
-    arm on a Float column (the exact SQL failure the user reported). A numeric part
-    therefore goes through `crud.numeric_text_sql`, which renders the canonical
-    comparison text with the INT spelling for integral values (3.0 -> '3', matching
-    `clean_str_value` on the payload side - the value the grid actually displays).
-    It is NOT wrapped in `blank_to_null`: a number is never `''`, its blank arm is
-    IS NULL alone, and `numeric_text_sql` already propagates NULL through every branch.
+    [EVERY part renders to text BEFORE the COALESCE - board items N7 / N8]
+    The label is a string, so the whole expression is a TEXT expression, and a part that
+    is not text kills the read. N7 (2026-08-02) fixed that for `number`; N8 (2026-08-04)
+    established it is a property of the COALESCE, not of numbers - a `datetime` expose
+    column died with `InvalidDatetimeFormat` and a `boolean` one with
+    `InvalidTextRepresentation`, both measured on the production dialect, both the same
+    defect wearing a different type.
+
+    The rendering therefore goes through ONE funnel, `crud.column_text_sql`, which asks
+    "is this already text?" rather than "is this one of the types we know about" - so a
+    type nobody has thought of yet gets a CAST instead of a 500. The canonical spelling
+    of each family, and the Python twin that has to agree with it in the payload, live
+    in `crud` beside that funnel.
     """
     from sqlalchemy.orm import aliased
     from sqlalchemy import and_, func
-    from sqlalchemy.sql.sqltypes import Numeric, Float, Integer
     from database import crud, models
 
     rules = [r for r in rules_for(db, left_table) if col_name in r["expose"]]
@@ -346,11 +349,11 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
         return query, None, None
 
     def _text_part(col):
-        # Same numeric test as `main.get_column_filter_condition` - the MODEL type,
-        # not table_config, so a column that physically exists decides for itself.
-        if isinstance(col.type, (Numeric, Float, Integer)):
-            return crud.numeric_text_sql(col)
-        return crud.blank_to_null(col)
+        # The MODEL type decides, not table_config - a column that physically exists
+        # answers for itself. (A `column_types` entry naming a metadata column, e.g.
+        # `created_at`, is skipped by the model builder and resolves to the metadata
+        # DateTime/Boolean; asking the model is what makes that case come out right.)
+        return crud.column_text_sql(col)
 
     parts = []
     # The left column participates only when it actually exists on the left table -
@@ -445,13 +448,27 @@ def _resolve_one(joined_value, left_value, has_left_column: bool, label: str) ->
     `미상`이 두 경우를 덮는 자리가 바로 여기다 ― `clean_str_value(joined) == ""`는
     ①(오른쪽 행이 없어 NULL)과 ②(행은 있는데 빈 문자열)를 **한 줄로** 같이 잡는다.
     `is None`만 보면 ②가 빈 문자열 그대로 새어 나가 「값이 있다」로 읽힌다(실측 26.27%).
+
+    [The joined value is rendered through `crud.resolved_text_value` - board item N8]
+    The SQL half of this seam (`resolved_expression`) spells a temporal or boolean value
+    with a PINNED text format. If the payload carried the raw value instead, the grid
+    would paint FastAPI's `.isoformat()` (whose offset follows the DB session timezone)
+    while a filter compared the pinned UTC text, and "search for what you see" would have
+    two answers. Rendering here makes the two halves the same string by construction.
+    Numbers deliberately stay raw - see `crud.resolved_text_value`.
+
+    ⚠️ The LEFT value is returned untouched, because a cell the join LOST must be
+    byte-identical to what it would be without this feature. For a `collide` column of a
+    pinned-text type that leaves one measured divergence (payload isoformat vs SQL
+    canonical text) on left-owned cells only; no such declaration exists today and
+    closing it is a Lead PM call (it needs a declaration-time refusal).
     """
     from database import crud
 
     if has_left_column and crud.clean_str_value(left_value) != "":
         return left_value, False
     if crud.clean_str_value(joined_value) != "":
-        return joined_value, True
+        return crud.resolved_text_value(joined_value), True
     return label, True
 
 
@@ -523,7 +540,9 @@ def attach(db, table_name: str, data_list: list) -> int:
             # 이라 "조인은 봤고 아무것도 없었다"가 그대로 읽힌다.
             srcs = cell.get("sources")
             cell["sources"] = dict(srcs) if isinstance(srcs, dict) else {}
-            cell["sources"][SOURCE_NAME] = joined_value
+            # Same rendering as the cell value: a source entry spelled differently from
+            # the value it explains would send a reader looking for a second story.
+            cell["sources"][SOURCE_NAME] = crud.resolved_text_value(joined_value)
             cell["priority_source"] = SOURCE_NAME
             # `is_overwrite`는 **표시값**에 대한 파생 표식이다("지금 보이는 이 값이
             # 사람이 덮어쓴 값인가"). 이 분기의 표시값은 조인이 준 것이므로 False다.

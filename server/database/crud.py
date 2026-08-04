@@ -23,7 +23,7 @@ import json
 import math
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, date, timezone
 
 logger = logging.getLogger("Server")
 
@@ -533,6 +533,214 @@ def numeric_text_sql(col_expr):
               col_expr <= BIGINT_SAFE_NUMERIC_TEXT_BOUND), folded),
         else_=cast(col_expr, String),
     )
+
+
+# ---------------------------------------------------------------------------
+# Rendering a column to its canonical comparison TEXT - one funnel, every type
+#
+# [Board item N8, 2026-08-04. Why this is a family and not a second numeric patch]
+# `virtual_join_executor.resolved_expression` builds `COALESCE(<parts>, '<label>')`.
+# The label is TEXT, so EVERY part must be text. N7 shipped that insight as "numeric
+# needs a cast", and the next type through the same door - `datetime` - died with the
+# identical failure (`InvalidDatetimeFormat`, measured on PostgreSQL 18.3). Boolean
+# dies too (`InvalidTextRepresentation`, same measurement), and on SQLite it does not
+# even crash: it answers `True` for every unmatched row, which is worse.
+#
+# So the question is not "which types need a cast" but "which types are ALREADY text".
+# `column_text_sql` below inverts the test accordingly: only the string family goes
+# through untouched; everything else is rendered, and anything this file has never
+# heard of falls to a plain CAST rather than to a 500. A type added tomorrow cannot
+# reopen this defect.
+#
+# THE COLUMN TYPES THIS SYSTEM CAN ACTUALLY PUT HERE (measured 2026-08-04):
+# `models.init_dynamic_models` maps `table_config` `column_types` to exactly three
+# SQLAlchemy types - `number`->Float, `datetime`->DateTime(timezone=True), everything
+# else->String - plus the shared metadata columns, which add Boolean
+# (`is_graph_synced`, `needs_graph_rollback`) and DateTime (`created_at`, `updated_at`,
+# `graph_synced_at`). A metadata NAME declared in `column_types` is skipped by the
+# model builder but still resolves to the metadata column, and `virtual_join_config`
+# validates `expose` against `column_types` keys - so Boolean and DateTime are both
+# reachable through an ordinary declaration. The live config declares
+# `production_plan.created_at/updated_at` as `datetime` today.
+# Numeric / Integer / Enum / JSON / ARRAY / UUID are NOT produced by the model builder;
+# they are handled defensively (Enum explicitly, the rest by the CAST fallback) because
+# "not produced today" is exactly the reasoning that left `datetime` broken.
+#
+# EACH RENDERER HAS A PYTHON TWIN, and that pairing is the point. The SQL text is what
+# a filter / `?q=` / CSV export compares; the twin is what the row payload carries into
+# the browser. A renderer added without its twin re-creates the seam this closes.
+# ---------------------------------------------------------------------------
+
+# The canonical temporal text. UTC, space-separated, microseconds ALWAYS six digits.
+#
+# 🔴 It is pinned, not inherited from the dialect, and here is what the dialect default
+# actually is (PostgreSQL 18.3, live, 2026-08-04): `CAST(timestamptz AS varchar)` renders
+# `2026-08-04 06:23:39.123456+00` in the SESSION's TimeZone (measured `+09` here, because
+# the GUC is Asia/Seoul) and DROPS the fractional part entirely when it is zero. Both
+# halves of that are moving targets - the offset follows a server GUC, the width follows
+# the value - so a text comparison built on it would answer differently on two servers
+# holding the same row. SQLite, by contrast, stores DATETIME as this exact literal text,
+# which is why the default arm of `temporal_text_sql` is a plain CAST.
+#
+# Fixed width also buys an accident that is worth naming: lexical order equals
+# chronological order, so `lessThan` on a resolved temporal column is not a lie.
+TEMPORAL_TEXT_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+_PG_TEMPORAL_TEXT_FORMAT = "YYYY-MM-DD HH24:MI:SS.US"
+
+
+def _install_temporal_text_construct():
+    """The one dialect-branching construct in this module, built once at import.
+
+    A `@compiles` variant rather than a runtime `if dialect == 'postgresql'` because the
+    expression is handed to callers that never see a connection (`resolved_expression`
+    takes a Session but the expression outlives the call, and the CSV export re-binds it
+    to a streaming statement). Letting the compiler choose keeps one expression object
+    correct on every bind.
+    """
+    from sqlalchemy import String as _String, cast as _cast, func as _func
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.sql.functions import FunctionElement
+
+    class _TemporalText(FunctionElement):
+        type = _String()
+        name = "temporal_text"
+        inherit_cache = True
+
+    @compiles(_TemporalText)
+    def _default(element, compiler, **kw):
+        # SQLite (this suite) stores DATETIME as 'YYYY-MM-DD HH:MM:SS.ffffff' - the
+        # canonical spelling verbatim - so the plain cast IS the pinned format. Any
+        # other dialect lands here too; that is the no-crash floor, not a promise
+        # that its spelling matches. Add a variant when a third dialect appears.
+        return compiler.process(_cast(list(element.clauses)[0], _String), **kw)
+
+    @compiles(_TemporalText, "postgresql")
+    def _postgresql(element, compiler, **kw):
+        col = list(element.clauses)[0]
+        # `timezone('UTC', ts)` is the function spelling of `ts AT TIME ZONE 'UTC'`.
+        return compiler.process(
+            _func.to_char(_func.timezone("UTC", col), _PG_TEMPORAL_TEXT_FORMAT), **kw)
+
+    return _TemporalText
+
+
+_TemporalText = _install_temporal_text_construct()
+
+
+def temporal_text_sql(col_expr):
+    """A DATE/TIME column rendered to `TEMPORAL_TEXT_FORMAT`. SQL twin of
+    `temporal_text_value`.
+
+    NULL propagates (CAST and `to_char` both return NULL for NULL), which is the whole
+    blank rule for a temporal column: a timestamp is never `''`, so - exactly as with
+    `numeric_text_sql` - this is deliberately NOT wrapped in `blank_to_null`. Wrapping it
+    would put `col = ''` back in front of a non-text column, which is the crash.
+    """
+    return _TemporalText(col_expr)
+
+
+def temporal_text_value(value):
+    """Python twin of `temporal_text_sql`: the same instant, the same spelling.
+
+    Aware values are converted to UTC first, so the text does not depend on the
+    connection's session timezone. Naive values are taken as already-UTC (that is what
+    the SQLite test dialect hands back, and the only shape a naive column can be here).
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.strftime(TEMPORAL_TEXT_FORMAT)
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day).strftime(TEMPORAL_TEXT_FORMAT)
+    return value
+
+
+def boolean_text_sql(col_expr):
+    """A BOOLEAN column rendered to `'true'` / `'false'`. SQL twin of
+    `boolean_text_value`.
+
+    The NULL arm is written out FIRST and on purpose: `CASE WHEN col THEN ... ELSE ...`
+    routes NULL to the ELSE, so without it every unmatched row would resolve to
+    `'false'` - a value - instead of folding into the unresolved label.
+
+    Spelling `'true'`, not Python's `'True'`: the payload carries the raw boolean, JSON
+    writes it as `true`, and the browser prints `true`. `clean_str_value(True)` is
+    `'True'` and is the one spelling nobody ever sees. (PostgreSQL's own
+    `CAST(bool AS varchar)` agrees with this choice - measured 18.3, 2026-08-04 - but the
+    CASE is written out anyway so SQLite, which would say `'1'`, cannot disagree.)
+    """
+    from sqlalchemy import case
+    return case((col_expr.is_(None), None), (col_expr, "true"), else_="false")
+
+
+def boolean_text_value(value):
+    """Python twin of `boolean_text_sql`."""
+    if value is None or not isinstance(value, bool):
+        return value
+    return "true" if value else "false"
+
+
+def column_text_sql(col_expr):
+    """THE funnel: any column expression rendered to the canonical comparison text.
+
+    🔴 The test is "is this ALREADY text", not "is this one of the types we know to be a
+    problem". The second shape is what shipped N7 and left `datetime` and `boolean`
+    holding the identical crash; an unknown type therefore falls to a CAST, never to the
+    raw column.
+
+    `Enum` is pulled out of the string family explicitly: SQLAlchemy models it as a
+    String subclass, but on PostgreSQL a native enum column compared to `''` raises the
+    same way a float does. No dynamic table declares one - which is precisely the
+    sentence that was true of `datetime` last week.
+    """
+    from sqlalchemy import cast, String
+    from sqlalchemy.sql import sqltypes
+
+    col_type = getattr(col_expr, "type", None)
+    if isinstance(col_type, (sqltypes.Numeric, sqltypes.Float, sqltypes.Integer)):
+        return numeric_text_sql(col_expr)
+    if isinstance(col_type, sqltypes.Boolean):
+        return boolean_text_sql(col_expr)
+    if isinstance(col_type, (sqltypes.DateTime, sqltypes.Date, sqltypes.Time)):
+        return temporal_text_sql(col_expr)
+    if isinstance(col_type, sqltypes.String) and not isinstance(col_type, sqltypes.Enum):
+        return blank_to_null(col_expr)
+    # Unknown, or text-shaped but not text-typed. Cast FIRST so `blank_sql_condition`'s
+    # stated text-typed precondition holds on every dialect.
+    return blank_to_null(cast(col_expr, String))
+
+
+def resolved_text_value(value):
+    """Python twin of `column_text_sql`, for the value that goes into the row PAYLOAD.
+
+    Renders exactly the families whose SQL spelling this module pins to text, so the
+    grid paints the string a filter / `?q=` / CSV export will compare against.
+
+    🔴 Numbers ride RAW, and that is a recorded gap, not an oversight. The numeric payload
+    has shipped as a JSON number since N7; the browser stringifies it with JavaScript's
+    rules, which agree with the SQL text everywhere except a measured band
+    (`contracts/blank_predicate` `NUMERIC_BROWSER_SPELLING`, board item N9). Rendering it
+    here would close that band AND change a shipped cell value's type, which is a
+    boundary-contract decision for the Lead PM - not one to take in passing.
+    """
+    if isinstance(value, bool):
+        return boolean_text_value(value)
+    if isinstance(value, (datetime, date)):
+        return temporal_text_value(value)
+    return value
+
+
+def comparison_text_value(value):
+    """A FILTER value rendered the way the resolved column spells it.
+
+    `main.get_column_filter_condition` bridges a non-string filter value against a
+    text-resolved virtual column with this. `clean_str_value` alone is not enough: it
+    spells a boolean `'True'` where the column spells `'true'`, and a datetime with
+    whatever `str()` gives rather than `TEMPORAL_TEXT_FORMAT`.
+    """
+    rendered = resolved_text_value(value)
+    return rendered if isinstance(rendered, str) else clean_str_value(rendered)
+
 
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""

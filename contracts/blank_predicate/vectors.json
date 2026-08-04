@@ -708,6 +708,8 @@
           ]
         },
         "$render_source": "declared_type",
+        "browser": "7",
+        "$browser_source": "measured 2026-08-04, node v22.19.0, String(7)",
         "stored_as": {
           "type": "number",
           "value": 7.0
@@ -731,6 +733,8 @@
           ]
         },
         "$render_source": "declared_type",
+        "browser": "7.5",
+        "$browser_source": "measured 2026-08-04, node v22.19.0, String(7.5)",
         "stored_as": {
           "type": "number",
           "value": 7.5
@@ -752,6 +756,8 @@
           ]
         },
         "$render_source": "declared_type",
+        "browser": "0",
+        "$browser_source": "measured 2026-08-04, node v22.19.0, String(0.0)",
         "stored_as": {
           "type": "number",
           "value": 0.0
@@ -768,12 +774,191 @@
         "$why": "선언된 발산 케이스. render는 계약이 정하지 않는다 -- `declared_divergences.FLOAT_EXPONENT`가 양쪽 답을 기록하고, 각 철자가 기록된 답을 계속 내는지만 채점한다. 총괄 판정 대상이다.",
         "render": null,
         "$render_source": "declared_divergence:FLOAT_EXPONENT",
+        "browser": "10000000000000000",
+        "$browser_source": "measured 2026-08-04, node v22.19.0, String(1e16). NOTE this is the value FLOAT_EXPONENT records as divergent between `clean_str_value` and a PLAIN Postgres cast -- and the browser agrees with `clean_str_value` here, while `numeric_text_sql`'s BIGINT fold makes the SQL agree too. The divergence is real and is about the plain cast; the seam this contract scores is closed at this value.",
         "stored_as": {
           "type": "number",
           "value": 1e+16
         }
       }
     ]
+  },
+  "browser_render": {
+    "$comment": [
+      "THE THIRD SPELLING -- added 2026-08-04, board item N9.",
+      "",
+      "This contract used to score the virtual-join numeric seam as SQL vs `crud.clean_str_value`,",
+      "and said so in the test's own docstring: 'the payload half carries the RAW number; its",
+      "comparison text is clean_str_value'. The first half is true and the second is not. The",
+      "payload carries a raw JSON NUMBER; nothing on the way to the screen calls `clean_str_value`;",
+      "the browser stringifies it with JavaScript's Number->String rules. So the axis that decides",
+      "'does the operator find what they see' is SQL vs JAVASCRIPT, and it was never scored.",
+      "",
+      "`clean_str_value` is not even a conservative proxy. At 1e19 it agrees with the browser and",
+      "Postgres does not; at 1e21 Postgres agrees with the browser and it does not. A helper that is",
+      "wrong in BOTH directions cannot stand in for the render.",
+      "",
+      "HOW THE TWO HALVES SCORE THIS. The `browser` column below is measured by an actual JS engine",
+      "in `client_harness.mjs` (String(v)), so it cannot go stale by transcription; the pytest half",
+      "re-measures the SQL column on whichever dialect it is running and then compares the two",
+      "recorded columns against `divergence`. Neither half can pass this alone.",
+      "",
+      "WHAT IS NOT DECIDED HERE. Closing the band means rendering the numeric payload to text the",
+      "way the temporal and boolean payloads now are (`crud.resolved_text_value`). That changes a",
+      "SHIPPED cell value's JSON type, which is a boundary contract, so it is recorded and referred",
+      "up rather than taken."
+    ],
+    "measured": "2026-08-04. browser: node v22.19.0 String(v). postgres: PostgreSQL 18.3, read-only, through `crud.numeric_text_sql`'s expression on a float8. sqlite: the suite dialect, same expression on a real Float column. python: `crud.clean_str_value`.",
+    "ladder": [
+      {
+        "value": "0.0",
+        "browser": "0",
+        "postgres": "0",
+        "sqlite": "0",
+        "python_clean_str_value": "0"
+      },
+      {
+        "value": "3.0",
+        "browser": "3",
+        "postgres": "3",
+        "sqlite": "3",
+        "python_clean_str_value": "3"
+      },
+      {
+        "value": "2.5",
+        "browser": "2.5",
+        "postgres": "2.5",
+        "sqlite": "2.5",
+        "python_clean_str_value": "2.5"
+      },
+      {
+        "value": "-3.0",
+        "browser": "-3",
+        "postgres": "-3",
+        "sqlite": "-3",
+        "python_clean_str_value": "-3"
+      },
+      {
+        "value": "0.0001",
+        "browser": "0.0001",
+        "postgres": "0.0001",
+        "sqlite": "0.0001",
+        "python_clean_str_value": "0.0001"
+      },
+      {
+        "value": "1e-05",
+        "browser": "0.00001",
+        "postgres": "1e-05",
+        "sqlite": "1.0e-05",
+        "python_clean_str_value": "1e-05"
+      },
+      {
+        "value": "5.5e-05",
+        "browser": "0.000055",
+        "postgres": "5.5e-05",
+        "sqlite": "5.5e-05",
+        "python_clean_str_value": "5.5e-05"
+      },
+      {
+        "value": "1e-06",
+        "browser": "0.000001",
+        "postgres": "1e-06",
+        "sqlite": "1.0e-06",
+        "python_clean_str_value": "1e-06"
+      },
+      {
+        "value": "1e-07",
+        "browser": "1e-7",
+        "postgres": "1e-07",
+        "sqlite": "1.0e-07",
+        "python_clean_str_value": "1e-07"
+      },
+      {
+        "value": "1e-09",
+        "browser": "1e-9",
+        "postgres": "1e-09",
+        "sqlite": "1.0e-09",
+        "python_clean_str_value": "1e-09"
+      },
+      {
+        "value": "1e-10",
+        "browser": "1e-10",
+        "postgres": "1e-10",
+        "sqlite": "1.0e-10",
+        "python_clean_str_value": "1e-10"
+      },
+      {
+        "value": "5.5e-10",
+        "browser": "5.5e-10",
+        "postgres": "5.5e-10",
+        "sqlite": "5.5e-10",
+        "python_clean_str_value": "5.5e-10"
+      },
+      {
+        "value": "1e+16",
+        "browser": "10000000000000000",
+        "postgres": "10000000000000000",
+        "sqlite": "10000000000000000",
+        "python_clean_str_value": "10000000000000000"
+      },
+      {
+        "value": "9.2e+18",
+        "browser": "9200000000000000000",
+        "postgres": "9200000000000000000",
+        "sqlite": "9200000000000000000",
+        "python_clean_str_value": "9200000000000000000"
+      },
+      {
+        "value": "1e+19",
+        "browser": "10000000000000000000",
+        "postgres": "1e+19",
+        "sqlite": "1.0e+19",
+        "python_clean_str_value": "10000000000000000000"
+      },
+      {
+        "value": "1e+21",
+        "browser": "1e+21",
+        "postgres": "1e+21",
+        "sqlite": "1.0e+21",
+        "python_clean_str_value": "1000000000000000000000"
+      },
+      {
+        "value": "1e+23",
+        "browser": "1e+23",
+        "postgres": "9.999999999999999e+22",
+        "sqlite": "1.0e+23",
+        "python_clean_str_value": "99999999999999991611392"
+      }
+    ],
+    "divergence": {
+      "title": "the SQL text and the browser text of a numeric virtual column disagree in two measured bands",
+      "boundary_small": "1e-9 <= |v| < 1e-4 (v != 0). Postgres float8 output goes exponential at |v| < 1e-4; JavaScript only at |v| < 1e-6, and even then it writes a ONE-digit exponent (1e-7) where Postgres zero-pads to two (1e-07). Below 1e-10 both are exponential with two digits and they agree again. Boundary values 1e-4 and 5.5e-10 are in the ladder as the AGREEING neighbours, so a widened band shows up as a red neighbour rather than as a silently missing case.",
+      "boundary_large": "|v| > BIGINT_SAFE_NUMERIC_TEXT_BOUND (9.2e18). Inside the bound `numeric_text_sql`'s BIGINT fold prints full digits and the browser agrees. Outside it the plain dialect cast runs and NOTHING is pinned: 1e19 and 1e23 diverge, 1e21 happens to agree. Do not read that agreement as a rule.",
+      "postgres_divergent": [
+        "1e-05",
+        "5.5e-05",
+        "1e-06",
+        "1e-07",
+        "1e-09",
+        "1e+19",
+        "1e+23"
+      ],
+      "sqlite_divergent": [
+        "1e-05",
+        "5.5e-05",
+        "1e-06",
+        "1e-07",
+        "1e-09",
+        "1e-10",
+        "1e+19",
+        "1e+21",
+        "1e+23"
+      ],
+      "reach": "MEASURED 2026-08-04 against the live database: 24 `number` columns, 116,084 non-null values, ZERO in either band. The divergence is real and currently unreached. It is recorded so the seam is not later assumed total -- the same reason FLOAT_EXPONENT exists.",
+      "operator_symptom": "A leakage measurement stored as 5.5e-5 paints `0.000055` in the grid. Typing that into the column filter returns 0 rows; typing it into `?q=` returns 0 rows; the CSV extract for the same row prints `5.5e-05`. The grid and the extract disagree in print.",
+      "not_a_regression": "Every one of these reads was a 500 on PostgreSQL before the N7 fix, so nothing got worse. What was wrong was the CLAIM: the commit said both spellings agree on every dialect, which was true of the corpus scored and not of the value domain.",
+      "decision": "Lead PM. Closing it means rendering the numeric payload to text (`crud.resolved_text_value`, which already does exactly this for temporal and boolean values); that changes a shipped cell value's JSON type and is a boundary contract."
+    }
   },
   "client": {
     "$comment": [

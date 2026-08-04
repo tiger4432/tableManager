@@ -316,4 +316,50 @@ const FILTER_DEF = extract(SYMS.filter_def_builder.file, SYMS.filter_def_builder
     + 'get confused');
 }
 
+// ── C4: the `browser` column of browser_render.ladder, measured by a real JS engine ─────
+//
+// [Board item N9, 2026-08-04] The server half of this contract used to score the numeric
+// virtual-join seam as SQL vs `crud.clean_str_value`, and the two agree -- while the GRID
+// and the SEARCH disagreed for every |v| in a band nobody had written down. The payload
+// carries a raw JSON number and nothing on the way to the screen calls `clean_str_value`;
+// what the operator reads is whatever THIS engine prints. So the third column of the
+// ladder is measured here, and the server half compares its own dialect against it.
+//
+// 🔴 This is a MEASUREMENT, not a re-typing. Recording a JS spelling in a JSON file and
+// never running JS over it is how a contract acquires folklore: the number stops being a
+// fact and becomes a comment that outranks the code.
+{
+  const BR = spec.browser_render;
+  if (!BR || !Array.isArray(BR.ladder)) {
+    die('vectors.json has no `browser_render.ladder` -- the N9 axis was removed, not scored.');
+  }
+  // The path a value actually takes: JSON number -> valueGetter (`numericDisplayValue`,
+  // scored by C3 above, returns `Number(val)` for a `number` column) -> AG-Grid's default
+  // renderer, which stringifies. `String(Number(v))` is that pipeline, spelled out.
+  const wrong = BR.ladder
+    .map(r => ({ r, got: String(Number(r.value)) }))
+    .filter(({ r, got }) => got !== r.browser);
+  check('C4-browser-spelling-is-measured-not-transcribed', wrong.length === 0,
+    `all ${BR.ladder.length} ladder values print as recorded`,
+    wrong.length
+      ? wrong.map(({ r, got }) => `${r.value}: recorded ${r.browser}, this engine ${got}`).join('; ')
+      : 'they do',
+    'the recorded browser spelling is the expectation the SERVER half is scored against; if '
+    + 'it drifts, the server half silently starts scoring the wrong endpoint again -- which '
+    + 'is the whole of N9');
+
+  // The band itself, computed HERE from the two recorded columns, so a `divergence` edited
+  // without re-measuring is caught on this side too (the pytest half checks the same thing;
+  // a boundary that only one half verifies is a boundary one commit can move).
+  const measured = BR.ladder.filter(r => r.postgres !== r.browser).map(r => r.value);
+  const recorded = BR.divergence.postgres_divergent;
+  const same = measured.length === recorded.length
+    && measured.every((v, i) => v === recorded[i]);
+  check('C4b-divergence-band-matches-the-ladder', same,
+    `postgres_divergent == the values where the ladder's two columns differ`,
+    same ? 'it does' : `ladder says [${measured}], divergence says [${recorded}]`,
+    'a recorded band that no longer follows from the recorded measurements is the shape a '
+    + 'declared divergence takes just before it stops asserting anything');
+}
+
 report();

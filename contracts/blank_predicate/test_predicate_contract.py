@@ -776,11 +776,17 @@ def test_the_two_resolutions_agree_on_a_numeric_column(vj_db):
     ruling. This scores every number corpus case through BOTH spellings, plus the NULL
     that a number column folds into the label.
 
-    The payload half carries the RAW number (like every other numeric cell in the
-    system); its comparison text is `clean_str_value` -- the same render the whole
-    Python side already answers with. So the agreement scored here is:
-        clean_str_value(payload value)  ==  SQL resolved text
-    and NEITHER side may ever produce the float spelling ('7.0') the ruling rejected.
+    🔴 SCORED AGAINST THE BROWSER, NOT AGAINST PYTHON (re-pointed 2026-08-04, N9).
+    This docstring used to say "the payload half carries the RAW number; its comparison
+    text is `clean_str_value`". The first clause is true; the second is the defect. The
+    payload carries a raw JSON NUMBER and NOTHING between here and the screen calls
+    `clean_str_value` -- the browser stringifies it with JavaScript's rules. So the
+    expected text comes from the corpus case's `browser` field, measured by an actual JS
+    engine in `client_harness.mjs`, and the agreement scored here is:
+        SQL resolved text  ==  what the browser prints
+    `clean_str_value` is asserted too, but as a SEPARATE fact: where it and the browser
+    part company the case belongs in `browser_render.divergence`, not in this test.
+    NEITHER side may ever produce the float spelling ('7.0') the ruling rejected.
     """
     db, label = vj_db
     disagreements = []
@@ -793,6 +799,14 @@ def test_the_two_resolutions_agree_on_a_numeric_column(vj_db):
             py = _vj_python(db, cid, "slot_no")
             sql = _vj_sql(db, cid, "slot_no")
             py_text = py if py == label else crud.clean_str_value(py)
+            want = c.get("browser")
+            assert want, (
+                f"{c['id']} carries no `browser` spelling. The seam is SQL vs what the "
+                "operator reads; without that column this test scores nothing that matters.")
+            if not c["blank"] and sql != want:
+                disagreements.append(
+                    f"{c['id']:26} stored={v!r:24} funnel={through_funnel} "
+                    f"browser_prints={_show(want):22} sql={_show(sql)}")
             if py_text != sql:
                 disagreements.append(
                     f"{c['id']:26} stored={v!r:24} funnel={through_funnel} "
@@ -821,6 +835,95 @@ def test_the_two_resolutions_agree_on_a_numeric_column(vj_db):
         + "\n\nThis is the N7 seam: the grid paints one spelling and search compares "
           "another (or, on PostgreSQL, the read fails outright). Report both answers to "
           "the Lead PM -- do not force one side here.")
+
+
+BROWSER = VECTORS["browser_render"]
+
+
+def test_the_numeric_sql_text_is_what_this_dialect_actually_produces(probe_db):
+    """Half one of the N9 axis: RE-MEASURE the SQL column of `browser_render.ladder`.
+
+    The ladder carries three spellings of the same doubles and only one of them can be
+    measured here; recording a number without a test that re-derives it is how a
+    measurement becomes folklore. This runs `crud.numeric_text_sql` -- the expression
+    `resolved_expression` actually puts in the WHERE clause -- against a real Float column
+    on whichever dialect the suite is on, and scores it against that dialect's column.
+
+    The Postgres column is re-measured by `test_postgres_dialect_axis` (opt-in), and the
+    `browser` column by `client_harness.mjs` under a real JS engine.
+    """
+    db = probe_db
+    dialect = db.get_bind().dialect.name
+    m = _model()
+    key = f"ladder_{dialect}"
+    assert dialect in ("sqlite", "postgresql"), (
+        f"the suite is on {dialect!r}; `browser_render.ladder` records only sqlite and "
+        "postgres. Add the column before trusting any result from this run.")
+    wrong = []
+    for i, row in enumerate(BROWSER["ladder"]):
+        v = float(row["value"])
+        _write_through_funnel(db, f"{key}_{i}", "num", v)
+        got = db.query(crud.numeric_text_sql(m.num)).filter(
+            m.probe_key == f"{key}_{i}").scalar()
+        if got != row[dialect]:
+            wrong.append(f"  {row['value']:24} recorded={row[dialect]!r:26} measured={got!r}")
+    assert not wrong, (
+        f"`browser_render.ladder` no longer describes {dialect}:\n" + "\n".join(wrong)
+        + "\n\nRe-measure all three columns before touching `divergence` -- a ladder half "
+          "re-measured is worse than one nobody re-measured, because it looks current.")
+
+
+def test_the_numeric_seam_diverges_from_the_browser_exactly_where_recorded(probe_db):
+    """Half two: SQL vs WHAT THE BROWSER PRINTS, scored as a boundary rather than a claim.
+
+    This is the axis that was missing. `test_the_two_resolutions_agree_on_a_numeric_column`
+    scored SQL against `clean_str_value`, and those two do agree -- which is exactly why
+    nothing was red while the grid and the search disagreed for every |v| in the band
+    below. Three outcomes and only the first is green:
+      the recorded band still diverges          -> PINNED, printed by value.
+      it SHRANK  -> someone closed part of it and left the record broader than the truth.
+      it GREW    -> a new class of value paints one text and searches another.
+
+    🔴 `clean_str_value` is asserted to be a BAD proxy on purpose. It agrees with the
+    browser at 1e19 where Postgres does not, and disagrees at 1e21 where Postgres agrees.
+    A helper wrong in both directions cannot stand in for the render, and pinning that
+    keeps the axis from being quietly re-pointed back at Python.
+    """
+    dialect = probe_db.get_bind().dialect.name
+    ladder = BROWSER["ladder"]
+    d = BROWSER["divergence"]
+
+    for name in ("sqlite", "postgres"):
+        column = "sqlite" if name == "sqlite" else "postgres"
+        recorded = d[f"{name}_divergent"]
+        measured = [r["value"] for r in ladder if r[column] != r["browser"]]
+        assert measured == recorded, (
+            f"the SQL-vs-browser band on {name} changed shape.\n"
+            f"  recorded divergent: {recorded}\n"
+            f"  measured divergent: {measured}\n"
+            f"  boundary(small): {d['boundary_small']}\n"
+            f"  boundary(large): {d['boundary_large']}\n"
+            "Shrank -> the record now claims more divergence than exists. Grew -> a new "
+            "band of values is unfindable by the text the operator reads. Lead PM.")
+
+    # The neighbours that must AGREE. Without them a widened band would just be a case
+    # nobody wrote down, and the boundary would read as narrower than it is.
+    for edge in ("0.0001", "5.5e-10", "9.2e+18"):
+        row = next(r for r in ladder if r["value"] == edge)
+        assert row["postgres"] == row["browser"], (
+            f"boundary neighbour {edge} now diverges on Postgres - the band is wider than "
+            f"`{d['boundary_small']}` / `{d['boundary_large']}` records.")
+
+    py_only = [r["value"] for r in ladder
+               if (r["python_clean_str_value"] == r["browser"]) != (r["postgres"] == r["browser"])]
+    assert py_only, (
+        "`clean_str_value` now agrees with the browser exactly where Postgres does. If that "
+        "is real, this axis can collapse back to two columns -- but check it, do not assume "
+        "it: this assertion exists because the seam was scored against Python for a week.")
+
+    print(f"\n  DECLARED DIVERGENCE NUMERIC_BROWSER_SPELLING ({dialect} run) -- "
+          f"postgres diverges from the browser at {d['postgres_divergent']}; "
+          f"reach: {d['reach']}")
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1113,29 @@ def test_postgres_dialect_axis():
         cur.execute("select cast(1e16::float8 as varchar)")
         assert cur.fetchone()[0] == d["postgres"], (
             "declared divergence FLOAT_EXPONENT: the Postgres side changed its answer")
+
+        # [N9] The `postgres` column of `browser_render.ladder`, re-derived rather than
+        # trusted. This is the column the SQLite run cannot measure and the one the whole
+        # divergence boundary rests on, so it is the one most worth re-deriving.
+        bound = crud.BIGINT_SAFE_NUMERIC_TEXT_BOUND
+        wrong = []
+        for row in BROWSER["ladder"]:
+            cur.execute(
+                "select case when v between %s and %s "
+                "            then case when cast(v as bigint) = v "
+                "                      then cast(cast(v as bigint) as varchar) "
+                "                      else cast(v as varchar) end "
+                "            else cast(v as varchar) end "
+                "from (values (%s::float8)) s(v)", (-bound, bound, float(row["value"])))
+            got = cur.fetchone()[0]
+            if got != row["postgres"]:
+                wrong.append(f"  {row['value']:24} recorded={row['postgres']!r:26} "
+                             f"measured={got!r}")
+        assert not wrong, (
+            "`browser_render.ladder`'s postgres column no longer describes production:\n"
+            + "\n".join(wrong)
+            + "\n\nThe SQL-vs-browser boundary is derived from this column. Re-measure the "
+              "whole ladder, then `divergence`, before touching either.")
     finally:
         conn.close()
 
