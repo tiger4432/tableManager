@@ -78,7 +78,16 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 **① 런처 사전 점검 — 아무것도 띄우기 전에 거절한다.** `run_decoupled_app.refuse_if_ports_are_taken(api_host, api_port, graph_port)`가 `process_supervisor.preflight_port_check(...)`로 API 포트(`ASSY_API_PORT`, 기본 8080 · 호스트 `ASSY_API_HOST`, 기본 `0.0.0.0`)와 그래프 싱크 포트(`GRAPH_SYNC_PORT`, 기본 8090 · 호스트는 모듈 상수 `GRAPH_BIND_HOST = "127.0.0.1"`)를 찌른다. **`specs` 목록을 만들기도 전, `Supervisor`를 세우기도 전**이라 실패 시 **아무것도 기동되지 않고 이미 도는 프로세스도 건드리지 않는다.** 거절 배너는 포트를 쥔 **PID와 프로세스 이름**을 대고 `taskkill /PID <pid> /T /F`를 준다(`describe_port_conflict` → `port_owner`, psutil `CONN_LISTEN`).
 - 🔴 **탐지는 bind 프로브 *와* connect 프로브 둘 다이고, `SO_REUSEADDR`은 일부러 안 세운다** — 그 옵션이 있으면 이미 물린 포트에 bind가 성공해 버려 가드가 조용히 통과한다(`test_the_bind_probe_and_the_connect_probe_are_both_load_bearing`).
 - ⚠️ **가드는 열려 실패한다(fail open).** 프로브 자체가 예외를 내면 `WARNING`만 남기고 **기동을 진행한다** — 가드가 시스템이 안 뜨는 이유가 되면 안 된다.
-- `--preflight-only`: 질문만 하고 아무것도 띄우지 않는다. 포트가 비었으면 `Preflight OK: ports 8080 and 8090 are free.`를 찍고 **exit 0**, 물려 있으면 거절 배너 뒤 **exit 1**. ⚠️ **런처에는 argparse가 없다** — `sys.argv` 멤버십 검사라서 `--help`도 없고 오타는 조용히 무시된다(`--reload`·`--no-client`·`--server-only`도 같은 형태).
+- `--preflight-only`: 질문만 하고 아무것도 띄우지 않는다. 포트가 비었으면 `Preflight OK: ports 8080 and 8090 are free.`를 찍고 **exit 0**, 물려 있으면 거절 배너 뒤 **exit 1**.
+
+**①-bis 인자 관문 — 포트를 묻기도 전에 거절한다 (2026-08-04, `server/launcher_args.py` 신설).** 종전엔 플래그를 전부 `"--flag" in sys.argv` 멤버십으로 읽었다. **런처가 모르는 인자는 에러가 아니라 아무것도 아니었다.** 실측(`subprocess.Popen`을 무력화해 아무것도 못 뜨게 한 상태): `--server_only`는 자식 **6개**(데스크톱 셸 포함 = 풀스택), `--server-only`는 **5개**를 계획했다. 한 글자 오타가 운영자가 일부러 피하려던 것을 조용히 띄웠고, 이미 스택이 떠 있었으므로 포트 바인더 둘이 상관 백오프 루프로 들어갔다.
+- **모르는 인자 = 거절**(`EXIT_BAD_ARGUMENT = 2` — 포트 거절의 1과 구분된다). 그 인자를 이름으로 대고 **가장 가까운 올바른 플래그를 제시**한다(`difflib`, cutoff 0.6). 실패 유형이 「없는 인자를 지어냄」이 아니라 **「거의 맞는 철자」**이기 때문이다.
+- **추측해서 받아주지는 않는다.** `--server_only`는 `--server-only`로 자동 교정되지 **않는다** — 데스크톱 창이 뜨는지 마는지를 정하는 플래그에서 한 번 추측하기 시작한 런처는 언젠가 틀리게 추측한다.
+- **`--help`가 생겼다.** 플래그마다 한 줄. `FLAGS` 튜플 하나가 **파싱·제안·문서의 유일한 출처**라 셋이 어긋날 수 없다.
+- **기존 철자는 전부 그대로** — `--no-client`·`--server-only` 동의어, 순서 무관, 조합 가능. 운영자의 손이 기억하는 명령을 바꾸는 것은 고치려는 결함보다 나쁜 결함이다.
+- 🔴 **순서**: 인자 관문 → 포트 프로브 → `Starting AssyManager` 배너 → spawn. 뜨지도 않을 명령에 대해 포트를 물어볼 이유가 없고, 배너 다음에 오는 거절은 운영자가 멈춰서 다시 읽어야 하는 모순이다.
+- 거절 문구는 **cp949 안전**(`―` U+2015은 되고 `—` U+2014는 안 된다)이고 `log_launcher(ERROR)`로 나가 `launcher.log`에도 남는다. `--help`는 사고가 아니므로 stdout `print`.
+- 채점: `server/tests/test_launcher_arguments.py`(44) — **"아무것도 안 띄웠다"를 메시지가 아니라 `subprocess.Popen` 트립와이어로 관측**한다(`sitecustomize.py`를 `PYTHONPATH`에 얹어 spawn *시도*를 파일에 적고 `CreateProcess` 전에 프로세스를 죽인다). `test_a_valid_command_line_does_trip_the_tripwire`가 양성 대조 — 이게 없으면 "마커 파일이 없다"는 트립와이어가 고장 났을 때도 통과한다.
 
 **② 감시자 판정 — 포트 충돌 평결이 동료 규칙보다 앞선다.** `_register_failure`에서 예산이 다 탄 순간, `child.spec.ports`가 선언된 자식에 한해 포트 프로브를 **먼저** 돌린다. 물려 있으면 `VERDICT_PORT_CONFLICT`(`"port_conflict"`)로 **즉시 영구 실패**하고 동료 집계·환경 프로브는 **계산조차 되지 않는다**. 아니면 종전대로 동료/`shared_dependency_down` → 상관 재시도, 그것도 아니면 `VERDICT_BROKEN_CHILD`(`"broken_child"`). 평결은 상태 파일의 `terminal_verdict` 키로 나온다.
 - **프로브는 포기 지점에서만, 포트를 선언한 자식에게만 돈다** — 매 재시작마다 찌르면 감시가 곧 부하가 된다.

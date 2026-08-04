@@ -145,7 +145,12 @@ def test_the_guard_runs_before_any_child_is_spawned():
     """Ordering is the whole fix. A guard that runs after start_all() has already
     lost: five children are fighting the old stack by then."""
     src = open(os.path.join(ROOT, "run_decoupled_app.py"), encoding="utf-8").read()
-    guard = src.index("refuse_if_ports_are_taken(api_host")
+    # The CALL, not the `def`. `refuse_if_ports_are_taken(api_host` also matches
+    # the definition near the top of the file, which sorts before start_all()
+    # regardless of where the call sits - so this assertion used to hold even if
+    # the guard were moved after the spawn. Found while adding the argument
+    # gate, whose own ordering test hit the same string.
+    guard = src.index("ports_clear = refuse_if_ports_are_taken(")
     start = src.index("supervisor.start_all()")
     assert guard < start, "the port guard runs after the children are spawned"
 
