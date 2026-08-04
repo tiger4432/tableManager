@@ -1193,3 +1193,151 @@ def test_value_column_follows_declared_candidate_order(mov_env, client,
     _write_cfg(tmp_path, monkeypatch, {"value_column_candidates": ["leg", "val"]})
     body = client.get("/api/maps/overlay", params=params).json()
     assert body["overlays"][0]["cells"] == [{"x": 4, "y": 4, "val": "FROM_LEG"}]
+
+
+# ---------------------------------------------------------------------------
+# [D1 2026-08-04] Auto-registered geometry is SYNTHETIC, and synthetic is not declared.
+#
+# `map_meta_registrar.synthesize_grid_meta` writes chip 1x1 to say "no circle mask" in the
+# mask predicate's own vocabulary. That is deliberate and it keeps such maps pushable. What
+# was missing is the READING side: a synthesized signature is PRESENT and WELL-FORMED, so
+# `make_frame_transform`'s only gate ("refuse when the signature is MISSING") passed it, and
+# the server aligned a map nobody measured against a real one at a 1mm pitch.
+#
+# Measured on the production database 2026-08-04 (read-only): 668 metadata rows, 320 carry
+# chip 1x1, ALL 320 carry the flag, flagless 1x1 rows = 0. So the discriminator is the FLAG,
+# never the value - 1 is a legal pitch, and a marker that is also a datum can never be told
+# apart from a measurement.
+# ---------------------------------------------------------------------------
+
+AUTO_PHYS = {"phys_wafer_dia": 300, "phys_chip_x": 1, "phys_chip_y": 1,
+             "phys_offset_x": 0, "phys_offset_y": 0, "phys_edge_margin": 3}
+
+
+def _synthetic_of(**kw):
+    """A meta shaped exactly like `synthesize_grid_meta`'s output (mark included)."""
+    m = _meta_of(phys=dict(AUTO_PHYS), **kw)
+    m["auto_registered"] = True
+    return m
+
+
+def test_geometry_declaration_is_one_predicate_with_four_tokens(mov_env):
+    """The single spelling of "is this geometry a declaration", and its vocabulary.
+
+    THE LOAD-BEARING CASE is the unflagged 1x1: a map that really is 1mm per die and carries
+    NO mark must answer `declared`. An implementation that sniffs the chip VALUE instead of
+    the mark passes every other case here and fails only that one.
+    """
+    assert map_overlay.geometry_declaration(_meta_of()) == map_overlay.GEOMETRY_DECLARED
+    assert map_overlay.geometry_declaration(
+        _meta_of(phys=dict(AUTO_PHYS))) == map_overlay.GEOMETRY_DECLARED
+    assert map_overlay.geometry_declaration(
+        _synthetic_of()) == map_overlay.GEOMETRY_AUTO_REGISTERED
+    bare = {k: v for k, v in _meta_of().items() if not k.startswith("phys_")}
+    assert map_overlay.geometry_declaration(bare) == map_overlay.GEOMETRY_ABSENT
+    assert map_overlay.geometry_declaration(
+        _meta_of(phys=dict(PHYS_STD, phys_chip_x="seven"))) == map_overlay.GEOMETRY_UNPARSABLE
+    assert map_overlay.geometry_declaration(None) == map_overlay.GEOMETRY_ABSENT
+    # `auto_registered: false` is a LEGITIMATE declaration, not a marker.
+    assert map_overlay.geometry_declaration(
+        dict(_meta_of(), auto_registered=False)) == map_overlay.GEOMETRY_DECLARED
+    # The mark is read BEFORE the values. Values first and the mark does nothing.
+    assert map_overlay.geometry_declaration(
+        dict(_synthetic_of(), phys_chip_x=14.3)) == map_overlay.GEOMETRY_AUTO_REGISTERED
+
+
+def test_synthetic_fixture_would_otherwise_align(mov_env):
+    """FIXTURE ACTIVITY, asserted rather than assumed.
+
+    Every refusal below is evidence only if the same pair WOULD have aligned without the
+    mark. If the fixture were refused for some other reason (dims, absent phys) the refusal
+    assertions would pass against code that does nothing.
+    """
+    src, tgt = _synthetic_of(rotation=90), _meta_of()
+    unflagged = {k: v for k, v in src.items() if k != "auto_registered"}
+    tf = map_overlay.make_frame_transform(unflagged, tgt)      # must NOT raise
+    assert tf(1, 1) is not None
+    assert map_overlay.resolve_align(unflagged, tgt)[1] == "derived", (
+        "the fixture must reach the transform, not stop at the identity shortcut")
+
+
+def test_auto_registered_source_refuses_by_name(mov_env):
+    """A named refusal that says WHICH map and WHY - never an empty or plausible result."""
+    with pytest.raises(ValueError) as e:
+        map_overlay.make_frame_transform(_synthetic_of(rotation=90), _meta_of())
+    msg = str(e.value)
+    assert "소스" in msg and "타깃" not in msg, msg
+    assert "자동 등록" in msg, msg
+    assert "chip 1x1" in msg, "the operator cannot act on a refusal that hides the value"
+
+
+def test_auto_registered_target_refuses_by_name(mov_env):
+    """The gate is symmetric: the seat's geometry is as load-bearing as the source's."""
+    with pytest.raises(ValueError) as e:
+        map_overlay.make_frame_transform(_meta_of(rotation=90), _synthetic_of())
+    msg = str(e.value)
+    assert "타깃" in msg and "소스" not in msg, msg
+    assert "자동 등록" in msg, msg
+
+
+def test_both_sides_synthetic_names_both(mov_env):
+    """Both halves synthetic - both are named. A refusal naming one map sends the operator
+    to fix one of the two things that need fixing."""
+    with pytest.raises(ValueError) as e:
+        map_overlay.make_frame_transform(_synthetic_of(rotation=90), _synthetic_of())
+    msg = str(e.value)
+    assert "소스" in msg and "타깃" in msg, msg
+
+
+def test_declared_1x1_geometry_still_aligns(mov_env):
+    """The magic-number implementation dies here. A real 1mm-per-die map carries no mark and
+    must keep aligning."""
+    real_1x1 = _meta_of(rotation=90, phys=dict(AUTO_PHYS))
+    tf = map_overlay.make_frame_transform(real_1x1, _meta_of(phys=dict(AUTO_PHYS)))
+    assert tf(1, 1) is not None
+
+
+def test_overlay_api_surfaces_the_refusal_by_name(mov_env, client):
+    """END TO END. `align_unavailable` plus a Korean reason naming the cause.
+
+    An empty `cells` list is NOT what this asserts - an accidentally-empty result has passed
+    as an intended refusal in this repository before, so the status and the reason carry the
+    claim and the emptiness is only a corollary.
+    """
+    db = mov_env
+    _add(db, "mov_test_base_map", cell_key="AR1", lot="LAR", slot="01", x=1, y=1, val="P")
+    _meta(db, "mov_test_base_map", "LAR_01", rotation=0)
+    _add(db, "mov_test_defect_map", cell_key="AR2", lot="LAR", slot="01", x=1, y=1, val="D")
+    model = models.DYNAMIC_TABLES["wafer_map_metadata"]
+    db.add(model(row_id=str(uuid.uuid4()), business_key_val="mov_test_defect_map_LAR_01",
+                 map_pk="mov_test_defect_map_LAR_01", target_table="mov_test_defect_map",
+                 map_id="LAR_01",
+                 grid_metadata=json.dumps(_synthetic_of(rotation=90))))
+    db.commit()
+    o = client.get("/api/maps/overlay", params={
+        "target_table": "mov_test_base_map", "target_key": "LAR_01",
+        "sources": "mov_test_defect_map",
+    }).json()["overlays"][0]
+    assert o["status"] == map_overlay.STATUS_ALIGN_UNAVAILABLE
+    detail = o["detail"] or ""
+    assert "자동 등록" in detail, detail
+    assert "소스" in detail, detail
+    assert o["cells"] == []          # corollary, not the claim
+
+
+def test_circle_mask_still_honours_synthetic_geometry(mov_env):
+    """THE DELIBERATE CARVE-OUT, pinned so a later tidy-up cannot erase it silently.
+
+    `circle_die_mask` asks a DIFFERENT question than the alignment gate: not "may I move
+    coordinates on this evidence" but "which cells does this geometry admit". The synthetic
+    spec was built to answer exactly that - mask-neutral, every cell valid - and the client
+    (`isCellInsideWaferFast`) answers the same. Returning None here would throw away the one
+    thing the synthetic spec says correctly AND open a new seam disagreement.
+    """
+    m = _synthetic_of(cols=6, rows=6)
+    mask = map_overlay.circle_die_mask(m)
+    assert mask is not None, "the alignment rule leaked into the mask question"
+    assert len(mask) == 36, "the synthetic spec is mask-neutral: every cell is admitted"
+    basis = map_overlay.resolve_valid_die_basis(m)
+    assert basis["source"] == map_overlay.SOURCE_CIRCLE
+    assert basis["basis"] is not None and len(basis["basis"]) == 36

@@ -174,6 +174,7 @@ filename  <  header  <  row
 |---|---|
 | 발동 조건 | 대상 테이블에 `map_key_columns` 선언 **그리고** 좌표 바인딩 해석 가능(`map_overlay.resolve_binding` — 선언 > 유도). 좌표 없는 registry형 테이블(`map_split_registry` 등)은 자연 제외 |
 | 등록 내용 | **정직한 최소치** — 배치 x/y 범위(bbox) 격자(`grid_cols/rows`, `grid_start_x/y` = 데이터 최소 좌표), 회전 0, front, 마스크 중립 물리 어휘(chip 1×1 / offset 0 / margin 3 / 격자 반대각선 외접 dia) = 에디터 '표준' 선택과 동일한 합성 규격. 실제 웨이퍼 지오메트리(원)는 **추측하지 않습니다**. `auto_registered: true` 필드로 출처 표기 |
+| 그 표지가 하는 일 (**D1 · 2026-08-04**) | 🔴 **그 `chip 1×1`은 1mm 다이가 아니라 "아무도 재지 않았다"입니다.** 그래서 자동 등록된 맵은 **오버레이 정렬의 근거가 되지 못하고**, 소스·타깃 어느 쪽이 그런 맵이면 서버가 `align_unavailable` + 한국어 사유로 **이름을 대고 거절**합니다(`map_overlay.geometry_declaration` — 판정의 유일한 철자, 클라 `physDeclaration`과 같은 토큰 어휘). 원 마스크 판정은 **그대로**입니다(합성 규격은 전 셀 유효를 말하도록 만들어졌고 그 답은 옳습니다). 운영자의 조치는 **그 맵의 물리 규격을 실제로 선언하는 것**이고, 에디터에서 규격을 넣고 Push하면 표지가 사라집니다. 규율 전문은 [map_editor/architecture_and_management §2.3-ter](../map_editor/architecture_and_management.md) |
 | 절대 불변식 | **absent-only** — 이미 존재하는 메타 행은 어떤 경우에도 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 생성 행의 소스는 `auto_map_meta`(최하위 우선순위)라 이후 사용자 편집이 항상 이깁니다 |
 | 확장성 | 존재 확인은 행이 아니라 **distinct 키당 1회**, 인덱스 컬럼(`business_key_val`) IN 조회(1000키 청킹). 프로세스 수명 내 확인-완료 키 캐시로 동일 맵 재적재는 추가 쿼리 0회 |
 | 이벤트 | 메타 행은 `crud.apply_batch_updates`(정상 쓰기 경로)로 생성 — outbox 이벤트가 흐르고 워커 스윕이 클라 갱신을 전달합니다. 재귀 가드: `wafer_map_metadata` 자신은 명시 거부(+ 메타 테이블엔 `map_key_columns`도 없음) |

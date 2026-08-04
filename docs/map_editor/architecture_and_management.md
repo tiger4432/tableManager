@@ -61,9 +61,29 @@
 | `rotation` | `number` | 맵 회전 각도 (`0`, `90`, `180`, `270`) | `0` |
 | `side` | `string` | 웨이퍼 관찰면 (`'front'`, `'back'`) | `'front'` |
 | `valid_die_ref` | `object`\|`string` | **[M4 phase 1]** 유효 다이 집합을 선언하는 **다른 맵**에 대한 참조. 선택 필드이며 **없으면 종전(원 기하) 동작** | `{"table": "dt_map", "map_id": "TPL_1"}` 또는 `"TPL_1"` |
-| `auto_registered` | `boolean` | 인제션 자동 등록으로 생성된 합성 메타 표지([INGESTION_GUIDE §1.10](../guide/INGESTION_GUIDE.md)) | `true` |
+| `auto_registered` | `boolean` | **[D1]** 이 행의 물리 기하가 **합성값**이라는 표지 — 아무도 재지 않았다는 뜻입니다([INGESTION_GUIDE §1.10](../guide/INGESTION_GUIDE.md), 아래 §2.3-ter) | `true` |
 
-> ℹ️ **선언되지 않은 키는 읽는 쪽이 무시합니다.** 서버(`map_overlay._grid_of`/`_phys_signature`/`frame_axes`)와 클라 모두 **아는 키만** 읽으므로, 위 표에 없는 키를 실어도 기존 경로는 흔들리지 않습니다. `valid_die_ref`·`auto_registered`가 그렇게 들어온 가산 필드입니다.
+> ℹ️ **선언되지 않은 키는 읽는 쪽이 무시합니다.** 서버(`map_overlay._grid_of`/`_phys_signature`/`frame_axes`)와 클라 모두 **아는 키만** 읽으므로, 위 표에 없는 키를 실어도 기존 경로는 흔들리지 않습니다. `valid_die_ref`가 그렇게 들어온 가산 필드입니다.
+>
+> 🔴 **`auto_registered`는 더 이상 그 예가 아닙니다(2026-08-04).** 양쪽 다 이 키를 **읽고 판정에 씁니다** — 클라 `physDeclaration`(`cfc09de`), 서버 `map_overlay.geometry_declaration`. 이 문장이 참이던 동안 서버에서는 `auto_registered`의 **독자가 0곳**이었고, 그래서 합성 규격이 선언으로 통과했습니다. 아래 §2.3-ter가 정본입니다.
+
+#### 2.3-ter `auto_registered` — 합성 기하는 선언이 아니다 (D1 · 2026-08-04)
+
+맵에 규격 행이 없으면 두 곳이 **마스크 중립 합성 규격**을 써 넣습니다. 둘 다 "웨이퍼 원 마스크 없음"을 표현할 어휘가 없어 `chip 1x1` / `offset 0` / 격자 반대각선을 외접하는 지름을 씁니다:
+
+- `server/map_meta_registrar.synthesize_grid_meta()` — 인제션 자동 등록([INGESTION_GUIDE §1.10](../guide/INGESTION_GUIDE.md))
+- `client2/src/map_editor.js`의 `[fix C]` — 규격 없는 맵의 「표준」 선택
+
+**그 `1`은 1mm 다이라는 주장이 아니라 아무도 재지 않았다는 뜻입니다.** 읽는 쪽이 그것을 몰랐기 때문에, 합성된 1x1 서명은 **존재하고 형식도 온전해서** 정렬 관문("서명이 **없으면** 거절")을 그대로 통과했고, 서버는 합성 소스를 실측 타깃에 1mm 피치로 정렬해 **멀쩡해 보이는 좌표**를 냈습니다.
+
+| 축 | 규칙 |
+|---|---|
+| 판정의 철자 | **하나뿐입니다.** 서버 `map_overlay.geometry_declaration(meta) -> 'declared' \| 'auto_registered' \| 'absent' \| 'unparsable'`, 클라 `physDeclaration(key, el).source`. **토큰 어휘가 같습니다** — 양측 채점은 `contracts/map_seam/` `geometry_declaration_cases` |
+| 무엇을 보나 | **표지이지 값이 아닙니다.** `chip == 1`을 표지로 쓰면 진짜 1mm 다이를 조용히 삼킵니다. 표지를 **값보다 먼저** 읽습니다(값이 먼저면 표지가 아무 일도 하지 않습니다) |
+| 레거시 폴백 | **없습니다 — 필요 없다는 것을 셌습니다.** 운영 실측 2026-08-04(읽기 전용): 668행 중 chip 1x1이 320행이고 **그 320행이 전부** 표지를 답니다. 표지 없는 1x1 행은 **0건**입니다 |
+| 정렬 | 소스·타깃 어느 쪽이든 합성이면 `make_frame_transform`이 **이름을 대고 거절**합니다 → `align_unavailable` + 한국어 사유(어느 맵을 고쳐야 하는지 포함) |
+| 원 마스크 | **거절하지 않습니다.** `circle_die_mask`는 다른 질문("이 기하가 무슨 셀을 인정하나")에 답하고, 합성 규격은 **전 셀 유효**를 말하도록 만들어진 것이라 그 답은 옳습니다. 클라 `isCellInsideWaferFast`도 같은 답을 냅니다 |
+| Push 왕복 | 클라 `buildPushGridMetadata`가 표지를 **되실어 줍니다**. 없으면 Push 한 번이 합성 규격을 영구 선언으로 승격시킵니다(등록기는 부재 행만 채우고 기존 행을 다시 보지 않습니다) |
 
 #### 2.3-bis `valid_die_ref` — 유효 다이도 맵이다 (M4 phase 1 · 2026-07-29)
 

@@ -502,6 +502,56 @@ for (const c of cases('valid_die_ref_home_divergence_cases')) {
   rec('valid_die_ref_home_divergence_cases', c.name, 'client_kind', c.expect_client, (got || {}).kind);
 }
 
+// --- D1: synthetic geometry is not a declaration ----------------------------------------
+// Through the client's REAL chain — `frameFromMeta` -> `withPhysFrame` -> `physDeclaration`
+// — and not by assigning `physFrameOverride` directly. Two reasons, both measured:
+//   · `frameFromMeta`'s key whitelist is where the mark was DROPPED on 2026-08-04, so the
+//     overlay path could never see it. A hand-built frame scores that bug green.
+//   · the frame WINDOW is what makes the mark a fact about a MAP rather than the session.
+//     A scorer that sets the module variable is testing its own fixture.
+{
+  const G = 'geometry_declaration_cases';
+  if (requireRoles(G, ['phys_declaration', 'geometry_is_auto_registered',
+    'frame_from_meta', 'with_phys_frame'], 'D1 — synthetic geometry is not a declaration')) {
+    for (const c of cases(G)) {
+      // No screen values at all: the map's own meta must be the only source. Leaving DOM
+      // inputs behind would let a stale screen value stand in for the frame's answer.
+      sandbox.el = {};
+      sandbox.physFrameOverride = null;
+      const frame = attempt(() => FN.frame_from_meta(c.meta));
+      if (threw(frame) || frame === null) {
+        rec(G, c.name, 'frame_built', true, threw(frame) ? frame : false);
+        continue;
+      }
+      // BOTH axes. The mark belongs to the spec, so an implementation that reads it for one
+      // axis leaves an unread write on the other, and unread writes go stale unnoticed.
+      for (const key of ['chipX', 'chipY']) {
+        const d = attempt(() => FN.with_phys_frame(frame, () => FN.phys_declaration(key, null)));
+        if (threw(d)) {
+          rec(G, `${c.name}/${key}`, 'declared', c.expect_declared, d);
+          continue;
+        }
+        rec(G, `${c.name}/${key}`, 'declared', c.expect_declared,
+          typeof d.value === 'number' && Number.isFinite(d.value));
+        rec(G, `${c.name}/${key}`, 'auto_registered', c.expect_auto_registered,
+          d.source === 'auto_registered');
+      }
+    }
+    // FIXTURE ACTIVITY, asserted here too rather than trusted from the server side: this
+    // scorer must fail if the discriminating vectors are ever dropped from the file.
+    const cs = cases(G);
+    rec(G, 'fixture_active', 'has_an_unflagged_1x1_declaration', true,
+      cs.some(c => c.expect_declared && !c.expect_auto_registered
+        && Number(c.meta.phys_chip_x) === 1));
+    rec(G, 'fixture_active', 'has_a_marked_spec_with_a_measured_looking_pitch', true,
+      cs.some(c => c.expect_auto_registered && Number(c.meta.phys_chip_x) !== 1));
+    rec(G, 'fixture_active', 'has_an_absent_spec', true,
+      cs.some(c => !c.expect_declared && !c.expect_auto_registered));
+    sandbox.physFrameOverride = null;
+    sandbox.el = {};
+  }
+}
+
 // --- M4 baseline (INV-M4-1) ------------------------------------------------------------
 // Through the client's REAL parse chain, not a hand-built physConfig: the parse is part of
 // the seam. Each case runs through BOTH metadata sources `physNum` consults — the frame
