@@ -69,8 +69,13 @@ const KNOWN_RED = new Map([
     why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
   ['split_registry_harness.mjs', { ran: 0, failed: 0,
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
-  ['valid_die_authoring_harness.mjs', { ran: 99, failed: 1,
-    why: 'cause not yet triaged ― the failing assertion has never been attributed' }],
+  ['valid_die_authoring_harness.mjs', { ran: 100, failed: 1,
+    why: 'ATTRIBUTED 2026-08-04 ― this is a HARNESS defect, not a code defect. The slicer '
+       + 'matches `projectCellsToPhys` where it first appears in the file, which is inside a '
+       + 'COMMENT at offset 8297, ahead of the chain guard\'s real call at 9564. The code '
+       + 'order is correct. Same first-match trap the overlay round hit from the other side '
+       + '(a mutation string that is not unique lands on the wrong function). Fix belongs '
+       + 'with the slicer, not with map_editor.js' }],
   ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 42,
     why: 'fixtures holding the pre-da8f390 contract; under triage' }],
 ]);
@@ -111,10 +116,16 @@ const FLOORS = new Map([
   ['geometry_origin_reseat_harness.mjs', 46],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
+  // 54, not the 53 the overlay branch carried: that branch forked before the datalist
+  // harness gained its assertion, and a floor is a minimum — merging the lower number
+  // would have quietly un-scored the newer one.
   ['map_key_datalist_harness.mjs', 54],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],
+  // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
+  // rule: floor is the count it reports on the commit that introduces it.
+  ['overlay_value_colour_harness.mjs', 54],
   ['overlay_wafer_mm_harness.mjs', 69],
   ['push_gate_harness.mjs', 15],
   ['retroactive_view_harness.mjs', 263],

@@ -4100,6 +4100,10 @@ function renderLegendMetaOnly() {
 // 이 함수는 legend 변경을 패널에 통지하고, (남아 있다면) 구 테이블 DOM도 갱신한다.
 function renderLegendTable() {
   notifyLegendChanged();
+  // [N2] Overlay dots take their colour from the legend, so a legend edit has to recount the
+  // overlay rows' "no legend colour" chip. (The canvas needs no hook: it reads the legend on
+  // every paint, and every legend mutation already repaints it.)
+  if (overlayLayers.length > 0) renderOverlayList();
   if (!el.legendList) {
     // 구 legend 테이블은 폐기됐다 — 활성 브러시 표기만 유지한다
     const item = legend.find(l => l.value === activeBrush);
@@ -7510,13 +7514,69 @@ function recomputeActiveOverlays() {
   activeOverlayLayers = overlayLayers.filter(o => o.visible && o.cells && o.cells.size > 0);
 }
 
-// 셀 하나에 대한 오버레이 마커 — 레이어별 색 점을 우상단에 나란히 찍는다.
+// ── [N2] AN OVERLAY DOT IS FILLED WITH THE COLOUR OF THE VALUE IT ANSWERS FOR ────────────
+// 🟩 THE LEGEND IS THE ONLY COLOUR SOURCE. No second colour dictionary is created:
+//    (1) the open map's own `legend` row -- literally the colour the legend table on screen
+//        is showing right now (those rows are this map's `map_split_registry` rows);
+//    (2) failing that, the served `map_overlay_config.default_legend` (`declaredLegendRow`).
+//    Neither -> `null`, and `null` is a FACT: nobody declared a colour for this value.
 //
-// 🔴 [규칙 6] **1:1이면 종전과 한 픽셀도 다르지 않다.** 한 칸이 소스 여러 칸을 받을 때만
-//    (타깃 셀이 더 굵을 때) 점을 **하나로 합치지 않고 각자의 칩 내 위치에 따로** 찍는다.
-//    합쳐 버리면 6칩을 받은 칸과 1칩을 받은 칸이 화면에서 구별되지 않는다 — 값 하나를
-//    자신 있게 보여 주면서 나머지를 버리는 그 상태다.
-// ⚠️ 새 UI 영역·모드·모달이 아니다. 이미 있는 마커 레이어에 **점의 수와 자리**만 늘어난다.
+// 🔴 `pickUnusedColor()` IS NOT CALLED HERE. That function INVENTS a colour, so calling it
+//    would dress an undeclared value in a confident colour: the screen looks fine and the
+//    meaning is wrong, which is the whole class of defect this domain exists to stop. When
+//    there is no declaration we draw the absence (an unfilled dot).
+function legendColorForValue(val) {
+  if (val === null || val === undefined) return null;
+  const v = String(val);
+  if (v === '') return null;
+  const own = legend.find(item => String(item.value) === v);
+  if (own && own.color) return String(own.color);
+  // ⚠️ Named `declared`, not `dr`, on purpose: `autoAddLegendValue` holds a BYTE-IDENTICAL
+  //    `const dr = declaredLegendRow(v);` line, and a harness mutation replaces the FIRST
+  //    match -- it would land on that line instead of this one and pass while measuring
+  //    nothing. That is a silent hole, not a style preference.
+  const declared = declaredLegendRow(v);
+  return (declared && declared.color) ? String(declared.color) : null;
+}
+
+// The fill for one dot. 🔴 FILLED ONLY WHEN THERE IS EXACTLY ONE VALUE TO ANSWER WITH.
+// When a cell received several source chips and is too small to show them apart, using
+// `list[0]`'s colour is precisely the REPRESENTATIVE the user rejected: it discards the rest
+// while looking confident. So "unfilled" carries exactly one meaning -- THIS DOT DOES NOT
+// NAME A SINGLE DECLARED COLOUR -- and a solid dot always means one source chip whose value
+// the legend declares. The two reasons behind an unfilled dot (undeclared value / several
+// values) are told apart in WORDS by the chips on the layer row.
+function overlayMarkerFill(list) {
+  if (!Array.isArray(list) || list.length !== 1) return null;
+  return legendColorForValue(list[0].val);
+}
+
+// Draw one dot. The RING is the layer colour, so whatever the fill turns out to be, which
+// overlay a dot belongs to is still readable -- position cannot carry that, because the 1:1
+// branch's slot index is only consumed by the layers that actually drew in this cell. The
+// white halo sits between the two so a dot never disappears into a cell painted the same
+// colour as its own value.
+function paintOverlayDot(ctx, cx, cy, rad, fill, ringColor) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, 0, 2 * Math.PI);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  ctx.strokeStyle = ringColor;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+}
+
+// 셀 하나에 대한 오버레이 마커 — 레이어별 점을 우상단에 나란히 찍는다.
+//
+// 🔴 [규칙 6] **1:1이면 점의 자리가 종전과 한 픽셀도 다르지 않다.** 한 칸이 소스 여러 칸을
+//    받을 때만 (타깃 셀이 더 굵을 때) 점을 **하나로 합치지 않고 각자의 칩 내 위치에 따로**
+//    찍는다. 합쳐 버리면 6칩을 받은 칸과 1칩을 받은 칸이 화면에서 구별되지 않는다 — 값
+//    하나를 자신 있게 보여 주면서 나머지를 버리는 그 상태다.
+// ⚠️ [N2] What changed is the FILL, not the position (see `overlayMarkerFill` above). No new
+//    screen, mode or modal, and no new control: the marker layer that already existed now
+//    takes its colour from the legend instead of one flat colour per layer.
 function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
   const r = Math.max(1.5, Math.min(cellW, cellH) * 0.13);
   let idx = 0;
@@ -7543,13 +7603,9 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
         const sy = fx * A.xr + fy * A.yr;
         const cx = x0 + (0.5 + sx) * cellW;
         const cy = y0 + (0.5 + sy) * cellH;
-        ctx.beginPath();
-        ctx.arc(cx, cy, rr, 0, 2 * Math.PI);
-        ctx.fillStyle = layer.color;
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 0.6;
-        ctx.stroke();
+        // [N2] Here one dot IS one source chip, so there is exactly one value to answer
+        //      with. This is not choosing a representative -- it is that chip's own value.
+        paintOverlayDot(ctx, cx, cy, rr, overlayMarkerFill([it]), layer.color);
       }
       continue;
     }
@@ -7557,13 +7613,10 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
     const cx = x0 + cellW - r - 1.5 - idx * (r * 2 + 1.5);
     const cy = y0 + r + 1.5;
     if (cx < x0) break; // 셀이 너무 작아 더 못 찍음
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-    ctx.fillStyle = layer.color;
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
+    // [N2] When `list` holds several items `overlayMarkerFill` answers null and the dot is
+    //      left unfilled, because no single value may be picked to stand for the rest. This
+    //      is the colour half of the user's "list them all" ruling.
+    paintOverlayDot(ctx, cx, cy, r, overlayMarkerFill(list), layer.color);
     idx++;
   }
 }
@@ -9387,6 +9440,33 @@ function overlayFanChip(o) {
   return `<span class="ov-chip warn" title="${escapeHtmlAttr(o.seatNote || '')}">${escapeHtmlAttr(label)}</span>`;
 }
 
+// [N2] The values for which the legend declares no colour. The canvas leaves those dots
+// unfilled, but AN UNFILLED DOT ALONE CANNOT SAY WHICH of the two reasons applies
+// ("undeclared value" vs "several values in one cell"). Words make that distinction, and the
+// several-values half is already spoken by `overlayFanChip` above.
+// 🔴 Recounted from the live legend, never cached at add time. The moment the user adds one
+//    of these values to the legend this chip must shrink; a captured count goes quietly stale
+//    and a stale count is indistinguishable from a defect.
+function overlayUnlistedValues(o) {
+  if (!o || o.failed || !o.items) return [];
+  const out = new Set();
+  o.items.forEach(list => list.forEach(it => {
+    const v = (it.val === null || it.val === undefined) ? '' : String(it.val);
+    if (v === '') return;                       // a blank was never a value that wants a colour
+    if (!legendColorForValue(v)) out.add(v);
+  }));
+  return [...out];
+}
+
+function overlayLegendChip(o) {
+  const miss = overlayUnlistedValues(o);
+  if (miss.length === 0) return '';
+  const shown = miss.slice(0, 8).join(', ') + (miss.length > 8 ? ' ...' : '');
+  const tip = `legend에 없는 값이라 색을 지어내지 않고 속이 빈 점으로 그립니다 · ${shown}`
+    + ` · 범례(2. Legend & DOE)에 값을 추가하면 그 색으로 칠해집니다.`;
+  return `<span class="ov-chip warn" title="${escapeHtmlAttr(tip)}">범례 밖 ${miss.length}종</span>`;
+}
+
 // ── [신규] 오버레이 → 실맵 가져오기 ────────────────────────
 // 겹쳐 본 오버레이의 셀을 **현재 편집 중인 맵(gridData)** 으로 반영한다.
 // 구 "테이블 전환 시 이월"을 대체하며 더 안전하다 — 오버레이 셀은 이미 **물리 키**로
@@ -9498,7 +9578,7 @@ function renderOverlayList() {
       <span class="ov-name" title="${escapeHtmlAttr(o.sourceTable + ' · ' + o.sourceKey + (o.reason ? ' — ' + o.reason : ''))}">
         <b>${escapeHtmlAttr(o.sourceTable)}</b><br><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
       </span>
-      <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
+      <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${overlayLegendChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
       <span class="ov-btns">
         ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="이 오버레이의 셀을 현재 편집 맵으로 가져옵니다 (잠금 셀 제외 · Push 전까지 서버 반영 없음)">↓</button>`}
         <button type="button" class="ov-btn" data-act="${o.failed ? 'retry' : 'toggle'}" title="${o.failed ? '다시 시도' : '표시/숨김'}">${o.failed ? '↻' : (o.visible ? '👁' : '🚫')}</button>
