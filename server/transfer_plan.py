@@ -367,6 +367,18 @@ def _unresolved_of(cols) -> tuple:
     return bonding_plan._unresolved_roles(cols)
 
 
+def _fail_filter_status(src_cfg, cols, status="connected"):
+    """[N14] Is this source's `fail_values` applicable? -> `(refused, status)`.
+
+    Thin pass-through to `bonding_plan.fail_filter_status` (which owns the
+    ruling, next to the resolver) so both frames of `fail_sources` and M1's
+    defect/eds_fail roles score against ONE predicate. Reads the attribute at
+    call time, so repointing it (the byte-identity twin in
+    server/tests/test_optional_role_absence.py) disarms every reader at once."""
+    import bonding_plan
+    return bonding_plan.fail_filter_status(src_cfg, cols, status)
+
+
 def _identity_filters(src_cfg, cols, lot, slot):
     """[7b] The (lot, slot) pool bind used by every role query — each value is
     canonicalized by the DECLARED type of the bound column
@@ -524,8 +536,60 @@ _STAGE_SOURCE_ROLES = (
     ("lot_membership", LOT_MEMBERSHIP_ROLES),
 )
 
+# 선택 역할 카탈로그 ― 「없어도 거절되지 않지만, 없으면 **무엇이 꺼지는가**」.
+#
+# WHY (board N14, 2026-08-04). 필수 역할은 지우면 유도가 메운다 ― 그래서 이 라운드의
+# 수리 지침이 「고치지 말고 지워라」가 됐다. 선택 역할은 **절대 유도되지 않는다**
+# (부재가 곧 정보이므로 메우면 숫자가 조용히 바뀐다 ― `bonding_plan.DERIVED_ROLE_OF`
+# 주석의 load-bearing restriction). 그래서 한 줄 더 지우면 기능이 조용히 꺼진다.
+#
+# dry-run이 **선언된 줄만** 보여주는 한 그 부재는 어디에도 나타나지 않는다: 지우기 전
+# 보고서는 컬럼 5개, 지운 뒤는 4개이고, 어느 필드도 하나가 사라졌다고 말하지 않는다
+# (QA F5가 잰 그대로). 부재를 행으로 내는 것이 이 표의 목적이며, 선언 의미론은 아무것도
+# 바뀌지 않는다 ― `accepted`도 `reason`도 그대로다. 「이 능력은 지금 꺼져 있다」는
+# 사실만 이름을 얻는다.
+#
+# 등재 기준: **부재가 계산 결과나 경고를 바꾸는** 역할만. 순수 표시용 필드(step/eqp/
+# recipe/knobs)는 넣지 않는다 ― 전부 넣으면 이 표는 스키마 덤프가 되고, 진짜 위험한
+# 세 줄이 그 안에 묻힌다.
+FAIL_SOURCE_ROLE = "fail_sources"
+_OPTIONAL_ROLE_EFFECTS = {
+    "total_chips": (
+        ("x", "총칩 좌표 집합 ― 영역(region)·BIN별 총계를 계산합니다. 없으면 그쪽 "
+              "total/remaining이 null이 되고 BIN 항목은 unknown으로 내려갑니다."),
+        ("y", "총칩 좌표 집합 ― 영역(region)·BIN별 총계를 계산합니다. 없으면 그쪽 "
+              "total/remaining이 null이 되고 BIN 항목은 unknown으로 내려갑니다."),
+    ),
+    "transfer_log": (
+        ("x", "기전사 칩의 **집합** 감산 ― 없으면 카운트만 쓰는 "
+              "connected(count_only)로 강등되고 remaining은 상한(≤)만 나갑니다."),
+        ("y", "기전사 칩의 **집합** 감산 ― 없으면 카운트만 쓰는 "
+              "connected(count_only)로 강등되고 remaining은 상한(≤)만 나갑니다."),
+    ),
+    "process_history": (
+        ("time", "이력 정렬(최근 50건) ― 없으면 정렬 없이 임의의 50건이 나갑니다."),
+        ("result", "result_fail 경고(`warnings.result_fail_values`) ― 없으면 공정 실패 "
+                   "이력 경고가 한 건도 발화하지 않습니다."),
+    ),
+    FAIL_SOURCE_ROLE: (
+        ("val", "fail 값 필터(`fail_values`) ― 없으면 fail 판정을 내릴 수 없으므로 이 "
+                "감산은 0으로 거절되고 소스가 강등됩니다(fail_value_column_absent). "
+                "`fail_values`를 선언했다면 이 역할은 사실상 필수입니다."),
+        ("x", "fail 칩의 좌표 집합 ― frame=\"origin\"이면 투영 자체가 불가(강등)이고, "
+              "frame=\"self\"이면 집합 감산이 카운트 감산으로 내려갑니다."),
+        ("y", "fail 칩의 좌표 집합 ― frame=\"origin\"이면 투영 자체가 불가(강등)이고, "
+              "frame=\"self\"이면 집합 감산이 카운트 감산으로 내려갑니다."),
+    ),
+    "registry": (
+        (REGISTRY_LEGACY_ROLE,
+         "폐기 모델(구 구간 blob)의 읽기 전용 역할 ― 없으면 그 컬럼에 남아 있는 구 형식 "
+         "계획의 구간이 읽히지 않습니다(신 모델 계획에는 영향 없음)."),
+    ),
+}
 
-def _role_dry_run(src, required: tuple, label: str, where: str) -> dict:
+
+def _role_dry_run(src, required: tuple, label: str, where: str,
+                  optional: tuple = ()) -> dict:
     """역할 1건의 dry-run 항목. **행 조회 없음** ― 모델/컬럼 해석만."""
     import bonding_plan
     from database import models
@@ -565,6 +629,32 @@ def _role_dry_run(src, required: tuple, label: str, where: str) -> dict:
             "derived_role": (d or {}).get("from_role") if origin == "derived" else None,
             "exists_on_table": (None if (model is None or not col)
                                 else getattr(model, str(col), None) is not None),
+            # 선언·유도된 줄에는 「꺼진 기능」이 없다. 키는 항상 존재한다 ―
+            # 소비자가 분기 없이 읽을 수 있어야 한다.
+            "effect": None,
+        }
+
+    # [N14] 선택 역할의 **부재를 행으로** 낸다. 선언된 줄만 세면 "지운 줄"은 보고서에서
+    # 사라지고, 사라진 것이 무엇이었는지 물을 자리조차 없다. 선언 의미론은 불변이다 ―
+    # `accepted`/`reason`은 이 행들과 무관하다.
+    #
+    # 단, **선언 자체가 없는 역할**에는 내지 않는다. 그 역할은 이미 `declared: false`로
+    # 자기 상태를 말했고, 거기에 선택 컬럼 3개를 더 얹으면 「이 사이트가 안 쓰는 것」이
+    # 「운영자가 지운 것」을 덮어버린다(라이브 config에서 이 구분 없이 세면 50행이다).
+    # 이 표가 답하는 질문은 「내가 지운 그 줄이 무엇이었나」이고, 그 질문은 columns 블록이
+    # 존재할 때만 성립한다.
+    for role, effect in (optional if isinstance(src, dict) else ()):
+        if role in columns:
+            continue          # 선언(또는 필수)돼 있으면 이미 자기 행이 있다
+        columns[role] = {
+            "column": None,
+            "origin": "absent",
+            "required": False,
+            "derivable": False,     # 선택 역할은 유도되지 않는다(부재가 곧 정보다)
+            "derived_from": None,
+            "derived_role": None,
+            "exists_on_table": None,
+            "effect": effect,
         }
 
     # 「선언이 이긴다」의 뒷면: 틀린 선언은 유도가 있어도 계속 이긴다 → 수리법은 *지우기*.
@@ -636,10 +726,12 @@ def dry_run(cfg: dict) -> dict:
                 })
                 continue
             roles.append(_role_dry_run(source.get(role), required, role,
-                                       f"stages.{name}.source.{role}"))
+                                       f"stages.{name}.source.{role}",
+                                       _OPTIONAL_ROLE_EFFECTS.get(role, ())))
         for fname, fs in (source.get("fail_sources") or {}).items():
             roles.append(_role_dry_run(fs, IDENTITY_ROLES, f"fail_sources.{fname}",
-                                       f"stages.{name}.source.fail_sources.{fname}"))
+                                       f"stages.{name}.source.fail_sources.{fname}",
+                                       _OPTIONAL_ROLE_EFFECTS[FAIL_SOURCE_ROLE]))
         stages_out.append({
             "name": name,
             "source_config_ref": stage_cfg.get("source_config_ref"),
@@ -650,7 +742,8 @@ def dry_run(cfg: dict) -> dict:
     store = cfg.get("plan_store") or {}
     store_roles = [
         _role_dry_run(store.get("registry"), REGISTRY_ROLES,
-                      "registry", "plan_store.registry"),
+                      "registry", "plan_store.registry",
+                      _OPTIONAL_ROLE_EFFECTS["registry"]),
         _role_dry_run(store.get("source_region"), SOURCE_REGION_ROLES,
                       "source_region", "plan_store.source_region"),
     ]
@@ -672,6 +765,13 @@ def dry_run(cfg: dict) -> dict:
             "derived_columns": sum(
                 1 for r in every for c in r["columns"].values()
                 if c.get("origin") == "derived"),
+            # [N14] 지금 꺼져 있는 **선택** 능력의 수(강등 수가 아니다).
+            # ⚠️ `origin == "absent"`만으로 세면 **미선언 필수 역할**까지 딸려 온다 —
+            # 라이브 config에서 30 대 4다. 이 카운트가 답하는 질문은 「받아들여지는데도
+            # 꺼져 있는 기능이 몇 개인가」이므로 `required is False`가 술어의 절반이다.
+            "absent_optional_columns": sum(
+                1 for r in every for c in r["columns"].values()
+                if c.get("origin") == "absent" and c.get("required") is False),
             "removable_declarations": sum(
                 len(r["removable_declarations"]) for r in every),
         },
@@ -695,13 +795,18 @@ def _status_is_degraded(status) -> bool:
     강등: "missing", "unavailable(...)", "connected(align_unavailable)", "connected(area_only)",
           "connected(count_only)"(transfer_log 또는 self-frame fail 원천이 좌표 없이
           카운트만 제공 — 집합 감산 불가),
-          "connected(column_unresolved:...)"(선언된 컬럼이 모델에 없음 — config 오타 축).
+          "connected(column_unresolved:...)"(선언된 컬럼이 모델에 없음 — config 오타 축),
+          "connected(fail_value_column_absent)"([N14] `fail_values`는 선언됐는데 그 값을
+          읽을 `val` 역할이 **아예 없음** — 감산항이 통째로 빠진다. 마커 문자열은
+          `bonding_plan`의 상수를 읽는다: 두 번째 철자는 곧 두 개의 진실이 된다).
     """
+    import bonding_plan
     if not status or status == "connected" or status == STATUS_NOT_DECLARED:
         return False
     if status.startswith("connected("):
         return (("align_unavailable" in status) or ("area_only" in status)
-                or ("count_only" in status) or ("column_unresolved" in status))
+                or ("count_only" in status) or ("column_unresolved" in status)
+                or (bonding_plan.FAIL_VALUE_COLUMN_ABSENT in status))
     return True   # missing / unavailable(...) 등
 
 
@@ -1740,16 +1845,18 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             try:
                 filters = _identity_filters(fs, cols, lot, slot)
                 fail_values = fs.get("fail_values")
-                if fail_values and "val" in cols:
-                    filters.append(cols["val"].in_([str(v) for v in fail_values]))
-                if fail_values and "val" in _unresolved_of(cols):
-                    # [FIX 2026-07-28] Declared `val` failed to resolve: counting
-                    # without the fail filter would count EVERY row as fail —
-                    # overstating the subtraction (breaks the upper-bound
-                    # invariant). Same discipline as align_unavailable: 0 + demote.
-                    statuses[name] = _demote_unresolved("connected", cols)
+                # [N14 2026-08-04] Counting without the fail filter would count
+                # EVERY row as fail — overstating the subtraction (breaks the
+                # upper-bound invariant). THE shared predicate rules on both
+                # shapes of "no usable `val`": the typo (2026-07-28) and the
+                # DELETION the derivation round started advising.
+                refused, refusal_status = _fail_filter_status(fs, cols)
+                if refused:
+                    statuses[name] = _demote_unresolved(refusal_status, cols)
                     fail_breakdown[name] = 0
                     continue
+                if fail_values:
+                    filters.append(cols["val"].in_([str(v) for v in fail_values]))
                 cnt = int(db.query(model).filter(*filters).count())
                 fail_breakdown[name] = cnt
                 status = "connected"
@@ -1801,10 +1908,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                               if unres_xy else "missing")
             fail_breakdown[name] = 0
             continue
-        if fs.get("fail_values") and "val" in _unresolved_of(cols):
-            # Declared `val` failed to resolve — projecting without the fail filter
-            # would mark every origin chip as fail. Refuse: 0 + demote.
-            statuses[name] = _demote_unresolved("connected", cols)
+        # Projecting without the fail filter would mark every origin chip as
+        # fail. Same predicate as the self-frame branch above — one ruling, both
+        # frames (a fix on one frame only is how this class comes back).
+        refused, refusal_status = _fail_filter_status(fs, cols)
+        if refused:
+            statuses[name] = _demote_unresolved(refusal_status, cols)
             fail_breakdown[name] = 0
             continue
         try:

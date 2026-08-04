@@ -281,10 +281,14 @@ def test_dry_run_shows_which_spelling_won(deriv_env):
 
     assert bin_map["accepted"] is True
     assert bin_map["reason"] is None
+    # Exact shape, not a subset: a new key on this entry is a payload change and
+    # should have to be written down here. (`effect` arrived with board N14 -
+    # it names the capability an ABSENT optional role turns off, and is null on
+    # every declared/derived row.)
     assert bin_map["columns"]["lot"] == {
         "column": "d_lot", "origin": "declared", "required": True,
         "derivable": False, "derived_from": None,
-        "derived_role": None, "exists_on_table": True}
+        "derived_role": None, "exists_on_table": True, "effect": None}
     assert bin_map["columns"]["x"]["column"] == "d_x"
     assert bin_map["columns"]["x"]["origin"] == "derived"
     assert bin_map["columns"]["x"]["derived_from"] == bonding_plan.DERIVATION_DECLARED

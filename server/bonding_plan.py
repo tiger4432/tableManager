@@ -248,23 +248,83 @@ def _unresolved_roles(cols) -> tuple:
     return tuple(getattr(cols, "unresolved", ()) or ())
 
 
-def _demote_for_unresolved(status, cols):
-    """Compose the `column_unresolved:<roles>` marker into a connected-status.
+def compose_status_marker(status, marker):
+    """Compose one demotion marker into a connected-status.
 
-    Follows the existing demotion vocabulary (`connected(area_only)`,
-    `connected(align_unavailable)`): the binding still answers, but a declared
-    column vanished, so the status must say so instead of reading `connected`.
-    Already-degraded statuses (missing/unavailable) are left as-is.
+    THE composer for the `connected(...)` vocabulary (`connected(area_only)`,
+    `connected(align_unavailable)`, `connected(column_unresolved:x,y)`): a
+    bare `connected` gains parentheses, an already-marked one gains a
+    comma-separated term, and an already-degraded status
+    (`missing` / `unavailable(...)`) is left exactly as it was. Extracted so a
+    second demotion cause cannot grow a second spelling of the same string
+    surgery - the defect shape issue #20 keeps producing.
     """
-    unres = _unresolved_roles(cols)
-    if not unres or not isinstance(status, str) or not status.startswith("connected"):
+    if not isinstance(status, str) or not status.startswith("connected"):
         return status
-    marker = "column_unresolved:" + ",".join(sorted(str(r) for r in unres))
     if status == "connected":
         return f"connected({marker})"
     if status.startswith("connected(") and status.endswith(")"):
         return status[:-1] + "," + marker + ")"
     return status
+
+
+def _demote_for_unresolved(status, cols):
+    """Compose the `column_unresolved:<roles>` marker into a connected-status.
+
+    The binding still answers, but a DECLARED column vanished, so the status
+    must say so instead of reading `connected`.
+    """
+    unres = _unresolved_roles(cols)
+    if not unres:
+        return status
+    return compose_status_marker(
+        status, "column_unresolved:" + ",".join(sorted(str(r) for r in unres)))
+
+
+# A `fail_values` list was declared with NO usable `val` column to read it from.
+# Sibling of `column_unresolved`, and deliberately a DIFFERENT word: that one
+# means "you named a column and the table does not have it" (repair: fix or
+# delete the name), this one means "there is no name at all" (repair: declare
+# one). Same consequence, different instruction.
+FAIL_VALUE_COLUMN_ABSENT = "fail_value_column_absent"
+
+
+def fail_filter_status(src_cfg, cols, status):
+    """Can this source's `fail_values` be applied? -> `(refused, status)`.
+
+    🔴 ONE PREDICATE, EVERY FAIL-COUNTING READER CALLS IT. There are three
+    (`bonding_plan.get_core_summary`'s defect/eds_fail roles, and both frames of
+    `transfer_plan`'s `fail_sources`), and before board N14 they each spelled
+    their own half of the question.
+
+    THE RULING. `fail_values` says WHICH values mean fail; `val` says WHERE to
+    read them. Without `val` the question "is this row a fail" is unanswerable -
+    and unanswerable is not YES. Counting without the predicate marks the ENTIRE
+    pool as fail, which overstates the subtraction and breaks the upper-bound
+    invariant the whole availability engine rests on. So: refuse, serve 0, and
+    demote - the same discipline as `align_unavailable`.
+
+    Two shapes reach one verdict, each keeping its own name so the operator is
+    told what to DO:
+      * declared but the column is not on the table -> `column_unresolved:val`
+        (composed by `_demote_for_unresolved`, unchanged since 2026-07-28).
+      * not declared at all -> `fail_value_column_absent`. This is the shape
+        board N14 opened: `8817dde`/`ba65c59` taught operators that deleting a
+        declaration is the repair, which is true for a REQUIRED role (derivation
+        fills it back) and silently destructive one line further down, because
+        an OPTIONAL role is never derived. Deleting `val` used to turn 0 fail
+        chips into every chip while the payload still said `reliable: true`.
+
+    A source that declares NO `fail_values` is untouched: the table itself is
+    the fail list and counting the whole pool is the point.
+    """
+    if not (isinstance(src_cfg, dict) and src_cfg.get("fail_values")):
+        return False, status
+    if cols is not None and "val" in cols:
+        return False, status
+    if "val" in _unresolved_roles(cols):
+        return True, status
+    return True, compose_status_marker(status, FAIL_VALUE_COLUMN_ABSENT)
 
 
 # --- binding refusal vocabulary (borrowed, not invented) -------------------
@@ -710,18 +770,20 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         filters = [cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
                    cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot)]
         fail_values = src.get("fail_values")
-        if fail_values and "val" in cols:
-            filters.append(cols["val"].in_([str(v) for v in fail_values]))
-        if fail_values and "val" in _unresolved_roles(cols):
-            # [FIX 2026-07-28] Declared `val` column failed to resolve: counting
-            # without the fail-value filter would count EVERY row as fail (silent
-            # corruption in the opposite direction of the other degradations).
-            # Same discipline as align_unavailable — refuse and serve 0.
-            statuses[role] = _demote_for_unresolved(status, cols)
+        # [N14 2026-08-04] Counting without the fail-value filter would count
+        # EVERY row as fail. THE predicate decides, for both shapes of "no usable
+        # `val`" (declared-but-unresolvable, and deleted) - see
+        # `fail_filter_status`. Same discipline as align_unavailable: refuse,
+        # serve 0, demote.
+        refused, refusal_status = fail_filter_status(src, cols, status)
+        if refused:
+            statuses[role] = _demote_for_unresolved(refusal_status, cols)
             counts[count_key] = 0
             if region_counts is not None:
                 region_counts[count_key] = 0
             continue
+        if fail_values:
+            filters.append(cols["val"].in_([str(v) for v in fail_values]))
 
         try:
             counts[count_key] = int(db.query(model).filter(*filters).count())
