@@ -2029,9 +2029,12 @@ function getScreenShift(physConfig, cellW, cellH) {
 // ⚠️ 순수 함수다. 이 파일의 module-state 천장은 여유가 0이므로 상태를 만들지 않는다.
 // ═══════════════════════════════════════════════════════════════════════════════
 function cellMetrics(width, height, visualCols, visualRows, physConfig) {
+  // [C2] 폴백에는 웨이퍼 기준 축척이 없다 — 두 축의 mm/px가 애초에 다르므로 붙일 자리가
+  //      없다. `waferAnchored: false`는 그 사실 그대로다(지름 선언 여부에 대한 주장이
+  //      아니다 — 그 구별은 `isotropic`이 이미 말한다).
   const anisotropicFallback = {
     cellW: width / visualCols, cellH: height / visualRows,
-    padX: 0, padY: 0, isotropic: false,
+    padX: 0, padY: 0, isotropic: false, waferAnchored: false,
   };
   if (!(visualCols > 0) || !(visualRows > 0) || !(width > 0) || !(height > 0)) return anisotropicFallback;
   const dx = physDeclaration('chipX', el.physChipX);
@@ -2042,9 +2045,43 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
   const chipY = physConfig ? physConfig.chipY : 0;
   if (!(chipX > 0) || !(chipY > 0)) return anisotropicFallback;
 
-  // px per mm, 두 축 공통. 격자 **전체**가 캔버스에 들어오는 최대값이므로 선언된 칸은
-  // 하나도 잘리지 않는다. 남는 여백은 격자 밖이고, 렌더가 격자선만 이어 그린다.
-  const s = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));
+  // px per mm, 두 축 공통.
+  //
+  // [C2] 축척의 기준은 **웨이퍼**다 — 격자가 아니다. (사용자 2026-08-04: "원크기도 항상
+  //      일정하게 — 지금 원크기 변함".) 웨이퍼는 맵마다 같은 물리 객체이므로 화면에서의
+  //      크기도 같아야 한다. 종전에는 축척이 격자에서만 나와서(`sGrid`) 누가 어떻게 격자를
+  //      끊었는지가 원의 크기를 정했다. 실측(캔버스 700x700, 선언 지름 300mm 동일):
+  //        20x20 격자 피치 6mm → 원 반지름 875.000px
+  //        40x40 격자 피치 3mm → 875.000px      (같은 격자 범위, 다른 치수)
+  //        52x52 격자 피치 6mm → 336.538px      ← 같은 웨이퍼가 2.6배 다르게 그려졌다
+  //      기준을 지름으로 옮기면 원이 캔버스의 고정 비율을 차지하고, 격자가 그 원에 대해
+  //      상대적으로 그려져 **격자가 웨이퍼의 얼마를 덮는가**가 화면에 남는다. 종전 규칙은
+  //      그 정보를 매번 지웠다(격자가 늘 캔버스를 꽉 채웠으므로).
+  //
+  // 🔴 `effectiveRadius`가 아니라 `waferDia`다. 전자는 edge margin(공정 파라미터)을 이미
+  //    접고 있어서, margin 3mm와 5mm로 선언된 **같은** 300mm 웨이퍼가 서로 다른 크기로
+  //    그려진다. "같은 웨이퍼는 같아 보인다"가 글자 그대로 참이 되는 쪽은 지름이다.
+  //
+  // 🔴 **`min(sGrid, sWafer)`이지 `sWafer`가 아니다. 이건 미관이 아니라 데이터다.**
+  //    `renderGridCanvas`의 캔버스 밖 `continue`는 `gridCells2D` 등록보다 **앞**에 있다.
+  //    그래서 캔버스를 넘친 선언 칸은 등록되지 않고 → `eachSavableCell`의 정의역 밖이 되어
+  //    **저장 페이로드에서 조용히 사라진다.** `s <= sGrid`를 지키면 `padX`/`padY >= 0`이
+  //    보장되어 선언된 격자는 언제나 캔버스 안이다. 격자가 웨이퍼보다 크면 격자가 축척을
+  //    잡고 원이 작아지는데, 그것은 지어낸 것이 아니라 참인 사실이다(그 격자는 웨이퍼보다
+  //    크다). 잘라 그리는 선택지는 이 도메인이 941060f에서 닫은 「아무도 안 보는 곳에
+  //    숨는다」와 같은 부류라 택하지 않는다.
+  //
+  // 🔴 **지름을 지어내지 않는다.** 선언이 없을 때 `physNum`의 기본값 300으로 메우면, 그
+  //    지어낸 물리량이 렌더 전체를 지배하면서 화면은 완벽히 정렬된 채로 값만 틀린다.
+  //    선언이 없으면 종전 규칙(`sGrid`)으로 그대로 물러나고 화면이 그렇게 말한다
+  //    (`waferAnchored: false` → `renderGridCanvas`의 수동 표기).
+  const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));
+  const dd = physDeclaration('waferDia', el.physWaferDia);
+  const waferAnchored = dd.value > 0;
+  // 캔버스 짧은 변 대비 웨이퍼 **지름**의 고정 비율. 남는 6%는 원의 선 두께와 격자
+  // 외곽선이 앉을 자리다 — 원이 캔버스 가장자리에 닿아 잘려 보이지 않게 한다.
+  const sWafer = waferAnchored ? (Math.min(width, height) * 0.94) / dd.value : Infinity;
+  const s = Math.min(sGrid, sWafer);
   const cellW = chipX * s;
   const cellH = chipY * s;
   return {
@@ -2052,6 +2089,7 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
     padX: (width - visualCols * cellW) / 2,
     padY: (height - visualRows * cellH) / 2,
     isotropic: true,
+    waferAnchored,
   };
 }
 
@@ -3143,7 +3181,7 @@ function renderGridCanvas() {
 
   // [C1] 셀 픽셀 크기의 **유일한 계산**. 마우스 경로(`getGridCellFromMouseEvent`)가 같은
   //      함수를 부른다 — 같은 수를 두 곳에서 계산하면 반드시 갈라진다.
-  const { cellW, cellH, padX, padY, isotropic } = cellMetrics(width, height, visualCols, visualRows, physConfig);
+  const { cellW, cellH, padX, padY, isotropic, waferAnchored } = cellMetrics(width, height, visualCols, visualRows, physConfig);
   const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
 
   const colorMap = {};
@@ -3391,9 +3429,16 @@ function renderGridCanvas() {
 
   // [C1] 종횡비를 모른다는 **사실**의 표기. 미상은 1:1이 아니다 — 선언이 없을 때 화면이
   //      말없이 정사각 셀을 그리면 조작자는 그것을 규격으로 읽는다.
+  // [C2] 지름 미선언도 같은 부류라 **같은 표기 자리**를 쓴다 — 새 영역·모드·컨트롤 없음.
+  //      지름 표기는 등방 분기에서만 나온다: 폴백에서는 `waferAnchored`가 언제나 false라
+  //      (붙일 축척 자체가 없다) 지름을 선언했는데도 미선언이라고 말하게 된다. 폴백
+  //      상태는 위 종횡비 표기가 이미 말하고 있다.
   if (el.cellAspectNote) {
-    el.cellAspectNote.style.display = isotropic ? 'none' : '';
-    el.cellAspectNote.textContent = isotropic ? '' : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다';
+    const notes = [];
+    if (!isotropic) notes.push('셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');
+    else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');
+    el.cellAspectNote.style.display = notes.length > 0 ? '' : 'none';
+    el.cellAspectNote.textContent = notes.join(' · ');
   }
 
   updateNotchPosition();
@@ -8018,14 +8063,31 @@ function overlayMarkerFill(list) {
   return legendColorForValue(list[0].val);
 }
 
+// [C3] 한 축에서 마커가 차지하는 반지름. **그 축의 칸 치수에서만** 나온다 — 두 치수를
+//      가진 칸을 스칼라 하나로 대신하지 않는다.
+//   - 바닥값(`floorPx`): 아주 작은 칸에서도 뭔가 보이게 한다.
+//   - 반 칸 상한: 바닥값이 칸을 넘어 **이웃 칸 위에** 그려지는 것을 막는다. 남의 칸에 앉은
+//     마커는 그 칸의 값을 말하는 것으로 읽히므로, 이건 미관이 아니라 오독 방지다.
+// 함수로 두는 이유는 네 자리(1:1 반지름 x2, 펼침 반지름 x2)가 상수를 **복사**하지 않고
+// 같은 정의를 실행하도록 하기 위해서다.
+function markerAxisRadius(cellPx, frac, floorPx) {
+  return Math.min(cellPx / 2, Math.max(floorPx, cellPx * frac));
+}
+
 // Draw one dot. The RING is the layer colour, so whatever the fill turns out to be, which
 // overlay a dot belongs to is still readable -- position cannot carry that, because the 1:1
 // branch's slot index is only consumed by the layers that actually drew in this cell. The
 // white halo sits between the two so a dot never disappears into a cell painted the same
 // colour as its own value.
-function paintOverlayDot(ctx, cx, cy, rad, fill, ringColor) {
+// [C3] `radY`는 선택이다 — 주지 않으면 `radX`와 같아 **원**이 되고, 그때 그리는 호출은
+//      한 글자도 바뀌지 않는다(정사각 칸 = 운영 대다수의 경로).
+function paintOverlayDot(ctx, cx, cy, radX, fill, ringColor, radY) {
+  const ry = (radY === undefined) ? radX : radY;
   ctx.beginPath();
-  ctx.arc(cx, cy, rad, 0, 2 * Math.PI);
+  // 칸이 직사각이면 마커도 직사각이다. `ellipse`가 없는 컨텍스트에서는 원으로 물러난다 —
+  // 웨이퍼 원을 그리는 자리가 이미 쓰는 같은 폴백이다(새 프리미티브를 만들지 않는다).
+  if (radX !== ry && typeof ctx.ellipse === 'function') ctx.ellipse(cx, cy, radX, ry, 0, 0, 2 * Math.PI);
+  else ctx.arc(cx, cy, radX, 0, 2 * Math.PI);
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1.6;
@@ -8045,7 +8107,33 @@ function paintOverlayDot(ctx, cx, cy, rad, fill, ringColor) {
 //    screen, mode or modal, and no new control: the marker layer that already existed now
 //    takes its colour from the legend instead of one flat colour per layer.
 function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
-  const r = Math.max(1.5, Math.min(cellW, cellH) * 0.13);
+  // [C3] 마커는 **칸 자신의 비례**를 따른다 — 짧은 변이 아니다. (운영 회귀 보고 2026-08-04:
+  //      "메인 맵은 멀쩡한데 오버레이 마커만 아주 작게 나온다".)
+  //
+  // 🔴 THE DEFECT (941060f 회귀). 반지름이 `Math.max(1.5, Math.min(cellW, cellH) * 0.13)`
+  //    이라 **짧은 변 하나가** 마커 전체를 인질로 잡았다. 941060f 이전에는 셀이
+  //    `width/cols` x `height/rows`라 거의 정사각이었고 `min()`이 무해했는데, 그 라운드가
+  //    `phys_chip_x != phys_chip_y`인 맵의 셀을 진짜 직사각형으로 만들었다 — 그게 요청된
+  //    결과였다. 실측(캔버스 700x700, 20x20 격자):
+  //        피치  6x6   셀 35.00x35.00px → 마커 9.10x9.10px  (26.0%W / 26.0%H)
+  //        피치  2x18  셀  3.89x35.00px → 마커 3.00x3.00px  (바닥값 1.5에 붙었다)
+  //        피치 0.6x18 셀  1.17x35.00px → 마커가 **하나도 그려지지 않았다** (아래 참조)
+  //    메인 격자가 멀쩡한 이유는 칸이 자기 사각형을 채우기 때문이다. 한 축으로 크기를
+  //    정하는 원만 무너졌다.
+  //
+  // 🔴 그래서 축마다 **그 축의 치수로** 잰다: 마커는 두 축 각각에서 칸의 같은 비율을
+  //    차지한다. 정사각 칸이면 `rx == ry`라 종전 원과 한 픽셀도 다르지 않다.
+  //    타원인 이유 — ① 칸을 채우는 사각형은 칸 자신의 범례색과 겹쳐 읽히지 않는다.
+  //    ② 기하평균 같은 단일 스칼라는 결국 두 치수를 스칼라 하나로 대신하는 **같은** 결함이고,
+  //    1:9에서 sqrt(3.89*35)=11.7px가 되어 3.89px 폭 칸을 넘는다. 타원만이 어떤 비율에서도
+  //    칸을 넘지 않으면서 1:1에서 종전 원으로 정확히 퇴화한다.
+  const rx = markerAxisRadius(cellW, 0.13, 1.5);
+  const ry = markerAxisRadius(cellH, 0.13, 1.5);
+  // 칸 안쪽 여백. 종전에는 1.5px 고정이었는데, 1.5px보다 얇은 칸에서는 앵커가 칸 왼쪽
+  // **밖으로** 나가 아래 `cx < x0`이 걸려 마커가 아예 그려지지 않았다(실측 0.6x18).
+  // 칸이 15px 이상이면 정확히 종전 1.5px다.
+  const insetX = Math.min(1.5, cellW * 0.1);
+  const insetY = Math.min(1.5, cellH * 0.1);
   let idx = 0;
   for (let i = 0; i < activeOverlayLayers.length; i++) {
     const layer = activeOverlayLayers[i];
@@ -8055,9 +8143,16 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
     // 칸 안에 여럿 — 각자의 나머지(칩 내 mm)가 그대로 자리가 된다.
     // 칸이 점 여럿을 담기에 너무 작으면 대표를 고르는 대신 **종전 한 점**으로 물러난다
     // (자리를 지어내지 않는다 — 목록은 레이어 행의 수가 계속 말한다).
-    const roomy = list.length > 1 && cellW >= 10 && cellH >= 10 && layer.seatAxes && layer.seatChip;
+    // [C3] **축마다 그 축이 실제로 필요한 것에 대고 잰다.** 종전 `cellW >= 10 && cellH >= 10`은
+    //      위 반지름과 같은 `min` 사고라 얇은 칸에서 펼침을 통째로 껐다 — 6칩을 받은 칸이
+    //      1칩 받은 칸과 화면에서 구별되지 않는 상태로 되돌아갔다(실측: 피치 2x18과 18x2에서
+    //      3점이 1점으로 붕괴). 넓고 낮은 칸은 가로로 벌리면 그만이고, 그러기 위해 세로가
+    //      보태야 할 것은 없다. 그래서 **한 축이라도** 여유가 있으면 펼친다.
+    //      ⚠️ 이건 순수한 확장이다 — 종전에 펼치던 칸은 전부 그대로 펼친다.
+    const roomy = list.length > 1 && (cellW >= 10 || cellH >= 10) && layer.seatAxes && layer.seatChip;
     if (roomy) {
-      const rr = Math.max(1.2, Math.min(cellW, cellH) * 0.10);
+      const rrx = markerAxisRadius(cellW, 0.10, 1.2);
+      const rry = markerAxisRadius(cellH, 0.10, 1.2);
       const A = layer.seatAxes;
       for (let k = 0; k < list.length; k++) {
         const it = list[k];
@@ -8072,18 +8167,18 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
         const cy = y0 + (0.5 + sy) * cellH;
         // [N2] Here one dot IS one source chip, so there is exactly one value to answer
         //      with. This is not choosing a representative -- it is that chip's own value.
-        paintOverlayDot(ctx, cx, cy, rr, overlayMarkerFill([it]), layer.color);
+        paintOverlayDot(ctx, cx, cy, rrx, overlayMarkerFill([it]), layer.color, rry);
       }
       continue;
     }
 
-    const cx = x0 + cellW - r - 1.5 - idx * (r * 2 + 1.5);
-    const cy = y0 + r + 1.5;
+    const cx = x0 + cellW - rx - insetX - idx * (rx * 2 + insetX);
+    const cy = y0 + ry + insetY;
     if (cx < x0) break; // 셀이 너무 작아 더 못 찍음
     // [N2] When `list` holds several items `overlayMarkerFill` answers null and the dot is
     //      left unfilled, because no single value may be picked to stand for the rest. This
     //      is the colour half of the user's "list them all" ruling.
-    paintOverlayDot(ctx, cx, cy, r, overlayMarkerFill(list), layer.color);
+    paintOverlayDot(ctx, cx, cy, rx, overlayMarkerFill(list), layer.color, ry);
     idx++;
   }
 }

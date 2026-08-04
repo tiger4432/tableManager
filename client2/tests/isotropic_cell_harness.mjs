@@ -428,9 +428,13 @@ function scoreOffGridNotWritable(src, tag, opts) {
 // ── ② Per-cell value neutrality + the differential ─────────────────────────────────────
 // The "before" is produced by putting the DEFECT BACK: `cellMetrics` forced to its
 // pre-change, anisotropic form. Same source, same fixture, one function's body swapped.
+// Re-pointed 2026-08-04 (wafer-anchored scale): the isotropic scale is now `min(sGrid, sWafer)`
+// and the old one-line anchor no longer matches. A `find` string that no longer matches is a
+// SILENT HOLE, not a pass -- `applyMutation` refuses a non-1 match count for exactly that
+// reason, and it is what caught this.
 const ANISOTROPIC_REVERT = {
-  find: `  const s = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));`,
-  repl: `  return anisotropicFallback;\n  const s = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));`,
+  find: `  const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));`,
+  repl: `  return anisotropicFallback;\n  const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));`,
 };
 
 function scoreValueNeutrality(src, evidence) {

@@ -119,9 +119,17 @@ const FLOORS = new Map([
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to
   // measure it against. 5 of its assertions are the mutation floor itself.
-  ['isotropic_cell_harness.mjs', 120],
+  // 120 -> 124 (2026-08-04, wafer-anchored scale). The count rose without a new assertion
+  // being written: the anchor gives the 700x700 fixture a real margin, so 4 more
+  // margin-click probes in ④d actually ran. Raising the floor protects that coverage.
+  ['isotropic_cell_harness.mjs', 124],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
+  // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its
+  // cell's own proportions instead of the shorter axis; the wafer, not the grid, anchors the
+  // canvas scale). Floor is the count it reports on the commit that introduces it -- there is
+  // no earlier tree to measure it against. 11 of its assertions are the mutation floor itself.
+  ['marker_shape_wafer_anchor_harness.mjs', 114],
   // 54, not the 53 the overlay branch carried: that branch forked before the datalist
   // harness gained its assertion, and a floor is a minimum — merging the lower number
   // would have quietly un-scored the newer one.
