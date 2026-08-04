@@ -127,7 +127,11 @@ const FLOORS = new Map([
   // 120 -> 124 (2026-08-04, wafer-anchored scale). The count rose without a new assertion
   // being written: the anchor gives the 700x700 fixture a real margin, so 4 more
   // margin-click probes in ④d actually ran. Raising the floor protects that coverage.
-  ['isotropic_cell_harness.mjs', 124],
+  // 124 -> 152 (2026-08-04, D1). "Auto-registered geometry is not a declaration": the flag,
+  // never the chip value, decides. The added assertions are mostly ONE discrimination —
+  // an UNFLAGGED chip 1x1 must stay a real 1mm declaration — because that is the only thing
+  // separating this from a magic-number sentinel, and 1 is a legal pitch.
+  ['isotropic_cell_harness.mjs', 152],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
   // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its
@@ -150,7 +154,7 @@ const FLOORS = new Map([
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and
   // the stranded-cell count in the confirm is checked against an independent set-difference
   // oracle rather than against a number the code produced.
-  ['map_spec_only_save_harness.mjs', 34],
+  ['map_spec_only_save_harness.mjs', 36],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

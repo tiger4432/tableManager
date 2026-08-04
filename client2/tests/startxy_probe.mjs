@@ -68,6 +68,10 @@ const WANTED = [
   ['getDbCoords', 'getVisualCoords'],
   // Absent before the isotropic-cell round; the per-entry `missing` tolerance covers the
   // older revisions this probe also slices.
+  // [D1] `physDeclaration` now asks whether the geometry on screen was AUTO-REGISTERED
+  // (synthesized, never measured) before reporting a chip pitch as declared. Same
+  // per-entry `missing` tolerance: older revisions this probe slices do not have it.
+  ['geometryIsAutoRegistered'], ['markGeometryAutoRegistered'],
   ['physDeclaration'], ['cellMetrics'],
   ['isCellInsideWaferFast'], ['getWaferBoundingBox'],
   ['frameDimBounds'], ['applyPhysicalGeometry'], ['applyPresetObject'],

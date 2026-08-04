@@ -82,7 +82,7 @@ function sliceFunction(source, name) {
 }
 
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame', 'physDeclaration',
+  'physNum', 'gridDimNum', 'withPhysFrame', 'geometryIsAutoRegistered', 'physDeclaration',
   'cellMetrics',                                       // THE function under test (ⓦ)
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex',
@@ -706,9 +706,13 @@ const MUTATIONS = [
     find: `  const dd = physDeclaration('waferDia', el.physWaferDia);`,
     repl: `  const dd = { value: physNum('waferDia', el.physWaferDia, 300) };`,
   }],
+  // [D1] The anchor gained a `} ` prefix when the aspect clause above it grew a third case
+  // (auto-registered geometry gets its own sentence, because "Chip X/Y 미선언" reads as false
+  // when the inputs visibly hold a number). The mutation is unchanged — only the text it
+  // anchors on moved, and the harness refused to run rather than silently matching nothing.
   ['ⓦ the screen stops saying the diameter is undeclared', {
-    find: `    else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');`,
-    repl: `    else if (false) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');`,
+    find: `    } else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');`,
+    repl: `    } else if (false) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');`,
   }],
 ];
 

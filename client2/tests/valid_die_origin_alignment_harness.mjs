@@ -76,7 +76,7 @@ function sliceFunction(source, name) {
 // The coordinate path and everything it passes through. A rename here is exit 2, never green.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
-  'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex',
   'validDieBasis', 'isValidDieAt',

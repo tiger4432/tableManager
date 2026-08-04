@@ -765,6 +765,12 @@ function initDOMElements() {
   };
 
   const onPhysicalGeometryEdit = (ev) => {
+    // [D1] 조작자가 칩 칸을 고쳤다면 그 값은 이제 **선언이다** — 합성 규격 표지를 끈다.
+    //      칩 칸에서만 끈다: OFFSET이나 마진을 만지는 것은 칩 피치를 잰 것이 아니고,
+    //      거기서까지 끄면 아무도 선언하지 않은 피치가 선언으로 승격된다.
+    if (ev && ev.target && (ev.target === el.physChipX || ev.target === el.physChipY)) {
+      markGeometryAutoRegistered(false);
+    }
     if (!ev || ev.type === 'change') {
       const capped = [
         clampOffsetToPitch(el.physOffsetX, el.physChipX, 'OFFSET X', 'CHIP X'),
@@ -1446,17 +1452,74 @@ function gridDimNum(key, domEl, dflt) {
 //   'screen'     — 프레임은 말이 없고 화면 컨트롤이 값을 냈다  ← 규칙 6에서 이것이 위험이다
 //   'unparsable' — 값은 있는데 수가 아니다 (value = null)
 //   'absent'     — 어느 쪽도 값을 내놓지 않는다 (value = null)
+//   'auto_registered' — 값은 **있지만 선언이 아니다**: 아무도 재지 않은 합성 규격이다
+//                       (value = null — 아래 §자동 등록 규격)
+//
+// ═══ [D1] 자동 등록된 규격은 선언이 아니다 (사용자 판정 2026-08-04) ═══════════════════
+//
+// 맵에 규격 행이 없으면 두 곳이 **마스크 중립 합성 규격**을 만들어 넣는다. 둘 다 물리량을
+// 「없음」으로 표현할 어휘가 없어서 chip 1x1 / offset 0 / 격자 반대각선을 외접하는 지름을
+// 쓴다 — 원 마스크가 아무 셀도 자르지 않게 하려는 것이지, 1mm 다이를 주장하는 게 아니다:
+//   · `server/map_meta_registrar.synthesize_grid_meta()` — 인제션 자동 등록
+//   · 이 파일의 `[fix C]` 분기                            — 규격 없는 맵의 「표준」 선택
+//
+// 🔴 **읽는 쪽이 그 사실을 몰랐다.** `physDeclaration`은 합성 규격과 사람이 잰 1mm 선언을
+//    **바이트 단위로 같게** 답했고, 그래서 「피치 미선언」을 잡으려고 만든 관문이 통과했다.
+//    실측 2026-08-04: 등록된 668행 중 320행(47.9%)이 합성 규격이다.
+//
+// 🔴 **판정은 값이 아니라 `auto_registered` 표지다** — chip이 1인지 보지 않는다. 1은 합법적인
+//    값이라(5x5 다이가 실재한다) 그것을 표지로 쓰면 언젠가 진짜 1mm 다이를 조용히 삼킨다.
+//    표지는 자기가 표지라고 말하고, 측정값과 혼동될 수 없다.
+// 🔴 **레거시 폴백(chip 1x1을 표지로 읽기)은 두지 않는다 — 필요 없다는 것을 셌다.** 실측:
+//    chip 1x1인 320행이 **전부** `auto_registered: true`를 달고 있고, 표지 없이 1x1인 행은
+//    **0건**이다. 안 쓰이는 폴백은 채점되지 않는 두 번째 판정 경로일 뿐이다.
+// 🔴 **두 축을 함께 본다**(표지는 규격 전체에 붙는다). 1 x 8 같은 진짜 이방성 선언은
+//    표지가 없으므로 여기 걸리지 않는다.
+//
+// ⚠️ **표지가 사는 곳은 값이 사는 곳과 같아야 한다.** 프레임 창에서는 프레임 객체가,
+//    화면에서는 그 값을 담은 입력칸 자신(`dataset`)이 들고 있다 — 모듈 상태를 만들지
+//    않으려는 것이기도 하지만(천장 여유 0), 무엇보다 값과 표지가 갈라지면 표지가 낡는다.
+//    조작자가 칩 칸을 고치는 순간 표지는 사라진다(§`markGeometryAutoRegistered`).
+// 🔴 **프레임 창 안에서는 프레임만 답한다.** 화면 표지를 함께 보면 자동 등록 맵을 열어 둔 채
+//    남의 맵을 오버레이할 때 그 **소스**의 진짜 규격이 「선언 없음」으로 뒤집힌다 — 표지는
+//    맵마다의 사실이지 세션의 사실이 아니다.
+// 🔴 **두 축 모두에 표지가 있어야 한다.** 한 축만 보면 나머지 한 축에 쓰는 코드가 아무것도
+//    하지 않게 되고, 안 읽히는 쓰기는 조용히 낡는다(둘이 갈라져도 아무도 모른다).
+function geometryIsAutoRegistered() {
+  if (physFrameOverride) return physFrameOverride.autoRegistered === true;
+  if (!el) return false;
+  const dx = el.physChipX ? el.physChipX.dataset : null;
+  const dy = el.physChipY ? el.physChipY.dataset : null;
+  return !!(dx && dy && dx.autoRegistered === '1' && dy.autoRegistered === '1');
+}
+
 function physDeclaration(key, domEl) {
   const read = (raw, source) => {
     if (raw === undefined || raw === null || String(raw).trim() === '') return null;
     const n = parseFloat(raw);
     return Number.isFinite(n) ? { value: n, source } : { value: null, source: 'unparsable' };
   };
+  // 🔴 **여기가 유일한 철자다.** 호출자가 이 질문을 다시 구현하면 「선언인가」의 답이 둘이 되고,
+  //    그 둘이 갈리는 날은 화면이 멀쩡한 채로 값만 틀리는 날이다.
+  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {
+    return { value: null, source: 'auto_registered' };
+  }
   if (physFrameOverride && Object.prototype.hasOwnProperty.call(physFrameOverride, key)) {
     const fromFrame = read(physFrameOverride[key], 'frame');
     if (fromFrame) return fromFrame;
   }
   return read(domEl ? domEl.value : null, 'screen') || { value: null, source: 'absent' };
+}
+
+// 화면 쪽 표지의 **유일한 쓰기 지점**. 칩 입력칸에 붙인다 — 규칙이 읽는 값이 거기 있다.
+// 켜는 곳: 합성 규격을 화면에 앉히는 두 자리(메타 로드 · `[fix C]`).
+// 끄는 곳: 사람이 규격을 선언하는 모든 자리(프리셋 적용 · 칩 칸 직접 편집 · 표지 없는 메타).
+function markGeometryAutoRegistered(on) {
+  [el.physChipX, el.physChipY].forEach(input => {
+    if (!input || !input.dataset) return;
+    if (on) input.dataset.autoRegistered = '1';
+    else delete input.dataset.autoRegistered;
+  });
 }
 
 function withPhysFrame(frame, fn) {
@@ -2705,6 +2768,11 @@ function applyPresetObject(preset) {
   }
   if (preset.phys_chip_x !== undefined && el.physChipX) el.physChipX.value = preset.phys_chip_x;
   if (preset.phys_chip_y !== undefined && el.physChipY) el.physChipY.value = preset.phys_chip_y;
+  // [D1] 프리셋은 **선언이다** — 사람이 고른 규격이므로 자동 등록 표지를 끈다. 합성 규격을
+  //      앉히는 유일한 호출자(`[fix C]`)는 이 호출 **뒤에** 표지를 다시 켠다. 여기서 끄지
+  //      않으면 자동 등록 맵에서 프리셋을 고른 순간 표지가 살아남아, 사람이 방금 선언한
+  //      피치가 「선언 없음」으로 읽힌다.
+  markGeometryAutoRegistered(false);
   if (preset.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = preset.phys_offset_x;
   if (preset.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = preset.phys_offset_y;
   if (preset.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = preset.phys_edge_margin;
@@ -3474,10 +3542,16 @@ function renderGridCanvas() {
   //      지름 표기는 등방 분기에서만 나온다: 폴백에서는 `waferAnchored`가 언제나 false라
   //      (붙일 축척 자체가 없다) 지름을 선언했는데도 미선언이라고 말하게 된다. 폴백
   //      상태는 위 종횡비 표기가 이미 말하고 있다.
+  // [D1] 자동 등록 규격은 **자기 문장을 갖는다.** 「Chip X/Y 미선언」은 이 경우에 거짓으로
+  //      읽힌다 — 입력칸에는 1이 보이므로 조작자는 선언이 있다고 읽고, 왜 원이 사라졌는지
+  //      알 길이 없다. 새 컨트롤이 아니라 이미 있는 이 표기 자리의 세 번째 문구다.
   if (el.cellAspectNote) {
     const notes = [];
-    if (!isotropic) notes.push('셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');
-    else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');
+    if (!isotropic) {
+      notes.push(geometryIsAutoRegistered()
+        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'
+        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');
+    } else if (!waferAnchored) notes.push('웨이퍼 지름 미선언 — 원 크기가 격자에 따라 달라집니다');
     el.cellAspectNote.style.display = notes.length > 0 ? '' : 'none';
     el.cellAspectNote.textContent = notes.join(' · ');
   }
@@ -5387,6 +5461,12 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
       phys_offset_x: 0, phys_offset_y: 0,
       phys_edge_margin: 3,
     });
+    // [D1] 이 규격은 **아무도 재지 않았다.** 서버의 `synthesize_grid_meta`가 같은 값을
+    //      `auto_registered: true`와 함께 저장하는 것과 같은 사실이고, 여기서는 저장 행이
+    //      아직 없으므로 표지가 화면(입력칸)에 산다. `applyPresetObject`가 방금 껐으므로
+    //      **반드시 그 뒤**여야 한다. ⚡ Push가 이 표지를 payload에 실어(§buildPushGrid
+    //      Metadata) 왕복 후에도 남는다 — 안 그러면 Push 한 번이 합성 규격을 선언으로 승격한다.
+    markGeometryAutoRegistered(true);
   } else if (userChoice === 'meta') {
     cols = loadedGridMeta.grid_cols;
     rows = loadedGridMeta.grid_rows;
@@ -5402,6 +5482,9 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
     if (loadedGridMeta.phys_offset_x !== undefined && el.physOffsetX) el.physOffsetX.value = loadedGridMeta.phys_offset_x;
     if (loadedGridMeta.phys_offset_y !== undefined && el.physOffsetY) el.physOffsetY.value = loadedGridMeta.phys_offset_y;
     if (loadedGridMeta.phys_edge_margin !== undefined && el.physEdgeMargin) el.physEdgeMargin.value = loadedGridMeta.phys_edge_margin;
+    // [D1] 저장된 표지를 화면으로 옮긴다. **양방향이다** — 표지가 없는 메타를 불러오면
+    //      직전 맵의 표지가 남아 진짜 선언을 「선언 없음」으로 읽게 되므로 반드시 끈다.
+    markGeometryAutoRegistered(loadedGridMeta.auto_registered === true);
   } else {
     // Use current UI settings
     cols = parseInt(el.gridCols.value, 10) || 10;
@@ -6116,6 +6199,12 @@ function buildPushGridMetadata(cols, rows, startX, startY, invertY,
     phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
     phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
   };
+  // [D1] 합성 규격이면 **표지도 함께 저장한다.** 이 함수는 화면 컨트롤에서 규격을 처음부터
+  //      다시 짓는데, 표지에 대응하는 컨트롤이 없어서 종전에는 Push 한 번이 표지를 지웠다 —
+  //      그러면 자동 등록 행이 조용히 「사람이 선언한 규격」으로 승격되고, 등록기는 이미
+  //      존재하는 행을 다시 쓰지 않으므로(absent-only) 그 사실은 영영 돌아오지 않는다.
+  //      🔴 표지가 없는 맵의 payload는 이 줄로 **한 바이트도 바뀌지 않는다**(INV-1).
+  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;
   const validDieDecision = validDieRefForPush();
   const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
     validDie ? validDie.raw : undefined);
@@ -8261,6 +8350,10 @@ function frameFromMeta(meta) {
     offsetX: num(meta.phys_offset_x),
     offsetY: num(meta.phys_offset_y),
     edgeMargin: num(meta.phys_edge_margin),
+    // [D1] 표지도 프레임에 실린다. 이 줄이 없으면 오버레이 경로에서 표지가 **화이트리스트에
+    //      걸러져** 사라지고, 소스의 합성 1x1이 진짜 피치로 읽힌다(§physDeclaration).
+    //      `num()`을 태우지 않는다 — 이것은 수가 아니라 사실이다.
+    autoRegistered: meta.auto_registered === true,
   };
 }
 

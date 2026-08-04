@@ -84,7 +84,7 @@ const SYMBOLS = [
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   'projectCellsToWaferMm', 'projectCellsToPhys',
   'seatWaferMmInFrame', 'canvasSeatKeys',
-  'physDeclaration', 'frameDimBounds', 'frameDimError',
+  'geometryIsAutoRegistered', 'physDeclaration', 'frameDimBounds', 'frameDimError',
   'reseatOverlayLayer',
 ];
 

@@ -84,6 +84,9 @@ const SYMBOLS = [
   // The merge under test. Sliced, never re-typed: a copy here would let this harness score a
   // preservation rule the product does not implement.
   'mergeStoredGridMeta',
+  // [D1] `buildPushGridMetadata` asks this before deciding whether the spec it writes is a
+  // declaration or a synthesized stand-in.
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered',
   'buildPushGridMetadata',
   'serverCellKeySet', 'classifyUnsavableCells',
   // The READ. Real, so that "what did this feature ask the server" is a measurement.
@@ -98,7 +101,7 @@ const PHYS = { dia: 300, chipX: 14.3, chipY: 9.7, offX: 1.7, offY: -2.4, margin:
 const ROT = 90;
 const SIDE = 'front';
 
-function makeInput(v) { return { value: String(v), checked: false, style: {} }; }
+function makeInput(v) { return { value: String(v), checked: false, style: {}, dataset: {} }; }
 
 function makeEl(frame) {
   return {
@@ -459,6 +462,30 @@ async function run(src) {
     evidence.push('I no key: 0 requests');
   }
 
+  // ── J. [D1] AUTO-REGISTRATION SURVIVES THE ROUND TRIP. ────────────────────────────────
+  //   A synthesized spec that loses its mark on the first save is silently promoted to a
+  //   declaration, and it can never be demoted again: the ingestion registrar only fills in
+  //   ABSENT rows, so it will never revisit one that now exists. Both writers share
+  //   `buildPushGridMetadata`, so this is scored on the payload it produces.
+  {
+    const marked = buildEnv(src, { answer: answerWith(storedRow()) });
+    marked.S.markGeometryAutoRegistered(true);
+    await marked.S.saveMapSpecOnly();
+    eq('J/a a marked spec writes the flag back', true,
+      metaPayload(marked.requests).auto_registered,
+      'losing it here promotes synthesized geometry to a declaration, permanently');
+
+    // 🔴 THE OTHER HALF, and the one that protects INV-1: an UNMARKED map must not gain the
+    //    key. A writer that always emits it would satisfy J/a and change the payload of every
+    //    map in the database.
+    const plain = buildEnv(src, { answer: answerWith(storedRow()) });
+    await plain.S.saveMapSpecOnly();
+    eq('J/b an unmarked spec does NOT gain the flag', false,
+      'auto_registered' in metaPayload(plain.requests),
+      'the payload of a normal map must be unchanged by this round');
+    evidence.push('J round trip: marked payload carries auto_registered, unmarked does not');
+  }
+
   return { failures, compared, evidence };
 }
 
@@ -534,6 +561,17 @@ const MUTANTS = {
   'the-write-asks-nobody': (s) => once(s,
     '  if (!confirm(\n    `맵 규격만 기록합니다 — 셀은 하나도 쓰지 않습니다.\\n\\n`',
     '  if (false && confirm(\n    `맵 규격만 기록합니다 — 셀은 하나도 쓰지 않습니다.\\n\\n`'),
+  // [D1] The mark is dropped on the way out, so the first save of an auto-registered map
+  // promotes its synthesized geometry to a declaration — irreversibly, because the registrar
+  // only ever fills ABSENT rows.
+  'auto-registration-is-lost-on-save': (s) => once(s,
+    '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
+    '  // mark dropped'),
+  // ...and the opposite: it is written unconditionally, which changes the payload of every
+  // ordinary map in the database (INV-1).
+  'auto-registration-is-written-for-everything': (s) => once(s,
+    '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
+    '  gridMeta.auto_registered = true;'),
   // ── NEGATIVE CONTROL. A comment-only edit must ESCAPE. A corpus that "catches" this is
   //    keying on source text rather than behaviour, and its caught column means nothing.
   '__control_comment_only': (s) => once(s,
