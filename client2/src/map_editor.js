@@ -679,7 +679,69 @@ function initDOMElements() {
   //
   // ⚠️ 이 리스너는 변경 **전** 상태를 스스로 잡을 수 없다: `input`/`change`는 DOM 값이 이미
   //    바뀐 뒤에 뜬다. 그래서 직전 렌더가 남긴 기록(`cellsSeatedUnder`)이 옛 좌표계다.
-  const onPhysicalGeometryEdit = () => {
+  //
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // [규칙 ④-b] **OFFSET은 CHIP 피치를 넘지 못한다.**
+  //
+  // 🔴 **오프셋의 뜻은 하나이고, 두 소비자가 갈리지 않는다.** 오프셋은 다이 격자를 웨이퍼
+  //    원에 대해 물리 mm만큼 밀어 놓는다. 정본은 서버다
+  //    (`PhysicalWaferEngine.get_cell_physical_mm`: `x_mm = (c − cc)·chip_x + off_x`).
+  //    이 파일의 `getScreenShift`는 회전 4 × 면 2 = 8조합 전부에서 서버의
+  //    `map_overlay._frame_phys_params` 표와 항별로 같은 답을 낸다 — 측정: 같은 칸의
+  //    웨이퍼 mm가 off 0/5/11에서 0.000/5.000/11.000으로 서버 식과 글자 그대로 일치.
+  //    그러므로 사용자가 본 드리프트는 **정의의 불일치가 아니다.**
+  //
+  // 🔴 **피치를 넘는 오프셋은 새 기하가 아니라 번호 다시 매기기다.** 다이 격자는 피치 주기라
+  //    `off += chipX`는 칸 c를 예전 칸 c+1의 자리에 앉힌다: 다이가 놓이는 mm 집합은 글자
+  //    그대로 같고 인덱스만 1씩 옮겨간다(측정: off 0/11/22에서 캔버스 칸 14가 다이 인덱스
+  //    0/1/2, mm 0/11/22). 표현할 수 있는 기하는 `|off| ≤ 피치` 안에 전부 들어 있다.
+  //
+  // 🔴 **드리프트의 정체는 그 옮겨간 번호다.** 원점 상자는 **선언된 격자 안에서만** 훑는다 —
+  //    클라(`getWaferBoundingBox`의 `r < visualRows / c < visualCols`)도 서버
+  //    (`WaferMapCoordinateTransformer.get_wafer_bounding_box`의 같은 두 줄)도 같다.
+  //    그런데 렌더 루프는 캔버스를 덮을 만큼 격자를 **연장해서** 그린다(§renderGridCanvas의
+  //    `startC`/`endC`). 그래서 오프셋이 커지면 원 안의 다이는 c < 0에 계속 나타나는데 상자는
+  //    0에서 멈추고, 그 차이가 그대로 ORIGIN과 유효 다이 사이의 거리가 된다.
+  //    측정(dia 300 · chip 11×13 · 29×25): off 33mm에서 1칸, 50mm에서 3칸, 80mm에서 6칸.
+  //    ⚡ 그리고 저장 좌표가 **같은 수만큼 통째로** 어긋난다(die(−3,−2)의 x가 10 → 7).
+  //    화면은 멀쩡한데 값이 틀리는, 이 도메인이 존재하는 그 결함이다.
+  //
+  // 🔴 **그래서 상자를 넓히지 않고 오프셋을 막는다.** 상자를 무한 격자로 넓히면 서버의 상자와
+  //    갈라져 이음매가 깨진다(불변식 ①). 반대로 파생 격자는 `ceil(2R/chip) + 2`로 **양쪽에
+  //    한 칸씩** 여유를 두도록 정의돼 있으니, 피치 1개가 곧 그 예산이다. 측정된 드리프트
+  //    개시점은 2피치(≈23.7mm)라 1피치 상한은 2배 여유를 남긴다.
+  //
+  // ⚠️ **선언된 메타는 손대지 않는다.** 서버가 준 프레임을 조용히 고쳐 쓰면 그 맵의 저장
+  //    좌표가 통째로 재해석된다(불변식 ③). 그래서 이 관문은 **사용자가 값을 확정할 때**
+  //    (`change`)만 작동하고, 프리셋·메타 적용 경로는 지나간다. 라이브 프리셋의 최대
+  //    오프셋은 10mm(chip 11mm)라 오늘 이 관문에 걸리는 저장 값은 없다.
+  // ⚠️ `input`에는 걸지 않는다 — 타이핑 중에 자르면 "12"를 치는 도중 "1"에서 잘린다.
+  // ⚠️ `physNum`이 아니라 DOM을 직접 읽는다. 이것은 **화면 컨트롤**의 관문이고, 프레임 창
+  //    (소스 메타)의 규격은 절대 고쳐 쓰지 않는다.
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const clampOffsetToPitch = (input, pitchInput, label, pitchLabel) => {
+    if (!input || !pitchInput) return null;
+    const v = parseFloat(input.value);
+    const pitch = Math.abs(parseFloat(pitchInput.value));
+    if (!Number.isFinite(v) || !Number.isFinite(pitch) || pitch <= 0) return null;
+    if (Math.abs(v) <= pitch) return null;
+    const next = v > 0 ? pitch : -pitch;
+    input.value = String(next);
+    return `${label} ${v} → ${next} (${pitchLabel} ${pitch}mm)`;
+  };
+
+  const onPhysicalGeometryEdit = (ev) => {
+    if (!ev || ev.type === 'change') {
+      const capped = [
+        clampOffsetToPitch(el.physOffsetX, el.physChipX, 'OFFSET X', 'CHIP X'),
+        clampOffsetToPitch(el.physOffsetY, el.physChipY, 'OFFSET Y', 'CHIP Y'),
+      ].filter(Boolean);
+      if (capped.length > 0) {
+        showToast(`OFFSET은 CHIP 크기를 넘을 수 없습니다 — ${capped.join(' / ')}. `
+          + '칩 피치를 넘는 오프셋은 같은 격자에 번호만 다시 매기고, '
+          + 'ORIGIN을 유효 다이 영역 밖으로 밀어냅니다.', 'warning');
+      }
+    }
     reseatCellsToStoredCoords(cellsSeatedUnder);
     scheduleRenderGridCanvas();
   };
