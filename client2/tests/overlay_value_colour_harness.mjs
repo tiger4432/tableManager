@@ -132,7 +132,7 @@ function makeSandbox(src) {
 // A canvas 2D context that records instead of drawing. `fillStyle` is recorded on assignment
 // so "assigned but never used" is distinguishable from "actually filled".
 function recordingCtx() {
-  const rec = { fills: [], strokes: [], arcs: [], assignedFill: [] };
+  const rec = { fills: [], strokes: [], arcs: [], ellipses: [], assignedFill: [] };
   let fillStyle = null, strokeStyle = null, lineWidth = 0;
   return {
     rec,
@@ -144,6 +144,13 @@ function recordingCtx() {
     set lineWidth(v) { lineWidth = v; },
     beginPath() { },
     arc(x, y, r) { rec.arcs.push({ x, y, r }); },
+    // 2026-08-04: the painter draws an ELLIPSE when the two radii differ, and falls back to
+    // `arc` when the context has no `ellipse`. A recorder without `ellipse` would silently
+    // score the fallback and report a circle where the product draws an ellipse -- the same
+    // "measured the wrong branch" trap this file already carries scars from. The dots this
+    // harness paints are all square, so the count below is unchanged; the method exists so
+    // that stops being true by accident rather than in silence.
+    ellipse(x, y, rx, ry) { rec.ellipses.push({ x, y, rx, ry }); },
     fill() { rec.fills.push(fillStyle); },
     stroke() { rec.strokes.push({ color: strokeStyle, width: lineWidth }); },
   };
@@ -534,12 +541,15 @@ const MUTATIONS = [
     "  ctx.strokeStyle = '#ffffff';\n  ctx.lineWidth = 1.6;",
     "  ctx.strokeStyle = ringColor;\n  ctx.lineWidth = 1.6;"],
   // ④ The renderer stops asking -- the regression back to one flat colour per layer.
+  // Re-pointed 2026-08-04: the marker radius became per-axis (`r` -> `rx`/`ry`, `rr` -> `rrx`/
+  // `rry`), so both anchors stopped matching. The sweep's own applied-count check is what said
+  // so; a `find` that no longer matches is a silent hole, not a pass.
   ['the 1:1 branch reverts to the flat layer colour',
-    'paintOverlayDot(ctx, cx, cy, r, overlayMarkerFill(list), layer.color);',
-    'paintOverlayDot(ctx, cx, cy, r, layer.color, layer.color);'],
+    'paintOverlayDot(ctx, cx, cy, rx, overlayMarkerFill(list), layer.color, ry);',
+    'paintOverlayDot(ctx, cx, cy, rx, layer.color, layer.color, ry);'],
   ['the N:1 branch reverts to the flat layer colour',
-    'paintOverlayDot(ctx, cx, cy, rr, overlayMarkerFill([it]), layer.color);',
-    'paintOverlayDot(ctx, cx, cy, rr, layer.color, layer.color);'],
+    'paintOverlayDot(ctx, cx, cy, rrx, overlayMarkerFill([it]), layer.color, rry);',
+    'paintOverlayDot(ctx, cx, cy, rrx, layer.color, layer.color, rry);'],
   // ⑤ The in-chip remainder is consumed while this path is edited.
   ['the in-chip remainder is discarded in the marker path',
     'const fx = it.rx / layer.seatChip.x - 0.5;\n        const fy = it.ry / layer.seatChip.y - 0.5;',
