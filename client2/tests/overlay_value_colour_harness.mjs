@@ -75,6 +75,11 @@ const countOf = (hay, needle) => hay.split(needle).length - 1;
 const SYMBOLS = [
   'declaredLegendRow',
   'legendColorForValue', 'overlayMarkerFill', 'paintOverlayDot',
+  // A12 (2026-08-04). The REGISTRATION half of this feature: without it the colouring code
+  // above is correct and does nothing, because no overlay value is ever in the legend to be
+  // declared. Sliced, never re-typed — a local copy would score a seeding the product does
+  // not perform.
+  'overlayLayerValues', 'ensureLegendValues', 'autoAddLegendValue', 'legendOverlaySources',
   'overlayUnlistedValues', 'overlayLegendChip', 'escapeHtmlAttr',
 ];
 
@@ -91,12 +96,33 @@ const SERVED_DEFAULT = [
 ];
 const UNLISTED = ['ZZ9', 'QQ'];                          // declared by neither
 
+// Every `saveLegendToStorage()` the seeding path makes. A count, not a boolean: "the local
+// draft was written" and "it was written once per value" are different claims.
+const ctxSaves = [];
+
 function makeSandbox(src) {
+  ctxSaves.length = 0;
   const body = SYMBOLS.map(n => sliceFunction(src, n)).join('\n\n');
   const ctx = {
     console, Math, Number, String, Array, Object, Map, Set, JSON,
     legend: MAP_LEGEND.map(r => ({ ...r })),
     overlayContract: { valueColumnCandidates: [], defaultLegend: SERVED_DEFAULT.map(r => ({ ...r })) },
+    // ── A12 support. STUBBED deliberately, and only the parts that are somebody else's
+    //    contract: `normalizeLegendItem`/`legendRowSignature` live in
+    //    `client2/src/split_registry_row.js` and are scored by `split_registry_harness.mjs`;
+    //    `saveLegendToStorage` is the local-draft writer and its own axis is the draft
+    //    lifecycle. What is NOT stubbed is everything this axis actually claims —
+    //    `overlayLayerValues`, `ensureLegendValues`, `autoAddLegendValue` and
+    //    `legendColorForValue` are the real thing.
+    //    🔴 The stub signature is NOT identity: it must preserve `vocab`, because the whole
+    //    "nothing reaches the server" argument rides on that field surviving the round trip.
+    normalizeLegendItem: (o) => ({ desc: '', ...o }),
+    legendRowSignature: (o) => JSON.stringify([o.value, o.desc, o.color]),
+    legendVocabularySeed: new Map(),
+    // A13 reads the LIVE layer set, so it has to be settable from a check.
+    overlayLayers: [],
+    pickUnusedColor: () => '#123456',
+    saveLegendToStorage: () => { ctxSaves.push('save'); },
   };
   vm.createContext(ctx);
   try { vm.runInContext(body, ctx); } catch (e) { die(`sandbox did not evaluate: ${e.message}`); }
@@ -131,6 +157,12 @@ function runAll(src) {
   let ran = 0;
   const ok = (cond, name, detail) => { ran++; if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
   const eq = (got, want, name) => ok(got === want, name, `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+  // Structural compare for the array-shaped answers A12 needs. `eq` stays reference-strict on
+  // purpose for every scalar assertion above it -- widening it would quietly turn `0 === '0'`
+  // style mistakes into passes across 60 existing checks.
+  const eqDeep = (got, want, name) =>
+    ok(JSON.stringify(got) === JSON.stringify(want), name,
+       `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
   const ctx = makeSandbox(src);
 
   // ── A1: PATH ONE -- the value is in THE OPEN MAP'S legend (its registry rows). ──
@@ -290,6 +322,172 @@ function runAll(src) {
     ok(!/<input|<select|type="checkbox"/.test(list), 'A11b and no input was added to it');
   }
 
+  // ── A12: LOADING AN OVERLAY PUTS ITS VALUES IN THE LEGEND — the headline, end to end. ──
+  //   USER REPORT 2026-08-04: "오버레이 값별 색은 아직 안된듯?" and "오버레이 로딩하면 doe
+  //   쪽도 목록 추가되어야하는데". One defect from both ends. Everything A1-A11 scores was
+  //   correct AND produced nothing, because `ensureLegendValues` had exactly two callers and
+  //   neither was the display path: an overlay layer's values were never in the legend, so
+  //   `legendColorForValue` truthfully answered "nobody declared this" for every one of them.
+  //
+  //   SCORED AS A TRANSITION, NOT A STATE. "the values are in the legend" passes on a
+  //   fixture that seeded them by accident. The claim is that the SAME dot goes from
+  //   unfilled to filled because the layer was loaded — so both ends are measured on one
+  //   layer, in one sandbox, with the registration in between.
+  {
+    const c = ctx;                                  // the A1-A11 sandbox, legend as fixtured
+    const item = (v) => ({ val: v, rx: 0.5, ry: 0.5 });
+    // A layer carrying values NOBODY declares (`UNLISTED`), plus one the map already knows.
+    const layer = {
+      failed: false,
+      items: new Map([
+        ['0_0', [item(UNLISTED[0])]],
+        ['1_0', [item(UNLISTED[1])]],
+        ['2_0', [item('1')]],                       // already declared — must not be touched
+        ['3_0', [item('')]],                        // blank was never a value wanting a colour
+        ['4_0', [item(UNLISTED[0])]],               // repeat — a value is seeded ONCE
+      ]),
+    };
+
+    const before = UNLISTED.map(v => c.legendColorForValue(v));
+    const beforeFill = c.overlayMarkerFill(layer.items.get('0_0'));
+    const legendSizeBefore = c.legend.length;
+    const declaredColorOfOne = c.legendColorForValue('1');
+
+    const seeded = c.ensureLegendValues(c.overlayLayerValues(layer), { vocab: true });
+
+    const after = UNLISTED.map(v => c.legendColorForValue(v));
+    const afterFill = c.overlayMarkerFill(layer.items.get('0_0'));
+    const rows = seeded.map(v => c.legend.find(l => String(l.value) === v));
+
+    // ① THE HEADLINE. Unfilled -> filled, on the same dot.
+    eqDeep(before, [null, null], 'A12 before loading, the overlay values have no declared colour');
+    eq(beforeFill, null, 'A12b so the dot is drawn unfilled — the state the user reported');
+    ok(after.every(x => typeof x === 'string' && x.length > 0),
+      'A12c after loading, every overlay value has a colour', JSON.stringify(after));
+    ok(typeof afterFill === 'string' && afterFill.length > 0,
+      'A12d ...and the SAME dot now fills', String(afterFill));
+    // FIXTURE ACTIVITY: if the values had already been declared, A12c would pass on a
+    // registration that never ran.
+    ok(before.every(x => x === null) && after.every(x => x !== null),
+      'A12e the transition is real (the fixture did not start already-declared)');
+
+    // ② WHAT IS SEEDED, EXACTLY. Blanks are not values; repeats are not two rows; a value
+    //    the map already declares is left alone (re-adding it would overwrite the user's
+    //    colour with a palette pick).
+    eqDeep(seeded.slice().sort(), UNLISTED.slice().sort(),
+      'A12f exactly the undeclared, non-blank, deduped values are seeded');
+    eq(c.legend.length, legendSizeBefore + UNLISTED.length,
+      'A12g one legend row per seeded value, and none for the ones already there');
+    eq(c.legendColorForValue('1'), declaredColorOfOne,
+      'A12h an already-declared value keeps the colour the map gave it');
+
+    // ③ NOTHING REACHES THE SERVER. The mark is what `buildLegendRegistryUpdates` drops on
+    //    and what `applyRegistryRowsToLegend` takes back down at the next load, so it IS the
+    //    "local only" guarantee. Asserted together with its seed: `reconcileVocabClaims`
+    //    reads a marked row with NO seed as a rename and promotes it to a saved claim, so a
+    //    mark without a seed would write to the server by a different door.
+    eqDeep(rows.map(r => r && r.vocab === true), seeded.map(() => true),
+      'A12i every seeded row is marked as vocabulary — this map does not claim it');
+    eqDeep(rows.map(r => r && c.legendVocabularySeed.has(String(r.value))), seeded.map(() => true),
+      'A12j ...and each carries its seed signature, so a later edit promotes it deliberately');
+    ok(ctxSaves.length === 1,
+      'A12k the LOCAL draft is written once, and nothing else is written',
+      `${ctxSaves.length} save(s)`);
+
+    // ④ THE IMPORT PATH IS NOT MARKED. Same primitive, opposite meaning: imported cells ARE
+    //    painted onto this map, so their values are this map's own. If both callers marked,
+    //    a real DOE plan would silently drop out of every save.
+    const imported = c.ensureLegendValues(new Set(['IMPORTED-9']));
+    const importedRow = c.legend.find(l => String(l.value) === 'IMPORTED-9');
+    eqDeep(imported, ['IMPORTED-9'], 'A12l the import caller seeds too');
+    ok(!importedRow.vocab, 'A12m ...but unmarked — a painted value is this map\'s own',
+      `vocab=${importedRow && importedRow.vocab}`);
+
+    // ⑤ WIRING. As with A10, the functions above are worth nothing if the display path does
+    //    not call them — and this is precisely the call that was missing.
+    const add = stripComments(sliceFunction(src, 'addOverlayLayer'));
+    ok(/ensureLegendValues\s*\(\s*overlayLayerValues\s*\(\s*layer\s*\)\s*,\s*\{\s*vocab:\s*true\s*\}\s*\)/.test(add),
+      'A12n adding a display layer registers that layer\'s values as vocabulary');
+    // The GUARD, not merely the call: `if (false) ensureLegendValues(...)` still contains it.
+    ok(!/if\s*\(\s*false\s*\)[^\n]*ensureLegendValues/.test(add),
+      'A12o ...and the call is not disabled in place');
+    ok(/seeded\.length\s*>\s*0[\s\S]{0,400}?recomputeLockedCells\s*\(/.test(add)
+      && /seeded\.length\s*>\s*0[\s\S]{0,400}?renderLegendTable\s*\(/.test(add),
+      'A12p ...and the same follow-up the import path does (locks + legend table) runs');
+  }
+
+  // ── A13: AN OVERLAY-SOURCED LEGEND ROW SAYS SO, AND NAMES ITS SOURCE ─────────────
+  //   USER RULING 2026-08-04: overlay-sourced values are marked; they do not blend in as if
+  //   they were the map's own. The legend describes THIS map's split registry, so a value the
+  //   map does not contain, listed indistinguishably from ones it does, is a quiet false
+  //   statement about the map.
+  //
+  //   DERIVED, NOT STORED, and that is what makes the edge cases fall out instead of needing
+  //   their own code: the mark is a function of (this row's claim state, the layers loaded
+  //   right now). Every case below is therefore scored as a key->value answer from that one
+  //   function rather than as a rendering detail.
+  {
+    const c = ctx;
+    const item = (v) => ({ val: v, rx: 0.5, ry: 0.5 });
+    const L1 = { failed: false, sourceTable: 'eds_fail_map', sourceKey: 'LOT-C_06',
+                 items: new Map([['0_0', [item('ZZ9')]], ['1_0', [item('F')]]]) };
+    const L2 = { failed: false, sourceTable: 'core_defect_map', sourceKey: 'LOT-D_05',
+                 items: new Map([['0_0', [item('ZZ9')]]]) };
+    const LF = { failed: true, sourceTable: 'dt_map', sourceKey: 'GONE',
+                 items: new Map([['0_0', [item('QQ')]]]) };
+    c.overlayLayers = [L1, L2, LF];
+
+    const rowOf = v => c.legend.find(l => String(l.value) === v);
+    const zz9 = rowOf('ZZ9');                 // seeded by A12 as vocabulary, supplied by BOTH
+    const own = rowOf('F');                   // the map's OWN registry row, also in L1
+    const imported = rowOf('IMPORTED-9');     // seeded unmarked by the import caller
+    const qq = rowOf('QQ');                   // vocabulary, but its only layer FAILED
+
+    eq(c.legendOverlaySources(zz9).length, 2,
+      'A13 a value carried by two overlays is ONE row that names both sources');
+    ok(c.legendOverlaySources(zz9).join('|').includes('eds_fail_map · LOT-C_06')
+      && c.legendOverlaySources(zz9).join('|').includes('core_defect_map · LOT-D_05'),
+      'A13b ...and names each by TABLE and KEY, the same fact the layer row states',
+      JSON.stringify(c.legendOverlaySources(zz9)));
+    eqDeep(c.legendOverlaySources(own), [],
+      'A13c a value the MAP declares is the map\'s own even when an overlay also carries it');
+    eqDeep(c.legendOverlaySources(imported), [],
+      'A13d an IMPORTED value is the map\'s own — importing paints it onto this map');
+    eqDeep(c.legendOverlaySources(qq), [],
+      'A13e a FAILED layer carries nothing, so it sources nothing');
+
+    // FIXTURE ACTIVITY. If `F` were absent from L1, A13c would pass on a function that simply
+    // never looks at the layers — the check has to be able to fail.
+    ok(c.overlayLayerValues(L1).has('F'),
+      'A13f the fixture really does put a map-owned value inside an overlay');
+
+    // THE SHARP EDGE the ruling names: the user gives an overlay-sourced value a colour, then
+    // removes the overlay. Assigning breaks the row's seed signature, `reconcileVocabClaims`
+    // clears `vocab`, and from that instant the row is the map's own — so removing the layer
+    // cannot take the colour away. Modelled by doing exactly that: change the row, clear the
+    // mark the way the reconciler would, then drop the layers.
+    zz9.color = '#abcdef';
+    zz9.vocab = false;                        // what reconcileVocabClaims derives from the edit
+    eqDeep(c.legendOverlaySources(zz9), [],
+      'A13g once the user declares a colour, the row stops being overlay-sourced');
+    c.overlayLayers = [];
+    eq(c.legendColorForValue('ZZ9'), '#abcdef',
+      'A13h ...and removing every overlay does not take that colour away');
+
+    // The mark is TEXT in the value cell, not a control, and not sized below the token.
+    const render = stripComments(sliceFunction(src, 'renderLegendTable'));
+    ok(/legendOverlaySources\s*\(\s*item\s*\)/.test(render),
+      'A13i the legend renderer asks for the mark');
+    ok(/createElement\('span'\)/.test(render.slice(render.indexOf('legendOverlaySources'))),
+      'A13j ...and renders it as a span — no button, no toggle, no new control');
+    const marked = render.slice(render.indexOf('legendOverlaySources'),
+                                render.indexOf('legendOverlaySources') + 900);
+    ok(!/createElement\('(button|select|input)'\)/.test(marked),
+      'A13k ...and adds no control of any kind alongside it');
+    ok(!/fontSize\s*=\s*'0\.[0-7]/.test(marked),
+      'A13l ...and does not shrink the type to make room');
+  }
+
   return { fails, ran };
 }
 
@@ -347,9 +545,50 @@ const MUTATIONS = [
     'const fx = it.rx / layer.seatChip.x - 0.5;\n        const fy = it.ry / layer.seatChip.y - 0.5;',
     'const fx = 0;\n        const fy = 0;'],
   // ⑥ The honest-absence report goes stale or goes wrong.
+  // Re-pointed 2026-08-04: `overlayUnlistedValues` no longer walks the items itself (the walk
+  // moved to `overlayLayerValues`, which the registration path also needs). The mutation had
+  // to move with it -- a `find` string that no longer matches is a SILENT hole, and the sweep
+  // reported exactly that on the first run after the refactor.
   ['every value is reported as unlisted',
-    'if (!legendColorForValue(v)) out.add(v);',
-    'out.add(v);'],
+    'return [...overlayLayerValues(o)].filter(v => !legendColorForValue(v));',
+    'return [...overlayLayerValues(o)];'],
+  // (7) The registration half (A12). Without these the colouring above is correct and inert.
+  ['loading an overlay layer no longer registers its values (the reported defect, put back)',
+    'const seeded = ensureLegendValues(overlayLayerValues(layer), { vocab: true });',
+    'const seeded = []; /* MUTANT: the display path registers nothing */'],
+  ['overlay values are registered as this map OWN plan (they would be pushed to the server)',
+    "      if (asVocab) {\n        const row = legend.find(l => String(l.value) === sv);",
+    "      if (false) {\n        const row = legend.find(l => String(l.value) === sv);"],
+  ['the vocabulary mark is written without its seed (a later edit promotes it silently)',
+    'if (row) { row.vocab = true; legendVocabularySeed.set(sv, legendRowSignature(row)); }',
+    'if (row) { row.vocab = true; }'],
+  ['a blank overlay cell is registered as a value',
+    "    if (v === '') return;                       // \ube48 \uac12\uc740 \uc0c9\uc744 \uc6d0\ud55c \uc801\uc774 \uc5c6\ub2e4",
+    '    /* MUTANT: blanks become legend rows */'],
+  ['re-adding an already-declared value overwrites the colour the map gave it',
+    'if (legend.some(item => String(item.value) === v)) return false;',
+    'legend = legend.filter(item => String(item.value) !== v);'],
+  // (8) The provenance mark (A13).
+  ['an overlay-sourced legend row blends in as if it were the map own value',
+    "  if (!item || item.vocab !== true) return [];",
+    '  return []; /* MUTANT: nothing is ever marked */'],
+  ['a value the MAP declares is demoted to overlay-sourced',
+    "  if (!item || item.vocab !== true) return [];\n  const v = String(item.value);",
+    '  const v = String(item.value);'],
+  ['the mark says overlay but not WHICH overlay',
+    "    .map(o => `${o.sourceTable} \u00b7 ${o.sourceKey}`);",
+    "    .map(o => '\uc624\ubc84\ub808\uc774');"],
+  // Re-pointed after it SURVIVED: `legendOverlaySources` used to re-check `!o.failed`, and
+  // deleting that check changed no answer because `overlayLayerValues` already returns an
+  // empty set for a failed layer. A guard a mutation cannot kill is a guard that is not doing
+  // anything -- so the duplicate came out of the product and the mutation now aims at the one
+  // implementation of "a failed layer carries nothing".
+  ['a failed layer is treated as a source of values',
+    '  if (!o || o.failed || !o.items) return out;',
+    '  if (!o || !o.items) return out;'],
+  ['the legend renderer never asks for the mark',
+    '    const srcs = legendOverlaySources(item);',
+    '    const srcs = []; /* MUTANT: derived and then discarded */'],
   ['a legend edit no longer refreshes the unlisted chip (it goes stale)',
     'if (overlayLayers.length > 0) renderOverlayList();',
     'if (false) renderOverlayList();'],

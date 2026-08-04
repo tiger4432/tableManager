@@ -119,13 +119,20 @@ const FLOORS = new Map([
   // 54, not the 53 the overlay branch carried: that branch forked before the datalist
   // harness gained its assertion, and a floor is a minimum — merging the lower number
   // would have quietly un-scored the newer one.
-  ['map_key_datalist_harness.mjs', 54],
+  // 67 as of 2026-08-04: axis 4 (the candidate list is ordered, and each candidate carries
+  // its registered spec as an option label) added 13.
+  ['map_key_datalist_harness.mjs', 67],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
-  ['overlay_value_colour_harness.mjs', 54],
+  // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
+  // harness already scored stops being inert) added 16.
+  ['overlay_value_colour_harness.mjs', 82],
+  // New 2026-08-04 with the overlay-provenance round. Floor is the count it reports on the
+  // commit that introduces it — there is no earlier tree to measure it against.
+  ['overlay_provenance_harness.mjs', 21],
   ['overlay_wafer_mm_harness.mjs', 69],
   ['push_gate_harness.mjs', 15],
   ['retroactive_view_harness.mjs', 263],
