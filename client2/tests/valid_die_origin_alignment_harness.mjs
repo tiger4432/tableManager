@@ -100,6 +100,12 @@ const SYMBOLS = [
   'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
   'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
   'restoreDoeDraftWithPrecedence',
+  // ...plus the pure predicate the load consults before letting anything replace the valid-die
+  // designation (user ruling 2026-08-04: only a map carrying its OWN declaration may replace
+  // it). Both fixtures below declare `valid_die_ref: 'TPL'`, so the guard lets the resolution
+  // through and the ordering probe is unaffected — what is affected is OMITTING the name,
+  // which is the ReferenceError-into-the-catch failure described above.
+  'parseValidDieRef',
 ];
 
 // ── Fixture constants ──────────────────────────────────────────────────────────────────
@@ -133,6 +139,12 @@ function buildEnv(src, opts = {}) {
     catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
     pieces.push(code);
   }
+  // `parseValidDieRef` pins its lookup table to this module const, so the slice above is not
+  // self-contained without it. Taken from the source rather than retyped: a harness that
+  // hardcoded 'valid_die_ref' would keep passing after the product changed the name.
+  const vdTable = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
+  if (!vdTable) die('const VALID_DIE_TABLE is gone from map_editor.js');
+  pieces.unshift(vdTable[0]);
 
   const log = { toasts: [], alerts: [], warns: [], resolveCalls: [] };
   const panel = opts.panel || {};
@@ -620,7 +632,13 @@ const TAG_WINDOW = `    && !physFrameOverride
     && validDieBasis() === 'ref';`;
 const ZERO_CELL = `  const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);`;
-const RESOLVE_FIRST = `    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+// ⚠️ RE-POINTED 2026-08-04 (the valid-die carry ruling). The resolution is now GUARDED: only a
+//    map that carries its own `valid_die_ref` may replace the designation on screen, so the
+//    call sits inside an `if`. D8 below still moves the whole construct, guard included — what
+//    D8 is about is WHEN the mask lands relative to the cells, and that question is unchanged.
+const RESOLVE_FIRST = `    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {
+      await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+    }
     // 근거가 바뀌면 원점 상자도 바뀐다 — 위 동기화가 비운 캐시는 원 기준으로 다시 채워졌을
     // 수 있다. 태그가 키를 갈라 주지만, 여기서 한 번 더 비워 이전 맵의 항목을 남기지 않는다.
     boundingBoxCache = {};`;
@@ -654,7 +672,9 @@ const MUTATIONS = [
          .replace(`    // [M4②] 홈 키를 함께 넘기는 이유(자기 참조 A→A 차단)와 \`setLoadedIdentity\`보다 앞선다는
     // 사실도 그 블록에 적혀 있다.
     renderGridCanvas();`,
-                  `    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+                  `    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {
+      await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+    }
     renderGridCanvas();`)],
   // The duplicate derivation this round removed.
   ['D9 renderGridCanvas re-derives the (0,0) cell by hand again (the mirror-term copy)',

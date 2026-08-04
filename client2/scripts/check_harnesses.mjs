@@ -192,7 +192,11 @@ const FLOORS = new Map([
   // and by omission not at all in the load — so the added cases score ONE shared predicate
   // (`unsavedWorkNotice`) being honoured at both doors, plus what declining must leave
   // untouched and which callers are legitimately non-interactive.
-  ['valid_die_dirty_guard_harness.mjs', 73],
+  // 73 -> 95 (2026-08-04): the K leg. The user ruled that the valid-die designation must not
+  // be reset until a map carrying its OWN declaration is loaded, and the clear that survived
+  // three repair rounds arrives through `resolveValidDie`, not from `loadExistingMap` — so K
+  // runs the REAL resolver and scores all three clear sites, one mutant each.
+  ['valid_die_dirty_guard_harness.mjs', 95],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],

@@ -175,6 +175,26 @@ function cfgNumber(name) {
   return Number(m[1]);
 }
 
+// ── The carry ruling's extra slice ───────────────────────────────────────────────────────
+// 🔴 `resolveValidDie` IS A RECORDER FOR EVERY LEG EXCEPT K, AND THAT IS WHY K NEEDED MORE.
+//    The K cases score the user ruling 「고유 메타를 가진 맵을 불러오기 전까지 유효 다이영역
+//    초기화 금지」, and the clear that survived three repair rounds does not live in
+//    `loadExistingMap` at all — it arrives through the resolver: an undeclared map makes
+//    `parseValidDieRef` answer null, `resolveValidDie` takes its `set('circle', …)` branch,
+//    and `set` ends by calling `syncValidDieRefControls()`, which blanks the key control.
+//    A recorder cannot reproduce that, so a K leg on a recorder would go green on code that
+//    still blanks the box. `opts.realResolve` therefore runs the REAL resolver, the real
+//    `parseValidDieRef`, the real `syncValidDieRefControls` and the real `validDieRefDisplay`
+//    against a real control object — the whole chain from the load to the blanked box.
+// ⚠️ WHAT IS STILL STUBBED UNDER `realResolve`, AND WHY THAT IS NOT A HOLE. The resolver's
+//    reference LOOKUP (`resolveReferenceSpec`) and the placement machinery it drives
+//    (`applyPresetObject` · `fitGridToMask` · `reseatCellsToStoredCoords`) are stubbed. What
+//    a declaration RESOLVES TO on the canvas is owned by `valid_die_origin_alignment_harness`
+//    and `valid_die_head_parity_oracle`; duplicating it here would put two unrelated failure
+//    classes behind one exit code. What K scores is WHICH declaration is in force after a
+//    load and WHAT THE CONTROL SHOWS — and every step of that is real.
+const RESOLVE_SYMBOLS = ['parseValidDieRef', 'validDieBasis', 'resolveValidDie'];
+
 // ── Sandbox ─────────────────────────────────────────────────────────────────────────────
 function buildEnv(src, opts = {}) {
   const confirms = [];
@@ -182,6 +202,7 @@ function buildEnv(src, opts = {}) {
   const toasts = [];
   const applies = [];     // every `resolveValidDie` invocation, with the declaration it carried
   const requests = [];
+  const seatedUnderBasis = [];   // the valid-die basis in force as each cell was placed
   // The map key filter lives in DOM inputs that `collectMapKeyFilterModel` finds by id prefix.
   // `metaFilter: {}` therefore means "no map key entered", which is what case J6 needs.
   const metaValues = (opts.metaFilter !== undefined) ? opts.metaFilter : { lot_id: 'LOT_9' };
@@ -276,14 +297,66 @@ function buildEnv(src, opts = {}) {
     //    없음이 아니다"): it is reached only AFTER the gate, the [M4①] clear, the filter
     //    collection, the button-label flip and the request, so every one of those is
     //    observable, and it ends the call deterministically instead of in a swallowed throw.
+    // Stubbed for every leg but K5, which slices the real one to score clear site 1 of 3.
     switchTable: async () => {},
+    fetchPaintRules: async () => {},
+    fillColumnDropdowns() {},
+    renderMetadataInputs() {},
+    dropColumnValueCache() {},
+    mapKeyListCache: new Map(),
     applyRoutedPreset: async () => {},
-    resolveDeclaredGridMeta: async () => ({ ok: false, refusal: { count: 0, refused: true } }),
+    // `opts.declaredMeta` opens the load PAST step ③, which is where the K cases live: the
+    // exit above is before `resolveValidDie` is ever reached, so it can say nothing about who
+    // owns the designation afterwards. `undefined` keeps the short refusal every other leg uses.
+    resolveDeclaredGridMeta: async () => (opts.declaredMeta === undefined
+      ? { ok: false, refusal: { count: 0, refused: true } }
+      : { ok: true, gridMeta: opts.declaredMeta, mapKey: 'MAP_B' }),
     clearOverlayLayers() {},
     renderValidDieChip() {},
     tableSchema: null,
     overlayLayers: [],
     boundingBoxCache: {},
+    // ── the rest of the load body, past step ③. Owned by the load-path harnesses. ────────
+    promptCoordinateChoice: async () => 'meta',
+    resolveGridFrame: () => ({
+      cols: FRAME.cols, rows: FRAME.rows, startX: 1, startY: 1,
+      invertY: false, rotation: ROT, side: SIDE,
+    }),
+    updateOrientationUI() {},
+    isLockedValue: () => false,
+    deriveLegendFromCellValues: () => [],
+    readRegistryScope: async () => ({ ok: true, rows: [] }),
+    applyRegistryRowsToLegend() {},
+    registryFingerprint: () => 'fp',
+    cellsDigest: () => 'cd',
+    restoreDoeDraftWithPrecedence: () => ({ restoredUnsavedEdits: false, staleDraftKept: false }),
+    readDoeDraft: () => null,
+    applyDoeDraftRecord: () => false,
+    applyDraftCells: () => 0,
+    recordLastOpenMap() {},
+    seedEmptyDoe() {},
+    renderLegendTable() {},
+    legend: [], activeBrush: '', draftBase: null, legendConflict: null, legendSaveState: null,
+    // ── what `resolveValidDie`'s `set` reaches for. Placement is scored elsewhere. ───────
+    validDieResolveSeq: 0,
+    cellsSeatedUnder: null,
+    seatingSnapshot: () => ({}),
+    reseatCellsToStoredCoords: () => [],
+    summariseReseat: () => ({ netMoved: 0, note: '' }),
+    applyPresetObject() {},
+    fitGridToMask: () => null,
+    resolveReferenceSpec: async () => ({ ok: false, reason: '참조 맵을 찾지 못했습니다(하네스 고정)' }),
+    // ORDERING WITNESS. Every seating records the COORDINATE it was asked about and the
+    // valid-die basis in force at that instant, so "the designation is settled before the
+    // placement loop" is a measurement rather than a comment.
+    // ⚠️ The placement loop is not the only caller: `resolveValidDie`'s `set` probes the same
+    //    function twice (`wasSeat`/`nowSeat`) around the moment it swaps the basis, at the
+    //    frame's START coordinate. Those two entries are kept rather than filtered out — they
+    //    are the clearest evidence in the list that the swap happened where it claims to.
+    getCanvasCellFromDb: (x, y) => {
+      seatedUnderBasis.push(`${x},${y}:${sandbox.validDieBasis ? sandbox.validDieBasis() : '?'}`);
+      return { c: Number(x) || 0, r: Number(y) || 0 };
+    },
     // THE RECORDER. It writes back `validDie.raw` exactly as `resolveValidDie`'s own `set`
     // does (`raw` is the declaration original), because the NEXT gesture's "did the user
     // change it" comparison reads that field — a recorder that dropped it would make the
@@ -303,8 +376,11 @@ function buildEnv(src, opts = {}) {
       requests.push({ method, url: String(url), body: init && init.body ? init.body : null });
       if (method === 'PUT') return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
       if (String(url).indexOf('wafer_map_metadata') < 0) {
-        // the cell table read the load door issues
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [] }) });
+        // the cell table read the load door issues. `opts.cellRows` fills it so the placement
+        // loop actually runs — case K7 needs a cell to be seated in order to witness the
+        // basis in force at that moment.
+        const data = opts.cellRows || [];
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ data }) });
       }
       return Promise.resolve({
         ok: true, status: 200,
@@ -318,7 +394,10 @@ function buildEnv(src, opts = {}) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
 
-  const pieces = SYMBOLS.map(n => sliceFunction(src, n));
+  const names = SYMBOLS
+    .concat(opts.realResolve ? RESOLVE_SYMBOLS : [])
+    .concat(opts.realSwitch ? ['switchTable'] : []);
+  const pieces = names.map(n => sliceFunction(src, n));
   const vd = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
   if (!vd) die('const VALID_DIE_TABLE is gone from map_editor.js');
   pieces.unshift(vd[0]);
@@ -333,7 +412,22 @@ function buildEnv(src, opts = {}) {
   catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
   sandbox.__wireValidDieControls();
 
-  return { S: sandbox, el, confirms, alerts, toasts, applies, requests };
+  // Under `realResolve` the sliced declaration has overwritten the recorder, so `applies` is
+  // re-attached as a WRAPPER: the real body still runs, and "was the resolver reached at all"
+  // stays measurable. That question is the whole of clear site 3 — an undeclared map must not
+  // reach it, a declaring map must.
+  if (opts.realResolve) {
+    const real = sandbox.resolveValidDie;
+    sandbox.resolveValidDie = async (meta, table, homeKey) => {
+      applies.push({
+        ref: (meta && 'valid_die_ref' in meta) ? meta.valid_die_ref : null,
+        table, homeKey,
+      });
+      return real(meta, table, homeKey);
+    };
+  }
+
+  return { S: sandbox, el, confirms, alerts, toasts, applies, requests, seatedUnderBasis };
 }
 
 const flush = () => new Promise(r => setImmediate(r));
@@ -638,7 +732,13 @@ async function run(src) {
     eq('J1b/...and the loaded-cell protection set', 0, env.S.loadedFCells.size);
   }
 
-  // J2 — accepting loads, and the [M4①] clear runs exactly as before.
+  // J2 — accepting loads, and the load leaves the designation ALONE on the way in.
+  // ⚠️ THIS CASE USED TO ASSERT THE OPPOSITE. It read "the [M4①] clear ran — no mask survives
+  //    into the next map" and required the key control to come back blank. That is the exact
+  //    behaviour the user ruled out on 2026-08-04 (「고유 메타를 가진 맵을 불러오기 전까지 유효
+  //    다이영역 초기화 금지」), so the assertion is inverted rather than deleted: the load in
+  //    this leg ends at the step-③ refusal, and a refused load must return the screen the user
+  //    left, not a screen nobody chose.
   {
     const env = buildEnv(src);
     env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
@@ -646,11 +746,11 @@ async function run(src) {
     await env.S.loadExistingMap();
 
     eq('J2/accepting asked once', 1, env.confirms.length);
-    eq('J2/...and the [M4①] clear ran — no mask survives into the next map',
-      { basis: 'circle', raw: undefined },
+    eq('J2/...and the designation the user set is still in force after a refused load',
+      { basis: 'circle', raw: STORED_REF },
       { basis: env.S.validDie.basis, raw: env.S.validDie.raw },
-      'weakening that clear would let one map assert its valid die over another');
-    eq('J2/...and the key control was blanked with it', '', env.el.validDieRefKey.value);
+      'the wipe used to run in the first three statements, before a byte had been read');
+    eq('J2/...and the key control still shows it', 'VD_MASK_A', env.el.validDieRefKey.value);
     eq('J2/...and the load actually went out', ['GET'], env.requests.map(q => q.method));
   }
 
@@ -732,6 +832,167 @@ async function run(src) {
       popText.indexOf('· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.') >= 0
         && (env.confirms[1] || '').indexOf('· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.') >= 0,
       'two spellings of this question is exactly how the two doors came to disagree');
+  }
+
+  // ══ K. THE CARRY RULING ═══════════════════════════════════════════════════════════════
+  // 「고유 메타를 가진 맵을 불러오기 전까지 유효 다이영역 초기화 금지」 (user, 2026-08-04).
+  //
+  // THE WORKFLOW IS SET-THEN-LOAD. The user picks the valid-die designation and THEN opens
+  // the map it applies to. The code assumed the reverse — that the map being opened brings
+  // its own — and threw the designation away on the way in, at three separate sites.
+  //
+  // 🔴 WHY THIS LEG NEEDS THE REAL RESOLVER (measured, not assumed). Suppressing the two
+  //    DIRECT wipes leaves the user's exact case still broken. Measured on the shipped file,
+  //    with the designation seated and a map with no metadata loaded:
+  //      · as shipped .................. control "VD_MASK_A" -> ""   BLANKED
+  //      · direct wipe suppressed ...... control "VD_MASK_A" -> ""   BLANKED  (still!)
+  //      · direct wipe + resolver ...... control "VD_MASK_A" -> "VD_MASK_A"  SURVIVED
+  //    The second line is the whole reason this leg exists. The third clear does not live in
+  //    `loadExistingMap`: `parseValidDieRef` answers null, `resolveValidDie` runs
+  //    `set('circle', null, '', null)`, and `set` ends with `syncValidDieRefControls()`. A
+  //    leg built on the recorder would report the third line while the product did the first.
+  const CARRIED = { basis: 'ref', keys: new Set(['0_0', '1_0', '0_1']), reason: '',
+    ref: { table: 'valid_die_ref', mapKey: 'VD_MASK_A' }, raw: STORED_REF };
+  const carryOpts = (extra) => ({
+    realResolve: true, validDie: CARRIED, controlKey: 'VD_MASK_A', ...extra,
+  });
+  const designation = (env) => ({
+    control: env.el.validDieRefKey.value,
+    basis: env.S.validDie.basis,
+    keys: env.S.validDie.keys ? env.S.validDie.keys.size : null,
+    raw: env.S.validDie.raw,
+  });
+  const CARRIED_SHAPE = { control: 'VD_MASK_A', basis: 'ref', keys: 3, raw: STORED_REF };
+  // A metadata row that is real and complete and says NOTHING about valid-die. This is the
+  // case QA found undecidable in the ruling as written: it reaches the same `set('circle')`
+  // branch as a map with no row at all.
+  const SILENT_META = {
+    grid_cols: FRAME.cols, grid_rows: FRAME.rows, grid_start_x: 1, grid_start_y: 1,
+    rotation: ROT, side: SIDE,
+  };
+
+  // K1 — THE USER'S EXACT CASE. Designation set, then a map with NO metadata is loaded.
+  {
+    const env = buildEnv(src, carryOpts({ declaredMeta: null }));
+    const r = await env.S.loadExistingMap({ quiet: true });
+    eq('K1/the designation survives a load of a map with no metadata',
+      CARRIED_SHAPE, designation(env),
+      'THIS IS THE REPORTED DEFECT: the control came back blank');
+    eq('K1/...and the resolver was never asked to replace it', [], env.applies,
+      'an undeclared map has nothing to replace it with, so it must not reach the resolver');
+    eq('K1/...and the load itself succeeded', 0, r.count);
+    evidence.push(`K1 designation after load: ${JSON.stringify(designation(env))}`);
+  }
+
+  // K2 — THE DECIDABILITY RULING. A metadata row exists and is silent about valid-die.
+  // Ruled: silence is not a declaration. It leaves the user's choice standing, exactly as a
+  // missing row does — the user is mid-setup, matching geometry by hand.
+  {
+    const env = buildEnv(src, carryOpts({ declaredMeta: SILENT_META }));
+    await env.S.loadExistingMap({ quiet: true });
+    eq('K2/a metadata row that is silent about valid-die does not replace the designation',
+      CARRIED_SHAPE, designation(env),
+      'having a row is not the same as declaring a valid die — the ruling turns on the key');
+    eq('K2/...and it too never reached the resolver', [], env.applies);
+  }
+
+  // K3 — THE ONE CASE WHERE REPLACEMENT IS CORRECT. The loaded map declares its own.
+  // ⚠️ What the declaration RESOLVES TO is not scored here (the reference lookup is stubbed to
+  //    fail, so the basis lands on `refused`). What is scored is WHICH declaration is in force
+  //    afterwards: the loaded map's, not the carried one.
+  {
+    const OWN = { table: 'valid_die_ref', map_id: 'VD_OWN_B' };
+    const env = buildEnv(src, carryOpts({
+      declaredMeta: { ...SILENT_META, valid_die_ref: OWN },
+      // Cells, so the placement loop runs: the replacement has to be settled BEFORE it.
+      cellRows: [
+        { data: { x: { value: 7 }, y: { value: 3 }, val: { value: 'A1' } } },
+        { data: { x: { value: 8 }, y: { value: 3 }, val: { value: 'B2' } } },
+      ],
+    }));
+    await env.S.loadExistingMap({ quiet: true });
+    // Read left to right: the resolver probed START under the carried basis, swapped, probed
+    // START again under the new one, and only then were the two cells seated.
+    eq('K3/the replacement was settled before a single cell was seated',
+      ['1,1:ref', '1,1:refused', '7,3:refused', '8,3:refused'], env.seatedUnderBasis,
+      'seeing the CARRIED basis here means the cells sat under one origin box and are read '
+      + 'back under another — the silent coordinate shift, with the mask arriving late');
+    eq('K3/a loaded map\'s own declaration replaces the carried designation',
+      { control: 'VD_OWN_B', raw: OWN }, { control: env.el.validDieRefKey.value, raw: env.S.validDie.raw },
+      'this is the one case where replacement is correct, and it must not be suppressed too');
+    eq('K3/...via exactly one resolver call carrying THAT declaration', [OWN],
+      env.applies.map(a => a.ref));
+    eq('K3/...and the carried mask is gone', true, env.S.validDie.keys === null);
+  }
+
+  // K4 — an UNREADABLE declaration is still a declaration. `parseValidDieRef` is explicit
+  // that only null/absence means "선언 없음", and keeping the previous mask under a broken
+  // declaration is the wrong-answer-indistinguishable-from-right state this file refuses.
+  {
+    const env = buildEnv(src, carryOpts({
+      declaredMeta: { ...SILENT_META, valid_die_ref: 12345 },
+    }));
+    await env.S.loadExistingMap({ quiet: true });
+    eq('K4/an unreadable declaration replaces the designation and refuses',
+      { basis: 'refused', raw: 12345 },
+      { basis: env.S.validDie.basis, raw: env.S.validDie.raw });
+    eq('K4/...and says so out loud', true,
+      env.toasts.some(t => t.msg.indexOf('유효 다이 맵을 해석하지 못했습니다') >= 0),
+      'a silent fallback to circle geometry is how a typo becomes a wrong mask');
+  }
+
+  // K5 — CLEAR SITE 1 OF 3: the bare table switch. No load at all. This is how the user
+  // finally pinned the defect down: changing the table alone reset the designation.
+  {
+    const env = buildEnv(src, carryOpts({ realSwitch: true }));
+    await env.S.switchTable('dt_map');
+    eq('K5/switching tables does not reset the designation', CARRIED_SHAPE, designation(env),
+      'no map was loaded, so nothing has declared anything to replace it with');
+    eq('K5/...and the switch really ran', 'dt_map', env.S.selectedTable);
+    eq('K5/...and it still dropped the identity pin', null, env.S.loadedIdentity);
+  }
+
+  // K6 — THE FAILURE EXITS. A load that fails must not leave a state nobody chose. The
+  // strongest one is the no-map-key exit: it returns before `gridData` is cleared, so the
+  // cells are still on screen and the old wipe stripped the designation from under them.
+  {
+    const env = buildEnv(src, carryOpts({
+      metaFilter: {}, gridData: { '3_4': 'A1', '5_6': 'B2' },
+    }));
+    const r = await env.S.loadExistingMap({ quiet: true });
+    eq('K6a/the no-map-key exit is a complete no-op for the designation',
+      CARRIED_SHAPE, designation(env));
+    eq('K6a/...and leaves the cells it never touched', { '3_4': 'A1', '5_6': 'B2' }, env.S.gridData);
+    eq('K6a/...and issued no request', [], env.requests.map(q => q.method));
+    eq('K6a/...and reports itself cancelled', { count: 0, cancelled: true }, r);
+  }
+  {
+    // The step-③ refusal: the spec could not be confirmed. `gridData` IS cleared by then, so
+    // the screen holds no cells and the user's own designation — chosen state, not stale state.
+    const env = buildEnv(src, carryOpts({}));   // declaredMeta undefined -> {ok:false}
+    await env.S.loadExistingMap({ quiet: true });
+    eq('K6b/the spec-refusal exit keeps the designation too', CARRIED_SHAPE, designation(env));
+    eq('K6b/...on an empty grid', {}, env.S.gridData);
+  }
+
+  // K7 — ORDERING. A carried designation moves where cells land (`getWaferBoundingBox` keys
+  // the origin box off `basis === 'ref'`), so it has to be settled BEFORE the placement loop,
+  // exactly as a declared one is. Measured at the moment each cell is seated.
+  {
+    const env = buildEnv(src, carryOpts({
+      declaredMeta: SILENT_META,
+      cellRows: [
+        { data: { x: { value: 7 }, y: { value: 3 }, val: { value: 'A1' } } },
+        { data: { x: { value: 8 }, y: { value: 3 }, val: { value: 'B2' } } },
+      ],
+    }));
+    await env.S.loadExistingMap({ quiet: true });
+    eq('K7/every cell was seated with the carried designation already in force',
+      ['7,3:ref', '8,3:ref'], env.seatedUnderBasis,
+      'a mask that lands after placement means the cells sat under one origin box and are '
+      + 'read back under another — the silent coordinate shift this file exists to prevent');
+    eq('K7/...and the designation is still the carried one afterwards',
+      CARRIED_SHAPE, designation(env));
   }
 
   return { failures, compared, evidence };
@@ -823,8 +1084,13 @@ const MUTANTS = {
      '    )) return { count: 0, cancelled: true };',
      '  }'].join('\n'),
     '  /* no guard */'),
-  // The gate runs, but AFTER the [M4①] clear — so declining returns a screen whose
-  // declaration is already gone. A dialog in front of the same data loss.
+  // The gate runs, but AFTER the map-key filter has been collected — so it is a dialog raised
+  // about a state that already started changing, and the load's own `hasFilter` alert beats it.
+  // ⚠️ RE-POINTED 2026-08-04. This mutant used to reinsert the block after the [M4①] wipe's
+  //    last line. That wipe was DELETED by the carry ruling (clear site 2 of 3), so the anchor
+  //    is gone; the landing spot moved to the next side effect on the same path rather than
+  //    the mutant being dropped, because "the gate must come before anything with an effect"
+  //    is still the contract and J6 is still what discriminates it.
   'the-load-gate-runs-after-the-clear': (s) => {
     const BLOCK = ['  if (!quiet) {',
       '    const notice = unsavedWorkNotice();',
@@ -834,9 +1100,9 @@ const MUTANTS = {
       '    )) return { count: 0, cancelled: true };',
       '  }'].join('\n');
     const moved = once(s, BLOCK, '  /* moved below */');
-    return once(moved,
-      '  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다',
-      '  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다\n' + BLOCK);
+    const LANDING = ['  el.btnLoadMap.textContent = \'📂 Loading...\';',
+      '  el.btnLoadMap.disabled = true;'].join('\n');
+    return once(moved, LANDING, BLOCK + '\n' + LANDING);
   },
   // The gate is there but non-interactive callers get it too — a dialog on page load.
   'the-load-gate-prompts-even-when-quiet': (s) => once(s,
@@ -883,6 +1149,56 @@ const MUTANTS = {
     '    el.validDieRefKey.addEventListener(\'input\', renderValidDieKeyControl);',
     ['    el.validDieRefKey.addEventListener(\'input\', renderValidDieKeyControl);',
      '    el.validDieRefKey.addEventListener(\'change\', onValidDieRefChanged);'].join('\n')),
+  // ══ THE CARRY RULING — one mutant per clear site, so a future round cannot re-add one ══
+  //    silently. Each RESTORES the shipped-today code at that site, verbatim, and nothing else.
+  //
+  // ⚠️ CLEAR SITE 1 OF 3 — the bare table switch. Restoring this alone reproduces the symptom
+  //    the user pinned the whole defect down with: change the table, designation gone.
+  'the-table-switch-clears-the-designation-again': (s) => once(s,
+    ['    // 새 테이블의 자동완성 캐시를 버려 다음 포커스에서 다시 읽게 한다 — 전환 중에 그 테이블에',
+     '    // 맵이 추가됐을 수 있고, 자동완성이 없는 것보다 **없는 맵을 제안하는 것**이 나쁘다.',
+     '    mapKeyListCache.delete(tableName);'].join('\n'),
+    ['    validDie = { basis: \'circle\', keys: null, reason: \'\', ref: null, raw: undefined };',
+     '    renderValidDieChip();',
+     '    syncValidDieRefControls();',
+     '    mapKeyListCache.delete(tableName);'].join('\n')),
+  // ⚠️ CLEAR SITE 2 OF 3 — the wipe in the load's first statements, restored verbatim.
+  'the-load-wipes-the-designation-on-the-way-in': (s) => once(s,
+    '  const { filterModel, hasFilter } = collectMapKeyFilterModel();   // ①',
+    ['  validDie = { basis: \'circle\', keys: null, reason: \'\', ref: null, raw: undefined };',
+     '  renderValidDieChip();',
+     '  syncValidDieRefControls();',
+     '  const { filterModel, hasFilter } = collectMapKeyFilterModel();   // ①'].join('\n')),
+  // ⚠️ CLEAR SITE 3 OF 3 — THE ONE THAT SURVIVES NAIVE FIXES. The guard is dropped and the
+  //    resolver is called unconditionally again, so an undeclared map reaches
+  //    `set('circle', …)` and `set` blanks the control on its way out. Three repair rounds
+  //    died here; if the K cases cannot see this mutant they are not scoring the defect.
+  'the-load-lets-an-undeclared-map-reset-the-designation': (s) => once(s,
+    ['    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {',
+     '      await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());',
+     '    }'].join('\n'),
+    '    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());'),
+  // The predicate is re-spelled as "does this map have a metadata ROW", which is the most
+  // plausible wrong reading of 「고유 메타를 가진 맵」 — and it is wrong for exactly the case
+  // QA flagged as undecidable: a row that says nothing about valid-die.
+  'the-guard-asks-whether-a-metadata-row-exists': (s) => once(s,
+    '    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {',
+    '    if (loadedGridMeta) {'),
+  // The guard is inverted: the one case where replacement IS correct is the one suppressed.
+  'the-guard-suppresses-the-declaration-that-should-win': (s) => once(s,
+    '    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {',
+    '    if (parseValidDieRef(loadedGridMeta, selectedTable) === null) {'),
+  // The resolver runs, but after the placement loop — the ordering the load path was built to
+  // guarantee. Cells sit under one origin box and are read back under another.
+  'the-resolution-lands-after-the-cells-are-placed': (s) => {
+    const CALL = ['    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {',
+      '      await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());',
+      '    }'].join('\n');
+    const moved = once(s, CALL, '    /* moved below */');
+    return once(moved,
+      '    // Auto detect legend from unique values',
+      CALL + '\n    // Auto detect legend from unique values');
+  },
   // ── NEGATIVE CONTROL. A comment-only edit must ESCAPE. A corpus that "catches" this is
   //    keying on source text rather than behaviour, and its caught column means nothing.
   '__control_comment_only': (s) => once(s,
