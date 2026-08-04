@@ -10,28 +10,74 @@ import { refreshTraceEntry } from './trace_launch.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 
+/**
+ * Write a status badge WITHOUT trusting the handle to exist.
+ *
+ * A CATCH BLOCK MUST NOT BE ABLE TO THROW. Both functions below used to write DOM handles
+ * unguarded from inside their `catch`, which turns a HANDLED outage into an UNHANDLED
+ * rejection at the exact instant the code was trying to be careful — and that rejection
+ * escaped far enough to take the WebSocket down with it (see the comment on `init()` in
+ * main.js). This repo has a measured precedent for `elements` getters resolving to null:
+ * two of them named ids that had never existed in index.html at any point in git history.
+ *
+ * This does NOT silence anything. The originating error is logged by the caller before any
+ * badge is touched; only the cosmetic write is made optional, because a missing badge is not
+ * a reason to abandon the rest of startup.
+ */
+function setBadge(el, text, className) {
+  if (!el) return false;
+  el.textContent = text;
+  if (className !== undefined) el.className = className;
+  return true;
+}
+
 // Check backend server status
 export async function checkServerHealth() {
   try {
     const res = await fetch(`${API_BASE}/tables`);
-    if (res.ok) {
-      elements.serverStatus.textContent = 'API: ONLINE';
-      elements.serverStatus.className = 'status-badge online';
-    } else {
-      throw new Error();
-    }
+    if (!res.ok) throw new Error(`/tables responded ${res.status}`);
+    setBadge(elements.serverStatus, 'API: ONLINE', 'status-badge online');
   } catch (err) {
-    elements.serverStatus.textContent = 'API: OFFLINE';
-    elements.serverStatus.className = 'status-badge offline';
-    elements.performanceLog.textContent = 'Error connecting to database server';
+    // Loud first, cosmetic second. The old catch swallowed `err` entirely, so an outage and a
+    // programming error inside this function were indistinguishable in the console.
+    console.error('[health] server health check failed', err);
+    setBadge(elements.serverStatus, 'API: OFFLINE', 'status-badge offline');
+    setBadge(elements.performanceLog, 'Error connecting to database server');
   }
 }
 
+/**
+ * In-flight de-duplication for `loadTables`.
+ *
+ * WHY IT EXISTS. `loadTables` now has two callers that can overlap: `init()` and the socket's
+ * `onopen`, which bootstraps the table list when it finds the picker empty. Since the socket is
+ * started FIRST (so no failure in REST startup can leave the page without a live channel), a
+ * localhost handshake — measured median 2.54ms — reliably lands while `init()`'s own
+ * `loadTables()` is still mid-flight, and `elements.tableSelect.value` is still ''. Without this
+ * latch that produced two concurrent `switchTable()` runs: two `loadSchema`, two `renderGrid`
+ * tearing down and rebuilding the grid, and two racing `fetchData(true)`.
+ *
+ * Sharing the promise rather than dropping the second call is what makes it safe for `onopen`,
+ * which AWAITS the result and must not proceed as if the list were loaded when it is not.
+ */
+let tablesLoadInFlight = null;
+
 // Load available tables
 export async function loadTables() {
+  if (tablesLoadInFlight) return tablesLoadInFlight;
+  tablesLoadInFlight = loadTablesOnce();
+  try {
+    return await tablesLoadInFlight;
+  } finally {
+    tablesLoadInFlight = null;
+  }
+}
+
+async function loadTablesOnce() {
   try {
     const res = await fetch(`${API_BASE}/tables`);
     const data = await res.json();
+    if (!elements.tableSelect) throw new Error('#table-select is not present on this page');
     elements.tableSelect.innerHTML = '';
 
     if (data.tables && data.tables.length > 0) {
@@ -51,7 +97,9 @@ export async function loadTables() {
     }
   } catch (err) {
     console.error('Failed to load tables', err);
-    elements.tableSelect.innerHTML = '<option value="">Failed to load</option>';
+    // Guarded for the same reason as `setBadge` above: the handle this catch wants to write is
+    // exactly the handle whose absence is one of the ways we get here.
+    if (elements.tableSelect) elements.tableSelect.innerHTML = '<option value="">Failed to load</option>';
   }
 }
 

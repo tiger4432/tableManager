@@ -88,6 +88,22 @@ async function init() {
   }
   */
 
+  // THE LIVE CHANNEL IS NOT GATED ON ANYTHING ELSE. This used to be the LAST statement of
+  // `init()`, after `await checkServerHealth()` and `await loadTables()`. Since the whole
+  // reconnect ladder lives inside `initWebSocket`, anything that stopped `init()` short of this
+  // line left the page with no socket AND no retry, for the rest of the session — reproduced
+  // three ways (see startup_socket_gate_harness.mjs): a `catch` block that itself throws on a
+  // null DOM handle, and a `fetch` that never settles (a hung backend or proxy), which does not
+  // even reject and so logs nothing at all.
+  //
+  // FIRST, not merely "earlier". Every setup call below can throw too — `elements.copyHeaderToggle
+  // .checked` on the next lines is an unguarded handle — so the socket goes ahead of ALL of it.
+  // Opening it has no dependency on health status or the table list: `initWebSocket` reads only
+  // WS_URL, `state`, and the wake signals, and its `onopen` re-derives what it needs
+  // (`checkServerHealth`, then `loadTables` only if the picker is still empty). The overlap that
+  // creates with `loadTables()` below is de-duplicated by an in-flight latch in api.js.
+  initWebSocket();
+
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
   if (cachedCopyHeader !== null) {
@@ -113,7 +129,6 @@ async function init() {
   setupDragAndDrop();
   await checkServerHealth();
   await loadTables();
-  initWebSocket();
 }
 
 // Event Listeners Setup
@@ -2017,7 +2032,11 @@ function discardPendingTxEdits() {
   elements.performanceLog.textContent = 'Pending updates discarded';
 }
 
-// Start Application
-init();
+// Start Application.
+// The `catch` NAMES the failure instead of leaving it as a bare unhandled rejection — it does
+// not swallow it. Startup dying silently is how the missing WebSocket stayed invisible; the
+// socket itself is now opened on the first line of `init()`, so reaching here still means the
+// live channel is up.
+init().catch(err => console.error('[init] startup aborted before completing', err));
 console.log('AssyManager Client Bundle Loaded. Version Hash Buster: 019ee29f-b2fb-727e');
 

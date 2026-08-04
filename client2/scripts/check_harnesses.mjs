@@ -147,6 +147,11 @@ const FLOORS = new Map([
   ['push_gate_harness.mjs', 15],
   ['retroactive_view_harness.mjs', 263],
   ['standard_frame_origin_harness.mjs', 19],
+  // New 2026-08-04 with the startup-gate round (the page ran a whole session with no WebSocket
+  // and no retry, because `initWebSocket()` was the last statement of `init()` behind two
+  // awaited REST calls). Same rule as the other new entries: the floor is the count it reports
+  // on the commit that introduces it — there is no earlier tree to measure it against.
+  ['startup_socket_gate_harness.mjs', 103],
   ['startxy_probe.mjs', 29],
   ['undeclared_identifier_harness.mjs', 10],
   ['valid_die_head_parity_oracle.mjs', 17498],
