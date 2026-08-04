@@ -92,6 +92,81 @@ def internal_event_session():
     return sess
 
 
+def record_undelivered_notification(session_factory, table_name, endpoint,
+                                    reason, logger=None):
+    """Leave a DURABLE marker that a notification did not arrive. Returns ``bool``.
+
+    Why this exists
+    ---------------
+    ``run_watcher.post_event`` used to log the failure and drop it. No marker, no
+    retry, no record anywhere a recovery path could find. So every
+    ``batch-refresh``, ``file-processed`` and ``ingestion-state`` notification a
+    watcher emitted while the hub was unreachable was **permanently lost**: the
+    row landed in the database and the screen never learned. That is not limited
+    to restarts - any few seconds of hub unavailability does it.
+
+    Why it is a row in ``database_outbox`` and not a new mechanism
+    -------------------------------------------------------------
+    The chain worker already owns exactly this: a committed row whose
+    ``broadcast_at`` is NULL means "this change was not announced", and
+    ``sweep_undelivered_broadcasts`` collects those rows every 5 s, fires
+    ``batch_refresh_required`` for the tables involved, and stamps them. A second
+    queue with its own retry policy would be a second thing to get wrong. This
+    writes the marker in the shape that sweeper already collects:
+
+        processed_chain=True   - never re-run as a data transaction, no mapper
+        status='SUCCESS'       - the DATA succeeded; only the notification failed
+        broadcast_at=NULL      - the marker itself
+        event_type=BROADCAST_RECOVERY - not CREATE/EDIT, so the graph
+                                 materializer skips it too
+
+    Never raises. A marker that cannot be written must not take down the
+    ingestion path that was merely trying to announce itself.
+    """
+    if not table_name:
+        return False
+    db = None
+    try:
+        import uuid
+        import event_constants
+        from database.models import DatabaseOutbox
+
+        db = session_factory()
+        db.add(DatabaseOutbox(
+            event_uuid=str(uuid.uuid4()),
+            event_type=event_constants.EVENT_BROADCAST_RECOVERY,
+            table_name=table_name,
+            # Small scalars only. The payload of the notification that failed is
+            # deliberately NOT copied in: a batch-refresh payload carries up to
+            # 500 audit log entries, and a marker that big is how a recovery
+            # path turns into the next incident (2026-07-25, ~50 MB payload).
+            payload={"endpoint": endpoint, "reason": str(reason)[:500],
+                     "marker": "undelivered_notification"},
+            status="SUCCESS",
+            processed_chain=True,
+        ))
+        db.commit()
+        return True
+    except Exception as e:
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        if logger is not None:
+            logger.error(
+                f"[internal-events] Could not record the undelivered-notification "
+                f"marker for '{table_name}' ({endpoint}): {e}. That notification "
+                f"is now unrecoverable.")
+        return False
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+
 def _redact_proxy(url):
     """A proxy URL with any ``user:password@`` removed.
 
@@ -140,6 +215,28 @@ def is_loopback(url):
     return host in _LOOPBACK_HOSTS
 
 
+def own_health_payload(response):
+    """The parsed ``/health`` body when it is unmistakably OURS, else ``None``.
+
+    ``health.compute_health`` returns ``{"status", "checked_at", "problems",
+    "checks"}``. Requiring ``status`` AND ``checks`` together is what makes this
+    a fingerprint rather than a guess: an error page from a proxy, a load
+    balancer or a filtering appliance is HTML, or JSON of some other shape, and
+    cannot accidentally satisfy both.
+
+    Never raises - a body that is not JSON at all is simply not ours.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    if "status" in body and isinstance(body.get("checks"), dict):
+        return body
+    return None
+
+
 def check_api_reachable(base_url=None, timeout=3.0):
     """Probe ``GET /health`` once, and say what the answer means.
 
@@ -158,9 +255,23 @@ def check_api_reachable(base_url=None, timeout=3.0):
       other and uvicorn takes longer to bind than a worker takes to reach here.
       Logged at INFO for that reason - a warning on every normal startup is a
       warning nobody reads.
-    * **any HTTP status** - something answered, and since ``/health`` is ungated it
-      was **not this application**. That is the incident: a proxy or filtering
-      layer in the path of a loopback call. Logged at ERROR with the remedy.
+    * **a non-200 carrying our own health payload** - this application answered
+      and it is reporting itself unhealthy. NOT a proxy. ``/health`` returns
+      **503** by design whenever any check fails (``health.HTTP_UNHEALTHY``), so
+      the old "any status but 200 means something else answered" rule accused a
+      proxy every time the stack was merely unwell. On 2026-07-31 both the chain
+      worker and the graph sync worker printed the proxy essay while the real
+      cause was a duplicate launcher, and that essay misdirected this very
+      diagnosis once before it was believed.
+    * **any other HTTP status** - something answered, and since ``/health`` is
+      ungated it was **not this application**. That is still a real incident (this
+      site's corporate proxy does not honour ``<local>`` for ``127.0.0.1``), so
+      the detection stays; only its trigger is narrowed.
+
+    The discriminator is the response BODY, not the status code: a proxy or a
+    filtering layer does not know the shape of ``health.compute_health``'s
+    payload, so a body carrying both ``status`` and ``checks`` is ours and
+    nothing else's.
     """
     base = base_url or api_base_url()
     url = f"{base.rstrip('/')}/health"
@@ -178,6 +289,19 @@ def check_api_reachable(base_url=None, timeout=3.0):
         return "info", (
             f"[internal-events] {url} -> 200, direct (proxy bypassed). "
             f"proxy-env={proxy_env}"
+        )
+
+    own = own_health_payload(res)
+    if own is not None:
+        problems = own.get("problems") or []
+        if not isinstance(problems, list):
+            problems = [str(problems)]
+        detail = "; ".join(str(p) for p in problems[:5]) or "no detail reported"
+        return "warning", (
+            f"[internal-events] {url} -> {res.status_code}, answered by THIS "
+            f"application reporting status='{own.get('status')}'. This is not a "
+            f"proxy and not an auth failure: the web server is up and says it is "
+            f"unhealthy. Problems: {detail}. proxy-env={proxy_env}"
         )
 
     server_header = ""

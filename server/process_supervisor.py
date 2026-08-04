@@ -67,6 +67,37 @@ Unknown always counts as healthy: no DATABASE_URL, sqlite, an unparseable URL or
 a probe that raises all mean "no evidence", so this can only ever ADD evidence -
 it can never take away the ability to fail a genuinely broken child.
 
+A PORT CONFLICT IS NEITHER OF THOSE TWO THINGS
+----------------------------------------------
+``shared_dependency_down`` probes the database and nothing else, so the most
+common real cause of a mass child failure on this box was landing in the
+"environment is down" bucket by default. Measured over 74 child deaths since
+2026-07-25: **100 % of them were the only two children that bind a TCP port**
+(:8080 n=41, :8090 n=33); the three children that bind nothing died zero times.
+Their uptime at death was a dead constant (min 3.0 s, median 3.1 s) - the time it
+takes uvicorn to import the app and discover that the port is taken. The cause is
+a second launcher started while the first was still running, and the response was
+a 60 s correlated retry with NO LIMIT: the new stack fought the old one silently
+for a minute, or forever.
+
+A port held by another process is a **permanent local misconfiguration**. No
+amount of retrying frees it, the environment is fine, and the fix is a sentence
+long. So it is probed FIRST, ahead of both the peer rule and the database probe,
+and it produces a terminal verdict that names the port and the PID that owns it.
+The database-outage case is untouched: nothing is listening on the child's port
+then, so the probe reports clear and the correlated policy runs exactly as before.
+
+CHILD OUTPUT GOES TO A FILE, NOT ONLY TO A CONSOLE NOBODY KEPT
+--------------------------------------------------------------
+Every line uvicorn writes about its own start - ``Started server process``,
+``Uvicorn running on``, ``Application startup complete``, and the ``OSError`` when
+the bind fails - goes to the child's stdout/stderr, which the launcher used to
+leave attached to the console and never record. So the single most decisive line
+of the incident above existed in **no file on disk**, and diagnosing it required
+reconstructing the cause from 74 deaths' worth of statistics. Each child's output
+is now teed: byte-for-byte to the launcher's console exactly as before, and
+appended to ``<DATA_ROOT>/<name>_stdout.log``.
+
 Restarting a mid-ingestion watcher is safe, and this design depends on that being
 true: P2's checkpoint resume was drilled under a real ``taskkill /F`` at 30,000 of
 100,000 rows — the committed offset matched the actual row count exactly and the
@@ -84,6 +115,9 @@ timestamp stops, and /health says so.
 """
 import os
 import json
+import socket
+import sys
+import threading
 import time
 import subprocess
 
@@ -125,12 +159,30 @@ CORRELATED_MIN_CHILDREN = 2
 # that recovery is automatic within a minute of the cause clearing.
 CORRELATED_BACKOFF_SEC = 60.0
 
+# --- Port conflict -------------------------------------------------------
+# How long the probes may take. Both run against this machine only, so a timeout
+# this short is generous; the point is that a supervision tick can never hang on
+# them.
+PORT_PROBE_TIMEOUT_SEC = 0.5
+
+# --- Child output capture -------------------------------------------------
+# Each child's tee'd output file is rotated at this size (one .1 backup kept).
+# uvicorn's access log is the volume driver, so this cannot be left unbounded on
+# a launcher that runs for months.
+CHILD_LOG_MAX_BYTES = 20 * 1024 * 1024
+
 STATE_RUNNING = "running"
 STATE_BACKOFF = "backoff"
 STATE_FAILED = "failed"
 STATE_STOPPED = "stopped"
 # Budget exhausted, but not alone: retried forever, never permanently failed.
 STATE_RETRYING_CORRELATED = "retrying_correlated"
+
+# Why a child reached a terminal state. Recorded in the status file (and so in
+# /health) because "permanently failed" and "permanently failed because something
+# else owns its port" need completely different responses from an operator.
+VERDICT_BROKEN_CHILD = "broken_child"
+VERDICT_PORT_CONFLICT = "port_conflict"
 
 # States from which a child is still waiting to be restarted.
 _WAITING_STATES = (STATE_BACKOFF, STATE_RETRYING_CORRELATED)
@@ -199,6 +251,112 @@ def shared_dependency_down(url=None, timeout=2.0):
     except Exception as e:
         return True, (f"the database at {host}:{port} is not accepting "
                       f"connections ({type(e).__name__})")
+
+
+def port_owner(port, log=None):
+    """``(pid, process_name)`` of whatever is LISTENing on ``port``, or ``(None, None)``.
+
+    The PID is the whole value of this function: "port 8080 is taken" sends an
+    operator hunting, "port 8080 is held by PID 8444 (python.exe)" ends the
+    question. Verified on this box without administrator rights - the Windows
+    TCP table exposes the owning PID to any caller.
+
+    Never raises. Without psutil, or when the connection table cannot be read,
+    the answer degrades to "taken by someone" rather than to an exception.
+    """
+    psutil = _psutil_or_warn(log)
+    if psutil is None:
+        return None, None
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.status != psutil.CONN_LISTEN:
+                continue
+            if not conn.laddr or conn.laddr.port != port:
+                continue
+            pid = conn.pid
+            name = None
+            if pid:
+                try:
+                    name = psutil.Process(pid).name()
+                except Exception:
+                    name = None
+            return pid, name
+    except Exception:
+        return None, None
+    return None, None
+
+
+def port_is_taken(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
+    """``(taken, how)`` - could a new child bind ``port`` on ``host`` right now?
+
+    Two independent probes, ORed, because each one alone has a blind spot on
+    Windows: a bind test against ``0.0.0.0`` can succeed while another process
+    holds ``127.0.0.1`` on the same port, and a connect test only sees a socket
+    that is already accepting.
+
+    ``SO_REUSEADDR`` is deliberately NOT set. On Windows it lets a bind to an
+    already-bound port SUCCEED, which is precisely the answer this function must
+    never produce.
+    """
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind((host or "0.0.0.0", port))
+        finally:
+            s.close()
+    except OSError as e:
+        return True, f"bind failed ({type(e).__name__})"
+    probe_host = "127.0.0.1" if host in (None, "", "0.0.0.0", "::") else host
+    try:
+        with socket.create_connection((probe_host, port), timeout=timeout):
+            return True, f"something is already accepting on {probe_host}:{port}"
+    except Exception:
+        pass
+    return False, None
+
+
+def describe_port_conflict(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
+    """One log-ready sentence about a port that is taken, or ``None`` if it is free."""
+    taken, how = port_is_taken(port, host, timeout=timeout)
+    if not taken:
+        return None
+    pid, name = port_owner(port)
+    if pid:
+        owner = f"PID {pid}" + (f" ({name})" if name else "")
+    else:
+        owner = "another process (its PID could not be read)"
+    return f"TCP port {port} is already held by {owner} [{how}]"
+
+
+def port_conflict(spec, timeout=PORT_PROBE_TIMEOUT_SEC):
+    """``(conflict, detail)`` - is a port this child must bind already owned?
+
+    The same class of evidence as ``shared_dependency_down`` and the opposite
+    conclusion: a database that is down will come back and the child should keep
+    trying, a port that belongs to somebody else will not free itself and the
+    child must stop trying and say whose it is.
+    """
+    for port in getattr(spec, "ports", ()) or ():
+        detail = describe_port_conflict(port, getattr(spec, "port_host", None),
+                                        timeout=timeout)
+        if detail:
+            return True, detail
+    return False, None
+
+
+def preflight_port_check(ports, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
+    """``[(port, detail), ...]`` for every port that is already taken.
+
+    Called by the launcher BEFORE it starts anything. Five children racing an
+    older stack for two ports is not a startup, it is a fight the operator cannot
+    see; the only sane move is to refuse and name the winner.
+    """
+    conflicts = []
+    for port in ports:
+        detail = describe_port_conflict(port, host, timeout=timeout)
+        if detail:
+            conflicts.append((port, detail))
+    return conflicts
 
 
 def psutil_status():
@@ -283,7 +441,8 @@ class ChildSpec:
     """
 
     def __init__(self, name, cmd, cwd, env=None, restartable=True,
-                 heartbeat=None, start_delay=0.0):
+                 heartbeat=None, start_delay=0.0, ports=(), port_host=None,
+                 log_file=None):
         self.name = name
         self.cmd = cmd
         self.cwd = cwd
@@ -294,6 +453,14 @@ class ChildSpec:
         # progress. None for children that publish none.
         self.heartbeat = heartbeat
         self.start_delay = start_delay
+        # TCP ports this child must be able to bind. Empty for a child that binds
+        # nothing - and that distinction is exactly the one the 74-death sample
+        # drew: every failure was a port binder, none were the others.
+        self.ports = tuple(ports)
+        self.port_host = port_host
+        # Where this child's stdout/stderr is tee'd. None keeps the old
+        # behaviour (console only, recorded nowhere).
+        self.log_file = log_file
 
 
 class _ChildState:
@@ -308,6 +475,10 @@ class _ChildState:
         self.last_exit_at = None
         self.next_restart_at = None
         self.failure_reason = None
+        # Which terminal verdict was reached, when one was. See VERDICT_*.
+        self.terminal_verdict = None
+        # Thread tee-ing this child's output to console + file, if it has one.
+        self.log_pump = None
         # Names of the other children whose failures made this one look like a
         # shared-cause outage rather than a broken child.
         self.correlated_with = []
@@ -334,7 +505,7 @@ class Supervisor:
                  correlation_window=CORRELATION_WINDOW_SEC,
                  correlated_min_children=CORRELATED_MIN_CHILDREN,
                  correlated_backoff=CORRELATED_BACKOFF_SEC,
-                 environment_probe=None):
+                 environment_probe=None, port_probe=None):
         self.children = [_ChildState(s) for s in specs]
         self.status_file = status_file or status_path()
         self._log = log or (lambda msg, level="INFO": None)
@@ -351,6 +522,9 @@ class Supervisor:
         self.correlated_backoff = correlated_backoff
         # Injectable so the decision can be tested without a socket.
         self.environment_probe = environment_probe or shared_dependency_down
+        # Same, for the port-conflict verdict. Takes the ChildSpec, because the
+        # answer is per child: only some children bind anything.
+        self.port_probe = port_probe or port_conflict
 
         self._stopping = False
         self._exit_requested = False
@@ -366,7 +540,92 @@ class Supervisor:
         merged = os.environ.copy()
         if spec.env:
             merged.update(spec.env)
-        return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged)
+        if not spec.log_file:
+            return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged)
+        # PYTHONUNBUFFERED is not a nicety here. With stdout on a pipe instead of
+        # a console, CPython block-buffers it, and the one line this capture
+        # exists for - the bind error - can sit in an 8 KB buffer while the
+        # process dies. Flushing on every write costs nothing measurable next to
+        # losing it.
+        merged.setdefault("PYTHONUNBUFFERED", "1")
+        return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+
+    def _attach_log_pump(self, child):
+        """Tee a child's merged stdout/stderr to the console AND to its own file.
+
+        A pipe plus a reader thread rather than ``stdout=<file>`` because the
+        console must keep showing exactly what it showed before: five children's
+        interleaved output in one window is how an operator watches this system
+        start. Redirecting straight to a file would have silenced that.
+
+        Bytes are passed through undecoded. A child's stdout is already encoded
+        in the console's code page (cp949 here), so writing its bytes to
+        ``sys.stdout.buffer`` reproduces today's console byte for byte, and no
+        decode step exists that could raise on a line and lose it.
+        """
+        spec = child.spec
+        stream = getattr(child.proc, "stdout", None)
+        if not spec.log_file or stream is None:
+            return
+        path = spec.log_file
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        except Exception:
+            pass
+        header = (f"\n=== {spec.name} started "
+                  f"{time.strftime('%Y-%m-%d %H:%M:%S')} pid="
+                  f"{getattr(child.proc, 'pid', '?')} cmd={' '.join(spec.cmd)} "
+                  f"===\n").encode("utf-8", "replace")
+
+        def pump():
+            handle = None
+            written = 0
+            try:
+                handle = open(path, "ab")
+                handle.write(header)
+                handle.flush()
+                written = os.path.getsize(path)
+                console = getattr(sys.stdout, "buffer", None)
+                for line in iter(stream.readline, b""):
+                    try:
+                        handle.write(line)
+                        handle.flush()
+                        written += len(line)
+                    except Exception:
+                        pass
+                    if written > CHILD_LOG_MAX_BYTES:
+                        # Rotate. If the rename fails (a reader holding the file
+                        # open, say) reopen the original rather than leaving this
+                        # child's output going nowhere for the rest of the run.
+                        try:
+                            handle.close()
+                            os.replace(path, path + ".1")
+                        except Exception:
+                            pass
+                        handle = open(path, "ab")
+                        written = 0
+                    if console is not None:
+                        try:
+                            console.write(line)
+                            console.flush()
+                        except Exception:
+                            pass
+            except Exception as e:
+                self._log(f"Output capture for {spec.name} stopped: {e}",
+                          level="WARNING")
+            finally:
+                for closeable in (handle, stream):
+                    try:
+                        if closeable is not None:
+                            closeable.close()
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=pump, name=f"logpump-{spec.name}", daemon=True)
+        child.log_pump = t
+        t.start()
 
     def _find(self, name):
         for c in self.children:
@@ -415,6 +674,7 @@ class Supervisor:
             child.state = STATE_RUNNING
             child.started_at = self._clock()
             child.next_restart_at = None
+            self._attach_log_pump(child)
             self._log(f"Starting {name}: {' '.join(child.spec.cmd)}")
             self._record(child, "started", pid=getattr(child.proc, "pid", None))
         except Exception as e:
@@ -453,10 +713,31 @@ class Supervisor:
                      reason=reason)
 
         if child.consecutive_failures > self.max_consecutive_failures:
-            # The budget is gone. Whether that means "this child is broken" or
-            # "the environment is broken" is decided by whether it is alone -
-            # and a child can have company in two ways: another child failing in
-            # the same window, or a shared dependency being verifiably down.
+            # The budget is gone. Three verdicts are possible, and they are asked
+            # in this order because each one, when true, makes the next question
+            # meaningless:
+            #
+            # 1. Someone else owns this child's port. Terminal, local, and named.
+            #    It is asked FIRST because the duplicate-launcher case kills BOTH
+            #    port-binding children at once, so the peer rule would happily
+            #    call it a shared-cause outage and retry every 60 s forever -
+            #    which is the bug this ordering exists to fix.
+            # 2. It is not failing alone (peers, or the database is down).
+            #    Retried indefinitely; the environment will come back.
+            # 3. It is failing alone in a healthy environment. Broken child.
+            conflict, conflict_detail = False, None
+            if child.spec.ports:
+                try:
+                    conflict, conflict_detail = self.port_probe(child.spec)
+                except Exception as e:
+                    # A probe that breaks must not decide anything.
+                    self._log(f"port conflict probe failed: {e}", level="WARNING")
+            if conflict:
+                self._fail_permanently(child, exit_code, reason,
+                                       verdict=VERDICT_PORT_CONFLICT,
+                                       detail=conflict_detail)
+                self.write_status(force=True)
+                return
             peers = self._peers_failed_recently(child, now)
             env_down, env_detail = False, None
             if len(peers) + 1 < self.correlated_min_children:
@@ -483,30 +764,54 @@ class Supervisor:
                          attempt=child.consecutive_failures)
         self.write_status(force=True)
 
-    def _fail_permanently(self, child, exit_code, reason):
-        """This child exhausted its budget and it did it alone."""
+    def _fail_permanently(self, child, exit_code, reason,
+                          verdict=VERDICT_BROKEN_CHILD, detail=None):
+        """Terminal. Either this child is broken, or its port belongs to somebody else."""
         child.state = STATE_FAILED
         child.next_restart_at = None
         child.correlated_with = []
         child.correlated_evidence = None
         child.correlated_since = None
-        child.failure_reason = (
-            reason or
-            f"exited {child.consecutive_failures} times in a row "
-            f"(last exit code {exit_code}) without staying up "
-            f"{self.healthy_uptime:.0f}s"
-        )
+        child.terminal_verdict = verdict
+        if verdict == VERDICT_PORT_CONFLICT:
+            child.failure_reason = (
+                f"{detail}. That is a permanent local misconfiguration, not an "
+                f"environment outage - retrying cannot take a port away from the "
+                f"process that owns it."
+            )
+        else:
+            child.failure_reason = (
+                reason or
+                f"exited {child.consecutive_failures} times in a row "
+                f"(last exit code {exit_code}) without staying up "
+                f"{self.healthy_uptime:.0f}s"
+            )
         # Loud, and it stays failed. No further restart attempts.
         self._log("=" * 68, level="ERROR")
-        self._log(f"CHILD PERMANENTLY FAILED: {child.spec.name}", level="ERROR")
-        self._log(f"  {child.failure_reason}", level="ERROR")
-        self._log("  No other child failed recently, so this is a broken child, "
-                  "not a broken environment.", level="ERROR")
+        if verdict == VERDICT_PORT_CONFLICT:
+            self._log(f"CHILD PERMANENTLY FAILED - PORT CONFLICT: {child.spec.name}",
+                      level="ERROR")
+            self._log(f"  {detail}", level="ERROR")
+            self._log("  This is NOT an environment outage: the database and the "
+                      "network are irrelevant to", level="ERROR")
+            self._log("  a port another process owns, and no number of retries "
+                      "will free it.", level="ERROR")
+            self._log("  Almost always a second launcher started while the first "
+                      "was still running.", level="ERROR")
+            self._log("  [HOW TO FIX] 기존 스택이 이미 떠 있으면 그대로 쓰십시오. "
+                      "중복 기동이라면 위 PID 를 종료한 뒤", level="ERROR")
+            self._log("  (taskkill /PID <pid> /T /F) 런처를 다시 시작하십시오.",
+                      level="ERROR")
+        else:
+            self._log(f"CHILD PERMANENTLY FAILED: {child.spec.name}", level="ERROR")
+            self._log(f"  {child.failure_reason}", level="ERROR")
+            self._log("  No other child failed recently, so this is a broken child, "
+                      "not a broken environment.", level="ERROR")
         self._log("  Giving up - this child will NOT be restarted again.", level="ERROR")
         self._log("  /health now reports unhealthy until it is fixed and the "
                   "launcher restarted.", level="ERROR")
         self._log("=" * 68, level="ERROR")
-        self._record(child, "permanently_failed",
+        self._record(child, "permanently_failed", verdict=verdict,
                      consecutive_failures=child.consecutive_failures,
                      reason=child.failure_reason)
 
@@ -669,6 +974,7 @@ class Supervisor:
                 "seconds_until_restart": (round(c.next_restart_at - now, 1)
                                           if c.next_restart_at is not None else None),
                 "failure_reason": c.failure_reason,
+                "terminal_verdict": c.terminal_verdict,
                 "correlated_with": c.correlated_with,
                 "correlated_evidence": c.correlated_evidence,
                 "correlated_since": c.correlated_since,

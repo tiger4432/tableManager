@@ -368,6 +368,10 @@ def test_launcher_declares_a_heartbeat_for_every_worker():
     import re
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     src = open(os.path.join(root, "run_decoupled_app.py"), encoding="utf-8").read()
+    # Scoped to the spec list. The whole file is not searchable for a runner
+    # name: a comment mentioning `run_graph_sync.py` above main() matched first
+    # and made this guard fail on a launcher whose specs were perfectly correct.
+    src = src[src.index("    specs = ["):]
     for runner, hb in [("run_watcher.py", "watcher"), ("run_graph_sync.py", "graph"),
                        ("run_chain_worker.py", "chain"), ("run_auto_update.py", "scheduler")]:
         m = re.search(re.escape(runner) + r"[^\n]*\n?[^\n]*", src)
