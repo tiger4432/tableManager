@@ -17,7 +17,20 @@
 > | **갱신 트리거 (주기)** | 위 셋이 없어도 **정비 사이클마다 한 번** 원본과 대조한다 |
 > | **갱신 방법** | 이 환경의 `server/config/*.json`을 다시 복사한다. **손으로 고치지 마라** — 손으로 고친 사본은 사본도 원본도 아니고, 어느 쪽이 참인지 다음 사람이 알 방법이 없다 |
 >
-> ⚠️ **낡은 것을 발견하면 그것부터 적어라.** 알려진 낡음: `transfer_plan_config.json`·`bonding_plan_config.json`의 사본이 **2026-08-04 `2c2a777`이 고친 `.sample`보다 낡았다**(보조 역할 선택성 주석). 무엇이 낡았는지 적힌 사본은 안 적힌 사본보다 낫다.
+> ⚠️ **낡은 것을 발견하면 그것부터 적어라.** 무엇이 낡았는지 적힌 사본은 안 적힌 사본보다 낫다.
+>
+> ### 🔴 알려진 고장 (2026-08-04 실측) — `transfer_plan_config.json`·`bonding_plan_config.json` 사본은 **지금 이 환경에서 해석되지 않는다**
+>
+> 두 가지가 겹쳐 있다. **베끼지 마라.**
+>
+> | | |
+> |---|---|
+> | **① 형태가 낡음** | `2c2a777`이 고친 `.sample`보다 낡았다(보조 역할 선택성 주석) |
+> | **② 실제로 안 돈다** | `transfer_plan_config.json` 사본은 본딩 stage를 **`dt_map`에 일반명(`lot`/`slot`/`x`/`y`/`val`)으로** 선언한다. 이 환경의 `dt_map` 컬럼은 `cell_key, dt_job, dt_x, dt_y, c_bn`이고 키도 `dt_job`이라 **한 역할도 해석되지 않는다.** `bonding_plan_config.json` 사본은 **이 환경에 존재하지 않는 테이블 셋**(`wafer_process`·`core_defect_map`·`eds_fail_map`)과 `bonding_log`의 **틀린 컬럼명 넷**(`core_lot`/`core_slot`/`cx`/`cy` — 실제는 `bond_*`/`dt_*`)을 가리켜 **dt stage 전체가 배선돼 있지 않다** |
+>
+> 🔴 **이 사본을 읽고 그 철자를 옮겨 적는 것이 2026-08-04 라이브 사고의 원인이었다** — 사람이 테이블만 `dt_log`로 바꾸고 **컬럼명은 템플릿의 일반명(`"x": "x"`)으로 남겨** 형태 검증·필수 역할 검증을 전부 통과한 채 조회 시점에만 조용히 죽었다. 이 폴더의 JSON은 **「이 환경에서는 이렇게 선언했다」의 사본**이지 이식 가능한 기본값이 아니다.
+>
+> **수리는 손편집이 아니라 재복사다**(Lead / Backend). 그전까지 이 두 파일에서 계획 config를 배우지 말고 [config/transfer_plan_config](../config/transfer_plan_config.md)를 읽어라 — 그쪽 예시는 **`GET /admin/transfer-plan/dry-run`으로 수용을 실측한 것**이다.
 
 ---
 
@@ -51,6 +64,14 @@
 
 테이블 선언을 뺄 때 `map_overlay_config` · `bonding_plan_config` · `transfer_plan_config` · `ontology_mapping` · `virtual_join_rules`가 그것을 참조하는지 확인한다. 매달린 참조는 **에러가 아니라 침묵**으로 나타난다.
 
+### ④ 선언이 있고, 형태가 옳고, 테이블도 맞고, 역할도 다 있는데 — **컬럼 철자 하나가 틀렸다** (2026-08-04 신설)
+
+세 개의 형제였던 목록에 넷째가 생겼다. 앞의 셋과 달리 이것은 **아무것도 비어 있지 않은** 실패다. `"columns": {"x": "x"}`에서 **왼쪽은 시스템이 정한 역할 이름이고 오른쪽은 그 테이블에 실존해야 하는 컬럼명**인데, 철자가 우연히 같으면 그 줄이 동어반복처럼 맞아 보여 검토를 통과한다. 그리고 종전에는 화면이 **「선언돼 있지 않습니다」**라고 말해 — 선언은 **있는데도** — 원인을 정반대로 가리켰다.
+
+`12c1d2e` 이후 거절은 **자기 사유를 이름으로 말하고**, `8817dde` 이후 **`GET /admin/transfer-plan/dry-run`이 저장 전에 그 판정을 돌려준다.**
+
+→ **이 실패 모양의 정본은 [config/transfer_plan_config §6](../config/transfer_plan_config.md)**(화면 문장 → 무엇을 고치나)다. 여기 사본을 만들지 말 것.
+
 ---
 
 ## 파일별 한 줄
@@ -64,7 +85,7 @@
 | `enrichment_rules.json` | 결손 보정 ― 참조뷰·후보 선언·자동확정 노브 |
 | `virtual_join_rules.json` | 조회 시점 조인(저장 안 함). ⚠️ **조인 키에 UNIQUE 인덱스가 없으면 선언을 거부**하고 만들 DDL을 알려준다 |
 | `ontology_mapping.json` | 행 → 그래프 노드·엣지 승격 |
-| `bonding_plan_config.json` · `transfer_plan_config.json` | 계획 화면의 역할 바인딩 |
+| `bonding_plan_config.json` · `transfer_plan_config.json` | 계획 화면의 역할 바인딩. 🔴 **이 두 사본은 현재 해석되지 않는다**(헤더의 「알려진 고장」) · 수용 여부를 묻는 자리는 `GET /admin/transfer-plan/dry-run` |
 | `auto_update_control.json` | 수집기별 on/off. **데이터를 계속 만드는 자리이자 옛 수집기를 끄는 자리** |
 
 **제외**: `scheduler_status.json` · `supervisor_status.json` ― 런타임 상태이지 설정이 아니다.
