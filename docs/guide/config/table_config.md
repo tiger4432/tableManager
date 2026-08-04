@@ -1,6 +1,6 @@
 # `table_config.json` 세팅 — 동적 테이블 스키마 SSOT
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (**§7 신설 — `version_column`**: `092b83f`로 착지한 버전 게이트의 운영자 문서. **오늘 이 키를 선언한 테이블은 없고 기능은 전부 무동작**이며, 켜는 것은 운영자입니다. 🔴 **§7.2가 이 절에서 제일 중요합니다** — 버전 게이트를 건 테이블이 동시에 **체인/결손보정 타깃**이면 그 파생 쓰기가 전부 거절됩니다. §5 키 표에도 행을 추가했습니다. 직전 2026-07-28 `deed6d2`: §5 키 표에 `map_push_ok` 행 — 로그형 테이블 에디터 Push 허용 선언, JSON boolean만 유효) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (**표기 정규화 진입점 배선**: `92b8d6f`의 파생 컬럼(`<컬럼>_norm`)은 **이 파일에서 시작**합니다 — §1에 항목, §5의 `column_types`·`display_columns` 행에 주의를 붙였고 절차의 정본은 [notation_rules_config](./notation_rules_config.md)입니다. 🔴 **`display_columns`가 「그리드에 보이는가」의 단독 결정자**라는 사실을 그 행에 실측으로 못박았습니다(`main.py:1929` — 선언돼 있으면 그 목록이 그대로 `/schema`가 되고, `/data`·CSV는 반대로 `column_types` 기준입니다). 직전: **§7 신설 — `version_column`**: `092b83f`로 착지한 버전 게이트의 운영자 문서. **오늘 이 키를 선언한 테이블은 없고 기능은 전부 무동작**이며, 켜는 것은 운영자입니다. 🔴 **§7.2가 이 절에서 제일 중요합니다** — 버전 게이트를 건 테이블이 동시에 **체인/결손보정 타깃**이면 그 파생 쓰기가 전부 거절됩니다. §5 키 표에도 행을 추가했습니다. 직전 2026-07-28 `deed6d2`: §5 키 표에 `map_push_ok` 행 — 로그형 테이블 에디터 Push 허용 선언, JSON boolean만 유효) | **Owner:** Lead / Backend
 > 상위: [폴더 인덱스](./README.md) · [CONFIG_GUIDE](../CONFIG_GUIDE.md)(시나리오 S1/S2·리로드 규율 §4·함정 §6의 **정본**)
 
 <!-- Loader evidence (2026-07-29):
@@ -28,6 +28,7 @@
 - **맵 테이블을 등록할 때** (`map_key_columns` + 좌표 컬럼 `number` 선언)
 - 워크스페이스 폴더명이 테이블명과 다를 때 (`workspace_name`), 표준 파서를 끌 때 (`std_parse`)
 - **제품 소유 테이블(`map_split_registry` 등) 설치/업그레이드** — 이때는 손편집이 아니라 `install_product_tables.py`를 씁니다 ([CONFIG_GUIDE §5.8-ter](../CONFIG_GUIDE.md))
+- **표기 정규화 파생 컬럼(`<컬럼>_norm`)을 만들 때** — 🔴 **이 파일이 1단계입니다.** `column_types`에 **`"string"`으로** 추가하고 물리 ALTER가 착지한 것을 `information_schema`로 확인한 **뒤에** [notation_rules.json](./notation_rules_config.md)에 쌍을 선언합니다. 순서를 뒤집으면 선언이 `undeclared`로 거절되고, 여기까지만 하고 물리 착지를 확인하지 않으면 **해석 보고서는 「유효」라는데 값은 안 채워지고 에러도 안 납니다** → [notation_rules_config §2](./notation_rules_config.md). 파생 컬럼은 `business_key`·`composite_key_source` 멤버가 **될 수 없습니다**(원본 컬럼은 되어도 됩니다)
 - **같은 키의 행이 항상 「최신본」이어야 할 때** (`version_column` — §7. 철 지난 파일 재투입이 현재 값을 과거로 되돌리는 것을 막습니다. 🔴 **선언 전에 §7.2의 확인 한 줄을 먼저 돌리십시오**)
 - **대문자 이름의 운영 테이블을 소문자로 개명할 때** (§6 — config만이 아니라 물리·데이터·폴더까지 걸린 절차)
 
@@ -89,8 +90,8 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 | `business_key` | string (필수) | 사용자 관점 키 컬럼명 |
 | `composite_key_source` | string[] | 복합 bk 구성 컬럼 — 지정 시 `business_key` 값 자동 생성 |
 | `composite_key_separator` | string, 기본 `"_"` | 조합 구분자. 계획/맵 계열 제품 테이블은 `\|` — **바꾸지 말 것** |
-| `column_types` | {컬럼: 타입} | `"string"`/`"number"`/`"datetime"` — 그 외는 String 처리. 시스템 컬럼(`created_at` 등 5종)은 쓰지 않음 |
-| `display_columns` | string[] | 그리드 표시 순서 + **표준 파서의 헤더 검증·적재 대상 집합** |
+| `column_types` | {컬럼: 타입} | `"string"`/`"number"`/`"datetime"` — 그 외는 String 처리. 시스템 컬럼(`created_at` 등 5종)은 쓰지 않음. **표기 정규화 파생 컬럼(`<컬럼>_norm`)도 여기에 `"string"`으로 선언하는 것이 1단계**이고, 그 뒤에 [notation_rules.json](./notation_rules_config.md)이 쌍을 선언합니다 — 🔴 **파생 컬럼은 `business_key`·`composite_key_source` 멤버가 될 수 없습니다**(로더가 `key_column`으로 거절 — 파생값이 행의 정체성을 옮길 수는 없습니다) |
+| `display_columns` | string[] | 그리드 표시 순서 + **표준 파서의 헤더 검증·적재 대상 집합**. 🔴 **이 키가 「그리드에 보이는가」의 단독 결정자입니다** — `/schema`는 선언돼 있으면 이 목록을 그대로 돌려주고 **없을 때만** 모델 컬럼을 열거합니다(`main.py:1929`). 즉 여기에 없는 컬럼은 **DB에 있어도 그리드에 안 뜹니다**(`/data` 페이로드와 CSV 추출은 반대로 `column_types` 기준이라 값은 그대로 나갑니다). 표기 정규화 파생 컬럼은 1단계에서 **여기에 넣지 않는 것이 권장**입니다 → [notation_rules_config §2.3](./notation_rules_config.md) |
 | `map_key_columns` | string[] | 🔴 **「이 테이블은 맵이다」 선언 그 자체다 — 삭제 범위 한정은 그중 하나일 뿐.** 세 가지가 이 한 줄에 달려 있다: ① 맵 replace 시 **삭제 범위 한정 키** ② **맵 에디터 테이블 목록에 뜨는 조건**(`map_editor.js`가 `/tables` 전 테이블의 `/schema`를 훑어 이 배열이 **비어 있지 않은** 것만 남긴다 — 미선언이면 그 테이블은 에디터에 **아예 없다**) ③ **인제션의 `wafer_map_metadata` 자동 등록 조건**(`map_meta_registrar`가 이 선언 **AND** 좌표 바인딩 해석을 둘 다 요구 — 미선언이면 메타가 0행이라 맵이 '화면기준'으로만 열린다). 🔴 **`map_overlay_config.table_bindings`에 좌표를 선언해도 이 줄을 대신하지 못한다** — 바인딩은 좌표만 말하고 「맵인가」는 여기서만 말한다(2026-08-02 실측: `dt_log`는 바인딩이 있는데 이 선언이 없어 에디터 목록에서 사라져 있었다). 값은 바인딩의 `key_columns`와 **같아야** 한다 |
 | `map_push_ok` | boolean, 기본 `false` | **로그형 테이블에 대한 에디터 Push 허용 선언.** 맵 에디터는 대상 테이블에 맵 계약(맵 키 + X/Y/값 + 시스템 컬럼, 합성 bk는 `composite_key_source`가 전부 계약 내 컬럼일 때만 서버 재생성이라 제외) 밖의 데이터 컬럼이 있으면 Push를 **차단**한다 — replace 적재가 그 컬럼 값을 전부 소실시키기 때문. `true` 선언 = "이 테이블로의 에디터 덮어쓰기는 알려진 흐름(R&D 수동 계측 등)이고 **소실을 인지하고 진행한다**" — 차단 대신 소실 컬럼명을 명시한 확인창 1회로 완화된다. 양산 전환 시 선언을 **제거**하면 다시 잠긴다. `std_parse`와 같은 규율: **JSON boolean `true`만 유효**, 문자열 `"true"` 등 오타는 false로 서빙 |
 | `version_column` | string, 기본 없음(무동작) | **「이 테이블은 버전이 권위이고 도착 순서가 아니다」 선언.** 선언하면 **기계가 이미 있는 행을 덮어쓸 때** 「들어온 버전 > 저장된 버전」일 때만 반영합니다. 값은 **`column_types`에 있는 실제 컬럼명**이어야 하고, 없는 컬럼을 적으면 게이트가 꺼지는 것이 아니라 **기계의 모든 덮어쓰기가 거절**됩니다(안전한 방향 — 로그가 그 컬럼명을 찍습니다). 미선언·`null`은 **완전 무동작**(종전 last-write-wins 그대로). 🔴 **사람의 교정은 이 규칙 밖입니다** — 더 높은 버전도 사람이 고친 셀을 밀지 못하고, 그리드 편집은 게이트에 닿지도 않습니다. 🔴 **선언 전 필수 확인**: 그 테이블이 `chain_rules.json`의 `target_table`이거나 `enrichment_rules.json`의 `derived_table`이면 그 파생 쓰기가 전부 거절됩니다 → **절차·판정표·로그 읽는 법은 §7** |

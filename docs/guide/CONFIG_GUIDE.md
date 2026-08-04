@@ -3,6 +3,7 @@
 > **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** Lead / Backend
 >
 > ### 이번 라운드 (2026-08-04)
+> - **새 config 파일 `notation_rules.json`**(`92b8d6f` — 표기 정규화). §1 표에 행을 추가하고 §5.6-quater 스텁을 만들었습니다. 🔴 **이 파일 하나로는 안 켜집니다** — `table_config.json`이 1단계입니다. ⚠️ **1단계라 아무도 파생값을 읽지 않고**, 2단계는 설정 스위치가 아니라 **데이터 마이그레이션**입니다. 절차·키 사전·거절 4종의 정본은 [config/notation_rules_config](./config/notation_rules_config.md).
 > - **`table_config.json`에 새 키 `version_column`**(`092b83f` — 버전 게이트). 「같은 키의 행이 항상 최신본이어야 한다」를 선언하면 **기계가 기존 행을 덮어쓸 때 버전이 더 클 때만** 반영합니다. **오늘 선언한 테이블은 없어 전부 무동작**이고, 켜는 것은 운영자입니다. 절차·판정표·로그 읽는 법의 정본은 [config/table_config §7](./config/table_config.md).
 > - 🔴 **§6에 함정 P 추가** — 버전 게이트를 건 테이블이 동시에 **체인/결손보정 타깃**이면 그 파생 쓰기가 전부 거절됩니다. 선언 **전에** 확인해야 하고, 확인하는 한 줄은 그 문서 §7.2에 있습니다.
 >
@@ -41,6 +42,7 @@ server/database/virtual_graph.json
 | **`ontology_mapping.json`** | 그래프 노드/엣지 매핑 v2 (`description` 필수) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` (웹서버 캐시 무효화) | web, graph_sync_worker |
 | **`enrichment_rules.json`** | 결손 보정 워크리스트 규칙(`decision_key`/`target_fields`/`reference_views`) + **① 자동 확정 선언**(`reference_views[].candidate_for`, 규칙별 `auto_confirm` — 기본 OFF, 2026-07-30) | 사용자 | ignored (`.sample` 有) | 조회 API는 즉시 / 체인 파생 룰은 `reload-configs` | web, chain_ingestion_worker |
 | **`virtual_join_rules.json`** | **저장하지 않는 조인 선언**(`left_table`/`right_table`/`join_key`/`expose`) + **팬아웃 가드**. 🔴 **승인 조건은 하나 — 조인 키를 덮는 유효한 UNIQUE 인덱스**(사용자 판정 2026-07-31 「인덱스 없으면 거절해」). 인덱스는 config가 아니라 DB에 살아 영속이므로 등급·스냅샷·예산이 없다. 무효(`indisvalid=false`)·부분(`indpred`)·표현식(`indexprs`) 인덱스는 불인정. 거부는 만들어야 할 `CREATE UNIQUE INDEX` DDL을 함께 준다. 실측 근거: 같은 두 테이블을 `(lot,slot,x,y)`로 이으면 103,040행, `(lot,slot)`로 이으면 132,715,520행. ✅ **조인은 실행된다**(`d70a33d` — `server/virtual_join_executor.py`가 읽기 경로에서 `expose` 컬럼을 붙인다). 🔴 **`expose` 이름이 왼쪽과 겹치는 것은 거부가 아니다** — **왼쪽이 비었을 때만 채우고**(있으면 그대로, 둘 다 없으면 `미상`) 조인이 만든 셀에만 `sources.virtual_join`이 붙는다. 왼쪽에 실재하지 않는 컬럼(`virtual_only`)으로 가는 쓰기는 `crud.apply_batch_updates` 첫 문장에서 400으로 거부되고, 겹친 컬럼은 **의도적으로 계속 쓸 수 있다**(그 쓰기가 조인 값을 고치는 유일한 방법). ✅ **가상 전용 컬럼도 그리드에 뜬다**(`9200f20`+`4b50135` — `/schema`가 **별도 키 `virtual_columns`로** 알리고 그리드가 저장 컬럼 뒤에 덧붙인다. `columns`에는 합치지 않는다). ✅ **검색·필터·CSV 추출이 화면과 같은 값을 본다**(`cd3e0f4` — 해석값이 SQL 표현식이 되어 내려간다. `미상` 행은 `equals 미상`으로 찾는다) ✅ **`number` 타입 컬럼도 노출 가능**(2026-08-04 N7 — 이전에는 PostgreSQL 타입 오류로 조회가 500이었다. 비교 철자는 INT 접기: `3.0`은 `3` → [config/virtual_join_rules §4-ter](./config/virtual_join_rules.md)). ⏳ 미해결 1건(사람이 비운 셀과 원래 빈 셀이 구별 안 됨 — 사용자 판정으로 기록된 성질)은 [config/virtual_join_rules §9](./config/virtual_join_rules.md)가 단독 소유 → [§4-bis](./config/virtual_join_rules.md) | 사용자 | ignored (`.sample` 有) | 조회 즉시(승인 선언은 짧은 TTL 캐시 + `reload-configs` 즉시 무효화. 그 훅이 없는 워커는 TTL이 지나야 바뀐다) | web(선언 검증·보고 **+ 읽기 경로 실행**) · **쓰기 거부는 `apply_batch_updates`를 지나는 전 프로세스**(web·watcher·chain) |
+| **`notation_rules.json`** | **표기 정규화 선언**(`columns: {테이블: {원본: 파생}}` + 규칙 `separator`/`case`/~~`zero_pad`~~). 같은 것을 여러 철자로 적어 온 값을 접어 **파생 컬럼 `<컬럼>_norm`**에 기록한다. 🔴 **원본 컬럼은 어떤 경우에도 안 고친다** — 그래서 접기 규칙이 틀렸다는 것을 나중에 알아도 되돌릴 것이 없고, 규칙을 고쳐 **재파생**(`server/scripts/rederive_notation_norm.py --apply`, 기본 dry-run)하면 끝이다. 안전 성질은 주석이 아니라 **거절 셋**으로 강제된다(`would_rewrite_raw`·`key_column`·`zero_pad_unimplemented`) + 파생 컬럼으로 가는 **쓰기는 `apply_batch_updates`에서 400**. ⚠️ **1단계 — 아무도 그 값을 읽지 않는다**(맵 키 분해·필터·조인은 여전히 원본). 2단계는 설정 스위치가 아니라 **데이터 마이그레이션**이다(`wafer_map_metadata`가 원본 신원으로 등록돼 있어 맵 키가 정규화 값을 읽는 순간 기존 `map_id`가 안 맞는다). 🔴 **이 파일 하나로는 안 켜진다** — `table_config.json`에 파생 컬럼을 `"string"`으로 선언하는 것이 **1단계**이고 여기가 2단계다 → [config/notation_rules_config §2](./config/notation_rules_config.md) | 사용자 | ignored (`.sample` 有 — **출하 시 `"columns": {}`로 무동작**) | 저장 후 **TTL 5초**(watcher 대상 아님) 또는 `POST /admin/reload-configs` | **파생은 `apply_batch_updates`를 지나는 전 프로세스**(web·watcher·chain) · 보고는 web |
 | **`chain_rules.json`** | 체인 인제션 룰(trigger→target→mapper) | 사용자 | ignored (`.sample` 有) | `POST /admin/reload-configs` | chain_ingestion_worker, web(조회) |
 | **`auto_update_control.json`** | 수집기 비활성 목록(= active 토글) | 사용자 (**API로 쓰기 권장**) | ignored (`.sample` 有) | 즉시(매 사이클 재조회) | run_auto_update, web |
 | **`ingestion_settings.json`** | 인제션 런타임 노브 — `heavy_file_mb`(P1 heavy 레인 임계, 기본 10) · `dedup_by_signature`(P2 동일 파일 skip, 기본 true) · `resume_from_checkpoint`(P2 오프셋 재개, 기본 true) · `flatten_nested_dirs`(폴더 드롭 처리, 기본 true — 🔴 **`600b49d`에서 이름은 그대로 뜻만 바뀜**: 승격 → **제자리 적재**. §5.6) · `auto_register_map_meta` · `enrichment_auto_confirm_*` | 사용자 | ignored (`.sample` 有) | 즉시(**다음 파일 / 다음 폴더 트리거부터**) | watcher |
@@ -422,6 +424,16 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 ⚠️ **운영 수칙(2026-07-30 F7)**: 테이블이 `index_min_rows`(기본 10,000)를 넘어간 뒤 `setup_db_performance.py`를 다시 돌리지 않으면 그 테이블의 제안 조회는 **정답을·완전한 모양으로·느리게** 답합니다. 데이터가 늘어나는 테이블이 있으면 적재 후 스크립트 재실행을 절차에 넣으십시오.
 
 > ⚠️ **이 파일은 인덱스를 만들지 않습니다.** `index_min_rows`/`index_columns`/`index_exclude`는 **선언**이고, 실제 생성은 `server/scripts/setup_db_performance.py`(Step 3.8)가 합니다 — 값을 바꾸고 스크립트를 돌리지 않으면 **아무 일도 일어나지 않습니다.** 반대로 인덱스가 없는 컬럼은 조용히 느려지지 않고 `unavailable_reason`으로 꺼집니다(사유가 인덱스 이름과 실행할 명령을 지목합니다).
+
+### 5.6-quater `notation_rules.json` (2026-08-04 `92b8d6f` 신설)
+
+표기 정규화 선언 — 규칙 사전·거절 4종·확인 절차·재파생 → [**config/notation_rules_config.md**](./config/notation_rules_config.md)
+
+> 🔴 **켜는 것은 층이 셋이고 순서가 있습니다.** ① `table_config.json`의 `column_types`에 파생 컬럼을 `"string"`으로 선언 → **물리 ALTER 착지를 `information_schema`로 확인** → ② 이 파일에 `원본: 파생` 쌍 선언 → ③ (선택·1단계에서는 **권장하지 않음**) `display_columns`에 넣어 그리드에 노출.
+>
+> ①을 건너뛰면 선언이 **`undeclared`로 시끄럽게 거절**되지만, ①을 적어만 놓고 **물리 착지를 확인하지 않으면 해석 보고서는 「선언 1건이 유효」라고 답하는데 파생 컬럼은 계속 비어 있고 로그도 안 남습니다**(파생 훅이 컬럼 없는 행을 조용히 건너뜁니다). 그 상태의 복구는 ALTER 착지 후 **재파생 1회**입니다.
+>
+> ⚠️ **1단계라 아무것도 그 값을 읽지 않습니다.** 필터가 합쳐지기를 기대하고 켜면 실망합니다 — 오늘 얻는 것은 **정확하고 다시 계산 가능한 파생값**과 **접었을 때 무엇이 합쳐지는지 실제 데이터로 보는 능력**입니다(그 문서 §5.2의 false-merge 쿼리).
 
 ### 5.7 `bonding_plan_config.json`
 
