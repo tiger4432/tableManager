@@ -73,6 +73,7 @@ const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getScreenShift', 'getTransformedPhysicalConfig',
   'getDieIndex', 'getCanvasCellFromDb', 'getCanvasCellFromDieIndex', 'getDbCoords',
+  'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameDimBounds', 'applyPhysicalGeometry', 'applyPresetObject',
   // The ONE reaction to "the origin box moved under the cells", and the record it

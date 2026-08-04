@@ -312,6 +312,10 @@
             <span class="glass-log-badge" id="grid-status-coords">Cursor: -</span>
             <!-- [M2] 페인트 잠금 상태 — 특히 "조회 실패로 직전 값 사용 중"을 화면에 남긴다 -->
             <span id="paint-lock-indicator" class="plock-chip" style="display: none;"></span>
+            <!-- [C1] 칩 피치가 선언되지 않으면 셀 종횡비를 알 수 없다. 그때만 나타나는 수동
+                 표기다(컨트롤이 아니다 — 누를 것도 고를 것도 없다). 피치를 지어내면 화면은
+                 완벽히 정렬되는데 값이 전부 틀리므로, 지어내는 대신 모른다고 말한다. -->
+            <span id="cell-aspect-note" class="glass-log-badge" style="display: none;"></span>
 
             <!-- Contextual Selection Actions -->
             <div id="selection-actions-container"
