@@ -373,8 +373,132 @@ def test_sweep_refuses_a_rule_with_no_declaration(an_env):
 
 
 def test_queue_predicate_excludes_blank_key_rows(an_env):
-    """The queue predicate is the server's single composition, so a row without
-    its decision keys must not appear here either (spec §5.1)."""
+    """Every walk in this module defaults to the KEYED queue.
+
+    The display stopped hiding blank-key rows on 2026-08-04 (N36), but nothing
+    here may walk them: with no key there is nothing to bind a reference view to.
+    """
     _seed(an_env, "enan_test_derived", [{"wafer_key": "ONLYKEY", "lot": "", "slot": ""}])
     rows = list(enrichment_analysis.iter_derived_rows(an_env, _loaded()))
     assert all(crud.clean_str_value(r["keys"]["lot"]) != "" for r in rows)
+
+
+# A view bound to a PROPER SUBSET of the decision key. Not hypothetical: this is
+# the exact shape `_proposed_reference_view` generates when ② promotes a repeated
+# judgement ("part of the key determines the target"), and the live config in the
+# `enrichment_config` docstring has one too (view #1 binds lot only, of a lot+slot
+# key). It is what makes a blank key DANGEROUS rather than merely useless: the
+# probe's own `missing_bind` guard never fires, because the blank column is not a
+# bind of this view.
+SUBSET_VIEW = {
+    "label": "slot only",
+    "query": "SELECT wafer_id FROM enan_test_hist WHERE slot = :slot",
+    "candidate_for": {"wafer_id": "wafer_id"},
+}
+
+
+def _enable_auto_confirm(tmp_path, views):
+    """Rewrite the ISOLATED rules file (tmp_path, monkeypatched in `an_env`) with
+    the knob on. `server/config/` is never touched - a write there reloads three
+    live processes."""
+    path = tmp_path / "enrichment_rules.json"
+    path.write_text(json.dumps({"enan_rule": _rule(auto_confirm=True, reference_views=views),
+                                "enan_single": SINGLE_RULE}), encoding="utf-8")
+
+
+def test_auto_confirm_sweep_never_writes_to_a_blank_key_row(an_env, tmp_path):
+    """The write path must not follow the display.
+
+    This is why the key predicate could not simply be deleted. `resolve_target_
+    candidate` does refuse a blank value as `missing_bind` - but only for views
+    that BIND that column. Against a subset-bound view (see SUBSET_VIEW) the
+    blank column is not a bind at all, so the probe runs, finds exactly one
+    candidate on the surviving key, and `confirm_keys` writes it. The value is
+    wrong by construction: `slot=S1` is evidence about the OTHER row.
+
+    The fixture asserts the hazard is live before it asserts the refusal, so a
+    green result cannot come from an inert setup.
+    """
+    _enable_auto_confirm(tmp_path, [dict(SUBSET_VIEW)])
+    _seed(an_env, "enan_test_src",
+          [{"log_key": "k1", "lot": "L1", "slot": "S1", "chip_id": "C1"}])
+    _seed(an_env, "enan_test_hist",
+          [{"hist_id": "h1", "lot": "L1", "slot": "S1", "wafer_id": "WF_GOOD"}])
+    _seed(an_env, "enan_test_derived", [{"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"}])
+    # The orphan: lost its `lot`, kept `slot`, so the subset view still binds. Its
+    # business key is supplied EXPLICITLY - `composite_key_source` is [lot, slot],
+    # so a composed key would come out NULL and `confirm_keys` (which writes by
+    # business_key_val) could not land on the row even with the guard removed. That
+    # accident would mask the mutation instead of the guard catching it. An explicit
+    # key is also the realistic shape: a hand edit on the grid supplies one.
+    crud.apply_batch_updates(an_env, "enan_test_derived", schemas.GeneralUpdateBatch(
+        updates=[schemas.GeneralUpdateItem(
+            business_key_val="ORPHAN_BK", updates={"wafer_key": "ORPHAN", "slot": "S1"},
+            source_name="user", updated_by="test")], silent=True))
+    rule = _loaded()
+
+    # (a) The hazard is real: probed with the blank key, the declared view yields
+    #     exactly one candidate - the shape `confirm_keys` writes on.
+    trap = enrichment_candidates.resolve_target_candidate(
+        an_env, rule, {"lot": "", "slot": "S1"}, "wafer_id")
+    assert trap["status"] == enrichment_candidates.STATUS_SINGLE, (
+        f"fixture is inert: a blank key must actually resolve to one candidate for "
+        f"this test to mean anything (got {trap})")
+    assert trap["value"] == "WF_GOOD", "the candidate is real, and it is the WRONG row's"
+
+    # (b) And the sweep still refuses to go near it. The STORED VALUE is asserted
+    #     first and the counters second: `queue_size` is a proxy, the cell is the
+    #     consequence, and a mutation that trips only the proxy would leave the
+    #     real question unanswered.
+    stats = enrichment_analysis.run_auto_confirm_sweep(an_env, rule, apply=True,
+                                                       log=lambda *_: None)
+
+    # Looked up by the BLANKNESS of the key, not by business_key_val: that key is
+    # composed from `composite_key_source` (lot+slot), so a blank lot leaves it
+    # NULL - one more reason these rows are broken rather than merely unlabelled.
+    # (`''` and NULL are both blank here; `clean_str_value` is the shared funnel.)
+    m = models.DYNAMIC_TABLES["enan_test_derived"]
+    rows = an_env.query(m).all()
+    orphan = next((r for r in rows if crud.clean_str_value(r.lot) == ""), None)
+    assert orphan is not None, (
+        "fixture premise: the blank-key derived row exists; table holds "
+        + repr([(r.business_key_val, r.lot, r.slot, r.wafer_id) for r in rows]))
+    assert crud.clean_str_value(orphan.wafer_id) == "", (
+        f"the sweep wrote {orphan.wafer_id!r} into a row that has no decision key")
+    good = next(r for r in rows if crud.clean_str_value(r.lot) == "L1")
+    assert crud.clean_str_value(good.wafer_id) == "WF_GOOD", (
+        "the keyed row must still be confirmed - the guard is a filter, not an off switch")
+    assert stats["queue_size"] == 1, (
+        f"the sweep examined {stats['queue_size']} rows - a blank-key row entered a "
+        f"WRITE path")
+    assert stats["confirmed"] == 1
+
+
+def test_classify_names_blank_key_rows_and_totals_the_whole_queue(an_env):
+    """④ must reconcile with the worklist remainder, and name what it counts.
+
+    The operator now SEES blank-key rows, so a report whose `queue_size` excluded
+    them would disagree with the badge by exactly their count - and
+    FEATURE_CHECKLIST ④ reads that disagreement as "the queue predicate has
+    split". They are counted, and counted under their own name: an empty
+    `no_evidence`-style bucket would not tell anyone the rows are unworkable.
+    """
+    _seed(an_env, "enan_test_src",
+          [{"log_key": "k1", "lot": "L1", "slot": "S1", "chip_id": "C1"}])
+    _seed(an_env, "enan_test_derived", [
+        {"wafer_key": "L1_S1", "lot": "L1", "slot": "S1"},
+        {"wafer_key": "ORPHAN_A", "lot": "", "slot": "S9"},   # partially blank key
+        {"wafer_key": "ORPHAN_B", "lot": "", "slot": ""},
+    ])
+
+    res = enrichment_analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)
+    assert res["queue_size"] == 3, "queue_size must be the queue the operator sees"
+    assert res["blank_decision_key"] == 2
+    assert res["counts"].get(enrichment_analysis.CLS_BLANK_DECISION_KEY) == 2, (
+        "blank-key rows must be counted under their OWN name, not folded into "
+        "no_source_rows")
+    assert enrichment_analysis.CLS_BLANK_DECISION_KEY in enrichment_analysis.BUG_CLASSES
+    # Sum of all classes accounts for every queue row - nothing silently dropped.
+    assert sum(res["counts"].values()) == 3
+    detail = res["samples"][enrichment_analysis.CLS_BLANK_DECISION_KEY][0]["detail"]
+    assert "lot" in detail, f"the sample must name WHICH key is missing (got {detail!r})"

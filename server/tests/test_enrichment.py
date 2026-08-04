@@ -360,13 +360,19 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
     assert set(rule.keys()) == {
         "name", "source_table", "derived_table", "decision_key",
         "target_fields", "list_columns", "reference_views", "queue_filters",
+        "keyed_queue_filters",
     }
     assert rule["name"] == "bonding_wafer_attribution"
     assert rule["derived_table"] == "enrich_test_derived"
     assert rule["decision_key"] == ["equipment", "event_time"]
     assert rule["target_fields"] == ["wafer_id"]
-    # 큐 진입 조건의 단일 조성: target blank AND decision key notBlank
-    assert rule["queue_filters"] == {
+    # 큐 진입 조건의 단일 조성 = target blank **뿐**이다 (사용자 재정 2026-08-04, N36).
+    # 판단키 notBlank가 여기 들어 있으면 진행률 분모(무필터 전체 행)와 다른 모집단을
+    # 세게 되어, 판단키가 빈 행이 「답한 것」으로 계산된다.
+    assert rule["queue_filters"] == {"wafer_id": {"type": "blank"}}
+    # 판단키 술어는 사라진 것이 아니라 **이름을 얻었다** — 쓰기 경로(자동확정 스윕)는
+    # 여전히 이쪽만 본다. 두 total의 차가 「판단키 없음 N건」이다.
+    assert rule["keyed_queue_filters"] == {
         "equipment": {"type": "notBlank"},
         "event_time": {"type": "notBlank"},
         "wafer_id": {"type": "blank"},
@@ -477,22 +483,21 @@ def test_worklist_blank_filter_and_user_fill(client, enrich_env):
     assert filled["data"]["wafer_id"]["value"] == "W777"
 
 
-def test_worklist_excludes_blank_decision_key_rows(client, enrich_env):
-    """빈 판단키 행은 큐에 절대 노출되지 않는다 (사용자 지시 2026-07-28).
 
-    mapper는 blank 판단키를 스킵하므로 정상 체인 경로로는 생기지 않지만,
-    그리드 빈 행 추가(create_empty_rows_batch)나 target만 채우는 직접 편집은
-    판단키 없는 파생 행을 만들 수 있다. 큐 쿼리는 서버가 조성한
-    rule.queue_filters(decision key notBlank AND target blank)로 이를 걸러낸다.
+
+# ---------------------------------------------------------------------------
+# 5. The queue predicate - numerator and denominator count ONE population
+#    (N36, user ruling 2026-08-04). Written in English because these assertion
+#    messages are read on a cp949 console.
+# ---------------------------------------------------------------------------
+
+def _seed_blank_key_rows(db):
+    """Create the two derived rows that carry NO decision key.
+
+    Both shapes were observed in the `1fefd12` investigation: a grid empty-row
+    add, and a hand edit that fills a neighbouring cell only. The chain mapper
+    skips blank decision keys, so ingestion never produces these.
     """
-    db = enrich_env
-    tx = f"tx_{uuid.uuid4().hex[:8]}"
-    _seed_source(db, [
-        {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
-    ], tx)
-    _run_chain_for_tx(db, tx)
-
-    # 판단키 없는 파생 행 2종: 그리드 빈 행 + target 인접 셀만 채운 행
     crud.create_empty_rows_batch(db, "enrich_test_derived", 1)
     crud.apply_batch_updates(db, "enrich_test_derived", schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(business_key_val="orphan_1",
@@ -500,22 +505,110 @@ def test_worklist_excludes_blank_decision_key_rows(client, enrich_env):
                                   source_name="user", updated_by="tester")
     ], silent=True))
 
+
+def _total(client, filters=None):
+    """One `total` from `/tables/{t}/data` - the same call the client counts with."""
+    import main
+    main.TABLE_COUNT_CACHE.clear()  # the 5s count cache must not blend measurements
+    params = {"skip": 0, "limit": 1}
+    if filters is not None:
+        params["filters"] = json.dumps(filters)
+    res = client.get("/tables/enrich_test_derived/data", params=params)
+    assert res.status_code == 200
+    return res.json()["total"]
+
+
+def test_progress_numerator_and_denominator_count_one_population(client, enrich_env):
+    """N36 reproduction: the bar read 100% while work remained.
+
+    The denominator (`enrichment.js fetchTotalAll`) filters NOTHING - it is every
+    derived row. The remainder used `queue_filters`, which also demanded every
+    decision key non-blank. Two different populations, so a row with a blank
+    decision key sat in the denominator and outside the remainder: counted as
+    ANSWERED. This rebuilds exactly that state - two rows, both targets blank,
+    nothing answered - and the bar must read 0%.
+    """
+    db = enrich_env
+    _seed_blank_key_rows(db)
+    rule = client.get("/enrichment/rules").json()["rules"][0]
+
+    total_all = _total(client)                          # denominator: no filter
+    remaining = _total(client, rule["queue_filters"])   # remainder
+
+    assert total_all == 2, "fixture premise: 2 derived rows"
+    assert remaining == 2, (
+        f"the remainder counted {remaining} of {total_all} rows while 0 are answered - "
+        f"the two numbers are not counting the same population")
+    # updateHeaderStats(): filled = totalAll - remaining, pct = filled / totalAll
+    pct = round((total_all - remaining) / total_all * 100)
+    assert pct == 0, f"progress reads {pct}% with every row unanswered"
+
+
+def test_blank_key_rows_are_in_the_worklist_and_named_separately(client, enrich_env):
+    """Blank-key rows now APPEAR in the worklist, and are named as their own count.
+
+    User ruling 2026-08-04: hiding them is worse - a missing decision key is an
+    upstream defect and an invisible defect is never fixed. They are still
+    unjudgeable (a reference view is queried WITH the key's value, so an empty
+    value finds no evidence), so `keyed_queue_filters` separates them. The
+    difference of the two totals IS the named aggregate.
+    """
+    db = enrich_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed_source(db, [{"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"}], tx)
+    _run_chain_for_tx(db, tx)
+    _seed_blank_key_rows(db)
+
+    rule = client.get("/enrichment/rules").json()["rules"][0]
+    assert "keyed_queue_filters" in rule, (
+        "the public rule carries no NAMED key predicate, so the client has no way to "
+        "count the blank-key rows it is now showing")
+
+    queue = _total(client, rule["queue_filters"])
+    keyed = _total(client, rule["keyed_queue_filters"])
+    blank_key = queue - keyed
+
+    assert queue == 3, "the 2 blank-key rows are still excluded from the queue"
+    assert keyed == 1, "exactly 1 queue entry carries its decision keys"
+    assert blank_key == 2, f"the named aggregate must carry a non-zero count (got {blank_key})"
+
+    # Counting them is not enough - they must be REACHABLE on the worklist page.
     import main
     main.TABLE_COUNT_CACHE.clear()
+    page = client.get("/tables/enrich_test_derived/data",
+                      params={"filters": json.dumps(rule["queue_filters"]),
+                              "order_by": "row_id", "order_desc": False}).json()
+    assert len(page["data"]) == 3
+    keyless = [r for r in page["data"]
+               if crud.clean_str_value(r["data"]["equipment"]["value"]) == ""]
+    assert len(keyless) == 2, "blank-key rows are not in the worklist response"
 
-    # 서버가 공개 규칙에 실어준 queue_filters를 그대로 사용 (클라이언트 소비 경로 동일)
+
+def test_rule_without_blank_key_rows_is_unchanged(client, enrich_env):
+    """The negative: with no blank-key rows, behaviour is exactly as before.
+
+    Both predicates return the same total, the same rows and the same order, and
+    the named aggregate is 0. Nothing about healthy data moved - the only thing
+    this change alters is the visibility of blank-key rows.
+    """
+    db = enrich_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed_source(db, [
+        {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
+        {"equipment": "EQP2", "event_time": "T2", "chip_id": "C2"},
+    ], tx)
+    _run_chain_for_tx(db, tx)
+
     rule = client.get("/enrichment/rules").json()["rules"][0]
-    res = client.get("/tables/enrich_test_derived/data",
-                     params={"filters": json.dumps(rule["queue_filters"]),
-                             "order_by": "row_id"})
-    assert res.status_code == 200
-    body = res.json()
-    assert body["total"] == 1 and len(body["data"]) == 1
-    assert body["data"][0]["data"]["equipment"]["value"] == "EQP1"
+    assert _total(client, rule["queue_filters"]) == 2
+    assert _total(client, rule["keyed_queue_filters"]) == 2
 
-    # 구식 필터(target blank만)였다면 빈 판단키 행 2건이 그대로 노출됐을 것
-    legacy = {"wafer_id": {"type": "blank"}}
+    import main
+    args = {"order_by": "row_id", "order_desc": False}
     main.TABLE_COUNT_CACHE.clear()
-    res = client.get("/tables/enrich_test_derived/data",
-                     params={"filters": json.dumps(legacy), "order_by": "row_id"})
-    assert res.json()["total"] == 3
+    a = client.get("/tables/enrich_test_derived/data",
+                   params={**args, "filters": json.dumps(rule["queue_filters"])}).json()
+    main.TABLE_COUNT_CACHE.clear()
+    b = client.get("/tables/enrich_test_derived/data",
+                   params={**args, "filters": json.dumps(rule["keyed_queue_filters"])}).json()
+    assert a == b, "no blank-key rows exist, yet the two predicates return different pages"

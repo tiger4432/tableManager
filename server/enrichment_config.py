@@ -624,15 +624,42 @@ def to_public_rule(rule: dict) -> dict:
     **스스로 유도**해야 하고, 유도가 왜 위험한지는 이 모듈 상단 주석의 실 config가 보여준다.
 
     queue_filters: the ONE server-composed definition of "a queue entry" for
-    the generic /tables/{t}/data filter DSL - every target field blank AND
-    every decision key non-blank. A row without its decision keys cannot be
-    resolved by a human, so it must never surface in the worklist (worklist,
-    admin missing-count, and main-grid badge all consume this same object -
-    one blank rule, not three hand-built copies).
+    the generic /tables/{t}/data filter DSL - EVERY TARGET FIELD BLANK, and
+    nothing else. The worklist, the admin missing-count, the main-grid badge and
+    the progress bar's remainder all consume this same object - one blank rule,
+    not four hand-built copies.
+
+    WHY THE DECISION-KEY `notBlank` CONDITIONS ARE NO LONGER IN IT
+    [2026-08-04, user ruling; boarded as N36]
+        They were, and that is what made the progress bar read 100% with work
+        left. The bar's denominator (`enrichment.js fetchTotalAll`) filters
+        NOTHING - it is every derived row - while the remainder demanded the
+        keys as well. Two different populations, so a row with a blank decision
+        key sat INSIDE the denominator and OUTSIDE the remainder: silently
+        counted as answered. Measured: 33% -> 100% from a one-line config edit
+        with zero data change, worklist empty while two genuinely unanswered
+        rows sat in the table. Both sides now count the same thing - rows whose
+        targets are blank - and `total` is what both already returned.
+
+        Surfacing those rows is the intent, not a side effect: a missing
+        decision key is an upstream defect, and an invisible defect is never
+        fixed.
+
+    keyed_queue_filters: the queue entries that can actually be ACTED on - the
+    queue AND every decision key non-blank. A reference view is queried WITH the
+    key's value, so a blank key finds no evidence and nothing can be resolved
+    from it. Every path that WRITES or reasons from evidence stays on this one
+    (`enrichment_analysis._queue_condition`); only the display counts the whole
+    queue. `queue_filters.total - keyed_queue_filters.total` is the named
+    aggregate the client shows as "판단키 없음 N건" - both are conjunctive
+    filters the existing DSL already translates, so the count needs no new
+    endpoint and no cross-column OR (which the DSL cannot express: `operator`/
+    `conditions` combine specs for ONE column).
     """
-    queue_filters = {k: {"type": "notBlank"} for k in rule["decision_key"]}
-    for t in rule["target_fields"]:
-        queue_filters[t] = {"type": "blank"}
+    queue_filters = {t: {"type": "blank"} for t in rule["target_fields"]}
+    keyed_queue_filters = dict(queue_filters)
+    for k in rule["decision_key"]:
+        keyed_queue_filters[k] = {"type": "notBlank"}
     return {
         "name": rule["name"],
         "source_table": rule["source_table"],
@@ -645,4 +672,5 @@ def to_public_rule(rule: dict) -> dict:
             for v in rule.get("reference_views", [])
         ],
         "queue_filters": queue_filters,
+        "keyed_queue_filters": keyed_queue_filters,
     }

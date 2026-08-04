@@ -1,6 +1,6 @@
 # 🧩 Enrichment Queue (결손 보정 워크리스트) — 리빙 스펙
 
-> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-07-30 (**[F9 후속 QA 수리] §5.2 갱신 — ⓐ 참조 질의를 SAVEPOINT로 격리**(Postgres에서 실패한 프로브가 트랜잭션을 abort시켜 `candidate_column_missing`이 도달 불가였고, 오염된 세션이 체인 워커를 통과해 outbox 부기 커밋을 무산시켜 그룹이 영원히 재처리됐다 — 읽기 전용 실측) **ⓑ `distinct_truncated` 거절 신설**(집계 절단이 `clean_str_value` 접기로 1개 값으로 접히면 `single`로 자동 확정될 수 있었다) **ⓒ `scanned`를 그룹 절단 전 값으로 정정**. 직전 [F9] **§5.2-bis 신설** — 선언의 효과를 어드민에 노출(`/admin/config/resolve`·드라이런), 후보 프로브가 뷰 `limit`에 잘리던 결함 수리(`probe_truncated` 신설), **경계 계약 1건 변경**: `GET /enrichment/rules`에 가산 필드 `candidate_for`(총괄 승인). 직전: §5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
+> **Status:** 🟢 Living — **v1 구현 완료(2026-07-25)** | **Last-verified:** 2026-08-04 (**[N36 · 사용자 재정] §5.1 재작성 — 큐 술어에서 판단키 `notBlank`를 뺐다**: 진행률 분모(무필터 전체 행)와 잔여가 서로 다른 모집단을 세어 **판단키가 빈 행이 「답한 것」으로 계산**됐다(실측 33% → 100%, 데이터 변경 0). 그 행들은 이제 워크리스트에 **뜨고**, 뒤로 정렬되고, **「판단키 없음 N건」**으로 이름 붙는다. 판단키 술어는 사라지지 않고 **`keyed_queue_filters`**라는 이름을 얻어 **쓰기 경로(① 자동 확정 스윕)의 술어로 남았다** — 부분집합 바인드 뷰에서 빈 키가 후보 1개를 만들어 오답이 쓰이는 것이 실증됐다. ④ 분류에 `blank_decision_key` 계급 신설) | **이전:** 2026-07-30 (**[F9 후속 QA 수리] §5.2 갱신 — ⓐ 참조 질의를 SAVEPOINT로 격리**(Postgres에서 실패한 프로브가 트랜잭션을 abort시켜 `candidate_column_missing`이 도달 불가였고, 오염된 세션이 체인 워커를 통과해 outbox 부기 커밋을 무산시켜 그룹이 영원히 재처리됐다 — 읽기 전용 실측) **ⓑ `distinct_truncated` 거절 신설**(집계 절단이 `clean_str_value` 접기로 1개 값으로 접히면 `single`로 자동 확정될 수 있었다) **ⓒ `scanned`를 그룹 절단 전 값으로 정정**. 직전 [F9] **§5.2-bis 신설** — 선언의 효과를 어드민에 노출(`/admin/config/resolve`·드라이런), 후보 프로브가 뷰 `limit`에 잘리던 결함 수리(`probe_truncated` 신설), **경계 계약 1건 변경**: `GET /enrichment/rules`에 가산 필드 `candidate_for`(총괄 승인). 직전: §5.2 ① 후보 1개 자동 확정 · §5.3 ② 룰 승격 제안 · §5.4 ④ 결손 원인 분류) | **이전:** 2026-07-28 (`1fefd12`: §5.1 `queue_filters`) | **Owner:** Server PM(mapper·config·API) + Client PM(페이지·배지), 계약은 총괄
 > **연관 핵심가치:** #1 최소 공수 교정(주) · #2 온톨로지/지식 그래프 기반(직결) — [SYSTEM_OVERVIEW §1](../overview/SYSTEM_OVERVIEW.md)
 > **v1 구성:** 서버(`enrichment_config.py`·`enrichment_mapper.py`·API 2종) + 클라(`enrichment.html` 컨베이어 + 참조뷰 탭 + 메인 그리드 결손 배지). E2E 실동 검증 완료(스모크 규칙 `line_model_owner_attribution`). 규칙 작성법: [chain_ingestion_guide §4](../guide/chain_ingestion_guide.md).
 
@@ -43,7 +43,7 @@
 2. **결손 추출**: 규칙이 정의한 판단키 기준으로, `target`이 비어 있는 유니크 판단키를 집계 → **작은 워크리스트 테이블**로 투영(dedup). 표시 컬럼·참조뷰 함께.
 3. **집중 편집**: 사람이 워크리스트만 본다(원본 대량 테이블 안 헤맴). 항목 선택 시 참조뷰가 옆에 뜸 → 암묵지로 `target` 입력.
 4. **저장 + 논리적 파급**: 입력값은 **파생 테이블에 저장**(원본 log 물리 갱신 없음). 출처는 **레이어링상 `source=user`(priority 0)** 로 기록되어 자동값을 이긴다([data_model](../architecture/data_model.md)). Source의 chip 행들은 판단키 조인으로 연결 — 온톨로지도 관계(`log —(판단키)→ 파생 —(target)→ 객체`)로 추적.
-5. **완료 축소**: 채워진 판단키는 결손 필터에서 빠짐 → 남은 개수가 곧 잔여 공수. (진행률 = 채운 키 / 전체 유니크 키.)
+5. **완료 축소**: 채워진 판단키는 결손 필터에서 빠짐 → 남은 개수가 곧 잔여 공수. **진행률 = (파생 테이블 전체 행 − 잔여 행) / 파생 테이블 전체 행** — 분자·분모 모두 **행**이다. 🔴 **「키」로 읽지 말 것**(2026-08-04 정정): 분모는 무필터 `total`(행 카운트)이고, 「유니크 키 수」와 같아지는 것은 `composite_key_source == decision_key`일 때뿐인데 로더는 **진부분집합도 허용**한다(그 경우 판단키 여럿이 1행으로 접힌다). 같은 문장을 두 술어로 세면 §5.1이 고친 결함이 그대로 돌아온다.
 
 ## 5. Config 스키마
 
@@ -70,22 +70,30 @@
 ```
 
 **클라이언트 소비 계약(확정 방향, 상세는 Server PM 위임 시 명세):**
-- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비. **[2026-07-28 `1fefd12` 추가 필드] `queue_filters`** — 아래 참조.
-- ♻️ 워크리스트/결손 카운트 — 기존 `GET /tables/{derived}/data` + **서버가 조성한 `queue_filters`** 재사용(신규 엔드포인트 없음).
+- 🆕 `GET /enrichment/rules` — 규칙 메타(derived_table 포함). 배지·페이지가 소비. **[2026-07-28 `1fefd12`] `queue_filters` · [2026-08-04] `keyed_queue_filters`** — 아래 §5.1 참조.
+- ♻️ 워크리스트/결손 카운트/진행률 — 기존 `GET /tables/{derived}/data` + **서버가 조성한 `queue_filters`** 재사용(신규 엔드포인트 없음). 「판단키 없음 N건」도 같은 엔드포인트를 `keyed_queue_filters`로 한 번 더 부른 **차분**이다.
 - 🆕 `GET /enrichment/rules/{rule}/references/{i}?params=...` — 참조뷰 조회(서버측 쿼리 정의·LIMIT).
 - ♻️ 입력 저장 — 기존 `PUT /tables/{derived}/data/updates`(셀 계약 불변).
 
-### 5.1 `queue_filters` — "큐 항목"의 단일 술어는 서버가 조성한다 (2026-07-28 · `1fefd12`)
+### 5.1 `queue_filters` — "큐 항목"의 단일 술어는 서버가 조성한다 (2026-07-28 · `1fefd12`, **2026-08-04 재정**)
 
-`GET /enrichment/rules`의 각 규칙에 **추가 응답 필드 `queue_filters`**가 실립니다 — 범용 `/tables/{t}/data` 필터 DSL 객체로, **"큐에 들어오는 행"의 유일한 정의**입니다:
+`GET /enrichment/rules`의 각 규칙에 **추가 응답 필드 두 개**가 실립니다 — 범용 `/tables/{t}/data` 필터 DSL 객체입니다:
 
 ```
-queue_filters = { <모든 decision_key 컬럼>: {type: "notBlank"} } ∪ { <모든 target 필드>: {type: "blank"} }
+queue_filters       = { <모든 target 필드>: {type: "blank"} }
+keyed_queue_filters = queue_filters ∪ { <모든 decision_key 컬럼>: {type: "notBlank"} }
 ```
 
-- **왜 key notBlank가 붙었나**: 판단키가 빈 행(그리드 빈 행 추가·부분 편집의 산물)은 **사람이 해소할 수 없는 항목**이라 워크리스트에 떠서는 안 됩니다. 맵퍼는 결백했고, 결손 판정 술어가 클라 세 곳(워크리스트 `enrichment.buildBlankFilters` · 어드민 카운트 `admin.fetchEnrichmentStatus` · 메인 배지 `ui.updateEnrichmentBadge`)에 **손으로 각각 조립**돼 있었는데 셋 다 키를 검사하지 않던 것이 원인입니다.
-- **조성 지점은 서버 `enrichment_config.to_public_rule` 하나**이고, 세 클라 소비처는 전부 이 객체를 그대로 씁니다 — **워크리스트·카운트·배지가 서로 다른 수를 말할 수 없습니다.** (구버전 서버 폴백: 필드 부재 시 클라는 종전 target-blank-only로 동작.)
-- **데이터는 지우지 않습니다** — 빈 키 행은 큐에서만 빠지고 일반 그리드에는 그대로 보입니다.
+- **`queue_filters` = "큐에 들어오는 행"의 유일한 정의**입니다. 표시 소비처 네 곳(워크리스트 `enrichment.buildBlankFilters` · 어드민 카운트 `admin.fetchEnrichmentStatus` · 메인 배지 `ui.updateEnrichmentBadge` · 진행률 잔여)이 전부 이 객체를 그대로 씁니다.
+- 🔴 **왜 판단키 `notBlank`가 여기서 빠졌나 (2026-08-04 사용자 재정 · N36)**: 진행률 **분모**(`enrichment.fetchTotalAll`)는 **필터를 하나도 걸지 않는** 파생 테이블 전체 행 수인데, 잔여만 판단키를 요구하니 **두 수가 다른 모집단**을 셌습니다. 그래서 판단키가 빈 행은 분모에 있고 잔여에서 빠져 **「답한 것」으로 계산**됐습니다. 실측: **데이터 변경 0 · 설정 한 줄로 33% → 100%**, 워크리스트는 0행인데 실제 미답 2건이 테이블에 앉아 있었습니다. 이제 양쪽 다 **행**을 셉니다.
+- 🔴 **빈 판단키 행은 이제 워크리스트에 뜹니다 — 의도된 결과입니다.** 판단키 누락은 **인제션 단계 결함**이고, 보이지 않는 결함은 영영 고쳐지지 않습니다. 다만 그 행은 **판단할 수 없습니다**(참조뷰는 판단키 **값으로** 조회되므로 빈 값은 근거를 못 찾습니다). 그래서:
+  - **순서**: 컨베이어는 처리 가능한 행을 먼저 소비하고 판단 불가 행은 **뒤로 내려갑니다**(각 구획 안에서 서버의 `row_id` 순서는 그대로). 컨트롤도 모드도 없습니다 — 순서 **규칙**이 바뀐 것입니다.
+  - **이름**: 헤더에 **「판단키 없음 N건」** 배지, 그리고 그 행을 선택하면 상세·참조뷰가 **이름 있는 거절**로 답합니다(빈 결과와 구별되어야 합니다 — 「근거가 없다」와 「물어볼 수가 없다」는 다른 사실입니다).
+  - **수치**: `N = queue_filters.total − keyed_queue_filters.total`. 둘 다 논리곱 필터라 기존 DSL이 그대로 번역합니다(**신규 엔드포인트 없음**). 판단키 컬럼 간 OR은 필터 DSL이 표현하지 못하므로(한 컬럼 안의 조합만 가능) **차분**으로 얻습니다. 서버가 `keyed_queue_filters`를 주지 않으면 클라는 **아무 말도 하지 않습니다**(「0건」은 주장입니다).
+- 🔴 **`keyed_queue_filters`는 쓰기 경로의 술어입니다.** `enrichment_analysis._queue_condition`의 기본값이고, ①의 소급 스윕·분류·② 승격이 전부 이쪽을 걷습니다. **표시는 그 행을 보여도 되지만 스윕은 건드리면 안 됩니다** — 판단키의 **부분집합**에만 바인드하는 뷰(②가 생성하는 형태이자 실 config의 뷰 #1)에서는 `resolve_target_candidate`의 `missing_bind` 가드가 발화하지 않아, 살아남은 키 하나로 **후보 1개가 나오고 자동 확정이 그 값을 씁니다**(회귀 그물 `test_auto_confirm_sweep_never_writes_to_a_blank_key_row` — 가드를 빼면 실제로 `WF_GOOD`이 빈 키 행에 쓰입니다).
+- **④ 분류는 유일하게 큐 전체를 걷습니다** — 빈 판단키 행을 **`blank_decision_key`**(신설, `BUG_CLASSES` 소속)로 세어 `queue_size`가 워크리스트 잔여·배지와 계속 일치하게 합니다.
+- **조성 지점은 서버 `enrichment_config.to_public_rule` 하나**입니다 — 소비처가 서로 다른 수를 말할 수 없습니다. (구버전 서버 폴백: 필드 부재 시 클라는 target-blank-only로 동작 — 지금은 서버 조성과 **같은 형태**입니다.)
+- **데이터는 지우지 않습니다.**
 - 참고: 같은 커밋의 소급 backfill 스크립트(`server/scripts/backfill_enrichment.py` — 파생 **행 부재**만 생성, 값 결손은 큐 소관, dry-run 기본·`--apply`·provenance `enrichment_backfill` priority 99)는 운영 도구이며 이 계약의 일부가 아닙니다.
 
 ## 5.2 ① 후보가 1개면 판단이 아니라 확인 (2026-07-30 · 서버 착지)
@@ -167,7 +175,7 @@ queue_filters = { <모든 decision_key 컬럼>: {type: "notBlank"} } ∪ { <모�
 
 - **판단 개수 압축비** = 유니크 판단키 수 / 원본 행 수 (낮을수록 좋음; 파급 효과).
 - **키당 처리 시간** = 참조뷰 근접 배치 전/후 비교.
-- **잔여 공수** = 미채운 유니크 키 수(워크리스트 길이).
+- **잔여 공수** = 미채운 파생 **행** 수(워크리스트 길이 = `queue_filters`의 `total`). 그중 「판단키 없음 N건」은 **여기서는 해소 불가**한 몫이라 사람의 공수로 세면 안 된다(§5.1).
 - (v2) **자동 제안 채택률** — 아래 범위 밖.
 
 ## 8. 범위
