@@ -98,6 +98,10 @@ function konst(src, name) {
 
 const FUNCS = [
   'markSuggestState', 'claimListFill', 'fillDatalist',
+  // Axis 4 (2026-08-04). Sliced, never re-typed: a copy of the comparator here would let the
+  // harness score an ordering the product does not produce, and a copy of the summariser
+  // would let it score a label the product never renders.
+  'compareMapKeys', 'mapSpecSummary',
   'populateMapKeyDatalist', 'populateValidDieRefList', 'populateOverlayKeyList',
   // [1-a] The control-shape decision. Sliced verbatim so the <select>-vs-<input> choice is
   // scored as BEHAVIOUR, not read off the markup.
@@ -300,6 +304,12 @@ function check(name, actual, expected) {
 // `null` rather than a throw when the list is missing: a missing datalist is an ANSWER this
 // suite has assertions about, and a crash would report it as a broken harness instead.
 const optionValues = list => (list ? list.children.map(o => o.value) : null);
+// `undefined` (attribute never set) and `''` are DIFFERENT answers here — the first is
+// "we said nothing", the second is "we said nothing, loudly". Both are folded to '' for
+// comparison, but `labelAttrSet` below keeps the distinction scoreable on its own.
+const optionLabels = list => (list ? list.children.map(o => o.label || '') : null);
+const labelAttrSet = list =>
+  (list ? list.children.map(o => Object.prototype.hasOwnProperty.call(o, 'label')) : null);
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────
 // The fixture ACTIVATES every axis it claims to score:
@@ -308,16 +318,79 @@ const optionValues = list => (list ? list.children.map(o => o.value) : null);
 //   · a truncated answer whose `total` exceeds its row count, so the truncation term is live
 //   · an `unavailable` answer whose `values` is [] — identical in shape to a genuine empty
 //     answer, which is the only fixture that can score the collapse
+//   · a SERVER ORDER that is not the sorted order, so the ordering axis is live. Measured on
+//     the live registry 2026-08-04: the server's row order is not a sort (`eds_fail_map` 80
+//     keys / 36 adjacent inversions, `core_defect_map` 80 / 35, `bonding_map` 32 / 13). A
+//     fixture served in sorted order would score a no-op sort green.
+//   · KEYS THAT DIFFER ONLY IN A NUMBER (`_1`/`_2`/`_10`), so a plain lexicographic sort is
+//     visibly WRONG rather than merely different — the numeric axis is the one that decides
+//     whether a 25-slot lot is browsable.
+//   · SPECS THAT DIFFER between candidates, so a label that always says the same thing (or
+//     always the first row's) is countable. Live discrimination this mirrors: `bonding_map`
+//     32 keys / 25 distinct specs, `bonding_log` 120 / 21, `dt_map` 146 / 12.
+//   · ONE candidate whose `grid_metadata` is UNPARSEABLE and one whose spec is missing
+//     entirely, because "we do not know this map's shape" must render as SILENCE, not as a
+//     shape. Those are the only two fixtures that can catch a summariser that guesses.
+
+// SERVER ORDER — deliberately unsorted.
 const META_ROWS = {
-  bonding_map: ['BASE-29_01', 'BASE-29_02', 'BASE-31_07'],
-  core_defect_map: ['CORE-A_11', 'CORE-B_12'],
+  bonding_map: ['BASE-29_10', 'BASE-29_2', 'BASE-31_07', 'BASE-29_1'],
+  core_defect_map: ['CORE-B_12', 'CORE-A_11'],
   // The FIXED valid-die population (2026-08-04). Deliberately DISJOINT from the two above:
   // the valid-die field is now scored on the canvas table `bonding_map` while expecting these
   // keys, so an implementation that fell back to the canvas table cannot pass by coincidence.
   valid_die_ref: ['CORE_1X', 'CORE_YINV', '5N_BASE'],
 };
+
+// EXPECTED ORDER — written out by hand, NOT produced by calling the product's comparator.
+// A sorted-by-the-thing-under-test expectation is a tautology; these are the answers a human
+// says are right, and `LEXICOGRAPHIC` below records what a naive sort would have produced so
+// the two can be shown to differ.
+const META_SORTED = {
+  bonding_map: ['BASE-29_1', 'BASE-29_2', 'BASE-29_10', 'BASE-31_07'],
+  core_defect_map: ['CORE-A_11', 'CORE-B_12'],
+  valid_die_ref: ['5N_BASE', 'CORE_1X', 'CORE_YINV'],
+};
+const LEXICOGRAPHIC = {
+  bonding_map: ['BASE-29_1', 'BASE-29_10', 'BASE-29_2', 'BASE-31_07'],
+};
+
+// Per-key `grid_metadata`, exactly as `wafer_map_metadata` stores it: a JSON STRING.
+// `BASE-29_1` is unparseable and `BASE-31_07` has none at all.
+const META_SPEC = {
+  'BASE-29_10': '{"grid_cols":27,"grid_rows":21,"rotation":270,"side":"front"}',
+  'BASE-29_2': '{"grid_cols":40,"grid_rows":40,"rotation":0,"side":"back"}',
+  'BASE-29_1': '{not json at all',
+  'BASE-31_07': null,
+  'CORE-B_12': '{"grid_cols":13,"grid_rows":13,"rotation":0,"side":"front"}',
+  'CORE-A_11': '{"grid_cols":29,"grid_rows":25,"rotation":180,"side":"front","grid_y_invert":true}',
+  'CORE_1X': '{"grid_cols":20,"grid_rows":20,"rotation":0,"side":"front"}',
+  'CORE_YINV': '{"grid_cols":20,"grid_rows":20,"rotation":0,"side":"front","grid_y_invert":true}',
+  '5N_BASE': '{"grid_cols":5,"grid_rows":5,"rotation":90,"side":"front"}',
+};
+// The label each of those must produce, written independently of `mapSpecSummary`.
+const EXPECTED_LABEL = {
+  'BASE-29_10': '27×21 · 회전 270°',
+  'BASE-29_2': '40×40 · 뒷면',
+  'BASE-29_1': '',
+  'BASE-31_07': '',
+  'CORE-B_12': '13×13',
+  'CORE-A_11': '29×25 · 회전 180° · Y반전',
+  'CORE_1X': '20×20',
+  'CORE_YINV': '20×20 · Y반전',
+  '5N_BASE': '5×5 · 회전 90°',
+};
+
 const metaBody = (table, total) => ({
-  data: META_ROWS[table].map(id => ({ data: { map_id: { value: id } } })),
+  data: META_ROWS[table].map(id => ({
+    data: {
+      map_id: { value: id },
+      // The registry always carries this column; its VALUE may be absent. Modelled as the
+      // envelope the product actually reads (`r.data.grid_metadata.value`), so a change to
+      // that path breaks here rather than silently producing blank labels forever.
+      grid_metadata: { value: META_SPEC[id] },
+    },
+  })),
   total: total === undefined ? META_ROWS[table].length : total,
 });
 const metaAnswer = (table, total) => ({
@@ -400,8 +473,8 @@ async function runChecks(src, { strict = true } = {}) {
         r.ovHitsMetadata, true);
       check('filtered by the OVERLAY SOURCE table, not by the canvas table',
         r.ovFilteredBySource, true);
-      check('the datalist holds exactly the returned map_ids, in order',
-        r.ovOptions, META_ROWS.core_defect_map);
+      check('the datalist holds exactly the returned map_ids, sorted',
+        r.ovOptions, META_SORTED.core_defect_map);
       check('a hand-typed key present in no list is left untouched', r.ovValueUntouched, FREE);
       check('and no constraint attribute was added to the input',
         r.ovConstraints, { attrs: [], readOnly: false, disabled: false });
@@ -425,7 +498,7 @@ async function runChecks(src, { strict = true } = {}) {
     r.ovStaleSurvivors = shown.filter(v => META_ROWS.core_defect_map.includes(v)).length;
     if (strict) {
       check('after a source-table change the list is the NEW table\'s',
-        r.ovAfterSwitch, META_ROWS.bonding_map);
+        r.ovAfterSwitch, META_SORTED.bonding_map);
       check('zero keys from the previous table survive', r.ovStaleSurvivors, 0);
     }
   }
@@ -454,7 +527,7 @@ async function runChecks(src, { strict = true } = {}) {
       .filter(v => META_ROWS.core_defect_map.includes(v)).length;
     if (strict) {
       check('the LAST question wins even when its answer came back first',
-        r.raceFinal, META_ROWS.bonding_map);
+        r.raceFinal, META_SORTED.bonding_map);
       check('no key from the superseded question survives', r.raceStaleSurvivors, 0);
     }
   }
@@ -481,7 +554,7 @@ async function runChecks(src, { strict = true } = {}) {
       check('the valid-die list asks for the FIXED table, not the canvas table',
         r.vdFilteredByFixedTable, true);
       check('...and never asks for the canvas table', r.vdAskedCanvasTable, false);
-      check('valid-die list holds valid_die_ref\'s map_ids', r.vdOptions, META_ROWS.valid_die_ref);
+      check('valid-die list holds valid_die_ref\'s map_ids', r.vdOptions, META_SORTED.valid_die_ref);
       check('a COMPLETE map-key list is cached: two focuses cost one request', r.vdRequests, 1);
     }
   }
@@ -583,8 +656,13 @@ async function runChecks(src, { strict = true } = {}) {
     if (strict) {
       check('COMPLETE + empty key -> the dropdown is the control',
         r.vdShapeComplete, { select: 'shown', input: 'hidden' });
+      // META_SORTED, not META_ROWS: the browsability round made the candidate list ordered,
+      // so server row order stopped being the answer here. This expectation was written
+      // against the unsorted list in a parallel lane and is corrected at the merge, not
+      // relaxed ― the assertion still names every key, it just names them in the order the
+      // control now actually offers.
       check('...and it offers the placeholder plus every listed key',
-        r.vdSelectOptions, ['', ...META_ROWS.valid_die_ref]);
+        r.vdSelectOptions, ['', ...META_SORTED.valid_die_ref]);
       check('the empty selection is the EMPTY STRING, identical to an empty input (= 원 기하)',
         r.vdEmptyOptionValue, '');
       check('...and it says so in words', r.vdEmptyOptionSaysCircle, true);
@@ -635,6 +713,79 @@ async function runChecks(src, { strict = true } = {}) {
       check('...but it SAYS it is genuinely empty rather than staying silent',
         r.vdEmptyTitleSpeaks, true);
       check('...without eating the field\'s own tooltip', r.vdEmptyTitleKeptBase, true);
+    }
+  }
+
+  // ── 1-septies. THE LIST IS BROWSABLE: ORDERED, AND EACH CANDIDATE SAYS WHAT IT IS ──
+  //   [2026-08-04] The datalist already solved RETRIEVAL. What was still sending the operator
+  //   to the grid to copy a key was RECOGNITION — 200 near-identical strings in server order,
+  //   each of which says nothing but itself. Two axes, scored separately because they fail
+  //   separately, and both scored against expectations written by hand rather than against
+  //   the product's own comparator/summariser.
+  {
+    const env = build(src, { table: 'bonding_map', answers: [metaAnswer('bonding_map')] });
+    env.el.overlaySrcTable.value = 'bonding_map';
+    env.el.overlaySrcKey.value = FREE;
+    await env.sandbox.populateOverlayKeyList();
+    const list = env.el.overlaySrcKeyList;
+    r.ordOptions = optionValues(list);
+    r.ordLabels = optionLabels(list);
+    r.ordLabelAttrs = labelAttrSet(list);
+    // FIXTURE ACTIVITY as counts. If the served order already were the sorted order, "sorted"
+    // and "unsorted" would be the same array and this whole section would score a no-op green.
+    // Same question one level down for the numeric axis: a plain lexicographic sort has to
+    // produce a DIFFERENT answer, or `{ numeric: true }` is untested decoration.
+    r.ordServerMoved = META_ROWS.bonding_map
+      .filter((k, i) => k !== META_SORTED.bonding_map[i]).length;
+    r.ordLexDiffers = LEXICOGRAPHIC.bonding_map
+      .filter((k, i) => k !== META_SORTED.bonding_map[i]).length;
+    r.ordDistinctLabels = new Set(r.ordLabels.filter(Boolean)).size;
+    // The value is what gets typed into the field. The label must never leak into it.
+    r.ordValuesAreBareKeys = r.ordOptions.every(v => typeof v === 'string' && !/[×·]/.test(v));
+    r.ordFieldUntouched = env.el.overlaySrcKey.value;
+    r.ordConstraints = constraintState(env.el.overlaySrcKey);
+    r.ordRequests = env.requests.length;
+
+    // The two helpers scored on their own, key -> value. The list check above can only see a
+    // defect that happens to change one of four rows; these see every fixture shape.
+    const specKeys = Object.keys(META_SPEC);
+    r.specSummaries = specKeys.map(k => env.sandbox.mapSpecSummary(META_SPEC[k]));
+    r.specSilence = [
+      env.sandbox.mapSpecSummary('{not json at all'),
+      env.sandbox.mapSpecSummary(null),
+      env.sandbox.mapSpecSummary(''),
+      env.sandbox.mapSpecSummary('{"grid_cols":0,"grid_rows":9}'),
+      env.sandbox.mapSpecSummary('{"rotation":90,"side":"back"}'),
+    ];
+    r.cmpNumeric = ['BASE_10', 'BASE_2', 'BASE_1'].slice().sort(env.sandbox.compareMapKeys);
+
+    if (strict) {
+      check('the fixture is served OUT of sorted order (else the sort is a no-op)',
+        r.ordServerMoved > 0, true);
+      check('...and a plain lexicographic sort would give a DIFFERENT answer',
+        r.ordLexDiffers > 0, true);
+      check('...and the fixture specs really do discriminate (>1 distinct label)',
+        r.ordDistinctLabels > 1, true);
+      check('candidates are offered in numeric-aware sorted order',
+        r.ordOptions, META_SORTED.bonding_map);
+      check('the comparator orders _1 < _2 < _10, not _1 < _10 < _2',
+        r.cmpNumeric, ['BASE_1', 'BASE_2', 'BASE_10']);
+      check('each candidate carries its own registered spec as the option label',
+        r.ordLabels, META_SORTED.bonding_map.map(k => EXPECTED_LABEL[k]));
+      check('a map whose spec cannot be read carries NO label attribute at all',
+        r.ordLabelAttrs, META_SORTED.bonding_map.map(k => EXPECTED_LABEL[k] !== ''));
+      check('the spec summary is a key->value match on every fixture spec',
+        r.specSummaries, specKeys.map(k => EXPECTED_LABEL[k]));
+      check('an unreadable, absent, zero-sized or dimensionless spec summarises to SILENCE',
+        r.specSilence, ['', '', '', '', '']);
+      check('the option VALUE stays the bare key — the label is annotation, not data',
+        r.ordValuesAreBareKeys, true);
+      check('...so a hand-typed key that is in no list is still untouched',
+        r.ordFieldUntouched, FREE);
+      check('...and no constraint attribute appeared', r.ordConstraints,
+        { attrs: [], readOnly: false, disabled: false });
+      check('labelling costs NO extra request — the spec rides the row already fetched',
+        r.ordRequests, 1);
     }
   }
 
@@ -1155,6 +1306,50 @@ const MUTATIONS = [
     if (false) markSuggestState(input, '',
       \`\${table}에 등록된 맵이 아직 없습니다`,
     breaks: '"genuinely zero" is distinguishable from a broken control',
+  },
+
+  // ── Axis 4 (2026-08-04): the list is browsable ────────────────────────────────
+  // Every `find` below was verified to occur EXACTLY ONCE in `map_editor.js` before being
+  // written here. That is not ceremony: this directory has twice had a mutation string land
+  // on its first match inside a COMMENT and silently score a different function.
+  {
+    name: 'M17 [HIGH] the candidate list is emitted in server row order (no sort)',
+    find: `    }).filter(Boolean).sort((a, b) => compareMapKeys(a.value, b.value));`,
+    repl: `    }).filter(Boolean); /* MUTANT: whatever order the server happened to use */`,
+    breaks: 'candidates are browsable in a stated order',
+  },
+  {
+    name: 'M18 [HIGH] the sort is plain lexicographic (_10 lands before _2)',
+    find: `  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });`,
+    repl: `  return String(a).localeCompare(String(b)); /* MUTANT */`,
+    breaks: 'a 25-slot lot reads in slot order',
+  },
+  {
+    name: 'M19 [HIGH] a map whose spec cannot be read is labelled anyway (an empty attribute)',
+    find: `      if (v.label) o.label = v.label;`,
+    repl: `      o.label = v.label || ''; /* MUTANT: says something about a map we cannot read */`,
+    breaks: '"we do not know this map\'s shape" renders as silence, not as an empty column',
+  },
+  {
+    name: 'M20 [HIGH] the summariser invents a shape when the dimensions are unreadable',
+    find: `  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return '';`,
+    repl: `  /* MUTANT: NaN×NaN is offered as this map's size */`,
+    breaks: 'an unreadable spec is not rendered as a spec',
+  },
+  {
+    name: 'M21 [HIGH] every candidate is labelled with the FIRST row\'s spec',
+    // The plausible defect: the list looks completely normal and every entry is annotated —
+    // it is simply annotated with somebody else's map. Nothing on screen says so.
+    find: `      const meta = (d && d.grid_metadata) ? d.grid_metadata.value : null;`,
+    repl: `      const meta = (rows[0] && rows[0].data && rows[0].data.grid_metadata)
+        ? rows[0].data.grid_metadata.value : null; /* MUTANT */`,
+    breaks: 'a candidate\'s label describes that candidate',
+  },
+  {
+    name: 'M22 [HIGH] the label is folded into the option VALUE (the key stops being typeable)',
+    find: `      o.value = v.value;`,
+    repl: `      o.value = v.label ? (v.value + ' ' + v.label) : v.value; /* MUTANT */`,
+    breaks: 'picking a candidate types the key and nothing but the key',
   },
 ];
 

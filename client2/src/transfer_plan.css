@@ -706,10 +706,23 @@
   gap: 5px;
 }
 
+/* 한 행의 뼈대. **flex에서 grid로** 바뀐 이유는 순전히 출처 표기 때문이다(2026-08-04).
+   flex일 때 `.ov-name`은 `min-width: 0`을 가진 유일한 항목이었고, `.ov-meta`는
+   `white-space: nowrap` 때문에 min-content가 곧 전체 텍스트라 사실상 안 줄어들었다.
+   → 칩이 늘어날수록 **출처만** 폭을 잃었고, `text-overflow`가 없어 잘린 티도 안 났다.
+   선언값 예산(사이드바 330 → 이 행 내부 254px): 점 11 + 버튼 76 + 간격 15을 빼면 152px가
+   이름과 칩이 나눠 갖는 전부이고, 칩 하나(`화면기준` ≈ 65px)만 붙어도 이름은 40px 아래로
+   떨어진다. 칩 둘이면 0이다.
+   grid는 그 경쟁을 없앤다 — 칩은 자기 줄로 내려가고, 이름은 (점·버튼을 뺀) 폭을 통째로
+   쓴다. 버튼 수는 그대로 3개다. */
 .ov-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dot name btns"
+    "meta meta meta";
   align-items: center;
-  gap: 5px;
+  gap: 0 5px;
   padding: 4px 5px;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -736,34 +749,69 @@
 .ov-chip.bad  { color: var(--danger);  border-color: var(--danger);  background: var(--danger-weak); }
 .ov-chip.dim  { border-style: dashed; }
 
-.ov-btns { display: flex; gap: 2px; flex-shrink: 0; }
+.ov-btns { grid-area: btns; display: flex; gap: 2px; flex-shrink: 0; }
 
 .ov-dot {
+  grid-area: dot;
   width: 11px;
   height: 11px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
+/* 출처 = 이 층이 **어느 테이블의 어느 키**에서 왔는가. 잘리면 안 되는 식별자다.
+   그래서 `text-overflow: ellipsis`가 아니라 **줄바꿈**을 쓴다 — 생략된 키는 키가 아니고,
+   말줄임표는 "이건 다른 키일 수도 있다"를 말해 주지 못한다. 글자 크기는 손대지 않는다. */
 .ov-name {
-  flex: 1;
+  grid-area: name;
   min-width: 0;
   font-size: var(--tp-fs-body);
   line-height: 1.35;
-  overflow: hidden;
+}
+
+.ov-src {
+  display: block;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .ov-key {
+  display: block;
   font-family: var(--font-mono);
   color: var(--text-dim);
   font-size: var(--tp-fs-label);
+  overflow-wrap: anywhere;
 }
 
+/* 칩은 이제 자기 줄을 쓴다 — 출처와 폭을 다투지 않으므로 `nowrap`을 풀 수 있다
+   (칩 하나하나는 `.ov-chip`이 여전히 `nowrap`이라 칩 안에서는 안 깨진다).
+   비어 있으면 줄을 만들지 않는다: `gap`의 행 간격이 0이고 여백은 아래에서만 붙인다. */
 .ov-meta {
+  grid-area: meta;
   font-size: var(--tp-fs-label);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  white-space: nowrap;
+  white-space: normal;
+}
+.ov-meta:not(:empty) { margin-top: 3px; }
+
+/* legend 행의 출처 표시 — "이 값은 이 맵이 칠한 값이 아니라 오버레이에서 왔다".
+   `.ov-chip`과 **같은 모양**을 쓴다: 같은 사실(어느 테이블의 어느 키)을 두 자리에서 말하는데
+   어휘가 둘이면 사용자가 둘을 서로 다른 것으로 읽는다.
+   🔴 크기는 라벨 토큰 그대로다(12px). 밀도 문제를 글자를 줄여서 풀지 않는다 — 읽을 수 없는
+      표시는 없는 것보다 나쁘고, 여기서는 "저장되지 않는다"는 사실을 나르고 있다. */
+.legend-src-tag {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--tp-fs-label);
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.legend-src-tag::before {
+  content: '↧ ';
+  color: var(--accent-2);
 }
 
 .ov-trunc { color: var(--warning); }

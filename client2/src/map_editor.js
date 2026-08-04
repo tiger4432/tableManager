@@ -4205,6 +4205,24 @@ function renderLegendTable() {
     });
     tdVal.appendChild(inputVal);
 
+    // [N2-b] 이 값이 **이 맵의 계획이 아니라 겹쳐 본 오버레이에서 들어온 것**이면 그렇게 적는다
+    // (사용자 판정 2026-08-04). legend는 이 맵의 split registry를 서술하는 표이고, 맵이 담지
+    // 않은 값을 담은 값과 구별 없이 늘어놓는 것은 맵에 대한 조용한 거짓 진술이다.
+    // 컨트롤이 아니라 **글자**다 — 새 버튼·토글 0개, 글자 크기도 라벨 토큰 그대로다.
+    const srcs = legendOverlaySources(item);
+    if (srcs.length > 0) {
+      const tag = document.createElement('span');
+      tag.className = 'legend-src-tag';
+      tag.textContent = srcs.length === 1
+        ? `오버레이 · ${srcs[0]}`
+        : `오버레이 · ${srcs[0]} 외 ${srcs.length - 1}`;
+      tag.title = `이 값은 이 맵이 칠한 값이 아니라 겹쳐 본 오버레이에서 들어왔습니다 — `
+        + `${srcs.join(' / ')}. 목록에 뜨는 이유는 색을 지정할 수 있게 하기 위해서이고, `
+        + `색을 주거나 이 값으로 칠하는 순간 이 맵의 값이 되어 저장 대상이 됩니다. `
+        + `그 전까지는 [⚡ Push]에 포함되지 않습니다.`;
+      tdVal.appendChild(tag);
+    }
+
     // Description column — 자연어 split 조건 서술 (여러 줄 textarea, 자동 확장)
     const tdDesc = document.createElement('td');
     const inputDesc = document.createElement('textarea');
@@ -9092,6 +9110,33 @@ async function saveValidDieRefDeclaration() {
 //                이 셋을 "제안 없음"으로 합치면 운영자는 **데이터가 비었다**고 읽는다.
 // 상태는 입력칸 자신의 `title`과 `data-suggest`에 남긴다 — 새 UI를 만들지 않기 위해서다.
 // 읽기 동선이므로 토스트도 확인창도 없다.
+//
+// ── [2026-08-04] 목록이 **있는데도** 그리드로 나가서 키를 복사해 오는 이유 ─────────────
+// 사용자 보고: "드롭박스가 있으나 여전히 MAP KEY를 찾기가 힘들다." 검색(retrieval)은
+// 이미 되고 있었고 남은 문제는 **식별(recognition)**이었다. 실측 두 가지가 그 이유다:
+//  ⓐ 목록에 **순서가 없다.** 서버 행 순서 그대로 내려보내고 있었고, 그건 정렬이 아니다 —
+//     `eds_fail_map` 80키 중 인접 역전 36 / `core_defect_map` 80키 중 35 / `bonding_map`
+//     32키 중 13. 훑을 수 없는 목록은 목록이 아니다. → `compareMapKeys`(숫자 인식 정렬).
+//  ⓑ 후보가 **맨 키 문자열뿐**이라 어느 것이 내가 찾는 맵인지 말해 주지 않는다. 반면 그
+//     맵의 등록 규격은 이미 손에 있다 — `wafer_map_metadata` 행을 통째로 받아 `map_id`만
+//     빼고 버리고 있었다. → `mapSpecSummary`가 그 행의 `grid_metadata`를 한 줄로 접어
+//     option의 `label`에 붙인다. **후보당 추가 요청 0회.**
+//     식별력 실측(2026-08-04): `bonding_map` 32키/서로 다른 규격 25 · `bonding_log`
+//     120키/21 · `dt_map` 146키/12. 규격이 갈리는 자리가 곧 **잘못 고르면 조용히 어긋나는**
+//     자리라, 라벨이 가장 필요한 곳과 가장 잘 듣는 곳이 같다.
+//
+// ── 썸네일(사용자 제안)을 그림으로 만들지 않은 이유 ─────────────────────────────────
+//  1. 네이티브 `<datalist>`의 팝업은 **브라우저가 그린다.** option에 hover 훅도, DOM도,
+//     CSS도 걸 수 없다 — 그림을 걸 자리가 물리적으로 없다. 그림을 넣으려면 datalist를
+//     **자체 드롭다운으로 교체**해야 하고, 그건 새 기제·새 영역이며 "이미 있는 입력칸의
+//     `list=` 하나"라는 이 층의 전제를 통째로 버리는 일이다.
+//  2. 그림은 **셀**을 요구한다. 후보는 `core_wafer_map`에서 200개고 맵 하나가 40×40이다.
+//     팝업 한 번에 후보당 1요청이 붙는 설계는 어떤 형태로도 허용되지 않는다.
+//  3. 그림이 말해 줬을 것 — 격자 크기·회전·앞뒷면 — 은 `grid_metadata`에 **이미 있다.**
+//     라벨이 그걸 0요청으로 말한다. 그림은 그 위에 비용만 얹는다.
+//  4. 그림도 못 푸는 것: 같은 로트의 두 슬롯은 규격이 같고 셀 값만 다르다. 팝업 크기의
+//     그림으로는 구별되지 않는다. 그 경우의 진짜 판별자는 **로트 접두사**이고, 정렬된
+//     목록 + 브라우저 좁히기가 이미 그것을 한다.
 
 const KEY_SUGGEST_DEBOUNCE_MS = 120;
 // 메타 입력칸 자동완성이 한 번에 받아 오는 값 개수. 서버 기본(default_limit)과 같은 50 —
@@ -9123,12 +9168,23 @@ function claimListFill(listEl) {
   return () => listFillSeq.get(listEl) === n;
 }
 
+// An item is a plain string, or `{ value, label }`. The `label` is ANNOTATION, never data:
+// the browser still puts `value` — and only `value` — into the field when the operator picks
+// a row, so annotating a candidate cannot change one byte of what gets typed or loaded.
+// A missing/blank label emits NO attribute at all rather than an empty one: `label=""` makes
+// some engines render an empty second column, i.e. it would SAY something about a map whose
+// spec we do not have.
 function fillDatalist(listEl, values) {
   if (!listEl) return;
   listEl.innerHTML = '';
   values.forEach(v => {
     const o = document.createElement('option');
-    o.value = v;
+    if (v && typeof v === 'object') {
+      o.value = v.value;
+      if (v.label) o.label = v.label;
+    } else {
+      o.value = v;
+    }
     listEl.appendChild(o);
   });
 }
@@ -9137,12 +9193,44 @@ function fillDatalist(listEl, values) {
 // **완전한 목록만** 캐시한다. 잘린 목록을 캐시하면 그 뒤로 영영 잘린 목록을 "전부"로 내민다.
 const mapKeyListCache = new Map();
 
+// 맵 키는 사람이 읽는 식별자라 **숫자를 숫자로** 비교해야 한다. 순수 사전순은 `_10`을 `_2`
+// 앞에 놓는데, 슬롯이 1~25인 로트에서는 그것만으로 목록이 못 읽을 물건이 된다.
+// (실측 2026-08-04: 서버가 주는 순서는 정렬이 아니다 — `eds_fail_map` 80키에 인접 역전 36,
+//  `core_defect_map` 80키에 35, `bonding_map` 32키에 13. 후보를 눈으로 훑을 수 없으면
+//  운영자는 그리드로 나가 키를 복사해 온다. 그 왕복이 이 정렬이 없애려는 것이다.)
+function compareMapKeys(a, b) {
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+// 후보 하나가 **어떤 모양의 맵인가**를 한 줄로 요약한다. 셀을 한 칸도 읽지 않는다 —
+// 재료는 이미 받아 온 `wafer_map_metadata` 행의 `grid_metadata`뿐이고, 지금까지는 `map_id`만
+// 빼고 전부 버리고 있었다. 그래서 후보당 추가 요청이 **0회**다(썸네일 판단의 근거).
+// 규격을 읽지 못하면 **아무 말도 하지 않는다** — 「모른다」를 「이렇다」로 바꾸지 않는다.
+function mapSpecSummary(rawGridMeta) {
+  if (!rawGridMeta) return '';
+  let m;
+  try {
+    m = (typeof rawGridMeta === 'string') ? JSON.parse(rawGridMeta) : rawGridMeta;
+  } catch (e) {
+    return '';
+  }
+  if (!m || typeof m !== 'object') return '';
+  const cols = Number(m.grid_cols), rows = Number(m.grid_rows);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return '';
+  const parts = [`${cols}×${rows}`];
+  const rot = Number(m.rotation);
+  if (Number.isFinite(rot) && rot !== 0) parts.push(`회전 ${rot}°`);
+  if (String(m.side || '').toLowerCase() === 'back') parts.push('뒷면');
+  if (m.grid_y_invert === true) parts.push('Y반전');
+  return parts.join(' · ');
+}
+
 async function populateMapKeyDatalist(table, listEl, input) {
   if (!listEl || !table) return;
   const isCurrent = claimListFill(listEl);
   const cached = mapKeyListCache.get(table);
   if (cached) { markSuggestState(input, '', ''); fillDatalist(listEl, cached); return; }
-  let ids, total, rowCount;
+  let items, total, rowCount;
   try {
     const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
     const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data`
@@ -9160,9 +9248,15 @@ async function populateMapKeyDatalist(table, listEl, input) {
     const rows = (result && Array.isArray(result.data)) ? result.data : [];
     rowCount = rows.length;
     total = Number(result && result.total);
-    ids = rows.map(r => (r.data && r.data.map_id ? r.data.map_id.value : null))
-      .filter(v => v !== null && v !== undefined && String(v).trim() !== '')
-      .map(String);
+    // 값(=키)과 라벨(=그 맵의 등록 규격)을 **같은 행에서** 만든다. 라벨을 위해 추가 조회를
+    // 하지 않는다는 성질이 여기서 성립한다.
+    items = rows.map(r => {
+      const d = r && r.data;
+      const id = (d && d.map_id) ? d.map_id.value : null;
+      if (id === null || id === undefined || String(id).trim() === '') return null;
+      const meta = (d && d.grid_metadata) ? d.grid_metadata.value : null;
+      return { value: String(id), label: mapSpecSummary(meta) };
+    }).filter(Boolean).sort((a, b) => compareMapKeys(a.value, b.value));
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
@@ -9173,20 +9267,20 @@ async function populateMapKeyDatalist(table, listEl, input) {
   if (Number.isFinite(total) && total > rowCount) {
     // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
     markSuggestState(input, 'truncated',
-      `등록된 맵 ${total}개 중 ${ids.length}개만 목록에 있습니다 — 없는 키도 직접 입력하면 열립니다.`);
-  } else if (ids.length === 0) {
+      `등록된 맵 ${total}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력하면 열립니다.`);
+  } else if (items.length === 0) {
     // [1-a] **성공했는데 0건**이다. 종전에는 이 자리가 `markSuggestState(input, '', '')` —
     // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전
     // (`complete`)이므로 캐시도 하고 select도 쓸 수 있지만, **말은 한다**.
     markSuggestState(input, '',
       `${table}에 등록된 맵이 아직 없습니다 — 목록을 읽는 데는 성공했고, 정말로 0건입니다. `
       + `키를 직접 입력하면 그대로 동작합니다.`);
-    mapKeyListCache.set(table, ids);
+    mapKeyListCache.set(table, items);
   } else {
     markSuggestState(input, '', '');
-    mapKeyListCache.set(table, ids);
+    mapKeyListCache.set(table, items);
   }
-  fillDatalist(listEl, ids);
+  fillDatalist(listEl, items);
 }
 
 // 유효 다이 지정 칸 — 같은 자리, 같은 함수. [1-a] 모집단만 **한 테이블로 고정**됐다:
@@ -9693,10 +9787,29 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // 같은 소스의 실패 잔존 행이 있으면 성공 행으로 교체한다 (재시도 성공)
   overlayLayers = overlayLayers.filter(o => !(o.failed && o.sourceTable === layer.sourceTable && o.sourceKey === layer.sourceKey));
   overlayLayers.push(layer);
+  // [N2-b] 겹치면 그 층의 값들이 legend/DOE 목록에 **뜬다**(사용자 요청 2026-08-04).
+  // 그 전까지 `ensureLegendValues`의 호출자는 **가져오기 하나뿐**이었고, 그래서 겹치기만 한
+  // 값은 `legendColorForValue`가 답을 못 찾아 **속 빈 점**으로 그려졌다 — 값별 색 기능이
+  // 명세대로 동작하면서 "아무것도 안 된 것"처럼 보인 이유가 이것이다.
+  // 🔴 `vocab: true`다. 이 맵은 이 값들을 칠한 적이 없다 — 목록에는 뜨되 Push 페이로드에는
+  //    들어가지 않는다(규율 ①: 서버에 가는 것은 [⚡ Push] 성공 시점의 registry뿐).
+  // 🔴 층을 **제거해도 되돌리지 않는다.** 되돌리기는 "사용자가 방금 지정한 색을 조용히
+  //    버리는" 쪽 실패로 곧장 간다. 남겨 두는 쪽의 비용은 목록 한 줄뿐이고 그마저도 이미
+  //    수명이 정해져 있다: vocab 행은 저장 페이로드에서 빠지고(`buildLegendRegistryUpdates`),
+  //    맵을 다시 열 때 청구되지 않은 것은 화면에서 내려간다(`applyRegistryRowsToLegend`).
+  //    반대로 사용자가 색을 주거나 그 값으로 칠하면 `reconcileVocabClaims`가 이 맵의 것으로
+  //    승격시키므로, "되돌려도 안전한 행"은 **아무도 본 적 없는 행**뿐이다.
+  const seeded = ensureLegendValues(overlayLayerValues(layer), { vocab: true });
+  if (seeded.length > 0) {
+    // 가져오기 경로와 같은 뒷정리다 — 값 잠금 선언이 새 값을 보호 집합에 편입해야 하고,
+    // legend 표는 방금 생긴 행을 보여야 한다. 하나라도 빠지면 화면이 낡는다.
+    recomputeLockedCells();
+    renderLegendTable();
+  }
   recomputeActiveOverlays();
   renderOverlayList();
   scheduleRenderGridCanvas();
-  return { layer };
+  return { layer, seeded };
 }
 
 function removeOverlayLayer(id) {
@@ -9874,14 +9987,7 @@ function overlayFanChip(o) {
 //    of these values to the legend this chip must shrink; a captured count goes quietly stale
 //    and a stale count is indistinguishable from a defect.
 function overlayUnlistedValues(o) {
-  if (!o || o.failed || !o.items) return [];
-  const out = new Set();
-  o.items.forEach(list => list.forEach(it => {
-    const v = (it.val === null || it.val === undefined) ? '' : String(it.val);
-    if (v === '') return;                       // a blank was never a value that wants a colour
-    if (!legendColorForValue(v)) out.add(v);
-  }));
-  return [...out];
+  return [...overlayLayerValues(o)].filter(v => !legendColorForValue(v));
 }
 
 function overlayLegendChip(o) {
@@ -9976,13 +10082,76 @@ function importOverlayToGrid(id) {
 
 // legend에 없는 값들을 추가하고 추가된 값 배열을 반환
 // ([U6] declared default_legend 우선, 다음은 공용 팔레트 규칙 — autoAddLegendValue 하나로 간다)
-function ensureLegendValues(values) {
+//
+// `opts.vocab`은 **이 맵이 보증하지 않는 값**이라는 표시다(2026-08-04). 두 호출자의 차이는
+// 이 플래그 하나뿐이고, 그래서 두 번째 함수를 만들지 않는다:
+//   · 가져오기(`importOverlayToGrid`)는 셀을 **이 맵에 칠한다** → 이 맵의 값이다(vocab 아님).
+//   · 오버레이 얹기(`addOverlayLayer`)는 **남의 맵을 겹쳐 볼 뿐** 이 맵을 바꾸지 않는다 →
+//     legend에 뜨되 이 맵의 계획인 척해서는 안 된다. `vocab: true` + 시드 서명이 정확히
+//     그것을 뜻하고, 그 뜻을 이미 온 시스템이 지킨다: `buildLegendRegistryUpdates`가 vocab
+//     행을 **페이로드에서 뺀다**(= Push해도 서버에 안 간다), `applyRegistryRowsToLegend`가
+//     맵을 다시 열 때 청구되지 않은 vocab 행을 **화면에서 내린다**, 그리고
+//     `reconcileVocabClaims`가 그 값으로 **칠하거나 행을 고치는 순간** 이 맵의 것으로 승격한다.
+//     즉 "목록에는 뜨지만 아무것도 저장하지 않는다"가 새 기계장치 없이 성립한다.
+function ensureLegendValues(values, opts) {
+  const asVocab = !!(opts && opts.vocab);
   const added = [];
   values.forEach(v => {
-    if (autoAddLegendValue(v, '')) added.push(String(v));
+    if (autoAddLegendValue(v, '')) {
+      const sv = String(v);
+      added.push(sv);
+      if (asVocab) {
+        const row = legend.find(l => String(l.value) === sv);
+        // 표시와 시드는 **함께** 쓴다 — `reconcileVocabClaims`는 시드 없는 vocab 행을
+        // "개명된 것"으로 읽어 즉시 청구로 승격시킨다(= 저장 대상이 된다).
+        if (row) { row.vocab = true; legendVocabularySeed.set(sv, legendRowSignature(row)); }
+      }
+    }
   });
   if (added.length > 0) saveLegendToStorage(); // 로컬 캐시만 — 서버 registry는 Push 시점에
   return added;
+}
+
+// 한 오버레이 층이 실어 온 **서로 다른 값들**. `overlayUnlistedValues`가 쓰던 순회를 여기로
+// 올렸다 — 같은 집합을 두 곳에서 다시 걸으면 한쪽만 고쳐지는 날이 온다.
+// 한 legend 행이 **오버레이에서 들어온 것**인가, 그리고 어느 층에서인가.
+//
+// 🔴 저장하지 않고 **유도한다.** 행에 `sourceTable`/`sourceKey` 필드를 얹는 쪽이 쉬워 보이지만
+//    두 곳에서 곧장 틀린다: ① 그 필드는 registry 페이로드·서명(`LEGEND_PAYLOAD_COLUMNS`)과
+//    얽혀 「저장되는 필드는 비교되는 필드」 성질을 깨고, ② 층을 뗀 뒤에도 낡은 출처가 행에
+//    남아 화면이 멀쩡한 채로 거짓을 말한다. 유도는 매 렌더에서 **지금 얹혀 있는 층**만 본다.
+//
+// 판정 규칙과 그 근거(사용자 판정 2026-08-04의 엣지 케이스들이 여기서 전부 떨어진다):
+//  · `vocab !== true`  → **이 맵의 값이다. 표시하지 않는다.** registry에서 온 행과 사용자가
+//    청구한 행은 `vocab: false`이므로, 같은 값이 맵에도 있고 오버레이에도 있으면 맵이 이긴다
+//    (색 충돌도 같은 이유로 맵의 선언이 이긴다 — `autoAddLegendValue`가 기존 행을 안 건드린다).
+//  · 두 층이 같은 값을 실어 오면 legend 행은 **하나**고, 여기서 출처만 둘로 세어 적는다.
+//  · 사용자가 색을 주면 행 서명이 시드와 달라져 `reconcileVocabClaims`가 `vocab`을 내린다 →
+//    그 순간부터 이 함수는 빈 배열을 돌려주고 표시가 사라진다. **그게 맞다**: 색을 준 값은
+//    이 맵의 것이고, 그 뒤 층을 떼도 남아야 한다(= 지정한 색이 조용히 사라지지 않는다).
+//  · 손대지 않은 채 층만 떼면 표시는 사라지지만 `vocab`은 남는다 — Push 페이로드에 안 들어가고
+//    맵을 다시 열 때 내려간다. 「오버레이(해제됨)」 같은 문구를 만들지 않는 이유는
+//    `seedEmptyDoe`의 기본 어휘 행도 `vocab: true`라서, 그 문구가 그쪽에는 거짓이 되기 때문이다.
+function legendOverlaySources(item) {
+  if (!item || item.vocab !== true) return [];
+  const v = String(item.value);
+  // 실패한 층을 여기서 다시 거르지 않는다 — `overlayLayerValues`가 이미 빈 집합을 돌려주고,
+  // 「실패한 층은 아무 값도 나르지 않는다」의 구현은 한 곳이어야 한다. (실측: 여기에 `!o.failed`를
+  // 겹쳐 두면 그 조건을 지워도 답이 안 바뀌어, 하네스 변이가 정당하게 살아남는다 = 무의미한 가드.)
+  return overlayLayers
+    .filter(o => overlayLayerValues(o).has(v))
+    .map(o => `${o.sourceTable} · ${o.sourceKey}`);
+}
+
+function overlayLayerValues(o) {
+  const out = new Set();
+  if (!o || o.failed || !o.items) return out;
+  o.items.forEach(list => list.forEach(it => {
+    const v = (it.val === null || it.val === undefined) ? '' : String(it.val);
+    if (v === '') return;                       // 빈 값은 색을 원한 적이 없다
+    out.add(v);
+  }));
+  return out;
 }
 
 function renderOverlayList() {
@@ -9998,11 +10167,22 @@ function renderOverlayList() {
     box.innerHTML = '';
     return;
   }
+  // [출처 표기] 한 층이 **어느 테이블의 어느 키**에서 왔는지는 색이 아니라 **글자로** 말한다.
+  // 색은 N2(`41b17ee`)부터 값을 뜻하게 됐으므로 정체까지 겸할 수 없다.
+  // 🔴 이 두 조각은 종전에도 DOM에 있었다 — 안 보였을 뿐이다. `.ov-row`가 flex이고
+  //    `.ov-name`만 `min-width: 0`이라, 폭이 모자라면 **줄어들 수 있는 유일한 상자**가
+  //    이것이었다. 게다가 `overflow: hidden`에 `text-overflow`가 없어서 잘린 티도 안 났다.
+  //    선언값으로 계산한 실제 예산(330px 사이드바 → `.ov-row` 내부 254px, 점 11 + 버튼 76
+  //    + 간격 15): 칩이 하나만 붙어도 이름 상자에 남는 폭이 0~40px다. 즉 "출처가 안 뜬다"는
+  //    체감은 정확했고, 원인은 렌더러가 아니라 레이아웃이었다.
+  //    그래서 출처는 이제 **칩과 폭을 다투지 않는 자기 줄**을 갖고(아래 CSS의 grid areas),
+  //    긴 키는 잘리는 대신 **줄바꿈**한다 — 식별자는 생략하면 식별자가 아니다.
+  //    컨트롤은 늘지 않았다: 추가된 것은 `<span>` 두 개뿐이다.
   box.innerHTML = overlayLayers.map(o => `
     <div class="ov-row ${o.failed ? 'err' : ''} ${(!o.failed && !o.visible) ? 'off' : ''}" data-id="${o.id}">
       <span class="ov-dot" style="background:${escapeHtmlAttr(o.color)}"></span>
       <span class="ov-name" title="${escapeHtmlAttr(o.sourceTable + ' · ' + o.sourceKey + (o.reason ? ' — ' + o.reason : ''))}">
-        <b>${escapeHtmlAttr(o.sourceTable)}</b><br><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
+        <span class="ov-src">${escapeHtmlAttr(o.sourceTable)}</span><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
       </span>
       <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${overlayLegendChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
       <span class="ov-btns">
