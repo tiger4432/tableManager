@@ -94,6 +94,12 @@ const SYMBOLS = [
   'collectMapKeyFilterModel', 'scanCoordinateBounds', 'resolveDeclaredGridMeta',
   'promptCoordinateChoice', 'resolveGridFrame', 'deriveLegendFromCellValues',
   'restoreDoeDraftWithPrecedence',
+  // ...plus the pure predicate the load consults before it lets anything replace the valid-die
+  // designation (user ruling 2026-08-04: only a map carrying its OWN declaration may replace
+  // it). Omitting it is the same ReferenceError-into-the-catch failure described above, and it
+  // announced itself exactly that way the moment the guard was added — three green harnesses
+  // went red in one run. That is the intended cost of a new module-global dependency here.
+  'parseValidDieRef',
 ];
 
 // ── Fixture ────────────────────────────────────────────────────────────────────────────
@@ -137,6 +143,15 @@ function buildEnv(src, opts = {}) {
     catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
     pieces.push(code);
   }
+  // `parseValidDieRef` pins its lookup table to this module const, so the slice above is not
+  // self-contained without it. Taken from the source rather than retyped: a harness that
+  // hardcoded 'valid_die_ref' would keep passing after the product changed the name.
+  // (This fixture's metadata declares no valid-die, so today the const is only reached on the
+  //  branch that returns null — but the slice must not be one fixture edit away from a
+  //  ReferenceError that this harness's catch would report as a 0-cell load.)
+  const vdTable = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
+  if (!vdTable) die('const VALID_DIE_TABLE is gone from map_editor.js');
+  pieces.unshift(vdTable[0]);
 
   const log = { toasts: [], alerts: [], requests: [] };
   const choice = opts.choice || 'standard';

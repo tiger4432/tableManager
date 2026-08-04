@@ -1248,12 +1248,25 @@ async function switchTable(tableName) {
 
     // 테이블이 바뀌면 이전 맵의 정체성 핀은 무효다 (Push 대상이 달라진다)
     setLoadedIdentity(null, null);
-    // [M4①] 유효 다이 마스크도 이전 맵의 것이다 — 위 ⓑ가 오버레이에 적용되는 이유와
-    // 똑같이 적용된다. 남겨 두면 새 테이블의 격자가 남의 마스크로 재단된다.
-    validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
-    renderValidDieChip();
-    // [M4②] 지정 칸도 이전 맵의 것이다. 남겨 두면 다음 Push가 **남의 선언**을 이 맵에 쓴다.
-    syncValidDieRefControls();
+    // ⚠️ THE VALID-DIE DESIGNATION IS **NOT** RESET HERE — CLEAR SITE 1 OF 3, DELETED.
+    //    User ruling (2026-08-04): 「고유 메타를 가진 맵을 불러오기 전까지 유효 다이영역
+    //    초기화 금지」. The designation survives until a map that carries its OWN valid-die
+    //    declaration is loaded; that map's declaration replaces it, and nothing else clears it.
+    //    The workflow is SET-THEN-LOAD: the user picks the designation and then opens the map
+    //    it applies to. The three statements that stood here ([M4①]/[M4②]) assumed the
+    //    opposite order, so merely changing the TABLE — with no load at all — threw the
+    //    designation away. That is how the user finally pinned this down.
+    // 🔴 The deleted comment argued from ⓑ (an overlay left behind writes the OLD table's
+    //    values into this one). That argument does not transfer: an overlay is a set of VALUES
+    //    that a later import can push into the new table, whereas a designation is a MASK that
+    //    only decides which dice are valid. It changes where cells sit (§getWaferBoundingBox
+    //    keys the origin box off `basis === 'ref'`), which is exactly what the user is asking
+    //    for when they carry it into the map they chose it for.
+    // 🔴 The remaining hazard — switch table, do NOT load, Push to a different map — was
+    //    weighed and closed by the user: nobody performs it, and a loaded map with its own
+    //    declaration replaces the carried one anyway. No Push confirmation is added, and no
+    //    "deliberate vs leftover" discriminator exists; there is no state that could tell
+    //    them apart and inventing one is the complexity the UI rule forbids.
     // 새 테이블의 자동완성 캐시를 버려 다음 포커스에서 다시 읽게 한다 — 전환 중에 그 테이블에
     // 맵이 추가됐을 수 있고, 자동완성이 없는 것보다 **없는 맵을 제안하는 것**이 나쁘다.
     mapKeyListCache.delete(tableName);
@@ -4871,12 +4884,23 @@ async function loadExistingMap(opts = {}) {
       `\n[확인] 저장하지 않고 불러오기\n[취소] 이 화면에 남기`
     )) return { count: 0, cancelled: true };
   }
-  // [M4①] 이전 맵의 유효 다이 마스크를 먼저 버린다. 이 로드가 어느 경로로 끝나든
-  // — 취소·0건·예외 — 남은 마스크가 **다른 맵**의 유효 다이를 주장하는 일이 없어야 한다.
-  // 성공 경로는 아래에서 이 맵의 선언으로 다시 세운다.
-  validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
-  renderValidDieChip();
-  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다
+  // ⚠️ THE VALID-DIE DESIGNATION IS **NOT** WIPED ON THE WAY IN — CLEAR SITE 2 OF 3, DELETED.
+  //    The [M4①] block that stood here dropped the mask in this function's first three
+  //    statements, unconditionally, before a single byte had been read from the server. Its
+  //    stated reason was "whichever way this load ends, a leftover mask must not claim to be
+  //    ANOTHER map's valid die". Under the user's ruling that reason is inverted: the mask is
+  //    not a leftover, it is the designation the user chose FOR the map they are about to
+  //    open, and the load is the second half of one gesture.
+  // 🔴 WHAT THIS BUYS ON THE FAILURE EXITS, which is what the old block was really for. It
+  //    wiped FIRST so that every exit below (no map key · spec-read refusal · empty · the
+  //    cancelled coordinate modal · the catch) landed on circle geometry. They now land on
+  //    the user's own designation instead — a state they chose, not a state nobody chose. The
+  //    strongest case is the very first exit (맵 키가 비어 있음): it returns before `gridData`
+  //    is cleared, so cells are still on screen, and the wipe used to strip the designation
+  //    from under them. That exit is now a complete no-op, which is what a refused load owes.
+  // 🔴 The replacement it promised ("성공 경로는 아래에서 이 맵의 선언으로 다시 세운다") is
+  //    still there and is now the ONLY writer — see the guarded `resolveValidDie` below. It
+  //    fires exactly when the loaded map declares a valid die, and only then.
 
   const { filterModel, hasFilter } = collectMapKeyFilterModel();   // ①
 
@@ -5007,8 +5031,37 @@ async function loadExistingMap(opts = {}) {
     //
     // 🔴 회전·면·격자 컨트롤이 **위에서 이미 확정된 뒤**여야 한다(바로 위 동기화 블록):
     //    정렬 경보가 `currentFrame()`을 읽어 참조 프레임과 원점을 비교한다.
-    // 선언이 없으면 `circle`로 돌아가 종전과 완전히 같이 동작한다.
-    await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+    // ── CLEAR SITE 3 OF 3, GUARDED. This is the one that survives naive fixes. ───────────
+    // Deleting the two direct wipes above is NOT enough, and measuring that was the whole
+    // point: with both of them suppressed the control was still blanked, because this call
+    // reaches `set('circle', null, '', null)` whenever `parseValidDieRef` answers null, and
+    // `set` ends with `syncValidDieRefControls()`. The wipe arrived through the resolver.
+    //
+    // 🔴 WHAT COUNTS AS "이 맵이 고유 메타를 가졌다" — the ruling is decided HERE, once, and
+    //    it is decided by the function that already owns that word. `parseValidDieRef`
+    //    returns null for **absence only** (no meta object · no `valid_die_ref` key · the key
+    //    present but null/undefined) and returns a declaration for everything else, an
+    //    unreadable one included ("null/부재만 선언 없음이고 그 외에는 전부 선언이다", §2287).
+    //    So a `wafer_map_metadata` row that says nothing about valid-die is treated exactly
+    //    like no row at all — both leave the user's designation standing. That is the
+    //    intended reading: the user is mid-setup, matching geometry by hand, and a row that
+    //    is silent on valid-die has not declared anything to replace it with.
+    //    An UNREADABLE declaration still replaces (with a refusal): the map did declare, and
+    //    silently keeping the previous mask there would be the "wrong answer indistinguish-
+    //    able from the right one" state this file refuses everywhere else.
+    // 🔴 **NO SECOND SPELLING.** The predicate is one call to the same pure function the
+    //    resolver itself calls with the same two arguments — not a re-implementation of
+    //    "does this meta declare a valid die". Two spellings of one predicate is how the two
+    //    unsaved-work doors came to disagree (§unsavedWorkNotice), and it is not repeated.
+    // 🔴 ORDERING IS UNCHANGED. Whatever survives is settled before the cell placement loop —
+    //    strictly earlier than before, in fact, since a carried designation was already
+    //    settled when the load began. That matters because `getWaferBoundingBox` keys the
+    //    origin box off `basis === 'ref'`, so a carried designation moves where cells land.
+    //    That is the requested behaviour, not a side effect: the user picked the mask for
+    //    this map. `cols`/`rows` are still re-read below for the declared case.
+    if (parseValidDieRef(loadedGridMeta, selectedTable) !== null) {
+      await resolveValidDie(loadedGridMeta, selectedTable, loadedMapKey || getCurrentMapKey());
+    }
     // 근거가 바뀌면 원점 상자도 바뀐다 — 위 동기화가 비운 캐시는 원 기준으로 다시 채워졌을
     // 수 있다. 태그가 키를 갈라 주지만, 여기서 한 번 더 비워 이전 맵의 항목을 남기지 않는다.
     boundingBoxCache = {};

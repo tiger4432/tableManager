@@ -88,6 +88,11 @@ const WANTED = [
   ['collectMapKeyFilterModel'], ['scanCoordinateBounds'], ['resolveDeclaredGridMeta'],
   ['promptCoordinateChoice'], ['resolveGridFrame'], ['deriveLegendFromCellValues'],
   ['restoreDoeDraftWithPrecedence'],
+  // The pure predicate the load consults before letting anything replace the valid-die
+  // designation (user ruling 2026-08-04). Absent from older revisions this probe also slices,
+  // which the per-entry `missing` tolerance above already covers; present from the carry fix
+  // onward, where omitting it is a ReferenceError inside `loadExistingMap`'s own catch.
+  ['parseValidDieRef'],
 ];
 
 function makeInput(v) {
@@ -106,6 +111,12 @@ function buildEnv(src, opts = {}) {
     pieces.push(code);
   }
   if (!pieces.some(p => /function\s+loadExistingMap/.test(p))) die('loadExistingMap not found');
+  // `parseValidDieRef` pins its lookup table to this module const, so its slice is not
+  // self-contained without it. Read from the source rather than retyped, and TOLERATED when
+  // absent — this probe also slices revisions from before the const existed, the same
+  // tolerance the `missing` list above provides for the functions.
+  const vdTable = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
+  if (vdTable) pieces.unshift(vdTable[0]);
 
   const log = { toasts: [], alerts: [], requests: [] };
   const choice = opts.choice || 'standard';
