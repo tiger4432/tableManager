@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 from process_supervisor import (  # noqa: E402
     ChildSpec, Supervisor, preflight_port_check, psutil_status,
 )
+from launcher_args import parse_launcher_args  # noqa: E402
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
 from utils.logger import get_process_logger  # noqa: E402
 
@@ -83,9 +84,46 @@ def refuse_if_ports_are_taken(api_host, api_port, graph_port):
     return False
 
 
+def refuse_if_arguments_are_unknown(argv):
+    """Parse the command line. Returns the parsed args, or exits before anything runs.
+
+    THE FAILURE THIS REPLACES
+    -------------------------
+    Every flag used to be `"--flag" in sys.argv`, so an argument the launcher
+    did not recognise was not an error - it was nothing. Measured on this file
+    before the fix, with subprocess.Popen neutered: `--server_only` planned SIX
+    children (the full stack, desktop window included) while `--server-only`
+    planned five. A one-character typo silently started the thing the operator
+    was explicitly trying not to start, and with a stack already running the two
+    port binders then failed to bind and went into the correlated-backoff loop.
+
+    This runs FIRST - before the port probe, because there is no point asking
+    about ports for a command that is not going to run, and long before the
+    "Starting AssyManager" banner, because a banner followed by a refusal is the
+    contradiction that makes an operator stop and reread.
+    """
+    args = parse_launcher_args(argv)
+    if args.should_start:
+        return args
+    if args.is_refusal:
+        # On the record, not just on a console someone scrolled past - same
+        # channel the port refusal uses.
+        for line in args.lines:
+            log_launcher(line, level="ERROR")
+    else:
+        # --help is an answer, not an incident. Plain stdout, no log file.
+        for line in args.lines:
+            print(line)
+    sys.exit(args.exit_code)
+
+
 def main():
     root_dir = _ROOT_DIR
     server_dir = os.path.join(root_dir, "server")
+
+    # Nothing below this line is reached by a command line the launcher does not
+    # fully understand.
+    args = refuse_if_arguments_are_unknown(sys.argv[1:])
 
     # Use the current python executable (guarantees the active conda environment is used)
     python_exe = sys.executable
@@ -109,11 +147,12 @@ def main():
     graph_port = os.environ.get("GRAPH_SYNC_PORT", "8090")
     server_cmd = [python_exe, "-m", "uvicorn", "main:app",
                   "--host", api_host, "--port", api_port]
-    if "--reload" in sys.argv:
+    if args.reload:
         server_cmd.append("--reload")
 
-    # Check command-line arguments for server-only mode
-    server_only = "--no-client" in sys.argv or "--server-only" in sys.argv
+    # Server-only mode. `--no-client` and `--server-only` are synonyms and both
+    # keep working exactly as they did - see server/launcher_args.py.
+    server_only = args.server_only
 
     # Nothing is spawned until the ports are known to be free. Five children
     # racing an older stack is not a startup - and the banner below is not
@@ -121,7 +160,7 @@ def main():
     # AssyManager" followed by a refusal is exactly the kind of contradiction an
     # operator has to stop and reread.
     ports_clear = refuse_if_ports_are_taken(api_host, api_port, graph_port)
-    if "--preflight-only" in sys.argv:
+    if args.preflight_only:
         # Ask the question without answering it by starting anything. Also what
         # the end-to-end test drives, so the refusal path can be exercised
         # against throwaway ports with no risk of spawning a second stack.
