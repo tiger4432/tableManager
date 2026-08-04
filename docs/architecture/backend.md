@@ -75,9 +75,10 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 감시 정책은 실패를 둘로 갈랐다 — **동료도 함께 죽었으면 환경 장애**(무한 완만 재시도), **혼자 죽었으면 고장난 자식**(6회 뒤 영구 실패). **중복 기동은 그 둘 중 어느 쪽도 아니다.** 이미 뜬 스택이 8080을 쥐고 있으면 새 웹서버는 혼자 계속 죽고, 예산이 다 탈 때까지 **약 1분**을 옛 스택과 싸운다. 재시도는 남의 프로세스에서 포트를 빼앗을 수 없으므로 **그 1분은 전부 낭비**다.
 
-**① 런처 사전 점검 — 아무것도 띄우기 전에 거절한다.** `run_decoupled_app.refuse_if_ports_are_taken(api_host, api_port, graph_port)`가 `process_supervisor.preflight_port_check(...)`로 API 포트(`ASSY_API_PORT`, 기본 8080 · 호스트 `ASSY_API_HOST`, 기본 `0.0.0.0`)와 그래프 싱크 포트(`GRAPH_SYNC_PORT`, 기본 8090 · 호스트는 모듈 상수 `GRAPH_BIND_HOST = "127.0.0.1"`)를 찌른다. **`specs` 목록을 만들기도 전, `Supervisor`를 세우기도 전**이라 실패 시 **아무것도 기동되지 않고 이미 도는 프로세스도 건드리지 않는다.** 거절 배너는 포트를 쥔 **PID와 프로세스 이름**을 대고 `taskkill /PID <pid> /T /F`를 준다(`describe_port_conflict` → `port_owner`, psutil `CONN_LISTEN`).
+**① 런처 사전 점검 — 아무것도 띄우기 전에 거절한다.** `run_decoupled_app.refuse_if_ports_are_taken(api_host, api_port, graph_port)`가 `process_supervisor.preflight_port_check(...)`로 API 포트(`ASSY_API_PORT`, 기본 8080 · 호스트 `ASSY_API_HOST`, 기본은 **듀얼스택 와일드카드 `DUAL_STACK_HOST = ""`** — [§1.3-ter](#13-ter-두-스택-모두에서-받는다-2026-08-04))와 그래프 싱크 포트(`GRAPH_SYNC_PORT`, 기본 8090 · 호스트는 모듈 상수 `GRAPH_BIND_HOST = "127.0.0.1"`)를 찌른다. **`specs` 목록을 만들기도 전, `Supervisor`를 세우기도 전**이라 실패 시 **아무것도 기동되지 않고 이미 도는 프로세스도 건드리지 않는다.** 거절 배너는 포트를 쥔 **PID와 프로세스 이름**을 대고 `taskkill /PID <pid> /T /F`를 준다(`describe_port_conflict` → `port_owner`, psutil `CONN_LISTEN`).
 - 🔴 **탐지는 bind 프로브 *와* connect 프로브 둘 다이고, `SO_REUSEADDR`은 일부러 안 세운다** — 그 옵션이 있으면 이미 물린 포트에 bind가 성공해 버려 가드가 조용히 통과한다(`test_the_bind_probe_and_the_connect_probe_are_both_load_bearing`).
 - ⚠️ **가드는 열려 실패한다(fail open).** 프로브 자체가 예외를 내면 `WARNING`만 남기고 **기동을 진행한다** — 가드가 시스템이 안 뜨는 이유가 되면 안 된다.
+- 🔴 **프로브 대상은 `bind_targets(host)`가 정한다 — 서버가 실제로 여는 소켓 집합과 같은 함수에서 나온다.** 종전엔 프로브가 `AF_INET`을 하드코딩했다. 듀얼스택 기본값이 들어온 뒤로는 그 하드코딩이 **서버가 무는 두 패밀리 중 하나만 찌르는** 상태가 되어, 가드가 정확히 필요한 순간에 조용해진다([§1.3-ter](#13-ter-두-스택-모두에서-받는다-2026-08-04)).
 - `--preflight-only`: 질문만 하고 아무것도 띄우지 않는다. 포트가 비었으면 `Preflight OK: ports 8080 and 8090 are free.`를 찍고 **exit 0**, 물려 있으면 거절 배너 뒤 **exit 1**.
 
 **①-bis 인자 관문 — 포트를 묻기도 전에 거절한다 (2026-08-04, `server/launcher_args.py` 신설).** 종전엔 플래그를 전부 `"--flag" in sys.argv` 멤버십으로 읽었다. **런처가 모르는 인자는 에러가 아니라 아무것도 아니었다.** 실측(`subprocess.Popen`을 무력화해 아무것도 못 뜨게 한 상태): `--server_only`는 자식 **6개**(데스크톱 셸 포함 = 풀스택), `--server-only`는 **5개**를 계획했다. 한 글자 오타가 운영자가 일부러 피하려던 것을 조용히 띄웠고, 이미 스택이 떠 있었으므로 포트 바인더 둘이 상관 백오프 루프로 들어갔다.
@@ -98,6 +99,29 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - 파일은 데이터 루트(`paths.log_path`): `server_stdout.log` · `watcher_stdout.log` · `graph_sync_stdout.log` · `chain_worker_stdout.log` · `auto_update_stdout.log` · `desktop_client_stdout.log`.
 - 보관은 **자식당 20 MB + `.1` 백업 하나**(`CHILD_LOG_MAX_BYTES`, `os.replace`로 회전) — 즉 최대 40 MB. 회전 실패는 원본을 다시 열 뿐 출력을 버리지 않는다.
 - **캡처 실패는 치명적이지 않다**(`WARNING` 후 자식은 계속 돈다). ⚠️ 이 경로가 없던 동안 **자식의 bind 에러는 어디에도 안 남았다** — "왜 안 뜨는가"의 답이 콘솔 스크롤 밖으로 사라지는 자리였다.
+
+#### 1.3-ter 두 스택 모두에서 받는다 (2026-08-04)
+
+**증상.** 같은 서버·같은 코드·같은 순간에, `localhost`로 들어오면 **페이지는 뜨는데 WebSocket이 CONNECTING에서 영원히 멈췄고**(`onopen`도 `onclose`도 없음 → 재연결 사다리가 `onclose`로 굴러가므로 **재시도조차 하지 않는다**), 같은 서버를 **머신 외부 IP로 부르면 정상 연결**됐다. 유일한 변수는 이름 해석이었다.
+
+**원인.** `netstat`상 리스너가 `TCP 0.0.0.0:8080` 하나뿐이고 `[::]:8080`이 없었다. `0.0.0.0`은 **IPv4 와일드카드**이고, Windows에서 `localhost`는 **`::1`을 `127.0.0.1`보다 먼저** 내놓는다. HTTP는 브라우저가 IPv4로 폴백해 페이지가 떴을 뿐이다.
+
+🔴 **`::`로 바꾸는 것은 고치는 게 아니라 같은 결함을 좌우 반전시키는 것이다.** uvicorn 단일 프로세스 경로가 쓰는 `asyncio.create_server`는 **`IPV6_V6ONLY=True`를 명시적으로 세우고 해석된 주소마다 소켓을 따로 연다**(CPython `base_events.py` — 리눅스 기본 듀얼스택 동작을 *끄는* 것이 그 코드의 의도다). 실측(실제 uvicorn 0.44.0, 임시 포트, TCP 테이블 재확인):
+
+| `--host` | 실제 리스너 | `127.0.0.1` | `::1` |
+|---|---|---|---|
+| `0.0.0.0` | IPv4만 | ACCEPT | **거부** ← 사고 |
+| `::` | IPv6만 | **거부** | ACCEPT ← 사고의 거울상 |
+| **`""`** | **IPv4 + IPv6 둘 다** | ACCEPT | ACCEPT ← 채택 |
+
+**조치.** `process_supervisor.DUAL_STACK_HOST = ""`를 신설하고 런처 기본값을 그것으로 바꿨다. **`ASSY_API_HOST`의 의미는 한 글자도 안 바뀐다** — 명시한 문자열은 전부 어제와 똑같이 그 주소만 문다(`127.0.0.1`은 여전히 IPv4 단독, 명시적 `0.0.0.0`도 여전히 IPv4 단독). **기본값만** 움직였다. 좁히는 것이 변수의 존재 이유이므로, 주소를 적어 넣은 운영자의 선언을 넓히면 안 된다.
+
+- 🔴 **와일드카드 해석은 하드코딩하지 않고 `getaddrinfo(AF_UNSPEC, AI_PASSIVE)`로 되묻는다**(`bind_targets`). IPv4/IPv6 쌍은 보편적이지 않다 — IPv6가 꺼진 호스트에서는 그 해석이 IPv4만 돌려주고 서버는 정상인데, 쌍을 하드코딩한 가드는 `::` bind에 실패해 **멀쩡한 스택의 기동을 거절**한다. 서버와 같은 질문을 하므로 어긋날 수가 없다.
+- 🔴 **부분 충돌은 전면 실패다.** 실측: `[::]:P`만 물려 있고 `0.0.0.0:P`가 확실히 비어 있어도 듀얼스택 `create_server`는 **반쪽으로 뜨지 않고 예외를 내며 자식이 죽는다.** 그래서 가드는 `bind_targets`의 **모든 패밀리를 찌르고 하나라도 물리면 충돌**로 판정한다.
+- **그래프 포트(:8090)는 이 처리를 하지 않는다** — 의도적이다. API 포트가 필요했던 이유는 **브라우저가 이름으로 다이얼**하기 때문이고, 그래프 포트의 유일한 호출자는 `server/main.py`의 `/api/graph/sync` 홉이며 **IPv4 리터럴 `http://127.0.0.1:{port}/sync`**를 쓴다. 리터럴은 리졸버를 안 거치므로 이 바인드가 못 받는 주소가 없다. 이름으로 부르는 호출자가 생기면 그때 `bind_targets`에서 다시 판단한다.
+- **운영자에게 보이는 줄은 실제 바인드에서 파생된다.** uvicorn 자신의 `Uvicorn running on ...`은 `config.host`를 그대로 되뱉어 듀얼스택에서 `http://:8080`을 찍는다 — 실제로 듣고 있는 주소를 **하나도** 대지 못한다. 런처가 `describe_bind_host(api_host)`로 별도의 한 줄을 남기며, 이는 가드가 찌른 것과 **같은 `bind_targets`**에서 나온다.
+- ⚠️ **`--reload`는 예외다.** 그 경로만 `Config.bind_socket()`(단일 `AF_INET` 소켓)을 타므로 빈 호스트여도 **IPv4 단독**으로 뜬다. 개발 전용 플래그이고 운영 기동은 이 플래그를 쓰지 않는다.
+- 채점: `server/tests/test_dual_stack_bind.py`(11) — **문자열을 읽는 게 아니라 실제로 붙어서** 판정한다. 두 단언(`IPv6 in`/`IPv4 in`)이 위 표의 **서로 다른 두 결함**에 각각 빨개진다.
 
 **진행 박동** (`server/utils/heartbeat.py` — `<DATA_ROOT>/config/worker_heartbeats/<name>.json`)
 
