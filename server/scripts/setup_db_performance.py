@@ -489,10 +489,40 @@ def setup_performance():
         #   This does NOT make the existing composite redundant: that one is UNIQUE
         #   and is the upsert's conflict target (13.2M scans on this box vs 858 for
         #   its non-unique prefix). Nothing here drops anything.
+        # 3.10-bis [Frame confirmation, spec MAP_ALIGNMENT layer 8] The index that
+        #   bounds "which cells were derived under this confirmation".
+        #   `models.py CellSource.__table_args__` and
+        #   `migrations/add_frame_confirmation.py` carry the SAME definition — the
+        #   migration covers the box it is run on, this step covers every other
+        #   install, and create_all covers a brand new database. An index that
+        #   exists on one machine and not on a fresh one is a performance defect
+        #   that surfaces later as a mystery.
+        #
+        #   PARTIAL on purpose: `confirmation_uid` is NULL for every row that was
+        #   not derived under a confirmation, which is and will stay the
+        #   overwhelming majority of this table. A non-partial index would carry
+        #   all of them to answer a question none of them can be part of.
         print("\nStep 3.10: Creating cell_sources withdraw-scope index (R2)...")
         withdraw_idx = ("idx_sources_by_source", "cell_sources",
-                        "(table_name, source_name, column_name, row_id)")
-        idx_name, table, definition = withdraw_idx
+                        "(table_name, source_name, column_name, row_id)", "")
+        confirm_idx = ("idx_sources_confirmation", "cell_sources",
+                       "(confirmation_uid, table_name, row_id)",
+                       " WHERE confirmation_uid IS NOT NULL")
+        for idx_name, table, definition, where in (confirm_idx,):
+            print(f" - Creating {idx_name} on {table} {definition}{where}...")
+            t1 = time.time()
+            try:
+                conn.execute(text(
+                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
+                    f"ON {table} {definition}{where}"))
+                size = conn.execute(text(
+                    "SELECT pg_size_pretty(pg_relation_size(:n))"),
+                    {"n": idx_name}).scalar()
+                print(f"   Success ({time.time() - t1:.2f}s, {size})")
+            except Exception as e:
+                print(f"   Failed to create {idx_name}: {e}")
+
+        idx_name, table, definition, where = withdraw_idx
         print(f" - Creating {idx_name} on {table} {definition}...")
         t0 = time.time()
         built = False

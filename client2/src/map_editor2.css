@@ -1,0 +1,1189 @@
+/* ============================================================
+   map_editor2.css - Map Editor 2 / coordinate-system confirmation screen
+   ------------------------------------------------------------
+   Owner: ui-designer (presentation layer only).
+   Consumes ONLY semantic tokens from tokens.css. Defines no palette.
+
+   Three structural rules this file enforces so the wiring cannot
+   accidentally break them:
+
+   1. A numeral is a claim. `.me2-num` / `.me2-unknown` / `.me2-skel`
+      are three siblings; the state attribute on #me2-workbench picks
+      exactly ONE. In `computing` and `unscorable` the numeral node is
+      display:none, so no count can leak on screen even if the wiring
+      leaves stale text inside it. The wiring never has to blank it.
+   2. Nothing carrying a fact goes below --me2-fact-min (0.82rem).
+      Small type is a defect. Only decorative rules may go smaller,
+      and none currently do.
+   3. Motion is transform/opacity only. No width/top/box-shadow
+      transitions - this screen paints a few hundred SVG rects and a
+      grid that can grow, and layout-triggering animation is where
+      those frames die.
+   ============================================================ */
+
+/* Several components below set display:flex/grid, which outranks the UA
+   rule for [hidden] and made the wiring's `hidden` attribute a no-op - the
+   paste result rendered permanently. Guard it once, globally. */
+[hidden] {
+  display: none !important;
+}
+
+:root {
+  /* Typographic floor for anything that carries a fact. */
+  --me2-fact-min: 0.82rem;
+  --me2-panel-radius: 12px;
+  --me2-gap: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+#me2-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ============================================================
+   Header - matches the existing client2 shell (70px, bg-header)
+   ============================================================ */
+.app-header {
+  position: relative;
+  height: 70px;
+  flex-shrink: 0;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 22px;
+  /* Header-owned popups must clear body content. Project z scale:
+     2 < 5..50 < 100 (resizer) < 200 (header) < 1000 (popup). */
+  z-index: 200;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.logo-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-weak);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.logo-badge svg {
+  width: 19px;
+  height: 19px;
+}
+
+.logo-area h1 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.logo-sub {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.stat-badge {
+  font-size: var(--me2-fact-min);
+  font-family: var(--font-mono);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Unscorable is not an error. Roughly half the map population lands
+   there; --danger on half a population trains the eye to ignore it. */
+.stat-badge.is-unscorable {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+
+.stat-badge.is-session {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-weak);
+}
+
+.stat-badge:empty {
+  display: none;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.ghost-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.ghost-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ============================================================
+   Workbench - three columns. Centre is the picture (~57%),
+   because it is the only element the operator can check without
+   trusting us.
+   ============================================================ */
+#me2-workbench {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(230px, 0.95fr) minmax(440px, 3.2fr) minmax(340px, 1.2fr);
+  gap: var(--me2-gap);
+  padding: var(--me2-gap) 16px;
+}
+
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--me2-panel-radius);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel-header {
+  flex-shrink: 0;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Load-bearing: carries the exclusion count and the scored denominator.
+   It used to be 0.72rem on the enrichment screen; that was a defect. */
+.panel-meta {
+  font-family: var(--font-mono);
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ============================================================
+   [A] Worklist
+   ============================================================ */
+.me2-search {
+  flex-shrink: 0;
+  width: 100%;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+}
+
+.me2-search::placeholder {
+  color: var(--text-dim);
+}
+
+.me2-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.me2-wl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Two lines on purpose. The (eqp, product) pair IS the identity of the
+   decision; on a single line it ellipsised away at a 250px column, and an
+   ellipsised decision key is worse than a taller row. Line 2 carries the
+   secondary facts and doubles as a larger click target. */
+.me2-wl-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.13s ease, border-color 0.13s ease;
+}
+
+.me2-wl-row:hover {
+  background: var(--surface-hover);
+}
+
+.me2-wl-row[aria-selected="true"] {
+  background: var(--accent-weak);
+  border-color: var(--accent);
+}
+
+.me2-wl-key {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me2-wl-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.me2-wl-badge {
+  font-size: var(--me2-fact-min);
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  white-space: nowrap;
+}
+
+/* Rows below the boundary carry no per-row decoration. The badge node
+   stays in the markup for a uniform contract and collapses when empty. */
+.me2-wl-badge:empty {
+  display: none;
+}
+
+.me2-wl-row[data-state="confirmed"] .me2-wl-badge {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-weak);
+}
+
+.me2-wl-maps {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* The boundary: unscorable rows sink below it so the Down key runs
+   through the answerable rows first and stops at a visible edge. */
+.me2-wl-boundary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 2px 2px;
+  font-size: var(--me2-fact-min);
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+.me2-wl-boundary::before,
+.me2-wl-boundary::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.me2-wl-empty {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  padding: 18px 4px;
+  text-align: center;
+}
+
+/* ============================================================
+   [B] The picture
+   ============================================================ */
+#me2-picture-panel .panel-body {
+  gap: 10px;
+}
+
+/* The picture is square and the panel is landscape, so a plain vertical
+   stack leaves a wide dead band beside it and shrinks the picture to the
+   leftover height. Reading matter moves into that band instead: the
+   picture keeps the height, the band stops being empty. Measured on a
+   1600px viewport: picture 464px -> 620px per side. */
+.me2-picture-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.me2-picture-rail {
+  flex: 0 0 clamp(226px, 30%, 300px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.me2-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+}
+
+#me2-picture-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+/* Draw weight is inverted from instinct: agreement is quiet ground,
+   misses are full-strength figure. The discriminating signal is
+   crescent-versus-cluster and drawing agreement loudly buries it. */
+/* Quiet is not the same as invisible. --canvas-inside-empty is a 6-8%
+   wash tuned for the legacy canvas; over --bg-inset the footprint all but
+   disappeared and the operator lost the outline they are checking against.
+   The fill stays a wash; the stroke does the work of making the ground
+   legible without competing with the misses. */
+.me2-cell-floor {
+  fill: var(--canvas-inside-empty);
+  stroke: var(--canvas-line-strong);
+  stroke-width: 0.5;
+}
+
+.me2-cell-miss {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.4;
+}
+
+.me2-cell-onlyone {
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 1.4;
+}
+
+.me2-cell-alone {
+  fill: var(--canvas-line-strong);
+  stroke: var(--canvas-text-out);
+  stroke-width: 0.4;
+}
+
+.me2-wafer-edge {
+  fill: none;
+  stroke: var(--canvas-wafer-edge);
+  stroke-width: 1;
+  opacity: 0.65;
+}
+
+.me2-skeleton {
+  width: min(320px, 70%);
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  border: 1px dashed var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* opacity only - compositable, no layout */
+  animation: me2Pulse 1.6s ease-in-out infinite;
+}
+
+.me2-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: me2Spin 1s linear infinite;
+}
+
+@keyframes me2Spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes me2Pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .me2-spinner,
+  .me2-skeleton,
+  .me2-skel { animation: none; }
+}
+
+/* The picture answers a different question depending on which source row
+   has focus. A picture that silently changes meaning is worse than none,
+   so the caption is always present and never optional. */
+.me2-caption {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.me2-legend {
+  display: flex;
+  gap: 6px 16px;
+  flex-wrap: wrap;
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+}
+
+.me2-legend i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+.me2-legend .sw-agree { background: var(--canvas-inside-empty); border: 1px solid var(--canvas-line-strong); }
+.me2-legend .sw-miss  { background: var(--accent); }
+.me2-legend .sw-only  { border: 2px solid var(--orange); }
+
+.me2-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+
+/* The numbers ARE the statement, so the headline slot holds counts in
+   `scored` / `no-winner` and a two-word state name otherwise. It carries
+   a count, so it joins the num/unknown/busy switch. */
+.me2-headline {
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding-top: 8px;
+}
+
+.me2-headline b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.me2-cause code,
+.me2-notice code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--text);
+}
+
+/* No winner is a measured result, not a failure. Warning tone, not danger. */
+[data-me2-state="no-winner"] .me2-headline,
+[data-me2-state="unscorable"] .me2-headline {
+  color: var(--warning);
+}
+
+.me2-cause {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.me2-cause:empty {
+  display: none;
+}
+
+/* The server composes this sentence; the client renders it verbatim.
+   A second copy of it in the client is the two-spellings defect. */
+.me2-refusal {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background: var(--warning-weak);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+/* ---- Excel form: paste result (aggregate, never per-row) ---- */
+.me2-aggregate {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--info);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.me2-aggregate[data-has-rejects="true"] {
+  border-left-color: var(--warning);
+}
+
+.me2-aggregate .k {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.me2-aggregate b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.me2-aggregate .reason {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+}
+
+/* ============================================================
+   [C] Sources, candidates, counts
+   ============================================================ */
+.me2-block {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.me2-block-head {
+  padding: 7px 12px;
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--me2-fact-min);
+  color: var(--text-muted);
+}
+
+/* Same reason as the worklist row and the candidate cell: on one line the
+   declared frame value ellipsised in a 340px column. */
+.me2-src {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.13s ease;
+}
+
+.me2-src:hover {
+  background: var(--surface-hover);
+}
+
+.me2-src[aria-expanded="true"] {
+  background: var(--accent-weak);
+}
+
+.me2-src-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+.me2-src-name {
+  flex: 0 0 auto;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.me2-src-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me2-src-value[data-declared="none"] {
+  font-family: var(--font-sans);
+  color: var(--warning);
+}
+
+.me2-src-score {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--me2-fact-min);
+  color: var(--text-muted);
+  text-align: left;
+}
+
+/* Moved out of the panel header: at a 550px centre column the header could
+   not hold title + this line + the export control, and this line carries
+   the exclusion count and the scored denominator. In the reading band it
+   can wrap instead of ellipsising a fact away. */
+.panel-meta.is-inline {
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.45;
+}
+
+/* One source alone gives placement, never corroboration. The cross-source
+   row is the (N+1)th row and must not wear the same green as the others. */
+.me2-src.is-cross {
+  border-top: 2px solid var(--border-strong);
+}
+
+.me2-src.is-cross .me2-src-name,
+.me2-src.is-cross .me2-src-value {
+  color: var(--accent-2);
+}
+
+/* ---- numeral / unknown / skeleton switch (structural rule 1) ---- */
+.me2-unknown,
+.me2-busy,
+.me2-skel {
+  display: none;
+}
+
+/* `채점 중` in the headline instead of a skeleton pill: it is a state
+   name, not a count, so it is safe under the no-numeral rule. */
+.me2-busy {
+  color: var(--text-muted);
+}
+
+.me2-unknown {
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+}
+
+.me2-skel {
+  width: 84px;
+  height: 0.85em;
+  border-radius: 4px;
+  background: var(--border);
+  animation: me2Pulse 1.6s ease-in-out infinite;
+}
+
+/* Candidate cells are ~137px at the narrow breakpoint. */
+.me2-skel.is-sm {
+  width: 52px;
+}
+
+[data-me2-state="computing"] .me2-num,
+[data-me2-state="unscorable"] .me2-num { display: none; }
+
+[data-me2-state="unscorable"] .me2-unknown { display: inline; }
+
+[data-me2-state="computing"] .me2-skel { display: inline-block; }
+
+/* The headline is the one slot that names the state in words rather than
+   showing a skeleton, so it opts out of the pill and in to `.me2-busy`. */
+[data-me2-state="computing"] .me2-headline .me2-skel { display: none; }
+[data-me2-state="computing"] .me2-busy { display: inline; }
+
+/* ---- candidate grid: 2 columns (flip) x 4 rows (turn) ---- */
+.me2-cands {
+  padding: 11px 12px 12px;
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+}
+
+.me2-cands[hidden] {
+  display: none;
+}
+
+/* Capped: when the right panel goes full width at narrow breakpoints the
+   1fr columns stretched to 420px each, which makes the two hand motions
+   harder to read as a pair, not easier. */
+.me2-cand-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  max-width: 560px;
+}
+
+.me2-cand-colhead {
+  font-size: var(--me2-fact-min);
+  color: var(--text-muted);
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Two lines. On one line the stored spelling ellipsised at a 137px cell,
+   and the stored spelling is exactly what must never be hidden - it is
+   what the database holds and what every other screen shows. */
+.me2-cand {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  min-width: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.me2-cand:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+/* Three lines: degree + badges / stored spelling / count.
+   A 143px cell has to carry ~30px of degree, ~72px of badges, ~79px of
+   spelling and ~59px of digits. Two attempts at pairing them two-per-line
+   both overflowed - badges wrapped on one arrangement, the spelling clipped
+   on the other - and neither failure was visible at every breakpoint. One
+   item per line removes the width dependency instead of re-tuning it, and
+   the digits still form a scannable right-hand column down each column of
+   candidates. Eight cells can afford the height; a clipped stored spelling
+   cannot afford to be wrong. */
+.me2-cand-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.me2-cand-score {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--me2-fact-min);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.me2-cand[aria-pressed="true"] .me2-cand-score {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* The discriminating subset is the same for all 8 by construction, so the
+   denominator is stated once above the grid rather than eight times in it.
+   Each cell still shows `agree / discriminating` - the denominator is the
+   evidence and must not be dropped from the cell itself. */
+.me2-cand-legend {
+  grid-column: 1 / -1;
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.me2-cand-deg {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+/* `flex: 1` handed this box exactly the leftover width, which the two
+   badges then filled to the pixel - so it wrapped on a sub-pixel tie and
+   the winner cell stood 24px taller than its siblings. Sizing to content
+   and refusing to wrap makes it deterministic instead of tuned: degree 38px
+   + gap 6px + badges 71px = 115px inside a 120px cell. */
+.me2-cand-tags {
+  display: flex;
+  gap: 3px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.me2-cand-code {
+  font-family: var(--font-mono);
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.me2-cand[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+/* When nothing is marked, the absence of a mark IS the answer.
+   Inert candidates stay listed and stay readable. */
+[data-me2-state="computing"] .me2-cand,
+[data-me2-state="unscorable"] .me2-cand {
+  opacity: 0.55;
+  cursor: default;
+}
+
+[data-me2-state="computing"] .me2-cand:hover,
+[data-me2-state="unscorable"] .me2-cand:hover {
+  transform: none;
+  border-color: var(--border);
+}
+
+/* Side padding is load-bearing here: it decides whether the winner - the
+   one cell carrying both badges - fits on one line. See .me2-cand-tags. */
+.me2-tag {
+  font-size: var(--me2-fact-min);
+  line-height: 1.25;
+  padding: 1px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: var(--bg-surface);
+  white-space: nowrap;
+}
+
+.me2-tag.is-current {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+
+/* When there is no winner the absence of a mark IS the answer. This is
+   structural, not the wiring's responsibility: outside `scored` the
+   recommendation badge cannot render at all. `현재 선언` survives - it is
+   a stored fact, not a recommendation, and stays true while we compute. */
+[data-me2-state="no-winner"] .me2-tag.is-recommended,
+[data-me2-state="computing"] .me2-tag.is-recommended,
+[data-me2-state="unscorable"] .me2-tag.is-recommended {
+  display: none;
+}
+
+/* Same reason: a selected candidate is a claim about ranking. */
+[data-me2-state="no-winner"] .me2-cand[aria-pressed="true"],
+[data-me2-state="computing"] .me2-cand[aria-pressed="true"],
+[data-me2-state="unscorable"] .me2-cand[aria-pressed="true"] {
+  border-color: var(--border);
+  background: var(--bg-surface);
+}
+
+.me2-cand-note {
+  margin-top: 10px;
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ---- counts ---- */
+.me2-counts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+}
+
+.me2-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.9rem;
+}
+
+.me2-kv .k {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.me2-kv .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.me2-notice {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  background: var(--accent-2-weak);
+  border: 1px solid var(--accent-2);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+
+.me2-notice[hidden] {
+  display: none;
+}
+
+/* ============================================================
+   Confirm bar - reading is frictionless, writing gets exactly one
+   confirmation. Inline two-state control: arm, then commit, Esc cancels.
+   ============================================================ */
+#me2-confirmbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border);
+}
+
+.me2-confirm-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#me2-confirm-sentence {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+#me2-confirm-sentence b {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+#me2-confirm-note {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+}
+
+#me2-confirm-note:empty {
+  display: none;
+}
+
+.me2-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+#me2-confirm-hint {
+  font-size: var(--me2-fact-min);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.me2-primary-btn {
+  padding: 10px 18px;
+  border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.me2-primary-btn:hover {
+  transform: translateY(-1px);
+}
+
+.me2-primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Two-state label. The wiring flips one attribute; the copy is here. */
+.me2-armed-label { display: none; }
+
+.me2-primary-btn[data-armed="true"] {
+  border-color: var(--warning);
+  background: var(--warning);
+  color: var(--accent-contrast);
+}
+
+.me2-primary-btn[data-armed="true"] .me2-idle-label { display: none; }
+.me2-primary-btn[data-armed="true"] .me2-armed-label { display: inline; }
+
+/* ============================================================
+   State visibility - one attribute on #me2-workbench drives all three.
+   None of these is an error style.
+   ============================================================ */
+[data-me2-state] #me2-picture-skeleton { display: none; }
+[data-me2-state="computing"] #me2-picture-skeleton { display: flex; }
+[data-me2-state="computing"] #me2-picture-svg { display: none; }
+
+/* Scored-and-decided hides the two explanatory blocks. */
+#me2-refusal { display: none; }
+[data-me2-state="unscorable"] #me2-refusal { display: block; }
+
+/* The floor is the reference. In `unscorable` we genuinely know where the
+   source cells are and genuinely do not know how they relate to anything,
+   so the source is drawn alone with no floor under it. */
+[data-me2-state="unscorable"] #me2-layer-floor,
+[data-me2-state="unscorable"] #me2-layer-miss,
+[data-me2-state="unscorable"] #me2-layer-onlyone { display: none; }
+
+#me2-layer-alone { display: none; }
+[data-me2-state="unscorable"] #me2-layer-alone { display: block; }
+
+[data-me2-state="unscorable"] .me2-wafer-edge { stroke-dasharray: 3 4; }
+
+[data-me2-state="computing"] .me2-legend,
+[data-me2-state="unscorable"] .me2-legend { visibility: hidden; }
+
+[data-me2-state="computing"] #me2-confirm-btn,
+[data-me2-state="unscorable"] #me2-confirm-btn { pointer-events: none; opacity: 0.45; }
+
+/* ============================================================
+   Narrow widths. Two SEPARATE breakpoints, because they answer two
+   different questions and collapsing them into one wrecked the picture:
+   the side band has to go long before the third column does.
+   ============================================================ */
+
+/* (1) Below 1400px the centre column is no longer wide enough to hold a
+   picture AND a reading band side by side. The band goes back under the
+   picture; three columns stay. Measured at 1180px: this alone takes the
+   picture from 158px (8.1px/die - at the shape channel's floor) back to
+   ~400px. */
+@media (max-width: 1400px) {
+  .me2-picture-main { flex-direction: column; }
+
+  .me2-picture-rail {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .me2-stage { min-height: 180px; }
+
+  .logo-sub { display: none; }
+}
+
+/* (2) Only below 1040px do the three mins stop fitting on one row. Then,
+   and only then, the worklist takes a full-height left column and the
+   other two stack. Still three panels, no new pane, no mode. */
+@media (max-width: 1040px) {
+  #me2-workbench {
+    grid-template-columns: 224px minmax(0, 1fr);
+    /* The picture takes the height; the sources panel scrolls if it must.
+       Note the row ratio alone does almost nothing here - the reading band's
+       orientation is what governs the picture size (see the flex-direction
+       override below, which is what actually bought the space back). */
+    grid-template-rows: minmax(0, 1.9fr) minmax(0, 1fr);
+    padding: 10px 12px;
+  }
+
+  #me2-worklist-panel { grid-row: 1 / span 2; }
+
+  /* The centre panel goes WIDE again here (~738px at 1000px viewport)
+     because it no longer shares the row with the sources panel. So the
+     reading band comes back to the side and the picture gets the full body
+     height instead of the leftover. Measured at 1000x780: 158px -> 281px
+     per side, i.e. 8.1px -> 14.3px per die - off the shape channel's floor
+     with real margin. The 1400px stack rule only ever applied to the
+     three-column band, and this overrides it. */
+  .me2-picture-main { flex-direction: row; }
+
+  .me2-picture-rail {
+    flex: 0 0 clamp(210px, 32%, 280px);
+    overflow-y: auto;
+  }
+
+  .app-header { padding: 0 14px; gap: 12px; }
+  .header-stats { display: none; }
+
+  #me2-confirmbar { gap: 12px; padding: 10px 14px; }
+}

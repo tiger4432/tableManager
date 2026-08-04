@@ -1,0 +1,255 @@
+{
+ "$comment": [
+  "Production ORIENTATION SHAPES, measured read-only from this DEVELOPMENT box on 2026-08-05:",
+  "`wafer_map_metadata`, 668 rows, reduced to the five orientation keys plus the",
+  "`auto_registered` marker. 23 distinct shapes. Nothing else from those rows is retained --",
+  "no map_id, no table, no physical geometry.",
+  "",
+  "THIS FILE IS INPUT DATA, NOT AN EXPECTATION. The census totals these shapes must reproduce",
+  "live in `vectors.json` under `orientation_census.expect`, and they came from the lead PM",
+  "ruling of 2026-08-05, not from here. Both scorers read this file, which is what lets the",
+  "CLIENT verify the same census without database access -- and that is the whole point: a",
+  "census only one side can compute is a measurement, not a seam assertion.",
+  "",
+  "A DEVELOPMENT box. These counts say nothing about production."
+ ],
+ "$row_total": 668,
+ "shapes": [
+  {
+   "count": 258,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 117,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 80,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 180,
+    "side": "front"
+   }
+  },
+  {
+   "count": 41,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "back"
+   }
+  },
+  {
+   "count": 40,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 90,
+    "side": "front"
+   }
+  },
+  {
+   "count": 24,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 1,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 21,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 20,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 180,
+    "side": "front"
+   }
+  },
+  {
+   "count": 18,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 0,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 16,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 11,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "back"
+   }
+  },
+  {
+   "count": 7,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 270,
+    "side": "front"
+   }
+  },
+  {
+   "count": 2,
+   "meta": {
+    "grid_start_x": -3,
+    "grid_start_y": -2,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 2,
+   "meta": {
+    "grid_start_x": -4,
+    "grid_start_y": -3,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 2,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 0,
+    "grid_start_y": 2,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 2,
+   "meta": {
+    "auto_registered": true,
+    "grid_start_x": 2,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "front"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 270,
+    "side": "back"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": -10,
+    "grid_start_y": -12,
+    "grid_y_invert": false,
+    "rotation": 0,
+    "side": "back"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": 1,
+    "grid_start_y": 1,
+    "grid_y_invert": false,
+    "rotation": 90,
+    "side": "front"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": -8,
+    "grid_start_y": -39,
+    "grid_y_invert": false,
+    "rotation": 270,
+    "side": "front"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": true,
+    "rotation": 90,
+    "side": "back"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": false,
+    "rotation": 270,
+    "side": "front"
+   }
+  },
+  {
+   "count": 1,
+   "meta": {
+    "grid_start_x": 0,
+    "grid_start_y": 0,
+    "grid_y_invert": true,
+    "rotation": 0,
+    "side": "front"
+   }
+  }
+ ]
+}

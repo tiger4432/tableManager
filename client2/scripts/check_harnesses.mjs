@@ -103,6 +103,29 @@ const KNOWN_RED = new Map([
 // `availability_gross_marker_harness.mjs` is new here, so its floor is the count it reports
 // on the commit that introduces it -- there is no earlier tree to measure it against.
 const FLOORS = new Map([
+  // New 2026-08-05 with MAP_ALIGNMENT_SPEC layer 7 (verdict) and the payload decoder. Same
+  // rule as the other new entries: the floor is the count it reports on the commit that
+  // introduces it -- there is no earlier tree to measure it against.
+  //
+  // 🔴 A LARGE PART OF THIS COUNT IS THE "NEVER RANK BELOW THRESHOLD" RULE AND THE TWO
+  //    SECTION-4 CAUSES, scored end to end on real cells. It also pins that an ABSENT
+  //    threshold refuses to rank: `Number(null) === 0` was measured turning a missing
+  //    `min_margin_dies` into a finite zero, i.e. "always rank", so four separate spellings
+  //    of absence are asserted rather than one. A drop here means the screen regained the
+  //    ability to crown a candidate it cannot actually tell from its mirror.
+  //
+  //    Its scoring ORACLE is `client2/tests/oracle/alignment_scoring_oracle.mjs`, in a
+  //    subdirectory on purpose: this runner discovers every `*.mjs` directly under
+  //    `client2/tests/`, and a library has no ASSERTIONS line to report.
+  //
+  // 91 -> 124 (2026-08-05, same day). `decode.js` was retargeted to the live server payload
+  // and the decoder's expectations moved WITH the wire -- not because the code was wrong.
+  // The count rose because the replacements are stronger than what they replaced: the
+  // reference-kind INFERENCE was deleted (the wire declares `reference.kind` now), so instead
+  // of "guess it and mark the guess" the harness pins that the wire value is read straight
+  // through, is never promoted by valued-looking cells, is never invented when absent, and
+  // that the retired `KIND_INFERRED` token is unreachable from any payload shape.
+  ['alignment_verdict_harness.mjs', 124],
   ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -114,6 +137,27 @@ const FLOORS = new Map([
   // because of how it died: silently, while the debt list recorded it as merely red.
   ['effort_instrument_harness.mjs', 71],
   ['effort_meter_harness.mjs', 131],
+  // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
+  // reports on the commit that introduces it -- there is no earlier tree to measure against.
+  //
+  // 🔴 IT `import`s ITS TARGET, like `frame_declaration_harness.mjs` and unlike everything
+  //    older here. That is the property worth defending: the form's reader/writer has no
+  //    module state, so a harness never has to slice its text, so the module's structure
+  //    never acquires a veto over refactoring it. A floor drop here means the round trip
+  //    stopped being scored in one of its two directions, which is invisible to exit codes.
+  ['excel_form_roundtrip_harness.mjs', 306],
+  // New 2026-08-05 with MAP_ALIGNMENT_SPEC 0.3 step 1 (the frame becomes a value). Same rule
+  // as the other new entries: the floor is the count it reports on the commit that introduces
+  // it -- there is no earlier tree to measure it against.
+  //
+  // 🔴 IT IS ALSO THE FIRST CLIENT HARNESS THAT DOES NOT SLICE SOURCE AS TEXT -- it `import`s
+  //    `client2/src/map2/declaration.js`. That matters to THIS file specifically, because the
+  //    slicing habit is what the `MODULE_STATE` ceiling below is defending against: a new
+  //    module global breaks every harness that slices, so the ceiling and this floor are two
+  //    halves of one problem. Most of its assertions are production parity against every
+  //    distinct `wafer_map_metadata` shape, so a floor drop here means production coverage
+  //    was dropped, not that somebody tidied a test.
+  ['frame_declaration_harness.mjs', 4031],
   // 46 -> 62 (2026-08-04). The valid-die COMMIT-GESTURE cases: 🎯 APPLY was deleted because the
   // key control became a real <select>, and the 16 new assertions pin WHICH gesture applies in
   // each of the two controls. The fallback text input (truncated / unavailable / unlisted key)
@@ -149,6 +193,31 @@ const FLOORS = new Map([
   // 13 (the candidate list is ordered, and each candidate carries its registered spec as an
   // option label). Taking either branch's figure would have quietly un-scored the other's.
   ['map_key_datalist_harness.mjs', 83],
+  // New 2026-08-05 with Map Editor 2 (MAP_ALIGNMENT_SPEC 0.2 layers 4, 7 and 10, plus the
+  // composition root). Floor is the count it reports on the commit that introduces it -- there
+  // is no earlier tree to measure it against.
+  //
+  // 🔴 IT IMPORTS EVERY MODULE IT SCORES, INCLUDING THE COMPOSITION ROOT, which it drives
+  //    against a minimal document written inside the harness rather than jsdom -- so it adds no
+  //    `node_modules` dependency and slices no source. That is possible only because the
+  //    modules take arguments and return values; the moment one of them reaches for a module
+  //    global, this harness stops being writable and the slicing habit comes back.
+  //
+  //    Its load-bearing assertions are the ones that would go quiet first under a refactor:
+  //    that seating registers a cell placed far outside any viewport (the legacy off-canvas
+  //    `continue` that removed declared cells from the save payload AND from the plan's
+  //    numbers), that the renderer paints every seat it is handed at every viewport size down
+  //    to 1px, that an absent threshold produces NO ranking instead of a zero-margin winner,
+  //    and that no percentage and no bare `0` can reach a count column. A floor drop here means
+  //    one of those stopped being scored.
+  ['map_editor2_shell_harness.mjs', 276],
+  //
+  // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
+  //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)
+  //    was replaced with the weaker "exactly one request" claim, which is what the 30-second
+  //    switchover bar actually rests on. That is a deliberate, reported downgrade awaiting a
+  //    seam judgement -- not a coverage loss to be baselined away. If the unit is restored,
+  //    restore the stronger assertion and raise this floor.
   // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
   // floor is the count it reports on the commit that introduces it. It is the only scorer of
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and

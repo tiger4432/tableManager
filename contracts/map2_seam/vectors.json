@@ -1,0 +1,1393 @@
+{
+ "$comment": [
+  "SHARED CONTRACT -- the MAP EDITOR 2 seams. Authored 2026-08-05 DURING implementation,",
+  "across six parallel lanes, so that divergence is caught while it is still cheap.",
+  "",
+  "Five seams, in the priority the lead PM set:",
+  "",
+  "  S1  DECLARATION VOCABULARY  server `map_overlay.orientation_declaration`",
+  "                              client `client2/src/map2/declaration.js frameFromDeclaration`",
+  "      Rule N is portable; its CONSTANTS are not. Each side derives the no-evidence value",
+  "      from its OWN reader, so the two can agree on the rule and still disagree on the",
+  "      answer. That is exactly why this is a compared vector set and not a code review.",
+  "",
+  "  S2  COORDINATE ROUND TRIP AND THE BOUNDING-BOX BASIS",
+  "      server `utils.coordinate_transformer.WaferMapCoordinateTransformer`",
+  "      client `client2/src/map2/seating.js computeSeating` / `seatOf`",
+  "      A stored coordinate is BBOX-RELATIVE. Any side that reverses it as",
+  "      `cell = stored - start` is missing a term, and the shift differs between the",
+  "      invert and non-invert branches, so a fixture exercising one branch under-reports.",
+  "",
+  "  S3  SCORING                 server `map_alignment.score_candidates` -- SERVER-vs-ORACLE,",
+  "      not client-vs-server: the ruling of 2026-08-05 is that the server scores and the",
+  "      client does not. The oracle is fixture data, and two of its constraints are",
+  "      MEASURED, not preferences: per-candidate full-meta rebuild, and no percentage",
+  "      anywhere.",
+  "",
+  "  S4  EXCEL FORM ROUND TRIP   client `client2/src/map2/excel_io.js` -- PENDING.",
+  "",
+  "  S5  align_applied.origin    server `map_overlay.align_applied_payload` -- pins the",
+  "      CURRENT single-token behaviour so the approved three-way split has something to",
+  "      diff against, and names the direction the client will fail in.",
+  "",
+  "PROVENANCE DISCIPLINE. Every group carries `$source`, saying where its expected value",
+  "came from:",
+  "  spec        -- docs/spec/MAP_ALIGNMENT_SPEC.md, written before either side was built",
+  "  ruling      -- a lead PM decision recorded on a date, quoted here",
+  "  measurement -- MEASURED on this DEVELOPMENT box, read-only, and labelled as such",
+  "No expected value in this file was copied out of whichever implementation was read first.",
+  "Where the two sides answer differently, this file records BOTH answers and asks the",
+  "question; it does not pick a winner. Deciding the contract is the lead PM's call.",
+  "",
+  "SCALE IS NOT EVIDENCE OF DISCRIMINATION. The predecessor contract set `grid_y_invert` in",
+  "nine vectors, all `false`, all `rotation: 0, side: front` -- nine copies of the identity",
+  "frame, and no scorer read the field at all. Every case below carries `$kills`, naming the",
+  "wrong implementation it rejects. A case that cannot answer `$kills` does not belong here.",
+  "",
+  "HOW TO RUN",
+  "  server : conda run -n assy_manager python -m pytest contracts/map2_seam/ -q -rs",
+  "  client : node contracts/map2_seam/client_harness.mjs",
+  "A green pytest run means THE SERVER meets the contract. The seam is scored only when both",
+  "commands have been run and both are green.",
+  "",
+  "NO LINE NUMBERS IN `$why`. Anchors slide -- on 2026-07-29 a single extraction moved 274",
+  "lines by +26 and staled the contract, CODE_MAP and three test messages at once. Point at",
+  "function names.",
+  "",
+  "PROOF THESE CHECKS CAN GO RED (2026-08-05). A green contract nobody has ever seen fail is",
+  "a green contract that may be measuring nothing. Seven defects were reverse-injected, in",
+  "process, with no repo file modified; each was caught by the named assertion:",
+  "  server  start provenance decided by VALUE     -> test_start_axes_carry_no_indeterminate",
+  "                                                   _bucket + 4 census assertions",
+  "  server  marker read with truthiness           -> orientation_agreement[marker_is_a_string]",
+  "  server  bbox from grid dims, not the circle   -> 7 frame-basis assertions",
+  "  server  candidate meta reused, not rebuilt    -> test_scoring_rebuilds_a_full_meta_per",
+  "                                                   _candidate (source rewritten and re-exec'd;",
+  "                                                   patching the CALLEE cannot model a defect",
+  "                                                   in the CALLER)",
+  "  server  a coverage percentage in the payload  -> test_scoring_emits_no_percentage_anywhere",
+  "  both    marker widened to cover a turned map  -> agreement[marked_but_turned], both scorers",
+  "  client  a declared divergence partly resolved -> the frame-basis group fails in the",
+  "                                                   OPPOSITE direction and says to reclassify",
+  "The last one is the important one: it proves the named expected failure turns red when the",
+  "defect is FIXED, which is what keeps this from becoming a permanent anonymous red."
+ ],
+ "$axis_spelling": {
+  "$why": "한 이음새에 두 어휘를 허용하지 않기 위한 유일한 매핑표. 서버는 meta 키 그대로 (`grid_y_invert`), 클라 Frame은 카멜 (`invertY`). 두 채점기가 각자 매핑표를 만들면 그 매핑표가 답의 두 번째 구현이 된다.",
+  "$note": "This table is the ONLY place the two spellings are related. Both scorers read it from here.",
+  "rotation": "rotation",
+  "side": "side",
+  "grid_y_invert": "invertY",
+  "grid_start_x": "startX",
+  "grid_start_y": "startY"
+ },
+ "server_symbols": {
+  "orientation_declaration": "map_overlay",
+  "geometry_declaration": "map_overlay",
+  "ORIENTATION_KEYS": "map_overlay",
+  "ORIENTATION_INDETERMINATE": "map_overlay",
+  "GEOMETRY_DECLARED": "map_overlay",
+  "GEOMETRY_AUTO_REGISTERED": "map_overlay",
+  "GEOMETRY_ABSENT": "map_overlay",
+  "GEOMETRY_UNPARSABLE": "map_overlay",
+  "AUTO_REGISTERED_KEY": "map_overlay",
+  "_frame_phys_params": "map_overlay",
+  "_rotation_of": "map_overlay",
+  "_side_of": "map_overlay",
+  "_y_invert_of": "map_overlay",
+  "_grid_of": "map_overlay",
+  "ALIGN_ORIGIN_IDENTITY": "map_overlay",
+  "ALIGN_ORIGIN_DERIVED": "map_overlay",
+  "ALIGN_ORIGIN_UNRESOLVABLE": "map_overlay",
+  "align_applied_payload": "map_overlay",
+  "WaferMapCoordinateTransformer": "utils.coordinate_transformer",
+  "PhysicalWaferEngine": "utils.physical_wafer_engine",
+  "score_candidates": "map_alignment",
+  "CANDIDATE_FRAMES": "map_alignment",
+  "source_meta_for_frame": "dt_map_derivation"
+ },
+ "client_symbols": {
+  "frameFromDeclaration": "client2/src/map2/declaration.js",
+  "geometryDeclaration": "client2/src/map2/declaration.js",
+  "noEvidenceValue": "client2/src/map2/declaration.js",
+  "visualDimensions": "client2/src/map2/declaration.js",
+  "ORIENTATION_AXES": "client2/src/map2/declaration.js",
+  "DECLARATION_TOKENS": "client2/src/map2/declaration.js",
+  "VALUE_CAN_INDICATE_PROVENANCE": "client2/src/map2/declaration.js",
+  "seatOf": "client2/src/map2/seating.js",
+  "computeSeating": "client2/src/map2/seating.js",
+  "compareSeatings": "client2/src/map2/seating.js",
+  "candidateList": "client2/src/map2/candidates.js",
+  "parseCandidateId": "client2/src/map2/candidates.js",
+  "readMapForm": "client2/src/map2/excel_io.js",
+  "writeMapForm": "client2/src/map2/excel_io.js",
+  "detectFormSurface": "client2/src/map2/excel_io.js"
+ },
+ "$import_not_slice": [
+  "Every client symbol above is reached by `import`, never by slicing source text.",
+  "MAP_ALIGNMENT_SPEC 0.3 rule (1): new code is a module -- takes arguments, returns values,",
+  "holds no module state -- so import-verifiability is guaranteed by construction and no",
+  "harness conversion work is required. The harness therefore has NO text-cutting step and",
+  "cannot die the way `split_registry_harness.mjs` died at U6 (five symbols deleted, the",
+  "extraction threw, and nobody knew for weeks).",
+  "It does still die on a RENAME -- an import of a symbol that no longer exists throws. That",
+  "is deliberate and the harness exits 2 with the missing name, rather than exiting 0 having",
+  "scored nothing."
+ ],
+ "orientation_agreement_cases": {
+  "$why": "양쪽이 **같은 답을 내야 하는** 방위 축 케이스. 규칙(Rule N)은 이식 가능하지만 상수는 각자 유도하므로, 규칙에 합의하고도 답이 갈릴 수 있다.",
+  "$source": "spec + ruling",
+  "$source_detail": [
+   "Rule N, as written in MAP_ALIGNMENT_SPEC section 0.3 note 2 and restated identically in",
+   "both implementations' headers: A STORED VALUE EQUAL TO WHAT THE READER INVENTS WHEN THE",
+   "KEY IS ABSENT IS NOT EVIDENCE THAT ANYONE CHOSE IT.",
+   "",
+   "Lead PM ruling, 2026-08-05, on grid_start_x/y: PROVENANCE COMES FROM THE MARKER ONLY,",
+   "NEVER FROM THE VALUE. marked -> auto_registered; unmarked -> declared, whatever the",
+   "value; `indeterminate` never applies to start. Two reasons, both stated in the ruling:",
+   "the registrar writes start as an OBSERVED MINIMUM rather than a constant, so no value",
+   "test can identify one even in principle; and 0 of 668 production rows lack start, so the",
+   "premise of the absent-key inference is empty anyway.",
+   "",
+   "Expected tokens below were derived from those two statements, NOT read out of either",
+   "implementation."
+  ],
+  "$expect_shape": "{ <server meta key>: { value, source } } -- the client scorer translates the axis name through $axis_spelling and compares `frame.axes[<client name>].value` and `.source`.",
+  "cases": [
+   {
+    "id": "marked_identity_frame",
+    "$why": "운영에서 가장 흔한 모양(258행). 표지가 있고 방위가 전부 등록기의 치역 안이다.",
+    "$kills": "An implementation that reads the marker AFTER the values -- it would answer `declared` on rotation 0 because the value is present and parseable, making the marker inert. That is the exact defect `geometry_declaration`'s docstring warns about, one axis over.",
+    "meta": {
+     "auto_registered": true,
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 0,
+     "grid_start_y": 0
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "auto_registered"
+     },
+     "side": {
+      "value": "front",
+      "source": "auto_registered"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "auto_registered"
+     },
+     "grid_start_x": {
+      "value": 0,
+      "source": "auto_registered"
+     },
+     "grid_start_y": {
+      "value": 0,
+      "source": "auto_registered"
+     }
+    }
+   },
+   {
+    "id": "unmarked_identity_frame",
+    "$why": "운영 두 번째로 흔한 모양(117행). 표지가 없고 값이 전부 무증거 값이다 -- `indeterminate`가 존재하는 이유 그 자체.",
+    "$kills": "An implementation that folds this into `declared`. That is defect I4 -- a plausible default impersonating a declaration -- and it is what makes 196 rotation rows and 293 side rows silently authoritative. Also kills the opposite fold to `absent`: the keys are real and consumers use the values.",
+    "$note": "start_x/y = 1 here and is `declared` on BOTH axes despite equalling the server reader's absent-default of 1. That is the ruling, and it is the single case where start's marker-only rule is observable against the value rule.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "unmarked_start_zero",
+    "$why": "선언된 0. `v || dflt` 형태는 합법적인 0을 기본값으로 바꾼다 -- 벡터에 0을 반드시 넣는다.",
+    "$kills": "Any reader ending in `return v || dflt`. On the client that fold survives deliberately as `axes.startX.legacy`; if `frame.startX` were ever sourced from `legacy` instead of `value`, this case is the one that says so. It also kills a start implementation that applies the value test: 0 is the client's own absent-default, so a value test would answer `indeterminate` here and the ruling says `declared`.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 0,
+     "grid_start_y": 0
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 0,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 0,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "marked_but_turned",
+    "$why": "표지를 승계한 채 방위만 바꾼 맵. 표지의 권한은 축마다 다르다 -- 등록기는 90을 쓸 수 없으므로 여기서 auto_registered라 답하면 거짓이다.",
+    "$kills": "An implementation that lets the marker cover every axis unconditionally. It would answer `auto_registered` on rotation 90, i.e. `nobody measured this`, for a map somebody demonstrably turned -- and a consumer that refuses `auto_registered` would then refuse a correct declaration. Simultaneously kills the mirror error on start: 37 is NOT a registrar signature, but the ruling says the marker still explains it, so start stays `auto_registered`.",
+    "meta": {
+     "auto_registered": true,
+     "rotation": 90,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 37,
+     "grid_start_y": 37
+    },
+    "expect": {
+     "rotation": {
+      "value": 90,
+      "source": "declared"
+     },
+     "side": {
+      "value": "front",
+      "source": "auto_registered"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "auto_registered"
+     },
+     "grid_start_x": {
+      "value": 37,
+      "source": "auto_registered"
+     },
+     "grid_start_y": {
+      "value": 37,
+      "source": "auto_registered"
+     }
+    }
+   },
+   {
+    "id": "marker_is_a_string",
+    "$why": "표지가 문자열 `\"true\"`. 진리값이 아니면 표지가 아니다.",
+    "$kills": "An implementation using truthiness on the marker (`if m.get('auto_registered')` / `if (m.auto_registered)`). Truthiness reads the string `\"false\"` as a present marker too, which would silently demote every declared axis on such a row to `auto_registered`.",
+    "meta": {
+     "auto_registered": "true",
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "side_wrong_case",
+    "$why": "`\"Back\"`은 조용히 front가 되는 값이다. 값이 아니라 파싱 실패로 답해야 한다.",
+    "$kills": "An implementation passing the string through (`side === 'back' ? 'back' : 'front'`), which answers `front`/`declared` for `\"Back\"` -- a map declared back-side, read front-side, with a provenance token asserting somebody chose front. Every cell mirrors.",
+    "meta": {
+     "rotation": 0,
+     "side": "Back",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "unparsable"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    },
+    "$expect_note": "The y axis here is a real boolean `false` and both sides answer `indeterminate` -- one unparsable axis must not taint its neighbours. That is part of what this case kills: a whole-meta verdict rather than a per-axis one."
+   },
+   {
+    "id": "side_out_of_vocabulary",
+    "$why": "`\"rear\"`는 어휘 밖이다. 두 단어 어휘를 벗어난 값은 unparsable이다.",
+    "$kills": "Same as `side_wrong_case` but for a value that is not a case variation -- an implementation whitelisting only case-folding would let `rear` through as front.",
+    "meta": {
+     "rotation": 0,
+     "side": "rear",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "side": {
+      "value": "front",
+      "source": "unparsable"
+     }
+    },
+    "$partial": "Only the axes listed are compared. Use this form when a case exists to discriminate one axis."
+   },
+   {
+    "id": "yinv_int_two",
+    "$why": "`grid_y_invert: 2`. 참/거짓을 담은 표현이 아니면 읽힌 것이 아니다.",
+    "$kills": "`bool(raw)` / `!!raw`. Truthiness answers `true`/`declared` for 2, so a map with a junk y-invert would be drawn mirrored and the token would assert somebody chose it.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": 2,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "grid_y_invert": {
+      "value": false,
+      "source": "unparsable"
+     }
+    },
+    "$partial": true
+   },
+   {
+    "id": "yinv_int_one",
+    "$why": "`1`은 참/거짓을 진짜로 담은 표현이다. 2와 갈려야 한다.",
+    "$kills": "An implementation that rejects every non-boolean (which would make 1 `unparsable` and lose a real declaration), and equally one that accepts every integer (which would make 2 `declared`). Paired with `yinv_int_two` this pins the boundary rather than the direction.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": 1,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "grid_y_invert": {
+      "value": true,
+      "source": "declared"
+     }
+    },
+    "$partial": true
+   },
+   {
+    "id": "rotation_string_padded",
+    "$why": "`\" 90 \"`. 공백 패딩된 수치 문자열은 읽혀야 한다 -- CSV 인제션이 만든다.",
+    "$kills": "A strict `isinstance(raw, int)` reader, which would answer `unparsable`/0 for a map that plainly declares a quarter turn, refusing an alignment that should have succeeded.",
+    "meta": {
+     "rotation": " 90 ",
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 90,
+      "source": "declared"
+     }
+    },
+    "$partial": true
+   },
+   {
+    "id": "null_meta_orientation",
+    "$why": "메타 자체가 없다. 다섯 축 전부 `absent`이고 다섯 축 전부 응답에 있어야 한다.",
+    "$kills": "An implementation returning null / an empty dict for a null meta. `frameFromMeta`'s `return null` is exactly that, and a caller cannot refuse what it cannot observe. VALUE is deliberately NOT compared here -- the two sides substitute different start defaults and that divergence is recorded separately in `orientation_divergence_cases`.",
+    "meta": null,
+    "expect_source_only": {
+     "rotation": "absent",
+     "side": "absent",
+     "grid_y_invert": "absent",
+     "grid_start_x": "absent",
+     "grid_start_y": "absent"
+    }
+   },
+   {
+    "id": "rotation_negative_ninety",
+    "$why": "서버는 mod 360으로 정규화해 270, 클라는 -90을 그대로 통과시킨다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. The server's transformer swaps visual cols/rows for rotation 270. The client's `visualDimensions` tests `rot === 90 || rot === 270`, which is FALSE for -90, so the client lays out an unrotated grid while the server transforms as a quarter turn. A 45x39 map is drawn 45 wide and read 39 wide; every cell lands somewhere else and both sides report `declared`, i.e. `somebody chose this`.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": -90,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 270,
+      "source": "declared"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "rotation_three_sixty",
+    "$why": "저장값 360. 서버는 0으로 접고 **무증거 값과 같아져** `indeterminate`가 된다. 클라는 360을 골랐다고 본다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. A consumer that refuses `indeterminate` (which is the entire point of the token, and step 6 of the work order) refuses this map on the server and accepts it on the client. The two halves of one screen then disagree about whether the map may be aligned at all.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 360,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "rotation_forty_five",
+    "$why": "45는 수이지 회전이 아니다. 서버는 unparsable, 클라는 45를 선언으로 본다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. `declaration.js` exports `ROTATIONS = [0, 90, 180, 270]` with the comment `45 is a number, not a rotation`, and `rotationAxis` does not consult it. The client hands 45 downstream as a declared rotation; `visualDimensions` silently treats it as 0; the server refuses it as unreadable. The client's own stated domain and its parser disagree -- this is an INTERNAL second spelling, not only a cross-side one.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 45,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "unparsable"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "rotation_fractional",
+    "$why": "90.5. 서버는 int()로 90, 클라는 90.5.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. Server swaps axes (90); client does not (90.5 is neither 90 nor 270). Same misplacement as `rotation_negative_ninety`, reached by a different route.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 90.5,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 90,
+      "source": "declared"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "yinv_string_true",
+    "$why": "`\"true\"` 문자열. 서버는 진리값 표현이 아니라며 거절, 클라는 문자열 두 철자를 받아 준다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. The server reads y-invert as FALSE (its unparsable substitute) and the client reads TRUE. The y mirror is applied by one side and not the other, so EVERY row of the map is reflected between the two answers. This is the same class as the 165/165 divergence in section 2.3 of the spec, reached through the declaration layer instead of the bbox layer.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": "true",
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "unparsable"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "yinv_string_false",
+    "$why": "`\"false\"`. 두 사이드가 같은 **값**에 도달하지만 출처 토큰이 갈린다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. Both sides draw the map identically. But the server says `unparsable` -- the map will be REFUSED once step 6 wires the refusal in -- and the client says `indeterminate`, a different refusal with a different message. Two screens, two reasons, one map.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": "false",
+     "grid_start_x": 1,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "unparsable"
+     },
+     "grid_start_x": {
+      "value": 1,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   },
+   {
+    "id": "start_native_float",
+    "$why": "숫자 3.7. 서버는 3으로 자르고, 클라는 3.7을 그대로 둔다.",
+    "$kills": "Was a recorded divergence until 2026-08-05: the client read this with a LENIENT parser (parseInt/parseFloat/Number) and reported the result as `declared`, while the server normalised or refused. `computeSeating` computes `c = cell.x - frame.startX`, so every seat lands on x.3 and `seatKey` produces `\"0.30000000000000004,5\"`. Membership against the floor is a string-key set lookup, so EVERY comparison misses and the map scores zero agreement against a reference it actually matches.",
+    "$closed": "2026-08-05, parse-direction fix in client2/src/map2/declaration.js -- readers normalise then refuse (Python int()/float() semantics), rotation is reduced mod 360 and gated on the exported ROTATIONS domain, and grid_y_invert accepts only a real truth value. Promoted because the CLIENT moved onto the server's recorded answer; the server half is unchanged.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": 3.7,
+     "grid_start_y": 1
+    },
+    "expect": {
+     "rotation": {
+      "value": 0,
+      "source": "indeterminate"
+     },
+     "side": {
+      "value": "front",
+      "source": "indeterminate"
+     },
+     "grid_y_invert": {
+      "value": false,
+      "source": "indeterminate"
+     },
+     "grid_start_x": {
+      "value": 3,
+      "source": "declared"
+     },
+     "grid_start_y": {
+      "value": 1,
+      "source": "declared"
+     }
+    }
+   }
+  ]
+ },
+ "orientation_divergence_cases": {
+  "$why": "**두 구현이 서로 다른 답을 내는 자리.** 합의가 아니므로 합의로 채점하지 않는다 -- 양쪽 답을 각각 고정하고 질문을 총괄에 넘긴다. 여기 있는 케이스가 초록이라는 것은 「두 구현이 오늘 이렇게 갈려 있다」는 뜻이지 「괜찮다」는 뜻이 아니다.",
+  "$source": "measurement",
+  "$source_detail": "MEASURED 2026-08-05 on this DEVELOPMENT box by calling both implementations on the metas below. Development box only -- says nothing about production. None of these shapes occurs in the 668 rows currently in this box's `wafer_map_metadata` (all 23 production shapes agree; see `orientation_census`), so these are reachable-by-shape, not observed-in-the-wild.",
+  "$ruling_pending": "The lead PM decides which side is the contract. Until then both answers are pinned and this group is scored as DIVERGENCE, printed as such by both scorers, and blocks round completion rather than the suite.",
+  "cases": [
+   {
+    "id": "start_float_string",
+    "$why": "`\"3.7\"`. 서버 `int(\"3.7\")`은 ValueError, 클라 `parseInt(\"3.7\", 10)`은 3.",
+    "$severity": "coordinate arithmetic",
+    "$failure_scenario": "The server substitutes its absent-default 1 and reports `unparsable`; the client reports a declared start of 3. `computeSeating` subtracts startX from every stored coordinate, so the two sides differ by 2 cells on every cell in the map, and the client's token asserts the value was chosen.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": "3.7",
+     "grid_start_y": 1
+    },
+    "axis": "grid_start_x",
+    "server": {
+     "value": 1,
+     "source": "unparsable"
+    },
+    "client": {
+     "value": 0,
+     "source": "unparsable"
+    },
+    "$client_changed_2026_08_05": "client half was {\"value\":3,\"source\":\"declared\"}; the parse-direction fix (strict int/float readers, normalise-or-refuse) moved it to {\"value\":0,\"source\":\"unparsable\"}. The SOURCE now agrees with the server; what remains is only the start-default disagreement (client reads an absent start as 0, server as 1), which is boarded separately and does not belong to this case."
+   },
+   {
+    "id": "start_trailing_garbage",
+    "$why": "`\"3abc\"`. `parseInt`은 앞부분만 읽고 멈춘다.",
+    "$severity": "coordinate arithmetic",
+    "$failure_scenario": "Identical to `start_float_string`. Listed separately because it kills a different fix: normalising `\"3.7\"` by rounding would leave `\"3abc\"` still divergent.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": "3abc",
+     "grid_start_y": 1
+    },
+    "axis": "grid_start_x",
+    "server": {
+     "value": 1,
+     "source": "unparsable"
+    },
+    "client": {
+     "value": 0,
+     "source": "unparsable"
+    },
+    "$client_changed_2026_08_05": "client half was {\"value\":3,\"source\":\"declared\"}; the parse-direction fix (strict int/float readers, normalise-or-refuse) moved it to {\"value\":0,\"source\":\"unparsable\"}. The SOURCE now agrees with the server; what remains is only the start-default disagreement (client reads an absent start as 0, server as 1), which is boarded separately and does not belong to this case."
+   },
+   {
+    "id": "start_absent_substitute",
+    "$why": "start 키 부재. **출처는 양쪽 다 `absent`로 합의**하고 **값만 갈린다** -- 서버 리더는 1을, 클라 리더는 0을 만들어 낸다.",
+    "$severity": "one cell, every cell",
+    "$boarded": "This one is KNOWN and deliberately boarded rather than closed -- the 2026-08-05 start ruling removed it from provenance but explicitly left it in coordinate arithmetic. It is pinned here so the day it is closed, this case turns red in the OTHER direction and says so.",
+    "$failure_scenario": "Every cell of the map is off by exactly one in both axes between the two sides. Silent: both sides report `absent`, so the provenance layer -- the thing built to make this observable -- says the two agree.",
+    "$reachability": "0 of 668 rows on this development box lack start. The divergence is real and currently unreachable through stored metadata; it is reachable through any code path that hands a partial meta to either reader.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false
+    },
+    "axis": "grid_start_x",
+    "server": {
+     "value": 1,
+     "source": "absent"
+    },
+    "client": {
+     "value": 0,
+     "source": "absent"
+    },
+    "$also": "grid_start_y is identical. Both scorers check both axes."
+   },
+   {
+    "id": "start_empty_string",
+    "$why": "빈 문자열. 두 리더 다 침묵으로 읽지만 대입값이 갈린다.",
+    "$severity": "same as start_absent_substitute",
+    "$failure_scenario": "Same one-cell shift. Listed separately because it is the EMPTY STRING, which a fix keyed on `is None` / `undefined` would miss -- and because a vector set without an empty string cannot see a `v || dflt` fold at all.",
+    "meta": {
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "grid_start_x": "",
+     "grid_start_y": ""
+    },
+    "axis": "grid_start_x",
+    "server": {
+     "value": 1,
+     "source": "absent"
+    },
+    "client": {
+     "value": 0,
+     "source": "absent"
+    }
+   }
+  ]
+ },
+ "orientation_census": {
+  "$why": "**운영 모양 전수에 대한 왕복.** 한 케이스씩 맞히는 것과 668행을 같은 답으로 분류하는 것은 다른 주장이다. 23개 서로 다른 방위 모양이 668행을 덮는다.",
+  "$source": "ruling",
+  "$source_detail": [
+   "The expected rotation split -- 320 auto_registered / 196 indeterminate / 152 declared --",
+   "was stated by the lead PM BEFORE this contract was written, and is recorded in",
+   "MAP_ALIGNMENT_SPEC section 0.3 note 2 with its own correction history (the number was",
+   "written without evidence, withdrawn when its stated mechanism was disproved, then",
+   "re-derived by measurement). The expected start split -- marker-only, so 320",
+   "auto_registered / 348 declared / 0 indeterminate -- follows from the 2026-08-05 ruling",
+   "with no measurement needed: 320 rows carry the marker and the other 348 do not.",
+   "",
+   "The SHAPES below were measured read-only from this DEVELOPMENT box's",
+   "`wafer_map_metadata` on 2026-08-05 (668 rows, 23 distinct orientation shapes, only the",
+   "five orientation keys and the marker retained). The shapes are INPUT data. The census",
+   "totals are the EXPECTATION, and they came from the ruling, not from the shapes.",
+   "",
+   "This lets the client scorer verify the same census WITHOUT database access: it reads",
+   "the shapes and counts from this file, which is what makes the census a seam assertion",
+   "and not a server-only measurement."
+  ],
+  "$dev_box_warning": "These counts describe a DEVELOPMENT box. They say nothing about production. The server scorer additionally re-reads the live table when one is reachable and reports drift as a message, never as a failure.",
+  "expect": {
+   "rotation": {
+    "auto_registered": 320,
+    "indeterminate": 196,
+    "declared": 152
+   },
+   "side": {
+    "auto_registered": 320,
+    "indeterminate": 293,
+    "declared": 55
+   },
+   "grid_y_invert": {
+    "auto_registered": 320,
+    "indeterminate": 346,
+    "declared": 2
+   },
+   "grid_start_x": {
+    "auto_registered": 320,
+    "declared": 348
+   },
+   "grid_start_y": {
+    "auto_registered": 320,
+    "declared": 348
+   }
+  },
+  "$expect_notes": [
+   "grid_start_x/y carry NO `indeterminate` bucket at all. That absence is the ruling made",
+   "checkable: an implementation that runs the value test on start would move the 117 rows",
+   "holding start (1,1) -- the server reader's absent-default -- into `indeterminate`, and",
+   "the client, whose absent-default is 0, would instead move the 258 marked rows holding",
+   "start (0,0). The two sides would land in DIFFERENT buckets from the SAME rule. That is",
+   "the 660-of-668 inversion the ruling closes, and this line is what detects its return.",
+   "",
+   "grid_y_invert has exactly 2 `declared` rows. Those are the only two y-inverted maps on",
+   "this box, and section 2.3 of the spec notes that one of them (`CORE_YINV`) is also a",
+   "`valid_die_ref` row and one of the five with a non-zero raw/prod delta. Two is small",
+   "enough that a scorer must not treat this bucket as noise."
+  ],
+  "shapes_file": "orientation_shapes.json",
+  "$shapes_file_note": "Held in a sibling file rather than inline: 23 shapes with counts is data, and inlining it would bury the expectations above in it. Both scorers read the sibling."
+ },
+ "frame_basis_cases": {
+  "$why": "**상자의 근거.** 저장 좌표는 bbox 상대값이다. 이 축은 예전 계약에 심볼이 하나도 안 박혀 있었다 -- 클라 29 · 서버 16 심볼 중 좌표 변환 심볼 0개, 28개 벡터 그룹 중 좌표 그룹 0개. 박혀 있던 것은 상자의 **입력**뿐이었고, 상자도 거울도 안 박혀 있었다.",
+  "$source": "spec",
+  "$source_detail": [
+   "MAP_ALIGNMENT_SPEC section 2.3 and layer (2): A STORED COORDINATE IS BOUNDING-BOX",
+   "RELATIVE, and the box's basis is not in `grid_metadata` -- it hangs off an edge pointing",
+   "at another map. The forward convention is quoted in the spec as `xv = c - box.minC +",
+   "start_x`, and its y-invert branch as `yv = max_r - r + start_y`.",
+   "",
+   "The reverse -- which is what a seating layer computes -- is therefore:",
+   "    c = xv - start_x + box.minC",
+   "    r = (invert) ? box.maxR - (yv - start_y) : yv - start_y + box.minR",
+   "then the frame rotation/side map (`cell_to_physical` / `seatOf`).",
+   "",
+   "This expectation is NOT copied from `WaferMapCoordinateTransformer`. It is the spec's",
+   "convention, re-derived. The server implementation corroborates it; the corroboration is",
+   "recorded, not used as the source. PROOF THE VECTOR IS LIVE: a counterfactual",
+   "implementation carrying ONLY the two missing terms, laid on top of the client's own",
+   "`seatOf`, was measured 2026-08-05 to reproduce the server's answer on 0 mismatches out",
+   "of 3430 cells across all four fixtures below. The expectation therefore identifies",
+   "exactly two terms and nothing else."
+  ],
+  "$why_these_fixtures": [
+   "Four, not nine, and each answers a different question:",
+   "  SPEC_FIXTURE      -- the spec's own measured fixture, non-invert. Non-centred box",
+   "                       (minR 1 of 19 rows), so the box term is OBSERVABLE. Nine",
+   "                       identity-frame vectors could not see it.",
+   "  SPEC_FIXTURE_YINV -- the SAME geometry with the mirror on. Section 2.3 measures that",
+   "                       the shift DIFFERS between the two branches, so a fixture",
+   "                       exercising one branch under-reports the other.",
+   "  CORE_YINV_LIKE    -- shaped after production row `CORE_YINV`: y-inverted, offset (5,5),",
+   "                       one of the five rows where raw and prod paths disagree, and the",
+   "                       one row where the two open unknowns of section 2 meet.",
+   "  ROT90_BACK        -- a quarter turn AND a side flip, so the cols/rows swap and the",
+   "                       offset sign flip in `_frame_phys_params` are both live. Shaped",
+   "                       after production row `bonding_map / 4E`.",
+   "All four have a NON-CENTRED bounding box, measured. A centred box makes the term zero",
+   "and the vector vacuous."
+  ],
+  "$scored_how": {
+   "server": "Builds the transformer through `map_overlay._frame_phys_params` (never raw meta values -- the spec measures that one bbox with 8 transforms on top misplaces `CORE_YINV` by (2,-1)) and asserts the bbox, then round-trips every cell.",
+   "client": "Imports `computeSeating` and `seatOf` and asks them for the seat of the same stored coordinate."
+  },
+  "cases": [
+   {
+    "id": "SPEC_FIXTURE",
+    "$why": "스펙 §2 실측 픽스처. 비반전, 비중심 상자.",
+    "$kills": "A seating layer computing `cell = stored - start`. Off by (0, -minR) on every cell -- 475 of 475 here.",
+    "meta": {
+     "grid_cols": 25,
+     "grid_rows": 19,
+     "grid_start_x": 3,
+     "grid_start_y": 5,
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": false,
+     "phys_wafer_dia": 300,
+     "phys_chip_x": 12,
+     "phys_chip_y": 16,
+     "phys_offset_x": 8.5,
+     "phys_offset_y": 8.5,
+     "phys_edge_margin": 3
+    },
+    "expect_bbox": {
+     "minC": 0,
+     "maxC": 22,
+     "minR": 1,
+     "maxR": 18
+    },
+    "expect_visual": {
+     "cols": 25,
+     "rows": 19
+    },
+    "expect_seats": [
+     {
+      "stored": [
+       3,
+       4
+      ],
+      "seat": [
+       0,
+       0
+      ]
+     },
+     {
+      "stored": [
+       4,
+       4
+      ],
+      "seat": [
+       1,
+       0
+      ]
+     },
+     {
+      "stored": [
+       3,
+       5
+      ],
+      "seat": [
+       0,
+       1
+      ]
+     },
+     {
+      "stored": [
+       25,
+       22
+      ],
+      "seat": [
+       22,
+       18
+      ]
+     }
+    ]
+   },
+   {
+    "id": "SPEC_FIXTURE_YINV",
+    "$why": "같은 기하에 거울만 켠 것. 두 브랜치의 이동량이 다르다는 §2.3 실측을 관측 가능하게 만든다.",
+    "$kills": "A seating layer that ignores `invertY` entirely -- it produces the SPEC_FIXTURE answer here, which is wrong by (0, minR + maxR - 2*yv) and therefore wrong differently on every row. Also kills the common mis-transcription `r = (rows - 1) - r` instead of the box-relative `maxR - (yv - startY)`.",
+    "meta": {
+     "grid_cols": 25,
+     "grid_rows": 19,
+     "grid_start_x": 3,
+     "grid_start_y": 5,
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": true,
+     "phys_wafer_dia": 300,
+     "phys_chip_x": 12,
+     "phys_chip_y": 16,
+     "phys_offset_x": 8.5,
+     "phys_offset_y": 8.5,
+     "phys_edge_margin": 3
+    },
+    "expect_bbox": {
+     "minC": 0,
+     "maxC": 22,
+     "minR": 1,
+     "maxR": 18
+    },
+    "expect_visual": {
+     "cols": 25,
+     "rows": 19
+    },
+    "expect_seats": [
+     {
+      "stored": [
+       3,
+       23
+      ],
+      "seat": [
+       0,
+       0
+      ]
+     },
+     {
+      "stored": [
+       4,
+       23
+      ],
+      "seat": [
+       1,
+       0
+      ]
+     },
+     {
+      "stored": [
+       3,
+       22
+      ],
+      "seat": [
+       0,
+       1
+      ]
+     },
+     {
+      "stored": [
+       25,
+       6
+      ],
+      "seat": [
+       22,
+       17
+      ]
+     }
+    ]
+   },
+   {
+    "id": "CORE_YINV_LIKE",
+    "$why": "운영 행 `CORE_YINV` 모양. y반전 + 오프셋 (5,5) + start (0,0).",
+    "$kills": "The same two omissions, and additionally any implementation that treats a start of 0 as 'no start' -- the box term here is (1, 2) and the start term is (0, 0), so a fix that folds the two together looks right on the other fixtures and wrong here.",
+    "meta": {
+     "grid_cols": 45,
+     "grid_rows": 39,
+     "grid_start_x": 0,
+     "grid_start_y": 0,
+     "rotation": 0,
+     "side": "front",
+     "grid_y_invert": true,
+     "phys_wafer_dia": 300,
+     "phys_chip_x": 7,
+     "phys_chip_y": 8,
+     "phys_offset_x": 5,
+     "phys_offset_y": 5,
+     "phys_edge_margin": 3
+    },
+    "expect_bbox": {
+     "minC": 1,
+     "maxC": 41,
+     "minR": 2,
+     "maxR": 37
+    },
+    "expect_visual": {
+     "cols": 45,
+     "rows": 39
+    },
+    "expect_seats": [
+     {
+      "stored": [
+       -1,
+       37
+      ],
+      "seat": [
+       0,
+       0
+      ]
+     },
+     {
+      "stored": [
+       0,
+       37
+      ],
+      "seat": [
+       1,
+       0
+      ]
+     },
+     {
+      "stored": [
+       -1,
+       36
+      ],
+      "seat": [
+       0,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ROT90_BACK",
+    "$why": "쿼터 턴 + 면 반전. 피치 스왑과 오프셋 부호 반전이 동시에 산다. 운영 행 `bonding_map / 4E` 모양.",
+    "$kills": "A bbox built from RAW meta pitch instead of `_frame_phys_params` output -- the pitch swap moves the box, and the spec measures that skipping it misplaces `CORE_YINV` by (2,-1). Also kills a `side: back` mirror applied about the wrong axis: under a quarter turn the flip lands on ROWS, not columns.",
+    "meta": {
+     "grid_cols": 29,
+     "grid_rows": 25,
+     "grid_start_x": 1,
+     "grid_start_y": 1,
+     "rotation": 90,
+     "side": "back",
+     "grid_y_invert": false,
+     "phys_wafer_dia": 300,
+     "phys_chip_x": 11,
+     "phys_chip_y": 13,
+     "phys_offset_x": 0,
+     "phys_offset_y": 0,
+     "phys_edge_margin": 3
+    },
+    "expect_bbox": {
+     "minC": 2,
+     "maxC": 22,
+     "minR": 2,
+     "maxR": 26
+    },
+    "expect_visual": {
+     "cols": 25,
+     "rows": 29
+    },
+    "expect_seats": [
+     {
+      "stored": [
+       -1,
+       -1
+      ],
+      "seat": [
+       28,
+       24
+      ]
+     },
+     {
+      "stored": [
+       0,
+       -1
+      ],
+      "seat": [
+       28,
+       23
+      ]
+     },
+     {
+      "stored": [
+       -1,
+       0
+      ],
+      "seat": [
+       27,
+       24
+      ]
+     }
+    ]
+   }
+  ],
+  "client_expected_failure": {
+   "$why": "익명 상시 빨강 금지. 클라가 지금 이 그룹에서 **전부** 틀리는 것은 알려진 결함이므로, 익명으로 빨간 채 두지 않고 **이름 붙인 예상 실패**로 고정한다. 결함이 고쳐지는 날 이 항목이 **반대 방향으로** 빨개진다.",
+   "name": "seating_omits_bbox_and_invert",
+   "symbol": "client2/src/map2/seating.js computeSeating",
+   "owner": "the map2 seating lane",
+   "measured_mismatch": {
+    "SPEC_FIXTURE": "475 of 475",
+    "SPEC_FIXTURE_YINV": "450 of 475",
+    "CORE_YINV_LIKE": "1755 of 1755",
+    "ROT90_BACK": "725 of 725"
+   },
+   "$two_omissions": [
+    "(1) NO BOX TERM. `computeSeating` computes `c = cell.x - frame.startX` and",
+    "    `r = cell.y - frame.startY`. The `+ box.minC` / `+ box.minR` terms are absent,",
+    "    and no bounding box is computed anywhere in `client2/src/map2/`.",
+    "(2) NO Y MIRROR. The identifier `invertY` does not occur in seating.js at all --",
+    "    `computeSeating` never reads it and `seatOf` has no branch for it. `declaration.js`",
+    "    produces the axis; nothing consumes it.",
+    "Both omissions are in the NEW client, not the frozen legacy one. The legacy editor",
+    "computes a box (`getWaferBoundingBox`); its divergence from the server is a different",
+    "one -- the BASIS of that box, mask versus circle -- and the product owner has ruled",
+    "the legacy editor stays untouched, so this contract pins the new client."
+   ],
+   "$turns_red_when_fixed": "Once seating carries both terms, the harness must be switched from `expect_divergence` to `expect_match` for this group. The harness FAILS if the divergence disappears while this block still declares it, so the switch cannot be forgotten."
+  }
+ },
+ "scoring_invariants": {
+  "$why": "**서버 대 오라클.** 총괄 확정 2026-08-05: 서버가 채점하고 클라는 채점하지 않는다. 그러므로 이 이음새는 클라-서버가 아니다 -- 후보 열거와 시프트 해를 독립적으로 유도한 픽스처가 오라클이다.",
+  "$source": "spec + measurement",
+  "$source_detail": [
+   "Both constraints below are MEASURED facts recorded in MAP_ALIGNMENT_SPEC, not stylistic",
+   "preferences:",
+   "",
+   "  FULL-META REBUILD (section 2, THE PREMISE). A candidate enumerator must build each",
+   "  candidate as a WHOLE meta and re-derive the bounding box through the production path.",
+   "  Deriving one box and stacking 8 transforms on it prevents the cancellation between the",
+   "  y mirror and the offset sign flip in `_frame_phys_params`, and production row",
+   "  `CORE_YINV` is measured to land (2,-1) off when that happens.",
+   "",
+   "  NO PERCENTAGE ANYWHERE (section 3). Measured on an asymmetric 376-die mask, a",
+   "  candidate that was CORRECTLY ORIENTED but one cell off scored 94% and ranked BELOW",
+   "  three WRONGLY ORIENTED candidates at 98, 97 and 95%. A coverage percentage provably",
+   "  inverts the ranking. The vectors therefore carry absolute counts and a margin in dies."
+  ],
+  "$scored_how": "Server only. There is no client counterpart and, by the ruling, there must not be one -- a client scorer would be the second implementation of the answer. `client_harness.mjs` asserts the ABSENCE of a client scorer instead: no module under client2/src/map2/ may export a candidate-scoring function. That is a duplicate guard, not a round trip.",
+  "invariants": [
+   {
+    "id": "no_percentage_in_payload",
+    "$why": "퍼센트가 응답 어디에도 나타나면 안 된다. 한 번 실려 나가면 언젠가 렌더된다.",
+    "$kills": "A scorer adding `coverage_pct` as a convenience field. Measured: that number inverts the ranking, and a field nobody ranks on today is a field somebody ranks on next quarter.",
+    "assert": "no key in any scored candidate, in the ruling, or in the stats block matches /pct|percent|ratio|coverage/i, and no float value in a candidate lies strictly between 0 and 1 exclusive except `elapsed_ms`."
+   },
+   {
+    "id": "margin_is_a_die_count",
+    "$why": "격차는 다이 개수다.",
+    "$kills": "A margin expressed as a fraction or a difference of ratios -- both are percentages wearing a different name.",
+    "assert": "every scored candidate's `margin` is an int (or null when not scorable), and equals `agreement` minus the highest `agreement` among the OTHER seven."
+   },
+   {
+    "id": "candidate_meta_is_rebuilt",
+    "$why": "후보마다 메타를 통째로 만들어 프레임 물리 파라미터를 다시 유도해야 한다.",
+    "$kills": "An enumerator that computes one bounding box and applies 8 transforms on top. Measured to misplace `CORE_YINV` by (2,-1) -- and to look correct on every centred-box fixture, which is why it needs an assertion rather than a review.",
+    "assert": "`map_alignment.score_candidates` reaches `dt_map_derivation.source_meta_for_frame` once per candidate per usable source map, and each resulting meta goes through `map_overlay.make_frame_transform` (which calls `_frame_phys_params`). Scored by instrumenting both call sites for one invocation and comparing the call count to 8 x usable."
+   },
+   {
+    "id": "eight_candidates_named_once",
+    "$why": "후보 집합의 두 번째 철자를 만들지 않는다. 화면과 채점이 후보 3번이 무엇인지에 대해 갈리면 안 된다.",
+    "$kills": "A client screen listing its own 8 and a server scoring its own 8. This is a DUPLICATE GUARD across the seam: the client's `candidates.candidateList()` ids and the server's `map_alignment.CANDIDATE_FRAMES` must be the same set of the same strings.",
+    "assert": "set(server CANDIDATE_FRAMES) == set(client candidateList().map(c => c.id)), both of size 8, and every id parses on both sides.",
+    "$scored_by": "both -- this is the one scoring-group axis that IS a round trip."
+   },
+   {
+    "id": "no_forced_winner",
+    "$why": "근거가 약하면 순위를 안 매긴다. 억지 1등은 틀린 것을 맞다고 말하는 것이다.",
+    "$kills": "A ruling that always names a winner. When every candidate's discriminating count is 0, the occupied subsets do not distinguish the frames at all -- the spec's theorem says the circle is invariant under all eight -- and any winner named there is arbitrary.",
+    "assert": "when every candidate has `discriminating == 0`, the ruling state is not `scored`."
+   }
+  ],
+  "fixture_status": "PENDING -- the map-pm lane's independently-derived candidate enumeration and shift-solving fixture had not landed at the time this file was written. Until it does, the invariants above are scored structurally against `map_alignment.score_candidates` and the ORACLE COMPARISON (does the server's winner and shift equal the independent derivation's) is unscored. The harness reports that axis by name rather than passing quietly."
+ },
+ "excel_form_cases": {
+  "$why": "**양식은 우리가 설계할 대상이 아니다.** 현장이 이미 쓰는 산출물이므로 맞추는 것이고, 왕복이 성립하는지를 증명해야 한다.",
+  "$source": "spec",
+  "$status": "PENDING -- authored before the round trip could be exercised. A vector waiting for an implementation is useful; an implementation with no vector is what got us here.",
+  "$what_blocks_it": [
+   "🔴 THE BRIEF'S NAMED AUTHORITY DOES NOT CONTAIN THE ENCODING. The brief names",
+   "`dev_env/ingestion_workspace/bonding_map/scripts/bonding_map_parser.py` as the",
+   "authoritative encoding on this box. That file is 34 lines and defines no form encoding:",
+   "it is a pipeline shim that matches `.csv` and `.html`, delegates all matrix parsing to",
+   "`server/parsers/html_topology_parser.py HTMLMatrixTableParser`, and renames two columns",
+   "(`BDIE_LOT` -> `base`, `VALUE` -> `leg`). The matrix encoding lives in the parser it",
+   "delegates to. `excel_io.js` has already found the rename -- its `INGESTION_RENAME` is",
+   "byte-identical to the parser's -- so the lane is reading the right place; the BRIEF is",
+   "what points at the wrong file. Reported rather than silently redirected.",
+   "",
+   "NO OPERATOR ARTEFACT EXISTS ON THIS BOX. `dev_env/ingestion_workspace/bonding_map/",
+   "archives/` is EMPTY. Nothing here was round-tripped against a real operator file, and",
+   "no claim in this contract should be read as if it had been.",
+   "",
+   "`ingestion_workspace/` IS READ ONLY. Read it; never modify, move or delete anything",
+   "under it. This contract reads two files there and writes nothing."
+  ],
+  "$invariants_pinned_now": [
+   {
+    "id": "rename_has_one_spelling",
+    "$why": "인제션 컬럼 개명이 두 곳에 있다. 갈리는 날 화면은 멀쩡한 채 값만 틀린다.",
+    "$kills": "A third spelling. This is a DUPLICATE GUARD, not a round trip: `excel_io.INGESTION_RENAME` and `bonding_map_parser.CustomHtmlIngestionParser.process_dataframe`'s rename dict must hold the same pairs, and the parser side is read-only so the client is the one that must follow.",
+    "expect": {
+     "BDIE_LOT": "base",
+     "VALUE": "leg"
+    },
+    "$scored": "yes -- both sides, today. The client value is imported; the server value is read out of the read-only parser source."
+   },
+   {
+    "id": "incoming_can_partially_fail_outgoing_cannot",
+    "$why": "들어오는 것은 부분 실패할 수 있고 나가는 것은 아니다. 둘을 대칭으로 그리면 없는 대칭을 암시한다.",
+    "$kills": "A reader that returns cells and drops the rejects silently, or one that throws on the first bad row. Paste must report HOW MANY CAME IN and HOW MANY WERE REFUSED AND WHY, as totals.",
+    "assert": "`readMapForm` returns a per-code rejection tally whose codes are a subset of the declared `REJECTION_CODES`, and accepted + rejected equals the number of input rows. `writeMapForm` has no rejection channel at all.",
+    "$scored": "PENDING -- assertion authored, exercised only against synthetic input, never against an operator artefact."
+   },
+   {
+    "id": "form_round_trip_is_lossless_on_declaration",
+    "$why": "양식은 맵이 바깥과 드나드는 유일한 통로다. 나갔다 들어온 선언이 달라지면 좌표계가 조용히 바뀐다.",
+    "$kills": "A writer that emits the frame's LEGACY values (post `|| dflt` fold) rather than its declared values -- a map declaring `grid_cols: 0` would come back as 10 and every cell would live in an index space the reference never declared.",
+    "assert": "`readMapForm(writeMapForm(decl, cells))` returns a declaration equal to `decl` on all five orientation axes AND their source tokens, for every case in `orientation_agreement_cases`.",
+    "$scored": "PENDING."
+   }
+  ]
+ },
+ "align_origin_cases": {
+  "$why": "승인됐지만 의도적으로 안 내려온 3분할(`identity` / `identity_unattested` / `identity_no_meta`)이 나중에 무엇에 대고 diff할 수 있도록, **지금의 단일 토큰 동작을 먼저 박는다.**",
+  "$source": "measurement",
+  "$source_detail": "MEASURED 2026-08-05 by reading `map_overlay`'s origin constants and the four sites that emit `ALIGN_ORIGIN_IDENTITY`, plus the two client consumers. Development box.",
+  "current_vocabulary": {
+   "$why": "서버가 낼 수 있는 origin 토큰 전부. 이 집합이 커지는 날 클라 두 소비자가 **틀린 방향으로** 열린다.",
+   "expect": [
+    "identity",
+    "derived",
+    "unresolvable"
+   ],
+   "$kills": "A fourth token landing on the server before the client is taught it. Both client consumers are NEGATIVE LITERAL tests, so a new token defaults to the wrong branch (see `client_consumers_fail_open` below) -- this assertion is the tripwire that fires on the server side first."
+  },
+  "client_consumers_fail_open": {
+   "$why": "🔴 두 소비자가 전부 **부정 리터럴** 검사다. 새 토큰이 오면 조용히 **정렬됨**으로 읽힌다 -- 즉 틀린 방향으로 열린다.",
+   "$sites": [
+    "client2/src/map_editor.js, the overlay layer builder -- `alignApplied: align.origin !== 'identity'`",
+    "client2/src/map_editor.js, the origin chip renderer -- `if (origin === 'identity') return <uncorrected chip>` and otherwise falls through to the CORRECTED chip"
+   ],
+   "$failure_scenario": "The approved split lands `identity_unattested` on the server. Neither client site equals `'identity'`, so `alignApplied` becomes TRUE and the chip renders as `정렬됨` -- the screen tells the operator the overlay was aligned to the source map's declared frame, when the token means the OPPOSITE: nothing attested the frame. A false statement of correctness on exactly the maps whose coordinate systems are least trustworthy. Neither site raises, logs, or degrades.",
+   "$kills": "The assumption that the split is a server-only change. It is not: the client must change FIRST, which is why the split is deliberately not landed.",
+   "expect_today": {
+    "emitted_tokens_reaching_the_client": [
+     "identity",
+     "derived"
+    ]
+   },
+   "$named_expected_failure": {
+    "name": "align_origin_split_not_landed",
+    "owner": "the map-pm / client lane",
+    "$why": "3분할은 승인됐고 안 내려왔다. 그 상태를 익명 빨강으로 두지 않는다.",
+    "$turns_red_when_fixed": "The moment `map_overlay` grows a fourth ALIGN_ORIGIN_* constant, `current_vocabulary` fails and names the two client sites that must change with it. That is the intended direction: red on the SERVER change, pointing at the CLIENT work it presupposes.",
+    "$scored_side": "server only. The two client consumers live in the FROZEN legacy editor and are reachable only by asserting on source text -- which is the failure mode that killed three harnesses this round, so this contract does not do it. THE AXIS IS REPORTED AS UNSCORED ON THE CLIENT SIDE."
+   }
+  }
+ },
+ "unscored_axes": {
+  "$why": "🔴 채점되지 않는 축은 **이름을 대고** 보고한다. 채점기가 조용한 것과 축이 통과한 것은 다르다. 예전 계약에서 순수 작성자를 채점해 놓고 「쓰기 경로가 채점됐다」고 읽은 대가가 HIGH 결함 하나였다.",
+  "axes": [
+   {
+    "axis": "align_applied.origin -- client consumers",
+    "why": "Both consumers are in `client2/src/map_editor.js`, which is FROZEN and which this contract may not edit. Reaching them requires either importing from a module with heavy DOM state (impossible) or asserting on source text (the technique that killed three harnesses this round). Neither is acceptable, so the axis is reported instead of faked.",
+    "what_would_score_it": "The two literals extracted into one exported predicate -- e.g. `alignWasApplied(origin)` -- in a pure module. THE EXTRACTION IS WHAT MAKES THE AXIS TESTABLE, NOT THE TEST. Re-typing the comparison inside the contract scores nothing: the copy would also pass `str(origin).lower() == 'none'`, which is precisely what the invariant forbids."
+   },
+   {
+    "axis": "scoring oracle comparison",
+    "why": [
+     "🔴 THE FIXTURE LANDED AND IT IS NOT AN ORACLE FOR THE SERVER.",
+     "`client2/tests/fixtures/alignment_oracle_cases.json` exists and is well made -- it",
+     "is honest about being a development box, it is read-only, and it says where it came",
+     "from. What it says is the problem. Its own `provenance.derivedFrom` reads:",
+     "  'server/map_overlay.py production path (_frame_phys_params -> PhysicalWaferEngine",
+     "   -> WaferMapCoordinateTransformer), imported and run, not transcribed'",
+     "The expected coordinates were produced BY RUNNING THE IMPLEMENTATION they would be",
+     "used to score. Against the SERVER that is a mirror: it detects regression, never",
+     "incorrectness, and a green run means only that the server still answers what it",
+     "answered yesterday.",
+     "",
+     "⚠️ THIS IS NOT A CRITICISM OF THE FIXTURE'S USE ON THE CLIENT. Scoring the CLIENT",
+     "against server-derived data is a legitimate round trip -- it is the seam. The defect",
+     "is only in reading it as an independent oracle for the server half, which is what",
+     "the round brief asked for.",
+     "",
+     "So this axis stays open: whether `score_candidates` picks the RIGHT winner and the",
+     "RIGHT integer shift is unscored. Its structural invariants are scored."
+    ],
+    "what_would_score_it": "Expected winners derived WITHOUT executing map_overlay -- hand-placed footprints whose correct frame is known by construction (place an asymmetric pattern under a known rotation, then ask which candidate recovers it), or an operator's recorded answer on a real unit. Drop it in as contracts/map2_seam/scoring_oracle.json."
+   },
+   {
+    "axis": "excel form round trip against a real operator artefact",
+    "why": "`dev_env/ingestion_workspace/bonding_map/archives/` is empty on this box. Synthetic round trips prove the code is self-consistent, which is exactly the property a re-implementation of the legacy exporter would also have while copying its defects.",
+    "what_would_score_it": "One real operator file, read-only, checked in under contracts/ as a fixture -- or a decision that synthetic is sufficient, made explicitly rather than by default."
+   },
+   {
+    "axis": "valid_die_ref mask-versus-circle bbox basis",
+    "why": "The divergence measured in spec section 2.3 (165 of 165 cells) is between the SERVER and the FROZEN LEGACY client. The new client has no bounding box at all, so there is no mask basis on the new side to compare -- the divergence recorded in `frame_basis_cases.client_expected_failure` supersedes it and is strictly larger. Restated: THE MASK-VERSUS-CIRCLE DIVERGENCE EXISTS ONLY IN THE LEGACY CLIENT, and the legacy client is frozen by product-owner ruling. This contract pins the new client instead, as instructed.",
+    "what_would_score_it": "The new client growing a bounding box. When it does, the basis question returns and this contract needs a resolving `valid_die_ref` case -- authored below as `frame_basis_valid_die_pending`."
+   }
+  ],
+  "frame_basis_valid_die_pending": {
+   "$why": "새 클라가 상자를 갖게 되는 날 곧바로 물어야 하는 질문. 지금 쓰지 않으면 그날 아무도 안 쓴다.",
+   "$status": "PENDING -- no bounding box exists in client2/src/map2/ to score.",
+   "$question": "When a map declares `valid_die_ref` AND it resolves, is the box the VALID-DIE MASK's bbox or the WAFER CIRCLE's? The legacy client answers mask; the server answers circle and has no mask concept at all. Measured 165 of 165 cells shift, and the shift DIFFERS between the invert and non-invert branches -- non-invert inherits the top trim, invert inherits the bottom trim -- so a fixture exercising one branch under-reports the other. A resolving-ref case must therefore come in a PAIR.",
+   "$kills": "A new client that copies the legacy mask basis without the seam being re-decided, and equally one that copies the server circle basis and silently changes what every existing stored coordinate means.",
+   "$note": "MAP_ALIGNMENT_SPEC section 2.3 states this is not a transform defect but a MISSING LAYER: the box's basis is not in `grid_metadata` at all, it hangs off an edge pointing at another map. Whichever side wins, the answer has to be carried, not assumed."
+  }
+ }
+}

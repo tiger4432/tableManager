@@ -166,6 +166,42 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 ---
 
+## 4-bis. 좌표계 확정 기록 (`frame_confirmation` · 맵 정렬 스펙 §0.2 층 ⑧)
+
+[MAP_ALIGNMENT_SPEC](../spec/MAP_ALIGNMENT_SPEC.md)의 사슬 `좌표계 확정 → 소스 얼라인 → 다이 맵 확정 → 본딩 계획`에서 **쓰는 층은 하나**이고, 그 하나가 이 기록입니다. 사람이 「이 설비·제품의 좌표계는 이것이다」라고 정한 사실을 남깁니다.
+
+| 테이블 | 단위 | 내용 |
+|---|---|---|
+| `frame_confirmation` | `(rule_name, unit_key, version)` | 머리 — 확정 프레임, 기준(공통 바닥), `map_alignment` 판정 근거(개수만), 최약 기여자, 누가·언제, `superseded_by`/`supersedes_uid` |
+| `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 |
+| `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
+
+**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py`.
+
+🔴 **결정 단위에 컬럼명을 적지 않습니다.** 단위의 정본은 규칙의 `decision_key` 선언이고, 저장은 `rule_name` + `unit_key`(그 규칙 파생 테이블의 `business_key_val`과 **같은 조립**: 선언된 `composite_key_separator`로 join) + `decision_key` JSON입니다. `dt_eqp`·`product` 컬럼은 첫 선언의 흔적으로 남아 있을 뿐 신규 코드의 단위가 아닙니다(추가 전용 규율이라 지우지 않고 NULL 허용으로 물러났습니다). 확정 대상도 마찬가지로 규칙의 `target_fields` 밖이면 거절합니다.
+
+🔴 **`POST /api/maps/alignment/confirm`은 이 사슬에서 데이터베이스에 쓰는 유일한 요청입니다.** 같은 일을 하는 GET이 없고(404), 읽기 경로(`/api/maps/alignment/view`)에는 부작용이 없으며, 화면 쪽 arm-then-commit이 앞에 섭니다. **판정(`ruling`)과 소스 목록은 요청이 명시적으로 실어 옵니다** — 쓰기 경로가 재채점하면 조작자가 보고 결정한 것과 기록된 것이 갈릴 수 있고, 기록해야 하는 것은 조작자가 본 쪽입니다. 응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)라 화면이 다시 조회할 필요가 없습니다. **WS 브로드캐스트는 없습니다**(총괄 결정 2026-08-05 — 듣는 쪽이 아직 없고 별도 결정입니다).
+
+⚠️ **거절은 전부 무쓰기 경로입니다** — 결정키 미완·미선언 결정키·미선언 확정 대상·소스 없음·주체 없음·없는 규칙. 소스 목록이 반쯤 들어간 확정은 목록이 있다고 주장하면서 틀린 목록을 주므로 없느니만 못합니다.
+
+🔴 **enrichment 규칙을 대체하는 것이 아니라 그 위에 얹습니다.** 확정의 **몸짓**은 `enrichment_rules.json`의 `eqp_product_frame_attribution`이 이미 갖고 있고(판단 단위가 정확히 `(dt_eqp, product)`, 사람 확인 경로, `auto_confirm` 스윕과 dry-run, `reference_views`의 후보 제시, `cell_overwrites`가 나르는 누가·언제) 그것을 그대로 씁니다. 그 경로가 **담을 수 없는 셋만** 여기서 담습니다:
+
+1. **소스 목록** — `eqp_frame_attribution`의 bk는 `dt_eqp|product` 하나라 단위당 한 행이 영원히 한 행입니다. N개 소스는 N행이 필요하고, 한 셀에 JSON으로 접으면 기여자가 뭉개져 §2의 최약 기여자 계산이 시작되기 전에 불가능해집니다.
+2. **소스별 정렬** — `map_alignment.score_candidates`는 소스 맵마다 `(프레임, dx, dy)`를 **풉니다**. 스칼라 `target_fields` 둘은 프레임 하나씩만 담고 시프트를 담을 자리가 없습니다. **시프트는 장식이 아닙니다** — 0이 아닌 시프트를 버리면 다이가 통째로 밀립니다.
+3. **판(version)** — 결정적입니다. `idx_sources_lookup_source`가 `(table, row, column, source_name)` UNIQUE라 재확정은 같은 셀을 제자리에서 덮어씁니다. 셀 이력 테이블은 없고 `audit_logs` 행은 가리킬 수 있는 대상이 아닙니다. 파생 행이 「내가 어느 확정 아래에서 만들어졌나」를 가리키려면 안정된 식별자가 있어야 합니다.
+
+🔴 **도장을 `source_name`에 철자하지 마십시오.** `frame_confirm:<uid>` 쪽이 자연스러워 보이지만 틀립니다 — `crud.get_source_priority`는 정확 일치 dict 조회이고 미등재는 99이므로, 확정마다 새로 나는 이름은 `SOURCE_PRIORITY`에 미리 등재될 수 없습니다. 도장 찍힌 셀이 전부 `custom_script`·`chain_ingestion` 아래로 가라앉아 **도장이 자기가 도장한 값을 강등**합니다. 확정은 값을 공급하지 않고 값이 계산된 **프레임을 지목**합니다 — 다른 축이므로 다른 컬럼입니다.
+
+🔴 **최약 기여자는 두 번째 규칙이 아닙니다.** `frame_confirmation.weakest_contributor`는 `graph_materializer`가 셀 레이어 진실을 고를 때 쓰는 것과 **같은 식**(`max(..., key=(priority, name))`)이고 둘 다 `crud.get_source_priority`에 도달하므로 서열의 원천이 하나입니다. 넷 중 하나가 미확정이면 그 확정도 미확정입니다(스펙 §0.2 ⑨).
+
+⚠️ **이 기록은 재파생을 하지 않습니다.** 어느 줄을 다시 만들지는 이미 `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋이 풀어 놓았고 **넷째 철자를 만들지 않습니다**. `derived_cell_scope`는 그 셋이 범위로 쓸 셀 집합을 **질의로만** 돌려주며, 회수는 그대로 `chain_replay.withdraw_source`입니다. `superseded_by`도 삭제가 아니라 포인터입니다 — 지난 판과 그 아래 파생 셀은 남습니다.
+
+⚠️ **지금 운영 중인 퇴화형이 대체 대상입니다** — `bonding_plan.CANONICAL_FRAME_ROLES`가 **설정 순서로 첫 역할**을 골라 기준 프레임을 삼습니다(기록·판·소스 목록 없음). 층 ⑨(`bonding_plan`·다이 맵 파생·온톨로지 조인)를 이 기록에 **연결하는 작업은 아직 없습니다.**
+
+⚠️ **인덱스는 두 곳입니다** — `idx_sources_confirmation`은 `models.py`와 `migrations/add_frame_confirmation.py`에 선언돼 있고 **둘 다 고쳐야 합니다**(`create_all`은 기존 테이블에 인덱스를 만들지 않습니다). `idx_sources_by_source`와 같은 계급입니다.
+
+---
+
 ## 5. 설정 주도 스키마
 
 `table_config.json`(테이블별): `business_key`, `column_types`, `display_columns`, `composite_key_source`/`separator`, `map_key_columns`, 선택적 `source_priority`. 변경은 `config_watcher.py` + `SYSTEM_RELOAD`로 무중단 반영.

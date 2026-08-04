@@ -272,6 +272,23 @@ class CellSource(Base):
     value = Column(JSON, nullable=True)
     ingested_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_by = Column(String, nullable=True)
+    # [Frame confirmation, spec MAP_ALIGNMENT §0.2 layer 8 / §0.3 note 4] Which frame
+    # confirmation this cell was derived under. NULL means "not derived from a confirmed
+    # coordinate system" and is the state of every pre-existing row.
+    #
+    # This is a SEPARATE AXIS from `source_name`, deliberately. Spelling the stamp as a
+    # source name (`frame_confirm:<uid>`) was the obvious move and it is wrong:
+    # `crud.get_source_priority` is an exact-name dict lookup returning 99 on a miss, and a
+    # per-confirmation name can never be pre-registered in SOURCE_PRIORITY. Every stamped
+    # cell would sink below `custom_script` and `chain_ingestion`, so the stamp would demote
+    # the very value it stamps. A confirmation supplies no value; it names the frame the
+    # value was computed IN. Different axis, different column.
+    #
+    # The scoping question this answers is "which cells were derived under this
+    # confirmation" - it does NOT introduce a re-derivation mechanism. Retraction stays
+    # `chain_replay.withdraw_source`; `frame_trigger_scope`, `chain_replay` R1/R2 and
+    # `plan_retraction` remain the only spellings of that.
+    confirmation_uid = Column(String, nullable=True)
 
     __table_args__ = (
         Index("idx_sources_lookup", "table_name", "row_id", "column_name"),
@@ -295,6 +312,14 @@ class CellSource(Base):
         # already exists, so that script is the only path onto an existing
         # database (`idx_audit_user_recorrection` is here for the same reason).
         Index("idx_sources_by_source", "table_name", "source_name", "column_name", "row_id"),
+
+        # [Frame confirmation] "which cells were derived under this confirmation". PARTIAL
+        # so it indexes only stamped rows -- the overwhelming majority of this table is and
+        # will stay NULL here, and a non-partial index would carry all of them for nothing.
+        # Same caveat as the sibling above: create_all skips an existing table, so
+        # migrations/add_frame_confirmation.py is the path onto a live database.
+        Index("idx_sources_confirmation", "confirmation_uid", "table_name", "row_id",
+              postgresql_where=text("confirmation_uid IS NOT NULL")),
     )
 
 
@@ -358,6 +383,146 @@ class GraphSyncState(Base):
     id = Column(Integer, primary_key=True)
     last_outbox_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, default=0)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# --------- [맵 정렬 스펙 §0.2 층 ⑧] 좌표계 확정 기록 — 사슬에서 쓰는 유일한 층 ---------
+# 사람이 「이 설비·제품의 좌표계는 이것이다」라고 정한 사실의 정본. 계산하지 않는다.
+#
+# [왜 enrichment 위에 얹는가 — 대체가 아니라 보완이다]
+# 확정의 **몸짓**은 `enrichment_rules.json`의 `eqp_product_frame_attribution`이 이미 갖고
+# 있고 그것을 그대로 쓴다: 판단 단위가 `decision_key = (dt_eqp, product)`로 이미 이 층의
+# 단위이고, 사람 확인 경로·auto_confirm 스윕·reference_views·후보 제시가 전부 있으며
+# 누가·언제는 cell_overwrites가 이미 나른다. 여기서 그 어느 것도 다시 만들지 않는다.
+# 다만 그 경로가 **구조적으로 담을 수 없는 것**이 셋이라 이 표가 필요하다.
+#
+#   1. 소스 목록 — `eqp_frame_attribution`의 bk는 `dt_eqp|product` 하나라 단위당 한 행이
+#      영원히 한 행이다. N개 소스는 N행이 필요하고, 한 셀에 JSON으로 접으면 기여자가 한
+#      덩어리로 뭉개져 「가장 약한 기여자」 계산이 시작되기도 전에 불가능해진다.
+#   2. 소스별 정렬 — `map_alignment.score_candidates`는 소스 맵마다 (프레임, dx, dy)를
+#      **푼다**. 스칼라 target_field 둘은 프레임 하나씩만 담고 시프트를 담을 자리가 없다.
+#      시프트는 장식이 아니다. 0이 아닌 시프트를 버리면 다이가 통째로 밀린다.
+#   3. 판(version) — 이것이 결정적이다. `idx_sources_lookup_source`가
+#      (table, row, column, source_name) UNIQUE라 재확정은 같은 셀을 제자리에서 덮어쓴다.
+#      셀 이력 테이블은 없고 audit_logs 행은 가리킬 수 있는 대상이 아니다. 파생 행이
+#      「내가 어느 확정 아래에서 만들어졌나」를 가리키려면 안정된 식별자가 있어야 한다.
+
+class FrameConfirmation(Base):
+    """확정 한 판의 머리. 설비·제품 하나에 판이 여럿 쌓이고, 지난 판은 지우지 않는다."""
+    __tablename__ = "frame_confirmation"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    # 파생 셀(cell_sources.confirmation_uid)이 가리키는 안정 식별자. 판마다 새로 난다.
+    confirmation_uid = Column(String, nullable=False)
+
+    # [결정 단위 — 컬럼명을 여기 적지 않는다]
+    # 단위의 정본은 인리치먼트 규칙의 `decision_key` 선언이다(`map_alignment` 모듈 상단과
+    # 같은 규율). 그래서 저장도 규칙 이름 + 키 값으로 한다.
+    #   rule_name    선언한 규칙(예 eqp_product_frame_attribution)
+    #   unit_key     그 규칙 파생 테이블의 business_key_val과 **같은 방식으로** 조립한 문자열.
+    #                (composite_key_separator.join(decision_key 값)) — 새 조립 규칙이 아니다.
+    #   decision_key 컬럼→값 원본. 나중에 어느 컬럼이었는지 되찾을 수 있어야 한다.
+    rule_name = Column(String, nullable=True)
+    unit_key = Column(String, nullable=True)
+    decision_key = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+
+    # ⚠️ 아래 둘은 **첫 선언(eqp_product_frame_attribution)의 흔적**이고 신규 코드의 단위가
+    # 아니다. 지우지 않는 이유는 추가 전용 규율 때문이며, 다른 decision_key를 가진 규칙에서는
+    # NULL로 남는다. 판 번호의 유일성은 (rule_name, unit_key, version)이 강제한다.
+    dt_eqp = Column(String, nullable=True)
+    product = Column(String, nullable=True)
+    version = Column(Integer, nullable=False)          # 단위 안에서 1부터
+
+    # 확정된 값 — enrichment 규칙의 target_fields와 같은 어휘(rot<각>_<면>)를 쓴다.
+    core_frame = Column(String, nullable=True)
+    dt_frame = Column(String, nullable=True)
+
+    # 공통 바닥(기준). 무엇 위에 올려놓고 정했는지가 없으면 판정을 재현할 수 없다.
+    reference_table = Column(String, nullable=True)
+    reference_map_id = Column(String, nullable=True)
+
+    # 판정 근거 — `map_alignment`가 낸 것을 그대로 옮긴다. 여기서 다시 계산하지 않는다.
+    # 백분율을 만들지 않는 규율도 그대로 따라온다(개수만 저장).
+    ruling_state = Column(String, nullable=False)       # map_alignment.STATE_*
+    ruling_reason = Column(String, nullable=True)       # ruling["reason_code"]
+    winner_frame = Column(String, nullable=True)
+    margin = Column(Integer, nullable=True)
+    discriminating = Column(Integer, nullable=True)
+
+    # [가장 약한 기여자] 스펙 §0.2 ⑨: 합쳐진 셀은 최약 기여자를 따라간다. 산출은
+    # graph_materializer의 규칙과 **같은 식**이고, 둘 다 crud.get_source_priority를
+    # 부르므로 서열의 원천이 하나다. 여기 저장하는 것은 그 계산의 결과이지 두 번째 규칙이
+    # 아니다 — 매번 다시 세지 않으려고 굳혀 둘 뿐이다.
+    weakest_source = Column(String, nullable=False)
+    weakest_priority = Column(Integer, nullable=False)
+
+    confirmed_by = Column(String, nullable=False)
+    confirmed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # 다음 판의 confirmation_uid. **삭제도 UPDATE 아닌 것도 아니다** — 지난 판은 남고
+    # 그 아래에서 파생된 셀도 남는다. 무엇을 다시 만들지는 이 표가 정하지 않는다.
+    superseded_by = Column(String, nullable=True)
+    # 이 판이 밀어낸 직전 판. 위와 짝이라 스캔 없이 양방향으로 사슬을 걷는다 — 재확정 화면이
+    # 「무엇을 대체했는가」를 물을 때 버전으로 역산하지 않게 한다.
+    supersedes_uid = Column(String, nullable=True)
+
+    # 같은 결정을 담은 enrichment 파생 행. 두 경로가 같은 사실을 말하는지 대조하는 끈.
+    enrichment_row_id = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_frame_conf_uid", "confirmation_uid", unique=True),
+        # 판 번호는 단위 안에서 유일하다. 동시 확정 두 건이 같은 번호를 받는 것을
+        # 애플리케이션 락이 아니라 여기서 막는다.
+        Index("idx_frame_conf_rule_unit_ver", "rule_name", "unit_key", "version",
+              unique=True),
+        # 「이 단위의 현행 판」 조회 — 부분 인덱스라 지난 판이 쌓여도 크기가 안 자란다.
+        Index("idx_frame_conf_rule_live", "rule_name", "unit_key",
+              postgresql_where=text("superseded_by IS NULL")),
+        # ⚠️ 아래 둘은 첫 선언의 흔적이다(위 dt_eqp/product 주석 참조). 다른 규칙에서는 두 값이
+        # NULL이고 PostgreSQL의 UNIQUE는 NULL을 서로 다르게 보므로 아무것도 막지 않는다 —
+        # 유일성을 실제로 강제하는 것은 위의 (rule_name, unit_key, version)이다.
+        Index("idx_frame_conf_unit_ver", "dt_eqp", "product", "version", unique=True),
+        Index("idx_frame_conf_live", "dt_eqp", "product",
+              postgresql_where=text("superseded_by IS NULL")),
+    )
+
+
+class FrameConfirmationSource(Base):
+    """확정 한 판이 **어느 소스들을 무슨 정렬로** 합쳤는가. 소스 하나에 한 행이다.
+
+    JSON 배열이 아니라 행인 이유: 최약 기여자 계산이 기여자별 서열을 필요로 하고, 한 셀에
+    접으면 그 서열이 사라진다. 그리고 소스가 늘어도 색인 조회로 남는다.
+    """
+    __tablename__ = "frame_confirmation_source"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    confirmation_uid = Column(String, nullable=False)
+
+    role = Column(String, nullable=False)              # bonding_plan 역할명
+    source_table = Column(String, nullable=False)
+    # NULL 대신 빈 문자열 — 아래 UNIQUE 색인에서 NULL은 서로 같지 않아 중복을 못 막는다.
+    map_id = Column(String, nullable=False, default="")
+
+    # 레이어링 소스명. 서열의 정본은 crud.get_source_priority 하나다.
+    source_name = Column(String, nullable=False)
+    source_priority = Column(Integer, nullable=False)
+
+    # 이 소스에 실제로 적용한 정렬. 프레임만으로는 부족하다 — 시프트가 빠지면 밀린다.
+    applied_frame = Column(String, nullable=True)
+    shift_dx = Column(Integer, nullable=True)
+    shift_dy = Column(Integer, nullable=True)
+
+    agreement = Column(Integer, nullable=True)
+    discriminating = Column(Integer, nullable=True)
+
+    # 합의에 못 낀 소스도 **기록한다**. 빠진 소스가 조용히 사라지면 나중에 그것이 없었던
+    # 것인지 거절된 것인지 구별할 수 없다. 값은 map_alignment.EXCLUDE_*.
+    excluded_reason = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_frame_conf_src_unique", "confirmation_uid", "role", "source_table",
+              "map_id", unique=True),
+        Index("idx_frame_conf_src_lookup", "confirmation_uid"),
+    )
 
 
 import sys

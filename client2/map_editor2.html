@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>AssyManager - Map Editor 2 / 좌표계 확정</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%229%22 fill=%22none%22 stroke=%22%2354c2f5%22 stroke-width=%222%22/><path d=%22M4 12h16M12 4v16%22 stroke=%22%2354c2f5%22 stroke-width=%221%22/></svg>" />
+  <!-- Google Fonts (client2 공통 톤: Outfit + JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
+  <link rel="stylesheet" href="/src/tokens.css">
+  <link rel="stylesheet" href="/src/map_editor2.css">
+</head>
+
+<!--
+  ============================================================================
+  Map Editor 2 - 좌표계 확정 화면 (frame only)
+  ============================================================================
+  이 파일은 표현 계층(마크업 + CSS)만 담는다. 아래 값은 전부 자리표시자이며
+  배선 레인이 교체한다. 배선 계약:
+
+    · 모든 결합점은 id 또는 data-me2-* 속성으로만 잡는다. class는 스타일 전용.
+    · 상태는 #me2-workbench 의 data-me2-state 하나로 전환한다.
+        "scored" | "no-winner" | "computing" | "unscorable"
+      computing / unscorable 에서 숫자 노드는 CSS가 display:none 으로 막는다.
+      배선은 숫자를 비울 필요가 없다 - 「숫자는 주장이다」는 CSS가 보증한다.
+    · 임계값(min_margin_dies 등)은 마크업에 없다. 문장은 배선이 config로 만든다.
+    · 모듈 엔트리는 아직 붙이지 않았다(없는 파일 404 = 콘솔 오염).
+      배선 레인이 </body> 직전 마커 자리에 <script type="module"> 한 줄을 넣고
+      vite.config.js rollupOptions.input 에 map_editor2 항목을 추가한다.
+  ============================================================================
+-->
+
+<body>
+  <div id="me2-app">
+
+    <!-- ── 헤더 ───────────────────────────────────────────── -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-badge" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3v18" stroke-width="1" />
+            <path d="M12 3a9 9 0 0 1 0 18" stroke-width="1.8" />
+          </svg>
+        </div>
+        <div>
+          <h1>좌표계 확정</h1>
+          <div class="logo-sub">설비 · 제품 단위 좌표계</div>
+        </div>
+      </div>
+
+      <div class="header-stats">
+        <span class="stat-badge" id="me2-badge-remaining">잔여 41건</span>
+        <!-- 채점 불가는 오류가 아니다. 개별 행 장식 없이 여기 한 개로만 센다. -->
+        <span class="stat-badge is-unscorable" id="me2-badge-unscorable">채점 불가 12건</span>
+        <span class="stat-badge is-session" id="me2-badge-session">이번 세션 6건</span>
+      </div>
+
+      <div class="header-actions">
+        <a href="/" class="ghost-btn" id="me2-home-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          </svg>
+          메인
+        </a>
+        <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── 3열 워크벤치 · 상태는 data-me2-state 하나로 전환 ── -->
+    <main id="me2-workbench" data-me2-state="scored">
+
+      <!-- ══ [A] 워크리스트 ══════════════════════════════ -->
+      <section class="panel" id="me2-worklist-panel">
+        <div class="panel-header">
+          <div class="panel-title">워크리스트</div>
+          <div class="panel-meta" id="me2-worklist-meta">41 / 53</div>
+        </div>
+        <div class="panel-body">
+          <input type="search" class="me2-search" id="me2-worklist-search" placeholder="설비 · 제품 검색"
+            aria-label="워크리스트 검색" autocomplete="off" />
+
+          <!-- 판정 가능한 행 -->
+          <div class="me2-wl-group" id="me2-worklist-rows" role="listbox" aria-label="판정 대기 설비 제품">
+            <button class="me2-wl-row" type="button" role="option" aria-selected="true" data-me2-row
+              data-eqp="EQP-DT-04" data-product="PRD-A19" data-state="pending">
+              <span class="me2-wl-key">EQP-DT-04 · PRD-A19</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state>미확정</span><span class="me2-wl-maps" data-me2-row-maps>맵 12</span></span>
+            </button>
+            <button class="me2-wl-row" type="button" role="option" aria-selected="false" data-me2-row
+              data-eqp="EQP-DT-04" data-product="PRD-B02" data-state="pending">
+              <span class="me2-wl-key">EQP-DT-04 · PRD-B02</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state>미확정</span><span class="me2-wl-maps" data-me2-row-maps>맵 7</span></span>
+            </button>
+            <button class="me2-wl-row" type="button" role="option" aria-selected="false" data-me2-row
+              data-eqp="EQP-DT-11" data-product="PRD-A19" data-state="confirmed">
+              <span class="me2-wl-key">EQP-DT-11 · PRD-A19</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state>확정</span><span class="me2-wl-maps" data-me2-row-maps>맵 9</span></span>
+            </button>
+            <button class="me2-wl-row" type="button" role="option" aria-selected="false" data-me2-row
+              data-eqp="EQP-DT-11" data-product="PRD-C04" data-state="pending">
+              <span class="me2-wl-key">EQP-DT-11 · PRD-C04</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state>미확정</span><span class="me2-wl-maps" data-me2-row-maps>맵 5</span></span>
+            </button>
+          </div>
+
+          <!-- 경계: 아래는 사람이 여기서 풀 수 없는 행. 개별 장식 없음. -->
+          <div class="me2-wl-boundary" id="me2-worklist-boundary">
+            <span id="me2-worklist-boundary-label">여기부터 채점 불가</span>
+          </div>
+
+          <div class="me2-wl-group" id="me2-worklist-rows-unscorable" role="listbox" aria-label="기준 없음 설비 제품">
+            <button class="me2-wl-row" type="button" role="option" aria-selected="false" data-me2-row
+              data-eqp="EQP-DT-22" data-product="PRD-C08" data-state="unscorable">
+              <span class="me2-wl-key">EQP-DT-22 · PRD-C08</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state></span><span class="me2-wl-maps" data-me2-row-maps>맵 4</span></span>
+            </button>
+            <button class="me2-wl-row" type="button" role="option" aria-selected="false" data-me2-row
+              data-eqp="EQP-DT-22" data-product="PRD-C09" data-state="unscorable">
+              <span class="me2-wl-key">EQP-DT-22 · PRD-C09</span>
+              <span class="me2-wl-sub"><span class="me2-wl-badge" data-me2-row-state></span><span class="me2-wl-maps" data-me2-row-maps>맵 6</span></span>
+            </button>
+          </div>
+
+          <div class="me2-wl-empty" id="me2-worklist-empty" hidden>해당 없음</div>
+        </div>
+      </section>
+
+      <!-- ══ [B] 그림 - 이 화면에서 유일하게 우리를 믿지 않고 확인할 수 있는 요소 ══ -->
+      <section class="panel" id="me2-picture-panel">
+        <div class="panel-header">
+          <div class="panel-title">정렬 그림</div>
+          <!-- 엑셀 양식 내보내기: 이 패널의 주제가 맵 자체이므로 여기 놓는다.
+               패널 크롬의 조용한 버튼 1개 - 확정 버튼과 경쟁하지 않고,
+               붙여넣기와 나란한 짝 버튼을 만들지 않는다(둘은 대칭이 아니다).
+               양식의 헤더 블록 형태는 우리가 정하지 않는다 - 기존 산출물을 따른다. -->
+          <button class="ghost-btn" type="button" id="me2-export-btn" data-me2-export
+            title="Excel 양식으로 내보내기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            양식 내보내기
+          </button>
+        </div>
+
+        <div class="panel-body">
+          <div class="me2-picture-main">
+          <div class="me2-stage" id="me2-picture-stage">
+            <!-- 계산 중: 골격만. 숫자는 하나도 없다. -->
+            <div class="me2-skeleton" id="me2-picture-skeleton">
+              <div class="me2-spinner" role="status" aria-label="채점 중"></div>
+            </div>
+
+            <!-- 배선은 아래 <g> 4개의 내용만 교체한다. 지금 들어있는 rect는 자리표시자. -->
+            <svg id="me2-picture-svg" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" role="img"
+              aria-labelledby="me2-picture-caption">
+              <g id="me2-layer-floor" data-me2-layer="floor"><!-- placeholder cells - wiring replaces this <g> body -->
+        <rect class="me2-cell-floor" x="83.2" y="0.8" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="0.8" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="0.8" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="12.6" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="24.3" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="36.1" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="47.9" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="59.6" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="71.4" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="83.2" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="94.9" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="106.7" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="118.4" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="130.2" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="142.0" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="153.7" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="165.5" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="177.3" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="0.8" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="189.0" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="0.8" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="12.6" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="24.3" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="36.1" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="47.9" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="59.6" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="71.4" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="83.2" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="94.9" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="106.7" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="118.4" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="130.2" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="142.0" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="153.7" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="165.5" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="177.3" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="189.0" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="0.8" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="189.0" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="12.6" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="24.3" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="36.1" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="47.9" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="59.6" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="71.4" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="83.2" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="94.9" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="106.7" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="118.4" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="130.2" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="142.0" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="153.7" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="165.5" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="177.3" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="12.6" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="177.3" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="24.3" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="165.5" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="36.1" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="153.7" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="47.9" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="59.6" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="71.4" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="118.4" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="130.2" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="142.0" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="83.2" y="189.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-floor" x="94.9" y="189.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-floor" x="106.7" y="189.0" width="10.2" height="10.2" rx="1.2"/>
+      </g>
+              <g id="me2-layer-miss" data-me2-layer="miss"><!-- placeholder cells - wiring replaces this <g> body -->
+        <rect class="me2-cell-miss" x="130.2" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="142.0" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="142.0" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="153.7" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="153.7" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="165.5" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="165.5" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="177.3" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="177.3" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="177.3" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="177.3" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="189.0" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="177.3" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="189.0" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="177.3" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="189.0" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="177.3" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="177.3" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="165.5" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="177.3" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="153.7" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="165.5" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="142.0" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-miss" x="153.7" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="130.2" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-miss" x="142.0" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+      </g>
+              <g id="me2-layer-onlyone" data-me2-layer="onlyone"><!-- placeholder cells - wiring replaces this <g> body -->
+        <rect class="me2-cell-onlyone" x="47.9" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="36.1" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="47.9" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="24.3" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="12.6" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="24.3" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="12.6" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="12.6" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="0.8" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="0.8" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="0.8" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="12.6" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="12.6" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="12.6" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="24.3" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="24.3" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="36.1" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-onlyone" x="47.9" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-onlyone" x="47.9" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+      </g>
+              <g id="me2-layer-alone" data-me2-layer="alone"><!-- placeholder cells - wiring replaces this <g> body -->
+        <rect class="me2-cell-alone" x="83.2" y="0.8" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="0.8" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="0.8" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="12.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="12.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="24.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="24.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="36.1" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="36.1" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="47.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="47.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="12.6" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="24.3" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="36.1" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="47.9" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="59.6" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="71.4" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="83.2" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="94.9" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="106.7" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="118.4" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="130.2" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="142.0" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="153.7" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="165.5" y="59.6" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="177.3" y="59.6" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="71.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="71.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="0.8" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="83.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="189.0" y="83.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="0.8" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="12.6" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="24.3" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="36.1" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="47.9" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="59.6" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="71.4" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="83.2" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="94.9" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="106.7" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="118.4" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="130.2" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="142.0" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="153.7" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="165.5" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="177.3" y="94.9" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="189.0" y="94.9" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="0.8" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="106.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="189.0" y="106.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="118.4" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="118.4" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="12.6" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="24.3" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="36.1" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="47.9" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="59.6" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="71.4" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="83.2" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="94.9" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="106.7" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="118.4" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="130.2" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="142.0" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="153.7" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="165.5" y="130.2" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="177.3" y="130.2" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="12.6" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="142.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="177.3" y="142.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="24.3" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="153.7" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="165.5" y="153.7" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="36.1" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="165.5" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="153.7" y="165.5" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="47.9" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="59.6" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="71.4" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="118.4" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="130.2" y="177.3" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="142.0" y="177.3" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="83.2" y="189.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="189.0" width="10.2" height="10.2" rx="1.2"/>
+        <rect class="me2-cell-alone" x="106.7" y="189.0" width="10.2" height="10.2" rx="1.2"/>
+      </g>
+              <circle class="me2-wafer-edge" id="me2-wafer-edge" cx="100" cy="100" r="86" />
+            </svg>
+          </div>
+
+          <!-- 그림 옆 읽기 띠: 캡션 · 범례 · 판정 · 붙여넣기 결과 -->
+          <div class="me2-picture-rail">
+          <div class="me2-caption" id="me2-picture-caption">CORE 맵 · 270° · 뒷면 · 기준 대비</div>
+
+          <!-- 이 줄은 제외 맵 수와 채점 분모를 나른다 = 주장이다.
+               따라서 계산 중 / 채점 못 함 에서는 숫자가 나오면 안 된다. -->
+          <div class="panel-meta is-inline" id="me2-picture-meta">
+            <span class="me2-num" data-me2-picture-meta>맵 12개 중 5개 제외 (규격 미선언) · 채점 528다이 · 340ms</span>
+            <span class="me2-unknown">범위 미상</span>
+            <span class="me2-skel"></span>
+          </div>
+
+          <div class="me2-legend" id="me2-picture-legend">
+            <span><i class="sw-agree"></i>일치 (바닥)</span>
+            <span><i class="sw-miss"></i>불일치</span>
+            <span><i class="sw-only"></i>한쪽만</span>
+          </div>
+
+          <div class="me2-verdict">
+            <div class="me2-headline" id="me2-verdict-headline">
+              <span class="me2-num" data-me2-verdict>일치 <b>512</b> / 판별 <b>528</b></span>
+              <span class="me2-unknown">채점 불가</span>
+              <span class="me2-busy">채점 중</span>
+            </div>
+            <div class="me2-cause" id="me2-verdict-cause">두 지표 일치</div>
+            <!-- 서버가 만든 거절 문장을 그대로 렌더한다. 클라가 다시 쓰지 않는다. -->
+            <div class="me2-refusal" id="me2-refusal">소스 맵: 물리 규격이 선언되지 않았습니다 - 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어
+              정렬을 보증할 수 없습니다. 해당 맵의 물리 규격(칩 크기 · 웨이퍼 지름)을 선언한 뒤 다시 시도하십시오.</div>
+          </div>
+
+          <!-- 엑셀 양식 붙여넣기 결과: 컨트롤 없음(키보드로 그림에 직접 붙여넣는다).
+               결과만 집계 1줄로 말한다 - 셀마다 표시하지 않는다. -->
+          <div class="me2-aggregate" id="me2-paste-result" role="status" data-has-rejects="true" hidden>
+            <span class="k">붙여넣기</span>
+            <span><b data-me2-paste-applied>1204</b>셀 반영</span>
+            <span><b data-me2-paste-rejected>37</b>셀 제외</span>
+            <span class="reason" data-me2-paste-reason>좌표 범위 밖 22 · 값 해석 불가 15</span>
+          </div>
+          </div><!-- /me2-picture-rail -->
+          </div><!-- /me2-picture-main -->
+        </div>
+      </section>
+
+      <!-- ══ [C] 출처 · 후보 · 개수 ═══════════════════════ -->
+      <section class="panel" id="me2-sources-panel">
+        <div class="panel-header">
+          <div class="panel-title">출처 · 후보</div>
+          <div class="panel-meta" id="me2-sources-meta">출처 2개</div>
+        </div>
+
+        <div class="panel-body">
+          <div class="me2-block">
+            <div class="me2-block-head">출처별 프레임</div>
+
+            <div id="me2-source-list">
+              <!-- 출처 1 -->
+              <button class="me2-src" type="button" data-me2-source data-source-field="core_frame"
+                aria-expanded="true" aria-controls="me2-cands-core_frame">
+                <span class="me2-src-line1"><span class="me2-src-name">CORE 맵</span><span class="me2-src-value" data-me2-source-value data-declared="yes">270° · 뒷면</span></span>
+                <span class="me2-src-score">
+                  <span class="me2-num">일치 <span data-me2-agree>512</span> / 판별 <span
+                      data-me2-discriminating>528</span></span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </button>
+
+              <!-- 후보 격자: 2열(뒤집기) x 4행(돌리기). 인라인 아코디언, 한 번에 하나만. -->
+              <div class="me2-cands" id="me2-cands-core_frame" data-me2-candidates-for="core_frame">
+                <div class="me2-cand-legend">숫자 = 일치 / 판별 다이</div>
+                <div class="me2-cand-grid">
+                  <div class="me2-cand-colhead">앞면</div>
+                  <div class="me2-cand-colhead">뒷면</div>
+
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
+                    data-side="front" data-frame-code="rot0_front">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>331</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="0"
+                    data-side="back" data-frame-code="rot0_back">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">0°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot0_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>402</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
+                    data-side="front" data-frame-code="rot90_front">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>288</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="90"
+                    data-side="back" data-frame-code="rot90_back">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">90°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot90_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>356</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
+                    data-side="front" data-frame-code="rot180_front">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>419</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="180"
+                    data-side="back" data-frame-code="rot180_back">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">180°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot180_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>377</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+
+                  <button class="me2-cand" type="button" aria-pressed="false" data-me2-candidate data-rotation="270"
+                    data-side="front" data-frame-code="rot270_front">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags></span></span><span class="me2-cand-code">rot270_front</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>465</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+                  <button class="me2-cand" type="button" aria-pressed="true" data-me2-candidate data-rotation="270"
+                    data-side="back" data-frame-code="rot270_back">
+                    <span class="me2-cand-line1"><span class="me2-cand-deg">270°</span><span class="me2-cand-tags" data-me2-cand-tags>
+                      <span class="me2-tag is-recommended">추천</span>
+                      <span class="me2-tag is-current">현재</span>
+                    </span></span><span class="me2-cand-code">rot270_back</span><span class="me2-cand-score"><span class="me2-num"><span data-me2-cand-agree>512</span> / <span data-me2-cand-discriminating>528</span></span><span class="me2-unknown">미상</span><span class="me2-skel is-sm"></span></span>
+                  </button>
+                </div>
+                <!-- 영구 각주 1개. 반전은 세 번째 축이 아니다. -->
+                <p class="me2-cand-note">뒷면 = 좌우 뒤집기.<br>상하 뒤집기는 별도 후보 아님 - 180° + 좌우 뒤집기와 같은 격자 변환.</p>
+              </div>
+
+              <!-- 출처 2 -->
+              <button class="me2-src" type="button" data-me2-source data-source-field="dt_frame" aria-expanded="false"
+                aria-controls="me2-cands-dt_frame">
+                <span class="me2-src-line1"><span class="me2-src-name">DT 로그</span><span class="me2-src-value" data-me2-source-value data-declared="yes">0° · 앞면</span></span>
+                <span class="me2-src-score">
+                  <span class="me2-num">일치 <span data-me2-agree>498</span> / 판별 <span
+                      data-me2-discriminating>528</span></span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </button>
+              <div class="me2-cands" id="me2-cands-dt_frame" data-me2-candidates-for="dt_frame" hidden></div>
+
+              <!-- (N+1)번째 행: 출처 상호 일치. 다른 행과 똑같이 포커스된다.
+                   출처 하나는 배치를 줄 뿐 상호 확인을 주지 못한다. -->
+              <button class="me2-src is-cross" type="button" data-me2-source data-source-field="__cross_source__"
+                aria-expanded="false">
+                <span class="me2-src-line1"><span class="me2-src-name">출처 2개</span><span class="me2-src-value" data-me2-source-value>상호 일치</span></span>
+                <span class="me2-src-score">
+                  <span class="me2-num">일치 <span data-me2-cross-agree>940</span> · 불일치 <span
+                      data-me2-cross-disagree>12</span> · 한쪽만 <span data-me2-cross-onlyone>334</span></span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 개수. 비율은 이 화면 어디에도 없다 - 분모가 곧 근거다. -->
+          <div class="me2-block">
+            <div class="me2-block-head">개수</div>
+            <div class="me2-counts" id="me2-counts">
+              <div class="me2-kv">
+                <span class="k">1위 일치 / 판별</span>
+                <span class="v">
+                  <span class="me2-num"><span data-me2-top-agree>512</span> / <span
+                      data-me2-top-discriminating>528</span></span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </div>
+              <div class="me2-kv">
+                <span class="k">2위와 차이</span>
+                <span class="v">
+                  <span class="me2-num"><span data-me2-margin-dies>47</span>다이</span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </div>
+              <div class="me2-kv">
+                <span class="k">제외된 맵</span>
+                <span class="v">
+                  <span class="me2-num"><span data-me2-maps-total>12</span>개 중 <span
+                      data-me2-maps-excluded>5</span>개</span>
+                  <span class="me2-unknown">미상</span>
+                  <span class="me2-skel"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 두 지표가 갈릴 때만 나타난다. 늘 나오면 숫자만 두 배가 되고 판정은 그대로다. -->
+          <div class="me2-notice" id="me2-metric-conflict" hidden>두 지표 불일치 · 값 <code>rot270_back</code> / 점유 <code>rot90_front</code></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ── 확정: 읽기는 무마찰, 쓰기는 확인 1회 (arm -> commit, Esc 취소) ── -->
+    <footer id="me2-confirmbar">
+      <div class="me2-confirm-text">
+        <div id="me2-confirm-sentence"><b data-me2-confirm-eqp>EQP-DT-04</b> · <b data-me2-confirm-product>PRD-A19</b> 좌표계를 <b data-me2-confirm-frame>CORE rot270_back / DT rot0_front</b> 로 확정.<br>이후 다이 맵 · 본딩 계획이 이 좌표계를 씁니다.</div>
+        <div id="me2-confirm-note">현재 선언과 동일 · 사람 확정으로 기록</div>
+      </div>
+      <div class="me2-confirm-actions">
+        <span id="me2-confirm-hint">Enter 준비 · Esc 취소</span>
+        <button class="me2-primary-btn" type="button" id="me2-confirm-btn" data-me2-confirm data-armed="false">
+          <span class="me2-idle-label">확정</span>
+          <span class="me2-armed-label">다시 Enter로 확정</span>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <!-- MODULE-ENTRY: 배선 레인이 붙였다. 이 파일에서 배선이 건드리는 유일한 줄이다. -->
+  <script type="module" src="/src/map_editor2.js"></script>
+</body>
+
+</html>

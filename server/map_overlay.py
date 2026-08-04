@@ -364,6 +364,194 @@ def geometry_refusal(meta: dict | None) -> str | None:
     return _GEOMETRY_REFUSAL_TEXT[token]
 
 
+# ═══ [D2] 방위 축에는 출처가 없다 (2026-08-05) ═══════════════════════════════════════════
+#
+# `_rotation_of:235` · `_side_of:257` · `_y_invert_of:261` · `_grid_of:250-251`은 **키 부재 ·
+# 파싱 실패 · 명시적 선언을 같은 값으로** 돌려준다. 그래서 「rotation 0」과 「아무도 회전을
+# 읽은 적이 없다」가 하류에서 **관측 불가능하게 같다.** 실측(2026-08-05, 운영 `wafer_map_metadata`
+# 668행, 읽기 전용): rotation이 그 상태인 행이 516행이다.
+#
+# 🔴 **판정 규칙은 한 줄이고 다섯 축에 같다:**
+#      저장된 값이 **키가 없을 때 리더가 만들어 내는 값과 같으면** 그 값은 선언의 증거가
+#      아니다.
+#    리더의 부재 기본값이 곧 그 축의 **무증거 값**이다 — 두 경우가 같은 값을 내므로, 값만
+#    보고 둘을 가를 방법이 원리적으로 없다. 반대로 값이 그것과 **다르면** 누군가 골랐다는
+#    증거가 된다(어떤 쓰기 경로도 무증거 상태에서 그 값을 만들지 않는다).
+#
+# 🔴 **어휘는 하나다.** `geometry_declaration`의 네 토큰을 그대로 쓴다(같은 문자열, 별칭
+#    상수를 새로 만들지 않는다 — I6). 다만 방위 축에는 기하 축에 **없는** 경우가 하나 있어
+#    토큰이 하나 늘어난다:
+#
+#      `indeterminate` — 값은 있고 형식도 온전한데 **아무도 골랐다는 증거가 없다.**
+#
+#    기하 축에는 이 칸이 비어 있다. `synthesize_grid_meta`가 phys를 쓸 때 **반드시**
+#    `auto_registered` 표지를 같이 쓰고, 실측으로 표지 없는 합성 phys 행이 0건이기 때문이다
+#    (§geometry_declaration). 방위 축은 그렇지 않다 — 표지를 안 달고 방위를 기본값으로
+#    써 넣는 쓰기 경로가 **실재한다**:
+#      · `server/ingestion_workspace/*/auto_update/generate_*.py` — `rotation:0, side:"front",
+#        grid_y_invert:False`를 상수로 쓰고 표지는 없다(core_defect_map:131-137,
+#        eds_fail_map:139-145, dt_map:86-93).
+#      · `client2/src/map_editor.js:6270 buildPushGridMetadata` — 화면 컨트롤을 그대로 쓴다.
+#        초기값이 `currentRotation = 0`(`:66`) / front / 미체크이므로, 조작자가 방위를
+#        **한 번도 보지 않아도** Push 한 번이 `rotation:0`을 써 넣는다.
+#    그러므로 「표지가 없다」는 방위 축에서 선언의 증거가 되지 못한다. 이 칸을 `declared`에
+#    접으면 I4(그럴듯한 기본값이 선언을 사칭)이고, `absent`에 접으면 거짓이다 — 키는 실재하고
+#    소비자는 그 값을 쓴다. 그래서 **자기 토큰**이다.
+#
+# ⚠️ `indeterminate`는 「선언되지 않았다」가 아니라 **「구별할 수 없다」**이다. 조작자가 실제로
+#    0도를 골랐어도 같은 토큰이 나온다. 증거가 그것뿐이므로 그 이상은 말할 수 없다.
+#
+# ⚠️ **표지의 권한은 축마다 다르다** — 기하 축과 갈리는 유일한 지점이고, 이유가 있다.
+#    `auto_registered`는 `PHYS_KEYS` 여섯 개를 덮는 표지다(스펙 §9ⓒ). 방위 축에 그 표지를
+#    적용하는 것은 확장이고, 확장이 성립하는 범위는 **`synthesize_grid_meta`가 실제로 쓸 수
+#    있었던 값**까지다(`map_meta_registrar.py:184-194`):
+#      · rotation · side · grid_y_invert → **언제나 0 / "front" / False.** 그러므로 표지가
+#        붙었는데 `rotation:90`이면 그것을 쓴 것은 등록기가 아니다(에디터가 표지를 승계한 채
+#        방위만 바꾼 경우 — `map_editor.js:6292`). 그때 `auto_registered`라고 답하면 거짓이다.
+#      · grid_start_x · grid_start_y → **관측된 최소 좌표**다. 값이 무엇이든 등록기가 쓸 수
+#        있었으므로 표지가 그대로 설명한다. 여기서 "1이 아니니 사람이 골랐다"고 읽으면 등록기의
+#        bbox 스캔 결과를 선언으로 승격시킨다.
+#    (실측 2026-08-05: 표지 320행 중 rotation/side/y반전이 무증거 값이 아닌 행은 0건 — 지금은
+#     이 구분이 census를 바꾸지 않는다. 그래도 명시해 두는 쪽을 택한다, 조용히 갈릴 자리라서.)
+#
+# 🔴 **이 함수는 DB를 모른다.** 층 ③(선언)은 순수여야 한다(스펙 §0.2). `cell_sources`의
+#    `source_name`을 읽으면 「누가 이 blob을 마지막으로 썼나」는 알 수 있지만 그것은 **축
+#    단위가 아니라 컬럼 단위**이고, 순수 함수를 DB 세션에 묶는 대가로 축 단위 답을 못 얻는다.
+ORIENTATION_INDETERMINATE = "indeterminate"   # 값은 있으나 선언의 증거가 없다
+
+# 방위 축 — `frame_axes`의 앞 다섯 성분과 같은 순서다(같은 축 집합의 두 번째 철자를 만들지
+# 않기 위해 순서까지 맞춘다).
+ORIENTATION_KEYS = ("rotation", "side", "grid_y_invert", "grid_start_x", "grid_start_y")
+
+
+def _read_rotation(raw):
+    """(정규화 값, 읽혔는가). 리더 `_rotation_of`와 같은 정규화(`int` 후 mod 360).
+
+    90의 배수가 아니면 **읽히지 않은 것으로 본다.** `_frame_phys_params:392`가 90/180/270이
+    아닌 값을 전부 rot-0 분기로 흘리므로, 45는 값이 아니라 조용한 0이다.
+    """
+    try:
+        v = int(raw) % 360
+    except (TypeError, ValueError):
+        return None, False
+    return v, v in (0, 90, 180, 270)
+
+
+def _read_side(raw):
+    """리더 `_side_of`는 문자열을 그대로 통과시키고, `_frame_phys_params`는 `== "back"`만
+    본다. 그래서 `"Back"`은 조용히 front가 된다 — 값이 아니라 파싱 실패로 답한다."""
+    v = str(raw)
+    return v, v in ("front", "back")
+
+
+def _read_y_invert(raw):
+    """리더 `_y_invert_of`는 `bool(raw)`다 — 문자열 `"false"`가 **True**가 된다.
+    참/거짓을 진짜로 담은 표현(진리값, 0/1)만 읽혔다고 본다."""
+    if isinstance(raw, bool):
+        return raw, True
+    if isinstance(raw, int) and raw in (0, 1):
+        return bool(raw), True
+    return None, False
+
+
+def _read_grid_start(raw):
+    """리더 `_grid_of`는 `int(...)`이고, 실패하면 격자 전체가 None이 되어 정렬이 거절된다."""
+    try:
+        return int(raw), True
+    except (TypeError, ValueError):
+        return None, False
+
+
+# 축 → (리더와 같은 파서, **리더의 부재 기본값**, **등록기가 이 값을 쓸 수 있었는가**,
+#        **값이 「선언 없음」을 가리킬 수 있는가**).
+#
+# 두 번째 성분의 출처는 리더 그 자체다: `_rotation_of:237`(0) · `_side_of:258`("front") ·
+# `_y_invert_of:262`(False) · `_grid_of:250-251`(1). 여기 상수를 손으로 적은 것이 아니라
+# 리더가 부재에서 만들어 내는 값을 옮긴 것이다 — 리더가 바뀌면 이 표도 같이 바뀌어야 한다
+# (`test_orientation_declaration.py`가 그 일치를 리더에게 직접 물어 채점한다).
+#
+# 세 번째 성분은 `synthesize_grid_meta`의 치역이다(위 ⚠️).
+#
+# 🔴 네 번째 성분 — **start에는 값으로 하는 판정이 없다**(총괄 확정 2026-08-05).
+#    무증거 값 규칙(Rule N)은 「키가 없을 때 리더가 만드는 값과 같으면 증거가 아니다」인데,
+#    그 추론은 **키가 없을 수 있을 때만** 성립한다. start는 668행 중 부재가 0건이고, 등록기가
+#    쓰는 값이 상수가 아니라 **관측된 최소 좌표**라 어떤 값도 등록기의 서명이 될 수 없다.
+#    그래서 start는 표지만이 출처를 가른다: 표지 있으면 `auto_registered`, 없으면 값이
+#    무엇이든 `declared`. `indeterminate`는 start에 발생하지 않는다.
+#    (이 성분이 없으면 서버는 1을 무증거로, 클라는 0을 무증거로 읽어 668행 중 660행의
+#     출처 판정이 서로 뒤집힌다 — 같은 규칙의 두 구현이 만드는 어긋남이다.)
+_ORIENTATION_READERS = {
+    "rotation":      (_read_rotation,   0,       lambda v: v == 0,       True),
+    "side":          (_read_side,       "front", lambda v: v == "front", True),
+    "grid_y_invert": (_read_y_invert,   False,   lambda v: v is False,   True),
+    "grid_start_x":  (_read_grid_start, 1,       lambda v: True,         False),
+    "grid_start_y":  (_read_grid_start, 1,       lambda v: True,         False),
+}
+
+
+def orientation_declaration(meta: dict | None) -> dict:
+    """**이 맵의 방위가 「선언」인가** — 축마다, 그 질문의 유일한 철자.
+
+    반환: `{축: {"value": 값, "source": 토큰}}`. 다섯 축 전부가 항상 들어 있다.
+    `value`는 **리더가 실제로 쓸 값**이므로(부재·파싱실패면 무증거 값) 호출자가 판정과
+    무관하게 그대로 쓸 수 있다 — 값과 출처를 한 번에 주는 것이 이 층의 계약이다(스펙 §0.2 ③).
+    모양(`{value, source}`)과 토큰 문자열은 클라 `physDeclaration`(`map_editor.js:1509`)과
+    같다. 두 채점기가 어휘를 둘 가지면 매핑표가 필요해지고, 매핑표는 답의 두 번째 구현이다.
+    """
+    m = meta if isinstance(meta, dict) else {}
+    marked = m.get(AUTO_REGISTERED_KEY) is True
+    out = {}
+    for axis, (reader, absent_default, synth_could_write,
+               value_can_indicate_absence) in _ORIENTATION_READERS.items():
+        raw = m.get(axis)
+        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+            out[axis] = {"value": absent_default, "source": GEOMETRY_ABSENT}
+            continue
+        value, ok = reader(raw)
+        if not ok:
+            out[axis] = {"value": absent_default, "source": GEOMETRY_UNPARSABLE}
+        elif marked and synth_could_write(value):
+            out[axis] = {"value": value, "source": GEOMETRY_AUTO_REGISTERED}
+        elif not value_can_indicate_absence or value != absent_default:
+            out[axis] = {"value": value, "source": GEOMETRY_DECLARED}
+        else:
+            out[axis] = {"value": value, "source": ORIENTATION_INDETERMINATE}
+    return out
+
+
+_ORIENTATION_AXIS_LABEL = {
+    "rotation": "회전", "side": "면", "grid_y_invert": "y반전",
+    "grid_start_x": "시작 X", "grid_start_y": "시작 Y",
+}
+
+# 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(`_GEOMETRY_REFUSAL_TEXT`와 같은
+# 규율). 판정은 `orientation_declaration`이 이미 끝냈고 여기서는 표시만 한다.
+_ORIENTATION_REFUSAL_TEXT = {
+    GEOMETRY_AUTO_REGISTERED: "자동 등록 때 채워진 값입니다 ― 아무도 재지 않았습니다",
+    GEOMETRY_ABSENT: "키가 없습니다",
+    GEOMETRY_UNPARSABLE: "값이 읽히지 않습니다",
+    ORIENTATION_INDETERMINATE: (
+        "값은 있으나 키가 없을 때와 **같은 값**이라, 누가 그렇게 선언한 것인지 "
+        "아무도 읽지 않은 것인지 구별할 수 없습니다"),
+}
+
+
+def orientation_refusal(meta: dict | None) -> str | None:
+    """방위가 선언이 **아닌** 축과 그 이유(사람 말). 다섯 축 전부 선언이면 None.
+
+    판정은 하지 않는다 — `orientation_declaration`을 호출해 토큰에 문장을 붙일 뿐이다.
+
+    🔴 **아직 아무도 부르지 않는다.** 이 함수를 좌표 경로에 꽂는 것은 동작 변경이고
+       (거절이 늘어난다), 그 규모를 먼저 재기로 했다 — 단계 B의 결정이다.
+    """
+    decl = orientation_declaration(meta)
+    parts = [f"{_ORIENTATION_AXIS_LABEL[axis]}: {_ORIENTATION_REFUSAL_TEXT[d['source']]}"
+             for axis, d in decl.items() if d["source"] != GEOMETRY_DECLARED]
+    if not parts:
+        return None
+    return " · ".join(parts)
+
+
 def frame_axes(meta: dict | None):
     """맵 프레임을 정의하는 **축 전부**:
     (회전, 면, y반전, start_x, start_y, cols, rows, phys 서명).
