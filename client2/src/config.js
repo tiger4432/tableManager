@@ -38,3 +38,76 @@ export const WS_HEALTHY_SESSION_MS = 1000;
 // Floor between two signal-triggered immediate retries, so rapid alt-tabbing cannot turn the
 // wake signal into an unthrottled retry loop.
 export const WS_WAKE_MIN_GAP_MS = 500;
+
+// ── The connect watchdog ────────────────────────────────────────────────────────
+// EVERYTHING ABOVE IS DRIVEN BY `onclose`, AND A HANG DELIVERS NO `onclose`. Measured in
+// production 2026-08-04: reaching the app as `localhost` resolves to the IPv6 loopback first
+// while the server binds IPv4 only, and the socket then enters CONNECTING and never leaves —
+// no `onopen`, no `onclose`, no `onerror`. The same server by its external IP connects fine.
+// The server-side cause is being fixed separately; this constant is about the client surviving
+// it, because any blackholed route reproduces it: a proxy that neither completes nor rejects an
+// Upgrade, a firewall that drops, a half-open NAT.
+//
+// The consequence of no `onclose` is total: `scheduleReconnect` is only ever called from
+// `onclose`, so the ladder never advances and no retry is ever queued; and `wakeNow` refuses to
+// act on a CONNECTING socket, so focus and `online` become no-ops too. The 5s ceiling, the wake
+// signals and the flap guard are all bypassed by a socket that simply never resolves.
+//
+// WHY 8000 AND NOT LESS. Killing a connection that was about to succeed converts a working page
+// into a permanent reconnect loop — a worse failure than the hang — so this is chosen from the
+// TOP of the measured range, not the middle. Against the measurements in hand:
+//   · a completed handshake against the live :8080 is 2.54ms median, 4.15ms max. 8000ms is
+//     ~1900x the slowest real handshake ever recorded on this stack.
+//   · the largest real latency anywhere here is server lifespan startup: 12ms median, 3094ms
+//     max over n=324 process starts. That normally shows up as a REFUSED connect (0.49ms) and
+//     never reaches this timer at all — but even under the pessimistic reading, where the
+//     listener accepts and the app stalls the Upgrade for the whole 3094ms, 8000ms still leaves
+//     2.6x headroom.
+// WHY NOT MORE. The bound is dead time the user stares at before the ladder is even allowed to
+// start; worst-case recovery is 8000ms + one rung (<= WS_RECONNECT_CEILING_MS), about 13s.
+// Raising it buys headroom nothing has measured a need for and pays in visible dead time.
+//
+// IT IS A CONSTANT HERE, NOT A LITERAL IN `websocket.js`, so a site whose real connects are
+// genuinely slower than anything measured can raise it without a code change.
+export const WS_CONNECT_TIMEOUT_MS = 8000;
+// How long a socket must have been CONNECTING before a WAKE SIGNAL is allowed to abandon it.
+// `wakeNow` refuses to act on a CONNECTING socket because the point is to shorten a wait, never
+// to open a second socket beside one still negotiating — but "CONNECTING" and "negotiating"
+// stopped being the same thing once a blackholed route could hold a socket there forever, and
+// the measurements say the difference is not subtle: a real handshake is 4.15ms at worst, so
+// 1000ms is ~240x anything a live negotiation has ever taken. Below this the old refusal stands
+// unchanged. See the long note in `wakeNow` for why the signal gets to break a stale one at all
+// when the watchdog above would eventually do it anyway.
+export const WS_CONNECT_STALE_MS = 1000;
+
+// ── The spec-only save's response bound ─────────────────────────────────────────
+// SAME FAILURE CLASS AS THE WATCHDOG ABOVE, ON THE OTHER PROTOCOL. Reported live 2026-08-04:
+// 📐 규격만 저장 sticks on "Saving..." forever WHILE THE SAVE ACTUALLY SUCCEEDS. The button is
+// restored in a `finally`, so the only way it stays stuck is that the `finally` is never
+// reached — the `await fetch(...)` never settles. A hung HTTP response is the same blackholed
+// route that holds a WebSocket in CONNECTING.
+//
+// 🔴 NO PRODUCTION MEASUREMENT EXISTS FOR THIS ENDPOINT, AND ONE IS NOT INVENTED HERE.
+//    `server/server.log` carries 486 `data/updates` lines and every one of them is
+//    `http://testserver` — FastAPI's TestClient, not browser traffic. There is no request
+//    duration instrumentation on this route at all. Quoting a test-suite number as if it
+//    described production is how this repo has previously argued for defects that did not
+//    exist, so the bound below is argued from the SHAPE of the work and the COST of being
+//    wrong instead, and it is labelled as such.
+//
+// WHY 15000. The work is a SINGLE-ROW upsert through the same batch route ⚡ Push uses for
+// thousands of cells. A server taking longer than 15s for one row is not slow, it is wedged,
+// and the operator needs to be told that rather than keep staring at a disabled button. For
+// scale, 15s is ~5x the largest real latency ever measured anywhere on this stack (3094ms
+// lifespan startup, n=324) — an unrelated and much heavier operation, and the only
+// order-of-magnitude anchor actually in hand.
+//
+// WHY BEING WRONG IS CHEAPER HERE THAN IN THE SOCKET CASE. Two reasons, and they are why this
+// bound can be tighter relative to its evidence than WS_CONNECT_TIMEOUT_MS is:
+//   · the write is IDEMPOTENT — the endpoint upserts on `business_key_val` and the payload
+//     carries the whole spec, so a repeat save produces the same row rather than a second one;
+//   · the abort message does not claim the write was discarded. It says the outcome is unknown
+//     and asks the operator to verify, so a premature abort costs one re-save and can never
+//     cause a wrong belief about what is stored.
+// A too-LONG bound, by contrast, is the stranded UI this exists to end.
+export const MAP_SPEC_SAVE_TIMEOUT_MS = 15000;

@@ -52,6 +52,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
 const SRC = readFileSync(SRC_PATH, 'utf8');
+// The response bound lives in config.js, so it is READ from there rather than typed here — a
+// harness that hardcoded 15000 would keep passing after someone retuned the constant.
+const CFG_PATH = join(ROOT, 'client2', 'src', 'config.js');
+const CFG = readFileSync(CFG_PATH, 'utf8');
 const verbose = process.argv.includes('--verbose');
 
 function die(msg) {
@@ -137,13 +141,34 @@ function keysCovered(S, frame) {
 }
 
 // ── Sandbox ─────────────────────────────────────────────────────────────────────────────
+function cfgNumber(name) {
+  const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*([0-9.]+)\\s*;`).exec(CFG);
+  if (!m) die(`\`export const ${name}\` is gone from config.js — renamed, moved, or not a literal.`);
+  return Number(m[1]);
+}
+
 function buildEnv(src, opts = {}) {
   const requests = [];
   const toasts = [];
   const confirms = [];
   const frame = opts.frame || WIDE;
+  // A CONTROLLABLE CLOCK. The response bound is a `setTimeout`, and a harness that let the real
+  // one run would either wait 15 real seconds or measure nothing. Timers are recorded with the
+  // delay they were ASKED for, so "the bound is the configured one" and "the timer was cleared"
+  // are both readable — the second is the half that matters on the success path, where a
+  // surviving timer would abort somebody else's request later.
+  const timers = [];
+  let timerSeq = 0;
+  const aborts = [];
 
   const sandbox = {
+    AbortController,
+    setTimeout: (fn, ms) => { const id = ++timerSeq; timers.push({ id, ms, fn }); return id; },
+    clearTimeout: (id) => {
+      const i = timers.findIndex(t => t.id === id);
+      if (i >= 0) timers.splice(i, 1);
+    },
+    MAP_SPEC_SAVE_TIMEOUT_MS: cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS'),
     console: { warn() {}, log() {}, error() {}, info() {}, debug() {} },
     JSON, Math, Number, Object, Array, String, Boolean, Set, Map, parseInt, parseFloat,
     isNaN, encodeURIComponent, Promise,
@@ -167,16 +192,52 @@ function buildEnv(src, opts = {}) {
     showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }),
     syncValidDieRefControls() {},
     confirm: (text) => { confirms.push(String(text)); return opts.approve !== false; },
-    fetch: async (url, init) => {
+    fetch: (url, init) => {
       const method = (init && init.method) ? init.method : 'GET';
-      requests.push({ method, url: String(url), body: init && init.body ? init.body : null });
+      requests.push({
+        method, url: String(url), body: init && init.body ? init.body : null,
+        // Recorded so "the request carried an abort signal at all" is a measurement. A timeout
+        // that arms a timer but never wires the signal through aborts nothing.
+        hasSignal: !!(init && init.signal),
+      });
       const answer = opts.answer ? opts.answer(String(url), method, requests.length) : null;
-      if (answer && answer.throwNetwork) throw new Error('network down');
-      return {
+      if (answer && answer.throwNetwork) return Promise.reject(new Error('network down'));
+      const respond = () => ({
         ok: answer ? answer.ok !== false : true,
         status: answer && answer.status ? answer.status : 200,
         json: async () => (answer && answer.body !== undefined) ? answer.body : { data: [] },
-      };
+      });
+      // THE PRODUCTION DEFECT, MODELLED EXACTLY: the request goes out and the promise NEVER
+      // settles. The only thing that can ever end it is the caller's own abort, and a real
+      // `fetch` rejects with an AbortError when that happens — so this one does too, because
+      // the product branches on having caused the abort rather than on the error's shape.
+      if (answer && answer.neverSettles) {
+        return new Promise((_resolve, reject) => {
+          const sig = init && init.signal;
+          if (!sig) return;                       // no signal wired => genuinely forever
+          sig.addEventListener('abort', () => {
+            aborts.push({ at: requests.length });
+            const err = new Error('The user aborted a request.');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      }
+      // A slow-but-real response: settles only when the case says so, which is how "the answer
+      // arrived INSIDE the bound" is expressed without a wall clock.
+      if (answer && answer.deferred) {
+        return new Promise((resolve, reject) => {
+          answer.deferred.settle = () => resolve(respond());
+          const sig = init && init.signal;
+          if (sig) sig.addEventListener('abort', () => {
+            aborts.push({ at: requests.length });
+            const err = new Error('The user aborted a request.');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      }
+      return Promise.resolve(respond());
     },
   };
   sandbox.globalThis = sandbox;
@@ -190,8 +251,15 @@ function buildEnv(src, opts = {}) {
   try { vm.runInContext(pieces.join('\n\n'), sandbox); }
   catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
 
-  return { S: sandbox, requests, toasts, confirms };
+  return {
+    S: sandbox, requests, toasts, confirms, timers, aborts,
+    // Fire every pending timer, which is how "the bound elapsed" is expressed.
+    fireTimers: () => { [...timers].forEach(t => t.fn()); },
+  };
 }
+
+/** One microtask drain, so a not-awaited call can be inspected mid-flight. */
+const flush = () => new Promise(r => setImmediate(r));
 
 // A stored metadata row as the server would hand it back, carrying TWO keys this editor has
 // never modelled. They are the read-modify-write probe.
@@ -486,6 +554,131 @@ async function run(src) {
     evidence.push('J round trip: marked payload carries auto_registered, unmarked does not');
   }
 
+  // ── K. THE RESPONSE THAT NEVER COMES. ─────────────────────────────────────────────────
+  //   Reported live 2026-08-04: 📐 규격만 저장 sticks on "Saving..." forever WHILE THE SAVE
+  //   ACTUALLY SUCCEEDS. The button is restored in a `finally`, so a stuck button means the
+  //   `finally` was never reached, which means `await fetch(...)` never settled.
+  //
+  //   🔴 NOTHING HERE MAY `await` THE CALL UNCONDITIONALLY. That is the whole failure mode: on
+  //      the unbounded code the returned promise never settles, so an `await` would hang this
+  //      harness rather than fail it — and it would hang inside the MUTATION SWEEP, where the
+  //      unbounded version is deliberately reintroduced. Settlement is therefore OBSERVED (a
+  //      `done` flag set from `.then`) instead of waited for.
+  {
+    // K1. The fixture, and the reproduction: the request goes out, nothing comes back.
+    const env = buildEnv(src, {
+      answer: (url, method) => (method === 'PUT'
+        ? { neverSettles: true }
+        : { ok: true, body: { data: [{ data: { grid_metadata: { value: JSON.stringify(storedRow()) } } } ] } }),
+    });
+    let done = false;
+    env.S.saveMapSpecOnly().then(() => { done = true; }, () => { done = true; });
+    await flush(); await flush();
+
+    const put = env.requests.filter(r => r.method === 'PUT');
+    eq('K1/the write really was sent (the fixture is alive)', 1, put.length);
+    eq('K1/...and no response has arrived, so the button is mid-flight', true,
+      env.S.el.btnSaveMapSpec.disabled === true
+        && env.S.el.btnSaveMapSpec.textContent === '📐 Saving...',
+      'this is the state the user was stranded in, and it is CORRECT until the bound elapses');
+    eq('K1/the request carries an abort signal', true, put[0].hasSignal,
+      'a bound that arms a timer but never wires the signal through aborts nothing');
+    eq('K1/the armed bound is the one configured, not a number typed here',
+      cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS'),
+      env.timers.length === 1 ? env.timers[0].ms : null);
+
+    // K2. The bound elapses. THIS is what did not exist.
+    env.fireTimers();
+    await flush(); await flush();
+    eq('K2/the call settles instead of hanging forever', true, done,
+      'without a bound this stays pending and the button never comes back');
+    eq('K2/the button is released', [false, '📐 규격만 저장'],
+      [env.S.el.btnSaveMapSpec.disabled, env.S.el.btnSaveMapSpec.textContent]);
+    const timeoutToast = env.toasts.filter(t => t.kind === 'error').slice(-1)[0];
+    eq('K2/...and the user is told', true, !!timeoutToast);
+
+    // K3. THE MESSAGE MUST NOT CLAIM THE WRITE WAS DISCARDED. In the reported incident the
+    //     write HAD landed. "Nothing was recorded" is wrong in the dangerous direction: it
+    //     sends the operator to redo the edit from a stale screen.
+    eq('K3/the timeout does NOT claim nothing was recorded', false,
+      /아무것도 기록되지 않았습니다/.test(timeoutToast ? timeoutToast.msg : ''),
+      'the write may well have landed — in the reported incident it had');
+    eq('K3/...it says the outcome is unknown and must be checked', true,
+      /확인이 필요합니다/.test(timeoutToast ? timeoutToast.msg : ''));
+    eq('K3/...and says how long it waited, not "The user aborted a request"', true,
+      /초 안에 응답이/.test(timeoutToast ? timeoutToast.msg : '')
+        && !/aborted/i.test(timeoutToast ? timeoutToast.msg : ''),
+      'echoing the AbortError text tells the user nothing about their save');
+
+    // K4. A PLAIN NETWORK ERROR IS ALSO NOT A DISCARD. `TypeError: Failed to fetch` can happen
+    //     before the request is sent OR after it was sent and the response was lost, and JS
+    //     cannot tell those apart — so it must not assert the comfortable one.
+    const netEnv = buildEnv(src, { answer: answerWith(storedRow(), { }) });
+    netEnv.S.fetch = (url, init) => {
+      const method = (init && init.method) ? init.method : 'GET';
+      netEnv.requests.push({ method, url: String(url) });
+      if (method === 'PUT') return Promise.reject(new Error('Failed to fetch'));
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: async () => ({ data: [{ data: { grid_metadata: { value: JSON.stringify(storedRow()) } } }] }),
+      });
+    };
+    await netEnv.S.saveMapSpecOnly();
+    const netToast = netEnv.toasts.filter(t => t.kind === 'error').slice(-1)[0];
+    eq('K4/a network error does not claim nothing was recorded either', false,
+      /아무것도 기록되지 않았습니다/.test(netToast ? netToast.msg : ''),
+      'a lost response is indistinguishable from a rejected send, so it must not assert either');
+    eq('K4/...and it too asks for a check', true,
+      /확인이 필요합니다/.test(netToast ? netToast.msg : ''));
+    eq('K4/...while still naming the cause', true,
+      /Failed to fetch/.test(netToast ? netToast.msg : ''));
+    eq('K4/the button is released on that path too', false,
+      netEnv.S.el.btnSaveMapSpec.disabled);
+
+    // K5. THE NEGATIVE, and the one that keeps the bound honest: a slow-but-REAL save that
+    //     answers inside the bound must NOT be aborted. A bound that killed a working save
+    //     would turn a successful write into a phantom failure.
+    const deferred = {};
+    const slow = buildEnv(src, {
+      answer: (url, method) => (method === 'PUT'
+        ? { deferred }
+        : { ok: true, body: { data: [{ data: { grid_metadata: { value: JSON.stringify(storedRow()) } } }] } }),
+    });
+    let slowDone = false;
+    slow.S.saveMapSpecOnly().then(() => { slowDone = true; }, () => { slowDone = true; });
+    await flush(); await flush();
+    eq('K5/the slow save is still in flight and NOT yet aborted', 0, slow.aborts.length);
+    deferred.settle();                       // the response arrives, inside the bound
+    await flush(); await flush();
+    eq('K5/a slow-but-successful save completes', true, slowDone);
+    eq('K5/...was never aborted', 0, slow.aborts.length);
+    eq('K5/...reported success, not a phantom failure', true,
+      slow.toasts.some(t => t.kind === 'success'));
+    // The other half of "cleared": a timer that outlives its request aborts a later one.
+    eq('K5/...and the bound timer was cleared, not left armed', 0, slow.timers.length);
+
+    // K6. The ordinary fast path must not leave a timer behind either.
+    const fast = buildEnv(src, { answer: answerWith(storedRow()) });
+    await fast.S.saveMapSpecOnly();
+    eq('K6/a fast save leaves no timer armed', 0, fast.timers.length);
+    eq('K6/...and no abort happened', 0, fast.aborts.length);
+
+    // K7. THE BOUND'S VALUE, SCORED AGAINST LITERALS RATHER THAN AGAINST ITSELF. Every other
+    //     assertion here reads the constant from config.js, so all of them move WITH a retune
+    //     and none would notice a bound of 100ms. These two numbers are typed here on purpose.
+    //     There is no production measurement for this endpoint (`server/server.log` holds only
+    //     TestClient traffic), so the band is wide and honest rather than narrow and invented.
+    const bound = cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS');
+    eq('K7/the bound is long enough not to kill a save that was going to work', true,
+      bound >= 5000, `${bound}ms — below this a normal save on a loaded server is at risk`);
+    eq('K7/...and short enough that a wedged server is not an indefinite stare', true,
+      bound <= 30000, `${bound}ms — beyond this the operator has already given up`);
+
+    evidence.push(`K hang: PUT sent, button held at 📐 Saving...; bound `
+      + `${cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS')}ms released it and the toast asks for a check `
+      + `instead of claiming a discard; a save answering inside the bound was untouched`);
+  }
+
   return { failures, compared, evidence };
 }
 
@@ -572,6 +765,52 @@ const MUTANTS = {
   'auto-registration-is-written-for-everything': (s) => once(s,
     '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
     '  gridMeta.auto_registered = true;'),
+  // ── K: THE RESPONSE BOUND ──────────────────────────────────────────────────────────────
+  // TODAY'S CODE, RESTORED EXACTLY. The request goes out with no signal and no timer, so the
+  // promise never settles and the button never comes back. This mutant IS the reported defect,
+  // and the assertions it trips are the reproduction.
+  // ⚠️ ANCHORED ON THE `signal` SPREAD PLUS ITS CLOSING LINES. `body: JSON.stringify(payload),`
+  //    alone is NOT unique in map_editor.js — the ⚡ Push writer spells it identically — and a
+  //    first-match replace would have mutated a function this harness does not score, coming
+  //    back NOT CAUGHT and reading as a hole in the assertions.
+  'the-write-has-no-response-bound': (s) => once(s,
+    ['  const abort = (typeof AbortController === \'function\') ? new AbortController() : null;',
+     '  let timedOut = false;',
+     '  const timeoutTimer = abort',
+     '    ? setTimeout(() => { timedOut = true; abort.abort(); }, MAP_SPEC_SAVE_TIMEOUT_MS)',
+     '    : null;'].join('\n'),
+    ['  const abort = null;',
+     '  let timedOut = false;',
+     '  const timeoutTimer = null;'].join('\n')),
+  // The timer is armed but the signal is never handed to `fetch`, so the abort has nothing to
+  // abort. Arming a timer is not a timeout.
+  'the-abort-signal-is-never-wired-through': (s) => once(s,
+    '      ...(abort ? { signal: abort.signal } : {}),',
+    '      // signal not wired'),
+  // The bound fires but the message reverts to the claim that is wrong in the dangerous
+  // direction — the reported incident had the write LANDING while the user was told otherwise.
+  'the-timeout-claims-nothing-was-recorded': (s) => once(s,
+    ['      showToast(`맵 규격 저장 — ${Math.round(MAP_SPEC_SAVE_TIMEOUT_MS / 1000)}초 안에 응답이 `',
+     '        + `오지 않았습니다. 저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인한 뒤 `',
+     '        + `다시 시도하십시오.`, \'error\');'].join('\n'),
+    '      showToast(`맵 규격 저장 실패 — 아무것도 기록되지 않았습니다.`, \'error\');'),
+  // ...and the same claim on the network-error branch, which is the case JS genuinely cannot
+  // resolve: a lost response and a rejected send look identical from here.
+  'the-network-error-claims-nothing-was-recorded': (s) => once(s,
+    ['      showToast(`맵 규격 저장 — 응답을 받지 못했습니다 (${(e && e.message) ? e.message : e}). `',
+     '        + `저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인하십시오.`, \'error\');'].join('\n'),
+    '      showToast(`맵 규격 저장 실패 — 아무것도 기록되지 않았습니다.`, \'error\');'),
+  // The timer outlives the request. Harmless for this controller, which is already spent — but
+  // it is the shape that aborts the NEXT request once a controller is reused.
+  'the-bound-timer-is-never-cleared': (s) => once(s,
+    '    if (timeoutTimer !== null) clearTimeout(timeoutTimer);',
+    '    /* timer left armed */;'),
+  // 🔴 NO MUTANT FOR THE BOUND'S VALUE, AND THAT IS DELIBERATE. This harness drives a virtual
+  //    clock, so retuning `MAP_SPEC_SAVE_TIMEOUT_MS` changes no behaviour it can observe — and
+  //    every assertion that quotes the bound reads it from config.js, so they would all move
+  //    with the mutation and stay green. Declaring a mutation nothing can catch is how a
+  //    harness ends up with a permanent hole it reports as coverage. The value is defended
+  //    instead by K7, which scores it against literals typed here.
   // ── NEGATIVE CONTROL. A comment-only edit must ESCAPE. A corpus that "catches" this is
   //    keying on source text rather than behaviour, and its caught column means nothing.
   '__control_comment_only': (s) => once(s,
@@ -607,8 +846,13 @@ const MUTANTS = {
     if (newOnes.length > 0) caught++;
     else console.log(`   ✗ mutant '${name}' was NOT caught — the assertions above do not score `
       + 'what they claim to score');
-    if (verbose) console.log(`   mutant '${name}': ${newOnes.length} new failure(s)`
-      + (newOnes.length ? ` — ${newOnes[0].slice(0, 120)}` : ''));
+    // EVERY new failure, not just the first. Which assertions a mutant trips is the evidence
+    // that they score what they claim to; one truncated line cannot show that, and for the
+    // mutant that restores the unbounded write the full list IS the bug report.
+    if (verbose) {
+      console.log(`   mutant '${name}': ${newOnes.length} new failure(s)`);
+      newOnes.forEach(f => console.log(`       · ${f}`));
+    }
   }
   console.log(`--- mutation check: ${caught}/${total} defects caught ---`);
   process.exit(base.failures.length === 0 && caught === total ? 0 : 1);

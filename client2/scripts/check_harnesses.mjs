@@ -154,7 +154,10 @@ const FLOORS = new Map([
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and
   // the stranded-cell count in the confirm is checked against an independent set-difference
   // oracle rather than against a number the code produced.
-  ['map_spec_only_save_harness.mjs', 36],
+  // Raised 36 -> 59 on 2026-08-04 with the response-bound round: the PUT had no timeout, so a
+  // hung response stranded the button on "Saving..." forever while the write had already
+  // landed, and the catch block told the operator nothing was recorded.
+  ['map_spec_only_save_harness.mjs', 59],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],
@@ -185,6 +188,11 @@ const FLOORS = new Map([
   // after a server restart). Same rule as the other new entries: the floor is the count it
   // reports on the commit that introduces it — there is no earlier tree to measure it against.
   ['ws_reconnect_backoff_harness.mjs', 42],
+  // New 2026-08-04 with the connect-watchdog round. The reconnect ladder above it is driven
+  // entirely by `onclose`, so a socket that enters CONNECTING and never leaves bypassed all of
+  // it — the production hang produced exactly 1 attempt and 0 retries. Same rule as the other
+  // new entries: the floor is the count it reports on the commit that introduces it.
+  ['ws_connect_watchdog_harness.mjs', 39],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
