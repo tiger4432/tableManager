@@ -460,6 +460,7 @@ function initDOMElements() {
   el.btnValidDieSave = document.getElementById('btn-valid-die-save');
   el.validDieRefKey = document.getElementById('valid-die-ref-key');
   el.validDieRefList = document.getElementById('valid-die-ref-list');
+  el.validDieRefSelect = document.getElementById('valid-die-ref-select');
 
   el.btnSelectMenu = document.getElementById('btn-select-menu');
   el.selectMenuDropdown = document.getElementById('select-menu-dropdown');
@@ -549,10 +550,25 @@ function initDOMElements() {
   //       적용은 이제 🎯 APPLY 버튼이고, 저장은 💾 SAVE 버튼이다(사용자 지시 2026-08-04).
   if (el.validDieRefKey) {
     el.validDieRefKey.addEventListener('focus', populateValidDieRefList);
+    // [1-a] 입력칸을 직접 고쳤으면 어느 컨트롤이 맞는지 다시 판정한다 — 목록에 없는 키를
+    //       타이핑하면 select로는 표현할 수 없으므로 입력칸이 유지돼야 한다.
+    el.validDieRefKey.addEventListener('input', renderValidDieKeyControl);
+  }
+  // [1-a] 드롭다운은 **값을 옮길 뿐 적용하지 않는다.** `change`에 적용을 달면 3-a가
+  //       없앤 바로 그 동작(고르기만 해도 기하 메타가 갈아끼워짐)이 되살아난다.
+  //       적용은 🎯 APPLY, 저장은 💾 SAVE — 이 두 경로는 한 글자도 바뀌지 않았다.
+  //       값의 정본은 `#valid-die-ref-key` 하나이므로 여기서 하는 일은 그 칸에 쓰는 것뿐이다.
+  if (el.validDieRefSelect) {
+    el.validDieRefSelect.addEventListener('change', () => {
+      if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;
+    });
   }
   if (el.btnValidDieApply) el.btnValidDieApply.addEventListener('click', onValidDieRefChanged);
   if (el.btnValidDieSave) el.btnValidDieSave.addEventListener('click', saveValidDieRefDeclaration);
   fetchAndRenderPresets();
+  // [1-a] 프리셋 목록과 **같은 시점**에 채운다. 종전에는 입력칸 `focus`가 유일한 계기였는데,
+  //       드롭다운은 focus 전에 이미 보이므로 그 시점으로는 영영 비어 있게 된다.
+  populateValidDieRefList();
 
   const inputsToRedraw = [el.gridCols, el.gridRows, el.gridStartX, el.gridStartY, el.gridYInvert, el.showAnnotations];
   inputsToRedraw.forEach(input => {
@@ -2047,16 +2063,22 @@ function isCellInsideWafer(c, r, visualCols, visualRows) {
 let validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
 
 // [1-a] THE STORAGE TABLE OF A VALID-DIE MAP. Fixed, not chosen (user ruling 2026-08-04):
-// "유효 다이 맵을 저장하는 테이블은 valid_die_ref라는 테이블로 항상 고정".
+// "유효 다이 맵을 저장하는 테이블은 valid_die_ref라는 테이블로 항상 고정 ... 불러오기는
+//  무조건 valid_die_ref 를 이용하게".
 //
-// 🔴 This constant is what the UI *authors* with. It is deliberately NOT pushed into
-//    `parseValidDieRef`: that function is the STORAGE FORMAT's meaning and it is scored on
-//    both sides of the seam (`contracts/map_seam` role `parse_valid_die_ref`). A bare string
-//    means "a map in MY table" in every row already stored, and re-reading those 8 rows as
-//    `valid_die_ref` keys would repoint every one of them at a map that is not the one the
-//    operator declared — the screen would still look healthy. New designations are written in
-//    the explicit `{table, map_id}` form so they carry their table with them and no reader
-//    has to infer it.
+// 🔴 The ruling covers BOTH sides now — authoring AND loading. The previous round pinned only
+//    authoring and left `parseValidDieRef` honouring whatever table a stored reference names;
+//    the user re-stated the requirement and it is explicit, so the reader is pinned too.
+//    What that costs, stated plainly rather than discovered later: the 8 declarations written
+//    before this ruling name `bonding_map`/`dt_map`, and their keys do not exist in
+//    `valid_die_ref`. They will REFUSE by name (§resolveReferenceSpec) — they will not fall
+//    back to circle geometry and they will not render an empty mask. The user ruled that
+//    losing those dev-environment masks is acceptable; a mask that is silently wrong is not.
+// 🔴 Reading is pinned; WRITING still preserves the declared bytes. An untouched legacy row is
+//    never rewritten (`validDieRefForPush` keeps `raw` verbatim), so `valid_die_push_decision_
+//    cases` still expects `tpl_map` back out of the payload while `valid_die_ref_parse_cases`
+//    expects `valid_die_ref` on the way in. Those two are no longer the same number, which is
+//    exactly why the seam scores them through two different readers.
 // (The former `validDieRefTableTouched` flag lived here. It existed only to tell a user-chosen
 //  table apart from one the app forced into a <select>; with the <select> gone there is no
 //  such ambiguity, and its invariant — an untouched declaration is never rewritten — now rests
@@ -2072,11 +2094,19 @@ const VALID_DIE_TABLE = 'valid_die_ref';
 let validDieResolveSeq = 0;
 
 // 선언의 해석. **순수 함수** — 네트워크를 타지 않으므로 계약 벡터로 바로 채점된다.
-// 반환: null(선언 없음) | {table, mapKey} | {unreadable: true, reason}
+// 반환: null(선언 없음) | {table, mapKey, declaredTable} | {unreadable: true, reason}
 //
 // 규칙 하나로 말하면: **`null`/부재만 "선언 없음"이고, 그 외에는 전부 선언이다.**
 // 읽을 수 없는 선언을 "선언 없음"으로 접으면 오타 하나가 조용히 원 기하로 되돌아간다 —
 // 틀린 답과 맞는 답이 구별되지 않는 바로 그 상태다.
+//
+// [1-a] `table`은 **언제나** `VALID_DIE_TABLE`이다(사용자 지시: "불러오기는 무조건
+// valid_die_ref 를 이용하게"). 선언이 이름 붙인 테이블은 버리지 않고 `declaredTable`로
+// 함께 돌려준다 — 해석이 실패했을 때 "키가 틀렸다"와 "키는 맞는데 여기 없다"는 서로 다른
+// 수리를 요구하므로, 거절문이 그 둘을 구별해 말할 수 있어야 한다.
+// `currentTable`은 이제 조회 대상을 정하지 **않는다**. 선언이 원래 무엇을 뜻했는지(맨
+// 문자열 = "내 테이블의 맵")를 되살려 `declaredTable`에 담는 데만 쓴다 — 지운 정보를
+// 나중에 추측으로 복원하는 일을 만들지 않기 위해서다.
 function parseValidDieRef(meta, currentTable) {
   if (!meta || typeof meta !== 'object') return null;
   if (!('valid_die_ref' in meta)) return null;
@@ -2088,7 +2118,9 @@ function parseValidDieRef(meta, currentTable) {
   if (typeof raw === 'string') {
     const s = raw.trim();
     if (s === '') return bad('valid_die_ref가 비어 있습니다 — 맵 키가 없으면 유효 다이를 판정할 근거가 없습니다.');
-    return { table: home, mapKey: s };
+    // PINNED READ (string form). Pre-ruling this meant "a map in MY table"; that meaning is
+    // kept as `declaredTable` for the refusal message and NOT as the lookup target.
+    return { table: VALID_DIE_TABLE, mapKey: s, declaredTable: home };
   }
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return bad(`valid_die_ref의 형태를 읽을 수 없습니다 (${typeof raw}) — {table, map_id} 또는 맵 키 문자열이어야 합니다.`);
@@ -2101,9 +2133,12 @@ function parseValidDieRef(meta, currentTable) {
   if (key === '') {
     return bad('valid_die_ref에 map_id가 없습니다 — 어느 맵을 가리키는지 알 수 없습니다.');
   }
-  const table = (t === null || t === undefined || String(t).trim() === '') ? home : String(t).trim();
-  if (!table) return bad('valid_die_ref의 대상 테이블을 알 수 없습니다.');
-  return { table, mapKey: key };
+  // 종전에는 여기서 테이블이 비면 「대상 테이블을 알 수 없습니다」로 거절했다. 고정 이후
+  // 대상은 알 수 없어질 수가 없으므로 그 가지는 사라진다 — 그 결과 이음매의 선언된
+  // 불일치 하나(`object_no_table_no_home`: 서버는 ref, 클라는 error)가 **닫힌다**.
+  const declaredTable = (t === null || t === undefined || String(t).trim() === '') ? home : String(t).trim();
+  // PINNED READ (object form). 선언이 어느 테이블을 이름 붙였든 조회는 valid_die_ref다.
+  return { table: VALID_DIE_TABLE, mapKey: key, declaredTable };
 }
 
 // 지금 유효 다이를 무엇으로 판정하고 있는가. 셀 0개로 해석된 참조는 **해석된 것이 아니다** —
@@ -8320,10 +8355,17 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   if (parsed.unreadable) return refuse(null, parsed.reason);
 
   const ref = { table: parsed.table, mapKey: parsed.mapKey };
+  // [1-a] 이 선언은 고정 이전에 **다른 테이블**을 이름 붙였는가. 붙였다면 해석 실패의
+  // 이유가 「키가 틀렸다」가 아니라 「키는 맞는데 이 테이블에 없다」일 수 있고, 그 둘은
+  // 수리가 다르다. 성공하면 아무 말도 하지 않는다(읽기는 무마찰).
+  const redirectNote = (parsed.declaredTable && parsed.declaredTable !== VALID_DIE_TABLE)
+    ? ` (이 지정은 원래 「${parsed.declaredTable}」을(를) 가리켰지만, 유효 다이 맵은 언제나 `
+      + `${VALID_DIE_TABLE}에서 읽습니다 — 그 맵을 ${VALID_DIE_TABLE}에 등록하거나 키를 고치십시오.)`
+    : '';
   try {
     // [7b/§5.6-bis/§5.0] the reference map resolved to a frame, or a reason it could not be.
     const rspec = await resolveReferenceSpec(ref);
-    if (!rspec.ok) return refuse(ref, rspec.reason);
+    if (!rspec.ok) return refuse(ref, rspec.reason + redirectNote);
     const spec = rspec.spec;
     const binding = rspec.binding;
     const refMeta = rspec.refMeta;
@@ -8376,7 +8418,9 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       if (Number.isFinite(xn) && Number.isFinite(yn)) cells.push({ x: xn, y: yn });
     });
     if (cells.length === 0) {
-      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵에 좌표로 읽히는 셀이 없습니다.`);
+      // [1-a] 규격은 있는데 셀이 없다 — 이것도 「여기서 찾지 못했다」이므로 같은 어휘로 말한다.
+      return refuse(ref, `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 — 키 `
+        + `「${ref.mapKey}」의 규격은 있으나 좌표로 읽히는 셀이 한 건도 없습니다.${redirectNote}`);
     }
 
     // 격자 규격 호환성 — 물리 좌표는 정준 격자의 인덱스다. 치수가 다르면 같은 인덱스가
@@ -8695,7 +8739,13 @@ async function resolveReferenceSpec(ref) {
   if (!refFrame) {
     // 미등록도 여기서는 거절이다. 오버레이는 규격이 없으면 "무보정"이라고 **화면에
     // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
-    return { ok: false, reason: `${ref.table} · ${ref.mapKey}: 참조 맵의 메타데이터가 없습니다.` };
+    //
+    // [1-a] NAMED REFUSAL. 고정된 로드 경로에서 가장 흔해진 실패가 바로 이것이다 —
+    // 고정 이전에 저작된 선언의 키는 `valid_die_ref`에 없다. 거절문은 **찾은 키를
+    // 이름으로 말한다**: 빈 마스크는 데이터처럼 보이는 거짓말이라 그보다 낫다.
+    return { ok: false, notFound: true,
+      reason: `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 — 키 「${ref.mapKey}」로 `
+        + `등록된 맵 규격(wafer_map_metadata)이 없습니다.` };
   }
   return { ok: true, spec, binding, refMeta, refFrame };
 }
@@ -8812,12 +8862,69 @@ function renderValidDieChip() {
 // 확인 하나뿐이고 여기서 따로 묻지 않는다.
 // [1-a] 컨트롤은 한 칸(키)뿐이다. 테이블 select를 되맞추던 블록은 사라졌고, 그것이 만들던
 //       모호함(앱이 강제한 ''인가 사용자가 고른 ''인가)도 함께 사라졌다.
-//       선언이 `valid_die_ref` 아닌 테이블을 가리키는 경우 — 이 규칙 이전에 저작된 8건 —
-//       그 사실은 **칩**이 말한다(`renderValidDieChip`가 `table · mapKey`를 그대로 찍는다).
+//       선언이 `valid_die_ref` 아닌 테이블을 가리키는 경우 — 이 규칙 이전에 저작된 것들 —
+//       그 사실은 **거절문**이 말한다(`resolveValidDie`의 `redirectNote`). 칩이 아니다:
+//       로드가 고정된 뒤로 칩의 `r.table`은 언제나 `valid_die_ref`라서 원 선언을 말할 수
+//       없고, 저 사실이 필요한 순간은 정확히 해석이 실패했을 때뿐이다.
 //       입력칸에 없는 정보를 만들어 넣지 않고, 있는 표시 자리를 쓴다(새 컨트롤 0개).
 function syncValidDieRefControls() {
   const shown = validDieRefDisplay(validDie ? validDie.raw : undefined);
   if (el.validDieRefKey && el.validDieRefKey.value !== shown.key) el.validDieRefKey.value = shown.key;
+  renderValidDieKeyControl();
+}
+
+// ── [1-a] 키 컨트롤의 **형태**를 정한다 — 드롭다운인가 입력칸인가 ──────────────────────
+//
+// 사용자 요청: "valid die 리스트를 datalist 말고 preset과 같은 형식으로". 형태는 위
+// 「⚙️ Geometry Presets」의 `<select>`와 같게 하되, 그 형태가 **잃게 만드는 것**을 잃지
+// 않는다: datalist는 제안이라 목록에 없는 키도 타이핑해 열 수 있고, `<select>`는 제약이라
+// 열 수 없다. 그 차이가 실제로 문제가 되는 상황은 셋이고, 셋 다 이미 관측 가능하다:
+//   ① truncated   — 서버가 "등록된 맵이 더 있다"고 말했다. 목록은 모집단이 아니다.
+//   ② unavailable — 조회가 실패했다. 목록이 비어 있는 것은 「없다」는 뜻이 아니다.
+//   ③ 지금 지정된 키가 목록에 없다 — 고정 이전에 저작된 선언이 정확히 이 경우다.
+//      여기서 `<select>`를 내밀면 그 키를 **표시할 수조차 없어** 컨트롤이 "-- 원 기하 --"로
+//      보인다. 지정이 있는 맵을 지정이 없는 것처럼 보여 주는 것 — 화면은 멀쩡한데 값이
+//      틀리는 그 결함이라, 이 조건이 없으면 이 변경 자체가 결함이 된다.
+// 셋 중 하나라도 참이면 입력칸을 유지한다. 사용자가 고를 것은 없다 — **어느 컨트롤이
+// 보이는가가 곧 "이 목록이 전부인가"의 답**이다. 순 컨트롤 증가는 0이다(동시에 하나만 보인다).
+//
+// 🔴 **값의 정본은 `#valid-die-ref-key` 하나다.** select는 고른 값을 그 칸에 적을 뿐이고,
+//    `validDieRefFromControls`·`validDieRefForPush`·APPLY·SAVE는 전부 그 칸만 읽는다.
+//    select에서 따로 값을 읽으면 저장이 보는 수와 화면이 보는 수가 갈라진다.
+// 🔴 옵션 집합은 datalist에서 **그대로** 가져온다. 두 번째 조회도, 두 번째 목록도 없다.
+function renderValidDieKeyControl() {
+  const sel = el.validDieRefSelect;
+  const inp = el.validDieRefKey;
+  const list = el.validDieRefList;
+  if (!sel || !inp || !list) return;
+
+  const keys = Array.from(list.options || []).map(o => o.value)
+    .filter(v => v !== null && v !== undefined && String(v).trim() !== '');
+  const state = (inp.dataset && inp.dataset.suggest) ? inp.dataset.suggest : '';
+  const cur = (inp.value || '').trim();
+
+  const listIsWholePopulation = (state === '');          // ①②의 부정
+  const curIsSelectable = (cur === '' || keys.indexOf(cur) !== -1);   // ③의 부정
+  const useSelect = listIsWholePopulation && curIsSelectable && keys.length > 0;
+
+  // 옵션은 매번 다시 그린다 — 목록이 갱신됐는데 옵션이 낡으면 그 낡음은 보이지 않는다.
+  sel.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  // 🔴 빈 선택은 빈 입력칸과 **정확히 같은 뜻**이다: 지정 없음 = 웨이퍼 원 기하.
+  //    그 등가가 이 변경을 안전하게 만드는 유일한 근거라 문구로도 못 박는다.
+  none.textContent = '-- 원 기하 (지정 없음) --';
+  sel.appendChild(none);
+  keys.forEach(k => {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    sel.appendChild(o);
+  });
+  sel.value = curIsSelectable ? cur : '';
+
+  sel.style.display = useSelect ? '' : 'none';
+  inp.style.display = useSelect ? 'none' : '';
 }
 
 // ══ 🎯 APPLY — 지정을 **화면에** 적용한다. 저장하지 않는다 ═══════════════════════════════
@@ -9067,6 +9174,14 @@ async function populateMapKeyDatalist(table, listEl, input) {
     // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
     markSuggestState(input, 'truncated',
       `등록된 맵 ${total}개 중 ${ids.length}개만 목록에 있습니다 — 없는 키도 직접 입력하면 열립니다.`);
+  } else if (ids.length === 0) {
+    // [1-a] **성공했는데 0건**이다. 종전에는 이 자리가 `markSuggestState(input, '', '')` —
+    // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전
+    // (`complete`)이므로 캐시도 하고 select도 쓸 수 있지만, **말은 한다**.
+    markSuggestState(input, '',
+      `${table}에 등록된 맵이 아직 없습니다 — 목록을 읽는 데는 성공했고, 정말로 0건입니다. `
+      + `키를 직접 입력하면 그대로 동작합니다.`);
+    mapKeyListCache.set(table, ids);
   } else {
     markSuggestState(input, '', '');
     mapKeyListCache.set(table, ids);
@@ -9080,7 +9195,10 @@ async function populateMapKeyDatalist(table, listEl, input) {
 // `truncated` / `unavailable` 세 상태를 구분해 준다. 특히 조회 실패를 빈 목록으로 뭉개지
 // 않는다: 「못 봤다」가 「없다」로 읽히면 운영자는 있는 맵을 없다고 판단한다.
 async function populateValidDieRefList() {
-  return populateMapKeyDatalist(VALID_DIE_TABLE, el.validDieRefList, el.validDieRefKey);
+  await populateMapKeyDatalist(VALID_DIE_TABLE, el.validDieRefList, el.validDieRefKey);
+  // [1-a] 모집단이 확정된 **직후에** 컨트롤 형태를 다시 정한다. 목록과 상태가 둘 다
+  //       갖춰진 가장 이른 지점이고, 여기서 하지 않으면 드롭다운은 영영 빈 채로 남는다.
+  renderValidDieKeyControl();
 }
 
 // 오버레이 소스 키 칸 — 모집단이 같으므로 **같은 함수**다. 오버레이 전용 조회를 새로 쓰지 않는다.

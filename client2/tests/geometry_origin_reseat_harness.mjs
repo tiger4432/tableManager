@@ -40,6 +40,17 @@ const mutateOnly = process.argv.includes('--mutate');
 
 const die = (msg) => { console.error(`HARNESS FAILURE: ${msg}`); process.exit(2); };
 
+// [1-a 2026-08-04] The FIXED valid-die storage table. `parseValidDieRef` reads this module
+// const since the load path was pinned, so a sandbox without it throws ReferenceError and the
+// whole slice dies before comparing anything. EXTRACTED from the source, never re-typed:
+// a copy that drifted would score the wrong table green. Same shape as the extraction in
+// valid_die_authoring_harness.mjs — one spelling, three harnesses.
+const VALID_DIE_TABLE = (() => {
+  const m = /const\s+VALID_DIE_TABLE\s*=\s*'([^']*)'\s*;/.exec(SRC);
+  if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
+  return m[1];
+})();
+
 // ── Slicer (same shape as the sibling harnesses) ────────────────────────────────────────
 function sliceFunction(source, name) {
   const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
@@ -296,6 +307,7 @@ function buildEnv(src, P, opts = {}) {
     tableSchema: { column_types: {} },
     API_BASE: '',
     OVERLAY_CELL_LIMIT: 2000,
+    VALID_DIE_TABLE,
     // Paint constants the real renderer reads. Values are irrelevant here — only the
     // coordinate DECISIONS are scored — but they must exist or the renderer throws.
     UNLISTED_VALUE_FILL: '#10b981',
@@ -314,6 +326,10 @@ function buildEnv(src, P, opts = {}) {
     isBoxDragging: false, dragType: null,
     getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
     renderValidDieChip() {}, syncValidDieRefControls() {},
+    // [1-a] The key control's SHAPE (<select> vs text input) is scored in
+    // map_key_datalist_harness.mjs, which models a real DOM tree. Stubbed here so the
+    // wiring executes without dragging that model in — this harness scores coordinates.
+    renderValidDieKeyControl() {},
     showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
     requestAnimationFrame(fn) { fn(); },
     isLockedValue: () => false,

@@ -171,6 +171,11 @@ const sandbox = {
   // place (`syncValidDieRefControls`), so the harness stands in for the DOM event and lets
   // the extracted functions do everything else.
   validDieRefTableTouched: false,
+  // [1-a] `syncValidDieRefControls` also decides the key control's SHAPE now (<select> when the
+  // list is the whole population, text input otherwise). That is a DOM-shape decision, not a
+  // seam value — nothing on the server has an opinion about it — so it is stubbed here and
+  // scored where it belongs, client2/tests/map_key_datalist_harness.mjs against a real tree.
+  renderValidDieKeyControl() {},
 };
 vm.createContext(sandbox);
 try {
@@ -436,13 +441,50 @@ const parseOutcome = (meta, home) => {
   if (r.unreadable === true) return { kind: 'error' };
   return { kind: 'ref', table: r.table, key: r.mapKey };
 };
+// [1-a] THE LOAD PIN. The client reads `expect_client_table`, NOT `expect_table`: since the
+// user ruling of 2026-08-04 the client always looks in `valid_die_ref` while the server still
+// honours the declared/home table, so the two sides answer this axis differently on purpose
+// and each reads its own recorded answer. `expect_table` stays the server's.
+// A `ref` vector that omits `expect_client_table` FAILS rather than skipping — a silent skip
+// is how a later vector stops covering the pin without anyone noticing.
 for (const c of cases('valid_die_ref_parse_cases')) {
   const got = attempt(() => parseOutcome(c.meta, c.home_table));
   rec('valid_die_ref_parse_cases', c.name, 'kind', c.expect, (got || {}).kind);
   if (c.expect === 'ref') {
-    rec('valid_die_ref_parse_cases', c.name, 'table', c.expect_table, (got || {}).table);
+    const declared = Object.prototype.hasOwnProperty.call(c, 'expect_client_table');
+    rec('valid_die_ref_parse_cases', c.name, 'declares_expect_client_table', true, declared);
+    rec('valid_die_ref_parse_cases', c.name, 'table',
+      declared ? c.expect_client_table : '<expect_client_table missing>', (got || {}).table);
     rec('valid_die_ref_parse_cases', c.name, 'key', c.expect_key, (got || {}).key);
   }
+}
+// DERIVED, and the pin's own axis: the resolved table is the FIXED constant on EVERY resolved
+// vector, whatever the declaration said. Scored against the constant extracted from the source
+// (`client_consts` VALID_DIE_TABLE), never against a literal re-typed here — a copy that
+// drifted would score the wrong table green. Without this, per-vector literals could all be
+// edited to `seam_map` and the group would stay green against an unpinned implementation.
+{
+  const G = 'valid_die_ref_parse_cases';
+  const FIXED = sandbox.VALID_DIE_TABLE;
+  if (typeof FIXED !== 'string' || FIXED === '') {
+    die('VALID_DIE_TABLE did not evaluate in the sandbox — declare it in client_consts.');
+  }
+  const refCases = cases(G).filter(c => c.expect === 'ref');
+  const tables = refCases.map(c => (attempt(() => parseOutcome(c.meta, c.home_table)) || {}).table);
+  rec(G, 'QA_NO_GO_pin', 'every_resolved_ref_reads_the_FIXED_table',
+    [true], [refCases.length > 0 && tables.every(t => t === FIXED)]);
+  // Fixture-inactivity guard. Names the wrong implementation that survives without it: if
+  // every vector's declaration already pointed at the fixed table, an UNPINNED reader would
+  // pass the assertion above by inheritance and prove nothing.
+  const namesAnother = refCases.filter(c => {
+    const r = c.meta.valid_die_ref;
+    const declared = (typeof r === 'string')
+      ? c.home_table
+      : ((r && (r.table !== undefined ? r.table : r.target_table)) || c.home_table);
+    return declared && declared !== FIXED;
+  });
+  rec(G, 'QA_NO_GO_pin', 'has_a_ref_vector_whose_declaration_names_ANOTHER_table',
+    [true], [namesAnother.length > 0]);
 }
 // DERIVED: only null/absent may mean 'no declaration'. If an unreadable declaration ever
 // collapsed into `none`, one typo would silently restore circle geometry.
@@ -760,8 +802,16 @@ if (requireRoles('valid_die_authoring_cases', ['apply_valid_die_ref'],
     const got = (out && typeof out === 'object') ? attempt(() => parseOutcome(out, c.home_table)) : { kind: `THREW/${out}` };
     rec(G, c.name, 'reads_back_as', c.expect_read, (got || {}).kind);
     if (c.expect_read === 'ref') {
-      rec(G, c.name, 'table', c.expect_table, (got || {}).table);
-      rec(G, c.name, 'key', c.expect_key, (got || {}).key);
+      // [1-a] Same split as valid_die_push_decision_cases: this group scores what the WRITER
+      // put in the metadata, so the table comes from `validDieRefDisplay` (the storage-bytes
+      // reader). Since the load pin, `parseValidDieRef` answers `valid_die_ref` for every
+      // declaration regardless of the bytes, so reading the written table through it would
+      // make "the writer preserved the declared table" unfalsifiable here. The KIND above
+      // still goes through the parser, because the kind did not diverge.
+      const saved = attempt(() => FN.valid_die_ref_display(out.valid_die_ref));
+      const savedTable = (saved && saved.table !== '') ? saved.table : c.home_table;
+      rec(G, c.name, 'table', c.expect_table, savedTable);
+      rec(G, c.name, 'key', c.expect_key, (saved || {}).key);
     }
     if ('expect_source' in c) {
       rec(G, c.name, 'branch_source', c.expect_source,
@@ -945,8 +995,19 @@ if (requireRoles('valid_die_push_decision_cases',
       ? attempt(() => parseOutcome(payload, c.home_table)) : { kind: `THREW/${payload}` };
     rec(G, c.name, 'saved_reads_as', c.expect_saved_reads_as, (got || {}).kind);
     if (c.expect_saved_reads_as === 'ref') {
-      rec(G, c.name, 'saved_table', c.expect_table, (got || {}).table);
-      rec(G, c.name, 'saved_key', c.expect_key, (got || {}).key);
+      // [1-a] The SAVED table is read back through `validDieRefDisplay` — the storage-bytes
+      // reader — and no longer through `parseValidDieRef`. Since the load pin, the parser
+      // answers `valid_die_ref` for every declaration whatever the bytes say, so using it here
+      // would score "what we wrote" with "where we now look" and this group would stop being
+      // able to see a silent rewrite at all. THIS group's whole subject is that an untouched
+      // legacy row keeps its own table on disk; that fact lives in the bytes.
+      const saved = (payload && typeof payload === 'object')
+        ? attempt(() => FN.valid_die_ref_display(payload.valid_die_ref)) : null;
+      // A bare string carries no table, and `validDieRefDisplay` reports that as ''. The
+      // vectors state the effective saved table, so '' resolves against the declaring map.
+      const savedTable = (saved && saved.table !== '') ? saved.table : c.home_table;
+      rec(G, c.name, 'saved_table', c.expect_table, savedTable);
+      rec(G, c.name, 'saved_key', c.expect_key, (saved || {}).key);
     }
     if ('expect_payload_has_key' in c) {
       // The byte-identity half of INV-M4-1: an undeclared map's payload must not GROW a key.
@@ -1154,8 +1215,16 @@ if (process.argv.includes('--json')) {
   console.log('  ITS OWN documented answer, not that the two answers match:');
   console.log('    compose_divergence_cases            missing key component: client drops it,');
   console.log('                                        registrar refuses the row, overlay pads "".');
+  console.log('    valid_die_ref_parse_cases           THE LOAD PIN (user ruling 2026-08-04):');
+  console.log('                                        the client always resolves to');
+  console.log('                                        valid_die_ref; the server still honours');
+  console.log('                                        the declared/home table. KIND and KEY');
+  console.log('                                        agree; only the TABLE diverges. OPEN —');
+  console.log('                                        belongs to the server lane.');
   console.log('    valid_die_ref_home_divergence_cases ref with no table and no home table:');
-  console.log('                                        server resolves, client refuses.');
+  console.log('                                        CLOSED 2026-08-04 by the pin — both');
+  console.log('                                        sides now resolve. Kept to notice a');
+  console.log('                                        return.');
   console.log('    valid_die_refused_render_*          on `refused` the server draws NOTHING');
   console.log('                                        (basis=None); the client cannot, so it');
   console.log('                                        renders the pre-M4 circle AND surfaces');

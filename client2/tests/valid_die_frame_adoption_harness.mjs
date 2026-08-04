@@ -44,6 +44,17 @@ const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 
+// [1-a 2026-08-04] The FIXED valid-die storage table. `parseValidDieRef` reads this module
+// const since the load path was pinned, so a sandbox without it throws ReferenceError and the
+// whole slice dies before comparing anything. EXTRACTED from the source, never re-typed:
+// a copy that drifted would score the wrong table green. Same shape as the extraction in
+// valid_die_authoring_harness.mjs — one spelling, three harnesses.
+const VALID_DIE_TABLE = (() => {
+  const m = /const\s+VALID_DIE_TABLE\s*=\s*'([^']*)'\s*;/.exec(SRC0);
+  if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
+  return m[1];
+})();
+
 function sliceFunction(source, name) {
   const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
   const m = decl.exec(source);
@@ -191,6 +202,7 @@ function buildEnv(src, opts = {}) {
     tableSchema: { column_types: {} },
     API_BASE: '',
     OVERLAY_CELL_LIMIT: 2000,
+    VALID_DIE_TABLE,
     // --- the REAL renderer runs; only the pixels are stubbed ------------------------
     // gridCells2D is the domain classifyUnsavableCells reads, so it must be built by the
     // shipped loop, not by the harness. Everything below is paint, not decision.

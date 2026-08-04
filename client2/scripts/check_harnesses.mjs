@@ -120,7 +120,10 @@ const FLOORS = new Map([
   // 54, not the 53 the overlay branch carried: that branch forked before the datalist
   // harness gained its assertion, and a floor is a minimum — merging the lower number
   // would have quietly un-scored the newer one.
-  ['map_key_datalist_harness.mjs', 54],
+  // 54 -> 70 (2026-08-04, 1-a): the valid-die key control's SHAPE — <select> only when the
+  // list is provably the whole population, text input otherwise — plus the empty-but-
+  // successful wording. 16 assertions, 5 new mutants, all caught.
+  ['map_key_datalist_harness.mjs', 70],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

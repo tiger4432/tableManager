@@ -111,6 +111,11 @@ function buildSandbox(mutator) {
     console, physFrameOverride: null, currentRotation: 0, currentSide: 'front',
     validDie: null, boundingBoxCache: {}, el: makeEl(),
     CANON_INT_RE: /^[+-]?\d+$/, CANON_FLOAT_RE: /^[+-]?\d+\.0+$/,
+    // [1-a] `syncValidDieRefControls` now also decides the key control's SHAPE (<select> when
+    // the list is the whole population, text input otherwise). That decision is scored in
+    // map_key_datalist_harness.mjs against a real DOM tree; stubbed here so this harness keeps
+    // scoring the declaration round-trip and does not quietly become a second DOM model.
+    renderValidDieKeyControl() {},
   };
   // The two regexes above are read from the source, not restated, so a change to either
   // reaches this harness instead of being shadowed by a stale copy.
@@ -504,10 +509,19 @@ function runSuite(sb, st) {
   // ════════════════════════════════════════════════════════════════════════════
   // INV-5  Unreadable -> refused with a reason. Never a silent circle fallback.
   // ════════════════════════════════════════════════════════════════════════════
+  // [1-a 2026-08-04] THE LOAD PIN, updated deliberately and not to make a red go green.
+  // Phase 1 read a bare string as "a map in MY table" and this row asserted `seam_map`. The
+  // user ruled that loading is fixed — "불러오기는 무조건 valid_die_ref 를 이용하게" — so the
+  // resolved table is now the FIXED one on every readable declaration, and the table the
+  // declaration used to mean is carried alongside as `declaredTable` (the refusal message
+  // needs it: "the key is wrong" and "the key is fine but not in this table" are different
+  // repairs). The expectation is built from the constant EXTRACTED from the source, never
+  // re-typed — a literal here that drifted would score the wrong table green.
   const PARSE = [
     [{}, 'seam_map', null],
     [{ valid_die_ref: null }, 'seam_map', null],
-    [{ valid_die_ref: 'TPL_1' }, 'seam_map', { table: 'seam_map', mapKey: 'TPL_1' }],
+    [{ valid_die_ref: 'TPL_1' }, 'seam_map',
+      { table: ctx.VALID_DIE_TABLE_EXPECTED, mapKey: 'TPL_1', declaredTable: 'seam_map' }],
     [{ valid_die_ref: '' }, 'seam_map', 'unreadable'],
     [{ valid_die_ref: 5 }, 'seam_map', 'unreadable'],
     [{ valid_die_ref: ['t', 'k'] }, 'seam_map', 'unreadable'],

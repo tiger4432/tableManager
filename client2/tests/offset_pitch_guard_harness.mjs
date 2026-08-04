@@ -211,6 +211,10 @@ function buildEnv(src, P, opts = {}) {
     isBoxDragging: false, dragType: null,
     getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
     renderValidDieChip() {}, syncValidDieRefControls() {},
+    // [1-a] The key control's SHAPE (<select> vs text input) is scored in
+    // map_key_datalist_harness.mjs, which models a real DOM tree. Stubbed here so the
+    // wiring executes without dragging that model in — this harness scores coordinates.
+    renderValidDieKeyControl() {},
     showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
     requestAnimationFrame(fn) { fn(); },
     isLockedValue: () => false,
