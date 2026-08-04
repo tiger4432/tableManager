@@ -153,6 +153,10 @@ const FLOORS = new Map([
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
   ['virtual_column_render_harness.mjs', 65],
+  // New 2026-08-04 with the reconnect-backoff round (the 30s ceiling that left the page dark
+  // after a server restart). Same rule as the other new entries: the floor is the count it
+  // reports on the commit that introduces it — there is no earlier tree to measure it against.
+  ['ws_reconnect_backoff_harness.mjs', 42],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
