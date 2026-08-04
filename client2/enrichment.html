@@ -146,6 +146,27 @@
       background: var(--success-weak);
     }
 
+    /* 「판단키 없음 N건」 — 잔여의 부분집합이고 사람이 처리할 수 없는 몫이므로
+       잔여 배지(warning)보다 강한 danger 계열로 구분한다. */
+    .stat-badge-blankkey {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: var(--danger-weak);
+      cursor: help;
+    }
+
+    /* 컨베이어 상세의 판단 불가 고지 — 접촉 지점의 정직한 강등. */
+    .blankkey-notice {
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--danger);
+      background: var(--danger-weak);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+    }
+
     .stat-badge-session {
       font-family: var(--font-mono);
       font-size: 0.72rem;
@@ -751,6 +772,8 @@
           </div>
         </div>
         <span id="remaining-badge" class="stat-badge">잔여 -건</span>
+        <!-- 잔여 중 판단키가 비어 여기서 해소할 수 없는 몫. 0이면 숨는다. -->
+        <span id="blankkey-badge" class="stat-badge stat-badge-blankkey" style="display: none;"></span>
         <span id="session-badge" class="stat-badge-session">이번 세션 0건</span>
       </div>
 

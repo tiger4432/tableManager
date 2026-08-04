@@ -49,6 +49,12 @@ def _report_classify(res):
         "",
         f"  A PIPELINE BUG (a human should never pay this): {bug}",
         f"      {ea.CLS_MAPPING_GAP:<26} {res['counts'].get(ea.CLS_MAPPING_GAP, 0)}",
+        # Not merely a bug a human should not pay: one a human CANNOT pay. With no
+        # decision key there is nothing to bind a reference view to, so the row is
+        # visible (deliberately) but unworkable until it is fixed upstream.
+        f"      {ea.CLS_BLANK_DECISION_KEY:<26} "
+        f"{res['counts'].get(ea.CLS_BLANK_DECISION_KEY, 0)}"
+        f"   (cannot be worked here at all - fix upstream)",
         f"  MECHANICALLY RESOLVABLE (item 1 handles it)   : {auto}",
         f"      {ea.CLS_RESOLVABLE:<26} {auto}",
         f"  REAL HUMAN WORK                              : {work}",

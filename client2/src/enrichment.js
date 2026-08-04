@@ -40,8 +40,15 @@ const S = {
   rule: null,
   sessionToken: null,   // 규칙 전환/새로고침마다 재발급되는 세션 가드 UUID
   gridApi: null,
-  totalBlank: 0,        // 서버 기준 잔여 결손 키 수 (저장 시 로컬 감산)
-  totalAll: null,       // 파생 테이블 전체 유니크 키 수 (진행률 분모)
+  totalBlank: 0,        // 서버 기준 잔여 결손 행 수 (저장 시 로컬 감산)
+  // 진행률 분모 = 파생 테이블 전체 **행** 수. 「키 수」가 아니다: 값은 무필터
+  // `result.total`(행 카운트)이고, 잔여도 이제 같은 테이블의 행 카운트라 둘이 같은
+  // 모집단이다. 종전 라벨('유니크 키 수' · `N / M keys`)은 `composite_key_source ==
+  // decision_key`인 현재 두 규칙에서만 우연히 참이었고 로더는 진부분집합도 허용한다
+  // (그 경우 판단키 2개가 1행으로 접힌다) — 코드가 뒷받침하지 못하는 주장이었다.
+  totalAll: null,
+  totalKeyed: null,     // 판단키를 갖춘 잔여 (= 사람이 실제로 처리 가능한 항목)
+  blankKeyCount: 0,     // 잔여 - 판단키 보유 잔여. 「판단키 없음 N건」의 실수
   doneCount: 0,         // 이번 세션에서 채운 건수
   isFetching: false,
   exhausted: false,     // 서버에 버퍼 밖 잔여분이 없음
@@ -126,6 +133,8 @@ function selectRule(rule) {
   newSessionToken();
   S.totalBlank = 0;
   S.totalAll = null;
+  S.totalKeyed = null;
+  S.blankKeyCount = 0;
   S.isFetching = false;
   S.exhausted = false;
   S.selectedRowId = null;
@@ -139,6 +148,7 @@ function selectRule(rule) {
 
   fetchWorklist(true);
   fetchTotalAll();
+  fetchKeyedTotal();
 }
 
 function buildColumnDefs(rule) {
@@ -187,16 +197,47 @@ function rebuildGrid(rule) {
 }
 
 // ── 워크리스트 청크 페칭 (항상 skip=0: 완료 행은 blank 필터에서 자동 이탈) ──
-// 큐 진입 조건은 서버가 단일 조성(rule.queue_filters: target blank AND
-// decision key notBlank — 빈 판단키 행은 사람이 해소할 수 없으므로 큐에서 제외).
+// 큐 진입 조건은 서버가 단일 조성한다(rule.queue_filters: **target blank뿐**).
+// 판단키 notBlank는 2026-08-04 사용자 재정으로 여기서 빠졌다 — 진행률 분모는 무필터
+// 전체 행이라, 잔여가 판단키까지 요구하면 두 수가 다른 모집단을 세어 판단키 빈 행이
+// 「답한 것」으로 계산됐다(N36: 데이터 변경 0, 설정 한 줄로 33% → 100%).
+// 그 행들은 이제 워크리스트에 **뜬다**(숨기면 인제션 결함이 영영 안 고쳐진다).
 function buildBlankFilters(rule) {
   if (rule.queue_filters) return rule.queue_filters;
-  // fallback (구버전 서버): target blank만
+  // fallback (구버전 서버): target blank만 — 지금은 서버 조성과 같은 형태다
   const filters = {};
   (rule.target_fields || []).forEach(f => {
     filters[f] = { type: 'blank' };
   });
   return filters;
+}
+
+// 이 행이 판단키를 전부 갖췄는가 = 사람이 근거를 조회할 수 있는가.
+// 참조뷰는 판단키 **값으로** 조회되므로 빈 값은 근거를 찾지 못한다.
+function hasDecisionKeys(row, rule) {
+  return (rule.decision_key || []).every(col => String(cellVal(row, col)).trim() !== '');
+}
+
+// 컨베이어 순서: 처리 가능한 행 먼저, 판단 불가(판단키 없음) 행은 뒤로.
+// 서버는 row_id asc로 주고 그 순서는 **각 구획 안에서 그대로 보존**된다 — 컨베이어의
+// "앞에서 소비한다"는 불변식은 유지되고, 앞을 막는 것만 내려간다. 정렬 컨트롤도
+// 모드도 만들지 않는다(순서 규칙 자체가 바뀐 것이지 사용자가 고르는 것이 아니다).
+function partitionQueueRows(rows, rule) {
+  const keyed = [], keyless = [];
+  rows.forEach(r => (hasDecisionKeys(r, rule) ? keyed : keyless).push(r));
+  return keyed.concat(keyless);
+}
+
+// 판단키 없는 행이 시작되는 버퍼 인덱스 (없으면 버퍼 끝).
+// 보충(refill)으로 들어온 신규 행을 이 위치에 끼워 넣어 구획을 유지한다.
+function blankKeyBoundaryIndex() {
+  if (!S.gridApi || !S.rule) return 0;
+  const count = S.gridApi.getDisplayedRowCount();
+  for (let i = 0; i < count; i++) {
+    const node = S.gridApi.getDisplayedRowAtIndex(i);
+    if (node && node.data && !hasDecisionKeys(node.data, S.rule)) return i;
+  }
+  return count;
 }
 
 async function fetchWorklist(reset) {
@@ -220,13 +261,20 @@ async function fetchWorklist(reset) {
     S.exhausted = result.data.length < pageLimit;
 
     if (reset) {
-      S.gridApi.setGridOption('rowData', result.data);
+      S.gridApi.setGridOption('rowData', partitionQueueRows(result.data, S.rule));
     } else {
-      // skip=0 재페치는 버퍼 잔존분과 겹침 → row_id로 dedupe 후 신규만 추가
+      // skip=0 재페치는 버퍼 잔존분과 겹침 → row_id로 dedupe 후 신규만 추가.
+      // addIndex로 판단키 없는 꼬리 **앞**에 끼워 넣는다 — 그냥 append하면 처리 가능한
+      // 신규 행이 판단 불가 행 뒤로 밀려 컨베이어 앞이 다시 막힌다.
       const known = new Set();
       S.gridApi.forEachNode(n => known.add(String(n.data.row_id)));
       const fresh = result.data.filter(r => !known.has(String(r.row_id)));
-      if (fresh.length > 0) S.gridApi.applyTransaction({ add: fresh });
+      if (fresh.length > 0) {
+        S.gridApi.applyTransaction({
+          add: partitionQueueRows(fresh, S.rule),
+          addIndex: blankKeyBoundaryIndex(),
+        });
+      }
     }
 
     const ms = (performance.now() - startTime).toFixed(0);
@@ -249,7 +297,9 @@ async function fetchWorklist(reset) {
   }
 }
 
-// 진행률 분모: 파생 테이블 전체 키 수 (limit=1, total만 사용 — 서버 5초 캐시)
+// 진행률 분모: 파생 테이블 전체 **행** 수 (limit=1, total만 사용 — 서버 5초 캐시).
+// 무필터이므로 잔여(queue_filters = target blank)와 같은 모집단을 센다 — 이 정합이
+// N36의 수리 그 자체다. 여기에 필터를 다시 붙이면 100% 결함이 되돌아온다.
 async function fetchTotalAll() {
   if (!S.rule) return;
   const token = S.sessionToken;
@@ -263,6 +313,31 @@ async function fetchTotalAll() {
     updateHeaderStats();
   } catch (e) {
     // 진행률 분모는 부가 정보 — 실패 시 무음 (잔여 카운트로 동작 지속)
+  }
+}
+
+// 「판단키 없음 N건」의 분해: 잔여(queue_filters) - 판단키 보유 잔여(keyed_queue_filters).
+// 두 술어 모두 서버가 조성한 **논리곱** 필터라 기존 `/tables/{t}/data` DSL이 그대로
+// 번역한다 — 신규 엔드포인트 없음. (직접 세려면 판단키 컬럼 간 OR이 필요한데 필터 DSL은
+// 한 컬럼 안의 조합만 표현한다. 그래서 차분으로 얻는다.)
+async function fetchKeyedTotal() {
+  if (!S.rule || !S.rule.keyed_queue_filters) {
+    S.totalKeyed = null;      // 구버전 서버: 「모른다」 — 0으로 지어내지 않는다
+    S.blankKeyCount = 0;
+    return;
+  }
+  const token = S.sessionToken;
+  try {
+    const filters = encodeURIComponent(JSON.stringify(S.rule.keyed_queue_filters));
+    const res = await fetch(`${API_BASE}/tables/${encodeURIComponent(S.rule.derived_table)}` +
+      `/data?skip=0&limit=1&filters=${filters}`);
+    if (!res.ok) return;
+    const result = await res.json();
+    if (token !== S.sessionToken) return;
+    S.totalKeyed = result.total;
+    updateHeaderStats();
+  } catch (e) {
+    // 실패 시 마지막으로 아는 값 유지 — 「없다」와 「확인 못 했다」를 섞지 않는다
   }
 }
 
@@ -281,10 +356,25 @@ function updateHeaderStats() {
   badge.classList.toggle('all-done', remaining === 0);
   el('session-badge').textContent = `이번 세션 ${S.doneCount.toLocaleString()}건`;
 
+  // 「판단키 없음 N건」 — 이름 붙인 집계. 0이면 숨긴다(없는 문제를 세우지 않는다).
+  // 서버가 keyed_queue_filters를 안 주면 S.totalKeyed는 null로 남고 배지도 뜨지 않는다:
+  // 「0건」이라고 말하는 것과 「확인 못 했다」는 다른 사실이다.
+  S.blankKeyCount = (S.totalKeyed === null) ? 0 : Math.max(0, remaining - S.totalKeyed);
+  const bkBadge = el('blankkey-badge');
+  if (bkBadge) {
+    bkBadge.style.display = S.blankKeyCount > 0 ? 'inline-block' : 'none';
+    bkBadge.textContent = `⚠️ 판단키 없음 ${S.blankKeyCount.toLocaleString()}건`;
+    bkBadge.title = '판단키가 비어 있어 참조뷰를 조회할 수 없는 행입니다. 여기서는 '
+      + '해소할 수 없고 인제션 단계에서 고쳐야 합니다 — 워크리스트 맨 뒤로 내려가 있습니다.';
+  }
+
   if (S.totalAll !== null && S.totalAll > 0) {
     const filled = Math.max(0, S.totalAll - remaining);
     const pct = Math.round((filled / S.totalAll) * 100);
-    el('progress-text').textContent = `${filled.toLocaleString()} / ${S.totalAll.toLocaleString()} keys`;
+    // 단위는 「행」이다 — 분모도 분자도 파생 테이블의 행 카운트다. 종전 'keys'는
+    // composite_key_source == decision_key인 현재 규칙에서만 우연히 참인 주장이었다.
+    el('progress-text').textContent =
+      `${filled.toLocaleString()} / ${S.totalAll.toLocaleString()} 행`;
     el('progress-percent').textContent = `${pct}%`;
     el('progress-fill').style.width = `${pct}%`;
   } else {
@@ -328,6 +418,16 @@ function renderDetail(row) {
   // 판단키 (XSS 안전: textContent만 사용)
   const keyBody = el('decision-key-body');
   keyBody.innerHTML = '';
+  // 판단 불가 행이면 **접촉 지점에서** 그 사실을 이름으로 말한다. 클릭해 보고서야
+  // "근거 데이터 없음"으로 알게 되는 것과, 근거가 진짜 없는 정상 키를 구별할 수 없는
+  // 것이 둘 다 문제다. (컨트롤·모드는 만들지 않는다 — 문장 한 줄이다.)
+  if (!hasDecisionKeys(row, S.rule)) {
+    const warn = document.createElement('div');
+    warn.className = 'blankkey-notice';
+    warn.textContent = '판단키 없음 — 참조뷰를 조회할 수 없어 여기서는 판단할 수 없습니다. '
+      + '인제션 단계에서 판단키가 채워져야 합니다.';
+    keyBody.appendChild(warn);
+  }
   (S.rule.decision_key || []).forEach(col => {
     const rowEl = document.createElement('div');
     rowEl.className = 'kv-row';
@@ -499,8 +599,12 @@ async function saveCurrent() {
 
     // 낙관적 반영: 결손 필터에서 이탈했으므로 버퍼에서 제거
     const liveNode = S.gridApi.getRowNode(String(rowId));
+    // 판단키 보유 여부는 **제거 전에** 읽는다 — 두 카운트를 함께 감산해야
+    // 「판단키 없음 N건」이 저장 한 번마다 1씩 부풀지 않는다.
+    const wasKeyed = liveNode && liveNode.data ? hasDecisionKeys(liveNode.data, S.rule) : true;
     if (liveNode) S.gridApi.applyTransaction({ remove: [liveNode.data] });
     S.totalBlank = Math.max(0, S.totalBlank - 1);
+    if (wasKeyed && S.totalKeyed !== null) S.totalKeyed = Math.max(0, S.totalKeyed - 1);
     S.doneCount += 1;
 
     flashSaved();
@@ -608,6 +712,19 @@ async function loadActiveReference() {
   const rowId = S.selectedRowId;
   const idx = S.refActiveIdx;
   const view = S.refViews[idx];
+
+  // 판단키가 비면 참조뷰를 조회하지 않는다. 빈 값으로 조회하면 0행이 돌아오고 그것은
+  // "이 키에 근거가 없다"와 **글자 그대로 같은 화면**이 된다 — 서로 다른 두 사실을
+  // 한 문장으로 뭉개는 것이 이 코드베이스가 금지하는 바로 그 일이다. 이름 붙은 거절로
+  // 바꾸고, 덤으로 의미 없는 질의 1건도 아낀다.
+  if (!hasDecisionKeys(node.data, S.rule)) {
+    S.refSeq += 1;
+    el('reference-meta').textContent = '';
+    showRefStatus('🚧', '판단키 없음 — 조회 불가',
+      '참조뷰는 판단키 값으로 조회됩니다. 이 행은 판단키가 비어 있어 근거를 찾을 수 '
+      + '없습니다(근거가 없는 것이 아니라 물어볼 수가 없습니다). 인제션 단계 결함입니다.');
+    return;
+  }
 
   // 행 단위 캐시: 같은 행에서 탭을 오가면 재요청하지 않음 (행이 바뀌면 무효)
   if (S.refCacheRowId !== rowId) {

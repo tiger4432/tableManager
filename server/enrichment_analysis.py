@@ -23,11 +23,23 @@ WHY THE THREE LIVE TOGETHER
     is the mistake `queue_filters` was created to undo (spec §5.1).
 
 THE QUEUE PREDICATE IS NOT REDEFINED HERE
-    `iter_derived_rows` builds its SQL from `to_public_rule(rule)["queue_filters"]`
-    - the server's single composition of "a queue entry" - and translates it with
+    `iter_derived_rows` builds its SQL from `to_public_rule(rule)` - the server's
+    single composition of "a queue entry" - and translates it with
     `column_filter.get_column_filter_condition`, the SAME translator
     `GET /tables/{t}/data` uses. So the worklist, the badge, the admin count and
     these reports cannot disagree about which rows are in the queue.
+
+    WHICH of the two compositions each caller takes is the load-bearing part
+    [2026-08-04]. `queue_filters` is now the WHOLE queue (targets blank), because
+    the progress bar's denominator counts every derived row and the remainder has
+    to count the same population (N36). `keyed_queue_filters` adds "every decision
+    key non-blank", and that is what everything in THIS module walks by default:
+    a reference view is queried WITH the key's value, so on a blank key the probe
+    either finds nothing or - worse - matches whatever else happens to be blank
+    and hands `confirm_keys` a single candidate to WRITE. Display may show those
+    rows; the sweep may not touch them. `classify_queue` is the one caller that
+    walks the whole queue, and it does so to NAME them (`blank_decision_key`),
+    which keeps its total equal to the worklist remainder and the badge.
 
     That translator used to be reached as `main.get_column_filter_condition`, and
     the import was lazy so that a worker would not drag the web app in. The lazy
@@ -56,16 +68,26 @@ KEY_CHUNK = 500
 
 SAMPLES_PER_CLASS = 5
 
+# Which composition of the queue predicate a walk uses. See `_queue_condition`.
+SCOPE_KEYED = "keyed"
+SCOPE_BLANK_KEY = "blank_key"
+
 # ④ classes. The first two are the BUG class: a human filling one of these is
 # paying off a pipeline defect.
 CLS_MAPPING_GAP = "mapping_gap_same_name"
+CLS_BLANK_DECISION_KEY = "blank_decision_key"
 CLS_NO_SOURCE_ROWS = "no_source_rows"
 CLS_RESOLVABLE = "resolvable_from_reference"
 CLS_AMBIGUOUS = "ambiguous_reference"
 CLS_NO_EVIDENCE = "no_evidence"
 CLS_UNPROBED = "unprobed"
 
-BUG_CLASSES = (CLS_MAPPING_GAP,)
+# `blank_decision_key` is a BUG class and the strongest member of it: the other
+# bug class costs a human one row of manual work, this one cannot be worked at
+# all. The reference views are bound to the key's value, so with no key there is
+# nothing to look up - the row can only be fixed upstream. It became visible on
+# 2026-08-04 when `queue_filters` stopped hiding it (see enrichment_config).
+BUG_CLASSES = (CLS_MAPPING_GAP, CLS_BLANK_DECISION_KEY)
 REAL_WORK_CLASSES = (CLS_AMBIGUOUS, CLS_NO_EVIDENCE)
 
 
@@ -77,17 +99,47 @@ class AnalysisRefused(Exception):
 # Shared row walk
 # ---------------------------------------------------------------------------
 
-def _queue_condition(table_model, rule: dict, resolved: bool = False):
+def _queue_condition(table_model, rule: dict, resolved: bool = False,
+                     scope: str = SCOPE_KEYED):
     """SQL condition for the queue predicate (or its resolved complement).
 
-    Composed from `queue_filters` and translated by main's filter DSL - no
+    Composed from `to_public_rule` and translated by the shared filter DSL - no
     second definition of blank/notBlank lives here.
+
+    `scope` selects WHICH composition (see the module docstring):
+      - SCOPE_KEYED (default): `keyed_queue_filters` - targets blank AND every
+        decision key non-blank. Byte-for-byte the predicate this module has
+        always used, and the only one any write path may see.
+      - SCOPE_BLANK_KEY: its complement inside the queue - targets blank AND at
+        least ONE decision key blank. Reporting only.
+    `resolved=True` is meaningful for SCOPE_KEYED only.
     """
-    from sqlalchemy import and_
+    from sqlalchemy import and_, or_
     import enrichment_config
     import column_filter  # NOT `main` - see the module docstring
 
-    filters = enrichment_config.to_public_rule(rule)["queue_filters"]
+    public = enrichment_config.to_public_rule(rule)
+
+    def translate(col, spec):
+        cond = column_filter.get_column_filter_condition(table_model, col, spec)
+        if cond is None:
+            raise AnalysisRefused(
+                f"filter for column '{col}' could not be translated on table "
+                f"'{rule['derived_table']}' - is the column declared in table_config?")
+        return cond
+
+    if scope == SCOPE_BLANK_KEY:
+        # The queue MINUS the keyed queue, spelled positively so it stays one
+        # conjunction of translator output: targets blank, and at least one key
+        # blank. `or_` across key columns is the one shape the public filter DSL
+        # cannot express (it combines specs for a single column), which is why
+        # the client subtracts two totals instead and this branch exists only
+        # here, where SQLAlchemy is available.
+        conds = [translate(col, spec) for col, spec in public["queue_filters"].items()]
+        conds.append(or_(*[translate(k, {"type": "blank"}) for k in rule["decision_key"]]))
+        return and_(*conds)
+
+    filters = public["keyed_queue_filters"]
     if resolved:
         # The complement on the TARGET axis only: keys must still be non-blank,
         # because a row without keys was never resolvable by a human and its
@@ -96,19 +148,11 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False):
             col: ({"type": "notBlank"} if col in rule["target_fields"] else spec)
             for col, spec in filters.items()
         }
-    conds = []
-    for col, spec in filters.items():
-        cond = column_filter.get_column_filter_condition(table_model, col, spec)
-        if cond is None:
-            raise AnalysisRefused(
-                f"filter for column '{col}' could not be translated on table "
-                f"'{rule['derived_table']}' - is the column declared in table_config?")
-        conds.append(cond)
-    return and_(*conds)
+    return and_(*[translate(col, spec) for col, spec in filters.items()])
 
 
 def iter_derived_rows(db, rule: dict, resolved: bool = False, limit: int = None,
-                      extra_columns: list = None):
+                      extra_columns: list = None, scope: str = SCOPE_KEYED):
     """Yield derived rows matching the queue predicate (or its complement).
 
     Keyset pagination on `row_id` (PK) - no OFFSET, no full load. Yields dicts
@@ -129,7 +173,7 @@ def iter_derived_rows(db, rule: dict, resolved: bool = False, limit: int = None,
             + [getattr(model, c) for c in decision_key]
             + [getattr(model, c) for c in target_fields]
             + [getattr(model, c) for c in extra])
-    cond = _queue_condition(model, rule, resolved=resolved)
+    cond = _queue_condition(model, rule, resolved=resolved, scope=scope)
 
     # `keyset_scan.iter_pages` prepends row_id as the cursor, so `cols` must not
     # repeat it - the shared walk owns the cursor.
@@ -252,7 +296,15 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
     same_name_targets = [t for t in target_fields if t in src_cols]
 
     rows = list(iter_derived_rows(db, rule, resolved=False, limit=limit))
-    log(f"[classify] rule '{rule['name']}': {len(rows)} queue entr{'y' if len(rows) == 1 else 'ies'}")
+    # The blank-key rows are part of the queue the operator SEES (2026-08-04), so
+    # they are part of the total this report accounts for - otherwise `classify`
+    # and the worklist badge would disagree by exactly their count and the
+    # FEATURE_CHECKLIST reconciliation would start reading as a defect. They are
+    # walked separately because everything below this line needs a key.
+    keyless = list(iter_derived_rows(db, rule, limit=limit, scope=SCOPE_BLANK_KEY))
+    log(f"[classify] rule '{rule['name']}': {len(rows) + len(keyless)} queue "
+        f"entr{'y' if len(rows) + len(keyless) == 1 else 'ies'} "
+        f"({len(keyless)} without a decision key)")
 
     # 1) Source-side facts for the whole queue, in chunked grouped queries.
     key_raw = {}
@@ -278,11 +330,21 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
         if len(samples.setdefault(cls, [])) < SAMPLES_PER_CLASS:
             samples[cls].append({"business_key_val": r["business_key_val"], "detail": detail})
 
+    for r in keyless:
+        missing = [k for k in rule["decision_key"]
+                   if crud.clean_str_value(r["keys"].get(k)) == ""]
+        bump(CLS_BLANK_DECISION_KEY, r,
+             f"decision key {missing} blank - no reference view can be bound, so "
+             f"this row cannot be resolved here; fix it upstream")
+
     for r in rows:
         key = row_key.get(r["row_id"])
         blanks = [t for t in target_fields if crud.clean_str_value(r["targets"].get(t)) == ""]
         if key is None:
-            bump(CLS_NO_SOURCE_ROWS, r, "decision key blank in derived row")
+            # Reached only when the SQL notBlank and `clean_str_value` disagree
+            # (a whitespace-only key passes the first and folds to '' in the
+            # second). Same fact as the class above, so it is named the same.
+            bump(CLS_BLANK_DECISION_KEY, r, "decision key is whitespace-only in the derived row")
             continue
         if total_per_key.get(key, 0) == 0:
             bump(CLS_NO_SOURCE_ROWS, r, "no source rows for this decision key")
@@ -318,7 +380,10 @@ def classify_queue(db, rule: dict, probe_limit: int = 200, limit: int = None,
         "rule": rule["name"],
         "source_table": rule["source_table"],
         "derived_table": rule["derived_table"],
-        "queue_size": len(rows),
+        # The whole queue as the operator sees it, so this reconciles with the
+        # worklist remainder and the badge (FEATURE_CHECKLIST ④).
+        "queue_size": len(rows) + len(keyless),
+        "blank_decision_key": len(keyless),
         "counts": counts,
         "samples": samples,
         "no_evidence_reasons": reason_detail,
