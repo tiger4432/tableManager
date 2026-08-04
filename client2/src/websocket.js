@@ -103,6 +103,17 @@ export function initWebSocket() {
 
   state.ws = new WebSocket(WS_URL);
 
+  // 🔴 **여기서 배지를 쓰는 것이 이 줄의 요점이다.** 종전에는 `onopen`/`onclose`가 오기
+  //    전까지 배지가 index.html의 초기값 `WS: Connecting` 그대로였고, 그래서 화면이
+  //    **「소켓을 만들지 않았다」와 「만들었고 협상 중이다」를 같은 글자로** 보여 줬다.
+  //    2026-08-04 운영 사고에서 「Connecting에서 홀드」라는 신고가 이 둘 중 어느 쪽인지
+  //    끝까지 갈리지 않아 진단이 몇 시간 늦어졌다. 초기값과 **다른 문자열**이어야 하고,
+  //    시도 횟수가 붙어야 재시도가 도는지 멈췄는지도 같은 배지에서 읽힌다.
+  state.wsAttempts = (state.wsAttempts || 0) + 1;
+  elements.wsStatus.textContent = `WS: 연결 시도 ${state.wsAttempts}`;
+  elements.wsStatus.className = 'status-badge';
+  console.log(`[WebSocket] attempt ${state.wsAttempts} -> ${WS_URL}`);
+
   state.ws.onopen = async () => {
     elements.wsStatus.textContent = 'WS: CONNECTED';
     elements.wsStatus.className = 'status-badge online';
