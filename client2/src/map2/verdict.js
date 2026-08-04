@@ -108,8 +108,6 @@ export const REASON = Object.freeze({
  */
 export const DEGRADATION = Object.freeze({
   [REASON.NO_REFERENCE]: 'align_unavailable',
-  [REASON.SERVER_REFUSED]: 'mapping_unavailable',
-  [REASON.SOURCE_REFUSED]: 'mapping_unavailable',
   [REASON.NO_THRESHOLDS]: 'not_declared',
   [REASON.NO_SCORINGS]: 'align_unavailable',
   [REASON.TOO_FEW_DISCRIMINATING]: 'align_unavailable',
@@ -118,9 +116,31 @@ export const DEGRADATION = Object.freeze({
   [REASON.REFERENCE_FOOTPRINT_SYMMETRIC]: '미상',
 });
 
-/** The word a consumer should degrade to for a verdict, or null when there is nothing to say. */
+/**
+ * 🔴 SERVER_REFUSED AND SOURCE_REFUSED ARE DELIBERATELY ABSENT FROM THE TABLE ABOVE.
+ *
+ * They used to map to `'mapping_unavailable'` written here as a literal, and the
+ * `config_resolve_report` contract's INV-F9-7 caught it - correctly. Every other row in that
+ * table is a reason THIS MODULE decided: no reference was plugged in, no thresholds were
+ * declared, the margin was too small. Those are ours to name.
+ *
+ * These two are not. The server already refused and already named why. Re-deriving a word for
+ * its refusal is the client acquiring a second opinion about what the server meant - and the
+ * two can then disagree while every server test stays green, which is the failure class the
+ * invariant exists for. So the server's word is CARRIED, not re-mapped, and when the server
+ * did not supply one we return null rather than inventing one on its behalf.
+ *
+ * Product owner's ruling, 2026-08-05: the vocabulary is shared; the SENTENCE is the server's.
+ * A client-originated refusal may name itself with a shared token. A server-originated one
+ * may not be renamed by the client.
+ */
 export function degradationFor(verdict) {
   if (!verdict || !verdict.reason) return null;
+  if (verdict.reason === REASON.SERVER_REFUSED || verdict.reason === REASON.SOURCE_REFUSED) {
+    // Whatever the server called it, verbatim. Null when it said nothing - silence is honest,
+    // and a word we made up would not be.
+    return verdict.serverDegradation || null;
+  }
   return DEGRADATION[verdict.reason] || null;
 }
 

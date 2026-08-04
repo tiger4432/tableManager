@@ -111,7 +111,42 @@
       "point. Writing one of them down is what turns a rendered fact into a client opinion."
     ],
     "literals": ["not_declared", "mapping_unavailable", "scope_unresolved", "not_reached"],
-    "allow_paths": []
+
+    "$allow_paths_why": [
+      "PRODUCT OWNER RULING, 2026-08-05: the vocabulary is SHARED; the SENTENCE is the",
+      "server's. A refusal the CLIENT originates may name itself with a shared token. A",
+      "refusal the SERVER originated may not be renamed by the client.",
+      "",
+      "This invariant was written when every reason word arrived in a response, so 'the client",
+      "wrote it down' and 'the client second-guessed the server' were the same thing. Map",
+      "Editor 2 broke that identity: `excel_io.js` refuses a PASTED artefact, and there is no",
+      "server in that path at all -- no response to iterate, no `detail` to render, nobody",
+      "else's opinion to contradict. Forcing it to fetch a vocabulary it cannot reach would",
+      "mean either inventing a private word (the thing this invariant prevents) or refusing",
+      "silently. Both are worse than sharing the word.",
+      "",
+      "THE EXEMPTION IS BY ORIGIN, NOT BY FILE CONVENIENCE. The test to apply before adding a",
+      "path here: does this module ever consume a server response? If yes it stays under the",
+      "prohibition, no matter how awkward. `decode.js` and `api.js` consume responses and are",
+      "deliberately NOT listed.",
+      "",
+      "`verdict.js` HAD TO BE FIXED BEFORE IT COULD BE LISTED, and the order matters. It",
+      "mapped the SERVER's own refusal to a word of its own -- exactly the failure class, the",
+      "client acquiring a second opinion about what the server meant while every server test",
+      "stays green. Those two rows are gone; it now carries the server's word through and",
+      "returns null when the server said nothing. What remains are reasons it decided itself",
+      "(no thresholds declared, margin too small), which the ruling permits. So the invariant",
+      "caught a real defect AND a false positive in the same file, and the exemption applies",
+      "only after the real one was repaired -- never as a way to skip it.",
+      "",
+      "`artifact_gateway.js` is listed on the same test: it is the adapter for the pasted",
+      "artefact and never consumes a response."
+    ],
+    "allow_paths": [
+      "client2/src/map2/excel_io.js",
+      "client2/src/map2/artifact_gateway.js",
+      "client2/src/map2/verdict.js"
+    ]
   },
 
   "cases": [
