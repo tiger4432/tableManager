@@ -444,6 +444,15 @@
       "fn": "parse_valid_die_ref",
       "status": "live"
     },
+    "valid_die_ref_display": {
+      "module": "map_overlay",
+      "fn": "valid_die_ref_display",
+      "status": "live",
+      "$owner": "server-pm",
+      "$blocks": "valid_die_authoring_cases — without it `expect_table` on the server is unfalsifiable.",
+      "$why": "🔴 ADDED 2026-08-04 WITH THE SERVER LOAD PIN, and it is the same lesson as `valid_die_ref_for_push`: two functions answering two questions, and the contract was about to score one with the other. `parse_valid_die_ref` answers WHERE TO READ — since the pin, always `valid_die_ref`. This one answers WHAT IS STORED, straight off the bytes. The authoring group's `expect_table` means 'the writer preserved the declared table', and reading the written value back through the PINNED parser would have answered `valid_die_ref` no matter what the writer did — six vectors green against a writer that threw the table away. The client half (`validDieRefDisplay`) already existed and the client harness already made this split; the server was scoring the writer through the reader and would have kept doing so silently.",
+      "$shape": "PURE `valid_die_ref_display(raw) -> {'table', 'map_id'}`. `raw` is the STORED grid_metadata value (None | str | dict | anything). `table` is '' when the bytes name none — the caller supplies the fallback, the same way the client harness does. Unreadable bytes keep their visible form in `map_id` rather than being tidied away."
+    },
     "valid_die_basis": {
       "module": "map_overlay",
       "fn": "resolve_valid_die_basis",
@@ -2011,21 +2020,30 @@
         "convention (`map_id` server / `mapKey` client); the scorers normalise, and the TABLE and",
         "KEY values are compared, which is what a lookup actually uses.",
         "",
-        "TABLE DIVERGENCE, DECLARED 2026-08-04 (map request 1-a, user ruling): the CLIENT load",
-        "path is PINNED — \"불러오기는 무조건 valid_die_ref 를 이용하게\". So on every `ref`",
-        "vector the two sides now answer the table differently and BOTH answers are recorded:",
-        "  `expect_table`        — the server's answer (`server/map_overlay.parse_valid_die_ref`),",
-        "                          which is still the storage format's original meaning: a bare",
-        "                          string is 'a map in MY table'.",
-        "  `expect_client_table` — the client's answer, which is the pinned constant and nothing",
-        "                          else (`client_consts` VALID_DIE_TABLE).",
-        "The KIND and the KEY do NOT diverge, and that is the point: the pin changed WHERE the",
-        "client looks, not what counts as a declaration. Every `ref` vector must carry",
+        "THE LOAD PIN, 2026-08-04 (map request 1-a, user ruling): BOTH sides read the valid-die",
+        "map from `valid_die_ref` and nowhere else — \"불러오기는 무조건 valid_die_ref 를",
+        "이용하게\". Two fields carry the answer, one per side:",
+        "  `expect_table`        — the server's answer (`server/map_overlay.parse_valid_die_ref`).",
+        "  `expect_client_table` — the client's answer (`client2/src/map_editor.js`",
+        "                          `parseValidDieRef`, const `VALID_DIE_TABLE`).",
+        "The KIND and the KEY never diverged, and that is still the point: the pin changed WHERE",
+        "each side looks, not what counts as a declaration. Every `ref` vector must carry",
         "`expect_client_table` — the client scorer FAILS on a ref vector that omits it, so a",
         "vector added later cannot silently stop covering the pin.",
-        "This divergence is OPEN and belongs to the server lane: until `map_overlay` is pinned",
-        "too, a server-resolved basis and a client-resolved basis for the same legacy row name",
-        "different maps. Recorded here rather than decided here."
+        "",
+        "🟢 DIVERGENCE CLOSED 2026-08-04, and the two fields are KEPT rather than merged.",
+        "Between `c97b319` (client pinned) and the server half, `expect_table` and",
+        "`expect_client_table` held DIFFERENT values on every `ref` vector and this comment said",
+        "so: the client refused a legacy declaration while the server resolved it against",
+        "`bonding_map`/`dt_map`, so the same row named two different maps. `map_overlay` is now",
+        "pinned too and the two fields agree everywhere — which is exactly why they stay two",
+        "fields. Collapsing them into one would make the agreement structural instead of",
+        "measured: a single field is satisfied by two implementations that both read it, however",
+        "they behave. Two fields plus",
+        "`test_the_two_sides_now_name_the_SAME_table` (server) is a claim that can go red again,",
+        "and it is the claim that closed this entry. Both scorers additionally assert the fixed",
+        "table against their OWN constant, never against these literals — a re-typed literal on",
+        "both sides would score an unpinned reader green."
       ]
     },
     {
@@ -2046,17 +2064,17 @@
       "$why": "A null declaration is indistinguishable from a deleted key, so it is absence — the ONE shape allowed to mean 'behave exactly as 2a9f6c4'."
     },
     {
-      "name": "string_inherits_home_table",
+      "name": "string_ignores_home_table",
       "meta": {
         "valid_die_ref": "TPL_1"
       },
       "home_table": "seam_map",
       "expect": "ref",
-      "expect_table": "seam_map",
+      "expect_table": "valid_die_ref",
       "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant",
-      "$why": "The commonest use: another map of the same table. Inheriting the declaring map's table is the same convention overlay `sources` already uses."
+      "$why": "WAS `string_inherits_home_table`, and the rename is the ruling. A bare string used to mean 'another map of MY table' — the commonest live shape, and seven of the eight production declarations are this. Since 1-a the home table no longer steers the lookup on either side; it survives only as `declared_table`/`declaredTable`, for a refusal that has to tell 'wrong key' from 'right key, wrong table'. `home_table` stays `seam_map` on purpose: a reader that still inherited would answer `seam_map` here, which is what makes this vector able to fail."
     },
     {
       "name": "string_padded",
@@ -2065,7 +2083,7 @@
       },
       "home_table": "seam_map",
       "expect": "ref",
-      "expect_table": "seam_map",
+      "expect_table": "valid_die_ref",
       "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant"
@@ -2099,11 +2117,11 @@
       },
       "home_table": "seam_map",
       "expect": "ref",
-      "expect_table": "tpl_table",
+      "expect_table": "valid_die_ref",
       "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant",
-      "$why": "The sharpest case for the pin: the declaration EXPLICITLY names another table and the client still reads valid_die_ref. Nothing is rewritten on disk — the row keeps saying tpl_table (valid_die_push_decision_cases proves that) — but the lookup goes to the fixed table and refuses BY NAME when the key is not there."
+      "$why": "The sharpest case for the pin: the declaration EXPLICITLY names another table and BOTH sides still read valid_die_ref. Nothing is rewritten on disk — the row keeps saying tpl_table (valid_die_push_decision_cases proves that, and on the server valid_die_authoring_cases scores the stored bytes through `valid_die_ref_display`) — but the lookup goes to the fixed table and refuses BY NAME when the key is not there."
     },
     {
       "name": "object_alias_names",
@@ -2115,14 +2133,14 @@
       },
       "home_table": "seam_map",
       "expect": "ref",
-      "expect_table": "tpl_table",
+      "expect_table": "valid_die_ref",
       "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
       "$source": "invariant",
       "$why": "`target_table`/`map_key` are wafer_map_metadata's real column names and `table`/`map_id` the short aliases — one pair, two spellings. Both sides accept both, and NOTHING ELSE: guessing further names would resolve a typo to a real map."
     },
     {
-      "name": "object_table_omitted_inherits",
+      "name": "object_table_omitted_still_resolves",
       "meta": {
         "valid_die_ref": {
           "map_id": "TPL_1"
@@ -2130,10 +2148,11 @@
       },
       "home_table": "seam_map",
       "expect": "ref",
-      "expect_table": "seam_map",
+      "expect_table": "valid_die_ref",
       "expect_client_table": "valid_die_ref",
       "expect_key": "TPL_1",
-      "$source": "invariant"
+      "$source": "invariant",
+      "$why": "WAS `object_table_omitted_inherits`. An omitted table is still not a grammar violation — the declaration stays READABLE — it simply cannot steer the lookup any more. The distinction matters: folding 'no table' into `error` would make one shape of hand edit permanently unrecoverable, which is what INV-M4-3 spends its whole budget avoiding."
     },
     {
       "name": "object_missing_map_id",
@@ -2201,11 +2220,14 @@
         "This is a contract question, not a bug report — which is why the resolution is the Lead",
         "PM's call and this file only records both answers.",
         "",
-        "CLOSED 2026-08-04 on the KIND axis by the load pin (map request 1-a). The client used to",
-        "error here because it had no table to look in; pinned, it always has one, so the branch",
-        "that produced the error no longer exists and both sides now say `ref`. The group is kept",
-        "— not deleted — because the TABLE still diverges (see valid_die_ref_parse_cases) and",
-        "because a group deleted when it goes green stops noticing when it comes back."
+        "FULLY CLOSED 2026-08-04 by the load pin (map request 1-a), in two steps. The KIND closed",
+        "first: the client used to error here because it had no table to look in; pinned, it",
+        "always has one, so the branch that produced the error no longer exists and both sides say",
+        "`ref`. The TABLE closed when `map_overlay` was pinned too (see valid_die_ref_parse_cases).",
+        "The group is KEPT, not deleted, and the reason is the whole point of recording a",
+        "divergence rather than fixing it quietly: a group deleted when it goes green stops",
+        "noticing when it comes back. `expect_server` and `expect_client` stay two fields for the",
+        "same reason."
       ]
     },
     {
