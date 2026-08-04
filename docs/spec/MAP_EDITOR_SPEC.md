@@ -151,6 +151,19 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 - 🔴 **경계는 「순수한가」로 긋습니다.** 모듈 상태를 읽지도 쓰지도 않는 덩어리만 나갑니다. legend 저장의 *오케스트레이션*(`saveLegendToServer`·`persistLegend`·`applyRegistryRowsToLegend` …)은 legend 클러스터 7변수를 쓰고 그 변수들은 **맵 로드·프레임 스택·드래프트 복원·legend 패널** 네 곳에서도 쓰이므로, 그 절반은 `map_editor.js`에 **영구히** 남습니다 — 나중에 뺄 것을 미룬 게 아닙니다.
 - ⚠️ **하네스는 이 파일들의 텍스트를 잘라 vm에서 돌립니다.** 그래서 심볼을 옮기면 `client2/tests/*`와 `contracts/*/client_harness.mjs`의 경로 사전도 함께 옮겨야 하고, `export ` 키워드는 **슬라이스에서 빼야** 합니다(vm 안의 `export` 문은 SyntaxError). 인질 파일은 심볼 이름뿐 아니라 **파일 경로**로도 grep해서 세십시오 — 이름만 세면 놓칩니다(R1에서 3 → 실제 5).
 
+#### 1-bis-2.1 파일을 안 옮기는 분할 — **긴 함수는 이름 붙은 단계로 읽힌다** (R3~R5)
+
+파일 밖으로 못 나가는 절반(모듈 상태를 쓰는 오케스트레이션)에도 할 일이 있었습니다. **한 벽이던 함수 셋이 각각 이름 붙은 단계들로 갈렸고, 단계들은 모듈 상태를 읽지도 쓰지도 않습니다** — 즉 파일에는 남았지만 **채점 가능해졌습니다.**
+
+| 함수 | 단계 수 | 라운드 |
+|---|---|---|
+| `loadExistingMap` | **7** — `collectMapKeyFilterModel` → `scanCoordinateBounds` → `resolveDeclaredGridMeta` → `promptCoordinateChoice` → `resolveGridFrame` → `deriveLegendFromCellValues` → `restoreDoeDraftWithPrecedence` | R3 `2f3fa6f` |
+| `resolveValidDie` | **5** — `fitGridToMask` · `summariseReseat` · `resolveReferenceSpec` · `deriveMaskKeys` · `diagnoseDesignationAlignment` | R4 `cafd61f` |
+| `pushMapData` | **5** — `confirmLogShapedPushTarget` · `collectMetaFieldValues` · `buildPushGridMetadata` · `confirmMissingSplitDescriptions` · `outsideCircleNoteForPush` | R5 `4a0c402` |
+
+- 🔴 **단계는 「호출 순서대로, 모듈 상태 없이」가 계약입니다.** 그 두 성질이 없으면 단계를 따로 채점할 수 없고, 그러면 이름만 붙은 것이지 분할이 아닙니다.
+- 🔴 **R6(`510a748`)이 이 분할을 되돌아가지 못하게 못박았습니다** — `map_editor.js`의 **모듈 레벨 가변 바인딩에 천장**이 걸렸습니다(빌드 게이트 `CEILINGS`, 상한 **48**, 세는 규칙은 [frontend §2.1](../architecture/frontend.md)). 분할이 진행 중인 파일에서는 **순수 절반을 떼어내는 것보다 새 전역을 다는 것이 늘 더 쉬우므로**, 천장이 없으면 분할이 순손실이 됩니다. ⚠️ **실측 2026-08-04: 48 — 여유가 0이고, 그 48에는 이미 죽은 것으로 판정된 바인딩 둘(`tables`·`isMouseDown`)이 포함**돼 있습니다. 여유가 필요하면 천장을 협상하지 말고 그 둘을 지우십시오.
+
 ---
 
 ## 2. 상태 관리 변수 (State Variables)
@@ -700,6 +713,24 @@ TITLE 줄과 그룹 띠는 종전에 둘 다 `totalCols`(= 격자 + `HDR_GAP_COL
   > 테이블 전환 해제는 `251dbfd`에서 **신설**됐습니다. 그전에는 오버레이가 그대로 서 있었고 `가져오기` 버튼도 살아 있어, **이전 테이블의 값을 새 테이블에 써 넣을 수 있었습니다.** `gridData`만 비우는 것으로는 그 경로가 닫히지 않습니다.
 - 세션 저장·복원에는 `overlayLayers`와 `overlayGeomSig`가 함께 들어가고, 복원 직후 `syncOverlayGeometry`로 재투영합니다.
 
+#### 5.4-bis 오버레이 점은 **자기 값이 선언한 색**을 입는다 — 없으면 안 칠한다 (2026-08-04 `376e1c8` → `41b17ee`)
+
+🟩 **legend가 유일한 색 출처입니다. 두 번째 색 사전을 만들지 마십시오.** 판정은 `legendColorForValue(val)` 하나이고 폴백은 정확히 세 단계입니다:
+
+1. **열린 맵 자신의 legend 행** — 모듈 배열 `legend`에서 `String(item.value) === String(val)`로 찾아 `item.color`.
+2. **서버가 서빙한 사이트 기본 선언** — `declaredLegendRow(v)` → `overlayContract.defaultLegend`(= `GET /api/maps/paint-rules`의 `default_legend`, 원본은 `map_overlay_config.json`)에서 같은 방식으로 찾아 `r.color`.
+3. **둘 다 없으면 `null`** — 그리고 **`null`은 사실입니다**: 아무도 이 값에 색을 선언하지 않았다는 뜻입니다.
+
+🔴 **`pickUnusedColor()`도 `LEGEND_PALETTE`도 여기서 호출되지 않습니다.** 팔레트에서 아무 색이나 집어 주면 화면은 예뻐지지만 **그 색은 아무것도 뜻하지 않고**, 운영자는 그것을 선언된 색으로 읽습니다. 하네스 `client2/tests/overlay_value_colour_harness.mjs`가 그 축을 소스 대조로 채점합니다(A10g — `pickUnusedColor|LEGEND_PALETTE|OVERLAY_COLORS` 0건).
+
+**「안 칠한다」가 화면에서 정확히 무엇인가** (`paintOverlayDot`): 원호는 **그대로 그려지고** 흰 후광(`lineWidth 1.6`) + 레이어 색 링(`0.8`)으로 **두 번 스트로크**됩니다. `fill`이 `null`이면 `fillStyle`이 **대입조차 되지 않습니다**(대입해 두면 칠하기까지 한 줄이므로 — 하네스가 `fills.length === 0`과 `assignedFill.length === 0`을 **따로** 채점합니다). 즉 미선언 값 = **속이 빈 링 점**이지, 안 그리는 것도 아니고 레이어를 잃는 것도 아닙니다.
+
+- **칸에 값이 여럿이면 채우지 않습니다** — `overlayMarkerFill(list)`은 `list.length !== 1`이면 `null`입니다. **값이 서로 같아도** 채우지 않습니다: 대표를 하나 고르는 순간 그 점은 자기가 하나인 척하게 됩니다.
+- **속이 빈 이유 둘은 픽셀이 아니라 말로 구분합니다** — `overlayFanChip`(값이 여럿) / **`overlayLegendChip`(선언되지 않은 값 — `범례 밖 N종`)**. 후자의 툴팁이 처방까지 말합니다: 「legend에 없는 값이라 색을 지어내지 않고 속이 빈 점으로 그립니다 · … · 범례(2. Legend & DOE)에 값을 추가하면 그 색으로 칠해집니다」.
+- **칩은 캐시하지 않고 매 렌더마다 살아 있는 legend로 다시 셉니다**, 그리고 `renderLegendTable()`이 오버레이가 있을 때 `renderOverlayList()`를 부르므로 **legend를 고치면 그 자리에서 칩이 줄어듭니다.**
+- ⚠️ **빈 값(`''`·`null`·`undefined`)은 「범례 밖」에 세지 않습니다** — 빈 값은 애초에 색을 원한 적이 없습니다.
+- 🔴 **새 UI 영역·입력을 만들지 않았습니다**(기존 `ov-chip` 클래스 재사용, 오버레이 행에 `<input>`·`<select>` 0건 — 하네스 A9c/A11b).
+
 ### 5.5 페인트 잠금 (Paint Lock)
 
 잠금 선언의 **정본은 서버**(`GET /api/maps/paint-rules`)입니다 — 종전 클라 하드코딩 `'F'`를 대체했습니다. 기본은 F 잠금.
@@ -765,11 +796,42 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
   - 서버 측 `get_wafer_bounding_box`는 **바뀌지 않았습니다**(계속 원). 원을 `inside`에서 빼는 것은 여전히 phase 3입니다.
   > 📌 **참조 정정 (2026-07-30)**: 이 줄은 종전에 *"§5.1 저장 규약"*을 가리켰습니다. §5.1은 **클라 파이프라인**이고 그 이름의 규약을 담고 있지 않습니다 — 저장 좌표 규약의 정본은 **§1의 1)**(bbox 항이 들어간 변환 수식)이고, 개념 서술은 [map_editor/philosophy §2.3](../map_editor/philosophy.md)입니다. 앵커 드리프트이므로 이름을 고쳤습니다. ⚠️ 단 **§1에는 미해결 불일치가 하나 걸려 있습니다**(미러링 분기 미구현 — §1의 🟠 블록). 이 줄이 의존하는 부분(`box.minC/minR` 감산이 저장 좌표를 만든다)은 그 불일치와 무관하게 **코드에서 확인된 사실**입니다.
 
+#### 5.7-a 저작은 `valid_die_ref` 한 테이블에 고정된다 — **저장 형식은 그대로다** (2026-08-04 `6420ad0`)
+
+사용자 확정: 「유효 다이 맵을 저장하는 테이블은 `valid_die_ref`라는 테이블로 항상 고정」. 그래서 지정 UI의 **테이블 선택 `<select>`가 사라졌고**, 클라는 `VALID_DIE_TABLE = 'valid_die_ref'` 상수 하나를 씁니다. `valid_die_ref`는 **제품 소유 테이블**로 승격됐습니다(`server/product_tables.py` — 이름·컬럼을 바꾸지 마십시오).
+
+- **행 하나 = 맵 하나의 셀 하나.** `business_key = cell_key`, 조립은 `composite_key_source = [product, type, x, y]` + 구분자 `_`. **맵을 식별하는 쌍은 `map_key_columns = (product, type)`**이라 맵 키는 `PRODUCT_TYPE`으로 읽힙니다. `val`은 칸마다 칠해진 값이고, **마스크는 「어느 칸이 존재하는가」**입니다 — 🔴 **「이 다이가 유효한가」 컬럼을 따로 만들지 마십시오. 행의 존재가 곧 답입니다.**
+- ⚠️ **여기 행이 있는 것만으로는 참조가 안 됩니다** — 그 맵이 `wafer_map_metadata`에도 등록돼 있어야 무엇도 그것을 가리킬 수 있습니다.
+
+🔴 **고정된 것은 *저작*이지 저장 형식이 아닙니다.** `parseValidDieRef`는 종전 두 형식을 **그대로** 받습니다 — 맨 문자열은 여전히 「**내 테이블**의 맵」이고, 객체형(`table`/`target_table` + `map_id`/`map_key`)도 그대로입니다. 고정은 `validDieRefFromControls()`의 판정 한 줄에만 있고, 그 판정은 **「키를 건드렸는가」** 하나입니다:
+
+```js
+const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
+```
+
+즉 **이 판정 이전에 저작된 선언은 조용히 다른 테이블로 재조준되지 않습니다**(실측: 손대지 않은 저장에서 8건 중 0건이 바뀝니다). 그것이 저장 형식을 안 건드린 이유이고, 하네스 `client2/tests/valid_die_authoring_harness.mjs`가 그 축(`INV-4`)을 상시 채점합니다.
+
+#### 5.7-b 🎯 APPLY와 💾 SAVE는 다른 동작이다 — 키를 고르는 데는 요청이 0건이다
+
+종전에는 **키 칸의 blur 하나가 곧 적용**이었습니다. 지금은 둘로 갈렸고, 어느 쪽도 다른 쪽을 하지 않습니다:
+
+| | 🎯 **APPLY** (`btn-valid-die-apply`) | 💾 **SAVE** (`btn-valid-die-save`) |
+|---|---|---|
+| 하는 일 | 지정을 **화면에** 적용한다 | 지정을 **기록**한다 |
+| 안 하는 일 | 저장하지 않는다 | **화면에 적용하지 않는다** — `basis`·`keys`·마스크를 건드리지 않는다 |
+| 쓰기 | 없음 | `PUT /tables/wafer_map_metadata/data/updates` 1행, `grid_metadata` 필드만 |
+
+- 🔴 **키 칸에는 `change`·`blur`·`input` 리스너가 하나도 없습니다.** 유일한 리스너는 `focus → populateValidDieRefList`뿐이라 **datalist에서 고르든 직접 타이핑하든 요청이 0건**입니다. 첫 `focus` 한 번만 맵 키 목록을 읽고, **완전한 답만 캐시**됩니다(잘린 목록은 일부러 캐시하지 않아 다음 focus에 다시 묻습니다 — 하네스 `map_key_datalist_harness.mjs`가 `1`과 `2`로 채점).
+- **SAVE는 쓰기 전에 네 번 거절합니다**: 열린 신원(`table`/`mapKey`)이 없을 때 · 지정이 무동작(`{keep:true}`)일 때 · 기존 `grid_metadata`를 못 읽었을 때(**읽지 못하면 쓰지 않는다**) · 등록된 스펙이 없을 때.
+- ⚠️ **SAVE 페이로드에는 `effort`가 없습니다** — 같은 배치 엔드포인트에 또 실으면 같은 클릭이 두 번 청구됩니다(핵심가치 #1 계기의 정확성).
+
 **구현 지점**(두 번째 구현을 만들지 마십시오):
 
 | 역할 | 서버 | 클라 |
 |---|---|---|
 | 선언 파싱 | `map_overlay.parse_valid_die_ref` | `parseValidDieRef` |
+| 저작 시 테이블 판정 | (없음 — 클라 저작 규율) | **`validDieRefFromControls`**(고정의 단독 소유자) |
+| 적용 / 기록 | (없음) | `onValidDieRefChanged` / `saveValidDieRefDeclaration` |
 | 판정 근거 결정 | **`map_overlay.resolve_valid_die_basis`** → `{basis, source(`ref`\|`circle`\|`refused`), reason}` | `validDieBasis` / `isValidDieAt` |
 | 참조 → 셀 집합 | `map_overlay.resolve_valid_die_set`(DB 경유·작업 단위 캐시) | `resolveValidDie` |
 | 참조 키 캐노니컬화 | `map_overlay.canonical_map_key`(→ `canonical_key_value`) | `canonicalMapKey` |
@@ -1060,6 +1122,17 @@ warnings: [{type: "source_degraded", role, status, effect, detail}, ...]
 | 역할 **키 자체가 없음** | **`not_declared`** | **숫자**(그 감산항 없이 계산) | 아니오 — `_status_is_degraded` 대상 밖, `source_degraded` 미발행 |
 | 키는 있는데 깨짐(오타·테이블 부재·`null`) | `missing` 등 | `null` | 예 — §6.2 3층 방어 그대로 |
 | `transfer_log: "none"` | `connected(untracked)` | `null` + 상한 | 아니오(§6.2-bis) |
+| **`fail_values`는 선언, `val`은 부재** | **`connected(fail_value_column_absent)`** | `null` + 상한 | **예** — 아래 6.2-ter.0 |
+
+#### 6.2-ter.0 🔴 답할 수 없음은 **YES가 아니다** — `fail_value_column_absent` (2026-08-04 `5d35337` · N14)
+
+완화의 반대쪽 경계입니다. **키 부재가 전부 사이트의 선언인 것은 아닙니다** — 그 부재가 **질문 자체를 답할 수 없게** 만들면 그것은 선언이 아니라 결함입니다.
+
+`fail_values`는 **어느 값이** fail인지를 말하고 `val`은 **어디서 읽는지**를 말합니다. `val`이 없으면 「이 행이 fail인가」는 답할 수 없고, **술어 없이 세면 풀 전체가 fail**이 되어 감산이 과대 계상됩니다 — §6.2의 3층 방어가 딛고 선 **상한 불변식이 정확히 그 방향으로 깨집니다.** 그래서 판정은 **거절 · 0 서빙 · 강등**입니다(`align_unavailable`과 같은 규율).
+
+- **실측된 결함**: `dt_log`/`DT-2601-001` slot 22 — 풀 **144행**, `fail_values` 일치 **0행**, 그런데 **144행 전부가 fail로 계상**됐고 응답은 `reliable: true`였습니다. 🔴 **가장 나쁜 모양입니다** — §6.2가 막으려는 것이 바로 「틀린 숫자가 신뢰 표기를 달고 나가는 것」입니다.
+- ⚠️ **`connected(column_unresolved:val)`과 다른 단어인 것이 요점입니다.** 저쪽은 「이름을 댔는데 그 테이블에 없다」(수리: 고치거나 지운다), 이쪽은 「이름이 아예 없다」(수리: 하나 선언한다). **결과는 같고 지시가 다릅니다.**
+- **술어는 하나이고 읽는 곳이 셋입니다** — `bonding_plan.fail_filter_status`(단독 소유자) · `transfer_plan._fail_filter_status`(얇은 통과) · `transfer_plan._status_is_degraded`가 **철자를 다시 쓰지 않고 `bonding_plan.FAIL_VALUE_COLUMN_ABSENT`를 읽습니다**(두 번째 철자는 곧 두 개의 진실이 됩니다).
 
 - **`total_chips`는 예외입니다** — 분모가 없으면 가용이 성립하지 않으므로 부재도 `missing`입니다.
 - `transferred`·`used`는 로그가 없으면 **`null`**입니다(가짜 `0` 금지 — §6.2-bis와 같은 규율). 그런데 `remaining`은 **숫자**입니다: 감산항이 존재하지 않는다고 사이트가 선언했으므로 미지수가 아닙니다.
