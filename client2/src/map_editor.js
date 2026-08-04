@@ -6956,6 +6956,260 @@ function applyPastedAuxRows(parsed) {
   return stats;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// [1d] 좌표 표 붙여넣기 — 엑셀 2차원 표(머리줄 = X, 첫 열 = Y)
+//
+// INV-1d-1: **머리글의 수는 DB 좌표다.** 화면 위치가 아니다. (x,y)가 어느 칸에 앉는가는
+//           `getCanvasCellFromDb`가 답한다 — 로드(`loadExistingMap`)가 서버 행을 놓을 때
+//           쓰는 **바로 그 함수**이고, 이 파일에 좌표 변환의 두 번째 구현은 없다(불변식 ①).
+//           그래서 START X/Y·Y반전·회전·면이 무엇이든 값은 **같은 다이**에 앉는다. 화면이
+//           회전하면 그 다이가 놓인 칸이 바뀔 뿐이다.
+//
+// INV-1d-2: **위치 기반 경로(F1ⓑ)와 배타적이다.** 회사 양식 되붙이기는 화면 행·열로 주소를
+//           매기고 이 경로는 좌표로 매긴다. 둘을 가르는 것은 아래 구조 술어 하나뿐이고,
+//           술어가 「이 판정기의 것이 아니다」(`none`)라고 답하면 종전 경로가 **한 글자도
+//           다르지 않게** 처리한다.
+//
+// INV-1d-3: **애매하면 거부한다.** 좌표 표처럼 생겼는데 확신할 수 없으면 사유를 붙여
+//           거부하고, 최선 노력 배치를 하지 않는다. 틀린 좌표계로 놓인 격자도 여전히
+//           멀쩡한 격자로 보이기 때문에 여기서 통과시키면 아무도 못 잡는다.
+//
+// ── 술어: 원점을 **두 번 유도해 일치할 때만** 채택한다 ─────────────────────────────
+// `server/parsers/html_topology_parser.py`(HTMLMatrixMapParser)의 규율을 그대로 옮긴 것이다.
+// 그쪽은 병합(rowspan/colspan)을 볼 수 있고 이쪽은 평문이라 판정 재료가 다르지만, **두 유도의
+// 사각지대가 서로 반대편에 있어서 일치가 곧 증거**라는 구조는 같다:
+//
+//   ⓐ 줄 모양(위에서 아래로) — `coordRulerTicks`. 첫 칸이 좌표가 **아니고**, 그 오른쪽으로
+//      빈 칸 없이 정수가 2개 이상 이어지며 **강한 단조**(증가 또는 감소)인 줄.
+//      사각지대: 진짜 눈금 줄 **위**에 같은 모양의 잡줄(`SLOT 2 3 6 …`)이 있으면 그것이 이긴다.
+//   ⓑ 열 모양(아래에서 위로) — 첫 열이 정수인 줄들의 **맨 위 − 1**.
+//      사각지대: 격자 위쪽 첫 열에 정수가 하나라도 있으면 원점이 머리 띠로 끌려 올라간다.
+//
+// 둘은 서로 **다른 입력에서** 틀리므로 불일치는 「이 파서가 아는 모양이 아니다」라는 뜻이다.
+// 그때는 승자를 고르지 않고 **사유를 붙여 거부**한다. x·y는 이 맵의 업무 키라, 그럴듯해
+// 보이는 틀린 원점은 성능이 떨어진 파싱이 아니라 **존재하지 않는 좌표에 맵 전체를 철하는 것**이다.
+//
+// 🔴 **강한 단조는 장식이 아니라 판별력의 핵심이다.** 이것이 없으면 값이 전부 정수인 작은
+//    격자(마스크 없는 📐 표준 프레임)가 좌표 표로 오인될 수 있다. 축이 같은 좌표를 두 번
+//    말하는 일은 원리적으로 없으므로, 이 조건은 좌표 표에는 공짜이고 값 격자에는 치명적이다.
+// ⚠️ ⓐ·ⓑ가 **둘 다** 없으면 거부가 아니라 `none`이다 — 평범한 블록을 붙여넣은 것이고, 이
+//    경로는 소비자가 둘인 자리다(참조 파서는 소비자가 하나라 그 경우도 거부한다).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const COORD_MIN_TICKS = 2;
+
+// 좌표로 읽히는가. `parseInt`를 쓰지 않는다 — `parseInt('3A')`는 3이고, 그러면 `3A`가 축
+// 눈금으로 통과한다. 좌표는 **정수 전체**여야 한다.
+const coordInt = (s) => {
+  const t = String(s === null || s === undefined ? '' : s).trim();
+  return /^[+-]?\d+$/.test(t) ? parseInt(t, 10) : null;
+};
+
+const coordMonotonic = (nums) => {
+  if (nums.length < 2) return false;
+  const up = nums[1] > nums[0];
+  for (let i = 1; i < nums.length; i++) {
+    if (up ? !(nums[i] > nums[i - 1]) : !(nums[i] < nums[i - 1])) return false;
+  }
+  return true;
+};
+
+// ⓐ 이 줄이 X축 눈금 줄인가. 모양으로만 판정한다.
+function coordRulerTicks(line) {
+  const width = (line || []).length;
+  if (width < 1 + COORD_MIN_TICKS) return null;
+  // 모서리 칸은 좌표가 아니다(비었거나 `X\Y` 같은 라벨). 여기가 정수면 그 줄은 데이터 줄이다.
+  if (coordInt(pasteAt(line, 0)) !== null) return null;
+  const ticks = [];
+  for (let c = 1; c < width; c++) {
+    const f = pasteAt(line, c);
+    if (pasteBlank(f)) {
+      // 눈금 시작 전의 빈 칸은 불가(눈금은 1열에서 시작한다). 시작 후의 빈 칸은
+      // **꼬리 패딩일 때만** 허용한다 — 중간에 구멍이 나면 눈금 없는 열이 생긴다.
+      if (ticks.length === 0) return null;
+      for (let d = c; d < width; d++) if (!pasteBlank(pasteAt(line, d))) return null;
+      break;
+    }
+    const v = coordInt(f);
+    if (v === null) return null;
+    ticks.push({ c, v });
+  }
+  if (ticks.length < COORD_MIN_TICKS) return null;
+  if (!coordMonotonic(ticks.map(t => t.v))) return null;
+  return ticks;
+}
+
+/**
+ * [1d] 클립보드 평문을 좌표 표로 읽는다. **순수 함수** — DOM도 모듈 상태도 읽지 않는다.
+ *
+ * 돌려주는 것:
+ *   kind    'none'   이 판정기의 것이 아니다 → 호출부는 종전 위치 기반 경로로 간다
+ *           'refuse' 좌표 표처럼 생겼는데 신뢰할 수 없다 → 사유를 사용자에게 말한다
+ *           'ok'     읽었다
+ *   cells   [{ x, y, value }] — x·y는 **DB 좌표**, 화면 위치가 아니다
+ *   values  빈 칸이 아닌 값의 중복 없는 목록(legend 보충용)
+ *   minX/maxX/minY/maxY  표가 말하는 구간. 이 구간 **밖은 건드리지 않는다**.
+ */
+function readCoordTableBlock(text) {
+  const lines = parseTsv(text, { trimCells: true });
+  let lastContent = -1;
+  for (let r = 0; r < lines.length; r++) {
+    if ((lines[r] || []).some(f => !pasteBlank(f))) lastContent = r;
+  }
+  if (lastContent < 0) return { kind: 'none' };
+
+  // ⓐ 줄 모양 — 위에서 아래로, 첫 번째 눈금 모양 줄.
+  let topAnchor = null;
+  let topTicks = null;
+  for (let r = 0; r <= lastContent; r++) {
+    const t = coordRulerTicks(lines[r]);
+    if (t) { topAnchor = r; topTicks = t; break; }
+  }
+
+  // ⓑ 열 모양 — 첫 열이 좌표인 줄들. 그 맨 위의 **한 줄 위**가 눈금 줄이어야 한다.
+  // ⚠️ 부재는 `null`이지 `-1`이 아니다. `yRows[0] === 0`(첫 줄부터 첫 열이 정수)은 「눈금 줄이
+  //    있을 자리가 없다」는 뜻이고, 그것은 좌표 표가 아니라 **값이 전부 정수인 평범한 격자**의
+  //    모양이다. 둘을 `-1` 하나로 뭉뚱그리면 그 격자가 「엇갈림」으로 거부돼, 종전에 잘 되던
+  //    붙여넣기가 사유 없이 막힌다.
+  const yRows = [];
+  for (let r = 0; r <= lastContent; r++) {
+    if (coordInt(pasteAt(lines[r], 0)) !== null) yRows.push(r);
+  }
+  const bottomAnchor = (yRows.length >= COORD_MIN_TICKS && yRows[0] >= 1) ? yRows[0] - 1 : null;
+
+  // 🔴 **눈금 줄이 없으면 거부가 아니라 양보다**(INV-1d-2). 좌표 표를 좌표 표이게 하는 것은
+  //    눈금 줄이고, 그것이 없으면 여기에는 거부할 좌표 표가 애초에 없다 — 첫 열에 정수가 몇 개
+  //    있을 뿐이고, **그것은 맵 격자의 평범한 모습이다**(값이 `1`인 칸이 왼쪽 열에 이어진 맵).
+  //    실측 위험: 이 조건을 「ⓑ만 있어도 거부」로 두면 머리글 없이 격자만 복사한 정상 되붙이기가
+  //    사유 없이 막힌다(원 밖이라 0행 0열은 비어 있고, 그 아래 왼쪽 열은 값으로 채워져 있다).
+  //    거부는 **ⓐ가 발화한 뒤에만** 의미가 있다.
+  if (topAnchor === null) return { kind: 'none' };
+
+  const refuse = (reason) => ({ kind: 'refuse', reason });
+
+  if (bottomAnchor === null) {
+    return refuse(`${topAnchor + 1}번째 줄이 X축 눈금 모양인데, 그 아래 첫 열에 Y 좌표가 `
+      + '2개 이상 없습니다 — X축만으로는 셀의 자리를 정할 수 없습니다.');
+  }
+  if (topAnchor !== bottomAnchor) {
+    return refuse(`X축 줄이 어디인지 두 판정이 엇갈립니다 — 줄 모양은 ${topAnchor + 1}번째 줄`
+      + `(눈금 ${topTicks.map(t => t.v).join(', ')}), 첫 열의 Y 좌표는 ${bottomAnchor + 1}번째 줄을 `
+      + '가리킵니다. 좌표 표 위에 다른 내용이 섞여 있습니다 — 표만 복사해 주십시오.');
+  }
+  for (let r = 0; r < topAnchor; r++) {
+    if ((lines[r] || []).some(f => !pasteBlank(f))) {
+      return refuse(`좌표 표 위 ${r + 1}번째 줄에 표가 아닌 내용이 있습니다 — 표만 복사해 주십시오.`);
+    }
+  }
+  for (let i = 1; i < yRows.length; i++) {
+    if (yRows[i] !== yRows[i - 1] + 1) {
+      return refuse(`${yRows[i - 1] + 2}번째 줄의 첫 칸이 Y 좌표가 아닙니다 — 좌표 표의 모든 줄은 `
+        + '첫 칸에 Y 좌표를 가져야 합니다.');
+    }
+  }
+  if (yRows[yRows.length - 1] !== lastContent) {
+    return refuse(`좌표 표 아래 ${lastContent + 1}번째 줄에 표가 아닌 내용이 있습니다 — `
+      + '표만 복사해 주십시오.');
+  }
+  const yVals = yRows.map(r => coordInt(pasteAt(lines[r], 0)));
+  if (!coordMonotonic(yVals)) {
+    return refuse('Y 좌표가 한 방향으로 이어지지 않습니다 — 같은 좌표가 두 번 나오거나 순서가 '
+      + '섞여 있습니다.');
+  }
+
+  // 눈금이 없는 열에 값이 있으면 그 값은 **놓을 자리가 없다**. 조용히 버리지 않는다.
+  const tickCols = new Set(topTicks.map(t => t.c));
+  for (let i = 0; i < yRows.length; i++) {
+    const line = lines[yRows[i]] || [];
+    for (let c = 1; c < line.length; c++) {
+      if (!tickCols.has(c) && !pasteBlank(pasteAt(line, c))) {
+        return refuse(`${yRows[i] + 1}번째 줄 ${c + 1}번째 칸에 값이 있는데 그 열에는 X 좌표가 `
+          + '없습니다 — X축 눈금 줄에 그 열의 좌표를 적어 주십시오.');
+      }
+    }
+  }
+
+  const cells = [];
+  const values = [];
+  const seen = new Set();
+  for (let i = 0; i < yRows.length; i++) {
+    const line = lines[yRows[i]];
+    for (const t of topTicks) {
+      const value = pasteAt(line, t.c).trim();
+      cells.push({ x: t.v, y: yVals[i], value });
+      if (value !== '' && !seen.has(value)) { seen.add(value); values.push(value); }
+    }
+  }
+  const xVals = topTicks.map(t => t.v);
+  return {
+    kind: 'ok', reason: '', cells, values,
+    minX: Math.min(...xVals), maxX: Math.max(...xVals),
+    minY: Math.min(...yVals), maxY: Math.max(...yVals),
+    nx: xVals.length, ny: yVals.length,
+  };
+}
+
+// [1d] 지금 이 화면이 앉아 있는 좌표계. 값을 **새로 유도하지 않는다** — `getGridCellObject`가
+// 컨트롤을 읽는 그 여섯 줄 그대로다.
+function currentCoordFrame() {
+  const { visualCols, visualRows } = getVisualGridDimensions();
+  return {
+    cols: parseInt(el.gridCols.value, 10) || 10,
+    rows: parseInt(el.gridRows.value, 10) || 10,
+    rotation: currentRotation,
+    side: currentSide,
+    invertY: el.gridYInvert ? el.gridYInvert.checked : false,
+    startX: parseInt(el.gridStartX.value, 10) || 0,
+    startY: parseInt(el.gridStartY.value, 10) || 0,
+    visualCols, visualRows,
+  };
+}
+
+/**
+ * [1d] 좌표 표 → **위치 기반 격자**. 표가 덮지 않는 칸은 현재 값을 그대로 실어 「변화 없음」이
+ * 되게 한다. 그래서 되쓰기는 `applyPastedGridRows` **하나**가 계속 담당한다 — 이 파일에
+ * `gridData`에 쓰는 두 번째 경로를 만들지 않는다.
+ *
+ * 🔴 (x,y) → (c,r)는 `getCanvasCellFromDb` 한 줄이다. 로드가 쓰는 그 함수이므로 이 붙여넣기의
+ *    좌표계는 서버가 돌려준 셀의 좌표계와 정의상 같다.
+ * 🔴 `placed`/`cleared`는 **되쓰기가 쓸 판정식과 같은 식**으로 센다(현재 값과 다른가 ·
+ *    잠금 셀인가). 확인창의 수와 실제 놓인 수가 갈라지는 「화면 34 · DB 33」을 원천에서 막는다.
+ */
+function planCoordPaste(coord, cf) {
+  const rows = [];
+  for (let r = 0; r < cf.visualRows; r++) {
+    const line = [];
+    for (let c = 0; c < cf.visualCols; c++) {
+      const cell = gridCells2D[r] ? gridCells2D[r][c] : null;
+      line.push(cell ? (gridData[cell.key] || '') : '');
+    }
+    rows.push(line);
+  }
+
+  const offGrid = [];
+  let placed = 0;
+  let cleared = 0;
+  coord.cells.forEach(t => {
+    const at = getCanvasCellFromDb(t.x, t.y, cf.cols, cf.rows, cf.rotation, cf.side,
+      cf.invertY, cf.startX, cf.startY);
+    const onGrid = at.r >= 0 && at.r < cf.visualRows && at.c >= 0 && at.c < cf.visualCols;
+    if (!onGrid) {
+      // 빈 칸은 놓을 것이 없으므로 격자 밖이어도 해가 없다. 값이 있는데 자리가 없으면
+      // **그 값은 사라진다** — 그것이 거부 사유다(호출부가 판정한다).
+      if (t.value !== '') offGrid.push({ x: t.x, y: t.y, c: at.c, r: at.r });
+      return;
+    }
+    const cell = gridCells2D[at.r] ? gridCells2D[at.r][at.c] : null;
+    rows[at.r][at.c] = t.value;
+    if (!cell) return;                                   // 렌더가 만들지 않은 셀 — 되쓰기도 건너뛴다
+    const cur = gridData[cell.key] || '';
+    if (t.value === cur) return;
+    if (isProtectedFCell(cell.key)) return;              // 잠금 — 되쓰기도 막는다
+    if (t.value === '') cleared++; else placed++;
+  });
+  return { rows, placed, cleared, offGrid };
+}
+
 // [F1ⓑ] 붙여넣기 동선. **새 컨트롤은 0개다** — 그리고 그것은 선택이 아니라 물리적 제약이다:
 // 버튼에서는 클립보드를 읽을 수 없고(`navigator.clipboard`가 운영에서 `undefined`,
 // `execCommand('paste')`는 웹 콘텐츠에서 차단), 네이티브 `paste` 이벤트만 내용을 준다.
@@ -6969,44 +7223,97 @@ function onMapGridPaste(e) {
   const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
   if (!text || text.indexOf('\t') < 0) return;   // 한 칸짜리 붙여넣기는 가로채지 않는다
 
-  const parsed = readCompanyMapBlock(text);
+  // [1d] 좌표 표인가. 판정은 **구조**로만 하고(§readCoordTableBlock), 애매하면 사유를 붙여
+  // 거부한다. `none`이면 이 판정기의 것이 아니라는 뜻이라 아래 위치 기반 경로가 종전 그대로
+  // 처리한다 — 평범한 블록의 동선은 이 분기 하나를 지나갈 뿐 한 글자도 달라지지 않는다.
+  const coord = readCoordTableBlock(text);
+  if (coord.kind === 'refuse') {
+    e.preventDefault();
+    showToast(`붙여넣기를 취소했습니다 — ${coord.reason}`, 'error');
+    return;
+  }
+  const isCoord = coord.kind === 'ok';
+
+  const parsed = isCoord ? null : readCompanyMapBlock(text);
   const { visualCols, visualRows } = getVisualGridDimensions();
   const frame = {
     visualCols, visualRows,
     title: copyTitleText(),
     // 복사가 표식을 찍는 그 자리(`notchMarkCell`). 지문이 없으면 null이고, 그때 아래
     // `checkPasteAgainstFrame`은 **거부**한다 — 확인만 못 한 채 통과시키지 않는다(P0-2).
+    //
+    // 🔴 좌표 표에는 이 지문이 **필요 없다.** 노치가 필요한 이유는 위치 기반 복사본이 자리를
+    //    화면 행·열로만 말하기 때문이고(회전·면은 치수를 보존하므로 다른 관문이 못 잡는다),
+    //    좌표 표는 자기 자리를 x·y로 **직접 말한다**. 프레임이 달라지면 값이 앉는 **칸**이
+    //    바뀔 뿐 **다이**는 그대로다 — 그것이 「db 좌표로 읽기」의 뜻이다.
     notch: notchMarkCell(currentRotation, currentSide),
   };
-  const verdict = checkPasteAgainstFrame(parsed, frame);
-  if (!verdict.ok) {
-    // 격자 모양이 전혀 아닌 클립보드(다른 화면에서 긁어온 표)는 조용히 지나간다 —
-    // 여기서 토스트를 띄우면 아무 붙여넣기에나 경고가 뜬다.
-    if (parsed.ok) {
-      e.preventDefault();
-      showToast(`붙여넣기를 취소했습니다 — ${verdict.reason}`, 'error');
-    }
-    return;
-  }
-  e.preventDefault();
 
-  const painted = pastedCellCount(parsed, frame);
-  const auxCount = parsed.auxRecords ? parsed.auxRecords.length : 0;
-  // 쓰기 1회 확인. 화면을 통째로 갈아 끼우므로 [🧹 Clear Grid]·[🎨 Fill All]과 같은 급이고,
-  // 확인창은 **하나**다. 서버에 아무것도 안 나간다는 것을 여기서 말한다(INV-F1ⓑ-4).
-  const lines = [
-    parsed.title ? `「${parsed.title}」 복사본을 붙여넣습니다.` : '표 머리글이 없어 어느 맵의 복사본인지 확인하지 못했습니다.',
-    `격자 ${visualCols}×${visualRows} 전체를 복사본으로 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비웁니다).`,
-    auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용합니다 — COUNT는 격자에서 다시 셉니다.` : '',
-    // [P0-2] 종전의 「⚠ 회전·면은 대조하지 못했습니다」 줄은 **삭제**했다. 지금은 대조하지
-    // 못하면 `checkPasteAgainstFrame`이 거부하므로 여기까지 오는 복사본은 전부 대조를 통과한
-    // 것이고, 그 문구는 절대 뜨지 않는 죽은 줄이 된다(살아 보이는 죽은 코드 금지).
-    '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
-  ].filter(Boolean);
+  let plan = null;
+  let lines = null;
+
+  if (isCoord) {
+    const cf = currentCoordFrame();
+    plan = planCoordPaste(coord, cf);
+    if (plan.offGrid.length > 0) {
+      e.preventDefault();
+      const f0 = plan.offGrid[0];
+      showToast(`붙여넣기를 취소했습니다 — 표의 좌표가 현재 격자를 벗어납니다 `
+        + `(값 있는 셀 ${plan.offGrid.length}칸, 예: x=${f0.x} y=${f0.y}). 표의 좌표 구간은 `
+        + `X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY}입니다 — 격자 크기와 `
+        + `START X/Y를 이 구간에 맞춘 뒤 다시 붙여넣으십시오.`, 'error');
+      return;
+    }
+    e.preventDefault();
+    lines = [
+      '좌표 표를 붙여넣습니다 — 머리줄과 첫 열의 수를 DB 좌표로 읽습니다(화면 위치가 아닙니다).',
+      `X ${coord.minX}~${coord.maxX} · Y ${coord.minY}~${coord.maxY} 구간 ${coord.nx}×${coord.ny}칸만 `
+        + `바꿉니다 (${plan.placed}칸 입력 · ${plan.cleared}칸 비움). 이 구간 밖은 그대로 둡니다.`,
+      '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
+    ];
+  } else {
+    const verdict = checkPasteAgainstFrame(parsed, frame);
+    if (!verdict.ok) {
+      // 격자 모양이 전혀 아닌 클립보드(다른 화면에서 긁어온 표)는 조용히 지나간다 —
+      // 여기서 토스트를 띄우면 아무 붙여넣기에나 경고가 뜬다.
+      if (parsed.ok) {
+        e.preventDefault();
+        showToast(`붙여넣기를 취소했습니다 — ${verdict.reason}`, 'error');
+      }
+      return;
+    }
+    e.preventDefault();
+
+    const painted = pastedCellCount(parsed, frame);
+    const auxCount = parsed.auxRecords ? parsed.auxRecords.length : 0;
+    lines = [
+      parsed.title ? `「${parsed.title}」 복사본을 붙여넣습니다.` : '표 머리글이 없어 어느 맵의 복사본인지 확인하지 못했습니다.',
+      `격자 ${visualCols}×${visualRows} 전체를 복사본으로 교체합니다 (값 있는 셀 ${painted}칸, 나머지는 비웁니다).`,
+      auxCount > 0 ? `DOE ${auxCount}행(VALUE·STACK·DESC)도 함께 적용합니다 — COUNT는 격자에서 다시 셉니다.` : '',
+      // [P0-2] 종전의 「⚠ 회전·면은 대조하지 못했습니다」 줄은 **삭제**했다. 지금은 대조하지
+      // 못하면 `checkPasteAgainstFrame`이 거부하므로 여기까지 오는 복사본은 전부 대조를 통과한
+      // 것이고, 그 문구는 절대 뜨지 않는 죽은 줄이 된다(살아 보이는 죽은 코드 금지).
+      '서버에는 아무것도 쓰지 않습니다 — 저장은 [⚡ Push Map Data]로 하십시오.',
+    ].filter(Boolean);
+  }
+
+  // 쓰기 1회 확인. 화면을 갈아 끼우므로 [🧹 Clear Grid]·[🎨 Fill All]과 같은 급이고,
+  // 확인창은 **경로가 둘이어도 하나**다. 서버에 아무것도 안 나간다는 것을 여기서 말한다
+  // (INV-F1ⓑ-4 · INV-1d-1).
   if (!confirm(`${lines.join('\n')}\n\n계속하시겠습니까?`)) return;
 
-  const gridStats = applyPastedGridRows(parsed, frame);
-  const auxStats = applyPastedAuxRows(parsed);
+  // 🔴 되쓰기는 **한 함수**다. 좌표 경로는 표를 위치 격자로 먼저 옮겨 놓고(§planCoordPaste)
+  //    같은 함수에 넘긴다 — `gridData`에 쓰는 두 번째 경로를 만들지 않기 위해서다.
+  //    노치 표식은 좌표 표에 없으므로 그 갈래를 꺼 둔다(`notch: null`).
+  const gridStats = plan
+    ? applyPastedGridRows({ rows: plan.rows }, Object.assign({}, frame, { notch: null }))
+    : applyPastedGridRows(parsed, frame);
+  // 좌표 표에는 보조표가 없다. 대신 legend에 없는 값은 **공용 자동 추가 관문**으로 채운다
+  // (`ensureLegendValues` → `autoAddLegendValue`) — 위치 기반 경로가 보조표에서 얻는 것을
+  // 이 경로는 격자 값에서 얻는다. 두 번째 팔레트 규칙을 만들지 않는다.
+  const auxStats = plan
+    ? { updated: 0, added: ensureLegendValues(coord.values).length, skipped: 0, countsIgnored: 0 }
+    : applyPastedAuxRows(parsed);
 
   renderLegendTable();
   updateLegendCounts();
@@ -7027,11 +7334,12 @@ function onMapGridPaste(e) {
   // table (and the paste passed a confirm already). With `notes` present it carries facts
   // about cells that will NOT be saved, so it stays a toast.
   const pasteMsg = `붙여넣기 완료 — ${gridStats.set}칸 입력 · ${gridStats.cleared}칸 비움`
-    + `${auxStats.updated + auxStats.added > 0 ? ` · DOE ${auxStats.updated + auxStats.added}행` : ''}`
+    + `${auxStats.updated + auxStats.added > 0
+      ? (plan ? ` · legend ${auxStats.added}행 추가` : ` · DOE ${auxStats.updated + auxStats.added}행`) : ''}`
     + `${notes.length ? ` (${notes.join(' · ')})` : ''}`;
   if (notes.length) showToast(pasteMsg, 'warning');
   else console.debug(`[map] ${pasteMsg}`);
-  console.debug('[map] pasted company block', {
+  console.debug(plan ? '[map] pasted coordinate table' : '[map] pasted company block', {
     gridStats, auxStats, unsavable: {
       offGrid: un.offGrid.length, outsideRetained: un.outsideRetained.length, outsideStray: un.outsideStray.length
     }

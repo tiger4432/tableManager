@@ -105,6 +105,7 @@ const KNOWN_RED = new Map([
 const FLOORS = new Map([
   ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
+  ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
   // Off the debt list 2026-08-04. It had been DEAD for one missing name in its slice list
   // (`pushBlockingCount`), and it is the ONLY harness that runs `pushMapData` end to end --
