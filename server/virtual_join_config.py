@@ -46,7 +46,14 @@
                          않고 제약도 강제되지 않는다. `to_regclass`로는 잘 풀린다.
   `indpred IS NOT NULL`  부분 인덱스. 술어 안에서만 유일하므로 전체 유일성이 아니다.
   `indexprs IS NOT NULL` 표현식 인덱스. 컬럼이 아니라 식에 대한 유일성이다.
-셋 다 「UNIQUE 인덱스가 있다」로 읽히지만 유일성을 보장하지 않는다.
+셋 다 「UNIQUE 인덱스가 있다」로 읽히지만 (컬럼에 대한) 유일성을 보장하지 않는다.
+
+⚠️ **2026-08-04 — 세 번째 배제는 조건부가 됐다.** 조인 키에 표기 정규화가 선언되면
+(`notation_norm`) 비교가 **접힌 식**으로 이루어지므로, 그때는 컬럼 유일성이 아니라 **식
+유일성이 정확히 필요한 것**이다. 방향이 뒤집힌다: 접히는 키에서는 `indexprs IS NOT NULL`
+인덱스만 후보가 되고 평범한 인덱스는 배제된다. 이유가 성능이 아니라 **정확성**임에 주의 ―
+원본으로 서로 다른 두 행('CL-1', 'CL_1')이 접히면 한 값이므로, 컬럼에 UNIQUE가 있어도
+접힌 키로는 중복이고 그 중복이 곧 팬아웃이다. `indpred`와 `indisvalid` 배제는 그대로다.
 
 [왼쪽의 중복은 팬아웃이 아니다 ― 그것이 이 기능의 목적이다]
 검사는 **오른쪽에만** 적용된다. 사용자 시나리오 `dt_log → core_wafer_map
@@ -150,27 +157,65 @@ def _is_str_list(value) -> bool:
 # 운영자가 만들어야 하는 인덱스
 # ---------------------------------------------------------------------------
 
-def required_index_name(table: str, columns: list) -> str:
-    """조인 키를 덮는 UNIQUE 인덱스의 권장 이름(63바이트 이내)."""
-    base = "%s%s_%s" % (INDEX_PREFIX, table, "_".join(columns))
+def _folds_list(columns: list, folds) -> list:
+    """`folds`를 `columns`와 같은 길이의 목록으로 정규화한다(항목: 규칙 dict 또는 None)."""
+    if not folds:
+        return [None] * len(columns)
+    return [folds[i] if i < len(folds) else None for i in range(len(columns))]
+
+
+def required_index_name(table: str, columns: list, folds=None) -> str:
+    """조인 키를 덮는 UNIQUE 인덱스의 권장 이름(63바이트 이내).
+
+    표기 정규화가 걸린 조인 키는 **다른 인덱스**를 요구한다(컬럼이 아니라 접힌 식에 대한
+    유일성). 이름이 같으면 운영자가 평범한 인덱스를 이미 만들어 둔 자리에서 이름 충돌만
+    보고 「이미 있다」고 읽으므로, 접히는 키에는 `_nf` 접미를 붙여 **다른 이름**을 준다.
+    """
+    suffix = "_nf" if any(_folds_list(columns, folds)) else ""
+    base = "%s%s_%s%s" % (INDEX_PREFIX, table, "_".join(columns), suffix)
     if len(base.encode("utf-8")) <= _MAX_IDENTIFIER:
         return base
     digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
     keep = _MAX_IDENTIFIER - len(INDEX_PREFIX) - len(digest) - 1
-    return "%s%s_%s" % (INDEX_PREFIX, ("%s_%s" % (table, "_".join(columns)))[:keep], digest)
+    return "%s%s_%s" % (INDEX_PREFIX,
+                        ("%s_%s%s" % (table, "_".join(columns), suffix))[:keep], digest)
 
 
-def required_index_ddl(table: str, columns: list) -> str:
+def index_key_expression(column: str, fold_rules=None) -> str:
+    """인덱스 키 1개의 SQL 식 ― 평범한 컬럼이거나, **접힌 식**이거나.
+
+    🔴 접힌 식은 `notation_norm.fold_sql_text` **하나에서만** 나온다. 조회 시점 식
+    (`fold_notation_sql`)과 이 DDL이 같은 함수에서 나오지 않으면 PostgreSQL이 인덱스를
+    **쓰지 않는다** ― 함수 인덱스는 질의 식이 인덱스 식과 일치할 때만 쓰이므로, 두 철자는
+    이론적 불일치가 아니라 1,000만 행 순차 스캔이 되고 테스트는 전부 통과한다.
+    """
+    if not fold_rules:
+        return '"%s"' % column
+    import notation_norm
+    return notation_norm.fold_sql_text('"%s"' % column, fold_rules)
+
+
+def required_index_ddl(table: str, columns: list, folds=None) -> str:
     """운영자가 그대로 실행할 수 있는 DDL 한 줄.
 
     `CONCURRENTLY`인 이유: 운영 테이블에 쓰기를 잠그지 않기 위해서다. 대가는 이 문장이
     트랜잭션 블록 안에서 돌 수 없다는 것이고(psql에서 손으로 실행하는 형태라 문제가 아니다),
     **취소되면 INVALID 인덱스가 남는다**는 것이다 ― 그래서 `unique_index_covering`이
     `indisvalid`를 검사한다. 취소했으면 지우고 다시 만들어야 판정이 인정한다.
+
+    🔴 조인 키에 표기 정규화가 걸려 있으면 이것은 **함수 인덱스**가 된다. 평범한 b-tree
+    인덱스로는 안 되는 이유가 두 가지이고 **둘 다 치명적**이다:
+      ① 접힌 비교는 그 인덱스를 못 쓴다(순차 스캔).
+      ② 애초에 게이트가 묻는 유일성을 **보장하지 않는다** ― 원본으로 서로 다른 두 행
+         ('CL-1'과 'CL_1')이 접히면 한 값이 되므로, 컬럼에 UNIQUE가 있어도 접힌 키로는
+         중복이다. 그 중복이 곧 조인 팬아웃이다.
+    문장이 길어지는 것은 대가다. `\\uXXXX` 이스케이프라 전부 ASCII이고 psql에 그대로
+    붙여 넣을 수 있다(제어문자를 날것으로 싣지 않는 이유가 그것이다).
     """
+    fl = _folds_list(columns, folds)
     return 'CREATE UNIQUE INDEX CONCURRENTLY %s ON "%s" (%s);' % (
-        required_index_name(table, columns), table,
-        ", ".join('"%s"' % c for c in columns))
+        required_index_name(table, columns, folds), table,
+        ", ".join(index_key_expression(c, f) for c, f in zip(columns, fl)))
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +279,26 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         seen_right.add(rc)
         join_key.append({"left": lc, "right": rc})
 
+    # --- 표기 정규화: 이 비교를 접어야 하는가 (양쪽 다, 아니면 아무 쪽도) ---
+    # 🔴 한쪽만 접는 코드 경로는 존재하지 않는다. `join_pair_rules`가 「어느 한쪽이라도
+    # 선언됐으면 양쪽」을 결정하고, 그 결과 하나가 ON 절·인덱스 DDL·게이트에 **똑같이**
+    # 실린다. 실측(2026-08-04)이 그 이유다 ― `dt_log.core_lot`은 병합군 15개,
+    # `core_wafer_map.core_lot`은 0개라, 깨끗한 쪽에 선언할 이유가 있는 운영자는 없다.
+    # 그런데 한쪽만 접은 조인은 도움이 안 되는 정도가 아니라 **이미 맞고 있던 매치를
+    # 조용히 잃는다**.
+    try:
+        import notation_norm
+        for pair in join_key:
+            pair["fold"] = notation_norm.join_pair_rules(
+                left_table, pair["left"], right_table, pair["right"])
+    except Exception as e:
+        # 선언을 읽지 못하면 **접지 않는다** ― 이 기능이 없던 때의 동작이고, 안전한
+        # 방향이다(접지 않은 비교는 덜 합쳐질 뿐, 없던 매치를 만들지 않는다).
+        logger.error("[VirtualJoin:%s] notation declarations unreadable, NO join "
+                     "key is folded: %s", name, e)
+        for pair in join_key:
+            pair["fold"] = None
+
     expose = raw.get("expose")
     if not _is_str_list(expose):
         return None, "'expose' must be a non-empty list of right-table column names", CODE_SHAPE, None
@@ -254,6 +319,7 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
     label = label.strip()
 
     right_join_cols = [p["right"] for p in join_key]
+    right_folds = [p["fold"] for p in join_key]
 
     # 왼쪽에도 같은 이름이 있는 expose 컬럼. `known_tables` 없이 부르면 **알 수 없다**
     # ― 그때는 빈 목록이 아니라 `None`이라 실행기가 "충돌 없음"으로 오독할 수 없다.
@@ -308,6 +374,10 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         "join_key": join_key,
         "left_columns": [p["left"] for p in join_key],
         "right_columns": right_join_cols,
+        # 조인 키별 접기 규칙(없으면 None). 실행기·게이트·DDL이 **같은 목록**을 읽으므로
+        # 「질의는 접는데 인덱스는 안 접힌」 상태가 성립할 자리가 없다.
+        "right_folds": right_folds,
+        "folded": any(f for f in right_folds),
         "expose": expose,
         # expose 중 왼쪽에도 같은 이름이 있는 것들(absent-only로 합쳐질 컬럼) /
         # 왼쪽에 없어 조인만이 만들어 내는 것들. 실행기가 이 둘을 다르게 다루고,
@@ -319,8 +389,10 @@ def _validate_join(name: str, raw: dict, known_tables: dict, rejections: list = 
         "join_cardinality": "one",
         # 운영자가 만들어야 하는 인덱스. 선언만으로 계산되므로 세션 없이도 말할 수 있고,
         # 그래서 DB를 못 보는 해석 보고서도 「무엇을 만들면 되는지」를 말할 수 있다.
-        "required_index": required_index_name(right_table, right_join_cols),
-        "required_index_ddl": required_index_ddl(right_table, right_join_cols),
+        "required_index": required_index_name(right_table, right_join_cols,
+                                              right_folds),
+        "required_index_ddl": required_index_ddl(right_table, right_join_cols,
+                                                 right_folds),
     }
     return normalized, None, None, None
 
@@ -387,15 +459,77 @@ def _dialect_of(db) -> str:
         return ""
 
 
-def unique_index_covering(db, table: str, columns: list):
+# PostgreSQL이 인덱스 식을 되돌려 줄 때 붙이는 잡음. 판정은 이것들을 지운 뒤에 한다.
+_INDEX_EXPR_CASTS = ("::text", "::character varying", "::varchar", "::bpchar",
+                     "::character", "::name")
+_REDUNDANT_PARENS_RE = re.compile(r"\(([A-Za-z_][A-Za-z0-9_]*)\)")
+
+
+def normalize_index_expression(expr: str) -> str:
+    """인덱스 키 식 1개를 **비교 가능한 형태**로 접는다. 순수 함수 ― 테스트가 직접 채점한다.
+
+    [왜 텍스트 비교인가]
+    PostgreSQL은 함수 인덱스의 식을 파스 트리로 들고 있고, 「내 식이 이 인덱스의 식과
+    같은가」를 물어볼 카탈로그 API가 없다. 있는 것은 `pg_get_indexdef(oid, 열번호, true)`
+    ― PG 자신의 렌더링 ― 뿐이라, 우리 식을 같은 규약으로 접어 맞춘다.
+
+    지우는 것은 **PG가 덧붙이는 것들뿐**이다:
+      · 식별자 따옴표 ("core_lot" → core_lot)
+      · 캐스트 접미 (varchar 컬럼을 text 인자에 넘길 때 PG가 (col)::text로 렌더한다)
+      · 벌거벗은 식별자를 감싼 잉여 괄호 ((core_lot) → core_lot)
+      · 공백 (우리 리터럴에는 공백이 없다 ― `\\uXXXX` 이스케이프와 알파벳뿐이라
+        전부 지워도 리터럴 안을 건드리지 않는다. `notation_norm._check_pattern_shape`가
+        그 전제를 import 시점에 단언한다.)
+
+    🔴 지우지 **않는** 것: `COLLATE`. 다른 콜레이션으로 만든 인덱스는 같은 식이 아니고,
+    PostgreSQL이 기본 콜레이션 비교에 그것을 쓴다는 보장도 없다. 모르면 거부다.
+    """
+    out = (expr or "").strip()
+    if out.startswith("(") and out.endswith(")"):
+        # 한 겹 벗겨서 괄호가 균형을 유지하면 잉여 괄호였다.
+        inner = out[1:-1]
+        if inner.count("(") == inner.count(")"):
+            out = inner
+    out = out.replace('"', "")
+    for cast in _INDEX_EXPR_CASTS:
+        out = out.replace(cast, "")
+    out = re.sub(r"\s+", "", out)
+    prev = None
+    while prev != out:                  # (a) 안에 (b)가 또 있을 수 있다
+        prev = out
+        out = _REDUNDANT_PARENS_RE.sub(r"\1", out)
+    return out
+
+
+def _index_key_expressions(db, indexrelid, nkeys: int) -> list:
+    """인덱스의 키 열들을 PG 자신의 렌더링으로. 평범한 컬럼이면 컬럼 이름이 그대로 나온다."""
+    from sqlalchemy import text
+    out = []
+    for i in range(1, nkeys + 1):
+        out.append(db.execute(text("SELECT pg_get_indexdef(:oid, :i, true)"),
+                              {"oid": indexrelid, "i": i}).scalar())
+    return out
+
+
+def unique_index_covering(db, table: str, columns: list, folds=None):
     """조인 키를 덮는 **UNIQUE 인덱스**의 이름. 없으면 None.
 
     부분집합이면 충분하다: `(a)`에 UNIQUE가 있으면 `(a,b)`로도 당연히 유일하다.
 
-    행을 세지 않는다 ― `pg_index`만 읽는다. 그래서 1,000만 행 테이블에서도 비용이
+    행을 세지 않는다 ― 카탈로그만 읽는다. 그래서 1,000만 행 테이블에서도 비용이
     테이블 크기와 무관하고, 답이 스냅샷이 아니라 **제약의 존재**다.
 
-    배제 셋(`indisvalid`/`indpred`/`indexprs`)의 이유는 모듈 상단에 있다.
+    [🔴 접히는 키는 **함수 인덱스**를 요구한다 ― 게이트가 폴드와 함께 움직이는 이유]
+    표기 정규화가 걸린 조인 키에서 평범한 UNIQUE 인덱스는 이 게이트가 묻는 질문에 답하지
+    않는다. 원본으로 서로 다른 두 행('CL-1', 'CL_1')이 접히면 한 값이 되므로, 컬럼 유일성이
+    있어도 **접힌 키로는 중복**이고 그 중복이 정확히 조인 팬아웃이다. 그래서 접히는 키에는
+    `indexprs IS NOT NULL`인 인덱스만 후보가 되고, 그 식이 우리 식과 일치해야 한다.
+    이 방향의 오판(맞는 인덱스를 못 알아봐 거부)은 운영자에게 DDL을 한 번 더 보여 줄 뿐이고,
+    반대 방향의 오판(틀린 인덱스를 통과)은 게이트가 없는 것과 같다.
+
+    배제 셋의 이유는 모듈 상단에 있다. `indexprs`만 **접히는 키에서 배제에서 풀린다** ―
+    그때는 컬럼이 아니라 식에 대한 유일성이 바로 우리가 원하는 것이기 때문이다.
+    `indpred`(부분 인덱스)와 `indisvalid`는 그대로 배제다.
 
     PostgreSQL이 아니면 **None을 돌려준다**(모른다). 안전한 방향의 무지다 ― 모르면 거부다.
     """
@@ -404,21 +538,46 @@ def unique_index_covering(db, table: str, columns: list):
         return None
     if _dialect_of(db) != "postgresql":
         return None
+    fl = _folds_list(columns, folds)
+
+    if not any(fl):
+        # 접지 않는 키 ― 2026-07-31판 그대로, 질의 1회. 식 인덱스는 컬럼에 대한 유일성이
+        # 아니므로 여전히 배제다.
+        rows = db.execute(text("""
+            SELECT i.relname AS idx, array_agg(a.attname::text) AS cols
+            FROM pg_index x
+            JOIN pg_class c ON c.oid = x.indrelid
+            JOIN pg_class i ON i.oid = x.indexrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(x.indkey)
+            WHERE c.relname = :t AND n.nspname = 'public'
+              AND x.indisunique AND x.indisvalid
+              AND x.indpred IS NULL AND x.indexprs IS NULL
+            GROUP BY i.relname
+        """), {"t": table}).fetchall()
+        target = set(columns)
+        for idx, cols in rows:
+            if set(cols) <= target:
+                return idx
+        return None
+
+    # 접히는 키 ― **식 인덱스만** 후보다.
     rows = db.execute(text("""
-        SELECT i.relname AS idx, array_agg(a.attname::text) AS cols
+        SELECT i.relname AS idx, x.indexrelid AS oid, x.indnkeyatts AS nkeys
         FROM pg_index x
         JOIN pg_class c ON c.oid = x.indrelid
         JOIN pg_class i ON i.oid = x.indexrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(x.indkey)
         WHERE c.relname = :t AND n.nspname = 'public'
           AND x.indisunique AND x.indisvalid
-          AND x.indpred IS NULL AND x.indexprs IS NULL
-        GROUP BY i.relname
+          AND x.indpred IS NULL AND x.indexprs IS NOT NULL
     """), {"t": table}).fetchall()
-    target = set(columns)
-    for idx, cols in rows:
-        if set(cols) <= target:
+    wanted = {normalize_index_expression(index_key_expression(c, f))
+              for c, f in zip(columns, fl)}
+    for idx, oid, nkeys in rows:
+        keys = {normalize_index_expression(e)
+                for e in _index_key_expressions(db, oid, nkeys)}
+        if keys <= wanted:
             return idx
     return None
 
@@ -427,9 +586,18 @@ def verify_uniqueness(db, rule: dict) -> dict:
     """선언 1건의 유일성 판정. 반환:
     `{"unique_index": 이름|None, "refused": bool, "code": ...|None}`
 
-    통과 조건은 하나다 ― 조인 키를 덮는 유효한 UNIQUE 인덱스의 존재.
+    통과 조건은 하나다 ― 조인 키를 덮는 유효한 UNIQUE 인덱스의 존재. 조인 키가 접히면
+    그 인덱스는 **접힌 식**에 대한 것이라야 한다(`unique_index_covering` 참조).
     """
-    idx = unique_index_covering(db, rule["right_table"], rule["right_columns"])
+    # `folds` is passed ONLY when something actually folds. A declaration with no
+    # normalized join key must reach `unique_index_covering` with the exact call shape it
+    # had before this feature existed - several suites stand a 3-argument double in for
+    # it, and widening the call unconditionally would break them all while changing no
+    # behaviour. A folded declaration DOES widen it, and a double that cannot answer the
+    # folded question should fail loudly rather than answer the unfolded one.
+    folds = rule.get("right_folds") or []
+    kwargs = {"folds": folds} if any(folds) else {}
+    idx = unique_index_covering(db, rule["right_table"], rule["right_columns"], **kwargs)
     if idx:
         return {"unique_index": idx, "refused": False, "code": None}
     return {"unique_index": None, "refused": True, "code": CODE_NO_UNIQUE_INDEX}
@@ -493,6 +661,13 @@ def verification_report(db, path: str = None, known_tables: dict = None) -> dict
             "left_table": rule["left_table"],
             "right_table": rule["right_table"],
             "join_key": [f"{p['left']} = {p['right']}" for p in rule["join_key"]],
+            # 접기는 **비교의 성질**이라 선언마다 다르고, 어느 쪽 컬럼이 선언됐는지와
+            # 상관없이 양쪽에 걸린다. 그 사실을 여기서 말하지 않으면 운영자는 왜 이
+            # 조인만 다른 인덱스를 요구하는지 알 방법이 없다.
+            "folded_join_key": [
+                {"left": p["left"], "right": p["right"],
+                 "rules": sorted(k for k, v in (p.get("fold") or {}).items() if v)}
+                for p in rule["join_key"] if p.get("fold")],
             "expose": list(rule["expose"]),
             "accepted": not result["refused"],
             "unique_index": result["unique_index"],

@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **331개** 이력. (거버넌스 규칙 #4)
+> 총 **332개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-04 14:15** — [The Column Came Out And The Comparison Folded Instead](./20260804_141500_the_column_came_out_and_the_comparison_folded_instead.md)
 - **2026-08-04 12:50** — [Four Hypotheses Were Wrong And The Death Distribution Settled It](./20260804_125032_four_hypotheses_were_wrong_and_the_death_distribution_settled_it.md)
 - **2026-08-04 12:42** — [Authoring Is Pinned The Storage Format Deliberately Is Not](./20260804_124234_authoring_is_pinned_the_storage_format_deliberately_is_not.md)
 - **2026-08-04 12:32** — [One Lot Two Spellings And A Fold That Shipped Switched Off](./20260804_123223_one_lot_two_spellings_and_a_fold_that_shipped_switched_off.md)

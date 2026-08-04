@@ -128,6 +128,36 @@ def rules_for(db, left_table: str) -> list:
     return list(_verified_by_left_table(db).get(left_table) or [])
 
 
+def join_onclause(left_model, right_model, rule: dict):
+    """조인 ON 절 ― 표기 정규화가 걸린 키는 **양쪽 다** 접는다.
+
+    🔴 **이 함수가 ON 절의 유일한 철자다.** `execute_rule`(페이로드용 실행)과
+    `resolved_expression`(WHERE에 들어가는 식)이 각자 `==`를 쓰고 있었고, 접기가 한쪽에만
+    들어가면 같은 조인이 두 경로에서 **다른 행 집합**을 낸다 ― 그리드에 보이는 값과
+    필터가 세는 행이 어긋나는, 조용한 오답의 교과서적 모양이다.
+
+    🔴 **한쪽만 접을 수 있는 인자가 없다.** 접기 규칙은 선언 시점에
+    `notation_norm.join_pair_rules`가 「어느 한쪽이라도 선언됐으면 양쪽」으로 결정해
+    `pair["fold"]` 하나에 실어 두었고, 여기서는 그 하나를 양쪽에 똑같이 적용할 뿐이다.
+    실측(2026-08-04): `dt_log.core_lot`은 병합군 15개, `core_wafer_map.core_lot`은 0개다.
+    깨끗한 쪽에 선언할 이유가 있는 운영자는 없고, 한쪽만 접힌 조인은 **이미 맞고 있던
+    매치를 조용히 잃는다**.
+    """
+    from sqlalchemy import and_
+    import notation_norm
+
+    parts = []
+    for p in rule["join_key"]:
+        left_col = getattr(left_model, p["left"])
+        right_col = getattr(right_model, p["right"])
+        fold = p.get("fold")
+        if fold:
+            left_col = notation_norm.fold_notation_sql(left_col, fold)
+            right_col = notation_norm.fold_notation_sql(right_col, fold)
+        parts.append(left_col == right_col)
+    return and_(*parts)
+
+
 def virtual_only_columns(db, left_table: str) -> set:
     """이 테이블에서 **저장 컬럼이 아닌** expose 컬럼 이름들 ― 쓰기 거부의 대상.
 
@@ -341,7 +371,7 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
     in `crud` beside that funnel.
     """
     from sqlalchemy.orm import aliased
-    from sqlalchemy import and_, func
+    from sqlalchemy import func
     from database import crud, models
 
     rules = [r for r in rules_for(db, left_table) if col_name in r["expose"]]
@@ -369,8 +399,10 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
         # Aliased per rule: two declarations may name the same right table, and an
         # unaliased second join would collide on the table name.
         right = aliased(right_model)
-        onclause = and_(*[getattr(left_model, p["left"]) == getattr(right, p["right"])
-                          for p in rule["join_key"]])
+        # ONE spelling of the ON clause (`join_onclause`), shared with `execute_rule`.
+        # A notation-folded key MUST fold identically here or the WHERE-side row set
+        # and the payload-side row set disagree.
+        onclause = join_onclause(left_model, right, rule)
         # 🔴 outerjoin, never inner - an inner join here would DELETE left rows that have
         # no right match from the result, which is the population capability (1) is for.
         query = query.outerjoin(right, onclause)
@@ -404,7 +436,6 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
     두 소비자 다 없어지면 이 필드도 같이 걷어야 한다(보는 이 없는 필드는 다음 사람에게
     "무언가 검사되고 있다"는 착각을 준다 ― `virtual_join_config` 상단의 그 규율이다).
     """
-    from sqlalchemy import and_
     from database import models
 
     left = models.DYNAMIC_TABLES.get(rule["left_table"])
@@ -412,8 +443,7 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
     if left is None or right is None or not row_ids:
         return {}
 
-    onclause = and_(*[getattr(left, p["left"]) == getattr(right, p["right"])
-                      for p in rule["join_key"]])
+    onclause = join_onclause(left, right, rule)
     expose = list(rule["expose"])
     # 오른쪽 `row_id`는 표시 대상이 아니라 **①/②를 가르는 유일한 증거**다.
     # 오른쪽 expose 값이 NULL이면 "행이 없었다"인지 "행은 있었고 값이 NULL이었다"인지

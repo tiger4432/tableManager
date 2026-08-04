@@ -57,6 +57,20 @@ else:
 # test process never contacts a real database at all, not even to be turned away.
 _db_safety.install_test_database_guard(engine, production_url=DEFAULT_PG_URL)
 
+# [Notation normalization] SQLite has neither `regexp_replace` nor `translate`, so the
+# query-time notation fold has no SQL spelling there. Register it as a scalar function
+# instead, on the Engine CLASS - the suite and the contracts each build their own
+# engine, so a listener attached to `engine` alone would miss both (same reasoning as
+# `install_global_test_database_guard` above). A no-op on PostgreSQL, which is every
+# production connection.
+try:
+    import notation_norm as _notation_norm
+    _notation_norm.install_sqlite_fold()
+except Exception as _e:  # pragma: no cover - never block boot on this
+    import logging as _logging
+    _logging.getLogger("database").warning(
+        "notation fold could not be registered for non-PostgreSQL dialects: %s", _e)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

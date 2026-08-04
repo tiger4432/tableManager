@@ -1816,29 +1816,15 @@ def apply_row_update_internal(
         if logs_to_cache is not None:
             logs_to_cache.append(log_dict)
 
-    # [Notation normalization] Derived `<col>_norm` columns, refreshed from the value
-    # that WON above (not from one source's contribution). Placed after the audit block
-    # on purpose: the raw change is already logged, and a derived column is not an edit
-    # anyone made. It IS appended to changed_cols so the broadcast carries it and a live
-    # grid does not sit on a stale derived value.
-    #
-    # 🔴 This only ever writes the DERIVED column. `notation_norm._validate_column`
-    # refuses `derived == raw` and refuses a derived column that is the business key or
-    # part of composite_key_source, so nothing here can move a raw value or a row's
-    # identity - which is what makes a wrong folding rule repairable by re-deriving.
-    try:
-        import notation_norm
-        derived_cols = notation_norm.apply_derivations(
-            table_name, row, changed_cols, is_new)
-    except Exception as e:
-        # A derivation failure must not fail the write it rides on: the raw value is
-        # the record, the derived column is a projection, and re-deriving is a
-        # supported repair. Loud in the log, silent to the caller.
-        logger.error(f"[NotationNorm] derivation failed for '{table_name}' "
-                     f"(the write itself is unaffected): {e}")
-        derived_cols = []
-    if derived_cols:
-        changed_cols.extend(derived_cols)
+    # [Notation normalization] THERE IS NOTHING HERE ANY MORE, and that is the design.
+    # A derivation hook used to sit at this exact spot, refreshing a physical
+    # `<col>_norm` column from the value that had just won the priority computation.
+    # User ruling 2026-08-04 withdrew the stored column: normalization is now a
+    # DECLARATION consumed at QUERY TIME, folding both sides of a comparison in SQL
+    # (`notation_norm.fold_notation_sql`). The write path stores raw and only raw, so
+    # a folding rule can be changed by editing one config line with nothing to
+    # backfill, nothing to re-derive, and no column that is visible but uneditable.
+    # See `notation_norm`'s module docstring for the measurements that forced it.
 
     # 2. 복합 비즈니스 키 실시간 재계산 및 동기화, 유일성 검사
     if composite_src and key_col:
@@ -2232,41 +2218,20 @@ def refuse_virtual_join_columns(db: Session, table_name: str, batch: schemas.Gen
         )
 
 
-def refuse_notation_derived_columns(table_name: str, batch: schemas.GeneralUpdateBatch):
-    """A write aimed at a notation-derived `<col>_norm` column is REFUSED here.
-
-    A derived column is a pure function of its raw column (`notation_norm`). If a
-    write could land a value in it, that value would survive until the raw column
-    next changed and then vanish without explanation - and worse, the row would
-    meanwhile carry a normalized value that its own raw value does not produce,
-    which is exactly the disagreement the derived column exists to remove.
-
-    Same funnel and same reasoning as `refuse_virtual_join_columns`: the check
-    lives in `apply_batch_updates` because that is the single funnel every write
-    converges on, so a new call site cannot forget it. Unlike that one it needs
-    no database session - the declarations are config.
-
-    An unreadable declaration refuses nothing (the loader already logged it);
-    turning a config problem into a write outage would be the worse trade.
-    """
-    if not batch.updates:
-        return
-    try:
-        import notation_norm
-        derived_cols = notation_norm.derived_columns_for(table_name)
-    except Exception as e:
-        logger.error(f"[NotationNorm] write guard could not load declarations for "
-                     f"'{table_name}', no column is refused: {e}")
-        return
-    if not derived_cols:
-        return
-    offending = sorted({c for u in batch.updates for c in (u.updates or {}) if c in derived_cols})
-    if offending:
-        raise ValueError(
-            f"'{table_name}' 테이블의 컬럼 {', '.join(offending)}은(는) 원본 컬럼에서 "
-            f"자동으로 계산되는 표기 정규화 값이라 직접 저장할 수 없습니다. 값을 "
-            f"바꾸려면 원본 컬럼을 수정하세요."
-        )
+# [Notation normalization] `refuse_notation_derived_columns` USED TO LIVE HERE, and it
+# is gone rather than relaxed. It refused a write aimed at a `<col>_norm` column
+# because that column was a pure function of its raw column, so a written value would
+# have survived until the raw column next changed and then vanished unexplained.
+#
+# User ruling 2026-08-04 withdrew the stored column entirely - and the refusal was one
+# of the reasons: a column users could see and could not edit rode along in CSV
+# extracts, and the moment it entered `display_columns` an incoming file with a
+# matching header reached this funnel and the refusal failed the WHOLE batch. There is
+# now no derived column to write to, so there is nothing to refuse; normalization is a
+# query-time fold over both sides of a comparison (`notation_norm`).
+#
+# 🔴 If a future round ever persists a folded value anywhere, this guard comes back -
+# the argument for it was never wrong, only its subject was withdrawn.
 
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
@@ -2283,7 +2248,6 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     # half-applied transaction, and ahead of the replace_map purge so a bad payload
     # cannot delete rows on its way to being rejected.
     refuse_virtual_join_columns(db, table_name, batch)
-    refuse_notation_derived_columns(table_name, batch)
 
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     

@@ -1,52 +1,39 @@
-"""WF/lot/slot notation normalization - the DERIVED column, and what it must never do.
+"""Notation normalization - the QUERY-TIME fold, and the one-sided fold it forbids.
 
-[Red first - the defect this exists to fix]
-`map_overlay.map_key_parts` splits a composite map key on '_'. A `core_lot` whose
-own value contains '_' therefore shreds: 'CL_2601_001_09' + slot '5' composes to
-'CL_2601_001_09_5', which parses back as lot='CL', slot='2601_001_09_5', and the
-cell query finds NOTHING. 766 rows of the simulation carried that shape.
-`test_a_lot_containing_underscore_shreds_the_map_key_today` states that as a live
-assertion, and its sibling shows the normalized value composing correctly.
+[What changed, and why these tests look different from the ones they replace]
+The first shipped shape (92b8d6f) wrote a folded value into a physical `<col>_norm`
+column. User ruling 2026-08-04 withdrew it: arming it took three config layers, it
+produced a column users could see and could not edit, and - the load-bearing reason -
+using it in a virtual join required naming `<col>_norm` on BOTH sides of the join key,
+which nobody would do on the side that is already clean. A join folded on one side only
+SILENTLY DROPS matches.
 
-[The safety property, stated as tests rather than as a comment]
-Every claim the design rests on is asserted here:
-  - the raw column is BYTE-IDENTICAL after derivation
-  - a declaration that would write back over the raw column is REFUSED
-  - a derived column that is part of the business key is REFUSED
-  - a WRITE aimed at a derived column is REFUSED
-  - changing the rules and re-deriving produces the new answer with NO cleanup
-That last one is the whole reason this could ship before the false-merge census
-had been run.
+So the tests that asserted the write path (raw byte-identity after derivation, the write
+refusal, re-derivation, the `derived == raw` and `key_column` refusals) are gone with
+their subject. What replaces them is the assertion the withdrawn design could not make:
+
+    `test_both_sides_fold_when_only_the_dirty_side_is_declared`
+
+[🔴 WHAT THIS FILE CAN AND CANNOT PROVE - read before adding to it]
+The suite runs on SQLite, which has neither `regexp_replace` nor `translate`. The SQL
+fold therefore compiles to a registered scalar function whose body IS `fold_notation`
+(`notation_norm.install_sqlite_fold`). That means:
+
+    THIS FILE PROVES THE WIRING - that both sides of a comparison are folded, that an
+    asymmetric declaration still folds both, that a declaration reaches the join at all.
+
+    THIS FILE CANNOT PROVE THE SPELLING - on SQLite the two halves are the same code, so
+    a divergence between the Python fold and the PostgreSQL fold is invisible here BY
+    CONSTRUCTION. That is scored by `contracts/notation_fold/` against a live
+    PostgreSQL, and only there. Do not add a "the SQL matches Python" test to this file:
+    it would pass unconditionally and read like coverage.
 
 [Defect injection - which assertions can actually see a failure]
-Run before claiming coverage (server-pm lesson: a test that never executes the
-new lines certifies nothing). Measured, not guessed:
+Run before claiming coverage (server-pm lesson: a test that never executes the new lines
+certifies nothing). Measured, not guessed - see the report for the exact counts.
 
-  Injection A - `fold_notation` returns `text` unchanged.  9 RED:
-      test_the_derived_value_composes_the_map_key_correctly
-      test_the_reported_spellings_fold_together
-      test_separator_rule_alone / test_case_rule_alone / test_both_rules_and_neither
-      test_a_column_can_override_the_file_level_rules
-      test_rederivation_changes_the_answer_with_no_manual_cleanup
-      test_rederivation_fills_rows_written_before_the_declaration
-      test_blank_and_absent_values_derive_to_null
-
-  Injection B - `apply_derivations` returns `[]` without setting anything. 5 RED:
-      test_the_reported_spellings_fold_together
-      test_zero_padding_is_NOT_folded_in_a_string_column
-      test_a_column_can_override_the_file_level_rules
-      test_rederivation_changes_the_answer_with_no_manual_cleanup
-      test_a_number_declared_column_is_folded_by_canonical_key_value_alone
-    The pure-function tests stay GREEN, and so does
-    `test_rederivation_fills_rows_written_before_the_declaration` (it calls
-    `rederive` directly) - which is exactly why both halves are tested.
-
-  Injection C - `_validate_column` drops the `derived == raw` refusal. 1 RED
-      (test_a_declaration_that_would_rewrite_the_raw_column_is_refused) - and
-      that single assertion is the guard for the entire safety property.
-
-[격리] Table prefix `notnorm_test_` - cannot exist in the user's gitignored
-config (server-pm lesson: the `bonding_log` trap).
+[Isolation] Table prefix `notnorm_test_` - cannot exist in the user's gitignored config
+(server-pm lesson: the `bonding_log` trap).
 """
 import json
 
@@ -56,6 +43,8 @@ import notation_norm
 from database import crud, models, schemas
 
 TABLES = {
+    # LEFT side of the join - the DIRTY table. Mirrors the measured production shape:
+    # `dt_log.core_lot` carries 30 raw spellings folding to 15.
     "notnorm_test_log": {
         "business_key": "cell_key",
         "composite_key_source": ["job", "x"],
@@ -64,23 +53,28 @@ TABLES = {
             "job": "string",
             "x": "number",
             "core_lot": "string",
-            "core_lot_norm": "string",
             "dt_lot": "string",
-            "dt_lot_norm": "string",
-            # Declared `number` on purpose: this is where `canonical_key_value`
-            # (7b) already does the integer fold, and the point of the reuse is
-            # that this module adds nothing here.
+            # Declared `number` on purpose: the loader must refuse it. A number has
+            # no notation, and this refusal is what keeps the SQL fold short enough
+            # to be an index expression.
             "slot": "number",
-            "slot_norm": "string",
-            # Wrong on purpose - the loader must refuse a non-string target.
-            "bad_norm": "number",
+        },
+    },
+    # RIGHT side - the CLEAN table. `core_lot` here has ZERO merge groups, which is
+    # exactly why an operator would never declare it, and exactly why the fold must
+    # not depend on them doing so.
+    "notnorm_test_ref": {
+        "business_key": "core_lot",
+        "column_types": {
+            "core_lot": "string",
+            "wafer_id": "string",
         },
     },
 }
 
 BASE_DECL = {
     "rules": {"separator": True, "case": True, "zero_pad": False},
-    "columns": {"notnorm_test_log": {"core_lot": "core_lot_norm"}},
+    "columns": {"notnorm_test_log": {"core_lot": True}},
 }
 
 
@@ -102,153 +96,23 @@ def norm_env(db_session, tmp_path, monkeypatch):
     _write_decl(tmp_path, monkeypatch, BASE_DECL)
     yield db_session
     notation_norm.reset_cache()
+    for name in TABLES:
+        models.DYNAMIC_TABLES.pop(name, None)
+        crud.TABLE_CONFIG.pop(name, None)
+        tbl = Base.metadata.tables.get(name)
+        if tbl is not None:
+            Base.metadata.remove(tbl)
 
 
-def _write(db, rows, source_name="pipeline_parser"):
+def _write(db, table, rows, source_name="pipeline_parser"):
     items = [schemas.GeneralUpdateItem(updates=dict(r), source_name=source_name,
                                        updated_by="test") for r in rows]
-    return crud.apply_batch_updates(db, "notnorm_test_log", schemas.GeneralUpdateBatch(
+    return crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(
         updates=items, transaction_id="notnorm_tx", silent=True))
 
 
-def _row(db, key):
-    model = models.DYNAMIC_TABLES["notnorm_test_log"]
-    return db.query(model).filter(model.business_key_val == key).one()
-
-
 # ---------------------------------------------------------------------------
-# RED FIRST - the map key shredding, shown before it is fixed
-# ---------------------------------------------------------------------------
-
-def test_a_lot_containing_underscore_shreds_the_map_key_today():
-    """A lot value carrying '_' parses back as a DIFFERENT (lot, slot) pair.
-
-    This is the reported defect, asserted rather than described. It is stated as
-    the CURRENT behaviour of `map_key_parts`, so it stays true after this round -
-    phase 1 changes nothing about how map keys are parsed.
-    """
-    from map_overlay import map_key_parts
-
-    binding = {"key_columns": ["lot", "slot"]}
-    parts = dict(map_key_parts(binding, "CL_2601_001_09_5"))
-    assert parts != {"lot": "CL_2601_001_09", "slot": "5"}
-    assert parts == {"lot": "CL", "slot": "2601_001_09_5"}, (
-        "if this ever passes as the intended pair, the split rule changed and "
-        "phase 2 arrived without this test being updated")
-
-
-def test_the_derived_value_composes_the_map_key_correctly():
-    """The same lot, normalized, survives the round trip through the '_' join.
-
-    The separator rule folds '_' to '-', so the value stops containing the one
-    character the composite key is joined with. The convention is unchanged; it
-    is the VALUE that stopped fighting it.
-    """
-    from map_overlay import map_key_parts
-
-    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
-    lot = notation_norm.fold_notation("CL_2601_001_09", rules)
-    assert lot == "CL-2601-001-09"
-
-    composed = f"{lot}_5"
-    parts = dict(map_key_parts({"key_columns": ["lot", "slot"]}, composed))
-    assert parts == {"lot": "CL-2601-001-09", "slot": "5"}
-
-
-# ---------------------------------------------------------------------------
-# The safety property
-# ---------------------------------------------------------------------------
-
-def test_the_raw_column_is_byte_identical_after_derivation(norm_env):
-    """🔴 The load-bearing assertion. Derivation adds a value; it never edits one.
-
-    Every mixed spelling the operator reported goes in, and comes back out of the
-    raw column byte-for-byte (modulo the pre-existing edge strip that
-    `normalize_stored_text` has always done, which is why no input here has edge
-    whitespace).
-    """
-    db = norm_env
-    raws = ["WF.01", "WF-01", "WF_01", "wf 01", "CL_2601_001_09", "WF010", "WF10"]
-    for i, raw in enumerate(raws):
-        _write(db, [{"job": f"J{i}", "x": 1, "core_lot": raw}])
-    for i, raw in enumerate(raws):
-        row = _row(db, f"J{i}_1")
-        assert row.core_lot == raw, (
-            f"the raw column was rewritten: {raw!r} -> {row.core_lot!r}. The "
-            f"entire 'a wrong rule is repairable' argument depends on this "
-            f"never happening.")
-
-
-def test_the_reported_spellings_fold_together(norm_env):
-    """'WF.01' and 'WF-01' and 'WF_01' and 'wf 01' become ONE derived value."""
-    db = norm_env
-    for i, raw in enumerate(["WF.01", "WF-01", "WF_01", "wf 01", "WF--01"]):
-        _write(db, [{"job": f"S{i}", "x": 1, "core_lot": raw}])
-    derived = {_row(db, f"S{i}_1").core_lot_norm for i in range(5)}
-    assert derived == {"WF-01"}
-
-
-def test_zero_padding_is_NOT_folded_in_a_string_column(norm_env):
-    """🔴 R3 is not implemented, and this is what that means in practice.
-
-    'WF010' and 'WF10' stay two different derived values. That is the whole
-    reason it is safe to ship without the census: the one rule that could merge
-    two genuinely different entities was left out.
-    """
-    db = norm_env
-    _write(db, [{"job": "P0", "x": 1, "core_lot": "WF010"},
-                {"job": "P1", "x": 1, "core_lot": "WF10"}])
-    assert _row(db, "P0_1").core_lot_norm == "WF010"
-    assert _row(db, "P1_1").core_lot_norm == "WF10"
-
-
-def test_a_declaration_that_would_rewrite_the_raw_column_is_refused():
-    """`{"core_lot": "core_lot"}` is refused BY NAME, not quietly accepted."""
-    rejections = []
-    out = notation_norm.validate_notation_rules(
-        {"columns": {"notnorm_test_log": {"core_lot": "core_lot"}}},
-        known_tables=TABLES, rejections=rejections)
-    assert out == {}
-    assert [r["code"] for r in rejections] == [notation_norm.CODE_WOULD_REWRITE_RAW]
-
-
-def test_a_derived_column_inside_the_business_key_is_refused():
-    """A derived value must never be able to move a row's identity."""
-    rejections = []
-    out = notation_norm.validate_notation_rules(
-        {"columns": {"notnorm_test_log": {"core_lot": "job"}}},
-        known_tables=TABLES, rejections=rejections)
-    assert out == {}
-    assert [r["code"] for r in rejections] == [notation_norm.CODE_KEY_COLUMN]
-
-
-def test_an_undeclared_or_mistyped_derived_column_is_refused():
-    for decl, code in (
-        ({"core_lot": "not_a_column"}, notation_norm.CODE_UNDECLARED),
-        ({"not_a_column": "core_lot_norm"}, notation_norm.CODE_UNDECLARED),
-        ({"core_lot": "bad_norm"}, notation_norm.CODE_SHAPE),   # declared number
-    ):
-        rejections = []
-        out = notation_norm.validate_notation_rules(
-            {"columns": {"notnorm_test_log": decl}},
-            known_tables=TABLES, rejections=rejections)
-        assert out == {}, decl
-        assert [r["code"] for r in rejections] == [code], decl
-
-
-def test_a_write_aimed_at_the_derived_column_is_refused(norm_env):
-    """The derived column is not editable - the refusal names it, in Korean."""
-    db = norm_env
-    with pytest.raises(ValueError) as exc:
-        _write(db, [{"job": "W0", "x": 1, "core_lot": "WF.01",
-                     "core_lot_norm": "HAND-WRITTEN"}], source_name="user")
-    assert "core_lot_norm" in str(exc.value)
-    # cp949-encodable, like every user-facing string in this system.
-    str(exc.value).encode("cp949")
-
-
-# ---------------------------------------------------------------------------
-# Each rule toggles alone
+# The fold, as a pure function. Each rule toggles alone.
 # ---------------------------------------------------------------------------
 
 MIXED = "wf.a_b 01"
@@ -270,25 +134,117 @@ def test_both_rules_and_neither():
     assert notation_norm.fold_notation(MIXED, {}) == MIXED
 
 
-def test_a_column_can_override_the_file_level_rules(norm_env, tmp_path, monkeypatch):
-    """Per-column rules, proven through the WRITE PATH and not just the fold.
+def test_the_reported_spellings_fold_together():
+    """'WF.01' / 'WF-01' / 'WF_01' / 'wf 01' / 'WF--01' become ONE value."""
+    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
+    folded = {notation_norm.fold_notation(s, rules)
+              for s in ["WF.01", "WF-01", "WF_01", "wf 01", "WF--01"]}
+    assert folded == {"WF-01"}
 
-    Two columns of ONE row, same input, different rule sets - so a bug that
-    applied one global rule set to everything cannot pass this.
+
+def test_zero_padding_is_NOT_folded():
+    """R3 is not implemented, and this is what that means: 'WF010' != 'WF10'."""
+    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
+    assert notation_norm.fold_notation("WF010", rules) != \
+        notation_norm.fold_notation("WF10", rules)
+
+
+def test_the_case_fold_is_ascii_only_and_that_is_deliberate():
+    """🔴 The narrowing that makes the two engines agree, asserted where it is easy to
+    find. `str.upper()` would give 'STRASSE' (a LENGTH change) and 'I'; PostgreSQL's
+    `upper()` gives neither. The fold leaves both alone, on both engines.
     """
-    db = norm_env
-    _write_decl(tmp_path, monkeypatch, {
-        "rules": {"separator": True, "case": True},
-        "columns": {"notnorm_test_log": {
-            "core_lot": "core_lot_norm",
-            "dt_lot": {"derived": "dt_lot_norm",
-                       "rules": {"separator": True, "case": False}},
-        }},
-    })
-    _write(db, [{"job": "O0", "x": 1, "core_lot": MIXED, "dt_lot": MIXED}])
-    row = _row(db, "O0_1")
-    assert row.core_lot_norm == "WF-A-B-01"
-    assert row.dt_lot_norm == "wf-a-b-01"
+    rules = {notation_norm.RULE_CASE: True}
+    assert notation_norm.fold_notation("straße", rules) == "STRAßE"
+    assert notation_norm.fold_notation("ı", rules) == "ı"
+    assert notation_norm.fold_notation("été", rules) == "éTé"
+
+
+def test_the_separator_class_is_enumerated_not_a_shorthand():
+    """🔴 The pattern must never go back to `\\s`. Python's `\\s` and PostgreSQL's
+    `[[:space:]]` were MEASURED to disagree on five codepoints, and PostgreSQL's answer
+    follows the database ctype - so the shorthand is not stable across installs.
+
+    This asserts the enumeration is complete relative to Python's own table, which is
+    what makes the SQL side (built from the same tuple) complete too.
+    """
+    import re as _re
+    py_space = {cp for cp in range(0x11000) if _re.match(r"\s", chr(cp))}
+    declared = set(notation_norm.SEPARATOR_CODEPOINTS)
+    assert py_space <= declared, (
+        "these whitespace codepoints fold in Python but are missing from "
+        "SEPARATOR_CODEPOINTS, so the SQL fold would not fold them: "
+        + " ".join("U+%04X" % c for c in sorted(py_space - declared)))
+    assert "\\s" not in notation_norm.SEPARATOR_PATTERN
+    assert notation_norm.SEPARATOR_PATTERN.endswith("-]+")
+
+
+def test_non_strings_pass_through_untouched():
+    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
+    for v in (None, 7, 7.5, True):
+        assert notation_norm.fold_notation(v, rules) is v
+
+
+# ---------------------------------------------------------------------------
+# The declaration
+# ---------------------------------------------------------------------------
+
+def test_the_declaration_is_one_line_and_takes_three_shapes():
+    """`true`, `{rules}`, and `false` (a decision on the record, not an error)."""
+    out = notation_norm.validate_notation_rules(
+        {"rules": {"separator": True, "case": True},
+         "columns": {"notnorm_test_log": {
+             "core_lot": True,
+             "dt_lot": {"rules": {"separator": True, "case": False}},
+         }}},
+        known_tables=TABLES, rejections=[])
+    assert set(out["notnorm_test_log"]) == {"core_lot", "dt_lot"}
+    assert out["notnorm_test_log"]["core_lot"]["rules"][notation_norm.RULE_CASE] is True
+    assert out["notnorm_test_log"]["dt_lot"]["rules"][notation_norm.RULE_CASE] is False
+
+    rejections = []
+    assert notation_norm.validate_notation_rules(
+        {"columns": {"notnorm_test_log": {"core_lot": False}}},
+        known_tables=TABLES, rejections=rejections) == {}
+    assert rejections == [], "declaring a column OFF is a decision, not a rejection"
+
+
+def test_the_old_derived_declaration_is_refused_by_name():
+    """An operator upgrading from 92b8d6f gets told what to do, not a silent no-op."""
+    rejections = []
+    out = notation_norm.validate_notation_rules(
+        {"columns": {"notnorm_test_log": {"core_lot": {"derived": "core_lot_norm"}}}},
+        known_tables=TABLES, rejections=rejections)
+    assert out == {}
+    assert [r["code"] for r in rejections] == [notation_norm.CODE_SHAPE]
+    assert "derived" in rejections[0]["detail"]
+
+
+def test_a_number_column_cannot_be_declared_normalized():
+    """🔴 A number has no notation - and this refusal is what keeps the SQL fold short
+    enough to be a functional index expression."""
+    rejections = []
+    out = notation_norm.validate_notation_rules(
+        {"columns": {"notnorm_test_log": {"slot": True}}},
+        known_tables=TABLES, rejections=rejections)
+    assert out == {}
+    assert [r["code"] for r in rejections] == [notation_norm.CODE_NOT_TEXT]
+
+
+def test_an_undeclared_table_or_column_is_refused():
+    for decl, code in (
+        ({"not_a_column": True}, notation_norm.CODE_UNDECLARED),
+    ):
+        rejections = []
+        assert notation_norm.validate_notation_rules(
+            {"columns": {"notnorm_test_log": decl}},
+            known_tables=TABLES, rejections=rejections) == {}
+        assert [r["code"] for r in rejections] == [code], decl
+    rejections = []
+    assert notation_norm.validate_notation_rules(
+        {"columns": {"no_such_table": {"core_lot": True}}},
+        known_tables=TABLES, rejections=rejections) == {}
+    assert [r["code"] for r in rejections] == [notation_norm.CODE_UNDECLARED]
 
 
 def test_zero_pad_true_is_refused_by_name_and_forced_off():
@@ -296,13 +252,12 @@ def test_zero_pad_true_is_refused_by_name_and_forced_off():
     rejections = []
     out = notation_norm.validate_notation_rules(
         {"rules": {"zero_pad": True},
-         "columns": {"notnorm_test_log": {"core_lot": "core_lot_norm"}}},
+         "columns": {"notnorm_test_log": {"core_lot": True}}},
         known_tables=TABLES, rejections=rejections)
     assert [r["code"] for r in rejections] == \
         [notation_norm.CODE_ZERO_PAD_UNIMPLEMENTED]
     spec = out["notnorm_test_log"]["core_lot"]
     assert spec["rules"][notation_norm.RULE_ZERO_PAD] is False
-    # And declaring it OFF is not a rejection - "declared false" is a decision.
     assert notation_norm.validate_notation_rules(
         {"rules": {"zero_pad": False}, "columns": {}},
         known_tables=TABLES, rejections=[]) == {}
@@ -314,111 +269,6 @@ def test_an_unknown_rule_name_is_refused_not_ignored():
         {"rules": {"transliterate": True}, "columns": {}},
         known_tables=TABLES, rejections=rejections)
     assert [r["code"] for r in rejections] == [notation_norm.CODE_UNKNOWN_RULE]
-
-
-# ---------------------------------------------------------------------------
-# Re-derivation - the repair that makes a wrong rule cheap
-# ---------------------------------------------------------------------------
-
-def test_rederivation_changes_the_answer_with_no_manual_cleanup(norm_env, tmp_path,
-                                                                monkeypatch):
-    """🔴 THE argument for shipping before the census.
-
-    Write rows under one rule set, change the rules, re-derive, and the derived
-    column carries the NEW answer while every raw value is untouched. Nothing is
-    deleted, nothing is reset by hand, and the dry-run says what it would do
-    before it does it.
-    """
-    db = norm_env
-    raws = ["WF.01", "wf_02", "CL_2601_001_09"]
-    for i, raw in enumerate(raws):
-        _write(db, [{"job": f"R{i}", "x": 1, "core_lot": raw}])
-    assert [_row(db, f"R{i}_1").core_lot_norm for i in range(3)] == \
-        ["WF-01", "WF-02", "CL-2601-001-09"]
-
-    # Rule change: case fold off.
-    _write_decl(tmp_path, monkeypatch, {
-        "rules": {"separator": True, "case": False},
-        "columns": {"notnorm_test_log": {"core_lot": "core_lot_norm"}},
-    })
-    spec = notation_norm.derivations_for("notnorm_test_log")["core_lot"]
-
-    dry = notation_norm.rederive(db, "notnorm_test_log", spec, chunk_size=2)
-    assert dry["mode"] == "dry-run" and dry["scanned"] == 3 and dry["changed"] == 1
-    assert _row(db, "R1_1").core_lot_norm == "WF-02", "dry-run wrote something"
-
-    applied = notation_norm.rederive(db, "notnorm_test_log", spec, chunk_size=2,
-                                     apply=True)
-    assert applied["changed"] == 1
-    assert [_row(db, f"R{i}_1").core_lot_norm for i in range(3)] == \
-        ["WF-01", "wf-02", "CL-2601-001-09"]
-    # The raw values never moved, which is why this repair was possible at all.
-    assert [_row(db, f"R{i}_1").core_lot for i in range(3)] == raws
-
-    # Idempotent: running it again finds nothing left to do.
-    assert notation_norm.rederive(db, "notnorm_test_log", spec,
-                                  apply=True)["changed"] == 0
-
-
-def test_rederivation_fills_rows_written_before_the_declaration(norm_env, tmp_path,
-                                                               monkeypatch):
-    """Existing rows are not stranded - this is how an operator switches it on."""
-    db = norm_env
-    _write_decl(tmp_path, monkeypatch, {"rules": {}, "columns": {}})
-    _write(db, [{"job": "B0", "x": 1, "core_lot": "WF.01"}])
-    assert _row(db, "B0_1").core_lot_norm is None
-
-    _write_decl(tmp_path, monkeypatch, BASE_DECL)
-    spec = notation_norm.derivations_for("notnorm_test_log")["core_lot"]
-    assert notation_norm.rederive(db, "notnorm_test_log", spec,
-                                  apply=True)["changed"] == 1
-    assert _row(db, "B0_1").core_lot_norm == "WF-01"
-
-
-# ---------------------------------------------------------------------------
-# Reuse of canonical_key_value (7b), not a second vocabulary
-# ---------------------------------------------------------------------------
-
-def test_a_number_declared_column_is_folded_by_canonical_key_value_alone(
-        norm_env, tmp_path, monkeypatch):
-    """'01' and '1' land on one derived value because 7b already said so.
-
-    This module adds no padding rule; the integer parse it inherits is why the
-    'slot is always int' ruling retires the zero-pad question for slot.
-    """
-    db = norm_env
-    _write_decl(tmp_path, monkeypatch, {
-        "rules": {"separator": True, "case": True},
-        "columns": {"notnorm_test_log": {"slot": "slot_norm"}},
-    })
-    _write(db, [{"job": "N0", "x": 1, "slot": "01"},
-                {"job": "N1", "x": 1, "slot": "1"},
-                {"job": "N2", "x": 1, "slot": 1.0}])
-    assert {_row(db, f"N{i}_1").slot_norm for i in range(3)} == {"1"}
-
-
-def test_blank_and_absent_values_derive_to_null(norm_env):
-    """An absent value has no notation; inventing '' would claim one."""
-    db = norm_env
-    _write(db, [{"job": "Z0", "x": 1, "core_lot": None},
-                {"job": "Z1", "x": 1, "core_lot": "   "}])
-    assert _row(db, "Z0_1").core_lot_norm is None
-    assert _row(db, "Z1_1").core_lot_norm is None
-    # A value made only of separators folds to '-', which is not a value either.
-    assert notation_norm.normalized_value(
-        "notnorm_test_log", "core_lot", "__",
-        {notation_norm.RULE_SEPARATOR: True}) == "-"
-
-
-def test_nothing_is_derived_when_nothing_is_declared(norm_env, tmp_path, monkeypatch):
-    """The feature is inert until an operator declares a pair (phase 1 default)."""
-    db = norm_env
-    _write_decl(tmp_path, monkeypatch, {"rules": {}, "columns": {}})
-    _write(db, [{"job": "I0", "x": 1, "core_lot": "WF.01"}])
-    row = _row(db, "I0_1")
-    assert row.core_lot == "WF.01" and row.core_lot_norm is None
-    # ...and with nothing declared, the write guard refuses nothing.
-    _write(db, [{"job": "I1", "x": 1, "core_lot_norm": "anything"}])
 
 
 def test_a_missing_declaration_file_is_not_an_error(tmp_path, monkeypatch):
@@ -433,39 +283,292 @@ def test_a_missing_declaration_file_is_not_an_error(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# 🔴 BOTH SIDES, ALWAYS - the reason the stored column was withdrawn
+# ---------------------------------------------------------------------------
+
+def test_either_side_declared_means_both_sides_folded(norm_env):
+    """`join_pair_rules` gives the SAME answer whichever side carries the declaration."""
+    left_only = notation_norm.join_pair_rules(
+        "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
+    assert left_only and left_only[notation_norm.RULE_SEPARATOR] is True
+    # And the mirror image: declare the OTHER side instead, same effective fold.
+    assert notation_norm.join_pair_rules(
+        "notnorm_test_ref", "core_lot", "notnorm_test_log", "core_lot") == left_only
+    # Neither declared -> compare raw, exactly as before this feature existed.
+    assert notation_norm.join_pair_rules(
+        "notnorm_test_ref", "wafer_id", "notnorm_test_ref", "wafer_id") is None
+
+
+def test_differing_rule_sets_on_the_two_sides_take_the_union(norm_env, tmp_path,
+                                                             monkeypatch):
+    """The fold is a property of the COMPARISON, so both declarations are satisfied."""
+    _write_decl(tmp_path, monkeypatch, {
+        "columns": {
+            "notnorm_test_log": {"core_lot": {"rules": {"separator": True,
+                                                        "case": False}}},
+            "notnorm_test_ref": {"core_lot": {"rules": {"separator": False,
+                                                        "case": True}}},
+        }})
+    merged = notation_norm.join_pair_rules(
+        "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
+    assert merged[notation_norm.RULE_SEPARATOR] is True
+    assert merged[notation_norm.RULE_CASE] is True
+
+
+def _seed_asymmetric(db):
+    """THE fixture: left column dirty, right column already clean.
+
+    This is the real production asymmetry, measured 2026-08-04 - `dt_log.core_lot` has
+    15 merge groups and `core_wafer_map.core_lot` has zero. Only the LEFT is declared,
+    because that is the only side an operator has any reason to look at.
+    """
+    _write(db, "notnorm_test_log", [
+        {"job": "A", "x": 1, "core_lot": "cl_2601_001"},   # dirty: '_' and lower case
+        {"job": "B", "x": 1, "core_lot": "CL.2601.001"},   # dirty: '.'
+        {"job": "C", "x": 1, "core_lot": "CL-2601-001"},   # already clean
+        {"job": "D", "x": 1, "core_lot": "CL-9999-999"},   # no right row at all
+    ])
+    _write(db, "notnorm_test_ref", [
+        {"core_lot": "CL-2601-001", "wafer_id": "W-1"},    # clean, and ONLY clean
+    ])
+
+
+def _rule(folded_expected):
+    import virtual_join_config as vjc
+    rules = vjc.validate_virtual_join_rules({
+        "notnorm_join": {
+            "left_table": "notnorm_test_log", "right_table": "notnorm_test_ref",
+            "join_key": [{"left": "core_lot", "right": "core_lot"}],
+            "expose": ["wafer_id"],
+        }}, known_tables=TABLES, rejections=[])
+    assert len(rules) == 1
+    assert rules[0]["folded"] is folded_expected, (
+        "the fixture's defect axis is not live: the declaration did not reach the "
+        "join rule, so whatever this test asserts next it is not asserting the fold")
+    return rules[0]
+
+
+def test_both_sides_fold_when_only_the_dirty_side_is_declared(norm_env):
+    """🔴 THE assertion the withdrawn design could not make.
+
+    Left column dirty, right column clean, declaration on the LEFT ONLY. All three
+    left rows whose lot is the same physical lot must find the one right row.
+
+    A fold applied to the left only would produce 'CL-2601-001' on the left and leave
+    'CL-2601-001' on the right - which happens to match here - so the fixture also
+    carries row C, already clean on BOTH sides. A fold applied to the RIGHT only would
+    break row C. Only folding both sides matches all three.
+    """
+    db = norm_env
+    _seed_asymmetric(db)
+    import virtual_join_executor as vje
+
+    rule = _rule(True)
+    left = models.DYNAMIC_TABLES["notnorm_test_log"]
+    row_ids = [r[0] for r in db.query(left.row_id).all()]
+    out = vje.execute_rule(db, rule, row_ids)
+
+    by_key = {}
+    for rid, hit in out.items():
+        key = db.query(left.business_key_val).filter(left.row_id == rid).scalar()
+        by_key[key] = hit
+    assert by_key["A_1"]["values"]["wafer_id"] == "W-1", "the dirty '_' row lost its match"
+    assert by_key["B_1"]["values"]["wafer_id"] == "W-1", "the dirty '.' row lost its match"
+    assert by_key["C_1"]["values"]["wafer_id"] == "W-1", (
+        "the ALREADY-CLEAN row lost its match - that is what a one-sided fold does")
+    assert by_key["D_1"]["matched"] is False, (
+        "a lot with no right row must stay unmatched; if this matched, the fold is "
+        "merging things that are not the same")
+
+
+def test_without_the_declaration_the_dirty_rows_do_not_match(norm_env, tmp_path,
+                                                             monkeypatch):
+    """The fixture's axis is live - proven by removing the declaration, not assumed.
+
+    (server-pm lesson: a test that would pass against an implementation which folds
+    nothing certifies nothing.)
+    """
+    db = norm_env
+    _seed_asymmetric(db)
+    _write_decl(tmp_path, monkeypatch, {"columns": {}})
+    import virtual_join_executor as vje
+
+    rule = _rule(False)
+    left = models.DYNAMIC_TABLES["notnorm_test_log"]
+    row_ids = [r[0] for r in db.query(left.row_id).all()]
+    out = vje.execute_rule(db, rule, row_ids)
+    matched = {db.query(left.business_key_val).filter(left.row_id == rid).scalar()
+               for rid, hit in out.items() if hit["matched"]}
+    assert matched == {"C_1"}, (
+        "unfolded, only the already-clean row matches. If more than that matched, the "
+        "previous test proves nothing.")
+
+
+def test_there_is_no_call_shape_that_folds_one_side(norm_env):
+    """Structural: the ON clause builder takes no per-side fold argument.
+
+    Asserted rather than reviewed, because "both sides" is the whole redesign and a
+    future refactor that adds a `fold_left=` parameter would reintroduce the defect
+    while every behavioural test still passed.
+    """
+    import inspect
+    import virtual_join_executor as vje
+
+    params = list(inspect.signature(vje.join_onclause).parameters)
+    assert params == ["left_model", "right_model", "rule"], (
+        f"join_onclause grew parameters {params}. If one of them can select which side "
+        f"folds, the silent-match-drop defect is back.")
+    # And both consumers go through it, so they cannot disagree about the row set.
+    src = inspect.getsource(vje)
+    assert src.count("join_onclause(") >= 3, (
+        "execute_rule and resolved_expression must BOTH build their ON clause here")
+
+
+# ---------------------------------------------------------------------------
+# The approval gate moves with the fold
+# ---------------------------------------------------------------------------
+
+def test_the_required_ddl_becomes_a_functional_index(norm_env):
+    """A folded key needs a functional UNIQUE index, and the DDL says the fold."""
+    import virtual_join_config as vjc
+
+    fold = notation_norm.join_pair_rules(
+        "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
+    plain = vjc.required_index_ddl("notnorm_test_ref", ["core_lot"], [None])
+    folded = vjc.required_index_ddl("notnorm_test_ref", ["core_lot"], [fold])
+    assert "regexp_replace" not in plain
+    assert "regexp_replace" in folded and "translate" in folded
+    assert notation_norm.SEPARATOR_PATTERN in folded, (
+        "the DDL must carry the SAME pattern the query folds with - a functional index "
+        "PostgreSQL cannot match is a sequential scan that every test still passes")
+    assert vjc.required_index_name("notnorm_test_ref", ["core_lot"], [fold]) != \
+        vjc.required_index_name("notnorm_test_ref", ["core_lot"], [None]), (
+        "the folded index needs its own NAME, or an operator who already made the plain "
+        "one reads the name collision as 'already done'")
+    # Pasteable: ASCII only, one line, no raw control characters.
+    assert folded.isascii() and "\n" not in folded
+
+
+def test_the_ddl_and_the_query_expression_come_from_one_spelling():
+    """🔴 If these two ever diverge, PostgreSQL silently stops using the index."""
+    import virtual_join_config as vjc
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy import Column, String, literal_column
+
+    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
+    expr = notation_norm.fold_notation_sql(literal_column('"core_lot"'), rules)
+    compiled = str(expr.compile(dialect=postgresql.dialect(),
+                                compile_kwargs={"literal_binds": True}))
+    ddl_expr = vjc.index_key_expression("core_lot", rules)
+    assert vjc.normalize_index_expression(compiled) == \
+        vjc.normalize_index_expression(ddl_expr), (
+        f"query expression and index expression disagree:\n  query={compiled}\n"
+        f"  ddl  ={ddl_expr}")
+
+
+def test_normalize_index_expression_folds_what_postgres_adds():
+    """The pure matcher, scored against a REAL PostgreSQL rendering.
+
+    `lower((identity_key)::text)` is verbatim what `pg_get_indexdef` returns for
+    `idx_suggest_graph_nodes_identity_key` on the live database (measured 2026-08-04) -
+    so the cast-and-paren noise this has to absorb is measured, not imagined.
+    """
+    import virtual_join_config as vjc
+    assert vjc.normalize_index_expression("lower((identity_key)::text)") == \
+        vjc.normalize_index_expression('lower("identity_key")')
+    assert vjc.normalize_index_expression("(core_lot)") == "core_lot"
+    assert vjc.normalize_index_expression('  "core_lot"  ') == "core_lot"
+    # 🔴 NOT folded away: a different collation is a different index.
+    assert vjc.normalize_index_expression('lower(identity_key) COLLATE "C"') != \
+        vjc.normalize_index_expression("lower(identity_key)")
+
+
+def test_the_gate_says_nothing_on_a_dialect_it_cannot_read(norm_env):
+    """Not PostgreSQL -> None -> refused. Safe-direction ignorance, unchanged."""
+    import virtual_join_config as vjc
+    fold = notation_norm.join_pair_rules(
+        "notnorm_test_log", "core_lot", "notnorm_test_ref", "core_lot")
+    assert vjc.unique_index_covering(norm_env, "notnorm_test_ref", ["core_lot"],
+                                     [fold]) is None
+    rule = _rule(True)
+    assert vjc.verify_uniqueness(norm_env, rule)["code"] == vjc.CODE_NO_UNIQUE_INDEX
+
+
+# ---------------------------------------------------------------------------
+# The fold preview - the false-merge check
+# ---------------------------------------------------------------------------
+
+def test_the_preview_reports_merge_groups_with_their_raw_variants(norm_env):
+    """The question that matters: "did my rule merge two things that are not the same?"
+
+    A raw->folded listing cannot answer it. The groups can.
+    """
+    db = norm_env
+    _seed_asymmetric(db)
+    p = notation_norm.fold_preview(db, "notnorm_test_log", "core_lot")
+    assert p["declared"] is True and p["folds"] is True
+    assert p["distinct_raw"] == 4 and p["distinct_folded"] == 2
+    assert len(p["merge_groups"]) == 1
+    g = p["merge_groups"][0]
+    assert g["folded"] == "CL-2601-001" and g["raw_count"] == 3
+    assert {v["raw"] for v in g["variants"]} == \
+        {"cl_2601_001", "CL.2601.001", "CL-2601-001"}
+    # The lone unmerged spelling is NOT reported as a merge.
+    assert all(mg["folded"] != "CL-9999-999" for mg in p["merge_groups"])
+
+
+def test_the_preview_of_a_clean_column_reports_no_merges(norm_env):
+    db = norm_env
+    _seed_asymmetric(db)
+    rules = {notation_norm.RULE_SEPARATOR: True, notation_norm.RULE_CASE: True}
+    p = notation_norm.fold_preview(db, "notnorm_test_ref", "core_lot", rules)
+    assert p["merge_groups"] == []
+    assert p["distinct_raw"] == p["distinct_folded"] == 1
+
+
+def test_the_preview_sentence_is_korean_and_leads_with_the_merges(norm_env):
+    import config_resolve_report as crr
+    db = norm_env
+    _seed_asymmetric(db)
+    p = notation_norm.fold_preview(db, "notnorm_test_log", "core_lot")
+    detail = crr.notation_preview_detail(p)
+    assert "cl_2601_001" in detail and "CL-2601-001" in detail
+    detail.encode("cp949")      # operator-facing Korean must survive cp949
+
+
+# ---------------------------------------------------------------------------
 # "Did my config take?" - the answer must be visible, not log-only
 # ---------------------------------------------------------------------------
 
-def test_the_resolve_report_names_the_declaration_and_says_nothing_reads_it(
+def test_the_resolve_report_names_the_declaration_and_points_at_the_preview(
         norm_env, tmp_path, monkeypatch):
     """A refusal nobody can see is the trap this repo keeps paying for.
 
-    Also pins the phase-1 fact IN THE OPERATOR'S OWN SENTENCE: the declaration
-    is in effect AND nothing consumes the value yet. Those are two different
-    questions and the report answers both.
+    It must also say the thing the operator now has no column to see for themselves:
+    where the false-merge answer lives.
     """
     import config_resolve_report as crr
 
     _write_decl(tmp_path, monkeypatch, {
         "rules": {"separator": True, "case": True, "zero_pad": True},
-        "columns": {"notnorm_test_log": {"core_lot": "core_lot_norm",
-                                         "dt_lot": "dt_lot"}},
+        "columns": {"notnorm_test_log": {"core_lot": True, "slot": True}},
     })
     domain = crr._resolve_notation()
     assert domain["domain"] == crr.DOMAIN_NOTATION
-    assert [e["subject"] for e in domain["effective"]] == \
-        ["notnorm_test_log.core_lot"]
-    assert "core_lot_norm" in domain["effective"][0]["detail"]
-    assert "1단계" in domain["effective"][0]["detail"], \
-        "the report must say nothing reads the derived value yet"
+    assert [e["subject"] for e in domain["effective"]] == ["notnorm_test_log.core_lot"]
+    detail = domain["effective"][0]["detail"]
+    assert "양쪽" in detail, "the report must say BOTH sides of the comparison fold"
+    assert "notation/preview" in detail, (
+        "the report must name where the false-merge check lives - it is the only thing "
+        "left that answers the question the derived column used to answer by eye")
     reasons = {e["reason"] for e in domain["rejected"]}
     assert reasons == {crr.REASON_NOT_REACHED, crr.REASON_MAPPING_UNAVAILABLE}
     for e in domain["rejected"] + domain["effective"]:
-        e["detail"].encode("cp949")   # operator-facing Korean must survive cp949
+        e["detail"].encode("cp949")
 
 
 def test_the_shipped_sample_is_valid_json_and_declares_nothing():
-    """The sample must parse, and must ship inert - phase 1 has no consumers."""
+    """The sample must parse, and must ship inert."""
     import os
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "config", "notation_rules.json.sample")
@@ -476,3 +579,20 @@ def test_the_shipped_sample_is_valid_json_and_declares_nothing():
                                                  rejections=rejections) == {}
     assert rejections == [], (
         f"the shipped sample produces rejections: {rejections}")
+    assert raw["columns"] == {}
+
+
+def test_the_withdrawn_write_path_is_gone_everywhere():
+    """🔴 Deleted, not orphaned. A symbol that survives its subject gets called again.
+
+    `refuse_notation_derived_columns` in particular was a WRITE guard on the funnel every
+    write path converges on; leaving a dead one behind would read to the next author as
+    "derived columns are still protected".
+    """
+    from database import crud as _crud
+    for gone in ("apply_derivations", "derived_columns_for", "derivations_for",
+                 "derivations_by_table", "rederive", "normalized_value",
+                 "CODE_WOULD_REWRITE_RAW", "CODE_KEY_COLUMN"):
+        assert not hasattr(notation_norm, gone), (
+            f"notation_norm.{gone} outlived the design it belonged to")
+    assert not hasattr(_crud, "refuse_notation_derived_columns")

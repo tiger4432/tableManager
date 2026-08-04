@@ -534,37 +534,79 @@ _NOTATION_CODE_TO_REASON = {
     "zero_pad_unimplemented": REASON_NOT_REACHED,
     "unknown_rule": REASON_MAPPING_UNAVAILABLE,
     "undeclared": REASON_NOT_DECLARED,
-    "would_rewrite_raw": REASON_MAPPING_UNAVAILABLE,
-    "key_column": REASON_MAPPING_UNAVAILABLE,
+    "not_text": REASON_MAPPING_UNAVAILABLE,
     "shape": REASON_MAPPING_UNAVAILABLE,
 }
 
 # 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
 # 고쳐야 하는지 먼저 말한다(virtual join의 `_VJ_CODE_LEAD`와 같은 자세).
+#
+# 🔴 `would_rewrite_raw`와 `key_column`이 이 표에서 사라진 것은 완화가 아니라 **주어의
+# 소멸**이다. 둘 다 「파생 컬럼에 대한 쓰기」를 막던 문구인데, 2026-08-04 사용자 확정으로
+# 파생 컬럼 자체가 없어졌다 ― 이제 정규화는 쓰기가 아니라 **조회 시점에 비교의 양쪽을
+# 접는 일**이라 덮어쓸 원본도, 옮길 신원도 없다. 다시 어딘가에 접힌 값을 저장하게 되면
+# 두 거부는 함께 돌아와야 한다(근거는 `notation_norm` 모듈 상단에 남겨 두었다).
 _NOTATION_CODE_LEAD = {
     "zero_pad_unimplemented":
         "구현되지 않은 규칙이라 거부했습니다 ― 켜져 있는 것처럼 읽히고 아무 일도 하지 "
         "않는 상태를 만들지 않기 위해, 조용히 무시하지 않고 이름을 붙여 거부합니다",
     "unknown_rule": "알 수 없는 규칙 이름이라 무시했습니다",
     "undeclared": "table_config.json에 선언되지 않은 테이블/컬럼이라 반영하지 않았습니다",
-    "would_rewrite_raw":
-        "원본 컬럼을 덮어쓰는 선언이라 거부했습니다 ― 이 기능은 원본을 절대 고치지 "
-        "않습니다(잘못된 규칙은 규칙을 고쳐 다시 파생하는 것으로 복구하며, 그 복구는 "
-        "원본이 그대로 남아 있어야 가능합니다)",
-    "key_column":
-        "파생 컬럼이 이 테이블의 업무 키에 속해 있어 거부했습니다 ― 파생값이 행의 "
-        "정체성을 옮길 수는 없습니다",
+    "not_text":
+        "문자열 컬럼이 아니라 거부했습니다 ― 숫자에는 표기가 없습니다(그리고 'number'로 "
+        "선언된 컬럼은 정수 파싱이 이미 '01'과 '1'을 한 값으로 만듭니다)",
     "shape": "선언의 모양이 올바르지 않아 반영하지 않았습니다",
 }
+
+
+def notation_preview_detail(preview: dict) -> str:
+    """폴드 미리보기 1건을 운영자가 읽을 한국어 한 문단으로.
+
+    🔴 문장을 만드는 곳은 여기 하나다 ― 라우트(`/admin/config/notation/preview`)가 이
+    함수를 부르므로, 같은 사실이 두 화면에서 다른 문장으로 나올 자리가 없다
+    (`virtual_join_detail`과 같은 규율).
+
+    앞에 오는 것은 **병합군**이다. 「무엇이 무엇으로 접히는가」가 아니라 「내 규칙이
+    서로 다른 두 값을 합쳐 버리지 않았는가」가 운영자가 실제로 물어야 하는 질문이고,
+    사라진 파생 컬럼이 눈으로 하던 확인이 바로 그것이었다.
+    """
+    if preview.get("error"):
+        return (f"{preview['table']}.{preview['column']}의 미리보기를 만들지 못했습니다 "
+                f"― {preview['error']}")
+    if not preview.get("declared"):
+        return (f"{preview['table']}.{preview['column']}은(는) 정규화 선언이 없습니다 "
+                f"― 비교는 원본 값 그대로 이루어집니다.")
+    merges = preview.get("merge_groups") or []
+    head = (f"{preview['table']}.{preview['column']}: 원본 표기 "
+            f"{preview.get('distinct_raw', 0)}종이 {preview.get('distinct_folded', 0)}종으로 "
+            f"접힙니다.")
+    if not merges:
+        body = ("합쳐진 그룹이 하나도 없습니다 ― 이 컬럼에서는 규칙이 아무것도 병합하지 "
+                "않습니다(조인 반대편이 지저분하다면 그쪽에서 효과가 납니다).")
+    else:
+        worst = merges[0]
+        variants = " | ".join(str(v["raw"]) for v in worst["variants"][:5])
+        body = (f"서로 다른 원본 표기가 한 값으로 합쳐진 그룹이 {len(merges)}개입니다. "
+                f"가장 큰 그룹은 '{worst['folded']}'이고 원본 {worst['raw_count']}종"
+                f"({variants})이 여기로 모입니다. 이 목록을 읽고 "
+                f"「이것들이 정말 같은 것인가」를 확인하세요 ― 하나라도 아니라면 "
+                f"notation_rules.json의 규칙을 고치면 됩니다(저장된 값은 원본 그대로라 "
+                f"되돌릴 것이 없습니다).")
+    tail = ""
+    if preview.get("truncated"):
+        tail = (f" (주의) 표기 종류가 상한({preview.get('group_limit')})을 넘어 일부만 "
+                f"보여 줍니다.")
+    return f"{head} {body}{tail}"
 
 
 def _resolve_notation() -> dict:
     """표기 정규화 선언의 해석 보고서. **DB를 건드리지 않는다**(config만 읽는다).
 
-    이 도메인은 virtual join과 달리 유효 선언이 곧 `effective`다 ― 파생은 쓰기 경로에서
-    실제로 실행되어 값을 남긴다. 다만 **아무도 그 값을 읽지 않는다**(1단계)는 사실은
-    선언마다 문장으로 따라붙는다. 「먹었다」와 「쓰이고 있다」는 다른 질문이고, 둘을
-    붙여 두지 않으면 다음 사람이 맵 키가 이미 정규화된 값으로 조회된다고 읽는다.
+    이 도메인의 `effective`는 「이 컬럼의 표기가 정규화된 것으로 선언됐다」는 뜻이다.
+    저장되는 것은 없다 ― 소비자가 **조회 시점에 비교의 양쪽을** 접는다. 그래서 이 보고서가
+    답하지 못하는 절반이 두 개 있고, 둘 다 세션이 필요해 각자 라우트가 있다:
+      · 「내 규칙이 무엇을 합치는가」 → `/admin/config/notation/preview` (병합군)
+      · 「이 조인이 승인됐는가」     → `/admin/config/virtual-join/verify` (함수 인덱스)
     """
     import notation_norm as nn
     from database import crud
@@ -586,19 +628,25 @@ def _resolve_notation() -> dict:
             reason=_NOTATION_CODE_TO_REASON.get(code, REASON_MAPPING_UNAVAILABLE)))
 
     for table, specs in sorted(by_table.items()):
-        for raw_col, spec in sorted(specs.items()):
-            on = [n for n in nn.KNOWN_RULES if spec["rules"].get(n)]
+        for column, spec in sorted(specs.items()):
+            on = nn.enabled_rule_names(spec["rules"])
+            if on:
+                effect = (f"이 컬럼이 조인 키로 쓰이면 **비교의 양쪽이 모두** 접힌 값으로 "
+                          f"비교됩니다 ― 반대편 컬럼에 선언이 없어도 그렇습니다(한쪽만 "
+                          f"접으면 이미 맞고 있던 매치를 조용히 잃기 때문입니다). "
+                          f"저장되는 값은 없습니다: 원본은 원본 그대로 남고, 규칙을 "
+                          f"고치면 다음 조회부터 바로 반영됩니다.")
+            else:
+                effect = ("적용할 규칙이 하나도 켜져 있지 않아 아무것도 접지 않습니다 "
+                          "― 선언은 유효하지만 비교는 원본 그대로입니다.")
             effective.append(entry(
-                SCOPE_RULE, f"{table}.{raw_col}",
-                f"{table}.{raw_col}의 정규화 표기가 {spec['derived']}에 기록됩니다. "
-                f"적용 중인 규칙: {_names(on) if on else '없음(값이 그대로 복사됩니다)'}. "
-                f"원본 컬럼 {raw_col}은(는) 절대 수정되지 않으므로, 규칙이 잘못 합쳐진 "
-                f"것을 발견하면 이 파일을 고치고 "
-                f"server/scripts/rederive_notation_norm.py --apply 로 다시 파생하면 "
-                f"됩니다. 다만 지금은 이 값을 읽는 코드가 아직 없습니다(1단계) ― 맵 키 "
-                f"분해·필터·조인은 여전히 원본 값을 씁니다.",
-                fields={"table": table, "raw_column": raw_col,
-                        "derived_column": spec["derived"],
+                SCOPE_RULE, f"{table}.{column}",
+                f"{table}.{column}의 표기가 정규화된 것으로 선언됐습니다. "
+                f"적용 중인 규칙: {_names(on) if on else '없음'}. {effect} "
+                f"무엇이 무엇으로 합쳐지는지는 "
+                f"GET /admin/config/notation/preview?table={table}&column={column} 가 "
+                f"병합군으로 답합니다 ― 규칙을 켠 다음 그것부터 보세요.",
+                fields={"table": table, "column": column,
                         "rules": dict(spec["rules"])}))
 
     rules_exists = os.path.exists(rules_path)
@@ -618,18 +666,27 @@ def _resolve_notation() -> dict:
                 rules_path, declared=None,
                 detail=("실제로 적용할 수 있는 규칙입니다. separator는 '.', '_', '-', "
                         "공백의 연속을 '-' 하나로 접습니다(맵 키를 잇는 문자인 '_'를 "
-                        "값에서 몰아내는 것이 목적입니다). case는 대문자로 접습니다. "
-                        "zero_pad는 목록에 없습니다 ― true로 선언하면 거부됩니다.")),
+                        "값에서 몰아내는 것이 목적입니다). case는 **ASCII a-z만** "
+                        "대문자로 접습니다 ― PostgreSQL의 upper()와 파이썬의 upper()가 "
+                        "비ASCII에서 서로 다른 답을 내기 때문에(측정: 'straße'), 두 "
+                        "엔진이 같은 답을 내는 범위로 좁혔습니다. zero_pad는 목록에 "
+                        "없습니다 ― true로 선언하면 거부됩니다.")),
         setting("separator_target", nn.SEPARATOR_TARGET, ORIGIN_DEFAULT,
                 rules_path, declared=None,
                 detail=("구분자가 접히는 단일 형태입니다. '_'가 아닌 이유가 이 기능의 "
                         "핵심입니다 ― '_'는 복합 맵 키를 잇는 문자라, '_'를 품은 값은 "
                         "자기가 속한 키를 조각냅니다.")),
-        setting("rewrites_raw_column", False, ORIGIN_DEFAULT, rules_path,
+        setting("stores_anything", False, ORIGIN_DEFAULT, rules_path,
                 declared=None,
-                detail=("원본 컬럼은 어떤 경우에도 수정되지 않습니다. 파생 컬럼에 직접 "
-                        "쓰려는 시도도 거부됩니다(원본에서 계산되는 값이므로). 그래서 "
-                        "규칙이 틀렸다는 것을 나중에 알아도 되돌릴 것이 없습니다.")),
+                detail=("이 기능은 아무것도 저장하지 않습니다. 파생 컬럼도, 쓰기 훅도, "
+                        "재파생 스크립트도 없습니다 ― 소비자가 조회 시점에 비교의 양쪽을 "
+                        "접습니다. 그래서 규칙을 고치면 되돌릴 것도, 채울 것도 없습니다.")),
+        setting("map_keys_unchanged", True, ORIGIN_DEFAULT, rules_path,
+                declared=None,
+                detail=("맵 키 분해·합성은 이 선언의 영향을 받지 않습니다. "
+                        "wafer_map_metadata가 **원본 신원**으로 등록돼 있어, 맵 키가 "
+                        "정규화 값을 읽는 순간 기존 map_id가 자기 메타 행과 어긋납니다. "
+                        "그것은 설정 스위치가 아니라 데이터 마이그레이션입니다.")),
     ]
     return build_domain(DOMAIN_NOTATION, "표기 정규화 선언",
                         sources, settings, effective, ineffective, rejected)

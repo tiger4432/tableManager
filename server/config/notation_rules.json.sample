@@ -1,41 +1,48 @@
 {
-  "__comment": "WF/lot/slot notation normalization. Produces a DERIVED column next to a raw column; the raw column is NEVER rewritten. That is why these rules could ship before the spelling census was run -- a folding rule that turns out to merge two different entities is corrected by editing this file and re-deriving (python server/scripts/rederive_notation_norm.py --apply), and nothing is lost meanwhile. | PHASE 1: the derived value exists and is correct, and NOTHING READS IT YET. Pointing map keys / filters / joins at it would change every existing map key and maps would stop resolving -- that is a separate, opt-in decision. | Ships with an EMPTY 'columns' object on purpose: until an operator declares a pair, this feature is inert. Copy an entry out of '_example_columns' to switch it on.",
+  "__comment": "WF/lot/slot notation normalization. A declaration here says ONE thing: 'this column's notation is normalized'. It does NOT create a column, it does NOT write anything, and it does NOT change a stored value -- consumers apply the same fold to BOTH SIDES of a comparison, in SQL, at query time. Because nothing is stored, a rule that turns out to merge two different entities is corrected by editing this file: there is nothing to back out, nothing to re-derive, and no column to clean up. | Ships with an EMPTY 'columns' object on purpose: until an operator declares a column, this feature is inert. Copy an entry out of '_example_columns' to switch it on.",
 
-  "__how_to_enable": "TWO steps, in this order. (1) Declare the derived column in table_config.json under the same table: \"core_lot_norm\": \"string\" in column_types. It must be \"string\" -- a number column would refuse 'WF-01' outright -- and it must NOT be the business_key or a member of composite_key_source (the loader refuses that: a derived value must never move a row's identity). Wait for the physical ALTER (config_watcher on_modified) and confirm the column exists. (2) Add \"core_lot\": \"core_lot_norm\" under columns.dt_log here. New writes derive immediately; existing rows are filled by the re-derivation script. | Whether each declaration took effect, and WHY a rejected one did not, is answered by GET /admin/config/resolve?domain=notation -- do not guess from the log.",
+  "__how_to_enable": "ONE step. Add the column under columns.<table> here, as `true`. That is all -- there is no second column to declare in table_config.json, no visibility question in display_columns, and nothing to backfill. The next query folds. | The column must be declared \"string\" in table_config.json (it already is, if you are reading its values as text): a 'number' column is REFUSED, because a number has no notation and the integer parse already makes '01' and '1' one value. | Whether a declaration took effect, and WHY a rejected one did not, is answered by GET /admin/config/resolve?domain=notation -- do not guess from the log.",
+
+  "__then_check_the_merges": "AFTER declaring, run the false-merge check: GET /admin/config/notation/preview?table=dt_log&column=core_lot. It returns MERGE GROUPS -- one folded value reached by more than one raw spelling, with the raw variants listed -- computed in SQL through the SAME fold expression the join uses. Read the variants and ask 'are these really the same thing?'. If even one group says no, change the rules here; nothing was stored, so nothing needs undoing. This is the check that matters, and it replaces eyeballing a derived column in the grid.",
+
+  "__what_a_join_needs": "A virtual join whose join_key touches a normalized column needs a FUNCTIONAL UNIQUE index on the right table -- on the folded expression, not on the plain column. Two reasons, both fatal: a folded comparison cannot use a plain b-tree index (sequential scan), and a plain unique index does not even establish the uniqueness the approval gate is asking about (two rows that are distinct raw, 'CL-1' and 'CL_1', are ONE value once folded, and that duplicate is exactly the join fan-out). GET /admin/config/virtual-join/verify prints the exact DDL and refuses with no_unique_index until it exists.",
+
+  "__both_sides_always": "If EITHER column of a join key comparison is declared here, BOTH are folded. There is no way to fold one side, and that is deliberate: measured 2026-08-04, dt_log.core_lot has 15 merge groups while core_wafer_map.core_lot has zero, so nobody would think to declare it on the clean side -- and a join folded on one side only does not merely fail to help, it SILENTLY DROPS matches the unfolded join was already making. When both sides are declared with different rules, the effective set is the UNION (the fold is a property of the comparison, not of a column), and /admin/config/virtual-join/verify reports which keys fold and with what.",
+
+  "__map_keys_are_not_touched": "Map key composition and parsing still use RAW values, and nothing in this file changes that. wafer_map_metadata rows are registered under raw identities, so pointing canonical_map_key at a folded value would make existing map_ids stop matching their own meta rows. That is a data migration, not a config flip, and it is a separate decision that has not been taken.",
 
   "rules": {
     "__comment": "The file-level default rule set. A table or a single column may override it (see _example_columns). Each rule is INDEPENDENTLY switchable on purpose: bundling them would mean the risky one could never be enabled separately later.",
 
     "separator": true,
-    "__separator": "'.', '_', '-' and whitespace RUNS all collapse to a single '-'. LOW risk, and this is the rule that fixes the reported pain: 'WF.01' and 'WF-01' become one value, and -- the sharper case -- a lot value that contains '_' stops shredding the composite map key. map_overlay.map_key_parts splits a map key on '_', so a core_lot of 'CL_2601_001_09' currently parses as lot='CL' + slot='2601_001_09' and renders ZERO cells. The '_' join convention is DELIBERATE (typing just the lot yields lot_* and scans every slot); this rule does not change it, it keeps '_' out of the values that compose it.",
+    "__separator": "A RUN of '.', '_', '-' or whitespace collapses to a single '-'. LOW risk, and this is the rule that fixes the reported pain: 'WF.01' and 'WF-01' compare equal. Folding TO '-' and not to '_' is the point -- '_' is the character composite map keys are joined with (map_overlay.compose_map_id), so a value that keeps its '_' shreds the key it is part of. | The whitespace set is ENUMERATED, not written as \\s: Python's \\s and PostgreSQL's [[:space:]] were MEASURED to disagree (this server misses U+001C..U+001F and adds U+180E), and PostgreSQL's answer depends on the database ctype, so the shorthand is not stable even across installs of the same product.",
 
     "case": true,
-    "__case": "Upper-case fold. LOW risk.",
+    "__case": "Upper-case fold, ASCII a-z ONLY. LOW risk. It is ASCII-only by measurement, not by laziness: PostgreSQL's upper() and Python's str.upper() give different answers outside ASCII (upper('straße') keeps the eszett where Python yields 'STRASSE' -- a LENGTH change), and full Unicode case mapping cannot be made to agree between the two engines. Every non-ASCII letter is left alone by both, identically.",
 
     "zero_pad": false,
-    "__zero_pad": "NOT IMPLEMENTED -- leave it false. Setting it true produces a NAMED refusal (zero_pad_unimplemented) rather than silently doing nothing, and the value is forced back to false. It is the one rule whose false-merge risk is real: 'WF010' and 'WF10' both become 'WF10'. Before anyone implements it, run the false-merge check (see __false_merge_check below) and look at what it collapses. For slot the question is retired ONLY ONCE THE COLUMN IS DECLARED 'number': that path goes through canonical_key_value's integer parse, where '01' and '1' are already one key. Measured 2026-08-04 against the live table_config: dt_log.core_slot, dt_log.dt_slot, core_wafer_map.core_slot and bonding_log.bond_slot are ALL declared 'string' today, so the retirement has not taken effect yet -- '01' and '1' do not merge. The ruling is 'slot is always int'; the declarations have not caught up. Fix the declared type, do not implement zero_pad to compensate."
+    "__zero_pad": "NOT IMPLEMENTED -- leave it false. Setting it true produces a NAMED refusal (zero_pad_unimplemented) rather than silently doing nothing, and the value is forced back to false. It is the one rule whose false-merge risk is real: 'WF010' and 'WF10' both become 'WF10'. Before anyone implements it, declare the column, run the fold preview, and look at what it collapses. For slot the question is retired ONCE THE COLUMN IS DECLARED 'number' -- that path goes through canonical_key_value's integer parse, where '01' and '1' are already one key (and a 'number' column cannot be declared here at all). Measured 2026-08-04 against the live table_config: dt_log.core_slot, dt_log.dt_slot, core_wafer_map.core_slot and bonding_log.bond_slot are ALL declared 'string' today, so the retirement has not taken effect yet. Fix the declared type, do not implement zero_pad to compensate."
   },
-
-  "__false_merge_check": "Once a pair is declared and derived, counting the merges is one query per column -- this is the check the census was supposed to give you: SELECT core_lot_norm, count(DISTINCT core_lot) AS n_raw, string_agg(DISTINCT core_lot, ' | ' ORDER BY core_lot) AS variants, count(*) AS n_rows FROM dt_log WHERE core_lot_norm IS NOT NULL GROUP BY core_lot_norm HAVING count(DISTINCT core_lot) > 1 ORDER BY n_raw DESC, n_rows DESC; -- read the 'variants' column and ask 'are these the same physical lot?'. If even one group says no, fix the rules here and re-derive.",
 
   "columns": {},
 
   "_example_columns": {
     "__comment": "A NAME STARTING WITH '_' IS A COMMENT to the loader, so nothing in here is in effect. Move an entry into 'columns' above to switch it on.",
     "dt_log": {
-      "core_lot": "core_lot_norm",
+      "core_lot": true,
       "dt_lot": {
-        "derived": "dt_lot_norm",
         "rules": {
-          "__comment": "Per-column override of the file-level rules. Present so a column that must keep its case can, without turning the rule off everywhere.",
+          "__comment": "Per-column override of the file-level rules. Present so a column whose case is meaningful can keep it, without turning the rule off everywhere.",
           "separator": true,
           "case": false
         }
-      }
+      },
+      "product": false,
+      "__product": "`false` is a DECLARATION, not an omission: it records that someone looked at this column and decided its notation is NOT normalized. The loader skips it without a rejection, and the difference from leaving it out entirely is that the next reader can see the decision was made."
     },
     "core_wafer_map": {
-      "__comment": "core_lot IS a member of this table's composite_key_source -- that is fine, the RAW column may be a key member. What the loader refuses is a DERIVED column that is one, because deriving it would rewrite row identity.",
-      "core_lot": "core_lot_norm"
+      "__comment": "Measured 2026-08-04: this column has ZERO merge groups -- every spelling here is already clean. Declaring it anyway is harmless and unnecessary: because dt_log.core_lot IS declared, a join between the two folds BOTH sides regardless of what this table says.",
+      "core_lot": true
     }
   }
 }

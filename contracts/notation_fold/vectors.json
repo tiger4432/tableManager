@@ -1,0 +1,2347 @@
+{
+  "$comment": "NOTATION FOLD -- the seam between `notation_norm.fold_notation` (Python) and `notation_norm.fold_notation_sql` (SQL). Both are scored against the `expected` recorded here, and against each other. Recording the expectation rather than just comparing the two engines is deliberate: engine-vs-engine alone stays green when BOTH drift the same wrong way, which is precisely what a shared constant makes easy to do.",
+  "version": 1,
+  "seam": {
+    "python": "server/notation_norm.py :: fold_notation",
+    "sql": "server/notation_norm.py :: fold_notation_sql / fold_sql_text",
+    "why_it_exists": "The fold decides whether two lot spellings are the same lot. It runs in Python (the reference, and any Python-side comparand) and in SQL (what a virtual join and a functional index actually evaluate). Two spellings of 'normalize' is the defect class this repository keeps paying for -- it is why the fold was layered on `canonical_key_value` instead of written beside it. This file is the layer below that, held to the same rule.",
+    "what_a_disagreement_costs": "A join whose ON clause folds differently from the functional UNIQUE index that approved it: PostgreSQL stops using the index (sequential scan on a 10-million-row table) AND the uniqueness the gate verified is no longer the uniqueness the query needs. Neither shows up as an error."
+  },
+  "rule_combinations": {
+    "none": "no rule enabled -- the fold must be the identity function",
+    "sep_only": "separator run -> single '-'",
+    "case_only": "ASCII a-z -> A-Z",
+    "both": "the shipped default"
+  },
+  "server_symbols": {
+    "fold_python": "notation_norm.fold_notation",
+    "fold_sql": "notation_norm.fold_notation_sql",
+    "fold_sql_text": "notation_norm.fold_sql_text",
+    "separator_codepoints": "notation_norm.SEPARATOR_CODEPOINTS",
+    "separator_pattern": "notation_norm.SEPARATOR_PATTERN",
+    "case_alphabets": "notation_norm.CASE_SOURCE_ALPHABET / CASE_TARGET_ALPHABET"
+  },
+  "measurements": {
+    "$comment": "Taken 2026-08-04 against the live database, READ ONLY, scalar expressions only. These are the facts that shaped the implementation; each has a corpus case that goes red if it stops being true.",
+    "server": "PostgreSQL 18.3 on x86_64-windows",
+    "database_ctype": "Korean_Korea.949 (datlocprovider 'c')",
+    "server_encoding": "UTF8",
+    "python_backslash_s_codepoints": 29,
+    "postgres_posix_space_codepoints": 26,
+    "postgres_misses": [
+      "U+001C",
+      "U+001D",
+      "U+001E",
+      "U+001F"
+    ],
+    "postgres_adds": [
+      "U+180E"
+    ],
+    "regexp_replace_without_g": {
+      "input": "WF.A_B 01",
+      "output": "WF-A_B 01",
+      "$why": "the 'g' flag is not optional; without it only the first run folds"
+    },
+    "upper_vs_str_upper": {
+      "strasse": {
+        "python": "STRASSE",
+        "postgres": "STRAsse-with-eszett-kept"
+      },
+      "dotless_i": {
+        "python": "I",
+        "postgres": "unchanged"
+      },
+      "ligature_fi": {
+        "python": "FI",
+        "postgres": "unchanged"
+      },
+      "sigma": {
+        "python": "folds",
+        "postgres": "folds"
+      },
+      "e_acute": {
+        "python": "folds",
+        "postgres": "unchanged (ctype-dependent)"
+      }
+    }
+  },
+  "declared_divergences": {
+    "NON_STRING_INPUT": {
+      "$why": "Python's `fold_notation` returns a non-string unchanged. There is no SQL counterpart to score, and deliberately so: `_validate_column` REFUSES a declaration on any column not declared 'string', so a non-text value can never reach the SQL fold. The Python pass-through exists for callers that hold a value of unknown type, and is scored by the server suite (`test_non_strings_pass_through_untouched`), not here.",
+      "scored_in": "server/tests/test_notation_normalization.py"
+    },
+    "NULL": {
+      "$why": "SQL NULL propagates through `regexp_replace` and `translate`, so a NULL column folds to NULL and a folded join key never matches on NULL -- identical to the unfolded `col = col` behaviour. Python's `None` is returned unchanged by the same statement. Scored below as its own test rather than as a corpus case, because a corpus case would have to carry a `null` input type that no other case uses."
+    }
+  },
+  "corpus": {
+    "cases": [
+      {
+        "id": "plain_ascii",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            48,
+            49
+          ]
+        },
+        "$why": "The null case. A value with no separator and no lower case must come out byte-identical under every rule combination, or the fold is doing something nobody asked for.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "dot",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            46,
+            48,
+            49
+          ]
+        },
+        "$why": "The reported pain, half one: 'WF.01' and 'WF-01' were two values.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              46,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              46,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "hyphen",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "The reported pain, half two. Already the target form - the fold must be idempotent on it.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "underscore",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            95,
+            48,
+            49
+          ]
+        },
+        "$why": "'_' is the composite map-key join character (map_overlay.compose_map_id), so a value that keeps it shreds the key it is part of. This is the case that motivated folding TO '-' rather than to '_'.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              95,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              95,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "space",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            32,
+            48,
+            49
+          ]
+        },
+        "$why": "ASCII space, the commonest separator in hand-typed lot ids.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              32,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              32,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "lower_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            102,
+            32,
+            48,
+            49
+          ]
+        },
+        "$why": "Separator AND case in one value - proves the two rules compose rather than one masking the other.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              119,
+              102,
+              32,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              119,
+              102,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              32,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "run_double_hyphen",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            45,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "A RUN collapses to ONE '-'. Without the '+' quantifier this yields 'WF--01' and two spellings of the same lot stay two values.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              45,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              45,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "run_mixed",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            46,
+            45,
+            95,
+            32,
+            48,
+            49
+          ]
+        },
+        "$why": "A run of FOUR DIFFERENT separators. This is the case the task brief singles out: engines that treat a mixed run per-character rather than as one run diverge here.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              46,
+              45,
+              95,
+              32,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              46,
+              45,
+              95,
+              32,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "run_long",
+        "input": {
+          "type": "text",
+          "cp": [
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46,
+            46
+          ]
+        },
+        "$why": "Run length 18, all one character. Guards against any bounded 'replace(x,'--','-') a few times' shortcut, which is correct up to a length and then silently is not.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46,
+              46
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          }
+        }
+      },
+      {
+        "id": "lot_with_underscores",
+        "input": {
+          "type": "text",
+          "cp": [
+            67,
+            76,
+            95,
+            50,
+            54,
+            48,
+            49,
+            95,
+            48,
+            48,
+            49,
+            95,
+            48,
+            57
+          ]
+        },
+        "$why": "The measured production shape. Three '_' in one value; the whole value collapses to one hyphenated form.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              95,
+              50,
+              54,
+              48,
+              49,
+              95,
+              48,
+              48,
+              49,
+              95,
+              48,
+              57
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              95,
+              50,
+              54,
+              48,
+              49,
+              95,
+              48,
+              48,
+              49,
+              95,
+              48,
+              57
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          }
+        }
+      },
+      {
+        "id": "already_folded",
+        "input": {
+          "type": "text",
+          "cp": [
+            67,
+            76,
+            45,
+            50,
+            54,
+            48,
+            49,
+            45,
+            48,
+            48,
+            49,
+            45,
+            48,
+            57
+          ]
+        },
+        "$why": "IDEMPOTENCE. folding a folded value must be a no-op, or the fold cannot be used on both sides of a comparison where one side is already clean.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              67,
+              76,
+              45,
+              50,
+              54,
+              48,
+              49,
+              45,
+              48,
+              48,
+              49,
+              45,
+              48,
+              57
+            ]
+          }
+        }
+      },
+      {
+        "id": "leading_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            45,
+            87,
+            70,
+            48,
+            49
+          ]
+        },
+        "$why": "A separator at position 0. Bracket expressions and anchors are where off-by-one shows up.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              45,
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              45,
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              45,
+              87,
+              70,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              45,
+              87,
+              70,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "trailing_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            48,
+            49,
+            45
+          ]
+        },
+        "$why": "A separator at the last position.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49,
+              45
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49,
+              45
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49,
+              45
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              48,
+              49,
+              45
+            ]
+          }
+        }
+      },
+      {
+        "id": "only_separators",
+        "input": {
+          "type": "text",
+          "cp": [
+            95,
+            95,
+            95
+          ]
+        },
+        "$why": "A value made ENTIRELY of separators folds to a single '-'. It is not empty and must not become empty: emptiness is `crud.blank_sql_condition`'s question, not this one, and inventing '' here would make a blank filter and a join disagree.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              95,
+              95,
+              95
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              95,
+              95,
+              95
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          }
+        }
+      },
+      {
+        "id": "empty",
+        "input": {
+          "type": "text",
+          "cp": []
+        },
+        "$why": "The empty string. Mandatory in every contract this repo writes: `v || dflt` turns a declared empty into a default and this is the most likely place for it to come back.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": []
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": []
+          },
+          "case_only": {
+            "type": "text",
+            "cp": []
+          },
+          "both": {
+            "type": "text",
+            "cp": []
+          }
+        }
+      },
+      {
+        "id": "single_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            32
+          ]
+        },
+        "$why": "Whitespace-only. Folds to '-' under the separator rule - same reasoning as `only_separators`.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              32
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              32
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              45
+            ]
+          }
+        }
+      },
+      {
+        "id": "tab",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            9,
+            98
+          ]
+        },
+        "$why": "U+0009. ASCII whitespace both engines agree on.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              9,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              9,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "lf",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            10,
+            98
+          ]
+        },
+        "$why": "U+000A.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              10,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              10,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "crlf",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            13,
+            10,
+            98
+          ]
+        },
+        "$why": "U+000D U+000A as one run - two characters, one '-'.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              13,
+              10,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              13,
+              10,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "vertical_tab",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            11,
+            98
+          ]
+        },
+        "$why": "U+000B.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              11,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              11,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "form_feed",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            12,
+            98
+          ]
+        },
+        "$why": "U+000C.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              12,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              12,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "nel",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            133,
+            98
+          ]
+        },
+        "$why": "U+0085 NEXT LINE. Matched by both shorthands, but only because both happen to; it is enumerated explicitly like everything else.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              133,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              133,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "file_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            28,
+            98
+          ]
+        },
+        "$why": "U+001C. 🔴 A MEASURED DIVERGENCE POINT: Python's `\\s` matches it, this PostgreSQL's `[[:space:]]` does NOT. If the pattern ever regresses to a shorthand class this case goes red, which is exactly what it is for.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              28,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              28,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "unit_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            31,
+            98
+          ]
+        },
+        "$why": "U+001F. Same divergence family as `file_separator` (U+001C..U+001F are the four).",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              31,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              31,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "nbsp",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            160,
+            98
+          ]
+        },
+        "$why": "U+00A0 NO-BREAK SPACE. Survives `normalize_stored_text` when it is INTERIOR to a value, so it genuinely reaches storage.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              160,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              160,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "ideographic_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            12288,
+            98
+          ]
+        },
+        "$why": "U+3000. Reachable from a Korean/Japanese-locale paste, which this deployment sees.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              12288,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              12288,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "narrow_nbsp",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            8239,
+            98
+          ]
+        },
+        "$why": "U+202F.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              8239,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              8239,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "figure_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            8199,
+            98
+          ]
+        },
+        "$why": "U+2007.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              8199,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              8199,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "ogham_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            5760,
+            98
+          ]
+        },
+        "$why": "U+1680 OGHAM SPACE MARK - the one 'space' that is not blank-looking.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              5760,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              5760,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "line_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            8232,
+            98
+          ]
+        },
+        "$why": "U+2028.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              8232,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              45,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              8232,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              45,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "mongolian_vowel_separator",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            6158,
+            98
+          ]
+        },
+        "$why": "U+180E. 🔴 THE OTHER DIRECTION of the same divergence: this PostgreSQL's `[[:space:]]` MATCHES it and Python's `\\s` does not. The enumerated class excludes it, so BOTH engines must leave it alone. A regression to `[[:space:]]` on the SQL side turns this case red while every Python test stays green.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              6158,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              6158,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              6158,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              6158,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "zero_width_space",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            8203,
+            98
+          ]
+        },
+        "$why": "U+200B. Neither engine calls it whitespace; recorded so that 'we fold all invisible characters' can never be assumed.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              8203,
+              98
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              8203,
+              98
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              8203,
+              66
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              8203,
+              66
+            ]
+          }
+        }
+      },
+      {
+        "id": "eszett",
+        "input": {
+          "type": "text",
+          "cp": [
+            115,
+            116,
+            114,
+            97,
+            223,
+            101
+          ]
+        },
+        "$why": "U+00DF. 🔴 THE CASE-FOLD DIVERGENCE: `str.upper()` yields 'STRASSE' - a LENGTH CHANGE - while PostgreSQL's `upper()` keeps the eszett. The ASCII-only fold leaves it, on both engines. This case is why the rule is `translate`, not `upper`.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              115,
+              116,
+              114,
+              97,
+              223,
+              101
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              115,
+              116,
+              114,
+              97,
+              223,
+              101
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              83,
+              84,
+              82,
+              65,
+              223,
+              69
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              83,
+              84,
+              82,
+              65,
+              223,
+              69
+            ]
+          }
+        }
+      },
+      {
+        "id": "dotless_i",
+        "input": {
+          "type": "text",
+          "cp": [
+            305
+          ]
+        },
+        "$why": "U+0131. `str.upper()` yields 'I'; PostgreSQL's `upper()` is a no-op. Left alone by both.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              305
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              305
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              305
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              305
+            ]
+          }
+        }
+      },
+      {
+        "id": "ligature_fi",
+        "input": {
+          "type": "text",
+          "cp": [
+            64257,
+            110
+          ]
+        },
+        "$why": "U+FB01. `str.upper()` yields 'FIN' (a length change again); PostgreSQL's `upper()` does not.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              64257,
+              110
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              64257,
+              110
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              64257,
+              78
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              64257,
+              78
+            ]
+          }
+        }
+      },
+      {
+        "id": "e_acute",
+        "input": {
+          "type": "text",
+          "cp": [
+            233,
+            116,
+            233
+          ]
+        },
+        "$why": "U+00E9. Whether `upper()` folds this depends on the DATABASE CTYPE - measured as a no-op here (Korean_Korea.949) and it would fold on a UTF-8 locale. Locale-dependent answers are exactly what an ASCII-only rule removes.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              233,
+              116,
+              233
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              233,
+              116,
+              233
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              233,
+              84,
+              233
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              233,
+              84,
+              233
+            ]
+          }
+        }
+      },
+      {
+        "id": "sigma",
+        "input": {
+          "type": "text",
+          "cp": [
+            963
+          ]
+        },
+        "$why": "U+03C3. Measured: this PostgreSQL's `upper()` DOES fold it while `translate` does not. One more reason the case rule cannot be `upper()`.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              963
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              963
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              963
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              963
+            ]
+          }
+        }
+      },
+      {
+        "id": "fullwidth_a",
+        "input": {
+          "type": "text",
+          "cp": [
+            65345
+          ]
+        },
+        "$why": "U+FF41 FULLWIDTH LATIN SMALL LETTER A. Looks like an ASCII 'a' and is not one.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              65345
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              65345
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65345
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65345
+            ]
+          }
+        }
+      },
+      {
+        "id": "korean",
+        "input": {
+          "type": "text",
+          "cp": [
+            47196,
+            53944,
+            95,
+            48,
+            49
+          ]
+        },
+        "$why": "Hangul with a separator. The separator rule must fire and the case rule must not touch the Hangul.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              47196,
+              53944,
+              95,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              47196,
+              53944,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              47196,
+              53944,
+              95,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              47196,
+              53944,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "mixed_case_ascii",
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            70,
+            46,
+            97,
+            66,
+            95,
+            48,
+            49
+          ]
+        },
+        "$why": "Both rules, interleaved, ASCII. The bread-and-butter case.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              119,
+              70,
+              46,
+              97,
+              66,
+              95,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              119,
+              70,
+              45,
+              97,
+              66,
+              45,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              46,
+              65,
+              66,
+              95,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              87,
+              70,
+              45,
+              65,
+              66,
+              45,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "padded_zero",
+        "input": {
+          "type": "text",
+          "cp": [
+            48,
+            48,
+            48,
+            49
+          ]
+        },
+        "$why": "🔴 `zero_pad` IS NOT IMPLEMENTED and this case pins that: '0001' comes out '0001'. If it ever comes out '1', the one rule with a real false-merge risk got switched on without a census.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              48,
+              48,
+              48,
+              49
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              48,
+              48,
+              48,
+              49
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              48,
+              48,
+              48,
+              49
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              48,
+              48,
+              48,
+              49
+            ]
+          }
+        }
+      },
+      {
+        "id": "digits_and_separators",
+        "input": {
+          "type": "text",
+          "cp": [
+            49,
+            46,
+            50,
+            46,
+            51
+          ]
+        },
+        "$why": "A value that is all digits and separators - the shape a version or a slot range takes.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              49,
+              46,
+              50,
+              46,
+              51
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              49,
+              45,
+              50,
+              45,
+              51
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              49,
+              46,
+              50,
+              46,
+              51
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              49,
+              45,
+              50,
+              45,
+              51
+            ]
+          }
+        }
+      },
+      {
+        "id": "case_and_run",
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            97,
+            45,
+            45,
+            66,
+            66,
+            95,
+            95,
+            99,
+            99
+          ]
+        },
+        "$why": "Runs of two different separators plus mixed case, so a compiler that applied the rules in the wrong order or only once shows up.",
+        "expected": {
+          "none": {
+            "type": "text",
+            "cp": [
+              97,
+              97,
+              45,
+              45,
+              66,
+              66,
+              95,
+              95,
+              99,
+              99
+            ]
+          },
+          "sep_only": {
+            "type": "text",
+            "cp": [
+              97,
+              97,
+              45,
+              66,
+              66,
+              45,
+              99,
+              99
+            ]
+          },
+          "case_only": {
+            "type": "text",
+            "cp": [
+              65,
+              65,
+              45,
+              45,
+              66,
+              66,
+              95,
+              95,
+              67,
+              67
+            ]
+          },
+          "both": {
+            "type": "text",
+            "cp": [
+              65,
+              65,
+              45,
+              66,
+              66,
+              45,
+              67,
+              67
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

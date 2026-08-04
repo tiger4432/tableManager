@@ -1,87 +1,127 @@
-"""WF/lot/slot notation normalization - a DERIVED column, never a rewrite.
+"""WF/lot/slot notation normalization - a DECLARATION about a column, applied at
+QUERY TIME to BOTH SIDES of a comparison. It stores nothing.
 
-[The reported pain, 2026-08-04]
-    "WF.01, WF-01 and so on are mixed, which makes filters and JOINs awkward
-    everywhere."
+[What the declaration means]
+    "columns": {"dt_log": {"core_lot": true}}
+reads as **"this column's notation is normalized"**. It does NOT read as "this
+column derives into that column". The operator touches exactly one file and one
+line; there is no second column to declare, no visibility question, and nothing
+to backfill.
 
-And the sharper case, already measured: `map_overlay.map_key_parts` splits a
-composite map key on `_`, so a `core_lot` value that itself contains `_`
-(`CL_2601_001_09`) shreds into lot='CL' + slot='2601_001_09' and renders ZERO
-cells. 766 rows of the simulation carried that shape.
+Consumers apply the SAME fold to BOTH sides of the comparison, in SQL, at query
+time. Today the consumer is virtual-join key resolution
+(`virtual_join_executor`); the fold expression itself is consumer-agnostic.
 
-🔑 THE `_` SEPARATOR IS DELIBERATE and is NOT changed here. The operator built
-the composite key so that typing just the lot yields `lot_*` and scans every
-slot of that lot. This module does not change the convention - it makes the
-convention HOLD, by keeping `_` out of the values that compose the key.
+[Why the stored derived column was withdrawn - user ruling 2026-08-04]
+The first shipped shape (92b8d6f) put the folded value in a physical `<col>_norm`
+column. It was rejected for reasons that were measured, not aesthetic:
+  - Arming it took THREE layers (`table_config` declares the physical column ->
+    `notation_rules` declares the pair -> `display_columns` decides visibility).
+    Three layers with a silent failure between them is a config an operator gets
+    wrong.
+  - The column was write-refused by design: visible and uneditable, riding along
+    in CSV extracts, and the moment it entered `display_columns` an incoming file
+    with a matching header reached `crud` and the refusal failed the whole batch.
+  - To USE it in a virtual join the operator had to name `<col>_norm` in
+    `join_key` on BOTH sides. Measured: `dt_log.core_lot` has 15 merge groups and
+    `core_wafer_map.core_lot` has zero, so nobody would think to declare it on the
+    clean side - and a join folded on ONE side only SILENTLY DROPS MATCHES.
+A config that is syntactically fine and wrong in its results is the worst shape
+available, so the physical column is gone and the comparison folds instead.
 
-[THE SAFETY PROPERTY - this is a hard requirement, not a preference]
-🔴 The raw column is NEVER touched. The normalized value lands in a SEPARATE,
-declared column (`<col>_norm` by convention). A folding rule that turns out to
-merge two genuinely different entities is therefore corrected by fixing the
-rule and RE-DERIVING (`server/scripts/rederive_notation_norm.py`); nothing is
-lost meanwhile. That is what made it safe to ship these rules before the
-spelling census had been run.
-
-The invariant is enforced in three places, not asserted in a comment:
-  1. `_validate_column` refuses `derived == raw`.
-  2. `_validate_column` refuses a derived column that is the business key or a
-     member of `composite_key_source` - a derived value can never move a row's
-     identity.
-  3. `crud.refuse_notation_derived_columns` refuses any WRITE aimed at a
-     derived column, on every write path (same posture, same funnel, as
-     `refuse_virtual_join_columns`).
+🔴 THE TWO REFUSALS THAT DIED WITH IT, AND WHY THEIR REASONING IS NOT LOST
+`would_rewrite_raw` and `key_column` are not oversights of this round. They were
+guarding a WRITE, and there is no longer a write:
+  - `would_rewrite_raw` refused a declaration whose derived column was the raw
+    column itself. Nothing is written now, so nothing can rewrite raw. The
+    property it protected ("a wrong folding rule is repaired by editing the rule,
+    because the original is still there") is now unconditional and free: the
+    stored value is ALWAYS the original, and changing a rule changes only what the
+    next query computes. There is nothing to re-derive.
+  - `key_column` refused a derived column that was the business key or a member of
+    `composite_key_source`, because a derived value must never move a row's
+    identity. Nothing is written now, so no identity can move. `business_key_val`
+    is computed by `crud._update_row_business_key` from the STORED values and this
+    module never touches storage.
+Both refusals are therefore vacuous, not relaxed. If a future round ever writes a
+folded value anywhere, both must come back, and this paragraph is the record of
+what they were for.
 
 [THE RULES - independently switchable, on purpose]
-    separator   '.' '_' '-' whitespace runs  ->  a single '-'    (LOW risk)
-    case        upper                                            (LOW risk)
+    separator   a RUN of '.', '_', '-' or whitespace  ->  a single '-'  (LOW risk)
+    case        ASCII a-z -> A-Z                                        (LOW risk)
     zero_pad    leading zeros stripped        NOT IMPLEMENTED - see below
 
 🔴 `zero_pad` is DECLARED AND REFUSED, not silently ignored. It is the one rule
-whose false-merge risk is real (`WF010` and `WF10` both become `WF10`), and no
-census has been run to say whether such a collapse exists in this fab. Setting
-it to `true` produces a NAMED refusal (`zero_pad_unimplemented`) that surfaces
-in `GET /admin/config/resolve`, because a knob that reads as ON and does
-nothing is the exact silence this repo keeps paying for.
-Note also that the separate ruling "slot is always int" retires the question
-for slot -- but only once the column IS declared `number`: that path goes
-through `canonical_key_value`'s integer parse, where '01' and '1' are already
-one key and padding has no ambiguity left to lose.
-Measured 2026-08-04: `dt_log.core_slot`, `dt_log.dt_slot`,
-`core_wafer_map.core_slot` and `bonding_log.bond_slot` are all declared
-`string` in the live config, so the retirement has NOT taken effect yet. The
-ruling exists; the declarations have not caught up. The fix is the declared
-type, not an implementation of zero_pad.
+whose false-merge risk is real (`WF010` and `WF10` both become `WF10`). Setting it
+`true` produces a NAMED refusal (`zero_pad_unimplemented`) that surfaces in
+`GET /admin/config/resolve`, because a knob that reads as ON and does nothing is
+the exact silence this repo keeps paying for.
+Note the separate ruling "slot is always int" retires the question for slot - but
+only once the column IS declared `number`, and a `number` column cannot be
+declared normalized at all (see `_validate_column`): a number has no notation.
 
-Bundling the three would mean the risky one could never be enabled separately
-later, so each is its own boolean and `fold_notation` has no branch at all for
-the unimplemented one.
+[🔴 THE LOAD-BEARING PROPERTY: ONE FOLD, TWO ENGINES, PROVEN EQUAL]
+Two spellings of "normalize" is the exact defect class this repository keeps
+paying for - it is why the fold was layered on `canonical_key_value` instead of
+written beside it. One layer down, the same trap: the fold now has to exist in
+Python (the reference, and any Python-side comparand) AND in SQL (what actually
+runs). They are scored against each other by `contracts/notation_fold/`, which
+runs a vector set through both against a live PostgreSQL and compares for BYTE
+equality.
 
-[REUSE, NOT A SECOND SPELLING OF "NORMALIZE"]
-`map_overlay.canonical_key_value` (7b) already exists, and exists precisely
-because of this class of incident (`LOT_01` vs `1` made a lookup miss). What it
-already folds:
-    number-declared  -> integer parse ('01' / ' 1 ' / 1.0 / '1.0' all -> '1');
-                        a non-integral numeric keeps its repr; an unreadable
-                        value keeps its trimmed original
-    string/undeclared-> trimmed as-is (padding in a string is DATA, per spec)
-    float VALUE      -> integral floats lose the '.0' repr artifact
-It does NOT fold separators and does NOT fold case. So R1/R2 are genuinely new,
-and they are applied ON TOP of the canonical string rather than beside it:
+Everything below is shaped by what that comparison MEASURED (2026-08-04,
+PostgreSQL 18.3, live, read-only). Do not "simplify" any of it back:
 
-    normalized = fold_notation(canonical_bind_value(table, column, raw), rules)
+  1. `\\s` / `[[:space:]]` IS NOT PORTABLE AND THE TWO ENGINES DISAGREE.
+     Python `\\s` matches 29 codepoints. This server's `[[:space:]]` matches 26 of
+     them and adds one Python does not: it MISSES U+001C U+001D U+001E U+001F and
+     ADDS U+180E. Worse, that answer is a property of the database's ctype
+     (measured `Korean_Korea.949`, provider `c`) - a Linux deployment would answer
+     differently again, so the shorthand is not even stable across installs of the
+     same product.
+     -> The class is therefore ENUMERATED, as `\\uXXXX` escapes, from ONE constant
+        that builds both regexes. Neither engine's whitespace table participates.
+        `\\uXXXX` inside a bracket expression is understood by PostgreSQL's ARE and
+        by Python's `re`, measured identical on 27 vectors.
 
-(`canonical_bind_value` is the wrapper that looks the declared type up and then
-calls `canonical_key_value` -- named here as the symbol this module actually
-imports, so grepping for the call site finds it.)
+  2. `upper()` IS NOT `str.upper()`.
+     Measured on this server: `upper('straße')` keeps the eszett where Python
+     yields 'STRASSE' (a LENGTH change); `upper('ı')` is a no-op where Python
+     yields 'I'; `upper('ﬁ')` is a no-op where Python yields 'FI'; `upper('é')` is
+     a no-op HERE only because of the database ctype, and would fold on a UTF-8
+     locale. Full Unicode case mapping cannot be made to agree.
+     -> The case rule folds ASCII a-z ONLY, via `translate()` in SQL and
+        `str.translate` in Python, from ONE alphabet pair. Every non-ASCII letter
+        is left alone by both engines, identically. This NARROWS what the first
+        shipped `fold_notation` did (it called `.upper()`); nothing was stored
+        under the old behaviour, so nothing changes underfoot.
 
-One vocabulary, two layers. `canonical_key_value` keeps deciding what the value
-IS (by its declared type); this module decides only how its notation is spelled.
+  3. `regexp_replace` WITHOUT THE 'g' FLAG REPLACES ONLY THE FIRST MATCH.
+     Measured: `regexp_replace('WF.A_B 01', <class>+, '-')` returns 'WF-A_B 01'.
+     The flag is not optional and `fold_sql_text` is the only place it is spelled.
 
-[PHASE 1 - nothing consumes the derived value yet]
-🔴 Switching map-key parsing, filters or joins to the normalized value would
-change every existing map key, and maps would stop resolving. That is a
-separate, declared, opt-in decision with its own round. Phase 1 is: the derived
-value exists, is correct, and is re-derivable.
+  4. THE '-' IS THE LAST CHARACTER OF THE BRACKET EXPRESSION, ALWAYS.
+     Anywhere else it is a range operator. It is appended literally, after the
+     escaped codepoints, and `_check_pattern_shape` asserts that on import.
+
+[THE TARGET IS '-' AND THAT IS THE POINT]
+'_' is the composite map-key join character (`map_overlay.compose_map_id`), so a
+value that keeps its '_' is a value that shreds the key it is part of. Folding TO
+'_' would defeat the feature.
+
+🔴 **MAP KEYS ARE NOT TOUCHED BY THIS MODULE.** Pointing `canonical_map_key` at a
+folded value is a separate, unapproved decision AND a data migration, not a config
+flip: `wafer_map_metadata` rows are registered under RAW identities, so existing
+`map_id`s would stop matching their meta rows. Nothing here reaches that path.
+
+[PERFORMANCE - stated, not buried]
+A folded predicate cannot use a plain b-tree index on the column; it needs a
+FUNCTIONAL index on the fold expression. That is why `virtual_join_config`'s
+approval gate moves with the fold: a plain UNIQUE index does not even establish
+the uniqueness the gate is asking about, because two rows that are distinct raw
+('CL-1' and 'CL_1') fold to one value. See `virtual_join_config` for the DDL and
+the measured cost.
 """
 import json
 import logging
@@ -91,11 +131,6 @@ import re
 logger = logging.getLogger("NotationNorm")
 
 import paths  # single override point (ASSY_DATA_ROOT)
-# THE existing canonicalization (7b). Module level and not a per-call import:
-# `normalized_value` runs once per value, and re-derivation runs it 10M times.
-# Safe from cycles - map_overlay imports only stdlib + paths at module level and
-# reaches `crud` lazily, while `crud` reaches this module lazily.
-from map_overlay import canonical_bind_value
 
 NOTATION_RULES_PATH = paths.config_path("notation_rules.json")
 
@@ -110,22 +145,72 @@ KNOWN_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_ZERO_PAD)
 # Rules this module can actually apply. `zero_pad` is deliberately absent - see
 # the module docstring. Membership here is what `_normalize_rules` checks, so
 # implementing it later is one tuple entry plus one branch in `fold_notation`,
-# and the refusal disappears on its own.
+# one branch in `fold_sql_text`, and the refusal disappears on its own.
 IMPLEMENTED_RULES = (RULE_SEPARATOR, RULE_CASE)
 
 DEFAULT_RULES = {RULE_SEPARATOR: True, RULE_CASE: True, RULE_ZERO_PAD: False}
 
-# The one form every separator collapses to. '-' and not '_' is the whole point:
-# '_' is the composite map-key join character (`map_overlay.compose_map_id`), so
-# a value that keeps its '_' is a value that shreds the key it is part of.
+# The one form every separator collapses to.
 SEPARATOR_TARGET = "-"
 
-# A RUN of separators becomes ONE '-', so 'WF-.01' and 'WF__01' land together.
-# The census SQL (`server/scripts/wf_spelling_census.sql`) writes this class as
-# `[._[:space:]]+` -> '-', which folds the same pairs the operator reported
-# ('WF.01' and 'WF-01' both reach 'WF-01'); including '-' in the class here is
-# strictly more folding, and only for mixed/repeated runs.
-_SEPARATOR_RUN_RE = re.compile(r"[._\-\s]+")
+# 🔴 THE separator character set. ENUMERATED, never a shorthand class - see item 1
+# of the module docstring for the measurement that forces this.
+#
+# Contents: '.', '_', and every codepoint Python's `\s` matches (measured: exactly
+# the 29 codepoints `str.isspace()` reports). '-' is NOT in this tuple; it is
+# appended literally as the LAST character of the bracket expression, where it
+# cannot be read as a range operator.
+SEPARATOR_CODEPOINTS = (
+    0x0009, 0x000A, 0x000B, 0x000C, 0x000D,          # tab LF VT FF CR
+    0x001C, 0x001D, 0x001E, 0x001F,                  # file/group/record/unit sep
+    0x0020,                                          # space
+    0x002E,                                          # '.'
+    0x005F,                                          # '_'
+    0x0085,                                          # NEL
+    0x00A0,                                          # NBSP
+    0x1680,                                          # OGHAM SPACE MARK
+    0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,
+    0x2006, 0x2007, 0x2008, 0x2009, 0x200A,          # EN QUAD .. HAIR SPACE
+    0x2028, 0x2029,                                  # LINE / PARAGRAPH SEPARATOR
+    0x202F, 0x205F,                                  # NARROW NBSP, MEDIUM MATH
+    0x3000,                                          # IDEOGRAPHIC SPACE
+)
+
+# The ONE pattern string. Handed verbatim to `re.compile` and to PostgreSQL's
+# `regexp_replace`; there is no second spelling to drift.
+SEPARATOR_PATTERN = "[" + "".join(
+    "\\u%04x" % cp for cp in SEPARATOR_CODEPOINTS) + SEPARATOR_TARGET + "]+"
+
+# 🔴 THE case mapping. ASCII only, from ONE pair - see item 2 of the docstring.
+CASE_SOURCE_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+CASE_TARGET_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _check_pattern_shape():
+    """Import-time assertions on the pattern, so a bad edit cannot ship quietly.
+
+    Every one of these corresponds to a way the two engines were measured to
+    diverge or to a way a bracket expression silently changes meaning.
+    """
+    assert SEPARATOR_PATTERN.endswith(SEPARATOR_TARGET + "]+"), (
+        "'-' must be the LAST character inside the bracket expression; anywhere "
+        "else it is a range operator in both engines")
+    assert "'" not in SEPARATOR_PATTERN, (
+        "the pattern is interpolated into a single-quoted SQL literal in "
+        "`fold_sql_text` and in the index DDL an operator pastes into psql")
+    assert SEPARATOR_PATTERN.isascii(), (
+        "the pattern must stay ASCII-printable: it appears in a DDL string the "
+        "operator reads, and this project's console is cp949")
+    assert len(CASE_SOURCE_ALPHABET) == len(CASE_TARGET_ALPHABET), (
+        "translate() requires the two alphabets to be the same length")
+    assert CASE_SOURCE_ALPHABET.isascii() and CASE_TARGET_ALPHABET.isascii(), (
+        "the case fold is ASCII-only BY MEASUREMENT - see docstring item 2")
+
+
+_check_pattern_shape()
+
+_SEPARATOR_RUN_RE = re.compile(SEPARATOR_PATTERN)
+_CASE_TABLE = str.maketrans(CASE_SOURCE_ALPHABET, CASE_TARGET_ALPHABET)
 
 # --- Rejection codes (mirrors virtual_join_config's {scope,subject,detail,code})
 
@@ -133,8 +218,7 @@ CODE_SHAPE = "shape"
 CODE_ZERO_PAD_UNIMPLEMENTED = "zero_pad_unimplemented"
 CODE_UNKNOWN_RULE = "unknown_rule"
 CODE_UNDECLARED = "undeclared"
-CODE_WOULD_REWRITE_RAW = "would_rewrite_raw"
-CODE_KEY_COLUMN = "key_column"
+CODE_NOT_TEXT = "not_text"
 
 SCOPE_FILE = "file"
 SCOPE_TABLE = "table"
@@ -143,32 +227,34 @@ SCOPE_COLUMN = "column"
 # TTL cache, same discipline as `virtual_join_executor.RULES_CACHE_TTL`: the
 # explicit invalidation (`reset_cache`) is wired into the web server's reload
 # hook, and the TTL is what covers the worker processes that never reach it.
-# A derivation spec that changes mid-batch is self-healing - re-deriving is the
-# supported repair - so this does not need the per-file snapshot discipline that
-# ingestion settings need.
 RULES_CACHE_TTL = 5.0
 _RULES_CACHE = {"at": 0.0, "by_table": None}
 
 
 def reset_cache():
-    """Drop the derivation-spec cache (web server config-reload hook)."""
+    """Drop the declaration cache (web server config-reload hook)."""
     _RULES_CACHE["at"] = 0.0
     _RULES_CACHE["by_table"] = None
 
 
 # ---------------------------------------------------------------------------
-# The fold
+# The fold - Python half
 # ---------------------------------------------------------------------------
 
 def fold_notation(text, rules: dict):
-    """Apply the ENABLED folding rules to an already-canonical string.
+    """Apply the ENABLED folding rules to a text value. The REFERENCE spelling.
+
+    `contracts/notation_fold/` scores this against `fold_notation_sql` on a live
+    PostgreSQL for byte equality. A change here that is not made there is a
+    contract failure, by design.
 
     Each rule is its own independent branch. Passing `{}` (or all-false) returns
-    the input unchanged, which is what makes "prove each rule toggles alone"
-    a real test rather than a claim.
+    the input unchanged, which is what makes "prove each rule toggles alone" a
+    real test rather than a claim.
 
     Non-strings pass through untouched: this folds NOTATION, and a value that is
-    not text has none.
+    not text has none. In SQL the same statement is made structurally - a column
+    that is not declared `string` cannot be declared normalized at all.
     """
     if not isinstance(text, str):
         return text
@@ -176,24 +262,169 @@ def fold_notation(text, rules: dict):
     if rules.get(RULE_SEPARATOR):
         out = _SEPARATOR_RUN_RE.sub(SEPARATOR_TARGET, out)
     if rules.get(RULE_CASE):
-        out = out.upper()
+        out = out.translate(_CASE_TABLE)
     return out
 
 
-def normalized_value(table: str, column: str, value, rules: dict):
-    """Raw stored value -> the derived normalized value (or None).
+def enabled_rule_names(rules: dict) -> list:
+    """The enabled, IMPLEMENTED rule names in declaration order."""
+    return [n for n in IMPLEMENTED_RULES if (rules or {}).get(n)]
 
-    Layered on `canonical_key_value`, never beside it (see module docstring).
-    None and blank stay None: an absent value has no notation, and inventing
-    '' here would make the derived column claim a value the row does not have.
+
+def folds_anything(rules: dict) -> bool:
+    """True when at least one implemented rule is on (i.e. the fold is not a no-op)."""
+    return bool(enabled_rule_names(rules))
+
+
+# ---------------------------------------------------------------------------
+# The fold - SQL half
+# ---------------------------------------------------------------------------
+
+# The name of the scalar function the NON-PostgreSQL fallback calls, and the name
+# `install_sqlite_fold` registers. It is deliberately the same name in both
+# places so a stack trace on either dialect names the same thing.
+SQL_FOLD_FUNCTION = "assy_fold_notation"
+
+
+def fold_sql_text(inner_sql: str, rules: dict) -> str:
+    """PostgreSQL SQL text for the fold, wrapped around an already-text expression.
+
+    🔴 **THE ONLY PLACE THE POSTGRES FOLD IS SPELLED.** The query-time expression
+    (`fold_notation_sql`) and the functional-index DDL
+    (`virtual_join_config.required_index_ddl`) both come out of here, and they
+    HAVE to: PostgreSQL will only use a functional index when the query expression
+    matches the index expression, so two spellings would not merely disagree in
+    theory - they would silently produce a sequential scan on a 10-million-row
+    table while every test still passed.
+
+    `inner_sql` is interpolated, not bound: this text ends up inside a CREATE INDEX
+    statement, where a bind parameter has no meaning. Callers pass either a
+    compiled column reference or a quoted identifier, never user input.
     """
-    canon = canonical_bind_value(table, column, value)
-    if canon is None:
-        return None
-    folded = fold_notation(canon, rules or {})
-    if isinstance(folded, str) and folded.strip() == "":
-        return None
-    return folded
+    out = inner_sql
+    if rules.get(RULE_SEPARATOR):
+        # 'g' IS LOAD-BEARING - without it only the FIRST run is replaced
+        # (measured: 'WF.A_B 01' -> 'WF-A_B 01'). See docstring item 3.
+        out = "regexp_replace(%s, '%s', '%s', 'g')" % (
+            out, SEPARATOR_PATTERN, SEPARATOR_TARGET)
+    if rules.get(RULE_CASE):
+        # translate(), never upper() - see docstring item 2 for the measurement.
+        out = "translate(%s, '%s', '%s')" % (
+            out, CASE_SOURCE_ALPHABET, CASE_TARGET_ALPHABET)
+    return out
+
+
+def _install_notation_fold_construct():
+    """The dialect-dispatched fold expression, built once at import.
+
+    A `@compiles` variant rather than a runtime `if dialect == 'postgresql'`, for
+    the same reason `crud._install_temporal_text_construct` gives: the expression
+    is handed to callers that never see a connection, so letting the compiler
+    choose keeps one expression object correct on every bind.
+    """
+    from sqlalchemy import String as _String
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.sql.functions import FunctionElement
+
+    class _NotationFold(FunctionElement):
+        type = _String()
+        name = SQL_FOLD_FUNCTION
+        # 🔴 NOT cacheable-by-inheritance: the enabled rules change the COMPILED
+        # SQL but are not clause elements, so a shared cache key would serve a
+        # case-folded plan to a separator-only expression. Correctness over the
+        # compile-cache hit; the expression is built per query, not per row.
+        inherit_cache = False
+
+        def __init__(self, clause, separator: bool, case: bool):
+            self.separator = bool(separator)
+            self.case = bool(case)
+            super().__init__(clause)
+
+        def _rules(self):
+            return {RULE_SEPARATOR: self.separator, RULE_CASE: self.case}
+
+    @compiles(_NotationFold, "postgresql")
+    def _pg(element, compiler, **kw):
+        inner = compiler.process(list(element.clauses)[0], **kw)
+        return fold_sql_text(inner, element._rules())
+
+    @compiles(_NotationFold)
+    def _default(element, compiler, **kw):
+        # 🔴 EVERY OTHER DIALECT, WHICH IN PRACTICE MEANS THE SQLITE TEST SUITE.
+        # SQLite has neither `regexp_replace` nor `translate`, so there is no
+        # honest way to write the fold in its SQL. It calls a registered scalar
+        # function instead (`install_sqlite_fold`), whose body IS `fold_notation`.
+        #
+        # BE CLEAR ABOUT WHAT THAT DOES AND DOES NOT PROVE. On SQLite the SQL
+        # fold and the Python fold are the same code, so a suite test can prove
+        # the WIRING (that both sides of a comparison are folded, that an
+        # asymmetric declaration still folds both) and CANNOT prove the SPELLING.
+        # The spelling is proven by `contracts/notation_fold/` against a real
+        # PostgreSQL, and only there.
+        inner = compiler.process(list(element.clauses)[0], **kw)
+        return "%s(%s, %d, %d)" % (SQL_FOLD_FUNCTION, inner,
+                                   1 if element.separator else 0,
+                                   1 if element.case else 0)
+
+    return _NotationFold
+
+
+_NotationFold = _install_notation_fold_construct()
+
+
+def fold_notation_sql(text_expr, rules: dict):
+    """SQLAlchemy expression: `text_expr` folded by the ENABLED rules.
+
+    `text_expr` must already be text. Callers fold a `string`-declared column
+    directly - the declaration validator refuses any other declared type, so the
+    render-to-text funnel (`crud.column_text_sql`) does not belong here and is
+    deliberately NOT applied: wrapping the column in `blank_to_null`'s CASE would
+    make the index expression a monster no operator would paste, for a column that
+    is already text.
+
+    Returns `text_expr` unchanged when no implemented rule is enabled, so a
+    declaration with everything off costs nothing and reads as "not folded"
+    everywhere downstream.
+    """
+    if not folds_anything(rules):
+        return text_expr
+    return _NotationFold(text_expr, bool(rules.get(RULE_SEPARATOR)),
+                         bool(rules.get(RULE_CASE)))
+
+
+_SQLITE_FOLD_INSTALLED = {"done": False}
+
+
+def install_sqlite_fold():
+    """Register `assy_fold_notation` on every SQLite connection in this process.
+
+    Registered on the Engine CLASS, not on one engine, for exactly the reason
+    `db_safety.install_global_test_database_guard` gives: the suite builds its own
+    engine in `conftest.py` and contracts build theirs, and a listener attached to
+    `database.engine` alone would miss both.
+
+    A no-op for PostgreSQL connections, which is every production connection.
+    """
+    if _SQLITE_FOLD_INSTALLED["done"]:
+        return
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    @event.listens_for(Engine, "connect")
+    def _register(dbapi_connection, connection_record):
+        create_function = getattr(dbapi_connection, "create_function", None)
+        if create_function is None:
+            return          # not a sqlite3 connection - nothing to register
+        def _fold(value, separator, case):
+            return fold_notation(value, {RULE_SEPARATOR: bool(separator),
+                                         RULE_CASE: bool(case)})
+        try:
+            create_function(SQL_FOLD_FUNCTION, 3, _fold)
+        except Exception as e:      # pragma: no cover - defensive
+            logger.warning("[NotationNorm] could not register %s on this "
+                           "connection: %s", SQL_FOLD_FUNCTION, e)
+
+    _SQLITE_FOLD_INSTALLED["done"] = True
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +478,7 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
                     f"refused rather than silently ignored. It is the one rule "
                     f"that can merge two different entities ('WF010' and 'WF10' "
                     f"both become 'WF10'), and no census has said whether such a "
-                    f"collapse exists here. Run the false-merge check first.",
+                    f"collapse exists here. Run the fold preview first.",
                     CODE_ZERO_PAD_UNIMPLEMENTED)
             effective[name] = False
             continue
@@ -255,80 +486,79 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
     return effective
 
 
-def _validate_column(table: str, raw_col: str, spec, table_rules: dict,
+def _validate_column(table: str, column: str, spec, table_rules: dict,
                      table_cfg: dict, rejections=None):
-    """One raw->derived declaration. Returns the normalized dict, or None."""
-    subject = f"{table}.{raw_col}"
-    if isinstance(spec, str):
-        derived, rules_raw = spec, None
+    """One "this column is normalized" declaration. Returns the spec, or None.
+
+    Accepted forms:
+        "core_lot": true                      - normalized, inherited rules
+        "core_lot": false                     - explicitly NOT normalized (a
+                                                decision on the record; the loader
+                                                simply omits it, no rejection)
+        "core_lot": {"rules": {...}}          - normalized, per-column rules
+
+    Note what is NOT here any more: there is no `derived` key, because there is no
+    derived column. The two refusals that used to live in this function
+    (`would_rewrite_raw`, `key_column`) both guarded a WRITE; the module docstring
+    records what they were for and why they are vacuous rather than relaxed.
+    """
+    subject = f"{table}.{column}"
+    if spec is False:
+        return None                 # declared OFF - a decision, not an error
+    if spec is True:
+        rules_raw = None
     elif isinstance(spec, dict):
-        derived, rules_raw = spec.get("derived"), spec.get("rules")
+        rules_raw = spec.get("rules")
+        if "derived" in spec:
+            _record(rejections, SCOPE_COLUMN, subject,
+                    "'derived' is no longer a thing: normalization does not "
+                    "produce a column any more, it folds BOTH SIDES of a "
+                    "comparison at query time. Replace the declaration with "
+                    "`true` (or `{\"rules\": {...}}`) and delete the "
+                    "'<col>_norm' column from table_config.json if nothing else "
+                    "uses it", CODE_SHAPE)
+            return None
     else:
         _record(rejections, SCOPE_COLUMN, subject,
-                "declaration must be either the derived column name (a string) "
-                "or an object {derived, rules}", CODE_SHAPE)
-        return None
-    if not isinstance(derived, str) or not derived.strip():
-        _record(rejections, SCOPE_COLUMN, subject,
-                "'derived' must be a non-empty derived column name", CODE_SHAPE)
-        return None
-    derived = derived.strip()
-
-    # 🔴 THE SAFETY PROPERTY. Everything in this module rests on the raw column
-    # surviving untouched, so a declaration that would write the normalized
-    # value back over its own source is refused here and cannot reach the write
-    # path at all.
-    if derived == raw_col:
-        _record(rejections, SCOPE_COLUMN, subject,
-                "the derived column must not be the raw column itself - this "
-                "feature never rewrites a raw value, because a wrong folding "
-                "rule is repaired by re-deriving and that repair needs the "
-                "original to still be there", CODE_WOULD_REWRITE_RAW)
+                "declaration must be true, false, or an object {rules}",
+                CODE_SHAPE)
         return None
 
     col_types = (table_cfg or {}).get("column_types") or {}
-    if raw_col not in col_types:
+    if table_cfg is not None and column not in col_types:
         _record(rejections, SCOPE_COLUMN, subject,
-                f"raw column '{raw_col}' is not declared in table_config.json "
-                f"for '{table}'", CODE_UNDECLARED)
-        return None
-    if derived not in col_types:
-        _record(rejections, SCOPE_COLUMN, subject,
-                f"derived column '{derived}' is not declared in "
-                f"table_config.json for '{table}'. Add it as a \"string\" "
-                f"column there first - until the physical column exists there "
-                f"is nowhere to put the normalized value", CODE_UNDECLARED)
-        return None
-    if col_types.get(derived) != "string":
-        _record(rejections, SCOPE_COLUMN, subject,
-                f"derived column '{derived}' is declared as "
-                f"'{col_types.get(derived)}'; a normalized notation is text and "
-                f"must be declared \"string\" (a number column would refuse "
-                f"'WF-01' outright)", CODE_SHAPE)
+                f"column '{column}' is not declared in table_config.json for "
+                f"'{table}'", CODE_UNDECLARED)
         return None
 
-    # 🔴 A derived value must never be able to move a row's identity.
-    key_col = (table_cfg or {}).get("business_key")
-    comp_src = (table_cfg or {}).get("composite_key_source") or []
-    if derived == key_col or derived in comp_src:
+    # 🔴 A NUMBER HAS NO NOTATION, and this refusal is what keeps the SQL fold
+    # short enough to be an index expression. If a non-text column could be
+    # declared, the fold would have to sit on top of `crud.column_text_sql`, whose
+    # CASE-expression output would make the functional-index DDL unreadable and
+    # unmatchable. It is also the right answer on its own terms: separators and
+    # case do not occur in a number, and the one rule that WOULD apply to a
+    # numeric spelling (`zero_pad`) is refused outright - for a `number` column
+    # `canonical_key_value`'s integer parse already made '01' and '1' one value.
+    declared = col_types.get(column) if table_cfg is not None else "string"
+    if table_cfg is not None and declared != "string":
         _record(rejections, SCOPE_COLUMN, subject,
-                f"derived column '{derived}' is part of this table's business "
-                f"key, so deriving it would rewrite row identity. Phase 1 only "
-                f"produces a value; what reads it is a separate decision",
-                CODE_KEY_COLUMN)
+                f"column '{column}' is declared '{declared}'; only a \"string\" "
+                f"column can be normalized. A number has no notation - and for a "
+                f"'number' column the integer parse already folds '01' and '1' "
+                f"into one value", CODE_NOT_TEXT)
         return None
 
     rules = _normalize_rules(rules_raw, subject, rejections) if rules_raw is not None \
         else dict(table_rules)
-    return {"table": table, "raw": raw_col, "derived": derived, "rules": rules}
+    return {"table": table, "column": column, "rules": rules}
 
 
 def validate_notation_rules(raw_config: dict, known_tables: dict = None,
                             rejections: list = None) -> dict:
-    """Config dict -> `{table: {raw_col: {derived, rules, ...}}}`.
+    """Config dict -> `{table: {column: {table, column, rules}}}`.
 
-    `known_tables` is `crud.TABLE_CONFIG`. Passing None skips the
-    table/column-existence checks (pure shape validation), matching
+    `known_tables` is `crud.TABLE_CONFIG`. Passing None skips the table/column
+    existence and declared-type checks (pure shape validation), matching
     `enrichment_config._validate_rule`.
     """
     by_table = {}
@@ -345,8 +575,7 @@ def validate_notation_rules(raw_config: dict, known_tables: dict = None,
         return by_table
     if not isinstance(columns, dict):
         _record(rejections, SCOPE_FILE, None,
-                "'columns' must be an object {table: {raw_column: derived}}",
-                CODE_SHAPE)
+                "'columns' must be an object {table: {column: true}}", CODE_SHAPE)
         return by_table
 
     for table, decls in columns.items():
@@ -354,8 +583,7 @@ def validate_notation_rules(raw_config: dict, known_tables: dict = None,
             continue  # '_'-prefixed names are comments, per the repo convention
         if not isinstance(decls, dict):
             _record(rejections, SCOPE_TABLE, table,
-                    "declaration must be an object {raw_column: derived}",
-                    CODE_SHAPE)
+                    "declaration must be an object {column: true}", CODE_SHAPE)
             continue
         table_rules = dict(file_rules)
         if "rules" in decls:
@@ -368,13 +596,13 @@ def validate_notation_rules(raw_config: dict, known_tables: dict = None,
                         f"table '{table}' is not registered in table_config.json",
                         CODE_UNDECLARED)
                 continue
-        for raw_col, spec in decls.items():
-            if raw_col == "rules" or raw_col.startswith("_"):
+        for column, spec in decls.items():
+            if column == "rules" or column.startswith("_"):
                 continue
-            normalized = _validate_column(table, raw_col, spec, table_rules,
-                                          table_cfg or {}, rejections)
+            normalized = _validate_column(table, column, spec, table_rules,
+                                          table_cfg, rejections)
             if normalized is not None:
-                by_table.setdefault(table, {})[raw_col] = normalized
+                by_table.setdefault(table, {})[column] = normalized
     return by_table
 
 
@@ -397,8 +625,8 @@ def load_notation_rules(path: str = None, known_tables: dict = None,
                                    rejections=rejections)
 
 
-def derivations_by_table() -> dict:
-    """`{table: {raw_col: spec}}`, TTL-cached. The write path's only entry."""
+def normalized_by_table() -> dict:
+    """`{table: {column: spec}}`, TTL-cached. Every consumer's only entry."""
     import time
 
     now = time.monotonic()
@@ -409,134 +637,172 @@ def derivations_by_table() -> dict:
         from database import crud
         loaded = load_notation_rules(known_tables=crud.TABLE_CONFIG)
     except Exception as e:
-        # An unreadable declaration means NO derivation is in effect. Failing the
-        # write here would turn a config problem into an outage
-        # (`refuse_virtual_join_columns` records the same trade).
+        # An unreadable declaration means NO column is normalized. Failing the
+        # read here would turn a config problem into an outage, and the safe
+        # direction is the one that compares raw values - the behaviour every
+        # join had before this feature existed.
         logger.error("[NotationNorm] declarations unreadable, no column is "
-                     "derived: %s", e)
+                     "normalized: %s", e)
         loaded = {}
     _RULES_CACHE["by_table"] = loaded
     _RULES_CACHE["at"] = now
     return loaded
 
 
-def derivations_for(table_name: str) -> dict:
-    """`{raw_col: spec}` for one table (empty when nothing is declared)."""
-    return derivations_by_table().get(table_name) or {}
+def rules_for_column(table: str, column: str):
+    """The effective rule set for `table.column`, or None when not declared."""
+    spec = (normalized_by_table().get(table) or {}).get(column)
+    return dict(spec["rules"]) if spec else None
 
 
-def derived_columns_for(table_name: str) -> set:
-    """The derived column NAMES of one table - the write-refusal's input."""
-    return {d["derived"] for d in derivations_for(table_name).values()}
+def is_normalized(table: str, column: str) -> bool:
+    """True when `table.column` is declared normalized AND something folds."""
+    return folds_anything(rules_for_column(table, column) or {})
 
 
-# ---------------------------------------------------------------------------
-# The write-path hook
-# ---------------------------------------------------------------------------
+def join_pair_rules(left_table: str, left_column: str,
+                    right_table: str, right_column: str):
+    """The rule set BOTH sides of one join-key comparison must be folded with.
 
-def apply_derivations(table_name: str, row, changed_cols, is_new: bool,
-                      specs: dict = None) -> list:
-    """Refresh every derived column of `row`. Returns the ones that moved.
+    Returns None when neither side is declared (compare raw, as before).
 
-    Called from `apply_row_update_internal` AFTER the value loop, so it reads
-    the value that actually WON the priority computation rather than one
-    source's contribution - the derived column mirrors what the row shows.
+    🔴 **"EITHER SIDE DECLARED" MEANS BOTH SIDES FOLDED.** This is the whole
+    reason the feature was redesigned. Measured 2026-08-04: `dt_log.core_lot` has
+    15 merge groups and `core_wafer_map.core_lot` has zero, so an operator looking
+    at the clean side has no reason to declare anything there - and a join folded
+    on one side only does not merely fail to help, it SILENTLY DROPS matches that
+    the unfolded join was already making ('CL-1' folded to 'CL-1' compared against
+    an unfolded 'CL_1'). There is deliberately no argument, no flag and no call
+    shape by which a caller could fold one side.
 
-    Only recomputed when the raw column changed (or the row is new), so a table
-    with no notation declarations pays one dict lookup per row and a table with
-    them pays nothing on writes that do not touch a raw source.
+    When BOTH sides are declared with DIFFERENT rules, the effective set is the
+    UNION. The fold is a property of the COMPARISON, not of a column: "this
+    column's notation is normalized with rules R" is a statement that at least R
+    must be folded when this column is compared, and the union is the smallest
+    set satisfying both declarations. Union is also the only monotone choice -
+    it can only merge more, never drop a match - and the effective set is
+    reported per declaration by `/admin/config/virtual-join/verify`, so it is
+    visible rather than inferred.
     """
-    specs = derivations_for(table_name) if specs is None else specs
-    if not specs:
-        return []
-    touched = []
-    changed = set(changed_cols or ())
-    for raw_col, spec in specs.items():
-        if not is_new and raw_col not in changed:
-            continue
-        derived_col = spec["derived"]
-        if not hasattr(row, derived_col):
-            # Config declares it, the physical model does not have it yet
-            # (schema rollout in flight). Skipping mirrors the existing
-            # config/model-mismatch behaviour; the next re-derivation fills it.
-            continue
-        new_val = normalized_value(table_name, raw_col,
-                                   getattr(row, raw_col, None), spec["rules"])
-        if getattr(row, derived_col, None) != new_val:
-            setattr(row, derived_col, new_val)
-            touched.append(derived_col)
-    return touched
+    left = rules_for_column(left_table, left_column)
+    right = rules_for_column(right_table, right_column)
+    if left is None and right is None:
+        return None
+    merged = {}
+    for name in KNOWN_RULES:
+        merged[name] = bool((left or {}).get(name)) or bool((right or {}).get(name))
+    return merged if folds_anything(merged) else None
 
 
 # ---------------------------------------------------------------------------
-# Re-derivation - the repair that makes a wrong rule cheap
+# The fold preview - the false-merge check, which is the question that matters
 # ---------------------------------------------------------------------------
 
-REDERIVE_CHUNK_SIZE = 1000
+# How many distinct RAW spellings the preview will look at. The grouping query is
+# a full scan by construction (a folded expression has no plain index), so the
+# cap is what keeps an operator-triggered admin call from being a 10-million-row
+# surprise. It caps the GROUPS, not the rows - the counts stay exact for the
+# groups returned, and `truncated` says when the cap bit.
+PREVIEW_GROUP_LIMIT = 500
+PREVIEW_VARIANT_LIMIT = 20
 
-# Sample rows carried back in the report so the operator can SEE what a rule
-# change did before committing to it.
-REDERIVE_SAMPLES = 10
 
+def fold_preview(db, table: str, column: str, rules: dict = None,
+                 limit: int = PREVIEW_GROUP_LIMIT) -> dict:
+    """What this column's declared fold ACTUALLY does to the values in the table.
 
-def rederive(db, table_name: str, spec: dict, chunk_size: int = REDERIVE_CHUNK_SIZE,
-             apply: bool = False, progress=None) -> dict:
-    """Recompute one table's derived column for EVERY row. Dry-run by default.
+    [Why this exists - it is the payment for a column that used to be inspectable]
+    The withdrawn design put the folded value in the grid, where an operator could
+    eyeball it. That is a real loss and it is paid for here rather than absorbed.
+    The answer this returns is the one that actually matters:
 
-    This is the whole safety story in one function: edit the rules, run this,
-    and the derived column is whatever the new rules say. No manual cleanup,
-    because the raw column - the only thing that cannot be recomputed - was
-    never touched.
+        MERGE GROUPS - one folded value reached by MORE THAN ONE raw spelling,
+        with the raw variants listed.
 
-    [10M-row discipline] Keyset pagination on `row_id` (the dynamic tables' PK),
-    never OFFSET, which degrades to a full scan at depth. Three columns are
-    fetched, not the row. Writes go out as `bulk_update_mappings` carrying ONLY
-    `{row_id, <derived>}`, so the emitted UPDATE sets exactly one column and the
-    raw value is not even mentioned in the statement.
+    That is the false-merge check: "did my rule merge two things that are not the
+    same?" A list of raw->folded pairs cannot answer it, because the pairs that
+    matter are the ones that COLLIDE, and a per-row listing buries them.
 
-    🔴 It deliberately does NOT route through `apply_batch_updates`: that path
-    would refuse the write (`refuse_notation_derived_columns`), and even if it
-    did not, layering a pure projection would mint a CellSource row per cell -
-    10M extra metadata rows for a value that has no sources to arbitrate.
+    🔴 **COMPUTED ENTIRELY IN SQL, THROUGH `fold_notation_sql`.** Not in Python
+    over fetched rows. If the preview folded in Python it would be showing the
+    operator an answer that the JOIN does not use, which is the same
+    two-spellings defect one screen further out - and it would be the screen the
+    operator TRUSTS.
+
+    Read-only: one grouping query, no write, no DDL.
     """
+    from sqlalchemy import func
     from database import models
 
-    model = models.DYNAMIC_TABLES.get(table_name)
+    model = models.DYNAMIC_TABLES.get(table)
     if model is None:
-        raise ValueError(f"table '{table_name}' has no initialized model")
-    raw_name, derived_name = spec["raw"], spec["derived"]
-    raw_col = getattr(model, raw_name, None)
-    derived_col = getattr(model, derived_name, None)
-    if raw_col is None or derived_col is None:
-        raise ValueError(
-            f"'{table_name}' has no column {raw_name if raw_col is None else derived_name} "
-            f"on its model - declare it in table_config.json and let the ALTER run first")
+        raise ValueError(f"table '{table}' has no initialized model")
+    col = getattr(model, column, None)
+    if col is None:
+        raise ValueError(f"'{table}' has no column '{column}'")
+    if rules is None:
+        rules = rules_for_column(table, column)
+    if rules is None:
+        return {"table": table, "column": column, "declared": False, "rules": None,
+                "folds": False, "groups": [], "merge_groups": [],
+                "distinct_raw": 0, "distinct_folded": 0, "truncated": False}
 
-    stats = {"table": table_name, "raw": raw_name, "derived": derived_name,
-             "rules": dict(spec["rules"]), "mode": "apply" if apply else "dry-run",
-             "scanned": 0, "changed": 0, "samples": []}
-    last_id = ""
-    while True:
-        rows = (db.query(model.row_id, raw_col, derived_col)
-                .filter(model.row_id > last_id)
-                .order_by(model.row_id)
-                .limit(chunk_size).all())
-        if not rows:
-            break
-        pending = []
-        for row_id, raw_val, cur_val in rows:
-            last_id = row_id
-            stats["scanned"] += 1
-            new_val = normalized_value(table_name, raw_name, raw_val, spec["rules"])
-            if cur_val != new_val:
-                stats["changed"] += 1
-                if len(stats["samples"]) < REDERIVE_SAMPLES:
-                    stats["samples"].append({"raw": raw_val, "was": cur_val,
-                                             "now": new_val})
-                pending.append({"row_id": row_id, derived_name: new_val})
-        if apply and pending:
-            db.bulk_update_mappings(model, pending)
-            db.commit()
-        if progress is not None:
-            progress(stats)
-    return stats
+    folded = fold_notation_sql(col, rules)
+    rows = (db.query(col.label("raw"), folded.label("folded"),
+                     func.count().label("n"))
+            .filter(col.isnot(None))
+            .group_by(col, folded)
+            .order_by(func.count().desc())
+            .limit(limit + 1).all())
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+
+    by_folded = {}
+    for raw, fold_val, n in rows:
+        entry = by_folded.setdefault(fold_val, {"folded": fold_val, "variants": [],
+                                                "rows": 0})
+        entry["variants"].append({"raw": raw, "rows": int(n)})
+        entry["rows"] += int(n)
+
+    groups = sorted(by_folded.values(), key=lambda g: (-len(g["variants"]), -g["rows"]))
+    merge_groups = [
+        {"folded": g["folded"], "raw_count": len(g["variants"]), "rows": g["rows"],
+         "variants": g["variants"][:PREVIEW_VARIANT_LIMIT],
+         "variants_truncated": len(g["variants"]) > PREVIEW_VARIANT_LIMIT}
+        for g in groups if len(g["variants"]) > 1
+    ]
+    return {
+        "table": table, "column": column, "declared": True,
+        "rules": dict(rules), "folds": folds_anything(rules),
+        "distinct_raw": sum(len(g["variants"]) for g in groups),
+        "distinct_folded": len(groups),
+        "merge_groups": merge_groups,
+        # The plain raw->folded listing stays available, capped, for the operator
+        # who wants to eyeball spellings that did NOT merge.
+        "groups": [{"folded": g["folded"], "rows": g["rows"],
+                    "variants": g["variants"][:PREVIEW_VARIANT_LIMIT]}
+                   for g in groups],
+        "truncated": truncated,
+        "group_limit": limit,
+    }
+
+
+def declared_previews(db, limit: int = PREVIEW_GROUP_LIMIT) -> list:
+    """`fold_preview` for every declared column. One entry per declaration.
+
+    A table whose model is not initialized yields an `error` entry rather than
+    taking the whole report down - the same posture `config_resolve_report` takes
+    per domain.
+    """
+    out = []
+    for table, specs in sorted(normalized_by_table().items()):
+        for column, spec in sorted(specs.items()):
+            try:
+                out.append(fold_preview(db, table, column, spec["rules"], limit))
+            except Exception as e:
+                logger.error("[NotationNorm] preview failed for %s.%s: %s",
+                             table, column, e)
+                out.append({"table": table, "column": column, "declared": True,
+                            "rules": dict(spec["rules"]),
+                            "error": f"{e.__class__.__name__}: {e}"})
+    return out

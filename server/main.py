@@ -3912,8 +3912,9 @@ def reload_local_process_cache():
         pass
 
     # [Notation normalization] Same shape and same reason as the line above: the
-    # derivation spec carries a TTL for the worker processes, but a declaration
-    # edited in the admin UI has to take effect on the next write here.
+    # declaration carries a TTL for the worker processes, but one edited in the
+    # admin UI has to take effect on the next QUERY here. (It is a query-time fold
+    # now, not a write hook - see notation_norm's docstring.)
     try:
         import notation_norm
         notation_norm.reset_cache()
@@ -4609,6 +4610,54 @@ def verify_virtual_join_declarations(db: Session = Depends(get_db)):
     import virtual_join_config
     from database import crud
     return virtual_join_config.verification_report(db, known_tables=crud.TABLE_CONFIG)
+
+
+@app.get("/admin/config/notation/preview", dependencies=[Depends(require_admin_token)])
+def preview_notation_fold(table: str = None, column: str = None,
+                          limit: int = None, db: Session = Depends(get_db)):
+    """표기 정규화 선언이 **실제로 무엇을 합치는가** ― 오병합(false merge) 점검.
+
+    `/admin/config/resolve`가 답하지 못하는 절반이다. 그 라우트는 「DB 질의 0건」이
+    계약이라 config만 읽고 「선언이 유효한가」까지만 말한다. 「내 규칙이 서로 다른 두
+    로트를 하나로 합쳐 버리지 않았는가」는 **테이블 안의 값**을 봐야 답할 수 있다.
+
+    [왜 이 라우트가 있어야 하는가 ― 없어진 파생 컬럼의 대가]
+    직전 판은 접힌 값을 물리 컬럼에 실었고, 운영자는 그것을 그리드에서 **눈으로** 볼 수
+    있었다. 컬럼이 사라졌으므로 그 확인 수단도 사라졌고, 그 손실은 흡수하는 것이 아니라
+    갚아야 한다. 갚는 형태는 원본→접힌값 나열이 아니라 **병합군**이다:
+    한 접힌 값에 원본 표기가 둘 이상 모인 그룹과 그 원본 목록. 나열은 「합쳐졌는가」를
+    묻는 사람에게 답하지 않는다 ― 정작 중요한 줄이 나머지에 묻히기 때문이다.
+
+    🔴 접기는 **SQL에서, 조인이 쓰는 바로 그 식(`notation_norm.fold_notation_sql`)으로**
+    계산된다. 파이썬에서 접어 보여 주면 운영자가 신뢰하는 화면이 조인이 쓰지 않는 답을
+    보여 주게 되고, 그것이 이 기능이 없애려는 「두 철자」 문제 그 자체다.
+
+    ⚠️ **비싸다.** 접힌 식에는 평범한 인덱스가 없으므로 GROUP BY는 전수 스캔이다.
+    운영자가 직접 부르는 점검용이고 쓰기가 없으며, 반환 그룹 수에 상한이 있다
+    (`notation_norm.PREVIEW_GROUP_LIMIT`). 요청 경로에 상주하는 종류의 질의가 아니다.
+
+    인자 없이 부르면 **선언된 모든 컬럼**을 훑는다.
+    """
+    import notation_norm
+    import config_resolve_report as crr
+
+    cap = limit or notation_norm.PREVIEW_GROUP_LIMIT
+    cap = max(1, min(int(cap), notation_norm.PREVIEW_GROUP_LIMIT))
+    if table and column:
+        previews = [notation_norm.fold_preview(db, table, column, limit=cap)]
+    elif table or column:
+        raise HTTPException(status_code=400,
+                            detail="table 과 column 은 함께 주거나 둘 다 생략하세요.")
+    else:
+        previews = notation_norm.declared_previews(db, limit=cap)
+    for p in previews:
+        # 문장은 서버가 만든다 ― 클라이언트가 판정하지 않는다(F9 계약).
+        p["detail"] = crr.notation_preview_detail(p)
+    return {
+        "declarations": previews,
+        "with_merge_groups": sum(1 for p in previews if p.get("merge_groups")),
+        "total_merge_groups": sum(len(p.get("merge_groups") or []) for p in previews),
+    }
 
 
 # 드라이런은 큐를 걷는 분석 질의라(키·선언뷰당 SQL 1회) 요청 경로에서 **표본**만 본다.
