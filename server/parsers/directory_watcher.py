@@ -1174,7 +1174,7 @@ class IngestionHandler(FileSystemEventHandler):
                 # 완료 콜백의 detail(4번째 인자, 기존 error_msg 슬롯)로 전달되어
                 # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
                 # [P2-A] 재개/재시작 사유도 같은 detail 슬롯으로 노출한다(조용한 폴백 금지).
-                detail = self._compose_detail(skipped_no_key, plan)
+                detail = self._compose_detail(skipped_no_key, plan, has_rows)
                 logger.info(
                     f"[{t_name}] ✅ Successfully processed and archived: {basename}"
                     + (f" ({detail})" if detail else "")
@@ -1210,9 +1210,21 @@ class IngestionHandler(FileSystemEventHandler):
     # ── [P2] 체크포인트 재개 / 시그니처 dedup ────────────────────────────
 
     @staticmethod
-    def _compose_detail(skipped_no_key: int, plan) -> str | None:
-        """완료 통지 detail 문자열 조립 — 키 결측 스킵(F1) + 재개/재시작 사유(P2)."""
+    def _compose_detail(skipped_no_key: int, plan, has_rows: bool = True) -> str | None:
+        """완료 통지 detail 문자열 조립 — 키 결측 스킵(F1) + 재개/재시작 사유(P2)
+        + **0행 파싱**(아래).
+
+        [Zero-row visibility] 파서가 형식을 거부해 0행이 나와도 이 경로는 예외를
+        던지지 않으므로 status는 SUCCESS, error_message는 비어 있었다 — 즉
+        「한 셀도 저장되지 않음」과 「정상 처리」가 화면에서 구별되지 않았다.
+        저장을 안 하는 것 자체는 정당한 결과일 수 있지만, 그것이 **말없이**
+        정상처럼 보이는 것은 아니다. 드롭 컬럼 보고와 같은 사이징을 쓴다 —
+        건별 침묵, 파일당 1회 명명. 상세 사유는 파서가 자기 로그에 남긴다."""
         parts = []
+        if not has_rows:
+            # U+2015 (cp949-encodable), NOT U+2014 - this string reaches a cp949 console.
+            parts.append("파싱 결과 0행 ― 저장된 셀 없음(파서가 형식을 거부했을 수 "
+                         "있음, 워처 로그 확인)")
         if skipped_no_key:
             parts.append(f"키 결측으로 {skipped_no_key}행 스킵")
         if plan is not None and plan.note:
@@ -1416,7 +1428,7 @@ class IngestionHandler(FileSystemEventHandler):
             self._finalize_checkpoint(plan, effective_total)
 
             # If successful, update the log entry to SUCCESS
-            detail = self._compose_detail(skipped_no_key, plan)  # [F1] + [P2]
+            detail = self._compose_detail(skipped_no_key, plan, has_rows)  # [F1] + [P2] + 0행
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
             db.commit()

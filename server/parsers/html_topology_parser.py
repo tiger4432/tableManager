@@ -555,31 +555,27 @@ class HTMLMatrixTableParser:
             except (TypeError, ValueError):
                 return False
 
+        def _is_unmerged(n: TableNode) -> bool:
+            """One cell, one coordinate.
+
+            THE measured fact this whole file leans on, stated once. Across the entire
+            archived corpus (19 files, 4 header shapes): every corner and every axis
+            tick is 1x1, and every header-band cell is merged - 0 exceptions either
+            way. Ruler cells are unmerged; header cells are not.
+            """
+            return n.row_span == 1 and n.col_span == 1
+
         def _ruler_row(r: int):
-            """The X-axis tick cells of row `r`, or None if `r` is not the ruler row.
+            """The X-axis tick cells of row `r`, or None if `r` is not ruler-shaped.
 
-            The ruler is the one row the document uses to declare its own grid origin,
-            and it is recognised by SHAPE, not by the fact that it holds numbers - the
-            header band holds numbers too (a lot id, a wafer id, and after the
-            2026-08-04 ruling, every `slot`). Its shape: a distinct corner cell at
-            column 0 that is NOT a coordinate, followed by two or more distinct cells
-            to its right that all are.
-
-            Ruler cells are also UNMERGED - one cell, one coordinate. Measured across
-            the whole archived corpus (19 files, 4 header shapes): every corner and
-            every tick is 1x1, while the header band is built entirely from merged
-            cells. That is what keeps a header row out even when its text is all
-            numeric, and it is why a numeric GROUP label can no longer pose as the
-            topmost Y tick and drag the grid boundary up into the header band.
-
-            The guard is deliberately strict in this direction: a shape it refuses
-            yields zero records, which is loud, whereas the failure it replaces was a
-            silently wrong map key feeding map_split_registry.
+            Recognised by SHAPE, not by the fact that it holds numbers - the header
+            band holds numbers too (a lot id, a wafer id, and after the 2026-08-04
+            ruling, every `slot`). Its shape: an UNMERGED corner cell at column 0 that
+            is NOT a coordinate, followed by two or more UNMERGED cells to its right
+            that all are.
             """
             corner = grid.get((r, 0))
-            if corner is None or corner.col_span != 1 or corner.row_span != 1:
-                return None
-            if _is_int(corner.value):
+            if corner is None or not _is_unmerged(corner) or _is_int(corner.value):
                 return None
             ticks = []
             seen = {corner.id}
@@ -588,32 +584,83 @@ class HTMLMatrixTableParser:
                 if node is None or node.id in seen:
                     continue
                 seen.add(node.id)
-                if node.col_span != 1 or node.row_span != 1 or not _is_int(node.value):
+                if not _is_unmerged(node) or not _is_int(node.value):
                     return None
                 ticks.append(node)
             return ticks if len(ticks) >= 2 else None
 
-        # 3. X축 눈금 행(=격자 경계) 및 Y축 눈금 노드 검출.
-        #    The ruler row is resolved FIRST because it is the structural boundary
-        #    between the header block and the grid, and step 4 depends on it. The
-        #    topmost qualifying row wins; the Y ruler is then whatever integer labels
-        #    sit in column 0 BELOW it, so a numeric cell in the header band can no
-        #    longer pose as a tick.
-        x_axis_nodes = []
-        x_row_idx = None
+        # 3. 격자 원점(=X축 눈금 행) 확정 — 서로 독립인 두 유도가 **일치할 때만** 채택한다.
+        #
+        #    THE GRID ORIGIN IS DERIVED TWICE, ON PURPOSE.
+        #
+        #    Each derivation alone is a guess, and each has a documented blind spot at
+        #    the OPPOSITE end of the document:
+        #
+        #      TOP-ANCHORED (`_ruler_row`, scanning downward) reads the shape of a row.
+        #        Blind spot: the TOP of a spreadsheet is exactly where operator junk
+        #        lives. A `SLOT | 2 | 3 | 6 | ...` row, a `DATE | 2026 | 6 | 20` row, a
+        #        two-entry legend - each is ruler-shaped, sits above the real ruler, and
+        #        wins the top-down race. Measured: a SLOT row yields the right record
+        #        count, the right values and a SILENTLY WRONG X.
+        #
+        #      BOTTOM-ANCHORED (the Y ruler's topmost label, minus one) reads where the
+        #        grid begins. This is the derivation that shipped before 2026-08-04.
+        #        Blind spot: any integer cell in column 0 above the grid - a numeric
+        #        TITLE, a numeric GROUP label - drags the origin up into the header band.
+        #        (Restricting it to UNMERGED cells closes the observed cases, because
+        #        titles and group labels are merged, but it cannot see junk that is
+        #        genuinely 1x1.)
+        #
+        #    The two fail on DISJOINT inputs, so agreement is real evidence and
+        #    disagreement means the document is not the shape this parser understands.
+        #    On disagreement we REFUSE - no records, and a named reason - rather than
+        #    pick a winner. A wrong grid origin is not a degraded parse: X and Y are the
+        #    business key (`composite_key_source: [base, x, y]`), so a plausible-looking
+        #    wrong answer files every cell of the map under coordinates that do not
+        #    exist. Zero rows with a stated reason is strictly better than that.
+        top_anchor, top_ticks = None, []
         for r in range(row_count):
             ticks = _ruler_row(r)
             if ticks:
-                x_row_idx = r
-                x_axis_nodes = ticks
+                top_anchor, top_ticks = r, ticks
                 break
 
-        y_axis_nodes = []
-        if x_row_idx is not None:
-            for node in nodes:
-                if (node.col_range[0] == 0 and node.row_range[0] > x_row_idx
-                        and _is_int(node.value)):
-                    y_axis_nodes.append(node)
+        y_label_rows = [n.row_range[0] for n in nodes
+                        if n.col_range[0] == 0 and _is_unmerged(n) and _is_int(n.value)]
+        bottom_anchor = (min(y_label_rows) - 1) if y_label_rows else None
+
+        if top_anchor is None or bottom_anchor is None or top_anchor != bottom_anchor:
+            # ASCII only - this reaches a cp949 console. One line, named reason, per
+            # call (a refusal is by definition not the steady state, so there is no
+            # repetition to suppress).
+            if top_anchor is None and bottom_anchor is None:
+                reason = ("no X-axis ruler row and no Y-axis labels were found; this "
+                          "table does not have the shape of a 2D matrix map")
+            elif top_anchor is None:
+                reason = (f"no row has the shape of an X-axis ruler (unmerged "
+                          f"non-numeric corner + 2 or more unmerged integer ticks), "
+                          f"while the Y-axis labels imply the ruler is row "
+                          f"{bottom_anchor}")
+            elif bottom_anchor is None:
+                reason = (f"row {top_anchor} is ruler-shaped but no unmerged integer "
+                          f"labels sit in column 0, so there is no Y axis to confirm it")
+            else:
+                reason = (f"the two derivations disagree - row shape says the ruler is "
+                          f"row {top_anchor} (ticks {[n.value for n in top_ticks]}), "
+                          f"the Y-axis labels say row {bottom_anchor}. Something "
+                          f"ruler-shaped sits above the real grid")
+            logger.warning(
+                "[matrix] REFUSED to parse: %s. Returning 0 records rather than a "
+                "plausible-looking wrong grid origin, because X and Y are part of the "
+                "business key.", reason
+            )
+            return []
+
+        x_row_idx = top_anchor
+        x_axis_nodes = top_ticks
+        y_axis_nodes = [n for n in nodes
+                        if n.col_range[0] == 0 and _is_unmerged(n) and _is_int(n.value)
+                        and n.row_range[0] > x_row_idx]
 
         # 4. [Header predicate] Re-classify the header role STRUCTURALLY for this matrix.
         #
@@ -629,17 +676,27 @@ class HTMLMatrixTableParser:
         #
         #    The real relation is 2D and positional: this document declares its own grid
         #    origin through the axis ticks, so the header block is exactly the rows
-        #    STRICTLY ABOVE the X-axis tick row. Empty cells stay non-headers - the
-        #    LEFT-ancestor chain counts ancestors, and a blank spacer cell must not
-        #    lengthen it.
+        #    STRICTLY ABOVE the X-axis tick row. Three conditions, no lexical test:
+        #
+        #      - above the ruler row (position);
+        #      - non-empty - the LEFT-ancestor chain counts ancestors, and a blank
+        #        spacer cell must not lengthen it;
+        #      - MERGED - the other half of the one measured fact in `_is_unmerged`.
+        #        A ruler-shaped row that the origin cross-check accepted (because it is
+        #        ragged, or padded with blanks, so it never qualified as a ruler) still
+        #        sits inside the band, and its 1x1 cells would otherwise form a
+        #        GROUP/KEY/VALUE chain indistinguishable from a real one: a padded
+        #        `DATE | 2026 | 6 | 20` row produced the phantom key `DATE_2026: "6"`.
+        #        Requiring the band to be merged is what keeps operator junk out of the
+        #        header without asking what its text looks like.
         #
         #    Only this matrix view is re-classified. `_default_is_header` is untouched, so
         #    `extract_semantic_tuples` and any caller-supplied `is_header_fn` keep their
-        #    behaviour; when no axis is found there is no grid, and the original
-        #    classification is left alone.
-        if x_row_idx is not None:
-            for node in nodes:
-                node.is_header = bool(node.value) and node.row_range[1] < x_row_idx
+        #    behaviour.
+        for node in nodes:
+            node.is_header = (bool(node.value)
+                              and node.row_range[1] < x_row_idx
+                              and not _is_unmerged(node))
 
         # 5. 최상단 섹션 헤더(TITLE) 추출 (colspan이 가로폭의 70% 이상인 최상위 헤더)
         title = "Default"

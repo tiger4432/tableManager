@@ -241,3 +241,189 @@ def test_numeric_bins_are_still_values_not_headers():
     assert by_xy[(2, 2)] == "16"
     assert by_xy[(4, 4)] == "16"
     assert by_xy[(5, 5)] == ""
+
+
+# ---------------------------------------------------------------------------
+# [Grid origin] Junk above the grid - the OTHER end of the document.
+#
+# The header predicate above is positional, which means it is only as good as the
+# position it is measured from. That origin is derived TWICE, and the two derivations
+# have blind spots at opposite ends:
+#
+#   top-anchored (row shape, scanning down) is fooled by anything ruler-shaped ABOVE
+#     the real ruler - and the top of a spreadsheet is exactly where operator junk
+#     lives (a SLOT row, a DATE stamp, a two-entry legend);
+#   bottom-anchored (the Y ruler's topmost label, minus one - the derivation that
+#     shipped before 2026-08-04) is fooled by an integer in column 0 above the grid.
+#
+# None of these shapes occurs in today's corpus - one producer, one geometry. They are
+# prospective, and that is the point: this parser exists to eat Excel pastes whose
+# template shapes vary. On disagreement the parse is REFUSED, because a wrong grid
+# origin is not a degraded parse - X and Y are part of the business key, so a
+# plausible-looking wrong origin files every cell under coordinates that do not exist.
+# ---------------------------------------------------------------------------
+
+def _bonding_map_with_junk_row(junk_cells):
+    """The real two-group geometry with an extra 1x1 row directly above the ruler.
+
+    Alphabetic lot, so the V4 defect is out of play and every delta is attributable to
+    the origin derivation alone.
+    """
+    html = _bonding_map_html("AAA", [("BDIE", "A", "B"), ("CDIE", "C", "D")])
+    lines = html.split("\n")
+    ruler_at = next(i for i, ln in enumerate(lines) if '>1</td><td class="xl65">2<' in ln)
+    junk = "<tr>" + "".join('<td class="xl65">%s</td>' % c for c in junk_cells) + "</tr>"
+    return "\n".join(lines[:ruler_at] + [junk] + lines[ruler_at:])
+
+
+# (name, junk row cells, expect_refusal, expected top anchor, expected bottom anchor).
+# The junk row is inserted at index 6, pushing the real ruler to 7. The last two
+# columns are what makes each shape discriminating - a shape where both anchors agree
+# on the same wrong row would prove nothing.
+JUNK_SHAPES = [
+    # M1 - the worst shape. Ruler-shaped and full width, so it yielded the RIGHT record
+    # count, the RIGHT values and a SILENTLY WRONG X (2,3,6,7,10,...). Fools the TOP.
+    ("m1_slot_row", ["SLOT", 2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 22], True, 6, 7),
+    # M2 - a ragged date stamp. Fooled the top anchor into 33 records instead of 121.
+    ("m2_ragged_date", ["DATE", 2026, 6, 20], True, 6, 7),
+    # M2-A - a two-entry legend with a blank corner. Top anchor gave 22 records.
+    ("m2a_blank_corner_legend", [BLANK, 1, 2], True, 6, 7),
+    # M3 - the same date stamp padded to full width. The blanks disqualify it as a
+    # ruler, so BOTH anchors agree and the file must still parse - but its 1x1 cells
+    # sat in the header band and produced the phantom key DATE_2026: "6".
+    ("m3_padded_date", ["DATE", 2026, 6, 20] + [BLANK] * 8, False, 7, 7),
+    # M4 - the mirror of M1, and the reason the top anchor has to stay. A stray 1x1
+    # INTEGER in column 0 above the grid (a legend row, a count) is invisible to the
+    # merged-cell restriction and drags the BOTTOM anchor up into the header band -
+    # exactly the blind spot the pre-2026-08-04 derivation had. Fools the BOTTOM.
+    ("m4_numeric_corner_legend", [5, "F", 16], True, 7, 5),
+]
+
+
+@pytest.mark.parametrize("name,junk,expect_refusal,_top,_bottom", JUNK_SHAPES,
+                         ids=[s[0] for s in JUNK_SHAPES])
+def test_junk_above_the_grid_is_refused_or_parsed_but_never_guessed(
+        name, junk, expect_refusal, _top, _bottom, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="HTMLTopologyParser"):
+        records = HTMLMatrixTableParser().parse_matrix_to_records(
+            _bonding_map_with_junk_row(junk))
+    refusals = [r.getMessage() for r in caplog.records if "REFUSED" in r.getMessage()]
+
+    if expect_refusal:
+        assert records == [], (
+            "a shape the two derivations disagree about must be REFUSED, not silently "
+            "adopted as the grid origin"
+        )
+        # Zero records is NOT sufficient. An accidentally-empty parse and a refusal are
+        # the same silence otherwise - which is the entire finding this round is about.
+        assert len(refusals) == 1, (
+            f"{name}: 0 records with no stated reason is indistinguishable from a "
+            f"successful parse of an empty grid"
+        )
+    else:
+        assert refusals == [], f"{name}: a parseable shape must not be refused"
+        # Correct parse, and the junk row contributes NO header key.
+        assert len(records) == 11 * 11
+        assert sorted({r["X"] for r in records}) == list(range(1, 12))
+        assert _meta_of(records) == {"TITLE": "AAA", "BDIE_LOT": "A", "BDIE_WF": "B",
+                                     "CDIE_LOT": "C", "CDIE_WF": "D"}
+
+
+def test_refusal_names_both_derivations_and_is_cp949_encodable(caplog):
+    """A refusal that does not say WHY is the same silence in a different costume."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="HTMLTopologyParser"):
+        HTMLMatrixTableParser().parse_matrix_to_records(
+            _bonding_map_with_junk_row(["SLOT", 2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 22])
+        )
+
+    lines = [r.getMessage() for r in caplog.records if "REFUSED" in r.getMessage()]
+    assert len(lines) == 1, "one named refusal per call, no more and no less"
+    msg = lines[0]
+    assert "row 6" in msg and "row 7" in msg, "both candidate origins must be named"
+    assert "business key" in msg, "must say why 0 records beats a wrong origin"
+    msg.encode("cp949")
+
+
+def _anchors(html):
+    """Re-derive both grid-origin anchors from the outside, as an oracle.
+
+    Deliberately a second implementation rather than a call into the parser: a fixture
+    checked with the code under test proves nothing about the fixture.
+    """
+    from bs4 import BeautifulSoup
+    gp = HTMLMatrixTableParser().graph_parser
+    grid, row_count, col_count = gp._reconstruct_2d_grid(
+        BeautifulSoup(html, "html.parser").find("table"))
+    nodes, _ = gp._build_adjacency_graph(grid, row_count, col_count)
+
+    def is_int(t):
+        try:
+            int(t)
+            return True
+        except (TypeError, ValueError):
+            return False
+
+    def unmerged(n):
+        return n.row_span == 1 and n.col_span == 1
+
+    top = None
+    for r in range(row_count):
+        corner = grid.get((r, 0))
+        if corner is None or not unmerged(corner) or is_int(corner.value):
+            continue
+        ticks, seen, ok = [], {corner.id}, True
+        for c in range(1, col_count):
+            n = grid.get((r, c))
+            if n is None or n.id in seen:
+                continue
+            seen.add(n.id)
+            if not unmerged(n) or not is_int(n.value):
+                ok = False
+                break
+            ticks.append(n)
+        if ok and len(ticks) >= 2:
+            top = r
+            break
+
+    y_rows = [n.row_range[0] for n in nodes
+              if n.col_range[0] == 0 and unmerged(n) and is_int(n.value)]
+    bottom = (min(y_rows) - 1) if y_rows else None
+    return top, bottom
+
+
+def test_the_junk_fixtures_actually_reach_the_cross_check():
+    """Guard the guard: M1/M2/M2-A only prove anything if the two anchors DISAGREE.
+
+    A fixture built so that both derivations happen to land on the same row would leave
+    the refusal untested and the suite still green. Assert each anchor's value directly,
+    against an independently written oracle.
+
+    The set is also asserted to be BALANCED: at least one shape must fool the top anchor
+    and at least one must fool the bottom. Otherwise the surviving anchor could be
+    dropped and this suite would not notice - which is exactly what a reviewer should be
+    able to check without rerunning the injections.
+    """
+    fooled_top, fooled_bottom = 0, 0
+    for name, junk, expect_refusal, exp_top, exp_bottom in JUNK_SHAPES:
+        top, bottom = _anchors(_bonding_map_with_junk_row(junk))
+        assert (top, bottom) == (exp_top, exp_bottom), f"{name}: anchors moved"
+        assert (top != bottom) == expect_refusal, f"{name}: refusal must follow disagreement"
+        if top != 7:
+            fooled_top += 1
+        if bottom != 7:
+            fooled_bottom += 1
+
+    assert fooled_top >= 1, "no shape exercises the top anchor's blind spot"
+    assert fooled_bottom >= 1, (
+        "no shape exercises the bottom anchor's blind spot - the top anchor could be "
+        "deleted and this suite would stay green"
+    )
+
+
+def test_the_control_shape_has_both_anchors_agreeing():
+    """And the converse - without junk the two derivations agree, so nothing is
+    refused. Otherwise the refusal path could be passing for the wrong reason."""
+    top, bottom = _anchors(_bonding_map_html("AAA", [("BDIE", "A", "B"), ("CDIE", "C", "D")]))
+    assert top == bottom == 6

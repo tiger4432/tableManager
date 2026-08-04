@@ -225,3 +225,33 @@ def test_every_emitted_line_is_cp949_encodable(watcher, caplog):
     assert emitted
     for msg in emitted:
         msg.encode("cp949")
+
+
+# ---------------------------------------------------------------------------
+# [Zero-row visibility] A refused parse must not look like a clean success.
+#
+# When the parser refuses a shape it returns 0 records rather than a plausible-looking
+# wrong grid origin. Nothing downstream raises, so `status` is SUCCESS and
+# `error_message` is empty - which made "not one cell was stored" and "processed
+# normally" indistinguishable on screen. Same sizing as the drop report: silent per
+# row, named once per file, in the slot that already carries this kind of news.
+# ---------------------------------------------------------------------------
+
+def test_zero_rows_is_named_in_the_detail_slot():
+    detail = dw.IngestionHandler._compose_detail(0, None, has_rows=False)
+    assert detail is not None, "0 rows and a clean run must not both be an empty detail"
+    assert "0행" in detail
+    detail.encode("cp949")
+
+
+def test_rows_present_leaves_the_detail_exactly_as_before():
+    """The slot already carries the F1 skip and the P2 resume note. Adding the zero-row
+    reason must not perturb either, or every existing consumer shifts."""
+    assert dw.IngestionHandler._compose_detail(0, None) is None
+    assert dw.IngestionHandler._compose_detail(2, None) == "키 결측으로 2행 스킵"
+    assert dw.IngestionHandler._compose_detail(2, None, has_rows=True) == "키 결측으로 2행 스킵"
+
+
+def test_zero_rows_and_key_skip_are_both_reported():
+    detail = dw.IngestionHandler._compose_detail(5, None, has_rows=False)
+    assert "0행" in detail and "키 결측으로 5행 스킵" in detail
