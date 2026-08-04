@@ -271,6 +271,11 @@ function makeCtx(src, opts = {}) {
     // Sliced rather than re-typed for the usual reason: a copy here would let this harness
     // score a payload the product does not build.
     extractFunction(src, 'readGridFrameControls'),
+    // [D1] `buildPushGridMetadata` now asks whether the geometry it is serialising was
+    // AUTO-REGISTERED, so that a synthesized spec is not promoted to a declared one by a
+    // single push. Sliced, not stubbed: this harness owns the byte-identical payload
+    // invariant, and the whole point is that an UNMARKED map's payload is unchanged.
+    extractFunction(src, 'geometryIsAutoRegistered'),
     extractFunction(src, 'buildPushGridMetadata'),
     extractFunction(src, 'confirmMissingSplitDescriptions'),
     extractFunction(src, 'outsideCircleNoteForPush'),

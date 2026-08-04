@@ -74,7 +74,7 @@ function sliceFunction(source, name) {
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb',
-  'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getTransformedPhysicalConfig', 'getScreenShift', 'isCellInsideWaferFast', 'getWaferBoundingBox',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   // [H5] the reference-dimension ceiling and the ONE place its bound is defined

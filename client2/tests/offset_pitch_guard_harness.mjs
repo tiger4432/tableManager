@@ -87,7 +87,7 @@ function sliceFunction(source, name) {
 // makes group G an EXECUTION of the shipped listener rather than a re-implementation of it.
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
-  'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',   // see the note in geometry_origin_reseat_harness.mjs
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getDbCoords',
   'getWaferBoundingBox', 'frameDieLattice', 'dieIndexToWaferMm',

@@ -84,7 +84,7 @@ const SYMBOLS = [
   // chip pitch (equal mm-per-pixel on both axes) instead of from the canvas rectangle alone.
   // `renderGridCanvas` calls `cellMetrics`, which calls `physDeclaration` — omitting either
   // turns the render into a ReferenceError that reads as a 0-cell screen.
-  'physDeclaration', 'cellMetrics',
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'cellMetrics',
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getDbCoords',
   'getWaferBoundingBox',

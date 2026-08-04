@@ -73,7 +73,8 @@ function sliceFunction(source, name) {
 }
 
 const SYMBOLS = [
-  'physNum', 'gridDimNum', 'withPhysFrame', 'physDeclaration',
+  'physNum', 'gridDimNum', 'withPhysFrame',
+  'geometryIsAutoRegistered', 'markGeometryAutoRegistered', 'physDeclaration', 'frameFromMeta',
   'cellMetrics',                                   // THE function under test
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex',
@@ -102,7 +103,11 @@ const TOK = {
 };
 
 function makeInput(v) {
+  // [D1] `dataset` is REAL here, not a stub object shared between inputs: the auto-registered
+  // mark lives on the chip inputs' dataset, and a shared object would make "mark chipX" look
+  // like "mark chipY" too — the joint condition would then pass for free.
   return { value: String(v), checked: false, textContent: '', disabled: false, style: {},
+           dataset: {},
            classList: { add() {}, remove() {}, toggle() {} },
            querySelector: () => null, appendChild() {},
            addEventListener() {}, removeEventListener() {} };
@@ -161,6 +166,10 @@ function buildEnv(src, opts = {}) {
     // value straight onto .value, and a null meta field lands as the empty string).
     physChipX: makeInput(p.chipX === undefined ? CHIP_X : (p.chipX === null ? '' : p.chipX)),
     physChipY: makeInput(p.chipY === undefined ? CHIP_Y : (p.chipY === null ? '' : p.chipY)),
+    // [D1] `autoRegistered: true` puts the panel in the state `loadExistingMap` leaves it in
+    // after loading a metadata row that carries `auto_registered: true` — the synthesized
+    // numbers are IN the inputs (that is the whole difficulty), and only the mark says they
+    // were never measured.
     physOffsetX: makeInput(p.offsetX || 0), physOffsetY: makeInput(p.offsetY || 0),
     physEdgeMargin: makeInput(p.margin === undefined ? MARGIN : p.margin),
     gridCanvas: { getBoundingClientRect: () => ({ width: canvas.w, height: canvas.h, left: 0, top: 0 }),
@@ -203,6 +212,10 @@ function buildEnv(src, opts = {}) {
   vm.createContext(sandbox);
   try { vm.runInContext(pieces.join('\n'), sandbox); }
   catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
+  // [D1] Applied through the PRODUCT's own writer, never by poking the dataset here. A
+  // fixture that set the key itself would still pass if `markGeometryAutoRegistered` wrote
+  // somewhere the reader does not look — the two halves have to meet in the product.
+  if (p.autoRegistered) sandbox.markGeometryAutoRegistered(true);
   return { sandbox, el, rec };
 }
 
@@ -525,6 +538,127 @@ function fixtureSelfCheck(src) {
      `cellW ${m.cellW.toFixed(3)} cellH ${m.cellH.toFixed(3)}`);
 }
 
+// ══ [D1] AUTO-REGISTERED GEOMETRY IS NOT A DECLARATION ═══════════════════════════════════
+//
+// THE RULING (user, 2026-08-04): a synthesized metadata row does not declare geometry, and
+// `auto_registered` is the thing that says so. Two writers emit the mask-neutral synthetic
+// spec — the server's `synthesize_grid_meta()` on ingestion, and the editor's own `[fix C]`
+// for a map with no spec at all. Both write chip 1x1 to mean "no circle", not "a 1mm die".
+//
+// 🔴 WHY THE FLAG AND NOT THE VALUE. 1 is a LEGAL pitch (this database holds a real 5x5 map),
+//    so a value used as a marker can never be told apart from a measurement. Measured on the
+//    live database: 320 of 668 registered maps carry chip 1x1, and ALL 320 carry the flag —
+//    there are ZERO flagless 1x1 rows, so the legacy fallback this could have needed is
+//    provably dead code and is not written.
+//
+// 🔴 THE FIXTURE'S WHOLE DIFFICULTY: the synthesized numbers ARE in the inputs. A fixture that
+//    emptied the chip fields would be scoring the pre-existing 'absent' path and would pass
+//    against a build that ignores the flag completely. So every case below holds a perfectly
+//    readable pitch and differs ONLY in the mark.
+function scoreAutoRegistered(src) {
+  const panel = { chipX: 1, chipY: 1, dia: 300, cols: 13, rows: 13 };
+
+  // (a) FLAGGED: readable numbers, but they are not a declaration.
+  const flagged = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
+  const dxF = flagged.sandbox.physDeclaration('chipX', flagged.el.physChipX);
+  const dyF = flagged.sandbox.physDeclaration('chipY', flagged.el.physChipY);
+  eq('D1/a a flagged chipX is reported as NOT declared',
+    { value: null, source: 'auto_registered' }, dxF);
+  eq('D1/a ...and chipY the same (the mark covers the whole spec)',
+    { value: null, source: 'auto_registered' }, dyF);
+  eq('D1/a the input still visibly holds the number — the mark is the only difference',
+    '1', String(flagged.el.physChipX.value),
+    'if the fixture emptied the field it would be scoring the old absent path');
+
+  // (b) THE SAME NUMBERS WITHOUT THE FLAG ARE A REAL DECLARATION. This is the discrimination
+  //     that makes (a) mean something: a build keyed on the VALUE passes (a) and fails here.
+  const bare = render(src, { canvas: { w: 700, h: 700 }, panel });
+  eq('D1/b chip 1x1 with NO flag is still a declaration', 'screen',
+    bare.sandbox.physDeclaration('chipX', bare.el.physChipX).source,
+    '1 is a legal pitch; only the flag may reclassify it');
+  eq('D1/b ...and its value survives', 1,
+    bare.sandbox.physDeclaration('chipX', bare.el.physChipX).value);
+
+  // (c) A FLAGGED SPEC WITH ANISOTROPIC NUMBERS. The mark is about provenance, not shape —
+  //     scored so nobody "optimises" the rule back into a 1x1 value check.
+  const aniso = render(src, { canvas: { w: 700, h: 700 },
+    panel: { ...panel, chipX: 1, chipY: 8, autoRegistered: true } });
+  eq('D1/c the mark reclassifies a 1x8 spec too (provenance, not shape)', 'auto_registered',
+    aniso.sandbox.physDeclaration('chipY', aniso.el.physChipY).source);
+  const anisoBare = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, chipX: 1, chipY: 8 } });
+  eq('D1/c ...while an UNFLAGGED 1x8 stays the real anisotropic declaration it is', 'screen',
+    anisoBare.sandbox.physDeclaration('chipY', anisoBare.el.physChipY).source);
+
+  // (d) WHAT THE OPERATOR SEES. `cellMetrics` falls back, and the note says WHY in its own
+  //     words — "Chip X/Y 미선언" would be read as false by anyone looking at the inputs.
+  const mF = flagged.sandbox.cellMetrics(700, 700, 13, 13,
+    flagged.sandbox.getTransformedPhysicalConfig(0, 'front'));
+  eq('D1/d a flagged spec does NOT anchor the canvas to a wafer', false, mF.isotropic);
+  eq('D1/d ...and does not claim a wafer anchor either', false, mF.waferAnchored);
+  ok(/자동 등록/.test(flagged.el.cellAspectNote.textContent),
+    'D1/d the note names AUTO-REGISTRATION as the reason',
+    `note: ${JSON.stringify(flagged.el.cellAspectNote.textContent)}`);
+  ok(!/Chip X\/Y 미선언/.test(flagged.el.cellAspectNote.textContent),
+    'D1/d ...and does not say the fields are empty, because they are not');
+  eq('D1/d the note is visible', '', flagged.el.cellAspectNote.style.display);
+
+  // (e) THE RECLASSIFICATION IS VISIBLE IN PIXELS, and in the direction the census predicts.
+  //     Before: the synthetic 300mm diameter anchored the scale, so a 13x13 grid at 1mm pitch
+  //     rendered as a speck inside a canvas-filling circle. After: the grid fills the canvas.
+  const mBare = bare.sandbox.cellMetrics(700, 700, 13, 13,
+    bare.sandbox.getTransformedPhysicalConfig(0, 'front'));
+  ok(mBare.cellW < 5, 'D1/e fixture: unflagged, the synthetic diameter really does shrink the grid',
+     `cellW ${mBare.cellW.toFixed(3)}px`);
+  ok(mF.cellW > 40, 'D1/e flagged, the grid fills the canvas instead',
+     `cellW ${mF.cellW.toFixed(3)}px`);
+  ok(mF.cellW / mBare.cellW > 10,
+     'D1/e the axis is ACTIVE — the two paths differ by more than a rounding',
+     `${mBare.cellW.toFixed(3)} -> ${mF.cellW.toFixed(3)} px per cell`);
+
+  // (f) THE MARK IS CLEARABLE, and clearing it restores a declaration. Without this a build
+  //     that marks everything forever would pass every case above.
+  flagged.sandbox.markGeometryAutoRegistered(false);
+  eq('D1/f clearing the mark makes the same numbers a declaration again', 'screen',
+    flagged.sandbox.physDeclaration('chipX', flagged.el.physChipX).source,
+    'the operator typing a real pitch must not stay reclassified');
+
+  // (g) THE FRAME WINDOW. Overlays read the SOURCE map's spec through `physFrameOverride`,
+  //     so the mark has to travel on the frame object or the source's synthetic 1mm pitch is
+  //     read as real and every marker is placed against it.
+  const inFrame = bare.sandbox.withPhysFrame({ chipX: 1, chipY: 1, autoRegistered: true },
+    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  eq('D1/g a flagged SOURCE FRAME is not declared either', 'auto_registered', inFrame.source);
+  const inFrameBare = bare.sandbox.withPhysFrame({ chipX: 1, chipY: 1 },
+    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  eq('D1/g ...and an unflagged frame still declares', 'frame', inFrameBare.source);
+  // The frame window must not be answered by the SCREEN's mark: those are different maps.
+  bare.sandbox.markGeometryAutoRegistered(true);
+  const screenMarkedFrameNot = bare.sandbox.withPhysFrame({ chipX: 7, chipY: 9 },
+    () => bare.sandbox.physDeclaration('chipX', bare.el.physChipX));
+  eq('D1/g the SOURCE frame answers for the source, not the screen behind it', 'frame',
+    screenMarkedFrameNot.source,
+    'reading the screen mark inside a frame window would reclassify a real source spec');
+  bare.sandbox.markGeometryAutoRegistered(false);
+
+  // (h) THE FLAG HAS TO SURVIVE THE WHITELIST. `frameFromMeta` rebuilds the frame key by key,
+  //     so a stored `auto_registered: true` reaches the overlay path only if it is copied
+  //     across explicitly. It was not, before this round.
+  const fm = bare.sandbox.frameFromMeta({
+    grid_cols: 13, grid_rows: 13, phys_chip_x: 1, phys_chip_y: 1, auto_registered: true });
+  eq('D1/h frameFromMeta carries the mark onto the frame', true, fm.autoRegistered,
+    'dropped here, the source map\'s synthetic 1mm pitch is read as a real one');
+  const fmNo = bare.sandbox.frameFromMeta({ grid_cols: 13, grid_rows: 13, phys_chip_x: 7 });
+  eq('D1/h ...and does not invent it for a normal metadata row', false, fmNo.autoRegistered);
+
+  // (i) BOTH AXES CARRY THE MARK. Scored so that the write to the second input is load-bearing
+  //     — an unread write rots silently, and the two halves would then disagree unnoticed.
+  const half = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
+  delete half.el.physChipY.dataset.autoRegistered;
+  eq('D1/i a mark on only one axis does NOT reclassify the spec', 'screen',
+    half.sandbox.physDeclaration('chipX', half.el.physChipX).source,
+    'the mark belongs to the spec, so half a mark is not one');
+}
+
 // ── Mutation plumbing ──────────────────────────────────────────────────────────────────
 // 🔴 THE ANCHOR MUST BE UNIQUE. A `replace` on a non-unique string lands on the FIRST match,
 //    which in this file has already once been inside a COMMENT — the harness then scored a
@@ -543,6 +677,43 @@ function applyMutation(src, mut, name) {
 
 const MUTATIONS = [
   ['① the cell metric goes back to filling the canvas per axis (the shipped defect)', ANISOTROPIC_REVERT],
+  // ── [D1] Five ways to get the auto-registration rule wrong. ──────────────────────────
+  // The rule is not applied at all — the shipped state before this round, in which a
+  // synthesized 1mm pitch and a measured one are byte-identical to every reader.
+  ['D1 the rule is not applied (synthetic geometry reads as declared)', {
+    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {\n    return { value: null, source: 'auto_registered' };\n  }`,
+    repl: `  // rule removed`,
+  }],
+  // 🔴 THE MOST IMPORTANT ONE. This is the MAGIC-NUMBER version of the same feature — key the
+  //    rule on the chip VALUE being 1x1 instead of on the flag. It satisfies every case that
+  //    only looks at flagged maps, and it is wrong: 1 is a legal pitch, so it silently
+  //    swallows a real 1mm declaration. Only the unflagged-1x1 discrimination catches it.
+  ['D1 the rule keys on the VALUE 1x1 instead of the flag (the sentinel that is also a datum)', {
+    find: `  if ((key === 'chipX' || key === 'chipY') && geometryIsAutoRegistered()) {`,
+    repl: `  if ((key === 'chipX' || key === 'chipY') && parseFloat(el.physChipX.value) === 1 && parseFloat(el.physChipY.value) === 1) {`,
+  }],
+  // The frame window answers with the SCREEN's mark. Opening an auto-registered map would
+  // then reclassify every OTHER map overlaid onto it — provenance leaking across maps.
+  ['D1 the frame window is answered by the screen mark', {
+    find: `  if (physFrameOverride) return physFrameOverride.autoRegistered === true;`,
+    repl: `  if (physFrameOverride && physFrameOverride.autoRegistered === true) return true;`,
+  }],
+  // The mark is dropped by the frame builder's whitelist — where it actually was, before.
+  ['D1 frameFromMeta drops the mark (the overlay path stops seeing it)', {
+    find: `    autoRegistered: meta.auto_registered === true,`,
+    repl: `    autoRegistered: false,`,
+  }],
+  // The screen keeps the generic wording, which reads as false when the inputs hold numbers.
+  ['D1 the note stops naming auto-registration as the reason', {
+    find: `      notes.push(geometryIsAutoRegistered()\n        ? '기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다'\n        : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
+    repl: `      notes.push('셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다');`,
+  }],
+  // Only one axis is marked. The second write becomes dead, and the two halves can then
+  // diverge without anyone noticing.
+  ['D1 only one axis gets the mark', {
+    find: `  [el.physChipX, el.physChipY].forEach(input => {`,
+    repl: `  [el.physChipX].forEach(input => {`,
+  }],
   ['③ the grid stops being centred (padX dropped from the render origin)', {
     find: `  const originX = shiftX + padX;\n  const originY = shiftY + padY;`,
     repl: `  const originX = shiftX;\n  const originY = shiftY + padY;`,
@@ -582,6 +753,7 @@ function scoreAll(src) {
     }
   }
   scoreUndeclaredPitch(src);
+  scoreAutoRegistered(src);
   return evidence;
 }
 
