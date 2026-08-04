@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-30 (**§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (**§2.1-bis 버전 게이트 신설** — `092b83f` `crud.version_gate_verdict`: `table_config`의 `version_column` 선언 시 기계의 기존 행 덮어쓰기를 「버전이 더 클 때만」으로 제한. 🔴 **레이어링 *앞*의 거부권이지 승급권이 아니고**, 그래서 더 높은 버전도 사람의 교정을 밀지 못한다. **선언한 테이블이 아직 없어 전 테이블 무동작**. 직전 **§2.2-bis 레이어 철회 신설** — R2 `chain_replay.withdraw_source`: 셀 레이어 단위 철회로 아래 레이어를 드러냄, `user`·핀 셀은 구조적 거절. 직전 **§5 config 로더·watcher 정정 라운드(H1~H5)** — BOM 인식 디코딩·최상위 타입 게이트·트레일링 엣지 디바운스·`on_created` 등재. 직전 **config→스키마 경로의 조용한 실패 3종 수리(#9/#13/#16ⓐ)** — §1.2에 부팅 스키마 구축이 **import 시점 → 명시적 기동 단계(`main.bootstrap_database_schema`)**로 이동, §5에 watcher `on_moved`(원자적 저장) 처리와 config 파싱 실패 fail-fast 등재. 직전 **§2.4 정본 계기 신설** — 완료까지의 상호작용 점수(`InteractionEffortLog` + `crud.get_effort_stats`) 서버 구현 착지, 정의 5결정·커버리지 규율·인덱스 2종 등재. 동시에 §2.3 재교정률을 **보조 계기로 강등** 표기(정의·계약은 무변경). 직전 `0f8d35f` — 제품 소유 4종 중 `map_doe`·`map_doe_source` 폐기 표기) | **Owner:** Backend / Integrity
 > **Source-of-truth:** `server/database/models.py`, `server/database/crud.py`, `server/chain_replay.py`(레이어 철회), `server/config/table_config.json`, `server/product_tables.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
@@ -57,6 +57,20 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 서열의 단일 원천은 `crud.resolve_priority_map`/`get_source_priority` — 그래프 materializer의 엣지 provenance 판정도 같은 함수를 씁니다(하드코딩 서열 금지).
 
 즉 **수동 편집(user)은 항상 자동 파서 값보다 우선**하며, 사용자는 특정 소스를 핀 고정해 표시값을 강제할 수 있습니다.
+
+### 2.1-bis 버전 게이트 (`crud.version_gate_verdict`) — 레이어링 **앞의 거부권** · 2026-08-04 `092b83f`
+
+`table_config.json`에 `"version_column"`을 선언한 테이블은, **기계가 이미 있는 행을 덮어쓸 때** 「들어온 버전 > 저장된 버전」일 때만 그 행을 고려합니다. 선언이 없으면 판정 함수가 첫 줄에서 돌아가고, 그런 테이블의 동작은 이 기능 이전과 **완전히 같습니다**(last-write-wins).
+
+🔴 **게이트는 거부권이지 승급권이 아니고, 그것이 「버전은 계층 *안에서만* 순서를 매긴다」의 전부입니다.** 게이트를 통과한 행도 셀 하나하나가 §2.1의 `compute_priority_value`를 그대로 지나가므로, **더 높은 버전이 사람이 고친 셀을 밀어내는 일은 구조적으로 없습니다.** 통과 시점에 페이로드를 행에 강제로 얹는 구현(「버전이 권위」의 그럴듯한 과대 해석)은 다음 인제션에 사람의 교정을 조용히 되돌리며, `server/tests/test_version_gated_overwrite.py::test_human_correction_survives_a_newer_version`이 그 순간 빨개지도록 있습니다.
+
+- **판정 단위는 행이고, 시점은 행 확정 직후·첫 셀을 건드리기 전**입니다. 셀 단위 판정이었다면 낡은 행의 일부 컬럼만 받아들여 **내부적으로 모순된 행**을 만듭니다 — 통째로 받거나 통째로 거절하는 편이 낫습니다. 거절된 행은 `changed_cols`가 비어 값·`CellSource`·`AuditLog`·브로드캐스트 어느 것도 남기지 않습니다.
+- **비교는 값에서 정해지고 텍스트 비교가 아닙니다**(`crud.parse_version_key`가 `(kind, sortable)` 쌍을 반환). `column_text_sql`/`TEMPORAL_TEXT_FORMAT`을 **일부러 쓰지 않습니다** — 그것들은 SQL 술어용 텍스트 렌더링이고, 텍스트야말로 버전을 잘못 정렬합니다(`'10' < '9'`). 재사용한 것은 그 뒤의 **추론**입니다: ISO-8601 순간은 순서가 있고 임의 텍스트는 없으며, aware 값은 UTC로 접힙니다. **양쪽 `kind`가 다르면 코에르션하지 않고 거절**합니다.
+- **모름은 과거도 미래도 아닙니다.** 들어온 버전의 부재·공백·해석 불가·종류 불일치는 각자의 이름(`version_missing` / `version_unorderable`)으로 **거절**됩니다. 반대로 **저장 측**에 쓸 수 있는 버전이 없으면 들어온 값을 **채택하고 행을 씁니다**(`row_version_absent`) — 되돌아갈 과거가 없고, 양쪽 모두에 엄격하면 그 테이블이 수동 백필 뒤에 영원히 갇히기 때문입니다.
+- **생성은 덮어쓰기가 아니고**(첫 도착은 막지 않습니다), **`user` 소스는 게이트에 닿지 않습니다**(그리드 편집은 셀 하나만 담고 버전 컬럼을 담지 않으므로, 게이트를 태우면 그 테이블이 사람에게 읽기 전용이 됩니다).
+- **로그는 행마다 찍지 않습니다** — (테이블, 사유)당 프로세스 첫 목격에 WARNING 1회 + 배치당 INFO 1회(사유별 건수). 인제션 드롭 가시화와 같은 모양입니다.
+
+🔴 **파생 쓰기는 버전 컬럼을 들고 오지 않습니다.** 체인 워커·체인 재적용 R1·결손 보정 자동 확정은 자기 매퍼/룰이 만든 컬럼만 쓰므로, **버전 게이트를 건 테이블이 동시에 파생 타깃이면 그 파생 쓰기가 기존 행에 대해 전부 `version_missing`으로 거절**됩니다(부재 행만 만드는 `map_meta_registrar`와 새 신원만 만드는 `enrichment_backfill`은 영향 없음). 운영자 관점의 확인 절차·명령은 [guide/config/table_config §7.2](../guide/config/table_config.md)가 정본입니다.
 
 ### 2.2 오버라이트 & 시각화
 

@@ -1,16 +1,14 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-02 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** Lead / Backend
 >
-> ### 이번 라운드 (2026-08-02)
+> ### 이번 라운드 (2026-08-04)
+> - **`table_config.json`에 새 키 `version_column`**(`092b83f` — 버전 게이트). 「같은 키의 행이 항상 최신본이어야 한다」를 선언하면 **기계가 기존 행을 덮어쓸 때 버전이 더 클 때만** 반영합니다. **오늘 선언한 테이블은 없어 전부 무동작**이고, 켜는 것은 운영자입니다. 절차·판정표·로그 읽는 법의 정본은 [config/table_config §7](./config/table_config.md).
+> - 🔴 **§6에 함정 P 추가** — 버전 게이트를 건 테이블이 동시에 **체인/결손보정 타깃**이면 그 파생 쓰기가 전부 거절됩니다. 선언 **전에** 확인해야 하고, 확인하는 한 줄은 그 문서 §7.2에 있습니다.
+>
+> ### 직전 라운드 (2026-08-02)
 > - **짝 문서 신설: [CONFIG_ROLLOUT_GUIDE](./CONFIG_ROLLOUT_GUIDE.md)** — 이 문서가 「무엇을 설정하나」의 **지도**라면 그쪽은 「빈 환경에 선언 한 벌을 **어떤 순서로** 올리고 **각 단계가 먹었음을 어떻게 증명**하나」의 런북입니다. **§4의 리로드 매트릭스·watcher 발화 조건·물리 검증은 계속 이 문서가 정본**이고 런북은 링크만 합니다 — 그쪽에 사본을 만들지 마십시오.
 > - 🔴 **§4.4의 「`on_moved`+`on_created`도 처리한다」가 여전히 옳다는 것을 재확인했습니다**(`46a67c7`, 2026-07-29). 「config watcher는 원자적 쓰기를 놓친다」는 서술이 아직 돌아다니는데 **현 트리에서 거짓**입니다. 인용 전 §4.4를 보십시오.
->
-> ### 직전 라운드 (2026-07-31)
-> - **§4.2-bis의 ⏳ 해제** (`93610cb`) — 「내가 쓴 config가 먹었나」는 이제 **어드민 Overview 탭의 세 번째 계기 줄**에서 읽습니다. `curl`은 「화면이 문장을 지어냈는가」를 가르는 **대조용**으로 내려왔고, `Reload Configs`를 누르면 스로틀을 무시하고 즉시 다시 읽습니다.
-> - **읽기 실패는 「설정이 멀쩡하다」가 아닙니다** — 대시(―)와 사유가 남고, 사유가 「관리자 게이트가 아닌 응답입니다」이면 **토큰이 아니라 그 포트 앞에 무엇이 답하는가**의 문제입니다.
-> - **`virtual_join_rules.json`의 ⏳ 해제** (`d70a33d`) — 선언만 검증하던 파일이 **실제로 조인을 실행**합니다. 함께 바뀐 것: **`expose` 이름 충돌은 거부가 아니라 「왼쪽이 비었을 때만 채운다」**이고, 가상 컬럼으로 가는 쓰기는 **쓰기 깔때기 한 곳**에서 거부됩니다 → [config/virtual_join_rules §4-bis](./config/virtual_join_rules.md).
-> - **같은 파일의 두 번째 ⏳ 해제** (`9200f20`+`4b50135`) — **가상 전용 컬럼이 그리드에 뜹니다.** 이제 선언한 노출은 화면까지 갑니다. ⚠️ **미해결이 사라진 것이 아니라 바뀌었습니다**: **CSV 추출에는 안 실리고**, **`미상` 행을 찾을 방법이 없습니다**(필터는 서버측인데 서버가 그 컬럼을 모릅니다). 목록의 단독 소유자는 [config/virtual_join_rules §9](./config/virtual_join_rules.md)입니다 — 여기에 사본을 만들지 마십시오.
 > 
 > 🔴 **이 헤더에 라운드를 쌓지 마십시오.** 이전 기록은 [`docs/history/`](../history/)에 있습니다.
 
@@ -157,6 +155,7 @@ table_config.json  ← 모든 것의 뿌리 (테이블/컬럼이 여기 없으�
 | 9 | (선택) 그래프에 올릴 것 → S4 |
 | 10 | (선택) 파생/보정 필요 → S6·S7 |
 | 11 | 실제 파일 1건을 `raws/`에 넣어 왕복 검증 | `GET /admin/file-ingestion/logs` + `GET /tables/<table>/data` |
+| 12 | (선택) 같은 키가 **항상 최신본**이어야 하고 파일에 그것을 말하는 컬럼이 있다면 → `"version_column"` 선언. 🔴 **선언 전에 파생 타깃 확인 한 줄을 먼저** | 절차·확인 명령·판정표는 [config/table_config §7](./config/table_config.md) · 함정은 §6-P |
 
 > ⚠️ **기존 테이블에 컬럼을 추가**하는 경우: CREATE가 아니라 **ALTER**이므로 경로가 다릅니다. `/admin/reload-configs`는 ALTER를 하지 않습니다 → §4 표를 반드시 확인.
 
@@ -380,7 +379,9 @@ psql -U postgres -d assy_manager -c "\d <table>"
 
 ### 5.1 `table_config.json`
 
-세팅 절차(스냅샷→in-place 저장→watcher 로그·`information_schema` 확인)와 키 사전(`business_key`·`composite_key_*`·`column_types`·`display_columns`·`map_key_columns`·`workspace_name`·`std_parse`·`source_priority`)은 → [**config/table_config.md**](./config/table_config.md)
+세팅 절차(스냅샷→in-place 저장→watcher 로그·`information_schema` 확인)와 키 사전(`business_key`·`composite_key_*`·`column_types`·`display_columns`·`map_key_columns`·`map_push_ok`·**`version_column`**·`workspace_name`·`std_parse`·`source_priority`)은 → [**config/table_config.md**](./config/table_config.md)
+
+> **`version_column`(2026-08-04 `092b83f`)은 그 문서 §7이 정본입니다.** 「같은 키의 행이 항상 최신본이어야 한다」를 선언하는 키로, 선언하면 **기계가 기존 행을 덮어쓸 때 버전이 더 클 때만** 반영합니다(사람의 교정은 규칙 밖 — 더 높은 버전도 밀지 못합니다). **오늘 선언한 테이블은 없어 전부 무동작**입니다. 🔴 **켜기 전에 §7.2의 확인 한 줄을 반드시 돌리십시오** — 아래 §6-P.
 
 ### 5.2 `ontology_mapping.json`
 
@@ -677,6 +678,11 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 ```
 
 **비어 있는** 미선언 테이블은 되돌린 선언의 잔여물일 가능성이 높고, **행이 있는** 것은 config 이전의 레거시일 가능성이 높습니다 — 후자는 감으로 지우지 마십시오. 판단과 실행은 사람이 합니다 → [ROLLBACK_PROCEDURE §5](./ROLLBACK_PROCEDURE.md).
+
+**P. `version_column`을 파생 타깃 테이블에 걸면 그 파생 경로가 멈춥니다.** ★ (2026-08-04 `092b83f`)
+버전 게이트를 건 테이블에는 **버전 컬럼을 들고 오는 기계만** 기존 행을 덮어쓸 수 있습니다. 파일 인제션은 파일에 그 컬럼이 있으니 들고 오고, 사람의 편집은 면제이며, 맵 메타 자동 등록은 부재 행만 만들어 안전합니다. **그런데 체인 워커·체인 재적용 R1·결손 보정 자동 확정은 자기 매퍼가 만든 컬럼만 씁니다** — 버전 컬럼이 없으니 **기존 행에 대한 파생 쓰기가 전부 `version_missing`으로 거절**됩니다.
+조용하지는 않습니다(`[VersionGate]` WARNING + 배치마다 INFO). 다만 **선언한 뒤에야 드러나고**, 화면상 증상은 「체인이 멈춘 것 같다」입니다.
+**선언 전에 그 테이블이 `chain_rules.json`의 `target_table`이거나 `enrichment_rules.json`의 `derived_table`인지 확인하십시오** — 명령 한 줄과 실측 예, 나왔을 때 할 일은 [config/table_config §7.2](./config/table_config.md). 체인 룰이 `enabled:false`여도 **없는 것으로 세지 마십시오**(켜는 순간 같은 문제가 됩니다).
 
 ---
 

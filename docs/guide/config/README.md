@@ -1,6 +1,6 @@
 # 📁 config/ — 운영 서버 config 파일 세팅 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (`transfer_plan_config.json` 행: **반영 확인의 1순위가 `GET /admin/transfer-plan/dry-run`으로 바뀌었고**(`8817dde`) 좌표/값 컬럼은 `map_overlay_config`에서 유도된다 — 그 파일 가이드를 **재작성**했다. 🔴 **「반영 확인」 열에 라우트가 생기면 여기부터 고친다** — 운영자가 이 표에서 명령을 고른다. 직전 2026-07-31 `virtual_join_rules.json` 행이 **실행 착지**(`d70a33d`)를 반영 — 선언만 검증하던 기능이 읽기 경로에서 실제로 조인한다. ⚠️ 그 행은 2026-07-31에 추가됐는데 이 헤더는 07-29에 멈춰 있었다 — **행을 더하면 여기도 함께 고친다**. 직전 `suggest_config.json`·`effort_metric.json` 추가, 2026-07-28 신설) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (`table_config.json` 행: **새 키 `version_column`**(`092b83f` — 버전 게이트. 「반영 확인」이 이 키만 다릅니다: 물리 스키마를 안 바꾸므로 `information_schema`가 아니라 **다음 적재의 `[VersionGate]` 로그**가 증거입니다). 같은 날 `transfer_plan_config.json` 행: **반영 확인의 1순위가 `GET /admin/transfer-plan/dry-run`으로 바뀌었고**(`8817dde`) 좌표/값 컬럼은 `map_overlay_config`에서 유도된다 — 그 파일 가이드를 **재작성**했다. 🔴 **「반영 확인」 열에 라우트가 생기면 여기부터 고친다** — 운영자가 이 표에서 명령을 고른다. 직전 2026-07-31 `virtual_join_rules.json` 행이 **실행 착지**(`d70a33d`)를 반영 — 선언만 검증하던 기능이 읽기 경로에서 실제로 조인한다. ⚠️ 그 행은 2026-07-31에 추가됐는데 이 헤더는 07-29에 멈춰 있었다 — **행을 더하면 여기도 함께 고친다**. 직전 `suggest_config.json`·`effort_metric.json` 추가, 2026-07-28 신설) | **Owner:** Lead / Backend
 > 상위: [CONFIG_GUIDE](../CONFIG_GUIDE.md) — **온보딩 지도의 정본.** 시나리오 체크리스트(§3)·리로드 규율(§4)·함정 모음(§6)은 거기서 봅니다. 이 폴더는 **운영 서버에서 각 파일을 실제로 세팅하는 절차**입니다.
 
 ## 시작하기 전에 (전 파일 공통)
@@ -14,7 +14,7 @@
 
 | 파일 (`server/config/`) | 켜는 기능 | 반영 시점 | 반영 확인 | 가이드 |
 |---|---|---|---|---|
-| `table_config.json` | 모든 동적 테이블 스키마 **SSOT** — 다른 config의 전제 | 신규/컬럼추가 = watcher 핫(**in-place 저장만**) · 삭제/타입변경 = **재기동** | watcher 로그 + `information_schema` | [table_config.md](./table_config.md) |
+| `table_config.json` | 모든 동적 테이블 스키마 **SSOT** — 다른 config의 전제. **+ `version_column`**(2026-08-04 `092b83f` — 버전이 권위이고 도착 순서가 아니다. 🔴 **선언 전 파생 타깃 확인 필수** → [§7.2](./table_config.md)) | 신규/컬럼추가 = watcher 핫(**in-place 저장만**) · 삭제/타입변경 = **재기동** · `version_column`은 **스키마를 안 바꿔 watcher 반영만으로 즉시** | watcher 로그 + `information_schema` · `version_column`은 다음 적재의 **`[VersionGate]` 로그 줄** | [table_config.md](./table_config.md) |
 | `database.json` | DB 접속 정보(이름·비번·호스트) — 환경변수 `DATABASE_URL` 미설정 시 | **재기동**(전 프로세스, 핫리로드 없음) | 기동 로그 `[db] url source=config file` | [database.md](./database.md) |
 | `transfer_plan_config.json` | M2 전사 계획 — stage 선언 + 계획 저장소. **좌표/값 컬럼은 `map_overlay_config`에서 유도**되므로 대부분 안 써도 된다(`8817dde`) | 요청마다 재읽기 | 🔴 **`GET /admin/transfer-plan/dry-run`**(역할별 수용/거절 + 어느 철자가 이겼는지 — 1순위) · 그다음 `GET /api/transfer-plan/stages` | [transfer_plan_config.md](./transfer_plan_config.md) |
 | `bonding_plan_config.json` | M1 본딩 계획 — role→실테이블 바인딩 | 요청마다 재읽기 | `GET /api/bonding-plan/core-summary` | [bonding_plan_config.md](./bonding_plan_config.md) |
