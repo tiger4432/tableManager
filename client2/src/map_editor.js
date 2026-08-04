@@ -8107,10 +8107,29 @@ function popMapFrame() {
   if (editorFrames.length === 0) return false;
   // [fix E] Prompt only when this frame was actually edited since it opened AND the
   // edits were not pushed. A merely-viewed non-empty material map goes back silently.
-  const dirty = !framePushed && frameTouched && gridData && Object.keys(gridData).length > 0;
+  // [fix E-2] THE CELL-COUNT TERM IS GONE. It was a stand-in for "this frame holds work",
+  // written before `frameTouched` existed — back then the predicate really was
+  // `!framePushed && cells>0`, and that is what made mere VIEWING prompt. Once an actual edit
+  // is required, the count only SUBTRACTS truth, and it subtracted it in three live shapes:
+  //   · `clearGrid()` sets `gridData = {}` and drafts — "delete every value in the grid",
+  //     then back, discarded in silence;
+  //   · a valid-die declaration on a map with no painted cells (a template map, or a map
+  //     being declared before it is filled) — unsaved work with zero cells by construction;
+  //   · the stray-key cleanup (:5853) can empty the object the same way.
+  // Viewing still cannot prompt, because viewing sets neither flag.
+  const dirty = !framePushed && frameTouched;
+  // WHICH WRITER TO NAME. There are two now, and naming only the expensive one teaches
+  // people to Push for everything — ⚡ Push is `replace_map`, a full cell rewrite, for a
+  // change that may have touched no cell at all. `legendDirty` is the existing flag that
+  // says cells/legend hold draft work (every `frameTouched` site outside the declaration
+  // path sets it in the same breath), so its absence means the edit was declaration-only
+  // and 📐 규격만 저장 is the cheaper correct answer.
   if (dirty && !confirm(
-    `이 맵을 [⚡ Push]로 저장하지 않았습니다.\n\n` +
-    `[확인] 저장하지 않고 돌아가기\n[취소] 이 화면에 남기`
+    `이 맵의 편집을 저장하지 않았습니다.\n\n` +
+    (legendDirty
+      ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\n`
+      : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\n`) +
+    `\n[확인] 저장하지 않고 돌아가기\n[취소] 이 화면에 남기`
   )) return false;
 
   const from = { table: selectedTable, mapKey: loadedIdentity ? loadedIdentity.mapKey : (getCurrentMapKey() || ''), pushed: framePushed };
@@ -9315,6 +9334,22 @@ async function onValidDieRefChanged() {
   await resolveValidDie(meta, selectedTable,
     (loadedIdentity && loadedIdentity.mapKey) ? loadedIdentity.mapKey : getCurrentMapKey());
   renderGridCanvas();
+  // [fix E-2] APPLYING A DECLARATION IS AN EDIT OF THIS FRAME. `frameTouched` was set by the
+  // two cell/legend gateways only, so a valid-die pick left the frame marked CLEAN and
+  // `popMapFrame` discarded it with no prompt (live regression, 2026-08-04). Marking belongs
+  // HERE because this is the one funnel every applying gesture reaches — the `<select>`
+  // `change` and the key input's Enter both call it, and so does any future caller.
+  // 🔴 NOT inside `resolveValidDie`: the load path calls that function too, and marking there
+  //    would make a merely-VIEWED map prompt on the way back — the complaint [fix E] closed.
+  // 🔴 `legendDirty` is deliberately NOT set. That flag means "cells or legend hold unsaved
+  //    draft work", and the back-prompt reads its ABSENCE to name 📐 규격만 저장 instead of
+  //    ⚡ Push. Setting it here would make every declaration change advertise the expensive
+  //    writer, and would also light the plan-head unsaved chip for a plan nobody touched.
+  // `framePushed` is cleared on the same ground the overlay import clears it (:10498): an
+  // edit made after a successful Push means the screen again holds something the server
+  // does not have, and the guard has to come back to life for it.
+  frameTouched = true;
+  framePushed = false;
   if (key === '') {
     showToast('유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. 📐 규격만 저장 또는 '
       + '⚡ Push로 저장하십시오.', 'info', { dedupeKey: 'valid_die_cleared' });
@@ -9469,6 +9504,14 @@ async function saveMapSpecOnly() {
     // 맞추지 않으면 곧이어 누른 ⚡ Push가 같은 변경을 「사용자 편집」으로 한 번 더 쓴다.
     // basis·keys·마스크는 건드리지 않는다 — 저장은 적용이 아니다(그래서 칩도 그대로다).
     validDie = { ...validDie, raw: ('valid_die_ref' in next) ? next.valid_die_ref : undefined };
+    // [fix E-2] ...and for the same reason, the back-guard's baseline moves too. Without this
+    // the reworded prompt lies: it tells the user 📐 규격만 저장 is enough, and then asks
+    // again after they did exactly that. Only the SPEC is saved here, so the flag is dropped
+    // only when nothing else is outstanding — `legendDirty` is the existing record of cell
+    // and legend draft work, which this write does not carry. (Before this change the two
+    // flags were set in the same breath everywhere, so this condition can never fire for a
+    // pre-existing path: it is reachable only from a declaration-only edit.)
+    if (!legendDirty) frameTouched = false;
     syncValidDieRefControls();
     showToast(`${table} · ${mapKey} 의 맵 규격을 ${isNew ? '새로 등록' : '갱신'}했습니다 — `
       + `셀은 하나도 기록하지 않았습니다.`, 'success');
