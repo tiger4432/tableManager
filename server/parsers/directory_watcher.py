@@ -62,6 +62,68 @@ from ingestion_checkpoint import (
     is_force_reingest,
 )
 
+# [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
+# come from the payload, not from the schema, so a malformed header row or a parser
+# emitting values as headers could otherwise grow the registry without limit on a 10M
+# row file. On saturation the summary stops growing and says so, so the truncation is
+# never mistaken for "that was all of them". Mirrors crud._MAX_UNDECLARED_WARNED_PER_TABLE.
+MAX_DROPPED_COLUMNS_REPORTED = 64
+
+# table_name -> {column names already announced at WARNING in this process}.
+# Kept here rather than reusing crud's registry because this is a different gate on a
+# different config key: crud watches `column_types` per cell, this watches
+# `display_columns` per file, and a column dropped here never reaches crud at all.
+_dropped_column_announced = {}
+
+
+def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count):
+    """Report columns the display_columns filter discarded before the write.
+
+    Dropping is often the CORRECT outcome - a file carrying fields of a superseded
+    scheme should not grow the table. The problem this closes is narrower and real: a
+    drop currently produces no record of any kind, so an operator cannot tell an
+    intended drop from a new or misspelled column silently going nowhere. Both look
+    like SUCCESS with an empty error_message.
+
+    Sized so the expected case stays quiet and the unexpected one stands out:
+      - nothing at all per row or per cell (at 10M rows that buries every real event);
+      - WARNING once per (table, column) per process, on FIRST sighting - which is
+        exactly the moment a genuinely new column appears. Steady-state old-scheme
+        columns spend their one warning at process start and then stop shouting, so a
+        later warning means something actually changed;
+      - INFO per file with the names and counts, so 0 dropped and 200 dropped never
+        look the same to anyone who goes looking.
+    ASCII only - this reaches a cp949 console.
+    """
+    if not dropped_value_counts:
+        return
+
+    announced = _dropped_column_announced.setdefault(t_name, set())
+    first_seen = sorted(c for c in dropped_value_counts if c not in announced)
+    if first_seen:
+        announced.update(first_seen)
+        logger.warning(
+            f"[{t_name}] Column(s) absent from display_columns are dropped before the "
+            f"write, so NO per-cell record is created for them: {', '.join(first_seen)}. "
+            f"First sighting in this process, carried by '{filename or '?'}'. If the drop "
+            f"is intended (a field of a superseded scheme) this is the expected state; "
+            f"if the column is new or misspelled, declare it in "
+            f"config/table_config.json. Repeats are reported at INFO, once per file."
+        )
+
+    named = ", ".join(f"{col}={count}" for col, count in sorted(dropped_value_counts.items()))
+    capped = ""
+    if len(dropped_value_counts) >= MAX_DROPPED_COLUMNS_REPORTED:
+        capped = (
+            f" [report cap {MAX_DROPPED_COLUMNS_REPORTED} reached - further dropped "
+            f"column names are NOT listed]"
+        )
+    logger.info(
+        f"[{t_name}] Dropped {len(dropped_value_counts)} undeclared column(s) over "
+        f"{row_count} row(s) of '{filename or '?'}': {named} (name=non-blank values "
+        f"discarded). display_columns={defined_cols}.{capped}"
+    )
+
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
 # (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)
 AUTO_PROVISION_EXCLUDED_TABLES = {"wafer_map_metadata"}
@@ -1745,6 +1807,14 @@ class IngestionHandler(FileSystemEventHandler):
         # map_key_columns AND resolves a coordinate binding.
         meta_collector = map_meta_registrar.MapMetaCollector(t_name, table_info)
 
+        # [Drop visibility] The display_columns filter below runs BEFORE crud sees the
+        # row, so crud._warn_undeclared_column_once can never fire for a column dropped
+        # here - the drop leaves no record of any kind and the file still reports SUCCESS
+        # with an empty error_message. Not writing the column is frequently the correct
+        # outcome; being unable to tell that outcome apart from a new or misspelled column
+        # going nowhere is not. See _announce_dropped_columns for the reporting shape.
+        dropped_value_counts = {}
+
         try:
             while True:
                 chunk = list(islice(row_iter, batch_size))
@@ -1767,6 +1837,13 @@ class IngestionHandler(FileSystemEventHandler):
                             normalized_row[target_key] = val
                             if target_key.lower() == bk_col.lower():
                                 bk_val = val
+                        elif key in dropped_value_counts:
+                            if val is not None and val != "":
+                                dropped_value_counts[key] += 1
+                        elif len(dropped_value_counts) < MAX_DROPPED_COLUMNS_REPORTED:
+                            # Seed at 0 so a column whose values are all blank is still
+                            # NAMED - the column was offered and refused either way.
+                            dropped_value_counts[key] = 1 if (val is not None and val != "") else 0
                     if normalized_row:
                         items.append(schemas.GeneralUpdateItem(
                             business_key_val=str(bk_val) if bk_val is not None else None,
@@ -1836,6 +1913,11 @@ class IngestionHandler(FileSystemEventHandler):
                     except Exception as pe:
                         logger.warning(f"Progress callback failed: {pe}")
                     
+            # [Drop visibility] Individual silence, named aggregate - one report per file.
+            _announce_dropped_columns(
+                t_name, dropped_value_counts, defined_cols, filename, processed_rows
+            )
+
             # [M3] Absent-only meta registration AFTER the data committed — one
             # existence check per distinct map key per file (indexed bk column).
             # A failure here must never fail the ingestion (data is already in);

@@ -542,40 +542,113 @@ class HTMLMatrixTableParser:
             out_edges[edge.source].append(edge)
             in_edges[edge.target].append(edge)
 
-        # 3. 최상단 섹션 헤더(TITLE) 추출 (colspan이 가로폭의 70% 이상인 최상위 헤더)
+        # A cell that spans most of the table width is a section header (the TITLE band).
+        wide_threshold = int(col_count * 0.7)
+
+        def _is_section_wide(n: TableNode) -> bool:
+            return n.col_span > 1 and n.col_span >= wide_threshold
+
+        def _is_int(text: str) -> bool:
+            try:
+                int(text)
+                return True
+            except (TypeError, ValueError):
+                return False
+
+        def _ruler_row(r: int):
+            """The X-axis tick cells of row `r`, or None if `r` is not the ruler row.
+
+            The ruler is the one row the document uses to declare its own grid origin,
+            and it is recognised by SHAPE, not by the fact that it holds numbers - the
+            header band holds numbers too (a lot id, a wafer id, and after the
+            2026-08-04 ruling, every `slot`). Its shape: a distinct corner cell at
+            column 0 that is NOT a coordinate, followed by two or more distinct cells
+            to its right that all are.
+
+            Ruler cells are also UNMERGED - one cell, one coordinate. Measured across
+            the whole archived corpus (19 files, 4 header shapes): every corner and
+            every tick is 1x1, while the header band is built entirely from merged
+            cells. That is what keeps a header row out even when its text is all
+            numeric, and it is why a numeric GROUP label can no longer pose as the
+            topmost Y tick and drag the grid boundary up into the header band.
+
+            The guard is deliberately strict in this direction: a shape it refuses
+            yields zero records, which is loud, whereas the failure it replaces was a
+            silently wrong map key feeding map_split_registry.
+            """
+            corner = grid.get((r, 0))
+            if corner is None or corner.col_span != 1 or corner.row_span != 1:
+                return None
+            if _is_int(corner.value):
+                return None
+            ticks = []
+            seen = {corner.id}
+            for c in range(1, col_count):
+                node = grid.get((r, c))
+                if node is None or node.id in seen:
+                    continue
+                seen.add(node.id)
+                if node.col_span != 1 or node.row_span != 1 or not _is_int(node.value):
+                    return None
+                ticks.append(node)
+            return ticks if len(ticks) >= 2 else None
+
+        # 3. X축 눈금 행(=격자 경계) 및 Y축 눈금 노드 검출.
+        #    The ruler row is resolved FIRST because it is the structural boundary
+        #    between the header block and the grid, and step 4 depends on it. The
+        #    topmost qualifying row wins; the Y ruler is then whatever integer labels
+        #    sit in column 0 BELOW it, so a numeric cell in the header band can no
+        #    longer pose as a tick.
+        x_axis_nodes = []
+        x_row_idx = None
+        for r in range(row_count):
+            ticks = _ruler_row(r)
+            if ticks:
+                x_row_idx = r
+                x_axis_nodes = ticks
+                break
+
+        y_axis_nodes = []
+        if x_row_idx is not None:
+            for node in nodes:
+                if (node.col_range[0] == 0 and node.row_range[0] > x_row_idx
+                        and _is_int(node.value)):
+                    y_axis_nodes.append(node)
+
+        # 4. [Header predicate] Re-classify the header role STRUCTURALLY for this matrix.
+        #
+        #    "Is this a header cell?" must NOT be answered by "does this parse as a
+        #    number." A lot id, a slot number and a wafer id are all legitimately numeric.
+        #    `_default_is_header` rule 4 answers it lexically, and in a matrix table that
+        #    is wrong in BOTH directions, measured on the real archive:
+        #      - a numeric header value (`BDIE / LOT / 12312`) dropped out of the header
+        #        set, the LEFT-ancestor chain shifted one cell right, and the next group
+        #        label was consumed as BDIE's LOT value -> map key silently became "CDIE";
+        #      - a non-numeric BIN letter inside the grid was promoted to a header, so
+        #        grid data leaked back out as a phantom meta key ("F_AAA").
+        #
+        #    The real relation is 2D and positional: this document declares its own grid
+        #    origin through the axis ticks, so the header block is exactly the rows
+        #    STRICTLY ABOVE the X-axis tick row. Empty cells stay non-headers - the
+        #    LEFT-ancestor chain counts ancestors, and a blank spacer cell must not
+        #    lengthen it.
+        #
+        #    Only this matrix view is re-classified. `_default_is_header` is untouched, so
+        #    `extract_semantic_tuples` and any caller-supplied `is_header_fn` keep their
+        #    behaviour; when no axis is found there is no grid, and the original
+        #    classification is left alone.
+        if x_row_idx is not None:
+            for node in nodes:
+                node.is_header = bool(node.value) and node.row_range[1] < x_row_idx
+
+        # 5. 최상단 섹션 헤더(TITLE) 추출 (colspan이 가로폭의 70% 이상인 최상위 헤더)
         title = "Default"
-        section_headers = []
-        for other in nodes:
-            is_wide = other.col_span >= int(col_count * 0.7)
-            if other.is_header and other.col_span > 1 and is_wide:
-                section_headers.append(other)
+        section_headers = [n for n in nodes if n.is_header and _is_section_wide(n)]
         if section_headers:
             section_headers.sort(key=lambda n: n.row_range[0])
             title = section_headers[0].value
 
-        # 4. Y축 눈금 및 X축 눈금 노드 검출 (정수형 라벨)
-        y_axis_nodes = []
-        for node in nodes:
-            if node.col_range[0] == 0 and node.value:
-                try:
-                    int(node.value)
-                    y_axis_nodes.append(node)
-                except ValueError:
-                    pass
-        
-        x_axis_nodes = []
-        if y_axis_nodes:
-            min_y_row = min(n.row_range[0] for n in y_axis_nodes)
-            x_row_idx = min_y_row - 1
-            for node in nodes:
-                if node.row_range[0] <= x_row_idx <= node.row_range[1] and node.col_range[0] >= 1 and node.value:
-                    try:
-                        int(node.value)
-                        x_axis_nodes.append(node)
-                    except ValueError:
-                        pass
-
-        # 5. 공통 메타데이터(BDIE_LOT, BDIE_WF 등) 추출
+        # 6. 공통 메타데이터(BDIE_LOT, BDIE_WF 등) 추출
         # LEFT 방향 조상을 찾되, 열 정렬 순서대로 순회하며 이미 값으로 결정된 노드들은 장벽(sec_ids)으로 작용시킵니다.
         # 또한, 반환된 조상 목록에서도 기 수집된 값 노드들은 제거(필터링)하여 우회 누수를 차단합니다.
         meta_nodes = [n for n in nodes if n.is_header and n.value]
@@ -602,7 +675,7 @@ class HTMLMatrixTableParser:
                     meta[meta_key] = node.value
                     detected_value_ids.add(node.id)
 
-        # 6. X, Y축 눈금 좌표를 순회하며 2D 데이터 셀 값 추출 및 평탄화 레코드 생성
+        # 7. X, Y축 눈금 좌표를 순회하며 2D 데이터 셀 값 추출 및 평탄화 레코드 생성
         y_axis_nodes.sort(key=lambda n: n.row_range[0])
         x_axis_nodes.sort(key=lambda n: n.col_range[0])
 
