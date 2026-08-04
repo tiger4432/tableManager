@@ -192,7 +192,23 @@ if (harnesses.length === 0) {
      + `changed ― both need a human, neither is a passing build.`);
 }
 
+// ── THE THIRD STATE: "cannot be measured in THIS tree" ────────────────────────
+// A harness that needs an installed package (today only the undeclared-identifier check,
+// via `rolldown/parseAst`) cannot run in a git worktree, because worktrees get no
+// `node_modules`. Reporting that as BLOCKING is not strict, it is BLIND: every worktree
+// lane then starts red before touching anything, so the gate number cannot move no matter
+// what that lane breaks, and a real regression hides behind the pre-existing red.
+//
+// So it gets its own verdict -- not green, not red. UNAVAILABLE is claimable ONLY when the
+// dependency store is demonstrably absent AND the failure is specifically module
+// resolution. If `node_modules` exists and a harness still cannot resolve an import, that
+// is a real breakage and stays BLOCKING: this escape hatch must never widen into one a
+// broken harness can climb through.
+const HAS_NODE_MODULES = existsSync(path.join(REPO_ROOT, 'client2', 'node_modules'));
+const UNRESOLVED_IMPORT_RE = /ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module/;
+
 const blocking = [];
+const unavailable = [];
 const stillRed = [];
 const recovered = [];
 const rose = [];        // ran above its recorded floor ― re-baseline when convenient
@@ -216,6 +232,17 @@ for (const name of harnesses) {
   // that breached its ceiling is still a harness whose coverage we want recorded.
   if (floor === undefined && !known) unfloored.push(name);
   if (floor !== undefined && counts && counts.ran > floor) rose.push({ name, was: floor, now: counts.ran });
+
+  // Checked before the ceiling: a harness that could not load did not report a ceiling
+  // either, and blaming it for the missing number would be the same blindness twice.
+  if (!ok && !counts && !HAS_NODE_MODULES && UNRESOLVED_IMPORT_RE.test(run.stderr || '')) {
+    unavailable.push(name);
+    console.log(`? ${name}  [UNAVAILABLE in this tree] needs an installed package and `
+      + `client2/node_modules is absent (worktrees do not get one). NOT counted as passing `
+      + `― whatever it scores is simply unmeasured here. Re-run it in the main checkout `
+      + `before merging this branch.`);
+    continue;
+  }
 
   // ── the ceiling, if this harness carries one ──────────────────────────────────
   // Read exactly like the ASSERTIONS line: the harness counts, the runner only compares.
@@ -288,7 +315,8 @@ for (const name of harnesses) {
 
 const gated = harnesses.length - KNOWN_RED.size;
 console.log(`\n${harnesses.length} harnesses ― ${gated} gated, ${KNOWN_RED.size} on the known-red `
-  + `debt list (${stillRed.length} still red, ${recovered.length} recovered).`);
+  + `debt list (${stillRed.length} still red, ${recovered.length} recovered)`
+  + (unavailable.length > 0 ? `, ${unavailable.length} UNMEASURED in this tree` : '') + `.`);
 
 if (recovered.length > 0) {
   console.log(`\n! ${recovered.length} harness(es) on the known-red list now PASS. Take them off `
@@ -341,4 +369,13 @@ if (blocking.length > 0) {
      + `this directory went 14/15 unrun in the first place.`);
 }
 
-console.log(`✓ every gated harness is green.\n`);
+// The unavailable set is stated HERE rather than only next to each harness, because this
+// last line is the one people quote. "Every gated harness is green" would be a false
+// summary of a run where something was never measured at all.
+if (unavailable.length > 0) {
+  console.log(`✓ every gated harness that COULD run in this tree is green ― but `
+    + `${unavailable.length} was not measured here (${unavailable.join(', ')}). This is not a `
+    + `green build for those; run the gate in the main checkout before merging.\n`);
+} else {
+  console.log(`✓ every gated harness is green.\n`);
+}
