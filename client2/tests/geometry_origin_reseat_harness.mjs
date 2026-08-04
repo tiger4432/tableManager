@@ -266,7 +266,11 @@ function buildEnv(src, P, opts = {}) {
     // Everything `initDOMElements` names but this harness never fires. Listed one by one on
     // purpose: a rename must be a ReferenceError, not a silent no-op.
     fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
-    onValidDieRefChanged() {}, populateValidDieRefList() {}, switchTable() {},
+    // `saveValidDieRefDeclaration` is the 💾 SAVE handler `initDOMElements` now wires. It is a
+    // stub for the same reason as its neighbours: this harness executes the WIRING, not the
+    // valid-die write path (which is scored by valid_die_authoring_harness).
+    onValidDieRefChanged() {}, saveValidDieRefDeclaration() {},
+    populateValidDieRefList() {}, switchTable() {},
     // Key-datalist wiring (2026-07-31). `KEY_SUGGEST_DEBOUNCE_MS` is a VALUE, not a stub:
     // `initDOMElements` passes it to `debounce`, so a missing binding is a ReferenceError
     // here exactly as a missing function would be.

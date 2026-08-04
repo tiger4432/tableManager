@@ -76,9 +76,8 @@ function makeEl(over = {}) {
     gridCols: inputStub(COLS), gridRows: inputStub(ROWS),
     gridStartX: inputStub(1), gridStartY: inputStub(1),
     gridYInvert: { checked: false },
-    // `options` is what syncValidDieRefControls reads to decide whether the DECLARED table
-    // can be shown. The default list is the one the app boots with: only '(this map's table)'.
-    validDieRefTable: { value: '', options: [{ value: '' }] },
+    // 2026-08-04: the table <select> is GONE — a valid-die map always lives in
+    // `VALID_DIE_TABLE`. The designation now has exactly ONE control, the key box.
     validDieRefKey: inputStub(''),
     ...over,
   };
@@ -111,9 +110,6 @@ function buildSandbox(mutator) {
   const ctx = {
     console, physFrameOverride: null, currentRotation: 0, currentSide: 'front',
     validDie: null, boundingBoxCache: {}, el: makeEl(),
-    // module state the designation path reads/writes (F1). Declared here rather than sliced
-    // in, so the sandbox's references resolve to THIS object and the suite can observe it.
-    validDieRefTableTouched: false,
     CANON_INT_RE: /^[+-]?\d+$/, CANON_FLOAT_RE: /^[+-]?\d+\.0+$/,
   };
   // The two regexes above are read from the source, not restated, so a change to either
@@ -123,11 +119,22 @@ function buildSandbox(mutator) {
     if (!m) die(`const ${name} (regex) not found in ${SRC_KEY_PATH}`);
     return m[1];
   };
+  // The FIXED valid-die storage table. Lifted from the source line, never re-typed: this
+  // harness asserts the exact table name a new designation carries, and a copy that drifted
+  // would score the WRONG table green — which is precisely the class of defect (the screen is
+  // fine, the value points elsewhere) the designation path exists to prevent.
+  const validDieTableSrc = (() => {
+    const m = /const\s+VALID_DIE_TABLE\s*=\s*('[^']*'|"[^"]*")\s*;/.exec(SRC);
+    if (!m) die('const VALID_DIE_TABLE not found in map_editor.js — the fixed storage table is gone or renamed.');
+    return m[1];
+  })();
+  ctx.VALID_DIE_TABLE_EXPECTED = JSON.parse(validDieTableSrc.replace(/'/g, '"'));
   vm.createContext(ctx);
   try {
     vm.runInContext(
       `const CANON_INT_RE = ${reSrc('CANON_INT_RE')};\n`
       + `const CANON_FLOAT_RE = ${reSrc('CANON_FLOAT_RE')};\n`
+      + `const VALID_DIE_TABLE = ${validDieTableSrc};\n`
       + code
       + `\nglobalThis.__h = { getDieIndex, getDbCoords, getCanvasCellFromDb,`
       + ` isCellInsideWaferFast, getTransformedPhysicalConfig, getWaferBoundingBox,`
@@ -343,26 +350,20 @@ function runSuite(sb, st) {
   // the key is absent from the payload.
   const BASE_META = { grid_cols: 6, grid_rows: 6, phys_edge_margin: 0, grid_y_invert: false };
   // 🔴 The controls are built THE WAY THE APP BUILDS THEM: store the raw, then let
-  // `syncValidDieRefControls` force both boxes. Only after that are the USER's edits applied.
-  // The previous version assigned `el.validDieRefTable.value` directly, which asserts a
-  // control state the app cannot produce - that is exactly how F1 (a declared table silently
-  // downgraded to the home table on an untouched Push) shipped 84/84 green.
-  //   edit.tables  - the table list the app actually has (default: only the home entry)
-  //   edit.key     - the user typed in the key box       (absent = untouched)
-  //   edit.table   - the user picked from the select     (absent = untouched)
+  // `syncValidDieRefControls` fill the box. Only after that is the USER's edit applied.
+  // Assigning the control value directly would assert a state the app cannot produce - that
+  // is exactly how F1 (a declared table silently downgraded to the home table on an untouched
+  // Push) shipped 84/84 green.
+  //   edit.key - the user typed in the key box (absent = untouched)
+  // 2026-08-04: `edit.table` / `edit.tables` are GONE with the <select>. The storage table is
+  // fixed, so the ONE thing a user can express is which key - and therefore the ONE thing that
+  // separates "the user re-pointed this map" from "the user touched nothing" is that key.
   const forPush = (raw, edit = {}) => {
     ctx.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw };
-    ctx.el.validDieRefTable.options = (edit.tables || ['']).map(v => ({ value: v }));
-    // pre-dirty both boxes and the flag: sync must overwrite all three, not inherit them
-    ctx.el.validDieRefTable.value = 'STALE_TABLE';
+    // pre-dirty the box: sync must overwrite it, not inherit it
     ctx.el.validDieRefKey.value = 'STALE_KEY';
-    ctx.validDieRefTableTouched = true;
     H.syncValidDieRefControls();
     if (edit.key !== undefined) ctx.el.validDieRefKey.value = edit.key;
-    if (edit.table !== undefined) {
-      ctx.el.validDieRefTable.value = edit.table;
-      ctx.validDieRefTableTouched = true;    // what the `change` listener does, and only it
-    }
     const d = H.validDieRefForPush();
     // 🔴 the decision->payload turn is CALLED, never restated. Re-typing those two lines here
     // would score a copy of the implementation, which passes even when the shipped code does
@@ -374,37 +375,55 @@ function runSuite(sb, st) {
     }
     return ('valid_die_ref' in out) ? out.valid_die_ref : undefined;
   };
+  const VDT = ctx.VALID_DIE_TABLE_EXPECTED;      // read from the source, never re-typed
   const REF_CASES = [
     // [name, stored raw, user edits (see forPush), expected written value]
     ['INV-1 byte identity: nothing declared, nothing typed', undefined, {}, undefined],
     ['unchanged string is written back VERBATIM', 'TPL_1', {}, 'TPL_1'],
     ['CLEARED -> the key is omitted (back to circle)', 'TPL_1', { key: '' }, undefined],
     ['unchanged object is written back verbatim',
-      { table: 't', map_id: 'K' }, { tables: ['', 't'] }, { table: 't', map_id: 'K' }],
+      { table: 't', map_id: 'K' }, {}, { table: 't', map_id: 'K' }],
     ['the alias spelling survives untouched (no rewriting of a shape we did not author)',
-      { target_table: 't', map_key: 'K' }, { tables: ['', 't'] }, { target_table: 't', map_key: 'K' }],
+      { target_table: 't', map_key: 'K' }, {}, { target_table: 't', map_key: 'K' }],
     ['an UNREADABLE declaration is preserved, not silently repaired', 5, {}, 5],
-    ['...but editing it replaces it', 5, { key: '6' }, '6'],
-    ['a new designation, home table', undefined, { key: 'NEW' }, 'NEW'],
-    ['a new designation, explicit table',
-      undefined, { tables: ['', 'other'], table: 'other', key: 'NEW' }, { table: 'other', map_id: 'NEW' }],
+
+    // ── 1-a: the storage table is FIXED, and a NEW designation always carries it ───
+    // Every case below whose key the user actually typed must come out naming
+    // VALID_DIE_TABLE explicitly. The string (table-inheriting) form is NOT emitted by
+    // this UI any more: it would mean "a map in whatever table this map happens to live
+    // in", which is the opposite of the ruling.
+    ['[1-a] ...but editing an unreadable declaration replaces it, on the FIXED table',
+      5, { key: '6' }, { table: VDT, map_id: '6' }],
+    ['[1-a] a new designation names the fixed table (never the canvas table by inheritance)',
+      undefined, { key: 'NEW' }, { table: VDT, map_id: 'NEW' }],
     ['whitespace-only clears (a blank is not a map key)', 'TPL_1', { key: '   ' }, undefined],
 
-    // ── F1: the declared table is MISSING from the select list ────────────────────
-    // One failed `/tables/{t}/schema` at boot drops that table from the list (a caught
-    // warn + skip). sync then forces the select to '' - and reading that '' as intent
-    // silently retargets the mask at whatever carries the same key in the home table.
-    ['[F1] a declared table absent from the select list survives an UNTOUCHED push',
-      { table: 'tpl_map', map_id: 'TPL_1' }, { tables: [''] }, { table: 'tpl_map', map_id: 'TPL_1' }],
-    ['[F1] ...and editing only the KEY keeps that table',
-      { table: 'tpl_map', map_id: 'TPL_1' }, { tables: [''], key: 'TPL_2' },
-      { table: 'tpl_map', map_id: 'TPL_2' }],
-    ['[F1] ...and clearing the key still clears',
-      { table: 'tpl_map', map_id: 'TPL_1' }, { tables: [''], key: '' }, undefined],
-    ['[F1] the user ACTUALLY choosing the home table is a real downgrade (the flag is not '
-      + 'a blanket veto)', { table: 't', map_id: 'K' }, { tables: ['', 't'], table: '' }, 'K'],
-    ['[F1] a listed table, untouched, is still keep',
-      { table: 't', map_id: 'K' }, { tables: ['', 't'], key: 'K' }, { table: 't', map_id: 'K' }],
+    // ── 1-a: A DECLARATION AUTHORED BEFORE THE RULING IS NOT SILENTLY REPOINTED ────
+    // 🔴 THE DEFECT THIS GROUP EXISTS FOR. 8 rows in the live wafer_map_metadata declare a
+    // valid-die map in `bonding_map` / `dt_map`. If "the table is fixed" were implemented as
+    // "always write VALID_DIE_TABLE", then opening one of those maps and saving it - having
+    // touched NOTHING - would repoint it at a different table. If that table carries a map of
+    // the same name, a DIFFERENT map silently becomes the valid-die basis and every screen
+    // still looks healthy. This is the same shape as F1 (which these cases replace, since the
+    // <select> that caused F1 no longer exists) and it is INV-M4-1: an untouched declaration
+    // comes out of a save exactly as it went in.
+    ['[1-a] a legacy cross-table declaration survives an UNTOUCHED save',
+      { table: 'bonding_map', map_id: '4E' }, {}, { table: 'bonding_map', map_id: '4E' }],
+    ['[1-a] a legacy BARE-STRING declaration survives an UNTOUCHED save '
+      + '(it means "a map in MY table" and re-reading it as a fixed-table key would move it)',
+      '4MAIN_DT', {}, '4MAIN_DT'],
+    ['[1-a] ...but re-keying a legacy declaration moves it to the fixed table '
+      + '(a new choice is a valid_die_ref choice)',
+      { table: 'bonding_map', map_id: '4E' }, { key: 'CORE_1X' }, { table: VDT, map_id: 'CORE_1X' }],
+    ['[1-a] ...and clearing a legacy declaration still clears',
+      { table: 'bonding_map', map_id: '4E' }, { key: '' }, undefined],
+    ['[1-a] retyping the SAME key is not an edit (keep, so the stored shape is untouched)',
+      { table: 'bonding_map', map_id: '4E' }, { key: '4E' }, { table: 'bonding_map', map_id: '4E' }],
+    ['[1-a] a declaration ALREADY on the fixed table is likewise untouched by a no-op save '
+      + '(the fixed table is not a licence to rewrite rows that already agree)',
+      { table: VDT, map_id: 'CORE_1X' }, {}, { table: VDT, map_id: 'CORE_1X' }],
+    ['[1-a] ...and re-keying it stays on the fixed table',
+      { table: VDT, map_id: 'CORE_1X' }, { key: 'CORE_YINV' }, { table: VDT, map_id: 'CORE_YINV' }],
 
     // ── F2: declarations the reader calls a DECLARATION but the UI shows as blank ──
     // `""` is refused forever by the parser and this UI is the only way back. If it
@@ -412,8 +431,9 @@ function runSuite(sb, st) {
     ['[F2] a stored "" is reachable by this UI and normalised OUT', '', {}, undefined],
     ['[F2] a stored null likewise', null, {}, undefined],
     ['[F2] an object with a blank key likewise',
-      { table: 't', map_id: '' }, { tables: ['', 't'] }, undefined],
-    ['[F2] ...and typing a key over a "" declares normally', '', { key: 'TPL_9' }, 'TPL_9'],
+      { table: 't', map_id: '' }, {}, undefined],
+    ['[F2] ...and typing a key over a "" declares normally, on the fixed table',
+      '', { key: 'TPL_9' }, { table: VDT, map_id: 'TPL_9' }],
   ];
   REF_CASES.forEach(([name, raw, edit, exp]) => chk('INV-4', name, forPush(raw, edit), exp));
 
@@ -568,7 +588,8 @@ function runSuite(sb, st) {
   // at resolve time, through 7b. A second normaliser here would turn '01' into '1' and the
   // two spellings would stop being the same map at different moments.
   chk('INV-7', "the ref control trims but does NOT canonicalise ('01' stays '01')",
-    forPush(undefined, { key: '  TPL_01  ' }), 'TPL_01');
+    forPush(undefined, { key: '  TPL_01  ' }),
+    { table: ctx.VALID_DIE_TABLE_EXPECTED, map_id: 'TPL_01' });
   chk('INV-7', 'validDieRefForPush contains no canonicalisation of its own',
     /canonical/i.test(fn('validDieRefForPush')), false);
 
@@ -637,13 +658,17 @@ const MUTATIONS = [
     s => s.replace("const wanted = (shape === 'circle') ? circleInside : true;",
                    'const wanted = circleInside;')],
   // ── the three defects this round fixed, put back one at a time ─────────────────
-  ['M14 [F1] the table select is read as intent even when the APP forced it '
-    + '(a declared table absent from the list is silently downgraded to the home table)',
-    s => s.replace(/const table = validDieRefTableTouched\s*\?\s*(\(el\.validDieRefTable[\s\S]*?\)\.trim\(\))\s*: shown\.table;/,
-                   'const table = $1;')],
-  ['M15 [F1] sync stops clearing the touched flag (the forced value becomes "intent" '
-    + 'on the very next push)',
-    s => s.replace('validDieRefTableTouched = false;', '')],
+  // M14/M15 retired 2026-08-04 with the <select> they described. Their invariant did not
+  // retire — it moved onto the key comparison, and M20/M21 below are the same two failures
+  // expressed against the control that survived.
+  ['M20 [1-a] "the table is fixed" implemented as "always write the fixed table" '
+    + '(an untouched legacy declaration is silently repointed at another table)',
+    s => s.replace('const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;',
+                   'const table = VALID_DIE_TABLE;')],
+  ['M21 [1-a] a new designation inherits the canvas table again '
+    + '(the string form comes back and the fixed table stops being fixed)',
+    s => s.replace('const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;',
+                   'const table = shown.table;')],
   ['M16 [F2] a declaration that displays as blank reads as `keep` '
     + '(a stored "" is written straight back = permanently refused, no way out)',
     s => s.replace(/if \(raw !== undefined && shown\.key === '' && curKey === ''\) return \{ keep: false, ref: null \};/,

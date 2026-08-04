@@ -185,6 +185,37 @@ PRODUCT_TABLES = {
             "map_key"
         ]
     },
+    "valid_die_ref": {
+        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] THE storage table of valid-die maps. Promoted to product-owned 2026-08-04 by user ruling: \"유효 다이 맵을 저장하는 테이블은 valid_die_ref라는 테이블로 항상 고정\" — the map editor's table picker was removed in the same change, so the client now saves and loads the valid-die area from this table and no other. It was already declared at the founding site; being product-owned is what makes it exist at EVERY site and what stops it being deleted as if it were somebody's fixture table. | A row is one CELL of one valid-die map: bk = product_type_x_y, and map_key_columns = (product, type) is the pair that identifies the map, so a map key reads `PRODUCT_TYPE`. | Its consumer is `grid_metadata.valid_die_ref` in wafer_map_metadata, which names a map in THIS table; the reference resolution walks the same primitives as an overlay (spec -> binding -> frame -> projection) and REFUSES rather than falling back to the wafer circle when it cannot resolve. That is why an entry here is not enough on its own: a valid-die map must ALSO be registered in wafer_map_metadata or nothing can reference it. | `val` is the painted value per cell; the mask is 'which cells exist', so what a value says does not change the mask. Do not add a second 'is this die valid' column - the presence of the row IS the answer, and a second one would let the two disagree with nothing on screen saying which won.",
+        "business_key": "cell_key",
+        "composite_key_source": [
+            "product",
+            "type",
+            "x",
+            "y"
+        ],
+        "composite_key_separator": "_",
+        "column_types": {
+            "cell_key": "string",
+            "product": "string",
+            "type": "string",
+            "x": "number",
+            "y": "number",
+            "val": "string"
+        },
+        "display_columns": [
+            "cell_key",
+            "product",
+            "type",
+            "x",
+            "y",
+            "val"
+        ],
+        "map_key_columns": [
+            "product",
+            "type"
+        ]
+    },
 }
 
 PRODUCT_TABLE_NAMES = tuple(PRODUCT_TABLES.keys())

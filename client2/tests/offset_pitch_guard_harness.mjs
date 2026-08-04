@@ -178,7 +178,10 @@ function buildEnv(src, P, opts = {}) {
     // Everything `initDOMElements` names but this harness never fires — stubbed one by one so
     // a rename is a ReferenceError, never a silent no-op.
     fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
-    onValidDieRefChanged() {}, populateValidDieRefList() {}, switchTable() {},
+    // See the note in geometry_origin_reseat_harness: the 💾 SAVE handler is wired by
+    // `initDOMElements`, so it must exist; this harness scores the wiring, not that write.
+    onValidDieRefChanged() {}, saveValidDieRefDeclaration() {},
+    populateValidDieRefList() {}, switchTable() {},
     populateOverlayKeyList() {}, onMetaInputSuggest() {}, KEY_SUGGEST_DEBOUNCE_MS: 120,
     renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},
     effortRoute: () => '', handleAddOverlayClick() {}, clearOverlayLayers() {},

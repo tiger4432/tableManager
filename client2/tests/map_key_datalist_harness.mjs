@@ -106,6 +106,10 @@ const FUNCS = [
 const CONSTS = [
   'listFillSeq',
   'KEY_SUGGEST_DEBOUNCE_MS', 'COLUMN_VALUE_LIST_LIMIT', 'VALID_DIE_LIST_LIMIT',
+  // The FIXED storage table of a valid-die map (2026-08-04). Extracted, never re-typed:
+  // `populateValidDieRefList` no longer reads a control for its table, so this constant IS
+  // the population it queries — a copy here that drifted would score the wrong table green.
+  'VALID_DIE_TABLE',
   'mapKeyListCache', 'columnValueComplete', 'columnValueRefused', 'columnValueTruncated',
   'PUSH_SYSTEM_COLUMNS',
 ];
@@ -291,6 +295,10 @@ const optionValues = list => (list ? list.children.map(o => o.value) : null);
 const META_ROWS = {
   bonding_map: ['BASE-29_01', 'BASE-29_02', 'BASE-31_07'],
   core_defect_map: ['CORE-A_11', 'CORE-B_12'],
+  // The FIXED valid-die population (2026-08-04). Deliberately DISJOINT from the two above:
+  // the valid-die field is now scored on the canvas table `bonding_map` while expecting these
+  // keys, so an implementation that fell back to the canvas table cannot pass by coincidence.
+  valid_die_ref: ['CORE_1X', 'CORE_YINV', '5N_BASE'],
 };
 const metaBody = (table, total) => ({
   data: META_ROWS[table].map(id => ({ data: { map_id: { value: id } } })),
@@ -435,23 +443,29 @@ async function runChecks(src, { strict = true } = {}) {
     }
   }
 
-  // ── 1-ter. THE VALID-DIE FIELD STILL BEHAVES AS IT DID ────────────────────────
-  //   Same mechanism, same answers — this is the regression net under the refactor that
-  //   moved its body into the shared function.
+  // ── 1-ter. THE VALID-DIE FIELD IS PINNED TO ONE TABLE ─────────────────────────
+  //   Changed 2026-08-04 with the user ruling that a valid-die map always lives in
+  //   `valid_die_ref`. The mechanism is unchanged (still `populateMapKeyDatalist`); what
+  //   moved is the POPULATION, and this case is what holds it there. The canvas table is
+  //   `bonding_map` and only the `valid_die_ref` answer is served, so an implementation that
+  //   still asked for the canvas table would get NO answer and produce an empty list — the
+  //   two outcomes cannot be confused.
   {
-    const env = build(src, { table: 'bonding_map', answers: [metaAnswer('bonding_map')] });
-    env.el.validDieRefTable.value = '';                 // '' = inherit the canvas table
+    const env = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
     await env.sandbox.populateValidDieRefList();
     r.vdOptions = optionValues(env.el.validDieRefList);
-    r.vdFilteredByCanvas = env.requests[0].includes(encodeURIComponent('"filter":"bonding_map"'));
+    r.vdFilteredByFixedTable =
+      env.requests[0].includes(encodeURIComponent('"filter":"valid_die_ref"'));
+    r.vdAskedCanvasTable = env.requests[0].includes(encodeURIComponent('"filter":"bonding_map"'));
     // The second focus must not re-ask: a complete list is cached, and that is the whole
     // reason focus-time loading is affordable.
     await env.sandbox.populateValidDieRefList();
     r.vdRequests = env.requests.length;
     if (strict) {
-      check('valid-die list still resolves the empty table select to the canvas table',
-        r.vdFilteredByCanvas, true);
-      check('valid-die list holds the canvas table\'s map_ids', r.vdOptions, META_ROWS.bonding_map);
+      check('the valid-die list asks for the FIXED table, not the canvas table',
+        r.vdFilteredByFixedTable, true);
+      check('...and never asks for the canvas table', r.vdAskedCanvasTable, false);
+      check('valid-die list holds valid_die_ref\'s map_ids', r.vdOptions, META_ROWS.valid_die_ref);
       check('a COMPLETE map-key list is cached: two focuses cost one request', r.vdRequests, 1);
     }
   }
@@ -460,7 +474,7 @@ async function runChecks(src, { strict = true } = {}) {
   {
     const env = build(src, {
       table: 'bonding_map',
-      answers: [metaAnswer('bonding_map', 900)],       // total 900 >> 3 rows
+      answers: [metaAnswer('valid_die_ref', 900)],     // total 900 >> 3 rows
     });
     const baseTitle = env.el.validDieRefKey.title;
     await env.sandbox.populateValidDieRefList();

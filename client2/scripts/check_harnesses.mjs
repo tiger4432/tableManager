@@ -111,7 +111,7 @@ const FLOORS = new Map([
   ['geometry_origin_reseat_harness.mjs', 46],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
-  ['map_key_datalist_harness.mjs', 53],
+  ['map_key_datalist_harness.mjs', 54],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],

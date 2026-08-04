@@ -107,6 +107,12 @@ for (const c of spec.client_consts || []) {
       + `evaluated, so nothing would be compared. Update vectors.json client_consts.`);
   }
   pieces.push(code);
+  // ...and publish it on the sandbox global. A top-level `const` in `vm.runInContext` lives in
+  // the script's lexical scope, so the extracted functions see it but the SCORER cannot — and a
+  // scorer that needs the value (e.g. the fixed valid-die table an expectation is stated in)
+  // would otherwise have to re-type it here, which is the stale copy this whole file exists to
+  // refuse. Function declarations already land on the global; this gives consts the same reach.
+  pieces.push(`globalThis[${JSON.stringify(c.name)}] = ${c.name};`);
 }
 for (const [role, m] of Object.entries(spec.client_symbols)) {
   if (role === '$comment') continue;
@@ -908,29 +914,17 @@ if (requireRoles('valid_die_push_decision_cases',
     // Module state and the option list — the app's two inputs, and the only two the fixture
     // is allowed to write.
     sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw };
-    sandbox.el = {
-      validDieRefTable: { value: '', options: (c.table_options || []).map(v => ({ value: v })) },
-      validDieRefKey: { value: '' },
-    };
-    sandbox.validDieRefTableTouched = true;   // deliberately stale; the sync must clear it
-    // THE APP'S OWN PATH fills the controls. Whatever it puts there is what a user would see,
-    // and it is also what clears the touched flag — starting the flag TRUE here means a sync
-    // that forgets to reset it fails, which is half of the QA finding's fix.
+    // 2026-08-04: ONE control. The table <select> and the touched flag that disambiguated it
+    // are gone with the ruling that fixes the storage table; the fixture writes the stored raw
+    // and nothing else.
+    sandbox.el = { validDieRefKey: { value: 'STALE' } };
+    // THE APP'S OWN PATH fills the control. Whatever it puts there is what a user would see —
+    // pre-dirtying it means a sync that fails to overwrite is caught rather than inherited.
     const synced = attempt(() => FN.sync_valid_die_ref_controls());
     rec(G, c.name, 'sync_did_not_throw', false, threw(synced) ? synced : false);
-    rec(G, c.name, 'sync_clears_the_touched_flag', false, sandbox.validDieRefTableTouched);
     // A user edit is the ONE thing that may write a control value, because that is literally
     // what a user does. `user_edit: null` means the user touched nothing at all.
-    if (c.user_edit) {
-      // The select fires `change` — and therefore records intent — only when the value it
-      // already shows actually changes. Mirroring that is what keeps this a simulation of the
-      // DOM event rather than a shortcut around the flag the fix turns on.
-      if (c.user_edit.table !== sandbox.el.validDieRefTable.value) {
-        sandbox.el.validDieRefTable.value = c.user_edit.table;
-        sandbox.validDieRefTableTouched = true;
-      }
-      sandbox.el.validDieRefKey.value = c.user_edit.key;
-    }
+    if (c.user_edit) sandbox.el.validDieRefKey.value = c.user_edit.key;
 
     const decision = attempt(() => FN.valid_die_ref_for_push());
     rec(G, c.name, 'decision_did_not_throw', false, threw(decision) ? decision : false);
@@ -978,27 +972,41 @@ if (requireRoles('valid_die_push_decision_cases',
   {
     const cs = cases(G);
     const untouched = cs.filter(c => !c.user_edit);
-    // THE DEFECT'S OWN AXIS: two cases identical except for whether the declared table is in
-    // the option list. Lose the pair and the option list can silently decide what gets stored
-    // again, which is exactly what shipped.
+    const FIXED = sandbox.VALID_DIE_TABLE;
+    if (typeof FIXED !== 'string' || FIXED === '') {
+      die('VALID_DIE_TABLE did not evaluate in the sandbox — declare it in client_consts.');
+    }
+    // THE DEFECT'S OWN AXIS, re-anchored 2026-08-04. It used to be "is the declared table in
+    // the option list"; with the list gone it is "does the declared table agree with the FIXED
+    // one". Lose the pair and an implementation that rewrites every disagreeing row — the way
+    // this ruling is most naturally mis-implemented — passes.
     const crossTable = untouched.filter(c => c.raw && typeof c.raw === 'object' && c.raw.table);
-    const listed = crossTable.filter(c => (c.table_options || []).includes(c.raw.table));
-    const unlisted = crossTable.filter(c => !(c.table_options || []).includes(c.raw.table));
-    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_push_with_UNLISTED_declared_table',
-      true, unlisted.length > 0);
-    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_push_with_LISTED_declared_table',
-      true, listed.length > 0);
-    rec(G, 'QA_NO_GO_axis_active', 'the_pair_agrees_on_the_saved_value',
-      [true], [listed.length > 0 && unlisted.length > 0
-        && listed.every(l => unlisted.some(u => u.expect_saved_reads_as === l.expect_saved_reads_as
-          && u.expect_table === l.expect_table && u.expect_key === l.expect_key))]);
+    const onFixed = crossTable.filter(c => c.raw.table === FIXED);
+    const offFixed = crossTable.filter(c => c.raw.table !== FIXED);
+    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_save_with_a_NON_fixed_declared_table',
+      true, offFixed.length > 0);
+    rec(G, 'QA_NO_GO_axis_active', 'has_untouched_save_with_the_FIXED_declared_table',
+      true, onFixed.length > 0);
+    rec(G, 'QA_NO_GO_axis_active', 'both_halves_expect_their_own_table_back',
+      [true], [onFixed.length > 0 && offFixed.length > 0
+        && onFixed.every(c => c.expect_table === c.raw.table)
+        && offFixed.every(c => c.expect_table === c.raw.table)]);
+    // ...and the other direction, without which "never rewrite" is satisfied by never writing.
+    const rekeyed = cs.filter(c => c.user_edit && c.user_edit.key
+      && c.raw && typeof c.raw === 'object' && c.raw.table && c.raw.table !== FIXED
+      && c.user_edit.key !== c.raw.map_id);
+    rec(G, 'QA_NO_GO_axis_active', 'has_a_rekey_that_must_LAND_on_the_fixed_table',
+      [true], [rekeyed.length > 0 && rekeyed.every(c => c.expect_table === FIXED)]);
     rec(G, 'fixture_active', 'has_an_untouched_push', true, untouched.length > 0);
     rec(G, 'fixture_active', 'has_a_user_edit', true, cs.some(c => c.user_edit));
     rec(G, 'fixture_active', 'has_an_empty_string_raw', true, cs.some(c => c.raw === ''));
     rec(G, 'fixture_active', 'has_a_null_raw', true, cs.some(c => c.raw === null));
     rec(G, 'fixture_active', 'has_an_absent_raw', true, cs.some(c => c.raw === ABSENT));
-    rec(G, 'fixture_active', 'has_a_deliberate_home_table_edit',
-      true, cs.some(c => c.user_edit && c.user_edit.table === '' && c.user_edit.key !== ''));
+    // A retype of the SAME key is not an edit. Without this case the group cannot tell
+    // "the user typed" from "the value changed", and merely focusing the field repoints a map.
+    rec(G, 'fixture_active', 'has_a_retype_of_the_unchanged_key',
+      true, cs.some(c => c.user_edit && c.raw && typeof c.raw === 'object'
+        && c.user_edit.key === c.raw.map_id));
     // Lose this and the identity claim degrades to deep-equality without anything saying so:
     // every remaining assertion in the group is satisfied by an implementation that copies.
     rec(G, 'fixture_active', 'has_an_object_identity_case',
