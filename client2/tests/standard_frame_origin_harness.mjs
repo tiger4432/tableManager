@@ -309,7 +309,8 @@ async function scoreAll(src, { verbose = false } = {}) {
 
     round1 = payload;
     // 🔴 THE METADATA RECORD PUSH WOULD WRITE, built from the SAME controls `pushMapData`
-    //    reads (`gridMeta` in that function, lines under `// Always construct grid metadata`).
+    //    reads (`gridMeta` inside `buildPushGridMetadata`, which `pushMapData` calls;
+    //    it was inline in that function until the R6 decomposition).
     //    Hard-coding the expected origin here instead would make the round-trip fixture
     //    disagree with itself under a defective source and report drift that Push never
     //    produced — measured: it did exactly that on the first draft of this harness.

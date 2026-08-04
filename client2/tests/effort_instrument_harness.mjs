@@ -193,6 +193,16 @@ function makeCtx(src, opts = {}) {
     // push actually reaching the request.
     extractFunction(src, 'classifyUnsavableCells'),
     extractFunction(src, 'serverCellKeySet'),
+    // `pushMapData`'s named steps. They are CALLED by the function sliced below, so a
+    // missing name here is a ReferenceError on the very first line of the push, not a
+    // red assertion. Whenever a block leaves `pushMapData`, it must be added here in
+    // the same commit. (The gate block and both PUT blocks deliberately did NOT leave —
+    // see the banner above the step definitions in map_editor.js for why.)
+    extractFunction(src, 'confirmLogShapedPushTarget'),
+    extractFunction(src, 'collectMetaFieldValues'),
+    extractFunction(src, 'buildPushGridMetadata'),
+    extractFunction(src, 'confirmMissingSplitDescriptions'),
+    extractFunction(src, 'outsideCircleNoteForPush'),
     extractFunction(src, 'pushMapData'),
     extractFunction(src, 'openMapFrame'),
     extractFunction(src, 'popMapFrame'),

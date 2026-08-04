@@ -5318,51 +5318,11 @@ function logShapedPushDecision(schema, xCol, yCol, valCol) {
 }
 
 async function pushMapData() {
-  // [Data-protection gate 4 - log-shaped target] Fourth member of the gate family
-  // (zone-columns-missing / legacy-unreadable / frame-contrast): refuse, don't confirm.
-  // Placed before every dialog - the user should not answer a single question on a
-  // push that cannot be allowed. Near-miss 2026-07-28: dt_log opened as a map (works
-  // for viewing), ⚡ Push would have replace_map'ed the scoped REAL log rows into
-  // editor-fabricated (key, x, y, val) cells - dt_id, eventtime, core lot/slot, cx/cy,
-  // dt_eqp all gone.
-  //
-  // ONE declared exception (`map_push_ok: true` in the table's table_config entry,
-  // served via /schema): sites with a real editor-overwrite flow into such tables
-  // (R&D manual measurements into eds_fail_map / core_defect_map) get a single
-  // loss-acknowledging confirm instead of the block. The declaration is the site
-  // saying "the loss is understood and intended here" - absent, the hard refusal
-  // stands. Removing the declaration re-locks the table (production cutover).
-  const gate4 = logShapedPushDecision(
-    tableSchema, el.colMapX.value, el.colMapY.value, el.colMapVal.value);
-  if (gate4.mode !== 'clean') {
-    const extraDataCols = gate4.extras;
-    const shown = extraDataCols.slice(0, 8).join(', ')
-      + (extraDataCols.length > 8 ? ` 외 ${extraDataCols.length - 8}개` : '');
-    if (gate4.mode === 'confirm') {
-      console.warn(`[Map Editor] push into '${selectedTable}' with map_push_ok declared - `
-        + `${extraDataCols.length} data column(s) outside the map contract will be lost on `
-        + `replaced rows: ${extraDataCols.join(', ')}`);
-      if (!confirm(
-        `이 테이블('${selectedTable}')은 맵 계약 외 컬럼(${extraDataCols.length}개: ${shown})을 갖고 있습니다.\n\n`
-        + `이 Push로 교체되는 행들의 그 컬럼 값이 소실됩니다. 계속하시겠습니까?`
-      )) {
-        return;
-      }
-    } else {
-      console.warn(`[Map Editor] push refused - '${selectedTable}' is log-shaped: `
-        + `${extraDataCols.length} data column(s) outside the map contract would be `
-        + `destroyed by replace_map: ${extraDataCols.join(', ')}`);
-      alert(
-        `적재를 중단했습니다 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형 구조).\n\n`
-        + `이 테이블에는 맵 계약(맵 키 + X/Y/값) 밖의 데이터 컬럼이 ${extraDataCols.length}개 있습니다:\n`
-        + `· ${shown}\n\n`
-        + `덮어쓰기 적재(Clean Replace)는 대상 범위의 실제 행을 전부 삭제한 뒤 격자 셀(키·좌표·값)만으로 `
-        + `다시 쓰므로, 위 컬럼의 값이 전부 파괴됩니다.\n`
-        + `이 테이블은 맵 조회(오버레이 소스)로만 사용하십시오. 적재가 필요하면 전용 맵 테이블을 만들어 사용해야 합니다.`
-      );
-      return;
-    }
-  }
+  // [Data-protection gate 4] The refusal itself is `confirmLogShapedPushTarget` (below);
+  // it is FIRST for the reason recorded there — the user must not answer a single
+  // question on a push that cannot be allowed. Moving this call changes WHEN a push is
+  // refused, which is a behaviour change, not a move.
+  if (!confirmLogShapedPushTarget(tableSchema, el, selectedTable)) return;
   // [Push 가드 — 유일하게 남긴 정체성 마찰] 로드한 맵과 적재 대상이 **실제로 어긋났을 때만** 1회 묻는다.
   // replace_map은 맵 키 일치 행을 전량 삭제 후 재기록하므로, 키가 어긋난 채 적재하면
   // 남의 실맵이 통째로 사라진다(이슈 #14ⓐ와 뿌리 동일).
@@ -5376,24 +5336,9 @@ async function pushMapData() {
   )) {
     return;
   }
-  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
-  const metaValues = {};
-  let hasMeta = false;
-
-  metaInputs.forEach(input => {
-    const col = input.id.replace('meta-input-', '');
-    const val = input.value.trim();
-    if (val !== '') {
-      hasMeta = true;
-      const colType = tableSchema.column_types[col] || 'string';
-      metaValues[col] = colType === 'number' ? Number(val) : val;
-    }
-  });
-
-  if (!hasMeta && metaInputs.length > 0) {
-    alert('데이터 적재를 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
-    return;
-  }
+  const metaRead = collectMetaFieldValues(tableSchema);
+  if (!metaRead.ok) return;
+  const metaValues = metaRead.metaValues;
 
   const xCol = el.colMapX.value;
   const yCol = el.colMapY.value;
@@ -5409,34 +5354,13 @@ async function pushMapData() {
   const startY = parseInt(el.gridStartY.value, 10) || 0;
   const invertY = el.gridYInvert.checked;
 
-  // Always construct grid metadata object & JSON string for dedicated wafer_map_metadata table
-  const gridMeta = {
-    grid_cols: cols,
-    grid_rows: rows,
-    grid_start_x: startX,
-    grid_start_y: startY,
-    grid_y_invert: invertY,
-    rotation: currentRotation,
-    side: currentSide,
-    phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
-    phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
-    phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
-    phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
-    phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
-    phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
-  };
-  // [M4①→②] 이 객체는 화면 컨트롤에서 **처음부터 다시** 만들어진다. ①에서는 선언에 대응하는
-  // 컨트롤이 없어 원문(raw)을 그대로 되썼고, ②에서 그 컨트롤이 생겼다 — 이제 파괴적 재구성이
-  // 선언 **옆**이 아니라 선언 **위**를 지나므로, 무엇을 쓸지는 두 함수가 나눠 정한다:
-  //   `validDieRefForPush()`  — 사용자가 바꿨는가(모르면 원문을 손대지 않는다)
-  //   `applyValidDieRef()`    — 바꿨다면 무엇을 쓰는가(이음매가 채점하는 순수 쓰기)
-  // 선언이 없고 사용자가 칸을 건드리지 않은 맵은 `keep` + raw 부재 → 페이로드가 `2a9f6c4`와
-  // **바이트 단위로 같다**(INV-1, effort 하네스가 페이로드로 단언한다).
-  //   `validDieRefPayload()`   — 그 결정을 저장 페이로드로 바꾼다(순수 함수, 계약이 채점한다)
-  const validDieDecision = validDieRefForPush();
-  const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
-    validDie ? validDie.raw : undefined);
-  const gridMetaStr = JSON.stringify(gridMetaOut);
+  // The wafer_map_metadata record this push would write — built from the panel controls
+  // read just above. See `buildPushGridMetadata` (below) for the M4①→② note on why the
+  // object is reconstructed from scratch and who decides what `valid_die_ref` becomes.
+  const pushMeta = buildPushGridMetadata(cols, rows, startX, startY, invertY,
+    el, currentRotation, currentSide, validDie);
+  const gridMetaOut = pushMeta.gridMetaOut;
+  const gridMetaStr = pushMeta.gridMetaStr;
 
   const updates = [];
   const serializedKeys = [];   // [F2b] 실제로 직렬화된 셀의 물리 키 — 성공 시 서버 셀 집합이 된다
@@ -5541,40 +5465,12 @@ async function pushMapData() {
   }
 
   // [Split Registry] push 대상 값 중 split 서술이 비어있는 값 경고 (자연어 기록 누락 방지 관문)
-  const pushedValues = Array.from(new Set(updates.map(u => String(u.updates[valCol]))));
-  const missingDescVals = getMissingDescValues(pushedValues, legend);
-  if (missingDescVals.length > 0) {
-    const preview = missingDescVals.slice(0, 10).join(', ') + (missingDescVals.length > 10 ? ' …' : '');
-    const okMissing = confirm(
-      `split 서술(Description)이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
-      `대상 값: [${preview}]\n\n` +
-      `서술은 실험 split 조건의 자연어 기록으로, 팀 공유·검색·온톨로지 승격에 사용됩니다.`
-    );
-    if (!okMissing) return;
-  }
+  if (!confirmMissingSplitDescriptions(updates, valCol, legend)) return;
 
   // [C5] 덮어쓰기 대상 맵을 확인문에 명시한다. replace_map은 이 맵 키의 기존 행을
   // 전량 삭제 후 재기록하므로, 테이블명만 보여주면 "어느 맵이 지워지는지" 알 수 없다.
   const targetMapId = getMapIdFromMeta(metaValues, tableSchema) || 'default_map';
-  // [M4②] 원 밖으로 나가는 셀은 **말한다**. 새 확인창이 아니라 이미 있는 확인문의 한 줄이며,
-  // 근거가 원인 맵(오늘의 모든 맵)에서는 이 줄이 존재하지 않는다 — 확인문이 글자 하나
-  // 바뀌지 않는다는 뜻이다(INV-1). 유효 다이 저작·참조 중에만, 실제로 나가는 셀이 있을 때만.
-  let outsideNote = '';
-  if (validDieBasis() !== 'circle') {
-    const isRot = (currentRotation === 90 || currentRotation === 270);
-    const visualCols = isRot ? rows : cols;
-    const visualRows = isRot ? cols : rows;
-    let n = 0;
-    Object.keys(gridCells2D).forEach(rStr => {
-      Object.keys(gridCells2D[rStr] || {}).forEach(cStr => {
-        const co = gridCells2D[rStr][cStr];
-        if (!co || !co.inside) return;
-        if ((gridData[co.key] || '') === '') return;
-        if (!isCellInsideWafer(co.c, co.r, visualCols, visualRows)) n++;
-      });
-    });
-    if (n > 0) outsideNote = `· 웨이퍼 원 밖 셀: ${n}건 (유효 다이 근거가 원이 아닙니다)\n`;
-  }
+  const outsideNote = outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, gridData);
   if (!confirm(
     `총 ${updates.length}건의 활성 맵 데이터를 덮어쓰기 적재(Clean Replace)하시겠습니까?\n\n` +
     `· 대상 테이블: ${selectedTable}\n` +
@@ -5748,6 +5644,196 @@ async function pushMapData() {
     el.btnPushMap.textContent = '⚡ Push Map Data';
     el.btnPushMap.disabled = false;
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// `pushMapData`'s named steps — moved out of it verbatim, nothing else.
+//
+// ⚠️ WHAT DID **NOT** MOVE, AND WHY. Read this before cutting anything else out of
+//    `pushMapData`: the write-set table licenses far more than the harnesses allow,
+//    and none of the four refusals below is visible in it.
+//    (Anchor strings are described here, never reproduced — a second copy of an
+//     anchor in this file is a landmine for the next `String.replace`.)
+//
+//  · THE SERIALIZATION LOOP stays inline. `copy_header_count_harness`'s
+//    `pushLoopUsesSharedPredicate()` slices the source TEXT of the region that begins
+//    at the `updates` array declaration and ends at the contrast gate's first line,
+//    then asserts the region calls `eachSavableCell(` and contains no second `inside`
+//    predicate (INV-F2). Move the loop and that region stops being the push loop —
+//    the assertion goes vacuous while staying green. That is the "화면 34 · DB 33"
+//    class the shared predicate was introduced to close.
+//
+//  · THE CONTRAST / STRAY-CLEANUP GATE stays inline. The SAME harness slices it
+//    between those two exact source lines and RUNS it verbatim inside its own
+//    `runPushGate(updates)` wrapper. Both anchor lines, their order, and every
+//    identifier between them are load-bearing: a name its sandbox does not define is
+//    a `die()` — "nothing was compared" — not a red assertion.
+//
+//  · THE `wafer_map_metadata` PUT AND THE CELL-PUT EPILOGUE stay inline.
+//    `effort_instrument_harness`'s mutations M1/M2/M3/M3b/M8 anchor on INDENTED text
+//    inside them (at 2, 4, 6, 8 and 10 spaces). Lifting either block to module scope
+//    re-indents those lines by one level, every one of those mutations then fails to
+//    apply, and that harness treats a mutation that did not apply as a hard FAIL.
+//
+//  · `mapKeyListCache.delete(...)` stays where it is, inside the success branch.
+//    Cache invalidation living in the write path is coupling worth removing, but
+//    moving it is a behaviour question, not a move.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// [Data-protection gate 4 - log-shaped target] Fourth member of the gate family
+// (zone-columns-missing / legacy-unreadable / frame-contrast): refuse, don't confirm.
+// Called before every dialog - the user should not answer a single question on a
+// push that cannot be allowed. Near-miss 2026-07-28: dt_log opened as a map (works
+// for viewing), ⚡ Push would have replace_map'ed the scoped REAL log rows into
+// editor-fabricated (key, x, y, val) cells - dt_id, eventtime, core lot/slot, cx/cy,
+// dt_eqp all gone.
+//
+// ONE declared exception (`map_push_ok: true` in the table's table_config entry,
+// served via /schema): sites with a real editor-overwrite flow into such tables
+// (R&D manual measurements into eds_fail_map / core_defect_map) get a single
+// loss-acknowledging confirm instead of the block. The declaration is the site
+// saying "the loss is understood and intended here" - absent, the hard refusal
+// stands. Removing the declaration re-locks the table (production cutover).
+//
+// Returns false = do not push. Which mode refuses, and what each one says, is
+// `logShapedPushDecision`'s answer, unchanged.
+function confirmLogShapedPushTarget(tableSchema, el, selectedTable) {
+  const gate4 = logShapedPushDecision(
+    tableSchema, el.colMapX.value, el.colMapY.value, el.colMapVal.value);
+  if (gate4.mode !== 'clean') {
+    const extraDataCols = gate4.extras;
+    const shown = extraDataCols.slice(0, 8).join(', ')
+      + (extraDataCols.length > 8 ? ` 외 ${extraDataCols.length - 8}개` : '');
+    if (gate4.mode === 'confirm') {
+      console.warn(`[Map Editor] push into '${selectedTable}' with map_push_ok declared - `
+        + `${extraDataCols.length} data column(s) outside the map contract will be lost on `
+        + `replaced rows: ${extraDataCols.join(', ')}`);
+      if (!confirm(
+        `이 테이블('${selectedTable}')은 맵 계약 외 컬럼(${extraDataCols.length}개: ${shown})을 갖고 있습니다.\n\n`
+        + `이 Push로 교체되는 행들의 그 컬럼 값이 소실됩니다. 계속하시겠습니까?`
+      )) {
+        return false;
+      }
+    } else {
+      console.warn(`[Map Editor] push refused - '${selectedTable}' is log-shaped: `
+        + `${extraDataCols.length} data column(s) outside the map contract would be `
+        + `destroyed by replace_map: ${extraDataCols.join(', ')}`);
+      alert(
+        `적재를 중단했습니다 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형 구조).\n\n`
+        + `이 테이블에는 맵 계약(맵 키 + X/Y/값) 밖의 데이터 컬럼이 ${extraDataCols.length}개 있습니다:\n`
+        + `· ${shown}\n\n`
+        + `덮어쓰기 적재(Clean Replace)는 대상 범위의 실제 행을 전부 삭제한 뒤 격자 셀(키·좌표·값)만으로 `
+        + `다시 쓰므로, 위 컬럼의 값이 전부 파괴됩니다.\n`
+        + `이 테이블은 맵 조회(오버레이 소스)로만 사용하십시오. 적재가 필요하면 전용 맵 테이블을 만들어 사용해야 합니다.`
+      );
+      return false;
+    }
+  }
+  return true;
+}
+
+// The metadata panel, read as it stands. `ok:false` = the push must stop because the
+// table declares metadata fields and the operator filled none of them in; a table with
+// no such fields at all (`metaInputs.length === 0`) is NOT stopped, which is why the
+// emptiness test carries that second term.
+function collectMetaFieldValues(tableSchema) {
+  const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
+  const metaValues = {};
+  let hasMeta = false;
+
+  metaInputs.forEach(input => {
+    const col = input.id.replace('meta-input-', '');
+    const val = input.value.trim();
+    if (val !== '') {
+      hasMeta = true;
+      const colType = tableSchema.column_types[col] || 'string';
+      metaValues[col] = colType === 'number' ? Number(val) : val;
+    }
+  });
+
+  if (!hasMeta && metaInputs.length > 0) {
+    alert('데이터 적재를 위해 하나 이상의 메타데이터 필드 값을 입력하십시오.');
+    return { ok: false, metaValues };
+  }
+  return { ok: true, metaValues };
+}
+
+// Always construct grid metadata object & JSON string for dedicated wafer_map_metadata table.
+// (`standard_frame_origin_harness` re-derives this same shape from the same controls and
+//  cites this function by name — the two must not drift apart.)
+//
+// [M4①→②] 이 객체는 화면 컨트롤에서 **처음부터 다시** 만들어진다. ①에서는 선언에 대응하는
+// 컨트롤이 없어 원문(raw)을 그대로 되썼고, ②에서 그 컨트롤이 생겼다 — 이제 파괴적 재구성이
+// 선언 **옆**이 아니라 선언 **위**를 지나므로, 무엇을 쓸지는 두 함수가 나눠 정한다:
+//   `validDieRefForPush()`  — 사용자가 바꿨는가(모르면 원문을 손대지 않는다)
+//   `applyValidDieRef()`    — 바꿨다면 무엇을 쓰는가(이음매가 채점하는 순수 쓰기)
+// 선언이 없고 사용자가 칸을 건드리지 않은 맵은 `keep` + raw 부재 → 페이로드가 `2a9f6c4`와
+// **바이트 단위로 같다**(INV-1, effort 하네스가 페이로드로 단언한다).
+//   `validDieRefPayload()`   — 그 결정을 저장 페이로드로 바꾼다(순수 함수, 계약이 채점한다)
+function buildPushGridMetadata(cols, rows, startX, startY, invertY,
+  el, currentRotation, currentSide, validDie) {
+  const gridMeta = {
+    grid_cols: cols,
+    grid_rows: rows,
+    grid_start_x: startX,
+    grid_start_y: startY,
+    grid_y_invert: invertY,
+    rotation: currentRotation,
+    side: currentSide,
+    phys_wafer_dia: el.physWaferDia ? (parseFloat(el.physWaferDia.value) || 300) : 300,
+    phys_chip_x: el.physChipX ? (parseFloat(el.physChipX.value) || 2.5) : 2.5,
+    phys_chip_y: el.physChipY ? (parseFloat(el.physChipY.value) || 2.5) : 2.5,
+    phys_offset_x: el.physOffsetX ? (parseFloat(el.physOffsetX.value) || 0.0) : 0.0,
+    phys_offset_y: el.physOffsetY ? (parseFloat(el.physOffsetY.value) || 0.0) : 0.0,
+    phys_edge_margin: el.physEdgeMargin ? (parseFloat(el.physEdgeMargin.value) || 3.0) : 3.0
+  };
+  const validDieDecision = validDieRefForPush();
+  const gridMetaOut = validDieRefPayload(gridMeta, validDieDecision,
+    validDie ? validDie.raw : undefined);
+  const gridMetaStr = JSON.stringify(gridMetaOut);
+  return { gridMetaOut, gridMetaStr };
+}
+
+// [Split Registry] Returns false = the operator declined to save values whose split
+// description is still empty. Reporting, not a validity ruling: the plan is saved
+// incomplete if they say yes.
+function confirmMissingSplitDescriptions(updates, valCol, legend) {
+  const pushedValues = Array.from(new Set(updates.map(u => String(u.updates[valCol]))));
+  const missingDescVals = getMissingDescValues(pushedValues, legend);
+  if (missingDescVals.length > 0) {
+    const preview = missingDescVals.slice(0, 10).join(', ') + (missingDescVals.length > 10 ? ' …' : '');
+    const okMissing = confirm(
+      `split 서술(Description)이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
+      `대상 값: [${preview}]\n\n` +
+      `서술은 실험 split 조건의 자연어 기록으로, 팀 공유·검색·온톨로지 승격에 사용됩니다.`
+    );
+    if (!okMissing) return false;
+  }
+  return true;
+}
+
+// [M4②] 원 밖으로 나가는 셀은 **말한다**. 새 확인창이 아니라 이미 있는 확인문의 한 줄이며,
+// 근거가 원인 맵(오늘의 모든 맵)에서는 이 줄이 존재하지 않는다 — 확인문이 글자 하나
+// 바뀌지 않는다는 뜻이다(INV-1). 유효 다이 저작·참조 중에만, 실제로 나가는 셀이 있을 때만.
+// Returns '' when there is nothing to say, so the confirm text is byte-identical then.
+function outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, gridData) {
+  let outsideNote = '';
+  if (validDieBasis() !== 'circle') {
+    const isRot = (currentRotation === 90 || currentRotation === 270);
+    const visualCols = isRot ? rows : cols;
+    const visualRows = isRot ? cols : rows;
+    let n = 0;
+    Object.keys(gridCells2D).forEach(rStr => {
+      Object.keys(gridCells2D[rStr] || {}).forEach(cStr => {
+        const co = gridCells2D[rStr][cStr];
+        if (!co || !co.inside) return;
+        if ((gridData[co.key] || '') === '') return;
+        if (!isCellInsideWafer(co.c, co.r, visualCols, visualRows)) n++;
+      });
+    });
+    if (n > 0) outsideNote = `· 웨이퍼 원 밖 셀: ${n}건 (유효 다이 근거가 원이 아닙니다)\n`;
+  }
+  return outsideNote;
 }
 
 // ----------------------------------------------------
