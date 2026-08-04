@@ -779,8 +779,13 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
     return failed_any
 
 async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
-    """[Reliability F1 안전망] 커밋됐으나 통지 미확정(broadcast_at IS NULL)인 교정 행을 주기적으로 감지해
-    영향 target_table에 table-level batch_refresh_required를 발사하고 broadcast_at을 확정한다.
+    """[Reliability F1 안전망] 커밋됐으나 통지 미확정(broadcast_at IS NULL)인 행을 주기적으로 감지해
+    영향 테이블에 table-level batch_refresh_required를 발사하고 broadcast_at을 확정한다.
+
+    발사 대상 = (체인 규칙이 지목하는 target_table) ∪ (그 행이 기록된 table_name).
+    후자가 없으면 체인 규칙의 target 이 아닌 테이블은 복구 자체가 불가능하다 —
+    이 스윕은 워처(run_watcher.post_event)가 통지 실패 시 남기는 durable 마커의
+    수거자이기도 하므로, 그 마커의 table_name 이 곧 새로고침 대상이다.
 
     - eventual delivery: 통지 유실(웹서버 재시작/타임아웃/3s 초과)로 그리드가 영구 stale이 되는 경로를 없앤다.
       broadcast_at IS NULL 마커는 DB에 durable하므로 워커가 재시작돼도 복구된다(#3 신뢰 전파 회복).
@@ -821,8 +826,24 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     for evs in sweep_groups.values():
         affected_targets |= _group_target_tables(evs, rules)
 
-    if not affected_targets:
-        # 어떤 target에도 매핑되지 않는 행(규칙 비활성/트리거 아님 등) → 무한 재스윕 방지 위해 확정만 찍는다.
+    # [Broadcast Recovery] 미전달 행이 **기록된 테이블 자신**도 항상 새로고침 대상이다.
+    #   기존 구현은 chain target 만 대상으로 삼았고, 어떤 규칙에도 매핑되지 않는 행
+    #   (규칙 비활성, 트리거 아님, 그리고 워처가 남기는 BROADCAST_RECOVERY 마커)은
+    #   "무한 재스윕 방지"를 이유로 **아무것도 발사하지 않은 채 broadcast_at 만 찍고** 반환했다.
+    #   durable 마커는 소비되고 통지는 사라지므로, 체인 룰의 target 이 아닌 테이블에 대한
+    #   쓰기는 복구 경로가 아예 없었다("행은 들어왔는데 화면은 끝내 모른다").
+    #   table_name 은 NOT NULL 이므로 이 합집합은 항상 비어 있지 않다 → 스윕은 언제나
+    #   발사 후 확정(stamp)으로 끝나고, 확정으로 끝나는 한 재스윕은 구조적으로 불가능하다.
+    #   (무한 스윕을 막는 것은 "발사 안 함"이 아니라 "확정을 찍는 것"이다.)
+    source_tables = {e.table_name for e in stale if e.table_name}
+    refresh_targets = affected_targets | source_tables
+
+    if not refresh_targets:
+        # 테이블명조차 없는 병리적 행(방어) → 재스윕만 막고 종료.
+        logger.warning(
+            f"[Broadcast Recovery] {len(stale_ids)} undelivered row(s) name no table at all; "
+            "stamping them so the sweep cannot spin on rows it can never announce."
+        )
         db.query(DatabaseOutbox).filter(DatabaseOutbox.id.in_(stale_ids)).update(
             {DatabaseOutbox.broadcast_at: func.now()}, synchronize_session=False)
         db.commit()
@@ -830,7 +851,7 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
 
     # table당 1건 dedup된 batch_refresh_required 발사(기존 계약 재사용). 전부 성공해야 확정한다.
     all_ok = True
-    for tgt in sorted(affected_targets):
+    for tgt in sorted(refresh_targets):
         msg = {
             "event": "batch_refresh_required",
             "table_name": tgt,
@@ -852,8 +873,8 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
         {DatabaseOutbox.broadcast_at: func.now()}, synchronize_session=False)
     db.commit()
     logger.info(
-        f"[Reliability F1] Recovery sweep re-delivered {len(affected_targets)} table refresh(es) "
-        f"for {len(stale_ids)} undelivered row(s): {sorted(affected_targets)}"
+        f"[Reliability F1] Recovery sweep re-delivered {len(refresh_targets)} table refresh(es) "
+        f"for {len(stale_ids)} undelivered row(s): {sorted(refresh_targets)}"
     )
 
 async def start_chain_ingestion_worker(db_session_factory):

@@ -24,8 +24,21 @@ EVENT_SCHEDULER_RUN_NOW = "SCHEDULER_RUN_NOW"
 #: See server/retroactive.py (`RUN_EVENT_TYPE` is this constant).
 EVENT_RETROACTIVE_RUN = "RETROACTIVE_RUN"
 
+#: Durable marker left behind when an internal notification could NOT be
+#: delivered (the hub was down, the POST timed out, a 5xx came back). It is not a
+#: data change and no mapper may ever run for it: it is written already
+#: `processed_chain=True, status='SUCCESS', broadcast_at=NULL`, which is exactly
+#: the shape the chain worker's undelivered-broadcast sweep collects. The sweep
+#: then fires `batch_refresh_required` for its `table_name` and stamps it.
+#:
+#: This deliberately reuses the marker the chain worker already had rather than
+#: inventing a second recovery mechanism: one durable marker, one sweeper, one
+#: place to be wrong. See internal_event_client.record_undelivered_notification.
+EVENT_BROADCAST_RECOVERY = "BROADCAST_RECOVERY"
+
 #: Every control type. The chain worker filters on membership, not on a literal.
-CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN})
+CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
+                                 EVENT_BROADCAST_RECOVERY})
 
 # [C-5] 인제션/체인 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
 # 웹서버(main.py /internal/events/*)와 audit_cache는 어차피 트랜잭션당 500건만 유지하므로,

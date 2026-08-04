@@ -51,6 +51,30 @@ API_BASE_URL = internal_event_client.api_base_url()
 # 폴러 스레드가 참조하는 WorkspaceWatcher 인스턴스 (main()에서 설정, None 가드 필수)
 workspace_watcher = None
 
+def _record_undelivered(endpoint: str, payload: dict, reason: str):
+    """[Broadcast Recovery] Durable marker for a notification that did not arrive.
+
+    This function is the whole difference between "the grid catches up within a
+    few seconds" and "the row is in the database and the screen never learns".
+    `post_event` used to log the failure and return; nothing on disk remembered
+    that an announcement was owed, so every notification emitted while the web
+    server was unreachable was lost for good - at every restart, and at every
+    momentary blip in between.
+
+    The marker is a `database_outbox` row in the exact shape the chain worker's
+    `sweep_undelivered_broadcasts` already collects, so recovery costs no new
+    mechanism, no new table and no second retry policy. See
+    internal_event_client.record_undelivered_notification.
+    """
+    import internal_event_client
+    table_name = (payload or {}).get("table_name")
+    if not table_name:
+        # Nothing to refresh: no table means no recoverable announcement.
+        return
+    internal_event_client.record_undelivered_notification(
+        SessionLocal, table_name, endpoint, reason, logger=logger)
+
+
 def post_event(endpoint: str, payload: dict):
     # [B5] /internal/events/* is gated with the admin secret; this worker
     # inherits ASSY_ADMIN_TOKEN from the launcher's environment. A 401 here means
@@ -76,8 +100,10 @@ def post_event(endpoint: str, payload: dict):
                 logger.error(f"API notification failed: {url} -> {res.status_code} | {note}")
             else:
                 logger.warning(f"API notification failed: {url} -> {res.status_code}")
+            _record_undelivered(endpoint, payload, f"HTTP {res.status_code}")
     except Exception as e:
         logger.error(f"Failed to send API notification: {e}")
+        _record_undelivered(endpoint, payload, f"{type(e).__name__}: {e}")
 
 def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
     logger.info(f"Refresh required for {table_name}: {count} rows updated.")
