@@ -69,24 +69,43 @@ import dt_map_derivation as derivation
 
 logger = logging.getLogger(__name__)
 
-# The column that carries the SOURCE on every derived cell. Not key material: it is
-# what makes a cell traceable back to the job that produced it, and what lets
-# `plan_retraction` select positively what a source owns.
-SOURCE_COLUMN = "dt_job"
-
-# The cell's value, and the provenance carried alongside it. One DT wafer mixes dies
-# from several core wafers, so the map's own key cannot recover where a die came from;
-# that provenance is the difference between a map you can draw and one you can trace.
-VALUE_COLUMNS = ("c_bn",)
-ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core_y")
+# Defaults, overridable per rule. They are DEFAULTS and not constants because the dev
+# database and production disagree about this table's shape; a mapper that read `c_bn`
+# because someone typed `c_bn` would be right in exactly one of the two.
+#
+#   derivation_source_table   the table the rows come FROM
+#   derivation_source_column  the column carrying the SOURCE on every derived cell.
+#                             Not key material - it is what makes a cell traceable back
+#                             to the job that produced it, and what lets
+#                             `plan_retraction` select positively what a source owns.
+#   derivation_value_columns  the cell's value
+#   derivation_origin_columns provenance. One DT wafer mixes dies from several core
+#                             wafers, so the map's own key cannot recover where a die
+#                             came from; this is the difference between a map you can
+#                             draw and one you can trace.
+#
+# The identity and coordinate columns are deliberately NOT here: those come from the
+# target table's own `map_key_columns` / `composite_key_source`, which is where the
+# answer already lives.
+DEFAULT_SOURCE_TABLE = "dt_log"
+DEFAULT_SOURCE_COLUMN = "dt_job"
+DEFAULT_VALUE_COLUMNS = ("c_bn",)
+DEFAULT_ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core_y")
 
 # Absent `c_bn` is left absent. A cell with no bin is absent, not "good".
-
-DEFAULT_SOURCE_TABLE = "dt_log"
 
 
 def _rule_source_table(rule) -> str:
     return str((rule or {}).get("derivation_source_table") or DEFAULT_SOURCE_TABLE)
+
+
+def _rule_source_column(rule) -> str:
+    return str((rule or {}).get("derivation_source_column") or DEFAULT_SOURCE_COLUMN)
+
+
+def _rule_columns(rule, key, default):
+    declared = (rule or {}).get(key)
+    return tuple(declared) if declared else tuple(default)
 
 
 def _payload_filters(db, rule, payload: Dict[str, Any], source_table: str) -> Dict[str, Any]:
@@ -188,8 +207,11 @@ def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]], rule=None
         result = derivation.derive_cells(
             db, rows,
             source_table=source_table, target_table=target_table,
-            source_column=SOURCE_COLUMN,
-            value_columns=VALUE_COLUMNS, origin_columns=ORIGIN_COLUMNS)
+            source_column=_rule_source_column(rule),
+            value_columns=_rule_columns(rule, "derivation_value_columns",
+                                        DEFAULT_VALUE_COLUMNS),
+            origin_columns=_rule_columns(rule, "derivation_origin_columns",
+                                         DEFAULT_ORIGIN_COLUMNS))
     except derivation.DerivationRefused as e:
         # Named, loud, and empty-handed. A partial map is not a smaller claim, it is a
         # DIFFERENT claim - "these dies were not transferred".

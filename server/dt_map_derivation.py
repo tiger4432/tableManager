@@ -53,7 +53,9 @@ Three refusals that must not be relaxed:
     exists to make the refusal structural rather than a habit.
   * NEVER substitute `core_frame` for a missing `dt_frame`. They are different frames
     and only `dt_frame` applies here (user ruling). The frame-attribution join exposes
-    both; this module reads one and `test_core_frame_is_never_read` proves it.
+    both; this module reads one, and
+    `test_core_frame_is_never_substituted_for_a_missing_dt_frame` proves it by seeding
+    a readable `core_frame` and requiring the row to be held back anyway.
   * NEVER guess between disagreeing evidence. Two frame rows that disagree produce
     `frame_disagreement`, not a pick - the discipline `html_topology_parser` uses.
 

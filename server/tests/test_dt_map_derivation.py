@@ -650,7 +650,14 @@ def test_hold_back_reasons_are_split_and_both_are_always_reported(env):
 
 def test_identity_comes_from_the_confirmed_columns_and_never_from_the_stored_ones(env):
     """The seeded stored lot/slot are WRONG. A fallback would be silent corruption:
-    the cell count is identical either way and only the map they land in changes."""
+    the cell count is identical either way and only the map they land in changes.
+
+    BOTH halves are needed and the second is the one that matters. Asserting only that
+    a confirmed value wins WHEN IT EXISTS leaves the dangerous case untested - a
+    `confirmed or stored` fallback passes that assertion untouched, because the
+    fallback never fires while the confirmed value is present. Measured: that exact
+    mutation survived the first version of this test.
+    """
     db = env
     _seed_log(db)
     _seed_attribution(db)
@@ -660,6 +667,62 @@ def test_identity_comes_from_the_confirmed_columns_and_never_from_the_stored_one
     assert lots == {CONFIRMED_LOT}
     assert slots == {CONFIRMED_SLOT}
     assert STORED_LOT not in lots and STORED_SLOT not in slots
+
+    # ...and now remove the confirmation while the WRONG stored values stay in place.
+    # This is the 10%: present, readable, and pointing at another lot's map.
+    db.query(models.DYNAMIC_TABLES[JOBATTR]).delete()
+    db.commit()
+    absent = _derive(db)
+    assert absent["updates"] == [], (
+        "with no confirmation the derivation must produce nothing; it produced %d "
+        "cell(s), the first as %r" % (len(absent["updates"]),
+                                      absent["updates"][:1]))
+    assert absent["held"]["by_reason"] == {
+        derivation.HOLD_ATTRIBUTION_MISSING: absent["held"]["total"]}
+
+
+def test_the_meta_is_looked_up_under_the_identity_the_registrar_composes(env):
+    """WHICH map_id the derivation asks for, pinned.
+
+    `wafer_map_metadata` rows are registered under identities composed by
+    `map_meta_registrar.compose_map_id`. Composing the lookup key any other way does not
+    fail loudly - it finds no meta, and every row holds back under `target_meta_missing`
+    while the map sits there in the table. Nothing observes the identity unless a test
+    captures it, because the loader is otherwise free to ignore its argument.
+    """
+    import map_meta_registrar
+
+    db = env
+    _seed_log(db)
+    _seed_attribution(db)
+
+    asked = []
+
+    def loader(map_id):
+        asked.append(map_id)
+        return dict(CANONICAL_META)
+
+    result = _derive(db, meta_loader=loader)
+    assert result["derived"] > 0
+    expected = map_meta_registrar.compose_map_id(
+        ["lot", "slot"], {"lot": CONFIRMED_LOT, "slot": CONFIRMED_SLOT}, MAP)
+    assert set(asked) == {expected}
+    assert expected == "%s_%s" % (CONFIRMED_LOT, CONFIRMED_SLOT)
+
+
+def test_a_partial_identity_is_refused_by_the_composition_too(env):
+    """The blank gate is not the only thing standing here, and that is deliberate.
+
+    `compose_map_id` returns None for a missing or empty part, so an identity with a
+    hole is refused a second time on the way out. The two gates charge the SAME
+    hold-back reason, which is why removing either one is invisible in behaviour - the
+    redundancy is the point, and this test pins the second one directly.
+    """
+    import map_meta_registrar
+    assert map_meta_registrar.compose_map_id(
+        ["lot", "slot"], {"lot": CONFIRMED_LOT, "slot": ""}, MAP) is None
+    assert map_meta_registrar.compose_map_id(
+        ["lot", "slot"], {"lot": CONFIRMED_LOT}, MAP) is None
 
 
 def test_stored_key_columns_are_structurally_excluded_from_the_payload(env):
@@ -952,3 +1015,171 @@ def test_live_virtual_join_rules_resolve_the_gate_if_they_are_present():
     assert derivation.FORBIDDEN_FRAME_SUBSTITUTE in (frame.get("expose") or []), \
         "core_frame is expected to be present and to be ignored - if it is gone, the " \
         "substitution test is no longer testing anything"
+
+
+# ---------------------------------------------------------------------------
+# The mapper: three trigger rules, one mapper, and the fan-out cap
+# ---------------------------------------------------------------------------
+
+def _mapper():
+    """`server/mappers/` is gitignored - only the `.sample` is tracked, so on a fresh
+    checkout the module this exercises does not exist. Skipping is honest; asserting it
+    away would hide board item O7, which is that the live mapper lives on one machine
+    and in no repository."""
+    import importlib
+    try:
+        return importlib.import_module("mappers.dt_map_mapper")
+    except ImportError:
+        pytest.skip("mappers/dt_map_mapper.py absent (gitignored; only .sample tracked)")
+
+
+def _seed_meta(db):
+    """Register the map's canonical frame the way the system really stores it.
+
+    The mapper does NOT take a `meta_loader`; it goes through
+    `map_overlay.load_map_meta`, which reads `wafer_map_metadata` by
+    (target_table, map_id). Skipping this seeding is how the first run of these tests
+    produced `target_meta_missing` for all 58 rows - which is the gate working, and is
+    also proof that the mapper path really does consult the registered frame rather
+    than assuming one.
+    """
+    import json
+    import map_meta_registrar
+    model = models.DYNAMIC_TABLES.get(map_overlay.META_TABLE)
+    map_id = map_meta_registrar.compose_map_id(
+        ["lot", "slot"], {"lot": CONFIRMED_LOT, "slot": CONFIRMED_SLOT}, MAP)
+    db.add(model(row_id="meta_%s" % map_id, business_key_val="%s|%s" % (MAP, map_id),
+                 target_table=MAP, map_id=map_id,
+                 grid_metadata=json.dumps(CANONICAL_META)))
+    db.commit()
+    return map_id
+
+
+def _rule(name, trigger):
+    """A rule declaration in the shape the chain worker passes through verbatim.
+
+    The column names are DECLARED here rather than baked into the mapper, which is what
+    lets one mapper serve a fixture whose columns are `job`/`bn` and a live table whose
+    columns are `dt_job`/`c_bn`.
+    """
+    return {"name": name, "trigger_table": trigger, "target_table": MAP,
+            "derivation_source_table": LOG,
+            "derivation_source_column": "job",
+            "derivation_value_columns": ["bn"],
+            "derivation_origin_columns": ["orig"],
+            "mapper_module": "mappers.dt_map_mapper",
+            "mapper_function": "build_dt_map_batch_df",
+            "is_batch": True, "enabled": False}
+
+
+def test_the_mapper_is_kept_byte_identical_with_its_sample():
+    """Nothing syncs the two and nothing else checks that they agree.
+
+    `production_mapper.py` and its own sample are already different files. Identical
+    bytes are the only cheap way to make divergence visible, so it is asserted rather
+    than merely intended.
+    """
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    live = os.path.join(here, "mappers", "dt_map_mapper.py")
+    sample = os.path.join(here, "mappers", "dt_map_mapper.py.sample")
+    if not os.path.exists(live):
+        pytest.skip("mappers/dt_map_mapper.py absent (gitignored)")
+    with open(live, "rb") as f:
+        live_bytes = f.read()
+    with open(sample, "rb") as f:
+        sample_bytes = f.read()
+    assert live_bytes.replace(b"\r\n", b"\n") == sample_bytes.replace(b"\r\n", b"\n"), \
+        "dt_map_mapper.py and its .sample have diverged - the tracked copy is the only " \
+        "one that exists outside this machine"
+
+
+def test_the_source_trigger_derives_the_rows_that_just_landed(env):
+    db = env
+    mapper = _mapper()
+    _seed_log(db)
+    _seed_attribution(db)
+    _seed_meta(db)
+    payloads = [{c: getattr(r, c) for c in TABLES[LOG]["column_types"]}
+                for r in _rows(db)]
+    out = mapper.build_dt_map_batch_df(db, payloads,
+                                       rule=_rule("dt_log_to_dt_map", LOG))
+    assert len(out["updates"]) == len(payloads)
+
+
+def test_the_attribution_trigger_revisits_rows_that_were_already_held_back(env):
+    """THE POINT OF THE SECOND RULE. These rows landed before their confirmation and
+    were skipped at source-trigger time. Without a revisit they are never looked at
+    again, and that is how the absent 40% would be lost permanently."""
+    db = env
+    mapper = _mapper()
+    _seed_log(db)
+
+    skipped = _derive(db)
+    assert skipped["updates"] == [], "the rows must start out held back"
+
+    _seed_attribution(db)
+    _seed_meta(db)
+    # The trigger payload is an ATTRIBUTION row, not a source row.
+    out = mapper.build_dt_map_batch_df(
+        db, [{"job": JOB, "lot_confirmed": CONFIRMED_LOT,
+              "slot_confirmed": CONFIRMED_SLOT}],
+        rule=_rule("dt_job_attribution_to_dt_map", JOBATTR))
+    assert len(out["updates"]) == len(_rows(db)), \
+        "the revisit must reach every source row of that job"
+
+
+def test_the_frame_trigger_revisits_every_job_on_that_equipment_and_product(env):
+    db = env
+    mapper = _mapper()
+    _seed_log(db)
+    _seed_attribution(db)
+    _seed_meta(db)
+    out = mapper.build_dt_map_batch_df(
+        db, [{"eqp": "EQP1", "prod": "PRD-A", "dt_frame": RECORDED_FRAME}],
+        rule=_rule("eqp_frame_attribution_to_dt_map", FRAMEATTR))
+    assert len(out["updates"]) == len(_rows(db))
+
+
+def test_the_frame_trigger_refuses_a_fan_out_over_the_cap(env, monkeypatch):
+    """One corrected frame row reaches every job on that equipment - measured at 2,892
+    source rows across 40 jobs on the dev fixture, a third of the table. A single config
+    edit must not re-derive that silently."""
+    db = env
+    mapper = _mapper()
+    _seed_log(db)
+    _seed_attribution(db)
+    monkeypatch.setattr(derivation, "SCOPE_ROW_CAP", 1)
+    out = mapper.build_dt_map_batch_df(
+        db, [{"eqp": "EQP1", "prod": "PRD-A", "dt_frame": RECORDED_FRAME}],
+        rule=_rule("eqp_frame_attribution_to_dt_map", FRAMEATTR))
+    assert out["updates"] == []
+
+
+def test_an_incomplete_trigger_key_selects_nothing_rather_than_everything(env):
+    """A missing scope component must never widen to the whole table."""
+    db = env
+    mapper = _mapper()
+    _seed_log(db)
+    _seed_attribution(db)
+    out = mapper.build_dt_map_batch_df(
+        db, [{"eqp": "EQP1", "prod": ""}],
+        rule=_rule("eqp_frame_attribution_to_dt_map", FRAMEATTR))
+    assert out["updates"] == []
+
+
+def test_all_three_declared_rules_ship_disabled():
+    """Enabling them is a separate, explicit decision that belongs with the evidence."""
+    import json
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sample = os.path.join(here, "config", "chain_rules.json.sample")
+    with open(sample, encoding="utf-8") as f:
+        rules = json.load(f)["rules"]
+    dt_rules = [r for r in rules if r.get("target_table") == "dt_map"]
+    assert len(dt_rules) == 3, "expected three trigger rules, found %d" % len(dt_rules)
+    assert {r["trigger_table"] for r in dt_rules} == {
+        "dt_log", "dt_job_attribution", "eqp_frame_attribution"}
+    assert all(r["enabled"] is False for r in dt_rules)
+    assert len({r["mapper_function"] for r in dt_rules}) == 1, \
+        "the three rules must share one mapper, or the decision lives in three places"
