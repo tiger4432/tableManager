@@ -166,9 +166,11 @@
 * 추가로 캔버스 중앙에 **대형 반투명 워터마크(표시 전용 오버레이)**를 함께 표기합니다(`renderGridCanvas()` step 9). `FRONT`=하늘색 `rgba(56,189,248,0.13)` / `BACK`=앰버 `rgba(245,158,11,0.13)`, 표시 전용이라 셀 데이터·`gridCells2D`·hit-test에 영향 없음.
 
 #### 반응형 격자 채움 (Responsive Fit)
-`fitGridToWorkspace()`가 작업영역(`#map-workspace`)의 가용 공간에 맞춰 격자 래퍼를 **정사각(min(가용W, 가용H))**으로 리사이즈한 뒤 재렌더합니다. 정사각 유지로 원형 웨이퍼의 타원 왜곡을 방지합니다.
+`fitGridToWorkspace()`가 작업영역(`#map-workspace`)의 가용 공간에 맞춰 격자 래퍼를 **정사각(min(가용W, 가용H))**으로 리사이즈한 뒤 재렌더합니다.
 * 트리거: `window.resize` + **`ResizeObserver(#map-workspace)`**. 후자는 창 리사이즈가 발생하지 않는 **분할 패널(스플리터) 크기 변경**까지 커버합니다.
-* 마우스→셀 매핑(`getGridCellFromMouseEvent`)과 렌더(`renderGridCanvas`)는 **둘 다 live `getBoundingClientRect()`(CSS px)** 로 `cellW`를 계산하고 셀 조회는 인덱스 기반이므로, 크기 변경·DPR/브라우저 줌에도 좌표 정합이 유지됩니다.
+* 마우스→셀 매핑(`getGridCellFromMouseEvent`)과 렌더(`renderGridCanvas`)는 **둘 다 live `getBoundingClientRect()`(CSS px)** 로 크기를 읽고 셀 조회는 인덱스 기반이므로, 크기 변경·DPR/브라우저 줌에도 좌표 정합이 유지됩니다.
+
+> 🔴 **[2026-08-04 정정] 「정사각 래퍼가 타원 왜곡을 방지한다」는 거짓이었습니다.** 래퍼가 정사각이어도 셀 크기를 `width/cols` × `height/rows`로 만들면 격자가 정사각이 아닌 순간 **셀이 정사각이 되고 원이 타원**이 됩니다. 실제 수리는 래퍼가 아니라 **셀**에서 났습니다 — `cellMetrics()`가 두 축에 **px/mm 하나**를 쓰고 그 축척을 **선언된 웨이퍼 지름에 정박**합니다(`102cdea`+`edc7ef6`). 정사각 래퍼는 여전히 유지되지만, 원이 원인 이유는 이제 그것이 아닙니다. 계약 정본은 [MAP_EDITOR_SPEC §1-ter](../spec/MAP_EDITOR_SPEC.md).
 
 ### 3.3 테이블 간 맵 이월 (Cross-Table Carry-Over)
 한 테이블(A)에서 편집한 맵을 다른 테이블(B)로 전환하여 그대로 저장할 수 있습니다. `switchTable()`은 전환 시 **편집 중인 맵(`gridData`)이 존재하면 유지/초기화 확인창**을 띄웁니다:

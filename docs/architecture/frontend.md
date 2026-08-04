@@ -300,6 +300,26 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 
 > 회귀 그물 `client2/tests/startup_socket_gate_harness.mjs` — 실제 `init`/`checkServerHealth`/`loadTables`/`initWebSocket`을 vm에서 잘라내 가짜 소켓·가짜 `fetch`로 구동하고, **`new WebSocket(...)`이 실제로 일어났는지**를 채점한다(Network 탭에서 없던 바로 그 사건). 변이 9개 전원 검출, 그중 M9는 **라운드 이전 코드 전체**(소켓 마지막 + 가드 없는 catch)를 되돌려 catch-throws 경로를 재현한다.
 
+#### 3.5-bis 아무것도 영원히 기다리지 않는다 — 연결 감시견과 **세 번째 상태**
+
+소켓을 먼저 띄운 것만으로는 절반이다. **블랙홀 경로**(사내 프록시·끊긴 백엔드)에서 `WebSocket`은 `onopen`도 `onclose`도 부르지 않으므로, 재연결 사다리가 **한 번도 발화하지 않은 채** 세션이 끝난다.
+
+- **감시견 `armConnectWatchdog`** — 소켓 생성 직후, 핸들러를 붙이기 **전에** 무장한다. 상한은 `WS_CONNECT_TIMEOUT_MS = 8000`(`config.js`). 발화하면 `abandonConnectingSocket()`이 **`onopen`/`onclose`/`onerror`/`onmessage`를 먼저 `null`로 만든 뒤** `close()`한다(안 그러면 정리가 `onclose`로 재진입한다) → 평범한 백오프 사다리로 복귀. **별도 복구 기계장치는 없다** — 발화는 「실패한 시도 한 번」일 뿐이다.
+- 근거(주석에 기록): 로컬 핸드셰이크 중앙값 **2.54ms**·최대 4.15ms라 8초는 약 1,900배이고, 이 저장소에서 측정된 가장 느린 지연(수명주기 기동 3,094ms, n=324)에도 2.6배 여유가 있다. 최악 복구는 8초 + 사다리 한 칸(≤ `WS_RECONNECT_CEILING_MS` 5000) ≈ 13초.
+- 관련 상한 하나 더: `WS_CONNECT_STALE_MS = 1000` — 깨우기 신호(`visibilitychange`·`online`)가 **CONNECTING 소켓을 버려도 되는** 최소 경과 시간(`wakeNow`).
+
+🔴 **배지가 같은 글자로 덮고 있던 세 상태가 갈라졌다.**
+
+| 실제 상태 | 지금 보이는 글자 | 어디서 |
+|---|---|---|
+| 소켓을 **만든 적이 없다**(`init()`이 `initWebSocket` 전에 죽음) | `WS: Connecting` — **`index.html`의 초기값이 손대지 않은 채 남은 것** | `client2/index.html` |
+| 만들었고 **협상 중**이다 | `WS: 연결 시도 N` | `websocket.js` (`status-badge`) |
+| 만들었는데 **경로가 응답을 삼켰다**(감시견 발화) | `WS: 응답 없음 N회` | `websocket.js` (`status-badge offline`) |
+
+- 대비되는 종점 둘은 종전대로다 — `WS: CONNECTED`(`online`) / `WS: DISCONNECTED`(`offline`).
+- 🔴 **첫 줄이 진단의 핵심이다**: `WS: Connecting`은 이제 **「아무도 이 배지를 쓴 적이 없다」**는 뜻이고, 그것이 곧 §3.5의 결함 서명이다. 반대로 **서버가 거절한 것**(`WS: DISCONNECTED`)과 **경로가 삼킨 것**(`WS: 응답 없음`)은 전혀 다른 고장인데 종전에는 화면이 같은 글자를 보여 줬다.
+- ⚠️ **초기값을 「연결 안 함」류의 다른 문구로 바꾸지 마십시오** — 세 상태 중 하나가 *「JS가 그 줄에 닿지 않았다」*로 읽히는 것이 이 설계의 요점입니다.
+
 ---
 
 ## 4. 맵 에디터 (`map_editor.js` + `map_key.js` + `split_registry_row.js`)
@@ -318,7 +338,9 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 | **페인트 잠금** (M2) | `fetchPaintRules`(GET `/api/maps/paint-rules` — 선언 정본이 서버로 이동, 구 `'F'` 하드코딩 대체), **`isProtectedFCell`**(편집 가능 판정의 **단일 관문** — 모든 편집 경로가 여기로 수렴), `updatePaintLockIndicator`. 404/405만 "선언 없음", 네트워크·5xx는 직전 잠금 유지(**조용한 fail-open 제거**). ⚠️ 콜드 스타트(첫 조회 실패)는 아직 열린 채 시작 — QA C4 미해소 |
 | **오버레이 레이어** (`7d931dc`) | **좌표 변환은 클라 단일 구현이다** — `소스 원본(x,y) →[소스 메타 프레임]→ 물리 →[현재 화면 컨트롤]→ 셀`. `addOverlayLayer`가 `/tables/{src}/data`(원본 좌표) + `wafer_map_metadata` 2건을 읽고 투영한다. 오버레이 전용 기하 코드는 없다 — `withPhysFrame`(프레임 창)으로 규격 읽기 지점만 갈아끼운 채 메인 로드와 **같은 두 함수**를 돌린다. **소스와 타깃의 피치가 다르면 다이 인덱스로는 못 겹치므로**(같은 인덱스가 같은 물리 자리가 아니다) `projectCellsToWaferMm`이 절대 웨이퍼 mm 항목을 만들고 `seatWaferMmInFrame`이 그것을 타깃 프레임의 칸에 앉힌다(§4의 웨이퍼 mm 행 — 규칙 6). 🔴 **mm 항목은 반올림 *전* 연속값에서 만든다** — 반올림된 다이 인덱스에서 되만들면 칸 미만 잔여가 빠져 모든 셀이 밀린다(실측: 한 픽스처에서 1,836칸 중 1,789칸이 틀린 칸에 앉았다). `currentGeomSignature`(물리 6종 포함)/`syncOverlayGeometry`가 화면 규격 변경을 추종하고, `overlayAlignChip`은 `align.origin`으로만 판정한다. `importOverlayToGrid`는 `gridData`로만 반영(서버 쓰기 없음). **메인 로드와 코드 경로 완전 분리** — `selectedTable`·`gridData`·legend·규격·brush를 쓰지 않고 `switchTable`을 경유하지 않는다. 기준이 바뀌면 오버레이는 **해제**된다(맵 로드·테이블 전환·프레임 진입 3곳) |
 | **오버레이 점의 색** (2026-08-04 `376e1c8`→`41b17ee`) | `legendColorForValue(val)` → `overlayMarkerFill(list)` → `paintOverlayDot(...)`. 🟩 **legend가 유일한 색 출처**이고 폴백은 셋뿐이다 — 열린 맵의 legend 행 → 서버가 서빙한 `default_legend`(`declaredLegendRow`) → **`null`(안 칠함)**. 🔴 **`pickUnusedColor()`·`LEGEND_PALETTE`는 여기서 안 부른다**(지어낸 색은 선언된 색처럼 읽힌다 — 하네스가 소스 대조로 0건을 채점). 미선언 값은 **속이 빈 링 점**이고(원호는 그대로 그리고 흰 후광 + 레이어 색으로 두 번 스트로크, `fillStyle`은 **대입조차 안 한다**), 한 칸에 값이 여럿이면 **값이 같아도** 안 칠한다(대표를 고르지 않는다). 부재의 두 이유는 픽셀이 아니라 칩으로 가른다 — `overlayFanChip`(여럿) / **`overlayLegendChip`(`범례 밖 N종` — 처방까지 말한다)**. 계약 정본 [MAP_EDITOR_SPEC §5.4-bis](../spec/MAP_EDITOR_SPEC.md) |
-| **유효 다이 지정** (2026-08-04 `6420ad0`) | 저장 테이블이 **`valid_die_ref` 하나로 고정**(`VALID_DIE_TABLE`)돼 테이블 `<select>`가 사라졌다. 🔴 **🎯 APPLY(`onValidDieRefChanged`)와 💾 SAVE(`saveValidDieRefDeclaration`)는 다른 동작이고 서로를 하지 않는다** — APPLY는 화면에만, SAVE는 `wafer_map_metadata`의 `grid_metadata`에만. **키 칸에는 `change`/`blur`/`input` 리스너가 없어 키를 고르는 데 요청이 0건**이고(유일한 리스너는 `focus → populateValidDieRefList`), **완전한 목록만** 캐시한다(잘린 목록은 다음 focus에 다시 묻는다). ⚠️ **고정된 것은 저작이지 저장 형식이 아니다** — `parseValidDieRef`는 종전 두 형식을 그대로 받고, 판정은 `validDieRefFromControls`의 「키를 건드렸는가」 한 줄뿐이다. 계약 정본 [MAP_EDITOR_SPEC §5.7-a/§5.7-b](../spec/MAP_EDITOR_SPEC.md) |
+| **유효 다이 지정** (2026-08-04 `6420ad0` → **`5b15c24`**) | 저장 테이블이 **`valid_die_ref` 하나로 고정**(`VALID_DIE_TABLE`)돼 테이블 `<select>`가 사라졌다. 🔴 **[정정 `5b15c24`] `🎯 APPLY`·`💾 SAVE` 두 버튼은 삭제됐다** — 이 줄은 하루 전 그 둘을 계약으로 적고 있었고 지금 **거짓**이다(`btn-valid-die-apply`/`btn-valid-die-save`는 마크업·JS에 0건). **고르는 것이 곧 적용**이다: 키 컨트롤은 진짜 `<select>`이고 `change`가 즉시 적용하며(`onValidDieRefChanged`), 목록이 잘렸거나·읽지 못했거나·지금 키가 목록에 없거나·항목이 0개면 **텍스트 입력으로 폴백**해 **`Enter`만** 적용한다(`input`은 컨트롤을 다시 그릴 뿐, `blur`/`change` 리스너는 아예 없다 — `renderValidDieKeyControl`). 목록을 읽는 유일한 리스너는 여전히 `focus → populateValidDieRefList`이고 **완전한 목록만** 캐시한다. 기록은 `⚡ Push` 또는 **`📐 규격만 저장`**(`btn-save-map-spec` → `saveMapSpecOnly` — 유효 다이 블록 밖, 그리드 툴바)이 한다. ⚠️ **고정된 것은 저작이지 저장 형식이 아니다** — `parseValidDieRef`는 종전 두 형식을 그대로 받는다. 계약 정본 [MAP_EDITOR_SPEC §5.7-a/§5.7-b](../spec/MAP_EDITOR_SPEC.md) |
+| **📐 규격만 저장** (2026-08-04 `5b15c24`+`30284bf`) | `saveMapSpecOnly` — `grid_metadata` 한 필드만 쓰고 **셀은 한 건도 쓰지 않는다**. 🔴 **신원은 `loadedIdentity`가 아니라 「지금 화면의 컨트롤」**(`selectedTable` + `getCurrentMapKey()`)이고, **없는 등록을 만들 수 있다**(새 라우트 없음 — 지워진 SAVE가 쓰던 `PUT /tables/wafer_map_metadata/data/updates`가 `business_key_val`로 upsert. 확인창이 「새로 등록」/「갱신」을 말한다). 페이로드는 `⚡ Push`와 **같은 조립기** `buildPushGridMetadata` + `mergeStoredGridMeta`(모르는 키 보존). **응답에 `MAP_SPEC_SAVE_TIMEOUT_MS = 15000` + `AbortController`**, 🔴 시한 초과 문구는 **「기록되지 않았다」고 말하지 않는다**(멱등 쓰기라 단정하면 운영자가 착지한 쓰기를 되돌린다) |
+| **캔버스 축척** (2026-08-04 `102cdea`+`edc7ef6`) | `cellMetrics()`가 **축척의 단독 생산자**이고 렌더와 마우스 매핑 둘 다 그것을 부른다. **두 축에 px/mm 하나**(`s = min(sGrid, sWafer)`)이고 `sWafer`는 **선언된 웨이퍼 지름**에 정박한다(`effectiveRadius`가 아니다 — 그쪽은 edge margin을 접고 있어 같은 웨이퍼가 다르게 그려진다). 피치 X≠Y면 **셀은 직사각형**이고 그것이 요청된 결과다. 🔴 **여백에 「filler 셀」 객체는 없다** — 격자 밖 칸은 `strokeRect` 하나만 긋고 `gridCells2D` 등록 **전에** `continue`하므로 쓰이지도 세어지지도 않는다(쓰기는 마우스 경로의 두 번째 경계 검사가 따로 막는다). 오버레이 마커는 **축별**(`markerAxisRadius` → `rx`/`ry`, 다르면 `ctx.ellipse`). 🔴 **`auto_registered` 기하는 이 경로에 닿지 않는다** — `physDeclaration`이 chip을 `null`로 돌려 비등방 폴백으로 떨어지고, 오버레이 정렬은 **합성 1mm로 맞추지 않고 거절**한다. 계약 정본 [MAP_EDITOR_SPEC §1-ter](../spec/MAP_EDITOR_SPEC.md) |
 
 > **정정:** 맵 에디터는 **WebSocket을 사용하지 않습니다.** REST pull/push + localStorage. 실시간 WS는 메인 그리드(`websocket.js`)에만.
 > **오버레이와 서버의 관계 (2026-07-27 정정)**: 맵 에디터 클라는 `GET /api/maps/overlay`를 **전혀 호출하지 않습니다** — `client2/src/**` 전수 grep 0건(2026-07-27 실측). `7d931dc` 직후 남아 있던 `limit=1` 선언 probe가 **서버 선언 오버레이 레이어와 함께 삭제되면서 마지막 호출처가 없어졌습니다.** 엔드포인트와 `server/map_overlay.py`는 살아 있으나 소비자는 `bonding_plan`/`transfer_plan`의 가용량 산출 쪽입니다.

@@ -1,398 +1,160 @@
-# `notation_rules.json` 세팅 — 표기 정규화(파생 컬럼)
+# `notation_rules.json` 세팅 — 표기 정규화(조회 시점 폴드)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (`92b8d6f` 신설 — WF/lot 표기 정규화 1단계. 🔴 **이 문서의 JSON 예시는 전부 실제 검증기(`notation_norm.validate_notation_rules`)에 먹여 본 것이고, 붙어 있는 반환값·거절 메시지는 실행 결과 그대로입니다.** ⚠️ **1단계라 아직 아무도 파생값을 읽지 않습니다** — §0을 먼저 읽으십시오. 🔴 **켜는 것은 층이 셋**입니다(물리 컬럼 · 파생 쌍 · 가시성 — §2), 그중 셋째는 1단계에서 **일부러 안 하는 단계**입니다) | **Owner:** Backend / Ops
-> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · 1단계는 [table_config.json](./table_config.md)이 먼저다 · 정본 코드는 `server/notation_norm.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (🔴 **전면 재작성 — 이 문서가 서술하던 모델은 철회됐습니다.** `92b8d6f`가 출하한 **물리 파생 컬럼(`<컬럼>_norm`)**은 `8d306a5`에서 **아무도 소비하기 전에** 통째로 제거됐습니다(사용자 확정 2026-08-04). 지금 선언이 뜻하는 것은 「이 컬럼의 **표기가 정규화된 것으로 선언됐다**」 하나이고, 소비자가 **조회 시점에 비교의 양쪽을 SQL에서 접습니다**. **저장되는 것은 없습니다** — 파생 컬럼도, `<컬럼>_norm` 관례도, 재파생 스크립트도 이제 없습니다. 종전 판의 §2(층 셋)·§4.1·§4.2·§4.4·§7은 **전부 소멸했고**, 그 자리를 §2(한 단계)·§5.2(병합군 라우트)·§6(가상 조인의 함수 인덱스)이 대신합니다) | **Owner:** Backend / Ops
+> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 [virtual_join_rules](./virtual_join_rules.md)** · 정본 코드는 `server/notation_norm.py`
 
-<!-- Loader evidence (2026-08-04, 92b8d6f):
-  fold:            notation_norm.fold_notation  (rules: separator, case; zero_pad refused)
-  value:           notation_norm.normalized_value = fold_notation(map_overlay.canonical_bind_value(...))
-  load/validate:   notation_norm.load_notation_rules / validate_notation_rules / _validate_column
-                   / _normalize_rules   (rejection codes: would_rewrite_raw, key_column,
-                   zero_pad_unimplemented, unknown_rule, undeclared, shape)
-  cache:           notation_norm.RULES_CACHE_TTL = 5.0 + reset_cache()
-                   (main.reload_local_process_cache -> notation_norm.reset_cache)
-  write hook:      crud.apply_row_update_internal -> notation_norm.apply_derivations
-                   (after the value loop AND after the audit block; failure is logged, never fatal)
-  write refusal:   crud.refuse_notation_derived_columns, called from crud.apply_batch_updates
-                   beside refuse_virtual_join_columns; ValueError -> HTTP 400 (main.py:2319)
-  re-derivation:   notation_norm.rederive (keyset on row_id, bulk_update_mappings, dry-run default)
-                   CLI server/scripts/rederive_notation_norm.py  (--apply/--table/--chunk-size)
-  visibility:      main.get_table_schema (main.py:1929) -> display_columns when declared,
-                   else model columns; client2/src/api.js state.currentColumns ->
-                   client2/src/grid.js buildColumnDefs (the ONLY source of grid columns).
-                   /tables/{t}/data and /tables/{t}/export build from column_types, NOT
-                   display_columns - so the derived value ships and extracts either way.
-                   display_columns is ALSO the std parser's load filter
-                   (parsers/directory_watcher.py:1767, std_parser.py:62).
-  report:          config_resolve_report._resolve_notation (DOMAIN_NOTATION)
-                   GET /admin/config/resolve?domain=notation  (config only, zero DB queries)
-  tests:           server/tests/test_notation_normalization.py  (23)
-  live state 2026-08-04: server/config/notation_rules.json DOES NOT EXIST (only the .sample)
+<!-- Loader evidence (2026-08-04, 8d306a5 - measured against the tree, not transcribed):
+  python fold:    notation_norm.fold_notation(text, rules)        (reference spelling)
+  SQL fold:       notation_norm.fold_sql_text(inner_sql, rules)   (THE only Postgres spelling)
+                  notation_norm.fold_notation_sql(expr, rules)    (SQLAlchemy expression)
+                  notation_norm.SQL_FOLD_FUNCTION = "assy_fold_notation"  (non-PG dialects)
+                  notation_norm.install_sqlite_fold()  <- database/database.py:67
+  load/validate:  load_notation_rules / validate_notation_rules / _validate_column
+                  rejection codes: undeclared, not_text, zero_pad_unimplemented,
+                                   unknown_rule, shape
+                  (would_rewrite_raw / key_column are GONE - they guarded a write)
+  read entry:     normalized_by_table() -> rules_for_column / is_normalized
+                  join_pair_rules(lt, lc, rt, rc)  <- "either side declared = both folded"
+  cache:          RULES_CACHE_TTL = 5.0 + reset_cache()  (main.reload_local_process_cache)
+  consumers:      virtual_join_executor.join_onclause      (the ON clause, both sides)
+                  virtual_join_config.index_key_expression / required_index_ddl
+  preview:        notation_norm.fold_preview / declared_previews (PREVIEW_GROUP_LIMIT 500)
+                  GET /admin/config/notation/preview   (admin token; DB scan; read-only)
+  report:         config_resolve_report._resolve_notation + notation_preview_detail
+                  GET /admin/config/resolve?domain=notation   (config only, zero DB queries)
+  tests:          server/tests/test_notation_normalization.py (30)
+                  server/tests/test_notation_fold_contract.py (1 - shim)
+                  contracts/notation_fold/ (43 vectors x 4 rule combinations, live PG)
+  live state 2026-08-04: server/config/notation_rules.json DOES NOT EXIST (only .sample)
+  GONE: server/scripts/rederive_notation_norm.py (deleted in 8d306a5)
 -->
 
-## 0. 🔴 지금 무엇을 얻고, 무엇은 못 얻는가 (1단계)
+## 0. 🔴 이 문서를 어제 읽으셨다면 — 모델이 바뀌었습니다
 
-**얻는 것**: 원본 컬럼 옆에 **정규화된 표기가 담긴 파생 컬럼**이 생깁니다. 값은 정확하고, 새 쓰기마다 자동으로 갱신되며, 규칙을 바꾸면 언제든 다시 계산할 수 있습니다. **CSV 추출과 SQL로 볼 수 있고 셀 수 있습니다**(그리드에 그려질지는 별개의 세 번째 결정입니다 → §2.3).
+| | 종전(`92b8d6f`, 철회) | 지금(`8d306a5`) |
+|---|---|---|
+| 선언이 뜻하는 것 | 「이 컬럼은 **저 컬럼으로 파생된다**」 | 「이 컬럼의 **표기가 정규화됐다**」 |
+| 값 | 물리 컬럼 `<컬럼>_norm`에 **저장** | **아무것도 저장하지 않음** |
+| 켜는 절차 | `table_config` 컬럼 → 이 파일 쌍 → `display_columns` (**층 셋**) | 이 파일에 **한 줄** |
+| 소비 | 없음(1단계라 아무도 안 읽음) | **가상 조인의 키 비교**가 양쪽을 접어 씀 |
+| 규칙이 틀렸을 때 | 규칙 고치고 **재파생 스크립트** 실행 | 규칙만 고치면 **다음 조회부터** 끝 |
+| 쓰기 거부 | 파생 컬럼으로 가는 쓰기를 400으로 거부 | **거부할 것이 없음**(쓰기 경로에 존재하지 않음) |
 
-**못 얻는 것**: **아무것도 그 값을 읽지 않습니다.** 맵 키 분해도, 그리드 필터도, virtual join도 여전히 **원본 값**을 씁니다. 그러니 `CL-2601-001`과 `CL_2601_001`이 화면에서 **오늘 합쳐지지 않습니다.**
+**왜 뒤집혔나** — 이유는 취향이 아니라 실측이었고, `server/notation_norm.py` 모듈 상단에 그대로 남아 있습니다:
 
-> 🔴 **필터가 합쳐지기를 기대하고 켜지 마십시오.** 합치는 것(2단계)은 설정 스위치가 아니라 **데이터 마이그레이션**입니다: `wafer_map_metadata`의 행은 **원본 신원**으로 등록돼 있어서(`map_overlay.compose_map_id`가 원본 값을 `_`로 잇습니다), 맵 키가 정규화 값을 읽는 순간 **기존 `map_id`가 자기 메타 행과 안 맞게 되고 맵이 안 열립니다.** 메타를 다시 등록할 것인지, 어느 쪽 테이블에 파생 컬럼을 둘 것인지가 전부 별도 라운드의 결정입니다.
+- **층 셋 사이에 조용한 실패가 있었습니다.** `table_config.json`에 컬럼을 적어만 놓고 물리 ALTER 착지를 확인하지 않으면, 해석 보고서는 「선언 1건이 유효」라고 답하는데 값은 영원히 비어 있었습니다.
+- **파생 컬럼이 그 자체로 부채였습니다** — 보이는데 못 고치고, CSV에 딸려 나가며, `display_columns`에 넣는 순간 같은 헤더의 파일이 들어오면 그 배치 전체가 실패했습니다.
+- 🔴 **결정타: 조인에 쓰려면 운영자가 `<컬럼>_norm`을 양쪽 `join_key`에 적어야 했습니다.** 실측 2026-08-04 — `dt_log.core_lot`은 병합군 15개, `core_wafer_map.core_lot`은 **0개**입니다. 깨끗한 쪽에 선언할 이유가 있는 운영자는 없고, **한쪽만 접힌 조인은 이미 맞고 있던 매치를 조용히 잃습니다.** 문법은 멀쩡한데 결과가 틀린 config는 만들 수 있는 것 중 가장 나쁜 모양이라 컬럼을 없앴습니다.
 
-그래서 1단계에서 이 파일을 켜는 이유는 하나입니다 — **2단계를 결정하기 전에, 접었을 때 무엇이 합쳐지는지 실제 데이터로 보기 위해서**(§5.2의 false-merge 확인).
+> 🔴 **`{"core_lot": "core_lot_norm"}` 같은 옛 선언은 그대로 두면 이름 붙여 거절됩니다.** 로더가 `derived` 키와 문자열 형태를 알아보고 *「`derived`는 더 이상 없습니다 — 정규화는 컬럼을 만들지 않고 비교의 양쪽을 접습니다」*라고 답합니다. `true`로 바꾸고, 아무도 안 쓰면 `table_config.json`에서 `<컬럼>_norm` 컬럼도 지우십시오(**물리 컬럼은 선언을 지워도 DB에 남습니다** — [table_config](./table_config.md)의 한 방향 문).
 
-## 1. 무엇인가 — 원본은 어떤 경우에도 안 고친다
+## 1. 무엇인가 — 아무것도 저장하지 않는다
 
-같은 것을 여러 철자로 적어 온 값(`WF.01` / `WF-01` / `WF_01` / `wf 01`)을 **하나의 표기**로 접어 **별도 컬럼**(`<컬럼>_norm` 관례)에 기록합니다.
+같은 것을 여러 철자로 적어 온 값(`WF.01` / `WF-01` / `WF_01` / `wf 01`)을 **비교할 때만** 하나의 표기로 접습니다. 접는 자리는 **SQL이고 조회 시점**이며, 접힌 값이 어딘가에 남지 않습니다.
 
 | 규칙 | 하는 일 | 위험 |
 |---|---|---|
 | `separator` | `.` `_` `-` 공백의 **연속**을 `-` 하나로 | 낮음 |
-| `case` | 대문자로 접기 | 낮음 |
-| `zero_pad` | (앞자리 0 제거) | **미구현 — 켜면 거절됩니다** (§4) |
-
-실측 결과(`normalized_value`, `dt_log.core_lot`, `separator`+`case`):
+| `case` | **ASCII `a-z`만** 대문자로 | 낮음 |
+| `zero_pad` | (앞자리 0 제거) | **미구현 — 켜면 이름 붙여 거절합니다** (§4.2) |
 
 ```
-'CL-2601-001'        -> 'CL-2601-001'
-'CL_2601_001'        -> 'CL-2601-001'
-'CL_2601_006_A1_A7'  -> 'CL-2601-006-A1-A7'
-'WF.01'              -> 'WF-01'
-'wf 01'              -> 'WF-01'
-'WF--01'             -> 'WF-01'
-'WF010'              -> 'WF010'      (zero_pad 미구현 ― 안 접습니다)
-'WF10'               -> 'WF10'
-None                 -> None
-'   '                -> None         (없는 값에는 표기가 없습니다)
+'CL-2601-001'        ->  'CL-2601-001'
+'CL_2601_001'        ->  'CL-2601-001'
+'WF.01'              ->  'WF-01'
+'wf 01'              ->  'WF-01'
+'WF--01'             ->  'WF-01'
+'WF010'              ->  'WF010'      (zero_pad 미구현 — 안 접습니다)
+None                 ->  None         (문자열이 아니면 그대로 통과)
 ```
 
-**왜 `-`로 접는가.** `_`는 복합 맵 키를 **잇는 문자**입니다. 값 자체가 `_`를 품으면 그 값은 자기가 속한 키를 조각냅니다 — `core_lot`이 `CL_2601_001_09`이면 슬롯 `5`와 합쳐진 키 `CL_2601_001_09_5`가 `lot='CL'` + `slot='2601_001_09_5'`로 되읽혀 **셀이 0개 그려집니다**(이 저장소의 시뮬레이션 데이터 766행이 그 모양이었습니다). `_` 관례는 **일부러 그렇게 만든 것**이고 이 기능은 그것을 바꾸지 않습니다 — 대신 `_`를 **값 밖으로 몰아냅니다.**
+**왜 `-`로 접는가.** `_`는 복합 맵 키를 **잇는 문자**입니다(`map_overlay.compose_map_id`). 값이 `_`를 품으면 그 값은 자기가 속한 키를 조각냅니다 — `core_lot`이 `CL_2601_001_09`이면 슬롯 `5`와 합친 키가 `lot='CL'` + `slot='2601_001_09_5'`로 되읽혀 **셀이 0개 그려집니다**. `_` 관례는 일부러 그렇게 만든 것이고, 이 기능은 그것을 바꾸지 않고 **`_`를 값 밖으로 몰아냅니다.**
 
-**원본은 절대 안 바뀝니다.** 이것이 이 기능의 안전 성질 전부입니다. 접기 규칙이 틀렸다는 것을 나중에 알아도 되돌릴 것이 없습니다 — 규칙을 고치고 다시 파생하면 끝입니다(§7). 그 성질은 주석이 아니라 **세 개의 거절**로 강제됩니다(§4).
+### 1.1 🔴 안전 성질이 조건부에서 무조건으로 바뀌었습니다
 
-## 2. 🔴 층이 셋이다 — 물리 컬럼 · 파생 쌍 · 가시성
+종전 판은 「원본은 절대 안 고친다」를 **거절 셋으로 강제**했습니다. 지금은 **강제할 것이 없습니다** — 쓰기 자체가 없으므로 저장된 값은 **언제나 원본**이고, 규칙을 바꾸면 바뀌는 것은 **다음 질의가 계산하는 값**뿐입니다. 되돌릴 것도, 다시 파생할 것도, 치울 컬럼도 없습니다.
 
-운영자가 통제하는 것은 **세 가지**이고 서로 다른 곳에서 결정됩니다. 「컬럼을 선언했는데 그리드가 그대로다」는 고장이 아니라 **셋째 층을 아직 안 건드린 것**입니다.
+> 🔴 **사라진 거절 둘(`would_rewrite_raw`·`key_column`)은 완화된 것이 아니라 주어가 소멸한 것입니다.** 둘 다 **쓰기**를 막던 문구였습니다. 언젠가 접힌 값을 어딘가에 다시 저장하게 되면 **둘은 함께 돌아와야 하고**, 무엇을 지키던 것인지는 `notation_norm` 모듈 docstring이 기록으로 남기고 있습니다.
 
-| 층 | 어디서 결정 | 켜면 무엇이 되나 | 1단계 권장 |
-|---|---|---|---|
-| ① **물리 컬럼** | `table_config.json`의 `column_types` | DB에 컬럼이 **실제로 생깁니다**(watcher가 ALTER를 냅니다) | **필수** |
-| ② **파생 쌍** | `notation_rules.json`(이 파일)의 `columns` | 그 컬럼에 **값이 채워집니다** | **필수** |
-| ③ **가시성** | `table_config.json`의 `display_columns` | 그 컬럼이 **그리드에 그려집니다** | **하지 마십시오** (§2.3) |
+### 1.2 🔴 폴드가 **두 엔진에** 있고, 둘은 계약으로 채점됩니다
 
-①과 ②는 **순서가 있고**(§2.1), ③은 **일부러 안 하는 단계**입니다(§2.3).
+이 저장소가 반복해서 대가를 치른 결함 계급이 「같은 연산의 두 철자」입니다. 폴드는 파이썬(기준)과 SQL(실제로 도는 것) **양쪽에** 존재할 수밖에 없으므로, `contracts/notation_fold/`가 **살아 있는 PostgreSQL**에 벡터를 먹여 두 결과를 **바이트 단위로** 대조합니다(43벡터 × 규칙 조합 4).
 
-### 2.1 순서 — ① 다음 ②
+그 대조가 **측정해서** 정한 것 셋 — 되돌리지 마십시오:
 
-| 단계 | 어디 | 무엇 | 확인 |
-|---|---|---|---|
-| **1** | `table_config.json` | 파생 컬럼을 `column_types`에 **`"string"`으로** 추가 → 물리 ALTER 대기 | `information_schema`로 **컬럼이 실제로 생겼는지** 확인 ([table_config §3](./table_config.md)) |
-| **2** | `notation_rules.json` (이 파일) | `columns` 아래에 `원본: 파생` 쌍 선언 | `GET /admin/config/resolve?domain=notation` (§5.1) |
+1. **`\s` / `[[:space:]]`는 이식성이 없고 두 엔진이 실제로 다릅니다.** 파이썬 `\s`는 29 코드포인트, 이 서버의 `[[:space:]]`는 그중 26개 + `U+180E`이고 `U+001C~U+001F`를 놓칩니다. 게다가 그 답은 **DB의 ctype에 딸린 성질**(실측 `Korean_Korea.949`)이라 리눅스 배포에서는 또 다릅니다. → 공백류는 **`\uXXXX`로 열거**되고 두 정규식이 **같은 상수 하나**에서 만들어집니다.
+2. **`upper()`는 `str.upper()`가 아닙니다.** 실측 — `upper('straße')`는 에스체트를 유지하는데 파이썬은 `'STRASSE'`(길이가 바뀝니다), `upper('ı')`·`upper('ﬁ')`는 무동작입니다. → `case`는 **ASCII `a-z`만** 접고, 양쪽 다 `translate` / `str.translate`를 씁니다. **종전 `fold_notation`의 `.upper()`보다 좁아진 것**이고, 저장된 것이 없으므로 발밑이 바뀌는 값도 없습니다.
+3. **`regexp_replace`는 `'g'` 없이는 첫 매치만 바꿉니다**(실측 `'WF.A_B 01'` → `'WF-A_B 01'`). 그 플래그는 `fold_sql_text` 한 곳에만 적혀 있습니다.
 
-1단계 예 (`table_config.json`의 `dt_log` 항목):
-
-```json
-"column_types": {
-  "core_lot": "string",
-  "core_lot_norm": "string"
-}
-```
-
-제약 둘 — 둘 다 로더가 거절로 강제합니다(§4):
-- 파생 컬럼은 **반드시 `"string"`**입니다. `number`로 선언하면 `'WF-01'`을 받지 못합니다.
-- 파생 컬럼은 **`business_key`도, `composite_key_source`의 멤버도 될 수 없습니다.** (원본 컬럼이 키 멤버인 것은 괜찮습니다 — `core_wafer_map.core_lot`이 그 예입니다.)
-
-### 2.2 뒤집으면 무슨 일이 나는가 — 두 가지 모양이고, 하나는 시끄럽고 하나는 조용하다
-
-**(A) 1단계를 아예 건너뛰었을 때 — 시끄럽게 거절됩니다.** 검증기가 `table_config.json`에 없는 컬럼을 지목한 선언을 반려합니다. 실제 반환값:
-
-```json
-{
-  "scope": "column",
-  "subject": "dt_log.core_lot",
-  "detail": "derived column 'core_lot_norm' is not declared in table_config.json for 'dt_log'. Add it as a \"string\" column there first - until the physical column exists there is nowhere to put the normalized value",
-  "code": "undeclared"
-}
-```
-
-`GET /admin/config/resolve?domain=notation`에서는 같은 것이 한국어 앞머리와 함께 `rejected`로 뜹니다(§5.1의 B). 이 경우는 **아무 값도 파생되지 않고**, 왜 안 됐는지가 화면에 남으므로 안전합니다.
-
-**(B) `table_config.json`에는 넣었는데 물리 ALTER 착지를 확인하지 않았을 때 — 조용합니다. 이쪽이 위험합니다.**
-
-검증기는 **config만 읽습니다**(`/admin/config/resolve`의 계약이 「DB 질의 0건」입니다). 그래서 `table_config.json`에 컬럼 이름이 적혀 있기만 하면 선언은 **`effective` 1건으로 정상 보고됩니다.** 그런데 파생을 실행하는 `notation_norm.apply_derivations`는 행 객체에 그 컬럼이 없으면(`hasattr(row, derived_col)`가 거짓) **그 컬럼을 그냥 건너뜁니다 — 예외도, 경고 로그도 남기지 않습니다.**
-
-즉 증상은 이렇습니다:
-
-> **해석 보고서는 「선언 1건이 유효합니다」라고 말하는데, 파생 컬럼은 계속 비어 있고 어디에도 에러가 없다.**
-
-그래서 2단계 전에 **`information_schema`로 컬럼 존재를 눈으로 확인**하는 것이 절차에 들어 있습니다. `GET /tables/{t}/schema`의 200은 증거가 아닙니다 — config 싱글턴을 읽을 뿐이라 DB에 없는 컬럼도 보입니다([CONFIG_GUIDE §4.3](../CONFIG_GUIDE.md)).
-
-복구는 어렵지 않습니다 — ALTER가 실제로 착지한 뒤 **재파생 한 번**(§7)이면 건너뛴 행이 전부 채워집니다. 다만 **그 사이에 「기능이 고장 났다」고 결론짓지 않는 것**이 이 절의 목적입니다.
-
-### 2.3 세 번째 층 — 그리드에 보이게 할 것인가 (1단계에서는 **하지 마십시오**)
-
-파생 컬럼은 **진짜 물리 컬럼**입니다. 그래서 「이제 내 그리드에 뜨는가?」라는 질문이 당연히 나오는데, 답은 **`display_columns`를 선언했는지에 달려 있고 그것은 별도의 결정**입니다.
-
-실측한 경로 (`92b8d6f` 시점 코드 기준):
-
-- `GET /tables/{t}/schema`는 `display_columns`가 **선언돼 있으면 그 목록을 그대로** 돌려주고, **없을 때만** 모델의 컬럼을 훑어 만듭니다(`main.get_table_schema`, `main.py:1929`). 시스템 컬럼 5종은 어느 쪽이든 뒤에 붙습니다.
-- 클라는 그 `columns`를 `state.currentColumns`에 그대로 담고(`client2/src/api.js`), `buildColumnDefs()`가 **그 배열에서만** 그리드 컬럼을 만듭니다(`client2/src/grid.js`).
-
-따라서:
-
-| 그 테이블에 `display_columns`가 | 파생 컬럼은 |
-|---|---|
-| **있다** | DB에는 있지만 **그리드에 안 뜹니다** — 목록에 직접 추가할 때까지 |
-| **없다** | 자동으로 **뜹니다**(모델 컬럼 열거로 떨어지므로) |
-
-> 2026-08-04 이 환경 실측: `table_config.json`에 등록된 **14개 테이블 전부가 `display_columns`를 선언**하고 있습니다. 즉 **여기서는 기본이 「안 보임」**입니다.
-
-🔴 **1단계에서는 추가하지 마십시오.** 아직 **아무도 그 값을 읽지 않으므로**(§0), 그리드에 컬럼을 하나 더 붙이는 것은 이득 없이 화면만 넓히는 일입니다. 접기 결과를 눈으로 보고 싶어질 때만 `display_columns`에 한 줄 추가하면 되고, **한 줄 지우면 그대로 되돌아갑니다** — 물리 컬럼도 값도 건드리지 않는 **되돌릴 수 있는 결정**입니다(`display_columns` 편집은 ALTER를 유발하지 않습니다).
-
-**그리고 그리드를 넓히지 않고도 결과를 볼 수 있습니다.** CSV 추출(`GET /tables/{t}/export`)은 헤더를 `display_columns`가 아니라 **`column_types` 전체**에서 만듭니다(`main.py`의 `business_cols`). 즉 **파생 컬럼은 `display_columns`에 없어도 CSV에는 나옵니다.** 행 페이로드(`GET /tables/{t}/data`)도 마찬가지로 `column_types` 기준이라 값 자체는 이미 클라까지 갑니다 — 그리지 않을 뿐입니다. §5.2의 false-merge 확인은 SQL이므로 애초에 이 층과 무관합니다.
-
-> ⚠️ **추가한다면 부작용 하나를 알고 하십시오.** `display_columns`는 그리드 표시 순서일 뿐 아니라 **표준 파서의 적재 대상 집합**이기도 합니다([table_config §5](./table_config.md)) — 목록에 없는 컬럼은 crud에 닿기 전에 버려집니다. 파생 컬럼을 목록에 넣으면, 마침 같은 이름의 헤더를 가진 원본 파일이 들어왔을 때 그 값이 crud까지 도달하고 **쓰기 거부(§4.4)에 걸려 그 배치 전체가 실패**합니다. 목록에서 빼 두면 파서 단계에서 조용히 버려져 그런 일이 없습니다.
-
-### 2.4 반영 시점
-
-`notation_rules.json`은 **config watcher의 감시 대상이 아닙니다**(watcher가 보는 파일은 `table_config.json` 하나뿐입니다). 반영은 두 갈래입니다:
-
-- **자동**: 선언 캐시의 TTL이 **5초**(`RULES_CACHE_TTL`)라, 저장하고 5초 뒤 다음 쓰기부터 새 선언이 적용됩니다 — 워커 프로세스도 포함입니다.
-- **즉시**: `POST /admin/reload-configs` (웹서버 프로세스의 캐시를 그 자리에서 버립니다).
-
-> ⚠️ **파생은 「원본 컬럼이 바뀐 쓰기」에서만 다시 계산됩니다**(신규 행은 항상). 선언을 켜도 **이미 쌓여 있던 행은 그대로 비어 있습니다** — 그것을 채우는 것이 §7의 재파생입니다.
-
-## 3. 선언 예시 — 전부 실제 검증기에 먹인 것
-
-> 아래 「검증기 반환」은 `conda run -n assy_manager python`으로 `notation_norm.validate_notation_rules(<입력>, known_tables=<이 환경의 table_config>)`를 돌린 **실제 출력**입니다. 손으로 쓴 기대값이 아닙니다.
-
-### 3.1 최소 선언 (1단계가 끝난 상태)
+## 2. 켜는 것은 **한 단계**입니다
 
 ```json
 {
   "rules": { "separator": true, "case": true, "zero_pad": false },
   "columns": {
-    "dt_log": { "core_lot": "core_lot_norm" }
+    "dt_log": { "core_lot": true }
   }
 }
 ```
 
-검증기 반환 (거절 0건):
+이게 전부입니다. **`table_config.json`에 추가할 컬럼이 없고, `display_columns`에 대한 결정도 없고, 채워 넣을 과거 데이터도 없습니다.** 다음 질의부터 접힙니다.
 
-```json
-{
-  "dt_log": {
-    "core_lot": {
-      "table": "dt_log",
-      "raw": "core_lot",
-      "derived": "core_lot_norm",
-      "rules": { "separator": true, "case": true, "zero_pad": false }
-    }
-  }
-}
-```
+**전제 하나**: 그 컬럼이 `table_config.json`에 **`"string"`으로 선언**돼 있어야 합니다(값을 텍스트로 읽고 있다면 이미 그렇습니다). `number`는 **거절**입니다 — 숫자에는 표기가 없고, `number` 컬럼은 `map_overlay.canonical_key_value`의 정수 파싱이 이미 `'01'`과 `'1'`을 한 값으로 만들고 있습니다(§4.3).
 
-### 3.2 컬럼별 규칙 오버라이드
+### 2.1 선언의 세 가지 형태
 
-규칙은 **파일 전체 → 테이블 → 컬럼** 순으로 덮입니다. 대소문자를 살려야 하는 컬럼이 하나 있다고 해서 규칙을 전역으로 끌 필요가 없습니다.
+| 형태 | 뜻 |
+|---|---|
+| `"core_lot": true` | 정규화됨. 규칙은 테이블/파일 기본값을 상속 |
+| `"core_lot": false` | **정규화 안 함 — 기록으로 남는 결정.** 로더가 거절 없이 건너뜁니다. 아예 안 적은 것과의 차이는 「누군가 보고 결정했다」가 다음 사람에게 보인다는 것 |
+| `"core_lot": {"rules": {...}}` | 정규화됨 + 그 컬럼만의 규칙(테이블 기본값을 **대체**) |
 
-```json
-{
-  "rules": { "separator": true, "case": true },
-  "columns": {
-    "dt_log": {
-      "core_lot": "core_lot_norm",
-      "dt_lot": {
-        "derived": "dt_lot_norm",
-        "rules": { "separator": true, "case": false }
-      }
-    }
-  }
-}
-```
+규칙은 **파일 전체 → 테이블 → 컬럼** 순으로 덮이고, **병합이 아니라 대체**입니다 — 컬럼 수준에서 `{"separator": true}`만 적으면 나머지는 미지정이 아니라 **기본값**(`case:true`, `zero_pad:false`)이 들어옵니다.
 
-검증기 반환 (거절 0건) — 한 테이블 안에서 두 컬럼이 **서로 다른 규칙 집합**을 갖습니다:
+`_`로 시작하는 이름은 로더에게 **주석**입니다. 그래서 샘플의 `_example_columns` 블록은 아무 효과가 없고, 켜는 방법은 그 안의 항목을 `columns`로 **옮기는** 것입니다.
 
-```json
-{
-  "dt_log": {
-    "core_lot": {
-      "table": "dt_log", "raw": "core_lot", "derived": "core_lot_norm",
-      "rules": { "separator": true, "case": true, "zero_pad": false }
-    },
-    "dt_lot": {
-      "table": "dt_log", "raw": "dt_lot", "derived": "dt_lot_norm",
-      "rules": { "separator": true, "case": false, "zero_pad": false }
-    }
-  }
-}
-```
+### 2.2 반영 시점
 
-### 3.3 아무것도 안 하면 아무 일도 안 일어난다
+`notation_rules.json`은 **config watcher의 감시 대상이 아닙니다**(watcher가 보는 파일은 `table_config.json` 하나뿐입니다). 반영은 두 갈래입니다:
 
-출하되는 `notation_rules.json.sample`은 `"columns": {}`입니다. **그 파일을 그대로 복사해 두면 이 기능은 완전히 무동작입니다.** 샘플 전체를 그대로 검증기에 먹인 결과: 반환 `{}`, 거절 `[]`.
+- **자동**: 선언 캐시 TTL이 **5초**(`RULES_CACHE_TTL`) — 저장하고 5초 뒤 다음 조회부터. 워커 프로세스도 포함입니다.
+- **즉시**: `POST /admin/reload-configs`(웹서버 프로세스의 캐시를 그 자리에서 버립니다).
 
-> 2026-08-04 이 환경의 실제 상태: `server/config/notation_rules.json`은 **아직 존재하지 않습니다**(`.sample`만 있습니다). 파일이 없는 것은 거절이 아니라 「선언 없음」입니다 — 로더가 조용히 `{}`를 돌려주고, 해석 보고서는 *「선언 파일이 없습니다 ― 표기 정규화가 적용되는 컬럼이 하나도 없습니다.」*라고 말합니다.
->
-> `_`로 시작하는 이름은 로더에게 **주석**입니다. 그래서 샘플의 `_example_columns` 블록은 아무 효과가 없고, 켜는 방법은 그 안의 항목을 `columns`로 **옮기는** 것입니다.
+> ✅ **「이미 쌓인 행은 어떻게 되나」라는 질문이 사라졌습니다.** 저장되는 값이 없으므로 과거 행과 새 행에 차이가 없습니다 — 규칙을 바꾸면 **모든 행이 같은 순간에** 새 규칙으로 비교됩니다. 종전 판의 「한 컬럼에 두 세대가 섞인다」 함정은 존재하지 않습니다.
 
-## 4. 거절 — 이름과, 각각이 막아 주는 것
+## 3. 🔴 선언한 다음에 반드시 해야 할 것 — 무엇이 합쳐지는지 본다
 
-거절은 조용히 무시되지 않습니다. 전부 이름(`code`)이 붙고 `GET /admin/config/resolve?domain=notation`의 `rejected`에 뜹니다. 아래 메시지는 **코드가 실제로 내놓은 문자열**입니다.
-
-### 4.1 `would_rewrite_raw` — 원본을 덮어쓰는 선언
-
-**무엇을 치면 걸리나**: 파생 컬럼 자리에 원본 컬럼 이름을 그대로 적었을 때.
-
-```json
-{ "columns": { "dt_log": { "core_lot": "core_lot" } } }
-```
-
-검증기 반환: `{}` (선언 0건 채택), 거절:
-
-```json
-{
-  "scope": "column",
-  "subject": "dt_log.core_lot",
-  "detail": "the derived column must not be the raw column itself - this feature never rewrites a raw value, because a wrong folding rule is repaired by re-deriving and that repair needs the original to still be there",
-  "code": "would_rewrite_raw"
-}
-```
-
-**무엇을 막아 주나**: 이 거절이 이 기능의 **안전 성질 전체를 지키는 자리**입니다. 원본이 한 번이라도 덮어써지면 「규칙이 틀렸으면 다시 파생하면 된다」가 성립하지 않습니다 — 되돌릴 원본이 없어지기 때문입니다. (구현자가 이 거절만 빼고 스위트를 돌렸을 때 빨개진 테스트는 **1건**이고, 그 한 줄이 성질 전체의 파수꾼입니다.)
-
-### 4.2 `key_column` — 파생 컬럼이 업무 키에 속함
-
-**무엇을 치면 걸리나**: 파생 대상으로 `business_key`나 `composite_key_source`의 멤버를 지목했을 때. 예 — `dt_log`의 복합 키 소스는 `["dt_job","dt_x","dt_y"]`입니다.
-
-```json
-{ "columns": { "dt_log": { "core_lot": "dt_job" } } }
-```
-
-거절:
-
-```json
-{
-  "scope": "column",
-  "subject": "dt_log.core_lot",
-  "detail": "derived column 'dt_job' is part of this table's business key, so deriving it would rewrite row identity. Phase 1 only produces a value; what reads it is a separate decision",
-  "code": "key_column"
-}
-```
-
-**무엇을 막아 주나**: 파생값이 **행의 정체성을 옮기는 것**입니다. 업무 키 컬럼이 파생 대상이 되면 접기 규칙 하나가 행의 신원을 바꾸고, 같은 키로 재계산된 행끼리 충돌하거나 서로를 덮습니다. 원본 컬럼이 키 멤버인 것은 **괜찮습니다** — 거절하는 것은 **파생 쪽**입니다.
-
-### 4.3 `zero_pad_unimplemented` — 켜져 있는 것처럼 읽히는 스위치를 만들지 않는다
-
-**무엇을 치면 걸리나**: `"zero_pad": true`.
-
-```json
-{
-  "rules": { "separator": true, "case": true, "zero_pad": true },
-  "columns": { "dt_log": { "core_lot": "core_lot_norm" } }
-}
-```
-
-거절:
-
-```json
-{
-  "scope": "table",
-  "subject": null,
-  "detail": "rule 'zero_pad' is declared but NOT IMPLEMENTED, so it is refused rather than silently ignored. It is the one rule that can merge two different entities ('WF010' and 'WF10' both become 'WF10'), and no census has said whether such a collapse exists here. Run the false-merge check first.",
-  "code": "zero_pad_unimplemented"
-}
-```
-
-🔴 **이 거절은 선언 전체를 버리지 않습니다** — `zero_pad`만 `false`로 되돌려지고 나머지 선언은 그대로 채택됩니다(검증기 반환에 `"zero_pad": false`가 찍힌 채로 컬럼 선언이 살아 있습니다).
-
-**무엇을 막아 주나**: 셋 중 **유일하게 서로 다른 것을 합칠 수 있는 규칙**입니다 — `WF010`과 `WF10`은 다른 웨이퍼일 수 있는데 앞자리 0을 떼면 하나가 됩니다. 그리고 이 거절이 **「켜 놓았는데 아무 일도 안 하는 노브」**를 원천적으로 막습니다. `"zero_pad": false`는 거절이 아닙니다 — **명시적으로 끄기로 한 결정**은 기록으로 남습니다.
-
-### 4.4 쓰기 거부 — 파생 컬럼에 직접 값을 넣으려는 시도
-
-**무엇을 치면 걸리나**: 그리드나 API로 파생 컬럼에 값을 저장하려 할 때. 그리드에서 `core_lot_norm` 칸을 고쳐 저장하는 것이 그대로 해당합니다.
-
-거부는 `crud.refuse_notation_derived_columns`에서 나고, **배치 전체가 거부**됩니다(`apply_batch_updates`의 첫머리 — 트랜잭션이 열리기 전이라 반쯤 적용된 상태가 남지 않습니다). HTTP 400으로 아래 문구가 그대로 올라옵니다:
-
-```
-'dt_log' 테이블의 컬럼 core_lot_norm은(는) 원본 컬럼에서 자동으로 계산되는 표기 정규화 값이라
-직접 저장할 수 없습니다. 값을 바꾸려면 원본 컬럼을 수정하세요.
-```
-
-**무엇을 막아 주나**: 손으로 넣은 값은 **원본 컬럼이 다음에 바뀌는 순간 설명 없이 사라집니다**. 그 사이 그 행은 자기 원본에서 나올 수 없는 정규화 값을 들고 있게 되는데, 그것이야말로 이 파생 컬럼이 없애려고 만들어진 불일치입니다.
-
-### 4.5 나머지 거절 (모양·미선언)
-
-| code | 언제 | 실제 메시지(발췌) |
-|---|---|---|
-| `undeclared` | 파생/원본 컬럼이 `table_config.json`에 없음 | `derived column 'core_lot_norm' is not declared in table_config.json for 'dt_log'. ...` |
-| `undeclared` | 테이블 자체가 미등록 | `table 'no_such_table' is not registered in table_config.json` |
-| `shape` | 파생 컬럼을 `number`로 선언 (예: `"core_lot": "core_x"`) | `derived column 'core_x' is declared as 'number'; a normalized notation is text and must be declared "string" (a number column would refuse 'WF-01' outright)` |
-| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are separator, case, zero_pad` |
-
-> `unknown_rule`도 **선언 전체를 버리지 않습니다** — 모르는 이름만 무시하고 나머지 규칙·컬럼 선언은 채택됩니다.
-
-## 5. 반영 확인 — 두 가지 질문은 서로 다릅니다
-
-### 5.1 「내 선언이 먹었나」 ― `GET /admin/config/resolve?domain=notation`
+선언은 「접겠다」이고, **「접었더니 서로 다른 두 로트가 하나가 되지는 않았나」는 데이터만 답할 수 있습니다.** 그 질문에 답하는 라우트가 따로 있습니다:
 
 ```bash
-curl -H "X-Admin-Token: <토큰>" "http://<서버>/admin/config/resolve?domain=notation"
+curl -H "X-Admin-Token: <토큰>" \
+  "http://<서버>/admin/config/notation/preview?table=dt_log&column=core_lot"
 ```
 
-🔴 **로그에서 짐작하지 마십시오.** 이 라우트가 「먹었나 / 안 먹었으면 왜」에 답하도록 만들어져 있고, **DB 질의를 하지 않으므로** 언제 눌러도 안전합니다.
+- 인자를 **둘 다 생략하면 선언된 모든 컬럼**을 훑습니다. 한쪽만 주면 400입니다.
+- 돌려주는 것은 원본→접힌값 나열이 아니라 **병합군**입니다 — 한 접힌 값에 원본 표기가 **둘 이상** 모인 그룹과 그 원본 목록. 나열은 「합쳐졌는가」를 묻는 사람에게 답하지 않습니다.
+- 🔴 **접기는 조인이 쓰는 바로 그 SQL 식으로 계산됩니다.** 파이썬에서 접어 보여 주면 운영자가 신뢰하는 화면이 조인이 쓰지 않는 답을 보여 주게 되고, 그것이 이 기능이 없애려는 문제 그 자체입니다.
+- ⚠️ **비쌉니다.** 접힌 식에는 평범한 인덱스가 없으므로 `GROUP BY`는 전수 스캔입니다. 운영자가 직접 부르는 점검용이고 **쓰기는 없으며**, 반환 **그룹** 수에 상한이 있습니다(`PREVIEW_GROUP_LIMIT` = 500 — 행이 아니라 그룹의 상한이라 돌아온 그룹의 수치는 정확하고, 상한에 닿으면 `truncated`가 말합니다).
 
-**A. 선언이 유효할 때** (`effective` 1건, `rejected` 0건) — `detail`이 그대로 화면에 렌더되는 문장입니다:
-
-```
-dt_log.core_lot의 정규화 표기가 core_lot_norm에 기록됩니다. 적용 중인 규칙: separator, case.
-원본 컬럼 core_lot은(는) 절대 수정되지 않으므로, 규칙이 잘못 합쳐진 것을 발견하면 이 파일을
-고치고 server/scripts/rederive_notation_norm.py --apply 로 다시 파생하면 됩니다. 다만 지금은
-이 값을 읽는 코드가 아직 없습니다(1단계) ― 맵 키 분해·필터·조인은 여전히 원본 값을 씁니다.
-```
-
-같은 항목의 `fields`에 `{table, raw_column, derived_column, rules}`가 그대로 들어 있어 **어느 규칙 집합이 이 컬럼에 적용 중인지**를 눈으로 확인할 수 있습니다.
-
-**B. 거절됐을 때** (`effective` 0건, `rejected` 1건, `reason: "not_declared"`):
+**읽는 법은 하나입니다** — 숫자가 아니라 `variants` 목록을 읽고 **「이것들이 정말 같은 물리 로트인가」**에 답하십시오. 서버가 만들어 주는 문장이 이미 그렇게 묻습니다:
 
 ```
-table_config.json에 선언되지 않은 테이블/컬럼이라 반영하지 않았습니다 ―
-derived column 'core_lot_norm' is not declared in table_config.json for 'dt_log'.
-Add it as a "string" column there first - ...
+dt_log.core_lot: 원본 표기 30종이 15종으로 접힙니다. 서로 다른 원본 표기가 한 값으로
+합쳐진 그룹이 15개입니다. 가장 큰 그룹은 'CL-2601-001'이고 원본 2종
+(CL-2601-001 | CL_2601_001)이 여기로 모입니다. 이 목록을 읽고 「이것들이 정말 같은
+것인가」를 확인하세요 — 하나라도 아니라면 notation_rules.json의 규칙을 고치면
+됩니다(저장된 값은 원본 그대로라 되돌릴 것이 없습니다).
 ```
 
-**C. 아무것도 선언 안 했을 때**: `effective`·`rejected` 모두 0건, `sources[0].detail`이 *「선언 0건이 유효합니다.」*(파일이 없으면 *「선언 파일이 없습니다 ― 표기 정규화가 적용되는 컬럼이 하나도 없습니다.」*).
+- 전부 같은 것이면 규칙이 옳습니다.
+- **한 그룹이라도 아니면** 이 파일의 규칙을 고치십시오. **끝입니다** — 되돌릴 데이터가 없습니다.
+- 병합군 0개면 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아니고, 서버 문장이 *「조인 반대편이 지저분하다면 그쪽에서 효과가 납니다」*라고 덧붙입니다.
 
-`settings` 블록에는 항상 세 줄이 함께 옵니다 — `implemented_rules`(실제로 적용 가능한 규칙: `separator`, `case`) · `separator_target`(`-`) · `rewrites_raw_column`(`false`).
+> ⚠️ **알려진 무해한 모양**: `variants`가 `-` · `_` · `.` · `--`처럼 **구분자만으로 된 값들**뿐인 그룹이 나올 수 있습니다(그런 값은 전부 `-` 하나로 접힙니다). 실제 로트가 아니라 원본 데이터의 쓰레기 값이 한자리에 모인 것이니 그것만 보고 규칙이 틀렸다고 판단하지 마십시오.
 
-### 5.2 🔴 「내 규칙이 서로 다른 것을 합치지는 않았나」 ― false-merge 확인
+**이 환경에서 이미 측정된 결과**(2026-08-04, 운영 DB read-only):
 
-**이쪽이 진짜 검증입니다.** §5.1은 선언이 반영됐는지만 말합니다. 접기 규칙이 **의미적으로 옳은지**는 데이터가 답합니다. 파생이 한 번 돌고 난 뒤(§7의 재파생 포함), 컬럼당 쿼리 하나입니다 — 같은 쿼리가 `notation_rules.json.sample`의 `__false_merge_check`에도 들어 있습니다:
-
-```sql
-SELECT core_lot_norm,
-       count(DISTINCT core_lot)                               AS n_raw,
-       string_agg(DISTINCT core_lot, ' | ' ORDER BY core_lot) AS variants,
-       count(*)                                               AS n_rows
-FROM   dt_log
-WHERE  core_lot_norm IS NOT NULL
-GROUP  BY core_lot_norm
-HAVING count(DISTINCT core_lot) > 1
-ORDER  BY n_raw DESC, n_rows DESC;
-```
-
-🔴 **숫자를 보지 말고 `variants` 열을 읽으십시오.** 이 쿼리가 돌려주는 것은 「접었더니 하나가 된 원본 철자들」이고, 판단해야 할 질문은 하나뿐입니다:
-
-> **이것들이 정말로 같은 물리 로트인가?**
-
-- 전부 같은 것이면 — 규칙이 옳습니다. 그 행 수가 이 기능이 없앤 분열의 크기입니다.
-- **한 그룹이라도 아니면** — 규칙을 이 파일에서 고치고 §7로 다시 파생합니다. **잃은 것은 없습니다**(원본이 그대로이므로).
-- 결과가 0행이면 — 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아닙니다.
-
-> ⚠️ **한 가지 알려진 모양**: `variants`가 `-` · `_` · `.` · `--`처럼 **구분자만으로 된 값들**뿐인 그룹이 나올 수 있습니다. 구분자만 있는 값은 전부 `-` 하나로 접히기 때문입니다(공백뿐인 값과 달리 `NULL`이 되지 않습니다). 실제 로트가 아니라 **원본 데이터의 쓰레기 값이 한자리에 모인 것**이니, 그 그룹만 보고 규칙이 틀렸다고 판단하지 마십시오.
-
-**이 환경에서 이미 측정된 결과** (`92b8d6f` 착지 시점, 운영 DB read-only):
-
-| 컬럼 | 원본 철자 | 접은 뒤 | 합쳐진 그룹 |
+| 컬럼 | 원본 철자 | 접은 뒤 | 병합군 |
 |---|---:|---:|---:|
 | `dt_log.core_lot` | 30 | **15** | **15** |
 | `dt_log.dt_lot` | 6 | 6 | 0 |
@@ -402,72 +164,148 @@ ORDER  BY n_raw DESC, n_rows DESC;
 | `bonding_log.dt_lot` | 10 | 10 | 0 |
 | `lot_event.lot` | 24 | 24 | 0 |
 
-15개 그룹은 **전부 `CL-2601-00x` / `CL_2601_00x` 한 쌍**, 즉 같은 로트의 두 철자입니다(밑줄 형태가 766행). **의심스러운 병합은 한 건도 없었습니다.** 그리고 측정한 다른 lot/slot 컬럼은 **전부 0그룹**입니다 — 즉 이 규칙은 **보고된 바로 그 컬럼 하나에서만 일을 하고 나머지에는 무해**합니다.
+15개 그룹은 전부 `CL-2601-00x` / `CL_2601_00x` 한 쌍입니다(밑줄 형태가 766행). **의심스러운 병합은 한 건도 없었습니다.** 🔴 **그리고 이 표가 §6의 이유입니다** — 지저분한 쪽은 `dt_log`뿐이고 `core_wafer_map`은 0그룹이라, **깨끗한 쪽에 선언할 이유가 있는 운영자는 없습니다.**
 
-## 6. 규칙 사전
+## 4. 거절 — 이름과, 각각이 막아 주는 것
+
+거절은 조용히 무시되지 않습니다. 전부 `code`가 붙고 `GET /admin/config/resolve?domain=notation`의 `rejected`에 한국어 앞머리와 함께 뜹니다.
+
+### 4.1 `undeclared` — `table_config.json`에 없는 테이블/컬럼
+
+`table 'no_such_table' is not registered in table_config.json` 또는 `column 'core_lot' is not declared in table_config.json for 'dt_log'`.
+
+**막아 주는 것**: 오타 난 이름이 「선언했는데 아무 일도 안 일어난다」로 조용히 흘러가는 것. 🔴 **종전 판의 위험한 (B) 경우 — 「보고서는 유효라는데 값이 안 채워진다」 — 는 없어졌습니다.** 채울 물리 컬럼이 없으므로 「컬럼이 실제로 생겼는지 `information_schema`로 확인」하는 단계 자체가 사라졌습니다.
+
+### 4.2 `zero_pad_unimplemented` — 켜져 있는 것처럼 읽히는 노브를 만들지 않는다
+
+`"zero_pad": true`를 치면 나오고, 값은 `false`로 되돌려집니다.
+
+```
+rule 'zero_pad' is declared but NOT IMPLEMENTED, so it is refused rather than
+silently ignored. It is the one rule that can merge two different entities
+('WF010' and 'WF10' both become 'WF10'), and no census has said whether such a
+collapse exists here. Run the fold preview first.
+```
+
+🔴 **이 거절은 선언 전체를 버리지 않습니다** — `zero_pad`만 꺼지고 나머지 규칙·컬럼 선언은 그대로 채택됩니다. `"zero_pad": false`는 거절이 아닙니다(명시적으로 끄기로 한 결정은 기록으로 남습니다).
+
+**막아 주는 것**: 셋 중 **유일하게 서로 다른 것을 합칠 수 있는 규칙**이고, 「켜 놓았는데 아무 일도 안 하는 노브」입니다.
+
+### 4.3 `not_text` — 문자열 컬럼이 아님
+
+`table_config.json`에서 `"number"`(또는 `"datetime"`)로 선언된 컬럼을 지목했을 때:
+
+```
+column 'core_x' is declared 'number'; only a "string" column can be normalized.
+A number has no notation - and for a 'number' column the integer parse already
+folds '01' and '1' into one value
+```
+
+**막아 주는 것 둘**: ① 숫자에는 표기가 없다는 것 자체 ② 🔴 **SQL 폴드 식이 인덱스 식이 될 수 있을 만큼 짧게 유지되는 것.** 비텍스트 컬럼을 허용하면 폴드가 `crud.column_text_sql`의 `CASE` 식 위에 얹혀야 하고, 그러면 함수 인덱스 DDL이 **읽을 수도 맞출 수도 없게** 됩니다(§6).
+
+> **slot과 앞자리 0 — 다시 열 필요 없는 질문이지만 조건이 붙습니다.** `slot`은 사용자 판정으로 항상 정수이고, `"number"`로 선언된 컬럼은 이미 `canonical_key_value`의 정수 파싱을 지나 `'01'`·`' 1 '`·`1.0`이 전부 `'1'`로 접힙니다. ⚠️ **다만 2026-08-04 실측으로 `dt_log.core_slot`·`dt_log.dt_slot`·`core_wafer_map.core_slot`·`bonding_log.bond_slot`은 전부 `"string"`으로 선언돼 있어 그 은퇴가 아직 발효되지 않았습니다.** 고칠 곳은 **선언된 타입**이지 `zero_pad` 구현이 아닙니다(타입 변경은 재기동 + 수동 마이그레이션 → [table_config](./table_config.md)).
+
+### 4.4 나머지 (`unknown_rule` · `shape`)
+
+| code | 언제 | 실제 메시지(발췌) |
+|---|---|---|
+| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are separator, case, zero_pad` |
+| `shape` | 선언이 `true`/`false`/객체가 아님 | `declaration must be true, false, or an object {rules}` |
+| `shape` | **옛 모델의 `derived` 키** | `'derived' is no longer a thing: normalization does not produce a column any more, it folds BOTH SIDES of a comparison at query time. ...` |
+| `shape` | 파일이 객체가 아님 / `columns`가 객체가 아님 | `notation_rules.json must be an object; the whole file was ignored and NO column is normalized` |
+
+> `unknown_rule`도 **선언 전체를 버리지 않습니다** — 모르는 이름만 무시하고 나머지는 채택됩니다.
+
+## 5. 반영 확인 — 두 질문은 서로 다르고, 라우트도 다릅니다
+
+| 질문 | 라우트 | DB를 보나 |
+|---|---|---|
+| 「내 선언이 먹었나 / 안 먹었으면 왜」 | `GET /admin/config/resolve?domain=notation` | **안 봅니다**(config만) |
+| 「내 규칙이 무엇을 합치는가」 | `GET /admin/config/notation/preview` (§3) | **봅니다**(전수 스캔) |
+| 「이 조인이 승인됐나」 | `GET /admin/config/virtual-join/verify` (§6) | 봅니다(`pg_index`) |
+
+### 5.1 `?domain=notation`이 답하는 것
+
+**A. 선언이 유효할 때** — `detail`이 그대로 화면에 렌더되는 문장입니다:
+
+```
+dt_log.core_lot의 표기가 정규화된 것으로 선언됐습니다. 적용 중인 규칙: separator, case.
+이 컬럼이 조인 키로 쓰이면 **비교의 양쪽이 모두** 접힌 값으로 비교됩니다 — 반대편
+컬럼에 선언이 없어도 그렇습니다(한쪽만 접으면 이미 맞고 있던 매치를 조용히 잃기
+때문입니다). 저장되는 값은 없습니다: 원본은 원본 그대로 남고, 규칙을 고치면 다음
+조회부터 바로 반영됩니다. 무엇이 무엇으로 합쳐지는지는
+GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으로
+답합니다 — 규칙을 켠 다음 그것부터 보세요.
+```
+
+`fields`에 `{table, column, rules}`가 들어 있어 **어느 규칙 집합이 이 컬럼에 적용 중인지**를 눈으로 확인할 수 있습니다.
+
+**B. 규칙이 하나도 안 켜져 있을 때**: 선언은 `effective`에 남되 *「적용할 규칙이 하나도 켜져 있지 않아 아무것도 접지 않습니다 — 선언은 유효하지만 비교는 원본 그대로입니다」*라고 말합니다.
+
+**C. 아무것도 선언 안 했을 때**: `sources[0].detail`이 *「선언 0건이 유효합니다.」*, 파일이 없으면 *「선언 파일이 없습니다 — 표기 정규화가 적용되는 컬럼이 하나도 없습니다.」*, 읽지 못했으면 *「선언 파일을 읽지 못했습니다 — 어떤 컬럼도 정규화되지 않습니다.」*
+
+> ⚠️ **`effective`는 「이 컬럼이 정규화됐다고 선언됐다」까지입니다.** 「무엇이 합쳐졌나」도 「그 조인이 실제로 도나」도 답하지 않습니다 — 위 표의 나머지 두 줄이 그 자리입니다.
+
+## 6. 🔴 소비자 — 가상 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
+
+오늘 이 선언을 읽는 유일한 소비자는 **가상 조인의 키 비교**입니다(`virtual_join_executor.join_onclause` — ON 절의 **단일 철자**).
+
+**① 어느 한쪽이라도 선언됐으면 양쪽이 접힙니다.** 한쪽만 접을 수 있는 인자도, 플래그도, 호출 모양도 **일부러 없습니다**(`notation_norm.join_pair_rules`). 양쪽이 서로 다른 규칙으로 선언돼 있으면 유효 집합은 **합집합**입니다 — 폴드는 컬럼의 성질이 아니라 **비교의 성질**이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택입니다.
+
+**② 승인 게이트의 방향이 뒤집힙니다.** 가상 조인의 승인 조건은 「조인 키를 덮는 유효한 UNIQUE 인덱스」인데, 키에 정규화가 걸리면 **평범한 b-tree 인덱스는 후보에서 배제되고 표현식(함수) 인덱스만 후보가 됩니다.** 이유가 성능이 아니라 **정확성**이라는 점에 주의하십시오:
+
+> 원본으로 서로 다른 두 행(`'CL-1'`과 `'CL_1'`)이 접히면 **한 값**입니다. 컬럼에 UNIQUE가 있어도 **접힌 키로는 중복**이고, 그 중복이 곧 조인 팬아웃입니다. 즉 평범한 UNIQUE 인덱스는 **게이트가 묻는 유일성을 애초에 증명하지 못합니다.**
+
+거부 코드는 `no_unique_index`이고, `GET /admin/config/virtual-join/verify`가 **만들어야 할 DDL을 그대로** 줍니다(정규화가 걸린 키에서는 함수 인덱스 형태이고, 인덱스 이름에 `_nf` 접미가 붙습니다):
+
+```sql
+CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
+  translate(
+    regexp_replace("core_lot", '[	
+ ... 　-]+', '-', 'g'),
+    'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), ...);
+```
+
+> 🔴 **위 문자류는 발췌입니다** — 실제 식은 코드포인트 **31개를 `\uXXXX`로 전부 열거**하고 `-`가 **반드시 마지막**입니다(다른 자리면 범위 연산자가 됩니다. `_check_pattern_shape`가 임포트 시점에 그것을 단언합니다). **손으로 옮겨 적지 말고 `verify` 응답의 문장을 그대로 붙여 넣으십시오** — 한 글자만 달라도 PostgreSQL이 그 인덱스를 쓰지 않습니다.
+
+- 🔴 **조회 식과 인덱스 식은 반드시 같은 함수(`fold_sql_text`)에서 나옵니다.** PostgreSQL은 질의 식이 인덱스 식과 **일치할 때만** 함수 인덱스를 씁니다 — 두 철자를 두면 이론적 불일치가 아니라 **1,000만 행 순차 스캔**이 되고 테스트는 전부 통과합니다.
+- DDL이 길어 보이는 것은 대가입니다. `\uXXXX` 이스케이프라 **전부 ASCII**이고 psql에 그대로 붙여 넣을 수 있습니다(제어문자를 날것으로 싣지 않는 이유입니다).
+- ⚠️ **접기는 공짜가 아닙니다.** `8d306a5` 실측 — 폴드 자체가 행당 3.06µs, 그리고 함수 인덱스를 만들기 전 `dt_log` 조인이 **3.1ms → 151.6ms**였습니다. 켜기 전에 §3의 병합군을 보고, 켠 뒤에는 인덱스를 만드십시오.
+
+절차의 정본은 [virtual_join_rules](./virtual_join_rules.md)와 [CONFIG_ROLLOUT_GUIDE §5](../CONFIG_ROLLOUT_GUIDE.md)입니다.
+
+## 7. 🔴 맵 키는 이 기능이 건드리지 않습니다
+
+맵 키 조립·분해는 여전히 **원본 값**을 씁니다. `canonical_map_key`를 접힌 값으로 돌리는 것은 **설정 스위치가 아니라 데이터 마이그레이션**입니다 — `wafer_map_metadata`의 행이 **원본 신원**으로 등록돼 있어서, 맵 키가 정규화 값을 읽는 순간 기존 `map_id`가 자기 메타 행과 안 맞고 **맵이 안 열립니다.** 별도 라운드의 별도 결정이고, 아직 내려지지 않았습니다.
+
+## 8. 규칙 사전
 
 | 키 | 위치 | 타입 / 기본값 | 의미 |
 |---|---|---|---|
 | `rules` | 파일 최상위 | 객체, 기본 `{separator:true, case:true, zero_pad:false}` | 파일 전체의 기본 규칙 집합 |
 | `rules` | `columns.<테이블>` 아래 | 객체 | 그 테이블의 기본값(파일 기본값을 **대체**) |
 | `rules` | 컬럼 선언 객체 안 | 객체 | 그 컬럼만의 규칙(테이블 기본값을 **대체**) |
-| `columns` | 파일 최상위 | `{테이블: {원본컬럼: 파생}}` | 🔴 **비어 있으면 이 기능은 완전 무동작** |
-| 컬럼 선언 | `columns.<테이블>` 아래 | 문자열 **또는** `{"derived": ..., "rules": {...}}` | 문자열이면 파생 컬럼 이름 그 자체 |
+| `columns` | 파일 최상위 | `{테이블: {컬럼: true\|false\|{rules}}}` | 🔴 **비어 있으면 이 기능은 완전 무동작** |
+| 컬럼 선언 | `columns.<테이블>` 아래 | `true` / `false` / `{"rules": {...}}` | ~~문자열(파생 컬럼 이름)~~ 은 **거절됩니다** |
 | `_`로 시작하는 이름 | 어디든 | — | **주석**. 로더가 통째로 무시합니다 |
 
-> 규칙 집합은 **병합되지 않고 대체**됩니다. 컬럼 수준에서 `{"separator": true}`만 적으면 나머지는 명시되지 않은 것이 아니라 **기본값**(`case:true`, `zero_pad:false`)이 들어옵니다.
+> 2026-08-04 이 환경의 실제 상태: `server/config/notation_rules.json`은 **아직 존재하지 않습니다**(`.sample`만). 파일이 없는 것은 거절이 아니라 「선언 없음」입니다. 출하되는 샘플은 `"columns": {}`라 **그대로 복사해 두면 완전 무동작**입니다.
 
-### slot 컬럼과 앞자리 0 — 다시 열 필요 없는 질문 (조건 하나 붙습니다)
+## 9. 잘못됐을 때 — 되돌리기
 
-`slot`은 사용자 판정으로 **항상 정수**이고, `table_config.json`에서 `"number"`로 선언된 컬럼은 이미 `map_overlay.canonical_key_value`의 **정수 파싱**을 지납니다 — 거기서 `'01'` · `' 1 '` · `1.0`이 전부 `'1'` 하나로 접힙니다. 즉 slot의 zero-pad 문제는 **새 규칙이 아니라 기존 연산의 재사용으로 이미 닫혀 있습니다.** `zero_pad`를 구현해 달라는 요구가 slot 때문이라면, 그 요구는 이미 충족돼 있습니다.
-
-> ⚠️ **다만 그것은 `number`로 선언된 컬럼에 한합니다.** 2026-08-04 이 환경의 `table_config.json`을 실측하면 `dt_log.core_slot` · `dt_log.dt_slot` · `core_wafer_map.core_slot` · `bonding_log.bond_slot`은 전부 **`"string"`으로 선언**돼 있습니다. 문자열 컬럼에서는 패딩이 **데이터**라 보존됩니다(실측: `core_slot` `'01'` → `'01'`, `'1'` → `'1'` — 두 값이 합쳐지지 **않습니다**). slot에서 정수 접기를 실제로 얻으려면 그 컬럼을 `number`로 선언하는 것이 먼저이고, 그것은 이 파일이 아니라 [table_config.json](./table_config.md)의 결정이며 **타입 변경은 재기동 + 수동 마이그레이션**입니다.
-
-## 7. 소급 — 이미 쌓인 행 채우기 / 규칙 바꾼 뒤 다시 계산하기
-
-```bash
-# 리포트만 (기본값 — 아무것도 쓰지 않습니다)
-conda run -n assy_manager python server/scripts/rederive_notation_norm.py
-
-# 실제로 씁니다
-conda run -n assy_manager python server/scripts/rederive_notation_norm.py --apply
-
-# 한 테이블만
-conda run -n assy_manager python server/scripts/rederive_notation_norm.py --table dt_log --apply
-```
-
-플래그는 셋뿐입니다(`--help` 실측): `--apply` · `--table T` · `--chunk-size N`(기본 1000).
-
-🔴 **기본이 dry-run이고, 쓰려면 `--apply`를 명시해야 합니다.** dry-run은 스캔한 행 수 · 바뀔 행 수 · 실제 값 샘플(`raw` / `was` / `now`)을 찍고 **아무것도 쓰지 않습니다.** 먼저 읽고, 납득한 다음에 `--apply`를 붙이십시오.
-
-선언이 하나도 없으면 아무 일도 하지 않고 **종료 코드 2**로 끝납니다(실측 출력):
-
-```
-no notation derivation is declared (config/notation_rules.json) - nothing to do
-```
-
-종료 코드는 둘입니다 — **0**(리포트를 냈거나 실제로 썼음) · **2**(거부: 잘못된 `--chunk-size`, 선언 없음, 거절된 선언).
-
-**이것이 「규칙이 틀려도 복구된다」의 실체입니다.** 규칙을 고치고 → 다시 파생하면 → 파생 컬럼은 새 규칙이 말하는 값이 됩니다. 손으로 치울 것이 없습니다. 왜냐하면 **다시 계산할 수 없는 유일한 것(원본 컬럼)을 한 번도 쓴 적이 없기** 때문입니다. 같은 명령이 두 방향 모두를 처리합니다 — 선언 이전에 쌓인 행 채우기, 그리고 규칙 변경 후 재계산. 두 번 돌리면 두 번째는 `changed: 0`입니다.
-
-> 이 스크립트는 **DDL을 내지 않습니다**(`create_all` 없음). 파생을 고치는 도구가 자기가 고치는 스키마를 바꿀 수 있어서는 안 되기 때문입니다. 그래서 §2의 1단계는 **이 스크립트가 대신해 주지 않습니다.**
-
-## 8. 잘못됐을 때 — 되돌리기
-
-1. **선언만 되돌리기**: `columns`에서 해당 쌍을 지우면 새 쓰기부터 파생이 멈춥니다(TTL 5초 또는 `POST /admin/reload-configs`). **이미 쓰인 파생값은 남습니다** — 값이 남는 것이 곤란하면 `table_config.json`에서 컬럼을 지우는 별도 결정이 필요하고, [물리 컬럼은 선언을 지워도 남습니다](./table_config.md)(한 방향 문).
+1. **선언 되돌리기**: `columns`에서 그 줄을 지우거나 `false`로 바꾸면 **다음 조회부터** 원본 비교로 돌아갑니다(TTL 5초 또는 `POST /admin/reload-configs`). 🔴 **치울 데이터가 없습니다** — 저장된 것이 없기 때문입니다. 함수 인덱스는 남지만 해롭지 않고, 필요 없으면 `DROP INDEX`하면 됩니다.
 2. **파일 통째로 복구**:
    ```bash
    conda run -n assy_manager python server/scripts/backup_config.py list
    conda run -n assy_manager python server/scripts/backup_config.py restore notation_rules_<yymmdd>.json.bak --yes
    ```
-3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 쓰기가 실패하지 않습니다. 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어지며, 해석 보고서의 `sources`가 *「선언 파일을 읽지 못했습니다 ― 어떤 컬럼도 정규화되지 않습니다.」*로 바뀝니다. config 문제를 쓰기 장애로 바꾸지 않는 것이 의도된 거래입니다.
+3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 조회가 실패하지 않습니다. 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어집니다 — 이 기능이 생기기 전과 **정확히 같은 동작**(원본 비교)이라 안전한 방향입니다.
 
-## 9. 함정
+## 10. 함정
 
-- 🔴 **「선언했는데 그리드가 그대로다」는 고장이 아닙니다** — 가시성은 세 번째 층이고 `display_columns`가 정합니다(§2.3). 이 환경의 14개 테이블은 전부 그것을 선언하고 있어 **기본이 「안 보임」**입니다. 반대로 `display_columns`가 없는 테이블에서는 **자동으로 뜨고**, 그때 파생 컬럼은 **편집 가능해 보이는데 쓰기는 거부**되므로(§4.4) 운영자에게 미리 알리십시오.
-- ⚠️ **값은 안 보여도 이미 클라까지 갑니다.** `/data`의 행 페이로드와 CSV 추출은 `display_columns`가 아니라 `column_types` 기준입니다 — 그리드에서 숨겨도 **CSV에는 나옵니다.** 그것이 1단계에서 그리드를 넓히지 않고 접기 결과를 확인하는 방법입니다.
-- ⚠️ **해석 보고서가 「유효」라고 해도 값이 나온다는 뜻은 아닙니다.** 그 보고서는 config만 봅니다 — §2의 (B)를 보십시오.
-- ⚠️ **파생은 원본이 바뀐 쓰기에서만 갱신됩니다.** 규칙을 바꿔 놓고 재파생을 안 돌리면, 그 뒤로 건드린 행만 새 규칙이고 나머지는 옛 규칙 값입니다 — 한 컬럼 안에 두 세대가 섞입니다. **규칙 변경 뒤에는 항상 §7.**
-- ⚠️ **선언 캐시 TTL이 5초라, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 알려진 의도적 거래입니다 — 복구는 재파생입니다.
-- ⚠️ **파생 실패는 쓰기를 실패시키지 않습니다.** `[NotationNorm]` ERROR 로그만 남고 원본 쓰기는 그대로 진행됩니다. 파생 컬럼이 조용히 비는 두 번째 경로이니, 값이 안 보이면 **로그에서 `[NotationNorm]`을 먼저 찾으십시오.**
-- 🔴 **2단계를 「스위치 하나」로 계획하지 마십시오** — §0. 특히 조인은 **양쪽이 대칭으로 접히지 않습니다**: 위 실측에서 `dt_log.core_lot`은 15그룹이 합쳐지는데 `core_wafer_map.core_lot`은 0그룹입니다. 한쪽만 정규화해 이으면 **조용히 매칭이 줄어듭니다.**
+- 🔴 **`server/scripts/rederive_notation_norm.py`는 삭제됐습니다**(`8d306a5`). 다시 파생할 것이 없기 때문입니다. 그 명령이 적힌 문서를 보면 그것이 낡은 것입니다.
+- 🔴 **`<컬럼>_norm` 컬럼이 이 환경에 있다면 그것은 잔여물입니다.** 코드 어디도 그것을 쓰지 않습니다. `table_config.json`에서 지워도 **물리 컬럼은 DB에 남습니다**(한 방향 문).
+- 🔴 **한쪽만 접을 방법을 찾지 마십시오** — 없는 것이 설계입니다. 「깨끗한 쪽은 선언 안 해도 되겠지」가 맞는 이유가 바로 그것이고(§3의 표), 그래서 **어느 한쪽만 선언해도 양쪽이 접힙니다.**
+- ⚠️ **선언 캐시 TTL이 5초라, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 종전 판과 달리 **복구할 것은 없습니다** — 다음 조회가 이미 새 규칙입니다.
+- ⚠️ **`case`가 ASCII만 접는다는 것을 「미구현」으로 읽지 마십시오** — §1.2의 실측이 강제한 **의도된 좁힘**입니다. 비ASCII 대소문자 폴딩을 넣으면 두 엔진이 갈라지고 계약이 빨개집니다.
+- ⚠️ **`/admin/config/notation/preview`는 요청 경로에 상주할 질의가 아닙니다** — 전수 스캔입니다. 대시보드에 걸지 마십시오.

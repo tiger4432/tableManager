@@ -139,6 +139,39 @@ $$\text{box} = \{ \text{minC}, \text{maxC}, \text{minR}, \text{maxR} \}$$
 - ⚠️ **`isCellInsideWaferFast`의 원 판정은 여전히 700×700 픽셀입니다** — mm 공간이 생겼다고 원 판정이 mm로 옮겨간 것은 **아닙니다.** 서버 쪽 mm은 별개로 `PhysicalWaferEngine`에 있습니다.
 - 🔴 **저장 좌표는 이 변경과 무관하게 여전히 오리진 기준 칸수입니다**(§1의 0)의 ⑤). mm 공간이 생긴 것과 저장 좌표의 뜻이 바뀐 것은 **다른 얘기**이고, 칸수에 피치를 곱해 mm로 읽으면 여전히 없는 결함이 만들어집니다.
 
+### 1-ter) 캔버스 축척 — **두 축에 px/mm 하나, 그리고 그 하나를 웨이퍼가 정박한다** (2026-08-04 `102cdea`+`edc7ef6`)
+
+> 🔴 **종전 서술(「격자 래퍼를 정사각으로 유지해 타원 왜곡을 막는다」)은 원인을 잘못 짚고 있었습니다.** 래퍼가 정사각이어도 `cellW = width/cols`, `cellH = height/rows`면 격자가 정사각이 아닌 순간 셀이 정사각이 되고 **원이 타원이 됩니다.** 원을 그리는 코드로는 못 고칩니다 — **타원의 원인은 셀**이고, 셀을 고치면 원은 저절로 원이 됩니다.
+
+축척의 **단독 생산자**는 `cellMetrics(width, height, visualCols, visualRows, physConfig)`이고, 렌더(`renderGridCanvas`)와 마우스→셀 매핑(`getGridCellFromMouseEvent`) **둘 다** 이것을 부릅니다(두 번째 구현을 만들지 마십시오).
+
+```
+sGrid   = min(width / (cols·chipX), height / (rows·chipY))
+sWafer  = (min(width, height) · 0.94) / 선언된 웨이퍼 지름
+s       = min(sGrid, sWafer)          ← px per mm, 두 축 공통
+cellW   = chipX · s        cellH = chipY · s
+padX    = (width  − cols·cellW) / 2   padY = (height − rows·cellH) / 2
+```
+
+- 🔴 **정박점은 `waferDia`이지 `effectiveRadius`가 아닙니다.** 후자는 edge margin(공정 파라미터)을 이미 접고 있어, margin 3mm와 5mm로 선언된 **같은** 300mm 웨이퍼가 다른 크기로 그려집니다. 「같은 웨이퍼는 같아 보인다」가 글자 그대로 참이 되는 쪽은 **지름**입니다.
+- **그래서 웨이퍼 일부만 덮는 격자는 정당하게 작아 보입니다.** 실측(캔버스 700×700, 선언 지름 300mm 동일): 정박 전에는 20×20 피치 6mm가 원 반지름 875.000px, 52×52 피치 6mm가 336.538px — **같은 웨이퍼가 2.6배 다르게** 그려졌습니다.
+- ⚠️ **`min(sGrid, sWafer)`이지 `sWafer`가 아닙니다 — 이건 미관이 아니라 데이터입니다.** `renderGridCanvas`의 캔버스 밖 `continue`는 `gridCells2D` 등록보다 **앞**에 있어, 캔버스를 넘친 선언 칸은 `eachSavableCell`의 정의역 밖이 되어 **저장 페이로드에서 조용히 사라집니다.** `s ≤ sGrid`를 지키면 `padX/padY ≥ 0`이 보장됩니다. 🔴 **따라서 「웨이퍼는 어느 맵에서나 같은 크기」는 격자가 웨이퍼보다 클 때 성립하지 않습니다** — 그때는 격자가 축척을 가져가고 원이 작아집니다.
+- **칩 피치 X≠Y면 셀은 직사각형입니다.** 부작용이 아니라 요청된 결과입니다(사용자: *「셀이 정사각형이고 원이 찌그러짐」*).
+- **여백은 격자 밖입니다 — 격자선만 긋고 채우지 않습니다.** 「filler 셀」이라는 객체는 없습니다: 렌더 루프가 `onGrid`가 거짓인 칸에 `strokeRect` 하나만 긋고 `continue`하며, 그 `continue`가 `gridCells2D` 등록보다 앞이라 **존재하지도·쓰이지도·세어지지도 않습니다**(쓰기는 `getGridCellFromMouseEvent`의 두 번째 경계 검사가 따로 막습니다 — 가드 둘은 각각 쓰기 동선과 세기·저장 동선을 막으므로 하나로 합치지 마십시오). 여백이 실제로 생겼을 때만(`padX>0.5 || padY>0.5`) 선언된 격자에 굵은 외곽선이 하나 그어집니다.
+- **오버레이 마커는 축별로 커집니다** — `markerAxisRadius(cellPx, frac, floorPx)`를 `cellW`/`cellH`에 각각 먹여 `rx`/`ry`를 만들고, 둘이 다르면 `ctx.ellipse`, 같으면 `ctx.arc`입니다. 종전 `Math.max(1.5, Math.min(cellW, cellH) * 0.13)`은 직사각 셀에서 짧은 축을 따라갔습니다.
+
+#### 1-ter.1 `auto_registered` — **「합성 규격이라 아무도 재지 않았다」** (2026-08-04 `cfc09de`+`cd37e2c`)
+
+`auto_registered: true`는 그 행의 물리 규격이 **합성값**이라는 표지입니다. **값에 대한 주장이 아닙니다** — 특히 `chip 1×1`은 *「웨이퍼 원 마스크가 아무 셀도 자르지 않게 하라」*는 합성 어휘이지 **1mm 다이라는 선언이 아닙니다.**
+
+- **표지를 세우는 곳은 둘입니다**: 인제션 등록기 `server/map_meta_registrar.synthesize_grid_meta`, 그리고 에디터의 「표준」 좌표계 분기(`markGeometryAutoRegistered(true)` → `buildPushGridMetadata`가 Push 페이로드에 다시 실음). 로드 시에는 `loadedGridMeta.auto_registered === true`로 **양방향** 복원됩니다.
+- 🔴 **판정은 값이 아니라 표지입니다.** `chip === 1`을 보지 않습니다 — 1은 합법적인 피치이고, 표지가 곧 값이면 진짜 1mm 다이를 언젠가 조용히 삼킵니다. **레거시 폴백은 두지 않았고, 필요 없다는 것을 셌습니다**: 실측 2026-08-04(운영 DB, 읽기 전용) `wafer_map_metadata` **668행 중 chip 1×1이 320행(47.9%)이고 그 320행이 전부 표지를 답니다. 표지 없는 1×1은 0건**입니다.
+- **원을 정박하지 않습니다.** `physDeclaration('chipX'|'chipY')`가 표지 앞에서 `{value: null, source: 'auto_registered'}`를 돌려주므로 `cellMetrics`는 정박 경로에 **닿기 전에** 비등방 폴백(`width/cols` × `height/rows`)으로 떨어집니다. 🔴 **그래서 이 320행의 셀은 정박 도입 전보다 훨씬 크게 그려집니다** — 1mm 피치를 곧이곧대로 정박하면 셀이 웨이퍼의 1/300로 그려졌을 것이기 때문입니다. 캔버스 안내는 *「기하 규격 미선언 (자동 등록된 합성 규격) — 칩 크기를 잰 적이 없어 웨이퍼 원을 그리지 않습니다」*입니다.
+  > ⚠️ **정확히는 「그리지 않는다」가 아니라 「보이지 않는다」입니다.** 원을 그리는 블록 자체는 `isotropic`/`waferAnchored`로 가려져 있지 않고, 합성 지름 ÷ 합성 피치 1이 캔버스 밖으로 나가 결과적으로 안 보입니다. **총괄 보고 대상**(문구와 코드가 같은 것을 말하지 않습니다).
+- 🔴 **오버레이 정렬을 합성 피치로 맞추지 않고 거절합니다.** 이것이 `cd37e2c`가 서버에 붙인 절반입니다 — 종전에는 **자동 등록 소스를 실측 타깃에 1mm 피치로 정렬해 「멀쩡해 보이는 좌표」**를 냈습니다.
+  - 서버 `map_overlay.make_frame_transform`은 소스·타깃 **양쪽을 이름 대며** 거절합니다: `소스 맵: 물리 규격이 자동 등록된 합성값입니다(chip 1x1은 '웨이퍼 원 마스크 없음'을 뜻하는 합성 어휘이지 1mm 다이가 아닙니다) ― 칩 크기를 잰 적이 없습니다 ― 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 정렬을 보증할 수 없습니다. …` 어휘는 `auto_registered` / `absent` / `unparsable` 셋입니다.
+  - 클라(`7ea2c2f`)는 **사유를 한 번만 사람 말로 옮깁니다** — 종전에는 열거값이 그대로 새어 `소스 auto_registeredxauto_registered`가 화면에 나왔습니다. 지금은 `미선언(자동 등록된 합성 규격)`으로 렌더되고 `align_unavailable`로 실패합니다.
+
 ### 1-bis-2. 파일 경계 — **맵 에디터는 더 이상 파일 하나가 아닙니다** (2026-08-04, 진행 중)
 
 | 파일 | 무엇이 사나 |
@@ -823,19 +856,62 @@ const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
 
 즉 **이 판정 이전에 저작된 선언은 조용히 다른 테이블로 재조준되지 않습니다**(실측: 손대지 않은 저장에서 8건 중 0건이 바뀝니다). 그것이 저장 형식을 안 건드린 이유이고, 하네스 `client2/tests/valid_die_authoring_harness.mjs`가 그 축(`INV-4`)을 상시 채점합니다.
 
-#### 5.7-b 🎯 APPLY와 💾 SAVE는 다른 동작이다 — 키를 고르는 데는 요청이 0건이다
+#### 5.7-b 고르는 것이 곧 적용이다 — **APPLY/SAVE 두 버튼은 삭제됐다** (2026-08-04 `5b15c24`)
 
-종전에는 **키 칸의 blur 하나가 곧 적용**이었습니다. 지금은 둘로 갈렸고, 어느 쪽도 다른 쪽을 하지 않습니다:
+> 🔴 **이 절은 하루 안에 두 번 뒤집혔습니다.** ① blur 하나가 곧 적용 → ② `🎯 APPLY` / `💾 SAVE` 두 버튼(`6420ad0`) → ③ **버튼 없음, 고르는 것이 적용**(`5b15c24`, 사용자 지시). ①과 ②는 **전부 거짓**입니다. `btn-valid-die-apply`·`btn-valid-die-save`는 마크업에도 JS에도 **없고**(하네스 `geometry_origin_reseat_harness.mjs`가 부재를 단언), 그 사실을 인용 전에 grep하십시오.
 
-| | 🎯 **APPLY** (`btn-valid-die-apply`) | 💾 **SAVE** (`btn-valid-die-save`) |
+**컨트롤은 하나이고 두 얼굴을 갖습니다** — `renderValidDieKeyControl()`이 매 호출마다 어느 쪽을 보일지 다시 정합니다.
+
+| | `<select id="valid-die-ref-select">` | `<input id="valid-die-ref-key">` (폴백) |
 |---|---|---|
-| 하는 일 | 지정을 **화면에** 적용한다 | 지정을 **기록**한다 |
-| 안 하는 일 | 저장하지 않는다 | **화면에 적용하지 않는다** — `basis`·`keys`·마스크를 건드리지 않는다 |
-| 쓰기 | 없음 | `PUT /tables/wafer_map_metadata/data/updates` 1행, `grid_metadata` 필드만 |
+| 언제 보이나 | 목록이 **완전**하고(`dataset.suggest === ''`) · 지금 키가 **목록 안**이거나 비어 있고 · 항목이 **1개 이상**일 때 | 그 셋 중 **하나라도** 아닐 때 — `truncated` / `unavailable` / 선언된 키가 목록에 없음 / 목록 0개 |
+| 적용 계기 | **`change`** — 고르는 즉시 |  **`keydown` Enter만** (IME 조합 중 Enter는 `isComposing`/`keyCode 229`로 배제) |
+| 적용 안 하는 것 | — | 🔴 **`input`은 `renderValidDieKeyControl`만 부른다**(다시 그릴 뿐 적용하지 않는다) · **`blur`/`change` 리스너는 아예 없다** |
 
-- 🔴 **키 칸에는 `change`·`blur`·`input` 리스너가 하나도 없습니다.** 유일한 리스너는 `focus → populateValidDieRefList`뿐이라 **datalist에서 고르든 직접 타이핑하든 요청이 0건**입니다. 첫 `focus` 한 번만 맵 키 목록을 읽고, **완전한 답만 캐시**됩니다(잘린 목록은 일부러 캐시하지 않아 다음 focus에 다시 묻습니다 — 하네스 `map_key_datalist_harness.mjs`가 `1`과 `2`로 채점).
-- **SAVE는 쓰기 전에 네 번 거절합니다**: 열린 신원(`table`/`mapKey`)이 없을 때 · 지정이 무동작(`{keep:true}`)일 때 · 기존 `grid_metadata`를 못 읽었을 때(**읽지 못하면 쓰지 않는다**) · 등록된 스펙이 없을 때.
-- ⚠️ **SAVE 페이로드에는 `effort`가 없습니다** — 같은 배치 엔드포인트에 또 실으면 같은 클릭이 두 번 청구됩니다(핵심가치 #1 계기의 정확성).
+- **`select`의 `change`는 정본 필드를 먼저 씁니다** — `#valid-die-ref-key.value = select.value` 다음에 `onValidDieRefChanged()`. 순서가 계약입니다(나머지 코드가 읽는 것은 언제나 `#valid-die-ref-key`입니다).
+- 🔴 **키를 고르는 데 요청은 여전히 0건입니다.** 목록을 읽는 유일한 리스너는 `focus → populateValidDieRefList`이고, **완전한 답만 캐시**됩니다(잘린 목록은 일부러 캐시하지 않아 다음 focus에 다시 묻습니다 — 하네스 `map_key_datalist_harness.mjs`가 `1`과 `2`로 채점).
+- 목록의 출처는 `GET /tables/wafer_map_metadata/data?limit=500&filters={target_table equals valid_die_ref}` — 즉 **셀 테이블이 아니라 등록된 맵 규격**입니다(`VALID_DIE_LIST_LIMIT = 500`).
+- `onValidDieRefChanged()`는 **화면까지**입니다 — `resolveValidDie` + `renderGridCanvas` 후 `frameTouched = true; framePushed = false;`. 서버 쓰기는 0건입니다.
+
+##### 5.7-b-1 기록하는 자리는 둘이고, 둘 다 유효 다이 블록 **밖**에 있다
+
+| | 무엇을 쓰나 | 위치 |
+|---|---|---|
+| `⚡ Push Map Data` (`btn-push-map`) | 맵 전체(셀 + 규격) | 그리드 툴바 |
+| **`📐 규격만 저장`** (`btn-save-map-spec` → `saveMapSpecOnly`) | **규격 블록만 — 셀은 한 건도 쓰지 않는다** | 그리드 툴바, `⚡ Push` 옆 |
+
+`saveMapSpecOnly()`의 계약:
+
+- 🔴 **신원은 「지금 화면의 컨트롤」이다**(사용자 지시) — `selectedTable` + `getCurrentMapKey()`(`#meta-input-*`에서 조립)이지 `loadedIdentity`가 **아닙니다.** 맵 키가 비었거나 `default_map`이면 *「맵 키 칸을 채워야 규격을 저장할 수 있습니다 — 어느 맵의 규격으로 등록할지 알 수 없습니다」*로 거절합니다.
+- 🔴 **없는 등록을 만들 수 있습니다.** 새 라우트는 없고 지워진 💾 SAVE가 쓰던 그 `PUT /tables/wafer_map_metadata/data/updates`인데, 그 엔드포인트는 `business_key_val`로 **upsert**합니다(`crud._get_or_create_row`). 확인창이 `isNew`(= 사전 조회 `fetchGridMetaFor`가 `null`)에 따라 *「규격을 **새로 등록**합니다」* / *「등록된 규격을 **갱신**합니다」* 중 하나를 말합니다.
+- **읽지 못하면 쓰지 않습니다** — 사전 조회 실패는 중단입니다(종전 SAVE의 거절 규율을 그대로 계승).
+- 페이로드는 **`grid_metadata` 한 필드**이고, 그 값은 `⚡ Push`와 **같은 조립기** `buildPushGridMetadata`가 만들며(`auto_registered`·`valid_die_ref` 포함) `mergeStoredGridMeta`가 기존의 모르는 키를 보존합니다.
+- **응답에 시한이 있습니다** — `MAP_SPEC_SAVE_TIMEOUT_MS = 15000` + `AbortController`. ⚠️ **시한 초과 문구는 「기록되지 않았습니다」라고 말하지 않습니다**(그 쓰기는 멱등이고, 안 됐다고 단정하면 운영자가 실제로 착지한 쓰기를 되돌리려 듭니다): *「맵 규격 저장 — 15초 안에 응답이 오지 않았습니다. 저장됐는지 확인이 필요합니다 …」*. 🔴 **15000에는 운영 실측 근거가 없습니다**(`30284bf`가 그렇게 적고 있습니다).
+- 성공 시 `legendDirty`가 아니면 `frameTouched = false`로 미저장 표시를 내립니다.
+
+##### 5.7-b-2 미저장 경고는 **싼 쪽을 이름으로 부른다**
+
+`unsavedWorkNotice()`가 가운데 한 줄만 만들고(`framePushed || !frameTouched`면 `null`), 문 두 곳이 각자 첫 문장을 붙입니다.
+
+| 셀이 바뀌었나 | 가운데 줄 |
+|---|---|
+| 예(`legendDirty`) | `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.` |
+| **아니오** | `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.` |
+
+문 둘: **뒤로 가기**(`popMapFrame` — 첫 문장 `이 맵의 편집을 저장하지 않았습니다.`)와 **다른 맵 로드**(`loadExistingMap` — `다른 맵을 불러오면 지금 화면의 편집이 사라집니다.`, `9e41995`+`282c6f2`에서 합류). 둘 다 네이티브 `confirm()`이고 `quiet` 로드는 건너뜁니다.
+
+##### 5.7-b-3 참조가 안 풀리면 **이름을 대고 거절한다** — 빈 마스크가 아니다
+
+`resolveReferenceSpec`의 문구(정확한 철자, `VALID_DIE_TABLE`은 언제나 리터럴 `valid_die_ref`):
+
+```
+이 유효 다이 맵을 valid_die_ref에서 찾을 수 없습니다 ― 키 「<mapKey>」로
+등록된 맵 규격(wafer_map_metadata)이 없습니다.
+```
+
+`refuse()`가 이것을 `console.warn('[Map Editor][M4] valid_die_ref 해석 실패 — …')`와 `showToast('유효 다이 맵을 해석하지 못했습니다 — …', 'error')`로 감싸고, 칩은 `⚠️ 유효 다이 맵 미해석`이 되며 툴팁이 *「판정 근거를 확인하기 전까지 이 맵의 유효 다이 표시를 믿지 마십시오」*라고 적습니다. 같은 함수의 형제 거절 둘: `${ref.table}: 좌표 바인딩을 서버가 해석해 주지 못했습니다.` · `${ref.table}: 값/좌표 컬럼이 추측(fallback_guess)뿐입니다.`
+
+해제 시에는 토스트 하나가 **두 저장 버튼을 이름으로** 부릅니다: `유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. 📐 규격만 저장 또는 ⚡ Push로 저장하십시오.`(`dedupeKey: 'valid_die_cleared'`).
 
 **구현 지점**(두 번째 구현을 만들지 마십시오):
 
