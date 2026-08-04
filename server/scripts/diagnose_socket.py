@@ -137,6 +137,44 @@ if procs is not None:
     else:
         say("WARN", "no launcher process found - the stack may have been started another way")
 
+# 2b. The address the BROWSER resolves --------------------------------------
+# This script talks to a literal IPv4 address, and that is exactly how it missed the
+# 2026-08-04 incident: the browser reaches the app as `localhost`, which resolves to ::1
+# before 127.0.0.1 on Windows, and the server was bound IPv4-only. HTTP fell back and the
+# page loaded; the WebSocket did not fall back and hung in CONNECTING forever. A probe that
+# only ever dials 127.0.0.1 answers "healthy" about a stack no browser can use.
+# So: resolve the name the way a browser does, and probe EVERY address it gets back.
+print("\n2b. NAME RESOLUTION (the path a browser takes)")
+try:
+    infos = socket.getaddrinfo("localhost", API_PORT, 0, socket.SOCK_STREAM)
+    seen, refused = [], []
+    for family, _, _, _, sockaddr in infos:
+        addr = sockaddr[0]
+        if addr in seen:
+            continue
+        seen.append(addr)
+        fam = "IPv6" if family == socket.AF_INET6 else "IPv4"
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as s:
+                s.settimeout(TIMEOUT)
+                s.connect(sockaddr)
+            print(f"  localhost -> {addr} ({fam}): ACCEPT")
+        except Exception as e:
+            refused.append(f"{addr} ({fam})")
+            print(f"  localhost -> {addr} ({fam}): NO ({type(e).__name__})")
+    if refused and len(refused) < len(seen):
+        say("BAD", f"`localhost` resolves to {len(seen)} addresses and {len(refused)} of them "
+                   f"do NOT accept ({', '.join(refused)}). A browser tries them in this order, "
+                   f"so HTTP falls back and loads while the WebSocket hangs on the dead one "
+                   f"with no open, no close and therefore no retry. Bind every family, or "
+                   f"reach the app by an address that has a listener.")
+    elif refused:
+        say("BAD", f"nothing accepts on port {API_PORT} at any address `localhost` resolves to")
+    else:
+        say("OK", f"every address `localhost` resolves to accepts ({', '.join(seen)})")
+except Exception as e:
+    say("WARN", f"could not resolve `localhost` ({e}); the browser's path is UNCHECKED")
+
 # 3. Is the API answering ----------------------------------------------------
 print("\n3. HTTP")
 try:
