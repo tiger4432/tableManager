@@ -96,6 +96,298 @@ def _warn_undeclared_column_once(table_name: str, col_name: str):
         )
 
 
+# ---------------------------------------------------------------------------
+# [Version gate] Version is the authority, arrival order is not.
+# ---------------------------------------------------------------------------
+# A table whose single business key must always hold the LATEST row declares
+# `version_column` in table_config.json. A machine write against an EXISTING row of such
+# a table is applied only when the incoming version is strictly GREATER than the one the
+# row already holds. Without it this path is last-write-wins, so re-dropping a superseded
+# file makes current state regress with no record of any kind.
+#
+# 🔴 The gate is a VETO, never a promotion. A row that passes still goes cell by cell
+# through `compute_priority_value`, where `user` (0) outranks every machine source. That
+# is the whole of "version orders only WITHIN a priority tier, never across one": a newer
+# version can decide whether the parser's row is considered at all, and it can never
+# decide a cell a person has corrected. Writing the payload onto the row once the version
+# passes - the plausible reading of "version is the authority" - would silently undo human
+# corrections on the next ingestion, and `test_human_correction_survives_a_newer_version`
+# exists to turn red the moment anyone does.
+#
+# The declaration is per TABLE, not per REQUEST. A table either has a version column or it
+# does not, and this function is the funnel six direct callers plus HTTP converge on: a
+# request-level flag is one every caller has to remember, and the caller who forgets falls
+# back to exactly the last-write-wins regression this closes. A table that declares
+# nothing is byte-identical to before.
+
+# The names refusals are reported under. Same vocabulary and same shape as
+# `enrichment_candidates.REASON_*` - a refusal is counted under a name, never folded into
+# a generic failure.
+REASON_VERSION_MISSING = "version_missing"
+REASON_VERSION_UNORDERABLE = "version_unorderable"
+REASON_VERSION_OLDER = "version_older"
+REASON_VERSION_SAME = "version_same"
+# Not a refusal: the row is applied. Named anyway because it happens exactly once per row
+# and only while a table is adopting the gate.
+NOTE_ROW_VERSION_ABSENT = "row_version_absent"
+# A no-op that is a genuine upstream defect: the version did not move but the content
+# this same source writes did.
+NOTE_SAME_VERSION_CONTENT_DIFFERS = "version_same_content_differs"
+
+# table_name -> {reasons already announced at WARNING in this process}. Bounded by the
+# constant set of reason names above, so unlike the undeclared-column registry it needs
+# no budget. Entries are never cleared; a feed that stops regressing simply stops
+# reaching the branch.
+_version_gate_announced = {}
+
+# How many differing column names ride in the per-batch summary. The names come from the
+# payload, so a malformed file could otherwise put a full schema in one log line.
+MAX_VERSION_DIFF_COLUMNS_REPORTED = 8
+
+# What each outcome MEANS, in the log, in one sentence. Two of these outcomes APPLY the
+# row and four refuse it; a single generic sentence would describe the applied ones as
+# refusals, which is how a diagnostic starts lying.
+_VERSION_OUTCOME_EXPLANATION = {
+    REASON_VERSION_MISSING:
+        "the incoming row carries no usable value in the version column, and an unknown "
+        "version is read neither as older nor as newer - the stored row is kept",
+    REASON_VERSION_UNORDERABLE:
+        "the version value cannot be ordered (not a number, not an ISO-8601 timestamp, "
+        "or the two sides are different kinds) - the stored row is kept",
+    REASON_VERSION_OLDER:
+        "the incoming version is LOWER than the stored one, so this is a superseded file "
+        "arriving late - the stored row is kept",
+    REASON_VERSION_SAME:
+        "the incoming version equals the stored one, so the write is a no-op",
+    NOTE_SAME_VERSION_CONTENT_DIFFERS:
+        "the version did NOT move but the content this source writes DID. The write was "
+        "dropped; check version management upstream, because this is how a real change "
+        "gets silently discarded",
+    NOTE_ROW_VERSION_ABSENT:
+        "the stored row had no usable version, so the incoming one was ADOPTED and the "
+        "row WAS written. Expected while a table takes up version gating; it should stop",
+}
+
+
+def _naive_utc(value):
+    """One instant, one spelling - the doctrine `temporal_text_value` already pins.
+
+    Aware values are converted to UTC; naive values are taken as already-UTC (that is
+    what the SQLite dialect hands back and the only shape a naive column can be here).
+    Returning naive UTC on both arms is what makes the two sides comparable at all:
+    comparing an aware datetime to a naive one raises TypeError.
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.replace(tzinfo=None)
+    return datetime(value.year, value.month, value.day)
+
+
+def _parse_temporal_version(text: str):
+    try:
+        return ("temporal", _naive_utc(datetime.fromisoformat(text)))
+    except ValueError:
+        return None
+
+
+def parse_version_key(raw: Any, col_type: str):
+    """A version value rendered to `(kind, sortable)`, or None when it cannot be ordered.
+
+    🔴 The comparison is chosen from the VALUE, not only from the declaration, and it is
+    never a text comparison. `column_text_sql` / `TEMPORAL_TEXT_FORMAT` are deliberately
+    NOT used here: they exist to render a column to text for a SQL predicate, and text is
+    precisely what mis-orders a version - `'10' < '9'`. What IS reused is the reasoning
+    behind `TEMPORAL_TEXT_FORMAT`: an ISO-8601 timestamp is an ordered value, arbitrary
+    text is not.
+
+    Both sides must produce the same `kind`. A feed that emits `7` and then
+    `2026-08-04T09:00:00` has not moved forward; it has changed what a version means, and
+    coercing the two into one order would invent an answer. Different kinds are refused
+    by the caller under `version_unorderable`.
+
+    A `string` column is tried as a number FIRST (numeric revisions live in text columns
+    all the time) and then as ISO-8601. Anything else is unorderable - `REV_B > REV_A` is
+    a lexical accident, not a version order, and the ruling on this feature is that an
+    unknown version is refused by name rather than read as older OR as newer.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None  # a flag is not a version
+    if isinstance(raw, (datetime, date)):
+        return ("temporal", _naive_utc(raw))
+    if isinstance(raw, (int, float)):
+        return ("numeric", float(raw)) if math.isfinite(raw) else None
+
+    text = str(raw).strip()
+    if text == "":
+        return None
+
+    if col_type == "number":
+        try:
+            parsed = float(text)
+        except ValueError:
+            return None
+        return ("numeric", parsed) if math.isfinite(parsed) else None
+
+    if col_type == "datetime":
+        return _parse_temporal_version(text)
+
+    try:
+        parsed = float(text)
+        if math.isfinite(parsed):
+            return ("numeric", parsed)
+    except ValueError:
+        pass
+    return _parse_temporal_version(text)
+
+
+def _same_source_content_differs(db, table_name, row, update_item, config, version_col,
+                                 is_new, sources_cache, overwrites_cache,
+                                 cell_sources_to_upsert, cell_overwrites_to_upsert):
+    """Columns whose incoming value differs from what THIS SAME SOURCE last wrote.
+
+    🔴 Measured against the source's own previous value, not against the displayed cell.
+    A human correction makes the displayed value differ from the file permanently, so
+    comparing against the cell would put a false "version management is broken" warning on
+    every single re-drop - and a warning that is always there is a warning nobody reads.
+    Against the source's own history the predicate is exact: same version, different
+    content, same writer.
+
+    Reads come from the batch-preloaded caches (`_load_metadata_row_cell` is cache-first),
+    so this costs a dict lookup per payload cell and issues no query on the batch path. It
+    only runs on the equal-version arm, which is the re-drop case.
+    """
+    col_types = config.get("column_types", {})
+    differing = []
+    for col_name, val in update_item.updates.items():
+        if col_name == version_col or col_name not in col_types:
+            continue
+        col_type = col_types.get(col_name, "string")
+        try:
+            incoming = cast_value_by_type(val, col_type, col_name)
+        except ValueError:
+            differing.append(col_name)
+            continue
+        col_srcs, _ow = _load_metadata_row_cell(
+            db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache,
+            cell_sources_to_upsert, cell_overwrites_to_upsert)
+        prev = next((s.value for s in col_srcs if s.source_name == update_item.source_name),
+                    None)
+        # The source has never written this cell: that is a NEW field appearing at an
+        # unchanged version, which is the same upstream defect.
+        if prev is None and incoming is None:
+            continue
+        if (prev is None) != (incoming is None):
+            differing.append(col_name)
+            continue
+        if col_type == "number":
+            try:
+                if float(prev) != float(incoming):
+                    differing.append(col_name)
+                continue
+            except (ValueError, TypeError):
+                pass
+        if str(prev).strip() != str(incoming).strip():
+            differing.append(col_name)
+    return differing
+
+
+def version_gate_verdict(table_name, config, row, is_new, update_item):
+    """Per-ROW verdict: `(applied: bool, reason: str | None)`.
+
+    Judged at the row and not at the cell. A per-cell version check would accept some
+    columns of a stale row and refuse others, leaving the row half-updated and internally
+    inconsistent - which is worse than either taking it or refusing it whole. If the row
+    is applied, the ordinary per-cell layering then decides every cell.
+    """
+    version_col = config.get("version_column")
+    if not version_col:
+        return True, None  # not a version-gated table - the untouched default
+
+    # A person's correction is not version-ordered. A grid edit carries one cell and no
+    # version column at all; gating it would make the table read-only for people, and
+    # `user` already outranks every machine source cell by cell.
+    if update_item.source_name == "user":
+        return True, None
+
+    # Creating a row is not an overwrite: there is nothing to regress.
+    if is_new:
+        return True, None
+
+    col_type = config.get("column_types", {}).get(version_col, "string")
+
+    if version_col not in update_item.updates:
+        return False, REASON_VERSION_MISSING
+    incoming_raw = update_item.updates.get(version_col)
+    if incoming_raw is None or str(incoming_raw).strip() == "":
+        return False, REASON_VERSION_MISSING
+    incoming = parse_version_key(incoming_raw, col_type)
+    if incoming is None:
+        return False, REASON_VERSION_UNORDERABLE
+
+    stored = parse_version_key(getattr(row, version_col, None), col_type)
+    if stored is None:
+        # Adoption. A row written before the column existed has nothing to regress to,
+        # and refusing it would wedge the table behind a manual backfill forever. Named
+        # so the one-time adoption is visible rather than assumed.
+        return True, NOTE_ROW_VERSION_ABSENT
+
+    if incoming[0] != stored[0]:
+        return False, REASON_VERSION_UNORDERABLE
+    if incoming[1] > stored[1]:
+        return True, None
+    if incoming[1] == stored[1]:
+        return False, REASON_VERSION_SAME
+    return False, REASON_VERSION_OLDER
+
+
+def log_version_gate_summary(table_name, version_col, source_name, stats):
+    """Individual silence, named aggregate - the shape the ingestion drop report uses.
+
+    Nothing per row: at 10M rows a per-row line buries every real event. A WARNING on
+    FIRST sighting per (table, reason) per process, because that is the moment something
+    genuinely changed; a later warning is therefore by definition news. Then one INFO per
+    batch carrying the counts, so "nothing was refused" and "200 rows were refused" can
+    never look the same to anyone who goes looking.
+
+    ASCII only - this reaches a cp949 console.
+    """
+    if not stats:
+        return
+    counts = {k: v for k, v in stats.get("counts", {}).items() if v}
+    if not counts:
+        return
+
+    announced = _version_gate_announced.setdefault(table_name, set())
+    diff_cols = sorted(stats.get("differing_columns", set()))[:MAX_VERSION_DIFF_COLUMNS_REPORTED]
+    for reason in sorted(counts):
+        if reason in announced:
+            continue
+        announced.add(reason)
+        detail = ""
+        if reason == NOTE_SAME_VERSION_CONTENT_DIFFERS and diff_cols:
+            detail = (f" Differing column(s): {', '.join(diff_cols)}.")
+        logger.warning(
+            f"[VersionGate] '{table_name}' is version-gated on column '{version_col}': "
+            f"outcome '{reason}' seen for the first time in this process (source "
+            f"'{source_name}'), {counts[reason]} row(s) in this batch - "
+            f"{_VERSION_OUTCOME_EXPLANATION.get(reason, 'no explanation registered')}."
+            f"{detail} Repeats are reported at INFO, once per batch."
+        )
+
+    named = ", ".join(f"{reason}={counts[reason]}" for reason in sorted(counts))
+    detail = ""
+    if NOTE_SAME_VERSION_CONTENT_DIFFERS in counts and diff_cols:
+        capped = " (list capped)" if len(stats.get("differing_columns", ())) > len(diff_cols) else ""
+        detail = f" Differing column(s): {', '.join(diff_cols)}{capped}."
+    logger.info(
+        f"[VersionGate] '{table_name}' version column '{version_col}', source "
+        f"'{source_name}': {named} out of {stats.get('rows', 0)} row(s) in this batch.{detail}"
+    )
+
+
 class LightCellSource:
     __slots__ = ('table_name', 'row_id', 'column_name', 'source_name', 'value', 'updated_by', 'ingested_at')
     def __init__(self, table_name, row_id, column_name, source_name, value, updated_by, ingested_at):
@@ -1301,7 +1593,8 @@ def apply_row_update_internal(
     cell_sources_to_upsert: dict = None,
     cell_overwrites_to_upsert: dict = None,
     cell_overwrites_to_delete: set = None,
-    deleted_row_ids: list = None
+    deleted_row_ids: list = None,
+    version_stats: dict = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
@@ -1329,7 +1622,28 @@ def apply_row_update_internal(
     changed_cols = []
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
-    
+
+    # [Version gate] Judged HERE - after the row is resolved (so the verdict sees the row
+    # the write would actually land on, however it was keyed) and before a single cell is
+    # touched. A refusal returns an EMPTY changed_cols, so no value moves, no CellSource
+    # is upserted, no audit log is written and nothing is broadcast as changed.
+    gate_applied, gate_reason = version_gate_verdict(
+        table_name, config, row, is_new, update_item)
+    if gate_reason is not None and version_stats is not None:
+        counts = version_stats.setdefault("counts", {})
+        counts[gate_reason] = counts.get(gate_reason, 0) + 1
+        if gate_reason == REASON_VERSION_SAME:
+            differing = _same_source_content_differs(
+                db, table_name, row, update_item, config,
+                config.get("version_column"), is_new, sources_cache, overwrites_cache,
+                cell_sources_to_upsert, cell_overwrites_to_upsert)
+            if differing:
+                counts[NOTE_SAME_VERSION_CONTENT_DIFFERS] = \
+                    counts.get(NOTE_SAME_VERSION_CONTENT_DIFFERS, 0) + 1
+                version_stats.setdefault("differing_columns", set()).update(differing)
+    if not gate_applied:
+        return row, is_new, changed_cols
+
     # Update business key first
     _update_row_business_key(row, key_col, update_item, row_cache)
 
@@ -2036,27 +2350,39 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         cell_overwrites_to_upsert = {}
         cell_overwrites_to_delete = set()
         deleted_row_ids = []
-        
+
+        # [Version gate] Per-batch accumulator. Only allocated for a table that declares
+        # a version column, so an ordinary table pays one dict lookup for the whole batch.
+        version_col = TABLE_CONFIG.get(table_name, {}).get("version_column")
+        version_stats = {"rows": len(batch.updates)} if version_col else None
+
         with db.no_autoflush:
             for item in batch.updates:
                 row, is_new, changed_cols = apply_row_update_internal(
-                    db, table_name, item, 
-                    row_cache=row_cache, 
+                    db, table_name, item,
+                    row_cache=row_cache,
                     sources_cache=sources_cache,
                     overwrites_cache=overwrites_cache,
-                    transaction_id=tx_id, 
+                    transaction_id=tx_id,
                     logs_to_cache=logs_to_cache,
                     cell_sources_to_upsert=cell_sources_to_upsert,
                     cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                     cell_overwrites_to_delete=cell_overwrites_to_delete,
-                    deleted_row_ids=deleted_row_ids
+                    deleted_row_ids=deleted_row_ids,
+                    version_stats=version_stats
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
                 
                 for col in changed_cols:
                     total_changed_cells.append((row.row_id, col))
-                    
+
+        # Reported before the flush so a later failure cannot swallow the reason a batch
+        # wrote nothing - "the file did not take" with no explanation is the exact class
+        # of silence this gate exists to end.
+        if version_stats is not None:
+            log_version_gate_summary(table_name, version_col, source_val, version_stats)
+
         # Execute Bulk Upserts, Bulk Inserts, and Deletes
         if logs_to_cache:
             bulk_insert_audit_logs(db, logs_to_cache)
