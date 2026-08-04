@@ -4115,6 +4115,8 @@ def get_bonding_plan_core_summary(
 # 범용 맵 오버레이 (S1') — 맵 인프라(계획 전용 아님). 경계 계약 — 총괄 고정
 # -----------------------------------------------------------------------------
 import map_overlay as map_overlay_module
+import map_alignment
+import frame_confirmation
 import map_preset_routing as map_preset_routing_module
 
 @app.get("/api/maps/overlay")
@@ -4154,6 +4156,153 @@ def get_map_overlay(
     except Exception as e:
         logger.error(f"[MapOverlay] overlay failed ({target_table}/{target_key}): {e}")
         raise HTTPException(status_code=500, detail="Failed to build map overlay.")
+
+@app.get("/api/maps/alignment/view")
+def get_map_alignment_view(
+    rule: str,
+    map_table: str,
+    params: str = None,
+    reference: str = None,
+    include_cells: bool = True,
+    db: Session = Depends(get_db),
+):
+    """한 결정 단위의 **정렬 화면 payload 전부**를 한 요청으로 낸다 (읽기 전용).
+
+    소비자는 `client2/map_editor2.html`(`client2/src/map2/`)이다.
+
+    - `rule`: 결정 단위를 선언한 인리치먼트 규칙 이름(예 `eqp_product_frame_attribution`).
+      단위(`decision_key`)의 정본은 그 선언이며 여기에 컬럼명을 하드코딩하지 않는다.
+    - `params`: URL 인코딩된 JSON 객체 {decision_key_col: value}. **그 규칙의 decision_key
+      컬럼만** 허용한다(그 외 400) — `/enrichment/rules/{r}/references/{i}`와 같은 규율이고,
+      값은 SQLAlchemy 바인딩으로만 전달된다.
+    - `map_table`: 소스 좌표가 속한 맵 테이블(그 테이블의 `map_key_columns`가 맵 단위다).
+    - `reference`: 공통 바닥을 **꽂아 넣는다** — `"테이블:맵ID"`. 생략하면 소스 맵이 선언한
+      `valid_die_ref`를 따르고, 그것도 없으면 `reference.state = "absent"`로 나간다.
+      🔴 기준 없음은 오류가 아니라 **가장 흔한 정상 상태**다.
+    - `include_cells`: false면 셀 배열을 빼고 개수·채점만 낸다(목록 화면용).
+
+    [후보 8개가 같은 응답에 들어간다] 후보 전환이 네트워크 왕복이면 조작 3회·30초 예산이
+    상호작용만으로 소진된다. 그래서 채점은 한 번에 전부 하고 전환은 클라 리페인트로 둔다.
+
+    [상태] `scored` / `no_winner` / `not_scorable`. 답이 없을 때 `refusal`에 **서버가 만든
+    한국어 한 문장**이 들어간다 — 클라가 사유를 자기 규칙으로 유도하기 시작하면 그것이 두 번째
+    판정 구현이 되고, 두 판정이 갈리는 날 화면은 멀쩡한 채 값만 틀린다
+    (`/admin/config/resolve`와 같은 규율).
+    """
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    decl = next((r for r in rules if r["name"] == rule), None)
+    if decl is None:
+        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule}' not found")
+
+    key_values = {}
+    if params:
+        try:
+            parsed = json.loads(params)
+            if not isinstance(parsed, dict):
+                raise ValueError("not an object")
+        except Exception:
+            raise HTTPException(status_code=400,
+                                detail="'params' must be a URL-encoded JSON object")
+        allowed = set(decl.get("decision_key", []))
+        invalid = sorted(k for k in parsed.keys() if k not in allowed)
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'params' keys must be decision_key columns only; invalid: {invalid}")
+        key_values = parsed
+
+    config = map_overlay_module.load_overlay_config()
+    try:
+        return map_alignment.build_alignment_view(
+            db, config, decl, key_values, map_table,
+            reference_spec=reference, include_cells=include_cells)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MapAlignment] view failed ({rule}/{map_table}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to build map alignment view.")
+
+
+@app.post("/api/maps/alignment/confirm")
+def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """🔴 **좌표계 확정 — 이 사슬에서 데이터베이스에 쓰는 유일한 요청이다.**
+
+    스펙 `MAP_ALIGNMENT_SPEC` §0.2 층 ⑧. 앞의 일곱 층(신원·근거·선언·좌석·채점·비교·판정)은
+    아무것도 쓰지 않고, 층 ⑨(다이 맵 파생·본딩 계획·온톨로지 조인)는 여기 기록만 읽는다.
+
+    [사고로 도달할 수 없어야 한다]
+    그래서 **POST만** 있고 같은 일을 하는 GET이 없다. 읽기 경로에는 부작용이 없다
+    (`/api/maps/alignment/view`는 순수 조회다). 화면 쪽은 arm-then-commit이 앞에 서고,
+    이 라우트는 그 두 번째 몸짓에서만 불린다.
+
+    [판정을 여기서 다시 하지 않는다]
+    `ruling`·`sources`는 요청이 **명시적으로** 실어 온다. 쓰기 경로가 재채점하면 조작자가 보고
+    결정한 것과 기록된 것이 갈릴 수 있고, 기록해야 하는 것은 조작자가 본 쪽이다. 재채점이
+    필요하면 그것은 확정이 아니라 새 조회다.
+
+    요청 본문:
+      rule          결정 단위를 선언한 인리치먼트 규칙 이름 (`/view`와 같은 어휘)
+      decision_key  {컬럼: 값} — **그 규칙의 decision_key 컬럼만**, 그리고 전부 채워야 한다
+      frames        {target_field: 프레임} — 그 규칙의 target_fields 안에 있어야 한다
+      sources       합의에 올린 소스 목록(제외된 것 포함). 비면 거절한다
+      ruling        `/view`가 낸 판정 그대로
+      reference     {table, map_id} — 공통 바닥
+      confirmed_by  주체
+
+    응답은 만들어진 기록 전체(`confirmation_uid`·`version` 포함)다 — 화면이 방금 무엇을
+    했는지 알기 위해 다시 조회할 필요가 없어야 한다.
+
+    ⚠️ **WS 브로드캐스트는 하지 않는다**(총괄 결정 2026-08-05). 듣는 쪽이 아직 없고, 이
+    사슬에 이벤트를 붙이는 것은 별도 결정이다.
+    """
+    rule_name = payload.get("rule")
+    if not rule_name:
+        raise HTTPException(status_code=400, detail="'rule' is required")
+
+    rules = enrichment_config.load_enrichment_rules(known_tables=crud.TABLE_CONFIG)
+    decl = next((r for r in rules if r["name"] == rule_name), None)
+    if decl is None:
+        raise HTTPException(status_code=404, detail=f"Enrichment rule '{rule_name}' not found")
+
+    key_values = payload.get("decision_key") or {}
+    if not isinstance(key_values, dict):
+        raise HTTPException(status_code=400, detail="'decision_key' must be an object")
+    # `/view`·`/enrichment/rules/{r}/references/{i}`와 같은 규율 — 선언되지 않은 컬럼은 거절.
+    allowed = set(decl.get("decision_key", []))
+    invalid = sorted(k for k in key_values if k not in allowed)
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'decision_key' keys must be decision_key columns only; invalid: {invalid}")
+
+    frames = payload.get("frames") or {}
+    if not isinstance(frames, dict):
+        raise HTTPException(status_code=400, detail="'frames' must be an object")
+    sources = payload.get("sources")
+    if not isinstance(sources, list):
+        raise HTTPException(status_code=400, detail="'sources' must be a list")
+
+    confirmed_by = (payload.get("confirmed_by") or "").strip()
+    if not confirmed_by:
+        raise HTTPException(status_code=400, detail="'confirmed_by' is required")
+
+    try:
+        header = frame_confirmation.record_confirmation(
+            db, decl, key_values, sources,
+            confirmed_by=confirmed_by, frames=frames,
+            ruling=payload.get("ruling"), reference=payload.get("reference"),
+            enrichment_row_id=payload.get("enrichment_row_id"))
+        return frame_confirmation.as_payload(db, header)
+    except frame_confirmation.ConfirmationRefused as e:
+        # 거절문은 서버가 만든다(`/view`의 refusal과 같은 규율) — 클라가 사유를 자기 규칙으로
+        # 유도하기 시작하면 그것이 두 번째 판정 구현이 된다.
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[MapAlignment] confirm failed ({rule_name}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to record frame confirmation.")
+
 
 @app.get("/api/maps/paint-rules")
 def get_map_paint_rules(table: Optional[str] = None):
