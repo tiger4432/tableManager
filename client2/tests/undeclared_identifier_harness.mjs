@@ -28,7 +28,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SRC_PATH = process.argv[2] || path.join(HERE, '..', 'src', 'map_editor.js');
+const ARGS = process.argv.slice(2);
+const SHOW_NAMES = ARGS.includes('--names');
+const SRC_PATH = ARGS.find(a => !a.startsWith('--')) || path.join(HERE, '..', 'src', 'map_editor.js');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was checked.)`); process.exit(2); };
 
@@ -134,6 +136,46 @@ function scan(src) {
   return { declared, refs, undeclared };
 }
 
+// ── MODULE-LEVEL MUTABLE STATE ─────────────────────────────────────────────────────────
+//
+// WHY IT IS COUNTED HERE. R3 through R6 all stopped at the same wall, and it was never file
+// length: it was module-level mutable state. `paintLockConfig` had textbook ownership -- 7
+// reads, 2 writes, all inside one cluster -- and still could not be extracted, because its
+// second writer was entangled with three other bindings. Every round therefore had to
+// re-measure the write set of every function it touched. There is no project to clean this
+// up (it changes behaviour, it blocks no feature, and "the list exists so let us finish it"
+// is what stopped R3). The cheap preventive half is the one thing that was missing: STOP THE
+// NUMBER GOING UP. Shrinking happens opportunistically when a feature round already has a
+// cluster open.
+//
+// THE DEFINITION, because the number depends on it. Counted: every binding introduced by a
+// `let` or `var` at the TOP LEVEL of the module -- per DECLARATOR, so `let a, b;` is two, and
+// destructuring patterns contribute every name they bind. That set is exactly "bindings whose
+// value can still change after the module finishes evaluating", which is the property that
+// makes local reasoning impossible and the property `paintLockConfig` had.
+//
+// NOT counted, and each for a reason rather than convenience:
+//   * `const` -- cannot be reassigned. A const holding a Map or `{}` IS shared mutable state
+//     (`el`, the datalist caches), and this is the honest weakness of the definition. It is
+//     excluded because detecting "const holding a mutable container" is a heuristic
+//     (`new Map()` and `{}` are visible, `makeThing()` is not), and a gate that can be
+//     satisfied by changing the shape of an initialiser measures the initialiser, not the
+//     state. A crisp under-count that cannot be gamed beats a fuzzy one that can.
+//   * `function` / `class` declarations -- bindings, but not state; nothing reassigns them.
+//   * anything inside a function, block, or class body -- that is exactly the local reasoning
+//     this ceiling is trying to make possible.
+function moduleMutableBindings(src) {
+  const ast = parseAst(src, { lang: 'js' });
+  const out = [];
+  for (const st of ast.body) {
+    // `export let x` is still a module-level mutable binding, and a more public one.
+    const d = (st.type === 'ExportNamedDeclaration' && st.declaration) ? st.declaration : st;
+    if (d.type !== 'VariableDeclaration' || d.kind === 'const') continue;
+    for (const decl of d.declarations) patternNames(decl.id, { add: n => out.push(n) });
+  }
+  return out;
+}
+
 const lineOf = (src, pos) => src.slice(0, pos).split('\n').length;
 
 let pass = 0; const failures = [];
@@ -175,9 +217,46 @@ ok(ctlFlags !== null && ctlFlags.length === base.undeclared.length,
   'declared local is NOT flagged (no false positive from the controls)',
   ctlFlags === null ? 'control scan threw' : `flagged: ${ctlFlags.join(', ')}`);
 
+// ── 7-9. the module-state count, and the controls that keep it honest ───────────────────
+// The CEILING itself is not asserted here: it lives beside the assertion floors in
+// check_harnesses.mjs, so a run baseline is edited in exactly one file. What this harness
+// owes the runner is a number it can trust, so what is asserted here is that the counter
+// counts the right things.
+let stateNames = null, stateErr = null;
+try { stateNames = moduleMutableBindings(SRC); } catch (e) { stateErr = e; }
+ok(stateNames !== null, 'module-state walk completed',
+  stateErr && String(stateErr.message || stateErr));
+if (!stateNames) stateNames = [];
+// A counter that visits nothing reports 0 and would read as "we cleaned it all up".
+ok(stateNames.length > 0, `module-state walk saw a plausible population (${stateNames.length} > 0)`);
+
+// Control A: a new TOP-LEVEL `let` must raise the count by exactly one. Without this the
+// ceiling can be walked under by a counter that stopped counting.
+let ctlLet = -1;
+try { ctlLet = moduleMutableBindings(SRC + '\nlet __ceilingProbeLet = 1;\n').length; } catch (e) { /* stays -1 */ }
+// Control B: a top-level `const` and a `let` INSIDE a function must NOT raise it -- the
+// definition above says so, and a counter that flagged them would make the ceiling
+// unshippable noise and get raised out of usefulness.
+let ctlConst = -1;
+try {
+  ctlConst = moduleMutableBindings(SRC
+    + '\nconst __ceilingProbeConst = 1;\n'
+    + '\nfunction __ceilingProbeFn() { let __inner = 1; var __inner2 = 2; return __inner + __inner2; }\n').length;
+} catch (e) { /* stays -1 */ }
+ok(ctlLet === stateNames.length + 1,
+  'a NEW top-level `let` raises the count by exactly 1 (the ceiling can bite)',
+  `base ${stateNames.length}, with probe ${ctlLet}`);
+ok(ctlConst === stateNames.length,
+  'a top-level `const` and function-local `let`/`var` do NOT raise it (no false positive)',
+  `base ${stateNames.length}, with probes ${ctlConst}`);
+
 console.log(`\n${failures.length ? 'FAIL' : 'PASS'} -- ${pass} passed, ${failures.length} failed`
   + `  (${path.basename(SRC_PATH)}: ${base.declared.size} declared, ${base.refs.size} referenced,`
-  + ` ${base.undeclared.length} undeclared)`);
+  + ` ${base.undeclared.length} undeclared, ${stateNames.length} module-level mutable bindings)`);
 // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
+// H1 protocol, second line: the runner enforces a CEILING on this the way it enforces floors
+// on the line above. Reported as structured data, never as prose, for the same reason.
+console.log(`MODULE_STATE ${stateNames.length}`);
+if (SHOW_NAMES) console.log(`  ${stateNames.join(' ')}`);
 process.exit(failures.length ? 1 : 0);

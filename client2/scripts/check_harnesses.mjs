@@ -120,11 +120,42 @@ const FLOORS = new Map([
   ['retroactive_view_harness.mjs', 263],
   ['standard_frame_origin_harness.mjs', 19],
   ['startxy_probe.mjs', 29],
-  ['undeclared_identifier_harness.mjs', 6],
+  ['undeclared_identifier_harness.mjs', 10],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
   ['virtual_column_render_harness.mjs', 65],
+]);
+
+// ── the ceilings ────────────────────────────────────────────────────────────────
+// A FLOOR says "do not measure less than you used to". A CEILING says the mirror thing about
+// a quantity we want to shrink: "do not accumulate more than you have". Same protocol, same
+// file, opposite direction -- so a baseline is edited in exactly one place either way.
+//
+// WHAT IS CEILINGED, AND WHY IT IS NOT A CLEANUP PROJECT. R3 through R6 each stopped at
+// module-level mutable state in `map_editor.js`, never at file length: `paintLockConfig` had
+// 7 reads and 2 writes all inside one cluster and STILL could not be extracted, because its
+// second writer was entangled with three other bindings. Cleaning that up is a behaviour
+// change that blocks no feature, so it is deliberately NOT scheduled. What is cheap and
+// preventive is the half that was missing: the number must not go UP. Three new bindings in a
+// quiet week would have been invisible. Shrinking is opportunistic -- a feature round that
+// already has a cluster open takes it.
+//
+// EXCEEDING IS BLOCKING. Coming in UNDER is not a failure and never will be: it is reported
+// the way a rising assertion count is, so somebody eventually re-baselines it on purpose.
+// Raising a ceiling to make a build pass is the same lie as lowering a floor.
+//
+// The counting rule lives with the counter (`undeclared_identifier_harness.mjs`, which emits
+// `MODULE_STATE <n>`); it is top-level `let`/`var` declarators, per bound name.
+//
+// ⚠️ 48 INCLUDES TWO BINDINGS ALREADY KNOWN TO BE DEAD -- `tables` and `isMouseDown`. They are
+//    boarded, not deleted here, and the round that finally touches their neighbourhood takes
+//    them. So the FIRST re-baseline of this number is expected, not a surprise.
+// Scope: `map_editor.js` only for now. Whether the other client modules deserve the same
+// ceiling is a separate question and should be answered by measuring them, not by assuming.
+const CEILINGS = new Map([
+  ['undeclared_identifier_harness.mjs', { key: 'MODULE_STATE', max: 48,
+    what: 'module-level mutable bindings in client2/src/map_editor.js' }],
 ]);
 
 const doubleBooked = [...FLOORS.keys()].filter(n => KNOWN_RED.has(n));
@@ -155,6 +186,7 @@ const stillRed = [];
 const recovered = [];
 const rose = [];        // ran above its recorded floor ― re-baseline when convenient
 const unfloored = [];   // discovered but never baselined ― cannot have regressed yet
+const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when convenient
 
 for (const name of harnesses) {
   const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name)],
@@ -169,8 +201,38 @@ for (const name of harnesses) {
   const said = counts ? `ran ${counts.ran}, failed ${counts.failed}` : 'no ASSERTIONS line';
   const floor = FLOORS.get(name);
 
+  // Floor bookkeeping runs BEFORE the ceiling verdict below, which can `continue`. A harness
+  // that breached its ceiling is still a harness whose coverage we want recorded.
   if (floor === undefined && !known) unfloored.push(name);
   if (floor !== undefined && counts && counts.ran > floor) rose.push({ name, was: floor, now: counts.ran });
+
+  // ── the ceiling, if this harness carries one ──────────────────────────────────
+  // Read exactly like the ASSERTIONS line: the harness counts, the runner only compares.
+  const ceil = CEILINGS.get(name);
+  let ceilBreach = null;
+  if (ceil) {
+    let measured = null;
+    for (const m of (run.stdout || '').matchAll(new RegExp(`^${ceil.key} (\\d+)\\s*$`, 'gm')))
+      measured = +m[1];
+    if (measured === null) {
+      // A ceiling whose number stopped arriving is not a pass. It is a gate that went quiet,
+      // which is exactly how this directory once went 14/15 unrun.
+      ceilBreach = `[BLOCKING] no \`${ceil.key} <n>\` line ― it is ceilinged at <= ${ceil.max} `
+        + `(${ceil.what}) and stopped reporting. A silent ceiling is not a ceiling.`;
+    } else if (measured > ceil.max) {
+      ceilBreach = `[BLOCKING] ${ceil.key} ${measured}, but the ceiling is <= ${ceil.max} `
+        + `(${ceil.what}). This number is meant to fall, never rise. Take the new state out, `
+        + `or pass it as an argument instead of declaring it at module scope. Raising the `
+        + `ceiling to go green is the same lie as lowering a floor.`;
+    } else if (measured < ceil.max) {
+      shrank.push({ name, was: ceil.max, now: measured, what: ceil.what });
+    }
+  }
+  if (ceilBreach) {
+    blocking.push({ name, run });
+    console.log(`✗ ${name}  ${ceilBreach}`);
+    continue;
+  }
 
   if (ok && (!counts || counts.ran === 0 || counts.failed > 0)) {
     blocking.push({ name, run });
@@ -231,6 +293,17 @@ if (rose.length > 0) {
     + `Not a failure ― raise the floors in FLOORS when convenient so the new coverage is also `
     + `protected:\n  `
     + rose.map(r => `${r.name}: floor ${r.was} -> ran ${r.now}`).join('\n  ') + '\n');
+}
+
+// The ceiling's mirror of the block above, and it must stay a note for the same reason: this
+// number is meant to fall, so falling can never be a failure. It is reported because an
+// un-refreshed ceiling still catches a doubling but stops catching the re-accumulation of
+// everything that was cleared since it was recorded.
+if (shrank.length > 0) {
+  console.log(`\n! ${shrank.length} harness(es) came in UNDER their ceiling ― that is the `
+    + `direction this number is supposed to move. Not a failure. Lower the ceiling in `
+    + `CEILINGS when convenient so the ground gained is also held:\n  `
+    + shrank.map(s => `${s.name}: ceiling ${s.was} -> ${s.now} (${s.what})`).join('\n  ') + '\n');
 }
 
 // A harness with no floor cannot have regressed (there is nothing to compare), so this is a
