@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **332개** 이력. (거버넌스 규칙 #4)
+> 총 **336개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-04 23:59** — [The Cancellation Was In A Third Stage Nobody Had Read](./20260804_235959_the_cancellation_was_in_a_third_stage_nobody_had_read.md)
+- **2026-08-04 23:25** — [The Arithmetic Was Right And The Shared Box Was The Premise That Was Not](./20260804_232504_the_arithmetic_was_right_and_the_shared_box_was_the_premise_that_was_not.md)
+- **2026-08-04 23:14** — [Five Lenses In One Day And A Fixture The Synthesis Invented](./20260804_231409_five_lenses_in_one_day_and_a_fixture_the_synthesis_invented.md)
+- **2026-08-04 22:23** — [The Rotation Knob Applies To Both Sets So It Cannot Produce Information](./20260804_222349_the_rotation_knob_applies_to_both_sets_so_it_cannot_produce_information.md)
 - **2026-08-04 14:15** — [The Column Came Out And The Comparison Folded Instead](./20260804_141500_the_column_came_out_and_the_comparison_folded_instead.md)
 - **2026-08-04 12:50** — [Four Hypotheses Were Wrong And The Death Distribution Settled It](./20260804_125032_four_hypotheses_were_wrong_and_the_death_distribution_settled_it.md)
 - **2026-08-04 12:42** — [Authoring Is Pinned The Storage Format Deliberately Is Not](./20260804_124234_authoring_is_pinned_the_storage_format_deliberately_is_not.md)
@@ -353,4 +357,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-04 by gen_index.py*
+*Last generated: 2026-08-05 by gen_index.py*
