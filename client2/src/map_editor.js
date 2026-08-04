@@ -1,6 +1,6 @@
 import './tokens.css';
 import './style.css';
-import { API_BASE, CURRENT_USER } from './config.js';
+import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -9441,11 +9441,25 @@ async function saveMapSpecOnly() {
   const btn = el.btnSaveMapSpec;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '📐 Saving...'; }
+  // ── 응답이 오지 않는 경우 ────────────────────────────────────────────────────────────
+  // 🔴 **버튼 복구는 `finally`에 있다. 그러니 버튼이 멈춰 있다는 것은 `finally`에 닿지
+  //    못했다는 뜻이고, 그 길은 하나뿐이다 — `await fetch(...)`가 영원히 끝나지 않는 것.**
+  //    2026-08-04 실사용 신고가 정확히 이것이었다: 버튼은 "Saving..."에 멈춰 있는데
+  //    **저장은 성공해 있었다.** 연결을 삼키는 경로(응답을 완료하지도 거절하지도 않는
+  //    프록시, 드롭하는 방화벽, 반열림 NAT)에서 나는 고장이고, 같은 환경이 WebSocket을
+  //    CONNECTING에 붙잡아 두는 그 고장이다(`WS_CONNECT_TIMEOUT_MS` 참조).
+  //    `AbortController` 유무를 먼저 보는 것은 `value_suggest.js`의 선례를 따른 것이다.
+  const abort = (typeof AbortController === 'function') ? new AbortController() : null;
+  let timedOut = false;
+  const timeoutTimer = abort
+    ? setTimeout(() => { timedOut = true; abort.abort(); }, MAP_SPEC_SAVE_TIMEOUT_MS)
+    : null;
   try {
     const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      ...(abort ? { signal: abort.signal } : {}),
     });
     if (!res.ok) {
       showToast(`맵 규격 저장 실패 (HTTP ${res.status}) — 아무것도 기록되지 않았습니다.`, 'error');
@@ -9459,9 +9473,32 @@ async function saveMapSpecOnly() {
     showToast(`${table} · ${mapKey} 의 맵 규격을 ${isNew ? '새로 등록' : '갱신'}했습니다 — `
       + `셀은 하나도 기록하지 않았습니다.`, 'success');
   } catch (e) {
-    showToast(`맵 규격 저장 실패 — ${(e && e.message) ? e.message : e}. `
-      + `아무것도 기록되지 않았습니다.`, 'error');
+    // 🔴 **「실패했다」와 「됐는지 모르겠다」는 다른 사실이고, 다르게 읽혀야 한다.**
+    //    종전 문구는 어떤 예외에서든 "아무것도 기록되지 않았습니다"라고 단언했다. 응답을
+    //    잃은 쓰기에 대해 그것은 **위험한 방향으로** 틀린다 — 이번 신고에서 쓰기는 실제로
+    //    성공해 있었다. "기록되지 않았다"고 들은 사용자는 다시 시도하거나, 더 나쁘게는
+    //    편집이 사라진 줄 알고 낡은 화면에서 처음부터 다시 만든다.
+    //    브라우저에서 실제로 구분되는 것은 **「서버가 답을 줬다」(위 `!res.ok`)와 「답을
+    //    받지 못했다」(여기)** 까지다. 네트워크 오류는 전송 전 거절일 수도 전송 후 응답
+    //    유실일 수도 있고 JS는 그 둘을 구분하지 못한다 — 그래서 시간 초과든 네트워크
+    //    오류든 "확인이 필요합니다"로 말한다. 편한 문구가 아니라 **구분할 수 있는 것**에서
+    //    문구를 가져온다.
+    //    두 갈래를 나누는 것은 원인이 다르기 때문이다. 시간 초과는 몇 초를 기다렸는지가
+    //    사용자에게 의미 있는 사실이고, 그 자리에 예외 메시지("The user aborted a request")를
+    //    보여 주는 것은 아무 말도 안 하는 것과 같다.
+    if (timedOut) {
+      showToast(`맵 규격 저장 — ${Math.round(MAP_SPEC_SAVE_TIMEOUT_MS / 1000)}초 안에 응답이 `
+        + `오지 않았습니다. 저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인한 뒤 `
+        + `다시 시도하십시오.`, 'error');
+    } else {
+      showToast(`맵 규격 저장 — 응답을 받지 못했습니다 (${(e && e.message) ? e.message : e}). `
+        + `저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인하십시오.`, 'error');
+    }
   } finally {
+    // 타이머는 성공 경로에서도 반드시 꺼진다. 살아남은 타이머는 이 저장이 끝난 뒤에
+    // `abort()`를 부르는데, 그 컨트롤러는 이미 아무 요청도 붙들고 있지 않다 — 지금은
+    // 무해하지만, 컨트롤러를 재사용하는 다음 편집에서는 남의 요청을 끊는다.
+    if (timeoutTimer !== null) clearTimeout(timeoutTimer);
     if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }

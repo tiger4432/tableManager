@@ -79,3 +79,35 @@ export const WS_CONNECT_TIMEOUT_MS = 8000;
 // unchanged. See the long note in `wakeNow` for why the signal gets to break a stale one at all
 // when the watchdog above would eventually do it anyway.
 export const WS_CONNECT_STALE_MS = 1000;
+
+// ── The spec-only save's response bound ─────────────────────────────────────────
+// SAME FAILURE CLASS AS THE WATCHDOG ABOVE, ON THE OTHER PROTOCOL. Reported live 2026-08-04:
+// 📐 규격만 저장 sticks on "Saving..." forever WHILE THE SAVE ACTUALLY SUCCEEDS. The button is
+// restored in a `finally`, so the only way it stays stuck is that the `finally` is never
+// reached — the `await fetch(...)` never settles. A hung HTTP response is the same blackholed
+// route that holds a WebSocket in CONNECTING.
+//
+// 🔴 NO PRODUCTION MEASUREMENT EXISTS FOR THIS ENDPOINT, AND ONE IS NOT INVENTED HERE.
+//    `server/server.log` carries 486 `data/updates` lines and every one of them is
+//    `http://testserver` — FastAPI's TestClient, not browser traffic. There is no request
+//    duration instrumentation on this route at all. Quoting a test-suite number as if it
+//    described production is how this repo has previously argued for defects that did not
+//    exist, so the bound below is argued from the SHAPE of the work and the COST of being
+//    wrong instead, and it is labelled as such.
+//
+// WHY 15000. The work is a SINGLE-ROW upsert through the same batch route ⚡ Push uses for
+// thousands of cells. A server taking longer than 15s for one row is not slow, it is wedged,
+// and the operator needs to be told that rather than keep staring at a disabled button. For
+// scale, 15s is ~5x the largest real latency ever measured anywhere on this stack (3094ms
+// lifespan startup, n=324) — an unrelated and much heavier operation, and the only
+// order-of-magnitude anchor actually in hand.
+//
+// WHY BEING WRONG IS CHEAPER HERE THAN IN THE SOCKET CASE. Two reasons, and they are why this
+// bound can be tighter relative to its evidence than WS_CONNECT_TIMEOUT_MS is:
+//   · the write is IDEMPOTENT — the endpoint upserts on `business_key_val` and the payload
+//     carries the whole spec, so a repeat save produces the same row rather than a second one;
+//   · the abort message does not claim the write was discarded. It says the outcome is unknown
+//     and asks the operator to verify, so a premature abort costs one re-save and can never
+//     cause a wrong belief about what is stored.
+// A too-LONG bound, by contrast, is the stranded UI this exists to end.
+export const MAP_SPEC_SAVE_TIMEOUT_MS = 15000;
