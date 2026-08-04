@@ -115,6 +115,11 @@ const FLOORS = new Map([
   ['effort_instrument_harness.mjs', 71],
   ['effort_meter_harness.mjs', 131],
   ['geometry_origin_reseat_harness.mjs', 46],
+  // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
+  // the wafer outline is a circle by construction). Same rule as the entries above: the floor
+  // is the count it reports on the commit that introduces it — there is no earlier tree to
+  // measure it against. 5 of its assertions are the mutation floor itself.
+  ['isotropic_cell_harness.mjs', 120],
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
   // 54, not the 53 the overlay branch carried: that branch forked before the datalist

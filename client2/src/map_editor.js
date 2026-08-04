@@ -481,6 +481,7 @@ function initDOMElements() {
   el.gridNotch = document.getElementById('grid-notch');
   el.mapWorkspace = document.getElementById('map-workspace');
   el.sideIndicator = document.getElementById('side-indicator');
+  el.cellAspectNote = document.getElementById('cell-aspect-note');
 
   // Fit the (square) grid to the available workspace on any size change.
   // ResizeObserver also covers container-only resizes (split panels) that window 'resize' misses.
@@ -865,16 +866,23 @@ function getGridCellFromMouseEvent(e) {
   if (xRel < 0 || xRel > rect.width || yRel < 0 || yRel > rect.height) return null;
 
   const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
-  const cellW = rect.width / visualCols;
-  const cellH = rect.height / visualRows;
+  // [C1] 렌더와 **같은 함수**로 셀 크기를 얻는다. 마우스가 자기 산술을 가지면 화면과
+  //      클릭이 갈리고, 그것은 "화면은 멀쩡한데 값이 틀린" 결함의 정확한 형태다.
+  const { cellW, cellH, padX, padY } = cellMetrics(rect.width, rect.height, visualCols, visualRows, physConfig);
   const { shiftX, shiftY } = getScreenShift(physConfig, cellW, cellH);
 
-  const c = Math.floor((xRel - shiftX) / cellW);
-  const r = Math.floor((yRel - shiftY) / cellH);
+  const c = Math.floor((xRel - shiftX - padX) / cellW);
+  const r = Math.floor((yRel - shiftY - padY) / cellH);
 
-  if (c >= 0 && c < visualCols && r >= 0 && r < visualRows && gridCells2D[r]?.[c]) {
-    return gridCells2D[r][c];
-  }
+  // 🔴 격자 밖은 **셀이 아니다.** 여백을 채우는 칸은 맵이 선언하지 않은 좌표이므로
+  //    클릭·드래그·원점 지정 어느 것도 그 위에서 일어나지 않는다. `null`을 돌려주면
+  //    호출부 셋(mousedown·mousemove·handleCellClick)이 전부 이미 있는 `if (!cell) return`
+  //    으로 멈춘다 — 새 관문을 세 곳에 심지 않는다.
+  //    `gridCells2D`가 격자 밖을 담지 않는 것(§renderGridCanvas 격자 밖)과 **둘 다** 필요하다:
+  //    이쪽은 쓰기 동선을, 저쪽은 세기·저장 동선을 막는다.
+  if (c < 0 || c >= visualCols || r < 0 || r >= visualRows) return null;
+
+  if (gridCells2D[r]?.[c]) return gridCells2D[r][c];
 
   return getGridCellObject(c, r, visualCols, visualRows, physConfig, rect.width, rect.height);
 }
@@ -1016,6 +1024,10 @@ function initMouseDragEvents() {
       if (cell) {
         const val = gridData[cell.key] || '';
         el.gridStatusCoords.textContent = `Cursor: (${cell.x}, ${cell.y}) = ${val !== '' ? val : 'Empty'}`;
+      } else {
+        // 격자 밖(여백을 채우는 칸) 위에는 좌표가 없다. 종전 값을 남겨 두면 커서가 맵을
+        // 벗어난 뒤에도 마지막 셀을 가리키는 것처럼 읽힌다. HTML의 초기 문구로 되돌린다.
+        el.gridStatusCoords.textContent = 'Cursor: -';
       }
 
       if (isBoxDragging && boxStartCell && cell) {
@@ -1986,6 +1998,61 @@ function getScreenShift(physConfig, cellW, cellH) {
   }
 
   return { shiftX, shiftY };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [C1] 셀 하나가 화면에서 차지하는 픽셀. **밀리미터당 픽셀이 두 축에서 같다** —
+// 그래야 웨이퍼 외곽이 원으로 그려진다.
+//
+// 🔴 THE DEFECT. 종전에는 `cellW = width / visualCols`, `cellH = height / visualRows`라
+//    두 축의 mm/px가 서로 달랐다. 그래서 셀은 언제나 정사각형이었고 원은
+//    `cellW/chipX != cellH/chipY`인 순간 타원이 됐다 — 즉 칩 피치가 정사각이 아니거나
+//    캔버스 종횡비가 격자 종횡비와 다르면 **언제나**. 실측(chipX 9 · chipY 11 · 15x11 격자):
+//    700x700 캔버스에서 rx/ry = 0.8963, 900x380에서 2.1228.
+//    원을 그리는 코드로는 못 고친다: 타원의 원인은 **셀**이고, 셀을 고치면 원은 저절로
+//    원이 된다. 그 대가로 `phys_chip_x != phys_chip_y`인 맵의 셀은 직사각형이 된다 —
+//    부작용이 아니라 요청된 결과다(사용자: "셀이 정사각형이고 원이 찌그러짐").
+//
+// 🔴 **피치를 지어내지 않는다.** 선언이 없으면 종횡비를 알 수 없고, 한 축을 다른 축으로
+//    메우는 것이 「화면은 완벽히 정렬되는데 값은 전부 틀린」 그 결함이다(실측 570/600 —
+//    §오버레이 피치 관문). 그래서 판정은 `physDeclaration`이지 `physNum`의 출력이 아니다:
+//    후자는 기본값 2.5를 접은 뒤라 「선언 없음」이 관측 불가능하다(§physDeclaration).
+//    선언이 없으면 **종전 동작 그대로**를 돌려주고(`isotropic: false`), 화면이 미상을 말한다.
+//
+// 🔴 격자는 캔버스 **중앙**에 앉는다(`padX`/`padY`). 그래서 격자 중심 == 캔버스 중심이
+//    유지되고, `isCellInsideWaferFast`의 판정식에서 픽셀 항이 그대로 상쇄된다:
+//      dx/effRadX = [(c − visualCols/2)·chipX + offsetX] / effectiveRadius   (순수 mm)
+//    즉 **어느 칸이 유효 다이인가는 이 변경으로 한 칸도 바뀌지 않는다.** 그래서
+//    `isCellInsideWaferFast`는 손대지 않는다 — 그 함수의 크기 불변성(§8127)에
+//    `getWaferBoundingBox`(700x700 고정)와 `canvasSeatKeys`가 얹혀 있다.
+//
+// ⚠️ 순수 함수다. 이 파일의 module-state 천장은 여유가 0이므로 상태를 만들지 않는다.
+// ═══════════════════════════════════════════════════════════════════════════════
+function cellMetrics(width, height, visualCols, visualRows, physConfig) {
+  const anisotropicFallback = {
+    cellW: width / visualCols, cellH: height / visualRows,
+    padX: 0, padY: 0, isotropic: false,
+  };
+  if (!(visualCols > 0) || !(visualRows > 0) || !(width > 0) || !(height > 0)) return anisotropicFallback;
+  const dx = physDeclaration('chipX', el.physChipX);
+  const dy = physDeclaration('chipY', el.physChipY);
+  if (!(dx.value > 0) || !(dy.value > 0)) return anisotropicFallback;
+  // 회전된 규격을 쓴다 — `visualCols`도 회전된 축이라 둘이 같은 방향을 가리켜야 한다.
+  const chipX = physConfig ? physConfig.chipX : 0;
+  const chipY = physConfig ? physConfig.chipY : 0;
+  if (!(chipX > 0) || !(chipY > 0)) return anisotropicFallback;
+
+  // px per mm, 두 축 공통. 격자 **전체**가 캔버스에 들어오는 최대값이므로 선언된 칸은
+  // 하나도 잘리지 않는다. 남는 여백은 격자 밖이고, 렌더가 격자선만 이어 그린다.
+  const s = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));
+  const cellW = chipX * s;
+  const cellH = chipY * s;
+  return {
+    cellW, cellH,
+    padX: (width - visualCols * cellW) / 2,
+    padY: (height - visualRows * cellH) / 2,
+    isotropic: true,
+  };
 }
 
 function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width = 700, height = 700) {
@@ -3070,12 +3137,13 @@ function renderGridCanvas() {
   // 테마 색 캐시 (렌더 루프 내 getComputedStyle 금지 — 캐시만 참조)
   const C = getThemeColors();
 
-  const cellW = width / visualCols;
-  const cellH = height / visualRows;
-
   const tStart = performance.now();
 
   const physConfig = getTransformedPhysicalConfig(currentRotation, currentSide);
+
+  // [C1] 셀 픽셀 크기의 **유일한 계산**. 마우스 경로(`getGridCellFromMouseEvent`)가 같은
+  //      함수를 부른다 — 같은 수를 두 곳에서 계산하면 반드시 갈라진다.
+  const { cellW, cellH, padX, padY, isotropic } = cellMetrics(width, height, visualCols, visualRows, physConfig);
   const showAnno = el.showAnnotations ? el.showAnnotations.checked : true;
 
   const colorMap = {};
@@ -3090,33 +3158,51 @@ function renderGridCanvas() {
 
   const { shiftX, shiftY } = getScreenShift(physConfig, cellW, cellH);
 
-  const startC = Math.min(-visualCols, Math.floor(-shiftX / cellW) - 2);
-  const endC = Math.max(2 * visualCols, Math.ceil((width - shiftX) / cellW) + 2);
-  const startR = Math.min(-visualRows, Math.floor(-shiftY / cellH) - 2);
-  const endR = Math.max(2 * visualRows, Math.ceil((height - shiftY) / cellH) + 2);
+  // 격자 (0,0)의 화면 원점. `padX/padY`가 격자를 캔버스 중앙에 앉힌다(§cellMetrics).
+  const originX = shiftX + padX;
+  const originY = shiftY + padY;
+
+  const startC = Math.min(-visualCols, Math.floor(-originX / cellW) - 2);
+  const endC = Math.max(2 * visualCols, Math.ceil((width - originX) / cellW) + 2);
+  const startR = Math.min(-visualRows, Math.floor(-originY / cellH) - 2);
+  const endR = Math.max(2 * visualRows, Math.ceil((height - originY) / cellH) + 2);
 
   for (let r = startR; r <= endR; r++) {
     for (let c = startC; c <= endC; c++) {
-      const x0 = c * cellW + shiftX;
-      const y0 = r * cellH + shiftY;
+      const x0 = c * cellW + originX;
+      const y0 = r * cellH + originY;
 
       if (x0 + cellW < 0 || x0 > width || y0 + cellH < 0 || y0 > height) continue;
+
+      // ═══ 격자 밖 — **맵이 아니다.** ═══════════════════════════════════════════
+      // `grid_cols`/`grid_rows`는 선언된 규격이다. 그 밖의 칸은 맵이 선언하지 않은 좌표이므로
+      // 존재하지도, 쓰이지도, 세어지지도 않아야 한다. 여기서 `continue`하는 한 줄이 그 셋을
+      // 전부 보장한다 — `gridCells2D`에 들어가지 않으면 `eachSavableCell`(범례 수량 · DOE
+      // 수량 · ⚡Push 직렬화 · 엑셀)의 정의역 밖이고, 마우스·박스드래그·좌표표 붙여넣기·
+      // 오버레이 가져오기가 전부 `gridCells2D`를 거쳐 쓰기 때문이다.
+      //
+      // 🔴 종전에는 이 칸들이 `isMatrixCell`(밴드 −visualCols..2·visualCols)로 통과해
+      //    셀 객체를 받았다. 실측: 15x11 격자에서 56칸, 9x7 격자(원이 격자를 넘는 규격)에서
+      //    36칸이 등록됐고 그중 36칸이 `inside`였다 — 즉 **칠하면 저장되고 세어졌다.**
+      //    이 라운드가 여백을 만들면 그 인구가 커지므로 여기서 닫는다.
+      // 🔴 경계에서 추측하지 않는다: 선언된 격자 안이라고 **말할 수 없으면** 밖이다.
+      //
+      // ⚠️ 눈에도 달라야 한다. 「맵 밖」과 「맵 안인데 값이 없음」은 다른 사실이다.
+      //    격자 밖은 **채움 없이 격자선만** 잇는다(선언된 칸은 언제나 채움이 있다 —
+      //    범례색 · `insideEmpty` · `outBg`). 여기에 아래 ⑥의 격자 외곽선이 더해진다.
+      const onGrid = (c >= 0 && c < visualCols && r >= 0 && r < visualRows);
+      if (!onGrid) {
+        ctx.strokeStyle = C.line;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x0, y0, cellW, cellH);
+        continue;
+      }
 
       // [M4①] 물리 좌표는 아래에서 어차피 만든다. 판정에 필요하므로 여기로 끌어올렸다 —
       // 판정용 좌표를 따로 만들면 같은 좌표의 계산이 둘이 된다.
       const physical = getDieIndex(c, r, cols, rows, currentRotation, currentSide);
       const completelyInside = isValidDieAt(physical.x, physical.y,
         isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
-      const isMatrixCell = completelyInside || (c >= -visualCols && c < 2 * visualCols && r >= -visualRows && r < 2 * visualRows);
-
-      if (!isMatrixCell) {
-        ctx.fillStyle = C.outBg;
-        ctx.fillRect(x0, y0, cellW, cellH);
-        ctx.strokeStyle = C.line;
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x0, y0, cellW, cellH);
-        continue;
-      }
 
       const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
       const coordKey = `${physical.x}_${physical.y}`;
@@ -3185,7 +3271,20 @@ function renderGridCanvas() {
     }
   }
 
+  // 5c. 선언된 격자의 외곽선. **여백이 실제로 생겼을 때만** 그린다 — 여백이 0이면 격자가
+  //     캔버스를 정확히 채우므로 이 선은 캔버스 테두리와 겹쳐 아무 정보도 더하지 않는다.
+  //     여백이 있을 때는 「여기까지가 이 맵이다」를 한 획으로 말한다. 격자 밖 칸의 색조
+  //     차이(채움 없음)만으로는 라이트 테마에서 미묘하고, 가독성은 이 프로젝트에서 기능이다.
+  if (padX > 0.5 || padY > 0.5) {
+    ctx.strokeStyle = C.lineStrong;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(originX, originY, visualCols * cellW, visualRows * cellH);
+  }
+
   // 6. Physical Wafer Circles (FIXED at Wafer Center 0,0 at Canvas Center)
+  //    🔴 여기에는 고칠 것이 없다 — 반지름은 `(mm / chipX) * cellW`이고 `cellMetrics`가
+  //       `cellW = chipX * s`를 주므로 두 반지름이 **구조적으로** `mm * s`로 같아진다.
+  //       원이 원인 것이 우연이 아니라 항등이 되는 자리가 여기다.
   const waferCenterX = width / 2.0;
   const waferCenterY = height / 2.0;
 
@@ -3244,8 +3343,8 @@ function renderGridCanvas() {
   // 7. Selection Box overlay
   if (isBoxDragging && lastSelectionBox) {
     const { minC, maxC, minR, maxR } = lastSelectionBox;
-    const boxX = minC * cellW + shiftX;
-    const boxY = minR * cellH + shiftY;
+    const boxX = minC * cellW + originX;
+    const boxY = minR * cellH + originY;
     const boxW = (maxC - minC + 1) * cellW;
     const boxH = (maxR - minR + 1) * cellH;
 
@@ -3260,8 +3359,8 @@ function renderGridCanvas() {
 
   // 8. Hover Cell highlight
   if (currentHoverCell && !isBoxDragging) {
-    const hX = currentHoverCell.c * cellW + shiftX;
-    const hY = currentHoverCell.r * cellH + shiftY;
+    const hX = currentHoverCell.c * cellW + originX;
+    const hY = currentHoverCell.r * cellH + originY;
     ctx.strokeStyle = C.accent;
     ctx.lineWidth = 2.0;
     ctx.strokeRect(hX + 1, hY + 1, cellW - 2, cellH - 2);
@@ -3289,6 +3388,13 @@ function renderGridCanvas() {
   }
 
   ctx.restore();
+
+  // [C1] 종횡비를 모른다는 **사실**의 표기. 미상은 1:1이 아니다 — 선언이 없을 때 화면이
+  //      말없이 정사각 셀을 그리면 조작자는 그것을 규격으로 읽는다.
+  if (el.cellAspectNote) {
+    el.cellAspectNote.style.display = isotropic ? 'none' : '';
+    el.cellAspectNote.textContent = isotropic ? '' : '셀 종횡비 미상 (Chip X/Y 미선언) — 원이 찌그러져 보입니다';
+  }
 
   updateNotchPosition();
   updateLegendCounts();

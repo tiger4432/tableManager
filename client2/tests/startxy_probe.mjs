@@ -66,6 +66,9 @@ const WANTED = [
   ['getCanvasCellFromDb', 'getCellFromVisualCoords'],
   ['getCanvasCellFromDieIndex', 'getCellFromPhysicalCoords'],
   ['getDbCoords', 'getVisualCoords'],
+  // Absent before the isotropic-cell round; the per-entry `missing` tolerance covers the
+  // older revisions this probe also slices.
+  ['physDeclaration'], ['cellMetrics'],
   ['isCellInsideWaferFast'], ['getWaferBoundingBox'],
   ['frameDimBounds'], ['applyPhysicalGeometry'], ['applyPresetObject'],
   ['seatingSnapshot'], ['reseatCellsToStoredCoords'],

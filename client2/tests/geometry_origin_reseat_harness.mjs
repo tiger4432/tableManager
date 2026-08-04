@@ -75,6 +75,11 @@ function sliceFunction(source, name) {
 
 const SYMBOLS = [
   'physNum', 'gridDimNum', 'withPhysFrame',
+  // `physDeclaration` + `cellMetrics`: the cell's pixel size is now derived from the declared
+  // chip pitch (equal mm-per-pixel on both axes) instead of from the canvas rectangle alone.
+  // `renderGridCanvas` calls `cellMetrics`, which calls `physDeclaration` — omitting either
+  // turns the render into a ReferenceError that reads as a 0-cell screen.
+  'physDeclaration', 'cellMetrics',
   'getScreenShift', 'getTransformedPhysicalConfig', 'isCellInsideWaferFast',
   'getDieIndex', 'getCanvasCellFromDieIndex', 'getCanvasCellFromDb', 'getDbCoords',
   'getWaferBoundingBox',
