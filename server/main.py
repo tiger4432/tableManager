@@ -5621,6 +5621,32 @@ if os.path.exists(client2_dist_path):
             return FileResponse(dev_map_file, headers=no_cache_headers)
         raise HTTPException(status_code=404, detail="Map Editor page not found. Please build frontend first.")
 
+    @app.get("/map-editor2")
+    @app.get("/map_editor2.html")
+    def serve_map_editor2_page():
+        """Map Editor 2 페이지(map_editor2.html)를 반환합니다.
+
+        🔴 이 라우트가 없어서 화면이 404였다. `vite.config.js`에 엔트리를 넣고 `dist`까지
+           구웠는데, **페이지마다 라우트를 명시적으로 다는 구조**라 번들만으로는 열리지
+           않는다. 빌드 산출물의 존재가 곧 도달 가능성이 아니다 ― 새 페이지를 추가할 때
+           반드시 여기 한 벌이 같이 온다.
+
+        레거시 `/map_editor.html`은 그대로 살아 있다. 유효 다이 저작과 오버레이는 아직
+        그쪽 소관이고, 이 화면은 좌표계 확정 ― 후보 채점·판정·확정 ― 을 맡는다.
+        """
+        no_cache_headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        map2_file = os.path.join(client2_dist_path, "map_editor2.html")
+        if os.path.exists(map2_file):
+            return FileResponse(map2_file, headers=no_cache_headers)
+        dev_map2_file = os.path.abspath(os.path.join(script_dir, "..", "client2", "map_editor2.html"))
+        if os.path.exists(dev_map2_file):
+            return FileResponse(dev_map2_file, headers=no_cache_headers)
+        raise HTTPException(status_code=404, detail="Map Editor 2 page not found. Please build frontend first.")
+
     @app.get("/enrichment")
     @app.get("/enrichment.html")
     def serve_enrichment_page():
