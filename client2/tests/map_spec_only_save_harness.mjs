@@ -185,6 +185,13 @@ function buildEnv(src, opts = {}) {
     serverCellKeys: null,
     gridData: {},
     gridCells2D: {},
+    // [fix E-2] The success path now also drops the back-guard's baseline, so `saveMapSpecOnly`
+    // READS these two. Without them the function throws ReferenceError inside its own try and
+    // reports a phantom failure — which is exactly how K5 caught their absence. They are
+    // bindings, not an axis: what the guard should do with them is scored by
+    // `valid_die_dirty_guard_harness.mjs`, which owns the edit predicate end to end.
+    frameTouched: false,
+    legendDirty: false,
     // The identity SOURCE is under test, so this is a stub that deliberately answers something
     // DIFFERENT from `loadedIdentity.mapKey`: if the product read the loaded identity instead
     // of the live controls, the recorded request would carry the wrong key and say so.

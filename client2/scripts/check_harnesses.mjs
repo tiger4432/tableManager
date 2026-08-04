@@ -180,6 +180,13 @@ const FLOORS = new Map([
   ['startup_socket_gate_harness.mjs', 103],
   ['startxy_probe.mjs', 29],
   ['undeclared_identifier_harness.mjs', 10],
+  // New 2026-08-04 with the back-guard round. A valid-die selection set `frameTouched`
+  // NOWHERE, so applying one left the frame marked clean and the next frame pop discarded it
+  // in silence — screen fine, value gone. Floor is the count it reports on the commit that
+  // introduces it; there is no earlier tree to measure it against. It executes the real
+  // listener bodies (sliced out of `initDOMElements`), because a fixture that called
+  // `onValidDieRefChanged()` directly would stay green with the `<select>` wired to nothing.
+  ['valid_die_dirty_guard_harness.mjs', 48],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
