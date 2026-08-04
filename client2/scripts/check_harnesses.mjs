@@ -65,8 +65,6 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // so it does not belong here either. If you want to record how a figure moved, that is what
 // git and the round's report are for.
 const KNOWN_RED = new Map([
-  ['effort_instrument_harness.mjs', { ran: 0, failed: 0,
-    why: 'sandbox build crashes (pushBlockingCount is not sliced into the vm context) ― DEAD: never reaches its assertions' }],
   ['reposition_regime_probe.mjs', { ran: 0, failed: 0,
     why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
   ['split_registry_harness.mjs', { ran: 0, failed: 0,
@@ -103,6 +101,12 @@ const FLOORS = new Map([
   ['availability_gross_marker_harness.mjs', 48],
   ['company_roundtrip_harness.mjs', 84],
   ['copy_header_count_harness.mjs', 151],
+  // Off the debt list 2026-08-04. It had been DEAD for one missing name in its slice list
+  // (`pushBlockingCount`), and it is the ONLY harness that runs `pushMapData` end to end --
+  // so for as long as that name was missing, the client's single write path had no
+  // executable scorer at all. It gets a floor like any other green harness precisely
+  // because of how it died: silently, while the debt list recorded it as merely red.
+  ['effort_instrument_harness.mjs', 71],
   ['effort_meter_harness.mjs', 131],
   ['geometry_origin_reseat_harness.mjs', 46],
   ['m4_symbol_extractability_probe.mjs', 15],
