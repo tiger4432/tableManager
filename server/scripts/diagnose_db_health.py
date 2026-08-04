@@ -21,7 +21,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import sqlalchemy as sa                                          # noqa: E402
-from database.database import DEFAULT_PG_URL                     # noqa: E402
+# 🔴 Take the URL the APP resolved, never the module's built-in default. `DEFAULT_PG_URL` is
+#    the last fallback in a three-step chain (env DATABASE_URL > <config>/database.json >
+#    default), so reading it directly probes the developer's database name while claiming to
+#    report on production - which is precisely what happened on the first run of this script.
+#    `DB_URL_SOURCE` is printed below so the operator can see WHICH of the three answered.
+from database.database import SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE   # noqa: E402
 
 # An open transaction older than this is worth a look. Not a threshold with authority -
 # a five-minute transaction on a busy system may be ordinary and a one-minute one may be a
@@ -37,10 +42,15 @@ def say(sev, msg):
     print(f"  [{sev}] {msg}")
 
 
-url = os.environ.get("ASSY_PG_URL", DEFAULT_PG_URL)
+url = SQLALCHEMY_DATABASE_URL
 print("=" * 72)
 print("POSTGRES HEALTH (read-only)")
 print("=" * 72)
+# Name the database and where the URL came from. A probe that reports on the wrong database
+# is worse than no probe, and "it errored" is the friendly version of that mistake - the
+# unfriendly version is a clean report about a database nobody asked about.
+_dbname = url.rsplit("/", 1)[-1].split("?")[0]
+print(f"  database: {_dbname}   (url source: {DB_URL_SOURCE})")
 
 engine = sa.create_engine(url)
 with engine.connect() as conn:
