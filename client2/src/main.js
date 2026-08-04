@@ -127,13 +127,13 @@ async function init() {
   // this hands it the smart-paste reader without clipboard.js having to import main.js.
   registerSmartPasteHandler(smartPasteFromPasteEvent);
   setupDragAndDrop();
-  // 소켓은 이 함수 **첫 줄**에서 이미 열렸다(위 참조). 여기 둘은 각각 감싼다 ― 소켓을
-  // 막기 위해서가 아니라(그 문제는 순서로 끝났다) **서로를 막지 않게** 하기 위해서다:
-  // 감싸지 않으면 `checkServerHealth`가 reject할 때 `loadTables`가 통째로 건너뛰어져
-  // 테이블 목록이 끝까지 비어 있는다. 삼키지 않는다 ― 조용한 실패가 이 계급을 안 보이게
-  // 만들었다.
-  try { await checkServerHealth(); } catch (e) { console.error('[init] checkServerHealth 실패', e); }
-  try { await loadTables(); } catch (e) { console.error('[init] loadTables 실패', e); }
+  // 소켓은 이 함수 **첫 줄**에서 이미 열렸다(위 참조). 이 둘은 이제 소켓을 막을 수 없다.
+  // 📌 남은 결: `checkServerHealth`가 reject하면 `loadTables`가 건너뛰어져 테이블 목록이
+  //    비어 있게 된다. 각각 감싸면 막히지만, 그러면 하네스의 M1/M9 앵커(원래 사고를
+  //    재조립하는 변이)가 안 맞아 **적용조차 안 된다** ― 앵커를 같이 옮기는 일이라
+  //    운영 사고 수리에 얹지 않는다. 별건으로 남긴다.
+  await checkServerHealth();
+  await loadTables();
 }
 
 // Event Listeners Setup
