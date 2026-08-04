@@ -35,6 +35,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
 const SRC = readFileSync(SRC_PATH, 'utf8');
+// [1-b] The markup, for the two assertions that cannot be made against behaviour: a button
+// deleted from the HTML leaves no trace in any event a fixture can dispatch, and a stale
+// instruction in the explanatory <p> is invisible to every sandbox.
+const HTML_PATH = join(ROOT, 'client2', 'map_editor.html');
+const HTML = readFileSync(HTML_PATH, 'utf8').replace(/\r\n/g, '\n');
 const verbose = process.argv.includes('--verbose');
 const mutateOnly = process.argv.includes('--mutate');
 
@@ -282,10 +287,12 @@ function buildEnv(src, P, opts = {}) {
     // Everything `initDOMElements` names but this harness never fires. Listed one by one on
     // purpose: a rename must be a ReferenceError, not a silent no-op.
     fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
-    // `saveValidDieRefDeclaration` is the 💾 SAVE handler `initDOMElements` now wires. It is a
-    // stub for the same reason as its neighbours: this harness executes the WIRING, not the
-    // valid-die write path (which is scored by valid_die_authoring_harness).
-    onValidDieRefChanged() {}, saveValidDieRefDeclaration() {},
+    // `saveMapSpecOnly` is the 📐 규격만 저장 handler `initDOMElements` now wires (it replaced
+    // the deleted 💾 SAVE). It is a stub for the same reason as its neighbours: this harness
+    // executes the WIRING, not the metadata write path (scored by map_spec_only_save_harness).
+    // `onValidDieRefChanged` is a stub the valid-die COMMIT cases below REPLACE WITH A COUNTER —
+    // that is how "which gesture applies" is scored without running the applier.
+    onValidDieRefChanged() {}, saveMapSpecOnly() {},
     populateValidDieRefList() {}, switchTable() {},
     // Key-datalist wiring (2026-07-31). `KEY_SUGGEST_DEBOUNCE_MS` is a VALUE, not a stub:
     // `initDOMElements` passes it to `debounce`, so a missing binding is a ReferenceError
@@ -809,6 +816,145 @@ async function runDesignation(src) {
   return { failures, compared, evidence };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// [1-b] WHAT COMMITS THE VALID-DIE KEY — and, far more importantly, WHAT MUST NOT.
+//
+// THE COMPLAINT BEING SCORED, in the user's words: "타이핑하면서 중간에 바뀌는게 불편했던것."
+// 🎯 APPLY existed to answer it and has now been deleted, because the key control became a
+// real `<select>` and choosing an option IS the deliberate act the button was standing in for.
+//
+// 🔴 THE DANGER IS THE FALLBACK. The `<select>` is NOT always the control — it degrades to a
+//    text input on `truncated`, on `unavailable`, and when the declared key is absent from the
+//    list. Typing comes back there, and if application hung off `change` in that path the exact
+//    complaint returns IN THE LEAST VISIBLE CIRCUMSTANCE. `change` on a text input is not a
+//    commit: it also fires on BLUR, so tabbing away or clicking the canvas to look at something
+//    would re-derive the grid and re-seat every cell. So the fallback commits on ENTER only.
+//
+// 🔴 WHY THIS IS SCORED AS A COUNTER ON THE WIRING, not as a source read. The whole question is
+//    "which gesture reaches the applier", and only running `initDOMElements` and dispatching
+//    real events can answer it. `onValidDieRefChanged` is REPLACED WITH A COUNTER after the
+//    wiring runs: the applier itself is scored by `runDesignation` above, and re-running it here
+//    would score the reaction rather than the trigger.
+//
+// 🔴 THE AXIS IS ACTIVE BY CONSTRUCTION. Six of these eight cases expect ZERO applications, so
+//    an implementation that never applies at all would satisfy them — the two that expect ONE
+//    (Enter, and the dropdown) are what makes the zeros mean something. Both are asserted.
+//
+// ⚠️ IME. In a Korean UI the Enter that COMMITS A HANGUL COMPOSITION is not the operator saying
+//    "apply this" — it is the operator still typing. Reading it as a commit reintroduces the
+//    complaint in the one language this screen is actually used in, so it is scored explicitly.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+function runValidDieCommit(src) {
+  const failures = [];
+  let compared = 0;
+  const evidence = [];
+  const eq = (name, expected, actual, note) => {
+    compared++;
+    const a = JSON.stringify(actual), e = JSON.stringify(expected);
+    if (a !== e) failures.push(`${name}: expected ${e}, got ${a}${note ? ` — ${note}` : ''}`);
+  };
+
+  // One environment, one wiring run, then every gesture is dispatched against it. Counters
+  // replace the two stubs so both "did it apply" and "did it merely re-render" are visible.
+  // ⚠️ WHY THE COUNTER CAN ONLY BE PUT ON `onValidDieRefChanged`. `initDOMElements` registers
+  //    `renderValidDieKeyControl` BY REFERENCE (`addEventListener('input', renderValidDieKey
+  //    Control)`), so replacing the sandbox binding afterwards cannot see it — the listener
+  //    already holds the old function. The applier is different: it is called from INSIDE an
+  //    arrow function, so the name resolves at call time and the swap is observed. Anything
+  //    registered by reference is therefore scored by LISTENER COUNT instead, which is what
+  //    `dispatchEvent` returns. (An earlier draft asserted a render counter here and went red
+  //    against correct code — the assertion was measuring a binding that was never consulted.)
+  const { S } = buildEnv(src, F.A2, { table: 'bonding_map' });
+  let applies = 0;
+  const seenKeyAtApply = [];
+  S.onValidDieRefChanged = () => {
+    applies++;
+    seenKeyAtApply.push(S.el.validDieRefKey ? S.el.validDieRefKey.value : '<no input>');
+  };
+
+  const key = S.el.validDieRefKey;
+  const sel = S.el.validDieRefSelect;
+  eq('fixture/both-valid-die-controls-were-wired', true, !!key && !!sel,
+     'initDOMElements did not bind the key control — nothing below would be dispatched at it');
+
+  // A gesture, and what it cost. `dispatchEvent` is used directly rather than `fire` because
+  // several of these deliberately have NO listener, and "nothing listened" is a passing answer
+  // for them — the assertion is on the applier, not on the listener count.
+  const gesture = (node, ev) => {
+    const a0 = applies;
+    const n = node.dispatchEvent(ev);
+    return { applied: applies - a0, listeners: n };
+  };
+
+  // ── (a) TYPING. This is the complaint, verbatim. A listener DOES run here (the control has
+  //    to re-decide select-vs-input as an unlisted key is typed), so this case distinguishes
+  //    "wired but does not apply" from "not wired at all" — the latter would pass a bare
+  //    zero-check while the control silently stopped re-shaping itself.
+  const typed = gesture(key, { type: 'input' });
+  eq('typing into the key field applies NOTHING', 0, typed.applied,
+     'this is the exact defect the user reported');
+  eq('...but a listener DID run on it (the control re-decides its shape)', 1, typed.listeners,
+     'a zero here would mean the input path is simply unwired, and the zero above would be free');
+
+  // ── (b) `change` — the trap. It LOOKS like a commit and is not: it also fires on blur, so
+  //    clicking the canvas to check something would re-derive the grid under the operator.
+  const changed = gesture(key, { type: 'change' });
+  eq('`change` (= blur, or Enter) on the key field applies NOTHING', 0, changed.applied,
+     'change fires when focus LEAVES; committing there is the pre-3-a behaviour returning');
+  const blurred = gesture(key, { type: 'blur' });
+  eq('blur on the key field applies NOTHING', 0, blurred.applied,
+     'tabbing away mid-thought is not a decision to apply');
+
+  // ── (c) A KEYSTROKE THAT IS NOT ENTER. Guards against "commit on any keydown", which passes
+  //    the Enter case below while being keystroke-level application.
+  const otherKey = gesture(key, { type: 'keydown', key: 'a' });
+  eq('an ordinary keystroke applies NOTHING', 0, otherKey.applied);
+
+  // ── (d) IME. `isComposing` and the legacy `keyCode === 229` both mean "still composing".
+  const imeEnter = gesture(key, { type: 'keydown', key: 'Enter', isComposing: true });
+  eq('Enter that COMMITS AN IME COMPOSITION applies NOTHING', 0, imeEnter.applied,
+     'in a Korean UI this Enter is the operator still typing');
+  const legacyIme = gesture(key, { type: 'keydown', key: 'Enter', keyCode: 229 });
+  eq('...and the legacy keyCode 229 spelling of the same thing', 0, legacyIme.applied);
+
+  // ── (e) ENTER. The one gesture in the fallback that IS a commit, and the reason every zero
+  //    above is a measurement rather than a description of a dead control.
+  key.value = 'TYPED_KEY';
+  const enter = gesture(key, { type: 'keydown', key: 'Enter' });
+  eq('Enter in the key field APPLIES, exactly once', 1, enter.applied,
+     'without this the eight zeros above are satisfied by a control that does nothing');
+  eq('...and the applier sees the value that was in the field', 'TYPED_KEY',
+     seenKeyAtApply[seenKeyAtApply.length - 1]);
+
+  // ── (f) THE DROPDOWN. Choosing an option is itself the deliberate act, so it applies at
+  //    once — this is what made 🎯 APPLY redundant. The ORDER is the contract: the key input
+  //    is the single source of truth and `onValidDieRefChanged` reads it, so writing the
+  //    value must happen BEFORE the call or the previous key is what gets applied.
+  sel.value = 'PICKED_FROM_LIST';
+  const picked = gesture(sel, { type: 'change' });
+  eq('choosing from the dropdown APPLIES, exactly once', 1, picked.applied,
+     'this is what replaced the 🎯 APPLY button');
+  eq('...and the key input already held the chosen value when the applier ran',
+     'PICKED_FROM_LIST', seenKeyAtApply[seenKeyAtApply.length - 1],
+     'apply-then-write applies the PREVIOUS key while the screen shows the new one');
+  eq('...and the dropdown wrote through to the single source of truth',
+     'PICKED_FROM_LIST', key.value);
+
+  // ── (g) THE BUTTONS ARE GONE. Scored on the markup, because a leftover button in the HTML
+  //    with no listener is not visible to any of the above.
+  eq('the 🎯 APPLY button is gone from the markup', false, HTML.includes('btn-valid-die-apply'));
+  eq('the 💾 SAVE button is gone from the markup', false, HTML.includes('btn-valid-die-save'));
+  // The explanatory <p> named both buttons. A stale instruction is worse than none.
+  eq('...and the explanatory text no longer names them', false,
+     /🎯 APPLY|💾 SAVE/.test(HTML.slice(HTML.indexOf('valid-die-ref-list'),
+       HTML.indexOf('phys-wafer-dia'))));
+
+  evidence.push(`valid-die commit: input ${typed.applied}, change ${changed.applied}, `
+    + `blur ${blurred.applied}, key'a' ${otherKey.applied}, IME-Enter ${imeEnter.applied}, `
+    + `Enter ${enter.applied}, select-change ${picked.applied} (applications)`);
+  return { failures, compared, evidence };
+}
+
 // ── Mutations: every green above is paired with a defect that must make it red ───────────
 const CR = String.fromCharCode(13);
 function toCrlf(s) { return s.split('\n').join(CR + '\n'); }
@@ -894,6 +1040,44 @@ const MUTANTS = {
   'grid-dimension-edits-do-not-reseat': (s) => once(s,
     '        reseatCellsToStoredCoords(cellsSeatedUnder);',
     '        // no reaction'),
+
+  // ── [1-b] THE VALID-DIE COMMIT GESTURE. Five defects, each of which restores some form of
+  //    "it changed while I was typing" while leaving the screen looking correct.
+  //
+  //    The first is the regression proper: putting application back on `change`, which is the
+  //    literal pre-3-a wiring and the shape the user complained about.
+  'valid-die-key-commits-on-change': (s) => once(s,
+    ["    el.validDieRefKey.addEventListener('keydown', (e) => {",
+     "      if (!e || e.key !== 'Enter') return;",
+     "      if (e.isComposing || e.keyCode === 229) return;",
+     '      onValidDieRefChanged();',
+     '    });'].join('\n'),
+    "    el.validDieRefKey.addEventListener('change', onValidDieRefChanged);"),
+  // Commit on ANY keydown. Passes the Enter case while being keystroke-level application —
+  // the failure mode a fixture that only tested Enter would wave through.
+  'valid-die-key-commits-on-every-keystroke': (s) => once(s,
+    "      if (!e || e.key !== 'Enter') return;",
+    '      if (!e) return;'),
+  // The IME guard removed. Invisible to an ASCII-only fixture, and it is the Korean UI that
+  // this screen actually runs in.
+  'valid-die-ime-enter-commits': (s) => once(s,
+    '      if (e.isComposing || e.keyCode === 229) return;',
+    '      // no IME guard'),
+  // The dropdown moves the value but never applies. This is the state the block was in
+  // BEFORE this round, when 🎯 APPLY still existed — with the button deleted it means the
+  // control silently does nothing, which is the most likely way to get this wrong.
+  'valid-die-select-does-not-apply': (s) => once(s,
+    ['      if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;',
+     '      onValidDieRefChanged();'].join('\n'),
+    '      if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;'),
+  // Apply BEFORE writing the chosen value through. The applier reads the key input, so this
+  // applies the PREVIOUS key while the screen shows the new one — value-correct-looking,
+  // value-wrong. Caught only by asserting what the applier saw, not that it ran.
+  'valid-die-select-applies-before-it-writes-the-key': (s) => once(s,
+    ['      if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;',
+     '      onValidDieRefChanged();'].join('\n'),
+    ['      onValidDieRefChanged();',
+     '      if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;'].join('\n')),
 };
 
 async function scoreMutant(name, src) {
@@ -901,16 +1085,19 @@ async function scoreMutant(name, src) {
   try { out = run(src); } catch (e) { return [`threw: ${String(e && e.message).slice(0, 80)}`]; }
   let des = { failures: [] };
   try { des = await runDesignation(src); } catch (e) { des = { failures: [`threw: ${String(e && e.message).slice(0, 80)}`] }; }
-  return out.failures.concat(des.failures);
+  let vdc = { failures: [] };
+  try { vdc = runValidDieCommit(src); } catch (e) { vdc = { failures: [`threw: ${String(e && e.message).slice(0, 80)}`] }; }
+  return out.failures.concat(des.failures, vdc.failures);
 }
 
 // ── main ────────────────────────────────────────────────────────────────────────────────
 (async () => {
   const base = run(SRC);
   const des = await runDesignation(SRC);
-  const failures = base.failures.concat(des.failures);
-  const compared = base.compared + des.compared;
-  const evidence = base.evidence.concat(des.evidence);
+  const vdc = runValidDieCommit(SRC);
+  const failures = base.failures.concat(des.failures, vdc.failures);
+  const compared = base.compared + des.compared + vdc.compared;
+  const evidence = base.evidence.concat(des.evidence, vdc.evidence);
 
   if (!mutateOnly || verbose) {
     evidence.forEach(e => console.log('  ' + e));

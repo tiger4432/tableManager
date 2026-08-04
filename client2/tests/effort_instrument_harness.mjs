@@ -266,6 +266,11 @@ function makeCtx(src, opts = {}) {
     // see the banner above the step definitions in map_editor.js for why.)
     extractFunction(src, 'confirmLogShapedPushTarget'),
     extractFunction(src, 'collectMetaFieldValues'),
+    // [2] The frame controls now have ONE reader, shared by `pushMapData` and
+    // `saveMapSpecOnly`, so that the two writers cannot spell the same geometry two ways.
+    // Sliced rather than re-typed for the usual reason: a copy here would let this harness
+    // score a payload the product does not build.
+    extractFunction(src, 'readGridFrameControls'),
     extractFunction(src, 'buildPushGridMetadata'),
     extractFunction(src, 'confirmMissingSplitDescriptions'),
     extractFunction(src, 'outsideCircleNoteForPush'),

@@ -181,7 +181,7 @@ function buildEnv(src, P, opts = {}) {
     fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
     // See the note in geometry_origin_reseat_harness: the 💾 SAVE handler is wired by
     // `initDOMElements`, so it must exist; this harness scores the wiring, not that write.
-    onValidDieRefChanged() {}, saveValidDieRefDeclaration() {},
+    onValidDieRefChanged() {}, saveMapSpecOnly() {},
     populateValidDieRefList() {}, switchTable() {},
     populateOverlayKeyList() {}, onMetaInputSuggest() {}, KEY_SUGGEST_DEBOUNCE_MS: 120,
     renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},

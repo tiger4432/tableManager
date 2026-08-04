@@ -449,6 +449,8 @@ function initDOMElements() {
   el.btnClearGrid = document.getElementById('btn-clear-grid');
   el.btnFillGrid = document.getElementById('btn-fill-grid');
   el.btnPushMap = document.getElementById('btn-push-map');
+  // [2] 규격만 저장. Push의 이웃이지 대체가 아니다 — 셀을 쓰지 않는 쪽이다.
+  el.btnSaveMapSpec = document.getElementById('btn-save-map-spec');
 
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
@@ -456,8 +458,7 @@ function initDOMElements() {
   // [M4②] 유효 다이 지정 — 물리 규격 블록의 한 줄. 오버레이 소스 선택기와 같은 이유로
   // **별도 DOM**이다: 이쪽을 조작해도 switchTable/selectedTable/gridData는 건드리지 않는다.
   // [1-a] The table picker is GONE — the storage table is fixed to `VALID_DIE_TABLE`.
-  el.btnValidDieApply = document.getElementById('btn-valid-die-apply');
-  el.btnValidDieSave = document.getElementById('btn-valid-die-save');
+  // [1-b] 🎯 APPLY·💾 SAVE 두 버튼도 GONE. 남는 컨트롤은 키 칸 하나뿐이다.
   el.validDieRefKey = document.getElementById('valid-die-ref-key');
   el.validDieRefList = document.getElementById('valid-die-ref-list');
   el.validDieRefSelect = document.getElementById('valid-die-ref-select');
@@ -546,26 +547,44 @@ function initDOMElements() {
     el.btnDeletePreset.addEventListener('click', deleteCustomPreset);
   }
   // [M4②] 지정 칸. 자동완성 목록은 포커스 시 1회 지연 로드한다 — 조회 동선은 무마찰이다.
-  // [3-a] **`change`로 적용하지 않는다.** 종전에는 키 칸의 blur 하나가 곧 적용이라, 값을
-  //       확인하려고 목록을 고른 것만으로 기하 메타가 갈아끼워지고 셀이 다시 앉았다.
-  //       적용은 이제 🎯 APPLY 버튼이고, 저장은 💾 SAVE 버튼이다(사용자 지시 2026-08-04).
+  //
+  // ── [1-b] 무엇이 적용을 일으키는가 (사용자 지시 2026-08-04, 🎯 APPLY 삭제) ─────────────
+  // 사용자의 불만은 한 문장이다: **"타이핑하면서 중간에 바뀌는게 불편했던것."** 그러니
+  // 판정 기준도 하나다 — 그 제스처가 「확정」인가, 아니면 확정이 아닌 것의 부작용인가.
+  //
+  //   select `change`   = 확정이다. 목록에서 하나를 고르는 행위는 이산적이고 되돌릴 것이
+  //                       없으며, 바로 위 「⚙️ Geometry Presets」가 이미 같은 규칙으로 산다.
+  //                       APPLY가 있던 자리를 여기가 가져간다.
+  //   입력칸 `keydown` Enter = 확정이다. 한 줄 입력칸에서 Enter는 「이 값이다」 외의 뜻이 없다.
+  //
+  // 🔴 **입력칸에 `change`(=blur)를 달지 않는다.** `change`는 확정처럼 보이지만 실제로는
+  //    「여기서 나갔다」에서도 난다 — 값을 확인하려고 캔버스를 클릭하거나 Tab으로 다음 칸에
+  //    가는 것만으로 기하 메타가 갈아끼워지고 셀이 다시 앉는다. 3-a가 없앤 그 동작이다.
+  // 🔴 **`input`에도 달지 않는다.** 그것이 곧 사용자가 말한 "타이핑 중"이다.
+  // 🔴 **IME 조합 중의 Enter는 Enter가 아니다.** 한글 조합을 확정하는 Enter까지 적용으로
+  //    읽으면, 한국어 UI에서 정확히 저 불만이 되돌아온다. `isComposing`/keyCode 229로 뺀다.
   if (el.validDieRefKey) {
     el.validDieRefKey.addEventListener('focus', populateValidDieRefList);
     // [1-a] 입력칸을 직접 고쳤으면 어느 컨트롤이 맞는지 다시 판정한다 — 목록에 없는 키를
     //       타이핑하면 select로는 표현할 수 없으므로 입력칸이 유지돼야 한다.
+    //       **다시 그릴 뿐 적용하지 않는다.**
     el.validDieRefKey.addEventListener('input', renderValidDieKeyControl);
+    el.validDieRefKey.addEventListener('keydown', (e) => {
+      if (!e || e.key !== 'Enter') return;
+      if (e.isComposing || e.keyCode === 229) return;
+      onValidDieRefChanged();
+    });
   }
-  // [1-a] 드롭다운은 **값을 옮길 뿐 적용하지 않는다.** `change`에 적용을 달면 3-a가
-  //       없앤 바로 그 동작(고르기만 해도 기하 메타가 갈아끼워짐)이 되살아난다.
-  //       적용은 🎯 APPLY, 저장은 💾 SAVE — 이 두 경로는 한 글자도 바뀌지 않았다.
-  //       값의 정본은 `#valid-die-ref-key` 하나이므로 여기서 하는 일은 그 칸에 쓰는 것뿐이다.
+  // [1-b] 드롭다운은 값을 옮기고 **곧바로 적용한다.** 값의 정본은 `#valid-die-ref-key`
+  //       하나이므로 순서가 계약이다: 먼저 그 칸에 적고, 그 다음에 적용을 부른다.
+  //       `onValidDieRefChanged`는 `validDieRefFromControls()`로 그 칸을 읽으므로,
+  //       순서가 뒤집히면 직전 값이 적용된다.
   if (el.validDieRefSelect) {
     el.validDieRefSelect.addEventListener('change', () => {
       if (el.validDieRefKey) el.validDieRefKey.value = el.validDieRefSelect.value;
+      onValidDieRefChanged();
     });
   }
-  if (el.btnValidDieApply) el.btnValidDieApply.addEventListener('click', onValidDieRefChanged);
-  if (el.btnValidDieSave) el.btnValidDieSave.addEventListener('click', saveValidDieRefDeclaration);
   fetchAndRenderPresets();
   // [1-a] 프리셋 목록과 **같은 시점**에 채운다. 종전에는 입력칸 `focus`가 유일한 계기였는데,
   //       드롭다운은 focus 전에 이미 보이므로 그 시점으로는 영영 비어 있게 된다.
@@ -663,6 +682,7 @@ function initDOMElements() {
   el.btnClearGrid.addEventListener('click', clearGrid);
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
+  if (el.btnSaveMapSpec) el.btnSaveMapSpec.addEventListener('click', saveMapSpecOnly);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
   // [F1ⓑ] 되붙이기. 새 버튼도 새 메뉴 항목도 아니다 — 클립보드는 네이티브 `paste` 이벤트에서만
   // 읽을 수 있으므로(운영은 평문 HTTP = `navigator.clipboard` 부재) 동선은 Ctrl+V 하나뿐이다.
@@ -2458,6 +2478,27 @@ function validDieRefPayload(gridMeta, decision, raw) {
     return (raw !== undefined) ? { ...gridMeta, valid_die_ref: raw } : gridMeta;
   }
   return applyValidDieRef(gridMeta, decision ? decision.ref : null);
+}
+
+// [2] 📐 규격만 저장의 **읽고-고쳐-쓴다**의 「고친다」. 순수 함수 — 둘 다 변형하지 않는다.
+//
+// 인자: stored = 서버에 이미 있는 grid_metadata(없으면 null) · gridMetaOut =
+//       `buildPushGridMetadata`가 화면 컨트롤에서 만든 규격(⚡ Push가 보내는 바로 그 객체)
+//
+// 🔴 **화면이 모르는 키는 살아남는다.** 규격 행은 이 에디터가 모델링하는 것보다 많은 것을
+//    실을 수 있고, 아는 필드로 다시 짜 넣으면 모르는 키가 조용히 사라진다. Push는 셀까지
+//    통째로 갈아엎으므로 그 파괴가 눈에 띄지만, 규격만 저장은 **화면이 한 픽셀도 움직이지
+//    않은 채** 남의 필드를 지운다 — 이 도메인이 존재하는 그 결함이라 병합이 기본값이다.
+// 🔴 **`valid_die_ref`만은 부재가 결정이다.** 나머지 키와 달리 이 키가 `gridMetaOut`에
+//    없다는 것은 "모른다"가 아니라 **"지운다"**는 뜻이다(`applyValidDieRef`의 해제가
+//    `delete`로 표현된다). 단순 spread로 끝내면 저장된 옛 선언이 되살아나서, 방금 해제한
+//    지정이 저장 한 번에 부활하고 그 맵은 계속 참조 근거로 그려진다.
+function mergeStoredGridMeta(stored, gridMetaOut) {
+  const base = (stored && typeof stored === 'object' && !Array.isArray(stored)) ? stored : {};
+  const src = (gridMetaOut && typeof gridMetaOut === 'object') ? gridMetaOut : {};
+  const out = { ...base, ...src };
+  if (!('valid_die_ref' in src)) delete out.valid_die_ref;
+  return out;
 }
 
 // [INV-6] 참조 체인은 **1홉**이다 — `contracts/map_seam` 역할 `valid_die_chain_error`.
@@ -5626,11 +5667,8 @@ async function pushMapData() {
   const yType = tableSchema.column_types[yCol] || 'number';
   const valType = tableSchema.column_types[valCol] || 'string';
 
-  const cols = parseInt(el.gridCols.value, 10) || 10;
-  const rows = parseInt(el.gridRows.value, 10) || 10;
-  const startX = parseInt(el.gridStartX.value, 10) || 0;
-  const startY = parseInt(el.gridStartY.value, 10) || 0;
-  const invertY = el.gridYInvert.checked;
+  // [2] 컨트롤 독법은 `readGridFrameControls` 하나다 — 📐 규격만 저장이 같은 함수를 읽는다.
+  const { cols, rows, startX, startY, invertY } = readGridFrameControls();
 
   // The wafer_map_metadata record this push would write — built from the panel controls
   // read just above. See `buildPushGridMetadata` (below) for the M4①→② note on why the
@@ -6048,6 +6086,19 @@ function collectMetaFieldValues(tableSchema) {
 // 선언이 없고 사용자가 칸을 건드리지 않은 맵은 `keep` + raw 부재 → 페이로드가 `2a9f6c4`와
 // **바이트 단위로 같다**(INV-1, effort 하네스가 페이로드로 단언한다).
 //   `validDieRefPayload()`   — 그 결정을 저장 페이로드로 바꾼다(순수 함수, 계약이 채점한다)
+// [2] 격자 프레임 컨트롤의 **유일한 독법.** ⚡ Push와 📐 규격만 저장은 같은 규격 객체를
+// 만들어야 하므로, 두 곳에서 각자 파싱하면 안 된다 — 한쪽이 `|| 10`이고 한쪽이 `|| 1`이면
+// 같은 화면이 두 개의 규격을 저장하고, 저장이 `ceil`·표시가 `round`였던 그 계급이 된다.
+function readGridFrameControls() {
+  return {
+    cols: parseInt(el.gridCols.value, 10) || 10,
+    rows: parseInt(el.gridRows.value, 10) || 10,
+    startX: parseInt(el.gridStartX.value, 10) || 0,
+    startY: parseInt(el.gridStartY.value, 10) || 0,
+    invertY: el.gridYInvert.checked,
+  };
+}
+
 function buildPushGridMetadata(cols, rows, startX, startY, invertY,
   el, currentRotation, currentSide, validDie) {
   const gridMeta = {
@@ -9146,11 +9197,14 @@ function renderValidDieKeyControl() {
   inp.style.display = useSelect ? 'none' : '';
 }
 
-// ══ 🎯 APPLY — 지정을 **화면에** 적용한다. 저장하지 않는다 ═══════════════════════════════
+// ══ 적용 — 지정을 **화면에** 적용한다. 저장하지 않는다 ═══════════════════════════════════
 //
-// [3-a] 함수도 계약도 **한 글자도 바뀌지 않았다.** 바뀐 것은 이 함수를 부르는 사람뿐이다:
-//       종전 = 키 입력칸의 `change`(blur/Enter) → 값을 고르기만 해도 적용됐다.
-//       지금 = 🎯 APPLY 버튼 클릭.
+// [3-a→1-b] 함수도 계약도 **한 글자도 바뀌지 않았다.** 세 번째로 바뀐 것은 부르는 사람뿐이다:
+//       ① 처음 = 키 입력칸의 `change`(blur/Enter) → 값을 확인하려고 나가기만 해도 적용됐다.
+//       ② 3-a  = 🎯 APPLY 버튼 클릭.
+//       ③ 지금 = 드롭다운 `change`(고르는 것이 곧 확정) · 입력칸 Enter(치는 중이 아니라 친 뒤).
+//       APPLY 버튼이 사라진 이유는 ①이 되살아나서가 아니라 그 반대다 — 키 칸이 `<select>`가
+//       된 뒤로 「고르기」 자체가 이산적 확정이라 버튼이 더할 것이 없어졌다(사용자 지시).
 //       그래서 board 규칙 ①(유효 다이 영역을 불러오면 이 맵의 기하 메타를 그 유효 다이의
 //       것으로 갈아끼운다)과 규칙 ④(유효 영역이 바뀌어도 저장된 셀 좌표는 바뀌지 않는다)는
 //       그대로다 — 둘 다 `resolveValidDie` 안에 있고 그 함수는 손대지 않았다.
@@ -9158,7 +9212,7 @@ function renderValidDieKeyControl() {
 //       규칙 ④의 구현은 그 직후의 `reseatCellsToStoredCoords`다(셀은 칸이 아니라 자기
 //       저장 좌표를 붙든다).
 //
-// 저장은 아니다 — 저장은 💾 SAVE(선언만) 또는 ⚡ Push(맵 전체)다. `resolveValidDie`가
+// 저장은 아니다 — 저장은 📐 규격만 저장(규격 블록) 또는 ⚡ Push(맵 전체)다. `resolveValidDie`가
 // `validDie.raw`를 새 값으로 세우므로 이후 저장이 쓰는 값과 화면이 보는 값이 갈라질 수 없다.
 async function onValidDieRefChanged() {
   // [F1] 저장 결정과 **같은 함수**로 컨트롤을 읽는다. 여기서만 따로 읽으면 두 수가 갈라진다.
@@ -9169,73 +9223,113 @@ async function onValidDieRefChanged() {
     (loadedIdentity && loadedIdentity.mapKey) ? loadedIdentity.mapKey : getCurrentMapKey());
   renderGridCanvas();
   if (key === '') {
-    showToast('유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. 💾 SAVE로 저장하십시오.',
-      'info', { dedupeKey: 'valid_die_cleared' });
+    showToast('유효 다이 지정을 해제했습니다 — 원 기하로 되돌아갑니다. 📐 규격만 저장 또는 '
+      + '⚡ Push로 저장하십시오.', 'info', { dedupeKey: 'valid_die_cleared' });
   }
 }
 
-// ══ 💾 SAVE — 지정을 **저장한다**. 화면에 적용하지 않는다 ═════════════════════════════════
+// ══ 📐 규격만 저장 — 규격 **블록**을 쓴다. 셀은 하나도 쓰지 않는다 ═══════════════════════
 //
-// [3-b] 종전에는 이 지정을 저장하는 길이 ⚡ Push 하나뿐이었다. 그 Push는 맵 전체를
-//       `replace_map`으로 갈아엎으므로, "유효 다이 지정만 바꿔 두고 싶다"는 요구가
-//       **맵 전량 재기록**을 통과해야 했다. 그 둘을 나눈다:
-//         · 💾 SAVE  — `wafer_map_metadata`의 이 맵 한 행, `valid_die_ref` 한 필드.
-//         · ⚡ Push  — 종전 그대로. 이 지정도 함께 쓴다(경로를 빼앗지 않는다).
+// [2] 사용자 지시(2026-08-04): "맵 에디터에 메타만 저장하는 기능 필요",
+//     "현재 설정된 테이블과 맵 아이디로 메타만 저장필요".
+//     이것은 지워진 💾 SAVE의 **일반형**이다. 그쪽은 `valid_die_ref` 한 필드만 썼고, 그
+//     한 필드는 ⚡ Push가 이미 함께 실어 나르므로 얻는 것이 없어 삭제됐다. 없던 것은
+//     **규격 블록 전체**를 셀 없이 저장하는 길이다 — 격자·시작 좌표·회전·면·물리 규격.
+//     ⚡ Push는 `replace_map`이라 맵 전량 재기록을 통과해야 하는데, 셀이 하나도 바뀌지
+//     않은 상태에서 그것을 요구하는 것은 불변식 ④(불완전한 집합에서 replace_map은
+//     파괴적이다)를 매번 다시 굴리는 일이다.
 //
-// 🔴 **읽지 못한 것에 쓰지 않는다(불변식 ③).** 이 쓰기는 read-modify-write다: 저장된
-//    grid_metadata를 읽어 그 위에 필드 하나를 얹는다. 조회가 실패했는데 빈 객체에 얹으면
-//    격자 규격 전체(cols/rows/START/회전/물리)가 **한 번의 저장으로 사라진다** — 화면은
-//    멀쩡한데 다음 로드가 규격 없는 맵을 만난다. `fetchGridMetaFor`는 「선언 없음(null)」과
-//    「확인 못 함(throw)」을 이미 구분하므로 그 구분을 그대로 쓴다.
-// 🔴 **무엇을 쓸지는 두 번째 구현을 만들지 않는다.** 결정은 `validDieRefForPush()`,
-//    쓰기는 `applyValidDieRef()` — ⚡ Push가 쓰는 바로 그 두 함수이고 둘 다 이음매 벡터가
-//    채점한다. 여기서 `meta.valid_die_ref = ...`를 직접 쓰면 저장 경로가 둘이 된다.
-// UI 규율: 읽기는 무마찰, **쓰기는 1회 확인**. 확인창은 정확히 하나다.
-async function saveValidDieRefDeclaration() {
-  // 서버본에서 유래한 화면만 저장 권한을 가진다. 로드한 정체성이 없으면 어느 행을 고쳐야
-  // 하는지 자체를 모른다 — 추측해서 남의 행을 고치지 않는다.
-  if (!loadedIdentity || !loadedIdentity.table || !loadedIdentity.mapKey) {
-    showToast('유효 다이 지정을 저장하려면 먼저 맵을 불러와야 합니다 — 어느 맵의 규격에 '
-      + '기록할지 알 수 없습니다.', 'error');
+// 🔴 **새 라우트는 없다.** 💾 SAVE가 쓰던 그 PUT(`wafer_map_metadata/data/updates`)이다.
+//    그 엔드포인트는 `business_key_val`로 upsert한다(`crud._get_or_create_row`, 응답의
+//    `inserted`가 그 증거) — 그래서 **없는 행을 만드는 것도 같은 호출**이고, 서버는 한
+//    줄도 바뀌지 않는다.
+// 🔴 **규격 객체의 조립기는 하나다.** `buildPushGridMetadata` — ⚡ Push가 부르는 그 함수다.
+//    여기서 객체를 다시 짜면 "규격이 무엇인가"의 철자가 둘이 되고, 그것이 이 저장소의
+//    재발 결함 계급이다. 컨트롤 독법도 `readGridFrameControls` 하나를 공유한다.
+// 🔴 **읽고-고쳐-쓴다(불변식 ③).** 조회 실패(throw)에 쓰면 안 된다 — 빈 객체 위에 얹으면
+//    남의 필드가 한 번의 저장으로 사라진다. 병합은 `mergeStoredGridMeta`(순수 함수).
+// 🔴 **정체성은 지금 화면의 컨트롤이다**(사용자 지시). `loadedIdentity`가 아니다 — 맵을
+//    열고 키를 바꿔 새 정체성으로 기하를 등록하는 것이 이 기능의 쓰임이다. 대신 그래서
+//    오타 하나가 **없던 맵을 등록**할 수 있으므로, 확인문이 대상과 신규/갱신을 이름으로
+//    말한다. 그 신규/갱신은 추정이 아니라 **읽어서** 정한다(위의 `stored`).
+//
+// UI 규율: 읽기는 무마찰, **쓰기는 1회 확인**. 확인창은 정확히 하나이고, 격자 밖으로
+// 밀려나는 셀 수는 그 하나 안에 있다(뒤에 알려주는 것은 알려주지 않은 것과 같다).
+async function saveMapSpecOnly() {
+  const table = selectedTable;
+  if (!table) {
+    showToast('먼저 맵 테이블을 선택하십시오 — 어느 테이블의 규격인지 알 수 없습니다.', 'error');
     return;
   }
-  const decision = validDieRefForPush();
-  if (decision.keep) {
-    showToast('저장할 변경이 없습니다 — 지정 칸이 저장된 값과 같습니다.', 'info',
-      { dedupeKey: 'valid_die_save_noop' });
+  // `getCurrentMapKey`는 맵 키 칸이 비었거나 'default_map'이면 null을 준다. ⚡ Push는 그
+  // 자리에서 'default_map'으로 물러서지만, 규격 등록은 **자리 표시자 정체성에 행을 만드는
+  // 일**이라 물러서지 않는다 — 여기서 만든 행은 영구히 진짜 등록처럼 보인다.
+  const mapKey = getCurrentMapKey();
+  if (!mapKey) {
+    showToast('맵 키 칸을 채워야 규격을 저장할 수 있습니다 — 어느 맵의 규격으로 등록할지 '
+      + '알 수 없습니다.', 'error');
     return;
   }
-  const table = loadedIdentity.table;
-  const mapKey = loadedIdentity.mapKey;
 
+  // 읽기가 먼저다. 신규/갱신 판정도, 병합의 재료도 이 한 번의 조회에서 나온다.
   let stored;
   try {
     stored = await fetchGridMetaFor(table, mapKey);
   } catch (e) {
-    // 확인하지 못했다. 여기서 `{}`로 진행하면 규격을 통째로 날린다.
     showToast(`맵 규격을 확인하지 못해 저장을 중단했습니다 — ${(e && e.message) ? e.message : e}. `
       + `잠시 후 다시 시도하십시오(아무것도 기록되지 않았습니다).`, 'error');
     return;
   }
-  if (stored === null) {
-    showToast(`이 맵(${table} · ${mapKey})은 wafer_map_metadata에 규격이 등록돼 있지 않습니다 — `
-      + `유효 다이 지정만 따로 기록하면 규격 없는 행이 만들어집니다. 먼저 ⚡ Push로 규격을 `
-      + `등록하십시오.`, 'error');
-    return;
+  const isNew = (stored === null);
+
+  const { cols, rows, startX, startY, invertY } = readGridFrameControls();
+  const pushMeta = buildPushGridMetadata(cols, rows, startX, startY, invertY,
+    el, currentRotation, currentSide, validDie);
+  const next = mergeStoredGridMeta(stored, pushMeta.gridMetaOut);
+
+  // ── 격자 밖으로 밀려나는 셀 ──────────────────────────────────────────────────────────
+  // 이 저장은 셀을 지우지 않는다. 그런데도 세는 이유: 격자·시작 좌표가 좁아지면 **DB에
+  // 그대로 있는 셀이 이 맵으로는 더 이상 주소를 갖지 못한다.** 셀 데이터는 한 바이트도
+  // 바뀌지 않고 프레임이 밑에서 빠져나가는, 941060f가 닫은 그 계급이다.
+  // 판정은 새로 만들지 않는다 — `classifyUnsavableCells().offGrid`가 이미 "그 키에
+  // cellObj 자체가 없다 = 현재 프레임이 덮지 못한다"의 유일한 정의다.
+  // 🔴 셀 수를 말할 수 있는 것은 **화면의 셀이 이 정체성에서 온 경우뿐**이다. 키를 바꿔
+  //    다른 정체성으로 등록하는 중이라면 화면의 셀은 그 맵의 셀이 아니므로, 0을 보여
+  //    주면 "밀려나는 셀이 없다"는 거짓말이 된다. 셀 수 대신 셀 수 없음을 말한다.
+  const sameIdentity = !!(loadedIdentity && loadedIdentity.table === table
+    && loadedIdentity.mapKey === mapKey);
+  const offGrid = sameIdentity ? classifyUnsavableCells().offGrid.length : null;
+  let orphanLine;
+  if (!sameIdentity) {
+    orphanLine = `· 이 식별자로 불러온 셀이 화면에 없어, 격자 밖으로 밀려나는 셀 수는 `
+      + `셀 수 없습니다.\n`;
+  } else if (offGrid > 0) {
+    orphanLine = `\n⚠️ 이 규격으로는 값이 있는 셀 ${offGrid}건이 격자 범위 밖에 놓입니다.\n`
+      + `   그 셀들은 서버에서 삭제되지 않지만, 이 맵으로는 더 이상 불러올 수 없게 됩니다.\n`
+      + `   (격자 크기·시작 좌표를 되돌려 다시 저장하면 그대로 되살아납니다.)\n\n`;
+  } else {
+    orphanLine = `· 격자 밖으로 밀려나는 셀: 없음\n`;
   }
 
-  const next = applyValidDieRef(stored, decision.ref);
   const shownNext = validDieRefDisplay(next.valid_die_ref);
-  const what = ('valid_die_ref' in next)
-    ? `유효 다이 맵을 「${shownNext.table || VALID_DIE_TABLE} · ${shownNext.key}」(으)로 지정합니다.`
-    : '유효 다이 지정을 해제합니다 (웨이퍼 원 기하로 되돌아갑니다).';
-  if (!confirm(`${table} · ${mapKey} 의 맵 규격에 유효 다이 지정만 기록합니다.\n\n${what}\n\n`
-    + `격자 치수·시작 좌표·회전·물리 규격은 건드리지 않고, 셀도 하나도 쓰지 않습니다.\n`
-    + `(화면에 적용하려면 🎯 APPLY 를 누르십시오.)\n\n계속하시겠습니까?`)) {
+  const vdLine = ('valid_die_ref' in next)
+    ? `「${shownNext.table || VALID_DIE_TABLE} · ${shownNext.key}」`
+    : '지정 없음 (웨이퍼 원 기하)';
+  if (!confirm(
+    `맵 규격만 기록합니다 — 셀은 하나도 쓰지 않습니다.\n\n`
+    + `· 대상 테이블: ${table}\n`
+    + `· 대상 맵 키: ${mapKey}\n`
+    + `· ${isNew
+      ? '이 식별자에는 등록된 규격이 없습니다 — 규격을 **새로 등록**합니다.'
+      : '등록된 규격을 **갱신**합니다.'}\n`
+    + orphanLine
+    + `\n· 격자 ${cols} × ${rows} · 시작 (${startX}, ${startY}) · 회전 ${currentRotation}° · ${currentSide}\n`
+    + `· 유효 다이 맵: ${vdLine}\n\n`
+    + `계속하시겠습니까?`
+  )) {
     return;
   }
 
-  const metaStr = JSON.stringify(next);
   const payload = {
     updates: [{
       business_key_val: `${table}_${mapKey}`,
@@ -9243,7 +9337,7 @@ async function saveValidDieRefDeclaration() {
         map_pk: `${table}_${mapKey}`,
         target_table: table,
         map_id: mapKey,
-        grid_metadata: metaStr,
+        grid_metadata: JSON.stringify(next),
       },
       source_name: 'user',
       updated_by: CURRENT_USER,
@@ -9251,9 +9345,9 @@ async function saveValidDieRefDeclaration() {
   };
   // [V1 effort instrument] `effort`를 싣지 않는다 — ⚡ Push의 셀 요청 하나가 유일한 보고
   // 지점이고, 같은 배치 엔드포인트에 또 실으면 같은 클릭이 두 번 청구된다.
-  el.btnValidDieSave.disabled = true;
-  const label = el.btnValidDieSave.textContent;
-  el.btnValidDieSave.textContent = '💾 Saving...';
+  const btn = el.btnSaveMapSpec;
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '📐 Saving...'; }
   try {
     const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data/updates`, {
       method: 'PUT',
@@ -9261,7 +9355,7 @@ async function saveValidDieRefDeclaration() {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      showToast(`유효 다이 지정 저장 실패 (HTTP ${res.status}) — 아무것도 기록되지 않았습니다.`, 'error');
+      showToast(`맵 규격 저장 실패 (HTTP ${res.status}) — 아무것도 기록되지 않았습니다.`, 'error');
       return;
     }
     // 저장이 성립했으므로 **저장된 원문**이 바뀌었다. `validDie.raw`를 그 값으로 맞춘다:
@@ -9269,14 +9363,13 @@ async function saveValidDieRefDeclaration() {
     // basis·keys·마스크는 건드리지 않는다 — 저장은 적용이 아니다(그래서 칩도 그대로다).
     validDie = { ...validDie, raw: ('valid_die_ref' in next) ? next.valid_die_ref : undefined };
     syncValidDieRefControls();
-    showToast(`유효 다이 지정을 저장했습니다 — ${what} 화면에는 아직 적용되지 않았습니다 `
-      + `(🎯 APPLY).`, 'success');
+    showToast(`${table} · ${mapKey} 의 맵 규격을 ${isNew ? '새로 등록' : '갱신'}했습니다 — `
+      + `셀은 하나도 기록하지 않았습니다.`, 'success');
   } catch (e) {
-    showToast(`유효 다이 지정 저장 실패 — ${(e && e.message) ? e.message : e}. `
+    showToast(`맵 규격 저장 실패 — ${(e && e.message) ? e.message : e}. `
       + `아무것도 기록되지 않았습니다.`, 'error');
   } finally {
-    el.btnValidDieSave.disabled = false;
-    el.btnValidDieSave.textContent = label;
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }
 

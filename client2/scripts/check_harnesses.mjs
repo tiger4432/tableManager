@@ -114,7 +114,12 @@ const FLOORS = new Map([
   // because of how it died: silently, while the debt list recorded it as merely red.
   ['effort_instrument_harness.mjs', 71],
   ['effort_meter_harness.mjs', 131],
-  ['geometry_origin_reseat_harness.mjs', 46],
+  // 46 -> 62 (2026-08-04). The valid-die COMMIT-GESTURE cases: 🎯 APPLY was deleted because the
+  // key control became a real <select>, and the 16 new assertions pin WHICH gesture applies in
+  // each of the two controls. The fallback text input (truncated / unavailable / unlisted key)
+  // is the reason they exist — typing lives there, and `change` on that input also fires on
+  // BLUR, so committing there would restore the exact complaint the deletion answered.
+  ['geometry_origin_reseat_harness.mjs', 62],
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to
@@ -140,6 +145,12 @@ const FLOORS = new Map([
   // 13 (the candidate list is ordered, and each candidate carries its registered spec as an
   // option label). Taking either branch's figure would have quietly un-scored the other's.
   ['map_key_datalist_harness.mjs', 83],
+  // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
+  // floor is the count it reports on the commit that introduces it. It is the only scorer of
+  // a write that must touch NO cells: its central assertions name the ENTIRE request list, and
+  // the stranded-cell count in the confirm is checked against an independent set-difference
+  // oracle rather than against a number the code produced.
+  ['map_spec_only_save_harness.mjs', 34],
   // New 2026-08-04 with the offset/origin fix, so its floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['offset_pitch_guard_harness.mjs', 94],
