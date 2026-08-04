@@ -139,8 +139,44 @@ def vdr_env(db_session, tmp_path, monkeypatch):
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
     monkeypatch.setattr(map_overlay, "CONFIG_PATH", str(tmp_path / "none.json"))
+    # [1-a THE READ PIN] Every reference resolves against `map_overlay.VALID_DIE_TABLE`,
+    # whatever the declaration names. The real constant is `valid_die_ref`, a PRODUCT-OWNED
+    # table this fixture deliberately does NOT create: a test table sharing a name with a real
+    # one in the user's gitignored config is the `bonding_log` trap, and `valid_die_ref` has
+    # different columns from the `_MAP_TABLE` shape used here.
+    # So the fixture stands the pin on `vdr_test_template_map` and each test below re-pins it
+    # to whichever table it wants the lookup to land in. The DECLARATION then names something
+    # else, which is what makes the pin observable at all.
+    # ⚠️ This makes the pin a fixture parameter, so it cannot prove the pin's VALUE. That is
+    # asserted separately, against the real constant, in "THE READ PIN" at the foot of this
+    # file and by contracts/map_seam (client + server against one recorded answer).
+    monkeypatch.setattr(map_overlay, "VALID_DIE_TABLE", "vdr_test_template_map")
     map_overlay._FRAME_TF_CACHE.clear()
     return db_session
+
+
+@pytest.fixture()
+def pin(monkeypatch):
+    """Re-point the READ PIN at a fixture table. `pin("vdr_test_rot_map")`."""
+    def _pin(table):
+        monkeypatch.setattr(map_overlay, "VALID_DIE_TABLE", table)
+        return table
+    return _pin
+
+
+@pytest.fixture()
+def refer(pin):
+    """Build a declaration naming `table` AND point the read pin there.
+
+    Under the pin these are two SEPARATE facts and a test that means "resolve
+    against this table" has to state both: the declaration NAMES a table (kept, and
+    used only in the refusal text) while the lookup GOES to the pinned one. Tests
+    that mean "the declaration names something the pin ignores" call the two apart.
+    """
+    def _refer(table, map_id=MAP_KEY):
+        pin(table)
+        return {"table": table, "map_id": map_id}
+    return _refer
 
 
 def _circle_valid_visual(meta):
@@ -266,14 +302,14 @@ def test_geometry_that_no_circle_can_express(vdr_env):
     assert not (strip <= _circle_valid_visual(GRID6))
 
 
-def test_reference_is_read_in_the_referring_frame_not_raw(vdr_env):
+def test_reference_is_read_in_the_referring_frame_not_raw(vdr_env, refer):
     """A template stored in a 180-rotated frame must land on the target frame
     through the project's single transform, not be copied verbatim."""
     db = vdr_env
     stored = {(1, 1), (2, 3), (4, 4)}
     _cells(db, "vdr_test_rot_map", stored)
     _meta(db, "vdr_test_target_map", MAP_KEY,
-          valid_die_ref={"table": "vdr_test_rot_map", "map_id": MAP_KEY})
+          valid_die_ref=refer("vdr_test_rot_map"))
     rot_meta = _meta(db, "vdr_test_rot_map", MAP_KEY, rotation=180)
     db.commit()
 
@@ -287,9 +323,13 @@ def test_reference_is_read_in_the_referring_frame_not_raw(vdr_env):
     assert out["align_applied"]["origin"] == map_overlay.ALIGN_ORIGIN_DERIVED
 
 
-def test_table_omitted_inherits_the_referring_map_table(vdr_env):
-    """The common case: a product template map living in the SAME table."""
+def test_table_omitted_still_resolves_and_lands_on_the_pinned_table(vdr_env, pin):
+    """WAS `test_table_omitted_inherits_the_referring_map_table`, and the rename is
+    the ruling: an omitted table used to mean "inherit MY table" and now means
+    nothing at all for the lookup. The declaration is still READABLE — omitting the
+    table is not a grammar violation — it just cannot steer where we look."""
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", [(1, 1), (2, 3)], lot="TPL")
     _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref={"map_id": "TPL_1"})
     _meta(db, "vdr_test_target_map", "TPL_1")
@@ -297,14 +337,16 @@ def test_table_omitted_inherits_the_referring_map_table(vdr_env):
 
     out = _resolve(db)
     assert out["status"] == map_overlay.STATUS_OK
-    assert out["ref"] == {"table": "vdr_test_target_map", "map_id": "TPL_1"}
+    assert out["ref"]["table"] == "vdr_test_target_map"   # the PIN, not the home table
+    assert out["ref"]["map_id"] == "TPL_1"
     assert set(out["cells"]) == {(1, 1), (2, 3)}
 
 
-def test_bare_string_declaration_is_a_map_key(vdr_env):
+def test_bare_string_declaration_is_a_map_key(vdr_env, pin):
     """Contract grammar (client `parseValidDieRef` mirror): a bare string is the
     MAP KEY, not a table name. Reading it as a table would resolve the wrong map."""
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", [(1, 1)], lot="TPL")
     _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref="TPL_1")
     _meta(db, "vdr_test_target_map", "TPL_1")
@@ -312,22 +354,27 @@ def test_bare_string_declaration_is_a_map_key(vdr_env):
 
     out = _resolve(db)
     assert out["status"] == map_overlay.STATUS_OK
-    assert out["ref"] == {"table": "vdr_test_target_map", "map_id": "TPL_1"}
+    assert out["ref"]["map_id"] == "TPL_1"
 
 
-def test_target_table_and_map_key_aliases_are_accepted(vdr_env):
+def test_target_table_and_map_key_aliases_are_accepted(vdr_env, refer):
     """`target_table`/`map_key` are the wafer_map_metadata column names for the
     same pair — the client accepts both, so the server must too."""
     db = vdr_env
     _cells(db, "vdr_test_template_map", [(1, 1)])
+    ref = refer("vdr_test_template_map")
     _meta(db, "vdr_test_target_map", MAP_KEY,
-          valid_die_ref={"target_table": "vdr_test_template_map", "map_key": MAP_KEY})
+          valid_die_ref={"target_table": ref["table"], "map_key": ref["map_id"]})
     _meta(db, "vdr_test_template_map", MAP_KEY)
     db.commit()
 
     out = _resolve(db)
     assert out["status"] == map_overlay.STATUS_OK
-    assert out["ref"] == {"table": "vdr_test_template_map", "map_id": MAP_KEY}
+    assert out["ref"]["table"] == "vdr_test_template_map"
+    assert out["ref"]["map_id"] == MAP_KEY
+    assert out["ref"]["declared_table"] == "vdr_test_template_map", \
+        "the alias spelling of the declared table was lost — the refusal text " \
+        "cannot then say what the declaration used to point at"
 
 
 # ---------------------------------------------------------------------------
@@ -341,20 +388,25 @@ def _assert_refused(out, status):
     assert "cells" not in out, "a refusal must not answer with a set"
 
 
-@pytest.mark.parametrize("ref,status", [
-    # the reference points somewhere that does not exist / is not a map
-    ({"table": "vdr_test_nosuch_map", "map_id": MAP_KEY}, map_overlay.STATUS_SOURCE_MISSING),
-    ({"table": "vdr_test_notamap", "map_id": MAP_KEY}, map_overlay.STATUS_SOURCE_MISSING),
+@pytest.mark.parametrize("pin_to,ref,status", [
+    # the PINNED table does not exist / is not a map. Under 1-a the declaration can no
+    # longer point the lookup anywhere, so these two routes are reached by pinning.
+    ("vdr_test_nosuch_map",
+     {"table": "vdr_test_nosuch_map", "map_id": MAP_KEY}, map_overlay.STATUS_SOURCE_MISSING),
+    ("vdr_test_notamap",
+     {"table": "vdr_test_notamap", "map_id": MAP_KEY}, map_overlay.STATUS_SOURCE_MISSING),
     # the declaration itself cannot be read (grammar violations)
-    ({"table": "vdr_test_template_map"}, map_overlay.STATUS_SOURCE_MISSING),   # no map_id
-    ({"map_id": "   "}, map_overlay.STATUS_SOURCE_MISSING),                    # blank map_id
-    ("", map_overlay.STATUS_SOURCE_MISSING),
-    ("   ", map_overlay.STATUS_SOURCE_MISSING),
-    (42, map_overlay.STATUS_SOURCE_MISSING),
-    ([], map_overlay.STATUS_SOURCE_MISSING),
+    (None, {"table": "vdr_test_template_map"}, map_overlay.STATUS_SOURCE_MISSING),  # no map_id
+    (None, {"map_id": "   "}, map_overlay.STATUS_SOURCE_MISSING),                   # blank map_id
+    (None, "", map_overlay.STATUS_SOURCE_MISSING),
+    (None, "   ", map_overlay.STATUS_SOURCE_MISSING),
+    (None, 42, map_overlay.STATUS_SOURCE_MISSING),
+    (None, [], map_overlay.STATUS_SOURCE_MISSING),
 ])
-def test_unresolvable_reference_is_refused(vdr_env, ref, status):
+def test_unresolvable_reference_is_refused(vdr_env, pin, pin_to, ref, status):
     db = vdr_env
+    if pin_to:
+        pin(pin_to)
     _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=ref)
     db.commit()
     _assert_refused(_resolve(db), status)
@@ -419,12 +471,12 @@ def test_reference_over_the_cell_cap_is_refused_not_truncated(vdr_env):
     assert "3" in out["detail"], "the refusal must name the cap that was hit"
 
 
-def test_refusal_never_degrades_to_the_circle(vdr_env):
+def test_refusal_never_degrades_to_the_circle(vdr_env, refer):
     """The defect class this round removes: a fallback that makes a wrong answer
     indistinguishable from a right one."""
     db = vdr_env
     _meta(db, "vdr_test_target_map", MAP_KEY,
-          valid_die_ref={"table": "vdr_test_nosuch_map", "map_id": MAP_KEY})
+          valid_die_ref=refer("vdr_test_nosuch_map"))
     db.commit()
     out = _resolve(db)
     assert out.get("cells") is None
@@ -554,16 +606,15 @@ def test_two_maps_sharing_a_ref_and_frame_resolve_it_once(vdr_env):
     assert len(cache) == 3        # two metas + ONE ref resolution
 
 
-def test_cache_is_keyed_by_the_referring_frame(vdr_env):
+def test_cache_is_keyed_by_the_referring_frame(vdr_env, refer):
     """The same template resolved onto a differently-framed map is a DIFFERENT
     answer — a cache keyed by the ref alone would serve the first map's set."""
     db = vdr_env
     stored = {(1, 1), (2, 3), (4, 4)}
     _cells(db, "vdr_test_rot_map", stored)
-    _meta(db, "vdr_test_target_map", MAP_KEY,
-          valid_die_ref={"table": "vdr_test_rot_map", "map_id": MAP_KEY})
-    _meta(db, "vdr_test_template_map", MAP_KEY, rotation=180,
-          valid_die_ref={"table": "vdr_test_rot_map", "map_id": MAP_KEY})
+    ref = refer("vdr_test_rot_map")
+    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=ref)
+    _meta(db, "vdr_test_template_map", MAP_KEY, rotation=180, valid_die_ref=ref)
     _meta(db, "vdr_test_rot_map", MAP_KEY)
     db.commit()
 
@@ -630,7 +681,10 @@ def test_basis_passes_the_parsed_ref_to_the_resolver(vdr_env):
         dict(GRID6, valid_die_ref="TPL_1"),
         lambda ref: (seen.append(ref), {(1, 1)})[1],
         table="vdr_test_target_map")
-    assert seen == [{"table": "vdr_test_target_map", "map_id": "TPL_1"}]
+    # [1-a] the resolver is handed the PINNED table, with the declaration's original
+    # meaning ("a map in my own table") carried alongside for the refusal text.
+    assert seen == [{"table": map_overlay.VALID_DIE_TABLE, "map_id": "TPL_1",
+                     "declared_table": "vdr_test_target_map"}]
 
 
 @pytest.mark.parametrize("resolver", [
@@ -685,10 +739,10 @@ def test_the_db_resolver_plugs_straight_into_the_basis_function(vdr_env):
     assert out["basis"] == frozenset(template)
 
 
-def test_the_db_resolvers_refusal_carries_its_cause_into_the_basis(vdr_env):
+def test_the_db_resolvers_refusal_carries_its_cause_into_the_basis(vdr_env, refer):
     db = vdr_env
     meta = _meta(db, "vdr_test_target_map", MAP_KEY,
-                 valid_die_ref={"table": "vdr_test_nosuch_map", "map_id": MAP_KEY})
+                 valid_die_ref=refer("vdr_test_nosuch_map"))
     db.commit()
 
     out = map_overlay.resolve_valid_die_basis(
@@ -776,7 +830,7 @@ def _ref_to(table):
     return {"table": table, "map_id": MAP_KEY}
 
 
-def test_only_the_middle_declaration_separates_a_legal_hop_from_a_chain(vdr_env):
+def test_only_the_middle_declaration_separates_a_legal_hop_from_a_chain(vdr_env, refer):
     """⭐ INV-M4-6 with its negative control in the same test.
 
     A guard that refuses every reference passes every refusal assertion in this
@@ -786,21 +840,21 @@ def test_only_the_middle_declaration_separates_a_legal_hop_from_a_chain(vdr_env)
     db = vdr_env
     _seed_two_templates(db)
 
-    legal = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_template_map")))
-    chained = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+    legal = _resolve(db, target_meta=_declaring_meta(refer("vdr_test_template_map")))
+    chained = _resolve(db, target_meta=_declaring_meta(refer("vdr_test_rot_map")))
 
     assert legal["status"] == map_overlay.STATUS_OK
     assert set(legal["cells"]) == set(_TPL)
     _assert_refused(chained, map_overlay.STATUS_REF_UNAVAILABLE)
 
 
-def test_a_two_level_chain_never_serves_the_middle_maps_cells(vdr_env):
+def test_a_two_level_chain_never_serves_the_middle_maps_cells(vdr_env, refer):
     """The defect verbatim: B's stored cells are served while B has declared that
     its own valid dies are C's. The operator sees a resolved reference over a set
     nobody declared."""
     db = vdr_env
     _seed_two_templates(db)
-    out = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+    out = _resolve(db, target_meta=_declaring_meta(refer("vdr_test_rot_map")))
     assert out.get("cells") is None and out.get("count") is None
     assert out["status"] != map_overlay.STATUS_OK
 
@@ -851,11 +905,18 @@ def test_an_explicit_null_on_the_middle_map_is_absence_not_a_chain(vdr_env):
     assert set(out["cells"]) == set(_TPL)
 
 
-def test_a_self_reference_is_refused_instead_of_resolving_to_a_tautology(vdr_env):
+def test_a_self_reference_is_refused_instead_of_resolving_to_a_tautology(vdr_env, pin):
     """⭐ A -> A. The map's own stored cells become its own validity criterion, so
     every cell that exists is valid — true by construction, therefore saying
-    nothing, and wearing a resolved reference's chip while it says it."""
+    nothing, and wearing a resolved reference's chip while it says it.
+
+    [1-a] Self-reference is now reachable ONLY for a map that itself lives in the
+    pinned valid-die table — everywhere else the lookup leaves the declaring map's
+    table by construction, so A -> A cannot be composed. The pin here is what puts
+    the declaring map inside that table; without it this test asserts nothing.
+    """
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", _TPL)
     _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=MAP_KEY)
     db.commit()
@@ -864,7 +925,7 @@ def test_a_self_reference_is_refused_instead_of_resolving_to_a_tautology(vdr_env
     assert set(_TPL) != set(), "empty fixture — the tautology would be invisible"
 
 
-def test_the_two_refusals_are_told_apart_at_the_resolver(vdr_env):
+def test_the_two_refusals_are_told_apart_at_the_resolver(vdr_env, pin, refer):
     """Different problems, different fixes — re-point the reference vs. flatten
     the template. The predicate keeps them apart (contract); this asserts the
     resolver does not collapse both into one generic 'reference failed'."""
@@ -875,31 +936,34 @@ def test_the_two_refusals_are_told_apart_at_the_resolver(vdr_env):
     _meta(db, "vdr_test_target_map", MAP_KEY)
     db.commit()
 
+    pin("vdr_test_target_map")                       # self-reference is reachable here
     mine = _resolve(db, target_meta=_declaring_meta(MAP_KEY))
-    chained = _resolve(db, target_meta=_declaring_meta(_ref_to("vdr_test_rot_map")))
+    chained = _resolve(db, target_meta=_declaring_meta(refer("vdr_test_rot_map")))
     assert mine["detail"] and chained["detail"]
     assert mine["detail"] != chained["detail"]
 
 
 # --- the identities the guard compares must be CANONICAL (INV-M4-4 reuse) -----
 
-def test_a_padded_self_reference_is_still_a_self_reference(vdr_env):
+def test_a_padded_self_reference_is_still_a_self_reference(vdr_env, pin):
     """The declared key rides 7b before the comparison: `slot` is number-declared,
     so `LOT_01` IS the map `LOT_1`. A guard fed raw declaration text calls this an
     ordinary reference and resolves the tautology."""
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", _TPL)
     _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=MAP_KEY_PADDED)
     db.commit()
     _assert_refused(_resolve(db), map_overlay.STATUS_REF_UNAVAILABLE)
 
 
-def test_mutation_raw_key_hides_a_padded_self_reference(vdr_env, monkeypatch):
+def test_mutation_raw_key_hides_a_padded_self_reference(vdr_env, monkeypatch, pin):
     """MUTATION TWIN for the test above. Degrade the ONE canonicalizer to raw
     `str()` and the padded declaration must stop being reported as a self
     reference — otherwise the test above is passing on a guard that carries its
     own normalisation, which INV-M4-4 forbids."""
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", _TPL)
     _meta(db, "vdr_test_target_map", MAP_KEY)
     db.commit()
@@ -918,7 +982,7 @@ def test_mutation_raw_key_hides_a_padded_self_reference(vdr_env, monkeypatch):
         "is normalising on its own instead of riding canonical_key_value"
 
 
-def test_the_declaring_maps_own_key_is_canonicalised_before_the_comparison(vdr_env):
+def test_the_declaring_maps_own_key_is_canonicalised_before_the_comparison(vdr_env, pin):
     """The OTHER side of the same comparison, and it has its own line of code.
 
     A caller that canonicalises the reference but hands the guard the raw home key
@@ -926,6 +990,7 @@ def test_the_declaring_maps_own_key_is_canonicalised_before_the_comparison(vdr_e
     the caller was given — and then serves the tautology.
     """
     db = vdr_env
+    pin("vdr_test_target_map")
     _cells(db, "vdr_test_target_map", _TPL)
     db.commit()
     _assert_refused(
@@ -937,13 +1002,13 @@ def test_the_declaring_maps_own_key_is_canonicalised_before_the_comparison(vdr_e
 
 # --- INV-M4-3 at the new refusal route ---------------------------------------
 
-def test_a_chain_refusal_reaches_the_basis_as_refused_with_its_reason(vdr_env):
+def test_a_chain_refusal_reaches_the_basis_as_refused_with_its_reason(vdr_env, refer):
     """The branch point must see `refused`, never `circle`. A chain that degraded
     to circle geometry would be the silent fallback INV-M4-3 forbids, reached
     through the door M4② opens."""
     db = vdr_env
     _seed_two_templates(db)
-    meta = _declaring_meta(_ref_to("vdr_test_rot_map"))
+    meta = _declaring_meta(refer("vdr_test_rot_map"))
 
     resolved = _resolve(db, target_meta=meta)
     out = map_overlay.resolve_valid_die_basis(
@@ -973,13 +1038,13 @@ def _select_recorder(db):
     return seen, lambda: event.remove(db.get_bind(), "before_cursor_execute", _count)
 
 
-def test_the_chain_guard_reads_no_metadata_of_its_own(vdr_env):
+def test_the_chain_guard_reads_no_metadata_of_its_own(vdr_env, refer):
     """[Scale] `bonding_map` is ~1.7M rows. The guard must ride the metadata the
     resolver ALREADY loaded — one metadata read per reference per work unit, never
     a lookup of its own and never anything per cell."""
     db = vdr_env
     _seed_two_templates(db)
-    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=_ref_to("vdr_test_rot_map"))
+    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=refer("vdr_test_rot_map"))
     db.commit()
 
     seen, stop = _select_recorder(db)
@@ -1001,7 +1066,7 @@ def test_the_chain_guard_reads_no_metadata_of_its_own(vdr_env):
         f"{len(meta_reads)}: {meta_reads}"
 
 
-def test_a_self_refusal_is_never_served_from_cache_to_another_map(vdr_env):
+def test_a_self_refusal_is_never_served_from_cache_to_another_map(vdr_env, pin):
     """The refusal is a property of the PAIR, the cells are a property of the
     reference — so one cache entry cannot carry both.
 
@@ -1016,6 +1081,7 @@ def test_a_self_refusal_is_never_served_from_cache_to_another_map(vdr_env):
     and the collision would only swap one reason for another.
     """
     db = vdr_env
+    pin("vdr_test_target_map")                           # self-reference reachable here
     _cells(db, "vdr_test_target_map", _TPL, slot=1)      # the map LOT_1
     _meta(db, "vdr_test_target_map", MAP_KEY)            # ...and it declares nothing
     db.commit()
@@ -1074,3 +1140,133 @@ def test_a_blank_key_clears_rather_than_pinning_the_map_to_refused(vdr_env):
             f"{blank!r} was written as a declaration: {meta.get('valid_die_ref')!r}"
         assert map_overlay.resolve_valid_die_basis(
             meta, table="vdr_test_target_map")["source"] == map_overlay.SOURCE_CIRCLE
+
+
+# ---------------------------------------------------------------------------
+# 1-a — THE READ PIN (user ruling 2026-08-04)
+#
+# "불러오기는 무조건 valid_die_ref 를 이용하게" — the valid-die map is ALWAYS read
+# from `valid_die_ref`. A declaration naming another table has its TABLE ignored on
+# read and PRESERVED on write; the client shipped its half in `c97b319` and until
+# this section landed the two sides named DIFFERENT maps for the same legacy row.
+#
+# Everything above this line runs with `VALID_DIE_TABLE` monkeypatched to a fixture
+# table, so it cannot say anything about the pin's VALUE. These tests use the REAL
+# constant and do not touch the fixture pin.
+# ---------------------------------------------------------------------------
+
+_REAL_PIN = "valid_die_ref"
+
+# The declaration forms, and what each one used to point at. Module-level so the
+# fixture-inactivity guard below can COUNT them rather than trust a prose claim.
+_PIN_FORMS = [
+    ("TPL_1", "bonding_map"),                                    # bare string: the LIVE shape
+    ({"map_id": "TPL_1"}, "bonding_map"),                        # object, table omitted
+    ({"table": "dt_map", "map_id": "TPL_1"}, "dt_map"),          # object naming another table
+    ({"target_table": "dt_map", "map_key": "TPL_1"}, "dt_map"),  # ...via the alias spelling
+    ({"table": _REAL_PIN, "map_id": "TPL_1"}, _REAL_PIN),        # already on the fixed table
+]
+
+
+def test_the_pinned_table_is_the_product_owned_valid_die_ref_table():
+    """One name, two definitions, cross-checked — not re-typed in a third place.
+
+    `product_tables.PRODUCT_TABLES` is where the storage table is DECLARED (same
+    user ruling); `map_overlay.VALID_DIE_TABLE` is what the read path resolves
+    against. Asserting the second is a key of the first is what stops a rename of
+    either from silently pointing the reader at a table nobody installs.
+    """
+    import product_tables
+    assert map_overlay.VALID_DIE_TABLE == _REAL_PIN
+    assert map_overlay.VALID_DIE_TABLE in product_tables.PRODUCT_TABLES, (
+        f"the read path resolves against {map_overlay.VALID_DIE_TABLE!r}, which is not "
+        f"a product-owned table — no installer creates it, so every declaration refuses")
+
+
+@pytest.mark.parametrize("declaration,declared_table", _PIN_FORMS)
+def test_every_readable_declaration_resolves_to_the_fixed_table(declaration, declared_table):
+    """THE PIN ITSELF. Whatever the declaration names — or omits — the lookup table
+    is the constant, and the declared table survives as `declared_table`.
+
+    The `home_table` handed in is `bonding_map` on purpose: seven of the eight live
+    declarations are bare strings whose pre-ruling meaning was "a map in bonding_map",
+    so a reader that still inherited the home table would resolve them there.
+    """
+    ref, err = map_overlay.parse_valid_die_ref(
+        {"valid_die_ref": declaration}, default_table="bonding_map")
+    assert err is None, err
+    assert ref["table"] == _REAL_PIN, (
+        f"{declaration!r} resolved to {ref['table']!r} — the read path is not pinned")
+    assert ref["map_id"] == "TPL_1"
+    assert ref["declared_table"] == declared_table, (
+        f"{declaration!r} lost what it used to point at ({ref['declared_table']!r}); "
+        f"the refusal text cannot then tell 'wrong key' from 'right key, wrong table'")
+
+
+def test_the_pin_fixtures_are_active():
+    """Fixture-inactivity guard, mirroring the client harness's
+    `has_a_ref_vector_whose_declaration_names_ANOTHER_table`.
+
+    If every form above already named the fixed table, an UNPINNED reader would pass
+    the whole group by inheritance and prove nothing.
+    """
+    assert [d for (_decl, d) in _PIN_FORMS if d != _REAL_PIN], (
+        "no form declares a table OTHER than the pinned one — an unpinned reader "
+        "passes the group unchanged")
+    assert [d for (_decl, d) in _PIN_FORMS if d == _REAL_PIN], (
+        "no form declares the pinned table itself — the pin would be indistinguishable "
+        "from 'always rewrite the table to something else'")
+
+
+def test_the_redirect_note_names_the_table_the_declaration_used_to_point_at():
+    """The refusal has to tell the two repairs apart: fix the key, or register the
+    map in `valid_die_ref`. A generic 'not found' picks neither."""
+    ref, _ = map_overlay.parse_valid_die_ref(
+        {"valid_die_ref": {"table": "bonding_map", "map_id": "MID_01"}},
+        default_table="bonding_map")
+    note = map_overlay.valid_die_redirect_note(ref)
+    assert "bonding_map" in note and _REAL_PIN in note, note
+
+    # ...and it says NOTHING when the declaration already agreed. Reading is
+    # frictionless: a successful lookup owes nobody an explanation of where it looked.
+    same, _ = map_overlay.parse_valid_die_ref(
+        {"valid_die_ref": {"table": _REAL_PIN, "map_id": "MID_01"}},
+        default_table="bonding_map")
+    assert map_overlay.valid_die_redirect_note(same) == ""
+
+
+def test_a_legacy_declaration_refuses_BY_NAME_and_says_so_in_the_log(vdr_env, caplog):
+    """⭐ THE LIVE CASE, end to end. Seven of the eight live declarations are bare
+    strings meaning "a map in bonding_map" and NONE of the eight has a key registered
+    under `valid_die_ref`. After the pin they all refuse — approved: the user ruled
+    these are dev data and losing their masks is acceptable.
+
+    What is NOT acceptable is refusing quietly. An empty mask is a lie that looks like
+    data, and here it would silently change availability arithmetic, so the refusal
+    must (a) carry no cells, (b) name the key AND the table the declaration used to
+    point at, and (c) leave a NAMED line in the log — individually silent on screen,
+    countable in aggregate.
+    """
+    import logging
+    db = vdr_env                                   # pin stands at vdr_test_template_map
+    _meta(db, "vdr_test_target_map", MAP_KEY,
+          valid_die_ref={"table": "vdr_test_notamap", "map_id": "GONE_1"})
+    db.commit()
+
+    with caplog.at_level(logging.WARNING, logger=map_overlay.logger.name):
+        out = _resolve(db)
+
+    _assert_refused(out, map_overlay.STATUS_ALIGN_UNAVAILABLE)
+    assert "GONE_1" in out["detail"], "the refusal does not name the key that failed"
+    assert "vdr_test_notamap" in out["detail"], (
+        "the refusal does not name the table the declaration used to point at — the "
+        "operator cannot tell a wrong key from a map that lives elsewhere")
+    assert map_overlay.VALID_DIE_TABLE in out["detail"]
+
+    named = [r.getMessage() for r in caplog.records
+             if "REFUSED" in r.getMessage() and "GONE_1" in r.getMessage()]
+    assert named, (
+        "the refusal left no NAMED line in the log. An empty result that nobody can "
+        "count is indistinguishable from a map that legitimately has no reference:\n  "
+        + "\n  ".join(r.getMessage() for r in caplog.records))
+    assert "vdr_test_notamap" in named[0], named[0]

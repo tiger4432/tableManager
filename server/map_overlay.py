@@ -941,6 +941,24 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
 
 VALID_DIE_REF_KEY = "valid_die_ref"
 
+# [1-a] THE READ PIN (user ruling 2026-08-04: "불러오기는 무조건 valid_die_ref 를 이용하게").
+# A valid-die map is ALWAYS read from this table, whatever the declaration names. The client
+# pinned its half in `c97b319` (`map_editor.js` const `VALID_DIE_TABLE`, contract role
+# `client_consts`); this is the server half, and until it landed the two sides named DIFFERENT
+# maps for the same legacy row — the server resolved a bare string against the declaring map's
+# own table while the client looked here (recorded as an OPEN divergence in
+# `contracts/map_seam/vectors.json` -> `valid_die_ref_parse_cases`).
+#
+# 🔴 THE STRING COLLISION IS A COINCIDENCE, NOT A DEFINITION. `VALID_DIE_REF_KEY` is the
+#    grid_metadata KEY and `VALID_DIE_TABLE` is the storage TABLE; they happen to spell the
+#    same. Two names because they are two things — collapsing them would make renaming either
+#    one silently rename the other.
+#
+# The name is not invented here: `product_tables.PRODUCT_TABLES` declares `valid_die_ref` as a
+# PRODUCT-OWNED table (same ruling), and `test_valid_die_ref.py` asserts this constant is one
+# of its keys so the two cannot drift.
+VALID_DIE_TABLE = "valid_die_ref"
+
 # 셀 목록을 만드는 연산이므로 상한이 필수다(MAX_OVERLAY_CELLS와 같은 규율·같은 크기 —
 # 300mm/2.5mm 웨이퍼가 14,400셀이라 실 격자는 여유롭게 들어온다). 초과 시 **자르지 않고
 # 거절**한다: 잘린 유효 다이 집합은 "맞아 보이는 틀린 집합"이라 절단이 곧 오답이다.
@@ -969,7 +987,7 @@ def load_map_meta_cached(db, target_table: str, map_id: str, cache=None):
 
 
 def parse_valid_die_ref(meta: dict | None, default_table: str = None):
-    """`grid_metadata`의 valid_die_ref 선언 → `({"table","map_id"}|None, error|None)`.
+    """`grid_metadata`의 valid_die_ref 선언 → `({"table","map_id","declared_table"}|None, error|None)`.
 
     반환 조합은 셋뿐이다:
       (None, None)  — 선언이 없다. 호출자는 **이전과 똑같이** 행동해야 한다.
@@ -978,10 +996,20 @@ def parse_valid_die_ref(meta: dict | None, default_table: str = None):
 
     문법(계약 — `contracts/map_seam/` · 클라 `parseValidDieRef`와 문자 그대로 같다):
 
-        "TPL_1"                         맵 키 문자열. 테이블은 **선언한 맵 자신의 것**을 승계.
+        "TPL_1"                         맵 키 문자열.
         {"table": t, "map_id": k}       `target_table`/`map_key`도 같은 뜻으로 받는다
                                         (전자는 wafer_map_metadata의 실제 컬럼명, 후자는 별칭).
-                                        table 생략 시 승계, **map_id는 필수**.
+                                        **map_id는 필수**.
+
+    [1-a] **조회 테이블은 언제나 `VALID_DIE_TABLE`이다.** 선언이 어느 테이블을 이름 붙였든
+    (또는 생략해 자기 테이블을 승계했든) `table`은 고정 상수이고, 선언이 원래 뜻했던 테이블은
+    **버리지 않고** `declared_table`로 함께 돌려준다. 지운 정보를 나중에 추측으로 복원하는
+    일을 만들지 않기 위해서다 — 해석이 실패했을 때 "키가 틀렸다"와 "키는 맞는데 여기 없다"는
+    서로 다른 수리를 요구하므로, 거절문이 그 둘을 구별해 말할 수 있어야 한다
+    (`valid_die_redirect_note`). 클라 `parseValidDieRef`의 `declaredTable`과 같은 값이다.
+
+    `default_table`은 이제 **조회 대상을 정하지 않는다.** 맨 문자열 선언이 원래 뜻했던 것
+    ("내 테이블의 맵")을 `declared_table`에 담는 데만 쓴다.
 
     ⚠️ **`null`/부재만 "선언 없음"이고 그 밖은 전부 선언이다.** 읽을 수 없는 선언을 "선언
     없음"으로 접으면 오타 하나가 조용히 원 기하로 되돌아간다 — 틀린 답과 맞는 답이 구별되지
@@ -998,7 +1026,10 @@ def parse_valid_die_ref(meta: dict | None, default_table: str = None):
         if not map_id:
             return None, ("valid_die_ref가 비어 있다 — 맵 키가 없으면 유효 다이를 판정할 "
                           "근거가 없다")
-        return {"table": home, "map_id": map_id}, None
+        # PINNED READ (string form). 고정 이전에 이 형태는 "내 테이블의 맵"을 뜻했다 —
+        # 그 뜻은 조회 대상이 아니라 `declared_table`로만 남는다.
+        return {"table": VALID_DIE_TABLE, "map_id": map_id,
+                "declared_table": home}, None
 
     if not isinstance(raw, dict):
         return None, (f"valid_die_ref의 형태를 읽을 수 없다({type(raw).__name__}) — "
@@ -1009,8 +1040,61 @@ def parse_valid_die_ref(meta: dict | None, default_table: str = None):
     map_id = "" if k is None else str(k).strip()
     if not map_id:
         return None, ("valid_die_ref에 map_id가 없다 — 어느 맵을 가리키는지 알 수 없다")
-    table = str(t).strip() if (t is not None and str(t).strip()) else home
-    return {"table": table, "map_id": map_id}, None
+    declared = str(t).strip() if (t is not None and str(t).strip()) else home
+    # PINNED READ (object form). 선언이 어느 테이블을 이름 붙였든 조회는 VALID_DIE_TABLE이다.
+    return {"table": VALID_DIE_TABLE, "map_id": map_id,
+            "declared_table": declared}, None
+
+
+def valid_die_redirect_note(ref) -> str:
+    """[1-a] 이 선언은 고정 이전에 **다른 테이블**을 이름 붙였는가 — 붙였으면 거절문에 덧붙일
+    한 문장을 돌려준다(아니면 빈 문자열).
+
+    해석 실패의 이유가 「키가 틀렸다」인지 「키는 맞는데 이 테이블에 없다」인지는 **수리가
+    다르다**. 성공하면 아무 말도 하지 않는다 — 읽기는 무마찰이고, 성공한 조회에 대해 어디서
+    읽었는지 설명할 이유가 없다(규율: 개별로는 조용하고 실패할 때만 이름을 댄다).
+
+    클라 `resolveValidDie`의 `redirectNote`와 같은 문장이다.
+    """
+    declared = (ref or {}).get("declared_table") if isinstance(ref, dict) else None
+    if not declared or str(declared) == VALID_DIE_TABLE:
+        return ""
+    return (f" (이 지정은 원래 「{declared}」을(를) 가리켰지만, 유효 다이 맵은 언제나 "
+            f"{VALID_DIE_TABLE}에서 읽습니다 — 그 맵을 {VALID_DIE_TABLE}에 등록하거나 "
+            f"키를 고치십시오.)")
+
+
+def valid_die_ref_display(raw):
+    """저장된 **원문 바이트**가 무엇을 말하는가 → `{"table", "map_id"}` (테이블 미지정은 "").
+
+    계약 심볼(`contracts/map_seam` 역할 `valid_die_ref_display`) · 클라
+    `validDieRefDisplay`의 짝이다. **`parse_valid_die_ref`와 다른 질문에 답한다:**
+
+      `parse_valid_die_ref`  — "어디서 읽을 것인가." 고정 이후 답은 언제나 `VALID_DIE_TABLE`.
+      `valid_die_ref_display` — "무엇이 저장돼 있는가." 고정과 무관한 **바이트 그대로**.
+
+    🔴 이 구분이 없으면 "쓰기는 선언된 테이블을 보존한다"가 **반증 불가능**해진다 — 저장 결과를
+       고정된 파서로 되읽으면 무엇을 썼든 `valid_die_ref`가 나오기 때문이다. 저작 계약
+       (`valid_die_authoring_cases`)의 `expect_table`은 그래서 이 함수로 채점된다.
+
+    읽을 수 없는 원문도 **버리지 않고** 보이는 대로 key에 담는다(숫자·불리언·그 밖). 예쁘게
+    다듬으면 사용자가 자기 오타를 볼 수 없다.
+    """
+    if raw is None:
+        return {"table": "", "map_id": ""}
+    if isinstance(raw, str):
+        return {"table": "", "map_id": raw}
+    if isinstance(raw, dict):
+        t = raw.get("table", raw.get("target_table"))
+        k = raw.get("map_id", raw.get("map_key"))
+        if k is not None:
+            return {"table": "" if t is None else str(t), "map_id": str(k)}
+    if isinstance(raw, (int, float)):        # bool is an int here, deliberately
+        return {"table": "", "map_id": str(raw)}
+    try:
+        return {"table": "", "map_id": json.dumps(raw, ensure_ascii=False)}
+    except (TypeError, ValueError):
+        return {"table": "", "map_id": str(raw)}
 
 
 def apply_valid_die_ref(meta: dict | None, ref) -> dict:
@@ -1219,26 +1303,46 @@ def resolve_valid_die_basis(meta: dict | None, resolver=None, table: str = None)
         return {"basis": None, "source": SOURCE_REFUSED, "reason": err}
     if ref is None:
         return {"basis": circle_die_mask(meta), "source": SOURCE_CIRCLE, "reason": ""}
+    # [1-a] 거절문은 **키와 원래 가리키던 테이블을 이름으로** 댄다. 고정 이후 실패의 가장
+    # 흔한 원인이 "그 맵은 있는데 valid_die_ref에는 없다"이고, 그것은 오타와 수리가 다르다.
+    note = valid_die_redirect_note(ref)
     if resolver is None:
         return {"basis": None, "source": SOURCE_REFUSED,
-                "reason": (f"valid_die_ref '{ref['map_id']}' 선언이 있으나 참조를 풀 "
-                           f"해석기가 주어지지 않았다")}
+                "reason": (f"valid_die_ref '{VALID_DIE_TABLE} · {ref['map_id']}' 선언이 "
+                           f"있으나 참조를 풀 해석기가 주어지지 않았다") + note}
     try:
         result = resolver(ref)
     except Exception as e:                       # noqa: BLE001 — 해석 실패는 거절이다
         return {"basis": None, "source": SOURCE_REFUSED,
-                "reason": f"참조 해석 중 오류: [{type(e).__name__}] {e}"}
+                "reason": f"참조 해석 중 오류: [{type(e).__name__}] {e}" + note}
     basis, reason = _basis_from_resolver(result)
     if basis is None:
         return {"basis": None, "source": SOURCE_REFUSED,
-                "reason": reason or f"참조 맵 '{ref['map_id']}'을 해석하지 못했다"}
+                "reason": (reason or f"참조 맵 '{VALID_DIE_TABLE} · {ref['map_id']}'을 "
+                                     f"해석하지 못했다") + note}
     return {"basis": basis, "source": SOURCE_REF, "reason": ""}
 
 
 def _valid_die_refused(ref, status, detail):
     """거절 응답. **`cells` 키를 절대 싣지 않는다** — 소비자가 실수로라도 폴백 집합을
-    읽을 수 없게 만드는 것이 규율 ③의 구조적 보장이다."""
-    return {"declared": True, "ref": (dict(ref) if ref else None),
+    읽을 수 없게 만드는 것이 규율 ③의 구조적 보장이다.
+
+    [1-a] 모든 거절 경로가 지나는 **한 자리**이므로 여기서 두 가지를 한다:
+      ① 선언이 원래 다른 테이블을 가리켰으면 그 사실을 사유에 덧붙인다
+         (`valid_die_redirect_note`) — 거절 문구를 만드는 자리마다 다시 쓰면 하나가 빠진다.
+      ② **이름을 대서** 로그에 남긴다. 빈 마스크는 데이터처럼 보이는 거짓말이고, 그 거짓말은
+         조용해서 위험하다 — 화면에는 개별로 조용하되 로그에는 키·고정 테이블·선언 테이블이
+         이름으로 남아 집계로 셀 수 있어야 한다.
+    """
+    note = valid_die_redirect_note(ref)
+    if note and detail and note not in detail:
+        detail = f"{detail}{note}"
+    r = dict(ref) if ref else None
+    logger.warning(
+        "[ValidDie] REFUSED status=%s table=%s key=%s declared_table=%s :: %s",
+        status, (r or {}).get("table"), (r or {}).get("map_id"),
+        (r or {}).get("declared_table"), detail)
+    return {"declared": True, "ref": r,
             "status": status, "detail": detail, "align_applied": None}
 
 
@@ -1307,18 +1411,19 @@ def resolve_valid_die_set(db, cfg: dict, target_table: str, target_key: str,
 def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
     from database import models
 
+    # [1-a] `ref["table"]`은 `parse_valid_die_ref`가 고정한 `VALID_DIE_TABLE`이다. 고정 이전에
+    # 여기 있던 「대상 테이블을 알 수 없다」 가지는 **삭제됐다** — 고정된 대상은 알 수 없어질 수
+    # 가 없으므로 그 가지는 도달할 수 없는 죽은 분기이고, 살아 있는 것처럼 보이는 죽은 분기는
+    # 거짓말이다. 클라도 같은 이유로 같은 가지를 지웠다(`parseValidDieRef`).
     ref_table, ref_key = ref["table"], ref["map_id"]
-    if not ref_table:
-        return _valid_die_refused(
-            ref, STATUS_SOURCE_MISSING,
-            f"valid_die_ref '{ref_key}'의 대상 테이블을 알 수 없다 — 선언에 table을 넣거나 "
-            f"선언한 맵 자신의 테이블을 승계할 수 있어야 한다")
 
     model = models.DYNAMIC_TABLES.get(ref_table)
     if model is None:
         return _valid_die_refused(
             ref, STATUS_SOURCE_MISSING,
-            f"유효 다이 참조 테이블 '{ref_table}'을 찾을 수 없음")
+            f"유효 다이 저장 테이블 '{ref_table}'이 등록되지 않았다 — 유효 다이 맵은 언제나 "
+            f"이 테이블에서 읽으므로, 등록되지 않으면 **모든** valid_die_ref 선언이 거절된다 "
+            f"(table_config에 제품 소유 테이블 '{ref_table}'을 설치하십시오)")
 
     # 바인딩 해석은 데이터 경로와 **같은 규칙**을 탄다(선언 > table_config 유도).
     # 두 번째 유도기를 만들지 않는다(§5.6-bis가 없앤 바로 그 중복).
@@ -1341,7 +1446,10 @@ def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
     # 문자열 정확 일치라, 이것을 빼면 'LOT_01' 선언이 셀은 찾고 규격은 못 찾아
     # align_unavailable로 조용히 거절된다. 정규화 구현은 `canonical_key_value` 하나다.
     ref_key = canonical_map_key(ref_table, binding, ref_key)
-    ref = {"table": ref_table, "map_id": ref_key}
+    # [1-a] `declared_table`을 **함께 옮긴다.** 여기서 떨어뜨리면 이 아래 모든 거절이 선언이
+    # 원래 무엇을 가리켰는지 말하지 못하고, 그 정보는 이 시점 이후 어디에도 남아 있지 않다.
+    ref = {"table": ref_table, "map_id": ref_key,
+           "declared_table": ref.get("declared_table")}
 
     filters = build_key_filters(model, binding, ref_key)
     if filters is None:
@@ -1369,9 +1477,9 @@ def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
     if ref_meta is None:
         return _valid_die_refused(
             ref, STATUS_ALIGN_UNAVAILABLE,
-            f"참조 맵 '{ref_table}/{ref_key}'의 규격이 wafer_map_metadata에 미등록 — "
-            f"선언한 맵의 프레임은 아는데 참조 맵의 프레임을 몰라, 무보정으로 가정하면 "
-            f"회전·반전된 템플릿을 그대로 받아들이게 된다")
+            f"이 유효 다이 맵을 찾을 수 없다 — 키 '{ref_key}'의 규격이 '{ref_table}' 이름으로 "
+            f"wafer_map_metadata에 미등록. 선언한 맵의 프레임은 아는데 참조 맵의 프레임을 "
+            f"몰라, 무보정으로 가정하면 회전·반전된 템플릿을 그대로 받아들이게 된다")
 
     try:
         transform, align, origin, note = resolve_map_transform(ref_meta, target_meta)

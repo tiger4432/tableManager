@@ -441,10 +441,12 @@ const parseOutcome = (meta, home) => {
   if (r.unreadable === true) return { kind: 'error' };
   return { kind: 'ref', table: r.table, key: r.mapKey };
 };
-// [1-a] THE LOAD PIN. The client reads `expect_client_table`, NOT `expect_table`: since the
-// user ruling of 2026-08-04 the client always looks in `valid_die_ref` while the server still
-// honours the declared/home table, so the two sides answer this axis differently on purpose
-// and each reads its own recorded answer. `expect_table` stays the server's.
+// [1-a] THE LOAD PIN. The client reads `expect_client_table`, NOT `expect_table`, and it keeps
+// doing so now that the two AGREE (`map_overlay` was pinned on 2026-08-04 as well). Reading the
+// server's field once they agree would silently drop the client's own recorded answer, and the
+// day either side unpins the group would report only one of the two — the closure is asserted
+// by `test_the_two_sides_now_name_the_SAME_table` on the server, against two fields that stay
+// separate precisely so it CAN fail.
 // A `ref` vector that omits `expect_client_table` FAILS rather than skipping — a silent skip
 // is how a later vector stops covering the pin without anyone noticing.
 for (const c of cases('valid_die_ref_parse_cases')) {
@@ -1216,11 +1218,11 @@ if (process.argv.includes('--json')) {
   console.log('    compose_divergence_cases            missing key component: client drops it,');
   console.log('                                        registrar refuses the row, overlay pads "".');
   console.log('    valid_die_ref_parse_cases           THE LOAD PIN (user ruling 2026-08-04):');
-  console.log('                                        the client always resolves to');
-  console.log('                                        valid_die_ref; the server still honours');
-  console.log('                                        the declared/home table. KIND and KEY');
-  console.log('                                        agree; only the TABLE diverges. OPEN —');
-  console.log('                                        belongs to the server lane.');
+  console.log('                                        CLOSED — map_overlay is pinned too, so');
+  console.log('                                        both sides resolve to valid_die_ref and');
+  console.log('                                        expect_table == expect_client_table on');
+  console.log('                                        every ref vector. The two fields are KEPT');
+  console.log('                                        so an unpin on either side goes red.');
   console.log('    valid_die_ref_home_divergence_cases ref with no table and no home table:');
   console.log('                                        CLOSED 2026-08-04 by the pin — both');
   console.log('                                        sides now resolve. Kept to notice a');

@@ -803,7 +803,19 @@ binding: {x, y, val, key_columns: [...], source: "declared" | "derived" | "fallb
 - **행 하나 = 맵 하나의 셀 하나.** `business_key = cell_key`, 조립은 `composite_key_source = [product, type, x, y]` + 구분자 `_`. **맵을 식별하는 쌍은 `map_key_columns = (product, type)`**이라 맵 키는 `PRODUCT_TYPE`으로 읽힙니다. `val`은 칸마다 칠해진 값이고, **마스크는 「어느 칸이 존재하는가」**입니다 — 🔴 **「이 다이가 유효한가」 컬럼을 따로 만들지 마십시오. 행의 존재가 곧 답입니다.**
 - ⚠️ **여기 행이 있는 것만으로는 참조가 안 됩니다** — 그 맵이 `wafer_map_metadata`에도 등록돼 있어야 무엇도 그것을 가리킬 수 있습니다.
 
-🔴 **고정된 것은 *저작*이지 저장 형식이 아닙니다.** `parseValidDieRef`는 종전 두 형식을 **그대로** 받습니다 — 맨 문자열은 여전히 「**내 테이블**의 맵」이고, 객체형(`table`/`target_table` + `map_id`/`map_key`)도 그대로입니다. 고정은 `validDieRefFromControls()`의 판정 한 줄에만 있고, 그 판정은 **「키를 건드렸는가」** 하나입니다:
+🔴 **읽기는 고정, 쓰기는 보존.** 두 문장을 한 문장으로 줄이지 마십시오 — 서로 다른 두 함수의 이야기입니다.
+
+| | 무엇을 하는가 | 서버 | 클라 |
+|---|---|---|---|
+| **읽기(조회 대상)** | 선언이 어느 테이블을 이름 붙였든 **언제나 `valid_die_ref`에서 읽는다** | `map_overlay.parse_valid_die_ref` → `{table: VALID_DIE_TABLE, map_id, declared_table}` | `parseValidDieRef` → `{table: VALID_DIE_TABLE, mapKey, declaredTable}` |
+| **쓰기(저장 바이트)** | 손대지 않은 선언의 **바이트를 그대로 둔다** — 재조준하지 않는다 | `apply_valid_die_ref`(형식 그대로) | `validDieRefForPush` / `applyValidDieRef` |
+| **거절문(무엇을 가리켰나)** | 선언이 원래 이름 붙인 테이블을 **버리지 않고** 사유에 붙인다 | `valid_die_redirect_note` · 저장 바이트 판독은 `valid_die_ref_display` | `redirectNote` · `validDieRefDisplay` |
+
+- 🔴 **문법은 안 바뀌었습니다** — 맨 문자열도 객체형(`table`/`target_table` + `map_id`/`map_key`)도 종전대로 **읽을 수 있는 선언**입니다. 바뀐 것은 그 테이블이 **조회 대상을 정하지 않는다**는 것뿐입니다. 테이블을 뺀 객체형(`{map_id: k}`)도 여전히 오류가 아닙니다.
+- 🔴 **[2026-08-04 정정]** 이 자리는 `c97b319`(클라 고정)부터 `map_overlay` 고정까지 *"맨 문자열은 여전히 「내 테이블」의 맵"*이라고 적고 있었고, 그 문장은 **양쪽 코드 어디에서도 참이 아니게 됐습니다.** 그 사이 두 구현은 같은 행에 대해 **서로 다른 맵을 지목**했고(클라는 거절, 서버는 `bonding_map`/`dt_map`에서 해석), 그 불일치는 `contracts/map_seam/vectors.json`에 OPEN으로 기록됐다가 서버 고정으로 닫혔습니다. 지금 그 닫힘을 붙드는 것은 산문이 아니라 단언입니다 — `test_the_two_sides_now_name_the_SAME_table`.
+- ⚠️ **기존 선언 8건은 전부 거절됩니다**(실측 2026-08-04: 7건이 `bonding_map`을 뜻하는 맨 문자열, 1건이 `dt_map`, `valid_die_ref`에 등록된 키와 겹치는 것은 **0건**). 사용자 승인 아래의 의도된 손실입니다(개발 환경 데이터). **조용히 마스크가 비지 않고** 키와 「원래 가리키던 테이블」을 이름으로 대며 거절하고, 서버는 그것을 `[ValidDie] REFUSED …` 한 줄로 로그에 남깁니다.
+
+저작 쪽 고정은 `validDieRefFromControls()`의 판정 한 줄에만 있고, 그 판정은 **「키를 건드렸는가」** 하나입니다:
 
 ```js
 const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
@@ -829,7 +841,10 @@ const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
 
 | 역할 | 서버 | 클라 |
 |---|---|---|
-| 선언 파싱 | `map_overlay.parse_valid_die_ref` | `parseValidDieRef` |
+| 선언 파싱 **(조회 대상 = 고정)** | `map_overlay.parse_valid_die_ref` | `parseValidDieRef` |
+| 고정 테이블 상수 | `map_overlay.VALID_DIE_TABLE`(= `product_tables.PRODUCT_TABLES`의 키, 테스트가 대조) | `VALID_DIE_TABLE`(계약 `client_consts`) |
+| **저장 바이트 판독**(선언이 무엇을 가리켰나) | **`map_overlay.valid_die_ref_display`** | **`validDieRefDisplay`** |
+| 거절문의 「원래 가리키던 곳」 | **`map_overlay.valid_die_redirect_note`** | `resolveValidDie`의 `redirectNote` |
 | 저작 시 테이블 판정 | (없음 — 클라 저작 규율) | **`validDieRefFromControls`**(고정의 단독 소유자) |
 | 적용 / 기록 | (없음) | `onValidDieRefChanged` / `saveValidDieRefDeclaration` |
 | 판정 근거 결정 | **`map_overlay.resolve_valid_die_basis`** → `{basis, source(`ref`\|`circle`\|`refused`), reason}` | `validDieBasis` / `isValidDieAt` |

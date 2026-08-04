@@ -703,6 +703,80 @@ def test_valid_die_ref_parse_matches_the_contract():
             assert ref.get("map_id") == c["expect_key"], f"{c['name']} map_id: {ref!r}"
 
 
+def test_every_resolved_ref_reads_the_FIXED_table():
+    """[1-a] THE PIN, DERIVED and scored against the CONSTANT rather than the literals.
+
+    Mirror of the client harness's `QA_NO_GO_pin` block. Reading each vector's
+    `expect_table` one at a time is not enough: every literal in the group could be edited
+    to `seam_map` and the group would stay green against an unpinned implementation. So the
+    resolved table is compared to `map_overlay.VALID_DIE_TABLE` — the same constant the read
+    path itself uses — which no edit to this file can satisfy.
+    """
+    fixed = getattr(map_overlay, "VALID_DIE_TABLE", None)
+    assert isinstance(fixed, str) and fixed, (
+        "map_overlay.VALID_DIE_TABLE is missing — the server read path is not pinned, so "
+        "a legacy declaration resolves against a table the client never looks in")
+    refs = [c for c in _cases("valid_die_ref_parse_cases") if c["expect"] == "ref"]
+    assert refs, "the parse group lost every resolved vector"
+    for c in refs:
+        _kind, ref = _parse_outcome(c["meta"], c["home_table"])
+        assert ref["table"] == fixed, (
+            f"{c['name']}: resolved to {ref['table']!r}, the pin is {fixed!r}")
+
+    # Fixture-inactivity guard, same wording as the client's. If every vector's declaration
+    # already named the fixed table, an UNPINNED reader would pass by inheritance.
+    def _declared(c):
+        raw = c["meta"]["valid_die_ref"]
+        if isinstance(raw, str):
+            return c["home_table"]
+        t = raw.get("table", raw.get("target_table"))
+        return t if (t is not None and str(t).strip()) else c["home_table"]
+
+    assert [c for c in refs if _declared(c) and _declared(c) != fixed], (
+        "no ref vector's declaration names a table OTHER than the pinned one — an unpinned "
+        "reader passes this group unchanged")
+
+
+def test_the_two_sides_now_name_the_SAME_table():
+    """🟢 THE CLOSED DIVERGENCE, asserted rather than narrated.
+
+    `expect_table` (server) and `expect_client_table` (client) held different values on every
+    `ref` vector between `c97b319` and the server pin: the client refused a legacy declaration
+    while the server resolved it against `bonding_map`/`dt_map`, so one row named two maps.
+    The two fields are deliberately NOT merged — a single field would be satisfied by any two
+    implementations that both read it — so this is what says they agree, and it is what goes
+    red if either side unpins.
+    """
+    disagree = [(c["name"], c["expect_table"], c["expect_client_table"])
+                for c in _cases("valid_die_ref_parse_cases") if c["expect"] == "ref"
+                and c["expect_table"] != c.get("expect_client_table")]
+    assert not disagree, (
+        "the map seam names two different tables for one declaration again:\n  "
+        + "\n  ".join(f"{n}: server={s!r} client={cl!r}" for n, s, cl in disagree))
+
+
+def test_the_declared_table_survives_the_pin():
+    """The pin IGNORES the declared table on read; it must not DESTROY it.
+
+    A refusal has to tell 'the key is wrong' from 'the key is right and that map lives
+    somewhere else', and those are different repairs. Once the parse has dropped the declared
+    table the information is nowhere else on this path — the raw bytes are behind the caller.
+    """
+    for c in _cases("valid_die_ref_parse_cases"):
+        if c["expect"] != "ref":
+            continue
+        _kind, ref = _parse_outcome(c["meta"], c["home_table"])
+        assert "declared_table" in ref, (
+            f"{c['name']}: the parse dropped what the declaration pointed at ({ref!r}); "
+            f"every refusal downstream is then generic")
+        raw = c["meta"]["valid_die_ref"]
+        declared = (c["home_table"] if isinstance(raw, str)
+                    else (raw.get("table", raw.get("target_table")) or c["home_table"]))
+        assert ref["declared_table"] == declared, (
+            f"{c['name']}: declared_table is {ref['declared_table']!r}, the declaration said "
+            f"{declared!r}")
+
+
 def test_only_null_means_no_declaration():
     """INV-M4-3's structural core, DERIVED from the group rather than restated.
 
@@ -971,13 +1045,25 @@ def test_authoring_round_trip_matches_the_contract():
     for c in _cases("valid_die_authoring_cases"):
         home = c["home_table"]
         out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
-        kind, ref = _parse_outcome(out, home)
+        kind, _ref = _parse_outcome(out, home)
         assert kind == c["expect_read"], (
             f"{c['name']}: after {c['ops']!r} the declaration reads {kind!r}, contract says "
             f"{c['expect_read']!r} (stored: {_stored_ref(out)!r})")
         if kind == "ref":
-            assert ref.get("table") == c["expect_table"], f"{c['name']} table: {ref!r}"
-            assert ref.get("map_id") == c["expect_key"], f"{c['name']} map_id: {ref!r}"
+            # [1-a] Same split the client harness makes, and for the same reason: this group
+            # scores what the WRITER PUT IN THE METADATA, so the table comes from the
+            # storage-bytes reader (`valid_die_ref_display`), never from the pinned parser.
+            # Since the load pin the parser answers `valid_die_ref` for every declaration
+            # whatever the bytes say, so reading the written table back through it would make
+            # "the writer preserved the declared table" UNFALSIFIABLE here. The KIND above
+            # still goes through the parser, because the kind did not move.
+            shown = _server_symbol("valid_die_ref_display")(_stored_ref(out))
+            saved_table = shown["table"] if shown["table"] != "" else home
+            assert saved_table == c["expect_table"], (
+                f"{c['name']} table: stored {_stored_ref(out)!r} -> {saved_table!r}, "
+                f"contract says {c['expect_table']!r}")
+            assert shown["map_id"] == c["expect_key"], (
+                f"{c['name']} map_id: stored {_stored_ref(out)!r} -> {shown['map_id']!r}")
         if "expect_source" in c:
             got = map_overlay.resolve_valid_die_basis(out, None, table=home)
             assert got["source"] == c["expect_source"], (
@@ -1004,17 +1090,32 @@ def test_authoring_never_writes_an_unreadable_declaration():
             f"back to circle geometry.")
 
 
-def test_authoring_never_writes_the_shape_the_two_sides_read_differently():
-    """The object form with no table is the ONE declaration recorded as a DIVERGENCE
-    (`valid_die_ref_home_divergence_cases.object_no_table_no_home`: the server resolves it,
-    the client refuses it). Authoring must not manufacture a split-brain declaration — it
-    knows the declaring map's table at write time, which is the whole reason that divergence
-    is unreachable from a correct writer."""
+def test_authoring_never_writes_a_tableless_object():
+    """WAS `test_authoring_never_writes_the_shape_the_two_sides_read_differently`, and the
+    RE-ANCHORING is recorded rather than performed quietly.
+
+    The original grounds were a seam divergence: `{map_id: k}` with no table was the one shape
+    the server resolved and the client refused. The 1-a pin CLOSED that — both sides now read
+    it as `ref` — so the assertion lost its anchor, and the honest options were to delete it or
+    to name a live harm. It has one, checked below rather than asserted in prose: with no table
+    in the bytes, `declared_table` falls back to the DECLARING map's table, so the refusal text
+    goes on to name a table the operator never wrote. A refusal that names the wrong table is
+    worse than a generic one, because it sends the repair to the wrong place.
+
+    (Reported to the Lead PM as an assertion whose original anchor closed — the new anchor is
+    weaker than the old one and is a judgement, not a measurement.)
+    """
     fn = _server_symbol("apply_valid_die_ref")
     diverging = _case("valid_die_ref_home_divergence_cases", "object_no_table_no_home")
-    assert diverging["expect_server"] != diverging["expect_client"], (
-        "this test is anchored to a recorded divergence that is no longer a divergence — "
-        "re-check whether the shape is still dangerous before deleting the assertion")
+    assert diverging["expect_server"] == diverging["expect_client"], (
+        "the recorded divergence on the table-less object has REOPENED — the two sides read "
+        "it differently again, which is a bigger problem than this test's own subject")
+    # The live harm, RUN rather than described: with no table in the bytes the parse invents
+    # one from the home table. That invented name is what a refusal would go on to print.
+    _kind, invented = _parse_outcome({"valid_die_ref": {"map_id": "TPL_1"}}, "seam_map")
+    assert invented["declared_table"] == "seam_map", (
+        "a table-less object no longer inherits the home table into `declared_table`, so the "
+        "harm this test guards against has changed shape — re-derive it before editing")
     for c in _cases("valid_die_authoring_cases"):
         out = _apply_ops(fn, json.loads(json.dumps(c["base_meta"])), c["ops"], c)
         stored = _stored_ref(out)
