@@ -113,11 +113,11 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 
 | 파일 | 줄 | 책임 |
 |---|---|---|
-| `main.js` | 2023 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트(**§2.1-ter 걸쇠** — `smartPasteFromPasteEvent`(읽기)/`smartPasteViaIngestion`(클릭 진입)/`uploadSmartPastePayload`), Tx 모드 apply/discard |
+| `main.js` | 2042 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트(**§2.1-ter 걸쇠** — `smartPasteFromPasteEvent`(읽기)/`smartPasteViaIngestion`(클릭 진입)/`uploadSmartPastePayload`), Tx 모드 apply/discard |
 | `state.js` | 130 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) + **`currentVirtualColumns`와 술어 `isVirtualColumn(colId)`**(§3.4). 🔴 가상 컬럼 목록은 **`currentColumns`에 병합하지 않습니다** — 그 배열의 뜻은 「이 테이블이 저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댑니다 |
 | `dom.js` | 57 | `getElementById` 지연 게터 모음(`elements`) |
-| `api.js` | 485 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema(**`virtual_columns`를 `state`에 그대로 보관 — 배열이 아니면 `[]`**), fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows. ⚠️ **검색 드롭다운(`?cols=`)은 `currentColumns`만 훑습니다** — 그 값은 WHERE 절로 가고 가상 이름에는 대응 컬럼이 없습니다(§3.4). ⚠️ **`switchTable`은 `txModeActive`를 강제로 다시 켭니다**(:70-71 — 대기 편집을 버리는 것과 한 쌍이라 안전한 기본값이지만, **표를 바꾸면 토글이 되살아납니다**. 편집 E2E에서 두 번 새는 자리 — [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md)) |
-| `websocket.js` | 255 | 실시간 동기화: 지수 백오프 재연결, `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시) |
+| `api.js` | 533 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema(**`virtual_columns`를 `state`에 그대로 보관 — 배열이 아니면 `[]`**), fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows. ⚠️ **검색 드롭다운(`?cols=`)은 `currentColumns`만 훑습니다** — 그 값은 WHERE 절로 가고 가상 이름에는 대응 컬럼이 없습니다(§3.4). ⚠️ **`switchTable`은 `txModeActive`를 강제로 다시 켭니다**(:70-71 — 대기 편집을 버리는 것과 한 쌍이라 안전한 기본값이지만, **표를 바꾸면 토글이 되살아납니다**. 편집 E2E에서 두 번 새는 자리 — [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md)) |
+| `websocket.js` | 350 | 실시간 동기화: 지수 백오프 재연결(5s 천장 · `visibilitychange`/`online` 웨이크 · flap 가드), `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시). 🔴 **재연결 사다리 전체가 `initWebSocket` 안에 산다** — 그 함수에 닿지 못한 페이지는 소켓도 재시도도 없다. 그래서 `init()`의 **첫 문장**이다(§3.5) |
 | `grid.js` | 869 | AG-Grid 설정/렌더: `buildColumnDefs`(저장 컬럼 뒤에 **가상 조인 컬럼을 APPEND** — §3.4), `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), 셀 읽기 공용 `rawCellValue`/`numericDisplayValue`, `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택). **`string` 선언 컬럼의 `cellEditor`를 `SuggestCellEditor`로 갈아끼우는 자리**(§3.3)이고, `defaultColDef.suppressKeyboardEvent`의 **첫 분기**가 `handleEditorKey`를 부릅니다 — 그 한 분기가 **`Enter` 한 번 계약이 서는 기반**입니다(AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하므로 `'accepted'` 판정은 "후보가 이미 입력에 들어갔으니 **이 이벤트가 그대로 확정하라**"는 뜻입니다. `false` 반환은 포기가 아니라 **확정**입니다) |
 | `value_suggest.js` | 1003 | **값 제안 셀 에디터(§3.3)** — `SuggestCellEditor` + `handleEditorKey`(순수 키보드 판정 `suppress`/`accepted`/`pass`) + `isSuggestEditorActive`. 디바운스 90ms(트레일링)·요청 한도 12·여는 최소 접두 1·표시 8행. 컬럼별 학습(플로어·4연속 4xx 후 비활성·`unavailable_reason` 쿨다운)은 **전부 TTL 60초로 만료**(핫리로드되는 `table_config`를 클라 래치가 조용히 면제받지 않도록). 진단은 `window.__assySuggest` |
 | `clipboard.js` | 858 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells`, `registerSmartPasteHandler`(**§2.1-ter** — paste 핸들러의 스마트 페이스트 걸쇠 분기). **쓰기 세 경로(붙여넣기·delete 비우기·행 복사 술어)는 `isVirtualColumn`으로, 읽기 두 경로(복사 술어)는 그 반대로** 갈립니다 — §3.4 |
@@ -283,6 +283,22 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - **⏳ 열려 있는 것 둘**(커밋 트리 `77d27d3` 기준 — ⚠️ 둘 다 작업 진행 중이니 인용 전 소스 확인) — ⓐ **CSV export(`GET /tables/{t}/export`)에는 가상 컬럼이 실리지 않는다.** 그 라우트는 `attach`를 부르지 않으므로 **화면에 보이는 컬럼이 추출물에는 없다.** ⓑ **`filter: false`라 `미상` 행을 찾을 방법이 없다.** 서버가 그 컬럼을 아는 형태가 필요해 **클라만으로는 못 고친다.** 둘 다 미해결이며 정본 목록은 [config/virtual_join_rules §9](../guide/config/virtual_join_rules.md).
 
 > 회귀 그물 `client2/tests/virtual_column_render_harness.mjs`(§2.1 `check:harnesses`가 발견식으로 돌린다). 점검 절차는 [FEATURE_CHECKLIST §2.2-bis](../qa/FEATURE_CHECKLIST.md).
+
+---
+
+### 3.5 기동 순서 — **실시간 채널은 무엇에도 걸려 있지 않다** (2026-08-04)
+
+`init()`의 **첫 문장**이 `initWebSocket()`이다. 종전에는 `await checkServerHealth()` → `await loadTables()` **뒤 마지막 문장**이었고, 재연결 사다리 전체가 `initWebSocket` **안에** 살기 때문에 그 줄에 닿지 못한 페이지는 **세션 내내 소켓도 재시도도 없이** 돌았다. 사용자 신고(2026-08-04)의 증상이 정확히 그것이다 — Network 탭에 실패한 `/ws`가 아니라 **`/ws` 요청 자체가 없었다.**
+
+🔴 **평범한 reject는 이 결함이 아니다.** 두 호출부 모두 `try/catch`가 있어 `fetch` 거절만으로는 소켓이 살아남는다. 실제로 재현된 경로는 셋이고, 그중 둘은 **아무 소리도 내지 않는다**:
+
+1. **catch 블록 자신이 던진다.** 두 catch가 DOM 핸들(`elements.performanceLog`·`elements.serverStatus`·`elements.tableSelect`)을 **가드 없이** 썼다. 핸들이 `null`이면 **처리된 장애가 그 자리에서 미처리 거절로 바뀐다** — 코드가 조심하려던 바로 그 순간에. 이 저장소에는 실측 전례가 있다(`elements` 게터 둘이 `index.html`에 **한 번도 존재한 적 없는** id를 가리켰다). ⚠️ **2026-08-04 현재도 게터 넷**(`globalSearch`·`searchCols`·`ingestFileBtn`·`smartPasteBtn`)**이 `index.html`에 없는 id를 가리킨다** — 전부 사용처가 가드돼 있어 지금은 안 터지지만, 이 부류가 살아 있다는 증거다.
+2. **`fetch`가 영원히 settle하지 않는다.** 끊긴 백엔드나 사내 프록시에서 `await`는 **거절하지도 던지지도 로그를 남기지도 않는다.** 신고 증상(요청 없음 + 콘솔 조용함)과 가장 잘 맞는 경로다.
+3. `init()`의 나머지 셋업(`setupEventListeners`·`setupClipboardHandlers`·`setupDragAndDrop`…) **어디서든** 던지면 같은 결과였다. 그래서 소켓은 「좀 더 앞」이 아니라 **전부보다 앞**이다.
+
+**순서를 앞당기면서 지켜야 했던 것**: `onopen`은 테이블 선택기가 비어 있으면 `loadTables()`로 부트스트랩한다. 소켓이 먼저 뜨면(로컬 핸드셰이크 실측 중앙값 2.54ms) 그 부트스트랩이 `init()`의 `loadTables()`와 **겹친다** — `switchTable`이 두 번 돌아 스키마 로드도 그리드 재생성도 두 번이 된다. 그래서 `api.js`에 **in-flight 걸쇠**(`tablesLoadInFlight`)를 뒀다: 두 번째 호출은 **버리는 게 아니라 같은 프라미스를 공유**한다(`onopen`이 결과를 `await`하므로 버리면 목록이 없는 채 진행한다). 완료 시 반드시 해제된다 — 해제되지 않는 걸쇠는 동시 호출만 보면 정상과 구분되지 않고 세션 내내 목록을 얼린다.
+
+> 회귀 그물 `client2/tests/startup_socket_gate_harness.mjs` — 실제 `init`/`checkServerHealth`/`loadTables`/`initWebSocket`을 vm에서 잘라내 가짜 소켓·가짜 `fetch`로 구동하고, **`new WebSocket(...)`이 실제로 일어났는지**를 채점한다(Network 탭에서 없던 바로 그 사건). 변이 9개 전원 검출, 그중 M9는 **라운드 이전 코드 전체**(소켓 마지막 + 가드 없는 catch)를 되돌려 catch-throws 경로를 재현한다.
 
 ---
 

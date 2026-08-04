@@ -88,6 +88,22 @@ async function init() {
   }
   */
 
+  // THE LIVE CHANNEL IS NOT GATED ON ANYTHING ELSE. This used to be the LAST statement of
+  // `init()`, after `await checkServerHealth()` and `await loadTables()`. Since the whole
+  // reconnect ladder lives inside `initWebSocket`, anything that stopped `init()` short of this
+  // line left the page with no socket AND no retry, for the rest of the session — reproduced
+  // three ways (see startup_socket_gate_harness.mjs): a `catch` block that itself throws on a
+  // null DOM handle, and a `fetch` that never settles (a hung backend or proxy), which does not
+  // even reject and so logs nothing at all.
+  //
+  // FIRST, not merely "earlier". Every setup call below can throw too — `elements.copyHeaderToggle
+  // .checked` on the next lines is an unguarded handle — so the socket goes ahead of ALL of it.
+  // Opening it has no dependency on health status or the table list: `initWebSocket` reads only
+  // WS_URL, `state`, and the wake signals, and its `onopen` re-derives what it needs
+  // (`checkServerHealth`, then `loadTables` only if the picker is still empty). The overlap that
+  // creates with `loadTables()` below is de-duplicated by an in-flight latch in api.js.
+  initWebSocket();
+
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
   if (cachedCopyHeader !== null) {
@@ -111,19 +127,13 @@ async function init() {
   // this hands it the smart-paste reader without clipboard.js having to import main.js.
   registerSmartPasteHandler(smartPasteFromPasteEvent);
   setupDragAndDrop();
-  // 🔴 이 두 호출은 **소켓을 막을 수 없다.** 종전에는 `initWebSocket()`이 두 `await` 뒤의
-  //    마지막 줄이라, 둘 중 하나만 reject해도 소켓이 **아예 만들어지지 않았다** ― 그리고
-  //    재접속 사다리가 `initWebSocket` 안에 살기 때문에 **재시도조차 없었다.** 그 세션은
-  //    끝까지 실시간 채널 없이 돈다. 운영 신고 「재기동 시 소켓이 늦게 켜지거나 아예 안
-  //    켜짐」의 한 갈래가 이것이다: 서버가 준비되기 전에 열린 페이지는 영영 소켓이 없고,
-  //    사용자가 새로고침한 경우만 「늦게 켜졌다」로 보인다.
-  //    ⚠️ 두 함수는 자체 try/catch가 있지만 **catch 블록이 다시 던질 수 있다** ―
-  //    `elements.serverStatus.textContent` 등 DOM 핸들을 만지므로, 그 요소가 없는 페이지에서는
-  //    catch가 스스로 예외를 낸다(이 저장소엔 존재한 적 없는 `elements` 게터 전례가 있다).
-  //    그래서 호출부에서도 막는다. 삼키지는 않는다 ― 조용한 실패가 이걸 안 보이게 만들었다.
-  try { await checkServerHealth(); } catch (e) { console.error('[init] checkServerHealth 실패 (소켓은 계속 진행)', e); }
-  try { await loadTables(); } catch (e) { console.error('[init] loadTables 실패 (소켓은 계속 진행)', e); }
-  initWebSocket();
+  // 소켓은 이 함수 **첫 줄**에서 이미 열렸다(위 참조). 여기 둘은 각각 감싼다 ― 소켓을
+  // 막기 위해서가 아니라(그 문제는 순서로 끝났다) **서로를 막지 않게** 하기 위해서다:
+  // 감싸지 않으면 `checkServerHealth`가 reject할 때 `loadTables`가 통째로 건너뛰어져
+  // 테이블 목록이 끝까지 비어 있는다. 삼키지 않는다 ― 조용한 실패가 이 계급을 안 보이게
+  // 만들었다.
+  try { await checkServerHealth(); } catch (e) { console.error('[init] checkServerHealth 실패', e); }
+  try { await loadTables(); } catch (e) { console.error('[init] loadTables 실패', e); }
 }
 
 // Event Listeners Setup
@@ -2027,7 +2037,11 @@ function discardPendingTxEdits() {
   elements.performanceLog.textContent = 'Pending updates discarded';
 }
 
-// Start Application
-init();
+// Start Application.
+// The `catch` NAMES the failure instead of leaving it as a bare unhandled rejection — it does
+// not swallow it. Startup dying silently is how the missing WebSocket stayed invisible; the
+// socket itself is now opened on the first line of `init()`, so reaching here still means the
+// live channel is up.
+init().catch(err => console.error('[init] startup aborted before completing', err));
 console.log('AssyManager Client Bundle Loaded. Version Hash Buster: 019ee29f-b2fb-727e');
 
