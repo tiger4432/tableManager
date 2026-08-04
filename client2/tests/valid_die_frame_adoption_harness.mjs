@@ -80,6 +80,14 @@ const SYMBOLS = [
   // Omitting the sibling throws before assertion one, and a runner that only knows red/green
   // reports that as "still red" while ~200 assertions run zero times.
   'projectCellsToWaferMm', 'projectCellsToPhys', 'resolveValidDie',
+  // [R5] the five named steps `resolveValidDie` is now written in terms of. Every mutation
+  // below still anchors INSIDE `resolveValidDie` itself (the truncation demotion, the H5
+  // ceiling, the alignment toast, the catch's internal/data split) — those blocks stayed
+  // inline precisely because H5d and N6 inject code into their scope. These five are the
+  // parts that could leave; a missing name here is a ReferenceError the catch reports as an
+  // internal error, i.e. RED, never a silent green.
+  'fitGridToMask', 'summariseReseat', 'resolveReferenceSpec',
+  'deriveMaskKeys', 'diagnoseDesignationAlignment',
   // The Push-gate classifier. `renderGridCanvas` is sliced too, NOT modelled:
   // `classifyUnsavableCells`'s domain is whatever the real renderer put in `gridCells2D`, and
   // that domain is wider than the visual grid (it draws to -1x..2x). A harness that re-derived

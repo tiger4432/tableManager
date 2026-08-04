@@ -7739,61 +7739,14 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       // 🔴 **새 기하식은 한 줄도 없다.** 마스크 키를 칸으로 되돌리는 것은 렌더·재배치가 쓰는
       //    바로 그 역함수(`getCanvasCellFromDieIndex`)이고, 여기서 두 번째 구현을 쓰면 화면과
       //    저장값이 갈라진다(불변식 ①: 변환 구현은 하나다).
-      // ⚠️ **인라인이다.** 헬퍼 함수로 빼면 `resolveValidDie`를 슬라이스해 실행하는 하네스가
-      //    모듈 전역 의존 하나 때문에 ReferenceError로 죽는다(§getDieIndex 의 같은 경고).
+      // ⚠️ NOT INLINE ANY MORE — and the note that said it had to be is re-pointed, not deleted.
+      //    It read: "a helper would make the harnesses that slice `resolveValidDie` die with a
+      //    ReferenceError on one module-global dependency". The price is one name in two slice
+      //    lists (`geometry_origin_reseat` / `valid_die_frame_adoption` SYMBOLS), and omitting it
+      //    is LOUD, not silently green: the refusal reason becomes `is not defined` and both
+      //    harnesses go red. `fitGridToMask` takes everything it reads as an argument.
       if (keys && keys.size > 0) {
-        const dimMax = frameDimBounds().max;
-        // 축별 위반 수. 두 축을 따로 세는 이유는 넓힐 치수를 **측정으로** 고르기 위해서다.
-        const missAt = (c, r) => {
-          const rot90 = (currentRotation === 90 || currentRotation === 270);
-          const vC = rot90 ? r : c, vR = rot90 ? c : r;
-          let col = 0, row = 0;
-          keys.forEach(k => {
-            const [px, py] = String(k).split('_').map(Number);
-            if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-            const at = getCanvasCellFromDieIndex(px, py, c, r, currentRotation, currentSide);
-            if (at.c < 0 || at.c >= vC) col++;
-            if (at.r < 0 || at.r >= vR) row++;
-          });
-          return { col, row, any: col + row };
-        };
-        let gc = gridDimNum('cols', el.gridCols, 10);
-        let gr = gridDimNum('rows', el.gridRows, 10);
-        const fromC = gc, fromR = gr;
-        let miss = missAt(gc, gr);
-        // 한 번에 한 칸. 키가 덮는 범위는 치수에 대해 **중첩 단조**다(치수 +1은 한쪽 끝에
-        // 정확히 한 칸을 더한다), 그래서 위반이 난 축만 늘리면 최소 치수에서 멈춘다.
-        // 멈추는 이유는 하나여야 한다 ― **편집기의 치수 정의역**(H5, `frameDimBounds`).
-        // 걸음 수 상한은 그 정의역에서 나온 값이라(두 축 × 상한) 실제로 멈추는 것은 언제나
-        // 치수 쪽이고, 걸음 수는 무한 루프를 막는 안전핀일 뿐이다. 상한에 닿으면 **더 넓히지
-        // 않고 멈추고 사유를 남긴다** ― 조용히 자라지도, 잘라 내지도 않는다.
-        for (let step = 0; miss.any > 0 && step < 2 * dimMax; step++) {
-          // 열을 정하는 치수는 rot 90/270에서 rows, 그 밖에서는 cols다 ― 이 파일이 도처에서
-          // 쓰는 `visualCols = isRotated90or270 ? rows : cols` 한 줄의 결과일 뿐이다.
-          const rot90 = (currentRotation === 90 || currentRotation === 270);
-          let grew = false;
-          if (miss.col > 0) {
-            if (rot90) { if (gr < dimMax) { gr += 1; grew = true; } }
-            else if (gc < dimMax) { gc += 1; grew = true; }
-          }
-          if (miss.row > 0) {
-            if (rot90) { if (gc < dimMax) { gc += 1; grew = true; } }
-            else if (gr < dimMax) { gr += 1; grew = true; }
-          }
-          if (!grew) break;
-          miss = missAt(gc, gr);
-        }
-        if (gc !== fromC || gr !== fromR) {
-          if (el.gridCols) el.gridCols.value = gc;
-          if (el.gridRows) el.gridRows.value = gr;
-        }
-        maskFitNote = { from: `${fromC}x${fromR}`, to: `${gc}x${gr}`, off: miss.any, total: keys.size };
-        if (miss.any > 0) {
-          console.warn(`[Map Editor][M4] the valid-die mask does not fit the grid: ${miss.any} of `
-            + `${keys.size} mask cells stay off the canvas at ${gc}x${gr} (editor dimension `
-            + `ceiling ${dimMax}). NOT grown further and NOT clipped ― the cells keep their `
-            + 'stored coordinates and the ones outside the grid are reported by the Push gate.');
-        }
+        maskFitNote = fitGridToMask(keys, el, currentRotation, currentSide);
       }
       boundingBoxCache = {};
     }
@@ -7818,18 +7771,9 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     //    한 걸음이 돌았고, 이 호출은 그 뒤 격자 확장분만 마저 흡수한다. 미리 잡아 둔 옛 기록을
     //    넘기면 같은 이동을 두 번 적용한다.
     const placed = reseatCellsToStoredCoords(cellsSeatedUnder);
-    // 넷 이동량 ― 이 호출 전체에서 자리를 옮긴 셀 수. 걸음마다 세면 서로 상쇄되는 두 걸음이
-    // 「N칸 이동 후 N칸 이동」으로 읽혀 사용자에게 거짓 수를 준다. 좌석은 물리 키이므로
-    // 집합 차이가 곧 이동한 셀이다.
-    const seatsAfter = new Set([...Object.keys(gridData), ...loadedFCells,
-    ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
-    let netMoved = 0;
-    seatsBefore.forEach(k => { if (!seatsAfter.has(k)) netMoved++; });
-    if (netMoved > 0) {
-      placementNote = `[유효다이] 7) 셀 재배치 ― ${netMoved}칸을 저장된 좌표에서 다시 앉힘 `
-        + `(격자 ${placed ? placed.visC : nc}x${placed ? placed.visR : nr}, `
-        + `격자 밖으로 나간 셀 ${placed ? placed.offGrid : 0}칸). `
-        + `번호는 그대로이고 앉는 칸만 바뀜`;
+    const moved = summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys);
+    if (moved.netMoved > 0) {
+      placementNote = moved.note;
       if (basis !== 'ref') console.log(placementNote);   // ref는 1~6 뒤에 찍는다
     }
     const nowSeat = seat0(nc, nr);
@@ -7860,30 +7804,13 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
 
   const ref = { table: parsed.table, mapKey: parsed.mapKey };
   try {
-    // [7b] 참조된 맵 키도 캐노니컬화한다 — 여기서만 원문을 쓰면 이 라운드가 고친 그 결함이
-    // 유효 다이 경로로 그대로 재현된다.
-    const spec = await fetchMapKeySpec(ref.table);
-    if (spec.ok && spec.keyColumns.length > 0) {
-      ref.mapKey = canonicalMapKey(spec.keyColumns, ref.mapKey, spec.columnTypes);
-    }
-
-    const binding = await fetchServedBinding(ref.table);
-    if (!binding) {
-      return refuse(ref, `${ref.table}: 좌표 바인딩을 서버가 해석해 주지 못했습니다.`);
-    }
-    if (binding.source === 'fallback_guess') {
-      // 오버레이 경로와 같은 규율(§5.6-bis) — 추측한 컬럼으로 마스크를 만들면 그 마스크는
-      // 미끼다. 그리는 것보다 더 나쁘다: 보이지 않는 채로 페인팅을 막거나 허용한다.
-      return refuse(ref, `${ref.table}: 값/좌표 컬럼이 추측(fallback_guess)뿐입니다.`);
-    }
-
-    const refMeta = await fetchGridMetaFor(ref.table, ref.mapKey);   // 실패는 throw
-    const refFrame = frameFromMeta(refMeta);
-    if (!refFrame) {
-      // 미등록도 여기서는 거절이다. 오버레이는 규격이 없으면 "무보정"이라고 **화면에
-      // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
-      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵의 메타데이터가 없습니다.`);
-    }
+    // [7b/§5.6-bis/§5.0] the reference map resolved to a frame, or a reason it could not be.
+    const rspec = await resolveReferenceSpec(ref);
+    if (!rspec.ok) return refuse(ref, rspec.reason);
+    const spec = rspec.spec;
+    const binding = rspec.binding;
+    const refMeta = rspec.refMeta;
+    const refFrame = rspec.refFrame;
     // [H5] 치수를 **셀을 한 건도 읽기 전에** 검사한다. 근거는 `frameDimBounds` 위 주석에
     // 정본이 있다 — 여기 있던 「전수 순회 4회(계획 2 + 비용 2)」는 채택·재배치 기계장치의
     // 비용이었고 그 기계장치는 삭제됐다(61440e6 + 94b9baa). 남은 근거 둘: `projectCellsToPhys`가
@@ -8015,26 +7942,12 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     const hereCols = gridDimNum('cols', el.gridCols, 10);
     const hereRows = gridDimNum('rows', el.gridRows, 10);
     const hereInvertY = !!(el.gridYInvert && el.gridYInvert.checked);
-    const pxs = rawKeys.map(k => Number(String(k).split('_')[0]));
-    const pys = rawKeys.map(k => Number(String(k).split('_')[1]));
-    const maskCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
-    const maskCy = (Math.min(...pys) + Math.max(...pys)) / 2;
-    // 🔴 **평행이동하지 않는다.** da8f390이 여기에 평행이동을 넣은 이유는 `projectCellsToPhys`가
-    //    키를 **각 프레임 자신의 격자 중심**으로 만들어서 23x23 참조와 45x45 맵이 같은 키를
-    //    다른 다이로 불렀기 때문이다. 그 원인은 이제 없다(§getDieIndex: 키의 원점이
-    //    웨이퍼 중심이다). 참조와 이 맵은 같은 좌표계에 있고, 맞출 것이 남아 있지 않다.
-    // ⚠️ 되살리지 마라. 평행이동은 마스크의 **bbox 중점**을 격자 중심에 끌어다 놓는데, 웨이퍼
-    //    위에서 실제로 치우쳐 앉은 유효 다이 영역은 그 조작으로 자기 다이에서 벗어난다 —
-    //    사용자 규칙 ①「유효 다이 영역은 항상 물리 WF 내 상대 위치를 보존한다」에 정면으로
-    //    어긋난다. 실측(bonding_map/DTWWER <- BASE_4E, 메타가 완전히 동일한 실데이터를
-    //    독립 오라클로 대조): 평행이동이 (0,1)을 만들어 262칸 중 21칸이 틀린 다이에 앉았다.
-    //    0으로 두면 262칸이 오라클과 정확히 일치한다.
-    const shiftX = 0;
-    const shiftY = 0;
-    const keys = new Set(rawKeys.map(k => {
-      const [px, py] = String(k).split('_').map(Number);
-      return `${px + shiftX}_${py + shiftY}`;
-    }));
+    const mask = deriveMaskKeys(rawKeys);
+    const maskCx = mask.maskCx;
+    const maskCy = mask.maskCy;
+    const shiftX = mask.shiftX;
+    const shiftY = mask.shiftY;
+    const keys = mask.keys;
 
     // 🔴 유효 다이 영역의 X,Y 최솟값이 START X,Y다. 최솟값의 출처는 **참조 맵 자신의 좌표**다 ―
     //    이 캔버스에서 읽은 좌표를 쓰면 그 좌표가 이미 START로 만들어진 값이라 순환한다.
@@ -8059,38 +7972,16 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // ── 사용자 QA용 6점 로그. cp949로 인코딩 불가한 문자가 하나라도 들어가면 한국어 콘솔의
     //    로깅 핸들러가 줄 전체를 버리므로 em dash(U+2014)·이모지를 쓰지 않는다(U+2015 사용).
     if (!stale()) {
-      const box = getWaferBoundingBox(currentRotation, currentSide);
-      // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
-      // 진단은 전부 이 수로 푼다 ― 옛 치수로 푼 진단은 화면과 다른 것을 설명한다.
-      const postCols = gridDimNum('cols', el.gridCols, 10);
-      const postRows = gridDimNum('rows', el.gridRows, 10);
-      // 격자 중심을 **키 공간**으로 읽는다. 물리 키가 웨이퍼 중심 기준이 된 뒤로 그 중점은
-      // 곧 패리티 항이다 — `getDieIndex`가 쓰는 바로 그 식이다(홀수 0, 짝수 0.5).
-      const gridCx = (Math.abs(Math.round(postCols)) % 2 === 0 ? 0.5 : 0);
-      const gridCy = (Math.abs(Math.round(postRows)) % 2 === 0 ? 0.5 : 0);
-      // [F8] 치수 차이는 파생이 끝난 **뒤에** 잰다. 파생으로 같아졌다면 말할 것이 없다.
-      if (refResolved.cols !== postCols || refResolved.rows !== postRows) {
-        dimsDiffer = {
-          here: `${postCols}x${postRows}`,
-          there: `${refResolved.cols}x${refResolved.rows}`
-        };
-      }
-      // 🔴 **선언된 START로 푼다.** START X,Y는 운영자의 선언이고 편집기가 바꾸지 않는다
-      //    (사용자 확정 2026-07-30: 「START X,Y는 바뀌면 안됨」). 그래서 마스크의 최소 열이
-      //    읽는 값은 참조의 최솟값이 아니라 **이 맵이 선언한 START**이고, 오리진 셀은
-      //    `box.minC - startX`에 선다.
-      const sx = hereResolved.startX, sy = hereResolved.startY;
-      const zero = getCanvasCellFromDb(0, 0, postCols, postRows,
-        currentRotation, currentSide, hereInvertY, sx, sy);
-      const startRow = hereInvertY ? box.maxR : box.minR;
-      // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를
-      // (refMinX,refMinY)로 부르고 이 맵은 같은 칸을 (sx,sy)로 부른다 ― 그 차이가 어긋남이다.
-      if (sx !== refMinX || sy !== refMinY) {
-        originDiffer = {
-          dx: sx - refMinX, dy: sy - refMinY,
-          there: `${refMinX},${refMinY}`, here: `${sx},${sy}`
-        };
-      }
+      const diag = diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
+        hereInvertY, el, currentRotation, currentSide);
+      dimsDiffer = diag.dimsDiffer;
+      originDiffer = diag.originDiffer;
+      const box = diag.box;
+      const gridCx = diag.gridCx;
+      const gridCy = diag.gridCy;
+      const sx = diag.sx, sy = diag.sy;
+      const zero = diag.zero;
+      const startRow = diag.startRow;
       console.log(`[유효다이] 1) 유효 다이맵 ― 참조 ${ref.table} / ${ref.mapKey}, 셀 ${cells.length}칸, `
         + `참조 프레임 ${refFrame.cols}x${refFrame.rows} start(${refFrame.startX},${refFrame.startY}) `
         + `rot=${refFrame.rotation} ${refFrame.side} yInvert=${refFrame.invertY}`);
@@ -8173,6 +8064,196 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     return refuse(ref, `${ref.table} · ${ref.mapKey}: ${detail}`);
   }
+}
+
+// ── [R5 step ①] Does the derived grid hold the whole mask? ───────────────────────────────
+// Lifted out of `resolveValidDie`'s `set` closure verbatim. It takes every binding it reads as
+// an argument (`el`, `currentRotation`, `currentSide` deliberately shadow the module bindings of
+// the same name), so it reads NO module state: the body is byte-identical to what ran inline.
+// Returns the note the diagnostic log prints; the caller owns the assignment.
+function fitGridToMask(keys, el, currentRotation, currentSide) {
+  const dimMax = frameDimBounds().max;
+  // 축별 위반 수. 두 축을 따로 세는 이유는 넓힐 치수를 **측정으로** 고르기 위해서다.
+  const missAt = (c, r) => {
+    const rot90 = (currentRotation === 90 || currentRotation === 270);
+    const vC = rot90 ? r : c, vR = rot90 ? c : r;
+    let col = 0, row = 0;
+    keys.forEach(k => {
+      const [px, py] = String(k).split('_').map(Number);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+      const at = getCanvasCellFromDieIndex(px, py, c, r, currentRotation, currentSide);
+      if (at.c < 0 || at.c >= vC) col++;
+      if (at.r < 0 || at.r >= vR) row++;
+    });
+    return { col, row, any: col + row };
+  };
+  let gc = gridDimNum('cols', el.gridCols, 10);
+  let gr = gridDimNum('rows', el.gridRows, 10);
+  const fromC = gc, fromR = gr;
+  let miss = missAt(gc, gr);
+  // 한 번에 한 칸. 키가 덮는 범위는 치수에 대해 **중첩 단조**다(치수 +1은 한쪽 끝에
+  // 정확히 한 칸을 더한다), 그래서 위반이 난 축만 늘리면 최소 치수에서 멈춘다.
+  // 멈추는 이유는 하나여야 한다 ― **편집기의 치수 정의역**(H5, `frameDimBounds`).
+  // 걸음 수 상한은 그 정의역에서 나온 값이라(두 축 × 상한) 실제로 멈추는 것은 언제나
+  // 치수 쪽이고, 걸음 수는 무한 루프를 막는 안전핀일 뿐이다. 상한에 닿으면 **더 넓히지
+  // 않고 멈추고 사유를 남긴다** ― 조용히 자라지도, 잘라 내지도 않는다.
+  for (let step = 0; miss.any > 0 && step < 2 * dimMax; step++) {
+    // 열을 정하는 치수는 rot 90/270에서 rows, 그 밖에서는 cols다 ― 이 파일이 도처에서
+    // 쓰는 `visualCols = isRotated90or270 ? rows : cols` 한 줄의 결과일 뿐이다.
+    const rot90 = (currentRotation === 90 || currentRotation === 270);
+    let grew = false;
+    if (miss.col > 0) {
+      if (rot90) { if (gr < dimMax) { gr += 1; grew = true; } }
+      else if (gc < dimMax) { gc += 1; grew = true; }
+    }
+    if (miss.row > 0) {
+      if (rot90) { if (gc < dimMax) { gc += 1; grew = true; } }
+      else if (gr < dimMax) { gr += 1; grew = true; }
+    }
+    if (!grew) break;
+    miss = missAt(gc, gr);
+  }
+  if (gc !== fromC || gr !== fromR) {
+    if (el.gridCols) el.gridCols.value = gc;
+    if (el.gridRows) el.gridRows.value = gr;
+  }
+  const maskFitNote = { from: `${fromC}x${fromR}`, to: `${gc}x${gr}`, off: miss.any, total: keys.size };
+  if (miss.any > 0) {
+    console.warn(`[Map Editor][M4] the valid-die mask does not fit the grid: ${miss.any} of `
+      + `${keys.size} mask cells stay off the canvas at ${gc}x${gr} (editor dimension `
+      + `ceiling ${dimMax}). NOT grown further and NOT clipped ― the cells keep their `
+      + 'stored coordinates and the ones outside the grid are reported by the Push gate.');
+  }
+  return maskFitNote;
+}
+
+// ── [R5 step ②] How many seats did this designation actually move? ──────────────────────
+// The net count, taken as a set difference over PHYSICAL seat keys — see the comment it
+// carries. Every binding it reads is an argument, so it reads no module state; the caller
+// keeps the `netMoved > 0` branch, so the control flow at the call site is unchanged.
+function summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys) {
+  // 넷 이동량 ― 이 호출 전체에서 자리를 옮긴 셀 수. 걸음마다 세면 서로 상쇄되는 두 걸음이
+  // 「N칸 이동 후 N칸 이동」으로 읽혀 사용자에게 거짓 수를 준다. 좌석은 물리 키이므로
+  // 집합 차이가 곧 이동한 셀이다.
+  const seatsAfter = new Set([...Object.keys(gridData), ...loadedFCells,
+  ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);
+  let netMoved = 0;
+  seatsBefore.forEach(k => { if (!seatsAfter.has(k)) netMoved++; });
+  let note = '';
+  if (netMoved > 0) {
+    note = `[유효다이] 7) 셀 재배치 ― ${netMoved}칸을 저장된 좌표에서 다시 앉힘 `
+      + `(격자 ${placed ? placed.visC : nc}x${placed ? placed.visR : nr}, `
+      + `격자 밖으로 나간 셀 ${placed ? placed.offGrid : 0}칸). `
+      + `번호는 그대로이고 앉는 칸만 바뀜`;
+  }
+  return { netMoved, note };
+}
+
+// ── [R5 step ③] The reference map's key spec, coordinate binding, metadata and frame ─────
+// One await chain, three refusals, no module state (STATE# 0). `ref` is passed in and its
+// `mapKey` is canonicalised IN PLACE exactly as before. A refusal is returned as a REASON, not
+// taken: `refuse` writes module state and stays with the orchestrator that owns those writes.
+// `fetchGridMetaFor` still throws on failure and the rejection still lands in the caller's
+// catch — that classification is what `M9b`/`M9c` score.
+async function resolveReferenceSpec(ref) {
+  // [7b] 참조된 맵 키도 캐노니컬화한다 — 여기서만 원문을 쓰면 이 라운드가 고친 그 결함이
+  // 유효 다이 경로로 그대로 재현된다.
+  const spec = await fetchMapKeySpec(ref.table);
+  if (spec.ok && spec.keyColumns.length > 0) {
+    ref.mapKey = canonicalMapKey(spec.keyColumns, ref.mapKey, spec.columnTypes);
+  }
+
+  const binding = await fetchServedBinding(ref.table);
+  if (!binding) {
+    return { ok: false, reason: `${ref.table}: 좌표 바인딩을 서버가 해석해 주지 못했습니다.` };
+  }
+  if (binding.source === 'fallback_guess') {
+    // 오버레이 경로와 같은 규율(§5.6-bis) — 추측한 컬럼으로 마스크를 만들면 그 마스크는
+    // 미끼다. 그리는 것보다 더 나쁘다: 보이지 않는 채로 페인팅을 막거나 허용한다.
+    return { ok: false, reason: `${ref.table}: 값/좌표 컬럼이 추측(fallback_guess)뿐입니다.` };
+  }
+
+  const refMeta = await fetchGridMetaFor(ref.table, ref.mapKey);   // 실패는 throw
+  const refFrame = frameFromMeta(refMeta);
+  if (!refFrame) {
+    // 미등록도 여기서는 거절이다. 오버레이는 규격이 없으면 "무보정"이라고 **화면에
+    // 적어서** 알리지만, 마스크는 보이지 않는 기계장치라 같은 폴백이 조용해진다.
+    return { ok: false, reason: `${ref.table} · ${ref.mapKey}: 참조 맵의 메타데이터가 없습니다.` };
+  }
+  return { ok: true, spec, binding, refMeta, refFrame };
+}
+
+// ── [R5 step ④] The mask key set, and its centre ────────────────────────────────────────
+// Moved verbatim, translation term included. The zeroed shift and the warning that explains
+// why it must stay zero travel together — separating the number from its reason is how it got
+// revived once already.
+function deriveMaskKeys(rawKeys) {
+  const pxs = rawKeys.map(k => Number(String(k).split('_')[0]));
+  const pys = rawKeys.map(k => Number(String(k).split('_')[1]));
+  const maskCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
+  const maskCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+  // 🔴 **평행이동하지 않는다.** da8f390이 여기에 평행이동을 넣은 이유는 `projectCellsToPhys`가
+  //    키를 **각 프레임 자신의 격자 중심**으로 만들어서 23x23 참조와 45x45 맵이 같은 키를
+  //    다른 다이로 불렀기 때문이다. 그 원인은 이제 없다(§getDieIndex: 키의 원점이
+  //    웨이퍼 중심이다). 참조와 이 맵은 같은 좌표계에 있고, 맞출 것이 남아 있지 않다.
+  // ⚠️ 되살리지 마라. 평행이동은 마스크의 **bbox 중점**을 격자 중심에 끌어다 놓는데, 웨이퍼
+  //    위에서 실제로 치우쳐 앉은 유효 다이 영역은 그 조작으로 자기 다이에서 벗어난다 —
+  //    사용자 규칙 ①「유효 다이 영역은 항상 물리 WF 내 상대 위치를 보존한다」에 정면으로
+  //    어긋난다. 실측(bonding_map/DTWWER <- BASE_4E, 메타가 완전히 동일한 실데이터를
+  //    독립 오라클로 대조): 평행이동이 (0,1)을 만들어 262칸 중 21칸이 틀린 다이에 앉았다.
+  //    0으로 두면 262칸이 오라클과 정확히 일치한다.
+  const shiftX = 0;
+  const shiftY = 0;
+  const keys = new Set(rawKeys.map(k => {
+    const [px, py] = String(k).split('_').map(Number);
+    return `${px + shiftX}_${py + shiftY}`;
+  }));
+  return { maskCx, maskCy, shiftX, shiftY, keys };
+}
+
+// ── [R5 step ⑤] What differs between the reference map and this one, AFTER the designation ─
+// The two axes are independent — the origin can be off at the same size, and the same origin
+// can carry a different size — so both are measured and each is reported only if it holds.
+// Measured on the POST-designation grid (`set` may have re-derived it from the reference
+// spec): a diagnosis solved with the old dimensions explains a screen the user is not looking
+// at. STATE# 0 — the panel arrives as `el`, the orientation as arguments.
+function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
+  hereInvertY, el, currentRotation, currentSide) {
+  const box = getWaferBoundingBox(currentRotation, currentSide);
+  // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
+  // 진단은 전부 이 수로 푼다 ― 옛 치수로 푼 진단은 화면과 다른 것을 설명한다.
+  const postCols = gridDimNum('cols', el.gridCols, 10);
+  const postRows = gridDimNum('rows', el.gridRows, 10);
+  // 격자 중심을 **키 공간**으로 읽는다. 물리 키가 웨이퍼 중심 기준이 된 뒤로 그 중점은
+  // 곧 패리티 항이다 — `getDieIndex`가 쓰는 바로 그 식이다(홀수 0, 짝수 0.5).
+  const gridCx = (Math.abs(Math.round(postCols)) % 2 === 0 ? 0.5 : 0);
+  const gridCy = (Math.abs(Math.round(postRows)) % 2 === 0 ? 0.5 : 0);
+  // [F8] 치수 차이는 파생이 끝난 **뒤에** 잰다. 파생으로 같아졌다면 말할 것이 없다.
+  let dimsDiffer = null;
+  if (refResolved.cols !== postCols || refResolved.rows !== postRows) {
+    dimsDiffer = {
+      here: `${postCols}x${postRows}`,
+      there: `${refResolved.cols}x${refResolved.rows}`
+    };
+  }
+  // 🔴 **선언된 START로 푼다.** START X,Y는 운영자의 선언이고 편집기가 바꾸지 않는다
+  //    (사용자 확정 2026-07-30: 「START X,Y는 바뀌면 안됨」). 그래서 마스크의 최소 열이
+  //    읽는 값은 참조의 최솟값이 아니라 **이 맵이 선언한 START**이고, 오리진 셀은
+  //    `box.minC - startX`에 선다.
+  const sx = hereResolved.startX, sy = hereResolved.startY;
+  const zero = getCanvasCellFromDb(0, 0, postCols, postRows,
+    currentRotation, currentSide, hereInvertY, sx, sy);
+  const startRow = hereInvertY ? box.maxR : box.minR;
+  // 정렬 차이는 **마스크가 앉은 뒤** 한 번만 잰다. 참조는 자기 최소 다이를
+  // (refMinX,refMinY)로 부르고 이 맵은 같은 칸을 (sx,sy)로 부른다 ― 그 차이가 어긋남이다.
+  let originDiffer = null;
+  if (sx !== refMinX || sy !== refMinY) {
+    originDiffer = {
+      dx: sx - refMinX, dy: sy - refMinY,
+      there: `${refMinX},${refMinY}`, here: `${sx},${sy}`
+    };
+  }
+  return { box, postCols, postRows, gridCx, gridCy, dimsDiffer, originDiffer, sx, sy, zero, startRow };
 }
 
 // 근거가 원이 아닐 때만 보이는 한 줄. 새 패널·모드·모달이 아니라 이미 있는 상태바

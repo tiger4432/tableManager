@@ -79,7 +79,15 @@ const SYMBOLS = [
   // [rule 6] projectCellsToPhys now states its result in terms of the mm projection, so the
   // slice needs both. It died with a ReferenceError rather than going quietly green.
   'projectCellsToWaferMm', 'projectCellsToPhys',
+  // [R5] `resolveValidDie` is now written in terms of five named steps. They are SLICED, not
+  // stubbed: `fitGridToMask` is rule 1-b (the grid re-derived from the reference spec) and
+  // `summariseReseat` reports the very re-seating this harness scores, so stubbing either
+  // would make the designation cases measure the harness instead of the product. Omitting a
+  // name is loud rather than silently green — the designation's refusal reason becomes
+  // `<name> is not defined` and `fixture/*-mask-resolved` goes red.
   'resolveValidDie',
+  'fitGridToMask', 'summariseReseat', 'resolveReferenceSpec',
+  'deriveMaskKeys', 'diagnoseDesignationAlignment',
   // The real renderer runs; only the pixels are stubbed. It is what seeds the seating record,
   // so a harness that stubbed it could not score that the record is maintained at all.
   'renderGridCanvas', 'cellFillColor', 'isProtectedFCell',
