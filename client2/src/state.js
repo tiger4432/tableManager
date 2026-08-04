@@ -38,6 +38,20 @@ export const state = {
   currentJoinResolvedColumns: [],
   ws: null,
   wsReconnectDelay: 1000,
+  // The single pending reconnect timer, or null. Held so a wake signal can CANCEL the wait
+  // instead of racing it — without this handle the only way to reconnect early would be to
+  // open a second socket alongside the one the timer is about to open.
+  wsRetryTimer: null,
+  // When the current socket opened (0 = not open). The flap guard in `websocket.js` reads it
+  // to tell a healthy session from a connection that died on arrival.
+  wsOpenedAt: 0,
+  // The rung the ladder was on when the socket opened, so a flap can resume the climb instead
+  // of restarting it at the base delay.
+  wsPrevReconnectDelay: 1000,
+  // Last time a visibility/online signal forced an immediate retry — the throttle's memory.
+  wsLastWakeAt: 0,
+  // The wake listeners are attached once for the life of the page, not once per reconnect.
+  wsWakeSignalsInstalled: false,
   selectedCell: null, // { rowId, colId, value, rowIndex }
   activeHistoryTab: 'global',
   dragStartCell: null,

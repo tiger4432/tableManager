@@ -1,4 +1,7 @@
-import { WS_URL } from './config.js';
+import {
+  WS_URL, WS_RECONNECT_BASE_MS, WS_RECONNECT_CEILING_MS, WS_RECONNECT_JITTER,
+  WS_HEALTHY_SESSION_MS, WS_WAKE_MIN_GAP_MS
+} from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { checkServerHealth, loadTables, fetchData } from './api.js';
@@ -7,8 +10,86 @@ import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete,
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 
+/**
+ * Queue the next reconnect attempt and advance the backoff ladder.
+ *
+ * ONE PENDING RETRY AT A TIME, ENFORCED. The previous code called `setTimeout(initWebSocket, …)`
+ * directly from `onclose` and kept no handle, so nothing could tell whether a retry was already
+ * queued and nothing could cancel one. Both are needed now: the wake signal has to cancel the
+ * wait rather than open a competing socket.
+ *
+ * Returns the delay actually scheduled (post-jitter), for the log line.
+ */
+function scheduleReconnect() {
+  if (state.wsRetryTimer !== null) return 0;
+  // Downward-only jitter: [0.75, 1.0] x the current rung. See WS_RECONNECT_JITTER in config.js
+  // for why it is not the usual symmetric band.
+  const waitMs = Math.round(state.wsReconnectDelay * (1 - WS_RECONNECT_JITTER * Math.random()));
+  state.wsRetryTimer = setTimeout(() => {
+    state.wsRetryTimer = null;
+    initWebSocket();
+  }, waitMs);
+  state.wsReconnectDelay = Math.min(state.wsReconnectDelay * 2, WS_RECONNECT_CEILING_MS);
+  return waitMs;
+}
+
+/**
+ * A signal arrived saying the situation probably changed — retry NOW instead of waiting out
+ * the rest of the backoff.
+ *
+ * WHY A SIGNAL AND NOT JUST A SHORTER TIMER. The common case is a person restarting the server
+ * and then looking at the page. Regaining focus, or the machine coming back online, is strong
+ * evidence the world changed, and acting on it makes that case fast WITHOUT probing harder in
+ * the background — a page nobody is looking at keeps its ladder.
+ *
+ * REFUSES TO ACT when a socket is already OPEN or CONNECTING (0/1): the point is to shorten a
+ * wait, never to open a second socket next to one that is still negotiating.
+ */
+function wakeNow(reason) {
+  const readyState = state.ws ? state.ws.readyState : 3;
+  if (readyState === 0 || readyState === 1) return false;   // CONNECTING / OPEN — nothing to do
+  const now = Date.now();
+  if (now - state.wsLastWakeAt < WS_WAKE_MIN_GAP_MS) return false;
+  state.wsLastWakeAt = now;
+  // The evidence says the situation changed, so the ladder's accumulated pessimism is stale.
+  state.wsReconnectDelay = WS_RECONNECT_BASE_MS;
+  if (state.wsRetryTimer !== null) {
+    clearTimeout(state.wsRetryTimer);
+    state.wsRetryTimer = null;
+  }
+  console.log(`[WebSocket] ${reason} — reconnecting now instead of waiting out the backoff.`);
+  initWebSocket();
+  return true;
+}
+
+/**
+ * Attach the wake signals ONCE for the life of the page.
+ *
+ * Called from `initWebSocket`, which runs on every reconnect — hence the latch. Without it the
+ * listener set would grow by two on every reconnect, and a page that had been offline a while
+ * would fire dozens of wake handlers on a single tab-focus.
+ */
+function installWakeSignals() {
+  if (state.wsWakeSignalsInstalled) return;
+  state.wsWakeSignalsInstalled = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') wakeNow('페이지가 다시 표시됨');
+  });
+  window.addEventListener('online', () => wakeNow('네트워크가 복구됨'));
+}
+
 // Initialize Real-time synchronization via WebSocket
 export function initWebSocket() {
+  installWakeSignals();
+
+  // A retry queued by `scheduleReconnect` is superseded by the connection we are about to open.
+  // (Harmless in the timer's own path, which nulls this before calling us — it matters when
+  // `initWebSocket` is entered from anywhere else.)
+  if (state.wsRetryTimer !== null) {
+    clearTimeout(state.wsRetryTimer);
+    state.wsRetryTimer = null;
+  }
+
   if (state.ws) {
     try {
       state.ws.onopen = null;
@@ -26,7 +107,12 @@ export function initWebSocket() {
     elements.wsStatus.textContent = 'WS: CONNECTED';
     elements.wsStatus.className = 'status-badge online';
     document.querySelector('.status-ws').classList.add('active');
-    state.wsReconnectDelay = 1000; // Reset backoff delay on successful connection
+    // Reset the backoff on a successful connection. This is what stops a healthy session from
+    // inheriting a stale interval, so it stays unconditional — but see the flap guard in
+    // `onclose`, which takes the reset back if this connection dies on arrival.
+    state.wsPrevReconnectDelay = state.wsReconnectDelay;
+    state.wsReconnectDelay = WS_RECONNECT_BASE_MS;
+    state.wsOpenedAt = Date.now();
     console.log('[WebSocket] Connected successfully. Syncing API health status...');
 
     // API 복구 감지 및 동기화 수행
@@ -47,11 +133,20 @@ export function initWebSocket() {
     elements.wsStatus.className = 'status-badge offline';
     document.querySelector('.status-ws').classList.remove('active');
 
-    console.log(`[WebSocket] Connection closed. Reconnecting in ${state.wsReconnectDelay}ms...`);
-    setTimeout(initWebSocket, state.wsReconnectDelay);
+    // FLAP GUARD. `onopen` resets the ladder unconditionally, which is right for a session that
+    // actually worked and wrong for a server that ACCEPTS and immediately drops: that pattern
+    // would pin the client at the base delay forever, paying a full handshake plus
+    // `checkServerHealth()` plus `fetchData(true)` every second. A connection that did not
+    // survive `WS_HEALTHY_SESSION_MS` proved nothing, so its reset is taken back and the ladder
+    // resumes from the rung it was on.
+    const openedAt = state.wsOpenedAt;
+    state.wsOpenedAt = 0;
+    if (openedAt && Date.now() - openedAt < WS_HEALTHY_SESSION_MS) {
+      state.wsReconnectDelay = state.wsPrevReconnectDelay;
+    }
 
-    // Exponential backoff: double the delay up to 30 seconds
-    state.wsReconnectDelay = Math.min(state.wsReconnectDelay * 2, 30000);
+    const waitMs = scheduleReconnect();
+    console.log(`[WebSocket] Connection closed. Reconnecting in ${waitMs}ms...`);
   };
 
   state.ws.onerror = (err) => {
