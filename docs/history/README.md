@@ -1,18 +1,48 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **301개** 이력. (거버넌스 규칙 #4)
+> 총 **331개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-04 12:50** — [Four Hypotheses Were Wrong And The Death Distribution Settled It](./20260804_125032_four_hypotheses_were_wrong_and_the_death_distribution_settled_it.md)
+- **2026-08-04 12:42** — [Authoring Is Pinned The Storage Format Deliberately Is Not](./20260804_124234_authoring_is_pinned_the_storage_format_deliberately_is_not.md)
+- **2026-08-04 12:32** — [One Lot Two Spellings And A Fold That Shipped Switched Off](./20260804_123223_one_lot_two_spellings_and_a_fold_that_shipped_switched_off.md)
+- **2026-08-04 12:29** — [A Solid Dot Has Exactly One Meaning](./20260804_122929_a_solid_dot_has_exactly_one_meaning.md)
+- **2026-08-04 11:54** — [Main Is Not A Stable Name In A Worker](./20260804_115415_main_is_not_a_stable_name_in_a_worker.md)
+- **2026-08-04 11:40** — [The Lattice Is Periodic In The Offset So One Pitch Is The Whole Expressible Range](./20260804_114029_the_lattice_is_periodic_in_the_offset_so_one_pitch_is_the_whole_expressible_range.md)
+- **2026-08-04 11:11** — [Unanswerable Is Not Yes](./20260804_111144_unanswerable_is_not_yes.md)
+- **2026-08-04 10:45** — [Version Is The Authority And Arrival Order Is Not](./20260804_104524_version_is_the_authority_and_arrival_order_is_not.md)
+- **2026-08-04 10:43** — [The Grid Origin Is Derived Twice Now And Disagreement Refuses The File](./20260804_104331_the_grid_origin_is_derived_twice_now_and_disagreement_refuses_the_file.md)
+- **2026-08-04 09:17** — [Re Derivation Had Been Accumulation And The Orphan Sweep Was Blind Because Of It](./20260804_091715_re_derivation_had_been_accumulation_and_the_orphan_sweep_was_blind_because_of_it.md)
+- **2026-08-04 09:15** — [The Broken Thing Was The Coalesce And Number Was Only The First Type To Walk Into It](./20260804_091545_the_broken_thing_was_the_coalesce_and_number_was_only_the_first_type_to_walk_into_it.md)
+- **2026-08-04 08:57** — [X Colon X Looks Tautologically Correct And That Is Why It Survived Review](./20260804_085736_x_colon_x_looks_tautologically_correct_and_that_is_why_it_survived_review.md)
+- **2026-08-04 08:56** — [The List Is Read Off The Announcement Never Assembled Here](./20260804_085603_the_list_is_read_off_the_announcement_never_assembled_here.md)
+- **2026-08-04 08:11** — [A Pin Says The File Did Not Change Not That The Map Recorded It Right](./20260804_081114_a_pin_says_the_file_did_not_change_not_that_the_map_recorded_it_right.md)
+- **2026-08-04 07:24** — [The Safety Field Had Zero Readers And A Hand Rolled Predicate Undid It](./20260804_072450_the_safety_field_had_zero_readers_and_a_hand_rolled_predicate_undid_it.md)
 - **2026-08-04 07:10** — [Absence Is A Declaration And The Verdict Must Say What It Did Not Subtract](./20260804_071048_absence_is_a_declaration_and_the_verdict_must_say_what_it_did_not_subtract.md)
+- **2026-08-04 06:50** — [The Win Was The Longest Chunk Not The File Length](./20260804_065028_the_win_was_the_longest_chunk_not_the_file_length.md)
+- **2026-08-04 06:44** — [A Green Harness That Sheds Assertions Is Invisible To Everything](./20260804_064404_a_green_harness_that_sheds_assertions_is_invisible_to_everything.md)
 - **2026-08-04 06:23** — [The Label Is Text So The Number Must Speak Text](./20260804_062339_the_label_is_text_so_the_number_must_speak_text.md)
+- **2026-08-04 06:13** — [The Oracle Gets Eyes Before The Refactor Moves Anything](./20260804_061358_the_oracle_gets_eyes_before_the_refactor_moves_anything.md)
+- **2026-08-02 16:49** — [A Failed Spec Read Is Not A Missing Declaration](./20260802_164907_a_failed_spec_read_is_not_a_missing_declaration.md)
+- **2026-08-02 01:58** — [An Incomplete Guide Row Is Plausibly Why Nobody Declared It](./20260802_015852_an_incomplete_guide_row_is_plausibly_why_nobody_declared_it.md)
+- **2026-08-02 01:05** — [The Order And The Three Ways A Declaration Silently Does Not Take](./20260802_010546_the_order_and_the_three_ways_a_declaration_silently_does_not_take.md)
+- **2026-08-02 00:53** — [The Fixture Produced Its Target Failure On The First Run](./20260802_005307_the_fixture_produced_its_target_failure_on_the_first_run.md)
+- **2026-08-01 20:14** — [The Document That Prescribed Splitting Had To Be Split](./20260801_201443_the_document_that_prescribed_splitting_had_to_be_split.md)
 
 ## 2026-07 (July 2026)
 
+- **2026-07-31 23:05** — [A Module Level Name No Harness Could See And The Bundle That Revealed It](./20260731_230516_a_module_level_name_no_harness_could_see_and_the_bundle_that_revealed_it.md)
+- **2026-07-31 19:56** — [The Core Values I Wrote Down Were The Maps Not The Systems](./20260731_195642_the_core_values_i_wrote_down_were_the_maps_not_the_systems.md)
+- **2026-07-31 18:21** — [No Count Claims To Be Exact And The Green Button Over Zero Rows](./20260731_182127_no_count_claims_to_be_exact_and_the_green_button_over_zero_rows.md)
+- **2026-07-31 17:55** — [Rendering Is The Write Exposure And The Mechanism I Named Was The Wrong One](./20260731_175550_rendering_is_the_write_exposure_and_the_mechanism_i_named_was_the_wrong_one.md)
+- **2026-07-31 16:31** — [The Join Had No Consumer And Four Of Its Own Tests Could Not Fail](./20260731_163134_the_join_had_no_consumer_and_four_of_its_own_tests_could_not_fail.md)
+- **2026-07-31 16:14** — [Two Populations Two Queries And A Comment That Cited The Wrong Refusal](./20260731_161431_two_populations_two_queries_and_a_comment_that_cited_the_wrong_refusal.md)
+- **2026-07-31 15:18** — [The Band Ends At The Map And A Fixture That Was Green Before The Fix Existed](./20260731_151854_the_band_ends_at_the_map_and_a_fixture_that_was_green_before_the_fix_existed.md)
 - **2026-07-31 14:22** — [The Server Composes The Sentence The Client Renders It](./20260731_142216_the_server_composes_the_sentence_the_client_renders_it.md)
 - **2026-07-31 14:13** — [Twelve Of Twelve While Discriminating Two](./20260731_141302_twelve_of_twelve_while_discriminating_two.md)
 - **2026-07-31 12:51** — [With No Reference The Circle Is The Region So One Reaction](./20260731_125114_with_no_reference_the_circle_is_the_region_so_one_reaction.md)
