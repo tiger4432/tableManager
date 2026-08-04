@@ -524,10 +524,122 @@ def _resolve_virtual_join() -> dict:
                         sources, settings, effective, ineffective, rejected)
 
 
+# ---------------------------------------------------------------------------
+# notation normalization (표기 정규화)
+# ---------------------------------------------------------------------------
+
+DOMAIN_NOTATION = "notation"
+
+_NOTATION_CODE_TO_REASON = {
+    "zero_pad_unimplemented": REASON_NOT_REACHED,
+    "unknown_rule": REASON_MAPPING_UNAVAILABLE,
+    "undeclared": REASON_NOT_DECLARED,
+    "would_rewrite_raw": REASON_MAPPING_UNAVAILABLE,
+    "key_column": REASON_MAPPING_UNAVAILABLE,
+    "shape": REASON_MAPPING_UNAVAILABLE,
+}
+
+# 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
+# 고쳐야 하는지 먼저 말한다(virtual join의 `_VJ_CODE_LEAD`와 같은 자세).
+_NOTATION_CODE_LEAD = {
+    "zero_pad_unimplemented":
+        "구현되지 않은 규칙이라 거부했습니다 ― 켜져 있는 것처럼 읽히고 아무 일도 하지 "
+        "않는 상태를 만들지 않기 위해, 조용히 무시하지 않고 이름을 붙여 거부합니다",
+    "unknown_rule": "알 수 없는 규칙 이름이라 무시했습니다",
+    "undeclared": "table_config.json에 선언되지 않은 테이블/컬럼이라 반영하지 않았습니다",
+    "would_rewrite_raw":
+        "원본 컬럼을 덮어쓰는 선언이라 거부했습니다 ― 이 기능은 원본을 절대 고치지 "
+        "않습니다(잘못된 규칙은 규칙을 고쳐 다시 파생하는 것으로 복구하며, 그 복구는 "
+        "원본이 그대로 남아 있어야 가능합니다)",
+    "key_column":
+        "파생 컬럼이 이 테이블의 업무 키에 속해 있어 거부했습니다 ― 파생값이 행의 "
+        "정체성을 옮길 수는 없습니다",
+    "shape": "선언의 모양이 올바르지 않아 반영하지 않았습니다",
+}
+
+
+def _resolve_notation() -> dict:
+    """표기 정규화 선언의 해석 보고서. **DB를 건드리지 않는다**(config만 읽는다).
+
+    이 도메인은 virtual join과 달리 유효 선언이 곧 `effective`다 ― 파생은 쓰기 경로에서
+    실제로 실행되어 값을 남긴다. 다만 **아무도 그 값을 읽지 않는다**(1단계)는 사실은
+    선언마다 문장으로 따라붙는다. 「먹었다」와 「쓰이고 있다」는 다른 질문이고, 둘을
+    붙여 두지 않으면 다음 사람이 맵 키가 이미 정규화된 값으로 조회된다고 읽는다.
+    """
+    import notation_norm as nn
+    from database import crud
+
+    rules_path = nn.NOTATION_RULES_PATH
+    rejections = []
+    by_table = nn.load_notation_rules(known_tables=crud.TABLE_CONFIG,
+                                      rejections=rejections)
+
+    effective, ineffective, rejected = [], [], []
+
+    for r in rejections:
+        code = r.get("code", "shape")
+        lead = _NOTATION_CODE_LEAD.get(code, "선언을 반영하지 않았습니다")
+        rejected.append(entry(
+            SCOPE_FILE if r["scope"] == nn.SCOPE_FILE else SCOPE_RULE,
+            r.get("subject"),
+            f"{lead} ― {r['detail']}",
+            reason=_NOTATION_CODE_TO_REASON.get(code, REASON_MAPPING_UNAVAILABLE)))
+
+    for table, specs in sorted(by_table.items()):
+        for raw_col, spec in sorted(specs.items()):
+            on = [n for n in nn.KNOWN_RULES if spec["rules"].get(n)]
+            effective.append(entry(
+                SCOPE_RULE, f"{table}.{raw_col}",
+                f"{table}.{raw_col}의 정규화 표기가 {spec['derived']}에 기록됩니다. "
+                f"적용 중인 규칙: {_names(on) if on else '없음(값이 그대로 복사됩니다)'}. "
+                f"원본 컬럼 {raw_col}은(는) 절대 수정되지 않으므로, 규칙이 잘못 합쳐진 "
+                f"것을 발견하면 이 파일을 고치고 "
+                f"server/scripts/rederive_notation_norm.py --apply 로 다시 파생하면 "
+                f"됩니다. 다만 지금은 이 값을 읽는 코드가 아직 없습니다(1단계) ― 맵 키 "
+                f"분해·필터·조인은 여전히 원본 값을 씁니다.",
+                fields={"table": table, "raw_column": raw_col,
+                        "derived_column": spec["derived"],
+                        "rules": dict(spec["rules"])}))
+
+    rules_exists = os.path.exists(rules_path)
+    file_rejected = any(r["scope"] == nn.SCOPE_FILE for r in rejections)
+    n_decls = sum(len(v) for v in by_table.values())
+    sources = [
+        source("rules", rules_path,
+               ("선언 파일이 없습니다 ― 표기 정규화가 적용되는 컬럼이 하나도 없습니다."
+                if not rules_exists else
+                ("선언 파일을 읽지 못했습니다 ― 어떤 컬럼도 정규화되지 않습니다."
+                 if file_rejected else
+                 f"선언 {n_decls}건이 유효합니다.")),
+               exists=rules_exists, degraded=file_rejected),
+    ]
+    settings = [
+        setting("implemented_rules", list(nn.IMPLEMENTED_RULES), ORIGIN_DEFAULT,
+                rules_path, declared=None,
+                detail=("실제로 적용할 수 있는 규칙입니다. separator는 '.', '_', '-', "
+                        "공백의 연속을 '-' 하나로 접습니다(맵 키를 잇는 문자인 '_'를 "
+                        "값에서 몰아내는 것이 목적입니다). case는 대문자로 접습니다. "
+                        "zero_pad는 목록에 없습니다 ― true로 선언하면 거부됩니다.")),
+        setting("separator_target", nn.SEPARATOR_TARGET, ORIGIN_DEFAULT,
+                rules_path, declared=None,
+                detail=("구분자가 접히는 단일 형태입니다. '_'가 아닌 이유가 이 기능의 "
+                        "핵심입니다 ― '_'는 복합 맵 키를 잇는 문자라, '_'를 품은 값은 "
+                        "자기가 속한 키를 조각냅니다.")),
+        setting("rewrites_raw_column", False, ORIGIN_DEFAULT, rules_path,
+                declared=None,
+                detail=("원본 컬럼은 어떤 경우에도 수정되지 않습니다. 파생 컬럼에 직접 "
+                        "쓰려는 시도도 거부됩니다(원본에서 계산되는 값이므로). 그래서 "
+                        "규칙이 틀렸다는 것을 나중에 알아도 되돌릴 것이 없습니다.")),
+    ]
+    return build_domain(DOMAIN_NOTATION, "표기 정규화 선언",
+                        sources, settings, effective, ineffective, rejected)
+
+
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.
 _RESOLVERS = {
     DOMAIN_ENRICHMENT: _resolve_enrichment,
     DOMAIN_VIRTUAL_JOIN: _resolve_virtual_join,
+    DOMAIN_NOTATION: _resolve_notation,
 }
 
 

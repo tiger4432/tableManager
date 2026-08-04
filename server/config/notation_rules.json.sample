@@ -1,0 +1,41 @@
+{
+  "__comment": "WF/lot/slot notation normalization. Produces a DERIVED column next to a raw column; the raw column is NEVER rewritten. That is why these rules could ship before the spelling census was run -- a folding rule that turns out to merge two different entities is corrected by editing this file and re-deriving (python server/scripts/rederive_notation_norm.py --apply), and nothing is lost meanwhile. | PHASE 1: the derived value exists and is correct, and NOTHING READS IT YET. Pointing map keys / filters / joins at it would change every existing map key and maps would stop resolving -- that is a separate, opt-in decision. | Ships with an EMPTY 'columns' object on purpose: until an operator declares a pair, this feature is inert. Copy an entry out of '_example_columns' to switch it on.",
+
+  "__how_to_enable": "TWO steps, in this order. (1) Declare the derived column in table_config.json under the same table: \"core_lot_norm\": \"string\" in column_types. It must be \"string\" -- a number column would refuse 'WF-01' outright -- and it must NOT be the business_key or a member of composite_key_source (the loader refuses that: a derived value must never move a row's identity). Wait for the physical ALTER (config_watcher on_modified) and confirm the column exists. (2) Add \"core_lot\": \"core_lot_norm\" under columns.dt_log here. New writes derive immediately; existing rows are filled by the re-derivation script. | Whether each declaration took effect, and WHY a rejected one did not, is answered by GET /admin/config/resolve?domain=notation -- do not guess from the log.",
+
+  "rules": {
+    "__comment": "The file-level default rule set. A table or a single column may override it (see _example_columns). Each rule is INDEPENDENTLY switchable on purpose: bundling them would mean the risky one could never be enabled separately later.",
+
+    "separator": true,
+    "__separator": "'.', '_', '-' and whitespace RUNS all collapse to a single '-'. LOW risk, and this is the rule that fixes the reported pain: 'WF.01' and 'WF-01' become one value, and -- the sharper case -- a lot value that contains '_' stops shredding the composite map key. map_overlay.map_key_parts splits a map key on '_', so a core_lot of 'CL_2601_001_09' currently parses as lot='CL' + slot='2601_001_09' and renders ZERO cells. The '_' join convention is DELIBERATE (typing just the lot yields lot_* and scans every slot); this rule does not change it, it keeps '_' out of the values that compose it.",
+
+    "case": true,
+    "__case": "Upper-case fold. LOW risk.",
+
+    "zero_pad": false,
+    "__zero_pad": "NOT IMPLEMENTED -- leave it false. Setting it true produces a NAMED refusal (zero_pad_unimplemented) rather than silently doing nothing, and the value is forced back to false. It is the one rule whose false-merge risk is real: 'WF010' and 'WF10' both become 'WF10'. Before anyone implements it, run the false-merge check (see __false_merge_check below) and look at what it collapses. Note that for slot the question is already retired -- slot is always int, and a number-declared column goes through canonical_key_value's integer parse where '01' and '1' are already one key."
+  },
+
+  "__false_merge_check": "Once a pair is declared and derived, counting the merges is one query per column -- this is the check the census was supposed to give you: SELECT core_lot_norm, count(DISTINCT core_lot) AS n_raw, string_agg(DISTINCT core_lot, ' | ' ORDER BY core_lot) AS variants, count(*) AS n_rows FROM dt_log WHERE core_lot_norm IS NOT NULL GROUP BY core_lot_norm HAVING count(DISTINCT core_lot) > 1 ORDER BY n_raw DESC, n_rows DESC; -- read the 'variants' column and ask 'are these the same physical lot?'. If even one group says no, fix the rules here and re-derive.",
+
+  "columns": {},
+
+  "_example_columns": {
+    "__comment": "A NAME STARTING WITH '_' IS A COMMENT to the loader, so nothing in here is in effect. Move an entry into 'columns' above to switch it on.",
+    "dt_log": {
+      "core_lot": "core_lot_norm",
+      "dt_lot": {
+        "derived": "dt_lot_norm",
+        "rules": {
+          "__comment": "Per-column override of the file-level rules. Present so a column that must keep its case can, without turning the rule off everywhere.",
+          "separator": true,
+          "case": false
+        }
+      }
+    },
+    "core_wafer_map": {
+      "__comment": "core_lot IS a member of this table's composite_key_source -- that is fine, the RAW column may be a key member. What the loader refuses is a DERIVED column that is one, because deriving it would rewrite row identity.",
+      "core_lot": "core_lot_norm"
+    }
+  }
+}

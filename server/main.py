@@ -3911,6 +3911,15 @@ def reload_local_process_cache():
     except Exception:
         pass
 
+    # [Notation normalization] Same shape and same reason as the line above: the
+    # derivation spec carries a TTL for the worker processes, but a declaration
+    # edited in the admin UI has to take effect on the next write here.
+    try:
+        import notation_norm
+        notation_norm.reset_cache()
+    except Exception:
+        pass
+
     # Remove custom mappers from sys.modules cache
     mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
     for k in mapper_keys:
