@@ -111,8 +111,18 @@ async function init() {
   // this hands it the smart-paste reader without clipboard.js having to import main.js.
   registerSmartPasteHandler(smartPasteFromPasteEvent);
   setupDragAndDrop();
-  await checkServerHealth();
-  await loadTables();
+  // 🔴 이 두 호출은 **소켓을 막을 수 없다.** 종전에는 `initWebSocket()`이 두 `await` 뒤의
+  //    마지막 줄이라, 둘 중 하나만 reject해도 소켓이 **아예 만들어지지 않았다** ― 그리고
+  //    재접속 사다리가 `initWebSocket` 안에 살기 때문에 **재시도조차 없었다.** 그 세션은
+  //    끝까지 실시간 채널 없이 돈다. 운영 신고 「재기동 시 소켓이 늦게 켜지거나 아예 안
+  //    켜짐」의 한 갈래가 이것이다: 서버가 준비되기 전에 열린 페이지는 영영 소켓이 없고,
+  //    사용자가 새로고침한 경우만 「늦게 켜졌다」로 보인다.
+  //    ⚠️ 두 함수는 자체 try/catch가 있지만 **catch 블록이 다시 던질 수 있다** ―
+  //    `elements.serverStatus.textContent` 등 DOM 핸들을 만지므로, 그 요소가 없는 페이지에서는
+  //    catch가 스스로 예외를 낸다(이 저장소엔 존재한 적 없는 `elements` 게터 전례가 있다).
+  //    그래서 호출부에서도 막는다. 삼키지는 않는다 ― 조용한 실패가 이걸 안 보이게 만들었다.
+  try { await checkServerHealth(); } catch (e) { console.error('[init] checkServerHealth 실패 (소켓은 계속 진행)', e); }
+  try { await loadTables(); } catch (e) { console.error('[init] loadTables 실패 (소켓은 계속 진행)', e); }
   initWebSocket();
 }
 
