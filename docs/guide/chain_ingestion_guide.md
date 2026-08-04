@@ -251,3 +251,90 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py withdraw <�
 | 그 소스를 사람이 **핀**한 셀(`manual_priority_source`) | 핀은 "이 소스를 보여 달라"는 사람의 선택입니다. 조용히 철회하면 그 선택을 뒤집습니다 → `pinned_skipped`로 건너뛰고 이유를 남깁니다 |
 
 **철회는 무음이 아닙니다.** 표시값이 바뀐 셀마다 `AuditLog`에 소스 `chain_replay_withdraw` · `updated_by="withdraw:<소스명>"` · old/new 값이 남습니다. 클라의 **기존 셀 이력 타임라인**이 AuditLog를 읽으므로, 빈칸을 발견한 운영자가 그 셀을 눌러 "어느 소스가 사라졌는지"를 봅니다(신규 이벤트·신규 화면 없음).
+
+---
+
+## 🗺️ 6. 파생 맵(dt_log → dt_map) — 세 트리거 · 세 겹 게이트 · 철회 (2026-08-04)
+
+`dt_map`은 **파생 테이블**입니다. `dt_log`가 기록이고 맵은 그 투영이므로 손으로 쓰면 다음 리플레이가 조용히 어긋납니다. 판단은 전부 [`server/dt_map_derivation.py`](file:///c:/Users/kk980/Developments/assyManager/server/dt_map_derivation.py)에 있고 [`mappers/dt_map_mapper.py`](file:///c:/Users/kk980/Developments/assyManager/server/mappers/dt_map_mapper.py)는 **어느 행을 넘길지만** 정하는 얇은 어댑터입니다.
+
+🔴 **세 룰 모두 `enabled: false`로 나갑니다.** 켜는 것은 근거와 함께 내리는 별도의 결정입니다.
+
+### 6.1 트리거가 왜 셋인가 — 룰 하나에 `trigger_table`은 하나뿐이다
+
+`chain_ingestion_worker`는 `r["trigger_table"] == table_name`으로 룰을 고릅니다(`:394`). **목록을 받지 않습니다.** 대신 **같은 `mapper_module`·`mapper_function`·`target_table`을 가리키는 룰 여러 개**는 문제없이 공존하고, 워커가 매칭된 룰을 맵퍼에 넘겨주므로(`execute_custom_mapper(..., rule=rule)` — 맵퍼가 `rule` 인자를 선언한 경우) 맵퍼가 셋을 구분합니다.
+
+| 룰 | `trigger_table` | 다시 파생하는 대상 |
+|---|---|---|
+| `dt_log_to_dt_map` | `dt_log` | 방금 들어온 행 |
+| `dt_job_attribution_to_dt_map` | `dt_job_attribution` | 그 `dt_job`의 모든 행 |
+| `eqp_frame_attribution_to_dt_map` | `eqp_frame_attribution` | 그 `dt_eqp`+`product`의 모든 행 |
+
+2·3번은 편의 기능이 아닙니다. 귀속과 프레임 귀속은 **자기 일정으로 도착**하므로, 그것에 게이트된 행은 `dt_log` 시점에 보류되고 **다시 들여다보는 장치가 없으면 영원히 안 봅니다** — 결번 40%가 일시적 손실이 아니라 영구 손실이 되는 경로가 이것입니다.
+
+트리거 테이블이 소스 테이블이 아니므로(페이로드가 귀속 행입니다) 룰이 `derivation_source_table`·`derivation_source_column`·`derivation_value_columns`·`derivation_origin_columns`를 **선언**합니다. 워커는 모르는 룰 필드를 그대로 통과시킵니다(`load_chain_rules`가 `data["rules"]`를 그대로 반환).
+
+⚠️ **스케줄러나 스윕을 만들지 않은 이유**: "언제 도는가"가 "언젠가"가 되기 때문입니다. 트리거를 요구한 목적이 바로 그것이었습니다.
+
+### 6.2 세 겹 게이트 — 셋 다 풀려야 행이 생긴다
+
+확정 lot · 확정 slot · `dt_frame`. 하나라도 없으면 **행을 만들지 않습니다.** `dt_log` 행이 기록이므로 잃는 것이 없고, 반대로 빈 맵 키를 가진 행은 **어느 맵에도 안 나타난 채 쌓여** 나중에 버그인지 정상인지 아무도 구분하지 못합니다.
+
+**절대 완화하면 안 되는 거절 셋**
+
+| 거절 | 이유 |
+|---|---|
+| 저장된 `dt_lot`/`dt_slot`으로 **폴백 금지** | `virtual_join_rules.json`이 스스로 적어 둔 사실 — 결번 40%, **있는데 틀린 것 10%**. 맵 키에서 이것은 품질 문제가 아니라 **오염**입니다: 틀린 lot은 셀을 **다른 lot의 맵**에 써 넣고, 셀 개수는 양쪽이 동일합니다. `_forbidden_fallback_columns`가 투영 허용목록에서 아예 제외해 **구조적으로** 막습니다 |
+| `core_frame`으로 **대체 금지** | 다른 프레임입니다(사용자 판정). 옆 축에서 값을 빌려 오는 것이 바로 "완벽히 정렬됐는데 값이 전부 틀린 화면"을 만든 그 대체입니다 |
+| 증거가 **엇갈리면 고르지 말고 거절** | `frame_disagreement`. `html_topology_parser`가 앵커 둘을 지키고 엇갈리면 거절하는 규율과 같습니다 |
+
+보류는 **이름 붙은 집계**이고 행 단위로는 조용합니다. 그리고 이유가 **쪼개져** 나옵니다 — `attribution_missing`과 `frame_missing`은 **서로 다른 수리**라서 합친 숫자는 어느 쪽을 고쳐야 하는지 알려 주지 못합니다. 두 숫자는 0일 때도 찍힙니다(빠진 이유는 "검사하지 않았다"와 구분되지 않으므로).
+
+### 6.3 정체성 — `dt_job`은 **출처**이지 키가 아니다
+
+셀의 정체성은 **맵 키(`map_key_columns`) + 좌표**입니다. `dt_job`은 값과 함께 실려 다니는 **출처**입니다. 그래야 같은 물리 다이가 같은 행이 되어 레이어링·우선순위·**사람 교정을 덮지 않는 규칙**이 그대로 적용됩니다. `dt_job`이 키에 있으면 한 다이 위의 두 잡이 **영원히 합쳐지지 않는 두 행**이 되고, 맵 뷰는 존재하지도 않는 "어느 잡이 이기는가" 규칙을 필요로 하게 됩니다.
+
+컬럼 이름은 **어디에도 하드코딩하지 않습니다** — 정체성은 타깃의 `map_key_columns`, 좌표는 `composite_key_source`에서 정체성을 뺀 나머지, 확정 컬럼과 프레임은 가상 조인 규칙의 `expose`, 조인 키는 그 규칙의 `join_key`에서 **호출 시점에** 읽습니다. 맵 정체성 문자열은 `map_meta_registrar.compose_map_id`가 만듭니다(등록과 조회가 같은 정체성을 만들어야 하므로 두 번 구현하지 않습니다).
+
+🔴 **가상 조인은 `load_verified_rules`로만 읽습니다.** `load_virtual_join_rules`는 선언의 *모양*만 봅니다. 유일 인덱스가 검증되지 않은 규칙은 팬아웃할 수 있고, 여기서의 팬아웃은 느린 질의가 아니라 **임의의 lot 하나가 정체성을 차지하는 것**입니다.
+
+### 6.4 좌표 — 변환은 하나뿐
+
+`dt_log`의 좌표는 장비가 쓴 8개 프레임 중 하나(`dt_frame`)에 있고, 맵의 정본 프레임은 그 맵의 `wafer_map_metadata`가 선언합니다. 그 사이를 옮기는 것은 **`map_overlay.make_frame_transform` 하나**입니다(사본이 `bonding_plan.py`에 있었다가 같은 이유로 삭제됐습니다). 소스 메타는 타깃 메타에서 **회전과 면만** 바꾼 것입니다 — 같은 물리 웨이퍼이고, 격자 치수나 phys 서명이 다르면 변환기가 거절하므로 강제입니다.
+
+타깃 메타가 없으면 **정본 프레임을 지어내지 않고 보류**합니다(`target_meta_missing`). "첫 쓰기가 정본을 정한다"는 정본 프레임을 **도착 순서의 부산물**로 만듭니다.
+
+### 6.5 철회 — 체인이 못 하는 일(퍼지)의 답
+
+체인은 맵 셀을 **업서트만** 할 수 있고 **퍼지는 못 합니다** — `replace_map`은 배치에 있는데 `chain_ingestion_worker`가 배치를 직접 만들면서 절대 설정하지 않습니다(`:437-441`). **이것이 이 룰이 꺼져 있던 이유였습니다.**
+
+🔴 **`replace_map`은 답이 아닙니다.** `crud.derive_replace_map_scope`는 모든 스코프 키가 **맵 키 계약 안**일 것을 강제하므로 퍼지는 **맵 전체 단위로만** 잡힙니다. 확정된 정체성에서는 **한 lot/slot 맵을 여러 `dt_job`이 먹일 수 있으므로**, 맵 단위 퍼지는 첫 잡을 고치려다 둘째 잡의 셀을 지웁니다.
+
+답은 `graph_stale_edges`가 이미 쓰는 모양 — **그 소스가 소유한 것의 적극 선택**입니다. `dt_job`이 모든 파생 셀에 실려 있으므로 "이 잡이 어떤 셀을 찍었나"가 평범한 인덱스 술어가 됩니다.
+
+```python
+plan = dt_map_derivation.plan_retraction(db, "dt_map", "dt_job", job, derived_keys)
+print(dt_map_derivation.format_retraction_summary(plan))   # 기본 dry-run
+dt_map_derivation.apply_retraction(db, plan)               # 계획한 것만, 다시 계산하지 않음
+```
+
+| 보증 | 방법 |
+|---|---|
+| 기본 dry-run | `plan_retraction`은 아무것도 쓰지 않습니다 |
+| 사람 교정은 **삭제하지 않음** | `cell_overwrites`에 걸린 행은 `protected`로 빠집니다 — 덮지 않는 규칙을 **삭제로 확장**한 것입니다 |
+| 예산 가드 | 소유분의 `max_fraction`을 넘으면 `declined` + 이유. 틀린 프레임·틀린 귀속이 정확히 "거의 전부가 낡음"처럼 보입니다 |
+| 계획과 실행의 불일치 없음 | `apply_retraction`은 `delete_row_ids`만 지우고 재계산하지 않습니다. 달라질 수 있는 dry-run은 장식입니다 |
+
+⚠️ 철회는 **체인 워커에 배선되어 있지 않습니다.** 워커가 배치를 직접 만들기 때문이며, 의도적으로 **직접 호출**하는 연산입니다.
+
+### 6.6 규모 — 켜기 전에 필요한 것
+
+🔴 **프레임 트리거의 팬아웃을 먼저 재십시오.** `eqp_frame_attribution`은 (장비, 제품)으로 키가 잡혀 있어 **한 행이 그 조합의 모든 잡을 다시 변환**합니다. 개발 픽스처 실측(2026-08-04): 한 행이 **`dt_log` 2,892행 · 40잡 = 테이블의 33%**. `expand_trigger`가 가져오기 **전에** `frame_trigger_scope`로 크기를 재고 `SCOPE_ROW_CAP`을 넘으면 `scope_too_large`로 거절합니다.
+
+🔴 **인덱스 전제가 아직 충족되지 않았습니다.** `dt_log`에는 `dt_job` 인덱스도 `(dt_eqp, product)` 인덱스도 없습니다(2026-08-04 실측 — `business_key_val`과 `row_id`뿐). 1,000만 행 기준에서 두 리비지트 트리거는 전부 순차 스캔입니다. [`server/migrations/add_dt_log_trigger_indexes.sql`](file:///c:/Users/kk980/Developments/assyManager/server/migrations/add_dt_log_trigger_indexes.sql)이 셋을 추가하며 **아직 실행되지 않았습니다.**
+
+⚠️ `business_key_val`(= `dt_job_dt_x_dt_y`)의 접두 검색으로 대신할 수 없습니다. 접두 술어는 **C 콜레이션에서만** 평범한 btree를 씁니다.
+
+### 6.7 배포 형태 — `mappers/`는 gitignore입니다
+
+추적되는 것은 `.sample`뿐이고 살아 있는 `dt_map_mapper.py`는 **이 머신에만, 어느 저장소에도 없이** 존재합니다(보드 O7). 둘은 **바이트 동일**하게 유지하며 `test_the_mapper_is_kept_byte_identical_with_its_sample`가 그것을 못박습니다 — 아무것도 동기화해 주지 않으므로 `diff`로 볼 수 있게 만드는 것이 최선입니다. 한쪽만 고치면 **그 변경은 이 머신 밖에 존재하지 않습니다.**
