@@ -43,9 +43,14 @@ it to `true` produces a NAMED refusal (`zero_pad_unimplemented`) that surfaces
 in `GET /admin/config/resolve`, because a knob that reads as ON and does
 nothing is the exact silence this repo keeps paying for.
 Note also that the separate ruling "slot is always int" retires the question
-for slot anyway: a `number`-declared column goes through
-`canonical_key_value`'s integer parse, where '01' and '1' are already one key
-and padding has no ambiguity left to lose.
+for slot -- but only once the column IS declared `number`: that path goes
+through `canonical_key_value`'s integer parse, where '01' and '1' are already
+one key and padding has no ambiguity left to lose.
+Measured 2026-08-04: `dt_log.core_slot`, `dt_log.dt_slot`,
+`core_wafer_map.core_slot` and `bonding_log.bond_slot` are all declared
+`string` in the live config, so the retirement has NOT taken effect yet. The
+ruling exists; the declarations have not caught up. The fix is the declared
+type, not an implementation of zero_pad.
 
 Bundling the three would mean the risky one could never be enabled separately
 later, so each is its own boolean and `fold_notation` has no branch at all for
@@ -63,7 +68,11 @@ already folds:
 It does NOT fold separators and does NOT fold case. So R1/R2 are genuinely new,
 and they are applied ON TOP of the canonical string rather than beside it:
 
-    normalized = fold_notation(canonical_key_value(raw, declared_type), rules)
+    normalized = fold_notation(canonical_bind_value(table, column, raw), rules)
+
+(`canonical_bind_value` is the wrapper that looks the declared type up and then
+calls `canonical_key_value` -- named here as the symbol this module actually
+imports, so grepping for the call site finds it.)
 
 One vocabulary, two layers. `canonical_key_value` keeps deciding what the value
 IS (by its declared type); this module decides only how its notation is spelled.
