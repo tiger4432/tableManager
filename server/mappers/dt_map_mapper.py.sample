@@ -1,105 +1,199 @@
-"""dt_log -> dt_map chain mapper (SAMPLE).
+"""dt_log -> dt_map chain mapper: the adapter for THREE trigger rules, one derivation.
 
-Builds the DT map from the DT transfer log so a bonding plan can be drawn on it.
-The map is DERIVED: `dt_log` is the record, `dt_map` is a projection of it. Nothing
-should ever write `dt_map` by hand -- if it does, a replay of this rule silently
-disagrees with it.
+[Deployment shape - read this first] `server/mappers/` is gitignored; only this
+`.sample` is tracked. The live `dt_map_mapper.py` beside it exists on one machine and
+in no repository. THIS FILE AND THAT ONE ARE KEPT BYTE-IDENTICAL DELIBERATELY - nothing
+syncs them and nothing checks that they agree (`production_mapper.py` and its own
+sample are already different files, 2257 vs 1134 bytes). Identical bytes at least make
+divergence detectable with `diff`. If you change one, change the other in the same
+edit, or the change exists nowhere outside this machine. That is board item O7.
 
-[Why the map key is `dt_job` and not `dt_lot`/`dt_slot`]
+WHAT MOVED OUT OF HERE
+----------------------
+Everything that decides anything now lives in `server/dt_map_derivation.py`. This file
+resolves WHICH ROWS a trigger is about and hands them over. The split exists because
+there are three rules sharing this mapper, and a decision duplicated across three
+entry points is a decision that will eventually differ across three entry points.
 
-`dt_lot` and `dt_slot` are the AMBIGUOUS columns in `dt_log` -- they are the thing
-enrichment has to infer (the operator moves wafers between tape slot and DT slot by
-hand, and split/merge renames lots underneath). `dt_job` is certain: it is the DT work
-unit, recorded as `<equipment>_<time>_<tapeslot>`.
+WHY THREE RULES AND NOT THREE TRIGGERS ON ONE RULE
+--------------------------------------------------
+A chain rule has exactly ONE `trigger_table` - `chain_ingestion_worker` matches rules
+by `r["trigger_table"] == table_name` (verified at source 2026-08-04,
+chain_ingestion_worker.py:394). It does not accept a list. What it DOES support is
+several rules naming the same `mapper_module`/`mapper_function` and the same
+`target_table`, and it passes the matched rule into the mapper
+(`execute_custom_mapper(..., rule=rule)` whenever the mapper declares a `rule`
+parameter). So three rules, one mapper, one target.
 
-Keying a map on a value we are still inferring would put a guess inside an identity.
-Every consumer would then bind to a key that changes when the guess is corrected, and
-correcting it would look like the map moved. So the map is keyed on what is known, and
-the lot/slot attribution rides on top as ordinary enrichment.
+That is the mechanism's own answer and it keeps "when does it run" a known thing. The
+alternative - a scheduler or a periodic sweep - would have made the answer "at some
+point", which is exactly what a trigger is for.
 
-[RESOLVED 2026-08-01 -- how a chain addresses a single map cell]
+The second and third rules are not conveniences. Attribution and frame attribution
+arrive on their own schedule, so a row gated on them is skipped at `dt_log` time and,
+without a revisit, NEVER LOOKED AT AGAIN. That is how the absent 40% would be lost
+permanently rather than temporarily.
 
-The earlier draft of this file asked the question and got the answer wrong in code.
-What was measured:
+  rule                              trigger_table            what it re-derives
+  --------------------------------- ------------------------ --------------------------
+  dt_log_to_dt_map                  dt_log                   the rows that just landed
+  dt_job_attribution_to_dt_map      dt_job_attribution       every row of that dt_job
+  eqp_frame_attribution_to_dt_map   eqp_frame_attribution    every row of that eqp+product
 
-  * A map table does NOT hold many rows per `business_key_val`. `dt_map` declares
-    `composite_key_source = [dt_job, dt_x, dt_y]`, so one business key IS one cell.
-    The "437 rows under one key" reading confused the MAP key (`map_key_columns`,
-    which scopes a whole map) with the ROW key.
-  * `crud.apply_batch_updates` composes that composite key FOR you
-    (crud.py:1051-1059) -- but only when the item omits `business_key_val` AND
-    supplies every composite source column in `updates`. Supplying
-    `business_key_val = dt_job` instead, as the draft did, addresses ONE row per job
-    and collapses every cell of that job onto it.
-  * So this mapper deliberately does NOT set `business_key_val`. Letting crud compose
-    the key also guarantees the mapper cannot disagree with the recomposition crud
-    performs after the write (crud.py:1237-1265).
+The declaration carries `derivation_source_table` because for rules 2 and 3 the
+trigger table is NOT the source table; the payload is an attribution row and the rows
+to derive have to be fetched. The chain worker passes unknown rule fields through
+untouched (`load_chain_rules` returns `data["rules"]` verbatim), so this is a
+declaration rather than a hardcoded name.
 
-[The remaining limitation -- why this rule still ships disabled]
+THE THIRD RULE IS THE DANGEROUS ONE
+-----------------------------------
+`eqp_frame_attribution` is keyed by equipment and product, not by job, so one
+corrected row re-transforms every job on that equipment for that product. Measured on
+the dev fixture 2026-08-04: up to 2,892 `dt_log` rows across 40 jobs from a single
+row - a third of the table. `expand_trigger` therefore SIZES the scope before it
+fetches anything and refuses past `SCOPE_ROW_CAP` with a named reason, so a single
+config edit cannot silently re-derive a huge population.
 
-A chain can UPSERT map cells. It cannot PURGE them. `replace_map` lives on the batch
-(schemas.py:138) and `chain_ingestion_worker.py:437-441` builds that batch itself and
-never sets it, so a chain has no way to express "this map is now exactly these cells".
-Cells from a superseded version of a job would survive forever alongside the new ones.
-
-That is tolerable only if a `dt_job`'s cell set never shrinks. Confirm that before
-enabling, or drive the map through the map path (`PUT /tables/dt_map/data/updates`
-with `replace_map: true`, scoped by `map_key_columns`), which does purge.
-
-[What this deliberately does NOT do]
-
-- It does not write `dt_lot`/`dt_slot` into the map. Those arrive later, confirmed.
-- It does not fill absent `c_bn`. A cell with no bin is absent, not "good".
-- It does not resolve the coordinate frame. `dt_x`/`dt_y` are copied as recorded;
-  which of the 8 frames they are in is a separate, declared answer (see
-  `docs/spec/TRACE_FIXTURE_SPEC.md` section 4-0-quater). Guessing it here would bake an
-  unverified rotation into stored data.
-- It says nothing at all when a required column is missing. A partial map is not a
-  smaller claim, it is a DIFFERENT claim -- "these dies were not transferred".
+[STILL DISABLED] All three rules ship `enabled: false`. Turning them on is a separate,
+explicit decision that belongs with the evidence, not with the code that makes it
+possible.
 """
 
+import logging
 from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
-from mappers.base import BaseMapper
+import dt_map_derivation as derivation
 
-# The cell's own address. These are exactly `dt_map`'s composite_key_source, and every
-# one must be present or crud cannot compose the key and mints an orphan row instead.
-KEY_COLUMNS = ("dt_job", "dt_x", "dt_y")
+logger = logging.getLogger(__name__)
 
-# The cell's value.
+# The column that carries the SOURCE on every derived cell. Not key material: it is
+# what makes a cell traceable back to the job that produced it, and what lets
+# `plan_retraction` select positively what a source owns.
+SOURCE_COLUMN = "dt_job"
+
+# The cell's value, and the provenance carried alongside it. One DT wafer mixes dies
+# from several core wafers, so the map's own key cannot recover where a die came from;
+# that provenance is the difference between a map you can draw and one you can trace.
 VALUE_COLUMNS = ("c_bn",)
-
-# Provenance carried so a cell can name the core die it came from. This is what makes
-# the map traceable rather than merely drawable -- one DT wafer mixes dies from several
-# core wafers, so the origin cannot be recovered from the map's own key.
 ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core_y")
 
+# Absent `c_bn` is left absent. A cell with no bin is absent, not "good".
 
-def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """One `dt_log` row becomes one `dt_map` cell."""
+DEFAULT_SOURCE_TABLE = "dt_log"
+
+
+def _rule_source_table(rule) -> str:
+    return str((rule or {}).get("derivation_source_table") or DEFAULT_SOURCE_TABLE)
+
+
+def _payload_filters(db, rule, payload: Dict[str, Any], source_table: str) -> Dict[str, Any]:
+    """Which source rows this attribution payload is about.
+
+    Read from the virtual-join rule's own `join_key`, so the revisit scope and the gate
+    that consumes it are decided by the same declaration. Two independent spellings of
+    "which rows does this attribution cover" is how a revisit ends up covering a
+    different set than the gate it was meant to unblock.
+    """
+    trigger = (rule or {}).get("trigger_table")
+    for rule_name in (derivation.CONFIRMED_JOIN_RULE, derivation.FRAME_JOIN_RULE):
+        vj = derivation.join_rule(db, rule_name)
+        if vj.get("right_table") != trigger:
+            continue
+        if vj.get("left_table") != source_table:
+            continue
+        filters = {}
+        for left, right in derivation.join_pairs(vj):
+            value = payload.get(right)
+            if value is None or str(value).strip() == "":
+                return {}          # an incomplete key selects nothing, never everything
+            filters[left] = value
+        return filters
+    return {}
+
+
+def expand_trigger(db: Session, payloads: List[Dict[str, Any]], rule) -> List[Dict[str, Any]]:
+    """Attribution payloads -> the source rows they oblige us to revisit.
+
+    Sizes the fan-out first and refuses past the cap. The refusal is NAMED and logged
+    at error level; it does not quietly return an empty list, because an empty list is
+    indistinguishable from "nothing matched" and this is the one place where the
+    difference is the whole point.
+    """
+    from database import models
+
+    source_table = _rule_source_table(rule)
+    model = models.DYNAMIC_TABLES.get(source_table)
+    if model is None:
+        logger.error("[DtMapMapper] source table '%s' has no model", source_table)
+        return []
+
+    scopes = []
+    for payload in payloads:
+        filters = _payload_filters(db, rule, payload, source_table)
+        if filters:
+            scopes.append(filters)
+    if not scopes:
+        return []
+
+    total = 0
+    for filters in scopes:
+        scope = derivation.frame_trigger_scope(db, source_table, filters)
+        total += scope["rows"]
+        logger.info("[DtMapMapper] rule '%s' scope %s -> %d source row(s)",
+                    (rule or {}).get("name"), filters, scope["rows"])
+    if total > derivation.SCOPE_ROW_CAP:
+        logger.error(
+            "[DtMapMapper] %s: rule '%s' would re-derive %d source row(s) across %d "
+            "scope(s), over the cap of %d. One attribution row is keyed more coarsely "
+            "than what it corrects; re-derive it deliberately rather than as a side "
+            "effect of a config edit.",
+            derivation.REFUSE_SCOPE_TOO_LARGE, (rule or {}).get("name"), total,
+            len(scopes), derivation.SCOPE_ROW_CAP)
+        return []
+
+    rows = []
+    for filters in scopes:
+        q = db.query(model)
+        for col, val in filters.items():
+            q = q.filter(getattr(model, col) == val)
+        rows.extend(q.all())
+    return rows
+
+
+def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]], rule=None) -> Dict[str, Any]:
+    """One derived cell per gated source row. Shared by all three rules.
+
+    `rule` is optional so the signature stays compatible with the worker's older
+    two-argument call path; without it the mapper behaves as the `dt_log` trigger,
+    which is what the payloads would be in that case.
+    """
     if not payloads:
         return {"updates": []}
 
-    df = BaseMapper.payloads_to_df(payloads)
+    source_table = _rule_source_table(rule)
+    target_table = str((rule or {}).get("target_table") or "dt_map")
+    trigger = (rule or {}).get("trigger_table") or source_table
 
-    if any(col not in df.columns for col in KEY_COLUMNS):
+    if trigger == source_table:
+        rows = list(payloads)                       # the rows themselves just landed
+    else:
+        rows = expand_trigger(db, payloads, rule)   # revisit what this correction covers
+        if not rows:
+            return {"updates": []}
+
+    try:
+        result = derivation.derive_cells(
+            db, rows,
+            source_table=source_table, target_table=target_table,
+            source_column=SOURCE_COLUMN,
+            value_columns=VALUE_COLUMNS, origin_columns=ORIGIN_COLUMNS)
+    except derivation.DerivationRefused as e:
+        # Named, loud, and empty-handed. A partial map is not a smaller claim, it is a
+        # DIFFERENT claim - "these dies were not transferred".
+        logger.error("[DtMapMapper] rule '%s' refused: %s", (rule or {}).get("name"), e)
         return {"updates": []}
 
-    df = df.dropna(subset=list(KEY_COLUMNS))
-
-    carried = [c for c in (KEY_COLUMNS + VALUE_COLUMNS + ORIGIN_COLUMNS)
-               if c in df.columns]
-
-    updates = []
-    for _, row in df.iterrows():
-        cell = {col: row.get(col) for col in carried}
-        updates.append({
-            # No business_key_val on purpose -- see the module docstring.
-            "updates": cell,
-            "source_name": "chain_ingestion",
-            "updated_by": "chain_worker",
-        })
-
-    return {"updates": updates, "silent": False}
+    return {"updates": result["updates"], "silent": False}

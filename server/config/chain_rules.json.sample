@@ -2,10 +2,33 @@
   "__comment": "Chain ingestion rules. A chain reacts to a committed write on trigger_table and projects it onto target_table through a mapper. | The production->inventory rule was removed with the demo tables it referenced (2026-08-01 fixture reset).",
   "rules": [
     {
-      "__comment": "dt_log -> dt_map: the DT map is DERIVED. dt_log is the record; the map is a projection of it, so nothing should ever write dt_map by hand -- a replay would then silently disagree with the hand-written rows. | SHIPS DISABLED and stays disabled this round by instruction. What was measured (2026-08-01): a chain CAN address a single map cell -- crud.apply_batch_updates composes the composite business key from the update payload itself (crud.py:1051-1059) when the caller omits business_key_val and supplies every composite_key_source column, and dt_map's composite key includes dt_x/dt_y, so one business key = one cell. What a chain CANNOT do is PURGE: replace_map lives on the batch (schemas.py:138) and chain_ingestion_worker.py:437-441 constructs the batch itself and never sets it, so a chain can only upsert cells and never delete stale ones. That is the open question, and it is why this stays off.",
+      "__comment": "dt_log -> dt_map: the DT map is DERIVED. dt_log is the record; the map is a projection of it, so nothing should ever write dt_map by hand -- a replay would then silently disagree with the hand-written rows. | SHIPS DISABLED and stays disabled this round by instruction. What was measured (2026-08-01): a chain CAN address a single map cell -- crud.apply_batch_updates composes the composite business key from the update payload itself (crud.py:1051-1059) when the caller omits business_key_val and supplies every composite_key_source column, and dt_map's composite key includes dt_x/dt_y, so one business key = one cell. What a chain CANNOT do is PURGE: replace_map lives on the batch (schemas.py:138) and chain_ingestion_worker.py:437-441 constructs the batch itself and never sets it, so a chain can only upsert cells and never delete stale ones. That is the open question, and it is why this stays off. | 2026-08-04: THE PURGE QUESTION IS ANSWERED, AND NOT BY replace_map. crud.derive_replace_map_scope validates every scope key to be INSIDE the map-key contract, so a purge can only ever be scoped to a WHOLE MAP; under the settled identity (lot/slot + coordinates) one map can be fed by more than one dt_job, so purging by map would delete a second job's cells to correct the first. The answer is positive selection of what a source owns -- dt_map_derivation.plan_retraction / apply_retraction, the graph_stale_edges shape: dry run by default, a budget guard, and human-touched cells protected from deletion. It is NOT wired into the chain worker, because the worker builds the batch itself; retraction is invoked deliberately. The rule still ships disabled: enabling it is a separate decision that belongs with the evidence.",
       "name": "dt_log_to_dt_map",
       "trigger_table": "dt_log",
       "target_table": "dt_map",
+      "derivation_source_table": "dt_log",
+      "mapper_module": "mappers.dt_map_mapper",
+      "mapper_function": "build_dt_map_batch_df",
+      "is_batch": true,
+      "enabled": false
+    },
+    {
+      "__comment": "REVISIT RULE 1 of 2. dt_log alone is not enough. The gate needs a CONFIRMED lot and slot, and those arrive on their own schedule -- so a dt_log row that lands before its attribution is held back at dt_log time and, without this rule, is NEVER LOOKED AT AGAIN. That is how the absent 40% would be lost permanently rather than temporarily. | A chain rule has exactly ONE trigger_table (chain_ingestion_worker.py:394 matches r['trigger_table'] == table_name; it does not accept a list), so three triggers means three rules sharing one mapper_module/mapper_function and one target_table. The worker passes the matched rule into the mapper (execute_custom_mapper(..., rule=rule) when the mapper declares a `rule` parameter), which is how one mapper tells the three apart. This is the mechanism's own answer -- a scheduler or a periodic sweep would have turned 'when does it run' into 'at some point'. | derivation_source_table is required here because the trigger table is NOT the source: the payload is an attribution row and the dt_log rows it covers have to be fetched. The scope comes from the virtual join rule's own join_key, so the revisit covers exactly the rows the gate consults. | Fan-out is bounded: one dt_job covered at most 77 dt_log rows on the dev fixture (2026-08-04).",
+      "name": "dt_job_attribution_to_dt_map",
+      "trigger_table": "dt_job_attribution",
+      "target_table": "dt_map",
+      "derivation_source_table": "dt_log",
+      "mapper_module": "mappers.dt_map_mapper",
+      "mapper_function": "build_dt_map_batch_df",
+      "is_batch": true,
+      "enabled": false
+    },
+    {
+      "__comment": "REVISIT RULE 2 of 2, AND THE DANGEROUS ONE. eqp_frame_attribution is keyed by (dt_eqp, product), not by job, so ONE corrected frame row re-transforms EVERY job on that equipment for that product. Measured on the dev fixture 2026-08-04: DT-EQP-02|PRD-A covers 2,892 dt_log rows across 40 jobs -- 33% of the whole table -- and the four declared rows cover 1,446 / 1,473 / 2,889 / 2,892 rows. A single config edit must not silently re-derive a population that size, so mappers/dt_map_mapper.expand_trigger SIZES the scope with dt_map_derivation.frame_trigger_scope BEFORE fetching anything and refuses past SCOPE_ROW_CAP with the named reason scope_too_large. | SCALABILITY PREREQUISITE, not yet satisfied: dt_log carries no index on (dt_eqp, product) and none on dt_job (measured 2026-08-04 -- only business_key_val and row_id are indexed). At the 10M-row target both revisit rules are sequential scans. server/migrations/add_dt_log_trigger_indexes.sql adds them; it has NOT been run.",
+      "name": "eqp_frame_attribution_to_dt_map",
+      "trigger_table": "eqp_frame_attribution",
+      "target_table": "dt_map",
+      "derivation_source_table": "dt_log",
       "mapper_module": "mappers.dt_map_mapper",
       "mapper_function": "build_dt_map_batch_df",
       "is_batch": true,
