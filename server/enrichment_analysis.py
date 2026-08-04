@@ -2,10 +2,19 @@
 has become a rule — plus [①]'s retroactive sweep, whose dry-run is the
 measurement.
 
-Everything here is driven from a CLI (`server/scripts/enrichment_insights.py`),
-never from the web process: the queries are analytical (they walk the whole
-queue) and they must not sit on a request path. `apply` is opt-in everywhere and
-dry-run is the default, the same posture as `backfill_enrichment.py`.
+These are analytical queries (they walk the whole queue), so they never sit on a
+request path unbounded. `apply` is opt-in everywhere and dry-run is the default,
+the same posture as `backfill_enrichment.py`.
+
+THIS MODULE RUNS IN THREE PROCESSES, NOT ONE
+    The CLI (`server/scripts/enrichment_insights.py`) was the first caller and
+    this docstring used to say it was the only one. It is not, and believing it
+    was is what shipped a defect: the retroactive admin surface calls the sweep
+    from the WEB process (`GET /admin/retroactive/enrichment_confirm/count`,
+    `GET /admin/enrichment/auto-confirm/dry-run`) and from the SCHEDULER process
+    (`retroactive.execute`, behind `POST /admin/retroactive/{op}/run`). Anything
+    this module imports must therefore resolve in all three - see the note on the
+    queue predicate below.
 
 WHY THE THREE LIVE TOGETHER
     They walk the same two row sets - the queue (target blank, keys non-blank)
@@ -16,11 +25,18 @@ WHY THE THREE LIVE TOGETHER
 THE QUEUE PREDICATE IS NOT REDEFINED HERE
     `iter_derived_rows` builds its SQL from `to_public_rule(rule)["queue_filters"]`
     - the server's single composition of "a queue entry" - and translates it with
-    `main.get_column_filter_condition`, the SAME translator `GET /tables/{t}/data`
-    uses. So the worklist, the badge, the admin count and these reports cannot
-    disagree about which rows are in the queue. `main` is imported LAZILY, inside
-    the call: this module is CLI-side, but it must stay importable from a worker
-    without dragging the web app in.
+    `column_filter.get_column_filter_condition`, the SAME translator
+    `GET /tables/{t}/data` uses. So the worklist, the badge, the admin count and
+    these reports cannot disagree about which rows are in the queue.
+
+    That translator used to be reached as `main.get_column_filter_condition`, and
+    the import was lazy so that a worker would not drag the web app in. The lazy
+    import did not make `main` SAFE, only late: the scheduler puts every
+    collector's directory on `sys.path[0]`, so in that process `import main` binds
+    whatever `main.py` a user happens to have put there, and the sweep died with
+    `module 'main' has no attribute 'get_column_filter_condition'` while the same
+    run from the CLI worked. The translator now lives in `column_filter.py`, which
+    is not an entry point and is not called `main`.
 """
 import logging
 
@@ -69,7 +85,7 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False):
     """
     from sqlalchemy import and_
     import enrichment_config
-    import main  # lazy: CLI-side only (see module docstring)
+    import column_filter  # NOT `main` - see the module docstring
 
     filters = enrichment_config.to_public_rule(rule)["queue_filters"]
     if resolved:
@@ -82,7 +98,7 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False):
         }
     conds = []
     for col, spec in filters.items():
-        cond = main.get_column_filter_condition(table_model, col, spec)
+        cond = column_filter.get_column_filter_condition(table_model, col, spec)
         if cond is None:
             raise AnalysisRefused(
                 f"filter for column '{col}' could not be translated on table "

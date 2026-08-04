@@ -124,7 +124,9 @@ def profile():
         # Test dict conversion speed for Method 2
         t0_dict = time.time()
         data_list = []
-        from main import to_local_str
+        # `to_local_str` lives in utils/time_format.py, not in the web entrypoint
+        # (H4). Reaching it through `main` is the coupling that module exists to undo.
+        from utils.time_format import to_local_str
         from datetime import datetime
         for row in raw_rows_m2:
             r_id = row[0]
@@ -243,7 +245,9 @@ def profile():
         # Test dict conversion speed for Method 4
         t0_dict = time.time()
         data_list = []
-        from main import to_local_str
+        # `to_local_str` lives in utils/time_format.py, not in the web entrypoint
+        # (H4). Reaching it through `main` is the coupling that module exists to undo.
+        from utils.time_format import to_local_str
         from datetime import datetime
         for row in raw_rows_m4:
             r_id = row[0]
