@@ -4839,6 +4839,38 @@ async function fetchGridMetaFor(table, mapId) {
 // Three blocks resisted and stayed inline; each says why where it sits.
 async function loadExistingMap(opts = {}) {
   const quiet = !!opts.quiet;
+  // ── [fix E-3] 미저장 편집 가드 — **이 함수가 무엇이든 하기 전에** 묻는다 ─────────────
+  //
+  // 사용자 신고(2026-08-04): 유효 다이를 지정한 뒤 📂 Load Existing Map을 누르면 지정이
+  // 조용히 풀린다. 아래 [M4①] 블록이 첫 세 줄에서 무조건 버리는데, 그 앞에 묻는 곳이
+  // 없었다. 뒤로가기는 묻고 교체 로드는 묻지 않는, **같은 질문의 두 번째 철자** 문제다.
+  //
+  // 🔴 **[M4①]의 초기화를 약화시키지 않는다.** 그 블록의 이유는 옳다 — 이 로드가 어느
+  //    경로로 끝나든 이전 맵의 마스크가 다른 맵을 주장하면 안 된다. 여기서 하는 일은
+  //    「버리기 전에 묻는다」뿐이고, 승낙하면 그 초기화는 종전과 한 글자도 다르지 않게
+  //    실행된다.
+  // 🔴 **위치가 계약이다.** 필터 수집(`collectMapKeyFilterModel`)보다도, 버튼 라벨
+  //    교체보다도, 요청보다도 앞이다. 이미 변하기 시작한 상태에 대해 묻는 확인창은
+  //    사용자가 취소해도 되돌릴 것이 남는다. 거절은 **완전한 중단**이어야 한다.
+  // 🔴 **`quiet`가 곧 「비대화형 호출」이다** — 새 플래그를 만들지 않는다. 이 파일에서
+  //    `quiet`는 이미 "사용자에게 차단형 대화상자를 띄우지 않는다"는 뜻으로 쓰이고
+  //    (아래 `hasFilter` 갈래의 `alert` ↔ `showToast`), 비대화형 호출부가 정확히 그
+  //    플래그를 켜서 부른다. 두 호출부 모두 물을 이유가 없다:
+  //      · `restoreLastOpenMap`(부팅 복원) — `init()` 중이라 사용자가 편집할 기회가
+  //        아직 없었다. 있을 수 없는 편집을 두고 묻는 확인창이 된다.
+  //      · `openMapFrame`(자재 프레임 진입) — 바로 앞에서 `snapshotEditorState()`가
+  //        `validDie`·`frameTouched`·`framePushed`를 담아 프레임 스택에 넣었고, 복귀가
+  //        그대로 되돌린다. **잃는 것이 없다.** 그리고 실제로 잃을 수 있는 지점인
+  //        복귀에서는 `popMapFrame`이 같은 질문을 이미 한다.
+  //    반환 형태는 위 `hasFilter` 거절과 **같다** — 호출부(`:641`)가 `r.cancelled`로
+  //    이동 계측을 거르므로, 화면이 움직이지 않은 것이 그대로 계측에 반영된다.
+  if (!quiet) {
+    const notice = unsavedWorkNotice();
+    if (notice && !confirm(
+      `다른 맵을 불러오면 지금 화면의 편집이 사라집니다.\n\n` + notice +
+      `\n[확인] 저장하지 않고 불러오기\n[취소] 이 화면에 남기`
+    )) return { count: 0, cancelled: true };
+  }
   // [M4①] 이전 맵의 유효 다이 마스크를 먼저 버린다. 이 로드가 어느 경로로 끝나든
   // — 취소·0건·예외 — 남은 마스크가 **다른 맵**의 유효 다이를 주장하는 일이 없어야 한다.
   // 성공 경로는 아래에서 이 맵의 선언으로 다시 세운다.
@@ -7733,6 +7765,28 @@ let framePushed = false;     // 현재 프레임에서 Push 했는가 (뒤로가
 // restored content survives in the draft slot, so backing out loses nothing.
 let frameTouched = false;
 
+// ── 미저장 편집 가드 — 판정과 권유 문구를 만드는 **한 곳** ──────────────────────────────
+//
+// [fix E-3] 이 함수가 존재하는 이유는 판정이 두 번 철자되어 **두 문이 서로 다른 답을 냈기**
+// 때문이다. 뒤로가기(`popMapFrame`)는 물었고, 맵 교체 로드(`loadExistingMap`)는 묻지도 않고
+// 첫 세 줄에서 선언을 버렸다 — 같은 미저장 선언이 한 문에서는 지켜지고 다른 문에서는
+// 사라졌다. 문이 세 번째로 늘어도 판정을 다시 쓸 일이 없도록, 「미저장인가」와 「어느 저장을
+// 권하는가」를 여기서만 만든다. 이것이 이 라운드의 실제 교훈이다: 같은 질문의 두 번째 철자.
+//
+// 반환값이 곧 판정이다 — 깨끗하면 `null`(= 묻지 않는다), 미저장이면 확인문에 넣을 **권유
+// 한 줄**. 상황을 말하는 첫 문장은 부르는 쪽이 쓴다: 「나가는 것」과 「덮어쓰는 것」은 다른
+// 일이고, 그 둘을 같은 문장으로 말하면 사용자는 무슨 일이 일어나는지 알 수 없다.
+function unsavedWorkNotice() {
+  if (framePushed || !frameTouched) return null;
+  // ⚡ Push는 `replace_map`(셀 전량 재기록)이다. 셀을 하나도 건드리지 않은 변경에 그것을
+  // 권하면 사람들은 모든 것을 Push로 배운다. `legendDirty`가 셀·legend 초안 작업의 기존
+  // 기록이고(선언 경로를 제외한 모든 `frameTouched` 지점이 같은 호흡으로 세운다), 그것이
+  // 없다는 것은 이 편집이 **선언뿐**이라는 뜻이다.
+  return legendDirty
+    ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\n`
+    : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\n`;
+}
+
 function snapshotEditorState() {
   const metaValues = {};
   document.querySelectorAll('[id^="meta-input-"]').forEach(input => {
@@ -8117,18 +8171,12 @@ function popMapFrame() {
   //     being declared before it is filled) — unsaved work with zero cells by construction;
   //   · the stray-key cleanup (:5853) can empty the object the same way.
   // Viewing still cannot prompt, because viewing sets neither flag.
-  const dirty = !framePushed && frameTouched;
-  // WHICH WRITER TO NAME. There are two now, and naming only the expensive one teaches
-  // people to Push for everything — ⚡ Push is `replace_map`, a full cell rewrite, for a
-  // change that may have touched no cell at all. `legendDirty` is the existing flag that
-  // says cells/legend hold draft work (every `frameTouched` site outside the declaration
-  // path sets it in the same breath), so its absence means the edit was declaration-only
-  // and 📐 규격만 저장 is the cheaper correct answer.
-  if (dirty && !confirm(
-    `이 맵의 편집을 저장하지 않았습니다.\n\n` +
-    (legendDirty
-      ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\n`
-      : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\n`) +
+  // [fix E-3] The predicate and the writer advice now come from `unsavedWorkNotice()`, so the
+  // map-replacing LOAD asks the identical question. Only the first sentence is written here,
+  // because leaving and overwriting are different things to be told.
+  const notice = unsavedWorkNotice();
+  if (notice && !confirm(
+    `이 맵의 편집을 저장하지 않았습니다.\n\n` + notice +
     `\n[확인] 저장하지 않고 돌아가기\n[취소] 이 화면에 남기`
   )) return false;
 
