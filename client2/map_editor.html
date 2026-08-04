@@ -210,20 +210,14 @@
                  만들기는 위 프리셋 목록의 「🧩 유효 다이 맵 만들기」 항목이 한다. -->
             <div class="control-group-vertical"
               style="border: 1px dashed var(--accent); border-radius: 8px; padding: 10px; background: var(--accent-weak);">
-              <!-- [1-a] 저장 테이블은 `valid_die_ref` 하나로 고정됐다(사용자 지시). 테이블 선택
-                   칸이 사라진 자리에 APPLY·SAVE 두 버튼이 들어간다 — 배치·형태는 바로 위
-                   「⚙️ Geometry Presets」 블록과 **같은 기계**다(라벨 줄 오른쪽 버튼군). -->
+              <!-- [1-b] 저장 테이블은 `valid_die_ref` 하나로 고정됐다(사용자 지시). APPLY·SAVE
+                   두 버튼은 삭제됐다(사용자 지시 2026-08-04): 키 칸이 <select>가 된 뒤로
+                   「고르는 것」 자체가 이미 의도적인 한 번의 행위라 APPLY가 더할 것이 없고,
+                   SAVE가 쓰던 한 필드는 ⚡ Push와 📐 규격만 저장이 이미 함께 싣는다.
+                   그래서 이 블록의 컨트롤은 키 칸 하나뿐이다(순 -2). -->
               <label for="valid-die-ref-key"
-                style="color: var(--accent); font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
-                <span>🎯 유효 다이 맵 (Valid Die)</span>
-                <div style="display: flex; gap: 4px;">
-                  <button type="button" id="btn-valid-die-apply" class="glass-page-btn"
-                    style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--accent); color: var(--accent);"
-                    title="이 키의 유효 다이 맵을 지금 화면에 적용합니다 (기하 메타를 그 맵의 것으로 갈아끼웁니다). 저장은 하지 않습니다.">🎯 APPLY</button>
-                  <button type="button" id="btn-valid-die-save" class="glass-page-btn"
-                    style="padding: 2px 8px; font-size: 0.75rem; border-color: var(--color-secondary); color: var(--color-secondary);"
-                    title="이 지정을 이 맵의 규격(wafer_map_metadata)에 저장합니다. 화면에 적용하지는 않습니다.">💾 SAVE</button>
-                </div>
+                style="color: var(--accent); font-weight: bold; display: block;">
+                🎯 유효 다이 맵 (Valid Die)
               </label>
               <!-- [1-a] 컨트롤은 **한 번에 하나만** 보인다. 목록이 모집단 전체일 때는 위
                    「⚙️ Geometry Presets」와 똑같은 <select>이고, 목록을 믿을 수 없을 때
@@ -232,7 +226,11 @@
                    목록이 모집단이 아닌 순간에 select를 내밀면 닿을 수 있던 맵이 닿을 수
                    없게 된다. 어느 쪽이 보이는지가 곧 "이 목록이 전부인가"의 답이다.
                    값의 정본은 언제나 #valid-die-ref-key 하나다 — select는 고른 값을 그
-                   칸에 적을 뿐이고, 저장·적용 경로는 그 칸만 읽는다(두 번째 값 경로 없음). -->
+                   칸에 적을 뿐이고, 저장·적용 경로는 그 칸만 읽는다(두 번째 값 경로 없음).
+                   [1-b] **적용 시점이 두 컨트롤에서 다르다.** select는 고르는 순간이 곧
+                   확정이라 change에서 적용하고, 입력칸은 타이핑 도중이 곧 확정일 수 없으므로
+                   Enter에서만 적용한다 — change(=blur)로 적용하면 값을 확인하려고 자리를
+                   옮긴 것만으로 기하 메타가 갈아끼워지던 그 동작이 되살아난다. -->
               <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 4px;">
                 <select id="valid-die-ref-select" class="glass-input w-full" style="display: none;"
                   title="이 맵의 유효 다이를 정하는 valid_die_ref 맵. 비우면(-- 원 기하 --) 웨이퍼 원 기하로 판정합니다.">
@@ -240,14 +238,17 @@
                 </select>
                 <input type="text" id="valid-die-ref-key" class="glass-input w-full" list="valid-die-ref-list"
                   placeholder="valid_die_ref 맵 키 (비우면 원 기하)" autocomplete="off"
-                  title="이 맵의 유효 다이를 정하는 valid_die_ref 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다. 목록에 없는 키도 직접 입력하면 그대로 동작합니다." />
+                  title="이 맵의 유효 다이를 정하는 valid_die_ref 맵의 키. 비우면 웨이퍼 원 기하로 판정합니다. 목록에 없는 키도 직접 입력할 수 있으며, 이 칸에서는 Enter를 눌러야 적용됩니다." />
                 <datalist id="valid-die-ref-list"></datalist>
               </div>
               <p style="margin: 6px 0 0; font-size: 0.75rem; color: var(--text-dim); line-height: 1.5;">
                 유효 다이 맵은 언제나 <b>valid_die_ref</b> 테이블에서 읽습니다. 비워 두면 <b>웨이퍼 원 기하</b>로
-                판정합니다(기본). <b>🎯 APPLY</b>는 화면에만 적용하고, <b>💾 SAVE</b>는 이 맵의 규격에만 기록합니다.
-                등록된 맵 목록을 전부 확인했을 때는 <b>드롭다운</b>으로 고르고, 목록을 다 읽지 못했거나
-                지금 지정된 키가 목록에 없을 때는 <b>입력칸</b>으로 바뀌어 목록에 없는 키도 직접 넣을 수 있습니다.
+                판정합니다(기본). 등록된 맵 목록을 전부 확인했을 때는 <b>드롭다운</b>이 보이고,
+                <b>고르는 즉시</b> 화면에 적용됩니다. 목록을 다 읽지 못했거나 지금 지정된 키가 목록에 없을 때는
+                <b>입력칸</b>으로 바뀌어 목록에 없는 키도 직접 넣을 수 있으며, 이때는 <b>Enter</b>를 눌러야
+                적용됩니다(타이핑 중이나 다른 칸으로 옮길 때는 바뀌지 않습니다).
+                적용은 화면까지이고, <b>저장</b>은 <b>⚡ Push Map Data</b>(맵 전체) 또는
+                <b>📐 규격만 저장</b>(셀은 그대로)이 함께 기록합니다.
               </p>
             </div>
             <div class="control-group-vertical">
@@ -383,6 +384,14 @@
             <button id="btn-push-map" class="glass-btn"
               style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡
               Push Map Data</button>
+            <!-- [2] 규격만 저장 (사용자 지시 2026-08-04: "맵 에디터에 메타만 저장하는 기능 필요").
+                 새 패널도 모달도 아니고 ⚡ Push 바로 옆의 버튼 하나다. 새 라우트도 없다 —
+                 지워진 💾 SAVE가 쓰던 바로 그 PUT(`wafer_map_metadata`)을 한 필드가 아니라
+                 규격 블록 전체로 넓혔을 뿐이고, 규격 객체는 Push와 **같은 조립기**
+                 (`buildPushGridMetadata`)가 만든다. 대상은 지금 화면에 설정된 테이블·맵 키다. -->
+            <button id="btn-save-map-spec" class="glass-btn"
+              style="border-color: var(--color-secondary); color: var(--color-secondary); padding: 6px 14px;"
+              title="셀은 하나도 쓰지 않고, 지금 화면에 설정된 테이블·맵 키의 규격(격자·시작 좌표·회전·물리 규격·유효 다이 지정)만 wafer_map_metadata에 기록합니다.">📐 규격만 저장</button>
           </div>
         </div>
 
