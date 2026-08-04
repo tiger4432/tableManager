@@ -121,7 +121,17 @@ async function drive(wsSrc, cfgSrc, {
   // session, the whole time the socket was alive. Scoring the ceiling against observed gaps
   // reported 5003 > 5000 and called correct code broken — so the ladder and ceiling assertions
   // read `scheduled`, which is the quantity the ceiling is actually about.
-  const scheduled = [];
+  //
+  // NOT EVERY `setTimeout` THE CODE MAKES IS A RECONNECT. Since the connect watchdog landed,
+  // `initWebSocket` also arms an 8000ms timer per attempt, and counting that as a ladder rung
+  // reported the ladder as `8000,1000,8000,2000,...` and failed five correct assertions
+  // (`no scheduled delay ever exceeds the ceiling` against a ceiling of 5000). So every timer
+  // is recorded WITH ITS ID, and the ids that were ever the live `state.wsConnectWatchdog` are
+  // subtracted at read time. Identified by IDENTITY, never by its delay: classifying on
+  // `ms === WS_CONNECT_TIMEOUT_MS` would silently reclassify ladder rungs the moment someone
+  // tuned the two constants to the same number.
+  const scheduledRaw = [];
+  const watchdogIds = new Set();
   // How many reconnect timers the CODE has outstanding simultaneously. The contract is "exactly
   // one reconnect is ever queued", and that is invisible to attempt counts: a raced timer and a
   // legitimately-rescheduled one produce the same attempts, just at different instants.
@@ -129,10 +139,9 @@ async function drive(wsSrc, cfgSrc, {
   let maxCodePending = 0;
   const rawSchedule = (f, ms) => { const id = ++seq; timers.push({ at: now + (ms || 0), seq: id, fn: f }); return id; };
   const setTimeoutFake = (f, ms) => {
-    scheduled.push(ms);
     const id = rawSchedule(f, ms);
+    scheduledRaw.push({ id, ms });
     codePending.add(id);
-    if (codePending.size > maxCodePending) maxCodePending = codePending.size;
     return id;
   };
   const clearTimeoutFake = id => {
@@ -186,11 +195,18 @@ async function drive(wsSrc, cfgSrc, {
     WS_RECONNECT_JITTER: cfgNumber(cfgSrc, 'WS_RECONNECT_JITTER'),
     WS_HEALTHY_SESSION_MS: cfgNumber(cfgSrc, 'WS_HEALTHY_SESSION_MS'),
     WS_WAKE_MIN_GAP_MS: cfgNumber(cfgSrc, 'WS_WAKE_MIN_GAP_MS'),
+    WS_CONNECT_TIMEOUT_MS: cfgNumber(cfgSrc, 'WS_CONNECT_TIMEOUT_MS'),
+    WS_CONNECT_STALE_MS: cfgNumber(cfgSrc, 'WS_CONNECT_STALE_MS'),
     state: {
       ws: null, wsReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
       wsRetryTimer: null, wsOpenedAt: 0,
       wsPrevReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
       wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
+      // The connect watchdog's state. This harness's fake socket always resolves in single-digit
+      // milliseconds, so the watchdog never trips here — the hang it exists for is scored in
+      // `ws_connect_watchdog_harness.mjs`. These fields are present because the sliced code
+      // reads and writes them, not because this file measures them.
+      wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
       currentTable: hasTable ? 'bonding_map' : '', pageCache: new Map(),
     },
     elements: { get wsStatus() { return badge; }, tableSelect: { value: hasTable ? 'bonding_map' : '' } },
@@ -216,6 +232,9 @@ async function drive(wsSrc, cfgSrc, {
   try {
     vm.runInContext([
       fn(wsSrc, 'scheduleReconnect'),
+      fn(wsSrc, 'clearConnectWatchdog'),
+      fn(wsSrc, 'abandonConnectingSocket'),
+      fn(wsSrc, 'armConnectWatchdog'),
       fn(wsSrc, 'wakeNow'),
       fn(wsSrc, 'installWakeSignals'),
       fn(wsSrc, 'initWebSocket'),
@@ -226,9 +245,18 @@ async function drive(wsSrc, cfgSrc, {
   }
 
   const flush = () => new Promise(r => setImmediate(r));
+  // Sampled at every point where the code is at rest, which is where an invariant like "exactly
+  // one reconnect is queued" is actually meaningful. `noteWatchdog` must run FIRST so the timer
+  // armed during the step just taken is already excluded when the retry count is read.
+  const sample = () => {
+    if (sandbox.state.wsConnectWatchdog !== null) watchdogIds.add(sandbox.state.wsConnectWatchdog);
+    const retries = [...codePending].filter(id => !watchdogIds.has(id)).length;
+    if (retries > maxCodePending) maxCodePending = retries;
+  };
   const pending = [...signals].sort((a, b) => a.at - b.at);
   sandbox.__go();
   await flush();
+  sample();
 
   let guard = 0;
   while (now <= horizonMs && guard++ < 200000) {
@@ -248,6 +276,7 @@ async function drive(wsSrc, cfgSrc, {
       else if (s.type === 'hidden') { visibility = 'hidden'; (listeners.visibilitychange || []).forEach(f => f()); }
       else if (s.type === 'online') { (listeners.online || []).forEach(f => f()); }
       await flush();
+      sample();
       continue;
     }
     timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
@@ -257,7 +286,9 @@ async function drive(wsSrc, cfgSrc, {
     badgeTrace.push({ t: now, text: badge.textContent });
     t.fn();
     await flush();
+    sample();
   }
+  const scheduled = scheduledRaw.filter(s => !watchdogIds.has(s.id)).map(s => s.ms);
   return {
     events, calls, openedAt, openCount, badgeTrace, listenerAdds, scheduled, maxCodePending,
     attempts: events.filter(e => e.kind === 'attempt').map(e => e.t),
@@ -633,11 +664,14 @@ const MUTATIONS = [
     breaks: 'the reconnect reload clears the page cache',
   },
   {
-    name: 'M6 [HIGH] the wake signal fires even while a socket is CONNECTING (double sockets)',
+    // The CONNECTING half of this refusal is now conditional (a socket stuck for longer than
+    // `WS_CONNECT_STALE_MS` may be broken by a wake signal — see `ws_connect_watchdog_harness`),
+    // but the OPEN half is absolute and is what this scores: a working socket is never churned.
+    name: 'M6 [HIGH] the wake signal fires even while a socket is OPEN (double sockets)',
     file: 'ws',
-    find: `  if (readyState === 0 || readyState === 1) return false;   // CONNECTING / OPEN — nothing to do`,
+    find: `  if (readyState === 1) return false;                       // OPEN — there is no wait to shorten`,
     repl: `  if (readyState === 999) return false;`,
-    breaks: 'a signal on a healthy or pending socket does not churn the connection',
+    breaks: 'a signal on a healthy socket does not churn the connection',
   },
   {
     name: 'M7 [HIGH] the wake throttle is removed — rapid focus events become a retry loop',
@@ -661,13 +695,17 @@ const MUTATIONS = [
   console.log(\`[WebSocket] \${reason} — reconnecting now instead of waiting out the backoff.\`);`,
     repl: `  console.log(\`[WebSocket] \${reason} — reconnecting now instead of waiting out the backoff.\`);`,
     also: {
+      // Anchored through the comment line that now follows this block. The bare cancel block
+      // occurs TWICE (here and in `wakeNow`), and the `if (state.ws) {` that used to disambiguate
+      // it is no longer adjacent — `clearConnectWatchdog()` sits between them since the connect
+      // watchdog landed. A non-unique anchor is refused by `applyOnce` rather than guessed.
       find: `  if (state.wsRetryTimer !== null) {
     clearTimeout(state.wsRetryTimer);
     state.wsRetryTimer = null;
   }
 
-  if (state.ws) {`,
-      repl: `  if (state.ws) {`,
+  // The outgoing socket's watchdog goes with it.`,
+      repl: `  // The outgoing socket's watchdog goes with it.`,
     },
     breaks: 'an early reconnect replaces the queued retry instead of racing it',
   },

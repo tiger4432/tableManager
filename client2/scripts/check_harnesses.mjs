@@ -185,6 +185,11 @@ const FLOORS = new Map([
   // after a server restart). Same rule as the other new entries: the floor is the count it
   // reports on the commit that introduces it — there is no earlier tree to measure it against.
   ['ws_reconnect_backoff_harness.mjs', 42],
+  // New 2026-08-04 with the connect-watchdog round. The reconnect ladder above it is driven
+  // entirely by `onclose`, so a socket that enters CONNECTING and never leaves bypassed all of
+  // it — the production hang produced exactly 1 attempt and 0 retries. Same rule as the other
+  // new entries: the floor is the count it reports on the commit that introduces it.
+  ['ws_connect_watchdog_harness.mjs', 39],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

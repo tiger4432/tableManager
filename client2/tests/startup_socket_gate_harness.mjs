@@ -206,12 +206,18 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     WS_RECONNECT_JITTER: cfgNumber(cfgSrc, 'WS_RECONNECT_JITTER'),
     WS_HEALTHY_SESSION_MS: cfgNumber(cfgSrc, 'WS_HEALTHY_SESSION_MS'),
     WS_WAKE_MIN_GAP_MS: cfgNumber(cfgSrc, 'WS_WAKE_MIN_GAP_MS'),
+    WS_CONNECT_TIMEOUT_MS: cfgNumber(cfgSrc, 'WS_CONNECT_TIMEOUT_MS'),
+    WS_CONNECT_STALE_MS: cfgNumber(cfgSrc, 'WS_CONNECT_STALE_MS'),
     API_BASE: 'http://127.0.0.1:8080',
     CURRENT_USER: 'tester',
     state: {
       ws: null, wsRetryTimer: null, wsOpenedAt: 0, wsLastWakeAt: 0, wsWakeSignalsInstalled: false,
       wsReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
       wsPrevReconnectDelay: cfgNumber(cfgSrc, 'WS_RECONNECT_BASE_MS'),
+      // The connect watchdog's state. This harness's fake socket always resolves, so the
+      // watchdog never trips here — the hang it exists for is scored in
+      // `ws_connect_watchdog_harness.mjs`. These are present because the sliced code reads them.
+      wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
       currentTable: '', pendingTxEdits: {}, pageCache: new Map(), gridApi: null,
     },
     elements,
@@ -256,6 +262,9 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
       fn(apiSrc, 'loadTablesOnce', 'api.js'),
       fn(apiSrc, 'loadTables', 'api.js'),
       fn(wsSrc, 'scheduleReconnect', 'websocket.js'),
+      fn(wsSrc, 'clearConnectWatchdog', 'websocket.js'),
+      fn(wsSrc, 'abandonConnectingSocket', 'websocket.js'),
+      fn(wsSrc, 'armConnectWatchdog', 'websocket.js'),
       fn(wsSrc, 'wakeNow', 'websocket.js'),
       fn(wsSrc, 'installWakeSignals', 'websocket.js'),
       fn(wsSrc, 'initWebSocket', 'websocket.js'),

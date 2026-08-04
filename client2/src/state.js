@@ -50,6 +50,24 @@ export const state = {
   wsPrevReconnectDelay: 1000,
   // Last time a visibility/online signal forced an immediate retry — the throttle's memory.
   wsLastWakeAt: 0,
+  // The connect watchdog's timer handle, or null. A socket stuck in CONNECTING delivers no
+  // onopen, no onclose and no onerror, so this timer is the ONLY thing that can fail such an
+  // attempt and hand it to the backoff ladder. Cleared on open, on close, and whenever a socket
+  // is replaced — a timer that outlives its socket would fire against the NEXT connection.
+  wsConnectWatchdog: null,
+  // When the socket currently in flight was created. Lets `wakeNow` tell a socket that is
+  // negotiating right now from one that has been "negotiating" for seconds, which is a hang
+  // wearing the same readyState.
+  //
+  // 🔴 THE ZERO HERE IS "UNSET", NOT A SENTINEL ANYONE MAY TEST FOR. `Date.now()` can legally
+  // BE 0, and reading this field for truthiness rather than reading `state.ws.readyState`
+  // silently made a socket created at epoch 0 permanently unwakeable. Ask readyState whether
+  // something is in flight; only then is this number meaningful.
+  wsConnectingSince: 0,
+  // How many attempts the watchdog has torn down. Distinct from the attempt counter on purpose:
+  // a server that refuses is not a route that blackholes, and today's incident was prolonged by
+  // a badge that could not tell two states apart. This one is on the badge for the same reason.
+  wsWatchdogTrips: 0,
   // The wake listeners are attached once for the life of the page, not once per reconnect.
   wsWakeSignalsInstalled: false,
   selectedCell: null, // { rowId, colId, value, rowIndex }
