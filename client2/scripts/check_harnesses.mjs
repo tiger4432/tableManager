@@ -186,7 +186,13 @@ const FLOORS = new Map([
   // introduces it; there is no earlier tree to measure it against. It executes the real
   // listener bodies (sliced out of `initDOMElements`), because a fixture that called
   // `onValidDieRefChanged()` directly would stay green with the `<select>` wired to nothing.
-  ['valid_die_dirty_guard_harness.mjs', 48],
+  // 48 -> 73 (2026-08-04, same day, second door). The back guard did not close the path the
+  // user reported: 📂 Load Existing Map discards the declaration in its first three
+  // statements and asked nothing. The predicate was spelled twice — once in `popMapFrame`,
+  // and by omission not at all in the load — so the added cases score ONE shared predicate
+  // (`unsavedWorkNotice`) being honoured at both doors, plus what declining must leave
+  // untouched and which callers are legitimately non-interactive.
+  ['valid_die_dirty_guard_harness.mjs', 73],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],

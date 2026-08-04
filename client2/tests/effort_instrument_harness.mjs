@@ -281,6 +281,12 @@ function makeCtx(src, opts = {}) {
     extractFunction(src, 'outsideCircleNoteForPush'),
     extractFunction(src, 'pushMapData'),
     extractFunction(src, 'openMapFrame'),
+    // [fix E-3] `popMapFrame` no longer spells the unsaved-work predicate inline — it and the
+    // map-replacing load both ask this one function, so that the two doors cannot drift apart
+    // again. Sliced, not stubbed: a stub here would let this harness score frame navigation
+    // over a guard that does not exist. What the guard should ANSWER is scored by
+    // `valid_die_dirty_guard_harness.mjs`.
+    extractFunction(src, 'unsavedWorkNotice'),
     extractFunction(src, 'popMapFrame'),
     `globalThis.__h = { pushMapData, openMapFrame, popMapFrame, effortRoute,
        outsideCircleNoteForPush };`
@@ -847,9 +853,19 @@ const MUTANTS = [
   },
   {
     name: 'M7 pop nav emitted before the unsaved-edit confirm (counts a move the user declined)',
+    // ⚠️ RE-ANCHORED 2026-08-04 ([fix E-3]). The old anchor was `  const dirty = !framePushed
+    //    && frameTouched`, which no longer exists — the predicate moved into
+    //    `unsavedWorkNotice()` so the map-replacing load could ask the same question. The
+    //    anchor now carries popMapFrame's OWN first sentence, because `  const notice =
+    //    unsavedWorkNotice();` alone is a substring of the load door's four-space copy, which
+    //    sits ~3000 lines EARLIER — a first-match replace would have mutated that function
+    //    instead and left this one untouched.
+    // ⚠️ This mutant's silent disarming is also a note about the runner: `mutated === SRC` did
+    //    not fire, because the SECOND `.replace` below still applied. A two-replace mutant
+    //    whose first anchor drifts is only caught by its `breaks:` list going green.
     apply: s => s.replace(
-      '  const dirty = !framePushed && frameTouched',
-      '  countNav(ROUTE_MATERIAL, ROUTE_MAIN);\n  const dirty = !framePushed && frameTouched'
+      '  const notice = unsavedWorkNotice();\n  if (notice && !confirm(\n    `이 맵의 편집을 저장하지 않았습니다.',
+      '  countNav(ROUTE_MATERIAL, ROUTE_MAIN);\n  const notice = unsavedWorkNotice();\n  if (notice && !confirm(\n    `이 맵의 편집을 저장하지 않았습니다.'
     ).replace('  countNav(ROUTE_MATERIAL, effortRoute());\n  renderBreadcrumb();', '  renderBreadcrumb();'),
     group: 'B', breaks: ['B8']
   },

@@ -1,5 +1,14 @@
-// Harness — the back-guard's EDIT PREDICATE: which gestures mark a frame unsaved, and what
-// the prompt names when it fires (2026-08-04).
+// Harness — the unsaved-work guard: which gestures mark a frame unsaved, which DOORS ask
+// before discarding it, and what the prompt names when it fires (2026-08-04).
+//
+// THE SECOND DOOR (round 2, same day). Closing the back-navigation path did not close the one
+// the user actually reported: 📂 Load Existing Map. `loadExistingMap` discards the declaration
+// in its first three statements, unconditionally, and nothing asked first. The predicate had
+// been spelled TWICE — once in `popMapFrame` and, by omission, not at all in the load — which
+// is how one door came to protect the work and the other to throw it away. There is now ONE
+// spelling (`unsavedWorkNotice`) and cases J1–J7 hold the second door to it. The mutant
+// `the-load-door-spells-its-own-predicate` exists because a copy is the failure mode, not a
+// hypothetical: it plants the most plausible second spelling and requires it to be caught.
 // Run: node client2/tests/valid_die_dirty_guard_harness.mjs   (no node_modules — vm sandbox)
 //
 // THE LIVE REGRESSION THIS REPRODUCES. `popMapFrame` guarded unsaved work with
@@ -70,11 +79,21 @@ function die(msg) {
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────────────────
+// ⚠️ THE BODY BRACE IS FOUND VIA THE PARAMETER LIST, NOT VIA `indexOf('{')`. `async function
+//    loadExistingMap(opts = {})` has a brace in its DEFAULT PARAMETER, and the naive scan
+//    latches onto that one, balances it immediately, and returns a truncated slice that dies
+//    with "Unexpected token 'async'". The sibling harnesses get away with the naive form only
+//    because none of them slices a function with a destructured or object default.
 function sliceFunction(src, name) {
   const m = new RegExp(`(?:^|\\n)(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
   if (!m) die(`function ${name} is gone from map_editor.js — renamed or reshaped.`);
   const start = m.index + (m[0].startsWith('\n') ? 1 : 0);
-  const open = src.indexOf('{', start);
+  let paren = 0, open = -1;
+  for (let j = src.indexOf('(', start); j < src.length; j++) {
+    if (src[j] === '(') paren++;
+    else if (src[j] === ')') { paren--; if (paren === 0) { open = src.indexOf('{', j); break; } }
+  }
+  if (open < 0) die(`could not find the body of ${name}`);
   let depth = 0;
   for (let j = open; j < src.length; j++) {
     if (src[j] === '{') depth++;
@@ -108,8 +127,16 @@ const KEY_WIRING_HEAD = '  if (el.validDieRefKey) {';
 const SELECT_WIRING_HEAD = '  if (el.validDieRefSelect) {';
 
 const SYMBOLS = [
+  // ── the ONE predicate. Both doors call it; a second spelling is the defect class. ──
+  'unsavedWorkNotice',
   // ── the guard and the gateways that feed it ──
   'persistLegend', 'scheduleCellDraft', 'setLoadedIdentity', 'clearGrid', 'popMapFrame',
+  // ── the SECOND door: replacing this map with another one ──
+  // `collectMapKeyFilterModel` is real, not stubbed, because the gate's POSITION relative to
+  // it is a contract: a prompt raised after the filter has been collected is a prompt about a
+  // state that already started changing, and case J6 discriminates the two orders.
+  'collectMapKeyFilterModel', 'scanCoordinateBounds', 'syncValidDieRefControls',
+  'loadExistingMap', 'restoreLastOpenMap',
   // ── the declaration path ──
   'validDieRefDisplay', 'validDieRefFromControls', 'onValidDieRefChanged',
   // ── the cheaper writer the reworded prompt names, sliced so the end-to-end leg is real ──
@@ -151,9 +178,16 @@ function cfgNumber(name) {
 // ── Sandbox ─────────────────────────────────────────────────────────────────────────────
 function buildEnv(src, opts = {}) {
   const confirms = [];
+  const alerts = [];
   const toasts = [];
   const applies = [];     // every `resolveValidDie` invocation, with the declaration it carried
   const requests = [];
+  // The map key filter lives in DOM inputs that `collectMapKeyFilterModel` finds by id prefix.
+  // `metaFilter: {}` therefore means "no map key entered", which is what case J6 needs.
+  const metaValues = (opts.metaFilter !== undefined) ? opts.metaFilter : { lot_id: 'LOT_9' };
+  const metaInputs = Object.entries(metaValues).map(([col, val]) => ({
+    id: `meta-input-${col}`, value: String(val),
+  }));
   const el = {
     gridCols: makeInput(FRAME.cols), gridRows: makeInput(FRAME.rows),
     gridStartX: makeInput(1), gridStartY: makeInput(1),
@@ -167,6 +201,12 @@ function buildEnv(src, opts = {}) {
     validDieRefList: { innerHTML: '' },
     mapWorkspace: { scrollLeft: 0, scrollTop: 0 },
     btnSaveMapSpec: { disabled: false, textContent: '📐 규격만 저장' },
+    // The load door's own controls. `btnLoadMap.textContent` is a witness for "did anything
+    // start happening": the load flips it to '📂 Loading...' before it issues its request, so
+    // a declined prompt that left it alone provably aborted before any side effect.
+    btnLoadMap: { disabled: false, textContent: '📂 Load Existing Map' },
+    colMapX: makeInput('x'), colMapY: makeInput('y'), colMapVal: makeInput('val'),
+    tableSelect: { value: 'bonding_map', disabled: false, options: [{ value: 'bonding_map' }] },
   };
 
   const sandbox = {
@@ -217,6 +257,33 @@ function buildEnv(src, opts = {}) {
     syncValidDieRefControls() {},
     showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }),
     confirm: (text) => { confirms.push(String(text)); return opts.approve !== false; },
+    alert: (text) => { alerts.push(String(text)); },
+    // Only what `collectMapKeyFilterModel` and `restoreLastOpenMap` reach for.
+    document: {
+      querySelectorAll: (sel) => (sel === '[id^="meta-input-"]' ? metaInputs : []),
+      getElementById: (id) => metaInputs.find(i => i.id === id) || null,
+    },
+    localStorage: {
+      getItem: () => (opts.lastOpen === undefined
+        ? JSON.stringify({ v: 1, table: 'bonding_map', metaValues: { lot_id: 'LOT_9' } })
+        : opts.lastOpen),
+    },
+    // ── the load body past the gate. Stubbed to a SHORT, fully determined path so that
+    //    "the load actually proceeded" is a measurement rather than a swallowed exception.
+    //    What the load DOES with the map is scored by the load-path harnesses; what is under
+    //    test here is the door in front of it.
+    //    The exit chosen is the load's OWN documented refusal at step ③ ("확인 실패는 선언
+    //    없음이 아니다"): it is reached only AFTER the gate, the [M4①] clear, the filter
+    //    collection, the button-label flip and the request, so every one of those is
+    //    observable, and it ends the call deterministically instead of in a swallowed throw.
+    switchTable: async () => {},
+    applyRoutedPreset: async () => {},
+    resolveDeclaredGridMeta: async () => ({ ok: false, refusal: { count: 0, refused: true } }),
+    clearOverlayLayers() {},
+    renderValidDieChip() {},
+    tableSchema: null,
+    overlayLayers: [],
+    boundingBoxCache: {},
     // THE RECORDER. It writes back `validDie.raw` exactly as `resolveValidDie`'s own `set`
     // does (`raw` is the declaration original), because the NEXT gesture's "did the user
     // change it" comparison reads that field — a recorder that dropped it would make the
@@ -235,6 +302,10 @@ function buildEnv(src, opts = {}) {
       const method = (init && init.method) ? init.method : 'GET';
       requests.push({ method, url: String(url), body: init && init.body ? init.body : null });
       if (method === 'PUT') return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      if (String(url).indexOf('wafer_map_metadata') < 0) {
+        // the cell table read the load door issues
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [] }) });
+      }
       return Promise.resolve({
         ok: true, status: 200,
         json: async () => ({ data: [{ data: { grid_metadata: { value: JSON.stringify({
@@ -251,6 +322,9 @@ function buildEnv(src, opts = {}) {
   const vd = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
   if (!vd) die('const VALID_DIE_TABLE is gone from map_editor.js');
   pieces.unshift(vd[0]);
+  const lok = /^const LAST_OPEN_KEY = .*;$/m.exec(src);
+  if (!lok) die('const LAST_OPEN_KEY is gone from map_editor.js');
+  pieces.unshift(lok[0]);
   // The wiring, verbatim. Wrapped in a function only so it can be invoked on demand.
   pieces.push(`function __wireValidDieControls() {\n`
     + sliceBlock(src, KEY_WIRING_HEAD) + '\n'
@@ -259,7 +333,7 @@ function buildEnv(src, opts = {}) {
   catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
   sandbox.__wireValidDieControls();
 
-  return { S: sandbox, el, confirms, toasts, applies, requests };
+  return { S: sandbox, el, confirms, alerts, toasts, applies, requests };
 }
 
 const flush = () => new Promise(r => setImmediate(r));
@@ -514,6 +588,152 @@ async function run(src) {
     eq('I/...so the applied declaration is the NEW one', [STORED_REF], env.applies.map(a => a.ref));
   }
 
+  // ── J. THE SECOND DOOR: 📂 Load Existing Map. ────────────────────────────────────────
+  // `loadExistingMap` discards the declaration in its first three statements, unconditionally
+  // ([M4①]). That clearing is CORRECT and stays — whichever way a load ends, a mask from the
+  // previous map must never assert itself over a different one. What was missing is that an
+  // UNSAVED declaration was thrown away without asking. The frame here holds NO cells, which
+  // is the everyday shape: declare the valid-die map, then load a different map.
+
+  // J1 — the user's report, and what declining must do.
+  {
+    const env = buildEnv(src, { approve: false });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    const before = JSON.stringify(env.S.validDie);
+
+    const r = await env.S.loadExistingMap();
+
+    eq('J1/the load asked before discarding', 1, env.confirms.length,
+      'THIS IS THE USER REPORT: 0 here means 📂 Load silently releases the selection');
+    // Declining must abort as completely as `popMapFrame` does — not merely return early.
+    eq('J1/declining left the declaration APPLIED, byte for byte', before,
+      JSON.stringify(env.S.validDie),
+      'a partial clear is the same data loss with an extra dialog in front of it');
+    eq('J1/...and left the key control showing it', 'VD_MASK_A', env.el.validDieRefKey.value);
+    eq('J1/...and issued no request', [], env.requests.map(q => q.method));
+    eq('J1/...and reports itself cancelled, so the nav instrument does not count a move',
+      { count: 0, cancelled: true }, r);
+    eq('J1/...and the frame is still marked unsaved', true, env.S.frameTouched);
+    // 🔴 NO ASSERTION ON `btnLoadMap.textContent` HERE. It reads like a witness for "nothing
+    //    started" and is not one: every exit path of the load restores the label, so it says
+    //    the same thing whether the gate ran or not. It was written, measured against the
+    //    corpus below, tripped by zero mutants, and removed. An assertion no defect can
+    //    falsify is decoration that inflates the count.
+  }
+
+  // J1b — the OTHER thing the load destroys. Same decline, with cells on screen: `gridData`
+  // is emptied inside the load's try block, so "declining aborts completely" has to cover it
+  // too, not just the declaration.
+  {
+    const env = buildEnv(src, {
+      approve: false,
+      gridData: { '3_4': 'A1', '5_6': 'B2', '7_8': 'A1' },
+    });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.loadExistingMap();
+    eq('J1b/declining left the painted cells alone',
+      { '3_4': 'A1', '5_6': 'B2', '7_8': 'A1' }, env.S.gridData);
+    eq('J1b/...and the loaded-cell protection set', 0, env.S.loadedFCells.size);
+  }
+
+  // J2 — accepting loads, and the [M4①] clear runs exactly as before.
+  {
+    const env = buildEnv(src);
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.loadExistingMap();
+
+    eq('J2/accepting asked once', 1, env.confirms.length);
+    eq('J2/...and the [M4①] clear ran — no mask survives into the next map',
+      { basis: 'circle', raw: undefined },
+      { basis: env.S.validDie.basis, raw: env.S.validDie.raw },
+      'weakening that clear would let one map assert its valid die over another');
+    eq('J2/...and the key control was blanked with it', '', env.el.validDieRefKey.value);
+    eq('J2/...and the load actually went out', ['GET'], env.requests.map(q => q.method));
+  }
+
+  // J3 — `quiet` is the non-interactive flag this file already uses, and it stays silent.
+  {
+    const env = buildEnv(src, { approve: false });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.loadExistingMap({ quiet: true });
+    eq('J3/a quiet load never prompts', 0, env.confirms.length,
+      'openMapFrame snapshots this frame before calling; popMapFrame asks on the way back');
+    eq('J3/...and proceeds', ['GET'], env.requests.map(q => q.method));
+  }
+
+  // J4 — BOOT RESTORE, executed rather than assumed. The frame is forced dirty on purpose:
+  // that is stronger than the real boot state, and it proves the silence comes from `quiet`
+  // rather than from the frame happening to be clean at that moment.
+  {
+    const env = buildEnv(src, { approve: false });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.restoreLastOpenMap();
+    eq('J4/boot restore prompts zero times', 0, env.confirms.length,
+      'there is no user edit at boot to protect, and a dialog on page load is not a guard');
+    eq('J4/...and it did restore', ['GET'], env.requests.map(q => q.method));
+  }
+
+  // J5 — a merely-viewed map loads without a prompt, same rule as D2.
+  {
+    const env = buildEnv(src, {
+      approve: false,
+      gridData: { '3_4': 'A1', '5_6': 'B2' },
+      validDie: { basis: 'ref', keys: null, reason: '', ref: null, raw: STORED_REF },
+      controlKey: STORED_REF.map_id,
+    });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await env.S.loadExistingMap();
+    eq('J5/loading over a merely-VIEWED map is frictionless', 0, env.confirms.length,
+      'reads stay frictionless; a stored declaration is not unsaved work');
+    eq('J5/...and it loaded', ['GET'], env.requests.map(q => q.method));
+  }
+
+  // J6 — THE GATE'S POSITION. With no map key entered, the load's own `hasFilter` branch
+  // raises an `alert`. If the gate sat after `collectMapKeyFilterModel`, that alert would come
+  // FIRST and the prompt would never appear. Order is therefore readable as two counters.
+  {
+    const env = buildEnv(src, { approve: false, metaFilter: {} });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.loadExistingMap();
+    eq('J6/the unsaved-work prompt comes first', 1, env.confirms.length);
+    eq('J6/...before anything else with a side effect has run', [], env.alerts,
+      'a prompt raised after collection is a prompt about a state that already started moving');
+  }
+
+  // J7 — the wording. Same writer advice as the back door (one function decides), different
+  // first sentence, because replacing this map is not the same act as leaving it.
+  {
+    const env = buildEnv(src, { approve: false });
+    env.S.setLoadedIdentity('bonding_map', 'MAP_UNDER_EDIT');
+    await pickFromSelect(env, 'VD_MASK_A');
+    await env.S.loadExistingMap();
+    const loadText = env.confirms[0] || '';
+    eq('J7/it says what actually happens — the edit is replaced, not left behind', true,
+      loadText.indexOf('다른 맵을 불러오면') >= 0 && loadText.indexOf('사라집니다') >= 0);
+    eq('J7/...and it does not say 돌아가기, which is the other door', false,
+      loadText.indexOf('돌아가기') >= 0);
+    eq('J7/a declaration-only edit names the cheap writer here too', true,
+      loadText.indexOf('📐 규격만 저장') >= 0);
+
+    // Now the same frame with cell work, and the advice must flip in BOTH doors identically.
+    env.S.scheduleCellDraft();
+    await env.S.loadExistingMap();
+    eq('J7/a cell edit names ⚡ Push at the load door', true,
+      (env.confirms[1] || '').indexOf('⚡ Push') >= 0);
+    env.S.popMapFrame();
+    const popText = env.confirms[2] || '';
+    eq('J7/...and the two doors give the SAME advice line for the SAME state', true,
+      popText.indexOf('· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.') >= 0
+        && (env.confirms[1] || '').indexOf('· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.') >= 0,
+      'two spellings of this question is exactly how the two doors came to disagree');
+  }
+
   return { failures, compared, evidence };
 }
 
@@ -557,37 +777,85 @@ const MUTANTS = {
     ['  if (key === \'\') {',
      '    frameTouched = true;',
      '    framePushed = false;'].join('\n')),
-  // ── THE GUARD PREDICATE ──
+  // ── THE GUARD PREDICATE — now ONE function, so these mutate BOTH doors at once ──
   // The cell-count term, restored. Catches the empty-map declaration and `clearGrid`.
   'the-guard-requires-cells': (s) => once(s,
-    '  const dirty = !framePushed && frameTouched;',
-    '  const dirty = !framePushed && frameTouched && gridData && Object.keys(gridData).length > 0;'),
+    '  if (framePushed || !frameTouched) return null;',
+    '  if (framePushed || !frameTouched || !gridData || Object.keys(gridData).length === 0) return null;'),
   // The edit predicate is dropped, which is what made mere VIEWING prompt before [fix E].
   'the-guard-drops-the-edit-predicate': (s) => once(s,
-    '  const dirty = !framePushed && frameTouched;',
-    '  const dirty = !framePushed && gridData && Object.keys(gridData).length > 0;'),
+    '  if (framePushed || !frameTouched) return null;',
+    '  if (framePushed) return null;'),
   // The guard never fires at all.
   'the-guard-is-disarmed': (s) => once(s,
-    '  const dirty = !framePushed && frameTouched;',
-    '  const dirty = false;'),
+    '  if (framePushed || !frameTouched) return null;',
+    '  return null;'),
+  // A pushed frame is treated as dirty — the guard nags after a successful save.
+  'the-guard-ignores-the-push': (s) => once(s,
+    '  if (framePushed || !frameTouched) return null;',
+    '  if (!frameTouched) return null;'),
   // Declining no longer keeps the user put.
   'declining-the-prompt-pops-anyway': (s) => once(s,
     '    `\\n[확인] 저장하지 않고 돌아가기\\n[취소] 이 화면에 남기`\n  )) return false;',
     '    `\\n[확인] 저장하지 않고 돌아가기\\n[취소] 이 화면에 남기`\n  )) { /* popped anyway */ }'),
   // ── THE PROMPT'S CONTENT ──
-  // Today's wording, restored: it names only the expensive writer.
+  // The advice names only the expensive writer, in both doors at once.
   'the-prompt-names-only-push': (s) => once(s,
-    ['    `이 맵의 편집을 저장하지 않았습니다.\\n\\n` +',
-     '    (legendDirty',
-     '      ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\\n`',
-     '      : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n`) +'].join('\n'),
-    '    `이 맵을 [⚡ Push]로 저장하지 않았습니다.\\n\\n` +'),
+    ['  return legendDirty',
+     '    ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\\n`',
+     '    : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n`;'].join('\n'),
+    '  return `· 이 맵을 [⚡ Push]로 저장하지 않았습니다.\\n`;'),
   // ...and the reverse: the cheap writer is offered for a CELL edit, which would lose cells.
   'the-prompt-offers-spec-only-for-cell-edits': (s) => once(s,
-    ['    (legendDirty',
-     '      ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\\n`',
-     '      : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n`) +'].join('\n'),
-    '    `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n` +'),
+    ['  return legendDirty',
+     '    ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\\n`',
+     '    : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n`;'].join('\n'),
+    '  return `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\\n`;'),
+  // ── THE SECOND DOOR ──
+  // TODAY'S SHIPPED CODE, RESTORED EXACTLY: the load discards the declaration with no
+  // question at all. This mutant IS the user's report.
+  'the-load-door-has-no-guard': (s) => once(s,
+    ['  if (!quiet) {',
+     '    const notice = unsavedWorkNotice();',
+     '    if (notice && !confirm(',
+     '      `다른 맵을 불러오면 지금 화면의 편집이 사라집니다.\\n\\n` + notice +',
+     '      `\\n[확인] 저장하지 않고 불러오기\\n[취소] 이 화면에 남기`',
+     '    )) return { count: 0, cancelled: true };',
+     '  }'].join('\n'),
+    '  /* no guard */'),
+  // The gate runs, but AFTER the [M4①] clear — so declining returns a screen whose
+  // declaration is already gone. A dialog in front of the same data loss.
+  'the-load-gate-runs-after-the-clear': (s) => {
+    const BLOCK = ['  if (!quiet) {',
+      '    const notice = unsavedWorkNotice();',
+      '    if (notice && !confirm(',
+      '      `다른 맵을 불러오면 지금 화면의 편집이 사라집니다.\\n\\n` + notice +',
+      '      `\\n[확인] 저장하지 않고 불러오기\\n[취소] 이 화면에 남기`',
+      '    )) return { count: 0, cancelled: true };',
+      '  }'].join('\n');
+    const moved = once(s, BLOCK, '  /* moved below */');
+    return once(moved,
+      '  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다',
+      '  syncValidDieRefControls();   // [M4②] 지정 칸도 함께 비운다 — 아래 성공 경로가 다시 세운다\n' + BLOCK);
+  },
+  // The gate is there but non-interactive callers get it too — a dialog on page load.
+  'the-load-gate-prompts-even-when-quiet': (s) => once(s,
+    '  if (!quiet) {\n    const notice = unsavedWorkNotice();',
+    '  if (true) {\n    const notice = unsavedWorkNotice();'),
+  // Declining no longer aborts: the prompt appears and the load proceeds regardless.
+  'declining-the-load-loads-anyway': (s) => once(s,
+    '    )) return { count: 0, cancelled: true };\n  }',
+    '    )) { /* loaded anyway */ }\n  }'),
+  // ⚠️ THE POINT OF THIS ROUND. The load door spells the question a SECOND time instead of
+  //    asking the shared one — which is exactly how the two doors came to disagree. The copy
+  //    here is the pre-[fix E-2] predicate, the shape a second author would most plausibly
+  //    write, and it is wrong for a declaration on a map with no cells.
+  'the-load-door-spells-its-own-predicate': (s) => once(s,
+    '  if (!quiet) {\n    const notice = unsavedWorkNotice();',
+    ['  if (!quiet) {',
+     '    const notice = (!framePushed && frameTouched && gridData',
+     '      && Object.keys(gridData).length > 0)',
+     '      ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\\n` : null;'].join('\n')),
   // ── THE END-TO-END LEG ──
   // The cheaper writer does not clear the guard, so the prompt repeats after the user obeys it.
   'the-spec-save-does-not-clear-the-guard': (s) => once(s,
