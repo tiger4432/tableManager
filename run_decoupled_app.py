@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 
 from process_supervisor import (  # noqa: E402
     ChildSpec, Supervisor, preflight_port_check, psutil_status,
+    DUAL_STACK_HOST, describe_bind_host,
 )
 from launcher_args import parse_launcher_args  # noqa: E402
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
@@ -32,6 +33,16 @@ def log_launcher(msg, level="INFO"):
 # run_graph_sync.py binds its HTTP service to loopback, not to 0.0.0.0. The
 # probe has to use the same address the child will: on Windows a bind to
 # 0.0.0.0:8090 succeeds while another process holds 127.0.0.1:8090.
+#
+# [2026-08-04] Deliberately NOT given the dual-stack treatment the API port just
+# got, and this is the reasoning so nobody has to redo it. The API port needed it
+# because a BROWSER dials it by NAME, and `localhost` resolves to ::1 first. The
+# graph port has no such caller: its only client is server/main.py's /api/graph/sync
+# hop, which dials the IPv4 LITERAL `http://127.0.0.1:{port}/sync`. A literal never
+# consults the resolver, so there is no address it can pick that this bind does not
+# answer. Binding a second family here would widen the reachable surface of an
+# internal-only service to buy exactly nothing. If a caller that dials this by name
+# ever appears, that is the moment to revisit - and `bind_targets` is where.
 GRAPH_BIND_HOST = "127.0.0.1"
 
 
@@ -140,7 +151,21 @@ def main():
     # Override with ASSY_API_HOST when a narrower bind is wanted (e.g. 127.0.0.1 on a
     # dev box). Exposure is gated by the admin token and the static-path containment
     # check, not by the bind address - see docs/guide/DEPLOY_SETUP.md.
-    api_host = os.environ.get("ASSY_API_HOST", "0.0.0.0")
+    #
+    # [2026-08-04] The DEFAULT is now the dual-stack wildcard, not "0.0.0.0".
+    # Diagnosed on the live stack: netstat showed `0.0.0.0:8080` and no `[::]:8080`,
+    # and on Windows `localhost` resolves to ::1 BEFORE 127.0.0.1. Reaching the app
+    # as `localhost` therefore loaded the page (HTTP falls back to IPv4) while the
+    # WebSocket sat in CONNECTING - and because the client's reconnect ladder is
+    # driven by onclose, a connection that never opens and never closes never
+    # retries. Reaching the same server by its LAN address worked at the same
+    # moment; the only variable was name resolution.
+    #
+    # Only the DEFAULT changed. Every explicit ASSY_API_HOST string keeps the exact
+    # meaning it had yesterday - "127.0.0.1" is still a narrow IPv4-only bind, and
+    # so is an explicit "0.0.0.0" - because narrowing the bind is the entire point
+    # of the variable and an operator who typed an address meant that address.
+    api_host = os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)
     # The graph sync worker's own HTTP service. Same default and same env var as
     # run_graph_sync.py, read here rather than hardcoded so the isolated dev
     # stack's :8091 is checked instead of production's :8090.
@@ -174,6 +199,35 @@ def main():
     print(" Starting AssyManager Enterprise in Decoupled Process Mode...")
     print(f" Python Executable: {python_exe}")
     print("=" * 60)
+
+    # What is REALLY bound, not the string that was passed in. uvicorn's own
+    # "Uvicorn running on ..." line echoes config.host verbatim, so for the
+    # dual-stack default it prints `http://:8080` - which names neither address
+    # that is actually listening and is worse than silence for an operator trying
+    # to work out why one URL works and another does not. This line is derived
+    # from the same bind_targets() the pre-flight guard probed, so the operator
+    # and the guard cannot be looking at different addresses.
+    #
+    # `--reload` is the one case where the line would otherwise LIE. That flag
+    # sends uvicorn down Config.bind_socket() instead of loop.create_server(), and
+    # bind_socket builds a single AF_INET socket - so the dual-stack host yields an
+    # IPv4-only listener. Measured, same throwaway-port harness as the table in
+    # process_supervisor.DUAL_STACK_HOST. It is a dev-only flag and production does
+    # not use it, so the behaviour is reported rather than worked around: an
+    # operator debugging "why does localhost hang under --reload" needs this
+    # sentence, and a line that claimed both stacks would cost them the afternoon.
+    reload_narrows = args.reload and api_host == DUAL_STACK_HOST
+    if reload_narrows:
+        log_launcher(f"API 리슨 주소: 0.0.0.0 : 포트 {api_port}"
+                     "  (--reload 는 IPv4 단독 - localhost(::1) 접속은 안 됩니다)",
+                     level="WARNING")
+    else:
+        log_launcher(f"API 리슨 주소: {describe_bind_host(api_host)} : 포트 {api_port}"
+                     + ("  (기본값 - IPv4/IPv6 양쪽)"
+                        if api_host == DUAL_STACK_HOST
+                        else "  (ASSY_API_HOST 지정 - 이 주소로만 접속됩니다)"))
+    log_launcher(f"그래프 싱크 리슨 주소: {describe_bind_host(GRAPH_BIND_HOST)} "
+                 f": 포트 {graph_port}  (내부 전용)")
 
     # `heartbeat=` names the progress beat each child publishes (see
     # server/utils/heartbeat.py). /health joins this list to those beats: the

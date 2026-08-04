@@ -286,6 +286,80 @@ def port_owner(port, log=None):
     return None, None
 
 
+# The launcher's default bind, and the reason it is the empty string rather than
+# "0.0.0.0" or "::".
+#
+# MEASURED on this box (Windows 11, python 3.11, uvicorn 0.44.0), real uvicorn on
+# a throwaway port, reading the listener table back out of the TCP table:
+#
+#     --host 0.0.0.0  ->  IPv4 0.0.0.0 only        ::1 REFUSED
+#     --host ::       ->  IPv6 [::] only     127.0.0.1 REFUSED
+#     --host ""       ->  IPv4 0.0.0.0 + IPv6 [::]     both accept
+#
+# The middle line is why "just bind ::" is not the fix. asyncio's create_server -
+# the path uvicorn's single-process mode uses - explicitly sets IPV6_V6ONLY=True
+# and then binds ONE SOCKET PER RESOLVED ADDRESS (CPython base_events.py, the
+# comment there says it is disabling the dual-stack behaviour Linux defaults to).
+# So a socket bound to "::" serves IPv6 and nothing else, on every platform, and
+# swapping the default to "::" would have traded this outage for the same outage
+# with the stacks reversed. Only the empty host resolves with AI_PASSIVE to both
+# families and therefore opens both sockets.
+DUAL_STACK_HOST = ""
+
+
+def bind_targets(host):
+    """``((family, address), ...)`` - the sockets a server told to listen on ``host``
+    will REALLY open.
+
+    This is the single definition of "what does this host string mean", and both
+    the launcher's pre-flight guard and the operator-facing startup line are
+    derived from it. They used to be able to disagree: the guard hardcoded
+    ``AF_INET``, so once the server started binding two families the guard would
+    have kept probing one of them and gone quiet exactly when it mattered.
+
+    The wildcard case REPLAYS asyncio's own resolution (``AF_UNSPEC`` +
+    ``AI_PASSIVE``) rather than hardcoding the IPv4/IPv6 pair, because the pair is
+    not universal: on a host with IPv6 disabled that resolution returns IPv4 only,
+    the server binds IPv4 only and is perfectly healthy - while a hardcoded guard
+    would fail to bind ``::``, call the port taken, and refuse to start a stack
+    that had nothing wrong with it. Asking the resolver cannot drift from what the
+    server does, because it is the same question the server asks.
+    """
+    if host in (None, "", "*"):
+        try:
+            infos = socket.getaddrinfo(None, 0, socket.AF_UNSPEC,
+                                       socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
+        except OSError:
+            return ((socket.AF_INET, "0.0.0.0"),)
+        seen, targets = set(), []
+        for family, _type, _proto, _canon, sockaddr in infos:
+            key = (family, sockaddr[0])
+            if family in (socket.AF_INET, socket.AF_INET6) and key not in seen:
+                seen.add(key)
+                targets.append(key)
+        return tuple(targets) or ((socket.AF_INET, "0.0.0.0"),)
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    return ((family, host),)
+
+
+def _connect_probe_hosts(host):
+    """The addresses a listener on ``host`` should already be ACCEPTING on."""
+    hosts = []
+    for family, addr in bind_targets(host):
+        if addr in ("0.0.0.0", "::"):
+            hosts.append("::1" if family == socket.AF_INET6 else "127.0.0.1")
+        else:
+            hosts.append(addr)
+    return hosts
+
+
+def describe_bind_host(host):
+    """One operator-readable phrase for what will really be listening."""
+    parts = ["[%s]" % addr if family == socket.AF_INET6 else addr
+             for family, addr in bind_targets(host)]
+    return " + ".join(parts)
+
+
 def port_is_taken(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
     """``(taken, how)`` - could a new child bind ``port`` on ``host`` right now?
 
@@ -297,21 +371,39 @@ def port_is_taken(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
     ``SO_REUSEADDR`` is deliberately NOT set. On Windows it lets a bind to an
     already-bound port SUCCEED, which is precisely the answer this function must
     never produce.
+
+    EVERY family in ``bind_targets(host)`` is probed, and ANY of them being taken
+    is a conflict, because a partial conflict is a total failure. Measured: with
+    only ``[::]:P`` held and ``0.0.0.0:P`` verifiably free, a dual-stack
+    ``create_server`` does not come up half-bound - it raises and the child dies.
+    A guard that checked only IPv4 would have called that port free and handed the
+    operator back the silent five-children-racing-an-older-stack failure this
+    whole gate exists to prevent.
+
+    The test sockets are all held open until every family has been tried, so what
+    is proven is that the full set can be bound AT ONCE - which is what the server
+    actually does - not merely one at a time.
     """
+    held = []
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind((host or "0.0.0.0", port))
-        finally:
+        for family, addr in bind_targets(host):
+            s = socket.socket(family, socket.SOCK_STREAM)
+            held.append(s)
+            try:
+                s.bind((addr, port))
+            except OSError as e:
+                shown = f"[{addr}]" if family == socket.AF_INET6 else addr
+                return True, f"bind failed on {shown}:{port} ({type(e).__name__})"
+    finally:
+        for s in held:
             s.close()
-    except OSError as e:
-        return True, f"bind failed ({type(e).__name__})"
-    probe_host = "127.0.0.1" if host in (None, "", "0.0.0.0", "::") else host
-    try:
-        with socket.create_connection((probe_host, port), timeout=timeout):
-            return True, f"something is already accepting on {probe_host}:{port}"
-    except Exception:
-        pass
+    for probe_host in _connect_probe_hosts(host):
+        shown = f"[{probe_host}]" if ":" in probe_host else probe_host
+        try:
+            with socket.create_connection((probe_host, port), timeout=timeout):
+                return True, f"something is already accepting on {shown}:{port}"
+        except Exception:
+            pass
     return False, None
 
 

@@ -49,7 +49,7 @@
 - **시작 로그 1줄**: `[Desktop Wrapper] Server target: http://host:port (source: arg|env|client_settings.json|default)`. `source`가 있어야 운영자가 "내 편집이 무시됐다"를 알 수 있다. (이전 줄 `"Vite dev server not detected..."`는 **Vite가 켜져 있어도 무조건 출력되는 거짓말**이었고 짝인 `is_port_open`은 한 번도 호출되지 않았다 — 둘 다 삭제.)
 - **`--print-target`**: 해석·출력 후 종료(GUI·HKCU 미접촉)하는 헤드리스 점검 경로.
 - **`NO_PROXY`**: :9의 기준값은 루프백뿐이므로 해석된 호스트가 LAN 주소면 `extend_no_proxy()`(:227)가 그 호스트를 추가한다. **httpx 업로드 경로에는 유효하지만 QtWebEngine에는 보장되지 않는다** — Windows Chromium은 프록시 설정을 OS에서 읽는다. Qt측 레버는 `QNetworkProxy.setApplicationProxy(NoProxy)`(:510, 주석 처리 유지).
-- **`ASSY_API_HOST`/`ASSY_API_PORT`(`run_decoupled_app.py`)는 재사용하지 않는다**: 그쪽은 서버의 *바인드* 선언이고 `ASSY_API_HOST` 기본값은 `0.0.0.0` — 클라이언트가 다이얼할 수 있는 주소가 아니다.
+- **`ASSY_API_HOST`/`ASSY_API_PORT`(`run_decoupled_app.py`)는 재사용하지 않는다**: 그쪽은 서버의 *바인드* 선언이고 `ASSY_API_HOST` 기본값은 **빈 문자열(듀얼스택 와일드카드)** — 다이얼할 수 있는 주소가 아예 아니다. (2026-08-04 이전엔 `0.0.0.0`이었고 그 역시 다이얼 대상이 아니었다. 근거는 [backend §1.3-ter](./backend.md).)
 - 셸이 로드한 origin은 웹앱 전체로 전파된다: `config.js:2`의 `API_BASE = window.location.origin`(프로덕션 빌드), `WS_URL`도 동일 host 기준. 즉 **REST·WS는 별도 설정 없이 해석된 서버를 따라간다.**
 - ⚠️ **exe 재빌드 필요**: `client/dist/`·`client/build/`·`client/*.spec`은 의도적으로 gitignore(소스만 push). 소스를 바꿨으면 exe는 낡는다. `AssyManagerClient.spec`의 `datas=[]`이므로 `client_settings.json`은 exe에 **번들되지 않는다** — 운영자 사본은 exe 옆에 두며, `settings_file_path()`(:60)가 frozen일 때 `sys.executable` 디렉터리를 먼저 본다.
 
