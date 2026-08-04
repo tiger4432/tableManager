@@ -237,10 +237,18 @@ for (const name of harnesses) {
   // either, and blaming it for the missing number would be the same blindness twice.
   if (!ok && !counts && !HAS_NODE_MODULES && UNRESOLVED_IMPORT_RE.test(run.stderr || '')) {
     unavailable.push(name);
+    // Naming the ceiling is not decoration. The ceiling rides on THIS harness's output, so
+    // an unavailable harness is also an unenforced ceiling ― and a ceiling that quietly
+    // stops enforcing is how a lane adds module state, sees green, and hits a wall at merge.
+    // "Unmeasured" has to say WHAT went unmeasured.
+    const lostCeil = CEILINGS.get(name);
     console.log(`? ${name}  [UNAVAILABLE in this tree] needs an installed package and `
       + `client2/node_modules is absent (worktrees do not get one). NOT counted as passing `
       + `― whatever it scores is simply unmeasured here. Re-run it in the main checkout `
-      + `before merging this branch.`);
+      + `before merging this branch.`
+      + (lostCeil ? `\n    ⚠ AND THE CEILING RODE ON IT: \`${lostCeil.key} <= ${lostCeil.max}\` `
+          + `(${lostCeil.what}) is NOT enforced in this tree. You can add ${lostCeil.what} here `
+          + `and still see a green gate; the main checkout will refuse it.` : ''));
     continue;
   }
 
