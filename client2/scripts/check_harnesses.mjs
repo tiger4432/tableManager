@@ -112,6 +112,10 @@ const FLOORS = new Map([
   ['m4_symbol_extractability_probe.mjs', 15],
   ['map_key_canonical_harness.mjs', 116],
   ['map_key_datalist_harness.mjs', 53],
+  // New with the N2 round (overlay markers coloured by the overlay cell's own value). Its
+  // floor is the count it reports on the commit that introduces it -- there is no earlier
+  // tree to measure it against.
+  ['overlay_value_colour_harness.mjs', 54],
   ['overlay_wafer_mm_harness.mjs', 69],
   ['push_gate_harness.mjs', 15],
   ['retroactive_view_harness.mjs', 263],
