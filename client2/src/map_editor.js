@@ -10084,11 +10084,20 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   const seatPitch = pitchFacts(null);          // null = 화면 컨트롤 그대로
   const unusable = (p) => !(p.x.value > 0) || !(p.y.value > 0);
   if (unusable(srcPitch) || unusable(seatPitch)) {
-    const say = (p) => `${p.x.value === null ? p.x.source : p.x.value}x${p.y.value === null ? p.y.source : p.y.value}`;
+    // [D1] `source`를 그대로 흘리면 조작자가 읽는 문장에 `auto_registered`라는 내부 열거값이
+    //      섞인다. 사유는 사람이 읽는 자리이므로 한 번만 사람 말로 옮긴다 — 판정은 위
+    //      `unusable`이 이미 끝냈고 여기서는 **표시만** 한다(두 번째 판정이 아니다).
+    const sayOne = (d) => (d.value !== null ? String(d.value)
+      : d.source === 'auto_registered' ? '미선언(자동 등록된 합성 규격)' : d.source);
+    const say = (p) => `${sayOne(p.x)}x${sayOne(p.y)}`;
+    const autoNote = (srcPitch.x.source === 'auto_registered' || seatPitch.x.source === 'auto_registered')
+      ? ` 자동 등록된 규격은 칩 크기를 잰 적이 없어(합성값) 정렬 근거가 되지 못합니다 — `
+        + `해당 맵의 물리 규격을 선언한 뒤 다시 시도하십시오.`
+      : '';
     return fail(
       `${sourceTable}: 칩 크기(phys_chip_x/phys_chip_y)를 확정할 수 없습니다 — `
       + `소스 ${say(srcPitch)} · 타깃 ${say(seatPitch)}. `
-      + `셀 크기를 모르면 웨이퍼 내 물리 위치를 맞출 근거가 없으므로 겹치지 않습니다.`,
+      + `셀 크기를 모르면 웨이퍼 내 물리 위치를 맞출 근거가 없으므로 겹치지 않습니다.${autoNote}`,
       'align_unavailable');
   }
   // 🔴 **프레임을 선언한 소스는 그 프레임의 피치도 선언해야 한다.** 소스 메타가 격자를
