@@ -55,6 +55,9 @@ WHAT IS SCORED, AND WHAT IS DECLARED
         valid_die_push_decision                                       — CLIENT-ONLY; no server
                                                                         counterpart exists to
                                                                         score it against
+    D1  geometry_declaration                                          — fully scored, BOTH
+                                                                        sides (client cfc09de,
+                                                                        server 2026-08-04)
 
     ⚠️ THIS BLOCK IS PROSE AND PROSE GOES STALE. It said "server half `pending` on two
     symbols" for part of 2026-07-29 while the run was already 52 passed / 0 skipped — a
@@ -121,7 +124,7 @@ _SERVER_CONSUMED = {
     "compose_cases", "compose_divergence_cases",
     "decompose_cases", "decompose_lossy_cases", "canonical_map_key_cases",
     "chips_bound_cases", "transfer_log_declaration_cases",
-    "mask_baseline_cases",
+    "mask_baseline_cases", "geometry_declaration_cases",
     "valid_die_ref_parse_cases", "valid_die_ref_home_divergence_cases",
     "valid_die_basis_cases", "valid_die_ref_canonical_cases",
     "valid_die_refused_render_divergence_cases",
@@ -582,6 +585,74 @@ def _meta_of(case):
 def _frame_dims(case):
     return ((case["rows"], case["cols"]) if case["rotation"] in (90, 270)
             else (case["cols"], case["rows"]))
+
+
+# --- D1: synthetic geometry is not a declaration ----------------------------------------
+
+def test_geometry_declaration_matches_the_contract():
+    """The SERVER half of D1, scored on the shared vectors.
+
+    The claims are the two the client half can also answer in one expression each, so no
+    mapping table is written between the scorers. `auto_registered` is a literally shared
+    token; `declared` is stated as a boolean because the client reports WHERE a value came
+    from, which is a different fact.
+    """
+    fn = _server_symbol("geometry_declaration")
+    for c in _cases("geometry_declaration_cases"):
+        token = fn(c["meta"])
+        assert (token == map_overlay.GEOMETRY_DECLARED) == c["expect_declared"], (
+            f"{c['name']}: declared={token == map_overlay.GEOMETRY_DECLARED}, "
+            f"contract expects {c['expect_declared']} (token {token!r})")
+        assert (token == map_overlay.GEOMETRY_AUTO_REGISTERED) == c["expect_auto_registered"], (
+            f"{c['name']}: auto_registered={token == map_overlay.GEOMETRY_AUTO_REGISTERED}, "
+            f"contract expects {c['expect_auto_registered']} (token {token!r})")
+
+
+def test_geometry_declaration_refusal_reaches_the_transform_by_name():
+    """A token nothing consumes is a write nobody reads.
+
+    The vectors say WHAT the predicate answers; this says the answer BITES — the alignment
+    entry point refuses the same metas, by name, with a reason an operator can act on. An
+    accidentally-empty result has passed as an intended refusal in this repository before, so
+    the refusal must be a raised, named failure and never a quiet identity.
+    """
+    declared = next(c for c in _cases("geometry_declaration_cases")
+                    if c["expect_declared"] and c["meta"].get("phys_chip_x") == 7.0)
+    for c in _cases("geometry_declaration_cases"):
+        # A frame the transform must actually try to compute: same dims, different rotation.
+        target = dict(declared["meta"], rotation=90,
+                      grid_cols=c["meta"]["grid_cols"], grid_rows=c["meta"]["grid_rows"])
+        if c["expect_declared"]:
+            map_overlay.make_frame_transform(c["meta"], target)      # must NOT raise
+            continue
+        with pytest.raises(ValueError) as e:
+            map_overlay.make_frame_transform(c["meta"], target)
+        msg = str(e.value)
+        assert "소스" in msg, f"{c['name']}: the refusal does not say WHICH map: {msg}"
+        if c["expect_auto_registered"]:
+            assert "자동 등록" in msg, (
+                f"{c['name']}: an auto-registered refusal reads the same as a missing-spec "
+                f"one, and they are different repairs: {msg}")
+        else:
+            assert "자동 등록" not in msg, (
+                f"{c['name']}: a missing spec is being reported as a synthetic one: {msg}")
+
+
+def test_geometry_declaration_group_keeps_its_discriminating_case():
+    """FIXTURE ACTIVITY. Without an UNFLAGGED 1x1 every vector in the group passes against the
+    magic-number version of this feature, and the group would look like coverage while
+    scoring nothing that distinguishes a marker from a measurement."""
+    cs = _cases("geometry_declaration_cases")
+    assert any(c["expect_declared"] and not c["expect_auto_registered"]
+               and float(c["meta"].get("phys_chip_x", 0)) == 1.0 for c in cs), (
+        "the unflagged 1x1 case is gone — chip==1 as a marker would now score green")
+    assert any(c["expect_auto_registered"]
+               and float(c["meta"].get("phys_chip_x", 0)) != 1.0 for c in cs), (
+        "the marked-but-measured-looking case is gone — an implementation that checks the "
+        "values before the mark would now score green")
+    assert any(not c["expect_declared"] and not c["expect_auto_registered"] for c in cs), (
+        "the absent case is gone — 'absent' and 'auto_registered' could be collapsed into "
+        "one answer, and they are different repairs")
 
 
 def test_mask_baseline_matches_the_recorded_2a9f6c4_measurement():

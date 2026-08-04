@@ -22,6 +22,9 @@
    메타 부재는 실패가 아니라 **등록 누락의 신호**다 — 실패로 만들면 대부분의 맵이 못 붙는다.
 3. `align_unavailable`은 "**변환을 계산할 근거가 없을 때**"만 낸다 — 유도된 비-identity
    변환이 있는데 격자 규격이 비호환이라 계산이 불가능한 경우(치수 모순, phys 규격 부재 등).
+   [D1 2026-08-04] "phys 규격 부재"에는 **자동 등록된 합성 규격**이 포함된다. 값이 있고
+   형식도 온전하지만 아무도 재지 않았으므로 정렬의 근거가 아니다 — 판정의 유일한 철자는
+   `geometry_declaration`이다.
 
 > **`align_overrides`(config 선언 · `by_eqp` 분기)는 제거됐다.** 계측으로 잰 어긋남도
 > `wafer_map_metadata`에 기록한다 — 별도 오버라이드 레이어를 두지 않는다. 선언 레이어가
@@ -264,13 +267,101 @@ PHYS_KEYS = ("phys_wafer_dia", "phys_chip_x", "phys_chip_y",
 
 
 def _phys_signature(meta: dict | None):
-    """웨이퍼 원 규격 서명. 하나라도 없으면 None(= 바운딩박스를 재현할 수 없다)."""
+    """웨이퍼 원 규격 서명 — **바이트 그대로**. 하나라도 없으면 None.
+
+    🔴 이 함수는 **출처를 묻지 않는다.** "이 값이 선언인가"는 `geometry_declaration`의
+       질문이고 철자는 거기 하나뿐이다. 여기는 "메타가 무슨 값을 말하고 있나"만 답한다 —
+       두 질문을 한 함수에 합치면 합성 규격의 **의도된** 답(마스크 중립 = 전 셀 유효)까지
+       같이 사라진다(§`circle_die_mask`).
+    """
     m = meta or {}
     try:
         vals = tuple(float(m[k]) for k in PHYS_KEYS)
     except (KeyError, TypeError, ValueError):
         return None
     return vals
+
+
+# ═══ [D1] 자동 등록된 기하는 선언이 아니다 (사용자 판정 2026-08-04) ══════════════════════
+#
+# 맵에 규격 행이 없으면 두 곳이 **마스크 중립 합성 규격**을 써 넣는다. 둘 다 "원 마스크
+# 없음"을 표현할 어휘가 없어 chip 1x1 / offset 0 / 격자 반대각선을 외접하는 지름을 쓴다:
+#   · `server/map_meta_registrar.synthesize_grid_meta()` — 인제션 자동 등록
+#   · `client2/src/map_editor.js`의 `[fix C]`             — 규격 없는 맵의 「표준」 선택
+# 그 값은 **1mm 다이라는 주장이 아니다.** 아무도 재지 않았다는 뜻이다.
+#
+# 🔴 **읽는 쪽이 그 사실을 몰랐다.** 합성된 1x1 서명은 존재하고 형식도 온전하므로
+#    `make_frame_transform`의 유일한 관문("서명이 **없으면** 거절")을 그대로 통과했고,
+#    서버는 자동 등록 소스를 실측 타깃에 1mm 피치로 정렬해 **멀쩡해 보이는 좌표**를 냈다.
+#    이 저장소가 반복해서 값을 치르는 실패 유형이다 — 화면은 완벽하고 값만 전부 틀리며,
+#    셀 개수로는 보이지 않는다.
+#
+# 🔴 **판정은 값이 아니라 `auto_registered` 표지다.** chip이 1인지 보지 않는다 — 1은
+#    합법적인 피치이고, 표지가 곧 값이면 진짜 1mm 다이를 언젠가 조용히 삼킨다.
+# 🔴 **레거시 폴백(1x1을 표지로 읽기)은 두지 않는다 — 필요 없다는 것을 셌다.** 실측
+#    2026-08-04(운영 DB, 읽기 전용): `wafer_map_metadata` 668행 중 chip 1x1이 320행이고
+#    **그 320행이 전부** 표지를 달고 있다. 표지 없는 1x1 행은 **0건**이다. 안 쓰이는
+#    폴백은 채점되지 않는 두 번째 판정 경로일 뿐이다.
+# 🔴 **철자는 하나다.** 이 질문을 호출자마다 다시 구현하면 「선언인가」의 답이 둘이 되고,
+#    그 둘이 갈리는 날이 화면은 멀쩡한 채 값만 틀리는 날이다 — 클라 절반이 정확히 그렇게
+#    이 상태에 도달했다(`physDeclaration`이 합성 규격과 실측 규격을 바이트 단위로 같게
+#    답했다).
+#
+# 토큰 어휘는 클라 `physDeclaration`의 `source`와 **같다**. 두 채점기가 어휘를 둘 가지면
+# 매핑표가 필요해지고, 매핑표는 답의 두 번째 구현이다.
+AUTO_REGISTERED_KEY = "auto_registered"
+
+GEOMETRY_DECLARED = "declared"                  # 누군가 쟀다
+GEOMETRY_AUTO_REGISTERED = "auto_registered"    # 값은 있지만 선언이 아니다
+GEOMETRY_ABSENT = "absent"                      # 여섯 키 중 하나 이상이 없다
+GEOMETRY_UNPARSABLE = "unparsable"              # 키는 있는데 수가 아니다
+
+# 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(클라 `7ea2c2f`와 같은 규율).
+# 판정은 `geometry_declaration`이 이미 끝냈고 여기서는 표시만 한다 — 두 번째 판정이 아니다.
+_GEOMETRY_REFUSAL_TEXT = {
+    GEOMETRY_AUTO_REGISTERED: (
+        "물리 규격이 자동 등록된 합성값입니다(chip 1x1은 '웨이퍼 원 마스크 없음'을 뜻하는 "
+        "합성 어휘이지 1mm 다이가 아닙니다) ― 칩 크기를 잰 적이 없습니다"),
+    GEOMETRY_ABSENT: (
+        "물리 규격(phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin)이 "
+        "미등록입니다"),
+    GEOMETRY_UNPARSABLE: (
+        "물리 규격(phys_*) 값이 수로 읽히지 않습니다"),
+}
+
+
+def geometry_declaration(meta: dict | None) -> str:
+    """**이 맵의 물리 기하가 「선언」인가** — 그 질문의 유일한 철자.
+
+    반환은 위 네 토큰 중 하나이며 클라 `physDeclaration`의 `source`와 같은 어휘다.
+    `GEOMETRY_DECLARED`가 아니면 그 기하는 정렬의 근거가 되지 못한다.
+
+    ⚠️ 표지를 **값보다 먼저** 본다. 표지의 뜻이 "아래 값들은 증거가 아니다"이므로 값을
+       먼저 읽어 통과시키면 표지가 아무것도 하지 않는다.
+    """
+    m = meta if isinstance(meta, dict) else {}
+    if m.get(AUTO_REGISTERED_KEY) is True:
+        return GEOMETRY_AUTO_REGISTERED
+    for k in PHYS_KEYS:
+        v = m.get(k)
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return GEOMETRY_ABSENT
+        try:
+            float(v)
+        except (TypeError, ValueError):
+            return GEOMETRY_UNPARSABLE
+    return GEOMETRY_DECLARED
+
+
+def geometry_refusal(meta: dict | None) -> str | None:
+    """기하가 선언이 **아닌** 이유(사람 말). 선언이면 None.
+
+    판정은 하지 않는다 — `geometry_declaration`을 호출해 그 토큰에 문장을 붙일 뿐이다.
+    """
+    token = geometry_declaration(meta)
+    if token == GEOMETRY_DECLARED:
+        return None
+    return _GEOMETRY_REFUSAL_TEXT[token]
 
 
 def frame_axes(meta: dict | None):
@@ -284,6 +375,13 @@ def frame_axes(meta: dict | None):
     [M4] 격자 치수와 phys 규격까지 포함한다. 치수가 빠져 있으면 규격이 다른 두 맵이
     지름길로 통과해 버리고(변환 경로의 치수 검사를 우회), phys가 빠져 있으면 웨이퍼 원
     크롭(바운딩박스)이 다른 두 맵이 무보정으로 붙는다.
+
+    [D1] phys는 **바이트 그대로**(`_phys_signature`) 넣는다 — 여기에 출처 규칙을 섞지
+    않는다. 이 튜플이 완전히 같다는 것은 **선언된 모든 축이 일치**한다는 뜻이고, 그때
+    변환은 항등이므로 피치가 무엇이든(재었든 합성이든) 답이 달라질 수 없다. "재지 않은
+    값으로 아무것도 하지 않는 것"은 거절할 대상이 아니다. 표지를 축으로 넣으면 실측
+    2026-08-04 기준 바뀌는 쌍이 **0건**이면서(표지 없는 1x1 행이 0건이므로) 튜플 폭만
+    늘어난다. 거절은 실제로 좌표를 옮기는 자리 하나에서 한다(§`make_frame_transform`).
     """
     g = _grid_of(meta) or {}
     return (_rotation_of(meta), _side_of(meta), _y_invert_of(meta),
@@ -396,7 +494,11 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
     [명시 실패] 다음은 그리지 않고 ValueError를 낸다(조용한 오답 < 소리 나는 실패):
       - 메타 부재 / 격자 규격 부재
       - 물리 격자 치수 불일치 (같은 웨이퍼 규격이 아님)
-      - **phys 파라미터 부재** — 바운딩박스를 재현할 수 없으면 좌표를 보증할 수 없다
+      - **기하가 선언이 아님**(`geometry_declaration != declared`) — 값이 없거나(absent),
+        수가 아니거나(unparsable), **있지만 아무도 재지 않았거나**(auto_registered).
+        셋 다 같은 결론이다: 바운딩박스를 재현할 근거가 없으면 좌표를 보증할 수 없다.
+        🔴 세 번째가 [D1]이 더한 것이다. 종전 관문은 "서명이 **없으면**"이었고 합성된
+           1x1 서명은 존재하며 형식도 온전하므로 그대로 통과했다(§geometry_declaration).
     """
     from utils.coordinate_transformer import WaferMapCoordinateTransformer
 
@@ -407,10 +509,18 @@ def make_frame_transform(source_meta: dict, target_meta: dict):
         raise ValueError(
             f"physical grid dims differ: source {s_phys['cols']}x{s_phys['rows']} vs "
             f"target {t_phys['cols']}x{t_phys['rows']} — 같은 웨이퍼 규격이 아니다")
-    if _phys_signature(source_meta) is None or _phys_signature(target_meta) is None:
+    # [D1] 양쪽 다 **이름을 대고** 거절한다. 어느 쪽 맵을 고쳐야 하는지가 조작자에게
+    # 필요한 유일한 정보이고, 빈 결과나 그럴듯한 결과는 에러보다 나쁘다.
+    refusals = [f"{role} 맵: {why}"
+                for role, why in (("소스", geometry_refusal(source_meta)),
+                                  ("타깃", geometry_refusal(target_meta)))
+                if why is not None]
+    if refusals:
         raise ValueError(
-            "phys 규격(phys_wafer_dia/chip_x/chip_y/offset_x/offset_y/edge_margin) 미등록 "
-            "— 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 정렬을 보증할 수 없다")
+            " · ".join(refusals)
+            + " ― 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 정렬을 보증할 수 "
+              "없습니다. 해당 맵의 물리 규격(칩 크기·웨이퍼 지름)을 선언한 뒤 다시 "
+              "시도하십시오.")
 
     src_tf = _frame_transformer(source_meta, s_phys)
     dst_tf = _frame_transformer(target_meta, t_phys)
@@ -1222,6 +1332,14 @@ def circle_die_mask(meta: dict | None):
 
     [스케일] 격자 전 셀 1회 훑기(실 격자는 최대 100×100 안팎)이고 `frame_axes` 단위로
     캐시된다. 셀 단위 반복 호출로 떨어지는 경로는 없다.
+
+    [D1] 여기는 **출처를 묻지 않는다** — 정렬 관문과 다른 질문이기 때문이다. 정렬은
+    "이 피치를 근거로 남의 좌표계로 옮겨도 되는가"를 묻고 합성값은 근거가 못 되지만,
+    이 함수는 "이 기하가 무슨 셀을 인정하는가"를 묻는다. 합성 규격은 격자 반대각선을
+    외접하는 지름을 골라 **전 셀 유효**를 말하도록 만들어진 것이고(마스크 중립), 그게
+    정확히 그 규격이 옳게 말할 수 있는 한 가지다. 여기서 None을 돌려주면 그 의도된
+    답까지 버리게 되고, 클라(`isCellInsideWaferFast`)는 여전히 전 셀 유효라고 답하므로
+    없던 이음새 불일치가 생긴다.
     """
     grid = _grid_of(meta)
     if grid is None or _phys_signature(meta) is None:

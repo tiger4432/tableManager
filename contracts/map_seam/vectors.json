@@ -372,6 +372,42 @@
       "file": "client2/src/transfer_plan.js",
       "fn": "availabilityOfPool",
       "status": "live"
+    },
+    "phys_declaration": {
+      "file": "client2/src/map_editor.js",
+      "fn": "physDeclaration",
+      "status": "live",
+      "$owner": "map-pm (landed 2026-08-04, cfc09de)",
+      "$blocks": "geometry_declaration_cases — D1 is UNSCORED on the client without it.",
+      "$why": "THE CLIENT'S SINGLE READER of a declared physical value, and therefore the client half of D1. It answers `{value: null, source: 'auto_registered'}` for the two chip keys when the synthetic mark is present. Scored against the server's `geometry_declaration` on the SAME vectors because the whole defect was that the two sides answered this question differently while both looked correct: the client returned a measured 7 and a synthesized 1 in byte-identical shape, and the server read a synthesized signature as a declaration because it was present and well-formed.",
+      "$shape": "`physDeclaration(key, domEl) -> {value, source}`. Reads module state `physFrameOverride` (set through `withPhysFrame`) and, outside a frame window, the DOM control. Not pure, which is why the scorer drives it through `frameFromMeta` + `withPhysFrame` rather than building a frame by hand."
+    },
+    "geometry_is_auto_registered": {
+      "file": "client2/src/map_editor.js",
+      "fn": "geometryIsAutoRegistered",
+      "status": "live",
+      "$owner": "map-pm",
+      "$blocks": "geometry_declaration_cases — `physDeclaration` calls it, so without it the reader THROWS and every vector records a stack trace instead of an answer.",
+      "$why": "A CALLEE, listed for the reason `validDieRefDisplay` and `validDieRefFromControls` were: an unlisted callee makes its CALLER unevaluable, and the failure is silent unless `threw()` makes it fatal. It is also the mark's only reader on the client, so a rename here would quietly stop covering the axis.",
+      "$shape": "`geometryIsAutoRegistered() -> boolean`. Inside a frame window the FRAME answers alone; on screen the mark lives on the chip inputs' `dataset`."
+    },
+    "frame_from_meta": {
+      "file": "client2/src/map_editor.js",
+      "fn": "frameFromMeta",
+      "status": "live",
+      "$owner": "map-pm",
+      "$blocks": "geometry_declaration_cases — it is how a STORED meta becomes something `physDeclaration` can read.",
+      "$why": "The meta -> frame conversion is part of the seam, not harness plumbing: its key whitelist is where the mark was measured to be DROPPED on 2026-08-04, so the overlay path could never see it. A scorer that hand-built the frame would have scored a whitelist bug green.",
+      "$shape": "PURE `frameFromMeta(meta) -> frame|null`. null when the meta declares no grid dimensions."
+    },
+    "with_phys_frame": {
+      "file": "client2/src/map_editor.js",
+      "fn": "withPhysFrame",
+      "status": "live",
+      "$owner": "map-pm",
+      "$blocks": "geometry_declaration_cases — the frame window is the only legitimate way to make `physDeclaration` read a map OTHER than the one on screen.",
+      "$why": "A CALLEE in the other direction: the scorer must not assign `physFrameOverride` itself, because a frame window that is entered and left is exactly what makes the mark a fact about a MAP rather than about the session. Setting the module variable directly would test the harness's own fixture.",
+      "$shape": "`withPhysFrame(frame, fn) -> fn()`. Saves and restores `physFrameOverride`."
     }
   },
   "client_consts": [
@@ -486,6 +522,15 @@
       "status": "live",
       "$why": "INV-7c-2 ('exact string only') at the CONFIG boundary used to live as an inline `src == TRANSFER_LOG_NONE` inside a DB-bound function, so no scorer could reach it without a live fixture. Re-typing the comparison in a test would score nothing — it passes against `str(src).lower() == 'none'`, which is the very defect the invariant forbids. Extracting the predicate made the axis scoreable in one line.",
       "$landed": "2026-07-29 (server-pm), transfer_plan.py:276. Promoted required -> live in the same pass: while it read `required`, deleting the function would have been reported as 'never landed' instead of 'a landed contract symbol was removed'. Those are different diagnoses for different problems, and the status field is what tells them apart."
+    },
+    "geometry_declaration": {
+      "module": "map_overlay",
+      "fn": "geometry_declaration",
+      "status": "live",
+      "$owner": "server-pm (D1, landed 2026-08-04)",
+      "$blocks": "geometry_declaration_cases — D1 is UNSCORED on the server without it.",
+      "$why": "THE SERVER HALF OF D1, and the counterpart of the client's `physDeclaration`. Before it landed, `auto_registered` had ZERO readers anywhere in server/ — written by `map_meta_registrar` and asserted only by its own tests — so `_phys_signature` read the chip keys with no provenance rule and `make_frame_transform` refused only when the signature was MISSING. A synthesized 1x1 signature is present and well-formed, so the server aligned a map nobody measured against a real one at a 1mm pitch and returned coordinates that look entirely fine. The predicate is ONE spelling on purpose: two spellings of 'is this geometry declared' is exactly how the client half got into this state.",
+      "$shape": "PURE `geometry_declaration(meta) -> str`, one of `declared` / `auto_registered` / `absent` / `unparsable`. The token vocabulary is SHARED with the client's `physDeclaration(...).source` — two scorers with two vocabularies is a mapping table waiting to be written, and a mapping table is a second implementation of the answer. The mark is read BEFORE the values, because the mark's meaning is that the values are not evidence."
     }
   },
   "canonical_value_cases": [
@@ -1473,6 +1518,132 @@
       "flag": null,
       "expect_bound": null,
       "$source": "spec"
+    }
+  ],
+  "geometry_declaration_cases": [
+    {
+      "$comment": [
+        "D1 — SYNTHETIC GEOMETRY IS NOT A DECLARATION (user ruling 2026-08-04).",
+        "",
+        "Two writers emit a MASK-NEUTRAL SYNTHETIC geometry when a map has no spec row:",
+        "`server/map_meta_registrar.synthesize_grid_meta()` on ingestion, and the editor's own",
+        "`[fix C]`. Both write chip 1x1 to mean 'no circle mask' in the mask predicate's own",
+        "vocabulary — NOT 'a 1mm die'. Neither reading side knew that:",
+        "  · client — `physDeclaration` answered byte-identically for a synthesized spec and a",
+        "    measured one, so the guard built to catch an undeclared pitch passed. Fixed cfc09de.",
+        "  · server — `_phys_signature` read the chip keys with NO provenance rule, and",
+        "    `make_frame_transform` refused only when the signature was MISSING. A synthesized",
+        "    1x1 signature is PRESENT and WELL-FORMED, so the server aligned an auto-registered",
+        "    source against a real target at a 1mm pitch and returned coordinates that look",
+        "    entirely fine. `auto_registered` had ZERO readers in server/ until D1.",
+        "",
+        "THE TWO SHARED CLAIMS, and why they are booleans rather than a token comparison:",
+        "  expect_declared        — is this chip pitch usable as a DECLARATION?",
+        "  expect_auto_registered — was the synthetic MARK seen?",
+        "The `auto_registered` token is literally shared (server `geometry_declaration` returns",
+        "it; client `physDeclaration(...).source` returns it). The DECLARED case is not: the",
+        "client reports WHERE the value came from (`frame` / `screen`), which is a different",
+        "fact. So the seam is stated as the two claims both sides can answer with one",
+        "expression each, and no mapping table is written — a mapping table is a second",
+        "implementation of the answer.",
+        "",
+        "BOTH AXES ARE SCORED. The mark belongs to the whole spec, so an implementation that",
+        "reads it for chipX and forgets chipY leaves unread writes behind, and unread writes",
+        "go stale without anyone noticing.",
+        "",
+        "🔴 THE LOAD-BEARING CASE IS `declared_real_1x1`. Every other vector here passes",
+        "against the magic-number version of this feature (judge by chip == 1). Only an",
+        "UNFLAGGED 1x1 tells a marker from a measurement, and this database holds real",
+        "small-pitch maps. Measured on production 2026-08-04, read-only: 668 metadata rows,",
+        "320 carry chip 1x1, ALL 320 carry the mark, flagless 1x1 rows = 0. That census is",
+        "also why NO legacy sentinel fallback exists on either side — it would be dead code,",
+        "and dead code is an unscored second judgement path."
+      ]
+    },
+    {
+      "name": "declared_standard",
+      "$why": "The ordinary measured spec. If this is not `declared`, the rule has eaten the normal case.",
+      "meta": {
+        "grid_cols": 13, "grid_rows": 13, "grid_start_x": 1, "grid_start_y": 1,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0
+      },
+      "expect_declared": true,
+      "expect_auto_registered": false
+    },
+    {
+      "name": "declared_real_1x1",
+      "$why": "🔴 THE DISCRIMINATION. A genuine 1mm-per-die map carries no mark, so it is a DECLARATION. An implementation that reads the chip VALUE as the marker fails only here, and it fails by silently refusing a map somebody actually measured.",
+      "meta": {
+        "grid_cols": 5, "grid_rows": 5, "grid_start_x": 1, "grid_start_y": 1,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300.0, "phys_chip_x": 1.0, "phys_chip_y": 1.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0
+      },
+      "expect_declared": true,
+      "expect_auto_registered": false
+    },
+    {
+      "name": "declared_anisotropic_1x8",
+      "$why": "The other half of the same discrimination. A real 1 x 8 pitch has a 1 on ONE axis; a per-axis marker test would eat it. The mark belongs to the spec, not to a number.",
+      "meta": {
+        "grid_cols": 9, "grid_rows": 9, "grid_start_x": 1, "grid_start_y": 1,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300.0, "phys_chip_x": 1.0, "phys_chip_y": 8.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0
+      },
+      "expect_declared": true,
+      "expect_auto_registered": false
+    },
+    {
+      "name": "auto_registered_false_is_a_declaration",
+      "$why": "The declared-zero trap in its `false` spelling. `auto_registered: false` is a LEGITIMATE value meaning 'somebody measured this'; an implementation testing truthiness of the KEY rather than the VALUE turns a declaration into a refusal.",
+      "meta": {
+        "grid_cols": 13, "grid_rows": 13, "grid_start_x": 1, "grid_start_y": 1,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300.0, "phys_chip_x": 7.0, "phys_chip_y": 7.0,
+        "phys_offset_x": 0.0, "phys_offset_y": 0.0, "phys_edge_margin": 3.0,
+        "auto_registered": false
+      },
+      "expect_declared": true,
+      "expect_auto_registered": false
+    },
+    {
+      "name": "synthesized_registrar_output",
+      "$why": "`synthesize_grid_meta(0, 0, 12, 12)` field for field — the exact bytes 320 of 668 live rows carry. Not a paraphrase: a hand-tidied fixture would stop matching the writer the day the writer changes.",
+      "meta": {
+        "grid_cols": 13, "grid_rows": 13, "grid_start_x": 0, "grid_start_y": 0,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300, "phys_chip_x": 1, "phys_chip_y": 1,
+        "phys_offset_x": 0, "phys_offset_y": 0, "phys_edge_margin": 3,
+        "auto_registered": true
+      },
+      "expect_declared": false,
+      "expect_auto_registered": true
+    },
+    {
+      "name": "marked_but_pitch_looks_measured",
+      "$why": "THE ORDER OF THE TWO CHECKS. The mark's meaning is that the values below it are not evidence, so it must be read FIRST. An implementation that validates the six keys and returns `declared` before consulting the mark passes every other vector here — the mark then does nothing at all, which is precisely the state the server was in.",
+      "meta": {
+        "grid_cols": 13, "grid_rows": 13, "grid_start_x": 0, "grid_start_y": 0,
+        "grid_y_invert": false, "rotation": 0, "side": "front",
+        "phys_wafer_dia": 300, "phys_chip_x": 14.3, "phys_chip_y": 15.2,
+        "phys_offset_x": 0, "phys_offset_y": 0, "phys_edge_margin": 3,
+        "auto_registered": true
+      },
+      "expect_declared": false,
+      "expect_auto_registered": true
+    },
+    {
+      "name": "phys_absent",
+      "$why": "The pre-existing refusal, kept in the group so D1 cannot be implemented by collapsing 'absent' and 'auto_registered' into one answer. They are different repairs: one map needs a spec entered, the other needs its synthetic spec MEASURED and replaced.",
+      "meta": {
+        "grid_cols": 13, "grid_rows": 13, "grid_start_x": 1, "grid_start_y": 1,
+        "grid_y_invert": false, "rotation": 0, "side": "front"
+      },
+      "expect_declared": false,
+      "expect_auto_registered": false
     }
   ],
   "mask_baseline_cases": [
