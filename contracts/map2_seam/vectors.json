@@ -1174,8 +1174,30 @@
     ]
    }
   ],
-  "client_expected_failure": {
-   "$why": "익명 상시 빨강 금지. 클라가 지금 이 그룹에서 **전부** 틀리는 것은 알려진 결함이므로, 익명으로 빨간 채 두지 않고 **이름 붙인 예상 실패**로 고정한다. 결함이 고쳐지는 날 이 항목이 **반대 방향으로** 빨개진다.",
+  "client_divergence_closed": {
+   "$resolved": "CLOSED 2026-08-05 by the lead PM. The divergence below is GONE -- measured 0 of 14 pinned seats wrong, down from 14 of 14. This block is kept, not deleted, because the record of what was wrong is worth more than a clean file: it is the only place that says a stored coordinate is bounding-box relative and why omitting that term drew a plausible wafer on the wrong dies.",
+   "$what_closed_it": [
+    "Both terms landed in `client2/src/map2/seating.js`:",
+    "  (1) `boundingBoxOf` -- the box is now computed, from the wafer circle, by the same",
+    "      four-corner test the server uses.",
+    "  (2) `localIndex` -- `c = xv - startX + box.minC`, and the y branch is a REFLECTION",
+    "      about `box.maxR` under invertY, which is why omitting it was not absorbable by",
+    "      the scorer's solved shift the way a constant would have been.",
+    "The last fixture to close was ROT90_BACK, because the box must be built from",
+    "ROTATION-TRANSFORMED phys: `_frame_phys_params` swaps the pitches under a quarter turn",
+    "and flips the x offset's sign on the back, and ROT90_BACK is the only combination where",
+    "both fire at once. That table is transcribed term for term from the server rather than",
+    "re-derived -- a second derivation of the subtlest arithmetic in the system would",
+    "eventually disagree with the first.",
+    "",
+    "WHERE GEOMETRY IS ABSENT the identity box is used and THE MIRROR IS SKIPPED TOO, on",
+    "purpose: mirroring about `maxR = 0` sends every row negative, a new wrongness in a",
+    "direction nobody has measured, and being wrong in the old measured way is recoverable",
+    "while being wrong in a new way is not. The seating record carries `boxKnown: false` so",
+    "a consumer can refuse instead of trusting a plausible picture. That case is still a",
+    "declared divergence and stays one."
+   ],
+   "$the_reclassification_was_forced_and_that_worked": "The harness FAILS when a declared divergence disappears, so this switch could not be forgotten. It failed exactly as designed, blocked the client build, and the build stayed blocked until a human made the call. That is the mechanism working, not an obstacle to it.",
    "name": "seating_omits_bbox_and_invert",
    "symbol": "client2/src/map2/seating.js computeSeating",
    "owner": "the map2 seating lane",

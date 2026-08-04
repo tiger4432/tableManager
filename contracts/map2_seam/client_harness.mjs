@@ -323,7 +323,26 @@ section('S2  coordinate round trip -- the box and the mirror');
     }
   }
 
-  if (diverged > 0 && agreed === 0) {
+  // 🔴 THE RESOLVED PATH, ADDED 2026-08-05 WHEN THE DIVERGENCE ACTUALLY CLOSED.
+  //    This branch was missing, and its absence was itself a small instance of what this
+  //    contract is about: the harness could express "the defect is here", and "the defect
+  //    disappeared and you forgot to say so" -- but not "the defect is gone". So the moment
+  //    the fix landed, removing the declaration crashed on `declared.name` instead of going
+  //    green. A mechanism that can only ratchet one way stops being trusted the first time
+  //    someone has to work around it, and the workaround is always to re-declare the
+  //    divergence. `client_divergence_closed` keeps the record of what was wrong.
+  if (!declared) {
+    if (diverged === 0) {
+      ok(`frame_basis: all ${agreed} pinned seats agree`,
+        'The box term and the y mirror are both in `seating.js`. This group was a declared '
+        + 'divergence at 14 of 14 wrong; the record of what it was is kept in '
+        + '`client_divergence_closed`.');
+    } else {
+      bad(`frame_basis: ${diverged} of ${agreed + diverged} pinned seats diverge`,
+        'This group is scored as AGREEMENT -- no divergence is declared for it -- so a '
+        + 'mismatch here is a regression, not a known gap:\n' + detail.join('\n'));
+    }
+  } else if (diverged > 0 && agreed === 0) {
     // The declared, NAMED expected failure. Not an anonymous permanent red.
     divergent(`${declared.name} (${diverged} pinned seats, all divergent)`,
       `symbol: ${declared.symbol}   owner: ${declared.owner}\n`
