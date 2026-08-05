@@ -1040,3 +1040,159 @@ def test_no_metric_is_a_ratio():
                 assert float(v) == int(v), "%s is fractional" % k
     assert all(not isinstance(v, float) or float(v) == int(v) for v in ruling.values()
                if isinstance(v, (int, float)))
+
+
+# ---------------------------------------------------------------------------
+# SERPENTINE INDEX - the primitive, and the one absolute anchor in this data
+# ---------------------------------------------------------------------------
+# Occupancy and value agreement both measure a RELATION BETWEEN TWO UNKNOWNS, so neither pins
+# an absolute orientation - that is why a partial map scored 467 agreement with 0 discriminating
+# on all eight candidates. A serpentine index is a statement about canonical orientation itself,
+# which is why it can decide what those two cannot.
+#
+# MEASURED 2026-08-05, and it bounds what these tests may claim: this box has NO index column
+# anywhere - not in `table_config.json`, not in the live `dt_log`/`dt_map`, not in the raw
+# transfer-log CSVs, and no file in the repo mentions one. Every fixture below is therefore
+# SYNTHETIC and authored by the server agent. None of these numbers is a production
+# measurement and none may be quoted as one.
+
+def test_the_serpentine_alternates_and_starts_at_the_top_left():
+    """Rules (1) and (2) as an assertion. A scan that never reversed would number the second
+    row left-to-right too, and every index after the first row would be wrong."""
+    cells = [(x, y) for y in range(3) for x in range(3)]
+    m = ma.serpentine_index(cells)
+    assert m[1] == (0, 0), "index 1 is the top-left of the valid-die region"
+    assert m[3] == (2, 0), "first row runs left to right"
+    assert m[4] == (2, 1), "the scan steps down and REVERSES"
+    assert m[6] == (0, 1)
+    assert m[7] == (0, 2), "and reverses again"
+    assert len(m) == 9 and len(set(m.values())) == 9
+
+
+def test_a_gap_inside_a_row_consumes_no_index():
+    """Rule (3), and it is the one that BITES: measured 2026-08-05, the `TEST/TEST` floor in
+    this DB has 2 rows with an interior hole. Letting a hole take a number shifts every index
+    after it, so the whole tail of the map compares against the wrong cells."""
+    cells = [(0, 0), (1, 0), (3, 0), (0, 1)]      # x=2 is absent from row 0
+    m = ma.serpentine_index(cells)
+    assert m[3] == (3, 0), "the hole at x=2 must not eat index 3"
+    assert m[4] == (0, 1)
+    assert len(m) == 4
+
+
+def test_top_is_derived_from_the_reference_and_not_a_constant():
+    """`cell_to_visual` renders the SMALLEST y at the top when `grid_y_invert` is false and the
+    LARGEST when it is true. Baking either in makes the two readings 40 rows apart on a real
+    floor (`CORE/1X`: index 1 at (14,0) vs (16,40), measured 2026-08-05)."""
+    cells = [(0, 0), (1, 0), (0, 5), (1, 5)]
+    assert ma.serpentine_index(cells, top_is_min_y=True)[1] == (0, 0)
+    assert ma.serpentine_index(cells, top_is_min_y=False)[1] == (0, 5)
+
+
+def test_an_empty_row_does_not_flip_the_direction():
+    """Rule (2)'s explicit half. No floor in this DB exercises it - all five have zero empty
+    rows inside their span (measured 2026-08-05) - but undeclared is not the same as
+    unreachable, and a footprint with a hollow row would otherwise flip silently."""
+    cells = [(0, 0), (1, 0), (0, 2), (1, 2)]      # y=1 entirely absent
+    m = ma.serpentine_index(cells)
+    assert m[3] == (1, 2), "row y=2 is the SECOND visited row, so it runs right to left"
+    assert m[4] == (0, 2)
+
+
+def test_the_index_axis_stays_dark_when_no_cell_carries_a_number():
+    """REGRESSION, and it went red across 25 existing tests before the guard existed.
+
+    The scorer pads `indices` to the cell count with None, so 'no index column' arrives as a
+    FULL list of Nones rather than an empty one. Read as 'indices present', all eight candidates
+    score 0 - and because this axis outranks the others, that zero silently displaced the
+    occupancy verdict and every planted-frame test lost its winner. Absence folded to zero, in a
+    new axis, in the one module that warns about that three times.
+    """
+    ref_meta = _meta()
+    ref = _ref_cells()
+    planted = _plant(ref_meta, ref, "rot90_front")
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
+        thresholds=THRESHOLDS)
+    assert ruling["metric"] == ma.METRIC_OCCUPANCY, "a dark axis must not claim the ranking"
+    assert ruling["winner"] == "rot90_front", "the existing verdict must survive untouched"
+    for c in cands:
+        assert c["index_agreement"] is None, "null, not 0 - nothing was measured"
+        assert c["index_total"] is None
+
+
+# ---------------------------------------------------------------------------
+# DECLARED SIDES - narrowing the search is a claim, and never a default
+# ---------------------------------------------------------------------------
+
+def test_undeclared_sides_score_both():
+    """Same discipline as the thresholds: an absent declaration must not fold to one side.
+    Narrowing is a claim about the equipment and has to be made out loud."""
+    assert ma.load_alignment_sides({}) is None
+    assert ma.load_alignment_sides({"alignment": {}}) is None
+    assert ma.load_alignment_sides({"alignment": {"sides": ["front"]}}) == ["front"]
+    assert ma.load_alignment_sides({"alignment": {"sides": ["back", "front"]}}) == \
+        ["front", "back"], "normalised to vocabulary order, so one claim has one spelling"
+    for junk in ("front", [], ["sideways"], 3):
+        assert ma.load_alignment_sides({"alignment": {"sides": junk}}) is None, junk
+
+
+def test_a_narrowed_side_is_reported_as_unconsidered_not_as_a_loser():
+    """The whole point. If the operator narrows to front and the truth is a back frame, the
+    screen must be able to say the answer was never looked at. Dropping the four rows - or
+    marking them `not_scorable` - makes 'we did not look' indistinguishable from 'we looked and
+    it lost', which is the shape of a confident wrong answer."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    planted = _plant(ref_meta, ref, "rot90_front")
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
+        thresholds=THRESHOLDS, sides=["front"])
+
+    assert len(cands) == 8, "the search narrows; the REPORT does not"
+    backs = [c for c in cands if c["side"] == "back"]
+    fronts = [c for c in cands if c["side"] == "front"]
+    assert len(backs) == 4 and len(fronts) == 4
+    assert all(c["state"] == ma.STATE_NOT_CONSIDERED for c in backs)
+    assert all(c["state"] != ma.STATE_NOT_CONSIDERED for c in fronts)
+    assert all(c["reason"] == ma.TEXT_SIDE_NOT_CONSIDERED for c in backs), \
+        "and each one says WHY it was not looked at"
+    assert all(c["shift"] is None and c["agreement"] == 0 for c in backs)
+
+    assert ruling["sides_considered"] == ["front"]
+    assert ruling["sides_narrowed"] is True
+    assert ruling["winner"] == "rot90_front"
+
+
+def test_an_unconsidered_candidate_cannot_win():
+    """A frame that was never scored must not enter the ranking through the back door."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    planted = _plant(ref_meta, ref, "rot0_back")
+    cands, _e, ruling, _s = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta,
+        thresholds=THRESHOLDS, sides=["front"])
+    assert ruling["winner"] != "rot0_back", "the true frame was excluded, so it cannot win"
+    scored = [c for c in cands if c["state"] == ma.STATE_SCORED]
+    assert len(scored) == 4
+    top = max(scored, key=lambda c: c["agreement"])
+    others = [c["agreement"] for c in scored if c is not top]
+    assert top["margin"] == top["agreement"] - max(others), \
+        "the runner-up came from the scored four, not from an unconsidered zero"
+
+
+def test_undeclared_sides_leave_the_candidate_list_exactly_as_it_was():
+    """The switch-on-for-one-rule property: declaring nothing must be byte-identical."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    planted = _plant(ref_meta, ref, "rot90_front")
+    args = ([{"map_id": "M1", "meta": ref_meta, "cells": planted}], ref, ref_meta)
+    base_c, _e, base_r, _s = ma.score_candidates(*args, thresholds=THRESHOLDS)
+    for absent in (None, []):
+        cands, _e2, ruling, _s2 = ma.score_candidates(*args, thresholds=THRESHOLDS,
+                                                      sides=absent)
+        assert cands == base_c, absent
+        assert ruling == base_r, absent
+    assert base_r["sides_considered"] == ["front", "back"]
+    assert base_r["sides_narrowed"] is False
+    assert all(c["state"] != ma.STATE_NOT_CONSIDERED for c in base_c)
