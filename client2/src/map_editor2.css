@@ -1198,6 +1198,15 @@ body {
 [data-me2-state="computing"] .me2-num,
 [data-me2-state="unscorable"] .me2-num { display: none; }
 
+/* LISTING IS NOT RANKING. The rule above is right for the headline and the
+   summary - those slots ARE the verdict - and wrong for the eight, whose
+   counts are measurements the server made and that survive a refusal to
+   rank. The wiring marks the CELL when it wrote real figures into it, so a
+   candidate with nothing measured still says the unknown word rather than
+   showing a bare separator. Cell-scoped, so it outranks the state rule. */
+.me2-cand[data-me2-cand-scored="true"] .me2-num { display: inline; }
+.me2-cand[data-me2-cand-scored="true"] .me2-unknown { display: none; }
+
 [data-me2-state="unscorable"] .me2-unknown { display: inline; }
 
 [data-me2-state="computing"] .me2-skel { display: inline-block; }

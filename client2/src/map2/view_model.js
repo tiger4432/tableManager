@@ -197,6 +197,16 @@ export function buildViewModel(input) {
   // which one was read, the counts are real and their owner is not known.
   const numerals = (state === VIEW_STATE.SCORED_WINNER || state === VIEW_STATE.SCORED_NO_WINNER)
     && attribution.state !== ATTRIBUTION.UNSTATED;
+  // 🔴 LISTING IS NOT RANKING, AND FUSING THEM EMPTIED THE SCREEN. `numerals` answers "may this
+  //    screen rank?"; it was also being used to answer "may this screen show what was measured?"
+  //    A zeroed score lands in NOT_SCORABLE (TOO_FEW_DISCRIMINATING), so the eight counts the
+  //    payload was ALREADY CARRYING were blanked to `미상` eight times, and the operator lost
+  //    the only evidence that shows WHY nothing won. The refusal to rank is deliberate and
+  //    stays -- no badge, no selection, `inert` -- but a count is a MEASUREMENT, not a verdict.
+  //    The attribution clause survives, and it alone: with two coordinate pairs in play and
+  //    nothing naming which was read, the counts are real and their OWNER is not known, which
+  //    is a different withholding from this one.
+  const countsShown = attribution.state !== ATTRIBUTION.UNSTATED;
 
   const scoringById = new Map();
   if (payload && Array.isArray(payload.per_candidate)) {
@@ -212,7 +222,7 @@ export function buildViewModel(input) {
 
   const cards = candidateList().map(c => buildCandidateCard({
     candidate: c, scoring: scoringById.get(c.id) || null,
-    numerals, winnerId, storedId, selectedId, state,
+    numerals, countsShown, winnerId, storedId, selectedId, state,
   }));
   const cardById = new Map(cards.map(c => [c.id, c]));
 
@@ -272,7 +282,9 @@ function buildCandidateCard(a) {
   const badges = [];
   if (a.winnerId && a.candidate.id === a.winnerId) badges.push(BADGE_WINNER);
   if (a.storedId && a.candidate.id === a.storedId) badges.push(BADGE_STORED);
-  const hasCounts = a.numerals && s
+  // Shown whenever the server scored THIS candidate and the counts can be attributed -- never
+  // gated on whether a winner emerged. See `countsShown` in `buildReferenceView`.
+  const hasCounts = a.countsShown && s
     && Number.isFinite(Number(s.agree)) && Number.isFinite(Number(s.discriminating));
   return Object.freeze({
     id: a.candidate.id,

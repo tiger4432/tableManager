@@ -345,6 +345,22 @@ function throws(fn, what) {
   eq(notScorable.state, VIEW_STATE.NOT_SCORABLE, 'F21 not-scorable is its own state');
   ok(!notScorable.numerals, 'F22 not-scorable renders no numerals');
   eq(notScorable.summary.countText, UNKNOWN, 'F23 not-scorable renders the unknown word');
+  // 🔴 LISTING IS NOT RANKING. The refusal to rank is deliberate and it stays -- no badge, no
+  //    selection, every cell inert. The eight counts the server already measured are NOT part
+  //    of that refusal, and hiding them left the operator with `미상` eight times and no way to
+  //    see WHY nothing won. A zeroed score lands in exactly this state.
+  const listedNW = notScorable.candidates.find(c => c.id === 'rot270_back');
+  eq(listedNW.countText, '일치 512 / 판별 528',
+     'F23d the eight are LISTED with their measured counts even though nothing won');
+  eq(notScorable.candidates.find(c => c.id === 'rot0_front').countText, '일치 400 / 판별 528',
+     'F23e every candidate the server scored, not just one');
+  eq(notScorable.candidates.map(c => c.id).join(','),
+     'rot0_front,rot90_front,rot180_front,rot270_front,rot0_back,rot90_back,rot180_back,rot270_back',
+     'F23f in declaration order -- sorting by score would BE the ranking that was refused');
+  ok(notScorable.candidates.every(c => c.inert && !c.badges.includes('추천')),
+     'F23g and still nothing selectable and nothing recommended');
+  eq(notScorable.candidates.find(c => c.id === 'rot90_back').countText, UNKNOWN,
+     'F23h a candidate the server did NOT score says the unknown word, never a 0 stand-in');
   eq(notScorable.picture, 'alone', 'F24 the source is drawn alone, with no floor beneath it');
   eq(notScorable.cause.detail, '규격이 선언되지 않았습니다.', 'F25 the server sentence is carried verbatim');
   eq(notScorable.cause.token, null, 'F25b and no local token competes with it');

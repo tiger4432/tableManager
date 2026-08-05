@@ -122,6 +122,9 @@ export const ELEMENT_IDS = Object.freeze({
   pasteResult: 'me2-paste-result',
 });
 
+/** The legend the authored grid already carries, so the two spellings cannot drift apart. */
+const CAND_LEGEND = '숫자 = 일치 / 판별 다이';
+
 /** The page's four state words. This file speaks the view model's words and translates once. */
 const STATE_ATTR = Object.freeze({
   [VIEW_STATE.SCORED_WINNER]: 'scored',
@@ -627,6 +630,13 @@ export function bootstrap(deps) {
       if (mine && queryAll(g, '[data-me2-candidate]').length === 0) fillGrid(g, vm);
     }
     const scope = keyed.length > 0 ? keyed : [doc];
+    // The eight are in DECLARATION ORDER, never sorted by score -- sorting by score IS a
+    // ranking. Said out loud in the legend the grid already carries, one line, only when no
+    // winner emerged; with a winner the badge says it and this would be noise.
+    const ranked = vm.state === VIEW_STATE.SCORED_WINNER;
+    for (const legend of queryAll(doc, '.me2-cand-legend')) {
+      legend.textContent = ranked ? CAND_LEGEND : `${CAND_LEGEND} · 순위 아님`;
+    }
     for (const host of scope) {
     for (const cell of queryAll(host, '[data-me2-candidate]')) {
       const code = cell.getAttribute('data-frame-code');
@@ -640,9 +650,19 @@ export function bootstrap(deps) {
       //    `.me2-num`, never into `.me2-num` itself -- the three-sibling pattern is what keeps
       //    the computing and unscorable states from leaking a stale numeral. And written only
       //    when there IS a measured number: never blanked, never given a `0` stand-in.
+      //
+      // 🔴 AND THE MARK THAT SAYS THIS CELL HAS REAL NUMBERS. `[data-me2-state]` hides
+      //    `.me2-num` wholesale outside the scored states, which is right for the headline
+      //    and the summary -- those slots ARE the verdict -- and wrong for the eight, whose
+      //    counts are measurements that survive a refusal to rank. The attribute is per CELL,
+      //    not per state, so a cell with nothing measured still says `미상` rather than
+      //    showing a bare separator.
       if (card.agree !== null && card.discriminating !== null) {
         setChildText(cell, '[data-me2-cand-agree]', card.agree);
         setChildText(cell, '[data-me2-cand-discriminating]', card.discriminating);
+        cell.setAttribute('data-me2-cand-scored', 'true');
+      } else {
+        cell.setAttribute('data-me2-cand-scored', 'false');
       }
       const tags = cell.querySelector ? cell.querySelector('[data-me2-cand-tags]') : null;
       if (tags) {
@@ -656,6 +676,23 @@ export function bootstrap(deps) {
       }
     }
     }
+    logCandidateTable(vm);
+  }
+
+  // 🔴 THE WHOLE TABLE, WHOLE. The screen has one line per cell and a legend; the console is
+  //    where the operator has been reading the real numbers all day, so it gets every candidate
+  //    the server scored with both counts, in the same declaration order, winner or not. Logged
+  //    once per distinct table -- a render loop that re-logs an unchanged table buries it.
+  let lastCandLog = null;
+  function logCandidateTable(vm) {
+    const rows = vm.candidates
+      .filter(c => c.agree !== null && c.discriminating !== null)
+      .map(c => `${c.id} ${c.agree}/${c.discriminating}`);
+    if (rows.length === 0) return;
+    const line = `[map2] 후보 ${rows.length} · 일치/판별 · 순위 아님 · ${rows.join(' | ')}`;
+    if (line === lastCandLog) return;
+    lastCandLog = line;
+    if (doc.defaultView && doc.defaultView.console) doc.defaultView.console.log(line);
   }
 
   /**
@@ -681,6 +718,21 @@ export function bootstrap(deps) {
         const tags = span(doc, 'me2-cand-tags', '');
         tags.setAttribute('data-me2-cand-tags', '');
         cell.appendChild(tags);
+        // The score slot, in the three-sibling shape the authored grid already uses. A rescue
+        // grid built without it can never show a number no matter what the payload carries --
+        // `setChildText` writes into a hook that is not there and returns silently.
+        const score = span(doc, 'me2-cand-score', '');
+        const num = span(doc, 'me2-num', '');
+        const agree = span(doc, '', '');
+        agree.setAttribute('data-me2-cand-agree', '');
+        const disc = span(doc, '', '');
+        disc.setAttribute('data-me2-cand-discriminating', '');
+        num.appendChild(agree);
+        num.appendChild(span(doc, '', ' / '));
+        num.appendChild(disc);
+        score.appendChild(num);
+        score.appendChild(span(doc, 'me2-unknown', UNKNOWN));
+        cell.appendChild(score);
         host.appendChild(cell);
       }
     }
