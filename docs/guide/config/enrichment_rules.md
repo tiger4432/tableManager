@@ -1,6 +1,6 @@
 # `enrichment_rules.json` 세팅 — 결손 보정 워크리스트 규칙
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-07-31 | **Owner:** 총괄
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (§7.3-bis의 `curl` 포트를 **8000 → 8080**으로 정정 — `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 복사해 붙인 운영자가 「연결 거부」를 자기 선언 문제로 읽습니다. 모집단 목록 옆의 **수를 지웠습니다**. 🔴 **`alignment` 키를 어느 규칙에 붙이는가의 체크리스트는 [CONFIG_GUIDE §3 S9](../CONFIG_GUIDE.md)에 생겼습니다** — 이 저장소의 현재 선언이 어긋나 있다는 실측도 그쪽에 있습니다) | **Owner:** 총괄
 > 
 > ### 이번 라운드 (2026-07-31)
 > - **§7.3-bis의 ⏳ 해제** (`93610cb`) — 사유(`not_declared`/`not_reached`/`scope_unresolved`/`mapping_unavailable`)가 **어드민 Overview 탭의 세 번째 계기 줄에 그대로 나옵니다.** `detail`은 **서버가 만들고 화면은 그대로 렌더**하므로, 화면 문장과 `curl` 응답이 다르면 그 자체가 결함입니다.
@@ -254,14 +254,16 @@ M3의 `auto_register_map_meta`와 **같은 형태**입니다 — 부재 시에�
 
 ```bash
 # ① 선언의 효과 — DB를 건드리지 않는 값싼 조회
-curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" localhost:8000/admin/config/resolve
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" http://127.0.0.1:8080/admin/config/resolve
 
 # ② 「사람 없이 몇 건이 확정 가능한가」 — 읽기 전용, 쓰기 없음
 curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" \
-  "localhost:8000/admin/enrichment/auto-confirm/dry-run?rule=core_wafer_attribution"
+  "http://127.0.0.1:8080/admin/enrichment/auto-confirm/dry-run?rule=core_wafer_attribution"
 ```
 
-①이 돌려주는 것은 세 모집단입니다 — `effective`(효과 있음) · `ineffective`(선언은 있는데 **효과 없음 + 사유**) · `rejected`(파싱/검증 실패 + 사유). 그리고 `settings`가 **전역 스위치와 캡의 실효값 + 그 값이 온 파일**을 말합니다.
+> 🔴 **[2026-08-06 정정] 위 두 줄은 `localhost:8000`이었고 그 주소에는 아무도 없습니다** — 런처가 띄우는 포트는 **8080**(`ASSY_API_PORT`)입니다. `:8000`은 `uvicorn main:app --reload`를 직접 쳤을 때의 uvicorn 기본값이라, 복사해 붙인 운영자는 「연결 거부」를 받고 그것을 자기 선언 문제로 읽습니다.
+
+①이 돌려주는 모집단은 `effective`(효과 있음) · `ineffective`(선언은 있는데 **효과 없음 + 사유**) · `rejected`(파싱/검증 실패 + 사유)입니다 — **목록 옆에 수를 적지 않습니다**(정본 `config_resolve_report.POPULATIONS`). 그리고 `settings`가 **전역 스위치와 캡의 실효값 + 그 값이 온 파일**을 말합니다.
 
 가장 흔한 함정이 여기서 바로 보입니다:
 

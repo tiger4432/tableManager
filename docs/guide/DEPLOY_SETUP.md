@@ -63,9 +63,9 @@ DATABASE_URL=postgresql://<user>:<pw>@<host>:5432/<db>
 
 각 테이블에 필요한 것: 컬럼 정의(`column_types`), **비즈니스 키**(`business_key`), 복합키면 `composite_key_source` + `composite_key_separator`.
 
-> ⚠️ **구분자 함정**: 맵 키는 `_`가 흔하고 테이블명에도 `_`가 있다. 복합키 구분자로 `_`를 쓰면 파싱이 깨진다. 제품 소유 3종은 `|`를 쓴다 — 새로 만들 때도 `|` 권장.
+> ⚠️ **구분자 함정**: 맵 키는 `_`가 흔하고 테이블명에도 `_`가 있다. 복합키 구분자로 `_`를 쓰면 파싱이 깨진다. 제품 소유 테이블은 `|`를 쓴다 — 새로 만들 때도 `|` 권장. 🔴 **[2026-08-06 정정] 종전 이 자리는 「제품 소유 *3종*」이었고 바로 아래 §는 「*4종*」이라 적어, 같은 파일이 같은 집합에 두 수를 적고 있었다. 둘 다 틀렸다** — `server/product_tables.py`의 `PRODUCT_TABLES`는 `wafer_map_metadata` · `map_split_registry` · `valid_die_ref` · 🗄️ `map_doe` · 🗄️ `map_doe_source`(뒤 둘은 폐기)다. **수를 다시 적지 않는다. 정본은 그 파일이다.**
 
-#### 제품 소유 4종은 **손으로 옮기지 않는다** (2026-07-27)
+#### 제품 소유 테이블은 **손으로 옮기지 않는다** (2026-07-27 · 2026-08-06 기수 삭제)
 
 이미 쓰던 `table_config.json`이 있는 환경에 제품 선언을 넣을 때는 설치 스크립트를 쓴다. 정의의 원본은 **`server/product_tables.py` 하나**이고, `.sample`조차 그 모듈에서 생성된다 — 옮겨 적을 목록이 애초에 없다.
 
@@ -251,7 +251,7 @@ cd client2 && npm run build      # dist/ 갱신 후 커밋
 grep -c X-Admin-Token client2/dist/assets/admin-*.js    # 1 이상이어야 한다
 ```
 
-> **[2026-07-30 `5a14e77`] `npm run build`는 이제 게이트를 통과해야 진행됩니다.** `prebuild`가 클립보드 관례 검사 + **계약 하네스 4종**(`contracts/*/client_harness.mjs`)을 먼저 돌리고, 하나라도 발산하면 `dist/`가 생성되지 않습니다. **빌드가 실패하면 번들도 갱신되지 않았다는 뜻**이므로 위 `grep` 확인이 0으로 남습니다 — "빌드했는데 왜 그대로냐"의 첫 번째 원인이 이것입니다. 계약이 실제로 바뀐 것이라면 벡터를 고쳐 통과시키지 말고 총괄에 가져가십시오([frontend §2.1](../architecture/frontend.md)).
+> **[2026-07-30 `5a14e77`] `npm run build`는 이제 게이트를 통과해야 진행됩니다.** `prebuild`가 클립보드 관례 검사 + **계약 하네스 전부**(`contracts/*/client_harness.mjs` — 🔴 **수를 적지 않는다. 「4종」이라 적혀 있었고 그 사이에 셋이 더 늘었다**. 러너는 목록이 아니라 **발견식 스캔**이고 현재 구성원은 [architecture/frontend §2.1](../architecture/frontend.md)이 센다)을 먼저 돌리고, 하나라도 발산하면 `dist/`가 생성되지 않습니다. **빌드가 실패하면 번들도 갱신되지 않았다는 뜻**이므로 위 `grep` 확인이 0으로 남습니다 — "빌드했는데 왜 그대로냐"의 첫 번째 원인이 이것입니다. 계약이 실제로 바뀐 것이라면 벡터를 고쳐 통과시키지 말고 총괄에 가져가십시오([frontend §2.1](../architecture/frontend.md)).
 
 > ⚠️ 토큰을 **쿼리 파라미터로 보내지 마라.** 쿼리 문자열은 액세스 로그에 남는다. 서버는 헤더만 받는다.
 
@@ -343,7 +343,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" --noproxy "*" http://127.0.0.1:8080/healt
 
 **C-1. 우리 코드의 내부 홉 (완료 — 2026-07-30).** 프로세스 간 loopback 호출은 **프록시 설정을 절대 참조하지 않는다.**
 
-- 워커 3종(`run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`)은 세션을 직접 만들지 않고 **`server/internal_event_client.internal_event_session()`** 하나에서 받는다(`trust_env=False`). 발신자마다 따로 고치다 같은 결함이 세 번 재발한 이력이 있어, **세션을 직접 만드는 발신자가 생기면 테스트가 실패**하도록 막아 두었다.
+- 워커 `run_watcher`·`chain_ingestion_worker`·`graph_sync_worker`(**목록 옆에 수를 적지 않는다**)는 세션을 직접 만들지 않고 **`server/internal_event_client.internal_event_session()`** 하나에서 받는다(`trust_env=False`). 발신자마다 따로 고치다 같은 결함이 세 번 재발한 이력이 있어, **세션을 직접 만드는 발신자가 생기면 테스트가 실패**하도록 막아 두었다.
 - 웹서버 → GraphSync 워커(`/api/graph/sync` → `127.0.0.1:8090`)의 `httpx`도 `trust_env=False`다. **같은 모양의 네 번째 홉**이라 같이 막았다.
 - 범위는 **우리 세션 객체 하나**다. `urllib`을 쓰는 수집 스크립트에는 닿지 않는다 — 그쪽은 C-2가 따로 맡는다.
 
@@ -502,7 +502,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
 ## 6. 순서 요약
 
 1. PostgreSQL 준비 → `DATABASE_URL` 설정
-2. `server/config/*.sample` → 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 4종만 병합 — §1-2)
+2. `server/config/*.sample` → 확장자 떼고 복사 (**기존 환경이면** `install_product_tables.py --apply`로 제품 소유 테이블만 병합 — §1-2)
 3. **`table_config.json`에 우리 현장 테이블 선언** (여기가 대부분의 작업)
 4. `server/ingestion_workspace/<테이블>/` 디렉터리 생성
 5. 켤 기능의 config에서 `table`/`columns`를 우리 이름으로 맞춤 (§2)

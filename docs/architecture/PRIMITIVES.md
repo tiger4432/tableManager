@@ -7,7 +7,10 @@
 > **작성 규율:** 한 항목 = `무엇 · 어디 · 언제 재사용 · 함정`. 구현 상세·라인 앵커는 최소로 — 앵커가 낡는 것보다 **개념이 남는 것**이 중요하다.
 > 🔴 **이 헤더에 라운드를 쌓지 마십시오.** 2026-07-31 이전 이 줄 하나가 **13,000자 넘는 changelog**로 자라 있었고, *문서가 현재인지 알려 주는 자리*가 그 자체로 읽을 수 없게 됐습니다. `Last-verified`는 **날짜**까지이고, 라운드 기록은 [`docs/history/`](../history/)에 있습니다.
 >
-> ### 이번 라운드 (2026-08-05 · 2차 — 설계 협의 기록 `d4e0fed`+`04ed01b`+`b9a0ab1`+`b445c2e`)
+> ### 이번 라운드 (2026-08-06 · 리빙 문서 동기화)
+> - 🔴 **§7「닫힌 어휘에 토큰을 더할 때」의 「어디」 줄이 스스로 금지하는 핀을 들고 있었다** — 「`geometry_declaration` **여섯** 토큰」. 세 줄 아래에서 「개수를 불변식으로 박으면 실패가 반대편을 가리킨다」고 적어 놓고 그 위에서 개수를 박은 것이다. **일곱으로 고치지 않고 구성원을 이름으로 불렀고**, 서열(`declared` > `confirmed` > `assumed`)을 함께 적었다.
+>
+> ### 직전 라운드 (2026-08-05 · 2차 — 설계 협의 기록 `d4e0fed`+`04ed01b`+`b9a0ab1`+`b445c2e`)
 > - §7 신규 ⭐**「행에 대한 사실은 어휘를 늘리지 않는다 — 토큰 대신 *있을 때만 있는 키*」**(`b9a0ab1`) — 바로 아래 「닫힌 어휘에 토큰을 더할 때」의 **짝이자 반대 방향**이다. 판별 질문은 **「토큰으로 만들면 읽는 쪽의 *판정*이 바뀌어야 하나」**이고, 아니오면 키다. 여섯 후보를 하나씩 반증한 기록을 남겼다.
 > - 🔴 **§4「빌리되 쓰지 않는다」의 빌림 축이 반전됐다** — 격자 치수와 시작 좌표가 「절대 불가」에서 「빌린다」로 넘어왔다. **분류는 옳았고 빈도가 틀렸다**는 것 자체를 교훈으로 남기고 옛 문장은 지우지 않았다. 함정 셋 추가: **한 축만 빌리면 평행이동이 남는다** · **관대해진 만큼 관문을 증거로 세워라(담김)** · **관문에서 아직 안 풀린 미지를 고정하지 마라.**
 > - §7「선언되지 않은 것에 표현을 지어내지 마라」에 **예외 하나**를 달았다(`d4e0fed`) — **판정을 초대하는 도형**(경계선·기준선·임계선)은 비워 두지 말고 **아예 그리지 마라.** 하드코딩된 웨이퍼 테두리가 모든 맵에서 구성상 넘쳐 제품 소유자가 데이터 결함으로 읽었다.
@@ -179,7 +182,7 @@
 
 ### 정체는 안정된 것에, 라벨은 자유롭게
 - **무엇**: 사람이 고치는 표기를 키로 삼지 않는다. 정수 서수나 원문이 정체를 지고, 표시용 라벨은 비키.
-- **어디**: `map_doe.band_seq`(키) vs `stack_band`(자유 텍스트 라벨) — **둘 다 M2.6에서 폐기**됐고, band 시절 같은 자리는 `bands[].seq`(정체) vs 배열 위치(순서)였다. **[ZONE 2026-07-28] `bands` 자체가 폐기·읽기 전용이 됐다** — 현행 모델은 값 행 하나 + 고정 구역 셋(`stack`/`mat_1h`/`mat_mid`/`mat_top`)이라 순서·정체를 따로 들 필드가 없다. 교훈 자체는 유효하다.
+- **어디**: `map_doe.band_seq`(키) vs `stack_band`(자유 텍스트 라벨) — **둘 다 M2.6에서 폐기**됐고, band 시절 같은 자리는 `bands[].seq`(정체) vs 배열 위치(순서)였다. **[ZONE 2026-07-28] `bands` 자체가 폐기·읽기 전용이 됐다** — 현행 모델은 값 행 하나 + **고정 구역**(`mat_1h`·`mat_mid`·`mat_top`)이라 순서·정체를 따로 들 필드가 없다. 🔴 **[2026-08-06 정정] 종전 이 자리는 「고정 구역 *셋*(`stack`/`mat_1h`/`mat_mid`/`mat_top`)」이라 수와 괄호가 어긋나 있었다** — `stack`은 구역이 아니라 **총 층수**이고, 세 구역이 그 수를 나눠 갖는다. 컬럼으로 세면 넷이고 구역으로 세면 셋이라 **한 문장에 두 계급이 섞여 있었다**. 교훈 자체는 유효하다.
 - **언제**: 자유 입력 필드가 무언가를 식별해야 할 때.
 - **함정**: 라벨을 키로 두면 라벨 한 글자 수정에 **하위 데이터가 고아**가 된다.
 
@@ -472,13 +475,13 @@
 
 ### ⭐ **「import되는가」는 공유 인터프리터 안에서 테스트할 수 없다 — `server/scripts`는 한 방향 문** (2026-07-31 등록 · `9c6a1c9`)
 - **무엇**: `server/scripts/`는 **어느 운영 프로세스의 `sys.path`에도 없다.** 각 스크립트가 `__main__`으로 돌 때 자기 힘으로 `server/`를 부트스트랩하므로 **스크립트 → `server/`는 되고 그 반대는 안 된다.** 그래서 규율은 하나다 — **의미론은 `server/`에, argparse와 보고서 서식만 `scripts/`에.**
-- **어디**: 이미 네 쌍이 이 형태다 — `graph_orphans.py` ↔ `scripts/graph_orphan_sweep.py` · `chain_replay.py` ↔ `scripts/chain_replay_cli.py` · `enrichment_analysis.py` ↔ `scripts/enrichment_insights.py` · `enrichment_backfill.py` ↔ `scripts/backfill_enrichment.py`(2026-07-31 분리). 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
+- **어디**: 이미 이 형태인 짝들(**수를 적지 않는다 — `backend.md`가 「세 번」, `BACKFILL_GUIDE`가 「셋」, 여기가 「네 쌍」이라 적어 한 사실이 세 수로 갈려 있었다**) — `graph_orphans.py` ↔ `scripts/graph_orphan_sweep.py` · `chain_replay.py` ↔ `scripts/chain_replay_cli.py` · `enrichment_analysis.py` ↔ `scripts/enrichment_insights.py` · `enrichment_backfill.py` ↔ `scripts/backfill_enrichment.py`(2026-07-31 분리). 판정기는 `server/tests/prod_import_check.py`(진입 `test_prod_import_env.py`).
 - **언제 재사용**: **CLI에만 있던 기능에 라우트·워커·스케줄러가 붙는 모든 순간.** 「이미 있는 함수를 부르기만 하면 된다」가 참인 자리에서 정확히 이 결함이 난다.
 - **함정**:
   - 🔴 **증상이 최악의 모양이다 — 초록 버튼, 쓰인 행 0, 표면에 에러 없음.** 트리거가 아웃박스에 한 줄 쓰고 즉시 반환하는 형태(§6 Outbox)라면 **검증은 통과하고 200 `queued`가 나가며** import 실패는 **워커 스레드 안**에서 로그로만 끝난다. 실패가 **요청과 다른 프로세스에서** 일어나는 설계일수록 이 계급이 비싸다.
   - 🔴 **스위트로는 못 잡는다.** 결함을 재주입하면 라우트 테스트는 단독으로는 빨갛지만, **`sys.path`에 그 디렉터리를 정당하게 넣는 테스트 파일이 먼저 돌면 초록**이 된다(pytest는 인터프리터 하나를 공유하고 파일 순서는 이름이 정한다). conftest 가드도 못 막는다 — 그 삽입은 **모듈 import 시점**이라 conftest보다 뒤다. **판정은 별도 프로세스여야 한다**(`-I` + `PYTHONPATH` 비우고 shell out).
   - **허용목록을 만들지 마라.** 선택적 의존(우리 경우 `neo4j`)은 **소스에서 `try/except ImportError` 가드를 인식**해 통과시킨다 — 이름 목록을 두면 그 목록이 다음 부채가 되고, 가드 없는 새 의존은 여전히 잡힌다.
-  - **반대 방향의 유혹**: `server/scripts`를 `sys.path`에 올려 해결하지 마라. 결함 하나를 고치려고 **열다섯 스크립트 전부를 런타임에서 import 가능하게** 만드는 문이다.
+  - **반대 방향의 유혹**: `server/scripts`를 `sys.path`에 올려 해결하지 마라. 결함 하나를 고치려고 **`server/scripts/`의 스크립트 전부를 런타임에서 import 가능하게** 만드는 문이다(종전 「열다섯」이라 적혀 있었고 2026-08-06 실측은 **23**이다 — 수를 다시 적지 않는다).
 
 ### ⭐ **격리는 호출 지점이 아니라 *문장*에 둔다 — `_isolated_execute`** (2026-07-30 등록 · `f9289f6`)
 - **무엇**: 실패할 수 있는 **사용자 저작 SQL**을 돌릴 때 `try/except`는 격리가 아니다. Postgres는 실패한 문장이 **트랜잭션 전체를 abort**시키고, 그 뒤 `COMMIT`은 **정상 반환하면서 서버가 ROLLBACK으로 바꾼다** — 드라이버 예외를 잡은 호출자는 세션이 이미 죽은 것을 모른다. 그래서 격리를 **문장 하나를 감싸는 SAVEPOINT**로 내리고, 그 함수를 **모든 실행 경로가 경유**하게 한다.
@@ -684,7 +687,8 @@
 
 ### ⭐ **닫힌 어휘에 토큰을 더할 때는 *읽는 쪽 전수*를 세고 미지 토큰의 강등 방향을 정하라 — 그리고 개수를 핀으로 박지 마라** (2026-08-05 등록 · `aa24bfd`)
 - **무엇**: provenance·상태·사유처럼 **닫힌 문자열 어휘**는 언젠가 반드시 자란다. 그때 비용은 새 토큰이 아니라 **이미 있는 읽는 쪽**에 있다. 규율 셋 — ① 소비자를 **전수로 세고 미지 토큰에 무엇을 하는지 표로 적는다**(「괜찮다」가 아니라 **거절인가 무시인가**를 항목마다) ② 강등 방향은 **의미가 정한다**(여기서는 「모르는 출처는 **선언이 아니다**」 — `None`으로 접으면 미지가 선언을 사칭한다) ③ **사전 조회는 크래시 후보다**(`TEXT[token]`의 `KeyError` 하나가 요청 전체를 500으로 만들었고, 문장이 같은 편집에 안 실리면 **어휘가 자라는 라운드마다 되살아난다**).
-- **어디**: 어휘 정본 `server/map_overlay.py`(`geometry_declaration` 여섯 토큰) · 클라 거울 `client2/src/map2/declaration.js` · 소비자 전수표 [MAP_ALIGNMENT_SPEC §9.2](../spec/MAP_ALIGNMENT_SPEC.md) · 양측 채점 `contracts/map2_seam/`의 `geometry_declaration_cases`.
+- **어디**: 어휘 정본 `server/map_overlay.py`(`geometry_declaration`) · 클라 거울 `client2/src/map2/declaration.js`(`DECLARATION_TOKENS`) · 소비자 전수표 [MAP_ALIGNMENT_SPEC §9.2](../spec/MAP_ALIGNMENT_SPEC.md) · 양측 채점 `contracts/map2_seam/`의 `geometry_declaration_cases`.
+  - 🔴 **[2026-08-06 정정] 종전 이 줄은 「`geometry_declaration` *여섯* 토큰」이었고, 그 수는 이 항목이 세 줄 아래에서 금지하는 바로 그 핀이었다.** 지금 토큰은 **`declared` · `auto_registered` · `absent` · `unparsable` · `indeterminate` · `assumed` · `confirmed`**이고, **여기에도 수를 다시 적지 않는다.** 서열은 `declared` > **`confirmed`** > `assumed`이며 `geometry_computable`은 `declared`/`assumed`/`confirmed`를 근거로 받고 `geometry_declaration`은 뒤의 둘에 **「선언이 아니다」**라고 답한다.
 - **언제 재사용**: 상태 enum·거절 사유 코드·정렬 어휘·`count_kind`처럼 **양쪽이 같은 문자열을 알아야 하는** 모든 자리.
 - **함정**:
   - 🔴 **개수를 불변식으로 박으면 실패가 반대편을 가리킨다.** 「정확히 다섯」이라는 핀 때문에 **정당한 서버 측 추가가 클라 결함으로** 읽혔다. 규칙은 「N개다」가 아니라 **「빌려 오고, 짓지 않는다」**이므로, 박을 것은 **토큰마다 이름과 자리**다.
@@ -818,7 +822,7 @@
 
 ### 강등된 감산항은 과소 기여만 허용 — 상한 불변식 (2026-07-28 등록)
 - **무엇**: `결과 = 총량 − Σ감산항` 꼴의 계산에서 감산항 하나가 강등되면(필터를 못 걸음·정체를 모름), 그 항은 **0 또는 미상으로만** 기여하고 결과는 `null` + **상한**(살아 있는 항만으로 계산한 값)으로 내려간다. 강등된 항이 과대 기여하면(예: 필터 없이 전 행 count) "상한"이라는 주장 자체가 거짓이 된다 — 그래서 필터를 못 거는 count는 **세지 않고 거부**한다.
-- **어디**: `server/transfer_plan.py` — `connected(align_unavailable)`(fail 0) · `connected(count_only)`(기전사 정체 미상 → remaining/by_core null; `deed6d2`부터 좌표 없는 self-frame fail 원천도 동일 — count를 대신 감산하면 겹침 미상으로 **과대 감산 = 상한 붕괴**라 세지 않는다) · `fail_values`+`val` 미해석(전 행 count 거부, `1fefd12`). 파생 표시는 신뢰 3층 방어(`remaining_reliable`/`unverified`).
+- **어디**: `server/transfer_plan.py` — `connected(align_unavailable)`(fail 0) · `connected(count_only)`(기전사 정체 미상 → remaining/by_core null; `deed6d2`부터 좌표 없는 self-frame fail 원천도 동일 — count를 대신 감산하면 겹침 미상으로 **과대 감산 = 상한 붕괴**라 세지 않는다) · `fail_values`+`val` 미해석(전 행 count 거부, `1fefd12`). 파생 표시는 신뢰 방어를 여러 겹 쌓는다(`remaining_reliable`/`unverified` — 🔴 **종전 「3층」이라 적고 괄호에 *둘*만 이름을 댔다. 겹 수를 지웠고 정본은 [MAP_EDITOR_SPEC §6.2](../spec/MAP_EDITOR_SPEC.md)의 열거다**).
 - **언제 재사용**: 감산·집계의 항 하나가 부분적으로만 살아 있는 곳 전부. "일단 세고 경고"는 이 불변식 위반이다.
 - **함정**: 상한과 함께 **카운트류 표시값은 유지**해도 된다(count_only의 `transferred`처럼 — 그 수 자체는 진짜다). 죽이는 것은 **그 수로 파생한 잔여**뿐이다. 그리고 강등은 이름을 얻어야 한다(`column_unresolved:<roles>` — 조용히 사라진 선언은 디버깅이 불가능하다).
 

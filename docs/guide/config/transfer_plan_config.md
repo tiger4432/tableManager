@@ -1,6 +1,6 @@
 # `transfer_plan_config.json` 세팅 — M2 Universal Transfer Plan
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 (`12c1d2e` 거절이 자기 사유를 이름으로 말함 + `8817dde` **좌표/값 컬럼 유도** + `GET /admin/transfer-plan/dry-run`. 이 라운드에 문서를 **재작성**했습니다 — 기존 문서를 읽은 사용자가 그대로 `"x": "x"`를 써서 라이브가 멈췄기 때문입니다) | **Owner:** Backend / UI-Map
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 (§3 dry-run `curl`의 포트를 **8000 → 8080**으로 정정 — 런처가 띄우는 포트는 `ASSY_API_PORT` 기본 8080이고 `:8000`은 `uvicorn` 직접 실행의 기본값입니다. 직전 2026-08-04 `12c1d2e` 거절이 자기 사유를 이름으로 말함 + `8817dde` **좌표/값 컬럼 유도** + `GET /admin/transfer-plan/dry-run`. 이 라운드에 문서를 **재작성**했습니다 — 기존 문서를 읽은 사용자가 그대로 `"x": "x"`를 써서 라이브가 멈췄기 때문입니다) | **Owner:** Backend / UI-Map
 > 상위: [폴더 인덱스](./README.md) · **의미론(zone 모델·`stack` string·`bin_map`·`bands` 폐기)의 정본은 [CONFIG_GUIDE §5.8](../CONFIG_GUIDE.md)** · 동작 계약은 [MAP_EDITOR_SPEC §6](../../spec/MAP_EDITOR_SPEC.md)
 
 <!-- Loader evidence (2026-08-04, derivation + dry-run round; anchors re-measured by grep on this tree):
@@ -150,8 +150,10 @@ E  total_chips {lot, slot}                    -> accepted=true, columns: lot slo
 
 ```bash
 curl -s -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" \
-  http://<서버>:8000/admin/transfer-plan/dry-run | python -m json.tool
+  http://<서버>:8080/admin/transfer-plan/dry-run | python -m json.tool
 ```
+
+> 🔴 **[2026-08-06 정정] 종전 이 줄의 포트는 `8000`이었습니다** — 런처가 띄우는 uvicorn 포트는 **8080**(`ASSY_API_PORT`)이고 `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값입니다.
 
 읽기 전용입니다 — 모델·컬럼 **해석만** 하고 **행을 조회하지 않으며** 파라미터가 없습니다(선례: `GET /admin/enrichment/auto-confirm/dry-run`). `GET /api/transfer-plan/stages`는 역할마다 `connected`/`missing` **한 단어**를 냅니다. 그 단어로는 config를 고칠 수 없습니다.
 

@@ -1,8 +1,13 @@
 # ⚙️ AssyManager 설정 가이드 (Config Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** Lead / Backend
 >
-> ### 이번 라운드 (2026-08-04 · 리빙 문서 동기화 `ce5ccb8..f7ac005`)
+> ### 이번 라운드 (2026-08-06 · 리빙 문서 동기화)
+> - **§3에 시나리오 S9 신설 — 「맵 정렬 화면(좌표계 확정)을 켤 때」.** 그 화면을 켜는 선언이 **config 파일 셋에 흩어져** 있었고 어느 문서도 한자리에 모으지 않았습니다. 하나만 빠져도 화면은 **에러를 내지 않고** 비거나 「순위 없음」만 냅니다. ⚠️ **선언만 다룹니다** — 조작 절차는 화면이 매일 바뀌는 중이라 일부러 안 적었습니다. 🔴 **실측 결과 이 저장소의 `alignment: true`가 정렬하지 않는 규칙에 붙어 있습니다**(총괄 판정 대상).
+> - 🔴 **§4.2-bis의 「`enrichment` 도메인 *하나*가 등록돼 있습니다」가 거짓이 됐습니다** — `enrichment` · `virtual_join` · `notation` 셋이고, **고치면서 수를 다시 적지 않았습니다**(그 자리가 낡은 방식이 정확히 그것이었습니다).
+> - 🔴 **운영자가 복사해 붙이는 `curl`의 포트가 `8000`이었습니다** — 런처가 띄우는 포트는 **8080**입니다. 같은 오타가 [config/enrichment_rules](./config/enrichment_rules.md)·[config/transfer_plan_config](./config/transfer_plan_config.md)에도 있었고 함께 고쳤습니다. `:8000`은 `uvicorn`을 직접 쳤을 때의 기본값이라 **선언 문제로 오독되기 딱 좋은 실패**입니다.
+>
+> ### 직전 라운드 (2026-08-04 · 리빙 문서 동기화 `ce5ccb8..f7ac005`)
 > - 🔴 **`notation_rules.json`의 모델이 뒤집혔습니다(`8d306a5`) — §1 표의 그 행과 §5.6-quater를 전부 다시 썼습니다.** `92b8d6f`가 출하한 **파생 컬럼 `<컬럼>_norm`**은 **아무도 소비하기 전에** 철회됐고, 지금 선언은 「이 컬럼의 표기가 정규화됐다」 한 줄이며 **아무것도 저장하지 않습니다**(소비자가 조회 시점에 비교의 양쪽을 접습니다). **「층 셋」·재파생 스크립트·쓰기 거부 400은 전부 소멸했습니다.** 🔴 **접힌 키는 함수 인덱스를 요구합니다** — 평범한 UNIQUE는 접힌 키의 유일성을 증명하지 못합니다(정확성 문제). 정본은 [config/notation_rules_config](./config/notation_rules_config.md).
 >
 > ### 직전 라운드 (2026-08-04 · 앞선 배치)
@@ -57,7 +62,7 @@ server/database/virtual_graph.json
 | **`suggest_config.json`** | **입력 제안(고유값 조회) 노브** — 목록 길이(`default_limit`/`max_limit`)·최소 접두 길이·프로브 예산·타임아웃·**느린 응답 경보(`slow_warn_ms`)** + **접두 인덱스 대상 선정**(`index_min_rows`/`index_columns`/`index_exclude`). 조회 노브는 즉시, `index_*`는 **`setup_db_performance.py` 재실행이 유일한 반영 경로** | 사용자 | ignored (`.sample` 有) | 조회 노브 = 즉시(**요청당 1회 스냅샷**) / `index_*` = 스크립트 재실행 | web + `scripts/setup_db_performance.py` |
 | `scheduler_status.json` | 스케줄러→UI 텔레메트리 | **시스템(자동 생성)** | ignored | — | run_auto_update가 씀, web이 읽음 |
 | `supervisor_status.json` | **[운영]** 자식 프로세스 감시 상태(자식별 state·재시작 횟수·실패 사유, `updated_at`=감시자 생존 신호) | **시스템(자동 생성)** | ignored | — | `run_decoupled_app`이 씀, `/health`가 읽음 |
-| `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동 4종(`watcher`·`chain`·`graph`·`scheduler`) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
+| `worker_heartbeats/<worker>.json` | **[운영]** 워커 진행 박동(`watcher`·`chain`·`graph`·`scheduler` — **수를 적지 않습니다**) | **시스템(자동 생성)** | ignored | — | 각 워커가 씀, `/health`가 읽음 |
 | **`<이름>_<yymmdd>.json.bak`** | **[운영] C3 주간 config 스냅샷** — 롤백 단계 2의 복원 원본 | **시스템(자동 생성)** | ignored | — | `run_auto_update`가 씀, `/health`가 신선도를 읽음 |
 | `*.json.bak.<ts>`, `*.bak-<ts>`, `*.v1.bak` | 설치 이력·수동 백업 잔재 | 스크립트/사용자 | ignored | — | 아무도 안 읽음 |
 
@@ -275,6 +280,27 @@ S1을 전부 수행한 뒤 추가로:
 
 상세: [chain_ingestion_guide](./chain_ingestion_guide.md)
 
+### S9. **맵 정렬 화면(좌표계 확정)을 켤 때** (2026-08-06 신설)
+
+> **왜 이 절이 생겼나:** `map_editor2.html`(맵 정렬 화면)은 조작자가 **처음부터 끝까지 쓰는 화면**이 됐는데, 그것을 켜는 데 필요한 선언이 **config 파일 세 개에 흩어져** 있고 어느 문서도 한자리에 모아 놓지 않았습니다. 하나라도 빠지면 화면은 **에러를 내지 않고 비어 있거나 「순위 없음」만** 냅니다 — 그리고 그것은 config 공백이지 결함이 아닙니다.
+> ⚠️ **이 절은 *선언*만 다룹니다.** 화면 자체의 조작 절차(무엇을 어느 순서로 고르는가)는 **아직 문서가 없습니다** — 화면이 매일 바뀌는 중이라 절차서를 여기 적으면 그 자리에서 낡습니다. 설계 계약의 정본은 [spec/MAP_ALIGNMENT_SPEC](../spec/MAP_ALIGNMENT_SPEC.md), 층 경계는 [architecture/frontend §4.2](../architecture/frontend.md)입니다.
+
+| # | 어느 파일 · 어느 키 | 없으면 화면이 어떻게 되나 |
+|---|---|---|
+| 1 | `enrichment_rules.json` → `<규칙>.alignment: true` (**JSON boolean만**, `"true"`·`1`은 선언이 아님 — `map_push_ok`와 같은 규율) | **화면이 아무 규칙도 고르지 못해 통째로 빕니다.** 🔴 **이 표시가 붙어야 하는 규칙은 「무엇을 확정하는가」로 고릅니다** — `target_fields`가 **프레임**인 규칙입니다. 이름에 `frame`이 들어간다는 것은 근거가 아니고, 서버는 이 값을 **유도하지 않습니다**(§5.3 · [config/enrichment_rules](./config/enrichment_rules.md)) |
+| 2 | 같은 규칙의 `decision_key` · `target_fields` · `source_table` | 결정 단위와 쓰는 자리가 정해지지 않습니다. 확정은 **단위 전체에 대해서만** 성립하므로 `decision_key`가 덜 채워진 요청은 400으로 거절됩니다 |
+| 3 | `map_overlay_config.json` → `alignment.min_margin_dies` · `alignment.min_discriminating_dies` | 🔴 **서버가 순위를 아예 내지 않습니다**(`ruling.reason_code='no_thresholds'`, 화면 문구 `판정 기준값 미선언 - 순위 없음`). **코드에 기본값이 없는 것이 의도**입니다 — 미선언을 0으로 접으면 「구별 못 함」이 「자신 있는 1등」이 됩니다. 값은 **쓰는 기준 맵의 실제 분해능에서 다시 유도**하십시오. 옮겨 적지 마십시오 |
+| 4 | (선택) `map_overlay_config.json` → `alignment.sides` | **미선언이 「양면 다」이고 기본값 `front`가 아닙니다.** 좁히면 그 면의 진짜 답이 탐색에서 빠져 **승자 없이** 나오는데, 그것은 결함이 아니라 이 선언의 뜻입니다. 좁혀도 후보 보고는 안 좁아집니다(빠진 쪽은 `not_considered`를 달고 나갑니다 — 「져서 밀린 것」과 구별돼야 하므로) |
+| 5 | (선택) `map_overlay_config.json` → `alignment.index.*` | 순번 축이 **수치는 실어 보내되 순위를 가져가지 않습니다**(`ruling.index_axis='reported'`). 🔴 **위 3의 키와 일부러 공유하지 않습니다** — 다른 문제를 쫓다가 저쪽을 낮추는 조작이 이 축의 안전망까지 걷어 가면 안 되기 때문입니다(2026-08-05에 실제로 20→1로 내려간 적이 있습니다) |
+| 6 | `map_overlay_config.json` → `table_bindings.<맵테이블>.columns.{x,y,val,key_columns}` | 좌표 컬럼 드롭다운에 제안이 안 뜹니다. ⚠️ **정렬 화면에서 이 값은 *제안*입니다** — 조작자가 확인하거나 바꿔야 「선언」으로 올라갑니다(§5.8-bis) |
+| 7 | `table_config.json` → `<맵테이블>.map_key_columns` | 그 테이블이 **「맵이다」로 인정되지 않아** 대상 테이블 목록에 없습니다. `table_bindings`에 좌표를 적어도 이 줄을 대신하지 못합니다(§5.1의 그 행) |
+| 8 | 기준(유효 다이) 맵 — `table_config.json`의 `valid_die_ref` 선언 + 그 맵의 **물리 규격 행** | 기준을 안 고르는 것 자체는 **정상**입니다(그러면 소스 맵이 자기 `valid_die_ref`를 따라갑니다). 그러나 **규격 행이 없는 소스 맵**을 채점하려면 기준 맵의 물리 규격이 선언돼 있어야 빌려 올 것이 있습니다 — 없으면 서버가 「고쳐야 할 것은 소스 맵이 아니라 **기준 맵 한 장**입니다」라고 이름을 대며 거절합니다 |
+| 9 | `table_config.json` → `wafer_map_metadata` 선언 | 확정이 **좌표계를 그 표에 되쓰는 절반**(2026-08-06 [D7])이 조용히 멈춥니다 — 확정 기록은 남고 로그 경고만 뜹니다 |
+
+**켠 뒤 확인:** `GET /enrichment/rules`가 그 규칙에 `alignment`를 실어 보내는지 → 화면의 대상 테이블 드롭다운이 채워지는지 → 워크리스트에 단위가 뜨는지. **셋 중 어디서 멈추는지가 위 표의 어느 줄인지를 말해 줍니다.**
+
+> 🔴 **실측 2026-08-06 — 이 저장소의 config는 1번이 어긋나 있습니다.** `alignment: true`가 **`dt_job_lot_slot_attribution`**(`decision_key: ["dt_job"]`, `target_fields: ["dt_lot_confirmed","dt_slot_confirmed"]` — **로트·슬롯 추론** 규칙이라 정렬하는 것이 없습니다)에 붙어 있고, 프레임 규칙 **`eqp_product_frame_attribution`**(`decision_key: ["dt_eqp","product"]`, `target_fields: ["core_frame","dt_frame"]`)에는 **없습니다.** 이 표시가 막으라고 만들어진 실패가 정확히 이것입니다. **config 수정은 이 문서의 소관이 아니라 총괄 판정 대상이므로 여기에는 사실만 적습니다.**
+
 ---
 
 ## 4. 적용·검증 규율 ★
@@ -322,10 +348,12 @@ S1을 전부 수행한 뒤 추가로:
 ### 4.2-bis 「내가 쓴 게 먹었나」 — 선언의 효과 조회 (2026-07-30, [F9])
 
 ```bash
-curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" localhost:8000/admin/config/resolve
+curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" http://127.0.0.1:8080/admin/config/resolve
 ```
 
-서버가 선언을 **세 모집단**으로 나눠 돌려줍니다. 사유는 닫힌 어휘이고, 사람이 읽을 문장(`detail`)은 **서버가 만들며 화면은 그것을 그대로 보여줍니다**(계약).
+> 🔴 **[2026-08-06 정정] 종전 이 줄은 `localhost:8000`이었고 그 주소에는 아무도 없습니다.** 런처가 띄우는 uvicorn 포트는 **8080**(`ASSY_API_PORT`, §2 환경변수 행)이고, `:8000`은 `uvicorn main:app --reload`를 **직접** 쳤을 때의 uvicorn 기본값입니다 — 운영자가 이 줄을 복사해 붙이면 「연결 거부」를 받고 그것을 **설정 문제로 읽습니다.** 같은 오타가 [config/enrichment_rules](./config/enrichment_rules.md)·[config/transfer_plan_config](./config/transfer_plan_config.md)에도 있었고 함께 고쳤습니다.
+
+서버가 선언을 모집단으로 나눠 돌려줍니다(**아래 표가 목록이고, 그 옆에 수를 다시 적지 않습니다** — 정본은 `config_resolve_report.POPULATIONS`). 사유는 닫힌 어휘이고, 사람이 읽을 문장(`detail`)은 **서버가 만들며 화면은 그것을 그대로 보여줍니다**(계약).
 
 > ✅ **화면이 착지했습니다** (2026-07-31 `93610cb`). **어드민 → Overview 탭의 세 번째 계기 줄**에서 읽으십시오. 위 `curl`은 이제 **대조용**입니다 — 화면에 뜬 문장은 응답의 `detail`에 **글자 그대로** 있어야 하고, 없으면 클라가 문장을 지은 것이라 그 자체가 결함입니다(`contracts/config_resolve_report/client_harness.mjs`가 양쪽을 채점합니다).
 > - `Reload Configs`를 누르면 **즉시 다시 읽습니다**(평소에는 1분 스로틀). 두 버튼은 **짝으로** 씁니다 — 하나는 쓰고, 하나는 무엇이 먹었는지 답합니다.
@@ -346,7 +374,8 @@ curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" localhost:8000/admin/config/resolve
 
 그리고 `settings`가 **지금 실효 중인 값과 그 값이 온 파일**을 말합니다 — 파일이 없어 기본값인 경우까지 포함해서. (실측 2026-07-30: `ingestion_settings.json`은 **존재하지 않고** `.sample`만 있습니다. 그래서 전역 스위치는 기본값 `true`인데 아무 데서도 그 사실을 말해 주지 않았습니다.)
 
-> **범위:** 2026-07-30 현재 `enrichment` 도메인 하나가 등록돼 있습니다. 나머지 config는 같은 틀(`server/config_resolve_report._RESOLVERS`에 등록기 하나)로 이어 붙입니다 — 응답은 도메인 목록이라 도메인이 늘어도 소비자는 바뀌지 않습니다.
+> **범위:** 🔴 **[2026-08-06 정정] 종전 이 줄은 「2026-07-30 현재 `enrichment` 도메인 *하나*가 등록돼 있습니다」였고 그것은 이제 거짓입니다.** 등록된 도메인은 **`enrichment` · `virtual_join` · `notation`**입니다(`server/config_resolve_report._RESOLVERS`). **수는 다시 적지 않습니다** — 이 자리가 낡은 방식이 정확히 그것이었고, 정본은 그 dict이며 응답 자신도 `vocabulary.populations`/`reasons`와 함께 도메인 목록을 실어 옵니다. 나머지 config는 같은 틀(등록기 하나)로 이어 붙입니다 — 응답은 도메인 목록이라 도메인이 늘어도 소비자는 바뀌지 않습니다.
+> `?domain=` 인자로 하나만 골라 읽을 수 있고, **한 도메인의 해석 실패가 나머지를 삼키지 않습니다**(그 도메인만 `mapping_unavailable` 항목으로 내려옵니다).
 >
 > ⚠️ 이것은 **선언의 해석**이지 물리 반영의 증거가 아닙니다. 스키마 DDL의 증거는 여전히 §4.3의 `information_schema`입니다.
 
@@ -619,7 +648,7 @@ V1 정본 계기의 배점·전이 선언 → [**config/effort_metric.md**](./co
 
 프리셋 등록 절차(API 경로·손편집 주의)와 키 사전 → [**config/maps.md**](./config/maps.md)
 
-> **[F5] 프리셋을 참조하는 곳이 둘입니다** — `transfer_plan_config.target_map.preset`, 그리고 `map_overlay_config.preset_routing`(§5.8-bis). 둘 다 **프리셋 키 또는 `name`**으로 참조하므로, 프리셋을 지우거나 이름을 바꾸면 그 참조가 끊깁니다(라우팅은 끊긴 참조를 `preset_missing`으로 **거절**합니다 — 다른 프리셋으로 대체하지 않습니다).
+> **[F5] 프리셋을 참조하는 곳** — `transfer_plan_config.target_map.preset`, 그리고 `map_overlay_config.preset_routing`(§5.8-bis). **수를 적지 않습니다 — 참조처는 늘어납니다.** 둘 다 **프리셋 키 또는 `name`**으로 참조하므로, 프리셋을 지우거나 이름을 바꾸면 그 참조가 끊깁니다(라우팅은 끊긴 참조를 `preset_missing`으로 **거절**합니다 — 다른 프리셋으로 대체하지 않습니다).
 
 ---
 

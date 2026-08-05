@@ -1,6 +1,7 @@
 # 🧾 중복 원장 — 이미 두 번 이상 만들어져 있는 것
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-04 | **Owner:** 전 에이전트 공용 · **유지: doc-keeper** | **Source-of-truth:** 각 항목의 「몇 곳」 — 전부 grep 실측
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-06 | **Owner:** 전 에이전트 공용 · **유지: doc-keeper** | **Source-of-truth:** 각 항목의 「몇 곳」 — 전부 grep 실측
+> **2026-08-06**: §2에 **브로드캐스트 크기 임계 리터럴 `100`**(발신 지점 넷이 각자 적고 있던 것 → `event_constants.BROADCAST_ITEM_LIMIT`, `25de4ae`)을 등재했다. 🔴 **판정을 항목 구성 앞으로 옮길 수 있게 한 근거는 등식 하나**이고, 그 등식이 깨지면 판정을 되돌려야 한다는 것을 항목이 적는다.
 > **2026-08-04**: 맵 에디터 분할 R1/R2가 **새 사본을 만들지 않았음을 확인**했다(옮긴 심볼 28종 중 원장에 걸리는 것 0). D-8에 **클라 절반은 사본이 아니라 이음새**라는 배제 근거를 명시했다 — 파일이 갈라진 뒤 세 번째 사본으로 오등재되기 쉬운 자리다.
 >
 > **왜 있나:** 같은 연산이 여러 곳에 있다는 사실이 **매번 다시 발견된다.** 발견할 때마다 두 가지 중 하나가 일어난다 — 아무도 안 고치거나, 사정을 모르는 사람이 순진하게 합쳐서 무언가를 깨뜨린다. 이 문서는 그 발견을 **한 번만 하게** 하고, 합칠 때 무엇이 깨지는지를 발견자와 함께 남긴다.
@@ -53,7 +54,7 @@
   - **읽기/표시 축소분도 의도적이다.** `ui.js:25`가 `id`·`updated_by`·`#`을 빼는 것은 선택 셀 정보 표시가 그 셋에 대해 할 말이 없기 때문이지, 빠뜨린 것이 아니다.
   - 그리고 **아무도 이 열 곳을 한꺼번에 본 적이 없었다** — 그것이 이 원장이 생긴 이유다.
 - **합칠 때의 함정**:
-  - 🔴 **먼저 「무엇을 판정하는가」로 갈라라.** 최소 넷이다 — **① `apply_batch_updates`로 가는 쓰기 ② 출처/우선순위 쓰기 ③ 편집 가능 ④ 복사·표시**. ①만 하나로 모으는 것이 안전하고 값도 대부분 거기 있다.
+  - 🔴 **먼저 「무엇을 판정하는가」로 갈라라.** 갈래는 아래와 같고 **수를 적지 않는다**(판정의 종류는 화면이 늘면 늘어난다) — **① `apply_batch_updates`로 가는 쓰기 ② 출처/우선순위 쓰기 ③ 편집 가능 ④ 복사·표시**. ①만 하나로 모으는 것이 안전하고 값도 대부분 거기 있다.
   - 🔴 **①과 ②는 서버 백스톱이 다르다.** `crud.refuse_virtual_join_columns`의 호출 지점은 **`crud.apply_batch_updates` 하나뿐**이다(실측 `crud.py:1500`). 셀 출처/우선순위 라우트 넷(`main.py:3307`·`3340`·`3404`·`3476`)은 그 깔때기를 지나지 않으므로, **`main.js:1171`이 그 표면의 유일한 판정자**다. ⚠️ 반경은 확인되지 않았다 — 가상 컬럼은 `CellSource` 행이 존재할 수 없어 실제 피해가 없을 수도 있다(**총괄 판단 필요**). 그러나 **「클라 배열 하나를 지우면 서버가 받아 준다」는 가정은 이 표면에서 거짓**이다.
   - **가상 조인은 이 배열들에 이름을 더해서 풀지 마라.** `4b50135`가 **병렬 서술어** `isVirtualColumn`(`state.js:73` — 정의 1 + **호출 6곳**: `clipboard.js:246·393·479·643·721` · `ui.js:151`)을 만든 것은 옳은 판단이었다 — 열 개의 발산한 배열에 이름을 추가했다면 열 번 틀릴 기회를 만들었다. 다만 그 결과로 **「쓰면 안 되는 컬럼인가」라는 개념이 11곳에 산다**(배열 10 + 서술어 1).
 - **대비로 기록해 둘 것 — 서버는 같은 날 정반대로 했다.** `crud.apply_batch_updates`는 가상 조인 쓰기를 **첫 문장 하나에서** 거부한다(`d70a33d`), 호출부마다가 아니라. 계약화된 서술은 [PRIMITIVES §1 「가로지르는 거부는 호출부가 아니라 깔때기 하나에」](./PRIMITIVES.md#1-데이터-쓰기). **클라에 같은 깔때기가 없다는 것이 D-1의 실체다.**
@@ -133,6 +134,7 @@
 | **정렬 변환의 두 번째 구현** — `bonding_plan.normalize_align`/`make_align_transform`(+`align_status_label`·`VALID_ROTATIONS`·`VALID_FLIPS`). 사본이 저장 좌표의 **bbox 상대값 규약을 반영하지 않아**, 원에 잘리는 실격자에서 거울 변환이 끼면 전 셀이 `2·minC`만큼 어긋났다 | `4ba13ae` (2026-07-27) — `map_overlay`의 프레임 합성 경로로 대체 | ✅ **회귀 테스트가 있다**: `server/tests/test_bonding_plan.py::test_deleted_transform_copy_is_gone`이 다섯 이름의 부활을 즉시 실패시킨다 |
 | **중복 프로브** — 조인 키 유일성을 `GROUP BY` 전수 스캔으로 재는 자체 게이트(`statement_timeout`·`incomplete`·3등급 모델·SAVEPOINT 봉쇄 일습) | `b6942ec` (2026-07-31) | `CREATE UNIQUE INDEX`가 **같은 진단을 더 정확히** 낸다(`Key (lot, slot)=(…) is duplicated`). 인덱스는 config가 아니라 DB에 살아 **영속**이므로 등급·스냅샷·예산이 필요 없다 |
 | **`server/scripts/reapply_chain.py`** — `chain_replay.py`의 R1과 같은 일을 하면서 `source_name="reapply_chain"`을 썼는데, 그 이름이 `SOURCE_PRIORITY`에 **미등재라 99로 떨어졌다**(등록된 모든 소스보다 아래). 옳은 값을 쓰고도 아무것에나 지고, R2로 철회하려면 그 이름을 알아야 했다 | `8f8be4b` (2026-07-31) | 소급 진입점의 정본은 [guide/BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md)의 결정표 하나다 |
+| **브로드캐스트 크기 임계 리터럴 `100`** — 발신 지점마다 `len(msg_items) > 100`을 자기 자리에 적고 있었다(`apply_batch_updates_endpoint` · `set_cell_priority_batch_endpoint` · `delete_cell_source_batch_endpoint` · `chain_ingestion_worker.process_chain_transaction_group`). **같은 클라 계약에 대한 하나의 판단인데 철자가 발신자 수만큼 있었고**, 이 코드베이스의 실제 실패 이력이 바로 「한 발신자만 고쳐지고 나머지가 옛 리터럴을 유지」다 | `25de4ae` (2026-08-06 P1b) — `event_constants.BROADCAST_ITEM_LIMIT` 단일 선언 | `MAX_NOTIFY_CREATED_LOGS`와 **같은 파일·같은 이유**. 🔴 **판정을 항목 구성 *앞*으로 옮길 수 있게 한 근거는 등식 하나다** — 구성 루프가 결과 항목마다 **무조건 하나씩** append하므로 `len(msg_items) == len(results)`. 그 루프에 `continue`가 생기면 등식이 깨지고 **판정을 되돌려야 한다.** 그물 `server/tests/test_discarded_merge_budget.py` · 서술 [backend §1.1](./backend.md) |
 
 ---
 
