@@ -858,7 +858,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   //    copy_header_count), 모듈 전역 의존이 하나 늘 때마다 그 둘이 ReferenceError로 죽는다 —
   //    실측: `da8f390`이 이 한 줄로 둘을 죽였고, 같은 커밋의 `getWaferBoundingBox`
   //    주석(§1903)이 정확히 그 이유로 헬퍼 추출을 거부하고 있었다.
-  const zeroBox = getWaferBoundingBox(currentRotation, currentSide);
+  const zeroBox = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
   const zeroC = 0 - startX + zeroBox.minC;
   const zeroR = invertY ? (zeroBox.maxR - (0 - startY)) : (0 - startY + zeroBox.minR);
   const hasZeroZero = (zeroC >= 0 && zeroC < visualCols) && (zeroR >= 0 && zeroR < visualRows);
@@ -873,7 +873,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
 
   // [M4①] 유효 다이 판정. 참조가 없으면 `isValidDieAt`이 원 판정을 그대로 돌려주므로
   // 선언 없는 맵의 동작은 `2a9f6c4`와 한 글자도 다르지 않다.
-  const completelyInside = isValidDieAt(physical.x, physical.y,
+  const completelyInside = isValidDieAt(physFrameOverride, physical.x, physical.y,
     isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
   return {
@@ -1829,7 +1829,7 @@ function waferMmToDieCell(mmX, mmY, L) {
 }
 
 function getCanvasCellFromDb(dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
-  const box = getWaferBoundingBox(rotation, side);
+  const box = getWaferBoundingBox(physFrameOverride, rotation, side);
 
   const c = dbX - startX + box.minC;
 
@@ -1883,7 +1883,11 @@ let boundingBoxCache = {};
 // `opts.circleOnly` — 마스크와 무관하게 **원 기하**의 상자를 묻는다. 유일한 소비자는
 // `computeNotchCell`이다: 노치는 웨이퍼의 물리 특징이자 클립보드 프레임 지문이라, 유효 다이
 // 해석의 성패(네트워크 1회 실패)에 따라 지문이 흔들리면 정상 붙여넣기가 엉뚱한 사유로 거절된다.
-function getWaferBoundingBox(rotation, side, opts) {
+function getWaferBoundingBox(frame, rotation, side, opts) {
+  if (frame === undefined) {
+    throw new Error('getWaferBoundingBox: frame argument missing. Pass the frame that is in '
+      + 'scope, or `null` to read the screen controls on purpose.');
+  }
   // 프레임 창이 **상자까지** 실어 나르면 그것이 이 창의 상자다. 창은 "규격을 어디서 읽는가"를
   // 갈아끼우는 장치이고(§withPhysFrame), 원점 상자는 그 규격의 산물이므로 같은 창에 실린다.
   //
@@ -1895,20 +1899,20 @@ function getWaferBoundingBox(rotation, side, opts) {
   //    재구성되지 않는다. 그래서 붙들어 두는 것 말고 다른 방법이 없다.
   // ⚠️ `circleOnly`가 이 창보다 세다. 노치는 마스크와 무관한 물리 특징을 묻는 자리라
   //    (§computeNotchCell) 마스크에서 유래한 상자를 받으면 지문이 흔들린다.
-  if (physFrameOverride && physFrameOverride.box && !(opts && opts.circleOnly)) {
-    return physFrameOverride.box;
+  if (frame && frame.box && !(opts && opts.circleOnly)) {
+    return frame.box;
   }
   // 프레임 창이 열려 있으면 소스 메타 값이, 아니면 화면 컨트롤 값이 읽힌다.
   // 캐시 키를 해석된 실값으로 만들어야 두 프레임의 바운딩박스가 서로를 덮어쓰지 않는다.
-  const dia = physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300);
-  const cx = physNum(physFrameOverride, 'chipX', el.physChipX, 2.5);
-  const cy = physNum(physFrameOverride, 'chipY', el.physChipY, 2.5);
-  const ox = physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0);
-  const oy = physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0);
-  const em = physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0);
+  const dia = physNum(frame, 'waferDia', el.physWaferDia, 300);
+  const cx = physNum(frame, 'chipX', el.physChipX, 2.5);
+  const cy = physNum(frame, 'chipY', el.physChipY, 2.5);
+  const ox = physNum(frame, 'offsetX', el.physOffsetX, 0.0);
+  const oy = physNum(frame, 'offsetY', el.physOffsetY, 0.0);
+  const em = physNum(frame, 'edgeMargin', el.physEdgeMargin, 3.0);
 
-  const cols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);
-  const rows = gridDimNum(physFrameOverride, 'rows', el.gridRows, 10);
+  const cols = gridDimNum(frame, 'cols', el.gridCols, 10);
+  const rows = gridDimNum(frame, 'rows', el.gridRows, 10);
   const isRotated90or270 = (rotation === 90 || rotation === 270);
   const visualCols = isRotated90or270 ? rows : cols;
   const visualRows = isRotated90or270 ? cols : rows;
@@ -1926,7 +1930,7 @@ function getWaferBoundingBox(rotation, side, opts) {
   //    의존이 하나 늘 때마다 넷이 전부 ReferenceError로 죽는다 — 실측: 이 라운드에서 그렇게
   //    세 하네스가 죽었고, `loadExistingMap`의 catch가 그것을 "0셀 로드"로 삼켰다.
   const maskDeclaresTheFrame = !(opts && opts.circleOnly)
-    && !physFrameOverride
+    && !frame
     && validDieBasis() === 'ref';
   const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : 'C';
   const key = `${tag}_${rotation}_${side}_${visualCols}_${visualRows}_${dia}_${cx}_${cy}_${ox}_${oy}_${em}`;
@@ -1934,7 +1938,7 @@ function getWaferBoundingBox(rotation, side, opts) {
     return boundingBoxCache[key];
   }
 
-  const physConfig = getTransformedPhysicalConfig(physFrameOverride, rotation, side);
+  const physConfig = getTransformedPhysicalConfig(frame, rotation, side);
   const width = 700;
   const height = 700;
 
@@ -1961,8 +1965,8 @@ function getWaferBoundingBox(rotation, side, opts) {
       if (useMask) {
         // 렌더 루프가 쓰는 것과 **같은 두 줄**이다(§renderGridCanvas 5b 위). 물리 좌표를
         // 여기서 따로 만들지 않으면 판정할 수 없고, 따로 만드는 식은 그 함수 하나뿐이다.
-        const p = getDieIndex(physFrameOverride, c, r, cols, rows, rotation, side);
-        if (isValidDieAt(p.x, p.y, circleInside)) {
+        const p = getDieIndex(frame, c, r, cols, rows, rotation, side);
+        if (isValidDieAt(frame, p.x, p.y, circleInside)) {
           maskCount++;
           if (c < mMinC) mMinC = c;
           if (c > mMaxC) mMaxC = c;
@@ -1996,7 +2000,7 @@ function getWaferBoundingBox(rotation, side, opts) {
 }
 
 function getDbCoords(colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
-  const box = getWaferBoundingBox(rotation, side);
+  const box = getWaferBoundingBox(physFrameOverride, rotation, side);
 
   const dbX = colVisual - box.minC + startX;
 
@@ -2047,7 +2051,7 @@ function seatingSnapshot() {
     offsetX: physNum(physFrameOverride, 'offsetX', el.physOffsetX, 0.0),
     offsetY: physNum(physFrameOverride, 'offsetY', el.physOffsetY, 0.0),
     edgeMargin: physNum(physFrameOverride, 'edgeMargin', el.physEdgeMargin, 3.0),
-    box: getWaferBoundingBox(currentRotation, currentSide),
+    box: getWaferBoundingBox(physFrameOverride, currentRotation, currentSide),
   };
 }
 
@@ -2477,15 +2481,28 @@ function validDieBasis(state) {
 // 유효 다이 판정. 호출자가 **이미 계산한** 물리 좌표와 원 판정을 받는다 —
 // 여기서 좌표를 다시 만들면 변환 구현이 둘이 된다(SPEC §5.1 "변환은 클라 단일 구현").
 //
-// `physFrameOverride`가 열려 있으면 마스크를 적용하지 않는다: 프레임 창 안의 계산은
-// **소스 맵의 좌표계**를 푸는 중이고, 거기에 타깃 맵의 유효 다이 집합을 먹이면
-// 조용히 다른 맵의 마스크로 소스를 재단하게 된다.
+// **프레임이 있으면 마스크를 적용하지 않는다**: 프레임 창 안의 계산은 **소스 맵의 좌표계**를
+// 푸는 중이고, 거기에 타깃 맵의 유효 다이 집합을 먹이면 조용히 다른 맵의 마스크로 소스를
+// 재단하게 된다. 판정은 한 글자도 안 바뀌었고, 그 사실이 **모듈 상태가 아니라 인자로**
+// 도착하게 됐을 뿐이다.
 //
 // 🔴 `ref`는 원과 **교집합하지 않는다**. 교집합은 보수적으로 보이지만 템플릿이 유효하다고
 //    선언한 다이를 조용히 버린다 — INV-M4-2가 막는 결함이 정확히 그것이다.
-// `state`는 `validDieBasis`와 같은 선택 인자다(읽는 지점만 바뀐다, 쓰지 않는다).
-function isValidDieAt(physX, physY, circleInside, state) {
-  if (physFrameOverride) return circleInside;
+//
+// ⚠️ **두 선택적으로 보이는 인자는 같은 모양이 아니다.** `state`는 `validDieBasis`와 같은
+//    **맨 뒤·선택** 인자가 맞다(읽는 지점만 바뀐다, 쓰지 않는다). `frame`은 그렇지 않다 —
+//    **맨 앞·필수**이고 `undefined`면 던진다. 둘을 같은 규약으로 읽으면 다음 사람이 틀린
+//    쪽을 고른다:
+//      · `state === undefined` → 모듈의 `validDie`로 폴백한다. **정상 동작이다.**
+//      · `frame === undefined` → 호출자가 잊은 것이다. 폴백하면 화면 규격으로 조용히 접혀
+//        「화면은 멀쩡한데 저장값이 틀린」 상태가 되므로, 폴백하지 않고 던진다.
+//        `null`은 잊은 게 아니라 **답**이다 — 「프레임 없음, 이 맵의 마스크를 걸어라」.
+function isValidDieAt(frame, physX, physY, circleInside, state) {
+  if (frame === undefined) {
+    throw new Error('isValidDieAt: frame argument missing. Pass the frame that is in scope, '
+      + 'or `null` to apply this map mask on purpose.');
+  }
+  if (frame) return circleInside;
   const v = (state === undefined) ? validDie : state;
   const b = validDieBasis(v);
   if (b !== 'ref' && b !== 'template') return circleInside;
@@ -3472,7 +3489,7 @@ function renderGridCanvas() {
       // [M4①] 물리 좌표는 아래에서 어차피 만든다. 판정에 필요하므로 여기로 끌어올렸다 —
       // 판정용 좌표를 따로 만들면 같은 좌표의 계산이 둘이 된다.
       const physical = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-      const completelyInside = isValidDieAt(physical.x, physical.y,
+      const completelyInside = isValidDieAt(physFrameOverride, physical.x, physical.y,
         isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width, height));
 
       const visual = getDbCoords(c, r, cols, rows, currentRotation, currentSide, invertY, startX, startY);
@@ -3695,7 +3712,7 @@ function handleCellClick(cell, event) {
   }
 
   if (isOriginMode) {
-    const box = getWaferBoundingBox(currentRotation, currentSide);
+    const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
     const invertY = el.gridYInvert ? el.gridYInvert.checked : false;
 
     const newStartX = box.minC - c;
@@ -5883,7 +5900,7 @@ function fillGrid() {
       const rendered = gridCells2D && gridCells2D[r] ? gridCells2D[r][c] : null;
       const inside = rendered
         ? rendered.inside
-        : isValidDieAt(physical.x, physical.y, isCellInsideWafer(c, r, visualCols, visualRows));
+        : isValidDieAt(physFrameOverride, physical.x, physical.y, isCellInsideWafer(c, r, visualCols, visualRows));
       if (!inside) { skippedOutside++; continue; }
       if (isProtectedFCell(key)) continue;
       gridData[key] = activeBrush;
@@ -6502,7 +6519,7 @@ function getEdgeClassification() {
       // [M4①] E1/E2는 "유효 다이의 외곽"이다 — 원의 외곽이 아니다. 판정 근거가 맵으로
       // 바뀌면 침식 기준도 같이 바뀌어야 하고, 안 그러면 마스크와 엣지가 어긋난다.
       const p = getDieIndex(physFrameOverride, c, r, cols, rows, currentRotation, currentSide);
-      if (isValidDieAt(p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
+      if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWafer(c, r, visualCols, visualRows))) {
         isInside[r][c] = true;
       }
     }
@@ -6926,7 +6943,7 @@ function computeNotchCell(rotation, side) {
   //    달라져, 정상적인 붙여넣기가 "회전·면이 다릅니다"라는 무관한 사유로 거절된다.
   //    (지문이 canvas 좌표라는 점은 변하지 않는다 — 원점 상자는 좌표의 **번호 매기기**만
   //     정하므로 노치 칸의 위치와 서로 간섭하지 않는다.)
-  const box = getWaferBoundingBox(rotation, side, { circleOnly: true });
+  const box = getWaferBoundingBox(physFrameOverride, rotation, side, { circleOnly: true });
   const centerC = Math.floor((box.minC + box.maxC) / 2);
   const centerR = Math.floor((box.minR + box.maxR) / 2);
   const dx = (side === 'front') ? 1 : -1;
@@ -8800,7 +8817,7 @@ function canvasSeatKeys() {
       const p = getDieIndex(physFrameOverride, c, r, f.cols, f.rows, f.rotation, f.side);
       const k = `${p.x}_${p.y}`;
       all.add(k);
-      if (isValidDieAt(p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
+      if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {
         inside.add(k);
       }
     }
@@ -9400,7 +9417,7 @@ function deriveMaskKeys(rawKeys) {
 // at. STATE# 0 — the panel arrives as `el`, the orientation as arguments.
 function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
   hereInvertY, el, currentRotation, currentSide) {
-  const box = getWaferBoundingBox(currentRotation, currentSide);
+  const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
   // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
   // 진단은 전부 이 수로 푼다 ― 옛 치수로 푼 진단은 화면과 다른 것을 설명한다.
   const postCols = gridDimNum(physFrameOverride, 'cols', el.gridCols, 10);

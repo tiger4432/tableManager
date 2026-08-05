@@ -477,7 +477,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
   // tell "the box follows the mask" from "the box follows the mask everywhere, always".
   {
     const { sandbox: S } = buildEnv(src, {});
-    const circleBox = S.getWaferBoundingBox(0, 'front', { circleOnly: true });
+    const circleBox = S.getWaferBoundingBox(null, 0, 'front', { circleOnly: true });
     const seeRef = (keys, seq) => {
       S.validDieResolveSeq = seq;
       S.validDie = { basis: 'ref', keys, reason: '', ref: { table: 'dt_map', mapKey: 'TPL' }, raw: 'TPL' };
@@ -486,7 +486,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
     // (a) a resolved reference DOES move the box — otherwise (b)(c)(d) below are vacuous
     seeRef(mask.keys, 1);
     S.boundingBoxCache = {};
-    const maskBox = S.getWaferBoundingBox(0, 'front');
+    const maskBox = S.getWaferBoundingBox(null, 0, 'front');
     eq('boundary/reference-moves-the-box', true,
        JSON.stringify(maskBox) !== JSON.stringify(circleBox),
        'if the mask box equals the circle box the boundary tests below prove nothing');
@@ -500,26 +500,29 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
     //    lands on the mask's key (identical dims and physical spec, since the window's phys
     //    fields fall back to the DOM), and then either the window serves the mask's box or the
     //    next mask lookup serves the circle's. The 'V' entry is live right now, from `maskBox`.
-    const windowBox = S.withPhysFrame(
-      { cols: COLS, rows: ROWS, startX: 0, startY: 0, invertY: false, rotation: 0, side: 'front' },
-      () => S.getWaferBoundingBox(0, 'front'));
+    // The frame is an ARGUMENT now, so the window IS the argument. `withPhysFrame` would
+    // still set the binding, but `getWaferBoundingBox` no longer reads it -- wrapping the
+    // call would leave this check driving state nothing consults, i.e. inert and green.
+    const WINDOW_FRAME = { cols: COLS, rows: ROWS, startX: 0, startY: 0, invertY: false,
+      rotation: 0, side: 'front' };
+    const windowBox = S.getWaferBoundingBox(WINDOW_FRAME, 0, 'front');
     eq('boundary/frame-window-uses-the-circle', circleBox, windowBox,
        'overlay and valid-die resolution must be byte-identical to before this round');
     eq('boundary/frame-window-does-not-poison-the-mask-slot', maskBox,
-       S.getWaferBoundingBox(0, 'front'),
+       S.getWaferBoundingBox(null, 0, 'front'),
        'a window that shares the mask\'s cache key hands the circle box back to the editor');
 
     // (c) THE AUTHORING CANVAS does not declare a coordinate system. Its mask is the whole
     //     grid, so adopting it would renumber every cell the moment authoring is entered.
     S.validDie = { basis: 'template', keys: mask.keys, reason: '', ref: null, raw: undefined };
     S.boundingBoxCache = {};
-    eq('boundary/template-uses-the-circle', circleBox, S.getWaferBoundingBox(0, 'front'));
+    eq('boundary/template-uses-the-circle', circleBox, S.getWaferBoundingBox(null, 0, 'front'));
 
     // (d) A MASK WITH NO CELL ON THIS GRID falls back to the circle. An empty accumulator
     //     collapses to {0,0,0,0} and silently translates the entire coordinate system.
     seeRef(new Set(['999_999']), 2);
     S.boundingBoxCache = {};
-    eq('boundary/off-grid-mask-falls-back-to-the-circle', circleBox, S.getWaferBoundingBox(0, 'front'),
+    eq('boundary/off-grid-mask-falls-back-to-the-circle', circleBox, S.getWaferBoundingBox(null, 0, 'front'),
        '미상은 0이 아니다 — an unplaceable mask must not move the origin');
 
     // (e) THE CACHE MUST NOT SERVE ONE REFERENCE'S BOX TO ANOTHER. Two masks of IDENTICAL
@@ -533,10 +536,10 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
     const { sandbox: S2 } = buildEnv(src, {});
     S2.validDieResolveSeq = 1;
     S2.validDie = { basis: 'ref', keys: mask.keys, reason: '', ref: null, raw: 'A' };
-    const boxA = S2.getWaferBoundingBox(0, 'front');
+    const boxA = S2.getWaferBoundingBox(null, 0, 'front');
     S2.validDieResolveSeq = 2;                       // what resolveValidDie does on re-entry
     S2.validDie = { basis: 'ref', keys: mirrored, reason: '', ref: null, raw: 'B' };
-    const boxB = S2.getWaferBoundingBox(0, 'front'); // NO cache clear — the tag must separate them
+    const boxB = S2.getWaferBoundingBox(null, 0, 'front'); // NO cache clear — the tag must separate them
     eq('boundary/re-designation-gets-its-own-box', true,
        JSON.stringify(boxA) !== JSON.stringify(boxB),
        'a size-keyed cache tag serves the previous reference\'s origin to the new one');
@@ -615,7 +618,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
          !/const c_zero = isXMirrored/.test(src),
          'the (0,0) cell must come from getCanvasCellFromDb, not a hand-written copy');
       eq('structural/notch-still-asks-for-the-circle', true,
-         /getWaferBoundingBox\(rotation, side, \{ circleOnly: true \}\)/.test(src),
+         /getWaferBoundingBox\([A-Za-z_$][\w$]*, rotation, side, \{ circleOnly: true \}\)/.test(src),
          'the clipboard frame fingerprint must not follow a mask that a network failure can change');
       // The deleted adoption machinery must stay deleted (94b9baa).
       const gone = ['storedCoordRepositionPlan', 'applyStoredCoordReposition', 'repositionRefusalReason',
@@ -635,7 +638,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
 
 // ── Mutations ──────────────────────────────────────────────────────────────────────────
 const TAG_LINE = '  const tag = maskDeclaresTheFrame ? `V${validDieResolveSeq}` : \'C\';';
-const TAG_WINDOW = `    && !physFrameOverride
+const TAG_WINDOW = `    && !frame
     && validDieBasis() === 'ref';`;
 const ZERO_CELL = `  const zero = getCanvasCellFromDb(0, 0, cols, rows, currentRotation, currentSide, invertY, startX, startY);
   const hasZeroZero = (zero.c >= 0 && zero.c < visualCols) && (zero.r >= 0 && zero.r < visualRows);`;
@@ -650,32 +653,45 @@ const RESOLVE_FIRST = `    if (parseValidDieRef(loadedGridMeta, selectedTable) !
     // 수 있다. 태그가 키를 갈라 주지만, 여기서 한 번 더 비워 이전 맵의 항목을 남기지 않는다.
     boundingBoxCache = {};`;
 
+// ── Mutation anchors: presence AND uniqueness, refusing at exit 2 ───────────────────────
+// Adopted from `geometry_origin_reseat_harness.mjs`, which has carried this for longer.
+// 🔴 A `replace` on a NON-UNIQUE anchor lands on the first match and the mutant is then
+//    "caught" by whatever that unrelated site broke -- a green mutation score containing a
+//    kill nobody chose. Measured in this repo 2026-08-05.
+// 🔴 An UNAPPLIED mutant is not a caught mutant. Re-point a stale anchor; never delete it.
+function once(src, find, repl) {
+  const i = src.indexOf(find);
+  if (i < 0) die(`mutation anchor not found: ${find.slice(0, 80)}`);
+  if (src.indexOf(find, i + 1) >= 0) die(`mutation anchor is not unique: ${find.slice(0, 80)}`);
+  return src.slice(0, i) + repl + src.slice(i + find.length);
+}
+
 const MUTATIONS = [
   // 🔴 THE SHIPPED DEFECT PUT BACK — the only self-check worth anything.
   ['D0 the shipped defect restored (the box never consults the mask)',
-   s => s.replace(TAG_LINE, "  const tag = 'C';")],
+   s => once(s, TAG_LINE, "  const tag = 'C';")],
   ['D1 the mask box is used but the frame window stops falling back to the circle',
-   s => s.replace(TAG_WINDOW, `    && validDieBasis() === 'ref';`)],
+   s => once(s, TAG_WINDOW, `    && validDieBasis() === 'ref';`)],
   ['D2 the authoring canvas (template) starts declaring the coordinate system',
-   s => s.replace(TAG_WINDOW,
-                  `    && !physFrameOverride
+   s => once(s, TAG_WINDOW,
+                  `    && !frame
     && validDieBasis() !== 'circle' && validDieBasis() !== 'refused';`)],
   ['D3 the cache tag stops distinguishing generations (same-size refs collide)',
-   s => s.replace(TAG_LINE, "  const tag = maskDeclaresTheFrame ? 'V' : 'C';")],
+   s => once(s, TAG_LINE, "  const tag = maskDeclaresTheFrame ? 'V' : 'C';")],
   ['D4 only the column axis follows the mask (rows stay on the circle)',
-   s => s.replace(`    ? { minC: mMinC, maxC: mMaxC, minR: mMinR, maxR: mMaxR }`,
+   s => once(s, `    ? { minC: mMinC, maxC: mMaxC, minR: mMinR, maxR: mMaxR }`,
                   `    ? { minC: mMinC, maxC: mMaxC, minR, maxR }`)],
   ['D5 the two axes are swapped in the mask box',
-   s => s.replace(`    ? { minC: mMinC, maxC: mMaxC, minR: mMinR, maxR: mMaxR }`,
+   s => once(s, `    ? { minC: mMinC, maxC: mMaxC, minR: mMinR, maxR: mMaxR }`,
                   `    ? { minC: mMinR, maxC: mMaxR, minR: mMinC, maxR: mMaxC }`)],
   ['D6 the mask accumulator uses the circle predicate (mask box == circle box)',
-   s => s.replace(`        if (isValidDieAt(p.x, p.y, circleInside)) {`,
+   s => once(s, `        if (isValidDieAt(frame, p.x, p.y, circleInside)) {`,
                   `        if (circleInside) {`)],
   ['D7 the empty-mask fallback is removed (an off-grid mask collapses the origin to 0)',
-   s => s.replace(`  const src = (useMask && maskCount > 0)`, `  const src = (useMask)`)],
+   s => once(s, `  const src = (useMask && maskCount > 0)`, `  const src = (useMask)`)],
   // The ordering the user stated in words.
   ['D8 the mask is resolved AFTER the cells are placed (the old call site)',
-   s => s.replace(RESOLVE_FIRST, '')
+   s => once(s, RESOLVE_FIRST, '')
          .replace(`    // [M4②] 홈 키를 함께 넘기는 이유(자기 참조 A→A 차단)와 \`setLoadedIdentity\`보다 앞선다는
     // 사실도 그 블록에 적혀 있다.
     renderGridCanvas();`,
@@ -685,8 +701,8 @@ const MUTATIONS = [
     renderGridCanvas();`)],
   // The duplicate derivation this round removed.
   ['D9 renderGridCanvas re-derives the (0,0) cell by hand again (the mirror-term copy)',
-   s => s.replace(ZERO_CELL,
-                  `  const box = getWaferBoundingBox(currentRotation, currentSide);
+   s => once(s, ZERO_CELL,
+                  `  const box = getWaferBoundingBox(physFrameOverride, currentRotation, currentSide);
   const isXMirrored = (currentSide === 'back' && !isRotated90or270);
   const isYMirrored = (currentSide === 'back' && isRotated90or270);
   const c_zero = isXMirrored ? (box.maxC + startX) : (box.minC - startX);

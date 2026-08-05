@@ -239,7 +239,7 @@ function containingCell(f, mm) {
 // Source rows exactly as a REST fetch hands them over, with each row's own truth recorded.
 function buildSourceRows(ctx, f) {
   setScreen(ctx, f);
-  const box = ctx.getWaferBoundingBox(f.rotation, f.side);
+  const box = ctx.getWaferBoundingBox(null, f.rotation, f.side);
   const a = screenAxes(f);
   const rows = [], truth = new Map();
   for (let r = 0; r < a.visualRows; r++) for (let c = 0; c < a.visualCols; c++) {
@@ -275,7 +275,7 @@ function runAll(src) {
   // A1 -- the oracle is anchored to a quantity that predates this round.
   for (const [name, f] of [['source', SRC], ['target', TGT]]) {
     setScreen(ctx, f);
-    const code = ctx.getWaferBoundingBox(f.rotation, f.side);
+    const code = ctx.getWaferBoundingBox(null, f.rotation, f.side);
     const orc = oracleBox(f);
     ok(code.minC === orc.minC && code.maxC === orc.maxC && code.minR === orc.minR && code.maxR === orc.maxR,
       `A1 oracle anchor (${name})`, `code ${JSON.stringify(code)} vs oracle ${JSON.stringify(orc)}`);
@@ -725,9 +725,12 @@ const MUTATIONS = [
   ['outside counted against grid membership again',
     'if (!seatKeys.inside.has(key)) outside += list.length;',
     'if (!seatKeys.all.has(key)) outside += list.length;'],
+  // RE-POINTED 2026-08-06 (frame-as-argument). Same defect, new spelling: opening the window
+  // is now PASSING a frame, so the mutant passes the source frame where the seat keys must
+  // use the screen -- the target's own mask is suspended and lost, exactly as before.
   ['seat keys computed inside a frame window (target mask lost)',
-    'if (isValidDieAt(p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {',
-    'if (withPhysFrame(f, () => isValidDieAt(p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700)))) {'],
+    'if (isValidDieAt(physFrameOverride, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {',
+    'if (isValidDieAt(f, p.x, p.y, isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, 700, 700))) {'],
   ['identical duplicate rows no longer collapsed',
     'if (twin && twin.val === entry.val) { duplicates++; return; }',
     'if (false) { duplicates++; return; }'],

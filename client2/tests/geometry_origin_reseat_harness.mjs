@@ -404,7 +404,7 @@ function paintOracle(S) {
   for (let r = 0; r < f.vr; r++) for (let c = 0; c < f.vc; c++) {
     const p = S.getDieIndex(null, c, r, f.cols, f.rows, f.rot, f.side);
     const circle = S.isCellInsideWaferFast(c, r, f.vc, f.vr, cfg, 700, 700);
-    if (!S.isValidDieAt(p.x, p.y, circle)) continue;
+    if (!S.isValidDieAt(null, p.x, p.y, circle)) continue;
     const v = S.getDbCoords(c, r, f.cols, f.rows, f.rot, f.side, f.inv, f.sx, f.sy);
     S.gridData[`${p.x}_${p.y}`] = `${v.x},${v.y}`;
   }
@@ -443,7 +443,7 @@ function seatOfValue(S, value) {
 }
 
 function boxOf(S) {
-  const b = S.getWaferBoundingBox(S.currentRotation, S.currentSide);
+  const b = S.getWaferBoundingBox(null, S.currentRotation, S.currentSide);
   return { minC: b.minC, minR: b.minR, maxC: b.maxC, maxR: b.maxR };
 }
 
@@ -999,8 +999,8 @@ const MUTANTS = {
   // The frame window stops carrying the box, so the pre-edit coordinates are recovered on the
   // wrong basis. Only a declared mask can see this.
   'frame-window-drops-the-box': (s) => once(s,
-    '  if (physFrameOverride && physFrameOverride.box && !(opts && opts.circleOnly)) {\n    return physFrameOverride.box;\n  }',
-    '  if (false) {\n    return physFrameOverride.box;\n  }'),
+    '  if (frame && frame.box && !(opts && opts.circleOnly)) {\n    return frame.box;\n  }',
+    '  if (false) {\n    return frame.box;\n  }'),
   // Rule 4 fires on rule 5's path.
   // Anchored on the guard's SHAPE (its first term through its `return null;`) rather than
   // its exact text: the replacement still deletes the entire orientation guard, which is

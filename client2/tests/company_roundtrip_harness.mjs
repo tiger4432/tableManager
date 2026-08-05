@@ -415,7 +415,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 
 // ── fixture self-check: the defect axes really are live ─────────────────────────
 {
-  const box = rt.sb.H.getWaferBoundingBox(ROT, SIDE);
+  const box = rt.sb.H.getWaferBoundingBox(null, ROT, SIDE);
   chk('fixture', 'bbox minC != 0 (a dropped bbox term cannot hide)', box.minC > 0, true);
   chk('fixture', 'chipX != chipY (a pitch swap under rot90 cannot hide)', CHIP_X !== CHIP_Y, true);
   chk('fixture', 'visualCols != visualRows (a transposed read cannot pass by accident)',
@@ -755,7 +755,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   const allInside = Object.keys(zero.sb.ctx.gridCells2D)
     .every(r => Object.keys(zero.sb.ctx.gridCells2D[r]).every(c => zero.sb.ctx.gridCells2D[r][c].inside));
   chk('P0-2', 'no-mask fixture: every cell is inside (bbox fills the grid)', allInside, true);
-  const box = zero.sb.H.getWaferBoundingBox(0, 'front');
+  const box = zero.sb.H.getWaferBoundingBox(null, 0, 'front');
   chk('P0-2', 'no-mask fixture: bbox spans the whole grid', [box.minR, box.maxR], [0, zero.vr - 1]);
 
   // ② the notch is off grid for ALL FOUR rotations -> computeNotchCell must say null

@@ -119,15 +119,15 @@ function runChecks(sandbox) {
     const keysBefore = [...raw.keys].sort().join(',');
     const st = track(raw, 'arg');
     validDieBasis(st);
-    isValidDieAt(1, 1, false, st);
-    isValidDieAt(99, 99, true, st);
+    isValidDieAt(null, 1, 1, false, st);
+    isValidDieAt(null, 99, 99, true, st);
     A('read_only/argument_state_untouched', [], writes.slice());
     A('read_only/argument_keyset_untouched', keysBefore, [...raw.keys].sort().join(','));
 
     writes.length = 0;
     const mod = track({ basis: 'circle', keys: null, reason: '', ref: null, raw: undefined }, 'module');
     sandbox.validDie = mod;
-    validDieBasis(); isValidDieAt(1, 1, true); isValidDieAt(1, 1, false);
+    validDieBasis(); isValidDieAt(null, 1, 1, true); isValidDieAt(null, 1, 1, false);
     A('read_only/module_state_untouched', [], writes.slice());
     // The binding too: `validDie = {...v}` writes nothing THROUGH the proxy, it replaces it.
     A('read_only/module_binding_not_reassigned', true, sandbox.validDie === mod);
@@ -142,9 +142,9 @@ function runChecks(sandbox) {
                       { basis: 'refused', keys: null, reason: 'X', ref: null },
                       null]) {
       sandbox.validDie = st;
-      const viaGlobal = [...probes.map(([x, y, c]) => isValidDieAt(x, y, c)), validDieBasis()];
+      const viaGlobal = [...probes.map(([x, y, c]) => isValidDieAt(null, x, y, c)), validDieBasis()];
       sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null };   // poisoned
-      const viaArg = [...probes.map(([x, y, c]) => isValidDieAt(x, y, c, st)), validDieBasis(st)];
+      const viaArg = [...probes.map(([x, y, c]) => isValidDieAt(null, x, y, c, st)), validDieBasis(st)];
       A(`access_shapes/global_equals_argument(${st ? st.basis : 'null'})`, viaGlobal, viaArg,
         'the harness reads the global; the two must be one code path, not two');
     }
@@ -155,12 +155,14 @@ function runChecks(sandbox) {
   {
     const st = refState([[1, 1]]);
     sandbox.validDie = st;
-    sandbox.physFrameOverride = { waferDia: 300, chipX: 2.5, chipY: 2.5 };
+    // The frame ARRIVES AS AN ARGUMENT now, so the window is opened by passing it rather than
+    // by assigning a module binding. Keeping the old assignment would leave a fixture that
+    // sets state nothing reads -- still green, and measuring nothing.
+    const WINDOW_FRAME = { waferDia: 300, chipX: 2.5, chipY: 2.5 };
     // Inside the window the caller's circle verdict must survive untouched in BOTH polarities:
     // (9,9) is undeclared and would be masked out; (1,1) is declared and would be forced in.
-    const inWindow = [isValidDieAt(9, 9, true), isValidDieAt(1, 1, false)];
-    sandbox.physFrameOverride = null;
-    const outside = [isValidDieAt(9, 9, true), isValidDieAt(1, 1, false)];
+    const inWindow = [isValidDieAt(WINDOW_FRAME, 9, 9, true), isValidDieAt(WINDOW_FRAME, 1, 1, false)];
+    const outside = [isValidDieAt(null, 9, 9, true), isValidDieAt(null, 1, 1, false)];
     A('frame_window/mask_suspended_inside_override', [true, false], inWindow,
       'SPEC §5.1 — solving the SOURCE frame; this map\'s mask must not cut it');
     A('frame_window/window_actually_changes_the_answer', true,
@@ -217,30 +219,43 @@ for (const r of results) {
 
 // ── Mutation controls ───────────────────────────────────────────────────────────────────
 if (process.argv.includes('--mutate')) {
+  // ── Mutation anchors: presence AND uniqueness, refusing at exit 2 ───────────────────────
+  // Adopted from `geometry_origin_reseat_harness.mjs`, which has carried this for longer.
+  // 🔴 A `replace` on a NON-UNIQUE anchor lands on the first match and the mutant is then
+  //    "caught" by whatever that unrelated site broke -- a green mutation score containing a
+  //    kill nobody chose. Measured in this repo 2026-08-05.
+  // 🔴 An UNAPPLIED mutant is not a caught mutant. Re-point a stale anchor; never delete it.
+  function once(src, find, repl) {
+    const i = src.indexOf(find);
+    if (i < 0) die(`mutation anchor not found: ${find.slice(0, 80)}`);
+    if (src.indexOf(find, i + 1) >= 0) die(`mutation anchor is not unique: ${find.slice(0, 80)}`);
+    return src.slice(0, i) + repl + src.slice(i + find.length);
+  }
+
   const MUTANTS = [
     // Deliberately a VALUE-PRESERVING write: this is the mutant a before/after snapshot
     // cannot see, and the reason the read_only check uses a Proxy.
     { id: 'basis_normalises_in_place', why: 'the reader writes back the same value — invisible to a snapshot, still a write',
       f: (role, code) => role === 'valid_die_basis'
-        ? code.replace("if (!v) return 'circle';", "if (!v) return 'circle';\n  v.reason = v.reason || '';") : code },
+        ? once(code, "if (!v) return 'circle';", "if (!v) return 'circle';\n  v.reason = v.reason || '';") : code },
     // Placed on the `ref` path where `v` is guaranteed non-null, so the kill is attributable
     // to the read_only check rather than to an incidental TypeError.
     { id: 'at_mutates_argument', why: 'the judgement stamps the state it was handed — corrupts the next case',
       f: (role, code) => role === 'valid_die_at'
-        ? code.replace('return v.keys.has(`${physX}_${physY}`);',
+        ? once(code, 'return v.keys.has(`${physX}_${physY}`);',
           "v.reason = 'cached';\n  return v.keys.has(`${physX}_${physY}`);") : code },
     { id: 'at_reassigns_module_binding', why: 'the judgement caches a derived state over the module binding',
       f: (role, code) => role === 'valid_die_at'
-        ? code.replace('const v = (state === undefined) ? validDie : state;',
+        ? once(code, 'const v = (state === undefined) ? validDie : state;',
           'const v = (state === undefined) ? validDie : state;\n  validDie = { ...v };') : code },
     { id: 'argument_ignored', why: 'the explicit state argument is dropped — the two access shapes diverge',
       f: (role, code) => role === 'valid_die_at'
-        ? code.replace('const v = (state === undefined) ? validDie : state;', 'const v = validDie;') : code },
+        ? once(code, 'const v = (state === undefined) ? validDie : state;', 'const v = validDie;') : code },
     { id: 'frame_window_ignored', why: 'target mask applied while solving the source frame',
       f: (role, code) => role === 'valid_die_at'
-        ? code.replace('if (physFrameOverride) return circleInside;', '') : code },
+        ? once(code, 'if (frame) return circleInside;', '') : code },
     { id: 'chip_gates_on_retired_spelling', why: "chip still branches on basis === 'map'",
-      f: (role, code) => role === 'render_chip' ? code.replace("basis === 'ref'", "basis === 'map'") : code },
+      f: (role, code) => role === 'render_chip' ? once(code, "basis === 'ref'", "basis === 'map'") : code },
   ];
   console.log('\n  MUTATION CONTROLS — a surviving mutant means the check above it is inert.\n');
   let inert = 0;

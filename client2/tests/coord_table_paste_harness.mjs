@@ -271,7 +271,7 @@ const evidence = {};
 const base = buildSandbox(WORK_MAP, 'working tree');
 buildCells(base);
 paintFixture(base);
-const BOX = base.H.getWaferBoundingBox(ROT, SIDE);
+const BOX = base.H.getWaferBoundingBox(null, ROT, SIDE);
 
 {
   chkTrue('fixture', 'box.minC != 0 (a dropped bbox term cannot hide)', BOX.minC !== 0, BOX);
@@ -731,7 +731,7 @@ function score(src, label) {
     paintFixture(sb);
   } catch (e) { return [`sandbox: ${e && e.message}`]; }
 
-  const box = sb.H.getWaferBoundingBox(ROT, SIDE);
+  const box = sb.H.getWaferBoundingBox(null, ROT, SIDE);
   if (JSON.stringify(box) !== JSON.stringify(BOX)) why.push(`box moved to ${JSON.stringify(box)}`);
 
   // ① the block is still recognised, with the same axes

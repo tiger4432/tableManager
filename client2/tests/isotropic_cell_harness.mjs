@@ -528,7 +528,7 @@ function fixtureSelfCheck(src) {
   ok(CHIP_X !== CHIP_Y, 'fixture: chip pitch is anisotropic (a square pitch kills the defect axis)');
   ok(COLS !== ROWS, 'fixture: cols != rows');
   ok(START_X !== START_Y && (START_X < 0 || START_Y < 0), 'fixture: start coords differ and one is negative');
-  const box = render(src, { panel: {} }).sandbox.getWaferBoundingBox(0, 'front');
+  const box = render(src, { panel: {} }).sandbox.getWaferBoundingBox(null, 0, 'front');
   ok(box.minC > 0 || box.minR > 0, 'fixture: the circle bbox has a non-zero minimum (a dropped bbox term cannot hide)',
      `minC ${box.minC} minR ${box.minR}`);
   // The isotropic branch is actually TAKEN — otherwise every claim below scores the fallback.

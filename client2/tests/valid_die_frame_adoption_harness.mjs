@@ -992,9 +992,9 @@ async function scoreAll(src, { verbose = false } = {}) {
     // the mask, not the circle, governs
     const someMask = [...res.keys][0].split('_').map(Number);
     eq(`F6/empty-${label}/mask-governs-inside`, true,
-       S.isValidDieAt(someMask[0], someMask[1], false, res), 'a masked die stays valid even off-circle');
+       S.isValidDieAt(null, someMask[0], someMask[1], false, res), 'a masked die stays valid even off-circle');
     eq(`F6/empty-${label}/mask-excludes-unlisted`, false,
-       S.isValidDieAt(9999, 9999, true, res), 'a die outside the mask is invalid even inside the circle');
+       S.isValidDieAt(null, 9999, 9999, true, res), 'a die outside the mask is invalid even inside the circle');
 
     // an empty target cannot strand anything — nothing is painted to strand
     const u = S.classifyUnsavableCells();
@@ -1293,7 +1293,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // I FIRST WROTE THIS BLOCK ASSERTING SILENCE, ON THE REASONING THAT THE PHYSICAL KEY IS
   // ROTATION-INVARIANT SO A ROTATION-ONLY REFERENCE MUST OVERLAP. The harness said otherwise
   // and the harness was right: `getCanvasCellFromDb` anchors DB coordinates on
-  // `getWaferBoundingBox(rotation, side)`, whose bounding box is itself rotation-dependent, so
+  // `getWaferBoundingBox(null, rotation, side)`, whose bounding box is itself rotation-dependent, so
   // the DB -> physical mapping is NOT rotation-invariant even though canvas -> physical is.
   // A reference stored at 90 really does name a different die by DB(0,0), and the mask really
   // does land offset. Measured below rather than assumed.

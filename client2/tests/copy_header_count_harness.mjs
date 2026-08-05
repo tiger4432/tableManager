@@ -369,7 +369,7 @@ const work = buildSandbox(WORK_MAP, 'working tree',
 const base = buildSandbox(BASE_MAP, 'pre-fix baseline');
 
 {
-  const box = work.H.getWaferBoundingBox(ROT, SIDE);
+  const box = work.H.getWaferBoundingBox(null, ROT, SIDE);
   chk('fixture', 'bbox minC != 0 (a dropped bbox term cannot hide)', box.minC > 0, true);
   chk('fixture', 'chipX != chipY (a pitch swap under rot90 cannot hide)', CHIP_X !== CHIP_Y, true);
   const { vc, vr } = buildCells(work);

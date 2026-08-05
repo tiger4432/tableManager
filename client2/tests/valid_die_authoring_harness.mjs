@@ -198,7 +198,7 @@ function runSuite(sb, st) {
 
   // ── fixture self-check: the defect axes really are live ───────────────────────
   ctx.currentRotation = 90; ctx.currentSide = 'back'; ctx.boundingBoxCache = {};
-  const box = H.getWaferBoundingBox(90, 'back');
+  const box = H.getWaferBoundingBox(null, 90, 'back');
   chk('fixture', 'bbox minC != 0 (a dropped bbox term cannot hide)', box.minC > 0, true);
   chk('fixture', 'chipX != chipY (a pitch swap under rot90 cannot hide)', CHIP_X !== CHIP_Y, true);
 
@@ -214,18 +214,18 @@ function runSuite(sb, st) {
   let passThrough = true;
   for (let px = -2; px <= 12; px++) {
     for (const verdict of [true, false]) {
-      if (H.isValidDieAt(px, 3, verdict, noDecl) !== verdict) passThrough = false;
-      if (H.isValidDieAt(px, 3, verdict, stale) !== verdict) passThrough = false;
+      if (H.isValidDieAt(null, px, 3, verdict, noDecl) !== verdict) passThrough = false;
+      if (H.isValidDieAt(null, px, 3, verdict, stale) !== verdict) passThrough = false;
     }
   }
   chk('INV-1', 'no declaration -> isValidDieAt is the identity on the circle verdict (60 pairs)',
     passThrough, true);
   // the frame window still suspends every mask, template included
-  ctx.physFrameOverride = { cols: COLS, rows: ROWS };
+  // The frame is an ARGUMENT now: opening the window means passing it, not assigning it.
+  const WINDOW_FRAME = { cols: COLS, rows: ROWS };
   const tplState = { basis: 'template', keys: new Set(['5_5']), reason: '', ref: null, raw: undefined };
   chk('INV-1', 'frame window suspends the template mask too (a source map is not cut by this map)',
-    [H.isValidDieAt(5, 5, false, tplState), H.isValidDieAt(9, 9, true, tplState)], [false, true]);
-  ctx.physFrameOverride = null;
+    [H.isValidDieAt(WINDOW_FRAME, 5, 5, false, tplState), H.isValidDieAt(WINDOW_FRAME, 9, 9, true, tplState)], [false, true]);
 
   // The basis alphabet reachable FROM METADATA is unchanged: circle | ref | refused.
   // `template` is an authoring state, never a stored declaration - so the seam contract's
@@ -274,14 +274,14 @@ function runSuite(sb, st) {
   const [cx, cy] = cornerKey.split('_').map(Number);
   const authoring = { basis: 'template', keys: rect.keys, reason: '', ref: null, raw: undefined };
   chk('INV-2', `corner ${cornerKey}: circle says no, template says yes`,
-    [H.isValidDieAt(cx, cy, false, noDecl), H.isValidDieAt(cx, cy, false, authoring)],
+    [H.isValidDieAt(null, cx, cy, false, noDecl), H.isValidDieAt(null, cx, cy, false, authoring)],
     [false, true]);
   const inCircleKey = [...circleSet][0];
   const [ix, iy] = inCircleKey.split('_').map(Number);
   const carved = { basis: 'template', keys: new Set([...rect.keys].filter(k => k !== inCircleKey)),
                    reason: '', ref: null, raw: undefined };
   chk('INV-2', `carving ${inCircleKey} out makes it INVALID even though the circle allows it`,
-    [H.isValidDieAt(ix, iy, true, noDecl), H.isValidDieAt(ix, iy, true, carved)],
+    [H.isValidDieAt(null, ix, iy, true, noDecl), H.isValidDieAt(null, ix, iy, true, carved)],
     [true, false]);
 
   // ════════════════════════════════════════════════════════════════════════════

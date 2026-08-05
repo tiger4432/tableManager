@@ -381,8 +381,8 @@ CIRCLE_STATES.forEach(st => {
   ctx.validDie = st;
   for (let x = -2; x <= 2; x++) {
     for (let y = -2; y <= 2; y++) {
-      if (H.isValidDieAt(x, y, true) !== true) passthroughOk = false;
-      if (H.isValidDieAt(x, y, false) !== false) passthroughOk = false;
+      if (H.isValidDieAt(null, x, y, true) !== true) passthroughOk = false;
+      if (H.isValidDieAt(null, x, y, false) !== false) passthroughOk = false;
     }
   }
 });
@@ -392,22 +392,23 @@ check('M4-1', 'no ref: isValidDieAt is the identity on the circle verdict (75 pa
 // BOTH directions. Checking only one direction would pass an implementation that ORs or
 // ANDs the two, which is exactly "circle still participates".
 ctx.validDie = { basis: 'ref', keys: new Set(['1_1', '2_2']), reason: '', ref: { table: 't', mapKey: 'k' } };
-check('M4-2', 'in mask, circle says outside -> valid', H.isValidDieAt(1, 1, false), true);
-check('M4-2', 'in mask, circle says inside -> valid', H.isValidDieAt(1, 1, true), true);
+check('M4-2', 'in mask, circle says outside -> valid', H.isValidDieAt(null, 1, 1, false), true);
+check('M4-2', 'in mask, circle says inside -> valid', H.isValidDieAt(null, 1, 1, true), true);
 check('M4-2', 'not in mask, circle says inside -> INVALID (circle does not participate)',
-  H.isValidDieAt(5, 5, true), false);
-check('M4-2', 'not in mask, circle says outside -> invalid', H.isValidDieAt(5, 5, false), false);
+  H.isValidDieAt(null, 5, 5, true), false);
+check('M4-2', 'not in mask, circle says outside -> invalid', H.isValidDieAt(null, 5, 5, false), false);
 // DIFFERENTIAL: the fixture must contain a cell where mask and circle DISAGREE, otherwise
 // it cannot tell "map is the basis" from "circle is the basis".
 check('M4-2', 'fixture activates the defect axis (mask and circle disagree somewhere)',
-  H.isValidDieAt(1, 1, false) !== false || H.isValidDieAt(5, 5, true) !== true, true);
+  H.isValidDieAt(null, 1, 1, false) !== false || H.isValidDieAt(null, 5, 5, true) !== true, true);
 
 // The frame window must suspend the mask: inside withPhysFrame we are solving the SOURCE
 // map's coordinates, and applying THIS map's mask there cuts one map with another's stencil.
-ctx.physFrameOverride = { cols: 10, rows: 10 };
+// The frame is an ARGUMENT now: opening the window means passing it. An assignment here
+// would set state nothing reads, and this check would pass while measuring nothing.
+const WINDOW_FRAME = { cols: 10, rows: 10 };
 check('M4-2', 'frame window suspends the mask (circle verdict passes through)',
-  [H.isValidDieAt(5, 5, true), H.isValidDieAt(1, 1, false)], [true, false]);
-ctx.physFrameOverride = null;
+  [H.isValidDieAt(WINDOW_FRAME, 5, 5, true), H.isValidDieAt(WINDOW_FRAME, 1, 1, false)], [true, false]);
 
 // INV-M4-3: a refused ref must NOT quietly behave like a resolved one, and must not
 // blank the wafer either - the basis reports 'refused' and the verdict stays the
@@ -421,7 +422,7 @@ ctx.physFrameOverride = null;
 // string asserts here.
 ctx.validDie = { basis: 'refused', keys: null, reason: 'X', ref: { table: 't', mapKey: 'k' } };
 check('M4-3', 'refused: verdict passes through, basis says so',
-  [H.isValidDieAt(1, 1, true), H.isValidDieAt(1, 1, false), H.validDieBasis()],
+  [H.isValidDieAt(null, 1, 1, true), H.isValidDieAt(null, 1, 1, false), H.validDieBasis()],
   [true, false, 'refused']);
 ctx.validDie = null;
 

@@ -101,6 +101,7 @@ const DIE_INDEX_ALIAS = '__dieIndexFn';
 // which has exactly the same problem. Read it there; do not restate it here. Two copies of a
 // rule is how the two sides of a comparison start answering different questions.
 const PHYS_CONFIG_ALIAS = '__physConfigFn';
+const VALID_DIE_ALIAS = '__validDieAtFn';
 
 function buildVerdictFn(src, label) {
   const parts = [];
@@ -132,6 +133,9 @@ function buildVerdictFn(src, label) {
   vm.runInContext(frameAdaptedSource(DIE_INDEX_ALIAS, chosen.getDieIndex, 6), ctx);
   vm.runInContext(
     frameAdaptedSource(PHYS_CONFIG_ALIAS, chosen.getTransformedPhysicalConfig, 2), ctx);
+  // legacy arity 4: (physX, physY, circleInside, state) -- `state` is trailing-optional and
+  // is NOT the frame; only the leading argument moved.
+  vm.runInContext(frameAdaptedSource(VALID_DIE_ALIAS, chosen.isValidDieAt, 4), ctx);
   return ctx;
 }
 
@@ -163,7 +167,7 @@ function verdicts(ctx, f, validDieState) {
     for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
       const p = ${DIE_INDEX_ALIAS}(c, r, cols, rows, rot, side);
       const circle = isCellInsideWaferFast(c, r, vc, vr, pc, 700, 700);
-      out.push(isValidDieAt(p.x, p.y, circle) ? 1 : 0);
+      out.push(${VALID_DIE_ALIAS}(p.x, p.y, circle) ? 1 : 0);
     }
     return out;
   })`, ctx);

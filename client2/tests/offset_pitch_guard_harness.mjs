@@ -386,7 +386,7 @@ function run(src) {
     for (const offX of [0, 2, 5, 10, 11]) {
       const P = { ...P0, offX };
       const { S } = buildEnv(src, P);
-      const box = S.getWaferBoundingBox(0, 'front');
+      const box = S.getWaferBoundingBox(null, 0, 'front');
       const t = unboundedInsideBox(S, P);
       eq(`D/in-cap/off${offX}/minC-follows-the-lattice`, box.minC, t.minC);
       eq(`D/in-cap/off${offX}/minR-follows-the-lattice`, box.minR, t.minR);
@@ -398,7 +398,7 @@ function run(src) {
     for (const [offX, wantDrift] of [[33, 1], [50, 3], [80, 6]]) {
       const P = { ...P0, offX };
       const { S } = buildEnv(src, P);
-      const box = S.getWaferBoundingBox(0, 'front');
+      const box = S.getWaferBoundingBox(null, 0, 'front');
       const t = unboundedInsideBox(S, P);
       eq(`D/beyond/off${offX}/drift`, box.minC - t.minC, wantDrift);
       // per-cell, key -> value: how many stored coordinates read differently, and by how much

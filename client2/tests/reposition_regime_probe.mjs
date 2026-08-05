@@ -104,7 +104,7 @@ for (const [name, f] of Object.entries(frames)) {
   const rot = Number(f.rotation) || 0, side = f.side === 'back' ? 'back' : 'front';
   const r90 = (rot === 90 || rot === 270);
   const vC = r90 ? f.grid_rows : f.grid_cols, vR = r90 ? f.grid_cols : f.grid_rows;
-  const box = S.getWaferBoundingBox(rot, side);
+  const box = S.getWaferBoundingBox(null, rot, side);
   const pc = S.getTransformedPhysicalConfig(null, rot, side);
   // exact clipping test: would a column one step OUTSIDE the grid still be inside the circle?
   // `isCellInsideWaferFast` is a pure formula, so it answers for c = -1 and c = vC too.
