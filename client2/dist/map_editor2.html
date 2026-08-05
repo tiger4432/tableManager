@@ -16,10 +16,10 @@
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
-  <script type="module" crossorigin src="/assets/map_editor2-S2w957u0.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor2-C_xsOUtf.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/config-9qPFNOO-.js">
   <link rel="stylesheet" crossorigin href="/assets/config-Bzia583p.css">
-  <link rel="stylesheet" crossorigin href="/assets/map_editor2-ouHvBFdp.css">
+  <link rel="stylesheet" crossorigin href="/assets/map_editor2-DYBMyCcx.css">
 </head>
 
 <!--
@@ -207,6 +207,21 @@
           <select class="me2-scope-select" id="me2-reference-select">
             <option value="">기준 없음</option>
           </select>
+
+          <!-- 🔴 가정을 **받아들이는** 것도 행위이고, 행위에는 컨트롤이 필요하다.
+               소스 맵에 형상 선언이 없을 때 서버는 「기준 맵의 웨이퍼로 채점할 수
+               있다」고 제안한다. 그 제안을 승낙할 자리가 없으면 제안은 읽을 수만
+               있는 문장으로 남는다 - #me2-columns-confirm 과 정확히 같은 모양의
+               구멍이다. 그래서 같은 class(점선 경고 pill)를 쓴다.
+               버튼은 행위의 이름만 말한다. 가정이 무엇인지는 서버가 지은 문장이고
+               배선이 #me2-question-note 에 그대로 나른다 - 여기에 설명을 한 줄 더
+               쓰면 한 사실의 철자가 둘이 되고, 갈리는 날 화면은 멀쩡해 보인다.
+               aria-describedby 는 그 문장을 **가리킬** 뿐 베끼지 않는다.
+               hidden 으로 출발한다. 승낙할 것이 없는데 상시 떠 있는 버튼은
+               「지금 보고 있는 웨이퍼가 무엇인가」에 대한 주장을 읽지 않고 누르는
+               습관을 가르친다. 배선이 offered 인 동안에만 연다. -->
+          <button class="me2-scope-propose" type="button" id="me2-assume-accept"
+            aria-describedby="me2-question-note" hidden>가정 적용</button>
         </div>
       </div>
 
@@ -554,7 +569,13 @@
         <rect class="me2-cell-alone" x="83.2" y="189.0" width="10.2" height="10.2" rx="1.2"/><rect class="me2-cell-alone" x="94.9" y="189.0" width="10.2" height="10.2" rx="1.2"/>
         <rect class="me2-cell-alone" x="106.7" y="189.0" width="10.2" height="10.2" rx="1.2"/>
       </g>
-              <circle class="me2-wafer-edge" id="me2-wafer-edge" cx="100" cy="100" r="86" />
+              <!-- 웨이퍼 가장자리는 여기 없다. 종전에는 `r="86"`이 마크업에 박혀 있었고
+                   JS는 이 원을 읽지도 쓰지도 않았다 - 위의 자리표시자 목업에 맞춰 그려진
+                   장식이었다. 실제 데이터가 오면 `layoutFor`가 격자를 스테이지 전체에
+                   채우므로(반폭 ≈99 > 86) 모든 맵이 원 밖으로 나갔다.
+                   웨이퍼를 모르는 도형에 「원 안/밖」을 읽히는 것은 없는 것보다 나쁘다.
+                   진짜 마스크는 선언된 phys에서만 나온다(`seating.js` `insideMask`) -
+                   근거가 생기면 그때 그린다. -->
             </svg>
           </div>
 
