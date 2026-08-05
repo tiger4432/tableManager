@@ -1771,6 +1771,30 @@ def apply_row_update_internal(
         clean_val = cast_value_by_type(val, col_type, col_name)
         
         src_obj = next((s for s in col_srcs if s.source_name == update_item.source_name), None)
+
+        # [no-op write] Re-storing a source layer that already holds this exact value from
+        # this exact writer is not an update, and PostgreSQL charges for it as if it were:
+        # `ON CONFLICT DO UPDATE` writes a new tuple version, so a dead tuple per
+        # cell-column either way. Measured on a 20,000-cell map re-pushed unchanged:
+        # 120,000 dead tuples on cell_sources and 120,000 more on cell_overwrites, for a
+        # map in which nothing had changed.
+        #
+        # 🔴 THE VALUE LAYER ALREADY DECIDED THIS. `has_changed` below has always
+        # suppressed the column write, the audit log and the outbox event when the
+        # resolved value is unchanged; only the SOURCE layer disagreed and wrote anyway.
+        # Two layers disagreeing about whether the same fact changed is the defect.
+        #
+        # What this gives up is `ingested_at` moving on a no-op write, and that is the
+        # improvement: it now means "when this source last set this value" instead of
+        # "when someone last pressed save". Nothing resolves values by timestamp -
+        # `compute_priority_value` sorts by the priority map alone and never reads one -
+        # so no cell can change which layer wins because of this.
+        source_unchanged = (
+            src_obj is not None
+            and src_obj.value == clean_val
+            and src_obj.updated_by == update_item.updated_by
+        )
+
         if not src_obj:
             src_obj = models.CellSource(
                 table_name=table_name,
@@ -1781,22 +1805,23 @@ def apply_row_update_internal(
             if cell_sources_to_upsert is None:
                 db.add(src_obj)
             col_srcs.append(src_obj)
-            
-        src_obj.value = clean_val
-        src_obj.updated_by = update_item.updated_by
-        src_obj.ingested_at = datetime.now()
 
-        if cell_sources_to_upsert is not None:
-            upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
-            cell_sources_to_upsert[upsert_key] = {
-                "table_name": table_name,
-                "row_id": row.row_id,
-                "column_name": col_name,
-                "source_name": update_item.source_name,
-                "value": clean_val,
-                "updated_by": update_item.updated_by,
-                "ingested_at": src_obj.ingested_at
-            }
+        if not source_unchanged:
+            src_obj.value = clean_val
+            src_obj.updated_by = update_item.updated_by
+            src_obj.ingested_at = datetime.now()
+
+            if cell_sources_to_upsert is not None:
+                upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
+                cell_sources_to_upsert[upsert_key] = {
+                    "table_name": table_name,
+                    "row_id": row.row_id,
+                    "column_name": col_name,
+                    "source_name": update_item.source_name,
+                    "value": clean_val,
+                    "updated_by": update_item.updated_by,
+                    "ingested_at": src_obj.ingested_at
+                }
 
         # 4. 우선순위 결정
         sources_dict = {}
@@ -1817,6 +1842,27 @@ def apply_row_update_internal(
         # 6. cell_overwrites 마킹
         is_overwrite = ("user" in sources_dict) or (manual_pin is not None)
         if is_overwrite:
+            # [no-op write] Same argument as the source layer above, and the same measured
+            # cost: a map push declares source_name='user', which marks EVERY cell-column
+            # as an overwrite, so cell_overwrites takes an identical hit to cell_sources.
+            # An overwrite marker that already says exactly this is not re-stated.
+            # 🔴 `source_unchanged` IS PART OF THIS PREDICATE ON PURPOSE, and leaving it
+            # out was a real over-reach caught by its own test. The overwrite row stores a
+            # flag, a writer and a pin - not the value - so on a cell whose VALUE changed
+            # those three are still identical, and a skip based on them alone would stop
+            # refreshing `updated_at` on a genuine user edit. That silently redefines a
+            # column other code displays.
+            #
+            # Requiring the source to be unchanged too costs nothing we wanted: the bloat
+            # being removed is entirely on cells where nothing changed. A changed cell
+            # keeps today's behaviour exactly.
+            ow_unchanged = (
+                source_unchanged
+                and ow is not None
+                and ow.is_overwrite is True
+                and ow.updated_by == (update_item.updated_by or "system")
+                and ow.manual_priority_source == manual_pin
+            )
             if not ow:
                 ow = models.CellOverwrite(
                     table_name=table_name,
@@ -1827,12 +1873,13 @@ def apply_row_update_internal(
                     db.add(ow)
                 if overwrites_cache is not None:
                     overwrites_cache[key] = ow
-            ow.is_overwrite = True
-            ow.updated_by = update_item.updated_by or "system"
-            ow.updated_at = datetime.now()
-            ow.manual_priority_source = manual_pin
-            
-            if cell_overwrites_to_upsert is not None:
+            if not ow_unchanged:
+                ow.is_overwrite = True
+                ow.updated_by = update_item.updated_by or "system"
+                ow.updated_at = datetime.now()
+                ow.manual_priority_source = manual_pin
+
+            if not ow_unchanged and cell_overwrites_to_upsert is not None:
                 ow_key = (table_name, row.row_id, col_name)
                 cell_overwrites_to_upsert[ow_key] = {
                     "table_name": table_name,
@@ -2393,6 +2440,50 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
             matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
             purged_row_ids = [r[0] for r in matching_rows if r[0]]
 
+            # [scope diff] Only a DECLARED scope may be diffed.
+            #
+            # The legacy derivation (no `map_key_columns`) builds its filters from every
+            # non-coordinate column of `updates[0]`, so the scope it resolves can be far
+            # NARROWER than the map - it matches only rows identical to the first payload
+            # row in all of those columns. A diff decides what disappeared by subtracting
+            # the rows it wrote from the rows in scope, so a scope narrower than the map
+            # would report a genuine surviving cell as "still there" while a second push
+            # inserted a duplicate beside it. Wrong data, quietly. The purge does not have
+            # that failure mode, because it only ever deletes what it can see.
+            #
+            # So the branch that cannot resolve the true scope keeps the behaviour it has
+            # today, and the reason travels in the response rather than being inferred
+            # from an absence of improvement.
+            # [scope diff] The SECOND requirement, and it is not cosmetic: the diff must
+            # be able to RESOLVE an incoming cell onto the row it already has. That
+            # resolution is `assemble_composite_business_key`, which needs
+            # `composite_key_source`. A table whose business key arrives as a plain value
+            # in the payload is not matched at all today - `_get_or_create_row` looks at
+            # `row_id` and `business_key_val` only, and neither is set for it - so every
+            # push creates a fresh row. Measured: two identical pushes of one business
+            # key produce TWO rows carrying the same `business_key_val`.
+            #
+            # That duplicate is a PRE-EXISTING defect of the shared write path, not
+            # something the diff introduces, and it is deliberately not fixed here. But
+            # it does decide this gate: diffing a table whose rows cannot be matched
+            # would mark every existing cell unclaimed and delete the entire map on every
+            # push. All seven shipped map tables declare a composite key, so this
+            # excludes no real map.
+            _cfg = TABLE_CONFIG.get(table_name, {})
+            use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
+
+            # [adopt] The ids this write DECLARED it was operating on - the whole scope,
+            # whether or not it is about to be purged. Both the removal set and the
+            # adoption set are computed against THIS, so it is captured before the purge
+            # branch below is allowed to empty its own working list.
+            replace_scope_row_ids = set(purged_row_ids)
+
+            if use_diff:
+                # Nothing is deleted here. The rows in scope stay, the write loop below
+                # resolves the ones the payload still claims, and whatever it did not
+                # claim is removed after the loop - see [scope diff] there.
+                purged_row_ids = []
+
             if purged_row_ids:
                 # 1. Purge cell sources & overwrites for old map rows
                 db.query(models.CellSource).filter(
@@ -2412,28 +2503,27 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
 
                 db.flush()
 
-            # [adopt] The ids this write DECLARED it was operating on. Kept so the code
-            # after the row loop can name the rows it wrote that were NOT in here.
-            replace_scope_row_ids = set(purged_row_ids)
-
             if replace_report is not None:
                 replace_report["filters"] = scope_filters
+                # On the diff path this is filled in AFTER the loop, once the set of rows
+                # the payload did not claim is known. Seeded here so a caller never reads
+                # a missing key as zero.
                 replace_report["deleted"] = len(purged_row_ids)
-                # [adopt] Which resolver produced `filters`. Diagnostic today, and it is
-                # the exact predicate that will decide who may take the scope-diff path
-                # in the next round - the legacy derivation can resolve a scope NARROWER
-                # than the map (it filters on every non-coordinate column of updates[0]),
-                # and a narrower scope is not a safe basis for deciding what disappeared.
-                replace_report["mode"] = "purge"
+                # [adopt] Which resolver produced `filters`, and therefore which strategy
+                # this write is allowed to use. `legacy_column_derivation` is the honest
+                # answer to "why did this table not get the diff".
+                replace_report["mode"] = "diff" if use_diff else "purge"
                 replace_report["reason"] = (
-                    "declared_map_key_columns"
-                    if TABLE_CONFIG.get(table_name, {}).get("map_key_columns")
-                    else "legacy_column_derivation"
+                    "declared_map_key_columns" if use_diff
+                    else "legacy_column_derivation" if not _cfg.get("map_key_columns")
+                    else "unresolvable_row_identity"
                 )
 
             logger.info(
                 f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
-                f"Filters: {scope_filters} | Purged Old Rows: {len(purged_row_ids)} | "
+                f"Mode: {'diff' if use_diff else 'purge'} | Filters: {scope_filters} | "
+                f"Rows In Scope: {len(replace_scope_row_ids)} | "
+                f"Purged Old Rows: {len(purged_row_ids)} | "
                 f"Incoming Active Cells: {len(batch.updates)}"
             )
 
@@ -2586,9 +2676,56 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
         bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
         bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
-        
+
+        # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
+        # from what was in scope - never by asking the payload what to delete.
+        #
+        # 🔴 THE ITERATION SOURCE IS THE SCOPE, NOT THE PAYLOAD, and that is the whole
+        # safety property. A diff that walked the payload would read "not mentioned" as
+        # "unchanged" and leave a deleted cell in the database forever, which is worse
+        # than the dead tuples this change exists to remove: wrong data instead of slow
+        # data. Here a cell that vanished from the payload is in `scope - claimed` BY
+        # CONSTRUCTION, so absence cannot become a no-op.
+        #
+        # 🔴 DO NOT "OPTIMISE" THIS BY COMPUTING THE INCOMING BUSINESS KEYS DIRECTLY FROM
+        # THE PAYLOAD. They are derived from cast-and-cleaned STORED values, and a second
+        # implementation of that derivation is free to drift from the first - at which
+        # point every key misses, every row looks new, and the diff silently degrades
+        # into the purge it replaced (or worse, deletes the map and re-inserts it under
+        # new ids). `unique_results` is already keyed by the row each item actually
+        # resolved to, through the one derivation that exists. Use it.
+        #
+        # Rows from an older scheme, or any row the write machinery cannot match, land in
+        # this set and are deleted - exactly as the purge did. That is deliberate: "the
+        # diff cannot recognise it" and "no write could ever have matched it" are the
+        # same statement here, because both use the same resolver. Keeping such rows
+        # would make them immortal - nothing could ever address them again.
+        if batch.replace_map and use_diff:
+            claimed_row_ids = set(unique_results.keys()) | set(deleted_row_ids)
+            removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
+            if removed_row_ids:
+                db.query(models.CellSource).filter(
+                    models.CellSource.table_name == table_name,
+                    models.CellSource.row_id.in_(removed_row_ids)
+                ).delete(synchronize_session=False)
+                db.query(models.CellOverwrite).filter(
+                    models.CellOverwrite.table_name == table_name,
+                    models.CellOverwrite.row_id.in_(removed_row_ids)
+                ).delete(synchronize_session=False)
+                db.query(table_model).filter(
+                    table_model.row_id.in_(removed_row_ids)
+                ).delete(synchronize_session=False)
+            if replace_report is not None:
+                replace_report["deleted"] = len(removed_row_ids)
+            deleted_row_ids = list(deleted_row_ids) + removed_row_ids
+            logger.info(
+                f"🔄 [Map Diff] Table: '{table_name}' | TX: {tx_id} | "
+                f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(claimed_row_ids)} | "
+                f"Removed: {len(removed_row_ids)}"
+            )
+
         db.flush()
-        
+
         serialized_logs = []
         for l in logs_to_cache:
             ts_val = l["timestamp"]
@@ -2631,11 +2768,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         # write - it was that the write was invisible: `deleted: 0`, no delete event,
         # and map B's viewers were never told the cell had left.
         #
-        # WHY `is_new` IS NOT THE TEST: today the purge has already deleted everything in
-        # scope, so "resolved an existing row" and "adopted from outside" happen to be
-        # the same set. They stop being the same set the moment the scope-diff round
-        # lands and in-scope rows survive. The set difference is written out so that this
-        # stays correct then instead of quietly starting to count every surviving cell.
+        # WHY `is_new` IS NOT THE TEST - AND THIS IS NO LONGER HYPOTHETICAL. Under the
+        # purge the scope was emptied first, so "resolved an existing row" and "adopted
+        # from outside" happened to name the same set and either test would have worked.
+        # The diff is exactly what separates them: every surviving in-scope cell is now a
+        # resolved existing row, so `is_new` would count the whole map as adopted on every
+        # unchanged re-push. The set difference against the scope is the specification.
         adopted_row_ids = []
         if batch.replace_map:
             adopted_row_ids = [

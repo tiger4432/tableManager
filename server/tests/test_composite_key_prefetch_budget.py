@@ -278,6 +278,9 @@ def test_replace_map_on_a_declared_scope_is_unchanged(key_db):
     so the pair is symmetric."""
     crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0", n=10, base="A")))
     crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0", n=4, base="B")))
+    model = _model(DECLARED)
+    before = {r.pkg_id: r.row_id
+              for r in key_db.query(model).filter(model.base == "A").all()}
 
     report = {}
     crud.apply_batch_updates(key_db, DECLARED,
@@ -285,11 +288,22 @@ def test_replace_map_on_a_declared_scope_is_unchanged(key_db):
                              report)
 
     assert report["filters"] == {"base": "A"}
-    assert report["deleted"] == 10
-    model = _model(DECLARED)
+    # `deleted` counts the rows that DISAPPEARED, not the rows the write passed over.
+    # The incoming three carry keys A_0_0/A_1_0/A_2_0, which three of the ten seeded
+    # rows already hold, so those three are updated in place and seven are removed.
+    # This assertion read 10 while the write purged the scope and rebuilt it; the
+    # end state was and is three rows, and seven is the honest count of departures.
+    assert report["deleted"] == 7
     assert key_db.query(model).filter(model.base == "A").count() == 3
     assert key_db.query(model).filter(model.base == "B").count() == 4, \
         "the other map is untouched"
+    # The three the payload still claims are the SAME rows, not replacements. This is
+    # what stops `created_at` reporting the time of the last push instead of the time
+    # the cell was created.
+    after = {r.pkg_id: r.row_id
+             for r in key_db.query(model).filter(model.base == "A").all()}
+    assert after == {k: before[k] for k in after}, \
+        "a re-pushed cell keeps its identity; it is not deleted and recreated"
 
 
 # ---------------------------------------------------------------------------
