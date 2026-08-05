@@ -677,59 +677,37 @@
       }
     }
 
+    /* 참조뷰 그리드 컨테이너 — 워크리스트와 같은 AG-Grid 테마를 쓴다.
+       스크롤·줄무늬·헤더 고정은 AG-Grid가 하므로 여기서는 크기와 테두리만 정한다. */
     .reference-table-wrap {
       flex: 1;
       min-height: 0;
-      overflow: auto;
+      width: 100%;
       border: 1px solid var(--border);
       border-radius: 10px;
+      overflow: hidden;
       background: var(--bg-surface);
       animation: detailIn 0.2s ease-out;
     }
 
-    .reference-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.78rem;
-    }
-
-    .reference-table th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: var(--bg-header);
-      color: var(--text-muted);
+    /* 참조뷰는 조작자가 쓴 SQL 결과라 값이 코드·수치인 경우가 많다 — 등폭 + 자릿수 정렬.
+       워크리스트 그리드에는 적용하지 않는다(판단키는 이미 자체 스타일이 있다). */
+    .reference-table-wrap .ag-cell {
       font-family: var(--font-mono);
-      font-size: 0.68rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      text-align: left;
-      padding: 8px 12px;
-      border-bottom: 2px solid var(--border-strong);
-      white-space: nowrap;
-    }
-
-    .reference-table td {
-      padding: 6px 12px;
-      border-bottom: 1px solid var(--border);
-      color: var(--text);
-      font-family: var(--font-mono);
-      font-size: 0.74rem;
       font-variant-numeric: tabular-nums;
-      white-space: nowrap;
     }
 
-    .reference-table tbody tr:nth-child(even) {
-      background: var(--row-stripe);
-    }
-
-    .reference-table tbody tr:hover {
-      background: var(--accent-weak);
-    }
-
-    .reference-table td.ref-null {
+    .reference-table-wrap .ag-cell.ref-null {
       color: var(--text-dim);
+    }
+
+    /* 「필터 결과 없음」 — 두 표가 공유하는 한 문장(gridOptions.localeText).
+       AG-Grid 기본 크기는 이 화면의 다른 안내문보다 작아 눈에 걸리지 않는다. */
+    #worklist-grid .ag-overlay-no-matching-rows-center,
+    .reference-table-wrap .ag-overlay-no-matching-rows-center {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 600;
     }
 
     /* ── Setup overlay (규칙 API 미배포/규칙 없음 안내) ── */
@@ -900,7 +878,8 @@
               <div id="reference-status-text" class="reference-status-text">규칙을 불러오는 중...</div>
               <div id="reference-status-sub" class="reference-status-sub"></div>
             </div>
-            <div id="reference-table-wrap" class="reference-table-wrap" style="display: none;"></div>
+            <div id="reference-table-wrap" class="reference-table-wrap ag-theme-quartz-dark"
+              style="display: none;"></div>
           </div>
         </div>
       </section>

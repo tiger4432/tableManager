@@ -6,6 +6,8 @@
 //   { "rules": [ { name, source_table, derived_table, decision_key[],
 //                  target_fields[], list_columns[], reference_views:[{label}] } ] }
 // - 워크리스트: GET /tables/{derived}/data + blank 필터 청크 페칭 (전량 로드 금지)
+//   → 정렬·필터는 **브라우저에서** 한다(2026-08-05 제품소유자 재정). 그래서 화면은 자기가
+//     보고 있는 것이 부분집합인지 말해야 한다 — `worklistCountText` 참조.
 // - 저장: PUT /tables/{derived}/data/updates (source_name='user' → priority 0)
 // - 참조뷰(계약 확정): GET /enrichment/rules/{rule}/references/{i}?params=<JSON {decision_key: value}>
 //   → {label, columns[], rows[[]]} (서버 LIMIT 강제 · 404: 규칙/인덱스 미존재)
@@ -68,9 +70,69 @@ const S = {
   refTimer: null,       // debounce 타이머 핸들
   refCache: new Map(),  // 현재 선택 행 한정 탭 캐시: viewIdx → {columns, rows, ms}
   refCacheRowId: null,  // refCache가 유효한 row_id (행 변경 시 클리어)
+  refGridApi: null,     // 참조뷰 AG-Grid (컬럼은 응답이 정하므로 뷰마다 갈아 끼운다)
+  refColSignature: null,// 마지막으로 그린 컬럼 구성 — 바뀌면 정렬·필터를 버린다
+  refRowCount: 0,       // 서버가 보낸 행 수 (필터 전) — 메타의 분모
+  refMs: '0',           // 마지막 조회 소요 ms (필터 변경 시 재계산하지 않는다)
 };
 
 const el = (id) => document.getElementById(id);
+
+// ── ONE grid spelling, used by BOTH panels ──────────────────────────────────────
+// 워크리스트와 참조뷰는 한 화면의 두 표다. 규율이 서로 다르면 조작자가 어느 쪽에서 무엇을
+// 기대할지 매번 다시 배워야 하므로, 정렬·필터 규율은 이 객체 한 곳에만 쓴다.
+//
+// WHY NOT IMPORT `grid.js`. That module owns the MAIN grid and imports `state.js`, `dom.js`,
+// `api.js`, `timeline.js`, `clipboard.js`, `ui.js` and `value_suggest.js` — importing it here
+// would drag the entire main-app module graph into this page's bundle to obtain a
+// `defaultColDef`. So its CONVENTIONS are reused verbatim (`theme: 'legacy'`, floating
+// filters, resizable columns, `agTextColumnFilter`) and the object is written once here
+// instead of twice.
+//
+// TEXT FILTER ON EVERY COLUMN, DELIBERATELY. `grid.js` chooses `agNumberColumnFilter` from
+// `/schema` column types. Neither panel on this page has a type source: the worklist's
+// columns come from rule metadata, and the reference view's SQL is written by the operator.
+// Guessing a type per panel from whichever rows happened to arrive would make the two panels
+// treat the same value differently — the two-grids-behaving-differently trap this screen must
+// not set. What numbers actually need is the ORDER, and `compareCells` gives them that on
+// both panels.
+const GRID_SORT_FILTER_DEFAULTS = {
+  sortable: true,
+  filter: 'agTextColumnFilter',
+  floatingFilter: true,
+  resizable: true,
+  comparator: compareCells,
+};
+
+// 그리드 **수준** 공통 옵션 (위는 컬럼 수준). 같은 이유로 한 곳에만 쓴다.
+//
+// 「행 없음」과 「일치 행 없음」은 AG-Grid에서 **다른 오버레이**다. 전자는
+// `suppressNoRowsOverlay`로 끌 수 있지만 후자(`NoMatchingRowsOverlayDef`)에는 억제 옵션이
+// 아예 없다 — 그래서 끄는 대신 **문구를 바꾼다.** 두 표 모두 여기 한 문장을 쓰므로, 필터가
+// 전부 가린 상태를 한 화면에서 두 가지 말로 알리는 일이 없다.
+const GRID_SHARED_OPTIONS = {
+  theme: 'legacy',
+  localeText: { noMatchingRows: '필터 결과 없음' },
+};
+
+// 숫자로 읽히면 숫자로, 아니면 문자열로. 빈 값은 오름차순에서 항상 뒤.
+// `'10' < '9'` is the defect this exists for: both panels carry columns whose values are
+// numbers stored as text (there is no `/schema` here to say otherwise), and AG-Grid's default
+// comparator would order them lexically — the operator asks for the largest and gets the one
+// starting with 9. Blanks sort LAST ascending because a blank is the absence of a value, not
+// the smallest one; the worklist's key-less rows are exactly that case, and scattering them
+// through the order is what `partitionQueueRows` exists to prevent. (AG-Grid inverts the
+// result for descending, so blanks lead there — the same shape `grid.js` documents for its
+// unresolved-label comparator.)
+function compareCells(a, b) {
+  const aBlank = a === null || a === undefined || String(a).trim() === '';
+  const bBlank = b === null || b === undefined || String(b).trim() === '';
+  if (aBlank || bBlank) return (aBlank && bBlank) ? 0 : (aBlank ? 1 : -1);
+  const an = Number(a), bn = Number(b);
+  if (!Number.isNaN(an) && !Number.isNaN(bn)) return an < bn ? -1 : (an > bn ? 1 : 0);
+  const as = String(a), bs = String(b);
+  return as < bs ? -1 : (as > bs ? 1 : 0);
+}
 
 // 서버 셀 계약 {value, is_overwrite, priority_source} → 표시값 (형태는 절대 변조하지 않음)
 function cellVal(row, col) {
@@ -187,26 +249,34 @@ function rebuildGrid(rule) {
     S.gridApi = null;
   }
   const gridOptions = {
-    theme: 'legacy',
+    ...GRID_SHARED_OPTIONS,
     columnDefs: buildColumnDefs(rule),
     rowData: [],
     getRowId: (params) => String(params.data.row_id),
     rowSelection: 'single',
     suppressCellFocus: true,
     animateRows: true,
+    // 「행 없음」은 이 패널의 오버레이가 말한다 (`updateWorklistOverlay`) — 필터가 가린
+    // 것인지 큐가 빈 것인지를 구별해서. AG-Grid 기본 오버레이를 켜 두면 그 위에 영어
+    // 'No Matching Rows'가 겹쳐 두 문장이 같은 자리에서 다른 말을 한다.
+    suppressNoRowsOverlay: true,
     defaultColDef: {
       flex: 1,
       minWidth: 110,
-      sortable: false,       // 서버 정렬(row_id asc) 고정 — 컨베이어는 항상 앞에서 소비
-      filter: false,
       editable: false,       // 입력은 [B] 컨베이어에서만 (인라인 편집과 흐름 충돌 방지)
-      resizable: true,
+      // 정렬·필터는 참조뷰와 **같은 규율**을 쓴다 (한 화면, 한 철자).
+      ...GRID_SORT_FILTER_DEFAULTS,
     },
     onSelectionChanged: () => {
       if (!S.gridApi) return;
       const selected = S.gridApi.getSelectedNodes();
       if (selected.length > 0) renderDetail(selected[0].data);
     },
+    // 정렬·필터가 바뀌면 화면이 몇 건을 보이고 있는지도 바뀐다. 세는 곳이 한 곳이므로
+    // 두 사건 모두 같은 갱신기를 부른다 — 필터가 전부 가린 상태를 「큐가 비었다」로
+    // 읽지 않게 하는 것이 `updateWorklistOverlay`의 일이다.
+    onFilterChanged: () => { refreshWorklistCounts(); },
+    onSortChanged: () => { refreshWorklistCounts(); },
   };
   S.gridApi = createGrid(el('worklist-grid'), gridOptions);
 }
@@ -217,26 +287,70 @@ function hasDecisionKeys(row, rule) {
   return (rule.decision_key || []).every(col => String(cellVal(row, col)).trim() !== '');
 }
 
-// 컨베이어 순서: 처리 가능한 행 먼저, 판단 불가(판단키 없음) 행은 뒤로.
+// 컨베이어 **기본** 순서: 처리 가능한 행 먼저, 판단 불가(판단키 없음) 행은 뒤로.
 // 서버는 row_id asc로 주고 그 순서는 **각 구획 안에서 그대로 보존**된다 — 컨베이어의
-// "앞에서 소비한다"는 불변식은 유지되고, 앞을 막는 것만 내려간다. 정렬 컨트롤도
-// 모드도 만들지 않는다(순서 규칙 자체가 바뀐 것이지 사용자가 고르는 것이 아니다).
+// "앞에서 소비한다"는 불변식은 유지되고, 앞을 막는 것만 내려간다.
+//
+// 2026-08-05부터 조작자가 컬럼 정렬을 걸 수 있다. 그때는 이 구획이 아니라 조작자가 고른
+// 순서가 표시 순서다 — 이 함수가 정하는 것은 **행 데이터 순서**이고, 정렬을 풀면 그대로
+// 돌아온다. 그래서 이 구획은 여전히 유효하지만 **정렬 없는 상태의 규칙**이라는 점이
+// 달라졌다. (`blankKeyBoundaryIndex`가 표시 순서가 아니라 행 데이터 순서를 세는 이유.)
 function partitionQueueRows(rows, rule) {
   const keyed = [], keyless = [];
   rows.forEach(r => (hasDecisionKeys(r, rule) ? keyed : keyless).push(r));
   return keyed.concat(keyless);
 }
 
-// 판단키 없는 행이 시작되는 버퍼 인덱스 (없으면 버퍼 끝).
+// 판단키 없는 행이 시작되는 **행 데이터** 인덱스 (없으면 버퍼 끝).
 // 보충(refill)으로 들어온 신규 행을 이 위치에 끼워 넣어 구획을 유지한다.
+//
+// 🔴 표시 순서가 아니라 행 데이터 순서다. `applyTransaction`의 `addIndex`는 행 데이터에
+// 대한 좌표인데, 조작자가 정렬이나 필터를 걸면 표시 순서와 행 데이터 순서가 갈라진다 —
+// `getDisplayedRowAtIndex`로 센 인덱스를 넘기면 신규 행이 엉뚱한 자리에 꽂히고, 필터가
+// 걸린 상태에서는 가려진 행이 아예 세어지지 않아 구획이 무너진다. `forEachNode`는 정렬·
+// 필터 이전 순서로 돈다. (정렬·필터가 없던 시절에는 두 순서가 같아서 티가 나지 않았다.)
 function blankKeyBoundaryIndex() {
   if (!S.gridApi || !S.rule) return 0;
-  const count = S.gridApi.getDisplayedRowCount();
-  for (let i = 0; i < count; i++) {
-    const node = S.gridApi.getDisplayedRowAtIndex(i);
-    if (node && node.data && !hasDecisionKeys(node.data, S.rule)) return i;
-  }
-  return count;
+  let idx = 0, boundary = -1;
+  S.gridApi.forEachNode((node) => {
+    if (boundary < 0 && node && node.data && !hasDecisionKeys(node.data, S.rule)) boundary = idx;
+    idx++;
+  });
+  return boundary < 0 ? idx : boundary;
+}
+
+// 버퍼에 실제로 들어 있는 행 수 — **필터와 무관하다.**
+// `getDisplayedRowCount()`는 필터가 걸리면 줄어든다. 그 수를 버퍼 크기로 읽으면 「필터가
+// 가린 것」이 「없는 것」이 되고, 진행률·잔여·오버레이가 전부 같은 거짓말을 하게 된다.
+function bufferRowCount() {
+  if (!S.gridApi) return 0;
+  let n = 0;
+  S.gridApi.forEachNode(() => { n++; });
+  return n;
+}
+
+// 화면이 부분집합을 보이고 있으면 화면이 그렇게 **말한다.**
+// 「1,000건」과 「12,431건 중 1,000건」은 다른 문장이고, 조작자가 정렬·필터를 걸 수 있게 된
+// 지금 그 차이가 답을 바꾼다: 정렬은 도착한 것만 정렬하기 때문이다. 두 조각 모두 **해당
+// 사실이 참일 때만** 붙는다 — 필터가 없으면 필터 머리말이 없고, 서버 전체가 버퍼와 같으면
+// 「/ 전체」가 없다. 늘 붙어 있는 꼬리표는 아무도 읽지 않는다.
+function worklistCountText() {
+  const buffered = bufferRowCount();
+  const shown = S.gridApi ? S.gridApi.getDisplayedRowCount() : buffered;
+  // 서버가 센 큐 전체(`S.totalBlank`). 버퍼보다 작게 보고되면(낙관적 감산 직후 등) 버퍼를
+  // 쓴다 — 「전체보다 많이 들고 있다」는 문장은 어느 쪽으로도 참일 수 없다.
+  const total = Math.max(S.totalBlank, buffered);
+  const head = shown !== buffered ? `필터 ${shown.toLocaleString()} · ` : '';
+  const body = buffered < total
+    ? `버퍼 ${buffered.toLocaleString()} / 전체 ${total.toLocaleString()}건`
+    : `버퍼 ${buffered.toLocaleString()}건`;
+  return `${head}${body}`;
+}
+
+// 정렬·필터·저장 뒤에 화면의 수와 오버레이를 같은 사실로 맞춘다 (세는 곳은 한 곳).
+function refreshWorklistCounts() {
+  el('worklist-meta').textContent = worklistCountText();
+  updateWorklistOverlay();
 }
 
 // ── 워크리스트 청크 페칭 (항상 skip=0: 완료 행은 큐 술어에서 자동 이탈) ──
@@ -301,11 +415,9 @@ async function fetchWorklist(reset) {
     }
 
     const ms = (performance.now() - startTime).toFixed(0);
-    el('worklist-meta').textContent =
-      `버퍼 ${S.gridApi.getDisplayedRowCount().toLocaleString()}건 · ${ms}ms`;
-
     updateHeaderStats();
-    updateWorklistOverlay();
+    refreshWorklistCounts();
+    el('worklist-meta').textContent = `${worklistCountText()} · ${ms}ms`;
 
     // 초기 로드 시 첫 항목 자동 선택 (컨베이어 시동)
     if (reset && S.gridApi.getDisplayedRowCount() > 0) {
@@ -419,7 +531,20 @@ function updateHeaderStats() {
 
 function updateWorklistOverlay() {
   const overlay = el('worklist-overlay');
-  const count = S.gridApi ? S.gridApi.getDisplayedRowCount() : 0;
+  const count = bufferRowCount();
+  const shown = S.gridApi ? S.gridApi.getDisplayedRowCount() : 0;
+
+  // 필터가 전부 가린 것과 큐가 빈 것은 **다른 사실**이다. 여기서 「모든 결손이 처리되었
+  // 습니다」를 말하면 화면이 자기가 숨긴 것을 없다고 주장한다 — 결과를 숨기는 설계.
+  //
+  // 이 경우 이 오버레이는 **비켜선다.** 그리드 자신의 「필터 결과 없음」(양쪽 표가 공유하는
+  // 한 문장, `GRID_SHARED_OPTIONS`)이 이미 그 자리에 있고, 몇 건을 들고 있는지는 패널 머리의
+  // 수(`worklistCountText` → `필터 0 · 버퍼 115건`)가 말한다. 같은 사실을 두 번 쓰지 않는다.
+  if (count > 0 && shown === 0) {
+    overlay.style.display = 'none';
+    return;
+  }
+
   if (count === 0) {
     if (S.totalBlank === 0) {
       el('worklist-overlay-icon').textContent = '🎉';
@@ -773,9 +898,7 @@ async function saveCurrent() {
 
     flashSaved();
     updateHeaderStats();
-    updateWorklistOverlay();
-    el('worklist-meta').textContent =
-      `버퍼 ${S.gridApi.getDisplayedRowCount().toLocaleString()}건`;
+    refreshWorklistCounts();
 
     // 다음 항목 자동 선택 (제거된 자리 승계) + 버퍼 보충
     if (!stillBlank) {
@@ -813,6 +936,8 @@ function initReferencePanel(rule) {
   if (S.refTimer) { clearTimeout(S.refTimer); S.refTimer = null; }
   S.refCache.clear();
   S.refCacheRowId = null;
+  // 규칙이 바뀌면 컬럼 구성도 통째로 바뀐다 — 다음 렌더가 정렬·필터를 버리도록 표시한다.
+  S.refColSignature = null;
   el('reference-meta').textContent = '';
 
   const tabs = el('reference-tabs');
@@ -959,10 +1084,38 @@ function renderRefOutcome(outcome) {
   renderRefTable(outcome);
 }
 
-// 서버 LIMIT(기본 200, 최대 1000) 이하 행만 오므로 경량 HTML 테이블로 충분 (읽기 전용)
+// 컬럼은 **응답이 말한다.** 조작자가 SQL을 쓰므로 뷰마다 컬럼 집합이 다르고, 여기서
+// 선언하는 순간 그 선언과 실제 결과가 갈라진다.
+//
+// `field` IS THE POSITION, NEVER THE NAME. Operator SQL can return two columns with the same
+// label, and AG-Grid reads a dotted field as a property path — either would silently drop a
+// column. The name is used for the header only, so `SELECT a.x, b.x` and `SELECT 1 AS "a.b"`
+// both render whole. Rows arrive as arrays, so the value is read by index.
+function refColumnDefs(columns) {
+  return columns.map((name, i) => ({
+    field: `c${i}`,
+    headerName: String(name),
+    headerTooltip: String(name),
+    valueGetter: (p) => (p.data ? p.data[i] : undefined),
+    // NULL은 '-'로 **보이기만** 한다. 필터·정렬은 원래 값(null)을 보므로 빈 값은
+    // `compareCells` 규칙대로 뒤로 간다 — 표시용 문자열로 걸러지지 않는다.
+    valueFormatter: (p) => (p.value === null || p.value === undefined ? '-' : String(p.value)),
+    cellClassRules: { 'ref-null': (p) => p.value === null || p.value === undefined },
+    minWidth: 110,
+  }));
+}
+
+// 서버 LIMIT(기본 200, 최대 1000) 이하 행만 오므로 클라가 전량을 들고 있고, 정렬·필터도
+// 전량에 대해 답한다 (2026-08-05 제품소유자 재정: 왕복 없이 브라우저에서).
+//
+// ⚠️ 이 응답에는 절단 플래그가 없다 — `{label, columns, rows}`가 전부이고 뷰별 limit은
+// 서버가 클라에 노출하지 않는다(`GET /enrichment/rules` 주석). 그래서 「잘렸다」를 여기서
+// 말하지 않는다. 모르는 사실을 짐작해서 쓰는 배지는 없는 것만 못하다.
 function renderRefTable(payload) {
   const wrap = el('reference-table-wrap');
-  el('reference-meta').textContent = `${payload.rows.length.toLocaleString()}건 · ${payload.ms}ms`;
+  S.refRowCount = payload.rows.length;
+  S.refMs = payload.ms;
+  updateRefMeta();
 
   if (payload.rows.length === 0) {
     wrap.style.display = 'none';
@@ -971,41 +1124,44 @@ function renderRefTable(payload) {
   }
 
   hideRefStatus();
-  wrap.innerHTML = '';
-  const table = document.createElement('table');
-  table.className = 'reference-table';
+  wrap.style.display = 'block'; // AG-Grid가 크기를 재기 전에 보이는 상태여야 한다
 
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  payload.columns.forEach(colName => {
-    const th = document.createElement('th');
-    th.textContent = colName; // XSS 안전: textContent만 사용
-    headRow.appendChild(th);
-  });
-  thead.appendChild(headRow);
-  table.appendChild(thead);
+  const defs = refColumnDefs(payload.columns);
+  const signature = payload.columns.map(String).join(' ');
 
-  const tbody = document.createElement('tbody');
-  payload.rows.forEach(r => {
-    const tr = document.createElement('tr');
-    payload.columns.forEach((_, i) => {
-      const td = document.createElement('td');
-      const v = r[i];
-      if (v === null || v === undefined) {
-        td.textContent = '-';
-        td.className = 'ref-null';
-      } else {
-        td.textContent = String(v);
-      }
-      tr.appendChild(td);
+  if (!S.refGridApi) {
+    S.refGridApi = createGrid(wrap, {
+      ...GRID_SHARED_OPTIONS,
+      columnDefs: defs,
+      rowData: payload.rows,
+      suppressCellFocus: true,
+      // 워크리스트와 **같은** 규율. 두 표가 한 화면에서 다르게 굴면 그 자체가 함정이다.
+      defaultColDef: { ...GRID_SORT_FILTER_DEFAULTS },
+      onFilterChanged: () => updateRefMeta(),
     });
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
+  } else {
+    if (signature !== S.refColSignature) {
+      // 컬럼이 바뀌었다 = 다른 질문이다. 이전 뷰의 정렬·필터를 남기면 새 결과가 이유 없이
+      // 걸러진 채로 나타난다 — 조작자에게는 「데이터가 없다」로 보이는 바로 그 상태.
+      S.refGridApi.setFilterModel(null);
+      S.refGridApi.applyColumnState({ defaultState: { sort: null } });
+      S.refGridApi.setGridOption('columnDefs', defs);
+    }
+    // 같은 뷰에서 행만 바뀌면 정렬·필터는 **유지한다**: 조작자가 한 번 정해 둔 보기 방식을
+    // 항목을 옮길 때마다 되돌리면 컨베이어에서 그 기능이 쓸모없어진다.
+    S.refGridApi.setGridOption('rowData', payload.rows);
+  }
+  S.refColSignature = signature;
+  updateRefMeta();
+}
 
-  wrap.appendChild(table);
-  wrap.scrollTop = 0;
-  wrap.style.display = 'block';
+// 참조뷰 메타 한 줄. 필터가 걸렸을 때만 앞머리가 붙는다 — 「200건」과 「200건 중 12건을
+// 보는 중」은 다른 문장이고, 그 차이가 실재할 때만 화면에 나타난다.
+function updateRefMeta() {
+  const total = S.refRowCount;
+  const shown = S.refGridApi ? S.refGridApi.getDisplayedRowCount() : total;
+  const head = shown !== total ? `필터 ${shown.toLocaleString()} · ` : '';
+  el('reference-meta').textContent = `${head}${total.toLocaleString()}건 · ${S.refMs}ms`;
 }
 
 // ── 참조뷰 상태 표시 헬퍼 (loading / idle / empty / error) ──

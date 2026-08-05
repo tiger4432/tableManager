@@ -147,7 +147,32 @@ const FLOORS = new Map([
   //    screen is the server's `detail` verbatim rather than a sentence composed here. Both
   //    are the two-spellings class -- a client copy stays green against every server test
   //    while the two drift. A floor drop here means one of them stopped being scored.
-  ['enrichment_partial_key_reference_harness.mjs', 26],
+  //
+  // 26 -> 28 (2026-08-05, same day). The reference panel became an AG-Grid, so "what reached
+  // the screen" moved from scraping the wrap's innerText to reading what the grid was handed.
+  // The count rose because the replacement is stronger than what it replaced: one assertion
+  // that the served rows arrived became three -- the rows, the HEADERS (derived from the
+  // response, never declared, because the operator writes the SQL), and that the grid was
+  // built inside the panel it belongs to.
+  ['enrichment_partial_key_reference_harness.mjs', 28],
+  // New 2026-08-05 with the round that made BOTH enrichment panels AG-Grid, sorting and
+  // filtering in the browser. Floor is the count it reports on the commit that introduces
+  // it -- there is no earlier tree to measure it against.
+  //
+  // 🔴 ITS LOAD-BEARING HALF IS THAT NOTHING ON THIS SCREEN SHOWS A SUBSET SILENTLY. The
+  //    worklist buffer is capped (`pageLimit`) while the server reports the whole queue in
+  //    `total`, and a client-side sort orders only what arrived. So the count carries both
+  //    numbers WHEN THEY DIFFER and says nothing extra when they do not (`G7`), the filtered
+  //    count appears only while a filter hides rows (`G8`, both panels), and the panel
+  //    overlay never calls a filtered-empty view a finished queue (`G9`). A drop in those
+  //    means the screen regained the ability to answer "the top ten" with "the top ten of
+  //    whatever arrived" and say nothing about it.
+  //
+  //    The other half is ONE SPELLING FOR TWO GRIDS (`G1`): both panels spread the same
+  //    `GRID_SORT_FILTER_DEFAULTS` and the same `GRID_SHARED_OPTIONS`, asserted by identity,
+  //    not by resemblance. Two grids on one screen behaving differently is its own trap, and
+  //    a second parallel configuration is exactly what this file's culture keeps paying for.
+  ['enrichment_grid_sort_filter_harness.mjs', 45],
   // Floored 2026-08-05, when the queue became a NAMED server predicate and this harness
   // gained the request itself as a target. It had been running unfloored since N36, which
   // the runner had been reporting; the count here is what it reports on the commit that

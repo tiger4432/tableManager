@@ -68,6 +68,16 @@ function fn(src, name) {
   if (!body) die(`unbalanced braces for ${name}`);
   return body.replace(/^export\s+/, '');
 }
+// `renderRefTable` spreads the shared sort/filter kernel, so the real object is sliced rather
+// than stubbed. This harness does not SCORE that object (`enrichment_grid_sort_filter_harness`
+// does); it just refuses to run the renderer against a fake of it.
+function constObj(src, name) {
+  const m = new RegExp(`const\\s+${name}\\s*=\\s*\\{`).exec(src);
+  if (!m) die(`const ${name} not found in enrichment.js - renamed or reshaped.`);
+  const body = sliceBalanced(src, m.index, '{', '}');
+  if (!body) die(`unbalanced braces for ${name}`);
+  return `${body};`;
+}
 
 // `cellSource` / `isTargetUntouched` / `markTargetInput` are here because `renderDetail`
 // calls them while drawing the target boxes, not because this harness scores them. What they
@@ -77,7 +87,8 @@ function fn(src, name) {
 const SLICED = [
   'cellVal', 'cellSource', 'hasDecisionKeys', 'isTargetUntouched', 'markTargetInput',
   'renderDetail', 'loadActiveReference',
-  'renderRefOutcome', 'renderRefTable', 'showRefStatus', 'hideRefStatus',
+  'renderRefOutcome', 'renderRefTable', 'refColumnDefs', 'updateRefMeta', 'compareCells',
+  'showRefStatus', 'hideRefStatus',
   'showRefIdle', 'showRefLoading', 'showRefError',
 ];
 
@@ -128,15 +139,13 @@ function mkEl(tag) {
   return e;
 }
 
-function textOf(node, out = []) {
-  if (node.textContent) out.push(node.textContent);
-  node.children.forEach(c => textOf(c, out));
-  return out;
-}
-
 // ── The scope: real function texts plus stubs for what they reach outside ───────
 function build(src, routes) {
-  const parts = SLICED.map(n => fn(src, n)).join('\n\n');
+  const parts = [
+    constObj(src, 'GRID_SORT_FILTER_DEFAULTS'),
+    constObj(src, 'GRID_SHARED_OPTIONS'),
+    ...SLICED.map(n => fn(src, n)),
+  ].join('\n\n');
 
   const els = new Map();
   const el = (id) => {
@@ -149,7 +158,29 @@ function build(src, routes) {
   const S = {
     rule: RULE, sessionToken: 'tok', refViews: VIEWS, refActiveIdx: 0, refSeq: 0,
     refTimer: null, refCache: new Map(), refCacheRowId: null, selectedRowId: null,
+    refGridApi: null, refColSignature: null, refRowCount: 0, refMs: '0',
     gridApi: { getRowNode: (id) => nodes.get(String(id)) || null },
+  };
+
+  // The reference panel is an AG-Grid now, so "what reached the screen" is what the grid was
+  // handed. Scraping innerText would only prove the harness can build a DOM.
+  const grids = [];
+  const createGrid = (container, options) => {
+    const g = {
+      container,
+      columnDefs: options.columnDefs || [],
+      rows: (options.rowData || []).slice(),
+      getDisplayedRowCount() { return g.rows.length; },
+      setGridOption(k, v) {
+        if (k === 'columnDefs') g.columnDefs = v;
+        if (k === 'rowData') g.rows = (v || []).slice();
+      },
+      setFilterModel() {},
+      applyColumnState() {},
+      destroy() {},
+    };
+    grids.push(g);
+    return g;
   };
 
   const calls = [];
@@ -171,13 +202,13 @@ function build(src, routes) {
   // eslint-disable-next-line no-new-func
   const make = new Function(
     'el', 'S', 'document', 'fetch', 'API_BASE', 'performance', 'console',
-    'onInputKeydown', 'scheduleReferenceLoad',
+    'onInputKeydown', 'scheduleReferenceLoad', 'createGrid',
     `${parts}\nreturn {${SLICED.join(', ')}};`);
   const api = make(el, S, document, fetchStub, 'http://x', { now: () => 0 }, consoleStub,
-    () => {}, () => {});
+    () => {}, () => {}, createGrid);
 
   const put = (r) => { nodes.set(String(r.row_id), { data: r }); return r; };
-  return { api, S, el, els, calls, logs, put };
+  return { api, S, el, els, calls, logs, put, grids };
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────
@@ -198,7 +229,7 @@ async function suite(src) {
     let ctx;
     try { ctx = build(src, { 0: refused, 1: answered }); }
     catch (e) { return { pass, fail: fail + 1, failed: [`build threw: ${e && e.message}`] }; }
-    const { api, S, el, calls, logs, put } = ctx;
+    const { api, S, el, calls, logs, put, grids } = ctx;
 
     put(row(7, 'EQP1', ''));          // partial key: dt_eqp survives, product is blank
     S.selectedRowId = 7;
@@ -229,7 +260,11 @@ async function suite(src) {
     check('R3 the answer is rendered as evidence, not a status',
       el('reference-status').style.display, 'none');
     check('R3 the served rows are on screen',
-      textOf(el('reference-table-wrap')).includes('J77'), true);
+      grids.length === 1 && grids[0].rows, [['J77']]);
+    check('R3 and the columns came from the response, not from a declaration',
+      grids[0].columnDefs.map(d => d.headerName), ['dt_job']);
+    check('R3 the grid was built inside the panel it belongs to',
+      grids[0].container === el('reference-table-wrap'), true);
     check('R3 the meta counts what came back',
       el('reference-meta').textContent, '1건 · 0ms');
 
