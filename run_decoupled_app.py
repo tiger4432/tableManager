@@ -95,6 +95,43 @@ def refuse_if_ports_are_taken(api_host, api_port, graph_port):
     return False
 
 
+def report_schema_drift():
+    """Print whether this database carries the schema this build expects.
+
+    Reports; never refuses. The reasoning for that split lives at the call site.
+
+    Everything here is a catalog read - `check_schema_drift` issues no DDL and no
+    DML - so it is safe against a production database at any moment, including a
+    moment when something is already broken.
+
+    Like the port guard above, a check must never become the reason the system
+    will not start: every failure path below degrades to a line and a return.
+    """
+    try:
+        # The runtime module, not the CLI in server/scripts - `server/` is already
+        # on this process's sys.path (top of this file) and server/scripts must
+        # never be (server/tests/test_prod_import_env.py).
+        import schema_drift
+        import paths as _paths
+        from database.database import (SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE,
+                                       engine as _engine)
+        target = (f"{_paths.mask_db_password(SQLALCHEMY_DATABASE_URL)} "
+                  f"(from {DB_URL_SOURCE})")
+    except Exception as e:
+        log_launcher(f"Schema drift check unavailable ({type(e).__name__}: {e}); "
+                     f"starting anyway.", level="WARNING")
+        return None
+    try:
+        return schema_drift.run_at_startup(
+            _engine,
+            lambda level, text: log_launcher(text, level=level.upper()),
+            target=target)
+    except Exception as e:
+        log_launcher(f"Schema drift check failed ({type(e).__name__}: {e}); "
+                     f"starting anyway.", level="WARNING")
+        return None
+
+
 def refuse_if_arguments_are_unknown(argv):
     """Parse the command line. Returns the parsed args, or exits before anything runs.
 
@@ -185,6 +222,24 @@ def main():
     # AssyManager" followed by a refusal is exactly the kind of contradiction an
     # operator has to stop and reread.
     ports_clear = refuse_if_ports_are_taken(api_host, api_port, graph_port)
+    if ports_clear:
+        # The second pre-flight question, asked in the same slot as the first and
+        # for the same reason: BEFORE the restart rather than after it.
+        #
+        # "A migration must run" is a deployment fact that nothing in this repo
+        # carried. A commit that adds a column to a model looks exactly like one
+        # that does not, so the operator restarted, the stack came up, and the
+        # first report was a screen erroring, repeatedly on 2026-08-05. This is
+        # the moment that fact exists and can still be acted on cheaply: the
+        # operator is at the console, and nothing is up yet to be disrupted.
+        #
+        # It does NOT touch the exit code, and that is deliberate. The port guard
+        # refuses because a second stack on a held port cannot work at all. Drift
+        # is not that: the product runs, minus the tables that drifted. Refusing
+        # here would hand an unattended restart the power to keep the whole
+        # product down over one column - and a restart is exactly when nobody is
+        # watching. The verdict is loud; the decision stays with the human.
+        report_schema_drift()
     if args.preflight_only:
         # Ask the question without answering it by starting anything. Also what
         # the end-to-end test drives, so the refusal path can be exercised

@@ -348,6 +348,40 @@ async def startup_event():
                 conn.rollback()
                 logger.error(f"broadcast_at migration/backfill failed (undelivered rows recovered by worker sweep): {e}")
 
+        # [Schema drift] Say out loud whether this database carries the schema this
+        # build expects. The outages on 2026-08-05 had one shape: a model gained a
+        # column, the migration did not run here, and the first anyone heard of it
+        # was a screen erroring. `create_all` above cannot close that class - it
+        # builds missing TABLES and never ALTERs an existing one - so nothing before
+        # this line was ever going to catch it.
+        #
+        # WHY HERE AND NOT EARLIER. Above this point the boot applies two of its own
+        # migrations (database_outbox.processed_chain, .broadcast_at). Checked before
+        # they run, a database that is about to be corrected reads as broken. Below
+        # the DECOUPLED return it would never run in production, which is the only
+        # mode that matters. This is the one line that is after every migration this
+        # process performs and before every mode-specific exit.
+        #
+        # WHY IT DOES NOT REFUSE: see run_at_startup and the banner it prints.
+        # `schema_drift` is a RUNTIME module, not the script in server/scripts.
+        # server/tests/test_prod_import_env.py forbids the latter: nothing on a
+        # runtime import path may reach into server/scripts, and a sys.path append
+        # here would be caught by it. The CLI wraps this same code.
+        try:
+            import schema_drift
+            schema_drift.run_at_startup(
+                engine,
+                lambda level, text: getattr(logger, level)(text),
+                # Masked: this line goes to the log FILE, and the URL carries the
+                # database password. Same helper the [db] boot line already uses.
+                target=f"{paths.mask_db_password(SQLALCHEMY_DATABASE_URL)} "
+                       f"(from {DB_URL_SOURCE})",
+            )
+        except Exception as e:
+            logger.error(f"[Schema] drift check unavailable ({type(e).__name__}: {e}). "
+                         f"Starting anyway - run "
+                         f"'python server/scripts/check_schema_drift.py' by hand.")
+
         if os.getenv("DECOUPLED") == "True":
             logger.info("Decoupled mode active. Skipping inline Directory Watcher, Graph DB Sync, and Chained Ingestion workers.")
             return
@@ -4229,6 +4263,7 @@ def get_map_alignment_view(
     x_col: str = None,
     y_col: str = None,
     value_col: str = None,
+    assume_reference_geometry: bool = False,
     db: Session = Depends(get_db),
 ):
     """한 결정 단위의 **정렬 화면 payload 전부**를 한 요청으로 낸다 (읽기 전용).
@@ -4260,6 +4295,25 @@ def get_map_alignment_view(
       싣고 있는 것은 `reference.map_kind`에 그대로 남는다). 점유는 평평하다 — 실측
       `core_defect_map LOT-A/05`에서 8후보가 **같은 다이를 차지**했고 값 일치가 374다이
       차이로 갈랐다. 그래서 이 구별은 장식이 아니라 「승자 없음」의 사유를 가르는 값이다.
+
+    - `assume_reference_geometry`: 규격 선언이 없는 소스 맵을 **기준 맵의 웨이퍼 치수를
+      빌려** 채점한다(스펙 §9ⓐ, 총괄 판정 2026-08-05).
+      🔴 순환을 끊는 자리다: 규격이 선언돼야 채점하는데, 조작자가 정렬을 도는 이유가 바로
+      그 맵의 규격을 모르기 때문이다. 「이 둘은 같은 웨이퍼다」는 애초에 두 맵을 정렬하는
+      전제이므로 조작자가 낼 자격이 있는 주장이고, 그래서 **주장으로 취급한다** —
+      기본값은 false이고 켜야 걸린다. 자동으로 걸면 아무도 주장한 적 없는 가정 위에서
+      판정이 나온다.
+      🔴 빌린 값은 **어디에도 쓰이지 않는다.** 소스 맵의 메타는 그대로 남고, 응답은
+      `assumption`(무엇에서·몇 장·제안인가)과 `ruling.geometry_assumed`,
+      `sources.maps[].geometry_basis`로 그 사실을 나른다. 확정하면 그 사실이
+      `frame_confirmation`에도 남아 「나중에 이 가정이 거짓이면 어느 결정이 그 위에 서
+      있었나」에 답할 수 있다.
+      🔴 **격자 치수(cols/rows)는 빌리지 않는다** — 웨이퍼가 아니라 맵의 성질이고, 한
+      웨이퍼의 두 맵이 다르게 잘려 있을 수 있다. 없거나 어긋나면 이름을 대고 제외한다
+      (`grid_dims_missing` / `grid_dims_differ`). 방위(회전·면·start·y반전)도 빌리지
+      않는다 — 그것이 풀고 있는 미지 그 자체다.
+      켜지 않아도 `assumption.state = "available"`로 **제안은 실린다.** 규격 미선언 맵이
+      막다른 길이 아니라 제안이 되는 자리다.
 
     [왜 컬럼이 인자인가] 이 경로는 예전에 `_binding_of(cfg, source_table)`을 정본으로 읽었고,
     `dt_log`의 선언 바인딩이 `dt_x`/`dt_y`로 고정돼 있어서 `map_table=core_wafer_map`으로
@@ -4302,7 +4356,8 @@ def get_map_alignment_view(
         return map_alignment.build_alignment_view(
             db, config, decl, key_values, map_table,
             reference_spec=reference, include_cells=include_cells,
-            x_col=x_col, y_col=y_col, value_col=value_col)
+            x_col=x_col, y_col=y_col, value_col=value_col,
+            assume_reference_geometry=assume_reference_geometry)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
