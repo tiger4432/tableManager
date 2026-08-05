@@ -287,16 +287,26 @@ function coordMapOracle(S, frame) {
   const rf = S.resolveFrame(frame);
   const isRot = (rf.rotation === 90 || rf.rotation === 270);
   const vc = isRot ? rf.rows : rf.cols, vr = isRot ? rf.cols : rf.rows;
-  return S.withPhysFrame(rf, () => {
-    const m = new Map();
-    for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
-      const p = S.getDieIndex(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
-      const v = S.getDbCoords(null, c, r, rf.cols, rf.rows, rf.rotation, rf.side,
-                                  rf.invertY, rf.startX, rf.startY);
-      m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
-    }
-    return m;
-  });
+  // [2026-08-06] The frame is an ARGUMENT now, so this oracle opens its window by PASSING
+  // `rf`. It used to wrap the loop in `withPhysFrame(rf, …)` and call both functions with no
+  // frame at all, which was correct while they read the module binding.
+  //
+  // 🔴 THIS WENT INERT DURING THE FRAME REFACTOR AND THE FIXTURE'S OWN CONTROL CAUGHT IT.
+  //    Once the two functions took the frame as an argument, passing nothing meant "read the
+  //    screen" — so `coordMapOracle(from)` and `coordMapOracle(to)` built the SAME map and
+  //    `oracleValuedRekeyed` returned 0 for every pair. Nothing threw and no coordinate
+  //    assertion moved; the only thing that noticed was
+  //    `F6/C/adoption-would-have-moved-every-coordinate`, whose entire job is to refuse a
+  //    negative control that has stopped being negative. An oracle that answers the same
+  //    thing for both inputs is not a lenient oracle, it is no oracle at all.
+  const m = new Map();
+  for (let r = 0; r < vr; r++) for (let c = 0; c < vc; c++) {
+    const p = S.getDieIndex(rf, c, r, rf.cols, rf.rows, rf.rotation, rf.side);
+    const v = S.getDbCoords(rf, c, r, rf.cols, rf.rows, rf.rotation, rf.side,
+                                rf.invertY, rf.startX, rf.startY);
+    m.set(`${p.x}_${p.y}`, `${v.x}_${v.y}`);
+  }
+  return m;
 }
 
 // ── THE NEGATIVE CONTROL, and the harness's model of the behaviour that was REMOVED ────────
