@@ -111,6 +111,21 @@ EXCLUDE_NO_CELLS = "no_cells"
 # 빌리면 없는 사실을 만든다. 없으면 **무엇이 필요한지 이름을 대고** 거절한다.
 EXCLUDE_GRID_DIMS_MISSING = "grid_dims_missing"
 EXCLUDE_GRID_DIMS_DIFFER = "grid_dims_differ"
+# ═══ [D4] 고쳐야 할 것은 소스 맵이 아니라 **바닥이다** (제품 소유자 확정 2026-08-05) ═══════
+#
+# 규격 행이 없는 소스 맵은 **정상이다.** 조작자가 정렬을 여는 이유가 바로 그 맵의 규격을
+# 모르기 때문이고, 그래서 「미등록이니 등록하고 오라」는 답은 질문에 질문으로 답하는 것이다
+# ([D3]이 규격 없는 **행**에 대해 이미 내린 판정과 같은 판정 — 행이 아예 없는 쪽이 오히려
+# 더 순수한 같은 경우다).
+#
+# 🔴 빌릴 바닥이 선언돼 있지 않으면 **거절한다.** 화면 프레임이나 항등 프레임에 얹어
+#    「눈으로 보게」 해 주지 않는다 — 근거 없이 그린 좌표는 멀쩡해 보이고 전부 틀리다(I4).
+# 🔴 그리고 거절은 **바닥의 이름을 대야 한다.** 종전에는 이 경우 소스 맵 N장이 전부
+#    `meta_missing`으로 세어졌다: 선언이 필요한 것은 조작자가 고른 바닥 **한 장**인데
+#    소스 맵 N장을 고치러 보내는 문장이다. 15분과 일주일의 차이가 여기서 갈린다.
+# 🔴 그래서 이것은 **맵의 사실이 아니라 요청의 사실**이다. 맵마다 세지 않는다 — 응답의
+#    `basis_refusal`이 요청 단위로 한 번 말하고, 제외 집계는 이 사유로 부풀지 않는다.
+EXCLUDE_BASIS_UNDECLARED = "basis_undeclared"
 
 # 표찰이지 문장이 아니다(§compose_refusal).
 _EXCLUDE_TEXT = {
@@ -119,6 +134,7 @@ _EXCLUDE_TEXT = {
     EXCLUDE_NO_CELLS: "좌표 0건",
     EXCLUDE_GRID_DIMS_MISSING: "격자 치수(grid_cols/grid_rows) 미등록 - 가정 대상 아님",
     EXCLUDE_GRID_DIMS_DIFFER: "격자 치수가 기준과 다름 - 같은 잘림이 아님",
+    EXCLUDE_BASIS_UNDECLARED: "기준 맵 규격 미선언 - 빌려 올 웨이퍼 치수가 없음",
 }
 
 # 기준(floor) 거절 사유 코드 — **「제안되지 않았다」에는 언제나 이유가 붙는다.**
@@ -168,6 +184,80 @@ class _Excluded:
                         "example_map_id": s.get("map_id"),
                         "example_detail": s.get("detail")})
         return out
+
+
+# ---------------------------------------------------------------------------
+# [D4] 규격 **행이 없는** 맵을 채점 가능한 상태로 만드는 자리
+# ---------------------------------------------------------------------------
+# 이 함수가 하는 일은 **조립뿐이다.** 기존 두 프리미티브를 순서대로 부른다:
+#   ① `map_meta_registrar.synthesize_grid_meta` — 마스크 중립 합성 프레임(에디터 「표준」
+#      선택과 필드 단위로 같은 어휘, `auto_registered` 표지 포함). 세 번째 프레임 합성기를
+#      만들지 않는다 — 어휘가 셋이 되는 날 셋이 갈린다(I6).
+#   ② `map_overlay.assume_phys_from` — 웨이퍼 규격만 바닥에서 빌린다([D3]과 **같은** 규칙·
+#      같은 표지·같은 출처 기록).
+#
+# 🔴 격자 치수는 **빌리지 않는다.** 웨이퍼의 성질이 아니라 맵의 성질이고, 규격 행이 없는
+#    맵에서는 빌릴 필요도 없다 — 그 맵 자신의 셀이 답을 갖고 있다.
+# 🔴 결과는 **가정이다.** `geometry_declaration`은 `assumed`라고 답하고(표지를 값보다 먼저
+#    본다), 이 dict가 `wafer_map_metadata`에 도달하는 경로는 없다 — `assume_phys_from`의
+#    불변식을 그대로 승계한다.
+def _cell_bbox(cells):
+    """셀 목록 → `(min_x, min_y, max_x, max_y)`. 읽을 수 있는 좌표가 없으면 None."""
+    xs, ys = [], []
+    for xy in cells or ():
+        try:
+            xs.append(int(xy[0]))
+            ys.append(int(xy[1]))
+        except (TypeError, ValueError, IndexError):
+            continue
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def assumed_meta_for_unregistered(cells, basis_meta: dict, basis: dict = None):
+    """규격 행이 **없는** 맵의 계산용 메타. 못 만들면 None (= 바닥이 선언이 아니다).
+
+    `basis`: `{"table":..., "map_id":...}` — 어디서 빌렸는지. 표지 값이 되어 payload와
+        확정 기록에 그대로 실린다([D3]과 같은 규율).
+    """
+    bbox = _cell_bbox(cells)
+    if bbox is None:
+        return None
+    import map_meta_registrar
+    frame = map_meta_registrar.synthesize_grid_meta(*bbox)
+    return map_overlay.assume_phys_from(frame, basis_meta, basis)
+
+
+#: 규격 행이 없는 맵이 **제안은 되는데 걸리지는 않은** 상태의 사유(사람 말). 제외 표찰
+#: (`_EXCLUDE_TEXT[EXCLUDE_GEOMETRY_REFUSED]`)에 붙는 상세이지 두 번째 판정이 아니다.
+TEXT_NO_META_ROW = ("wafer_map_metadata에 이 맵의 규격 행이 없습니다 ― 기준 맵의 웨이퍼 "
+                    "치수를 빌리면 채점할 수 있습니다")
+
+#: 바닥이 선언이 아닐 때의 **요청 단위** 문장. 사람이 읽을 문장은 전부 서버가 만든다.
+TEXT_BASIS_UNDECLARED = ("규격 행이 없는 소스 맵을 채점하려면 기준(유효 다이) 맵의 물리 "
+                         "규격이 선언돼 있어야 합니다 ― 빌려 올 웨이퍼 치수가 없습니다. "
+                         "고쳐야 할 것은 소스 맵이 아니라 **기준 맵 한 장**입니다.")
+
+
+def compose_basis_refusal(map_ids, basis: dict = None, why: str = None):
+    """바닥 미선언 진술 — **요청 단위로 한 번**. 해당 없으면 None.
+
+    🔴 맵마다 세지 않는다. 소스 맵 N장이 같은 하나의 이유로 못 채점되는 것이고, 그 이유는
+       **다른 맵(바닥)의 사실**이다. 제외 집계에 N을 실으면 고칠 것이 N개처럼 보인다.
+    """
+    ids = list(map_ids or ())
+    if not ids:
+        return None
+    text = TEXT_BASIS_UNDECLARED
+    if why:
+        text = "%s (기준 맵: %s)" % (text, why)
+    return {"reason_code": EXCLUDE_BASIS_UNDECLARED,
+            "reason": _EXCLUDE_TEXT[EXCLUDE_BASIS_UNDECLARED],
+            "text": text,
+            "basis": dict(basis) if basis else None,
+            "map_count": len(ids),
+            "map_ids": ids}
 
 
 # ---------------------------------------------------------------------------
@@ -331,35 +421,53 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     basis_ok = (map_overlay.geometry_declaration(reference_meta)
                 == map_overlay.GEOMETRY_DECLARED)
     ref_grid = map_overlay.grid_dims(reference_meta) if basis_ok else None
-    assumed_ids, offerable_ids = [], []
+    assumed_ids, offerable_ids, basis_undeclared_ids = [], [], []
     usable = []
     for sm in source_maps:
         meta, mid = sm.get("meta"), sm.get("map_id")
-        if not meta:
-            excluded.add(EXCLUDE_META_MISSING, mid)
-            continue
+        # 🔴 [D4] 좌표를 **먼저** 본다. 규격 행이 없는 맵의 프레임은 그 맵 자신의 셀에서
+        #    나오므로, 셀이 없으면 규격 이전에 잴 것이 없다. 종전 순서(규격 먼저)는 둘 다
+        #    없는 맵을 `meta_missing`이라 불렀는데, 고칠 수 있는 쪽은 좌표다.
         if not sm.get("cells"):
             excluded.add(EXCLUDE_NO_CELLS, mid)
             continue
         use_meta = meta
-        why = map_overlay.geometry_refusal(meta)
-        if why is not None:
-            borrowed = (map_overlay.assume_phys_from(meta, reference_meta, reference_ref)
-                        if basis_ok else None)
+        if not meta:
+            # [D4] **규격 행이 없다 = 정상이다.** 조작자가 정렬을 여는 이유 그 자체이고,
+            #      [D3]이 「행은 있는데 규격이 없다」에 내린 판정과 같은 판정을 받는다.
+            borrowed = assumed_meta_for_unregistered(
+                sm.get("cells"), reference_meta, reference_ref) if basis_ok else None
             if borrowed is None:
-                # 바닥이 선언돼 있는데도 못 빌리는 경우는 하나뿐이다: 격자 치수가 없다.
-                # 그때는 규격이 아니라 치수를 대라고 말해야 한다 - 사유가 갈려야 수리가 갈린다.
-                if basis_ok and map_overlay.grid_dims(meta) is None:
-                    excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
-                else:
-                    excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                # 🔴 바닥이 선언이 아니면 **거절한다.** 화면/항등 프레임에 얹지 않는다 —
+                #    근거 없이 그린 좌표는 멀쩡해 보이고 전부 틀리다. 그리고 이 사실은
+                #    맵이 아니라 요청의 사실이라 제외 집계에 세지 않는다(§compose_basis_refusal).
+                basis_undeclared_ids.append(mid)
                 continue
             offerable_ids.append(mid)
             if not assume_reference_geometry:
-                excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, TEXT_NO_META_ROW)
                 continue
             use_meta = borrowed
             assumed_ids.append(mid)
+        else:
+            why = map_overlay.geometry_refusal(meta)
+            if why is not None:
+                borrowed = (map_overlay.assume_phys_from(meta, reference_meta, reference_ref)
+                            if basis_ok else None)
+                if borrowed is None:
+                    # 바닥이 선언돼 있는데도 못 빌리는 경우는 하나뿐이다: 격자 치수가 없다.
+                    # 그때는 규격이 아니라 치수를 대라고 말해야 한다 - 사유가 갈려야 수리가 갈린다.
+                    if basis_ok and map_overlay.grid_dims(meta) is None:
+                        excluded.add(EXCLUDE_GRID_DIMS_MISSING, mid)
+                    else:
+                        excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                    continue
+                offerable_ids.append(mid)
+                if not assume_reference_geometry:
+                    excluded.add(EXCLUDE_GEOMETRY_REFUSED, mid, why)
+                    continue
+                use_meta = borrowed
+                assumed_ids.append(mid)
         # 🔴 격자 치수 대조를 후보 루프 **앞**으로 끌어올린다. `make_frame_transform`이
         #    후보마다 같은 답을 내는 검사이고(회전은 `_grid_of`를 바꾸지 않는다), 안에서
         #    터지면 맵 하나 때문에 **여덟 후보 전부**가 죽어 단위 전체가 답을 잃는다.
@@ -556,6 +664,10 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
              # 제안을 그릴 수 없고, 제외된 맵은 그냥 막다른 길로 남는다.
              "assumed_map_ids": list(assumed_ids),
              "assumable_map_ids": list(offerable_ids),
+             # [D4] 바닥이 선언이 아니어서 **아예 제안조차 못 한** 맵들. 제외 집계에는
+             # 없다 - 이것은 이 맵들의 사실이 아니라 바닥 한 장의 사실이고, 호출자가
+             # `compose_basis_refusal`로 요청 단위에 한 번 말한다.
+             "basis_undeclared_map_ids": list(basis_undeclared_ids),
              # 「어느 맵이 실제로 바닥에 올라갔나」. `geometry_basis_of`의 유일한 입력이라
              # 화면과 확정 기록이 같은 집합을 본다.
              "usable_map_ids": [sm.get("map_id") for sm in usable],
@@ -1296,20 +1408,28 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         # 기준이 없으면 채점 자체가 성립하지 않는다. 그래도 **왜 제외됐는지는 센다** —
         # 기준을 꽂았을 때 무엇이 남는지를 조작자가 미리 알아야 고칠 순서를 정할 수 있다.
         state = STATE_NOT_SCORABLE
+        basis_undeclared = []
         for sm in source_maps:
-            if not sm.get("meta"):
-                excluded.add(EXCLUDE_META_MISSING, sm["map_id"])
-            elif not sm.get("cells"):
+            if not sm.get("cells"):
                 excluded.add(EXCLUDE_NO_CELLS, sm["map_id"])
+            elif not sm.get("meta"):
+                # 🔴 [D4] **`meta_missing`이 아니다.** 여기서 그 낱말을 쓰면 소스 맵 N장을
+                #    고치러 보내는데, 규격 행이 없는 것은 정상이고 선언이 필요한 것은 조작자가
+                #    고를 바닥 한 장이다. 그 사실은 요청 단위로 한 번만 말한다.
+                basis_undeclared.append(sm["map_id"])
             else:
                 why = map_overlay.geometry_refusal(sm["meta"])
                 if why is not None:
                     excluded.add(EXCLUDE_GEOMETRY_REFUSED, sm["map_id"], why)
+        stats["basis_undeclared_map_ids"] = basis_undeclared
         # 🔴 이 루프가 채점기와 **같은 세 관문**을 돌렸으므로 남은 수는 잰 값이다. 예전에는
         #    이 갈래에서 `stats`가 비어 `usable_map_count`가 `stats.get(..., 0)`의 기본값 0으로
         #    나갔다 - 아무것도 안 재고 「쓸 수 있는 맵 0장」이라고 말한 것이고, 기준만 꽂으면
         #    채점될 단위를 조작자가 가망 없는 단위로 읽었다.
-        stats["source_maps_usable"] = len(source_maps) - excluded.total()
+        # 바닥 미선언으로 막힌 맵은 **제외 집계에 없으므로** 여기서 따로 뺀다 - 안 빼면
+        # 「쓸 수 있다」에 못 채점한 맵이 섞인다.
+        stats["source_maps_usable"] = (len(source_maps) - excluded.total()
+                                       - len(basis_undeclared))
 
     pooled = []
     if include_cells:
@@ -1363,6 +1483,21 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     else:
         a_state = ASSUMPTION_UNAVAILABLE
     a_ids = assumed_ids or assumable_ids
+    # [D4] 바닥이 선언이 아니라 **제안조차 못 한** 맵들 — 요청 단위로 한 번. 여기가 「고쳐야
+    # 할 것은 소스 맵 N장이 아니라 바닥 한 장」을 말하는 유일한 자리다.
+    if reference["state"] == REFERENCE_REFUSED:
+        basis_why = reference.get("reason")
+    elif reference["state"] == REFERENCE_ABSENT:
+        basis_why = TEXT_REFERENCE_ABSENT
+    else:
+        basis_why = map_overlay.geometry_refusal(reference.get("meta"))
+    # 🔴 `a_basis`가 아니라 **기준이 무엇이었든 그 이름**을 싣는다. 거절된 기준도 이름은
+    #    있고, 조작자에게 필요한 것이 정확히 그 이름이다("어느 맵을 선언해야 하나").
+    basis_refusal = compose_basis_refusal(
+        stats.get("basis_undeclared_map_ids"),
+        ({"table": reference.get("table"), "map_id": reference.get("map_id")}
+         if reference.get("table") else None),
+        basis_why)
     assumption = {
         "state": a_state,
         "requested": bool(assume_reference_geometry),
@@ -1421,6 +1556,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         # [D3] 가정은 **판정 옆이 아니라 판정과 함께** 산다. `ruling.geometry_assumed`가
         # 판정 자신의 사실이고, 이 블록은 그 가정의 내용(무엇에서, 몇 장, 제안인가)이다.
         "assumption": assumption,
+        # [D4] 가정을 **걸 수조차 없었던** 이유 — 바닥이 선언이 아니다. `None`이면 해당 없음.
+        # 요청 단위의 사실이라 여기 하나뿐이고, 제외 집계는 이 사유로 부풀지 않는다.
+        "basis_refusal": basis_refusal,
         # 적혀 있는 것. **결정이 아니다** (§declared_frame_of).
         "declaration": {
             "frames": dict(tally),
