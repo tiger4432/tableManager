@@ -858,12 +858,12 @@ const MUTANTS = {
   // promotes its synthesized geometry to a declaration — irreversibly, because the registrar
   // only ever fills ABSENT rows.
   'auto-registration-is-lost-on-save': (s) => once(s,
-    '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
+    '  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;',
     '  // mark dropped'),
   // ...and the opposite: it is written unconditionally, which changes the payload of every
   // ordinary map in the database (INV-1).
   'auto-registration-is-written-for-everything': (s) => once(s,
-    '  if (geometryIsAutoRegistered()) gridMeta.auto_registered = true;',
+    '  if (geometryIsAutoRegistered(physFrameOverride)) gridMeta.auto_registered = true;',
     '  gridMeta.auto_registered = true;'),
   // ── [D4] THE FRAME HALF. The same three failure shapes, one axis over. ─────────────────
   // The marker is dropped on the way out: a frame that came from the modal is written back as

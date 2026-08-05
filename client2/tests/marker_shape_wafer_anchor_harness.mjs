@@ -706,8 +706,8 @@ const MUTATIONS = [
     repl: `  const sWafer = waferAnchored ? (Math.min(width, height) * 0.94) / (dd.value - 2 * physNum('edgeMargin', el.physEdgeMargin, 3.0)) : Infinity;`,
   }],
   ['ⓦ an undeclared diameter is invented from the defaulted number', {
-    find: `  const dd = physDeclaration('waferDia', el.physWaferDia);`,
-    repl: `  const dd = { value: physNum('waferDia', el.physWaferDia, 300) };`,
+    find: `  const dd = physDeclaration(physFrameOverride, 'waferDia', el.physWaferDia);`,
+    repl: `  const dd = { value: physNum(physFrameOverride, 'waferDia', el.physWaferDia, 300) };`,
   }],
   // [D1] The anchor gained a `} ` prefix when the aspect clause above it grew a third case
   // (auto-registered geometry gets its own sentence, because "Chip X/Y 미선언" reads as false
