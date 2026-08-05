@@ -40,7 +40,8 @@ import { buildViewModel, assertNoRatio, VIEW_STATE, UNKNOWN,
 import { createApiClient, ROUTES } from '../src/map2/api.js';
 import { readArtifact, isImplemented, rejectionSummary, unmappedRejectionCodes,
          REJECTED } from '../src/map2/artifact_gateway.js';
-import { bootstrap, ELEMENT_IDS } from '../src/map2/main.js';
+import { bootstrap, ELEMENT_IDS, framesFor, paintCandidateThumbs,
+         adaptPayload } from '../src/map2/main.js';
 
 let compared = 0;
 const failures = [];
@@ -345,10 +346,11 @@ function throws(fn, what) {
   eq(notScorable.state, VIEW_STATE.NOT_SCORABLE, 'F21 not-scorable is its own state');
   ok(!notScorable.numerals, 'F22 not-scorable renders no numerals');
   eq(notScorable.summary.countText, UNKNOWN, 'F23 not-scorable renders the unknown word');
-  // 🔴 LISTING IS NOT RANKING. The refusal to rank is deliberate and it stays -- no badge, no
-  //    selection, every cell inert. The eight counts the server already measured are NOT part
-  //    of that refusal, and hiding them left the operator with `미상` eight times and no way to
-  //    see WHY nothing won. A zeroed score lands in exactly this state.
+  // 🔴 LISTING IS NOT RANKING, AND NEITHER IS SELECTING. The refusal to rank is deliberate and
+  //    it stays -- no badge, no ordering, no arming. The eight counts the server already
+  //    measured are NOT part of that refusal, and neither is the operator's ability to open one
+  //    of the eight and look: hiding the first left `미상` eight times, and disabling the second
+  //    left eight frames nobody could open. A zeroed score lands in exactly this state.
   const listedNW = notScorable.candidates.find(c => c.id === 'rot270_back');
   eq(listedNW.countText, '일치 512 / 판별 528',
      'F23d the eight are LISTED with their measured counts even though nothing won');
@@ -357,8 +359,10 @@ function throws(fn, what) {
   eq(notScorable.candidates.map(c => c.id).join(','),
      'rot0_front,rot90_front,rot180_front,rot270_front,rot0_back,rot90_back,rot180_back,rot270_back',
      'F23f in declaration order -- sorting by score would BE the ranking that was refused');
-  ok(notScorable.candidates.every(c => c.inert && !c.badges.includes('추천')),
-     'F23g and still nothing selectable and nothing recommended');
+  ok(notScorable.candidates.every(c => !c.inert),
+     'F23g the eight stay open to look through -- a refusal to rank is not an absence of data');
+  ok(notScorable.candidates.every(c => !c.badges.includes('추천')),
+     'F23g2 and still nothing is recommended, which is the refusal that was actually asked for');
   eq(notScorable.candidates.find(c => c.id === 'rot90_back').countText, UNKNOWN,
      'F23h a candidate the server did NOT score says the unknown word, never a 0 stand-in');
   eq(notScorable.picture, 'alone', 'F24 the source is drawn alone, with no floor beneath it');
@@ -523,8 +527,16 @@ function throws(fn, what) {
   eq(cross2.getAttribute('data-me2-cross-state'), 'single',
      'G33c and it carries its own state hook so it cannot be styled as corroborated');
   ok(cross2.disabled, 'G33d and it is not focusable, because there is nothing to look at');
-  ok(doc2.querySelectorAll('[data-me2-candidate]').every(c => c.disabled),
-     'G34 every candidate is inert when nothing was scored');
+  // 🔴 THIS ASSERTION USED TO READ `every(c => c.disabled)` AND IT WAS THE DEFECT WRITTEN DOWN.
+  //    The server refused to RANK and still shipped the source cells; the eight frames are the
+  //    only thing left to look through, and disabling them left the operator with a list of
+  //    pictures they could not open. Ranking stays refused right below (G34b/G34c).
+  ok(doc2.querySelectorAll('[data-me2-candidate]').every(c => !c.disabled),
+     'G34 a refusal to rank does not take the eight away -- they stay open to look through');
+  ok(doc2.querySelectorAll('[data-me2-cand-tags]').every(t => !t.textContent.includes('추천')),
+     'G34b and nothing is recommended, because refusing to rank is still refusing to rank');
+  ok(doc2.getElementById('me2-confirm-btn').disabled,
+     'G34c and the one write stays shut: looking is free, confirming is not');
 
   // The no-winner headline: a label, a separator and a count -- in the `.me2-num` slot, which
   // is the slot CSS shows in that state.
@@ -757,8 +769,383 @@ function throws(fn, what) {
      'J18 a refusal the server did NOT label scored still refuses');
   eq(doc3.getElementById('me2-refusal').textContent, '규격이 선언되지 않았습니다.',
      'J19 and its sentence is carried verbatim');
-  ok(doc3.querySelectorAll('[data-me2-candidate]').every(c => c.disabled),
-     'J20 with nothing scored, every candidate is inert');
+  // Same correction as G34: the sentence refuses a RANKING, and the cells came with it.
+  ok(doc3.querySelectorAll('[data-me2-candidate]').every(c => !c.disabled),
+     'J20 a refusal sentence does not close the eight frames the payload shipped');
+}
+
+// ── K. exploring is not ranking ─────────────────────────────────────────────────
+//
+// 🔴 THE SECOND HALF OF "A TIE SHOWED NOTHING", AND IT SURVIVED THE FIRST REPAIR. Section J
+//    un-fused LISTING from ranking, so the eight and their counts came back. `inert` stayed
+//    keyed on the same `numerals` flag, so the eight arrived on screen DISABLED -- the operator
+//    was handed a list of frames and could not open one. Reported live and confirmed on the
+//    built page with the ranking thresholds lowered to 1.
+//
+//    RANKING is the system claiming a candidate is correct: a badge, an order, an armed write.
+//    SELECTING is the operator choosing which frame to look through. The first is refused here
+//    and the second is not, and this section is what keeps them apart -- every assertion below
+//    fails on the tree before this round, in both directions.
+{
+  // The state the operator is actually stuck in: cells served, ranking refused.
+  const doc = makeDocument();
+  const fetches = [];
+  const refusedPayload = {
+    state: 'not_scorable',
+    refusal: '규격이 선언되지 않았습니다.',
+    reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: {
+      map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+      maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+               declared_frame_source: 'declared' }],
+    },
+    candidates: [],
+    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: null },
+    excluded_total: 0,
+    stats: { scored_cells: 0, elapsed_ms: 3 },
+  };
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: (d) => { fetches.push(d); return Promise.resolve(refusedPayload); },
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+  eq(vm.state, VIEW_STATE.NOT_SCORABLE, 'K1 the fixture is the refused state, not a scored one');
+  ok(!vm.numerals, 'K2 and the screen still may not rank');
+
+  const cells = doc.querySelectorAll('[data-me2-candidate]');
+  eq(cells.length, 8, 'K3 eight controls');
+  eq(cells.filter(c => c.disabled).length, 0, 'K4 none of them is closed by the refusal');
+  eq(vm.candidates.filter(c => c.inert).length, 0, 'K5 and the view model says so, not just the DOM');
+
+  // THE CLICK. It repaints data already in hand -- the whole reason `withSelectedCandidate`
+  // does not touch `requestSeq`.
+  const fetchesBefore = fetches.length;
+  const drawnBefore = layerShape(doc, 'me2-layer-alone');
+  ok(drawnBefore.length > 0, 'K6 the refused state draws the cells it was served');
+  cells.find(c => c.getAttribute('data-frame-code') === 'rot180_front').dispatchEvent('click');
+  eq(fetches.length, fetchesBefore, 'K7 looking through a frame costs no fetch');
+  eq(app.peek().selectedCandidateId, 'rot180_front', 'K8 the selection is recorded');
+  const drawnAfter = layerShape(doc, 'me2-layer-alone');
+  ok(drawnAfter !== drawnBefore,
+     'K9 and the picture is REPAINTED under that frame -- the click has a visible consequence');
+  eq(doc.querySelectorAll('[data-me2-candidate]')
+       .filter(c => c.getAttribute('aria-pressed') === 'true').length, 1,
+     'K10 exactly one control reads as the one being looked through');
+
+  // RANKING IS STILL REFUSED, and each refusal is scored on its own so none of them can be
+  // relaxed by accident along with the one above.
+  const vm2 = app.render();
+  eq(vm2.candidates.filter(c => c.badges.includes('추천')).length, 0, 'K11 no winner badge');
+  eq(vm2.candidates.map(c => c.id).join(','),
+     candidateList().map(c => c.id).join(','), 'K12 declaration order, never score order');
+  ok(!vm2.confirm.enabled, 'K13 the write stays refused');
+  ok(!app.peek().armed, 'K14 and nothing armed itself by being looked at');
+  eq(vm2.summary.countText, UNKNOWN, 'K15 an unranked run still reports no numerals of its own');
+
+  // 🔴 THE OTHER DIRECTION, AND IT IS WHAT MAKES THE ONE ABOVE MEAN ANYTHING. A request that
+  //    FAILED has no cells, so there is nothing to look through and the controls close again.
+  //    Without this, `inert: false` would pass as well as any other constant.
+  const docF = makeDocument();
+  const appF = bootstrap({
+    document: docF,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.reject(new Error('network')),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  appF.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appF.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmF = appF.render();
+  eq(vmF.state, VIEW_STATE.NOT_SCORABLE, 'K16 a failed request reaches the same view state');
+  ok(docF.querySelectorAll('[data-me2-candidate]').every(c => c.disabled),
+     'K17 but with no payload there is nothing to look through, so the eight DO close');
+}
+
+// ── L. eight pictures, all at once ──────────────────────────────────────────────
+//
+// 🔴 THE OPERATOR ASKED TO SEE THE EIGHT AND WAS GIVEN EIGHT NUMBERS. On their data the scoring
+//    cannot discriminate -- all eight counts come back identical -- and a human looking at a
+//    wafer can. So each of the eight controls carries a small picture of the source seated under
+//    THAT frame against the same reference, and the operator reads orientation off the shape.
+//
+//    WHAT IS ACTUALLY SCORED HERE IS THAT THE EIGHT PICTURES DIFFER, and it is scored against an
+//    ORACLE rather than against a number this code produced: the count of distinct pictures must
+//    equal the count of distinct SEATINGS, computed independently through `computeSeating`. A
+//    renderer that painted one frame eight times would be green under "eight canvases exist" and
+//    under "every canvas was drawn into", and it is exactly the failure that would waste the
+//    operator's afternoon -- eight pictures that all look the same tell them nothing.
+{
+  // ANISOTROPIC AND ASYMMETRIC, ON PURPOSE. A square grid hides the axis swap under a quarter
+  // turn, and a shape with any symmetry axis collapses two of the eight into one -- on such a
+  // fixture "the pictures differ" would be measuring the fixture, not the code.
+  const floorCells = [];
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 5; x++) floorCells.push([x, y]);
+  const srcCells = [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2], [3, 1]];
+  const payload = adaptPayload({
+    state: 'no_winner',
+    refusal: '동점 - 판별 불가',
+    reference: { state: 'resolved', kind: 'values', cells: floorCells },
+    sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
+               maps: [{ map_id: 's1', cell_count: srcCells.length,
+                        declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
+    candidates: [],
+    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: null, reason_code: 'no_discrimination' },
+    excluded_total: 0,
+    stats: { scored_cells: 0, elapsed_ms: 4 },
+  });
+  const source = payload.sources[0];
+
+  // THE FLOOR IS HELD STILL AND ONLY THE SOURCE TURNS. Turning both leaves their relation
+  // invariant, which is the one thing that cannot inform.
+  for (const c of candidateList()) {
+    const { frame, floorFrame } = framesFor(payload, c.id);
+    eq(frame.rotation, c.rotation, `L1 ${c.id} reads the source at its own turn`);
+    eq(frame.side, c.side, `L2 ${c.id} reads the source at its own flip`);
+    eq(floorFrame.rotation, 0, `L3 ${c.id} leaves the floor at rest`);
+    eq(floorFrame.side, 'front', `L4 ${c.id} and unflipped`);
+  }
+  eq(framesFor(payload, null).frame.rotation, 0, 'L5 an absent candidate reads as the identity');
+  eq(framesFor(payload, 'rot45_front').frame.rotation, 0, 'L6 and so does an unparsable one');
+
+  // THE ORACLE: how many of the eight the geometry actually tells apart.
+  const seatSets = candidateList().map(c => computeSeating(srcCells.map(([x, y]) => ({ x, y })),
+    framesFor(payload, c.id).frame).seats.map(s => s.key).sort().join(' '));
+  const distinctSeatings = new Set(seatSets).size;
+  eq(distinctSeatings, 8,
+     'L7 the fixture is asymmetric enough that all eight frames are genuinely different');
+
+  // THE PICTURES, painted through the SAME pieces the main stage uses, onto recording surfaces.
+  // No canvas and no DOM anywhere in this path -- that is what `surfaceFor` buys.
+  const surfaces = new Map(candidateList().map(c => [c.id, createRecordingSurface()]));
+  const painted = paintCandidateThumbs(id => surfaces.get(id) || null, payload, source,
+    { width: 128, height: 128, padding: 3 },
+    { floor: 'F', agree: 'A', gap: 'G', mismatch: 'M', unrelated: 'U', skeleton: 'S' });
+  eq(painted.length, 8, 'L8 eight pictures, one per candidate, all in one pass');
+  eq(painted.map(p => p.id).join(','), candidateList().map(c => c.id).join(','),
+     'L9 in declaration order, because ordering them by score WOULD be the ranking that was refused');
+  for (const p of painted) {
+    eq(p.stats.painted, p.stats.total, `L10 ${p.id} accounts for every mark it drew`);
+    ok(p.stats.painted > 0, `L11 ${p.id} is not an empty box`);
+    ok(p.stats.pxPerDie > 0, `L12 ${p.id} gives a die a positive size`);
+  }
+  const shapes = candidateList().map(c => JSON.stringify(surfaces.get(c.id).ops));
+  eq(new Set(shapes).size, distinctSeatings,
+     'L13 the eight PICTURES distinguish exactly what the geometry distinguishes');
+
+  // The floor is seated ONCE for all eight. Measured as the property that makes it safe: every
+  // picture rests on the same floor marks, so nothing per-candidate re-derives them.
+  const floorMarks = candidateList().map(c => JSON.stringify(
+    surfaces.get(c.id).ops.filter(o => o.color === 'F')));
+  eq(new Set(floorMarks).size, 1, 'L14 one floor, drawn identically under all eight');
+
+  // A page that publishes fewer slots than eight still renders the ones it has, rather than
+  // throwing -- the failure mode that takes down everything rendered after it.
+  const partial = paintCandidateThumbs(
+    id => (id === 'rot90_back' ? createRecordingSurface() : null), payload, source,
+    { width: 32, height: 32, padding: 1 },
+    { floor: 'F', agree: 'A', gap: 'G', mismatch: 'M', unrelated: 'U', skeleton: 'S' });
+  eq(partial.length, 1, 'L15 a missing slot is skipped, not thrown over');
+  eq(paintCandidateThumbs(() => createRecordingSurface(), null, null, { width: 8, height: 8 }, {}).length,
+     0, 'L16 and no payload paints nothing at all');
+
+  // NOW THE DOM HALF: the shell puts a real slot in every one of the eight controls.
+  const doc = makeDocument();
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({
+        state: 'no_winner', refusal: '동점 - 판별 불가',
+        reference: { state: 'resolved', kind: 'values', cells: floorCells },
+        sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
+                   maps: [{ map_id: 's1', cell_count: srcCells.length,
+                            declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
+        candidates: candidateList().map(c => ({ frame: c.id, state: 'scored',
+                                                agreement: 4, discriminating: 6 })),
+        declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+        ruling: { winner: null, reason_code: 'no_discrimination' },
+        excluded_total: 0, stats: { scored_cells: 6, elapsed_ms: 4 },
+      }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  app.render();
+  const slots = doc.querySelectorAll('[data-me2-cand-thumb]');
+  eq(slots.length, 8, 'L17 every one of the eight controls carries a picture slot');
+  ok(slots.every(s => (s.__ops || []).length > 0), 'L18 and every one of them was drawn into');
+  // 🔴 A REPAINT MUST NOT MULTIPLY THEM. `fillGrid`'s sibling defect: a renderer that creates
+  //    rather than finds appends a canvas per render, and the page grows without bound.
+  app.render();
+  eq(doc.querySelectorAll('[data-me2-cand-thumb]').length, 8,
+     'L19 a repaint finds the slots it made rather than making eight more');
+  ok(doc.querySelectorAll('[data-me2-cand-thumb]')
+       .every(s => (s.__ops || []).some(o => o[0] === 'fill')),
+     'L20 every picture carries real marks, not just a cleared box');
+
+  // 🔴 THE STATE THE OPERATOR IS ACTUALLY IN, AND THE ONE THE FIXTURE ABOVE DOES NOT REACH.
+  //    Everything above runs in `no_winner`, where the run WAS scored -- so a renderer gated on
+  //    `numerals` would paint all eight there and still leave the refused screen empty, which is
+  //    the exact defect this round exists to end. Measured: gating the thumbnails on `numerals`
+  //    changed nothing above. NOT_SCORABLE is a different picture mode (`alone`) and a different
+  //    code path, and it is where the pictures matter most, because there are no counts at all.
+  const docNS = makeDocument();
+  const appNS = bootstrap({
+    document: docNS,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({
+        state: 'not_scorable', refusal: '규격이 선언되지 않았습니다.',
+        reference: { state: 'resolved', kind: 'values', cells: floorCells },
+        sources: { map_count: 1, cell_count: srcCells.length, cells: srcCells,
+                   maps: [{ map_id: 's1', cell_count: srcCells.length,
+                            declared_frame: 'rot0_front', declared_frame_source: 'declared' }] },
+        candidates: [],
+        declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+        ruling: { winner: null, reason_code: 'no_cells_scored' },
+        excluded_total: 0, stats: { scored_cells: 0, elapsed_ms: 4 },
+      }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  appNS.setConfig({ min_margin_dies: 20, min_discriminating_dies: 40 });
+  appNS.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vmNS = appNS.render();
+  eq(vmNS.state, VIEW_STATE.NOT_SCORABLE, 'L21 the refused state, where there are no counts at all');
+  ok(!vmNS.numerals, 'L22 and the screen still refuses to rank');
+  const slotsNS = docNS.querySelectorAll('[data-me2-cand-thumb]');
+  eq(slotsNS.length, 8, 'L23 the eight pictures are there anyway -- they are not a reward for scoring');
+  ok(slotsNS.every(s => (s.__ops || []).some(o => o[0] === 'fill')),
+     'L24 and every one of them was actually drawn into');
+  // And they still differ from each other, which is the only reason to show eight of them.
+  eq(new Set(slotsNS.map(s => JSON.stringify(s.__ops))).size, 8,
+     'L25 eight DIFFERENT pictures in the refused state, not one picture eight times');
+}
+
+// ── M. the screen says why nothing won ──────────────────────────────────────────
+//
+// 🔴 THE SCREEN HAD THE ANSWER AND SHOWED THE NUMBERS INSTEAD. `no_cells_scored`,
+//    `no_candidate_scored`, `no_overlap`, `no_discrimination` and `tie` are decided AHEAD of the
+//    two threshold checks, so lowering `min_margin_dies` to 1 moves none of them -- and the
+//    operator spent an afternoon reading the code out of the CONSOLE to find that out. The
+//    sentence was on the wire the whole time.
+//
+//    CARRIED, NEVER COMPOSED. What is scored is that the slot holds the server's string BYTE FOR
+//    BYTE -- not that it contains it, which a decorated version would also satisfy.
+{
+  const doc = makeDocument();
+  const base = {
+    state: 'no_winner', refusal: '판별 다이가 없어 후보를 가를 수 없습니다.',
+    reference: { state: 'resolved', kind: 'values', cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+    sources: { map_count: 1, cell_count: 3, cells: [[0, 0], [1, 0], [2, 2]],
+               maps: [{ map_id: 's1', cell_count: 3, declared_frame: 'rot0_front',
+                        declared_frame_source: 'declared' }] },
+    candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 2, discriminating: 4 },
+                 { frame: 'rot90_front', state: 'scored', agreement: 2, discriminating: 4 }],
+    declaration: { frames: { rot0_front: 1 }, attested_maps: 1, unattested_maps: 0, axis_sources: {} },
+    ruling: { winner: null, reason_code: 'no_discrimination' },
+    excluded_total: 0, stats: { scored_cells: 4, elapsed_ms: 4 },
+  };
+  const app = bootstrap({
+    document: doc,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve(base),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm = app.render();
+  eq(vm.state, VIEW_STATE.SCORED_NO_WINNER, 'M1 the no-winner state, which is where this matters');
+  eq(vm.reasonLine, '판별 다이가 없어 후보를 가를 수 없습니다.',
+     'M2 the view model carries the server sentence');
+  const slot = doc.querySelector('[data-me2-cand-reason]');
+  ok(slot, 'M3 a reason slot exists beside the eight');
+  eq(slot.textContent, '판별 다이가 없어 후보를 가를 수 없습니다.',
+     'M4 and it holds that sentence BYTE FOR BYTE -- nothing of ours is joined to it');
+  eq(slot.hidden, false, 'M5 and it is shown');
+  eq(vm.reasonCode, 'no_discrimination',
+     'M6 the branch that refused is carried too -- for the log, never for the screen');
+  ok(!doc.querySelector('[data-me2-cand-reason]').textContent.includes('순위'),
+     'M7 no label of ours competes with the server sentence');
+
+  // 🔴 SILENCE IS HONEST. A run that sent no sentence gets NO line -- never an invented label,
+  //    which would be indistinguishable from a real answer. Without this the assertion above
+  //    would pass on a constant.
+  const doc2 = makeDocument();
+  const app2 = bootstrap({
+    document: doc2,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({ ...base, refusal: null }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app2.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app2.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm2 = app2.render();
+  eq(vm2.reasonLine, '', 'M8 no server sentence means no line, not a line we wrote');
+  eq(doc2.querySelector('[data-me2-cand-reason]').hidden, true, 'M9 and the slot hides itself');
+
+  // 🔴 A RUN THAT PRODUCED A WINNER HAS NOTHING TO EXPLAIN, AND IT STILL CARRIES A SENTENCE.
+  //    `compose_refusal` runs for EVERY state, so the sentence arrives even here -- which means
+  //    "the slot is empty on a winner" is a real gate and not the absence of an input. The
+  //    fixture therefore SENDS one; scoring it with `refusal: null` measured nothing, and
+  //    deleting the state gate did not turn this red until the sentence was put back.
+  const doc3 = makeDocument();
+  const app3 = bootstrap({
+    document: doc3,
+    api: {
+      counters: { reads: 0, writes: 0 },
+      loadReferenceView: () => Promise.resolve({ ...base, state: 'scored',
+        refusal: '판별 다이가 없어 후보를 가를 수 없습니다.',
+        candidates: [{ frame: 'rot0_front', state: 'scored', agreement: 400, discriminating: 528 },
+                     { frame: 'rot90_front', state: 'scored', agreement: 100, discriminating: 528 }],
+        ruling: { winner: 'rot0_front' } }),
+      loadWorklist: () => Promise.resolve({ rows: [] }),
+      loadAlignConfig: () => Promise.resolve({}),
+      confirmFrame: () => Promise.resolve({}),
+    },
+  });
+  app3.setConfig({ min_margin_dies: 20, min_discriminating_dies: 4 });
+  app3.selectDecision({ eqp: 'E', product: 'P' });
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const vm3 = app3.render();
+  eq(vm3.state, VIEW_STATE.SCORED_WINNER, 'M10 a scored run with a clear margin');
+  ok(vm3.cause === null || vm3.cause.detail !== undefined,
+     'M10b and the server sentence did travel with it -- the input to the gate exists');
+  eq(vm3.reasonLine, '',
+     'M11 nothing won-less to explain, so the slot says nothing even though a sentence arrived');
+  eq(doc3.querySelector('[data-me2-cand-reason]').hidden, true, 'M12 and it stays hidden');
 }
 
 console.log(`ASSERTIONS ${compared} ${failures.length}`);
@@ -767,6 +1154,19 @@ if (failures.length > 0) {
   for (const f of failures) console.log(`  - ${f}`);
 }
 process.exit(failures.length === 0 ? 0 : 1);
+
+/**
+ * The drawn geometry of one SVG layer, as a string.
+ *
+ * Two different frames seat the same cells at different places, so this value cannot be equal
+ * across a real repaint -- which is what makes "the picture followed the click" a MEASUREMENT
+ * rather than a hope. Comparing child COUNTS would not: the same population is drawn either way.
+ */
+function layerShape(doc, id) {
+  const g = doc.getElementById(id);
+  if (!g) return '';
+  return (g.children || []).map(r => `${r.getAttribute('x')},${r.getAttribute('y')}`).join(' ');
+}
 
 // ────────────────────────────────────────────────────────────────────────────────
 // A MINIMAL DOCUMENT. Not jsdom: this harness must run with no `node_modules`. It implements

@@ -39,11 +39,11 @@ import { createMapSession, withDecision, withPayload, withError, withSelectedCan
          withWorklistQuery, withWorklist, withWorklistError, withConfirmed,
          columnKey, isAskable, isUnset, BINDING_DECLARED, PHASE } from './session.js';
 import { computeSeating, compareSeatings, unionBounds } from './seating.js';
-import { layoutFor } from './painter.js';
+import { layoutFor, paintComparison, createCanvasSurface } from './painter.js';
 import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUTION,
          UNKNOWN } from './view_model.js';
 import { decideVerdict } from './verdict_bridge.js';
-import { parseCandidateId } from './candidates.js';
+import { parseCandidateId, candidateList } from './candidates.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext } from './decode.js';
 // The provenance vocabulary, imported rather than re-spelled. A string literal `'assumed'` here
@@ -141,6 +141,22 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // so the grid reads as cells rather than as a solid block -- the same proportion the markup
 // lane's placeholder cells use.
 const STAGE = Object.freeze({ width: 200, height: 200, padding: 1, fillRatio: 0.87, radius: 1.2 });
+
+// 🔴 THE EIGHT PICTURES ARE THE DELIVERABLE, NOT A DECORATION. The scoring cannot discriminate
+//    on this operator's data -- eight identical counts is the ordinary answer here -- and a
+//    human looking at a wafer can. Eight numbers do not let them do that; eight PICTURES do.
+//
+//    THEY ARE CANVASES, AND THAT IS A SCALE DECISION RATHER THAN A TASTE ONE. The main stage is
+//    SVG, one `<rect>` per seat, and a production map runs to thousands of dies -- eight SVG
+//    copies of it is tens of thousands of nodes on every repaint, which is a freeze. The pieces
+//    are the same either way: `paintSeating` and `paintComparison` take a SURFACE, and
+//    `createCanvasSurface` is the one this file was always going to need. Nothing here is a
+//    second painter.
+//
+//    The backing store is larger than the CSS box on purpose, so the picture stays crisp when
+//    the browser downscales it. 128px over a 45-column wafer is ~2.8px per die: enough for the
+//    gross orientation the operator is reading, which is what they said they are looking for.
+const THUMB = Object.freeze({ width: 128, height: 128, padding: 3 });
 
 // Same figure the enrichment queue uses for its reference views. One number, one meaning: a
 // fast typist must not queue a served search per keystroke.
@@ -300,6 +316,13 @@ export function bootstrap(deps) {
     renderSecondMetric(vm);
     paint(vm);
     logDiagnosis(vm);
+    // LAST, AND GUARDED. See `renderCandidateThumbs`: nothing above may be taken down by a
+    // throw in the picture layer, and a failure has to name itself rather than emptying a panel.
+    try {
+      renderCandidateThumbs(vm);
+    } catch (e) {
+      warn(`candidate thumbnails failed: ${(e && e.message) || e}`);
+    }
     bar.repaints++;
     return vm;
   }
@@ -676,7 +699,164 @@ export function bootstrap(deps) {
       }
     }
     }
+    renderCandidateReason(vm);
     logCandidateTable(vm);
+  }
+
+  /**
+   * WHY NOTHING WON, BESIDE THE EIGHT, IN THE SERVER'S OWN WORDS.
+   *
+   * 🔴 THE SCREEN HAD THIS ANSWER AND SHOWED THE NUMBERS INSTEAD. The operator was reading the
+   *    reason out of the console, lowered the ranking thresholds to 1, and still got no winner --
+   *    because `no_cells_scored` / `no_candidate_scored` / `no_overlap` / `no_discrimination` /
+   *    `tie` are decided AHEAD of the threshold check and none of them is a knob. Eight rows of
+   *    numbers cannot tell those five apart; the sentence can, and it was already on the wire.
+   *
+   * VERBATIM, AND NOTHING JOINED TO IT. Every other slot on this screen joins a label to a count
+   * with a separator; this one does not, because the whole point is that the sentence is the
+   * SERVER'S and a word of ours beside it would be a second spelling. Empty when the server said
+   * nothing -- the slot then hides rather than showing a label we invented.
+   */
+  function renderCandidateReason(vm) {
+    for (const host of queryAll(doc, '[data-me2-candidates-for]')) {
+      if (host.hidden === true) continue;
+      const slot = ensureReasonSlot(host);
+      if (!slot) continue;
+      slot.textContent = vm.reasonLine || '';
+      slot.hidden = !vm.reasonLine;
+    }
+  }
+
+  /**
+   * The page has not authored this slot yet, so it is created inside the container the page DID
+   * provide -- the same rescue `fillGrid` performs for the eight controls, and the same rule: no
+   * new container, no new panel, nothing outside markup that already exists. When the markup
+   * lane authors `[data-me2-cand-reason]` this finds it and stops creating one.
+   *
+   * ASKED FOR BY NAME (markup lane): `<p class="me2-cand-reason" data-me2-cand-reason hidden>` as
+   * the FIRST child of `.me2-cands`, above the legend -- it explains the eight, so it reads
+   * before them.
+   */
+  function ensureReasonSlot(host) {
+    if (!host || typeof host.querySelector !== 'function') return null;
+    const found = host.querySelector('[data-me2-cand-reason]');
+    if (found) return found;
+    const slot = doc.createElement('p');
+    slot.className = 'me2-cand-reason';
+    slot.setAttribute('data-me2-cand-reason', '');
+    slot.hidden = true;
+    // Above the eight where the real DOM allows it; the stub document has no `insertBefore`, and
+    // a tolerant binding is the rule on this page -- a missing capability degrades, never throws.
+    if (typeof host.insertBefore === 'function' && host.firstChild) {
+      host.insertBefore(slot, host.firstChild);
+    } else {
+      host.appendChild(slot);
+    }
+    return slot;
+  }
+
+  /**
+   * THE EIGHT PICTURES, PAINTED. This function owns only the DOM half: find a slot per candidate,
+   * make one if the page has not authored it, resolve the palette from CSS tokens, and hand a
+   * SURFACE to `paintCandidateThumbs`. It computes no seat and decides no colour.
+   *
+   * 🔴 IT IS CALLED LAST AND IT IS GUARDED, AND BOTH HALVES ARE DELIBERATE. A throw inside a
+   *    candidate renderer takes down everything rendered after it in the same pass -- one
+   *    unimplemented DOM call reads as a dozen unrelated failures somewhere else entirely, which
+   *    is a debugging trap this screen has already paid for. So nothing depends on this running,
+   *    and a failure says so out loud in the console instead of silently emptying the panel.
+   */
+  function renderCandidateThumbs(vm) {
+    const payload = session.payload;
+    if (!payload) return null;
+    // Only when there is something seated to look at. The skeleton and idle states have no
+    // cells, and a blank 128px box eight times is worse than no box at all.
+    if (vm.picture !== 'compare' && vm.picture !== 'alone') return null;
+    const source = pickSource(payload, session.focusedSourceId);
+    const byId = new Map();
+    for (const cell of queryAll(doc, '[data-me2-candidate]')) {
+      // A hidden grid belongs to a source that is not being drawn. Painting into it would cost a
+      // full seating per candidate for a picture nobody can see.
+      const host = typeof cell.closest === 'function'
+        ? cell.closest('[data-me2-candidates-for]') : null;
+      if (host && host.hidden === true) continue;
+      const code = cell.getAttribute('data-frame-code');
+      if (!code || byId.has(code)) continue;
+      const slot = ensureThumbSlot(cell);
+      if (slot) byId.set(code, slot);
+    }
+    if (byId.size === 0) return null;
+    const palette = thumbPalette();
+    return paintCandidateThumbs((id) => {
+      const node = byId.get(id);
+      const ctx = node && typeof node.getContext === 'function' ? node.getContext('2d') : null;
+      return ctx ? createCanvasSurface(ctx) : null;
+    }, payload, source, THUMB, palette);
+  }
+
+  /**
+   * One picture slot inside a candidate control the page provided. Created when absent, exactly
+   * as `fillGrid` creates the control's score slot -- and found rather than recreated once the
+   * markup lane authors it.
+   *
+   * ASKED FOR BY NAME (markup lane): `<canvas class="me2-cand-thumb" data-me2-cand-thumb
+   * width="128" height="128" aria-hidden="true">` as the first child of each `.me2-cand`.
+   */
+  function ensureThumbSlot(cell) {
+    if (!cell || typeof cell.querySelector !== 'function') return null;
+    const found = cell.querySelector('[data-me2-cand-thumb]');
+    if (found) return found;
+    const node = doc.createElement('canvas');
+    node.className = 'me2-cand-thumb';
+    node.setAttribute('data-me2-cand-thumb', '');
+    // The picture carries no information a screen reader can use -- the stored spelling and the
+    // counts beside it carry all of it -- so it is not announced twice.
+    node.setAttribute('aria-hidden', 'true');
+    node.width = THUMB.width;
+    node.height = THUMB.height;
+    cell.appendChild(node);
+    return node;
+  }
+
+  /**
+   * The semantic colours, resolved HERE from the stylesheet's own tokens.
+   *
+   * 🔴 THE PAINTER HAS NO `getComputedStyle` AND MUST NOT GROW ONE. Resolving tokens is a
+   *    composition-root job by construction -- it is what keeps `painter.js` importable by a
+   *    harness with no DOM. The fallbacks exist for exactly that case (a document stub answers
+   *    every token with an empty string) and never as a second palette: on a real page every one
+   *    of these resolves, because the same tokens already colour the main stage's `.me2-cell-*`
+   *    classes.
+   */
+  function thumbPalette() {
+    const view = doc.defaultView;
+    const root = doc.documentElement;
+    const token = (name, dflt) => {
+      if (!view || typeof view.getComputedStyle !== 'function' || !root) return dflt;
+      try {
+        const v = view.getComputedStyle(root).getPropertyValue(name);
+        return (v && String(v).trim()) || dflt;
+      } catch (e) {
+        return dflt;
+      }
+    };
+    // 🔴 NOT `--canvas-inside-empty`, WHICH IS WHAT THE MAIN STAGE'S FLOOR USES. MEASURED on the
+    //    live page: that token is `rgba(23, 114, 69, 0.06)` -- a 6% wash tuned for the legacy
+    //    canvas, and the stylesheet already carries a note that over `--bg-inset` the footprint
+    //    "all but disappeared". The stage recovers it with a per-cell STROKE; at 96px a stroke
+    //    would be thicker than the die it outlines, so the recovery has to be in the fill. The
+    //    same reasoning is why `agree` is a step darker rather than equal to the floor: at this
+    //    size the operator is reading WHERE THE SOURCE LANDED, and a source that agrees
+    //    everywhere would otherwise be indistinguishable from bare reference.
+    return Object.freeze({
+      floor: token('--canvas-line-strong', 'rgba(31, 39, 51, 0.16)'),
+      // Agreement is the quiet ground; the mismatch is the figure and is drawn last.
+      agree: token('--text-dim', '#5b6779'),
+      gap: token('--orange', '#c05621'),
+      mismatch: token('--accent', '#1a66d0'),
+      unrelated: token('--text-dim', '#5b6779'),
+      skeleton: token('--border', '#d7dce4'),
+    });
   }
 
   // 🔴 THE WHOLE TABLE, WHOLE. The screen has one line per cell and a legend; the console is
@@ -808,6 +988,17 @@ export function bootstrap(deps) {
     const servedRefusal = session.payload && session.payload.refusal_detail
       ? String(session.payload.refusal_detail) : '';
     if (servedRefusal && !(vm.cause && vm.cause.detail === servedRefusal)) lines.push(servedRefusal);
+    // 🔴 THE BRANCH, NAMED. Five refusals are decided ahead of the two thresholds, and from the
+    //    screen they are indistinguishable -- which is how an afternoon went into lowering a
+    //    threshold that was never consulted. The sentence is beside the eight; this says which
+    //    check produced it. And when there is no winner and no sentence at all, that silence is
+    //    itself the finding: it is a gap on the wire, not a state this screen can repair.
+    if (vm.reasonCode) lines.push(`ruling.reason_code=${vm.reasonCode}`);
+    else if (!vm.reasonLine && (vm.state === VIEW_STATE.SCORED_NO_WINNER
+                                || vm.state === VIEW_STATE.NOT_SCORABLE)) {
+      lines.push('no winner and the payload carried neither `refusal` nor `ruling.reason_code`; '
+        + 'the reason is not on the wire, so this screen cannot say which check refused.');
+    }
     if (vm.cause && vm.cause.token) {
       lines.push(vm.cause.count === null ? vm.cause.token : `${vm.cause.token} (${vm.cause.count})`);
     }
@@ -881,17 +1072,10 @@ export function bootstrap(deps) {
     const source = pickSource(payload, session.focusedSourceId);
 
     const candidateId = vm.selectedCandidateId || (source && source.stored_candidate_id);
-    const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front' };
-    const dims = payload.dims || { cols: gridSpan(payload, 'x'), rows: gridSpan(payload, 'y') };
-    const frame = {
-      rotation: axes.rotation, side: axes.side,
-      cols: dims.cols, rows: dims.rows,
-      startX: numOr(payload.start_x, 0), startY: numOr(payload.start_y, 0),
-    };
-    // The FLOOR is held still and the SOURCE turns on top of it. Turning both together is the
-    // thing that cannot inform; this version can produce a wrong-looking picture, which is
-    // precisely what makes it evidence.
-    const floorFrame = { ...frame, rotation: 0, side: 'front' };
+    // ONE spelling of the frame, shared with the eight small pictures. Two constructions of the
+    // same record is how the stage and the thumbnails start disagreeing about what candidate 3
+    // means -- and the disagreement would look like a rendering quirk, not like a bug.
+    const { frame, floorFrame } = framesFor(payload, candidateId);
     const floor = computeSeating(payload.floor_cells || [], floorFrame);
     const seated = source ? computeSeating(source.cells || [], frame) : null;
 
@@ -1375,6 +1559,12 @@ export function adaptPayload(raw) {
     discriminating_dies: decoded.counts.discriminatingDies,
     elapsed_ms: decoded.counts.elapsedMs,
     refusal_detail: decoded.refusalDetail,
+    // 🔴 WHICH BRANCH REFUSED, NOT JUST THAT ONE DID. `no_cells_scored`, `no_candidate_scored`,
+    //    `no_overlap`, `no_discrimination` and `tie` are all decided AHEAD of the two threshold
+    //    checks, so lowering `min_margin_dies` moves none of them -- which is exactly the dead
+    //    end the operator spent an afternoon in. The SENTENCE goes on screen; this code goes to
+    //    the console beside it, because a code is a thing to grep, not a thing to read.
+    ruling_reason_code: (decoded.ruling && decoded.ruling.reason_code) || null,
     // 🔴 THE SENTENCE AND ITS MEASUREMENTS TRAVEL SEPARATELY, BECAUSE THE SERVER SENDS THEM
     //    SEPARATELY. `refusal_detail` is the composed sentence and it carries reason LABELS
     //    only; the numbers that say WHICH grid is wrong and BY HOW MUCH are in the tally's
@@ -1441,6 +1631,69 @@ function toCells(list) {
     }
   }
   return out;
+}
+
+/**
+ * The two frames one candidate is read under. PURE, and the ONLY place either is constructed.
+ *
+ * 🔴 THE FLOOR IS HELD STILL AND THE SOURCE TURNS ON TOP OF IT. Turning both together is the
+ *    thing that cannot inform -- the same transform applied to both compared sets leaves their
+ *    relation invariant, which is also why there is no rotate control anywhere on this screen.
+ *    This version can produce a wrong-LOOKING picture, and that is precisely what makes it
+ *    evidence rather than decoration.
+ *
+ * `candidateId` may be null or unparsable; the frame then reads `rot0_front`, which is the
+ * identity and is what the floor uses anyway.
+ */
+export function framesFor(payload, candidateId) {
+  const p = payload || {};
+  const axes = parseCandidateId(candidateId) || { rotation: 0, side: 'front' };
+  const dims = p.dims || { cols: gridSpan(p, 'x'), rows: gridSpan(p, 'y') };
+  const frame = Object.freeze({
+    rotation: axes.rotation, side: axes.side,
+    cols: dims.cols, rows: dims.rows,
+    startX: numOr(p.start_x, 0), startY: numOr(p.start_y, 0),
+  });
+  return Object.freeze({
+    frame,
+    floorFrame: Object.freeze({ ...frame, rotation: 0, side: 'front' }),
+  });
+}
+
+/**
+ * THE EIGHT PICTURES. One per candidate, all of them at once, each showing the source seated
+ * under that frame against the same reference floor.
+ *
+ * 🔴 IT TAKES A `surfaceFor(id)` RATHER THAN A DOCUMENT, which is the whole reason this is
+ *    scorable at all: the harness hands it `createRecordingSurface` and reads the ops back, with
+ *    no canvas and no DOM anywhere in the path. Everything below is the pieces that already
+ *    existed -- `computeSeating`, `compareSeatings`, and `paintComparison` (which calls
+ *    `layoutFor` and `paintSeating` for us). There is no second painter in this file.
+ *
+ * 🔴 THE FLOOR IS SEATED ONCE, NOT EIGHT TIMES. It is the same seating for every candidate by
+ *    construction -- `floorFrame` is `rot0_front` whatever the candidate is -- so recomputing it
+ *    per thumbnail would be eight passes over the reference population for one answer. On a
+ *    map with thousands of dies that is the difference between a repaint and a freeze.
+ *
+ * @param {(id:string)=>object|null} surfaceFor  a drawing surface per candidate id, or null to
+ *        skip that one (a page that published fewer than eight slots still renders the rest).
+ * @returns {Array<{id:string, stats:{painted:number,total:number,pxPerDie:number}}>}
+ */
+export function paintCandidateThumbs(surfaceFor, payload, source, viewport, palette) {
+  const out = [];
+  if (!payload || typeof surfaceFor !== 'function') return Object.freeze(out);
+  const floor = computeSeating(payload.floor_cells || [], framesFor(payload, null).floorFrame);
+  for (const c of candidateList()) {
+    const surface = surfaceFor(c.id);
+    if (!surface) continue;
+    const seated = source ? computeSeating(source.cells || [], framesFor(payload, c.id).frame) : null;
+    const comparison = seated ? compareSeatings(floor, seated) : null;
+    out.push(Object.freeze({
+      id: c.id,
+      stats: paintComparison(surface, { floor, source: seated, comparison }, viewport, palette),
+    }));
+  }
+  return Object.freeze(out);
 }
 
 function pickSource(payload, focusedId) {

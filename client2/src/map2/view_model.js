@@ -207,6 +207,22 @@ export function buildViewModel(input) {
   //    nothing naming which was read, the counts are real and their OWNER is not known, which
   //    is a different withholding from this one.
   const countsShown = attribution.state !== ATTRIBUTION.UNSTATED;
+  // 🔴 SELECTING IS NOT RANKING EITHER, AND FUSING THOSE TWO EMPTIED THE SCREEN A SECOND TIME.
+  //    The round that un-fused `countsShown` left `inert` keyed on `numerals`, so a refusal to
+  //    rank still disabled all eight controls -- and the operator was shown eight frames they
+  //    could not open. RANKING is the system claiming one candidate is correct: a badge, an
+  //    order, an armed write. CLICKING is the operator choosing which frame to LOOK through,
+  //    and looking is the only thing left when the scoring cannot discriminate. It costs no
+  //    fetch (`withSelectedCandidate` deliberately does not bump `requestSeq`) and it writes
+  //    nothing.
+  //
+  //    The predicate is "is there a result on screen to repaint". `payload` is what separates a
+  //    server that refused to rank -- which still shipped the cells -- from a request that
+  //    FAILED, where there is genuinely nothing to look through. The three refusals above stay
+  //    exactly as they were: no winner badge, no ordering, no arming.
+  const explorable = (state === VIEW_STATE.SCORED_WINNER
+    || state === VIEW_STATE.SCORED_NO_WINNER
+    || state === VIEW_STATE.NOT_SCORABLE) && !!payload;
 
   const scoringById = new Map();
   if (payload && Array.isArray(payload.per_candidate)) {
@@ -222,7 +238,7 @@ export function buildViewModel(input) {
 
   const cards = candidateList().map(c => buildCandidateCard({
     candidate: c, scoring: scoringById.get(c.id) || null,
-    numerals, countsShown, winnerId, storedId, selectedId, state,
+    numerals, countsShown, explorable, winnerId, storedId, selectedId, state,
   }));
   const cardById = new Map(cards.map(c => [c.id, c]));
 
@@ -239,6 +255,11 @@ export function buildViewModel(input) {
     worklist: worklistModel(session),
     headline: headlineFor(state, verdict),
     cause: causeFor(state, verdict, payload, attribution, evidence),
+    // The server's own sentence about why nothing won, for the slot beside the eight.
+    reasonLine: reasonLineFor(state, verdict, payload),
+    // FOR THE LOG. The code the sentence was built from, so a reader can tell WHICH of the five
+    // pre-threshold refusals fired without parsing prose.
+    reasonCode: reasonCodeFor(state, payload),
     // The borrowed-geometry offer, and whether this answer stands on one. See `assumptionModel`.
     assumption,
     // Aggregate exclusions, stated once and never shouted, never decorated per row.
@@ -298,9 +319,10 @@ function buildCandidateCard(a) {
     discriminating: hasCounts ? Number(s.discriminating) : null,
     countText: hasCounts ? agreementText(s.agree, s.discriminating) : UNKNOWN,
     badges: Object.freeze(badges),
-    // Inert in COMPUTING and NOT-SCORABLE: listed so the operator can see the full set, but
-    // there is nothing to select between.
-    inert: !a.numerals,
+    // 🔴 INERT MEANS "THERE IS NOTHING TO LOOK THROUGH", NOT "WE DECLINED TO RANK". Keyed on
+    //    `numerals` this disabled all eight the moment the scoring refused -- which is the one
+    //    state where looking is the only thing left. See `explorable` in `buildViewModel`.
+    inert: !a.explorable,
     selected: a.selectedId === a.candidate.id,
   });
 }
@@ -426,6 +448,38 @@ function causeFor(state, verdict, payload, attribution, evidence) {
     return frozenCause(null, n);
   }
   return null;
+}
+
+/**
+ * 🔴 WHY THERE IS NO WINNER, IN THE SERVER'S OWN WORDS, ON SCREEN.
+ *
+ * The screen showed eight rows of numbers and NOTHING about why none of them won, so the
+ * operator was reading the reason out of the console all afternoon -- and then lowered the
+ * ranking thresholds to 1 and still got no winner, because `no_cells_scored`,
+ * `no_candidate_scored`, `no_overlap`, `no_discrimination` and `tie` are all decided AHEAD of
+ * the threshold check. Five different repairs, none of them a knob. "No winner" without the
+ * reason sends the operator to tune the one thing that was never the cause.
+ *
+ * CARRIED, NEVER COMPOSED. `compose_refusal` writes this sentence for every state, and a Korean
+ * equivalent built here would be a second spelling of one fact -- the defect class this screen
+ * keeps meeting. It is also not mapped from `reason_code` to a label of ours: the code names the
+ * branch, the SENTENCE is the server's, and the two must not grow separate vocabularies.
+ *
+ * EMPTY WHEN THE SERVER SAID NOTHING. Silence is honest; an invented label is not, and it would
+ * be indistinguishable from a real answer.
+ */
+function reasonLineFor(state, verdict, payload) {
+  if (state !== VIEW_STATE.SCORED_NO_WINNER && state !== VIEW_STATE.NOT_SCORABLE) return '';
+  const detail = (verdict && verdict.refusalDetail)
+    || (payload && payload.refusal_detail) || null;
+  return detail ? String(detail) : '';
+}
+
+/** The branch the sentence came from. Log only -- a code is not a thing to read on a screen. */
+function reasonCodeFor(state, payload) {
+  if (state !== VIEW_STATE.SCORED_NO_WINNER && state !== VIEW_STATE.NOT_SCORABLE) return '';
+  const code = payload && payload.ruling_reason_code;
+  return code ? String(code) : '';
 }
 
 function frozenCause(token, count, detail, measurements) {

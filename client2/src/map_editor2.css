@@ -1284,6 +1284,48 @@ body {
   min-width: 0;
 }
 
+/* THE PICTURE, AND IT LEADS. The scoring cannot discriminate on this
+   operator's data - eight identical counts is the ordinary answer - so the
+   thing they are actually reading is the shape, and `order: -1` puts it
+   above the figures without the wiring having to insert a node first.
+
+   `aspect-ratio` rather than a fixed height: the backing store is square
+   (128x128, see THUMB in main.js) and a non-square CSS box would stretch
+   the wafer into an ellipse, which is the one distortion that would make
+   the picture lie about orientation. `max-width` keeps four rows of these
+   inside a scroll rather than pushing the counts off the panel - a 1fr
+   column here can reach 275px, and eight 275px pictures is a page. */
+.me2-cand-thumb {
+  order: -1;
+  display: block;
+  width: 100%;
+  max-width: 96px;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  margin: 0 auto 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+}
+
+/* WHY NOTHING WON, IN THE SERVER'S OWN WORDS, ABOVE THE EIGHT IT EXPLAINS.
+   Nominal weight, not a warning: roughly half this population cannot be
+   ranked at all, and colouring the ordinary case teaches the eye past the
+   colour. It wraps rather than truncating - this is the one sentence the
+   operator came for, and the console already has everything else. */
+.me2-cand-reason {
+  font-size: var(--me2-fact-min);
+  line-height: 1.45;
+  color: var(--text);
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.me2-cand-reason[hidden] {
+  display: none;
+}
+
 .me2-cand-score {
   text-align: right;
   font-family: var(--font-mono);
@@ -1341,16 +1383,22 @@ body {
   background: var(--accent-weak);
 }
 
-/* When nothing is marked, the absence of a mark IS the answer.
-   Inert candidates stay listed and stay readable. */
-[data-me2-state="computing"] .me2-cand,
-[data-me2-state="unscorable"] .me2-cand {
+/* Only COMPUTING is inert now. There is no answer yet, so there is nothing
+   to look through - the button is dimmed because it genuinely cannot do
+   anything.
+
+   🔴 `unscorable` WAS ON THIS RULE AND IT WAS THE OTHER HALF OF THE DEFECT.
+      A refusal to RANK is not an absence of DATA: the payload shipped the
+      cells and the eight frames, and looking through them is the only move
+      the operator has left when the scoring cannot discriminate. Dimming
+      them at 0.55 with `cursor: default` said the opposite in the one state
+      where it mattered most. */
+[data-me2-state="computing"] .me2-cand {
   opacity: 0.55;
   cursor: default;
 }
 
-[data-me2-state="computing"] .me2-cand:hover,
-[data-me2-state="unscorable"] .me2-cand:hover {
+[data-me2-state="computing"] .me2-cand:hover {
   transform: none;
   border-color: var(--border);
 }
@@ -1383,10 +1431,28 @@ body {
   display: none;
 }
 
-/* Same reason: a selected candidate is a claim about ranking. */
+/* 🔴 THIS RULE USED TO READ "a selected candidate is a claim about ranking",
+      AND THAT SENTENCE IS WRONG BY ONE WORD. A RECOMMENDED candidate is a
+      claim about ranking - that is `.me2-tag.is-recommended` above, and it
+      stays suppressed. A SELECTED one is the operator saying which frame
+      they are currently looking through, which the system is not entitled
+      to have an opinion about. Flattening the pressed state to look exactly
+      like the seven others left the click with no visible consequence, so
+      the screen read as broken in precisely the state where the picture is
+      the only evidence there is.
+
+      The mark is deliberately NOT the accent treatment `scored` uses. Accent
+      is this screen's word for "the system says so"; exploring is the
+      operator's own, so it gets weight without colour. */
 [data-me2-state="no-winner"] .me2-cand[aria-pressed="true"],
-[data-me2-state="computing"] .me2-cand[aria-pressed="true"],
 [data-me2-state="unscorable"] .me2-cand[aria-pressed="true"] {
+  border-color: var(--text-dim);
+  background: var(--bg-inset);
+}
+
+/* Nothing is selectable while computing: there is no payload to look
+   through, so a pressed cell there would be a mark about nothing. */
+[data-me2-state="computing"] .me2-cand[aria-pressed="true"] {
   border-color: var(--border);
   background: var(--bg-surface);
 }

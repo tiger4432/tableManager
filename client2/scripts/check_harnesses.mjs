@@ -254,7 +254,28 @@ const FLOORS = new Map([
   //    to 1px, that an absent threshold produces NO ranking instead of a zero-margin winner,
   //    and that no percentage and no bare `0` can reach a count column. A floor drop here means
   //    one of those stopped being scored.
-  ['map_editor2_shell_harness.mjs', 276],
+  // 276 -> 408 (2026-08-05). Overdue: the floor had not moved since the harness landed while
+  // three rounds added to it, so 25 assertions were already running ungated. The rest is this
+  // round, and it is three claims that each cost the operator a day:
+  //   K  EXPLORING IS NOT RANKING. `inert` was keyed on the same flag as the numerals, so a
+  //      refusal to rank arrived on screen as eight DISABLED controls -- a list of frames the
+  //      operator could not open, in the one state where looking is the only move left. Both
+  //      directions are pinned: a refused run opens the eight, a FAILED one (no payload, nothing
+  //      to look through) still closes them.
+  //   L  EIGHT PICTURES. The load-bearing assertion is not "eight canvases exist" -- it is that
+  //      the count of DISTINCT pictures equals the count of distinct seatings computed
+  //      independently through `computeSeating`. Painting one frame eight times passes every
+  //      weaker form of this and is exactly the failure that would waste the operator's day.
+  //      L21-L25 exist because the first version of L ran only in `no_winner`: gating the
+  //      pictures on `numerals` changed nothing there, so the refused state -- the state they
+  //      exist for -- was unmeasured.
+  //   M  THE SCREEN SAYS WHY. Five refusals are decided AHEAD of the two threshold checks, so
+  //      lowering `min_margin_dies` moves none of them; the operator was reading the code out of
+  //      the console. The server's sentence is scored BYTE FOR BYTE, and its absence is scored
+  //      too, because a label of ours would be indistinguishable from a real answer.
+  // A drop here means one of those three regressed, and none of them is visible from an exit
+  // code -- all three were green builds with an unusable screen.
+  ['map_editor2_shell_harness.mjs', 408],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
@@ -263,7 +284,10 @@ const FLOORS = new Map([
   // under one; that occupancy-only evidence is named with the word the system already has; and
   // that the worklist's badges report the SERVER'S totals rather than the rows on the page. A
   // floor drop here means one of those stopped being scored.
-  ['map_editor2_question_harness.mjs', 149],
+  // 149 -> 191 (2026-08-05). Not this round's work: the floor simply had not been raised since
+  // the harness landed, so 42 assertions added by later rounds were running ungated. Raised to
+  // what the tree reports so that coverage is protected too.
+  ['map_editor2_question_harness.mjs', 191],
   //
   // ⚠️ ITS `H4` NO LONGER PINS THE DECISION UNIT. `api.js` retargeted `loadReferenceView` to a
   //    rule/map_table key, so the assertion that the reference view is keyed by (eqp, product)
