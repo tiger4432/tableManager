@@ -699,18 +699,26 @@ const shapeOk = {};
   //    slice (`frameChosenFrom`, `getWaferBoundingBox`, `seatingSnapshot`). Expected present
   //    exactly while the registry above is non-empty, so the day the last reader is threaded
   //    this demands the binding be DELETED rather than left as an unread global.
+  //
+  //    BOTH SIDES ARE NOW FALSE and that is the settled state: S2.7 deleted `physFrameOverride`
+  //    and `withPhysFrame` on 2026-08-06 (measured with the stripper below — 7 surviving
+  //    mentions, all prose, 0 in code), and the registry emptied one stage earlier. The
+  //    assertion keeps both directions live: re-declaring the binding while no role reads it is
+  //    red, and so is a role reaching for it while it is undeclared.
   const declaresBinding = NAMES.some(nm =>
     new RegExp(`(^|\\n)\\s*(let|var|const)\\s+${nm}\\b`).test(STRIPPED)
     || new RegExp(`(^|\\n)\\s*(export\\s+)?function\\s+${nm}\\b`).test(STRIPPED));
-  //    PINNABLE, because this assertion can be red for a reason that is not a defect. Once the
-  //    last contracted reader is threaded the registry empties and this demands the DELETION —
-  //    which is a separate stage (S2.7) on a separate lane's clock. That is a LATENESS, and a
-  //    lateness that blocks `prebuild` blocks the client `dist`, which puts every unrelated
-  //    client fix behind an unrelated stage. Pinned, it still prints on every run and it still
-  //    expires by itself: when S2.7 lands, `declaresBinding` flips to the CONTRACT value and
-  //    recPinned reports STALE PIN — red in the other direction, asking for its own removal.
-  //    The pin therefore cannot outlive the condition it names, which is the only property
-  //    that makes a named red better than an anonymous one.
+  //    PINNABLE, and the route is kept though NOTHING PINS IT TODAY. Pin S27 lived here for the
+  //    window between 'the last contracted reader was threaded' (f11c56c) and 'the binding was
+  //    deleted' (S2.7) — an interval in which this assertion was correctly red for a LATENESS
+  //    rather than a defect, while sitting in `prebuild` and holding the client `dist` hostage
+  //    to an unrelated lane's clock. It expired the way a pin must: S2.7 landed, `declaresBinding`
+  //    flipped to the CONTRACT value, recPinned reported STALE PIN, and the pin was deleted on
+  //    that signal rather than on someone remembering. The dispatch stays because that window
+  //    can recur — any future stage that empties the registry before deleting a binding reopens
+  //    it — and because a dormant route with live vacuous/unregistered/stale guards is cheaper
+  //    than re-deriving one under time pressure. It cannot silence anything by accident: with no
+  //    `$client_known_defect` present the assertion goes through plain `rec`.
   const fmbPin = FMB.$client_known_defect || null;
   if (fmbPin && fmbPin.client_actual
       && fmbPin.client_actual.binding_still_declared !== undefined) {

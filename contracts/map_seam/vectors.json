@@ -210,50 +210,6 @@
       ],
       "owner": "map-pm (queued by the Lead PM)",
       "clears_when": "physNum distinguishes 'declared 0' from 'absent'. Then delete `$client_known_defect` from every vector that names D1 and let the contract value stand — the pins will already have gone red to ask for it."
-    },
-    "S27": {
-      "title": "the frame binding outlives its last contracted reader, because S2.7 is late",
-      "symbol": "physFrameOverride",
-      "site": "client2/src/map_editor.js `physFrameOverride` (the file-scope `let`) and `withPhysFrame`",
-      "statement": [
-        "THIS PIN NAMES A LATENESS, NOT A DEFECT. The assertion it stands in for —",
-        "`frame_threading.forbidden_module_bindings.binding_still_declared_iff_a_reader_remains`",
-        "— is true and correct, and it is red for the right reason. It says the binding must be",
-        "DELETED on the day its last contracted reader is threaded, rather than left behind as",
-        "an unread global that a future call site can quietly reach for.",
-        "",
-        "That day was 2026-08-06. `isValidDieAt` was the last member of the",
-        "`reads_module_frame` registry and stage 5 (`f11c56c`) threaded it, so the registry is",
-        "now empty and the contract asks for the deletion. The deletion is stage S2.7 and S2.7",
-        "has not run.",
-        "",
-        "S2.7 IS BLOCKED ON TWO THINGS THAT HAVE NOTHING TO DO WITH THIS SEAM (Lead PM,",
-        "2026-08-06): an `invertY` assertion closing a measured blind spot, and a runner that",
-        "gates `ran` but not `failed` on known-red harnesses. Neither is a map-seam question.",
-        "",
-        "WHY PINNED RATHER THAN LEFT RED. `check:contracts` sits in `prebuild`, so a red here",
-        "blocks `npm run build` and the client `dist` cannot be rebuilt — every client fix",
-        "landed on 2026-08-06 would stay invisible to the operator until an unrelated stage",
-        "cleared. Holding the whole client behind that is the wrong trade. A pin that expires",
-        "loudly is not hiding the result, it is SCHEDULING it."
-      ],
-      "predates": "f11c56c",
-      "predates_evidence": "`git show 5cba0a1:client2/src/map_editor.js` declares `function isValidDieAt(physX, physY, circleInside, state)` — four parameters, no frame. `git show f11c56c:client2/src/map_editor.js` declares `function isValidDieAt(frame, physX, physY, circleInside, state)`. The registry emptied at f11c56c, which is the commit that created this pin's condition; nothing before it is scored for this.",
-      "server_is_correct": "The server has no counterpart and cannot: `frame_threading` is a SINGLE-IMPLEMENTATION group about the client alone, not a round trip. There is no server answer to be wrong, and no server assertion is weakened by this pin — which is also why the server-side pin guards in test_seam_contract.py (`_all_pins`, which walks only `*_cases` lists) do not and need not reach it.",
-      "impact": "None observable. The binding is declared and still passed by call sites that have not been threaded yet; no CONTRACTED role's body reads it (measured: the `reads_module_frame` set is empty). The exposure is future-tense — an unread global is a route a later call site can take without anyone noticing, which is exactly what the registry exists to prevent.",
-      "why_not_fixed_in_this_round": [
-        "Deleting `physFrameOverride` and `withPhysFrame` is S2.7's whole content and it is not",
-        "this contract's to write — the binding lives in `client2/src/map_editor.js`, which",
-        "belongs to the editor lane. contract-keeper does not edit outside `contracts/`.",
-        "",
-        "It is also not a one-line deletion. The two names still have roughly 30 live code",
-        "references in that file (call sites passing `physFrameOverride` as the frame argument,",
-        "plus two `withPhysFrame(...)` windows), and every one of them has to become an explicit",
-        "frame before the declaration can go."
-      ],
-      "owner": "map-pm / editor refactor lane (S2.7)",
-      "clears_when": "S2.7 deletes `physFrameOverride` and `withPhysFrame`. THIS PIN GOES RED ON ITS OWN THAT DAY, in the other direction: `declaresBinding` flips to false, which EQUALS the contract value, so recPinned reports STALE PIN and says the defect looks fixed. Delete `$client_known_defect` from `frame_threading.forbidden_module_bindings` and this entry. Measured 2026-08-06 by simulating the deletion against a mirrored copy: with the registry empty and the declarations gone the harness exits 0.",
-      "$expiry_is_the_point": "A pin nobody sees on a green run is the objection this mechanism exists to answer, so it prints in `PINNED KNOWN DEFECTS` on EVERY run, green or not — including the run that unblocks the build."
     }
   },
   "client_symbols": {
@@ -622,11 +578,28 @@
         "$owner": "map-pm (landed as stage 5, f11c56c, 2026-08-06)",
         "$why": "GRADUATED FROM `reads_module_frame` BY LEAD PM RULING 2026-08-06. It sat in that registry with a `$decide` note reading 'decide before the stage, then add `valid_die_at` to `required_signatures` and remove it here'. The stage landed first and answered the question by construction: `isValidDieAt(frame, physX, physY, circleInside, state)` puts the frame FIRST and REQUIRED (`undefined` throws) while leaving `state` optional and trailing. That is the shape `required_signatures` already declares, so the seam did not acquire a second vocabulary — which was the whole worry.",
         "$why_arity_5_and_not_4": "`state` is counted because this contract pins the total, and only the frame is named. The two optional-looking parameters are NOT the same shape and the client's own header says so: `state === undefined` falls back to the module `validDie` and that is correct behaviour; `frame === undefined` is a caller who forgot and throws. Pinning position 0 plus the count is what makes `isValidDieAt(physX, physY, circleInside, state, frame)` — the APPENDED-frame defect — fail by name rather than as value diffs.",
+        "$reconfirmed_after_S2_7": "RE-VERIFIED 2026-08-06 against the tree that deleted the binding. The signature is unchanged — `(frame, physX, physY, circleInside, state)`, arity 5 — and S2.7 STRENGTHENS the asymmetry rather than flattening it, which is worth writing down because this entry was authored while the binding still existed. `validDie` is still a module `let`, so `state === undefined` still has a real referent to fall back to and its optional-trailing shape is still correct. `frame` no longer has one: `physFrameOverride` is gone, so the implicit route the throw was refusing does not exist to be taken. The guard changes meaning from 'do not fall back' to 'there is nothing to fall back to', and a caller who omits the frame can no longer be accidentally right. The two parameters were never the same shape; they are now not even the same KIND, and merging them under one convention would be a regression this entry exists to refuse.",
         "$measured": "Back-injection 2026-08-06 into a mirrored copy: appending the frame instead of leading with it produced 10 behavioural reds across `valid_die_basis_cases` and `valid_die_refused_render_divergence_cases` and ZERO shape failures while this entry was absent. The behavioural vectors do catch it; without this entry they cannot NAME it, and a reader triaging 10 value diffs looks for a broken transform."
       }
     },
     "forbidden_module_bindings": {
       "file": "client2/src/map_editor.js",
+      "$names_are_PROSCRIBED_not_INVENTORIED": [
+        "🔴 DO NOT PRUNE `names` BECAUSE THE SYMBOLS NO LONGER EXIST. As of S2.7 (2026-08-06)",
+        "neither is declared anywhere in the file — measured with this contract's own stripper:",
+        "`physFrameOverride` total 4 / non-comment 0, `withPhysFrame` total 3 / non-comment 0.",
+        "All seven survivors are prose explaining the history.",
+        "",
+        "That is not a reason to delete the list. It is the reason the list finally works. While",
+        "the binding existed these names DESCRIBED something; now they PROSCRIBE something, and a",
+        "proscription whose subject is absent is a proscription doing its job. This list is what",
+        "makes a third copy of the frame — under this spelling or reintroduced under it — fail",
+        "the moment it appears, instead of being noticed by whoever happens to read the diff.",
+        "",
+        "A future cleanup pass WILL read this list as dead weight; two lines of grep say the",
+        "symbols are gone. This note is here to stop that pass. If the names ever do need to",
+        "change, the change is ADDITIVE — a new forbidden spelling joins them; nothing leaves."
+      ],
       "names": ["physFrameOverride", "withPhysFrame"],
       "reads_module_frame": {
         "$comment": [
@@ -660,13 +633,12 @@
           "",
           "The registry stays. Empty, it is doing the job it was built for: the day any role's",
           "body reaches for `physFrameOverride` or `withPhysFrame` again, the measured set stops",
-          "equalling this one and the third copy of the frame announces itself."
+          "equalling this one and the third copy of the frame announces itself.",
+          "",
+          "CLOSED 2026-08-06 BY S2.7. `binding_still_declared_iff_a_reader_remains` now reads",
+          "false == false: no contracted reader remains AND the declaration is gone. Pin S27,",
+          "which covered the gap between those two facts, expired by itself and was deleted."
         ]
-      },
-      "$client_known_defect": {
-        "defect": "S27",
-        "client_actual": { "binding_still_declared": true },
-        "$why_here": "`binding_still_declared_iff_a_reader_remains` says the binding must be DELETED once its last contracted reader is threaded. That happened at `f11c56c`. The deletion is S2.7 and S2.7 has not run, so this assertion is correctly red — it is reporting a LATENESS, not a defect. Pinned rather than left red so the build is not held hostage; see known_defects.S27 for the sequencing and the expiry."
       }
     },
     "missing_frame_is_loud": {
