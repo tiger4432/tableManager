@@ -592,7 +592,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      shift_window: int = SHIFT_WINDOW, cell_cap: int = MAX_SCORED_CELLS,
                      reference_values=None, thresholds: dict = None,
                      assume_reference_geometry: bool = False,
-                     reference_ref: dict = None):
+                     reference_ref: dict = None, value_weights: dict = None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
@@ -605,6 +605,9 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         채점한다(스펙 §9ⓐ, `map_overlay.assume_phys_from`). 조작자가 내는 주장이므로
         **기본값은 False**다 - 자동으로 걸면 아무도 주장한 적 없는 가정 위에서 판정이 나온다.
     `reference_ref`: `{"table":..., "map_id":...}` - 빌린 출처를 기록에 남기기 위한 이름표.
+    `value_weights`: `{값: 무게}`. **일치 하나가 몇 다이만큼 세는가**이지 셀의 존재값이 아니다
+        (§[3c]). 선언이 없으면 빈 dict이고 채점은 종전과 **한 자도 다르지 않다** —
+        조작자가 규칙 하나에만 무게를 걸어도 나머지가 그대로여야 켤 수 있다.
 
     반환: `(candidates, excluded, ruling, stats)`.
 
@@ -853,6 +856,24 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             hits[i] = rv is not None and sv is not None and str(rv) == str(sv)
         c["value_member"] = hits
 
+    # [3c] 값 가중치 - **일치에 걸리지, 셀의 존재에 걸리지 않는다.**
+    #
+    # 🔴 이 구분이 이 기능의 전부다. 「이 셀이 기준 위에 있다」는 부분 맵의 모든 셀에 대해
+    #    여덟 후보 **모두** 참이므로(실측 2026-08-05: 일치 467 · 판별 0 · 8후보 동일),
+    #    거기에 무게를 주면 여덟이 같은 배수로 커지고 순위는 한 자리도 안 움직인다.
+    #    후보마다 갈리는 것은 「이 값이 이 자리에서 **맞았는가**」 하나뿐이고, 무게는 거기
+    #    걸려야 대칭을 깬다. 그래서 곱하는 대상은 `member`가 아니라 `value_member`다.
+    #
+    # 무게는 **소스 셀의 값**으로 찾는다. 일치한 자리에서는 기준 값과 소스 값이 같으므로
+    # 둘 중 무엇으로 찾아도 같은 수가 나오고, 안 맞은 자리는 애초에 세지 않는다.
+    # 선언 없는 값은 1이다. 선언된 0은 0이고, 그 둘은 다른 주장이다(§load_alignment_value_weights).
+    weights = value_weights or {}
+    weight_vec = None
+    if weights and scorable_values:
+        weight_vec = np.array(
+            [(float(weights.get(str(v), 1.0)) if v is not None else 1.0)
+             for v in (source_values or [])], dtype=float)
+
     # [4] 판별: 셀마다 후보들의 답이 갈리는가. 길이가 같은 후보들끼리만 비교할 수 있고,
     #     실제로 같다 — 같은 소스 셀 목록을 같은 순서로 놓았으므로 i번째가 같은 셀이다.
     #     값 축도 **자기 축에서** 같은 정의를 갖는다: 값이 갈리는 셀만이 값으로 후보를 가른다.
@@ -876,11 +897,21 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
         if c.get("value_member") is None:
             c["value_agreement"] = None
             c["value_discriminating"] = None
-        else:
+        elif weight_vec is None:
             c["value_agreement"] = int(np.count_nonzero(c["value_member"]))
             c["value_discriminating"] = (
                 0 if value_varies is None
                 else int(np.count_nonzero(c["value_member"] & value_varies)))
+        else:
+            # 🔴 **분자와 판별수는 같이 움직인다.** 일치만 가중하고 판별수를 개수로 두면
+            #    `min_discriminating_dies`가 어제와 다른 것을 세면서 어제와 같은 이름으로
+            #    불린다 - 조작자가 안 건드린 문턱의 뜻이 조용히 바뀐다. 두 수는 가중이
+            #    걸리면 **둘 다** 「가중 다이」이고, 안 걸리면 **둘 다** 다이 개수다.
+            w = _fit_weights(weight_vec, c["value_member"].size)
+            c["value_agreement"] = float(w[c["value_member"]].sum())
+            c["value_discriminating"] = (
+                0.0 if value_varies is None
+                else float(w[c["value_member"] & value_varies].sum()))
 
     # [5] 순위와 판정. **개수만** 낸다 — 백분율을 만들지 않는다(모듈 상단).
     #
@@ -908,15 +939,22 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
             # 그때 이 셋은 null이다(0이 아니다 — §[3b]).
             "value_agreement": c["value_agreement"],
             "value_discriminating": c["value_discriminating"],
+            # 뺄셈이 타입을 정한다. 가중이 없으면 두 항이 int라 종전과 같은 int가 나오고,
+            # 가중이 걸리면 float다 - `int()`로 접으면 가중 격차의 소수부가 조용히 잘려
+            # 문턱 비교가 실제보다 후하게 통과한다.
             "value_margin": (None if c["value_agreement"] is None or v_runner is None
-                             else int(c["value_agreement"] - v_runner)),
+                             else (c["value_agreement"] - v_runner)),
             "placed": 0 if c["keys"] is None else int(c["keys"].size),
             "margin": (None if not c["scored"] or runner is None
                        else int(c["agreement"] - runner)),
             "reason": c["reason"],
         })
 
-    metric = METRIC_VALUES if scorable_values else METRIC_OCCUPANCY
+    # 🔴 축 이름이 **가중 여부까지 나른다.** 옆에 `weighted: true`를 두면 판정을 옮겨 적는
+    #    자리(확정 기록·목록)가 그것을 흘리고, 무게 아래 뽑힌 1등이 무게 없이 뽑힌 1등과
+    #    같아 보인다 - `geometry_assumed`를 판정 dict 안에 넣은 이유와 같은 이유다.
+    metric = (METRIC_VALUES_WEIGHTED if weight_vec is not None
+              else METRIC_VALUES if scorable_values else METRIC_OCCUPANCY)
     # 후보들은 **같은 소스 셀을 같은 순서로** 놓으므로 놓인 개수는 후보마다 같다. max는 그 사실에
     # 기대지 않고도 「무엇이든 놓였는가」를 답한다.
     placed_cells = max((int(c["keys"].size) for c in per_candidate
@@ -924,6 +962,13 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
     ex_rows = excluded.as_list()
     ruling = _rule_on(out, thresholds, metric, scoring={
         "placed_cells": placed_cells,
+        # 🔴 **「도달했는가」와 「놓였는가」는 다른 수다.** 놓인 좌표는 여덟 후보가 전부 변환을
+        #    거절하면 0이 되는데(`keys is None`이라 max가 default 0을 낸다), 그 0은 좌표가
+        #    안 왔다는 뜻이 아니라 **거절당했다**는 뜻이다. 이 수를 안 넘기면 판정기는 두
+        #    사실을 구별할 재료가 없다 - 실측(2026-08-05) 결과 그래서 `no_candidate_scored`가
+        #    그 갈래에서 도달 불가능했고, 기준 맵의 규격이 없어 여덟이 전부 거절된 실행이
+        #    「소스 좌표 미도달」로 나갔다. 조작자의 좌표는 멀쩡했고 고칠 것은 기준이었다.
+        "scored_cells": scored_cells,
         "source_map_count": len(source_maps),
         "excluded_map_count": excluded.total(),
         "excluded_reason_code": (ex_rows[0]["reason_code"] if ex_rows else None),
@@ -956,6 +1001,12 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
 
 METRIC_OCCUPANCY = "occupancy"
 METRIC_VALUES = "values"
+#: 값 축에 **무게가 걸린 채로** 매긴 순위. 새 필드가 아니라 축 이름의 세 번째 철자다 -
+#: 순위를 만든 것이 무엇인지는 판정과 함께 다녀야 하고, 별도 불리언은 옮겨 적히다 흘린다.
+METRIC_VALUES_WEIGHTED = "values_weighted"
+#: 값 축의 두 철자. 무게는 **어느 필드로 순위를 내는가를 바꾸지 않는다** - 같은
+#: `value_*` 필드를 읽고, 그 필드 안의 수가 개수냐 가중 합이냐만 다르다.
+VALUE_METRICS = (METRIC_VALUES, METRIC_VALUES_WEIGHTED)
 
 # ---------------------------------------------------------------------------
 # 판정 사유 - 「승자 없음」의 **왜**. 여러 자리에서 참조되는 것만 상수로 둔다
@@ -1002,6 +1053,63 @@ def load_alignment_thresholds(cfg: dict) -> dict:
     return out
 
 
+#: 값 가중치 선언 키. 문턱과 **같은 블록**에 산다 - 조작자가 정렬 판정을 조율하는 자리는
+#: 하나여야 하고, 두 번째 config 표면을 만들면 한쪽만 배포되는 날이 반드시 온다.
+VALUE_WEIGHTS_KEY = "value_weights"
+
+
+def load_alignment_value_weights(cfg: dict) -> dict:
+    """`{값: 무게}`. 선언된 값만 담는다. 선언이 없으면 **빈 dict**이고 그것이 「가중 없음」이다.
+
+    🔴 **0은 선언이고, 없는 키는 선언이 아니다.** `{"1": 0}`은 「이 값은 세지 말라」는
+       조작자의 주장이고, 키가 없는 값은 아무 말도 안 한 것이라 기본 1을 받는다. 둘을
+       한 낱말로 접으면(`raw.get(k) or 1`) 「무시하라」가 조용히 「보통 무게」가 된다 —
+       `Number(null) === 0` 계열이고 이 프로젝트를 이번 주에 두 번 물었다. 그래서 여기서
+       0은 **키로 남고**, 조회하는 쪽은 `get(값, 1.0)`으로 없는 키만 기본값을 받는다.
+
+    음수·무한·NaN은 선언으로 받지 않는다. 음수는 「맞은 것이 반증이다」라는 뜻이 되어
+    합계를 음수로 만들 수 있고, 그러면 `best <= 0`이 「기준 위 일치 0건」이라고 답한다 -
+    참이 아닌 문장이다. 읽히지 않는 선언은 선언이 아니다(§load_alignment_thresholds).
+    """
+    raw = ((cfg or {}).get("alignment") or {}).get(VALUE_WEIGHTS_KEY)
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        logger.warning("[MapAlignment] '%s' is not an object, ignored: %r",
+                       VALUE_WEIGHTS_KEY, raw)
+        return {}
+    out = {}
+    for k, v in raw.items():
+        if str(k).startswith("__"):        # config 파일의 주석 키 관례
+            continue
+        try:
+            w = float(v)
+        except (TypeError, ValueError):
+            logger.warning("[MapAlignment] weight for %r is not a number, ignored: %r", k, v)
+            continue
+        # NaN은 모든 비교가 False라 이 한 줄이 음수·무한과 함께 걸러 낸다.
+        if not (0.0 <= w < float("inf")):
+            logger.warning("[MapAlignment] weight for %r is not usable, ignored: %r", k, v)
+            continue
+        out[str(k)] = w
+    return out
+
+
+def _fit_weights(vec, n):
+    """무게 벡터를 셀 개수 `n`에 맞춘다. 모자란 자리는 **1**(선언 없음)이다.
+
+    자르기만 하면 뒤 셀이 앞 셀의 무게를 받는다 - 값 절단이 좌표와 함께 잘려야 하는 것과
+    같은 계열의 어긋남이고, 총계로는 절대 안 잡힌다(§[2] 절단).
+    """
+    import numpy as np
+    if vec.size == n:
+        return vec
+    out = np.ones(n, dtype=float)
+    m = min(n, vec.size)
+    out[:m] = vec[:m]
+    return out
+
+
 def _rule_on(candidates: list, thresholds: dict = None,
              metric: str = METRIC_OCCUPANCY, scoring: dict = None) -> dict:
     """이길 후보가 있는가 — 없으면 **없다고 말한다**(스펙 §0.2 ⑦: 억지 1등 금지).
@@ -1015,7 +1123,10 @@ def _rule_on(candidates: list, thresholds: dict = None,
        막을 방법이 없으므로 아예 순위를 내지 않는다.
 
     `scoring`: 판정이 **자기 옆의 사실과 어긋나지 않게** 하는 재료 -
-        `{placed_cells, source_map_count, excluded_map_count, excluded_reason_code}`.
+        `{placed_cells, scored_cells, source_map_count, excluded_map_count,
+        excluded_reason_code}`. `scored_cells`는 **채점기에 도달한** 좌표 수이고
+        `placed_cells`는 **변환을 통과해 놓인** 좌표 수다. 둘은 여덟 후보가 전부 변환을
+        거절할 때 갈리고, 그 갈림이 「소스를 고쳐라」와 「기준을 고쳐라」를 가른다.
         제외 개수는 곁가지 필드가 아니라 판정의 일부다: 「1개 중 1개 제외」가 응답 안에 있는데
         판정이 「동점」이면 화면은 서로를 부정하는 두 문장을 같은 카드에 그리고, 그 카드는
         말을 아끼는 카드보다 나쁘다. 그래서 개수와 지배 사유가 **모든** 판정에 실린다.
@@ -1035,14 +1146,32 @@ def _rule_on(candidates: list, thresholds: dict = None,
         #    기준과 맞지 않는다는 뜻이라 고칠 것은 규격 자체다. 한 낱말로 합치면 절반이
         #    틀린 곳으로 간다. `placed_cells`가 없으면(호출자가 안 넘겼으면) 단정하지 않고
         #    기존 낱말을 쓴다 - 모르는 것을 0으로 접지 않는다.
-        placed = sc.get("placed_cells")
+        #
+        # 🔴 그 구별을 **놓인 좌표로 물으면 답이 하나뿐이다.** `not live`는 여덟 후보가 전부
+        #    빈 배열이거나 None이라는 뜻이고, 그러면 `placed_cells`는 정의상 0이다 - 즉
+        #    `no_candidate_scored`는 이 갈래에서 **도달할 수 없었다**(실측 2026-08-05: `not
+        #    live`인 모든 조합에서 나온 (placed_cells, reason_code) 쌍은 `(0, no_cells_scored)`
+        #    하나뿐). 그래서 기준 맵의 규격이 없어 여덟 후보가 전부 변환을 거절한 실행이
+        #    「소스 좌표 미도달」로 나갔다 - 좌표는 도달했고(제외 0건·쓸 수 있는 맵 1장),
+        #    거절한 것은 변환기이며, 고칠 것은 소스가 아니라 기준이었다. 참인 문장이 바로
+        #    옆에 있었다(`compose_refusal`은 후보의 `reason`을 먼저 읽어 제대로 말하고
+        #    있었다) - 어긋난 것은 사유 코드 하나이고, 화면의 표찰은 그 코드에서 나온다.
+        #
+        #    묻는 수를 **채점기에 도달한 좌표**로 바꾸면 두 사실이 갈린다. 안 넘어왔으면
+        #    종전 수로 답한다 - 모르는 것을 0으로 접지 않는다.
+        arrived = sc.get("scored_cells")
+        if arrived is None:
+            arrived = sc.get("placed_cells")
         return dict(ctx, winner=None, margin=None,
-                    reason_code=(RULING_NO_CELLS_SCORED if placed == 0
+                    reason_code=(RULING_NO_CELLS_SCORED if arrived == 0
                                  else RULING_NO_CANDIDATE_SCORED))
 
-    a_key = "value_agreement" if metric == METRIC_VALUES else "agreement"
-    d_key = "value_discriminating" if metric == METRIC_VALUES else "discriminating"
-    m_key = "value_margin" if metric == METRIC_VALUES else "margin"
+    # 무게는 축을 **바꾸지 않는다** - 가중이든 아니든 값 축은 같은 세 필드를 읽는다.
+    # 여기서 `== METRIC_VALUES`로 남겨 두면 가중 판정이 조용히 점유 필드로 순위를 낸다.
+    on_values = metric in VALUE_METRICS
+    a_key = "value_agreement" if on_values else "agreement"
+    d_key = "value_discriminating" if on_values else "discriminating"
+    m_key = "value_margin" if on_values else "margin"
     scoreable = [c for c in live if c.get(a_key) is not None]
     if not scoreable:
         return dict(ctx, winner=None, margin=None,
@@ -1102,7 +1231,12 @@ _RULING_TEXT = {
     RULING_NO_CELLS_SCORED: "채점 0건 - 소스 좌표 미도달",
     RULING_NO_OVERLAP: "기준 위 일치 0건 - 순위 없음",
     RULING_TIE: "동점 - 1위 복수",
-    RULING_NO_DISCRIMINATION: "기준 발자국이 대칭 - 8프레임 구별 불가",
+    # 🔴 **사실만 대고 끝내면 조작자는 어디를 고칠지 모른다.** 이 사유는 소스 맵의 결함이
+    #    아니라 **기준 한 장의 사실**이다 - 이 셀들에 대해 기준의 답이 자리에 따라 안 변하면
+    #    무게로도 못 가른다(§[3c]: 여덟이 같은 셀 집합을 맞히면 어떤 배수도 여덟을 같이
+    #    키운다). 그래서 수리는 문턱도 무게도 아니고 **다른 기준을 꽂는 것**이며, 문장이
+    #    그 자리를 가리켜야 한다. 안 가리키면 조작자는 config를 세 번 고치고 돌아온다.
+    RULING_NO_DISCRIMINATION: "기준 발자국 대칭 - 8프레임 구별 불가 · 다른 기준 맵 필요",
     "no_margin": "1-2위 격차 0 - 순위 없음",
     # 문턱은 **선언**이므로 미선언은 「0」이 아니라 「모름」이다. 문장이 그렇게 말한다.
     "no_thresholds": "판정 기준값 미선언 - 순위 없음",
@@ -1113,8 +1247,18 @@ _RULING_TEXT = {
 #: 값 축으로 매길 때의 「일치 0건」. 같은 사실이 축마다 다른 낱말을 갖는 유일한 자리다 -
 #: 점유 0과 값 일치 0은 조작자가 볼 곳이 다르고(좌표 컬럼 vs 값 컬럼), 사유 코드를 둘로
 #: 나누면 같은 사실에 철자가 둘이 된다. 그래서 코드는 하나이고 문장만 축을 따라간다.
+#:
+#: 🔴 `no_discrimination`도 축을 따라간다. 점유 축에서는 「발자국이 대칭」이 참인 진단이지만
+#:    값 축에서 그 문장을 내면 발자국을 재러 보내는데, 발자국은 순위에 안 쓰였다. 값 축의
+#:    같은 사실은 **기준 값이 여덟 프레임에 같은 답을 준다**는 것이고, 가중 축에서는 거기에
+#:    「무게로도 못 깬다」가 붙는다 - 무게를 더 올려 보는 것이 다음 수가 아니라는 뜻이다.
 _RULING_TEXT_BY_METRIC = {
     (RULING_NO_OVERLAP, METRIC_VALUES): "값 일치 0건 - 순위 없음",
+    (RULING_NO_OVERLAP, METRIC_VALUES_WEIGHTED): "가중 값 일치 0건 - 순위 없음",
+    (RULING_NO_DISCRIMINATION, METRIC_VALUES):
+        "기준 값이 8프레임에 동일 - 구별 불가 · 다른 기준 맵 필요",
+    (RULING_NO_DISCRIMINATION, METRIC_VALUES_WEIGHTED):
+        "기준 값이 8프레임에 동일 - 가중으로도 구별 불가 · 다른 기준 맵 필요",
 }
 
 
@@ -1699,6 +1843,8 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     reference = _resolve_reference(db, cfg, reference_spec, source_maps, cell_cap,
                                    cache=req_cache)
     thresholds = load_alignment_thresholds(cfg)
+    # 무게도 **문턱과 같은 선언**이다 - 같은 블록에서 같이 읽고, 없으면 없는 채로 내려간다.
+    value_weights = load_alignment_value_weights(cfg)
 
     candidates, excluded, ruling, stats = [], _Excluded(), {"winner": None}, {}
     if reference["state"] == REFERENCE_RESOLVED:
@@ -1707,7 +1853,8 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             reference_values=reference.get("values"), thresholds=thresholds,
             assume_reference_geometry=assume_reference_geometry,
             reference_ref={"table": reference.get("table"),
-                           "map_id": reference.get("map_id")})
+                           "map_id": reference.get("map_id")},
+            value_weights=value_weights)
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):

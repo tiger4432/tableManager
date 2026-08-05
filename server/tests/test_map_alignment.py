@@ -279,6 +279,58 @@ def test_eight_candidates_agreeing_on_nothing_is_not_a_tie_either():
     assert ruling["placed_cells"] > 0, "and the verdict says so, beside the reason"
 
 
+def test_coordinates_that_arrived_and_were_refused_are_not_called_undelivered():
+    """MEASURED 2026-08-05, and the reason `no_candidate_scored` was unreachable in production.
+
+    `placed_cells` counts coordinates that SURVIVED the transform. When all eight candidates
+    refuse, every `keys` is None, so that count is 0 - and `not live` already implies it, which
+    made the branch a constant: every run with nothing live said `no_cells_scored`, "소스 좌표
+    미도달". Here the source is intact (0 excluded, 1 usable map, 47 cells handed to the
+    scorer) and the REFERENCE is what cannot be reproduced. Sending the operator to inspect
+    their coordinates is sending them to the one thing that is fine.
+
+    The refusal PROSE was already right - `compose_refusal` reads the candidates' own reason -
+    so the sentence and the reason code contradicted each other, and the screen's label comes
+    from the code.
+    """
+    ref_meta = _meta()
+    ref = _ref_cells()
+    # a reference whose own grid spec is missing: every candidate's transform refuses, and
+    # nothing about the source is wrong
+    blind_ref_meta = dict(ref_meta, grid_cols=None, grid_rows=None)
+    cands, excluded, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": ref_meta, "cells": ref}], ref, blind_ref_meta,
+        thresholds=THRESHOLDS)
+
+    # the fixture really is the refused-by-the-transform state, not an excluded-source state
+    assert excluded.total() == 0, "the source was excluded, so this tests the wrong branch"
+    assert stats["source_maps_usable"] == 1
+    assert stats["scored_cells"] == len(ref), "the coordinates DID reach the scorer"
+    assert stats["placed_cells"] == 0
+    assert all(c["reason"] for c in cands), "every candidate refused, with a stated reason"
+
+    assert ruling["reason_code"] == ma.RULING_NO_CANDIDATE_SCORED, (
+        "coordinates that arrived and were refused are not coordinates that never arrived")
+    # and the sentence the operator reads must not blame the source data either
+    why = ma.compose_refusal(ma.STATE_NOT_SCORABLE, {"state": ma.REFERENCE_RESOLVED},
+                             excluded, ruling, 1, cands)
+    assert "미도달" not in why, why
+
+
+def test_a_source_that_never_reached_the_scorer_still_says_so():
+    """The other side of the same fork, so the fix cannot be "always say refused". Here the
+    coordinates genuinely never arrive - the map is excluded before the candidate loop - and
+    the repair is the source declaration, not the reference."""
+    ref_meta = _meta()
+    ref = _ref_cells()
+    _c, excluded, ruling, stats = ma.score_candidates(
+        [{"map_id": "M1", "meta": _meta(cols=23, rows=23), "cells": ref}], ref, ref_meta,
+        thresholds=THRESHOLDS)
+    assert excluded.total() == 1
+    assert stats["scored_cells"] == 0
+    assert ruling["reason_code"] == ma.RULING_NO_CELLS_SCORED
+
+
 def test_the_verdict_carries_the_exclusion_count_and_its_reason():
     """A verdict that contradicts a fact sitting beside it is worse than one that says less.
     The exclusion tally was in the response and the ruling said something else."""
@@ -673,6 +725,172 @@ def test_values_are_truncated_with_their_cells_not_separately():
     assert stats["scored_cells"] == 5
     top = max(cands, key=lambda c: c["value_agreement"] or 0)
     assert top["value_agreement"] <= 5
+
+
+# ---------------------------------------------------------------------------
+# PER-VALUE WEIGHTS - what breaks a symmetry the raw count cannot
+# ---------------------------------------------------------------------------
+# Measured 2026-08-05: a partial DT map against the valid-die disk scored agreement 467 on ALL
+# EIGHT candidates with discriminating 0. Every cell of a partial map lands on a valid die under
+# every frame, so no cell's answer varies. Weighting OCCUPANCY cannot touch that - scaling a
+# mask that is identical across eight candidates scales eight candidates identically. Only the
+# VALUE MATCH varies, so that is where a weight has to land.
+#
+# The fixture below is built so the RAW value counts TIE at the top on two DIFFERENT cell sets:
+# one contains the distinctive value, the other does not. That is the smallest shape where a
+# weight can change the ranking and an unweighted run genuinely cannot.
+
+_W_HEAVY, _W_PLAIN = "rot90_front", "rot180_front"
+
+
+def _block_permutation(ref_meta, block, frame):
+    """Where candidate `frame` lands each block cell, after the shift the scorer solves.
+
+    Goes through the REAL transform stack rather than composing rotation math here - a fixture
+    with its own rotation would agree with a scorer that had the same bug.
+    """
+    tf = map_overlay.make_frame_transform(source_meta_for_frame(ref_meta, frame), ref_meta)
+    placed = {p: tf(*p) for p in block}
+    dx = min(p[0] for p in block) - min(v[0] for v in placed.values())
+    dy = min(p[1] for p in block) - min(v[1] for v in placed.values())
+    out = {p: (v[0] + dx, v[1] + dy) for p, v in placed.items()}
+    assert sorted(out.values()) == sorted(block), frame
+    return out
+
+
+def _tie_on_two_different_sets():
+    """Source/reference values engineered so `_W_HEAVY` and `_W_PLAIN` tie on the raw count.
+
+    One cell `a` carries "E1" and matches ONLY under `_W_HEAVY`; one cell `b` carries "X" and
+    matches ONLY under `_W_PLAIN`. Each planted value costs its frame exactly two mismatches
+    elsewhere, so the two candidates land on the same raw total with different matched sets and
+    the other six land below. The footprint is `_symmetric_ref`, so occupancy is blind by
+    construction and cannot leak in as the thing that decided.
+    """
+    ref_meta = _meta()
+    block = _symmetric_ref()
+    perm = {f: _block_permutation(ref_meta, block, f) for f in ma.CANDIDATE_FRAMES}
+
+    def _unique_under(frame, p):
+        """`frame` is the ONLY candidate that lands p where it does - otherwise a second frame
+        would collect the planted match too and the tie would not be between these two."""
+        return sum(1 for f in ma.CANDIDATE_FRAMES if perm[f][p] == perm[frame][p]) == 1
+
+    a = next(p for p in block if _unique_under(_W_HEAVY, p))
+    b = next(p for p in block if p != a and _unique_under(_W_PLAIN, p)
+             and len({p, a, perm[_W_HEAVY][a], perm[_W_PLAIN][p]}) == 4)
+
+    src = dict.fromkeys(block, "1")
+    src[a], src[b] = "E1", "X"
+    ref = dict.fromkeys(block, "1")
+    ref[perm[_W_HEAVY][a]], ref[perm[_W_PLAIN][b]] = "E1", "X"
+    sources = [{"map_id": "M1", "meta": ref_meta, "cells": list(block),
+                "values": [src[p] for p in block]}]
+    return ref_meta, list(block), sources, [ref[q] for q in block]
+
+
+def test_a_value_weight_ranks_what_the_raw_count_cannot():
+    """FAILS BEFORE THE WEIGHTS EXIST. Two candidates hold the same raw value count on two
+    different sets of cells, so the scorer correctly refuses with `tie`. Declaring the
+    distinctive value heavier makes the two sets stop weighing the same - and that is the
+    discrimination, because it is the only thing on this fixture that varies by frame.
+    """
+    ref_meta, ref, sources, ref_values = _tie_on_two_different_sets()
+
+    cands, _e, plain, _s = ma.score_candidates(
+        sources, ref, ref_meta, reference_values=ref_values, thresholds=THRESHOLDS)
+    assert len({c["agreement"] for c in cands}) == 1, \
+        "occupancy separates this fixture, so a weighted win would prove nothing"
+    assert plain["metric"] == ma.METRIC_VALUES
+    assert plain["winner"] is None and plain["reason_code"] == ma.RULING_TIE
+    assert sorted(plain["tied"]) == sorted([_W_HEAVY, _W_PLAIN]), plain["tied"]
+
+    w_cands, _e, weighted, _s = ma.score_candidates(
+        sources, ref, ref_meta, reference_values=ref_values, thresholds=THRESHOLDS,
+        value_weights={"E1": 5})
+    assert weighted["winner"] == _W_HEAVY, (
+        "weighted scores: %s" % {c["frame"]: c["value_agreement"] for c in w_cands})
+    # 🔴 the ruling itself has to say the ranking came from a weighted axis. A winner picked
+    #    under weights that is written down as `values` is indistinguishable from one picked
+    #    without them.
+    assert weighted["metric"] == ma.METRIC_VALUES_WEIGHTED
+
+    # 🔴 NUMERATOR AND DISCRIMINATION MOVE TOGETHER. The one E1 cell is matched by `_W_HEAVY`
+    #    and it varies across candidates, so weight 5 replaces its 1 in BOTH numbers. Leaving
+    #    `value_discriminating` a raw count would keep `min_discriminating_dies` counting
+    #    something else than the threshold it is compared against.
+    before = next(c for c in cands if c["frame"] == _W_HEAVY)
+    after = next(c for c in w_cands if c["frame"] == _W_HEAVY)
+    assert after["value_agreement"] == before["value_agreement"] + 4
+    assert after["value_discriminating"] == before["value_discriminating"] + 4, \
+        "the discriminating count was left unweighted while agreement was weighted"
+
+
+def test_an_undeclared_weight_scores_exactly_as_it_did():
+    """The property that lets an operator switch weights on for ONE rule without touching the
+    others: a run that declares none is unchanged - same numbers, same TYPES, same metric name.
+    Counts stay `int`; a weighting path that ran with a default of 1.0 everywhere would produce
+    whole-valued floats that every equality assertion would still accept.
+    """
+    ref_meta, ref, sources, ref_values = _tie_on_two_different_sets()
+    base_c, _e, base_r, _s = ma.score_candidates(
+        sources, ref, ref_meta, reference_values=ref_values, thresholds=THRESHOLDS)
+    for absent in (None, {}):
+        cands, _e2, ruling, _s2 = ma.score_candidates(
+            sources, ref, ref_meta, reference_values=ref_values, thresholds=THRESHOLDS,
+            value_weights=absent)
+        assert cands == base_c, absent
+        assert ruling == base_r, absent
+        assert ruling["metric"] == ma.METRIC_VALUES, absent
+    for c in base_c:
+        for k in ("value_agreement", "value_discriminating", "value_margin"):
+            assert type(c[k]) is int, "%s is %s, not a count" % (k, type(c[k]).__name__)
+
+
+def test_a_declared_zero_is_a_declaration_and_an_absent_key_is_not():
+    """`{"1": 0}` says "do not count this value". Reading it as "undeclared" hands it weight 1,
+    the opposite instruction - and BOTH readings pick the same winner here, so only the exact
+    number catches the conflation. Absence and zero have been confused twice this week.
+    """
+    ref_meta, ref, sources, ref_values = _tie_on_two_different_sets()
+    cands, _e, ruling, _s = ma.score_candidates(
+        sources, ref, ref_meta, reference_values=ref_values, thresholds=THRESHOLDS,
+        value_weights={"1": 0, "E1": 5})
+    top = next(c for c in cands if c["frame"] == _W_HEAVY)
+    assert ruling["winner"] == _W_HEAVY
+    # the single E1 match, and nothing else. Folding 0 to "undeclared" would read 5 + 46 = 51.
+    assert top["value_agreement"] == 5.0, top["value_agreement"]
+
+    assert ma.load_alignment_value_weights({}) == {}
+    assert ma.load_alignment_value_weights({"alignment": {}}) == {}
+    assert ma.load_alignment_value_weights(
+        {"alignment": {"value_weights": {"1": 0}}}) == {"1": 0.0}
+    # an unreadable declaration is not a declaration, and a negative one would let a match
+    # count as evidence AGAINST the frame it matched
+    assert ma.load_alignment_value_weights(
+        {"alignment": {"value_weights": {"E1": "five", "E2": -1, "E3": 2}}}) == {"E3": 2.0}
+
+
+def test_weights_cannot_rescue_a_reference_that_answers_the_same_everywhere():
+    """THE HONEST LIMIT, as an assertion. When every cell lands on a matching value under all
+    eight frames, no cell's answer varies - and any weight scales eight identical masks
+    identically. The refusal must therefore name the REFERENCE as what cannot choose and point
+    at the repair, rather than reporting "no discrimination" as a bare fact.
+    """
+    ref_meta = _meta()
+    ref = _symmetric_ref()
+    flat = ["1"] * len(ref)
+    args = ([{"map_id": "M1", "meta": ref_meta,
+              "cells": _plant(ref_meta, ref, "rot90_front"), "values": flat}], ref, ref_meta)
+    heavy = ma.score_candidates(*args, reference_values=flat, thresholds=THRESHOLDS,
+                                value_weights={"1": 1000})
+    assert heavy[2]["winner"] is None
+    assert heavy[2]["reason_code"] == ma.RULING_NO_DISCRIMINATION
+    assert len({c["value_agreement"] for c in heavy[0]}) == 1, \
+        "a uniform weight moved eight identical masks apart, which is impossible"
+    for text in (ma._RULING_TEXT[ma.RULING_NO_DISCRIMINATION], ma._ruling_text(heavy[2])):
+        assert "기준" in text and "필요" in text, \
+            "the refusal has to name the reference and point at the repair: %s" % text
 
 
 # ---------------------------------------------------------------------------
